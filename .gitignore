@@ -1,0 +1,18 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# 에디터
+.vscode/
+.idea/
+
+# 배포 도구
+.vercel/
+.netlify/
+
+# 의존성 (향후)
+node_modules/
+
+# 비밀값 — 절대 커밋 금지
+.env
+.env.*
