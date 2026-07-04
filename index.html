@@ -46,6 +46,7 @@
   .spot .nm{cursor:pointer;flex:1}
   .spot .nm:hover{color:#fff;text-decoration:underline}
   .spot .opt{color:#8892b0;font-size:11px}
+  .spot .noloc{color:#f6bd60;font-size:10.5px;border:1px solid #5a4a2a;border-radius:6px;padding:0 5px;margin-left:4px;cursor:pointer;white-space:nowrap}
   .spot .tools{display:none;gap:2px}
   .spot:hover .tools{display:flex}
   .addSpot{font-size:11.5px;color:#7ea6e0;background:none;border:1px dashed #2a3457;border-radius:7px;padding:3px 10px;margin-top:5px}
@@ -71,6 +72,17 @@
   .searchRes div{font-size:12px;padding:6px 8px;border-radius:7px;cursor:pointer;color:#cdd6f4}
   .searchRes div:hover{background:#2a3457}
   .hint{font-size:11px;color:#8892b0;margin-top:4px}
+  /* paste draft */
+  .pasteToggle{display:flex;align-items:center;gap:8px;font-size:12.5px;color:#cdd6f4;margin-bottom:2px}
+  .switch{position:relative;display:inline-block;width:40px;height:22px;flex:none}
+  .switch input{display:none}
+  .slider{position:absolute;inset:0;background:#2a3457;border-radius:22px;transition:.2s}
+  .slider:before{content:'';position:absolute;height:16px;width:16px;left:3px;top:3px;background:#cdd6f4;border-radius:50%;transition:.2s}
+  .switch input:checked+.slider{background:#e63946}
+  .switch input:checked+.slider:before{transform:translateX(18px);background:#fff}
+  #fmtHelp{margin-top:10px}
+  #fmtHelp summary{font-size:11.5px;color:#7ea6e0;cursor:pointer}
+  #fmtHelp pre{background:#0f1830;border-radius:8px;padding:10px;font-size:11px;line-height:1.5;white-space:pre-wrap;margin-top:6px;color:#cdd6f4}
   /* travel mode */
   #travel{position:fixed;inset:0;background:#12192e;z-index:3000;display:none;flex-direction:column;padding:16px}
   #travel.show{display:flex}
@@ -96,6 +108,7 @@
   <select id="tripSel"></select>
   <button class="btn" id="newTripBtn">＋ 새 여행</button>
   <button class="btn" id="tripEditBtn">여행 설정</button>
+  <button class="btn" id="pasteBtn">📋 붙여넣기</button>
   <span style="flex:1"></span>
   <button class="btn primary" id="travelBtn">📍 여행 모드</button>
   <button class="btn ghost" id="shareBtn">🔗 공유</button>
@@ -158,6 +171,59 @@
     <button class="btn" id="tripDelBtn" style="margin-right:auto;color:#ff8fa3">여행 삭제</button>
     <button class="btn" id="tripCancel">취소</button>
     <button class="btn primary" id="tripSave">저장</button>
+  </div>
+</div></div>
+
+<!-- 붙여넣기 초안 모달 -->
+<div class="modalBg" id="pasteModalBg"><div class="modal">
+  <h2>📋 붙여넣기로 일정 만들기</h2>
+  <div class="pasteToggle">
+    <label class="switch"><input type="checkbox" id="aiToggle"><span class="slider"></span></label>
+    <span id="aiToggleLabel">직접 형식</span>
+    <span style="flex:1"></span>
+    <span class="hint" style="margin:0">토글로 AI 파싱 켜기/끄기</span>
+  </div>
+  <div class="hint" id="pasteModeHint" style="margin-bottom:6px"></div>
+  <textarea id="pasteText" style="width:100%;min-height:180px"></textarea>
+  <div id="aiCfg" style="display:none">
+    <label>Claude API 키 <span class="hint" style="margin:0">— 이 브라우저에만 저장, 공유·내보내기엔 포함 안 됨</span></label>
+    <input type="password" id="apiKey" placeholder="sk-ant-...">
+    <label>모델</label>
+    <select id="apiModel">
+      <option value="claude-sonnet-5">Sonnet 5 (권장)</option>
+      <option value="claude-haiku-4-5-20251001">Haiku 4.5 (저렴·빠름)</option>
+      <option value="claude-opus-4-8">Opus 4.8 (고품질)</option>
+    </select>
+  </div>
+  <label>대상</label>
+  <select id="pasteTarget">
+    <option value="new">새 여행으로 생성</option>
+    <option value="append">현재 여행에 이어붙이기</option>
+  </select>
+  <details id="fmtHelp"><summary>직접 형식 도움말 / 예시 복사</summary><pre id="fmtSpec">여행이름: 다롄 2박3일
+시작일: 2026-07-15
+
+[Day 1] 다롄 도착
+이동: ✈️ 인천 → 다롄
+메모: 오후 도착, 시내 야경
+- 성해광장 | 다롄 | 세계 최대 도심 광장
+- (선택) 러시아 거리 | 다롄 | 유럽풍 거리
+
+[Day 2] 시내 관광
+- 여순 감옥 | 다롄 | 근대사 유적
+- 노호탄 공원 | 다롄 | 해양공원
+
+[Day 3] 귀국
+- 둥베이로 시장 | 다롄 | 아침 시장
+- 다롄 저우수이쯔 공항 | 다롄 | 출국
+
+규칙: [Day N] 또는 # 로 날짜 시작 · - 로 명소(이름 | 도시 | 메모 | 위도,경도) · 좌표는 생략 가능(OSM 자동조회, 못 찾으면 '위치 지정'으로 남음) · (선택) 붙이면 선택코스 · 이동:/메모: 로 그날 정보
+※ 해외(특히 중국 등) 한글 지명은 자동조회 실패가 잦음 → 좌표를 직접 넣거나 AI 파싱 모드 사용 권장</pre>
+    <button class="btn" id="fmtCopy" style="margin-top:6px;font-size:11px;padding:3px 10px">이 예시 붙여넣기 칸에 채우기</button>
+  </details>
+  <div class="row">
+    <button class="btn" id="pasteCancel">취소</button>
+    <button class="btn primary" id="pasteRun">초안 만들기</button>
   </div>
 </div></div>
 
@@ -258,6 +324,7 @@ function dateOf(di){
   return `${d.getMonth()+1}/${d.getDate()} (${'일월화수목금토'[d.getDay()]})`;
 }
 function gmapsLink(s){ return `https://www.google.com/maps/search/?api=1&query=${s.lat},${s.lng}(${encodeURIComponent(s.name)})`; }
+function hasLoc(s){ return s && s.lat!=null && s.lng!=null && isFinite(+s.lat) && isFinite(+s.lng); }
 
 function render(){
   const t = trip(), colors = cityColors();
@@ -268,6 +335,7 @@ function render(){
   t.days.forEach((day,di)=>{
     if(activeDay && di+1!==activeDay) return;
     day.spots.forEach((s,si)=>{
+      if(!hasLoc(s)) return;               // 좌표 미지정 명소는 핀 생략 (카드엔 남음)
       const c = colors[s.city]||'#888';
       const m = L.marker([s.lat,s.lng],{icon:mkIcon(c,si+1,s.opt)})
         .bindTooltip(s.name,{direction:'top',offset:[0,-12]})
@@ -277,10 +345,11 @@ function render(){
           `<a href="#" onclick="openSpotModal(${di},${si});return false;">✎ 편집</a></div>`);
       m.addTo(map); markers.push(m);
     });
-    // 일자 내 동선
-    if(day.spots.length>1){
-      const c = colors[day.spots[0].city]||'#888';
-      const l = L.polyline(day.spots.map(s=>[s.lat,s.lng]),{color:c,weight:3,opacity:activeDay?0.9:0.45});
+    // 일자 내 동선 (좌표 있는 명소만)
+    const locSpots = day.spots.filter(hasLoc);
+    if(locSpots.length>1){
+      const c = colors[locSpots[0].city]||'#888';
+      const l = L.polyline(locSpots.map(s=>[s.lat,s.lng]),{color:c,weight:3,opacity:activeDay?0.9:0.45});
       l.addTo(map); lines.push(l);
     }
   });
@@ -288,12 +357,13 @@ function render(){
   if(!activeDay){
     let prev = null;
     t.days.forEach(day=>{
-      if(!day.spots.length) return;
+      const loc = day.spots.filter(hasLoc);
+      if(!loc.length) return;
       if(prev){
-        const l = L.polyline([[prev.lat,prev.lng],[day.spots[0].lat,day.spots[0].lng]],{color:'#f6bd60',weight:2,dashArray:'7 6',opacity:.8});
+        const l = L.polyline([[prev.lat,prev.lng],[loc[0].lat,loc[0].lng]],{color:'#f6bd60',weight:2,dashArray:'7 6',opacity:.8});
         l.addTo(map); lines.push(l);
       }
-      prev = day.spots[day.spots.length-1];
+      prev = loc[loc.length-1];
     });
   }
   renderSidebar(); renderFilter(); renderLegend();
@@ -301,7 +371,7 @@ function render(){
   save();
 }
 function fitAll(){
-  const pts=[]; trip().days.forEach(d=>d.spots.forEach(s=>pts.push([s.lat,s.lng])));
+  const pts=[]; trip().days.forEach(d=>d.spots.forEach(s=>{if(hasLoc(s))pts.push([s.lat,s.lng])}));
   if(pts.length) map.fitBounds(L.latLngBounds(pts).pad(0.2));
 }
 function renderFilter(){
@@ -311,7 +381,7 @@ function renderFilter(){
   trip().days.forEach((d,i)=>{
     const b=document.createElement('button'); b.className='chip'+(activeDay===i+1?' active':''); b.textContent='D'+(i+1); b.title=d.title;
     b.onclick=()=>{activeDay=i+1;render();
-      const pts=d.spots.map(s=>[s.lat,s.lng]);
+      const pts=d.spots.filter(hasLoc).map(s=>[s.lat,s.lng]);
       if(pts.length) map.flyToBounds(L.latLngBounds(pts).pad(0.3),{duration:.7,maxZoom:14});};
     bar.appendChild(b);
   });
@@ -320,7 +390,7 @@ function renderFilter(){
   Object.entries(colors).forEach(([city,c])=>{
     const b=document.createElement('button'); b.className='chip citychip'; b.style.setProperty('--c',c); b.textContent=city;
     b.onclick=()=>{
-      const pts=[]; trip().days.forEach(d=>d.spots.forEach(s=>{if(s.city===city)pts.push([s.lat,s.lng])}));
+      const pts=[]; trip().days.forEach(d=>d.spots.forEach(s=>{if(s.city===city&&hasLoc(s))pts.push([s.lat,s.lng])}));
       if(pts.length) map.flyToBounds(L.latLngBounds(pts).pad(0.4),{duration:.8,maxZoom:14});
     };
     bar.appendChild(b);
@@ -340,8 +410,8 @@ function renderSidebar(){
     const card=document.createElement('div'); card.className='dayCard'+(activeDay&&activeDay!==di+1?' dim':''); card.style.setProperty('--c',c);
     let spotsHtml='';
     day.spots.forEach((s,si)=>{
-      spotsHtml+=`<div class="spot" style="--c:${colors[s.city]||'#888'}">
-        <span class="nm" onclick="focusSpot(${di},${si})">${si+1}. ${s.name}${s.opt?' <span class=opt>(선택)</span>':''}</span>
+      spotsHtml+=`<div class="spot" style="--c:${hasLoc(s)?(colors[s.city]||'#888'):'#4a5170'}">
+        <span class="nm" onclick="focusSpot(${di},${si})">${si+1}. ${s.name}${s.opt?' <span class=opt>(선택)</span>':''}${hasLoc(s)?'':`<span class="noloc" onclick="event.stopPropagation();openSpotModal(${di},${si})">📍 위치 지정</span>`}</span>
         <span class="tools">
           <button class="iconb" onclick="moveSpot(${di},${si},-1)" title="위로">▲</button>
           <button class="iconb" onclick="moveSpot(${di},${si},1)" title="아래로">▼</button>
@@ -361,7 +431,7 @@ function renderSidebar(){
     card.querySelector('.dayHead').onclick=(e)=>{
       if(e.target.closest('.iconb'))return;
       activeDay=di+1;render();
-      const pts=day.spots.map(s=>[s.lat,s.lng]);
+      const pts=day.spots.filter(hasLoc).map(s=>[s.lat,s.lng]);
       if(pts.length) map.flyToBounds(L.latLngBounds(pts).pad(0.3),{duration:.7,maxZoom:14});
     };
     sb.appendChild(card);
@@ -372,6 +442,7 @@ function renderSidebar(){
 }
 window.focusSpot=(di,si)=>{
   const s=trip().days[di].spots[si];
+  if(!hasLoc(s)){ openSpotModal(di,si); return; }   // 위치 미지정이면 지정 모달 열기
   if(activeDay && activeDay!==di+1){ activeDay=0; render(); }
   map.flyTo([s.lat,s.lng],Math.max(map.getZoom(),13),{duration:.7});
   setTimeout(()=>{ markers.forEach(m=>{ const p=m.getLatLng(); if(Math.abs(p.lat-s.lat)<1e-9&&Math.abs(p.lng-s.lng)<1e-9) m.openPopup(); }); },750);
@@ -536,7 +607,7 @@ document.getElementById('shareBtn').onclick=()=>{
 };
 // 공유 링크로 열었을 때
 (function(){
-  load();
+  load(); loadCfg();
   if(location.hash.startsWith('#t=')){
     try{
       const t=JSON.parse(LZString.decompressFromEncodedURIComponent(location.hash.slice(3)));
@@ -549,6 +620,153 @@ document.getElementById('shareBtn').onclick=()=>{
     }catch(e){}
   }
 })();
+
+// ───────────────── 붙여넣기 초안 (AI on/off) ─────────────────
+const CFG_KEY='tripcanvas_cfg';
+let cfg={aiParse:false, apiKey:'', model:'claude-sonnet-5'};
+function loadCfg(){ try{ Object.assign(cfg, JSON.parse(localStorage.getItem(CFG_KEY))||{}); }catch(e){} }
+function saveCfg(){ localStorage.setItem(CFG_KEY, JSON.stringify(cfg)); }
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+
+const DIRECT_PLACEHOLDER=`여행이름: 다롄 2박3일
+시작일: 2026-07-15
+
+[Day 1] 다롄 도착
+이동: ✈️ 인천 → 다롄
+- 성해광장 | 다롄 | 세계 최대 도심 광장
+- (선택) 러시아 거리 | 다롄
+
+[Day 2] 시내
+- 여순 감옥 | 다롄`;
+const AI_PLACEHOLDER=`예) 다다음주 다롄 2박3일 갈 거야. 첫날 오후 인천서 출발해서 성해광장이랑 러시아거리 야경 보고, 둘째날은 여순감옥이랑 노호탄공원, 셋째날 오전에 시장 구경하고 귀국.`;
+
+// OSM 지오코딩 (좌표 자동 조회)
+async function geocode(q){
+  try{
+    const r=await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(q)}`,{headers:{'Accept-Language':'ko,en'}});
+    const js=await r.json();
+    if(js&&js[0]) return {lat:+js[0].lat, lng:+js[0].lon};
+  }catch(e){}
+  return null;
+}
+
+// 직접 형식 → 구조화 (AI 불필요)
+function parseDirect(text){
+  const out={name:'',start:'',days:[]};
+  let cur=null, lastCity='';
+  text.split(/\r?\n/).forEach(raw=>{
+    const line=raw.trim(); if(!line) return; let m;
+    if(m=line.match(/^여행\s*이름\s*[:：]\s*(.+)$/)){ out.name=m[1].trim(); return; }
+    if(m=line.match(/^시작일\s*[:：]\s*(.+)$/)){ out.start=m[1].trim(); return; }
+    if(m=line.match(/^\[?\s*day\s*\d+\s*\]?\s*(.*)$/i)){ cur={title:m[1].trim(),drive:'',note:'',spots:[]}; out.days.push(cur); return; }
+    if(line.startsWith('#')){ cur={title:line.slice(1).trim(),drive:'',note:'',spots:[]}; out.days.push(cur); return; }
+    if(!cur){ cur={title:'',drive:'',note:'',spots:[]}; out.days.push(cur); }
+    if(m=line.match(/^이동\s*[:：]\s*(.+)$/)){ cur.drive=m[1].trim(); return; }
+    if(m=line.match(/^메모\s*[:：]\s*(.+)$/)){ cur.note=(cur.note?cur.note+'\n':'')+m[1].trim(); return; }
+    if(m=line.match(/^[-•*·]\s*(.+)$/)){
+      let body=m[1].trim(), opt=false;
+      if(/^\(선택\)/.test(body)){ opt=true; body=body.replace(/^\(선택\)\s*/,''); }
+      const p=body.split('|').map(x=>x.trim());
+      if(p[1]) lastCity=p[1];
+      let lat=null,lng=null;
+      if(p[3]){ const mm=p[3].match(/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/); if(mm){ lat=+mm[1]; lng=+mm[2]; } }
+      cur.spots.push({name:p[0]||'',city:p[1]||lastCity||out.name||'기타',desc:p[2]||'',opt,lat,lng});
+      return;
+    }
+    cur.note=(cur.note?cur.note+'\n':'')+line;
+  });
+  return out;
+}
+
+// 자연어 → 구조화 (Claude API, 브라우저 직접 호출)
+async function parseAI(text){
+  if(!cfg.apiKey) throw new Error('AI 파싱을 쓰려면 API 키를 입력해줘');
+  const system=`너는 여행 일정 파서다. 사용자의 자유로운 여행 설명을 받아 JSON으로만 변환해라.
+스키마: {"name":string,"start":"YYYY-MM-DD"|null,"days":[{"title":string,"drive":string,"note":string,"spots":[{"name":string,"city":string,"desc":string,"opt":boolean,"lat":number|null,"lng":number|null}]}]}
+- 모든 텍스트 필드는 한국어.
+- 각 명소의 실제 위도/경도를 네 지식으로 채워라. 확실하지 않으면 lat/lng를 null로 둬라.
+- drive는 그날 이동 정보(예: "✈️ 인천 → 다롄"), note는 그날의 팁/메모. 없으면 빈 문자열.
+- opt는 "가면 좋은" 선택 코스면 true, 필수면 false.
+- JSON 외의 설명·인사·코드펜스를 절대 출력하지 마라.`;
+  const r=await fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',
+    headers:{'content-type':'application/json','x-api-key':cfg.apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+    body:JSON.stringify({model:cfg.model,max_tokens:4000,system,messages:[{role:'user',content:text}]})
+  });
+  if(!r.ok){ const t=await r.text().catch(()=>''); throw new Error(`API 오류 ${r.status} · ${t.slice(0,120)}`); }
+  const data=await r.json();
+  let txt=(data.content?.[0]?.text||'').trim();
+  const a=txt.indexOf('{'), b=txt.lastIndexOf('}');
+  if(a>=0&&b>a) txt=txt.slice(a,b+1);
+  return JSON.parse(txt);
+}
+
+function openPaste(){
+  document.getElementById('aiToggle').checked=cfg.aiParse;
+  document.getElementById('apiKey').value=cfg.apiKey||'';
+  document.getElementById('apiModel').value=cfg.model||'claude-sonnet-5';
+  document.getElementById('pasteText').value='';
+  syncPasteMode();
+  document.getElementById('pasteModalBg').classList.add('show');
+}
+function syncPasteMode(){
+  const ai=document.getElementById('aiToggle').checked;
+  document.getElementById('aiToggleLabel').textContent = ai?'AI 파싱 (자연어)':'직접 형식 (AI 없이)';
+  document.getElementById('aiCfg').style.display = ai?'block':'none';
+  document.getElementById('fmtHelp').style.display = ai?'none':'block';
+  document.getElementById('pasteModeHint').textContent = ai
+    ? '자연어로 자유롭게 붙여넣으면 AI가 날짜·도시·명소·좌표를 정리해줘.'
+    : '아래 형식으로 붙여넣으면 AI 없이 즉시 만들어. 좌표는 OSM에서 자동으로 찾음.';
+  document.getElementById('pasteText').placeholder = ai?AI_PLACEHOLDER:DIRECT_PLACEHOLDER;
+}
+document.getElementById('pasteBtn').onclick=openPaste;
+document.getElementById('aiToggle').onchange=()=>{ cfg.aiParse=document.getElementById('aiToggle').checked; saveCfg(); syncPasteMode(); };
+document.getElementById('apiKey').oninput=e=>{ cfg.apiKey=e.target.value.trim(); saveCfg(); };
+document.getElementById('apiModel').onchange=e=>{ cfg.model=e.target.value; saveCfg(); };
+document.getElementById('fmtCopy').onclick=()=>{ document.getElementById('pasteText').value=document.getElementById('fmtSpec').textContent.split('\n\n규칙:')[0].trim(); };
+document.getElementById('pasteCancel').onclick=()=>document.getElementById('pasteModalBg').classList.remove('show');
+document.getElementById('pasteRun').onclick=runPaste;
+
+async function runPaste(){
+  const text=document.getElementById('pasteText').value.trim();
+  if(!text){ toast('내용을 붙여넣어줘','#e63946'); return; }
+  const target=document.getElementById('pasteTarget').value;
+  let parsed;
+  try{
+    if(cfg.aiParse){ toast('AI가 일정을 정리하는 중…','#1d6fd6'); parsed=await parseAI(text); }
+    else parsed=parseDirect(text);
+  }catch(e){ toast(e.message||'파싱 실패','#e63946'); return; }
+  if(!parsed||!Array.isArray(parsed.days)||!parsed.days.length){ toast('일정을 못 읽었어 — 형식을 확인해줘','#e63946'); return; }
+  // 정규화
+  parsed.days=parsed.days.map(d=>({
+    title:d.title||'', drive:d.drive||'', note:d.note||'',
+    spots:(d.spots||[]).map(s=>({name:(s.name||'').trim(), city:(s.city||'기타').trim(), desc:s.desc||'',
+      opt:!!s.opt, lat:(s.lat==null?null:+s.lat), lng:(s.lng==null?null:+s.lng)})).filter(s=>s.name)
+  }));
+  // 좌표 없는 명소 지오코딩
+  const need=[]; parsed.days.forEach(d=>d.spots.forEach(s=>{ if(s.lat==null||isNaN(s.lat)||s.lng==null||isNaN(s.lng)) need.push(s); }));
+  for(let i=0;i<need.length;i++){
+    const s=need[i];
+    toast(`좌표 찾는 중… (${i+1}/${need.length}) ${s.name}`,'#1d6fd6');
+    let g=await geocode(`${s.name} ${s.city}`); if(!g) g=await geocode(s.name);
+    if(g){ s.lat=g.lat; s.lng=g.lng; }
+    if(i<need.length-1) await sleep(1100); // Nominatim 이용정책 (1req/s)
+  }
+  // 좌표 못 찾은 명소는 버리지 않고 유지 (카드에 남고, '위치 지정'으로 표시)
+  let noloc=0; parsed.days.forEach(d=>d.spots.forEach(s=>{ if(!hasLoc(s)) noloc++; }));
+  // 적용
+  if(target==='append'){
+    trip().days.push(...parsed.days);
+    if(parsed.start&&!trip().start) trip().start=parsed.start;
+  }else{
+    const t={id:uid(), name:parsed.name||'붙여넣은 여행', start:parsed.start||new Date().toISOString().slice(0,10), days:parsed.days};
+    store.trips.push(t); store.activeId=t.id;
+  }
+  activeDay=0;
+  document.getElementById('pasteModalBg').classList.remove('show');
+  render(); fitAll();
+  toast(`초안 생성 완료${noloc?` · ${noloc}곳은 위치 미지정 (카드에서 📍 지정)`:''}`, noloc?'#f4862c':'#2a9d3f');
+}
 
 // ───────────────── 여행 모드 ─────────────────
 document.getElementById('travelBtn').onclick=()=>{
@@ -574,7 +792,9 @@ function renderTravel(di){
     const div=document.createElement('div'); div.className='tSpot'; div.style.setProperty('--c',colors[s.city]||'#888');
     div.innerHTML=`<div class="n">${si+1}. ${s.name}${s.opt?' <span style="font-size:11px;color:#8892b0">(선택)</span>':''}</div>`+
       `<div class="d">${s.desc||''}</div>`+
-      `<a href="https://www.google.com/maps/dir/?api=1&destination=${s.lat},${s.lng}&travelmode=walking" target="_blank">🧭 여기로 길찾기</a>`;
+      (hasLoc(s)
+        ? `<a href="https://www.google.com/maps/dir/?api=1&destination=${s.lat},${s.lng}&travelmode=walking" target="_blank">🧭 여기로 길찾기</a>`
+        : `<span style="font-size:12px;color:#f6bd60">📍 위치 미지정</span>`);
     list.appendChild(div);
   });
 }
