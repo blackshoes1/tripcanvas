@@ -13,6 +13,7 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
 <style>
   *{margin:0;padding:0;box-sizing:border-box}
   body{font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;height:100dvh;display:flex;flex-direction:column;background:#1a1a2e;color:#e8e8f0}
@@ -47,8 +48,16 @@
   .spot .nm:hover{color:#fff;text-decoration:underline}
   .spot .opt{color:#8892b0;font-size:11px}
   .spot .noloc{color:#f6bd60;font-size:10.5px;border:1px solid #5a4a2a;border-radius:6px;padding:0 5px;margin-left:4px;cursor:pointer;white-space:nowrap}
-  .spot .tools{display:none;gap:2px}
-  .spot:hover .tools{display:flex}
+  .spot .tools{display:flex;gap:2px;opacity:.5;transition:opacity .15s}
+  .spot:hover .tools{opacity:1}
+  .spot{cursor:grab}
+  .dayHead{cursor:grab}
+  .dragHandle{color:#6b76a0;font-size:12px;cursor:grab;padding:0 3px;user-select:none}
+  .sortable-ghost{opacity:.35}
+  .sortable-chosen{background:#26356b}
+  .sortable-drag .tools{opacity:0}
+  .spotList{min-height:8px}
+  .spotList:empty{min-height:26px;border:1px dashed #2a3457;border-radius:7px;margin-bottom:4px}
   .addSpot{font-size:11.5px;color:#7ea6e0;background:none;border:1px dashed #2a3457;border-radius:7px;padding:3px 10px;margin-top:5px}
   #addDayBtn{width:100%;margin-top:2px;padding:8px;font-size:12.5px}
   .legend{position:absolute;bottom:20px;right:10px;background:rgba(22,33,62,.92);padding:8px 12px;border-radius:10px;font-size:11px;z-index:1000;line-height:1.8;max-height:40vh;overflow-y:auto}
@@ -306,7 +315,7 @@ function toast(msg, color){ const t=document.getElementById('toast'); t.textCont
 // ───────────────── 지도 ─────────────────
 const map = L.map('map').setView([40,-3.7],6);
 L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{attribution:'&copy; OSM &copy; CARTO',maxZoom:19}).addTo(map);
-let activeDay = 0, markers = [], lines = [], pickMode = false;
+let activeDay = 0, markers = [], lines = [], pickMode = false, sortables = [];
 
 function cityColors(){
   const m = {}; let i = 0;
@@ -325,6 +334,10 @@ function dateOf(di){
 }
 function gmapsLink(s){ return `https://www.google.com/maps/search/?api=1&query=${s.lat},${s.lng}(${encodeURIComponent(s.name)})`; }
 function hasLoc(s){ return s && s.lat!=null && s.lng!=null && isFinite(+s.lat) && isFinite(+s.lng); }
+// 색상 기준: 'city'(도시별) | 'day'(일자별). trip에 저장, 기본 city
+function colorByMode(){ return (trip().colorBy==='day') ? 'day' : 'city'; }
+function dayColor(di){ return PALETTE[di%PALETTE.length]; }
+function spotColor(s,di,cityMap){ return colorByMode()==='day' ? dayColor(di) : ((cityMap||cityColors())[s.city]||'#888'); }
 
 function render(){
   const t = trip(), colors = cityColors();
@@ -336,7 +349,7 @@ function render(){
     if(activeDay && di+1!==activeDay) return;
     day.spots.forEach((s,si)=>{
       if(!hasLoc(s)) return;               // 좌표 미지정 명소는 핀 생략 (카드엔 남음)
-      const c = colors[s.city]||'#888';
+      const c = spotColor(s,di,colors);
       const m = L.marker([s.lat,s.lng],{icon:mkIcon(c,si+1,s.opt)})
         .bindTooltip(s.name,{direction:'top',offset:[0,-12]})
         .bindPopup(`<h3>${s.name}</h3><span class="badge" style="background:${c}">Day ${di+1} · ${dateOf(di)}</span>`+
@@ -348,7 +361,7 @@ function render(){
     // 일자 내 동선 (좌표 있는 명소만)
     const locSpots = day.spots.filter(hasLoc);
     if(locSpots.length>1){
-      const c = colors[locSpots[0].city]||'#888';
+      const c = spotColor(locSpots[0],di,colors);
       const l = L.polyline(locSpots.map(s=>[s.lat,s.lng]),{color:c,weight:3,opacity:activeDay?0.9:0.45});
       l.addTo(map); lines.push(l);
     }
@@ -376,6 +389,13 @@ function fitAll(){
 }
 function renderFilter(){
   const bar = document.getElementById('filterbar'); bar.innerHTML='';
+  // 색상 기준 토글 (도시별 ↔ 일자별)
+  const cmode=document.createElement('button'); cmode.className='chip';
+  cmode.textContent = colorByMode()==='day' ? '🎨 일자별' : '🎨 도시별';
+  cmode.title='핀·카드 색상 기준 전환';
+  cmode.onclick=()=>{ trip().colorBy = colorByMode()==='day'?'city':'day'; render(); };
+  bar.appendChild(cmode);
+  const sep0=document.createElement('span'); sep0.style.cssText='width:1px;height:18px;background:#2a3457;margin:0 4px'; bar.appendChild(sep0);
   const all = document.createElement('button'); all.className='chip'+(activeDay?'':' active'); all.textContent='전체';
   all.onclick=()=>{activeDay=0;render();fitAll();}; bar.appendChild(all);
   trip().days.forEach((d,i)=>{
@@ -397,34 +417,44 @@ function renderFilter(){
   });
 }
 function renderLegend(){
-  const colors=cityColors();
-  document.getElementById('legend').innerHTML='<b style="font-size:12px">도시</b><br>'+
-    Object.entries(colors).map(([n,c])=>`<span class="dot" style="background:${c}"></span>${n}`).join('<br>')+
-    '<br><span style="color:#f6bd60">- - -</span> 일자 간 이동';
+  let body;
+  if(colorByMode()==='day'){
+    body='<b style="font-size:12px">일자</b><br>'+
+      trip().days.map((d,i)=>`<span class="dot" style="background:${dayColor(i)}"></span>Day ${i+1}${d.title?' · '+d.title:''}`).join('<br>');
+  }else{
+    const colors=cityColors();
+    body='<b style="font-size:12px">도시</b><br>'+
+      Object.entries(colors).map(([n,c])=>`<span class="dot" style="background:${c}"></span>${n}`).join('<br>');
+  }
+  document.getElementById('legend').innerHTML=body+'<br><span style="color:#f6bd60">- - -</span> 일자 간 이동';
 }
 function renderSidebar(){
   const sb=document.getElementById('sidebar'); sb.innerHTML='';
+  // 이전 Sortable 인스턴스 정리 (누수 방지)
+  sortables.forEach(s=>{try{s.destroy();}catch(e){}}); sortables=[];
   const colors=cityColors();
+  const dayList=document.createElement('div'); dayList.id='dayList';
   trip().days.forEach((day,di)=>{
-    const c = day.spots.length? (colors[day.spots[0].city]||'#556') : '#556';
-    const card=document.createElement('div'); card.className='dayCard'+(activeDay&&activeDay!==di+1?' dim':''); card.style.setProperty('--c',c);
+    const headC = colorByMode()==='day' ? dayColor(di) : (day.spots.length?(colors[day.spots[0].city]||'#556'):'#556');
+    const card=document.createElement('div'); card.className='dayCard'+(activeDay&&activeDay!==di+1?' dim':''); card.style.setProperty('--c',headC);
     let spotsHtml='';
     day.spots.forEach((s,si)=>{
-      spotsHtml+=`<div class="spot" style="--c:${hasLoc(s)?(colors[s.city]||'#888'):'#4a5170'}">
+      const dotC = hasLoc(s)?spotColor(s,di,colors):'#4a5170';
+      spotsHtml+=`<div class="spot" data-di="${di}" data-si="${si}" style="--c:${dotC}">
         <span class="nm" onclick="focusSpot(${di},${si})">${si+1}. ${s.name}${s.opt?' <span class=opt>(선택)</span>':''}${hasLoc(s)?'':`<span class="noloc" onclick="event.stopPropagation();openSpotModal(${di},${si})">📍 위치 지정</span>`}</span>
         <span class="tools">
-          <button class="iconb" onclick="moveSpot(${di},${si},-1)" title="위로">▲</button>
-          <button class="iconb" onclick="moveSpot(${di},${si},1)" title="아래로">▼</button>
+          <button class="iconb mvup" onclick="moveSpot(${di},${si},-1)" title="위로">▲</button>
+          <button class="iconb mvdown" onclick="moveSpot(${di},${si},1)" title="아래로">▼</button>
           <button class="iconb" onclick="openSpotModal(${di},${si})" title="편집">✎</button>
         </span></div>`;
     });
     card.innerHTML=`<div class="dayHead">
-        <span>Day ${di+1} · ${day.title||''}</span>
+        <span><span class="dragHandle" title="드래그로 일자 순서 변경">⠿</span> Day ${di+1} · ${day.title||''}</span>
         <span style="display:flex;align-items:center;gap:6px"><span class="date">${dateOf(di)}</span>
         <span class="tools"><button class="iconb" onclick="event.stopPropagation();openDayModal(${di})">✎</button></span></span>
       </div><div class="dayBody">
         ${day.drive?`<div class="drive">${day.drive}</div>`:''}
-        ${spotsHtml}
+        <div class="spotList" data-di="${di}">${spotsHtml}</div>
         <button class="addSpot" onclick="openSpotModal(${di},-1)">＋ 명소 추가</button>
         ${day.note?`<div class="note">📝 ${day.note}</div>`:''}
       </div>`;
@@ -434,11 +464,43 @@ function renderSidebar(){
       const pts=day.spots.filter(hasLoc).map(s=>[s.lat,s.lng]);
       if(pts.length) map.flyToBounds(L.latLngBounds(pts).pad(0.3),{duration:.7,maxZoom:14});
     };
-    sb.appendChild(card);
+    // 일자 내 명소 드래그(일자 간 이동도 허용)
+    if(window.Sortable) sortables.push(Sortable.create(card.querySelector('.spotList'),{
+      group:'spots', animation:150, filter:'.iconb,.noloc', preventOnFilter:false,
+      delay:120, delayOnTouchOnly:true, ghostClass:'sortable-ghost', chosenClass:'sortable-chosen',
+      onEnd:onSpotDrop
+    }));
+    dayList.appendChild(card);
   });
+  sb.appendChild(dayList);
+  // 일자 카드 드래그(순서 변경 → 날짜 자동 재배치)
+  if(window.Sortable) sortables.push(Sortable.create(dayList,{
+    handle:'.dayHead', animation:150, filter:'.iconb', preventOnFilter:false,
+    delay:120, delayOnTouchOnly:true, ghostClass:'sortable-ghost', chosenClass:'sortable-chosen',
+    onEnd:onDayDrop
+  }));
   const add=document.createElement('button'); add.className='btn'; add.id='addDayBtn'; add.textContent='＋ 일자 추가';
   add.onclick=()=>{ trip().days.push({title:'',drive:'',note:'',spots:[]}); render(); openDayModal(trip().days.length-1); };
   sb.appendChild(add);
+}
+// 일자 순서 변경 핸들러 (Sortable) — 인덱스 기반이라 날짜는 자동으로 따라감
+function onDayDrop(evt){
+  if(evt.oldIndex===evt.newIndex) return;
+  const days=trip().days;
+  const [moved]=days.splice(evt.oldIndex,1);
+  days.splice(evt.newIndex,0,moved);
+  activeDay=0;
+  // render()는 Sortable 인스턴스를 재생성하므로 onEnd 스택 밖(다음 틱)에서 실행
+  setTimeout(()=>{ render(); toast('일자 순서 변경됨'); },0);
+}
+// 명소 순서/일자 이동 핸들러 (Sortable)
+function onSpotDrop(evt){
+  const fromDi=+evt.from.dataset.di, toDi=+evt.to.dataset.di;
+  if(fromDi===toDi && evt.oldIndex===evt.newIndex) return;
+  const fromSpots=trip().days[fromDi].spots, toSpots=trip().days[toDi].spots;
+  const [moved]=fromSpots.splice(evt.oldIndex,1);
+  toSpots.splice(evt.newIndex,0,moved);
+  setTimeout(()=>{ render(); if(fromDi!==toDi) toast(`Day ${toDi+1}(으)로 이동`); },0);
 }
 window.focusSpot=(di,si)=>{
   const s=trip().days[di].spots[si];
@@ -447,10 +509,17 @@ window.focusSpot=(di,si)=>{
   map.flyTo([s.lat,s.lng],Math.max(map.getZoom(),13),{duration:.7});
   setTimeout(()=>{ markers.forEach(m=>{ const p=m.getLatLng(); if(Math.abs(p.lat-s.lat)<1e-9&&Math.abs(p.lng-s.lng)<1e-9) m.openPopup(); }); },750);
 };
+// 화살표 이동: 도구 항상 노출 + 옮긴 명소를 커서 아래에 고정(스크롤 보정)해 연속 클릭 가능
 window.moveSpot=(di,si,dir)=>{
   const arr=trip().days[di].spots, ni=si+dir;
   if(ni<0||ni>=arr.length)return;
+  const sb=document.getElementById('sidebar');
+  const btnCls = dir<0?'mvup':'mvdown';
+  const before=document.querySelector(`.spot[data-di="${di}"][data-si="${si}"] .${btnCls}`)?.getBoundingClientRect().top;
   [arr[si],arr[ni]]=[arr[ni],arr[si]]; render();
+  const afterBtn=document.querySelector(`.spot[data-di="${di}"][data-si="${ni}"] .${btnCls}`);
+  const after=afterBtn?.getBoundingClientRect().top;
+  if(before!=null && after!=null) sb.scrollTop += (after-before); // 같은 버튼이 커서 자리에 오도록
 };
 
 // ───────────────── 명소 모달 ─────────────────
@@ -789,7 +858,7 @@ function renderTravel(di){
   const list=document.getElementById('travelList'); list.innerHTML='';
   if(!d.spots.length){ list.innerHTML='<div style="color:#9aa5c4;font-size:13px;padding:20px 4px">이 날은 등록된 명소가 없습니다 — 이동일이거나 자유 일정</div>'; return; }
   d.spots.forEach((s,si)=>{
-    const div=document.createElement('div'); div.className='tSpot'; div.style.setProperty('--c',colors[s.city]||'#888');
+    const div=document.createElement('div'); div.className='tSpot'; div.style.setProperty('--c',spotColor(s,di,colors));
     div.innerHTML=`<div class="n">${si+1}. ${s.name}${s.opt?' <span style="font-size:11px;color:#8892b0">(선택)</span>':''}</div>`+
       `<div class="d">${s.desc||''}</div>`+
       (hasLoc(s)
