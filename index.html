@@ -990,7 +990,7 @@ document.getElementById('authSignup').onclick=async()=>{
   btn.textContent='가입'; btn.disabled=false;
   if(error){ toast('가입 실패: '+error.message,'#e63946'); return; }
   if(data && data.session){ document.getElementById('authModalBg').classList.remove('show'); toast('가입 완료 — 로그인됨!'); }
-  else { toast('가입됨 · 이메일 인증이 켜져 있어 — 설정에서 끄면 바로 로그인 돼','#f4862c'); }
+  else { document.getElementById('authModalBg').classList.remove('show'); toast('확인 메일을 보냈어! 메일의 링크를 누르면 인증되고 자동 로그인돼 (스팸함도 확인)','#1d6fd6'); }
 };
 document.getElementById('authPass').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('authLogin').click();});
 updateAuthUI();
