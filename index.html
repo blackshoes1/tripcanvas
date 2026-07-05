@@ -240,21 +240,18 @@
   </div>
 </div></div>
 
-<!-- 로그인 모달 (이메일 OTP) -->
+<!-- 로그인 모달 (이메일 + 비밀번호) -->
 <div class="modalBg" id="authModalBg"><div class="modal">
   <h2>로그인 / 가입</h2>
-  <p class="hint" style="margin-bottom:4px">이메일로 6자리 인증코드를 보내드려요. 비밀번호는 필요 없어요.<br>로그인하면 여행이 계정에 저장돼 다른 기기에서도 열립니다.</p>
+  <p class="hint" style="margin-bottom:4px">이메일과 비밀번호로 로그인해. 처음이면 <b>가입</b>을 눌러.<br>로그인하면 여행이 계정에 저장돼 다른 기기에서도 열립니다.</p>
   <label>이메일</label>
   <input type="email" id="authEmail" placeholder="you@example.com" autocomplete="email">
-  <div id="authStep2" style="display:none">
-    <label>이메일로 받은 6자리 코드</label>
-    <input type="text" id="authCode" inputmode="numeric" autocomplete="one-time-code" placeholder="123456">
-    <div class="hint">메일이 안 오면 스팸함 확인 · 무료 플랜은 발송이 조금 느릴 수 있어요.</div>
-  </div>
+  <label>비밀번호 (6자 이상)</label>
+  <input type="password" id="authPass" placeholder="●●●●●●" autocomplete="current-password">
   <div class="row">
-    <button class="btn" id="authCancel">취소</button>
-    <button class="btn primary" id="authSend">인증코드 받기</button>
-    <button class="btn primary" id="authVerify" style="display:none">확인</button>
+    <button class="btn" id="authCancel" style="margin-right:auto">취소</button>
+    <button class="btn" id="authSignup">가입</button>
+    <button class="btn primary" id="authLogin">로그인</button>
   </div>
 </div></div>
 
@@ -961,44 +958,41 @@ async function syncOnLogin(){
     toast(`클라우드 동기화 완료 · 여행 ${trips.length}개`);
   }catch(e){ toast('클라우드 동기화 실패 — 로컬로 계속 사용','#e63946'); }
 }
-// 로그인 모달 (이메일 OTP)
+// 로그인 모달 (이메일 + 비밀번호)
 document.getElementById('authBtn').onclick=()=>{
   if(!sb){ toast('온라인 상태에서 다시 시도해줘','#e63946'); return; }
   if(user){ if(confirm(`${user.email} — 로그아웃할까?`)){ sb.auth.signOut(); toast('로그아웃됨','#8892b0'); } return; }
   document.getElementById('authEmail').value='';
-  document.getElementById('authCode').value='';
-  document.getElementById('authStep2').style.display='none';
-  document.getElementById('authSend').style.display='';
-  document.getElementById('authVerify').style.display='none';
+  document.getElementById('authPass').value='';
   document.getElementById('authModalBg').classList.add('show');
+  document.getElementById('authEmail').focus();
 };
 document.getElementById('authCancel').onclick=()=>document.getElementById('authModalBg').classList.remove('show');
-document.getElementById('authSend').onclick=async()=>{
+function authCreds(){
   const email=document.getElementById('authEmail').value.trim();
-  if(!/.+@.+\..+/.test(email)){ toast('이메일을 확인해줘','#e63946'); return; }
-  const btn=document.getElementById('authSend'); btn.textContent='보내는 중…'; btn.disabled=true;
-  const {error}=await sb.auth.signInWithOtp({email, options:{shouldCreateUser:true}});
-  btn.textContent='인증코드 받기'; btn.disabled=false;
-  if(error){ toast('발송 실패: '+error.message,'#e63946'); return; }
-  document.getElementById('authStep2').style.display='block';
-  btn.style.display='none';
-  document.getElementById('authVerify').style.display='';
-  toast('인증코드를 이메일로 보냈어');
-  document.getElementById('authCode').focus();
+  const password=document.getElementById('authPass').value;
+  if(!/.+@.+\..+/.test(email)){ toast('이메일을 확인해줘','#e63946'); return null; }
+  if((password||'').length<6){ toast('비밀번호는 6자 이상','#e63946'); return null; }
+  return {email, password};
+}
+document.getElementById('authLogin').onclick=async()=>{
+  const c=authCreds(); if(!c) return;
+  const btn=document.getElementById('authLogin'); btn.textContent='로그인 중…'; btn.disabled=true;
+  const {error}=await sb.auth.signInWithPassword(c);
+  btn.textContent='로그인'; btn.disabled=false;
+  if(error){ toast(/invalid/i.test(error.message)?'이메일 또는 비밀번호가 틀렸어 (처음이면 가입)':'로그인 실패: '+error.message,'#e63946'); return; }
+  document.getElementById('authModalBg').classList.remove('show'); toast('로그인 완료!');
 };
-document.getElementById('authVerify').onclick=async()=>{
-  const email=document.getElementById('authEmail').value.trim();
-  const token=document.getElementById('authCode').value.trim();
-  if(!token){ toast('코드를 입력해줘','#e63946'); return; }
-  const btn=document.getElementById('authVerify'); btn.textContent='확인 중…'; btn.disabled=true;
-  const {error}=await sb.auth.verifyOtp({email, token, type:'email'});
-  btn.textContent='확인'; btn.disabled=false;
-  if(error){ toast('코드가 맞지 않아: '+error.message,'#e63946'); return; }
-  document.getElementById('authModalBg').classList.remove('show');
-  toast('로그인 완료!');   // onAuthStateChange가 동기화 처리
+document.getElementById('authSignup').onclick=async()=>{
+  const c=authCreds(); if(!c) return;
+  const btn=document.getElementById('authSignup'); btn.textContent='가입 중…'; btn.disabled=true;
+  const {data,error}=await sb.auth.signUp(c);
+  btn.textContent='가입'; btn.disabled=false;
+  if(error){ toast('가입 실패: '+error.message,'#e63946'); return; }
+  if(data && data.session){ document.getElementById('authModalBg').classList.remove('show'); toast('가입 완료 — 로그인됨!'); }
+  else { toast('가입됨 · 이메일 인증이 켜져 있어 — 설정에서 끄면 바로 로그인 돼','#f4862c'); }
 };
-document.getElementById('authCode').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('authVerify').click();});
-document.getElementById('authEmail').addEventListener('keydown',e=>{if(e.key==='Enter'&&document.getElementById('authSend').style.display!=='none')document.getElementById('authSend').click();});
+document.getElementById('authPass').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('authLogin').click();});
 updateAuthUI();
 
 // ───────────────── PWA ─────────────────
