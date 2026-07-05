@@ -1,5 +1,5 @@
 // Trip Canvas Service Worker
-const VER = 'tc-v4';
+const VER = 'tc-v5';
 const SHELL_CACHE = VER + '-shell';
 const TILE_CACHE = VER + '-tiles';
 const TILE_LIMIT = 1200; // 타일 최대 캐시 수 (여행 지역 커버)
@@ -13,7 +13,8 @@ const SHELL = [
   'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css',
   'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js',
   'https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js'
+  'https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js',
+  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js'
 ];
 
 self.addEventListener('install', e => {
