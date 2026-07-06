@@ -445,6 +445,7 @@ function render(){
   save();
 }
 function fitAll(){
+  map.invalidateSize();   // 컨테이너 크기 재측정 (0일 때 fitBounds가 zoom 0으로 폴백하는 문제 방지)
   const pts=[]; trip().days.forEach(d=>d.spots.forEach(s=>{if(hasLoc(s))pts.push([s.lat,s.lng])}));
   if(pts.length) map.fitBounds(L.latLngBounds(pts).pad(0.2));
 }
@@ -1088,7 +1089,11 @@ document.getElementById('offlineBtn').onclick=async()=>{
 };
 
 // 시작
-render(); fitAll();
+render();
+// 초기 지도 포커싱은 레이아웃이 잡힌 뒤 실행 (스크립트 종료 시점엔 #map 크기가 0이라 zoom 0으로 폴백됨)
+const _initFit=()=>requestAnimationFrame(fitAll);
+if(document.readyState==='complete') _initFit();
+else window.addEventListener('load',_initFit);
 </script>
 </body>
 </html>
