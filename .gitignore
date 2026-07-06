@@ -2,9 +2,10 @@
 .DS_Store
 Thumbs.db
 
-# 에디터
+# 에디터 / 로컬 도구
 .vscode/
 .idea/
+.claude/
 
 # 배포 도구
 .vercel/
