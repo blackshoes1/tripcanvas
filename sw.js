@@ -1,5 +1,5 @@
 // Trip Canvas Service Worker
-const VER = 'tc-v5';
+const VER = 'tc-v6';
 const SHELL_CACHE = VER + '-shell';
 const TILE_CACHE = VER + '-tiles';
 const TILE_LIMIT = 1200; // 타일 최대 캐시 수 (여행 지역 커버)
@@ -39,6 +39,14 @@ async function trimCache(name, limit) {
   }
 }
 
+// 1x1 투명 PNG — 캐시·네트워크 모두 실패한 타일 자리에 반환 (지도 공백/깨짐 방지)
+const BLANK_PNG = Uint8Array.from(atob(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
+), c => c.charCodeAt(0));
+function blankTile() {
+  return new Response(BLANK_PNG, { headers: { 'Content-Type': 'image/png' } });
+}
+
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
 
@@ -56,7 +64,7 @@ self.addEventListener('fetch', e => {
           trimCache(TILE_CACHE, TILE_LIMIT);
         }
         return res;
-      }).catch(() => cached);
+      }).catch(() => cached || blankTile());
       return cached || fetching;
     })());
     return;

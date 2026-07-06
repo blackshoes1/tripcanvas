@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Trip Canvas · 대화로 만드는 여행 동선 지도</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#16213e">
@@ -106,7 +106,9 @@
   .tSpot .d{font-size:12px;color:#9aa5c4;margin:3px 0 7px;white-space:pre-wrap}
   .tSpot a{display:inline-block;font-size:12.5px;color:#fff;background:#1d6fd6;border-radius:8px;padding:5px 12px;text-decoration:none}
   #pickBanner{position:absolute;top:10px;left:50%;transform:translateX(-50%);background:#e63946;color:#fff;font-size:13px;font-weight:700;padding:7px 16px;border-radius:20px;z-index:1500;display:none}
-  #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#2a9d3f;color:#fff;font-size:13px;padding:8px 18px;border-radius:20px;z-index:4000;display:none}
+  #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#2a9d3f;color:#fff;font-size:13px;padding:8px 18px;border-radius:20px;z-index:4000;display:none;align-items:center;gap:12px;max-width:92vw}
+  #toast .toastAct{background:rgba(255,255,255,.22);border:none;color:#fff;font-weight:700;font-size:12px;padding:4px 10px;border-radius:12px;white-space:nowrap}
+  #toast .toastAct:hover{background:rgba(255,255,255,.35)}
   @media (max-width:760px){
     #main{flex-direction:column}
     #sidebar{width:100%;min-width:0;max-height:42dvh;order:2}
@@ -327,10 +329,32 @@ function load(){
     save();
   }
 }
-function save(){ localStorage.setItem(LS_KEY, JSON.stringify(store)); cloudSyncActive(); }
+function save(){
+  try{ localStorage.setItem(LS_KEY, JSON.stringify(store)); }
+  catch(e){ toast('저장 공간이 부족합니다. 오래된 여행을 내보내고 삭제해 주세요','#e63946'); }
+  cloudSyncActive();
+}
 function trip(){ return store.trips.find(t=>t.id===store.activeId) || store.trips[0]; }
 function uid(){ return Math.random().toString(36).slice(2,9); }
-function toast(msg, color){ const t=document.getElementById('toast'); t.textContent=msg; t.style.background=color||'#2a9d3f'; t.style.display='block'; setTimeout(()=>t.style.display='none',2200); }
+// 공유 링크/가져오기/AI 파싱으로 외부 데이터가 유입될 수 있으므로 출력 시 항상 이스케이프 (XSS 방어)
+function esc(v){ return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function escAttr(v){ return esc(v); }
+let toastTimer=null;
+function toast(msg, color, action){
+  const t=document.getElementById('toast');
+  t.innerHTML=''; t.appendChild(document.createTextNode(msg));
+  t.style.background=color||'#2a9d3f'; t.style.display='flex';
+  if(action){
+    const b=document.createElement('button'); b.textContent=action.label||'실행취소'; b.className='toastAct';
+    b.onclick=()=>{ t.style.display='none'; clearTimeout(toastTimer); action.fn(); };
+    t.appendChild(b);
+  }
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.style.display='none', action?5000:2200);
+}
+// 파괴적 동작 되돌리기용 스냅샷
+function snapshot(){ return JSON.parse(JSON.stringify(store)); }
+function undoWith(snap){ store=snap; activeDay=0; render(); fitAll(); }
 
 // ───────────────── 지도 ─────────────────
 const map = L.map('map').setView([40,-3.7],6);
@@ -383,10 +407,10 @@ function render(){
       if(!hasLoc(s)) return;               // 좌표 미지정 명소는 핀 생략 (카드엔 남음)
       const c = spotColor(s,di,colors);
       const m = L.marker([s.lat,s.lng],{icon:mkIcon(c,si+1,s.opt)})
-        .bindTooltip(s.name,{direction:'top',offset:[0,-12]})
-        .bindPopup(`<h3>${s.name}</h3><span class="badge" style="background:${c}">Day ${di+1} · ${dateOf(di)}</span>`+
-          `<div>${(s.desc||'').replace(/\n/g,'<br>')}</div>`+
-          `<div style="margin-top:6px"><a href="${gmapsLink(s)}" target="_blank">Google 지도 ↗</a> &nbsp; `+
+        .bindTooltip(esc(s.name),{direction:'top',offset:[0,-12]})
+        .bindPopup(`<h3>${esc(s.name)}</h3><span class="badge" style="background:${c}">Day ${di+1} · ${dateOf(di)}</span>`+
+          `<div>${esc(s.desc).replace(/\n/g,'<br>')}</div>`+
+          `<div style="margin-top:6px"><a href="${escAttr(gmapsLink(s))}" target="_blank" rel="noopener">Google 지도 ↗</a> &nbsp; `+
           `<a href="#" onclick="openSpotModal(${di},${si});return false;">✎ 편집</a></div>`);
       m.addTo(map); markers.push(m);
     });
@@ -412,7 +436,7 @@ function render(){
     });
   }
   renderSidebar(); renderFilter(); renderLegend();
-  document.getElementById('tripSel').innerHTML = store.trips.map(x=>`<option value="${x.id}" ${x.id===store.activeId?'selected':''}>${x.name}</option>`).join('');
+  document.getElementById('tripSel').innerHTML = store.trips.map(x=>`<option value="${escAttr(x.id)}" ${x.id===store.activeId?'selected':''}>${esc(x.name)}</option>`).join('');
   save();
 }
 function fitAll(){
@@ -452,11 +476,11 @@ function renderLegend(){
   let body;
   if(colorByMode()==='day'){
     body='<b style="font-size:12px">일자</b><br>'+
-      trip().days.map((d,i)=>`<span class="dot" style="background:${dayColor(i)}"></span>Day ${i+1}${d.title?' · '+d.title:''}`).join('<br>');
+      trip().days.map((d,i)=>`<span class="dot" style="background:${dayColor(i)}"></span>Day ${i+1}${d.title?' · '+esc(d.title):''}`).join('<br>');
   }else{
     const colors=cityColors();
     body='<b style="font-size:12px">도시</b><br>'+
-      Object.entries(colors).map(([n,c])=>`<span class="dot" style="background:${c}"></span>${n}`).join('<br>');
+      Object.entries(colors).map(([n,c])=>`<span class="dot" style="background:${c}"></span>${esc(n)}`).join('<br>');
   }
   document.getElementById('legend').innerHTML=body+'<br><span style="color:#f6bd60">- - -</span> 일자 간 이동';
 }
@@ -475,7 +499,7 @@ function renderSidebar(){
       const leg = (hasLoc(s)&&prevLoc)?haversine(prevLoc,s):null;
       if(hasLoc(s)) prevLoc=s;
       spotsHtml+=`<div class="spot" data-di="${di}" data-si="${si}" style="--c:${dotC}">
-        <span class="nm" onclick="focusSpot(${di},${si})">${si+1}. ${s.name}${s.opt?' <span class=opt>(선택)</span>':''}${hasLoc(s)?'':`<span class="noloc" onclick="event.stopPropagation();openSpotModal(${di},${si})">📍 위치 지정</span>`}</span>${leg?`<span class="leg">↳${leg.toFixed(1)}km</span>`:''}
+        <span class="nm" onclick="focusSpot(${di},${si})">${si+1}. ${esc(s.name)}${s.opt?' <span class=opt>(선택)</span>':''}${hasLoc(s)?'':`<span class="noloc" onclick="event.stopPropagation();openSpotModal(${di},${si})">📍 위치 지정</span>`}</span>${leg?`<span class="leg">↳${leg.toFixed(1)}km</span>`:''}
         <span class="tools">
           <button class="iconb mvup" onclick="moveSpot(${di},${si},-1)" title="위로">▲</button>
           <button class="iconb mvdown" onclick="moveSpot(${di},${si},1)" title="아래로">▼</button>
@@ -483,15 +507,15 @@ function renderSidebar(){
         </span></div>`;
     });
     card.innerHTML=`<div class="dayHead">
-        <span><span class="dragHandle" title="드래그로 일자 순서 변경">⠿</span> Day ${di+1} · ${day.title||''}</span>
+        <span><span class="dragHandle" title="드래그로 일자 순서 변경">⠿</span> Day ${di+1} · ${esc(day.title)}</span>
         <span style="display:flex;align-items:center;gap:6px"><span class="date">${dateOf(di)}</span>
         <span class="tools"><button class="iconb" onclick="event.stopPropagation();openDayModal(${di})">✎</button></span></span>
       </div><div class="dayBody">
-        ${day.drive?`<div class="drive">${day.drive}</div>`:''}
+        ${day.drive?`<div class="drive">${esc(day.drive)}</div>`:''}
         ${dayDistance(day)>0?`<div class="dist">📏 하루 동선 약 ${dayDistance(day).toFixed(1)}km <span style="opacity:.55">(직선)</span></div>`:''}
         <div class="spotList" data-di="${di}">${spotsHtml}</div>
         <button class="addSpot" onclick="openSpotModal(${di},-1)">＋ 명소 추가</button>
-        ${day.note?`<div class="note">📝 ${day.note}</div>`:''}
+        ${day.note?`<div class="note">📝 ${esc(day.note)}</div>`:''}
       </div>`;
     card.querySelector('.dayHead').onclick=(e)=>{
       if(e.target.closest('.iconb'))return;
@@ -573,7 +597,7 @@ window.openSpotModal=(di,si)=>{
   document.getElementById('coordHint').textContent = s.lat?`좌표: ${(+s.lat).toFixed(4)}, ${(+s.lng).toFixed(4)}`:'좌표: 미지정 (검색 또는 지도 클릭)';
   document.getElementById('spotSearch').value=''; document.getElementById('searchRes').innerHTML='';
   const daySel=document.getElementById('spotDay');
-  daySel.innerHTML=trip().days.map((d,i)=>`<option value="${i}" ${i===di?'selected':''}>Day ${i+1} · ${d.title||dateOf(i)}</option>`).join('');
+  daySel.innerHTML=trip().days.map((d,i)=>`<option value="${i}" ${i===di?'selected':''}>Day ${i+1} · ${esc(d.title||dateOf(i))}</option>`).join('');
   document.getElementById('spotModalBg').classList.add('show');
 };
 document.getElementById('spotCancel').onclick=()=>document.getElementById('spotModalBg').classList.remove('show');
@@ -591,16 +615,25 @@ document.getElementById('spotSave').onclick=()=>{
   render(); toast('저장됨');
 };
 document.getElementById('spotDelBtn').onclick=()=>{
+  const snap=snapshot();
   trip().days[editing.di].spots.splice(editing.si,1);
   document.getElementById('spotModalBg').classList.remove('show');
-  render(); toast('삭제됨','#8892b0');
+  render(); toast('명소 삭제됨','#8892b0',{fn:()=>undoWith(snap)});
 };
-// 장소 검색 (Nominatim)
+// 장소 검색 (Nominatim) — 정책상 1초 1회 제한, 중복 요청 방지
+let searching=false, lastSearchAt=0;
 async function doSearch(){
   const q=document.getElementById('spotSearch').value.trim(); if(!q)return;
-  const res=document.getElementById('searchRes'); res.innerHTML='<div>검색 중…</div>';
+  if(searching) return;
+  const res=document.getElementById('searchRes');
+  if(Date.now()-lastSearchAt<1000){ res.innerHTML='<div>잠시 후 다시 시도하세요…</div>'; return; }
+  searching=true; lastSearchAt=Date.now();
+  res.innerHTML='<div>검색 중…</div>';
   try{
-    const r=await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=5&q=${encodeURIComponent(q)}`,{headers:{'Accept-Language':'ko,en'}});
+    const ctrl=new AbortController(); const tmo=setTimeout(()=>ctrl.abort(),8000);
+    const r=await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=5&q=${encodeURIComponent(q)}`,{headers:{'Accept-Language':'ko,en'},signal:ctrl.signal});
+    clearTimeout(tmo);
+    if(!r.ok) throw new Error('http '+r.status);
     const js=await r.json();
     res.innerHTML = js.length? '' : '<div>결과 없음</div>';
     js.forEach(it=>{
@@ -614,6 +647,7 @@ async function doSearch(){
       res.appendChild(d);
     });
   }catch(e){ res.innerHTML='<div>검색 실패 — 지도 클릭으로 지정해주세요</div>'; }
+  finally{ searching=false; }
 }
 document.getElementById('spotSearchBtn').onclick=doSearch;
 document.getElementById('spotSearch').addEventListener('keydown',e=>{if(e.key==='Enter')doSearch();});
@@ -653,8 +687,9 @@ document.getElementById('daySave').onclick=()=>{
 };
 document.getElementById('dayDelBtn').onclick=()=>{
   if(trip().days[editingDay].spots.length && !confirm('이 일자의 명소도 함께 삭제됩니다. 계속할까요?'))return;
+  const snap=snapshot();
   trip().days.splice(editingDay,1); activeDay=0;
-  document.getElementById('dayModalBg').classList.remove('show'); render(); toast('일자 삭제됨','#8892b0');
+  document.getElementById('dayModalBg').classList.remove('show'); render(); toast('일자 삭제됨','#8892b0',{fn:()=>undoWith(snap)});
 };
 
 // ───────────────── 여행 관리 ─────────────────
@@ -679,11 +714,14 @@ document.getElementById('tripSave').onclick=()=>{
 };
 document.getElementById('tripDelBtn').onclick=()=>{
   if(!confirm(`"${trip().name}" 여행을 삭제할까요?`))return;
+  const snap=snapshot();
   cloudDelete(store.activeId);   // 로그인 상태면 클라우드에서도 삭제
   store.trips=store.trips.filter(t=>t.id!==store.activeId);
   if(!store.trips.length){ store.trips=[{id:uid(),name:'새 여행',start:new Date().toISOString().slice(0,10),days:[{title:'',drive:'',note:'',spots:[]}]}]; }
   store.activeId=store.trips[0].id; activeDay=0;
   document.getElementById('tripModalBg').classList.remove('show'); render(); fitAll();
+  // undo 시 삭제된 여행이 다시 활성화되어 render→save로 클라우드에도 재업로드됨
+  toast('여행 삭제됨','#8892b0',{fn:()=>undoWith(snap)});
 };
 
 // ───────────────── 내보내기/가져오기/공유 ─────────────────
@@ -707,6 +745,7 @@ document.getElementById('importFile').onchange=e=>{
 document.getElementById('shareBtn').onclick=()=>{
   const data=LZString.compressToEncodedURIComponent(JSON.stringify(trip()));
   const url=location.origin+location.pathname+'#t='+data;
+  if(url.length>8000){ toast('여행이 너무 커서 링크로 공유할 수 없습니다. "내보내기"로 파일을 전달하세요','#e63946'); return; }
   navigator.clipboard.writeText(url).then(()=>toast('공유 링크가 복사되었습니다 (읽는 쪽에서 자동 저장됨)'))
     .catch(()=>prompt('이 링크를 복사하세요',url));
 };
@@ -881,7 +920,7 @@ document.getElementById('travelBtn').onclick=()=>{
     di=Math.min(Math.max(diff,0),t.days.length-1);
   }
   const sel=document.getElementById('travelDay');
-  sel.innerHTML=t.days.map((d,i)=>`<option value="${i}" ${i===di?'selected':''}>Day ${i+1} · ${dateOf(i)} · ${d.title||''}</option>`).join('');
+  sel.innerHTML=t.days.map((d,i)=>`<option value="${i}" ${i===di?'selected':''}>Day ${i+1} · ${dateOf(i)} · ${esc(d.title)}</option>`).join('');
   sel.onchange=()=>renderTravel(parseInt(sel.value));
   renderTravel(di);
   document.getElementById('travel').classList.add('show');
@@ -895,8 +934,8 @@ function renderTravel(di){
   if(!d.spots.length){ list.innerHTML='<div style="color:#9aa5c4;font-size:13px;padding:20px 4px">이 날은 등록된 명소가 없습니다 — 이동일이거나 자유 일정</div>'; return; }
   d.spots.forEach((s,si)=>{
     const div=document.createElement('div'); div.className='tSpot'; div.style.setProperty('--c',spotColor(s,di,colors));
-    div.innerHTML=`<div class="n">${si+1}. ${s.name}${s.opt?' <span style="font-size:11px;color:#8892b0">(선택)</span>':''}</div>`+
-      `<div class="d">${s.desc||''}</div>`+
+    div.innerHTML=`<div class="n">${si+1}. ${esc(s.name)}${s.opt?' <span style="font-size:11px;color:#8892b0">(선택)</span>':''}</div>`+
+      `<div class="d">${esc(s.desc).replace(/\n/g,'<br>')}</div>`+
       (hasLoc(s)
         ? `<a href="https://www.google.com/maps/dir/?api=1&destination=${s.lat},${s.lng}&travelmode=walking" target="_blank">🧭 여기로 길찾기</a>`
         : `<span style="font-size:12px;color:#f6bd60">📍 위치 미지정</span>`);
@@ -1004,8 +1043,8 @@ document.getElementById('offlineBtn').onclick=async()=>{
   if(!navigator.serviceWorker || !navigator.serviceWorker.controller){
     toast('먼저 배포된 주소(https)에서 열어야 오프라인 기능이 작동합니다','#e63946'); return;
   }
-  const spots=[]; trip().days.forEach(d=>d.spots.forEach(s=>spots.push(s)));
-  if(!spots.length){toast('명소가 없습니다','#e63946');return;}
+  const spots=[]; trip().days.forEach(d=>d.spots.forEach(s=>{ if(hasLoc(s)) spots.push(s); }));  // 좌표 있는 명소만
+  if(!spots.length){toast('좌표가 지정된 명소가 없습니다','#e63946');return;}
   const r = (window.devicePixelRatio>1)?'@2x':'';
   const subs=['a','b','c','d'];
   const urls=new Set();
@@ -1018,21 +1057,22 @@ document.getElementById('offlineBtn').onclick=async()=>{
   }
   spots.forEach(s=>{
     [11,13,15].forEach(z=>{
-      const [cx,cy]=tileXY(s.lat,s.lng,z);
+      const n=Math.pow(2,z), [cx,cy]=tileXY(s.lat,s.lng,z);
       for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++){
-        urls.add(`${z}/${cx+dx}/${cy+dy}`);
+        const x=cx+dx, y=cy+dy;
+        if(x<0||y<0||x>=n||y>=n) continue;              // 지도 밖 타일 제외
+        const sub=subs[(x+y)%subs.length];              // Leaflet과 동일한 서브도메인 산출
+        urls.add(`https://${sub}.basemaps.cartocdn.com/rastertiles/voyager/${z}/${x}/${y}${r}.png`);
       }
     });
   });
   const list=[...urls].slice(0,700);
   toast(`오프라인 지도 준비 중… (타일 ${list.length}개)`,'#1d6fd6');
+  // <img> 로드로 요청 — Leaflet이 실제로 보내는 요청과 동일하므로 SW가 그대로 캐시/재사용
+  const loadTile=u=>new Promise(res=>{ const im=new Image(); im.onload=im.onerror=()=>res(); im.src=u; });
   let done=0, i=0;
   await Promise.all(Array.from({length:6},async()=>{
-    while(i<list.length){
-      const t=list[i++];
-      try{ await fetch(`https://${subs[done%4]}.basemaps.cartocdn.com/rastertiles/voyager/${t}${r}.png`); }catch(e){}
-      done++;
-    }
+    while(i<list.length){ await loadTile(list[i++]); done++; }
   }));
   toast(`완료! 방문 지역 지도가 저장되었습니다 (${done}개)`);
 };
