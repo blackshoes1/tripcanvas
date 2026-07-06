@@ -1,5 +1,5 @@
 // Trip Canvas Service Worker
-const VER = 'tc-v6';
+const VER = 'tc-v7';
 const SHELL_CACHE = VER + '-shell';
 const TILE_CACHE = VER + '-tiles';
 const TILE_LIMIT = 1200; // 타일 최대 캐시 수 (여행 지역 커버)
