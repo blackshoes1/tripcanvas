@@ -167,6 +167,7 @@
 <!-- 일자 편집 모달 -->
 <div class="modalBg" id="dayModalBg"><div class="modal">
   <h2 id="dayModalTitle">일자 편집</h2>
+  <label>날짜 (이 날로 맞추면 전체 일정이 자동 재계산됩니다)</label><input type="date" id="dayDate">
   <label>제목 (예: → 세비야 (2박))</label><input type="text" id="dayTitle">
   <label>이동 정보 (예: 🚗 128km · 1시간 45분)</label><input type="text" id="dayDrive">
   <label>메모</label><textarea id="dayNote"></textarea>
@@ -376,6 +377,10 @@ function dateOf(di){
   const d = new Date(trip().start+'T00:00:00'); d.setDate(d.getDate()+di);
   return `${d.getMonth()+1}/${d.getDate()} (${'일월화수목금토'[d.getDay()]})`;
 }
+// 로컬 날짜를 YYYY-MM-DD로 (타임존 밀림 방지)
+function toISO(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+// di번째 날의 ISO 날짜 (시작일 미설정 시 빈 문자열)
+function isoDateOf(di){ if(!trip().start) return ''; const d=new Date(trip().start+'T00:00:00'); d.setDate(d.getDate()+di); return toISO(d); }
 function gmapsLink(s){ return `https://www.google.com/maps/search/?api=1&query=${s.lat},${s.lng}(${encodeURIComponent(s.name)})`; }
 function hasLoc(s){ return s && s.lat!=null && s.lng!=null && isFinite(+s.lat) && isFinite(+s.lng); }
 // 색상 기준: 'city'(도시별) | 'day'(일자별). trip에 저장, 기본 city
@@ -508,7 +513,7 @@ function renderSidebar(){
     });
     card.innerHTML=`<div class="dayHead">
         <span><span class="dragHandle" title="드래그로 일자 순서 변경">⠿</span> Day ${di+1} · ${esc(day.title)}</span>
-        <span style="display:flex;align-items:center;gap:6px"><span class="date">${dateOf(di)}</span>
+        <span style="display:flex;align-items:center;gap:6px"><span class="date" onclick="event.stopPropagation();openDayModal(${di})" style="cursor:pointer" title="클릭해서 날짜 지정/수정">${dateOf(di)||'📅 날짜 지정'}</span>
         <span class="tools"><button class="iconb" onclick="event.stopPropagation();openDayModal(${di})">✎</button></span></span>
       </div><div class="dayBody">
         ${day.drive?`<div class="drive">${esc(day.drive)}</div>`:''}
@@ -672,6 +677,7 @@ window.openDayModal=(di)=>{
   editingDay=di;
   const d=trip().days[di];
   document.getElementById('dayModalTitle').textContent=`Day ${di+1} 편집 · ${dateOf(di)}`;
+  document.getElementById('dayDate').value=isoDateOf(di);
   document.getElementById('dayTitle').value=d.title||'';
   document.getElementById('dayDrive').value=d.drive||'';
   document.getElementById('dayNote').value=d.note||'';
@@ -683,6 +689,10 @@ document.getElementById('daySave').onclick=()=>{
   d.title=document.getElementById('dayTitle').value.trim();
   d.drive=document.getElementById('dayDrive').value.trim();
   d.note=document.getElementById('dayNote').value.trim();
+  // 이 날짜에 맞춰 여행 시작일 역산 (Day들은 시작일 기준 연속) — 빈 값이면 시작일 해제
+  const dv=document.getElementById('dayDate').value;
+  if(dv){ const nd=new Date(dv+'T00:00:00'); nd.setDate(nd.getDate()-editingDay); trip().start=toISO(nd); }
+  else { trip().start=''; }
   document.getElementById('dayModalBg').classList.remove('show'); render(); toast('저장됨');
 };
 document.getElementById('dayDelBtn').onclick=()=>{
