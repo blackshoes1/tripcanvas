@@ -147,7 +147,7 @@
 <!-- 명소 추가/편집 모달 -->
 <div class="modalBg" id="spotModalBg"><div class="modal">
   <h2 id="spotModalTitle">명소 추가</h2>
-  <label>장소 검색 (OpenStreetMap)</label>
+  <label>장소 검색 (국내 카카오 · 해외 Google)</label>
   <div style="display:flex;gap:6px">
     <input type="text" id="spotSearch" placeholder="예: Puente Nuevo Ronda" style="flex:1">
     <button class="btn" id="spotSearchBtn">검색</button>
@@ -237,7 +237,7 @@
 - 둥베이로 시장 | 다롄 | 아침 시장
 - 다롄 저우수이쯔 공항 | 다롄 | 출국
 
-규칙: [Day N] 또는 # 로 날짜 시작 · - 로 명소(이름 | 도시 | 메모 | 위도,경도) · 좌표는 생략 가능(OSM 자동조회, 못 찾으면 '위치 지정'으로 남음) · (선택) 붙이면 선택코스 · 이동:/메모: 로 그날 정보
+규칙: [Day N] 또는 # 로 날짜 시작 · - 로 명소(이름 | 도시 | 메모 | 위도,경도) · 좌표는 생략 가능(자동조회: 국내 카카오·해외 구글, 못 찾으면 '위치 지정'으로 남음) · (선택) 붙이면 선택코스 · 이동:/메모: 로 그날 정보
 ※ 해외(특히 중국 등) 한글 지명은 자동조회 실패가 잦음 → 좌표를 직접 넣거나 AI 파싱 모드 사용 권장</pre>
     <button class="btn" id="fmtCopy" style="margin-top:6px;font-size:11px;padding:3px 10px">이 예시 붙여넣기 칸에 채우기</button>
   </details>
@@ -676,28 +676,27 @@ document.getElementById('spotDelBtn').onclick=()=>{
   document.getElementById('spotModalBg').classList.remove('show');
   render(); toast('명소 삭제됨','#8892b0',{fn:()=>undoWith(snap)});
 };
-// 장소 검색 (Nominatim) — 정책상 1초 1회 제한, 중복 요청 방지
-let searching=false, lastSearchAt=0;
+// 장소 검색 — 국내(한글)는 카카오 우선, 그 외 Google Places (routedSearch)
+let searching=false;
 async function doSearch(){
   const q=document.getElementById('spotSearch').value.trim(); if(!q)return;
   if(searching) return;
   const res=document.getElementById('searchRes');
-  if(Date.now()-lastSearchAt<1000){ res.innerHTML='<div>잠시 후 다시 시도하세요…</div>'; return; }
-  searching=true; lastSearchAt=Date.now();
+  searching=true;
   res.innerHTML='<div>검색 중…</div>';
   try{
-    const ctrl=new AbortController(); const tmo=setTimeout(()=>ctrl.abort(),8000);
-    const r=await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=5&q=${encodeURIComponent(q)}`,{headers:{'Accept-Language':'ko,en'},signal:ctrl.signal});
-    clearTimeout(tmo);
-    if(!r.ok) throw new Error('http '+r.status);
-    const js=await r.json();
-    res.innerHTML = js.length? '' : '<div>결과 없음</div>';
-    js.forEach(it=>{
-      const d=document.createElement('div'); d.textContent=it.display_name;
+    // 편집 중인 일자의 기존 도시를 앵커로 활용 (있으면 주변 우선)
+    const city=document.getElementById('spotCity').value.trim();
+    const anchor=city? await cityAnchorOf(city) : null;
+    const list=await routedSearch(q, anchor, 5);
+    res.innerHTML = list.length? '' : '<div>결과 없음 — 다른 키워드나 지도 클릭으로 지정해주세요</div>';
+    list.forEach(it=>{
+      const d=document.createElement('div');
+      d.textContent=it.name+(it.addr?` — ${it.addr}`:'');
       d.onclick=()=>{
-        document.getElementById('spotLat').value=it.lat; document.getElementById('spotLng').value=it.lon;
-        if(!document.getElementById('spotName').value) document.getElementById('spotName').value=it.display_name.split(',')[0];
-        document.getElementById('coordHint').textContent=`좌표: ${(+it.lat).toFixed(4)}, ${(+it.lon).toFixed(4)} ✓`;
+        document.getElementById('spotLat').value=it.lat; document.getElementById('spotLng').value=it.lng;
+        if(!document.getElementById('spotName').value) document.getElementById('spotName').value=it.name;
+        document.getElementById('coordHint').textContent=`좌표: ${(+it.lat).toFixed(4)}, ${(+it.lng).toFixed(4)} ✓`;
         res.innerHTML='';
       };
       res.appendChild(d);
@@ -838,48 +837,85 @@ const DIRECT_PLACEHOLDER=`여행이름: 다롄 2박3일
 - 여순 감옥 | 다롄`;
 const AI_PLACEHOLDER=`예) 다다음주 다롄 2박3일 갈 거야. 첫날 오후 인천서 출발해서 성해광장이랑 러시아거리 야경 보고, 둘째날은 여순감옥이랑 노호탄공원, 셋째날 오전에 시장 구경하고 귀국.`;
 
-// OSM 지오코딩 (좌표 자동 조회)
-// Nominatim 1req/s 정책 자동 준수 (호출 간 최소 1.1s 간격)
-let _nomAt=0;
-async function nomFetch(url){
-  const wait=1100-(Date.now()-_nomAt); if(wait>0) await sleep(wait);
-  _nomAt=Date.now();
-  try{ const r=await fetch(url,{headers:{'Accept-Language':'ko,en'}}); if(r.ok) return await r.json(); }catch(e){}
-  return null;
+// ── 장소검색 라우터: 국내=카카오 로컬, 해외=Google Places ──
+// 카카오 SDK 지연 로드 (services 라이브러리만 사용, 지도는 구글)
+let _kakaoReady=null;
+function loadKakao(){
+  if(_kakaoReady!==null) return _kakaoReady;
+  _kakaoReady=new Promise(res=>{
+    const s=document.createElement('script');
+    s.src=`https://dapi.kakao.com/v2/maps/sdk.js?appkey=${KAKAO_KEY}&libraries=services&autoload=false`;
+    s.onload=()=>{ try{ kakao.maps.load(()=>res(true)); }catch(e){ res(false); } };
+    s.onerror=()=>res(false);
+    document.head.appendChild(s);
+  });
+  return _kakaoReady;
 }
-// box: 있으면 해당 영역 안으로만 검색(bounded) → 전 세계 오매칭 방지
-async function geocode(q, box){
-  let u=`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(q)}`;
-  if(box) u+=`&viewbox=${box}&bounded=1`;
-  const js=await nomFetch(u);
-  if(js&&js[0]) return {lat:+js[0].lat, lng:+js[0].lon};
-  return null;
+// 카카오 키워드 검색 → [{name,addr,lat,lng}] (실패/무결과 시 [])
+async function kakaoSearch(q, near, limit){
+  if(!(await loadKakao())) return [];
+  return new Promise(res=>{
+    try{
+      const ps=new kakao.maps.services.Places();
+      const opts={size:Math.min(limit||5,15)};
+      if(near){ opts.location=new kakao.maps.LatLng(near.lat,near.lng); opts.radius=20000; }  // 최대 20km 반경 우선
+      ps.keywordSearch(q,(data,status)=>{
+        if(status!==kakao.maps.services.Status.OK||!data) return res([]);
+        res(data.map(d=>({name:d.place_name, addr:d.road_address_name||d.address_name||'', lat:+d.y, lng:+d.x})));
+      },opts);
+    }catch(e){ res([]); }
+  });
 }
-// 도시 앵커 주변 ±d° 뷰박스 (Nominatim viewbox 순서: minLng,maxLat,maxLng,minLat)
-function boxAround(a,d){ d=d||0.7; return `${(a.lng-d).toFixed(4)},${(a.lat+d).toFixed(4)},${(a.lng+d).toFixed(4)},${(a.lat-d).toFixed(4)}`; }
-const _cityBox={};                       // 도시명 → 뷰박스 (조회 캐시)
-async function cityBoxOf(city){
-  if(!city) return null;
-  if(city in _cityBox) return _cityBox[city];
-  const a=await geocode(city);           // 도시 자체는 전역 조회로 앵커 확보
-  _cityBox[city]= a? boxAround(a) : null;
-  return _cityBox[city];
+// Google Places 텍스트 검색 (신 API) → [{name,addr,lat,lng}]
+async function googlePlaces(q, near, limit){
+  if(!map) return [];
+  try{
+    const {Place}=await google.maps.importLibrary('places');
+    const req={textQuery:q, fields:['displayName','formattedAddress','location'], maxResultCount:limit||5, language:'ko'};
+    if(near) req.locationBias={center:near, radius:30000};
+    const {places}=await Place.searchByText(req);
+    return (places||[]).map(p=>({name:p.displayName, addr:p.formattedAddress||'',
+      lat:p.location.lat(), lng:p.location.lng()}));
+  }catch(e){ return []; }
 }
+// 도시명 → 앵커 좌표 (Google Geocoder, 전 세계) — 캐시
+const _cityAnchor={};
+function cityAnchorOf(city){
+  if(!city) return Promise.resolve(null);
+  if(city in _cityAnchor) return Promise.resolve(_cityAnchor[city]);
+  return new Promise(res=>{
+    if(!map) return res(null);
+    new google.maps.Geocoder().geocode({address:city},(r,st)=>{
+      const a=(st==='OK'&&r&&r[0])?{lat:r[0].geometry.location.lat(),lng:r[0].geometry.location.lng()}:null;
+      _cityAnchor[city]=a; res(a);
+    });
+  });
+}
+function inKorea(p){ return p && p.lat>=33 && p.lat<=39 && p.lng>=124.5 && p.lng<=132; }
 // 서술형 꼬리말 제거 ("감포 바다"→"감포", 괄호 표기 제거)
 function simplifyName(n){
   return String(n||'').replace(/\([^)]*\)/g,'')
     .replace(/\s*(앞바다|바다|해변|해수욕장|일대|근처|주변|전경|야경|거리|풍경)\s*$/,'').trim();
 }
-// 명소 하나의 좌표를 도시 영역 안에서만 탐색 — 못 찾으면 null(위치 미지정), 엉뚱한 핀 안 찍음
+// 질의 하나를 라우팅해 검색 (국내 앵커면 카카오 우선→구글 폴백, 해외면 구글)
+async function routedSearch(q, near, limit){
+  const korean = near? inKorea(near) : /[가-힣]/.test(q);
+  if(korean){
+    const k=await kakaoSearch(q, near, limit);
+    if(k.length) return k;
+  }
+  return googlePlaces(q, near, limit);
+}
+// 명소 하나의 좌표 탐색 — 도시 앵커에서 지나치게 먼 결과는 배제(오매칭 방지), 못 찾으면 null
 async function geocodeSpot(s){
-  const box=await cityBoxOf(s.city);
-  const cand=[`${s.name} ${s.city}`, s.name];
+  const anchor=await cityAnchorOf(s.city);
+  const cand=[`${s.name} ${s.city||''}`.trim(), s.name];
   const simp=simplifyName(s.name); if(simp && simp!==s.name) cand.push(simp);
   const seen=new Set();
   for(const q of cand){
     const qq=(q||'').trim(); if(!qq||seen.has(qq)) continue; seen.add(qq);
-    const g=await geocode(qq, box);      // box 있으면 도시 영역 한정
-    if(g) return g;
+    const r=(await routedSearch(qq, anchor, 1))[0];
+    if(r && (!anchor || haversine(anchor,r)<=150)) return {lat:r.lat, lng:r.lng};
   }
   return null;
 }
@@ -950,7 +986,7 @@ function syncPasteMode(){
   document.getElementById('fmtHelp').style.display = ai?'none':'block';
   document.getElementById('pasteModeHint').textContent = ai
     ? '자연어로 자유롭게 붙여넣으면 AI가 날짜·도시·명소·좌표를 정리해줘.'
-    : '아래 형식으로 붙여넣으면 AI 없이 즉시 만들어. 좌표는 OSM에서 자동으로 찾음.';
+    : '아래 형식으로 붙여넣으면 AI 없이 즉시 만들어. 좌표는 자동으로 찾음(국내 카카오·해외 구글).';
   document.getElementById('pasteText').placeholder = ai?AI_PLACEHOLDER:DIRECT_PLACEHOLDER;
 }
 document.getElementById('pasteBtn').onclick=openPaste;
@@ -982,7 +1018,7 @@ async function runPaste(){
   for(let i=0;i<need.length;i++){
     const s=need[i];
     toast(`좌표 찾는 중… (${i+1}/${need.length}) ${s.name}`,'#1d6fd6');
-    const g=await geocodeSpot(s);   // 도시 영역 안에서만 탐색 (호출 간격은 nomFetch가 자동 관리)
+    const g=await geocodeSpot(s);   // 국내=카카오/해외=구글 라우팅, 도시 앵커 150km 밖 결과는 배제
     if(g){ s.lat=g.lat; s.lng=g.lng; }
   }
   // 좌표 못 찾은 명소는 버리지 않고 유지 (카드에 남고, '위치 지정'으로 표시)
