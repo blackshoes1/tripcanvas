@@ -10,8 +10,6 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="TripCanvas">
 <link rel="apple-touch-icon" href="icon-192.png">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
@@ -68,11 +66,15 @@
   .num-icon{display:flex;align-items:center;justify-content:center;border-radius:50%;color:#fff;font-weight:700;font-size:12px;border:2.5px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.5);animation:pinIn .28s cubic-bezier(.34,1.4,.64,1) both}
   @keyframes pinIn{from{transform:scale(.4);opacity:0}to{transform:scale(1);opacity:1}}
   .num-icon:hover{transform:scale(1.15);transition:transform .15s}
-  .leaflet-interactive{transition:opacity .3s}
-  .leaflet-popup-content{font-family:inherit;font-size:13px;line-height:1.5;min-width:190px}
-  .leaflet-popup-content h3{font-size:14px;margin-bottom:3px}
-  .leaflet-popup-content .badge{display:inline-block;font-size:10.5px;color:#fff;border-radius:8px;padding:1px 8px;margin-bottom:4px}
-  .leaflet-popup-content a{color:#1d6fd6;font-size:12px}
+  /* Google Maps InfoWindow 다크 테마 */
+  .gm-style .gm-style-iw-c{background:#1f2b4d;border-radius:12px;padding:12px 14px!important}
+  .gm-style .gm-style-iw-d{overflow:auto!important;color:#e8e8f0}
+  .gm-style .gm-style-iw-tc::after{background:#1f2b4d}
+  .gm-style-iw button.gm-ui-hover-effect>span{background-color:#cdd6f4!important}
+  .popupC{font-family:inherit;font-size:13px;line-height:1.5;min-width:190px;color:#e8e8f0}
+  .popupC h3{font-size:14px;margin-bottom:3px}
+  .popupC .badge{display:inline-block;font-size:10.5px;color:#fff;border-radius:8px;padding:1px 8px;margin-bottom:4px}
+  .popupC a{color:#7eb3ff;font-size:12px}
   /* modal */
   .modalBg{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:2000}
   .modalBg.show{display:flex}
@@ -129,7 +131,6 @@
   <span style="flex:1"></span>
   <button class="btn primary" id="travelBtn">📍 여행 모드</button>
   <button class="btn ghost" id="shareBtn">🔗 공유</button>
-  <button class="btn ghost" id="offlineBtn" title="일정 주변 지도를 미리 내려받아 오프라인에서도 보이게 합니다">⬇ 오프라인 준비</button>
   <button class="btn ghost" id="exportBtn">내보내기</button>
   <button class="btn ghost" id="importBtn">가져오기</button>
   <input type="file" id="importFile" accept=".json" style="display:none">
@@ -360,21 +361,50 @@ function toast(msg, color, action){
 function snapshot(){ return JSON.parse(JSON.stringify(store)); }
 function undoWith(snap){ store=snap; activeDay=0; render(); fitAll(); }
 
-// ───────────────── 지도 ─────────────────
-// zoomSnap 0.25: 줌을 1/4 단위로 허용 → 핀 경계에 더 정확히 프레이밍되고 전환이 부드러움
-const map = L.map('map',{zoomSnap:0.25, zoomDelta:0.5}).setView([40,-3.7],6);
-L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{attribution:'&copy; OSM &copy; CARTO',maxZoom:19}).addTo(map);
+// ───────────────── 지도 (Google Maps) ─────────────────
+const GMAPS_KEY='AIzaSyCE6I2dhqk2jzNvA0ZMzDSuPi7HAfWecAM';   // HTTP 리퍼러 제한으로 보호할 것
+const KAKAO_KEY='9d7b1f9e773bba116d97a6857217fd04';          // 국내 장소검색용 (플랫폼 도메인 제한)
+let map=null, iw=null;   // iw: 공용 InfoWindow
 let activeDay = 0, markers = [], lines = [], pickMode = false, sortables = [];
+
+window.__gmapsReady=function(){
+  map=new google.maps.Map(document.getElementById('map'),{
+    center:{lat:40,lng:-3.7}, zoom:6, mapId:'DEMO_MAP_ID',
+    disableDefaultUI:true, zoomControl:true, clickableIcons:false, gestureHandling:'greedy'
+  });
+  iw=new google.maps.InfoWindow();
+  map.addListener('click',e=>{
+    if(!pickMode)return;
+    pickMode=false; document.getElementById('pickBanner').style.display='none';
+    const lat=e.latLng.lat(), lng=e.latLng.lng();
+    document.getElementById('spotLat').value=lat; document.getElementById('spotLng').value=lng;
+    document.getElementById('coordHint').textContent=`좌표: ${lat.toFixed(4)}, ${lng.toFixed(4)} ✓`;
+    document.getElementById('spotModalBg').classList.add('show');
+  });
+  render();
+  google.maps.event.addListenerOnce(map,'idle',()=>fitAll());   // 레이아웃 확정 후 초기 포커싱
+};
+(function(){
+  const s=document.createElement('script');
+  s.src=`https://maps.googleapis.com/maps/api/js?key=${GMAPS_KEY}&v=weekly&libraries=places,marker&loading=async&callback=__gmapsReady`;
+  s.async=true;
+  s.onerror=()=>toast('지도를 불러오지 못했습니다 — 네트워크/API 키 확인','#e63946');
+  document.head.appendChild(s);
+})();
 
 function cityColors(){
   const m = {}; let i = 0;
   trip().days.forEach(d=>d.spots.forEach(s=>{ if(!(s.city in m)){ m[s.city]=PALETTE[i%PALETTE.length]; i++; } }));
   return m;
 }
-function mkIcon(color,label,opt){
+// 커스텀 핀 DOM (AdvancedMarker content) — 기존 .num-icon 스타일 재사용
+function mkPin(color,label,opt){
   const size = opt?22:27;
-  return L.divIcon({className:'',iconSize:[size,size],iconAnchor:[size/2,size/2],
-    html:`<div class="num-icon" style="width:${size}px;height:${size}px;background:${color};${opt?'opacity:.75;':''}">${label??''}</div>`});
+  const el=document.createElement('div');
+  el.className='num-icon';
+  el.style.cssText=`width:${size}px;height:${size}px;background:${color};${opt?'opacity:.75;':''}`;
+  el.textContent=label??'';
+  return el;
 }
 function dateOf(di){
   if(!trip().start) return '';
@@ -406,56 +436,66 @@ function dayDistance(day){
 
 function render(){
   const t = trip(), colors = cityColors();
-  // 마커·라인 정리
-  markers.forEach(m=>map.removeLayer(m)); markers=[];
-  lines.forEach(l=>map.removeLayer(l)); lines=[];
-  // 마커
-  t.days.forEach((day,di)=>{
-    if(activeDay && di+1!==activeDay) return;
-    day.spots.forEach((s,si)=>{
-      if(!hasLoc(s)) return;               // 좌표 미지정 명소는 핀 생략 (카드엔 남음)
-      const c = spotColor(s,di,colors);
-      const m = L.marker([s.lat,s.lng],{icon:mkIcon(c,si+1,s.opt)})
-        .bindTooltip(esc(s.name),{direction:'top',offset:[0,-12]})
-        .bindPopup(`<h3>${esc(s.name)}</h3><span class="badge" style="background:${c}">Day ${di+1} · ${dateOf(di)}</span>`+
+  if(map){   // 지도 준비 전엔 사이드바 등 DOM만 렌더 (준비되면 __gmapsReady가 다시 호출)
+    // 마커·라인 정리
+    markers.forEach(m=>m.map=null); markers=[];
+    lines.forEach(l=>l.setMap(null)); lines=[];
+    // 마커
+    t.days.forEach((day,di)=>{
+      if(activeDay && di+1!==activeDay) return;
+      day.spots.forEach((s,si)=>{
+        if(!hasLoc(s)) return;               // 좌표 미지정 명소는 핀 생략 (카드엔 남음)
+        const c = spotColor(s,di,colors);
+        const pin=mkPin(c,si+1,s.opt); pin.title=s.name;
+        const m=new google.maps.marker.AdvancedMarkerElement({map, position:{lat:+s.lat,lng:+s.lng}, content:pin});
+        const html=`<div class="popupC"><h3>${esc(s.name)}</h3><span class="badge" style="background:${c}">Day ${di+1} · ${dateOf(di)}</span>`+
           `<div>${esc(s.desc).replace(/\n/g,'<br>')}</div>`+
           `<div style="margin-top:6px"><a href="${escAttr(gmapsLink(s))}" target="_blank" rel="noopener">Google 지도 ↗</a> &nbsp; `+
-          `<a href="#" onclick="openSpotModal(${di},${si});return false;">✎ 편집</a></div>`);
-      m.addTo(map); markers.push(m);
-    });
-    // 일자 내 동선 (좌표 있는 명소만)
-    const locSpots = day.spots.filter(hasLoc);
-    if(locSpots.length>1){
-      const c = spotColor(locSpots[0],di,colors);
-      const l = L.polyline(locSpots.map(s=>[s.lat,s.lng]),{color:c,weight:3,opacity:activeDay?0.9:0.45});
-      l.addTo(map); lines.push(l);
-    }
-  });
-  // 일자 간 연결 (전체 보기)
-  if(!activeDay){
-    let prev = null;
-    t.days.forEach(day=>{
-      const loc = day.spots.filter(hasLoc);
-      if(!loc.length) return;
-      if(prev){
-        const l = L.polyline([[prev.lat,prev.lng],[loc[0].lat,loc[0].lng]],{color:'#f6bd60',weight:2,dashArray:'7 6',opacity:.8});
-        l.addTo(map); lines.push(l);
+          `<a href="#" onclick="openSpotModal(${di},${si});return false;">✎ 편집</a></div></div>`;
+        m.__spot=s;
+        m.__open=()=>{ iw.setContent(html); iw.open({map, anchor:m}); };
+        m.addEventListener('gmp-click',m.__open);
+        markers.push(m);
+      });
+      // 일자 내 동선 (좌표 있는 명소만)
+      const locSpots = day.spots.filter(hasLoc);
+      if(locSpots.length>1){
+        const c = spotColor(locSpots[0],di,colors);
+        lines.push(new google.maps.Polyline({map, path:locSpots.map(s=>({lat:+s.lat,lng:+s.lng})),
+          strokeColor:c, strokeWeight:3, strokeOpacity:activeDay?0.9:0.45, geodesic:true}));
       }
-      prev = loc[loc.length-1];
     });
+    // 일자 간 연결 (전체 보기) — 점선
+    if(!activeDay){
+      let prev = null;
+      t.days.forEach(day=>{
+        const loc = day.spots.filter(hasLoc);
+        if(!loc.length) return;
+        if(prev){
+          lines.push(new google.maps.Polyline({map,
+            path:[{lat:+prev.lat,lng:+prev.lng},{lat:+loc[0].lat,lng:+loc[0].lng}],
+            strokeOpacity:0, geodesic:true,
+            icons:[{icon:{path:'M 0,-1 0,1', strokeOpacity:.8, strokeColor:'#f6bd60', scale:2}, offset:'0', repeat:'14px'}]}));
+        }
+        prev = loc[loc.length-1];
+      });
+    }
   }
   renderSidebar(); renderFilter(); renderLegend();
   document.getElementById('tripSel').innerHTML = store.trips.map(x=>`<option value="${escAttr(x.id)}" ${x.id===store.activeId?'selected':''}>${esc(x.name)}</option>`).join('');
   save();
 }
-let _firstFit=true;
+// pts([[lat,lng],…])에 맞춰 부드럽게 프레이밍. maxZoom은 정착 후 보정
+function fitTo(pts,pad,maxZoom){
+  if(!map||!pts.length) return;
+  const b=new google.maps.LatLngBounds();
+  pts.forEach(p=>b.extend({lat:+p[0],lng:+p[1]}));
+  map.fitBounds(b, pad==null?48:pad);
+  if(maxZoom) google.maps.event.addListenerOnce(map,'idle',()=>{ if(map.getZoom()>maxZoom) map.setZoom(maxZoom); });
+}
 function fitAll(){
-  map.invalidateSize();   // 컨테이너 크기 재측정 (0일 때 fitBounds가 zoom 0으로 폴백하는 문제 방지)
   const pts=[]; trip().days.forEach(d=>d.spots.forEach(s=>{if(hasLoc(s))pts.push([s.lat,s.lng])}));
-  if(!pts.length) return;
-  const b=L.latLngBounds(pts).pad(0.2);
-  if(_firstFit){ _firstFit=false; map.fitBounds(b,{animate:false}); }   // 첫 화면은 즉시 (날아오는 연출 불필요)
-  else map.flyToBounds(b,{duration:.9, easeLinearity:.22});
+  fitTo(pts,60);
 }
 function renderFilter(){
   const bar = document.getElementById('filterbar'); bar.innerHTML='';
@@ -472,7 +512,7 @@ function renderFilter(){
     const b=document.createElement('button'); b.className='chip'+(activeDay===i+1?' active':''); b.textContent='D'+(i+1); b.title=d.title;
     b.onclick=()=>{activeDay=i+1;render();
       const pts=d.spots.filter(hasLoc).map(s=>[s.lat,s.lng]);
-      if(pts.length) map.flyToBounds(L.latLngBounds(pts).pad(0.3),{duration:.8,maxZoom:14,easeLinearity:.22});};
+      fitTo(pts,64,15);};
     bar.appendChild(b);
   });
   const colors = cityColors();
@@ -481,7 +521,7 @@ function renderFilter(){
     const b=document.createElement('button'); b.className='chip citychip'; b.style.setProperty('--c',c); b.textContent=city;
     b.onclick=()=>{
       const pts=[]; trip().days.forEach(d=>d.spots.forEach(s=>{if(s.city===city&&hasLoc(s))pts.push([s.lat,s.lng])}));
-      if(pts.length) map.flyToBounds(L.latLngBounds(pts).pad(0.4),{duration:.9,maxZoom:14,easeLinearity:.22});
+      fitTo(pts,80,15);
     };
     bar.appendChild(b);
   });
@@ -535,7 +575,7 @@ function renderSidebar(){
       if(e.target.closest('.iconb'))return;
       activeDay=di+1;render();
       const pts=day.spots.filter(hasLoc).map(s=>[s.lat,s.lng]);
-      if(pts.length) map.flyToBounds(L.latLngBounds(pts).pad(0.3),{duration:.8,maxZoom:14,easeLinearity:.22});
+      fitTo(pts,64,15);
     };
     // 일자 내 명소 드래그(일자 간 이동도 허용)
     if(window.Sortable) sortables.push(Sortable.create(card.querySelector('.spotList'),{
@@ -579,8 +619,10 @@ window.focusSpot=(di,si)=>{
   const s=trip().days[di].spots[si];
   if(!hasLoc(s)){ openSpotModal(di,si); return; }   // 위치 미지정이면 지정 모달 열기
   if(activeDay && activeDay!==di+1){ activeDay=0; render(); }
-  map.flyTo([s.lat,s.lng],Math.max(map.getZoom(),13),{duration:.8,easeLinearity:.22});
-  setTimeout(()=>{ markers.forEach(m=>{ const p=m.getLatLng(); if(Math.abs(p.lat-s.lat)<1e-9&&Math.abs(p.lng-s.lng)<1e-9) m.openPopup(); }); },850);
+  if(!map) return;
+  map.panTo({lat:+s.lat,lng:+s.lng});
+  if(map.getZoom()<13) map.setZoom(13);
+  setTimeout(()=>{ const m=markers.find(m=>m.__spot===s); if(m) m.__open(); },400);
 };
 // 화살표 이동: 도구 항상 노출 + 옮긴 명소를 커서 아래에 고정(스크롤 보정)해 연속 클릭 가능
 window.moveSpot=(di,si,dir)=>{
@@ -671,13 +713,6 @@ document.getElementById('pickOnMap').onclick=()=>{
   document.getElementById('spotModalBg').classList.remove('show');
   document.getElementById('pickBanner').style.display='block';
 };
-map.on('click',e=>{
-  if(!pickMode)return;
-  pickMode=false; document.getElementById('pickBanner').style.display='none';
-  document.getElementById('spotLat').value=e.latlng.lat; document.getElementById('spotLng').value=e.latlng.lng;
-  document.getElementById('coordHint').textContent=`좌표: ${e.latlng.lat.toFixed(4)}, ${e.latlng.lng.toFixed(4)} ✓`;
-  document.getElementById('spotModalBg').classList.add('show');
-});
 document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&pickMode){pickMode=false;document.getElementById('pickBanner').style.display='none';document.getElementById('spotModalBg').classList.add('show');} });
 
 // ───────────────── 일자 모달 ─────────────────
@@ -1089,54 +1124,13 @@ document.getElementById('authPass').addEventListener('keydown',e=>{if(e.key==='E
 updateAuthUI();
 
 // ───────────────── PWA ─────────────────
+// 오프라인 지도 캐시는 Google Maps 약관상 불가 — SW는 앱 셸 캐시만 담당
 if('serviceWorker' in navigator){
   navigator.serviceWorker.register('sw.js').catch(()=>{});
 }
-// 오프라인 준비: 일정 주변 지도 타일 미리 캐시
-document.getElementById('offlineBtn').onclick=async()=>{
-  if(!navigator.serviceWorker || !navigator.serviceWorker.controller){
-    toast('먼저 배포된 주소(https)에서 열어야 오프라인 기능이 작동합니다','#e63946'); return;
-  }
-  const spots=[]; trip().days.forEach(d=>d.spots.forEach(s=>{ if(hasLoc(s)) spots.push(s); }));  // 좌표 있는 명소만
-  if(!spots.length){toast('좌표가 지정된 명소가 없습니다','#e63946');return;}
-  const r = (window.devicePixelRatio>1)?'@2x':'';
-  const subs=['a','b','c','d'];
-  const urls=new Set();
-  function tileXY(lat,lng,z){
-    const n=Math.pow(2,z);
-    const x=Math.floor((lng+180)/360*n);
-    const la=lat*Math.PI/180;
-    const y=Math.floor((1-Math.log(Math.tan(la)+1/Math.cos(la))/Math.PI)/2*n);
-    return [x,y];
-  }
-  spots.forEach(s=>{
-    [11,13,15].forEach(z=>{
-      const n=Math.pow(2,z), [cx,cy]=tileXY(s.lat,s.lng,z);
-      for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++){
-        const x=cx+dx, y=cy+dy;
-        if(x<0||y<0||x>=n||y>=n) continue;              // 지도 밖 타일 제외
-        const sub=subs[(x+y)%subs.length];              // Leaflet과 동일한 서브도메인 산출
-        urls.add(`https://${sub}.basemaps.cartocdn.com/rastertiles/voyager/${z}/${x}/${y}${r}.png`);
-      }
-    });
-  });
-  const list=[...urls].slice(0,700);
-  toast(`오프라인 지도 준비 중… (타일 ${list.length}개)`,'#1d6fd6');
-  // <img> 로드로 요청 — Leaflet이 실제로 보내는 요청과 동일하므로 SW가 그대로 캐시/재사용
-  const loadTile=u=>new Promise(res=>{ const im=new Image(); im.onload=im.onerror=()=>res(); im.src=u; });
-  let done=0, i=0;
-  await Promise.all(Array.from({length:6},async()=>{
-    while(i<list.length){ await loadTile(list[i++]); done++; }
-  }));
-  toast(`완료! 방문 지역 지도가 저장되었습니다 (${done}개)`);
-};
 
-// 시작
+// 시작 — 사이드바 등 DOM 먼저 렌더, 지도·초기 포커싱은 __gmapsReady에서
 render();
-// 초기 지도 포커싱은 레이아웃이 잡힌 뒤 실행 (스크립트 종료 시점엔 #map 크기가 0이라 zoom 0으로 폴백됨)
-const _initFit=()=>requestAnimationFrame(fitAll);
-if(document.readyState==='complete') _initFit();
-else window.addEventListener('load',_initFit);
 </script>
 </body>
 </html>

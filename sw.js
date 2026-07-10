@@ -1,8 +1,6 @@
 // Trip Canvas Service Worker
-const VER = 'tc-v10';
+const VER = 'tc-v11';
 const SHELL_CACHE = VER + '-shell';
-const TILE_CACHE = VER + '-tiles';
-const TILE_LIMIT = 1200; // 타일 최대 캐시 수 (여행 지역 커버)
 
 const SHELL = [
   './',
@@ -10,8 +8,6 @@ const SHELL = [
   './manifest.json',
   './icon-192.png',
   './icon-512.png',
-  'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css',
-  'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js',
   'https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js',
   'https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js',
   'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js'
@@ -31,44 +27,17 @@ self.addEventListener('activate', e => {
   );
 });
 
-async function trimCache(name, limit) {
-  const c = await caches.open(name);
-  const keys = await c.keys();
-  if (keys.length > limit) {
-    await Promise.all(keys.slice(0, keys.length - limit).map(k => c.delete(k)));
-  }
-}
-
-// 1x1 투명 PNG — 캐시·네트워크 모두 실패한 타일 자리에 반환 (지도 공백/깨짐 방지)
-const BLANK_PNG = Uint8Array.from(atob(
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
-), c => c.charCodeAt(0));
-function blankTile() {
-  return new Response(BLANK_PNG, { headers: { 'Content-Type': 'image/png' } });
-}
+// 항상 네트워크로 통과시킬 호스트 (지도/검색/AI/동기화 — 캐시 금지·불필요)
+const PASSTHROUGH = [
+  'maps.googleapis.com', 'maps.gstatic.com', 'fonts.googleapis.com', 'fonts.gstatic.com',
+  'dapi.kakao.com', 't1.daumcdn.net',
+  'nominatim', 'api.anthropic.com', 'supabase.co'
+];
 
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
 
-  // 검색(Nominatim) / AI(Anthropic)는 항상 네트워크
-  if (url.hostname.includes('nominatim') || url.hostname.includes('api.anthropic.com')) return;
-
-  // 지도 타일: stale-while-revalidate (본 지역은 오프라인에서도 표시)
-  if (url.hostname.includes('cartocdn.com') || url.hostname.includes('tile.openstreetmap')) {
-    e.respondWith((async () => {
-      const cache = await caches.open(TILE_CACHE);
-      const cached = await cache.match(e.request);
-      const fetching = fetch(e.request).then(res => {
-        if (res && res.status === 200) {
-          cache.put(e.request, res.clone());
-          trimCache(TILE_CACHE, TILE_LIMIT);
-        }
-        return res;
-      }).catch(() => cached || blankTile());
-      return cached || fetching;
-    })());
-    return;
-  }
+  if (PASSTHROUGH.some(h => url.hostname.includes(h))) return;
 
   // 같은 오리진(앱 파일): network-first — 편집이 새로고침 즉시 반영, 오프라인엔 캐시 폴백
   if (url.origin === location.origin) {
