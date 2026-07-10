@@ -796,12 +796,48 @@ const DIRECT_PLACEHOLDER=`여행이름: 다롄 2박3일
 const AI_PLACEHOLDER=`예) 다다음주 다롄 2박3일 갈 거야. 첫날 오후 인천서 출발해서 성해광장이랑 러시아거리 야경 보고, 둘째날은 여순감옥이랑 노호탄공원, 셋째날 오전에 시장 구경하고 귀국.`;
 
 // OSM 지오코딩 (좌표 자동 조회)
-async function geocode(q){
-  try{
-    const r=await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(q)}`,{headers:{'Accept-Language':'ko,en'}});
-    const js=await r.json();
-    if(js&&js[0]) return {lat:+js[0].lat, lng:+js[0].lon};
-  }catch(e){}
+// Nominatim 1req/s 정책 자동 준수 (호출 간 최소 1.1s 간격)
+let _nomAt=0;
+async function nomFetch(url){
+  const wait=1100-(Date.now()-_nomAt); if(wait>0) await sleep(wait);
+  _nomAt=Date.now();
+  try{ const r=await fetch(url,{headers:{'Accept-Language':'ko,en'}}); if(r.ok) return await r.json(); }catch(e){}
+  return null;
+}
+// box: 있으면 해당 영역 안으로만 검색(bounded) → 전 세계 오매칭 방지
+async function geocode(q, box){
+  let u=`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(q)}`;
+  if(box) u+=`&viewbox=${box}&bounded=1`;
+  const js=await nomFetch(u);
+  if(js&&js[0]) return {lat:+js[0].lat, lng:+js[0].lon};
+  return null;
+}
+// 도시 앵커 주변 ±d° 뷰박스 (Nominatim viewbox 순서: minLng,maxLat,maxLng,minLat)
+function boxAround(a,d){ d=d||0.7; return `${(a.lng-d).toFixed(4)},${(a.lat+d).toFixed(4)},${(a.lng+d).toFixed(4)},${(a.lat-d).toFixed(4)}`; }
+const _cityBox={};                       // 도시명 → 뷰박스 (조회 캐시)
+async function cityBoxOf(city){
+  if(!city) return null;
+  if(city in _cityBox) return _cityBox[city];
+  const a=await geocode(city);           // 도시 자체는 전역 조회로 앵커 확보
+  _cityBox[city]= a? boxAround(a) : null;
+  return _cityBox[city];
+}
+// 서술형 꼬리말 제거 ("감포 바다"→"감포", 괄호 표기 제거)
+function simplifyName(n){
+  return String(n||'').replace(/\([^)]*\)/g,'')
+    .replace(/\s*(앞바다|바다|해변|해수욕장|일대|근처|주변|전경|야경|거리|풍경)\s*$/,'').trim();
+}
+// 명소 하나의 좌표를 도시 영역 안에서만 탐색 — 못 찾으면 null(위치 미지정), 엉뚱한 핀 안 찍음
+async function geocodeSpot(s){
+  const box=await cityBoxOf(s.city);
+  const cand=[`${s.name} ${s.city}`, s.name];
+  const simp=simplifyName(s.name); if(simp && simp!==s.name) cand.push(simp);
+  const seen=new Set();
+  for(const q of cand){
+    const qq=(q||'').trim(); if(!qq||seen.has(qq)) continue; seen.add(qq);
+    const g=await geocode(qq, box);      // box 있으면 도시 영역 한정
+    if(g) return g;
+  }
   return null;
 }
 
@@ -903,9 +939,8 @@ async function runPaste(){
   for(let i=0;i<need.length;i++){
     const s=need[i];
     toast(`좌표 찾는 중… (${i+1}/${need.length}) ${s.name}`,'#1d6fd6');
-    let g=await geocode(`${s.name} ${s.city}`); if(!g) g=await geocode(s.name);
+    const g=await geocodeSpot(s);   // 도시 영역 안에서만 탐색 (호출 간격은 nomFetch가 자동 관리)
     if(g){ s.lat=g.lat; s.lng=g.lng; }
-    if(i<need.length-1) await sleep(1100); // Nominatim 이용정책 (1req/s)
   }
   // 좌표 못 찾은 명소는 버리지 않고 유지 (카드에 남고, '위치 지정'으로 표시)
   let noloc=0; parsed.days.forEach(d=>d.spots.forEach(s=>{ if(!hasLoc(s)) noloc++; }));
