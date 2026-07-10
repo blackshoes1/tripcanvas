@@ -393,7 +393,7 @@ window.__gmapsReady=function(){
 };
 (function(){
   const s=document.createElement('script');
-  s.src=`https://maps.googleapis.com/maps/api/js?key=${GMAPS_KEY}&v=weekly&libraries=places,marker&loading=async&callback=__gmapsReady`;
+  s.src=`https://maps.googleapis.com/maps/api/js?key=${GMAPS_KEY}&v=weekly&libraries=places,marker,geometry&loading=async&callback=__gmapsReady`;
   s.async=true;
   s.onerror=()=>toast('지도를 불러오지 못했습니다 — 네트워크/API 키 확인','#e63946');
   document.head.appendChild(s);
@@ -481,25 +481,42 @@ function dayDistance(day){
 
 // ── 구간 소요시간 (자동차) — 국내 카카오내비 · 해외 Google Routes, localStorage 캐시 ──
 const KAKAO_REST_KEY='48e05420d9dcc072915ff99412669995';   // 카카오내비 REST (CORS 허용 확인됨)
-const LEG_KEY='tripcanvas_legs_v1';
+const LEG_KEY='tripcanvas_legs_v2';   // v2: 경로 geometry(path) 포함
 let legCache={};
 try{ legCache=JSON.parse(localStorage.getItem(LEG_KEY))||{}; }catch(e){}
 function legId(a,b){ return `${(+a.lat).toFixed(4)},${(+a.lng).toFixed(4)}>${(+b.lat).toFixed(4)},${(+b.lng).toFixed(4)}`; }
 function saveLegCache(){ try{ localStorage.setItem(LEG_KEY, JSON.stringify(legCache)); }catch(e){} }
 function fmtDur(sec){ const m=Math.round(sec/60); return m<60? `${m}분` : `${Math.floor(m/60)}시간${m%60? ' '+(m%60)+'분':''}`; }
+// 좌표 배열 → 구글 인코딩 폴리라인 (캐시 용량 절약). geometry 라이브러리 필요
+function encodePts(pts){
+  if(!window.google||!google.maps.geometry||!pts.length) return null;
+  const step=Math.max(1, Math.floor(pts.length/300));   // 최대 ~300점으로 다운샘플
+  const sampled=pts.filter((_,i)=>i%step===0); if(sampled[sampled.length-1]!==pts[pts.length-1]) sampled.push(pts[pts.length-1]);
+  return google.maps.geometry.encoding.encodePath(sampled.map(p=>new google.maps.LatLng(p.lat,p.lng)));
+}
+function decodePts(enc){
+  if(!window.google||!google.maps.geometry||!enc) return null;
+  try{ return google.maps.geometry.encoding.decodePath(enc).map(ll=>({lat:ll.lat(),lng:ll.lng()})); }catch(e){ return null; }
+}
 async function kakaoRoute(a,b){
-  const u=`https://apis-navi.kakaomobility.com/v1/directions?origin=${a.lng},${a.lat}&destination=${b.lng},${b.lat}&summary=true`;
+  const u=`https://apis-navi.kakaomobility.com/v1/directions?origin=${a.lng},${a.lat}&destination=${b.lng},${b.lat}`;
   const r=await fetch(u,{headers:{Authorization:'KakaoAK '+KAKAO_REST_KEY}});
   if(!r.ok) return null;
   const js=await r.json();
   const rt=js.routes&&js.routes[0];
   if(!rt||rt.result_code!==0||!rt.summary) return null;
-  return {sec:rt.summary.duration, m:rt.summary.distance};
+  // 실제 도로 경로 좌표 (roads[].vertexes: [x,y,x,y,…])
+  const pts=[];
+  (rt.sections||[]).forEach(sec=>(sec.roads||[]).forEach(rd=>{
+    const v=rd.vertexes||[];
+    for(let i=0;i+1<v.length;i+=2) pts.push({lat:v[i+1],lng:v[i]});
+  }));
+  return {sec:rt.summary.duration, m:rt.summary.distance, path:encodePts(pts)};
 }
 async function googleRoute(a,b){
   const r=await fetch('https://routes.googleapis.com/directions/v2:computeRoutes',{
     method:'POST',
-    headers:{'Content-Type':'application/json','X-Goog-Api-Key':GMAPS_KEY,'X-Goog-FieldMask':'routes.duration,routes.distanceMeters'},
+    headers:{'Content-Type':'application/json','X-Goog-Api-Key':GMAPS_KEY,'X-Goog-FieldMask':'routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline'},
     body:JSON.stringify({origin:{location:{latLng:{latitude:+a.lat,longitude:+a.lng}}},
       destination:{location:{latLng:{latitude:+b.lat,longitude:+b.lng}}}, travelMode:'DRIVE'})
   });
@@ -507,7 +524,7 @@ async function googleRoute(a,b){
   const js=await r.json();
   const rt=js.routes&&js.routes[0];
   if(!rt||!rt.duration) return null;
-  return {sec:parseInt(rt.duration), m:rt.distanceMeters||0};
+  return {sec:parseInt(rt.duration), m:rt.distanceMeters||0, path:(rt.polyline&&rt.polyline.encodedPolyline)||null};
 }
 // 캐시에 있으면 즉시 반환, 없으면 큐에 넣고 null (완료 시 DOM 패치 + 사이드바 갱신)
 let legQueue=[], legBusy=false, legRefreshT=null;
@@ -533,7 +550,7 @@ async function pumpLegs(){
         el.title='실제 도로 기준';
       });
       clearTimeout(legRefreshT);
-      legRefreshT=setTimeout(()=>renderSidebar(),400);   // 하루 합계 갱신
+      legRefreshT=setTimeout(()=>render(),450);   // 하루 합계 + 지도 경로선 갱신
     }
   }
   legBusy=false;
@@ -607,9 +624,14 @@ function render(){
         if(!hasLoc(s)) return;               // 좌표 미지정 명소는 핀 생략 (카드엔 남음)
         addPin(s,di,si,spotColor(s,di,colors));
       });
+      // 일자 내 동선 — 구간별로 실도로 경로(캐시)가 있으면 그 경로, 없으면 직선
       const locSpots = day.spots.filter(hasLoc);
-      if(locSpots.length>1){
-        addLine(locSpots.map(s=>({lat:+s.lat,lng:+s.lng})), spotColor(locSpots[0],di,colors), activeDay?0.9:0.45, false);
+      const lc=spotColor(locSpots[0]||{},di,colors), lop=activeDay?0.9:0.45;
+      for(let i=1;i<locSpots.length;i++){
+        const A=locSpots[i-1], B=locSpots[i];
+        const cch=legCache[legId(A,B)];
+        const path=(cch&&cch.sec&&cch.path)?decodePts(cch.path):null;
+        addLine(path||[{lat:+A.lat,lng:+A.lng},{lat:+B.lat,lng:+B.lng}], lc, lop, false);
       }
     });
     // 일자 간 연결 (전체 보기) — 점선
