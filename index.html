@@ -479,6 +479,78 @@ function dayDistance(day){
   return sum;
 }
 
+// ── 구간 소요시간 (자동차) — 국내 카카오내비 · 해외 Google Routes, localStorage 캐시 ──
+const KAKAO_REST_KEY='48e05420d9dcc072915ff99412669995';   // 카카오내비 REST (CORS 허용 확인됨)
+const LEG_KEY='tripcanvas_legs_v1';
+let legCache={};
+try{ legCache=JSON.parse(localStorage.getItem(LEG_KEY))||{}; }catch(e){}
+function legId(a,b){ return `${(+a.lat).toFixed(4)},${(+a.lng).toFixed(4)}>${(+b.lat).toFixed(4)},${(+b.lng).toFixed(4)}`; }
+function saveLegCache(){ try{ localStorage.setItem(LEG_KEY, JSON.stringify(legCache)); }catch(e){} }
+function fmtDur(sec){ const m=Math.round(sec/60); return m<60? `${m}분` : `${Math.floor(m/60)}시간${m%60? ' '+(m%60)+'분':''}`; }
+async function kakaoRoute(a,b){
+  const u=`https://apis-navi.kakaomobility.com/v1/directions?origin=${a.lng},${a.lat}&destination=${b.lng},${b.lat}&summary=true`;
+  const r=await fetch(u,{headers:{Authorization:'KakaoAK '+KAKAO_REST_KEY}});
+  if(!r.ok) return null;
+  const js=await r.json();
+  const rt=js.routes&&js.routes[0];
+  if(!rt||rt.result_code!==0||!rt.summary) return null;
+  return {sec:rt.summary.duration, m:rt.summary.distance};
+}
+async function googleRoute(a,b){
+  const r=await fetch('https://routes.googleapis.com/directions/v2:computeRoutes',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','X-Goog-Api-Key':GMAPS_KEY,'X-Goog-FieldMask':'routes.duration,routes.distanceMeters'},
+    body:JSON.stringify({origin:{location:{latLng:{latitude:+a.lat,longitude:+a.lng}}},
+      destination:{location:{latLng:{latitude:+b.lat,longitude:+b.lng}}}, travelMode:'DRIVE'})
+  });
+  if(!r.ok) return null;
+  const js=await r.json();
+  const rt=js.routes&&js.routes[0];
+  if(!rt||!rt.duration) return null;
+  return {sec:parseInt(rt.duration), m:rt.distanceMeters||0};
+}
+// 캐시에 있으면 즉시 반환, 없으면 큐에 넣고 null (완료 시 DOM 패치 + 사이드바 갱신)
+let legQueue=[], legBusy=false, legRefreshT=null;
+function requestLeg(a,b){
+  const id=legId(a,b);
+  const c=legCache[id];
+  if(c) return c.sec? c : null;          // 실패 기록이면 재시도 안 함 (세션 캐시)
+  if(!legQueue.find(q=>q.id===id)){ legQueue.push({id,a:{lat:+a.lat,lng:+a.lng},b:{lat:+b.lat,lng:+b.lng}}); pumpLegs(); }
+  return null;
+}
+async function pumpLegs(){
+  if(legBusy) return; legBusy=true;
+  while(legQueue.length){
+    const {id,a,b}=legQueue.shift();
+    if(legCache[id]) continue;
+    let r=null;
+    try{ r = (inKorea(a)&&inKorea(b)) ? await kakaoRoute(a,b) : await googleRoute(a,b); }catch(e){}
+    legCache[id] = r || {fail:Date.now()};
+    if(r){
+      saveLegCache();
+      document.querySelectorAll(`[data-leg="${id}"]`).forEach(el=>{
+        el.textContent=`↳${(r.m/1000).toFixed(1)}km · 🚗${fmtDur(r.sec)}`;
+        el.title='실제 도로 기준';
+      });
+      clearTimeout(legRefreshT);
+      legRefreshT=setTimeout(()=>renderSidebar(),400);   // 하루 합계 갱신
+    }
+  }
+  legBusy=false;
+}
+// 하루 전체 실도로 합계 (모든 구간이 캐시됐을 때만)
+function dayRoute(day){
+  const loc=day.spots.filter(hasLoc);
+  if(loc.length<2) return null;
+  let sec=0,m=0;
+  for(let i=1;i<loc.length;i++){
+    const c=legCache[legId(loc[i-1],loc[i])];
+    if(!c||!c.sec) return null;
+    sec+=c.sec; m+=c.m;
+  }
+  return {sec,m};
+}
+
 // 마커 하나 추가 (엔진 공용) — markers에 {spot, open} 인터페이스로 저장
 function addPin(s,di,si,c){
   const label=si+1;
@@ -630,10 +702,17 @@ function renderSidebar(){
     let spotsHtml='', prevLoc=null;
     day.spots.forEach((s,si)=>{
       const dotC = hasLoc(s)?spotColor(s,di,colors):'#4a5170';
-      const leg = (hasLoc(s)&&prevLoc)?haversine(prevLoc,s):null;
+      // 구간: 실도로 소요시간(캐시)이 있으면 그걸, 아니면 직선거리 + 백그라운드 조회
+      let legHtml='';
+      if(hasLoc(s)&&prevLoc){
+        const lid=legId(prevLoc,s), lc=requestLeg(prevLoc,s);
+        legHtml = lc
+          ? `<span class="leg" data-leg="${lid}" title="실제 도로 기준">↳${(lc.m/1000).toFixed(1)}km · 🚗${fmtDur(lc.sec)}</span>`
+          : `<span class="leg" data-leg="${lid}">↳${haversine(prevLoc,s).toFixed(1)}km</span>`;
+      }
       if(hasLoc(s)) prevLoc=s;
       spotsHtml+=`<div class="spot" data-di="${di}" data-si="${si}" style="--c:${dotC}">
-        <span class="nm" onclick="focusSpot(${di},${si})">${si+1}. ${esc(s.name)}${s.opt?' <span class=opt>(선택)</span>':''}${hasLoc(s)?'':`<span class="noloc" onclick="event.stopPropagation();openSpotModal(${di},${si})">📍 위치 지정</span>`}</span>${leg?`<span class="leg">↳${leg.toFixed(1)}km</span>`:''}
+        <span class="nm" onclick="focusSpot(${di},${si})">${si+1}. ${esc(s.name)}${s.opt?' <span class=opt>(선택)</span>':''}${hasLoc(s)?'':`<span class="noloc" onclick="event.stopPropagation();openSpotModal(${di},${si})">📍 위치 지정</span>`}</span>${legHtml}
         <span class="tools">
           <button class="iconb mvup" onclick="moveSpot(${di},${si},-1)" title="위로">▲</button>
           <button class="iconb mvdown" onclick="moveSpot(${di},${si},1)" title="아래로">▼</button>
@@ -646,7 +725,8 @@ function renderSidebar(){
         <span class="tools"><button class="iconb" onclick="event.stopPropagation();openDayModal(${di})">✎</button></span></span>
       </div><div class="dayBody">
         ${day.drive?`<div class="drive">${esc(day.drive)}</div>`:''}
-        ${dayDistance(day)>0?`<div class="dist">📏 하루 동선 약 ${dayDistance(day).toFixed(1)}km <span style="opacity:.55">(직선)</span></div>`:''}
+        ${(()=>{const rt=dayRoute(day); if(rt) return `<div class="dist">📏 하루 동선 약 ${(rt.m/1000).toFixed(1)}km · 🚗${fmtDur(rt.sec)} <span style="opacity:.55">(도로 기준)</span></div>`;
+          return dayDistance(day)>0?`<div class="dist">📏 하루 동선 약 ${dayDistance(day).toFixed(1)}km <span style="opacity:.55">(직선)</span></div>`:'';})()}
         <div class="spotList" data-di="${di}">${spotsHtml}</div>
         <button class="addSpot" onclick="openSpotModal(${di},-1)">＋ 명소 추가</button>
         ${day.note?`<div class="note">📝 ${esc(day.note)}</div>`:''}

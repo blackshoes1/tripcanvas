@@ -30,7 +30,8 @@
 
 라이브러리(CDN): 지도 듀얼 엔진 — 해외 Google Maps JS SDK · 국내(스팟 과반이 한국) 카카오맵 JS SDK · LZString(공유 링크 압축) · SortableJS(드래그) · Supabase(로그인/클라우드 동기화)
 검색: 국내 카카오 로컬 · 해외 Google Places (라우팅) · 저장: localStorage + Supabase
-API 키: index.html 상단 GMAPS_KEY(리퍼러 제한)·KAKAO_KEY(플랫폼 도메인 제한) — localhost:8000, tripcanvas-ai.vercel.app 등록 필요
+API 키: index.html 상단 GMAPS_KEY(리퍼러 제한)·KAKAO_KEY(JS, 플랫폼 도메인 제한)·KAKAO_REST_KEY(카카오내비 길찾기) — localhost:8000, tripcanvas-ai.vercel.app 등록 필요
+이동 소요시간: 국내 카카오내비 REST(CORS 허용) · 해외 Google Routes API — 구간 결과는 localStorage(tripcanvas_legs_v1) 캐시
 주의: Google 약관상 지도 타일 캐시 금지 → 오프라인 지도 기능 없음 (SW는 앱 셸만 캐시)
 
 ## 로컬 실행
