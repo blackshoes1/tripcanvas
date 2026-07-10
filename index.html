@@ -511,7 +511,14 @@ async function kakaoRoute(a,b){
     const v=rd.vertexes||[];
     for(let i=0;i+1<v.length;i+=2) pts.push({lat:v[i+1],lng:v[i]});
   }));
-  return {sec:rt.summary.duration, m:rt.summary.distance, path:encodePts(pts)};
+  return {sec:rt.summary.duration, m:rt.summary.distance, path:encodePts(pts),
+    taxi:(rt.summary.fare&&rt.summary.fare.taxi)||0};
+}
+// 구간 라벨: 2km 미만은 도보 시간(4.5km/h 추정) 우선, 그 외 자동차
+function legLabel(c){
+  const km=(c.m/1000).toFixed(1);
+  if(c.m<2000){ const wm=Math.max(1,Math.round(c.m/75)); return `↳${km}km · 🚶${wm}분`; }
+  return `↳${km}km · 🚗${fmtDur(c.sec)}`;
 }
 async function googleRoute(a,b){
   const r=await fetch('https://routes.googleapis.com/directions/v2:computeRoutes',{
@@ -546,8 +553,11 @@ async function pumpLegs(){
     if(r){
       saveLegCache();
       document.querySelectorAll(`[data-leg="${id}"]`).forEach(el=>{
-        el.textContent=`↳${(r.m/1000).toFixed(1)}km · 🚗${fmtDur(r.sec)}`;
-        el.title='실제 도로 기준';
+        el.textContent=legLabel(r);
+        el.title='실제 도로 기준'+(r.taxi?` · 택시 약 ${r.taxi.toLocaleString()}원`:'');
+      });
+      document.querySelectorAll(`[data-ileg="${id}"]`).forEach(el=>{
+        el.textContent=`🚙 이전 일정에서 ${(r.m/1000).toFixed(1)}km · ${fmtDur(r.sec)}`;
       });
       clearTimeout(legRefreshT);
       legRefreshT=setTimeout(()=>render(),450);   // 하루 합계 + 지도 경로선 갱신
@@ -559,13 +569,13 @@ async function pumpLegs(){
 function dayRoute(day){
   const loc=day.spots.filter(hasLoc);
   if(loc.length<2) return null;
-  let sec=0,m=0;
+  let sec=0,m=0,taxi=0;
   for(let i=1;i<loc.length;i++){
     const c=legCache[legId(loc[i-1],loc[i])];
     if(!c||!c.sec) return null;
-    sec+=c.sec; m+=c.m;
+    sec+=c.sec; m+=c.m; taxi+=(c.taxi||0);
   }
-  return {sec,m};
+  return {sec,m,taxi};
 }
 
 // 마커 하나 추가 (엔진 공용) — markers에 {spot, open} 인터페이스로 저장
@@ -640,7 +650,11 @@ function render(){
       t.days.forEach(day=>{
         const loc = day.spots.filter(hasLoc);
         if(!loc.length) return;
-        if(prev) addLine([{lat:+prev.lat,lng:+prev.lng},{lat:+loc[0].lat,lng:+loc[0].lng}], '#f6bd60', .8, true);
+        if(prev){
+          const cch=legCache[legId(prev,loc[0])];
+          const path=(cch&&cch.sec&&cch.path)?decodePts(cch.path):null;
+          addLine(path||[{lat:+prev.lat,lng:+prev.lng},{lat:+loc[0].lat,lng:+loc[0].lng}], '#f6bd60', .8, true);
+        }
         prev = loc[loc.length-1];
       });
     }
@@ -718,6 +732,7 @@ function renderSidebar(){
   sortables.forEach(s=>{try{s.destroy();}catch(e){}}); sortables=[];
   const colors=cityColors();
   const dayList=document.createElement('div'); dayList.id='dayList';
+  let prevDayAnchor=null;   // 이전 일자의 마지막 위치 (일자 간 이동시간 계산)
   trip().days.forEach((day,di)=>{
     const headC = colorByMode()==='day' ? dayColor(di) : (day.spots.length?(colors[day.spots[0].city]||'#556'):'#556');
     const card=document.createElement('div'); card.className='dayCard'+(activeDay&&activeDay!==di+1?' dim':''); card.style.setProperty('--c',headC);
@@ -729,7 +744,7 @@ function renderSidebar(){
       if(hasLoc(s)&&prevLoc){
         const lid=legId(prevLoc,s), lc=requestLeg(prevLoc,s);
         legHtml = lc
-          ? `<span class="leg" data-leg="${lid}" title="실제 도로 기준">↳${(lc.m/1000).toFixed(1)}km · 🚗${fmtDur(lc.sec)}</span>`
+          ? `<span class="leg" data-leg="${lid}" title="실제 도로 기준${lc.taxi?` · 택시 약 ${lc.taxi.toLocaleString()}원`:''}">${legLabel(lc)}</span>`
           : `<span class="leg" data-leg="${lid}">↳${haversine(prevLoc,s).toFixed(1)}km</span>`;
       }
       if(hasLoc(s)) prevLoc=s;
@@ -747,7 +762,15 @@ function renderSidebar(){
         <span class="tools"><button class="iconb" onclick="event.stopPropagation();openDayModal(${di})">✎</button></span></span>
       </div><div class="dayBody">
         ${day.drive?`<div class="drive">${esc(day.drive)}</div>`:''}
-        ${(()=>{const rt=dayRoute(day); if(rt) return `<div class="dist">📏 하루 동선 약 ${(rt.m/1000).toFixed(1)}km · 🚗${fmtDur(rt.sec)} <span style="opacity:.55">(도로 기준)</span></div>`;
+        ${(()=>{   // 일자 간 자동 이동시간: 이전 일자 마지막 → 오늘 첫 명소
+          const first=day.spots.find(hasLoc);
+          if(!prevDayAnchor||!first) return '';
+          const iid=legId(prevDayAnchor,first), ic=requestLeg(prevDayAnchor,first);
+          return ic
+            ? `<div class="drive" style="color:#9fb8e8" title="이전 일자 마지막 장소 기준${ic.taxi?` · 택시 약 ${ic.taxi.toLocaleString()}원`:''}"><span data-ileg="${iid}">🚙 이전 일정에서 ${(ic.m/1000).toFixed(1)}km · ${fmtDur(ic.sec)}</span></div>`
+            : `<div class="drive" style="color:#9fb8e8"><span data-ileg="${iid}">🚙 이전 일정에서 직선 ${haversine(prevDayAnchor,first).toFixed(1)}km</span></div>`;
+        })()}
+        ${(()=>{const rt=dayRoute(day); if(rt) return `<div class="dist">📏 하루 동선 약 ${(rt.m/1000).toFixed(1)}km · 🚗${fmtDur(rt.sec)}${rt.taxi?` · 🚕약 ${rt.taxi.toLocaleString()}원`:''} <span style="opacity:.55">(도로 기준)</span></div>`;
           return dayDistance(day)>0?`<div class="dist">📏 하루 동선 약 ${dayDistance(day).toFixed(1)}km <span style="opacity:.55">(직선)</span></div>`:'';})()}
         <div class="spotList" data-di="${di}">${spotsHtml}</div>
         <button class="addSpot" onclick="openSpotModal(${di},-1)">＋ 명소 추가</button>
@@ -765,6 +788,8 @@ function renderSidebar(){
       delay:120, delayOnTouchOnly:true, ghostClass:'sortable-ghost', chosenClass:'sortable-chosen',
       onEnd:onSpotDrop
     }));
+    const locAll=day.spots.filter(hasLoc);
+    if(locAll.length) prevDayAnchor=locAll[locAll.length-1];
     dayList.appendChild(card);
   });
   sb.appendChild(dayList);
