@@ -1,5 +1,5 @@
 // Trip Canvas Service Worker
-const VER = 'tc-v14';
+const VER = 'tc-v15';
 const SHELL_CACHE = VER + '-shell';
 
 const SHELL = [
@@ -29,8 +29,8 @@ self.addEventListener('activate', e => {
 
 // 항상 네트워크로 통과시킬 호스트 (지도/검색/AI/동기화 — 캐시 금지·불필요)
 const PASSTHROUGH = [
-  'maps.googleapis.com', 'maps.gstatic.com', 'fonts.googleapis.com', 'fonts.gstatic.com',
-  'dapi.kakao.com', 't1.daumcdn.net',
+  'googleapis.com', 'maps.gstatic.com', 'fonts.gstatic.com',
+  'dapi.kakao.com', 't1.daumcdn.net', 'kakaomobility.com',
   'nominatim', 'api.anthropic.com', 'supabase.co'
 ];
 
