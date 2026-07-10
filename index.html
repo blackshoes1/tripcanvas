@@ -363,7 +363,7 @@ function undoWith(snap){ store=snap; activeDay=0; render(); fitAll(); }
 
 // ───────────────── 지도 (Google Maps) ─────────────────
 const GMAPS_KEY='AIzaSyCE6I2dhqk2jzNvA0ZMzDSuPi7HAfWecAM';   // HTTP 리퍼러 제한으로 보호할 것
-const KAKAO_KEY='9d7b1f9e773bba116d97a6857217fd04';          // 국내 장소검색용 (플랫폼 도메인 제한)
+const KAKAO_KEY='088123c29d265c5f9cc9ec8d356f54c8';          // 국내 장소검색용 (플랫폼 도메인 제한, 카카오맵 활성화된 기존 앱 키)
 let map=null, iw=null;   // iw: 공용 InfoWindow
 let activeDay = 0, markers = [], lines = [], pickMode = false, sortables = [];
 
@@ -852,19 +852,23 @@ function loadKakao(){
   return _kakaoReady;
 }
 // 카카오 키워드 검색 → [{name,addr,lat,lng}] (실패/무결과 시 [])
+// near가 있으면 20km 반경 우선, 비면 전국 재검색 (호출측 거리 가드가 오매칭 차단)
 async function kakaoSearch(q, near, limit){
   if(!(await loadKakao())) return [];
-  return new Promise(res=>{
+  const run=opts=>new Promise(res=>{
     try{
-      const ps=new kakao.maps.services.Places();
-      const opts={size:Math.min(limit||5,15)};
-      if(near){ opts.location=new kakao.maps.LatLng(near.lat,near.lng); opts.radius=20000; }  // 최대 20km 반경 우선
-      ps.keywordSearch(q,(data,status)=>{
+      new kakao.maps.services.Places().keywordSearch(q,(data,status)=>{
         if(status!==kakao.maps.services.Status.OK||!data) return res([]);
         res(data.map(d=>({name:d.place_name, addr:d.road_address_name||d.address_name||'', lat:+d.y, lng:+d.x})));
       },opts);
     }catch(e){ res([]); }
   });
+  const size=Math.min(limit||5,15);
+  if(near){
+    const r=await run({size, location:new kakao.maps.LatLng(near.lat,near.lng), radius:20000});
+    if(r.length) return r;
+  }
+  return run({size});
 }
 // Google Places 텍스트 검색 (신 API) → [{name,addr,lat,lng}]
 async function googlePlaces(q, near, limit){
