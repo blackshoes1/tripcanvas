@@ -65,7 +65,10 @@
   #addDayBtn{width:100%;margin-top:2px;padding:8px;font-size:12.5px}
   .legend{position:absolute;bottom:20px;right:10px;background:rgba(22,33,62,.92);padding:8px 12px;border-radius:10px;font-size:11px;z-index:1000;line-height:1.8;max-height:40vh;overflow-y:auto}
   .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px}
-  .num-icon{display:flex;align-items:center;justify-content:center;border-radius:50%;color:#fff;font-weight:700;font-size:12px;border:2.5px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.5)}
+  .num-icon{display:flex;align-items:center;justify-content:center;border-radius:50%;color:#fff;font-weight:700;font-size:12px;border:2.5px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.5);animation:pinIn .28s cubic-bezier(.34,1.4,.64,1) both}
+  @keyframes pinIn{from{transform:scale(.4);opacity:0}to{transform:scale(1);opacity:1}}
+  .num-icon:hover{transform:scale(1.15);transition:transform .15s}
+  .leaflet-interactive{transition:opacity .3s}
   .leaflet-popup-content{font-family:inherit;font-size:13px;line-height:1.5;min-width:190px}
   .leaflet-popup-content h3{font-size:14px;margin-bottom:3px}
   .leaflet-popup-content .badge{display:inline-block;font-size:10.5px;color:#fff;border-radius:8px;padding:1px 8px;margin-bottom:4px}
@@ -358,7 +361,8 @@ function snapshot(){ return JSON.parse(JSON.stringify(store)); }
 function undoWith(snap){ store=snap; activeDay=0; render(); fitAll(); }
 
 // ───────────────── 지도 ─────────────────
-const map = L.map('map').setView([40,-3.7],6);
+// zoomSnap 0.25: 줌을 1/4 단위로 허용 → 핀 경계에 더 정확히 프레이밍되고 전환이 부드러움
+const map = L.map('map',{zoomSnap:0.25, zoomDelta:0.5}).setView([40,-3.7],6);
 L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{attribution:'&copy; OSM &copy; CARTO',maxZoom:19}).addTo(map);
 let activeDay = 0, markers = [], lines = [], pickMode = false, sortables = [];
 
@@ -444,10 +448,14 @@ function render(){
   document.getElementById('tripSel').innerHTML = store.trips.map(x=>`<option value="${escAttr(x.id)}" ${x.id===store.activeId?'selected':''}>${esc(x.name)}</option>`).join('');
   save();
 }
+let _firstFit=true;
 function fitAll(){
   map.invalidateSize();   // 컨테이너 크기 재측정 (0일 때 fitBounds가 zoom 0으로 폴백하는 문제 방지)
   const pts=[]; trip().days.forEach(d=>d.spots.forEach(s=>{if(hasLoc(s))pts.push([s.lat,s.lng])}));
-  if(pts.length) map.fitBounds(L.latLngBounds(pts).pad(0.2));
+  if(!pts.length) return;
+  const b=L.latLngBounds(pts).pad(0.2);
+  if(_firstFit){ _firstFit=false; map.fitBounds(b,{animate:false}); }   // 첫 화면은 즉시 (날아오는 연출 불필요)
+  else map.flyToBounds(b,{duration:.9, easeLinearity:.22});
 }
 function renderFilter(){
   const bar = document.getElementById('filterbar'); bar.innerHTML='';
@@ -464,7 +472,7 @@ function renderFilter(){
     const b=document.createElement('button'); b.className='chip'+(activeDay===i+1?' active':''); b.textContent='D'+(i+1); b.title=d.title;
     b.onclick=()=>{activeDay=i+1;render();
       const pts=d.spots.filter(hasLoc).map(s=>[s.lat,s.lng]);
-      if(pts.length) map.flyToBounds(L.latLngBounds(pts).pad(0.3),{duration:.7,maxZoom:14});};
+      if(pts.length) map.flyToBounds(L.latLngBounds(pts).pad(0.3),{duration:.8,maxZoom:14,easeLinearity:.22});};
     bar.appendChild(b);
   });
   const colors = cityColors();
@@ -473,7 +481,7 @@ function renderFilter(){
     const b=document.createElement('button'); b.className='chip citychip'; b.style.setProperty('--c',c); b.textContent=city;
     b.onclick=()=>{
       const pts=[]; trip().days.forEach(d=>d.spots.forEach(s=>{if(s.city===city&&hasLoc(s))pts.push([s.lat,s.lng])}));
-      if(pts.length) map.flyToBounds(L.latLngBounds(pts).pad(0.4),{duration:.8,maxZoom:14});
+      if(pts.length) map.flyToBounds(L.latLngBounds(pts).pad(0.4),{duration:.9,maxZoom:14,easeLinearity:.22});
     };
     bar.appendChild(b);
   });
@@ -527,7 +535,7 @@ function renderSidebar(){
       if(e.target.closest('.iconb'))return;
       activeDay=di+1;render();
       const pts=day.spots.filter(hasLoc).map(s=>[s.lat,s.lng]);
-      if(pts.length) map.flyToBounds(L.latLngBounds(pts).pad(0.3),{duration:.7,maxZoom:14});
+      if(pts.length) map.flyToBounds(L.latLngBounds(pts).pad(0.3),{duration:.8,maxZoom:14,easeLinearity:.22});
     };
     // 일자 내 명소 드래그(일자 간 이동도 허용)
     if(window.Sortable) sortables.push(Sortable.create(card.querySelector('.spotList'),{
@@ -571,8 +579,8 @@ window.focusSpot=(di,si)=>{
   const s=trip().days[di].spots[si];
   if(!hasLoc(s)){ openSpotModal(di,si); return; }   // 위치 미지정이면 지정 모달 열기
   if(activeDay && activeDay!==di+1){ activeDay=0; render(); }
-  map.flyTo([s.lat,s.lng],Math.max(map.getZoom(),13),{duration:.7});
-  setTimeout(()=>{ markers.forEach(m=>{ const p=m.getLatLng(); if(Math.abs(p.lat-s.lat)<1e-9&&Math.abs(p.lng-s.lng)<1e-9) m.openPopup(); }); },750);
+  map.flyTo([s.lat,s.lng],Math.max(map.getZoom(),13),{duration:.8,easeLinearity:.22});
+  setTimeout(()=>{ markers.forEach(m=>{ const p=m.getLatLng(); if(Math.abs(p.lat-s.lat)<1e-9&&Math.abs(p.lng-s.lng)<1e-9) m.openPopup(); }); },850);
 };
 // 화살표 이동: 도구 항상 노출 + 옮긴 명소를 커서 아래에 고정(스크롤 보정)해 연속 클릭 가능
 window.moveSpot=(di,si,dir)=>{
