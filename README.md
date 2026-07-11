@@ -16,7 +16,9 @@
 ## 구조
 
 ```
-├── index.html      # 앱 본체 (단일 파일: UI + 로직)
+├── index.html      # 마크업
+├── app.js          # 앱 로직
+├── style.css       # 스타일
 ├── sw.js           # 서비스 워커 (오프라인 캐시 전략)
 ├── manifest.json   # PWA 매니페스트
 └── icon-*.png      # 앱 아이콘
@@ -24,7 +26,7 @@
 
 빌드 도구 없음 — 정적 파일 그대로 배포합니다.
 지도: Google Maps JS SDK / 장소 검색: 카카오 로컬(국내)·Google Places(해외) / 저장: localStorage + Supabase
-API 키(구글·카카오)는 `index.html` 상단 상수 — 도메인 제한(리퍼러/플랫폼) 필수
+API 키(구글·카카오)는 `app.js` 상단 상수 — 도메인 제한(리퍼러/플랫폼) 필수
 
 ## 로컬 실행
 
