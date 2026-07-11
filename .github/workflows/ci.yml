@@ -13,5 +13,7 @@ jobs:
           node-version: 20
       - name: Syntax check
         run: node --check app.js && node --check lib.js && node --check sw.js
+      - name: Type check (lib.js, JSDoc)
+        run: npx -y -p typescript@5.6.3 tsc -p jsconfig.json
       - name: Unit tests
         run: node --test
