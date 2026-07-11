@@ -774,6 +774,7 @@ document.getElementById('tripEditBtn').onclick=()=>{
   document.getElementById('tripName').value=trip().name;
   document.getElementById('tripStart').value=trip().start||'';
   document.getElementById('tripModalBg').classList.add('show');
+  loadSnapList();
 };
 document.getElementById('tripCancel').onclick=()=>document.getElementById('tripModalBg').classList.remove('show');
 document.getElementById('tripSave').onclick=()=>{
@@ -1203,7 +1204,49 @@ function cloudSyncActive(){
       {user_id:user.id, client_id:t.id, data:t, updated_at:new Date().toISOString()},
       {onConflict:'user_id,client_id'});
     if(error) console.warn('cloud sync:', error.message);
+    else cloudSnapshot(t);
   }, 800);
+}
+// 버전 히스토리: 여행별 10분에 1회 스냅샷, 최근 15개 유지
+const _snapAt={};
+async function cloudSnapshot(t){
+  if(!sb || !user) return;
+  const now=Date.now();
+  if(_snapAt[t.id] && now-_snapAt[t.id]<10*60*1000) return;
+  _snapAt[t.id]=now;
+  try{
+    await sb.from('trip_snapshots').insert({client_id:t.id, name:t.name, data:t});
+    // 오래된 스냅샷 정리 (최근 15개만 유지)
+    const {data:rows}=await sb.from('trip_snapshots').select('id')
+      .eq('client_id',t.id).order('created_at',{ascending:false}).range(15,100);
+    if(rows&&rows.length) await sb.from('trip_snapshots').delete().in('id',rows.map(r=>r.id));
+  }catch(e){}
+}
+// 버전 기록 목록 (여행 설정 모달)
+async function loadSnapList(){
+  const box=document.getElementById('snapList');
+  if(!sb || !user){ box.innerHTML='<div class="hint">로그인하면 자동으로 버전이 기록됩니다 (10분 간격)</div>'; return; }
+  box.innerHTML='<div class="hint">불러오는 중…</div>';
+  const {data,error}=await sb.from('trip_snapshots').select('id,created_at')
+    .eq('client_id',store.activeId).order('created_at',{ascending:false}).limit(15);
+  if(error||!data||!data.length){ box.innerHTML='<div class="hint">저장된 버전이 없습니다 (10분 간격 자동 기록)</div>'; return; }
+  box.innerHTML='';
+  data.forEach(r=>{
+    const d=new Date(r.created_at);
+    const row=document.createElement('div'); row.className='snapRow';
+    row.innerHTML=`<span>${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}</span>`;
+    const btn=document.createElement('button'); btn.className='btn'; btn.textContent='복원'; btn.style.cssText='font-size:11px;padding:2px 10px';
+    btn.onclick=async()=>{
+      if(!confirm('이 시점으로 복원할까요? (현재 상태는 ↩️ 실행취소로 되돌릴 수 있습니다)'))return;
+      const {data:full,error:fe}=await sb.from('trip_snapshots').select('data').eq('id',r.id).single();
+      if(fe||!full||!full.data){ toast('복원 실패','#e63946'); return; }
+      const idx=store.trips.findIndex(t=>t.id===store.activeId);
+      if(idx>=0) store.trips[idx]=full.data;
+      document.getElementById('tripModalBg').classList.remove('show');
+      activeDay=0; render(); fitAll(); toast('복원되었습니다 (↩️로 되돌리기 가능)');
+    };
+    row.appendChild(btn); box.appendChild(row);
+  });
 }
 async function cloudDelete(clientId){
   if(!sb || !user) return;
