@@ -811,6 +811,55 @@ document.getElementById('importFile').onchange=e=>{
   };
   rd.readAsText(f); e.target.value='';
 };
+// ── 일정 이미지 내보내기 (PNG, html2canvas 지연 로드) ──
+let _h2cReady=null;
+function loadH2C(){
+  if(_h2cReady!==null) return _h2cReady;
+  _h2cReady=new Promise(res=>{
+    const s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+    s.onload=()=>res(true); s.onerror=()=>res(false);
+    document.head.appendChild(s);
+  });
+  return _h2cReady;
+}
+function buildTripCard(){
+  const t=trip(), colors=cityColors();
+  const w=document.createElement('div');
+  w.style.cssText="position:fixed;left:-10000px;top:0;width:520px;background:#141b33;color:#e8e8f0;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;padding:24px";
+  let html=`<div style="font-size:20px;font-weight:800;margin-bottom:2px">🗺 ${esc(t.name)}</div>`;
+  if(t.start) html+=`<div style="font-size:12px;color:#9aa5c4;margin-bottom:14px">${esc(t.start)} 출발 · ${t.days.length}일</div>`;
+  t.days.forEach((day,di)=>{
+    const c=colorByMode()==='day'?dayColor(di):(day.spots.length?(colors[day.spots[0].city]||'#556'):'#556');
+    const etas=dayEtas(day);
+    html+=`<div style="border-left:4px solid ${c};background:#1f2b4d;border-radius:10px;padding:10px 14px;margin-bottom:10px">`;
+    html+=`<div style="font-size:13.5px;font-weight:700">Day ${di+1} · ${esc(day.title)} <span style="color:#9aa5c4;font-weight:400;font-size:11px">${dateOf(di)}</span></div>`;
+    if(day.drive) html+=`<div style="font-size:11px;color:#f6bd60;margin-top:3px">${esc(day.drive)}</div>`;
+    day.spots.forEach((s,si)=>{
+      html+=`<div style="font-size:12px;margin-top:5px"><span style="color:#f6bd60;font-weight:700;font-size:10.5px">${hm(etas[si])}</span> ${si+1}. ${s.stay?'🏠 ':''}${esc(s.name)}${s.opt?' <span style="color:#8892b0;font-size:10.5px">(선택)</span>':''}</div>`;
+    });
+    if(day.note) html+=`<div style="font-size:10.5px;color:#9aa5c4;margin-top:6px;white-space:pre-wrap">📝 ${esc(day.note)}</div>`;
+    html+='</div>';
+  });
+  html+='<div style="font-size:10px;color:#5a6690;text-align:right">made with Trip Canvas</div>';
+  w.innerHTML=html;
+  return w;
+}
+document.getElementById('imgBtn').onclick=async()=>{
+  toast('이미지 생성 중…','#1d6fd6');
+  if(!(await loadH2C())){ toast('이미지 모듈 로드 실패 — 네트워크 확인','#e63946'); return; }
+  const card=buildTripCard();
+  document.body.appendChild(card);
+  try{
+    const canvas=await html2canvas(card,{backgroundColor:'#141b33',scale:2});
+    const a=document.createElement('a');
+    a.href=canvas.toDataURL('image/png');
+    a.download=trip().name.replace(/\s+/g,'_')+'.png';
+    a.click();
+    toast('이미지가 저장되었습니다');
+  }catch(e){ toast('이미지 생성 실패','#e63946'); }
+  finally{ card.remove(); }
+};
 document.getElementById('shareBtn').onclick=()=>{
   const data=LZString.compressToEncodedURIComponent(JSON.stringify(trip()));
   const url=location.origin+location.pathname+'#v='+data;   // 읽기전용 보기 링크
