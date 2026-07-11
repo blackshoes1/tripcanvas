@@ -129,6 +129,16 @@ function onMapPick(lat,lng){
   document.getElementById('coordHint').textContent=`좌표: ${lat.toFixed(4)}, ${lng.toFixed(4)} ✓`;
   document.getElementById('spotModalBg').classList.add('show');
 }
+// 지도 우클릭/롱프레스 → 그 좌표로 새 장소 추가 모달 (현재 활성 일자, 없으면 1일차)
+function addSpotAt(lat,lng){
+  if(viewMode) return;
+  const di=activeDay? activeDay-1 : 0;
+  openSpotModal(di,-1);
+  document.getElementById('spotLat').value=lat; document.getElementById('spotLng').value=lng;
+  document.getElementById('coordHint').textContent=`좌표: ${(+lat).toFixed(4)}, ${(+lng).toFixed(4)} ✓ (지도에서 지정)`;
+  document.getElementById('spotName').value='';
+  setTimeout(()=>document.getElementById('spotName').focus(),50);
+}
 window.__gmapsReady=function(){
   map=new google.maps.Map(document.getElementById('map'),{
     center:{lat:40,lng:-3.7}, zoom:6, mapId:'DEMO_MAP_ID',
@@ -136,6 +146,7 @@ window.__gmapsReady=function(){
   });
   iw=new google.maps.InfoWindow();
   map.addListener('click',e=>onMapPick(e.latLng.lat(), e.latLng.lng()));
+  map.addListener('rightclick',e=>{ if(!pickMode) addSpotAt(e.latLng.lat(), e.latLng.lng()); });
   render();
   google.maps.event.addListenerOnce(map,'idle',()=>{ if(engine==='google') fitEntry(); });   // 레이아웃 확정 후 초기 포커싱
 };
@@ -152,6 +163,7 @@ async function ensureKakaoMap(){
   if(!(await loadKakao())) return false;
   kmap=new kakao.maps.Map(document.getElementById('kmap'),{center:new kakao.maps.LatLng(36.5,127.9), level:12});
   kakao.maps.event.addListener(kmap,'click',me=>onMapPick(me.latLng.getLat(), me.latLng.getLng()));
+  kakao.maps.event.addListener(kmap,'rightclick',me=>{ if(!pickMode) addSpotAt(me.latLng.getLat(), me.latLng.getLng()); });
   return true;
 }
 // 좌표 있는 스팟 과반이 한국이면 카카오 엔진
