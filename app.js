@@ -556,9 +556,10 @@ function renderSidebar(){
       let legHtml='';
       if(hasLoc(s)&&prevLoc){
         const lid=legId(prevLoc,s), lc=requestLeg(prevLoc,s);
+        const failed=!lc && legCache[lid] && legCache[lid].fail;   // 도로 경로 없음 (바다·산 위 좌표 등)
         legHtml = lc
           ? `<span class="leg" data-leg="${lid}" title="실제 도로 기준${lc.taxi?` · 택시 약 ${lc.taxi.toLocaleString()}원`:''}">${legLabel(lc)}</span>`
-          : `<span class="leg" data-leg="${lid}">↳${haversine(prevLoc,s).toFixed(1)}km</span>`;
+          : `<span class="leg${failed?' legfail':''}" data-leg="${lid}"${failed?' title="도로 경로를 찾을 수 없어 직선거리로 표시 — 명소 위치가 도로에서 멀어요(바다·산 위 좌표 등). 명소 편집에서 검색으로 위치를 다시 잡으면 경로·시간이 표시됩니다"':''}>↳${haversine(prevLoc,s).toFixed(1)}km${failed?' ⚠️':''}</span>`;
       }
       if(hasLoc(s)) prevLoc=s;
       spotsHtml+=`<div class="spot" data-di="${di}" data-si="${si}" style="--c:${dotC}">
