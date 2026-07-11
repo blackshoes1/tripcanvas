@@ -1242,8 +1242,13 @@ function parseDirect(text){
 async function parseAI(text){
   if(!cfg.apiKey) throw new Error('AI 파싱을 쓰려면 API 키를 입력해줘');
   const system=`너는 여행 일정 파서다. 사용자의 자유로운 여행 설명을 받아 JSON으로만 변환해라.
-스키마: {"name":string,"start":"YYYY-MM-DD"|null,"days":[{"title":string,"drive":string,"note":string,"spots":[{"name":string,"city":string,"desc":string,"opt":boolean,"stay":boolean,"lat":number|null,"lng":number|null}]}]}
+스키마: {"name":string,"start":"YYYY-MM-DD"|null,"days":[{"title":string,"mode":"car"|"transit"|"walk"|"bike","startAt":"HH:MM"|null,"drive":string,"note":string,"spots":[{"name":string,"city":string,"desc":string,"opt":boolean,"stay":boolean,"stayMin":number|null,"cost":number|null,"bookAt":"HH:MM"|null,"lat":number|null,"lng":number|null}]}]}
 - stay는 숙소(호텔·에어비앤비 등)면 true.
+- mode는 그날 주 이동수단: 렌터카/자차=car, 지하철·버스·기차=transit, 걷기=walk, 자전거=bike. 언급 없으면 "car".
+- startAt은 그날 시작 시각(예 "KTX 9시 출발"→"09:00"). 없으면 null.
+- stayMin은 장소 체류시간(분). "알함브라 3시간"→180, "1시간"→60. 언급 없으면 null.
+- cost는 1인 예상 비용(원, 숫자만). "입장료 2만원"→20000. 없으면 null.
+- bookAt은 예약·입장 지정 시각(예 "나스르궁 14시 입장"→"14:00"). 없으면 null.
 - 모든 텍스트 필드는 한국어.
 - 각 장소의 실제 위도/경도를 네 지식으로 채워라. 확실하지 않으면 lat/lng를 null로 둬라.
 - drive는 그날 이동 정보(예: "✈️ 인천 → 다롄"), note는 그날의 팁/메모. 없으면 빈 문자열.
@@ -1299,10 +1304,16 @@ async function runPaste(){
   }catch(e){ toast(e.message||'파싱 실패','#e63946'); return; }
   if(!parsed||!Array.isArray(parsed.days)||!parsed.days.length){ toast('일정을 못 읽었어 — 형식을 확인해줘','#e63946'); return; }
   // 정규화
+  const MODES=['car','transit','walk','bike'];
+  const hhmm=v=>/^\d{1,2}:\d{2}$/.test(v||'')?v:'';
+  const posInt=v=>{const n=parseInt(v); return (v==null||isNaN(n)||n<0)?null:n;};
   parsed.days=parsed.days.map(d=>({
     title:d.title||'', drive:d.drive||'', note:d.note||'',
+    mode:MODES.includes(d.mode)?d.mode:'car', startAt:hhmm(d.startAt)||'09:00',
     spots:(d.spots||[]).map(s=>({name:(s.name||'').trim(), city:(s.city||'기타').trim(), desc:s.desc||'',
-      opt:!!s.opt, stay:!!s.stay, lat:(s.lat==null?null:+s.lat), lng:(s.lng==null?null:+s.lng)})).filter(s=>s.name)
+      opt:!!s.opt, stay:!!s.stay, stayMin:(s.stayMin==null?null:posInt(s.stayMin)),
+      cost:(s.cost==null?null:posInt(s.cost)), bookAt:hhmm(s.bookAt),
+      lat:(s.lat==null?null:+s.lat), lng:(s.lng==null?null:+s.lng)})).filter(s=>s.name)
   }));
   // 좌표 없는 장소 지오코딩
   const need=[]; parsed.days.forEach(d=>d.spots.forEach(s=>{ if(s.lat==null||isNaN(s.lat)||s.lng==null||isNaN(s.lng)) need.push(s); }));
