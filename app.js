@@ -202,6 +202,35 @@ function dateOf(di){
 function toISO(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 // di번째 날의 ISO 날짜 (시작일 미설정 시 빈 문자열)
 function isoDateOf(di){ if(!trip().start) return ''; const d=new Date(trip().start+'T00:00:00'); d.setDate(d.getDate()+di); return toISO(d); }
+
+// ── 날씨 (Open-Meteo, 무키·CORS) — 그날·첫 장소 좌표 기준, 세션 캐시 ──
+const WMO={0:'☀️',1:'🌤',2:'⛅',3:'☁️',45:'🌫',48:'🌫',51:'🌦',53:'🌦',55:'🌧',56:'🌧',57:'🌧',
+  61:'🌦',63:'🌧',65:'🌧',66:'🌧',67:'🌧',71:'🌨',73:'🌨',75:'❄️',77:'🌨',80:'🌦',81:'🌧',82:'⛈',
+  85:'🌨',86:'❄️',95:'⛈',96:'⛈',99:'⛈'};
+const _wx={}; let _wxT=null;   // 'lat,lng@date' → {icon,tmax,tmin} | null | 'wait'
+function wxKey(lat,lng,iso){ return `${(+lat).toFixed(2)},${(+lng).toFixed(2)}@${iso}`; }
+function requestWx(lat,lng,iso){
+  if(!iso) return null;
+  const days=Math.round((new Date(iso+'T00:00:00')-new Date(new Date().toDateString()))/864e5);
+  if(days<0||days>15) return null;   // Open-Meteo 예보는 대략 16일 이내
+  const k=wxKey(lat,lng,iso), c=_wx[k];
+  if(c!==undefined) return c==='wait'?null:c;
+  _wx[k]='wait';
+  fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto&start_date=${iso}&end_date=${iso}`)
+    .then(r=>r.json()).then(j=>{
+      const d=j&&j.daily;
+      _wx[k]=(d&&d.time&&d.time.length)? {icon:WMO[d.weather_code[0]]||'🌡', tmax:Math.round(d.temperature_2m_max[0]), tmin:Math.round(d.temperature_2m_min[0])} : null;
+      clearTimeout(_wxT); _wxT=setTimeout(()=>renderSidebar(),300);
+    }).catch(()=>{ _wx[k]=null; });
+  return null;
+}
+function dayWeatherHtml(day,di){
+  const first=day.spots.find(hasLoc), iso=isoDateOf(di);
+  if(!first||!iso) return '';
+  const w=requestWx(first.lat,first.lng,iso);
+  if(!w) return '';
+  return `<span class="wx" title="${esc(first.name)} 기준 예보">${w.icon} ${w.tmax}° <span style="opacity:.6">/ ${w.tmin}°</span></span>`;
+}
 function gmapsLink(s){ return `https://www.google.com/maps/search/?api=1&query=${s.lat},${s.lng}(${encodeURIComponent(s.name)})`; }
 // 외부 지도 링크 — 국내는 카카오맵(한국서 실제 내비 가능), 해외는 구글
 function extMapLink(s){
@@ -661,7 +690,7 @@ function renderSidebar(){
     });
     card.innerHTML=`<div class="dayHead">
         <span><span class="dragHandle" title="드래그로 일자 순서 변경">⠿</span> Day ${di+1} · ${esc(day.title)}</span>
-        <span style="display:flex;align-items:center;gap:6px"><button class="iconb modeBtn" onclick="event.stopPropagation();cycleMode(${di})" title="이동 수단: ${MODE_NAME[dm]} — 클릭해서 변경">${MODE_ICON[dm]}</button><span class="date" onclick="event.stopPropagation();openDayModal(${di})" style="cursor:pointer" title="클릭해서 날짜 지정/수정">${dateOf(di)||'📅 날짜 지정'}</span>
+        <span style="display:flex;align-items:center;gap:6px">${dayWeatherHtml(day,di)}<button class="iconb modeBtn" onclick="event.stopPropagation();cycleMode(${di})" title="이동 수단: ${MODE_NAME[dm]} — 클릭해서 변경">${MODE_ICON[dm]}</button><span class="date" onclick="event.stopPropagation();openDayModal(${di})" style="cursor:pointer" title="클릭해서 날짜 지정/수정">${dateOf(di)||'📅 날짜 지정'}</span>
         <span class="tools"><button class="iconb" onclick="event.stopPropagation();openDayModal(${di})">✎</button></span></span>
       </div><div class="dayBody">
         ${day.drive?`<div class="drive">${esc(day.drive)}</div>`:''}
