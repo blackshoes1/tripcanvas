@@ -123,3 +123,7 @@
 .readonly .modeBtn{pointer-events:none}
 .wx{font-size:11px;color:#cdd6f4;white-space:nowrap}
 .overload{font-size:11px;color:#ffb454;background:#3a2a12;border-radius:7px;padding:2px 8px;margin:2px 0 3px;display:inline-block}
+.spotMeta{display:inline-flex;gap:8px;margin-left:6px;font-size:10.5px;vertical-align:middle}
+.spotMeta .cost{color:#c9b6e8}
+.spotMeta .book{color:#9fd0ff;text-decoration:none}
+.spotMeta .bookwarn{color:#ffb454}

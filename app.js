@@ -437,6 +437,12 @@ function dayEtas(day){
     return eta;
   });
 }
+// 하루 장소 비용 합계
+function dayCost(day){ return day.spots.reduce((a,s)=>a+(+s.cost||0),0); }
+// 여행 전체 비용(장소+자차일 택시) 합계
+function tripCost(){
+  return trip().days.reduce((a,d)=>{ const tx=(dayModeOf(d)==='car')?((dayRoute(d)||{}).taxi||0):0; return a+dayCost(d)+tx; },0);
+}
 // 일정 예상 종료 시각(분) — 마지막 장소 ETA + 그 체류시간
 function dayEndMin(day){
   if(!day.spots.length) return null;
@@ -645,6 +651,11 @@ function renderFilter(){
     };
     bar.appendChild(b);
   });
+  // 여행 전체 예상 비용
+  const tc=tripCost();
+  if(tc){ const sep2=document.createElement('span'); sep2.style.cssText='width:1px;height:18px;background:#2a3457;margin:0 4px'; bar.appendChild(sep2);
+    const cb=document.createElement('span'); cb.className='chip'; cb.style.cssText='background:#2a2033;color:#e0b0ff;cursor:default';
+    cb.textContent=`💳 여행 약 ${tc.toLocaleString()}원`; cb.title='장소 예상비용 + 자차일 택시요금 합계'; bar.appendChild(cb); }
 }
 function renderLegend(){
   let body;
@@ -686,8 +697,16 @@ function renderSidebar(){
           : `<span class="leg${failed?' legfail':''}" data-leg="${lid}"${failed?' title="경로를 찾을 수 없어 직선거리로 표시 — 인근 도로 탐색(최대 2.4km)까지 실패했습니다. 장소 편집에서 검색으로 위치를 다시 잡아 보세요"':''}>↳${haversine(prevLoc,s).toFixed(1)}km${failed?' ⚠️':''}</span>`;
       }
       if(hasLoc(s)) prevLoc=s;
+      // 예약 시각이 도착 예상시각(ETA)보다 이르면 경고 (예약 놓칠 위험)
+      const bookMin=s.bookAt?parseHM(s.bookAt):null;
+      const bookWarn=(bookMin!=null && etas[si]-bookMin>5);   // ETA가 예약보다 5분 이상 늦음
+      const meta=[];
+      if(s.cost) meta.push(`<span class="cost">💳 ${(+s.cost).toLocaleString()}</span>`);
+      if(s.bookAt) meta.push(`<span class="book${bookWarn?' bookwarn':''}"${bookWarn?` title="예약 ${s.bookAt}인데 예상 도착 ${hm(etas[si])} — 일정이 늦습니다"`:` title="예약 시각"`}>🎫 ${esc(s.bookAt)}${bookWarn?' ⚠️':''}</span>`);
+      if(s.bookUrl) meta.push(`<a class="book" href="${escAttr(s.bookUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="예약 링크 열기">🔗</a>`);
+      const metaHtml=meta.length?`<div class="spotMeta">${meta.join(' ')}</div>`:'';
       spotsHtml+=`<div class="spot" data-di="${di}" data-si="${si}" style="--c:${dotC}">
-        <span class="nm" onclick="focusSpot(${di},${si})"><span class="eta" title="도착 예상시각 (시작시각+체류+이동 기준)">${hm(etas[si])}</span>${si+1}. ${s.stay?'🏠 ':''}${esc(s.name)}${s.opt?' <span class=opt>(선택)</span>':''}${hasLoc(s)?'':`<span class="noloc" onclick="event.stopPropagation();openSpotModal(${di},${si})">📍 위치 지정</span>`}</span>${legHtml}
+        <span class="nm" onclick="focusSpot(${di},${si})"><span class="eta" title="도착 예상시각 (시작시각+체류+이동 기준)">${hm(etas[si])}</span>${si+1}. ${s.stay?'🏠 ':''}${esc(s.name)}${s.opt?' <span class=opt>(선택)</span>':''}${hasLoc(s)?'':`<span class="noloc" onclick="event.stopPropagation();openSpotModal(${di},${si})">📍 위치 지정</span>`}${metaHtml}</span>${legHtml}
         <span class="tools">
           <button class="iconb mvup" onclick="moveSpot(${di},${si},-1)" title="위로">▲</button>
           <button class="iconb mvdown" onclick="moveSpot(${di},${si},1)" title="아래로">▼</button>
@@ -711,6 +730,8 @@ function renderSidebar(){
         ${(()=>{const rt=dayRoute(day); if(rt) return `<div class="dist">📏 하루 동선 약 ${(rt.m/1000).toFixed(1)}km · ${MODE_ICON[dm]}${fmtDur(rt.sec)}${(dm==='car'&&rt.taxi)?` · 🚕약 ${rt.taxi.toLocaleString()}원`:''} <span style="opacity:.55">(도로 기준)</span></div>`;
           return dayDistance(day)>0?`<div class="dist">📏 하루 동선 약 ${dayDistance(day).toFixed(1)}km <span style="opacity:.55">(직선)</span></div>`:'';})()}
         ${(()=>{const e=dayEndMin(day); return (e!=null&&e>22*60)?`<div class="overload" title="시작시각+체류+이동 기준 예상 종료">⚠️ 일정 과밀 — 예상 종료 ${hm(e)}${e>=24*60?' (익일)':''}</div>`:'';})()}
+        ${(()=>{const dc=dayCost(day); const tx=(dayRoute(day)||{}).taxi||0; const tot=dc+(dm==='car'?tx:0);
+          return tot?`<div class="dist">💳 하루 비용 약 ${tot.toLocaleString()}원${(dc&&dm==='car'&&tx)?` <span style="opacity:.55">(장소 ${dc.toLocaleString()} + 택시 ${tx.toLocaleString()})</span>`:''}</div>`:'';})()}
         <div class="spotList" data-di="${di}">${spotsHtml}</div>
         <button class="addSpot" onclick="openSpotModal(${di},-1)">＋ 장소 추가</button>
         ${day.note?`<div class="note">📝 ${esc(day.note)}</div>`:''}
@@ -815,6 +836,9 @@ window.openSpotModal=(di,si)=>{
   document.getElementById('spotOpt').checked=!!s.opt;
   document.getElementById('spotStay').checked=!!s.stay;
   document.getElementById('spotStayMin').value=(s.stayMin!=null? s.stayMin : 60);
+  document.getElementById('spotCost').value=(s.cost!=null? s.cost : '');
+  document.getElementById('spotBookAt').value=s.bookAt||'';
+  document.getElementById('spotBookUrl').value=s.bookUrl||'';
   document.getElementById('spotLat').value=s.lat; document.getElementById('spotLng').value=s.lng;
   document.getElementById('coordHint').textContent = s.lat?`좌표: ${(+s.lat).toFixed(4)}, ${(+s.lng).toFixed(4)}`:'좌표: 미지정 (검색 또는 지도 클릭)';
   document.getElementById('spotSearch').value=''; document.getElementById('searchRes').innerHTML='';
@@ -828,9 +852,13 @@ document.getElementById('spotSave').onclick=()=>{
   const lat=parseFloat(document.getElementById('spotLat').value), lng=parseFloat(document.getElementById('spotLng').value);
   if(!name){toast('이름을 입력하세요','#e63946');return;}
   if(isNaN(lat)||isNaN(lng)){toast('위치를 지정하세요 (검색 또는 지도 클릭)','#e63946');return;}
+  const costV=parseInt(document.getElementById('spotCost').value);
   const s={name,city:document.getElementById('spotCity').value.trim()||'기타',desc:document.getElementById('spotDesc').value.trim(),
     opt:document.getElementById('spotOpt').checked,stay:document.getElementById('spotStay').checked,
-    stayMin:Math.max(0,parseInt(document.getElementById('spotStayMin').value)||60),lat,lng};
+    stayMin:Math.max(0,parseInt(document.getElementById('spotStayMin').value)||60),
+    cost:(isNaN(costV)?null:Math.max(0,costV)),
+    bookAt:document.getElementById('spotBookAt').value||'',
+    bookUrl:document.getElementById('spotBookUrl').value.trim(),lat,lng};
   const targetDay=parseInt(document.getElementById('spotDay').value);
   if(editing.si>=0){ trip().days[editing.di].spots.splice(editing.si,1); }
   trip().days[targetDay].spots.push(s);
@@ -1323,8 +1351,13 @@ function renderTravel(di){
     }
     if(hasLoc(s)) prevLoc=s;
     const div=document.createElement('div'); div.className='tSpot'; div.style.setProperty('--c',spotColor(s,di,colors));
+    const tmeta=[];
+    if(s.bookAt) tmeta.push(`🎫 예약 ${esc(s.bookAt)}`);
+    if(s.cost) tmeta.push(`💳 ${(+s.cost).toLocaleString()}원`);
     div.innerHTML=`<div class="n"><span class="eta">${hm(etas[si])}</span>${si+1}. ${s.stay?'🏠 ':''}${esc(s.name)}${s.opt?' <span style="font-size:11px;color:#8892b0">(선택)</span>':''}</div>`+
+      (tmeta.length?`<div class="d" style="color:#c9b6e8">${tmeta.join(' · ')}</div>`:'')+
       `<div class="d">${esc(s.desc).replace(/\n/g,'<br>')}</div>`+
+      (s.bookUrl?`<a href="${escAttr(s.bookUrl)}" target="_blank" rel="noopener" style="background:#7c5cff;margin-right:6px">🎫 예약 열기</a>`:'')+
       (hasLoc(s)
         ? (inKorea({lat:+s.lat,lng:+s.lng})
             ? `<a href="https://map.kakao.com/link/to/${encodeURIComponent(s.name)},${s.lat},${s.lng}" target="_blank" rel="noopener">🧭 카카오맵 길찾기</a>`
