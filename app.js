@@ -152,7 +152,7 @@ window.__gmapsReady=function(){
 };
 (function(){
   const s=document.createElement('script');
-  s.src=`https://maps.googleapis.com/maps/api/js?key=${GMAPS_KEY}&v=weekly&libraries=places,marker,geometry&loading=async&callback=__gmapsReady`;
+  s.src=`https://maps.googleapis.com/maps/api/js?key=${GMAPS_KEY}&v=weekly&libraries=places,marker&loading=async&callback=__gmapsReady`;
   s.async=true;
   s.onerror=()=>toast('지도를 불러오지 못했습니다 — 네트워크/API 키 확인','#e63946');
   document.head.appendChild(s);
@@ -263,7 +263,7 @@ function dayDistance(day){
 
 // ── 구간 소요시간 (자동차) — 국내 카카오내비 · 해외 Google Routes, localStorage 캐시 ──
 const KAKAO_REST_KEY='48e05420d9dcc072915ff99412669995';   // 카카오내비 REST (CORS 허용 확인됨)
-const LEG_KEY='tripcanvas_legs_v3';   // v3: 이동수단(mode)별 캐시 + 도로 스냅
+const LEG_KEY='tripcanvas_legs_v4';   // v4: 순수 코덱(SDK 비의존) — v3의 경로없음 오염 캐시 폐기
 let legCache={};
 try{ legCache=JSON.parse(localStorage.getItem(LEG_KEY))||{}; }catch(e){}
 // 이동 수단 (일자별): car 자차 · transit 대중교통 · walk 도보 · bike 자전거
@@ -273,17 +273,14 @@ const MODE_SPEED={car:40,transit:25,walk:4.5,bike:15};   // km/h — 미캐시 �
 function dayModeOf(day){ return MODE_ICON[day.mode]? day.mode : 'car'; }
 function saveLegCache(){ try{ localStorage.setItem(LEG_KEY, JSON.stringify(legCache)); }catch(e){} }
 function fmtDur(sec){ const m=Math.round(sec/60); return m<60? `${m}분` : `${Math.floor(m/60)}시간${m%60? ' '+(m%60)+'분':''}`; }
-// 좌표 배열 → 구글 인코딩 폴리라인 (캐시 용량 절약). geometry 라이브러리 필요
+// 좌표 배열 → 인코딩 폴리라인 (lib.js 순수 코덱 — SDK 비의존, 로드 타이밍 무관)
 function encodePts(pts){
-  if(!window.google||!google.maps.geometry||!pts.length) return null;
+  if(!pts||!pts.length) return null;
   const step=Math.max(1, Math.floor(pts.length/300));   // 최대 ~300점으로 다운샘플
   const sampled=pts.filter((_,i)=>i%step===0); if(sampled[sampled.length-1]!==pts[pts.length-1]) sampled.push(pts[pts.length-1]);
-  return google.maps.geometry.encoding.encodePath(sampled.map(p=>new google.maps.LatLng(p.lat,p.lng)));
+  return encodePolyline(sampled);
 }
-function decodePts(enc){
-  if(!window.google||!google.maps.geometry||!enc) return null;
-  try{ return google.maps.geometry.encoding.decodePath(enc).map(ll=>({lat:ll.lat(),lng:ll.lng()})); }catch(e){ return null; }
-}
+function decodePts(enc){ return enc? decodePolyline(enc) : null; }
 // 카카오내비 1회 호출 — 성공 시 {rt}, 실패 시 {code} (102 출발지·103 도착지 주변 도로 없음)
 async function kakaoTry(a,b){
   try{
@@ -388,9 +385,7 @@ function requestLeg(a,b,mode){
 }
 async function pumpLegs(){
   if(legBusy) return; legBusy=true;
-  // 경로 인코딩(encodePts)에 구글 geometry가 필요 — SDK 로드 전에 조회하면
-  // 경로 없는 결과가 영구 캐시되므로, 준비될 때까지 대기 (최대 ~21초)
-  for(let i=0;i<70 && !(window.google&&google.maps&&google.maps.geometry);i++) await sleep(300);
+  // 인코딩은 순수 JS(lib.js)라 SDK 대기 불필요
   while(legQueue.length){
     const {key,mode,a,b}=legQueue.shift();
     if(legCache[key]) continue;

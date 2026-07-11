@@ -67,7 +67,28 @@
     return out;
   }
 
-  const TC={toISO,haversine,legId,legKey,ringPts,parseHM,hm,inKorea,simplifyName,parseDirect};
+  // 폴리라인 인코딩/디코딩 (Google 알고리즘, precision 5) — SDK 비의존, 구글 encodedPolyline과 호환
+  function encodePolyline(points){
+    const factor=1e5; let lat=0,lng=0,res='';
+    const enc=v=>{ v=v<0?~(v<<1):(v<<1); let s=''; while(v>=0x20){ s+=String.fromCharCode((0x20|(v&0x1f))+63); v>>>=5; } s+=String.fromCharCode(v+63); return s; };
+    for(const p of points){ const la=Math.round(p.lat*factor), ln=Math.round(p.lng*factor); res+=enc(la-lat)+enc(ln-lng); lat=la; lng=ln; }
+    return res;
+  }
+  function decodePolyline(str){
+    const factor=1e5; let i=0,lat=0,lng=0; const out=[]; str=str||'';
+    while(i<str.length){
+      let b,shift=0,result=0;
+      do{ b=str.charCodeAt(i++)-63; result|=(b&0x1f)<<shift; shift+=5; }while(b>=0x20);
+      lat+=(result&1)?~(result>>1):(result>>1);
+      shift=0; result=0;
+      do{ b=str.charCodeAt(i++)-63; result|=(b&0x1f)<<shift; shift+=5; }while(b>=0x20);
+      lng+=(result&1)?~(result>>1):(result>>1);
+      out.push({lat:lat/factor, lng:lng/factor});
+    }
+    return out;
+  }
+
+  const TC={toISO,haversine,legId,legKey,ringPts,parseHM,hm,inKorea,simplifyName,parseDirect,encodePolyline,decodePolyline};
   if(typeof module!=='undefined' && module.exports){ module.exports=TC; }   // Node (테스트)
   else { for(const k in TC) root[k]=TC[k]; }                                // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);

@@ -45,6 +45,17 @@ test('simplifyName — 괄호·서술 꼬리말 제거', () => {
   assert.equal(L.simplifyName('불국사'), '불국사');
 });
 
+test('polyline 코덱 — 왕복 무손실 + 구글 호환 문자열', () => {
+  const pts=[{lat:35.7965,lng:129.1349},{lat:35.8093,lng:129.5015},{lat:35.8348,lng:129.2265}];
+  const dec=L.decodePolyline(L.encodePolyline(pts));
+  pts.forEach((p,i)=>{ assert.ok(Math.abs(p.lat-dec[i].lat)<1e-5 && Math.abs(p.lng-dec[i].lng)<1e-5); });
+  // 구글 인코딩 예제(precision 5): (38.5,-120.2)(40.7,-120.95)(43.252,-126.453) → "_p~iF~ps|U_ulLnnqC_mqNvxq`@"
+  const g=L.decodePolyline('_p~iF~ps|U_ulLnnqC_mqNvxq`@');
+  assert.equal(g.length,3);
+  assert.ok(Math.abs(g[0].lat-38.5)<1e-5 && Math.abs(g[0].lng+120.2)<1e-5);
+  assert.ok(Math.abs(g[2].lat-43.252)<1e-5 && Math.abs(g[2].lng+126.453)<1e-5);
+  assert.equal(L.encodePolyline([{lat:38.5,lng:-120.2},{lat:40.7,lng:-120.95},{lat:43.252,lng:-126.453}]), '_p~iF~ps|U_ulLnnqC_mqNvxq`@');
+});
 test('toISO — 로컬 날짜 포맷', () => {
   assert.equal(L.toISO(new Date(2026,6,5)), '2026-07-05');   // 월 0-기반
 });
