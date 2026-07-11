@@ -317,6 +317,26 @@ async function pumpLegs(){
   }
   legBusy=false;
 }
+// ── 타임라인 (도착 예상시각) ──
+function parseHM(t){ const m=/^(\d{1,2}):(\d{2})$/.exec(t||''); return m? (+m[1])*60+(+m[2]) : 9*60; }
+function hm(min){ min=((Math.round(min)%1440)+1440)%1440; return `${String(Math.floor(min/60)).padStart(2,'0')}:${String(min%60).padStart(2,'0')}`; }
+// 구간 이동시간(분): 캐시된 실도로(2km 미만 도보) 우선, 없으면 직선 40km/h 추정
+function legMinutes(a,b){
+  const c=legCache[legId(a,b)];
+  if(c&&c.sec) return c.m<2000? c.m/75 : c.sec/60;
+  return haversine(a,b)/40*60;
+}
+// 일자 시작시각(startAt, 기본 09:00)부터 체류시간(stayMin, 기본 60분)+이동시간 누적
+function dayEtas(day){
+  let t=parseHM(day.startAt), prev=null;
+  return day.spots.map(s=>{
+    if(hasLoc(s)&&prev) t+=legMinutes(prev,s);
+    const eta=t;
+    t+=(s.stayMin!=null? +s.stayMin : 60);
+    if(hasLoc(s)) prev=s;
+    return eta;
+  });
+}
 // 하루 전체 실도로 합계 (모든 구간이 캐시됐을 때만)
 function dayRoute(day){
   const loc=day.spots.filter(hasLoc);
@@ -510,6 +530,7 @@ function renderSidebar(){
     const headC = colorByMode()==='day' ? dayColor(di) : (day.spots.length?(colors[day.spots[0].city]||'#556'):'#556');
     const card=document.createElement('div'); card.className='dayCard'+(activeDay&&activeDay!==di+1?' dim':''); card.style.setProperty('--c',headC);
     let spotsHtml='', prevLoc=null;
+    const etas=dayEtas(day);
     day.spots.forEach((s,si)=>{
       const dotC = hasLoc(s)?spotColor(s,di,colors):'#4a5170';
       // 구간: 실도로 소요시간(캐시)이 있으면 그걸, 아니면 직선거리 + 백그라운드 조회
@@ -522,7 +543,7 @@ function renderSidebar(){
       }
       if(hasLoc(s)) prevLoc=s;
       spotsHtml+=`<div class="spot" data-di="${di}" data-si="${si}" style="--c:${dotC}">
-        <span class="nm" onclick="focusSpot(${di},${si})">${si+1}. ${s.stay?'🏠 ':''}${esc(s.name)}${s.opt?' <span class=opt>(선택)</span>':''}${hasLoc(s)?'':`<span class="noloc" onclick="event.stopPropagation();openSpotModal(${di},${si})">📍 위치 지정</span>`}</span>${legHtml}
+        <span class="nm" onclick="focusSpot(${di},${si})"><span class="eta" title="도착 예상시각 (시작시각+체류+이동 기준)">${hm(etas[si])}</span>${si+1}. ${s.stay?'🏠 ':''}${esc(s.name)}${s.opt?' <span class=opt>(선택)</span>':''}${hasLoc(s)?'':`<span class="noloc" onclick="event.stopPropagation();openSpotModal(${di},${si})">📍 위치 지정</span>`}</span>${legHtml}
         <span class="tools">
           <button class="iconb mvup" onclick="moveSpot(${di},${si},-1)" title="위로">▲</button>
           <button class="iconb mvdown" onclick="moveSpot(${di},${si},1)" title="아래로">▼</button>
@@ -639,6 +660,7 @@ window.openSpotModal=(di,si)=>{
   document.getElementById('spotDesc').value=s.desc||'';
   document.getElementById('spotOpt').checked=!!s.opt;
   document.getElementById('spotStay').checked=!!s.stay;
+  document.getElementById('spotStayMin').value=(s.stayMin!=null? s.stayMin : 60);
   document.getElementById('spotLat').value=s.lat; document.getElementById('spotLng').value=s.lng;
   document.getElementById('coordHint').textContent = s.lat?`좌표: ${(+s.lat).toFixed(4)}, ${(+s.lng).toFixed(4)}`:'좌표: 미지정 (검색 또는 지도 클릭)';
   document.getElementById('spotSearch').value=''; document.getElementById('searchRes').innerHTML='';
@@ -653,7 +675,8 @@ document.getElementById('spotSave').onclick=()=>{
   if(!name){toast('이름을 입력하세요','#e63946');return;}
   if(isNaN(lat)||isNaN(lng)){toast('위치를 지정하세요 (검색 또는 지도 클릭)','#e63946');return;}
   const s={name,city:document.getElementById('spotCity').value.trim()||'기타',desc:document.getElementById('spotDesc').value.trim(),
-    opt:document.getElementById('spotOpt').checked,stay:document.getElementById('spotStay').checked,lat,lng};
+    opt:document.getElementById('spotOpt').checked,stay:document.getElementById('spotStay').checked,
+    stayMin:Math.max(0,parseInt(document.getElementById('spotStayMin').value)||60),lat,lng};
   const targetDay=parseInt(document.getElementById('spotDay').value);
   if(editing.si>=0){ trip().days[editing.di].spots.splice(editing.si,1); }
   trip().days[targetDay].spots.push(s);
@@ -712,6 +735,7 @@ window.openDayModal=(di)=>{
   const d=trip().days[di];
   document.getElementById('dayModalTitle').textContent=`Day ${di+1} 편집 · ${dateOf(di)}`;
   document.getElementById('dayDate').value=isoDateOf(di);
+  document.getElementById('dayStart').value=d.startAt||'09:00';
   document.getElementById('dayTitle').value=d.title||'';
   document.getElementById('dayDrive').value=d.drive||'';
   document.getElementById('dayNote').value=d.note||'';
@@ -721,6 +745,7 @@ document.getElementById('dayCancel').onclick=()=>document.getElementById('dayMod
 document.getElementById('daySave').onclick=()=>{
   const d=trip().days[editingDay];
   d.title=document.getElementById('dayTitle').value.trim();
+  d.startAt=document.getElementById('dayStart').value||'09:00';
   d.drive=document.getElementById('dayDrive').value.trim();
   d.note=document.getElementById('dayNote').value.trim();
   // 이 날짜에 맞춰 여행 시작일 역산 (Day들은 시작일 기준 연속) — 빈 값이면 시작일 해제
@@ -1077,9 +1102,22 @@ function renderTravel(di){
   document.getElementById('travelSub').textContent=[dateOf(di),d.drive,d.note].filter(Boolean).join('  ·  ');
   const list=document.getElementById('travelList'); list.innerHTML='';
   if(!d.spots.length){ list.innerHTML='<div style="color:#9aa5c4;font-size:13px;padding:20px 4px">이 날은 등록된 명소가 없습니다 — 이동일이거나 자유 일정</div>'; return; }
+  const etas=dayEtas(d);
+  let prevLoc=null;
   d.spots.forEach((s,si)=>{
+    // 구간 이동 정보 (이전 명소 → 이 명소)
+    if(hasLoc(s)&&prevLoc){
+      const c=requestLeg(prevLoc,s);
+      const lg=document.createElement('div'); lg.className='tLeg';
+      lg.textContent = c
+        ? (c.m<2000? `🚶 ${Math.max(1,Math.round(c.m/75))}분 · ${(c.m/1000).toFixed(1)}km`
+                   : `🚗 ${fmtDur(c.sec)} · ${(c.m/1000).toFixed(1)}km${c.taxi?` · 🚕약 ${c.taxi.toLocaleString()}원`:''}`)
+        : `↘ 직선 ${haversine(prevLoc,s).toFixed(1)}km`;
+      list.appendChild(lg);
+    }
+    if(hasLoc(s)) prevLoc=s;
     const div=document.createElement('div'); div.className='tSpot'; div.style.setProperty('--c',spotColor(s,di,colors));
-    div.innerHTML=`<div class="n">${si+1}. ${esc(s.name)}${s.opt?' <span style="font-size:11px;color:#8892b0">(선택)</span>':''}</div>`+
+    div.innerHTML=`<div class="n"><span class="eta">${hm(etas[si])}</span>${si+1}. ${s.stay?'🏠 ':''}${esc(s.name)}${s.opt?' <span style="font-size:11px;color:#8892b0">(선택)</span>':''}</div>`+
       `<div class="d">${esc(s.desc).replace(/\n/g,'<br>')}</div>`+
       (hasLoc(s)
         ? (inKorea({lat:+s.lat,lng:+s.lng})
