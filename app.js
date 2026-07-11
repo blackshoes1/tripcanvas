@@ -437,6 +437,12 @@ function dayEtas(day){
     return eta;
   });
 }
+// 일정 예상 종료 시각(분) — 마지막 장소 ETA + 그 체류시간
+function dayEndMin(day){
+  if(!day.spots.length) return null;
+  const etas=dayEtas(day), last=day.spots.length-1;
+  return etas[last] + (day.spots[last].stayMin!=null? +day.spots[last].stayMin : 60);
+}
 // 하루 전체 실도로 합계 (모든 구간이 캐시됐을 때만)
 function dayRoute(day){
   const loc=day.spots.filter(hasLoc), dm=dayModeOf(day);
@@ -704,6 +710,7 @@ function renderSidebar(){
         })()}
         ${(()=>{const rt=dayRoute(day); if(rt) return `<div class="dist">📏 하루 동선 약 ${(rt.m/1000).toFixed(1)}km · ${MODE_ICON[dm]}${fmtDur(rt.sec)}${(dm==='car'&&rt.taxi)?` · 🚕약 ${rt.taxi.toLocaleString()}원`:''} <span style="opacity:.55">(도로 기준)</span></div>`;
           return dayDistance(day)>0?`<div class="dist">📏 하루 동선 약 ${dayDistance(day).toFixed(1)}km <span style="opacity:.55">(직선)</span></div>`:'';})()}
+        ${(()=>{const e=dayEndMin(day); return (e!=null&&e>22*60)?`<div class="overload" title="시작시각+체류+이동 기준 예상 종료">⚠️ 일정 과밀 — 예상 종료 ${hm(e)}${e>=24*60?' (익일)':''}</div>`:'';})()}
         <div class="spotList" data-di="${di}">${spotsHtml}</div>
         <button class="addSpot" onclick="openSpotModal(${di},-1)">＋ 장소 추가</button>
         ${day.note?`<div class="note">📝 ${esc(day.note)}</div>`:''}
@@ -1463,7 +1470,17 @@ updateAuthUI();
 // ───────────────── PWA ─────────────────
 // 오프라인 지도 캐시는 Google Maps 약관상 불가 — SW는 앱 셸 캐시만 담당
 if('serviceWorker' in navigator){
-  navigator.serviceWorker.register('sw.js').catch(()=>{});
+  navigator.serviceWorker.register('sw.js').then(reg=>{
+    // 새 버전 설치 감지 → 새로고침 유도 토스트 (기존 SW가 이미 제어 중일 때만)
+    reg.addEventListener('updatefound',()=>{
+      const nw=reg.installing; if(!nw) return;
+      nw.addEventListener('statechange',()=>{
+        if(nw.state==='installed' && navigator.serviceWorker.controller){
+          toast('새 버전이 있어요 — 탭해서 새로고침', '#1d6fd6', {label:'새로고침', fn:()=>location.reload()});
+        }
+      });
+    });
+  }).catch(()=>{});
 }
 
 // 시작 — 사이드바 등 DOM 먼저 렌더, 지도·초기 포커싱은 __gmapsReady에서
