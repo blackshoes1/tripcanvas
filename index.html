@@ -121,7 +121,8 @@
   /* 읽기전용 보기 */
   #roBar{background:#7c5c15;color:#fff;padding:6px 12px;font-size:12.5px;display:flex;align-items:center;gap:10px;z-index:1001}
   .readonly .tools,.readonly .addSpot,.readonly #addDayBtn,.readonly .noloc,.readonly .dragHandle,
-  .readonly #newTripBtn,.readonly #tripEditBtn,.readonly #pasteBtn,.readonly #importBtn,.readonly #authBtn{display:none!important}
+  .readonly #newTripBtn,.readonly #tripEditBtn,.readonly #pasteBtn,.readonly #importBtn,.readonly #authBtn,.readonly #undoBtn{display:none!important}
+  #undoBtn:disabled{opacity:.35;cursor:default}
   .readonly .spot,.readonly .dayHead{cursor:default}
   @media (max-width:760px){
     #main{flex-direction:column}
@@ -138,6 +139,7 @@
   <button class="btn" id="tripEditBtn">여행 설정</button>
   <button class="btn" id="pasteBtn">📋 붙여넣기</button>
   <span style="flex:1"></span>
+  <button class="btn ghost" id="undoBtn" title="실행취소 (Ctrl+Z)" disabled onclick="undo()">↩️</button>
   <button class="btn primary" id="travelBtn">📍 여행 모드</button>
   <button class="btn ghost" id="shareBtn">🔗 공유</button>
   <button class="btn ghost" id="exportBtn">내보내기</button>
@@ -347,12 +349,40 @@ function load(){
   }
 }
 let viewMode=null;   // #v= 읽기전용으로 보는 여행 (저장소에 저장 안 함)
+// 다단계 실행취소: save 시점마다 직전 상태를 스택에 보관 (최대 30)
+let histStack=[], histLast=null, histLock=false;
 function save(){
   if(viewMode) return;   // 읽기전용 보기에선 아무것도 저장하지 않음
-  try{ localStorage.setItem(LS_KEY, JSON.stringify(store)); }
+  const ser=JSON.stringify(store);
+  if(!histLock && histLast!==null && histLast!==ser){
+    histStack.push(histLast);
+    if(histStack.length>30) histStack.shift();
+    updateUndoBtn();
+  }
+  histLast=ser;
+  try{ localStorage.setItem(LS_KEY, ser); }
   catch(e){ toast('저장 공간이 부족합니다. 오래된 여행을 내보내고 삭제해 주세요','#e63946'); }
   cloudSyncActive();
 }
+function updateUndoBtn(){ const b=document.getElementById('undoBtn'); if(b) b.disabled=!histStack.length; }
+function undo(){
+  if(viewMode) return;
+  if(!histStack.length){ toast('되돌릴 작업이 없습니다','#8892b0'); return; }
+  histLock=true;
+  store=JSON.parse(histStack.pop());
+  histLast=JSON.stringify(store);
+  if(!store.trips.find(t=>t.id===store.activeId)) store.activeId=store.trips[0]&&store.trips[0].id;
+  activeDay=0; render(); fitAll();
+  histLock=false;
+  updateUndoBtn();
+  toast('실행취소됨','#8892b0');
+}
+document.addEventListener('keydown',e=>{
+  if((e.metaKey||e.ctrlKey)&&!e.shiftKey&&e.key.toLowerCase()==='z'){
+    if(e.target.matches('input,textarea,select'))return;   // 입력 중엔 브라우저 기본 동작
+    e.preventDefault(); undo();
+  }
+});
 function trip(){ return viewMode || store.trips.find(t=>t.id===store.activeId) || store.trips[0]; }
 function uid(){ return Math.random().toString(36).slice(2,9); }
 // 공유 링크/가져오기/AI 파싱으로 외부 데이터가 유입될 수 있으므로 출력 시 항상 이스케이프 (XSS 방어)
