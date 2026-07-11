@@ -138,7 +138,27 @@
     return s;
   }
 
-  const TC={toISO,haversine,legId,legKey,ringPts,parseHM,hm,inKorea,simplifyName,parseDirect,encodePolyline,decodePolyline,optimizeRoute,routeLength};
+  /**
+   * 특정 요일·시각에 영업 중인지 판정.
+   * @param {{d:number,o:number,c:number}[]|null|undefined} periods 영업 구간(d: 요일 0=일~6=토, o/c: 자정부터 분). d=-1은 상시영업(24/7)
+   * @param {number} weekday 0=일~6=토
+   * @param {number} min 0~1439
+   * @returns {boolean|null} 영업 true / 닫힘 false / 정보없음 null
+   */
+  function isOpenAt(periods, weekday, min){
+    if(!periods || !periods.length) return null;
+    for(const p of periods){
+      if(p.d===-1) return true;                                   // 24/7
+      if(p.c>p.o){ if(p.d===weekday && min>=p.o && min<p.c) return true; }   // 같은 날 구간
+      else {                                                     // 자정 넘김 (예: 22:00~02:00)
+        if(p.d===weekday && min>=p.o) return true;
+        if(p.d===(weekday+6)%7 && min<p.c) return true;          // 전날 개장분이 오늘 새벽까지
+      }
+    }
+    return false;
+  }
+
+  const TC={toISO,haversine,legId,legKey,ringPts,parseHM,hm,inKorea,simplifyName,parseDirect,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt};
   if(typeof module!=='undefined' && module.exports){ module.exports=TC; }   // Node (테스트)
   else { const r=/**@type {any}*/(root); for(const k in TC) r[k]=/**@type {any}*/(TC)[k]; }   // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);
