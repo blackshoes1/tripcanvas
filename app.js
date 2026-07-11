@@ -63,7 +63,8 @@ let histStack=[], histLast=null, histLock=false;
 function save(){
   if(viewMode) return;   // 읽기전용 보기에선 아무것도 저장하지 않음
   const ser=JSON.stringify(store);
-  if(!histLock && histLast!==null && histLast!==ser){
+  if(ser===histLast) return;   // 변경 없음 — 저장·클라우드 동기화·히스토리 모두 생략 (뷰 전용/비동기 재렌더가 render→save를 타도 무비용)
+  if(!histLock && histLast!==null){
     histStack.push(histLast);
     if(histStack.length>30) histStack.shift();
     updateUndoBtn();
@@ -77,12 +78,12 @@ function updateUndoBtn(){ const b=document.getElementById('undoBtn'); if(b) b.di
 function undo(){
   if(viewMode) return;
   if(!histStack.length){ toast('되돌릴 작업이 없습니다','#8892b0'); return; }
-  histLock=true;
   store=JSON.parse(histStack.pop());
-  histLast=JSON.stringify(store);
   if(!store.trips.find(t=>t.id===store.activeId)) store.activeId=store.trips[0]&&store.trips[0].id;
+  // 복원 상태를 localStorage·클라우드에 기록하되, 되돌리기 자체는 히스토리에 새 항목으로 쌓지 않는다.
+  // (histLast=null로 save의 "변경 없음" 조기 반환을 우회, histLock으로 push는 억제)
+  histLock=true; histLast=null; save(); histLock=false;
   activeDay=0; render(); fitAll();
-  histLock=false;
   updateUndoBtn();
   toast('실행취소됨','#8892b0');
 }
@@ -112,7 +113,15 @@ function toast(msg, color, action){
 }
 // 파괴적 동작 되돌리기용 스냅샷
 function snapshot(){ return JSON.parse(JSON.stringify(store)); }
-function undoWith(snap){ store=snap; activeDay=0; render(); fitAll(); }
+// 상태 변경 진입점: 뮤테이션(fn) 적용 → 재렌더(내부에서 변경분만 저장) → 선택적 지도 포커싱(opts.fit).
+// render()가 save()를 품고 save()는 변경분만 기록하므로 여기서 별도 저장 호출은 불필요하다.
+// 규칙: 스토어를 바꾸면 commit(), 뷰(activeDay 등)만 바꾸면 render().
+function commit(fn, opts){
+  if(typeof fn==='function') fn();
+  render();
+  if(opts && opts.fit) opts.fit();
+}
+function undoWith(snap){ commit(()=>{ store=snap; activeDay=0; }, {fit:fitAll}); }
 
 // ───────────────── 지도 (해외=Google · 국내=카카오 듀얼 엔진) ─────────────────
 const GMAPS_KEY='AIzaSyCE6I2dhqk2jzNvA0ZMzDSuPi7HAfWecAM';   // HTTP 리퍼러 제한으로 보호할 것
@@ -631,7 +640,7 @@ function renderFilter(){
   const cmode=document.createElement('button'); cmode.className='chip';
   cmode.textContent = colorByMode()==='day' ? '🎨 일자별' : '🎨 도시별';
   cmode.title='핀·카드 색상 기준 전환';
-  cmode.onclick=()=>{ trip().colorBy = colorByMode()==='day'?'city':'day'; render(); };
+  cmode.onclick=()=>commit(()=>{ trip().colorBy = colorByMode()==='day'?'city':'day'; });
   bar.appendChild(cmode);
   const sep0=document.createElement('span'); sep0.style.cssText='width:1px;height:18px;background:#2a3457;margin:0 4px'; bar.appendChild(sep0);
   const all = document.createElement('button'); all.className='chip'+(activeDay?'':' active'); all.textContent='전체';
@@ -774,7 +783,7 @@ function renderSidebar(){
     onEnd:onDayDrop
   }));
   const add=document.createElement('button'); add.className='btn'; add.id='addDayBtn'; add.textContent='＋ 일자 추가';
-  add.onclick=()=>{ trip().days.push({title:'',drive:'',note:'',spots:[]}); render(); openDayModal(trip().days.length-1); };
+  add.onclick=()=>{ commit(()=>{ trip().days.push({title:'',drive:'',note:'',spots:[]}); }); openDayModal(trip().days.length-1); };
   sb.appendChild(add);
 }
 // 일자 순서 변경 핸들러 (Sortable) — 인덱스 기반이라 날짜는 자동으로 따라감
@@ -785,7 +794,7 @@ function onDayDrop(evt){
   days.splice(evt.newIndex,0,moved);
   activeDay=0;
   // render()는 Sortable 인스턴스를 재생성하므로 onEnd 스택 밖(다음 틱)에서 실행
-  setTimeout(()=>{ render(); toast('일자 순서 변경됨'); },0);
+  setTimeout(()=>{ commit(); toast('일자 순서 변경됨'); },0);
 }
 // 장소 순서/일자 이동 핸들러 (Sortable)
 function onSpotDrop(evt){
@@ -794,7 +803,7 @@ function onSpotDrop(evt){
   const fromSpots=trip().days[fromDi].spots, toSpots=trip().days[toDi].spots;
   const [moved]=fromSpots.splice(evt.oldIndex,1);
   toSpots.splice(evt.newIndex,0,moved);
-  setTimeout(()=>{ render(); if(fromDi!==toDi) toast(`Day ${toDi+1}(으)로 이동`); },0);
+  setTimeout(()=>{ commit(); if(fromDi!==toDi) toast(`Day ${toDi+1}(으)로 이동`); },0);
 }
 window.focusSpot=(di,si)=>{
   const s=trip().days[di].spots[si];
@@ -820,9 +829,8 @@ window.optimizeDay=(di)=>{
   const snap=snapshot();
   const newLoc=order.map(o=>day.spots[idxLoc[o]]);
   const unloc=day.spots.filter(s=>!hasLoc(s));   // 좌표 미지정은 순서 뒤로 유지
-  day.spots=newLoc.concat(unloc);
   const hasBook=newLoc.some(s=>s.bookAt);
-  activeDay=di+1; render();
+  commit(()=>{ day.spots=newLoc.concat(unloc); activeDay=di+1; });
   const pts=day.spots.filter(hasLoc).map(s=>[s.lat,s.lng]); fitTo(pts,64,15);
   toast(`동선 최적화: 약 ${before.toFixed(1)}→${after.toFixed(1)}km${hasBook?' · 예약시각 순서 확인!':''}`, '#2a9d3f', {fn:()=>undoWith(snap)});
 };
@@ -830,8 +838,7 @@ window.cycleMode=(di)=>{
   if(viewMode) return;
   const order=['car','transit','walk','bike'];
   const d=trip().days[di];
-  d.mode=order[(order.indexOf(dayModeOf(d))+1)%order.length];
-  render();
+  commit(()=>{ d.mode=order[(order.indexOf(dayModeOf(d))+1)%order.length]; });
   toast(`Day ${di+1} 이동 수단: ${MODE_ICON[d.mode]} ${MODE_NAME[d.mode]}`);
 };
 window.moveSpot=(di,si,dir)=>{
@@ -841,7 +848,7 @@ window.moveSpot=(di,si,dir)=>{
   const sb=document.getElementById('sidebar');
   const btnCls = dir<0?'mvup':'mvdown';
   const before=document.querySelector(`.spot[data-di="${di}"][data-si="${si}"] .${btnCls}`)?.getBoundingClientRect().top;
-  [arr[si],arr[ni]]=[arr[ni],arr[si]]; render();
+  commit(()=>{ [arr[si],arr[ni]]=[arr[ni],arr[si]]; });
   const afterBtn=document.querySelector(`.spot[data-di="${di}"][data-si="${ni}"] .${btnCls}`);
   const after=afterBtn?.getBoundingClientRect().top;
   if(before!=null && after!=null) sb.scrollTop += (after-before); // 같은 버튼이 커서 자리에 오도록
@@ -892,13 +899,13 @@ document.getElementById('spotSave').onclick=()=>{
   if(editing.si>=0){ trip().days[editing.di].spots.splice(editing.si,1); }
   trip().days[targetDay].spots.push(s);
   document.getElementById('spotModalBg').classList.remove('show');
-  render(); toast('저장됨');
+  commit(); toast('저장됨');
 };
 document.getElementById('spotDelBtn').onclick=()=>{
   const snap=snapshot();
   trip().days[editing.di].spots.splice(editing.si,1);
   document.getElementById('spotModalBg').classList.remove('show');
-  render(); toast('장소 삭제됨','#8892b0',{fn:()=>undoWith(snap)});
+  commit(); toast('장소 삭제됨','#8892b0',{fn:()=>undoWith(snap)});
 };
 // 장소 검색 — 국내(한글)는 카카오 우선, 그 외 Google Places (routedSearch)
 let searching=false;
@@ -966,21 +973,21 @@ document.getElementById('daySave').onclick=()=>{
   const dv=document.getElementById('dayDate').value;
   if(dv){ const nd=new Date(dv+'T00:00:00'); nd.setDate(nd.getDate()-editingDay); trip().start=toISO(nd); }
   else { trip().start=''; }
-  document.getElementById('dayModalBg').classList.remove('show'); render(); toast('저장됨');
+  document.getElementById('dayModalBg').classList.remove('show'); commit(); toast('저장됨');
 };
 document.getElementById('dayDelBtn').onclick=()=>{
   if(trip().days[editingDay].spots.length && !confirm('이 일자의 장소도 함께 삭제됩니다. 계속할까요?'))return;
   const snap=snapshot();
   trip().days.splice(editingDay,1); activeDay=0;
-  document.getElementById('dayModalBg').classList.remove('show'); render(); toast('일자 삭제됨','#8892b0',{fn:()=>undoWith(snap)});
+  document.getElementById('dayModalBg').classList.remove('show'); commit(); toast('일자 삭제됨','#8892b0',{fn:()=>undoWith(snap)});
 };
 
 // ───────────────── 여행 관리 ─────────────────
-document.getElementById('tripSel').onchange=e=>{ store.activeId=e.target.value; activeDay=0; render(); fitEntry(); };
+document.getElementById('tripSel').onchange=e=>{ commit(()=>{ store.activeId=e.target.value; activeDay=0; }, {fit:fitEntry}); };
 document.getElementById('newTripBtn').onclick=()=>{
   const name=prompt('새 여행 이름은?','새 여행'); if(name===null)return;
   const t={id:uid(),name:name||'새 여행',start:new Date().toISOString().slice(0,10),days:[{title:'',drive:'',note:'',spots:[]}]};
-  store.trips.push(t); store.activeId=t.id; activeDay=0; render();
+  commit(()=>{ store.trips.push(t); store.activeId=t.id; activeDay=0; });
   document.getElementById('tripModalBg').classList.add('show');
   document.getElementById('tripName').value=t.name; document.getElementById('tripStart').value=t.start;
 };
@@ -994,7 +1001,7 @@ document.getElementById('tripCancel').onclick=()=>document.getElementById('tripM
 document.getElementById('tripSave').onclick=()=>{
   trip().name=document.getElementById('tripName').value.trim()||'이름 없는 여행';
   trip().start=document.getElementById('tripStart').value;
-  document.getElementById('tripModalBg').classList.remove('show'); render(); toast('저장됨');
+  document.getElementById('tripModalBg').classList.remove('show'); commit(); toast('저장됨');
 };
 document.getElementById('tripDelBtn').onclick=()=>{
   if(!confirm(`"${trip().name}" 여행을 삭제할까요?`))return;
@@ -1003,7 +1010,7 @@ document.getElementById('tripDelBtn').onclick=()=>{
   store.trips=store.trips.filter(t=>t.id!==store.activeId);
   if(!store.trips.length){ store.trips=[{id:uid(),name:'새 여행',start:new Date().toISOString().slice(0,10),days:[{title:'',drive:'',note:'',spots:[]}]}]; }
   store.activeId=store.trips[0].id; activeDay=0;
-  document.getElementById('tripModalBg').classList.remove('show'); render(); fitEntry();
+  document.getElementById('tripModalBg').classList.remove('show'); commit(null, {fit:fitEntry});
   // undo 시 삭제된 여행이 다시 활성화되어 render→save로 클라우드에도 재업로드됨
   toast('여행 삭제됨','#8892b0',{fn:()=>undoWith(snap)});
 };
@@ -1021,7 +1028,7 @@ document.getElementById('importFile').onchange=e=>{
     try{
       const t=JSON.parse(rd.result);
       if(!t.days) throw 0;
-      t.id=uid(); store.trips.push(t); store.activeId=t.id; activeDay=0; render(); fitEntry(); toast('가져오기 완료');
+      t.id=uid(); commit(()=>{ store.trips.push(t); store.activeId=t.id; activeDay=0; }, {fit:fitEntry}); toast('가져오기 완료');
     }catch(err){ toast('잘못된 파일입니다','#e63946'); }
   };
   rd.readAsText(f); e.target.value='';
@@ -1090,8 +1097,7 @@ document.getElementById('roSave').onclick=()=>{
   viewMode=null; document.body.classList.remove('readonly');
   document.getElementById('roBar').style.display='none';
   history.replaceState(null,'',location.pathname);
-  store.trips.push(t); store.activeId=t.id; activeDay=0;
-  save(); render(); fitEntry(); toast('내 여행으로 저장되었습니다');
+  commit(()=>{ store.trips.push(t); store.activeId=t.id; activeDay=0; }, {fit:fitEntry}); toast('내 여행으로 저장되었습니다');
 };
 // 공유 링크로 열었을 때 — #v= 읽기전용 보기 / #t= 구버전(즉시 저장) 호환
 (function(){
@@ -1329,9 +1335,8 @@ async function runPaste(){
     const t={id:uid(), name:parsed.name||'붙여넣은 여행', start:parsed.start||new Date().toISOString().slice(0,10), days:parsed.days};
     store.trips.push(t); store.activeId=t.id;
   }
-  activeDay=0;
   document.getElementById('pasteModalBg').classList.remove('show');
-  render(); fitEntry();
+  commit(()=>{ activeDay=0; }, {fit:fitEntry});
   toast(`초안 생성 완료${noloc?` · ${noloc}곳은 위치 미지정 (카드에서 📍 지정)`:''}`, noloc?'#f4862c':'#2a9d3f');
 }
 
@@ -1449,9 +1454,8 @@ async function loadSnapList(){
       const {data:full,error:fe}=await sb.from('trip_snapshots').select('data').eq('id',r.id).single();
       if(fe||!full||!full.data){ toast('복원 실패','#e63946'); return; }
       const idx=store.trips.findIndex(t=>t.id===store.activeId);
-      if(idx>=0) store.trips[idx]=full.data;
       document.getElementById('tripModalBg').classList.remove('show');
-      activeDay=0; render(); fitEntry(); toast('복원되었습니다 (↩️로 되돌리기 가능)');
+      commit(()=>{ if(idx>=0) store.trips[idx]=full.data; activeDay=0; }, {fit:fitEntry}); toast('복원되었습니다 (↩️로 되돌리기 가능)');
     };
     row.appendChild(btn); box.appendChild(row);
   });
