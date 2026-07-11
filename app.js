@@ -674,7 +674,7 @@ function renderSidebar(){
     const headC = colorByMode()==='day' ? dayColor(di) : (day.spots.length?(colors[day.spots[0].city]||'#556'):'#556');
     const card=document.createElement('div'); card.className='dayCard'+(activeDay&&activeDay!==di+1?' dim':''); card.style.setProperty('--c',headC);
     let spotsHtml='', prevLoc=null;
-    const etas=dayEtas(day), dm=dayModeOf(day);
+    const etas=dayEtas(day), dm=dayModeOf(day), iso=isoDateOf(di);
     day.spots.forEach((s,si)=>{
       const dotC = hasLoc(s)?spotColor(s,di,colors):'#4a5170';
       // 구간: 캐시된 경로가 있으면 그걸, 아니면 직선거리 + 백그라운드 조회
@@ -694,6 +694,12 @@ function renderSidebar(){
       if(s.cost) meta.push(`<span class="cost">💳 ${(+s.cost).toLocaleString()}</span>`);
       if(s.bookAt) meta.push(`<span class="book${bookWarn?' bookwarn':''}"${bookWarn?` title="예약 ${s.bookAt}인데 예상 도착 ${hm(etas[si])} — 일정이 늦습니다"`:` title="예약 시각"`}>🎫 ${esc(s.bookAt)}${bookWarn?' ⚠️':''}</span>`);
       if(s.bookUrl) meta.push(`<a class="book" href="${escAttr(s.bookUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="예약 링크 열기">🔗</a>`);
+      // 영업시간 경고: 그 날 요일·도착 예상시각에 문 닫혀 있으면 ⚠️
+      if(s.hours && iso){
+        const wd=new Date(iso+'T00:00:00').getDay();
+        const open=isOpenAt(s.hours, wd, Math.round(etas[si]));
+        if(open===false) meta.push(`<span class="closed" title="${'일월화수목금토'[wd]}요일 도착 예상 ${hm(etas[si])}에 영업 종료/휴무 — 시간을 확인하세요">🚫 영업시간 확인</span>`);
+      }
       const metaHtml=meta.length?`<div class="spotMeta">${meta.join(' ')}</div>`:'';
       spotsHtml+=`<div class="spot" data-di="${di}" data-si="${si}" style="--c:${dotC}">
         <span class="nm" onclick="focusSpot(${di},${si})"><span class="eta" title="도착 예상시각 (시작시각+체류+이동 기준)">${hm(etas[si])}</span>${si+1}. ${s.stay?'🏠 ':''}${esc(s.name)}${s.opt?' <span class=opt>(선택)</span>':''}${hasLoc(s)?'':`<span class="noloc" onclick="event.stopPropagation();openSpotModal(${di},${si})">📍 위치 지정</span>`}${metaHtml}</span>${legHtml}
@@ -833,6 +839,7 @@ window.moveSpot=(di,si,dir)=>{
 
 // ───────────────── 장소 모달 ─────────────────
 let editing = null; // {di, si} si=-1이면 추가
+let _pickedHours = null;   // 검색 결과에서 선택한 영업시간 (저장 시 반영)
 window.openSpotModal=(di,si)=>{
   if(viewMode){ toast('읽기전용 보기입니다 — "내 여행으로 저장" 후 편집하세요','#8892b0'); return; }
   editing={di,si};
@@ -840,6 +847,7 @@ window.openSpotModal=(di,si)=>{
   document.getElementById('spotModalTitle').textContent = isNew?'장소 추가':'장소 편집';
   document.getElementById('spotDelBtn').style.display = isNew?'none':'block';
   const s = isNew? {name:'',city:trip().days[di].spots[0]?.city||'',desc:'',opt:false,lat:'',lng:''} : trip().days[di].spots[si];
+  _pickedHours = s.hours||null;   // 편집 시 기존 영업시간 보존
   document.getElementById('spotName').value=s.name;
   document.getElementById('spotCity').value=s.city;
   document.getElementById('spotDesc').value=s.desc||'';
@@ -868,7 +876,8 @@ document.getElementById('spotSave').onclick=()=>{
     stayMin:Math.max(0,parseInt(document.getElementById('spotStayMin').value)||60),
     cost:(isNaN(costV)?null:Math.max(0,costV)),
     bookAt:document.getElementById('spotBookAt').value||'',
-    bookUrl:document.getElementById('spotBookUrl').value.trim(),lat,lng};
+    bookUrl:document.getElementById('spotBookUrl').value.trim(),
+    hours:_pickedHours||undefined,lat,lng};
   const targetDay=parseInt(document.getElementById('spotDay').value);
   if(editing.si>=0){ trip().days[editing.di].spots.splice(editing.si,1); }
   trip().days[targetDay].spots.push(s);
@@ -901,7 +910,8 @@ async function doSearch(){
       d.onclick=()=>{
         document.getElementById('spotLat').value=it.lat; document.getElementById('spotLng').value=it.lng;
         if(!document.getElementById('spotName').value) document.getElementById('spotName').value=it.name;
-        document.getElementById('coordHint').textContent=`좌표: ${(+it.lat).toFixed(4)}, ${(+it.lng).toFixed(4)} ✓`;
+        document.getElementById('coordHint').textContent=`좌표: ${(+it.lat).toFixed(4)}, ${(+it.lng).toFixed(4)} ✓`+(it.hours?' · 영업시간 반영됨':'');
+        _pickedHours = it.hours||null;   // 저장 시 spot.hours로 반영
         res.innerHTML='';
       };
       res.appendChild(d);
@@ -1154,15 +1164,26 @@ async function kakaoSearch(q, near, limit){
   return run({size});
 }
 // Google Places 텍스트 검색 (신 API) → [{name,addr,lat,lng}]
+// 구글 Place 영업시간(regularOpeningHours.periods) → {d:요일0=일,o:분,c:분}[] 정규화 (24/7은 d:-1)
+function normHours(oh){
+  const ps=oh&&oh.periods; if(!ps||!ps.length) return null;
+  const out=[];
+  for(const p of ps){
+    if(p.open && !p.close){ return [{d:-1,o:0,c:1440}]; }   // 상시영업
+    if(!p.open||!p.close) continue;
+    out.push({d:p.open.day, o:p.open.hour*60+p.open.minute, c:p.close.hour*60+p.close.minute});
+  }
+  return out.length?out:null;
+}
 async function googlePlaces(q, near, limit){
   if(!map) return [];
   try{
     const {Place}=await google.maps.importLibrary('places');
-    const req={textQuery:q, fields:['displayName','formattedAddress','location'], maxResultCount:limit||5, language:'ko'};
+    const req={textQuery:q, fields:['displayName','formattedAddress','location','regularOpeningHours'], maxResultCount:limit||5, language:'ko'};
     if(near) req.locationBias={center:near, radius:30000};
     const {places}=await Place.searchByText(req);
     return (places||[]).map(p=>({name:p.displayName, addr:p.formattedAddress||'',
-      lat:p.location.lat(), lng:p.location.lng()}));
+      lat:p.location.lat(), lng:p.location.lng(), hours:normHours(p.regularOpeningHours)}));
   }catch(e){ return []; }
 }
 // 도시명 → 앵커 좌표 (Google Geocoder, 전 세계) — 캐시

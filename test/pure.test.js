@@ -71,6 +71,22 @@ test('optimizeRoute — 비효율 순서를 개선, 끝점 고정 존중', () =>
   // 2점 이하는 그대로
   assert.deepEqual(L.optimizeRoute([{lat:1,lng:1}]), [0]);
 });
+test('isOpenAt — 요일/시각 영업 판정 + 자정넘김 + 24h + 정보없음', () => {
+  // 월(1)~금(5) 09:00~18:00
+  const wk=[1,2,3,4,5].map(d=>({d,o:540,c:1080}));
+  assert.equal(L.isOpenAt(wk,3,600), true);    // 수 10:00 영업
+  assert.equal(L.isOpenAt(wk,3,1140), false);  // 수 19:00 종료
+  assert.equal(L.isOpenAt(wk,0,600), false);   // 일 휴무
+  assert.equal(L.isOpenAt(null,3,600), null);  // 정보 없음
+  assert.equal(L.isOpenAt([],3,600), null);
+  // 금 22:00~토 02:00 (자정 넘김)
+  const night=[{d:5,o:1320,c:120}];
+  assert.equal(L.isOpenAt(night,5,1380), true);  // 금 23:00
+  assert.equal(L.isOpenAt(night,6,60), true);    // 토 01:00 (전날 개장분)
+  assert.equal(L.isOpenAt(night,6,180), false);  // 토 03:00
+  // 24/7
+  assert.equal(L.isOpenAt([{d:-1,o:0,c:1440}],0,0), true);
+});
 test('toISO — 로컬 날짜 포맷', () => {
   assert.equal(L.toISO(new Date(2026,6,5)), '2026-07-05');   // 월 0-기반
 });
