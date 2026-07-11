@@ -118,3 +118,4 @@
 .tLeg{font-size:12px;color:#8aa0c8;margin:-3px 0 9px 18px}
 .snapRow{display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:5px 8px;border-radius:7px;color:#cdd6f4}
 .snapRow:hover{background:#2a3457}
+.legfail{color:#c9884a;cursor:help}
