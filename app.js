@@ -286,12 +286,16 @@ let legQueue=[], legBusy=false, legRefreshT=null;
 function requestLeg(a,b){
   const id=legId(a,b);
   const c=legCache[id];
-  if(c) return c.sec? c : null;          // 실패 기록이면 재시도 안 함 (세션 캐시)
+  if(c && c.sec && !c.path){ delete legCache[id]; }   // 경로 없이 캐시된 항목(과거 레이스 오염) 자가 치유 → 재조회
+  else if(c) return c.sec? c : null;                  // 실패 기록이면 재시도 안 함 (세션 캐시)
   if(!legQueue.find(q=>q.id===id)){ legQueue.push({id,a:{lat:+a.lat,lng:+a.lng},b:{lat:+b.lat,lng:+b.lng}}); pumpLegs(); }
-  return null;
+  return c&&c.sec? c : null;   // 재조회 중에도 기존 시간·거리는 계속 표시
 }
 async function pumpLegs(){
   if(legBusy) return; legBusy=true;
+  // 경로 인코딩(encodePts)에 구글 geometry가 필요 — SDK 로드 전에 조회하면
+  // 경로 없는 결과가 영구 캐시되므로, 준비될 때까지 대기 (최대 ~21초)
+  for(let i=0;i<70 && !(window.google&&google.maps&&google.maps.geometry);i++) await sleep(300);
   while(legQueue.length){
     const {id,a,b}=legQueue.shift();
     if(legCache[id]) continue;
