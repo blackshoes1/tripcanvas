@@ -483,12 +483,12 @@ function overlaySig(t,colors){
     p.push(dayModeOf(day));
     day.spots.forEach((s,si)=>{ if(hasLoc(s)) p.push(si,s.lat,s.lng,s.stay?1:0,s.opt?1:0,spotColor(s,di,colors),esc(s.name),esc(s.desc||'')); });
     const loc=day.spots.filter(hasLoc), dm=dayModeOf(day);
-    for(let i=1;i<loc.length;i++){ const c=legCache[legKey(loc[i-1],loc[i],dm)]; p.push(c&&c.sec?(c.path?'p':'s'):'n'); }
+    for(let i=1;i<loc.length;i++){ const c=legCache[legKey(loc[i-1],loc[i],dm)]; p.push(c? (c.sec?(c.path?'p':'s'):'f') : 'n'); }
   });
   if(!activeDay){
     let prev=null;
     t.days.forEach(day=>{ const loc=day.spots.filter(hasLoc); if(!loc.length)return;
-      if(prev){ const c=legCache[legKey(prev,loc[0],dayModeOf(day))]; p.push('I', c&&c.path?'p':'n'); } prev=loc[loc.length-1]; });
+      if(prev){ const c=legCache[legKey(prev,loc[0],dayModeOf(day))]; p.push('I', c? (c.sec?(c.path?'p':'s'):'f') : 'n'); } prev=loc[loc.length-1]; });
   }
   return p.join('|');
 }
@@ -510,23 +510,25 @@ function render(){
         if(!hasLoc(s)) return;               // 좌표 미지정 명소는 핀 생략 (카드엔 남음)
         addPin(s,di,si,spotColor(s,di,colors));
       });
-      // 일자 내 동선 — 구간별로 실도로 경로(캐시)가 있으면 그 경로, 없으면 직선
+      // 일자 내 동선 — 실경로 우선. 조회 중(미캐시)엔 그리지 않고,
+      // 결과가 나온 뒤에도 경로가 없는 구간(실패)만 직선으로 채움 → 직선→실경로 깜빡임 제거
       const locSpots = day.spots.filter(hasLoc), dm=dayModeOf(day);
       const lc=spotColor(locSpots[0]||{},di,colors), lop=activeDay?0.9:0.45;
       for(let i=1;i<locSpots.length;i++){
         const A=locSpots[i-1], B=locSpots[i];
         const cch=legCache[legKey(A,B,dm)];
-        const path=(cch&&cch.sec&&cch.path)?decodePts(cch.path):null;
+        if(!cch) continue;   // 조회 중 — 선 없이 대기 (완료 시 디바운스 재렌더로 채워짐)
+        const path=(cch.sec&&cch.path)?decodePts(cch.path):null;
         addLine(path||[{lat:+A.lat,lng:+A.lng},{lat:+B.lat,lng:+B.lng}], lc, lop, false);
         // Day 보기에선 경로 중간에 소요시간 칩
-        if(activeDay && cch && cch.sec){
+        if(activeDay && cch.sec){
           const mid = path? path[Math.floor(path.length/2)]
                           : {lat:(+A.lat + +B.lat)/2, lng:(+A.lng + +B.lng)/2};
           addLegChip(mid, (dm==='car'&&cch.m<2000)? `🚶${Math.max(1,Math.round(cch.m/75))}분` : `${MODE_ICON[dm]}${fmtDur(cch.sec)}`);
         }
       }
     });
-    // 일자 간 연결 (전체 보기) — 점선
+    // 일자 간 연결 (전체 보기) — 점선. 동일하게 조회 중엔 미표시
     if(!activeDay){
       let prev = null;
       t.days.forEach(day=>{
@@ -534,8 +536,10 @@ function render(){
         if(!loc.length) return;
         if(prev){
           const cch=legCache[legKey(prev,loc[0],dayModeOf(day))];
-          const path=(cch&&cch.sec&&cch.path)?decodePts(cch.path):null;
-          addLine(path||[{lat:+prev.lat,lng:+prev.lng},{lat:+loc[0].lat,lng:+loc[0].lng}], '#f6bd60', .8, true);
+          if(cch){
+            const path=(cch.sec&&cch.path)?decodePts(cch.path):null;
+            addLine(path||[{lat:+prev.lat,lng:+prev.lng},{lat:+loc[0].lat,lng:+loc[0].lng}], '#f6bd60', .8, true);
+          }
         }
         prev = loc[loc.length-1];
       });
