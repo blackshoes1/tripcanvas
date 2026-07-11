@@ -403,6 +403,23 @@ function clearOverlays(){
   legChips.forEach(c=>{ if(c.gm) c.gm.map=null; if(c.km) c.km.setMap(null); }); legChips=[];
   if(iw) iw.close(); closeKPopup();
 }
+// 오버레이 입력 시그니처 — 같으면 마커/라인 재생성 생략 (텍스트 편집 등에서 깜빡임·비용 제거)
+let _ovSig='';
+function overlaySig(t,colors){
+  const p=[engine, activeDay, colorByMode()];
+  t.days.forEach((day,di)=>{
+    if(activeDay && di+1!==activeDay) return;
+    day.spots.forEach((s,si)=>{ if(hasLoc(s)) p.push(si,s.lat,s.lng,s.stay?1:0,s.opt?1:0,spotColor(s,di,colors),esc(s.name),esc(s.desc||'')); });
+    const loc=day.spots.filter(hasLoc);
+    for(let i=1;i<loc.length;i++){ const c=legCache[legId(loc[i-1],loc[i])]; p.push(c&&c.sec?(c.path?'p':'s'):'n'); }
+  });
+  if(!activeDay){
+    let prev=null;
+    t.days.forEach(day=>{ const loc=day.spots.filter(hasLoc); if(!loc.length)return;
+      if(prev){ const c=legCache[legId(prev,loc[0])]; p.push('I', c&&c.path?'p':'n'); } prev=loc[loc.length-1]; });
+  }
+  return p.join('|');
+}
 function render(){
   const t = trip(), colors = cityColors();
   // 엔진 결정: 국내 여행이면 카카오 (SDK 미준비 시 준비 후 재렌더, 그동안 구글로)
@@ -411,7 +428,9 @@ function render(){
   const eng=(want==='kakao' && kmap)?'kakao':'google';
   setEngine(eng);
   const mapReady = engine==='kakao'? !!kmap : !!map;
-  if(mapReady){   // 지도 준비 전엔 사이드바 등 DOM만 렌더
+  const sig = mapReady? overlaySig(t,colors) : null;
+  if(mapReady && sig!==_ovSig){
+    _ovSig=sig;
     clearOverlays();
     t.days.forEach((day,di)=>{
       if(activeDay && di+1!==activeDay) return;
