@@ -60,18 +60,22 @@ function load(){
 let viewMode=null;   // #v= 읽기전용으로 보는 여행 (저장소에 저장 안 함)
 // 다단계 실행취소: save 시점마다 직전 상태를 스택에 보관 (최대 30)
 let histStack=[], histLast=null, histLock=false;
+let lsDirty=false;   // localStorage 기록이 실패(쿼터 등)해 재시도가 필요한 상태
 function save(){
   if(viewMode) return;   // 읽기전용 보기에선 아무것도 저장하지 않음
   const ser=JSON.stringify(store);
-  if(ser===histLast) return;   // 변경 없음 — 저장·클라우드 동기화·히스토리 모두 생략 (뷰 전용/비동기 재렌더가 render→save를 타도 무비용)
-  if(!histLock && histLast!==null){
+  const changed = ser!==histLast;
+  // 변경도 없고 밀린 기록도 없으면 완전 무비용 (뷰 전용/비동기 재렌더가 render→save를 타도 no-op).
+  // 단, 직전 기록이 실패해 lsDirty면 내용이 그대로여도 재시도한다.
+  if(!changed && !lsDirty) return;
+  if(changed && !histLock && histLast!==null){   // 내용이 바뀐 경우에만 undo 히스토리에 push
     histStack.push(histLast);
     if(histStack.length>30) histStack.shift();
     updateUndoBtn();
   }
   histLast=ser;
-  try{ localStorage.setItem(LS_KEY, ser); }
-  catch(e){ toast('저장 공간이 부족합니다. 오래된 여행을 내보내고 삭제해 주세요','#e63946'); }
+  try{ localStorage.setItem(LS_KEY, ser); lsDirty=false; }
+  catch(e){ lsDirty=true; toast('저장 공간이 부족합니다. 오래된 여행을 내보내고 삭제해 주세요','#e63946'); }
   cloudSyncActive();
 }
 function updateUndoBtn(){ const b=document.getElementById('undoBtn'); if(b) b.disabled=!histStack.length; }
@@ -1407,19 +1411,25 @@ function updateAuthUI(){
   if(user){ b.textContent='👤 '+(user.email||'').split('@')[0]; b.title='클릭하면 로그아웃'; b.classList.add('primary'); }
   else { b.textContent='로그인'; b.title='로그인하면 여행이 내 계정에 저장돼 어느 기기서든 열려요'; b.classList.remove('primary'); }
 }
-// 활성 여행을 클라우드에 저장(디바운스 800ms)
-function cloudSyncActive(){
+// 활성 여행을 클라우드에 저장(디바운스 800ms). 실패 시 15초 뒤 재시도 + 네트워크 복구 시 즉시 재동기화.
+// (save() 가드가 뷰/비동기 재렌더의 우연한 재시도를 없앴으므로, 재시도는 여기서 명시적으로 책임진다.)
+let cloudRetryT=null;
+function cloudSyncActive(delay){
   if(!sb || !user) return;
-  clearTimeout(syncTimer);
+  clearTimeout(cloudRetryT); clearTimeout(syncTimer);
   syncTimer=setTimeout(async()=>{
     const t=trip(); if(!t) return;
     const {error}=await sb.from('trips').upsert(
       {user_id:user.id, client_id:t.id, data:t, updated_at:new Date().toISOString()},
       {onConflict:'user_id,client_id'});
-    if(error) console.warn('cloud sync:', error.message);
-    else cloudSnapshot(t);
-  }, 800);
+    if(error){
+      console.warn('cloud sync:', error.message);
+      clearTimeout(cloudRetryT);
+      cloudRetryT=setTimeout(()=>cloudSyncActive(), 15000);   // 최신 활성 여행본으로 재시도
+    } else cloudSnapshot(t);
+  }, delay!=null?delay:800);
 }
+window.addEventListener('online', ()=>{ if(sb && user) cloudSyncActive(0); });
 // 버전 히스토리: 여행별 10분에 1회 스냅샷, 최근 15개 유지
 const _snapAt={};
 async function cloudSnapshot(t){
