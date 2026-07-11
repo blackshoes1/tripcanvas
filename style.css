@@ -122,3 +122,4 @@
 .modeBtn{font-size:14px;padding:1px 4px}
 .readonly .modeBtn{pointer-events:none}
 .wx{font-size:11px;color:#cdd6f4;white-space:nowrap}
+.overload{font-size:11px;color:#ffb454;background:#3a2a12;border-radius:7px;padding:2px 8px;margin:2px 0 3px;display:inline-block}
