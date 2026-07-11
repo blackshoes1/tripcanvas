@@ -13,7 +13,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-<link rel="stylesheet" href="style.css?v=tc-v31">
+<link rel="stylesheet" href="style.css?v=tc-v32">
 </head>
 <body>
 <header>
@@ -42,9 +42,9 @@
   <div class="legend" id="legend"></div>
 </div>
 
-<!-- 명소 추가/편집 모달 -->
+<!-- 장소 추가/편집 모달 -->
 <div class="modalBg" id="spotModalBg"><div class="modal">
-  <h2 id="spotModalTitle">명소 추가</h2>
+  <h2 id="spotModalTitle">장소 추가</h2>
   <label>장소 검색 (국내 카카오 · 해외 Google)</label>
   <div style="display:flex;gap:6px">
     <input type="text" id="spotSearch" placeholder="예: Puente Nuevo Ronda" style="flex:1">
@@ -147,7 +147,7 @@
 - 둥베이로 시장 | 다롄 | 아침 시장
 - 다롄 저우수이쯔 공항 | 다롄 | 출국
 
-규칙: [Day N] 또는 # 로 날짜 시작 · - 로 명소(이름 | 도시 | 메모 | 위도,경도) · 좌표는 생략 가능(자동조회: 국내 카카오·해외 구글, 못 찾으면 '위치 지정'으로 남음) · (선택) 붙이면 선택코스 · 이동:/메모: 로 그날 정보
+규칙: [Day N] 또는 # 로 날짜 시작 · - 로 장소(이름 | 도시 | 메모 | 위도,경도) · 좌표는 생략 가능(자동조회: 국내 카카오·해외 구글, 못 찾으면 '위치 지정'으로 남음) · (선택) 붙이면 선택코스 · 이동:/메모: 로 그날 정보
 ※ 해외(특히 중국 등) 한글 지명은 자동조회 실패가 잦음 → 좌표를 직접 넣거나 AI 파싱 모드 사용 권장</pre>
     <button class="btn" id="fmtCopy" style="margin-top:6px;font-size:11px;padding:3px 10px">이 예시 붙여넣기 칸에 채우기</button>
   </details>
@@ -184,6 +184,6 @@
 </div>
 <div id="toast"></div>
 
-<script src="app.js?v=tc-v31"></script>
+<script src="app.js?v=tc-v32"></script>
 </body>
 </html>

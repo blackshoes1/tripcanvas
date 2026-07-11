@@ -1,6 +1,6 @@
 // ───────────────── 저장소 ─────────────────
 const LS_KEY = 'tripcanvas_v1';
-const PALETTE = ['#e63946','#f4862c','#e9b912','#2a9d3f','#2196d9','#8e44ad','#b5838d','#14b8a6','#f472b6','#a3e635'];
+const PALETTE = ['#e63946','#f6b93b','#1e88e5','#2ecc71','#9b59b6','#ff7f50','#14b8a6','#ec4899','#8d6e63','#a3e635'];   // 빨강·노랑·파랑·초록·보라·코랄·청록·핑크·브라운·라임
 let store = null;
 let sb = null, user = null, syncTimer = null;   // Supabase 클라이언트/로그인 사용자/동기화 디바운스
 
@@ -28,7 +28,7 @@ function seedSpain(){
         {name:'세비야 대성당 & 히랄다',lat:37.3861,lng:-5.9926,city:'세비야',desc:'세계 최대 고딕 성당. 온라인 예매 필수 (catedraldesevilla.es)',opt:false},
         {name:'레알 알카사르',lat:37.3831,lng:-5.9903,city:'세비야',desc:'무데하르 궁전. 사전예약 권장. 2시간',opt:true},
         {name:'스페인 광장',lat:37.3772,lng:-5.9869,city:'세비야',desc:'대표 포토스팟. 노을+플라멩코 버스킹',opt:false},
-        {name:'메트로폴 파라솔',lat:37.3931,lng:-5.9916,city:'세비야',desc:'목조 전망대. 야경 명소',opt:true}]},
+        {name:'메트로폴 파라솔',lat:37.3931,lng:-5.9916,city:'세비야',desc:'목조 전망대. 야경 장소',opt:true}]},
       {title:'→ 론다 (1박)', drive:'🚗 세비야 → 론다 · 128km · 약 1시간 45분', note:'절벽 마을 1박 — 야경과 아침 안개 낀 다리가 압권', spots:[
         {name:'푸엔테 누에보',lat:36.7406,lng:-5.1655,city:'론다',desc:'98m 협곡 위의 다리. 협곡 아래 전망 포인트 추천',opt:false},
         {name:'론다 투우장 & 알라메다',lat:36.7423,lng:-5.1671,city:'론다',desc:'가장 오래된 투우장 + 절벽 산책로',opt:true}]},
@@ -137,7 +137,7 @@ window.__gmapsReady=function(){
   iw=new google.maps.InfoWindow();
   map.addListener('click',e=>onMapPick(e.latLng.lat(), e.latLng.lng()));
   render();
-  google.maps.event.addListenerOnce(map,'idle',()=>{ if(engine==='google') fitAll(); });   // 레이아웃 확정 후 초기 포커싱
+  google.maps.event.addListenerOnce(map,'idle',()=>{ if(engine==='google') fitEntry(); });   // 레이아웃 확정 후 초기 포커싱
 };
 (function(){
   const s=document.createElement('script');
@@ -166,7 +166,7 @@ function setEngine(e){
   document.getElementById('map').style.display = e==='google'?'block':'none';
   document.getElementById('kmap').style.display = e==='kakao'?'block':'none';
   if(e==='kakao'&&kmap){ kmap.relayout(); }
-  setTimeout(()=>fitAll(),60);   // 전환 직후 새 엔진 기준으로 포커싱
+  setTimeout(()=>fitEntry(),60);   // 전환 직후 새 엔진 기준으로 포커싱
 }
 // 카카오 커스텀 팝업 (다크 테마, InfoWindow 대체)
 function openKPopup(html,lat,lng){
@@ -211,7 +211,7 @@ function extMapLink(s){
 }
 function hasLoc(s){ return s && s.lat!=null && s.lng!=null && isFinite(+s.lat) && isFinite(+s.lng); }
 // 색상 기준: 'city'(도시별) | 'day'(일자별). trip에 저장, 기본 city
-function colorByMode(){ return (trip().colorBy==='day') ? 'day' : 'city'; }
+function colorByMode(){ return (trip().colorBy==='city') ? 'city' : 'day'; }   // 기본 일자별 (경로 색 가독성)
 function dayColor(di){ return PALETTE[di%PALETTE.length]; }
 function spotColor(s,di,cityMap){ return colorByMode()==='day' ? dayColor(di) : ((cityMap||cityColors())[s.city]||'#888'); }
 // 직선거리(하버사인, km) — 실제 도로거리는 아니지만 동선 감각용
@@ -507,7 +507,7 @@ function render(){
     t.days.forEach((day,di)=>{
       if(activeDay && di+1!==activeDay) return;
       day.spots.forEach((s,si)=>{
-        if(!hasLoc(s)) return;               // 좌표 미지정 명소는 핀 생략 (카드엔 남음)
+        if(!hasLoc(s)) return;               // 좌표 미지정 장소는 핀 생략 (카드엔 남음)
         addPin(s,di,si,spotColor(s,di,colors));
       });
       // 일자 내 동선 — 실경로 우선. 조회 중(미캐시)엔 그리지 않고,
@@ -569,6 +569,12 @@ function fitTo(pts,pad,maxZoom){
   map.fitBounds(b, pad==null?48:pad);
   if(maxZoom) google.maps.event.addListenerOnce(map,'idle',()=>{ if(map.getZoom()>maxZoom) map.setZoom(maxZoom); });
 }
+// 여행 진입 시 포커스: 위치 있는 첫 일자 지역 (없으면 전체)
+function fitEntry(){
+  const d=trip().days.find(d=>d.spots.some(hasLoc));
+  if(d){ fitTo(d.spots.filter(hasLoc).map(s=>[s.lat,s.lng]),64,15); }
+  else fitAll();
+}
 function fitAll(){
   const pts=[]; trip().days.forEach(d=>d.spots.forEach(s=>{if(hasLoc(s))pts.push([s.lat,s.lng])}));
   fitTo(pts,60);
@@ -585,7 +591,10 @@ function renderFilter(){
   const all = document.createElement('button'); all.className='chip'+(activeDay?'':' active'); all.textContent='전체';
   all.onclick=()=>{activeDay=0;render();fitAll();}; bar.appendChild(all);
   trip().days.forEach((d,i)=>{
-    const b=document.createElement('button'); b.className='chip'+(activeDay===i+1?' active':''); b.textContent='D'+(i+1); b.title=d.title;
+    const b=document.createElement('button'); b.className='chip'+(activeDay===i+1?' active':''); b.title=d.title;
+    b.innerHTML = colorByMode()==='day'
+      ? `<span class="dot" style="background:${dayColor(i)};width:7px;height:7px;margin-right:4px"></span>D${i+1}`
+      : 'D'+(i+1);
     b.onclick=()=>{activeDay=i+1;render();
       const pts=d.spots.filter(hasLoc).map(s=>[s.lat,s.lng]);
       fitTo(pts,64,15);};
@@ -606,13 +615,17 @@ function renderLegend(){
   let body;
   if(colorByMode()==='day'){
     body='<b style="font-size:12px">일자</b><br>'+
-      trip().days.map((d,i)=>`<span class="dot" style="background:${dayColor(i)}"></span>Day ${i+1}${d.title?' · '+esc(d.title):''}`).join('<br>');
+      trip().days.map((d,i)=>`<span class="legDay" data-di="${i}" style="cursor:pointer"><span class="dot" style="background:${dayColor(i)}"></span>Day ${i+1}${d.title?' · '+esc(d.title):''}</span>`).join('<br>');
   }else{
     const colors=cityColors();
     body='<b style="font-size:12px">도시</b><br>'+
       Object.entries(colors).map(([n,c])=>`<span class="dot" style="background:${c}"></span>${esc(n)}`).join('<br>');
   }
   document.getElementById('legend').innerHTML=body+'<br><span style="color:#f6bd60">- - -</span> 일자 간 이동';
+  document.querySelectorAll('#legend .legDay').forEach(el=>{
+    el.onclick=()=>{ const i=+el.dataset.di; activeDay=i+1; render();
+      fitTo(trip().days[i].spots.filter(hasLoc).map(s=>[s.lat,s.lng]),64,15); };
+  });
 }
 function renderSidebar(){
   const sb=document.getElementById('sidebar'); sb.innerHTML='';
@@ -635,7 +648,7 @@ function renderSidebar(){
         const failed=!lc && legCache[lid] && legCache[lid].fail;   // 인근 도로 스냅까지 실패
         legHtml = lc
           ? `<span class="leg" data-leg="${lid}" title="${legTitle(lc)}">${legLabel(lc)}</span>`
-          : `<span class="leg${failed?' legfail':''}" data-leg="${lid}"${failed?' title="경로를 찾을 수 없어 직선거리로 표시 — 인근 도로 탐색(최대 2.4km)까지 실패했습니다. 명소 편집에서 검색으로 위치를 다시 잡아 보세요"':''}>↳${haversine(prevLoc,s).toFixed(1)}km${failed?' ⚠️':''}</span>`;
+          : `<span class="leg${failed?' legfail':''}" data-leg="${lid}"${failed?' title="경로를 찾을 수 없어 직선거리로 표시 — 인근 도로 탐색(최대 2.4km)까지 실패했습니다. 장소 편집에서 검색으로 위치를 다시 잡아 보세요"':''}>↳${haversine(prevLoc,s).toFixed(1)}km${failed?' ⚠️':''}</span>`;
       }
       if(hasLoc(s)) prevLoc=s;
       spotsHtml+=`<div class="spot" data-di="${di}" data-si="${si}" style="--c:${dotC}">
@@ -652,7 +665,7 @@ function renderSidebar(){
         <span class="tools"><button class="iconb" onclick="event.stopPropagation();openDayModal(${di})">✎</button></span></span>
       </div><div class="dayBody">
         ${day.drive?`<div class="drive">${esc(day.drive)}</div>`:''}
-        ${(()=>{   // 일자 간 자동 이동시간: 이전 일자 마지막 → 오늘 첫 명소
+        ${(()=>{   // 일자 간 자동 이동시간: 이전 일자 마지막 → 오늘 첫 장소
           const first=day.spots.find(hasLoc);
           if(!prevDayAnchor||!first) return '';
           const iid=legKey(prevDayAnchor,first,dm), ic=requestLeg(prevDayAnchor,first,dm);
@@ -663,7 +676,7 @@ function renderSidebar(){
         ${(()=>{const rt=dayRoute(day); if(rt) return `<div class="dist">📏 하루 동선 약 ${(rt.m/1000).toFixed(1)}km · ${MODE_ICON[dm]}${fmtDur(rt.sec)}${(dm==='car'&&rt.taxi)?` · 🚕약 ${rt.taxi.toLocaleString()}원`:''} <span style="opacity:.55">(도로 기준)</span></div>`;
           return dayDistance(day)>0?`<div class="dist">📏 하루 동선 약 ${dayDistance(day).toFixed(1)}km <span style="opacity:.55">(직선)</span></div>`:'';})()}
         <div class="spotList" data-di="${di}">${spotsHtml}</div>
-        <button class="addSpot" onclick="openSpotModal(${di},-1)">＋ 명소 추가</button>
+        <button class="addSpot" onclick="openSpotModal(${di},-1)">＋ 장소 추가</button>
         ${day.note?`<div class="note">📝 ${esc(day.note)}</div>`:''}
       </div>`;
     card.querySelector('.dayHead').onclick=(e)=>{
@@ -672,7 +685,7 @@ function renderSidebar(){
       const pts=day.spots.filter(hasLoc).map(s=>[s.lat,s.lng]);
       fitTo(pts,64,15);
     };
-    // 일자 내 명소 드래그(일자 간 이동도 허용)
+    // 일자 내 장소 드래그(일자 간 이동도 허용)
     if(window.Sortable && !viewMode) sortables.push(Sortable.create(card.querySelector('.spotList'),{
       group:'spots', animation:150, filter:'.iconb,.noloc', preventOnFilter:false,
       delay:120, delayOnTouchOnly:true, ghostClass:'sortable-ghost', chosenClass:'sortable-chosen',
@@ -706,7 +719,7 @@ function onDayDrop(evt){
   // render()는 Sortable 인스턴스를 재생성하므로 onEnd 스택 밖(다음 틱)에서 실행
   setTimeout(()=>{ render(); toast('일자 순서 변경됨'); },0);
 }
-// 명소 순서/일자 이동 핸들러 (Sortable)
+// 장소 순서/일자 이동 핸들러 (Sortable)
 function onSpotDrop(evt){
   const fromDi=+evt.from.dataset.di, toDi=+evt.to.dataset.di;
   if(fromDi===toDi && evt.oldIndex===evt.newIndex) return;
@@ -728,7 +741,7 @@ window.focusSpot=(di,si)=>{
   }else return;
   setTimeout(()=>{ const m=markers.find(m=>m.spot===s); if(m) m.open(); },400);
 };
-// 화살표 이동: 도구 항상 노출 + 옮긴 명소를 커서 아래에 고정(스크롤 보정)해 연속 클릭 가능
+// 화살표 이동: 도구 항상 노출 + 옮긴 장소를 커서 아래에 고정(스크롤 보정)해 연속 클릭 가능
 // 일자 카드의 수단 아이콘 탭 → 자차→대중교통→도보→자전거 순환 (상세 설정은 일자 편집 모달)
 window.cycleMode=(di)=>{
   if(viewMode) return;
@@ -751,13 +764,13 @@ window.moveSpot=(di,si,dir)=>{
   if(before!=null && after!=null) sb.scrollTop += (after-before); // 같은 버튼이 커서 자리에 오도록
 };
 
-// ───────────────── 명소 모달 ─────────────────
+// ───────────────── 장소 모달 ─────────────────
 let editing = null; // {di, si} si=-1이면 추가
 window.openSpotModal=(di,si)=>{
   if(viewMode){ toast('읽기전용 보기입니다 — "내 여행으로 저장" 후 편집하세요','#8892b0'); return; }
   editing={di,si};
   const isNew = si<0;
-  document.getElementById('spotModalTitle').textContent = isNew?'명소 추가':'명소 편집';
+  document.getElementById('spotModalTitle').textContent = isNew?'장소 추가':'장소 편집';
   document.getElementById('spotDelBtn').style.display = isNew?'none':'block';
   const s = isNew? {name:'',city:trip().days[di].spots[0]?.city||'',desc:'',opt:false,lat:'',lng:''} : trip().days[di].spots[si];
   document.getElementById('spotName').value=s.name;
@@ -792,7 +805,7 @@ document.getElementById('spotDelBtn').onclick=()=>{
   const snap=snapshot();
   trip().days[editing.di].spots.splice(editing.si,1);
   document.getElementById('spotModalBg').classList.remove('show');
-  render(); toast('명소 삭제됨','#8892b0',{fn:()=>undoWith(snap)});
+  render(); toast('장소 삭제됨','#8892b0',{fn:()=>undoWith(snap)});
 };
 // 장소 검색 — 국내(한글)는 카카오 우선, 그 외 Google Places (routedSearch)
 let searching=false;
@@ -862,14 +875,14 @@ document.getElementById('daySave').onclick=()=>{
   document.getElementById('dayModalBg').classList.remove('show'); render(); toast('저장됨');
 };
 document.getElementById('dayDelBtn').onclick=()=>{
-  if(trip().days[editingDay].spots.length && !confirm('이 일자의 명소도 함께 삭제됩니다. 계속할까요?'))return;
+  if(trip().days[editingDay].spots.length && !confirm('이 일자의 장소도 함께 삭제됩니다. 계속할까요?'))return;
   const snap=snapshot();
   trip().days.splice(editingDay,1); activeDay=0;
   document.getElementById('dayModalBg').classList.remove('show'); render(); toast('일자 삭제됨','#8892b0',{fn:()=>undoWith(snap)});
 };
 
 // ───────────────── 여행 관리 ─────────────────
-document.getElementById('tripSel').onchange=e=>{ store.activeId=e.target.value; activeDay=0; render(); fitAll(); };
+document.getElementById('tripSel').onchange=e=>{ store.activeId=e.target.value; activeDay=0; render(); fitEntry(); };
 document.getElementById('newTripBtn').onclick=()=>{
   const name=prompt('새 여행 이름은?','새 여행'); if(name===null)return;
   const t={id:uid(),name:name||'새 여행',start:new Date().toISOString().slice(0,10),days:[{title:'',drive:'',note:'',spots:[]}]};
@@ -896,7 +909,7 @@ document.getElementById('tripDelBtn').onclick=()=>{
   store.trips=store.trips.filter(t=>t.id!==store.activeId);
   if(!store.trips.length){ store.trips=[{id:uid(),name:'새 여행',start:new Date().toISOString().slice(0,10),days:[{title:'',drive:'',note:'',spots:[]}]}]; }
   store.activeId=store.trips[0].id; activeDay=0;
-  document.getElementById('tripModalBg').classList.remove('show'); render(); fitAll();
+  document.getElementById('tripModalBg').classList.remove('show'); render(); fitEntry();
   // undo 시 삭제된 여행이 다시 활성화되어 render→save로 클라우드에도 재업로드됨
   toast('여행 삭제됨','#8892b0',{fn:()=>undoWith(snap)});
 };
@@ -914,7 +927,7 @@ document.getElementById('importFile').onchange=e=>{
     try{
       const t=JSON.parse(rd.result);
       if(!t.days) throw 0;
-      t.id=uid(); store.trips.push(t); store.activeId=t.id; activeDay=0; render(); fitAll(); toast('가져오기 완료');
+      t.id=uid(); store.trips.push(t); store.activeId=t.id; activeDay=0; render(); fitEntry(); toast('가져오기 완료');
     }catch(err){ toast('잘못된 파일입니다','#e63946'); }
   };
   rd.readAsText(f); e.target.value='';
@@ -984,7 +997,7 @@ document.getElementById('roSave').onclick=()=>{
   document.getElementById('roBar').style.display='none';
   history.replaceState(null,'',location.pathname);
   store.trips.push(t); store.activeId=t.id; activeDay=0;
-  save(); render(); fitAll(); toast('내 여행으로 저장되었습니다');
+  save(); render(); fitEntry(); toast('내 여행으로 저장되었습니다');
 };
 // 공유 링크로 열었을 때 — #v= 읽기전용 보기 / #t= 구버전(즉시 저장) 호환
 (function(){
@@ -1106,7 +1119,7 @@ async function routedSearch(q, near, limit){
   }
   return googlePlaces(q, near, limit);
 }
-// 명소 하나의 좌표 탐색 — 도시 앵커에서 지나치게 먼 결과는 배제(오매칭 방지), 못 찾으면 null
+// 장소 하나의 좌표 탐색 — 도시 앵커에서 지나치게 먼 결과는 배제(오매칭 방지), 못 찾으면 null
 async function geocodeSpot(s){
   const anchor=await cityAnchorOf(s.city);
   const cand=[`${s.name} ${s.city||''}`.trim(), s.name];
@@ -1156,7 +1169,7 @@ async function parseAI(text){
 스키마: {"name":string,"start":"YYYY-MM-DD"|null,"days":[{"title":string,"drive":string,"note":string,"spots":[{"name":string,"city":string,"desc":string,"opt":boolean,"stay":boolean,"lat":number|null,"lng":number|null}]}]}
 - stay는 숙소(호텔·에어비앤비 등)면 true.
 - 모든 텍스트 필드는 한국어.
-- 각 명소의 실제 위도/경도를 네 지식으로 채워라. 확실하지 않으면 lat/lng를 null로 둬라.
+- 각 장소의 실제 위도/경도를 네 지식으로 채워라. 확실하지 않으면 lat/lng를 null로 둬라.
 - drive는 그날 이동 정보(예: "✈️ 인천 → 다롄"), note는 그날의 팁/메모. 없으면 빈 문자열.
 - opt는 "가면 좋은" 선택 코스면 true, 필수면 false.
 - JSON 외의 설명·인사·코드펜스를 절대 출력하지 마라.`;
@@ -1187,7 +1200,7 @@ function syncPasteMode(){
   document.getElementById('aiCfg').style.display = ai?'block':'none';
   document.getElementById('fmtHelp').style.display = ai?'none':'block';
   document.getElementById('pasteModeHint').textContent = ai
-    ? '자연어로 자유롭게 붙여넣으면 AI가 날짜·도시·명소·좌표를 정리해줘.'
+    ? '자연어로 자유롭게 붙여넣으면 AI가 날짜·도시·장소·좌표를 정리해줘.'
     : '아래 형식으로 붙여넣으면 AI 없이 즉시 만들어. 좌표는 자동으로 찾음(국내 카카오·해외 구글).';
   document.getElementById('pasteText').placeholder = ai?AI_PLACEHOLDER:DIRECT_PLACEHOLDER;
 }
@@ -1215,7 +1228,7 @@ async function runPaste(){
     spots:(d.spots||[]).map(s=>({name:(s.name||'').trim(), city:(s.city||'기타').trim(), desc:s.desc||'',
       opt:!!s.opt, stay:!!s.stay, lat:(s.lat==null?null:+s.lat), lng:(s.lng==null?null:+s.lng)})).filter(s=>s.name)
   }));
-  // 좌표 없는 명소 지오코딩
+  // 좌표 없는 장소 지오코딩
   const need=[]; parsed.days.forEach(d=>d.spots.forEach(s=>{ if(s.lat==null||isNaN(s.lat)||s.lng==null||isNaN(s.lng)) need.push(s); }));
   for(let i=0;i<need.length;i++){
     const s=need[i];
@@ -1223,7 +1236,7 @@ async function runPaste(){
     const g=await geocodeSpot(s);   // 국내=카카오/해외=구글 라우팅, 도시 앵커 150km 밖 결과는 배제
     if(g){ s.lat=g.lat; s.lng=g.lng; }
   }
-  // 좌표 못 찾은 명소는 버리지 않고 유지 (카드에 남고, '위치 지정'으로 표시)
+  // 좌표 못 찾은 장소는 버리지 않고 유지 (카드에 남고, '위치 지정'으로 표시)
   let noloc=0; parsed.days.forEach(d=>d.spots.forEach(s=>{ if(!hasLoc(s)) noloc++; }));
   // 적용
   if(target==='append'){
@@ -1235,7 +1248,7 @@ async function runPaste(){
   }
   activeDay=0;
   document.getElementById('pasteModalBg').classList.remove('show');
-  render(); fitAll();
+  render(); fitEntry();
   toast(`초안 생성 완료${noloc?` · ${noloc}곳은 위치 미지정 (카드에서 📍 지정)`:''}`, noloc?'#f4862c':'#2a9d3f');
 }
 
@@ -1258,11 +1271,11 @@ function renderTravel(di){
   document.getElementById('travelTitle').textContent=`Day ${di+1} · ${d.title||''}`;
   document.getElementById('travelSub').textContent=[dateOf(di),d.drive,d.note].filter(Boolean).join('  ·  ');
   const list=document.getElementById('travelList'); list.innerHTML='';
-  if(!d.spots.length){ list.innerHTML='<div style="color:#9aa5c4;font-size:13px;padding:20px 4px">이 날은 등록된 명소가 없습니다 — 이동일이거나 자유 일정</div>'; return; }
+  if(!d.spots.length){ list.innerHTML='<div style="color:#9aa5c4;font-size:13px;padding:20px 4px">이 날은 등록된 장소가 없습니다 — 이동일이거나 자유 일정</div>'; return; }
   const etas=dayEtas(d), dm=dayModeOf(d);
   let prevLoc=null;
   d.spots.forEach((s,si)=>{
-    // 구간 이동 정보 (이전 명소 → 이 명소)
+    // 구간 이동 정보 (이전 장소 → 이 장소)
     if(hasLoc(s)&&prevLoc){
       const c=requestLeg(prevLoc,s,dm);
       const lg=document.createElement('div'); lg.className='tLeg';
@@ -1350,7 +1363,7 @@ async function loadSnapList(){
       const idx=store.trips.findIndex(t=>t.id===store.activeId);
       if(idx>=0) store.trips[idx]=full.data;
       document.getElementById('tripModalBg').classList.remove('show');
-      activeDay=0; render(); fitAll(); toast('복원되었습니다 (↩️로 되돌리기 가능)');
+      activeDay=0; render(); fitEntry(); toast('복원되었습니다 (↩️로 되돌리기 가능)');
     };
     row.appendChild(btn); box.appendChild(row);
   });
