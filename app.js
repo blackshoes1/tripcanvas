@@ -191,6 +191,59 @@ function openKPopup(html,lat,lng){
 }
 function closeKPopup(){ if(kpopupOv){ kpopupOv.setMap(null); kpopupOv=null; } }
 
+// ───────────────── 지도 엔진 어댑터 ─────────────────
+// google/kakao 분기를 한 곳으로 격리. 모든 오버레이 핸들은 { remove() } 형태로 통일.
+const Engines={
+  google:{
+    ready(){ return !!map; },
+    marker(lat,lng,el,onClick){
+      const m=new google.maps.marker.AdvancedMarkerElement({map, position:{lat,lng}, content:el});
+      if(onClick) m.addEventListener('gmp-click',onClick);
+      return { _m:m, remove(){ m.map=null; } };
+    },
+    polyline(pts,o){
+      const opt={map, path:pts, geodesic:true};
+      if(o.dashed) Object.assign(opt,{strokeOpacity:0, icons:[{icon:{path:'M 0,-1 0,1', strokeOpacity:o.opacity, strokeColor:o.color, scale:2}, offset:'0', repeat:'14px'}]});
+      else Object.assign(opt,{strokeColor:o.color, strokeWeight:o.weight||3, strokeOpacity:o.opacity});
+      const l=new google.maps.Polyline(opt);
+      return { remove(){ l.setMap(null); } };
+    },
+    overlay(lat,lng,el){ const m=new google.maps.marker.AdvancedMarkerElement({map, position:{lat,lng}, content:el}); return { remove(){ m.map=null; } }; },
+    openPopup(html,lat,lng,anchor){ iw.setContent(`<div class="popupC">${html}</div>`); iw.open({map, anchor:anchor&&anchor._m}); },
+    closePopup(){ if(iw) iw.close(); },
+    fit(pts,padPx,maxZoom){
+      const b=new google.maps.LatLngBounds(); pts.forEach(p=>b.extend({lat:+p[0],lng:+p[1]}));
+      map.fitBounds(b, padPx==null?48:padPx);
+      if(maxZoom) google.maps.event.addListenerOnce(map,'idle',()=>{ if(map.getZoom()>maxZoom) map.setZoom(maxZoom); });
+    },
+    panTo(lat,lng,minZoom){ map.panTo({lat,lng}); if(minZoom&&map.getZoom()<minZoom) map.setZoom(minZoom); }
+  },
+  kakao:{
+    ready(){ return !!kmap; },
+    marker(lat,lng,el,onClick){
+      const ov=new kakao.maps.CustomOverlay({position:new kakao.maps.LatLng(lat,lng), content:el, xAnchor:.5, yAnchor:.5, clickable:true});
+      ov.setMap(kmap);
+      if(onClick){ el.style.cursor='pointer'; el.onclick=onClick; }
+      return { remove(){ ov.setMap(null); } };
+    },
+    polyline(pts,o){
+      const l=new kakao.maps.Polyline({path:pts.map(p=>new kakao.maps.LatLng(p.lat,p.lng)),
+        strokeColor:o.color, strokeWeight:o.dashed?2:(o.weight||3), strokeOpacity:o.opacity, strokeStyle:o.dashed?'dash':'solid'});
+      l.setMap(kmap); return { remove(){ l.setMap(null); } };
+    },
+    overlay(lat,lng,el){ const ov=new kakao.maps.CustomOverlay({position:new kakao.maps.LatLng(lat,lng), content:el, yAnchor:.5, clickable:false}); ov.setMap(kmap); return { remove(){ ov.setMap(null); } }; },
+    openPopup(html,lat,lng){ openKPopup(html,lat,lng); },
+    closePopup(){ closeKPopup(); },
+    fit(pts,padPx,maxZoom){
+      const b=new kakao.maps.LatLngBounds(); pts.forEach(p=>b.extend(new kakao.maps.LatLng(+p[0],+p[1])));
+      kmap.relayout(); kmap.setBounds(b, padPx==null?48:padPx);
+      if(maxZoom){ const minLv=Math.max(1,19-maxZoom); if(kmap.getLevel()<minLv) kmap.setLevel(minLv); }
+    },
+    panTo(lat,lng,minZoom){ kmap.panTo(new kakao.maps.LatLng(lat,lng)); if(minZoom){ const lv=Math.max(1,19-minZoom); if(kmap.getLevel()>lv) kmap.setLevel(lv); } }
+  }
+};
+function ME(){ return Engines[engine]; }   // 현재 활성 엔진
+
 function cityColors(){
   const m = {}; let i = 0;
   trip().days.forEach(d=>d.spots.forEach(s=>{ if(!(s.city in m)){ m[s.city]=PALETTE[i%PALETTE.length]; i++; } }));
@@ -460,50 +513,25 @@ function addPin(s,di,si,c){
     `<div style="margin-top:6px"><a href="${escAttr(extMapLink(s).href)}" target="_blank" rel="noopener">${extMapLink(s).label}</a> &nbsp; `+
     `<a href="#" onclick="openSpotModal(${di},${si});return false;">✎ 편집</a></div>`;
   const pin=mkPin(c,label,s.opt); pin.title=s.name;
-  if(engine==='kakao'){
-    const ov=new kakao.maps.CustomOverlay({position:new kakao.maps.LatLng(+s.lat,+s.lng), content:pin, xAnchor:.5, yAnchor:.5, clickable:true});
-    ov.setMap(kmap);
-    pin.style.cursor='pointer';
-    const open=()=>openKPopup(html, +s.lat, +s.lng);
-    pin.onclick=open;
-    markers.push({spot:s, open, km:ov});
-  }else{
-    const m=new google.maps.marker.AdvancedMarkerElement({map, position:{lat:+s.lat,lng:+s.lng}, content:pin});
-    const open=()=>{ iw.setContent(`<div class="popupC">${html}</div>`); iw.open({map, anchor:m}); };
-    m.addEventListener('gmp-click',open);
-    markers.push({spot:s, open, gm:m});
-  }
+  const h=ME().marker(+s.lat,+s.lng,pin,()=>open());
+  const open=()=>ME().openPopup(html, +s.lat, +s.lng, h);
+  markers.push({spot:s, open, h});
 }
 // 동선 라인 추가 (엔진 공용). dashed=일자 간 연결선
 function addLine(pts,color,opacity,dashed){
-  if(engine==='kakao'){
-    const l=new kakao.maps.Polyline({path:pts.map(p=>new kakao.maps.LatLng(p.lat,p.lng)),
-      strokeColor:color, strokeWeight:dashed?2:3, strokeOpacity:opacity, strokeStyle:dashed?'dash':'solid'});
-    l.setMap(kmap); lines.push({km:l});
-  }else{
-    const opt={map, path:pts, geodesic:true};
-    if(dashed){ Object.assign(opt,{strokeOpacity:0, icons:[{icon:{path:'M 0,-1 0,1', strokeOpacity:opacity, strokeColor:color, scale:2}, offset:'0', repeat:'14px'}]}); }
-    else Object.assign(opt,{strokeColor:color, strokeWeight:3, strokeOpacity:opacity});
-    lines.push({gm:new google.maps.Polyline(opt)});
-  }
+  lines.push({h:ME().polyline(pts,{color,opacity,dashed})});
 }
 // 경로 중간의 소요시간 칩 (Day 보기 전용)
 let legChips=[];
 function addLegChip(pos,text){
   const el=document.createElement('div'); el.className='legChip'; el.textContent=text;
-  if(engine==='kakao'){
-    const ov=new kakao.maps.CustomOverlay({position:new kakao.maps.LatLng(pos.lat,pos.lng), content:el, yAnchor:.5, clickable:false});
-    ov.setMap(kmap); legChips.push({km:ov});
-  }else{
-    const m=new google.maps.marker.AdvancedMarkerElement({map, position:pos, content:el});
-    legChips.push({gm:m});
-  }
+  legChips.push({h:ME().overlay(pos.lat,pos.lng,el)});
 }
 function clearOverlays(){
-  markers.forEach(m=>{ if(m.gm) m.gm.map=null; if(m.km) m.km.setMap(null); }); markers=[];
-  lines.forEach(l=>{ if(l.gm) l.gm.setMap(null); if(l.km) l.km.setMap(null); }); lines=[];
-  legChips.forEach(c=>{ if(c.gm) c.gm.map=null; if(c.km) c.km.setMap(null); }); legChips=[];
-  if(iw) iw.close(); closeKPopup();
+  markers.forEach(m=>m.h.remove()); markers=[];
+  lines.forEach(l=>l.h.remove()); lines=[];
+  legChips.forEach(c=>c.h.remove()); legChips=[];
+  if(iw) iw.close(); closeKPopup();   // 엔진 전환 대비 양쪽 팝업 닫기
 }
 // 오버레이 입력 시그니처 — 같으면 마커/라인 재생성 생략 (텍스트 편집 등에서 깜빡임·비용 제거)
 let _ovSig='';
@@ -530,7 +558,7 @@ function render(){
   if(want==='kakao' && !kmap){ ensureKakaoMap().then(ok=>{ if(ok) render(); }); }
   const eng=(want==='kakao' && kmap)?'kakao':'google';
   setEngine(eng);
-  const mapReady = engine==='kakao'? !!kmap : !!map;
+  const mapReady = ME().ready();
   const sig = mapReady? overlaySig(t,colors) : null;
   if(mapReady && sig!==_ovSig){
     _ovSig=sig;
@@ -584,21 +612,8 @@ function render(){
 }
 // pts([[lat,lng],…])에 맞춰 프레이밍. maxZoom(구글 기준)은 정착 후 보정
 function fitTo(pts,pad,maxZoom){
-  if(!pts.length) return;
-  if(engine==='kakao' && kmap){
-    const b=new kakao.maps.LatLngBounds();
-    pts.forEach(p=>b.extend(new kakao.maps.LatLng(+p[0],+p[1])));
-    kmap.relayout();
-    kmap.setBounds(b, pad==null?48:pad);
-    // 구글 zoom ≈ 19 - 카카오 level 근사로 과줌 방지
-    if(maxZoom){ const minLv=Math.max(1,19-maxZoom); if(kmap.getLevel()<minLv) kmap.setLevel(minLv); }
-    return;
-  }
-  if(!map) return;
-  const b=new google.maps.LatLngBounds();
-  pts.forEach(p=>b.extend({lat:+p[0],lng:+p[1]}));
-  map.fitBounds(b, pad==null?48:pad);
-  if(maxZoom) google.maps.event.addListenerOnce(map,'idle',()=>{ if(map.getZoom()>maxZoom) map.setZoom(maxZoom); });
+  if(!pts.length || !ME().ready()) return;
+  ME().fit(pts, pad, maxZoom);
 }
 // 여행 진입 시 포커스: 위치 있는 첫 일자 지역 (없으면 전체)
 function fitEntry(){
@@ -785,13 +800,8 @@ window.focusSpot=(di,si)=>{
   const s=trip().days[di].spots[si];
   if(!hasLoc(s)){ openSpotModal(di,si); return; }   // 위치 미지정이면 지정 모달 열기
   if(activeDay && activeDay!==di+1){ activeDay=0; render(); }
-  if(engine==='kakao' && kmap){
-    kmap.panTo(new kakao.maps.LatLng(+s.lat,+s.lng));
-    if(kmap.getLevel()>6) kmap.setLevel(6);   // ≈ 구글 z13
-  }else if(map){
-    map.panTo({lat:+s.lat,lng:+s.lng});
-    if(map.getZoom()<13) map.setZoom(13);
-  }else return;
+  if(!ME().ready()) return;
+  ME().panTo(+s.lat, +s.lng, 13);
   setTimeout(()=>{ const m=markers.find(m=>m.spot===s); if(m) m.open(); },400);
 };
 // 화살표 이동: 도구 항상 노출 + 옮긴 장소를 커서 아래에 고정(스크롤 보정)해 연속 클릭 가능
