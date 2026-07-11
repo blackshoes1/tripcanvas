@@ -229,10 +229,16 @@ function dayDistance(day){
 
 // ── 구간 소요시간 (자동차) — 국내 카카오내비 · 해외 Google Routes, localStorage 캐시 ──
 const KAKAO_REST_KEY='48e05420d9dcc072915ff99412669995';   // 카카오내비 REST (CORS 허용 확인됨)
-const LEG_KEY='tripcanvas_legs_v2';   // v2: 경로 geometry(path) 포함
+const LEG_KEY='tripcanvas_legs_v3';   // v3: 이동수단(mode)별 캐시 + 도로 스냅
 let legCache={};
 try{ legCache=JSON.parse(localStorage.getItem(LEG_KEY))||{}; }catch(e){}
+// 이동 수단 (일자별): car 자차 · transit 대중교통 · walk 도보 · bike 자전거
+const MODE_ICON={car:'🚗',transit:'🚌',walk:'🚶',bike:'🚴'};
+const MODE_NAME={car:'자차',transit:'대중교통',walk:'도보',bike:'자전거'};
+const MODE_SPEED={car:40,transit:25,walk:4.5,bike:15};   // km/h — 미캐시 구간 추정용
+function dayModeOf(day){ return MODE_ICON[day.mode]? day.mode : 'car'; }
 function legId(a,b){ return `${(+a.lat).toFixed(4)},${(+a.lng).toFixed(4)}>${(+b.lat).toFixed(4)},${(+b.lng).toFixed(4)}`; }
+function legKey(a,b,mode){ return legId(a,b)+'#'+(mode||'car'); }
 function saveLegCache(){ try{ localStorage.setItem(LEG_KEY, JSON.stringify(legCache)); }catch(e){} }
 function fmtDur(sec){ const m=Math.round(sec/60); return m<60? `${m}분` : `${Math.floor(m/60)}시간${m%60? ' '+(m%60)+'분':''}`; }
 // 좌표 배열 → 구글 인코딩 폴리라인 (캐시 용량 절약). geometry 라이브러리 필요
@@ -246,34 +252,81 @@ function decodePts(enc){
   if(!window.google||!google.maps.geometry||!enc) return null;
   try{ return google.maps.geometry.encoding.decodePath(enc).map(ll=>({lat:ll.lat(),lng:ll.lng()})); }catch(e){ return null; }
 }
-async function kakaoRoute(a,b){
-  const u=`https://apis-navi.kakaomobility.com/v1/directions?origin=${a.lng},${a.lat}&destination=${b.lng},${b.lat}`;
-  const r=await fetch(u,{headers:{Authorization:'KakaoAK '+KAKAO_REST_KEY}});
-  if(!r.ok) return null;
-  const js=await r.json();
-  const rt=js.routes&&js.routes[0];
-  if(!rt||rt.result_code!==0||!rt.summary) return null;
-  // 실제 도로 경로 좌표 (roads[].vertexes: [x,y,x,y,…])
+// 카카오내비 1회 호출 — 성공 시 {rt}, 실패 시 {code} (102 출발지·103 도착지 주변 도로 없음)
+async function kakaoTry(a,b){
+  try{
+    const u=`https://apis-navi.kakaomobility.com/v1/directions?origin=${a.lng},${a.lat}&destination=${b.lng},${b.lat}`;
+    const r=await fetch(u,{headers:{Authorization:'KakaoAK '+KAKAO_REST_KEY}});
+    if(!r.ok) return {code:-1};
+    const js=await r.json();
+    const rt=js.routes&&js.routes[0];
+    if(!rt) return {code:-1};
+    if(rt.result_code!==0||!rt.summary) return {code:rt.result_code};
+    return {rt};
+  }catch(e){ return {code:-1}; }
+}
+// p 주변 반경 r(m)의 8방위 후보점 — 도로 없는 좌표(바다·산)를 인근 도로로 스냅할 때 사용
+function ringPts(p,r){
+  const dLat=r/111320, dLng=r/(111320*Math.cos(p.lat*Math.PI/180));
+  const out=[];
+  for(let k=0;k<8;k++){ const th=k*Math.PI/4; out.push({lat:p.lat+dLat*Math.sin(th), lng:p.lng+dLng*Math.cos(th)}); }
+  return out;
+}
+function buildKakaoResult(rt, orig, snapped){
   const pts=[];
   (rt.sections||[]).forEach(sec=>(sec.roads||[]).forEach(rd=>{
     const v=rd.vertexes||[];
     for(let i=0;i+1<v.length;i+=2) pts.push({lat:v[i+1],lng:v[i]});
   }));
+  if(snapped && pts.length){ pts.unshift({lat:+orig.a.lat,lng:+orig.a.lng}); pts.push({lat:+orig.b.lat,lng:+orig.b.lng}); }
   return {sec:rt.summary.duration, m:rt.summary.distance, path:encodePts(pts),
-    taxi:(rt.summary.fare&&rt.summary.fare.taxi)||0};
+    taxi:(rt.summary.fare&&rt.summary.fare.taxi)||0, snapped:snapped?1:0};
 }
-// 구간 라벨: 2km 미만은 도보 시간(4.5km/h 추정) 우선, 그 외 자동차
+// 카카오내비 경로 — 도로 없는 끝점(102/103)은 링 프로브로 인근 도로에 스냅해 재시도
+async function kakaoRoute(a,b){
+  const orig={a,b};
+  let A={lat:+a.lat,lng:+a.lng}, B={lat:+b.lat,lng:+b.lng}, snapped=false;
+  for(let attempt=0; attempt<3; attempt++){
+    const {rt,code}=await kakaoTry(A,B);
+    if(rt) return buildKakaoResult(rt, orig, snapped);
+    const fixA=code===102, fixB=code===103;
+    if(!fixA&&!fixB) return null;
+    const base=fixA?A:B;
+    let hit=null;
+    outer:
+    for(const r of [500,1000,1600,2400]){
+      for(const cand of ringPts(base,r)){
+        const t=await kakaoTry(fixA?cand:A, fixA?B:cand);
+        if(t.rt) return buildKakaoResult(t.rt, orig, true);
+        // 반대쪽 끝점 오류로 바뀌었으면 이 후보는 도로 위 — 채택하고 반대쪽을 다음 루프에서 스냅
+        if(fixA? t.code===103 : t.code===102){ hit=cand; break outer; }
+      }
+    }
+    if(!hit) return null;
+    if(fixA) A=hit; else B=hit;
+    snapped=true;
+  }
+  return null;
+}
+// 구간 라벨 — 수단 아이콘 + 시간 (자차는 2km 미만이면 도보 대안 시간 표기)
 function legLabel(c){
-  const km=(c.m/1000).toFixed(1);
-  if(c.m<2000){ const wm=Math.max(1,Math.round(c.m/75)); return `↳${km}km · 🚶${wm}분`; }
-  return `↳${km}km · 🚗${fmtDur(c.sec)}`;
+  const km=(c.m/1000).toFixed(1), mode=c.mode||'car';
+  if(mode==='car' && c.m<2000){ const wm=Math.max(1,Math.round(c.m/75)); return `↳${km}km · 🚶${wm}분`; }
+  return `↳${km}km · ${MODE_ICON[mode]}${fmtDur(c.sec)}`;
 }
-async function googleRoute(a,b){
+function legTitle(c){
+  let t=(c.est?'자동차 경로 거리 기반 추정':'실제 도로 기준');
+  if(c.snapped) t+=' · 인근 도로에서 출발/도착 (원 지점은 도로에서 멂)';
+  if((c.mode||'car')==='car'&&c.taxi) t+=` · 택시 약 ${c.taxi.toLocaleString()}원`;
+  return t;
+}
+const GMODE={car:'DRIVE',transit:'TRANSIT',walk:'WALK',bike:'BICYCLE'};
+async function googleRoute(a,b,mode){
   const r=await fetch('https://routes.googleapis.com/directions/v2:computeRoutes',{
     method:'POST',
     headers:{'Content-Type':'application/json','X-Goog-Api-Key':GMAPS_KEY,'X-Goog-FieldMask':'routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline'},
     body:JSON.stringify({origin:{location:{latLng:{latitude:+a.lat,longitude:+a.lng}}},
-      destination:{location:{latLng:{latitude:+b.lat,longitude:+b.lng}}}, travelMode:'DRIVE'})
+      destination:{location:{latLng:{latitude:+b.lat,longitude:+b.lng}}}, travelMode:GMODE[mode]||'DRIVE'})
   });
   if(!r.ok) return null;
   const js=await r.json();
@@ -281,14 +334,30 @@ async function googleRoute(a,b){
   if(!rt||!rt.duration) return null;
   return {sec:parseInt(rt.duration), m:rt.distanceMeters||0, path:(rt.polyline&&rt.polyline.encodedPolyline)||null};
 }
+// 수단·지역별 라우팅: 국내 car=카카오내비 / transit=구글 / walk·bike=카카오 자동차 경로 거리 기반 추정
+//                     해외 4개 모드 모두 구글 Routes
+async function fetchLeg(a,b,mode){
+  const kr=inKorea(a)&&inKorea(b);
+  if(kr){
+    if(mode==='car'){ const k=await kakaoRoute(a,b); return k&&{...k,mode}; }
+    if(mode==='transit'){ const g=await googleRoute(a,b,'transit'); return g&&{...g,mode}; }
+    const k=await kakaoRoute(a,b);                       // walk/bike: 도로 거리 기반 추정
+    if(!k) return null;
+    const mps=mode==='walk'?1.25:4.17;                   // 4.5km/h · 15km/h
+    return {sec:Math.round(k.m/mps), m:k.m, path:k.path, snapped:k.snapped, est:1, mode};
+  }
+  const g=await googleRoute(a,b,mode);
+  return g&&{...g,mode};
+}
 // 캐시에 있으면 즉시 반환, 없으면 큐에 넣고 null (완료 시 DOM 패치 + 사이드바 갱신)
 let legQueue=[], legBusy=false, legRefreshT=null;
-function requestLeg(a,b){
-  const id=legId(a,b);
-  const c=legCache[id];
-  if(c && c.sec && !c.path){ delete legCache[id]; }   // 경로 없이 캐시된 항목(과거 레이스 오염) 자가 치유 → 재조회
-  else if(c) return c.sec? c : null;                  // 실패 기록이면 재시도 안 함 (세션 캐시)
-  if(!legQueue.find(q=>q.id===id)){ legQueue.push({id,a:{lat:+a.lat,lng:+a.lng},b:{lat:+b.lat,lng:+b.lng}}); pumpLegs(); }
+function requestLeg(a,b,mode){
+  mode=MODE_ICON[mode]?mode:'car';
+  const key=legKey(a,b,mode);
+  const c=legCache[key];
+  if(c && c.sec && !c.path){ delete legCache[key]; }   // 경로 없이 캐시된 항목(과거 레이스 오염) 자가 치유 → 재조회
+  else if(c) return c.sec? c : null;                   // 실패 기록이면 재시도 안 함 (세션 캐시)
+  if(!legQueue.find(q=>q.key===key)){ legQueue.push({key,mode,a:{lat:+a.lat,lng:+a.lng},b:{lat:+b.lat,lng:+b.lng}}); pumpLegs(); }
   return c&&c.sec? c : null;   // 재조회 중에도 기존 시간·거리는 계속 표시
 }
 async function pumpLegs(){
@@ -297,19 +366,19 @@ async function pumpLegs(){
   // 경로 없는 결과가 영구 캐시되므로, 준비될 때까지 대기 (최대 ~21초)
   for(let i=0;i<70 && !(window.google&&google.maps&&google.maps.geometry);i++) await sleep(300);
   while(legQueue.length){
-    const {id,a,b}=legQueue.shift();
-    if(legCache[id]) continue;
+    const {key,mode,a,b}=legQueue.shift();
+    if(legCache[key]) continue;
     let r=null;
-    try{ r = (inKorea(a)&&inKorea(b)) ? await kakaoRoute(a,b) : await googleRoute(a,b); }catch(e){}
-    legCache[id] = r || {fail:Date.now()};
+    try{ r=await fetchLeg(a,b,mode); }catch(e){}
+    legCache[key] = r || {fail:Date.now()};
     if(r){
       saveLegCache();
-      document.querySelectorAll(`[data-leg="${id}"]`).forEach(el=>{
+      document.querySelectorAll(`[data-leg="${key}"]`).forEach(el=>{
         el.textContent=legLabel(r);
-        el.title='실제 도로 기준'+(r.taxi?` · 택시 약 ${r.taxi.toLocaleString()}원`:'');
+        el.title=legTitle(r);
       });
-      document.querySelectorAll(`[data-ileg="${id}"]`).forEach(el=>{
-        el.textContent=`🚙 이전 일정에서 ${(r.m/1000).toFixed(1)}km · ${fmtDur(r.sec)}`;
+      document.querySelectorAll(`[data-ileg="${key}"]`).forEach(el=>{
+        el.textContent=`${MODE_ICON[r.mode||'car']} 이전 일정에서 ${(r.m/1000).toFixed(1)}km · ${fmtDur(r.sec)}`;
       });
       clearTimeout(legRefreshT);
       legRefreshT=setTimeout(()=>render(),450);   // 하루 합계 + 지도 경로선 갱신
@@ -320,17 +389,19 @@ async function pumpLegs(){
 // ── 타임라인 (도착 예상시각) ──
 function parseHM(t){ const m=/^(\d{1,2}):(\d{2})$/.exec(t||''); return m? (+m[1])*60+(+m[2]) : 9*60; }
 function hm(min){ min=((Math.round(min)%1440)+1440)%1440; return `${String(Math.floor(min/60)).padStart(2,'0')}:${String(min%60).padStart(2,'0')}`; }
-// 구간 이동시간(분): 캐시된 실도로(2km 미만 도보) 우선, 없으면 직선 40km/h 추정
-function legMinutes(a,b){
-  const c=legCache[legId(a,b)];
-  if(c&&c.sec) return c.m<2000? c.m/75 : c.sec/60;
-  return haversine(a,b)/40*60;
+// 구간 이동시간(분): 캐시된 경로 우선(자차 2km 미만은 도보 대안), 없으면 수단별 속도로 직선 추정
+function legMinutes(a,b,mode){
+  mode=MODE_ICON[mode]?mode:'car';
+  const c=legCache[legKey(a,b,mode)];
+  if(c&&c.sec) return (mode==='car'&&c.m<2000)? c.m/75 : c.sec/60;
+  return haversine(a,b)/MODE_SPEED[mode]*60;
 }
 // 일자 시작시각(startAt, 기본 09:00)부터 체류시간(stayMin, 기본 60분)+이동시간 누적
 function dayEtas(day){
   let t=parseHM(day.startAt), prev=null;
+  const dm=dayModeOf(day);
   return day.spots.map(s=>{
-    if(hasLoc(s)&&prev) t+=legMinutes(prev,s);
+    if(hasLoc(s)&&prev) t+=legMinutes(prev,s,dm);
     const eta=t;
     t+=(s.stayMin!=null? +s.stayMin : 60);
     if(hasLoc(s)) prev=s;
@@ -339,11 +410,11 @@ function dayEtas(day){
 }
 // 하루 전체 실도로 합계 (모든 구간이 캐시됐을 때만)
 function dayRoute(day){
-  const loc=day.spots.filter(hasLoc);
+  const loc=day.spots.filter(hasLoc), dm=dayModeOf(day);
   if(loc.length<2) return null;
   let sec=0,m=0,taxi=0;
   for(let i=1;i<loc.length;i++){
-    const c=legCache[legId(loc[i-1],loc[i])];
+    const c=legCache[legKey(loc[i-1],loc[i],dm)];
     if(!c||!c.sec) return null;
     sec+=c.sec; m+=c.m; taxi+=(c.taxi||0);
   }
@@ -409,14 +480,15 @@ function overlaySig(t,colors){
   const p=[engine, activeDay, colorByMode()];
   t.days.forEach((day,di)=>{
     if(activeDay && di+1!==activeDay) return;
+    p.push(dayModeOf(day));
     day.spots.forEach((s,si)=>{ if(hasLoc(s)) p.push(si,s.lat,s.lng,s.stay?1:0,s.opt?1:0,spotColor(s,di,colors),esc(s.name),esc(s.desc||'')); });
-    const loc=day.spots.filter(hasLoc);
-    for(let i=1;i<loc.length;i++){ const c=legCache[legId(loc[i-1],loc[i])]; p.push(c&&c.sec?(c.path?'p':'s'):'n'); }
+    const loc=day.spots.filter(hasLoc), dm=dayModeOf(day);
+    for(let i=1;i<loc.length;i++){ const c=legCache[legKey(loc[i-1],loc[i],dm)]; p.push(c&&c.sec?(c.path?'p':'s'):'n'); }
   });
   if(!activeDay){
     let prev=null;
     t.days.forEach(day=>{ const loc=day.spots.filter(hasLoc); if(!loc.length)return;
-      if(prev){ const c=legCache[legId(prev,loc[0])]; p.push('I', c&&c.path?'p':'n'); } prev=loc[loc.length-1]; });
+      if(prev){ const c=legCache[legKey(prev,loc[0],dayModeOf(day))]; p.push('I', c&&c.path?'p':'n'); } prev=loc[loc.length-1]; });
   }
   return p.join('|');
 }
@@ -439,18 +511,18 @@ function render(){
         addPin(s,di,si,spotColor(s,di,colors));
       });
       // 일자 내 동선 — 구간별로 실도로 경로(캐시)가 있으면 그 경로, 없으면 직선
-      const locSpots = day.spots.filter(hasLoc);
+      const locSpots = day.spots.filter(hasLoc), dm=dayModeOf(day);
       const lc=spotColor(locSpots[0]||{},di,colors), lop=activeDay?0.9:0.45;
       for(let i=1;i<locSpots.length;i++){
         const A=locSpots[i-1], B=locSpots[i];
-        const cch=legCache[legId(A,B)];
+        const cch=legCache[legKey(A,B,dm)];
         const path=(cch&&cch.sec&&cch.path)?decodePts(cch.path):null;
         addLine(path||[{lat:+A.lat,lng:+A.lng},{lat:+B.lat,lng:+B.lng}], lc, lop, false);
         // Day 보기에선 경로 중간에 소요시간 칩
         if(activeDay && cch && cch.sec){
           const mid = path? path[Math.floor(path.length/2)]
                           : {lat:(+A.lat + +B.lat)/2, lng:(+A.lng + +B.lng)/2};
-          addLegChip(mid, cch.m<2000? `🚶${Math.max(1,Math.round(cch.m/75))}분` : fmtDur(cch.sec));
+          addLegChip(mid, (dm==='car'&&cch.m<2000)? `🚶${Math.max(1,Math.round(cch.m/75))}분` : `${MODE_ICON[dm]}${fmtDur(cch.sec)}`);
         }
       }
     });
@@ -461,7 +533,7 @@ function render(){
         const loc = day.spots.filter(hasLoc);
         if(!loc.length) return;
         if(prev){
-          const cch=legCache[legId(prev,loc[0])];
+          const cch=legCache[legKey(prev,loc[0],dayModeOf(day))];
           const path=(cch&&cch.sec&&cch.path)?decodePts(cch.path):null;
           addLine(path||[{lat:+prev.lat,lng:+prev.lng},{lat:+loc[0].lat,lng:+loc[0].lng}], '#f6bd60', .8, true);
         }
@@ -549,17 +621,17 @@ function renderSidebar(){
     const headC = colorByMode()==='day' ? dayColor(di) : (day.spots.length?(colors[day.spots[0].city]||'#556'):'#556');
     const card=document.createElement('div'); card.className='dayCard'+(activeDay&&activeDay!==di+1?' dim':''); card.style.setProperty('--c',headC);
     let spotsHtml='', prevLoc=null;
-    const etas=dayEtas(day);
+    const etas=dayEtas(day), dm=dayModeOf(day);
     day.spots.forEach((s,si)=>{
       const dotC = hasLoc(s)?spotColor(s,di,colors):'#4a5170';
-      // 구간: 실도로 소요시간(캐시)이 있으면 그걸, 아니면 직선거리 + 백그라운드 조회
+      // 구간: 캐시된 경로가 있으면 그걸, 아니면 직선거리 + 백그라운드 조회
       let legHtml='';
       if(hasLoc(s)&&prevLoc){
-        const lid=legId(prevLoc,s), lc=requestLeg(prevLoc,s);
-        const failed=!lc && legCache[lid] && legCache[lid].fail;   // 도로 경로 없음 (바다·산 위 좌표 등)
+        const lid=legKey(prevLoc,s,dm), lc=requestLeg(prevLoc,s,dm);
+        const failed=!lc && legCache[lid] && legCache[lid].fail;   // 인근 도로 스냅까지 실패
         legHtml = lc
-          ? `<span class="leg" data-leg="${lid}" title="실제 도로 기준${lc.taxi?` · 택시 약 ${lc.taxi.toLocaleString()}원`:''}">${legLabel(lc)}</span>`
-          : `<span class="leg${failed?' legfail':''}" data-leg="${lid}"${failed?' title="도로 경로를 찾을 수 없어 직선거리로 표시 — 명소 위치가 도로에서 멀어요(바다·산 위 좌표 등). 명소 편집에서 검색으로 위치를 다시 잡으면 경로·시간이 표시됩니다"':''}>↳${haversine(prevLoc,s).toFixed(1)}km${failed?' ⚠️':''}</span>`;
+          ? `<span class="leg" data-leg="${lid}" title="${legTitle(lc)}">${legLabel(lc)}</span>`
+          : `<span class="leg${failed?' legfail':''}" data-leg="${lid}"${failed?' title="경로를 찾을 수 없어 직선거리로 표시 — 인근 도로 탐색(최대 2.4km)까지 실패했습니다. 명소 편집에서 검색으로 위치를 다시 잡아 보세요"':''}>↳${haversine(prevLoc,s).toFixed(1)}km${failed?' ⚠️':''}</span>`;
       }
       if(hasLoc(s)) prevLoc=s;
       spotsHtml+=`<div class="spot" data-di="${di}" data-si="${si}" style="--c:${dotC}">
@@ -572,19 +644,19 @@ function renderSidebar(){
     });
     card.innerHTML=`<div class="dayHead">
         <span><span class="dragHandle" title="드래그로 일자 순서 변경">⠿</span> Day ${di+1} · ${esc(day.title)}</span>
-        <span style="display:flex;align-items:center;gap:6px"><span class="date" onclick="event.stopPropagation();openDayModal(${di})" style="cursor:pointer" title="클릭해서 날짜 지정/수정">${dateOf(di)||'📅 날짜 지정'}</span>
+        <span style="display:flex;align-items:center;gap:6px"><span title="이동 수단: ${MODE_NAME[dm]}">${MODE_ICON[dm]}</span><span class="date" onclick="event.stopPropagation();openDayModal(${di})" style="cursor:pointer" title="클릭해서 날짜 지정/수정">${dateOf(di)||'📅 날짜 지정'}</span>
         <span class="tools"><button class="iconb" onclick="event.stopPropagation();openDayModal(${di})">✎</button></span></span>
       </div><div class="dayBody">
         ${day.drive?`<div class="drive">${esc(day.drive)}</div>`:''}
         ${(()=>{   // 일자 간 자동 이동시간: 이전 일자 마지막 → 오늘 첫 명소
           const first=day.spots.find(hasLoc);
           if(!prevDayAnchor||!first) return '';
-          const iid=legId(prevDayAnchor,first), ic=requestLeg(prevDayAnchor,first);
+          const iid=legKey(prevDayAnchor,first,dm), ic=requestLeg(prevDayAnchor,first,dm);
           return ic
-            ? `<div class="drive" style="color:#9fb8e8" title="이전 일자 마지막 장소 기준${ic.taxi?` · 택시 약 ${ic.taxi.toLocaleString()}원`:''}"><span data-ileg="${iid}">🚙 이전 일정에서 ${(ic.m/1000).toFixed(1)}km · ${fmtDur(ic.sec)}</span></div>`
-            : `<div class="drive" style="color:#9fb8e8"><span data-ileg="${iid}">🚙 이전 일정에서 직선 ${haversine(prevDayAnchor,first).toFixed(1)}km</span></div>`;
+            ? `<div class="drive" style="color:#9fb8e8" title="이전 일자 마지막 장소 기준 · ${legTitle(ic)}"><span data-ileg="${iid}">${MODE_ICON[dm]} 이전 일정에서 ${(ic.m/1000).toFixed(1)}km · ${fmtDur(ic.sec)}</span></div>`
+            : `<div class="drive" style="color:#9fb8e8"><span data-ileg="${iid}">${MODE_ICON[dm]} 이전 일정에서 직선 ${haversine(prevDayAnchor,first).toFixed(1)}km</span></div>`;
         })()}
-        ${(()=>{const rt=dayRoute(day); if(rt) return `<div class="dist">📏 하루 동선 약 ${(rt.m/1000).toFixed(1)}km · 🚗${fmtDur(rt.sec)}${rt.taxi?` · 🚕약 ${rt.taxi.toLocaleString()}원`:''} <span style="opacity:.55">(도로 기준)</span></div>`;
+        ${(()=>{const rt=dayRoute(day); if(rt) return `<div class="dist">📏 하루 동선 약 ${(rt.m/1000).toFixed(1)}km · ${MODE_ICON[dm]}${fmtDur(rt.sec)}${(dm==='car'&&rt.taxi)?` · 🚕약 ${rt.taxi.toLocaleString()}원`:''} <span style="opacity:.55">(도로 기준)</span></div>`;
           return dayDistance(day)>0?`<div class="dist">📏 하루 동선 약 ${dayDistance(day).toFixed(1)}km <span style="opacity:.55">(직선)</span></div>`:'';})()}
         <div class="spotList" data-di="${di}">${spotsHtml}</div>
         <button class="addSpot" onclick="openSpotModal(${di},-1)">＋ 명소 추가</button>
@@ -756,6 +828,7 @@ window.openDayModal=(di)=>{
   document.getElementById('dayModalTitle').textContent=`Day ${di+1} 편집 · ${dateOf(di)}`;
   document.getElementById('dayDate').value=isoDateOf(di);
   document.getElementById('dayStart').value=d.startAt||'09:00';
+  document.getElementById('dayMode').value=dayModeOf(d);
   document.getElementById('dayTitle').value=d.title||'';
   document.getElementById('dayDrive').value=d.drive||'';
   document.getElementById('dayNote').value=d.note||'';
@@ -766,6 +839,7 @@ document.getElementById('daySave').onclick=()=>{
   const d=trip().days[editingDay];
   d.title=document.getElementById('dayTitle').value.trim();
   d.startAt=document.getElementById('dayStart').value||'09:00';
+  d.mode=document.getElementById('dayMode').value;
   d.drive=document.getElementById('dayDrive').value.trim();
   d.note=document.getElementById('dayNote').value.trim();
   // 이 날짜에 맞춰 여행 시작일 역산 (Day들은 시작일 기준 연속) — 빈 값이면 시작일 해제
@@ -1172,16 +1246,16 @@ function renderTravel(di){
   document.getElementById('travelSub').textContent=[dateOf(di),d.drive,d.note].filter(Boolean).join('  ·  ');
   const list=document.getElementById('travelList'); list.innerHTML='';
   if(!d.spots.length){ list.innerHTML='<div style="color:#9aa5c4;font-size:13px;padding:20px 4px">이 날은 등록된 명소가 없습니다 — 이동일이거나 자유 일정</div>'; return; }
-  const etas=dayEtas(d);
+  const etas=dayEtas(d), dm=dayModeOf(d);
   let prevLoc=null;
   d.spots.forEach((s,si)=>{
     // 구간 이동 정보 (이전 명소 → 이 명소)
     if(hasLoc(s)&&prevLoc){
-      const c=requestLeg(prevLoc,s);
+      const c=requestLeg(prevLoc,s,dm);
       const lg=document.createElement('div'); lg.className='tLeg';
       lg.textContent = c
-        ? (c.m<2000? `🚶 ${Math.max(1,Math.round(c.m/75))}분 · ${(c.m/1000).toFixed(1)}km`
-                   : `🚗 ${fmtDur(c.sec)} · ${(c.m/1000).toFixed(1)}km${c.taxi?` · 🚕약 ${c.taxi.toLocaleString()}원`:''}`)
+        ? ((dm==='car'&&c.m<2000)? `🚶 ${Math.max(1,Math.round(c.m/75))}분 · ${(c.m/1000).toFixed(1)}km`
+                   : `${MODE_ICON[dm]} ${fmtDur(c.sec)} · ${(c.m/1000).toFixed(1)}km${(dm==='car'&&c.taxi)?` · 🚕약 ${c.taxi.toLocaleString()}원`:''}`)
         : `↘ 직선 ${haversine(prevLoc,s).toFixed(1)}km`;
       list.appendChild(lg);
     }
