@@ -365,9 +365,22 @@ function addLine(pts,color,opacity,dashed){
     lines.push({gm:new google.maps.Polyline(opt)});
   }
 }
+// 경로 중간의 소요시간 칩 (Day 보기 전용)
+let legChips=[];
+function addLegChip(pos,text){
+  const el=document.createElement('div'); el.className='legChip'; el.textContent=text;
+  if(engine==='kakao'){
+    const ov=new kakao.maps.CustomOverlay({position:new kakao.maps.LatLng(pos.lat,pos.lng), content:el, yAnchor:.5, clickable:false});
+    ov.setMap(kmap); legChips.push({km:ov});
+  }else{
+    const m=new google.maps.marker.AdvancedMarkerElement({map, position:pos, content:el});
+    legChips.push({gm:m});
+  }
+}
 function clearOverlays(){
   markers.forEach(m=>{ if(m.gm) m.gm.map=null; if(m.km) m.km.setMap(null); }); markers=[];
   lines.forEach(l=>{ if(l.gm) l.gm.setMap(null); if(l.km) l.km.setMap(null); }); lines=[];
+  legChips.forEach(c=>{ if(c.gm) c.gm.map=null; if(c.km) c.km.setMap(null); }); legChips=[];
   if(iw) iw.close(); closeKPopup();
 }
 function render(){
@@ -394,6 +407,12 @@ function render(){
         const cch=legCache[legId(A,B)];
         const path=(cch&&cch.sec&&cch.path)?decodePts(cch.path):null;
         addLine(path||[{lat:+A.lat,lng:+A.lng},{lat:+B.lat,lng:+B.lng}], lc, lop, false);
+        // Day 보기에선 경로 중간에 소요시간 칩
+        if(activeDay && cch && cch.sec){
+          const mid = path? path[Math.floor(path.length/2)]
+                          : {lat:(+A.lat + +B.lat)/2, lng:(+A.lng + +B.lng)/2};
+          addLegChip(mid, cch.m<2000? `🚶${Math.max(1,Math.round(cch.m/75))}분` : fmtDur(cch.sec));
+        }
       }
     });
     // 일자 간 연결 (전체 보기) — 점선
