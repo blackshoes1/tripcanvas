@@ -88,7 +88,48 @@
     return out;
   }
 
-  const TC={toISO,haversine,legId,legKey,ringPts,parseHM,hm,inKorea,simplifyName,parseDirect,encodePolyline,decodePolyline};
+  // 동선 순서 최적화 — 직선거리 기준 nearest-neighbor + 2-opt.
+  // coords: [{lat,lng}], opt.fixStart(기본 true: 첫 지점 고정)·opt.fixEnd(마지막 고정, 숙소 복귀 등)
+  // 반환: 방문 순서 인덱스 배열
+  function optimizeRoute(coords, opt){
+    opt=opt||{}; const n=coords.length;
+    if(n<=2) return coords.map((_,i)=>i);
+    const D=(i,j)=>haversine(coords[i],coords[j]);
+    const fixStart=opt.fixStart!==false, fixEnd=!!opt.fixEnd;
+    const startIdx=0, endIdx=fixEnd?n-1:-1;
+    const pool=[]; for(let i=0;i<n;i++) if(i!==startIdx && i!==endIdx) pool.push(i);
+    // nearest-neighbor (시작점에서 가장 가까운 순으로)
+    const order=[startIdx]; let cur=startIdx;
+    while(pool.length){
+      let best=0,bd=Infinity;
+      for(let k=0;k<pool.length;k++){ const d=D(cur,pool[k]); if(d<bd){bd=d;best=k;} }
+      cur=pool.splice(best,1)[0]; order.push(cur);
+    }
+    if(endIdx>=0) order.push(endIdx);
+    // 2-opt (고정 끝점 존중)
+    const lo=fixStart?1:0, hi=fixEnd?order.length-2:order.length-1;
+    let improved=true, guard=0;
+    while(improved && guard++<200){
+      improved=false;
+      for(let i=lo;i<=hi;i++){
+        for(let j=i+1;j<=hi;j++){
+          const a=order[i-1], b=order[i], c=order[j], d=(j+1<order.length?order[j+1]:-1);
+          const before=D(a,b)+(d>=0?D(c,d):0);
+          const after=D(a,c)+(d>=0?D(b,d):0);
+          if(after+1e-9<before){ let x=i,y=j; while(x<y){ const t=order[x];order[x]=order[y];order[y]=t;x++;y--; } improved=true; }
+        }
+      }
+    }
+    return order;
+  }
+  // 경로 총 직선거리(km)
+  function routeLength(coords, order){
+    order=order||coords.map((_,i)=>i); let s=0;
+    for(let k=1;k<order.length;k++) s+=haversine(coords[order[k-1]],coords[order[k]]);
+    return s;
+  }
+
+  const TC={toISO,haversine,legId,legKey,ringPts,parseHM,hm,inKorea,simplifyName,parseDirect,encodePolyline,decodePolyline,optimizeRoute,routeLength};
   if(typeof module!=='undefined' && module.exports){ module.exports=TC; }   // Node (테스트)
   else { for(const k in TC) root[k]=TC[k]; }                                // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);
