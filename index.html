@@ -164,6 +164,7 @@
   <label>메모 (운영시간, 예약, 팁 등)</label><textarea id="spotDesc"></textarea>
   <label>일자</label><select id="spotDay"></select>
   <div class="chkrow"><input type="checkbox" id="spotOpt"><label for="spotOpt" style="margin:0">선택 코스 (흐린 핀)</label></div>
+  <div class="chkrow"><input type="checkbox" id="spotStay"><label for="spotStay" style="margin:0">🏠 숙소 (일자 간 이동 기준점)</label></div>
   <input type="hidden" id="spotLat"><input type="hidden" id="spotLng">
   <div class="hint" id="coordHint">좌표: 미지정</div>
   <div class="row">
@@ -578,9 +579,9 @@ function dayRoute(day){
   return {sec,m,taxi};
 }
 
-// 마커 하나 추가 (엔진 공용) — markers에 {spot, open} 인터페이스로 저장
+// 마커 하나 추가 (엔진 공용) — markers에 {spot, open} 인터페이스로 저장. 숙소는 🏠 핀
 function addPin(s,di,si,c){
-  const label=si+1;
+  const label=s.stay?'🏠':(si+1);
   const html=`<h3>${esc(s.name)}</h3><span class="badge" style="background:${c}">Day ${di+1} · ${dateOf(di)}</span>`+
     `<div>${esc(s.desc).replace(/\n/g,'<br>')}</div>`+
     `<div style="margin-top:6px"><a href="${escAttr(extMapLink(s).href)}" target="_blank" rel="noopener">${extMapLink(s).label}</a> &nbsp; `+
@@ -749,7 +750,7 @@ function renderSidebar(){
       }
       if(hasLoc(s)) prevLoc=s;
       spotsHtml+=`<div class="spot" data-di="${di}" data-si="${si}" style="--c:${dotC}">
-        <span class="nm" onclick="focusSpot(${di},${si})">${si+1}. ${esc(s.name)}${s.opt?' <span class=opt>(선택)</span>':''}${hasLoc(s)?'':`<span class="noloc" onclick="event.stopPropagation();openSpotModal(${di},${si})">📍 위치 지정</span>`}</span>${legHtml}
+        <span class="nm" onclick="focusSpot(${di},${si})">${si+1}. ${s.stay?'🏠 ':''}${esc(s.name)}${s.opt?' <span class=opt>(선택)</span>':''}${hasLoc(s)?'':`<span class="noloc" onclick="event.stopPropagation();openSpotModal(${di},${si})">📍 위치 지정</span>`}</span>${legHtml}
         <span class="tools">
           <button class="iconb mvup" onclick="moveSpot(${di},${si},-1)" title="위로">▲</button>
           <button class="iconb mvdown" onclick="moveSpot(${di},${si},1)" title="아래로">▼</button>
@@ -788,8 +789,11 @@ function renderSidebar(){
       delay:120, delayOnTouchOnly:true, ghostClass:'sortable-ghost', chosenClass:'sortable-chosen',
       onEnd:onSpotDrop
     }));
+    // 일자 간 기준점: 숙소(🏠)가 있으면 숙소, 없으면 마지막 위치
     const locAll=day.spots.filter(hasLoc);
-    if(locAll.length) prevDayAnchor=locAll[locAll.length-1];
+    const stay=locAll.filter(s=>s.stay).pop();
+    if(stay) prevDayAnchor=stay;
+    else if(locAll.length) prevDayAnchor=locAll[locAll.length-1];
     dayList.appendChild(card);
   });
   sb.appendChild(dayList);
@@ -860,6 +864,7 @@ window.openSpotModal=(di,si)=>{
   document.getElementById('spotCity').value=s.city;
   document.getElementById('spotDesc').value=s.desc||'';
   document.getElementById('spotOpt').checked=!!s.opt;
+  document.getElementById('spotStay').checked=!!s.stay;
   document.getElementById('spotLat').value=s.lat; document.getElementById('spotLng').value=s.lng;
   document.getElementById('coordHint').textContent = s.lat?`좌표: ${(+s.lat).toFixed(4)}, ${(+s.lng).toFixed(4)}`:'좌표: 미지정 (검색 또는 지도 클릭)';
   document.getElementById('spotSearch').value=''; document.getElementById('searchRes').innerHTML='';
@@ -874,7 +879,7 @@ document.getElementById('spotSave').onclick=()=>{
   if(!name){toast('이름을 입력하세요','#e63946');return;}
   if(isNaN(lat)||isNaN(lng)){toast('위치를 지정하세요 (검색 또는 지도 클릭)','#e63946');return;}
   const s={name,city:document.getElementById('spotCity').value.trim()||'기타',desc:document.getElementById('spotDesc').value.trim(),
-    opt:document.getElementById('spotOpt').checked,lat,lng};
+    opt:document.getElementById('spotOpt').checked,stay:document.getElementById('spotStay').checked,lat,lng};
   const targetDay=parseInt(document.getElementById('spotDay').value);
   if(editing.si>=0){ trip().days[editing.di].spots.splice(editing.si,1); }
   trip().days[targetDay].spots.push(s);
@@ -1149,13 +1154,14 @@ function parseDirect(text){
     if(m=line.match(/^이동\s*[:：]\s*(.+)$/)){ cur.drive=m[1].trim(); return; }
     if(m=line.match(/^메모\s*[:：]\s*(.+)$/)){ cur.note=(cur.note?cur.note+'\n':'')+m[1].trim(); return; }
     if(m=line.match(/^[-•*·]\s*(.+)$/)){
-      let body=m[1].trim(), opt=false;
+      let body=m[1].trim(), opt=false, stay=false;
       if(/^\(선택\)/.test(body)){ opt=true; body=body.replace(/^\(선택\)\s*/,''); }
+      if(/^\(숙소\)/.test(body)){ stay=true; body=body.replace(/^\(숙소\)\s*/,''); }
       const p=body.split('|').map(x=>x.trim());
       if(p[1]) lastCity=p[1];
       let lat=null,lng=null;
       if(p[3]){ const mm=p[3].match(/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/); if(mm){ lat=+mm[1]; lng=+mm[2]; } }
-      cur.spots.push({name:p[0]||'',city:p[1]||lastCity||out.name||'기타',desc:p[2]||'',opt,lat,lng});
+      cur.spots.push({name:p[0]||'',city:p[1]||lastCity||out.name||'기타',desc:p[2]||'',opt,stay,lat,lng});
       return;
     }
     cur.note=(cur.note?cur.note+'\n':'')+line;
@@ -1167,7 +1173,8 @@ function parseDirect(text){
 async function parseAI(text){
   if(!cfg.apiKey) throw new Error('AI 파싱을 쓰려면 API 키를 입력해줘');
   const system=`너는 여행 일정 파서다. 사용자의 자유로운 여행 설명을 받아 JSON으로만 변환해라.
-스키마: {"name":string,"start":"YYYY-MM-DD"|null,"days":[{"title":string,"drive":string,"note":string,"spots":[{"name":string,"city":string,"desc":string,"opt":boolean,"lat":number|null,"lng":number|null}]}]}
+스키마: {"name":string,"start":"YYYY-MM-DD"|null,"days":[{"title":string,"drive":string,"note":string,"spots":[{"name":string,"city":string,"desc":string,"opt":boolean,"stay":boolean,"lat":number|null,"lng":number|null}]}]}
+- stay는 숙소(호텔·에어비앤비 등)면 true.
 - 모든 텍스트 필드는 한국어.
 - 각 명소의 실제 위도/경도를 네 지식으로 채워라. 확실하지 않으면 lat/lng를 null로 둬라.
 - drive는 그날 이동 정보(예: "✈️ 인천 → 다롄"), note는 그날의 팁/메모. 없으면 빈 문자열.
@@ -1226,7 +1233,7 @@ async function runPaste(){
   parsed.days=parsed.days.map(d=>({
     title:d.title||'', drive:d.drive||'', note:d.note||'',
     spots:(d.spots||[]).map(s=>({name:(s.name||'').trim(), city:(s.city||'기타').trim(), desc:s.desc||'',
-      opt:!!s.opt, lat:(s.lat==null?null:+s.lat), lng:(s.lng==null?null:+s.lng)})).filter(s=>s.name)
+      opt:!!s.opt, stay:!!s.stay, lat:(s.lat==null?null:+s.lat), lng:(s.lng==null?null:+s.lng)})).filter(s=>s.name)
   }));
   // 좌표 없는 명소 지오코딩
   const need=[]; parsed.days.forEach(d=>d.spots.forEach(s=>{ if(s.lat==null||isNaN(s.lat)||s.lng==null||isNaN(s.lng)) need.push(s); }));
