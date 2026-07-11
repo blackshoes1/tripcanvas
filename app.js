@@ -723,7 +723,7 @@ function renderSidebar(){
         ${(()=>{const dc=dayCost(day); const tx=(dayRoute(day)||{}).taxi||0; const tot=dc+(dm==='car'?tx:0);
           return tot?`<div class="dist">💳 하루 비용 약 ${tot.toLocaleString()}원${(dc&&dm==='car'&&tx)?` <span style="opacity:.55">(장소 ${dc.toLocaleString()} + 택시 ${tx.toLocaleString()})</span>`:''}</div>`:'';})()}
         <div class="spotList" data-di="${di}">${spotsHtml}</div>
-        <button class="addSpot" onclick="openSpotModal(${di},-1)">＋ 장소 추가</button>
+        <button class="addSpot" onclick="openSpotModal(${di},-1)">＋ 장소 추가</button>${day.spots.filter(hasLoc).length>=3?`<button class="addSpot optBtn" onclick="optimizeDay(${di})" title="이 날의 방문 순서를 이동거리 최소로 재배열">🧭 동선 최적화</button>`:''}
         ${day.note?`<div class="note">📝 ${esc(day.note)}</div>`:''}
       </div>`;
     card.querySelector('.dayHead').onclick=(e)=>{
@@ -790,6 +790,26 @@ window.focusSpot=(di,si)=>{
 };
 // 화살표 이동: 도구 항상 노출 + 옮긴 장소를 커서 아래에 고정(스크롤 보정)해 연속 클릭 가능
 // 일자 카드의 수단 아이콘 탭 → 자차→대중교통→도보→자전거 순환 (상세 설정은 일자 편집 모달)
+// 동선 최적화 — 좌표 있는 장소를 이동거리 최소 순서로 재배열 (첫 지점 고정, 마지막 숙소면 고정, 좌표없음은 뒤로)
+window.optimizeDay=(di)=>{
+  if(viewMode) return;
+  const day=trip().days[di];
+  const idxLoc=day.spots.map((s,i)=>hasLoc(s)?i:-1).filter(i=>i>=0);
+  if(idxLoc.length<3){ toast('최적화하려면 좌표 있는 장소가 3곳 이상 필요해요','#8892b0'); return; }
+  const coords=idxLoc.map(i=>({lat:+day.spots[i].lat, lng:+day.spots[i].lng}));
+  const lastStay=!!day.spots[idxLoc[idxLoc.length-1]].stay;   // 마지막이 숙소면 복귀지로 고정
+  const order=optimizeRoute(coords,{fixStart:true, fixEnd:lastStay});
+  const before=routeLength(coords), after=routeLength(coords,order);
+  if(after>=before-0.05){ toast('이미 최적에 가까운 동선이에요 👍'); return; }
+  const snap=snapshot();
+  const newLoc=order.map(o=>day.spots[idxLoc[o]]);
+  const unloc=day.spots.filter(s=>!hasLoc(s));   // 좌표 미지정은 순서 뒤로 유지
+  day.spots=newLoc.concat(unloc);
+  const hasBook=newLoc.some(s=>s.bookAt);
+  activeDay=di+1; render();
+  const pts=day.spots.filter(hasLoc).map(s=>[s.lat,s.lng]); fitTo(pts,64,15);
+  toast(`동선 최적화: 약 ${before.toFixed(1)}→${after.toFixed(1)}km${hasBook?' · 예약시각 순서 확인!':''}`, '#2a9d3f', {fn:()=>undoWith(snap)});
+};
 window.cycleMode=(di)=>{
   if(viewMode) return;
   const order=['car','transit','walk','bike'];

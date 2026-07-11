@@ -56,6 +56,21 @@ test('polyline 코덱 — 왕복 무손실 + 구글 호환 문자열', () => {
   assert.ok(Math.abs(g[2].lat-43.252)<1e-5 && Math.abs(g[2].lng+126.453)<1e-5);
   assert.equal(L.encodePolyline([{lat:38.5,lng:-120.2},{lat:40.7,lng:-120.95},{lat:43.252,lng:-126.453}]), '_p~iF~ps|U_ulLnnqC_mqNvxq`@');
 });
+test('optimizeRoute — 비효율 순서를 개선, 끝점 고정 존중', () => {
+  // 일부러 왕복 낭비하는 순서: 좌(0)→우끝(1)→중(2)→중우(3)
+  const coords=[{lat:35.80,lng:129.13},{lat:35.81,lng:129.50},{lat:35.83,lng:129.23},{lat:35.84,lng:129.29}];
+  const before=L.routeLength(coords);
+  const order=L.optimizeRoute(coords,{fixStart:true});
+  const after=L.routeLength(coords,order);
+  assert.equal(order[0],0);                     // 시작 고정
+  assert.ok(after<before, `개선: ${before.toFixed(1)}→${after.toFixed(1)}`);
+  assert.deepEqual([...order].sort(), [0,1,2,3]);// 모든 인덱스 보존(순열)
+  // fixEnd: 마지막 지점(숙소) 고정
+  const o2=L.optimizeRoute(coords,{fixStart:true,fixEnd:true});
+  assert.equal(o2[0],0); assert.equal(o2[o2.length-1],3);
+  // 2점 이하는 그대로
+  assert.deepEqual(L.optimizeRoute([{lat:1,lng:1}]), [0]);
+});
 test('toISO — 로컬 날짜 포맷', () => {
   assert.equal(L.toISO(new Date(2026,6,5)), '2026-07-05');   // 월 0-기반
 });
