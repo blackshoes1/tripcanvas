@@ -119,3 +119,5 @@
 .snapRow{display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:5px 8px;border-radius:7px;color:#cdd6f4}
 .snapRow:hover{background:#2a3457}
 .legfail{color:#c9884a;cursor:help}
+.modeBtn{font-size:14px;padding:1px 4px}
+.readonly .modeBtn{pointer-events:none}

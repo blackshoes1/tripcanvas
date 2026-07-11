@@ -648,7 +648,7 @@ function renderSidebar(){
     });
     card.innerHTML=`<div class="dayHead">
         <span><span class="dragHandle" title="드래그로 일자 순서 변경">⠿</span> Day ${di+1} · ${esc(day.title)}</span>
-        <span style="display:flex;align-items:center;gap:6px"><span title="이동 수단: ${MODE_NAME[dm]}">${MODE_ICON[dm]}</span><span class="date" onclick="event.stopPropagation();openDayModal(${di})" style="cursor:pointer" title="클릭해서 날짜 지정/수정">${dateOf(di)||'📅 날짜 지정'}</span>
+        <span style="display:flex;align-items:center;gap:6px"><button class="iconb modeBtn" onclick="event.stopPropagation();cycleMode(${di})" title="이동 수단: ${MODE_NAME[dm]} — 클릭해서 변경">${MODE_ICON[dm]}</button><span class="date" onclick="event.stopPropagation();openDayModal(${di})" style="cursor:pointer" title="클릭해서 날짜 지정/수정">${dateOf(di)||'📅 날짜 지정'}</span>
         <span class="tools"><button class="iconb" onclick="event.stopPropagation();openDayModal(${di})">✎</button></span></span>
       </div><div class="dayBody">
         ${day.drive?`<div class="drive">${esc(day.drive)}</div>`:''}
@@ -729,6 +729,15 @@ window.focusSpot=(di,si)=>{
   setTimeout(()=>{ const m=markers.find(m=>m.spot===s); if(m) m.open(); },400);
 };
 // 화살표 이동: 도구 항상 노출 + 옮긴 명소를 커서 아래에 고정(스크롤 보정)해 연속 클릭 가능
+// 일자 카드의 수단 아이콘 탭 → 자차→대중교통→도보→자전거 순환 (상세 설정은 일자 편집 모달)
+window.cycleMode=(di)=>{
+  if(viewMode) return;
+  const order=['car','transit','walk','bike'];
+  const d=trip().days[di];
+  d.mode=order[(order.indexOf(dayModeOf(d))+1)%order.length];
+  render();
+  toast(`Day ${di+1} 이동 수단: ${MODE_ICON[d.mode]} ${MODE_NAME[d.mode]}`);
+};
 window.moveSpot=(di,si,dir)=>{
   if(viewMode) return;
   const arr=trip().days[di].spots, ni=si+dir;
