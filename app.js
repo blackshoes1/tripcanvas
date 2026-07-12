@@ -224,6 +224,7 @@ const Engines={
       return { remove(){ l.setMap(null); } };
     },
     overlay(lat,lng,el){ const m=new google.maps.marker.AdvancedMarkerElement({map, position:{lat,lng}, content:el}); return { remove(){ m.map=null; } }; },
+    moveMarker(lat,lng,el){ const m=new google.maps.marker.AdvancedMarkerElement({map, position:{lat,lng}, content:el, zIndex:9999}); return { move(la,ln){ m.position={lat:la,lng:ln}; }, remove(){ m.map=null; } }; },
     openPopup(html,lat,lng,anchor){ iw.setContent(`<div class="popupC">${html}</div>`); iw.open({map, anchor:anchor&&anchor._m}); },
     closePopup(){ if(iw) iw.close(); },
     fit(pts,padPx,maxZoom){
@@ -247,6 +248,7 @@ const Engines={
       l.setMap(kmap); return { remove(){ l.setMap(null); } };
     },
     overlay(lat,lng,el){ const ov=new kakao.maps.CustomOverlay({position:new kakao.maps.LatLng(lat,lng), content:el, yAnchor:.5, clickable:false}); ov.setMap(kmap); return { remove(){ ov.setMap(null); } }; },
+    moveMarker(lat,lng,el){ const ov=new kakao.maps.CustomOverlay({position:new kakao.maps.LatLng(lat,lng), content:el, xAnchor:.5, yAnchor:.5, zIndex:9999}); ov.setMap(kmap); return { move(la,ln){ ov.setPosition(new kakao.maps.LatLng(la,ln)); }, remove(){ ov.setMap(null); } }; },
     openPopup(html,lat,lng){ openKPopup(html,lat,lng); },
     closePopup(){ closeKPopup(); },
     fit(pts,padPx,maxZoom){
@@ -640,6 +642,62 @@ function fitAll(){
   const pts=[]; trip().days.forEach(d=>d.spots.forEach(s=>{if(hasLoc(s))pts.push([s.lat,s.lng])}));
   fitTo(pts,60);
 }
+// ───────────────── 여행 재생 애니메이션 (재미) ─────────────────
+// 전체 동선을 하나의 좌표열로 펼친 뒤(구간별 실경로 우선, 없으면 직선) 이동수단 아이콘을 따라 이동시킴.
+let animMarker=null, animRAF=null, animEndT=null;
+function animPath(){
+  const flat=[]; let prevLoc=null;
+  trip().days.forEach((day,di)=>{
+    const loc=day.spots.filter(hasLoc); if(!loc.length) return;
+    const dm=dayModeOf(day);
+    const pushSeg=(A,B)=>{
+      const c=legCache[legKey(A,B,dm)];
+      const pts=(c&&c.sec&&c.path)?decodePts(c.path):[{lat:+A.lat,lng:+A.lng},{lat:+B.lat,lng:+B.lng}];
+      pts.forEach(p=>flat.push({lat:+p.lat,lng:+p.lng,mode:dm}));
+    };
+    if(prevLoc) pushSeg(prevLoc,loc[0]);           // 전일 마지막 → 오늘 첫 장소
+    for(let i=1;i<loc.length;i++) pushSeg(loc[i-1],loc[i]);
+    prevLoc=loc[loc.length-1];
+  });
+  return flat;
+}
+function updatePlayBtn(){ const b=document.getElementById('playBtn'); if(b) b.textContent=animRAF?'⏹ 정지':'▶️ 재생'; }
+function stopPlay(){
+  if(animRAF) cancelAnimationFrame(animRAF); animRAF=null;
+  if(animEndT){ clearTimeout(animEndT); animEndT=null; }
+  if(animMarker){ animMarker.remove(); animMarker=null; }
+  updatePlayBtn();
+}
+function playTrip(){
+  if(animRAF){ stopPlay(); return; }               // 토글: 재생 중이면 정지
+  stopPlay();                                       // 종료 직후 남은 타이머·마커 정리
+  if(!ME().ready()){ toast('지도를 불러오는 중이에요','#8892b0'); return; }
+  const flat=animPath();
+  if(flat.length<2){ toast('재생할 동선이 없어요','#8892b0'); return; }
+  const cum=[0];
+  for(let i=1;i<flat.length;i++) cum[i]=cum[i-1]+haversine(flat[i-1],flat[i]);
+  const total=cum[cum.length-1]||1;
+  fitAll();                                         // 전체가 보이도록 맞춘 뒤 그 위를 이동
+  const el=document.createElement('div');
+  el.textContent=MODE_ICON[flat[0].mode]||'🚗';
+  el.style.cssText='font-size:26px;line-height:1;filter:drop-shadow(0 2px 3px rgba(0,0,0,.55));will-change:transform';
+  el.animate([{transform:'scale(1)'},{transform:'scale(1.18)'}],{duration:520,iterations:Infinity,direction:'alternate',easing:'ease-in-out'});
+  animMarker=ME().moveMarker(flat[0].lat,flat[0].lng,el);
+  const dur=Math.min(20000,Math.max(6000,flat.length*260));
+  let start=null, seg=0;
+  const step=(ts)=>{
+    if(start==null) start=ts;
+    const p=Math.min(1,(ts-start)/dur), d=p*total;
+    while(seg<flat.length-2 && cum[seg+1]<d) seg++;
+    const A=flat[seg], B=flat[seg+1], segLen=(cum[seg+1]-cum[seg])||1, f=(d-cum[seg])/segLen;
+    animMarker.move(A.lat+(B.lat-A.lat)*f, A.lng+(B.lng-A.lng)*f);
+    const ic=MODE_ICON[A.mode]||'🚗'; if(el.textContent!==ic) el.textContent=ic;
+    if(p<1){ animRAF=requestAnimationFrame(step); }
+    else { animRAF=null; animEndT=setTimeout(stopPlay,700); }   // 도착 후 잠깐 머물다 정리
+  };
+  animRAF=requestAnimationFrame(step);
+  updatePlayBtn();
+}
 function renderFilter(){
   const bar = document.getElementById('filterbar'); bar.innerHTML='';
   // 색상 기준 토글 (도시별 ↔ 일자별)
@@ -648,6 +706,12 @@ function renderFilter(){
   cmode.title='핀·카드 색상 기준 전환';
   cmode.onclick=()=>commit(()=>{ trip().colorBy = colorByMode()==='day'?'city':'day'; });
   bar.appendChild(cmode);
+  // 여행 재생 — 경로를 따라 이동수단 아이콘이 달림 (재미)
+  const play=document.createElement('button'); play.className='chip'; play.id='playBtn';
+  play.textContent = animRAF ? '⏹ 정지' : '▶️ 재생';
+  play.title='경로를 따라 이동 애니메이션';
+  play.onclick=playTrip;
+  bar.appendChild(play);
   const sep0=document.createElement('span'); sep0.style.cssText='width:1px;height:18px;background:#2a3457;margin:0 4px'; bar.appendChild(sep0);
   const all = document.createElement('button'); all.className='chip'+(activeDay?'':' active'); all.textContent='전체';
   all.onclick=()=>{activeDay=0;render();fitAll();}; bar.appendChild(all);
