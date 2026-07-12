@@ -99,6 +99,13 @@ document.addEventListener('keydown',e=>{
     e.preventDefault(); undo();
   }
 });
+// 모바일 헤더 오버플로 메뉴 (부가 동작을 ☰로 접음)
+function toggleHdrMenu(e){ if(e) e.stopPropagation(); document.getElementById('hdrMenu').classList.toggle('open'); }
+document.addEventListener('click',e=>{
+  const m=document.getElementById('hdrMenu'); if(!m||!m.classList.contains('open')) return;
+  if(e.target.closest('#hdrMenu')){ m.classList.remove('open'); return; }   // 항목 선택 → 닫기
+  if(!e.target.closest('#moreBtn')) m.classList.remove('open');             // 바깥 클릭 → 닫기
+});
 function trip(){ return viewMode || store.trips.find(t=>t.id===store.activeId) || store.trips[0]; }
 function uid(){ return Math.random().toString(36).slice(2,9); }
 // 공유 링크/가져오기/AI 파싱으로 외부 데이터가 유입될 수 있으므로 출력 시 항상 이스케이프 (XSS 방어)
