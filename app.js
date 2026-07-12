@@ -149,6 +149,7 @@ function onMapPick(lat,lng){
   pickMode=false; document.getElementById('pickBanner').style.display='none';
   document.getElementById('spotLat').value=lat; document.getElementById('spotLng').value=lng;
   document.getElementById('coordHint').textContent=`좌표: ${lat.toFixed(4)}, ${lng.toFixed(4)} ✓`;
+  fillCityFromCoords(lat,lng,false);   // 도시/그룹 비어있으면 자동 채움
   document.getElementById('spotModalBg').classList.add('show');
 }
 // 지도 우클릭/롱프레스 → 그 좌표로 새 장소 추가 모달 (현재 활성 일자, 없으면 1일차)
@@ -159,7 +160,39 @@ function addSpotAt(lat,lng){
   document.getElementById('spotLat').value=lat; document.getElementById('spotLng').value=lng;
   document.getElementById('coordHint').textContent=`좌표: ${(+lat).toFixed(4)}, ${(+lng).toFixed(4)} ✓ (지도에서 지정)`;
   document.getElementById('spotName').value='';
+  fillCityFromCoords(lat,lng,true);    // 지도에서 지정한 지점의 실제 도시로 채움
   setTimeout(()=>document.getElementById('spotName').focus(),50);
+}
+// 좌표 → 도시명 (국내=카카오 행정구역, 해외=구글 역지오코딩). 실패 시 null.
+function reverseCity(lat,lng){
+  return new Promise(resolve=>{
+    if(inKorea({lat:+lat,lng:+lng})){
+      loadKakao().then(ok=>{
+        if(!ok||!window.kakao||!kakao.maps.services){ resolve(null); return; }
+        new kakao.maps.services.Geocoder().coord2RegionCode(+lng,+lat,(res,status)=>{
+          if(status!==kakao.maps.services.Status.OK||!res||!res.length){ resolve(null); return; }
+          const r=res.find(x=>x.region_type==='H')||res[0];
+          const one=r.region_1depth_name||'', two=r.region_2depth_name||'';
+          const metro=/(특별시|광역시|특별자치시|특별자치도)$/.test(one);
+          resolve((metro? one.replace(/(특별시|광역시|특별자치시|특별자치도)$/,'') : (two.replace(/(시|군)$/,'')||one))||null);
+        });
+      });
+    }else{
+      if(!window.google||!google.maps){ resolve(null); return; }
+      new google.maps.Geocoder().geocode({location:{lat:+lat,lng:+lng},language:'ko'},(results,status)=>{
+        if(status!=='OK'||!results||!results.length){ resolve(null); return; }
+        const comp=results[0].address_components||[];
+        const pick=t=>(comp.find(c=>c.types.includes(t))||{}).long_name;
+        resolve(pick('locality')||pick('administrative_area_level_2')||pick('administrative_area_level_1')||null);
+      });
+    }
+  });
+}
+// 도시/그룹 필드 자동 채움. force=false면 비어있을 때만. 그 사이 사용자가 입력하면 덮지 않음.
+function fillCityFromCoords(lat,lng,force){
+  const el=document.getElementById('spotCity'); const at=el.value;
+  if(!force && at.trim()) return;
+  reverseCity(lat,lng).then(city=>{ if(city && el.value===at) el.value=city; });
 }
 window.__gmapsReady=function(){
   map=new google.maps.Map(document.getElementById('map'),{
@@ -512,15 +545,14 @@ function dayTimeline(day){
   });
 }
 function dayEtas(day){ return dayTimeline(day).map(x=>x.eta); }
-// 도착시각 순으로 정렬. 자동 시각 장소는 계산값이 위치에 의존하므로 안정될 때까지 몇 번 반복. 순서가 바뀌면 true.
+// 도착시각 순으로 정렬. 고정 시각 장소는 그 시각으로 이동, 자동 시각 장소는 '직전 고정 시각'에
+// 묶여 원래 상대순서를 유지(자동끼리 뒤섞이지 않음). 안정 정렬. 순서가 바뀌면 true.
 function sortDayByTime(day){
   const before=day.spots.slice();
-  for(let iter=0;iter<6;iter++){
-    const etas=dayEtas(day);
-    const order=day.spots.map((_,i)=>i).sort((a,b)=> (etas[a]-etas[b]) || (a-b));
-    if(order.every((i,pos)=>i===pos)) break;   // 이미 시간순
-    day.spots=order.map(i=>day.spots[i]);
-  }
+  let anchor=parseHM(day.startAt);
+  const key=day.spots.map(s=>{ if(s.at) anchor=parseHM(s.at); return anchor; });   // 각 스팟의 기준 시각
+  const order=day.spots.map((_,i)=>i).sort((a,b)=> (key[a]-key[b]) || (a-b));       // 동시각은 원래 순서 유지
+  day.spots=order.map(i=>day.spots[i]);
   return before.some((s,i)=>s!==day.spots[i]);
 }
 // 하루 장소 비용 합계
@@ -533,7 +565,7 @@ function fmtMoney(n){ return Math.round(+n||0).toLocaleString('en-US'); }
 // 원본+환산 표기: KRW면 "68,000원", 아니면 "$50 ≈ 68,000원"
 function costLabel(amount, cur){
   cur=cur||'KRW';
-  return cur==='KRW' ? `${fmtMoney(amount)}원` : `${CUR[cur].sym}${fmtMoney(amount)} ≈ ${fmtMoney(toKRW(amount,cur))}원`;
+  return cur==='KRW' ? `₩${fmtMoney(amount)}` : `${CUR[cur].sym}${fmtMoney(amount)} ≈ ₩${fmtMoney(toKRW(amount,cur))}`;
 }
 // 환율 로드: localStorage 캐시(하루 1회 갱신), open.er-api.com에서 USD 기준 시세 → 원 환산율 계산
 function loadFx(){
@@ -809,7 +841,7 @@ function renderFilter(){
   const tc=tripCost();
   if(tc){ const sep2=document.createElement('span'); sep2.style.cssText='width:1px;height:18px;background:#2a3457;margin:0 4px'; bar.appendChild(sep2);
     const cb=document.createElement('span'); cb.className='chip'; cb.style.cssText='background:#2a2033;color:#e0b0ff;cursor:default';
-    cb.textContent=`💳 여행 약 ${tc.toLocaleString()}원`; cb.title='장소 예상비용 + 자차일 택시요금 합계'; bar.appendChild(cb); }
+    cb.textContent=`💳 여행 약 ₩${tc.toLocaleString()}`; cb.title='장소 예상비용 + 자차일 택시요금 합계'; bar.appendChild(cb); }
 }
 function renderLegend(){
   let body;
@@ -855,7 +887,7 @@ function renderSidebar(){
       const bookMin=s.bookAt?parseHM(s.bookAt):null;
       const bookWarn=(bookMin!=null && etas[si]-bookMin>5);   // ETA가 예약보다 5분 이상 늦음
       const meta=[];
-      if(s.cost){ const nk=s.cur&&s.cur!=='KRW'; meta.push(`<span class="cost"${nk?` title="${costLabel(s.cost,s.cur)}"`:''}>💳 ${nk?`${CUR[s.cur].sym}${fmtMoney(s.cost)} (${fmtMoney(toKRW(s.cost,s.cur))})`:fmtMoney(s.cost)}</span>`); }
+      if(s.cost){ const nk=s.cur&&s.cur!=='KRW'; meta.push(`<span class="cost"${nk?` title="${costLabel(s.cost,s.cur)}"`:''}>💳 ${nk?`${CUR[s.cur].sym}${fmtMoney(s.cost)} (₩${fmtMoney(toKRW(s.cost,s.cur))})`:`₩${fmtMoney(s.cost)}`}</span>`); }
       if(s.bookAt) meta.push(`<span class="book${bookWarn?' bookwarn':''}"${bookWarn?` title="예약 ${s.bookAt}인데 예상 도착 ${hm(etas[si])} — 일정이 늦습니다"`:` title="예약 시각"`}>🎫 ${esc(s.bookAt)}${bookWarn?' ⚠️':''}</span>`);
       if(s.bookUrl) meta.push(`<a class="book" href="${escAttr(s.bookUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="예약 링크 열기">🔗</a>`);
       // 영업시간 경고: 그 날 요일·도착 예상시각에 문 닫혀 있으면 ⚠️
@@ -891,7 +923,7 @@ function renderSidebar(){
           return dayDistance(day)>0?`<div class="dist">📏 하루 동선 약 ${dayDistance(day).toFixed(1)}km <span style="opacity:.55">(직선)</span></div>`:'';})()}
         ${(()=>{const e=dayEndMin(day); return (e!=null&&e>22*60)?`<div class="overload" title="시작시각+체류+이동 기준 예상 종료">⚠️ 일정 과밀 — 예상 종료 ${hm(e)}${e>=24*60?' (익일)':''}</div>`:'';})()}
         ${(()=>{const dc=dayCost(day); const tx=(dayRoute(day)||{}).taxi||0; const tot=dc+(dm==='car'?tx:0);
-          return tot?`<div class="dist">💳 하루 비용 약 ${tot.toLocaleString()}원${(dc&&dm==='car'&&tx)?` <span style="opacity:.55">(장소 ${dc.toLocaleString()} + 택시 ${tx.toLocaleString()})</span>`:''}</div>`:'';})()}
+          return tot?`<div class="dist">💳 하루 비용 약 ₩${tot.toLocaleString()}${(dc&&dm==='car'&&tx)?` <span style="opacity:.55">(장소 ₩${dc.toLocaleString()} + 택시 ₩${tx.toLocaleString()})</span>`:''}</div>`:'';})()}
         <div class="spotList" data-di="${di}">${spotsHtml}</div>
         <button class="addSpot" onclick="openSpotModal(${di},-1)">＋ 장소 추가</button>${day.spots.filter(hasLoc).length>=3?`<button class="addSpot optBtn" onclick="optimizeDay(${di})" title="이 날의 방문 순서를 이동거리 최소로 재배열">🧭 동선 최적화</button>`:''}
         ${day.note?`<div class="note">📝 ${esc(day.note)}</div>`:''}
@@ -1035,8 +1067,8 @@ function updateCostHint(){
   const d=document.getElementById('spotCost').value.replace(/[^\d]/g,''), cur=document.getElementById('spotCur').value;
   if(!d){ el.textContent=''; return; }
   const rate=fxRates[cur], rateStr=rate<100?rate.toFixed(1):fmtMoney(rate);
-  el.textContent = cur==='KRW' ? `= ${fmtMoney(d)}원`
-    : `≈ ${fmtMoney(toKRW(+d,cur))}원  (1${CUR[cur].sym} ≈ ${rateStr}원)`;
+  el.textContent = cur==='KRW' ? `= ₩${fmtMoney(d)}`
+    : `≈ ₩${fmtMoney(toKRW(+d,cur))}  (1${CUR[cur].sym} ≈ ₩${rateStr})`;
 }
 document.getElementById('spotCost').addEventListener('input',function(){ const d=this.value.replace(/[^\d]/g,''); this.value=d?(+d).toLocaleString('en-US'):''; updateCostHint(); });
 document.getElementById('spotCur').addEventListener('change',updateCostHint);
