@@ -5,6 +5,14 @@ const LS_KEY = 'tripcanvas_v1';
 const PALETTE = ['#e63946','#1e88e5','#2ecc71','#9b59b6','#ec4899','#14b8a6','#8d6e63','#ff7f50','#a3e635','#f6b93b'];   // 빨강·파랑·초록·보라·핑크·청록·브라운·코랄·라임·노랑
 let store = null;
 let sb = null, user = null, syncTimer = null;   // Supabase 클라이언트/로그인 사용자/동기화 디바운스
+// 부활 방지: 클라우드에 있었다고 확인된 여행 id 집합. 예전엔 클라우드에 있었는데 지금 없으면
+// 다른 기기에서 삭제된 것 → 재업로드하지 않는다(그전엔 스테일 로컬본이 삭제분을 되살렸음).
+const SYNC_KEY='tripcanvas_synced';
+let syncedIds=new Set();
+try{ syncedIds=new Set(JSON.parse(localStorage.getItem(SYNC_KEY))||[]); }catch(e){}
+function persistSynced(){ try{ localStorage.setItem(SYNC_KEY, JSON.stringify([...syncedIds])); }catch(e){} }
+function markSynced(id){ if(id&&!syncedIds.has(id)){ syncedIds.add(id); persistSynced(); } }
+function unmarkSynced(id){ if(syncedIds.delete(id)) persistSynced(); }
 
 function seedSpain(){
   return {
@@ -1624,7 +1632,7 @@ function cloudSyncActive(delay){
       console.warn('cloud sync:', error.message);
       clearTimeout(cloudRetryT);
       cloudRetryT=setTimeout(()=>cloudSyncActive(), 15000);   // 최신 활성 여행본으로 재시도
-    } else cloudSnapshot(t);
+    } else { markSynced(t.id); cloudSnapshot(t); }
   }, delay!=null?delay:800);
 }
 window.addEventListener('online', ()=>{ if(sb && user) cloudSyncActive(0); });
@@ -1669,20 +1677,25 @@ async function loadSnapList(){
   });
 }
 async function cloudDelete(clientId){
+  unmarkSynced(clientId);   // 삭제한 여행은 '동기화됨' 기록에서도 제거(부활 방지)
   if(!sb || !user) return;
   try{ await sb.from('trips').delete().eq('client_id', clientId); }catch(e){}
 }
-// 로그인 직후: 클라우드를 당겨오고, 로컬에만 있던 여행은 업로드해 보존
+// 로그인 직후: 클라우드를 당겨오고, 한 번도 동기화 안 된 신규 로컬 여행만 업로드해 보존.
+// (예전엔 클라우드에 없는 로컬 여행을 무조건 올려서, 다른 기기서 지운 여행이 스테일 로컬본으로 되살아났음)
 async function syncOnLogin(){
   try{
     const {data:rows,error}=await sb.from('trips').select('client_id,data');
     if(error) throw error;
     const cloud=new Map((rows||[]).map(r=>[r.client_id, r.data]));
+    cloud.forEach((_v,id)=>markSynced(id));   // 클라우드에 있는 건 '동기화됨'으로 기록
     for(const t of store.trips){
-      if(!cloud.has(t.id)){
-        await sb.from('trips').upsert({user_id:user.id, client_id:t.id, data:t, updated_at:new Date().toISOString()},{onConflict:'user_id,client_id'});
-        cloud.set(t.id, t);
-      }
+      if(cloud.has(t.id)) continue;
+      if(syncedIds.has(t.id)){ unmarkSynced(t.id); continue; }   // 예전엔 클라우드에 있었는데 지금 없음 = 다른 기기서 삭제 → 부활 금지(로컬에서도 제거)
+      if(t.id==='spain2026') continue;                           // 데모 시드는 클라우드로 올리지 않음(계정 오염 방지)
+      // 한 번도 동기화된 적 없는 진짜 신규 로컬 여행만 업로드
+      await sb.from('trips').upsert({user_id:user.id, client_id:t.id, data:t, updated_at:new Date().toISOString()},{onConflict:'user_id,client_id'});
+      cloud.set(t.id, t); markSynced(t.id);
     }
     const trips=[...cloud.values()].filter(t=>t && Array.isArray(t.days));
     if(trips.length){
