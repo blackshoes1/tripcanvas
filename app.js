@@ -233,7 +233,8 @@ const Engines={
       if(maxZoom) google.maps.event.addListenerOnce(map,'idle',()=>{ if(map.getZoom()>maxZoom) map.setZoom(maxZoom); });
     },
     panTo(lat,lng,minZoom){ map.panTo({lat,lng}); if(minZoom&&map.getZoom()<minZoom) map.setZoom(minZoom); },
-    center(lat,lng,zoom){ if(zoom!=null) map.setZoom(zoom); map.setCenter({lat,lng}); }   // 즉시 이동(추적 카메라용)
+    center(lat,lng,zoom){ if(zoom!=null) map.setZoom(zoom); map.setCenter({lat,lng}); },   // 즉시 이동(추적 카메라용)
+    relayout(){ google.maps.event.trigger(map,'resize'); }
   },
   kakao:{
     ready(){ return !!kmap; },
@@ -258,7 +259,8 @@ const Engines={
       if(maxZoom){ const minLv=Math.max(1,19-maxZoom); if(kmap.getLevel()<minLv) kmap.setLevel(minLv); }
     },
     panTo(lat,lng,minZoom){ kmap.panTo(new kakao.maps.LatLng(lat,lng)); if(minZoom){ const lv=Math.max(1,19-minZoom); if(kmap.getLevel()>lv) kmap.setLevel(lv); } },
-    center(lat,lng,zoom){ if(zoom!=null) kmap.setLevel(Math.max(1,19-zoom)); kmap.setCenter(new kakao.maps.LatLng(lat,lng)); }   // 즉시 이동(추적 카메라용)
+    center(lat,lng,zoom){ if(zoom!=null) kmap.setLevel(Math.max(1,19-zoom)); kmap.setCenter(new kakao.maps.LatLng(lat,lng)); },   // 즉시 이동(추적 카메라용)
+    relayout(){ kmap.relayout(); }
   }
 };
 function ME(){ return Engines[engine]; }   // 현재 활성 엔진
@@ -664,10 +666,21 @@ function animPath(){
   return flat;
 }
 function updatePlayBtn(){ const b=document.getElementById('playBtn'); if(b) b.textContent=animRAF?'⏹ 정지':'▶️ 재생'; }
+// 이모지는 기본 왼쪽(서)을 봄 → 진행 방향(A→B)으로 회전. 뒤집힘은 좌우반전으로 방지.
+function headingTransform(A,B){
+  const ex=B.lng-A.lng, ny=B.lat-A.lat;
+  if(!ex && !ny) return null;
+  let r=Math.atan2(-ny,ex)*180/Math.PI-180;   // 화면 기준(북=위) 각도 − 이모지 기본각(서)
+  r=((r%360)+360)%360; if(r>180) r-=360;       // -180..180 정규화
+  let flip=1;
+  if(r>90||r<-90){ flip=-1; r=r>0? r-180 : r+180; }   // 상하 뒤집힘 방지
+  return `rotate(${Math.round(r)}deg) scaleX(${flip})`;
+}
 function stopPlay(){
   if(animRAF) cancelAnimationFrame(animRAF); animRAF=null;
   if(animEndT){ clearTimeout(animEndT); animEndT=null; }
   if(animMarker){ animMarker.remove(); animMarker=null; }
+  if(document.body.classList.contains('playing')){ document.body.classList.remove('playing'); if(ME().ready()) ME().relayout(); }
   updatePlayBtn();
 }
 function playTrip(){
@@ -679,11 +692,15 @@ function playTrip(){
   const cum=[0];
   for(let i=1;i<flat.length;i++) cum[i]=cum[i-1]+haversine(flat[i-1],flat[i]);
   const total=cum[cum.length-1]||1;
+  document.body.classList.add('playing');           // 사이드바 접어 지도를 크게
+  ME().relayout();
   ME().center(flat[0].lat, flat[0].lng, 11);        // 출발 지점으로 줌인 (조금 멀리서 따라감)
-  const el=document.createElement('div');
-  el.textContent=MODE_ICON[flat[0].mode]||'🚗';
-  el.style.cssText='font-size:26px;line-height:1;filter:drop-shadow(0 2px 3px rgba(0,0,0,.55));will-change:transform';
-  el.animate([{transform:'scale(1)'},{transform:'scale(1.18)'}],{duration:520,iterations:Infinity,direction:'alternate',easing:'ease-in-out'});
+  const el=document.createElement('div'); el.style.cssText='will-change:transform';
+  const car=document.createElement('span');         // 회전은 안쪽 span에 (바깥 펄스 애니와 분리)
+  car.textContent=MODE_ICON[flat[0].mode]||'🚗';
+  car.style.cssText='display:inline-block;font-size:28px;line-height:1;filter:drop-shadow(0 2px 3px rgba(0,0,0,.55));transition:transform .12s linear';
+  el.appendChild(car);
+  el.animate([{transform:'scale(1)'},{transform:'scale(1.15)'}],{duration:600,iterations:Infinity,direction:'alternate',easing:'ease-in-out'});
   animMarker=ME().moveMarker(flat[0].lat,flat[0].lng,el);
   const dur=Math.min(32000,Math.max(9000,flat.length*450));   // 조금 느리게 (약 9~32초)
   let start=null, seg=0;
@@ -695,7 +712,8 @@ function playTrip(){
     const lat=A.lat+(B.lat-A.lat)*f, lng=A.lng+(B.lng-A.lng)*f;
     animMarker.move(lat,lng);
     ME().center(lat,lng);                            // 카메라가 차를 따라감
-    const ic=MODE_ICON[A.mode]||'🚗'; if(el.textContent!==ic) el.textContent=ic;
+    const tf=headingTransform(A,B); if(tf) car.style.transform=tf;   // 진행 방향으로 회전
+    const ic=MODE_ICON[A.mode]||'🚗'; if(car.textContent!==ic) car.textContent=ic;
     if(p<1){ animRAF=requestAnimationFrame(step); }
     else { animRAF=null; animEndT=setTimeout(()=>{ stopPlay(); fitAll(); },700); }   // 도착 후 전체 보기로 줌아웃
   };
