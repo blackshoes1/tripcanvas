@@ -496,17 +496,32 @@ function legMinutes(a,b,mode){
   if(c&&c.sec) return (mode==='car'&&c.m<2000)? c.m/75 : c.sec/60;
   return haversine(a,b)/MODE_SPEED[mode]*60;
 }
-// 일자 시작시각(startAt, 기본 09:00)부터 체류시간(stayMin, 기본 60분)+이동시간 누적
-function dayEtas(day){
-  let t=parseHM(day.startAt), prev=null;
+// 일자 타임라인: 시작시각(startAt, 기본 09:00)부터 체류(stayMin, 기본 60분)+이동 누적.
+// spot.at(고정 도착시각)이 있으면 그 시각을 앵커로 삼음(이후 장소는 거기서 이어짐).
+function dayTimeline(day){
+  let clock=parseHM(day.startAt), prev=null;
   const dm=dayModeOf(day);
   return day.spots.map(s=>{
-    if(hasLoc(s)&&prev) t+=legMinutes(prev,s,dm);
-    const eta=t;
-    t+=(s.stayMin!=null? +s.stayMin : 60);
+    if(hasLoc(s)&&prev) clock+=legMinutes(prev,s,dm);
+    const natural=clock;
+    let eta=natural, conflict=false;
+    if(s.at){ eta=parseHM(s.at); conflict = eta < natural-0.5; }   // 고정 시각인데 이동상 도착이 더 늦으면 충돌
+    clock = eta + (s.stayMin!=null? +s.stayMin : 60);
     if(hasLoc(s)) prev=s;
-    return eta;
+    return {eta, fixed:!!s.at, conflict};
   });
+}
+function dayEtas(day){ return dayTimeline(day).map(x=>x.eta); }
+// 도착시각 순으로 정렬. 자동 시각 장소는 계산값이 위치에 의존하므로 안정될 때까지 몇 번 반복. 순서가 바뀌면 true.
+function sortDayByTime(day){
+  const before=day.spots.slice();
+  for(let iter=0;iter<6;iter++){
+    const etas=dayEtas(day);
+    const order=day.spots.map((_,i)=>i).sort((a,b)=> (etas[a]-etas[b]) || (a-b));
+    if(order.every((i,pos)=>i===pos)) break;   // 이미 시간순
+    day.spots=order.map(i=>day.spots[i]);
+  }
+  return before.some((s,i)=>s!==day.spots[i]);
 }
 // 하루 장소 비용 합계
 function dayCost(day){ return day.spots.reduce((a,s)=>a+(+s.cost||0),0); }
@@ -797,7 +812,7 @@ function renderSidebar(){
     const headC = colorByMode()==='day' ? dayColor(di) : (day.spots.length?(colors[day.spots[0].city]||'#556'):'#556');
     const card=document.createElement('div'); card.className='dayCard'+(activeDay&&activeDay!==di+1?' dim':''); card.style.setProperty('--c',headC);
     let spotsHtml='', prevLoc=null;
-    const etas=dayEtas(day), dm=dayModeOf(day), iso=isoDateOf(di);
+    const tl=dayTimeline(day), etas=tl.map(x=>x.eta), dm=dayModeOf(day), iso=isoDateOf(di);
     day.spots.forEach((s,si)=>{
       const dotC = hasLoc(s)?spotColor(s,di,colors):'#4a5170';
       // 구간: 캐시된 경로가 있으면 그걸, 아니면 직선거리 + 백그라운드 조회
@@ -825,7 +840,7 @@ function renderSidebar(){
       }
       const metaHtml=meta.length?`<div class="spotMeta">${meta.join(' ')}</div>`:'';
       spotsHtml+=`<div class="spot" data-di="${di}" data-si="${si}" style="--c:${dotC}">
-        <span class="nm" onclick="focusSpot(${di},${si})"><span class="eta" title="도착 예상시각 (시작시각+체류+이동 기준)">${hm(etas[si])}</span>${si+1}. ${s.stay?'🏠 ':''}${esc(s.name)}${s.opt?' <span class=opt>(선택)</span>':''}${hasLoc(s)?'':`<span class="noloc" onclick="event.stopPropagation();openSpotModal(${di},${si})">📍 위치 지정</span>`}${metaHtml}</span>${legHtml}
+        <span class="nm" onclick="focusSpot(${di},${si})"><span class="eta${tl[si].fixed?' fixed':''}" title="${tl[si].fixed?(tl[si].conflict?'📌 고정 도착시각 — 이동시간상 도착이 늦어요':'📌 고정 도착시각'):'도착 예상시각 (자동 계산)'}">${tl[si].fixed?'📌':''}${hm(etas[si])}${tl[si].conflict?'⚠️':''}</span>${si+1}. ${s.stay?'🏠 ':''}${esc(s.name)}${s.opt?' <span class=opt>(선택)</span>':''}${hasLoc(s)?'':`<span class="noloc" onclick="event.stopPropagation();openSpotModal(${di},${si})">📍 위치 지정</span>`}${metaHtml}</span>${legHtml}
         <span class="tools">
           <button class="iconb mvup" onclick="moveSpot(${di},${si},-1)" title="위로">▲</button>
           <button class="iconb mvdown" onclick="moveSpot(${di},${si},1)" title="아래로">▼</button>
@@ -902,7 +917,11 @@ function onSpotDrop(evt){
   const fromSpots=trip().days[fromDi].spots, toSpots=trip().days[toDi].spots;
   const [moved]=fromSpots.splice(evt.oldIndex,1);
   toSpots.splice(evt.newIndex,0,moved);
-  setTimeout(()=>{ commit(); if(fromDi!==toDi) toast(`Day ${toDi+1}(으)로 이동`); },0);
+  // 고정 시각이 있는 날이면 드롭 후 시간순으로 재정렬 (입력한 시각이 순서를 결정)
+  const resorted = trip().days[toDi].spots.some(x=>x.at) && sortDayByTime(trip().days[toDi]);
+  setTimeout(()=>{ commit();
+    if(fromDi!==toDi) toast(`Day ${toDi+1}(으)로 이동${resorted?' · 시간순 정렬':''}`);
+    else if(resorted) toast('시간순으로 정렬됨'); },0);
 }
 window.focusSpot=(di,si)=>{
   const s=trip().days[di].spots[si];
@@ -969,6 +988,7 @@ window.openSpotModal=(di,si)=>{
   document.getElementById('spotDesc').value=s.desc||'';
   document.getElementById('spotOpt').checked=!!s.opt;
   document.getElementById('spotStay').checked=!!s.stay;
+  document.getElementById('spotAt').value=s.at||'';
   document.getElementById('spotStayMin').value=(s.stayMin!=null? s.stayMin : 60);
   document.getElementById('spotCost').value=(s.cost!=null? s.cost : '');
   document.getElementById('spotBookAt').value=s.bookAt||'';
@@ -989,6 +1009,7 @@ document.getElementById('spotSave').onclick=()=>{
   const costV=parseInt(document.getElementById('spotCost').value);
   const s={name,city:document.getElementById('spotCity').value.trim()||'기타',desc:document.getElementById('spotDesc').value.trim(),
     opt:document.getElementById('spotOpt').checked,stay:document.getElementById('spotStay').checked,
+    at:document.getElementById('spotAt').value||undefined,
     stayMin:Math.max(0,parseInt(document.getElementById('spotStayMin').value)||60),
     cost:(isNaN(costV)?null:Math.max(0,costV)),
     bookAt:document.getElementById('spotBookAt').value||'',
@@ -997,8 +1018,10 @@ document.getElementById('spotSave').onclick=()=>{
   const targetDay=parseInt(document.getElementById('spotDay').value);
   if(editing.si>=0){ trip().days[editing.di].spots.splice(editing.si,1); }
   trip().days[targetDay].spots.push(s);
+  // 고정 시각이 있으면 그날을 시간순으로 자동 정렬
+  const sorted = trip().days[targetDay].spots.some(x=>x.at) && sortDayByTime(trip().days[targetDay]);
   document.getElementById('spotModalBg').classList.remove('show');
-  commit(); toast('저장됨');
+  commit(); toast(sorted?'저장됨 · 시간순 정렬':'저장됨');
 };
 document.getElementById('spotDelBtn').onclick=()=>{
   const snap=snapshot();
