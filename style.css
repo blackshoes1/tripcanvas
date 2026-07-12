@@ -116,6 +116,8 @@
     #main{flex-direction:column}
     #sidebar{width:100%;min-width:0;max-height:44dvh;order:2}
     header h1{font-size:14px}
+    /* iOS: 입력 글자 16px 미만이면 포커스 시 화면 자동 확대 → 16px로 방지 */
+    select,input,textarea{font-size:16px}
     /* 헤더 한 줄 유지 + 부가 동작은 ☰ 드롭다운으로 */
     header{flex-wrap:nowrap;position:relative}
     .hdrSpacer{display:none}
