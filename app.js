@@ -679,13 +679,13 @@ function playTrip(){
   const cum=[0];
   for(let i=1;i<flat.length;i++) cum[i]=cum[i-1]+haversine(flat[i-1],flat[i]);
   const total=cum[cum.length-1]||1;
-  ME().center(flat[0].lat, flat[0].lng, 13);        // 출발 지점으로 줌인 (카메라가 차를 따라감)
+  ME().center(flat[0].lat, flat[0].lng, 11);        // 출발 지점으로 줌인 (조금 멀리서 따라감)
   const el=document.createElement('div');
   el.textContent=MODE_ICON[flat[0].mode]||'🚗';
   el.style.cssText='font-size:26px;line-height:1;filter:drop-shadow(0 2px 3px rgba(0,0,0,.55));will-change:transform';
   el.animate([{transform:'scale(1)'},{transform:'scale(1.18)'}],{duration:520,iterations:Infinity,direction:'alternate',easing:'ease-in-out'});
   animMarker=ME().moveMarker(flat[0].lat,flat[0].lng,el);
-  const dur=Math.min(20000,Math.max(6000,flat.length*260));
+  const dur=Math.min(32000,Math.max(9000,flat.length*450));   // 조금 느리게 (약 9~32초)
   let start=null, seg=0;
   const step=(ts)=>{
     if(start==null) start=ts;
