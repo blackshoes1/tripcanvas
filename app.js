@@ -1057,9 +1057,14 @@ document.getElementById('spotSave').onclick=()=>{
     bookUrl:document.getElementById('spotBookUrl').value.trim(),
     hours:_pickedHours||undefined,lat,lng};
   const targetDay=parseInt(document.getElementById('spotDay').value);
-  if(editing.si>=0){ trip().days[editing.di].spots.splice(editing.si,1); }
-  trip().days[targetDay].spots.push(s);
-  // 고정 시각이 있으면 그날을 시간순으로 자동 정렬
+  const isEdit=editing.si>=0;
+  if(isEdit && targetDay===editing.di){
+    trip().days[targetDay].spots[editing.si]=s;         // 같은 날 편집은 제자리 교체 (맨 뒤로 밀지 않음)
+  }else{
+    if(isEdit) trip().days[editing.di].spots.splice(editing.si,1);   // 다른 날로 옮길 때만 이동
+    trip().days[targetDay].spots.push(s);
+  }
+  // 고정 시각이 있으면 그날을 시간순으로 자동 정렬 (제자리 편집이라 시각이 그대로면 순서 안 바뀜)
   const sorted = trip().days[targetDay].spots.some(x=>x.at) && sortDayByTime(trip().days[targetDay]);
   document.getElementById('spotModalBg').classList.remove('show');
   commit(); toast(sorted?'저장됨 · 시간순 정렬':'저장됨');
