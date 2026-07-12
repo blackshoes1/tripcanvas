@@ -389,10 +389,19 @@ const LEG_KEY='tripcanvas_legs_v4';   // v4: 순수 코덱(SDK 비의존) — v3
 let legCache={};
 try{ legCache=JSON.parse(localStorage.getItem(LEG_KEY))||{}; }catch(e){}
 // 이동 수단 (일자별): car 자차 · transit 대중교통 · walk 도보 · bike 자전거
-const MODE_ICON={car:'🚗',transit:'🚌',walk:'🚶',bike:'🚴'};
-const MODE_NAME={car:'자차',transit:'대중교통',walk:'도보',bike:'자전거'};
-const MODE_SPEED={car:40,transit:25,walk:4.5,bike:15};   // km/h — 미캐시 구간 추정용
+const MODE_ICON={car:'🚗',transit:'🚌',walk:'🚶',bike:'🚴',flight:'✈️'};
+const MODE_NAME={car:'자차',transit:'대중교통',walk:'도보',bike:'자전거',flight:'비행기'};
+const MODE_SPEED={car:40,transit:25,walk:4.5,bike:15,flight:700};   // km/h — 미캐시 구간 추정용
 function dayModeOf(day){ return MODE_ICON[day.mode]? day.mode : 'car'; }
+// 항공 정보(항공편명·공항·시각) 한 줄 표기 (day.flight)
+function flightHtml(day){
+  const f=day.flight; if(!f) return '';
+  const dep=[f.dep,f.depAt].filter(Boolean).map(esc).join(' ');
+  const arr=[f.arr,f.arrAt].filter(Boolean).map(esc).join(' ');
+  const route=[dep,arr].filter(Boolean).join(' → ');
+  const bits=[f.code?esc(f.code):'', route].filter(Boolean);
+  return bits.length ? `<div class="drive" style="color:#7cc7ff">✈️ ${bits.join(' · ')}</div>` : '';
+}
 function saveLegCache(){ try{ localStorage.setItem(LEG_KEY, JSON.stringify(legCache)); }catch(e){} }
 function fmtDur(sec){ const m=Math.round(sec/60); return m<60? `${m}분` : `${Math.floor(m/60)}시간${m%60? ' '+(m%60)+'분':''}`; }
 // 좌표 배열 → 인코딩 폴리라인 (lib.js 순수 코덱 — SDK 비의존, 로드 타이밍 무관)
@@ -482,6 +491,10 @@ async function googleRoute(a,b,mode){
 // 수단·지역별 라우팅: 국내 car=카카오내비 / transit=구글 / walk·bike=카카오 자동차 경로 거리 기반 추정
 //                     해외 4개 모드 모두 구글 Routes
 async function fetchLeg(a,b,mode){
+  if(mode==='flight'){   // 비행기는 도로 라우팅이 없음 → 직선거리 + 속도 추정(활주·이착륙 40분 가산)
+    const km=haversine(a,b);
+    return { sec:Math.round(km/700*3600 + 40*60), m:Math.round(km*1000), path:null, est:1, mode:'flight' };
+  }
   const kr=inKorea(a)&&inKorea(b);
   if(kr){
     if(mode==='car'){ const k=await kakaoRoute(a,b); return k&&{...k,mode}; }
@@ -919,6 +932,7 @@ function renderSidebar(){
         <span class="tools"><button class="iconb" onclick="event.stopPropagation();openDayModal(${di})">✎</button></span></span>
       </div><div class="dayBody">
         ${day.drive?`<div class="drive">${esc(day.drive)}</div>`:''}
+        ${flightHtml(day)}
         ${(()=>{   // 일자 간 자동 이동시간: 이전 일자 마지막 → 오늘 첫 장소
           const first=day.spots.find(hasLoc);
           if(!prevDayAnchor||!first) return '';
@@ -927,7 +941,7 @@ function renderSidebar(){
             ? `<div class="drive" style="color:#9fb8e8" title="이전 일자 마지막 장소 기준 · ${legTitle(ic)}"><span data-ileg="${iid}">${MODE_ICON[dm]} 이전 일정에서 ${(ic.m/1000).toFixed(1)}km · ${fmtDur(ic.sec)}</span></div>`
             : `<div class="drive" style="color:#9fb8e8"><span data-ileg="${iid}">${MODE_ICON[dm]} 이전 일정에서 직선 ${haversine(prevDayAnchor,first).toFixed(1)}km</span></div>`;
         })()}
-        ${(()=>{const rt=dayRoute(day); if(rt) return `<div class="dist">📏 하루 동선 약 ${(rt.m/1000).toFixed(1)}km · ${MODE_ICON[dm]}${fmtDur(rt.sec)}${(dm==='car'&&rt.taxi)?` · 🚕약 ${rt.taxi.toLocaleString()}원`:''} <span style="opacity:.55">(도로 기준)</span></div>`;
+        ${(()=>{const rt=dayRoute(day); if(rt) return `<div class="dist">📏 하루 동선 약 ${(rt.m/1000).toFixed(1)}km · ${MODE_ICON[dm]}${fmtDur(rt.sec)}${(dm==='car'&&rt.taxi)?` · 🚕약 ${rt.taxi.toLocaleString()}원`:''} <span style="opacity:.55">(${dm==='flight'?'직선':'도로 기준'})</span></div>`;
           return dayDistance(day)>0?`<div class="dist">📏 하루 동선 약 ${dayDistance(day).toFixed(1)}km <span style="opacity:.55">(직선)</span></div>`:'';})()}
         ${(()=>{const e=dayEndMin(day); return (e!=null&&e>22*60)?`<div class="overload" title="시작시각+체류+이동 기준 예상 종료">⚠️ 일정 과밀 — 예상 종료 ${hm(e)}${e>=24*60?' (익일)':''}</div>`:'';})()}
         ${(()=>{const dc=dayCost(day); const tx=(dayRoute(day)||{}).taxi||0; const tot=dc+(dm==='car'?tx:0);
@@ -1020,7 +1034,7 @@ window.optimizeDay=(di)=>{
 };
 window.cycleMode=(di)=>{
   if(viewMode) return;
-  const order=['car','transit','walk','bike'];
+  const order=['car','transit','walk','bike','flight'];
   const d=trip().days[di];
   commit(()=>{ d.mode=order[(order.indexOf(dayModeOf(d))+1)%order.length]; });
   toast(`Day ${di+1} 이동 수단: ${MODE_ICON[d.mode]} ${MODE_NAME[d.mode]}`);
@@ -1164,17 +1178,31 @@ window.openDayModal=(di)=>{
   document.getElementById('dayDate').value=isoDateOf(di);
   document.getElementById('dayStart').value=d.startAt||'09:00';
   document.getElementById('dayMode').value=dayModeOf(d);
+  const f=d.flight||{};
+  document.getElementById('flightCode').value=f.code||'';
+  document.getElementById('flightDep').value=f.dep||'';
+  document.getElementById('flightArr').value=f.arr||'';
+  document.getElementById('flightDepAt').value=f.depAt||'';
+  document.getElementById('flightArrAt').value=f.arrAt||'';
+  toggleFlightFields();
   document.getElementById('dayTitle').value=d.title||'';
   document.getElementById('dayDrive').value=d.drive||'';
   document.getElementById('dayNote').value=d.note||'';
   document.getElementById('dayModalBg').classList.add('show');
 };
+// 항공 정보 입력은 이동수단이 비행기일 때만 노출
+function toggleFlightFields(){ document.getElementById('flightFields').style.display = document.getElementById('dayMode').value==='flight'?'block':'none'; }
+document.getElementById('dayMode').onchange=toggleFlightFields;
 document.getElementById('dayCancel').onclick=()=>document.getElementById('dayModalBg').classList.remove('show');
 document.getElementById('daySave').onclick=()=>{
   const d=trip().days[editingDay];
   d.title=document.getElementById('dayTitle').value.trim();
   d.startAt=document.getElementById('dayStart').value||'09:00';
   d.mode=document.getElementById('dayMode').value;
+  const fc=document.getElementById('flightCode').value.trim(), fdp=document.getElementById('flightDep').value.trim(),
+    far=document.getElementById('flightArr').value.trim(), fda=document.getElementById('flightDepAt').value, faa=document.getElementById('flightArrAt').value;
+  if(fc||fdp||far||fda||faa) d.flight={code:fc,dep:fdp,arr:far,depAt:fda,arrAt:faa};
+  else delete d.flight;
   d.drive=document.getElementById('dayDrive').value.trim();
   d.note=document.getElementById('dayNote').value.trim();
   // 이 날짜에 맞춰 여행 시작일 역산 (Day들은 시작일 기준 연속) — 빈 값이면 시작일 해제
