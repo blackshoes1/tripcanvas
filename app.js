@@ -1339,11 +1339,11 @@ const DIRECT_PLACEHOLDER=`여행이름: 다롄 2박3일
 
 [Day 1] 다롄 도착
 이동: ✈️ 인천 → 다롄
-- 성해광장 | 다롄 | 세계 최대 도심 광장
-- (선택) 러시아 거리 | 다롄
+- @13:00 성해광장 | 다롄 | 점심 후 도착
+- (선택) 러시아 거리 | 다롄 | 입장 ¥500
 
 [Day 2] 시내
-- 여순 감옥 | 다롄`;
+- 여순 감옥 | 다롄 | 25000원`;
 const AI_PLACEHOLDER=`예) 다다음주 다롄 2박3일 갈 거야. 첫날 오후 인천서 출발해서 성해광장이랑 러시아거리 야경 보고, 둘째날은 여순감옥이랑 노호탄공원, 셋째날 오전에 시장 구경하고 귀국.`;
 
 // ── 장소검색 라우터: 국내=카카오 로컬, 해외=Google Places ──
@@ -1444,12 +1444,14 @@ async function geocodeSpot(s){
 async function parseAI(text){
   if(!cfg.apiKey) throw new Error('AI 파싱을 쓰려면 API 키를 입력해줘');
   const system=`너는 여행 일정 파서다. 사용자의 자유로운 여행 설명을 받아 JSON으로만 변환해라.
-스키마: {"name":string,"start":"YYYY-MM-DD"|null,"days":[{"title":string,"mode":"car"|"transit"|"walk"|"bike","startAt":"HH:MM"|null,"drive":string,"note":string,"spots":[{"name":string,"city":string,"desc":string,"opt":boolean,"stay":boolean,"stayMin":number|null,"cost":number|null,"bookAt":"HH:MM"|null,"lat":number|null,"lng":number|null}]}]}
+스키마: {"name":string,"start":"YYYY-MM-DD"|null,"days":[{"title":string,"mode":"car"|"transit"|"walk"|"bike","startAt":"HH:MM"|null,"drive":string,"note":string,"spots":[{"name":string,"city":string,"desc":string,"opt":boolean,"stay":boolean,"at":"HH:MM"|null,"stayMin":number|null,"cost":number|null,"cur":"KRW"|"USD"|"JPY"|"CNY","bookAt":"HH:MM"|null,"lat":number|null,"lng":number|null}]}]}
 - stay는 숙소(호텔·에어비앤비 등)면 true.
 - mode는 그날 주 이동수단: 렌터카/자차=car, 지하철·버스·기차=transit, 걷기=walk, 자전거=bike. 언급 없으면 "car".
 - startAt은 그날 시작 시각(예 "KTX 9시 출발"→"09:00"). 없으면 null.
+- at은 그 장소의 도착 시각을 고정하고 싶을 때(예 "점심 12시"→"12:00", "3시에 도착"→"15:00"). 없으면 null. bookAt(예약·입장 지정시각)과 구분: at=일반 도착 고정시각, bookAt=예매가 필요한 입장시각.
 - stayMin은 장소 체류시간(분). "알함브라 3시간"→180, "1시간"→60. 언급 없으면 null.
-- cost는 1인 예상 비용(원, 숫자만). "입장료 2만원"→20000. 없으면 null.
+- cost는 예상 비용 숫자만(통화는 cur). "입장료 2만원"→20000, "$50"→50, "5000엔"→5000. 없으면 null.
+- cur는 cost의 통화: "달러/$"→"USD", "엔/¥"→"JPY", "위안/元"→"CNY", 그 외(원 포함)→"KRW".
 - bookAt은 예약·입장 지정 시각(예 "나스르궁 14시 입장"→"14:00"). 없으면 null.
 - 모든 텍스트 필드는 한국어.
 - 각 장소의 실제 위도/경도를 네 지식으로 채워라. 확실하지 않으면 lat/lng를 null로 둬라.
@@ -1513,8 +1515,8 @@ async function runPaste(){
     title:d.title||'', drive:d.drive||'', note:d.note||'',
     mode:MODES.includes(d.mode)?d.mode:'car', startAt:hhmm(d.startAt)||'09:00',
     spots:(d.spots||[]).map(s=>({name:(s.name||'').trim(), city:(s.city||'기타').trim(), desc:s.desc||'',
-      opt:!!s.opt, stay:!!s.stay, stayMin:(s.stayMin==null?null:posInt(s.stayMin)),
-      cost:(s.cost==null?null:posInt(s.cost)), bookAt:hhmm(s.bookAt),
+      opt:!!s.opt, stay:!!s.stay, at:(hhmm(s.at)||undefined), stayMin:(s.stayMin==null?null:posInt(s.stayMin)),
+      cost:(s.cost==null?null:posInt(s.cost)), cur:(['USD','JPY','CNY'].includes(s.cur)?s.cur:undefined), bookAt:hhmm(s.bookAt),
       lat:(s.lat==null?null:+s.lat), lng:(s.lng==null?null:+s.lng)})).filter(s=>s.name)
   }));
   // 좌표 없는 장소 지오코딩

@@ -44,6 +44,21 @@
   }
 
   /** 붙여넣기 직접 형식 → 구조화 @param {string=} text @returns {{name:string,start:string,days:any[]}} */
+  // 통화 기호/접미사가 붙은 금액 하나 추출 → {cost:number,cur:'KRW'|'USD'|'JPY'|'CNY',raw:string} | null
+  /** @param {string=} str */
+  function parseMoney(str){
+    str=String(str||''); let m;
+    const num=(/**@type{string}*/s)=>+String(s).replace(/,/g,'');
+    if(m=str.match(/[$＄]\s*([\d,]+)/))        return {cost:num(m[1]),cur:'USD',raw:m[0]};
+    if(m=str.match(/[¥￥]\s*([\d,]+)/))        return {cost:num(m[1]),cur:'JPY',raw:m[0]};
+    if(m=str.match(/元\s*([\d,]+)/))           return {cost:num(m[1]),cur:'CNY',raw:m[0]};
+    if(m=str.match(/₩\s*([\d,]+)/))           return {cost:num(m[1]),cur:'KRW',raw:m[0]};
+    if(m=str.match(/([\d,]+)\s*(?:달러|불)/))   return {cost:num(m[1]),cur:'USD',raw:m[0]};
+    if(m=str.match(/([\d,]+)\s*엔/))           return {cost:num(m[1]),cur:'JPY',raw:m[0]};
+    if(m=str.match(/([\d,]+)\s*(?:위안|元)/))   return {cost:num(m[1]),cur:'CNY',raw:m[0]};
+    if(m=str.match(/([\d,]+)\s*원/))           return {cost:num(m[1]),cur:'KRW',raw:m[0]};
+    return null;
+  }
   function parseDirect(text){
     /** @type {{name:string,start:string,days:any[]}} */
     const out={name:'',start:'',days:[]};
@@ -62,11 +77,20 @@
         let body=m[1].trim(), opt=false, stay=false;
         if(/^\(선택\)/.test(body)){ opt=true; body=body.replace(/^\(선택\)\s*/,''); }
         if(/^\(숙소\)/.test(body)){ stay=true; body=body.replace(/^\(숙소\)\s*/,''); }
+        // 도착 시각 @HH:MM
+        let at; const atM=body.match(/@\s*(\d{1,2}:\d{2})/); if(atM){ at=atM[1]; body=body.replace(atM[0],''); }
+        // 비용(통화 기호/접미사)
+        const money=parseMoney(body); if(money) body=body.replace(money.raw,'');
+        body=body.replace(/\s{2,}/g,' ').trim();
         const p=body.split('|').map(x=>x.trim());
         if(p[1]) lastCity=p[1];
         let lat=null,lng=null;
         if(p[3]){ const mm=p[3].match(/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/); if(mm){ lat=+mm[1]; lng=+mm[2]; } }
-        cur.spots.push({name:p[0]||'',city:p[1]||lastCity||out.name||'기타',desc:p[2]||'',opt,stay,lat,lng});
+        /** @type {any} */
+        const spot={name:p[0]||'',city:p[1]||lastCity||out.name||'기타',desc:p[2]||'',opt,stay,lat,lng};
+        if(at) spot.at=at;
+        if(money){ spot.cost=money.cost; if(money.cur!=='KRW') spot.cur=money.cur; }
+        cur.spots.push(spot);
         return;
       }
       cur.note=(cur.note?cur.note+'\n':'')+line;
@@ -158,7 +182,7 @@
     return false;
   }
 
-  const TC={toISO,haversine,legId,legKey,ringPts,parseHM,hm,inKorea,simplifyName,parseDirect,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt};
+  const TC={toISO,haversine,legId,legKey,ringPts,parseHM,hm,inKorea,simplifyName,parseDirect,parseMoney,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt};
   if(typeof module!=='undefined' && module.exports){ module.exports=TC; }   // Node (테스트)
   else { const r=/**@type {any}*/(root); for(const k in TC) r[k]=/**@type {any}*/(TC)[k]; }   // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);
