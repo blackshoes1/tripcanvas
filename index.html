@@ -13,24 +13,27 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-<link rel="stylesheet" href="style.css?v=tc-v54">
+<link rel="stylesheet" href="style.css?v=tc-v55">
 </head>
 <body>
 <header>
   <h1>🗺 Trip Canvas</h1>
   <select id="tripSel"></select>
-  <button class="btn" id="newTripBtn">＋ 새 여행</button>
-  <button class="btn" id="tripEditBtn">여행 설정</button>
-  <button class="btn" id="pasteBtn">📋 붙여넣기</button>
-  <span style="flex:1"></span>
-  <button class="btn ghost" id="undoBtn" title="실행취소 (Ctrl+Z)" disabled onclick="undo()">↩️</button>
+  <span class="hdrSpacer"></span>
   <button class="btn primary" id="travelBtn">📍 여행 모드</button>
-  <button class="btn ghost" id="shareBtn">🔗 공유</button>
-  <button class="btn ghost" id="exportBtn">내보내기</button>
-  <button class="btn ghost" id="imgBtn" title="일정을 이미지로 저장">🖼 이미지</button>
-  <button class="btn ghost" id="importBtn">가져오기</button>
+  <button class="btn ghost" id="moreBtn" aria-label="메뉴" onclick="toggleHdrMenu(event)">☰</button>
+  <div id="hdrMenu">
+    <button class="btn ghost" id="undoBtn" title="실행취소 (Ctrl+Z)" disabled onclick="undo()">↩️ 실행취소</button>
+    <button class="btn" id="newTripBtn">＋ 새 여행</button>
+    <button class="btn" id="tripEditBtn">⚙️ 여행 설정</button>
+    <button class="btn" id="pasteBtn">📋 붙여넣기</button>
+    <button class="btn ghost" id="shareBtn">🔗 공유</button>
+    <button class="btn ghost" id="exportBtn">📤 내보내기</button>
+    <button class="btn ghost" id="imgBtn" title="일정을 이미지로 저장">🖼 이미지</button>
+    <button class="btn ghost" id="importBtn">📥 가져오기</button>
+    <button class="btn" id="authBtn" title="로그인하면 여행이 내 계정에 저장돼 어느 기기서든 열려요">로그인</button>
+  </div>
   <input type="file" id="importFile" accept=".json" style="display:none">
-  <button class="btn" id="authBtn" title="로그인하면 여행이 내 계정에 저장돼 어느 기기서든 열려요">로그인</button>
 </header>
 <div id="roBar" style="display:none">👀 읽기전용으로 보는 중 — 편집하려면 내 여행으로 저장하세요 <button class="btn primary" id="roSave" style="margin-left:auto">내 여행으로 저장</button></div>
 <div id="filterbar"></div>
@@ -187,7 +190,7 @@
 </div>
 <div id="toast"></div>
 
-<script src="lib.js?v=tc-v54"></script>
-<script src="app.js?v=tc-v54"></script>
+<script src="lib.js?v=tc-v55"></script>
+<script src="app.js?v=tc-v55"></script>
 </body>
 </html>
