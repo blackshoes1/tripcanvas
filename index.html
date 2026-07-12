@@ -13,7 +13,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-<link rel="stylesheet" href="style.css?v=tc-v62">
+<link rel="stylesheet" href="style.css?v=tc-v63">
 </head>
 <body>
 <header>
@@ -91,7 +91,19 @@
     <option value="transit">🚌 대중교통</option>
     <option value="walk">🚶 도보</option>
     <option value="bike">🚴 자전거</option>
+    <option value="flight">✈️ 비행기</option>
   </select>
+  <div id="flightFields" style="display:none">
+    <label>✈️ 항공편명</label><input type="text" id="flightCode" placeholder="예: OZ102">
+    <div style="display:flex;gap:6px">
+      <div style="flex:1"><label>출발 공항</label><input type="text" id="flightDep" placeholder="인천 ICN" style="width:100%"></div>
+      <div style="flex:1"><label>도착 공항</label><input type="text" id="flightArr" placeholder="나리타 NRT" style="width:100%"></div>
+    </div>
+    <div style="display:flex;gap:6px">
+      <div style="flex:1"><label>출발 시각</label><input type="time" id="flightDepAt" style="width:100%"></div>
+      <div style="flex:1"><label>도착 시각</label><input type="time" id="flightArrAt" style="width:100%"></div>
+    </div>
+  </div>
   <label>제목 (예: → 세비야 (2박))</label><input type="text" id="dayTitle">
   <label>이동 정보 (예: 🚗 128km · 1시간 45분)</label><input type="text" id="dayDrive">
   <label>메모</label><textarea id="dayNote"></textarea>
@@ -196,7 +208,7 @@
 </div>
 <div id="toast"></div>
 
-<script src="lib.js?v=tc-v62"></script>
-<script src="app.js?v=tc-v62"></script>
+<script src="lib.js?v=tc-v63"></script>
+<script src="app.js?v=tc-v63"></script>
 </body>
 </html>
