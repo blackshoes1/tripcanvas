@@ -585,7 +585,7 @@ function render(){
       // 일자 내 동선 — 실경로 우선. 조회 중(미캐시)엔 그리지 않고,
       // 결과가 나온 뒤에도 경로가 없는 구간(실패)만 직선으로 채움 → 직선→실경로 깜빡임 제거
       const locSpots = day.spots.filter(hasLoc), dm=dayModeOf(day);
-      const lc=spotColor(locSpots[0]||{},di,colors), lop=activeDay?0.9:0.45;
+      const lc=dayColor(di), lop=activeDay?0.9:0.45;   // 경로선은 색 모드와 무관하게 항상 일자 색 (핀·카드는 도시별/일자별 따름)
       for(let i=1;i<locSpots.length;i++){
         const A=locSpots[i-1], B=locSpots[i];
         const cch=legCache[legKey(A,B,dm)];
@@ -610,7 +610,7 @@ function render(){
           const cch=legCache[legKey(prev,loc[0],dayModeOf(day))];
           if(cch){
             const path=(cch.sec&&cch.path)?decodePts(cch.path):null;
-            addLine(path||[{lat:+prev.lat,lng:+prev.lng},{lat:+loc[0].lat,lng:+loc[0].lng}], spotColor(loc[0],di,colors), .8, true);
+            addLine(path||[{lat:+prev.lat,lng:+prev.lng},{lat:+loc[0].lat,lng:+loc[0].lng}], dayColor(di), .8, true);
           }
         }
         prev = loc[loc.length-1];
