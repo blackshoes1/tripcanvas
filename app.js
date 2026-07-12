@@ -232,7 +232,8 @@ const Engines={
       map.fitBounds(b, padPx==null?48:padPx);
       if(maxZoom) google.maps.event.addListenerOnce(map,'idle',()=>{ if(map.getZoom()>maxZoom) map.setZoom(maxZoom); });
     },
-    panTo(lat,lng,minZoom){ map.panTo({lat,lng}); if(minZoom&&map.getZoom()<minZoom) map.setZoom(minZoom); }
+    panTo(lat,lng,minZoom){ map.panTo({lat,lng}); if(minZoom&&map.getZoom()<minZoom) map.setZoom(minZoom); },
+    center(lat,lng,zoom){ if(zoom!=null) map.setZoom(zoom); map.setCenter({lat,lng}); }   // 즉시 이동(추적 카메라용)
   },
   kakao:{
     ready(){ return !!kmap; },
@@ -256,7 +257,8 @@ const Engines={
       kmap.relayout(); kmap.setBounds(b, padPx==null?48:padPx);
       if(maxZoom){ const minLv=Math.max(1,19-maxZoom); if(kmap.getLevel()<minLv) kmap.setLevel(minLv); }
     },
-    panTo(lat,lng,minZoom){ kmap.panTo(new kakao.maps.LatLng(lat,lng)); if(minZoom){ const lv=Math.max(1,19-minZoom); if(kmap.getLevel()>lv) kmap.setLevel(lv); } }
+    panTo(lat,lng,minZoom){ kmap.panTo(new kakao.maps.LatLng(lat,lng)); if(minZoom){ const lv=Math.max(1,19-minZoom); if(kmap.getLevel()>lv) kmap.setLevel(lv); } },
+    center(lat,lng,zoom){ if(zoom!=null) kmap.setLevel(Math.max(1,19-zoom)); kmap.setCenter(new kakao.maps.LatLng(lat,lng)); }   // 즉시 이동(추적 카메라용)
   }
 };
 function ME(){ return Engines[engine]; }   // 현재 활성 엔진
@@ -677,7 +679,7 @@ function playTrip(){
   const cum=[0];
   for(let i=1;i<flat.length;i++) cum[i]=cum[i-1]+haversine(flat[i-1],flat[i]);
   const total=cum[cum.length-1]||1;
-  fitAll();                                         // 전체가 보이도록 맞춘 뒤 그 위를 이동
+  ME().center(flat[0].lat, flat[0].lng, 13);        // 출발 지점으로 줌인 (카메라가 차를 따라감)
   const el=document.createElement('div');
   el.textContent=MODE_ICON[flat[0].mode]||'🚗';
   el.style.cssText='font-size:26px;line-height:1;filter:drop-shadow(0 2px 3px rgba(0,0,0,.55));will-change:transform';
@@ -690,10 +692,12 @@ function playTrip(){
     const p=Math.min(1,(ts-start)/dur), d=p*total;
     while(seg<flat.length-2 && cum[seg+1]<d) seg++;
     const A=flat[seg], B=flat[seg+1], segLen=(cum[seg+1]-cum[seg])||1, f=(d-cum[seg])/segLen;
-    animMarker.move(A.lat+(B.lat-A.lat)*f, A.lng+(B.lng-A.lng)*f);
+    const lat=A.lat+(B.lat-A.lat)*f, lng=A.lng+(B.lng-A.lng)*f;
+    animMarker.move(lat,lng);
+    ME().center(lat,lng);                            // 카메라가 차를 따라감
     const ic=MODE_ICON[A.mode]||'🚗'; if(el.textContent!==ic) el.textContent=ic;
     if(p<1){ animRAF=requestAnimationFrame(step); }
-    else { animRAF=null; animEndT=setTimeout(stopPlay,700); }   // 도착 후 잠깐 머물다 정리
+    else { animRAF=null; animEndT=setTimeout(()=>{ stopPlay(); fitAll(); },700); }   // 도착 후 전체 보기로 줌아웃
   };
   animRAF=requestAnimationFrame(step);
   updatePlayBtn();
