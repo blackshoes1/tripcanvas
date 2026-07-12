@@ -13,7 +13,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-<link rel="stylesheet" href="style.css?v=tc-v56">
+<link rel="stylesheet" href="style.css?v=tc-v57">
 </head>
 <body>
 <header>
@@ -61,7 +61,12 @@
   <label>일자</label><select id="spotDay"></select>
   <label>🕐 도착 시각 (비우면 이동시간으로 자동 계산 · 넣으면 그 시각 고정 + 시간순 자동 정렬)</label><input type="time" id="spotAt">
   <label>체류시간 (분 — 도착 예상시각 계산용)</label><input type="number" id="spotStayMin" min="0" step="5" placeholder="60">
-  <label>예상 비용 (입장료·식비 등, 숫자)</label><input type="number" id="spotCost" min="0" step="1000" placeholder="0">
+  <label>예상 비용 (입장료·식비 등)</label>
+  <div style="display:flex;gap:6px">
+    <input type="text" id="spotCost" inputmode="numeric" placeholder="0" style="flex:1">
+    <select id="spotCur" style="width:auto"><option value="KRW">₩ 원</option><option value="USD">$ 달러</option><option value="JPY">¥ 엔</option><option value="CNY">元 위안</option></select>
+  </div>
+  <div class="hint" id="costKrwHint" style="margin-top:3px"></div>
   <label>예약 시각 (HH:MM, 있으면 ETA와 비교해 경고)</label><input type="time" id="spotBookAt">
   <label>예약 링크 (예매·바우처 URL)</label><input type="text" id="spotBookUrl" placeholder="https://...">
   <div class="chkrow"><input type="checkbox" id="spotOpt"><label for="spotOpt" style="margin:0">선택 코스 (흐린 핀)</label></div>
@@ -191,7 +196,7 @@
 </div>
 <div id="toast"></div>
 
-<script src="lib.js?v=tc-v56"></script>
-<script src="app.js?v=tc-v56"></script>
+<script src="lib.js?v=tc-v57"></script>
+<script src="app.js?v=tc-v57"></script>
 </body>
 </html>

@@ -524,7 +524,33 @@ function sortDayByTime(day){
   return before.some((s,i)=>s!==day.spots[i]);
 }
 // 하루 장소 비용 합계
-function dayCost(day){ return day.spots.reduce((a,s)=>a+(+s.cost||0),0); }
+// ── 통화·환율 (원/달러/엔/위안 → 원 환산) ──
+const CUR = { KRW:{sym:'₩',name:'원'}, USD:{sym:'$',name:'달러'}, JPY:{sym:'¥',name:'엔'}, CNY:{sym:'元',name:'위안'} };
+const FX_KEY='tripcanvas_fx';
+let fxRates = { KRW:1, USD:1380, JPY:9.1, CNY:192 };   // 통화 1단위 = ? 원. 네트워크 실패 시 폴백(근사)
+function toKRW(amount, cur){ return Math.round((+amount||0) * (fxRates[cur||'KRW']||1)); }
+function fmtMoney(n){ return Math.round(+n||0).toLocaleString('en-US'); }
+// 원본+환산 표기: KRW면 "68,000원", 아니면 "$50 ≈ 68,000원"
+function costLabel(amount, cur){
+  cur=cur||'KRW';
+  return cur==='KRW' ? `${fmtMoney(amount)}원` : `${CUR[cur].sym}${fmtMoney(amount)} ≈ ${fmtMoney(toKRW(amount,cur))}원`;
+}
+// 환율 로드: localStorage 캐시(하루 1회 갱신), open.er-api.com에서 USD 기준 시세 → 원 환산율 계산
+function loadFx(){
+  let cachedDay=null;
+  try{ const c=JSON.parse(localStorage.getItem(FX_KEY)); if(c&&c.rates){ fxRates=c.rates; cachedDay=c.day; } }catch(e){}
+  const today=new Date().toISOString().slice(0,10);
+  if(cachedDay===today) return;   // 오늘 이미 갱신됨
+  fetch('https://open.er-api.com/v6/latest/USD').then(r=>r.json()).then(j=>{
+    const R=j&&j.rates;
+    if(j&&j.result==='success'&&R&&R.KRW&&R.JPY&&R.CNY){
+      fxRates={ KRW:1, USD:R.KRW, JPY:R.KRW/R.JPY, CNY:R.KRW/R.CNY };
+      try{ localStorage.setItem(FX_KEY, JSON.stringify({day:today, rates:fxRates})); }catch(e){}
+      render();   // 환산액 갱신
+    }
+  }).catch(()=>{});   // 실패 시 폴백/캐시 유지
+}
+function dayCost(day){ return day.spots.reduce((a,s)=>a+(s.cost? toKRW(s.cost,s.cur):0),0); }
 // 여행 전체 비용(장소+자차일 택시) 합계
 function tripCost(){
   return trip().days.reduce((a,d)=>{ const tx=(dayModeOf(d)==='car')?((dayRoute(d)||{}).taxi||0):0; return a+dayCost(d)+tx; },0);
@@ -829,7 +855,7 @@ function renderSidebar(){
       const bookMin=s.bookAt?parseHM(s.bookAt):null;
       const bookWarn=(bookMin!=null && etas[si]-bookMin>5);   // ETA가 예약보다 5분 이상 늦음
       const meta=[];
-      if(s.cost) meta.push(`<span class="cost">💳 ${(+s.cost).toLocaleString()}</span>`);
+      if(s.cost){ const nk=s.cur&&s.cur!=='KRW'; meta.push(`<span class="cost"${nk?` title="${costLabel(s.cost,s.cur)}"`:''}>💳 ${nk?`${CUR[s.cur].sym}${fmtMoney(s.cost)} (${fmtMoney(toKRW(s.cost,s.cur))})`:fmtMoney(s.cost)}</span>`); }
       if(s.bookAt) meta.push(`<span class="book${bookWarn?' bookwarn':''}"${bookWarn?` title="예약 ${s.bookAt}인데 예상 도착 ${hm(etas[si])} — 일정이 늦습니다"`:` title="예약 시각"`}>🎫 ${esc(s.bookAt)}${bookWarn?' ⚠️':''}</span>`);
       if(s.bookUrl) meta.push(`<a class="book" href="${escAttr(s.bookUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="예약 링크 열기">🔗</a>`);
       // 영업시간 경고: 그 날 요일·도착 예상시각에 문 닫혀 있으면 ⚠️
@@ -990,7 +1016,9 @@ window.openSpotModal=(di,si)=>{
   document.getElementById('spotStay').checked=!!s.stay;
   document.getElementById('spotAt').value=s.at||'';
   document.getElementById('spotStayMin').value=(s.stayMin!=null? s.stayMin : 60);
-  document.getElementById('spotCost').value=(s.cost!=null? s.cost : '');
+  document.getElementById('spotCost').value=(s.cost!=null? fmtMoney(s.cost) : '');
+  document.getElementById('spotCur').value=s.cur||'KRW';
+  updateCostHint();
   document.getElementById('spotBookAt').value=s.bookAt||'';
   document.getElementById('spotBookUrl').value=s.bookUrl||'';
   document.getElementById('spotLat').value=s.lat; document.getElementById('spotLng').value=s.lng;
@@ -1001,17 +1029,30 @@ window.openSpotModal=(di,si)=>{
   document.getElementById('spotModalBg').classList.add('show');
 };
 document.getElementById('spotCancel').onclick=()=>document.getElementById('spotModalBg').classList.remove('show');
+// 비용 입력: 천 단위 쉼표 + 통화별 원화 환산 힌트
+function updateCostHint(){
+  const el=document.getElementById('costKrwHint');
+  const d=document.getElementById('spotCost').value.replace(/[^\d]/g,''), cur=document.getElementById('spotCur').value;
+  if(!d){ el.textContent=''; return; }
+  const rate=fxRates[cur], rateStr=rate<100?rate.toFixed(1):fmtMoney(rate);
+  el.textContent = cur==='KRW' ? `= ${fmtMoney(d)}원`
+    : `≈ ${fmtMoney(toKRW(+d,cur))}원  (1${CUR[cur].sym} ≈ ${rateStr}원)`;
+}
+document.getElementById('spotCost').addEventListener('input',function(){ const d=this.value.replace(/[^\d]/g,''); this.value=d?(+d).toLocaleString('en-US'):''; updateCostHint(); });
+document.getElementById('spotCur').addEventListener('change',updateCostHint);
 document.getElementById('spotSave').onclick=()=>{
   const name=document.getElementById('spotName').value.trim();
   const lat=parseFloat(document.getElementById('spotLat').value), lng=parseFloat(document.getElementById('spotLng').value);
   if(!name){toast('이름을 입력하세요','#e63946');return;}
   if(isNaN(lat)||isNaN(lng)){toast('위치를 지정하세요 (검색 또는 지도 클릭)','#e63946');return;}
-  const costV=parseInt(document.getElementById('spotCost').value);
+  const costV=parseInt(document.getElementById('spotCost').value.replace(/[^\d]/g,''));   // 쉼표 제거 후 숫자
+  const curV=document.getElementById('spotCur').value;
   const s={name,city:document.getElementById('spotCity').value.trim()||'기타',desc:document.getElementById('spotDesc').value.trim(),
     opt:document.getElementById('spotOpt').checked,stay:document.getElementById('spotStay').checked,
     at:document.getElementById('spotAt').value||undefined,
     stayMin:Math.max(0,parseInt(document.getElementById('spotStayMin').value)||60),
     cost:(isNaN(costV)?null:Math.max(0,costV)),
+    cur:(curV&&curV!=='KRW'?curV:undefined),   // KRW는 기본값이라 저장 생략(하위호환)
     bookAt:document.getElementById('spotBookAt').value||'',
     bookUrl:document.getElementById('spotBookUrl').value.trim(),
     hours:_pickedHours||undefined,lat,lng};
@@ -1223,7 +1264,7 @@ document.getElementById('roSave').onclick=()=>{
 };
 // 공유 링크로 열었을 때 — #v= 읽기전용 보기 / #t= 구버전(즉시 저장) 호환
 (function(){
-  load(); loadCfg();
+  load(); loadCfg(); loadFx();
   const h=location.hash;
   if(h.startsWith('#v=')){
     try{
@@ -1499,7 +1540,7 @@ function renderTravel(di){
     const div=document.createElement('div'); div.className='tSpot'; div.style.setProperty('--c',spotColor(s,di,colors));
     const tmeta=[];
     if(s.bookAt) tmeta.push(`🎫 예약 ${esc(s.bookAt)}`);
-    if(s.cost) tmeta.push(`💳 ${(+s.cost).toLocaleString()}원`);
+    if(s.cost) tmeta.push(`💳 ${costLabel(s.cost,s.cur)}`);
     div.innerHTML=`<div class="n"><span class="eta">${hm(etas[si])}</span>${si+1}. ${s.stay?'🏠 ':''}${esc(s.name)}${s.opt?' <span style="font-size:11px;color:#8892b0">(선택)</span>':''}</div>`+
       (tmeta.length?`<div class="d" style="color:#c9b6e8">${tmeta.join(' · ')}</div>`:'')+
       `<div class="d">${esc(s.desc).replace(/\n/g,'<br>')}</div>`+
