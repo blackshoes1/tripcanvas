@@ -600,17 +600,17 @@ function render(){
         }
       }
     });
-    // 일자 간 연결 (전체 보기) — 점선. 동일하게 조회 중엔 미표시
+    // 일자 간 연결 (전체 보기) — 점선. 색은 도착 일자 색(나머지 선과 동일 체계). 조회 중엔 미표시
     if(!activeDay){
       let prev = null;
-      t.days.forEach(day=>{
+      t.days.forEach((day,di)=>{
         const loc = day.spots.filter(hasLoc);
         if(!loc.length) return;
         if(prev){
           const cch=legCache[legKey(prev,loc[0],dayModeOf(day))];
           if(cch){
             const path=(cch.sec&&cch.path)?decodePts(cch.path):null;
-            addLine(path||[{lat:+prev.lat,lng:+prev.lng},{lat:+loc[0].lat,lng:+loc[0].lng}], '#f6bd60', .8, true);
+            addLine(path||[{lat:+prev.lat,lng:+prev.lng},{lat:+loc[0].lat,lng:+loc[0].lng}], spotColor(loc[0],di,colors), .8, true);
           }
         }
         prev = loc[loc.length-1];
