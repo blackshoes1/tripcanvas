@@ -43,7 +43,6 @@
       .replace(/\s*(앞바다|바다|해변|해수욕장|일대|근처|주변|전경|야경|거리|풍경)\s*$/,'').trim();
   }
 
-  /** 붙여넣기 직접 형식 → 구조화 @param {string=} text @returns {{name:string,start:string,days:any[]}} */
   // 통화 기호/접미사가 붙은 금액 하나 추출 → {cost:number,cur:'KRW'|'USD'|'JPY'|'CNY',raw:string} | null
   /** @param {string=} str */
   function parseMoney(str){
@@ -59,6 +58,7 @@
     if(m=str.match(/([\d,]+)\s*원/))           return {cost:num(m[1]),cur:'KRW',raw:m[0]};
     return null;
   }
+  /** 붙여넣기 직접 형식 → 구조화 @param {string=} text @returns {{name:string,start:string,days:any[]}} */
   function parseDirect(text){
     /** @type {{name:string,start:string,days:any[]}} */
     const out={name:'',start:'',days:[]};
