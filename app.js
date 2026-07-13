@@ -563,7 +563,9 @@ function dayTimeline(day){
     const natural=clock;
     let eta=natural, conflict=false;
     if(s.at){ eta=parseHM(s.at); conflict = eta < natural-0.5; }   // 고정 시각인데 이동상 도착이 더 늦으면 충돌
-    clock = eta + (s.stayMin!=null? +s.stayMin : 60);
+    // 예약시각이 도착보다 뒤면 그때까지 대기 후 활동 → 다음 장소 출발 기준은 max(도착, 예약)+체류
+    const depart = s.bookAt ? Math.max(eta, parseHM(s.bookAt)) : eta;
+    clock = depart + (s.stayMin!=null? +s.stayMin : 60);
     if(hasLoc(s)) prev=s;
     return {eta, fixed:!!s.at, conflict};
   });
@@ -612,11 +614,12 @@ function dayCost(day){ return day.spots.reduce((a,s)=>a+(s.cost? toKRW(s.cost,s.
 function tripCost(){
   return trip().days.reduce((a,d)=>{ const tx=(dayModeOf(d)==='car')?((dayRoute(d)||{}).taxi||0):0; return a+dayCost(d)+tx; },0);
 }
-// 일정 예상 종료 시각(분) — 마지막 장소 ETA + 그 체류시간
+// 일정 예상 종료 시각(분) — 마지막 장소 (예약 대기 반영한) 활동 시작 + 체류
 function dayEndMin(day){
   if(!day.spots.length) return null;
-  const etas=dayEtas(day), last=day.spots.length-1;
-  return etas[last] + (day.spots[last].stayMin!=null? +day.spots[last].stayMin : 60);
+  const etas=dayEtas(day), last=day.spots.length-1, s=day.spots[last];
+  const base = s.bookAt ? Math.max(etas[last], parseHM(s.bookAt)) : etas[last];
+  return base + (s.stayMin!=null? +s.stayMin : 60);
 }
 // 하루 전체 실도로 합계 (모든 구간이 캐시됐을 때만)
 function dayRoute(day){
