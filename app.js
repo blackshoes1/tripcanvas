@@ -223,17 +223,25 @@ function fillNameValue(name){
   const el=document.getElementById('spotName');
   if(!el.value.trim() || el.value.trim()===(_namePrefill||'').trim()){ el.value=name; _namePrefill=name; }
 }
-// 좌표 → 장소/건물명 (국내=카카오 건물명). 없으면 null(해외는 좌표→POI 신뢰도 낮아 생략).
+// 좌표 → 장소명 (국내=카카오 건물명, 해외=구글 Places 인근 대표 장소). 없으면 null.
 function reversePlaceName(lat,lng){
   return new Promise(resolve=>{
-    if(!inKorea({lat:+lat,lng:+lng})){ resolve(null); return; }
-    loadKakao().then(ok=>{
-      if(!ok||!window.kakao||!kakao.maps.services){ resolve(null); return; }
-      new kakao.maps.services.Geocoder().coord2Address(+lng,+lat,(res,status)=>{
-        if(status!==kakao.maps.services.Status.OK||!res||!res.length){ resolve(null); return; }
-        resolve((res[0].road_address&&res[0].road_address.building_name)||null);   // 건물/장소명만
+    if(inKorea({lat:+lat,lng:+lng})){
+      loadKakao().then(ok=>{
+        if(!ok||!window.kakao||!kakao.maps.services){ resolve(null); return; }
+        new kakao.maps.services.Geocoder().coord2Address(+lng,+lat,(res,status)=>{
+          if(status!==kakao.maps.services.Status.OK||!res||!res.length){ resolve(null); return; }
+          resolve((res[0].road_address&&res[0].road_address.building_name)||null);   // 건물/장소명만
+        });
       });
-    });
+    }else{
+      if(!window.google||!google.maps){ resolve(null); return; }
+      google.maps.importLibrary('places').then(({Place})=>{
+        // 기본 랭크(POPULARITY): 반경 내 대표 장소가 먼저 → 랜드마크 이름. 없으면 null.
+        Place.searchNearby({ fields:['displayName'], locationRestriction:{center:{lat:+lat,lng:+lng}, radius:100}, maxResultCount:1, language:'ko' })
+          .then(({places})=>resolve(places&&places[0]?(places[0].displayName||null):null)).catch(()=>resolve(null));
+      }).catch(()=>resolve(null));
+    }
   });
 }
 // 지도로 위치 지정 시 이름 자동 채움(비어있거나 자동 프리필 그대로일 때만)
