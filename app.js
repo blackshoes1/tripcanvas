@@ -871,36 +871,40 @@ function playTrip(){
   animMarker=ME().moveMarker(flat[0].lat,flat[0].lng,el);
   const dur=Math.min(38000,Math.max(11000,flat.length*520));   // 조금 느리게 (약 11~38초)
   const pxSpeed=pixelTotal/dur;                        // 화면상 등속(픽셀/ms)
-  let d=0, lastTs=null, seg=0, curZoom=flat[0].zoom||PLAY_ZOOM_IN, appliedZoom=curZoom;
-  let prevSegZoom=flat[0].zoom||PLAY_ZOOM_IN;
-  const step=(ts)=>{
-    if(lastTs==null) lastTs=ts;
-    const dt=Math.min(100, ts-lastTs); lastTs=ts;      // 탭 복귀 등 큰 갭은 클램프
-    d += pxSpeed*dt/zscale(curZoom);                    // 현재 줌 기준 실거리 전진 → 경계에서 매끄럽게 가감속
-    if(d>gtotal) d=gtotal;
+  // 줌이 바뀌는 누적거리 '경계'들 — 여기서 반드시 멈춰 줌+타일로딩.
+  // 빠른(줌아웃) 구간이 한 프레임에 짧은 도시 구간을 건너뛰지 않도록 d를 경계에 클램프.
+  const bounds=[];
+  for(let i=1;i<flat.length;i++){ const zi=flat[i].zoom||PLAY_ZOOM_IN, zp=flat[i-1].zoom||PLAY_ZOOM_IN; if(zi!==zp) bounds.push({dist:gcum[i], zoom:zi}); }
+  let d=0, lastTs=null, seg=0, curZoom=flat[0].zoom||PLAY_ZOOM_IN, bi=0;   // curZoom=현재 적용된 '고정' 줌
+  const applyPos=()=>{                                  // d로부터 마커 위치·방향 갱신 후 [lat,lng] 반환
     while(seg<flat.length-2 && gcum[seg+1]<d) seg++;
     const A=flat[seg], B=flat[seg+1], segLen=(gcum[seg+1]-gcum[seg])||1, f=(d-gcum[seg])/segLen;
     const lat=A.lat+(B.lat-A.lat)*f, lng=A.lng+(B.lng-A.lng)*f;
     animMarker.move(lat,lng);
-    // 도시 진입(도시간→도시내): 줌인하고 타일 로딩이 끝날 때까지 정지 → 로딩 못 따라가 튀는 현상 방지
-    if((A.zoom||PLAY_ZOOM_IN)===PLAY_ZOOM_IN && prevSegZoom===PLAY_ZOOM_OUT && d<gtotal){
-      prevSegZoom=PLAY_ZOOM_IN;
-      curZoom=PLAY_ZOOM_IN; appliedZoom=PLAY_ZOOM_IN;
-      ME().center(lat,lng,PLAY_ZOOM_IN);               // 도착지 줌인
-      animRAF=null; animWaiting=true;
+    const tf=headingTransform(A,B); if(tf) car.style.transform=tf;   // 진행 방향으로 회전
+    const ic=MODE_ICON[A.mode]||'🚗'; if(car.textContent!==ic) car.textContent=ic;
+    return [lat,lng];
+  };
+  const step=(ts)=>{
+    if(lastTs==null) lastTs=ts;
+    const dt=Math.min(100, ts-lastTs); lastTs=ts;      // 탭 복귀 등 큰 갭은 클램프
+    d += pxSpeed*dt/zscale(curZoom);                    // 현재(고정) 줌 기준 실거리 전진 → 화면상 등속
+    // 다음 줌 경계를 넘어서면 경계에 딱 멈춤 → 줌 1회 변경 + 타일 로딩 대기 후 재개(도시 건너뛰기·이동중 setZoom 없음)
+    if(bi<bounds.length && d>=bounds[bi].dist){
+      d=bounds[bi].dist; const bz=bounds[bi].zoom; bi++;
+      const [lat,lng]=applyPos();
+      curZoom=bz; ME().center(lat,lng,bz);             // 경계에서 딱 한 번 줌 변경
+      animRAF=null; animWaiting=true; updatePlayBtn();
       ME().waitTiles().then(()=>{
-        if(myseq!==playSeq) return;                    // 대기 중 정지/재시작됨 → 무시
-        animWaiting=false; lastTs=null;                // 대기 시간은 진행에서 제외
-        animRAF=requestAnimationFrame(step);
+        if(myseq!==playSeq) return;                     // 대기 중 정지/재시작됨 → 무시
+        animWaiting=false; lastTs=null;                 // 대기 시간은 진행에서 제외
+        animRAF=requestAnimationFrame(step); updatePlayBtn();
       });
       return;
     }
-    prevSegZoom=(A.zoom||PLAY_ZOOM_IN);
-    curZoom += ((A.zoom||PLAY_ZOOM_IN)-curZoom)*0.08;   // 구간 성격에 맞춰 줌 부드럽게 이동
-    if(Math.abs(curZoom-appliedZoom)>0.03){ appliedZoom=curZoom; ME().center(lat,lng,curZoom); }
-    else ME().center(lat,lng);                          // 줌 변화 없으면 중심만
-    const tf=headingTransform(A,B); if(tf) car.style.transform=tf;   // 진행 방향으로 회전
-    const ic=MODE_ICON[A.mode]||'🚗'; if(car.textContent!==ic) car.textContent=ic;
+    if(d>gtotal) d=gtotal;
+    const [lat,lng]=applyPos();
+    ME().center(lat,lng);                               // 같은 줌 구간: 팬(추적)만, setZoom 호출 없음
     if(d<gtotal){ animRAF=requestAnimationFrame(step); }
     else { animRAF=null; animEndT=setTimeout(()=>{ stopPlay(); fitAll(); },700); }   // 도착 후 전체 보기로 줌아웃
   };
