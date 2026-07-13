@@ -844,8 +844,11 @@ function playTrip(){
   if(!ME().ready()){ toast('지도를 불러오는 중이에요','#8892b0'); return; }
   const flat=animPath();
   if(flat.length<2){ toast('재생할 동선이 없어요','#8892b0'); return; }
+  // 타임라인을 실거리 대신 '화면 픽셀 밀도(≈2^zoom)'로 가중 → 화면상 속도가 균일.
+  // 도시 내(줌인)는 같은 km라도 화면을 더 크게 가로질러 → 시간을 더 배분(느리게) → 타일 로딩이 따라옴.
+  const zscale=z=>Math.pow(2,(z||PLAY_ZOOM_IN)-PLAY_ZOOM_OUT);
   const cum=[0];
-  for(let i=1;i<flat.length;i++) cum[i]=cum[i-1]+haversine(flat[i-1],flat[i]);
+  for(let i=1;i<flat.length;i++) cum[i]=cum[i-1]+haversine(flat[i-1],flat[i])*zscale(flat[i].zoom);
   const total=cum[cum.length-1]||1;
   document.body.classList.add('playing');           // 사이드바 접어 지도를 크게
   ME().relayout();
@@ -857,7 +860,7 @@ function playTrip(){
   el.appendChild(car);
   el.animate([{transform:'scale(1)'},{transform:'scale(1.15)'}],{duration:600,iterations:Infinity,direction:'alternate',easing:'ease-in-out'});
   animMarker=ME().moveMarker(flat[0].lat,flat[0].lng,el);
-  const dur=Math.min(32000,Math.max(9000,flat.length*450));   // 조금 느리게 (약 9~32초)
+  const dur=Math.min(38000,Math.max(11000,flat.length*520));   // 조금 느리게 (약 11~38초)
   let start=null, seg=0, curZoom=flat[0].zoom||PLAY_ZOOM_IN, appliedZoom=curZoom;
   const step=(ts)=>{
     if(start==null) start=ts;
