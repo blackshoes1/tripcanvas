@@ -804,9 +804,13 @@ function fitAll(){
 // 전체 동선을 하나의 좌표열로 펼친 뒤(구간별 실경로 우선, 없으면 직선) 이동수단 아이콘을 따라 이동시킴.
 let animMarker=null, animRAF=null, animEndT=null, animWaiting=false, playSeq=0;
 const PLAY_ZOOM_IN=13, PLAY_ZOOM_OUT=9;   // 재생 중 도시 내(줌인)·도시 간(줌아웃) 레벨
+const PLAY_TILE_TIMEOUT=3500, PLAY_SETTLE=400;   // 타일 로딩 최대 대기(ms)·로딩 후 정착 지연(ms) — 깔끔한 출발 우선
 function animPath(){
   const flat=[]; let prevLoc=null;
-  trip().days.forEach((day,di)=>{
+  // 일자 필터 중이면 해당 일자만 재생 (전일 연결 구간 없음)
+  const days=trip().days;
+  const list=activeDay? days.slice(activeDay-1, activeDay) : days;
+  list.forEach((day,di)=>{
     const loc=day.spots.filter(hasLoc); if(!loc.length) return;
     const dm=dayModeOf(day);
     const pushSeg=(A,B)=>{
@@ -888,29 +892,39 @@ function playTrip(){
   };
   const step=(ts)=>{
     if(lastTs==null) lastTs=ts;
-    const dt=Math.min(100, ts-lastTs); lastTs=ts;      // 탭 복귀 등 큰 갭은 클램프
+    const dt=Math.min(34, ts-lastTs); lastTs=ts;       // 프레임 잭·탭 복귀 갭 클램프(2프레임) — 렉 걸려도 점프 대신 감속
     d += pxSpeed*dt/zscale(curZoom);                    // 현재(고정) 줌 기준 실거리 전진 → 화면상 등속
     // 다음 줌 경계를 넘어서면 경계에 딱 멈춤 → 줌 1회 변경 + 타일 로딩 대기 후 재개(도시 건너뛰기·이동중 setZoom 없음)
     if(bi<bounds.length && d>=bounds[bi].dist){
       d=bounds[bi].dist; const bz=bounds[bi].zoom; bi++;
       const [lat,lng]=applyPos();
       curZoom=bz; ME().center(lat,lng,bz);             // 경계에서 딱 한 번 줌 변경
-      animRAF=null; animWaiting=true; updatePlayBtn();
-      ME().waitTiles().then(()=>{
-        if(myseq!==playSeq) return;                     // 대기 중 정지/재시작됨 → 무시
-        animWaiting=false; lastTs=null;                 // 대기 시간은 진행에서 제외
-        animRAF=requestAnimationFrame(step); updatePlayBtn();
-      });
+      waitThenGo();
       return;
     }
     if(d>gtotal) d=gtotal;
     const [lat,lng]=applyPos();
     ME().center(lat,lng);                               // 같은 줌 구간: 팬(추적)만, setZoom 호출 없음
     if(d<gtotal){ animRAF=requestAnimationFrame(step); }
-    else { animRAF=null; animEndT=setTimeout(()=>{ stopPlay(); fitAll(); },700); }   // 도착 후 전체 보기로 줌아웃
+    else { animRAF=null; animEndT=setTimeout(()=>{     // 도착 후: 일자 재생이면 그 일자 프레임, 아니면 전체 보기
+      const ad=activeDay; stopPlay();
+      if(ad){ const dd=trip().days[ad-1]; if(dd){ fitTo(dd.spots.filter(hasLoc).map(s=>[s.lat,s.lng]),64,15); return; } }
+      fitAll();
+    },700); }
   };
-  animRAF=requestAnimationFrame(step);
-  updatePlayBtn();
+  // 정지 → 타일 로딩 완료 대기 → 짧게 정착 후 출발. 시작·경계 공통 (깔끔한 출발이 속도보다 우선)
+  const waitThenGo=()=>{
+    animRAF=null; animWaiting=true; updatePlayBtn();
+    ME().waitTiles(PLAY_TILE_TIMEOUT).then(()=>{
+      if(myseq!==playSeq) return;                       // 대기 중 정지/재시작됨 → 무시
+      setTimeout(()=>{
+        if(myseq!==playSeq) return;
+        animWaiting=false; lastTs=null;                 // 대기 시간은 진행에서 제외
+        animRAF=requestAnimationFrame(step); updatePlayBtn();
+      }, PLAY_SETTLE);
+    });
+  };
+  waitThenGo();                                         // 출발 전에도 시작 지점 타일부터 채우고 움직임
 }
 function renderFilter(){
   const bar = document.getElementById('filterbar'); bar.innerHTML='';
