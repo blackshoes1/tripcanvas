@@ -119,6 +119,9 @@ function uid(){ return Math.random().toString(36).slice(2,9); }
 // 공유 링크/가져오기/AI 파싱으로 외부 데이터가 유입될 수 있으므로 출력 시 항상 이스케이프 (XSS 방어)
 function esc(v){ return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function escAttr(v){ return esc(v); }
+// href용 URL 스킴 화이트리스트. esc()는 스킴을 막지 못하므로(예: javascript:alert() 는 특수문자가 없어 그대로 통과),
+// 외부 유입(공유 링크·가져오기·AI 파싱) 데이터를 href로 낼 땐 반드시 이걸로 검증한다. 허용 안 되면 '' 반환.
+function safeUrl(v){ const u=String(v==null?'':v).trim(); try{ return /^https?:$/.test(new URL(u, location.href).protocol) ? u : ''; }catch(e){ return ''; } }
 let toastTimer=null;
 function toast(msg, color, action){
   const t=document.getElementById('toast');
@@ -586,7 +589,8 @@ function fmtMoney(n){ return Math.round(+n||0).toLocaleString('en-US'); }
 // 원본+환산 표기: KRW면 "68,000원", 아니면 "$50 ≈ 68,000원"
 function costLabel(amount, cur){
   cur=cur||'KRW';
-  return cur==='KRW' ? `₩${fmtMoney(amount)}` : `${CUR[cur].sym}${fmtMoney(amount)} ≈ ₩${fmtMoney(toKRW(amount,cur))}`;
+  const cu=CUR[cur];   // 외부 유입 데이터가 알 수 없는 통화(예: GBP)면 KRW로 폴백 — 렌더 크래시 방지
+  return (!cu || cur==='KRW') ? `₩${fmtMoney(amount)}` : `${cu.sym}${fmtMoney(amount)} ≈ ₩${fmtMoney(toKRW(amount,cur))}`;
 }
 // 환율 로드: localStorage 캐시(하루 1회 갱신), open.er-api.com에서 USD 기준 시세 → 원 환산율 계산
 function loadFx(){
@@ -908,9 +912,9 @@ function renderSidebar(){
       const bookMin=s.bookAt?parseHM(s.bookAt):null;
       const bookWarn=(bookMin!=null && etas[si]-bookMin>5);   // ETA가 예약보다 5분 이상 늦음
       const meta=[];
-      if(s.cost){ const nk=s.cur&&s.cur!=='KRW'; meta.push(`<span class="cost"${nk?` title="${costLabel(s.cost,s.cur)}"`:''}>💳 ${nk?`${CUR[s.cur].sym}${fmtMoney(s.cost)} (₩${fmtMoney(toKRW(s.cost,s.cur))})`:`₩${fmtMoney(s.cost)}`}</span>`); }
+      if(s.cost){ const cu=CUR[s.cur], nk=cu&&s.cur!=='KRW'; meta.push(`<span class="cost"${nk?` title="${costLabel(s.cost,s.cur)}"`:''}>💳 ${nk?`${cu.sym}${fmtMoney(s.cost)} (₩${fmtMoney(toKRW(s.cost,s.cur))})`:`₩${fmtMoney(s.cost)}`}</span>`); }
       if(s.bookAt) meta.push(`<span class="book${bookWarn?' bookwarn':''}"${bookWarn?` title="예약 ${s.bookAt}인데 예상 도착 ${hm(etas[si])} — 일정이 늦습니다"`:` title="예약 시각"`}>🎫 ${esc(s.bookAt)}${bookWarn?' ⚠️':''}</span>`);
-      if(s.bookUrl) meta.push(`<a class="book" href="${escAttr(s.bookUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="예약 링크 열기">🔗</a>`);
+      { const bu=safeUrl(s.bookUrl); if(bu) meta.push(`<a class="book" href="${escAttr(bu)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="예약 링크 열기">🔗</a>`); }
       // 영업시간 경고: 그 날 요일·도착 예상시각에 문 닫혀 있으면 ⚠️
       if(s.hours && iso){
         const wd=new Date(iso+'T00:00:00').getDay();
@@ -1619,7 +1623,7 @@ function renderTravel(di){
     div.innerHTML=`<div class="n"><span class="eta">${hm(etas[si])}</span>${si+1}. ${s.stay?'🏠 ':''}${esc(s.name)}${s.opt?' <span style="font-size:11px;color:#8892b0">(선택)</span>':''}</div>`+
       (tmeta.length?`<div class="d" style="color:#c9b6e8">${tmeta.join(' · ')}</div>`:'')+
       `<div class="d">${esc(s.desc).replace(/\n/g,'<br>')}</div>`+
-      (s.bookUrl?`<a href="${escAttr(s.bookUrl)}" target="_blank" rel="noopener" style="background:#7c5cff;margin-right:6px">🎫 예약 열기</a>`:'')+
+      ((bu=>bu?`<a href="${escAttr(bu)}" target="_blank" rel="noopener" style="background:#7c5cff;margin-right:6px">🎫 예약 열기</a>`:'')(safeUrl(s.bookUrl)))+
       (hasLoc(s)
         ? (inKorea({lat:+s.lat,lng:+s.lng})
             ? `<a href="https://map.kakao.com/link/to/${encodeURIComponent(s.name)},${s.lat},${s.lng}" target="_blank" rel="noopener">🧭 카카오맵 길찾기</a>`
