@@ -1834,14 +1834,17 @@ updateAuthUI();
 if('serviceWorker' in navigator){
   navigator.serviceWorker.register('sw.js').then(reg=>{
     let noticed=false;
-    // 새 버전 설치 감지 → 새로고침 유도 토스트 (기존 SW가 이미 제어 중일 때만)
-    const notifyUpdate=()=>{ if(noticed) return; noticed=true;
-      toast('새 버전이 있어요 — 탭해서 새로고침', '#1d6fd6', {label:'새로고침', fn:()=>location.reload()}); };
-    if(reg.waiting && navigator.serviceWorker.controller) notifyUpdate();   // 앱 열 때 이미 대기 중인 새 버전
+    // 새 버전 설치 감지 → 자동 새로고침. 단, 편집 중(모달 열림)이면 입력 유실 방지로 수동 안내만.
+    const applyUpdate=()=>{ if(noticed) return; noticed=true;
+      const editing = !!document.querySelector('.modalBg.show') || document.getElementById('travel').classList.contains('show');
+      if(editing){ toast('새 버전이 있어요 — 탭해서 새로고침', '#1d6fd6', {label:'새로고침', fn:()=>location.reload()}); }
+      else { toast('새 버전 적용 중…', '#1d6fd6'); setTimeout(()=>location.reload(), 900); }
+    };
+    if(reg.waiting && navigator.serviceWorker.controller) applyUpdate();   // 앱 열 때 이미 대기 중인 새 버전
     reg.addEventListener('updatefound',()=>{
       const nw=reg.installing; if(!nw) return;
       nw.addEventListener('statechange',()=>{
-        if(nw.state==='installed' && navigator.serviceWorker.controller) notifyUpdate();
+        if(nw.state==='installed' && navigator.serviceWorker.controller) applyUpdate();
       });
     });
     // PWA는 홈화면서 재개해도 페이지를 새로 안 열어 새 버전 확인을 안 함 → 포그라운드 복귀·주기적으로 직접 확인
