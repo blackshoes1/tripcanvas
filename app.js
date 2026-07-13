@@ -161,6 +161,7 @@ function onMapPick(lat,lng){
   document.getElementById('spotLat').value=lat; document.getElementById('spotLng').value=lng;
   document.getElementById('coordHint').textContent=`좌표: ${lat.toFixed(4)}, ${lng.toFixed(4)} ✓`;
   fillCityFromCoords(lat,lng,false);   // 도시/그룹 비어있으면 자동 채움
+  fillNameFromCoords(lat,lng);         // 이름 비어있으면 건물/장소명 자동 채움
   document.getElementById('spotModalBg').classList.add('show');
 }
 // 지도 우클릭/롱프레스 → 그 좌표로 새 장소 추가 모달 (현재 활성 일자, 없으면 1일차)
@@ -170,8 +171,9 @@ function addSpotAt(lat,lng){
   openSpotModal(di,-1);
   document.getElementById('spotLat').value=lat; document.getElementById('spotLng').value=lng;
   document.getElementById('coordHint').textContent=`좌표: ${(+lat).toFixed(4)}, ${(+lng).toFixed(4)} ✓ (지도에서 지정)`;
-  document.getElementById('spotName').value='';
+  document.getElementById('spotName').value=''; _namePrefill='';
   fillCityFromCoords(lat,lng,true);    // 지도에서 지정한 지점의 실제 도시로 채움
+  fillNameFromCoords(lat,lng);         // 이름도 건물/장소명으로 자동 채움(비어있을 때)
   setTimeout(()=>document.getElementById('spotName').focus(),50);
 }
 // 좌표 → 도시명 (국내=카카오 행정구역, 해외=구글 역지오코딩). 실패 시 null.
@@ -214,6 +216,31 @@ function fillCityValue(city){
   if(!city) return;
   const el=document.getElementById('spotCity');
   if(!el.value.trim() || el.value.trim()===(_cityPrefill||'').trim()){ el.value=city; _cityPrefill=city; }
+}
+// 이름 필드 자동 채움(검색 결과·지도 역지오코딩). 사용자가 직접 입력한 이름은 보존.
+function fillNameValue(name){
+  if(!name) return;
+  const el=document.getElementById('spotName');
+  if(!el.value.trim() || el.value.trim()===(_namePrefill||'').trim()){ el.value=name; _namePrefill=name; }
+}
+// 좌표 → 장소/건물명 (국내=카카오 건물명). 없으면 null(해외는 좌표→POI 신뢰도 낮아 생략).
+function reversePlaceName(lat,lng){
+  return new Promise(resolve=>{
+    if(!inKorea({lat:+lat,lng:+lng})){ resolve(null); return; }
+    loadKakao().then(ok=>{
+      if(!ok||!window.kakao||!kakao.maps.services){ resolve(null); return; }
+      new kakao.maps.services.Geocoder().coord2Address(+lng,+lat,(res,status)=>{
+        if(status!==kakao.maps.services.Status.OK||!res||!res.length){ resolve(null); return; }
+        resolve((res[0].road_address&&res[0].road_address.building_name)||null);   // 건물/장소명만
+      });
+    });
+  });
+}
+// 지도로 위치 지정 시 이름 자동 채움(비어있거나 자동 프리필 그대로일 때만)
+function fillNameFromCoords(lat,lng){
+  const el=document.getElementById('spotName'); const at=el.value;
+  if(at.trim() && at.trim()!==(_namePrefill||'').trim()) return;   // 사용자 입력 보존
+  reversePlaceName(lat,lng).then(name=>{ if(name && el.value===at){ el.value=name; _namePrefill=name; } });
 }
 // 한국 지번주소 "시도 시군구 …" → 도시명 (광역시는 시도, 그 외는 시군구에서 시/군 제거)
 function cityFromKoreanAddr(addr){
@@ -1089,6 +1116,7 @@ let _pickedHours = null;   // 검색 결과에서 선택한 영업시간 (저장
 // 모달을 열 때 자동으로 채운 도시값(일자 첫 장소 기준 등). 사용자가 손대지 않은 '자동 프리필'인 동안엔
 // 지도 클릭·검색 지정으로 실제 도시를 덮어써도 되지만, 직접 입력한 값은 보존한다.
 let _cityPrefill = '';
+let _namePrefill = '';   // 자동 채운 이름(검색/역지오코딩) — 사용자 입력과 구분
 window.openSpotModal=(di,si)=>{
   if(viewMode){ toast('읽기전용 보기입니다 — "내 여행으로 저장" 후 편집하세요','#8892b0'); return; }
   editing={di,si};
@@ -1100,6 +1128,7 @@ window.openSpotModal=(di,si)=>{
   document.getElementById('spotName').value=s.name;
   document.getElementById('spotCity').value=s.city;
   _cityPrefill = s.city||'';   // 이후 자동 채움이 이 프리필 값은 덮어써도 됨(사용자 입력은 아님)
+  _namePrefill = '';           // 기존 이름은 사용자 값 → 자동 채움이 안 덮게(빈 값일 때만 채움)
   document.getElementById('spotDesc').value=s.desc||'';
   document.getElementById('spotOpt').checked=!!s.opt;
   document.getElementById('spotStay').checked=!!s.stay;
@@ -1183,7 +1212,7 @@ async function doSearch(){
       d.textContent=it.name+(it.addr?` — ${it.addr}`:'');
       d.onclick=()=>{
         document.getElementById('spotLat').value=it.lat; document.getElementById('spotLng').value=it.lng;
-        if(!document.getElementById('spotName').value) document.getElementById('spotName').value=it.name;
+        fillNameValue(it.name);   // 결과 이름으로 채움(다른 결과 재선택 시 갱신, 사용자 입력은 보존)
         document.getElementById('coordHint').textContent=`좌표: ${(+it.lat).toFixed(4)}, ${(+it.lng).toFixed(4)} ✓`+(it.hours?' · 영업시간 반영됨':'');
         if(it.city) fillCityValue(it.city);              // 결과가 아는 도시로 즉시 채움(신뢰성↑)
         else fillCityFromCoords(it.lat, it.lng, false);  // 없으면 역지오코딩 폴백
