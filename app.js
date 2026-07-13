@@ -208,6 +208,27 @@ function fillCityFromCoords(lat,lng,force){
   if(!replaceable) return;
   reverseCity(lat,lng).then(city=>{ if(city && el.value===at){ el.value=city; _cityPrefill=city; } });
 }
+// 검색 결과가 이미 가진 도시명으로 즉시(동기) 채움 — 역지오코딩 지연/실패 없이 신뢰성 있게.
+// 사용자가 직접 고친 값은 안 덮음(비어있거나 자동 프리필 그대로일 때만).
+function fillCityValue(city){
+  if(!city) return;
+  const el=document.getElementById('spotCity');
+  if(!el.value.trim() || el.value.trim()===(_cityPrefill||'').trim()){ el.value=city; _cityPrefill=city; }
+}
+// 한국 지번주소 "시도 시군구 …" → 도시명 (광역시는 시도, 그 외는 시군구에서 시/군 제거)
+function cityFromKoreanAddr(addr){
+  const t=(addr||'').trim().split(/\s+/); if(t.length<2) return '';
+  const one=t[0], two=t[1];
+  if(/(특별시|광역시|특별자치시)$/.test(one)) return one.replace(/(특별시|광역시|특별자치시)$/,'');
+  return two.replace(/(시|군)$/,'') || one.replace(/(도|특별자치도)$/,'');
+}
+// 구글 Place addressComponents → 도시명(locality 우선)
+function cityFromGoogle(comps){
+  if(!comps||!comps.length) return '';
+  const pick=t=>{ const c=comps.find(x=>(x.types||[]).includes(t)); return c?(c.longText||c.shortText||''):''; };
+  const city=pick('locality')||pick('administrative_area_level_2')||pick('administrative_area_level_1')||'';
+  return city.replace(/(특별시|광역시|특별자치시)$/,'').replace(/(시|군)$/,'');   // 한국 지명 접미사 정리(카카오와 통일)
+}
 window.__gmapsReady=function(){
   map=new google.maps.Map(document.getElementById('map'),{
     center:{lat:40,lng:-3.7}, zoom:6, mapId:'DEMO_MAP_ID',
@@ -1164,7 +1185,8 @@ async function doSearch(){
         document.getElementById('spotLat').value=it.lat; document.getElementById('spotLng').value=it.lng;
         if(!document.getElementById('spotName').value) document.getElementById('spotName').value=it.name;
         document.getElementById('coordHint').textContent=`좌표: ${(+it.lat).toFixed(4)}, ${(+it.lng).toFixed(4)} ✓`+(it.hours?' · 영업시간 반영됨':'');
-        fillCityFromCoords(it.lat, it.lng, false);   // 지도 클릭과 동일하게: 도시 비어있으면 역지오코딩으로 채움
+        if(it.city) fillCityValue(it.city);              // 결과가 아는 도시로 즉시 채움(신뢰성↑)
+        else fillCityFromCoords(it.lat, it.lng, false);  // 없으면 역지오코딩 폴백
         _pickedHours = it.hours||null;   // 저장 시 spot.hours로 반영
         res.innerHTML='';
       };
@@ -1419,7 +1441,7 @@ async function kakaoSearch(q, near, limit){
     try{
       new kakao.maps.services.Places().keywordSearch(q,(data,status)=>{
         if(status!==kakao.maps.services.Status.OK||!data) return res([]);
-        res(data.map(d=>({name:d.place_name, addr:d.road_address_name||d.address_name||'', lat:+d.y, lng:+d.x})));
+        res(data.map(d=>({name:d.place_name, addr:d.road_address_name||d.address_name||'', city:cityFromKoreanAddr(d.address_name||d.road_address_name||''), lat:+d.y, lng:+d.x})));
       },opts);
     }catch(e){ res([]); }
   });
@@ -1446,10 +1468,10 @@ async function googlePlaces(q, near, limit){
   if(!map) return [];
   try{
     const {Place}=await google.maps.importLibrary('places');
-    const req={textQuery:q, fields:['displayName','formattedAddress','location','regularOpeningHours'], maxResultCount:limit||5, language:'ko'};
+    const req={textQuery:q, fields:['displayName','formattedAddress','addressComponents','location','regularOpeningHours'], maxResultCount:limit||5, language:'ko'};
     if(near) req.locationBias={center:near, radius:30000};
     const {places}=await Place.searchByText(req);
-    return (places||[]).map(p=>({name:p.displayName, addr:p.formattedAddress||'',
+    return (places||[]).map(p=>({name:p.displayName, addr:p.formattedAddress||'', city:cityFromGoogle(p.addressComponents),
       lat:p.location.lat(), lng:p.location.lng(), hours:normHours(p.regularOpeningHours)}));
   }catch(e){ return []; }
 }
