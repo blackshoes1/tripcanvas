@@ -327,7 +327,9 @@ const Engines={
     },
     panTo(lat,lng,minZoom){ map.panTo({lat,lng}); if(minZoom&&map.getZoom()<minZoom) map.setZoom(minZoom); },
     center(lat,lng,zoom){ if(zoom!=null) map.setZoom(zoom); map.setCenter({lat,lng}); },   // 즉시 이동(추적 카메라용)
-    relayout(){ google.maps.event.trigger(map,'resize'); }
+    relayout(){ google.maps.event.trigger(map,'resize'); },
+    waitTiles(timeout){ return new Promise(res=>{ let done=false; const fin=()=>{ if(done) return; done=true; res(); };
+      google.maps.event.addListenerOnce(map,'tilesloaded',fin); setTimeout(fin, timeout||1600); }); }
   },
   kakao:{
     ready(){ return !!kmap; },
@@ -353,7 +355,9 @@ const Engines={
     },
     panTo(lat,lng,minZoom){ kmap.panTo(new kakao.maps.LatLng(lat,lng)); if(minZoom){ const lv=Math.max(1,19-minZoom); if(kmap.getLevel()>lv) kmap.setLevel(lv); } },
     center(lat,lng,zoom){ if(zoom!=null) kmap.setLevel(Math.round(Math.max(1,19-zoom))); kmap.setCenter(new kakao.maps.LatLng(lat,lng)); },   // 즉시 이동(추적 카메라용)
-    relayout(){ kmap.relayout(); }
+    relayout(){ kmap.relayout(); },
+    waitTiles(timeout){ return new Promise(res=>{ let done=false; const fin=()=>{ if(done) return; done=true; try{kakao.maps.event.removeListener(kmap,'tilesloaded',fin);}catch(e){} res(); };
+      kakao.maps.event.addListener(kmap,'tilesloaded',fin); setTimeout(fin, timeout||1600); }); }
   }
 };
 function ME(){ return Engines[engine]; }   // 현재 활성 엔진
@@ -798,7 +802,7 @@ function fitAll(){
 }
 // ───────────────── 여행 재생 애니메이션 (재미) ─────────────────
 // 전체 동선을 하나의 좌표열로 펼친 뒤(구간별 실경로 우선, 없으면 직선) 이동수단 아이콘을 따라 이동시킴.
-let animMarker=null, animRAF=null, animEndT=null;
+let animMarker=null, animRAF=null, animEndT=null, animWaiting=false, playSeq=0;
 const PLAY_ZOOM_IN=13, PLAY_ZOOM_OUT=9;   // 재생 중 도시 내(줌인)·도시 간(줌아웃) 레벨
 function animPath(){
   const flat=[]; let prevLoc=null;
@@ -820,7 +824,7 @@ function animPath(){
   });
   return flat;
 }
-function updatePlayBtn(){ const b=document.getElementById('playBtn'); if(b) b.textContent=animRAF?'⏹ 정지':'▶️ 재생'; }
+function updatePlayBtn(){ const b=document.getElementById('playBtn'); if(b) b.textContent=(animRAF||animWaiting)?'⏹ 정지':'▶️ 재생'; }
 // 이모지는 기본 왼쪽(서)을 봄 → 진행 방향(A→B)으로 회전. 뒤집힘은 좌우반전으로 방지.
 function headingTransform(A,B){
   const ex=B.lng-A.lng, ny=B.lat-A.lat;
@@ -832,15 +836,17 @@ function headingTransform(A,B){
   return `rotate(${Math.round(r)}deg) scaleX(${flip})`;
 }
 function stopPlay(){
-  if(animRAF) cancelAnimationFrame(animRAF); animRAF=null;
+  playSeq++;                                         // 대기 중이던 타일 로딩 재개 무효화
+  if(animRAF) cancelAnimationFrame(animRAF); animRAF=null; animWaiting=false;
   if(animEndT){ clearTimeout(animEndT); animEndT=null; }
   if(animMarker){ animMarker.remove(); animMarker=null; }
   if(document.body.classList.contains('playing')){ document.body.classList.remove('playing'); if(ME().ready()) ME().relayout(); }
   updatePlayBtn();
 }
 function playTrip(){
-  if(animRAF){ stopPlay(); return; }               // 토글: 재생 중이면 정지
+  if(animRAF||animWaiting){ stopPlay(); return; }   // 토글: 재생(대기 포함) 중이면 정지
   stopPlay();                                       // 종료 직후 남은 타이머·마커 정리
+  const myseq=playSeq;                              // 이 재생 세션 식별(대기 재개 유효성 검사용)
   if(!ME().ready()){ toast('지도를 불러오는 중이에요','#8892b0'); return; }
   const flat=animPath();
   if(flat.length<2){ toast('재생할 동선이 없어요','#8892b0'); return; }
@@ -866,6 +872,7 @@ function playTrip(){
   const dur=Math.min(38000,Math.max(11000,flat.length*520));   // 조금 느리게 (약 11~38초)
   const pxSpeed=pixelTotal/dur;                        // 화면상 등속(픽셀/ms)
   let d=0, lastTs=null, seg=0, curZoom=flat[0].zoom||PLAY_ZOOM_IN, appliedZoom=curZoom;
+  let prevSegZoom=flat[0].zoom||PLAY_ZOOM_IN;
   const step=(ts)=>{
     if(lastTs==null) lastTs=ts;
     const dt=Math.min(100, ts-lastTs); lastTs=ts;      // 탭 복귀 등 큰 갭은 클램프
@@ -875,6 +882,20 @@ function playTrip(){
     const A=flat[seg], B=flat[seg+1], segLen=(gcum[seg+1]-gcum[seg])||1, f=(d-gcum[seg])/segLen;
     const lat=A.lat+(B.lat-A.lat)*f, lng=A.lng+(B.lng-A.lng)*f;
     animMarker.move(lat,lng);
+    // 도시 진입(도시간→도시내): 줌인하고 타일 로딩이 끝날 때까지 정지 → 로딩 못 따라가 튀는 현상 방지
+    if((A.zoom||PLAY_ZOOM_IN)===PLAY_ZOOM_IN && prevSegZoom===PLAY_ZOOM_OUT && d<gtotal){
+      prevSegZoom=PLAY_ZOOM_IN;
+      curZoom=PLAY_ZOOM_IN; appliedZoom=PLAY_ZOOM_IN;
+      ME().center(lat,lng,PLAY_ZOOM_IN);               // 도착지 줌인
+      animRAF=null; animWaiting=true;
+      ME().waitTiles().then(()=>{
+        if(myseq!==playSeq) return;                    // 대기 중 정지/재시작됨 → 무시
+        animWaiting=false; lastTs=null;                // 대기 시간은 진행에서 제외
+        animRAF=requestAnimationFrame(step);
+      });
+      return;
+    }
+    prevSegZoom=(A.zoom||PLAY_ZOOM_IN);
     curZoom += ((A.zoom||PLAY_ZOOM_IN)-curZoom)*0.08;   // 구간 성격에 맞춰 줌 부드럽게 이동
     if(Math.abs(curZoom-appliedZoom)>0.03){ appliedZoom=curZoom; ME().center(lat,lng,curZoom); }
     else ME().center(lat,lng);                          // 줌 변화 없으면 중심만
@@ -896,7 +917,7 @@ function renderFilter(){
   bar.appendChild(cmode);
   // 여행 재생 — 경로를 따라 이동수단 아이콘이 달림 (재미)
   const play=document.createElement('button'); play.className='chip'; play.id='playBtn';
-  play.textContent = animRAF ? '⏹ 정지' : '▶️ 재생';
+  play.textContent = (animRAF||animWaiting) ? '⏹ 정지' : '▶️ 재생';
   play.title='경로를 따라 이동 애니메이션';
   play.onclick=playTrip;
   bar.appendChild(play);
