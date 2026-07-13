@@ -160,8 +160,7 @@ function onMapPick(lat,lng){
   pickMode=false; document.getElementById('pickBanner').style.display='none';
   document.getElementById('spotLat').value=lat; document.getElementById('spotLng').value=lng;
   document.getElementById('coordHint').textContent=`좌표: ${lat.toFixed(4)}, ${lng.toFixed(4)} ✓`;
-  fillCityFromCoords(lat,lng,false);   // 도시/그룹 비어있으면 자동 채움
-  fillNameFromCoords(lat,lng);         // 이름 비어있으면 건물/장소명 자동 채움
+  fillSpotFromCoords(lat,lng,false);   // 이름·도시 비어있으면 자동 채움
   document.getElementById('spotModalBg').classList.add('show');
 }
 // 지도 우클릭/롱프레스 → 그 좌표로 새 장소 추가 모달 (현재 활성 일자, 없으면 1일차)
@@ -172,83 +171,66 @@ function addSpotAt(lat,lng){
   document.getElementById('spotLat').value=lat; document.getElementById('spotLng').value=lng;
   document.getElementById('coordHint').textContent=`좌표: ${(+lat).toFixed(4)}, ${(+lng).toFixed(4)} ✓ (지도에서 지정)`;
   document.getElementById('spotName').value=''; _namePrefill='';
-  fillCityFromCoords(lat,lng,true);    // 지도에서 지정한 지점의 실제 도시로 채움
-  fillNameFromCoords(lat,lng);         // 이름도 건물/장소명으로 자동 채움(비어있을 때)
+  fillSpotFromCoords(lat,lng,true);    // 지정 지점의 장소명·도시 자동 채움
   setTimeout(()=>document.getElementById('spotName').focus(),50);
 }
-// 좌표 → 도시명 (국내=카카오 행정구역, 해외=구글 역지오코딩). 실패 시 null.
-function reverseCity(lat,lng){
+// 좌표 → {name, city} 한 번의 조회. 국내=카카오 coord2Address(한국어), 해외=구글 Places 인근검색(영어명).
+function reverseSpot(lat,lng){
   return new Promise(resolve=>{
     if(inKorea({lat:+lat,lng:+lng})){
       loadKakao().then(ok=>{
-        if(!ok||!window.kakao||!kakao.maps.services){ resolve(null); return; }
-        new kakao.maps.services.Geocoder().coord2RegionCode(+lng,+lat,(res,status)=>{
-          if(status!==kakao.maps.services.Status.OK||!res||!res.length){ resolve(null); return; }
-          const r=res.find(x=>x.region_type==='H')||res[0];
-          const one=r.region_1depth_name||'', two=r.region_2depth_name||'';
+        if(!ok||!window.kakao||!kakao.maps.services){ resolve({}); return; }
+        new kakao.maps.services.Geocoder().coord2Address(+lng,+lat,(res,status)=>{
+          if(status!==kakao.maps.services.Status.OK||!res||!res.length){ resolve({}); return; }
+          const r=res[0], a=r.address||{};
+          const name=(r.road_address&&r.road_address.building_name)||'';   // 건물/장소명
+          const one=a.region_1depth_name||'', two=a.region_2depth_name||'';
           const metro=/(특별시|광역시|특별자치시|특별자치도)$/.test(one);
-          resolve((metro? one.replace(/(특별시|광역시|특별자치시|특별자치도)$/,'') : (two.replace(/(시|군)$/,'')||one))||null);
+          const city= metro? one.replace(/(특별시|광역시|특별자치시|특별자치도)$/,'') : (two.replace(/(시|군)$/,'')||one);
+          resolve({ name:name||null, city:city||null });
         });
       });
     }else{
-      if(!window.google||!google.maps){ resolve(null); return; }
-      new google.maps.Geocoder().geocode({location:{lat:+lat,lng:+lng},language:'ko'},(results,status)=>{
-        if(status!=='OK'||!results||!results.length){ resolve(null); return; }
-        const comp=results[0].address_components||[];
-        const pick=t=>(comp.find(c=>c.types.includes(t))||{}).long_name;
-        resolve(pick('locality')||pick('administrative_area_level_2')||pick('administrative_area_level_1')||null);
-      });
+      if(!window.google||!google.maps){ resolve({}); return; }
+      google.maps.importLibrary('places').then(({Place})=>{
+        // 기본 랭크(POPULARITY): 반경 내 대표 장소 → 영문 이름 + 그 장소의 도시(도쿄 특별구는 '도쿄')
+        Place.searchNearby({ fields:['displayName','addressComponents'], locationRestriction:{center:{lat:+lat,lng:+lng}, radius:100}, maxResultCount:1, language:'en' })
+          .then(({places})=>{ const p=places&&places[0]; resolve(p? { name:p.displayName||null, city:cityFromGoogle(p.addressComponents)||null } : {}); })
+          .catch(()=>resolve({}));
+      }).catch(()=>resolve({}));
     }
   });
 }
-// 도시/그룹 필드 자동 채움. 채워도 되는 경우: force거나, 비어있거나, 값이 아직 '자동 프리필'(_cityPrefill)
-// 그대로일 때(= 사용자가 직접 안 고침). 사용자가 손댄 값은 절대 덮지 않는다.
-// 조회 중 사용자가 입력하면(el.value!==at) 반영 취소. 채운 뒤엔 그 값을 새 프리필 기준으로 갱신(연속 검색 대응).
+function reverseCity(lat,lng){ return reverseSpot(lat,lng).then(r=>r.city||null); }
+// 도시/그룹 자동 채움(검색 폴백). force거나 비어있거나 자동 프리필 그대로일 때만.
 function fillCityFromCoords(lat,lng,force){
   const el=document.getElementById('spotCity'); const at=el.value;
-  const replaceable = force || !at.trim() || at.trim()===(_cityPrefill||'').trim();
-  if(!replaceable) return;
+  if(!(force || !at.trim() || at.trim()===(_cityPrefill||'').trim())) return;
   reverseCity(lat,lng).then(city=>{ if(city && el.value===at){ el.value=city; _cityPrefill=city; } });
 }
-// 검색 결과가 이미 가진 도시명으로 즉시(동기) 채움 — 역지오코딩 지연/실패 없이 신뢰성 있게.
-// 사용자가 직접 고친 값은 안 덮음(비어있거나 자동 프리필 그대로일 때만).
+// 검색 결과가 이미 가진 도시명으로 즉시(동기) 채움 — 사용자 입력은 보존.
 function fillCityValue(city){
   if(!city) return;
   const el=document.getElementById('spotCity');
   if(!el.value.trim() || el.value.trim()===(_cityPrefill||'').trim()){ el.value=city; _cityPrefill=city; }
 }
-// 이름 필드 자동 채움(검색 결과·지도 역지오코딩). 사용자가 직접 입력한 이름은 보존.
+// 이름 필드 자동 채움 — 사용자 입력은 보존.
 function fillNameValue(name){
   if(!name) return;
   const el=document.getElementById('spotName');
   if(!el.value.trim() || el.value.trim()===(_namePrefill||'').trim()){ el.value=name; _namePrefill=name; }
 }
-// 좌표 → 장소명 (국내=카카오 건물명, 해외=구글 Places 인근 대표 장소). 없으면 null.
-function reversePlaceName(lat,lng){
-  return new Promise(resolve=>{
-    if(inKorea({lat:+lat,lng:+lng})){
-      loadKakao().then(ok=>{
-        if(!ok||!window.kakao||!kakao.maps.services){ resolve(null); return; }
-        new kakao.maps.services.Geocoder().coord2Address(+lng,+lat,(res,status)=>{
-          if(status!==kakao.maps.services.Status.OK||!res||!res.length){ resolve(null); return; }
-          resolve((res[0].road_address&&res[0].road_address.building_name)||null);   // 건물/장소명만
-        });
-      });
-    }else{
-      if(!window.google||!google.maps){ resolve(null); return; }
-      google.maps.importLibrary('places').then(({Place})=>{
-        // 기본 랭크(POPULARITY): 반경 내 대표 장소가 먼저 → 랜드마크 이름. 없으면 null.
-        Place.searchNearby({ fields:['displayName'], locationRestriction:{center:{lat:+lat,lng:+lng}, radius:100}, maxResultCount:1, language:'ko' })
-          .then(({places})=>resolve(places&&places[0]?(places[0].displayName||null):null)).catch(()=>resolve(null));
-      }).catch(()=>resolve(null));
-    }
+// 지도로 위치 지정 → 이름·도시를 한 번의 조회로 채움. forceCity=true면 도시는 강제 갱신.
+function fillSpotFromCoords(lat,lng,forceCity){
+  const cityEl=document.getElementById('spotCity'), nameEl=document.getElementById('spotName');
+  const cityAt=cityEl.value, nameAt=nameEl.value;
+  const cityOK = forceCity || !cityAt.trim() || cityAt.trim()===(_cityPrefill||'').trim();
+  const nameOK = !nameAt.trim() || nameAt.trim()===(_namePrefill||'').trim();
+  if(!cityOK && !nameOK) return;
+  reverseSpot(lat,lng).then(({name,city})=>{
+    if(city && cityOK && cityEl.value===cityAt){ cityEl.value=city; _cityPrefill=city; }
+    if(name && nameOK && nameEl.value===nameAt){ nameEl.value=name; _namePrefill=name; }
   });
-}
-// 지도로 위치 지정 시 이름 자동 채움(비어있거나 자동 프리필 그대로일 때만)
-function fillNameFromCoords(lat,lng){
-  const el=document.getElementById('spotName'); const at=el.value;
-  if(at.trim() && at.trim()!==(_namePrefill||'').trim()) return;   // 사용자 입력 보존
-  reversePlaceName(lat,lng).then(name=>{ if(name && el.value===at){ el.value=name; _namePrefill=name; } });
 }
 // 한국 지번주소 "시도 시군구 …" → 도시명 (광역시는 시도, 그 외는 시군구에서 시/군 제거)
 function cityFromKoreanAddr(addr){
@@ -261,8 +243,9 @@ function cityFromKoreanAddr(addr){
 function cityFromGoogle(comps){
   if(!comps||!comps.length) return '';
   const pick=t=>{ const c=comps.find(x=>(x.types||[]).includes(t)); return c?(c.longText||c.shortText||''):''; };
-  const city=pick('locality')||pick('administrative_area_level_2')||pick('administrative_area_level_1')||'';
-  return city.replace(/(특별시|광역시|특별자치시)$/,'').replace(/(시|군)$/,'');   // 한국 지명 접미사 정리(카카오와 통일)
+  const loc=pick('locality'), aa1=pick('administrative_area_level_1'), aa2=pick('administrative_area_level_2');
+  if(/^(tokyo|도쿄)/i.test(aa1) && loc && !/^(tokyo|도쿄)/i.test(loc)) return aa1;   // 도쿄 특별구(Minato City 등) → '도쿄'로 묶음
+  return (loc||aa2||aa1||'').replace(/(특별시|광역시|특별자치시)$/,'').replace(/(시|군)$/,'');   // 한국 지명 접미사 정리
 }
 window.__gmapsReady=function(){
   map=new google.maps.Map(document.getElementById('map'),{
@@ -1505,7 +1488,7 @@ async function googlePlaces(q, near, limit){
   if(!map) return [];
   try{
     const {Place}=await google.maps.importLibrary('places');
-    const req={textQuery:q, fields:['displayName','formattedAddress','addressComponents','location','regularOpeningHours'], maxResultCount:limit||5, language:'ko'};
+    const req={textQuery:q, fields:['displayName','formattedAddress','addressComponents','location','regularOpeningHours'], maxResultCount:limit||5, language:'en'};   // 해외 장소는 영문명
     if(near) req.locationBias={center:near, radius:30000};
     const {places}=await Place.searchByText(req);
     return (places||[]).map(p=>({name:p.displayName, addr:p.formattedAddress||'', city:cityFromGoogle(p.addressComponents),
