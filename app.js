@@ -1833,15 +1833,23 @@ updateAuthUI();
 // 오프라인 지도 캐시는 Google Maps 약관상 불가 — SW는 앱 셸 캐시만 담당
 if('serviceWorker' in navigator){
   navigator.serviceWorker.register('sw.js').then(reg=>{
+    let noticed=false;
     // 새 버전 설치 감지 → 새로고침 유도 토스트 (기존 SW가 이미 제어 중일 때만)
+    const notifyUpdate=()=>{ if(noticed) return; noticed=true;
+      toast('새 버전이 있어요 — 탭해서 새로고침', '#1d6fd6', {label:'새로고침', fn:()=>location.reload()}); };
+    if(reg.waiting && navigator.serviceWorker.controller) notifyUpdate();   // 앱 열 때 이미 대기 중인 새 버전
     reg.addEventListener('updatefound',()=>{
       const nw=reg.installing; if(!nw) return;
       nw.addEventListener('statechange',()=>{
-        if(nw.state==='installed' && navigator.serviceWorker.controller){
-          toast('새 버전이 있어요 — 탭해서 새로고침', '#1d6fd6', {label:'새로고침', fn:()=>location.reload()});
-        }
+        if(nw.state==='installed' && navigator.serviceWorker.controller) notifyUpdate();
       });
     });
+    // PWA는 홈화면서 재개해도 페이지를 새로 안 열어 새 버전 확인을 안 함 → 포그라운드 복귀·주기적으로 직접 확인
+    let lastChk=Date.now();
+    const checkUpdate=()=>{ const now=Date.now(); if(now-lastChk<15000) return; lastChk=now; reg.update().catch(()=>{}); };
+    document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') checkUpdate(); });
+    window.addEventListener('focus', checkUpdate);
+    setInterval(checkUpdate, 20*60*1000);
   }).catch(()=>{});
 }
 
