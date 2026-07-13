@@ -1157,6 +1157,7 @@ async function doSearch(){
         document.getElementById('spotLat').value=it.lat; document.getElementById('spotLng').value=it.lng;
         if(!document.getElementById('spotName').value) document.getElementById('spotName').value=it.name;
         document.getElementById('coordHint').textContent=`좌표: ${(+it.lat).toFixed(4)}, ${(+it.lng).toFixed(4)} ✓`+(it.hours?' · 영업시간 반영됨':'');
+        fillCityFromCoords(it.lat, it.lng, false);   // 지도 클릭과 동일하게: 도시 비어있으면 역지오코딩으로 채움
         _pickedHours = it.hours||null;   // 저장 시 spot.hours로 반영
         res.innerHTML='';
       };
