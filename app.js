@@ -812,9 +812,10 @@ function animPath(){
     const pushSeg=(A,B)=>{
       const c=legCache[legKey(A,B,dm)];
       const pts=(c&&c.sec&&c.path)?decodePts(c.path):[{lat:+A.lat,lng:+A.lng},{lat:+B.lat,lng:+B.lng}];
-      // 도시 간 이동이면 줌아웃, 도시 내면 줌인. 도시 정보 있으면 도시명으로, 없으면 거리(15km)로 판단.
-      const ca=(A.city||'').trim(), cb=(B.city||'').trim();
-      const inter = (ca&&cb)? ca!==cb : haversine(A,B)>15;
+      // 도시 간이면 줌아웃, 도시 내면 줌인. 이름만으론 오판(인근 산·명소가 지자체명이 다름) → 거리도 함께 본다.
+      // 이름이 다르면서 충분히 멀 때(15km↑)만 도시 간. 이름이 없으면 거리(25km)로. → 인근 명소 줌아웃/정지 남발 방지.
+      const ca=(A.city||'').trim(), cb=(B.city||'').trim(), dist=haversine(A,B);
+      const inter = (ca&&cb)? (ca!==cb && dist>15) : dist>25;
       const zoom = inter? PLAY_ZOOM_OUT : PLAY_ZOOM_IN;
       pts.forEach(p=>flat.push({lat:+p.lat,lng:+p.lng,mode:dm,zoom}));
     };
