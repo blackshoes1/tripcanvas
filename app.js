@@ -844,12 +844,15 @@ function playTrip(){
   if(!ME().ready()){ toast('지도를 불러오는 중이에요','#8892b0'); return; }
   const flat=animPath();
   if(flat.length<2){ toast('재생할 동선이 없어요','#8892b0'); return; }
-  // 타임라인을 실거리 대신 '화면 픽셀 밀도(≈2^zoom)'로 가중 → 화면상 속도가 균일.
-  // 도시 내(줌인)는 같은 km라도 화면을 더 크게 가로질러 → 시간을 더 배분(느리게) → 타일 로딩이 따라옴.
+  // 위치는 실거리 누적(gcum)으로, 속도는 '화면 픽셀 밀도(≈2^zoom)'로 조절 → 화면상 속도 균일.
+  // 핵심: 속도를 구간 목표줌이 아니라 '현재 적용 줌(curZoom, 부드럽게 이동)'에 연동해야
+  // 도시 경계에서 실거리 속도가 계단식으로 튀지 않는다(예전엔 13→9 전환에 16× 급가속=확 튐).
   const zscale=z=>Math.pow(2,(z||PLAY_ZOOM_IN)-PLAY_ZOOM_OUT);
-  const cum=[0];
-  for(let i=1;i<flat.length;i++) cum[i]=cum[i-1]+haversine(flat[i-1],flat[i])*zscale(flat[i].zoom);
-  const total=cum[cum.length-1]||1;
+  const gcum=[0];                                   // 실거리 누적(위치 보간용)
+  for(let i=1;i<flat.length;i++) gcum[i]=gcum[i-1]+haversine(flat[i-1],flat[i]);
+  const gtotal=gcum[gcum.length-1]||1;
+  let pixelTotal=0;                                  // 화면상 총 이동량(속도 보정용)
+  for(let i=1;i<flat.length;i++) pixelTotal+=haversine(flat[i-1],flat[i])*zscale(flat[i].zoom);
   document.body.classList.add('playing');           // 사이드바 접어 지도를 크게
   ME().relayout();
   ME().center(flat[0].lat, flat[0].lng, flat[0].zoom||PLAY_ZOOM_IN);   // 첫 구간 성격에 맞춰 시작 줌
@@ -861,12 +864,15 @@ function playTrip(){
   el.animate([{transform:'scale(1)'},{transform:'scale(1.15)'}],{duration:600,iterations:Infinity,direction:'alternate',easing:'ease-in-out'});
   animMarker=ME().moveMarker(flat[0].lat,flat[0].lng,el);
   const dur=Math.min(38000,Math.max(11000,flat.length*520));   // 조금 느리게 (약 11~38초)
-  let start=null, seg=0, curZoom=flat[0].zoom||PLAY_ZOOM_IN, appliedZoom=curZoom;
+  const pxSpeed=pixelTotal/dur;                        // 화면상 등속(픽셀/ms)
+  let d=0, lastTs=null, seg=0, curZoom=flat[0].zoom||PLAY_ZOOM_IN, appliedZoom=curZoom;
   const step=(ts)=>{
-    if(start==null) start=ts;
-    const p=Math.min(1,(ts-start)/dur), d=p*total;
-    while(seg<flat.length-2 && cum[seg+1]<d) seg++;
-    const A=flat[seg], B=flat[seg+1], segLen=(cum[seg+1]-cum[seg])||1, f=(d-cum[seg])/segLen;
+    if(lastTs==null) lastTs=ts;
+    const dt=Math.min(100, ts-lastTs); lastTs=ts;      // 탭 복귀 등 큰 갭은 클램프
+    d += pxSpeed*dt/zscale(curZoom);                    // 현재 줌 기준 실거리 전진 → 경계에서 매끄럽게 가감속
+    if(d>gtotal) d=gtotal;
+    while(seg<flat.length-2 && gcum[seg+1]<d) seg++;
+    const A=flat[seg], B=flat[seg+1], segLen=(gcum[seg+1]-gcum[seg])||1, f=(d-gcum[seg])/segLen;
     const lat=A.lat+(B.lat-A.lat)*f, lng=A.lng+(B.lng-A.lng)*f;
     animMarker.move(lat,lng);
     curZoom += ((A.zoom||PLAY_ZOOM_IN)-curZoom)*0.08;   // 구간 성격에 맞춰 줌 부드럽게 이동
@@ -874,7 +880,7 @@ function playTrip(){
     else ME().center(lat,lng);                          // 줌 변화 없으면 중심만
     const tf=headingTransform(A,B); if(tf) car.style.transform=tf;   // 진행 방향으로 회전
     const ic=MODE_ICON[A.mode]||'🚗'; if(car.textContent!==ic) car.textContent=ic;
-    if(p<1){ animRAF=requestAnimationFrame(step); }
+    if(d<gtotal){ animRAF=requestAnimationFrame(step); }
     else { animRAF=null; animEndT=setTimeout(()=>{ stopPlay(); fitAll(); },700); }   // 도착 후 전체 보기로 줌아웃
   };
   animRAF=requestAnimationFrame(step);
