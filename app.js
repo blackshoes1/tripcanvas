@@ -199,11 +199,14 @@ function reverseCity(lat,lng){
     }
   });
 }
-// 도시/그룹 필드 자동 채움. force=false면 비어있을 때만. 그 사이 사용자가 입력하면 덮지 않음.
+// 도시/그룹 필드 자동 채움. 채워도 되는 경우: force거나, 비어있거나, 값이 아직 '자동 프리필'(_cityPrefill)
+// 그대로일 때(= 사용자가 직접 안 고침). 사용자가 손댄 값은 절대 덮지 않는다.
+// 조회 중 사용자가 입력하면(el.value!==at) 반영 취소. 채운 뒤엔 그 값을 새 프리필 기준으로 갱신(연속 검색 대응).
 function fillCityFromCoords(lat,lng,force){
   const el=document.getElementById('spotCity'); const at=el.value;
-  if(!force && at.trim()) return;
-  reverseCity(lat,lng).then(city=>{ if(city && el.value===at) el.value=city; });
+  const replaceable = force || !at.trim() || at.trim()===(_cityPrefill||'').trim();
+  if(!replaceable) return;
+  reverseCity(lat,lng).then(city=>{ if(city && el.value===at){ el.value=city; _cityPrefill=city; } });
 }
 window.__gmapsReady=function(){
   map=new google.maps.Map(document.getElementById('map'),{
@@ -1062,6 +1065,9 @@ window.moveSpot=(di,si,dir)=>{
 // ───────────────── 장소 모달 ─────────────────
 let editing = null; // {di, si} si=-1이면 추가
 let _pickedHours = null;   // 검색 결과에서 선택한 영업시간 (저장 시 반영)
+// 모달을 열 때 자동으로 채운 도시값(일자 첫 장소 기준 등). 사용자가 손대지 않은 '자동 프리필'인 동안엔
+// 지도 클릭·검색 지정으로 실제 도시를 덮어써도 되지만, 직접 입력한 값은 보존한다.
+let _cityPrefill = '';
 window.openSpotModal=(di,si)=>{
   if(viewMode){ toast('읽기전용 보기입니다 — "내 여행으로 저장" 후 편집하세요','#8892b0'); return; }
   editing={di,si};
@@ -1072,6 +1078,7 @@ window.openSpotModal=(di,si)=>{
   _pickedHours = s.hours||null;   // 편집 시 기존 영업시간 보존
   document.getElementById('spotName').value=s.name;
   document.getElementById('spotCity').value=s.city;
+  _cityPrefill = s.city||'';   // 이후 자동 채움이 이 프리필 값은 덮어써도 됨(사용자 입력은 아님)
   document.getElementById('spotDesc').value=s.desc||'';
   document.getElementById('spotOpt').checked=!!s.opt;
   document.getElementById('spotStay').checked=!!s.stay;
