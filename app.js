@@ -352,7 +352,7 @@ const Engines={
       if(maxZoom){ const minLv=Math.max(1,19-maxZoom); if(kmap.getLevel()<minLv) kmap.setLevel(minLv); }
     },
     panTo(lat,lng,minZoom){ kmap.panTo(new kakao.maps.LatLng(lat,lng)); if(minZoom){ const lv=Math.max(1,19-minZoom); if(kmap.getLevel()>lv) kmap.setLevel(lv); } },
-    center(lat,lng,zoom){ if(zoom!=null) kmap.setLevel(Math.max(1,19-zoom)); kmap.setCenter(new kakao.maps.LatLng(lat,lng)); },   // 즉시 이동(추적 카메라용)
+    center(lat,lng,zoom){ if(zoom!=null) kmap.setLevel(Math.round(Math.max(1,19-zoom))); kmap.setCenter(new kakao.maps.LatLng(lat,lng)); },   // 즉시 이동(추적 카메라용)
     relayout(){ kmap.relayout(); }
   }
 };
@@ -799,6 +799,7 @@ function fitAll(){
 // ───────────────── 여행 재생 애니메이션 (재미) ─────────────────
 // 전체 동선을 하나의 좌표열로 펼친 뒤(구간별 실경로 우선, 없으면 직선) 이동수단 아이콘을 따라 이동시킴.
 let animMarker=null, animRAF=null, animEndT=null;
+const PLAY_ZOOM_IN=13, PLAY_ZOOM_OUT=9;   // 재생 중 도시 내(줌인)·도시 간(줌아웃) 레벨
 function animPath(){
   const flat=[]; let prevLoc=null;
   trip().days.forEach((day,di)=>{
@@ -807,7 +808,11 @@ function animPath(){
     const pushSeg=(A,B)=>{
       const c=legCache[legKey(A,B,dm)];
       const pts=(c&&c.sec&&c.path)?decodePts(c.path):[{lat:+A.lat,lng:+A.lng},{lat:+B.lat,lng:+B.lng}];
-      pts.forEach(p=>flat.push({lat:+p.lat,lng:+p.lng,mode:dm}));
+      // 도시 간 이동이면 줌아웃, 도시 내면 줌인. 도시 정보 있으면 도시명으로, 없으면 거리(15km)로 판단.
+      const ca=(A.city||'').trim(), cb=(B.city||'').trim();
+      const inter = (ca&&cb)? ca!==cb : haversine(A,B)>15;
+      const zoom = inter? PLAY_ZOOM_OUT : PLAY_ZOOM_IN;
+      pts.forEach(p=>flat.push({lat:+p.lat,lng:+p.lng,mode:dm,zoom}));
     };
     if(prevLoc) pushSeg(prevLoc,loc[0]);           // 전일 마지막 → 오늘 첫 장소
     for(let i=1;i<loc.length;i++) pushSeg(loc[i-1],loc[i]);
@@ -844,7 +849,7 @@ function playTrip(){
   const total=cum[cum.length-1]||1;
   document.body.classList.add('playing');           // 사이드바 접어 지도를 크게
   ME().relayout();
-  ME().center(flat[0].lat, flat[0].lng, 11);        // 출발 지점으로 줌인 (조금 멀리서 따라감)
+  ME().center(flat[0].lat, flat[0].lng, flat[0].zoom||PLAY_ZOOM_IN);   // 첫 구간 성격에 맞춰 시작 줌
   const el=document.createElement('div'); el.style.cssText='will-change:transform';
   const car=document.createElement('span');         // 회전은 안쪽 span에 (바깥 펄스 애니와 분리)
   car.textContent=MODE_ICON[flat[0].mode]||'🚗';
@@ -853,7 +858,7 @@ function playTrip(){
   el.animate([{transform:'scale(1)'},{transform:'scale(1.15)'}],{duration:600,iterations:Infinity,direction:'alternate',easing:'ease-in-out'});
   animMarker=ME().moveMarker(flat[0].lat,flat[0].lng,el);
   const dur=Math.min(32000,Math.max(9000,flat.length*450));   // 조금 느리게 (약 9~32초)
-  let start=null, seg=0;
+  let start=null, seg=0, curZoom=flat[0].zoom||PLAY_ZOOM_IN, appliedZoom=curZoom;
   const step=(ts)=>{
     if(start==null) start=ts;
     const p=Math.min(1,(ts-start)/dur), d=p*total;
@@ -861,7 +866,9 @@ function playTrip(){
     const A=flat[seg], B=flat[seg+1], segLen=(cum[seg+1]-cum[seg])||1, f=(d-cum[seg])/segLen;
     const lat=A.lat+(B.lat-A.lat)*f, lng=A.lng+(B.lng-A.lng)*f;
     animMarker.move(lat,lng);
-    ME().center(lat,lng);                            // 카메라가 차를 따라감
+    curZoom += ((A.zoom||PLAY_ZOOM_IN)-curZoom)*0.08;   // 구간 성격에 맞춰 줌 부드럽게 이동
+    if(Math.abs(curZoom-appliedZoom)>0.03){ appliedZoom=curZoom; ME().center(lat,lng,curZoom); }
+    else ME().center(lat,lng);                          // 줌 변화 없으면 중심만
     const tf=headingTransform(A,B); if(tf) car.style.transform=tf;   // 진행 방향으로 회전
     const ic=MODE_ICON[A.mode]||'🚗'; if(car.textContent!==ic) car.textContent=ic;
     if(p<1){ animRAF=requestAnimationFrame(step); }
