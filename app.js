@@ -855,15 +855,12 @@ function playTrip(){
   if(!ME().ready()){ toast('지도를 불러오는 중이에요','#8892b0'); return; }
   const flat=animPath();
   if(flat.length<2){ toast('재생할 동선이 없어요','#8892b0'); return; }
-  // 위치는 실거리 누적(gcum)으로, 속도는 '화면 픽셀 밀도(≈2^zoom)'로 조절 → 화면상 속도 균일.
-  // 핵심: 속도를 구간 목표줌이 아니라 '현재 적용 줌(curZoom, 부드럽게 이동)'에 연동해야
-  // 도시 경계에서 실거리 속도가 계단식으로 튀지 않는다(예전엔 13→9 전환에 16× 급가속=확 튐).
-  const zscale=z=>Math.pow(2,(z||PLAY_ZOOM_IN)-PLAY_ZOOM_OUT);
+  // 위치는 실거리 누적(gcum)으로 보간. 카메라가 '구간마다 고정'이라 페이싱은 팔로우-카메라용
+  // 줌가중(2^zoom)이 아니라 '구간별 소요시간'으로 잡는다 — 안 그러면 도로 점이 많은 도시간
+  // 구간이 일자별 재생에서 과도하게 느려진다(점 수 기반 dur + 낮은 픽셀가중의 불일치).
   const gcum=[0];                                   // 실거리 누적(위치 보간용)
   for(let i=1;i<flat.length;i++) gcum[i]=gcum[i-1]+haversine(flat[i-1],flat[i]);
   const gtotal=gcum[gcum.length-1]||1;
-  let pixelTotal=0;                                  // 화면상 총 이동량(속도 보정용)
-  for(let i=1;i<flat.length;i++) pixelTotal+=haversine(flat[i-1],flat[i])*zscale(flat[i].zoom);
   document.body.classList.add('playing');           // 사이드바 접어 지도를 크게
   ME().relayout();                                   // 시작 카메라는 아래 enterPhase(첫 구간 fit)가 잡음
   const el=document.createElement('div'); el.style.cssText='will-change:transform';
@@ -873,8 +870,6 @@ function playTrip(){
   el.appendChild(car);
   el.animate([{transform:'scale(1)'},{transform:'scale(1.15)'}],{duration:600,iterations:Infinity,direction:'alternate',easing:'ease-in-out'});
   animMarker=ME().moveMarker(flat[0].lat,flat[0].lng,el);
-  const dur=Math.min(38000,Math.max(11000,flat.length*520));   // 조금 느리게 (약 11~38초)
-  const pxSpeed=pixelTotal/dur;                        // 화면상 등속(픽셀/ms)
   // 줌이 바뀌는 누적거리 '경계' → 구간(phase) 분할. 각 구간은 '카메라 고정'으로 재생:
   // 진입 시 구간 전체를 한 화면에 담고 타일 로딩을 끝낸 뒤, 이동 중엔 카메라를 전혀 안 움직임
   // → 새 타일 로딩이 발생하지 않아(자동차는 오버레이라 타일 무관) 네트워크와 무관하게 매끄럽게 미끄러짐.
@@ -885,11 +880,17 @@ function playTrip(){
   for(let k=0;k<cuts.length-1;k++){
     const a=cuts[k], b=cuts[k+1]; if(b-a<1e-6) continue;
     const zoom = k===0? (flat[0].zoom||PLAY_ZOOM_IN) : bounds[k-1].zoom;   // 구간 내 줌 상한(도시=13, 도시간=9)
-    const pts=[]; for(let i=0;i<flat.length;i++){ if(gcum[i]>=a-1e-6 && gcum[i]<=b+1e-6) pts.push([flat[i].lat,flat[i].lng]); }
-    if(!pts.length) pts.push([flat[0].lat,flat[0].lng]);
-    phases.push({a,b,zoom,pts});
+    let mnLa=90,mxLa=-90,mnLn=180,mxLn=-180; const pts=[];
+    for(let i=0;i<flat.length;i++){ if(gcum[i]>=a-1e-6 && gcum[i]<=b+1e-6){ const p=flat[i]; pts.push([p.lat,p.lng]);
+      mnLa=Math.min(mnLa,p.lat); mxLa=Math.max(mxLa,p.lat); mnLn=Math.min(mnLn,p.lng); mxLn=Math.max(mxLn,p.lng); } }
+    if(!pts.length){ pts.push([flat[0].lat,flat[0].lng]); mnLa=mxLa=flat[0].lat; mnLn=mxLn=flat[0].lng; }
+    // 화면 대각(구간이 화면을 채우는 정도) 대비 실제 경로 길이 → 직선이면 ~1, 굽이질수록↑.
+    // dur을 '구간이 화면을 가로지르는 시간'으로 잡아 점 수·재생범위(일자/전체)와 무관하게 속도 일정.
+    const span=Math.max(0.4, haversine({lat:mnLa,lng:mnLn},{lat:mxLa,lng:mxLn}));
+    const dur=Math.min(9000, Math.max(2500, Math.max(1,(b-a)/span)*4200));   // ≈4.2초/화면
+    phases.push({a,b,zoom,pts,dur});
   }
-  let d=0, lastTs=null, seg=0, pIdx=0;
+  let d=0, lastTs=null, seg=0, pIdx=0, elapsed=0;   // elapsed=현재 구간 경과(ms)
   const applyPos=()=>{                                  // d로부터 마커 위치·방향만 갱신(카메라는 고정)
     while(seg<flat.length-2 && gcum[seg+1]<d) seg++;
     const A=flat[seg], B=flat[seg+1], segLen=(gcum[seg+1]-gcum[seg])||1, f=(d-gcum[seg])/segLen;
@@ -906,14 +907,16 @@ function playTrip(){
     if(lastTs==null) lastTs=ts;
     const dt=Math.min(34, ts-lastTs); lastTs=ts;       // 프레임 잭·탭 복귀 갭 클램프 — 렉 걸려도 점프 대신 감속
     const ph=phases[pIdx];
-    d += pxSpeed*dt/zscale(ph.zoom);                    // 구간 줌 기준 전진(구간 내 등속)
-    if(d>=ph.b){                                        // 이 구간 끝 → 다음 구간(fit+대기) 또는 종료
-      d=ph.b; applyPos(); pIdx++;
+    elapsed+=dt;
+    const t=Math.min(1, elapsed/ph.dur);               // 구간별 소요시간 기준 진행(구간 내 등속)
+    d=ph.a+(ph.b-ph.a)*t;
+    applyPos();                                         // 마커만 이동 · 카메라 고정 → 새 타일 로딩 없음
+    if(t>=1){                                           // 이 구간 끝 → 다음 구간(fit+대기) 또는 종료
+      pIdx++;
       if(pIdx<phases.length) enterPhase();
       else { animRAF=null; animEndT=setTimeout(endPlay,700); }
       return;
     }
-    applyPos();                                         // 마커만 이동 · 카메라 고정 → 새 타일 로딩 없음
     animRAF=requestAnimationFrame(step);
   };
   // 구간 진입: 구간 전체를 한 화면에 담고(줌 상한=구간 줌) 타일 로딩 완료+정착 후 카메라 고정 재생
@@ -924,7 +927,7 @@ function playTrip(){
       if(myseq!==playSeq) return;                       // 대기 중 정지/재시작됨 → 무시
       setTimeout(()=>{
         if(myseq!==playSeq) return;
-        animWaiting=false; lastTs=null;                 // 대기 시간은 진행에서 제외
+        animWaiting=false; lastTs=null; elapsed=0;      // 새 구간 0부터 (대기 시간 제외)
         animRAF=requestAnimationFrame(step); updatePlayBtn();
       }, PLAY_SETTLE);
     });
