@@ -1075,7 +1075,7 @@ function renderSidebar(){
         ${(()=>{const e=dayEndMin(day); return (e!=null&&e>22*60)?`<div class="overload" title="시작시각+체류+이동 기준 예상 종료">⚠️ 일정 과밀 — 예상 종료 ${hm(e)}${e>=24*60?' (익일)':''}</div>`:'';})()}
         ${(()=>{const dc=dayCost(day); const tx=(dayRoute(day)||{}).taxi||0; const tot=dc+(dm==='car'?tx:0);
           return tot?`<div class="dist">💳 하루 비용 약 ₩${tot.toLocaleString()}${(dc&&dm==='car'&&tx)?` <span style="opacity:.55">(장소 ₩${dc.toLocaleString()} + 택시 ₩${tx.toLocaleString()})</span>`:''}</div>`:'';})()}
-        ${carry?`<div class="spot carry" style="--c:#7a86ad" title="전날 숙소 — 오늘 첫 일정으로 자동 이월 (장소 편집의 🏠 숙소 체크로 관리)"><span class="nm"><span class="eta">🏠</span> ${esc(carry.name)} <span class="opt">전날 숙소</span></span></div>`:''}
+        ${carry?`<div class="spot carry" style="--c:#7a86ad" title="전날 숙소 — 오늘 첫 일정으로 자동 이월 (탭하면 지도에서 보기 · 장소 편집의 🏠 숙소 체크로 관리)"><span class="nm" onclick="focusLatLng(${+carry.lat},${+carry.lng})"><span class="eta">🏠</span> ${esc(carry.name)} <span class="opt">전날 숙소</span></span></div>`:''}
         <div class="spotList" data-di="${di}">${spotsHtml}</div>
         <button class="addSpot" onclick="openSpotModal(${di},-1)">＋ 장소 추가</button>${day.spots.filter(hasLoc).length>=3?`<button class="addSpot optBtn" onclick="optimizeDay(${di})" title="이 날의 방문 순서를 이동거리 최소로 재배열">🧭 동선 최적화</button>`:''}
         ${day.note?`<div class="note">📝 ${esc(day.note)}</div>`:''}
@@ -1137,6 +1137,13 @@ window.focusSpot=(di,si)=>{
   if(!ME().ready()) return;
   ME().panTo(+s.lat, +s.lng, 13);
   setTimeout(()=>{ const m=markers.find(m=>m.spot===s); if(m) m.open(); },400);
+};
+// 좌표로 지도 포커스 (전날 숙소 이월 항목 탭 등 — 특정 spot 인덱스가 없을 때)
+window.focusLatLng=(lat,lng)=>{
+  if(activeDay){ activeDay=0; render(); }             // 필터 걸려 해당 핀이 숨겨져 있을 수 있어 전체로
+  if(!ME().ready()) return;
+  ME().panTo(+lat, +lng, 13);
+  setTimeout(()=>{ const m=markers.find(m=>Math.abs(+m.spot.lat-lat)<1e-6 && Math.abs(+m.spot.lng-lng)<1e-6); if(m) m.open(); },400);
 };
 // 화살표 이동: 도구 항상 노출 + 옮긴 장소를 커서 아래에 고정(스크롤 보정)해 연속 클릭 가능
 // 일자 카드의 수단 아이콘 탭 → 자차→대중교통→도보→자전거 순환 (상세 설정은 일자 편집 모달)

@@ -45,9 +45,7 @@
   .spot .tools{display:flex;gap:2px;opacity:.5;transition:opacity .15s}
   .spot:hover .tools{opacity:1}
   .spot{cursor:grab}
-  .spot.carry{cursor:default;opacity:.72}   /* 전날 숙소 가상 이월 항목 — 드래그/편집 불가, 흐리게 */
-  .spot.carry .nm{cursor:default}
-  .spot.carry .nm:hover{color:inherit;text-decoration:none}
+  .spot.carry{cursor:default;opacity:.72}   /* 전날 숙소 가상 이월 항목 — 드래그/편집 불가, 흐리게. 이름 탭하면 지도 포커스 */
   .dayHead{cursor:grab}
   .dragHandle{color:#6b76a0;font-size:12px;cursor:grab;padding:0 3px;user-select:none}
   .sortable-ghost{opacity:.35}
