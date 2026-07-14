@@ -807,9 +807,12 @@ const PLAY_ZOOM_IN=13, PLAY_ZOOM_OUT=9;   // 재생 중 도시 내(줌인)·도�
 const PLAY_TILE_TIMEOUT=3500, PLAY_SETTLE=400;   // 타일 로딩 최대 대기(ms)·로딩 후 정착 지연(ms) — 깔끔한 출발 우선
 function animPath(){
   const flat=[]; let prevLoc=null;
-  // 일자 필터 중이면 해당 일자만 재생 (전일 연결 구간 없음)
+  // 일자 필터 중이면 해당 일자만 재생. 단 전날 숙소(전날 마지막 위치)에서 출발하도록 prevLoc 시드.
   const days=trip().days;
   const list=activeDay? days.slice(activeDay-1, activeDay) : days;
+  if(activeDay>1){
+    for(let k=activeDay-2;k>=0;k--){ const pl=days[k].spots.filter(hasLoc); if(pl.length){ prevLoc=pl[pl.length-1]; break; } }
+  }
   list.forEach((day,di)=>{
     const loc=day.spots.filter(hasLoc); if(!loc.length) return;
     const dm=dayModeOf(day);
@@ -949,16 +952,22 @@ function renderFilter(){
   play.onclick=playTrip;
   bar.appendChild(play);
   const sep0=document.createElement('span'); sep0.style.cssText='width:1px;height:18px;background:#2a3457;margin:0 4px'; bar.appendChild(sep0);
+  // 범위 전환: 재생 중이면 새 범위로 재생 재시작(현재 재생을 멈추고 새 일정으로), 아니면 해당 영역으로 프레이밍
+  const setScope=(ad, fitFn)=>{
+    const wasPlaying = animRAF||animWaiting;
+    if(wasPlaying) stopPlay();
+    activeDay=ad; render();
+    if(wasPlaying) playTrip();                          // 새 범위(일자/전체)로 재생 재시작
+    else fitFn();
+  };
   const all = document.createElement('button'); all.className='chip'+(activeDay?'':' active'); all.textContent='전체';
-  all.onclick=()=>{activeDay=0;render();fitAll();}; bar.appendChild(all);
+  all.onclick=()=>setScope(0, fitAll); bar.appendChild(all);
   trip().days.forEach((d,i)=>{
     const b=document.createElement('button'); b.className='chip'+(activeDay===i+1?' active':''); b.title=d.title;
     b.innerHTML = colorByMode()==='day'
       ? `<span class="dot" style="background:${dayColor(i)};width:7px;height:7px;margin-right:4px"></span>D${i+1}`
       : 'D'+(i+1);
-    b.onclick=()=>{activeDay=i+1;render();
-      const pts=d.spots.filter(hasLoc).map(s=>[s.lat,s.lng]);
-      fitTo(pts,64,15);};
+    b.onclick=()=>setScope(i+1, ()=>fitTo(d.spots.filter(hasLoc).map(s=>[s.lat,s.lng]),64,15));
     bar.appendChild(b);
   });
   const colors = cityColors();
