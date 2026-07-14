@@ -1017,7 +1017,9 @@ function renderSidebar(){
   trip().days.forEach((day,di)=>{
     const headC = colorByMode()==='day' ? dayColor(di) : (day.spots.length?(colors[day.spots[0].city]||'#556'):'#556');
     const card=document.createElement('div'); card.className='dayCard'+(activeDay&&activeDay!==di+1?' dim':''); card.style.setProperty('--c',headC);
-    let spotsHtml='', prevLoc=null;
+    // 전날 숙소(🏠 등록)가 있으면 오늘 첫 일정으로 '가상 이월' — prevLoc를 숙소로 시드해 첫 장소에 이동거리 표시
+    const carry=(prevDayAnchor&&prevDayAnchor.stay)?prevDayAnchor:null;
+    let spotsHtml='', prevLoc=carry;
     const tl=dayTimeline(day), etas=tl.map(x=>x.eta), dm=dayModeOf(day), iso=isoDateOf(di);
     day.spots.forEach((s,si)=>{
       const dotC = hasLoc(s)?spotColor(s,di,colors):'#4a5170';
@@ -1060,9 +1062,9 @@ function renderSidebar(){
       </div><div class="dayBody">
         ${day.drive?`<div class="drive">${esc(day.drive)}</div>`:''}
         ${flightHtml(day)}
-        ${(()=>{   // 일자 간 자동 이동시간: 이전 일자 마지막 → 오늘 첫 장소
+        ${(()=>{   // 일자 간 자동 이동시간: 이전 일자 마지막 → 오늘 첫 장소 (숙소 이월 시엔 이월 항목+구간거리로 대체)
           const first=day.spots.find(hasLoc);
-          if(!prevDayAnchor||!first) return '';
+          if(carry||!prevDayAnchor||!first) return '';
           const iid=legKey(prevDayAnchor,first,dm), ic=requestLeg(prevDayAnchor,first,dm);
           return ic
             ? `<div class="drive" style="color:#9fb8e8" title="이전 일자 마지막 장소 기준 · ${legTitle(ic)}"><span data-ileg="${iid}">${MODE_ICON[dm]} 이전 일정에서 ${(ic.m/1000).toFixed(1)}km · ${fmtDur(ic.sec)}</span></div>`
@@ -1073,6 +1075,7 @@ function renderSidebar(){
         ${(()=>{const e=dayEndMin(day); return (e!=null&&e>22*60)?`<div class="overload" title="시작시각+체류+이동 기준 예상 종료">⚠️ 일정 과밀 — 예상 종료 ${hm(e)}${e>=24*60?' (익일)':''}</div>`:'';})()}
         ${(()=>{const dc=dayCost(day); const tx=(dayRoute(day)||{}).taxi||0; const tot=dc+(dm==='car'?tx:0);
           return tot?`<div class="dist">💳 하루 비용 약 ₩${tot.toLocaleString()}${(dc&&dm==='car'&&tx)?` <span style="opacity:.55">(장소 ₩${dc.toLocaleString()} + 택시 ₩${tx.toLocaleString()})</span>`:''}</div>`:'';})()}
+        ${carry?`<div class="spot carry" style="--c:#7a86ad" title="전날 숙소 — 오늘 첫 일정으로 자동 이월 (장소 편집의 🏠 숙소 체크로 관리)"><span class="nm"><span class="eta">🏠</span> ${esc(carry.name)} <span class="opt">전날 숙소</span></span></div>`:''}
         <div class="spotList" data-di="${di}">${spotsHtml}</div>
         <button class="addSpot" onclick="openSpotModal(${di},-1)">＋ 장소 추가</button>${day.spots.filter(hasLoc).length>=3?`<button class="addSpot optBtn" onclick="optimizeDay(${di})" title="이 날의 방문 순서를 이동거리 최소로 재배열">🧭 동선 최적화</button>`:''}
         ${day.note?`<div class="note">📝 ${esc(day.note)}</div>`:''}
