@@ -805,13 +805,18 @@ function fitAll(){
 let animMarker=null, animRAF=null, animEndT=null, animWaiting=false, playSeq=0;
 const PLAY_ZOOM_IN=13, PLAY_ZOOM_OUT=9;   // 재생 중 도시 내(줌인)·도시 간(줌아웃) 레벨
 const PLAY_TILE_TIMEOUT=3500, PLAY_SETTLE=400;   // 타일 로딩 최대 대기(ms)·로딩 후 정착 지연(ms) — 깔끔한 출발 우선
+// 일자 간 기준점: 등록된 숙소(🏠 s.stay)가 있으면 숙소, 없으면 마지막 위치 장소. (타임라인·재생 공통)
+function dayAnchor(day){
+  const loc=day.spots.filter(hasLoc);
+  return loc.filter(s=>s.stay).pop() || loc[loc.length-1] || null;
+}
 function animPath(){
   const flat=[]; let prevLoc=null;
-  // 일자 필터 중이면 해당 일자만 재생. 단 전날 숙소(전날 마지막 위치)에서 출발하도록 prevLoc 시드.
+  // 일자 필터 중이면 해당 일자만 재생. 단 전날 숙소(dayAnchor)에서 출발하도록 prevLoc 시드.
   const days=trip().days;
   const list=activeDay? days.slice(activeDay-1, activeDay) : days;
   if(activeDay>1){
-    for(let k=activeDay-2;k>=0;k--){ const pl=days[k].spots.filter(hasLoc); if(pl.length){ prevLoc=pl[pl.length-1]; break; } }
+    for(let k=activeDay-2;k>=0;k--){ const a=dayAnchor(days[k]); if(a){ prevLoc=a; break; } }
   }
   list.forEach((day,di)=>{
     const loc=day.spots.filter(hasLoc); if(!loc.length) return;
@@ -828,7 +833,7 @@ function animPath(){
     };
     if(prevLoc) pushSeg(prevLoc,loc[0]);           // 전일 마지막 → 오늘 첫 장소
     for(let i=1;i<loc.length;i++) pushSeg(loc[i-1],loc[i]);
-    prevLoc=loc[loc.length-1];
+    prevLoc=dayAnchor(day)||loc[loc.length-1];      // 다음날 연결은 숙소(있으면)에서
   });
   return flat;
 }
@@ -1084,11 +1089,8 @@ function renderSidebar(){
       delay:120, delayOnTouchOnly:true, ghostClass:'sortable-ghost', chosenClass:'sortable-chosen',
       onEnd:onSpotDrop
     }));
-    // 일자 간 기준점: 숙소(🏠)가 있으면 숙소, 없으면 마지막 위치
-    const locAll=day.spots.filter(hasLoc);
-    const stay=locAll.filter(s=>s.stay).pop();
-    if(stay) prevDayAnchor=stay;
-    else if(locAll.length) prevDayAnchor=locAll[locAll.length-1];
+    // 일자 간 기준점: 숙소(🏠)가 있으면 숙소, 없으면 마지막 위치 (재생 animPath와 공통 규칙)
+    const anchor=dayAnchor(day); if(anchor) prevDayAnchor=anchor;
     dayList.appendChild(card);
   });
   sb.appendChild(dayList);

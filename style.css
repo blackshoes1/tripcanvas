@@ -19,6 +19,7 @@
   #sidebar{width:340px;min-width:340px;background:#16213e;overflow-y:auto;padding:10px}
   #map,#kmap{flex:1}
   body.playing #sidebar{display:none}   /* 여행 재생 중엔 사이드바 접어 지도를 크게 */
+  body.playing #legend{display:none}    /* 재생 중엔 범례(일자·도시색 레이어) 숨김 — 지도 가림 방지 */
   /* 카카오맵 커스텀 팝업 */
   .kpopup{background:#1f2b4d;border-radius:12px;padding:12px 26px 12px 14px;position:relative;box-shadow:0 4px 16px rgba(0,0,0,.45)}
   .kpopup .kclose{position:absolute;top:6px;right:7px;background:none;border:none;color:#8892b0;font-size:13px;cursor:pointer}
