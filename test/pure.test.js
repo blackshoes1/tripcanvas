@@ -165,3 +165,19 @@ test('anchor 단일 기준 — 지도·재생·타임라인 공용 (숙소 뒤 �
   const next=L.computeTimeline({startAt:'08:00',spots:[{lat:9,lng:9}]},{legMin:()=>30,startAnchor:a});
   assert.equal(next[0].eta, L.parseHM('08:30'));
 });
+
+test('dayStartAnchor — 이월 정책(previous/none)·빈 일자 건너뜀·첫날', () => {
+  const stayDay={spots:[{lat:1,lng:1},{lat:2,lng:2,stay:true,name:'hotel'}]};
+  const spotDay={spots:[{lat:3,lng:3,name:'A'}]};
+  const empty={spots:[]};
+  // 기본(정책 없음): 직전 일자의 dayAnchor(숙소)
+  assert.equal(L.dayStartAnchor([stayDay, spotDay], 1).name, 'hotel');
+  // 'none' 정책: 이월 없음
+  assert.equal(L.dayStartAnchor([stayDay, {spots:[{lat:3,lng:3}],startPolicy:'none'}], 1), null);
+  // 첫날은 이월 대상 없음
+  assert.equal(L.dayStartAnchor([stayDay, spotDay], 0), null);
+  // 중간 빈 일자는 건너뛰고 그 이전 유효 일자 기준 유지
+  assert.equal(L.dayStartAnchor([stayDay, empty, spotDay], 2).name, 'hotel');
+  // 직전 유효 일자에 숙소가 없으면 마지막 위치 장소
+  assert.equal(L.dayStartAnchor([spotDay, {spots:[{lat:9,lng:9}]}], 1).name, 'A');
+});

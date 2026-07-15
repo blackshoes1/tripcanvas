@@ -13,7 +13,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-<link rel="stylesheet" href="style.css?v=tc-v87">
+<link rel="stylesheet" href="style.css?v=tc-v88">
 </head>
 <body>
 <header>
@@ -84,7 +84,8 @@
 <div class="modalBg" id="dayModalBg"><div class="modal">
   <h2 id="dayModalTitle">일자 편집</h2>
   <label>날짜 (이 날로 맞추면 전체 일정이 자동 재계산됩니다)</label><input type="date" id="dayDate">
-  <label>시작 시각 (타임라인 계산 기준)</label><input type="time" id="dayStart">
+  <label>시작 시각 (숙소/첫 지점 출발 시각 · 하루 이동 시작 기준)</label><input type="time" id="dayStart">
+  <div class="chkrow"><input type="checkbox" id="dayCarry" checked><label for="dayCarry" style="margin:0">전날 위치에서 이어서 시작 <span class="hint" style="margin:0">— 끄면 공항 이동일·야간열차처럼 이월 없이 첫 장소부터 시작</span></label></div>
   <label>이동 수단 (이 날의 구간 시간·경로 계산 기준)</label>
   <select id="dayMode">
     <option value="car">🚗 자차</option>
@@ -208,7 +209,19 @@
 </div>
 <div id="toast"></div>
 
-<script src="lib.js?v=tc-v87"></script>
-<script src="app.js?v=tc-v87"></script>
+<!-- 재생 HUD (body.playing일 때만 표시) -->
+<div id="playDayCard"></div>
+<div id="playHud">
+  <div id="playLeg"></div>
+  <div id="playBar"><div id="playBarFill"></div></div>
+  <div id="playSpeeds">
+    <button type="button" data-sp="0.5">0.5×</button>
+    <button type="button" data-sp="1" class="on">1×</button>
+    <button type="button" data-sp="2">2×</button>
+  </div>
+</div>
+
+<script src="lib.js?v=tc-v88"></script>
+<script src="app.js?v=tc-v88"></script>
 </body>
 </html>

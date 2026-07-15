@@ -223,7 +223,21 @@
     });
   }
 
-  const TC={toISO,haversine,legId,legKey,ringPts,parseHM,hm,inKorea,simplifyName,parseDirect,parseMoney,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,dayAnchor,computeTimeline};
+  /**
+   * di일이 '이월받는' 출발 앵커. 정책(days[di].startPolicy)이 'none'이면 이월 없음(null).
+   * 그 외에는 직전(빈 일자는 건너뜀) 유효 일자의 dayAnchor(마지막 숙소→없으면 마지막 위치).
+   * 지도 일자 간 점선·재생·사이드바·타임라인·여행 모드가 이 한 결과를 공유한다.
+   * @param {any[]} days
+   * @param {number} di
+   * @returns {any}
+   */
+  function dayStartAnchor(days, di){
+    if(!days || !days[di] || days[di].startPolicy==='none') return null;
+    for(let k=di-1;k>=0;k--){ const a=dayAnchor(days[k]); if(a) return a; }
+    return null;
+  }
+
+  const TC={toISO,haversine,legId,legKey,ringPts,parseHM,hm,inKorea,simplifyName,parseDirect,parseMoney,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,dayAnchor,computeTimeline,dayStartAnchor};
   if(typeof module!=='undefined' && module.exports){ module.exports=TC; }   // Node (테스트)
   else { const r=/**@type {any}*/(root); for(const k in TC) r[k]=/**@type {any}*/(TC)[k]; }   // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);

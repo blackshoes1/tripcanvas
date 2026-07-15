@@ -154,3 +154,21 @@
 .spotMeta .bookwarn{color:#ffb454}
 .optBtn{color:#8fd6a0;border-color:#2e5a3a;margin-left:6px}
 .spotMeta .closed{color:#ff8f6b}
+
+/* 재생 HUD — body.playing일 때만 (현재 구간·진행바·배속) */
+#playHud{display:none}
+#playDayCard{display:none}
+body.playing #playHud{
+  display:flex;flex-direction:column;gap:8px;position:fixed;left:50%;bottom:16px;transform:translateX(-50%);
+  z-index:1200;width:min(440px,92vw);box-sizing:border-box;background:rgba(16,22,42,.86);color:#e8eefc;
+  padding:10px 14px;border-radius:14px;backdrop-filter:blur(8px);box-shadow:0 8px 26px rgba(0,0,0,.45);font-size:13px}
+#playLeg{font-weight:700;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:17px}
+#playBar{height:5px;background:rgba(255,255,255,.16);border-radius:3px;overflow:hidden}
+#playBarFill{height:100%;width:0%;background:#4aa3ff;border-radius:3px;transition:width .12s linear}
+#playSpeeds{display:flex;gap:6px;justify-content:center}
+#playSpeeds button{background:#2a3457;color:#cdd7f0;border:0;border-radius:8px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer}
+#playSpeeds button.on{background:#1e88e5;color:#fff}
+#playDayCard.show{display:block;position:fixed;left:50%;top:74px;transform:translateX(-50%);z-index:1200;
+  background:rgba(16,22,42,.92);color:#fff;font-weight:800;font-size:18px;padding:8px 20px;border-radius:12px;
+  box-shadow:0 6px 20px rgba(0,0,0,.5);pointer-events:none;animation:playDayCardIn .3s ease}
+@keyframes playDayCardIn{from{opacity:0;transform:translateX(-50%) translateY(-8px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}

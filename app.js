@@ -709,9 +709,9 @@ function overlaySig(t,colors){
     for(let i=1;i<loc.length;i++){ const c=legCache[legKey(loc[i-1],loc[i],dm)]; p.push(c? (c.sec?(c.path?'p':'s'):'f') : 'n'); }
   });
   if(!activeDay){
-    let prev=null;
-    t.days.forEach(day=>{ const loc=day.spots.filter(hasLoc); if(!loc.length)return;
-      if(prev){ const c=legCache[legKey(prev,loc[0],dayModeOf(day))]; p.push('I', c? (c.sec?(c.path?'p':'s'):'f') : 'n'); } prev=dayAnchor(day); });
+    t.days.forEach((day,di)=>{ const loc=day.spots.filter(hasLoc); if(!loc.length)return;
+      const from=startAnchorFor(di);
+      if(from){ const c=legCache[legKey(from,loc[0],dayModeOf(day))]; p.push('I', c? (c.sec?(c.path?'p':'s'):'f') : 'n'); } });
   }
   return p.join('|');
 }
@@ -753,18 +753,17 @@ function render(){
     });
     // 일자 간 연결 (전체 보기) — 점선. 색은 도착 일자 색(나머지 선과 동일 체계). 조회 중엔 미표시
     if(!activeDay){
-      let prev = null;
       t.days.forEach((day,di)=>{
         const loc = day.spots.filter(hasLoc);
         if(!loc.length) return;
-        if(prev){
-          const cch=legCache[legKey(prev,loc[0],dayModeOf(day))];
+        const from=startAnchorFor(di);   // 정책 반영 이월 시작점 (none이면 null → 연결선 없음)
+        if(from){
+          const cch=legCache[legKey(from,loc[0],dayModeOf(day))];
           if(cch){
             const path=(cch.sec&&cch.path)?decodePts(cch.path):null;
-            addLine(path||[{lat:+prev.lat,lng:+prev.lng},{lat:+loc[0].lat,lng:+loc[0].lng}], dayColor(di), .8, true);
+            addLine(path||[{lat:+from.lat,lng:+from.lng},{lat:+loc[0].lat,lng:+loc[0].lng}], dayColor(di), .8, true);
           }
         }
-        prev = dayAnchor(day);
       });
     }
   }
@@ -792,25 +791,21 @@ function fitAll(){
 // ───────────────── 여행 재생 애니메이션 (재미) ─────────────────
 // 전체 동선을 하나의 좌표열로 펼친 뒤(구간별 실경로 우선, 없으면 직선) 이동수단 아이콘을 따라 이동시킴.
 let animMarker=null, animRAF=null, animEndT=null, animWaiting=false, playSeq=0;
+let playSpeed=1, _playDi=-1;   // 재생 배속(0.5/1/2×) · 현재 재생 중인 일자(날짜 카드 전환 감지)
 const PLAY_ZOOM_IN=13, PLAY_ZOOM_OUT=9;   // 재생 중 도시 내(줌인)·도시 간(줌아웃) 레벨
 const PLAY_TILE_TIMEOUT=3500, PLAY_SETTLE=400;   // 타일 로딩 최대 대기(ms)·로딩 후 정착 지연(ms) — 깔끔한 출발 우선
-// 일자 간 기준점 dayAnchor(day)는 lib.js(순수·테스트 대상)에 있음 — 지도 점선·재생·사이드바·타임라인 공용.
-// di일 기준 '전날 숙소' 이월 앵커(없으면 null): 직전(빈 일자는 건너뜀) 유효 앵커가 숙소일 때만.
-// 사이드바 carry·여행 모드·이미지 카드가 같은 이월 기준을 공유한다.
-function carryStayFor(di){
-  for(let k=di-1;k>=0;k--){ const a=dayAnchor(trip().days[k]); if(a) return a.stay?a:null; }
-  return null;
-}
+// dayAnchor(day)·dayStartAnchor(days,di)는 lib.js(순수·테스트 대상)에 있음.
+// startAnchorFor(di): di일이 이월받는 출발 앵커(정책 반영, startPolicy==='none'이면 null).
+// 지도 일자 간 점선·재생·사이드바 거리·타임라인·여행 모드가 모두 이 한 함수를 공유한다.
+function startAnchorFor(di){ return dayStartAnchor(trip().days, di); }
+// 시각적 🏠 '전날 숙소' 이월 항목용 — 시작 앵커가 숙소(stay)일 때만.
+function carryStayFor(di){ const a=startAnchorFor(di); return (a&&a.stay)?a:null; }
 function animPath(){
-  const flat=[]; let prevLoc=null;
-  // 일자 필터 중이면 해당 일자만 재생. 단 전날 숙소(dayAnchor)에서 출발하도록 prevLoc 시드.
-  const days=trip().days;
-  const list=activeDay? days.slice(activeDay-1, activeDay) : days;
-  if(activeDay>1){
-    for(let k=activeDay-2;k>=0;k--){ const a=dayAnchor(days[k]); if(a){ prevLoc=a; break; } }
-  }
-  list.forEach((day,di)=>{
-    const loc=day.spots.filter(hasLoc); if(!loc.length) return;
+  const flat=[]; const days=trip().days;
+  // 일자 필터 중이면 해당 일자만, 아니면 전체. 각 일자의 이월 시작점은 startAnchorFor(정책 반영, none이면 없음).
+  const range = activeDay ? [activeDay-1] : days.map((_,i)=>i);
+  range.forEach((di)=>{
+    const day=days[di]; const loc=day.spots.filter(hasLoc); if(!loc.length) return;
     const dm=dayModeOf(day);
     const pushSeg=(A,B)=>{
       const c=legCache[legKey(A,B,dm)];
@@ -820,15 +815,45 @@ function animPath(){
       const ca=(A.city||'').trim(), cb=(B.city||'').trim(), dist=haversine(A,B);
       const inter = (ca&&cb)? (ca!==cb && dist>15) : dist>25;
       const zoom = inter? PLAY_ZOOM_OUT : PLAY_ZOOM_IN;
-      pts.forEach(p=>flat.push({lat:+p.lat,lng:+p.lng,mode:dm,zoom}));
+      // 각 점에 구간 메타(from/to/mode/소요/일자)를 실어 재생 HUD(현재 구간·날짜 카드)에서 사용.
+      const from=A.name||'출발', to=B.name||'도착', sec=(c&&c.sec)?c.sec:null;
+      pts.forEach(p=>flat.push({lat:+p.lat,lng:+p.lng,mode:dm,zoom,di,from,to,sec}));
     };
-    if(prevLoc) pushSeg(prevLoc,loc[0]);           // 전일 마지막 → 오늘 첫 장소
+    const anchor=startAnchorFor(di);               // 정책 반영 이월 시작점 (none이면 null, 빈날 건너뜀)
+    if(anchor) pushSeg(anchor,loc[0]);             // 이월 숙소/이전 위치 → 오늘 첫 장소
     for(let i=1;i<loc.length;i++) pushSeg(loc[i-1],loc[i]);
-    prevLoc=dayAnchor(day)||loc[loc.length-1];      // 다음날 연결은 숙소(있으면)에서
   });
   return flat;
 }
 function updatePlayBtn(){ const b=document.getElementById('playBtn'); if(b) b.textContent=(animRAF||animWaiting)?'⏹ 정지':'▶️ 재생'; }
+// 재생 HUD: 현재 구간(from→to · 소요) + 전체 재생 시 날짜 전환 카드
+function updatePlayHud(A){
+  const leg=document.getElementById('playLeg');
+  if(leg) leg.textContent = A.from+' → '+A.to + (A.sec!=null? ' · '+MODE_ICON[A.mode]+' '+fmtDur(A.sec) : '');
+  if(!activeDay && A.di!==_playDi){                    // 전체 재생 중 날짜가 바뀌면 카드 플래시
+    _playDi=A.di; const day=trip().days[A.di];
+    if(day){
+      const sub=day.title || (day.spots.find(hasLoc)||{}).city || '';
+      const card=document.getElementById('playDayCard');
+      if(card){ card.textContent='Day '+(A.di+1)+(sub?' · '+sub:''); card.classList.remove('show'); void card.offsetWidth; card.classList.add('show');
+        clearTimeout(card._t); card._t=setTimeout(()=>card.classList.remove('show'),1900); }
+    }
+  }
+}
+function updatePlayProgress(frac){ const f=document.getElementById('playBarFill'); if(f) f.style.width=(Math.max(0,Math.min(1,frac))*100).toFixed(1)+'%'; }
+function resetPlayHud(){
+  _playDi=-1;
+  const f=document.getElementById('playBarFill'); if(f) f.style.width='0%';
+  const leg=document.getElementById('playLeg'); if(leg) leg.textContent='';
+  const card=document.getElementById('playDayCard'); if(card){ clearTimeout(card._t); card.classList.remove('show'); }
+}
+// 배속 버튼 (0.5×/1×/2×)
+(function(){ const sp=document.getElementById('playSpeeds'); if(!sp) return;
+  sp.addEventListener('click',e=>{ const b=e.target.closest('button[data-sp]'); if(!b) return;
+    playSpeed=+b.dataset.sp; sp.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b)); });
+})();
+// 백그라운드(탭 숨김) 전환 시 자동 정지 — 복귀 후 재생 시간이 튀는 현상 방지
+document.addEventListener('visibilitychange',()=>{ if(document.hidden && (animRAF||animWaiting)) stopPlay(); });
 // 이모지는 기본 왼쪽(서)을 봄 → 진행 방향(A→B)으로 회전. 뒤집힘은 좌우반전으로 방지.
 function headingTransform(A,B){
   const ex=B.lng-A.lng, ny=B.lat-A.lat;
@@ -845,6 +870,7 @@ function stopPlay(){
   if(animEndT){ clearTimeout(animEndT); animEndT=null; }
   if(animMarker){ animMarker.remove(); animMarker=null; }
   if(document.body.classList.contains('playing')){ document.body.classList.remove('playing'); if(ME().ready()) ME().relayout(); }
+  resetPlayHud();
   updatePlayBtn();
 }
 function playTrip(){
@@ -896,6 +922,7 @@ function playTrip(){
     animMarker.move(A.lat+(B.lat-A.lat)*f, A.lng+(B.lng-A.lng)*f);
     const tf=headingTransform(A,B); if(tf) car.style.transform=tf;   // 진행 방향으로 회전
     const ic=MODE_ICON[A.mode]||'🚗'; if(car.textContent!==ic) car.textContent=ic;
+    updatePlayHud(A);                                  // 현재 구간·날짜 카드
   };
   const endPlay=()=>{                                   // 종료: 일자 재생이면 그 일자 프레임, 아니면 전체 보기
     const ad=activeDay; stopPlay();
@@ -906,10 +933,11 @@ function playTrip(){
     if(lastTs==null) lastTs=ts;
     const dt=Math.min(34, ts-lastTs); lastTs=ts;       // 프레임 잭·탭 복귀 갭 클램프 — 렉 걸려도 점프 대신 감속
     const ph=phases[pIdx];
-    elapsed+=dt;
+    elapsed+=dt*playSpeed;                             // 배속 반영(0.5/1/2×)
     const t=Math.min(1, elapsed/ph.dur);               // 구간별 소요시간 기준 진행(구간 내 등속)
     d=ph.a+(ph.b-ph.a)*t;
     applyPos();                                         // 마커만 이동 · 카메라 고정 → 새 타일 로딩 없음
+    updatePlayProgress(d/gtotal);                       // 진행바
     if(t>=1){                                           // 이 구간 끝 → 다음 구간(fit+대기) 또는 종료
       pIdx++;
       if(pIdx<phases.length) enterPhase();
@@ -1004,12 +1032,11 @@ function renderSidebar(){
   sortables.forEach(s=>{try{s.destroy();}catch(e){}}); sortables=[];
   const colors=cityColors();
   const dayList=document.createElement('div'); dayList.id='dayList';
-  let prevDayAnchor=null;   // 이전 일자의 마지막 위치 (일자 간 이동시간 계산)
   trip().days.forEach((day,di)=>{
     const headC = colorByMode()==='day' ? dayColor(di) : (day.spots.length?(colors[day.spots[0].city]||'#556'):'#556');
     const card=document.createElement('div'); card.className='dayCard'+(activeDay&&activeDay!==di+1?' dim':''); card.style.setProperty('--c',headC);
     // 전날 숙소(🏠 등록)가 있으면 오늘 첫 일정으로 '가상 이월' — prevLoc를 숙소로 시드해 첫 장소에 이동거리 표시
-    const carry=(prevDayAnchor&&prevDayAnchor.stay)?prevDayAnchor:null;
+    const carry=carryStayFor(di);   // 정책 반영(none이면 null)
     let spotsHtml='', prevLoc=carry;
     const tl=dayTimeline(day, carry), etas=tl.map(x=>x.eta), dm=dayModeOf(day), iso=isoDateOf(di);   // carry(전날 숙소)면 첫 장소 ETA에 숙소→첫 장소 이동시간 반영
     day.spots.forEach((s,si)=>{
@@ -1053,13 +1080,13 @@ function renderSidebar(){
       </div><div class="dayBody">
         ${day.drive?`<div class="drive">${esc(day.drive)}</div>`:''}
         ${flightHtml(day)}
-        ${(()=>{   // 일자 간 자동 이동시간: 이전 일자 마지막 → 오늘 첫 장소 (숙소 이월 시엔 이월 항목+구간거리로 대체)
-          const first=day.spots.find(hasLoc);
-          if(carry||!prevDayAnchor||!first) return '';
-          const iid=legKey(prevDayAnchor,first,dm), ic=requestLeg(prevDayAnchor,first,dm);
+        ${(()=>{   // 일자 간 자동 이동시간: 이월 시작점 → 오늘 첫 장소 (숙소 이월 시엔 🏠 항목+구간거리로 대체, none이면 미표시)
+          const first=day.spots.find(hasLoc), from=startAnchorFor(di);
+          if(carry||!from||!first) return '';
+          const iid=legKey(from,first,dm), ic=requestLeg(from,first,dm);
           return ic
-            ? `<div class="drive" style="color:#9fb8e8" title="이전 일자 마지막 장소 기준 · ${legTitle(ic)}"><span data-ileg="${iid}">${MODE_ICON[dm]} 이전 일정에서 ${(ic.m/1000).toFixed(1)}km · ${fmtDur(ic.sec)}</span></div>`
-            : `<div class="drive" style="color:#9fb8e8"><span data-ileg="${iid}">${MODE_ICON[dm]} 이전 일정에서 직선 ${haversine(prevDayAnchor,first).toFixed(1)}km</span></div>`;
+            ? `<div class="drive" style="color:#9fb8e8" title="이전 일자 기준점 · ${legTitle(ic)}"><span data-ileg="${iid}">${MODE_ICON[dm]} 이전 일정에서 ${(ic.m/1000).toFixed(1)}km · ${fmtDur(ic.sec)}</span></div>`
+            : `<div class="drive" style="color:#9fb8e8"><span data-ileg="${iid}">${MODE_ICON[dm]} 이전 일정에서 직선 ${haversine(from,first).toFixed(1)}km</span></div>`;
         })()}
         ${(()=>{const rt=dayRoute(day); if(rt) return `<div class="dist">📏 하루 동선 약 ${(rt.m/1000).toFixed(1)}km · ${MODE_ICON[dm]}${fmtDur(rt.sec)}${(dm==='car'&&rt.taxi)?` · 🚕약 ${rt.taxi.toLocaleString()}원`:''} <span style="opacity:.55">(${dm==='flight'?'직선':'도로 기준'})</span></div>`;
           return dayDistance(day)>0?`<div class="dist">📏 하루 동선 약 ${dayDistance(day).toFixed(1)}km <span style="opacity:.55">(직선)</span></div>`:'';})()}
@@ -1083,8 +1110,6 @@ function renderSidebar(){
       delay:120, delayOnTouchOnly:true, ghostClass:'sortable-ghost', chosenClass:'sortable-chosen',
       onEnd:onSpotDrop
     }));
-    // 일자 간 기준점: 숙소(🏠)가 있으면 숙소, 없으면 마지막 위치 (재생 animPath와 공통 규칙)
-    const anchor=dayAnchor(day); if(anchor) prevDayAnchor=anchor;
     dayList.appendChild(card);
   });
   sb.appendChild(dayList);
@@ -1310,6 +1335,7 @@ window.openDayModal=(di)=>{
   document.getElementById('dayModalTitle').textContent=`Day ${di+1} 편집 · ${dateOf(di)}`;
   document.getElementById('dayDate').value=isoDateOf(di);
   document.getElementById('dayStart').value=d.startAt||'09:00';
+  document.getElementById('dayCarry').checked = (d.startPolicy!=='none');   // 전날 위치 이월 on/off
   document.getElementById('dayMode').value=dayModeOf(d);
   const f=d.flight||{};
   document.getElementById('flightCode').value=f.code||'';
@@ -1331,6 +1357,7 @@ document.getElementById('daySave').onclick=()=>{
   const d=trip().days[editingDay];
   d.title=document.getElementById('dayTitle').value.trim();
   d.startAt=document.getElementById('dayStart').value||'09:00';
+  if(document.getElementById('dayCarry').checked) delete d.startPolicy; else d.startPolicy='none';   // 이월 정책
   d.mode=document.getElementById('dayMode').value;
   const fc=document.getElementById('flightCode').value.trim(), fdp=document.getElementById('flightDep').value.trim(),
     far=document.getElementById('flightArr').value.trim(), fda=document.getElementById('flightDepAt').value, faa=document.getElementById('flightArrAt').value;
