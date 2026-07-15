@@ -120,3 +120,48 @@ test('parseDirect — 여행/일자/장소/옵션/숙소/좌표', () => {
   const r2=L.parseDirect('- A | 부산\n- B');
   assert.equal(r2.days[0].spots[1].city, '부산');
 });
+
+test('dayAnchor — 숙소 우선·마지막 숙소·폴백·빈날', () => {
+  // 1. 숙소가 마지막 항목인 날 → 숙소
+  assert.equal(L.dayAnchor({spots:[{lat:1,lng:1},{lat:2,lng:2,stay:true,name:'h'}]}).name, 'h');
+  // 2. 숙소 뒤에 저녁 일정이 있어도 숙소를 앵커로
+  assert.equal(L.dayAnchor({spots:[{lat:1,lng:1,stay:true,name:'hotel'},{lat:3,lng:3,name:'dinner'}]}).name, 'hotel');
+  // 3. 숙소가 여러 개면 마지막 숙소
+  assert.equal(L.dayAnchor({spots:[{lat:1,lng:1,stay:true,name:'h1'},{lat:2,lng:2},{lat:5,lng:5,stay:true,name:'h2'}]}).name, 'h2');
+  // 4. 숙소 없는 날 → 마지막 위치 장소
+  assert.equal(L.dayAnchor({spots:[{lat:1,lng:1},{lat:9,lng:9,name:'last'}]}).name, 'last');
+  // 5. 빈 일자·좌표 없는 장소만 → null (앱은 이 경우 이전 유효 기준점을 유지)
+  assert.equal(L.dayAnchor({spots:[]}), null);
+  assert.equal(L.dayAnchor({spots:[{name:'noloc'}]}), null);
+  assert.equal(L.dayAnchor({}), null);
+});
+
+test('computeTimeline — 숙소→첫 장소 이동시간·고정시각 충돌·좌표없는 첫 장소', () => {
+  const anchor={lat:2,lng:2,stay:true};
+  const leg40={legMin:()=>40};   // 모든 구간 40분(결정적)
+  // 6. 전날 숙소 → 첫 장소 이동시간 반영: 09:00 출발 + 40분 = 09:40
+  const t6=L.computeTimeline({startAt:'09:00',spots:[{lat:1,lng:1}]},{legMin:()=>40,startAnchor:anchor});
+  assert.equal(t6[0].eta, L.parseHM('09:40'));
+  // startAnchor 없으면 이동시간 안 더함 → 첫 장소 = 시작시각
+  const t6b=L.computeTimeline({startAt:'09:00',spots:[{lat:1,lng:1}]},leg40);
+  assert.equal(t6b[0].eta, L.parseHM('09:00'));
+  // 7. 첫 장소 고정 도착시각(09:20)이 자연 도착(09:40)보다 이르면 충돌
+  const t7=L.computeTimeline({startAt:'09:00',spots:[{lat:1,lng:1,at:'09:20'}]},{legMin:()=>40,startAnchor:anchor});
+  assert.equal(t7[0].fixed, true);
+  assert.equal(t7[0].conflict, true);
+  assert.equal(t7[0].eta, L.parseHM('09:20'));
+  // 8. 좌표 없는 첫 장소는 이동 구간에서 제외 → 첫 '유효' 장소에 숙소 이동시간 반영
+  const t8=L.computeTimeline({startAt:'09:00',spots:[{name:'noloc',stayMin:0},{lat:1,lng:1}]},{legMin:()=>40,startAnchor:anchor});
+  assert.equal(t8[0].eta, L.parseHM('09:00'));   // 좌표없는 첫 장소: 이동 없음
+  assert.equal(t8[1].eta, L.parseHM('09:40'));   // 첫 유효 장소: 숙소→여기 40분
+});
+
+test('anchor 단일 기준 — 지도·재생·타임라인 공용 (숙소 뒤 일정 있어도 숙소)', () => {
+  // 완료조건: 숙소 뒤에 다른 일정이 있어도 다음날 연결선/재생/거리/ETA가 모두 숙소에서 시작
+  const day={spots:[{lat:1,lng:1,name:'lunch'},{lat:2,lng:2,stay:true,name:'stay'},{lat:3,lng:3,name:'night'}]};
+  const a=L.dayAnchor(day);
+  assert.equal(a.name, 'stay');                          // 마지막 장소(night)가 아니라 숙소
+  // 같은 anchor를 startAnchor로 넘기면 다음날 첫 장소 ETA도 숙소 기준
+  const next=L.computeTimeline({startAt:'08:00',spots:[{lat:9,lng:9}]},{legMin:()=>30,startAnchor:a});
+  assert.equal(next[0].eta, L.parseHM('08:30'));
+});

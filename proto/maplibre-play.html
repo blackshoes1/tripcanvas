@@ -85,7 +85,7 @@ const routeLayer={id:"route",type:"line",source:"route",paint:{"line-color":"#e6
 function styleVector(){return{
  version:8,
  glyphs:"https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf",
- sources:{ pm:{type:"vector",url:"pmtiles://"+PM_URL,attribution:"© OSM · Protomaps"}, route:routeSrc },
+ sources:{ pm:{type:"vector",url:"pmtiles://"+PM_URL,attribution:'© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors · <a href="https://protomaps.com" target="_blank" rel="noopener">Protomaps</a>'}, route:routeSrc },
  layers:[
    {id:"bg",type:"background",paint:{"background-color":"#eae6dd"}},
    {id:"earth",type:"fill",source:"pm","source-layer":"earth",paint:{"fill-color":"#e7e2d6"}},
@@ -98,11 +98,14 @@ function styleVector(){return{
 };}
 function styleRaster(){return{
  version:8,
- sources:{ osm:{type:"raster",tiles:["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],tileSize:256,maxzoom:19,attribution:"© OSM"}, route:routeSrc },
+ sources:{ osm:{type:"raster",tiles:["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],tileSize:256,maxzoom:19,attribution:'© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors'}, route:routeSrc },
  layers:[ {id:"osm",type:"raster",source:"osm"}, routeLayer ]
 };}
 
+// attributionControl:false로 기본 컨트롤을 끄고, 아래에서 명시적으로 하나만 추가(중복 방지).
 const map=new maplibregl.Map({container:"map",style:SRC==='osm'?styleRaster():styleVector(),center:RAW[0],zoom:12,attributionControl:false,fadeDuration:0});
+// 출처 표시(필수): OSM·Protomaps 라이선스. 좁은 화면에선 자동 축약(ⓘ) — 우하단, HUD(좌상단)와 겹치지 않음.
+map.addControl(new maplibregl.AttributionControl({compact:true}), 'bottom-right');
 map.on('error',e=>{ if(e&&e.error) showErr('map: '+(e.error.message||e.error)); });
 
 const carWrap=document.createElement('div');carWrap.className='carWrap';

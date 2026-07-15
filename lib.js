@@ -182,7 +182,48 @@
     return false;
   }
 
-  const TC={toISO,haversine,legId,legKey,ringPts,parseHM,hm,inKorea,simplifyName,parseDirect,parseMoney,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt};
+  /** 좌표 유효 여부 (lat/lng 유한값) @param {any} s @returns {boolean} */
+  function hasCoord(s){ return !!s && s.lat!=null && s.lng!=null && isFinite(+s.lat) && isFinite(+s.lng); }
+
+  /**
+   * 일자 간 출발 기준점(단일 진실). 등록된 숙소(s.stay)가 있으면 마지막 숙소, 없으면 마지막 위치 장소.
+   * 숙소 뒤에 다른 일정이 있어도 숙소를 우선한다. 좌표 있는 장소가 없으면 null.
+   * 지도 일자 간 점선·재생·사이드바 이월·일자 간 거리·타임라인이 모두 이 결과를 공유한다.
+   * @param {{spots?: any[]}} day
+   * @returns {any}
+   */
+  function dayAnchor(day){
+    const loc=((day&&day.spots)||[]).filter(hasCoord);
+    return loc.filter((/**@type{any}*/s)=>s.stay).pop() || loc[loc.length-1] || null;
+  }
+
+  /**
+   * 일자 타임라인(도착 예상시각). startAnchor가 주어지면 그 위치에서 출발해 첫 번째 '유효(좌표 있는)' 장소까지
+   * 이동시간을 먼저 더한다(예: 전날 숙소→오늘 첫 장소). 좌표 없는 장소는 이동 구간 계산에서 제외한다.
+   * spot.at(고정 도착시각)이 있으면 그 시각으로 고정하고, 이동상 자연 도착보다 이르면 conflict.
+   * spot.bookAt(예약)이 도착보다 뒤면 그때까지 대기 후 활동 → 다음 출발 기준은 max(도착,예약)+체류.
+   * @param {{startAt?: string, spots?: any[]}} day
+   * @param {{legMin:(a:any,b:any)=>number, startAnchor?: any}} opts legMin=두 지점 간 이동시간(분)
+   * @returns {{eta:number, fixed:boolean, conflict:boolean}[]}
+   */
+  function computeTimeline(day, opts){
+    const legMin=opts.legMin;
+    let clock=parseHM(day&&day.startAt);
+    /** @type {any} */
+    let prev = (opts.startAnchor && hasCoord(opts.startAnchor)) ? opts.startAnchor : null;
+    return ((day&&day.spots)||[]).map((/**@type{any}*/s)=>{
+      if(hasCoord(s) && prev) clock+=legMin(prev,s);
+      const natural=clock;
+      let eta=natural, conflict=false;
+      if(s.at){ eta=parseHM(s.at); conflict = eta < natural-0.5; }   // 고정 시각인데 이동상 도착이 더 늦으면 충돌
+      const depart = s.bookAt ? Math.max(eta, parseHM(s.bookAt)) : eta;
+      clock = depart + (s.stayMin!=null? +s.stayMin : 60);
+      if(hasCoord(s)) prev=s;
+      return {eta, fixed:!!s.at, conflict};
+    });
+  }
+
+  const TC={toISO,haversine,legId,legKey,ringPts,parseHM,hm,inKorea,simplifyName,parseDirect,parseMoney,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,dayAnchor,computeTimeline};
   if(typeof module!=='undefined' && module.exports){ module.exports=TC; }   // Node (테스트)
   else { const r=/**@type {any}*/(root); for(const k in TC) r[k]=/**@type {any}*/(TC)[k]; }   // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);
