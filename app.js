@@ -805,11 +805,19 @@ function fitAll(){
 let animMarker=null, animRAF=null, animEndT=null, animWaiting=false, playSeq=0;
 const PLAY_ZOOM_IN=13, PLAY_ZOOM_OUT=9;   // 재생 중 도시 내(줌인)·도시 간(줌아웃) 레벨
 const PLAY_TILE_TIMEOUT=3500, PLAY_SETTLE=400;   // 타일 로딩 최대 대기(ms)·로딩 후 정착 지연(ms) — 깔끔한 출발 우선
+// 일자 간 기준점: 등록된 숙소(🏠 s.stay)가 있으면 숙소, 없으면 마지막 위치 장소. (타임라인·재생 공통)
+function dayAnchor(day){
+  const loc=day.spots.filter(hasLoc);
+  return loc.filter(s=>s.stay).pop() || loc[loc.length-1] || null;
+}
 function animPath(){
   const flat=[]; let prevLoc=null;
-  // 일자 필터 중이면 해당 일자만 재생 (전일 연결 구간 없음)
+  // 일자 필터 중이면 해당 일자만 재생. 단 전날 숙소(dayAnchor)에서 출발하도록 prevLoc 시드.
   const days=trip().days;
   const list=activeDay? days.slice(activeDay-1, activeDay) : days;
+  if(activeDay>1){
+    for(let k=activeDay-2;k>=0;k--){ const a=dayAnchor(days[k]); if(a){ prevLoc=a; break; } }
+  }
   list.forEach((day,di)=>{
     const loc=day.spots.filter(hasLoc); if(!loc.length) return;
     const dm=dayModeOf(day);
@@ -825,7 +833,7 @@ function animPath(){
     };
     if(prevLoc) pushSeg(prevLoc,loc[0]);           // 전일 마지막 → 오늘 첫 장소
     for(let i=1;i<loc.length;i++) pushSeg(loc[i-1],loc[i]);
-    prevLoc=loc[loc.length-1];
+    prevLoc=dayAnchor(day)||loc[loc.length-1];      // 다음날 연결은 숙소(있으면)에서
   });
   return flat;
 }
@@ -855,18 +863,14 @@ function playTrip(){
   if(!ME().ready()){ toast('지도를 불러오는 중이에요','#8892b0'); return; }
   const flat=animPath();
   if(flat.length<2){ toast('재생할 동선이 없어요','#8892b0'); return; }
-  // 위치는 실거리 누적(gcum)으로, 속도는 '화면 픽셀 밀도(≈2^zoom)'로 조절 → 화면상 속도 균일.
-  // 핵심: 속도를 구간 목표줌이 아니라 '현재 적용 줌(curZoom, 부드럽게 이동)'에 연동해야
-  // 도시 경계에서 실거리 속도가 계단식으로 튀지 않는다(예전엔 13→9 전환에 16× 급가속=확 튐).
-  const zscale=z=>Math.pow(2,(z||PLAY_ZOOM_IN)-PLAY_ZOOM_OUT);
+  // 위치는 실거리 누적(gcum)으로 보간. 카메라가 '구간마다 고정'이라 페이싱은 팔로우-카메라용
+  // 줌가중(2^zoom)이 아니라 '구간별 소요시간'으로 잡는다 — 안 그러면 도로 점이 많은 도시간
+  // 구간이 일자별 재생에서 과도하게 느려진다(점 수 기반 dur + 낮은 픽셀가중의 불일치).
   const gcum=[0];                                   // 실거리 누적(위치 보간용)
   for(let i=1;i<flat.length;i++) gcum[i]=gcum[i-1]+haversine(flat[i-1],flat[i]);
   const gtotal=gcum[gcum.length-1]||1;
-  let pixelTotal=0;                                  // 화면상 총 이동량(속도 보정용)
-  for(let i=1;i<flat.length;i++) pixelTotal+=haversine(flat[i-1],flat[i])*zscale(flat[i].zoom);
   document.body.classList.add('playing');           // 사이드바 접어 지도를 크게
-  ME().relayout();
-  ME().center(flat[0].lat, flat[0].lng, flat[0].zoom||PLAY_ZOOM_IN);   // 첫 구간 성격에 맞춰 시작 줌
+  ME().relayout();                                   // 시작 카메라는 아래 enterPhase(첫 구간 fit)가 잡음
   const el=document.createElement('div'); el.style.cssText='will-change:transform';
   const car=document.createElement('span');         // 회전은 안쪽 span에 (바깥 펄스 애니와 분리)
   car.textContent=MODE_ICON[flat[0].mode]||'🚗';
@@ -874,57 +878,69 @@ function playTrip(){
   el.appendChild(car);
   el.animate([{transform:'scale(1)'},{transform:'scale(1.15)'}],{duration:600,iterations:Infinity,direction:'alternate',easing:'ease-in-out'});
   animMarker=ME().moveMarker(flat[0].lat,flat[0].lng,el);
-  const dur=Math.min(38000,Math.max(11000,flat.length*520));   // 조금 느리게 (약 11~38초)
-  const pxSpeed=pixelTotal/dur;                        // 화면상 등속(픽셀/ms)
-  // 줌이 바뀌는 누적거리 '경계'들 — 여기서 반드시 멈춰 줌+타일로딩.
-  // 빠른(줌아웃) 구간이 한 프레임에 짧은 도시 구간을 건너뛰지 않도록 d를 경계에 클램프.
+  // 줌이 바뀌는 누적거리 '경계' → 구간(phase) 분할. 각 구간은 '카메라 고정'으로 재생:
+  // 진입 시 구간 전체를 한 화면에 담고 타일 로딩을 끝낸 뒤, 이동 중엔 카메라를 전혀 안 움직임
+  // → 새 타일 로딩이 발생하지 않아(자동차는 오버레이라 타일 무관) 네트워크와 무관하게 매끄럽게 미끄러짐.
   const bounds=[];
   for(let i=1;i<flat.length;i++){ const zi=flat[i].zoom||PLAY_ZOOM_IN, zp=flat[i-1].zoom||PLAY_ZOOM_IN; if(zi!==zp) bounds.push({dist:gcum[i], zoom:zi}); }
-  let d=0, lastTs=null, seg=0, curZoom=flat[0].zoom||PLAY_ZOOM_IN, bi=0;   // curZoom=현재 적용된 '고정' 줌
-  const applyPos=()=>{                                  // d로부터 마커 위치·방향 갱신 후 [lat,lng] 반환
+  const cuts=[0]; bounds.forEach(b=>cuts.push(b.dist)); cuts.push(gtotal);
+  const phases=[];
+  for(let k=0;k<cuts.length-1;k++){
+    const a=cuts[k], b=cuts[k+1]; if(b-a<1e-6) continue;
+    const zoom = k===0? (flat[0].zoom||PLAY_ZOOM_IN) : bounds[k-1].zoom;   // 구간 내 줌 상한(도시=13, 도시간=9)
+    let mnLa=90,mxLa=-90,mnLn=180,mxLn=-180; const pts=[];
+    for(let i=0;i<flat.length;i++){ if(gcum[i]>=a-1e-6 && gcum[i]<=b+1e-6){ const p=flat[i]; pts.push([p.lat,p.lng]);
+      mnLa=Math.min(mnLa,p.lat); mxLa=Math.max(mxLa,p.lat); mnLn=Math.min(mnLn,p.lng); mxLn=Math.max(mxLn,p.lng); } }
+    if(!pts.length){ pts.push([flat[0].lat,flat[0].lng]); mnLa=mxLa=flat[0].lat; mnLn=mxLn=flat[0].lng; }
+    // 화면 대각(구간이 화면을 채우는 정도) 대비 실제 경로 길이 → 직선이면 ~1, 굽이질수록↑.
+    // dur을 '구간이 화면을 가로지르는 시간'으로 잡아 점 수·재생범위(일자/전체)와 무관하게 속도 일정.
+    const span=Math.max(0.4, haversine({lat:mnLa,lng:mnLn},{lat:mxLa,lng:mxLn}));
+    const dur=Math.min(9000, Math.max(2500, Math.max(1,(b-a)/span)*4200));   // ≈4.2초/화면
+    phases.push({a,b,zoom,pts,dur});
+  }
+  let d=0, lastTs=null, seg=0, pIdx=0, elapsed=0;   // elapsed=현재 구간 경과(ms)
+  const applyPos=()=>{                                  // d로부터 마커 위치·방향만 갱신(카메라는 고정)
     while(seg<flat.length-2 && gcum[seg+1]<d) seg++;
     const A=flat[seg], B=flat[seg+1], segLen=(gcum[seg+1]-gcum[seg])||1, f=(d-gcum[seg])/segLen;
-    const lat=A.lat+(B.lat-A.lat)*f, lng=A.lng+(B.lng-A.lng)*f;
-    animMarker.move(lat,lng);
+    animMarker.move(A.lat+(B.lat-A.lat)*f, A.lng+(B.lng-A.lng)*f);
     const tf=headingTransform(A,B); if(tf) car.style.transform=tf;   // 진행 방향으로 회전
     const ic=MODE_ICON[A.mode]||'🚗'; if(car.textContent!==ic) car.textContent=ic;
-    return [lat,lng];
+  };
+  const endPlay=()=>{                                   // 종료: 일자 재생이면 그 일자 프레임, 아니면 전체 보기
+    const ad=activeDay; stopPlay();
+    if(ad){ const dd=trip().days[ad-1]; if(dd){ fitTo(dd.spots.filter(hasLoc).map(s=>[s.lat,s.lng]),64,15); return; } }
+    fitAll();
   };
   const step=(ts)=>{
     if(lastTs==null) lastTs=ts;
-    const dt=Math.min(34, ts-lastTs); lastTs=ts;       // 프레임 잭·탭 복귀 갭 클램프(2프레임) — 렉 걸려도 점프 대신 감속
-    d += pxSpeed*dt/zscale(curZoom);                    // 현재(고정) 줌 기준 실거리 전진 → 화면상 등속
-    // 다음 줌 경계를 넘어서면 경계에 딱 멈춤 → 줌 1회 변경 + 타일 로딩 대기 후 재개(도시 건너뛰기·이동중 setZoom 없음)
-    if(bi<bounds.length && d>=bounds[bi].dist){
-      d=bounds[bi].dist; const bz=bounds[bi].zoom; bi++;
-      const [lat,lng]=applyPos();
-      curZoom=bz; ME().center(lat,lng,bz);             // 경계에서 딱 한 번 줌 변경
-      waitThenGo();
+    const dt=Math.min(34, ts-lastTs); lastTs=ts;       // 프레임 잭·탭 복귀 갭 클램프 — 렉 걸려도 점프 대신 감속
+    const ph=phases[pIdx];
+    elapsed+=dt;
+    const t=Math.min(1, elapsed/ph.dur);               // 구간별 소요시간 기준 진행(구간 내 등속)
+    d=ph.a+(ph.b-ph.a)*t;
+    applyPos();                                         // 마커만 이동 · 카메라 고정 → 새 타일 로딩 없음
+    if(t>=1){                                           // 이 구간 끝 → 다음 구간(fit+대기) 또는 종료
+      pIdx++;
+      if(pIdx<phases.length) enterPhase();
+      else { animRAF=null; animEndT=setTimeout(endPlay,700); }
       return;
     }
-    if(d>gtotal) d=gtotal;
-    const [lat,lng]=applyPos();
-    ME().center(lat,lng);                               // 같은 줌 구간: 팬(추적)만, setZoom 호출 없음
-    if(d<gtotal){ animRAF=requestAnimationFrame(step); }
-    else { animRAF=null; animEndT=setTimeout(()=>{     // 도착 후: 일자 재생이면 그 일자 프레임, 아니면 전체 보기
-      const ad=activeDay; stopPlay();
-      if(ad){ const dd=trip().days[ad-1]; if(dd){ fitTo(dd.spots.filter(hasLoc).map(s=>[s.lat,s.lng]),64,15); return; } }
-      fitAll();
-    },700); }
+    animRAF=requestAnimationFrame(step);
   };
-  // 정지 → 타일 로딩 완료 대기 → 짧게 정착 후 출발. 시작·경계 공통 (깔끔한 출발이 속도보다 우선)
-  const waitThenGo=()=>{
+  // 구간 진입: 구간 전체를 한 화면에 담고(줌 상한=구간 줌) 타일 로딩 완료+정착 후 카메라 고정 재생
+  const enterPhase=()=>{
     animRAF=null; animWaiting=true; updatePlayBtn();
+    ME().fit(phases[pIdx].pts, 90, phases[pIdx].zoom);
     ME().waitTiles(PLAY_TILE_TIMEOUT).then(()=>{
       if(myseq!==playSeq) return;                       // 대기 중 정지/재시작됨 → 무시
       setTimeout(()=>{
         if(myseq!==playSeq) return;
-        animWaiting=false; lastTs=null;                 // 대기 시간은 진행에서 제외
+        animWaiting=false; lastTs=null; elapsed=0;      // 새 구간 0부터 (대기 시간 제외)
         animRAF=requestAnimationFrame(step); updatePlayBtn();
       }, PLAY_SETTLE);
     });
   };
-  waitThenGo();                                         // 출발 전에도 시작 지점 타일부터 채우고 움직임
+  enterPhase();                                         // 첫 구간부터 fit+타일 대기 후 출발
 }
 function renderFilter(){
   const bar = document.getElementById('filterbar'); bar.innerHTML='';
@@ -941,16 +957,22 @@ function renderFilter(){
   play.onclick=playTrip;
   bar.appendChild(play);
   const sep0=document.createElement('span'); sep0.style.cssText='width:1px;height:18px;background:#2a3457;margin:0 4px'; bar.appendChild(sep0);
+  // 범위 전환: 재생 중이면 새 범위로 재생 재시작(현재 재생을 멈추고 새 일정으로), 아니면 해당 영역으로 프레이밍
+  const setScope=(ad, fitFn)=>{
+    const wasPlaying = animRAF||animWaiting;
+    if(wasPlaying) stopPlay();
+    activeDay=ad; render();
+    if(wasPlaying) playTrip();                          // 새 범위(일자/전체)로 재생 재시작
+    else fitFn();
+  };
   const all = document.createElement('button'); all.className='chip'+(activeDay?'':' active'); all.textContent='전체';
-  all.onclick=()=>{activeDay=0;render();fitAll();}; bar.appendChild(all);
+  all.onclick=()=>setScope(0, fitAll); bar.appendChild(all);
   trip().days.forEach((d,i)=>{
     const b=document.createElement('button'); b.className='chip'+(activeDay===i+1?' active':''); b.title=d.title;
     b.innerHTML = colorByMode()==='day'
       ? `<span class="dot" style="background:${dayColor(i)};width:7px;height:7px;margin-right:4px"></span>D${i+1}`
       : 'D'+(i+1);
-    b.onclick=()=>{activeDay=i+1;render();
-      const pts=d.spots.filter(hasLoc).map(s=>[s.lat,s.lng]);
-      fitTo(pts,64,15);};
+    b.onclick=()=>setScope(i+1, ()=>fitTo(d.spots.filter(hasLoc).map(s=>[s.lat,s.lng]),64,15));
     bar.appendChild(b);
   });
   const colors = cityColors();
@@ -995,7 +1017,9 @@ function renderSidebar(){
   trip().days.forEach((day,di)=>{
     const headC = colorByMode()==='day' ? dayColor(di) : (day.spots.length?(colors[day.spots[0].city]||'#556'):'#556');
     const card=document.createElement('div'); card.className='dayCard'+(activeDay&&activeDay!==di+1?' dim':''); card.style.setProperty('--c',headC);
-    let spotsHtml='', prevLoc=null;
+    // 전날 숙소(🏠 등록)가 있으면 오늘 첫 일정으로 '가상 이월' — prevLoc를 숙소로 시드해 첫 장소에 이동거리 표시
+    const carry=(prevDayAnchor&&prevDayAnchor.stay)?prevDayAnchor:null;
+    let spotsHtml='', prevLoc=carry;
     const tl=dayTimeline(day), etas=tl.map(x=>x.eta), dm=dayModeOf(day), iso=isoDateOf(di);
     day.spots.forEach((s,si)=>{
       const dotC = hasLoc(s)?spotColor(s,di,colors):'#4a5170';
@@ -1038,9 +1062,9 @@ function renderSidebar(){
       </div><div class="dayBody">
         ${day.drive?`<div class="drive">${esc(day.drive)}</div>`:''}
         ${flightHtml(day)}
-        ${(()=>{   // 일자 간 자동 이동시간: 이전 일자 마지막 → 오늘 첫 장소
+        ${(()=>{   // 일자 간 자동 이동시간: 이전 일자 마지막 → 오늘 첫 장소 (숙소 이월 시엔 이월 항목+구간거리로 대체)
           const first=day.spots.find(hasLoc);
-          if(!prevDayAnchor||!first) return '';
+          if(carry||!prevDayAnchor||!first) return '';
           const iid=legKey(prevDayAnchor,first,dm), ic=requestLeg(prevDayAnchor,first,dm);
           return ic
             ? `<div class="drive" style="color:#9fb8e8" title="이전 일자 마지막 장소 기준 · ${legTitle(ic)}"><span data-ileg="${iid}">${MODE_ICON[dm]} 이전 일정에서 ${(ic.m/1000).toFixed(1)}km · ${fmtDur(ic.sec)}</span></div>`
@@ -1051,6 +1075,7 @@ function renderSidebar(){
         ${(()=>{const e=dayEndMin(day); return (e!=null&&e>22*60)?`<div class="overload" title="시작시각+체류+이동 기준 예상 종료">⚠️ 일정 과밀 — 예상 종료 ${hm(e)}${e>=24*60?' (익일)':''}</div>`:'';})()}
         ${(()=>{const dc=dayCost(day); const tx=(dayRoute(day)||{}).taxi||0; const tot=dc+(dm==='car'?tx:0);
           return tot?`<div class="dist">💳 하루 비용 약 ₩${tot.toLocaleString()}${(dc&&dm==='car'&&tx)?` <span style="opacity:.55">(장소 ₩${dc.toLocaleString()} + 택시 ₩${tx.toLocaleString()})</span>`:''}</div>`:'';})()}
+        ${carry?`<div class="spot carry" style="--c:#7a86ad" title="전날 숙소 — 오늘 첫 일정으로 자동 이월 (탭하면 지도에서 보기 · 장소 편집의 🏠 숙소 체크로 관리)"><span class="nm" onclick="focusLatLng(${+carry.lat},${+carry.lng})"><span class="eta">🏠</span> ${esc(carry.name)} <span class="opt">전날 숙소</span></span></div>`:''}
         <div class="spotList" data-di="${di}">${spotsHtml}</div>
         <button class="addSpot" onclick="openSpotModal(${di},-1)">＋ 장소 추가</button>${day.spots.filter(hasLoc).length>=3?`<button class="addSpot optBtn" onclick="optimizeDay(${di})" title="이 날의 방문 순서를 이동거리 최소로 재배열">🧭 동선 최적화</button>`:''}
         ${day.note?`<div class="note">📝 ${esc(day.note)}</div>`:''}
@@ -1067,11 +1092,8 @@ function renderSidebar(){
       delay:120, delayOnTouchOnly:true, ghostClass:'sortable-ghost', chosenClass:'sortable-chosen',
       onEnd:onSpotDrop
     }));
-    // 일자 간 기준점: 숙소(🏠)가 있으면 숙소, 없으면 마지막 위치
-    const locAll=day.spots.filter(hasLoc);
-    const stay=locAll.filter(s=>s.stay).pop();
-    if(stay) prevDayAnchor=stay;
-    else if(locAll.length) prevDayAnchor=locAll[locAll.length-1];
+    // 일자 간 기준점: 숙소(🏠)가 있으면 숙소, 없으면 마지막 위치 (재생 animPath와 공통 규칙)
+    const anchor=dayAnchor(day); if(anchor) prevDayAnchor=anchor;
     dayList.appendChild(card);
   });
   sb.appendChild(dayList);
@@ -1115,6 +1137,13 @@ window.focusSpot=(di,si)=>{
   if(!ME().ready()) return;
   ME().panTo(+s.lat, +s.lng, 13);
   setTimeout(()=>{ const m=markers.find(m=>m.spot===s); if(m) m.open(); },400);
+};
+// 좌표로 지도 포커스 (전날 숙소 이월 항목 탭 등 — 특정 spot 인덱스가 없을 때)
+window.focusLatLng=(lat,lng)=>{
+  if(activeDay){ activeDay=0; render(); }             // 필터 걸려 해당 핀이 숨겨져 있을 수 있어 전체로
+  if(!ME().ready()) return;
+  ME().panTo(+lat, +lng, 13);
+  setTimeout(()=>{ const m=markers.find(m=>Math.abs(+m.spot.lat-lat)<1e-6 && Math.abs(+m.spot.lng-lng)<1e-6); if(m) m.open(); },400);
 };
 // 화살표 이동: 도구 항상 노출 + 옮긴 장소를 커서 아래에 고정(스크롤 보정)해 연속 클릭 가능
 // 일자 카드의 수단 아이콘 탭 → 자차→대중교통→도보→자전거 순환 (상세 설정은 일자 편집 모달)
