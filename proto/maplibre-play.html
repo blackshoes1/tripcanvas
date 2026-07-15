@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trip Canvas — MapLibre 재생 프로토타입</title>
+<link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="https://unpkg.com/pmtiles@3.2.0/dist/pmtiles.js"></script>
+<style>
+  html,body{margin:0;height:100%;background:#0b1020;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif}
+  #map{position:absolute;inset:0}
+  #hud{position:absolute;left:12px;top:12px;z-index:5;background:rgba(12,18,36,.82);color:#e8eefc;
+       padding:12px 14px;border-radius:12px;font-size:13px;line-height:1.5;backdrop-filter:blur(6px);
+       box-shadow:0 6px 20px rgba(0,0,0,.4);max-width:280px}
+  #hud b{color:#8fd3ff}
+  #hud .row{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+  button{background:#1e88e5;color:#fff;border:0;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer}
+  button.ghost{background:#2a3457}
+  #stat{margin-top:8px;font-size:11.5px;color:#9fb2d6;white-space:pre-line}
+  .srcpick{margin-top:8px;font-size:11.5px;color:#9fb2d6}
+  .srcpick a{color:#8fd3ff;text-decoration:none;font-weight:700}
+  .srcpick a.on{color:#fff;background:#1e88e5;padding:1px 7px;border-radius:6px}
+  .carWrap span{display:inline-block;font-size:30px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.6));transition:transform .1s linear}
+  #err{position:absolute;left:12px;bottom:12px;z-index:6;color:#ff9aa9;font-size:12px;background:rgba(0,0,0,.6);padding:6px 10px;border-radius:8px;display:none;max-width:70%;white-space:pre-line}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="hud">
+  <div><b>MapLibre 재생 프로토타입</b></div>
+  <div id="srcLabel" style="font-size:11.5px;color:#9fb2d6;margin-top:4px"></div>
+  <div class="row">
+    <button id="play">▶️ 재생</button>
+    <button id="reset" class="ghost">↻ 처음으로</button>
+  </div>
+  <div class="srcpick">타일 소스:
+    <a href="?src=pm" id="lpm">벡터(Protomaps)</a> ·
+    <a href="?src=osm" id="losm">래스터(OSM)</a>
+  </div>
+  <div id="stat">준비 중…</div>
+</div>
+<div id="err"></div>
+<script>
+const showErr=m=>{const e=document.getElementById('err');e.style.display='block';e.textContent+=(e.textContent?'\n':'')+m;};
+window.addEventListener('error',e=>showErr('JS 오류: '+e.message));
+
+// 소스 선택: ?src=pm (벡터, 실사용 목표) | ?src=osm (래스터, 폴백/비교)
+const SRC=(new URLSearchParams(location.search).get('src')||'pm').toLowerCase();
+document.getElementById(SRC==='osm'?'losm':'lpm').classList.add('on');
+document.getElementById('srcLabel').textContent = SRC==='osm'
+  ? '래스터 OSM 타일 · 팬 시 타일 네트워크 요청(구글과 유사 구조)'
+  : '벡터 타일 · GPU 렌더 · 타일 대기 없이 연속 줌';
+
+const PM_URL="https://demo-bucket.protomaps.com/v4.pmtiles";
+let protocol=new pmtiles.Protocol();
+maplibregl.addProtocol("pmtiles", protocol.tile);
+protocol.add(new pmtiles.PMTiles(PM_URL));
+
+// ── 스페인 동선(시드 스팟 순서, [lng,lat]) ──
+const RAW=[
+ [-3.5610,40.4720],[-3.7035,40.4169],[-3.7074,40.4155],[-3.5995,40.4362],
+ [-3.7143,40.4179],[-3.6921,40.4138],[-3.6845,40.4153],
+ [-4.0210,39.8581],[-4.0236,39.8570],[-4.0166,39.8534],
+ [-4.7794,37.8789],
+ [-5.9926,37.3861],[-5.9903,37.3831],[-5.9869,37.3772],[-5.9916,37.3931],
+ [-5.1655,36.7406],[-5.1671,36.7423],
+ [-4.6373,36.5959],[-4.4093,36.7194],
+ [-4.4158,36.7211],[-3.8770,36.7444],
+ [-3.5986,37.1763],
+ [-3.5881,37.1761],[-3.5927,37.1810],
+ [-3.5610,40.4720]
+];
+
+const R=6371,rad=d=>d*Math.PI/180;
+function hav(a,b){const dLat=rad(b[1]-a[1]),dLng=rad(b[0]-a[0]);
+ const h=Math.sin(dLat/2)**2+Math.cos(rad(a[1]))*Math.cos(rad(b[1]))*Math.sin(dLng/2)**2;return 2*R*Math.asin(Math.sqrt(h));}
+const cum=[0];for(let i=1;i<RAW.length;i++)cum[i]=cum[i-1]+hav(RAW[i-1],RAW[i]);
+const total=cum[cum.length-1];
+const segZoom=i=>{const L=hav(RAW[i],RAW[i+1]);return L<6?12.4:L<30?10.2:L<120?7.6:6.2;};
+
+const routeSrc={type:"geojson",data:{type:"Feature",geometry:{type:"LineString",coordinates:RAW}}};
+const routeLayer={id:"route",type:"line",source:"route",paint:{"line-color":"#e63946","line-width":3,"line-opacity":0.85,"line-dasharray":[2,1.5]}};
+
+function styleVector(){return{
+ version:8,
+ glyphs:"https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf",
+ sources:{ pm:{type:"vector",url:"pmtiles://"+PM_URL,attribution:"© OSM · Protomaps"}, route:routeSrc },
+ layers:[
+   {id:"bg",type:"background",paint:{"background-color":"#eae6dd"}},
+   {id:"earth",type:"fill",source:"pm","source-layer":"earth",paint:{"fill-color":"#e7e2d6"}},
+   {id:"landuse",type:"fill",source:"pm","source-layer":"landuse",paint:{"fill-color":["match",["get","kind"],["park","forest","wood","grass","meadow","recreation_ground","scrub"],"#d4e5c0","#e7e2d6"],"fill-opacity":0.7}},
+   {id:"water",type:"fill",source:"pm","source-layer":"water",paint:{"fill-color":"#a9d4ec"}},
+   {id:"roads",type:"line",source:"pm","source-layer":"roads",paint:{"line-color":["match",["get","kind"],["highway","motorway"],"#f6c667","#ffffff"],"line-width":["interpolate",["linear"],["zoom"],5,0.4,9,1,12,2.2,15,5]}},
+   {id:"buildings",type:"fill",source:"pm","source-layer":"buildings",minzoom:14,paint:{"fill-color":"#ddd7c9"}},
+   routeLayer
+ ]
+};}
+function styleRaster(){return{
+ version:8,
+ sources:{ osm:{type:"raster",tiles:["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],tileSize:256,maxzoom:19,attribution:"© OSM"}, route:routeSrc },
+ layers:[ {id:"osm",type:"raster",source:"osm"}, routeLayer ]
+};}
+
+const map=new maplibregl.Map({container:"map",style:SRC==='osm'?styleRaster():styleVector(),center:RAW[0],zoom:12,attributionControl:false,fadeDuration:0});
+map.on('error',e=>{ if(e&&e.error) showErr('map: '+(e.error.message||e.error)); });
+
+const carWrap=document.createElement('div');carWrap.className='carWrap';
+const car=document.createElement('span');car.textContent='🚗';carWrap.appendChild(car);
+const marker=new maplibregl.Marker({element:carWrap}).setLngLat(RAW[0]);
+
+let raf=null,d=0,curZoom=12,lastTs=null,seg=0,fps='',frames=0,fpsT=0;
+const ZREF=12, BASE=0.0012;   // km/ms @ zoom12 — 재생 속도 튜닝 지점(↑ 빠르게, ↓ 느리게). 0.0012≈40초
+const stat=document.getElementById('stat'), playBtn=document.getElementById('play');
+
+function posAt(dist){
+  while(seg<RAW.length-2 && cum[seg+1]<dist) seg++;
+  while(seg>0 && cum[seg]>dist) seg--;
+  const A=RAW[seg],B=RAW[seg+1],len=(cum[seg+1]-cum[seg])||1,f=Math.max(0,Math.min(1,(dist-cum[seg])/len));
+  return {lng:A[0]+(B[0]-A[0])*f,lat:A[1]+(B[1]-A[1])*f,A,B};
+}
+function bearing(A,B){return Math.atan2(B[0]-A[0],B[1]-A[1])*180/Math.PI;}
+
+function frame(ts){
+  if(lastTs==null)lastTs=ts;
+  const dt=Math.min(40,ts-lastTs);lastTs=ts;
+  frames++;fpsT+=dt;if(fpsT>=500){fps=Math.round(frames/fpsT*1000)+' fps';frames=0;fpsT=0;}
+  const tgt=segZoom(seg);
+  curZoom+=(tgt-curZoom)*Math.min(1,dt/450);
+  d+=BASE*dt*Math.pow(2,ZREF-curZoom);
+  if(d>=total){ d=total; render(true); stop(); stat.textContent='도착 · '+fps+'\n(타일 대기 없이 완주)'; return; }
+  render(false);
+  raf=requestAnimationFrame(frame);
+}
+function render(end){
+  const p=posAt(d);
+  marker.setLngLat([p.lng,p.lat]);
+  car.style.transform=`rotate(${bearing(p.A,p.B)}deg)`;
+  map.jumpTo({center:[p.lng,p.lat],zoom:curZoom});
+  if(!end) stat.textContent=`재생 중 · zoom ${curZoom.toFixed(1)} · ${fps}\n진행 ${(d/total*100).toFixed(0)}%`;
+}
+function start(){ if(raf)return; marker.addTo(map); playBtn.textContent='⏸ 일시정지'; lastTs=null; raf=requestAnimationFrame(frame); }
+function stop(){ if(raf)cancelAnimationFrame(raf); raf=null; playBtn.textContent='▶️ 재생'; }
+function reset(){ stop(); d=0;seg=0;curZoom=12; marker.setLngLat(RAW[0]); map.jumpTo({center:RAW[0],zoom:12}); stat.textContent='처음으로'; }
+
+playBtn.onclick=()=>{ raf?stop():start(); };
+document.getElementById('reset').onclick=reset;
+
+map.on('load',()=>{
+  marker.addTo(map);
+  stat.textContent='로드 완료 — ▶️ 재생을 눌러보세요';
+  console.log('map loaded ('+SRC+'), total km=',total.toFixed(0));
+});
+</script>
+</body>
+</html>

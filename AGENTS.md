@@ -1,0 +1,51 @@
+# Trip Canvas — 작업 가이드
+
+대화로 만드는 멀티시티 여행 동선 플래너 (단일 파일 PWA). 빌드 도구 없음 — 정적 파일 그대로 배포.
+
+## Git 워크플로 (중요)
+
+- **작업은 `main`에 직접 커밋·푸시한다.** 별도 브랜치·PR 없이 바로 반영한다.
+- ⚠️ `main` 푸시는 Vercel 자동 배포와 연결돼 있어 **커밋 즉시 프로덕션(`tripcanvas-ai.vercel.app`)에 나간다.** 푸시 전에 변경을 스스로 검토하고, 아래 **릴리스 체크리스트**를 반드시 지킬 것.
+
+## 배포
+
+- 원격 `main` 머지 시 **Vercel 자동 배포** (프로젝트 `tripcanvas`, 프로덕션 `tripcanvas-ai.vercel.app`).
+- 커밋 author 이메일은 반드시 **GitHub 계정과 매칭되는 유효한 주소**여야 한다 (`blackshoes85@gmail.com`).
+  `.local` 등 로컬 호스트 기반 자동 이메일이면 Vercel이 배포를 거부한다.
+
+## 릴리스 체크리스트
+
+- [ ] `sw.js`의 `VER` 값 올리기 + `index.html`의 `?v=` 쿼리도 같은 값으로 (안 올리면 stale 캐시로 변경이 반영 안 됨)
+- [ ] 폰에서 프리뷰 URL 확인 후 merge
+
+## 구조
+
+- `index.html` — 마크업 (모달·헤더 등)
+- `app.js` — 앱 로직 전체
+- `lib.js` — 순수 로직(파서·거리·시각 등, 유닛 테스트 대상)
+- `style.css` — 스타일
+- `sw.js` — 서비스 워커 (오프라인 캐시 전략)
+- `manifest.json` — PWA 매니페스트
+- `icon-*.png` — 앱 아이콘
+
+라이브러리(CDN): 지도 듀얼 엔진 — 해외 Google Maps JS SDK · 국내(스팟 과반이 한국) 카카오맵 JS SDK · LZString(공유 링크 압축) · SortableJS(드래그) · Supabase(로그인/클라우드 동기화)
+검색: 국내 카카오 로컬 · 해외 Google Places (라우팅) · 저장: localStorage + Supabase
+API 키: app.js 상단 GMAPS_KEY(리퍼러 제한)·KAKAO_KEY(JS, 플랫폼 도메인 제한)·KAKAO_REST_KEY(카카오내비 길찾기) — localhost:8000, tripcanvas-ai.vercel.app 등록 필요
+이동 소요시간: 일자별 이동수단(자차/대중교통/도보/자전거) — 국내 자차=카카오내비(도로 없으면 인근 도로 스냅), 국내 대중교통=Google Routes TRANSIT, 국내 도보·자전거=카카오 도로거리 기반 추정, 해외=Google Routes 4모드. 구간 결과는 localStorage(tripcanvas_legs_v3, 수단별 키) 캐시
+주의: Google 약관상 지도 타일 캐시 금지 → 오프라인 지도 기능 없음 (SW는 앱 셸만 캐시)
+
+## 로컬 실행
+
+서비스 워커 때문에 http 서버로 열어야 한다:
+
+```bash
+python3 -m http.server 8000   # → http://localhost:8000
+```
+
+## 보안 주의
+
+- 공유 링크(`#t=`)·가져오기·AI 파싱으로 **외부 데이터가 유입**된다. 사용자 데이터를 `innerHTML`로 출력할 때는 반드시 `esc()`로 이스케이프한다 (XSS 방어).
+
+## 운영 팁
+
+- Google Cloud 콘솔 결제 예산 알림(예: 월 $5)과 API 사용량 대시보드를 주기적으로 확인할 것 — 키가 정적 HTML에 노출되므로 도메인 제한 유지가 필수.
