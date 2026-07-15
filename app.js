@@ -274,11 +274,14 @@ async function ensureKakaoMap(){
   kakao.maps.event.addListener(kmap,'rightclick',me=>{ if(!pickMode) addSpotAt(me.latLng.getLat(), me.latLng.getLng()); });
   return true;
 }
-// 좌표 있는 스팟 과반이 한국이면 카카오 엔진
+// 지금 보는 범위(일자 필터 중이면 그 일자, 아니면 전체)의 좌표 스팟이 '전부' 국내일 때만 카카오.
+// 해외 스팟이 하나라도 보이면 카카오는 그 지역을 못 그리므로 구글(전 세계 표시). 일자 이동 시 자동 전환.
+// (예: 1일차 국내→카카오, 2일차 해외→구글, 전체 보기(국내+해외)→구글)
 function desiredEngine(){
+  const days = activeDay ? [trip().days[activeDay-1]] : trip().days;
   let kr=0,n=0;
-  trip().days.forEach(d=>d.spots.forEach(s=>{ if(hasLoc(s)){ n++; if(inKorea({lat:+s.lat,lng:+s.lng})) kr++; } }));
-  return (n>0 && kr/n>=0.5) ? 'kakao' : 'google';
+  days.forEach(d=> d && d.spots.forEach(s=>{ if(hasLoc(s)){ n++; if(inKorea({lat:+s.lat,lng:+s.lng})) kr++; } }));
+  return (n>0 && kr===n) ? 'kakao' : 'google';
 }
 function setEngine(e){
   if(engine===e) return;
@@ -286,7 +289,12 @@ function setEngine(e){
   document.getElementById('map').style.display = e==='google'?'block':'none';
   document.getElementById('kmap').style.display = e==='kakao'?'block':'none';
   if(e==='kakao'&&kmap){ kmap.relayout(); }
-  setTimeout(()=>fitEntry(),60);   // 전환 직후 새 엔진 기준으로 포커싱
+  setTimeout(()=>fitCurrentView(),60);   // 전환 직후 현재 보는 범위로 포커싱
+}
+// 현재 보는 범위로 지도 맞춤 — 일자 필터 중이면 그 일자, 아니면 전체
+function fitCurrentView(){
+  if(activeDay){ const d=trip().days[activeDay-1]; if(d){ const pts=d.spots.filter(hasLoc).map(s=>[s.lat,s.lng]); if(pts.length){ fitTo(pts,64,15); return; } } }
+  fitAll();
 }
 // 카카오 커스텀 팝업 (다크 테마, InfoWindow 대체)
 function openKPopup(html,lat,lng){
