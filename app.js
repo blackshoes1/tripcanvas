@@ -854,15 +854,17 @@ function resetPlayHud(){
 })();
 // 백그라운드(탭 숨김) 전환 시 자동 정지 — 복귀 후 재생 시간이 튀는 현상 방지
 document.addEventListener('visibilitychange',()=>{ if(document.hidden && (animRAF||animWaiting)) stopPlay(); });
-// 이모지는 기본 왼쪽(서)을 봄 → 진행 방향(A→B)으로 회전. 뒤집힘은 좌우반전으로 방지.
+// 🚗 이모지는 기본 '왼쪽(서)·수평'. 측면뷰라 전후로 완전 회전시키면 남북 이동에서 차가
+// 수직으로 서/누워 보인다. → 좌우는 scaleX로만 뒤집고(동/서), 상하는 ±MAX_TILT로 '기울이기'만 한다.
+const CAR_MAX_TILT=36;
 function headingTransform(A,B){
-  const ex=B.lng-A.lng, ny=B.lat-A.lat;
+  const ex=B.lng-A.lng, ny=B.lat-A.lat;                 // ny>0 = 북(화면 위)
   if(!ex && !ny) return null;
-  let r=Math.atan2(-ny,ex)*180/Math.PI-180;   // 화면 기준(북=위) 각도 − 이모지 기본각(서)
-  r=((r%360)+360)%360; if(r>180) r-=360;       // -180..180 정규화
-  let flip=1;
-  if(r>90||r<-90){ flip=-1; r=r>0? r-180 : r+180; }   // 상하 뒤집힘 방지
-  return `rotate(${Math.round(r)}deg) scaleX(${flip})`;
+  const east = ex>=0;                                   // 진행의 동/서 성분 → 바라보는 좌우
+  let pitch = Math.atan2(ny, Math.abs(ex)||1e-9)*180/Math.PI;   // -90..90 (+면 위/북)
+  pitch = Math.max(-CAR_MAX_TILT, Math.min(CAR_MAX_TILT, pitch));
+  const rot = east ? -pitch : pitch;                    // scaleX(-1) 뒤엔 회전 방향이 반전되므로 부호 보정
+  return `rotate(${Math.round(rot)}deg) scaleX(${east?-1:1})`;
 }
 function stopPlay(){
   playSeq++;                                         // 대기 중이던 타일 로딩 재개 무효화
