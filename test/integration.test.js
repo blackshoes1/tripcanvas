@@ -85,6 +85,17 @@ test('통합: 구간별 수단(legMode) 우선, 없거나 무효면 일자 기�
   assert.equal(w.eval(`legModeOf({mode:'zzz',spots:[]}, {legMode:'bad'})`), 'car');
 });
 
+test('통합: 검색 오류 분류 classifySearchErr (인증/할당량/네트워크/일반)', { skip: noJsdom }, () => {
+  const w = boot();
+  assert.equal(w.eval(`classifySearchErr(new Error('Failed to fetch'))`), 'network');
+  assert.equal(w.eval(`classifySearchErr(new Error('OVER_QUERY_LIMIT: quota exceeded'))`), 'quota');
+  assert.equal(w.eval(`classifySearchErr(new Error('This API project is not authorized to use this API'))`), 'auth');
+  assert.equal(w.eval(`classifySearchErr(new Error('RefererNotAllowedMapError'))`), 'auth');
+  assert.equal(w.eval(`classifySearchErr(new Error('boom'))`), 'error');
+  ['auth', 'quota', 'network', 'error'].forEach(k =>
+    assert.equal(w.eval(`typeof SEARCH_ERR_MSG['${k}']`), 'string', `${k} 안내문 존재`));
+});
+
 test('통합: 재생 탐색 계산 playSeekTarget / playLegIndexAt', { skip: noJsdom }, () => {
   const w = boot();
   // phases [0..100 dur2000][100..300 dur4000], gtotal 300, frac 0.5 → d=150 (두번째 phase)

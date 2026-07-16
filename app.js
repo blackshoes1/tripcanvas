@@ -1372,16 +1372,27 @@ document.getElementById('spotDelBtn').onclick=()=>{
 let searching=false;
 async function doSearch(){
   const q=document.getElementById('spotSearch').value.trim(); if(!q)return;
-  if(searching) return;
+  if(searching) return;                                  // 진행 중 재호출 차단(연타 방지)
   const res=document.getElementById('searchRes');
   searching=true;
-  res.innerHTML='<div>검색 중…</div>';
   try{
     // 편집 중인 일자의 기존 도시를 앵커로 활용 (있으면 주변 우선)
     const city=document.getElementById('spotCity').value.trim();
-    const anchor=city? await cityAnchorOf(city) : null;
-    const list=await routedSearch(q, anchor, 5);
-    res.innerHTML = list.length? '' : '<div>결과 없음 — 다른 키워드나 지도 클릭으로 지정해주세요</div>';
+    const ck=q.toLowerCase()+'|'+city.toLowerCase();
+    const hit=_searchCache[ck];
+    let list;
+    if(hit && Date.now()-hit.t<SEARCH_TTL){ list=hit.list; }   // 동일 검색 단기 캐시
+    else{
+      res.innerHTML='<div>검색 중…</div>';
+      const anchor=city? await cityAnchorOf(city) : null;
+      list=await routedSearch(q, anchor, 5);
+      if(list.length) _searchCache[ck]={list, t:Date.now()};    // 결과만 캐시(오류는 재시도 가능하게)
+    }
+    if(!list.length){   // 무결과 vs 오류(인증·할당량·네트워크) 구분해 안내
+      res.innerHTML=`<div>${esc(list.err? SEARCH_ERR_MSG[list.err]||SEARCH_ERR_MSG.error : '결과 없음 — 다른 키워드나 지도 클릭으로 지정해주세요')}</div>`;
+      return;
+    }
+    res.innerHTML='';
     list.forEach(it=>{
       const d=document.createElement('div');
       d.textContent=it.name+(it.addr?` — ${it.addr}`:'');
@@ -1396,7 +1407,10 @@ async function doSearch(){
       };
       res.appendChild(d);
     });
-  }catch(e){ res.innerHTML='<div>검색 실패 — 지도 클릭으로 지정해주세요</div>'; }
+  }catch(e){   // 예상 못한 예외도 원인 분류해 안내(상세는 콘솔에만)
+    const code=classifySearchErr(e); console.warn('검색 실패['+code+']:', (e&&e.message)||e);
+    res.innerHTML=`<div>${esc(SEARCH_ERR_MSG[code]||SEARCH_ERR_MSG.error)}</div>`;
+  }
   finally{ searching=false; }
 }
 document.getElementById('spotSearchBtn').onclick=doSearch;
@@ -1441,7 +1455,7 @@ async function lookupAirport(el){
   if(!/^[A-Za-z가-힣]{2,4}$/.test(v)) return;                 // 코드처럼 짧을 때만 (이미 이름이면 건드리지 않음)
   el.disabled=true;
   try{
-    const r=(await googlePlaces(v+' airport', null, 1))[0];
+    const r=(await googlePlaces(v+' airport', null, 1)).list[0];
     if(r && r.name && el.value.trim()===v) el.value=`${r.name} (${v.toUpperCase()})`;
   }catch(e){} finally{ el.disabled=false; }
 }
@@ -1655,20 +1669,41 @@ function loadKakao(){
 }
 // 카카오 키워드 검색 → [{name,addr,lat,lng}] (실패/무결과 시 [])
 // near가 있으면 20km 반경 우선, 비면 전국 재검색 (호출측 거리 가드가 오매칭 차단)
+// ── 검색 오류 분류·안내 (인증/할당량/네트워크/무결과 구분) ──
+// 운영자용 상세(코드·원문)는 콘솔에만 남기고, 사용자에겐 짧은 재시도 안내만 보여준다.
+function classifySearchErr(e){
+  const m=(((e&&(e.message||e.code))||e||'')+'').toLowerCase();
+  if(/failed to fetch|networkerror|network error|load failed|timeout/.test(m)) return 'network';
+  if(/quota|over_query|resource_exhausted|rate limit|too many/.test(m)) return 'quota';
+  if(/denied|not authorized|unauthorized|forbidden|api ?key|permission|referer|referrer|invalid key/.test(m)) return 'auth';
+  return 'error';
+}
+const SEARCH_ERR_MSG={
+  auth:'검색 키 인증·권한 문제예요 — 관리자 확인이 필요합니다',
+  quota:'검색 사용량 한도를 넘었어요 — 잠시 후 다시 시도해주세요',
+  network:'네트워크 오류예요 — 연결을 확인하고 다시 시도해주세요',
+  error:'검색에 실패했어요 — 다시 시도하거나 지도 클릭으로 지정해주세요'
+};
+// 동일 검색 단기 캐시(2분) — 같은 질의 반복·연타 시 재호출 방지(오류는 캐시 안 함 → 재시도 가능)
+const _searchCache={}; const SEARCH_TTL=120000;
+// 카카오 키워드 검색 → {list, err}. ZERO_RESULT(진짜 무결과)와 오류를 구분한다.
 async function kakaoSearch(q, near, limit){
-  if(!(await loadKakao())) return [];
+  if(!(await loadKakao())) return {list:[], err:'network'};   // SDK 로드 실패(네트워크/도메인 제한)
   const run=opts=>new Promise(res=>{
     try{
       new kakao.maps.services.Places().keywordSearch(q,(data,status)=>{
-        if(status!==kakao.maps.services.Status.OK||!data) return res([]);
-        res(data.map(d=>({name:d.place_name, addr:d.road_address_name||d.address_name||'', city:cityFromKoreanAddr(d.address_name||d.road_address_name||''), lat:+d.y, lng:+d.x})));
+        const S=kakao.maps.services.Status;
+        if(status===S.OK && data) return res({list:data.map(d=>({name:d.place_name, addr:d.road_address_name||d.address_name||'', city:cityFromKoreanAddr(d.address_name||d.road_address_name||''), lat:+d.y, lng:+d.x})), err:null});
+        if(status===S.ZERO_RESULT) return res({list:[], err:null});   // 진짜 결과 없음(오류 아님)
+        console.warn('kakao 검색 오류 status:', status);
+        res({list:[], err:'error'});
       },opts);
-    }catch(e){ res([]); }
+    }catch(e){ console.warn('kakao 검색 예외:', e); res({list:[], err:'error'}); }
   });
   const size=Math.min(limit||5,15);
   if(near){
     const r=await run({size, location:new kakao.maps.LatLng(near.lat,near.lng), radius:20000});
-    if(r.length) return r;
+    if(r.list.length) return r;
   }
   return run({size});
 }
@@ -1684,16 +1719,17 @@ function normHours(oh){
   }
   return out.length?out:null;
 }
+// Google Places 텍스트 검색 → {list, err}. 오류는 분류해 코드로 반환(콘솔엔 원문).
 async function googlePlaces(q, near, limit){
-  if(!map) return [];
+  if(!map) return {list:[], err:'network'};   // 지도 SDK 미로드
   try{
     const {Place}=await google.maps.importLibrary('places');
     const req={textQuery:q, fields:['displayName','formattedAddress','addressComponents','location','regularOpeningHours'], maxResultCount:limit||5, language:'en'};   // 해외 장소는 영문명
     if(near) req.locationBias={center:near, radius:30000};
     const {places}=await Place.searchByText(req);
-    return (places||[]).map(p=>({name:placeName(p), addr:p.formattedAddress||'', city:cityFromGoogle(p.addressComponents),
-      lat:p.location.lat(), lng:p.location.lng(), hours:normHours(p.regularOpeningHours)}));
-  }catch(e){ return []; }
+    return {list:(places||[]).map(p=>({name:placeName(p), addr:p.formattedAddress||'', city:cityFromGoogle(p.addressComponents),
+      lat:p.location.lat(), lng:p.location.lng(), hours:normHours(p.regularOpeningHours)})), err:null};
+  }catch(e){ const code=classifySearchErr(e); console.warn('Places 검색 오류['+code+']:', (e&&e.message)||e); return {list:[], err:code}; }
 }
 // 도시명 → 앵커 좌표 (Google Geocoder, 전 세계) — 캐시
 const _cityAnchor={};
@@ -1709,13 +1745,19 @@ function cityAnchorOf(city){
   });
 }
 // 질의 하나를 라우팅해 검색 (국내 앵커면 카카오 우선→구글 폴백, 해외면 구글)
+// 결과 배열을 반환하되, 결과가 없을 땐 배열에 .err(오류코드)를 실어 '무결과'와 '오류'를 구분하게 한다.
 async function routedSearch(q, near, limit){
   const korean = near? inKorea(near) : /[가-힣]/.test(q);
+  let err=null;
   if(korean){
     const k=await kakaoSearch(q, near, limit);
-    if(k.length) return k;
+    if(k.list.length) return k.list;
+    err=k.err;
   }
-  return googlePlaces(q, near, limit);
+  const g=await googlePlaces(q, near, limit);
+  if(g.list.length) return g.list;
+  const out=[]; out.err=g.err||err||null;   // 무결과면 err=null, 실패면 코드
+  return out;
 }
 // 장소 하나의 좌표 탐색 — 도시 앵커에서 지나치게 먼 결과는 배제(오매칭 방지), 못 찾으면 null
 async function geocodeSpot(s){
