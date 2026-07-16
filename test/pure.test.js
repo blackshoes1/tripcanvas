@@ -181,3 +181,14 @@ test('dayStartAnchor — 이월 정책(previous/none)·빈 일자 건너뜀·첫
   // 직전 유효 일자에 숙소가 없으면 마지막 위치 장소
   assert.equal(L.dayStartAnchor([spotDay, {spots:[{lat:9,lng:9}]}], 1).name, 'A');
 });
+
+test('비숙소 전날 마지막 장소도 다음날 ETA에 반영 (anchor 배선 회귀 방지)', () => {
+  const prevDay={spots:[{lat:1,lng:1,name:'A'},{lat:2,lng:2,name:'last'}]};   // 숙소 없음
+  const today={startAt:'09:00', spots:[{lat:3,lng:3,name:'first'}]};
+  const anchor=L.dayStartAnchor([prevDay, today], 1);
+  assert.equal(anchor.name, 'last');                                          // 마지막 위치 장소(비숙소)
+  // 앵커를 넘기면 숙소가 아니어도 이동시간이 첫 장소 ETA에 반영돼야 한다
+  assert.equal(L.computeTimeline(today, {legMin:()=>20, startAnchor:anchor})[0].eta, L.parseHM('09:20'));
+  // 앵커가 없으면(none 정책 등) 이동 미반영 → 시작시각 그대로
+  assert.equal(L.computeTimeline(today, {legMin:()=>20})[0].eta, L.parseHM('09:00'));
+});

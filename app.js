@@ -827,6 +827,13 @@ const PLAY_TILE_TIMEOUT=3500, PLAY_SETTLE=400;   // 타일 로딩 최대 대기(
 function startAnchorFor(di){ return dayStartAnchor(trip().days, di); }
 // 시각적 🏠 '전날 숙소' 이월 항목용 — 시작 앵커가 숙소(stay)일 때만.
 function carryStayFor(di){ const a=startAnchorFor(di); return (a&&a.stay)?a:null; }
+// 일자 컨텍스트(한 번에 계산) — 사이드바·여행모드·이미지·재생이 공유해 anchor/carry 혼동 방지.
+// ETA·종료·이미지·여행모드 타임라인은 anchor(전날 숙소 또는 마지막 장소, 정책 반영)를 쓰고,
+// 화면의 🏠 '전날 숙소' 항목 표시에만 carry(숙소일 때만)를 쓴다.
+function dayContext(di){
+  const day=trip().days[di], anchor=startAnchorFor(di);
+  return { day, anchor, carry:(anchor&&anchor.stay)?anchor:null, timeline:dayTimeline(day, anchor), mode:dayModeOf(day) };
+}
 function animPath(){
   const flat=[]; const days=trip().days;
   // 일자 필터 중이면 해당 일자만, 아니면 전체. 각 일자의 이월 시작점은 startAnchorFor(정책 반영, none이면 없음).
@@ -1063,9 +1070,9 @@ function renderSidebar(){
     const headC = colorByMode()==='day' ? dayColor(di) : (day.spots.length?(colors[day.spots[0].city]||'#556'):'#556');
     const card=document.createElement('div'); card.className='dayCard'+(activeDay&&activeDay!==di+1?' dim':''); card.style.setProperty('--c',headC);
     // 전날 숙소(🏠 등록)가 있으면 오늘 첫 일정으로 '가상 이월' — prevLoc를 숙소로 시드해 첫 장소에 이동거리 표시
-    const carry=carryStayFor(di);   // 정책 반영(none이면 null)
+    const ctx=dayContext(di), carry=ctx.carry;   // anchor=ETA용(숙소/전날 마지막), carry=🏠 표시용(숙소만)
     let spotsHtml='', prevLoc=carry;
-    const tl=dayTimeline(day, carry), etas=tl.map(x=>x.eta), dm=dayModeOf(day), iso=isoDateOf(di);   // carry(전날 숙소)면 첫 장소 ETA에 숙소→첫 장소 이동시간 반영
+    const tl=ctx.timeline, etas=tl.map(x=>x.eta), dm=ctx.mode, iso=isoDateOf(di);   // ETA는 anchor 기준 — 비숙소 전날 마지막 장소도 반영
     day.spots.forEach((s,si)=>{
       const dotC = hasLoc(s)?spotColor(s,di,colors):'#4a5170';
       // 구간: 캐시된 경로가 있으면 그걸, 아니면 직선거리 + 백그라운드 조회
@@ -1117,7 +1124,7 @@ function renderSidebar(){
         })()}
         ${(()=>{const rt=dayRoute(day); if(rt) return `<div class="dist">📏 하루 동선 약 ${(rt.m/1000).toFixed(1)}km · ${MODE_ICON[dm]}${fmtDur(rt.sec)}${((dm==='car'||dm==='taxi')&&rt.taxi)?` · 🚕약 ${rt.taxi.toLocaleString()}원`:''} <span style="opacity:.55">(${dm==='flight'?'직선':'도로 기준'})</span></div>`;
           return dayDistance(day)>0?`<div class="dist">📏 하루 동선 약 ${dayDistance(day).toFixed(1)}km <span style="opacity:.55">(직선)</span></div>`:'';})()}
-        ${(()=>{const e=dayEndMin(day, carry); return (e!=null&&e>22*60)?`<div class="overload" title="시작시각+체류+이동 기준 예상 종료">⚠️ 일정 과밀 — 예상 종료 ${hm(e)}${e>=24*60?' (익일)':''}</div>`:'';})()}
+        ${(()=>{const e=dayEndMin(day, ctx.anchor); return (e!=null&&e>22*60)?`<div class="overload" title="시작시각+체류+이동 기준 예상 종료">⚠️ 일정 과밀 — 예상 종료 ${hm(e)}${e>=24*60?' (익일)':''}</div>`:'';})()}
         ${(()=>{const dc=dayCost(day); const tx=(dayRoute(day)||{}).taxi||0; const road=(dm==='car'||dm==='taxi'); const tot=dc+(road?tx:0);
           return tot?`<div class="dist">💳 하루 비용 약 ₩${tot.toLocaleString()}${(dc&&road&&tx)?` <span style="opacity:.55">(장소 ₩${dc.toLocaleString()} + 택시 ₩${tx.toLocaleString()})</span>`:''}</div>`:'';})()}
         ${carry?`<div class="spot carry" style="--c:#7a86ad" title="전날 숙소 — 오늘 첫 일정으로 자동 이월 (탭하면 지도에서 보기 · 장소 편집의 🏠 숙소 체크로 관리)"><span class="nm" onclick="focusLatLng(${+carry.lat},${+carry.lng})"><span class="eta">🏠</span> ${esc(carry.name)} <span class="opt">전날 숙소</span></span></div>`:''}
@@ -1457,15 +1464,18 @@ document.getElementById('exportBtn').onclick=()=>{
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=trip().name.replace(/\s+/g,'_')+'.json'; a.click();
 };
 document.getElementById('importBtn').onclick=()=>document.getElementById('importFile').click();
+let _importing=false;   // 가져오기 진행 중 — PWA 자동 새로고침이 이 사이에 끼어들어 유실되지 않게
 document.getElementById('importFile').onchange=e=>{
   const f=e.target.files[0]; if(!f)return;
   const rd=new FileReader();
+  _importing=true;
   rd.onload=()=>{
     try{
       const t=JSON.parse(rd.result);
       if(!t.days) throw 0;
       t.id=uid(); commit(()=>{ store.trips.push(t); store.activeId=t.id; activeDay=0; }, {fit:fitEntry}); toast('가져오기 완료');
     }catch(err){ toast('잘못된 파일입니다','#e63946'); }
+    finally{ _importing=false; }
   };
   rd.readAsText(f); e.target.value='';
 };
@@ -1489,7 +1499,7 @@ function buildTripCard(){
   if(t.start) html+=`<div style="font-size:12px;color:#9aa5c4;margin-bottom:14px">${esc(t.start)} 출발 · ${t.days.length}일</div>`;
   t.days.forEach((day,di)=>{
     const c=colorByMode()==='day'?dayColor(di):(day.spots.length?(colors[day.spots[0].city]||'#556'):'#556');
-    const etas=dayEtas(day, carryStayFor(di));
+    const etas=dayEtas(day, startAnchorFor(di));   // 이미지 ETA도 anchor 기준(사이드바와 동일)
     html+=`<div style="border-left:4px solid ${c};background:#1f2b4d;border-radius:10px;padding:10px 14px;margin-bottom:10px">`;
     html+=`<div style="font-size:13.5px;font-weight:700">Day ${di+1} · ${esc(day.title)} <span style="color:#9aa5c4;font-weight:400;font-size:11px">${dateOf(di)}</span></div>`;
     if(day.drive) html+=`<div style="font-size:11px;color:#f6bd60;margin-top:3px">${esc(day.drive)}</div>`;
@@ -1800,8 +1810,8 @@ function renderTravel(di){
   if(!d.spots.length){ list.innerHTML='<div style="color:#9aa5c4;font-size:13px;padding:20px 4px">이 날은 등록된 장소가 없습니다 — 이동일이거나 자유 일정</div>'; return; }
   // 전날 숙소 이월: Day 2+에서 전날 숙소가 있으면 상단에 가상 항목으로 표시(오늘 데이터엔 복제 안 함).
   // 타임라인·첫 장소 구간이 숙소에서 출발하도록 prevLoc/etas를 숙소로 시드 (사이드바·재생과 동일 기준).
-  const carry=carryStayFor(di);
-  const etas=dayEtas(d, carry), dm=dayModeOf(d);
+  const ctx=dayContext(di), carry=ctx.carry;
+  const etas=ctx.timeline.map(x=>x.eta), dm=ctx.mode;   // ETA는 anchor 기준(사이드바·이미지와 동일)
   let prevLoc=carry;
   if(carry){
     const el=extMapLink(carry);
@@ -1989,8 +1999,11 @@ if('serviceWorker' in navigator){
     let noticed=false;
     // 새 버전 설치 감지 → 자동 새로고침. 단, 편집 중(모달 열림)이면 입력 유실 방지로 수동 안내만.
     const applyUpdate=()=>{ if(noticed) return; noticed=true;
-      const editing = !!document.querySelector('.modalBg.show') || document.getElementById('travel').classList.contains('show');
-      if(editing){ toast('새 버전이 있어요 — 탭해서 새로고침', '#1d6fd6', {label:'새로고침', fn:()=>location.reload()}); }
+      // 편집/입력 중이면 자동 새로고침 대신 수동 안내(입력 유실 방지). 모달뿐 아니라
+      // 지도 위치 지정(pickMode·모달 닫힘)·검색·가져오기 진행 중도 '작업 중'으로 본다.
+      const busy = pickMode || searching || _importing
+        || !!document.querySelector('.modalBg.show') || document.getElementById('travel').classList.contains('show');
+      if(busy){ toast('새 버전이 있어요 — 탭해서 새로고침', '#1d6fd6', {label:'새로고침', fn:()=>location.reload()}); }
       else { toast('새 버전 적용 중…', '#1d6fd6'); setTimeout(()=>location.reload(), 900); }
     };
     if(reg.waiting && navigator.serviceWorker.controller) applyUpdate();   // 앱 열 때 이미 대기 중인 새 버전
