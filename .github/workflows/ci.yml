@@ -11,9 +11,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+      - name: Install test deps (jsdom for integration tests)
+        run: npm install --no-audit --no-fund
       - name: Syntax check
         run: node --check app.js && node --check lib.js && node --check sw.js
       - name: Type check (lib.js, JSDoc)
         run: npx -y -p typescript@5.6.3 tsc -p jsconfig.json
-      - name: Unit tests
+      - name: Unit + integration tests
         run: node --test
