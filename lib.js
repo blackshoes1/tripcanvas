@@ -237,7 +237,68 @@
     return null;
   }
 
-  const TC={toISO,haversine,legId,legKey,ringPts,parseHM,hm,inKorea,simplifyName,parseDirect,parseMoney,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,dayAnchor,computeTimeline,dayStartAnchor};
+  // ── 데이터 정규화 (가져오기·공유·클라우드·로컬 유입 방어) ──
+  // 알려진 필드는 안전한 타입으로 강제/기본값 지정하고 잘못된 값은 제거해 렌더 크래시를 막는다.
+  // 알 수 없는 필드는 보존(데이터 손실 방지). 현재 스키마 버전.
+  const TC_SCHEMA=1;
+  const _MODES=['car','taxi','transit','walk','bike','flight'];
+  const _CURS=['KRW','USD','JPY','CNY'];
+  /** @param {any} x @returns {string} */
+  function _str(x){ return typeof x==='string'? x : (x==null? '' : String(x)); }
+  /** @param {any} t @returns {string|undefined} 00:00~23:59 형식만 통과, 아니면 undefined */
+  function _hm(t){ return /^([01]?\d|2[0-3]):[0-5]\d$/.test(_str(t))? _str(t) : undefined; }
+  /** @param {any} x @returns {boolean} */
+  function _fin(x){ const n=+x; return typeof n==='number' && isFinite(n); }
+
+  /** @param {any} s @returns {any} */
+  function normalizeSpot(s){
+    s = (s && typeof s==='object') ? Object.assign({}, s) : {};
+    s.name=_str(s.name); s.city=_str(s.city).trim()||'기타'; s.desc=_str(s.desc);
+    const lat=+s.lat, lng=+s.lng;
+    if(_fin(lat)&&_fin(lng)&&lat>=-90&&lat<=90&&lng>=-180&&lng<=180){ s.lat=lat; s.lng=lng; }
+    else { s.lat=null; s.lng=null; }
+    if(_hm(s.at)===undefined) delete s.at;
+    if(_hm(s.bookAt)===undefined) delete s.bookAt;
+    if(s.stayMin!=null){ if(_fin(s.stayMin)) s.stayMin=Math.max(0,Math.round(+s.stayMin)); else delete s.stayMin; }
+    if(s.cost!=null){ if(_fin(s.cost)) s.cost=Math.max(0,Math.round(+s.cost)); else delete s.cost; }
+    if(s.cur!=null && _CURS.indexOf(s.cur)<0) delete s.cur;                 // 알 수 없는 통화 → 기본(KRW 취급)
+    if(s.legMode!=null && _MODES.indexOf(s.legMode)<0) delete s.legMode;    // 알 수 없는 구간 수단 → 일정 기본
+    if(s.bookUrl!=null && typeof s.bookUrl!=='string') delete s.bookUrl;
+    if(s.hours!=null && !(Array.isArray(s.hours)&&s.hours.every((/**@type{any}*/h)=>h&&_fin(h.d)&&_fin(h.o)&&_fin(h.c)))) delete s.hours;
+    return s;
+  }
+  /** @param {any} d @returns {any} */
+  function normalizeDay(d){
+    d = (d && typeof d==='object') ? Object.assign({}, d) : {};
+    d.title=_str(d.title); d.drive=_str(d.drive); d.note=_str(d.note);
+    if(_MODES.indexOf(d.mode)<0) d.mode='car';
+    d.spots = Array.isArray(d.spots)? d.spots.map(normalizeSpot) : [];
+    if(_hm(d.startAt)===undefined) delete d.startAt;                        // parseHM이 없으면 09:00 기본
+    if(d.startPolicy!=null && d.startPolicy!=='none') delete d.startPolicy;  // 알 수 없는 정책 → 기본(previous)
+    if(d.flight!=null){
+      if(typeof d.flight!=='object'){ delete d.flight; }
+      else { const f=d.flight; f.code=_str(f.code); f.dep=_str(f.dep); f.arr=_str(f.arr);
+        if(_hm(f.depAt)===undefined) delete f.depAt; if(_hm(f.arrAt)===undefined) delete f.arrAt; }
+    }
+    return d;
+  }
+  /**
+   * 외부 유입(가져오기·공유·클라우드·로컬) 여행 데이터 정규화·검증. days가 없으면 복구 불가로 null.
+   * @param {any} t @returns {any}
+   */
+  function normalizeTrip(t){
+    if(!t || typeof t!=='object') return null;
+    t = Object.assign({}, t);
+    t.days = Array.isArray(t.days)? t.days.map(normalizeDay) : [];
+    if(!t.days.length) return null;
+    t.name = _str(t.name) || '여행';
+    t.start = /^\d{4}-\d{2}-\d{2}$/.test(_str(t.start))? t.start : '';
+    if(t.colorBy!=null && t.colorBy!=='city' && t.colorBy!=='day') delete t.colorBy;
+    t.schemaVersion = TC_SCHEMA;
+    return t;
+  }
+
+  const TC={toISO,haversine,legId,legKey,ringPts,parseHM,hm,inKorea,simplifyName,parseDirect,parseMoney,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,dayAnchor,computeTimeline,dayStartAnchor,normalizeTrip,TC_SCHEMA};
   if(typeof module!=='undefined' && module.exports){ module.exports=TC; }   // Node (테스트)
   else { const r=/**@type {any}*/(root); for(const k in TC) r[k]=/**@type {any}*/(TC)[k]; }   // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);

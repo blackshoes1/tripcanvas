@@ -62,6 +62,11 @@ function seedSpain(){
 }
 function load(){
   try{ store = JSON.parse(localStorage.getItem(LS_KEY)); }catch(e){}
+  // 로컬 저장분도 정규화 통과(과거/손상 데이터 자가 치유). 복구 불가한 여행은 버림.
+  if(store && Array.isArray(store.trips)){
+    store.trips = store.trips.map(t=>normalizeTrip(t)).filter(Boolean);
+    if(store.trips.length && !store.trips.find(t=>t.id===store.activeId)) store.activeId=store.trips[0].id;
+  }
   if(!store || !store.trips || !store.trips.length){
     store = {trips:[seedSpain()], activeId:'spain2026'};
     save();
@@ -1471,8 +1476,8 @@ document.getElementById('importFile').onchange=e=>{
   _importing=true;
   rd.onload=()=>{
     try{
-      const t=JSON.parse(rd.result);
-      if(!t.days) throw 0;
+      const t=normalizeTrip(JSON.parse(rd.result));
+      if(!t) throw 0;
       t.id=uid(); commit(()=>{ store.trips.push(t); store.activeId=t.id; activeDay=0; }, {fit:fitEntry}); toast('가져오기 완료');
     }catch(err){ toast('잘못된 파일입니다','#e63946'); }
     finally{ _importing=false; }
@@ -1551,8 +1556,8 @@ document.getElementById('roSave').onclick=()=>{
   const h=location.hash;
   if(h.startsWith('#v=')){
     try{
-      const t=JSON.parse(LZString.decompressFromEncodedURIComponent(h.slice(3)));
-      if(t&&t.days){
+      const t=normalizeTrip(JSON.parse(LZString.decompressFromEncodedURIComponent(h.slice(3))));
+      if(t){
         t.name=(t.name||'공유된 여행');
         viewMode=t;
         document.body.classList.add('readonly');
@@ -1562,8 +1567,8 @@ document.getElementById('roSave').onclick=()=>{
     }catch(e){}
   }else if(h.startsWith('#t=')){
     try{
-      const t=JSON.parse(LZString.decompressFromEncodedURIComponent(h.slice(3)));
-      if(t&&t.days){
+      const t=normalizeTrip(JSON.parse(LZString.decompressFromEncodedURIComponent(h.slice(3))));
+      if(t){
         t.id=uid(); t.name=(t.name||'공유된 여행');
         store.trips.push(t); store.activeId=t.id; save();
         history.replaceState(null,'',location.pathname);
@@ -1945,7 +1950,7 @@ async function syncOnLogin(){
       await sb.from('trips').upsert({user_id:user.id, client_id:t.id, data:t, updated_at:new Date().toISOString()},{onConflict:'user_id,client_id'});
       cloud.set(t.id, t); markSynced(t.id);
     }
-    const trips=[...cloud.values()].filter(t=>t && Array.isArray(t.days));
+    const trips=[...cloud.values()].map(t=>normalizeTrip(t)).filter(Boolean);   // 클라우드 유입도 정규화·검증
     if(trips.length){
       store.trips=trips;
       if(!trips.find(t=>t.id===store.activeId)) store.activeId=trips[0].id;

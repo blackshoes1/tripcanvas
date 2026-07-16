@@ -192,3 +192,35 @@ test('비숙소 전날 마지막 장소도 다음날 ETA에 반영 (anchor 배�
   // 앵커가 없으면(none 정책 등) 이동 미반영 → 시작시각 그대로
   assert.equal(L.computeTimeline(today, {legMin:()=>20})[0].eta, L.parseHM('09:00'));
 });
+
+test('normalizeTrip — 유입 데이터 검증·기본값·크래시 방어', () => {
+  // 복구 불가 → null
+  assert.equal(L.normalizeTrip(null), null);
+  assert.equal(L.normalizeTrip('x'), null);
+  assert.equal(L.normalizeTrip({}), null);
+  assert.equal(L.normalizeTrip({days:[]}), null);
+  // 정상: schemaVersion 부여·id 보존·누락 mode 기본값
+  const ok=L.normalizeTrip({id:'abc',name:'여행',start:'2026-08-01',days:[{spots:[{name:'A',lat:35.8,lng:129.2,city:'경주'}]}]});
+  assert.equal(ok.id,'abc'); assert.equal(ok.schemaVersion,1);
+  assert.equal(ok.days[0].mode,'car'); assert.equal(ok.days[0].spots[0].lat,35.8);
+  // 잘못된 좌표 → null
+  const bad=L.normalizeTrip({days:[{spots:[{name:'X',lat:'zz',lng:999}]}]});
+  assert.equal(bad.days[0].spots[0].lat,null); assert.equal(bad.days[0].spots[0].lng,null);
+  // 알 수 없는 mode·통화·구간수단·정책·시각·값 → 제거/기본
+  const cl=L.normalizeTrip({start:'nope',days:[{mode:'zzz',startPolicy:'weird',startAt:'25:99',spots:[{name:'Y',cur:'GBP',legMode:'rocket',at:'9:5',stayMin:'x',cost:-5}]}]});
+  assert.equal(cl.start,'');                    // 잘못된 날짜 → ''
+  assert.equal(cl.days[0].mode,'car');
+  assert.equal('startPolicy' in cl.days[0], false);
+  assert.equal('startAt' in cl.days[0], false);   // 25:99 거부
+  const s=cl.days[0].spots[0];
+  assert.equal('cur' in s,false); assert.equal('legMode' in s,false);
+  assert.equal('at' in s,false); assert.equal('stayMin' in s,false);
+  assert.equal(s.cost,0);                          // 음수 → 0
+  // startPolicy:'none'·정상 시각·통화는 유지
+  const keep=L.normalizeTrip({days:[{startPolicy:'none',startAt:'08:30',spots:[{name:'Z',cur:'USD',legMode:'flight',at:'14:00'}]}]});
+  assert.equal(keep.days[0].startPolicy,'none'); assert.equal(keep.days[0].startAt,'08:30');
+  assert.equal(keep.days[0].spots[0].cur,'USD'); assert.equal(keep.days[0].spots[0].legMode,'flight');
+  // 쓰레기 day/spot 섞여도 크래시 없이
+  const g=L.normalizeTrip({days:[null,'x',{spots:['bad',null,{name:'W',lat:1,lng:1}]}]});
+  assert.equal(g.days.length,3); assert.equal(g.days[2].spots[2].name,'W');
+});
