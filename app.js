@@ -824,6 +824,7 @@ function fitAll(){
 // 전체 동선을 하나의 좌표열로 펼친 뒤(구간별 실경로 우선, 없으면 직선) 이동수단 아이콘을 따라 이동시킴.
 let animMarker=null, animRAF=null, animEndT=null, animWaiting=false, playSeq=0;
 let playSpeed=1, _playDi=-1;   // 재생 배속(0.5/1/2×) · 현재 재생 중인 일자(날짜 카드 전환 감지)
+let play=null;                  // 재생 세션 핸들(없으면 미재생) — pause/resume/seek 등 컨트롤 노출
 const PLAY_ZOOM_IN=13, PLAY_ZOOM_OUT=9;   // 재생 중 도시 내(줌인)·도시 간(줌아웃) 레벨
 const PLAY_TILE_TIMEOUT=3500, PLAY_SETTLE=400;   // 타일 로딩 최대 대기(ms)·로딩 후 정착 지연(ms) — 깔끔한 출발 우선
 // dayAnchor(day)·dayStartAnchor(days,di)는 lib.js(순수·테스트 대상)에 있음.
@@ -864,7 +865,9 @@ function animPath(){
   });
   return flat;
 }
-function updatePlayBtn(){ const b=document.getElementById('playBtn'); if(b) b.textContent=(animRAF||animWaiting)?'⏹ 정지':'▶️ 재생'; }
+function updatePlayBtn(){ const b=document.getElementById('playBtn'); if(b) b.textContent=play?'⏹ 정지':'▶️ 재생'; }
+function updatePlayPauseBtn(){ const b=document.getElementById('playPause'); if(b) b.textContent=(play&&play.paused())?'▶':'⏸'; }
+function updatePlaySegInfo(){ const el=document.getElementById('playSegInfo'); if(el&&play) el.textContent=(play.getLegIndex()+1)+' / '+play.legStarts.length; }
 // 재생 HUD: 현재 구간(from→to · 소요) + 전체 재생 시 날짜 전환 카드
 function updatePlayHud(A){
   const leg=document.getElementById('playLeg');
@@ -884,6 +887,7 @@ function resetPlayHud(){
   _playDi=-1;
   const f=document.getElementById('playBarFill'); if(f) f.style.width='0%';
   const leg=document.getElementById('playLeg'); if(leg) leg.textContent='';
+  const si=document.getElementById('playSegInfo'); if(si) si.textContent='';
   const card=document.getElementById('playDayCard'); if(card){ clearTimeout(card._t); card.classList.remove('show'); }
 }
 // 배속 버튼 (0.5×/1×/2×)
@@ -891,8 +895,8 @@ function resetPlayHud(){
   sp.addEventListener('click',e=>{ const b=e.target.closest('button[data-sp]'); if(!b) return;
     playSpeed=+b.dataset.sp; sp.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b)); });
 })();
-// 백그라운드(탭 숨김) 전환 시 자동 정지 — 복귀 후 재생 시간이 튀는 현상 방지
-document.addEventListener('visibilitychange',()=>{ if(document.hidden && (animRAF||animWaiting)) stopPlay(); });
+// 백그라운드(탭 숨김) 전환 시 자동 '일시정지'(정지 아님) — 위치 보존, 복귀 후 직접 이어보기
+document.addEventListener('visibilitychange',()=>{ if(document.hidden && play && !play.paused()) play.pause(); });
 // 🚗는 측면뷰(수평 옆모습)라 회전/기울이면 '눕거나 서 보인다'. → 회전 없이 진행 방향의
 // 동/서 성분으로 좌우만 뒤집어(scaleX) 항상 똑바로 선 수평 자동차를 유지한다.
 // 순수 남북 이동(ex≈0)에선 방향이 애매하므로 직전 좌우를 그대로 유지(깜빡 뒤집힘 방지).
@@ -905,15 +909,38 @@ function headingTransform(A,B){
 }
 function stopPlay(){
   playSeq++;                                         // 대기 중이던 타일 로딩 재개 무효화
+  play=null;                                         // 세션 종료
   if(animRAF) cancelAnimationFrame(animRAF); animRAF=null; animWaiting=false;
   if(animEndT){ clearTimeout(animEndT); animEndT=null; }
   if(animMarker){ animMarker.remove(); animMarker=null; }
   if(document.body.classList.contains('playing')){ document.body.classList.remove('playing'); if(ME().ready()) ME().relayout(); }
   resetPlayHud();
-  updatePlayBtn();
+  updatePlayBtn(); updatePlayPauseBtn();
 }
+// 탐색(seek) 순수 계산 — jsdom 테스트 대상
+/** frac(0~1) → phase 인덱스·누적거리·구간내 경과ms */
+function playSeekTarget(phases, gtotal, frac){
+  const d=Math.max(0,Math.min(1,frac))*gtotal;
+  let pi=0; while(pi<phases.length-1 && d>phases[pi].b+1e-6) pi++;
+  const ph=phases[pi]; return {pIdx:pi, d, elapsed:((d-ph.a)/((ph.b-ph.a)||1))*ph.dur};
+}
+/** 누적거리 d가 속한 leg(구간) 인덱스 */
+function playLegIndexAt(legStarts, d){ let i=0; while(i<legStarts.length-1 && d>=legStarts[i+1]-1e-6) i++; return i; }
+// 재생 HUD 컨트롤 배선 (일시정지·이전/다음 구간·진행바 드래그 탐색)
+(function(){
+  const pp=document.getElementById('playPause'); if(pp) pp.onclick=()=>{ if(play) play.toggle(); };
+  const pv=document.getElementById('playPrev'); if(pv) pv.onclick=()=>{ if(play) play.prevSeg(); };
+  const nx=document.getElementById('playNext'); if(nx) nx.onclick=()=>{ if(play) play.nextSeg(); };
+  const bar=document.getElementById('playBar'); if(!bar) return;
+  const frac=e=>{ const r=bar.getBoundingClientRect(); return (e.clientX-r.left)/(r.width||1); };
+  let dragging=false, wasPlaying=false;
+  bar.addEventListener('pointerdown',e=>{ if(!play) return; dragging=true; try{bar.setPointerCapture(e.pointerId);}catch(_e){} wasPlaying=!play.paused(); if(wasPlaying) play.pause(); play.seekPreview(frac(e)); e.preventDefault(); });
+  bar.addEventListener('pointermove',e=>{ if(dragging&&play) play.seekPreview(frac(e)); });
+  const end=()=>{ if(!dragging) return; dragging=false; if(play){ play.seekCommit(); if(wasPlaying) play.resume(); } };
+  bar.addEventListener('pointerup',end); bar.addEventListener('pointercancel',end);
+})();
 function playTrip(){
-  if(animRAF||animWaiting){ stopPlay(); return; }   // 토글: 재생(대기 포함) 중이면 정지
+  if(play){ stopPlay(); return; }                   // 토글: 재생/일시정지 중이면 정지
   stopPlay();                                       // 종료 직후 남은 타이머·마커 정리
   const myseq=playSeq;                              // 이 재생 세션 식별(대기 재개 유효성 검사용)
   if(!ME().ready()){ toast('지도를 불러오는 중이에요','#8892b0'); return; }
@@ -954,9 +981,10 @@ function playTrip(){
     const dur=Math.min(9000, Math.max(2500, Math.max(1,(b-a)/span)*4200));   // ≈4.2초/화면
     phases.push({a,b,zoom,pts,dur});
   }
-  let d=0, lastTs=null, seg=0, pIdx=0, elapsed=0;   // elapsed=현재 구간 경과(ms)
+  let d=0, lastTs=null, seg=0, pIdx=0, elapsed=0, paused=false;   // elapsed=현재 구간 경과(ms)
   const applyPos=()=>{                                  // d로부터 마커 위치·방향만 갱신(카메라는 고정)
     while(seg<flat.length-2 && gcum[seg+1]<d) seg++;
+    while(seg>0 && gcum[seg]>d) seg--;                  // 탐색으로 뒤로 이동 시 보정
     const A=flat[seg], B=flat[seg+1], segLen=(gcum[seg+1]-gcum[seg])||1, f=(d-gcum[seg])/segLen;
     animMarker.move(A.lat+(B.lat-A.lat)*f, A.lng+(B.lng-A.lng)*f);
     const tf=headingTransform(A,B); if(tf) car.style.transform=tf;   // 진행 방향으로 회전
@@ -969,6 +997,7 @@ function playTrip(){
     fitAll();
   };
   const step=(ts)=>{
+    if(paused) return;
     if(lastTs==null) lastTs=ts;
     const dt=Math.min(34, ts-lastTs); lastTs=ts;       // 프레임 잭·탭 복귀 갭 클램프 — 렉 걸려도 점프 대신 감속
     const ph=phases[pIdx];
@@ -976,7 +1005,7 @@ function playTrip(){
     const t=Math.min(1, elapsed/ph.dur);               // 구간별 소요시간 기준 진행(구간 내 등속)
     d=ph.a+(ph.b-ph.a)*t;
     applyPos();                                         // 마커만 이동 · 카메라 고정 → 새 타일 로딩 없음
-    updatePlayProgress(d/gtotal);                       // 진행바
+    updatePlayProgress(d/gtotal); updatePlaySegInfo();  // 진행바·구간번호
     if(t>=1){                                           // 이 구간 끝 → 다음 구간(fit+대기) 또는 종료
       pIdx++;
       if(pIdx<phases.length) enterPhase();
@@ -986,19 +1015,32 @@ function playTrip(){
     animRAF=requestAnimationFrame(step);
   };
   // 구간 진입: 구간 전체를 한 화면에 담고(줌 상한=구간 줌) 타일 로딩 완료+정착 후 카메라 고정 재생
-  const enterPhase=()=>{
+  const enterPhase=(keepElapsed)=>{
     animRAF=null; animWaiting=true; updatePlayBtn();
     ME().fit(phases[pIdx].pts, 90, phases[pIdx].zoom);
     ME().waitTiles(PLAY_TILE_TIMEOUT).then(()=>{
       if(myseq!==playSeq) return;                       // 대기 중 정지/재시작됨 → 무시
       setTimeout(()=>{
         if(myseq!==playSeq) return;
-        animWaiting=false; lastTs=null; elapsed=0;      // 새 구간 0부터 (대기 시간 제외)
-        animRAF=requestAnimationFrame(step); updatePlayBtn();
+        animWaiting=false; lastTs=null; if(!keepElapsed) elapsed=0;   // 새 구간 0부터(탐색이면 경과 유지)
+        applyPos(); updatePlayProgress(d/gtotal); updatePlaySegInfo();
+        if(!paused) animRAF=requestAnimationFrame(step);
+        updatePlayBtn(); updatePlayPauseBtn();
       }, PLAY_SETTLE);
     });
   };
-  enterPhase();                                         // 첫 구간부터 fit+타일 대기 후 출발
+  // 구간(leg) 시작 누적거리 — 이전/다음 구간 이동·구간 수 표시
+  const legStarts=[0];
+  for(let i=1;i<flat.length;i++){ if(flat[i].from!==flat[i-1].from || flat[i].to!==flat[i-1].to) legStarts.push(gcum[i]); }
+  const pause=()=>{ if(paused) return; paused=true; if(animRAF){cancelAnimationFrame(animRAF);animRAF=null;} lastTs=null; updatePlayBtn(); updatePlayPauseBtn(); };
+  const resume=()=>{ if(!paused) return; paused=false; lastTs=null; if(!animWaiting) animRAF=requestAnimationFrame(step); updatePlayBtn(); updatePlayPauseBtn(); };
+  const seekPreview=(frac)=>{ d=Math.max(0,Math.min(1,frac))*gtotal; applyPos(); updatePlayProgress(d/gtotal); updatePlaySegInfo(); };
+  const seekCommit=()=>{ const tt=playSeekTarget(phases,gtotal,d/gtotal); pIdx=tt.pIdx; elapsed=tt.elapsed; if(animRAF){cancelAnimationFrame(animRAF);animRAF=null;} enterPhase(true); };
+  const prevSeg=()=>{ const i=playLegIndexAt(legStarts,d); const tgt=(i>0&&(d-legStarts[i])<0.3)?legStarts[i-1]:legStarts[i]; seekPreview(tgt/gtotal); seekCommit(); };
+  const nextSeg=()=>{ const i=playLegIndexAt(legStarts,d); seekPreview((i<legStarts.length-1?legStarts[i+1]:gtotal)/gtotal); seekCommit(); };
+  play={ paused:()=>paused, pause, resume, toggle:()=>paused?resume():pause(), seekPreview, seekCommit, prevSeg, nextSeg, legStarts, getLegIndex:()=>playLegIndexAt(legStarts,d) };
+  updatePlayPauseBtn();
+  enterPhase(false);                                   // 첫 구간부터 fit+타일 대기 후 출발
 }
 function renderFilter(){
   const bar = document.getElementById('filterbar'); bar.innerHTML='';
@@ -1009,15 +1051,15 @@ function renderFilter(){
   cmode.onclick=()=>commit(()=>{ trip().colorBy = colorByMode()==='day'?'city':'day'; });
   bar.appendChild(cmode);
   // 여행 재생 — 경로를 따라 이동수단 아이콘이 달림 (재미)
-  const play=document.createElement('button'); play.className='chip'; play.id='playBtn';
-  play.textContent = (animRAF||animWaiting) ? '⏹ 정지' : '▶️ 재생';
-  play.title='경로를 따라 이동 애니메이션';
-  play.onclick=playTrip;
-  bar.appendChild(play);
+  const playB=document.createElement('button'); playB.className='chip'; playB.id='playBtn';
+  playB.textContent = play ? '⏹ 정지' : '▶️ 재생';
+  playB.title='경로를 따라 이동 애니메이션';
+  playB.onclick=playTrip;
+  bar.appendChild(playB);
   const sep0=document.createElement('span'); sep0.style.cssText='width:1px;height:18px;background:#2a3457;margin:0 4px'; bar.appendChild(sep0);
   // 범위 전환: 재생 중이면 새 범위로 재생 재시작(현재 재생을 멈추고 새 일정으로), 아니면 해당 영역으로 프레이밍
   const setScope=(ad, fitFn)=>{
-    const wasPlaying = animRAF||animWaiting;
+    const wasPlaying = !!play;
     if(wasPlaying) stopPlay();
     activeDay=ad; render();
     if(wasPlaying) playTrip();                          // 새 범위(일자/전체)로 재생 재시작

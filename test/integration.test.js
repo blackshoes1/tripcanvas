@@ -84,3 +84,17 @@ test('통합: 구간별 수단(legMode) 우선, 없거나 무효면 일자 기�
   assert.equal(w.eval(`legModeOf({mode:'walk',spots:[]}, {})`), 'walk');
   assert.equal(w.eval(`legModeOf({mode:'zzz',spots:[]}, {legMode:'bad'})`), 'car');
 });
+
+test('통합: 재생 탐색 계산 playSeekTarget / playLegIndexAt', { skip: noJsdom }, () => {
+  const w = boot();
+  // phases [0..100 dur2000][100..300 dur4000], gtotal 300, frac 0.5 → d=150 (두번째 phase)
+  const t = JSON.parse(w.eval(`JSON.stringify(playSeekTarget([{a:0,b:100,dur:2000},{a:100,b:300,dur:4000}], 300, 0.5))`));
+  assert.equal(t.pIdx, 1);
+  assert.equal(t.d, 150);
+  assert.ok(Math.abs(t.elapsed - ((150 - 100) / 200 * 4000)) < 1e-6, `elapsed=${t.elapsed}`);   // 1000ms
+  assert.equal(w.eval(`playSeekTarget([{a:0,b:100,dur:2000}], 100, 1).pIdx`), 0);                // 끝은 마지막 phase
+  // leg 인덱스: legStarts=[0,50,120]
+  assert.equal(w.eval(`playLegIndexAt([0,50,120], 0)`), 0);
+  assert.equal(w.eval(`playLegIndexAt([0,50,120], 60)`), 1);
+  assert.equal(w.eval(`playLegIndexAt([0,50,120], 200)`), 2);
+});
