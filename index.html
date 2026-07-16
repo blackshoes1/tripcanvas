@@ -13,7 +13,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-<link rel="stylesheet" href="style.css?v=tc-v94">
+<link rel="stylesheet" href="style.css?v=tc-v95">
 </head>
 <body>
 <header>
@@ -60,6 +60,16 @@
   <label>도시/그룹 * (같은 이름 = 같은 색)</label><input type="text" id="spotCity" placeholder="예: 마드리드">
   <label>메모 (운영시간, 예약, 팁 등)</label><textarea id="spotDesc"></textarea>
   <label>일자</label><select id="spotDay"></select>
+  <label>🚕 이 지점으로 이동 (이동 수단) <span class="hint" style="margin:0">— 비우면 일정 기본 수단. 비행기 도착 구간만 ✈️ 지정 등</span></label>
+  <select id="spotLegMode">
+    <option value="">— 일정 기본 수단 —</option>
+    <option value="car">🚗 자차</option>
+    <option value="taxi">🚕 택시</option>
+    <option value="transit">🚌 대중교통</option>
+    <option value="walk">🚶 도보</option>
+    <option value="bike">🚴 자전거</option>
+    <option value="flight">✈️ 비행기</option>
+  </select>
   <label>🕐 도착 시각 (비우면 이동시간으로 자동 계산 · 넣으면 그 시각 고정 + 시간순 자동 정렬)</label><input type="time" id="spotAt">
   <label>체류시간 (분 — 도착 예상시각 계산용)</label><input type="number" id="spotStayMin" min="0" step="5" placeholder="60">
   <label>예상 비용 (입장료·식비 등)</label>
@@ -224,7 +234,7 @@
   </div>
 </div>
 
-<script src="lib.js?v=tc-v94"></script>
-<script src="app.js?v=tc-v94"></script>
+<script src="lib.js?v=tc-v95"></script>
+<script src="app.js?v=tc-v95"></script>
 </body>
 </html>

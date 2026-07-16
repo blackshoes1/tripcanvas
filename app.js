@@ -467,6 +467,9 @@ const MODE_ICON={car:'🚗',taxi:'🚕',transit:'🚌',walk:'🚶',bike:'🚴',f
 const MODE_NAME={car:'자차',taxi:'택시',transit:'대중교통',walk:'도보',bike:'자전거',flight:'비행기'};
 const MODE_SPEED={car:40,taxi:40,transit:25,walk:4.5,bike:15,flight:700};   // km/h — 미캐시 구간 추정용. 택시는 도로(자차) 기준
 function dayModeOf(day){ return MODE_ICON[day.mode]? day.mode : 'car'; }
+// 구간(leg)별 이동수단: 도착 장소에 legMode가 지정돼 있으면 그걸, 없으면 일자 기본 수단.
+// (예: 비행기 도착 구간만 ✈️, 그 안 이동은 일자 기본 🚶/🚕) — 지도·타임라인·재생·거리 공통.
+function legModeOf(day, spot){ const m=spot&&spot.legMode; return (m&&MODE_ICON[m])? m : dayModeOf(day); }
 // 항공 정보(항공편명·공항·시각) 한 줄 표기 (day.flight)
 function flightHtml(day){
   const f=day.flight; if(!f) return '';
@@ -627,8 +630,7 @@ function legMinutes(a,b,mode){
 // 일자 타임라인: 시작시각(startAt, 기본 09:00)부터 체류(stayMin, 기본 60분)+이동 누적.
 // 순수 계산은 lib.js computeTimeline. startAnchor(전날 숙소 등)가 있으면 첫 유효 장소까지 이동시간을 먼저 더한다.
 function dayTimeline(day, startAnchor){
-  const dm=dayModeOf(day);
-  return computeTimeline(day, {legMin:(a,b)=>legMinutes(a,b,dm), startAnchor});
+  return computeTimeline(day, {legMin:(a,b)=>legMinutes(a,b,legModeOf(day,b)), startAnchor});   // 도착 장소 기준 구간 수단
 }
 function dayEtas(day, startAnchor){ return dayTimeline(day, startAnchor).map(x=>x.eta); }
 // 도착시각 순으로 정렬. 고정 시각 장소는 그 시각으로 이동, 자동 시각 장소는 '직전 고정 시각'에
@@ -683,11 +685,11 @@ function dayEndMin(day, startAnchor){
 }
 // 하루 전체 실도로 합계 (모든 구간이 캐시됐을 때만)
 function dayRoute(day){
-  const loc=day.spots.filter(hasLoc), dm=dayModeOf(day);
+  const loc=day.spots.filter(hasLoc);
   if(loc.length<2) return null;
   let sec=0,m=0,taxi=0;
   for(let i=1;i<loc.length;i++){
-    const c=legCache[legKey(loc[i-1],loc[i],dm)];
+    const c=legCache[legKey(loc[i-1],loc[i],legModeOf(day,loc[i]))];
     if(!c||!c.sec) return null;
     sec+=c.sec; m+=c.m; taxi+=(c.taxi||0);
   }
@@ -729,14 +731,14 @@ function overlaySig(t,colors){
   t.days.forEach((day,di)=>{
     if(activeDay && di+1!==activeDay) return;
     p.push(dayModeOf(day));
-    day.spots.forEach((s,si)=>{ if(hasLoc(s)) p.push(si,s.lat,s.lng,s.stay?1:0,s.opt?1:0,spotColor(s,di,colors),esc(s.name),esc(s.desc||'')); });
-    const loc=day.spots.filter(hasLoc), dm=dayModeOf(day);
-    for(let i=1;i<loc.length;i++){ const c=legCache[legKey(loc[i-1],loc[i],dm)]; p.push(c? (c.sec?(c.path?'p':'s'):'f') : 'n'); }
+    day.spots.forEach((s,si)=>{ if(hasLoc(s)) p.push(si,s.lat,s.lng,s.stay?1:0,s.opt?1:0,(s.legMode||''),spotColor(s,di,colors),esc(s.name),esc(s.desc||'')); });
+    const loc=day.spots.filter(hasLoc);
+    for(let i=1;i<loc.length;i++){ const c=legCache[legKey(loc[i-1],loc[i],legModeOf(day,loc[i]))]; p.push(c? (c.sec?(c.path?'p':'s'):'f') : 'n'); }
   });
   if(!activeDay){
     t.days.forEach((day,di)=>{ const loc=day.spots.filter(hasLoc); if(!loc.length)return;
       const from=startAnchorFor(di);
-      if(from){ const c=legCache[legKey(from,loc[0],dayModeOf(day))]; p.push('I', c? (c.sec?(c.path?'p':'s'):'f') : 'n'); } });
+      if(from){ const c=legCache[legKey(from,loc[0],legModeOf(day,loc[0]))]; p.push('I', c? (c.sec?(c.path?'p':'s'):'f') : 'n'); } });
   }
   return p.join('|');
 }
@@ -760,11 +762,11 @@ function render(){
       });
       // 일자 내 동선 — 실경로 우선. 조회 중(미캐시)엔 그리지 않고,
       // 결과가 나온 뒤에도 경로가 없는 구간(실패)만 직선으로 채움 → 직선→실경로 깜빡임 제거
-      const locSpots = day.spots.filter(hasLoc), dm=dayModeOf(day);
+      const locSpots = day.spots.filter(hasLoc);
       const lc=dayColor(di), lop=activeDay?0.9:0.7;   // 경로선은 색 모드와 무관하게 항상 일자 색 (핀·카드는 도시별/일자별 따름). 전체 보기도 또렷하게(0.7)
       for(let i=1;i<locSpots.length;i++){
-        const A=locSpots[i-1], B=locSpots[i];
-        const cch=legCache[legKey(A,B,dm)];
+        const A=locSpots[i-1], B=locSpots[i], lm=legModeOf(day,B);   // 구간별 수단(도착 장소 기준)
+        const cch=legCache[legKey(A,B,lm)];
         if(!cch) continue;   // 조회 중 — 선 없이 대기 (완료 시 디바운스 재렌더로 채워짐)
         const path=(cch.sec&&cch.path)?decodePts(cch.path):null;
         addLine(path||[{lat:+A.lat,lng:+A.lng},{lat:+B.lat,lng:+B.lng}], lc, lop, false);
@@ -772,7 +774,7 @@ function render(){
         if(activeDay && cch.sec){
           const mid = path? path[Math.floor(path.length/2)]
                           : {lat:(+A.lat + +B.lat)/2, lng:(+A.lng + +B.lng)/2};
-          addLegChip(mid, (dm==='car'&&cch.m<2000)? `🚶${Math.max(1,Math.round(cch.m/75))}분` : `${MODE_ICON[dm]}${fmtDur(cch.sec)}`);
+          addLegChip(mid, (lm==='car'&&cch.m<2000)? `🚶${Math.max(1,Math.round(cch.m/75))}분` : `${MODE_ICON[lm]}${fmtDur(cch.sec)}`);
         }
       }
     });
@@ -783,7 +785,7 @@ function render(){
         if(!loc.length) return;
         const from=startAnchorFor(di);   // 정책 반영 이월 시작점 (none이면 null → 연결선 없음)
         if(from){
-          const cch=legCache[legKey(from,loc[0],dayModeOf(day))];
+          const cch=legCache[legKey(from,loc[0],legModeOf(day,loc[0]))];
           if(cch){
             const path=(cch.sec&&cch.path)?decodePts(cch.path):null;
             addLine(path||[{lat:+from.lat,lng:+from.lng},{lat:+loc[0].lat,lng:+loc[0].lng}], dayColor(di), .8, true);
@@ -831,8 +833,8 @@ function animPath(){
   const range = activeDay ? [activeDay-1] : days.map((_,i)=>i);
   range.forEach((di)=>{
     const day=days[di]; const loc=day.spots.filter(hasLoc); if(!loc.length) return;
-    const dm=dayModeOf(day);
     const pushSeg=(A,B)=>{
+      const dm=legModeOf(day,B);                       // 구간별 수단(도착 장소 기준)
       const c=legCache[legKey(A,B,dm)];
       const pts=(c&&c.sec&&c.path)?decodePts(c.path):[{lat:+A.lat,lng:+A.lng},{lat:+B.lat,lng:+B.lng}];
       // 도시 간이면 줌아웃, 도시 내면 줌인. 이름만으론 오판(인근 산·명소가 지자체명이 다름) → 거리도 함께 본다.
@@ -1069,7 +1071,7 @@ function renderSidebar(){
       // 구간: 캐시된 경로가 있으면 그걸, 아니면 직선거리 + 백그라운드 조회
       let legHtml='';
       if(hasLoc(s)&&prevLoc){
-        const lid=legKey(prevLoc,s,dm), lc=requestLeg(prevLoc,s,dm);
+        const lm=legModeOf(day,s), lid=legKey(prevLoc,s,lm), lc=requestLeg(prevLoc,s,lm);   // 구간별 수단
         const failed=!lc && legCache[lid] && legCache[lid].fail;   // 인근 도로 스냅까지 실패
         legHtml = lc
           ? `<span class="leg" data-leg="${lid}" title="${legTitle(lc)}">${legLabel(lc)}</span>`
@@ -1108,7 +1110,7 @@ function renderSidebar(){
         ${(()=>{   // 일자 간 자동 이동시간: 이월 시작점 → 오늘 첫 장소 (숙소 이월 시엔 🏠 항목+구간거리로 대체, none이면 미표시)
           const first=day.spots.find(hasLoc), from=startAnchorFor(di);
           if(carry||!from||!first) return '';
-          const iid=legKey(from,first,dm), ic=requestLeg(from,first,dm);
+          const im=legModeOf(day,first), iid=legKey(from,first,im), ic=requestLeg(from,first,im);
           return ic
             ? `<div class="drive" style="color:#9fb8e8" title="이전 일자 기준점 · ${legTitle(ic)}"><span data-ileg="${iid}">${MODE_ICON[dm]} 이전 일정에서 ${(ic.m/1000).toFixed(1)}km · ${fmtDur(ic.sec)}</span></div>`
             : `<div class="drive" style="color:#9fb8e8"><span data-ileg="${iid}">${MODE_ICON[dm]} 이전 일정에서 직선 ${haversine(from,first).toFixed(1)}km</span></div>`;
@@ -1250,6 +1252,7 @@ window.openSpotModal=(di,si)=>{
   document.getElementById('spotOpt').checked=!!s.opt;
   document.getElementById('spotStay').checked=!!s.stay;
   document.getElementById('spotAt').value=s.at||'';
+  document.getElementById('spotLegMode').value=s.legMode||'';   // 이 지점으로 오는 구간 수단(빈값=일정 기본)
   document.getElementById('spotStayMin').value=(s.stayMin!=null? s.stayMin : 60);
   document.getElementById('spotCost').value=(s.cost!=null? fmtMoney(s.cost) : '');
   document.getElementById('spotCur').value=s.cur||'KRW';
@@ -1285,6 +1288,7 @@ document.getElementById('spotSave').onclick=()=>{
   const s={name,city:document.getElementById('spotCity').value.trim()||'기타',desc:document.getElementById('spotDesc').value.trim(),
     opt:document.getElementById('spotOpt').checked,stay:document.getElementById('spotStay').checked,
     at:document.getElementById('spotAt').value||undefined,
+    legMode:(document.getElementById('spotLegMode').value||undefined),   // 구간별 수단(빈값이면 일정 기본)
     stayMin:Math.max(0,parseInt(document.getElementById('spotStayMin').value)||60),
     cost:(isNaN(costV)?null:Math.max(0,costV)),
     cur:(curV&&curV!=='KRW'?curV:undefined),   // KRW는 기본값이라 저장 생략(하위호환)
@@ -1809,7 +1813,7 @@ function renderTravel(di){
   d.spots.forEach((s,si)=>{
     // 구간 이동 정보 (이전 장소 → 이 장소)
     if(hasLoc(s)&&prevLoc){
-      const c=requestLeg(prevLoc,s,dm);
+      const c=requestLeg(prevLoc,s,legModeOf(d,s));   // 구간별 수단
       const lg=document.createElement('div'); lg.className='tLeg';
       lg.textContent = c
         ? ((dm==='car'&&c.m<2000)? `🚶 ${Math.max(1,Math.round(c.m/75))}분 · ${(c.m/1000).toFixed(1)}km`
