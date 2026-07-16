@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="ko"><head><meta charset="UTF-8"><title>place-debug</title>
+<style>body{font:14px monospace;padding:16px;white-space:pre-wrap;word-break:break-all}</style>
+</head><body>
+<pre id="out">loading Google Maps…</pre>
+<script>
+// 진단 전용: 신 Places API의 displayName 실제 타입/값 확인 (지도 렌더 없음)
+const KEY='AIzaSyCE6I2dhqk2jzNvA0ZMzDSuPi7HAfWecAM';
+const el=()=>document.getElementById('out');
+const log=(...a)=>{ el().textContent += '\n'+a.map(x=>typeof x==='string'?x:JSON.stringify(x)).join(' '); };
+window.go=async function(){
+  try{
+    const {Place}=await google.maps.importLibrary('places');
+    el().textContent='places 라이브러리 OK';
+    const {places}=await Place.searchByText({textQuery:'Eiffel Tower Paris', fields:['displayName','formattedAddress'], maxResultCount:2, language:'en'});
+    log('searchByText 결과 수:', places.length);
+    places.forEach((p,i)=>{
+      log(`[${i}] typeof displayName =`, typeof p.displayName);
+      log(`[${i}] displayName =`, p.displayName);
+      log(`[${i}] displayName?.text =`, p.displayName && p.displayName.text);
+      log(`[${i}] formattedAddress =`, p.formattedAddress);
+    });
+    const nb=await Place.searchNearby({fields:['displayName','formattedAddress'], locationRestriction:{center:{lat:48.8584,lng:2.2945},radius:120}, maxResultCount:1, language:'en'});
+    log('searchNearby 결과 수:', nb.places.length);
+    if(nb.places[0]) log('nearby displayName =', nb.places[0].displayName, '| addr =', nb.places[0].formattedAddress);
+    log('\n=== 완료 ===');
+  }catch(e){ el().textContent='ERROR: '+(e&&e.message||String(e)); log('\nname:', e&&e.name); }
+};
+(function(){ const s=document.createElement('script');
+  s.src=`https://maps.googleapis.com/maps/api/js?key=${KEY}&v=weekly&libraries=places&loading=async&callback=go`;
+  s.async=true; s.onerror=()=>{el().textContent='스크립트 로드 실패';}; document.head.appendChild(s); })();
+</script>
+</body></html>

@@ -194,8 +194,8 @@ function reverseSpot(lat,lng){
       if(!window.google||!google.maps){ resolve({}); return; }
       google.maps.importLibrary('places').then(({Place})=>{
         // 기본 랭크(POPULARITY): 반경 내 대표 장소 → 영문 이름 + 그 장소의 도시(도쿄 특별구는 '도쿄')
-        Place.searchNearby({ fields:['displayName','addressComponents'], locationRestriction:{center:{lat:+lat,lng:+lng}, radius:100}, maxResultCount:1, language:'en' })
-          .then(({places})=>{ const p=places&&places[0]; resolve(p? { name:p.displayName||null, city:cityFromGoogle(p.addressComponents)||null } : {}); })
+        Place.searchNearby({ fields:['displayName','formattedAddress','addressComponents'], locationRestriction:{center:{lat:+lat,lng:+lng}, radius:100}, maxResultCount:1, language:'en' })
+          .then(({places})=>{ const p=places&&places[0]; resolve(p? { name:placeName(p)||null, city:cityFromGoogle(p.addressComponents)||null } : {}); })
           .catch(()=>resolve({}));
       }).catch(()=>resolve({}));
     }
@@ -238,6 +238,13 @@ function cityFromKoreanAddr(addr){
   const one=t[0], two=t[1];
   if(/(특별시|광역시|특별자치시)$/.test(one)) return one.replace(/(특별시|광역시|특별자치시)$/,'');
   return two.replace(/(시|군)$/,'') || one.replace(/(도|특별자치도)$/,'');
+}
+// 구글 Place → 표시 이름. displayName이 문자열이든 {text} 객체든 빈값이든 방어하고, 비면 주소 앞부분으로 폴백.
+// (신 Places API 버전/필드에 따라 displayName이 문자열이 아닐 수 있어 이름 채움이 조용히 실패하던 문제 방어)
+function placeName(p){
+  const dn=p&&p.displayName;
+  const s=(dn&&typeof dn==='object')?(dn.text||''):(dn||'');
+  return (s || String((p&&p.formattedAddress)||'').split(',')[0]||'').trim();
 }
 // 구글 Place addressComponents → 도시명(locality 우선)
 function cityFromGoogle(comps){
@@ -1602,7 +1609,7 @@ async function googlePlaces(q, near, limit){
     const req={textQuery:q, fields:['displayName','formattedAddress','addressComponents','location','regularOpeningHours'], maxResultCount:limit||5, language:'en'};   // 해외 장소는 영문명
     if(near) req.locationBias={center:near, radius:30000};
     const {places}=await Place.searchByText(req);
-    return (places||[]).map(p=>({name:p.displayName, addr:p.formattedAddress||'', city:cityFromGoogle(p.addressComponents),
+    return (places||[]).map(p=>({name:placeName(p), addr:p.formattedAddress||'', city:cityFromGoogle(p.addressComponents),
       lat:p.location.lat(), lng:p.location.lng(), hours:normHours(p.regularOpeningHours)}));
   }catch(e){ return []; }
 }
