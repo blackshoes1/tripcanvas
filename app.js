@@ -114,6 +114,15 @@ document.addEventListener('click',e=>{
   if(e.target.closest('#hdrMenu')){ m.classList.remove('open'); return; }   // 항목 선택 → 닫기
   if(!e.target.closest('#moreBtn')) m.classList.remove('open');             // 바깥 클릭 → 닫기
 });
+// 현재 실행 중인 앱 버전 표시 — 스크립트 태그의 ?v= 를 읽어 자동 반영(릴리스마다 별도 수정 불필요).
+// 캐시로 옛 버전이 물려 있으면 그 값이 그대로 보이므로 폰이 최신인지 바로 확인 가능. 탭하면 갱신 확인 후 새로고침.
+const APP_VER=(()=>{ const s=document.querySelector('script[src*="app.js?v="]'); const m=s&&s.src.match(/[?&]v=([^&]+)/); return m?decodeURIComponent(m[1]):'dev'; })();
+(function(){ const el=document.getElementById('verLabel'); if(!el) return;
+  el.textContent='버전 '+APP_VER;
+  el.onclick=()=>{ toast('최신 버전 확인 중…','#1d6fd6');
+    if('serviceWorker' in navigator){ navigator.serviceWorker.getRegistration().then(r=>{ if(r) r.update(); }).catch(()=>{}); }
+    setTimeout(()=>location.reload(),500); };
+})();
 function trip(){ return viewMode || store.trips.find(t=>t.id===store.activeId) || store.trips[0]; }
 function uid(){ return Math.random().toString(36).slice(2,9); }
 // 공유 링크/가져오기/AI 파싱으로 외부 데이터가 유입될 수 있으므로 출력 시 항상 이스케이프 (XSS 방어)

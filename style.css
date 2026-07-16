@@ -154,6 +154,8 @@
 .spotMeta .bookwarn{color:#ffb454}
 .optBtn{color:#8fd6a0;border-color:#2e5a3a;margin-left:6px}
 .spotMeta .closed{color:#ff8f6b}
+#verLabel{font-size:11px;color:#8892b0;text-align:center;padding:6px 4px 2px;cursor:pointer;border-top:1px solid #2a3457;margin-top:2px}
+#verLabel:active{color:#cdd7f0}
 
 /* 재생 HUD — body.playing일 때만 (현재 구간·진행바·배속) */
 #playHud{display:none}
