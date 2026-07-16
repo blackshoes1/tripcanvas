@@ -13,7 +13,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-<link rel="stylesheet" href="style.css?v=tc-v93">
+<link rel="stylesheet" href="style.css?v=tc-v94">
 </head>
 <body>
 <header>
@@ -90,6 +90,7 @@
   <label>이동 수단 (이 날의 구간 시간·경로 계산 기준)</label>
   <select id="dayMode">
     <option value="car">🚗 자차</option>
+    <option value="taxi">🚕 택시</option>
     <option value="transit">🚌 대중교통</option>
     <option value="walk">🚶 도보</option>
     <option value="bike">🚴 자전거</option>
@@ -97,9 +98,10 @@
   </select>
   <div id="flightFields" style="display:none">
     <label>✈️ 항공편명</label><input type="text" id="flightCode" placeholder="예: OZ102">
+    <div class="hint" style="margin:2px 0">공항 코드(ICN·NRT 등)만 입력하고 칸을 벗어나면 공항명을 자동으로 찾아 채웁니다.</div>
     <div style="display:flex;gap:6px">
-      <div style="flex:1"><label>출발 공항</label><input type="text" id="flightDep" placeholder="인천 ICN" style="width:100%"></div>
-      <div style="flex:1"><label>도착 공항</label><input type="text" id="flightArr" placeholder="나리타 NRT" style="width:100%"></div>
+      <div style="flex:1"><label>출발 공항</label><input type="text" id="flightDep" placeholder="예: ICN" style="width:100%"></div>
+      <div style="flex:1"><label>도착 공항</label><input type="text" id="flightArr" placeholder="예: NRT" style="width:100%"></div>
     </div>
     <div style="display:flex;gap:6px">
       <div style="flex:1"><label>출발 시각</label><input type="time" id="flightDepAt" style="width:100%"></div>
@@ -222,7 +224,7 @@
   </div>
 </div>
 
-<script src="lib.js?v=tc-v93"></script>
-<script src="app.js?v=tc-v93"></script>
+<script src="lib.js?v=tc-v94"></script>
+<script src="app.js?v=tc-v94"></script>
 </body>
 </html>

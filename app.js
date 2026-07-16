@@ -223,11 +223,12 @@ function fillCityValue(city){
   const el=document.getElementById('spotCity');
   if(!el.value.trim() || el.value.trim()===(_cityPrefill||'').trim()){ el.value=city; _cityPrefill=city; }
 }
-// 이름 필드 자동 채움 — 사용자 입력은 보존.
-function fillNameValue(name){
+// 이름 필드 자동 채움. force=false면 사용자 입력 보존(자동 프리필/빈값만 갱신).
+// 검색 결과를 직접 고르는 건 명시적 선택이므로 force=true로 기존 값도 덮어쓴다.
+function fillNameValue(name, force){
   if(!name) return;
   const el=document.getElementById('spotName');
-  if(!el.value.trim() || el.value.trim()===(_namePrefill||'').trim()){ el.value=name; _namePrefill=name; }
+  if(force || !el.value.trim() || el.value.trim()===(_namePrefill||'').trim()){ el.value=name; _namePrefill=name; }
 }
 // 지도로 위치 지정 → 이름·도시를 한 번의 조회로 채움. forceCity=true면 도시는 강제 갱신.
 function fillSpotFromCoords(lat,lng,forceCity){
@@ -462,9 +463,9 @@ const LEG_KEY='tripcanvas_legs_v4';   // v4: 순수 코덱(SDK 비의존) — v3
 let legCache={};
 try{ legCache=JSON.parse(localStorage.getItem(LEG_KEY))||{}; }catch(e){}
 // 이동 수단 (일자별): car 자차 · transit 대중교통 · walk 도보 · bike 자전거
-const MODE_ICON={car:'🚗',transit:'🚌',walk:'🚶',bike:'🚴',flight:'✈️'};
-const MODE_NAME={car:'자차',transit:'대중교통',walk:'도보',bike:'자전거',flight:'비행기'};
-const MODE_SPEED={car:40,transit:25,walk:4.5,bike:15,flight:700};   // km/h — 미캐시 구간 추정용
+const MODE_ICON={car:'🚗',taxi:'🚕',transit:'🚌',walk:'🚶',bike:'🚴',flight:'✈️'};
+const MODE_NAME={car:'자차',taxi:'택시',transit:'대중교통',walk:'도보',bike:'자전거',flight:'비행기'};
+const MODE_SPEED={car:40,taxi:40,transit:25,walk:4.5,bike:15,flight:700};   // km/h — 미캐시 구간 추정용. 택시는 도로(자차) 기준
 function dayModeOf(day){ return MODE_ICON[day.mode]? day.mode : 'car'; }
 // 항공 정보(항공편명·공항·시각) 한 줄 표기 (day.flight)
 function flightHtml(day){
@@ -544,10 +545,10 @@ function legLabel(c){
 function legTitle(c){
   let t=(c.est?'자동차 경로 거리 기반 추정':'실제 도로 기준');
   if(c.snapped) t+=' · 인근 도로에서 출발/도착 (원 지점은 도로에서 멂)';
-  if((c.mode||'car')==='car'&&c.taxi) t+=` · 택시 약 ${c.taxi.toLocaleString()}원`;
+  if((c.mode==='car'||c.mode==='taxi')&&c.taxi) t+=` · 택시 약 ${c.taxi.toLocaleString()}원`;
   return t;
 }
-const GMODE={car:'DRIVE',transit:'TRANSIT',walk:'WALK',bike:'BICYCLE'};
+const GMODE={car:'DRIVE',taxi:'DRIVE',transit:'TRANSIT',walk:'WALK',bike:'BICYCLE'};
 async function googleRoute(a,b,mode){
   const r=await fetch('https://routes.googleapis.com/directions/v2:computeRoutes',{
     method:'POST',
@@ -570,7 +571,7 @@ async function fetchLeg(a,b,mode){
   }
   const kr=inKorea(a)&&inKorea(b);
   if(kr){
-    if(mode==='car'){ const k=await kakaoRoute(a,b); return k&&{...k,mode}; }
+    if(mode==='car'||mode==='taxi'){ const k=await kakaoRoute(a,b); return k&&{...k,mode}; }   // 택시=도로(자차) 경로
     if(mode==='transit'){ const g=await googleRoute(a,b,'transit'); return g&&{...g,mode}; }
     const k=await kakaoRoute(a,b);                       // walk/bike: 도로 거리 기반 추정
     if(!k) return null;
@@ -671,7 +672,7 @@ function loadFx(){
 function dayCost(day){ return day.spots.reduce((a,s)=>a+(s.cost? toKRW(s.cost,s.cur):0),0); }
 // 여행 전체 비용(장소+자차일 택시) 합계
 function tripCost(){
-  return trip().days.reduce((a,d)=>{ const tx=(dayModeOf(d)==='car')?((dayRoute(d)||{}).taxi||0):0; return a+dayCost(d)+tx; },0);
+  return trip().days.reduce((a,d)=>{ const m=dayModeOf(d); const tx=(m==='car'||m==='taxi')?((dayRoute(d)||{}).taxi||0):0; return a+dayCost(d)+tx; },0);
 }
 // 일정 예상 종료 시각(분) — 마지막 장소 (예약 대기 반영한) 활동 시작 + 체류
 function dayEndMin(day, startAnchor){
@@ -1112,11 +1113,11 @@ function renderSidebar(){
             ? `<div class="drive" style="color:#9fb8e8" title="이전 일자 기준점 · ${legTitle(ic)}"><span data-ileg="${iid}">${MODE_ICON[dm]} 이전 일정에서 ${(ic.m/1000).toFixed(1)}km · ${fmtDur(ic.sec)}</span></div>`
             : `<div class="drive" style="color:#9fb8e8"><span data-ileg="${iid}">${MODE_ICON[dm]} 이전 일정에서 직선 ${haversine(from,first).toFixed(1)}km</span></div>`;
         })()}
-        ${(()=>{const rt=dayRoute(day); if(rt) return `<div class="dist">📏 하루 동선 약 ${(rt.m/1000).toFixed(1)}km · ${MODE_ICON[dm]}${fmtDur(rt.sec)}${(dm==='car'&&rt.taxi)?` · 🚕약 ${rt.taxi.toLocaleString()}원`:''} <span style="opacity:.55">(${dm==='flight'?'직선':'도로 기준'})</span></div>`;
+        ${(()=>{const rt=dayRoute(day); if(rt) return `<div class="dist">📏 하루 동선 약 ${(rt.m/1000).toFixed(1)}km · ${MODE_ICON[dm]}${fmtDur(rt.sec)}${((dm==='car'||dm==='taxi')&&rt.taxi)?` · 🚕약 ${rt.taxi.toLocaleString()}원`:''} <span style="opacity:.55">(${dm==='flight'?'직선':'도로 기준'})</span></div>`;
           return dayDistance(day)>0?`<div class="dist">📏 하루 동선 약 ${dayDistance(day).toFixed(1)}km <span style="opacity:.55">(직선)</span></div>`:'';})()}
         ${(()=>{const e=dayEndMin(day, carry); return (e!=null&&e>22*60)?`<div class="overload" title="시작시각+체류+이동 기준 예상 종료">⚠️ 일정 과밀 — 예상 종료 ${hm(e)}${e>=24*60?' (익일)':''}</div>`:'';})()}
-        ${(()=>{const dc=dayCost(day); const tx=(dayRoute(day)||{}).taxi||0; const tot=dc+(dm==='car'?tx:0);
-          return tot?`<div class="dist">💳 하루 비용 약 ₩${tot.toLocaleString()}${(dc&&dm==='car'&&tx)?` <span style="opacity:.55">(장소 ₩${dc.toLocaleString()} + 택시 ₩${tx.toLocaleString()})</span>`:''}</div>`:'';})()}
+        ${(()=>{const dc=dayCost(day); const tx=(dayRoute(day)||{}).taxi||0; const road=(dm==='car'||dm==='taxi'); const tot=dc+(road?tx:0);
+          return tot?`<div class="dist">💳 하루 비용 약 ₩${tot.toLocaleString()}${(dc&&road&&tx)?` <span style="opacity:.55">(장소 ₩${dc.toLocaleString()} + 택시 ₩${tx.toLocaleString()})</span>`:''}</div>`:'';})()}
         ${carry?`<div class="spot carry" style="--c:#7a86ad" title="전날 숙소 — 오늘 첫 일정으로 자동 이월 (탭하면 지도에서 보기 · 장소 편집의 🏠 숙소 체크로 관리)"><span class="nm" onclick="focusLatLng(${+carry.lat},${+carry.lng})"><span class="eta">🏠</span> ${esc(carry.name)} <span class="opt">전날 숙소</span></span></div>`:''}
         <div class="spotList" data-di="${di}">${spotsHtml}</div>
         <button class="addSpot" onclick="openSpotModal(${di},-1)">＋ 장소 추가</button>${day.spots.filter(hasLoc).length>=3?`<button class="addSpot optBtn" onclick="optimizeDay(${di})" title="이 날의 방문 순서를 이동거리 최소로 재배열">🧭 동선 최적화</button>`:''}
@@ -1208,7 +1209,7 @@ window.optimizeDay=(di)=>{
 };
 window.cycleMode=(di)=>{
   if(viewMode) return;
-  const order=['car','transit','walk','bike','flight'];
+  const order=['car','taxi','transit','walk','bike','flight'];
   const d=trip().days[di];
   commit(()=>{ d.mode=order[(order.indexOf(dayModeOf(d))+1)%order.length]; });
   toast(`Day ${di+1} 이동 수단: ${MODE_ICON[d.mode]} ${MODE_NAME[d.mode]}`);
@@ -1328,7 +1329,7 @@ async function doSearch(){
       d.textContent=it.name+(it.addr?` — ${it.addr}`:'');
       d.onclick=()=>{
         document.getElementById('spotLat').value=it.lat; document.getElementById('spotLng').value=it.lng;
-        fillNameValue(it.name);   // 결과 이름으로 채움(다른 결과 재선택 시 갱신, 사용자 입력은 보존)
+        fillNameValue(it.name, true);   // 검색 결과 선택은 명시적 → 기존 이름도 그 장소 이름으로 갱신
         document.getElementById('coordHint').textContent=`좌표: ${(+it.lat).toFixed(4)}, ${(+it.lng).toFixed(4)} ✓`+(it.hours?' · 영업시간 반영됨':'');
         if(it.city) fillCityValue(it.city);              // 결과가 아는 도시로 즉시 채움(신뢰성↑)
         else fillCityFromCoords(it.lat, it.lng, false);  // 없으면 역지오코딩 폴백
@@ -1376,6 +1377,17 @@ window.openDayModal=(di)=>{
 // 항공 정보 입력은 이동수단이 비행기일 때만 노출
 function toggleFlightFields(){ document.getElementById('flightFields').style.display = document.getElementById('dayMode').value==='flight'?'block':'none'; }
 document.getElementById('dayMode').onchange=toggleFlightFields;
+// 공항 코드(IATA 등)만 짧게 입력하면 구글 Places로 공항명 조회해 자동 채움. 긴 이름은 그대로.
+async function lookupAirport(el){
+  const v=el.value.trim();
+  if(!/^[A-Za-z가-힣]{2,4}$/.test(v)) return;                 // 코드처럼 짧을 때만 (이미 이름이면 건드리지 않음)
+  el.disabled=true;
+  try{
+    const r=(await googlePlaces(v+' airport', null, 1))[0];
+    if(r && r.name && el.value.trim()===v) el.value=`${r.name} (${v.toUpperCase()})`;
+  }catch(e){} finally{ el.disabled=false; }
+}
+['flightDep','flightArr'].forEach(id=>document.getElementById(id).addEventListener('blur',e=>lookupAirport(e.target)));
 document.getElementById('dayCancel').onclick=()=>document.getElementById('dayModalBg').classList.remove('show');
 document.getElementById('daySave').onclick=()=>{
   const d=trip().days[editingDay];
@@ -1801,7 +1813,7 @@ function renderTravel(di){
       const lg=document.createElement('div'); lg.className='tLeg';
       lg.textContent = c
         ? ((dm==='car'&&c.m<2000)? `🚶 ${Math.max(1,Math.round(c.m/75))}분 · ${(c.m/1000).toFixed(1)}km`
-                   : `${MODE_ICON[dm]} ${fmtDur(c.sec)} · ${(c.m/1000).toFixed(1)}km${(dm==='car'&&c.taxi)?` · 🚕약 ${c.taxi.toLocaleString()}원`:''}`)
+                   : `${MODE_ICON[dm]} ${fmtDur(c.sec)} · ${(c.m/1000).toFixed(1)}km${((dm==='car'||dm==='taxi')&&c.taxi)?` · 🚕약 ${c.taxi.toLocaleString()}원`:''}`)
         : `↘ 직선 ${haversine(prevLoc,s).toFixed(1)}km`;
       list.appendChild(lg);
     }
