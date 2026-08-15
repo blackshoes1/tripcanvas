@@ -438,9 +438,9 @@ const LEG_KEY='tripcanvas_legs_v4';   // v4: 순수 코덱(SDK 비의존) — v3
 let legCache={};
 try{ legCache=JSON.parse(localStorage.getItem(LEG_KEY))||{}; }catch(e){}
 // 이동 수단 (일자별): car 자차 · transit 대중교통 · walk 도보 · bike 자전거
-const MODE_ICON={car:'🚗',transit:'🚌',walk:'🚶',bike:'🚴',flight:'✈️'};
-const MODE_NAME={car:'자차',transit:'대중교통',walk:'도보',bike:'자전거',flight:'비행기'};
-const MODE_SPEED={car:40,transit:25,walk:4.5,bike:15,flight:700};   // km/h — 미캐시 구간 추정용
+const MODE_ICON={car:'🚗',transit:'🚌',train:'🚆',walk:'🚶',bike:'🚴',flight:'✈️'};
+const MODE_NAME={car:'자차',transit:'대중교통',train:'기차',walk:'도보',bike:'자전거',flight:'비행기'};
+const MODE_SPEED={car:40,transit:25,train:160,walk:4.5,bike:15,flight:700};   // km/h — 미캐시 구간 추정용
 function dayModeOf(day){ return MODE_ICON[day.mode]? day.mode : 'car'; }
 // 항공 정보(항공편명·공항·시각) 한 줄 표기 (day.flight)
 function flightHtml(day){
@@ -518,7 +518,7 @@ function legLabel(c){
   return `↳${km}km · ${MODE_ICON[mode]}${fmtDur(c.sec)}`;
 }
 function legTitle(c){
-  let t=(c.est?'자동차 경로 거리 기반 추정':'실제 도로 기준');
+  let t=(c.est ? (((c.mode==='flight'||c.mode==='train'))?'직선거리 기반 추정':'자동차 경로 거리 기반 추정') : '실제 도로 기준');
   if(c.snapped) t+=' · 인근 도로에서 출발/도착 (원 지점은 도로에서 멂)';
   if((c.mode||'car')==='car'&&c.taxi) t+=` · 택시 약 ${c.taxi.toLocaleString()}원`;
   return t;
@@ -543,6 +543,10 @@ async function fetchLeg(a,b,mode){
   if(mode==='flight'){   // 비행기는 도로 라우팅이 없음 → 직선거리 + 속도 추정(활주·이착륙 40분 가산)
     const km=haversine(a,b);
     return { sec:Math.round(km/700*3600 + 40*60), m:Math.round(km*1000), path:null, est:1, mode:'flight' };
+  }
+  if(mode==='train'){   // 기차는 실시간 시각표 없이 추정 — 직선거리×철도우회(1.1) ÷ 고속철 평균속도 + 승하차 10분
+    const km=haversine(a,b)*1.1;
+    return { sec:Math.round(km/160*3600 + 10*60), m:Math.round(km*1000), path:null, est:1, mode:'train' };
   }
   const kr=inKorea(a)&&inKorea(b);
   if(kr){
@@ -1168,7 +1172,7 @@ window.optimizeDay=(di)=>{
 };
 window.cycleMode=(di)=>{
   if(viewMode) return;
-  const order=['car','transit','walk','bike','flight'];
+  const order=['car','transit','train','walk','bike','flight'];
   const d=trip().days[di];
   commit(()=>{ d.mode=order[(order.indexOf(dayModeOf(d))+1)%order.length]; });
   toast(`Day ${di+1} 이동 수단: ${MODE_ICON[d.mode]} ${MODE_NAME[d.mode]}`);
@@ -1622,9 +1626,9 @@ async function geocodeSpot(s){
 async function parseAI(text){
   if(!cfg.apiKey) throw new Error('AI 파싱을 쓰려면 API 키를 입력해줘');
   const system=`너는 여행 일정 파서다. 사용자의 자유로운 여행 설명을 받아 JSON으로만 변환해라.
-스키마: {"name":string,"start":"YYYY-MM-DD"|null,"days":[{"title":string,"mode":"car"|"transit"|"walk"|"bike","startAt":"HH:MM"|null,"drive":string,"note":string,"spots":[{"name":string,"city":string,"desc":string,"opt":boolean,"stay":boolean,"at":"HH:MM"|null,"stayMin":number|null,"cost":number|null,"cur":"KRW"|"USD"|"JPY"|"CNY","bookAt":"HH:MM"|null,"lat":number|null,"lng":number|null}]}]}
+스키마: {"name":string,"start":"YYYY-MM-DD"|null,"days":[{"title":string,"mode":"car"|"transit"|"train"|"walk"|"bike"|"flight","startAt":"HH:MM"|null,"drive":string,"note":string,"spots":[{"name":string,"city":string,"desc":string,"opt":boolean,"stay":boolean,"at":"HH:MM"|null,"stayMin":number|null,"cost":number|null,"cur":"KRW"|"USD"|"JPY"|"CNY","bookAt":"HH:MM"|null,"lat":number|null,"lng":number|null}]}]}
 - stay는 숙소(호텔·에어비앤비 등)면 true.
-- mode는 그날 주 이동수단: 렌터카/자차=car, 지하철·버스·기차=transit, 걷기=walk, 자전거=bike. 언급 없으면 "car".
+- mode는 그날 주 이동수단: 렌터카/자차=car, 지하철·버스=transit, 기차·고속철(KTX·AVE·신칸센)=train, 비행기=flight, 걷기=walk, 자전거=bike. 언급 없으면 "car".
 - startAt은 그날 시작 시각(예 "KTX 9시 출발"→"09:00"). 없으면 null.
 - at은 그 장소의 도착 시각을 고정하고 싶을 때(예 "점심 12시"→"12:00", "3시에 도착"→"15:00"). 없으면 null. bookAt(예약·입장 지정시각)과 구분: at=일반 도착 고정시각, bookAt=예매가 필요한 입장시각.
 - stayMin은 장소 체류시간(분). "알함브라 3시간"→180, "1시간"→60. 언급 없으면 null.
@@ -1686,7 +1690,7 @@ async function runPaste(){
   }catch(e){ toast(e.message||'파싱 실패','#e63946'); return; }
   if(!parsed||!Array.isArray(parsed.days)||!parsed.days.length){ toast('일정을 못 읽었어 — 형식을 확인해줘','#e63946'); return; }
   // 정규화
-  const MODES=['car','transit','walk','bike'];
+  const MODES=['car','transit','train','walk','bike','flight'];
   const hhmm=v=>/^\d{1,2}:\d{2}$/.test(v||'')?v:'';
   const posInt=v=>{const n=parseInt(v); return (v==null||isNaN(n)||n<0)?null:n;};
   parsed.days=parsed.days.map(d=>({
@@ -1711,6 +1715,11 @@ async function runPaste(){
   if(target==='append'){
     trip().days.push(...parsed.days);
     if(parsed.start&&!trip().start) trip().start=parsed.start;
+  }else if(target==='overwrite' && !viewMode && trip()){
+    const t=trip();                                  // 현재 여행 전체 교체 (id 유지, 이름·시작일·일정 덮어쓰기)
+    t.days=parsed.days;
+    if(parsed.name) t.name=parsed.name;
+    if(parsed.start) t.start=parsed.start;
   }else{
     const t={id:uid(), name:parsed.name||'붙여넣은 여행', start:parsed.start||new Date().toISOString().slice(0,10), days:parsed.days};
     store.trips.push(t); store.activeId=t.id;

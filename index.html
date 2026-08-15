@@ -13,7 +13,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-<link rel="stylesheet" href="style.css?v=tc-v86">
+<link rel="stylesheet" href="style.css?v=tc-v87">
 </head>
 <body>
 <header>
@@ -89,6 +89,7 @@
   <select id="dayMode">
     <option value="car">🚗 자차</option>
     <option value="transit">🚌 대중교통</option>
+    <option value="train">🚆 기차</option>
     <option value="walk">🚶 도보</option>
     <option value="bike">🚴 자전거</option>
     <option value="flight">✈️ 비행기</option>
@@ -153,6 +154,7 @@
   <select id="pasteTarget">
     <option value="new">새 여행으로 생성</option>
     <option value="append">현재 여행에 이어붙이기</option>
+    <option value="overwrite">현재 여행 전체 덮어쓰기</option>
   </select>
   <details id="fmtHelp"><summary>직접 형식 도움말 / 예시 복사</summary><pre id="fmtSpec">여행이름: 다롄 2박3일
 시작일: 2026-07-15
@@ -208,7 +210,7 @@
 </div>
 <div id="toast"></div>
 
-<script src="lib.js?v=tc-v86"></script>
-<script src="app.js?v=tc-v86"></script>
+<script src="lib.js?v=tc-v87"></script>
+<script src="app.js?v=tc-v87"></script>
 </body>
 </html>
