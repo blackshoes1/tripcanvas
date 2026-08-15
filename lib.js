@@ -241,7 +241,7 @@
   // 알려진 필드는 안전한 타입으로 강제/기본값 지정하고 잘못된 값은 제거해 렌더 크래시를 막는다.
   // 알 수 없는 필드는 보존(데이터 손실 방지). 현재 스키마 버전.
   const TC_SCHEMA=1;
-  const _MODES=['car','taxi','transit','walk','bike','flight'];
+  const _MODES=['car','taxi','transit','train','walk','bike','flight'];
   const _CURS=['KRW','USD','JPY','CNY'];
   /** @param {any} x @returns {string} */
   function _str(x){ return typeof x==='string'? x : (x==null? '' : String(x)); }
