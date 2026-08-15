@@ -552,7 +552,7 @@ function legLabel(c){
 }
 function legTitle(c){
   let t=(c.est ? ((c.mode==='flight'||c.mode==='train')?'직선거리 기반 추정':'자동차 경로 거리 기반 추정') : '실제 도로 기준');
-  if(c.snapped) t+=' · 인근 도로에서 출발/도착 (원 지점은 도로에서 멂)';
+  if(c.snapped) t+=' · 인근 지점에서 출발/도착 (원 지점이 도로·정류장에서 멀어 보정 — 공항 부지 중심 좌표 등)';
   if((c.mode==='car'||c.mode==='taxi')&&c.taxi) t+=` · 택시 약 ${c.taxi.toLocaleString()}원`;
   return t;
 }
@@ -566,12 +566,25 @@ function legModeBtn(day,di,si,lm){
   return `<button class="legModeBtn${set?' set':''}" onclick="event.stopPropagation();cycleLegMode(${di},${si})" title="${escAttr(t)}">${MODE_ICON[lm]}</button>`;
 }
 const GMODE={car:'DRIVE',taxi:'DRIVE',transit:'TRANSIT',walk:'WALK',bike:'BICYCLE'};
-async function googleRoute(a,b,mode){
+// 계획 출발 시각(현지 근사: 경도로 시간대 추정) → RFC3339. 과거·임박이면 null(구글은 미래만 허용).
+function planDepartISO(isoDate, hhmm, lng){
+  const m=/^(\d{1,2}):(\d{2})$/.exec(hhmm||'09:00');
+  if(!isoDate||!m) return null;
+  const p=isoDate.split('-').map(Number);
+  if(p.length!==3||!p[0]) return null;
+  const tz=Math.round((+lng||0)/15);                       // 현지 시간대 근사(경도 15°=1시간)
+  const ms=Date.UTC(p[0],p[1]-1,p[2],+m[1]-tz,+m[2]);
+  if(!(ms>Date.now()+60000)) return null;
+  return new Date(ms).toISOString().replace(/\.\d{3}Z$/,'Z');
+}
+async function googleRoute(a,b,mode,when){
+  const body={origin:{location:{latLng:{latitude:+a.lat,longitude:+a.lng}}},
+    destination:{location:{latLng:{latitude:+b.lat,longitude:+b.lng}}}, travelMode:GMODE[mode]||'DRIVE'};
+  if(when && body.travelMode==='TRANSIT') body.departureTime=when;   // 없으면 '지금' 기준이라 실제 여행일과 어긋남
   const r=await fetch('https://routes.googleapis.com/directions/v2:computeRoutes',{
     method:'POST',
     headers:{'Content-Type':'application/json','X-Goog-Api-Key':GMAPS_KEY,'X-Goog-FieldMask':'routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline'},
-    body:JSON.stringify({origin:{location:{latLng:{latitude:+a.lat,longitude:+a.lng}}},
-      destination:{location:{latLng:{latitude:+b.lat,longitude:+b.lng}}}, travelMode:GMODE[mode]||'DRIVE'})
+    body:JSON.stringify(body)
   });
   if(!r.ok) return null;
   const js=await r.json();
@@ -579,9 +592,27 @@ async function googleRoute(a,b,mode){
   if(!rt||!rt.duration) return null;
   return {sec:parseInt(rt.duration), m:rt.distanceMeters||0, path:(rt.polyline&&rt.polyline.encodedPolyline)||null};
 }
+// 대중교통 결과 타당성 — 직선거리 대비 유효속도가 지나치게 낮으면 신뢰 불가.
+// (예: 공항 대표 좌표가 활주로 쪽 부지 중심이라 '걸어서 공항을 빠져나오는' 경로가 나옴)
+function transitImplausible(a,b,r){
+  const km=haversine(a,b);
+  return km>=2 && r.sec>0 && (km/(r.sec/3600))<8;   // 유효속도 8km/h 미만 = 사실상 도보
+}
+// 비현실적이면 출발지를 인근 지점(정류장·터미널 진입로)으로 스냅해 재시도 — 국내 카카오 링 프로브와 같은 방식
+async function googleTransitRoute(a,b,when){
+  const first=await googleRoute(a,b,'transit',when);
+  if(!first || !transitImplausible(a,b,first)) return first;
+  for(const rad of [600,1200]){
+    for(const c of ringPts(a,rad)){
+      const t=await googleRoute(c,b,'transit',when);
+      if(t && !transitImplausible(a,b,t)) return {...t, snapped:1};
+    }
+  }
+  return first;
+}
 // 수단·지역별 라우팅: 국내 car=카카오내비 / transit=구글 / walk·bike=카카오 자동차 경로 거리 기반 추정
 //                     해외 4개 모드 모두 구글 Routes
-async function fetchLeg(a,b,mode){
+async function fetchLeg(a,b,mode,when){
   if(mode==='flight'){   // 비행기는 도로 라우팅이 없음 → 직선거리 + 속도 추정(활주·이착륙 40분 가산)
     const km=haversine(a,b);
     return { sec:Math.round(km/700*3600 + 40*60), m:Math.round(km*1000), path:null, est:1, mode:'flight' };
@@ -593,34 +624,40 @@ async function fetchLeg(a,b,mode){
   const kr=inKorea(a)&&inKorea(b);
   if(kr){
     if(mode==='car'||mode==='taxi'){ const k=await kakaoRoute(a,b); return k&&{...k,mode}; }   // 택시=도로(자차) 경로
-    if(mode==='transit'){ const g=await googleRoute(a,b,'transit'); return g&&{...g,mode}; }
+    if(mode==='transit'){ const g=await googleTransitRoute(a,b,when); return g&&{...g,mode}; }
     const k=await kakaoRoute(a,b);                       // walk/bike: 도로 거리 기반 추정
     if(!k) return null;
     const mps=mode==='walk'?1.25:4.17;                   // 4.5km/h · 15km/h
     return {sec:Math.round(k.m/mps), m:k.m, path:k.path, snapped:k.snapped, est:1, mode};
   }
-  const g=await googleRoute(a,b,mode);
+  const g=(mode==='transit')? await googleTransitRoute(a,b,when) : await googleRoute(a,b,mode,when);
   return g&&{...g,mode};
 }
 // 캐시에 있으면 즉시 반환, 없으면 큐에 넣고 null (완료 시 DOM 패치 + 사이드바 갱신)
 let legQueue=[], legBusy=false, legRefreshT=null;
-function requestLeg(a,b,mode){
+function requestLeg(a,b,mode,when){
   mode=MODE_ICON[mode]?mode:'car';
   const key=legKey(a,b,mode);
   const c=legCache[key];
-  if(c && c.sec && !c.path){ delete legCache[key]; }   // 경로 없이 캐시된 항목(과거 레이스 오염) 자가 치유 → 재조회
-  else if(c) return c.sec? c : null;                   // 실패 기록이면 재시도 안 함 (세션 캐시)
-  if(!legQueue.find(q=>q.key===key)){ legQueue.push({key,mode,a:{lat:+a.lat,lng:+a.lng},b:{lat:+b.lat,lng:+b.lng}}); pumpLegs(); }
+  // 경로 없이 캐시된 항목(과거 레이스 오염) 자가 치유 → 재조회. 단 est(비행기·기차 등 추정)는 원래 경로가 없음
+  if(c && c.sec && !c.path && !c.est){ delete legCache[key]; }
+  else if(c){
+    // 대중교통은 출발 시각에 따라 소요가 달라짐 → 계획 시각이 바뀌었으면 재조회
+    if(mode==='transit' && when && c.sec && c.when!==when) delete legCache[key];
+    else return c.sec? c : null;                       // 실패 기록이면 재시도 안 함 (세션 캐시)
+  }
+  if(!legQueue.find(q=>q.key===key)){ legQueue.push({key,mode,when,a:{lat:+a.lat,lng:+a.lng},b:{lat:+b.lat,lng:+b.lng}}); pumpLegs(); }
   return c&&c.sec? c : null;   // 재조회 중에도 기존 시간·거리는 계속 표시
 }
 async function pumpLegs(){
   if(legBusy) return; legBusy=true;
   // 인코딩은 순수 JS(lib.js)라 SDK 대기 불필요
   while(legQueue.length){
-    const {key,mode,a,b}=legQueue.shift();
+    const {key,mode,a,b,when}=legQueue.shift();
     if(legCache[key]) continue;
     let r=null;
-    try{ r=await fetchLeg(a,b,mode); }catch(e){}
+    try{ r=await fetchLeg(a,b,mode,when); }catch(e){}
+    if(r && mode==='transit' && when) r.when=when;   // 어떤 계획 시각으로 조회했는지 기록(시각 바뀌면 재조회)
     legCache[key] = r || {fail:Date.now()};
     if(r){
       saveLegCache();
@@ -1133,12 +1170,14 @@ function renderSidebar(){
     const ctx=dayContext(di), carry=ctx.carry;   // anchor=ETA용(숙소/전날 마지막), carry=🏠 표시용(숙소만)
     let spotsHtml='', prevLoc=carry;
     const tl=ctx.timeline, etas=tl.map(x=>x.eta), dm=ctx.mode, iso=isoDateOf(di);   // ETA는 anchor 기준 — 비숙소 전날 마지막 장소도 반영
+    // 대중교통 조회용 계획 출발 시각 — 없으면 구글이 '지금' 기준으로 계산해 실제 여행일과 어긋남
+    const planWhen=planDepartISO(iso, day.startAt, (day.spots.find(hasLoc)||{}).lng);
     day.spots.forEach((s,si)=>{
       const dotC = hasLoc(s)?spotColor(s,di,colors):'#4a5170';
       // 구간: 캐시된 경로가 있으면 그걸, 아니면 직선거리 + 백그라운드 조회
       let legHtml='';
       if(hasLoc(s)&&prevLoc){
-        const lm=legModeOf(day,s), lid=legKey(prevLoc,s,lm), lc=requestLeg(prevLoc,s,lm);   // 구간별 수단
+        const lm=legModeOf(day,s), lid=legKey(prevLoc,s,lm), lc=requestLeg(prevLoc,s,lm,planWhen);   // 구간별 수단
         const failed=!lc && legCache[lid] && legCache[lid].fail;   // 인근 도로 스냅까지 실패
         legHtml = legModeBtn(day,di,si,lm) + (lc
           ? `<span class="leg" data-leg="${lid}" title="${legTitle(lc)}">${legLabel(lc)}</span>`
@@ -1177,7 +1216,7 @@ function renderSidebar(){
         ${(()=>{   // 일자 간 자동 이동시간: 이월 시작점 → 오늘 첫 장소 (숙소 이월 시엔 🏠 항목+구간거리로 대체, none이면 미표시)
           const first=day.spots.find(hasLoc), from=startAnchorFor(di);
           if(carry||!from||!first) return '';
-          const im=legModeOf(day,first), iid=legKey(from,first,im), ic=requestLeg(from,first,im);
+          const im=legModeOf(day,first), iid=legKey(from,first,im), ic=requestLeg(from,first,im,planWhen);
           const ibtn=legModeBtn(day,di,day.spots.indexOf(first),im);   // 이 구간(도시 간 이동인 경우가 많음)만 수단 변경
           return ic
             ? `<div class="drive" style="color:#9fb8e8" title="이전 일자 기준점 · ${legTitle(ic)}">${ibtn}<span data-ileg="${iid}">이전 일정에서 ${(ic.m/1000).toFixed(1)}km · ${fmtDur(ic.sec)}</span></div>`
