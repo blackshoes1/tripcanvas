@@ -34,7 +34,11 @@
   .dayBody{padding:2px 12px 9px}
   .drive{font-size:11.5px;color:#f6bd60;padding:2px 0 4px 2px}
   .dist{font-size:11px;color:#8aa0c8;padding:1px 0 3px 2px}
-  .leg{color:#7d88a8;font-size:10.5px;margin-left:6px;white-space:nowrap}
+  .leg{color:#7d88a8;font-size:10.5px;margin-left:2px;white-space:nowrap}
+  /* 구간 수단 버튼 — 상속(흐림) vs 이 구간만 지정(진하게 + 테두리) */
+  .legModeBtn{background:none;border:1px solid transparent;border-radius:6px;padding:0 3px;font-size:11px;line-height:1.5;opacity:.5;margin-left:5px;cursor:pointer}
+  .legModeBtn:hover{opacity:1;background:#2a3457}
+  .legModeBtn.set{opacity:1;border-color:#3d4a7a;background:#232f57}
   .note{font-size:11px;color:#9aa5c4;padding:3px 0 0 2px;white-space:pre-wrap}
   .spot{font-size:12.5px;padding:3px 0 3px 14px;position:relative;display:flex;align-items:center;gap:4px}
   .spot:before{content:'';position:absolute;left:2px;top:10px;width:7px;height:7px;border-radius:50%;background:var(--c,#888)}

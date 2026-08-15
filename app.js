@@ -544,17 +544,26 @@ async function kakaoRoute(a,b){
   }
   return null;
 }
-// 구간 라벨 — 수단 아이콘 + 시간 (자차는 2km 미만이면 도보 대안 시간 표기)
+// 구간 라벨 — 거리 + 시간 (수단 아이콘은 옆의 탭 가능한 버튼이 표시. 자차 2km 미만은 도보 대안 시간 표기)
 function legLabel(c){
   const km=(c.m/1000).toFixed(1), mode=c.mode||'car';
   if(mode==='car' && c.m<2000){ const wm=Math.max(1,Math.round(c.m/75)); return `↳${km}km · 🚶${wm}분`; }
-  return `↳${km}km · ${MODE_ICON[mode]}${fmtDur(c.sec)}`;
+  return `↳${km}km · ${fmtDur(c.sec)}`;
 }
 function legTitle(c){
   let t=(c.est ? ((c.mode==='flight'||c.mode==='train')?'직선거리 기반 추정':'자동차 경로 거리 기반 추정') : '실제 도로 기준');
   if(c.snapped) t+=' · 인근 도로에서 출발/도착 (원 지점은 도로에서 멂)';
   if((c.mode==='car'||c.mode==='taxi')&&c.taxi) t+=` · 택시 약 ${c.taxi.toLocaleString()}원`;
   return t;
+}
+// 구간 수단 아이콘 버튼 — 탭하면 그 구간만 변경(cycleLegMode). 일정 기본을 상속하면 흐리게, 개별 지정이면 진하게.
+function legModeBtn(day,di,si,lm){
+  if(si==null||si<0) return '';
+  const set=!!(day.spots[si]&&day.spots[si].legMode), dmn=dayModeOf(day);
+  if(viewMode) return `<span class="legModeBtn${set?' set':''}" title="${escAttr(MODE_NAME[lm])}">${MODE_ICON[lm]}</span>`;
+  const t=set ? `이 구간만 ${MODE_NAME[lm]} — 탭해서 변경 (계속 누르면 일정 기본으로 되돌아감)`
+              : `일정 기본 ${MODE_NAME[dmn]} — 탭하면 이 구간만 바꿔요`;
+  return `<button class="legModeBtn${set?' set':''}" onclick="event.stopPropagation();cycleLegMode(${di},${si})" title="${escAttr(t)}">${MODE_ICON[lm]}</button>`;
 }
 const GMODE={car:'DRIVE',taxi:'DRIVE',transit:'TRANSIT',walk:'WALK',bike:'BICYCLE'};
 async function googleRoute(a,b,mode){
@@ -619,8 +628,8 @@ async function pumpLegs(){
         el.textContent=legLabel(r);
         el.title=legTitle(r);
       });
-      document.querySelectorAll(`[data-ileg="${key}"]`).forEach(el=>{
-        el.textContent=`${MODE_ICON[r.mode||'car']} 이전 일정에서 ${(r.m/1000).toFixed(1)}km · ${fmtDur(r.sec)}`;
+      document.querySelectorAll(`[data-ileg="${key}"]`).forEach(el=>{   // 수단 아이콘은 옆의 버튼이 표시
+        el.textContent=`이전 일정에서 ${(r.m/1000).toFixed(1)}km · ${fmtDur(r.sec)}`;
       });
       clearTimeout(legRefreshT);
       legRefreshT=setTimeout(()=>render(),450);   // 하루 합계 + 지도 경로선 갱신
@@ -1131,9 +1140,9 @@ function renderSidebar(){
       if(hasLoc(s)&&prevLoc){
         const lm=legModeOf(day,s), lid=legKey(prevLoc,s,lm), lc=requestLeg(prevLoc,s,lm);   // 구간별 수단
         const failed=!lc && legCache[lid] && legCache[lid].fail;   // 인근 도로 스냅까지 실패
-        legHtml = lc
+        legHtml = legModeBtn(day,di,si,lm) + (lc
           ? `<span class="leg" data-leg="${lid}" title="${legTitle(lc)}">${legLabel(lc)}</span>`
-          : `<span class="leg${failed?' legfail':''}" data-leg="${lid}"${failed?' title="경로를 찾을 수 없어 직선거리로 표시 — 인근 도로 탐색(최대 2.4km)까지 실패했습니다. 장소 편집에서 검색으로 위치를 다시 잡아 보세요"':''}>↳${haversine(prevLoc,s).toFixed(1)}km${failed?' ⚠️':''}</span>`;
+          : `<span class="leg${failed?' legfail':''}" data-leg="${lid}"${failed?' title="경로를 찾을 수 없어 직선거리로 표시 — 인근 도로 탐색(최대 2.4km)까지 실패했습니다. 장소 편집에서 검색으로 위치를 다시 잡아 보세요"':''}>↳${haversine(prevLoc,s).toFixed(1)}km${failed?' ⚠️':''}</span>`);
       }
       if(hasLoc(s)) prevLoc=s;
       // 예약 시각이 도착 예상시각(ETA)보다 이르면 경고 (예약 놓칠 위험)
@@ -1169,9 +1178,10 @@ function renderSidebar(){
           const first=day.spots.find(hasLoc), from=startAnchorFor(di);
           if(carry||!from||!first) return '';
           const im=legModeOf(day,first), iid=legKey(from,first,im), ic=requestLeg(from,first,im);
+          const ibtn=legModeBtn(day,di,day.spots.indexOf(first),im);   // 이 구간(도시 간 이동인 경우가 많음)만 수단 변경
           return ic
-            ? `<div class="drive" style="color:#9fb8e8" title="이전 일자 기준점 · ${legTitle(ic)}"><span data-ileg="${iid}">${MODE_ICON[dm]} 이전 일정에서 ${(ic.m/1000).toFixed(1)}km · ${fmtDur(ic.sec)}</span></div>`
-            : `<div class="drive" style="color:#9fb8e8"><span data-ileg="${iid}">${MODE_ICON[dm]} 이전 일정에서 직선 ${haversine(from,first).toFixed(1)}km</span></div>`;
+            ? `<div class="drive" style="color:#9fb8e8" title="이전 일자 기준점 · ${legTitle(ic)}">${ibtn}<span data-ileg="${iid}">이전 일정에서 ${(ic.m/1000).toFixed(1)}km · ${fmtDur(ic.sec)}</span></div>`
+            : `<div class="drive" style="color:#9fb8e8">${ibtn}<span data-ileg="${iid}">이전 일정에서 직선 ${haversine(from,first).toFixed(1)}km</span></div>`;
         })()}
         ${(()=>{const rt=dayRoute(day); if(rt) return `<div class="dist">📏 하루 동선 약 ${(rt.m/1000).toFixed(1)}km · ${MODE_ICON[dm]}${fmtDur(rt.sec)}${((dm==='car'||dm==='taxi')&&rt.taxi)?` · 🚕약 ${rt.taxi.toLocaleString()}원`:''} <span style="opacity:.55">(${dm==='flight'?'직선':'도로 기준'})</span></div>`;
           return dayDistance(day)>0?`<div class="dist">📏 하루 동선 약 ${dayDistance(day).toFixed(1)}km <span style="opacity:.55">(직선)</span></div>`:'';})()}
@@ -1272,7 +1282,18 @@ window.cycleMode=(di)=>{
   const order=['car','taxi','transit','train','walk','bike','flight'];
   const d=trip().days[di];
   commit(()=>{ d.mode=order[(order.indexOf(dayModeOf(d))+1)%order.length]; });
-  toast(`Day ${di+1} 이동 수단: ${MODE_ICON[d.mode]} ${MODE_NAME[d.mode]}`);
+  toast(`Day ${di+1} 기본 이동 수단: ${MODE_ICON[d.mode]} ${MODE_NAME[d.mode]} — 구간 아이콘을 누르면 그 구간만 바꿔요`);
+};
+// 구간 수단 순환: 일정 기본(legMode 없음) → 각 수단 → 다시 기본. 도시 간 이동처럼 '한 구간만' 다를 때.
+const LEG_MODE_ORDER=['','car','taxi','transit','train','walk','bike','flight'];
+window.cycleLegMode=(di,si)=>{
+  if(viewMode) return;
+  const day=trip().days[di], s=day&&day.spots&&day.spots[si]; if(!s) return;
+  const next=LEG_MODE_ORDER[(LEG_MODE_ORDER.indexOf(s.legMode||'')+1)%LEG_MODE_ORDER.length];
+  commit(()=>{ if(next) s.legMode=next; else delete s.legMode; });
+  const dmn=dayModeOf(day);
+  toast(next ? `이 구간만: ${MODE_ICON[next]} ${MODE_NAME[next]}`
+             : `이 구간: 일정 기본(${MODE_ICON[dmn]} ${MODE_NAME[dmn]})으로 되돌림`);
 };
 window.moveSpot=(di,si,dir)=>{
   if(viewMode) return;
