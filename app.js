@@ -566,14 +566,30 @@ function legModeBtn(day,di,si,lm){
   return `<button class="legModeBtn${set?' set':''}" onclick="event.stopPropagation();cycleLegMode(${di},${si})" title="${escAttr(t)}">${MODE_ICON[lm]}</button>`;
 }
 const GMODE={car:'DRIVE',taxi:'DRIVE',transit:'TRANSIT',walk:'WALK',bike:'BICYCLE'};
-// <input type="time">의 표시 형식(오전/오후 vs 24시간)은 브라우저 로케일이 정해서 페이지에서 못 바꾼다.
-// → 입력 옆에 24시간 값을 항상 같이 보여줘 오전/오후 혼동을 없앤다. (저장·목록 표기는 이미 24시간)
-function upd24h(inp){
-  const e=inp&&inp.nextElementSibling;
-  if(e&&e.classList&&e.classList.contains('h24')) e.textContent = inp.value? `24시 기준 ${inp.value}` : '';
+// 시각 입력은 <input type=time> 대신 직접 입력 — 위젯은 표시 형식(오전/오후)이 브라우저 로케일에
+// 묶여 24시간으로 강제할 수 없어서. "1430"·"14:30"·"930" 모두 받아 24시간 HH:MM으로 정규화, 아니면 ''.
+function normHM(v){
+  const s=String(v||'').trim();
+  let h,m;
+  const c=/^(\d{1,2}):(\d{1,2})$/.exec(s);
+  if(c){ h=+c[1]; m=+c[2]; }                                 // "9:5"·"14:30" → 09:05·14:30
+  else {
+    const d=s.replace(/\D/g,'');
+    if(!d) return '';
+    if(d.length<=2){ h=+d; m=0; }                            // "9"·"14" → 09:00·14:00
+    else if(d.length===3){ h=+d.slice(0,1); m=+d.slice(1); } // "930" → 09:30
+    else { h=+d.slice(0,2); m=+d.slice(2,4); }               // "1430" → 14:30
+  }
+  return (h>23||m>59) ? '' : String(h).padStart(2,'0')+':'+String(m).padStart(2,'0');
 }
-function refresh24h(){ document.querySelectorAll('input[type=time]').forEach(upd24h); }
-document.addEventListener('input', e=>{ if(e.target&&e.target.type==='time') upd24h(e.target); });
+document.addEventListener('input', e=>{   // 입력 중엔 숫자·콜론만 허용(형식 강요는 안 함)
+  const t=e.target;
+  if(t&&t.classList&&t.classList.contains('timeIn')) t.value=t.value.replace(/[^\d:]/g,'').slice(0,5);
+});
+document.addEventListener('blur', e=>{    // 칸을 벗어날 때 24시간 HH:MM으로 정리(형식 아니면 비움)
+  const t=e.target;
+  if(t&&t.classList&&t.classList.contains('timeIn') && t.value.trim()!=='') t.value=normHM(t.value);
+}, true);
 // 계획 출발 시각(현지 근사: 경도로 시간대 추정) → RFC3339. 과거·임박이면 null(구글은 미래만 허용).
 function planDepartISO(isoDate, hhmm, lng){
   const m=/^(\d{1,2}):(\d{2})$/.exec(hhmm||'09:00');
@@ -1404,7 +1420,6 @@ window.openSpotModal=(di,si)=>{
   document.getElementById('spotLat').value=s.lat; document.getElementById('spotLng').value=s.lng;
   document.getElementById('coordHint').textContent = s.lat?`좌표: ${(+s.lat).toFixed(4)}, ${(+s.lng).toFixed(4)}`:'좌표: 미지정 (검색 또는 지도 클릭)';
   document.getElementById('spotSearch').value=''; document.getElementById('searchRes').innerHTML='';
-  refresh24h();
   const daySel=document.getElementById('spotDay');
   daySel.innerHTML=trip().days.map((d,i)=>`<option value="${i}" ${i===di?'selected':''}>Day ${i+1} · ${esc(d.title||dateOf(i))}</option>`).join('');
   document.getElementById('spotModalBg').classList.add('show');
@@ -1430,12 +1445,12 @@ document.getElementById('spotSave').onclick=()=>{
   const curV=document.getElementById('spotCur').value;
   const s={name,city:document.getElementById('spotCity').value.trim()||'기타',desc:document.getElementById('spotDesc').value.trim(),
     opt:document.getElementById('spotOpt').checked,stay:document.getElementById('spotStay').checked,
-    at:document.getElementById('spotAt').value||undefined,
+    at:normHM(document.getElementById('spotAt').value)||undefined,
     legMode:(document.getElementById('spotLegMode').value||undefined),   // 구간별 수단(빈값이면 일정 기본)
     stayMin:Math.max(0,parseInt(document.getElementById('spotStayMin').value)||60),
     cost:(isNaN(costV)?null:Math.max(0,costV)),
     cur:(curV&&curV!=='KRW'?curV:undefined),   // KRW는 기본값이라 저장 생략(하위호환)
-    bookAt:document.getElementById('spotBookAt').value||'',
+    bookAt:normHM(document.getElementById('spotBookAt').value)||'',
     bookUrl:document.getElementById('spotBookUrl').value.trim(),
     hours:_pickedHours||undefined,lat,lng};
   const targetDay=parseInt(document.getElementById('spotDay').value);
@@ -1533,7 +1548,6 @@ window.openDayModal=(di)=>{
   document.getElementById('dayTitle').value=d.title||'';
   document.getElementById('dayDrive').value=d.drive||'';
   document.getElementById('dayNote').value=d.note||'';
-  refresh24h();
   document.getElementById('dayModalBg').classList.add('show');
 };
 // 항공 정보 입력은 이동수단이 비행기일 때만 노출
@@ -1554,11 +1568,11 @@ document.getElementById('dayCancel').onclick=()=>document.getElementById('dayMod
 document.getElementById('daySave').onclick=()=>{
   const d=trip().days[editingDay];
   d.title=document.getElementById('dayTitle').value.trim();
-  d.startAt=document.getElementById('dayStart').value||'09:00';
+  d.startAt=normHM(document.getElementById('dayStart').value)||'09:00';
   if(document.getElementById('dayCarry').checked) delete d.startPolicy; else d.startPolicy='none';   // 이월 정책
   d.mode=document.getElementById('dayMode').value;
   const fc=document.getElementById('flightCode').value.trim(), fdp=document.getElementById('flightDep').value.trim(),
-    far=document.getElementById('flightArr').value.trim(), fda=document.getElementById('flightDepAt').value, faa=document.getElementById('flightArrAt').value;
+    far=document.getElementById('flightArr').value.trim(), fda=normHM(document.getElementById('flightDepAt').value), faa=normHM(document.getElementById('flightArrAt').value);
   if(fc||fdp||far||fda||faa) d.flight={code:fc,dep:fdp,arr:far,depAt:fda,arrAt:faa};
   else delete d.flight;
   d.drive=document.getElementById('dayDrive').value.trim();
