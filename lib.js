@@ -232,8 +232,16 @@
    * @param {number} di
    * @returns {any}
    */
+  /** 숙소 연박 수 (미지정=1박). Day D 체크인 + N박이면 D+1..D+N 아침의 출발점이 그 숙소. */
+  function stayNights(s){ const n=Math.round(+((s&&s.nights)||1)); return (isFinite(n)&&n>=1)? Math.min(n,60) : 1; }
   function dayStartAnchor(days, di){
     if(!days || !days[di] || days[di].startPolicy==='none') return null;
+    // 1) di 아침에 '아직 묵고 있는' 숙소 — 가까운 날부터 거슬러, 연박 범위가 di를 덮는 첫 숙소
+    for(let k=di-1;k>=0;k--){
+      const L=((days[k]&&days[k].spots)||[]).filter(hasCoord).filter((/**@type{any}*/s)=>s.stay).pop();
+      if(L && k+stayNights(L)>=di) return L;
+    }
+    // 2) 유효한 숙소가 없으면 기존대로 직전(빈 일자 건너뜀) 유효 일자의 마지막 위치
     for(let k=di-1;k>=0;k--){ const a=dayAnchor(days[k]); if(a) return a; }
     return null;
   }
@@ -260,6 +268,7 @@
     else { s.lat=null; s.lng=null; }
     if(_hm(s.at)===undefined) delete s.at;
     if(_hm(s.bookAt)===undefined) delete s.bookAt;
+    if(s.nights!=null){ if(_fin(s.nights)) s.nights=Math.min(60,Math.max(1,Math.round(+s.nights))); else delete s.nights; }   // 숙소 연박 수
     if(s.stayMin!=null){ if(_fin(s.stayMin)) s.stayMin=Math.max(0,Math.round(+s.stayMin)); else delete s.stayMin; }
     if(s.cost!=null){ if(_fin(s.cost)) s.cost=Math.max(0,Math.round(+s.cost)); else delete s.cost; }
     if(s.cur!=null && _CURS.indexOf(s.cur)<0) delete s.cur;                 // 알 수 없는 통화 → 기본(KRW 취급)
@@ -299,7 +308,7 @@
     return t;
   }
 
-  const TC={toISO,haversine,legId,legKey,ringPts,parseHM,hm,inKorea,simplifyName,parseDirect,parseMoney,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,dayAnchor,computeTimeline,dayStartAnchor,normalizeTrip,TC_SCHEMA};
+  const TC={toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,inKorea,simplifyName,parseDirect,parseMoney,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,dayAnchor,computeTimeline,dayStartAnchor,normalizeTrip,TC_SCHEMA};
   if(typeof module!=='undefined' && module.exports){ module.exports=TC; }   // Node (테스트)
   else { const r=/**@type {any}*/(root); for(const k in TC) r[k]=/**@type {any}*/(TC)[k]; }   // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);

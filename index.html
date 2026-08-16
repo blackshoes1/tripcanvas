@@ -13,7 +13,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-<link rel="stylesheet" href="style.css?v=tc-v105">
+<link rel="stylesheet" href="style.css?v=tc-v106">
 </head>
 <body>
 <header>
@@ -88,7 +88,13 @@
   <b>이 장소에서 일어나는 약속</b>을 넣으세요 — 열차·항공은 <b>타는 곳</b>(출발역·출발공항)에 탑승 시각을 넣습니다. 도착역에 넣으면 "늦었다"는 ⚠️가 잘못 뜹니다.</div>
   <label>예약 링크 (예매·바우처 URL)</label><input type="text" id="spotBookUrl" placeholder="https://...">
   <div class="chkrow"><input type="checkbox" id="spotOpt"><label for="spotOpt" style="margin:0">선택 코스 (흐린 핀)</label></div>
-  <div class="chkrow"><input type="checkbox" id="spotStay"><label for="spotStay" style="margin:0">🏠 숙소 (일자 간 이동 기준점)</label></div>
+  <div class="chkrow"><input type="checkbox" id="spotStay"><label for="spotStay" style="margin:0">🏠 숙소 (일자 간 이동 기준점)</label>
+    <span id="nightsWrap" style="display:none;align-items:center;gap:5px;margin-left:auto">
+      <input type="number" id="spotNights" min="1" max="60" step="1" value="1" style="width:66px">
+      <label for="spotNights" style="margin:0">박</label>
+    </span>
+  </div>
+  <div class="hint" id="nightsHint" style="display:none">이 숙소에서 <b>연속으로 묵는 밤</b>의 수. 4박이면 <b>이후 4일 아침</b>이 모두 이 숙소에서 출발하는 것으로 계산돼요 — 매일 숙소를 다시 넣지 않아도 됩니다.</div>
   <input type="hidden" id="spotLat"><input type="hidden" id="spotLng">
   <div class="hint" id="coordHint">좌표: 미지정</div>
   <div class="row">
@@ -252,7 +258,7 @@
   </div>
 </div>
 
-<script src="lib.js?v=tc-v105"></script>
-<script src="app.js?v=tc-v105"></script>
+<script src="lib.js?v=tc-v106"></script>
+<script src="app.js?v=tc-v106"></script>
 </body>
 </html>
