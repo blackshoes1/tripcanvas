@@ -182,6 +182,30 @@ test('dayStartAnchor — 이월 정책(previous/none)·빈 일자 건너뜀·첫
   assert.equal(L.dayStartAnchor([spotDay, {spots:[{lat:9,lng:9}]}], 1).name, 'A');
 });
 
+test('연박(nights) — 한 번 등록한 숙소가 묵는 동안 계속 출발 기준', () => {
+  // 세비야 4박: Day0 체크인, Day1~3은 관광만 (숙소 재등록 없음)
+  const checkIn={spots:[{lat:1,lng:1,name:'도착'},{lat:2,lng:2,stay:true,nights:4,name:'세비야숙소'}]};
+  const sight=(/**@type{string}*/n)=>({spots:[{lat:3,lng:3,name:n+'-1'},{lat:4,lng:4,name:n+'-2'}]});
+  const days=[checkIn, sight('D1'), sight('D2'), sight('D3'), sight('D4')];
+  // 4박 = 이후 4일 아침(Day1~4)이 모두 숙소에서 출발
+  for(const di of [1,2,3,4]) assert.equal(L.dayStartAnchor(days,di).name, '세비야숙소', 'day'+di);
+  // 5일째(체크아웃 다음날)는 더 이상 숙소가 아님 → 직전 일자 마지막 위치
+  assert.equal(L.dayStartAnchor(days.concat([sight('D5')]),5).name, 'D4-2');
+  // 미지정(nights 없음)은 1박 = 기존 동작 유지
+  const one=[{spots:[{lat:2,lng:2,stay:true,name:'1박'}]}, sight('X'), sight('Y')];
+  assert.equal(L.dayStartAnchor(one,1).name, '1박');
+  assert.equal(L.dayStartAnchor(one,2).name, 'X-2');
+  // 연박 중 새 숙소를 등록하면 그때부터 새 숙소가 기준 (가까운 날 우선)
+  const moved=[checkIn, sight('D1'), {spots:[{lat:7,lng:7,stay:true,name:'새숙소'}]}, sight('D3')];
+  assert.equal(L.dayStartAnchor(moved,3).name, '새숙소');
+  // stayNights: 미지정·비정상 → 1, 상한 60
+  assert.equal(L.stayNights({}), 1);
+  assert.equal(L.stayNights({nights:'x'}), 1);
+  assert.equal(L.stayNights({nights:0}), 1);
+  assert.equal(L.stayNights({nights:4}), 4);
+  assert.equal(L.stayNights({nights:999}), 60);
+});
+
 test('비숙소 전날 마지막 장소도 다음날 ETA에 반영 (anchor 배선 회귀 방지)', () => {
   const prevDay={spots:[{lat:1,lng:1,name:'A'},{lat:2,lng:2,name:'last'}]};   // 숙소 없음
   const today={startAt:'09:00', spots:[{lat:3,lng:3,name:'first'}]};

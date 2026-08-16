@@ -1245,7 +1245,7 @@ function renderSidebar(){
             : `📌 도착 고정 — 직접 정한 시각. 자동 계산 대신 이 시각을 씁니다 (이 날은 시각 순서로 정렬됩니다)`)
         : `도착 예상 — 시작 시각 + 이동시간 + 머무는 시간으로 자동 계산한 추정값`;
       spotsHtml+=`<div class="spot" data-di="${di}" data-si="${si}" style="--c:${dotC}">
-        <span class="nm" onclick="focusSpot(${di},${si})"><span class="eta${tl[si].fixed?' fixed':''}" title="${escAttr(etaTip)}">${tl[si].fixed?'📌':''}${hm(etas[si])}${showConflict?'⚠️':''}</span>${si+1}. ${s.stay?'🏠 ':''}${esc(s.name)}${s.opt?' <span class=opt>(선택)</span>':''}${hasLoc(s)?'':`<span class="noloc" onclick="event.stopPropagation();openSpotModal(${di},${si})">📍 위치 지정</span>`}${metaHtml}</span>${legHtml}
+        <span class="nm" onclick="focusSpot(${di},${si})"><span class="eta${tl[si].fixed?' fixed':''}" title="${escAttr(etaTip)}">${tl[si].fixed?'📌':''}${hm(etas[si])}${showConflict?'⚠️':''}</span>${si+1}. ${s.stay?'🏠 ':''}${esc(s.name)}${(s.stay&&stayNights(s)>1)?` <span class="opt">${stayNights(s)}박</span>`:''}${s.opt?' <span class=opt>(선택)</span>':''}${hasLoc(s)?'':`<span class="noloc" onclick="event.stopPropagation();openSpotModal(${di},${si})">📍 위치 지정</span>`}${metaHtml}</span>${legHtml}
         <span class="tools">
           <button class="iconb mvup" onclick="moveSpot(${di},${si},-1)" title="위로">▲</button>
           <button class="iconb mvdown" onclick="moveSpot(${di},${si},1)" title="아래로">▼</button>
@@ -1415,6 +1415,8 @@ window.openSpotModal=(di,si)=>{
   document.getElementById('spotDesc').value=s.desc||'';
   document.getElementById('spotOpt').checked=!!s.opt;
   document.getElementById('spotStay').checked=!!s.stay;
+  document.getElementById('spotNights').value=stayNights(s);
+  toggleNights();
   document.getElementById('spotAt').value=s.at||'';
   document.getElementById('spotLegMode').value=s.legMode||'';   // 이 지점으로 오는 구간 수단(빈값=일정 기본)
   document.getElementById('spotStayMin').value=(s.stayMin!=null? s.stayMin : 60);
@@ -1451,6 +1453,9 @@ document.getElementById('spotSave').onclick=()=>{
   const curV=document.getElementById('spotCur').value;
   const s={name,city:document.getElementById('spotCity').value.trim()||'기타',desc:document.getElementById('spotDesc').value.trim(),
     opt:document.getElementById('spotOpt').checked,stay:document.getElementById('spotStay').checked,
+    // 연박 수는 숙소일 때만 저장, 1박이면 생략(기본값 — 하위호환)
+    nights:(document.getElementById('spotStay').checked && stayNights({nights:document.getElementById('spotNights').value})>1)
+      ? stayNights({nights:document.getElementById('spotNights').value}) : undefined,
     at:normHM(document.getElementById('spotAt').value)||undefined,
     legMode:(document.getElementById('spotLegMode').value||undefined),   // 구간별 수단(빈값이면 일정 기본)
     stayMin:Math.max(0,parseInt(document.getElementById('spotStayMin').value)||60),
@@ -1556,6 +1561,13 @@ window.openDayModal=(di)=>{
   document.getElementById('dayNote').value=d.note||'';
   document.getElementById('dayModalBg').classList.add('show');
 };
+// 연박 수 입력은 '숙소'일 때만 노출
+function toggleNights(){
+  const on=document.getElementById('spotStay').checked;
+  document.getElementById('nightsWrap').style.display = on?'flex':'none';
+  document.getElementById('nightsHint').style.display = on?'block':'none';
+}
+document.getElementById('spotStay').onchange=toggleNights;
 // 항공 정보 입력은 이동수단이 비행기일 때만 노출
 function toggleFlightFields(){ document.getElementById('flightFields').style.display = document.getElementById('dayMode').value==='flight'?'block':'none'; }
 document.getElementById('dayMode').onchange=toggleFlightFields;
