@@ -1198,6 +1198,7 @@ function renderSidebar(){
     const planWhen=planDepartISO(iso, day.startAt, (day.spots.find(hasLoc)||{}).lng);
     day.spots.forEach((s,si)=>{
       const dotC = hasLoc(s)?spotColor(s,di,colors):'#4a5170';
+      const incoming=prevLoc, inMode=legModeOf(day,s);   // 이 지점으로 '들어오는' 구간(수단) — 아래 ETA 안내에 사용
       // 구간: 캐시된 경로가 있으면 그걸, 아니면 직선거리 + 백그라운드 조회
       let legHtml='';
       if(hasLoc(s)&&prevLoc){
@@ -1233,13 +1234,18 @@ function renderSidebar(){
       const metaHtml=meta.length?`<div class="spotMeta">${meta.join(' ')}</div>`:'';
       // 시각 배지: 📌=내가 고정한 도착 / 없으면 자동 계산한 도착 예상 / ⚠️=고정 시각이 이동상 불가능
       const natMin=tl[si].natural, natTxt=(natMin>=1440? `${Math.floor(natMin/1440)}일 뒤 ${hm(natMin)}` : hm(natMin));   // 24시간 초과분은 '며칠 뒤'로
+      // 기차·비행기는 거리 기반 '추정'이라 실제 시간표를 못 이긴다 → 시간표대로 넣은 고정 도착에 충돌 경고를 띄우지 않음
+      const bySchedule = !!(incoming && (inMode==='train'||inMode==='flight'));
+      const showConflict = tl[si].conflict && !bySchedule;
       const etaTip = tl[si].fixed
         ? (tl[si].conflict
-            ? `📌 도착 고정 ${esc(s.at)} — 이동시간상 ${natTxt}에야 도착합니다. 앞 일정을 줄이거나 이 시각을 늦추세요`
+            ? (bySchedule
+                ? `📌 도착 고정 ${esc(s.at)} — ${MODE_NAME[inMode]} 시간표 기준. 앱 추정(${natTxt})보다 빠르지만 정상입니다`
+                : `📌 도착 고정 ${esc(s.at)} — 이동시간상 ${natTxt}에야 도착합니다. 앞 일정을 줄이거나 이 시각을 늦추세요`)
             : `📌 도착 고정 — 직접 정한 시각. 자동 계산 대신 이 시각을 씁니다 (이 날은 시각 순서로 정렬됩니다)`)
         : `도착 예상 — 시작 시각 + 이동시간 + 머무는 시간으로 자동 계산한 추정값`;
       spotsHtml+=`<div class="spot" data-di="${di}" data-si="${si}" style="--c:${dotC}">
-        <span class="nm" onclick="focusSpot(${di},${si})"><span class="eta${tl[si].fixed?' fixed':''}" title="${escAttr(etaTip)}">${tl[si].fixed?'📌':''}${hm(etas[si])}${tl[si].conflict?'⚠️':''}</span>${si+1}. ${s.stay?'🏠 ':''}${esc(s.name)}${s.opt?' <span class=opt>(선택)</span>':''}${hasLoc(s)?'':`<span class="noloc" onclick="event.stopPropagation();openSpotModal(${di},${si})">📍 위치 지정</span>`}${metaHtml}</span>${legHtml}
+        <span class="nm" onclick="focusSpot(${di},${si})"><span class="eta${tl[si].fixed?' fixed':''}" title="${escAttr(etaTip)}">${tl[si].fixed?'📌':''}${hm(etas[si])}${showConflict?'⚠️':''}</span>${si+1}. ${s.stay?'🏠 ':''}${esc(s.name)}${s.opt?' <span class=opt>(선택)</span>':''}${hasLoc(s)?'':`<span class="noloc" onclick="event.stopPropagation();openSpotModal(${di},${si})">📍 위치 지정</span>`}${metaHtml}</span>${legHtml}
         <span class="tools">
           <button class="iconb mvup" onclick="moveSpot(${di},${si},-1)" title="위로">▲</button>
           <button class="iconb mvdown" onclick="moveSpot(${di},${si},1)" title="아래로">▼</button>
