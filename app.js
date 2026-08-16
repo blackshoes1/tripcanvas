@@ -566,6 +566,14 @@ function legModeBtn(day,di,si,lm){
   return `<button class="legModeBtn${set?' set':''}" onclick="event.stopPropagation();cycleLegMode(${di},${si})" title="${escAttr(t)}">${MODE_ICON[lm]}</button>`;
 }
 const GMODE={car:'DRIVE',taxi:'DRIVE',transit:'TRANSIT',walk:'WALK',bike:'BICYCLE'};
+// <input type="time">의 표시 형식(오전/오후 vs 24시간)은 브라우저 로케일이 정해서 페이지에서 못 바꾼다.
+// → 입력 옆에 24시간 값을 항상 같이 보여줘 오전/오후 혼동을 없앤다. (저장·목록 표기는 이미 24시간)
+function upd24h(inp){
+  const e=inp&&inp.nextElementSibling;
+  if(e&&e.classList&&e.classList.contains('h24')) e.textContent = inp.value? `24시 기준 ${inp.value}` : '';
+}
+function refresh24h(){ document.querySelectorAll('input[type=time]').forEach(upd24h); }
+document.addEventListener('input', e=>{ if(e.target&&e.target.type==='time') upd24h(e.target); });
 // 계획 출발 시각(현지 근사: 경도로 시간대 추정) → RFC3339. 과거·임박이면 null(구글은 미래만 허용).
 function planDepartISO(isoDate, hhmm, lng){
   const m=/^(\d{1,2}):(\d{2})$/.exec(hhmm||'09:00');
@@ -1189,7 +1197,16 @@ function renderSidebar(){
       const bookWarn=(bookMin!=null && etas[si]-bookMin>5);   // ETA가 예약보다 5분 이상 늦음
       const meta=[];
       if(s.cost){ const cu=CUR[s.cur], nk=cu&&s.cur!=='KRW'; meta.push(`<span class="cost"${nk?` title="${costLabel(s.cost,s.cur)}"`:''}>💳 ${nk?`${cu.sym}${fmtMoney(s.cost)} (₩${fmtMoney(toKRW(s.cost,s.cur))})`:`₩${fmtMoney(s.cost)}`}</span>`); }
-      if(s.bookAt) meta.push(`<span class="book${bookWarn?' bookwarn':''}"${bookWarn?` title="예약 ${s.bookAt}인데 예상 도착 ${hm(etas[si])} — 일정이 늦습니다"`:` title="예약 시각"`}>🎫 ${esc(s.bookAt)}${bookWarn?' ⚠️':''}</span>`);
+      if(s.bookAt){
+        const late=bookWarn? Math.round(etas[si]-bookMin) : 0;
+        const bt=bookWarn
+          ? `예약·입장 ${s.bookAt} · 도착 예상 ${hm(etas[si])} — 약 ${late}분 늦어요. 앞 일정을 줄이거나 예약을 옮기세요`
+          : `예약·입장 ${s.bookAt} (상대가 정한 약속) — 도착 예상 ${hm(etas[si])}`;
+        meta.push(`<span class="book${bookWarn?' bookwarn':''}" title="${escAttr(bt)}">🎫 ${esc(s.bookAt)}${bookWarn?' ⚠️':''}</span>`);
+        // 예약 시각까지 기다리는 시간(타임라인에 반영됨) — 숨은 동작을 눈에 보이게
+        const w=Math.round(tl[si].wait||0);
+        if(w>0) meta.push(`<span class="book" title="${escAttr(`도착 예상 ${hm(etas[si])} → 예약 ${s.bookAt}까지 대기. 다음 장소 도착 예상에 이 대기가 반영됩니다`)}">⏳ ${w}분 대기</span>`);
+      }
       { const bu=safeUrl(s.bookUrl); if(bu) meta.push(`<a class="book" href="${escAttr(bu)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="예약 링크 열기">🔗</a>`); }
       // 영업시간 경고: 그 날 요일·도착 예상시각에 문 닫혀 있으면 ⚠️
       if(s.hours && iso){
@@ -1198,8 +1215,15 @@ function renderSidebar(){
         if(open===false) meta.push(`<span class="closed" title="${'일월화수목금토'[wd]}요일 도착 예상 ${hm(etas[si])}에 영업 종료/휴무 — 시간을 확인하세요">🚫 영업시간 확인</span>`);
       }
       const metaHtml=meta.length?`<div class="spotMeta">${meta.join(' ')}</div>`:'';
+      // 시각 배지: 📌=내가 고정한 도착 / 없으면 자동 계산한 도착 예상 / ⚠️=고정 시각이 이동상 불가능
+      const natMin=tl[si].natural, natTxt=(natMin>=1440? `${Math.floor(natMin/1440)}일 뒤 ${hm(natMin)}` : hm(natMin));   // 24시간 초과분은 '며칠 뒤'로
+      const etaTip = tl[si].fixed
+        ? (tl[si].conflict
+            ? `📌 도착 고정 ${esc(s.at)} — 이동시간상 ${natTxt}에야 도착합니다. 앞 일정을 줄이거나 이 시각을 늦추세요`
+            : `📌 도착 고정 — 직접 정한 시각. 자동 계산 대신 이 시각을 씁니다 (이 날은 시각 순서로 정렬됩니다)`)
+        : `도착 예상 — 시작 시각 + 이동시간 + 머무는 시간으로 자동 계산한 추정값`;
       spotsHtml+=`<div class="spot" data-di="${di}" data-si="${si}" style="--c:${dotC}">
-        <span class="nm" onclick="focusSpot(${di},${si})"><span class="eta${tl[si].fixed?' fixed':''}" title="${tl[si].fixed?(tl[si].conflict?'📌 고정 도착시각 — 이동시간상 도착이 늦어요':'📌 고정 도착시각'):'도착 예상시각 (자동 계산)'}">${tl[si].fixed?'📌':''}${hm(etas[si])}${tl[si].conflict?'⚠️':''}</span>${si+1}. ${s.stay?'🏠 ':''}${esc(s.name)}${s.opt?' <span class=opt>(선택)</span>':''}${hasLoc(s)?'':`<span class="noloc" onclick="event.stopPropagation();openSpotModal(${di},${si})">📍 위치 지정</span>`}${metaHtml}</span>${legHtml}
+        <span class="nm" onclick="focusSpot(${di},${si})"><span class="eta${tl[si].fixed?' fixed':''}" title="${escAttr(etaTip)}">${tl[si].fixed?'📌':''}${hm(etas[si])}${tl[si].conflict?'⚠️':''}</span>${si+1}. ${s.stay?'🏠 ':''}${esc(s.name)}${s.opt?' <span class=opt>(선택)</span>':''}${hasLoc(s)?'':`<span class="noloc" onclick="event.stopPropagation();openSpotModal(${di},${si})">📍 위치 지정</span>`}${metaHtml}</span>${legHtml}
         <span class="tools">
           <button class="iconb mvup" onclick="moveSpot(${di},${si},-1)" title="위로">▲</button>
           <button class="iconb mvdown" onclick="moveSpot(${di},${si},1)" title="아래로">▼</button>
@@ -1380,6 +1404,7 @@ window.openSpotModal=(di,si)=>{
   document.getElementById('spotLat').value=s.lat; document.getElementById('spotLng').value=s.lng;
   document.getElementById('coordHint').textContent = s.lat?`좌표: ${(+s.lat).toFixed(4)}, ${(+s.lng).toFixed(4)}`:'좌표: 미지정 (검색 또는 지도 클릭)';
   document.getElementById('spotSearch').value=''; document.getElementById('searchRes').innerHTML='';
+  refresh24h();
   const daySel=document.getElementById('spotDay');
   daySel.innerHTML=trip().days.map((d,i)=>`<option value="${i}" ${i===di?'selected':''}>Day ${i+1} · ${esc(d.title||dateOf(i))}</option>`).join('');
   document.getElementById('spotModalBg').classList.add('show');
@@ -1508,6 +1533,7 @@ window.openDayModal=(di)=>{
   document.getElementById('dayTitle').value=d.title||'';
   document.getElementById('dayDrive').value=d.drive||'';
   document.getElementById('dayNote').value=d.note||'';
+  refresh24h();
   document.getElementById('dayModalBg').classList.add('show');
 };
 // 항공 정보 입력은 이동수단이 비행기일 때만 노출
@@ -1848,11 +1874,12 @@ async function parseAI(text){
 - mode는 그날 주 이동수단: 렌터카/자차=car, 택시=taxi, 지하철·버스=transit, 기차·고속철(KTX·AVE·신칸센)=train, 비행기=flight, 걷기=walk, 자전거=bike. 언급 없으면 "car".
 - legMode는 특정 구간만 수단이 다를 때 그 '도착 장소'에 지정(예: 공항→도심만 기차면 도심 장소에 "train"). 대개 null.
 - startAt은 그날 시작 시각(예 "KTX 9시 출발"→"09:00"). 없으면 null.
-- at은 그 장소의 도착 시각을 고정하고 싶을 때(예 "점심 12시"→"12:00", "3시에 도착"→"15:00"). 없으면 null. bookAt(예약·입장 지정시각)과 구분: at=일반 도착 고정시각, bookAt=예매가 필요한 입장시각.
+- at은 '도착 시각 고정'(내가 정하는 계획): 그 시각에 도착하도록 못박고 싶을 때(예 "점심 12시"→"12:00", "3시에 도착"→"15:00"). 없으면 null.
+- at과 bookAt 구분: at=내가 정한 도착 계획, bookAt=상대가 정한 약속(예매·공연·투어처럼 시각이 외부에서 정해진 것). 둘 다 24시간 표기 "HH:MM".
 - stayMin은 장소 체류시간(분). "알함브라 3시간"→180, "1시간"→60. 언급 없으면 null.
 - cost는 예상 비용 숫자만(통화는 cur). "입장료 2만원"→20000, "$50"→50, "5000엔"→5000. 없으면 null.
 - cur는 cost의 통화: "달러/$"→"USD", "엔/¥"→"JPY", "위안/元"→"CNY", 그 외(원 포함)→"KRW".
-- bookAt은 예약·입장 지정 시각(예 "나스르궁 14시 입장"→"14:00"). 없으면 null.
+- bookAt은 '예약·입장 시각'(상대가 정한 약속 — 예매·공연·투어·식당 예약). 예 "나스르궁 14시 입장"→"14:00". 없으면 null.
 - 모든 텍스트 필드는 한국어.
 - 각 장소의 실제 위도/경도를 네 지식으로 채워라. 확실하지 않으면 lat/lng를 null로 둬라.
 - drive는 그날 이동 정보(예: "✈️ 인천 → 다롄"), note는 그날의 팁/메모. 없으면 빈 문자열.
