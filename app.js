@@ -724,9 +724,9 @@ function sortDayByTime(day){
 }
 // 하루 장소 비용 합계
 // ── 통화·환율 (원/달러/엔/위안 → 원 환산) ──
-const CUR = { KRW:{sym:'₩',name:'원'}, USD:{sym:'$',name:'달러'}, JPY:{sym:'¥',name:'엔'}, CNY:{sym:'元',name:'위안'} };
+const CUR = { KRW:{sym:'₩',name:'원'}, USD:{sym:'$',name:'달러'}, EUR:{sym:'€',name:'유로'}, JPY:{sym:'¥',name:'엔'}, CNY:{sym:'元',name:'위안'} };
 const FX_KEY='tripcanvas_fx';
-let fxRates = { KRW:1, USD:1380, JPY:9.1, CNY:192 };   // 통화 1단위 = ? 원. 네트워크 실패 시 폴백(근사)
+let fxRates = { KRW:1, USD:1380, EUR:1500, JPY:9.1, CNY:192 };   // 통화 1단위 = ? 원. 네트워크 실패 시 폴백(근사)
 function toKRW(amount, cur){ return Math.round((+amount||0) * (fxRates[cur||'KRW']||1)); }
 function fmtMoney(n){ return Math.round(+n||0).toLocaleString('en-US'); }
 // 원본+환산 표기: KRW면 "68,000원", 아니면 "$50 ≈ 68,000원"
@@ -737,14 +737,16 @@ function costLabel(amount, cur){
 }
 // 환율 로드: localStorage 캐시(하루 1회 갱신), open.er-api.com에서 USD 기준 시세 → 원 환산율 계산
 function loadFx(){
-  let cachedDay=null;
-  try{ const c=JSON.parse(localStorage.getItem(FX_KEY)); if(c&&c.rates){ fxRates=c.rates; cachedDay=c.day; } }catch(e){}
+  let cachedDay=null, cached=null;
+  // 캐시는 기본값 '위에 덮어쓰기'(통째 교체 X) — 통화가 추가되면 옛 캐시에 없는 통화가 undefined가 돼 환산이 1:1로 깨진다
+  try{ const c=JSON.parse(localStorage.getItem(FX_KEY)); if(c&&c.rates){ cached=c.rates; fxRates=Object.assign({}, fxRates, c.rates); cachedDay=c.day; } }catch(e){}
   const today=new Date().toISOString().slice(0,10);
-  if(cachedDay===today) return;   // 오늘 이미 갱신됨
+  const complete = cached && Object.keys(CUR).every(k=>cached[k]);   // 새로 추가된 통화가 빠진 옛 캐시면 오늘치여도 다시 받는다
+  if(cachedDay===today && complete) return;   // 오늘 이미 갱신됨
   fetch('https://open.er-api.com/v6/latest/USD').then(r=>r.json()).then(j=>{
     const R=j&&j.rates;
-    if(j&&j.result==='success'&&R&&R.KRW&&R.JPY&&R.CNY){
-      fxRates={ KRW:1, USD:R.KRW, JPY:R.KRW/R.JPY, CNY:R.KRW/R.CNY };
+    if(j&&j.result==='success'&&R&&R.KRW&&R.JPY&&R.CNY&&R.EUR){
+      fxRates={ KRW:1, USD:R.KRW, EUR:R.KRW/R.EUR, JPY:R.KRW/R.JPY, CNY:R.KRW/R.CNY };
       try{ localStorage.setItem(FX_KEY, JSON.stringify({day:today, rates:fxRates})); }catch(e){}
       render();   // 환산액 갱신
     }
@@ -1901,7 +1903,7 @@ async function geocodeSpot(s){
 async function parseAI(text){
   if(!cfg.apiKey) throw new Error('AI 파싱을 쓰려면 API 키를 입력해줘');
   const system=`너는 여행 일정 파서다. 사용자의 자유로운 여행 설명을 받아 JSON으로만 변환해라.
-스키마: {"name":string,"start":"YYYY-MM-DD"|null,"days":[{"title":string,"mode":"car"|"taxi"|"transit"|"train"|"walk"|"bike"|"flight","startAt":"HH:MM"|null,"drive":string,"note":string,"spots":[{"name":string,"city":string,"desc":string,"opt":boolean,"stay":boolean,"legMode":"car"|"taxi"|"transit"|"train"|"walk"|"bike"|"flight"|null,"at":"HH:MM"|null,"stayMin":number|null,"cost":number|null,"cur":"KRW"|"USD"|"JPY"|"CNY","bookAt":"HH:MM"|null,"lat":number|null,"lng":number|null}]}]}
+스키마: {"name":string,"start":"YYYY-MM-DD"|null,"days":[{"title":string,"mode":"car"|"taxi"|"transit"|"train"|"walk"|"bike"|"flight","startAt":"HH:MM"|null,"drive":string,"note":string,"spots":[{"name":string,"city":string,"desc":string,"opt":boolean,"stay":boolean,"legMode":"car"|"taxi"|"transit"|"train"|"walk"|"bike"|"flight"|null,"at":"HH:MM"|null,"stayMin":number|null,"cost":number|null,"cur":"KRW"|"USD"|"EUR"|"JPY"|"CNY","bookAt":"HH:MM"|null,"lat":number|null,"lng":number|null}]}]}
 - stay는 숙소(호텔·에어비앤비 등)면 true.
 - mode는 그날 주 이동수단: 렌터카/자차=car, 택시=taxi, 지하철·버스=transit, 기차·고속철(KTX·AVE·신칸센)=train, 비행기=flight, 걷기=walk, 자전거=bike. 언급 없으면 "car".
 - legMode는 특정 구간만 수단이 다를 때 그 '도착 장소'에 지정(예: 공항→도심만 기차면 도심 장소에 "train"). 대개 null.
@@ -1910,7 +1912,7 @@ async function parseAI(text){
 - at과 bookAt 구분: at=내가 정한 도착 계획, bookAt=상대가 정한 약속(예매·공연·투어처럼 시각이 외부에서 정해진 것). 둘 다 24시간 표기 "HH:MM".
 - stayMin은 장소 체류시간(분). "알함브라 3시간"→180, "1시간"→60. 언급 없으면 null.
 - cost는 예상 비용 숫자만(통화는 cur). "입장료 2만원"→20000, "$50"→50, "5000엔"→5000. 없으면 null.
-- cur는 cost의 통화: "달러/$"→"USD", "엔/¥"→"JPY", "위안/元"→"CNY", 그 외(원 포함)→"KRW".
+- cur는 cost의 통화: "달러/$"→"USD", "유로/€"→"EUR", "엔/¥"→"JPY", "위안/元"→"CNY", 그 외(원 포함)→"KRW".
 - bookAt은 '예약·입장 시각'(상대가 정한 약속 — 예매·공연·투어·식당 예약). 예 "나스르궁 14시 입장"→"14:00". 없으면 null.
 - 모든 텍스트 필드는 한국어.
 - 각 장소의 실제 위도/경도를 네 지식으로 채워라. 확실하지 않으면 lat/lng를 null로 둬라.
@@ -1975,7 +1977,7 @@ async function runPaste(){
     mode:MODES.includes(d.mode)?d.mode:'car', startAt:hhmm(d.startAt)||'09:00',
     spots:(d.spots||[]).map(s=>({name:(s.name||'').trim(), city:(s.city||'기타').trim(), desc:s.desc||'',
       opt:!!s.opt, stay:!!s.stay, legMode:(MODES.includes(s.legMode)?s.legMode:undefined), at:(hhmm(s.at)||undefined), stayMin:(s.stayMin==null?null:posInt(s.stayMin)),
-      cost:(s.cost==null?null:posInt(s.cost)), cur:(['USD','JPY','CNY'].includes(s.cur)?s.cur:undefined), bookAt:hhmm(s.bookAt),
+      cost:(s.cost==null?null:posInt(s.cost)), cur:(['USD','EUR','JPY','CNY'].includes(s.cur)?s.cur:undefined), bookAt:hhmm(s.bookAt),
       lat:(s.lat==null?null:+s.lat), lng:(s.lng==null?null:+s.lng)})).filter(s=>s.name)
   }));
   // 좌표 없는 장소 지오코딩
