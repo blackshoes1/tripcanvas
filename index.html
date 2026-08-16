@@ -13,7 +13,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-<link rel="stylesheet" href="style.css?v=tc-v102">
+<link rel="stylesheet" href="style.css?v=tc-v103">
 </head>
 <body>
 <header>
@@ -71,15 +71,20 @@
     <option value="bike">🚴 자전거</option>
     <option value="flight">✈️ 비행기</option>
   </select>
-  <label>🕐 도착 시각 (비우면 이동시간으로 자동 계산 · 넣으면 그 시각 고정 + 시간순 자동 정렬)</label><input type="time" id="spotAt">
-  <label>체류시간 (분 — 도착 예상시각 계산용)</label><input type="number" id="spotStayMin" min="0" step="5" placeholder="60">
+  <label>🕐 도착 시각 고정 <span class="hint" style="margin:0">— 내가 정하는 계획 (24시간 표기)</span></label>
+  <input type="time" id="spotAt" lang="en-GB"><span class="h24"></span>
+  <div class="hint">비우면 <b>이동시간으로 자동 계산</b>돼요. 넣으면 그 시각으로 <b>고정</b>되고, 이 날 일정이 <b>시각 순서대로 자동 정렬</b>됩니다.</div>
+  <label>머무는 시간 (분)</label><input type="number" id="spotStayMin" min="0" step="5" placeholder="60">
+  <div class="hint">여기서 보내는 시간 — <b>다음 장소의 도착 예상</b>에 반영됩니다.</div>
   <label>예상 비용 (입장료·식비 등)</label>
   <div style="display:flex;gap:6px">
     <input type="text" id="spotCost" inputmode="numeric" placeholder="0" style="flex:1">
     <select id="spotCur" style="width:auto"><option value="KRW">₩ 원</option><option value="USD">$ 달러</option><option value="JPY">¥ 엔</option><option value="CNY">元 위안</option></select>
   </div>
   <div class="hint" id="costKrwHint" style="margin-top:3px"></div>
-  <label>예약 시각 (HH:MM, 있으면 ETA와 비교해 경고)</label><input type="time" id="spotBookAt">
+  <label>🎫 예약·입장 시각 <span class="hint" style="margin:0">— 상대가 정한 약속 (24시간 표기)</span></label>
+  <input type="time" id="spotBookAt" lang="en-GB"><span class="h24"></span>
+  <div class="hint">공연·투어·식당처럼 <b>시각이 정해진</b> 일정. 도착 예상이 이보다 늦으면 ⚠️로 알려주고, 일찍 도착하면 <b>이 시각까지 기다리는 것으로 계산</b>합니다. (도착 시각을 바꾸지는 않아요)</div>
   <label>예약 링크 (예매·바우처 URL)</label><input type="text" id="spotBookUrl" placeholder="https://...">
   <div class="chkrow"><input type="checkbox" id="spotOpt"><label for="spotOpt" style="margin:0">선택 코스 (흐린 핀)</label></div>
   <div class="chkrow"><input type="checkbox" id="spotStay"><label for="spotStay" style="margin:0">🏠 숙소 (일자 간 이동 기준점)</label></div>
@@ -96,7 +101,8 @@
 <div class="modalBg" id="dayModalBg"><div class="modal">
   <h2 id="dayModalTitle">일자 편집</h2>
   <label>날짜 (이 날로 맞추면 전체 일정이 자동 재계산됩니다)</label><input type="date" id="dayDate">
-  <label>시작 시각 (숙소/첫 지점 출발 시각 · 하루 이동 시작 기준)</label><input type="time" id="dayStart">
+  <label>시작 시각 <span class="hint" style="margin:0">— 이 날 첫 출발 시각 (24시간 표기)</span></label><input type="time" id="dayStart" lang="en-GB"><span class="h24"></span>
+  <div class="hint">숙소/첫 지점에서 <b>출발하는</b> 시각. 이 시각을 기준으로 그 날 도착 예상이 계산됩니다.</div>
   <div class="chkrow"><input type="checkbox" id="dayCarry" checked><label for="dayCarry" style="margin:0">전날 위치에서 이어서 시작 <span class="hint" style="margin:0">— 끄면 공항 이동일·야간열차처럼 이월 없이 첫 장소부터 시작</span></label></div>
   <label>이동 수단 (이 날의 구간 시간·경로 계산 기준)</label>
   <select id="dayMode">
@@ -116,9 +122,10 @@
       <div style="flex:1"><label>도착 공항</label><input type="text" id="flightArr" placeholder="예: NRT" style="width:100%"></div>
     </div>
     <div style="display:flex;gap:6px">
-      <div style="flex:1"><label>출발 시각</label><input type="time" id="flightDepAt" style="width:100%"></div>
-      <div style="flex:1"><label>도착 시각</label><input type="time" id="flightArrAt" style="width:100%"></div>
+      <div style="flex:1"><label>출발 시각</label><input type="time" id="flightDepAt" lang="en-GB" style="width:100%"><span class="h24"></span></div>
+      <div style="flex:1"><label>도착 시각</label><input type="time" id="flightArrAt" lang="en-GB" style="width:100%"><span class="h24"></span></div>
     </div>
+    <div class="hint">※ 항공편 시각은 <b>참고 표시용</b>입니다 — 일정의 도착 예상 계산에는 반영되지 않아요. 계산에 넣으려면 장소의 <b>🕐 도착 시각 고정</b>을 쓰세요.</div>
   </div>
   <label>제목 (예: → 세비야 (2박))</label><input type="text" id="dayTitle">
   <label>이동 정보 (예: 🚗 128km · 1시간 45분)</label><input type="text" id="dayDrive">
@@ -188,7 +195,7 @@
 - 둥베이로 시장 | 다롄 | 아침 시장
 - 다롄 저우수이쯔 공항 | 다롄 | 출국
 
-규칙: [Day N] 또는 # 로 날짜 시작 · - 로 장소(이름 | 도시 | 메모 | 위도,경도) · 좌표는 생략 가능(자동조회: 국내 카카오·해외 구글, 못 찾으면 '위치 지정'으로 남음) · (선택) 붙이면 선택코스 · 이동:/메모: 로 그날 정보 · @14:00 붙이면 도착 시각 고정 · 비용은 통화 기호로 ($50 · ¥5000 · 元300 · 20000원)
+규칙: [Day N] 또는 # 로 날짜 시작 · - 로 장소(이름 | 도시 | 메모 | 위도,경도) · 좌표는 생략 가능(자동조회: 국내 카카오·해외 구글, 못 찾으면 '위치 지정'으로 남음) · (선택) 붙이면 선택코스 · 이동:/메모: 로 그날 정보 · @14:00 붙이면 도착 시각 고정(24시간 표기, 그 날이 시각순 정렬됨) · 비용은 통화 기호로 ($50 · ¥5000 · 元300 · 20000원)
 ※ 해외(특히 중국 등) 한글 지명은 자동조회 실패가 잦음 → 좌표를 직접 넣거나 AI 파싱 모드 사용 권장</pre>
     <button class="btn" id="fmtCopy" style="margin-top:6px;font-size:11px;padding:3px 10px">이 예시 붙여넣기 칸에 채우기</button>
   </details>
@@ -244,7 +251,7 @@
   </div>
 </div>
 
-<script src="lib.js?v=tc-v102"></script>
-<script src="app.js?v=tc-v102"></script>
+<script src="lib.js?v=tc-v103"></script>
+<script src="app.js?v=tc-v103"></script>
 </body>
 </html>
