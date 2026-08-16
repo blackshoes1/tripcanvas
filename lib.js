@@ -49,10 +49,12 @@
     str=String(str||''); let m;
     const num=(/**@type{string}*/s)=>+String(s).replace(/,/g,'');
     if(m=str.match(/[$＄]\s*([\d,]+)/))        return {cost:num(m[1]),cur:'USD',raw:m[0]};
+    if(m=str.match(/€\s*([\d,]+)/))            return {cost:num(m[1]),cur:'EUR',raw:m[0]};
     if(m=str.match(/[¥￥]\s*([\d,]+)/))        return {cost:num(m[1]),cur:'JPY',raw:m[0]};
     if(m=str.match(/元\s*([\d,]+)/))           return {cost:num(m[1]),cur:'CNY',raw:m[0]};
     if(m=str.match(/₩\s*([\d,]+)/))           return {cost:num(m[1]),cur:'KRW',raw:m[0]};
     if(m=str.match(/([\d,]+)\s*(?:달러|불)/))   return {cost:num(m[1]),cur:'USD',raw:m[0]};
+    if(m=str.match(/([\d,]+)\s*유로/))          return {cost:num(m[1]),cur:'EUR',raw:m[0]};
     if(m=str.match(/([\d,]+)\s*엔/))           return {cost:num(m[1]),cur:'JPY',raw:m[0]};
     if(m=str.match(/([\d,]+)\s*(?:위안|元)/))   return {cost:num(m[1]),cur:'CNY',raw:m[0]};
     if(m=str.match(/([\d,]+)\s*원/))           return {cost:num(m[1]),cur:'KRW',raw:m[0]};
@@ -253,7 +255,7 @@
   // 알 수 없는 필드는 보존(데이터 손실 방지). 현재 스키마 버전.
   const TC_SCHEMA=1;
   const _MODES=['car','taxi','transit','train','walk','bike','flight'];
-  const _CURS=['KRW','USD','JPY','CNY'];
+  const _CURS=['KRW','USD','EUR','JPY','CNY'];
   /** @param {any} x @returns {string} */
   function _str(x){ return typeof x==='string'? x : (x==null? '' : String(x)); }
   /** @param {any} t @returns {string|undefined} 00:00~23:59 형식만 통과, 아니면 undefined */

@@ -13,7 +13,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-<link rel="stylesheet" href="style.css?v=tc-v106">
+<link rel="stylesheet" href="style.css?v=tc-v108">
 </head>
 <body>
 <header>
@@ -79,7 +79,7 @@
   <label>예상 비용 (입장료·식비 등)</label>
   <div style="display:flex;gap:6px">
     <input type="text" id="spotCost" inputmode="numeric" placeholder="0" style="flex:1">
-    <select id="spotCur" style="width:auto"><option value="KRW">₩ 원</option><option value="USD">$ 달러</option><option value="JPY">¥ 엔</option><option value="CNY">元 위안</option></select>
+    <select id="spotCur" style="width:auto"><option value="KRW">₩ 원</option><option value="USD">$ 달러</option><option value="EUR">€ 유로</option><option value="JPY">¥ 엔</option><option value="CNY">元 위안</option></select>
   </div>
   <div class="hint" id="costKrwHint" style="margin-top:3px"></div>
   <label>🎫 예약·입장 시각 <span class="hint" style="margin:0">— 상대가 정한 약속 (24시간 표기)</span></label>
@@ -202,7 +202,7 @@
 - 둥베이로 시장 | 다롄 | 아침 시장
 - 다롄 저우수이쯔 공항 | 다롄 | 출국
 
-규칙: [Day N] 또는 # 로 날짜 시작 · - 로 장소(이름 | 도시 | 메모 | 위도,경도) · 좌표는 생략 가능(자동조회: 국내 카카오·해외 구글, 못 찾으면 '위치 지정'으로 남음) · (선택) 붙이면 선택코스 · 이동:/메모: 로 그날 정보 · @14:00 붙이면 도착 시각 고정(24시간 표기, 그 날이 시각순 정렬됨) · 비용은 통화 기호로 ($50 · ¥5000 · 元300 · 20000원)
+규칙: [Day N] 또는 # 로 날짜 시작 · - 로 장소(이름 | 도시 | 메모 | 위도,경도) · 좌표는 생략 가능(자동조회: 국내 카카오·해외 구글, 못 찾으면 '위치 지정'으로 남음) · (선택) 붙이면 선택코스 · 이동:/메모: 로 그날 정보 · @14:00 붙이면 도착 시각 고정(24시간 표기, 그 날이 시각순 정렬됨) · 비용은 통화 기호로 ($50 · €80 · ¥5000 · 元300 · 20000원)
 ※ 해외(특히 중국 등) 한글 지명은 자동조회 실패가 잦음 → 좌표를 직접 넣거나 AI 파싱 모드 사용 권장</pre>
     <button class="btn" id="fmtCopy" style="margin-top:6px;font-size:11px;padding:3px 10px">이 예시 붙여넣기 칸에 채우기</button>
   </details>
@@ -258,7 +258,7 @@
   </div>
 </div>
 
-<script src="lib.js?v=tc-v106"></script>
-<script src="app.js?v=tc-v106"></script>
+<script src="lib.js?v=tc-v108"></script>
+<script src="app.js?v=tc-v108"></script>
 </body>
 </html>

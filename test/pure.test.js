@@ -121,6 +121,27 @@ test('parseDirect — 여행/일자/장소/옵션/숙소/좌표', () => {
   assert.equal(r2.days[0].spots[1].city, '부산');
 });
 
+test('parseMoney — 통화 기호·접미사 (유로 포함)', () => {
+  assert.deepEqual(L.parseMoney('입장료 €80'), {cost:80,cur:'EUR',raw:'€80'});
+  assert.deepEqual(L.parseMoney('120,000 유로'), {cost:120000,cur:'EUR',raw:'120,000 유로'});
+  assert.equal(L.parseMoney('$50').cur, 'USD');
+  assert.equal(L.parseMoney('5000엔').cur, 'JPY');
+  assert.equal(L.parseMoney('元300').cur, 'CNY');
+  assert.equal(L.parseMoney('20000원').cur, 'KRW');
+  assert.equal(L.parseMoney('메모만 있음'), null);
+  // 유로 금액이 붙은 장소 줄이 직접 형식에서 EUR로 파싱되는지
+  const t=L.parseDirect('[Day 1]\n- 알카사르 | 세비야 | 입장 €14.5');
+  assert.equal(t.days[0].spots[0].cost, 14);
+  assert.equal(t.days[0].spots[0].cur, 'EUR');
+});
+
+test('normalizeTrip — EUR 통화 유지, 알 수 없는 통화는 제거', () => {
+  const ok=L.normalizeTrip({days:[{spots:[{name:'A',cost:80,cur:'EUR'}]}]});
+  assert.equal(ok.days[0].spots[0].cur, 'EUR');
+  const bad=L.normalizeTrip({days:[{spots:[{name:'A',cost:80,cur:'GBP'}]}]});
+  assert.equal('cur' in bad.days[0].spots[0], false);
+});
+
 test('dayAnchor — 숙소 우선·마지막 숙소·폴백·빈날', () => {
   // 1. 숙소가 마지막 항목인 날 → 숙소
   assert.equal(L.dayAnchor({spots:[{lat:1,lng:1},{lat:2,lng:2,stay:true,name:'h'}]}).name, 'h');
