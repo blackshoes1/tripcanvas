@@ -13,7 +13,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-<link rel="stylesheet" href="style.css?v=tc-v108">
+<link rel="stylesheet" href="style.css?v=tc-v109">
 </head>
 <body>
 <header>
@@ -25,6 +25,7 @@
   <div id="hdrMenu">
     <button class="btn ghost" id="undoBtn" title="실행취소 (Ctrl+Z)" disabled onclick="undo()">↩️ 실행취소</button>
     <button class="btn" id="newTripBtn">＋ 새 여행</button>
+    <button class="btn" id="tripListBtn" title="여행 전환·삭제">🗂 여행 목록</button>
     <button class="btn" id="tripEditBtn">⚙️ 여행 설정</button>
     <button class="btn" id="pasteBtn">📋 붙여넣기</button>
     <button class="btn ghost" id="shareBtn">🔗 공유</button>
@@ -144,6 +145,17 @@
   </div>
 </div></div>
 
+<!-- 여행 목록 모달 (전환·삭제) -->
+<div class="modalBg" id="tripListBg"><div class="modal">
+  <h2>🗂 여행 목록</h2>
+  <div class="hint">이름을 누르면 그 여행으로 전환합니다. 지금 보고 있지 않은 여행도 바로 삭제할 수 있어요.</div>
+  <div id="tripListBody"></div>
+  <div class="row">
+    <button class="btn" id="tripListNew">＋ 새 여행</button>
+    <button class="btn primary" id="tripListClose">닫기</button>
+  </div>
+</div></div>
+
 <!-- 여행 설정 모달 -->
 <div class="modalBg" id="tripModalBg"><div class="modal">
   <h2>여행 설정</h2>
@@ -258,7 +270,7 @@
   </div>
 </div>
 
-<script src="lib.js?v=tc-v108"></script>
-<script src="app.js?v=tc-v108"></script>
+<script src="lib.js?v=tc-v109"></script>
+<script src="app.js?v=tc-v109"></script>
 </body>
 </html>
