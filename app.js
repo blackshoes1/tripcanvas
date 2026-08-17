@@ -1631,16 +1631,50 @@ document.getElementById('tripSave').onclick=()=>{
   trip().start=document.getElementById('tripStart').value;
   document.getElementById('tripModalBg').classList.remove('show'); commit(); toast('저장됨');
 };
-document.getElementById('tripDelBtn').onclick=()=>{
-  if(!confirm(`"${trip().name}" 여행을 삭제할까요?`))return;
+// 여행 삭제 (활성/비활성 공통) — 설정 모달·여행 목록 양쪽에서 사용
+function deleteTrip(id){
+  const t=store.trips.find(x=>x.id===id); if(!t) return false;
+  if(!confirm(`"${t.name}" 여행을 삭제할까요?`)) return false;
   const snap=snapshot();
-  cloudDelete(store.activeId);   // 로그인 상태면 클라우드에서도 삭제
-  store.trips=store.trips.filter(t=>t.id!==store.activeId);
+  cloudDelete(id);   // 로그인 상태면 클라우드에서도 삭제
+  store.trips=store.trips.filter(x=>x.id!==id);
   if(!store.trips.length){ store.trips=[{id:uid(),name:'새 여행',start:new Date().toISOString().slice(0,10),days:[{title:'',drive:'',note:'',spots:[]}]}]; }
-  store.activeId=store.trips[0].id; activeDay=0;
-  document.getElementById('tripModalBg').classList.remove('show'); commit(null, {fit:fitEntry});
+  if(id===store.activeId){ store.activeId=store.trips[0].id; activeDay=0; }   // 보고 있던 여행을 지운 경우만 전환
+  commit(null, {fit:fitEntry});
   // undo 시 삭제된 여행이 다시 활성화되어 render→save로 클라우드에도 재업로드됨
-  toast('여행 삭제됨','#8892b0',{fn:()=>undoWith(snap)});
+  toast(`"${t.name}" 삭제됨`,'#8892b0',{fn:()=>undoWith(snap)});
+  return true;
+}
+document.getElementById('tripDelBtn').onclick=()=>{
+  if(deleteTrip(store.activeId)) document.getElementById('tripModalBg').classList.remove('show');
+};
+// 여행 목록 — 전환(이름 탭)·삭제(🗑)를 한 화면에서
+function renderTripList(){
+  const box=document.getElementById('tripListBody');
+  box.innerHTML=store.trips.map(t=>{
+    const days=(t.days||[]).length, spots=(t.days||[]).reduce((a,d)=>a+((d.spots||[]).length),0);
+    const act=t.id===store.activeId;
+    return `<div class="tripRow${act?' active':''}">
+      <span class="tn" onclick="switchTrip('${escAttr(t.id)}')" title="이 여행으로 전환">${act?'▶ ':''}${esc(t.name||'(이름 없음)')}
+        <span class="opt">${t.start?esc(t.start)+' · ':''}${days}일 · ${spots}곳</span></span>
+      <button class="iconb" onclick="event.stopPropagation();removeTrip('${escAttr(t.id)}')" title="이 여행 삭제" style="color:#ff8fa3">🗑</button>
+    </div>`;
+  }).join('');
+}
+window.switchTrip=(id)=>{
+  if(id===store.activeId){ document.getElementById('tripListBg').classList.remove('show'); return; }
+  commit(()=>{ store.activeId=id; activeDay=0; }, {fit:fitEntry});
+  document.getElementById('tripListBg').classList.remove('show');
+};
+window.removeTrip=(id)=>{ if(deleteTrip(id)) renderTripList(); };   // 목록은 열어둔 채 계속 정리 가능
+document.getElementById('tripListBtn').onclick=()=>{
+  if(viewMode){ toast('읽기전용 보기입니다 — "내 여행으로 저장" 후 이용하세요','#8892b0'); return; }
+  renderTripList(); document.getElementById('tripListBg').classList.add('show');
+};
+document.getElementById('tripListClose').onclick=()=>document.getElementById('tripListBg').classList.remove('show');
+document.getElementById('tripListNew').onclick=()=>{
+  document.getElementById('tripListBg').classList.remove('show');
+  document.getElementById('newTripBtn').click();
 };
 
 // ───────────────── 내보내기/가져오기/공유 ─────────────────

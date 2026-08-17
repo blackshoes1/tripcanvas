@@ -185,3 +185,9 @@ body.playing #playHud{
 @keyframes playDayCardIn{from{opacity:0;transform:translateX(-50%) translateY(-8px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
   /* 시각 직접 입력 (위젯 대신) — 24시간 HH:MM */
   .timeIn{width:auto;min-width:96px;letter-spacing:.5px}
+  /* 여행 목록 — 이름 탭으로 전환, 🗑로 삭제 */
+  .tripRow{display:flex;align-items:center;gap:6px;padding:8px 9px;border-radius:8px;font-size:13px;border:1px solid #2a3457;margin-top:6px}
+  .tripRow.active{border-color:#e63946;background:#26193080}
+  .tripRow .tn{flex:1;cursor:pointer;line-height:1.45}
+  .tripRow .tn:hover{color:#fff}
+  .tripRow .opt{display:block;color:#8892b0;font-size:11px}
