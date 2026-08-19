@@ -463,7 +463,6 @@ function dayDistance(day){
 }
 
 // ── 구간 소요시간 (자동차) — 국내 카카오내비 · 해외 Google Routes, localStorage 캐시 ──
-const KAKAO_REST_KEY='48e05420d9dcc072915ff99412669995';   // 카카오내비 REST (CORS 허용 확인됨)
 const LEG_KEY='tripcanvas_legs_v4';   // v4: 순수 코덱(SDK 비의존) — v3의 경로없음 오염 캐시 폐기
 let legCache={};
 try{ legCache=JSON.parse(localStorage.getItem(LEG_KEY))||{}; }catch(e){}
@@ -497,11 +496,13 @@ function decodePts(enc){ return enc? decodePolyline(enc) : null; }
 // 카카오내비 1회 호출 — 성공 시 {rt}, 실패 시 {code} (102 출발지·103 도착지 주변 도로 없음)
 async function kakaoTry(a,b){
   try{
-    const u=`https://apis-navi.kakaomobility.com/v1/directions?origin=${a.lng},${a.lat}&destination=${b.lng},${b.lat}`;
-    const r=await fetch(u,{headers:{Authorization:'KakaoAK '+KAKAO_REST_KEY}});
-    if(!r.ok) return {code:-1};
-    const js=await r.json();
-    const rt=js.routes&&js.routes[0];
+    const r=await fetch('/api/kakao-directions',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({origin:{lat:+a.lat,lng:+a.lng},destination:{lat:+b.lat,lng:+b.lng}})
+    });
+    const js=await r.json().catch(()=>null);
+    if(!r.ok) return {code:(js&&Number(js.code))||-1};
+    const rt=js&&js.route;
     if(!rt) return {code:-1};
     if(rt.result_code!==0||!rt.summary) return {code:rt.result_code};
     return {rt};

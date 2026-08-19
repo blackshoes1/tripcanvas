@@ -26,7 +26,7 @@
 
 빌드 도구 없음 — 정적 파일 그대로 배포합니다.
 지도: Google Maps JS SDK / 장소 검색: 카카오 로컬(국내)·Google Places(해외) / 저장: localStorage + Supabase
-API 키(구글·카카오)는 `app.js` 상단 상수 — 도메인 제한(리퍼러/플랫폼) 필수
+Google Maps와 Kakao JavaScript 브라우저 키는 `app.js` 상단 상수이며 도메인 제한(리퍼러/플랫폼)이 필수입니다. Kakao Mobility REST 키는 정적 파일에 두지 않고 Vercel 서버 함수의 `KAKAO_REST_API_KEY` 환경변수로만 관리합니다. 자세한 운영 기준은 [`docs/security.md`](docs/security.md)를 참고하세요.
 
 ## 로컬 실행
 
@@ -35,6 +35,12 @@ API 키(구글·카카오)는 `app.js` 상단 상수 — 도메인 제한(리퍼
 ```bash
 python3 -m http.server 8000
 # → http://localhost:8000
+```
+
+정적 서버에서는 Kakao Mobility 자차 경로 프록시가 없으므로, 해당 기능까지 로컬에서 확인할 때는 Vercel CLI로 실행합니다.
+
+```bash
+vercel dev --listen 8000
 ```
 
 ## 배포

@@ -14,7 +14,9 @@ jobs:
       - name: Install test deps (jsdom for integration tests)
         run: npm install --no-audit --no-fund
       - name: Syntax check
-        run: node --check app.js && node --check lib.js && node --check sw.js
+        run: node --check app.js && node --check lib.js && node --check sw.js && node --check api/kakao-directions.js
+      - name: Secret pattern check
+        run: npm run security:scan
       - name: Type check (lib.js, JSDoc)
         run: npx -y -p typescript@5.6.3 tsc -p jsconfig.json
       - name: Unit + integration tests

@@ -4,7 +4,8 @@
   "private": true,
   "description": "Trip Canvas — 대화로 만드는 멀티시티 여행 동선 플래너 (정적 PWA, 빌드 도구 없음)",
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "security:scan": "node scripts/check-secrets.js"
   },
   "devDependencies": {
     "jsdom": "^24.1.3"
