@@ -82,6 +82,7 @@
   .modal input[type=text],.modal input[type=date],.modal select,.modal textarea{width:100%}
   .modal textarea{min-height:60px;resize:vertical}
   .modal .row{display:flex;gap:8px;margin-top:14px;justify-content:flex-end}
+  .syncChoices{display:grid;gap:8px;margin-top:16px}.syncChoices .btn{width:100%;justify-content:center}
   .modal .chkrow{display:flex;align-items:center;gap:6px;margin-top:9px;font-size:12.5px}
   .searchRes{margin-top:6px;max-height:170px;overflow-y:auto}
   .searchRes div{font-size:12px;padding:6px 8px;border-radius:7px;cursor:pointer;color:#cdd6f4}

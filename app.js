@@ -5,14 +5,14 @@ const LS_KEY = 'tripcanvas_v1';
 const PALETTE = ['#e63946','#1e88e5','#2ecc71','#9b59b6','#ec4899','#14b8a6','#8d6e63','#ff7f50','#a3e635','#f6b93b'];   // 빨강·파랑·초록·보라·핑크·청록·브라운·코랄·라임·노랑
 let store = null;
 let sb = null, user = null, syncTimer = null;   // Supabase 클라이언트/로그인 사용자/동기화 디바운스
-// 부활 방지: 클라우드에 있었다고 확인된 여행 id 집합. 예전엔 클라우드에 있었는데 지금 없으면
-// 다른 기기에서 삭제된 것 → 재업로드하지 않는다(그전엔 스테일 로컬본이 삭제분을 되살렸음).
-const SYNC_KEY='tripcanvas_synced';
-let syncedIds=new Set();
-try{ syncedIds=new Set(JSON.parse(localStorage.getItem(SYNC_KEY))||[]); }catch(e){}
-function persistSynced(){ try{ localStorage.setItem(SYNC_KEY, JSON.stringify([...syncedIds])); }catch(e){} }
-function markSynced(id){ if(id&&!syncedIds.has(id)){ syncedIds.add(id); persistSynced(); } }
-function unmarkSynced(id){ if(syncedIds.delete(id)) persistSynced(); }
+const SYNC_KEY='tripcanvas_synced';             // v1 호환: id 배열을 v2 meta로 1회 흡수
+const SYNC_META_KEY='tripcanvas_sync_v2';
+let legacySynced=[];
+try{ legacySynced=JSON.parse(localStorage.getItem(SYNC_KEY))||[]; }catch(e){}
+let syncMeta=TC_SYNC.loadMeta(localStorage.getItem(SYNC_META_KEY),legacySynced);
+let suppressCloudOnce=false;
+function persistSyncMeta(){ try{ localStorage.setItem(SYNC_META_KEY,JSON.stringify(syncMeta)); }catch(e){} }
+function syncEntry(id){ return syncMeta[id]||(syncMeta[id]={revision:null,status:'new',op:''}); }
 
 function seedSpain(){
   return {
@@ -102,6 +102,7 @@ function undo(){
   // 복원 상태를 localStorage·클라우드에 기록하되, 되돌리기 자체는 히스토리에 새 항목으로 쌓지 않는다.
   // (histLast=null로 save의 "변경 없음" 조기 반환을 우회, histLock으로 push는 억제)
   histLock=true; histLast=null; save(); histLock=false;
+  reconcileUndoDeletes();
   activeDay=0; render(); fitAll();
   updateUndoBtn();
   toast('실행취소됨','#8892b0');
@@ -159,7 +160,7 @@ function commit(fn, opts){
   render();
   if(opts && opts.fit) opts.fit();
 }
-function undoWith(snap){ commit(()=>{ store=snap; activeDay=0; }, {fit:fitAll}); }
+function undoWith(snap){ commit(()=>{ store=snap; reconcileUndoDeletes(); activeDay=0; }, {fit:fitAll}); }
 
 // ───────────────── 지도 (해외=Google · 국내=카카오 듀얼 엔진) ─────────────────
 const GMAPS_KEY='AIzaSyCE6I2dhqk2jzNvA0ZMzDSuPi7HAfWecAM';   // HTTP 리퍼러 제한으로 보호할 것
@@ -1637,7 +1638,7 @@ function deleteTrip(id){
   const t=store.trips.find(x=>x.id===id); if(!t) return false;
   if(!confirm(`"${t.name}" 여행을 삭제할까요?`)) return false;
   const snap=snapshot();
-  cloudDelete(id);   // 로그인 상태면 클라우드에서도 삭제
+  cloudDelete(id,t);   // 로그인 상태면 tombstone 기록, 오프라인이면 재시도 큐에 보존
   store.trips=store.trips.filter(x=>x.id!==id);
   if(!store.trips.length){ store.trips=[{id:uid(),name:'새 여행',start:new Date().toISOString().slice(0,10),days:[{title:'',drive:'',note:'',spots:[]}]}]; }
   if(id===store.activeId){ store.activeId=store.trips[0].id; activeDay=0; }   // 보고 있던 여행을 지운 경우만 전환
@@ -2120,39 +2121,65 @@ function updateAuthUI(){
   if(user){ b.textContent='👤 '+(user.email||'').split('@')[0]; b.title='클릭하면 로그아웃'; b.classList.add('primary'); }
   else { b.textContent='로그인'; b.title='로그인하면 여행이 내 계정에 저장돼 어느 기기서든 열려요'; b.classList.remove('primary'); }
 }
-// 활성 여행을 클라우드에 저장(디바운스 800ms). 실패 시 15초 뒤 재시도 + 네트워크 복구 시 즉시 재동기화.
-// (save() 가드가 뷰/비동기 재렌더의 우연한 재시도를 없앴으므로, 재시도는 여기서 명시적으로 책임진다.)
-let cloudRetryT=null;
-function cloudSyncActive(delay){
-  if(!sb || !user) return;
-  clearTimeout(cloudRetryT); clearTimeout(syncTimer);
-  syncTimer=setTimeout(async()=>{
-    const t=trip(); if(!t) return;
-    const {error}=await sb.from('trips').upsert(
-      {user_id:user.id, client_id:t.id, data:t, updated_at:new Date().toISOString()},
-      {onConflict:'user_id,client_id'});
-    if(error){
-      console.warn('cloud sync:', error.message);
-      clearTimeout(cloudRetryT);
-      cloudRetryT=setTimeout(()=>cloudSyncActive(), 15000);   // 최신 활성 여행본으로 재시도
-    } else { markSynced(t.id); cloudSnapshot(t); }
-  }, delay!=null?delay:800);
+// revision 비교 후에만 쓰는 낙관적 동시성 제어(CAS). 실패해도 로컬 편집은 유지한다.
+let cloudRetryT=null, syncConflicts=[], currentSyncConflict=null;
+async function rpcRow(name,args){
+  const {data,error}=await sb.rpc(name,args);
+  if(error) throw error;
+  return Array.isArray(data)?data[0]:data;
 }
-window.addEventListener('online', ()=>{ if(sb && user) cloudSyncActive(0); });
+function cloudSyncActive(delay){
+  if(suppressCloudOnce){ suppressCloudOnce=false; return; }
+  if(!sb||!user) return;
+  clearTimeout(cloudRetryT); clearTimeout(syncTimer);
+  syncTimer=setTimeout(()=>{ const t=trip(); if(t) syncTripCloud(t); },delay!=null?delay:800);
+}
+async function syncTripCloud(t,opts){
+  if(!sb||!user||!t) return;
+  if(t.id==='spain2026'&&!(syncMeta[t.id]&&syncMeta[t.id].revision)) return;
+  const entry=syncEntry(t.id), force=!!(opts&&opts.force);
+  if(entry.status==='conflict'&&!force) return;
+  entry.status='syncing'; persistSyncMeta();
+  try{
+    const row=await rpcRow('sync_trip',{p_client_id:t.id,p_data:t,p_expected_revision:entry.revision,p_force:force});
+    if(!row) throw new Error('empty sync response');
+    if(row.conflict){
+      entry.revision=Number(row.revision)||entry.revision; entry.status='conflict'; persistSyncMeta();
+      enqueueSyncConflict({kind:row.deleted_at?'remote-deleted':'changed-both',local:t,remote:row.data||null,revision:entry.revision,deleted_at:row.deleted_at||null});
+      return;
+    }
+    entry.revision=Number(row.revision)||1; entry.status='clean'; entry.op=''; persistSyncMeta();
+    cloudSnapshot(t,entry.revision);
+  }catch(e){
+    entry.status='error'; persistSyncMeta();
+    console.warn('cloud sync unavailable');
+    clearTimeout(cloudRetryT);
+    cloudRetryT=setTimeout(()=>syncTripCloud(t),15000);
+    toast('클라우드 저장 실패 — 로컬 편집은 보존됨','#e63946',{label:'재시도',fn:()=>syncTripCloud(t)});
+  }
+}
+async function flushPendingSync(){
+  if(!sb||!user) return;
+  for(const [id,entry] of Object.entries(syncMeta)){
+    if(entry.status==='delete-pending'||entry.status==='delete-error') await performCloudDelete(id,entry.op);
+  }
+}
+window.addEventListener('online',async()=>{ if(sb&&user){ await flushPendingSync(); cloudSyncActive(0); } });
+
 // 버전 히스토리: 여행별 10분에 1회 스냅샷, 최근 15개 유지
 const _snapAt={};
-async function cloudSnapshot(t){
-  if(!sb || !user) return;
+async function cloudSnapshot(t,revision){
+  if(!sb||!user) return;
   const now=Date.now();
-  if(_snapAt[t.id] && now-_snapAt[t.id]<10*60*1000) return;
+  if(_snapAt[t.id]&&now-_snapAt[t.id]<10*60*1000) return;
   _snapAt[t.id]=now;
   try{
-    await sb.from('trip_snapshots').insert({client_id:t.id, name:t.name, data:t});
-    // 오래된 스냅샷 정리 (최근 15개만 유지)
-    const {data:rows}=await sb.from('trip_snapshots').select('id')
-      .eq('client_id',t.id).order('created_at',{ascending:false}).range(15,100);
-    if(rows&&rows.length) await sb.from('trip_snapshots').delete().in('id',rows.map(r=>r.id));
-  }catch(e){}
+    const {error}=await sb.from('trip_snapshots').insert({user_id:user.id,client_id:t.id,name:t.name,data:t,source_revision:revision});
+    if(error) throw error;
+    const {data:rows,error:listError}=await sb.from('trip_snapshots').select('id').eq('client_id',t.id).order('created_at',{ascending:false}).range(15,100);
+    if(listError) throw listError;
+    if(rows&&rows.length){ const {error:deleteError}=await sb.from('trip_snapshots').delete().in('id',rows.map(r=>r.id)); if(deleteError) throw deleteError; }
+  }catch(e){ console.warn('snapshot unavailable'); }
 }
 // 버전 기록 목록 (여행 설정 모달)
 async function loadSnapList(){
@@ -2171,43 +2198,90 @@ async function loadSnapList(){
     btn.onclick=async()=>{
       if(!confirm('이 시점으로 복원할까요? (현재 상태는 ↩️ 실행취소로 되돌릴 수 있습니다)'))return;
       const {data:full,error:fe}=await sb.from('trip_snapshots').select('data').eq('id',r.id).single();
-      if(fe||!full||!full.data){ toast('복원 실패','#e63946'); return; }
+      const restored=full&&normalizeTrip(full.data);
+      if(fe||!restored){ toast('손상된 버전이라 복원하지 않았습니다','#e63946'); return; }
       const idx=store.trips.findIndex(t=>t.id===store.activeId);
       document.getElementById('tripModalBg').classList.remove('show');
-      commit(()=>{ if(idx>=0) store.trips[idx]=full.data; activeDay=0; }, {fit:fitEntry}); toast('복원되었습니다 (↩️로 되돌리기 가능)');
+      commit(()=>{ if(idx>=0) store.trips[idx]=restored; activeDay=0; }, {fit:fitEntry}); toast('복원되었습니다 (↩️로 되돌리기 가능)');
     };
     row.appendChild(btn); box.appendChild(row);
   });
 }
-async function cloudDelete(clientId){
-  unmarkSynced(clientId);   // 삭제한 여행은 '동기화됨' 기록에서도 제거(부활 방지)
-  if(!sb || !user) return;
-  try{ await sb.from('trips').delete().eq('client_id', clientId); }catch(e){}
+function cloudDelete(clientId,deletedTrip){
+  const op=uid()+Date.now();
+  TC_SYNC.beginDelete(syncMeta,clientId,op); persistSyncMeta();
+  if(sb&&user) performCloudDelete(clientId,op,deletedTrip);
 }
-// 로그인 직후: 클라우드를 당겨오고, 한 번도 동기화 안 된 신규 로컬 여행만 업로드해 보존.
-// (예전엔 클라우드에 없는 로컬 여행을 무조건 올려서, 다른 기기서 지운 여행이 스테일 로컬본으로 되살아났음)
+async function performCloudDelete(clientId,op,deletedTrip){
+  const entry=syncEntry(clientId);
+  try{
+    const row=await rpcRow('tombstone_trip',{p_client_id:clientId,p_expected_revision:entry.revision,p_force:false});
+    if(row&&row.conflict){
+      entry.revision=Number(row.revision)||entry.revision; entry.status='conflict'; persistSyncMeta();
+      enqueueSyncConflict({kind:row.deleted_at?'remote-deleted':'changed-both',local:deletedTrip||null,remote:row.data||null,revision:entry.revision,deleted_at:row.deleted_at||null});
+      return;
+    }
+    const result=TC_SYNC.finishDelete(syncMeta,clientId,op,Number(row&&row.revision)||entry.revision||1); persistSyncMeta();
+    if(result.resync){ const restored=store.trips.find(t=>t.id===clientId); if(restored) syncTripCloud(restored); }
+  }catch(e){ entry.status='delete-error'; entry.op=op; persistSyncMeta(); toast('삭제 동기화 실패 — 재시도가 필요합니다','#e63946',{label:'재시도',fn:()=>performCloudDelete(clientId,op,deletedTrip)}); }
+}
+function reconcileUndoDeletes(){
+  for(const t of store.trips){
+    const entry=syncMeta[t.id];
+    if(entry&&['delete-pending','delete-error','tombstoned'].includes(entry.status)){
+      TC_SYNC.undoDelete(syncMeta,t.id);
+      if(sb&&user) syncTripCloud(t);
+    }
+  }
+  persistSyncMeta();
+}
+
+function enqueueSyncConflict(conflict){ syncConflicts.push(conflict); if(!currentSyncConflict) showNextSyncConflict(); }
+function showNextSyncConflict(){
+  currentSyncConflict=syncConflicts.shift()||null;
+  if(!currentSyncConflict){ document.getElementById('syncConflictBg').classList.remove('show'); return; }
+  const c=currentSyncConflict, name=(c.local&&c.local.name)||(c.remote&&c.remote.name)||'여행';
+  document.getElementById('syncConflictText').textContent=`“${name}”이 다른 기기에서도 변경되었습니다. 어느 버전을 보존할지 선택하세요.`;
+  document.getElementById('syncConflictBg').classList.add('show');
+}
+function replaceWithRemote(c){
+  const idx=store.trips.findIndex(t=>t.id===(c.local&&c.local.id));
+  const remote=c.remote&&normalizeTrip(c.remote);
+  if(idx>=0){ if(remote&&!c.deleted_at) store.trips[idx]=remote; else store.trips.splice(idx,1); }
+  if(remote&&idx<0&&!c.deleted_at) store.trips.push(remote);
+  if(!store.trips.length) store.trips=[{id:uid(),name:'새 여행',start:'',days:[{title:'',drive:'',note:'',spots:[]}]}];
+  if(!store.trips.find(t=>t.id===store.activeId)) store.activeId=store.trips[0].id;
+  if(c.local) syncMeta[c.local.id]={revision:c.revision,status:c.deleted_at?'tombstoned':'clean',op:''};
+  persistSyncMeta(); suppressCloudOnce=true; activeDay=0; render();
+}
+document.getElementById('syncUseCloud').onclick=()=>{ replaceWithRemote(currentSyncConflict); currentSyncConflict=null; showNextSyncConflict(); };
+document.getElementById('syncUseDevice').onclick=()=>{ const c=currentSyncConflict; currentSyncConflict=null; document.getElementById('syncConflictBg').classList.remove('show'); if(c&&c.local) syncTripCloud(c.local,{force:true}); showNextSyncConflict(); };
+document.getElementById('syncKeepCopy').onclick=()=>{
+  const c=currentSyncConflict; if(!c||!c.local) return;
+  const copy=JSON.parse(JSON.stringify(c.local)); copy.id=uid(); copy.name=(copy.name||'여행')+' (충돌 복사본)';
+  replaceWithRemote(c); store.trips.push(copy); store.activeId=copy.id; suppressCloudOnce=true; render(); syncTripCloud(copy);
+  currentSyncConflict=null; showNextSyncConflict();
+};
+
+// 로그인 직후: 서버 revision과 로컬이 읽은 revision을 비교해 안전한 변경만 자동 병합한다.
 async function syncOnLogin(){
   try{
-    const {data:rows,error}=await sb.from('trips').select('client_id,data');
+    const {data:rows,error}=await sb.from('trips').select('client_id,data,revision,deleted_at,updated_at');
     if(error) throw error;
-    const cloud=new Map((rows||[]).map(r=>[r.client_id, r.data]));
-    cloud.forEach((_v,id)=>markSynced(id));   // 클라우드에 있는 건 '동기화됨'으로 기록
-    for(const t of store.trips){
-      if(cloud.has(t.id)) continue;
-      if(syncedIds.has(t.id)){ unmarkSynced(t.id); continue; }   // 예전엔 클라우드에 있었는데 지금 없음 = 다른 기기서 삭제 → 부활 금지(로컬에서도 제거)
-      if(t.id==='spain2026') continue;                           // 데모 시드는 클라우드로 올리지 않음(계정 오염 방지)
-      // 한 번도 동기화된 적 없는 진짜 신규 로컬 여행만 업로드
-      await sb.from('trips').upsert({user_id:user.id, client_id:t.id, data:t, updated_at:new Date().toISOString()},{onConflict:'user_id,client_id'});
-      cloud.set(t.id, t); markSynced(t.id);
-    }
-    const trips=[...cloud.values()].map(t=>normalizeTrip(t)).filter(Boolean);   // 클라우드 유입도 정규화·검증
+    const local=store.trips.filter(t=>t.id!=='spain2026'||(rows||[]).some(r=>r.client_id===t.id));
+    const merged=TC_SYNC.mergeForLogin(local,rows||[],syncMeta);
+    syncMeta=merged.meta; persistSyncMeta();
+    const trips=merged.trips.map(t=>normalizeTrip(t)).filter(Boolean);
     if(trips.length){
       store.trips=trips;
       if(!trips.find(t=>t.id===store.activeId)) store.activeId=trips[0].id;
     }
     localStorage.setItem(LS_KEY, JSON.stringify(store));
     activeDay=0; render(); fitAll();
-    toast(`클라우드 동기화 완료 · 여행 ${trips.length}개`);
+    for(const c of merged.conflicts) enqueueSyncConflict(c);
+    for(const action of merged.actions) if(action.trip.id!=='spain2026') await syncTripCloud(action.trip,{force:action.force});
+    await flushPendingSync();
+    toast(merged.conflicts.length?`동기화 충돌 ${merged.conflicts.length}건 — 버전을 선택해 주세요`:`클라우드 동기화 완료 · 여행 ${trips.length}개`,merged.conflicts.length?'#e09b20':undefined);
   }catch(e){ toast('클라우드 동기화 실패 — 로컬로 계속 사용','#e63946'); }
 }
 // 로그인 모달 (이메일 + 비밀번호)

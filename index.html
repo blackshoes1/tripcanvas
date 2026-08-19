@@ -13,7 +13,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-<link rel="stylesheet" href="style.css?v=tc-v110">
+<link rel="stylesheet" href="style.css?v=tc-v111">
 </head>
 <body>
 <header>
@@ -239,6 +239,17 @@
   </div>
 </div></div>
 
+<!-- 클라우드 동기화 충돌: 자동 덮어쓰기 대신 사용자가 보존할 버전을 선택 -->
+<div class="modalBg" id="syncConflictBg"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="syncConflictTitle">
+  <h2 id="syncConflictTitle">동기화 충돌</h2>
+  <p class="hint" id="syncConflictText"></p>
+  <div class="syncChoices">
+    <button class="btn" id="syncUseCloud">클라우드본 사용</button>
+    <button class="btn" id="syncUseDevice">이 기기본 사용</button>
+    <button class="btn primary" id="syncKeepCopy">이 기기본을 복사본으로 보존</button>
+  </div>
+</div></div>
+
 <!-- 여행 모드 -->
 <div id="travel">
   <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
@@ -270,7 +281,8 @@
   </div>
 </div>
 
-<script src="lib.js?v=tc-v110"></script>
-<script src="app.js?v=tc-v110"></script>
+<script src="lib.js?v=tc-v111"></script>
+<script src="sync.js?v=tc-v111"></script>
+<script src="app.js?v=tc-v111"></script>
 </body>
 </html>
