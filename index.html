@@ -13,7 +13,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-<link rel="stylesheet" href="style.css?v=tc-v111">
+<link rel="stylesheet" href="style.css?v=tc-v112">
 </head>
 <body>
 <header>
@@ -111,6 +111,8 @@
   <label>날짜 (이 날로 맞추면 전체 일정이 자동 재계산됩니다)</label><input type="date" id="dayDate">
   <label>시작 시각 <span class="hint" style="margin:0">— 이 날 첫 출발 시각 (24시간 표기)</span></label><input type="text" id="dayStart" class="timeIn" inputmode="numeric" maxlength="5" placeholder="예: 09:00">
   <div class="hint">숙소/첫 지점에서 <b>출발하는</b> 시각. 이 시각을 기준으로 그 날 도착 예상이 계산됩니다.</div>
+  <label>현지 시간대 <span class="hint" style="margin:0">— 비우면 여행 기본값</span></label><input type="text" id="dayTimeZone" list="timezoneList" placeholder="예: Europe/Madrid">
+  <div class="hint">대중교통 출발시각과 일광절약시간(DST)에 사용합니다. 도시를 옮긴 날에는 이 값을 확인하세요.</div>
   <div class="chkrow"><input type="checkbox" id="dayCarry" checked><label for="dayCarry" style="margin:0">전날 위치에서 이어서 시작 <span class="hint" style="margin:0">— 끄면 공항 이동일·야간열차처럼 이월 없이 첫 장소부터 시작</span></label></div>
   <label>이동 수단 (이 날의 구간 시간·경로 계산 기준)</label>
   <select id="dayMode">
@@ -161,6 +163,8 @@
   <h2>여행 설정</h2>
   <label>여행 이름</label><input type="text" id="tripName">
   <label>시작일 (Day 1)</label><input type="date" id="tripStart">
+  <label>여행 기본 시간대</label><input type="text" id="tripTimeZone" list="timezoneList" placeholder="예: Asia/Tokyo">
+  <div class="hint">IANA 형식으로 입력합니다. 일자별 시간대가 있으면 그 값이 우선합니다.</div>
   <label>🕘 버전 기록 (10분 간격 자동 저장, 최근 15개)</label>
   <div id="snapList" class="searchRes"></div>
   <div class="row">
@@ -239,6 +243,12 @@
   </div>
 </div></div>
 
+<datalist id="timezoneList">
+  <option value="Asia/Seoul"><option value="Asia/Tokyo"><option value="Asia/Shanghai">
+  <option value="Europe/Madrid"><option value="Europe/Paris"><option value="Europe/London">
+  <option value="America/New_York"><option value="America/Los_Angeles"><option value="UTC">
+</datalist>
+
 <!-- 클라우드 동기화 충돌: 자동 덮어쓰기 대신 사용자가 보존할 버전을 선택 -->
 <div class="modalBg" id="syncConflictBg"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="syncConflictTitle">
   <h2 id="syncConflictTitle">동기화 충돌</h2>
@@ -281,8 +291,8 @@
   </div>
 </div>
 
-<script src="lib.js?v=tc-v111"></script>
-<script src="sync.js?v=tc-v111"></script>
-<script src="app.js?v=tc-v111"></script>
+<script src="lib.js?v=tc-v112"></script>
+<script src="sync.js?v=tc-v112"></script>
+<script src="app.js?v=tc-v112"></script>
 </body>
 </html>

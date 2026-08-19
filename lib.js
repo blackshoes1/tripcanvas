@@ -187,6 +187,45 @@
   /** 좌표 유효 여부 (lat/lng 유한값) @param {any} s @returns {boolean} */
   function hasCoord(s){ return !!s && s.lat!=null && s.lng!=null && isFinite(+s.lat) && isFinite(+s.lng); }
 
+  /** IANA 시간대 문자열 유효성. @param {any} value @returns {boolean} */
+  function validTimeZone(value){
+    if(typeof value!=='string'||!value||value.length>64) return false;
+    try{ new Intl.DateTimeFormat('en-US',{timeZone:value}).format(0); return true; }catch(_){ return false; }
+  }
+
+  /** @param {number} ms @param {string} timeZone @returns {{year:number,month:number,day:number,hour:number,minute:number}} */
+  function _zonedParts(ms,timeZone){
+    const parts=new Intl.DateTimeFormat('en-CA',{timeZone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date(ms));
+    /** @type {any} */ const out={};
+    parts.forEach(p=>{ if(p.type!=='literal') out[p.type]=+p.value; });
+    return {year:out.year,month:out.month,day:out.day,hour:out.hour,minute:out.minute};
+  }
+
+  /**
+   * 여행지의 현지 날짜 + 자정부터 분을 IANA 시간대 기준 UTC ISO로 변환한다. DST gap(존재하지 않는 현지시각)은 null.
+   * minutes가 1440을 넘으면 다음 날짜로 넘겨 자정 이후 일정도 보존한다.
+   * @param {string} isoDate @param {number} minutes @param {string} timeZone @returns {string|null}
+   */
+  function zonedMinutesToISOString(isoDate,minutes,timeZone){
+    const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDate||'');
+    if(!m||!isFinite(minutes)||!validTimeZone(timeZone)) return null;
+    const base=new Date(Date.UTC(+m[1],+m[2]-1,+m[3]+Math.floor(minutes/1440)));
+    if(base.getUTCFullYear()<1000) return null;
+    const minute=((Math.round(minutes)%1440)+1440)%1440;
+    const desired=Date.UTC(base.getUTCFullYear(),base.getUTCMonth(),base.getUTCDate(),Math.floor(minute/60),minute%60);
+    let guess=desired;
+    for(let i=0;i<4;i++){
+      const p=_zonedParts(guess,timeZone);
+      const shown=Date.UTC(p.year,p.month-1,p.day,p.hour,p.minute);
+      const delta=desired-shown;
+      guess+=delta;
+      if(delta===0) break;
+    }
+    const final=_zonedParts(guess,timeZone);
+    if(Date.UTC(final.year,final.month-1,final.day,final.hour,final.minute)!==desired) return null;
+    return new Date(guess).toISOString().replace(/\.000Z$/,'Z');
+  }
+
   /**
    * 일자 간 출발 기준점(단일 진실). 등록된 숙소(s.stay)가 있으면 마지막 숙소, 없으면 마지막 위치 장소.
    * 숙소 뒤에 다른 일정이 있어도 숙소를 우선한다. 좌표 있는 장소가 없으면 null.
@@ -205,7 +244,7 @@
    * spot.at(고정 도착시각)이 있으면 그 시각으로 고정하고, 이동상 자연 도착보다 이르면 conflict.
    * spot.bookAt(예약)이 도착보다 뒤면 그때까지 대기 후 활동 → 다음 출발 기준은 max(도착,예약)+체류.
    * @param {{startAt?: string, spots?: any[]}} day
-   * @param {{legMin:(a:any,b:any)=>number, startAnchor?: any}} opts legMin=두 지점 간 이동시간(분)
+    * @param {{legMin:(a:any,b:any,context?:{depart:number})=>number, startAnchor?: any}} opts legMin=두 지점 간 이동시간(분)
    * @returns {{eta:number, fixed:boolean, conflict:boolean}[]}
    */
   function computeTimeline(day, opts){
@@ -214,7 +253,7 @@
     /** @type {any} */
     let prev = (opts.startAnchor && hasCoord(opts.startAnchor)) ? opts.startAnchor : null;
     return ((day&&day.spots)||[]).map((/**@type{any}*/s)=>{
-      if(hasCoord(s) && prev) clock+=legMin(prev,s);
+      if(hasCoord(s) && prev) clock+=legMin(prev,s,{depart:clock});
       const natural=clock;
       let eta=natural, conflict=false;
       if(s.at){ eta=parseHM(s.at); conflict = eta < natural-0.5; }   // 고정 시각인데 이동상 도착이 더 늦으면 충돌
@@ -289,6 +328,7 @@
     d.spots = Array.isArray(d.spots)? d.spots.map(normalizeSpot) : [];
     if(_hm(d.startAt)===undefined) delete d.startAt;                        // parseHM이 없으면 09:00 기본
     if(d.startPolicy!=null && d.startPolicy!=='none') delete d.startPolicy;  // 알 수 없는 정책 → 기본(previous)
+    if(d.timeZone!=null && !validTimeZone(d.timeZone)) delete d.timeZone;
     if(d.flight!=null){
       if(typeof d.flight!=='object'){ delete d.flight; }
       else { const f=d.flight; f.code=_str(f.code); f.dep=_str(f.dep); f.arr=_str(f.arr);
@@ -307,12 +347,13 @@
     if(!t.days.length) return null;
     t.name = _str(t.name) || '여행';
     t.start = /^\d{4}-\d{2}-\d{2}$/.test(_str(t.start))? t.start : '';
+    if(t.timeZone!=null && !validTimeZone(t.timeZone)) delete t.timeZone;
     if(t.colorBy!=null && t.colorBy!=='city' && t.colorBy!=='day') delete t.colorBy;
     t.schemaVersion = TC_SCHEMA;
     return t;
   }
 
-  const TC={toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,inKorea,simplifyName,parseDirect,parseMoney,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,dayAnchor,computeTimeline,dayStartAnchor,normalizeTrip,TC_SCHEMA};
+  const TC={toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,inKorea,simplifyName,parseDirect,parseMoney,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,computeTimeline,dayStartAnchor,normalizeTrip,TC_SCHEMA};
   if(typeof module!=='undefined' && module.exports){ module.exports=TC; }   // Node (테스트)
   else { const r=/**@type {any}*/(root); for(const k in TC) r[k]=/**@type {any}*/(TC)[k]; }   // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);

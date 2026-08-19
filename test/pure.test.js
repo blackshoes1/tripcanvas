@@ -91,6 +91,33 @@ test('toISO — 로컬 날짜 포맷', () => {
   assert.equal(L.toISO(new Date(2026,6,5)), '2026-07-05');   // 월 0-기반
 });
 
+test('IANA 시간대 — 마드리드 DST와 도쿄 비DST를 정확히 UTC로 변환',()=>{
+  assert.equal(L.zonedMinutesToISOString('2026-01-15',12*60,'Europe/Madrid'),'2026-01-15T11:00:00Z');
+  assert.equal(L.zonedMinutesToISOString('2026-07-15',12*60,'Europe/Madrid'),'2026-07-15T10:00:00Z');
+  assert.equal(L.zonedMinutesToISOString('2026-01-15',12*60,'Asia/Tokyo'),'2026-01-15T03:00:00Z');
+  assert.equal(L.zonedMinutesToISOString('2026-07-15',12*60,'Asia/Tokyo'),'2026-07-15T03:00:00Z');
+});
+
+test('IANA 시간대 — DST gap·자정 넘김·서로 다른 시간대',()=>{
+  assert.equal(L.zonedMinutesToISOString('2026-03-29',150,'Europe/Madrid'),null); // 02:30은 존재하지 않음
+  assert.equal(L.zonedMinutesToISOString('2026-01-01',25*60,'Asia/Tokyo'),'2026-01-01T16:00:00Z');
+  const madrid=L.zonedMinutesToISOString('2026-07-15',9*60,'Europe/Madrid');
+  const tokyo=L.zonedMinutesToISOString('2026-07-15',9*60,'Asia/Tokyo');
+  assert.notEqual(madrid,tokyo);
+  assert.equal(L.validTimeZone('Mars/Olympus'),false);
+});
+
+test('normalizeTrip — IANA 시간대 보존과 기존 무시간대 호환',()=>{
+  const valid=L.normalizeTrip({timeZone:'Europe/Madrid',days:[{timeZone:'Asia/Tokyo',spots:[]}]});
+  assert.equal(valid.timeZone,'Europe/Madrid');
+  assert.equal(valid.days[0].timeZone,'Asia/Tokyo');
+  const legacy=L.normalizeTrip({days:[{spots:[]}]});
+  assert.equal(legacy.timeZone,undefined);
+  const invalid=L.normalizeTrip({timeZone:'Mars/Olympus',days:[{timeZone:'Bad/Zone',spots:[]}]});
+  assert.equal(invalid.timeZone,undefined);
+  assert.equal(invalid.days[0].timeZone,undefined);
+});
+
 test('parseDirect — 여행/일자/장소/옵션/숙소/좌표', () => {
   const r = L.parseDirect(`여행이름: 경주 1박2일
 시작일: 2026-08-01

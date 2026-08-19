@@ -62,6 +62,33 @@ test('통합: 충돌 UI는 클라우드·기기·복사본 세 선택지를 제�
   w.close();
 });
 
+test('통합: 대중교통 구간은 각 구간 출발시각과 시간대로 별도 캐시된다', { skip: noJsdom },()=>{
+  const w=boot();
+  const result=w.eval(`(()=>{
+    const day={startAt:'09:00',timeZone:'Asia/Tokyo',mode:'transit',spots:[
+      {name:'A',lat:35.1,lng:139.1,bookAt:'12:00',stayMin:30},
+      {name:'B',lat:35.2,lng:139.2,stayMin:60},
+      {name:'C',lat:35.3,lng:139.3}
+    ]};
+    const tl=computeTimeline(day,{legMin:()=>30});
+    const first=legDepartMinute(day,tl,1),second=legDepartMinute(day,tl,2);
+    const w1=planDepartISO('2027-07-15',first,day.timeZone),w2=planDepartISO('2027-07-15',second,day.timeZone);
+    return {first,second,w1,w2,k1:legRequestKey(day.spots[0],day.spots[1],'transit',w1,day.timeZone),k2:legRequestKey(day.spots[1],day.spots[2],'transit',w2,day.timeZone)};
+  })()`);
+  assert.equal(result.first,750); // 예약 12:00까지 대기 + 30분 체류
+  assert.equal(result.second,840); // 12:30 출발 + 30분 이동 + 60분 체류
+  assert.notEqual(result.w1,result.w2);
+  assert.notEqual(result.k1,result.k2);
+  w.close();
+});
+
+test('통합: 시간대 없는 기존 데이터는 출발시각을 강제 추정하지 않는다', { skip: noJsdom },()=>{
+  const w=boot();
+  assert.equal(w.eval(`planDepartISO('2027-07-15',540,'')`),null);
+  assert.doesNotThrow(()=>w.eval(`dayTimeline({startAt:'09:00',spots:[{name:'A'}]},null,0)`));
+  w.close();
+});
+
 test('통합: 사이드바·이미지 ETA 동일 + 비숙소 앵커 반영 (anchor 배선 회귀 방지)', { skip: noJsdom }, () => {
   const w = boot();
   // Day1은 숙소 없이 마지막 장소(비숙소)로 끝남 → carry면 ETA 반영 안 됨, anchor면 반영됨

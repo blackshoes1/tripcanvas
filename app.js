@@ -592,16 +592,11 @@ document.addEventListener('blur', e=>{    // 칸을 벗어날 때 24시간 HH:MM
   const t=e.target;
   if(t&&t.classList&&t.classList.contains('timeIn') && t.value.trim()!=='') t.value=normHM(t.value);
 }, true);
-// 계획 출발 시각(현지 근사: 경도로 시간대 추정) → RFC3339. 과거·임박이면 null(구글은 미래만 허용).
-function planDepartISO(isoDate, hhmm, lng){
-  const m=/^(\d{1,2}):(\d{2})$/.exec(hhmm||'09:00');
-  if(!isoDate||!m) return null;
-  const p=isoDate.split('-').map(Number);
-  if(p.length!==3||!p[0]) return null;
-  const tz=Math.round((+lng||0)/15);                       // 현지 시간대 근사(경도 15°=1시간)
-  const ms=Date.UTC(p[0],p[1]-1,p[2],+m[1]-tz,+m[2]);
-  if(!(ms>Date.now()+60000)) return null;
-  return new Date(ms).toISOString().replace(/\.\d{3}Z$/,'Z');
+// IANA 시간대 + 현지 분을 RFC3339로 변환. 시간대 미지정/과거·임박이면 null(구글은 미래만 허용).
+function planDepartISO(isoDate, localMinutes, timeZone){
+  const minutes=typeof localMinutes==='number'?localMinutes:parseHM(localMinutes||'09:00');
+  const iso=zonedMinutesToISOString(isoDate,minutes,timeZone||'');
+  return iso&&new Date(iso).getTime()>Date.now()+60000?iso:null;
 }
 async function googleRoute(a,b,mode,when){
   const body={origin:{location:{latLng:{latitude:+a.lat,longitude:+a.lng}}},
@@ -661,31 +656,42 @@ async function fetchLeg(a,b,mode,when){
 }
 // 캐시에 있으면 즉시 반환, 없으면 큐에 넣고 null (완료 시 DOM 패치 + 사이드바 갱신)
 let legQueue=[], legBusy=false, legRefreshT=null;
-function requestLeg(a,b,mode,when){
+const transitQuerySeen=new Map();
+function legRequestKey(a,b,mode,when,timeZone){
+  const base=legKey(a,b,mode);
+  return mode==='transit'&&when?`${base}@${timeZone||'UTC'}@${when}`:base;
+}
+function requestLeg(a,b,mode,when,timeZone){
   mode=MODE_ICON[mode]?mode:'car';
-  const key=legKey(a,b,mode);
+  const base=legKey(a,b,mode), key=legRequestKey(a,b,mode,when,timeZone);
   const c=legCache[key];
   // 경로 없이 캐시된 항목(과거 레이스 오염) 자가 치유 → 재조회. 단 est(비행기·기차 등 추정)는 원래 경로가 없음
   if(c && c.sec && !c.path && !c.est){ delete legCache[key]; }
   else if(c){
-    // 대중교통은 출발 시각에 따라 소요가 달라짐 → 계획 시각이 바뀌었으면 재조회
-    if(mode==='transit' && when && c.sec && c.when!==when) delete legCache[key];
-    else return c.sec? c : null;                       // 실패 기록이면 재시도 안 함 (세션 캐시)
+    return c.sec?c:null;                                // 시각별 key라 다른 시간대/출발시각 결과와 충돌하지 않음
   }
-  if(!legQueue.find(q=>q.key===key)){ legQueue.push({key,mode,when,a:{lat:+a.lat,lng:+a.lng},b:{lat:+b.lat,lng:+b.lng}}); pumpLegs(); }
-  return c&&c.sec? c : null;   // 재조회 중에도 기존 시간·거리는 계속 표시
+  if(mode==='transit'&&when){
+    const group=`${base}@${timeZone||'UTC'}@${when.slice(0,10)}`;
+    const seen=transitQuerySeen.get(group)||new Set();
+    if(!seen.has(key)&&seen.size>=6) return legCache[base]&&legCache[base].sec?legCache[base]:null;
+    seen.add(key); transitQuerySeen.set(group,seen);          // 비동기 ETA 재계산이 진동해도 구간당 무한 재조회 방지
+  }
+  if(!legQueue.find(q=>q.key===key)){ legQueue.push({key,base,mode,when,timeZone,a:{lat:+a.lat,lng:+a.lng},b:{lat:+b.lat,lng:+b.lng}}); pumpLegs(); }
+  const previous=legCache[base];
+  return previous&&previous.sec?previous:null;           // 새 시각 조회 중에도 직전 경로는 표시만 유지
 }
 async function pumpLegs(){
   if(legBusy) return; legBusy=true;
   // 인코딩은 순수 JS(lib.js)라 SDK 대기 불필요
   while(legQueue.length){
-    const {key,mode,a,b,when}=legQueue.shift();
+    const {key,base,mode,a,b,when,timeZone}=legQueue.shift();
     if(legCache[key]) continue;
     let r=null;
     try{ r=await fetchLeg(a,b,mode,when); }catch(e){}
-    if(r && mode==='transit' && when) r.when=when;   // 어떤 계획 시각으로 조회했는지 기록(시각 바뀌면 재조회)
+    if(r && mode==='transit' && when){ r.when=when; r.timeZone=timeZone||''; }
     legCache[key] = r || {fail:Date.now()};
     if(r){
+      legCache[base]=r;                                  // 지도·재생은 가장 최근 실제 경로를 사용
       saveLegCache();
       document.querySelectorAll(`[data-leg="${key}"]`).forEach(el=>{
         el.textContent=legLabel(r);
@@ -702,18 +708,28 @@ async function pumpLegs(){
 }
 // ── 타임라인 (도착 예상시각) ──
 // 구간 이동시간(분): 캐시된 경로 우선(자차 2km 미만은 도보 대안), 없으면 수단별 속도로 직선 추정
-function legMinutes(a,b,mode){
+function legMinutes(a,b,mode,when,timeZone){
   mode=MODE_ICON[mode]?mode:'car';
-  const c=legCache[legKey(a,b,mode)];
+  const c=legCache[legRequestKey(a,b,mode,when,timeZone)];
   if(c&&c.sec) return (mode==='car'&&c.m<2000)? c.m/75 : c.sec/60;
   return haversine(a,b)/MODE_SPEED[mode]*60;
 }
 // 일자 타임라인: 시작시각(startAt, 기본 09:00)부터 체류(stayMin, 기본 60분)+이동 누적.
 // 순수 계산은 lib.js computeTimeline. startAnchor(전날 숙소 등)가 있으면 첫 유효 장소까지 이동시간을 먼저 더한다.
-function dayTimeline(day, startAnchor){
-  return computeTimeline(day, {legMin:(a,b)=>legMinutes(a,b,legModeOf(day,b)), startAnchor});   // 도착 장소 기준 구간 수단
+function dayTimeZone(day){ return (day&&day.timeZone)||trip().timeZone||''; }
+function dayTimeline(day, startAnchor, di){
+  const index=di!=null?di:trip().days.indexOf(day), iso=index>=0?isoDateOf(index):'', timeZone=dayTimeZone(day);
+  return computeTimeline(day,{legMin:(a,b,context)=>{
+    const mode=legModeOf(day,b), when=mode==='transit'?planDepartISO(iso,context.depart,timeZone):null;
+    return legMinutes(a,b,mode,when,timeZone);
+  },startAnchor});
 }
-function dayEtas(day, startAnchor){ return dayTimeline(day, startAnchor).map(x=>x.eta); }
+function dayEtas(day, startAnchor, di){ return dayTimeline(day,startAnchor,di).map(x=>x.eta); }
+function legDepartMinute(day,timeline,spotIndex){
+  if(spotIndex<=0) return parseHM(day.startAt);
+  const prev=day.spots[spotIndex-1], state=timeline[spotIndex-1];
+  return state.eta+(state.wait||0)+(prev.stayMin!=null?+prev.stayMin:60);
+}
 // 도착시각 순으로 정렬. 고정 시각 장소는 그 시각으로 이동, 자동 시각 장소는 '직전 고정 시각'에
 // 묶여 원래 상대순서를 유지(자동끼리 뒤섞이지 않음). 안정 정렬. 순서가 바뀌면 true.
 function sortDayByTime(day){
@@ -916,7 +932,7 @@ function carryStayFor(di){ const a=startAnchorFor(di); return (a&&a.stay)?a:null
 // 화면의 🏠 '전날 숙소' 항목 표시에만 carry(숙소일 때만)를 쓴다.
 function dayContext(di){
   const day=trip().days[di], anchor=startAnchorFor(di);
-  return { day, anchor, carry:(anchor&&anchor.stay)?anchor:null, timeline:dayTimeline(day, anchor), mode:dayModeOf(day) };
+  return { day, anchor, carry:(anchor&&anchor.stay)?anchor:null, timeline:dayTimeline(day,anchor,di), mode:dayModeOf(day), timeZone:dayTimeZone(day) };
 }
 function animPath(){
   const flat=[]; const days=trip().days;
@@ -1197,16 +1213,15 @@ function renderSidebar(){
     // 전날 숙소(🏠 등록)가 있으면 오늘 첫 일정으로 '가상 이월' — prevLoc를 숙소로 시드해 첫 장소에 이동거리 표시
     const ctx=dayContext(di), carry=ctx.carry;   // anchor=ETA용(숙소/전날 마지막), carry=🏠 표시용(숙소만)
     let spotsHtml='', prevLoc=carry;
-    const tl=ctx.timeline, etas=tl.map(x=>x.eta), dm=ctx.mode, iso=isoDateOf(di);   // ETA는 anchor 기준 — 비숙소 전날 마지막 장소도 반영
-    // 대중교통 조회용 계획 출발 시각 — 없으면 구글이 '지금' 기준으로 계산해 실제 여행일과 어긋남
-    const planWhen=planDepartISO(iso, day.startAt, (day.spots.find(hasLoc)||{}).lng);
+    const tl=ctx.timeline, etas=tl.map(x=>x.eta), dm=ctx.mode, iso=isoDateOf(di), timeZone=ctx.timeZone;   // ETA는 anchor 기준 — 비숙소 전날 마지막 장소도 반영
     day.spots.forEach((s,si)=>{
       const dotC = hasLoc(s)?spotColor(s,di,colors):'#4a5170';
       const incoming=prevLoc, inMode=legModeOf(day,s);   // 이 지점으로 '들어오는' 구간(수단) — 아래 ETA 안내에 사용
       // 구간: 캐시된 경로가 있으면 그걸, 아니면 직선거리 + 백그라운드 조회
       let legHtml='';
       if(hasLoc(s)&&prevLoc){
-        const lm=legModeOf(day,s), lid=legKey(prevLoc,s,lm), lc=requestLeg(prevLoc,s,lm,planWhen);   // 구간별 수단
+        const lm=legModeOf(day,s), depart=legDepartMinute(day,tl,si), when=lm==='transit'?planDepartISO(iso,depart,timeZone):null;
+        const lid=legRequestKey(prevLoc,s,lm,when,timeZone), lc=requestLeg(prevLoc,s,lm,when,timeZone);   // 구간별 출발시각·시간대
         const failed=!lc && legCache[lid] && legCache[lid].fail;   // 인근 도로 스냅까지 실패
         legHtml = legModeBtn(day,di,si,lm) + (lc
           ? `<span class="leg" data-leg="${lid}" title="${legTitle(lc)}">${legLabel(lc)}</span>`
@@ -1258,7 +1273,7 @@ function renderSidebar(){
     });
     card.innerHTML=`<div class="dayHead">
         <span><span class="dragHandle" title="드래그로 일자 순서 변경">⠿</span> Day ${di+1} · ${esc(day.title)}</span>
-        <span style="display:flex;align-items:center;gap:6px">${dayWeatherHtml(day,di)}<button class="iconb modeBtn" onclick="event.stopPropagation();cycleMode(${di})" title="이동 수단: ${MODE_NAME[dm]} — 클릭해서 변경">${MODE_ICON[dm]}</button><span class="date" onclick="event.stopPropagation();openDayModal(${di})" style="cursor:pointer" title="클릭해서 날짜 지정/수정">${dateOf(di)||'📅 날짜 지정'}</span>
+        <span style="display:flex;align-items:center;gap:6px">${dayWeatherHtml(day,di)}<button class="iconb modeBtn" onclick="event.stopPropagation();cycleMode(${di})" title="이동 수단: ${MODE_NAME[dm]} — 클릭해서 변경">${MODE_ICON[dm]}</button><span class="date" onclick="event.stopPropagation();openDayModal(${di})" style="cursor:pointer" title="클릭해서 날짜·시간대 지정/수정">${dateOf(di)||'📅 날짜 지정'} · ${timeZone?`🌐 ${esc(timeZone)}`:'⚠️ 시간대 확인'}</span>
         <span class="tools"><button class="iconb" onclick="event.stopPropagation();openDayModal(${di})">✎</button></span></span>
       </div><div class="dayBody">
         ${day.drive?`<div class="drive">${esc(day.drive)}</div>`:''}
@@ -1266,7 +1281,8 @@ function renderSidebar(){
         ${(()=>{   // 일자 간 자동 이동시간: 이월 시작점 → 오늘 첫 장소 (숙소 이월 시엔 🏠 항목+구간거리로 대체, none이면 미표시)
           const first=day.spots.find(hasLoc), from=startAnchorFor(di);
           if(carry||!from||!first) return '';
-          const im=legModeOf(day,first), iid=legKey(from,first,im), ic=requestLeg(from,first,im,planWhen);
+          const fi=day.spots.indexOf(first), im=legModeOf(day,first), depart=legDepartMinute(day,tl,fi), when=im==='transit'?planDepartISO(iso,depart,timeZone):null;
+          const iid=legRequestKey(from,first,im,when,timeZone), ic=requestLeg(from,first,im,when,timeZone);
           const ibtn=legModeBtn(day,di,day.spots.indexOf(first),im);   // 이 구간(도시 간 이동인 경우가 많음)만 수단 변경
           return ic
             ? `<div class="drive" style="color:#9fb8e8" title="이전 일자 기준점 · ${legTitle(ic)}">${ibtn}<span data-ileg="${iid}">이전 일정에서 ${(ic.m/1000).toFixed(1)}km · ${fmtDur(ic.sec)}</span></div>`
@@ -1551,6 +1567,7 @@ window.openDayModal=(di)=>{
   document.getElementById('dayModalTitle').textContent=`Day ${di+1} 편집 · ${dateOf(di)}`;
   document.getElementById('dayDate').value=isoDateOf(di);
   document.getElementById('dayStart').value=d.startAt||'09:00';
+  document.getElementById('dayTimeZone').value=d.timeZone||'';
   document.getElementById('dayCarry').checked = (d.startPolicy!=='none');   // 전날 위치 이월 on/off
   document.getElementById('dayMode').value=dayModeOf(d);
   const f=d.flight||{};
@@ -1589,8 +1606,11 @@ async function lookupAirport(el){
 document.getElementById('dayCancel').onclick=()=>document.getElementById('dayModalBg').classList.remove('show');
 document.getElementById('daySave').onclick=()=>{
   const d=trip().days[editingDay];
+  const dayTz=document.getElementById('dayTimeZone').value.trim();
+  if(dayTz&&!validTimeZone(dayTz)){ toast('시간대는 Europe/Madrid 같은 IANA 형식으로 입력해 주세요','#e63946'); return; }
   d.title=document.getElementById('dayTitle').value.trim();
   d.startAt=normHM(document.getElementById('dayStart').value)||'09:00';
+  if(dayTz) d.timeZone=dayTz; else delete d.timeZone;
   if(document.getElementById('dayCarry').checked) delete d.startPolicy; else d.startPolicy='none';   // 이월 정책
   d.mode=document.getElementById('dayMode').value;
   const fc=document.getElementById('flightCode').value.trim(), fdp=document.getElementById('flightDep').value.trim(),
@@ -1620,17 +1640,22 @@ document.getElementById('newTripBtn').onclick=()=>{
   commit(()=>{ store.trips.push(t); store.activeId=t.id; activeDay=0; });
   document.getElementById('tripModalBg').classList.add('show');
   document.getElementById('tripName').value=t.name; document.getElementById('tripStart').value=t.start;
+  document.getElementById('tripTimeZone').value='';
 };
 document.getElementById('tripEditBtn').onclick=()=>{
   document.getElementById('tripName').value=trip().name;
   document.getElementById('tripStart').value=trip().start||'';
+  document.getElementById('tripTimeZone').value=trip().timeZone||'';
   document.getElementById('tripModalBg').classList.add('show');
   loadSnapList();
 };
 document.getElementById('tripCancel').onclick=()=>document.getElementById('tripModalBg').classList.remove('show');
 document.getElementById('tripSave').onclick=()=>{
+  const timeZone=document.getElementById('tripTimeZone').value.trim();
+  if(timeZone&&!validTimeZone(timeZone)){ toast('시간대는 Asia/Tokyo 같은 IANA 형식으로 입력해 주세요','#e63946'); return; }
   trip().name=document.getElementById('tripName').value.trim()||'이름 없는 여행';
   trip().start=document.getElementById('tripStart').value;
+  if(timeZone) trip().timeZone=timeZone; else delete trip().timeZone;
   document.getElementById('tripModalBg').classList.remove('show'); commit(); toast('저장됨');
 };
 // 여행 삭제 (활성/비활성 공통) — 설정 모달·여행 목록 양쪽에서 사용
@@ -2066,8 +2091,8 @@ function renderTravel(di){
   if(!d.spots.length){ list.innerHTML='<div style="color:#9aa5c4;font-size:13px;padding:20px 4px">이 날은 등록된 장소가 없습니다 — 이동일이거나 자유 일정</div>'; return; }
   // 전날 숙소 이월: Day 2+에서 전날 숙소가 있으면 상단에 가상 항목으로 표시(오늘 데이터엔 복제 안 함).
   // 타임라인·첫 장소 구간이 숙소에서 출발하도록 prevLoc/etas를 숙소로 시드 (사이드바·재생과 동일 기준).
-  const ctx=dayContext(di), carry=ctx.carry;
-  const etas=ctx.timeline.map(x=>x.eta), dm=ctx.mode;   // ETA는 anchor 기준(사이드바·이미지와 동일)
+  const ctx=dayContext(di), carry=ctx.carry, tl=ctx.timeline, iso=isoDateOf(di);
+  const etas=tl.map(x=>x.eta), dm=ctx.mode;   // ETA는 anchor 기준(사이드바·이미지와 동일)
   let prevLoc=carry;
   if(carry){
     const el=extMapLink(carry);
@@ -2079,7 +2104,8 @@ function renderTravel(di){
   d.spots.forEach((s,si)=>{
     // 구간 이동 정보 (이전 장소 → 이 장소)
     if(hasLoc(s)&&prevLoc){
-      const c=requestLeg(prevLoc,s,legModeOf(d,s));   // 구간별 수단
+      const mode=legModeOf(d,s), when=mode==='transit'?planDepartISO(iso,legDepartMinute(d,tl,si),ctx.timeZone):null;
+      const c=requestLeg(prevLoc,s,mode,when,ctx.timeZone);   // 구간별 출발시각·시간대
       const lg=document.createElement('div'); lg.className='tLeg';
       lg.textContent = c
         ? ((dm==='car'&&c.m<2000)? `🚶 ${Math.max(1,Math.round(c.m/75))}분 · ${(c.m/1000).toFixed(1)}km`
