@@ -1,22 +1,37 @@
 // ───────────────── 저장소 ─────────────────
 const LS_KEY = 'tripcanvas_v1';
+const ONBOARD_KEY='tripcanvas_onboarded_v1';
+const THEME_KEY='tripcanvas_theme_v1';
+let firstVisit=false;
+try{ const raw=localStorage.getItem(LS_KEY),saved=raw&&JSON.parse(raw); firstVisit=!localStorage.getItem(ONBOARD_KEY)&&(!saved||!Array.isArray(saved.trips)||saved.trips.every(t=>t.id==='spain2026')); }catch(_){ firstVisit=true; }
+const OPS_KEY = 'tripcanvas_ops_v1';
+// 오류 본문·URL·여행 내용은 기록하지 않고, 운영 진단에 필요한 범주와 상태 코드만 세션에 보관한다.
+function reportOperationalError(scope,error,context){
+  const entry={at:new Date().toISOString(),scope:String(scope).slice(0,40),code:'unknown'};
+  if(error&&typeof error==='object') entry.code=String(error.name||error.status||error.code||'error').slice(0,40);
+  if(context&&Number.isFinite(context.status)) entry.status=context.status;
+  try{ const rows=JSON.parse(sessionStorage.getItem(OPS_KEY)||'[]'); rows.push(entry); sessionStorage.setItem(OPS_KEY,JSON.stringify(rows.slice(-20))); }catch(_){}
+  console.warn(`[TripCanvas:${entry.scope}]`,entry.code);
+}
+window.addEventListener('error',e=>reportOperationalError('window.error',e.error));
+window.addEventListener('unhandledrejection',e=>reportOperationalError('promise.rejection',e.reason));
 // 지도 도로색(노랑·주황)과 겹치지 않게 대비 강한 색을 앞(자주 쓰는 초반 일자)에 배치.
 // 겹치기 쉬운 코랄·라임·노랑은 뒤로. 경로선·핀·도시색·범례 모두 이 순서를 공유.
 const PALETTE = ['#e63946','#1e88e5','#2ecc71','#9b59b6','#ec4899','#14b8a6','#8d6e63','#ff7f50','#a3e635','#f6b93b'];   // 빨강·파랑·초록·보라·핑크·청록·브라운·코랄·라임·노랑
 let store = null;
 let sb = null, user = null, syncTimer = null;   // Supabase 클라이언트/로그인 사용자/동기화 디바운스
-// 부활 방지: 클라우드에 있었다고 확인된 여행 id 집합. 예전엔 클라우드에 있었는데 지금 없으면
-// 다른 기기에서 삭제된 것 → 재업로드하지 않는다(그전엔 스테일 로컬본이 삭제분을 되살렸음).
-const SYNC_KEY='tripcanvas_synced';
-let syncedIds=new Set();
-try{ syncedIds=new Set(JSON.parse(localStorage.getItem(SYNC_KEY))||[]); }catch(e){}
-function persistSynced(){ try{ localStorage.setItem(SYNC_KEY, JSON.stringify([...syncedIds])); }catch(e){} }
-function markSynced(id){ if(id&&!syncedIds.has(id)){ syncedIds.add(id); persistSynced(); } }
-function unmarkSynced(id){ if(syncedIds.delete(id)) persistSynced(); }
+const SYNC_KEY='tripcanvas_synced';             // v1 호환: id 배열을 v2 meta로 1회 흡수
+const SYNC_META_KEY='tripcanvas_sync_v2';
+let legacySynced=[];
+try{ legacySynced=JSON.parse(localStorage.getItem(SYNC_KEY))||[]; }catch(e){}
+let syncMeta=TC_SYNC.loadMeta(localStorage.getItem(SYNC_META_KEY),legacySynced);
+let suppressCloudOnce=false;
+function persistSyncMeta(){ try{ localStorage.setItem(SYNC_META_KEY,JSON.stringify(syncMeta)); }catch(e){} }
+function syncEntry(id){ return syncMeta[id]||(syncMeta[id]={revision:null,status:'new',op:''}); }
 
 function seedSpain(){
   return {
-    id:'spain2026', name:'🇪🇸 스페인 신혼여행', start:'2026-10-25',
+    id:'spain2026', sample:true, name:'🇪🇸 스페인 신혼여행', start:'2026-10-25',
     days:[
       {title:'마드리드 도착', drive:'', note:'07:00 착륙. 시차적응 겸 가벼운 일정. ⚽ 경기가 일요일이면 오늘 직관!', spots:[
         {name:'바라하스 공항 (MAD)',lat:40.4720,lng:-3.5610,city:'마드리드',desc:'07:00 도착',opt:false},
@@ -61,11 +76,12 @@ function seedSpain(){
   };
 }
 function load(){
-  try{ store = JSON.parse(localStorage.getItem(LS_KEY)); }catch(e){}
-  // 로컬 저장분도 정규화 통과(과거/손상 데이터 자가 치유). 복구 불가한 여행은 버림.
-  if(store && Array.isArray(store.trips)){
-    store.trips = store.trips.map(t=>normalizeTrip(t)).filter(Boolean);
-    if(store.trips.length && !store.trips.find(t=>t.id===store.activeId)) store.activeId=store.trips[0].id;
+  const raw=localStorage.getItem(LS_KEY), saved=parseStorePayload(raw);
+  if(saved.ok) store=saved.value;
+  else if(raw){
+    reportOperationalError('local.invalid',new Error('validation'));
+    // 거부된 정상 크기 원문은 새 seed로 덮어쓰기 전에 1회 복구본으로 남긴다.
+    if(raw.length<=TC_LIMITS.storeBytes) try{ localStorage.setItem('tripcanvas_rejected_backup_v1',raw); }catch(_){}
   }
   if(!store || !store.trips || !store.trips.length){
     store = {trips:[seedSpain()], activeId:'spain2026'};
@@ -102,6 +118,7 @@ function undo(){
   // 복원 상태를 localStorage·클라우드에 기록하되, 되돌리기 자체는 히스토리에 새 항목으로 쌓지 않는다.
   // (histLast=null로 save의 "변경 없음" 조기 반환을 우회, histLock으로 push는 억제)
   histLock=true; histLast=null; save(); histLock=false;
+  reconcileUndoDeletes();
   activeDay=0; render(); fitAll();
   updateUndoBtn();
   toast('실행취소됨','#8892b0');
@@ -159,7 +176,7 @@ function commit(fn, opts){
   render();
   if(opts && opts.fit) opts.fit();
 }
-function undoWith(snap){ commit(()=>{ store=snap; activeDay=0; }, {fit:fitAll}); }
+function undoWith(snap){ commit(()=>{ store=snap; reconcileUndoDeletes(); activeDay=0; }, {fit:fitAll}); }
 
 // ───────────────── 지도 (해외=Google · 국내=카카오 듀얼 엔진) ─────────────────
 const GMAPS_KEY='AIzaSyCE6I2dhqk2jzNvA0ZMzDSuPi7HAfWecAM';   // HTTP 리퍼러 제한으로 보호할 것
@@ -463,7 +480,6 @@ function dayDistance(day){
 }
 
 // ── 구간 소요시간 (자동차) — 국내 카카오내비 · 해외 Google Routes, localStorage 캐시 ──
-const KAKAO_REST_KEY='48e05420d9dcc072915ff99412669995';   // 카카오내비 REST (CORS 허용 확인됨)
 const LEG_KEY='tripcanvas_legs_v4';   // v4: 순수 코덱(SDK 비의존) — v3의 경로없음 오염 캐시 폐기
 let legCache={};
 try{ legCache=JSON.parse(localStorage.getItem(LEG_KEY))||{}; }catch(e){}
@@ -486,204 +502,110 @@ function flightHtml(day){
 }
 function saveLegCache(){ try{ localStorage.setItem(LEG_KEY, JSON.stringify(legCache)); }catch(e){} }
 function fmtDur(sec){ const m=Math.round(sec/60); return m<60? `${m}분` : `${Math.floor(m/60)}시간${m%60? ' '+(m%60)+'분':''}`; }
-// 좌표 배열 → 인코딩 폴리라인 (lib.js 순수 코덱 — SDK 비의존, 로드 타이밍 무관)
-function encodePts(pts){
-  if(!pts||!pts.length) return null;
-  const step=Math.max(1, Math.floor(pts.length/300));   // 최대 ~300점으로 다운샘플
-  const sampled=pts.filter((_,i)=>i%step===0); if(sampled[sampled.length-1]!==pts[pts.length-1]) sampled.push(pts[pts.length-1]);
-  return encodePolyline(sampled);
-}
-function decodePts(enc){ return enc? decodePolyline(enc) : null; }
-// 카카오내비 1회 호출 — 성공 시 {rt}, 실패 시 {code} (102 출발지·103 도착지 주변 도로 없음)
-async function kakaoTry(a,b){
-  try{
-    const u=`https://apis-navi.kakaomobility.com/v1/directions?origin=${a.lng},${a.lat}&destination=${b.lng},${b.lat}`;
-    const r=await fetch(u,{headers:{Authorization:'KakaoAK '+KAKAO_REST_KEY}});
-    if(!r.ok) return {code:-1};
-    const js=await r.json();
-    const rt=js.routes&&js.routes[0];
-    if(!rt) return {code:-1};
-    if(rt.result_code!==0||!rt.summary) return {code:rt.result_code};
-    return {rt};
-  }catch(e){ return {code:-1}; }
-}
-// p 주변 반경 r(m)의 8방위 후보점 — 도로 없는 좌표(바다·산)를 인근 도로로 스냅할 때 사용
-function buildKakaoResult(rt, orig, snapped){
-  const pts=[];
-  (rt.sections||[]).forEach(sec=>(sec.roads||[]).forEach(rd=>{
-    const v=rd.vertexes||[];
-    for(let i=0;i+1<v.length;i+=2) pts.push({lat:v[i+1],lng:v[i]});
-  }));
-  if(snapped && pts.length){ pts.unshift({lat:+orig.a.lat,lng:+orig.a.lng}); pts.push({lat:+orig.b.lat,lng:+orig.b.lng}); }
-  return {sec:rt.summary.duration, m:rt.summary.distance, path:encodePts(pts),
-    taxi:(rt.summary.fare&&rt.summary.fare.taxi)||0, snapped:snapped?1:0};
-}
-// 카카오내비 경로 — 도로 없는 끝점(102/103)은 링 프로브로 인근 도로에 스냅해 재시도
-async function kakaoRoute(a,b){
-  const orig={a,b};
-  let A={lat:+a.lat,lng:+a.lng}, B={lat:+b.lat,lng:+b.lng}, snapped=false;
-  for(let attempt=0; attempt<3; attempt++){
-    const {rt,code}=await kakaoTry(A,B);
-    if(rt) return buildKakaoResult(rt, orig, snapped);
-    const fixA=code===102, fixB=code===103;
-    if(!fixA&&!fixB) return null;
-    const base=fixA?A:B;
-    let hit=null;
-    outer:
-    for(const r of [500,1000,1600,2400]){
-      for(const cand of ringPts(base,r)){
-        const t=await kakaoTry(fixA?cand:A, fixA?B:cand);
-        if(t.rt) return buildKakaoResult(t.rt, orig, true);
-        // 반대쪽 끝점 오류로 바뀌었으면 이 후보는 도로 위 — 채택하고 반대쪽을 다음 루프에서 스냅
-        if(fixA? t.code===103 : t.code===102){ hit=cand; break outer; }
-      }
-    }
-    if(!hit) return null;
-    if(fixA) A=hit; else B=hit;
-    snapped=true;
-  }
-  return null;
-}
-// 구간 라벨 — 거리 + 시간 (수단 아이콘은 옆의 탭 가능한 버튼이 표시. 자차 2km 미만은 도보 대안 시간 표기)
 function legLabel(c){
-  const km=(c.m/1000).toFixed(1), mode=c.mode||'car';
-  if(mode==='car' && c.m<2000){ const wm=Math.max(1,Math.round(c.m/75)); return `↳${km}km · 🚶${wm}분`; }
+  const km=(c.m/1000).toFixed(1),mode=c.mode||'car';
+  if(mode==='car'&&c.m<2000){const wm=Math.max(1,Math.round(c.m/75));return `↳${km}km · 🚶${wm}분`;}
   return `↳${km}km · ${fmtDur(c.sec)}`;
 }
+function applyTheme(){ let theme='light'; try{ theme=localStorage.getItem(THEME_KEY)||'light'; }catch(_){} document.body.classList.toggle('theme-dark',theme==='dark'); }
+function toggleTheme(){ const dark=!document.body.classList.contains('theme-dark'); document.body.classList.toggle('theme-dark',dark); try{localStorage.setItem(THEME_KEY,dark?'dark':'light');}catch(_){} }
+applyTheme();
 function legTitle(c){
-  let t=(c.est ? ((c.mode==='flight'||c.mode==='train')?'직선거리 기반 추정':'자동차 경로 거리 기반 추정') : '실제 도로 기준');
-  if(c.snapped) t+=' · 인근 지점에서 출발/도착 (원 지점이 도로·정류장에서 멀어 보정 — 공항 부지 중심 좌표 등)';
-  if((c.mode==='car'||c.mode==='taxi')&&c.taxi) t+=` · 택시 약 ${c.taxi.toLocaleString()}원`;
+  let t=(c.est?((c.mode==='flight'||c.mode==='train')?'직선거리 기반 추정':'자동차 경로 거리 기반 추정'):'실제 도로 기준');
+  if(c.snapped)t+=' · 인근 지점에서 출발/도착 (원 지점이 도로·정류장에서 멀어 보정 — 공항 부지 중심 좌표 등)';
+  if((c.mode==='car'||c.mode==='taxi')&&c.taxi)t+=` · 택시 약 ${c.taxi.toLocaleString()}원`;
   return t;
 }
-// 구간 수단 아이콘 버튼 — 탭하면 그 구간만 변경(cycleLegMode). 일정 기본을 상속하면 흐리게, 개별 지정이면 진하게.
 function legModeBtn(day,di,si,lm){
-  if(si==null||si<0) return '';
-  const set=!!(day.spots[si]&&day.spots[si].legMode), dmn=dayModeOf(day);
-  if(viewMode) return `<span class="legModeBtn${set?' set':''}" title="${escAttr(MODE_NAME[lm])}">${MODE_ICON[lm]}</span>`;
-  const t=set ? `이 구간만 ${MODE_NAME[lm]} — 탭해서 변경 (계속 누르면 일정 기본으로 되돌아감)`
-              : `일정 기본 ${MODE_NAME[dmn]} — 탭하면 이 구간만 바꿔요`;
+  if(si==null||si<0)return '';
+  const set=!!(day.spots[si]&&day.spots[si].legMode),dmn=dayModeOf(day);
+  if(viewMode)return `<span class="legModeBtn${set?' set':''}" title="${escAttr(MODE_NAME[lm])}">${MODE_ICON[lm]}</span>`;
+  const t=set?`이 구간만 ${MODE_NAME[lm]} — 탭해서 변경 (계속 누르면 일정 기본으로 되돌아감)`:`일정 기본 ${MODE_NAME[dmn]} — 탭하면 이 구간만 바꿔요`;
   return `<button class="legModeBtn${set?' set':''}" onclick="event.stopPropagation();cycleLegMode(${di},${si})" title="${escAttr(t)}">${MODE_ICON[lm]}</button>`;
 }
-const GMODE={car:'DRIVE',taxi:'DRIVE',transit:'TRANSIT',walk:'WALK',bike:'BICYCLE'};
-// 시각 입력은 <input type=time> 대신 직접 입력 — 위젯은 표시 형식(오전/오후)이 브라우저 로케일에
-// 묶여 24시간으로 강제할 수 없어서. "1430"·"14:30"·"930" 모두 받아 24시간 HH:MM으로 정규화, 아니면 ''.
 function normHM(v){
-  const s=String(v||'').trim();
-  let h,m;
+  const s=String(v||'').trim();let h,m;
   const c=/^(\d{1,2}):(\d{1,2})$/.exec(s);
-  if(c){ h=+c[1]; m=+c[2]; }                                 // "9:5"·"14:30" → 09:05·14:30
-  else {
-    const d=s.replace(/\D/g,'');
-    if(!d) return '';
-    if(d.length<=2){ h=+d; m=0; }                            // "9"·"14" → 09:00·14:00
-    else if(d.length===3){ h=+d.slice(0,1); m=+d.slice(1); } // "930" → 09:30
-    else { h=+d.slice(0,2); m=+d.slice(2,4); }               // "1430" → 14:30
-  }
-  return (h>23||m>59) ? '' : String(h).padStart(2,'0')+':'+String(m).padStart(2,'0');
+  if(c){h=+c[1];m=+c[2];}
+  else{const d=s.replace(/\D/g,'');if(!d)return '';if(d.length<=2){h=+d;m=0;}else if(d.length===3){h=+d.slice(0,1);m=+d.slice(1);}else{h=+d.slice(0,2);m=+d.slice(2,4);}}
+  return (h>23||m>59)?'':String(h).padStart(2,'0')+':'+String(m).padStart(2,'0');
 }
-document.addEventListener('input', e=>{   // 입력 중엔 숫자·콜론만 허용(형식 강요는 안 함)
-  const t=e.target;
-  if(t&&t.classList&&t.classList.contains('timeIn')) t.value=t.value.replace(/[^\d:]/g,'').slice(0,5);
+document.addEventListener('input',e=>{const t=e.target;if(t&&t.classList&&t.classList.contains('timeIn'))t.value=t.value.replace(/[^\d:]/g,'').slice(0,5);});
+document.addEventListener('blur',e=>{const t=e.target;if(t&&t.classList&&t.classList.contains('timeIn')&&t.value.trim()!=='')t.value=normHM(t.value);},true);
+function planDepartISO(isoDate,localMinutes,timeZone){
+  const minutes=typeof localMinutes==='number'?localMinutes:parseHM(localMinutes||'09:00');
+  const iso=zonedMinutesToISOString(isoDate,minutes,timeZone||'');
+  return iso&&new Date(iso).getTime()>Date.now()+60000?iso:null;
+}
+
+// 라우팅 transport는 routing.js에 격리하고 UI에는 fetchLeg 호환 shim만 제공한다.
+const routingClient=TC_ROUTING.createRoutingClient({
+  fetchImpl:(url,opts)=>fetch(url,opts), googleKey:GMAPS_KEY, encodePolyline, ringPts, haversine, inKorea
 });
-document.addEventListener('blur', e=>{    // 칸을 벗어날 때 24시간 HH:MM으로 정리(형식 아니면 비움)
-  const t=e.target;
-  if(t&&t.classList&&t.classList.contains('timeIn') && t.value.trim()!=='') t.value=normHM(t.value);
-}, true);
-// 계획 출발 시각(현지 근사: 경도로 시간대 추정) → RFC3339. 과거·임박이면 null(구글은 미래만 허용).
-function planDepartISO(isoDate, hhmm, lng){
-  const m=/^(\d{1,2}):(\d{2})$/.exec(hhmm||'09:00');
-  if(!isoDate||!m) return null;
-  const p=isoDate.split('-').map(Number);
-  if(p.length!==3||!p[0]) return null;
-  const tz=Math.round((+lng||0)/15);                       // 현지 시간대 근사(경도 15°=1시간)
-  const ms=Date.UTC(p[0],p[1]-1,p[2],+m[1]-tz,+m[2]);
-  if(!(ms>Date.now()+60000)) return null;
-  return new Date(ms).toISOString().replace(/\.\d{3}Z$/,'Z');
+function setSheetSnap(snap){
+  const sb=document.getElementById('sidebar'); if(!sb) return;
+  sb.style.height=''; sb.dataset.snap=snap;
 }
-async function googleRoute(a,b,mode,when){
-  const body={origin:{location:{latLng:{latitude:+a.lat,longitude:+a.lng}}},
-    destination:{location:{latLng:{latitude:+b.lat,longitude:+b.lng}}}, travelMode:GMODE[mode]||'DRIVE'};
-  if(when && body.travelMode==='TRANSIT') body.departureTime=when;   // 없으면 '지금' 기준이라 실제 여행일과 어긋남
-  const r=await fetch('https://routes.googleapis.com/directions/v2:computeRoutes',{
-    method:'POST',
-    headers:{'Content-Type':'application/json','X-Goog-Api-Key':GMAPS_KEY,'X-Goog-FieldMask':'routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline'},
-    body:JSON.stringify(body)
+(function initMobileSheet(){
+  const sb=document.getElementById('sidebar'); let drag=null,moved=false;
+  sb.addEventListener('pointerdown',e=>{
+    if(!e.target.closest('#sheetHandle')||!matchMedia('(max-width:760px)').matches) return;
+    drag={y:e.clientY,h:sb.getBoundingClientRect().height}; moved=false; sb.classList.add('dragging'); e.preventDefault();
   });
-  if(!r.ok) return null;
-  const js=await r.json();
-  const rt=js.routes&&js.routes[0];
-  if(!rt||!rt.duration) return null;
-  return {sec:parseInt(rt.duration), m:rt.distanceMeters||0, path:(rt.polyline&&rt.polyline.encodedPolyline)||null};
-}
-// 대중교통 결과 타당성 — 직선거리 대비 유효속도가 지나치게 낮으면 신뢰 불가.
-// (예: 공항 대표 좌표가 활주로 쪽 부지 중심이라 '걸어서 공항을 빠져나오는' 경로가 나옴)
-function transitImplausible(a,b,r){
-  const km=haversine(a,b);
-  return km>=2 && r.sec>0 && (km/(r.sec/3600))<8;   // 유효속도 8km/h 미만 = 사실상 도보
-}
-// 비현실적이면 출발지를 인근 지점(정류장·터미널 진입로)으로 스냅해 재시도 — 국내 카카오 링 프로브와 같은 방식
-async function googleTransitRoute(a,b,when){
-  const first=await googleRoute(a,b,'transit',when);
-  if(!first || !transitImplausible(a,b,first)) return first;
-  for(const rad of [600,1200]){
-    for(const c of ringPts(a,rad)){
-      const t=await googleRoute(c,b,'transit',when);
-      if(t && !transitImplausible(a,b,t)) return {...t, snapped:1};
-    }
-  }
-  return first;
-}
-// 수단·지역별 라우팅: 국내 car=카카오내비 / transit=구글 / walk·bike=카카오 자동차 경로 거리 기반 추정
-//                     해외 4개 모드 모두 구글 Routes
-async function fetchLeg(a,b,mode,when){
-  if(mode==='flight'){   // 비행기는 도로 라우팅이 없음 → 직선거리 + 속도 추정(활주·이착륙 40분 가산)
-    const km=haversine(a,b);
-    return { sec:Math.round(km/700*3600 + 40*60), m:Math.round(km*1000), path:null, est:1, mode:'flight' };
-  }
-  if(mode==='train'){   // 기차는 실시간 시각표 없이 추정 — 직선거리×철도우회(1.1) ÷ 고속철 평균 160km/h + 승하차 10분
-    const km=haversine(a,b)*1.1;
-    return { sec:Math.round(km/160*3600 + 10*60), m:Math.round(km*1000), path:null, est:1, mode:'train' };
-  }
-  const kr=inKorea(a)&&inKorea(b);
-  if(kr){
-    if(mode==='car'||mode==='taxi'){ const k=await kakaoRoute(a,b); return k&&{...k,mode}; }   // 택시=도로(자차) 경로
-    if(mode==='transit'){ const g=await googleTransitRoute(a,b,when); return g&&{...g,mode}; }
-    const k=await kakaoRoute(a,b);                       // walk/bike: 도로 거리 기반 추정
-    if(!k) return null;
-    const mps=mode==='walk'?1.25:4.17;                   // 4.5km/h · 15km/h
-    return {sec:Math.round(k.m/mps), m:k.m, path:k.path, snapped:k.snapped, est:1, mode};
-  }
-  const g=(mode==='transit')? await googleTransitRoute(a,b,when) : await googleRoute(a,b,mode,when);
-  return g&&{...g,mode};
-}
+  window.addEventListener('pointermove',e=>{
+    if(!drag) return; const h=Math.max(innerHeight*.15,Math.min(innerHeight*.9,drag.h+drag.y-e.clientY));
+    if(Math.abs(e.clientY-drag.y)>4)moved=true; sb.style.height=h+'px';
+  });
+  window.addEventListener('pointerup',()=>{
+    if(!drag)return; const ratio=sb.getBoundingClientRect().height/innerHeight; drag=null; sb.classList.remove('dragging');
+    setSheetSnap(ratio<.3?'collapsed':ratio<.68?'half':'expanded');
+  });
+  sb.addEventListener('click',e=>{
+    if(e.target.closest('#sheetHandle')&&!moved){ setSheetSnap(sb.dataset.snap==='collapsed'?'half':sb.dataset.snap==='half'?'expanded':'collapsed'); }
+    else if(sb.dataset.snap==='collapsed'&&e.target.closest('.dayCard')) setSheetSnap('half');
+  });
+  ['map','kmap'].forEach(id=>document.getElementById(id).addEventListener('pointerdown',()=>setSheetSnap('collapsed'),true));
+})();
+const fetchLeg=routingClient.fetchLeg;   // 기존 전역 호출부 호환 shim — UI는 transport 세부사항을 모름
+function decodePts(enc){ return enc?decodePolyline(enc):null; }
 // 캐시에 있으면 즉시 반환, 없으면 큐에 넣고 null (완료 시 DOM 패치 + 사이드바 갱신)
 let legQueue=[], legBusy=false, legRefreshT=null;
-function requestLeg(a,b,mode,when){
+const transitQuerySeen=new Map();
+function legRequestKey(a,b,mode,when,timeZone){
+  const base=legKey(a,b,mode);
+  return mode==='transit'&&when?`${base}@${timeZone||'UTC'}@${when}`:base;
+}
+function requestLeg(a,b,mode,when,timeZone){
   mode=MODE_ICON[mode]?mode:'car';
-  const key=legKey(a,b,mode);
+  const base=legKey(a,b,mode), key=legRequestKey(a,b,mode,when,timeZone);
   const c=legCache[key];
   // 경로 없이 캐시된 항목(과거 레이스 오염) 자가 치유 → 재조회. 단 est(비행기·기차 등 추정)는 원래 경로가 없음
   if(c && c.sec && !c.path && !c.est){ delete legCache[key]; }
   else if(c){
-    // 대중교통은 출발 시각에 따라 소요가 달라짐 → 계획 시각이 바뀌었으면 재조회
-    if(mode==='transit' && when && c.sec && c.when!==when) delete legCache[key];
-    else return c.sec? c : null;                       // 실패 기록이면 재시도 안 함 (세션 캐시)
+    return c.sec?c:null;                                // 시각별 key라 다른 시간대/출발시각 결과와 충돌하지 않음
   }
-  if(!legQueue.find(q=>q.key===key)){ legQueue.push({key,mode,when,a:{lat:+a.lat,lng:+a.lng},b:{lat:+b.lat,lng:+b.lng}}); pumpLegs(); }
-  return c&&c.sec? c : null;   // 재조회 중에도 기존 시간·거리는 계속 표시
+  if(mode==='transit'&&when){
+    const group=`${base}@${timeZone||'UTC'}@${when.slice(0,10)}`;
+    const seen=transitQuerySeen.get(group)||new Set();
+    if(!seen.has(key)&&seen.size>=6) return legCache[base]&&legCache[base].sec?legCache[base]:null;
+    seen.add(key); transitQuerySeen.set(group,seen);          // 비동기 ETA 재계산이 진동해도 구간당 무한 재조회 방지
+  }
+  if(!legQueue.find(q=>q.key===key)){ legQueue.push({key,base,mode,when,timeZone,a:{lat:+a.lat,lng:+a.lng},b:{lat:+b.lat,lng:+b.lng}}); pumpLegs(); }
+  const previous=legCache[base];
+  return previous&&previous.sec?previous:null;           // 새 시각 조회 중에도 직전 경로는 표시만 유지
 }
 async function pumpLegs(){
   if(legBusy) return; legBusy=true;
   // 인코딩은 순수 JS(lib.js)라 SDK 대기 불필요
   while(legQueue.length){
-    const {key,mode,a,b,when}=legQueue.shift();
+    const {key,base,mode,a,b,when,timeZone}=legQueue.shift();
     if(legCache[key]) continue;
     let r=null;
     try{ r=await fetchLeg(a,b,mode,when); }catch(e){}
-    if(r && mode==='transit' && when) r.when=when;   // 어떤 계획 시각으로 조회했는지 기록(시각 바뀌면 재조회)
+    if(r && mode==='transit' && when){ r.when=when; r.timeZone=timeZone||''; }
     legCache[key] = r || {fail:Date.now()};
     if(r){
+      legCache[base]=r;                                  // 지도·재생은 가장 최근 실제 경로를 사용
       saveLegCache();
       document.querySelectorAll(`[data-leg="${key}"]`).forEach(el=>{
         el.textContent=legLabel(r);
@@ -700,18 +622,28 @@ async function pumpLegs(){
 }
 // ── 타임라인 (도착 예상시각) ──
 // 구간 이동시간(분): 캐시된 경로 우선(자차 2km 미만은 도보 대안), 없으면 수단별 속도로 직선 추정
-function legMinutes(a,b,mode){
+function legMinutes(a,b,mode,when,timeZone){
   mode=MODE_ICON[mode]?mode:'car';
-  const c=legCache[legKey(a,b,mode)];
+  const c=legCache[legRequestKey(a,b,mode,when,timeZone)];
   if(c&&c.sec) return (mode==='car'&&c.m<2000)? c.m/75 : c.sec/60;
   return haversine(a,b)/MODE_SPEED[mode]*60;
 }
 // 일자 타임라인: 시작시각(startAt, 기본 09:00)부터 체류(stayMin, 기본 60분)+이동 누적.
 // 순수 계산은 lib.js computeTimeline. startAnchor(전날 숙소 등)가 있으면 첫 유효 장소까지 이동시간을 먼저 더한다.
-function dayTimeline(day, startAnchor){
-  return computeTimeline(day, {legMin:(a,b)=>legMinutes(a,b,legModeOf(day,b)), startAnchor});   // 도착 장소 기준 구간 수단
+function dayTimeZone(day){ return (day&&day.timeZone)||trip().timeZone||''; }
+function dayTimeline(day, startAnchor, di){
+  const index=di!=null?di:trip().days.indexOf(day), iso=index>=0?isoDateOf(index):'', timeZone=dayTimeZone(day);
+  return computeTimeline(day,{legMin:(a,b,context)=>{
+    const mode=legModeOf(day,b), when=mode==='transit'?planDepartISO(iso,context.depart,timeZone):null;
+    return legMinutes(a,b,mode,when,timeZone);
+  },startAnchor});
 }
-function dayEtas(day, startAnchor){ return dayTimeline(day, startAnchor).map(x=>x.eta); }
+function dayEtas(day, startAnchor, di){ return dayTimeline(day,startAnchor,di).map(x=>x.eta); }
+function legDepartMinute(day,timeline,spotIndex){
+  if(spotIndex<=0) return parseHM(day.startAt);
+  const prev=day.spots[spotIndex-1], state=timeline[spotIndex-1];
+  return state.eta+(state.wait||0)+(prev.stayMin!=null?+prev.stayMin:60);
+}
 // 도착시각 순으로 정렬. 고정 시각 장소는 그 시각으로 이동, 자동 시각 장소는 '직전 고정 시각'에
 // 묶여 원래 상대순서를 유지(자동끼리 뒤섞이지 않음). 안정 정렬. 순서가 바뀌면 true.
 function sortDayByTime(day){
@@ -786,7 +718,7 @@ function addPin(s,di,si,c){
     `<a href="#" onclick="openSpotModal(${di},${si});return false;">✎ 편집</a></div>`;
   const pin=mkPin(c,label,s.opt); pin.title=s.name;
   const h=ME().marker(+s.lat,+s.lng,pin,()=>open());
-  const open=()=>ME().openPopup(html, +s.lat, +s.lng, h);
+  const open=()=>{ ME().openPopup(html, +s.lat, +s.lng, h); setSheetSnap('half'); };
   markers.push({spot:s, open, h});
 }
 // 동선 라인 추가 (엔진 공용). dashed=일자 간 연결선
@@ -879,6 +811,8 @@ function render(){
   document.getElementById('tripSel').innerHTML = viewMode
     ? `<option selected>👀 ${esc(viewMode.name)}</option>`
     : store.trips.map(x=>`<option value="${escAttr(x.id)}" ${x.id===store.activeId?'selected':''}>${esc(x.name)}</option>`).join('');
+  const picker=document.getElementById('tripPickerName');
+  if(picker) picker.textContent=(viewMode?'👀 ':((t.sample||t.id==='spain2026')?'샘플 · ':''))+(t.name||'여행 선택');
   save();
 }
 // pts([[lat,lng],…])에 맞춰 프레이밍. maxZoom(구글 기준)은 정착 후 보정
@@ -914,7 +848,7 @@ function carryStayFor(di){ const a=startAnchorFor(di); return (a&&a.stay)?a:null
 // 화면의 🏠 '전날 숙소' 항목 표시에만 carry(숙소일 때만)를 쓴다.
 function dayContext(di){
   const day=trip().days[di], anchor=startAnchorFor(di);
-  return { day, anchor, carry:(anchor&&anchor.stay)?anchor:null, timeline:dayTimeline(day, anchor), mode:dayModeOf(day) };
+  return { day, anchor, carry:(anchor&&anchor.stay)?anchor:null, timeline:dayTimeline(day,anchor,di), mode:dayModeOf(day), timeZone:dayTimeZone(day) };
 }
 function animPath(){
   const flat=[]; const days=trip().days;
@@ -1120,19 +1054,6 @@ function playTrip(){
 }
 function renderFilter(){
   const bar = document.getElementById('filterbar'); bar.innerHTML='';
-  // 색상 기준 토글 (도시별 ↔ 일자별)
-  const cmode=document.createElement('button'); cmode.className='chip';
-  cmode.textContent = colorByMode()==='day' ? '🎨 일자별' : '🎨 도시별';
-  cmode.title='핀·카드 색상 기준 전환';
-  cmode.onclick=()=>commit(()=>{ trip().colorBy = colorByMode()==='day'?'city':'day'; });
-  bar.appendChild(cmode);
-  // 여행 재생 — 경로를 따라 이동수단 아이콘이 달림 (재미)
-  const playB=document.createElement('button'); playB.className='chip'; playB.id='playBtn';
-  playB.textContent = play ? '⏹ 정지' : '▶️ 재생';
-  playB.title='경로를 따라 이동 애니메이션';
-  playB.onclick=playTrip;
-  bar.appendChild(playB);
-  const sep0=document.createElement('span'); sep0.style.cssText='width:1px;height:18px;background:#2a3457;margin:0 4px'; bar.appendChild(sep0);
   // 범위 전환: 재생 중이면 새 범위로 재생 재시작(현재 재생을 멈추고 새 일정으로), 아니면 해당 영역으로 프레이밍
   const setScope=(ad, fitFn)=>{
     const wasPlaying = !!play;
@@ -1143,6 +1064,13 @@ function renderFilter(){
   };
   const all = document.createElement('button'); all.className='chip'+(activeDay?'':' active'); all.textContent='전체';
   all.onclick=()=>setScope(0, fitAll); bar.appendChild(all);
+  const today=new Date(); today.setHours(0,0,0,0);
+  const start=trip().start?new Date(trip().start+'T00:00:00'):null;
+  const todayDi=start?Math.floor((today-start)/86400000):-1;
+  const todayBtn=document.createElement('button'); todayBtn.className='chip'+(activeDay===todayDi+1?' active':''); todayBtn.textContent='오늘';
+  if(todayDi<0||todayDi>=trip().days.length){ todayBtn.disabled=true; todayBtn.title='여행 기간이 아닙니다'; }
+  else todayBtn.onclick=()=>setScope(todayDi+1,()=>fitTo(trip().days[todayDi].spots.filter(hasLoc).map(s=>[s.lat,s.lng]),64,15));
+  bar.appendChild(todayBtn);
   trip().days.forEach((d,i)=>{
     const b=document.createElement('button'); b.className='chip'+(activeDay===i+1?' active':''); b.title=d.title;
     b.innerHTML = colorByMode()==='day'
@@ -1151,21 +1079,20 @@ function renderFilter(){
     b.onclick=()=>setScope(i+1, ()=>fitTo(d.spots.filter(hasLoc).map(s=>[s.lat,s.lng]),64,15));
     bar.appendChild(b);
   });
-  const colors = cityColors();
-  const sep=document.createElement('span'); sep.style.cssText='width:1px;height:18px;background:#2a3457;margin:0 4px'; bar.appendChild(sep);
-  Object.entries(colors).forEach(([city,c])=>{
-    const b=document.createElement('button'); b.className='chip citychip'; b.style.setProperty('--c',c); b.textContent=city;
-    b.onclick=()=>{
-      const pts=[]; trip().days.forEach(d=>d.spots.forEach(s=>{if(s.city===city&&hasLoc(s))pts.push([s.lat,s.lng])}));
-      fitTo(pts,80,15);
-    };
-    bar.appendChild(b);
+  const colors=cityColors(), menu=document.createElement('details'); menu.className='viewMenu';
+  const cityButtons=Object.entries(colors).map(([city,c])=>`<button class="chip cityFocusBtn" data-city="${escAttr(city)}"><span class="dot" style="background:${c}"></span>${esc(city)}</button>`).join('');
+  menu.innerHTML=`<summary>☷ 보기 설정⌄</summary><div class="viewMenuPanel">
+    <div class="viewMenuLabel">색상 기준</div><button class="chip" id="colorModeBtn">🎨 ${colorByMode()==='day'?'일자별':'도시별'} 색상</button>
+    <button class="chip" id="playBtn">${play?'⏹ 재생 정지':'▶ 경로 재생'}</button><button class="chip" id="themeBtn">◐ 테마 전환</button>
+    <div class="viewMenuLabel">도시 포커스</div><div class="cityFocus">${cityButtons||'<span class="hint">도시 없음</span>'}</div>
+    ${tripCost()?`<div class="viewMenuLabel">예상 비용 · ₩${tripCost().toLocaleString()}</div>`:''}</div>`;
+  bar.appendChild(menu);
+  menu.querySelector('#colorModeBtn').onclick=()=>commit(()=>{ trip().colorBy=colorByMode()==='day'?'city':'day'; });
+  menu.querySelector('#playBtn').onclick=playTrip;
+  menu.querySelector('#themeBtn').onclick=toggleTheme;
+  menu.querySelectorAll('.cityFocusBtn').forEach(button=>button.onclick=()=>{
+    const city=button.dataset.city,pts=[]; trip().days.forEach(d=>d.spots.forEach(s=>{if(s.city===city&&hasLoc(s))pts.push([s.lat,s.lng])})); fitTo(pts,80,15);
   });
-  // 여행 전체 예상 비용
-  const tc=tripCost();
-  if(tc){ const sep2=document.createElement('span'); sep2.style.cssText='width:1px;height:18px;background:#2a3457;margin:0 4px'; bar.appendChild(sep2);
-    const cb=document.createElement('span'); cb.className='chip'; cb.style.cssText='background:#2a2033;color:#e0b0ff;cursor:default';
-    cb.textContent=`💳 여행 약 ₩${tc.toLocaleString()}`; cb.title='장소 예상비용 + 자차일 택시요금 합계'; bar.appendChild(cb); }
 }
 function renderLegend(){
   let body;
@@ -1185,6 +1112,8 @@ function renderLegend(){
 }
 function renderSidebar(){
   const sb=document.getElementById('sidebar'); sb.innerHTML='';
+  if(!sb.dataset.snap) sb.dataset.snap='half';
+  const handle=document.createElement('button'); handle.id='sheetHandle'; handle.type='button'; handle.setAttribute('aria-label','일정 패널 높이 조절'); handle.title='위아래로 드래그해 일정 패널 높이 조절'; sb.appendChild(handle);
   // 이전 Sortable 인스턴스 정리 (누수 방지)
   sortables.forEach(s=>{try{s.destroy();}catch(e){}}); sortables=[];
   const colors=cityColors();
@@ -1195,16 +1124,15 @@ function renderSidebar(){
     // 전날 숙소(🏠 등록)가 있으면 오늘 첫 일정으로 '가상 이월' — prevLoc를 숙소로 시드해 첫 장소에 이동거리 표시
     const ctx=dayContext(di), carry=ctx.carry;   // anchor=ETA용(숙소/전날 마지막), carry=🏠 표시용(숙소만)
     let spotsHtml='', prevLoc=carry;
-    const tl=ctx.timeline, etas=tl.map(x=>x.eta), dm=ctx.mode, iso=isoDateOf(di);   // ETA는 anchor 기준 — 비숙소 전날 마지막 장소도 반영
-    // 대중교통 조회용 계획 출발 시각 — 없으면 구글이 '지금' 기준으로 계산해 실제 여행일과 어긋남
-    const planWhen=planDepartISO(iso, day.startAt, (day.spots.find(hasLoc)||{}).lng);
+    const tl=ctx.timeline, etas=tl.map(x=>x.eta), dm=ctx.mode, iso=isoDateOf(di), timeZone=ctx.timeZone;   // ETA는 anchor 기준 — 비숙소 전날 마지막 장소도 반영
     day.spots.forEach((s,si)=>{
       const dotC = hasLoc(s)?spotColor(s,di,colors):'#4a5170';
       const incoming=prevLoc, inMode=legModeOf(day,s);   // 이 지점으로 '들어오는' 구간(수단) — 아래 ETA 안내에 사용
       // 구간: 캐시된 경로가 있으면 그걸, 아니면 직선거리 + 백그라운드 조회
       let legHtml='';
       if(hasLoc(s)&&prevLoc){
-        const lm=legModeOf(day,s), lid=legKey(prevLoc,s,lm), lc=requestLeg(prevLoc,s,lm,planWhen);   // 구간별 수단
+        const lm=legModeOf(day,s), depart=legDepartMinute(day,tl,si), when=lm==='transit'?planDepartISO(iso,depart,timeZone):null;
+        const lid=legRequestKey(prevLoc,s,lm,when,timeZone), lc=requestLeg(prevLoc,s,lm,when,timeZone);   // 구간별 출발시각·시간대
         const failed=!lc && legCache[lid] && legCache[lid].fail;   // 인근 도로 스냅까지 실패
         legHtml = legModeBtn(day,di,si,lm) + (lc
           ? `<span class="leg" data-leg="${lid}" title="${legTitle(lc)}">${legLabel(lc)}</span>`
@@ -1248,23 +1176,26 @@ function renderSidebar(){
         : `도착 예상 — 시작 시각 + 이동시간 + 머무는 시간으로 자동 계산한 추정값`;
       spotsHtml+=`<div class="spot" data-di="${di}" data-si="${si}" style="--c:${dotC}">
         <span class="nm" onclick="focusSpot(${di},${si})"><span class="eta${tl[si].fixed?' fixed':''}" title="${escAttr(etaTip)}">${tl[si].fixed?'📌':''}${hm(etas[si])}${showConflict?'⚠️':''}</span>${si+1}. ${s.stay?'🏠 ':''}${esc(s.name)}${(s.stay&&stayNights(s)>1)?` <span class="opt">${stayNights(s)}박</span>`:''}${s.opt?' <span class=opt>(선택)</span>':''}${hasLoc(s)?'':`<span class="noloc" onclick="event.stopPropagation();openSpotModal(${di},${si})">📍 위치 지정</span>`}${metaHtml}</span>${legHtml}
-        <span class="tools">
-          <button class="iconb mvup" onclick="moveSpot(${di},${si},-1)" title="위로">▲</button>
-          <button class="iconb mvdown" onclick="moveSpot(${di},${si},1)" title="아래로">▼</button>
-          <button class="iconb" onclick="openSpotModal(${di},${si})" title="편집">✎</button>
-        </span></div>`;
+        <details class="actionMenu" onclick="event.stopPropagation()"><summary aria-label="${escAttr(s.name)} 작업 메뉴">⋮</summary><div class="actionMenuPanel">
+          <button class="iconb mvup" onclick="moveSpot(${di},${si},-1)" title="위로">↑ <span>위로</span></button>
+          <button class="iconb mvdown" onclick="moveSpot(${di},${si},1)" title="아래로">↓ <span>아래로</span></button>
+          <button class="iconb" onclick="openSpotModal(${di},${si})" title="편집">✎ <span>편집</span></button>
+          <button class="iconb" onclick="copySpot(${di},${si})" title="복사">⧉ <span>복사</span></button>
+          <button class="iconb danger" onclick="deleteSpot(${di},${si})" title="삭제">⌫ <span>삭제</span></button>
+        </div></details></div>`;
     });
     card.innerHTML=`<div class="dayHead">
         <span><span class="dragHandle" title="드래그로 일자 순서 변경">⠿</span> Day ${di+1} · ${esc(day.title)}</span>
-        <span style="display:flex;align-items:center;gap:6px">${dayWeatherHtml(day,di)}<button class="iconb modeBtn" onclick="event.stopPropagation();cycleMode(${di})" title="이동 수단: ${MODE_NAME[dm]} — 클릭해서 변경">${MODE_ICON[dm]}</button><span class="date" onclick="event.stopPropagation();openDayModal(${di})" style="cursor:pointer" title="클릭해서 날짜 지정/수정">${dateOf(di)||'📅 날짜 지정'}</span>
-        <span class="tools"><button class="iconb" onclick="event.stopPropagation();openDayModal(${di})">✎</button></span></span>
+        <span style="display:flex;align-items:center;gap:6px">${dayWeatherHtml(day,di)}<button class="iconb modeBtn" onclick="event.stopPropagation();cycleMode(${di})" title="이동 수단: ${MODE_NAME[dm]} — 클릭해서 변경">${MODE_ICON[dm]}</button><span class="date" onclick="event.stopPropagation();openDayModal(${di})" style="cursor:pointer" title="클릭해서 날짜·시간대 지정/수정">${dateOf(di)||'📅 날짜 지정'} · ${timeZone?`🌐 ${esc(timeZone)}`:'⚠️ 시간대 확인'}</span>
+        <details class="actionMenu" onclick="event.stopPropagation()"><summary aria-label="Day ${di+1} 작업 메뉴">⋮</summary><div class="actionMenuPanel"><button class="iconb" onclick="openDayModal(${di})" title="일자 편집">✎ <span>편집</span></button><button class="iconb" onclick="copyDay(${di})" title="일자 복사">⧉ <span>복사</span></button><button class="iconb danger" onclick="deleteDay(${di})" title="일자 삭제">⌫ <span>삭제</span></button></div></details></span>
       </div><div class="dayBody">
         ${day.drive?`<div class="drive">${esc(day.drive)}</div>`:''}
         ${flightHtml(day)}
         ${(()=>{   // 일자 간 자동 이동시간: 이월 시작점 → 오늘 첫 장소 (숙소 이월 시엔 🏠 항목+구간거리로 대체, none이면 미표시)
           const first=day.spots.find(hasLoc), from=startAnchorFor(di);
           if(carry||!from||!first) return '';
-          const im=legModeOf(day,first), iid=legKey(from,first,im), ic=requestLeg(from,first,im,planWhen);
+          const fi=day.spots.indexOf(first), im=legModeOf(day,first), depart=legDepartMinute(day,tl,fi), when=im==='transit'?planDepartISO(iso,depart,timeZone):null;
+          const iid=legRequestKey(from,first,im,when,timeZone), ic=requestLeg(from,first,im,when,timeZone);
           const ibtn=legModeBtn(day,di,day.spots.indexOf(first),im);   // 이 구간(도시 간 이동인 경우가 많음)만 수단 변경
           return ic
             ? `<div class="drive" style="color:#9fb8e8" title="이전 일자 기준점 · ${legTitle(ic)}">${ibtn}<span data-ileg="${iid}">이전 일정에서 ${(ic.m/1000).toFixed(1)}km · ${fmtDur(ic.sec)}</span></div>`
@@ -1334,6 +1265,7 @@ window.focusSpot=(di,si)=>{
   if(activeDay && activeDay!==di+1){ activeDay=0; render(); }
   if(!ME().ready()) return;
   ME().panTo(+s.lat, +s.lng, 13);
+  setSheetSnap('half');
   setTimeout(()=>{ const m=markers.find(m=>m.spot===s); if(m) m.open(); },400);
 };
 // 좌표로 지도 포커스 (전날 숙소 이월 항목 탭 등 — 특정 spot 인덱스가 없을 때)
@@ -1341,6 +1273,7 @@ window.focusLatLng=(lat,lng)=>{
   if(activeDay){ activeDay=0; render(); }             // 필터 걸려 해당 핀이 숨겨져 있을 수 있어 전체로
   if(!ME().ready()) return;
   ME().panTo(+lat, +lng, 13);
+  setSheetSnap('half');
   setTimeout(()=>{ const m=markers.find(m=>Math.abs(+m.spot.lat-lat)<1e-6 && Math.abs(+m.spot.lng-lng)<1e-6); if(m) m.open(); },400);
 };
 // 화살표 이동: 도구 항상 노출 + 옮긴 장소를 커서 아래에 고정(스크롤 보정)해 연속 클릭 가능
@@ -1394,6 +1327,29 @@ window.moveSpot=(di,si,dir)=>{
   const after=afterBtn?.getBoundingClientRect().top;
   if(before!=null && after!=null) sb.scrollTop += (after-before); // 같은 버튼이 커서 자리에 오도록
 };
+window.copySpot=(di,si)=>{
+  if(viewMode)return;
+  const spots=trip().days[di].spots, source=spots[si]; if(!source)return;
+  const copy=JSON.parse(JSON.stringify(source)); copy.name=`${source.name} 복사본`;
+  commit(()=>spots.splice(si+1,0,copy)); toast('장소를 복사했습니다');
+};
+window.deleteSpot=(di,si)=>{
+  if(viewMode||!confirm('이 장소를 삭제할까요?'))return;
+  const spots=trip().days[di].spots; if(!spots[si])return;
+  const snap=snapshot(); spots.splice(si,1); commit(); toast('장소 삭제됨','#8892b0',{fn:()=>undoWith(snap)});
+};
+window.copyDay=di=>{
+  if(viewMode)return;
+  const days=trip().days, source=days[di]; if(!source)return;
+  const copy=JSON.parse(JSON.stringify(source)); copy.title=`${source.title||`Day ${di+1}`} 복사본`;
+  commit(()=>days.splice(di+1,0,copy)); toast('일자를 복사했습니다');
+};
+window.deleteDay=di=>{
+  if(viewMode)return;
+  const days=trip().days; if(days.length<=1){toast('여행에는 일자가 하나 이상 필요합니다','#e53935');return;}
+  if(days[di].spots.length&&!confirm('이 일자의 장소도 함께 삭제됩니다. 계속할까요?'))return;
+  const snap=snapshot(); days.splice(di,1); activeDay=0; commit(); toast('일자 삭제됨','#8892b0',{fn:()=>undoWith(snap)});
+};
 
 // ───────────────── 장소 모달 ─────────────────
 let editing = null; // {di, si} si=-1이면 추가
@@ -1427,6 +1383,7 @@ window.openSpotModal=(di,si)=>{
   updateCostHint();
   document.getElementById('spotBookAt').value=s.bookAt||'';
   document.getElementById('spotBookUrl').value=s.bookUrl||'';
+  document.getElementById('spotAdvanced').open=!isNew&&!!(s.legMode||s.cost||s.bookAt||s.bookUrl||s.opt||s.stay);
   document.getElementById('spotLat').value=s.lat; document.getElementById('spotLng').value=s.lng;
   document.getElementById('coordHint').textContent = s.lat?`좌표: ${(+s.lat).toFixed(4)}, ${(+s.lng).toFixed(4)}`:'좌표: 미지정 (검색 또는 지도 클릭)';
   document.getElementById('spotSearch').value=''; document.getElementById('searchRes').innerHTML='';
@@ -1435,6 +1392,9 @@ window.openSpotModal=(di,si)=>{
   document.getElementById('spotModalBg').classList.add('show');
 };
 document.getElementById('spotCancel').onclick=()=>document.getElementById('spotModalBg').classList.remove('show');
+document.getElementById('spotAdvanced').addEventListener('toggle',e=>{
+  const badge=document.querySelector('#spotModalBg .stepBadge'); if(badge) badge.textContent=e.target.open?'상세 설정':'기본 정보';
+});
 // 비용 입력: 천 단위 쉼표 + 통화별 원화 환산 힌트
 function updateCostHint(){
   const el=document.getElementById('costKrwHint');
@@ -1549,6 +1509,7 @@ window.openDayModal=(di)=>{
   document.getElementById('dayModalTitle').textContent=`Day ${di+1} 편집 · ${dateOf(di)}`;
   document.getElementById('dayDate').value=isoDateOf(di);
   document.getElementById('dayStart').value=d.startAt||'09:00';
+  document.getElementById('dayTimeZone').value=d.timeZone||'';
   document.getElementById('dayCarry').checked = (d.startPolicy!=='none');   // 전날 위치 이월 on/off
   document.getElementById('dayMode').value=dayModeOf(d);
   const f=d.flight||{};
@@ -1587,8 +1548,11 @@ async function lookupAirport(el){
 document.getElementById('dayCancel').onclick=()=>document.getElementById('dayModalBg').classList.remove('show');
 document.getElementById('daySave').onclick=()=>{
   const d=trip().days[editingDay];
+  const dayTz=document.getElementById('dayTimeZone').value.trim();
+  if(dayTz&&!validTimeZone(dayTz)){ toast('시간대는 Europe/Madrid 같은 IANA 형식으로 입력해 주세요','#e63946'); return; }
   d.title=document.getElementById('dayTitle').value.trim();
   d.startAt=normHM(document.getElementById('dayStart').value)||'09:00';
+  if(dayTz) d.timeZone=dayTz; else delete d.timeZone;
   if(document.getElementById('dayCarry').checked) delete d.startPolicy; else d.startPolicy='none';   // 이월 정책
   d.mode=document.getElementById('dayMode').value;
   const fc=document.getElementById('flightCode').value.trim(), fdp=document.getElementById('flightDep').value.trim(),
@@ -1604,6 +1568,7 @@ document.getElementById('daySave').onclick=()=>{
   document.getElementById('dayModalBg').classList.remove('show'); commit(); toast('저장됨');
 };
 document.getElementById('dayDelBtn').onclick=()=>{
+  if(trip().days.length<=1){toast('여행에는 일자가 하나 이상 필요합니다','#e53935');return;}
   if(trip().days[editingDay].spots.length && !confirm('이 일자의 장소도 함께 삭제됩니다. 계속할까요?'))return;
   const snap=snapshot();
   trip().days.splice(editingDay,1); activeDay=0;
@@ -1612,23 +1577,29 @@ document.getElementById('dayDelBtn').onclick=()=>{
 
 // ───────────────── 여행 관리 ─────────────────
 document.getElementById('tripSel').onchange=e=>{ commit(()=>{ store.activeId=e.target.value; activeDay=0; }, {fit:fitEntry}); };
-document.getElementById('newTripBtn').onclick=()=>{
-  const name=prompt('새 여행 이름은?','새 여행'); if(name===null)return;
+function createNewTrip(askName){
+  const name=askName===false?'새 여행':prompt('새 여행 이름은?','새 여행'); if(name===null)return;
   const t={id:uid(),name:name||'새 여행',start:new Date().toISOString().slice(0,10),days:[{title:'',drive:'',note:'',spots:[]}]};
   commit(()=>{ store.trips.push(t); store.activeId=t.id; activeDay=0; });
   document.getElementById('tripModalBg').classList.add('show');
   document.getElementById('tripName').value=t.name; document.getElementById('tripStart').value=t.start;
-};
+  document.getElementById('tripTimeZone').value='';
+}
+document.getElementById('newTripBtn').onclick=()=>createNewTrip(true);
 document.getElementById('tripEditBtn').onclick=()=>{
   document.getElementById('tripName').value=trip().name;
   document.getElementById('tripStart').value=trip().start||'';
+  document.getElementById('tripTimeZone').value=trip().timeZone||'';
   document.getElementById('tripModalBg').classList.add('show');
   loadSnapList();
 };
 document.getElementById('tripCancel').onclick=()=>document.getElementById('tripModalBg').classList.remove('show');
 document.getElementById('tripSave').onclick=()=>{
+  const timeZone=document.getElementById('tripTimeZone').value.trim();
+  if(timeZone&&!validTimeZone(timeZone)){ toast('시간대는 Asia/Tokyo 같은 IANA 형식으로 입력해 주세요','#e63946'); return; }
   trip().name=document.getElementById('tripName').value.trim()||'이름 없는 여행';
   trip().start=document.getElementById('tripStart').value;
+  if(timeZone) trip().timeZone=timeZone; else delete trip().timeZone;
   document.getElementById('tripModalBg').classList.remove('show'); commit(); toast('저장됨');
 };
 // 여행 삭제 (활성/비활성 공통) — 설정 모달·여행 목록 양쪽에서 사용
@@ -1636,7 +1607,7 @@ function deleteTrip(id){
   const t=store.trips.find(x=>x.id===id); if(!t) return false;
   if(!confirm(`"${t.name}" 여행을 삭제할까요?`)) return false;
   const snap=snapshot();
-  cloudDelete(id);   // 로그인 상태면 클라우드에서도 삭제
+  cloudDelete(id,t);   // 로그인 상태면 tombstone 기록, 오프라인이면 재시도 큐에 보존
   store.trips=store.trips.filter(x=>x.id!==id);
   if(!store.trips.length){ store.trips=[{id:uid(),name:'새 여행',start:new Date().toISOString().slice(0,10),days:[{title:'',drive:'',note:'',spots:[]}]}]; }
   if(id===store.activeId){ store.activeId=store.trips[0].id; activeDay=0; }   // 보고 있던 여행을 지운 경우만 전환
@@ -1686,16 +1657,19 @@ document.getElementById('importBtn').onclick=()=>document.getElementById('import
 let _importing=false;   // 가져오기 진행 중 — PWA 자동 새로고침이 이 사이에 끼어들어 유실되지 않게
 document.getElementById('importFile').onchange=e=>{
   const f=e.target.files[0]; if(!f)return;
+  if(f.size>TC_LIMITS.jsonBytes){ toast('파일이 너무 큽니다 (최대 2MB)','#e63946'); e.target.value=''; return; }
   const rd=new FileReader();
   _importing=true;
   rd.onload=()=>{
     try{
-      const t=normalizeTrip(JSON.parse(rd.result));
-      if(!t) throw 0;
+      const result=parseTripPayload(typeof rd.result==='string'?rd.result:'');
+      if(!result.ok) throw new Error(result.error);
+      const t=result.value;
       t.id=uid(); commit(()=>{ store.trips.push(t); store.activeId=t.id; activeDay=0; }, {fit:fitEntry}); toast('가져오기 완료');
-    }catch(err){ toast('잘못된 파일입니다','#e63946'); }
+    }catch(err){ reportOperationalError('import.invalid',err); toast('안전하게 읽을 수 없는 여행 파일입니다','#e63946'); }
     finally{ _importing=false; }
   };
+  rd.onerror=()=>{ _importing=false; reportOperationalError('import.read',rd.error); toast('파일을 읽지 못했습니다','#e63946'); };
   rd.readAsText(f); e.target.value='';
 };
 // ── 일정 이미지 내보내기 (PNG, html2canvas 지연 로드) ──
@@ -1705,6 +1679,7 @@ function loadH2C(){
   _h2cReady=new Promise(res=>{
     const s=document.createElement('script');
     s.src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+    s.integrity='sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H'; s.crossOrigin='anonymous';
     s.onload=()=>res(true); s.onerror=()=>res(false);
     document.head.appendChild(s);
   });
@@ -1754,6 +1729,14 @@ document.getElementById('shareBtn').onclick=()=>{
   navigator.clipboard.writeText(url).then(()=>toast('읽기전용 공유 링크가 복사되었습니다 (받는 쪽에서 "내 여행으로 저장" 가능)'))
     .catch(()=>prompt('이 링크를 복사하세요',url));
 };
+function decodeSharedTrip(encoded){
+  if(typeof encoded!=='string'||encoded.length>TC_LIMITS.shareChars) return {ok:false,error:'공유 링크가 허용 길이를 초과했습니다'};
+  try{
+    const text=LZString.decompressFromEncodedURIComponent(encoded);
+    if(typeof text!=='string'||text.length>TC_LIMITS.jsonBytes) return {ok:false,error:'공유 데이터가 허용 크기를 초과했습니다'};
+    return parseTripPayload(text);
+  }catch(_){ return {ok:false,error:'공유 링크를 해석할 수 없습니다'}; }
+}
 // 읽기전용 보기에서 내 저장소로 복사
 document.getElementById('roSave').onclick=()=>{
   if(!viewMode) return;
@@ -1770,25 +1753,25 @@ document.getElementById('roSave').onclick=()=>{
   const h=location.hash;
   if(h.startsWith('#v=')){
     try{
-      const t=normalizeTrip(JSON.parse(LZString.decompressFromEncodedURIComponent(h.slice(3))));
+      const result=decodeSharedTrip(h.slice(3)), t=result.ok&&result.value;
       if(t){
         t.name=(t.name||'공유된 여행');
         viewMode=t;
         document.body.classList.add('readonly');
         document.getElementById('roBar').style.display='flex';
         setTimeout(()=>toast('읽기전용으로 보는 중입니다'),400);
-      }
-    }catch(e){}
+      }else reportOperationalError('share.invalid',new Error('validation'));
+    }catch(e){ reportOperationalError('share.decode',e); }
   }else if(h.startsWith('#t=')){
     try{
-      const t=normalizeTrip(JSON.parse(LZString.decompressFromEncodedURIComponent(h.slice(3))));
+      const result=decodeSharedTrip(h.slice(3)), t=result.ok&&result.value;
       if(t){
         t.id=uid(); t.name=(t.name||'공유된 여행');
         store.trips.push(t); store.activeId=t.id; save();
         history.replaceState(null,'',location.pathname);
         setTimeout(()=>toast('공유된 여행을 불러왔습니다'),400);
-      }
-    }catch(e){}
+      }else reportOperationalError('share.legacy.invalid',new Error('validation'));
+    }catch(e){ reportOperationalError('share.legacy.decode',e); }
   }
 })();
 
@@ -1985,6 +1968,7 @@ function syncPasteMode(){
   document.getElementById('pasteText').placeholder = ai?AI_PLACEHOLDER:DIRECT_PLACEHOLDER;
 }
 document.getElementById('pasteBtn').onclick=openPaste;
+document.getElementById('pasteMenuBtn').onclick=()=>document.getElementById('pasteBtn').click();
 document.getElementById('aiToggle').onchange=()=>{ cfg.aiParse=document.getElementById('aiToggle').checked; saveCfg(); syncPasteMode(); };
 document.getElementById('apiKey').oninput=e=>{ cfg.apiKey=e.target.value.trim(); saveCfg(); };
 document.getElementById('apiModel').onchange=e=>{ cfg.model=e.target.value; saveCfg(); };
@@ -2000,7 +1984,7 @@ async function runPaste(){
   try{
     if(cfg.aiParse){ toast('AI가 일정을 정리하는 중…','#1d6fd6'); parsed=await parseAI(text); }
     else parsed=parseDirect(text);
-  }catch(e){ toast(e.message||'파싱 실패','#e63946'); return; }
+  }catch(e){ reportOperationalError('paste.parse',e); toast('일정을 해석하지 못했습니다. 입력 형식과 연결 상태를 확인해 주세요','#e63946'); return; }
   if(!parsed||!Array.isArray(parsed.days)||!parsed.days.length){ toast('일정을 못 읽었어 — 형식을 확인해줘','#e63946'); return; }
   // 정규화
   const MODES=['car','taxi','transit','train','walk','bike','flight'];
@@ -2014,6 +1998,9 @@ async function runPaste(){
       cost:(s.cost==null?null:posInt(s.cost)), cur:(['USD','EUR','JPY','CNY'].includes(s.cur)?s.cur:undefined), bookAt:hhmm(s.bookAt),
       lat:(s.lat==null?null:+s.lat), lng:(s.lng==null?null:+s.lng)})).filter(s=>s.name)
   }));
+  const checked=validateTripPayload({name:parsed.name||'붙여넣은 여행',start:parsed.start||'',days:parsed.days});
+  if(!checked.ok){ reportOperationalError('paste.invalid',new Error('validation')); toast(checked.error,'#e63946'); return; }
+  parsed=checked.value;
   // 좌표 없는 장소 지오코딩
   const need=[]; parsed.days.forEach(d=>d.spots.forEach(s=>{ if(s.lat==null||isNaN(s.lat)||s.lng==null||isNaN(s.lng)) need.push(s); }));
   for(let i=0;i<need.length;i++){
@@ -2024,19 +2011,20 @@ async function runPaste(){
   }
   // 좌표 못 찾은 장소는 버리지 않고 유지 (카드에 남고, '위치 지정'으로 표시)
   let noloc=0; parsed.days.forEach(d=>d.spots.forEach(s=>{ if(!hasLoc(s)) noloc++; }));
-  // 적용
+  // 기존 여행과 결합한 최종 문서도 다시 검증해 append가 전체 한도를 넘는 경우 부분 적용을 막는다.
+  let nextTrip;
   if(target==='append'){
-    trip().days.push(...parsed.days);
-    if(parsed.start&&!trip().start) trip().start=parsed.start;
+    nextTrip=Object.assign({},trip(),{days:[...trip().days,...parsed.days],start:trip().start||parsed.start||''});
   }else if(target==='overwrite' && !viewMode && trip()){
-    const t=trip();                                  // 현재 여행 전체 교체 (id 유지, 이름·시작일·일정 덮어쓰기)
-    t.days=parsed.days;
-    if(parsed.name) t.name=parsed.name;
-    if(parsed.start) t.start=parsed.start;
+    nextTrip=Object.assign({},trip(),{days:parsed.days,name:parsed.name||trip().name,start:parsed.start||trip().start});
   }else{
-    const t={id:uid(), name:parsed.name||'붙여넣은 여행', start:parsed.start||new Date().toISOString().slice(0,10), days:parsed.days};
-    store.trips.push(t); store.activeId=t.id;
+    nextTrip=Object.assign({},parsed,{id:uid(),name:parsed.name||'붙여넣은 여행',start:parsed.start||new Date().toISOString().slice(0,10)});
   }
+  const finalResult=validateTripPayload(nextTrip);
+  if(!finalResult.ok){ reportOperationalError('paste.combined.invalid',new Error('validation')); toast(finalResult.error,'#e63946'); return; }
+  const finalTrip=finalResult.value, existing=store.trips.findIndex(t=>t.id===finalTrip.id);
+  if(existing>=0) store.trips[existing]=finalTrip; else store.trips.push(finalTrip);
+  store.activeId=finalTrip.id;
   document.getElementById('pasteModalBg').classList.remove('show');
   commit(()=>{ activeDay=0; }, {fit:fitEntry});
   toast(`초안 생성 완료${noloc?` · ${noloc}곳은 위치 미지정 (카드에서 📍 지정)`:''}`, noloc?'#f4862c':'#2a9d3f');
@@ -2061,11 +2049,24 @@ function renderTravel(di){
   document.getElementById('travelTitle').textContent=`Day ${di+1} · ${d.title||''}`;
   document.getElementById('travelSub').textContent=[dateOf(di),d.drive,d.note].filter(Boolean).join('  ·  ');
   const list=document.getElementById('travelList'); list.innerHTML='';
-  if(!d.spots.length){ list.innerHTML='<div style="color:#9aa5c4;font-size:13px;padding:20px 4px">이 날은 등록된 장소가 없습니다 — 이동일이거나 자유 일정</div>'; return; }
+  const currentBox=document.getElementById('travelCurrent'),nextBox=document.getElementById('travelNext');
+  currentBox.innerHTML=''; nextBox.innerHTML='';
+  if(!d.spots.length){ currentBox.innerHTML='<div class="travelKicker">현재 장소</div><div class="travelPlace">자유 일정</div>'; nextBox.hidden=true; list.innerHTML='<div class="hint" style="padding:20px 4px">등록된 장소가 없습니다 — 이동일이거나 자유 일정입니다.</div>'; return; }
   // 전날 숙소 이월: Day 2+에서 전날 숙소가 있으면 상단에 가상 항목으로 표시(오늘 데이터엔 복제 안 함).
   // 타임라인·첫 장소 구간이 숙소에서 출발하도록 prevLoc/etas를 숙소로 시드 (사이드바·재생과 동일 기준).
-  const ctx=dayContext(di), carry=ctx.carry;
-  const etas=ctx.timeline.map(x=>x.eta), dm=ctx.mode;   // ETA는 anchor 기준(사이드바·이미지와 동일)
+  const ctx=dayContext(di), carry=ctx.carry, tl=ctx.timeline, iso=isoDateOf(di);
+  const etas=tl.map(x=>x.eta), dm=ctx.mode;   // ETA는 anchor 기준(사이드바·이미지와 동일)
+  const now=new Date(),today=iso===toISO(now),nowMin=now.getHours()*60+now.getMinutes();
+  let currentIndex=0;
+  if(today){ for(let i=0;i<etas.length;i++) if(etas[i]<=nowMin) currentIndex=i; }
+  const current=d.spots[currentIndex], currentLink=hasLoc(current)?extMapLink(current):null;
+  const currentFacts=[`${hm(etas[currentIndex])} 도착 예상`,current.bookAt?`예약 ${current.bookAt}`:'예약 없음',current.stayMin!=null?`체류 ${current.stayMin}분`:null].filter(Boolean);
+  currentBox.innerHTML=`<div class="travelKicker">${today?'현재 장소':'선택한 날의 시작 장소'}</div><div class="travelPlace">${current.stay?'🏠 ':''}${esc(current.name)}</div><div class="travelFacts">${currentFacts.map(esc).join(' · ')}${current.desc?`<br>${esc(current.desc)}`:''}</div><div class="travelActions">${currentLink?`<a href="${escAttr(currentLink.href)}" target="_blank" rel="noopener">길찾기</a>`:''}${safeUrl(current.bookUrl)?`<a href="${escAttr(safeUrl(current.bookUrl))}" target="_blank" rel="noopener">예약 정보</a>`:''}</div>`;
+  const next=d.spots[currentIndex+1]; nextBox.hidden=false;
+  if(next){
+    const mode=legModeOf(d,next),route=(hasLoc(current)&&hasLoc(next))?requestLeg(current,next,mode,mode==='transit'?planDepartISO(iso,legDepartMinute(d,tl,currentIndex+1),ctx.timeZone):null,ctx.timeZone):null;
+    nextBox.innerHTML=`<div><div class="travelKicker">다음 장소</div><strong>${esc(next.name)}</strong><div class="travelFacts">${route?`${MODE_ICON[mode]} ${fmtDur(route.sec)} 후`:'이동 정보 계산 중'} · ${hm(etas[currentIndex+1])} 도착 예상</div></div><span aria-hidden="true">→</span>`;
+  }else nextBox.innerHTML='<div><div class="travelKicker">다음 장소</div><strong>오늘 일정 완료</strong></div><span aria-hidden="true">✓</span>';
   let prevLoc=carry;
   if(carry){
     const el=extMapLink(carry);
@@ -2077,7 +2078,8 @@ function renderTravel(di){
   d.spots.forEach((s,si)=>{
     // 구간 이동 정보 (이전 장소 → 이 장소)
     if(hasLoc(s)&&prevLoc){
-      const c=requestLeg(prevLoc,s,legModeOf(d,s));   // 구간별 수단
+      const mode=legModeOf(d,s), when=mode==='transit'?planDepartISO(iso,legDepartMinute(d,tl,si),ctx.timeZone):null;
+      const c=requestLeg(prevLoc,s,mode,when,ctx.timeZone);   // 구간별 출발시각·시간대
       const lg=document.createElement('div'); lg.className='tLeg';
       lg.textContent = c
         ? ((dm==='car'&&c.m<2000)? `🚶 ${Math.max(1,Math.round(c.m/75))}분 · ${(c.m/1000).toFixed(1)}km`
@@ -2119,39 +2121,65 @@ function updateAuthUI(){
   if(user){ b.textContent='👤 '+(user.email||'').split('@')[0]; b.title='클릭하면 로그아웃'; b.classList.add('primary'); }
   else { b.textContent='로그인'; b.title='로그인하면 여행이 내 계정에 저장돼 어느 기기서든 열려요'; b.classList.remove('primary'); }
 }
-// 활성 여행을 클라우드에 저장(디바운스 800ms). 실패 시 15초 뒤 재시도 + 네트워크 복구 시 즉시 재동기화.
-// (save() 가드가 뷰/비동기 재렌더의 우연한 재시도를 없앴으므로, 재시도는 여기서 명시적으로 책임진다.)
-let cloudRetryT=null;
-function cloudSyncActive(delay){
-  if(!sb || !user) return;
-  clearTimeout(cloudRetryT); clearTimeout(syncTimer);
-  syncTimer=setTimeout(async()=>{
-    const t=trip(); if(!t) return;
-    const {error}=await sb.from('trips').upsert(
-      {user_id:user.id, client_id:t.id, data:t, updated_at:new Date().toISOString()},
-      {onConflict:'user_id,client_id'});
-    if(error){
-      console.warn('cloud sync:', error.message);
-      clearTimeout(cloudRetryT);
-      cloudRetryT=setTimeout(()=>cloudSyncActive(), 15000);   // 최신 활성 여행본으로 재시도
-    } else { markSynced(t.id); cloudSnapshot(t); }
-  }, delay!=null?delay:800);
+// revision 비교 후에만 쓰는 낙관적 동시성 제어(CAS). 실패해도 로컬 편집은 유지한다.
+let cloudRetryT=null, syncConflicts=[], currentSyncConflict=null;
+async function rpcRow(name,args){
+  const {data,error}=await sb.rpc(name,args);
+  if(error) throw error;
+  return Array.isArray(data)?data[0]:data;
 }
-window.addEventListener('online', ()=>{ if(sb && user) cloudSyncActive(0); });
+function cloudSyncActive(delay){
+  if(suppressCloudOnce){ suppressCloudOnce=false; return; }
+  if(!sb||!user) return;
+  clearTimeout(cloudRetryT); clearTimeout(syncTimer);
+  syncTimer=setTimeout(()=>{ const t=trip(); if(t) syncTripCloud(t); },delay!=null?delay:800);
+}
+async function syncTripCloud(t,opts){
+  if(!sb||!user||!t) return;
+  if(t.id==='spain2026'&&!(syncMeta[t.id]&&syncMeta[t.id].revision)) return;
+  const entry=syncEntry(t.id), force=!!(opts&&opts.force);
+  if(entry.status==='conflict'&&!force) return;
+  entry.status='syncing'; persistSyncMeta();
+  try{
+    const row=await rpcRow('sync_trip',{p_client_id:t.id,p_data:t,p_expected_revision:entry.revision,p_force:force});
+    if(!row) throw new Error('empty sync response');
+    if(row.conflict){
+      entry.revision=Number(row.revision)||entry.revision; entry.status='conflict'; persistSyncMeta();
+      enqueueSyncConflict({kind:row.deleted_at?'remote-deleted':'changed-both',local:t,remote:row.data||null,revision:entry.revision,deleted_at:row.deleted_at||null});
+      return;
+    }
+    entry.revision=Number(row.revision)||1; entry.status='clean'; entry.op=''; persistSyncMeta();
+    cloudSnapshot(t,entry.revision);
+  }catch(e){
+    entry.status='error'; persistSyncMeta();
+    reportOperationalError('cloud.sync',e);
+    clearTimeout(cloudRetryT);
+    cloudRetryT=setTimeout(()=>syncTripCloud(t),15000);
+    toast('클라우드 저장 실패 — 로컬 편집은 보존됨','#e63946',{label:'재시도',fn:()=>syncTripCloud(t)});
+  }
+}
+async function flushPendingSync(){
+  if(!sb||!user) return;
+  for(const [id,entry] of Object.entries(syncMeta)){
+    if(entry.status==='delete-pending'||entry.status==='delete-error') await performCloudDelete(id,entry.op);
+  }
+}
+window.addEventListener('online',async()=>{ if(sb&&user){ await flushPendingSync(); cloudSyncActive(0); } });
+
 // 버전 히스토리: 여행별 10분에 1회 스냅샷, 최근 15개 유지
 const _snapAt={};
-async function cloudSnapshot(t){
-  if(!sb || !user) return;
+async function cloudSnapshot(t,revision){
+  if(!sb||!user) return;
   const now=Date.now();
-  if(_snapAt[t.id] && now-_snapAt[t.id]<10*60*1000) return;
+  if(_snapAt[t.id]&&now-_snapAt[t.id]<10*60*1000) return;
   _snapAt[t.id]=now;
   try{
-    await sb.from('trip_snapshots').insert({client_id:t.id, name:t.name, data:t});
-    // 오래된 스냅샷 정리 (최근 15개만 유지)
-    const {data:rows}=await sb.from('trip_snapshots').select('id')
-      .eq('client_id',t.id).order('created_at',{ascending:false}).range(15,100);
-    if(rows&&rows.length) await sb.from('trip_snapshots').delete().in('id',rows.map(r=>r.id));
-  }catch(e){}
+    const {error}=await sb.from('trip_snapshots').insert({user_id:user.id,client_id:t.id,name:t.name,data:t,source_revision:revision});
+    if(error) throw error;
+    const {data:rows,error:listError}=await sb.from('trip_snapshots').select('id').eq('client_id',t.id).order('created_at',{ascending:false}).range(15,100);
+    if(listError) throw listError;
+    if(rows&&rows.length){ const {error:deleteError}=await sb.from('trip_snapshots').delete().in('id',rows.map(r=>r.id)); if(deleteError) throw deleteError; }
+  }catch(e){ reportOperationalError('cloud.snapshot',e); }
 }
 // 버전 기록 목록 (여행 설정 모달)
 async function loadSnapList(){
@@ -2170,44 +2198,96 @@ async function loadSnapList(){
     btn.onclick=async()=>{
       if(!confirm('이 시점으로 복원할까요? (현재 상태는 ↩️ 실행취소로 되돌릴 수 있습니다)'))return;
       const {data:full,error:fe}=await sb.from('trip_snapshots').select('data').eq('id',r.id).single();
-      if(fe||!full||!full.data){ toast('복원 실패','#e63946'); return; }
+      const restoredResult=full&&validateTripPayload(full.data);
+      const restored=restoredResult&&restoredResult.ok&&restoredResult.value;
+      if(fe||!restored){ toast('손상된 버전이라 복원하지 않았습니다','#e63946'); return; }
       const idx=store.trips.findIndex(t=>t.id===store.activeId);
       document.getElementById('tripModalBg').classList.remove('show');
-      commit(()=>{ if(idx>=0) store.trips[idx]=full.data; activeDay=0; }, {fit:fitEntry}); toast('복원되었습니다 (↩️로 되돌리기 가능)');
+      commit(()=>{ if(idx>=0) store.trips[idx]=restored; activeDay=0; }, {fit:fitEntry}); toast('복원되었습니다 (↩️로 되돌리기 가능)');
     };
     row.appendChild(btn); box.appendChild(row);
   });
 }
-async function cloudDelete(clientId){
-  unmarkSynced(clientId);   // 삭제한 여행은 '동기화됨' 기록에서도 제거(부활 방지)
-  if(!sb || !user) return;
-  try{ await sb.from('trips').delete().eq('client_id', clientId); }catch(e){}
+function cloudDelete(clientId,deletedTrip){
+  const op=uid()+Date.now();
+  TC_SYNC.beginDelete(syncMeta,clientId,op); persistSyncMeta();
+  if(sb&&user) performCloudDelete(clientId,op,deletedTrip);
 }
-// 로그인 직후: 클라우드를 당겨오고, 한 번도 동기화 안 된 신규 로컬 여행만 업로드해 보존.
-// (예전엔 클라우드에 없는 로컬 여행을 무조건 올려서, 다른 기기서 지운 여행이 스테일 로컬본으로 되살아났음)
+async function performCloudDelete(clientId,op,deletedTrip){
+  const entry=syncEntry(clientId);
+  try{
+    const row=await rpcRow('tombstone_trip',{p_client_id:clientId,p_expected_revision:entry.revision,p_force:false});
+    if(row&&row.conflict){
+      entry.revision=Number(row.revision)||entry.revision; entry.status='conflict'; persistSyncMeta();
+      enqueueSyncConflict({kind:row.deleted_at?'remote-deleted':'changed-both',local:deletedTrip||null,remote:row.data||null,revision:entry.revision,deleted_at:row.deleted_at||null});
+      return;
+    }
+    const result=TC_SYNC.finishDelete(syncMeta,clientId,op,Number(row&&row.revision)||entry.revision||1); persistSyncMeta();
+    if(result.resync){ const restored=store.trips.find(t=>t.id===clientId); if(restored) syncTripCloud(restored); }
+  }catch(e){ reportOperationalError('cloud.delete',e); entry.status='delete-error'; entry.op=op; persistSyncMeta(); toast('삭제 동기화 실패 — 재시도가 필요합니다','#e63946',{label:'재시도',fn:()=>performCloudDelete(clientId,op,deletedTrip)}); }
+}
+function reconcileUndoDeletes(){
+  for(const t of store.trips){
+    const entry=syncMeta[t.id];
+    if(entry&&['delete-pending','delete-error','tombstoned'].includes(entry.status)){
+      TC_SYNC.undoDelete(syncMeta,t.id);
+      if(sb&&user) syncTripCloud(t);
+    }
+  }
+  persistSyncMeta();
+}
+
+function enqueueSyncConflict(conflict){ syncConflicts.push(conflict); if(!currentSyncConflict) showNextSyncConflict(); }
+function showNextSyncConflict(){
+  currentSyncConflict=syncConflicts.shift()||null;
+  if(!currentSyncConflict){ document.getElementById('syncConflictBg').classList.remove('show'); return; }
+  const c=currentSyncConflict, name=(c.local&&c.local.name)||(c.remote&&c.remote.name)||'여행';
+  document.getElementById('syncConflictText').textContent=`“${name}”이 다른 기기에서도 변경되었습니다. 어느 버전을 보존할지 선택하세요.`;
+  document.getElementById('syncConflictBg').classList.add('show');
+}
+function replaceWithRemote(c){
+  const idx=store.trips.findIndex(t=>t.id===(c.local&&c.local.id));
+  const remoteResult=c.remote&&validateTripPayload(c.remote);
+  const remote=remoteResult&&remoteResult.ok&&remoteResult.value;
+  if(c.remote&&!remote){ reportOperationalError('cloud.conflict.invalid',new Error('validation')); toast('클라우드 데이터가 손상되어 적용하지 않았습니다','#e63946'); return false; }
+  if(idx>=0){ if(remote&&!c.deleted_at) store.trips[idx]=remote; else store.trips.splice(idx,1); }
+  if(remote&&idx<0&&!c.deleted_at) store.trips.push(remote);
+  if(!store.trips.length) store.trips=[{id:uid(),name:'새 여행',start:'',days:[{title:'',drive:'',note:'',spots:[]}]}];
+  if(!store.trips.find(t=>t.id===store.activeId)) store.activeId=store.trips[0].id;
+  if(c.local) syncMeta[c.local.id]={revision:c.revision,status:c.deleted_at?'tombstoned':'clean',op:''};
+  persistSyncMeta(); suppressCloudOnce=true; activeDay=0; render(); return true;
+}
+document.getElementById('syncUseCloud').onclick=()=>{ if(!replaceWithRemote(currentSyncConflict)) return; currentSyncConflict=null; showNextSyncConflict(); };
+document.getElementById('syncUseDevice').onclick=()=>{ const c=currentSyncConflict; currentSyncConflict=null; document.getElementById('syncConflictBg').classList.remove('show'); if(c&&c.local) syncTripCloud(c.local,{force:true}); showNextSyncConflict(); };
+document.getElementById('syncKeepCopy').onclick=()=>{
+  const c=currentSyncConflict; if(!c||!c.local) return;
+  const copy=JSON.parse(JSON.stringify(c.local)); copy.id=uid(); copy.name=(copy.name||'여행')+' (충돌 복사본)';
+  if(!replaceWithRemote(c)) return; store.trips.push(copy); store.activeId=copy.id; suppressCloudOnce=true; render(); syncTripCloud(copy);
+  currentSyncConflict=null; showNextSyncConflict();
+};
+
+// 로그인 직후: 서버 revision과 로컬이 읽은 revision을 비교해 안전한 변경만 자동 병합한다.
 async function syncOnLogin(){
   try{
-    const {data:rows,error}=await sb.from('trips').select('client_id,data');
+    const {data:rows,error}=await sb.from('trips').select('client_id,data,revision,deleted_at,updated_at');
     if(error) throw error;
-    const cloud=new Map((rows||[]).map(r=>[r.client_id, r.data]));
-    cloud.forEach((_v,id)=>markSynced(id));   // 클라우드에 있는 건 '동기화됨'으로 기록
-    for(const t of store.trips){
-      if(cloud.has(t.id)) continue;
-      if(syncedIds.has(t.id)){ unmarkSynced(t.id); continue; }   // 예전엔 클라우드에 있었는데 지금 없음 = 다른 기기서 삭제 → 부활 금지(로컬에서도 제거)
-      if(t.id==='spain2026') continue;                           // 데모 시드는 클라우드로 올리지 않음(계정 오염 방지)
-      // 한 번도 동기화된 적 없는 진짜 신규 로컬 여행만 업로드
-      await sb.from('trips').upsert({user_id:user.id, client_id:t.id, data:t, updated_at:new Date().toISOString()},{onConflict:'user_id,client_id'});
-      cloud.set(t.id, t); markSynced(t.id);
-    }
-    const trips=[...cloud.values()].map(t=>normalizeTrip(t)).filter(Boolean);   // 클라우드 유입도 정규화·검증
+    const local=store.trips.filter(t=>t.id!=='spain2026'||(rows||[]).some(r=>r.client_id===t.id));
+    const merged=TC_SYNC.mergeForLogin(local,rows||[],syncMeta);
+    syncMeta=merged.meta; persistSyncMeta();
+    const checked=merged.trips.map(t=>validateTripPayload(t));
+    if(checked.some(result=>!result.ok)) throw new Error('invalid cloud payload');
+    const trips=checked.map(result=>result.ok&&result.value);
     if(trips.length){
       store.trips=trips;
       if(!trips.find(t=>t.id===store.activeId)) store.activeId=trips[0].id;
     }
     localStorage.setItem(LS_KEY, JSON.stringify(store));
     activeDay=0; render(); fitAll();
-    toast(`클라우드 동기화 완료 · 여행 ${trips.length}개`);
-  }catch(e){ toast('클라우드 동기화 실패 — 로컬로 계속 사용','#e63946'); }
+    for(const c of merged.conflicts) enqueueSyncConflict(c);
+    for(const action of merged.actions) if(action.trip.id!=='spain2026') await syncTripCloud(action.trip,{force:action.force});
+    await flushPendingSync();
+    toast(merged.conflicts.length?`동기화 충돌 ${merged.conflicts.length}건 — 버전을 선택해 주세요`:`클라우드 동기화 완료 · 여행 ${trips.length}개`,merged.conflicts.length?'#e09b20':undefined);
+  }catch(e){ reportOperationalError('cloud.login-sync',e); toast('클라우드 동기화 실패 — 로컬로 계속 사용','#e63946'); }
 }
 // 로그인 모달 (이메일 + 비밀번호)
 document.getElementById('authBtn').onclick=()=>{
@@ -2246,6 +2326,71 @@ document.getElementById('authSignup').onclick=async()=>{
 document.getElementById('authPass').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('authLogin').click();});
 updateAuthUI();
 
+document.getElementById('tripPickerBtn').onclick=()=>document.getElementById('tripListBtn').click();
+function dismissOnboarding(){ document.getElementById('onboarding').hidden=true; try{localStorage.setItem(ONBOARD_KEY,'1');}catch(_){} }
+document.getElementById('onboardSample').onclick=()=>{ dismissOnboarding(); fitEntry(); };
+document.getElementById('onboardNew').onclick=()=>{ dismissOnboarding(); createNewTrip(false); };
+document.getElementById('onboardPaste').onclick=()=>{ dismissOnboarding(); document.getElementById('pasteBtn').click(); document.getElementById('pasteTarget').value='new'; };
+document.getElementById('onboardLogin').onclick=()=>{ dismissOnboarding(); document.getElementById('authBtn').click(); };
+
+// ───────────────── 키보드·보조기술 접근성 ─────────────────
+function initAccessibility(){
+  const returnFocus=new WeakMap();
+  const focusable='button:not([disabled]),[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+  function enhance(root){
+    const nodes=[];
+    if(root.nodeType===1) nodes.push(root);
+    if(root.querySelectorAll) nodes.push(...root.querySelectorAll('.modalBg,[onclick],button[title],.iconb,.legModeBtn,.arrowBtn'));
+    nodes.forEach(el=>{
+      if(el.classList&&el.classList.contains('modalBg')){
+        const modal=el.querySelector('.modal'); if(!modal) return;
+        modal.setAttribute('role','dialog'); modal.setAttribute('aria-modal','true');
+        const title=modal.querySelector('h1,h2,h3');
+        if(title){ if(!title.id) title.id=el.id+'Title'; modal.setAttribute('aria-labelledby',title.id); }
+        el.setAttribute('aria-hidden',el.classList.contains('show')?'false':'true');
+      }else if(el.matches&&el.matches('button')&&el.title&&!el.getAttribute('aria-label')){
+        el.setAttribute('aria-label',el.title);
+      }else if(el.hasAttribute&&el.hasAttribute('onclick')&&!el.matches('button,a,input,select,textarea')){
+        el.setAttribute('role','button'); if(!el.hasAttribute('tabindex')) el.tabIndex=0;
+        if(!el.getAttribute('aria-label')&&el.title) el.setAttribute('aria-label',el.title);
+      }
+    });
+  }
+  enhance(document);
+  document.getElementById('toast').setAttribute('role','status');
+  document.getElementById('toast').setAttribute('aria-live','polite');
+  new MutationObserver(changes=>changes.forEach(change=>{
+    if(change.type==='childList') change.addedNodes.forEach(enhance);
+    if(change.type==='attributes'){
+      const bg=change.target; enhance(bg);
+      if(bg.classList.contains('show')){
+        if(!returnFocus.has(bg)){
+          const active=document.activeElement;
+          returnFocus.set(bg,active&&active.closest&&active.closest('#hdrMenu')?document.getElementById('moreBtn'):active);
+        }
+        setTimeout(()=>{ const target=bg.querySelector('[autofocus],input:not([type="hidden"]),textarea,select,button:not([disabled]),[href]'); if(target) target.focus(); },0);
+      }else{
+        const previous=returnFocus.get(bg); returnFocus.delete(bg);
+        if(previous&&previous.isConnected) setTimeout(()=>previous.focus(),0);
+      }
+    }
+  })).observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['class']});
+  document.addEventListener('keydown',e=>{
+    const target=e.target;
+    if((e.key==='Enter'||e.key===' ')&&target.matches('[role="button"]:not(button)')){ e.preventDefault(); target.click(); return; }
+    const bg=document.querySelector('.modalBg.show'); if(!bg) return;
+    if(e.key==='Escape'&&bg.id!=='syncConflictBg'){
+      e.preventDefault(); const close=bg.querySelector('[id$="Cancel"],[id$="Close"]'); if(close) close.click(); else bg.classList.remove('show'); return;
+    }
+    if(e.key!=='Tab') return;
+    const items=Array.from(bg.querySelectorAll(focusable)); if(!items.length){ e.preventDefault(); return; }
+    const first=items[0],last=items[items.length-1];
+    if(e.shiftKey&&document.activeElement===first){ e.preventDefault(); last.focus(); }
+    else if(!e.shiftKey&&document.activeElement===last){ e.preventDefault(); first.focus(); }
+  });
+}
+initAccessibility();
+
 // ───────────────── PWA ─────────────────
 // 오프라인 지도 캐시는 Google Maps 약관상 불가 — SW는 앱 셸 캐시만 담당
 if('serviceWorker' in navigator){
@@ -2278,3 +2423,4 @@ if('serviceWorker' in navigator){
 
 // 시작 — 사이드바 등 DOM 먼저 렌더, 지도·초기 포커싱은 __gmapsReady에서
 render();
+if(firstVisit){ document.getElementById('onboarding').hidden=false; requestAnimationFrame(()=>document.getElementById('onboardPaste').focus()); }

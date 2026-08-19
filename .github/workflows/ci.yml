@@ -4,18 +4,46 @@ on:
   push:
     branches: [main]
 jobs:
-  test:
+  quality:
+    name: Quality
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Install test deps (jsdom for integration tests)
-        run: npm install --no-audit --no-fund
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
       - name: Syntax check
-        run: node --check app.js && node --check lib.js && node --check sw.js
-      - name: Type check (lib.js, JSDoc)
-        run: npx -y -p typescript@5.6.3 tsc -p jsconfig.json
-      - name: Unit + integration tests
-        run: node --test
+        run: npm run check:syntax
+      - name: Service worker / asset version sync
+        run: npm run check:version
+      - name: Lint focused modules
+        run: npm run lint
+      - name: Secret pattern check
+        run: npm run security:scan
+      - name: Type check (lib + sync + routing)
+        run: npm run check:types
+      - name: Unit tests
+        run: npm run test:unit
+      - name: Integration tests
+        run: npm run test:integration
+      - name: Dependency audit (high severity)
+        run: npm audit --audit-level=high
+
+  e2e:
+    name: E2E
+    needs: quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Core flows + PWA
+        run: npm run test:e2e

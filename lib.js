@@ -187,6 +187,45 @@
   /** 좌표 유효 여부 (lat/lng 유한값) @param {any} s @returns {boolean} */
   function hasCoord(s){ return !!s && s.lat!=null && s.lng!=null && isFinite(+s.lat) && isFinite(+s.lng); }
 
+  /** IANA 시간대 문자열 유효성. @param {any} value @returns {boolean} */
+  function validTimeZone(value){
+    if(typeof value!=='string'||!value||value.length>64) return false;
+    try{ new Intl.DateTimeFormat('en-US',{timeZone:value}).format(0); return true; }catch(_){ return false; }
+  }
+
+  /** @param {number} ms @param {string} timeZone @returns {{year:number,month:number,day:number,hour:number,minute:number}} */
+  function _zonedParts(ms,timeZone){
+    const parts=new Intl.DateTimeFormat('en-CA',{timeZone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date(ms));
+    /** @type {any} */ const out={};
+    parts.forEach(p=>{ if(p.type!=='literal') out[p.type]=+p.value; });
+    return {year:out.year,month:out.month,day:out.day,hour:out.hour,minute:out.minute};
+  }
+
+  /**
+   * 여행지의 현지 날짜 + 자정부터 분을 IANA 시간대 기준 UTC ISO로 변환한다. DST gap(존재하지 않는 현지시각)은 null.
+   * minutes가 1440을 넘으면 다음 날짜로 넘겨 자정 이후 일정도 보존한다.
+   * @param {string} isoDate @param {number} minutes @param {string} timeZone @returns {string|null}
+   */
+  function zonedMinutesToISOString(isoDate,minutes,timeZone){
+    const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDate||'');
+    if(!m||!isFinite(minutes)||!validTimeZone(timeZone)) return null;
+    const base=new Date(Date.UTC(+m[1],+m[2]-1,+m[3]+Math.floor(minutes/1440)));
+    if(base.getUTCFullYear()<1000) return null;
+    const minute=((Math.round(minutes)%1440)+1440)%1440;
+    const desired=Date.UTC(base.getUTCFullYear(),base.getUTCMonth(),base.getUTCDate(),Math.floor(minute/60),minute%60);
+    let guess=desired;
+    for(let i=0;i<4;i++){
+      const p=_zonedParts(guess,timeZone);
+      const shown=Date.UTC(p.year,p.month-1,p.day,p.hour,p.minute);
+      const delta=desired-shown;
+      guess+=delta;
+      if(delta===0) break;
+    }
+    const final=_zonedParts(guess,timeZone);
+    if(Date.UTC(final.year,final.month-1,final.day,final.hour,final.minute)!==desired) return null;
+    return new Date(guess).toISOString().replace(/\.000Z$/,'Z');
+  }
+
   /**
    * 일자 간 출발 기준점(단일 진실). 등록된 숙소(s.stay)가 있으면 마지막 숙소, 없으면 마지막 위치 장소.
    * 숙소 뒤에 다른 일정이 있어도 숙소를 우선한다. 좌표 있는 장소가 없으면 null.
@@ -205,7 +244,7 @@
    * spot.at(고정 도착시각)이 있으면 그 시각으로 고정하고, 이동상 자연 도착보다 이르면 conflict.
    * spot.bookAt(예약)이 도착보다 뒤면 그때까지 대기 후 활동 → 다음 출발 기준은 max(도착,예약)+체류.
    * @param {{startAt?: string, spots?: any[]}} day
-   * @param {{legMin:(a:any,b:any)=>number, startAnchor?: any}} opts legMin=두 지점 간 이동시간(분)
+    * @param {{legMin:(a:any,b:any,context?:{depart:number})=>number, startAnchor?: any}} opts legMin=두 지점 간 이동시간(분)
    * @returns {{eta:number, fixed:boolean, conflict:boolean}[]}
    */
   function computeTimeline(day, opts){
@@ -214,7 +253,7 @@
     /** @type {any} */
     let prev = (opts.startAnchor && hasCoord(opts.startAnchor)) ? opts.startAnchor : null;
     return ((day&&day.spots)||[]).map((/**@type{any}*/s)=>{
-      if(hasCoord(s) && prev) clock+=legMin(prev,s);
+      if(hasCoord(s) && prev) clock+=legMin(prev,s,{depart:clock});
       const natural=clock;
       let eta=natural, conflict=false;
       if(s.at){ eta=parseHM(s.at); conflict = eta < natural-0.5; }   // 고정 시각인데 이동상 도착이 더 늦으면 충돌
@@ -253,7 +292,12 @@
   // ── 데이터 정규화 (가져오기·공유·클라우드·로컬 유입 방어) ──
   // 알려진 필드는 안전한 타입으로 강제/기본값 지정하고 잘못된 값은 제거해 렌더 크래시를 막는다.
   // 알 수 없는 필드는 보존(데이터 손실 방지). 현재 스키마 버전.
-  const TC_SCHEMA=1;
+  const TC_SCHEMA=2;
+  const TC_LIMITS=Object.freeze({
+    jsonBytes:2*1024*1024, storeBytes:10*1024*1024, shareChars:12000,
+    trips:100, days:90, spotsPerDay:200, totalSpots:5000,
+    stringChars:10000, keyChars:100, depth:20, cost:1e12
+  });
   const _MODES=['car','taxi','transit','train','walk','bike','flight'];
   const _CURS=['KRW','USD','EUR','JPY','CNY'];
   /** @param {any} x @returns {string} */
@@ -262,6 +306,96 @@
   function _hm(t){ return /^([01]?\d|2[0-3]):[0-5]\d$/.test(_str(t))? _str(t) : undefined; }
   /** @param {any} x @returns {boolean} */
   function _fin(x){ const n=+x; return typeof n==='number' && isFinite(n); }
+
+  /** UTF-8 바이트 수. @param {string} value @returns {number} */
+  function _utf8Bytes(value){ return new TextEncoder().encode(value).length; }
+  /** @param {any} value @returns {any} */
+  function migrateTrip(value){
+    if(!value||typeof value!=='object'||Array.isArray(value)) return value;
+    const t=Object.assign({},value);
+    const from=Number.isInteger(t.schemaVersion)?t.schemaVersion:0;
+    if(from>TC_SCHEMA) return t;
+    // v2는 기존 문서를 파괴하지 않고 명시적 스키마 버전만 올린다.
+    t.schemaVersion=TC_SCHEMA;
+    return t;
+  }
+  /** @param {any} value @returns {string|null} */
+  function _shapeError(value){
+    let totalSpots=0;
+    /** @param {any} node @param {number} depth @returns {string|null} */
+    function walk(node,depth){
+      if(depth>TC_LIMITS.depth) return '데이터 중첩이 너무 깊습니다';
+      if(typeof node==='string'&&node.length>TC_LIMITS.stringChars) return '문자열이 허용 길이를 초과했습니다';
+      if(!node||typeof node!=='object') return null;
+      for(const key of Object.keys(node)){
+        if(key==='__proto__'||key==='prototype'||key==='constructor') return '위험한 객체 키가 포함되어 있습니다';
+        if(key.length>TC_LIMITS.keyChars) return '객체 키가 너무 깁니다';
+        const err=walk(node[key],depth+1); if(err) return err;
+      }
+      return null;
+    }
+    const generic=walk(value,0); if(generic) return generic;
+    if(!value||typeof value!=='object'||Array.isArray(value)) return '여행 객체가 아닙니다';
+    if(Number.isInteger(value.schemaVersion)&&value.schemaVersion>TC_SCHEMA) return '더 새로운 앱 버전에서 만든 여행입니다';
+    if(!Array.isArray(value.days)||!value.days.length) return '일정이 없습니다';
+    if(value.days.length>TC_LIMITS.days) return `일정은 ${TC_LIMITS.days}일까지 허용됩니다`;
+    for(const day of value.days){
+      if(!day||typeof day!=='object'||Array.isArray(day)) return '일정 형식이 올바르지 않습니다';
+      if(!Array.isArray(day.spots)) return '장소 목록 형식이 올바르지 않습니다';
+      if(day.spots.length>TC_LIMITS.spotsPerDay) return `하루 장소는 ${TC_LIMITS.spotsPerDay}곳까지 허용됩니다`;
+      totalSpots+=day.spots.length;
+      for(const spot of day.spots){
+        if(!spot||typeof spot!=='object'||Array.isArray(spot)) return '장소 형식이 올바르지 않습니다';
+        const hasLat=spot.lat!=null, hasLng=spot.lng!=null;
+        if(hasLat!==hasLng) return '위도와 경도는 함께 입력해야 합니다';
+        if(hasLat&&(!_fin(spot.lat)||!_fin(spot.lng)||+spot.lat < -90||+spot.lat > 90||+spot.lng < -180||+spot.lng > 180)) return '좌표 범위가 올바르지 않습니다';
+        for(const field of ['at','bookAt']) if(spot[field]!=null&&spot[field]!==''&&_hm(spot[field])===undefined) return '시각은 HH:MM 형식이어야 합니다';
+        if(spot.cost!=null&&(!_fin(spot.cost)||+spot.cost<0||+spot.cost>TC_LIMITS.cost)) return '비용 범위가 올바르지 않습니다';
+        if(spot.bookUrl!=null&&spot.bookUrl!==''){
+          if(typeof spot.bookUrl!=='string') return '예약 URL 형식이 올바르지 않습니다';
+          try{ if(!/^https?:$/.test(new URL(spot.bookUrl).protocol)) return '예약 URL은 http(s)만 허용됩니다'; }
+          catch(_){ return '예약 URL 형식이 올바르지 않습니다'; }
+        }
+      }
+    }
+    if(totalSpots>TC_LIMITS.totalSpots) return `전체 장소는 ${TC_LIMITS.totalSpots}곳까지 허용됩니다`;
+    return null;
+  }
+  /**
+   * 외부 여행 객체를 크기·구조·스키마 검증 후 정규화한다. 알 수 없는 안전한 필드는 보존한다.
+   * @param {any} value @param {{maxBytes?:number}=} options
+   * @returns {{ok:true,value:any}|{ok:false,error:string}}
+   */
+  function validateTripPayload(value,options){
+    let serialized='';
+    try{ serialized=JSON.stringify(value); }catch(_){ return {ok:false,error:'JSON으로 표현할 수 없는 데이터입니다'}; }
+    if(!serialized) return {ok:false,error:'비어 있는 데이터입니다'};
+    const max=(options&&options.maxBytes)||TC_LIMITS.jsonBytes;
+    if(_utf8Bytes(serialized)>max) return {ok:false,error:'여행 데이터가 허용 크기를 초과했습니다'};
+    const error=_shapeError(value); if(error) return {ok:false,error};
+    const migrated=migrateTrip(value);
+    const normalized=normalizeTrip(migrated);
+    return normalized?{ok:true,value:normalized}:{ok:false,error:'여행 데이터를 복구할 수 없습니다'};
+  }
+  /** @param {string} text @returns {{ok:true,value:any}|{ok:false,error:string}} */
+  function parseTripPayload(text){
+    if(typeof text!=='string'||_utf8Bytes(text)>TC_LIMITS.jsonBytes) return {ok:false,error:'여행 파일이 허용 크기를 초과했습니다'};
+    try{ return validateTripPayload(JSON.parse(text)); }catch(_){ return {ok:false,error:'JSON 형식이 올바르지 않습니다'}; }
+  }
+  /** @param {string|null} text @returns {{ok:true,value:any}|{ok:false,error:string}} */
+  function parseStorePayload(text){
+    if(!text) return {ok:false,error:'저장 데이터가 없습니다'};
+    if(_utf8Bytes(text)>TC_LIMITS.storeBytes) return {ok:false,error:'저장 데이터가 허용 크기를 초과했습니다'};
+    try{
+      const raw=JSON.parse(text);
+      if(!raw||typeof raw!=='object'||!Array.isArray(raw.trips)||!raw.trips.length||raw.trips.length>TC_LIMITS.trips) return {ok:false,error:'저장소 형식이 올바르지 않습니다'};
+      const out=Object.assign({},raw), trips=[];
+      for(const trip of raw.trips){ const result=validateTripPayload(trip); if(!result.ok) return result; trips.push(result.value); }
+      out.trips=trips;
+      if(typeof out.activeId!=='string'||!trips.some(t=>t.id===out.activeId)) out.activeId=trips[0].id;
+      return {ok:true,value:out};
+    }catch(_){ return {ok:false,error:'저장 JSON 형식이 올바르지 않습니다'}; }
+  }
 
   /** @param {any} s @returns {any} */
   function normalizeSpot(s){
@@ -289,6 +423,7 @@
     d.spots = Array.isArray(d.spots)? d.spots.map(normalizeSpot) : [];
     if(_hm(d.startAt)===undefined) delete d.startAt;                        // parseHM이 없으면 09:00 기본
     if(d.startPolicy!=null && d.startPolicy!=='none') delete d.startPolicy;  // 알 수 없는 정책 → 기본(previous)
+    if(d.timeZone!=null && !validTimeZone(d.timeZone)) delete d.timeZone;
     if(d.flight!=null){
       if(typeof d.flight!=='object'){ delete d.flight; }
       else { const f=d.flight; f.code=_str(f.code); f.dep=_str(f.dep); f.arr=_str(f.arr);
@@ -307,12 +442,13 @@
     if(!t.days.length) return null;
     t.name = _str(t.name) || '여행';
     t.start = /^\d{4}-\d{2}-\d{2}$/.test(_str(t.start))? t.start : '';
+    if(t.timeZone!=null && !validTimeZone(t.timeZone)) delete t.timeZone;
     if(t.colorBy!=null && t.colorBy!=='city' && t.colorBy!=='day') delete t.colorBy;
     t.schemaVersion = TC_SCHEMA;
     return t;
   }
 
-  const TC={toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,inKorea,simplifyName,parseDirect,parseMoney,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,dayAnchor,computeTimeline,dayStartAnchor,normalizeTrip,TC_SCHEMA};
+  const TC={toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,inKorea,simplifyName,parseDirect,parseMoney,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,computeTimeline,dayStartAnchor,normalizeTrip,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
   if(typeof module!=='undefined' && module.exports){ module.exports=TC; }   // Node (테스트)
   else { const r=/**@type {any}*/(root); for(const k in TC) r[k]=/**@type {any}*/(TC)[k]; }   // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);

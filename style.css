@@ -1,22 +1,33 @@
+  :root{--primary:#e53935;--primary-dark:#c62828;--ink:#111827;--muted:#4b5563;--subtle:#6b7280;--border:#e5e7eb;--surface:#fff;--surface-2:#f8fafc;--header:#fff;--focus:#2563eb;--shadow:0 14px 34px rgba(17,24,39,.14);--city-1:#ef5350;--city-2:#f59e0b;--city-3:#4caf72;--city-4:#3b82f6;--city-5:#ec4899}
   *{margin:0;padding:0;box-sizing:border-box}
-  body{font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;height:100dvh;display:flex;flex-direction:column;background:#1a1a2e;color:#e8e8f0}
+  body{font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;height:100dvh;display:flex;flex-direction:column;background:var(--surface-2);color:var(--ink);font-size:14px}
+  body.theme-dark{--ink:#f8fafc;--muted:#cbd5e1;--subtle:#94a3b8;--border:#334155;--surface:#111827;--surface-2:#0f172a;--header:#111827;--shadow:0 14px 34px rgba(0,0,0,.42)}
+  :focus-visible{outline:3px solid color-mix(in srgb,var(--focus) 70%,transparent);outline-offset:2px}
+  .srOnly{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
   button{font-family:inherit;cursor:pointer}
-  header{background:#16213e;padding:8px 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;z-index:1001}
-  header h1{font-size:16px;font-weight:800;color:#fff;margin-right:4px}
-  select,input,textarea{font-family:inherit;background:#0f1830;color:#e8e8f0;border:1px solid #2a3457;border-radius:8px;padding:6px 9px;font-size:13px}
-  .btn{border:none;border-radius:8px;padding:6px 12px;font-size:12.5px;background:#2a3457;color:#cdd6f4;transition:.15s}
-  .btn:hover{filter:brightness(1.3)}
-  .btn.primary{background:#e63946;color:#fff;font-weight:700}
-  .btn.ghost{background:transparent;border:1px solid #2a3457}
+  header{background:var(--header);padding:9px 14px;display:flex;align-items:center;gap:8px;flex-wrap:nowrap;z-index:1001;border-bottom:1px solid var(--border);position:relative}
+  header h1{font-size:16px;font-weight:800;color:var(--ink);margin-right:4px}
+  select,input,textarea{font-family:inherit;background:var(--surface);color:var(--ink);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px}
+  .btn{border:1px solid var(--border);border-radius:8px;padding:8px 13px;font-size:12.5px;background:var(--surface);color:var(--ink);transition:.15s;min-height:36px}
+  .btn:hover{background:var(--surface-2);border-color:#cbd5e1}
+  .btn.primary{background:var(--primary);border-color:var(--primary);color:#fff;font-weight:700}
+  .btn.primary:hover{background:var(--primary-dark)}
+  .btn.ghost{background:transparent;border:1px solid var(--border)}
+  .tripPicker{border:0;background:transparent;color:var(--ink);font-weight:800;font-size:14px;display:flex;align-items:center;gap:7px;padding:8px;border-radius:8px}
+  .tripPicker:hover{background:var(--surface-2)}
   .hdrSpacer{flex:1}
-  #hdrMenu{display:contents}   /* 데스크톱: 버튼이 헤더에 그대로 나열 */
-  #moreBtn{display:none}
-  #filterbar{background:#16213e;padding:0 12px 8px;display:flex;gap:5px;flex-wrap:wrap;align-items:center;z-index:1001}
-  .chip{border:none;border-radius:14px;padding:4px 11px;font-size:12px;background:#2a3457;color:#cdd6f4}
-  .chip.active{background:#e63946;color:#fff;font-weight:700}
+  #hdrMenu{display:none;position:absolute;top:calc(100% + 4px);right:8px;flex-direction:column;gap:5px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:8px;min-width:202px;box-shadow:var(--shadow);z-index:2200}
+  #hdrMenu.open{display:flex}#hdrMenu .btn{display:flex;align-items:center;width:100%;padding:9px 11px;border-radius:9px}#hdrMenu #verLabel{color:var(--subtle);border-color:var(--border)}
+  #pasteMenuBtn{display:none}
+  #moreBtn{display:inline-flex;align-items:center;justify-content:center}
+  #filterbar{background:var(--header);padding:4px 14px 10px;display:flex;gap:5px;flex-wrap:wrap;align-items:center;z-index:1001;border-bottom:1px solid var(--border)}
+  .chip{border:1px solid transparent;border-radius:14px;padding:5px 11px;font-size:12px;background:transparent;color:var(--muted);min-height:30px}
+  .chip:hover{background:var(--surface-2)}
+  .chip.active{background:#fee2e2;color:var(--primary-dark);font-weight:700}
+  .viewMenu{position:relative;margin-left:auto}.viewMenu>summary{list-style:none;cursor:pointer;font-size:12px;color:var(--muted);padding:6px 9px;border-radius:8px}.viewMenu>summary::-webkit-details-marker{display:none}.viewMenu[open]>summary{background:var(--surface-2)}.viewMenuPanel{position:absolute;right:0;top:calc(100% + 6px);width:210px;background:var(--surface);border:1px solid var(--border);box-shadow:var(--shadow);border-radius:12px;padding:8px;display:grid;gap:5px;z-index:1300}.viewMenuPanel .chip{text-align:left;border-radius:8px}.viewMenuLabel{font-size:10px;color:var(--subtle);padding:5px 8px 1px}.cityFocus{display:flex;gap:5px;flex-wrap:wrap;padding:2px 6px 7px}.cityFocus .chip{border:1px solid var(--border)}
   .citychip.active{background:var(--c);color:#fff}
   #main{flex:1;display:flex;overflow:hidden;position:relative}
-  #sidebar{width:340px;min-width:340px;background:#16213e;overflow-y:auto;padding:10px}
+  #sidebar{width:360px;min-width:360px;background:var(--surface-2);overflow-y:auto;padding:10px;border-right:1px solid var(--border)}
   #map,#kmap{flex:1}
   body.playing #sidebar{display:none}   /* 여행 재생 중엔 사이드바 접어 지도를 크게 */
   body.playing #legend{display:none}    /* 재생 중엔 범례(일자·도시색 레이어) 숨김 — 지도 가림 방지 */
@@ -24,13 +35,13 @@
   .kpopup{background:#1f2b4d;border-radius:12px;padding:12px 26px 12px 14px;position:relative;box-shadow:0 4px 16px rgba(0,0,0,.45)}
   .kpopup .kclose{position:absolute;top:6px;right:7px;background:none;border:none;color:#8892b0;font-size:13px;cursor:pointer}
   .kpopup .kclose:hover{color:#fff}
-  .dayCard{background:#1f2b4d;border-radius:10px;margin-bottom:8px}
+  .dayCard{background:var(--surface);border:1px solid var(--border);border-radius:12px;margin-bottom:10px;box-shadow:0 2px 8px rgba(17,24,39,.04)}
   .dayCard.dim{opacity:.4}
-  .dayHead{padding:8px 12px;font-size:13px;font-weight:700;display:flex;justify-content:space-between;align-items:center;cursor:pointer;border-left:4px solid var(--c,#556);border-radius:10px 0 0 0}
-  .dayHead .date{color:#9aa5c4;font-weight:400;font-size:11.5px}
+  .dayHead{padding:8px 12px;font-size:14px;font-weight:700;display:flex;justify-content:space-between;align-items:center;cursor:pointer;border-left:4px solid var(--c,#556);border-radius:10px 0 0 0}
+  .dayHead .date{color:var(--subtle);font-weight:400;font-size:11.5px}
   .dayHead .tools{display:flex;gap:4px}
-  .iconb{background:none;border:none;color:#8892b0;font-size:13px;padding:2px 4px;border-radius:5px}
-  .iconb:hover{color:#fff;background:#2a3457}
+  .iconb{background:none;border:none;color:var(--muted);font-size:13px;padding:8px;border-radius:7px;min-width:36px;min-height:36px}
+  .iconb:hover{color:var(--ink);background:var(--surface-2)}
   .dayBody{padding:2px 12px 9px}
   .drive{font-size:11.5px;color:#f6bd60;padding:2px 0 4px 2px}
   .dist{font-size:11px;color:#8aa0c8;padding:1px 0 3px 2px}
@@ -40,7 +51,7 @@
   .legModeBtn:hover{opacity:1;background:#2a3457}
   .legModeBtn.set{opacity:1;border-color:#3d4a7a;background:#232f57}
   .note{font-size:11px;color:#9aa5c4;padding:3px 0 0 2px;white-space:pre-wrap}
-  .spot{font-size:12.5px;padding:3px 0 3px 14px;position:relative;display:flex;align-items:center;gap:4px}
+  .spot{font-size:13.5px;padding:3px 0 3px 14px;position:relative;display:flex;align-items:center;gap:4px}
   .spot:before{content:'';position:absolute;left:2px;top:10px;width:7px;height:7px;border-radius:50%;background:var(--c,#888)}
   .spot .nm{cursor:pointer;flex:1}
   .spot .nm:hover{color:#fff;text-decoration:underline}
@@ -49,6 +60,7 @@
   .spot .tools{display:flex;gap:2px;opacity:.5;transition:opacity .15s}
   .spot:hover .tools{opacity:1}
   .spot{cursor:grab}
+  .actionMenu{position:relative;margin-left:auto}.actionMenu>summary{list-style:none;cursor:pointer;color:var(--muted);font-size:20px;line-height:1;width:40px;height:40px;display:grid;place-items:center;border-radius:8px}.actionMenu>summary::-webkit-details-marker{display:none}.actionMenu>summary:hover,.actionMenu[open]>summary{background:var(--surface-2)}.actionMenuPanel{position:absolute;right:0;top:38px;z-index:20;min-width:120px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:5px;box-shadow:var(--shadow);display:grid}.actionMenuPanel .iconb{width:100%;display:flex;align-items:center;gap:8px;white-space:nowrap;font-size:12px}.dayHead .actionMenu{margin-left:2px}
   .spot.carry{cursor:default;opacity:.72}   /* 전날 숙소 가상 이월 항목 — 드래그/편집 불가, 흐리게. 이름 탭하면 지도 포커스 */
   .dayHead{cursor:grab}
   .dragHandle{color:#6b76a0;font-size:12px;cursor:grab;padding:0 3px;user-select:none}
@@ -59,7 +71,7 @@
   .spotList:empty{min-height:26px;border:1px dashed #2a3457;border-radius:7px;margin-bottom:4px}
   .addSpot{font-size:11.5px;color:#7ea6e0;background:none;border:1px dashed #2a3457;border-radius:7px;padding:3px 10px;margin-top:5px}
   #addDayBtn{width:100%;margin-top:2px;padding:8px;font-size:12.5px}
-  .legend{position:absolute;bottom:20px;right:10px;background:rgba(22,33,62,.92);padding:8px 12px;border-radius:10px;font-size:11px;z-index:1000;line-height:1.8;max-height:40vh;overflow-y:auto}
+  .legend{position:absolute;bottom:20px;right:10px;background:color-mix(in srgb,var(--surface) 92%,transparent);color:var(--ink);border:1px solid var(--border);padding:8px 12px;border-radius:10px;font-size:11px;z-index:1000;line-height:1.8;max-height:40vh;overflow-y:auto;box-shadow:0 6px 18px rgba(17,24,39,.12)}
   .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px}
   .num-icon{display:flex;align-items:center;justify-content:center;border-radius:50%;color:#fff;font-weight:700;font-size:12px;border:2.5px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.5);animation:pinIn .28s cubic-bezier(.34,1.4,.64,1) both}
   @keyframes pinIn{from{transform:scale(.4);opacity:0}to{transform:scale(1);opacity:1}}
@@ -74,19 +86,35 @@
   .popupC .badge{display:inline-block;font-size:10.5px;color:#fff;border-radius:8px;padding:1px 8px;margin-bottom:4px}
   .popupC a{color:#7eb3ff;font-size:12px}
   /* modal */
-  .modalBg{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:2000}
+  .modalBg{position:fixed;inset:0;background:rgba(17,24,39,.48);display:none;align-items:center;justify-content:center;z-index:2000;padding:16px}
   .modalBg.show{display:flex}
-  .modal{background:#1f2b4d;border-radius:14px;padding:18px;width:min(420px,92vw);max-height:88dvh;overflow-y:auto}
-  .modal h2{font-size:15px;margin-bottom:12px}
-  .modal label{display:block;font-size:11.5px;color:#9aa5c4;margin:9px 0 3px}
+  @media(min-width:761px){
+    #tripListBg{background:transparent;align-items:flex-start;justify-content:flex-start;padding:0}
+    #tripListBg .modal{position:absolute;top:58px;left:88px;width:360px;max-height:calc(100dvh - 74px);box-shadow:0 16px 40px rgba(17,24,39,.2)}
+  }
+  .modal{background:var(--surface);border-radius:16px;padding:20px;width:min(440px,94vw);max-height:88dvh;overflow-y:auto;box-shadow:var(--shadow)}
+  .modal h2{font-size:18px;margin-bottom:12px}
+  .modal label{display:block;font-size:12px;color:var(--muted);margin:9px 0 4px}
   .modal input[type=text],.modal input[type=date],.modal select,.modal textarea{width:100%}
   .modal textarea{min-height:60px;resize:vertical}
   .modal .row{display:flex;gap:8px;margin-top:14px;justify-content:flex-end}
+  .syncChoices{display:grid;gap:8px;margin-top:16px}.syncChoices .btn{width:100%;justify-content:center}
   .modal .chkrow{display:flex;align-items:center;gap:6px;margin-top:9px;font-size:12.5px}
   .searchRes{margin-top:6px;max-height:170px;overflow-y:auto}
   .searchRes div{font-size:12px;padding:6px 8px;border-radius:7px;cursor:pointer;color:#cdd6f4}
   .searchRes div:hover{background:#2a3457}
-  .hint{font-size:11px;color:#8892b0;margin-top:4px}
+  .hint{font-size:11px;color:var(--subtle);margin-top:4px}
+  .eyebrow{font-size:10px!important;font-weight:800;letter-spacing:.14em;color:var(--primary)!important;text-transform:uppercase}
+  .modalTitleRow{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px}.modalTitleRow h2{margin:2px 0 8px}.stepBadge{font-size:11px;color:var(--muted);background:var(--surface-2);border:1px solid var(--border);padding:4px 8px;border-radius:12px}
+  .fieldRow{display:flex;gap:7px}.fieldRow>input{flex:1;min-width:0}.compactSelect{width:auto!important}
+  .basicGrid,.advancedGrid{display:grid;grid-template-columns:1fr 1fr;gap:2px 10px}.basicGrid>div,.advancedGrid>div{min-width:0}.basicGrid .wide,.advancedGrid .wide{grid-column:1/-1}
+  .advancedPanel{border-top:1px solid var(--border);margin-top:14px;padding-top:4px}.advancedPanel summary{list-style:none;cursor:pointer;color:var(--focus);font-size:12px;font-weight:700;padding:10px 0}.advancedPanel summary::-webkit-details-marker{display:none}.advancedPanel summary span{float:right;transition:transform .2s}.advancedPanel[open] summary span{transform:rotate(180deg)}
+  .optionRows{display:flex;gap:18px;flex-wrap:wrap}.optionRows .chkrow label{margin:0}.optionRows #nightsWrap{display:none;align-items:center;gap:5px;margin-left:8px}.optionRows #spotNights{width:66px}
+  .modalActions{position:sticky;bottom:-20px;background:var(--surface);padding:12px 0 2px;border-top:1px solid var(--border)}
+
+  /* 첫 진입 온보딩 */
+  .onboarding{position:fixed;inset:0;z-index:5000;background:linear-gradient(145deg,#fff 0%,#f8fafc 65%,#fee2e2 140%);display:grid;place-items:center;padding:24px}
+  .onboarding[hidden]{display:none}.onboardingCard{width:min(380px,100%);text-align:center}.brandMark{width:42px;height:42px;margin:0 auto 18px;background:var(--ink);color:#fff;border-radius:11px;display:grid;place-items:center;font-weight:900}.onboarding h1{font-size:34px;line-height:1.2;margin:8px 0 12px}.onboarding p{color:var(--muted);line-height:1.6}.onboardingActions{display:grid;gap:10px;margin:34px 0 20px}.onboardingActions .btn{min-height:48px;font-size:14px}.onboardLogin{border:0;background:transparent;color:var(--muted);padding:10px;font-size:12px}
   /* paste draft */
   .pasteToggle{display:flex;align-items:center;gap:8px;font-size:12.5px;color:#cdd6f4;margin-bottom:2px}
   .switch{position:relative;display:inline-block;width:40px;height:22px;flex:none}
@@ -99,14 +127,16 @@
   #fmtHelp summary{font-size:11.5px;color:#7ea6e0;cursor:pointer}
   #fmtHelp pre{background:#0f1830;border-radius:8px;padding:10px;font-size:11px;line-height:1.5;white-space:pre-wrap;margin-top:6px;color:#cdd6f4}
   /* travel mode */
-  #travel{position:fixed;inset:0;background:#12192e;z-index:3000;display:none;flex-direction:column;padding:16px}
+  #travel{position:fixed;inset:0;background:var(--surface-2);color:var(--ink);z-index:3000;display:none;flex-direction:column;padding:16px;max-width:560px;margin:auto;box-shadow:var(--shadow)}
   #travel.show{display:flex}
   #travel h2{font-size:17px;margin-bottom:2px}
-  #travel .sub{font-size:12px;color:#9aa5c4;margin-bottom:12px}
+  #travel .sub{font-size:12px;color:var(--subtle);margin-bottom:12px}
   #travel .list{flex:1;overflow-y:auto}
-  .tSpot{background:#1f2b4d;border-radius:12px;padding:12px 14px;margin-bottom:9px;border-left:4px solid var(--c,#556)}
+  .tSpot{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:9px;border-left:4px solid var(--c,#556)}
   .tSpot .n{font-weight:700;font-size:14.5px}
-  .tSpot .d{font-size:12px;color:#9aa5c4;margin:3px 0 7px;white-space:pre-wrap}
+  .tSpot .d{font-size:12px;color:var(--subtle);margin:3px 0 7px;white-space:pre-wrap}
+  .travelTop{display:flex;align-items:center;gap:10px;margin-bottom:12px}.travelTop strong{flex:1;text-align:center}.travelTop select{max-width:170px}.travelFocus,.travelNext{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:10px}.travelFocus{border-top:4px solid var(--primary)}.travelKicker,.travelSectionTitle{font-size:11px;color:var(--subtle);font-weight:700;margin-bottom:7px}.travelPlace{font-size:18px;font-weight:800;margin-bottom:7px}.travelFacts{font-size:12px;color:var(--muted);line-height:1.7}.travelActions{display:flex;gap:8px;margin-top:10px}.travelActions a{display:inline-block;text-decoration:none;background:var(--primary);color:#fff;padding:7px 12px;border-radius:8px;font-size:12px;font-weight:700}.travelActions a+a{background:var(--surface);color:var(--ink);border:1px solid var(--border)}.travelNext{display:grid;grid-template-columns:1fr auto;align-items:center}.travelNext strong{font-size:15px}.travelSectionTitle{margin:8px 2px}
+  #sheetHandle{display:none}
   .tSpot a{display:inline-block;font-size:12.5px;color:#fff;background:#1d6fd6;border-radius:8px;padding:5px 12px;text-decoration:none}
   #pickBanner{position:absolute;top:10px;left:50%;transform:translateX(-50%);background:#e63946;color:#fff;font-size:13px;font-weight:700;padding:7px 16px;border-radius:20px;z-index:1500;display:none}
   #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#2a9d3f;color:#fff;font-size:13px;padding:8px 18px;border-radius:20px;z-index:4000;display:none;align-items:center;gap:12px;max-width:92vw}
@@ -119,27 +149,31 @@
   #undoBtn:disabled{opacity:.35;cursor:default}
   .readonly .spot,.readonly .dayHead{cursor:default}
   @media (max-width:760px){
-    #main{flex-direction:column}
-    #sidebar{width:100%;min-width:0;max-height:44dvh;order:2}
+    #main{display:block;min-height:0}
+    #map,#kmap{position:absolute;inset:0;width:100%;height:100%}
+    #sidebar{position:fixed;left:0;right:0;bottom:0;width:100%;min-width:0;height:45dvh;max-height:none;z-index:1100;border:1px solid var(--border);border-bottom:0;border-radius:18px 18px 0 0;padding:0 10px 12px;box-shadow:0 -10px 28px rgba(17,24,39,.16);transition:height .22s ease;overscroll-behavior:contain}
+    #sidebar.dragging{transition:none;user-select:none}
+    #sheetHandle{display:flex;position:sticky;top:0;z-index:4;width:100%;height:40px;border:0;background:linear-gradient(var(--surface-2) 72%,transparent);align-items:flex-start;justify-content:center;padding-top:8px;touch-action:none}
+    #sheetHandle:before{content:'';width:42px;height:4px;border-radius:4px;background:#9ca3af}
+    #sidebar[data-snap="collapsed"]{height:15dvh}#sidebar[data-snap="half"]{height:45dvh}#sidebar[data-snap="expanded"]{height:88dvh}
     header h1{font-size:14px}
     /* iOS: 입력 글자 16px 미만이면 포커스 시 화면 자동 확대 → 16px로 방지 */
     select,input,textarea{font-size:16px}
     /* 헤더 한 줄 유지 + 부가 동작은 ☰ 드롭다운으로 */
-    header{flex-wrap:nowrap;position:relative}
     .hdrSpacer{display:none}
-    #tripSel{flex:1;min-width:0}
-    #moreBtn{display:inline-flex;align-items:center}
-    #hdrMenu{display:none;position:absolute;top:calc(100% + 4px);right:8px;flex-direction:column;gap:6px;
-      background:#1c2745;border:1px solid #2f3b60;border-radius:14px;padding:8px;min-width:192px;
-      box-shadow:0 12px 30px rgba(0,0,0,.5);z-index:2200}
-    #hdrMenu.open{display:flex}
-    #hdrMenu .btn{display:flex;align-items:center;gap:2px;width:100%;padding:10px 12px;font-size:13.5px;border-radius:9px}
+    .tripPicker{flex:1;min-width:0;justify-content:flex-start;overflow:hidden}.tripPicker span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    header>#pasteBtn{display:none}
+    #hdrMenu .btn{gap:2px;padding:10px 12px;font-size:13.5px}
+    #hdrMenu #pasteMenuBtn{display:flex}
     /* 필터바: 줄바꿈 대신 한 줄 가로 스크롤 */
     #filterbar{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding-bottom:9px}
     #filterbar::-webkit-scrollbar{display:none}
     #filterbar>*{flex:none}
     /* 범례가 사이드바를 가리지 않도록 지도 하단으로 이동 */
-    .legend{bottom:calc(44dvh + 8px);right:8px;max-height:24vh;font-size:10.5px}
+    .legend{display:none}
+    .modalBg{align-items:flex-end;padding:0}.modal{width:100%;max-width:none;border-radius:18px 18px 0 0;max-height:92dvh;padding:18px 16px}.spotModal{max-height:90dvh}.basicGrid,.advancedGrid{grid-template-columns:1fr 1fr}.modalActions{bottom:-18px}.onboarding h1{font-size:30px}
+    .dayHead,.spot{min-height:44px}.iconb{min-width:44px;min-height:44px}
+    #travel{max-width:none;padding:12px}.travelTop select{max-width:145px}
   }
 .legChip{background:rgba(22,33,62,.92);color:#f6bd60;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;border:1px solid #2a3457;white-space:nowrap;pointer-events:none}
 .eta{color:#f6bd60;font-size:10.5px;margin-right:6px;font-variant-numeric:tabular-nums;font-weight:700}

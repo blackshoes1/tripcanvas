@@ -1,4 +1,4 @@
-// app.js 통합 배선 테스트 — jsdom에 실제 index.html + lib.js + app.js를 올려 함수 배선을 검증한다.
+// app.js 통합 배선 테스트 — jsdom에 실제 index.html + lib.js + sync.js + routing.js + app.js를 올려 함수 배선을 검증한다.
 // 순수 함수 테스트가 못 잡는 'anchor vs carry' 류 배선 회귀를 자동 검출하는 것이 목적.
 'use strict';
 const test = require('node:test');
@@ -12,7 +12,7 @@ const noJsdom = JSDOM ? false : 'jsdom 미설치 (npm install 필요)';
 
 const root = path.join(__dirname, '..');
 
-// index.html에서 <script> 태그를 모두 제거하고, lib.js·app.js를 인라인으로 주입해 실행한다.
+// index.html에서 <script> 태그를 모두 제거하고, lib.js·sync.js·routing.js·app.js를 인라인으로 주입해 실행한다.
 // 외부 SDK(google/kakao/supabase/Sortable)는 미정의, 네트워크(fetch)는 거부 스텁으로 두고
 // 앱의 가드(if(window.google)…, .catch 등)가 처리하게 한다.
 function boot() {
@@ -27,6 +27,8 @@ function boot() {
     window.document.body.appendChild(s);
   };
   inject('lib.js');
+  inject('sync.js');
+  inject('routing.js');
   inject('app.js');
   return window;
 }
@@ -39,6 +41,53 @@ test('통합 부트: index.html+lib+app 무크래시 로드', { skip: noJsdom },
   const w = boot();
   ['dayContext', 'startAnchorFor', 'carryStayFor', 'desiredEngine', 'legModeOf', 'normalizeTrip', 'animPath', 'dayEtas']
     .forEach((fn) => assert.equal(w.eval(`typeof ${fn}`), 'function', `${fn} 정의됨`));
+});
+
+test('통합: 동기화 실패 상태를 보존하고 명시적 재시도로 회복한다', { skip: noJsdom }, async () => {
+  const w=boot();
+  w.eval(`user={id:'u1'}; sb={rpc:async()=>({data:null,error:{message:'offline'}})};`);
+  await w.eval(`syncTripCloud({id:'retry1',name:'R',days:[{spots:[]}]})`);
+  assert.equal(w.eval(`syncMeta.retry1.status`),'error');
+  w.eval(`clearTimeout(cloudRetryT); sb={rpc:async()=>({data:[{applied:true,conflict:false,revision:2,data:null,deleted_at:null}],error:null})};`);
+  await w.eval(`syncTripCloud({id:'retry1',name:'R',days:[{spots:[]}]})`);
+  assert.equal(w.eval(`syncMeta.retry1.status`),'clean');
+  assert.equal(w.eval(`syncMeta.retry1.revision`),2);
+  w.close();
+});
+
+test('통합: 충돌 UI는 클라우드·기기·복사본 세 선택지를 제공한다', { skip: noJsdom }, () => {
+  const w=boot();
+  assert.equal(w.document.getElementById('syncUseCloud').textContent,'클라우드본 사용');
+  assert.equal(w.document.getElementById('syncUseDevice').textContent,'이 기기본 사용');
+  assert.match(w.document.getElementById('syncKeepCopy').textContent,/복사본/);
+  w.close();
+});
+
+test('통합: 대중교통 구간은 각 구간 출발시각과 시간대로 별도 캐시된다', { skip: noJsdom },()=>{
+  const w=boot();
+  const result=w.eval(`(()=>{
+    const day={startAt:'09:00',timeZone:'Asia/Tokyo',mode:'transit',spots:[
+      {name:'A',lat:35.1,lng:139.1,bookAt:'12:00',stayMin:30},
+      {name:'B',lat:35.2,lng:139.2,stayMin:60},
+      {name:'C',lat:35.3,lng:139.3}
+    ]};
+    const tl=computeTimeline(day,{legMin:()=>30});
+    const first=legDepartMinute(day,tl,1),second=legDepartMinute(day,tl,2);
+    const w1=planDepartISO('2027-07-15',first,day.timeZone),w2=planDepartISO('2027-07-15',second,day.timeZone);
+    return {first,second,w1,w2,k1:legRequestKey(day.spots[0],day.spots[1],'transit',w1,day.timeZone),k2:legRequestKey(day.spots[1],day.spots[2],'transit',w2,day.timeZone)};
+  })()`);
+  assert.equal(result.first,750); // 예약 12:00까지 대기 + 30분 체류
+  assert.equal(result.second,840); // 12:30 출발 + 30분 이동 + 60분 체류
+  assert.notEqual(result.w1,result.w2);
+  assert.notEqual(result.k1,result.k2);
+  w.close();
+});
+
+test('통합: 시간대 없는 기존 데이터는 출발시각을 강제 추정하지 않는다', { skip: noJsdom },()=>{
+  const w=boot();
+  assert.equal(w.eval(`planDepartISO('2027-07-15',540,'')`),null);
+  assert.doesNotThrow(()=>w.eval(`dayTimeline({startAt:'09:00',spots:[{name:'A'}]},null,0)`));
+  w.close();
 });
 
 test('통합: 사이드바·이미지 ETA 동일 + 비숙소 앵커 반영 (anchor 배선 회귀 방지)', { skip: noJsdom }, () => {
