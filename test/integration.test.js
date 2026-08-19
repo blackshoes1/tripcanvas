@@ -1,4 +1,4 @@
-// app.js 통합 배선 테스트 — jsdom에 실제 index.html + lib.js + sync.js + app.js를 올려 함수 배선을 검증한다.
+// app.js 통합 배선 테스트 — jsdom에 실제 index.html + lib.js + sync.js + routing.js + app.js를 올려 함수 배선을 검증한다.
 // 순수 함수 테스트가 못 잡는 'anchor vs carry' 류 배선 회귀를 자동 검출하는 것이 목적.
 'use strict';
 const test = require('node:test');
@@ -12,7 +12,7 @@ const noJsdom = JSDOM ? false : 'jsdom 미설치 (npm install 필요)';
 
 const root = path.join(__dirname, '..');
 
-// index.html에서 <script> 태그를 모두 제거하고, lib.js·sync.js·app.js를 인라인으로 주입해 실행한다.
+// index.html에서 <script> 태그를 모두 제거하고, lib.js·sync.js·routing.js·app.js를 인라인으로 주입해 실행한다.
 // 외부 SDK(google/kakao/supabase/Sortable)는 미정의, 네트워크(fetch)는 거부 스텁으로 두고
 // 앱의 가드(if(window.google)…, .catch 등)가 처리하게 한다.
 function boot() {
@@ -28,6 +28,7 @@ function boot() {
   };
   inject('lib.js');
   inject('sync.js');
+  inject('routing.js');
   inject('app.js');
   return window;
 }

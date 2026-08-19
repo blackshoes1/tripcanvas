@@ -486,174 +486,45 @@ function flightHtml(day){
 }
 function saveLegCache(){ try{ localStorage.setItem(LEG_KEY, JSON.stringify(legCache)); }catch(e){} }
 function fmtDur(sec){ const m=Math.round(sec/60); return m<60? `${m}분` : `${Math.floor(m/60)}시간${m%60? ' '+(m%60)+'분':''}`; }
-// 좌표 배열 → 인코딩 폴리라인 (lib.js 순수 코덱 — SDK 비의존, 로드 타이밍 무관)
-function encodePts(pts){
-  if(!pts||!pts.length) return null;
-  const step=Math.max(1, Math.floor(pts.length/300));   // 최대 ~300점으로 다운샘플
-  const sampled=pts.filter((_,i)=>i%step===0); if(sampled[sampled.length-1]!==pts[pts.length-1]) sampled.push(pts[pts.length-1]);
-  return encodePolyline(sampled);
-}
-function decodePts(enc){ return enc? decodePolyline(enc) : null; }
-// 카카오내비 1회 호출 — 성공 시 {rt}, 실패 시 {code} (102 출발지·103 도착지 주변 도로 없음)
-async function kakaoTry(a,b){
-  try{
-    const r=await fetch('/api/kakao-directions',{
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({origin:{lat:+a.lat,lng:+a.lng},destination:{lat:+b.lat,lng:+b.lng}})
-    });
-    const js=await r.json().catch(()=>null);
-    if(!r.ok) return {code:(js&&Number(js.code))||-1};
-    const rt=js&&js.route;
-    if(!rt) return {code:-1};
-    if(rt.result_code!==0||!rt.summary) return {code:rt.result_code};
-    return {rt};
-  }catch(e){ return {code:-1}; }
-}
-// p 주변 반경 r(m)의 8방위 후보점 — 도로 없는 좌표(바다·산)를 인근 도로로 스냅할 때 사용
-function buildKakaoResult(rt, orig, snapped){
-  const pts=[];
-  (rt.sections||[]).forEach(sec=>(sec.roads||[]).forEach(rd=>{
-    const v=rd.vertexes||[];
-    for(let i=0;i+1<v.length;i+=2) pts.push({lat:v[i+1],lng:v[i]});
-  }));
-  if(snapped && pts.length){ pts.unshift({lat:+orig.a.lat,lng:+orig.a.lng}); pts.push({lat:+orig.b.lat,lng:+orig.b.lng}); }
-  return {sec:rt.summary.duration, m:rt.summary.distance, path:encodePts(pts),
-    taxi:(rt.summary.fare&&rt.summary.fare.taxi)||0, snapped:snapped?1:0};
-}
-// 카카오내비 경로 — 도로 없는 끝점(102/103)은 링 프로브로 인근 도로에 스냅해 재시도
-async function kakaoRoute(a,b){
-  const orig={a,b};
-  let A={lat:+a.lat,lng:+a.lng}, B={lat:+b.lat,lng:+b.lng}, snapped=false;
-  for(let attempt=0; attempt<3; attempt++){
-    const {rt,code}=await kakaoTry(A,B);
-    if(rt) return buildKakaoResult(rt, orig, snapped);
-    const fixA=code===102, fixB=code===103;
-    if(!fixA&&!fixB) return null;
-    const base=fixA?A:B;
-    let hit=null;
-    outer:
-    for(const r of [500,1000,1600,2400]){
-      for(const cand of ringPts(base,r)){
-        const t=await kakaoTry(fixA?cand:A, fixA?B:cand);
-        if(t.rt) return buildKakaoResult(t.rt, orig, true);
-        // 반대쪽 끝점 오류로 바뀌었으면 이 후보는 도로 위 — 채택하고 반대쪽을 다음 루프에서 스냅
-        if(fixA? t.code===103 : t.code===102){ hit=cand; break outer; }
-      }
-    }
-    if(!hit) return null;
-    if(fixA) A=hit; else B=hit;
-    snapped=true;
-  }
-  return null;
-}
-// 구간 라벨 — 거리 + 시간 (수단 아이콘은 옆의 탭 가능한 버튼이 표시. 자차 2km 미만은 도보 대안 시간 표기)
 function legLabel(c){
-  const km=(c.m/1000).toFixed(1), mode=c.mode||'car';
-  if(mode==='car' && c.m<2000){ const wm=Math.max(1,Math.round(c.m/75)); return `↳${km}km · 🚶${wm}분`; }
+  const km=(c.m/1000).toFixed(1),mode=c.mode||'car';
+  if(mode==='car'&&c.m<2000){const wm=Math.max(1,Math.round(c.m/75));return `↳${km}km · 🚶${wm}분`;}
   return `↳${km}km · ${fmtDur(c.sec)}`;
 }
 function legTitle(c){
-  let t=(c.est ? ((c.mode==='flight'||c.mode==='train')?'직선거리 기반 추정':'자동차 경로 거리 기반 추정') : '실제 도로 기준');
-  if(c.snapped) t+=' · 인근 지점에서 출발/도착 (원 지점이 도로·정류장에서 멀어 보정 — 공항 부지 중심 좌표 등)';
-  if((c.mode==='car'||c.mode==='taxi')&&c.taxi) t+=` · 택시 약 ${c.taxi.toLocaleString()}원`;
+  let t=(c.est?((c.mode==='flight'||c.mode==='train')?'직선거리 기반 추정':'자동차 경로 거리 기반 추정'):'실제 도로 기준');
+  if(c.snapped)t+=' · 인근 지점에서 출발/도착 (원 지점이 도로·정류장에서 멀어 보정 — 공항 부지 중심 좌표 등)';
+  if((c.mode==='car'||c.mode==='taxi')&&c.taxi)t+=` · 택시 약 ${c.taxi.toLocaleString()}원`;
   return t;
 }
-// 구간 수단 아이콘 버튼 — 탭하면 그 구간만 변경(cycleLegMode). 일정 기본을 상속하면 흐리게, 개별 지정이면 진하게.
 function legModeBtn(day,di,si,lm){
-  if(si==null||si<0) return '';
-  const set=!!(day.spots[si]&&day.spots[si].legMode), dmn=dayModeOf(day);
-  if(viewMode) return `<span class="legModeBtn${set?' set':''}" title="${escAttr(MODE_NAME[lm])}">${MODE_ICON[lm]}</span>`;
-  const t=set ? `이 구간만 ${MODE_NAME[lm]} — 탭해서 변경 (계속 누르면 일정 기본으로 되돌아감)`
-              : `일정 기본 ${MODE_NAME[dmn]} — 탭하면 이 구간만 바꿔요`;
+  if(si==null||si<0)return '';
+  const set=!!(day.spots[si]&&day.spots[si].legMode),dmn=dayModeOf(day);
+  if(viewMode)return `<span class="legModeBtn${set?' set':''}" title="${escAttr(MODE_NAME[lm])}">${MODE_ICON[lm]}</span>`;
+  const t=set?`이 구간만 ${MODE_NAME[lm]} — 탭해서 변경 (계속 누르면 일정 기본으로 되돌아감)`:`일정 기본 ${MODE_NAME[dmn]} — 탭하면 이 구간만 바꿔요`;
   return `<button class="legModeBtn${set?' set':''}" onclick="event.stopPropagation();cycleLegMode(${di},${si})" title="${escAttr(t)}">${MODE_ICON[lm]}</button>`;
 }
-const GMODE={car:'DRIVE',taxi:'DRIVE',transit:'TRANSIT',walk:'WALK',bike:'BICYCLE'};
-// 시각 입력은 <input type=time> 대신 직접 입력 — 위젯은 표시 형식(오전/오후)이 브라우저 로케일에
-// 묶여 24시간으로 강제할 수 없어서. "1430"·"14:30"·"930" 모두 받아 24시간 HH:MM으로 정규화, 아니면 ''.
 function normHM(v){
-  const s=String(v||'').trim();
-  let h,m;
+  const s=String(v||'').trim();let h,m;
   const c=/^(\d{1,2}):(\d{1,2})$/.exec(s);
-  if(c){ h=+c[1]; m=+c[2]; }                                 // "9:5"·"14:30" → 09:05·14:30
-  else {
-    const d=s.replace(/\D/g,'');
-    if(!d) return '';
-    if(d.length<=2){ h=+d; m=0; }                            // "9"·"14" → 09:00·14:00
-    else if(d.length===3){ h=+d.slice(0,1); m=+d.slice(1); } // "930" → 09:30
-    else { h=+d.slice(0,2); m=+d.slice(2,4); }               // "1430" → 14:30
-  }
-  return (h>23||m>59) ? '' : String(h).padStart(2,'0')+':'+String(m).padStart(2,'0');
+  if(c){h=+c[1];m=+c[2];}
+  else{const d=s.replace(/\D/g,'');if(!d)return '';if(d.length<=2){h=+d;m=0;}else if(d.length===3){h=+d.slice(0,1);m=+d.slice(1);}else{h=+d.slice(0,2);m=+d.slice(2,4);}}
+  return (h>23||m>59)?'':String(h).padStart(2,'0')+':'+String(m).padStart(2,'0');
 }
-document.addEventListener('input', e=>{   // 입력 중엔 숫자·콜론만 허용(형식 강요는 안 함)
-  const t=e.target;
-  if(t&&t.classList&&t.classList.contains('timeIn')) t.value=t.value.replace(/[^\d:]/g,'').slice(0,5);
-});
-document.addEventListener('blur', e=>{    // 칸을 벗어날 때 24시간 HH:MM으로 정리(형식 아니면 비움)
-  const t=e.target;
-  if(t&&t.classList&&t.classList.contains('timeIn') && t.value.trim()!=='') t.value=normHM(t.value);
-}, true);
-// IANA 시간대 + 현지 분을 RFC3339로 변환. 시간대 미지정/과거·임박이면 null(구글은 미래만 허용).
-function planDepartISO(isoDate, localMinutes, timeZone){
+document.addEventListener('input',e=>{const t=e.target;if(t&&t.classList&&t.classList.contains('timeIn'))t.value=t.value.replace(/[^\d:]/g,'').slice(0,5);});
+document.addEventListener('blur',e=>{const t=e.target;if(t&&t.classList&&t.classList.contains('timeIn')&&t.value.trim()!=='')t.value=normHM(t.value);},true);
+function planDepartISO(isoDate,localMinutes,timeZone){
   const minutes=typeof localMinutes==='number'?localMinutes:parseHM(localMinutes||'09:00');
   const iso=zonedMinutesToISOString(isoDate,minutes,timeZone||'');
   return iso&&new Date(iso).getTime()>Date.now()+60000?iso:null;
 }
-async function googleRoute(a,b,mode,when){
-  const body={origin:{location:{latLng:{latitude:+a.lat,longitude:+a.lng}}},
-    destination:{location:{latLng:{latitude:+b.lat,longitude:+b.lng}}}, travelMode:GMODE[mode]||'DRIVE'};
-  if(when && body.travelMode==='TRANSIT') body.departureTime=when;   // 없으면 '지금' 기준이라 실제 여행일과 어긋남
-  const r=await fetch('https://routes.googleapis.com/directions/v2:computeRoutes',{
-    method:'POST',
-    headers:{'Content-Type':'application/json','X-Goog-Api-Key':GMAPS_KEY,'X-Goog-FieldMask':'routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline'},
-    body:JSON.stringify(body)
-  });
-  if(!r.ok) return null;
-  const js=await r.json();
-  const rt=js.routes&&js.routes[0];
-  if(!rt||!rt.duration) return null;
-  return {sec:parseInt(rt.duration), m:rt.distanceMeters||0, path:(rt.polyline&&rt.polyline.encodedPolyline)||null};
-}
-// 대중교통 결과 타당성 — 직선거리 대비 유효속도가 지나치게 낮으면 신뢰 불가.
-// (예: 공항 대표 좌표가 활주로 쪽 부지 중심이라 '걸어서 공항을 빠져나오는' 경로가 나옴)
-function transitImplausible(a,b,r){
-  const km=haversine(a,b);
-  return km>=2 && r.sec>0 && (km/(r.sec/3600))<8;   // 유효속도 8km/h 미만 = 사실상 도보
-}
-// 비현실적이면 출발지를 인근 지점(정류장·터미널 진입로)으로 스냅해 재시도 — 국내 카카오 링 프로브와 같은 방식
-async function googleTransitRoute(a,b,when){
-  const first=await googleRoute(a,b,'transit',when);
-  if(!first || !transitImplausible(a,b,first)) return first;
-  for(const rad of [600,1200]){
-    for(const c of ringPts(a,rad)){
-      const t=await googleRoute(c,b,'transit',when);
-      if(t && !transitImplausible(a,b,t)) return {...t, snapped:1};
-    }
-  }
-  return first;
-}
-// 수단·지역별 라우팅: 국내 car=카카오내비 / transit=구글 / walk·bike=카카오 자동차 경로 거리 기반 추정
-//                     해외 4개 모드 모두 구글 Routes
-async function fetchLeg(a,b,mode,when){
-  if(mode==='flight'){   // 비행기는 도로 라우팅이 없음 → 직선거리 + 속도 추정(활주·이착륙 40분 가산)
-    const km=haversine(a,b);
-    return { sec:Math.round(km/700*3600 + 40*60), m:Math.round(km*1000), path:null, est:1, mode:'flight' };
-  }
-  if(mode==='train'){   // 기차는 실시간 시각표 없이 추정 — 직선거리×철도우회(1.1) ÷ 고속철 평균 160km/h + 승하차 10분
-    const km=haversine(a,b)*1.1;
-    return { sec:Math.round(km/160*3600 + 10*60), m:Math.round(km*1000), path:null, est:1, mode:'train' };
-  }
-  const kr=inKorea(a)&&inKorea(b);
-  if(kr){
-    if(mode==='car'||mode==='taxi'){ const k=await kakaoRoute(a,b); return k&&{...k,mode}; }   // 택시=도로(자차) 경로
-    if(mode==='transit'){ const g=await googleTransitRoute(a,b,when); return g&&{...g,mode}; }
-    const k=await kakaoRoute(a,b);                       // walk/bike: 도로 거리 기반 추정
-    if(!k) return null;
-    const mps=mode==='walk'?1.25:4.17;                   // 4.5km/h · 15km/h
-    return {sec:Math.round(k.m/mps), m:k.m, path:k.path, snapped:k.snapped, est:1, mode};
-  }
-  const g=(mode==='transit')? await googleTransitRoute(a,b,when) : await googleRoute(a,b,mode,when);
-  return g&&{...g,mode};
-}
+
+// 라우팅 transport는 routing.js에 격리하고 UI에는 fetchLeg 호환 shim만 제공한다.
+const routingClient=TC_ROUTING.createRoutingClient({
+  fetchImpl:(url,opts)=>fetch(url,opts), googleKey:GMAPS_KEY, encodePolyline, ringPts, haversine, inKorea
+});
+const fetchLeg=routingClient.fetchLeg;   // 기존 전역 호출부 호환 shim — UI는 transport 세부사항을 모름
+function decodePts(enc){ return enc?decodePolyline(enc):null; }
 // 캐시에 있으면 즉시 반환, 없으면 큐에 넣고 null (완료 시 DOM 패치 + 사이드바 갱신)
 let legQueue=[], legBusy=false, legRefreshT=null;
 const transitQuerySeen=new Map();

@@ -23,8 +23,9 @@
 ## 구조
 
 - `index.html` — 마크업 (모달·헤더·재생 HUD 등)
-- `app.js` — 앱 로직 전체 (DOM·지도·네트워크)
+- `app.js` — 앱 조합·DOM·지도/UI 로직
 - `lib.js` — 순수 로직 (파서·거리·시각·앵커·타임라인·정규화). **유닛 테스트 + `tsc` 타입 검사 대상**
+- `sync.js` — revision 병합·삭제 상태 전이, `routing.js` — Google/Kakao transport·fallback. 둘 다 직접 단위 테스트 + `tsc` 대상
 - `style.css` — 스타일
 - `sw.js` — 서비스 워커 (앱 셸 캐시)
 - `manifest.json` · `icon-*.png` — PWA

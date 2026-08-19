@@ -20,6 +20,7 @@
 ├── index.html      # 마크업
 ├── app.js          # 앱 로직
 ├── sync.js         # 동기화 병합·삭제 상태 전이
+├── routing.js      # Google/Kakao 라우팅 transport·fallback
 ├── style.css       # 스타일
 ├── sw.js           # 서비스 워커 (오프라인 캐시 전략)
 ├── manifest.json   # PWA 매니페스트
@@ -27,6 +28,8 @@
 ```
 
 Supabase의 테이블·RLS·낙관적 동시성 RPC는 `supabase/migrations/`에서 관리합니다. 운영 DB에는 저장소만 보고 바로 적용하지 말고 [`docs/supabase-migrations.md`](docs/supabase-migrations.md)의 schema diff와 staging 검증을 먼저 수행해야 합니다.
+
+모듈 의존성과 점진적 ES module 전환 원칙은 [`docs/architecture.md`](docs/architecture.md)에 정리되어 있습니다.
 
 빌드 도구 없음 — 정적 파일 그대로 배포합니다.
 지도: Google Maps JS SDK / 장소 검색: 카카오 로컬(국내)·Google Places(해외) / 저장: localStorage + Supabase

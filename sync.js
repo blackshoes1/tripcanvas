@@ -6,7 +6,7 @@
     let value={};
     try{ value=typeof raw==='string'?JSON.parse(raw):(raw||{}); }catch(_){ value={}; }
     if(!value || typeof value!=='object' || Array.isArray(value)) value={};
-    const out={};
+    /** @type {Record<string,any>} */ const out={};
     for(const [id,entry] of Object.entries(value)){
       if(!id || !entry || typeof entry!=='object') continue;
       out[id]={revision:Number.isInteger(+entry.revision)&&+entry.revision>0?+entry.revision:null,status:String(entry.status||'clean'),op:String(entry.op||'')};
@@ -89,5 +89,5 @@
 
   const API={loadMeta,sameData,mergeForLogin,beginDelete,undoDelete,finishDelete};
   if(typeof module!=='undefined'&&module.exports) module.exports=API;
-  else root.TC_SYNC=API;
+  else /** @type {any} */(root).TC_SYNC=API;
 })(typeof window!=='undefined'?window:globalThis);
