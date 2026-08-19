@@ -18,3 +18,5 @@
 ## 보안 헤더와 CSP
 
 `vercel.json`은 MIME sniffing, iframe embedding, referrer, 불필요한 브라우저 권한을 제한한다. 현재 HTML과 동적 마크업에 inline handler/style이 많고 Google/Kakao 지도 SDK가 여러 호스트를 사용하므로, 검증 없이 엄격한 CSP를 넣으면 앱이 중단된다. 다음 단계는 inline handler 제거 → Report-Only CSP 수집 → 지도/인증/폰트 호스트 최소화 → enforce 전환 순서다.
+
+CDN 라이브러리는 정확한 버전과 SRI(Subresource Integrity, 내려받은 파일이 기대한 해시와 같은지 브라우저가 확인하는 장치)를 사용한다. CDN 파일은 서비스 워커 설치 필수 목록에서 제외해 외부 장애가 새 앱 셸 설치까지 막지 않게 했다. 운영 오류 기록은 범주·코드·시각만 세션에 최대 20건 보존하며 URL, API 응답 본문, 여행 데이터, 키는 수집하지 않는다.

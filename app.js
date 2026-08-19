@@ -1,5 +1,16 @@
 // ───────────────── 저장소 ─────────────────
 const LS_KEY = 'tripcanvas_v1';
+const OPS_KEY = 'tripcanvas_ops_v1';
+// 오류 본문·URL·여행 내용은 기록하지 않고, 운영 진단에 필요한 범주와 상태 코드만 세션에 보관한다.
+function reportOperationalError(scope,error,context){
+  const entry={at:new Date().toISOString(),scope:String(scope).slice(0,40),code:'unknown'};
+  if(error&&typeof error==='object') entry.code=String(error.name||error.status||error.code||'error').slice(0,40);
+  if(context&&Number.isFinite(context.status)) entry.status=context.status;
+  try{ const rows=JSON.parse(sessionStorage.getItem(OPS_KEY)||'[]'); rows.push(entry); sessionStorage.setItem(OPS_KEY,JSON.stringify(rows.slice(-20))); }catch(_){}
+  console.warn(`[TripCanvas:${entry.scope}]`,entry.code);
+}
+window.addEventListener('error',e=>reportOperationalError('window.error',e.error));
+window.addEventListener('unhandledrejection',e=>reportOperationalError('promise.rejection',e.reason));
 // 지도 도로색(노랑·주황)과 겹치지 않게 대비 강한 색을 앞(자주 쓰는 초반 일자)에 배치.
 // 겹치기 쉬운 코랄·라임·노랑은 뒤로. 경로선·핀·도시색·범례 모두 이 순서를 공유.
 const PALETTE = ['#e63946','#1e88e5','#2ecc71','#9b59b6','#ec4899','#14b8a6','#8d6e63','#ff7f50','#a3e635','#f6b93b'];   // 빨강·파랑·초록·보라·핑크·청록·브라운·코랄·라임·노랑
@@ -61,11 +72,12 @@ function seedSpain(){
   };
 }
 function load(){
-  try{ store = JSON.parse(localStorage.getItem(LS_KEY)); }catch(e){}
-  // 로컬 저장분도 정규화 통과(과거/손상 데이터 자가 치유). 복구 불가한 여행은 버림.
-  if(store && Array.isArray(store.trips)){
-    store.trips = store.trips.map(t=>normalizeTrip(t)).filter(Boolean);
-    if(store.trips.length && !store.trips.find(t=>t.id===store.activeId)) store.activeId=store.trips[0].id;
+  const raw=localStorage.getItem(LS_KEY), saved=parseStorePayload(raw);
+  if(saved.ok) store=saved.value;
+  else if(raw){
+    reportOperationalError('local.invalid',new Error('validation'));
+    // 거부된 정상 크기 원문은 새 seed로 덮어쓰기 전에 1회 복구본으로 남긴다.
+    if(raw.length<=TC_LIMITS.storeBytes) try{ localStorage.setItem('tripcanvas_rejected_backup_v1',raw); }catch(_){}
   }
   if(!store || !store.trips || !store.trips.length){
     store = {trips:[seedSpain()], activeId:'spain2026'};
@@ -1584,16 +1596,19 @@ document.getElementById('importBtn').onclick=()=>document.getElementById('import
 let _importing=false;   // 가져오기 진행 중 — PWA 자동 새로고침이 이 사이에 끼어들어 유실되지 않게
 document.getElementById('importFile').onchange=e=>{
   const f=e.target.files[0]; if(!f)return;
+  if(f.size>TC_LIMITS.jsonBytes){ toast('파일이 너무 큽니다 (최대 2MB)','#e63946'); e.target.value=''; return; }
   const rd=new FileReader();
   _importing=true;
   rd.onload=()=>{
     try{
-      const t=normalizeTrip(JSON.parse(rd.result));
-      if(!t) throw 0;
+      const result=parseTripPayload(typeof rd.result==='string'?rd.result:'');
+      if(!result.ok) throw new Error(result.error);
+      const t=result.value;
       t.id=uid(); commit(()=>{ store.trips.push(t); store.activeId=t.id; activeDay=0; }, {fit:fitEntry}); toast('가져오기 완료');
-    }catch(err){ toast('잘못된 파일입니다','#e63946'); }
+    }catch(err){ reportOperationalError('import.invalid',err); toast('안전하게 읽을 수 없는 여행 파일입니다','#e63946'); }
     finally{ _importing=false; }
   };
+  rd.onerror=()=>{ _importing=false; reportOperationalError('import.read',rd.error); toast('파일을 읽지 못했습니다','#e63946'); };
   rd.readAsText(f); e.target.value='';
 };
 // ── 일정 이미지 내보내기 (PNG, html2canvas 지연 로드) ──
@@ -1603,6 +1618,7 @@ function loadH2C(){
   _h2cReady=new Promise(res=>{
     const s=document.createElement('script');
     s.src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+    s.integrity='sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H'; s.crossOrigin='anonymous';
     s.onload=()=>res(true); s.onerror=()=>res(false);
     document.head.appendChild(s);
   });
@@ -1652,6 +1668,14 @@ document.getElementById('shareBtn').onclick=()=>{
   navigator.clipboard.writeText(url).then(()=>toast('읽기전용 공유 링크가 복사되었습니다 (받는 쪽에서 "내 여행으로 저장" 가능)'))
     .catch(()=>prompt('이 링크를 복사하세요',url));
 };
+function decodeSharedTrip(encoded){
+  if(typeof encoded!=='string'||encoded.length>TC_LIMITS.shareChars) return {ok:false,error:'공유 링크가 허용 길이를 초과했습니다'};
+  try{
+    const text=LZString.decompressFromEncodedURIComponent(encoded);
+    if(typeof text!=='string'||text.length>TC_LIMITS.jsonBytes) return {ok:false,error:'공유 데이터가 허용 크기를 초과했습니다'};
+    return parseTripPayload(text);
+  }catch(_){ return {ok:false,error:'공유 링크를 해석할 수 없습니다'}; }
+}
 // 읽기전용 보기에서 내 저장소로 복사
 document.getElementById('roSave').onclick=()=>{
   if(!viewMode) return;
@@ -1668,25 +1692,25 @@ document.getElementById('roSave').onclick=()=>{
   const h=location.hash;
   if(h.startsWith('#v=')){
     try{
-      const t=normalizeTrip(JSON.parse(LZString.decompressFromEncodedURIComponent(h.slice(3))));
+      const result=decodeSharedTrip(h.slice(3)), t=result.ok&&result.value;
       if(t){
         t.name=(t.name||'공유된 여행');
         viewMode=t;
         document.body.classList.add('readonly');
         document.getElementById('roBar').style.display='flex';
         setTimeout(()=>toast('읽기전용으로 보는 중입니다'),400);
-      }
-    }catch(e){}
+      }else reportOperationalError('share.invalid',new Error('validation'));
+    }catch(e){ reportOperationalError('share.decode',e); }
   }else if(h.startsWith('#t=')){
     try{
-      const t=normalizeTrip(JSON.parse(LZString.decompressFromEncodedURIComponent(h.slice(3))));
+      const result=decodeSharedTrip(h.slice(3)), t=result.ok&&result.value;
       if(t){
         t.id=uid(); t.name=(t.name||'공유된 여행');
         store.trips.push(t); store.activeId=t.id; save();
         history.replaceState(null,'',location.pathname);
         setTimeout(()=>toast('공유된 여행을 불러왔습니다'),400);
-      }
-    }catch(e){}
+      }else reportOperationalError('share.legacy.invalid',new Error('validation'));
+    }catch(e){ reportOperationalError('share.legacy.decode',e); }
   }
 })();
 
@@ -1898,7 +1922,7 @@ async function runPaste(){
   try{
     if(cfg.aiParse){ toast('AI가 일정을 정리하는 중…','#1d6fd6'); parsed=await parseAI(text); }
     else parsed=parseDirect(text);
-  }catch(e){ toast(e.message||'파싱 실패','#e63946'); return; }
+  }catch(e){ reportOperationalError('paste.parse',e); toast('일정을 해석하지 못했습니다. 입력 형식과 연결 상태를 확인해 주세요','#e63946'); return; }
   if(!parsed||!Array.isArray(parsed.days)||!parsed.days.length){ toast('일정을 못 읽었어 — 형식을 확인해줘','#e63946'); return; }
   // 정규화
   const MODES=['car','taxi','transit','train','walk','bike','flight'];
@@ -1912,6 +1936,9 @@ async function runPaste(){
       cost:(s.cost==null?null:posInt(s.cost)), cur:(['USD','EUR','JPY','CNY'].includes(s.cur)?s.cur:undefined), bookAt:hhmm(s.bookAt),
       lat:(s.lat==null?null:+s.lat), lng:(s.lng==null?null:+s.lng)})).filter(s=>s.name)
   }));
+  const checked=validateTripPayload({name:parsed.name||'붙여넣은 여행',start:parsed.start||'',days:parsed.days});
+  if(!checked.ok){ reportOperationalError('paste.invalid',new Error('validation')); toast(checked.error,'#e63946'); return; }
+  parsed=checked.value;
   // 좌표 없는 장소 지오코딩
   const need=[]; parsed.days.forEach(d=>d.spots.forEach(s=>{ if(s.lat==null||isNaN(s.lat)||s.lng==null||isNaN(s.lng)) need.push(s); }));
   for(let i=0;i<need.length;i++){
@@ -1922,19 +1949,20 @@ async function runPaste(){
   }
   // 좌표 못 찾은 장소는 버리지 않고 유지 (카드에 남고, '위치 지정'으로 표시)
   let noloc=0; parsed.days.forEach(d=>d.spots.forEach(s=>{ if(!hasLoc(s)) noloc++; }));
-  // 적용
+  // 기존 여행과 결합한 최종 문서도 다시 검증해 append가 전체 한도를 넘는 경우 부분 적용을 막는다.
+  let nextTrip;
   if(target==='append'){
-    trip().days.push(...parsed.days);
-    if(parsed.start&&!trip().start) trip().start=parsed.start;
+    nextTrip=Object.assign({},trip(),{days:[...trip().days,...parsed.days],start:trip().start||parsed.start||''});
   }else if(target==='overwrite' && !viewMode && trip()){
-    const t=trip();                                  // 현재 여행 전체 교체 (id 유지, 이름·시작일·일정 덮어쓰기)
-    t.days=parsed.days;
-    if(parsed.name) t.name=parsed.name;
-    if(parsed.start) t.start=parsed.start;
+    nextTrip=Object.assign({},trip(),{days:parsed.days,name:parsed.name||trip().name,start:parsed.start||trip().start});
   }else{
-    const t={id:uid(), name:parsed.name||'붙여넣은 여행', start:parsed.start||new Date().toISOString().slice(0,10), days:parsed.days};
-    store.trips.push(t); store.activeId=t.id;
+    nextTrip=Object.assign({},parsed,{id:uid(),name:parsed.name||'붙여넣은 여행',start:parsed.start||new Date().toISOString().slice(0,10)});
   }
+  const finalResult=validateTripPayload(nextTrip);
+  if(!finalResult.ok){ reportOperationalError('paste.combined.invalid',new Error('validation')); toast(finalResult.error,'#e63946'); return; }
+  const finalTrip=finalResult.value, existing=store.trips.findIndex(t=>t.id===finalTrip.id);
+  if(existing>=0) store.trips[existing]=finalTrip; else store.trips.push(finalTrip);
+  store.activeId=finalTrip.id;
   document.getElementById('pasteModalBg').classList.remove('show');
   commit(()=>{ activeDay=0; }, {fit:fitEntry});
   toast(`초안 생성 완료${noloc?` · ${noloc}곳은 위치 미지정 (카드에서 📍 지정)`:''}`, noloc?'#f4862c':'#2a9d3f');
@@ -2049,7 +2077,7 @@ async function syncTripCloud(t,opts){
     cloudSnapshot(t,entry.revision);
   }catch(e){
     entry.status='error'; persistSyncMeta();
-    console.warn('cloud sync unavailable');
+    reportOperationalError('cloud.sync',e);
     clearTimeout(cloudRetryT);
     cloudRetryT=setTimeout(()=>syncTripCloud(t),15000);
     toast('클라우드 저장 실패 — 로컬 편집은 보존됨','#e63946',{label:'재시도',fn:()=>syncTripCloud(t)});
@@ -2076,7 +2104,7 @@ async function cloudSnapshot(t,revision){
     const {data:rows,error:listError}=await sb.from('trip_snapshots').select('id').eq('client_id',t.id).order('created_at',{ascending:false}).range(15,100);
     if(listError) throw listError;
     if(rows&&rows.length){ const {error:deleteError}=await sb.from('trip_snapshots').delete().in('id',rows.map(r=>r.id)); if(deleteError) throw deleteError; }
-  }catch(e){ console.warn('snapshot unavailable'); }
+  }catch(e){ reportOperationalError('cloud.snapshot',e); }
 }
 // 버전 기록 목록 (여행 설정 모달)
 async function loadSnapList(){
@@ -2095,7 +2123,8 @@ async function loadSnapList(){
     btn.onclick=async()=>{
       if(!confirm('이 시점으로 복원할까요? (현재 상태는 ↩️ 실행취소로 되돌릴 수 있습니다)'))return;
       const {data:full,error:fe}=await sb.from('trip_snapshots').select('data').eq('id',r.id).single();
-      const restored=full&&normalizeTrip(full.data);
+      const restoredResult=full&&validateTripPayload(full.data);
+      const restored=restoredResult&&restoredResult.ok&&restoredResult.value;
       if(fe||!restored){ toast('손상된 버전이라 복원하지 않았습니다','#e63946'); return; }
       const idx=store.trips.findIndex(t=>t.id===store.activeId);
       document.getElementById('tripModalBg').classList.remove('show');
@@ -2120,7 +2149,7 @@ async function performCloudDelete(clientId,op,deletedTrip){
     }
     const result=TC_SYNC.finishDelete(syncMeta,clientId,op,Number(row&&row.revision)||entry.revision||1); persistSyncMeta();
     if(result.resync){ const restored=store.trips.find(t=>t.id===clientId); if(restored) syncTripCloud(restored); }
-  }catch(e){ entry.status='delete-error'; entry.op=op; persistSyncMeta(); toast('삭제 동기화 실패 — 재시도가 필요합니다','#e63946',{label:'재시도',fn:()=>performCloudDelete(clientId,op,deletedTrip)}); }
+  }catch(e){ reportOperationalError('cloud.delete',e); entry.status='delete-error'; entry.op=op; persistSyncMeta(); toast('삭제 동기화 실패 — 재시도가 필요합니다','#e63946',{label:'재시도',fn:()=>performCloudDelete(clientId,op,deletedTrip)}); }
 }
 function reconcileUndoDeletes(){
   for(const t of store.trips){
@@ -2143,20 +2172,22 @@ function showNextSyncConflict(){
 }
 function replaceWithRemote(c){
   const idx=store.trips.findIndex(t=>t.id===(c.local&&c.local.id));
-  const remote=c.remote&&normalizeTrip(c.remote);
+  const remoteResult=c.remote&&validateTripPayload(c.remote);
+  const remote=remoteResult&&remoteResult.ok&&remoteResult.value;
+  if(c.remote&&!remote){ reportOperationalError('cloud.conflict.invalid',new Error('validation')); toast('클라우드 데이터가 손상되어 적용하지 않았습니다','#e63946'); return false; }
   if(idx>=0){ if(remote&&!c.deleted_at) store.trips[idx]=remote; else store.trips.splice(idx,1); }
   if(remote&&idx<0&&!c.deleted_at) store.trips.push(remote);
   if(!store.trips.length) store.trips=[{id:uid(),name:'새 여행',start:'',days:[{title:'',drive:'',note:'',spots:[]}]}];
   if(!store.trips.find(t=>t.id===store.activeId)) store.activeId=store.trips[0].id;
   if(c.local) syncMeta[c.local.id]={revision:c.revision,status:c.deleted_at?'tombstoned':'clean',op:''};
-  persistSyncMeta(); suppressCloudOnce=true; activeDay=0; render();
+  persistSyncMeta(); suppressCloudOnce=true; activeDay=0; render(); return true;
 }
-document.getElementById('syncUseCloud').onclick=()=>{ replaceWithRemote(currentSyncConflict); currentSyncConflict=null; showNextSyncConflict(); };
+document.getElementById('syncUseCloud').onclick=()=>{ if(!replaceWithRemote(currentSyncConflict)) return; currentSyncConflict=null; showNextSyncConflict(); };
 document.getElementById('syncUseDevice').onclick=()=>{ const c=currentSyncConflict; currentSyncConflict=null; document.getElementById('syncConflictBg').classList.remove('show'); if(c&&c.local) syncTripCloud(c.local,{force:true}); showNextSyncConflict(); };
 document.getElementById('syncKeepCopy').onclick=()=>{
   const c=currentSyncConflict; if(!c||!c.local) return;
   const copy=JSON.parse(JSON.stringify(c.local)); copy.id=uid(); copy.name=(copy.name||'여행')+' (충돌 복사본)';
-  replaceWithRemote(c); store.trips.push(copy); store.activeId=copy.id; suppressCloudOnce=true; render(); syncTripCloud(copy);
+  if(!replaceWithRemote(c)) return; store.trips.push(copy); store.activeId=copy.id; suppressCloudOnce=true; render(); syncTripCloud(copy);
   currentSyncConflict=null; showNextSyncConflict();
 };
 
@@ -2168,7 +2199,9 @@ async function syncOnLogin(){
     const local=store.trips.filter(t=>t.id!=='spain2026'||(rows||[]).some(r=>r.client_id===t.id));
     const merged=TC_SYNC.mergeForLogin(local,rows||[],syncMeta);
     syncMeta=merged.meta; persistSyncMeta();
-    const trips=merged.trips.map(t=>normalizeTrip(t)).filter(Boolean);
+    const checked=merged.trips.map(t=>validateTripPayload(t));
+    if(checked.some(result=>!result.ok)) throw new Error('invalid cloud payload');
+    const trips=checked.map(result=>result.ok&&result.value);
     if(trips.length){
       store.trips=trips;
       if(!trips.find(t=>t.id===store.activeId)) store.activeId=trips[0].id;
@@ -2179,7 +2212,7 @@ async function syncOnLogin(){
     for(const action of merged.actions) if(action.trip.id!=='spain2026') await syncTripCloud(action.trip,{force:action.force});
     await flushPendingSync();
     toast(merged.conflicts.length?`동기화 충돌 ${merged.conflicts.length}건 — 버전을 선택해 주세요`:`클라우드 동기화 완료 · 여행 ${trips.length}개`,merged.conflicts.length?'#e09b20':undefined);
-  }catch(e){ toast('클라우드 동기화 실패 — 로컬로 계속 사용','#e63946'); }
+  }catch(e){ reportOperationalError('cloud.login-sync',e); toast('클라우드 동기화 실패 — 로컬로 계속 사용','#e63946'); }
 }
 // 로그인 모달 (이메일 + 비밀번호)
 document.getElementById('authBtn').onclick=()=>{
@@ -2217,6 +2250,61 @@ document.getElementById('authSignup').onclick=async()=>{
 };
 document.getElementById('authPass').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('authLogin').click();});
 updateAuthUI();
+
+// ───────────────── 키보드·보조기술 접근성 ─────────────────
+function initAccessibility(){
+  const returnFocus=new WeakMap();
+  const focusable='button:not([disabled]),[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+  function enhance(root){
+    const nodes=[];
+    if(root.nodeType===1) nodes.push(root);
+    if(root.querySelectorAll) nodes.push(...root.querySelectorAll('.modalBg,[onclick],button[title],.iconb,.legModeBtn,.arrowBtn'));
+    nodes.forEach(el=>{
+      if(el.classList&&el.classList.contains('modalBg')){
+        const modal=el.querySelector('.modal'); if(!modal) return;
+        modal.setAttribute('role','dialog'); modal.setAttribute('aria-modal','true');
+        const title=modal.querySelector('h1,h2,h3');
+        if(title){ if(!title.id) title.id=el.id+'Title'; modal.setAttribute('aria-labelledby',title.id); }
+        el.setAttribute('aria-hidden',el.classList.contains('show')?'false':'true');
+      }else if(el.matches&&el.matches('button')&&el.title&&!el.getAttribute('aria-label')){
+        el.setAttribute('aria-label',el.title);
+      }else if(el.hasAttribute&&el.hasAttribute('onclick')&&!el.matches('button,a,input,select,textarea')){
+        el.setAttribute('role','button'); if(!el.hasAttribute('tabindex')) el.tabIndex=0;
+        if(!el.getAttribute('aria-label')&&el.title) el.setAttribute('aria-label',el.title);
+      }
+    });
+  }
+  enhance(document);
+  document.getElementById('toast').setAttribute('role','status');
+  document.getElementById('toast').setAttribute('aria-live','polite');
+  new MutationObserver(changes=>changes.forEach(change=>{
+    if(change.type==='childList') change.addedNodes.forEach(enhance);
+    if(change.type==='attributes'){
+      const bg=change.target; enhance(bg);
+      if(bg.classList.contains('show')){
+        if(!returnFocus.has(bg)) returnFocus.set(bg,document.activeElement);
+        setTimeout(()=>{ const target=bg.querySelector('[autofocus],input:not([type="hidden"]),textarea,select,button:not([disabled]),[href]'); if(target) target.focus(); },0);
+      }else{
+        const previous=returnFocus.get(bg); returnFocus.delete(bg);
+        if(previous&&previous.isConnected) setTimeout(()=>previous.focus(),0);
+      }
+    }
+  })).observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['class']});
+  document.addEventListener('keydown',e=>{
+    const target=e.target;
+    if((e.key==='Enter'||e.key===' ')&&target.matches('[role="button"]:not(button)')){ e.preventDefault(); target.click(); return; }
+    const bg=document.querySelector('.modalBg.show'); if(!bg) return;
+    if(e.key==='Escape'&&bg.id!=='syncConflictBg'){
+      e.preventDefault(); const close=bg.querySelector('[id$="Cancel"],[id$="Close"]'); if(close) close.click(); else bg.classList.remove('show'); return;
+    }
+    if(e.key!=='Tab') return;
+    const items=Array.from(bg.querySelectorAll(focusable)); if(!items.length){ e.preventDefault(); return; }
+    const first=items[0],last=items[items.length-1];
+    if(e.shiftKey&&document.activeElement===first){ e.preventDefault(); last.focus(); }
+    else if(!e.shiftKey&&document.activeElement===last){ e.preventDefault(); first.focus(); }
+  });
+}
+initAccessibility();
 
 // ───────────────── PWA ─────────────────
 // 오프라인 지도 캐시는 Google Maps 약관상 불가 — SW는 앱 셸 캐시만 담당

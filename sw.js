@@ -1,5 +1,5 @@
 // Trip Canvas Service Worker
-const VER = 'tc-v113';
+const VER = 'tc-v114';
 const SHELL_CACHE = VER + '-shell';
 
 const SHELL = [
@@ -12,10 +12,7 @@ const SHELL = [
   './routing.js',
   './manifest.json',
   './icon-192.png',
-  './icon-512.png',
-  'https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js',
-  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js'
+  './icon-512.png'
 ];
 
 self.addEventListener('install', e => {
@@ -72,7 +69,7 @@ self.addEventListener('fetch', e => {
     const cached = await caches.match(e.request);
     if (cached) return cached;
     const res = await fetch(e.request);
-    if (res && res.status === 200 && url.hostname === 'cdnjs.cloudflare.com') {
+    if (res && res.status === 200 && (url.hostname === 'cdnjs.cloudflare.com' || url.hostname === 'cdn.jsdelivr.net')) {
       const cache = await caches.open(SHELL_CACHE);
       cache.put(e.request, res.clone());
     }

@@ -16,6 +16,8 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: Syntax check
         run: npm run check:syntax
+      - name: Service worker / asset version sync
+        run: npm run check:version
       - name: Lint focused modules
         run: npm run lint
       - name: Secret pattern check

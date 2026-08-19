@@ -16,7 +16,7 @@
 
 ## 릴리스 체크리스트
 
-- [ ] `sw.js`의 `VER` 값 올리기 + `index.html`의 `?v=` 쿼리도 **같은 값**으로 (안 올리면 stale 캐시로 변경이 반영 안 됨)
+- [ ] 런타임 변경 시 `npm run bump:version` 실행 (`sw.js`와 `index.html`을 함께 갱신) + `npm run check:version` 통과
 - [ ] `npm test`와 관련 변경의 `npm run test:e2e` 통과 확인
 - [ ] 푸시 후 폰에서 실제 동작 확인 — ☰ 메뉴 하단의 **버전 표시**로 새 버전이 적용됐는지 먼저 볼 것 (캐시된 옛 버전이면 그 글자를 탭해 갱신)
 
@@ -56,7 +56,7 @@ localStorage: `tripcanvas_v1`(여행) · `tripcanvas_legs_v4`(구간 캐시, 수
 
 **현지 시각은 IANA 시간대**(`Europe/Madrid`, `Asia/Tokyo`)로 계산한다. 여행 기본 `timeZone`을 일자 `timeZone`이 재정의하며 DST를 반영한다. 시간대가 없는 과거 데이터는 경도÷15로 추측하지 않고 사용자가 확인할 때까지 대중교통 조회 시각을 생략한다. 대중교통은 각 구간의 실제 예상 출발분(이전 ETA+예약 대기+체류)을 사용한다.
 
-**유입 데이터는 반드시 정규화한다.** 가져오기·공유 링크(`#v=`/`#t=`)·클라우드·로컬 로드 **5개 지점 모두** `normalizeTrip()`(lib)을 통과시킨다. 좌표·시각·통화·수단·`startPolicy`를 검증하고 알 수 없는 값은 기본값으로 폴백해 렌더 크래시를 막는다(`schemaVersion` 스탬프).
+**유입 데이터는 검증 후 정규화한다.** 가져오기·공유 링크(`#v=`/`#t=`)·클라우드·스냅샷·AI·로컬 로드는 `validateTripPayload()`/`parseTripPayload()`/`parseStorePayload()`(lib)을 통과시킨다. 크기·개수·위험 키·URL 스킴·좌표·시각·비용을 먼저 검사하고, 한계를 넘으면 전체 payload를 거부한다. 안전한 알 수 없는 필드는 보존하고 `schemaVersion` migration 후 정규화한다.
 
 ## 테스트
 
@@ -64,6 +64,7 @@ localStorage: `tripcanvas_v1`(여행) · `tripcanvas_legs_v4`(구간 캐시, 수
 npm ci                 # lockfile 그대로 설치
 npm test               # 순수 + 통합 테스트
 npm run test:e2e       # Playwright 핵심 흐름 + PWA
+npm run check:version  # 서비스 워커와 asset query 버전 일치
 ```
 
 - `test/pure.test.js` — lib.js 순수 함수. 새 순수 로직은 **lib.js에 넣고 여기서 테스트**한다

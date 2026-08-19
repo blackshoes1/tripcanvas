@@ -5,7 +5,7 @@
 
 ## 기능
 
-- **계정 로그인·클라우드 저장**: 이메일 OTP 로그인(Supabase). 로그인하면 여행이 계정에 저장돼 어느 기기서든 열림(개인별 RLS 격리). 로그아웃 상태에선 로컬(localStorage)로 동작
+- **계정 로그인·클라우드 저장**: 이메일·비밀번호 로그인(Supabase Auth). 가입 시 프로젝트 설정에 따라 확인 메일 인증이 필요할 수 있음. 로그인하면 여행이 계정에 저장돼 어느 기기서든 열림(개인별 RLS 격리). 로그아웃 상태에선 로컬(localStorage)로 동작
 - **붙여넣기로 초안**: 정해진 형식으로 직접 붙여넣기(AI 없이 즉시, 좌표 자동조회: 국내 카카오·해외 구글) / 토글을 켜면 자연어를 Claude가 정리 (개인 API 키는 브라우저에만 저장)
 - **동선 지도**: 도시별/일자별 색상 전환, Day 필터, 방문 순서 연결선, 일자 간 이동선
 - **현지 시간대 일정**: 여행/일자별 IANA 시간대와 DST를 반영하고, 대중교통을 구간별 예상 출발시각으로 조회
@@ -21,6 +21,10 @@
 ├── app.js          # 앱 로직
 ├── sync.js         # 동기화 병합·삭제 상태 전이
 ├── routing.js      # Google/Kakao 라우팅 transport·fallback
+├── api/            # 서버 전용 Vercel Functions
+├── supabase/       # 검토 후 적용할 DB migration/RLS
+├── scripts/        # secret/version 일관성 검사와 버전 bump
+├── test/, e2e/     # Node 단위·통합 테스트와 Playwright E2E
 ├── style.css       # 스타일
 ├── sw.js           # 서비스 워커 (오프라인 캐시 전략)
 ├── manifest.json   # PWA 매니페스트
@@ -55,6 +59,7 @@ vercel dev --listen 8000
 ```bash
 npm ci
 npm run check:syntax
+npm run check:version
 npm run check:types
 npm test
 npx playwright install chromium   # 최초 1회
@@ -65,5 +70,5 @@ npm run test:e2e
 
 ## 릴리스 체크리스트
 
-- [ ] `sw.js`의 `VER` 값 올리기 (캐시 갱신을 위해 필수)
+- [ ] 런타임 변경 시 `npm run bump:version` 실행 후 `npm run check:version` 통과
 - [ ] 폰에서 프리뷰 URL 확인 후 merge
