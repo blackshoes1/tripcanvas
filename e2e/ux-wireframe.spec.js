@@ -42,3 +42,47 @@ test('여행 모드는 현재 장소와 다음 장소를 우선 표시한다',as
   await expect(page.locator('#travelNext')).toContainText('다음 장소');
   await expect(page.locator('.travelSectionTitle')).toHaveText('오늘 일정');
 });
+
+test('긴 장소명과 많은 메타데이터도 모바일 일정 카드 경계를 넘지 않는다',async({context,page})=>{
+  await prepare(context); await page.goto('/');
+  await page.evaluate(()=>{
+    const long='Aeropuerto Adolfo Suárez Madrid-Barajas International Terminal 4S 출국장과 렌터카 반납 카운터';
+    const spots=Array.from({length:12},(_,i)=>({
+      name:i===1?long:`${i+1}번째 일정 · 매우 긴 박물관과 역사 지구 복합 문화 공간 이름`,
+      city:'Madrid', lat:40.4168+i*.004, lng:-3.7038+i*.004, stayMin:75,
+      at:i===1?'08:30':'', bookAt:i===1?'08:00':'', cost:i===1?228:0, cur:i===1?'EUR':'KRW',
+      bookUrl:i===1?'https://example.com/booking':'', opt:i===1, stay:i===0, nights:i===0?2:1,
+      legMode:i?'transit':''
+    }));
+    const t=store.trips.find(x=>x.id===store.activeId);
+    t.name='긴 데이터 테스트'; t.start='2026-10-25'; t.timeZone='Europe/Madrid';
+    t.days=[{title:'마드리드에서 세비야를 거쳐 구시가지까지 이동하는 매우 긴 일정 제목',mode:'transit',startAt:'07:00',timeZone:'Europe/Madrid',spots}];
+    activeDay=0; save(); render();
+  });
+
+  for(const size of [{width:360,height:800},{width:375,height:812},{width:390,height:844},{width:430,height:932}]){
+    await page.setViewportSize(size);
+    await page.locator('#sidebar').evaluate(el=>el.dataset.snap='expanded');
+    const result=await page.locator('.dayCard').first().evaluate(card=>{
+      const cardRect=card.getBoundingClientRect();
+      const selectors=['.dayHead','.dayHeadMain','.dayHeadMeta','.dayBody','.spot','.spotMain','.spotMeta','.spotLeg'];
+      const overflow=[...card.querySelectorAll(selectors.join(','))].filter(el=>{
+        const r=el.getBoundingClientRect();
+        return r.left<cardRect.left-1||r.right>cardRect.right+1||el.scrollWidth>el.clientWidth+1;
+      }).map(el=>el.className);
+      const names=[...card.querySelectorAll('.spotName')].map(el=>{
+        const cs=getComputedStyle(el), line=parseFloat(cs.lineHeight);
+        return {height:el.getBoundingClientRect().height,line};
+      });
+      const menus=[...card.querySelectorAll('.spotMain > .actionMenu > summary')].map(el=>el.getBoundingClientRect().width);
+      const metaWrap=[...card.querySelectorAll('.spotMeta')].every(el=>getComputedStyle(el).flexWrap==='wrap');
+      const metaNoWrap=[...card.querySelectorAll('.spotMetaItem')].every(el=>getComputedStyle(el).whiteSpace==='nowrap');
+      return {overflow,names,menus,metaWrap,metaNoWrap};
+    });
+    expect(result.overflow,`${size.width}px에서 가로 넘침`).toEqual([]);
+    expect(result.names.every(x=>x.height<=x.line*2+1),`${size.width}px 장소명 2줄 제한`).toBeTruthy();
+    expect(result.menus.every(width=>width>=44),`${size.width}px 메뉴 터치 영역`).toBeTruthy();
+    expect(result.metaWrap).toBeTruthy();
+    expect(result.metaNoWrap).toBeTruthy();
+  }
+});

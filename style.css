@@ -37,30 +37,38 @@
   .kpopup .kclose:hover{color:#fff}
   .dayCard{background:var(--surface);border:1px solid var(--border);border-radius:12px;margin-bottom:10px;box-shadow:0 2px 8px rgba(17,24,39,.04)}
   .dayCard.dim{opacity:.4}
-  .dayHead{padding:8px 12px;font-size:14px;font-weight:700;display:flex;justify-content:space-between;align-items:center;cursor:pointer;border-left:4px solid var(--c,#556);border-radius:10px 0 0 0}
-  .dayHead .date{color:var(--subtle);font-weight:400;font-size:11.5px}
+  .dayHead{padding:6px 8px 7px 10px;font-size:14px;font-weight:700;cursor:pointer;border-left:4px solid var(--c,#556);border-radius:10px 0 0 0;min-width:0}
+  .dayHeadMain{display:grid;grid-template-columns:minmax(0,1fr) 44px;align-items:start;gap:4px;min-width:0}
+  .dayTitle{min-width:0;line-height:1.35;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;padding:8px 0}
+  .dayHeadMeta{display:flex;align-items:center;flex-wrap:wrap;gap:2px 7px;min-width:0;padding:0 44px 1px 20px}
+  .dayHead .date{color:var(--subtle);font-weight:400;font-size:11.5px;min-width:0;overflow-wrap:anywhere}
   .dayHead .tools{display:flex;gap:4px}
   .iconb{background:none;border:none;color:var(--muted);font-size:13px;padding:8px;border-radius:7px;min-width:36px;min-height:36px}
   .iconb:hover{color:var(--ink);background:var(--surface-2)}
   .dayBody{padding:2px 12px 9px}
   .drive{font-size:11.5px;color:#f6bd60;padding:2px 0 4px 2px}
   .dist{font-size:11px;color:#8aa0c8;padding:1px 0 3px 2px}
-  .leg{color:#7d88a8;font-size:10.5px;margin-left:2px;white-space:nowrap}
+  .leg{color:#7d88a8;font-size:10.5px;white-space:nowrap}
   /* 구간 수단 버튼 — 상속(흐림) vs 이 구간만 지정(진하게 + 테두리) */
-  .legModeBtn{background:none;border:1px solid transparent;border-radius:6px;padding:0 3px;font-size:11px;line-height:1.5;opacity:.5;margin-left:5px;cursor:pointer}
+  .legModeBtn{background:none;border:1px solid transparent;border-radius:6px;padding:0 3px;font-size:11px;line-height:1.5;opacity:.5;cursor:pointer}
   .legModeBtn:hover{opacity:1;background:#2a3457}
   .legModeBtn.set{opacity:1;border-color:#3d4a7a;background:#232f57}
   .note{font-size:11px;color:#9aa5c4;padding:3px 0 0 2px;white-space:pre-wrap}
-  .spot{font-size:13.5px;padding:3px 0 3px 14px;position:relative;display:flex;align-items:center;gap:4px}
-  .spot:before{content:'';position:absolute;left:2px;top:10px;width:7px;height:7px;border-radius:50%;background:var(--c,#888)}
-  .spot .nm{cursor:pointer;flex:1}
-  .spot .nm:hover{color:#fff;text-decoration:underline}
+  .spot{font-size:13.5px;padding:2px 0 5px 14px;position:relative;min-width:0}
+  .spot:before{content:'';position:absolute;left:2px;top:20px;width:7px;height:7px;border-radius:50%;background:var(--c,#888)}
+  .spotMain{display:grid;grid-template-columns:56px minmax(0,1fr) 44px;align-items:start;gap:4px;min-width:0}
+  .spotTime{display:block;align-self:start;margin:0;padding-top:14px;white-space:nowrap;overflow:hidden;text-overflow:clip}
+  .spotIdentity{display:flex;align-items:flex-start;gap:4px;min-width:0;min-height:44px;padding:11px 0 7px;background:none;border:0;color:inherit;font:inherit;line-height:1.35;text-align:left;cursor:pointer}
+  .spotIdentity:hover{color:var(--ink);text-decoration:underline}
+  .spotOrder{flex:none;white-space:nowrap}
+  .spotName{min-width:0;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+  .spotMenuSpacer{display:block;width:44px;height:44px}
   .spot .opt{color:#8892b0;font-size:11px}
-  .spot .noloc{color:#f6bd60;font-size:10.5px;border:1px solid #5a4a2a;border-radius:6px;padding:0 5px;margin-left:4px;cursor:pointer;white-space:nowrap}
+  .spot .noloc{color:#b7791f;background:transparent;font-size:10.5px;border:1px solid #d9b36c;border-radius:6px;padding:1px 5px;cursor:pointer;white-space:nowrap}
   .spot .tools{display:flex;gap:2px;opacity:.5;transition:opacity .15s}
   .spot:hover .tools{opacity:1}
   .spot{cursor:grab}
-  .actionMenu{position:relative;margin-left:auto}.actionMenu>summary{list-style:none;cursor:pointer;color:var(--muted);font-size:20px;line-height:1;width:40px;height:40px;display:grid;place-items:center;border-radius:8px}.actionMenu>summary::-webkit-details-marker{display:none}.actionMenu>summary:hover,.actionMenu[open]>summary{background:var(--surface-2)}.actionMenuPanel{position:absolute;right:0;top:38px;z-index:20;min-width:120px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:5px;box-shadow:var(--shadow);display:grid}.actionMenuPanel .iconb{width:100%;display:flex;align-items:center;gap:8px;white-space:nowrap;font-size:12px}.dayHead .actionMenu{margin-left:2px}
+  .actionMenu{position:relative;width:44px;min-width:44px;justify-self:end}.actionMenu>summary{list-style:none;cursor:pointer;color:var(--muted);font-size:20px;line-height:1;width:44px;height:44px;display:grid;place-items:center;border-radius:8px}.actionMenu>summary::-webkit-details-marker{display:none}.actionMenu>summary:hover,.actionMenu[open]>summary{background:var(--surface-2)}.actionMenuPanel{position:absolute;right:0;top:42px;z-index:30;min-width:120px;max-width:calc(100vw - 24px);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:5px;box-shadow:var(--shadow);display:grid}.actionMenuPanel .iconb{width:100%;display:flex;align-items:center;gap:8px;white-space:nowrap;font-size:12px}
   .spot.carry{cursor:default;opacity:.72}   /* 전날 숙소 가상 이월 항목 — 드래그/편집 불가, 흐리게. 이름 탭하면 지도 포커스 */
   .dayHead{cursor:grab}
   .dragHandle{color:#6b76a0;font-size:12px;cursor:grab;padding:0 3px;user-select:none}
@@ -176,7 +184,7 @@
     #travel{max-width:none;padding:12px}.travelTop select{max-width:145px}
   }
 .legChip{background:rgba(22,33,62,.92);color:#f6bd60;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;border:1px solid #2a3457;white-space:nowrap;pointer-events:none}
-.eta{color:#f6bd60;font-size:10.5px;margin-right:6px;font-variant-numeric:tabular-nums;font-weight:700}
+.eta{color:#b7791f;font-size:10.5px;font-variant-numeric:tabular-nums;font-weight:700}
 .eta.fixed{color:#5ec8e8}   /* 고정 도착시각 — 자동(금색)과 구분 */
 .tLeg{font-size:12px;color:#8aa0c8;margin:-3px 0 9px 18px}
 .snapRow{display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:5px 8px;border-radius:7px;color:#cdd6f4}
@@ -186,10 +194,15 @@
 .readonly .modeBtn{pointer-events:none}
 .wx{font-size:11px;color:#cdd6f4;white-space:nowrap}
 .overload{font-size:11px;color:#ffb454;background:#3a2a12;border-radius:7px;padding:2px 8px;margin:2px 0 3px;display:inline-block}
-.spotMeta{display:inline-flex;gap:8px;margin-left:6px;font-size:10.5px;vertical-align:middle}
+.spotMeta,.spotLeg{display:flex;align-items:center;flex-wrap:wrap;gap:3px 8px;min-width:0;margin-left:60px;padding-right:4px}
+.spotMeta{font-size:10.5px;margin-top:-4px}
+.spotLeg{font-size:10.5px;margin-top:2px}
+.spotMetaItem,.spotLeg>*{flex:none;white-space:nowrap;max-width:100%}
 .spotMeta .cost{color:#c9b6e8}
+.spotMeta .costConverted{color:var(--subtle)}
 .spotMeta .book{color:#9fd0ff;text-decoration:none}
 .spotMeta .bookwarn{color:#ffb454}
+.spotMeta .stayMeta{color:var(--muted)}
 .optBtn{color:#8fd6a0;border-color:#2e5a3a;margin-left:6px}
 .spotMeta .closed{color:#ff8f6b}
 #verLabel{font-size:11px;color:#8892b0;text-align:center;padding:6px 4px 2px;cursor:pointer;border-top:1px solid #2a3457;margin-top:2px}

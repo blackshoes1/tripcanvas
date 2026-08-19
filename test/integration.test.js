@@ -134,6 +134,52 @@ test('통합: 구간별 수단(legMode) 우선, 없거나 무효면 일자 기�
   assert.equal(w.eval(`legModeOf({mode:'zzz',spots:[]}, {legMode:'bad'})`), 'car');
 });
 
+test('통합: 긴 일정 카드는 주요 정보·메타·이동 행을 분리하고 작업 메뉴를 보존한다', { skip: noJsdom }, () => {
+  const w = boot();
+  const longName = 'Aeropuerto Adolfo Suárez Madrid-Barajas International Terminal 4S 출국장 매우 긴 장소명';
+  withTrip(w, JSON.stringify([{
+    title: '마드리드에서 세비야를 거쳐 구시가지까지 이동하는 매우 긴 일정 제목',
+    mode: 'transit', startAt: '07:00', timeZone: 'Europe/Madrid',
+    spots: [
+      { name: 'Madrid 출발 숙소', lat: 40.4168, lng: -3.7038, city: 'Madrid', stay: true, nights: 2, stayMin: 30 },
+      { name: longName, lat: 40.4983, lng: -3.5676, city: 'Madrid', at: '08:30', bookAt: '08:00', stayMin: 90,
+        cost: 228, cur: 'EUR', bookUrl: 'https://example.com/booking', opt: true, legMode: 'transit' },
+      { name: '좌표가 아직 없는 아주 긴 후보 장소 이름과 추가 설명', city: 'Sevilla', opt: true }
+    ]
+  }]));
+  w.eval('renderSidebar()');
+
+  const card = w.document.querySelector('.dayCard');
+  assert.ok(card.querySelector('.dayHeadMain .dayTitle'), '일자 제목은 첫 행');
+  assert.ok(card.querySelector('.dayHeadMain > .actionMenu'), '일자 메뉴는 첫 행의 고정 열');
+  assert.ok(card.querySelector('.dayHeadMeta .date'), '날짜는 두 번째 메타 행');
+  assert.ok(card.querySelector('.dayHeadMeta .modeBtn'), '이동수단은 두 번째 메타 행');
+
+  const spot = card.querySelector('.spot[data-si="1"]');
+  const main = spot.querySelector(':scope > .spotMain');
+  assert.ok(main.querySelector(':scope > .spotTime'), 'ETA 독립 열');
+  assert.equal(main.querySelector('.spotName').textContent, longName, '장소명 원문 보존');
+  assert.equal(main.querySelector('.spotIdentity').title, longName, '잘린 장소명의 전체 title 제공');
+  assert.match(main.querySelector('.spotIdentity').getAttribute('aria-label'), new RegExp(longName), '접근 가능한 전체 이름 제공');
+  assert.ok(main.querySelector(':scope > .actionMenu'), '장소 메뉴는 44px 전용 열');
+
+  const meta = spot.querySelector(':scope > .spotMeta');
+  assert.ok(meta, '메타데이터 독립 행');
+  assert.ok(meta.children.length >= 5, '여러 메타데이터가 개별 항목으로 분리');
+  [...meta.children].forEach((item) => assert.ok(item.classList.contains('spotMetaItem'), `${item.outerHTML} 메타 항목 클래스`));
+  assert.equal(meta.querySelectorAll('.cost').length, 2, '외화 원금과 원화 환산을 별도 항목으로 분리');
+  assert.ok(meta.querySelector('.book[href="https://example.com/booking"]'), '예약 링크 보존');
+
+  const leg = spot.querySelector(':scope > .spotLeg');
+  assert.ok(leg.querySelector('.legModeBtn'), '구간 수단 버튼 보존');
+  assert.ok(leg.querySelector('.leg'), '거리·시간 구간 정보 보존');
+  ['위로', '아래로', '편집', '복사', '삭제'].forEach((title) => assert.ok(spot.querySelector(`.actionMenuPanel [title="${title}"]`), `${title} 동작 보존`));
+
+  const noLoc = card.querySelector('.spot[data-si="2"]');
+  assert.ok(noLoc.querySelector(':scope > .spotMeta .noloc'), '위치 지정도 메타 행에 배치');
+  w.close();
+});
+
 test('통합: 검색 오류 분류 classifySearchErr (인증/할당량/네트워크/일반)', { skip: noJsdom }, () => {
   const w = boot();
   assert.equal(w.eval(`classifySearchErr(new Error('Failed to fetch'))`), 'network');
