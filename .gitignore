@@ -13,6 +13,9 @@ Thumbs.db
 
 # 의존성 (향후)
 node_modules/
+test-results/
+playwright-report/
+blob-report/
 
 # 비밀값 — 절대 커밋 금지
 .env

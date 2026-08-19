@@ -50,9 +50,18 @@ python3 -m http.server 8000
 vercel dev --listen 8000
 ```
 
-## 배포
+## 테스트와 배포
 
-Vercel/Netlify에 Git 연동 시 push마다 자동 배포됩니다. 별도 빌드 설정 불필요 (Framework: Other, Output: 루트).
+```bash
+npm ci
+npm run check:syntax
+npm run check:types
+npm test
+npx playwright install chromium   # 최초 1회
+npm run test:e2e
+```
+
+작업 브랜치의 Draft PR과 Vercel Preview에서 검증한 뒤 required CI가 통과하면 `main`에 merge합니다. `main` merge가 Vercel Production 배포를 시작합니다. branch protection 설정과 롤백 절차는 [`docs/deployment-workflow.md`](docs/deployment-workflow.md)를 참고하세요.
 
 ## 릴리스 체크리스트
 

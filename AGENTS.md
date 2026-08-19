@@ -4,20 +4,20 @@
 
 ## Git 워크플로 (중요)
 
-- **작업은 `main`에 직접 커밋·푸시한다.** 별도 브랜치·PR 없이 바로 반영한다.
-- ⚠️ `main` 푸시는 Vercel 자동 배포와 연결돼 있어 **커밋 즉시 프로덕션(`tripcanvas-ai.vercel.app`)에 나간다.** 푸시 전에 변경을 스스로 검토하고, 아래 **릴리스 체크리스트**를 반드시 지킬 것.
-- **여러 기기(집·회사)에서 작업한다.** 세션 시작·커밋 전에 `git fetch`로 `origin/main`이 앞서 있는지 확인하고, 뒤처졌으면 `git pull --ff-only` 후 작업한다.
+- **`main`에 직접 커밋·push하지 않는다.** 작업별 브랜치 → Draft PR → Vercel Preview → required CI → 승인·merge 순서로 반영한다.
+- `main` merge는 Vercel 프로덕션(`tripcanvas-ai.vercel.app`) 자동 배포와 연결된다. merge 전 아래 릴리스 체크리스트와 `docs/deployment-workflow.md`를 따른다.
+- 여러 기기에서 작업하므로 세션·브랜치 생성 전 `git fetch` 후 최신 `origin/main`에서 시작한다.
 
 ## 배포
 
-- 원격 `main` 푸시 시 **Vercel 자동 배포** (프로젝트 `tripcanvas`, 프로덕션 `tripcanvas-ai.vercel.app`).
+- PR은 Vercel Preview에서 확인하고, CI 통과 후 `main` merge 시 **Vercel 자동 프로덕션 배포** (프로젝트 `tripcanvas`, 프로덕션 `tripcanvas-ai.vercel.app`).
 - 커밋 author 이메일은 반드시 **GitHub 계정과 매칭되는 유효한 주소**여야 한다 (`blackshoes85@gmail.com`).
   `.local` 등 로컬 호스트 기반 자동 이메일이면 Vercel이 배포를 거부한다.
 
 ## 릴리스 체크리스트
 
 - [ ] `sw.js`의 `VER` 값 올리기 + `index.html`의 `?v=` 쿼리도 **같은 값**으로 (안 올리면 stale 캐시로 변경이 반영 안 됨)
-- [ ] `node --test` 통과 확인 (아래 **테스트** 참고)
+- [ ] `npm test`와 관련 변경의 `npm run test:e2e` 통과 확인
 - [ ] 푸시 후 폰에서 실제 동작 확인 — ☰ 메뉴 하단의 **버전 표시**로 새 버전이 적용됐는지 먼저 볼 것 (캐시된 옛 버전이면 그 글자를 탭해 갱신)
 
 ## 구조
@@ -31,7 +31,7 @@
 - `manifest.json` · `icon-*.png` — PWA
 - `test/` — `pure.test.js`(lib 순수 함수) · `integration.test.js`(jsdom으로 app.js 배선 검증)
 - `proto/` — 실험용 프로토타입 (`maplibre-play.html`). 프로덕션 앱과 무관
-- `.github/workflows/ci.yml` — 구문 검사 → `tsc`(lib.js) → `node --test`
+- `.github/workflows/ci.yml` — lockfile 설치 → 구문/lint/secret/type/unit/integration/audit → Playwright E2E
 
 라이브러리(CDN): 지도 듀얼 엔진 — 해외 Google Maps JS SDK · 국내 카카오맵 JS SDK · LZString(공유 링크 압축) · SortableJS(드래그) · Supabase(로그인/클라우드 동기화)
 검색: 국내 카카오 로컬 · 해외 Google Places (`routedSearch`가 라우팅) · 저장: localStorage + Supabase
@@ -61,12 +61,14 @@ localStorage: `tripcanvas_v1`(여행) · `tripcanvas_legs_v4`(구간 캐시, 수
 ## 테스트
 
 ```bash
-npm install     # 최초 1회 (jsdom — 통합 테스트용)
-node --test     # 순수 + 통합 테스트
+npm ci                 # lockfile 그대로 설치
+npm test               # 순수 + 통합 테스트
+npm run test:e2e       # Playwright 핵심 흐름 + PWA
 ```
 
 - `test/pure.test.js` — lib.js 순수 함수. 새 순수 로직은 **lib.js에 넣고 여기서 테스트**한다
-- `test/integration.test.js` — jsdom에 실제 `index.html`+`lib.js`+`app.js`를 올려 **배선**을 검증 (anchor/carry 혼동, 엔진 전환, 구간 수단 등). jsdom이 없으면 자동 skip되므로 `npm install`을 잊지 말 것
+- `test/integration.test.js` — jsdom에 실제 `index.html`과 core scripts를 올려 **배선**을 검증 (anchor/carry 혼동, 엔진 전환, 구간 수단 등)
+- `e2e/` — Playwright로 생성·편집·삭제/undo·공유·가져오기/내보내기·모바일·서비스워커·오프라인 흐름 검증
 - `supabase/migrations/` — `trips`·`trip_snapshots` 스키마, RLS, revision CAS RPC의 desired state. 운영 적용 전 `docs/supabase-migrations.md` preflight 필수
 - CI(`ci.yml`)는 구문 검사 → `tsc`로 lib.js JSDoc 타입 검사 → 테스트를 돌린다. **lib.js에 추가하는 함수는 JSDoc 타입이 필요**하다
 
