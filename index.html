@@ -13,13 +13,29 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js" integrity="sha384-+pWnyi8LtZx+cgXfD2arWgUX7pHIaEL215cEPPk9WrsegNlgvDL9DNjaqsceQq6o" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js" integrity="sha384-BSxuMLxX+FCbTdYec3TbXlnMGEEM2QXTFdtDaveen71o+jswm2J36+xFqp8k4VHM" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.min.js" integrity="sha384-l8ah+VgaWtk1mvOe9VC+OirC6qHFF4yH7l7mKRidV9MSti3E9F463bMp6ZVN4kuC" crossorigin="anonymous"></script>
-<link rel="stylesheet" href="style.css?v=tc-v114">
+<link rel="stylesheet" href="style.css?v=tc-v115">
 </head>
 <body>
+<section id="onboarding" class="onboarding" hidden role="dialog" aria-modal="true" aria-labelledby="onboardingTitle">
+  <div class="onboardingCard">
+    <div class="brandMark" aria-hidden="true">▣</div>
+    <p class="eyebrow">TRIP CANVAS</p>
+    <h1 id="onboardingTitle">여행을<br>더 쉽게 계획하세요</h1>
+    <p>대화로 입력하고, 지도에서 동선을 한눈에 확인하세요.</p>
+    <div class="onboardingActions">
+      <button class="btn primary" id="onboardPaste">▧ 일정 붙여넣기로 시작</button>
+      <button class="btn" id="onboardNew">＋ 새 여행 만들기</button>
+      <button class="btn ghost" id="onboardSample">⌁ 샘플 둘러보기</button>
+    </div>
+    <button class="onboardLogin" id="onboardLogin">이미 계정이 있으신가요? <u>로그인</u></button>
+  </div>
+</section>
 <header>
   <h1>🗺 Trip Canvas</h1>
-  <select id="tripSel"></select>
+  <select id="tripSel" class="srOnly" aria-label="현재 여행 선택"></select>
+  <button class="tripPicker" id="tripPickerBtn" aria-haspopup="dialog"><span id="tripPickerName">여행 선택</span>⌄</button>
   <span class="hdrSpacer"></span>
+  <button class="btn" id="pasteBtn">▧ 일정 붙여넣기</button>
   <button class="btn primary" id="travelBtn">📍 여행 모드</button>
   <button class="btn ghost" id="moreBtn" aria-label="메뉴" onclick="toggleHdrMenu(event)">☰</button>
   <div id="hdrMenu">
@@ -27,7 +43,7 @@
     <button class="btn" id="newTripBtn">＋ 새 여행</button>
     <button class="btn" id="tripListBtn" title="여행 전환·삭제">🗂 여행 목록</button>
     <button class="btn" id="tripEditBtn">⚙️ 여행 설정</button>
-    <button class="btn" id="pasteBtn">📋 붙여넣기</button>
+    <button class="btn" id="pasteMenuBtn">▧ 일정 붙여넣기</button>
     <button class="btn ghost" id="shareBtn">🔗 공유</button>
     <button class="btn ghost" id="exportBtn">📤 내보내기</button>
     <button class="btn ghost" id="imgBtn" title="일정을 이미지로 저장">🖼 이미지</button>
@@ -47,58 +63,38 @@
   <div class="legend" id="legend"></div>
 </div>
 
-<!-- 장소 추가/편집 모달 -->
-<div class="modalBg" id="spotModalBg"><div class="modal">
-  <h2 id="spotModalTitle">장소 추가</h2>
+<!-- 장소 추가/편집 모달: 기본 정보 + 접을 수 있는 상세 설정 -->
+<div class="modalBg" id="spotModalBg"><div class="modal spotModal">
+  <div class="modalTitleRow"><div><p class="eyebrow">PLACE</p><h2 id="spotModalTitle">장소 추가</h2></div><span class="stepBadge">기본 정보</span></div>
   <label>장소 검색 (국내 카카오 · 해외 Google)</label>
-  <div style="display:flex;gap:6px">
-    <input type="text" id="spotSearch" placeholder="예: Puente Nuevo Ronda" style="flex:1">
+  <div class="fieldRow">
+    <input type="text" id="spotSearch" placeholder="검색 또는 장소 이름 입력">
     <button class="btn" id="spotSearchBtn">검색</button>
   </div>
   <div class="searchRes" id="searchRes"></div>
   <div class="hint">또는 <button class="btn" id="pickOnMap" style="font-size:11px;padding:2px 8px">지도 클릭으로 위치 지정</button> · 지도를 <b>우클릭/길게 눌러</b> 바로 추가</div>
-  <label>이름 *</label><input type="text" id="spotName">
-  <label>도시/그룹 * (같은 이름 = 같은 색)</label><input type="text" id="spotCity" placeholder="예: 마드리드">
-  <label>메모 (운영시간, 예약, 팁 등)</label><textarea id="spotDesc"></textarea>
-  <label>일자</label><select id="spotDay"></select>
-  <label>🚕 이 지점으로 이동 (이동 수단) <span class="hint" style="margin:0">— 비우면 일정 기본 수단. 비행기 도착 구간만 ✈️ 지정 등</span></label>
-  <select id="spotLegMode">
-    <option value="">— 일정 기본 수단 —</option>
-    <option value="car">🚗 자차</option>
-    <option value="taxi">🚕 택시</option>
-    <option value="transit">🚌 대중교통</option>
-    <option value="train">🚆 기차</option>
-    <option value="walk">🚶 도보</option>
-    <option value="bike">🚴 자전거</option>
-    <option value="flight">✈️ 비행기</option>
-  </select>
-  <label>🕐 도착 시각 고정 <span class="hint" style="margin:0">— 내가 정하는 계획 (24시간 표기)</span></label>
-  <input type="text" id="spotAt" class="timeIn" inputmode="numeric" maxlength="5" placeholder="예: 14:30">
-  <div class="hint">비우면 <b>이동시간으로 자동 계산</b>돼요. 넣으면 그 시각으로 <b>고정</b>되고, 이 날 일정이 <b>시각 순서대로 자동 정렬</b>됩니다.</div>
-  <label>머무는 시간 (분)</label><input type="number" id="spotStayMin" min="0" step="5" placeholder="60">
-  <div class="hint">여기서 보내는 시간 — <b>다음 장소의 도착 예상</b>에 반영됩니다. 아래 <b>예약·입장 시각</b>을 넣은 지점(역·공항 등)은 <b>0</b>으로 두세요 — 그 시각까지의 대기는 자동으로 계산됩니다.</div>
-  <label>예상 비용 (입장료·식비 등)</label>
-  <div style="display:flex;gap:6px">
-    <input type="text" id="spotCost" inputmode="numeric" placeholder="0" style="flex:1">
-    <select id="spotCur" style="width:auto"><option value="KRW">₩ 원</option><option value="USD">$ 달러</option><option value="EUR">€ 유로</option><option value="JPY">¥ 엔</option><option value="CNY">元 위안</option></select>
+  <div class="basicGrid">
+    <div><label>장소 *</label><input type="text" id="spotName"></div>
+    <div><label>도시/그룹 *</label><input type="text" id="spotCity" placeholder="예: 마드리드"></div>
+    <div><label>일자</label><select id="spotDay"></select></div>
+    <div><label>도착 시각</label><input type="text" id="spotAt" class="timeIn" inputmode="numeric" maxlength="5" placeholder="18:00"></div>
+    <div><label>체류 시간 (분)</label><input type="number" id="spotStayMin" min="0" step="5" placeholder="60"></div>
+    <div class="wide"><label>메모</label><textarea id="spotDesc" placeholder="운영시간, 예약, 팁 등"></textarea></div>
   </div>
-  <div class="hint" id="costKrwHint" style="margin-top:3px"></div>
-  <label>🎫 예약·입장 시각 <span class="hint" style="margin:0">— 상대가 정한 약속 (24시간 표기)</span></label>
-  <input type="text" id="spotBookAt" class="timeIn" inputmode="numeric" maxlength="5" placeholder="예: 19:00">
-  <div class="hint">공연·투어·식당처럼 <b>시각이 정해진</b> 일정. 도착 예상이 이보다 늦으면 ⚠️로 알려주고, 일찍 도착하면 <b>이 시각까지 기다리는 것으로 계산</b>합니다. (도착 시각을 바꾸지는 않아요)<br>
-  <b>이 장소에서 일어나는 약속</b>을 넣으세요 — 열차·항공은 <b>타는 곳</b>(출발역·출발공항)에 탑승 시각을 넣습니다. 도착역에 넣으면 "늦었다"는 ⚠️가 잘못 뜹니다.</div>
-  <label>예약 링크 (예매·바우처 URL)</label><input type="text" id="spotBookUrl" placeholder="https://...">
-  <div class="chkrow"><input type="checkbox" id="spotOpt"><label for="spotOpt" style="margin:0">선택 코스 (흐린 핀)</label></div>
-  <div class="chkrow"><input type="checkbox" id="spotStay"><label for="spotStay" style="margin:0">🏠 숙소 (일자 간 이동 기준점)</label>
-    <span id="nightsWrap" style="display:none;align-items:center;gap:5px;margin-left:auto">
-      <input type="number" id="spotNights" min="1" max="60" step="1" value="1" style="width:66px">
-      <label for="spotNights" style="margin:0">박</label>
-    </span>
-  </div>
-  <div class="hint" id="nightsHint" style="display:none">이 숙소에서 <b>연속으로 묵는 밤</b>의 수. 4박이면 <b>이후 4일 아침</b>이 모두 이 숙소에서 출발하는 것으로 계산돼요 — 매일 숙소를 다시 넣지 않아도 됩니다.</div>
   <input type="hidden" id="spotLat"><input type="hidden" id="spotLng">
   <div class="hint" id="coordHint">좌표: 미지정</div>
-  <div class="row">
+  <details id="spotAdvanced" class="advancedPanel">
+    <summary>상세 설정 보기 <span>⌄</span></summary>
+    <div class="advancedGrid">
+      <div><label>이동수단</label><select id="spotLegMode"><option value="">일정 기본</option><option value="car">🚗 자차</option><option value="taxi">🚕 택시</option><option value="transit">🚌 대중교통</option><option value="train">🚆 기차</option><option value="walk">🚶 도보</option><option value="bike">🚴 자전거</option><option value="flight">✈️ 비행기</option></select></div>
+      <div><label>예약·입장 시각</label><input type="text" id="spotBookAt" class="timeIn" inputmode="numeric" maxlength="5" placeholder="19:00"></div>
+      <div class="wide"><label>예상 비용</label><div class="fieldRow"><input type="text" id="spotCost" inputmode="numeric" placeholder="0"><select id="spotCur" class="compactSelect"><option value="KRW">₩ 원</option><option value="USD">$ 달러</option><option value="EUR">€ 유로</option><option value="JPY">¥ 엔</option><option value="CNY">元 위안</option></select></div><div class="hint" id="costKrwHint"></div></div>
+      <div class="wide"><label>예약 URL</label><input type="text" id="spotBookUrl" placeholder="https://..."></div>
+      <div class="wide optionRows"><div class="chkrow"><input type="checkbox" id="spotOpt"><label for="spotOpt">선택 코스</label></div><div class="chkrow"><input type="checkbox" id="spotStay"><label for="spotStay">🏠 숙소</label><span id="nightsWrap"><input type="number" id="spotNights" min="1" max="60" step="1" value="1"><label for="spotNights">박</label></span></div></div>
+      <div class="hint wide" id="nightsHint">숙박 일수 동안 다음 날 출발 기준점으로 사용합니다.</div>
+    </div>
+  </details>
+  <div class="row modalActions">
     <button class="btn" id="spotDelBtn" style="margin-right:auto;color:#ff8fa3;display:none">삭제</button>
     <button class="btn" id="spotCancel">취소</button>
     <button class="btn primary" id="spotSave">저장</button>
@@ -262,12 +258,16 @@
 
 <!-- 여행 모드 -->
 <div id="travel">
-  <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+  <div class="travelTop">
     <button class="btn" id="travelClose">← 닫기</button>
-    <select id="travelDay" style="flex:1"></select>
+    <strong>여행 모드</strong>
+    <select id="travelDay"></select>
   </div>
   <h2 id="travelTitle"></h2>
   <div class="sub" id="travelSub"></div>
+  <section id="travelCurrent" class="travelFocus"></section>
+  <section id="travelNext" class="travelNext"></section>
+  <h3 class="travelSectionTitle">오늘 일정</h3>
   <div class="list" id="travelList"></div>
 </div>
 <div id="toast" role="status" aria-live="polite"></div>
@@ -291,9 +291,9 @@
   </div>
 </div>
 
-<script src="lib.js?v=tc-v114"></script>
-<script src="sync.js?v=tc-v114"></script>
-<script src="routing.js?v=tc-v114"></script>
-<script src="app.js?v=tc-v114"></script>
+<script src="lib.js?v=tc-v115"></script>
+<script src="sync.js?v=tc-v115"></script>
+<script src="routing.js?v=tc-v115"></script>
+<script src="app.js?v=tc-v115"></script>
 </body>
 </html>
