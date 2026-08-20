@@ -204,3 +204,62 @@ test('통합: 재생 탐색 계산 playSeekTarget / playLegIndexAt', { skip: noJ
   assert.equal(w.eval(`playLegIndexAt([0,50,120], 60)`), 1);
   assert.equal(w.eval(`playLegIndexAt([0,50,120], 200)`), 2);
 });
+
+test('통합: 장소 선택 상태는 class 기반으로 붙고, 다른 장소를 고르면 이전 선택이 해제된다', { skip: noJsdom }, () => {
+  const w = boot();
+  withTrip(w, `[{mode:'car',startAt:'09:00',spots:[
+    {lat:37.50,lng:127.00,name:'A',city:'S'},
+    {lat:37.55,lng:127.05,name:'B',city:'S',cost:228,cur:'EUR',bookAt:'14:00',bookUrl:'https://example.com',opt:true}
+  ]}]`);
+  w.eval('renderSidebar()');
+
+  // 선택 → .is-selected 가 붙고 Day 카드도 함께 강조
+  w.eval('selectSpotCard(0,1)');
+  assert.ok(w.document.querySelector('.spot[data-di="0"][data-si="1"].is-selected'), '선택한 장소에 is-selected');
+  assert.ok(w.document.querySelector('.dayCard.is-selected'), '해당 Day 카드도 강조');
+
+  // 다른 장소 선택 → 이전 선택 해제(항상 하나만)
+  w.eval('selectSpotCard(0,0)');
+  assert.equal(w.document.querySelectorAll('.spot.is-selected').length, 1, '선택은 항상 하나');
+  assert.ok(w.document.querySelector('.spot[data-di="0"][data-si="0"].is-selected'), '새 선택으로 이동');
+
+  // 재렌더 후에도 선택 유지 (DOM이 새로 만들어져도 상태 복원)
+  w.eval('renderSidebar()');
+  assert.ok(w.document.querySelector('.spot[data-di="0"][data-si="0"].is-selected'), '재렌더 후 유지');
+
+  // 강조를 inline 배경으로 넣지 않는다 (class 기반 통일) — style 속성은 도시색 토큰(--c) 용도로만 쓴다
+  const inline = w.document.querySelector('.spot.is-selected').getAttribute('style') || '';
+  assert.ok(!/background/i.test(inline), 'inline 배경 미사용');
+  assert.ok(/^--c:/.test(inline) || inline === '', 'style 속성은 도시색 토큰만');
+
+  // 사라진 인덱스를 가리키면 자동 해제
+  w.eval('selectSpotCard(0,99); renderSidebar()');
+  assert.equal(w.document.querySelectorAll('.spot.is-selected').length, 0, '없는 선택은 해제');
+
+  // 선택 해제
+  w.eval('selectSpotCard(0,1); selectSpotCard(null)');
+  assert.equal(w.document.querySelectorAll('.spot.is-selected').length, 0, '명시적 해제');
+  w.close();
+});
+
+test('통합: 선택 상태가 장소 클릭·작업 메뉴 동작을 방해하지 않는다', { skip: noJsdom }, () => {
+  const w = boot();
+  withTrip(w, `[{mode:'car',startAt:'09:00',spots:[{lat:37.50,lng:127.00,name:'A',city:'S'}]}]`);
+  w.eval('renderSidebar(); selectSpotCard(0,0)');
+  const spot = w.document.querySelector('.spot.is-selected');
+
+  // 이름 버튼(지도 보기)과 작업 메뉴가 선택 상태에서도 그대로 존재
+  assert.ok(spot.querySelector('.spotIdentity'), '이름 버튼 유지');
+  const menu = spot.querySelector('.actionMenu');
+  assert.ok(menu, '⋮ 작업 메뉴 유지');
+  assert.ok(menu.querySelector('summary'), '메뉴 트리거 유지');
+
+  // focusSpot(선택+지도 이동)이 예외 없이 동작
+  assert.doesNotThrow(() => w.eval('focusSpot(0,0)'), 'focusSpot 무예외');
+  assert.ok(w.document.querySelector('.spot[data-di="0"][data-si="0"].is-selected'), 'focusSpot 후에도 선택');
+
+  // 메뉴 열기(details)가 선택 상태에서도 동작
+  menu.setAttribute('open', '');
+  assert.ok(menu.hasAttribute('open'), '작업 메뉴 열림');
+  w.close();
+});

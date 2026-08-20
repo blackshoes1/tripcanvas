@@ -1,7 +1,7 @@
-  :root{--primary:#e53935;--primary-dark:#c62828;--ink:#111827;--muted:#4b5563;--subtle:#6b7280;--border:#e5e7eb;--surface:#fff;--surface-2:#f8fafc;--header:#fff;--focus:#2563eb;--shadow:0 14px 34px rgba(17,24,39,.14);--city-1:#ef5350;--city-2:#f59e0b;--city-3:#4caf72;--city-4:#3b82f6;--city-5:#ec4899}
+  :root{--primary:#e53935;--primary-dark:#c62828;--ink:#111827;--muted:#4b5563;--subtle:#6b7280;--border:#e5e7eb;--surface:#fff;--surface-2:#f8fafc;--header:#fff;--focus:#2563eb;--shadow:0 14px 34px rgba(17,24,39,.14);--city-1:#ef5350;--city-2:#f59e0b;--city-3:#4caf72;--city-4:#3b82f6;--city-5:#ec4899;--hover-bg:#f1f5f9;--selected-bg:#eff6ff;--selected-hover-bg:#dbeafe;--selected-border:#2563eb;--selected-accent:#1d4ed8;--drag-bg:#e8edf4;--meta-eta:#854d0e;--meta-eta-fixed:#075985;--meta-cost:#6d28d9;--meta-link:#1e40af;--meta-warning:#9a3412;--meta-danger:#b91c1c;--meta-soft:#475569}
   *{margin:0;padding:0;box-sizing:border-box}
   body{font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;height:100dvh;display:flex;flex-direction:column;background:var(--surface-2);color:var(--ink);font-size:14px}
-  body.theme-dark{--ink:#f8fafc;--muted:#cbd5e1;--subtle:#94a3b8;--border:#334155;--surface:#111827;--surface-2:#0f172a;--header:#111827;--shadow:0 14px 34px rgba(0,0,0,.42)}
+  body.theme-dark{--ink:#f8fafc;--muted:#cbd5e1;--subtle:#94a3b8;--border:#334155;--surface:#111827;--surface-2:#0f172a;--header:#111827;--shadow:0 14px 34px rgba(0,0,0,.42);--hover-bg:#1e293b;--selected-bg:#1e2b45;--selected-hover-bg:#243453;--selected-border:#60a5fa;--selected-accent:#93c5fd;--drag-bg:#243453;--meta-eta:#e0b055;--meta-eta-fixed:#5ec8e8;--meta-cost:#c9b6e8;--meta-link:#9fd0ff;--meta-warning:#ffb454;--meta-danger:#ff8f6b;--meta-soft:#94a3b8}
   :focus-visible{outline:3px solid color-mix(in srgb,var(--focus) 70%,transparent);outline-offset:2px}
   .srOnly{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
   button{font-family:inherit;cursor:pointer}
@@ -46,13 +46,13 @@
   .iconb{background:none;border:none;color:var(--muted);font-size:13px;padding:8px;border-radius:7px;min-width:36px;min-height:36px}
   .iconb:hover{color:var(--ink);background:var(--surface-2)}
   .dayBody{padding:2px 12px 9px}
-  .drive{font-size:11.5px;color:#f6bd60;padding:2px 0 4px 2px}
-  .dist{font-size:11px;color:#8aa0c8;padding:1px 0 3px 2px}
-  .leg{color:#7d88a8;font-size:10.5px;white-space:nowrap}
+  .drive{font-size:11.5px;color:var(--meta-eta);padding:2px 0 4px 2px}
+  .dist{font-size:11px;color:var(--meta-soft);padding:1px 0 3px 2px}
+  .leg{color:var(--meta-soft);font-size:10.5px;white-space:nowrap}
   /* 구간 수단 버튼 — 상속(흐림) vs 이 구간만 지정(진하게 + 테두리) */
   .legModeBtn{background:none;border:1px solid transparent;border-radius:6px;padding:0 3px;font-size:11px;line-height:1.5;opacity:.5;cursor:pointer}
-  .legModeBtn:hover{opacity:1;background:#2a3457}
-  .legModeBtn.set{opacity:1;border-color:#3d4a7a;background:#232f57}
+  .legModeBtn:hover{opacity:1;background:var(--hover-bg)}
+  .legModeBtn.set{opacity:1;border-color:var(--border);background:var(--surface-2)}
   .note{font-size:11px;color:#9aa5c4;padding:3px 0 0 2px;white-space:pre-wrap}
   .spot{font-size:13.5px;padding:2px 0 5px 14px;position:relative;min-width:0}
   .spot:before{content:'';position:absolute;left:2px;top:20px;width:7px;height:7px;border-radius:50%;background:var(--c,#888)}
@@ -63,8 +63,8 @@
   .spotOrder{flex:none;white-space:nowrap}
   .spotName{min-width:0;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
   .spotMenuSpacer{display:block;width:44px;height:44px}
-  .spot .opt{color:#8892b0;font-size:11px}
-  .spot .noloc{color:#b7791f;background:transparent;font-size:10.5px;border:1px solid #d9b36c;border-radius:6px;padding:1px 5px;cursor:pointer;white-space:nowrap}
+  .spot .opt{color:var(--meta-soft);font-size:11px}
+  .spot .noloc{color:var(--meta-warning);background:transparent;font-size:10.5px;border:1px solid currentColor;border-radius:6px;padding:1px 5px;cursor:pointer;white-space:nowrap}
   .spot .tools{display:flex;gap:2px;opacity:.5;transition:opacity .15s}
   .spot:hover .tools{opacity:1}
   .spot{cursor:grab}
@@ -73,10 +73,10 @@
   .dayHead{cursor:grab}
   .dragHandle{color:#6b76a0;font-size:12px;cursor:grab;padding:0 3px;user-select:none}
   .sortable-ghost{opacity:.35}
-  .sortable-chosen{background:#26356b}
+  .sortable-chosen{background:var(--drag-bg)}
   .sortable-drag .tools{opacity:0}
   .spotList{min-height:8px}
-  .spotList:empty{min-height:26px;border:1px dashed #2a3457;border-radius:7px;margin-bottom:4px}
+  .spotList:empty{min-height:26px;border:1px dashed var(--border);border-radius:7px;margin-bottom:4px}
   .addSpot{font-size:11.5px;color:#7ea6e0;background:none;border:1px dashed #2a3457;border-radius:7px;padding:3px 10px;margin-top:5px}
   #addDayBtn{width:100%;margin-top:2px;padding:8px;font-size:12.5px}
   .legend{position:absolute;bottom:20px;right:10px;background:color-mix(in srgb,var(--surface) 92%,transparent);color:var(--ink);border:1px solid var(--border);padding:8px 12px;border-radius:10px;font-size:11px;z-index:1000;line-height:1.8;max-height:40vh;overflow-y:auto;box-shadow:0 6px 18px rgba(17,24,39,.12)}
@@ -184,12 +184,12 @@
     #travel{max-width:none;padding:12px}.travelTop select{max-width:145px}
   }
 .legChip{background:rgba(22,33,62,.92);color:#f6bd60;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;border:1px solid #2a3457;white-space:nowrap;pointer-events:none}
-.eta{color:#b7791f;font-size:10.5px;font-variant-numeric:tabular-nums;font-weight:700}
-.eta.fixed{color:#5ec8e8}   /* 고정 도착시각 — 자동(금색)과 구분 */
+.eta{color:var(--meta-eta);font-size:10.5px;font-variant-numeric:tabular-nums;font-weight:700}
+.eta.fixed{color:var(--meta-eta-fixed)}   /* 고정 도착시각 — 자동(금색)과 구분 */
 .tLeg{font-size:12px;color:#8aa0c8;margin:-3px 0 9px 18px}
 .snapRow{display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:5px 8px;border-radius:7px;color:#cdd6f4}
 .snapRow:hover{background:#2a3457}
-.legfail{color:#c9884a;cursor:help}
+.legfail{color:var(--meta-warning);cursor:help}
 .modeBtn{font-size:14px;padding:1px 4px}
 .readonly .modeBtn{pointer-events:none}
 .wx{font-size:11px;color:#cdd6f4;white-space:nowrap}
@@ -198,13 +198,13 @@
 .spotMeta{font-size:10.5px;margin-top:-4px}
 .spotLeg{font-size:10.5px;margin-top:2px}
 .spotMetaItem,.spotLeg>*{flex:none;white-space:nowrap;max-width:100%}
-.spotMeta .cost{color:#c9b6e8}
+.spotMeta .cost{color:var(--meta-cost)}
 .spotMeta .costConverted{color:var(--subtle)}
-.spotMeta .book{color:#9fd0ff;text-decoration:none}
-.spotMeta .bookwarn{color:#ffb454}
+.spotMeta .book{color:var(--meta-link);text-decoration:none}
+.spotMeta .bookwarn{color:var(--meta-warning)}
 .spotMeta .stayMeta{color:var(--muted)}
 .optBtn{color:#8fd6a0;border-color:#2e5a3a;margin-left:6px}
-.spotMeta .closed{color:#ff8f6b}
+.spotMeta .closed{color:var(--meta-danger)}
 #verLabel{font-size:11px;color:#8892b0;text-align:center;padding:6px 4px 2px;cursor:pointer;border-top:1px solid #2a3457;margin-top:2px}
 #verLabel:active{color:#cdd7f0}
 
@@ -238,3 +238,28 @@ body.playing #playHud{
   .tripRow .tn{flex:1;cursor:pointer;line-height:1.45}
   .tripRow .tn:hover{color:#fff}
   .tripRow .opt{display:block;color:#8892b0;font-size:11px}
+
+/* ── 카드 상태: default / hover / selected / focus / drag ─────────────────
+   원칙: 선택을 '강한 배경'으로 칠하지 않는다. 카드 안에는 도시색·ETA·비용·예약·경고 등
+   의미를 가진 색이 이미 많아서, 배경을 세게 칠하면 그 색들이 배경에 묻힌다.
+   → 옅은 surface + 링(inset border)으로 표현하고, 의미 색은 그대로 살린다. */
+.spot{border-radius:10px;transition:background .12s ease,box-shadow .12s ease}
+.spot:hover{background:var(--hover-bg)}                       /* hover는 일시적 → 아주 약하게 */
+.spot.is-selected{background:var(--selected-bg);box-shadow:inset 0 0 0 2px var(--selected-border)}
+.spot.is-selected:hover{background:var(--selected-hover-bg)}  /* 선택된 카드에 hover해도 선택이 사라져 보이지 않게 */
+.spot.is-selected .spotName{color:var(--ink);font-weight:700} /* 장소명은 어떤 상태에서도 최고 대비 */
+.spot.is-selected .spotOrder{color:var(--ink)}
+.spot.is-selected .actionMenu>summary{color:var(--ink)}       /* ⋮ 가 배경에 묻히지 않게 */
+.spot.is-selected .actionMenu>summary:hover,
+.spot.is-selected .actionMenu[open]>summary{background:color-mix(in srgb,var(--selected-border) 18%,transparent)}
+.spot.is-selected .leg,.spot.is-selected .dist{color:var(--muted)}   /* 보조 텍스트만 살짝 올림 */
+/* 키보드 포커스는 선택과 별개로 보인다 (selected + focus ring 동시 식별) */
+.spot .spotIdentity:focus-visible{outline:3px solid var(--focus);outline-offset:2px;border-radius:8px}
+/* 드래그 피드백이 선택보다 우선 — dragging > selected > hover > default */
+.spot.sortable-chosen,.spot.sortable-chosen.is-selected{background:var(--drag-bg);box-shadow:none}
+
+/* Day 카드 — 일자/도시 색(왼쪽 accent)의 의미를 덮지 않도록 테두리로만 선택을 표시 */
+.dayCard.is-selected{border-color:var(--selected-border);box-shadow:0 0 0 1px var(--selected-border),0 2px 8px rgba(37,99,235,.10)}
+.dayCard.is-selected>.dayHead{background:var(--selected-bg)}
+.dayCard.dim{opacity:.55}                 /* .4는 내부 경고·링크까지 지워 과함 */
+.dayCard.dim.is-selected{opacity:1}       /* 선택된 카드는 흐려지지 않는다 */

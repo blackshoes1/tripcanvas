@@ -718,7 +718,7 @@ function addPin(s,di,si,c){
     `<a href="#" onclick="openSpotModal(${di},${si});return false;">✎ 편집</a></div>`;
   const pin=mkPin(c,label,s.opt); pin.title=s.name;
   const h=ME().marker(+s.lat,+s.lng,pin,()=>open());
-  const open=()=>{ ME().openPopup(html, +s.lat, +s.lng, h); setSheetSnap('half'); };
+  const open=()=>{ ME().openPopup(html, +s.lat, +s.lng, h); setSheetSnap('half'); selectSpotCard(di,si); };
   markers.push({spot:s, open, h});
 }
 // 동선 라인 추가 (엔진 공용). dashed=일자 간 연결선
@@ -1247,6 +1247,7 @@ function renderSidebar(){
   const add=document.createElement('button'); add.className='btn'; add.id='addDayBtn'; add.textContent='＋ 일자 추가';
   add.onclick=()=>{ commit(()=>{ trip().days.push({title:'',drive:'',note:'',spots:[]}); }); openDayModal(trip().days.length-1); };
   sb.appendChild(add);
+  applySpotSelection();   // 재렌더 후에도 선택 카드 강조 유지
 }
 // 일자 순서 변경 핸들러 (Sortable) — 인덱스 기반이라 날짜는 자동으로 따라감
 function onDayDrop(evt){
@@ -1271,7 +1272,20 @@ function onSpotDrop(evt){
     if(fromDi!==toDi) toast(`Day ${toDi+1}(으)로 이동${resorted?' · 시간순 정렬':''}`);
     else if(resorted) toast('시간순으로 정렬됨'); },0);
 }
+// ── 장소 카드 선택 상태 (지도 핀·목록 탭 공통) ──
+// 재렌더로 DOM이 새로 만들어져도 유지되도록 상태를 변수로 들고, 렌더 후 applySpotSelection()으로 복원한다.
+let selectedSpot=null;   // {di,si} | null
+function selectSpotCard(di,si){ selectedSpot=(di==null)?null:{di:+di,si:+si}; applySpotSelection(); }
+function applySpotSelection(){
+  document.querySelectorAll('.spot.is-selected,.dayCard.is-selected').forEach(el=>el.classList.remove('is-selected'));
+  if(!selectedSpot) return;
+  const el=document.querySelector(`.spot[data-di="${selectedSpot.di}"][data-si="${selectedSpot.si}"]`);
+  if(!el){ selectedSpot=null; return; }   // 삭제·이동으로 사라진 선택은 해제
+  el.classList.add('is-selected');
+  const card=el.closest('.dayCard'); if(card) card.classList.add('is-selected');
+}
 window.focusSpot=(di,si)=>{
+  selectSpotCard(di,si);
   const s=trip().days[di].spots[si];
   if(!hasLoc(s)){ openSpotModal(di,si); return; }   // 위치 미지정이면 지정 모달 열기
   if(activeDay && activeDay!==di+1){ activeDay=0; render(); }
