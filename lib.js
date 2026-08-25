@@ -414,6 +414,7 @@
     if(s.legMode!=null && _MODES.indexOf(s.legMode)<0) delete s.legMode;    // 알 수 없는 구간 수단 → 일정 기본
     if(s.bookUrl!=null && typeof s.bookUrl!=='string') delete s.bookUrl;
     if(s.bookingId!=null && !(typeof s.bookingId==='string' && _ID_RE.test(s.bookingId))) delete s.bookingId;   // 예약 추적 연결 (불량 id 제거)
+    if(s.placeId!=null && !(typeof s.placeId==='string' && /^[A-Za-z0-9_-]{5,200}$/.test(s.placeId))) delete s.placeId;   // 구글 Place ID (호텔 identity)
     if(s.hours!=null && !(Array.isArray(s.hours)&&s.hours.every((/**@type{any}*/h)=>h&&_fin(h.d)&&_fin(h.o)&&_fin(h.c)))) delete s.hours;
     return s;
   }
@@ -433,6 +434,15 @@
     if(!iso(b.end)) delete b.end;
     if(!iso(b.freeCancelUntil)) delete b.freeCancelUntil;
     if(b.cancelFee!=null){ if(_fin(b.cancelFee)) b.cancelFee=Math.min(Math.max(0,Math.round(+b.cancelFee)),TC_LIMITS.cost); else delete b.cancelFee; }
+    // 조건 매칭용 필드 — 투숙 조건·환불·조식·객실명. 미입력(undefined)은 '모름'으로 보존한다
+    if(b.adults!=null){ if(_fin(b.adults)) b.adults=Math.min(8,Math.max(1,Math.round(+b.adults))); else delete b.adults; }
+    if(b.rooms!=null){ if(_fin(b.rooms)) b.rooms=Math.min(4,Math.max(1,Math.round(+b.rooms))); else delete b.rooms; }
+    if(b.roomName!=null){ const r=_str(b.roomName).trim().slice(0,120); if(r) b.roomName=r; else delete b.roomName; }
+    if(b.breakfast!=null) b.breakfast=!!b.breakfast;
+    if(b.refundable==null){ if(b.freeCancelUntil) b.refundable=true; }   // 구버전: 무료취소 기한만 있던 예약
+    else b.refundable=!!b.refundable;
+    if(b.ptoken!=null && !(typeof b.ptoken==='string' && /^[A-Za-z0-9_=-]{4,300}$/.test(b.ptoken))) delete b.ptoken;   // provider property 매핑 캐시
+    if(b.saved!=null){ if(_fin(b.saved)) b.saved=Math.min(Math.max(0,Math.round(+b.saved)),TC_LIMITS.cost); else delete b.saved; }   // 재예약으로 실제 절약한 누적액
     b.track=b.track!==false;   // 기본 추적 on
     return b;
   }

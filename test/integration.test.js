@@ -181,51 +181,125 @@ test('통합: 긴 일정 카드는 주요 정보·메타·이동 행을 분리�
   w.close();
 });
 
-test('통합: 예약 가격 추적 — 사이드바 배지·절약 요약·필터바 칩 배선', { skip: noJsdom }, () => {
+test('통합: 예약 가격 추적 — 확정 배지·확정/잠재 분리 요약·필터바 칩 배선', { skip: noJsdom }, () => {
   const w = boot();
-  // 해외 좌표(스페인) — render()가 카카오 엔진 로드를 시도하지 않게
+  // 해외 좌표(스페인) — render()가 카카오 엔진 로드를 시도하지 않게. 오퍼는 마지막 성공 조회 레코드로 주입
   w.eval(`store.trips.push({id:'__bk__',name:'B',start:'2026-08-01',
-      days:[{mode:'car',spots:[{lat:39.5,lng:-0.4,name:'Cap Rocat',city:'Mallorca',stay:true,bookingId:'bk1'}]}],
-      bookings:[{id:'bk1',type:'hotel',title:'Cap Rocat',price:1350000,track:true}]});
+      days:[{mode:'car',spots:[{lat:39.5,lng:-0.4,name:'Cap Rocat',city:'Mallorca',stay:true,bookingId:'bk1',placeId:'ChIJtest1234'}]}],
+      bookings:[{id:'bk1',type:'hotel',title:'Cap Rocat',price:1350000,track:true,refundable:true,adults:2,rooms:1,start:'2099-10-30',end:'2099-11-01'}]});
     store.activeId='__bk__'; activeDay=0;
-    priceStore['bk1']=[{price:1350000,at:'2026-08-20T09:00:00Z'},{price:1180000,at:'2026-08-24T09:00:00Z'}];`);
+    priceStore['bk1']={at:new Date().toISOString(), err:null,
+      obs:[{price:1180000,cur:'KRW',seller:'Expedia',quality:'EQUIVALENT',at:new Date().toISOString()}],
+      offers:[{seller:'Expedia',price:1180000,cur:'KRW',refundable:true,link:'https://www.expedia.com/x'},
+              {seller:'Agoda',price:1160000,cur:'KRW'}]};`);
   w.eval('render()');
-  // 숙소 카드에 🔴 절약 배지 (탭 → 예약 상세)
+  // 숙소 카드에 🔴 확정 절약 배지 (동일 조건 오퍼 기준)
   const badge = w.document.querySelector('.spot .pxBtn .pxBadge.pxSave');
-  assert.ok(badge, '절약 가능 배지 표시');
+  assert.ok(badge, '확정 절약 배지 표시');
   assert.match(badge.textContent, /170,000.*절약 가능/);
-  // 상태·요약 계산 배선 (price.js ← app.js)
-  const st = JSON.parse(w.eval(`JSON.stringify(bookingStatusOf(bookingOf('bk1')))`));
+  // 상태 판정 배선 — 확정(Expedia)과 잠재(Agoda, 더 저렴하지만 미확인)를 분리
+  const st = JSON.parse(w.eval(`JSON.stringify(hotelStateOf(bookingOf('bk1')))`));
   assert.equal(st.state, 'SAVING_AVAILABLE');
-  assert.equal(st.saving, 170000);
+  assert.equal(st.confirmed.saving, 170000);
+  assert.equal(st.confirmed.offer.seller, 'Expedia');
+  assert.equal(st.potential.offer.seller, 'Agoda');
+  assert.equal(st.potential.delta, 190000);
   const sum = JSON.parse(w.eval('JSON.stringify(tripSavingInfo())'));
   assert.equal(sum.booked, 1350000);
-  assert.equal(sum.saving, 170000);
-  assert.equal(sum.byType.hotel, 170000);
-  // 필터바에 절약 가능 칩
-  assert.ok(w.document.querySelector('#filterbar .pxChip'), '절약 칩 표시');
+  assert.equal(sum.confirmed, 170000);
+  assert.equal(sum.potential, 190000);
+  // 필터바 칩은 확정 금액을 우선 표기
   assert.match(w.document.querySelector('#filterbar .pxChip').textContent, /170,000/);
-  // 예약 목록 모달 — 요약과 예약 행
+  // 목록 모달 — 확정·잠재를 별도 행으로 (§31: 섞지 않는다)
   w.eval('renderBookingList()');
-  assert.match(w.document.getElementById('bookingSummary').textContent, /현재 예약 총액/);
-  assert.match(w.document.getElementById('bookingListBody').textContent, /Cap Rocat/);
+  const summary = w.document.getElementById('bookingSummary').textContent;
+  assert.match(summary, /현재 확정 절약 가능/);
+  assert.match(summary, /조건 확인 필요/);
+  assert.match(summary, /190,000/);
+  // 상세 박스 — 판매처 비교에 ✓ 동일 조건 vs 조건 확인 필요 구분 + 마지막 확인 시각
+  w.eval(`editingBooking='bk1'; renderBookingStatusBox(bookingOf('bk1'))`);
+  const boxText = w.document.getElementById('bkStatus').textContent;
+  assert.match(boxText, /✓ 동일 조건/);
+  assert.match(boxText, /조건 확인 필요/);
+  assert.match(boxText, /마지막 가격 확인/);
+  assert.ok(w.document.querySelector('#bkStatus #bkRebooked'), '[재예약했어요] 액션 제공');
+  assert.ok(w.document.querySelector('#bkStatus a[href^="https://www.expedia.com"]'), '판매처 딥링크(https만)');
   w.close();
 });
 
-test('통합: checkBookingPrice — 모의 조회로 관측 적재, 같은 날 재확인은 1점 유지', { skip: noJsdom }, async () => {
+test('통합: checkBookingPrice — 실 프록시 흐름(성공·쿨다운·중복알림 방지·실패 보존)', { skip: noJsdom }, async () => {
   const w = boot();
   w.eval(`store.trips.push({id:'__bk2__',name:'B',days:[{spots:[]}],
-      bookings:[{id:'bkx',type:'car',title:'렌터카',price:500000,track:true},
-                {id:'bko',type:'hotel',title:'추적 끔',price:100000,track:false}]});
-    store.activeId='__bk2__';`);
+      bookings:[{id:'bkx',type:'hotel',title:'Cap Rocat',price:1350000,track:true,refundable:true,start:'2099-10-30',end:'2099-11-01'},
+                {id:'bkc',type:'car',title:'렌터카',price:500000,track:true,start:'2099-10-30',end:'2099-11-01'},
+                {id:'bko',type:'hotel',title:'추적 끔',price:100000,track:false,start:'2099-10-30',end:'2099-11-01'}]});
+    store.activeId='__bk2__';
+    window.__alerts=0; onSavingOpportunity(()=>{window.__alerts++;});
+    window.__fetchCalls=0;
+    window.fetch=async(url,opts)=>{   // 호텔 프록시만 응답 — 부트가 큐잉한 경로 조회 등은 기존처럼 거부
+      if(!String(url).includes('/api/hotel-offers')) throw new Error('no-net');
+      window.__fetchCalls++;
+      return {ok:true, json:async()=>({status:'OK', property:{name:'Cap Rocat', token:'tok_cap', confidence:0.95},
+        offers:[{seller:'Expedia', price:1180000, cur:'KRW', refundable:true, link:'https://www.expedia.com/x'},
+                {seller:'Agoda', price:1160000, cur:'KRW'}]})}; };`);
   const r1 = await w.eval(`checkBookingPrice('bkx',{force:true})`);
-  assert.ok(r1 && r1.price > 0, '관측 기록됨');
-  assert.ok(r1.price >= 425000 && r1.price <= 550000, '모의 시세는 예약가의 0.85~1.10배');
-  assert.equal(w.eval(`priceStore['bkx'].length`), 1);
+  assert.ok(r1 && r1.ok, '조회 성공');
+  assert.equal(w.eval(`priceStore['bkx'].offers.length`), 2, '오퍼 저장');
+  assert.equal(w.eval(`priceStore['bkx'].offers[0].quality`), 'EQUIVALENT', '조건 매칭 계산됨');
+  assert.equal(w.eval(`priceStore['bkx'].obs.length`), 1, '하루 1점 관측 — 확정 후보 기준');
+  assert.equal(w.eval(`priceStore['bkx'].obs[0].price`), 1180000);
+  assert.equal(w.eval(`bookingOf('bkx').ptoken`), 'tok_cap', 'property 매핑 캐시 저장(§23)');
+  assert.equal(w.eval(`window.__alerts`), 1, '확정 절약 알림 1회');
+  // 쿨다운: 방금 확인 → 재조회 없이 저장값 유지 (§27)
+  const r2 = await w.eval(`checkBookingPrice('bkx',{force:true})`);
+  assert.ok(r2 && r2.cooldown, '쿨다운 반환');
+  assert.equal(w.eval(`window.__fetchCalls`), 1, '추가 API 호출 없음');
+  // 같은 가격 재발견 → 알림 반복 금지 (§29): 마지막 확인을 과거로 돌리고 재조회
+  w.eval(`priceStore['bkx'].at=new Date(Date.now()-3600e3).toISOString()`);
   await w.eval(`checkBookingPrice('bkx',{force:true})`);
-  assert.equal(w.eval(`priceStore['bkx'].length`), 1, '같은 날 재확인은 그 날 점만 갱신');
-  assert.equal(await w.eval(`checkBookingPrice('bko',{force:true})`), null, '추적 꺼진 예약은 조회 안 함');
-  assert.equal(w.eval(`priceStore['bko']`), undefined);
+  assert.equal(w.eval(`window.__alerts`), 1, '같은 가격은 다시 알리지 않음');
+  // 렌터카는 Discovery Provider가 없으므로 조회하지 않는다 (가짜 데이터 금지 §43)
+  assert.equal(await w.eval(`checkBookingPrice('bkc',{force:true})`), null);
+  assert.equal(await w.eval(`checkBookingPrice('bko',{force:true})`), null, '추적 꺼짐');
+  assert.equal(w.eval(`window.__fetchCalls`), 2, '호텔 외 종류는 API 호출 없음');
+  w.close();
+});
+
+test('통합: 가격 조회 실패 — 기존 관측 보존, 최신 가격으로 오인 금지 (§36)', { skip: noJsdom }, async () => {
+  const w = boot();
+  w.eval(`store.trips.push({id:'__bk3__',name:'B',days:[{spots:[]}],
+      bookings:[{id:'bkf',type:'hotel',title:'H',price:1000000,track:true,refundable:true,start:'2099-10-30',end:'2099-11-01'}]});
+    store.activeId='__bk3__';
+    priceStore['bkf']={at:'2026-08-20T00:00:00Z', err:null, obs:[{price:990000,cur:'KRW',seller:'X',quality:'EQUIVALENT',at:'2026-08-20T00:00:00Z'}],
+      offers:[{seller:'X',price:990000,cur:'KRW',refundable:true}]};
+    window.fetch=async()=>{ const e=new Error('down'); throw e; };`);
+  assert.equal(await w.eval(`checkBookingPrice('bkf',{force:true})`), null);
+  assert.equal(w.eval(`priceStore['bkf'].err.code`), 'NETWORK_ERROR', '실패 원인 기록');
+  assert.equal(w.eval(`priceStore['bkf'].obs.length`), 1, '기존 관측 보존');
+  assert.equal(w.eval(`priceStore['bkf'].at`), '2026-08-20T00:00:00Z', '마지막 성공 시각 유지');
+  // 상세 박스에 실패·마지막 성공 조회를 그대로 안내
+  w.eval(`editingBooking='bkf'; renderBookingStatusBox(bookingOf('bkf'))`);
+  assert.match(w.document.getElementById('bkStatus').textContent, /최근 재확인 실패/);
+  // 프록시가 AUTH_REQUIRED(503)를 주면 성공 이력 없는 예약은 ERROR 상태로 정직하게 표시
+  w.eval(`store.trips.find(t=>t.id==='__bk3__').bookings.push({id:'bkn',type:'hotel',title:'N',price:1,track:true,start:'2099-10-30',end:'2099-11-01'});
+    window.fetch=async()=>({ok:false, json:async()=>({error:'AUTH_REQUIRED'})});`);
+  await w.eval(`checkBookingPrice('bkn',{force:true})`);
+  assert.equal(w.eval(`priceStore['bkn'].err.code`), 'AUTH_REQUIRED');
+  assert.equal(w.eval(`hotelStateOf(bookingOf('bkn')).state`), 'ERROR');
+  w.close();
+});
+
+test('통합: 호텔 매칭 후보(UNMATCHED) — 자동 확정하지 않고 사용자가 선택 (§22)', { skip: noJsdom }, async () => {
+  const w = boot();
+  w.eval(`store.trips.push({id:'__bk4__',name:'B',days:[{spots:[]}],
+      bookings:[{id:'bku',type:'hotel',title:'애매한 이름',price:1,track:true,start:'2099-10-30',end:'2099-11-01'}]});
+    store.activeId='__bk4__';
+    window.fetch=async()=>({ok:true, json:async()=>({status:'UNMATCHED', candidates:[{name:'후보 호텔 A', token:'tok_a'},{name:'후보 호텔 B', token:'tok_b'}]})});`);
+  await w.eval(`checkBookingPrice('bku',{force:true})`);
+  assert.equal(w.eval(`priceStore['bku'].err.code`), 'UNMATCHED');
+  assert.equal(w.eval(`priceStore['bku'].candidates.length`), 2);
+  w.eval(`editingBooking='bku'; renderBookingStatusBox(bookingOf('bku'))`);
+  assert.equal(w.document.querySelectorAll('#bkStatus .pxPick').length, 2, '후보 선택 버튼 렌더');
   w.close();
 });
 

@@ -1,5 +1,5 @@
 // Trip Canvas Service Worker
-const VER = 'tc-v120';
+const VER = 'tc-v121';
 const SHELL_CACHE = VER + '-shell';
 
 const SHELL = [
@@ -39,6 +39,10 @@ const PASSTHROUGH = [
 
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
+
+  // GET 외 요청·서버 함수(/api/)는 SW가 손대지 않는다. Cache.put은 GET만 지원해 POST 캐시 시도는
+  // (await가 없어 응답은 살지만) unhandled rejection을 남기고, /api 응답은 애초에 캐시 대상이 아니다.
+  if (e.request.method !== 'GET' || url.pathname.startsWith('/api/')) return;
 
   if (PASSTHROUGH.some(h => url.hostname.includes(h))) return;
 

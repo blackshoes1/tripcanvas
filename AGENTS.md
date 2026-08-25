@@ -26,7 +26,8 @@
 - `app.js` — 앱 조합·DOM·지도/UI 로직
 - `lib.js` — 순수 로직 (파서·거리·시각·앵커·타임라인·정규화). **유닛 테스트 + `tsc` 타입 검사 대상**
 - `sync.js` — revision 병합·삭제 상태 전이, `routing.js` — Google/Kakao transport·fallback. 둘 다 직접 단위 테스트 + `tsc` 대상
-- `price.js` — 예약 가격 추적 순수 계산(실질 절약액·상태·여행 요약·모의 시세). 예약(`trip.bookings`)은 여행 데이터로 동기화·공유되고, 가격 관측 기록은 기기 로컬에만 쌓인다. 직접 단위 테스트 + `tsc` 대상
+- `price.js` — 예약 가격 추적 순수 계산: 실질 절약액·오퍼 조건 매칭(EXACT/EQUIVALENT/SIMILAR)·확정/잠재 절약 판단(decideSaving)·호텔 identity 점수. 예약(`trip.bookings`)·property 매핑 캐시(`ptoken`)는 여행 데이터로 동기화·공유되고, 가격 관측 기록은 기기 로컬(`tripcanvas_prices_v1`) + 로그인 시 `hotel_price_snapshots` 테이블(cron·기기 간 병합). 직접 단위 테스트 + `tsc` 대상. **확정(동일 조건 확인)과 잠재(조건 확인 필요) 절약을 절대 섞지 않는다**
+- `api/hotel-offers.js` — 호텔 시세 프록시: Metasearch(기본 serpapi Google Hotels, `HOTEL_METASEARCH_API_KEY` 서버 전용) + 공식 검증 Provider 레지스트리(Booking/Expedia/Agoda — 키 없으면 AUTH_REQUIRED). `?health=1`로 소스 상태 확인. `api/track-hotel-prices.js` — Vercel Cron(매일 21:00 UTC) 추적 잡, `CRON_SECRET`+`SUPABASE_SERVICE_ROLE_KEY` 없으면 조용히 skip
 - `style.css` — 스타일
 - `sw.js` — 서비스 워커 (앱 셸 캐시)
 - `manifest.json` · `icon-*.png` — PWA
