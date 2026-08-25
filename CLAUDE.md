@@ -25,7 +25,7 @@
 - `index.html` — 마크업 (모달·헤더·재생 HUD 등)
 - `app.js` — 앱 로직 전체 (DOM·지도·네트워크)
 - `lib.js` — 순수 로직 (파서·거리·시각·앵커·타임라인·정규화). **유닛 테스트 + `tsc` 타입 검사 대상**
-- `price.js` — 예약 가격 추적 순수 계산(실질 절약액·상태·여행 요약·모의 시세). 예약(`trip.bookings`)은 여행 데이터로 동기화·공유되고, 가격 관측 기록은 기기 로컬에만 쌓인다. **유닛 테스트 + `tsc` 대상**
+- `price.js` — 예약 가격 추적 순수 계산: 실질 절약액·오퍼 조건 매칭(EXACT/EQUIVALENT/SIMILAR)·확정/잠재 절약 판단·호텔 identity 점수. 예약(`trip.bookings`)은 여행 데이터로 동기화·공유되고, 가격 관측 기록은 기기 로컬 + 로그인 시 `hotel_price_snapshots`. 시세는 `api/hotel-offers.js` 프록시(Metasearch 키 서버 전용)로만 조회 — 키 없으면 미연결 상태를 그대로 표시(가짜 가격 금지). **유닛 테스트 + `tsc` 대상**
 - `style.css` — 스타일
 - `sw.js` — 서비스 워커 (앱 셸 캐시)
 - `manifest.json` · `icon-*.png` — PWA

@@ -263,10 +263,12 @@ body.playing #playHud{
 .pxBtn{background:none;border:0;padding:0;font:inherit;cursor:pointer}
 .pxBadge{font-size:10.5px;font-weight:700;white-space:nowrap}
 .pxBadge.pxSave{color:var(--meta-danger)}
+.pxBadge.pxWarn{color:var(--meta-warning)}
 .pxBadge.pxGood{color:var(--meta-good)}
 .pxBadge.pxWatch{color:var(--meta-eta)}
 .pxBadge.pxOff{color:var(--subtle);font-weight:400}
 .pxChip{color:var(--meta-danger);border:1px solid currentColor;font-weight:700}
+.pxChip.pxChipWarn{color:var(--meta-warning)}
 .pxRow{cursor:pointer}
 .pxRow:hover{background:var(--hover-bg)}
 .pxRow .pxBadge{flex:none;margin-left:4px}
@@ -274,15 +276,26 @@ body.playing #playHud{
 .pxSummary>div{display:flex;justify-content:space-between;align-items:center;gap:8px}
 .pxSummary span{color:var(--muted)}
 .pxSummary .pxSaveRow b{color:var(--meta-danger);font-size:15px}
-.pxSummary .pxByType{color:var(--subtle);font-size:11px;justify-content:flex-end}
+.pxSummary .pxPotRow b{color:var(--meta-warning)}
+.pxSummary .pxActualRow b{color:var(--meta-good)}
 .pxState{font-size:12.5px;font-weight:700;margin-top:12px}
 .pxState.pxSave{color:var(--meta-danger)}
+.pxState.pxWarnT{color:var(--meta-warning)}
 .pxState.pxGood{color:var(--meta-good)}
 .pxState.pxWatch{color:var(--meta-eta)}
 .pxState.pxOff{color:var(--subtle)}
-.pxHist{margin-top:2px;max-height:150px;overflow-y:auto}
-.pxHist>div{display:flex;justify-content:space-between;gap:8px;font-size:12px;padding:4px 6px;border-radius:6px;color:var(--muted)}
+.pxActions{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+.pxActions .btn{font-size:12px;padding:5px 11px;min-height:0;text-decoration:none}
+/* 신뢰도 라벨 — ✓ 동일 조건(확정 가능) vs 조건 확인 필요(단정 금지) 구분 */
+.pxQ{font-size:10.5px;font-weight:700;white-space:nowrap}
+.pxQ.pxQok{color:var(--meta-good)}
+.pxQ.pxQask{color:var(--meta-warning)}
+.pxHist{margin-top:2px;max-height:190px;overflow-y:auto}
+.pxHist>div{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px;padding:4px 6px;border-radius:6px;color:var(--muted)}
+.pxHist>div>span{min-width:0;overflow-wrap:anywhere}
 .pxHist b{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.pxOffers .pxOfferR{flex:none;display:flex;align-items:center;gap:6px}
+.pxOffers a{color:var(--meta-link);text-decoration:none}
 .readonly #bookingAdd{display:none!important}
 
 /* Day 카드 — 일자/도시 색(왼쪽 accent)의 의미를 덮지 않도록 테두리로만 선택을 표시 */

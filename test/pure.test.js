@@ -327,6 +327,20 @@ test('normalizeBooking / normalizeTrip.bookings — 예약(가격 추적) 유입
   assert.equal(ok.cancelFee,100000); assert.equal(ok.freeCancelUntil,'2026-10-20');
   // track:false는 유지
   assert.equal(L.normalizeBooking({id:'bk2', track:false}).track, false);
+  // 조건 매칭 필드: 인원·객실 clamp, 객실명 trim, 조식 bool, ptoken/saved 검증
+  const cond=L.normalizeBooking({id:'bk9', adults:12, rooms:0, roomName:'  Deluxe Double  ', breakfast:1, ptoken:'tok_ABC-123', saved:70000.6, refundable:false});
+  assert.equal(cond.adults,8); assert.equal(cond.rooms,1);
+  assert.equal(cond.roomName,'Deluxe Double'); assert.equal(cond.breakfast,true);
+  assert.equal(cond.ptoken,'tok_ABC-123'); assert.equal(cond.saved,70001);
+  assert.equal(cond.refundable,false);
+  assert.equal('ptoken' in L.normalizeBooking({id:'bk9', ptoken:'bad token!'}), false);
+  // 구버전 호환: refundable 미지정 + 무료취소 기한 있음 → refundable=true 유도
+  assert.equal(L.normalizeBooking({id:'bk8', freeCancelUntil:'2026-10-20'}).refundable, true);
+  assert.equal('refundable' in L.normalizeBooking({id:'bk7'}), false);   // 아무 정보 없으면 '모름' 유지
+  // 스팟 placeId: 형식 밖이면 제거
+  const sp=L.normalizeTrip({days:[{spots:[{name:'A',placeId:'ChIJd8BlQ2BZwokRAFUEcm_qrcA'},{name:'B',placeId:'<bad>'}]}]});
+  assert.equal(sp.days[0].spots[0].placeId,'ChIJd8BlQ2BZwokRAFUEcm_qrcA');
+  assert.equal('placeId' in sp.days[0].spots[1], false);
   // 불량 id(형식 밖 문자)는 항목째 버림 — inline onclick 인자로 쓰여 안전해야 함
   assert.equal(L.normalizeBooking({id:"a'b", price:1}), null);
   assert.equal(L.normalizeBooking({id:'', price:1}), null);

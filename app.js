@@ -190,6 +190,7 @@ function onMapPick(lat,lng){
   if(!pickMode)return;
   pickMode=false; document.getElementById('pickBanner').style.display='none';
   document.getElementById('spotLat').value=lat; document.getElementById('spotLng').value=lng;
+  document.getElementById('spotPlaceId').value='';   // 지도 직접 지정 → 이전 검색의 placeId는 무효
   document.getElementById('coordHint').textContent=`좌표: ${lat.toFixed(4)}, ${lng.toFixed(4)} ✓`;
   fillSpotFromCoords(lat,lng,false);   // 이름·도시 비어있으면 자동 채움
   document.getElementById('spotModalBg').classList.add('show');
@@ -200,6 +201,7 @@ function addSpotAt(lat,lng){
   const di=activeDay? activeDay-1 : 0;
   openSpotModal(di,-1);
   document.getElementById('spotLat').value=lat; document.getElementById('spotLng').value=lng;
+  document.getElementById('spotPlaceId').value='';
   document.getElementById('coordHint').textContent=`좌표: ${(+lat).toFixed(4)}, ${(+lng).toFixed(4)} ✓ (지도에서 지정)`;
   document.getElementById('spotName').value=''; _namePrefill='';
   fillSpotFromCoords(lat,lng,true);    // 지정 지점의 장소명·도시 자동 채움
@@ -1079,12 +1081,13 @@ function renderFilter(){
     b.onclick=()=>setScope(i+1, ()=>fitTo(d.spots.filter(hasLoc).map(s=>[s.lat,s.lng]),64,15));
     bar.appendChild(b);
   });
-  // 예약 절약 기회 — 발견되면 필터바에서 항상 보이게 (탭 → 예약 추적)
+  // 예약 절약 기회 — 발견되면 필터바에서 항상 보이게 (탭 → 예약 추적). 확정과 잠재를 구분한다.
   const bs=tripSavingInfo();
-  if(bs.saving>0){
-    const sv=document.createElement('button'); sv.className='chip pxChip';
-    sv.textContent=`💰 ₩${fmtMoney(bs.saving)} 절약 가능`;
-    sv.title='등록한 예약보다 저렴한 가격이 발견됐어요 — 탭해서 확인';
+  if(bs.confirmed>0||bs.potential>0){
+    const sv=document.createElement('button'); sv.className='chip pxChip'+(bs.confirmed>0?'':' pxChipWarn');
+    sv.textContent=bs.confirmed>0? `💰 ₩${fmtMoney(bs.confirmed)} 절약 가능` : `🟠 더 저렴한 옵션 발견`;
+    sv.title=bs.confirmed>0? '동일 조건의 더 저렴한 가격이 확인됐어요 — 탭해서 확인'
+                           : `최대 ₩${fmtMoney(bs.potential)} 저렴 — 조건 확인 필요. 탭해서 비교`;
     sv.onclick=openBookingList;
     bar.appendChild(sv);
   }
@@ -1423,6 +1426,7 @@ window.openSpotModal=(di,si)=>{
   document.getElementById('spotBookUrl').value=s.bookUrl||'';
   document.getElementById('spotAdvanced').open=!isNew&&!!(s.legMode||s.cost||s.bookAt||s.bookUrl||s.opt||s.stay);
   document.getElementById('spotLat').value=s.lat; document.getElementById('spotLng').value=s.lng;
+  document.getElementById('spotPlaceId').value=s.placeId||'';
   document.getElementById('coordHint').textContent = s.lat?`좌표: ${(+s.lat).toFixed(4)}, ${(+s.lng).toFixed(4)}`:'좌표: 미지정 (검색 또는 지도 클릭)';
   document.getElementById('spotSearch').value=''; document.getElementById('searchRes').innerHTML='';
   const daySel=document.getElementById('spotDay');
@@ -1463,6 +1467,7 @@ document.getElementById('spotSave').onclick=()=>{
     cur:(curV&&curV!=='KRW'?curV:undefined),   // KRW는 기본값이라 저장 생략(하위호환)
     bookAt:normHM(document.getElementById('spotBookAt').value)||'',
     bookUrl:document.getElementById('spotBookUrl').value.trim(),
+    placeId:(document.getElementById('spotPlaceId').value||undefined),   // 예약 가격 추적의 호텔 identity
     hours:_pickedHours||undefined,lat,lng};
   const targetDay=parseInt(document.getElementById('spotDay').value);
   const isEdit=editing.si>=0;
@@ -1513,6 +1518,7 @@ async function doSearch(){
       d.textContent=it.name+(it.addr?` — ${it.addr}`:'');
       d.onclick=()=>{
         document.getElementById('spotLat').value=it.lat; document.getElementById('spotLng').value=it.lng;
+        document.getElementById('spotPlaceId').value=it.placeId||'';   // 구글 결과면 호텔 identity용 placeId 보존
         fillNameValue(it.name, true);   // 검색 결과 선택은 명시적 → 기존 이름도 그 장소 이름으로 갱신
         document.getElementById('coordHint').textContent=`좌표: ${(+it.lat).toFixed(4)}, ${(+it.lng).toFixed(4)} ✓`+(it.hours?' · 영업시간 반영됨':'');
         if(it.city) fillCityValue(it.city);              // 결과가 아는 도시로 즉시 채움(신뢰성↑)
@@ -1686,15 +1692,43 @@ document.getElementById('tripListNew').onclick=()=>{
   document.getElementById('newTripBtn').click();
 };
 
-// ───────────────── 예약 가격 추적 (숙박·렌터카·항공) ─────────────────
-// "이미 세운 계획에서 출발 전까지 계속 돈을 아껴주는" 기능. 예약(booking)은 여행 데이터(trip.bookings)에
-// 저장돼 공유·클라우드 동기화를 따라가고, 가격 관측 기록은 구간 캐시처럼 기기 로컬(localStorage)에만 쌓는다.
-// 계산(절약액·상태·요약)은 price.js 순수 함수(TC_PRICE), 시세 조회는 PriceProvider 인터페이스로 격리.
+// ───────────────── 예약 가격 추적 (다중 소스 · 실데이터) ─────────────────
+// "이미 세운 계획에서 출발 전까지 계속 돈을 아껴주는" 기능. 예약(booking)·호텔 identity·매핑 캐시(ptoken)는
+// 여행 데이터(trip.bookings)에 저장돼 공유·클라우드 동기화를 따라가고, 가격 관측 기록은 기기 로컬 +
+// (로그인 시) hotel_price_snapshots 클라우드 테이블에 쌓인다.
+// 구조: Metasearch(Discovery, /api/hotel-offers 서버 프록시 — 키는 서버 전용) → Offer 정규화 →
+// 조건 매칭(price.js matchQuality) → Saving Decision(decideSaving: 확정/잠재 분리) → UI·알림.
+// 가짜/모의 가격은 production에서 쓰지 않는다 — 소스 미연결이면 그 상태를 그대로 보여준다.
 const PRICE_KEY='tripcanvas_prices_v1';
 const BK_TYPE={hotel:{icon:'🏨',name:'숙박'},car:{icon:'🚗',name:'렌터카'},flight:{icon:'✈️',name:'항공'}};
-let priceStore={};   // {bookingId: [{price,cur,provider,at,url?}, …]} — 시간순, 하루 1점(같은 날 재확인은 갱신)
-try{ priceStore=JSON.parse(localStorage.getItem(PRICE_KEY))||{}; }catch(e){}
+// 오류 분류(§35) → 사용자 안내문. 상세 원문은 콘솔·서버 로그에만.
+const PX_ERR_MSG={
+  AUTH_REQUIRED:'가격 소스가 아직 연결되지 않았어요 — 서버에 메타서치 API 키 설정이 필요합니다',
+  AUTH_ERROR:'가격 소스 인증 오류 — 관리자 확인이 필요해요',
+  RATE_LIMIT:'조회 한도를 넘었어요 — 잠시 후 다시 시도해주세요',
+  PROPERTY_NOT_FOUND:'이 이름으로 호텔을 찾지 못했어요 — 예약처 표기와 같은 이름으로 바꿔보세요',
+  NO_AVAILABILITY:'해당 날짜에 판매 중인 가격이 없어요',
+  NETWORK_ERROR:'네트워크 오류 — 연결을 확인하고 다시 시도해주세요',
+  PROVIDER_ERROR:'가격 소스 오류 — 잠시 후 다시 시도해주세요',
+  INVALID_RESPONSE:'가격 소스 응답을 해석하지 못했어요',
+  UNMATCHED:'호텔 자동 매칭이 확실하지 않아요 — 후보에서 직접 선택해주세요'
+};
+// 기기 로컬 기록: {bookingId: {obs:[하루 1점], offers:[마지막 성공 조회의 판매처별 비교], at:성공시각, err:{code,at}|null, candidates?, alert?}}
+let priceStore={};
+try{
+  const raw=JSON.parse(localStorage.getItem(PRICE_KEY))||{};
+  // v1(관측 배열) → v2 레코드 마이그레이션 + MVP 모의 시세 기록 제거(실데이터 원칙)
+  Object.keys(raw).forEach(k=>{
+    const v=raw[k];
+    const rec=Array.isArray(v)? {obs:v,offers:[],at:null,err:null} : (v&&typeof v==='object'? v:null);
+    if(!rec) return;
+    rec.obs=(Array.isArray(rec.obs)?rec.obs:[]).filter(o=>o&&!/\(모의\)/.test(String(o.provider||o.seller||'')));
+    rec.offers=Array.isArray(rec.offers)?rec.offers:[];
+    priceStore[k]=rec;
+  });
+}catch(e){}
 function savePrices(){ try{ localStorage.setItem(PRICE_KEY, JSON.stringify(priceStore)); }catch(e){} }
+function recOf(id){ return priceStore[id]||(priceStore[id]={obs:[],offers:[],at:null,err:null}); }
 // 어느 여행에도 없는 예약의 기록 정리 (여행/예약 삭제 뒤 잔재)
 function prunePrices(){
   const ids=new Set(); store.trips.forEach(t=>(t.bookings||[]).forEach(b=>ids.add(b.id)));
@@ -1705,104 +1739,214 @@ function prunePrices(){
 function tripBookings(){ return trip().bookings||[]; }
 function bookingOf(id){ return tripBookings().find(b=>b.id===id)||null; }
 function todayISO(){ return toISO(new Date()); }
-function bookingStatusOf(b){
-  return TC_PRICE.bookingPriceStatus(b, priceStore[b.id]||[], {today:todayISO(), krwRate:fxRates[b.cur||'KRW']||1});
+function fmtDT(iso){ const d=new Date(iso); return isNaN(+d)?'':`${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; }
+// 호텔 identity — 연결된 🏠 숙소 스팟의 이름·placeId·좌표를 쓴다 (이름만으로 검색하지 않기 위해)
+function identityForBooking(b){
+  let found=null;
+  trip().days.forEach(d=>d.spots.forEach(s=>{ if(s.bookingId===b.id) found=s; }));
+  return found? {name:found.name||b.title, placeId:found.placeId, lat:(hasLoc(found)? +found.lat:undefined), lng:(hasLoc(found)? +found.lng:undefined)}
+              : {name:b.title};
+}
+function hotelStateOf(b){
+  if(!b||b.type!=='hotel') return null;
+  return TC_PRICE.hotelTrackState(b, priceStore[b.id]||null, {today:todayISO(), krwRate:fxRates[b.cur||'KRW']||1});
 }
 function tripSavingInfo(){
-  return TC_PRICE.tripSavingSummary(tripBookings(), priceStore, {today:todayISO(), krwRateOf:c=>fxRates[c||'KRW']||1});
+  return TC_PRICE.tripHotelSummary(tripBookings(), priceStore, {today:todayISO(), krwRateOf:c=>fxRates[c||'KRW']||1});
 }
-// 상태 배지 — 🔴 절약 가능(가장 눈에 띔) / 🟢 좋은 가격(유지 권장) / 🟡 추적 중 / 꺼짐
+// 상태 배지 — 🔴 확정 절약(가장 눈에 띔) / 🟠 미검증 저가(단정 금지) / 🟢 유지 권장 / 🟡 추적 중 / ⚠️ 실패
 function bookingBadgeHtml(b){
   if(!b) return '';
-  const st=bookingStatusOf(b);
-  if(st&&st.state==='SAVING_AVAILABLE') return `<span class="pxBadge pxSave" title="예약가 ${escAttr(costLabel(b.price,b.cur))} → 현재 ${escAttr(costLabel(st.current,b.cur))}${st.fee?` (취소 수수료 반영)`:''}">🔴 ₩${fmtMoney(toKRW(st.saving,b.cur))} 절약 가능</span>`;
-  if(st&&st.state==='GOOD_PRICE') return `<span class="pxBadge pxGood" title="현재 ${escAttr(costLabel(st.current,b.cur))} — 관측 최저 수준. 지금 예약 유지 권장">🟢 좋은 가격</span>`;
+  if(b.type!=='hotel'){
+    return b.track!==false? `<span class="pxBadge pxWatch" title="${BK_TYPE[b.type]?escAttr(BK_TYPE[b.type].name):''} 가격 소스는 준비 중 — 지금은 예약 기록용">🟡 추적 예정</span>`
+                          : `<span class="pxBadge pxOff">추적 꺼짐</span>`;
+  }
+  const st=hotelStateOf(b);
+  if(st&&st.state==='SAVING_AVAILABLE'){ const o=st.confirmed.offer;
+    return `<span class="pxBadge pxSave" title="${escAttr(`${o.seller} ${costLabel(TC_PRICE.offerPrice(o),b.cur)} · ✓ 동일 조건${o.verified?' 확인됨':''}${st.fee?' · 취소 수수료 반영':''}`)}">🔴 ₩${fmtMoney(toKRW(st.confirmed.saving,b.cur))} 절약 가능</span>`; }
+  if(st&&st.state==='CHEAPER_UNVERIFIED'){ const o=st.potential.offer;
+    return `<span class="pxBadge pxWarn" title="${escAttr(`${o.seller}에서 최대 ${costLabel(st.potential.delta,b.cur)} 저렴 — 현재 예약과 조건이 다르거나 확인되지 않았어요`)}">🟠 더 저렴한 옵션 발견</span>`; }
+  if(st&&st.state==='GOOD_PRICE') return `<span class="pxBadge pxGood" title="현재가가 관측 최저 수준 — 지금 예약 유지 권장">🟢 좋은 가격</span>`;
+  if(st&&st.state==='ERROR') return `<span class="pxBadge pxWarn" title="${escAttr(PX_ERR_MSG[(st.err&&st.err.code)||'PROVIDER_ERROR']||'가격 확인 실패')}">⚠️ 확인 실패</span>`;
   if(b.track!==false) return `<span class="pxBadge pxWatch" title="시세를 계속 확인 중 — 아직 의미 있는 하락이 없어요">🟡 가격 추적 중</span>`;
   return `<span class="pxBadge pxOff">추적 꺼짐</span>`;
 }
 
-// ── PriceProvider — {id, supports(booking), searchPrice(booking)→Promise<[{provider,price,cur,url?}]>} ──
-// 실제 API(Booking.com·Agoda·Rentalcars·Skyscanner 등) 연동 시 이 목록에 추가한다.
-// UI·서비스는 이 계약만 알고, 특정 외부 API에 직접 의존하지 않는다.
-const MOCK_SOURCES={hotel:['Booking.com','Agoda','Hotels.com'], car:['Rentalcars','Klook'], flight:['Skyscanner','네이버 항공']};
-const MockPriceProvider={
-  id:'mock',
-  supports(){ return true; },
-  async searchPrice(b){
-    const day=todayISO();
-    return (MOCK_SOURCES[b.type]||MOCK_SOURCES.hotel).map(name=>(
-      {provider:name+' (모의)', price:TC_PRICE.mockDailyPrice(b.id,name,day,b.price), cur:b.cur||'KRW'}));
+// ── Discovery Provider (클라이언트 registry) — UI·로직은 이 계약만 안다. 실제 서비스 의존은 서버 adapter에만 ──
+const MetasearchHotelProvider={
+  id:'metasearch',
+  supports(b){ return b.type==='hotel'; },
+  async searchOffers(b){
+    const idn=identityForBooking(b);
+    const r=await fetch('/api/hotel-offers',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({name:idn.name, placeId:idn.placeId, lat:idn.lat, lng:idn.lng, ptoken:b.ptoken,
+        checkIn:b.start, checkOut:b.end, adults:b.adults||2, rooms:b.rooms||1, currency:b.cur||'KRW', country:'kr', language:'ko'})});
+    const js=await r.json().catch(()=>null);
+    if(!r.ok) throw Object.assign(new Error('offers_failed'),{code:(js&&js.error)||'PROVIDER_ERROR'});
+    return js;
   }
 };
-const PRICE_PROVIDERS=[MockPriceProvider];
+const HOTEL_DISCOVERY=[MetasearchHotelProvider];   // 렌터카·항공은 향후 같은 계약의 Provider를 추가
+// 가격 소스 상태(§34) — 세션당 1회 조회
+let _pxHealth;
+async function loadPxHealth(){
+  if(_pxHealth!==undefined) return _pxHealth;
+  _pxHealth=null;
+  try{ const r=await fetch('/api/hotel-offers?health=1'); const js=await r.json(); if(r.ok&&js&&Array.isArray(js.providers)) _pxHealth=js.providers; }catch(e){}
+  return _pxHealth;
+}
+function pxSourceLineHtml(list){
+  if(!list) return '가격 소스 상태 확인 불가 — 서버 함수(/api) 접근 필요 (로컬 정적 서버에선 미지원)';
+  const ko={CONNECTED:'연결됨',AUTH_REQUIRED:'인증 필요',UNAVAILABLE:'미지원'};
+  return '가격 소스: '+list.map(p=>`${esc(p.id)} ${ko[p.status]||esc(p.status)}`).join(' · ');
+}
 
-// ── 절약 기회 알림 이벤트 — 지금은 토스트 1채널. 웹 알림·이메일·푸시·카카오는 여기에 리스너만 추가 ──
+// ── 절약 기회 알림 이벤트 — 지금은 토스트 1채널. 웹 알림·이메일·푸시·카카오는 리스너만 추가 ──
 const savingListeners=[];
 function onSavingOpportunity(fn){ savingListeners.push(fn); }
 function emitSavingOpportunity(op){ savingListeners.forEach(fn=>{ try{ fn(op); }catch(e){} }); }
 onSavingOpportunity(op=>{
   const b=bookingOf(op.bookingId);
-  toast(`💰 "${op.title}" 지금 약 ₩${fmtMoney(toKRW(op.savingAmount, b&&b.cur))} 절약 가능`, '#7c5cff', {label:'보기', fn:openBookingList});
+  toast(`💰 "${op.title}" ${op.sellerName} ✓ 동일 조건 — 약 ₩${fmtMoney(toKRW(op.savingAmount,(b&&b.cur)))} 절약 가능`, '#7c5cff', {label:'보기', fn:openBookingList});
 });
 
-// ── PriceTrackingService: Provider 조회 → 최저가 관측 기록 → 절약 계산 → 상태·알림 ──
-// 신규 절약 기회 발견을 하루 단위로 감지: 최근 관측이 신선하면(staleHours) 자동 재조회는 생략.
+// ── PriceTrackingService: Discovery 조회 → 정규화·매칭 → 관측 기록 → 판단·알림 ──
+// 자동 하루 1회(staleHours) + 실패 백오프 + 수동 확인 쿨다운 + 동일 요청 공유 — 외부 API 비용 제어.
+const _pxInflight=new Map();
 async function checkBookingPrice(id,opts){
   const b=bookingOf(id); if(!b||b.track===false) return null;
-  const obs=priceStore[id]||(priceStore[id]=[]);
-  const last=obs[obs.length-1];
-  if(!(opts&&opts.force) && last && Date.now()-new Date(last.at).getTime() < TC_PRICE.PRICE_CFG.staleHours*3600e3) return null;   // 신선 → 생략
-  const prevState=(bookingStatusOf(b)||{}).state;
-  let offers=[];
-  for(const p of PRICE_PROVIDERS){
-    if(!p.supports(b)) continue;
-    try{ offers.push(...await p.searchPrice(b)); }catch(e){ reportOperationalError('price.search',e); }
+  const provider=HOTEL_DISCOVERY.find(x=>x.supports(b)); if(!provider) return null;   // 소스 없는 종류는 조회하지 않음(가짜 데이터 금지)
+  if(!b.start||!b.end) return null;                                                   // 기간 없이는 검색 불가 (상세 화면이 안내)
+  const today=todayISO(); if(b.end<=today) return null;                               // 숙박 종료 → 추적 중단
+  const rec=recOf(id), now=Date.now(), CFG=TC_PRICE.PRICE_CFG;
+  const age=rec.at? now-Date.parse(rec.at) : Infinity;
+  if(opts&&opts.force){ if(age<CFG.cooldownMin*60e3) return {cooldown:true}; }        // 수동 확인 쿨다운 — 최신 저장값 유지
+  else{
+    if(age<CFG.staleHours*3600e3) return null;                                        // 신선 → 자동 조회 생략
+    if(rec.err&&rec.err.at&&now-Date.parse(rec.err.at)<CFG.errBackoffMin*60e3) return null;   // 실패 직후 재시도 억제
   }
-  // 통화가 다른 결과는 비교 불가 → 제외 (MVP: 동일 통화 기준 비교)
-  offers=offers.filter(o=>o && isFinite(+o.price) && +o.price>0 && (o.cur||'KRW')===(b.cur||'KRW'));
-  if(!offers.length) return null;
-  const best=offers.reduce((a,o)=>o.price<a.price?o:a);
-  const rec={price:Math.round(+best.price), cur:b.cur||'KRW', provider:best.provider, at:new Date().toISOString()};
-  if(best.url) rec.url=best.url;
-  if(last && last.at.slice(0,10)===rec.at.slice(0,10)) obs[obs.length-1]=rec;   // 같은 날 재확인 → 그 날 점만 갱신
-  else obs.push(rec);
-  if(obs.length>TC_PRICE.PRICE_CFG.maxObs) obs.splice(0,obs.length-TC_PRICE.PRICE_CFG.maxObs);
+  const idn=identityForBooking(b);
+  const key=[b.ptoken||idn.placeId||idn.name, b.start, b.end, b.adults||2, b.rooms||1, b.cur||'KRW'].join('|');
+  let job=_pxInflight.get(key);                                                        // 동일 호텔·날짜·인원 요청은 사이클 내 공유
+  if(!job){ job=provider.searchOffers(b).finally(()=>_pxInflight.delete(key)); _pxInflight.set(key,job); }
+  let resp;
+  try{ resp=await job; }
+  catch(e){
+    rec.err={code:(e&&e.code)||'NETWORK_ERROR', at:new Date().toISOString()};          // 실패해도 기존 관측·오퍼는 보존(§36) — 최신 가격으로 오인 금지
+    savePrices(); return null;
+  }
+  if(resp.status==='UNMATCHED'){
+    rec.err={code:'UNMATCHED', at:new Date().toISOString()};
+    rec.candidates=(resp.candidates||[]).slice(0,3).map(c=>({name:String(c.name||''), token:String(c.token||'')}));
+    savePrices(); return null;
+  }
+  const atIso=new Date().toISOString();
+  const offers=(resp.offers||[]).slice(0,12).map(o=>({
+    seller:String(o.seller||''), roomName:(o.roomName?String(o.roomName):undefined),
+    price:+o.price||0, total:(+o.total>0? +o.total:undefined), cur:o.cur||b.cur||'KRW',
+    refundable:o.refundable, breakfast:o.breakfast, link:(typeof o.link==='string'?o.link:undefined),
+    verified:!!o.verified, verifiedBy:o.verifiedBy
+  }));
+  offers.forEach(o=>{ o.quality=TC_PRICE.matchQuality(b,o); });
+  rec.offers=offers; rec.at=atIso; rec.err=null; delete rec.candidates;
+  if(resp.property&&resp.property.token&&b.ptoken!==resp.property.token) b.ptoken=resp.property.token;   // property 매핑 캐시(§23) — 다음부턴 검색 1회 생략, render의 save()로 저장
+  // 하루 1점 관측: 확정 후보 우선, 없으면 최저가 — 등급을 함께 남겨 '미확정' 기록임을 구분
+  const decided=TC_PRICE.decideSaving(b,offers,{today});
+  const top=decided.confirmed? decided.confirmed.offer
+    : offers.slice().sort((a,x)=>TC_PRICE.offerPrice(a)-TC_PRICE.offerPrice(x))[0];
+  if(top){
+    const point={price:TC_PRICE.offerPrice(top), cur:b.cur||'KRW', seller:top.seller, quality:top.quality, verified:!!top.verified, at:atIso};
+    const last=rec.obs[rec.obs.length-1];
+    if(last&&String(last.at||'').slice(0,10)===atIso.slice(0,10)) rec.obs[rec.obs.length-1]=point;
+    else rec.obs.push(point);
+    if(rec.obs.length>CFG.maxObs) rec.obs.splice(0,rec.obs.length-CFG.maxObs);
+  }
+  // 새 확정 절약 기회만 알림 — 같은 가격 반복 알림 금지(§29)
+  const st=hotelStateOf(b);
+  if(st&&st.state==='SAVING_AVAILABLE'&&st.confirmed){
+    const eff=TC_PRICE.offerPrice(st.confirmed.offer);
+    if(!rec.alert||eff<rec.alert.price-1){
+      rec.alert={price:eff, at:atIso};
+      emitSavingOpportunity({bookingId:b.id, title:b.title, sellerName:st.confirmed.offer.seller,
+        previousPrice:b.price, newPrice:eff, currency:b.cur||'KRW',
+        savingAmount:st.confirmed.saving, savingRate:st.confirmed.rate,
+        matchQuality:st.confirmed.offer.quality, verified:!!st.confirmed.offer.verified,
+        deepLink:safeUrl(st.confirmed.offer.link||'')||undefined, detectedAt:atIso});
+    }
+  }
   savePrices();
-  const st=bookingStatusOf(b);
-  if(st && st.state==='SAVING_AVAILABLE' && prevState!=='SAVING_AVAILABLE')
-    emitSavingOpportunity({bookingId:b.id, title:b.title, previousPrice:last?last.price:b.price, currentPrice:st.current,
-      savingAmount:st.saving, savingRate:st.rate, detectedAt:rec.at});
-  return rec;
+  pushPriceSnapshot(b, rec, top);
+  return {ok:true};
 }
 let priceBusy=false;
 async function checkTripPrices(opts){
   if(viewMode||priceBusy) return;   // 읽기전용 보기 여행의 기록은 쌓지 않는다
   priceBusy=true;
   let changed=false;
-  try{ for(const b of tripBookings()){ if(await checkBookingPrice(b.id,opts)) changed=true; } }
+  try{ for(const b of tripBookings()){ const r=await checkBookingPrice(b.id,opts); if(r&&r.ok) changed=true; } }
   finally{ priceBusy=false; }
   if(changed){
-    render();   // 사이드바 배지·필터바 절약 칩 갱신
+    render();
     if(document.getElementById('bookingListBg').classList.contains('show')) renderBookingList();
+    if(document.getElementById('bookingModalBg').classList.contains('show')&&editingBooking) renderBookingStatusBox(bookingOf(editingBooking));
   }
 }
 
-// ── 예약 목록 모달 (여행 단위 절감 요약 + 예약별 상태) ──
+// ── 클라우드 관측 공유 (hotel_price_snapshots, RLS 본인 행) — 서버 cron 기록 + 기기 간 히스토리 병합 ──
+let _pxCloudWarned=false;
+function pushPriceSnapshot(b, rec, top){
+  if(!sb||!user||!top) return;
+  sb.from('hotel_price_snapshots').insert({user_id:user.id, trip_client_id:trip().id, booking_id:b.id,
+    seller:top.seller, price:TC_PRICE.offerPrice(top), currency:b.cur||'KRW',
+    quality:top.quality||'SIMILAR', verified:!!top.verified, ptoken:b.ptoken||null, offers:rec.offers.slice(0,10)})
+    .then(({error})=>{ if(error&&!_pxCloudWarned){ _pxCloudWarned=true; reportOperationalError('price.cloud',error); } })
+    .catch(()=>{});
+}
+async function pullPriceSnapshots(){
+  if(!sb||!user) return;
+  const ids=[]; store.trips.forEach(t=>(t.bookings||[]).forEach(b=>{ if(b.type==='hotel') ids.push(b.id); }));
+  if(!ids.length) return;
+  try{
+    const since=new Date(Date.now()-7*864e5).toISOString();
+    const {data,error}=await sb.from('hotel_price_snapshots')
+      .select('booking_id,seller,price,currency,quality,verified,offers,observed_at')
+      .in('booking_id',ids).gte('observed_at',since).order('observed_at',{ascending:true}).limit(200);
+    if(error||!data||!data.length) return;
+    let changed=false;
+    data.forEach(r=>{
+      const rec=recOf(r.booking_id), day=String(r.observed_at).slice(0,10);
+      if(!rec.obs.some(o=>String(o.at||'').slice(0,10)===day)){
+        rec.obs.push({price:+r.price||0, cur:r.currency||'KRW', seller:r.seller||'', quality:r.quality||'SIMILAR', verified:!!r.verified, at:r.observed_at});
+        rec.obs.sort((a,x)=>String(a.at||'').localeCompare(String(x.at||'')));
+        changed=true;
+      }
+      if(Array.isArray(r.offers)&&r.offers.length&&(!rec.at||String(r.observed_at)>String(rec.at))){
+        rec.offers=r.offers.slice(0,12); rec.at=r.observed_at; rec.err=null; changed=true;
+      }
+    });
+    if(changed){ savePrices(); render(); }
+  }catch(e){}
+}
+
+// ── 예약 목록 모달 (여행 단위 절감 대시보드 + 예약별 상태) ──
 function renderBookingList(){
   const bookings=tripBookings(), s=tripSavingInfo();
+  // 확정·잠재(조건 확인 필요)·실제 절약을 절대 섞지 않는다 (§31)
   document.getElementById('bookingSummary').innerHTML = bookings.length? `<div class="pxSummary">
       <div><span>현재 예약 총액</span><b>₩${fmtMoney(s.booked)}</b></div>
-      <div class="pxSaveRow"><span>현재 절약 가능 금액</span><b>${s.saving>0?`₩${fmtMoney(s.saving)}`:'—'}</b></div>
-      ${s.saving>0?`<div class="pxByType">${['hotel','car','flight'].map(k=>`${BK_TYPE[k].icon} ₩${fmtMoney(s.byType[k]||0)}`).join(' · ')}</div>`:''}
+      <div class="pxSaveRow"><span>현재 확정 절약 가능</span><b>${s.confirmed>0?`₩${fmtMoney(s.confirmed)}`:'—'}</b></div>
+      ${s.potential>0?`<div class="pxPotRow"><span>조건 확인 필요</span><b>최대 ₩${fmtMoney(s.potential)}</b></div>`:''}
+      ${s.actual>0?`<div class="pxActualRow"><span>TripCanvas로 실제 절약</span><b>₩${fmtMoney(s.actual)}</b></div>`:''}
     </div>`:'';
   document.getElementById('bookingListBody').innerHTML = bookings.length? bookings.map(b=>{
     const period=[b.start,b.end].filter(Boolean).map(esc).join(' ~ ');
     const sub=[period, b.provider?esc(b.provider):'', costLabel(b.price,b.cur)].filter(Boolean).join(' · ');
-    return `<div class="tripRow pxRow" onclick="openBookingModal('${escAttr(b.id)}')" title="탭해서 상세·가격 기록 보기">
+    return `<div class="tripRow pxRow" onclick="openBookingModal('${escAttr(b.id)}')" title="탭해서 상세·판매처 비교·가격 기록 보기">
       <span class="tn">${BK_TYPE[b.type]?BK_TYPE[b.type].icon:'🏨'} ${esc(b.title)}<span class="opt">${sub}</span></span>
       ${bookingBadgeHtml(b)}
     </div>`;
-  }).join('') : `<div class="hint" style="padding:14px 4px">아직 등록한 예약이 없어요. 숙소·렌터카·항공권을 예약했다면 가격을 등록해 두세요 — 출발 전까지 계속 확인해서 더 싸지면 알려드릴게요.</div>`;
+  }).join('') : `<div class="hint" style="padding:14px 4px">아직 등록한 예약이 없어요. 예약한 숙소의 가격을 등록해 두면 출발 전까지 계속 확인해서 더 좋은 조건이 생기면 알려드릴게요.</div>`;
+  loadPxHealth().then(h=>{ try{ const el=document.getElementById('pxSourceLine'); if(el) el.innerHTML=pxSourceLineHtml(h); }catch(e){} });   // catch: 문서가 이미 닫힌 뒤 도착한 응답
 }
 function openBookingList(){
   renderBookingList();
@@ -1828,10 +1972,11 @@ function fillBkSpotSelect(b){
     opts.map((o,i)=>`<option value="${i}" ${i===cur?'selected':''}>Day ${o.di+1} · ${esc(o.s.name)}</option>`).join('');
 }
 function toggleBkFields(){
-  const type=document.getElementById('bkType').value;
-  document.getElementById('bkSpotWrap').style.display = type==='hotel'?'block':'none';
+  const type=document.getElementById('bkType').value, hotel=type==='hotel';
+  document.getElementById('bkSpotWrap').style.display = hotel?'block':'none';
+  document.getElementById('bkHotelFields').style.display = hotel?'block':'none';
   document.getElementById('bkProviderLabel').textContent = type==='flight'?'항공사 또는 예약처':'예약처';
-  document.getElementById('bkTitleLabel').textContent = {hotel:'숙소 이름 *',car:'렌터카 (차종·업체) *',flight:'항공편 (구간·편명) *'}[type]||'예약 이름 *';
+  document.getElementById('bkTitleLabel').textContent = {hotel:'숙소 이름 * (예약처 표기와 같게 — 검색 정확도)',car:'렌터카 (차종·업체) *',flight:'항공편 (구간·편명) *'}[type]||'예약 이름 *';
   document.getElementById('bkFreeUntilWrap').style.display = document.getElementById('bkFreeCancel').checked?'block':'none';
 }
 window.openBookingModal=(id)=>{
@@ -1849,7 +1994,11 @@ window.openBookingModal=(id)=>{
   document.getElementById('bkCur').value=(b&&b.cur)||'KRW';
   document.getElementById('bkStart').value=(b&&b.start)||'';
   document.getElementById('bkEnd').value=(b&&b.end)||'';
-  document.getElementById('bkFreeCancel').checked=!!(b&&b.freeCancelUntil);
+  document.getElementById('bkAdults').value=(b&&b.adults)||2;
+  document.getElementById('bkRooms').value=(b&&b.rooms)||1;
+  document.getElementById('bkRoom').value=(b&&b.roomName)||'';
+  document.getElementById('bkBreakfast').value=(b&&b.breakfast===true)?'1':(b&&b.breakfast===false)?'0':'';
+  document.getElementById('bkFreeCancel').checked=!!(b&&(b.refundable!==undefined? b.refundable : b.freeCancelUntil));
   document.getElementById('bkFreeUntil').value=(b&&b.freeCancelUntil)||'';
   document.getElementById('bkFee').value=(b&&b.cancelFee)?fmtMoney(b.cancelFee):'';
   document.getElementById('bkUrl').value=(b&&b.url)||'';
@@ -1858,40 +2007,94 @@ window.openBookingModal=(id)=>{
   renderBookingStatusBox(b);
   document.getElementById('bookingModalBg').classList.add('show');
 };
-// 현재가·절약·무료취소·가격 기록 — 편집 중인 기존 예약에만 표시
+// 현재가·판매처 비교·매칭 후보·가격 기록 — 편집 중인 기존 예약에만 표시
 function renderBookingStatusBox(b){
   const box=document.getElementById('bkStatus');
   if(!b){ box.innerHTML=''; return; }
-  const st=bookingStatusOf(b), obs=priceStore[b.id]||[];
-  let head;
-  if(st&&st.state==='SAVING_AVAILABLE')
-    head=`<div class="pxState pxSave">🔴 지금 갈아타면 약 ${costLabel(st.saving,b.cur)} 절약</div>
-      <div class="hint">현재 최저 ${costLabel(st.current,b.cur)} · 예약가 ${costLabel(b.price,b.cur)}${st.fee?` · 취소 수수료 ${costLabel(st.fee,b.cur)} 반영`:''} — 재예약 여부는 직접 결정하세요</div>`;
-  else if(st&&st.state==='GOOD_PRICE')
-    head=`<div class="pxState pxGood">🟢 좋은 가격 — 지금 예약을 유지하세요</div>
-      <div class="hint">현재 ${costLabel(st.current,b.cur)} · 관측된 가격 중 최저 수준입니다</div>`;
-  else if(st)
-    head=`<div class="pxState pxWatch">🟡 가격 추적 중 — 아직 의미 있는 하락이 없어요</div>
-      <div class="hint">현재 ${costLabel(st.current,b.cur)} · 예약가 ${costLabel(b.price,b.cur)}</div>`;
-  else if(b.track!==false) head=`<div class="pxState pxWatch">🟡 가격 추적 중 — 첫 확인을 기다리고 있어요</div>`;
-  else head=`<div class="pxState pxOff">가격 추적이 꺼져 있어요 — 켜면 시세를 계속 확인합니다</div>`;
-  const free=b.freeCancelUntil?`<div class="hint">무료 취소 ${esc(b.freeCancelUntil)}까지${todayISO()<=b.freeCancelUntil?'':' — 기한이 지나 취소 수수료가 적용됩니다'}</div>`:'';
-  const hist=obs.slice(-8).reverse().map(o=>
-    `<div><span>${esc(String(o.at||'').slice(5,10).replace('-','/'))} · ${esc(o.provider||'')}</span><b>${costLabel(o.price,o.cur)}</b></div>`).join('');
-  box.innerHTML=`${head}${free}
-    ${obs.length?`<label>📈 가격 기록 (하루 1점, 최근 ${Math.min(obs.length,8)}회)</label><div class="pxHist">${hist}</div>`:''}
-    ${b.track!==false?`<button type="button" class="btn" id="bkCheckNow" style="margin-top:8px;font-size:11px;padding:3px 10px">🔄 지금 가격 확인</button>
-    <span class="hint">모의 시세 기준 — 실제 예약처 연동 준비 중</span>`:''}`;
+  if(b.type!=='hotel'){
+    box.innerHTML=`<div class="pxState pxWatch">🟡 ${BK_TYPE[b.type]?esc(BK_TYPE[b.type].name):''} 가격 소스는 준비 중 — 지금은 예약 기록용으로 저장돼요</div>`;
+    return;
+  }
+  const rec=priceStore[b.id]||{obs:[],offers:[]}, st=hotelStateOf(b), CFG=TC_PRICE.PRICE_CFG;
+  const missing=!b.start||!b.end;
+  let head='';
+  if(missing) head=`<div class="pxState pxWatch">체크인·체크아웃 날짜를 입력하면 가격 추적을 시작해요</div>`;
+  else if(b.track===false) head=`<div class="pxState pxOff">가격 추적이 꺼져 있어요 — 켜면 시세를 계속 확인합니다</div>`;
+  else if(st&&st.state==='SAVING_AVAILABLE'){
+    const o=st.confirmed.offer, eff=TC_PRICE.offerPrice(o), link=safeUrl(o.link||'');
+    head=`<div class="pxState pxSave">🔴 재예약 시 약 ${costLabel(st.confirmed.saving,b.cur)} 절약 — ${esc(o.seller)} <span class="pxQ pxQok">✓ 동일 조건${o.verified?' 확인됨':''}</span></div>
+      <div class="hint">현재 예약 ${costLabel(b.price,b.cur)} → ${esc(o.seller)} ${costLabel(eff,b.cur)}${st.fee?` · 취소 수수료 ${costLabel(st.fee,b.cur)} 반영`:''} — 재예약·기존 예약 취소는 직접 결정하세요</div>
+      <div class="pxActions">${link?`<a class="btn" href="${escAttr(link)}" target="_blank" rel="noopener">판매처에서 확인 ↗</a>`:''}<button type="button" class="btn" id="bkRebooked">재예약했어요</button></div>`;
+  }
+  else if(st&&st.state==='CHEAPER_UNVERIFIED'){
+    const o=st.potential.offer, link=safeUrl(o.link||'');
+    head=`<div class="pxState pxWarnT">🟠 ${esc(o.seller)}에서 최대 ${costLabel(st.potential.delta,b.cur)} 저렴한 옵션 발견</div>
+      <div class="hint">현재 예약과 일부 조건이 다르거나 확인되지 않았어요 — 확정 절약으로 계산하지 않습니다. 아래 비교에서 조건을 확인하세요.</div>
+      ${link?`<div class="pxActions"><a class="btn" href="${escAttr(link)}" target="_blank" rel="noopener">판매처에서 확인 ↗</a></div>`:''}`;
+  }
+  else if(st&&st.state==='GOOD_PRICE') head=`<div class="pxState pxGood">🟢 좋은 가격 — 지금 예약을 유지하세요</div><div class="hint">현재 시세가 관측된 가격 중 최저 수준입니다</div>`;
+  else if(st&&st.state==='ERROR') head=`<div class="pxState pxWarnT">⚠️ 현재 가격을 확인하지 못했어요</div><div class="hint">${esc(PX_ERR_MSG[(st.err&&st.err.code)||'PROVIDER_ERROR']||'')}</div>`;
+  else head=`<div class="pxState pxWatch">🟡 가격 추적 중 — 아직 의미 있는 하락이 없어요</div>`;
+  // 매칭 후보 — 낮은 신뢰도는 자동 확정하지 않고 사용자가 고른다 (§22)
+  const cand=(rec.err&&rec.err.code==='UNMATCHED'&&rec.candidates&&rec.candidates.length)?
+    `<label>호텔 자동 매칭이 확실하지 않아요 — 맞는 호텔을 선택해주세요</label><div class="pxHist">`+rec.candidates.map((c,i)=>
+      `<div><span>${esc(c.name)}</span><button type="button" class="btn pxPick" data-i="${i}" style="font-size:11px;padding:2px 8px">이 호텔이에요</button></div>`).join('')+`</div>` : '';
+  // 판매처별 가격 비교 — 신뢰도(✓ 동일 조건 / 조건 확인 필요)를 반드시 구분 표시 (§16·21)
+  const qLabel=o=>{ const q=o.quality||TC_PRICE.matchQuality(b,o);
+    return (q==='EXACT'||q==='EQUIVALENT')
+      ? `<span class="pxQ pxQok">✓ 동일 조건${o.verified?' 확인됨':''}</span>`
+      : (q==='SIMILAR'? `<span class="pxQ pxQask">조건 확인 필요</span>` : `<span class="pxQ">비교 불가</span>`); };
+  const offersHtml=(rec.offers||[]).slice(0,6).map(o=>{
+    const link=safeUrl(o.link||'');
+    return `<div><span>${esc(o.seller)}${o.roomName?` <span class="opt">${esc(o.roomName)}</span>`:''}</span>
+      <span class="pxOfferR"><b>${costLabel(TC_PRICE.offerPrice(o),b.cur)}</b> ${qLabel(o)}${link?` <a href="${escAttr(link)}" target="_blank" rel="noopener" title="판매처에서 확인">↗</a>`:''}</span></div>`;
+  }).join('');
+  // 마지막 확인 시각 — 오래됨·실패를 그대로 알린다 (§33·36)
+  let checkedLine='';
+  if(rec.at){
+    const ageH=(Date.now()-Date.parse(rec.at))/3600e3;
+    checkedLine=`<div class="hint">마지막 가격 확인 ${fmtDT(rec.at)}${ageH>CFG.staleNoticeHours?' — <b>가격 정보가 오래되었습니다</b>':''}${rec.err?` · 최근 재확인 실패 — 마지막 성공 조회 기준으로 표시 중`:''}</div>`;
+  } else if(rec.err&&rec.err.code!=='UNMATCHED') checkedLine=`<div class="hint">아직 성공한 가격 조회가 없어요 (${fmtDT(rec.err.at)} 시도)</div>`;
+  const hist=(rec.obs||[]).slice(-8).reverse().map(o=>
+    `<div><span>${esc(String(o.at||'').slice(5,10).replace('-','/'))} · ${esc(o.seller||o.provider||'')}${(o.quality&&o.quality!=='EXACT'&&o.quality!=='EQUIVALENT')?' <span class="pxQ pxQask">미확정</span>':''}</span><b>${costLabel(o.price,o.cur)}</b></div>`).join('');
+  box.innerHTML=`${head}
+    ${b.freeCancelUntil?`<div class="hint">무료 취소 ${esc(b.freeCancelUntil)}까지${todayISO()<=b.freeCancelUntil?'':' — 기한이 지나 취소 수수료가 적용됩니다'}</div>`:''}
+    ${cand}
+    ${offersHtml?`<label>💱 판매처별 가격 비교</label><div class="pxHist pxOffers">${offersHtml}</div>`:''}
+    ${checkedLine}
+    ${hist?`<label>📈 가격 기록 (하루 1점, 최근 ${Math.min((rec.obs||[]).length,8)}회)</label><div class="pxHist">${hist}</div>`:''}
+    ${(b.track!==false&&!missing)?`<button type="button" class="btn" id="bkCheckNow" style="margin-top:8px;font-size:11px;padding:3px 10px">🔄 현재 가격 다시 확인</button>`:''}
+    <div class="hint" id="bkSourceLine"></div>`;
+  loadPxHealth().then(h=>{ try{ const el=document.getElementById('bkSourceLine'); if(el) el.innerHTML=pxSourceLineHtml(h); }catch(e){} });
   const btn=document.getElementById('bkCheckNow');
   if(btn) btn.onclick=async()=>{
     btn.disabled=true; btn.textContent='확인 중…';
-    await checkBookingPrice(b.id,{force:true});
+    const r=await checkBookingPrice(b.id,{force:true});
+    if(r&&r.cooldown) toast(`조금 전에 이미 확인했어요 — ${CFG.cooldownMin}분에 한 번만 조회합니다 (저장된 최신 값 표시 중)`,'#8892b0');
     renderBookingStatusBox(bookingOf(b.id)); render();
   };
+  const reb=document.getElementById('bkRebooked');
+  if(reb&&st&&st.confirmed) reb.onclick=()=>{
+    const o=st.confirmed.offer, eff=TC_PRICE.offerPrice(o);
+    if(!confirm(`${o.seller}에서 ${costLabel(eff,b.cur)}(으)로 재예약을 완료하셨나요?\n예약가를 갱신하고 절약액을 기록합니다. (기존 예약 취소는 직접 확인하세요)`)) return;
+    commit(()=>{ b.saved=(b.saved||0)+Math.max(0,b.price-eff); b.price=eff; b.provider=o.seller; b.updatedAt=new Date().toISOString(); });
+    const rec2=recOf(b.id); delete rec2.alert; savePrices();
+    renderBookingStatusBox(bookingOf(b.id));
+    if(document.getElementById('bookingListBg').classList.contains('show')) renderBookingList();
+    toast('재예약 기록됨 — 새 가격을 기준으로 계속 추적해요 🎉');
+  };
+  box.querySelectorAll('.pxPick').forEach(el=>el.onclick=async()=>{
+    const c=(rec.candidates||[])[+el.dataset.i]; if(!c||!c.token) return;
+    commit(()=>{ b.ptoken=c.token; });
+    delete rec.err; delete rec.candidates; savePrices();
+    el.disabled=true; el.textContent='확인 중…';
+    await checkBookingPrice(b.id,{force:true});
+    renderBookingStatusBox(bookingOf(b.id)); render();
+  });
 }
 document.getElementById('bkType').onchange=toggleBkFields;
 document.getElementById('bkFreeCancel').onchange=toggleBkFields;
-// 숙소 연결 선택 → 새 예약이면 이름·기간·통화 프리필 (기존 예약은 값 유지)
+// 숙소 연결 선택 → 새 예약이면 이름·기간·인원·통화 프리필 (기존 예약의 연결 변경은 값 유지)
 document.getElementById('bkSpot').onchange=()=>{
   if(editingBooking) return;
   const o=bkStayOptions()[+document.getElementById('bkSpot').value];
@@ -1915,26 +2118,39 @@ document.getElementById('bkSave').onclick=()=>{
   const price=parseInt(document.getElementById('bkPrice').value.replace(/[^\d]/g,''));
   if(!title){ toast('예약 이름을 입력하세요','#e63946'); return; }
   if(isNaN(price)||price<=0){ toast('예약 가격을 입력하세요','#e63946'); return; }
+  const type=document.getElementById('bkType').value;
+  const sv=document.getElementById('bkStart').value, ev=document.getElementById('bkEnd').value;
+  if(type==='hotel'&&document.getElementById('bkTrack').checked&&(!sv||!ev)){ toast('가격 추적에는 체크인·체크아웃 날짜가 필요해요','#e63946'); return; }
   const isNew=!editingBooking;
   const b=isNew? {id:uid(), createdAt:new Date().toISOString()} : bookingOf(editingBooking);
   if(!b) return;
   const fee=parseInt(document.getElementById('bkFee').value.replace(/[^\d]/g,''));
   const curV=document.getElementById('bkCur').value;
+  const identityChanged = b.start!==(sv||undefined)||b.end!==(ev||undefined)||b.title!==title;
   commit(()=>{
-    b.type=document.getElementById('bkType').value;
+    b.type=type;
     b.title=title;
     b.provider=document.getElementById('bkProvider').value.trim();
     b.url=document.getElementById('bkUrl').value.trim();
     b.price=price;
     if(curV&&curV!=='KRW') b.cur=curV; else delete b.cur;   // KRW는 기본값이라 생략 (스팟 cur와 동일 규칙)
-    const sv=document.getElementById('bkStart').value, ev=document.getElementById('bkEnd').value;
     if(sv) b.start=sv; else delete b.start;
     if(ev) b.end=ev; else delete b.end;
-    const fu=document.getElementById('bkFreeCancel').checked && document.getElementById('bkFreeUntil').value;
+    if(type==='hotel'){
+      b.adults=Math.min(8,Math.max(1,parseInt(document.getElementById('bkAdults').value)||2));
+      b.rooms=Math.min(4,Math.max(1,parseInt(document.getElementById('bkRooms').value)||1));
+      const rn=document.getElementById('bkRoom').value.trim();
+      if(rn) b.roomName=rn; else delete b.roomName;
+      const bf=document.getElementById('bkBreakfast').value;
+      if(bf==='1') b.breakfast=true; else if(bf==='0') b.breakfast=false; else delete b.breakfast;
+    }
+    b.refundable=document.getElementById('bkFreeCancel').checked;   // 조건 매칭·수수료 계산의 기준
+    const fu=b.refundable && document.getElementById('bkFreeUntil').value;
     if(fu) b.freeCancelUntil=fu; else delete b.freeCancelUntil;
     if(!isNaN(fee)&&fee>0) b.cancelFee=fee; else delete b.cancelFee;
     b.track=document.getElementById('bkTrack').checked;
     b.updatedAt=new Date().toISOString();
+    if(identityChanged) delete b.ptoken;   // 이름·기간이 바뀌면 property 매핑을 다시 찾는다
     if(isNew) (trip().bookings=trip().bookings||[]).push(b);
     // 숙소 연결: 이 예약을 가리키던 이전 연결을 풀고 새로 연결 (호텔이 아니면 연결 없음)
     trip().days.forEach(d=>d.spots.forEach(s=>{ if(s.bookingId===b.id) delete s.bookingId; }));
@@ -1943,9 +2159,9 @@ document.getElementById('bkSave').onclick=()=>{
   });
   document.getElementById('bookingModalBg').classList.remove('show');
   if(document.getElementById('bookingListBg').classList.contains('show')) renderBookingList();
-  toast(b.track?'예약 저장됨 — 가격 추적을 시작해요':'예약 저장됨');
+  toast(b.track&&b.type==='hotel'?'예약 저장됨 — 가격 추적을 시작해요':'예약 저장됨');
   if(b.track) checkBookingPrice(b.id,{force:true}).then(r=>{
-    if(!r) return;
+    if(!r||!r.ok) return;
     render();
     if(document.getElementById('bookingListBg').classList.contains('show')) renderBookingList();
   });
@@ -2182,11 +2398,11 @@ async function googlePlaces(q, near, limit){
   if(!map) return {list:[], err:'network'};   // 지도 SDK 미로드
   try{
     const {Place}=await google.maps.importLibrary('places');
-    const req={textQuery:q, fields:['displayName','formattedAddress','addressComponents','location','regularOpeningHours'], maxResultCount:limit||5, language:'en'};   // 해외 장소는 영문명
+    const req={textQuery:q, fields:['id','displayName','formattedAddress','addressComponents','location','regularOpeningHours'], maxResultCount:limit||5, language:'en'};   // 해외 장소는 영문명
     if(near) req.locationBias={center:near, radius:30000};
     const {places}=await Place.searchByText(req);
     return {list:(places||[]).map(p=>({name:placeName(p), addr:p.formattedAddress||'', city:cityFromGoogle(p.addressComponents),
-      lat:p.location.lat(), lng:p.location.lng(), hours:normHours(p.regularOpeningHours)})), err:null};
+      lat:p.location.lat(), lng:p.location.lng(), hours:normHours(p.regularOpeningHours), placeId:p.id||undefined})), err:null};   // placeId: 호텔 identity 매칭용(§3)
   }catch(e){ const code=classifySearchErr(e); console.warn('Places 검색 오류['+code+']:', (e&&e.message)||e); return {list:[], err:code}; }
 }
 // 도시명 → 앵커 좌표 (Google Geocoder, 전 세계) — 캐시
@@ -2600,6 +2816,7 @@ async function syncOnLogin(){
     }
     localStorage.setItem(LS_KEY, JSON.stringify(store));
     activeDay=0; render(); fitAll();
+    pullPriceSnapshots();   // cron·다른 기기가 남긴 가격 관측 기록을 로컬과 병합
     for(const c of merged.conflicts) enqueueSyncConflict(c);
     for(const action of merged.actions) if(action.trip.id!=='spain2026') await syncTripCloud(action.trip,{force:action.force});
     await flushPendingSync();
