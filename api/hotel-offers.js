@@ -100,6 +100,16 @@ function upstreamCode(status) {
   if (status === 429) return 'RATE_LIMIT';
   return 'PROVIDER_ERROR';
 }
+// SerpApi는 일부 오류를 HTTP 200 + 본문 error 문자열로 준다 — 메시지 유형만 분류(키 무관 문자열)
+function bodyError(message) {
+  const m = String(message || '');
+  const code = /out of searches|rate ?limit/i.test(m) ? 'RATE_LIMIT'
+    : /hasn't returned any results|no results/i.test(m) ? 'PROPERTY_NOT_FOUND'
+    : /invalid api key|unauthorized|api_key/i.test(m) ? 'AUTH_ERROR'
+    : 'PROVIDER_ERROR';
+  if (code === 'PROVIDER_ERROR') console.log('[hotel-offers] upstream error:', m.slice(0, 120));   // 진단용 — 키·요청값 없음
+  return Object.assign(new Error('upstream_body'), { code });
+}
 
 // ── Metasearch adapter: serpapi (Google Hotels 결과 구조화 API) ──
 // 다른 상용 메타서치를 붙이려면 같은 형태의 adapter를 추가하고 HOTEL_METASEARCH_PROVIDER로 선택한다.
@@ -132,8 +142,27 @@ function serpapiAdapter(env, fetchImpl) {
       let token = q.ptoken, confidence = token ? 1 : 0, matchedName = '';
       if (!token) {
         const list = await call({ ...base, q: q.name });
+        if (typeof list.error === 'string') throw bodyError(list.error);
         const properties = Array.isArray(list.properties) ? list.properties.slice(0, 12) : [];
-        if (!properties.length) throw Object.assign(new Error('none'), { code: 'PROPERTY_NOT_FOUND' });
+        // 특정 호텔명이 정확히 매칭되면 구글 호텔이 목록 대신 property 상세를 바로 반환한다
+        // → 목록 단계를 건너뛰고 그대로 상세로 사용 (호출 1회 절약). identity 검증은 동일하게 거친다.
+        if (!properties.length && list.name && (list.prices || list.featured_prices || list.property_token)) {
+          const prop = {
+            name: str(list.name, 160) || '', token: str(list.property_token, 300),
+            lat: list.gps_coordinates && list.gps_coordinates.latitude, lng: list.gps_coordinates && list.gps_coordinates.longitude
+          };
+          const score = P.identityScore({ name: q.name, lat: q.lat, lng: q.lng }, prop);
+          if (score < MATCH_MIN) {
+            return { unmatched: true, candidates: prop.token ? [{ name: prop.name, token: prop.token, score: Math.round(score * 100) / 100 }] : [] };
+          }
+          const offers = normalizeDetail(list, q.currency);
+          if (!offers.length) throw Object.assign(new Error('empty'), { code: 'NO_AVAILABILITY' });
+          return { property: { name: prop.name, token: prop.token, confidence: Math.round(score * 100) / 100 }, offers };
+        }
+        if (!properties.length) {
+          console.log('[hotel-offers] no properties; upstream keys:', Object.keys(list).slice(0, 20).join(','));   // 진단용 — 응답 최상위 키 이름만
+          throw Object.assign(new Error('none'), { code: 'PROPERTY_NOT_FOUND' });
+        }
         const scored = properties
           .map(p => ({
             name: str(p.name, 160) || '', token: str(p.property_token, 300),
@@ -150,6 +179,7 @@ function serpapiAdapter(env, fetchImpl) {
         token = scored[0].token; confidence = scored[0].score; matchedName = scored[0].name;
       }
       const detail = await call({ ...base, property_token: token });
+      if (typeof detail.error === 'string') throw bodyError(detail.error);
       const offers = normalizeDetail(detail, q.currency);
       if (!offers.length) throw Object.assign(new Error('empty'), { code: 'NO_AVAILABILITY' });
       return {

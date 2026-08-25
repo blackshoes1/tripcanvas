@@ -89,6 +89,36 @@ test('hotel-offers: ptoken이 있으면 검색 1단계를 건너뛴다 (매핑 �
   assert.equal(calls, 1, '상세 조회 1회만');
 });
 
+test('hotel-offers: 특정 호텔명 정확 매칭 → 목록 대신 상세 직접 반환도 처리 (호출 1회)', async () => {
+  // 구글 호텔은 단일 호텔로 정확히 매칭되면 properties 배열 없이 property 상세를 바로 반환한다
+  const DIRECT = { name: 'Cap Rocat', property_token: 'tok_direct',
+    gps_coordinates: { latitude: 39.4699, longitude: 2.7166 }, ...{ featured_prices: DETAIL.featured_prices, prices: DETAIL.prices } };
+  let calls = 0;
+  const handler = createHandler({ env: { HOTEL_METASEARCH_API_KEY: 'k' },
+    fetchImpl: async () => { calls += 1; return { ok: true, text: async () => JSON.stringify(DIRECT) }; } });
+  const out = await invoke(handler);
+  assert.equal(out.status, 200);
+  assert.equal(out.json.status, 'OK');
+  assert.equal(out.json.property.token, 'tok_direct');
+  assert.equal(calls, 1, '상세 재조회 없이 1회로 완료');
+  assert.ok(out.json.offers.length >= 3);
+  // 이름·좌표가 전혀 다른 상세가 오면 자동 확정하지 않고 후보로만
+  const WRONG = { ...DIRECT, name: '전혀 다른 호텔', gps_coordinates: { latitude: 48.85, longitude: 2.35 } };
+  const out2 = await invoke(createHandler({ env: { HOTEL_METASEARCH_API_KEY: 'k' },
+    fetchImpl: async () => ({ ok: true, text: async () => JSON.stringify(WRONG) }) }));
+  assert.equal(out2.json.status, 'UNMATCHED');
+  assert.equal(out2.json.candidates[0].token, 'tok_direct');
+});
+
+test('hotel-offers: 본문 error 문자열 분류 — 쿼터 소진→RATE_LIMIT, 무결과→PROPERTY_NOT_FOUND', async () => {
+  const env = { HOTEL_METASEARCH_API_KEY: 'k' };
+  const quota = await invoke(createHandler({ env, fetchImpl: async () => ({ ok: true, text: async () => '{"error":"Your account has run out of searches."}' }) }));
+  assert.equal(quota.status, 429);
+  assert.equal(quota.json.error, 'RATE_LIMIT');
+  const none = await invoke(createHandler({ env, fetchImpl: async () => ({ ok: true, text: async () => `{"error":"Google Hotels hasn't returned any results for this query."}` }) }));
+  assert.equal(none.json.error, 'PROPERTY_NOT_FOUND');
+});
+
 test('hotel-offers: upstream 오류 분류 — 401→AUTH_ERROR, 429→RATE_LIMIT, 무결과→PROPERTY_NOT_FOUND', async () => {
   const env = { HOTEL_METASEARCH_API_KEY: 'k' };
   const auth = await invoke(createHandler({ env, fetchImpl: async () => ({ ok: false, status: 401 }) }));
