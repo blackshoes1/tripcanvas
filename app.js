@@ -434,6 +434,12 @@ function dateOf(di){
 // di번째 날의 ISO 날짜 (시작일 미설정 시 빈 문자열)
 function isoDateOf(di){ if(!trip().start) return ''; const d=new Date(trip().start+'T00:00:00'); d.setDate(d.getDate()+di); return toISO(d); }
 
+// 백그라운드 재렌더(날씨·구간 결과·환율·가격 추적) — 열려 있는 ⋮/보기 메뉴를 닫아버리지 않게
+// 메뉴가 닫힐 때까지 미룬다. 사용자 조작(commit)의 render는 그대로 즉시 실행된다.
+function bgRender(fn){
+  if(document.querySelector('.actionMenu[open],.viewMenu[open]')){ setTimeout(()=>bgRender(fn),800); return; }
+  fn();
+}
 // ── 날씨 (Open-Meteo, 무키·CORS) — 그날·첫 장소 좌표 기준, 세션 캐시 ──
 const WMO={0:'☀️',1:'🌤',2:'⛅',3:'☁️',45:'🌫',48:'🌫',51:'🌦',53:'🌦',55:'🌧',56:'🌧',57:'🌧',
   61:'🌦',63:'🌧',65:'🌧',66:'🌧',67:'🌧',71:'🌨',73:'🌨',75:'❄️',77:'🌨',80:'🌦',81:'🌧',82:'⛈',
@@ -451,7 +457,7 @@ function requestWx(lat,lng,iso){
     .then(r=>r.json()).then(j=>{
       const d=j&&j.daily;
       _wx[k]=(d&&d.time&&d.time.length)? {icon:WMO[d.weather_code[0]]||'🌡', tmax:Math.round(d.temperature_2m_max[0]), tmin:Math.round(d.temperature_2m_min[0])} : null;
-      clearTimeout(_wxT); _wxT=setTimeout(()=>renderSidebar(),300);
+      clearTimeout(_wxT); _wxT=setTimeout(()=>bgRender(renderSidebar),300);
     }).catch(()=>{ _wx[k]=null; });
   return null;
 }
@@ -617,7 +623,7 @@ async function pumpLegs(){
         el.textContent=`이전 일정에서 ${(r.m/1000).toFixed(1)}km · ${fmtDur(r.sec)}`;
       });
       clearTimeout(legRefreshT);
-      legRefreshT=setTimeout(()=>render(),450);   // 하루 합계 + 지도 경로선 갱신
+      legRefreshT=setTimeout(()=>bgRender(render),450);   // 하루 합계 + 지도 경로선 갱신
     }
   }
   legBusy=false;
@@ -682,7 +688,7 @@ function loadFx(){
     if(j&&j.result==='success'&&R&&R.KRW&&R.JPY&&R.CNY&&R.EUR){
       fxRates={ KRW:1, USD:R.KRW, EUR:R.KRW/R.EUR, JPY:R.KRW/R.JPY, CNY:R.KRW/R.CNY };
       try{ localStorage.setItem(FX_KEY, JSON.stringify({day:today, rates:fxRates})); }catch(e){}
-      render();   // 환산액 갱신
+      bgRender(render);   // 환산액 갱신
     }
   }).catch(()=>{});   // 실패 시 폴백/캐시 유지
 }
@@ -1885,11 +1891,11 @@ async function checkTripPrices(opts){
   let changed=false;
   try{ for(const b of tripBookings()){ const r=await checkBookingPrice(b.id,opts); if(r&&r.ok) changed=true; } }
   finally{ priceBusy=false; }
-  if(changed){
+  if(changed) bgRender(()=>{
     render();
     if(document.getElementById('bookingListBg').classList.contains('show')) renderBookingList();
     if(document.getElementById('bookingModalBg').classList.contains('show')&&editingBooking) renderBookingStatusBox(bookingOf(editingBooking));
-  }
+  });
 }
 
 // ── 클라우드 관측 공유 (hotel_price_snapshots, RLS 본인 행) — 서버 cron 기록 + 기기 간 히스토리 병합 ──

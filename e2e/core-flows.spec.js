@@ -34,6 +34,26 @@ test('여행 생성 → 장소 추가·편집·삭제 → 새로고침 유지',a
   await expect(page.locator('.spot')).toHaveCount(0);
 });
 
+test('백그라운드 재렌더(날씨 등)가 열린 작업 메뉴를 닫지 않는다',async({page})=>{
+  // CI에서 표면화된 레이스의 회귀 방지: 메뉴를 연 직후 날씨 도착이 renderSidebar를 밀어넣어도 메뉴가 유지돼야 한다
+  await createTrip(page,'메뉴 유지');
+  await page.locator('.addSpot').first().click();
+  await page.locator('#spotName').fill('광화문');
+  await page.locator('#spotCity').fill('서울');
+  await page.evaluate(()=>{document.getElementById('spotLat').value='37.5759';document.getElementById('spotLng').value='126.9768';});
+  await page.locator('#spotSave').click();
+  await page.locator('.spot .actionMenu summary').click();
+  await expect(page.locator('.spot .actionMenu')).toHaveAttribute('open','');
+  await page.evaluate(()=>bgRender(renderSidebar));            // 날씨 응답 도착 시뮬레이션
+  await page.waitForTimeout(150);
+  await expect(page.locator('.spot .actionMenu')).toHaveAttribute('open','',{timeout:1000});
+  await page.locator('.spot .actionMenu button[title="편집"]').click();   // 메뉴 항목이 그대로 클릭 가능
+  await expect(page.locator('#spotModalBg')).toHaveClass(/show/);
+  await page.locator('#spotCancel').click();
+  await page.waitForTimeout(900);                              // 메뉴 닫힘 후 미뤄둔 재렌더가 정상 실행(무예외)
+  await expect(page.locator('.spot')).toContainText('광화문');
+});
+
 test('여행 전환과 활성·비활성 삭제는 undo로 복원된다',async({page})=>{
   await createTrip(page,'여행 A');
   await createTrip(page,'여행 B');
