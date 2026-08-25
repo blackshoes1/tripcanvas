@@ -1,7 +1,7 @@
-  :root{--primary:#e53935;--primary-dark:#c62828;--ink:#111827;--muted:#4b5563;--subtle:#6b7280;--border:#e5e7eb;--surface:#fff;--surface-2:#f8fafc;--header:#fff;--focus:#2563eb;--shadow:0 14px 34px rgba(17,24,39,.14);--city-1:#ef5350;--city-2:#f59e0b;--city-3:#4caf72;--city-4:#3b82f6;--city-5:#ec4899;--hover-bg:#f1f5f9;--selected-bg:#eff6ff;--selected-hover-bg:#dbeafe;--selected-border:#2563eb;--selected-accent:#1d4ed8;--drag-bg:#e8edf4;--meta-eta:#854d0e;--meta-eta-fixed:#075985;--meta-cost:#6d28d9;--meta-link:#1e40af;--meta-warning:#9a3412;--meta-danger:#b91c1c;--meta-soft:#475569}
+  :root{--primary:#e53935;--primary-dark:#c62828;--ink:#111827;--muted:#4b5563;--subtle:#6b7280;--border:#e5e7eb;--surface:#fff;--surface-2:#f8fafc;--header:#fff;--focus:#2563eb;--shadow:0 14px 34px rgba(17,24,39,.14);--city-1:#ef5350;--city-2:#f59e0b;--city-3:#4caf72;--city-4:#3b82f6;--city-5:#ec4899;--hover-bg:#f1f5f9;--selected-bg:#eff6ff;--selected-hover-bg:#dbeafe;--selected-border:#2563eb;--selected-accent:#1d4ed8;--drag-bg:#e8edf4;--meta-eta:#854d0e;--meta-eta-fixed:#075985;--meta-cost:#6d28d9;--meta-link:#1e40af;--meta-warning:#9a3412;--meta-danger:#b91c1c;--meta-soft:#475569;--meta-good:#15803d}
   *{margin:0;padding:0;box-sizing:border-box}
   body{font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;height:100dvh;display:flex;flex-direction:column;background:var(--surface-2);color:var(--ink);font-size:14px}
-  body.theme-dark{--ink:#f8fafc;--muted:#cbd5e1;--subtle:#94a3b8;--border:#334155;--surface:#111827;--surface-2:#0f172a;--header:#111827;--shadow:0 14px 34px rgba(0,0,0,.42);--hover-bg:#1e293b;--selected-bg:#1e2b45;--selected-hover-bg:#243453;--selected-border:#60a5fa;--selected-accent:#93c5fd;--drag-bg:#243453;--meta-eta:#e0b055;--meta-eta-fixed:#5ec8e8;--meta-cost:#c9b6e8;--meta-link:#9fd0ff;--meta-warning:#ffb454;--meta-danger:#ff8f6b;--meta-soft:#94a3b8}
+  body.theme-dark{--ink:#f8fafc;--muted:#cbd5e1;--subtle:#94a3b8;--border:#334155;--surface:#111827;--surface-2:#0f172a;--header:#111827;--shadow:0 14px 34px rgba(0,0,0,.42);--hover-bg:#1e293b;--selected-bg:#1e2b45;--selected-hover-bg:#243453;--selected-border:#60a5fa;--selected-accent:#93c5fd;--drag-bg:#243453;--meta-eta:#e0b055;--meta-eta-fixed:#5ec8e8;--meta-cost:#c9b6e8;--meta-link:#9fd0ff;--meta-warning:#ffb454;--meta-danger:#ff8f6b;--meta-soft:#94a3b8;--meta-good:#7fd693}
   :focus-visible{outline:3px solid color-mix(in srgb,var(--focus) 70%,transparent);outline-offset:2px}
   .srOnly{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
   button{font-family:inherit;cursor:pointer}
@@ -257,6 +257,33 @@ body.playing #playHud{
 .spot .spotIdentity:focus-visible{outline:3px solid var(--focus);outline-offset:2px;border-radius:8px}
 /* 드래그 피드백이 선택보다 우선 — dragging > selected > hover > default */
 .spot.sortable-chosen,.spot.sortable-chosen.is-selected{background:var(--drag-bg);box-shadow:none}
+
+/* ── 예약 가격 추적 — 상태 배지·절약 칩·요약·가격 기록 ─────────────────
+   🔴 절약 가능이 가장 눈에 띄어야 한다(핵심 판단 신호). 🟢/🟡는 보조 상태. */
+.pxBtn{background:none;border:0;padding:0;font:inherit;cursor:pointer}
+.pxBadge{font-size:10.5px;font-weight:700;white-space:nowrap}
+.pxBadge.pxSave{color:var(--meta-danger)}
+.pxBadge.pxGood{color:var(--meta-good)}
+.pxBadge.pxWatch{color:var(--meta-eta)}
+.pxBadge.pxOff{color:var(--subtle);font-weight:400}
+.pxChip{color:var(--meta-danger);border:1px solid currentColor;font-weight:700}
+.pxRow{cursor:pointer}
+.pxRow:hover{background:var(--hover-bg)}
+.pxRow .pxBadge{flex:none;margin-left:4px}
+.pxSummary{border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-top:8px;font-size:12.5px;display:grid;gap:4px}
+.pxSummary>div{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.pxSummary span{color:var(--muted)}
+.pxSummary .pxSaveRow b{color:var(--meta-danger);font-size:15px}
+.pxSummary .pxByType{color:var(--subtle);font-size:11px;justify-content:flex-end}
+.pxState{font-size:12.5px;font-weight:700;margin-top:12px}
+.pxState.pxSave{color:var(--meta-danger)}
+.pxState.pxGood{color:var(--meta-good)}
+.pxState.pxWatch{color:var(--meta-eta)}
+.pxState.pxOff{color:var(--subtle)}
+.pxHist{margin-top:2px;max-height:150px;overflow-y:auto}
+.pxHist>div{display:flex;justify-content:space-between;gap:8px;font-size:12px;padding:4px 6px;border-radius:6px;color:var(--muted)}
+.pxHist b{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.readonly #bookingAdd{display:none!important}
 
 /* Day 카드 — 일자/도시 색(왼쪽 accent)의 의미를 덮지 않도록 테두리로만 선택을 표시 */
 .dayCard.is-selected{border-color:var(--selected-border);box-shadow:0 0 0 1px var(--selected-border),0 2px 8px rgba(37,99,235,.10)}

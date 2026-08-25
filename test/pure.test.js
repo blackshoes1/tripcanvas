@@ -318,3 +318,31 @@ test('parseTripPayload/parseStorePayload — 크기와 모든 여행을 원자�
   const bad=L.parseStorePayload(JSON.stringify({activeId:'one',trips:[trip,{days:[{spots:[{lat:0}]}]}]}));
   assert.equal(bad.ok,false);
 });
+
+test('normalizeBooking / normalizeTrip.bookings — 예약(가격 추적) 유입 방어', () => {
+  // 정상: 기본값 채움 (type 기본 hotel, track 기본 on)
+  const ok=L.normalizeBooking({id:'bk1', title:' Cap Rocat ', price:1350000.4, cur:'EUR', start:'2026-10-30', end:'2026-11-01', freeCancelUntil:'2026-10-20', cancelFee:100000});
+  assert.equal(ok.type,'hotel'); assert.equal(ok.title,'Cap Rocat');
+  assert.equal(ok.price,1350000); assert.equal(ok.cur,'EUR'); assert.equal(ok.track,true);
+  assert.equal(ok.cancelFee,100000); assert.equal(ok.freeCancelUntil,'2026-10-20');
+  // track:false는 유지
+  assert.equal(L.normalizeBooking({id:'bk2', track:false}).track, false);
+  // 불량 id(형식 밖 문자)는 항목째 버림 — inline onclick 인자로 쓰여 안전해야 함
+  assert.equal(L.normalizeBooking({id:"a'b", price:1}), null);
+  assert.equal(L.normalizeBooking({id:'', price:1}), null);
+  assert.equal(L.normalizeBooking({price:1}), null);
+  assert.equal(L.normalizeBooking('x'), null);
+  // 알 수 없는 type·통화·잘못된 날짜·음수 수수료 → 기본/제거
+  const bad=L.normalizeBooking({id:'bk3', type:'yacht', cur:'GBP', start:'10/30', freeCancelUntil:'soon', cancelFee:-5, price:'x'});
+  assert.equal(bad.type,'hotel'); assert.equal('cur' in bad,false);
+  assert.equal('start' in bad,false); assert.equal('freeCancelUntil' in bad,false);
+  assert.equal(bad.cancelFee,0); assert.equal(bad.price,0);
+  // normalizeTrip: 불량 항목만 걸러내고, 전부 불량이면 필드 생략. 스팟의 불량 bookingId도 제거
+  const t=L.normalizeTrip({days:[{spots:[{name:'A',bookingId:'bk1'},{name:'B',bookingId:'<x>'}]}],
+    bookings:[{id:'bk1',price:1000}, {id:'no way!'}, null]});
+  assert.equal(t.bookings.length,1); assert.equal(t.bookings[0].id,'bk1');
+  assert.equal(t.days[0].spots[0].bookingId,'bk1');
+  assert.equal('bookingId' in t.days[0].spots[1],false);
+  const none=L.normalizeTrip({days:[{spots:[]}], bookings:['x']});
+  assert.equal('bookings' in none,false);
+});

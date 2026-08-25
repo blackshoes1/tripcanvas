@@ -29,6 +29,7 @@ function boot() {
   inject('lib.js');
   inject('sync.js');
   inject('routing.js');
+  inject('price.js');
   inject('app.js');
   return window;
 }
@@ -177,6 +178,54 @@ test('통합: 긴 일정 카드는 주요 정보·메타·이동 행을 분리�
 
   const noLoc = card.querySelector('.spot[data-si="2"]');
   assert.ok(noLoc.querySelector(':scope > .spotMeta .noloc'), '위치 지정도 메타 행에 배치');
+  w.close();
+});
+
+test('통합: 예약 가격 추적 — 사이드바 배지·절약 요약·필터바 칩 배선', { skip: noJsdom }, () => {
+  const w = boot();
+  // 해외 좌표(스페인) — render()가 카카오 엔진 로드를 시도하지 않게
+  w.eval(`store.trips.push({id:'__bk__',name:'B',start:'2026-08-01',
+      days:[{mode:'car',spots:[{lat:39.5,lng:-0.4,name:'Cap Rocat',city:'Mallorca',stay:true,bookingId:'bk1'}]}],
+      bookings:[{id:'bk1',type:'hotel',title:'Cap Rocat',price:1350000,track:true}]});
+    store.activeId='__bk__'; activeDay=0;
+    priceStore['bk1']=[{price:1350000,at:'2026-08-20T09:00:00Z'},{price:1180000,at:'2026-08-24T09:00:00Z'}];`);
+  w.eval('render()');
+  // 숙소 카드에 🔴 절약 배지 (탭 → 예약 상세)
+  const badge = w.document.querySelector('.spot .pxBtn .pxBadge.pxSave');
+  assert.ok(badge, '절약 가능 배지 표시');
+  assert.match(badge.textContent, /170,000.*절약 가능/);
+  // 상태·요약 계산 배선 (price.js ← app.js)
+  const st = JSON.parse(w.eval(`JSON.stringify(bookingStatusOf(bookingOf('bk1')))`));
+  assert.equal(st.state, 'SAVING_AVAILABLE');
+  assert.equal(st.saving, 170000);
+  const sum = JSON.parse(w.eval('JSON.stringify(tripSavingInfo())'));
+  assert.equal(sum.booked, 1350000);
+  assert.equal(sum.saving, 170000);
+  assert.equal(sum.byType.hotel, 170000);
+  // 필터바에 절약 가능 칩
+  assert.ok(w.document.querySelector('#filterbar .pxChip'), '절약 칩 표시');
+  assert.match(w.document.querySelector('#filterbar .pxChip').textContent, /170,000/);
+  // 예약 목록 모달 — 요약과 예약 행
+  w.eval('renderBookingList()');
+  assert.match(w.document.getElementById('bookingSummary').textContent, /현재 예약 총액/);
+  assert.match(w.document.getElementById('bookingListBody').textContent, /Cap Rocat/);
+  w.close();
+});
+
+test('통합: checkBookingPrice — 모의 조회로 관측 적재, 같은 날 재확인은 1점 유지', { skip: noJsdom }, async () => {
+  const w = boot();
+  w.eval(`store.trips.push({id:'__bk2__',name:'B',days:[{spots:[]}],
+      bookings:[{id:'bkx',type:'car',title:'렌터카',price:500000,track:true},
+                {id:'bko',type:'hotel',title:'추적 끔',price:100000,track:false}]});
+    store.activeId='__bk2__';`);
+  const r1 = await w.eval(`checkBookingPrice('bkx',{force:true})`);
+  assert.ok(r1 && r1.price > 0, '관측 기록됨');
+  assert.ok(r1.price >= 425000 && r1.price <= 550000, '모의 시세는 예약가의 0.85~1.10배');
+  assert.equal(w.eval(`priceStore['bkx'].length`), 1);
+  await w.eval(`checkBookingPrice('bkx',{force:true})`);
+  assert.equal(w.eval(`priceStore['bkx'].length`), 1, '같은 날 재확인은 그 날 점만 갱신');
+  assert.equal(await w.eval(`checkBookingPrice('bko',{force:true})`), null, '추적 꺼진 예약은 조회 안 함');
+  assert.equal(w.eval(`priceStore['bko']`), undefined);
   w.close();
 });
 

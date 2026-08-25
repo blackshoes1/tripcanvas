@@ -1079,6 +1079,15 @@ function renderFilter(){
     b.onclick=()=>setScope(i+1, ()=>fitTo(d.spots.filter(hasLoc).map(s=>[s.lat,s.lng]),64,15));
     bar.appendChild(b);
   });
+  // 예약 절약 기회 — 발견되면 필터바에서 항상 보이게 (탭 → 예약 추적)
+  const bs=tripSavingInfo();
+  if(bs.saving>0){
+    const sv=document.createElement('button'); sv.className='chip pxChip';
+    sv.textContent=`💰 ₩${fmtMoney(bs.saving)} 절약 가능`;
+    sv.title='등록한 예약보다 저렴한 가격이 발견됐어요 — 탭해서 확인';
+    sv.onclick=openBookingList;
+    bar.appendChild(sv);
+  }
   const colors=cityColors(), menu=document.createElement('details'); menu.className='viewMenu';
   const cityButtons=Object.entries(colors).map(([city,c])=>`<button class="chip cityFocusBtn" data-city="${escAttr(city)}"><span class="dot" style="background:${c}"></span>${esc(city)}</button>`).join('');
   menu.innerHTML=`<summary>☷ 보기 설정⌄</summary><div class="viewMenuPanel">
@@ -1162,6 +1171,9 @@ function renderSidebar(){
         if(w>0) meta.push(`<span class="spotMetaItem book" title="${escAttr(`도착 예상 ${hm(etas[si])} → 예약 ${s.bookAt}까지 대기. 다음 장소 도착 예상에 이 대기가 반영됩니다`)}">⏳ ${w}분 대기</span>`);
       }
       { const bu=safeUrl(s.bookUrl); if(bu) meta.push(`<a class="spotMetaItem book" href="${escAttr(bu)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="예약 링크 열기">🔗 예약 링크</a>`); }
+      // 예약 가격 추적 상태 (연결된 예약이 있을 때) — 탭하면 상세·가격 기록
+      { const bk=s.bookingId? bookingOf(s.bookingId):null;
+        if(bk) meta.push(`<button type="button" class="spotMetaItem pxBtn" onclick="event.stopPropagation();openBookingModal('${escAttr(bk.id)}')" title="예약 가격 추적 — 탭해서 상세와 가격 기록 보기">${bookingBadgeHtml(bk)}</button>`); }
       // 영업시간 경고: 그 날 요일·도착 예상시각에 문 닫혀 있으면 ⚠️
       if(s.hours && iso){
         const wd=new Date(iso+'T00:00:00').getDay();
@@ -1672,6 +1684,285 @@ document.getElementById('tripListClose').onclick=()=>document.getElementById('tr
 document.getElementById('tripListNew').onclick=()=>{
   document.getElementById('tripListBg').classList.remove('show');
   document.getElementById('newTripBtn').click();
+};
+
+// ───────────────── 예약 가격 추적 (숙박·렌터카·항공) ─────────────────
+// "이미 세운 계획에서 출발 전까지 계속 돈을 아껴주는" 기능. 예약(booking)은 여행 데이터(trip.bookings)에
+// 저장돼 공유·클라우드 동기화를 따라가고, 가격 관측 기록은 구간 캐시처럼 기기 로컬(localStorage)에만 쌓는다.
+// 계산(절약액·상태·요약)은 price.js 순수 함수(TC_PRICE), 시세 조회는 PriceProvider 인터페이스로 격리.
+const PRICE_KEY='tripcanvas_prices_v1';
+const BK_TYPE={hotel:{icon:'🏨',name:'숙박'},car:{icon:'🚗',name:'렌터카'},flight:{icon:'✈️',name:'항공'}};
+let priceStore={};   // {bookingId: [{price,cur,provider,at,url?}, …]} — 시간순, 하루 1점(같은 날 재확인은 갱신)
+try{ priceStore=JSON.parse(localStorage.getItem(PRICE_KEY))||{}; }catch(e){}
+function savePrices(){ try{ localStorage.setItem(PRICE_KEY, JSON.stringify(priceStore)); }catch(e){} }
+// 어느 여행에도 없는 예약의 기록 정리 (여행/예약 삭제 뒤 잔재)
+function prunePrices(){
+  const ids=new Set(); store.trips.forEach(t=>(t.bookings||[]).forEach(b=>ids.add(b.id)));
+  let changed=false;
+  Object.keys(priceStore).forEach(k=>{ if(!ids.has(k)){ delete priceStore[k]; changed=true; } });
+  if(changed) savePrices();
+}
+function tripBookings(){ return trip().bookings||[]; }
+function bookingOf(id){ return tripBookings().find(b=>b.id===id)||null; }
+function todayISO(){ return toISO(new Date()); }
+function bookingStatusOf(b){
+  return TC_PRICE.bookingPriceStatus(b, priceStore[b.id]||[], {today:todayISO(), krwRate:fxRates[b.cur||'KRW']||1});
+}
+function tripSavingInfo(){
+  return TC_PRICE.tripSavingSummary(tripBookings(), priceStore, {today:todayISO(), krwRateOf:c=>fxRates[c||'KRW']||1});
+}
+// 상태 배지 — 🔴 절약 가능(가장 눈에 띔) / 🟢 좋은 가격(유지 권장) / 🟡 추적 중 / 꺼짐
+function bookingBadgeHtml(b){
+  if(!b) return '';
+  const st=bookingStatusOf(b);
+  if(st&&st.state==='SAVING_AVAILABLE') return `<span class="pxBadge pxSave" title="예약가 ${escAttr(costLabel(b.price,b.cur))} → 현재 ${escAttr(costLabel(st.current,b.cur))}${st.fee?` (취소 수수료 반영)`:''}">🔴 ₩${fmtMoney(toKRW(st.saving,b.cur))} 절약 가능</span>`;
+  if(st&&st.state==='GOOD_PRICE') return `<span class="pxBadge pxGood" title="현재 ${escAttr(costLabel(st.current,b.cur))} — 관측 최저 수준. 지금 예약 유지 권장">🟢 좋은 가격</span>`;
+  if(b.track!==false) return `<span class="pxBadge pxWatch" title="시세를 계속 확인 중 — 아직 의미 있는 하락이 없어요">🟡 가격 추적 중</span>`;
+  return `<span class="pxBadge pxOff">추적 꺼짐</span>`;
+}
+
+// ── PriceProvider — {id, supports(booking), searchPrice(booking)→Promise<[{provider,price,cur,url?}]>} ──
+// 실제 API(Booking.com·Agoda·Rentalcars·Skyscanner 등) 연동 시 이 목록에 추가한다.
+// UI·서비스는 이 계약만 알고, 특정 외부 API에 직접 의존하지 않는다.
+const MOCK_SOURCES={hotel:['Booking.com','Agoda','Hotels.com'], car:['Rentalcars','Klook'], flight:['Skyscanner','네이버 항공']};
+const MockPriceProvider={
+  id:'mock',
+  supports(){ return true; },
+  async searchPrice(b){
+    const day=todayISO();
+    return (MOCK_SOURCES[b.type]||MOCK_SOURCES.hotel).map(name=>(
+      {provider:name+' (모의)', price:TC_PRICE.mockDailyPrice(b.id,name,day,b.price), cur:b.cur||'KRW'}));
+  }
+};
+const PRICE_PROVIDERS=[MockPriceProvider];
+
+// ── 절약 기회 알림 이벤트 — 지금은 토스트 1채널. 웹 알림·이메일·푸시·카카오는 여기에 리스너만 추가 ──
+const savingListeners=[];
+function onSavingOpportunity(fn){ savingListeners.push(fn); }
+function emitSavingOpportunity(op){ savingListeners.forEach(fn=>{ try{ fn(op); }catch(e){} }); }
+onSavingOpportunity(op=>{
+  const b=bookingOf(op.bookingId);
+  toast(`💰 "${op.title}" 지금 약 ₩${fmtMoney(toKRW(op.savingAmount, b&&b.cur))} 절약 가능`, '#7c5cff', {label:'보기', fn:openBookingList});
+});
+
+// ── PriceTrackingService: Provider 조회 → 최저가 관측 기록 → 절약 계산 → 상태·알림 ──
+// 신규 절약 기회 발견을 하루 단위로 감지: 최근 관측이 신선하면(staleHours) 자동 재조회는 생략.
+async function checkBookingPrice(id,opts){
+  const b=bookingOf(id); if(!b||b.track===false) return null;
+  const obs=priceStore[id]||(priceStore[id]=[]);
+  const last=obs[obs.length-1];
+  if(!(opts&&opts.force) && last && Date.now()-new Date(last.at).getTime() < TC_PRICE.PRICE_CFG.staleHours*3600e3) return null;   // 신선 → 생략
+  const prevState=(bookingStatusOf(b)||{}).state;
+  let offers=[];
+  for(const p of PRICE_PROVIDERS){
+    if(!p.supports(b)) continue;
+    try{ offers.push(...await p.searchPrice(b)); }catch(e){ reportOperationalError('price.search',e); }
+  }
+  // 통화가 다른 결과는 비교 불가 → 제외 (MVP: 동일 통화 기준 비교)
+  offers=offers.filter(o=>o && isFinite(+o.price) && +o.price>0 && (o.cur||'KRW')===(b.cur||'KRW'));
+  if(!offers.length) return null;
+  const best=offers.reduce((a,o)=>o.price<a.price?o:a);
+  const rec={price:Math.round(+best.price), cur:b.cur||'KRW', provider:best.provider, at:new Date().toISOString()};
+  if(best.url) rec.url=best.url;
+  if(last && last.at.slice(0,10)===rec.at.slice(0,10)) obs[obs.length-1]=rec;   // 같은 날 재확인 → 그 날 점만 갱신
+  else obs.push(rec);
+  if(obs.length>TC_PRICE.PRICE_CFG.maxObs) obs.splice(0,obs.length-TC_PRICE.PRICE_CFG.maxObs);
+  savePrices();
+  const st=bookingStatusOf(b);
+  if(st && st.state==='SAVING_AVAILABLE' && prevState!=='SAVING_AVAILABLE')
+    emitSavingOpportunity({bookingId:b.id, title:b.title, previousPrice:last?last.price:b.price, currentPrice:st.current,
+      savingAmount:st.saving, savingRate:st.rate, detectedAt:rec.at});
+  return rec;
+}
+let priceBusy=false;
+async function checkTripPrices(opts){
+  if(viewMode||priceBusy) return;   // 읽기전용 보기 여행의 기록은 쌓지 않는다
+  priceBusy=true;
+  let changed=false;
+  try{ for(const b of tripBookings()){ if(await checkBookingPrice(b.id,opts)) changed=true; } }
+  finally{ priceBusy=false; }
+  if(changed){
+    render();   // 사이드바 배지·필터바 절약 칩 갱신
+    if(document.getElementById('bookingListBg').classList.contains('show')) renderBookingList();
+  }
+}
+
+// ── 예약 목록 모달 (여행 단위 절감 요약 + 예약별 상태) ──
+function renderBookingList(){
+  const bookings=tripBookings(), s=tripSavingInfo();
+  document.getElementById('bookingSummary').innerHTML = bookings.length? `<div class="pxSummary">
+      <div><span>현재 예약 총액</span><b>₩${fmtMoney(s.booked)}</b></div>
+      <div class="pxSaveRow"><span>현재 절약 가능 금액</span><b>${s.saving>0?`₩${fmtMoney(s.saving)}`:'—'}</b></div>
+      ${s.saving>0?`<div class="pxByType">${['hotel','car','flight'].map(k=>`${BK_TYPE[k].icon} ₩${fmtMoney(s.byType[k]||0)}`).join(' · ')}</div>`:''}
+    </div>`:'';
+  document.getElementById('bookingListBody').innerHTML = bookings.length? bookings.map(b=>{
+    const period=[b.start,b.end].filter(Boolean).map(esc).join(' ~ ');
+    const sub=[period, b.provider?esc(b.provider):'', costLabel(b.price,b.cur)].filter(Boolean).join(' · ');
+    return `<div class="tripRow pxRow" onclick="openBookingModal('${escAttr(b.id)}')" title="탭해서 상세·가격 기록 보기">
+      <span class="tn">${BK_TYPE[b.type]?BK_TYPE[b.type].icon:'🏨'} ${esc(b.title)}<span class="opt">${sub}</span></span>
+      ${bookingBadgeHtml(b)}
+    </div>`;
+  }).join('') : `<div class="hint" style="padding:14px 4px">아직 등록한 예약이 없어요. 숙소·렌터카·항공권을 예약했다면 가격을 등록해 두세요 — 출발 전까지 계속 확인해서 더 싸지면 알려드릴게요.</div>`;
+}
+function openBookingList(){
+  renderBookingList();
+  document.getElementById('bookingListBg').classList.add('show');
+  checkTripPrices();   // 열 때 시세 갱신 (신선하면 조회 생략, 완료 시 목록 재렌더)
+}
+document.getElementById('bookingBtn').onclick=openBookingList;
+document.getElementById('bookingListClose').onclick=()=>document.getElementById('bookingListBg').classList.remove('show');
+document.getElementById('bookingAdd').onclick=()=>openBookingModal(null);
+
+// ── 예약 추가/상세·편집 모달 ──
+let editingBooking=null;   // 예약 id | null(추가)
+// 일정에서 🏠 숙소로 등록된 장소들 — 호텔 예약을 일정 카드와 연결하는 선택지
+function bkStayOptions(){
+  const out=[];
+  trip().days.forEach((d,di)=>d.spots.forEach(s=>{ if(s.stay) out.push({di,s}); }));
+  return out;
+}
+function fillBkSpotSelect(b){
+  const opts=bkStayOptions();
+  const cur=b? opts.findIndex(o=>o.s.bookingId===b.id):-1;
+  document.getElementById('bkSpot').innerHTML='<option value="">— 연결 안 함 —</option>'+
+    opts.map((o,i)=>`<option value="${i}" ${i===cur?'selected':''}>Day ${o.di+1} · ${esc(o.s.name)}</option>`).join('');
+}
+function toggleBkFields(){
+  const type=document.getElementById('bkType').value;
+  document.getElementById('bkSpotWrap').style.display = type==='hotel'?'block':'none';
+  document.getElementById('bkProviderLabel').textContent = type==='flight'?'항공사 또는 예약처':'예약처';
+  document.getElementById('bkTitleLabel').textContent = {hotel:'숙소 이름 *',car:'렌터카 (차종·업체) *',flight:'항공편 (구간·편명) *'}[type]||'예약 이름 *';
+  document.getElementById('bkFreeUntilWrap').style.display = document.getElementById('bkFreeCancel').checked?'block':'none';
+}
+window.openBookingModal=(id)=>{
+  if(viewMode){ toast('읽기전용 보기입니다 — "내 여행으로 저장" 후 이용하세요','#8892b0'); return; }
+  const b=id? bookingOf(id):null;
+  if(id&&!b) return;
+  editingBooking=b?b.id:null;
+  document.getElementById('bkModalTitle').textContent=b?'예약 상세·편집':'예약 추가';
+  document.getElementById('bkDelBtn').style.display=b?'block':'none';
+  document.getElementById('bkType').value=b?b.type:'hotel';
+  fillBkSpotSelect(b);
+  document.getElementById('bkTitle').value=b?b.title:'';
+  document.getElementById('bkProvider').value=(b&&b.provider)||'';
+  document.getElementById('bkPrice').value=b?fmtMoney(b.price):'';
+  document.getElementById('bkCur').value=(b&&b.cur)||'KRW';
+  document.getElementById('bkStart').value=(b&&b.start)||'';
+  document.getElementById('bkEnd').value=(b&&b.end)||'';
+  document.getElementById('bkFreeCancel').checked=!!(b&&b.freeCancelUntil);
+  document.getElementById('bkFreeUntil').value=(b&&b.freeCancelUntil)||'';
+  document.getElementById('bkFee').value=(b&&b.cancelFee)?fmtMoney(b.cancelFee):'';
+  document.getElementById('bkUrl').value=(b&&b.url)||'';
+  document.getElementById('bkTrack').checked=b?b.track!==false:true;
+  toggleBkFields();
+  renderBookingStatusBox(b);
+  document.getElementById('bookingModalBg').classList.add('show');
+};
+// 현재가·절약·무료취소·가격 기록 — 편집 중인 기존 예약에만 표시
+function renderBookingStatusBox(b){
+  const box=document.getElementById('bkStatus');
+  if(!b){ box.innerHTML=''; return; }
+  const st=bookingStatusOf(b), obs=priceStore[b.id]||[];
+  let head;
+  if(st&&st.state==='SAVING_AVAILABLE')
+    head=`<div class="pxState pxSave">🔴 지금 갈아타면 약 ${costLabel(st.saving,b.cur)} 절약</div>
+      <div class="hint">현재 최저 ${costLabel(st.current,b.cur)} · 예약가 ${costLabel(b.price,b.cur)}${st.fee?` · 취소 수수료 ${costLabel(st.fee,b.cur)} 반영`:''} — 재예약 여부는 직접 결정하세요</div>`;
+  else if(st&&st.state==='GOOD_PRICE')
+    head=`<div class="pxState pxGood">🟢 좋은 가격 — 지금 예약을 유지하세요</div>
+      <div class="hint">현재 ${costLabel(st.current,b.cur)} · 관측된 가격 중 최저 수준입니다</div>`;
+  else if(st)
+    head=`<div class="pxState pxWatch">🟡 가격 추적 중 — 아직 의미 있는 하락이 없어요</div>
+      <div class="hint">현재 ${costLabel(st.current,b.cur)} · 예약가 ${costLabel(b.price,b.cur)}</div>`;
+  else if(b.track!==false) head=`<div class="pxState pxWatch">🟡 가격 추적 중 — 첫 확인을 기다리고 있어요</div>`;
+  else head=`<div class="pxState pxOff">가격 추적이 꺼져 있어요 — 켜면 시세를 계속 확인합니다</div>`;
+  const free=b.freeCancelUntil?`<div class="hint">무료 취소 ${esc(b.freeCancelUntil)}까지${todayISO()<=b.freeCancelUntil?'':' — 기한이 지나 취소 수수료가 적용됩니다'}</div>`:'';
+  const hist=obs.slice(-8).reverse().map(o=>
+    `<div><span>${esc(String(o.at||'').slice(5,10).replace('-','/'))} · ${esc(o.provider||'')}</span><b>${costLabel(o.price,o.cur)}</b></div>`).join('');
+  box.innerHTML=`${head}${free}
+    ${obs.length?`<label>📈 가격 기록 (하루 1점, 최근 ${Math.min(obs.length,8)}회)</label><div class="pxHist">${hist}</div>`:''}
+    ${b.track!==false?`<button type="button" class="btn" id="bkCheckNow" style="margin-top:8px;font-size:11px;padding:3px 10px">🔄 지금 가격 확인</button>
+    <span class="hint">모의 시세 기준 — 실제 예약처 연동 준비 중</span>`:''}`;
+  const btn=document.getElementById('bkCheckNow');
+  if(btn) btn.onclick=async()=>{
+    btn.disabled=true; btn.textContent='확인 중…';
+    await checkBookingPrice(b.id,{force:true});
+    renderBookingStatusBox(bookingOf(b.id)); render();
+  };
+}
+document.getElementById('bkType').onchange=toggleBkFields;
+document.getElementById('bkFreeCancel').onchange=toggleBkFields;
+// 숙소 연결 선택 → 새 예약이면 이름·기간·통화 프리필 (기존 예약은 값 유지)
+document.getElementById('bkSpot').onchange=()=>{
+  if(editingBooking) return;
+  const o=bkStayOptions()[+document.getElementById('bkSpot').value];
+  if(!o) return;
+  const t=document.getElementById('bkTitle'); if(!t.value.trim()) t.value=o.s.name;
+  const iso=isoDateOf(o.di);
+  if(iso){
+    const st=document.getElementById('bkStart'); if(!st.value) st.value=iso;
+    const en=document.getElementById('bkEnd');
+    if(!en.value){ const d=new Date(iso+'T00:00:00'); d.setDate(d.getDate()+stayNights(o.s)); en.value=toISO(d); }
+  }
+  if(o.s.cur) document.getElementById('bkCur').value=o.s.cur;
+  if(o.s.cost&&!document.getElementById('bkPrice').value) document.getElementById('bkPrice').value=fmtMoney(o.s.cost);
+};
+['bkPrice','bkFee'].forEach(id=>document.getElementById(id).addEventListener('input',function(){
+  const d=this.value.replace(/[^\d]/g,''); this.value=d?(+d).toLocaleString('en-US'):'';
+}));
+document.getElementById('bkCancel').onclick=()=>document.getElementById('bookingModalBg').classList.remove('show');
+document.getElementById('bkSave').onclick=()=>{
+  const title=document.getElementById('bkTitle').value.trim();
+  const price=parseInt(document.getElementById('bkPrice').value.replace(/[^\d]/g,''));
+  if(!title){ toast('예약 이름을 입력하세요','#e63946'); return; }
+  if(isNaN(price)||price<=0){ toast('예약 가격을 입력하세요','#e63946'); return; }
+  const isNew=!editingBooking;
+  const b=isNew? {id:uid(), createdAt:new Date().toISOString()} : bookingOf(editingBooking);
+  if(!b) return;
+  const fee=parseInt(document.getElementById('bkFee').value.replace(/[^\d]/g,''));
+  const curV=document.getElementById('bkCur').value;
+  commit(()=>{
+    b.type=document.getElementById('bkType').value;
+    b.title=title;
+    b.provider=document.getElementById('bkProvider').value.trim();
+    b.url=document.getElementById('bkUrl').value.trim();
+    b.price=price;
+    if(curV&&curV!=='KRW') b.cur=curV; else delete b.cur;   // KRW는 기본값이라 생략 (스팟 cur와 동일 규칙)
+    const sv=document.getElementById('bkStart').value, ev=document.getElementById('bkEnd').value;
+    if(sv) b.start=sv; else delete b.start;
+    if(ev) b.end=ev; else delete b.end;
+    const fu=document.getElementById('bkFreeCancel').checked && document.getElementById('bkFreeUntil').value;
+    if(fu) b.freeCancelUntil=fu; else delete b.freeCancelUntil;
+    if(!isNaN(fee)&&fee>0) b.cancelFee=fee; else delete b.cancelFee;
+    b.track=document.getElementById('bkTrack').checked;
+    b.updatedAt=new Date().toISOString();
+    if(isNew) (trip().bookings=trip().bookings||[]).push(b);
+    // 숙소 연결: 이 예약을 가리키던 이전 연결을 풀고 새로 연결 (호텔이 아니면 연결 없음)
+    trip().days.forEach(d=>d.spots.forEach(s=>{ if(s.bookingId===b.id) delete s.bookingId; }));
+    const o=bkStayOptions()[+document.getElementById('bkSpot').value];
+    if(o&&b.type==='hotel') o.s.bookingId=b.id;
+  });
+  document.getElementById('bookingModalBg').classList.remove('show');
+  if(document.getElementById('bookingListBg').classList.contains('show')) renderBookingList();
+  toast(b.track?'예약 저장됨 — 가격 추적을 시작해요':'예약 저장됨');
+  if(b.track) checkBookingPrice(b.id,{force:true}).then(r=>{
+    if(!r) return;
+    render();
+    if(document.getElementById('bookingListBg').classList.contains('show')) renderBookingList();
+  });
+};
+document.getElementById('bkDelBtn').onclick=()=>{
+  const b=bookingOf(editingBooking); if(!b) return;
+  if(!confirm(`"${b.title}" 예약 추적을 삭제할까요? (실제 예약이 취소되지는 않아요)`)) return;
+  const snap=snapshot();
+  commit(()=>{
+    trip().bookings=tripBookings().filter(x=>x.id!==b.id);
+    if(!trip().bookings.length) delete trip().bookings;
+    trip().days.forEach(d=>d.spots.forEach(s=>{ if(s.bookingId===b.id) delete s.bookingId; }));
+  });
+  delete priceStore[b.id]; savePrices();
+  document.getElementById('bookingModalBg').classList.remove('show');
+  if(document.getElementById('bookingListBg').classList.contains('show')) renderBookingList();
+  toast('예약 추적 삭제됨','#8892b0',{fn:()=>undoWith(snap)});
 };
 
 // ───────────────── 내보내기/가져오기/공유 ─────────────────
@@ -2448,5 +2739,7 @@ if('serviceWorker' in navigator){
 }
 
 // 시작 — 사이드바 등 DOM 먼저 렌더, 지도·초기 포커싱은 __gmapsReady에서
+prunePrices();   // 삭제된 여행·예약의 가격 기록 정리
 render();
+setTimeout(()=>{ checkTripPrices().catch(()=>{}); }, 2500);   // 예약 시세 자동 확인 (신선하면 조회 생략)
 if(firstVisit){ document.getElementById('onboarding').hidden=false; requestAnimationFrame(()=>document.getElementById('onboardPaste').focus()); }
