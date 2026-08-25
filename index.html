@@ -13,7 +13,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js" integrity="sha384-+pWnyi8LtZx+cgXfD2arWgUX7pHIaEL215cEPPk9WrsegNlgvDL9DNjaqsceQq6o" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js" integrity="sha384-BSxuMLxX+FCbTdYec3TbXlnMGEEM2QXTFdtDaveen71o+jswm2J36+xFqp8k4VHM" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.min.js" integrity="sha384-l8ah+VgaWtk1mvOe9VC+OirC6qHFF4yH7l7mKRidV9MSti3E9F463bMp6ZVN4kuC" crossorigin="anonymous"></script>
-<link rel="stylesheet" href="style.css?v=tc-v119">
+<link rel="stylesheet" href="style.css?v=tc-v120">
 </head>
 <body>
 <section id="onboarding" class="onboarding" hidden role="dialog" aria-modal="true" aria-labelledby="onboardingTitle">
@@ -43,6 +43,7 @@
     <button class="btn" id="newTripBtn">＋ 새 여행</button>
     <button class="btn" id="tripListBtn" title="여행 전환·삭제">🗂 여행 목록</button>
     <button class="btn" id="tripEditBtn">⚙️ 여행 설정</button>
+    <button class="btn" id="bookingBtn" title="숙박·렌터카·항공 예약 가격을 계속 추적해 절약 기회를 알려줘요">💰 예약 추적</button>
     <button class="btn" id="pasteMenuBtn">▧ 일정 붙여넣기</button>
     <button class="btn ghost" id="shareBtn">🔗 공유</button>
     <button class="btn ghost" id="exportBtn">📤 내보내기</button>
@@ -170,6 +171,52 @@
   </div>
 </div></div>
 
+<!-- 예약 가격 추적 — 목록·절약 요약 -->
+<div class="modalBg" id="bookingListBg"><div class="modal">
+  <h2>💰 예약 가격 추적</h2>
+  <div class="hint">등록한 예약의 시세를 계속 확인해, 지금 예약보다 좋은 조건이 생기면 알려드려요. 재예약·취소는 직접 결정하세요 — 앱이 예약을 바꾸지는 않습니다.</div>
+  <div id="bookingSummary"></div>
+  <div id="bookingListBody"></div>
+  <div class="hint">지금은 <b>체험용 모의 시세</b>로 동작해요 — 실제 예약처 가격 연동은 준비 중입니다.</div>
+  <div class="row">
+    <button class="btn" id="bookingAdd" style="margin-right:auto">＋ 예약 추가</button>
+    <button class="btn primary" id="bookingListClose">닫기</button>
+  </div>
+</div></div>
+
+<!-- 예약 추가/상세·편집 + 가격 기록 -->
+<div class="modalBg" id="bookingModalBg"><div class="modal">
+  <h2 id="bkModalTitle">예약 추가</h2>
+  <label>종류</label>
+  <select id="bkType"><option value="hotel">🏨 숙박</option><option value="car">🚗 렌터카</option><option value="flight">✈️ 항공</option></select>
+  <div id="bkSpotWrap"><label>일정의 숙소와 연결 (선택)</label><select id="bkSpot"></select>
+    <div class="hint">연결하면 일정 카드의 숙소 항목에 가격 상태가 표시됩니다. 🏠 숙소로 등록한 장소만 목록에 나와요.</div></div>
+  <label id="bkTitleLabel">예약 이름 *</label><input type="text" id="bkTitle" placeholder="예: Cap Rocat">
+  <label id="bkProviderLabel">예약처</label><input type="text" id="bkProvider" placeholder="예: Booking.com">
+  <label>예약 가격 *</label>
+  <div class="fieldRow">
+    <input type="text" id="bkPrice" inputmode="numeric" placeholder="0">
+    <select id="bkCur" class="compactSelect"><option value="KRW">₩ 원</option><option value="USD">$ 달러</option><option value="EUR">€ 유로</option><option value="JPY">¥ 엔</option><option value="CNY">元 위안</option></select>
+  </div>
+  <div style="display:flex;gap:6px">
+    <div style="flex:1"><label>시작일 (체크인·픽업·출발)</label><input type="date" id="bkStart" style="width:100%"></div>
+    <div style="flex:1"><label>종료일</label><input type="date" id="bkEnd" style="width:100%"></div>
+  </div>
+  <div class="chkrow"><input type="checkbox" id="bkFreeCancel"><label for="bkFreeCancel" style="margin:0">무료 취소 가능</label></div>
+  <div id="bkFreeUntilWrap" style="display:none"><label>무료 취소 기한</label><input type="date" id="bkFreeUntil">
+    <div class="hint">기한 안에는 취소 수수료 없이 갈아탈 수 있는 것으로 계산합니다.</div></div>
+  <label>취소 수수료 <span class="hint" style="margin:0">— 지금 취소하면 내는 금액. 절약액에서 뺍니다</span></label>
+  <input type="text" id="bkFee" inputmode="numeric" placeholder="0">
+  <label>예약 링크 (선택)</label><input type="text" id="bkUrl" placeholder="https://...">
+  <div class="chkrow"><input type="checkbox" id="bkTrack" checked><label for="bkTrack" style="margin:0">가격 추적 <span class="hint" style="margin:0">— 켜두면 시세를 계속 확인해 절약 기회를 알려줘요</span></label></div>
+  <div id="bkStatus"></div>
+  <div class="row">
+    <button class="btn" id="bkDelBtn" style="margin-right:auto;color:#ff8fa3;display:none">삭제</button>
+    <button class="btn" id="bkCancel">취소</button>
+    <button class="btn primary" id="bkSave">저장</button>
+  </div>
+</div></div>
+
 <!-- 붙여넣기 초안 모달 -->
 <div class="modalBg" id="pasteModalBg"><div class="modal">
   <h2>📋 붙여넣기로 일정 만들기</h2>
@@ -291,9 +338,10 @@
   </div>
 </div>
 
-<script src="lib.js?v=tc-v119"></script>
-<script src="sync.js?v=tc-v119"></script>
-<script src="routing.js?v=tc-v119"></script>
-<script src="app.js?v=tc-v119"></script>
+<script src="lib.js?v=tc-v120"></script>
+<script src="sync.js?v=tc-v120"></script>
+<script src="routing.js?v=tc-v120"></script>
+<script src="price.js?v=tc-v120"></script>
+<script src="app.js?v=tc-v120"></script>
 </body>
 </html>

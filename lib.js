@@ -300,6 +300,7 @@
   });
   const _MODES=['car','taxi','transit','train','walk','bike','flight'];
   const _CURS=['KRW','USD','EUR','JPY','CNY'];
+  const _ID_RE=/^[A-Za-z0-9_-]{1,40}$/;   // uid() 형식 — inline onclick 인자로도 안전한 문자만
   /** @param {any} x @returns {string} */
   function _str(x){ return typeof x==='string'? x : (x==null? '' : String(x)); }
   /** @param {any} t @returns {string|undefined} 00:00~23:59 형식만 통과, 아니면 undefined */
@@ -412,8 +413,28 @@
     if(s.cur!=null && _CURS.indexOf(s.cur)<0) delete s.cur;                 // 알 수 없는 통화 → 기본(KRW 취급)
     if(s.legMode!=null && _MODES.indexOf(s.legMode)<0) delete s.legMode;    // 알 수 없는 구간 수단 → 일정 기본
     if(s.bookUrl!=null && typeof s.bookUrl!=='string') delete s.bookUrl;
+    if(s.bookingId!=null && !(typeof s.bookingId==='string' && _ID_RE.test(s.bookingId))) delete s.bookingId;   // 예약 추적 연결 (불량 id 제거)
     if(s.hours!=null && !(Array.isArray(s.hours)&&s.hours.every((/**@type{any}*/h)=>h&&_fin(h.d)&&_fin(h.o)&&_fin(h.c)))) delete s.hours;
     return s;
+  }
+  /** 예약(가격 추적) 항목 정규화 — id가 불량하면 항목째 버린다(참조·inline onclick 안전) @param {any} b @returns {any} */
+  function normalizeBooking(b){
+    if(!b || typeof b!=='object' || Array.isArray(b)) return null;
+    if(typeof b.id!=='string' || !_ID_RE.test(b.id)) return null;
+    b=Object.assign({},b);
+    b.type=(b.type==='car'||b.type==='flight')? b.type:'hotel';
+    b.title=_str(b.title).trim()||'예약';
+    b.provider=_str(b.provider);
+    if(b.url!=null && typeof b.url!=='string') delete b.url;
+    b.price=_fin(b.price)? Math.min(Math.max(0,Math.round(+b.price)),TC_LIMITS.cost):0;
+    if(b.cur!=null && _CURS.indexOf(b.cur)<0) delete b.cur;                 // 알 수 없는 통화 → 기본(KRW 취급)
+    const iso=(/**@type {any}*/v)=>/^\d{4}-\d{2}-\d{2}$/.test(_str(v));
+    if(!iso(b.start)) delete b.start;
+    if(!iso(b.end)) delete b.end;
+    if(!iso(b.freeCancelUntil)) delete b.freeCancelUntil;
+    if(b.cancelFee!=null){ if(_fin(b.cancelFee)) b.cancelFee=Math.min(Math.max(0,Math.round(+b.cancelFee)),TC_LIMITS.cost); else delete b.cancelFee; }
+    b.track=b.track!==false;   // 기본 추적 on
+    return b;
   }
   /** @param {any} d @returns {any} */
   function normalizeDay(d){
@@ -444,11 +465,15 @@
     t.start = /^\d{4}-\d{2}-\d{2}$/.test(_str(t.start))? t.start : '';
     if(t.timeZone!=null && !validTimeZone(t.timeZone)) delete t.timeZone;
     if(t.colorBy!=null && t.colorBy!=='city' && t.colorBy!=='day') delete t.colorBy;
+    if(t.bookings!=null){   // 예약(가격 추적) 목록 — 불량 항목은 버리고, 비면 필드 생략(공유 링크 크기 절약)
+      t.bookings=Array.isArray(t.bookings)? t.bookings.map(normalizeBooking).filter(Boolean):[];
+      if(!t.bookings.length) delete t.bookings;
+    }
     t.schemaVersion = TC_SCHEMA;
     return t;
   }
 
-  const TC={toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,inKorea,simplifyName,parseDirect,parseMoney,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,computeTimeline,dayStartAnchor,normalizeTrip,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
+  const TC={toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,inKorea,simplifyName,parseDirect,parseMoney,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,computeTimeline,dayStartAnchor,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
   if(typeof module!=='undefined' && module.exports){ module.exports=TC; }   // Node (테스트)
   else { const r=/**@type {any}*/(root); for(const k in TC) r[k]=/**@type {any}*/(TC)[k]; }   // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);
