@@ -65,6 +65,10 @@
   .spotCat{flex:none;width:1.25em;text-align:center;font-size:13px;line-height:1.35;font-style:normal}
   .spotName{min-width:0;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
   .spotMenuSpacer{display:block;width:44px;height:44px}
+  /* 자동으로 이어 붙인 숙소 복귀 — 실제 저장된 장소와 구분되게 옅게 */
+  .spot.back{opacity:.82}
+  .ghostStay{display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;
+    background:var(--surface,#fff);border:2px dashed var(--c,#7a86ad);font-size:11px;line-height:1;opacity:.85;pointer-events:none}
   .spot .opt{color:var(--meta-soft);font-size:11px}
   .spot .noloc{color:var(--meta-warning);background:transparent;font-size:10.5px;border:1px solid currentColor;border-radius:6px;padding:1px 5px;cursor:pointer;white-space:nowrap}
   .spot .tools{display:flex;gap:2px;opacity:.5;transition:opacity .15s}

@@ -231,7 +231,7 @@ const KAKAO_KEY='088123c29d265c5f9cc9ec8d356f54c8';          // 국내 지도·�
 let map=null, iw=null;        // Google 지도 / 공용 InfoWindow
 let kmap=null, kpopupOv=null; // 카카오 지도 / 커스텀 팝업 오버레이
 let engine='google';          // 현재 표시 중인 엔진
-let activeDay = 0, markers = [], lines = [], pickMode = false, sortables = [];
+let activeDay = 0, markers = [], lines = [], ghostStays = [], pickMode = false, sortables = [];
 
 function onMapPick(lat,lng,placeId){
   if(!pickMode)return;
@@ -660,9 +660,10 @@ function colorByMode(){ return (trip().colorBy==='city') ? 'city' : 'day'; }   /
 function dayColor(di){ return PALETTE[di%PALETTE.length]; }
 function spotColor(s,di,cityMap){ return colorByMode()==='day' ? dayColor(di) : ((cityMap||cityColors())[s.city]||'#888'); }
 // 직선거리(하버사인, km) — 실제 도로거리는 아니지만 동선 감각용
-function dayDistance(day){
+function dayDistance(day, back){
   const loc=day.spots.filter(hasLoc); let sum=0;
   for(let i=1;i<loc.length;i++) sum+=haversine(loc[i-1],loc[i]);
+  if(back&&loc.length) sum+=haversine(loc[loc.length-1],back);   // 숙소 복귀
   return sum;
 }
 
@@ -874,22 +875,29 @@ function loadFx(){
 function dayCost(day){ return day.spots.reduce((a,s)=>a+(s.cost? toKRW(s.cost,s.cur):0),0); }
 // 여행 전체 비용(장소+자차일 택시) 합계
 function tripCost(){
-  return trip().days.reduce((a,d)=>{ const m=dayModeOf(d); const tx=(m==='car'||m==='taxi')?((dayRoute(d)||{}).taxi||0):0; return a+dayCost(d)+tx; },0);
+  return trip().days.reduce((a,d,i)=>{ const m=dayModeOf(d); const tx=(m==='car'||m==='taxi')?((dayRoute(d,backLegOf(d,i,dayReturnStay(trip().days,i)))||{}).taxi||0):0; return a+dayCost(d)+tx; },0);
 }
 // 일정 예상 종료 시각(분) — 마지막 장소 (예약 대기 반영한) 활동 시작 + 체류
-function dayEndMin(day, startAnchor){
+function dayEndMin(day, startAnchor, bl){
   if(!day.spots.length) return null;
   const etas=dayEtas(day, startAnchor), last=day.spots.length-1, s=day.spots[last];
   const base = s.bookAt ? Math.max(etas[last], parseHM(s.bookAt)) : etas[last];
-  return base + (s.stayMin!=null? +s.stayMin : 60);
+  const end = base + (s.stayMin!=null? +s.stayMin : 60);
+  // 숙소로 돌아가는 시간까지 넣어야 '하루가 몇 시에 끝나는지'가 맞는다
+  return bl ? end + legMinutes(bl.from, bl.to, bl.mode, bl.when, bl.timeZone) : end;
 }
 // 하루 전체 실도로 합계 (모든 구간이 캐시됐을 때만)
-function dayRoute(day){
+function dayRoute(day, bl){
   const loc=day.spots.filter(hasLoc);
   if(loc.length<2) return null;
   let sec=0,m=0,taxi=0;
   for(let i=1;i<loc.length;i++){
     const c=legCache[legKey(loc[i-1],loc[i],legModeOf(day,loc[i]))];
+    if(!c||!c.sec) return null;
+    sec+=c.sec; m+=c.m; taxi+=(c.taxi||0);
+  }
+  if(bl){   // 숙소 복귀 구간 — 아직 조회 중이면 하루 합계를 내지 않는다(부분 합계로 오해 방지)
+    const c=legCache[bl.key];
     if(!c||!c.sec) return null;
     sec+=c.sec; m+=c.m; taxi+=(c.taxi||0);
   }
@@ -916,6 +924,13 @@ function addPin(s,di,si,c){
   const open=()=>{ ME().openPopup(html, +s.lat, +s.lng, h); setSheetSnap('half'); selectSpotCard(di,si); };
   markers.push({spot:s, open, h});
 }
+// 그날 목록엔 없지만 동선이 닿는 숙소(연박 등) — 클릭 대상이 아닌 옅은 표식
+function addGhostStay(s,color){
+  const el=document.createElement('div');
+  el.className='ghostStay'; el.textContent='🏠'; el.title=s.name;
+  el.style.borderColor=color;
+  ghostStays.push({h:ME().overlay(+s.lat,+s.lng,el)});
+}
 // 동선 라인 추가 (엔진 공용). dashed=일자 간 연결선
 function addLine(pts,color,opacity,dashed){
   lines.push({h:ME().polyline(pts,{color,opacity,dashed})});
@@ -929,6 +944,7 @@ function addLegChip(pos,text){
 function clearOverlays(){
   markers.forEach(m=>m.h.remove()); markers=[];
   lines.forEach(l=>l.h.remove()); lines=[];
+  ghostStays.forEach(g=>g.h.remove()); ghostStays=[];
   legChips.forEach(c=>c.h.remove()); legChips=[];
   if(iw) iw.close(); closeKPopup();   // 엔진 전환 대비 양쪽 팝업 닫기
 }
@@ -939,9 +955,11 @@ function overlaySig(t,colors){
   t.days.forEach((day,di)=>{
     if(activeDay && di+1!==activeDay) return;
     p.push(dayModeOf(day));
-    day.spots.forEach((s,si)=>{ if(hasLoc(s)) p.push(si,s.lat,s.lng,s.stay?1:0,s.opt?1:0,(s.legMode||''),spotColor(s,di,colors),esc(s.name),esc(s.desc||'')); });
+    day.spots.forEach((s,si)=>{ if(hasLoc(s)) p.push(si,s.lat,s.lng,s.stay?1:0,s.opt?1:0,(s.cat||''),(s.legMode||''),spotColor(s,di,colors),esc(s.name),esc(s.desc||'')); });
     const loc=day.spots.filter(hasLoc);
     for(let i=1;i<loc.length;i++){ const c=legCache[legKey(loc[i-1],loc[i],legModeOf(day,loc[i]))]; p.push(c? (c.sec?(c.path?'p':'s'):'f') : 'n'); }
+    const bl=backLegOf(day,di,dayReturnStay(t.days,di));   // 숙소 복귀 — 경로가 도착하면 다시 그려야 한다
+    if(bl){ const c=legCache[bl.key]; p.push('B', c? (c.sec?(c.path?'p':'s'):'f') : 'n'); }
   });
   if(!activeDay){
     t.days.forEach((day,di)=>{ const loc=day.spots.filter(hasLoc); if(!loc.length)return;
@@ -984,6 +1002,17 @@ function render(){
                           : {lat:(+A.lat + +B.lat)/2, lng:(+A.lng + +B.lng)/2};
           addLegChip(mid, (lm==='car'&&cch.m<2000)? `🚶${Math.max(1,Math.round(cch.m/75))}분` : `${MODE_ICON[lm]}${fmtDur(cch.sec)}`);
         }
+      }
+      // 숙소 복귀 — 자동으로 이어 붙인 구간이라 점선으로 구분한다
+      const bl=backLegOf(day,di,dayReturnStay(t.days,di));
+      if(bl){
+        const bch=legCache[bl.key];
+        if(bch){
+          const bpath=(bch.sec&&bch.path)?decodePts(bch.path):null;
+          addLine(bpath||[{lat:+bl.from.lat,lng:+bl.from.lng},{lat:+bl.to.lat,lng:+bl.to.lng}], lc, lop*.85, true);
+        }
+        // 연박처럼 그날 목록엔 없는 숙소면 선 끝이 빈 곳이 되지 않게 옅은 🏠를 둔다
+        if(locSpots.indexOf(bl.to)<0) addGhostStay(bl.to, lc);
       }
     });
     // 일자 간 연결 (전체 보기) — 점선. 색은 도착 일자 색(나머지 선과 동일 체계). 조회 중엔 미표시
@@ -1036,14 +1065,27 @@ const PLAY_TILE_TIMEOUT=3500, PLAY_SETTLE=400;   // 타일 로딩 최대 대기(
 // startAnchorFor(di): di일이 이월받는 출발 앵커(정책 반영, startPolicy==='none'이면 null).
 // 지도 일자 간 점선·재생·사이드바 거리·타임라인·여행 모드가 모두 이 한 함수를 공유한다.
 function startAnchorFor(di){ return dayStartAnchor(trip().days, di); }
+// 숙소 복귀 구간 서술자 — 데이터에 없는 합성 구간이라 '일자 기본 수단'으로 본다.
+// (도착 장소의 legMode는 '그 장소로 오는' 구간용이라 복귀에 빌려 쓰면 틀린다)
+// 출발시각은 복귀를 뺀 그날 종료시각 = dayEndMin(day, anchor) — 여기서만 back 없이 불러 순환을 막는다.
+function backLegOf(day, di, back){
+  const loc=day.spots.filter(hasLoc);
+  if(!back || !loc.length) return null;
+  const from=loc[loc.length-1], mode=dayModeOf(day), timeZone=dayTimeZone(day);
+  const when = mode==='transit'
+    ? planDepartISO(di>=0?isoDateOf(di):'', dayEndMin(day, startAnchorFor(di)), timeZone)
+    : null;
+  return {from, to:back, mode, when, timeZone, key:legRequestKey(from,back,mode,when,timeZone)};
+}
 // 시각적 🏠 '전날 숙소' 이월 항목용 — 시작 앵커가 숙소(stay)일 때만.
 function carryStayFor(di){ const a=startAnchorFor(di); return (a&&a.stay)?a:null; }
 // 일자 컨텍스트(한 번에 계산) — 사이드바·여행모드·이미지·재생이 공유해 anchor/carry 혼동 방지.
 // ETA·종료·이미지·여행모드 타임라인은 anchor(전날 숙소 또는 마지막 장소, 정책 반영)를 쓰고,
 // 화면의 🏠 '전날 숙소' 항목 표시에만 carry(숙소일 때만)를 쓴다.
 function dayContext(di){
-  const day=trip().days[di], anchor=startAnchorFor(di);
-  return { day, anchor, carry:(anchor&&anchor.stay)?anchor:null, timeline:dayTimeline(day,anchor,di), mode:dayModeOf(day), timeZone:dayTimeZone(day) };
+  const day=trip().days[di], anchor=startAnchorFor(di), back=dayReturnStay(trip().days,di);
+  return { day, anchor, carry:(anchor&&anchor.stay)?anchor:null, back, backLeg:backLegOf(day,di,back),
+           timeline:dayTimeline(day,anchor,di), mode:dayModeOf(day), timeZone:dayTimeZone(day) };
 }
 function animPath(){
   const flat=[]; const days=trip().days;
@@ -1423,13 +1465,25 @@ function renderSidebar(){
             ? `<div class="drive" style="color:#9fb8e8" title="이전 일자 기준점 · ${legTitle(ic)}">${ibtn}<span data-ileg="${iid}">이전 일정에서 ${(ic.m/1000).toFixed(1)}km · ${fmtDur(ic.sec)}</span></div>`
             : `<div class="drive" style="color:#9fb8e8">${ibtn}<span data-ileg="${iid}">이전 일정에서 직선 ${haversine(from,first).toFixed(1)}km</span></div>`;
         })()}
-        ${(()=>{const rt=dayRoute(day); if(rt) return `<div class="dist">📏 하루 동선 약 ${(rt.m/1000).toFixed(1)}km · ${MODE_ICON[dm]}${fmtDur(rt.sec)}${((dm==='car'||dm==='taxi')&&rt.taxi)?` · 🚕약 ${rt.taxi.toLocaleString()}원`:''} <span style="opacity:.55">(${dm==='flight'?'직선':'도로 기준'})</span></div>`;
-          return dayDistance(day)>0?`<div class="dist">📏 하루 동선 약 ${dayDistance(day).toFixed(1)}km <span style="opacity:.55">(직선)</span></div>`:'';})()}
-        ${(()=>{const e=dayEndMin(day, ctx.anchor); return (e!=null&&e>22*60)?`<div class="overload" title="시작시각+체류+이동 기준 예상 종료">⚠️ 일정 과밀 — 예상 종료 ${hm(e)}${e>=24*60?' (익일)':''}</div>`:'';})()}
-        ${(()=>{const dc=dayCost(day); const tx=(dayRoute(day)||{}).taxi||0; const road=(dm==='car'||dm==='taxi'); const tot=dc+(road?tx:0);
+        ${(()=>{const rt=dayRoute(day,ctx.backLeg); if(rt) return `<div class="dist">📏 하루 동선 약 ${(rt.m/1000).toFixed(1)}km · ${MODE_ICON[dm]}${fmtDur(rt.sec)}${((dm==='car'||dm==='taxi')&&rt.taxi)?` · 🚕약 ${rt.taxi.toLocaleString()}원`:''} <span style="opacity:.55">(${dm==='flight'?'직선':'도로 기준'})</span></div>`;
+          return dayDistance(day,ctx.back)>0?`<div class="dist">📏 하루 동선 약 ${dayDistance(day,ctx.back).toFixed(1)}km <span style="opacity:.55">(직선)</span></div>`:'';})()}
+        ${(()=>{const e=dayEndMin(day, ctx.anchor, ctx.backLeg); return (e!=null&&e>22*60)?`<div class="overload" title="시작시각+체류+이동 기준 예상 종료">⚠️ 일정 과밀 — 예상 종료 ${hm(e)}${e>=24*60?' (익일)':''}</div>`:'';})()}
+        ${(()=>{const dc=dayCost(day); const tx=(dayRoute(day,ctx.backLeg)||{}).taxi||0; const road=(dm==='car'||dm==='taxi'); const tot=dc+(road?tx:0);
           return tot?`<div class="dist">💳 하루 비용 약 ₩${tot.toLocaleString()}${(dc&&road&&tx)?` <span style="opacity:.55">(장소 ₩${dc.toLocaleString()} + 택시 ₩${tx.toLocaleString()})</span>`:''}</div>`:'';})()}
         ${carry?`<div class="spot carry" style="--c:#7a86ad" title="전날 숙소 — 오늘 첫 일정으로 자동 이월 (탭하면 지도에서 보기 · 장소 편집의 🏠 숙소 체크로 관리)"><div class="spotMain"><span class="spotTime eta">🏠</span><button type="button" class="spotIdentity nm" onclick="focusLatLng(${+carry.lat},${+carry.lng})" title="${escAttr(carry.name)}" aria-label="${escAttr(carry.name)} 지도에서 보기"><span class="spotName">${esc(carry.name)}</span></button><span class="spotMenuSpacer" aria-hidden="true"></span></div><div class="spotMeta"><span class="spotMetaItem opt">전날 숙소</span></div></div>`:''}
         <div class="spotList" data-di="${di}">${spotsHtml}</div>
+        ${(()=>{   // 동선 마무리 — 그날 마지막 장소에서 숙소로 돌아가는 구간을 자동으로 보여준다(데이터에는 넣지 않음)
+          const bl=ctx.backLeg; if(!bl) return '';
+          const c=requestLeg(bl.from,bl.to,bl.mode,bl.when,bl.timeZone);
+          const legTxt = c
+            ? `<span class="leg" data-leg="${bl.key}" title="${legTitle(c)}">${legLabel(c)}</span>`
+            : `<span class="leg" data-leg="${bl.key}">↳${haversine(bl.from,bl.to).toFixed(1)}km</span>`;
+          return `<div class="spot back" style="--c:#7a86ad" title="오늘 묵는 숙소 — 동선이 닫히도록 자동으로 이어 붙였습니다 (탭하면 지도에서 보기)">
+            <div class="spotMain"><span class="spotTime eta">🏠</span><button type="button" class="spotIdentity nm" onclick="focusLatLng(${+bl.to.lat},${+bl.to.lng})" title="${escAttr(bl.to.name)}" aria-label="${escAttr(bl.to.name)}로 복귀 · 지도에서 보기"><span class="spotName">${esc(bl.to.name)}</span></button><span class="spotMenuSpacer" aria-hidden="true"></span></div>
+            <div class="spotMeta"><span class="spotMetaItem opt">숙소 복귀 · 자동</span>${MODE_ICON[bl.mode]?`<span class="spotMetaItem opt">${MODE_ICON[bl.mode]}</span>`:''}</div>
+            <div class="spotLeg">${legTxt}</div>
+          </div>`;
+        })()}
         <button class="addSpot" onclick="openSpotModal(${di},-1)">＋ 장소 추가</button>${day.spots.filter(hasLoc).length>=3?`<button class="addSpot optBtn" onclick="optimizeDay(${di})" title="이 날의 방문 순서를 이동거리 최소로 재배열">🧭 동선 최적화</button>`:''}
         ${day.note?`<div class="note">📝 ${esc(day.note)}</div>`:''}
       </div>`;
@@ -2562,6 +2616,8 @@ function buildTripCard(){
     day.spots.forEach((s,si)=>{
       html+=`<div style="font-size:12px;margin-top:5px"><span style="color:#f6bd60;font-weight:700;font-size:10.5px">${hm(etas[si])}</span> ${si+1}. ${catPrefix(s)}${esc(s.name)}${s.opt?' <span style="color:#8892b0;font-size:10.5px">(선택)</span>':''}</div>`;
     });
+    const back=dayReturnStay(t.days,di);   // 하루의 끝 — 숙소 복귀 (화면과 같은 기준)
+    if(back) html+=`<div style="font-size:12px;margin-top:5px;color:#9aa5c4">🏠 ${esc(back.name)} <span style="font-size:10.5px">(숙소 복귀)</span></div>`;
     if(day.note) html+=`<div style="font-size:10.5px;color:#9aa5c4;margin-top:6px;white-space:pre-wrap">📝 ${esc(day.note)}</div>`;
     html+='</div>';
   });
@@ -2929,6 +2985,9 @@ function renderTravel(di){
   if(next){
     const mode=legModeOf(d,next),route=(hasLoc(current)&&hasLoc(next))?requestLeg(current,next,mode,mode==='transit'?planDepartISO(iso,legDepartMinute(d,tl,currentIndex+1),ctx.timeZone):null,ctx.timeZone):null;
     nextBox.innerHTML=`<div><div class="travelKicker">다음 장소</div><strong>${esc(next.name)}</strong><div class="travelFacts">${route?`${MODE_ICON[mode]} ${fmtDur(route.sec)} 후`:'이동 정보 계산 중'} · ${hm(etas[currentIndex+1])} 도착 예상</div></div><span aria-hidden="true">→</span>`;
+  }else if(ctx.backLeg){
+    const bl=ctx.backLeg, r=requestLeg(bl.from,bl.to,bl.mode,bl.when,bl.timeZone);
+    nextBox.innerHTML=`<div><div class="travelKicker">다음 장소</div><strong>🏠 ${esc(bl.to.name)}</strong><div class="travelFacts">숙소 복귀 · ${r?`${MODE_ICON[bl.mode]} ${fmtDur(r.sec)} 후`:'이동 정보 계산 중'}</div></div><span aria-hidden="true">→</span>`;
   }else nextBox.innerHTML='<div><div class="travelKicker">다음 장소</div><strong>오늘 일정 완료</strong></div><span aria-hidden="true">✓</span>';
   let prevLoc=carry;
   if(carry){
@@ -2966,6 +3025,18 @@ function renderTravel(di){
         : `<span style="font-size:12px;color:#f6bd60">📍 위치 미지정</span>`);
     list.appendChild(div);
   });
+  // 하루의 끝 — 숙소로 돌아가는 구간 (사이드바·지도와 같은 기준)
+  if(ctx.backLeg){
+    const bl=ctx.backLeg, c=requestLeg(bl.from,bl.to,bl.mode,bl.when,bl.timeZone);
+    const lg=document.createElement('div'); lg.className='tLeg';
+    lg.textContent = c? `${MODE_ICON[bl.mode]} ${fmtDur(c.sec)} · ${(c.m/1000).toFixed(1)}km` : `↘ 직선 ${haversine(bl.from,bl.to).toFixed(1)}km`;
+    list.appendChild(lg);
+    const el=extMapLink(bl.to);
+    const bd=document.createElement('div'); bd.className='tSpot carry'; bd.style.setProperty('--c','#7a86ad');
+    bd.innerHTML=`<div class="n"><span class="eta">🏠</span> ${esc(bl.to.name)} <span style="font-size:11px;color:#8892b0">숙소 복귀 · 자동</span></div>`+
+      `<a href="${escAttr(el.href)}" target="_blank" rel="noopener">🧭 ${el.label}</a>`;
+    list.appendChild(bd);
+  }
 }
 
 // ───────────────── 로그인 · 클라우드 동기화 (Supabase) ─────────────────
