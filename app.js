@@ -1071,7 +1071,7 @@ function startAnchorFor(di){ return dayStartAnchor(trip().days, di); }
 function backLegOf(day, di, back){
   const loc=day.spots.filter(hasLoc);
   if(!back || !loc.length) return null;
-  const from=loc[loc.length-1], mode=dayModeOf(day), timeZone=dayTimeZone(day);
+  const from=loc[loc.length-1], mode=localMode(dayModeOf(day)), timeZone=dayTimeZone(day);
   const when = mode==='transit'
     ? planDepartISO(di>=0?isoDateOf(di):'', dayEndMin(day, startAnchorFor(di)), timeZone)
     : null;
@@ -1391,7 +1391,13 @@ function renderSidebar(){
       const bookWarn=(bookMin!=null && etas[si]-bookMin>5);   // ETA가 예약보다 5분 이상 늦음
       const cat=spotCatOf(s);
       const meta=[];
-      if(s.stay) meta.push(`<span class="spotMetaItem stayMeta">🏠 숙소${stayNights(s)>1?` · ${stayNights(s)}박`:''}</span>`);
+      if(s.stay){
+        // 이름 앞 🏠가 이미 숙소임을 말한다 → 아이콘이 못 전달하는 연박 수만 남긴다.
+        // 단 카테고리를 다른 걸로 지정해 아이콘이 🏠가 아니면 숙소라는 사실을 계속 알려준다.
+        const nights=stayNights(s)>1?`${stayNights(s)}박`:'';
+        const label=(cat&&cat.id==='stay')? nights : `🏠 숙소${nights?` · ${nights}`:''}`;
+        if(label) meta.push(`<span class="spotMetaItem stayMeta">${label}</span>`);
+      }
       if(s.opt) meta.push(`<span class="spotMetaItem opt">선택 코스</span>`);
       if(!hasLoc(s)) meta.push(`<button type="button" class="spotMetaItem noloc" onclick="event.stopPropagation();openSpotModal(${di},${si})">📍 위치 지정</button>`);
       if(s.cost){
@@ -1480,7 +1486,7 @@ function renderSidebar(){
             : `<span class="leg" data-leg="${bl.key}">↳${haversine(bl.from,bl.to).toFixed(1)}km</span>`;
           return `<div class="spot back" style="--c:#7a86ad" title="오늘 묵는 숙소 — 동선이 닫히도록 자동으로 이어 붙였습니다 (탭하면 지도에서 보기)">
             <div class="spotMain"><span class="spotTime eta">🏠</span><button type="button" class="spotIdentity nm" onclick="focusLatLng(${+bl.to.lat},${+bl.to.lng})" title="${escAttr(bl.to.name)}" aria-label="${escAttr(bl.to.name)}로 복귀 · 지도에서 보기"><span class="spotName">${esc(bl.to.name)}</span></button><span class="spotMenuSpacer" aria-hidden="true"></span></div>
-            <div class="spotMeta"><span class="spotMetaItem opt">숙소 복귀 · 자동</span>${MODE_ICON[bl.mode]?`<span class="spotMetaItem opt">${MODE_ICON[bl.mode]}</span>`:''}</div>
+            <div class="spotMeta"><span class="spotMetaItem opt">${MODE_ICON[bl.mode]||''} 숙소 복귀 · 자동</span></div>
             <div class="spotLeg">${legTxt}</div>
           </div>`;
         })()}
