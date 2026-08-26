@@ -1714,6 +1714,7 @@ const PX_ERR_MSG={
   AUTH_ERROR:'가격 소스 인증 오류 — 관리자 확인이 필요해요',
   RATE_LIMIT:'조회 한도를 넘었어요 — 잠시 후 다시 시도해주세요',
   PROPERTY_NOT_FOUND:'이 이름으로 호텔을 찾지 못했어요 — 예약처 표기와 같은 이름으로 바꿔보세요',
+  PAST_DATE:'체크인이 이미 지난 예약이에요 — 지난 날짜의 시세는 조회할 수 없어요',
   NO_AVAILABILITY:'해당 날짜에 판매 중인 가격이 없어요',
   NETWORK_ERROR:'네트워크 오류 — 연결을 확인하고 다시 시도해주세요',
   PROVIDER_ERROR:'가격 소스 오류 — 잠시 후 다시 시도해주세요',
@@ -1840,6 +1841,7 @@ async function checkBookingPrice(id,opts){
   const provider=HOTEL_DISCOVERY.find(x=>x.supports(b)); if(!provider) return null;   // 소스 없는 종류는 조회하지 않음(가짜 데이터 금지)
   if(!b.start||!b.end) return null;                                                   // 기간 없이는 검색 불가 (상세 화면이 안내)
   const today=todayISO(); if(b.end<=today) return null;                               // 숙박 종료 → 추적 중단
+  if(b.start<today) return null;   // 체크인이 지남 → 재예약 의미 없고, 시세 소스도 지난 날짜를 조회할 수 없다
   const rec=recOf(id), now=Date.now(), CFG=TC_PRICE.PRICE_CFG;
   const age=rec.at? now-Date.parse(rec.at) : Infinity;
   if(opts&&opts.force){ if(age<CFG.cooldownMin*60e3) return {cooldown:true}; }        // 수동 확인 쿨다운 — 최신 저장값 유지
@@ -2061,6 +2063,7 @@ function renderBookingStatusBox(b){
   const missing=!b.start||!b.end;
   let head='';
   if(missing) head=`<div class="pxState pxWatch">체크인·체크아웃 날짜를 입력하면 가격 추적을 시작해요</div>`;
+  else if(b.start&&b.start<todayISO()) head=`<div class="pxState pxOff">체크인이 지나 가격 추적을 마쳤어요</div>`;
   else if(b.track===false) head=`<div class="pxState pxOff">가격 추적이 꺼져 있어요 — 켜면 시세를 계속 확인합니다</div>`;
   else if(st&&st.state==='SAVING_AVAILABLE'){
     const o=st.confirmed.offer, eff=TC_PRICE.offerPrice(o), link=safeUrl(o.link||'');

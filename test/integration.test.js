@@ -462,3 +462,20 @@ test('통합: 조회 실패는 원인 코드를 함께 보여주고, 잘못된 �
   assert.match(w.document.getElementById('bkStatus').textContent, /NETWORK_ERROR/);
   w.close();
 });
+
+test('통합: 체크인이 지난 예약은 조회하지 않고 "추적을 마쳤어요"로 안내한다', { skip: noJsdom }, async () => {
+  const w = boot();
+  const day = (d) => new Date(Date.now() + d * 86400000).toISOString().slice(0, 10);
+  withTrip(w, `[{mode:'car',startAt:'09:00',spots:[{name:'H',lat:37.5,lng:127,city:'S',stay:true,bookingId:'bkP'}]}]`);
+  // 체크인은 지났고 체크아웃은 아직 — 지금까지 매 조회가 PROVIDER_ERROR로 실패하던 조합
+  w.eval(`trip().bookings=[{id:'bkP',type:'hotel',title:'H',price:500000,cur:'KRW',start:'${day(-3)}',end:'${day(2)}',track:true}];
+    window.called=0; MetasearchHotelProvider.searchOffers=async()=>{ window.called++; throw new Error('should not be called'); };`);
+
+  const r = await w.eval(`checkBookingPrice('bkP',{force:true})`);
+  assert.equal(r, null, '조회를 시도하지 않는다');
+  assert.equal(w.eval('called'), 0, 'upstream 호출 없음(유료 호출 낭비 방지)');
+
+  w.eval(`openBookingModal('bkP')`);
+  assert.match(w.document.getElementById('bkStatus').textContent, /추적을 마쳤어요/);
+  w.close();
+});

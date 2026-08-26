@@ -172,3 +172,15 @@ test('hotel-offers: safeLink — https·공인 호스트만 통과 (SSRF·스킴
   assert.equal(safeLink('https://192.168.0.10/x'), undefined);
   assert.equal(safeLink('https://internal/x'), undefined);
 });
+
+test('validRequest — 지난 체크인은 upstream을 호출하지 않고 거부한다', () => {
+  const V = _private.validRequest;
+  const day = (d) => new Date(Date.now() + d * 86400000).toISOString().slice(0, 10);
+  const base = { name: 'Cap Rocat', adults: 2, currency: 'KRW' };
+  // 지난 날짜: 시세 소스가 조회할 수 없어 PROVIDER_ERROR로 뭉뚱그려지던 케이스
+  assert.equal(V({ ...base, checkIn: day(-10), checkOut: day(-8) }).past, true);
+  assert.equal(V({ ...base, checkIn: day(-5), checkOut: day(3) }).past, true, '투숙 중(체크인만 과거)도 거부');
+  // 오늘·미래는 정상 통과 (시간대 차를 감안해 하루 여유)
+  assert.equal(V({ ...base, checkIn: day(1), checkOut: day(3) }).past, undefined);
+  assert.equal(V({ ...base, checkIn: day(30), checkOut: day(32) }).past, undefined);
+});

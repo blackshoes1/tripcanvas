@@ -93,6 +93,10 @@ function validRequest(body) {
   };
   if (!out.name && !out.ptoken) return null;
   if (!isoDate(out.checkIn) || !isoDate(out.checkOut) || out.checkIn >= out.checkOut) return null;
+  // upstream은 지난 날짜를 조회할 수 없다 — 여기서 거르지 않으면 PROVIDER_ERROR로 뭉뚱그려진다.
+  // 기기·서버 시간대 차를 감안해 UTC 기준 하루 여유를 둔다.
+  const floor = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  if (out.checkIn < floor) return { past: true };
   return out;
 }
 
@@ -295,6 +299,7 @@ function createHandler({ fetchImpl = globalThis.fetch, env = process.env, now = 
     catch (error) { return send(res, error.status || 400, { error: error.message }); }
     const request = validRequest(body);
     if (!request) return send(res, 400, { error: 'invalid_request' });
+    if (request.past) return send(res, 400, { error: 'PAST_DATE' });
 
     try {
       const result = await runSearch({ env, fetchImpl, verifiers }, request);
