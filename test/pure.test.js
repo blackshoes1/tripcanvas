@@ -474,3 +474,12 @@ test('dayReturnStay — 그날 숙소로 동선을 닫되, 이미 닫혔거나 �
   assert.equal(L.dayReturnStay([{title:'',spots:[{name:'좌표없음'}]}],0), null);
   assert.equal(L.dayReturnStay(null,0), null);
 });
+
+test('localMode — 비행기·기차는 근거리 구간(숙소 복귀)의 수단이 될 수 없다', () => {
+  assert.equal(L.localMode('flight'), 'car', '그날 기본이 ✈️여도 호텔엔 날아가지 않는다');
+  assert.equal(L.localMode('train'), 'car');
+  assert.equal(L.localMode('transit'), 'transit');
+  assert.equal(L.localMode('walk'), 'walk');
+  assert.equal(L.localMode('taxi'), 'taxi');
+  assert.equal(L.localMode(undefined), 'car');
+});

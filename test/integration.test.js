@@ -1006,3 +1006,45 @@ test('통합: 하루의 끝을 숙소 복귀로 닫고, 이미 닫힌 날엔 덧
   assert.ok(withBack>withoutBack, '복귀 이동시간만큼 종료가 늦어진다');
   w.close();
 });
+
+// 구간 조회를 캐시로 미리 채워 네트워크(=테스트 종료 후 비동기 렌더)를 막는다
+function seedLegs(w, di){
+  w.eval(`(()=>{
+    const d=trip().days[${di}], loc=d.spots.filter(hasLoc);
+    for(let i=1;i<loc.length;i++) legCache[legKey(loc[i-1],loc[i],legModeOf(d,loc[i]))]={sec:600,m:4000,est:true};
+    const b=backLegOf(d,${di},dayReturnStay(trip().days,${di}));
+    if(b) legCache[b.key]={sec:300,m:1500,est:true};
+  })()`);
+}
+
+test('통합: 비행기 일자의 숙소 복귀는 ✈️가 아니라 근거리 수단으로 잡힌다', { skip: noJsdom }, () => {
+  const w=boot();
+  withTrip(w, `[{title:'도착일',drive:'',note:'',mode:'flight',startAt:'09:00',spots:[
+    {name:'공항',city:'M',desc:'',lat:40.49,lng:-3.56},
+    {name:'호텔',city:'M',desc:'',lat:40.40,lng:-3.69,stay:true},
+    {name:'식당',city:'M',desc:'',lat:40.41,lng:-3.70}
+  ]}]`);
+  seedLegs(w,0); w.eval('render()');
+  assert.equal(w.eval(`backLegOf(trip().days[0],0,dayReturnStay(trip().days,0)).mode`),'car');
+  const meta=w.document.querySelector('.dayCard .spot.back .spotMeta').textContent;
+  assert.doesNotMatch(meta,/✈️/,'복귀에 비행기 아이콘이 붙지 않는다');
+  assert.match(meta,/🚗/);
+  w.close();
+});
+
+test('통합: 🏠 아이콘이 붙으면 "숙소" 글자는 빼고 연박 수만 남긴다', { skip: noJsdom }, () => {
+  const w=boot();
+  withTrip(w, `[{title:'D1',drive:'',note:'',spots:[
+    {name:'1박 호텔',city:'M',desc:'',lat:40.40,lng:-3.69,stay:true},
+    {name:'연박 호텔',city:'M',desc:'',lat:40.41,lng:-3.70,stay:true,nights:3},
+    {name:'명소로 지정한 숙소',city:'M',desc:'',lat:40.42,lng:-3.71,stay:true,cat:'sight'}
+  ]}]`);
+  seedLegs(w,0); w.eval('render()');
+  const spots=[...w.document.querySelectorAll('.spot[data-si]')];
+  const meta=i=>{ const el=spots[i].querySelector('.stayMeta'); return el?el.textContent:null; };
+  assert.equal(meta(0),null,'1박이면 아이콘만으로 충분 — 칩 자체가 없다');
+  assert.equal(meta(1),'3박','연박 수는 아이콘이 못 전달하므로 남긴다');
+  assert.equal(meta(2),'🏠 숙소','아이콘이 🏠가 아니면 숙소임을 계속 알려준다');
+  assert.equal(spots[2].querySelector('.spotCat').textContent,'🏛');
+  w.close();
+});
