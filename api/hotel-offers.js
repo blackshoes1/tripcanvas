@@ -128,7 +128,21 @@ function serpapiAdapter(env, fetchImpl) {
     const timer = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
     try {
       const upstream = await fetchImpl(`https://serpapi.com/search.json?${query}`, { signal: controller.signal });
-      if (!upstream.ok) throw Object.assign(new Error('upstream'), { code: upstreamCode(upstream.status), detail: 'HTTP ' + upstream.status });
+      if (!upstream.ok) {
+        const raw = typeof upstream.text === 'function' ? await upstream.text().catch(() => '') : '';
+        let msg = '';
+        try { const parsed = JSON.parse(raw); msg = String(parsed.error || parsed.message || ''); }
+        catch (_) { msg = String(raw || ''); }
+        msg = msg.replace(/s+/g, ' ').trim().slice(0, 200);
+        const stage = params.property_token ? 'detail' : 'search';   // 어느 단계에서 막혔는지가 원인 특정에 결정적
+        console.log('[hotel-offers] upstream ' + upstream.status + ' (' + stage + '):', msg.slice(0, 160));
+        // 본문에 사유가 있으면 그걸로 분류한다(상태코드만으로는 RATE_LIMIT·AUTH를 놓친다)
+        const byStatus = upstreamCode(upstream.status);
+        const code = (byStatus === 'PROVIDER_ERROR' && msg) ? bodyError(msg).code : byStatus;
+        throw Object.assign(new Error('upstream'), {
+          code, detail: 'HTTP ' + upstream.status + ' (' + stage + ')' + (msg ? ' · ' + msg : '')
+        });
+      }
       const text = await upstream.text();
       if (Buffer.byteLength(text) > 2 * 1024 * 1024) throw Object.assign(new Error('big'), { code: 'INVALID_RESPONSE' });
       try { return JSON.parse(text); }
