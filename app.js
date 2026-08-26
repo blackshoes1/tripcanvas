@@ -1747,6 +1747,20 @@ function bookingOf(id){ return tripBookings().find(b=>b.id===id)||null; }
 function todayISO(){ return toISO(new Date()); }
 function fmtDT(iso){ const d=new Date(iso); return isNaN(+d)?'':`${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; }
 // 호텔 identity — 연결된 🏠 숙소 스팟의 이름·placeId·좌표를 쓴다 (이름만으로 검색하지 않기 위해)
+// SerpApi(google_hotels)는 한글 호텔명 쿼리로는 엉뚱한 숙소를 돌려준다(좌표 검색 파라미터도 없다).
+// Google Places는 한글 질의도 영문명으로 답하므로, 한글 이름은 한 번 변환해 예약에 캐시한다.
+// 한 번 매칭에 성공하면 ptoken이 저장돼 이후에는 검색 단계 자체를 건너뛴다.
+async function enNameForBooking(b, idn){
+  const name=String((idn&&idn.name)||b.title||'').trim();
+  if(!/[가-힣]/.test(name)) return name;
+  if(b.enName) return b.enName;
+  try{
+    const near=(isFinite(Number(idn&&idn.lat))&&isFinite(Number(idn&&idn.lng)))?{lat:+idn.lat,lng:+idn.lng}:null;
+    const hit=(await googlePlaces(name, near, 1)).list[0];
+    if(hit&&hit.name&&!/[가-힣]/.test(hit.name)){ b.enName=hit.name; save(); return hit.name; }
+  }catch(_){}
+  return name;   // 변환 실패 시 원래 이름으로 시도(후보 선택 UI가 마지막 안전망)
+}
 function identityForBooking(b){
   let found=null;
   trip().days.forEach(d=>d.spots.forEach(s=>{ if(s.bookingId===b.id) found=s; }));
@@ -1784,9 +1798,10 @@ const MetasearchHotelProvider={
   supports(b){ return b.type==='hotel'; },
   async searchOffers(b){
     const idn=identityForBooking(b);
+    const qName=await enNameForBooking(b, idn);   // 조회·응답 모두 영문으로 맞춰야 이름 매칭이 성립한다
     const r=await fetch('/api/hotel-offers',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({name:idn.name, placeId:idn.placeId, lat:idn.lat, lng:idn.lng, ptoken:b.ptoken,
-        checkIn:b.start, checkOut:b.end, adults:b.adults||2, rooms:b.rooms||1, currency:b.cur||'KRW', country:'kr', language:'ko'})});
+      body:JSON.stringify({name:qName, placeId:idn.placeId, lat:idn.lat, lng:idn.lng, ptoken:b.ptoken,
+        checkIn:b.start, checkOut:b.end, adults:b.adults||2, rooms:b.rooms||1, currency:b.cur||'KRW', country:'kr', language:'en'})});
     const js=await r.json().catch(()=>null);
     if(!r.ok) throw Object.assign(new Error('offers_failed'),{code:(js&&js.error)||'PROVIDER_ERROR'});
     return js;

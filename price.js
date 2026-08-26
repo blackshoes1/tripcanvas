@@ -170,6 +170,8 @@
   /**
    * 호텔 동일성 점수(0~1). placeId가 양쪽에 있으면 그 일치가 전부. 없으면 이름 유사도(0.7)
    * + 좌표 거리(0.3 — 300m 이내 만점, 3km 밖 0점). 낮은 점수는 자동 확정하지 않는다(호출측 threshold).
+   * 단 150m 이내는 같은 건물로 보고 최소 0.6을 보장한다 — 판매처마다 표기가 달라
+   * ("Lotte Hotel Seoul" vs "The Grand Lotte Seoul") 이름 점수만으로는 놓치기 때문.
    * @param {{name?:string,placeId?:string,lat?:number,lng?:number}} idn 일정의 호텔
    * @param {{name?:string,placeId?:string,lat?:number,lng?:number}} prop Provider 매물
    * @returns {number}
@@ -184,7 +186,8 @@
     if(!hasCoord) return sim;
     const d=_distKm(idn,prop);
     const near= d<=0.3?1 : d>=3?0 : 1-(d-0.3)/2.7;
-    return sim*0.7+near*0.3;
+    const score=sim*0.7+near*0.3;
+    return d<=0.15 ? Math.max(0.6,score) : score;
   }
 
   /**

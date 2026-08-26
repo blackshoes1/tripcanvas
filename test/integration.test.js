@@ -386,3 +386,27 @@ test('통합: 선택 상태가 장소 클릭·작업 메뉴 동작을 방해하�
   assert.ok(menu.hasAttribute('open'), '작업 메뉴 열림');
   w.close();
 });
+
+test('통합: 한글 호텔명은 영문으로 변환해 시세를 조회하고 결과를 캐시한다', { skip: noJsdom }, async () => {
+  const w = boot();
+  // SerpApi는 한글 쿼리로 엉뚱한 숙소를 주므로, Google Places(영문 응답)로 한 번 바꿔 조회한다
+  w.eval(`googlePlaces=async()=>({list:[{name:'The Shilla Seoul'}],err:null});`);
+  const b = w.eval(`(async()=>{
+    const b={id:'bk9', title:'신라호텔'};
+    const name=await enNameForBooking(b,{name:'신라호텔', lat:37.5559, lng:127.0054});
+    return JSON.stringify({name, cached:b.enName});
+  })()`);
+  const out = JSON.parse(await b);
+  assert.equal(out.name, 'The Shilla Seoul', '영문명으로 조회');
+  assert.equal(out.cached, 'The Shilla Seoul', '예약에 캐시되어 재조회하지 않음');
+
+  // 이미 영문이면 그대로 쓰고 Places를 호출하지 않는다
+  w.eval(`googlePlaces=async()=>{ throw new Error('called'); };`);
+  const en = await w.eval(`enNameForBooking({id:'bk8',title:'Lotte Hotel Seoul'},{name:'Lotte Hotel Seoul'})`);
+  assert.equal(en, 'Lotte Hotel Seoul');
+
+  // 변환이 실패해도 원래 이름으로 진행한다(후보 선택 UI가 마지막 안전망)
+  const fb = await w.eval(`enNameForBooking({id:'bk7',title:'신라호텔'},{name:'신라호텔'})`);
+  assert.equal(fb, '신라호텔');
+  w.close();
+});

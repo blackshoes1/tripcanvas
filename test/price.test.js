@@ -206,3 +206,16 @@ test('tripHotelSummary — 확정·잠재(조건 확인 필요)·실제 절약�
   // 빈 목록 안전
   assert.deepEqual(P.tripHotelSummary([], {}), {booked:0, confirmed:0, potential:0, actual:0, count:0});
 });
+
+test('identityScore — 같은 건물 수준(150m)이면 표기가 달라도 매칭 가능', () => {
+  // 판매처마다 표기가 다른 실제 사례: 일정엔 "Lotte Hotel Seoul", 결과는 "The Grand Lotte Seoul"
+  const s = P.identityScore(
+    { name: 'Lotte Hotel Seoul', lat: 37.5651, lng: 126.9814 },
+    { name: '더그랜드롯데 서울', lat: 37.5652, lng: 126.9815 });
+  assert.ok(s >= 0.6, '150m 이내는 최소 0.6 보장, got ' + s);
+  // 멀면 보정하지 않는다 — 이름이 달라도 가깝다는 이유만으로 붙이면 오매칭이 된다
+  const far = P.identityScore(
+    { name: 'Lotte Hotel Seoul', lat: 37.5651, lng: 126.9814 },
+    { name: '전혀 다른 호텔', lat: 37.60, lng: 127.05 });
+  assert.ok(far < 0.55, '먼 곳은 보정 없음, got ' + far);
+});

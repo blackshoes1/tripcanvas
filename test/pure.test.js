@@ -360,3 +360,10 @@ test('normalizeBooking / normalizeTrip.bookings — 예약(가격 추적) 유입
   const none=L.normalizeTrip({days:[{spots:[]}], bookings:['x']});
   assert.equal('bookings' in none,false);
 });
+
+test('normalizeBooking — 시세 조회용 영문명(enName) 보존·검증', () => {
+  const ok = L.normalizeTrip({ days:[{spots:[]}], bookings:[{ id:'bk1', title:'롯데호텔 서울', enName:'Lotte Hotel Seoul' }] });
+  assert.equal(ok.bookings[0].enName, 'Lotte Hotel Seoul');
+  const bad = L.normalizeTrip({ days:[{spots:[]}], bookings:[{ id:'bk2', title:'x', enName:{} }] });
+  assert.equal('enName' in bad.bookings[0], false, '문자열 아니면 제거');
+});

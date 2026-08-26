@@ -437,11 +437,12 @@
     // 조건 매칭용 필드 — 투숙 조건·환불·조식·객실명. 미입력(undefined)은 '모름'으로 보존한다
     if(b.adults!=null){ if(_fin(b.adults)) b.adults=Math.min(8,Math.max(1,Math.round(+b.adults))); else delete b.adults; }
     if(b.rooms!=null){ if(_fin(b.rooms)) b.rooms=Math.min(4,Math.max(1,Math.round(+b.rooms))); else delete b.rooms; }
-    if(b.roomName!=null){ const r=_str(b.roomName).trim().slice(0,120); if(r) b.roomName=r; else delete b.roomName; }
+    if(b.roomName!=null){ const r=(typeof b.roomName==='string'? b.roomName:'').trim().slice(0,120); if(r) b.roomName=r; else delete b.roomName; }
     if(b.breakfast!=null) b.breakfast=!!b.breakfast;
     if(b.refundable==null){ if(b.freeCancelUntil) b.refundable=true; }   // 구버전: 무료취소 기한만 있던 예약
     else b.refundable=!!b.refundable;
     if(b.ptoken!=null && !(typeof b.ptoken==='string' && /^[A-Za-z0-9_=-]{4,300}$/.test(b.ptoken))) delete b.ptoken;   // provider property 매핑 캐시
+    if(b.enName!=null){ const en=(typeof b.enName==='string'? b.enName:'').trim().slice(0,160); if(en) b.enName=en; else delete b.enName; }   // 시세 조회용 영문명 캐시
     if(b.saved!=null){ if(_fin(b.saved)) b.saved=Math.min(Math.max(0,Math.round(+b.saved)),TC_LIMITS.cost); else delete b.saved; }   // 재예약으로 실제 절약한 누적액
     b.track=b.track!==false;   // 기본 추적 on
     return b;
