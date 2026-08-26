@@ -479,3 +479,23 @@ test('통합: 체크인이 지난 예약은 조회하지 않고 "추적을 마�
   assert.match(w.document.getElementById('bkStatus').textContent, /추적을 마쳤어요/);
   w.close();
 });
+
+test('통합: 체크아웃이 체크인보다 앞서면 저장을 막는다(잘못된 날짜가 조회 실패로 이어지던 문제)', { skip: noJsdom }, () => {
+  const w = boot();
+  withTrip(w, `[{mode:'car',startAt:'09:00',spots:[{name:'H',lat:37.5,lng:127,city:'S',stay:true}]}]`);
+  w.eval('openBookingModal(null)');
+  const set = (id, v) => { w.document.getElementById(id).value = v; };
+  set('bkType', 'hotel'); set('bkTitle', 'H'); set('bkPrice', '500000');
+  set('bkStart', '2099-11-05'); set('bkEnd', '2099-11-02');   // 역순
+  w.document.getElementById('bkSave').click();
+  assert.equal(w.eval('(trip().bookings||[]).length'), 0, '역순 날짜는 저장되지 않는다');
+
+  set('bkEnd', '2099-11-05');                                  // 같은 날
+  w.document.getElementById('bkSave').click();
+  assert.equal(w.eval('(trip().bookings||[]).length'), 0, '같은 날도 저장되지 않는다');
+
+  set('bkEnd', '2099-11-07');                                  // 정상
+  w.document.getElementById('bkSave').click();
+  assert.equal(w.eval('(trip().bookings||[]).length'), 1, '정상 날짜는 저장');
+  w.close();
+});

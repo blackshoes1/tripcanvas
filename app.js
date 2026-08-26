@@ -1715,6 +1715,10 @@ const PX_ERR_MSG={
   RATE_LIMIT:'조회 한도를 넘었어요 — 잠시 후 다시 시도해주세요',
   PROPERTY_NOT_FOUND:'이 이름으로 호텔을 찾지 못했어요 — 예약처 표기와 같은 이름으로 바꿔보세요',
   PAST_DATE:'체크인이 이미 지난 예약이에요 — 지난 날짜의 시세는 조회할 수 없어요',
+  INVALID_NAME:'호텔 이름이 비어 있어요 — 예약 이름을 확인해주세요',
+  INVALID_DATES:'체크인·체크아웃 날짜 형식을 확인해주세요',
+  INVALID_DATE_ORDER:'체크아웃이 체크인보다 뒤여야 해요 — 예약 날짜를 확인해주세요',
+  invalid_request:'예약 정보가 조회 조건에 맞지 않아요 — 이름과 날짜를 확인해주세요',
   NO_AVAILABILITY:'해당 날짜에 판매 중인 가격이 없어요',
   NETWORK_ERROR:'네트워크 오류 — 연결을 확인하고 다시 시도해주세요',
   PROVIDER_ERROR:'가격 소스 오류 — 잠시 후 다시 시도해주세요',
@@ -2171,6 +2175,7 @@ document.getElementById('bkSave').onclick=()=>{
   const type=document.getElementById('bkType').value;
   const sv=document.getElementById('bkStart').value, ev=document.getElementById('bkEnd').value;
   if(type==='hotel'&&document.getElementById('bkTrack').checked&&(!sv||!ev)){ toast('가격 추적에는 체크인·체크아웃 날짜가 필요해요','#e63946'); return; }
+  if(sv&&ev&&sv>=ev){ toast('체크아웃은 체크인보다 뒤여야 해요','#e63946'); return; }   // 역순·같은 날이면 시세 조회가 거부된다
   const isNew=!editingBooking;
   const b=isNew? {id:uid(), createdAt:new Date().toISOString()} : bookingOf(editingBooking);
   if(!b) return;

@@ -91,8 +91,9 @@ function validRequest(body) {
     gl: /^[a-z]{2}$/.test(String(body.country || '')) ? body.country : 'kr',
     hl: /^[a-z]{2}$/.test(String(body.language || '')) ? body.language : 'ko'
   };
-  if (!out.name && !out.ptoken) return null;
-  if (!isoDate(out.checkIn) || !isoDate(out.checkOut) || out.checkIn >= out.checkOut) return null;
+  if (!out.name && !out.ptoken) return { invalid: 'INVALID_NAME' };
+  if (!isoDate(out.checkIn) || !isoDate(out.checkOut)) return { invalid: 'INVALID_DATES' };
+  if (out.checkIn >= out.checkOut) return { invalid: 'INVALID_DATE_ORDER' };
   // upstream은 지난 날짜를 조회할 수 없다 — 여기서 거르지 않으면 PROVIDER_ERROR로 뭉뚱그려진다.
   // 기기·서버 시간대 차를 감안해 UTC 기준 하루 여유를 둔다.
   const floor = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
@@ -299,6 +300,7 @@ function createHandler({ fetchImpl = globalThis.fetch, env = process.env, now = 
     catch (error) { return send(res, error.status || 400, { error: error.message }); }
     const request = validRequest(body);
     if (!request) return send(res, 400, { error: 'invalid_request' });
+    if (request.invalid) return send(res, 400, { error: request.invalid });   // 사유를 그대로 알려 화면에서 바로 고칠 수 있게
     if (request.past) return send(res, 400, { error: 'PAST_DATE' });
 
     try {

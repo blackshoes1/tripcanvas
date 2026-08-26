@@ -204,3 +204,14 @@ test('분류되지 않은 upstream 오류는 원인 문구를 함께 돌려준�
   assert.match(body.detail, /Something odd happened/, '원인 문구가 전달된다');
   assert.ok(!/deadbeefdeadbeef/.test(body.detail), '키처럼 보이는 긴 hex는 마스킹');
 });
+
+test('validRequest — 거부 사유를 구분해 돌려준다(원인 없는 invalid_request 방지)', () => {
+  const V = _private.validRequest;
+  const day = (d) => new Date(Date.now() + d * 86400000).toISOString().slice(0, 10);
+  const ok = { name: 'X', checkIn: day(5), checkOut: day(7), adults: 2, currency: 'KRW' };
+  assert.equal(V({ ...ok, name: '' }).invalid, 'INVALID_NAME');
+  assert.equal(V({ ...ok, checkIn: '2026/10/30' }).invalid, 'INVALID_DATES');
+  assert.equal(V({ ...ok, checkOut: ok.checkIn }).invalid, 'INVALID_DATE_ORDER', '같은 날은 거부');
+  assert.equal(V({ ...ok, checkIn: day(7), checkOut: day(5) }).invalid, 'INVALID_DATE_ORDER', '역순도 거부');
+  assert.equal(V(ok).invalid, undefined, '정상 요청은 통과');
+});
