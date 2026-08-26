@@ -573,3 +573,63 @@ test('통합: 렌터카 자동 소스 미연결(AUTH_REQUIRED) → 수동 관측
   assert.equal(rec.obs[0].manual, 1, '수동 관측 표식');
   w.close();
 });
+
+test('통합: 지도 탭 한 번으로 그 좌표에 장소 추가 모달이 열린다 (폰에 우클릭이 없다)', { skip: noJsdom }, async () => {
+  const w = boot();
+  withTrip(w, `[{mode:'car',startAt:'09:00',spots:[]},{mode:'car',startAt:'09:00',spots:[]}]`, 2);
+  w.eval('reverseSpot=async()=>({name:"탭한 곳",city:"서울"});');
+
+  w.eval('onMapTap(37.5665,126.9780)');
+  assert.ok(!w.document.getElementById('spotModalBg').classList.contains('show'), '더블탭 구분을 위해 즉시 열지 않는다');
+  await new Promise(r=>setTimeout(r,320));
+  assert.ok(w.document.getElementById('spotModalBg').classList.contains('show'), '탭 후 장소 추가 모달');
+  assert.equal(w.document.getElementById('spotLat').value, '37.5665');
+  assert.equal(w.document.getElementById('spotLng').value, '126.978');
+  assert.equal(w.eval('editing.di'), 1, '현재 보고 있는 일자에 추가된다');
+  w.close();
+});
+
+test('통합: 더블탭 확대·패닝은 장소 추가로 오인하지 않는다', { skip: noJsdom }, async () => {
+  const w = boot();
+  withTrip(w, `[{mode:'car',startAt:'09:00',spots:[]}]`);
+  w.eval('reverseSpot=async()=>({});');
+
+  w.eval('onMapTap(37.5,127.0); cancelMapTap();');     // dblclick/drag 핸들러가 하는 일
+  await new Promise(r=>setTimeout(r,320));
+  assert.ok(!w.document.getElementById('spotModalBg').classList.contains('show'), '취소되면 모달이 뜨지 않아야');
+  w.close();
+});
+
+test('통합: 좌표 지정 중(pickMode)에는 탭이 추가가 아니라 좌표 지정으로 간다', { skip: noJsdom }, async () => {
+  const w = boot();
+  withTrip(w, `[{mode:'car',startAt:'09:00',spots:[]}]`);
+  w.eval('reverseSpot=async()=>({});');
+  w.eval('openSpotModal(0,-1); document.getElementById("pickOnMap").onclick();');
+  assert.equal(w.eval('pickMode'), true);
+
+  w.eval('onMapTap(37.4,127.4)');
+  assert.equal(w.eval('pickMode'), false, '탭 즉시 좌표가 지정된다(지연 없음)');
+  assert.equal(w.document.getElementById('spotLat').value, '37.4');
+  assert.match(w.document.getElementById('coordHint').textContent, /37\.4000/);
+  w.close();
+});
+
+test('통합: 읽기전용(viewMode)에서는 지도 탭으로 추가되지 않는다', { skip: noJsdom }, async () => {
+  const w = boot();
+  withTrip(w, `[{mode:'car',startAt:'09:00',spots:[]}]`);
+  w.eval('viewMode=true; onMapTap(37.5,127.0);');
+  await new Promise(r=>setTimeout(r,320));
+  assert.ok(!w.document.getElementById('spotModalBg').classList.contains('show'));
+  w.close();
+});
+
+test('통합: 메뉴가 열려 있을 때의 지도 탭은 닫기일 뿐, 장소를 추가하지 않는다', { skip: noJsdom }, async () => {
+  const w = boot();
+  withTrip(w, `[{mode:'car',startAt:'09:00',spots:[]}]`);
+  w.eval('reverseSpot=async()=>({});');
+  w.document.getElementById('hdrMenu').classList.add('open');
+  w.eval('onMapTap(37.5,127.0)');
+  await new Promise(r=>setTimeout(r,320));
+  assert.ok(!w.document.getElementById('spotModalBg').classList.contains('show'), '메뉴 닫기용 탭은 추가로 이어지지 않아야');
+  w.close();
+});

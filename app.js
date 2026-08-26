@@ -207,6 +207,21 @@ function addSpotAt(lat,lng){
   fillSpotFromCoords(lat,lng,true);    // 지정 지점의 장소명·도시 자동 채움
   setTimeout(()=>document.getElementById('spotName').focus(),50);
 }
+// 지도 탭/클릭 → 그 좌표로 장소 추가.
+// 폰에는 우클릭이 없어 예전엔 추가 경로가 아예 닿지 않았다(탭은 pickMode에서만 동작).
+// 더블탭 확대와 구분해야 하므로 짧게 지연했다가, dblclick·드래그가 오면 취소한다.
+const TAP_ADD_DELAY = 260;
+let _tapT = null;
+function cancelMapTap(){ if(_tapT){ clearTimeout(_tapT); _tapT=null; } }
+function onMapTap(lat,lng){
+  if(pickMode){ onMapPick(lat,lng); return; }   // 좌표 지정 중이면 그 흐름이 우선(지연 없음)
+  if(viewMode) return;                          // 읽기전용에서는 추가하지 않는다
+  // 메뉴가 열려 있으면 이 탭은 '닫기'다 — 닫으려다 장소가 추가되면 안 된다.
+  const hm=document.getElementById('hdrMenu');
+  if(hm && hm.classList.contains('open')) return;
+  cancelMapTap();
+  _tapT=setTimeout(()=>{ _tapT=null; addSpotAt(lat,lng); }, TAP_ADD_DELAY);
+}
 // 좌표 → {name, city} 한 번의 조회. 국내=카카오 coord2Address(한국어), 해외=구글 Places 인근검색(영어명).
 function reverseSpot(lat,lng){
   return new Promise(resolve=>{
@@ -294,7 +309,9 @@ window.__gmapsReady=function(){
     disableDefaultUI:true, zoomControl:true, clickableIcons:false, gestureHandling:'greedy'
   });
   iw=new google.maps.InfoWindow();
-  map.addListener('click',e=>onMapPick(e.latLng.lat(), e.latLng.lng()));
+  map.addListener('click',e=>onMapTap(e.latLng.lat(), e.latLng.lng()));
+  map.addListener('dblclick',cancelMapTap);        // 더블탭 확대를 장소 추가로 오인하지 않게
+  map.addListener('drag',cancelMapTap);            // 패닝 중 발생한 탭은 무시
   map.addListener('rightclick',e=>{ if(!pickMode) addSpotAt(e.latLng.lat(), e.latLng.lng()); });
   render();
   google.maps.event.addListenerOnce(map,'idle',()=>{ if(engine==='google') fitEntry(); });   // 레이아웃 확정 후 초기 포커싱
@@ -311,7 +328,9 @@ async function ensureKakaoMap(){
   if(kmap) return true;
   if(!(await loadKakao())) return false;
   kmap=new kakao.maps.Map(document.getElementById('kmap'),{center:new kakao.maps.LatLng(36.5,127.9), level:12});
-  kakao.maps.event.addListener(kmap,'click',me=>onMapPick(me.latLng.getLat(), me.latLng.getLng()));
+  kakao.maps.event.addListener(kmap,'click',me=>onMapTap(me.latLng.getLat(), me.latLng.getLng()));
+  kakao.maps.event.addListener(kmap,'dblclick',cancelMapTap);
+  kakao.maps.event.addListener(kmap,'drag',cancelMapTap);
   kakao.maps.event.addListener(kmap,'rightclick',me=>{ if(!pickMode) addSpotAt(me.latLng.getLat(), me.latLng.getLng()); });
   return true;
 }
