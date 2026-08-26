@@ -261,6 +261,7 @@ body.playing #playHud{
 /* ── 예약 가격 추적 — 상태 배지·절약 칩·요약·가격 기록 ─────────────────
    🔴 절약 가능이 가장 눈에 띄어야 한다(핵심 판단 신호). 🟢/🟡는 보조 상태. */
 .pxBtn{background:none;border:0;padding:0;font:inherit;cursor:pointer}
+.pxStart{color:var(--meta-link);border:1px dashed currentColor;border-radius:7px;padding:1px 6px}   /* 숙소에 예약이 아직 없을 때만 노출 — 기능 발견용 */
 .pxBadge{font-size:10.5px;font-weight:700;white-space:nowrap}
 .pxBadge.pxSave{color:var(--meta-danger)}
 .pxBadge.pxWarn{color:var(--meta-warning)}

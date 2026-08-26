@@ -410,3 +410,55 @@ test('통합: 한글 호텔명은 영문으로 변환해 시세를 조회하고 
   assert.equal(fb, '신라호텔');
   w.close();
 });
+
+test('통합: 숙소 카드에서 가격 추적을 시작할 수 있고, 예약이 생기면 상태 배지로 바뀐다', { skip: noJsdom }, () => {
+  const w = boot();
+  withTrip(w, `[{mode:'car',startAt:'09:00',spots:[
+    {name:'Lotte Hotel Seoul',lat:37.5651,lng:126.9814,city:'Seoul',stay:true,nights:3},
+    {name:'경복궁',lat:37.5796,lng:126.9770,city:'Seoul'}
+  ]}]`);
+  w.eval('renderSidebar()');
+
+  // 숙소에만 노출된다 — 기능을 ☰ 메뉴에서만 찾을 수 있던 문제를 카드에서 해결
+  assert.equal(w.document.querySelectorAll('.pxStart').length, 1, '숙소 1곳에만');
+  assert.ok(!w.document.querySelectorAll('.spot')[1].querySelector('.pxStart'), '일반 장소엔 없음');
+
+  // 이름·기간·장소 연결이 미리 채워져 예약가만 넣으면 된다
+  w.eval('startHotelTracking(0,0)');
+  const val = (id) => w.document.getElementById(id).value;
+  assert.ok(w.document.getElementById('bookingModalBg').classList.contains('show'), '예약 모달 열림');
+  assert.equal(val('bkTitle'), 'Lotte Hotel Seoul');
+  assert.equal(val('bkStart'), '2026-08-01');
+  assert.equal(val('bkEnd'), '2026-08-04', '연박(3박)이 체크아웃에 반영');
+  assert.notEqual(val('bkSpot'), '', '일정 장소가 연결됨');
+
+  // 예약이 연결되면 시작 버튼 대신 추적 상태가 보인다
+  w.eval(`trip().bookings=[{id:'bkZ',type:'hotel',title:'Lotte Hotel Seoul',price:600000,cur:'KRW',start:'2099-10-30',end:'2099-11-02',track:true}];
+    trip().days[0].spots[0].bookingId='bkZ'; renderSidebar();`);
+  assert.ok(!w.document.querySelector('.pxStart'), '시작 버튼은 사라짐');
+  assert.match(w.document.querySelector('.pxBtn').textContent, /가격 추적/);
+  w.close();
+});
+
+test('통합: 조회 실패는 원인 코드를 함께 보여주고, 잘못된 매물 매핑은 스스로 버린다', { skip: noJsdom }, async () => {
+  const w = boot();
+  withTrip(w, `[{mode:'car',startAt:'09:00',spots:[{name:'H',lat:37.5,lng:127,city:'S',stay:true,bookingId:'bkE'}]}]`);
+  w.eval(`trip().bookings=[{id:'bkE',type:'hotel',title:'H',price:500000,cur:'KRW',start:'2099-10-30',end:'2099-11-01',track:true,ptoken:'STALE_TOKEN'}];`);
+
+  // 매물 관련 실패면 저장된 ptoken을 버려야 다음 조회에서 다시 검색한다(같은 실패 무한반복 방지)
+  w.eval(`MetasearchHotelProvider.searchOffers=async()=>{ throw Object.assign(new Error('x'),{code:'PROPERTY_NOT_FOUND'}); };`);
+  await w.eval(`checkBookingPrice('bkE',{force:true})`);
+  assert.equal(w.eval(`bookingOf('bkE').ptoken`), undefined, '잘못된 매핑 폐기');
+  assert.equal(w.eval(`recOf('bkE').err.code`), 'PROPERTY_NOT_FOUND');
+
+  // 네트워크 오류처럼 매물과 무관한 실패는 매핑을 유지한다
+  w.eval(`bookingOf('bkE').ptoken='KEEP'; recOf('bkE').err=null; recOf('bkE').at=null;
+    MetasearchHotelProvider.searchOffers=async()=>{ throw Object.assign(new Error('x'),{code:'NETWORK_ERROR'}); };`);
+  await w.eval(`checkBookingPrice('bkE',{force:true})`);
+  assert.equal(w.eval(`bookingOf('bkE').ptoken`), 'KEEP', '네트워크 오류엔 매핑 유지');
+
+  // 화면에 원인 코드가 함께 나온다
+  w.eval(`openBookingModal('bkE')`);
+  assert.match(w.document.getElementById('bkStatus').textContent, /NETWORK_ERROR/);
+  w.close();
+});

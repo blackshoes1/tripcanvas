@@ -1182,7 +1182,8 @@ function renderSidebar(){
       { const bu=safeUrl(s.bookUrl); if(bu) meta.push(`<a class="spotMetaItem book" href="${escAttr(bu)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="예약 링크 열기">🔗 예약 링크</a>`); }
       // 예약 가격 추적 상태 (연결된 예약이 있을 때) — 탭하면 상세·가격 기록
       { const bk=s.bookingId? bookingOf(s.bookingId):null;
-        if(bk) meta.push(`<button type="button" class="spotMetaItem pxBtn" onclick="event.stopPropagation();openBookingModal('${escAttr(bk.id)}')" title="예약 가격 추적 — 탭해서 상세와 가격 기록 보기">${bookingBadgeHtml(bk)}</button>`); }
+        if(bk) meta.push(`<button type="button" class="spotMetaItem pxBtn" onclick="event.stopPropagation();openBookingModal('${escAttr(bk.id)}')" title="예약 가격 추적 — 탭해서 상세와 가격 기록 보기">${bookingBadgeHtml(bk)}</button>`);
+        else if(s.stay && !viewMode) meta.push(`<button type="button" class="spotMetaItem pxBtn pxStart" onclick="event.stopPropagation();startHotelTracking(${di},${si})" title="예약가와 기간을 넣으면 시세를 계속 확인해 더 싼 곳이 나오면 알려줘요">💰 가격 추적 시작</button>`); }
       // 영업시간 경고: 그 날 요일·도착 예상시각에 문 닫혀 있으면 ⚠️
       if(s.hours && iso){
         const wd=new Date(iso+'T00:00:00').getDay();
@@ -1853,7 +1854,10 @@ async function checkBookingPrice(id,opts){
   let resp;
   try{ resp=await job; }
   catch(e){
-    rec.err={code:(e&&e.code)||'NETWORK_ERROR', at:new Date().toISOString()};          // 실패해도 기존 관측·오퍼는 보존(§36) — 최신 가격으로 오인 금지
+    const code=(e&&e.code)||'NETWORK_ERROR';
+    // 저장된 매핑이 잘못되면 검색 단계를 건너뛴 채 매번 같은 실패가 난다 → 매물 관련 실패면 매핑을 버려 다음 조회에서 다시 찾게 한다
+    if(b.ptoken && (code==='PROPERTY_NOT_FOUND'||code==='NO_AVAILABILITY'||code==='INVALID_RESPONSE')){ delete b.ptoken; save(); }
+    rec.err={code, at:new Date().toISOString()};          // 실패해도 기존 관측·오퍼는 보존(§36) — 최신 가격으로 오인 금지
     savePrices(); return null;
   }
   if(resp.status==='UNMATCHED'){
@@ -1978,6 +1982,23 @@ document.getElementById('bookingBtn').onclick=openBookingList;
 document.getElementById('bookingListClose').onclick=()=>document.getElementById('bookingListBg').classList.remove('show');
 document.getElementById('bookingAdd').onclick=()=>openBookingModal(null);
 
+// 숙소 카드에서 바로 예약 추적 시작 — 이름·연결·기간을 미리 채운다(사용자는 예약가만 넣으면 된다)
+window.startHotelTracking=(di,si)=>{
+  const s=trip().days[di]&&trip().days[di].spots[si]; if(!s) return;
+  openBookingModal(null);
+  document.getElementById('bkType').value='hotel'; toggleBkFields();
+  document.getElementById('bkTitle').value=s.name||'';
+  const idx=bkStayOptions().findIndex(o=>o.s===s);
+  if(idx>=0) document.getElementById('bkSpot').value=String(idx);
+  const iso=isoDateOf(di);
+  if(iso){
+    document.getElementById('bkStart').value=iso;
+    const d=new Date(iso+'T00:00:00'); d.setDate(d.getDate()+stayNights(s));
+    document.getElementById('bkEnd').value=toISO(d);
+  }
+  document.getElementById('bkPrice').focus();
+};
+
 // ── 예약 추가/상세·편집 모달 ──
 let editingBooking=null;   // 예약 id | null(추가)
 // 일정에서 🏠 숙소로 등록된 장소들 — 호텔 예약을 일정 카드와 연결하는 선택지
@@ -2054,7 +2075,8 @@ function renderBookingStatusBox(b){
       ${link?`<div class="pxActions"><a class="btn" href="${escAttr(link)}" target="_blank" rel="noopener">판매처에서 확인 ↗</a></div>`:''}`;
   }
   else if(st&&st.state==='GOOD_PRICE') head=`<div class="pxState pxGood">🟢 좋은 가격 — 지금 예약을 유지하세요</div><div class="hint">현재 시세가 관측된 가격 중 최저 수준입니다</div>`;
-  else if(st&&st.state==='ERROR') head=`<div class="pxState pxWarnT">⚠️ 현재 가격을 확인하지 못했어요</div><div class="hint">${esc(PX_ERR_MSG[(st.err&&st.err.code)||'PROVIDER_ERROR']||'')}</div>`;
+  else if(st&&st.state==='ERROR'){ const ec=(st.err&&st.err.code)||'PROVIDER_ERROR';
+    head=`<div class="pxState pxWarnT">⚠️ 현재 가격을 확인하지 못했어요</div><div class="hint">${esc(PX_ERR_MSG[ec]||'')} <span class="opt">(${esc(ec)})</span></div>`; }
   else head=`<div class="pxState pxWatch">🟡 가격 추적 중 — 아직 의미 있는 하락이 없어요</div>`;
   // 시세 조회는 1실 기준이라, 2실 이상 예약은 총액이 달라진다 — 절약액을 그대로 믿지 않도록 알린다
   if(!missing && b.track!==false && (b.rooms||1)>1)
