@@ -200,8 +200,10 @@ function serpapiAdapter(env, fetchImpl) {
         token = scored[0].token; confidence = scored[0].score; matchedName = scored[0].name;
       }
       const canRetry = !!q.ptoken && !retriedWithoutToken && !!q.name;   // 캐시 토큰으로 실패한 경우에만 재검색(무한루프 방지)
+      const detailParams = { ...base, property_token: token };
+      if (q.name) detailParams.q = q.name;   // provider가 토큰 해석에 실패해도 이름으로 이어갈 수 있게
       let detail;
-      try { detail = await call({ ...base, property_token: token }); }
+      try { detail = await call(detailParams); }
       catch (error) {
         if (canRetry) return this.search({ ...q, ptoken: undefined }, true);   // 무효해진 캐시 토큰 → 이름으로 다시 찾는다
         throw error;
