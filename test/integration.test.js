@@ -938,3 +938,38 @@ test('통합: 다른 탭이 갱신한 syncMeta를 메모리로 다시 읽어 헛
   assert.equal(w.eval(`syncMeta.T1.hash`),'new');
   w.close();
 });
+
+test('통합: 사이드바·핀에 카테고리 아이콘이 붙고, 번호(동선 순서)는 그대로다', { skip: noJsdom }, () => {
+  const w=boot();
+  withTrip(w, `[{title:'D1',drive:'',note:'',spots:[
+    {name:'Mediodía Hotel',city:'Madrid',desc:'',lat:40.40,lng:-3.69,stay:true},
+    {name:'DABOV Specialty Coffee Spain',city:'Madrid',desc:'',lat:40.41,lng:-3.69},
+    {name:'Cháchara',city:'Madrid',desc:'',lat:40.40,lng:-3.69,cat:'food'},
+    {name:'무명 장소',city:'Madrid',desc:'',lat:40.42,lng:-3.70}
+  ]}]`);
+  w.eval('render()');
+  const spots=[...w.document.querySelectorAll('.spot[data-si]')];
+  const icon=i=>{ const el=spots[i].querySelector('.spotCat'); return el?el.textContent:null; };
+  assert.equal(icon(0),'🏠','🏠 숙소 체크만으로 아이콘');
+  assert.equal(icon(1),'☕','이름으로 추론(저장값 없음)');
+  assert.equal(icon(2),'🍽','명시한 카테고리가 이름 추론을 이긴다');
+  assert.equal(icon(3),null,'모르면 아이콘을 붙이지 않는다');
+  assert.equal(spots[0].querySelector('.spotOrder').textContent,'1.','번호는 그대로');
+  assert.equal(spots[0].querySelector('.spotIdentity').title,'Mediodía Hotel','전체 이름 title은 유지');
+  assert.match(spots[1].querySelector('.spotIdentity').getAttribute('aria-label'),/카페/,'카테고리를 접근성 이름에 넣는다');
+
+  // 지도 핀: 숙소도 번호를 유지하고 카테고리는 배지로
+  const pin=w.eval(`(()=>{const p=mkPin('#e63946',3,false,spotCat('cafe'));return p.textContent+'|'+(p.querySelector('.pinCat')||{}).textContent;})()`);
+  assert.equal(pin,'3☕|☕');
+  assert.equal(w.eval(`mkPin('#e63946',2,false,null).querySelector('.pinCat')`),null,'미지정이면 배지 없음');
+  w.close();
+});
+
+test('통합: 카테고리 선택지는 SPOT_CATS 하나만 보고 만든다', { skip: noJsdom }, () => {
+  const w=boot();
+  const sel=w.document.getElementById('spotCat');
+  assert.equal(sel.options.length, w.eval('SPOT_CATS.length')+1, '미지정 + 카테고리 수');
+  assert.equal(sel.options[0].value,'');
+  assert.equal(sel.options[1].value,'stay');
+  w.close();
+});

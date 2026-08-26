@@ -380,3 +380,55 @@ test('cityFromKakaoAddress — 광역시는 그 자체, 도는 시/군을 도시
   assert.equal(L.cityFromKakaoAddress(''), '');
   assert.equal(L.cityFromKakaoAddress(null), '');
 });
+
+test('장소 카테고리 — 검색 결과 분류(카카오/구글)', () => {
+  assert.equal(L.catFromKakao('AD5'), 'stay');
+  assert.equal(L.catFromKakao('CE7'), 'cafe');
+  assert.equal(L.catFromKakao('FD6'), 'food');
+  assert.equal(L.catFromKakao('SW8'), 'transport');
+  assert.equal(L.catFromKakao('PK6'), null, '분류가 없는 코드는 추측하지 않는다');
+  assert.equal(L.catFromKakao(undefined), null);
+
+  assert.equal(L.catFromGoogle(['lodging','point_of_interest']), 'stay');
+  assert.equal(L.catFromGoogle(['airport']), 'transport');
+  assert.equal(L.catFromGoogle(['store','cafe']), 'cafe', '넓은 타입(store)은 분류에 안 쓴다');
+  assert.equal(L.catFromGoogle(['store','restaurant'], 'store'), 'food', 'primaryType이 넓어도 구체적인 types가 살아난다');
+  assert.equal(L.catFromGoogle(['store']), null, '그냥 store면 추측하지 않는다');
+  assert.equal(L.catFromGoogle(['restaurant'], 'cafe'), 'cafe', 'primaryType이 있으면 그게 대표 성격');
+  assert.equal(L.catFromGoogle(null, null), null);
+});
+
+test('장소 카테고리 — 이름 추론은 한/영 모두, 못 잡으면 null', () => {
+  assert.equal(L.catFromName('Mediodía Hotel'), 'stay');
+  assert.equal(L.catFromName('마드리드 바하라스 공항'), 'transport');
+  assert.equal(L.catFromName('DABOV Specialty Coffee Spain'), 'cafe');
+  assert.equal(L.catFromName('Restaurant Manique'), 'food');
+  assert.equal(L.catFromName('세비야 대성당'), 'sight');
+  assert.equal(L.catFromName('El Retiro Park'), 'nature');
+  assert.equal(L.catFromName('트리아나 시장'), 'shop');
+  assert.equal(L.catFromName('Riyadh Air Metropolitano Stadium'), 'activity');
+  assert.equal(L.catFromName('Cháchara'), null, '모르면 추측하지 않는다');
+  assert.equal(L.catFromName(''), null);
+});
+
+test('spotCatOf — 명시값 > 🏠 숙소 > 이름 추론 순', () => {
+  assert.equal(L.spotCatOf({name:'아무데나', cat:'cafe'}).id, 'cafe');
+  assert.equal(L.spotCatOf({name:'아무데나', stay:true}).id, 'stay', '🏠 체크만으로도 숙소 아이콘');
+  assert.equal(L.spotCatOf({name:'Cap Rocat', stay:true, cat:'sight'}).id, 'sight', '명시값이 숙소 플래그를 이긴다');
+  assert.equal(L.spotCatOf({name:'세비야 대성당'}).id, 'sight', '저장값이 없으면 이름으로 추론');
+  assert.equal(L.spotCatOf({name:'Cháchara'}), null);
+  assert.equal(L.spotCatOf(null), null);
+  assert.equal(L.spotCatOf({name:'x', cat:'없는분류'}), null, '알 수 없는 분류는 무시');
+  assert.ok(L.spotCatOf({name:'x', cat:'stay'}).icon, '아이콘·이름을 함께 준다');
+});
+
+test('normalizeSpot — 알 수 없는 카테고리는 버리고 유효한 값은 보존', () => {
+  const t = L.normalizeTrip({days:[{spots:[
+    {name:'a', lat:1, lng:1, cat:'cafe'},
+    {name:'b', lat:1, lng:1, cat:'ninja'},
+    {name:'c', lat:1, lng:1}
+  ]}]});
+  assert.equal(t.days[0].spots[0].cat, 'cafe');
+  assert.equal('cat' in t.days[0].spots[1], false, '유입 데이터의 이상한 분류는 제거');
+  assert.equal('cat' in t.days[0].spots[2], false);
+});

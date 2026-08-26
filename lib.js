@@ -415,6 +415,7 @@
     if(s.bookUrl!=null && typeof s.bookUrl!=='string') delete s.bookUrl;
     if(s.bookingId!=null && !(typeof s.bookingId==='string' && _ID_RE.test(s.bookingId))) delete s.bookingId;   // 예약 추적 연결 (불량 id 제거)
     if(s.placeId!=null && !(typeof s.placeId==='string' && /^[A-Za-z0-9_-]{5,200}$/.test(s.placeId))) delete s.placeId;   // 구글 Place ID (호텔 identity)
+    if(s.cat!=null && _CAT_IDS.indexOf(s.cat)<0) delete s.cat;              // 알 수 없는 카테고리 → 미지정(이름 추론으로 폴백)
     if(s.hours!=null && !(Array.isArray(s.hours)&&s.hours.every((/**@type{any}*/h)=>h&&_fin(h.d)&&_fin(h.o)&&_fin(h.c)))) delete s.hours;
     return s;
   }
@@ -512,7 +513,79 @@
     return two||one;
   }
 
-  const TC={cityFromKakaoAddress,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,inKorea,simplifyName,parseDirect,parseMoney,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,computeTimeline,dayStartAnchor,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
+  // ───────────────── 장소 카테고리 ─────────────────
+  // 목록 순서 = 편집 모달 선택지 순서. id는 저장값이므로 바꾸면 기존 데이터가 '미지정'이 된다.
+  const SPOT_CATS=[
+    {id:'stay',      icon:'🏠', name:'숙소'},
+    {id:'food',      icon:'🍽', name:'식당'},
+    {id:'cafe',      icon:'☕', name:'카페'},
+    {id:'sight',     icon:'🏛', name:'명소'},
+    {id:'activity',  icon:'🎢', name:'액티비티'},
+    {id:'shop',      icon:'🛍', name:'쇼핑'},
+    {id:'transport', icon:'🚉', name:'교통'},
+    {id:'nature',    icon:'🌿', name:'자연'}
+  ];
+  const _CAT_IDS=SPOT_CATS.map(c=>c.id);
+  /** @param {any} id @returns {{id:string,icon:string,name:string}|null} */
+  function spotCat(id){ return SPOT_CATS.find(c=>c.id===id)||null; }
+
+  // 카카오 로컬의 category_group_code (분류가 없는 코드는 추론하지 않는다)
+  /** @type {Record<string,string>} */
+  const _KAKAO_CAT={AD5:'stay',FD6:'food',CE7:'cafe',AT4:'sight',CT1:'sight',SW8:'transport',MT1:'shop',CS2:'shop'};
+  /** @param {any} code @returns {string|null} */
+  function catFromKakao(code){ return _KAKAO_CAT[String(code||'')]||null; }
+
+  // 구글 Places types. 배열 순서가 우선순위 — 'store'처럼 넓은 타입은 뒤에 둬서 구체적인 게 먼저 잡히게 한다.
+  const _GOOGLE_CAT=[
+    ['stay',      ['lodging','hotel','motel','hostel','resort_hotel','guest_house','bed_and_breakfast','extended_stay_hotel','inn']],
+    ['cafe',      ['cafe','coffee_shop','bakery','tea_house','dessert_shop','ice_cream_shop']],
+    ['food',      ['restaurant','bar','pub','wine_bar','meal_takeaway','meal_delivery','fast_food_restaurant','food_court']],
+    ['transport', ['airport','international_airport','train_station','subway_station','transit_station','bus_station','light_rail_station','ferry_terminal','car_rental']],
+    ['nature',    ['park','national_park','state_park','beach','hiking_area','campground','garden','botanical_garden','wildlife_park']],
+    ['activity',  ['amusement_park','water_park','aquarium','zoo','spa','movie_theater','stadium','arena','night_club','casino','bowling_alley','ski_resort','concert_hall','performing_arts_theater']],
+    ['sight',     ['tourist_attraction','museum','art_gallery','church','mosque','synagogue','hindu_temple','place_of_worship','historical_landmark','historical_place','monument','cultural_landmark','observation_deck','plaza']],
+    ['shop',      ['shopping_mall','department_store','supermarket','market','grocery_store','clothing_store','gift_shop','book_store','convenience_store']]
+  ];
+  /** @param {any} types @param {any} primary @returns {string|null} */
+  function catFromGoogle(types, primary){
+    /** @param {string} t @returns {string|null} */
+    const hit=t=>{ for(const row of _GOOGLE_CAT) if(/**@type{string[]}*/(row[1]).indexOf(t)>=0) return /**@type{string}*/(row[0]); return null; };
+    if(primary){ const c=hit(String(primary)); if(c) return c; }   // primaryType이 있으면 그게 그 장소의 대표 성격
+    if(Array.isArray(types)) for(const row of _GOOGLE_CAT) for(const t of types) if(/**@type{string[]}*/(row[1]).indexOf(String(t))>=0) return /**@type{string}*/(row[0]);
+    return null;
+  }
+
+  // 이름으로 추론 — 카테고리가 없는 기존 데이터에도 아이콘이 보이게 하는 폴백. 결과는 저장하지 않는다(표시 전용).
+  // 위에서부터 먼저 걸리는 규칙이 이긴다.
+  const _CAT_NAME_RULES=[
+    ['stay',      /호텔|호스텔|게스트\s*하우스|민박|펜션|리조트|숙소|료칸|hotel|hostel|resort|\binn\b|b&b|airbnb|guest\s*house/i],
+    ['transport', /공항|역$|역\s|터미널|정류장|선착장|항구|airport|station|terminal|\bport\b|pier/i],
+    ['cafe',      /카페|커피|베이커리|제과|coffee|caf[eé]|espresso|roaster|bakery/i],
+    ['food',      /식당|맛집|레스토랑|이자카야|포차|타베르나|restaurant|taberna|taverna|trattoria|osteria|bistro|\bgrill\b|\bpub\b/i],
+    ['sight',     /대성당|성당|사원|신사|박물관|미술관|궁전|왕궁|고궁|유적|전망대|기념관|알카사르|광장|museum|cathedral|basilica|church|temple|shrine|palace|castle|alcazar|mezquita|monument|memorial|gallery|mirador|plaza|square/i],
+    ['nature',    /공원|해변|해수욕장|계곡|폭포|호수|정원|수목원|park|beach|playa|garden|lake|falls|trail/i],
+    ['activity',  /수족관|동물원|놀이공원|테마파크|스파|온천|공연|극장|경기장|스타디움|aquarium|\bzoo\b|amusement|theme\s*park|\bspa\b|theat(er|re)|stadium|arena/i],
+    ['shop',      /시장|백화점|아울렛|쇼핑|마트|market|mercado|\bmall\b|outlet|bazaar/i]
+  ];
+  /** @param {any} name @returns {string|null} */
+  function catFromName(name){
+    const s=_str(name); if(!s) return null;
+    for(const row of _CAT_NAME_RULES) if(/**@type{RegExp}*/(row[1]).test(s)) return /**@type{string}*/(row[0]);
+    return null;
+  }
+
+  /**
+   * 표시할 카테고리 — 명시값 → 🏠 숙소 플래그 → 이름 추론 순. 추론분은 저장하지 않는다.
+   * @param {any} s @returns {{id:string,icon:string,name:string}|null}
+   */
+  function spotCatOf(s){
+    if(!s || typeof s!=='object') return null;
+    const explicit=spotCat(s.cat); if(explicit) return explicit;
+    if(s.stay) return spotCat('stay');
+    return spotCat(catFromName(s.name));
+  }
+
+  const TC={SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,inKorea,simplifyName,parseDirect,parseMoney,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,computeTimeline,dayStartAnchor,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
   if(typeof module!=='undefined' && module.exports){ module.exports=TC; }   // Node (테스트)
   else { const r=/**@type {any}*/(root); for(const k in TC) r[k]=/**@type {any}*/(TC)[k]; }   // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);

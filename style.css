@@ -61,6 +61,8 @@
   .spotIdentity{display:flex;align-items:flex-start;gap:4px;min-width:0;min-height:44px;padding:11px 0 7px;background:none;border:0;color:inherit;font:inherit;line-height:1.35;text-align:left;cursor:pointer}
   .spotIdentity:hover{color:var(--ink);text-decoration:underline}
   .spotOrder{flex:none;white-space:nowrap}
+  /* 카테고리 아이콘 — 이름 앞. 이모지는 폰트별 크기 편차가 커서 폭을 고정해 이름 시작선을 맞춘다 */
+  .spotCat{flex:none;width:1.25em;text-align:center;font-size:13px;line-height:1.35;font-style:normal}
   .spotName{min-width:0;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
   .spotMenuSpacer{display:block;width:44px;height:44px}
   .spot .opt{color:var(--meta-soft);font-size:11px}
@@ -85,7 +87,11 @@
   .poiChip:hover,.poiChip:focus-visible{opacity:1;border-color:var(--selected-border);color:var(--selected-accent)}
   .legend{position:absolute;bottom:20px;right:10px;background:color-mix(in srgb,var(--surface) 92%,transparent);color:var(--ink);border:1px solid var(--border);padding:8px 12px;border-radius:10px;font-size:11px;z-index:1000;line-height:1.8;max-height:40vh;overflow-y:auto;box-shadow:0 6px 18px rgba(17,24,39,.12)}
   .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px}
-  .num-icon{display:flex;align-items:center;justify-content:center;border-radius:50%;color:#fff;font-weight:700;font-size:12px;border:2.5px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.5);animation:pinIn .28s cubic-bezier(.34,1.4,.64,1) both}
+  .num-icon{position:relative;display:flex;align-items:center;justify-content:center;border-radius:50%;color:#fff;font-weight:700;font-size:12px;border:2.5px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.5);animation:pinIn .28s cubic-bezier(.34,1.4,.64,1) both}
+  /* 핀 위 카테고리 배지 — 번호(동선 순서)를 가리지 않게 오른쪽 위 모서리에 */
+  .pinCat{position:absolute;right:-7px;top:-7px;width:15px;height:15px;display:flex;align-items:center;justify-content:center;
+    border-radius:50%;background:var(--surface,#fff);border:1px solid rgba(0,0,0,.18);box-shadow:0 1px 3px rgba(0,0,0,.35);
+    font-size:9px;line-height:1;pointer-events:none}
   @keyframes pinIn{from{transform:scale(.4);opacity:0}to{transform:scale(1);opacity:1}}
   .num-icon:hover{transform:scale(1.15);transition:transform .15s}
   /* Google Maps InfoWindow 다크 테마 */
