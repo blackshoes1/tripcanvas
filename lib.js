@@ -497,7 +497,22 @@
     return t;
   }
 
-  const TC={toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,inKorea,simplifyName,parseDirect,parseMoney,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,computeTimeline,dayStartAnchor,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
+  /**
+   * 카카오 장소 주소에서 도시(그룹) 이름을 뽑는다.
+   * "서울 중구 …" → "서울" · "경기 성남시 …" → "성남" · "제주특별자치도 제주시 …" → "제주".
+   * @param {string} addr 카카오 place의 address_name / road_address_name
+   * @returns {string} 도시명 (판단 불가면 '')
+   */
+  function cityFromKakaoAddress(addr){
+    const t=String(addr||'').trim().split(/\s+/).filter(Boolean);
+    if(!t.length) return '';
+    const one=t[0].replace(/(특별시|광역시|특별자치시|특별자치도|자치시|자치도|도)$/,'');
+    if(['서울','부산','대구','인천','광주','대전','울산','세종','제주'].indexOf(one)>=0) return one;   // 광역시·특별시는 그 자체가 도시
+    const two=String(t[1]||'').replace(/(시|군)$/,'');
+    return two||one;
+  }
+
+  const TC={cityFromKakaoAddress,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,inKorea,simplifyName,parseDirect,parseMoney,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,computeTimeline,dayStartAnchor,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
   if(typeof module!=='undefined' && module.exports){ module.exports=TC; }   // Node (테스트)
   else { const r=/**@type {any}*/(root); for(const k in TC) r[k]=/**@type {any}*/(TC)[k]; }   // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);

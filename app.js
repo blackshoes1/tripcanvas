@@ -196,7 +196,7 @@ function onMapPick(lat,lng,placeId){
   document.getElementById('spotModalBg').classList.add('show');
 }
 // 지도 우클릭/롱프레스 → 그 좌표로 새 장소 추가 모달 (현재 활성 일자, 없으면 1일차)
-function addSpotAt(lat,lng,placeId){
+function addSpotAt(lat,lng,placeId,known){
   if(viewMode) return;
   const di=activeDay? activeDay-1 : 0;
   openSpotModal(di,-1);
@@ -204,7 +204,7 @@ function addSpotAt(lat,lng,placeId){
   document.getElementById('spotPlaceId').value=placeId||'';
   document.getElementById('coordHint').textContent=`좌표: ${(+lat).toFixed(4)}, ${(+lng).toFixed(4)} ✓ (지도에서 지정)`;
   document.getElementById('spotName').value=''; _namePrefill='';
-  fillSpotFromCoords(lat,lng,true,placeId);    // 지정 지점의 장소명·도시 자동 채움
+  fillSpotFromCoords(lat,lng,true,placeId,known);    // 지정 지점의 장소명·도시 자동 채움
   setTimeout(()=>document.getElementById('spotName').focus(),50);
 }
 // 지도 탭/클릭 → 그 좌표로 장소 추가.
@@ -223,6 +223,60 @@ function onMapTap(lat,lng,placeId){
   _tapT=setTimeout(()=>{ _tapT=null; addSpotAt(lat,lng,placeId); }, TAP_ADD_DELAY);
 }
 // 좌표 → {name, city} 한 번의 조회. 국내=카카오 coord2Address(한국어), 해외=구글 Places 인근검색(영어명).
+// ── 국내 POI 레이어 ──────────────────────────────────────────────────────────
+// 카카오맵 SDK는 바탕 지도의 POI를 눌렀다는 사실도, 그 장소의 id도 주지 않는다
+// (Map 이벤트: click/dblclick/rightclick… 전부 좌표뿐). 그래서 좌표로 되짚는 추측이
+// 불가피했고, 그 추측이 엉뚱한 상호를 넣었다.
+// → 우리가 직접 장소를 조회해 마커로 깔고, 그걸 누르게 한다. 우리가 찍었으니
+//   무엇을 눌렀는지 정확히 안다 — 해외의 placeId와 같은 수준이 된다.
+const POI_CATS = ['FD6','CE7','AT4','AD5','CT1','MT1','SW8'];   // 음식점·카페·관광명소·숙박·문화시설·마트·지하철역
+const POI_MAX_LEVEL = 4;    // 카카오 level은 작을수록 확대. 동네 수준 이상으로 확대했을 때만 표시
+const POI_MAX = 60;
+const POI_FALLBACK_RADIUS = 500;   // bounds를 못 쓸 때 중심에서 훑을 반경(m)         // 화면이 라벨로 뒤덮이지 않게
+let poiOverlays=[], poiSeq=0, poiT=null;
+
+function clearKakaoPOI(){ poiOverlays.forEach(o=>{ try{ o.remove(); }catch(e){} }); poiOverlays=[]; }
+function scheduleKakaoPOI(){ clearTimeout(poiT); poiT=setTimeout(refreshKakaoPOI, 350); }   // 이동 중 연타 방지
+function refreshKakaoPOI(){
+  const S=window.kakao&&kakao.maps&&kakao.maps.services;
+  if(engine!=='kakao'||!kmap||viewMode||!S||!S.Places){ clearKakaoPOI(); return; }
+  if(kmap.getLevel()>POI_MAX_LEVEL){ clearKakaoPOI(); return; }   // 넓게 보는 중엔 의미 없음
+  const seq=++poiSeq, ps=new S.Places(), found=new Map();
+  // 지도가 아직 크기를 못 잡았으면(전환 직후·숨김 상태) getBounds()가 한 점으로 접혀 조회가 0건이 된다.
+  // 그때는 중심 반경으로 대신 훑는다.
+  const bd=kmap.getBounds(), sw=bd&&bd.getSouthWest(), ne=bd&&bd.getNorthEast();
+  const hasArea = !!(sw&&ne) && Math.abs(ne.getLat()-sw.getLat())>1e-6 && Math.abs(ne.getLng()-sw.getLng())>1e-6;
+  const opt = hasArea ? {bounds:bd}
+    : {location:kmap.getCenter(), radius:POI_FALLBACK_RADIUS, sort:S.SortBy&&S.SortBy.DISTANCE};
+  let left=POI_CATS.length;
+  const step=()=>{ if(--left>0) return; if(seq!==poiSeq) return; drawKakaoPOI(Array.from(found.values())); };
+  POI_CATS.forEach(code=>{
+    try{
+      ps.categorySearch(code,(data,status)=>{
+        if(status===S.Status.OK&&Array.isArray(data)) data.forEach(d=>{ if(d&&d.id&&!found.has(d.id)) found.set(d.id,d); });
+        step();
+      },opt);
+    }catch(e){ step(); }
+  });
+}
+function drawKakaoPOI(list){
+  clearKakaoPOI();
+  list.slice(0,POI_MAX).forEach(p=>{
+    const lat=+p.y, lng=+p.x;
+    if(!isFinite(lat)||!isFinite(lng)||!p.place_name) return;
+    const el=document.createElement('button');
+    el.type='button'; el.className='poiChip';
+    el.textContent=p.place_name;                            // 외부 데이터 → textContent (innerHTML 금지)
+    el.title=p.road_address_name||p.address_name||p.place_name;
+    el.addEventListener('click',ev=>{
+      ev.preventDefault(); ev.stopPropagation();
+      cancelMapTap();                                       // 지도 탭의 지연 추가와 겹치지 않게
+      addSpotAt(lat,lng,'',{ name:p.place_name, city:cityFromKakaoAddress(p.address_name||p.road_address_name||'') });
+    });
+    poiOverlays.push(Engines.kakao.marker(lat,lng,el));
+  });
+}
+
 // 탭한 자리에서 '가장 가까운' 장소만 인정할 반경. 이보다 멀면 이름을 추측하지 않고 비워 둔다
 // (엉뚱한 상호가 채워지는 것보다 빈 칸이 낫다).
 const NEAR_POI_RADIUS = 40;
@@ -320,13 +374,14 @@ function fillNameValue(name, force){
   if(force || !el.value.trim() || el.value.trim()===(_namePrefill||'').trim()){ el.value=name; _namePrefill=name; }
 }
 // 지도로 위치 지정 → 이름·도시를 한 번의 조회로 채움. forceCity=true면 도시는 강제 갱신.
-function fillSpotFromCoords(lat,lng,forceCity,placeId){
+function fillSpotFromCoords(lat,lng,forceCity,placeId,known){
   const cityEl=document.getElementById('spotCity'), nameEl=document.getElementById('spotName');
   const cityAt=cityEl.value, nameAt=nameEl.value;
   const cityOK = forceCity || !cityAt.trim() || cityAt.trim()===(_cityPrefill||'').trim();
   const nameOK = !nameAt.trim() || nameAt.trim()===(_namePrefill||'').trim();
   if(!cityOK && !nameOK) return;
-  reverseSpot(lat,lng,placeId).then(({name,city})=>{
+  // known: POI를 눌러 '무엇인지 이미 아는' 경우 — 좌표로 되짚는 추측을 아예 건너뛴다
+  (known? Promise.resolve(known) : reverseSpot(lat,lng,placeId)).then(({name,city})=>{
     if(city && cityOK && cityEl.value===cityAt){ cityEl.value=city; _cityPrefill=city; }
     if(name && nameOK && nameEl.value===nameAt){ nameEl.value=name; _namePrefill=name; }
   });
@@ -386,6 +441,7 @@ async function ensureKakaoMap(){
   kakao.maps.event.addListener(kmap,'dblclick',cancelMapTap);
   kakao.maps.event.addListener(kmap,'drag',cancelMapTap);
   kakao.maps.event.addListener(kmap,'rightclick',me=>{ if(!pickMode) addSpotAt(me.latLng.getLat(), me.latLng.getLng()); });
+  kakao.maps.event.addListener(kmap,'idle',scheduleKakaoPOI);   // 이동·확대가 멈추면 그 범위의 장소를 깐다
   return true;
 }
 // 지금 보는 범위(일자 필터 중이면 그 일자, 아니면 전체)의 좌표 스팟이 '전부' 국내일 때만 카카오.
@@ -402,6 +458,7 @@ function setEngine(e){
   engine=e;
   document.getElementById('map').style.display = e==='google'?'block':'none';
   document.getElementById('kmap').style.display = e==='kakao'?'block':'none';
+  if(e==='kakao') scheduleKakaoPOI(); else clearKakaoPOI();
   if(e==='kakao'&&kmap){ kmap.relayout(); }
   setTimeout(()=>fitCurrentView(),60);   // 전환 직후 현재 보는 범위로 포커싱
 }

@@ -367,3 +367,16 @@ test('normalizeBooking — 시세 조회용 영문명(enName) 보존·검증', (
   const bad = L.normalizeTrip({ days:[{spots:[]}], bookings:[{ id:'bk2', title:'x', enName:{} }] });
   assert.equal('enName' in bad.bookings[0], false, '문자열 아니면 제거');
 });
+
+test('cityFromKakaoAddress — 광역시는 그 자체, 도는 시/군을 도시로', () => {
+  assert.equal(L.cityFromKakaoAddress('서울 중구 을지로 12'), '서울');
+  assert.equal(L.cityFromKakaoAddress('서울특별시 종로구 세종대로 175'), '서울');
+  assert.equal(L.cityFromKakaoAddress('경기 성남시 분당구 판교역로 235'), '성남');
+  assert.equal(L.cityFromKakaoAddress('제주특별자치도 제주시 첨단로 242'), '제주');
+  assert.equal(L.cityFromKakaoAddress('강원특별자치도 춘천시 중앙로 1'), '춘천');
+  assert.equal(L.cityFromKakaoAddress('충청북도 청주시 상당구'), '청주');
+  assert.equal(L.cityFromKakaoAddress('전남 순천시 중앙로'), '순천');
+  assert.equal(L.cityFromKakaoAddress('경북 울릉군 울릉읍'), '울릉');
+  assert.equal(L.cityFromKakaoAddress(''), '');
+  assert.equal(L.cityFromKakaoAddress(null), '');
+});

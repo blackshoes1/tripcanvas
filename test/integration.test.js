@@ -730,3 +730,113 @@ test('통합: 국내에서 가까운 상호가 없으면 건물명으로 폴백�
   assert.equal(got.city, '성남');
   w.close();
 });
+
+// 카카오 SDK 스텁 — categorySearch가 카테고리별 장소를 돌려주는 것처럼 흉내낸다
+function stubKakaoPOI(w, { level=3, places=null } = {}){
+  const data = places || [
+    { id:'1', place_name:'탭한 국밥집', x:'126.9780', y:'37.5665', address_name:'서울 중구 을지로 12', road_address_name:'서울 중구 을지로 12' },
+    { id:'2', place_name:'옆집 카페',   x:'126.9782', y:'37.5666', address_name:'서울 중구 을지로 14' }
+  ];
+  w.eval(`
+    window.__ov=[];
+    window.kakao={maps:{
+      LatLng:function(a,b){this.a=a;this.b=b;this.getLat=()=>a;this.getLng=()=>b;},
+      CustomOverlay:function(o){ this.o=o; window.__ov.push(o); this.setMap=function(m){ this.mapped=!!m; }; },
+      event:{addListener:()=>{},removeListener:()=>{}},
+      services:{ Status:{OK:'OK'}, SortBy:{DISTANCE:'DISTANCE'},
+        Places:function(){ this.categorySearch=(code,cb)=>{ cb(code==='FD6'? ${JSON.stringify(data)} : [], 'OK'); }; } }
+    }};
+    const _P=(a,b)=>({getLat:()=>a,getLng:()=>b});
+    kmap={ getLevel:()=>${level}, relayout(){},
+      getCenter:()=>new kakao.maps.LatLng(37.5665,126.9780),
+      getBounds:()=>({ getSouthWest:()=>_P(37.560,126.970), getNorthEast:()=>_P(37.572,126.990) }) };
+    engine='kakao';
+  `);
+}
+
+test('통합: 국내 지도에 POI 마커를 깔고, 그걸 누르면 그 장소가 정확히 들어간다', { skip: noJsdom }, async () => {
+  const w = boot();
+  withTrip(w, `[{mode:'car',startAt:'09:00',spots:[]}]`);
+  stubKakaoPOI(w);
+  // 역지오코딩이 불리면 실패로 간주 — POI를 눌렀으면 추측할 이유가 없다
+  w.eval('window.__reverseCalled=0; reverseSpot=()=>{ window.__reverseCalled++; return Promise.resolve({name:"엉뚱한 곳",city:"엉뚱"}); };');
+
+  w.eval('refreshKakaoPOI()');
+  await new Promise(r=>setTimeout(r,20));
+  const chips = w.eval('poiOverlays.length');
+  assert.equal(chips, 2, '조회된 장소만큼 마커');
+
+  // 첫 칩(국밥집)을 누른다
+  const el = w.eval('window.__ov[0].content');
+  el.dispatchEvent(new w.Event('click',{bubbles:true,cancelable:true}));
+  await new Promise(r=>setTimeout(r,20));
+  assert.equal(w.document.getElementById('spotName').value, '탭한 국밥집', '누른 그 장소');
+  assert.equal(w.document.getElementById('spotCity').value, '서울');
+  assert.equal(w.eval('window.__reverseCalled'), 0, 'POI를 눌렀으면 좌표 역추적을 하지 않는다');
+  w.close();
+});
+
+test('통합: POI 칩 이름은 textContent로 넣어 스크립트가 실행되지 않는다', { skip: noJsdom }, async () => {
+  const w = boot();
+  withTrip(w, `[{mode:'car',startAt:'09:00',spots:[]}]`);
+  stubKakaoPOI(w, { places:[{ id:'x', place_name:'<img src=x onerror=alert(1)>가게', x:'126.9', y:'37.5', address_name:'서울 중구' }] });
+  w.eval('refreshKakaoPOI()');
+  await new Promise(r=>setTimeout(r,20));
+  const el = w.eval('window.__ov[0].content');
+  assert.equal(el.querySelector('img'), null, '마크업으로 해석되면 안 된다');
+  assert.equal(el.textContent, '<img src=x onerror=alert(1)>가게', '문자 그대로 표시');
+  w.close();
+});
+
+test('통합: 넓게 보는 중이거나 읽기전용이면 POI를 깔지 않는다', { skip: noJsdom }, async () => {
+  const w = boot();
+  withTrip(w, `[{mode:'car',startAt:'09:00',spots:[]}]`);
+  stubKakaoPOI(w, { level:9 });                       // 넓은 범위
+  w.eval('refreshKakaoPOI()');
+  await new Promise(r=>setTimeout(r,20));
+  assert.equal(w.eval('poiOverlays.length'), 0, '축소 상태에선 표시 안 함');
+
+  stubKakaoPOI(w, { level:3 });
+  w.eval('viewMode=true; refreshKakaoPOI()');
+  await new Promise(r=>setTimeout(r,20));
+  assert.equal(w.eval('poiOverlays.length'), 0, '읽기전용에선 표시 안 함');
+  w.close();
+});
+
+test('통합: 해외(구글) 엔진에서는 국내 POI 레이어가 뜨지 않는다', { skip: noJsdom }, async () => {
+  const w = boot();
+  withTrip(w, `[{mode:'car',startAt:'09:00',spots:[]}]`);
+  stubKakaoPOI(w, { level:3 });
+  w.eval("engine='google'; refreshKakaoPOI()");
+  await new Promise(r=>setTimeout(r,20));
+  assert.equal(w.eval('poiOverlays.length'), 0);
+  w.close();
+});
+
+test('통합: 지도가 크기를 못 잡아 bounds가 한 점이면 중심 반경으로 훑는다', { skip: noJsdom }, async () => {
+  const w = boot();
+  withTrip(w, `[{mode:'car',startAt:'09:00',spots:[]}]`);
+  // 접힌 bounds(sw===ne)를 주는 카카오 스텁 — 실제 브라우저에서 이 상태면 조회가 0건이었다
+  w.eval(`
+    window.__opt=null;
+    const P=(a,b)=>({getLat:()=>a,getLng:()=>b});
+    window.kakao={maps:{
+      LatLng:function(a,b){this.getLat=()=>a;this.getLng=()=>b;},
+      CustomOverlay:function(o){ this.o=o; this.setMap=function(){}; },
+      event:{addListener:()=>{},removeListener:()=>{}},
+      services:{ Status:{OK:'OK'}, SortBy:{DISTANCE:'DISTANCE'},
+        Places:function(){ this.categorySearch=(code,cb,opt)=>{ window.__opt=opt;
+          cb(code==='FD6'? [{id:'1',place_name:'독일분식',x:'126.9821',y:'37.5662',address_name:'서울 중구 을지로1가'}] : [], 'OK'); }; } }
+    }};
+    kmap={ getLevel:()=>3, getCenter:()=>new kakao.maps.LatLng(37.5662,126.9821),
+           getBounds:()=>({ getSouthWest:()=>P(37.5662,126.9821), getNorthEast:()=>P(37.5662,126.9821) }) };
+    engine='kakao';
+  `);
+  w.eval('refreshKakaoPOI()');
+  await new Promise(r=>setTimeout(r,20));
+  const opt = JSON.parse(w.eval('JSON.stringify({hasBounds: !!(window.__opt&&window.__opt.bounds), radius: window.__opt&&window.__opt.radius})'));
+  assert.equal(opt.hasBounds, false, '접힌 bounds는 쓰지 않는다');
+  assert.ok(opt.radius > 0, '중심 반경으로 폴백 — got ' + opt.radius);
+  assert.equal(w.eval('poiOverlays.length'), 1, '폴백으로도 장소가 깔린다');
+  w.close();
+});

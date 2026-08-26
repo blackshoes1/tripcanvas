@@ -79,6 +79,10 @@
   .spotList:empty{min-height:26px;border:1px dashed var(--border);border-radius:7px;margin-bottom:4px}
   .addSpot{font-size:11.5px;color:var(--meta-link);background:none;border:1px dashed var(--border);border-radius:7px;padding:3px 10px;margin-top:5px}
   #addDayBtn{width:100%;margin-top:2px;padding:8px;font-size:12.5px}
+  .poiChip{max-width:124px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:var(--surface);color:var(--ink);
+    border:1px solid var(--border);font-size:11px;font-weight:700;padding:3px 8px;border-radius:12px;cursor:pointer;
+    box-shadow:0 2px 6px rgba(17,24,39,.16);opacity:.94;font-family:inherit;line-height:1.3}
+  .poiChip:hover,.poiChip:focus-visible{opacity:1;border-color:var(--selected-border);color:var(--selected-accent)}
   .legend{position:absolute;bottom:20px;right:10px;background:color-mix(in srgb,var(--surface) 92%,transparent);color:var(--ink);border:1px solid var(--border);padding:8px 12px;border-radius:10px;font-size:11px;z-index:1000;line-height:1.8;max-height:40vh;overflow-y:auto;box-shadow:0 6px 18px rgba(17,24,39,.12)}
   .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px}
   .num-icon{display:flex;align-items:center;justify-content:center;border-radius:50%;color:#fff;font-weight:700;font-size:12px;border:2.5px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.5);animation:pinIn .28s cubic-bezier(.34,1.4,.64,1) both}
