@@ -13,7 +13,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js" integrity="sha384-+pWnyi8LtZx+cgXfD2arWgUX7pHIaEL215cEPPk9WrsegNlgvDL9DNjaqsceQq6o" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js" integrity="sha384-BSxuMLxX+FCbTdYec3TbXlnMGEEM2QXTFdtDaveen71o+jswm2J36+xFqp8k4VHM" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.min.js" integrity="sha384-l8ah+VgaWtk1mvOe9VC+OirC6qHFF4yH7l7mKRidV9MSti3E9F463bMp6ZVN4kuC" crossorigin="anonymous"></script>
-<link rel="stylesheet" href="style.css?v=tc-v130">
+<link rel="stylesheet" href="style.css?v=tc-v131">
 </head>
 <body>
 <section id="onboarding" class="onboarding" hidden role="dialog" aria-modal="true" aria-labelledby="onboardingTitle">
@@ -213,6 +213,29 @@
     </div>
     <div class="hint">조건을 입력할수록 "동일 조건" 판정이 정확해져요 — 같은 상품일 때만 확정 절약으로 계산합니다.</div>
   </div>
+  <div id="bkCarFields" style="display:none">
+    <div style="display:flex;gap:6px">
+      <div style="flex:1"><label>픽업 장소</label><input type="text" id="bkCarPickup" placeholder="예: Palma Airport" style="width:100%"></div>
+      <div style="width:86px"><label>공항코드</label><input type="text" id="bkCarPickupCode" maxlength="3" placeholder="PMI" style="width:100%"></div>
+    </div>
+    <div style="display:flex;gap:6px">
+      <div style="flex:1"><label>반납 장소 (비우면 픽업과 동일)</label><input type="text" id="bkCarReturn" style="width:100%"></div>
+      <div style="width:86px"><label>공항코드</label><input type="text" id="bkCarReturnCode" maxlength="3" style="width:100%"></div>
+    </div>
+    <div style="display:flex;gap:6px">
+      <div style="flex:1"><label>픽업 시각</label><input type="text" id="bkCarPickupTime" class="timeIn" inputmode="numeric" maxlength="5" placeholder="10:00" style="width:100%"></div>
+      <div style="flex:1"><label>반납 시각</label><input type="text" id="bkCarReturnTime" class="timeIn" inputmode="numeric" maxlength="5" placeholder="10:00" style="width:100%"></div>
+    </div>
+    <div style="display:flex;gap:6px">
+      <div style="flex:1"><label>차급</label><select id="bkCarClass" style="width:100%"><option value="">모름</option><option value="mini">Mini</option><option value="economy">Economy</option><option value="compact">Compact</option><option value="intermediate">Intermediate</option><option value="standard">Standard</option><option value="fullsize">Fullsize</option><option value="premium">Premium</option><option value="suv">SUV</option><option value="van">Van</option></select></div>
+      <div style="flex:1"><label>변속기</label><select id="bkCarTrans" style="width:100%"><option value="">모름</option><option value="automatic">자동</option><option value="manual">수동</option></select></div>
+    </div>
+    <div style="display:flex;gap:6px">
+      <div style="flex:1"><label>주행거리</label><select id="bkCarMileage" style="width:100%"><option value="">모름</option><option value="UNLIMITED">무제한</option><option value="LIMITED">제한</option></select></div>
+      <div style="flex:1"><label>보험</label><select id="bkCarIns" style="width:100%"><option value="">모름</option><option value="BASIC">기본</option><option value="CDW">CDW</option><option value="FULL">완전(풀커버)</option></select></div>
+    </div>
+    <div class="hint">차급·변속기·보험·주행거리가 다르면 <b>확정 절약으로 계산하지 않아요</b> — 조건을 입력할수록 비교가 정확해집니다.</div>
+  </div>
   <div class="chkrow"><input type="checkbox" id="bkFreeCancel"><label for="bkFreeCancel" style="margin:0">무료 취소 가능</label></div>
   <div id="bkFreeUntilWrap" style="display:none"><label>무료 취소 기한</label><input type="date" id="bkFreeUntil">
     <div class="hint">기한 안에는 취소 수수료 없이 갈아탈 수 있는 것으로 계산합니다.</div></div>
@@ -349,10 +372,10 @@
   </div>
 </div>
 
-<script src="lib.js?v=tc-v130"></script>
-<script src="sync.js?v=tc-v130"></script>
-<script src="routing.js?v=tc-v130"></script>
-<script src="price.js?v=tc-v130"></script>
-<script src="app.js?v=tc-v130"></script>
+<script src="lib.js?v=tc-v131"></script>
+<script src="sync.js?v=tc-v131"></script>
+<script src="routing.js?v=tc-v131"></script>
+<script src="price.js?v=tc-v131"></script>
+<script src="app.js?v=tc-v131"></script>
 </body>
 </html>

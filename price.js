@@ -216,7 +216,80 @@
     return out;
   }
 
-  const API={PRICE_CFG,cancelFeeNow,calcSaving,savingWorth,bookingPriceStatus,offerPrice,matchQuality,offerRank,decideSaving,hotelTrackState,identityScore,tripHotelSummary};
+  // ── 렌터카 조건 정규화·매칭 ──
+  // 렌터카는 가격만 비교하면 안 된다: 차급·변속기·보험·주행거리·취소 조건이 다르면 같은 상품이 아니다.
+  // 호텔과 같은 패턴 — 조건이 '다름'으로 확인되면 SIMILAR(확정 절약 금지), 모두 같아야 EXACT.
+  /** 차급 사다리(작을수록 낮음). 사다리 밖 차급(suv·van 등)은 동일 여부로만 비교 @type {string[]} */
+  const CAR_CLASS_LADDER=['mini','economy','compact','intermediate','standard','fullsize','premium','luxury'];
+  /** @param {any} v @returns {string} 소문자 정규화 문자열 */
+  function _lc(v){ return String(v==null?'':v).trim().toLowerCase(); }
+  /** 변속기 정규화 @param {any} v @returns {'automatic'|'manual'|''} */
+  function normTransmission(v){ const s=_lc(v); if(!s) return ''; if(/^(a|auto)/.test(s)) return 'automatic'; if(/^(m|man|stick)/.test(s)) return 'manual'; return ''; }
+  /** 주행거리 정책 정규화 @param {any} v @returns {'UNLIMITED'|'LIMITED'|''} */
+  function normMileage(v){ const s=_lc(v); if(!s) return ''; if(/unlimited|무제한/.test(s)) return 'UNLIMITED'; if(/limit|제한|km|mile/.test(s)) return 'LIMITED'; return ''; }
+  /** 보험 수준 정규화(FULL>CDW>BASIC) @param {any} v @returns {'FULL'|'CDW'|'BASIC'|''} */
+  function normInsurance(v){ const s=_lc(v); if(!s) return ''; if(/full|premium|zero|완전/.test(s)) return 'FULL'; if(/cdw|collision|standard/.test(s)) return 'CDW'; if(/basic|minimum|기본/.test(s)) return 'BASIC'; return ''; }
+  /** 차급 정규화 @param {any} v @returns {string} 사다리 값 또는 자유 문자열(소문자) */
+  function normCarClass(v){
+    const s=_lc(v); if(!s) return '';
+    for(const c of CAR_CLASS_LADDER){ if(s.indexOf(c)>=0) return c; }
+    if(/소형|경차/.test(s)) return 'mini';
+    if(/준중형/.test(s)) return 'compact';
+    if(/중형/.test(s)) return 'intermediate';
+    if(/대형/.test(s)) return 'fullsize';
+    return s;
+  }
+
+  /**
+   * 렌터카 매칭 품질. 픽업/반납·기간이 다르면 UNMATCHED(비교 대상 아님).
+   * 차급 하락·변속기 차이(auto↔manual)·보험 하락·무제한→제한 주행·환불→비환불이면 SIMILAR
+   * (가격이 싸도 확정 절약 금지 — §13). 선언된 조건이 모두 같아야 EXACT,
+   * 차급이 같거나 더 좋고 나머지가 나쁘지 않으면 EQUIVALENT.
+   * @param {any} b 예약(carClass·transmission·mileage·insurance·refundable·carPickupCode…)
+   * @param {any} o 오퍼(NormalizedCarOffer 형태)
+   * @returns {'EXACT'|'EQUIVALENT'|'SIMILAR'|'UNMATCHED'}
+   */
+  function carMatchQuality(b,o){
+    if(!b||!o||offerPrice(o)<=0) return 'UNMATCHED';
+    if(((o.cur)||'KRW')!==((b.cur)||'KRW')) return 'UNMATCHED';
+    // 픽업/반납 위치 — 코드(IATA)가 양쪽에 있으면 코드로, 아니면 이름 선언 시 이름으로. 다르면 비교 대상 아님
+    const loc=(/**@type {any}*/bc,/**@type {any}*/bn,/**@type {any}*/oc,/**@type {any}*/on)=>{
+      if(bc&&oc) return _lc(bc)===_lc(oc);
+      if(bn&&on) return _lc(bn)===_lc(on);
+      return null;   // 비교 불가
+    };
+    const pu=loc(b.carPickupCode,b.carPickup,o.pickupCode,o.pickupLocation);
+    const re=loc(b.carReturnCode,b.carReturn,o.returnCode,o.returnLocation);
+    if(pu===false||re===false) return 'UNMATCHED';
+    const known=(/**@type {any}*/v)=>v!==undefined&&v!==null&&v!=='';
+    // 조건별 비교: true=같음/더 좋음, false=나쁨(확정 금지), null=비교 불가
+    const bt=normTransmission(b.transmission), ot=normTransmission(o.transmission);
+    const trEq=(bt&&ot)? bt===ot : null;                                   // auto↔manual은 같은 상품 아님
+    const bm=normMileage(b.mileage), om=normMileage(o.mileage);
+    const miEq=(bm&&om)? (bm===om? true : (bm==='LIMITED'&&om==='UNLIMITED'? true : false)) : null;   // 무제한→제한이면 하락
+    const INS={BASIC:0,CDW:1,FULL:2};
+    const bi=normInsurance(b.insurance), oi=normInsurance(o.insurance);
+    const inEq=(bi&&oi)? (INS[oi]>INS[bi]? true : oi===bi) : null;         // 보험 하락이면 false
+    const refEq=(known(b.refundable)&&known(o.refundable))? (!!o.refundable||!b.refundable) : null;   // 환불→비환불이면 false
+    const bcls=normCarClass(b.carClass), ocls=normCarClass(o.vehicleClass||o.carClass);
+    let clsEq=null;                                                        // 차급: 하락이면 false, 동급 true, 상승 true(EXACT엔 부족)
+    let clsUp=false;
+    if(bcls&&ocls){
+      const br=CAR_CLASS_LADDER.indexOf(bcls), or=CAR_CLASS_LADDER.indexOf(ocls);
+      if(br>=0&&or>=0){ clsEq= or>=br; clsUp= or>br; }
+      else clsEq= bcls===ocls;
+    }
+    const checks=[trEq,miEq,inEq,refEq,clsEq];
+    if(checks.some(v=>v===false)) return 'SIMILAR';                        // 조건 하락 확인 → 확정 금지
+    const declared=[[!!(bt&&ot),trEq],[!!(bm&&om),miEq],[!!(bi&&oi),inEq],[known(b.refundable)&&known(o.refundable),refEq],[!!(bcls&&ocls),clsEq]];
+    const allTrue=declared.every((/**@type {any}*/[d,eq])=>!d||eq===true);
+    const anyDeclared=declared.some((/**@type {any}*/[d])=>d);
+    if(allTrue&&anyDeclared&&!clsUp&&clsEq!==null&&trEq!==null) return 'EXACT';   // 차급·변속기까지 확인된 완전 일치
+    if(allTrue&&anyDeclared) return 'EQUIVALENT';                          // 확인된 조건은 모두 같거나 더 좋음
+    return 'SIMILAR';                                                      // 아무 조건도 확인 못 함 → 확정 금지
+  }
+
+  const API={PRICE_CFG,cancelFeeNow,calcSaving,savingWorth,bookingPriceStatus,offerPrice,matchQuality,offerRank,decideSaving,hotelTrackState,identityScore,tripHotelSummary,carMatchQuality,normTransmission,normMileage,normInsurance,normCarClass};
   if(typeof module!=='undefined'&&module.exports) module.exports=API;   // Node (테스트)
   else /** @type {any} */(root).TC_PRICE=API;                           // 브라우저 전역 (sync/routing과 동일 패턴)
 })(typeof window!=='undefined'?window:globalThis);

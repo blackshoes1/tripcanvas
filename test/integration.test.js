@@ -499,3 +499,77 @@ test('통합: 체크아웃이 체크인보다 앞서면 저장을 막는다(잘�
   assert.equal(w.eval('(trip().bookings||[]).length'), 1, '정상 날짜는 저장');
   w.close();
 });
+
+test('통합: 렌터카 예약 — 조건 저장·시장 검색·매칭·절약 표시까지 End-to-End', { skip: noJsdom }, async () => {
+  const w = boot();
+  const day = (d) => new Date(Date.now() + d * 86400000).toISOString().slice(0, 10);
+  withTrip(w, `[{mode:'car',startAt:'09:00',spots:[{name:'X',lat:39.5,lng:2.7,city:'Palma'}]}]`);
+
+  // 1) 모달에서 렌터카 조건 저장 (bkCarFields)
+  w.eval('openBookingModal(null)');
+  const set=(id,v)=>{ w.document.getElementById(id).value=v; };
+  set('bkType','car'); w.eval('toggleBkFields()');
+  assert.equal(w.document.getElementById('bkCarFields').style.display, 'block', '렌터카 필드 노출');
+  assert.equal(w.document.getElementById('bkHotelFields').style.display, 'none');
+  set('bkTitle','RecordGo Compact'); set('bkPrice','320'); set('bkCur','EUR');
+  set('bkStart',day(30)); set('bkEnd',day(34));
+  set('bkCarPickup','Palma Airport'); set('bkCarPickupCode','pmi');
+  set('bkCarClass','compact'); set('bkCarTrans','automatic'); set('bkCarMileage','UNLIMITED');
+  w.document.getElementById('bkFreeCancel').checked=true;
+  w.document.getElementById('bkSave').click();
+  const b=w.eval('JSON.parse(JSON.stringify(trip().bookings[0]))');
+  assert.equal(b.carPickupCode, 'PMI', '공항코드 대문자 저장');
+  assert.equal(b.carClass, 'compact');
+  assert.equal(b.transmission, 'automatic');
+
+  // 2) 시장 검색(Provider 스텁 — 테스트에서만 mock 허용) → carMatchQuality 디스패치 → 확정 절약
+  await new Promise(res=>setTimeout(res,20));   // bkSave가 발사한 자동 조회(no-net 실패) 정리 대기
+  w.eval('_pxInflight.clear(); recOf(trip().bookings[0].id).err=null;');
+  w.eval(`CarMarketProvider.searchOffers=async()=>({status:'OK',offers:[
+    {seller:'Sixt',price:258,total:258,cur:'EUR',pickupCode:'PMI',vehicleClass:'compact',transmission:'automatic',mileage:'UNLIMITED',refundable:true,link:'https://sixt.example.com/x'},
+    {seller:'Europcar',price:247,total:247,cur:'EUR',pickupCode:'PMI',vehicleClass:'economy',transmission:'manual',refundable:true}
+  ]});`);
+  const r=await w.eval(`checkBookingPrice(trip().bookings[0].id,{force:true})`);
+  assert.ok(r&&r.ok, '조회 성공');
+  const st=w.eval(`JSON.parse(JSON.stringify(hotelStateOf(trip().bookings[0])))`);
+  assert.equal(st.state, 'SAVING_AVAILABLE', '동일 조건 Sixt로 확정 절약');
+  assert.equal(st.confirmed.saving, 62, '€62 — Europcar €73은 조건이 달라 확정에 포함 안 됨');
+  assert.equal(st.potential.delta, 73, 'Europcar는 잠재(조건 확인 필요)로만');
+
+  // 3) 상태 박스: 확정+잠재 구분 표시
+  w.eval(`openBookingModal(trip().bookings[0].id)`);
+  const boxText=w.document.getElementById('bkStatus').textContent;
+  assert.match(boxText, /절약/, '절약 표시');
+  assert.match(boxText, /Sixt/);
+  assert.match(boxText, /조건 확인 필요/, 'Europcar는 조건 확인 필요로 구분');
+  w.close();
+});
+
+test('통합: 렌터카 자동 소스 미연결(AUTH_REQUIRED) → 수동 관측 fallback이 동작한다', { skip: noJsdom }, async () => {
+  const w = boot();
+  const day = (d) => new Date(Date.now() + d * 86400000).toISOString().slice(0, 10);
+  withTrip(w, `[{mode:'car',startAt:'09:00',spots:[]}]`);
+  w.eval(`trip().bookings=[{id:'car1',type:'car',title:'RecordGo Compact',price:320,cur:'EUR',
+    start:'${day(30)}',end:'${day(34)}',carPickupCode:'PMI',carClass:'compact',transmission:'automatic',
+    url:'https://www.recordrentacar.com/en/',track:true,refundable:true}];`);
+
+  // 자동 조회가 AUTH_REQUIRED로 실패 (프록시에 연결된 Provider 없음)
+  w.eval(`CarMarketProvider.searchOffers=async()=>{ throw Object.assign(new Error('x'),{code:'AUTH_REQUIRED'}); };`);
+  await w.eval(`checkBookingPrice('car1',{force:true})`);
+  w.eval(`openBookingModal('car1')`);
+  const t1=w.document.getElementById('bkStatus').textContent;
+  assert.match(t1, /자동 시장 추적 미연결/, '실패가 아니라 미연결로 안내');
+  assert.ok(w.document.getElementById('bkManualPrice'), '수동 가격 입력 제공');
+  assert.match(w.document.getElementById('bkStatus').innerHTML, /recordrentacar\.com/, '예약 사이트 열기 링크');
+
+  // 수동 가격 기록 → 판단은 자동 (€320→€250 하락 → 확정 절약)
+  w.document.getElementById('bkManualPrice').value='250';
+  w.document.getElementById('bkManualSave').click();
+  const st=w.eval(`JSON.parse(JSON.stringify(hotelStateOf(bookingOf('car1'))))`);
+  assert.equal(st.state, 'SAVING_AVAILABLE', '입력만 수동, 판단은 자동');
+  assert.equal(st.confirmed.saving, 70);
+  const rec=w.eval(`JSON.parse(JSON.stringify(recOf('car1')))`);
+  assert.equal(rec.obs.length, 1, 'PriceObservation 기록');
+  assert.equal(rec.obs[0].manual, 1, '수동 관측 표식');
+  w.close();
+});

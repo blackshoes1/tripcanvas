@@ -219,3 +219,53 @@ test('identityScore — 같은 건물 수준(150m)이면 표기가 달라도 매
     { name: '전혀 다른 호텔', lat: 37.60, lng: 127.05 });
   assert.ok(far < 0.55, '먼 곳은 보정 없음, got ' + far);
 });
+
+test('carMatchQuality — 동일 조건 대안은 확정 절약 후보 (스펙 시나리오: €320→€258)', () => {
+  const b={type:'car',price:320,cur:'EUR',carPickupCode:'PMI',carClass:'compact',transmission:'automatic',mileage:'UNLIMITED',refundable:true};
+  const sixt={seller:'Sixt',price:258,total:258,cur:'EUR',pickupCode:'PMI',vehicleClass:'compact',transmission:'automatic',mileage:'UNLIMITED',refundable:true};
+  const q=P.carMatchQuality(b,sixt);
+  assert.ok(q==='EXACT'||q==='EQUIVALENT', 'got '+q);
+  const d=P.decideSaving(b,[{...sixt,quality:q}],{today:'2026-08-26'});
+  assert.equal(d.confirmed.saving, 62, '€320-€258=€62 확정 절약');
+});
+
+test('carMatchQuality — 변속기·차급·보험·주행거리·취소 조건 차이는 확정 금지 (SIMILAR)', () => {
+  const b={type:'car',price:320,cur:'EUR',carPickupCode:'PMI',carClass:'compact',transmission:'automatic',mileage:'UNLIMITED',insurance:'FULL',refundable:true};
+  const base={seller:'X',price:247,total:247,cur:'EUR',pickupCode:'PMI',vehicleClass:'compact',transmission:'automatic',mileage:'UNLIMITED',insurance:'FULL',refundable:true};
+  assert.equal(P.carMatchQuality(b,{...base,transmission:'manual'}), 'SIMILAR', 'auto↔manual');
+  assert.equal(P.carMatchQuality(b,{...base,vehicleClass:'mini'}), 'SIMILAR', '차급 하락(compact→mini)');
+  assert.equal(P.carMatchQuality(b,{...base,insurance:'BASIC'}), 'SIMILAR', '보험 하락(FULL→BASIC)');
+  assert.equal(P.carMatchQuality(b,{...base,mileage:'LIMITED'}), 'SIMILAR', '무제한→제한');
+  assert.equal(P.carMatchQuality(b,{...base,refundable:false}), 'SIMILAR', '환불→비환불');
+  const d=P.decideSaving(b,[{...base,transmission:'manual',quality:'SIMILAR'}],{today:'2026-08-26'});
+  assert.equal(d.confirmed, null, '€73 차이는 확정 절약에 포함하지 않는다');
+  assert.equal(d.potential.delta, 73, '잠재(조건 확인 필요)로만');
+});
+
+test('carMatchQuality — 픽업 다르면 UNMATCHED, 차급 상승은 EQUIVALENT(EXACT 아님)', () => {
+  const b={type:'car',price:320,cur:'EUR',carPickupCode:'PMI',carClass:'compact',transmission:'automatic'};
+  assert.equal(P.carMatchQuality(b,{seller:'X',price:200,cur:'EUR',pickupCode:'MAD',vehicleClass:'compact',transmission:'automatic'}), 'UNMATCHED', '다른 공항');
+  assert.equal(P.carMatchQuality(b,{seller:'X',price:200,cur:'USD',pickupCode:'PMI'}), 'UNMATCHED', '통화 불일치');
+  const up=P.carMatchQuality(b,{seller:'X',price:300,total:300,cur:'EUR',pickupCode:'PMI',vehicleClass:'intermediate',transmission:'automatic'});
+  assert.equal(up, 'EQUIVALENT', '차급 상승은 동등 취급, EXACT는 아님');
+  assert.equal(P.carMatchQuality({type:'car',price:320,cur:'EUR'},{seller:'X',price:250,cur:'EUR'}), 'SIMILAR', '조건 미확인은 확정 금지');
+});
+
+test('carMatchQuality — 가격 상승이면 절약 기회 없음', () => {
+  const b={type:'car',price:320,cur:'EUR',carPickupCode:'PMI',carClass:'compact',transmission:'automatic'};
+  const o={seller:'X',price:350,total:350,cur:'EUR',pickupCode:'PMI',vehicleClass:'compact',transmission:'automatic'};
+  const d=P.decideSaving(b,[{...o,quality:P.carMatchQuality(b,o)}],{today:'2026-08-26'});
+  assert.equal(d.confirmed, null);
+  assert.equal(d.potential, null);
+});
+
+test('car 조건 정규화 — 표기 차이 흡수', () => {
+  assert.equal(P.normTransmission('Auto'), 'automatic');
+  assert.equal(P.normTransmission('MANUAL'), 'manual');
+  assert.equal(P.normMileage('Unlimited km'), 'UNLIMITED');
+  assert.equal(P.normMileage('300 km/day'), 'LIMITED');
+  assert.equal(P.normInsurance('Full coverage'), 'FULL');
+  assert.equal(P.normInsurance('CDW included'), 'CDW');
+  assert.equal(P.normCarClass('Compact SUV'), 'compact');
+  assert.equal(P.normCarClass('준중형'), 'compact');
+});

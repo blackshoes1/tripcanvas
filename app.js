@@ -1714,6 +1714,7 @@ const PX_ERR_MSG={
   AUTH_ERROR:'가격 소스 인증 오류 — 관리자 확인이 필요해요',
   RATE_LIMIT:'조회 한도를 넘었어요 — 잠시 후 다시 시도해주세요',
   PROPERTY_NOT_FOUND:'이 이름으로 호텔을 찾지 못했어요 — 예약처 표기와 같은 이름으로 바꿔보세요',
+  LOCATION_NOT_FOUND:'픽업 장소를 확인해주세요 — 공항코드(PMI 등)를 넣으면 정확해져요',
   PAST_DATE:'체크인이 이미 지난 예약이에요 — 지난 날짜의 시세는 조회할 수 없어요',
   INVALID_NAME:'호텔 이름이 비어 있어요 — 예약 이름을 확인해주세요',
   INVALID_DATES:'체크인·체크아웃 날짜 형식을 확인해주세요',
@@ -1774,7 +1775,7 @@ function identityForBooking(b){
               : {name:b.title};
 }
 function hotelStateOf(b){
-  if(!b||b.type!=='hotel') return null;
+  if(!b||(b.type!=='hotel'&&b.type!=='car')) return null;   // 렌터카도 같은 판단 엔진 사용(항공은 소스 준비 전)
   return TC_PRICE.hotelTrackState(b, priceStore[b.id]||null, {today:todayISO(), krwRate:fxRates[b.cur||'KRW']||1});
 }
 function tripSavingInfo(){
@@ -1783,8 +1784,8 @@ function tripSavingInfo(){
 // 상태 배지 — 🔴 확정 절약(가장 눈에 띔) / 🟠 미검증 저가(단정 금지) / 🟢 유지 권장 / 🟡 추적 중 / ⚠️ 실패
 function bookingBadgeHtml(b){
   if(!b) return '';
-  if(b.type!=='hotel'){
-    return b.track!==false? `<span class="pxBadge pxWatch" title="${BK_TYPE[b.type]?escAttr(BK_TYPE[b.type].name):''} 가격 소스는 준비 중 — 지금은 예약 기록용">🟡 추적 예정</span>`
+  if(b.type==='flight'){
+    return b.track!==false? `<span class="pxBadge pxWatch" title="항공 가격 소스는 준비 중 — 지금은 예약 기록용">🟡 추적 예정</span>`
                           : `<span class="pxBadge pxOff">추적 꺼짐</span>`;
   }
   const st=hotelStateOf(b);
@@ -1813,7 +1814,23 @@ const MetasearchHotelProvider={
     return js;
   }
 };
-const HOTEL_DISCOVERY=[MetasearchHotelProvider];   // 렌터카·항공은 향후 같은 계약의 Provider를 추가
+// 렌터카 시장 탐색 — 현재 예약 업체(RecordGo 등)의 재확인이 아니라, 같은 지역·기간의 다른 판매처 대안을 찾는다.
+// 서버 레지스트리에 연결된 Discovery API가 없으면 AUTH_REQUIRED가 내려오고, UI는 수동 관측 fallback을 안내한다.
+const CarMarketProvider={
+  id:'car-market',
+  supports(b){ return b.type==='car'; },
+  async searchOffers(b){
+    const r=await fetch('/api/car-offers',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ pickup:b.carPickup||b.title, pickupCode:b.carPickupCode,
+        'return':b.carReturn||b.carPickup||b.title, returnCode:b.carReturnCode||b.carPickupCode,
+        pickupAt:(b.start||'')+'T'+(b.carPickupTime||'10:00'), returnAt:(b.end||'')+'T'+(b.carReturnTime||'10:00'),
+        driverAge:b.driverAge, currency:b.cur||'KRW', vehicleClass:b.carClass, transmission:b.transmission })});
+    const js=await r.json().catch(()=>null);
+    if(!r.ok) throw Object.assign(new Error('car_offers_failed'),{code:(js&&js.error)||'PROVIDER_ERROR', detail:(js&&js.detail)||''});
+    return js;
+  }
+};
+const PRICE_DISCOVERY=[MetasearchHotelProvider,CarMarketProvider];   // 항공은 향후 같은 계약의 Provider를 추가
 // 가격 소스 상태(§34) — 세션당 1회 조회
 let _pxHealth;
 async function loadPxHealth(){
@@ -1842,7 +1859,7 @@ onSavingOpportunity(op=>{
 const _pxInflight=new Map();
 async function checkBookingPrice(id,opts){
   const b=bookingOf(id); if(!b||b.track===false) return null;
-  const provider=HOTEL_DISCOVERY.find(x=>x.supports(b)); if(!provider) return null;   // 소스 없는 종류는 조회하지 않음(가짜 데이터 금지)
+  const provider=PRICE_DISCOVERY.find(x=>x.supports(b)); if(!provider) return null;   // 소스 없는 종류는 조회하지 않음(가짜 데이터 금지)
   if(!b.start||!b.end) return null;                                                   // 기간 없이는 검색 불가 (상세 화면이 안내)
   const today=todayISO(); if(b.end<=today) return null;                               // 숙박 종료 → 추적 중단
   if(b.start<today) return null;   // 체크인이 지남 → 재예약 의미 없고, 시세 소스도 지난 날짜를 조회할 수 없다
@@ -1876,9 +1893,13 @@ async function checkBookingPrice(id,opts){
     seller:String(o.seller||''), roomName:(o.roomName?String(o.roomName):undefined),
     price:+o.price||0, total:(+o.total>0? +o.total:undefined), cur:o.cur||b.cur||'KRW',
     refundable:o.refundable, breakfast:o.breakfast, link:(typeof o.link==='string'?o.link:undefined),
+    vehicleName:(o.vehicleName?String(o.vehicleName):undefined), vehicleClass:(o.vehicleClass?String(o.vehicleClass):undefined),
+    transmission:(o.transmission?String(o.transmission):undefined), mileage:(o.mileage?String(o.mileage):undefined),
+    insurance:(o.insurance?String(o.insurance):undefined), deposit:(+o.deposit>0? +o.deposit:undefined),
+    pickupCode:(o.pickupCode?String(o.pickupCode):undefined), returnCode:(o.returnCode?String(o.returnCode):undefined),
     verified:!!o.verified, verifiedBy:o.verifiedBy
   }));
-  offers.forEach(o=>{ o.quality=TC_PRICE.matchQuality(b,o); });
+  offers.forEach(o=>{ o.quality = b.type==='car' ? TC_PRICE.carMatchQuality(b,o) : TC_PRICE.matchQuality(b,o); });
   rec.offers=offers; rec.at=atIso; rec.err=null; delete rec.candidates;
   if(resp.property&&resp.property.token&&b.ptoken!==resp.property.token) b.ptoken=resp.property.token;   // property 매핑 캐시(§23) — 다음부턴 검색 1회 생략, render의 save()로 저장
   // 하루 1점 관측: 확정 후보 우선, 없으면 최저가 — 등급을 함께 남겨 '미확정' 기록임을 구분
@@ -1989,6 +2010,22 @@ document.getElementById('bookingListClose').onclick=()=>document.getElementById(
 document.getElementById('bookingAdd').onclick=()=>openBookingModal(null);
 
 // 숙소 카드에서 바로 예약 추적 시작 — 이름·연결·기간을 미리 채운다(사용자는 예약가만 넣으면 된다)
+// 자동 소스가 없는 현재 예약처(직판 사이트 등) 가격은 사용자가 확인해 기록한다 — 입력만 수동, 판단은 자동.
+// 같은 상품의 재확인이므로 quality는 EXACT: 예약가보다 의미 있게 내려가면 기존 엔진이 확정 절약으로 판단한다.
+function recordCarManualPrice(id, price){
+  const b=bookingOf(id); if(!b||!(price>0)) return false;
+  const rec=recOf(id), at=new Date().toISOString(), seller=(b.provider||'현재 예약처');
+  rec.offers=(rec.offers||[]).filter(o=>!o.manual);   // 이전 수동 관측 오퍼는 최신 값으로 교체
+  rec.offers.push({seller, price, total:price, cur:b.cur||'KRW', quality:'EXACT', verified:false, manual:1,
+    link:safeUrl(b.url||'')||undefined});
+  rec.obs=rec.obs||[];
+  const last=rec.obs[rec.obs.length-1];
+  if(!last||String(last.at).slice(0,10)!==at.slice(0,10)||last.price!==price)
+    rec.obs.push({price, cur:b.cur||'KRW', seller, quality:'EXACT', verified:false, manual:1, at});
+  if(rec.obs.length>TC_PRICE.PRICE_CFG.maxObs) rec.obs=rec.obs.slice(-TC_PRICE.PRICE_CFG.maxObs);
+  rec.at=at; rec.err=null; delete rec.candidates;
+  savePrices(); return true;
+}
 window.startHotelTracking=(di,si)=>{
   const s=trip().days[di]&&trip().days[di].spots[si]; if(!s) return;
   openBookingModal(null);
@@ -2023,6 +2060,7 @@ function toggleBkFields(){
   const type=document.getElementById('bkType').value, hotel=type==='hotel';
   document.getElementById('bkSpotWrap').style.display = hotel?'block':'none';
   document.getElementById('bkHotelFields').style.display = hotel?'block':'none';
+  document.getElementById('bkCarFields').style.display = type==='car'?'block':'none';
   document.getElementById('bkProviderLabel').textContent = type==='flight'?'항공사 또는 예약처':'예약처';
   document.getElementById('bkTitleLabel').textContent = {hotel:'숙소 이름 * (예약처 표기와 같게 — 검색 정확도)',car:'렌터카 (차종·업체) *',flight:'항공편 (구간·편명) *'}[type]||'예약 이름 *';
   document.getElementById('bkFreeUntilWrap').style.display = document.getElementById('bkFreeCancel').checked?'block':'none';
@@ -2046,6 +2084,16 @@ window.openBookingModal=(id)=>{
   document.getElementById('bkRooms').value=(b&&b.rooms)||1;
   document.getElementById('bkRoom').value=(b&&b.roomName)||'';
   document.getElementById('bkBreakfast').value=(b&&b.breakfast===true)?'1':(b&&b.breakfast===false)?'0':'';
+  document.getElementById('bkCarPickup').value=(b&&b.carPickup)||'';
+  document.getElementById('bkCarPickupCode').value=(b&&b.carPickupCode)||'';
+  document.getElementById('bkCarReturn').value=(b&&b.carReturn)||'';
+  document.getElementById('bkCarReturnCode').value=(b&&b.carReturnCode)||'';
+  document.getElementById('bkCarPickupTime').value=(b&&b.carPickupTime)||'';
+  document.getElementById('bkCarReturnTime').value=(b&&b.carReturnTime)||'';
+  document.getElementById('bkCarClass').value=(b&&b.carClass)||'';
+  document.getElementById('bkCarTrans').value=(b&&b.transmission)||'';
+  document.getElementById('bkCarMileage').value=(b&&b.mileage)||'';
+  document.getElementById('bkCarIns').value=(b&&b.insurance)||'';
   document.getElementById('bkFreeCancel').checked=!!(b&&(b.refundable!==undefined? b.refundable : b.freeCancelUntil));
   document.getElementById('bkFreeUntil').value=(b&&b.freeCancelUntil)||'';
   document.getElementById('bkFee').value=(b&&b.cancelFee)?fmtMoney(b.cancelFee):'';
@@ -2059,8 +2107,8 @@ window.openBookingModal=(id)=>{
 function renderBookingStatusBox(b){
   const box=document.getElementById('bkStatus');
   if(!b){ box.innerHTML=''; return; }
-  if(b.type!=='hotel'){
-    box.innerHTML=`<div class="pxState pxWatch">🟡 ${BK_TYPE[b.type]?esc(BK_TYPE[b.type].name):''} 가격 소스는 준비 중 — 지금은 예약 기록용으로 저장돼요</div>`;
+  if(b.type==='flight'){
+    box.innerHTML=`<div class="pxState pxWatch">🟡 항공 가격 소스는 준비 중 — 지금은 예약 기록용으로 저장돼요</div>`;
     return;
   }
   const rec=priceStore[b.id]||{obs:[],offers:[]}, st=hotelStateOf(b), CFG=TC_PRICE.PRICE_CFG;
@@ -2082,12 +2130,16 @@ function renderBookingStatusBox(b){
       ${link?`<div class="pxActions"><a class="btn" href="${escAttr(link)}" target="_blank" rel="noopener">판매처에서 확인 ↗</a></div>`:''}`;
   }
   else if(st&&st.state==='GOOD_PRICE') head=`<div class="pxState pxGood">🟢 좋은 가격 — 지금 예약을 유지하세요</div><div class="hint">현재 시세가 관측된 가격 중 최저 수준입니다</div>`;
+  else if(st&&st.state==='ERROR'&&b.type==='car'&&st.err&&st.err.code==='AUTH_REQUIRED'){
+    head=`<div class="pxState pxWatch">자동 시장 추적 미연결 — 렌터카 가격 API가 아직 연결되지 않았어요</div>
+      <div class="hint">아래에서 <b>현재 예약처 가격을 직접 기록</b>하면 최저가 비교·절약 판단은 자동으로 동작합니다</div>`;
+  }
   else if(st&&st.state==='ERROR'){ const ec=(st.err&&st.err.code)||'PROVIDER_ERROR';
     const ed=(st.err&&st.err.detail)?` <span class="opt">· ${esc(String(st.err.detail).slice(0,120))}</span>`:'';
     head=`<div class="pxState pxWarnT">⚠️ 현재 가격을 확인하지 못했어요</div><div class="hint">${esc(PX_ERR_MSG[ec]||'')} <span class="opt">(${esc(ec)})</span>${ed}</div>`; }
   else head=`<div class="pxState pxWatch">🟡 가격 추적 중 — 아직 의미 있는 하락이 없어요</div>`;
   // 시세 조회는 1실 기준이라, 2실 이상 예약은 총액이 달라진다 — 절약액을 그대로 믿지 않도록 알린다
-  if(!missing && b.track!==false && (b.rooms||1)>1)
+  if(b.type==='hotel' && !missing && b.track!==false && (b.rooms||1)>1)
     head+=`<div class="hint">비교 가격은 <b>1실 기준</b>이에요 — 이 예약은 ${b.rooms}실이라 실제 총액은 다를 수 있습니다</div>`;
   // 매칭 후보 — 낮은 신뢰도는 자동 확정하지 않고 사용자가 고른다 (§22)
   const cand=(rec.err&&rec.err.code==='UNMATCHED'&&rec.candidates&&rec.candidates.length)?
@@ -2100,7 +2152,8 @@ function renderBookingStatusBox(b){
       : (q==='SIMILAR'? `<span class="pxQ pxQask">조건 확인 필요</span>` : `<span class="pxQ">비교 불가</span>`); };
   const offersHtml=(rec.offers||[]).slice(0,6).map(o=>{
     const link=safeUrl(o.link||'');
-    return `<div><span>${esc(o.seller)}${o.roomName?` <span class="opt">${esc(o.roomName)}</span>`:''}</span>
+    const carMeta=(b.type==='car')?[o.vehicleName||o.vehicleClass,o.transmission,o.mileage,o.insurance].filter(Boolean).join(' · '):'';
+    return `<div><span>${esc(o.seller)}${o.roomName?` <span class="opt">${esc(o.roomName)}</span>`:''}${carMeta?` <span class="opt">${esc(carMeta)}</span>`:''}</span>
       <span class="pxOfferR"><b>${costLabel(TC_PRICE.offerPrice(o),b.cur)}</b> ${qLabel(o)}${link?` <a href="${escAttr(link)}" target="_blank" rel="noopener" title="판매처에서 확인">↗</a>`:''}</span></div>`;
   }).join('');
   // 마지막 확인 시각 — 오래됨·실패를 그대로 알린다 (§33·36)
@@ -2117,9 +2170,27 @@ function renderBookingStatusBox(b){
     ${offersHtml?`<label>💱 판매처별 가격 비교</label><div class="pxHist pxOffers">${offersHtml}</div>`:''}
     ${checkedLine}
     ${hist?`<label>📈 가격 기록 (하루 1점, 최근 ${Math.min((rec.obs||[]).length,8)}회)</label><div class="pxHist">${hist}</div>`:''}
-    ${(b.track!==false&&!missing)?`<button type="button" class="btn" id="bkCheckNow" style="margin-top:8px;font-size:11px;padding:3px 10px">🔄 현재 가격 다시 확인</button>`:''}
+    ${(b.type==='car'&&b.track!==false&&!missing)?(()=>{
+      const bu=safeUrl(b.url||'');
+      const lastManual=(rec.obs||[]).filter(o=>o.manual).pop();
+      const staleDays=lastManual? Math.floor((Date.now()-Date.parse(lastManual.at))/86400e3) : null;
+      return `<label>현재 예약처 가격 다시 확인 <span class="hint" style="margin:0">— 자동 조회가 안 되는 예약처(직판 사이트 등)는 직접 확인해 기록</span></label>
+      ${staleDays!=null&&staleDays>=7?`<div class="hint">⏰ ${esc(b.provider||'예약처')} 가격을 확인한 지 ${staleDays}일이 지났습니다</div>`:''}
+      <div class="pxActions" style="align-items:center">${bu?`<a class="btn" href="${escAttr(bu)}" target="_blank" rel="noopener">예약 사이트 열기 ↗</a>`:''}
+        <input type="text" id="bkManualPrice" inputmode="numeric" placeholder="확인한 총액" style="width:110px">
+        <button type="button" class="btn" id="bkManualSave">가격 기록</button></div>`;
+    })():''}
+    ${(b.track!==false&&!missing)?`<button type="button" class="btn" id="bkCheckNow" style="margin-top:8px;font-size:11px;padding:3px 10px">🔄 ${b.type==='car'?'시장 가격 다시 검색':'현재 가격 다시 확인'}</button>`:''}
     <div class="hint" id="bkSourceLine"></div>`;
   loadPxHealth().then(h=>{ try{ const el=document.getElementById('bkSourceLine'); if(el) el.innerHTML=pxSourceLineHtml(h); }catch(e){} });
+  const ms=document.getElementById('bkManualSave');
+  if(ms) ms.onclick=()=>{
+    const v=parseInt((document.getElementById('bkManualPrice').value||'').replace(/[^\d]/g,''));
+    if(!(v>0)){ toast('확인한 가격을 입력하세요','#e63946'); return; }
+    recordCarManualPrice(b.id, v);
+    toast('가격을 기록했어요 — 예약가와 비교해 판단합니다');
+    renderBookingStatusBox(bookingOf(b.id)); render();
+  };
   const btn=document.getElementById('bkCheckNow');
   if(btn) btn.onclick=async()=>{
     btn.disabled=true; btn.textContent='확인 중…';
@@ -2198,6 +2269,17 @@ document.getElementById('bkSave').onclick=()=>{
       if(rn) b.roomName=rn; else delete b.roomName;
       const bf=document.getElementById('bkBreakfast').value;
       if(bf==='1') b.breakfast=true; else if(bf==='0') b.breakfast=false; else delete b.breakfast;
+    }
+    if(type==='car'){
+      const cv=(/**@type {string}*/id)=>document.getElementById(id).value.trim();
+      const put=(/**@type {string}*/k,/**@type {string}*/v)=>{ if(v) (/**@type {any}*/(b))[k]=v; else delete (/**@type {any}*/(b))[k]; };
+      put('carPickup',cv('bkCarPickup')); put('carPickupCode',cv('bkCarPickupCode').toUpperCase());
+      put('carReturn',cv('bkCarReturn')); put('carReturnCode',cv('bkCarReturnCode').toUpperCase());
+      put('carPickupTime',cv('bkCarPickupTime')); put('carReturnTime',cv('bkCarReturnTime'));
+      put('carClass',document.getElementById('bkCarClass').value);
+      put('transmission',document.getElementById('bkCarTrans').value);
+      put('mileage',document.getElementById('bkCarMileage').value);
+      put('insurance',document.getElementById('bkCarIns').value);
     }
     b.refundable=document.getElementById('bkFreeCancel').checked;   // 조건 매칭·수수료 계산의 기준
     const fu=b.refundable && document.getElementById('bkFreeUntil').value;

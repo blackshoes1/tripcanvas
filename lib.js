@@ -444,6 +444,19 @@
     if(b.ptoken!=null && !(typeof b.ptoken==='string' && /^[A-Za-z0-9_=-]{4,300}$/.test(b.ptoken))) delete b.ptoken;   // provider property 매핑 캐시
     if(b.enName!=null){ const en=(typeof b.enName==='string'? b.enName:'').trim().slice(0,160); if(en) b.enName=en; else delete b.enName; }   // 시세 조회용 영문명 캐시
     if(b.saved!=null){ if(_fin(b.saved)) b.saved=Math.min(Math.max(0,Math.round(+b.saved)),TC_LIMITS.cost); else delete b.saved; }   // 재예약으로 실제 절약한 누적액
+    // 렌터카 조건 필드 — 시장가 비교(carMatchQuality)의 기준. 미입력(undefined)은 '모름'으로 보존
+    if(b.type==='car'){
+      const cs=(/**@type {any}*/v,/**@type {number}*/n)=>{ const t=(typeof v==='string'?v:'').trim().slice(0,n); return t; };
+      for(const k of /** @type {const} */(['carPickup','carReturn'])){ if(b[k]!=null){ const v=cs(b[k],120); if(v) b[k]=v; else delete b[k]; } }
+      for(const k of /** @type {const} */(['carPickupCode','carReturnCode'])){ if(b[k]!=null){ const v=cs(b[k],3).toUpperCase(); if(/^[A-Z]{3}$/.test(v)) b[k]=v; else delete b[k]; } }
+      for(const k of /** @type {const} */(['carPickupTime','carReturnTime'])){ if(b[k]!=null){ if(_hm(b[k])===undefined) delete b[k]; } }
+      if(b.carClass!=null){ const v=cs(b.carClass,40); if(v) b.carClass=v; else delete b.carClass; }
+      if(b.transmission!=null && b.transmission!=='automatic' && b.transmission!=='manual') delete b.transmission;
+      if(b.mileage!=null && b.mileage!=='UNLIMITED' && b.mileage!=='LIMITED') delete b.mileage;
+      if(b.insurance!=null && b.insurance!=='BASIC' && b.insurance!=='CDW' && b.insurance!=='FULL') delete b.insurance;
+      if(b.deposit!=null){ if(_fin(b.deposit)) b.deposit=Math.min(Math.max(0,Math.round(+b.deposit)),TC_LIMITS.cost); else delete b.deposit; }
+      if(b.driverAge!=null){ if(_fin(b.driverAge)) b.driverAge=Math.min(99,Math.max(18,Math.round(+b.driverAge))); else delete b.driverAge; }
+    }
     b.track=b.track!==false;   // 기본 추적 on
     return b;
   }
