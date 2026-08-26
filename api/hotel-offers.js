@@ -84,6 +84,8 @@ function validRequest(body) {
     lng: Number.isFinite(Number(body.lng)) && Math.abs(Number(body.lng)) <= 180 ? Number(body.lng) : undefined,
     checkIn: body.checkIn, checkOut: body.checkOut,
     adults: Math.min(8, Math.max(1, Math.round(Number(body.adults) || 2))),
+    // upstream(google_hotels)은 객실 수 파라미터를 지원하지 않는다 — 시세는 항상 1실 기준이다.
+    // 요청값은 응답 basis로 되돌려, 클라이언트가 '1실 기준'임을 표시할 수 있게만 쓴다.
     rooms: Math.min(4, Math.max(1, Math.round(Number(body.rooms) || 1))),
     currency: CURS.includes(body.currency) ? body.currency : 'KRW',
     gl: /^[a-z]{2}$/.test(String(body.country || '')) ? body.country : 'kr',
@@ -297,7 +299,9 @@ function createHandler({ fetchImpl = globalThis.fetch, env = process.env, now = 
     try {
       const result = await runSearch({ env, fetchImpl, verifiers }, request);
       if (result.unmatched) return send(res, 200, { status: 'UNMATCHED', candidates: result.candidates });
-      return send(res, 200, { status: 'OK', property: result.property, offers: result.offers, checkedAt: new Date().toISOString() });
+      return send(res, 200, { status: 'OK', property: result.property, offers: result.offers,
+        basis: { rooms: 1, adults: request.adults, requestedRooms: request.rooms },   // 비교 가격의 기준 — 1실 고정
+        checkedAt: new Date().toISOString() });
     } catch (error) {
       const code = (error && error.code) || 'PROVIDER_ERROR';
       const status = code === 'AUTH_REQUIRED' ? 503 : code === 'RATE_LIMIT' ? 429 : code === 'NETWORK_ERROR' ? 504 : code === 'PROPERTY_NOT_FOUND' || code === 'NO_AVAILABILITY' ? 404 : 502;

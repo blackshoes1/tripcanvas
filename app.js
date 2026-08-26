@@ -2041,6 +2041,9 @@ function renderBookingStatusBox(b){
   else if(st&&st.state==='GOOD_PRICE') head=`<div class="pxState pxGood">🟢 좋은 가격 — 지금 예약을 유지하세요</div><div class="hint">현재 시세가 관측된 가격 중 최저 수준입니다</div>`;
   else if(st&&st.state==='ERROR') head=`<div class="pxState pxWarnT">⚠️ 현재 가격을 확인하지 못했어요</div><div class="hint">${esc(PX_ERR_MSG[(st.err&&st.err.code)||'PROVIDER_ERROR']||'')}</div>`;
   else head=`<div class="pxState pxWatch">🟡 가격 추적 중 — 아직 의미 있는 하락이 없어요</div>`;
+  // 시세 조회는 1실 기준이라, 2실 이상 예약은 총액이 달라진다 — 절약액을 그대로 믿지 않도록 알린다
+  if(!missing && b.track!==false && (b.rooms||1)>1)
+    head+=`<div class="hint">비교 가격은 <b>1실 기준</b>이에요 — 이 예약은 ${b.rooms}실이라 실제 총액은 다를 수 있습니다</div>`;
   // 매칭 후보 — 낮은 신뢰도는 자동 확정하지 않고 사용자가 고른다 (§22)
   const cand=(rec.err&&rec.err.code==='UNMATCHED'&&rec.candidates&&rec.candidates.length)?
     `<label>호텔 자동 매칭이 확실하지 않아요 — 맞는 호텔을 선택해주세요</label><div class="pxHist">`+rec.candidates.map((c,i)=>

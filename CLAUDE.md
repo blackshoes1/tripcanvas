@@ -16,8 +16,13 @@
 
 ## 릴리스 체크리스트
 
-- [ ] `sw.js`의 `VER` 값 올리기 + `index.html`의 `?v=` 쿼리도 **같은 값**으로 (안 올리면 stale 캐시로 변경이 반영 안 됨)
-- [ ] `node --test` 통과 확인 (아래 **테스트** 참고)
+- [ ] `npm run bump:version` 으로 버전 올리기 (`sw.js`의 `VER`과 `index.html`의 `?v=`를 함께 갱신 — 안 올리면 stale 캐시로 변경이 반영 안 됨). `npm run check:version` 으로 동기 확인
+- [ ] **아래 검사를 전부** 통과시킬 것 — 특히 `npm run test:e2e`를 빼먹지 말 것 (유닛·통합만 돌리고 배포했다가 실제 조작이 깨진 회귀를 낸 적이 있다)
+
+```bash
+npm test && npm run lint && npm run check:types && npm run security:scan && npm run test:e2e
+```
+
 - [ ] 푸시 후 폰에서 실제 동작 확인 — ☰ 메뉴 하단의 **버전 표시**로 새 버전이 적용됐는지 먼저 볼 것 (캐시된 옛 버전이면 그 글자를 탭해 갱신)
 
 ## 구조
@@ -27,11 +32,17 @@
 - `lib.js` — 순수 로직 (파서·거리·시각·앵커·타임라인·정규화). **유닛 테스트 + `tsc` 타입 검사 대상**
 - `price.js` — 예약 가격 추적 순수 계산: 실질 절약액·오퍼 조건 매칭(EXACT/EQUIVALENT/SIMILAR)·확정/잠재 절약 판단·호텔 identity 점수. 예약(`trip.bookings`)은 여행 데이터로 동기화·공유되고, 가격 관측 기록은 기기 로컬 + 로그인 시 `hotel_price_snapshots`. 시세는 `api/hotel-offers.js` 프록시(Metasearch 키 서버 전용)로만 조회 — 키 없으면 미연결 상태를 그대로 표시(가짜 가격 금지). **유닛 테스트 + `tsc` 대상**
 - `style.css` — 스타일
-- `sw.js` — 서비스 워커 (앱 셸 캐시)
+- `sync.js` — 클라우드 동기화(리비전 CAS·충돌·tombstone). **`tsc` 대상**
+- `routing.js` — 경로 조회 transport 격리 (app.js는 `fetchLeg` 호환 shim만 씀). **`tsc` 대상**
+- `sw.js` — 서비스 워커 (앱 셸 캐시). `/api/`와 GET 외 요청은 건드리지 않는다
 - `manifest.json` · `icon-*.png` — PWA
-- `test/` — `pure.test.js`(lib 순수 함수) · `integration.test.js`(jsdom으로 app.js 배선 검증)
-- `proto/` — 실험용 프로토타입 (`maplibre-play.html`). 프로덕션 앱과 무관
-- `.github/workflows/ci.yml` — 구문 검사 → `tsc`(lib.js) → `node --test`
+- `api/` — Vercel 서버 함수(**서버 전용 키**): `kakao-directions.js`(카카오내비 프록시) · `hotel-offers.js`(호텔 시세 메타서치 프록시) · `track-hotel-prices.js`(가격 스냅샷 크론)
+- `supabase/migrations/` — RLS·동기화 무결성·가격 스냅샷 스키마
+- `scripts/` — `bump-version.js` · `check-version-sync.js` · `check-secrets.js`
+- `test/` — 순수·통합·API 테스트 (`pure` · `integration` · `price` · `routing` · `sync` · `api-*` · `migration`)
+- `e2e/` — Playwright 시나리오 (`core-flows` · `pwa` · `accessibility` · `ux-wireframe`)
+- `proto/` — 실험용 프로토타입. 프로덕션 앱과 무관
+- `.github/workflows/ci.yml` — **Quality**(구문 → 버전 동기 → lint → 시크릿 스캔 → `tsc` → 유닛 → 통합 → `npm audit`) + **E2E**(Playwright) 두 잡
 
 라이브러리(CDN): 지도 듀얼 엔진 — 해외 Google Maps JS SDK · 국내 카카오맵 JS SDK · LZString(공유 링크 압축) · SortableJS(드래그) · Supabase(로그인/클라우드 동기화)
 검색: 국내 카카오 로컬 · 해외 Google Places (`routedSearch`가 라우팅) · 저장: localStorage + Supabase
@@ -59,13 +70,17 @@ localStorage: `tripcanvas_v1`(여행) · `tripcanvas_legs_v4`(구간 캐시, 수
 ## 테스트
 
 ```bash
-npm install     # 최초 1회 (jsdom — 통합 테스트용)
-node --test     # 순수 + 통합 테스트
+npm install          # 최초 1회 (jsdom·playwright·eslint·tsc)
+npm test             # 유닛 + 통합
+npm run test:e2e     # Playwright (실제 브라우저) — 배포 전 필수
+npm run lint && npm run check:types && npm run security:scan
 ```
 
-- `test/pure.test.js` — lib.js 순수 함수. 새 순수 로직은 **lib.js에 넣고 여기서 테스트**한다
-- `test/integration.test.js` — jsdom에 실제 `index.html`+`lib.js`+`app.js`를 올려 **배선**을 검증 (anchor/carry 혼동, 엔진 전환, 구간 수단 등). jsdom이 없으면 자동 skip되므로 `npm install`을 잊지 말 것
-- CI(`ci.yml`)는 구문 검사 → `tsc`로 lib.js JSDoc 타입 검사 → 테스트를 돌린다. **lib.js에 추가하는 함수는 JSDoc 타입이 필요**하다
+- `test/pure.test.js` — lib.js 순수 함수. 새 순수 로직은 **lib.js(또는 price/routing/sync)에 넣고 여기서 테스트**한다
+- `test/integration.test.js` — jsdom에 실제 `index.html`+`lib.js`+`sync.js`+`routing.js`+`price.js`+`app.js`를 올려 **배선**을 검증 (anchor/carry 혼동, 엔진 전환, 구간 수단 등). jsdom이 없으면 자동 skip되므로 `npm install`을 잊지 말 것
+- `e2e/` — jsdom이 못 잡는 **실제 조작**(클릭·드래그·메뉴·PWA)을 검증한다. 느린 CI에서만 드러나는 문제가 있으므로 로컬 통과만 믿지 말 것
+- 실 API 키가 필요한 테스트(`metasearch.integration`)는 키가 없으면 자동 skip된다
+- **`lib.js`·`sync.js`·`routing.js`·`price.js`에 추가하는 함수는 JSDoc 타입이 필요**하다 (`npm run check:types`)
 
 ## 로컬 실행
 
