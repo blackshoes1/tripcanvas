@@ -104,9 +104,31 @@ function buildAdapters(env) {
   return adapters;
 }
 
+// 자격증명 존재 여부만 알린다 — 값은 절대 응답에 넣지 않는다.
+// 목적은 관측: 환경변수 이름 오타·재배포 누락을 "왜 안 되지"로 헤매지 않고 바로 구분하기 위함.
+const CAR_CRED_KEYS = ['CAR_DISCOVERY_API_KEY', 'TRAVELPAYOUTS_TOKEN'];
+const CAR_MARKER_KEYS = ['CAR_DISCOVERY_MARKER', 'TRAVELPAYOUTS_MARKER'];
+function credentialState(env) {
+  const e = env || {};
+  const has = (keys) => keys.filter(k => typeof e[k] === 'string' && e[k].trim());
+  const keys = has(CAR_CRED_KEYS), markers = has(CAR_MARKER_KEYS);
+  return { present: keys.length > 0, keys, marker: markers.length > 0 };
+}
+
 function providerHealth(env, adapters) {
   const list = (adapters && adapters.length) ? adapters : buildAdapters(env);
-  if (!list.length) return [{ id: 'car-market', role: 'discovery', status: 'AUTH_REQUIRED' }];   // 연결된 소스 없음을 그대로 표시
+  if (!list.length) {
+    // 연결된 소스가 없다는 사실은 그대로 두되, 원인을 구분해 알린다.
+    const cred = credentialState(env);
+    return [{
+      id: 'car-market', role: 'discovery', status: 'AUTH_REQUIRED',
+      credentials: cred.present ? 'PRESENT' : 'MISSING',
+      envKeys: cred.keys, marker: cred.marker,
+      detail: cred.present
+        ? '자격증명은 등록됨 — Provider adapter 미연결(API 문서 승인 후 연결)'
+        : '연결된 시장 소스 없음 — 자격증명 미등록'
+    }];
+  }
   return list.map(a => ({ id: a.id, role: 'discovery', status: a.status() }));
 }
 

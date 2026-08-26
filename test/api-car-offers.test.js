@@ -67,3 +67,21 @@ test('car-offers: failover — 한 Provider 실패가 전체를 막지 않는다
   assert.equal(r2.status, 504);
   assert.equal(r2.json.error, 'NETWORK_ERROR');
 });
+
+test('car-offers: health가 자격증명 등록 여부를 구분해 알린다 (키 값은 노출 금지)', async () => {
+  const call = async (env) => {
+    const res = response();
+    await createHandler({ env })({ method: 'GET', url: '/api/car-offers?health', headers: {}, socket: {} }, res);
+    return JSON.parse(res.body).providers[0];
+  };
+  const none = await call({});
+  assert.equal(none.status, 'AUTH_REQUIRED');
+  assert.equal(none.credentials, 'MISSING', '키 없음');
+
+  const withKey = await call({ CAR_DISCOVERY_API_KEY: 'tp_secret_value', CAR_DISCOVERY_MARKER: '566775' });
+  assert.equal(withKey.status, 'AUTH_REQUIRED', 'adapter가 없으면 여전히 미연결 — 키가 있다고 가짜로 연결됐다 하지 않는다');
+  assert.equal(withKey.credentials, 'PRESENT', '키 등록됨을 확인할 수 있어야 원인 구분이 된다');
+  assert.deepEqual(withKey.envKeys, ['CAR_DISCOVERY_API_KEY']);
+  assert.equal(withKey.marker, true);
+  assert.ok(!JSON.stringify(withKey).includes('tp_secret_value'), '키 값 자체는 절대 응답에 넣지 않는다');
+});
