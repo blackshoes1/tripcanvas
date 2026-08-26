@@ -186,25 +186,25 @@ let kmap=null, kpopupOv=null; // 카카오 지도 / 커스텀 팝업 오버레�
 let engine='google';          // 현재 표시 중인 엔진
 let activeDay = 0, markers = [], lines = [], pickMode = false, sortables = [];
 
-function onMapPick(lat,lng){
+function onMapPick(lat,lng,placeId){
   if(!pickMode)return;
   pickMode=false; document.getElementById('pickBanner').style.display='none';
   document.getElementById('spotLat').value=lat; document.getElementById('spotLng').value=lng;
-  document.getElementById('spotPlaceId').value='';   // 지도 직접 지정 → 이전 검색의 placeId는 무효
+  document.getElementById('spotPlaceId').value=placeId||'';   // 탭한 POI가 특정되면 그 id를 쓰고, 아니면 이전 검색값 무효화
   document.getElementById('coordHint').textContent=`좌표: ${lat.toFixed(4)}, ${lng.toFixed(4)} ✓`;
-  fillSpotFromCoords(lat,lng,false);   // 이름·도시 비어있으면 자동 채움
+  fillSpotFromCoords(lat,lng,false,placeId);   // 이름·도시 비어있으면 자동 채움
   document.getElementById('spotModalBg').classList.add('show');
 }
 // 지도 우클릭/롱프레스 → 그 좌표로 새 장소 추가 모달 (현재 활성 일자, 없으면 1일차)
-function addSpotAt(lat,lng){
+function addSpotAt(lat,lng,placeId){
   if(viewMode) return;
   const di=activeDay? activeDay-1 : 0;
   openSpotModal(di,-1);
   document.getElementById('spotLat').value=lat; document.getElementById('spotLng').value=lng;
-  document.getElementById('spotPlaceId').value='';
+  document.getElementById('spotPlaceId').value=placeId||'';
   document.getElementById('coordHint').textContent=`좌표: ${(+lat).toFixed(4)}, ${(+lng).toFixed(4)} ✓ (지도에서 지정)`;
   document.getElementById('spotName').value=''; _namePrefill='';
-  fillSpotFromCoords(lat,lng,true);    // 지정 지점의 장소명·도시 자동 채움
+  fillSpotFromCoords(lat,lng,true,placeId);    // 지정 지점의 장소명·도시 자동 채움
   setTimeout(()=>document.getElementById('spotName').focus(),50);
 }
 // 지도 탭/클릭 → 그 좌표로 장소 추가.
@@ -213,38 +213,88 @@ function addSpotAt(lat,lng){
 const TAP_ADD_DELAY = 260;
 let _tapT = null;
 function cancelMapTap(){ if(_tapT){ clearTimeout(_tapT); _tapT=null; } }
-function onMapTap(lat,lng){
-  if(pickMode){ onMapPick(lat,lng); return; }   // 좌표 지정 중이면 그 흐름이 우선(지연 없음)
+function onMapTap(lat,lng,placeId){
+  if(pickMode){ onMapPick(lat,lng,placeId); return; }   // 좌표 지정 중이면 그 흐름이 우선(지연 없음)
   if(viewMode) return;                          // 읽기전용에서는 추가하지 않는다
   // 메뉴가 열려 있으면 이 탭은 '닫기'다 — 닫으려다 장소가 추가되면 안 된다.
   const hm=document.getElementById('hdrMenu');
   if(hm && hm.classList.contains('open')) return;
   cancelMapTap();
-  _tapT=setTimeout(()=>{ _tapT=null; addSpotAt(lat,lng); }, TAP_ADD_DELAY);
+  _tapT=setTimeout(()=>{ _tapT=null; addSpotAt(lat,lng,placeId); }, TAP_ADD_DELAY);
 }
 // 좌표 → {name, city} 한 번의 조회. 국내=카카오 coord2Address(한국어), 해외=구글 Places 인근검색(영어명).
-function reverseSpot(lat,lng){
+// 탭한 자리에서 '가장 가까운' 장소만 인정할 반경. 이보다 멀면 이름을 추측하지 않고 비워 둔다
+// (엉뚱한 상호가 채워지는 것보다 빈 칸이 낫다).
+const NEAR_POI_RADIUS = 40;
+// 국내는 좌표→장소 API가 없어 주소만 나온다. 그래서 여행에 실제로 담기는 카테고리만 좁게 훑어
+// 가장 가까운 상호를 찾는다: 음식점·카페·관광명소·숙박·문화시설.
+const KAKAO_POI_CATS = ['FD6','CE7','AT4','AD5','CT1'];
+function kakaoNearbyPOI(lat,lng){
+  return new Promise(resolve=>{
+    const S=window.kakao&&kakao.maps&&kakao.maps.services;
+    if(!S||!S.Places){ resolve(null); return; }
+    const ps=new S.Places(), loc=new kakao.maps.LatLng(+lat,+lng);
+    let left=KAKAO_POI_CATS.length, best=null;
+    const step=()=>{ if(--left<=0) resolve(best); };
+    KAKAO_POI_CATS.forEach(code=>{
+      try{
+        ps.categorySearch(code,(data,status)=>{
+          if(status===S.Status.OK&&data&&data.length){
+            const c=data[0], d=Number(c.distance);
+            const dist=isFinite(d)?d:NEAR_POI_RADIUS;
+            if(c.place_name&&(!best||dist<best.dist)) best={name:c.place_name,dist};
+          }
+          step();
+        },{location:loc, radius:NEAR_POI_RADIUS, sort:S.SortBy&&S.SortBy.DISTANCE});
+      }catch(e){ step(); }
+    });
+  });
+}
+function reverseSpot(lat,lng,placeId){
   return new Promise(resolve=>{
     if(inKorea({lat:+lat,lng:+lng})){
       loadKakao().then(ok=>{
         if(!ok||!window.kakao||!kakao.maps.services){ resolve({}); return; }
         new kakao.maps.services.Geocoder().coord2Address(+lng,+lat,(res,status)=>{
-          if(status!==kakao.maps.services.Status.OK||!res||!res.length){ resolve({}); return; }
-          const r=res[0], a=r.address||{};
-          const name=(r.road_address&&r.road_address.building_name)||'';   // 건물/장소명
-          const one=a.region_1depth_name||'', two=a.region_2depth_name||'';
-          const metro=/(특별시|광역시|특별자치시|특별자치도)$/.test(one);
-          const city= metro? one.replace(/(특별시|광역시|특별자치시|특별자치도)$/,'') : (two.replace(/(시|군)$/,'')||one);
-          resolve({ name:name||null, city:city||null });
+          let building='', city='';
+          if(status===kakao.maps.services.Status.OK&&res&&res.length){
+            const r=res[0], a=r.address||{};
+            building=(r.road_address&&r.road_address.building_name)||'';
+            const one=a.region_1depth_name||'', two=a.region_2depth_name||'';
+            const metro=/(특별시|광역시|특별자치시|특별자치도)$/.test(one);
+            city= metro? one.replace(/(특별시|광역시|특별자치시|특별자치도)$/,'') : (two.replace(/(시|군)$/,'')||one);
+          }
+          // 건물명은 '그 건물'이지 '탭한 가게'가 아니다 → 가까운 실제 상호를 우선한다
+          kakaoNearbyPOI(lat,lng).then(poi=>{
+            resolve({ name:(poi&&poi.name)||building||null, city:city||null });
+          }).catch(()=>resolve({ name:building||null, city:city||null }));
         });
       });
     }else{
       if(!window.google||!google.maps){ resolve({}); return; }
-      google.maps.importLibrary('places').then(({Place})=>{
-        // 기본 랭크(POPULARITY): 반경 내 대표 장소 → 영문 이름 + 그 장소의 도시(도쿄 특별구는 '도쿄')
-        Place.searchNearby({ fields:['displayName','formattedAddress','addressComponents'], locationRestriction:{center:{lat:+lat,lng:+lng}, radius:100}, maxResultCount:1, language:'en' })
-          .then(({places})=>{ const p=places&&places[0]; resolve(p? { name:placeName(p)||null, city:cityFromGoogle(p.addressComponents)||null } : {}); })
-          .catch(()=>resolve({}));
+      const FIELDS=['displayName','formattedAddress','addressComponents'];
+      google.maps.importLibrary('places').then(lib=>{
+        const Place=lib&&lib.Place;
+        if(!Place){ resolve({}); return; }
+        const done=p=>resolve(p? { name:placeName(p)||null, city:cityFromGoogle(p.addressComponents)||null } : {});
+        const nearby=()=>{
+          // 탭한 POI를 특정하지 못한 경우(빈 자리). 예전엔 반경 100m의 '가장 유명한' 곳을 집어와
+          // 엉뚱한 가게가 들어갔다 → 좁은 반경의 '가장 가까운' 곳만 본다.
+          const rank=lib.SearchNearbyRankPreference&&lib.SearchNearbyRankPreference.DISTANCE;
+          const req={ fields:FIELDS, locationRestriction:{center:{lat:+lat,lng:+lng}, radius:NEAR_POI_RADIUS}, maxResultCount:1, language:'en' };
+          if(rank) req.rankPreference=rank;
+          Place.searchNearby(req)
+            .then(({places})=>done(places&&places[0]))
+            .catch(()=>resolve({}));
+        };
+        if(placeId){
+          try{
+            const place=new Place({id:placeId, requestedLanguage:'en'});
+            place.fetchFields({fields:FIELDS}).then(r=>done((r&&r.place)||place)).catch(nearby);
+          }catch(e){ nearby(); }
+          return;
+        }
+        nearby();
       }).catch(()=>resolve({}));
     }
   });
@@ -270,13 +320,13 @@ function fillNameValue(name, force){
   if(force || !el.value.trim() || el.value.trim()===(_namePrefill||'').trim()){ el.value=name; _namePrefill=name; }
 }
 // 지도로 위치 지정 → 이름·도시를 한 번의 조회로 채움. forceCity=true면 도시는 강제 갱신.
-function fillSpotFromCoords(lat,lng,forceCity){
+function fillSpotFromCoords(lat,lng,forceCity,placeId){
   const cityEl=document.getElementById('spotCity'), nameEl=document.getElementById('spotName');
   const cityAt=cityEl.value, nameAt=nameEl.value;
   const cityOK = forceCity || !cityAt.trim() || cityAt.trim()===(_cityPrefill||'').trim();
   const nameOK = !nameAt.trim() || nameAt.trim()===(_namePrefill||'').trim();
   if(!cityOK && !nameOK) return;
-  reverseSpot(lat,lng).then(({name,city})=>{
+  reverseSpot(lat,lng,placeId).then(({name,city})=>{
     if(city && cityOK && cityEl.value===cityAt){ cityEl.value=city; _cityPrefill=city; }
     if(name && nameOK && nameEl.value===nameAt){ nameEl.value=name; _namePrefill=name; }
   });
@@ -306,10 +356,14 @@ function cityFromGoogle(comps){
 window.__gmapsReady=function(){
   map=new google.maps.Map(document.getElementById('map'),{
     center:{lat:40,lng:-3.7}, zoom:6, mapId:'DEMO_MAP_ID',
-    disableDefaultUI:true, zoomControl:true, clickableIcons:false, gestureHandling:'greedy'
+    disableDefaultUI:true, zoomControl:true, clickableIcons:true, gestureHandling:'greedy'
   });
   iw=new google.maps.InfoWindow();
-  map.addListener('click',e=>onMapTap(e.latLng.lat(), e.latLng.lng()));
+  map.addListener('click',e=>{
+    // POI 아이콘을 탭하면 e.placeId로 '탭한 그 장소'가 특정된다. 구글 기본 정보창은 막고 우리 흐름으로.
+    if(e.placeId){ if(e.stop) e.stop(); onMapTap(e.latLng.lat(), e.latLng.lng(), e.placeId); return; }
+    onMapTap(e.latLng.lat(), e.latLng.lng());
+  });
   map.addListener('dblclick',cancelMapTap);        // 더블탭 확대를 장소 추가로 오인하지 않게
   map.addListener('drag',cancelMapTap);            // 패닝 중 발생한 탭은 무시
   map.addListener('rightclick',e=>{ if(!pickMode) addSpotAt(e.latLng.lat(), e.latLng.lng()); });

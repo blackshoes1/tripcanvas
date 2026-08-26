@@ -633,3 +633,100 @@ test('통합: 메뉴가 열려 있을 때의 지도 탭은 닫기일 뿐, 장소
   assert.ok(!w.document.getElementById('spotModalBg').classList.contains('show'), '메뉴 닫기용 탭은 추가로 이어지지 않아야');
   w.close();
 });
+
+// 구글 Places 스텁 — 탭한 POI(placeId)와 '주변 검색'을 구분해 무엇이 호출됐는지 기록한다
+function stubGooglePlaces(w, { nearbyName='주변에서 제일 유명한 곳', exactName='탭한 식당' } = {}){
+  w.eval(`
+    window.__calls={fetched:null, nearby:null};
+    class FakePlace {
+      constructor(o){ this.id=o&&o.id; this.lang=o&&o.requestedLanguage;
+        this.displayName={text:'${exactName}'}; this.formattedAddress='x'; this.addressComponents=[]; }
+      fetchFields(req){ window.__calls.fetched={id:this.id, lang:this.lang, fields:req&&req.fields}; return Promise.resolve({place:this}); }
+      static searchNearby(req){
+        window.__calls.nearby=JSON.parse(JSON.stringify({radius:req.locationRestriction.radius, rank:req.rankPreference||null}));
+        return Promise.resolve({places:[{displayName:{text:'${nearbyName}'}, formattedAddress:'y', addressComponents:[]}]});
+      }
+    }
+    window.google={maps:{importLibrary:async()=>({Place:FakePlace, SearchNearbyRankPreference:{DISTANCE:'DISTANCE', POPULARITY:'POPULARITY'}})}};
+  `);
+}
+
+test('통합: POI를 탭하면 주변 추측이 아니라 그 장소를 그대로 쓴다', { skip: noJsdom }, async () => {
+  const w = boot();
+  withTrip(w, `[{mode:'car',startAt:'09:00',spots:[]}]`);
+  stubGooglePlaces(w);
+
+  const got = await w.eval(`reverseSpot(39.5696,2.6502,'PLACE_ID_123')`);   // 해외(팔마) 좌표
+  assert.equal(got.name, '탭한 식당', '탭한 POI의 이름');
+  const calls = w.eval('JSON.stringify(window.__calls)');
+  const c = JSON.parse(calls);
+  assert.equal(c.fetched.id, 'PLACE_ID_123', '그 장소를 id로 직접 조회');
+  assert.equal(c.nearby, null, 'placeId가 있으면 주변 검색을 하지 않는다 — 추측 금지');
+  w.close();
+});
+
+test('통합: 빈 자리를 탭하면 가장 가까운 곳만 본다 (예전엔 반경 100m의 최고 인기 장소였다)', { skip: noJsdom }, async () => {
+  const w = boot();
+  withTrip(w, `[{mode:'car',startAt:'09:00',spots:[]}]`);
+  stubGooglePlaces(w);
+
+  const got = await w.eval(`reverseSpot(39.5696,2.6502)`);
+  assert.equal(got.name, '주변에서 제일 유명한 곳', 'POI 미특정이면 주변 검색으로 폴백');
+  const c = JSON.parse(w.eval('JSON.stringify(window.__calls)'));
+  assert.equal(c.rank ?? c.nearby.rank, 'DISTANCE', "'가장 인기'가 아니라 '가장 가까운'");
+  assert.ok(c.nearby.radius <= 50, '반경 100m는 너무 넓어 엉뚱한 가게가 잡혔다 — got ' + c.nearby.radius);
+  w.close();
+});
+
+test('통합: 탭한 POI의 placeId가 모달까지 전달된다', { skip: noJsdom }, async () => {
+  const w = boot();
+  withTrip(w, `[{mode:'car',startAt:'09:00',spots:[]}]`);
+  w.eval('window.__rev=null; reverseSpot=(lat,lng,pid)=>{ window.__rev={lat,lng,pid}; return Promise.resolve({}); };');
+
+  w.eval("onMapTap(39.5696,2.6502,'PLACE_ID_123')");
+  await new Promise(r=>setTimeout(r,320));
+  assert.equal(w.document.getElementById('spotPlaceId').value, 'PLACE_ID_123', '검색 결과와 동일하게 placeId 보존');
+  assert.equal(JSON.parse(w.eval('JSON.stringify(window.__rev)')).pid, 'PLACE_ID_123', '자동채움까지 관통');
+  w.close();
+});
+
+test('통합: 국내는 건물명보다 가까운 상호를 우선한다', { skip: noJsdom }, async () => {
+  const w = boot();
+  withTrip(w, `[{mode:'car',startAt:'09:00',spots:[]}]`);
+  w.eval(`
+    window.loadKakao=async()=>true;
+    window.kakao={maps:{
+      LatLng:function(a,b){this.a=a;this.b=b;},
+      services:{
+        Status:{OK:'OK'}, SortBy:{DISTANCE:'DISTANCE'},
+        Geocoder:function(){ this.coord2Address=(lng,lat,cb)=>cb([{address:{region_1depth_name:'서울특별시',region_2depth_name:'중구'},
+          road_address:{building_name:'○○빌딩'}}],'OK'); },
+        Places:function(){ this.categorySearch=(code,cb,opt)=>{
+          if(code==='FD6') cb([{place_name:'탭한 국밥집',distance:'12'}],'OK'); else cb([],'ZERO_RESULT'); }; }
+      }}};
+  `);
+  const got = await w.eval(`reverseSpot(37.5665,126.9780)`);
+  assert.equal(got.name, '탭한 국밥집', '건물명(○○빌딩)이 아니라 탭한 가게');
+  assert.equal(got.city, '서울', '광역시 접미사 제거');
+  w.close();
+});
+
+test('통합: 국내에서 가까운 상호가 없으면 건물명으로 폴백한다', { skip: noJsdom }, async () => {
+  const w = boot();
+  withTrip(w, `[{mode:'car',startAt:'09:00',spots:[]}]`);
+  w.eval(`
+    window.loadKakao=async()=>true;
+    window.kakao={maps:{
+      LatLng:function(){},
+      services:{
+        Status:{OK:'OK'}, SortBy:{DISTANCE:'DISTANCE'},
+        Geocoder:function(){ this.coord2Address=(lng,lat,cb)=>cb([{address:{region_1depth_name:'경기도',region_2depth_name:'성남시'},
+          road_address:{building_name:'○○빌딩'}}],'OK'); },
+        Places:function(){ this.categorySearch=(code,cb)=>cb([],'ZERO_RESULT'); }
+      }}};
+  `);
+  const got = await w.eval(`reverseSpot(37.4,127.1)`);
+  assert.equal(got.name, '○○빌딩');
+  assert.equal(got.city, '성남');
+  w.close();
+});
