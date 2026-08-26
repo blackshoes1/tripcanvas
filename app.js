@@ -594,12 +594,14 @@ function cityColors(){
   return m;
 }
 // 커스텀 핀 DOM (AdvancedMarker content) — 기존 .num-icon 스타일 재사용
-function mkPin(color,label,opt){
+function mkPin(color,label,opt,cat){
   const size = opt?22:27;
   const el=document.createElement('div');
   el.className='num-icon';
   el.style.cssText=`width:${size}px;height:${size}px;background:${color};${opt?'opacity:.75;':''}`;
   el.textContent=label??'';
+  // 카테고리는 배지로 붙인다 — 번호(동선 순서)를 대체하지 않게
+  if(cat){ const b=document.createElement('span'); b.className='pinCat'; b.textContent=cat.icon; el.appendChild(b); }
   return el;
 }
 function dateOf(di){
@@ -894,14 +896,22 @@ function dayRoute(day){
   return {sec,m,taxi};
 }
 
+// 목록·여행 모드·이미지에서 이름 앞에 붙일 카테고리 아이콘 (미지정이면 빈 문자열)
+function catPrefix(s){ const c=spotCatOf(s); return c? c.icon+' ' : ''; }
+// 카테고리 선택지는 SPOT_CATS 하나만 보고 만든다 (HTML에 중복 정의하지 않게)
+(function(){ const sel=document.getElementById('spotCat'); if(!sel) return;
+  sel.innerHTML='<option value="">미지정 (이름으로 자동 추측)</option>'
+    + SPOT_CATS.map(c=>`<option value="${c.id}">${c.icon} ${c.name}</option>`).join('');
+})();
 // 마커 하나 추가 (엔진 공용) — markers에 {spot, open} 인터페이스로 저장. 숙소는 🏠 핀
 function addPin(s,di,si,c){
-  const label=s.stay?'🏠':(si+1);
-  const html=`<h3>${esc(s.name)}</h3><span class="badge" style="background:${c}">Day ${di+1} · ${dateOf(di)}</span>`+
+  const cat=spotCatOf(s);
+  const label=si+1;
+  const html=`<h3>${cat?cat.icon+' ':''}${esc(s.name)}</h3><span class="badge" style="background:${c}">Day ${di+1} · ${dateOf(di)}</span>`+
     `<div>${esc(s.desc).replace(/\n/g,'<br>')}</div>`+
     `<div style="margin-top:6px"><a href="${escAttr(extMapLink(s).href)}" target="_blank" rel="noopener">${extMapLink(s).label}</a> &nbsp; `+
     `<a href="#" onclick="openSpotModal(${di},${si});return false;">✎ 편집</a></div>`;
-  const pin=mkPin(c,label,s.opt); pin.title=s.name;
+  const pin=mkPin(c,label,s.opt,cat); pin.title=cat?`${cat.icon} ${cat.name} · ${s.name}`:s.name;
   const h=ME().marker(+s.lat,+s.lng,pin,()=>open());
   const open=()=>{ ME().openPopup(html, +s.lat, +s.lng, h); setSheetSnap('half'); selectSpotCard(di,si); };
   markers.push({spot:s, open, h});
@@ -1337,6 +1347,7 @@ function renderSidebar(){
       // 예약 시각이 도착 예상시각(ETA)보다 이르면 경고 (예약 놓칠 위험)
       const bookMin=s.bookAt?parseHM(s.bookAt):null;
       const bookWarn=(bookMin!=null && etas[si]-bookMin>5);   // ETA가 예약보다 5분 이상 늦음
+      const cat=spotCatOf(s);
       const meta=[];
       if(s.stay) meta.push(`<span class="spotMetaItem stayMeta">🏠 숙소${stayNights(s)>1?` · ${stayNights(s)}박`:''}</span>`);
       if(s.opt) meta.push(`<span class="spotMetaItem opt">선택 코스</span>`);
@@ -1383,7 +1394,7 @@ function renderSidebar(){
       spotsHtml+=`<div class="spot" data-di="${di}" data-si="${si}" style="--c:${dotC}">
         <div class="spotMain">
           <span class="spotTime eta${tl[si].fixed?' fixed':''}" title="${escAttr(etaTip)}">${tl[si].fixed?'📌':''}${hm(etas[si])}${showConflict?'⚠️':''}</span>
-          <button type="button" class="spotIdentity nm" onclick="focusSpot(${di},${si})" title="${escAttr(s.name)}" aria-label="${escAttr(s.name)} 지도에서 보기"><span class="spotOrder">${si+1}.</span><span class="spotName">${esc(s.name)}</span></button>
+          <button type="button" class="spotIdentity nm" onclick="focusSpot(${di},${si})" title="${escAttr(s.name)}" aria-label="${escAttr(cat?`${cat.name} ${s.name}`:s.name)} 지도에서 보기"><span class="spotOrder">${si+1}.</span>${cat?`<span class="spotCat" title="${escAttr(cat.name)}" aria-hidden="true">${cat.icon}</span>`:''}<span class="spotName">${esc(s.name)}</span></button>
           <details class="actionMenu" onclick="event.stopPropagation()"><summary aria-label="${escAttr(s.name)} 작업 메뉴">⋮</summary><div class="actionMenuPanel">
           <button class="iconb mvup" onclick="moveSpot(${di},${si},-1)" title="위로">↑ <span>위로</span></button>
           <button class="iconb mvdown" onclick="moveSpot(${di},${si},1)" title="아래로">↓ <span>아래로</span></button>
@@ -1596,6 +1607,7 @@ window.openSpotModal=(di,si)=>{
   _cityPrefill = s.city||'';   // 이후 자동 채움이 이 프리필 값은 덮어써도 됨(사용자 입력은 아님)
   _namePrefill = '';           // 기존 이름은 사용자 값 → 자동 채움이 안 덮게(빈 값일 때만 채움)
   document.getElementById('spotDesc').value=s.desc||'';
+  document.getElementById('spotCat').value=s.cat||'';
   document.getElementById('spotOpt').checked=!!s.opt;
   document.getElementById('spotStay').checked=!!s.stay;
   document.getElementById('spotNights').value=stayNights(s);
@@ -1652,6 +1664,7 @@ document.getElementById('spotSave').onclick=()=>{
     bookAt:normHM(document.getElementById('spotBookAt').value)||'',
     bookUrl:document.getElementById('spotBookUrl').value.trim(),
     placeId:(document.getElementById('spotPlaceId').value||undefined),   // 예약 가격 추적의 호텔 identity
+    cat:(document.getElementById('spotCat').value||undefined),           // 미지정이면 이름 추론에 맡긴다
     hours:_pickedHours||undefined,lat,lng};
   const targetDay=parseInt(document.getElementById('spotDay').value);
   const isEdit=editing.si>=0;
@@ -1708,6 +1721,8 @@ async function doSearch(){
         if(it.city) fillCityValue(it.city);              // 결과가 아는 도시로 즉시 채움(신뢰성↑)
         else fillCityFromCoords(it.lat, it.lng, false);  // 없으면 역지오코딩 폴백
         _pickedHours = it.hours||null;   // 저장 시 spot.hours로 반영
+        if(it.cat) document.getElementById('spotCat').value=it.cat;   // 검색 결과가 아는 분류를 그대로 채움
+
         res.innerHTML='';
       };
       res.appendChild(d);
@@ -2545,7 +2560,7 @@ function buildTripCard(){
     html+=`<div style="font-size:13.5px;font-weight:700">Day ${di+1} · ${esc(day.title)} <span style="color:#9aa5c4;font-weight:400;font-size:11px">${dateOf(di)}</span></div>`;
     if(day.drive) html+=`<div style="font-size:11px;color:#f6bd60;margin-top:3px">${esc(day.drive)}</div>`;
     day.spots.forEach((s,si)=>{
-      html+=`<div style="font-size:12px;margin-top:5px"><span style="color:#f6bd60;font-weight:700;font-size:10.5px">${hm(etas[si])}</span> ${si+1}. ${s.stay?'🏠 ':''}${esc(s.name)}${s.opt?' <span style="color:#8892b0;font-size:10.5px">(선택)</span>':''}</div>`;
+      html+=`<div style="font-size:12px;margin-top:5px"><span style="color:#f6bd60;font-weight:700;font-size:10.5px">${hm(etas[si])}</span> ${si+1}. ${catPrefix(s)}${esc(s.name)}${s.opt?' <span style="color:#8892b0;font-size:10.5px">(선택)</span>':''}</div>`;
     });
     if(day.note) html+=`<div style="font-size:10.5px;color:#9aa5c4;margin-top:6px;white-space:pre-wrap">📝 ${esc(day.note)}</div>`;
     html+='</div>';
@@ -2681,7 +2696,7 @@ async function kakaoSearch(q, near, limit){
     try{
       new kakao.maps.services.Places().keywordSearch(q,(data,status)=>{
         const S=kakao.maps.services.Status;
-        if(status===S.OK && data) return res({list:data.map(d=>({name:d.place_name, addr:d.road_address_name||d.address_name||'', city:cityFromKoreanAddr(d.address_name||d.road_address_name||''), lat:+d.y, lng:+d.x})), err:null});
+        if(status===S.OK && data) return res({list:data.map(d=>({name:d.place_name, addr:d.road_address_name||d.address_name||'', city:cityFromKoreanAddr(d.address_name||d.road_address_name||''), lat:+d.y, lng:+d.x, cat:catFromKakao(d.category_group_code)||undefined})), err:null});
         if(status===S.ZERO_RESULT) return res({list:[], err:null});   // 진짜 결과 없음(오류 아님)
         console.warn('kakao 검색 오류 status:', status);
         res({list:[], err:'error'});
@@ -2712,11 +2727,12 @@ async function googlePlaces(q, near, limit){
   if(!map) return {list:[], err:'network'};   // 지도 SDK 미로드
   try{
     const {Place}=await google.maps.importLibrary('places');
-    const req={textQuery:q, fields:['id','displayName','formattedAddress','addressComponents','location','regularOpeningHours'], maxResultCount:limit||5, language:'en'};   // 해외 장소는 영문명
+    const req={textQuery:q, fields:['id','displayName','formattedAddress','addressComponents','location','regularOpeningHours','primaryType','types'], maxResultCount:limit||5, language:'en'};   // 해외 장소는 영문명 · 타입은 카테고리 분류용
     if(near) req.locationBias={center:near, radius:30000};
     const {places}=await Place.searchByText(req);
     return {list:(places||[]).map(p=>({name:placeName(p), addr:p.formattedAddress||'', city:cityFromGoogle(p.addressComponents),
-      lat:p.location.lat(), lng:p.location.lng(), hours:normHours(p.regularOpeningHours), placeId:p.id||undefined})), err:null};   // placeId: 호텔 identity 매칭용(§3)
+      lat:p.location.lat(), lng:p.location.lng(), hours:normHours(p.regularOpeningHours), placeId:p.id||undefined,
+      cat:catFromGoogle(p.types, p.primaryType)||undefined})), err:null};   // placeId: 호텔 identity 매칭용(§3)
   }catch(e){ const code=classifySearchErr(e); console.warn('Places 검색 오류['+code+']:', (e&&e.message)||e); return {list:[], err:code}; }
 }
 // 도시명 → 앵커 좌표 (Google Geocoder, 전 세계) — 캐시
@@ -2908,7 +2924,7 @@ function renderTravel(di){
   if(today){ for(let i=0;i<etas.length;i++) if(etas[i]<=nowMin) currentIndex=i; }
   const current=d.spots[currentIndex], currentLink=hasLoc(current)?extMapLink(current):null;
   const currentFacts=[`${hm(etas[currentIndex])} 도착 예상`,current.bookAt?`예약 ${current.bookAt}`:'예약 없음',current.stayMin!=null?`체류 ${current.stayMin}분`:null].filter(Boolean);
-  currentBox.innerHTML=`<div class="travelKicker">${today?'현재 장소':'선택한 날의 시작 장소'}</div><div class="travelPlace">${current.stay?'🏠 ':''}${esc(current.name)}</div><div class="travelFacts">${currentFacts.map(esc).join(' · ')}${current.desc?`<br>${esc(current.desc)}`:''}</div><div class="travelActions">${currentLink?`<a href="${escAttr(currentLink.href)}" target="_blank" rel="noopener">길찾기</a>`:''}${safeUrl(current.bookUrl)?`<a href="${escAttr(safeUrl(current.bookUrl))}" target="_blank" rel="noopener">예약 정보</a>`:''}</div>`;
+  currentBox.innerHTML=`<div class="travelKicker">${today?'현재 장소':'선택한 날의 시작 장소'}</div><div class="travelPlace">${catPrefix(current)}${esc(current.name)}</div><div class="travelFacts">${currentFacts.map(esc).join(' · ')}${current.desc?`<br>${esc(current.desc)}`:''}</div><div class="travelActions">${currentLink?`<a href="${escAttr(currentLink.href)}" target="_blank" rel="noopener">길찾기</a>`:''}${safeUrl(current.bookUrl)?`<a href="${escAttr(safeUrl(current.bookUrl))}" target="_blank" rel="noopener">예약 정보</a>`:''}</div>`;
   const next=d.spots[currentIndex+1]; nextBox.hidden=false;
   if(next){
     const mode=legModeOf(d,next),route=(hasLoc(current)&&hasLoc(next))?requestLeg(current,next,mode,mode==='transit'?planDepartISO(iso,legDepartMinute(d,tl,currentIndex+1),ctx.timeZone):null,ctx.timeZone):null;
@@ -2939,7 +2955,7 @@ function renderTravel(di){
     const tmeta=[];
     if(s.bookAt) tmeta.push(`🎫 예약 ${esc(s.bookAt)}`);
     if(s.cost) tmeta.push(`💳 ${costLabel(s.cost,s.cur)}`);
-    div.innerHTML=`<div class="n"><span class="eta">${hm(etas[si])}</span>${si+1}. ${s.stay?'🏠 ':''}${esc(s.name)}${s.opt?' <span style="font-size:11px;color:#8892b0">(선택)</span>':''}</div>`+
+    div.innerHTML=`<div class="n"><span class="eta">${hm(etas[si])}</span>${si+1}. ${catPrefix(s)}${esc(s.name)}${s.opt?' <span style="font-size:11px;color:#8892b0">(선택)</span>':''}</div>`+
       (tmeta.length?`<div class="d" style="color:#c9b6e8">${tmeta.join(' · ')}</div>`:'')+
       `<div class="d">${esc(s.desc).replace(/\n/g,'<br>')}</div>`+
       ((bu=>bu?`<a href="${escAttr(bu)}" target="_blank" rel="noopener" style="background:#7c5cff;margin-right:6px">🎫 예약 열기</a>`:'')(safeUrl(s.bookUrl)))+
