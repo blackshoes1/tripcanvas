@@ -432,3 +432,45 @@ test('normalizeSpot — 알 수 없는 카테고리는 버리고 유효한 값�
   assert.equal('cat' in t.days[0].spots[1], false, '유입 데이터의 이상한 분류는 제거');
   assert.equal('cat' in t.days[0].spots[2], false);
 });
+
+test('dayReturnStay — 그날 숙소로 동선을 닫되, 이미 닫혔거나 숙소가 없으면 안 붙인다', () => {
+  const P = (lat) => ({lat, lng:1});
+  // 그날 등록한 숙소가 중간에 있으면 그 숙소로 복귀
+  const own = [{title:'',spots:[
+    Object.assign({name:'공항'},P(1)),
+    Object.assign({name:'호텔',stay:true},P(2)),
+    Object.assign({name:'카페'},P(3))
+  ]}];
+  assert.equal(L.dayReturnStay(own,0).name,'호텔');
+
+  // 이미 숙소로 끝나면 덧붙이지 않는다
+  const closed = [{title:'',spots:[
+    Object.assign({name:'카페'},P(1)),
+    Object.assign({name:'호텔',stay:true},P(2))
+  ]}];
+  assert.equal(L.dayReturnStay(closed,0), null);
+
+  // 연박 중이면 그날 숙소가 없어도 전날 숙소로 복귀
+  const nights = [
+    {title:'',spots:[Object.assign({name:'호텔',stay:true,nights:3},P(2))]},
+    {title:'',spots:[Object.assign({name:'박물관'},P(5))]}
+  ];
+  assert.equal(L.dayReturnStay(nights,1).name,'호텔');
+
+  // 숙소가 없는 날(출국일 등)엔 아무것도 안 붙인다
+  const none = [{title:'',startPolicy:'none',spots:[Object.assign({name:'공항'},P(9))]}];
+  assert.equal(L.dayReturnStay(none,0), null);
+
+  // 숙소가 여럿이면 마지막(=그날 실제로 묵는 곳)으로
+  const moved = [{title:'',spots:[
+    Object.assign({name:'전 호텔',stay:true},P(1)),
+    Object.assign({name:'새 호텔',stay:true},P(2)),
+    Object.assign({name:'야경'},P(3))
+  ]}];
+  assert.equal(L.dayReturnStay(moved,0).name,'새 호텔');
+
+  // 좌표 없는 장소만 있거나 빈 날
+  assert.equal(L.dayReturnStay([{title:'',spots:[]}],0), null);
+  assert.equal(L.dayReturnStay([{title:'',spots:[{name:'좌표없음'}]}],0), null);
+  assert.equal(L.dayReturnStay(null,0), null);
+});

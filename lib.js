@@ -289,6 +289,24 @@
     return null;
   }
 
+  /**
+   * 그 날 마지막에 '돌아갈 숙소' — 동선을 닫기 위한 표시·계산용이며 데이터에는 쓰지 않는다.
+   * 그날 등록한 숙소 → 없으면 연박으로 그날도 묵고 있는 숙소. 이미 그 숙소로 끝나면(=동선이 닫혀 있으면) null.
+   * 숙소를 못 찾으면 null — 출국일·야간열차처럼 돌아갈 곳이 없는 날엔 아무것도 덧붙이지 않는다.
+   * @param {any[]} days @param {number} di @returns {any|null}
+   */
+  function dayReturnStay(days, di){
+    const day = days && days[di]; if(!day) return null;
+    const loc = ((day.spots)||[]).filter(hasCoord);
+    if(!loc.length) return null;
+    const own = loc.filter((/**@type{any}*/s)=>s.stay).pop();
+    const carried = dayStartAnchor(days, di);
+    const stay = own || ((carried && carried.stay) ? carried : null);
+    if(!stay) return null;
+    if(loc[loc.length-1] === stay) return null;   // 이미 숙소로 끝남
+    return stay;
+  }
+
   // ── 데이터 정규화 (가져오기·공유·클라우드·로컬 유입 방어) ──
   // 알려진 필드는 안전한 타입으로 강제/기본값 지정하고 잘못된 값은 제거해 렌더 크래시를 막는다.
   // 알 수 없는 필드는 보존(데이터 손실 방지). 현재 스키마 버전.
@@ -585,7 +603,7 @@
     return spotCat(catFromName(s.name));
   }
 
-  const TC={SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,inKorea,simplifyName,parseDirect,parseMoney,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,computeTimeline,dayStartAnchor,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
+  const TC={SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,inKorea,simplifyName,parseDirect,parseMoney,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,computeTimeline,dayStartAnchor,dayReturnStay,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
   if(typeof module!=='undefined' && module.exports){ module.exports=TC; }   // Node (테스트)
   else { const r=/**@type {any}*/(root); for(const k in TC) r[k]=/**@type {any}*/(TC)[k]; }   // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);
