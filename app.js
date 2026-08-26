@@ -27,7 +27,7 @@ try{ legacySynced=JSON.parse(localStorage.getItem(SYNC_KEY))||[]; }catch(e){}
 let syncMeta=TC_SYNC.loadMeta(localStorage.getItem(SYNC_META_KEY),legacySynced);
 let suppressCloudOnce=false;
 function persistSyncMeta(){ try{ localStorage.setItem(SYNC_META_KEY,JSON.stringify(syncMeta)); }catch(e){} }
-function syncEntry(id){ return syncMeta[id]||(syncMeta[id]={revision:null,status:'new',op:''}); }
+function syncEntry(id){ return syncMeta[id]||(syncMeta[id]={revision:null,status:'new',op:'',hash:''}); }
 
 function seedSpain(){
   return {
@@ -2911,9 +2911,13 @@ const SUPA_KEY='sb_publishable_2C-n1YFvE9Cw9B7L7B6Trw_XO3Val5q';
 if(window.supabase){
   sb = window.supabase.createClient(SUPA_URL, SUPA_KEY);
   sb.auth.onAuthStateChange((_e, session)=>{
-    user = session?.user || null;
+    const next = session?.user || null;
+    // 로그인 병합은 "계정이 바뀐 순간"에만 돈다. 토큰 자동 갱신(TOKEN_REFRESHED)에도 병합을 돌리면
+    // 오래 열어둔 탭이 몇 시간 뒤 제 로컬본을 다시 올려 다른 기기의 최신 편집을 덮어썼다.
+    const switched = (next&&next.id) !== (user&&user.id);
+    user = next;
     updateAuthUI();
-    if(user) syncOnLogin();
+    if(user && switched) syncOnLogin();
   });
 }
 function updateAuthUI(){
@@ -2932,7 +2936,15 @@ function cloudSyncActive(delay){
   if(suppressCloudOnce){ suppressCloudOnce=false; return; }
   if(!sb||!user) return;
   clearTimeout(cloudRetryT); clearTimeout(syncTimer);
-  syncTimer=setTimeout(()=>{ const t=trip(); if(t) syncTripCloud(t); },delay!=null?delay:800);
+  syncTimer=setTimeout(syncStaleTrips,delay!=null?delay:800);
+}
+// 활성 여행만 올리면 안 된다: 편집 직후 다른 여행으로 전환하면 디바운스가 취소돼 그 편집이 영영 안 올라가고,
+// 로컬만 앞선 채 revision은 그대로라 다음 병합이 그걸 "깨끗한 상태"로 착각한다. 지문이 밀린 여행을 모두 올린다.
+function syncStaleTrips(){
+  for(const t of store.trips){
+    const entry=syncMeta[t.id];
+    if(!entry || entry.hash!==TC_SYNC.hashTrip(t)) syncTripCloud(t);
+  }
 }
 async function syncTripCloud(t,opts){
   if(!sb||!user||!t) return;
@@ -2944,17 +2956,19 @@ async function syncTripCloud(t,opts){
     const row=await rpcRow('sync_trip',{p_client_id:t.id,p_data:t,p_expected_revision:entry.revision,p_force:force});
     if(!row) throw new Error('empty sync response');
     if(row.conflict){
-      entry.revision=Number(row.revision)||entry.revision; entry.status='conflict'; persistSyncMeta();
-      enqueueSyncConflict({kind:row.deleted_at?'remote-deleted':'changed-both',local:t,remote:row.data||null,revision:entry.revision,deleted_at:row.deleted_at||null});
+      // entry.revision(로컬이 파생된 base)은 그대로 둔다 — 서버 revision을 stamp하면 미해결 충돌이
+      // 다음 병합에서 "안전한 업로드"로 둔갑해 원격본을 조용히 날린다.
+      entry.status='conflict'; persistSyncMeta();
+      enqueueSyncConflict({kind:row.deleted_at?'remote-deleted':'changed-both',local:t,remote:row.data||null,revision:Number(row.revision)||entry.revision,deleted_at:row.deleted_at||null});
       return;
     }
-    entry.revision=Number(row.revision)||1; entry.status='clean'; entry.op=''; persistSyncMeta();
+    entry.revision=Number(row.revision)||1; entry.status='clean'; entry.op=''; entry.hash=TC_SYNC.hashTrip(t); persistSyncMeta();
     cloudSnapshot(t,entry.revision);
   }catch(e){
     entry.status='error'; persistSyncMeta();
     reportOperationalError('cloud.sync',e);
     clearTimeout(cloudRetryT);
-    cloudRetryT=setTimeout(()=>syncTripCloud(t),15000);
+    cloudRetryT=setTimeout(syncStaleTrips,15000);   // 여러 여행이 함께 실패해도 재시도에서 빠지지 않게 밀린 것 전부
     toast('클라우드 저장 실패 — 로컬 편집은 보존됨','#e63946',{label:'재시도',fn:()=>syncTripCloud(t)});
   }
 }
@@ -3018,8 +3032,8 @@ async function performCloudDelete(clientId,op,deletedTrip){
   try{
     const row=await rpcRow('tombstone_trip',{p_client_id:clientId,p_expected_revision:entry.revision,p_force:false});
     if(row&&row.conflict){
-      entry.revision=Number(row.revision)||entry.revision; entry.status='conflict'; persistSyncMeta();
-      enqueueSyncConflict({kind:row.deleted_at?'remote-deleted':'changed-both',local:deletedTrip||null,remote:row.data||null,revision:entry.revision,deleted_at:row.deleted_at||null});
+      entry.status='conflict'; persistSyncMeta();   // base revision 유지 (위 syncTripCloud와 같은 이유)
+      enqueueSyncConflict({kind:row.deleted_at?'remote-deleted':'changed-both',local:deletedTrip||null,remote:row.data||null,revision:Number(row.revision)||entry.revision,deleted_at:row.deleted_at||null});
       return;
     }
     const result=TC_SYNC.finishDelete(syncMeta,clientId,op,Number(row&&row.revision)||entry.revision||1); persistSyncMeta();
@@ -3054,7 +3068,7 @@ function replaceWithRemote(c){
   if(remote&&idx<0&&!c.deleted_at) store.trips.push(remote);
   if(!store.trips.length) store.trips=[{id:uid(),name:'새 여행',start:'',days:[{title:'',drive:'',note:'',spots:[]}]}];
   if(!store.trips.find(t=>t.id===store.activeId)) store.activeId=store.trips[0].id;
-  if(c.local) syncMeta[c.local.id]={revision:c.revision,status:c.deleted_at?'tombstoned':'clean',op:''};
+  if(c.local) syncMeta[c.local.id]={revision:c.revision,status:c.deleted_at?'tombstoned':'clean',op:'',hash:remote?TC_SYNC.hashTrip(remote):''};
   persistSyncMeta(); suppressCloudOnce=true; activeDay=0; render(); return true;
 }
 document.getElementById('syncUseCloud').onclick=()=>{ if(!replaceWithRemote(currentSyncConflict)) return; currentSyncConflict=null; showNextSyncConflict(); };

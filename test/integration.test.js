@@ -840,3 +840,37 @@ test('통합: 지도가 크기를 못 잡아 bounds가 한 점이면 중심 반�
   assert.equal(w.eval('poiOverlays.length'), 1, '폴백으로도 장소가 깔린다');
   w.close();
 });
+
+test('통합: 충돌 응답은 로컬 base revision을 서버 값으로 덮어쓰지 않는다', { skip: noJsdom }, async () => {
+  const w=boot();
+  w.eval(`user={id:'u1'}; syncMeta.c1={revision:3,status:'clean',op:'',hash:''};
+    sb={rpc:async()=>({data:[{applied:false,conflict:true,revision:9,data:{id:'c1',name:'cloud',days:[{spots:[]}]},deleted_at:null}],error:null})};`);
+  await w.eval(`syncTripCloud({id:'c1',name:'local',days:[{spots:[]}]})`);
+  assert.equal(w.eval(`syncMeta.c1.status`),'conflict');
+  assert.equal(w.eval(`syncMeta.c1.revision`),3,'base revision 유지 — 다음 병합이 조용한 덮어쓰기로 바뀌지 않게');
+  assert.equal(w.eval(`currentSyncConflict && currentSyncConflict.revision`),9,'충돌 카드에는 서버 revision을 넘긴다');
+  w.close();
+});
+
+test('통합: 지금 보고 있지 않은 여행의 편집도 클라우드로 올라간다', { skip: noJsdom }, async () => {
+  const w=boot();
+  const sent=await w.eval(`(async()=>{
+    window.__sent=[];
+    store.trips=[{id:'A',name:'A',days:[{spots:[]}]},{id:'B',name:'B',days:[{spots:[]}]}];
+    store.activeId='B';
+    syncMeta={
+      A:{revision:1,status:'clean',op:'',hash:'stale'},
+      B:{revision:1,status:'clean',op:'',hash:TC_SYNC.hashTrip(store.trips[1])}
+    };
+    user={id:'u1'};
+    // 성공 경로는 버전 스냅샷까지 타므로 from() 체인도 최소한으로 흉내낸다
+    const q={insert:async()=>({error:null}),select(){return this},eq(){return this},order(){return this},range:async()=>({data:[],error:null}),delete(){return this},in:async()=>({error:null})};
+    sb={from:()=>q,rpc:async(n,a)=>{ window.__sent.push(a.p_client_id); return {data:[{applied:true,conflict:false,revision:2,data:null,deleted_at:null}],error:null}; }};
+    syncStaleTrips();
+    await new Promise(r=>setTimeout(r,0));
+    return window.__sent.join(',');
+  })()`);
+  assert.equal(sent,'A','활성 여행(B)이 아니어도 지문이 밀린 A가 올라간다');
+  assert.equal(w.eval(`syncMeta.A.hash`),w.eval(`TC_SYNC.hashTrip(store.trips[0])`),'성공 후 지문을 기록해 중복 업로드를 막는다');
+  w.close();
+});
