@@ -1862,7 +1862,7 @@ async function checkBookingPrice(id,opts){
   catch(e){
     const code=(e&&e.code)||'NETWORK_ERROR', detail=(e&&e.detail)||'';
     // 저장된 매핑이 잘못되면 검색 단계를 건너뛴 채 매번 같은 실패가 난다 → 매물 관련 실패면 매핑을 버려 다음 조회에서 다시 찾게 한다
-    if(b.ptoken && (code==='PROPERTY_NOT_FOUND'||code==='NO_AVAILABILITY'||code==='INVALID_RESPONSE')){ delete b.ptoken; save(); }
+    if(b.ptoken && (code==='PROPERTY_NOT_FOUND'||code==='NO_AVAILABILITY'||code==='INVALID_RESPONSE'||code==='PROVIDER_ERROR')){ delete b.ptoken; save(); }
     rec.err={code, at:new Date().toISOString(), detail:detail||undefined};   // 실패해도 기존 관측·오퍼는 보존(§36) — 최신 가격으로 오인 금지
     savePrices(); return null;
   }

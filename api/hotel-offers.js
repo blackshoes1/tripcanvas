@@ -141,7 +141,7 @@ function serpapiAdapter(env, fetchImpl) {
   return {
     id: 'google-hotels', via: 'serpapi', role: 'discovery',
     status() { return key ? 'CONNECTED' : 'AUTH_REQUIRED'; },
-    async search(q) {
+    async search(q, retriedWithoutToken) {
       const base = {
         check_in_date: q.checkIn, check_out_date: q.checkOut,
         adults: String(q.adults), currency: q.currency, gl: q.gl, hl: q.hl
@@ -185,8 +185,17 @@ function serpapiAdapter(env, fetchImpl) {
         }
         token = scored[0].token; confidence = scored[0].score; matchedName = scored[0].name;
       }
-      const detail = await call({ ...base, property_token: token });
-      if (typeof detail.error === 'string') throw bodyError(detail.error);
+      const canRetry = !!q.ptoken && !retriedWithoutToken && !!q.name;   // 캐시 토큰으로 실패한 경우에만 재검색(무한루프 방지)
+      let detail;
+      try { detail = await call({ ...base, property_token: token }); }
+      catch (error) {
+        if (canRetry) return this.search({ ...q, ptoken: undefined }, true);   // 무효해진 캐시 토큰 → 이름으로 다시 찾는다
+        throw error;
+      }
+      if (typeof detail.error === 'string') {
+        if (canRetry) return this.search({ ...q, ptoken: undefined }, true);
+        throw bodyError(detail.error);
+      }
       const offers = normalizeDetail(detail, q.currency);
       if (!offers.length) throw Object.assign(new Error('empty'), { code: 'NO_AVAILABILITY' });
       return {

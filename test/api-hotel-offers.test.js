@@ -215,3 +215,32 @@ test('validRequest — 거부 사유를 구분해 돌려준다(원인 없는 inv
   assert.equal(V({ ...ok, checkIn: day(7), checkOut: day(5) }).invalid, 'INVALID_DATE_ORDER', '역순도 거부');
   assert.equal(V(ok).invalid, undefined, '정상 요청은 통과');
 });
+
+test('무효해진 캐시 토큰(HTTP 400)은 이름으로 다시 찾아 회복한다', async () => {
+  const day = (d) => new Date(Date.now() + d * 86400000).toISOString().slice(0, 10);
+  const calls = [];
+  // 캐시된 property_token은 시간이 지나거나 조건이 바뀌면 무효가 되고 upstream이 400을 준다.
+  // 그대로 두면 그 예약은 영영 실패하므로 서버가 토큰을 버리고 재검색해야 한다.
+  const handler = createHandler({
+    env: { HOTEL_METASEARCH_API_KEY: 'k' },
+    fetchImpl: async (url) => {
+      calls.push(url);
+      if (url.includes('property_token=STALE')) return { ok: false, status: 400, text: async () => '{}' };
+      if (url.includes('property_token=')) return { ok: true, status: 200, text: async () => JSON.stringify({
+        name: 'Cap Rocat', prices: [{ source: 'Expedia', rate_per_night: { extracted_lowest: 300 } }] }) };
+      return { ok: true, status: 200, text: async () => JSON.stringify({
+        properties: [{ name: 'Cap Rocat', property_token: 'FRESH', gps_coordinates: { latitude: 39.4699, longitude: 2.7166 } }] }) };
+    }
+  });
+  const res = response();
+  await handler({ method: 'POST', headers: {}, socket: {},
+    body: JSON.stringify({ name: 'Cap Rocat', lat: 39.4699, lng: 2.7166, ptoken: 'STALE',
+      checkIn: day(5), checkOut: day(7), adults: 2, currency: 'KRW' }) }, res);
+
+  assert.equal(res.statusCode, 200, '무효 토큰이어도 회복해 성공한다');
+  const body = JSON.parse(res.body);
+  assert.equal(body.status, 'OK');
+  assert.equal(body.property.token, 'FRESH', '새 토큰으로 갱신되어 다음 조회부터 정상');
+  assert.equal(calls.length, 3, '실패한 상세 → 재검색 → 새 상세');
+  assert.ok(calls[1].includes('q='), '두 번째는 이름 검색');
+});
