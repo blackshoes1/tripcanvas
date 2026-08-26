@@ -114,7 +114,7 @@ function bodyError(message) {
     : /invalid api key|unauthorized|api_key/i.test(m) ? 'AUTH_ERROR'
     : 'PROVIDER_ERROR';
   if (code === 'PROVIDER_ERROR') console.log('[hotel-offers] upstream error:', m.slice(0, 120));   // 진단용 — 키·요청값 없음
-  return Object.assign(new Error('upstream_body'), { code });
+  return Object.assign(new Error('upstream_body'), { code, detail: m.slice(0, 160) });
 }
 
 // ── Metasearch adapter: serpapi (Google Hotels 결과 구조화 API) ──
@@ -127,7 +127,7 @@ function serpapiAdapter(env, fetchImpl) {
     const timer = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
     try {
       const upstream = await fetchImpl(`https://serpapi.com/search.json?${query}`, { signal: controller.signal });
-      if (!upstream.ok) throw Object.assign(new Error('upstream'), { code: upstreamCode(upstream.status) });
+      if (!upstream.ok) throw Object.assign(new Error('upstream'), { code: upstreamCode(upstream.status), detail: 'HTTP ' + upstream.status });
       const text = await upstream.text();
       if (Buffer.byteLength(text) > 2 * 1024 * 1024) throw Object.assign(new Error('big'), { code: 'INVALID_RESPONSE' });
       try { return JSON.parse(text); }
@@ -309,8 +309,14 @@ function createHandler({ fetchImpl = globalThis.fetch, env = process.env, now = 
         checkedAt: new Date().toISOString() });
     } catch (error) {
       const code = (error && error.code) || 'PROVIDER_ERROR';
+      // code가 없으면 upstream 분류 오류가 아니라 이 코드에서 난 예외다 — 흔적을 남겨야 다음에 원인을 찾는다
+      if (!(error && error.code)) console.error('[hotel-offers] unexpected:', String((error && error.stack) || (error && error.message) || error).slice(0, 300));
       const status = code === 'AUTH_REQUIRED' ? 503 : code === 'RATE_LIMIT' ? 429 : code === 'NETWORK_ERROR' ? 504 : code === 'PROPERTY_NOT_FOUND' || code === 'NO_AVAILABILITY' ? 404 : 502;
-      return send(res, status, { error: code });
+      // 원인 문구를 함께 돌려준다 — 화면에서 바로 보이면 "계속 실패"의 원인을 왕복 없이 알 수 있다.
+      // provider가 준 문구만 담고(키·요청값 아님), 혹시 모를 키 패턴은 지운다.
+      const detail = (error && typeof error.detail === 'string')
+        ? error.detail.replace(/[0-9a-f]{32,}/gi, '***').slice(0, 160) : undefined;
+      return send(res, status, detail ? { error: code, detail } : { error: code });
     }
   };
 }

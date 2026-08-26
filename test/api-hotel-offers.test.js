@@ -184,3 +184,23 @@ test('validRequest — 지난 체크인은 upstream을 호출하지 않고 거�
   assert.equal(V({ ...base, checkIn: day(1), checkOut: day(3) }).past, undefined);
   assert.equal(V({ ...base, checkIn: day(30), checkOut: day(32) }).past, undefined);
 });
+
+test('분류되지 않은 upstream 오류는 원인 문구를 함께 돌려준다(키 패턴은 마스킹)', async () => {
+  const day = (d) => new Date(Date.now() + d * 86400000).toISOString().slice(0, 10);
+  // SerpApi는 일부 오류를 HTTP 200 + 본문 error 로 준다. 분류에 실패하면 PROVIDER_ERROR가 되는데,
+  // 지금까지는 원인을 알 수 없어 "계속 실패"의 정체를 못 잡았다.
+  const handler = createHandler({
+    env: { HOTEL_METASEARCH_API_KEY: 'k' },
+    fetchImpl: async () => ({ ok: true, status: 200,
+      text: async () => JSON.stringify({ error: 'Something odd happened deadbeefdeadbeefdeadbeefdeadbeef99' }) })
+  });
+  const res = response();
+  await handler({ method: 'POST', headers: {}, socket: {},
+    body: JSON.stringify({ name: 'X', checkIn: day(5), checkOut: day(7), adults: 2, currency: 'KRW' }) }, res);
+
+  assert.equal(res.statusCode, 502);
+  const body = JSON.parse(res.body);
+  assert.equal(body.error, 'PROVIDER_ERROR');
+  assert.match(body.detail, /Something odd happened/, '원인 문구가 전달된다');
+  assert.ok(!/deadbeefdeadbeef/.test(body.detail), '키처럼 보이는 긴 hex는 마스킹');
+});

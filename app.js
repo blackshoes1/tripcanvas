@@ -1805,7 +1805,7 @@ const MetasearchHotelProvider={
       body:JSON.stringify({name:qName, placeId:idn.placeId, lat:idn.lat, lng:idn.lng, ptoken:b.ptoken,
         checkIn:b.start, checkOut:b.end, adults:b.adults||2, rooms:b.rooms||1, currency:b.cur||'KRW', country:'kr', language:'en'})});
     const js=await r.json().catch(()=>null);
-    if(!r.ok) throw Object.assign(new Error('offers_failed'),{code:(js&&js.error)||'PROVIDER_ERROR'});
+    if(!r.ok) throw Object.assign(new Error('offers_failed'),{code:(js&&js.error)||'PROVIDER_ERROR', detail:(js&&js.detail)||''});
     return js;
   }
 };
@@ -1856,10 +1856,10 @@ async function checkBookingPrice(id,opts){
   let resp;
   try{ resp=await job; }
   catch(e){
-    const code=(e&&e.code)||'NETWORK_ERROR';
+    const code=(e&&e.code)||'NETWORK_ERROR', detail=(e&&e.detail)||'';
     // 저장된 매핑이 잘못되면 검색 단계를 건너뛴 채 매번 같은 실패가 난다 → 매물 관련 실패면 매핑을 버려 다음 조회에서 다시 찾게 한다
     if(b.ptoken && (code==='PROPERTY_NOT_FOUND'||code==='NO_AVAILABILITY'||code==='INVALID_RESPONSE')){ delete b.ptoken; save(); }
-    rec.err={code, at:new Date().toISOString()};          // 실패해도 기존 관측·오퍼는 보존(§36) — 최신 가격으로 오인 금지
+    rec.err={code, at:new Date().toISOString(), detail:detail||undefined};   // 실패해도 기존 관측·오퍼는 보존(§36) — 최신 가격으로 오인 금지
     savePrices(); return null;
   }
   if(resp.status==='UNMATCHED'){
@@ -2079,7 +2079,8 @@ function renderBookingStatusBox(b){
   }
   else if(st&&st.state==='GOOD_PRICE') head=`<div class="pxState pxGood">🟢 좋은 가격 — 지금 예약을 유지하세요</div><div class="hint">현재 시세가 관측된 가격 중 최저 수준입니다</div>`;
   else if(st&&st.state==='ERROR'){ const ec=(st.err&&st.err.code)||'PROVIDER_ERROR';
-    head=`<div class="pxState pxWarnT">⚠️ 현재 가격을 확인하지 못했어요</div><div class="hint">${esc(PX_ERR_MSG[ec]||'')} <span class="opt">(${esc(ec)})</span></div>`; }
+    const ed=(st.err&&st.err.detail)?` <span class="opt">· ${esc(String(st.err.detail).slice(0,120))}</span>`:'';
+    head=`<div class="pxState pxWarnT">⚠️ 현재 가격을 확인하지 못했어요</div><div class="hint">${esc(PX_ERR_MSG[ec]||'')} <span class="opt">(${esc(ec)})</span>${ed}</div>`; }
   else head=`<div class="pxState pxWatch">🟡 가격 추적 중 — 아직 의미 있는 하락이 없어요</div>`;
   // 시세 조회는 1실 기준이라, 2실 이상 예약은 총액이 달라진다 — 절약액을 그대로 믿지 않도록 알린다
   if(!missing && b.track!==false && (b.rooms||1)>1)
