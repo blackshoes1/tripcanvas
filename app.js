@@ -26,6 +26,8 @@ let legacySynced=[];
 try{ legacySynced=JSON.parse(localStorage.getItem(SYNC_KEY))||[]; }catch(e){}
 let syncMeta=TC_SYNC.loadMeta(localStorage.getItem(SYNC_META_KEY),legacySynced);
 let suppressCloudOnce=false;
+let syncInFlight=0;      // 진행 중인 업로드 수 — 이 사이엔 syncMeta를 통째로 갈아끼우지 않는다
+let syncMetaStale=false; // 업로드 중이라 미뤄둔 syncMeta 갱신이 있는지
 function persistSyncMeta(){ try{ localStorage.setItem(SYNC_META_KEY,JSON.stringify(syncMeta)); }catch(e){} }
 function syncEntry(id){ return syncMeta[id]||(syncMeta[id]={revision:null,status:'new',op:'',hash:''}); }
 
@@ -128,6 +130,51 @@ document.addEventListener('keydown',e=>{
     if(e.target.matches('input,textarea,select'))return;   // 입력 중엔 브라우저 기본 동작
     e.preventDefault(); undo();
   }
+});
+
+// ───────────────── 탭 간 동기화 ─────────────────
+// 탭마다 store를 메모리에 들고 있어서, 다른 탭이 저장하는 순간 이 탭의 store는 낡은 것이 된다.
+// 그대로 두면 이 탭의 다음 편집이 상대 탭의 작업을 통째로 덮어쓴다. localStorage가 항상 최신이므로
+// 다른 탭의 기록(storage 이벤트는 쓴 탭 자신에겐 안 온다)을 감지하면 그걸 정본으로 받아들인다.
+let pendingExternalStore=null;
+// 입력·검색·지도 지정 중이면 화면을 뺏지 않는다 (SW 자동 새로고침과 같은 판정)
+function isBusyEditing(){
+  return pickMode || searching || _importing
+    || !!document.querySelector('.modalBg.show') || document.getElementById('travel').classList.contains('show');
+}
+// syncMeta도 탭마다 메모리 사본이다. 안 갱신하면 이 탭이 옛 revision으로 업로드해 헛충돌을 만든다.
+function refreshSyncMetaFromStorage(){
+  if(syncInFlight){ syncMetaStale=true; return; }   // 업로드 응답을 기다리는 entry 참조가 끊기지 않게 미룬다
+  syncMetaStale=false;
+  syncMeta=TC_SYNC.loadMeta(localStorage.getItem(SYNC_META_KEY),legacySynced);
+}
+function adoptExternalStore(raw){
+  let parsed=null;
+  try{ parsed=parseStorePayload(raw); }catch(e){ reportOperationalError('tab.sync.parse',e); return; }
+  if(!parsed.ok){ reportOperationalError('tab.sync.invalid',new Error('validation')); return; }
+  const day=activeDay;
+  store=parsed.value;
+  // 정규화를 거치면 raw와 문자열이 달라질 수 있으므로 정규화된 형태로 맞춘다.
+  // 이러면 뒤이은 render→save가 "변경 없음"으로 조기 반환해 되쓰기·클라우드 에코가 없다.
+  histLast=JSON.stringify(store);
+  refreshSyncMetaFromStorage();
+  const t=trip();
+  activeDay=Math.min(day, Math.max(0,(t&&t.days?t.days.length:1)-1));
+  render(); fitAll();
+  toast('다른 탭의 변경을 불러왔습니다','#1d6fd6');
+}
+window.addEventListener('storage',e=>{
+  if(viewMode) return;   // 읽기전용 보기(#v=)는 로컬 스토어를 쓰지 않는다
+  if(e.key===SYNC_META_KEY){ refreshSyncMetaFromStorage(); return; }
+  if(e.key!==LS_KEY || !e.newValue || e.newValue===histLast) return;
+  if(isBusyEditing()){
+    pendingExternalStore=e.newValue;
+    toast('다른 탭에서 일정이 바뀌었어요','#e09b20',{label:'불러오기',fn:()=>{
+      const v=pendingExternalStore; pendingExternalStore=null; if(v) adoptExternalStore(v);
+    }});
+    return;
+  }
+  adoptExternalStore(e.newValue);
 });
 // 모바일 헤더 오버플로 메뉴 (부가 동작을 ☰로 접음)
 function toggleHdrMenu(e){ if(e) e.stopPropagation(); document.getElementById('hdrMenu').classList.toggle('open'); }
@@ -2952,6 +2999,7 @@ async function syncTripCloud(t,opts){
   const entry=syncEntry(t.id), force=!!(opts&&opts.force);
   if(entry.status==='conflict'&&!force) return;
   entry.status='syncing'; persistSyncMeta();
+  syncInFlight++;
   try{
     const row=await rpcRow('sync_trip',{p_client_id:t.id,p_data:t,p_expected_revision:entry.revision,p_force:force});
     if(!row) throw new Error('empty sync response');
@@ -2970,7 +3018,7 @@ async function syncTripCloud(t,opts){
     clearTimeout(cloudRetryT);
     cloudRetryT=setTimeout(syncStaleTrips,15000);   // 여러 여행이 함께 실패해도 재시도에서 빠지지 않게 밀린 것 전부
     toast('클라우드 저장 실패 — 로컬 편집은 보존됨','#e63946',{label:'재시도',fn:()=>syncTripCloud(t)});
-  }
+  }finally{ syncInFlight--; if(!syncInFlight&&syncMetaStale) refreshSyncMetaFromStorage(); }
 }
 async function flushPendingSync(){
   if(!sb||!user) return;
@@ -3215,9 +3263,7 @@ if('serviceWorker' in navigator){
     const applyUpdate=()=>{ if(noticed) return; noticed=true;
       // 편집/입력 중이면 자동 새로고침 대신 수동 안내(입력 유실 방지). 모달뿐 아니라
       // 지도 위치 지정(pickMode·모달 닫힘)·검색·가져오기 진행 중도 '작업 중'으로 본다.
-      const busy = pickMode || searching || _importing
-        || !!document.querySelector('.modalBg.show') || document.getElementById('travel').classList.contains('show');
-      if(busy){ toast('새 버전이 있어요 — 탭해서 새로고침', '#1d6fd6', {label:'새로고침', fn:()=>location.reload()}); }
+      if(isBusyEditing()){ toast('새 버전이 있어요 — 탭해서 새로고침', '#1d6fd6', {label:'새로고침', fn:()=>location.reload()}); }
       else { toast('새 버전 적용 중…', '#1d6fd6'); setTimeout(()=>location.reload(), 900); }
     };
     if(reg.waiting && navigator.serviceWorker.controller) applyUpdate();   // 앱 열 때 이미 대기 중인 새 버전

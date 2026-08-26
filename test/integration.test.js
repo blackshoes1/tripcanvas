@@ -20,6 +20,7 @@ function boot() {
   const dom = new JSDOM(html, { url: 'http://localhost/', runScripts: 'dangerously', pretendToBeVisual: true });
   const { window } = dom;
   window.fetch = () => Promise.reject(new Error('no-net'));                          // loadFx 등 네트워크 차단(가드가 catch)
+  window.TextEncoder = TextEncoder;                                                 // jsdom에 없음 — lib의 크기 검증(_utf8Bytes)이 실제 브라우저처럼 돌게
   window.LZString = { compressToEncodedURIComponent: (x) => x, decompressFromEncodedURIComponent: (x) => x };
   const inject = (file) => {
     const s = window.document.createElement('script');
@@ -872,5 +873,68 @@ test('통합: 지금 보고 있지 않은 여행의 편집도 클라우드로 �
   })()`);
   assert.equal(sent,'A','활성 여행(B)이 아니어도 지문이 밀린 A가 올라간다');
   assert.equal(w.eval(`syncMeta.A.hash`),w.eval(`TC_SYNC.hashTrip(store.trips[0])`),'성공 후 지문을 기록해 중복 업로드를 막는다');
+  w.close();
+});
+
+// 다른 탭이 localStorage에 쓴 상황을 흉내낸다 (storage 이벤트는 쓴 탭 자신에겐 오지 않는다)
+function fireStorage(w, key, newValue){
+  const e=new w.window.StorageEvent('storage',{key,newValue});
+  w.window.dispatchEvent(e);
+}
+
+test('통합: 다른 탭의 저장을 감지해 낡은 메모리 store를 갈아끼운다', { skip: noJsdom }, () => {
+  const w=boot();
+  w.eval(`store.trips=[{id:'T1',name:'옛것',start:'',days:[{title:'',drive:'',note:'',spots:[]}]}]; store.activeId='T1'; histLast=JSON.stringify(store); render();`);
+  const fresh=JSON.stringify({trips:[{id:'T1',name:'다른 탭이 고침',start:'',days:[{title:'',drive:'',note:'',spots:[]},{title:'2일차',drive:'',note:'',spots:[]}]}],activeId:'T1'});
+  fireStorage(w,'tripcanvas_v1',fresh);
+  assert.equal(w.eval(`store.trips[0].name`),'다른 탭이 고침');
+  assert.equal(w.eval(`store.trips[0].days.length`),2);
+  w.close();
+});
+
+test('통합: 다른 탭의 변경을 받아들여도 되쓰기·클라우드 에코가 없다', { skip: noJsdom }, () => {
+  const w=boot();
+  w.eval(`store.trips=[{id:'T1',name:'옛것',start:'',days:[{title:'',drive:'',note:'',spots:[]}]}]; store.activeId='T1'; histLast=JSON.stringify(store); render();
+    window.__wrote=0; window.__synced=0;
+    const realSet=localStorage.setItem.bind(localStorage);
+    localStorage.setItem=(k,v)=>{ if(k==='tripcanvas_v1') window.__wrote++; return realSet(k,v); };
+    user={id:'u1'}; sb={rpc:async()=>{ window.__synced++; return {data:[{applied:true,conflict:false,revision:2,data:null,deleted_at:null}],error:null}; }};`);
+  const fresh=JSON.stringify({trips:[{id:'T1',name:'다른 탭',start:'',days:[{title:'',drive:'',note:'',spots:[]}]}],activeId:'T1'});
+  fireStorage(w,'tripcanvas_v1',fresh);
+  assert.equal(w.eval(`store.trips[0].name`),'다른 탭');
+  assert.equal(w.eval(`window.__wrote`),0,'받아들인 상태를 다시 쓰지 않는다 (탭 간 핑퐁 방지)');
+  assert.equal(w.eval(`window.__synced`),0,'클라우드로도 되쏘지 않는다');
+  assert.equal(w.eval(`JSON.stringify(store)===histLast`),true,'histLast를 정규화된 형태로 맞춰 save가 no-op이 된다');
+  w.close();
+});
+
+test('통합: 입력 중이면 화면을 뺏지 않고 사용자가 불러오기를 고르게 한다', { skip: noJsdom }, () => {
+  const w=boot();
+  w.eval(`store.trips=[{id:'T1',name:'옛것',start:'',days:[{title:'',drive:'',note:'',spots:[]}]}]; store.activeId='T1'; histLast=JSON.stringify(store); render();
+    document.getElementById('spotModalBg').classList.add('show');`);
+  const fresh=JSON.stringify({trips:[{id:'T1',name:'다른 탭',start:'',days:[{title:'',drive:'',note:'',spots:[]}]}],activeId:'T1'});
+  fireStorage(w,'tripcanvas_v1',fresh);
+  assert.equal(w.eval(`store.trips[0].name`),'옛것','편집 중엔 자동으로 바꾸지 않는다');
+  assert.match(w.document.getElementById('toast').textContent,/다른 탭/);
+  w.eval(`document.querySelector('#toast .toastAct').click()`);
+  assert.equal(w.eval(`store.trips[0].name`),'다른 탭','불러오기를 누르면 그때 반영된다');
+  w.close();
+});
+
+test('통합: 손상된 외부 저장본은 무시하고 현재 store를 지킨다', { skip: noJsdom }, () => {
+  const w=boot();
+  w.eval(`store.trips=[{id:'T1',name:'멀쩡',start:'',days:[{title:'',drive:'',note:'',spots:[]}]}]; store.activeId='T1'; histLast=JSON.stringify(store); render();`);
+  fireStorage(w,'tripcanvas_v1','{"trips":"not-an-array"}');
+  assert.equal(w.eval(`store.trips[0].name`),'멀쩡');
+  w.close();
+});
+
+test('통합: 다른 탭이 갱신한 syncMeta를 메모리로 다시 읽어 헛충돌을 막는다', { skip: noJsdom }, () => {
+  const w=boot();
+  w.eval(`syncMeta={T1:{revision:3,status:'clean',op:'',hash:'old'}};
+    localStorage.setItem('tripcanvas_sync_v2', JSON.stringify({T1:{revision:9,status:'clean',op:'',hash:'new'}}));`);
+  fireStorage(w,'tripcanvas_sync_v2',w.eval(`localStorage.getItem('tripcanvas_sync_v2')`));
+  assert.equal(w.eval(`syncMeta.T1.revision`),9);
+  assert.equal(w.eval(`syncMeta.T1.hash`),'new');
   w.close();
 });
