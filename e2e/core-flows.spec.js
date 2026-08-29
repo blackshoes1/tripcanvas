@@ -102,3 +102,34 @@ test('가져오기·내보내기와 390px 모바일 핵심 화면',async({page})
   await expect(page.locator('#moreBtn')).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
 });
+
+test('장소를 탭해 선택하면 새 장소가 그 바로 뒤에 들어간다',async({page})=>{
+  await page.evaluate(`(()=>{const t={id:'ins',name:'I',start:'2026-09-01',days:[{title:'D1',drive:'',note:'',mode:'transit',spots:[
+    {name:'경복궁',city:'서울',desc:'',lat:37.5796,lng:126.9770},
+    {name:'북촌한옥마을',city:'서울',desc:'',lat:37.5826,lng:126.9831},
+    {name:'인사동',city:'서울',desc:'',lat:37.5720,lng:126.9856}]}]};
+    store.trips=[t];store.activeId='ins';save();activeDay=0;render();})()`);
+
+  const addBtn=page.locator('.addSpotBtn').first();
+  await expect(addBtn).toHaveText('＋ 장소 추가');                    // 선택 전엔 맨 뒤
+
+  // 2번 장소를 탭해 선택 → 버튼이 그 자리에서 어디에 넣을지 밝힌다(재렌더를 기다리지 않는다)
+  await page.locator('.spotList .spot').nth(1).locator('.spotIdentity').click();
+  await expect(addBtn).toHaveText('＋ 2번 뒤에 장소 추가');
+
+  const add=async(name)=>{
+    await addBtn.click();
+    await page.locator('#spotName').fill(name);
+    await page.evaluate(()=>{document.getElementById('spotLat').value='37.58';document.getElementById('spotLng').value='126.98';});
+    await page.locator('#spotSave').click();
+  };
+  await add('삼청동 카페');
+  expect(await page.evaluate(()=>trip().days[0].spots.map(s=>s.name)))
+    .toEqual(['경복궁','북촌한옥마을','삼청동 카페','인사동']);
+
+  // 방금 넣은 게 선택돼 있어 연달아 추가하면 계속 이어붙는다
+  await expect(addBtn).toHaveText('＋ 3번 뒤에 장소 추가');
+  await add('국립현대미술관');
+  expect(await page.evaluate(()=>trip().days[0].spots.map(s=>s.name)))
+    .toEqual(['경복궁','북촌한옥마을','삼청동 카페','국립현대미술관','인사동']);
+});

@@ -1302,3 +1302,88 @@ test('통합: 예약 통화가 달라도 원화로 환산해 합산한다', { sk
   assert.equal(w.eval(`dayBookingCost('2026-08-01')`), 450000);
   w.close();
 });
+
+test('통합: 새 장소는 선택한 장소 바로 뒤에 들어간다', { skip: noJsdom }, () => {
+  const w=boot();
+  withTrip(w, `[
+    {title:'D1',drive:'',note:'',mode:'car',spots:[
+      {name:'A',city:'S',desc:'',lat:37.5,lng:127.0},
+      {name:'B',city:'S',desc:'',lat:37.6,lng:127.1},
+      {name:'C',city:'S',desc:'',lat:37.7,lng:127.2}
+    ]},
+    {title:'D2',drive:'',note:'',mode:'car',spots:[{name:'Z',city:'S',desc:'',lat:37.8,lng:127.3}]}
+  ]`);
+  w.eval('activeDay=0; render()');
+  const names=(di)=>w.eval(`trip().days[${di}].spots.map(s=>s.name)`);
+  const addSpot=(di,name)=>{
+    w.eval(`openSpotModal(${di},-1)`);
+    w.document.getElementById('spotName').value=name;
+    w.document.getElementById('spotLat').value='37.9';
+    w.document.getElementById('spotLng').value='127.9';
+    w.document.getElementById('spotSave').click();
+  };
+
+  // 선택이 없으면 지금까지처럼 맨 뒤
+  addSpot(0,'끝');
+  assert.deepEqual(names(0), ['A','B','C','끝']);
+
+  // A(0번)를 탭해 선택 → 바로 뒤에
+  w.eval('selectSpotCard(0,0)');
+  addSpot(0,'A뒤');
+  assert.deepEqual(names(0), ['A','A뒤','B','C','끝']);
+
+  // 방금 넣은 게 선택되어, 연달아 추가하면 계속 뒤로 이어붙는다
+  assert.deepEqual(w.eval('JSON.parse(JSON.stringify(selectedSpot))'), {di:0,si:1});
+  addSpot(0,'그다음');
+  assert.deepEqual(names(0), ['A','A뒤','그다음','B','C','끝']);
+
+  // 버튼이 어디에 들어갈지 밝힌다 (선택 위치는 눈에 안 보이므로)
+  const btn=[...w.document.querySelectorAll('.dayCard')][0].querySelector('.addSpotBtn');
+  assert.match(btn.textContent, /3번 뒤에 장소 추가/);
+
+  // 장소를 탭하면 render() 없이 선택만 바뀐다 → 라벨이 그 자리에서 따라와야 한다
+  w.eval('selectSpotCard(0,4)');
+  assert.match(btn.textContent, /5번 뒤에 장소 추가/, 'render 없이도 갱신');
+  w.eval('selectSpotCard(null)');
+  assert.equal(btn.textContent.trim(), '＋ 장소 추가', '선택 해제하면 원래대로');
+  w.eval('selectSpotCard(0,2)');
+
+  // 다른 날 버튼은 그 날 선택이 없으므로 맨 뒤 (라벨도 그대로)
+  const btn2=[...w.document.querySelectorAll('.dayCard')][1].querySelector('.addSpot');
+  assert.equal(btn2.textContent.trim(), '＋ 장소 추가');
+  addSpot(1,'D2끝');
+  assert.deepEqual(names(1), ['Z','D2끝']);
+  w.close();
+});
+
+test('통합: 모달에서 일자를 바꿔 추가하면 그 날 맨 뒤로 간다', { skip: noJsdom }, () => {
+  const w=boot();
+  withTrip(w, `[
+    {title:'D1',drive:'',note:'',mode:'car',spots:[{name:'A',city:'S',desc:'',lat:37.5,lng:127.0},{name:'B',city:'S',desc:'',lat:37.6,lng:127.1}]},
+    {title:'D2',drive:'',note:'',mode:'car',spots:[{name:'Z',city:'S',desc:'',lat:37.8,lng:127.3}]}
+  ]`);
+  w.eval('activeDay=0; render(); selectSpotCard(0,0)');   // Day1의 A를 선택한 채로
+  w.eval('openSpotModal(0,-1)');
+  w.document.getElementById('spotName').value='다른날';
+  w.document.getElementById('spotLat').value='37.9';
+  w.document.getElementById('spotLng').value='127.9';
+  w.document.getElementById('spotDay').value='1';        // Day2로 변경
+  w.document.getElementById('spotSave').click();
+  assert.deepEqual(w.eval(`trip().days[0].spots.map(s=>s.name)`), ['A','B'], 'Day1은 그대로');
+  assert.deepEqual(w.eval(`trip().days[1].spots.map(s=>s.name)`), ['Z','다른날'], '옮긴 날의 맨 뒤로');
+  w.close();
+});
+
+test('통합: 기존 장소 편집은 제자리를 지킨다 (삽입 위치 로직에 휩쓸리지 않는다)', { skip: noJsdom }, () => {
+  const w=boot();
+  withTrip(w, `[{title:'D1',drive:'',note:'',mode:'car',spots:[
+    {name:'A',city:'S',desc:'',lat:37.5,lng:127.0},
+    {name:'B',city:'S',desc:'',lat:37.6,lng:127.1},
+    {name:'C',city:'S',desc:'',lat:37.7,lng:127.2}]}]`);
+  w.eval('activeDay=0; render(); selectSpotCard(0,0)');
+  w.eval('openSpotModal(0,2)');                          // C를 편집
+  w.document.getElementById('spotName').value='C수정';
+  w.document.getElementById('spotSave').click();
+  assert.deepEqual(w.eval(`trip().days[0].spots.map(s=>s.name)`), ['A','B','C수정']);
+  w.close();
+});
