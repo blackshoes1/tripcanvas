@@ -1048,3 +1048,71 @@ test('통합: 🏠 아이콘이 붙으면 "숙소" 글자는 빼고 연박 수�
   assert.equal(spots[2].querySelector('.spotCat').textContent,'🏛');
   w.close();
 });
+
+test('통합: 렌터카 예약이 픽업일·반납일 일정에 나타나고, 동선·ETA는 건드리지 않는다', { skip: noJsdom }, () => {
+  const w=boot();
+  withTrip(w, `[
+    {title:'D1',drive:'',note:'',spots:[
+      {name:'공항',city:'M',desc:'',lat:40.49,lng:-3.56},
+      {name:'호텔',city:'M',desc:'',lat:40.40,lng:-3.69,stay:true,nights:2}
+    ]},
+    {title:'D2',drive:'',note:'',spots:[{name:'박물관',city:'M',desc:'',lat:40.42,lng:-3.71}]},
+    {title:'D3',drive:'',note:'',spots:[{name:'시내',city:'M',desc:'',lat:40.43,lng:-3.72}]}
+  ]`);
+  // 예약 전 기준값 — 렌터카 항목이 동선·도착 예상을 바꾸지 않는지 비교하기 위해
+  w.eval('activeDay=0; render()');
+  const etasBefore=w.eval(`JSON.stringify(trip().days.map((d,i)=>dayEtas(d,startAnchorFor(i))))`);
+
+  // 트립 start=2026-08-01 → Day1=08-01, Day2=08-02, Day3=08-03
+  w.eval(`trip().bookings=[{id:'car1',type:'car',title:'Fiat 500 · RecordGo',price:300000,
+    start:'2026-08-01',end:'2026-08-03',carPickup:'Madrid Airport',carPickupCode:'MAD',
+    carPickupTime:'11:30',carReturnTime:'08:00'}]; render()`);
+  const cards=[...w.document.querySelectorAll('.dayCard')];
+  const rows=i=>[...cards[i].querySelectorAll('.spot.carbk')];
+
+  assert.equal(rows(0).length,1,'픽업일에 한 줄');
+  assert.equal(rows(1).length,0,'대여 중인 날엔 아무것도 붙지 않는다');
+  assert.equal(rows(2).length,1,'반납일에 한 줄');
+  assert.match(rows(0)[0].textContent,/Madrid Airport \(MAD\)/,'장소와 공항코드를 함께 보여준다');
+  assert.match(rows(0)[0].textContent,/픽업 · 11:30/,'입력한 픽업 시각을 보여준다');
+  // 시각은 ETA 칸(그날 계산된 도착 예상 순서)에 들어가면 안 된다 — 이 항목은 그 순서에 속하지 않는다
+  assert.equal(rows(0)[0].querySelector('.spotTime').textContent.trim(),'🚗');
+  assert.match(rows(0)[0].textContent,/픽업/);
+  assert.match(rows(2)[0].textContent,/반납/);
+  assert.match(rows(2)[0].textContent,/Madrid Airport/,'반납 장소를 비우면 픽업과 같은 곳');
+
+  // 읽는 순서: 픽업은 장소 목록 앞, 반납은 뒤 (차를 받고 → 다니고 → 반납)
+  const order=el=>[...cards[0].querySelectorAll('.dayBody > *')].indexOf(el);
+  assert.ok(order(rows(0)[0]) < order(cards[0].querySelector('.spotList')), '픽업은 장소 목록 앞');
+  const order2=el=>[...cards[2].querySelectorAll('.dayBody > *')].indexOf(el);
+  assert.ok(order2(rows(2)[0]) > order2(cards[2].querySelector('.spotList')), '반납은 장소 목록 뒤');
+
+  // 표시 전용 — 좌표가 없으므로 장소 데이터·동선·도착 예상에 섞이지 않는다
+  assert.equal(w.eval(`trip().days[0].spots.length`),2,'데이터에 장소로 추가되지 않는다');
+  assert.equal(w.eval(`JSON.stringify(trip().days.map((d,i)=>dayEtas(d,startAnchorFor(i))))`),etasBefore,'도착 예상이 그대로');
+  assert.equal(cards[0].querySelectorAll('.spotList .spot').length,2,'드래그 가능한 장소 목록 밖에 있다');
+
+  // 탭하면 그 예약 상세로
+  assert.match(rows(0)[0].querySelector('button.spotIdentity').getAttribute('onclick'),/openBookingModal\('car1'\)/);
+
+  // 읽기전용 공유 보기에서는 편집 진입점을 주지 않는다
+  w.eval('viewMode=trip(); render()');   // #v= 읽기전용 보기 — viewMode는 플래그가 아니라 그 여행 객체다
+  const ro=w.document.querySelector('.dayCard .spot.carbk');
+  assert.ok(ro && !ro.querySelector('button.spotIdentity'), '읽기전용에선 버튼이 아니라 텍스트로');
+  assert.match(ro.textContent,/Madrid Airport/,'내용은 그대로 보인다');
+  w.close();
+});
+
+test('통합: 당일 대여는 한 날에 픽업·반납이 모두 나오고, 편도 반납 장소를 따로 쓴다', { skip: noJsdom }, () => {
+  const w=boot();
+  withTrip(w, `[{title:'D1',drive:'',note:'',spots:[{name:'시내',city:'M',desc:'',lat:40.43,lng:-3.72}]}]`);
+  w.eval(`trip().bookings=[{id:'car1',type:'car',title:'경차',price:80000,
+    start:'2026-08-01',end:'2026-08-01',carPickup:'제주공항',carPickupCode:'CJU',
+    carReturn:'서귀포점',carPickupTime:'09:00',carReturnTime:'19:00'}]; activeDay=0; render()`);
+  const rows=[...w.document.querySelectorAll('.dayCard .spot.carbk')];
+  assert.equal(rows.length,2);
+  assert.match(rows[0].textContent,/제주공항 \(CJU\)[\s\S]*픽업 · 09:00/);
+  assert.match(rows[1].textContent,/서귀포점[\s\S]*반납 · 19:00/);
+  assert.doesNotMatch(rows[1].textContent,/CJU/,'반납 장소를 따로 넣었으면 픽업 공항코드를 빌려 쓰지 않는다');
+  w.close();
+});

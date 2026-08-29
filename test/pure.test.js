@@ -483,3 +483,69 @@ test('localMode — 비행기·기차는 근거리 구간(숙소 복귀)의 수�
   assert.equal(L.localMode('taxi'), 'taxi');
   assert.equal(L.localMode(undefined), 'car');
 });
+
+test('carEventsOn — 렌터카 예약에서 그날의 픽업·반납을 파생한다', () => {
+  const bk = [
+    {id:'c1', type:'car', title:'Fiat 500 · RecordGo', start:'2026-09-01', end:'2026-09-05',
+     carPickup:'Palma Airport', carPickupCode:'PMI', carPickupTime:'10:00', carReturnTime:'08:30'},
+    {id:'h1', type:'hotel', title:'Cap Rocat', start:'2026-09-01', end:'2026-09-05'}
+  ];
+  const pick = L.carEventsOn(bk, '2026-09-01');
+  assert.equal(pick.length, 1, '호텔 예약은 섞이지 않는다');
+  assert.deepEqual(pick[0], {kind:'pickup', id:'c1', title:'Fiat 500 · RecordGo',
+    place:'Palma Airport', code:'PMI', time:'10:00'});
+
+  // 반납 장소·코드를 비우면 픽업과 같은 곳 (예약 화면·시세 조회와 같은 규칙)
+  const ret = L.carEventsOn(bk, '2026-09-05');
+  assert.equal(ret.length, 1);
+  assert.equal(ret[0].kind, 'return');
+  assert.equal(ret[0].place, 'Palma Airport');
+  assert.equal(ret[0].code, 'PMI');
+  assert.equal(ret[0].time, '08:30');
+
+  // 사이에 낀 날엔 아무것도 붙지 않는다 (대여 중인 건 이벤트가 아니다)
+  assert.deepEqual(L.carEventsOn(bk, '2026-09-03'), []);
+});
+
+test('carEventsOn — 반납 장소를 따로 넣으면 그걸 쓰고, 편도 반납 코드도 분리된다', () => {
+  const bk = [{id:'c1', type:'car', title:'SUV', start:'2026-09-01', end:'2026-09-04',
+    carPickup:'Palma Airport', carPickupCode:'PMI', carReturn:'Barcelona Airport', carReturnCode:'BCN'}];
+  const ret = L.carEventsOn(bk, '2026-09-04')[0];
+  assert.equal(ret.place, 'Barcelona Airport');
+  assert.equal(ret.code, 'BCN');
+});
+
+test('carEventsOn — 당일 대여는 픽업·반납이 한 날에 시각 순으로 나온다', () => {
+  const bk = [{id:'c1', type:'car', title:'경차', start:'2026-09-01', end:'2026-09-01',
+    carPickup:'제주공항', carPickupTime:'09:00', carReturnTime:'19:00'}];
+  const ev = L.carEventsOn(bk, '2026-09-01');
+  assert.deepEqual(ev.map(e=>e.kind), ['pickup','return']);
+
+  // 반납이 픽업보다 이른 시각이면 시각 순이 우선 (아침 반납 + 오후 다른 차 픽업)
+  const two = [
+    {id:'a', type:'car', title:'A', start:'2026-08-30', end:'2026-09-01', carPickup:'A공항', carReturnTime:'09:00'},
+    {id:'b', type:'car', title:'B', start:'2026-09-01', end:'2026-09-03', carPickup:'B공항', carPickupTime:'14:00'}
+  ];
+  assert.deepEqual(L.carEventsOn(two,'2026-09-01').map(e=>[e.kind,e.id]), [['return','a'],['pickup','b']]);
+
+  // 시각 미입력은 뒤로 — 시각을 아는 항목이 먼저 읽힌다
+  const noTime = [
+    {id:'a', type:'car', title:'A', start:'2026-09-01', end:'2026-09-02', carPickup:'A'},
+    {id:'b', type:'car', title:'B', start:'2026-09-01', end:'2026-09-02', carPickup:'B', carPickupTime:'11:00'}
+  ];
+  assert.deepEqual(L.carEventsOn(noTime,'2026-09-01').map(e=>e.id), ['b','a']);
+});
+
+test('carEventsOn — 불량 입력 방어', () => {
+  assert.deepEqual(L.carEventsOn(null,'2026-09-01'), []);
+  assert.deepEqual(L.carEventsOn([{id:'c1',type:'car',start:'2026-09-01'}],'2026-9-1'), [], '날짜 형식이 아니면 빈 배열');
+  assert.deepEqual(L.carEventsOn([null,undefined,'x',{type:'car'}],'2026-09-01'), [], '기간 없는 예약은 어느 날에도 걸리지 않는다');
+});
+
+test('carEventsOn — 반납 장소를 따로 넣었으면 픽업 공항코드를 빌려 쓰지 않는다', () => {
+  const bk = [{id:'c1', type:'car', title:'경차', start:'2026-09-01', end:'2026-09-01',
+    carPickup:'제주공항', carPickupCode:'CJU', carReturn:'서귀포점'}];
+  const ret = L.carEventsOn(bk,'2026-09-01').find(e=>e.kind==='return');
+  assert.equal(ret.place,'서귀포점');
+  assert.equal(ret.code,'', '장소가 다른데 코드만 물려받으면 엉뚱한 곳이 된다');
+});

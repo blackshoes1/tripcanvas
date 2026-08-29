@@ -1065,6 +1065,22 @@ const PLAY_TILE_TIMEOUT=3500, PLAY_SETTLE=400;   // 타일 로딩 최대 대기(
 // startAnchorFor(di): di일이 이월받는 출발 앵커(정책 반영, startPolicy==='none'이면 null).
 // 지도 일자 간 점선·재생·사이드바 거리·타임라인·여행 모드가 모두 이 한 함수를 공유한다.
 function startAnchorFor(di){ return dayStartAnchor(trip().days, di); }
+// 렌터카 픽업·반납 항목 — 예약(trip.bookings)에서 파생해 그날 일정에 끼워 넣는다.
+// 픽업·반납 장소는 자유 텍스트(좌표 없음)라 동선·ETA·앵커에는 넣지 않는다 — '언제 어디서'만 알려주는 표시 항목.
+function carEventRowHtml(e){
+  const label = e.kind==='pickup' ? '렌터카 픽업' : '렌터카 반납';
+  const place = e.place ? (e.code? `${e.place} (${e.code})` : e.place) : (e.title||label);
+  const tip = `${label}${e.time?` ${e.time}`:''} · ${place}${e.place?'':' — 예약에 픽업·반납 장소를 넣으면 여기 표시됩니다'} · 예약에 입력한 정보라 동선·도착 예상 계산에는 들어가지 않습니다`;
+  const name = viewMode
+    ? `<span class="spotIdentity nm"><span class="spotName">${esc(place)}</span></span>`
+    : `<button type="button" class="spotIdentity nm" onclick="openBookingModal('${escAttr(e.id)}')" aria-label="${escAttr(`${label} · ${place} · 예약 상세 열기`)}"><span class="spotName">${esc(place)}</span></button>`;
+  // 시각은 ETA 칸에 넣지 않는다 — 그 칸은 '이 날 계산된 도착 예상 순서'를 뜻하는데 이 항목은 그 순서에 속하지 않는다
+  const sub = [label, e.time?esc(e.time):'', e.place?'':'장소 미입력'].filter(Boolean).join(' · ');
+  return `<div class="spot carbk" style="--c:#7a86ad" title="${escAttr(tip)}">
+    <div class="spotMain"><span class="spotTime eta">🚗</span>${name}<span class="spotMenuSpacer" aria-hidden="true"></span></div>
+    <div class="spotMeta"><span class="spotMetaItem opt">${sub} · 예약</span></div>
+  </div>`;
+}
 // 숙소 복귀 구간 서술자 — 데이터에 없는 합성 구간이라 '일자 기본 수단'으로 본다.
 // (도착 장소의 legMode는 '그 장소로 오는' 구간용이라 복귀에 빌려 쓰면 틀린다)
 // 출발시각은 복귀를 뺀 그날 종료시각 = dayEndMin(day, anchor) — 여기서만 back 없이 불러 순환을 막는다.
@@ -1372,6 +1388,7 @@ function renderSidebar(){
     const ctx=dayContext(di), carry=ctx.carry;   // anchor=ETA용(숙소/전날 마지막), carry=🏠 표시용(숙소만)
     let spotsHtml='', prevLoc=carry;
     const tl=ctx.timeline, etas=tl.map(x=>x.eta), dm=ctx.mode, iso=isoDateOf(di), timeZone=ctx.timeZone;   // ETA는 anchor 기준 — 비숙소 전날 마지막 장소도 반영
+    const carEv=carEventsOn(tripBookings(), iso);   // 렌터카 픽업·반납 (표시 전용 — 동선·ETA와 무관)
     day.spots.forEach((s,si)=>{
       const dotC = hasLoc(s)?spotColor(s,di,colors):'#4a5170';
       const incoming=prevLoc, inMode=legModeOf(day,s);   // 이 지점으로 '들어오는' 구간(수단) — 아래 ETA 안내에 사용
@@ -1477,7 +1494,9 @@ function renderSidebar(){
         ${(()=>{const dc=dayCost(day); const tx=(dayRoute(day,ctx.backLeg)||{}).taxi||0; const road=(dm==='car'||dm==='taxi'); const tot=dc+(road?tx:0);
           return tot?`<div class="dist">💳 하루 비용 약 ₩${tot.toLocaleString()}${(dc&&road&&tx)?` <span style="opacity:.55">(장소 ₩${dc.toLocaleString()} + 택시 ₩${tx.toLocaleString()})</span>`:''}</div>`:'';})()}
         ${carry?`<div class="spot carry" style="--c:#7a86ad" title="전날 숙소 — 오늘 첫 일정으로 자동 이월 (탭하면 지도에서 보기 · 장소 편집의 🏠 숙소 체크로 관리)"><div class="spotMain"><span class="spotTime eta">🏠</span><button type="button" class="spotIdentity nm" onclick="focusLatLng(${+carry.lat},${+carry.lng})" title="${escAttr(carry.name)}" aria-label="${escAttr(carry.name)} 지도에서 보기"><span class="spotName">${esc(carry.name)}</span></button><span class="spotMenuSpacer" aria-hidden="true"></span></div><div class="spotMeta"><span class="spotMetaItem opt">전날 숙소</span></div></div>`:''}
+        ${carEv.filter(e=>e.kind==='pickup').map(carEventRowHtml).join('')}
         <div class="spotList" data-di="${di}">${spotsHtml}</div>
+        ${carEv.filter(e=>e.kind==='return').map(carEventRowHtml).join('')}
         ${(()=>{   // 동선 마무리 — 그날 마지막 장소에서 숙소로 돌아가는 구간을 자동으로 보여준다(데이터에는 넣지 않음)
           const bl=ctx.backLeg; if(!bl) return '';
           const c=requestLeg(bl.from,bl.to,bl.mode,bl.when,bl.timeZone);
@@ -2619,9 +2638,13 @@ function buildTripCard(){
     html+=`<div style="border-left:4px solid ${c};background:#1f2b4d;border-radius:10px;padding:10px 14px;margin-bottom:10px">`;
     html+=`<div style="font-size:13.5px;font-weight:700">Day ${di+1} · ${esc(day.title)} <span style="color:#9aa5c4;font-weight:400;font-size:11px">${dateOf(di)}</span></div>`;
     if(day.drive) html+=`<div style="font-size:11px;color:#f6bd60;margin-top:3px">${esc(day.drive)}</div>`;
+    const carEv=carEventsOn(t.bookings||[], isoDateOf(di));   // 렌터카 픽업·반납 (사이드바와 같은 기준)
+    const carLine=(/**@type {any}*/e)=>`<div style="font-size:12px;margin-top:5px;color:#9aa5c4">🚗 ${esc(e.place?(e.code?`${e.place} (${e.code})`:e.place):(e.title||''))} <span style="font-size:10.5px">(렌터카 ${e.kind==='pickup'?'픽업':'반납'}${e.time?` ${esc(e.time)}`:''})</span></div>`;
+    html+=carEv.filter(e=>e.kind==='pickup').map(carLine).join('');
     day.spots.forEach((s,si)=>{
       html+=`<div style="font-size:12px;margin-top:5px"><span style="color:#f6bd60;font-weight:700;font-size:10.5px">${hm(etas[si])}</span> ${si+1}. ${catPrefix(s)}${esc(s.name)}${s.opt?' <span style="color:#8892b0;font-size:10.5px">(선택)</span>':''}</div>`;
     });
+    html+=carEv.filter(e=>e.kind==='return').map(carLine).join('');
     const back=dayReturnStay(t.days,di);   // 하루의 끝 — 숙소 복귀 (화면과 같은 기준)
     if(back) html+=`<div style="font-size:12px;margin-top:5px;color:#9aa5c4">🏠 ${esc(back.name)} <span style="font-size:10.5px">(숙소 복귀)</span></div>`;
     if(day.note) html+=`<div style="font-size:10.5px;color:#9aa5c4;margin-top:6px;white-space:pre-wrap">📝 ${esc(day.note)}</div>`;
