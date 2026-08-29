@@ -1251,3 +1251,54 @@ test('통합: 당일 대여를 예약 화면에서 저장할 수 있다 (체크�
   await new Promise(res=>setTimeout(res,20));   // 저장이 발사한 자동 시세 조회 정리 후 닫기
   w.close();
 });
+
+test('통합: 하루 비용에 예약 하루치가 들어가고, 하루 합계가 전체 비용과 맞는다', { skip: noJsdom }, () => {
+  const w=boot();
+  // 트립 start=2026-08-01 → Day1=08-01 … Day4=08-04
+  withTrip(w, `[
+    {title:'D1',drive:'',note:'',mode:'transit',spots:[{name:'미술관',city:'M',desc:'',lat:40.41,lng:-3.69,cost:18000}]},
+    {title:'D2',drive:'',note:'',mode:'transit',spots:[{name:'대성당',city:'P',desc:'',lat:39.56,lng:2.64,cost:12000}]},
+    {title:'D3',drive:'',note:'',mode:'transit',spots:[{name:'Valldemossa',city:'S',desc:'',lat:39.70,lng:2.62,cost:9000}]},
+    {title:'D4',drive:'',note:'',mode:'transit',spots:[{name:'Es Trenc',city:'P',desc:'',lat:39.34,lng:2.97}]}
+  ]`);
+  w.eval(`trip().bookings=[
+    {id:'c1',type:'car',   title:'Fiat',  price:420000, start:'2026-08-02', end:'2026-08-04'},
+    {id:'h1',type:'hotel', title:'Hotel', price:600000, start:'2026-08-02', end:'2026-08-04'},
+    {id:'f1',type:'flight',title:'IB3800',price:180000, start:'2026-08-02', end:'2026-08-02'}
+  ]; activeDay=0; render()`);
+
+  const dayCosts=()=>[...w.document.querySelectorAll('.dayCard')].map(c=>{
+    const el=[...c.querySelectorAll('.dist')].find(x=>x.textContent.includes('하루 비용'));
+    return el? +el.textContent.replace(/\s+/g,'').match(/하루비용약₩([\d,]+)/)[1].replace(/,/g,'') : 0;
+  });
+  // 렌터카 3일(양끝 포함) 140,000/일 · 숙박 2박 300,000/박 · 항공 1일 180,000
+  assert.deepEqual(dayCosts(), [18000, 632000, 449000, 140000]);
+  assert.equal(w.eval(`(()=>{const e=[...document.querySelectorAll('.dayCard')][3].querySelectorAll('.dist');
+    return [...e].find(x=>x.textContent.includes('하루 비용')).textContent.includes('숙박')})()`), false,
+    '체크아웃 날엔 숙박비가 붙지 않는다');
+
+  // 필터바 전체 비용 — 예약은 총액 기준
+  const cb=w.eval(`JSON.parse(JSON.stringify(tripCostBreakdown()))`);
+  assert.deepEqual(cb, {spots:39000, taxi:0, hotel:600000, car:420000, flight:180000, total:1239000});
+  assert.match(w.document.querySelector('.costMenu summary').textContent, /₩1,239,000/);
+  assert.match(w.document.querySelector('.costMenu').textContent, /렌터카/);
+
+  // 예약 기간이 일정 안에 다 들어오면 하루 합계 = 전체 (날수로 나눠도 새는 돈이 없다)
+  assert.equal(dayCosts().reduce((a,x)=>a+x,0), cb.total);
+
+  // 비용이 하나도 없으면 칩 자체를 띄우지 않는다
+  w.eval(`trip().bookings=[]; trip().days.forEach(d=>d.spots.forEach(s=>delete s.cost)); render()`);
+  assert.equal(w.document.querySelector('.costMenu'), null);
+  assert.equal([...w.document.querySelectorAll('.dist')].filter(x=>x.textContent.includes('하루 비용')).length, 0);
+  w.close();
+});
+
+test('통합: 예약 통화가 달라도 원화로 환산해 합산한다', { skip: noJsdom }, () => {
+  const w=boot();
+  withTrip(w, `[{title:'D1',drive:'',note:'',mode:'transit',spots:[{name:'A',city:'P',desc:'',lat:39.5,lng:2.7}]}]`);
+  w.eval(`fxRates.EUR=1500; trip().bookings=[{id:'c1',type:'car',title:'C',price:300,cur:'EUR',
+    start:'2026-08-01',end:'2026-08-01'}]; activeDay=0; render()`);
+  assert.equal(w.eval(`tripCostBreakdown().car`), 450000, '€300 × 1500');
+  assert.equal(w.eval(`dayBookingCost('2026-08-01')`), 450000);
+  w.close();
+});

@@ -873,10 +873,27 @@ function loadFx(){
   }).catch(()=>{});   // 실패 시 폴백/캐시 유지
 }
 function dayCost(day){ return day.spots.reduce((a,s)=>a+(s.cost? toKRW(s.cost,s.cur):0),0); }
-// 여행 전체 비용(장소+자차일 택시) 합계
-function tripCost(){
-  return trip().days.reduce((a,d,i)=>{ const m=dayModeOf(d); const tx=(m==='car'||m==='taxi')?((dayRoute(d,backLegOf(d,i,dayReturnStay(trip().days,i)))||{}).taxi||0):0; return a+dayCost(d)+tx; },0);
+// 그 날짜에 배분된 예약비(숙박·렌터카·항공 하루치) — 원화 환산 합계
+function dayBookingCost(iso){
+  return bookingShareOn(tripBookings(), iso).reduce((a,x)=>a+toKRW(x.amount,x.cur),0);
 }
+function dayTaxiCost(day,di){
+  const m=dayModeOf(day);
+  return (m==='car'||m==='taxi')? ((dayRoute(day,backLegOf(day,di,dayReturnStay(trip().days,di)))||{}).taxi||0) : 0;
+}
+// 여행 전체 비용 — 장소 + 자차일 택시 + 예약 '전액'.
+// 하루 비용은 예약을 날수로 나눈 몫이라, 예약 기간이 여행 일정 밖으로 나가면 하루 합계보다 전체가 크다(전체가 실제 총액).
+function tripCostBreakdown(){
+  const out={spots:0, taxi:0, hotel:0, car:0, flight:0, total:0};
+  trip().days.forEach((d,i)=>{ out.spots+=dayCost(d); out.taxi+=dayTaxiCost(d,i); });
+  tripBookings().forEach(b=>{
+    const k=(b.type==='car'||b.type==='flight')? b.type : 'hotel';
+    out[k]+=toKRW(+b.price||0, b.cur);
+  });
+  out.total=out.spots+out.taxi+out.hotel+out.car+out.flight;
+  return out;
+}
+function tripCost(){ return tripCostBreakdown().total; }
 // 일정 예상 종료 시각(분) — 마지막 장소 (예약 대기 반영한) 활동 시작 + 체류
 function dayEndMin(day, startAnchor, bl){
   if(!day.spots.length) return null;
@@ -1352,8 +1369,7 @@ function renderFilter(){
   menu.innerHTML=`<summary>☷ 보기 설정⌄</summary><div class="viewMenuPanel">
     <div class="viewMenuLabel">색상 기준</div><button class="chip" id="colorModeBtn">🎨 ${colorByMode()==='day'?'일자별':'도시별'} 색상</button>
     <button class="chip" id="playBtn">${play?'⏹ 재생 정지':'▶ 경로 재생'}</button><button class="chip" id="themeBtn">◐ 테마 전환</button>
-    <div class="viewMenuLabel">도시 포커스</div><div class="cityFocus">${cityButtons||'<span class="hint">도시 없음</span>'}</div>
-    ${tripCost()?`<div class="viewMenuLabel">예상 비용 · ₩${tripCost().toLocaleString()}</div>`:''}</div>`;
+    <div class="viewMenuLabel">도시 포커스</div><div class="cityFocus">${cityButtons||'<span class="hint">도시 없음</span>'}</div></div>`;
   bar.appendChild(menu);
   menu.querySelector('#colorModeBtn').onclick=()=>commit(()=>{ trip().colorBy=colorByMode()==='day'?'city':'day'; });
   menu.querySelector('#playBtn').onclick=playTrip;
@@ -1361,6 +1377,18 @@ function renderFilter(){
   menu.querySelectorAll('.cityFocusBtn').forEach(button=>button.onclick=()=>{
     const city=button.dataset.city,pts=[]; trip().days.forEach(d=>d.spots.forEach(s=>{if(s.city===city&&hasLoc(s))pts.push([s.lat,s.lng])})); fitTo(pts,80,15);
   });
+  // 여행 전체 비용 — 항상 보이게, 탭하면 내역. 예약은 전액이라 '하루 비용'(날수로 나눈 몫)과 기준이 다르다
+  const cb=tripCostBreakdown();
+  if(cb.total>0){
+    const rows=[['장소',cb.spots],['택시(자차·택시 일자)',cb.taxi],['숙박',cb.hotel],['렌터카',cb.car],['항공',cb.flight]].filter(r=>r[1]>0);
+    const cost=document.createElement('details'); cost.className='viewMenu costMenu';
+    cost.innerHTML=`<summary title="${escAttr('장소 비용 + 자차·택시 일자의 택시비 + 예약 총액 — 탭하면 내역')}">💳 ₩${fmtMoney(cb.total)}⌄</summary><div class="viewMenuPanel">
+      <div class="viewMenuLabel">전체 예상 비용</div>
+      ${rows.map(r=>`<div class="costRow"><span>${esc(r[0])}</span><b>₩${fmtMoney(r[1])}</b></div>`).join('')}
+      <div class="costRow costTotal"><span>합계</span><b>₩${fmtMoney(cb.total)}</b></div>
+      <div class="hint">예약은 총액 기준이에요 — 일자 카드의 '하루 비용'은 이걸 날수로 나눈 하루치입니다.</div></div>`;
+    bar.appendChild(cost);
+  }
 }
 function renderLegend(){
   let body;
@@ -1505,8 +1533,14 @@ function renderSidebar(){
         ${(()=>{const rt=dayRoute(day,ctx.backLeg); if(rt) return `<div class="dist">📏 하루 동선 약 ${(rt.m/1000).toFixed(1)}km · ${MODE_ICON[dm]}${fmtDur(rt.sec)}${((dm==='car'||dm==='taxi')&&rt.taxi)?` · 🚕약 ${rt.taxi.toLocaleString()}원`:''} <span style="opacity:.55">(${dm==='flight'?'직선':'도로 기준'})</span></div>`;
           return dayDistance(day,ctx.back)>0?`<div class="dist">📏 하루 동선 약 ${dayDistance(day,ctx.back).toFixed(1)}km <span style="opacity:.55">(직선)</span></div>`:'';})()}
         ${(()=>{const e=dayEndMin(day, ctx.anchor, ctx.backLeg); return (e!=null&&e>22*60)?`<div class="overload" title="시작시각+체류+이동 기준 예상 종료">⚠️ 일정 과밀 — 예상 종료 ${hm(e)}${e>=24*60?' (익일)':''}</div>`:'';})()}
-        ${(()=>{const dc=dayCost(day); const tx=(dayRoute(day,ctx.backLeg)||{}).taxi||0; const road=(dm==='car'||dm==='taxi'); const tot=dc+(road?tx:0);
-          return tot?`<div class="dist">💳 하루 비용 약 ₩${tot.toLocaleString()}${(dc&&road&&tx)?` <span style="opacity:.55">(장소 ₩${dc.toLocaleString()} + 택시 ₩${tx.toLocaleString()})</span>`:''}</div>`:'';})()}
+        ${(()=>{
+          const road=(dm==='car'||dm==='taxi');
+          const parts=[['장소',dayCost(day)],['택시',road?((dayRoute(day,ctx.backLeg)||{}).taxi||0):0],['예약',iso?dayBookingCost(iso):0]]
+            .filter(p=>p[1]>0);
+          const tot=parts.reduce((a,p)=>a+p[1],0); if(!tot) return '';
+          const detail=parts.length>1?` <span style="opacity:.55">(${parts.map(p=>`${p[0]} ₩${p[1].toLocaleString()}`).join(' + ')})</span>`:'';
+          return `<div class="dist" title="${escAttr('여러 날 걸친 예약(숙박·렌터카·항공)은 날수로 나눈 하루치로 넣습니다')}">💳 하루 비용 약 ₩${tot.toLocaleString()}${detail}</div>`;
+        })()}
         ${carry?`<div class="spot carry" style="--c:#7a86ad" title="전날 숙소 — 오늘 첫 일정으로 자동 이월 (탭하면 지도에서 보기 · 장소 편집의 🏠 숙소 체크로 관리)"><div class="spotMain"><span class="spotTime eta">🏠</span><button type="button" class="spotIdentity nm" onclick="focusLatLng(${+carry.lat},${+carry.lng})" title="${escAttr(carry.name)}" aria-label="${escAttr(carry.name)} 지도에서 보기"><span class="spotName">${esc(carry.name)}</span></button><span class="spotMenuSpacer" aria-hidden="true"></span></div><div class="spotMeta"><span class="spotMetaItem opt">전날 숙소</span></div></div>`:''}
         ${carEv.filter(e=>e.kind==='pickup').map(carEventRowHtml).join('')}
         <div class="spotList" data-di="${di}">${spotsHtml}</div>
