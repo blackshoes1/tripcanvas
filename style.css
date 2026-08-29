@@ -67,6 +67,8 @@
   .spotMenuSpacer{display:block;width:44px;height:44px}
   /* 자동으로 이어 붙인 숙소 복귀 — 실제 저장된 장소와 구분되게 옅게 */
   .spot.back{opacity:.82}
+  /* 예약에서 파생한 렌터카 픽업·반납 — 저장된 장소가 아니므로 드래그·편집 불가, 옅게 */
+  .spot.carbk{cursor:default;opacity:.82}
   .ghostStay{display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;
     background:var(--surface,#fff);border:2px dashed var(--c,#7a86ad);font-size:11px;line-height:1;opacity:.85;pointer-events:none}
   .spot .opt{color:var(--meta-soft);font-size:11px}

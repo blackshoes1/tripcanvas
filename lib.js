@@ -317,6 +317,39 @@
     return stay;
   }
 
+  /**
+   * 그 날짜에 걸리는 렌터카 픽업·반납 — 일정 화면이 예약(trip.bookings)에서 파생해 보여줄 항목.
+   * 픽업·반납 장소는 자유 텍스트라 좌표가 없다 → 동선·ETA·앵커에는 넣지 않는다(표시 전용).
+   * 반납 장소·공항코드를 비우면 픽업과 같은 곳으로 본다(예약 화면·시세 조회와 같은 규칙).
+   * @param {any[]} bookings @param {string} iso YYYY-MM-DD
+   * @returns {{kind:string, id:string, title:string, place:string, code:string, time:string}[]}
+   */
+  function carEventsOn(bookings, iso){
+    if(!Array.isArray(bookings) || !/^\d{4}-\d{2}-\d{2}$/.test(_str(iso))) return [];
+    /** @type {{kind:string, id:string, title:string, place:string, code:string, time:string}[]} */
+    const out=[];
+    bookings.forEach((/**@type{any}*/b)=>{
+      if(!b || typeof b!=='object' || b.type!=='car') return;
+      const id=_str(b.id), title=_str(b.title);
+      if(b.start===iso) out.push({kind:'pickup', id, title,
+        place:_str(b.carPickup), code:_str(b.carPickupCode), time:_str(b.carPickupTime)});
+      if(b.end===iso){
+        // 장소·코드는 한 쌍으로 넘긴다 — 반납 장소를 따로 넣었는데 픽업 공항코드를 빌려 오면 엉뚱한 곳이 된다
+        const own=_str(b.carReturn);
+        out.push({kind:'return', id, title,
+          place:own||_str(b.carPickup), code:own? _str(b.carReturnCode) : (_str(b.carReturnCode)||_str(b.carPickupCode)),
+          time:_str(b.carReturnTime)});
+      }
+    });
+    // 시각 순 — 미입력은 뒤로, 같은 시각이면 픽업 먼저(당일 대여)
+    const at=(/**@type{{kind:string,time:string}}*/e)=> _hm(e.time)===undefined? Infinity : parseHM(e.time);
+    return out.sort((a,b)=>{
+      const d=at(a)-at(b); if(d) return d;
+      if(a.kind!==b.kind) return a.kind==='pickup'? -1 : 1;
+      return 0;
+    });
+  }
+
   // ── 데이터 정규화 (가져오기·공유·클라우드·로컬 유입 방어) ──
   // 알려진 필드는 안전한 타입으로 강제/기본값 지정하고 잘못된 값은 제거해 렌더 크래시를 막는다.
   // 알 수 없는 필드는 보존(데이터 손실 방지). 현재 스키마 버전.
@@ -613,7 +646,7 @@
     return spotCat(catFromName(s.name));
   }
 
-  const TC={SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,inKorea,simplifyName,parseDirect,parseMoney,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,computeTimeline,dayStartAnchor,dayReturnStay,localMode,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
+  const TC={SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,inKorea,simplifyName,parseDirect,parseMoney,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,computeTimeline,dayStartAnchor,dayReturnStay,carEventsOn,localMode,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
   if(typeof module!=='undefined' && module.exports){ module.exports=TC; }   // Node (테스트)
   else { const r=/**@type {any}*/(root); for(const k in TC) r[k]=/**@type {any}*/(TC)[k]; }   // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);
