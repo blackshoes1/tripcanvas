@@ -1067,15 +1067,20 @@ const PLAY_TILE_TIMEOUT=3500, PLAY_SETTLE=400;   // 타일 로딩 최대 대기(
 function startAnchorFor(di){ return dayStartAnchor(trip().days, di); }
 // 렌터카 픽업·반납 항목 — 예약(trip.bookings)에서 파생해 그날 일정에 끼워 넣는다.
 // 픽업·반납 장소는 자유 텍스트(좌표 없음)라 동선·ETA·앵커에는 넣지 않는다 — '언제 어디서'만 알려주는 표시 항목.
+// 픽업·반납 지점 표기 — 장소와 공항코드는 한 쌍(carReturnPoint)이라 있는 것만 붙인다
+function carEventPlaceLabel(e){
+  if(e.place && e.code) return `${e.place} (${e.code})`;
+  return e.place || e.code || e.title || '';
+}
 function carEventRowHtml(e){
   const label = e.kind==='pickup' ? '렌터카 픽업' : '렌터카 반납';
-  const place = e.place ? (e.code? `${e.place} (${e.code})` : e.place) : (e.title||label);
-  const tip = `${label}${e.time?` ${e.time}`:''} · ${place}${e.place?'':' — 예약에 픽업·반납 장소를 넣으면 여기 표시됩니다'} · 예약에 입력한 정보라 동선·도착 예상 계산에는 들어가지 않습니다`;
+  const place = carEventPlaceLabel(e)||label;
+  const tip = `${label}${e.time?` ${e.time}`:''} · ${place}${(e.place||e.code)?'':' — 예약에 픽업·반납 장소를 넣으면 여기 표시됩니다'} · 예약에 입력한 정보라 동선·도착 예상 계산에는 들어가지 않습니다`;
   const name = viewMode
     ? `<span class="spotIdentity nm"><span class="spotName">${esc(place)}</span></span>`
     : `<button type="button" class="spotIdentity nm" onclick="openBookingModal('${escAttr(e.id)}')" aria-label="${escAttr(`${label} · ${place} · 예약 상세 열기`)}"><span class="spotName">${esc(place)}</span></button>`;
   // 시각은 ETA 칸에 넣지 않는다 — 그 칸은 '이 날 계산된 도착 예상 순서'를 뜻하는데 이 항목은 그 순서에 속하지 않는다
-  const sub = [label, e.time?esc(e.time):'', e.place?'':'장소 미입력'].filter(Boolean).join(' · ');
+  const sub = [label, e.time?esc(e.time):'', (e.place||e.code)?'':'장소 미입력'].filter(Boolean).join(' · ');
   return `<div class="spot carbk" style="--c:#7a86ad" title="${escAttr(tip)}">
     <div class="spotMain"><span class="spotTime eta">🚗</span>${name}<span class="spotMenuSpacer" aria-hidden="true"></span></div>
     <div class="spotMeta"><span class="spotMetaItem opt">${sub} · 예약</span></div>
@@ -2091,9 +2096,11 @@ const CarMarketProvider={
   id:'car-market',
   supports(b){ return b.type==='car'; },
   async searchOffers(b){
+    // 반납 지점은 (장소,코드) 한 쌍으로 — 편도 반납에 픽업 공항코드를 물려주면 엉뚱한 곳의 시세를 조회한다
+    const rp=carReturnPoint(b);
     const r=await fetch('/api/car-offers',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({ pickup:b.carPickup||b.title, pickupCode:b.carPickupCode,
-        'return':b.carReturn||b.carPickup||b.title, returnCode:b.carReturnCode||b.carPickupCode,
+        'return':rp.place||(rp.code?'':b.title), returnCode:rp.code,
         pickupAt:(b.start||'')+'T'+(b.carPickupTime||'10:00'), returnAt:(b.end||'')+'T'+(b.carReturnTime||'10:00'),
         driverAge:b.driverAge, currency:b.cur||'KRW', vehicleClass:b.carClass, transmission:b.transmission })});
     const js=await r.json().catch(()=>null);
@@ -2639,7 +2646,7 @@ function buildTripCard(){
     html+=`<div style="font-size:13.5px;font-weight:700">Day ${di+1} · ${esc(day.title)} <span style="color:#9aa5c4;font-weight:400;font-size:11px">${dateOf(di)}</span></div>`;
     if(day.drive) html+=`<div style="font-size:11px;color:#f6bd60;margin-top:3px">${esc(day.drive)}</div>`;
     const carEv=carEventsOn(t.bookings||[], isoDateOf(di));   // 렌터카 픽업·반납 (사이드바와 같은 기준)
-    const carLine=(/**@type {any}*/e)=>`<div style="font-size:12px;margin-top:5px;color:#9aa5c4">🚗 ${esc(e.place?(e.code?`${e.place} (${e.code})`:e.place):(e.title||''))} <span style="font-size:10.5px">(렌터카 ${e.kind==='pickup'?'픽업':'반납'}${e.time?` ${esc(e.time)}`:''})</span></div>`;
+    const carLine=(/**@type {any}*/e)=>`<div style="font-size:12px;margin-top:5px;color:#9aa5c4">🚗 ${esc(carEventPlaceLabel(e))} <span style="font-size:10.5px">(렌터카 ${e.kind==='pickup'?'픽업':'반납'}${e.time?` ${esc(e.time)}`:''})</span></div>`;
     html+=carEv.filter(e=>e.kind==='pickup').map(carLine).join('');
     day.spots.forEach((s,si)=>{
       html+=`<div style="font-size:12px;margin-top:5px"><span style="color:#f6bd60;font-weight:700;font-size:10.5px">${hm(etas[si])}</span> ${si+1}. ${catPrefix(s)}${esc(s.name)}${s.opt?' <span style="color:#8892b0;font-size:10.5px">(선택)</span>':''}</div>`;

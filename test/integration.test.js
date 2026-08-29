@@ -1116,3 +1116,43 @@ test('통합: 당일 대여는 한 날에 픽업·반납이 모두 나오고, �
   assert.doesNotMatch(rows[1].textContent,/CJU/,'반납 장소를 따로 넣었으면 픽업 공항코드를 빌려 쓰지 않는다');
   w.close();
 });
+
+test('통합: 편도 반납 시세 조회에 픽업 공항코드를 물려주지 않는다', { skip: noJsdom }, async () => {
+  const w=boot();
+  const day=(d)=>new Date(Date.now()+d*86400000).toISOString().slice(0,10);
+  withTrip(w, `[{mode:'car',startAt:'09:00',spots:[{name:'X',lat:39.5,lng:2.7,city:'Palma'}]}]`);
+  // /api/car-offers로 실제로 나가는 본문을 잡아 둔다 (요청 조건이 곧 조회 대상이라 표시보다 중요하다)
+  w.eval(`window.__req=[]; window.fetch=(u,o)=>{ window.__req.push({u:String(u), body:JSON.parse(o.body)});
+    return Promise.resolve({ok:true, json:async()=>({status:'OK',offers:[]})}); };`);
+  const send=async(fields)=>{
+    w.eval(`trip().bookings=[Object.assign({id:'c1',type:'car',title:'RecordGo Compact',price:320,
+      start:'${day(30)}',end:'${day(34)}',carPickup:'Palma Airport',carPickupCode:'PMI'}, ${JSON.stringify(fields)})];
+      window.__req.length=0;`);
+    await w.eval(`CarMarketProvider.searchOffers(trip().bookings[0])`);
+    return w.eval(`JSON.parse(JSON.stringify(window.__req[0].body))`);
+  };
+
+  // 편도 — 반납 장소만 넣었으면 픽업 공항코드(PMI)로 조회하면 안 된다
+  const oneWay=await send({carReturn:'Barcelona Airport'});
+  assert.equal(oneWay['return'],'Barcelona Airport');
+  assert.equal(oneWay.returnCode,'','다른 도시 반납인데 PMI로 조회하면 엉뚱한 곳의 시세가 온다');
+
+  // 편도 — 반납 공항코드만 넣었으면 픽업 장소를 물려주지 않는다
+  const codeOnly=await send({carReturnCode:'BCN'});
+  assert.equal(codeOnly.returnCode,'BCN');
+  assert.equal(codeOnly['return'],'','코드가 있으면 그게 기준 — 픽업 장소명을 얹지 않는다');
+
+  // 왕복(반납 비움) — 지금까지처럼 픽업과 같은 지점으로
+  const roundTrip=await send({});
+  assert.equal(roundTrip['return'],'Palma Airport');
+  assert.equal(roundTrip.returnCode,'PMI');
+
+  // 픽업 장소·코드가 모두 비면 예약 이름으로 폴백 (기존 동작 유지)
+  w.eval(`trip().bookings=[{id:'c1',type:'car',title:'RecordGo Compact',price:320,
+    start:'${day(30)}',end:'${day(34)}'}]; window.__req.length=0;`);
+  await w.eval(`CarMarketProvider.searchOffers(trip().bookings[0])`);
+  const bare=w.eval(`JSON.parse(JSON.stringify(window.__req[0].body))`);
+  assert.equal(bare.pickup,'RecordGo Compact');
+  assert.equal(bare['return'],'RecordGo Compact');
+  w.close();
+});
