@@ -605,3 +605,38 @@ test('normalizeTrip — 불량 픽업·반납 연결 id는 버린다 (유입 데
   assert.equal(b.carPickupId, undefined, '문자열이 아니면 제거');
   assert.equal(b.carReturnId, 'also-ok');
 });
+
+test('bookingShareOn — 여러 날 걸친 예약을 날수로 나눈 하루치', () => {
+  const car = {id:'c1', type:'car', title:'Fiat', price:420000, start:'2026-09-02', end:'2026-09-05'};
+  // 렌터카는 양끝 포함 4일 (9/2 받아서 9/5 반납 = 나흘 다 차가 있다)
+  const d2 = L.bookingShareOn([car],'2026-09-02')[0];
+  assert.equal(d2.days, 4);
+  assert.equal(d2.amount, 105000);
+  assert.equal(L.bookingShareOn([car],'2026-09-05')[0].amount, 105000, '반납일에도 배분');
+  assert.deepEqual(L.bookingShareOn([car],'2026-09-06'), [], '기간 밖');
+  assert.deepEqual(L.bookingShareOn([car],'2026-09-01'), []);
+
+  // 숙박은 [체크인, 체크아웃) — 체크아웃 날엔 숙박비가 없다
+  const hotel = {id:'h1', type:'hotel', title:'Cap Rocat', price:600000, start:'2026-09-01', end:'2026-09-04'};
+  assert.equal(L.bookingShareOn([hotel],'2026-09-01')[0].days, 3, '3박');
+  assert.equal(L.bookingShareOn([hotel],'2026-09-01')[0].amount, 200000);
+  assert.equal(L.bookingShareOn([hotel],'2026-09-03').length, 1, '마지막 밤');
+  assert.deepEqual(L.bookingShareOn([hotel],'2026-09-04'), [], '체크아웃 날은 숙박비 없음');
+});
+
+test('bookingShareOn — 하루치의 합이 예약 총액과 정확히 맞는다 (반올림 누수 없음)', () => {
+  const b = {id:'x', type:'car', title:'C', price:100000, start:'2026-09-01', end:'2026-09-03'};   // 3일, 안 나눠떨어짐
+  const days = ['2026-09-01','2026-09-02','2026-09-03'];
+  const each = days.map(d=>L.bookingShareOn([b],d)[0].amount);
+  assert.equal(each.reduce((a,x)=>a+x,0), 100000, `합이 총액과 같아야: ${each}`);
+  assert.deepEqual(each, [33334,33333,33333], '나머지는 앞날부터 1원씩');
+});
+
+test('bookingShareOn — 기간·가격이 없으면 어느 날에도 배분하지 않는다', () => {
+  assert.deepEqual(L.bookingShareOn([{id:'a',type:'car',price:1000,start:'2026-09-01'}],'2026-09-01'), [], '종료일 없음');
+  assert.deepEqual(L.bookingShareOn([{id:'a',type:'car',start:'2026-09-01',end:'2026-09-02'}],'2026-09-01'), [], '가격 없음');
+  assert.deepEqual(L.bookingShareOn([{id:'a',type:'hotel',price:1000,start:'2026-09-01',end:'2026-09-01'}],'2026-09-01'), [], '0박');
+  assert.deepEqual(L.bookingShareOn([{id:'a',type:'car',price:1000,start:'2026-09-05',end:'2026-09-01'}],'2026-09-03'), [], '역순');
+  assert.deepEqual(L.bookingShareOn(null,'2026-09-01'), []);
+  assert.deepEqual(L.bookingShareOn([{id:'a',type:'car',price:1,start:'2026-09-01',end:'2026-09-01'}],'2026-9-1'), [], '날짜 형식');
+});

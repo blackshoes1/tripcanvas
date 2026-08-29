@@ -69,6 +69,10 @@
   .spot.back{opacity:.82}
   /* 예약에서 파생한 렌터카 픽업·반납 — 저장된 장소가 아니므로 드래그·편집 불가, 옅게 */
   .spot.carbk{cursor:default;opacity:.82}
+  /* 전체 비용 내역 (필터바 costMenu) */
+  .costRow{display:flex;justify-content:space-between;gap:12px;font-size:11.5px;padding:2px 0;color:var(--meta-soft)}
+  .costRow b{color:var(--ink)}
+  .costRow.costTotal{border-top:1px solid var(--border);margin-top:3px;padding-top:4px;font-weight:700}
   /* 그 장소에서 차를 받고/돌려준다 — 장소 행에 붙는 칩 */
   .spot .carbkChip{color:var(--meta-soft);background:transparent;border:1px solid currentColor;border-radius:6px;padding:1px 5px;font-size:10.5px;cursor:pointer;white-space:nowrap}
   .ghostStay{display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;
@@ -195,6 +199,11 @@
     #filterbar{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding-bottom:9px}
     #filterbar::-webkit-scrollbar{display:none}
     #filterbar>*{flex:none}
+    /* 가로 스크롤되는 필터바에서도 전체 비용은 오른쪽에 붙어 항상 보인다 */
+    .costMenu{position:sticky;right:-14px;background:var(--header);padding-right:14px;box-shadow:-10px 0 8px -8px rgba(17,24,39,.18)}
+    /* 필터바가 스크롤 컨테이너(overflow)라 내부 패널이 잘린다 — fixed로 빼내되
+       top:auto로 정적 위치(칩 바로 아래)를 그대로 쓴다 */
+    .costMenu .viewMenuPanel{position:fixed;top:auto;right:10px}
     /* 범례가 사이드바를 가리지 않도록 지도 하단으로 이동 */
     .legend{display:none}
     .modalBg{align-items:flex-end;padding:0}.modal{width:100%;max-width:none;border-radius:18px 18px 0 0;max-height:92dvh;padding:18px 16px}.spotModal{max-height:90dvh}.basicGrid,.advancedGrid{grid-template-columns:1fr 1fr}.modalActions{bottom:-18px}.onboarding h1{font-size:30px}

@@ -317,6 +317,41 @@
     return stay;
   }
 
+  /** YYYY-MM-DD → 일 단위 정수 (UTC 기준이라 시간대에 밀리지 않는다) @param {any} iso @returns {number|null} */
+  function _dayNum(iso){
+    const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(_str(iso));
+    return m? Date.UTC(+m[1],+m[2]-1,+m[3])/86400000 : null;
+  }
+
+  /**
+   * 그 날짜에 배분되는 예약 비용 — 여러 날 걸친 예약을 날수로 나눈 '하루치'.
+   * 숙박은 [체크인, 체크아웃) — 체크아웃 날엔 숙박비가 없다. 렌터카·항공은 [시작, 종료] 양끝 포함
+   * (아침에 받아 마지막 날 반납하면 그 두 날 모두 차가 있는 날이다).
+   * 나머지는 앞날부터 1원씩 얹어 하루치의 합이 예약 총액과 정확히 맞는다(반올림 누수 방지).
+   * 금액은 예약 통화 그대로 — 원화 환산은 호출부(toKRW)가 한다.
+   * @param {any[]} bookings @param {string} iso
+   * @returns {{id:string, type:string, title:string, amount:number, cur:string, days:number}[]}
+   */
+  function bookingShareOn(bookings, iso){
+    const d=_dayNum(iso);
+    /** @type {{id:string, type:string, title:string, amount:number, cur:string, days:number}[]} */
+    const out=[];
+    if(d===null || !Array.isArray(bookings)) return out;
+    bookings.forEach((/**@type{any}*/b)=>{
+      if(!b || typeof b!=='object') return;
+      const price=+b.price; if(!(price>0)) return;
+      const s0=_dayNum(b.start), e0=_dayNum(b.end);
+      if(s0===null || e0===null) return;                       // 기간을 모르면 어느 날에도 배분하지 않는다(총액에는 남는다)
+      const n=(b.type==='hotel')? (e0-s0) : (e0-s0+1);         // 숙박=박 수, 그 외=이용 일수
+      if(!(n>=1)) return;
+      const idx=d-s0; if(idx<0 || idx>=n) return;
+      const base=Math.floor(price/n), rem=price-base*n;
+      out.push({id:_str(b.id), type:_str(b.type)||'hotel', title:_str(b.title),
+        amount:base+(idx<rem?1:0), cur:_str(b.cur)||'KRW', days:n});
+    });
+    return out;
+  }
+
   /**
    * 일정에 연결된 렌터카 픽업·반납 지점 — `spot.carPickupId`·`spot.carReturnId` 역참조.
    * 연결이 있으면 그 장소 행에 붙여 순서를 맞추고, 없으면 날짜 기준 독립 행으로 표시한다(carEventsOn).
@@ -677,7 +712,7 @@
     return spotCat(catFromName(s.name));
   }
 
-  const TC={SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,inKorea,simplifyName,parseDirect,parseMoney,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,computeTimeline,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,localMode,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
+  const TC={SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,inKorea,simplifyName,parseDirect,parseMoney,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,computeTimeline,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,localMode,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
   if(typeof module!=='undefined' && module.exports){ module.exports=TC; }   // Node (테스트)
   else { const r=/**@type {any}*/(root); for(const k in TC) r[k]=/**@type {any}*/(TC)[k]; }   // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);
