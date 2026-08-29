@@ -1557,7 +1557,7 @@ function renderSidebar(){
             <div class="spotLeg">${legTxt}</div>
           </div>`;
         })()}
-        <button class="addSpot" onclick="openSpotModal(${di},-1)">＋ 장소 추가</button>${day.spots.filter(hasLoc).length>=3?`<button class="addSpot optBtn" onclick="optimizeDay(${di})" title="이 날의 방문 순서를 이동거리 최소로 재배열">🧭 동선 최적화</button>`:''}
+        <button class="addSpot addSpotBtn" data-di="${di}" onclick="openSpotModal(${di},-1)">＋ 장소 추가</button>${day.spots.filter(hasLoc).length>=3?`<button class="addSpot optBtn" onclick="optimizeDay(${di})" title="이 날의 방문 순서를 이동거리 최소로 재배열">🧭 동선 최적화</button>`:''}
         ${day.note?`<div class="note">📝 ${esc(day.note)}</div>`:''}
       </div>`;
     card.querySelector('.dayHead').onclick=(e)=>{
@@ -1615,11 +1615,24 @@ let selectedSpot=null;   // {di,si} | null
 function selectSpotCard(di,si){ selectedSpot=(di==null)?null:{di:+di,si:+si}; applySpotSelection(); }
 function applySpotSelection(){
   document.querySelectorAll('.spot.is-selected,.dayCard.is-selected').forEach(el=>el.classList.remove('is-selected'));
-  if(!selectedSpot) return;
-  const el=document.querySelector(`.spot[data-di="${selectedSpot.di}"][data-si="${selectedSpot.si}"]`);
-  if(!el){ selectedSpot=null; return; }   // 삭제·이동으로 사라진 선택은 해제
-  el.classList.add('is-selected');
-  const card=el.closest('.dayCard'); if(card) card.classList.add('is-selected');
+  const el=selectedSpot && document.querySelector(`.spot[data-di="${selectedSpot.di}"][data-si="${selectedSpot.si}"]`);
+  if(selectedSpot && !el) selectedSpot=null;   // 삭제·이동으로 사라진 선택은 해제
+  if(el){
+    el.classList.add('is-selected');
+    const card=el.closest('.dayCard'); if(card) card.classList.add('is-selected');
+  }
+  refreshAddSpotLabels();
+}
+// '＋ 장소 추가'가 어디에 넣을지 밝힌다 — 선택 위치는 카드 강조 말고는 눈에 안 보인다.
+// 선택은 render() 없이도 바뀌므로(장소 탭) 라벨 갱신을 applySpotSelection에 묶는다.
+function refreshAddSpotLabels(){
+  document.querySelectorAll('.addSpotBtn[data-di]').forEach(btn=>{
+    const di=+btn.getAttribute('data-di'), day=trip().days[di]; if(!day) return;
+    const sel=(selectedSpot&&selectedSpot.di===di&&day.spots[selectedSpot.si])? selectedSpot.si : null;
+    btn.textContent = sel!=null? `＋ ${sel+1}번 뒤에 장소 추가` : '＋ 장소 추가';
+    btn.title = sel!=null? `선택한 ${sel+1}. ${day.spots[sel].name} 바로 뒤에 넣습니다 — 다른 장소를 탭하면 그 뒤로 바뀝니다`
+                         : '이 날 맨 뒤에 넣습니다 — 장소를 탭해 선택하면 그 바로 뒤에 넣어요';
+  });
 }
 window.focusSpot=(di,si)=>{
   selectSpotCard(di,si);
@@ -1724,7 +1737,9 @@ let _cityPrefill = '';
 let _namePrefill = '';   // 자동 채운 이름(검색/역지오코딩) — 사용자 입력과 구분
 window.openSpotModal=(di,si)=>{
   if(viewMode){ toast('읽기전용 보기입니다 — "내 여행으로 저장" 후 편집하세요','#8892b0'); return; }
-  editing={di,si};
+  // 새 장소는 '선택한 장소 바로 뒤'에 넣는다 — 선택이 없거나 다른 날이면 맨 뒤(기존 동작)
+  const after=(si<0 && selectedSpot && selectedSpot.di===di && trip().days[di].spots[selectedSpot.si]) ? selectedSpot.si : null;
+  editing={di,si,after};
   const isNew = si<0;
   document.getElementById('spotModalTitle').textContent = isNew?'장소 추가':'장소 편집';
   document.getElementById('spotDelBtn').style.display = isNew?'none':'block';
@@ -1800,10 +1815,16 @@ document.getElementById('spotSave').onclick=()=>{
     trip().days[targetDay].spots[editing.si]=s;         // 같은 날 편집은 제자리 교체 (맨 뒤로 밀지 않음)
   }else{
     if(isEdit) trip().days[editing.di].spots.splice(editing.si,1);   // 다른 날로 옮길 때만 이동
-    trip().days[targetDay].spots.push(s);
+    const dst=trip().days[targetDay].spots;
+    // 새 장소는 선택한 장소 바로 뒤 — 일자를 바꿨거나 선택이 없으면 맨 뒤
+    const at=(!isEdit && editing.after!=null && targetDay===editing.di) ? Math.min(editing.after+1, dst.length) : dst.length;
+    dst.splice(at,0,s);
   }
   // 고정 시각이 있으면 그날을 시간순으로 자동 정렬 (제자리 편집이라 시각이 그대로면 순서 안 바뀜)
   const sorted = trip().days[targetDay].spots.some(x=>x.at) && sortDayByTime(trip().days[targetDay]);
+  // 방금 넣은 장소를 선택해 둔다 — 연달아 추가하면 계속 그 뒤로 붙는다.
+  // 렌더 전이라 DOM은 없다 → selectSpotCard가 아니라 상태만 두고, 렌더 끝의 applySpotSelection이 복원한다.
+  if(!isEdit){ const ni=trip().days[targetDay].spots.indexOf(s); if(ni>=0) selectedSpot={di:targetDay, si:ni}; }
   document.getElementById('spotModalBg').classList.remove('show');
   commit(); toast(sorted?'저장됨 · 시간순 정렬':'저장됨');
 };
