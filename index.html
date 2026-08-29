@@ -13,7 +13,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js" integrity="sha384-+pWnyi8LtZx+cgXfD2arWgUX7pHIaEL215cEPPk9WrsegNlgvDL9DNjaqsceQq6o" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js" integrity="sha384-BSxuMLxX+FCbTdYec3TbXlnMGEEM2QXTFdtDaveen71o+jswm2J36+xFqp8k4VHM" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.min.js" integrity="sha384-l8ah+VgaWtk1mvOe9VC+OirC6qHFF4yH7l7mKRidV9MSti3E9F463bMp6ZVN4kuC" crossorigin="anonymous"></script>
-<link rel="stylesheet" href="style.css?v=tc-v143">
+<link rel="stylesheet" href="style.css?v=tc-v144">
 <!-- Travelpayouts 사이트 소유 인증 (파트너 가입 검증용 — DiscoverCars API 신청에 필요) -->
 <script nowprocket data-noptimize="1" data-cfasync="false" data-wpfc-render="false" seraph-accel-crit="1" data-no-defer="1" data-cmp-ab="2">
   (function () {
@@ -245,6 +245,11 @@
       <div style="flex:1"><label>주행거리</label><select id="bkCarMileage" style="width:100%"><option value="">모름</option><option value="UNLIMITED">무제한</option><option value="LIMITED">제한</option></select></div>
       <div style="flex:1"><label>보험</label><select id="bkCarIns" style="width:100%"><option value="">모름</option><option value="BASIC">기본</option><option value="CDW">CDW</option><option value="FULL">완전(풀커버)</option></select></div>
     </div>
+    <div style="display:flex;gap:6px">
+      <div style="flex:1"><label>픽업을 일정의 장소와 연결 (선택)</label><select id="bkCarPickupSpot" style="width:100%"></select></div>
+      <div style="flex:1"><label>반납을 일정의 장소와 연결 (선택)</label><select id="bkCarReturnSpot" style="width:100%"></select></div>
+    </div>
+    <div class="hint">연결하면 그 장소 행에 픽업·반납이 붙어 순서가 맞습니다 (예: 공항에 내린 뒤 픽업). 연결하지 않으면 픽업일·반납일 일정에 따로 표시돼요.</div>
     <div class="hint">차급·변속기·보험·주행거리가 다르면 <b>확정 절약으로 계산하지 않아요</b> — 조건을 입력할수록 비교가 정확해집니다.</div>
   </div>
   <div class="chkrow"><input type="checkbox" id="bkFreeCancel"><label for="bkFreeCancel" style="margin:0">무료 취소 가능</label></div>
@@ -383,10 +388,10 @@
   </div>
 </div>
 
-<script src="lib.js?v=tc-v143"></script>
-<script src="sync.js?v=tc-v143"></script>
-<script src="routing.js?v=tc-v143"></script>
-<script src="price.js?v=tc-v143"></script>
-<script src="app.js?v=tc-v143"></script>
+<script src="lib.js?v=tc-v144"></script>
+<script src="sync.js?v=tc-v144"></script>
+<script src="routing.js?v=tc-v144"></script>
+<script src="price.js?v=tc-v144"></script>
+<script src="app.js?v=tc-v144"></script>
 </body>
 </html>
