@@ -542,10 +542,35 @@ test('carEventsOn — 불량 입력 방어', () => {
   assert.deepEqual(L.carEventsOn([null,undefined,'x',{type:'car'}],'2026-09-01'), [], '기간 없는 예약은 어느 날에도 걸리지 않는다');
 });
 
-test('carEventsOn — 반납 장소를 따로 넣었으면 픽업 공항코드를 빌려 쓰지 않는다', () => {
+test('carReturnPoint — 반납 지점은 (장소,코드) 한 쌍이라 반쪽만 물려받지 않는다', () => {
+  const P = {carPickup:'제주공항', carPickupCode:'CJU'};
+
+  // 둘 다 비면 픽업과 동일 (예약 화면의 "비우면 픽업과 동일")
+  assert.deepEqual(L.carReturnPoint(Object.assign({}, P)), {place:'제주공항', code:'CJU'});
+  assert.deepEqual(L.carReturnPoint(Object.assign({carReturn:'', carReturnCode:''}, P)), {place:'제주공항', code:'CJU'});
+
+  // 장소만 넣었으면 픽업 공항코드를 빌려 쓰지 않는다 ("서귀포점 (CJU)" 방지)
+  assert.deepEqual(L.carReturnPoint(Object.assign({carReturn:'서귀포점'}, P)), {place:'서귀포점', code:''});
+
+  // 코드만 넣었으면 픽업 장소를 빌려 쓰지 않는다 ("제주공항 (BCN)" 방지)
+  assert.deepEqual(L.carReturnPoint(Object.assign({carReturnCode:'BCN'}, P)), {place:'', code:'BCN'});
+
+  // 둘 다 넣었으면 그대로
+  assert.deepEqual(L.carReturnPoint(Object.assign({carReturn:'Barcelona Airport', carReturnCode:'BCN'}, P)),
+    {place:'Barcelona Airport', code:'BCN'});
+
+  assert.deepEqual(L.carReturnPoint(null), {place:'', code:''});
+});
+
+test('carEventsOn — 반납 이벤트는 carReturnPoint 규칙을 그대로 따른다', () => {
   const bk = [{id:'c1', type:'car', title:'경차', start:'2026-09-01', end:'2026-09-01',
     carPickup:'제주공항', carPickupCode:'CJU', carReturn:'서귀포점'}];
   const ret = L.carEventsOn(bk,'2026-09-01').find(e=>e.kind==='return');
   assert.equal(ret.place,'서귀포점');
   assert.equal(ret.code,'', '장소가 다른데 코드만 물려받으면 엉뚱한 곳이 된다');
+
+  const codeOnly = [{id:'c2', type:'car', title:'SUV', start:'2026-09-01', end:'2026-09-04',
+    carPickup:'Palma Airport', carPickupCode:'PMI', carReturnCode:'BCN'}];
+  const r2 = L.carEventsOn(codeOnly,'2026-09-04')[0];
+  assert.deepEqual([r2.place, r2.code], ['', 'BCN']);
 });
