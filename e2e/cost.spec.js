@@ -76,3 +76,29 @@ test('일자 카드 하루 비용에 예약 하루치가 들어간다',async({pa
   await expect(costs.nth(1)).toContainText('예약 ₩620,000');
   await expect(costs.nth(3)).toContainText('₩140,000');          // 체크아웃 날 — 렌터카만
 });
+
+test('보기 설정 패널도 모바일 필터바에 잘리지 않는다',async({page})=>{
+  await page.setViewportSize({width:390,height:844});
+  await page.goto('/');
+  await page.evaluate(SEED);
+
+  const menu=page.locator('.viewMenu:not(.costMenu) > summary');
+  await menu.click();
+  const panel=page.locator('.viewMenu:not(.costMenu) .viewMenuPanel');
+  await expect(panel).toBeVisible();
+  await expect(panel).toContainText('색상 기준');
+
+  // 히트테스트 — 패널 맨 아래 버튼이 실제로 눌리는 자리에 있어야 한다 (레이아웃만 보면 잘려도 통과한다)
+  const reachable=await page.evaluate(()=>{
+    const el=document.querySelector('.viewMenu:not(.costMenu) .viewMenuPanel');
+    const last=el.querySelector('.cityFocus') || el.lastElementChild;
+    const r=last.getBoundingClientRect();
+    const hit=document.elementFromPoint(Math.round(r.left+r.width/2), Math.round(r.top+r.height/2));
+    return {inPanel:!!(hit&&el.contains(hit)), hit:hit? (hit.className||hit.tagName):null};
+  });
+  expect(reachable.inPanel,`보기 설정 패널 아래쪽이 잘렸다 (그 자리에 잡힌 것: ${reachable.hit})`).toBe(true);
+
+  // 테마 전환이 실제로 눌린다 — 잘려 있으면 클릭이 다른 요소에 막힌다
+  await page.locator('#themeBtn').click();
+  await expect(panel).toBeVisible();
+});
