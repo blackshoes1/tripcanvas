@@ -1156,3 +1156,98 @@ test('통합: 편도 반납 시세 조회에 픽업 공항코드를 물려주지
   assert.equal(bare['return'],'RecordGo Compact');
   w.close();
 });
+
+test('통합: 픽업을 일정 장소와 연결하면 그 장소 행에 붙고 독립 행은 사라진다', { skip: noJsdom }, async () => {
+  const w=boot();
+  // "비행기로 도착한 뒤 그 공항에서 렌터카 픽업" — 픽업이 도착보다 위에 오면 안 된다
+  withTrip(w, `[
+    {title:'D1',drive:'',note:'',mode:'transit',spots:[{name:'Madrid 호텔',city:'M',desc:'',lat:40.42,lng:-3.70,stay:true}]},
+    {title:'D2',drive:'',note:'',mode:'car',spots:[
+      {name:'Palma Airport',city:'P',desc:'',lat:39.5517,lng:2.7388,legMode:'flight'},
+      {name:'팔마 대성당',city:'P',desc:'',lat:39.5674,lng:2.6478},
+      {name:'Cap Rocat',city:'P',desc:'',lat:39.5023,lng:2.6957,stay:true}
+    ]}
+  ]`);
+  w.eval(`trip().bookings=[{id:'c1',type:'car',title:'Fiat 500X',price:420000,
+    start:'2026-08-02',end:'2026-08-02',carPickup:'Palma Airport',carPickupCode:'PMI',
+    carPickupTime:'11:30',carReturnTime:'19:00'}]; activeDay=0; render()`);
+  const d2=()=>[...w.document.querySelectorAll('.dayCard')][1];
+
+  // 연결 전 — 날짜 기준 독립 행 (픽업이 목록 앞, 반납이 뒤)
+  assert.equal(d2().querySelectorAll('.spot.carbk').length, 2);
+  assert.equal(d2().querySelectorAll('.carbkChip').length, 0);
+
+  // 모달에서 픽업을 Day2 공항에, 반납을 Day2 숙소에 연결
+  w.eval(`openBookingModal('c1')`);
+  const opts=[...w.document.getElementById('bkCarPickupSpot').options].map(o=>o.value);
+  assert.ok(opts.includes('1.0'), '일정의 모든 장소가 후보 (숙소가 아니어도)');
+  w.document.getElementById('bkCarPickupSpot').value='1.0';
+  w.document.getElementById('bkCarReturnSpot').value='1.2';
+  w.document.getElementById('bkSave').click();
+
+  // 연결 후 — 독립 행은 사라지고 그 장소 행에 칩으로 붙는다
+  assert.equal(d2().querySelectorAll('.spot.carbk').length, 0, '독립 행 제거');
+  const spots=[...d2().querySelectorAll('.spotList .spot')];
+  assert.match(spots[0].textContent, /Palma Airport[\s\S]*렌터카 픽업 11:30/, '내린 그 자리에 픽업');
+  assert.match(spots[2].textContent, /Cap Rocat[\s\S]*렌터카 반납 19:00/);
+  assert.doesNotMatch(spots[1].textContent, /렌터카/, '연결 안 한 장소엔 안 붙는다');
+  assert.match(spots[0].querySelector('.carbkChip').getAttribute('onclick'), /openBookingModal\('c1'\)/);
+
+  // 연결은 여행 데이터에 저장돼 공유·동기화를 따라간다
+  assert.equal(w.eval(`trip().days[1].spots[0].carPickupId`), 'c1');
+  assert.equal(w.eval(`trip().days[1].spots[2].carReturnId`), 'c1');
+
+  // 장소 복사가 연결까지 복제하면 픽업 칩이 두 곳에 뜬다
+  w.eval(`copySpot(1,0); render()`);
+  assert.equal(d2().querySelectorAll('.carbkChip').length, 2, '복사본에는 안 붙는다 (픽업 1 + 반납 1)');
+
+  // 연결 해제하면 다시 독립 행으로
+  w.eval(`openBookingModal('c1')`);
+  w.document.getElementById('bkCarPickupSpot').value='';
+  w.document.getElementById('bkSave').click();
+  assert.equal(w.eval(`trip().days[1].spots[0].carPickupId`), undefined);
+  assert.equal(d2().querySelectorAll('.spot.carbk').length, 1, '픽업만 독립 행으로 돌아옴');
+  await new Promise(res=>setTimeout(res,20));   // 저장이 발사한 자동 시세 조회(no-net 실패) 정리 후 닫기
+  w.close();
+});
+
+test('통합: 예약을 지우면 일정에 남은 픽업·반납 연결도 함께 정리된다', { skip: noJsdom }, () => {
+  const w=boot();
+  withTrip(w, `[{title:'D1',drive:'',note:'',mode:'car',spots:[{name:'공항',city:'P',desc:'',lat:39.55,lng:2.73}]}]`);
+  w.eval(`trip().bookings=[{id:'c1',type:'car',title:'차',price:1,start:'2026-08-01',end:'2026-08-01'}];
+    trip().days[0].spots[0].carPickupId='c1'; activeDay=0; render();
+    window.confirm=()=>true; openBookingModal('c1'); document.getElementById('bkDelBtn').click();`);
+  assert.equal(w.eval(`trip().days[0].spots[0].carPickupId`), undefined, '끊어진 연결이 남으면 안 된다');
+  assert.equal(w.document.querySelectorAll('.carbkChip').length, 0);
+  w.close();
+});
+
+test('통합: 당일 대여를 예약 화면에서 저장할 수 있다 (체크아웃 규칙을 렌터카에 쓰지 않는다)', { skip: noJsdom }, async () => {
+  const w=boot();
+  withTrip(w, `[{title:'D1',drive:'',note:'',mode:'car',spots:[{name:'공항',city:'P',desc:'',lat:39.55,lng:2.73}]}]`);
+  const set=(id,v)=>{ w.document.getElementById(id).value=v; };
+  const save=(fields)=>{
+    w.eval('openBookingModal(null)'); set('bkType','car'); w.eval('toggleBkFields()');
+    set('bkTitle','경차'); set('bkPrice','80000');
+    Object.keys(fields).forEach(k=>set(k,fields[k]));
+    w.document.getElementById('bkSave').click();
+    return w.eval(`(trip().bookings||[]).length`);
+  };
+  // 같은 날 픽업·반납 — 렌터카에선 정상이다
+  assert.equal(save({bkStart:'2026-08-01',bkEnd:'2026-08-01',bkCarPickupTime:'09:00',bkCarReturnTime:'19:00'}), 1);
+  const b=w.eval(`JSON.parse(JSON.stringify(trip().bookings[0]))`);
+  assert.equal(b.start,'2026-08-01'); assert.equal(b.end,'2026-08-01');
+
+  // 같은 날인데 반납이 픽업보다 이르거나 시각이 없으면 막는다 (시세 조회가 거부되는 조건)
+  assert.equal(save({bkStart:'2026-08-01',bkEnd:'2026-08-01',bkCarPickupTime:'19:00',bkCarReturnTime:'09:00'}), 1, '역순 거부');
+  assert.equal(save({bkStart:'2026-08-01',bkEnd:'2026-08-01',bkCarPickupTime:'',bkCarReturnTime:''}), 1, '시각 없으면 거부');
+  assert.equal(save({bkStart:'2026-08-03',bkEnd:'2026-08-01'}), 1, '반납일이 앞서면 거부');
+
+  // 숙박은 지금까지처럼 같은 날을 막는다
+  w.eval('openBookingModal(null)'); set('bkType','hotel'); w.eval('toggleBkFields()');
+  set('bkTitle','H'); set('bkPrice','100000'); set('bkStart','2026-08-01'); set('bkEnd','2026-08-01');
+  w.document.getElementById('bkSave').click();
+  assert.equal(w.eval(`trip().bookings.length`), 1, '숙박 당일 체크아웃은 여전히 거부');
+  await new Promise(res=>setTimeout(res,20));   // 저장이 발사한 자동 시세 조회 정리 후 닫기
+  w.close();
+});

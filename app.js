@@ -1393,7 +1393,9 @@ function renderSidebar(){
     const ctx=dayContext(di), carry=ctx.carry;   // anchor=ETA용(숙소/전날 마지막), carry=🏠 표시용(숙소만)
     let spotsHtml='', prevLoc=carry;
     const tl=ctx.timeline, etas=tl.map(x=>x.eta), dm=ctx.mode, iso=isoDateOf(di), timeZone=ctx.timeZone;   // ETA는 anchor 기준 — 비숙소 전날 마지막 장소도 반영
-    const carEv=carEventsOn(tripBookings(), iso);   // 렌터카 픽업·반납 (표시 전용 — 동선·ETA와 무관)
+    // 렌터카 픽업·반납 (표시 전용 — 동선·ETA와 무관). 일정의 장소와 연결된 건 그 장소 행에 붙으므로 독립 행에서 뺀다
+    const carLinks=carSpotLinks(trip().days);
+    const carEv=carEventsOn(tripBookings(), iso).filter(e=>!carLinks[e.kind][e.id]);
     day.spots.forEach((s,si)=>{
       const dotC = hasLoc(s)?spotColor(s,di,colors):'#4a5170';
       const incoming=prevLoc, inMode=legModeOf(day,s);   // 이 지점으로 '들어오는' 구간(수단) — 아래 ETA 안내에 사용
@@ -1438,6 +1440,13 @@ function renderSidebar(){
         if(w>0) meta.push(`<span class="spotMetaItem book" title="${escAttr(`도착 예상 ${hm(etas[si])} → 예약 ${s.bookAt}까지 대기. 다음 장소 도착 예상에 이 대기가 반영됩니다`)}">⏳ ${w}분 대기</span>`);
       }
       { const bu=safeUrl(s.bookUrl); if(bu) meta.push(`<a class="spotMetaItem book" href="${escAttr(bu)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="예약 링크 열기">🔗 예약 링크</a>`); }
+      // 이 장소에서 차를 받거나 돌려준다 — 예약과 연결해 두면 도착 순서와 어긋나지 않게 여기 붙는다
+      [['carPickupId','렌터카 픽업','carPickupTime'],['carReturnId','렌터카 반납','carReturnTime']].forEach(([f,label,tf])=>{
+        const bk=s[f]? bookingOf(s[f]) : null; if(!bk||bk.type!=='car') return;
+        const t=bk[tf]?` ${bk[tf]}`:'';
+        const tip=`${label}${t} · ${esc(bk.title)} — 탭해서 예약 상세 보기`;
+        meta.push(`<button type="button" class="spotMetaItem carbkChip" onclick="event.stopPropagation();openBookingModal('${escAttr(bk.id)}')" title="${escAttr(tip)}">🚗 ${label}${esc(t)}</button>`);
+      });
       // 예약 가격 추적 상태 (연결된 예약이 있을 때) — 탭하면 상세·가격 기록
       { const bk=s.bookingId? bookingOf(s.bookingId):null;
         if(bk) meta.push(`<button type="button" class="spotMetaItem pxBtn" onclick="event.stopPropagation();openBookingModal('${escAttr(bk.id)}')" title="예약 가격 추적 — 탭해서 상세와 가격 기록 보기">${bookingBadgeHtml(bk)}</button>`);
@@ -1651,6 +1660,7 @@ window.copySpot=(di,si)=>{
   if(viewMode)return;
   const spots=trip().days[di].spots, source=spots[si]; if(!source)return;
   const copy=JSON.parse(JSON.stringify(source)); copy.name=`${source.name} 복사본`;
+  delete copy.carPickupId; delete copy.carReturnId;   // 차를 받는 곳은 한 곳 — 복사본까지 픽업 지점이 되면 안 된다
   commit(()=>spots.splice(si+1,0,copy)); toast('장소를 복사했습니다');
 };
 window.deleteSpot=(di,si)=>{
@@ -2328,6 +2338,21 @@ function bkStayOptions(){
   trip().days.forEach((d,di)=>d.spots.forEach(s=>{ if(s.stay) out.push({di,s}); }));
   return out;
 }
+// 렌터카 픽업·반납을 붙일 후보 — 일정의 모든 장소 (공항·역처럼 숙소가 아닌 곳에서 받는 게 보통이라 stay로 좁히지 않는다)
+function bkAllSpotOptions(){
+  const out=[];
+  trip().days.forEach((d,di)=>d.spots.forEach((s,si)=>out.push({di,si,s})));
+  return out;
+}
+function fillBkCarSpotSelects(b){
+  const opts=bkAllSpotOptions(), links=carSpotLinks(trip().days);
+  const build=(/**@type {string}*/selId, /**@type {string}*/kind)=>{
+    const cur=b? links[kind][b.id] : null;
+    document.getElementById(selId).innerHTML='<option value="">— 연결 안 함 —</option>'+
+      opts.map(o=>`<option value="${o.di}.${o.si}"${(cur&&cur.di===o.di&&cur.si===o.si)?' selected':''}>Day ${o.di+1} · ${esc(o.s.name)}</option>`).join('');
+  };
+  build('bkCarPickupSpot','pickup'); build('bkCarReturnSpot','return');
+}
 function fillBkSpotSelect(b){
   const opts=bkStayOptions();
   const cur=b? opts.findIndex(o=>o.s.bookingId===b.id):-1;
@@ -2352,6 +2377,7 @@ window.openBookingModal=(id)=>{
   document.getElementById('bkDelBtn').style.display=b?'block':'none';
   document.getElementById('bkType').value=b?b.type:'hotel';
   fillBkSpotSelect(b);
+  fillBkCarSpotSelects(b);
   document.getElementById('bkTitle').value=b?b.title:'';
   document.getElementById('bkProvider').value=(b&&b.provider)||'';
   document.getElementById('bkPrice').value=b?fmtMoney(b.price):'';
@@ -2524,7 +2550,19 @@ document.getElementById('bkSave').onclick=()=>{
   const type=document.getElementById('bkType').value;
   const sv=document.getElementById('bkStart').value, ev=document.getElementById('bkEnd').value;
   if(type==='hotel'&&document.getElementById('bkTrack').checked&&(!sv||!ev)){ toast('가격 추적에는 체크인·체크아웃 날짜가 필요해요','#e63946'); return; }
-  if(sv&&ev&&sv>=ev){ toast('체크아웃은 체크인보다 뒤여야 해요','#e63946'); return; }   // 역순·같은 날이면 시세 조회가 거부된다
+  if(sv&&ev){
+    if(type==='car'){
+      // 당일 대여는 정상이다 — 같은 날이면 시각이 앞뒤를 가른다 (시세 조회도 pickupAt<returnAt만 본다)
+      if(sv>ev){ toast('반납일이 픽업일보다 앞설 수 없어요','#e63946'); return; }
+      if(sv===ev){
+        const HM=/^([01]?\d|2[0-3]):[0-5]\d$/;
+        const pt=document.getElementById('bkCarPickupTime').value.trim(), rt=document.getElementById('bkCarReturnTime').value.trim();
+        if(!HM.test(pt)||!HM.test(rt)||parseHM(pt)>=parseHM(rt)){
+          toast('당일 대여는 픽업 시각과 그보다 늦은 반납 시각이 필요해요','#e63946'); return; }
+      }
+    }
+    else if(sv>=ev){ toast('체크아웃은 체크인보다 뒤여야 해요','#e63946'); return; }   // 역순·같은 날이면 시세 조회가 거부된다
+  }
   const isNew=!editingBooking;
   const b=isNew? {id:uid(), createdAt:new Date().toISOString()} : bookingOf(editingBooking);
   if(!b) return;
@@ -2568,9 +2606,19 @@ document.getElementById('bkSave').onclick=()=>{
     if(identityChanged) delete b.ptoken;   // 이름·기간이 바뀌면 property 매핑을 다시 찾는다
     if(isNew) (trip().bookings=trip().bookings||[]).push(b);
     // 숙소 연결: 이 예약을 가리키던 이전 연결을 풀고 새로 연결 (호텔이 아니면 연결 없음)
-    trip().days.forEach(d=>d.spots.forEach(s=>{ if(s.bookingId===b.id) delete s.bookingId; }));
+    trip().days.forEach(d=>d.spots.forEach(s=>{ if(s.bookingId===b.id) delete s.bookingId;
+      if(s.carPickupId===b.id) delete s.carPickupId; if(s.carReturnId===b.id) delete s.carReturnId; }));
     const o=bkStayOptions()[+document.getElementById('bkSpot').value];
     if(o&&b.type==='hotel') o.s.bookingId=b.id;
+    // 렌터카 픽업·반납 지점 연결 — 연결된 장소 행에 붙여 도착 순서와 어긋나지 않게 한다
+    if(b.type==='car'){
+      const link=(/**@type {string}*/selId, /**@type {string}*/field)=>{
+        const v=document.getElementById(selId).value; if(!v) return;
+        const p=v.split('.'), sp=(trip().days[+p[0]]||{spots:[]}).spots[+p[1]];
+        if(sp) sp[field]=b.id;
+      };
+      link('bkCarPickupSpot','carPickupId'); link('bkCarReturnSpot','carReturnId');
+    }
   });
   document.getElementById('bookingModalBg').classList.remove('show');
   if(document.getElementById('bookingListBg').classList.contains('show')) renderBookingList();
@@ -2588,7 +2636,8 @@ document.getElementById('bkDelBtn').onclick=()=>{
   commit(()=>{
     trip().bookings=tripBookings().filter(x=>x.id!==b.id);
     if(!trip().bookings.length) delete trip().bookings;
-    trip().days.forEach(d=>d.spots.forEach(s=>{ if(s.bookingId===b.id) delete s.bookingId; }));
+    trip().days.forEach(d=>d.spots.forEach(s=>{ if(s.bookingId===b.id) delete s.bookingId;
+      if(s.carPickupId===b.id) delete s.carPickupId; if(s.carReturnId===b.id) delete s.carReturnId; }));
   });
   delete priceStore[b.id]; savePrices();
   document.getElementById('bookingModalBg').classList.remove('show');

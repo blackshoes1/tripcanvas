@@ -318,6 +318,27 @@
   }
 
   /**
+   * 일정에 연결된 렌터카 픽업·반납 지점 — `spot.carPickupId`·`spot.carReturnId` 역참조.
+   * 연결이 있으면 그 장소 행에 붙여 순서를 맞추고, 없으면 날짜 기준 독립 행으로 표시한다(carEventsOn).
+   * 같은 예약이 여러 장소에 붙어 있으면(장소 복사 등) 처음 하나만 유효한 것으로 본다.
+   * @param {any[]} days
+   * @returns {{pickup:Object<string,{di:number,si:number}>, return:Object<string,{di:number,si:number}>}}
+   */
+  function carSpotLinks(days){
+    /** @type {Object<string,{di:number,si:number}>} */ const pickup={};
+    /** @type {Object<string,{di:number,si:number}>} */ const ret={};
+    (Array.isArray(days)?days:[]).forEach((/**@type{any}*/d,/**@type{number}*/di)=>{
+      ((d&&d.spots)||[]).forEach((/**@type{any}*/sp,/**@type{number}*/si)=>{
+        if(!sp || typeof sp!=='object') return;
+        const p=_str(sp.carPickupId), r=_str(sp.carReturnId);
+        if(p && !pickup[p]) pickup[p]={di,si};
+        if(r && !ret[r]) ret[r]={di,si};
+      });
+    });
+    return {pickup, 'return':ret};
+  }
+
+  /**
    * 반납 지점 — 장소와 공항코드는 한 쌍이다. 둘 중 하나라도 입력돼 있으면 그게 '내가 정한 반납 지점'이므로
    * 픽업에서 물려받지 않는다 (편도 반납에 픽업 공항코드가 따라붙어 "서귀포점 (CJU)"가 되는 것을 막는다).
    * 둘 다 비어 있을 때만 픽업과 같은 곳으로 본다 (예약 화면의 "비우면 픽업과 동일").
@@ -482,6 +503,9 @@
     if(s.legMode!=null && _MODES.indexOf(s.legMode)<0) delete s.legMode;    // 알 수 없는 구간 수단 → 일정 기본
     if(s.bookUrl!=null && typeof s.bookUrl!=='string') delete s.bookUrl;
     if(s.bookingId!=null && !(typeof s.bookingId==='string' && _ID_RE.test(s.bookingId))) delete s.bookingId;   // 예약 추적 연결 (불량 id 제거)
+    // 렌터카 픽업·반납 지점 연결 (불량 id 제거) — bookingId와 같은 규칙
+    for(const k of /** @type {const} */(['carPickupId','carReturnId']))
+      if(s[k]!=null && !(typeof s[k]==='string' && _ID_RE.test(s[k]))) delete s[k];
     if(s.placeId!=null && !(typeof s.placeId==='string' && /^[A-Za-z0-9_-]{5,200}$/.test(s.placeId))) delete s.placeId;   // 구글 Place ID (호텔 identity)
     if(s.cat!=null && _CAT_IDS.indexOf(s.cat)<0) delete s.cat;              // 알 수 없는 카테고리 → 미지정(이름 추론으로 폴백)
     if(s.hours!=null && !(Array.isArray(s.hours)&&s.hours.every((/**@type{any}*/h)=>h&&_fin(h.d)&&_fin(h.o)&&_fin(h.c)))) delete s.hours;
@@ -653,7 +677,7 @@
     return spotCat(catFromName(s.name));
   }
 
-  const TC={SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,inKorea,simplifyName,parseDirect,parseMoney,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,computeTimeline,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,localMode,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
+  const TC={SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,inKorea,simplifyName,parseDirect,parseMoney,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,computeTimeline,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,localMode,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
   if(typeof module!=='undefined' && module.exports){ module.exports=TC; }   // Node (테스트)
   else { const r=/**@type {any}*/(root); for(const k in TC) r[k]=/**@type {any}*/(TC)[k]; }   // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);

@@ -69,6 +69,8 @@
   .spot.back{opacity:.82}
   /* 예약에서 파생한 렌터카 픽업·반납 — 저장된 장소가 아니므로 드래그·편집 불가, 옅게 */
   .spot.carbk{cursor:default;opacity:.82}
+  /* 그 장소에서 차를 받고/돌려준다 — 장소 행에 붙는 칩 */
+  .spot .carbkChip{color:var(--meta-soft);background:transparent;border:1px solid currentColor;border-radius:6px;padding:1px 5px;font-size:10.5px;cursor:pointer;white-space:nowrap}
   .ghostStay{display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;
     background:var(--surface,#fff);border:2px dashed var(--c,#7a86ad);font-size:11px;line-height:1;opacity:.85;pointer-events:none}
   .spot .opt{color:var(--meta-soft);font-size:11px}

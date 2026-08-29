@@ -574,3 +574,34 @@ test('carEventsOn — 반납 이벤트는 carReturnPoint 규칙을 그대로 따
   const r2 = L.carEventsOn(codeOnly,'2026-09-04')[0];
   assert.deepEqual([r2.place, r2.code], ['', 'BCN']);
 });
+
+test('carSpotLinks — 일정 장소에 붙은 픽업·반납 연결을 역참조한다', () => {
+  const days = [
+    {spots:[{name:'미술관'},{name:'호텔',stay:true}]},
+    {spots:[{name:'공항',carPickupId:'c1'},{name:'대성당'},{name:'렌터카점',carReturnId:'c1'}]}
+  ];
+  const L1 = L.carSpotLinks(days);
+  assert.deepEqual(L1.pickup.c1, {di:1,si:0});
+  assert.deepEqual(L1['return'].c1, {di:1,si:2});
+  assert.equal(L1.pickup.nope, undefined);
+
+  // 같은 예약이 두 장소에 붙어 있으면(장소 복사 등) 처음 하나만
+  const dup = [{spots:[{name:'A',carPickupId:'c1'},{name:'A 복사본',carPickupId:'c1'}]}];
+  assert.deepEqual(L.carSpotLinks(dup).pickup.c1, {di:0,si:0});
+
+  assert.deepEqual(L.carSpotLinks([]), {pickup:{}, 'return':{}});
+  assert.deepEqual(L.carSpotLinks(null), {pickup:{}, 'return':{}});
+  assert.deepEqual(L.carSpotLinks([{spots:[null,'x',{}]}]), {pickup:{}, 'return':{}});
+});
+
+test('normalizeTrip — 불량 픽업·반납 연결 id는 버린다 (유입 데이터 방어)', () => {
+  const t = L.normalizeTrip({name:'T', days:[{spots:[
+    {name:'A', carPickupId:'ok_id-1', carReturnId:'<script>'},
+    {name:'B', carPickupId:{},        carReturnId:'also-ok'}
+  ]}]});
+  const [a,b] = t.days[0].spots;
+  assert.equal(a.carPickupId, 'ok_id-1');
+  assert.equal(a.carReturnId, undefined, 'uid 형식이 아니면 제거');
+  assert.equal(b.carPickupId, undefined, '문자열이 아니면 제거');
+  assert.equal(b.carReturnId, 'also-ok');
+});
