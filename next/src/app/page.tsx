@@ -4,7 +4,7 @@ const AREAS: { name: string; status: '이관됨' | '진행 중' | '레거시' }[
   { name: 'Booking/Pricing 도메인 타입 + Saving Engine', status: '이관됨' },
   { name: 'Booking/Price UI (/bookings)', status: '진행 중' },
   { name: 'API — hotel-offers · car-offers · cron (Route Handler)', status: '이관됨' },
-  { name: 'Itinerary (Trip/Day/Spot)', status: '레거시' },
+  { name: 'Itinerary 읽기 뷰 (/itinerary — 편집·지도는 레거시)', status: '진행 중' },
   { name: 'Map', status: '레거시' }
 ];
 

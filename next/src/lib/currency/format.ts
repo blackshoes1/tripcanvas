@@ -29,6 +29,11 @@ export function fmtMoney(n: number): string {
   return Math.round(+n || 0).toLocaleString('en-US');
 }
 
+/** 통화 기호 — 알 수 없는 통화는 null (호출부가 KRW 폴백) */
+export function currencySymbol(cur?: string): string | null {
+  return SYMBOL[(cur ?? 'KRW') as CurrencyCode] ?? null;
+}
+
 /** KRW면 "₩68,000", 아니면 "€300 ≈ ₩450,000". 알 수 없는 통화는 KRW 폴백(렌더 크래시 방지) */
 export function costLabel(amount: number, cur?: string): string {
   const c = (cur ?? 'KRW') as CurrencyCode;

@@ -1,0 +1,48 @@
+/* 일정 읽기 뷰 — 레거시 dayCard/.spot의 시각 언어를 최소 이식 */
+.itPage { max-width: 640px; margin: 0 auto; padding: 24px 16px 64px; }
+.itPage h1 { font-size: 20px; }
+.itPage .hint { color: var(--muted); font-size: 12px; margin: 6px 0; }
+.itPage .opt { color: var(--muted); font-size: 11px; margin-left: 6px; }
+.itDim { opacity: .55; font-size: 11px; }
+
+.itTripCost { background: var(--card); border-radius: 10px; padding: 10px 12px; font-size: 13px; margin: 10px 0; }
+
+.itDay { background: var(--card); border: 1px solid color-mix(in srgb, var(--fg) 10%, transparent);
+  border-radius: 12px; margin-top: 12px; overflow: hidden; }
+.itDayHead { padding: 10px 12px 8px; border-bottom: 1px solid color-mix(in srgb, var(--fg) 8%, transparent); }
+.itDayTitle { font-weight: 700; font-size: 14px; }
+.itDayMeta { color: var(--muted); font-size: 12px; margin-top: 2px; }
+.itDayBody { padding: 8px 12px 12px; }
+
+.itDrive { color: var(--muted); font-size: 12px; margin: 4px 0; }
+.itFlight { color: #7cc7ff; }
+.itInterDay { color: #9fb8e8; }
+.itDist { font-size: 12px; margin: 4px 0; }
+.itOverload { color: #ffa94d; font-size: 12px; margin: 4px 0; }
+
+.itSpot { border-left: 3px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  padding: 6px 8px; margin: 6px 0; border-radius: 6px;
+  background: color-mix(in srgb, var(--fg) 4%, transparent); }
+.itCarry, .itCarbk { border-left-color: #7a86ad; }
+.itSpotMain { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.itEta { font-variant-numeric: tabular-nums; font-size: 12px; color: var(--muted); min-width: 44px; }
+.itEta.fixed { color: var(--fg); font-weight: 600; }
+.itSpotName { font-size: 14px; font-weight: 600; }
+.itOrder { color: var(--muted); font-weight: 400; margin-right: 4px; }
+.itCat { margin-right: 4px; }
+.itDesc { color: var(--muted); font-size: 12px; margin-top: 4px; white-space: pre-line; }
+
+.itMeta { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-top: 4px; }
+.itMetaItem { font-size: 11px; padding: 2px 7px; border-radius: 999px;
+  background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--muted); }
+.itMetaItem.itStay { background: #7c5cff22; color: #b7a4ff; }
+.itMetaItem.itCost { background: #37b24d22; color: #69db7c; }
+.itMetaItem.itBook { background: #fab00522; color: #ffd43b; text-decoration: none; }
+.itMetaItem.itBook.warn { background: #e6394622; color: #ff6b6b; }
+.itMetaItem.itCarChip { background: #4dabf722; color: #74c0fc; }
+.itMetaItem.itClosed, .itMetaItem.itNoloc { background: #ff922b22; color: #ffa94d; }
+
+.itLeg { color: var(--muted); font-size: 11px; margin-bottom: 4px; }
+.itLegMode { margin-right: 2px; }
+.itEmpty { color: var(--muted); font-size: 12px; padding: 12px 4px; }
+.itNote { color: var(--muted); font-size: 12px; margin-top: 8px; }
