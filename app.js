@@ -627,13 +627,7 @@ function dayWeatherHtml(day,di){
   if(!w) return '';
   return `<span class="wx" title="${esc(first.name)} 기준 예보">${w.icon} ${w.tmax}° <span style="opacity:.6">/ ${w.tmin}°</span></span>`;
 }
-function gmapsLink(s){ return `https://www.google.com/maps/search/?api=1&query=${s.lat},${s.lng}(${encodeURIComponent(s.name)})`; }
-// 외부 지도 링크 — 국내는 카카오맵(한국서 실제 내비 가능), 해외는 구글
-function extMapLink(s){
-  return inKorea({lat:+s.lat,lng:+s.lng})
-    ? {href:`https://map.kakao.com/link/to/${encodeURIComponent(s.name)},${s.lat},${s.lng}`, label:'카카오맵 길찾기 ↗'}
-    : {href:gmapsLink(s), label:'Google 지도 ↗'};
-}
+// 외부 지도 링크는 lib.js extMapLink — Next 여행 모드와 같은 링크를 쓴다
 function hasLoc(s){ return s && s.lat!=null && s.lng!=null && isFinite(+s.lat) && isFinite(+s.lng); }
 // 색상 기준: 'city'(도시별) | 'day'(일자별). trip에 저장, 기본 city
 function colorByMode(){ return (trip().colorBy==='city') ? 'city' : 'day'; }   // 기본 일자별 (경로 색 가독성)

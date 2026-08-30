@@ -118,6 +118,19 @@
   }
 
   /**
+   * 외부 지도 링크 — 국내는 카카오맵(한국에서 실제 내비가 된다), 해외는 구글.
+   * 두 앱이 같은 장소에 다른 링크를 주면 안 되므로 여기 한 곳에서 만든다.
+   * @param {any} s @returns {{href:string,label:string}}
+   */
+  function extMapLink(s){
+    const lat=+s.lat, lng=+s.lng, name=String(s.name||'');
+    return inKorea({lat,lng})
+      ? {href:`https://map.kakao.com/link/to/${encodeURIComponent(name)},${lat},${lng}`, label:'카카오맵 길찾기 ↗'}
+      : {href:`https://www.google.com/maps/search/?api=1&query=${lat},${lng}(${encodeURIComponent(name)})`,
+         label:'Google 지도 ↗'};
+  }
+
+  /**
    * 붙여넣기 초안(직접 형식·AI 응답)의 days를 여행 스키마 모양으로 눕힌다.
    * validateTripPayload는 '모양이 틀리면 통째로 거절'하므로, 자유로운 입력(특히 AI 응답)을
    * 그대로 넘기면 초안 하나가 필드 하나 때문에 버려진다 — 여기서 먼저 아는 값만 남기고
@@ -851,7 +864,7 @@
     return spotCat(catFromName(s.name));
   }
 
-  const TC={SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,cityFromKoreanAddr,placeName,cityFromGoogle,normHours,classifySearchErr,isKoreanSearch,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,normHM,sortDayByTime,inKorea,simplifyName,parseDirect,parseMoney,normalizeDraftDays,extractJson,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,computeTimeline,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,localMode,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
+  const TC={SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,cityFromKoreanAddr,placeName,cityFromGoogle,normHours,classifySearchErr,isKoreanSearch,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,normHM,sortDayByTime,inKorea,simplifyName,parseDirect,parseMoney,normalizeDraftDays,extractJson,extMapLink,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,computeTimeline,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,localMode,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
   if(typeof module!=='undefined' && module.exports){ module.exports=TC; }   // Node (테스트)
   else { const r=/**@type {any}*/(root); for(const k in TC) r[k]=/**@type {any}*/(TC)[k]; }   // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);

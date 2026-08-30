@@ -293,6 +293,27 @@ test('extractJson — 인사말·코드펜스가 붙어도 JSON만 떼어낸다'
   assert.equal(L.extractJson(undefined), '');
 });
 
+test('extMapLink — 국내는 카카오맵, 해외는 구글', () => {
+  // 한국에서는 카카오맵만 실제 내비가 된다
+  const kr = L.extMapLink({ name: '제주공항', lat: 33.5104, lng: 126.4914 });
+  assert.ok(kr.href.startsWith('https://map.kakao.com/link/to/'));
+  assert.ok(kr.href.includes('33.5104,126.4914'));
+  assert.match(kr.label, /카카오맵/);
+
+  const jp = L.extMapLink({ name: 'Tokyo Tower', lat: 35.6586, lng: 139.7454 });
+  assert.ok(jp.href.startsWith('https://www.google.com/maps/search/'));
+  assert.match(jp.label, /Google/);
+
+  // 이름은 URL 인코딩된다 — 공백·특수문자가 링크를 깨뜨리지 않게
+  const enc = L.extMapLink({ name: '카페 & 로스터리', lat: 37.5, lng: 127.0 });
+  assert.ok(!enc.href.includes(' '));
+  assert.ok(enc.href.includes(encodeURIComponent('카페 & 로스터리')));
+
+  // 문자열 좌표도 받는다 (유입 데이터)
+  const str = L.extMapLink({ name: 'x', lat: '33.5', lng: '126.5' });
+  assert.ok(str.href.includes('33.5,126.5'));
+});
+
 test('parseMoney — 통화 기호·접미사 (유로 포함)', () => {
   assert.deepEqual(L.parseMoney('입장료 €80'), {cost:80,cur:'EUR',raw:'€80'});
   assert.deepEqual(L.parseMoney('120,000 유로'), {cost:120000,cur:'EUR',raw:'120,000 유로'});

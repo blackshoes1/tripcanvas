@@ -1,0 +1,44 @@
+/* 여행 모드 — 현장에서 한 손으로 본다. 글자·터치 영역을 일정 화면보다 크게 잡는다. */
+.tvMain { max-width: 640px; margin: 0 auto; padding: 20px 16px 48px; }
+.tvMain h1 { font-size: 20px; margin: 0 0 12px; }
+
+.tvNav { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.tvNav button, .tvNav select, .tvLink {
+  font-size: 13px; padding: 8px 12px; border-radius: 10px; cursor: pointer;
+  background: var(--card); color: var(--fg); text-decoration: none;
+  border: 1px solid color-mix(in srgb, var(--fg) 18%, transparent);
+}
+.tvNav select { flex: 1 1 160px; min-width: 0; font-weight: 700; }
+.tvNav button:disabled { opacity: .4; cursor: default; }
+.tvNav .tvToday { border-color: var(--accent); color: var(--accent); }
+.tvLink { margin-left: auto; color: var(--muted); }
+
+.tvHead h2 { font-size: 17px; margin: 0 0 2px; }
+.tvSub { font-size: 12px; color: var(--muted); margin: 0 0 14px; }
+
+.tvFocus { padding: 16px; border-radius: 14px; margin-bottom: 10px;
+  background: color-mix(in srgb, var(--accent) 12%, var(--card));
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); }
+.tvKicker { font-size: 11px; color: var(--muted); letter-spacing: .04em; }
+.tvPlace { font-size: 22px; font-weight: 800; margin: 4px 0 6px; line-height: 1.25; }
+.tvFacts { font-size: 12.5px; color: var(--muted); line-height: 1.6; }
+
+.tvNext { display: flex; align-items: center; gap: 12px; padding: 12px 16px;
+  border-radius: 12px; margin-bottom: 18px; background: var(--card);
+  border: 1px solid color-mix(in srgb, var(--fg) 12%, transparent); }
+.tvNext > div { flex: 1; min-width: 0; }
+.tvNext strong { font-size: 15px; }
+.tvNext > span { font-size: 20px; color: var(--muted); }
+
+.tvStop { padding: 12px 14px; border-radius: 12px; margin-bottom: 8px; background: var(--card);
+  border: 1px solid color-mix(in srgb, var(--fg) 10%, transparent); }
+.tvStop.on { border-color: var(--accent); }
+.tvCarry { opacity: .8; }
+.tvLeg { font-size: 11.5px; color: var(--muted); margin-bottom: 6px; }
+.tvStopMain { display: flex; align-items: baseline; gap: 10px; }
+.tvEta { font-size: 12px; font-weight: 700; color: var(--accent); flex: none; }
+.tvName { font-size: 15px; font-weight: 600; }
+.tvDesc { font-size: 12.5px; color: var(--muted); margin-top: 5px; }
+.tvLinks { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 8px; }
+.tvLinks a { font-size: 12.5px; color: var(--accent); }
+.tvNoloc { font-size: 12.5px; color: var(--muted); }
