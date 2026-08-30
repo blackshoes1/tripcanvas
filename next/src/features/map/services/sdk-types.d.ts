@@ -9,6 +9,15 @@ declare namespace google.maps {
     getZoom(): number | undefined;
     setZoom(zoom: number): void;
     panTo(p: { lat: number; lng: number }): void;
+    /** 지도 탭 (Phase 6d) — POI 아이콘을 누르면 placeId가 실려 온다 */
+    addListener(ev: 'click', cb: (e: MapMouseEvent) => void): void;
+    addListener(ev: 'dblclick' | 'drag', cb: () => void): void;
+  }
+  interface MapMouseEvent {
+    latLng: { lat(): number; lng(): number };
+    /** POI 아이콘을 탭했을 때만 채워진다 */
+    placeId?: string;
+    stop?: () => void;
   }
   class LatLngBounds {
     extend(p: { lat: number; lng: number }): void;
@@ -29,10 +38,21 @@ declare namespace google.maps {
     function trigger(m: Map, ev: string): void;
   }
   /** 신 Places API는 동적 로드 — 초기 libraries에 없어도 필요할 때 받아온다 (Phase 6c 검색) */
-  function importLibrary(name: 'places'): Promise<{ Place: typeof places.Place }>;
+  function importLibrary(name: 'places'): Promise<{
+    Place: typeof places.Place;
+    SearchNearbyRankPreference?: { DISTANCE?: unknown };
+  }>;
   namespace places {
     class Place {
+      constructor(opts: { id: string; requestedLanguage?: string });
       static searchByText(req: Record<string, unknown>): Promise<{ places: PlaceLike[] | null }>;
+      /** 좌표만 있을 때의 최후 수단 (Phase 6d) */
+      static searchNearby(req: Record<string, unknown>): Promise<{ places: PlaceLike[] | null }>;
+      fetchFields(req: { fields: string[] }): Promise<{ place?: PlaceLike }>;
+      /** fetchFields는 인스턴스 자신도 채운다 — 레거시가 r.place ?? place로 폴백하는 이유 */
+      displayName?: unknown;
+      formattedAddress?: string;
+      addressComponents?: unknown;
     }
     interface PlaceLike {
       id?: string;
@@ -60,9 +80,18 @@ declare namespace kakao.maps {
   }
   class LatLngBounds {
     extend(p: LatLng): void;
+    getSouthWest(): LatLng2;
+    getNorthEast(): LatLng2;
+  }
+  /** SDK가 돌려주는 좌표 — 생성자 인자와 달리 게터로 읽는다 */
+  interface LatLng2 {
+    getLat(): number;
+    getLng(): number;
   }
   class Map {
     constructor(el: HTMLElement, opts: { center: LatLng; level: number });
+    getBounds(): LatLngBounds | null;
+    getCenter(): LatLng;
     setBounds(bounds: LatLngBounds, padding?: number): void;
     getLevel(): number;
     setLevel(level: number): void;
@@ -77,9 +106,28 @@ declare namespace kakao.maps {
     constructor(opts: Record<string, unknown>);
     setMap(m: Map | null): void;
   }
-  /** 키워드 검색 (Phase 6c) — SDK는 콜백 스타일이라 서비스가 Promise로 감싼다 */
+  namespace event {
+    function addListener(target: Map, ev: 'click' | 'dblclick' | 'rightclick', cb: (e: { latLng: LatLng2 }) => void): void;
+    function addListener(target: Map, ev: 'idle' | 'drag', cb: () => void): void;
+  }
   namespace services {
     const Status: { OK: string; ZERO_RESULT: string; ERROR: string };
+    const SortBy: { DISTANCE?: string };
+    interface CategoryItem extends PlaceItem {
+      id?: string;
+      /** 기준점에서의 거리(m) — 문자열로 온다 */
+      distance?: string;
+    }
+    class Geocoder {
+      /** 좌표 → 주소 (인자 순서가 lng, lat이다 — 뒤집으면 엉뚱한 곳이 나온다) */
+      coord2Address(
+        lng: number, lat: number,
+        cb: (res: {
+          address?: { region_1depth_name?: string; region_2depth_name?: string };
+          road_address?: { building_name?: string };
+        }[] | null, status: string) => void
+      ): void;
+    }
     interface PlaceItem {
       place_name: string;
       road_address_name?: string;
@@ -88,11 +136,19 @@ declare namespace kakao.maps {
       /** 위도 문자열 */ y: string;
       /** 경도 문자열 */ x: string;
     }
+    /** SDK는 콜백 스타일이라 서비스가 Promise로 감싼다 */
     class Places {
+      /** 키워드 검색 (Phase 6c) */
       keywordSearch(
         q: string,
         cb: (data: PlaceItem[] | null, status: string) => void,
         opts?: { size?: number; location?: LatLng; radius?: number }
+      ): void;
+      /** 카테고리 검색 (Phase 6d) — 국내 POI 신원을 우리가 직접 조회해 깐다 */
+      categorySearch(
+        code: string,
+        cb: (data: CategoryItem[] | null, status: string) => void,
+        opts?: { bounds?: LatLngBounds; location?: LatLng; radius?: number; sort?: string }
       ): void;
     }
   }

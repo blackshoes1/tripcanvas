@@ -74,6 +74,8 @@ declare module '@legacy/lib.js' {
     catFromGoogle(types: unknown, primaryType?: unknown): string | null;
     /** 카카오 주소 → 도시명 (검색 결과용) */
     cityFromKoreanAddr(addr: string | undefined): string;
+    /** 카카오 지번주소 → 도시명 (POI 칩용 — cityFromKoreanAddr와 규칙이 다르다) */
+    cityFromKakaoAddress(addr: string | undefined): string;
     /** 구글 Place → 표시 이름 (displayName 형태 차이·빈값 방어, 주소 폴백) */
     placeName(p: unknown): string;
     /** 구글 addressComponents → 도시명 */

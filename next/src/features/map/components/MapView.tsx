@@ -1,10 +1,12 @@
 'use client';
-// 지도 뷰 — buildMapScene 결과를 그리는 SDK 어댑터 (판정·규칙은 전부 domain/scene).
+// 지도 뷰 — buildMapScene 결과를 그리는 SDK 어댑터 (판정·규칙은 전부 domain/scene·domain/mapPick).
 // 레거시 Engines 어댑터의 google/kakao 분기를 그대로 옮겼다: 오버레이 핸들은 remove() 목록으로 통일.
-// 읽기 뷰라 POI 탭(clickableIcons)·우클릭 추가·검색은 없다 — Phase 6에서 이관.
+// Phase 6d에서 '지도에서 담기'가 붙었다 — 해외는 POI 탭의 placeId, 국내는 우리가 깐 POI 칩.
 import { useEffect, useRef, useState } from 'react';
 
+import { createTapGate, type TapPoint } from '@/features/map/domain/mapPick';
 import type { FitTarget, MapScene } from '@/features/map/domain/types';
+import { createKakaoPoiLayer, type PoiPick } from '@/features/map/services/kakaoPoiLayer';
 import { loadGoogleMaps, loadKakaoMaps } from '@/features/map/services/sdkLoader';
 
 type PinClick = (di: number, si: number) => void;
@@ -141,18 +143,35 @@ function waitForSize(el: HTMLElement): Promise<void> {
   });
 }
 
-export function MapView({ scene, fit, onPinClick }: { scene: MapScene; fit: FitTarget | null; onPinClick?: PinClick }) {
+export function MapView({ scene, fit, onPinClick, onMapTap, onPoiPick }: {
+  scene: MapScene;
+  fit: FitTarget | null;
+  onPinClick?: PinClick;
+  /** 빈 자리·해외 POI 탭 — 좌표(+placeId)로 새 장소를 담는다 */
+  onMapTap?: (p: TapPoint) => void;
+  /** 국내 POI 칩 탭 — 무엇을 눌렀는지 아는 경로라 추측이 필요 없다 */
+  onPoiPick?: (p: PoiPick) => void;
+}) {
   const gDiv = useRef<HTMLDivElement>(null);
   const kDiv = useRef<HTMLDivElement>(null);
   const gMap = useRef<google.maps.Map | null>(null);
   const kMap = useRef<kakao.maps.Map | null>(null);
   const removers = useRef<(() => void)[]>([]);
+  const poiLayer = useRef<ReturnType<typeof createKakaoPoiLayer> | null>(null);
+  // 콜백은 ref로 최신값을 본다 — 부모가 새 함수를 넘길 때마다 지도를 다시 만들지 않게
+  const onTapRef = useRef(onMapTap);
+  const onPoiRef = useRef(onPoiPick);
+  const gate = useRef<ReturnType<typeof createTapGate> | null>(null);
   const [ready, setReady] = useState({ google: false, kakao: false });
   const [failed, setFailed] = useState<'google' | 'kakao' | null>(null);
+
+  useEffect(() => { onTapRef.current = onMapTap; onPoiRef.current = onPoiPick; }, [onMapTap, onPoiPick]);
 
   // 장면이 원하는 엔진을 지연 초기화 (레거시: 구글 즉시 + 카카오 지연 — 읽기 뷰는 둘 다 필요할 때만)
   useEffect(() => {
     let cancelled = false;
+    // 탭 게이트는 지도보다 오래 산다 (엔진 전환에도 유지) — 처음 한 번만 만든다
+    gate.current ??= createTapGate({ onAdd: p => onTapRef.current?.(p) });
     (async () => {
       if (scene.engine === 'google' && !gMap.current) {
         const ok = await loadGoogleMaps();
@@ -162,8 +181,17 @@ export function MapView({ scene, fit, onPinClick }: { scene: MapScene; fit: FitT
         if (cancelled || gMap.current) return;
         gMap.current = new google.maps.Map(gDiv.current, {
           center: { lat: 40, lng: -3.7 }, zoom: 6, mapId: 'DEMO_MAP_ID',
-          disableDefaultUI: true, zoomControl: true, clickableIcons: false, gestureHandling: 'greedy'
+          // clickableIcons: POI 아이콘 탭에서 placeId를 받는 유일한 방법 (해외 신원의 근거)
+          disableDefaultUI: true, zoomControl: true, clickableIcons: true, gestureHandling: 'greedy'
         });
+        gMap.current.addListener('click', e => {
+          const p: TapPoint = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+          // POI를 탭하면 e.placeId로 '탭한 그 장소'가 특정된다. 구글 기본 정보창은 막고 우리 흐름으로.
+          if (e.placeId) { e.stop?.(); p.placeId = e.placeId; }
+          gate.current?.tap(p);
+        });
+        gMap.current.addListener('dblclick', () => gate.current?.cancel());   // 더블탭 확대를 추가로 오인하지 않게
+        gMap.current.addListener('drag', () => gate.current?.cancel());       // 패닝 중 발생한 탭은 무시
         setReady(r => ({ ...r, google: true }));
       }
       if (scene.engine === 'kakao' && !kMap.current) {
@@ -173,6 +201,17 @@ export function MapView({ scene, fit, onPinClick }: { scene: MapScene; fit: FitT
         await waitForSize(kDiv.current);
         if (cancelled || kMap.current) return;
         kMap.current = new kakao.maps.Map(kDiv.current, { center: new kakao.maps.LatLng(36.5, 127.9), level: 12 });
+        const km = kMap.current;
+        kakao.maps.event.addListener(km, 'click', me => gate.current?.tap({ lat: me.latLng.getLat(), lng: me.latLng.getLng() }));
+        kakao.maps.event.addListener(km, 'dblclick', () => gate.current?.cancel());
+        kakao.maps.event.addListener(km, 'drag', () => gate.current?.cancel());
+        poiLayer.current = createKakaoPoiLayer(km, p => {
+          gate.current?.cancel();   // 지도 탭의 지연 추가와 겹치지 않게
+          onPoiRef.current?.(p);
+        });
+        // 이동·확대가 멈추면 그 범위의 장소를 깐다
+        kakao.maps.event.addListener(km, 'idle', () => { void poiLayer.current?.refresh(); });
+        void poiLayer.current.refresh();
         setReady(r => ({ ...r, kakao: true }));
       }
     })();
@@ -197,7 +236,11 @@ export function MapView({ scene, fit, onPinClick }: { scene: MapScene; fit: FitT
     else fitGoogle(gMap.current!, fit);
   }, [fit, engineReady, scene.engine]);
 
-  useEffect(() => () => { removers.current.forEach(r => r()); }, []);
+  useEffect(() => () => {
+    removers.current.forEach(r => r());
+    poiLayer.current?.destroy();
+    gate.current?.cancel();
+  }, []);
 
   return (
     <div className="itMapWrap">

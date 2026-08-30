@@ -1,8 +1,8 @@
 'use client';
-// 일정(Itinerary) 읽기 뷰 — 레거시 사이드바+지도와 같은 데이터(tripcanvas_v1·tripcanvas_legs_v4)를
-// 같은 규칙(anchor/carry·타임라인·렌터카 연결·비용 배분·지도 장면)으로 보여주는 병행 화면.
-// 편집·드래그·POI 담기·검색·재생·경로 조회는 아직 레거시 담당 (Phase 6에서 이관).
-import { useCallback, useEffect, useMemo, useState } from 'react';
+// 일정(Itinerary) — 레거시 사이드바+지도와 같은 데이터(tripcanvas_v1·tripcanvas_legs_v4)를
+// 같은 규칙(anchor/carry·타임라인·렌터카 연결·비용 배분·지도 장면)으로 보여주고 편집하는 병행 화면.
+// 드래그 정렬·재생은 아직 레거시 담당.
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { DayCard } from '@/features/itinerary/components/DayCard';
 import { SpotEditor } from '@/features/itinerary/components/SpotEditor';
@@ -12,7 +12,10 @@ import {
 } from '@/features/itinerary/domain/spotEditor';
 import { useLegCache } from '@/features/itinerary/hooks/useLegCache';
 import { MapView } from '@/features/map/components/MapView';
+import type { TapPoint } from '@/features/map/domain/mapPick';
 import { buildMapScene, dayColor, entryFitOf, fitTargetOf } from '@/features/map/domain/scene';
+import { reverseSpot, type ReverseResult } from '@/features/map/services/reverseSpot';
+import type { PoiPick } from '@/features/map/services/kakaoPoiLayer';
 import { ensureTripLegs } from '@/features/routing/services/ensureTripLegs';
 import { useTripStore } from '@/features/trip/hooks/useTripStore';
 import type { Spot } from '@/features/trip/domain/types';
@@ -31,7 +34,9 @@ export default function ItineraryPage() {
   /** 편집 중인 장소 위치 — 열려 있는 동안만 */
   const [editing, setEditing] = useState<{ di: number; si: number } | null>(null);
   /** 추가 중인 자리 — after는 편집기를 '열 때' 확정한다 (레거시 editing.after와 같은 의미) */
-  const [adding, setAdding] = useState<{ di: number; after: number | null } | null>(null);
+  const [adding, setAdding] = useState<{ di: number; after: number | null; draft: Spot } | null>(null);
+  /** 지도에서 담은 좌표의 신원 — 늦게 도착해 편집기에 흘려 넣는다 */
+  const [identity, setIdentity] = useState<ReverseResult | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
   const views = useMemo(
@@ -56,6 +61,45 @@ export default function ItineraryPage() {
 
   const editingSpot = editing ? activeTrip?.days[editing.di]?.spots[editing.si] ?? null : null;
   const SAVE_FAILED = '저장에 실패했어요 — 저장 공간을 확인해주세요';
+
+  /** 지도로 담을 때의 대상 일자·삽입 위치 — 레거시 addSpotAt과 같다(필터 중인 일자, 선택한 장소 뒤) */
+  const mapTarget = () => {
+    const di = activeDay ? activeDay - 1 : 0;
+    const after = sel && sel.di === di && activeTrip?.days[di]?.spots[sel.si] ? sel.si : null;
+    return { di, after };
+  };
+  const openAdd = (di: number, after: number | null, draft: Spot) => {
+    setNotice(null);
+    setIdentity(null);
+    setAdding({ di, after, draft });
+  };
+
+  // 지도 콜백은 안정적이어야 한다(바뀌면 오버레이를 다시 그린다) → 최신 상태는 ref로 본다
+  const mapTargetRef = useRef(mapTarget);
+  const openAddRef = useRef(openAdd);
+  const tripRef = useRef(activeTrip);
+  useEffect(() => {
+    mapTargetRef.current = mapTarget;
+    openAddRef.current = openAdd;
+    tripRef.current = activeTrip;
+  });
+
+  // 빈 자리·해외 POI 탭 — 좌표는 확실하지만 신원은 되짚어야 한다(추측이므로 늦게, 조심스럽게)
+  const onMapTap = useCallback((p: TapPoint) => {
+    const { di, after } = mapTargetRef.current();
+    const base = newSpotDraft(tripRef.current?.days[di]);
+    const draft: Spot = { ...base, lat: p.lat, lng: p.lng };
+    if (p.placeId) draft.placeId = p.placeId;
+    openAddRef.current(di, after, draft);
+    reverseSpot(p.lat, p.lng, p.placeId).then(setIdentity).catch(() => {});
+  }, []);
+
+  // 국내 POI 칩 — 우리가 깔았으니 무엇을 눌렀는지 안다. 역추적(추측)을 건너뛴다
+  const onPoiPick = useCallback((p: PoiPick) => {
+    const { di, after } = mapTargetRef.current();
+    const base = newSpotDraft(tripRef.current?.days[di]);
+    openAddRef.current(di, after, { ...base, name: p.name, city: p.city || base.city, lat: p.lat, lng: p.lng });
+  }, []);
 
   // updateActiveTrip은 mutate를 동기로 부른다 — 정렬 여부를 그때 받아 안내 문구를 고른다
   const saveSpot = (next: Spot, targetDi: number) => {
@@ -154,7 +198,9 @@ export default function ItineraryPage() {
         <span className="itLegendNote" aria-hidden="true">- - - 일자 간 이동</span>
       </div>
       <div className="itLayout">
-        {scene && <MapView scene={scene} fit={fit} onPinClick={onPinClick} />}
+        {scene && (
+          <MapView scene={scene} fit={fit} onPinClick={onPinClick} onMapTap={onMapTap} onPoiPick={onPoiPick} />
+        )}
         <div className="itCards">
           {views.map(v => (
             <DayCard
@@ -164,14 +210,14 @@ export default function ItineraryPage() {
               onHeaderClick={() => selectDay(activeDay === v.dayNo ? 0 : v.dayNo)}
               onEditSpot={si => { setNotice(null); setEditing({ di: v.di, si }); }}
               onMoveSpot={(si, delta) => move(v.di, si, delta)}
-              onAddSpot={after => { setNotice(null); setAdding({ di: v.di, after }); }}
+              onAddSpot={after => openAdd(v.di, after, newSpotDraft(activeTrip.days[v.di]))}
             />
           ))}
         </div>
       </div>
       <p className="hint">
-        장소 추가·검색·편집·순서 변경·삭제를 여기서 할 수 있어요. 지도 클릭으로 위치 담기와 재생은
-        아직 기존 앱 담당입니다. 이동 시간·경로선은 자동으로 조회해 채웁니다 (조회 전에는 직선 추정).
+        지도를 탭하거나 검색해서 장소를 담고, 편집·순서 변경·삭제까지 여기서 할 수 있어요.
+        드래그 정렬과 재생은 아직 기존 앱 담당입니다. 이동 시간·경로선은 자동으로 조회해 채웁니다 (조회 전에는 직선 추정).
       </p>
       {editing && editingSpot && (
         <div className="itEditorBg" onClick={e => { if (e.target === e.currentTarget) setEditing(null); }}>
@@ -184,7 +230,7 @@ export default function ItineraryPage() {
       {adding && (
         <div className="itEditorBg" onClick={e => { if (e.target === e.currentTarget) setAdding(null); }}>
           <SpotEditor
-            isNew spot={newSpotDraft(activeTrip.days[adding.di])} di={adding.di} days={activeTrip.days}
+            isNew spot={adding.draft} di={adding.di} days={activeTrip.days} identity={identity}
             onSave={addSpot} onCancel={() => setAdding(null)}
           />
         </div>
