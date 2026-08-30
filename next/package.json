@@ -13,6 +13,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.112.3",
     "@types/sortablejs": "^1.15.9",
     "lz-string": "^1.5.0",
     "next": "16.3.3",

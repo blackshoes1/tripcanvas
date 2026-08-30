@@ -94,6 +94,24 @@ export function removeTrip(id: string): boolean {
   return writeStore({ trips, activeId: store.activeId === id ? trips[0].id : store.activeId });
 }
 
+/**
+ * 여행 목록을 통째로 되쓴다 (클라우드 로그인 병합). 하나라도 정규화를 통과 못 하면
+ * 아무것도 쓰지 않는다 — 반쪽만 반영되면 어느 쪽이 진짜인지 알 수 없게 된다.
+ */
+export function replaceTrips(trips: Trip[], activeId?: string): boolean {
+  if (typeof window === 'undefined') return false;
+  if (!trips.length) return false;
+  const normalized: Trip[] = [];
+  for (const t of trips) {
+    const n = legacyLib.normalizeTrip(t) as Trip | null;
+    if (!n) return false;
+    normalized.push(n);
+  }
+  const wanted = activeId ?? getTripStoreSnapshot()?.activeId ?? '';
+  const active = normalized.some(t => t.id === wanted) ? wanted : normalized[0].id;
+  return writeStore({ trips: normalized, activeId: active });
+}
+
 /** 한 여행만 정규화해 되쓴다 — 다른 여행·필드는 건드리지 않는다 */
 export function saveTrip(updated: Trip): boolean {
   if (typeof window === 'undefined') return false;
