@@ -93,7 +93,9 @@ function SpotRow({ s, dayIndex, selected, actions }: {
   );
 }
 
-export function DayCard({ view, dim = false, selectedSi = null, onHeaderClick, onEditSpot, onMoveSpot }: {
+export function DayCard({
+  view, dim = false, selectedSi = null, onHeaderClick, onEditSpot, onMoveSpot, onAddSpot
+}: {
   view: DayView;
   /** 일자 필터 중 다른 날 — 흐리게 (레거시 .dayCard.dim) */
   dim?: boolean;
@@ -105,10 +107,18 @@ export function DayCard({ view, dim = false, selectedSi = null, onHeaderClick, o
   onEditSpot?: (si: number) => void;
   /** 이웃과 자리 맞바꾸기 */
   onMoveSpot?: (si: number, delta: number) => void;
+  /** 새 장소 추가 — 선택된 장소가 있으면 그 바로 뒤에 넣는다 */
+  onAddSpot?: (after: number | null) => void;
 }) {
   const actions = onEditSpot && onMoveSpot
     ? { onEdit: onEditSpot, onMove: onMoveSpot, count: view.spots.length }
     : undefined;
+  // 삽입 위치는 카드 강조 말고는 눈에 안 보이므로 버튼 글자로 밝힌다 (레거시 refreshAddSpotLabels)
+  const after = selectedSi != null && view.spots[selectedSi] ? selectedSi : null;
+  const addLabel = after != null ? `＋ ${after + 1}번 뒤에 장소 추가` : '＋ 장소 추가';
+  const addTitle = after != null
+    ? `선택한 ${after + 1}. ${view.spots[after].name} 바로 뒤에 넣습니다 — 다른 장소를 탭하면 그 뒤로 바뀝니다`
+    : '이 날 맨 뒤에 넣습니다 — 장소를 탭해 선택하면 그 바로 뒤에 넣어요';
   return (
     <section className={`itDay${dim ? ' dim' : ''}`} aria-label={`Day ${view.dayNo} ${view.title}`}>
       <header
@@ -172,6 +182,11 @@ export function DayCard({ view, dim = false, selectedSi = null, onHeaderClick, o
         )}
         {view.spots.length === 0 && view.carPickups.length === 0 && view.carReturns.length === 0 && (
           <div className="itEmpty">등록된 장소가 없습니다 — 이동일이거나 자유 일정입니다.</div>
+        )}
+        {onAddSpot && (
+          <button type="button" className="itAddSpot" title={addTitle} onClick={() => onAddSpot(after)}>
+            {addLabel}
+          </button>
         )}
         {view.note && <div className="itNote">📝 {view.note}</div>}
       </div>

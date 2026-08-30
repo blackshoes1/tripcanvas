@@ -434,27 +434,7 @@ function fillSpotFromCoords(lat,lng,forceCity,placeId,known){
   });
 }
 // 한국 지번주소 "시도 시군구 …" → 도시명 (광역시는 시도, 그 외는 시군구에서 시/군 제거)
-function cityFromKoreanAddr(addr){
-  const t=(addr||'').trim().split(/\s+/); if(t.length<2) return '';
-  const one=t[0], two=t[1];
-  if(/(특별시|광역시|특별자치시)$/.test(one)) return one.replace(/(특별시|광역시|특별자치시)$/,'');
-  return two.replace(/(시|군)$/,'') || one.replace(/(도|특별자치도)$/,'');
-}
-// 구글 Place → 표시 이름. displayName이 문자열이든 {text} 객체든 빈값이든 방어하고, 비면 주소 앞부분으로 폴백.
-// (신 Places API 버전/필드에 따라 displayName이 문자열이 아닐 수 있어 이름 채움이 조용히 실패하던 문제 방어)
-function placeName(p){
-  const dn=p&&p.displayName;
-  const s=(dn&&typeof dn==='object')?(dn.text||''):(dn||'');
-  return (s || String((p&&p.formattedAddress)||'').split(',')[0]||'').trim();
-}
-// 구글 Place addressComponents → 도시명(locality 우선)
-function cityFromGoogle(comps){
-  if(!comps||!comps.length) return '';
-  const pick=t=>{ const c=comps.find(x=>(x.types||[]).includes(t)); return c?(c.longText||c.shortText||''):''; };
-  const loc=pick('locality'), aa1=pick('administrative_area_level_1'), aa2=pick('administrative_area_level_2');
-  if(/^(tokyo|도쿄)/i.test(aa1) && loc && !/^(tokyo|도쿄)/i.test(loc)) return aa1;   // 도쿄 특별구(Minato City 등) → '도쿄'로 묶음
-  return (loc||aa2||aa1||'').replace(/(특별시|광역시|특별자치시)$/,'').replace(/(시|군)$/,'');   // 한국 지명 접미사 정리
-}
+// cityFromKoreanAddr·placeName·cityFromGoogle은 lib.js가 단일 소스 (Next 검색과 공유)
 window.__gmapsReady=function(){
   map=new google.maps.Map(document.getElementById('map'),{
     center:{lat:40,lng:-3.7}, zoom:6, mapId:'DEMO_MAP_ID',
@@ -2875,13 +2855,7 @@ function loadKakao(){
 // near가 있으면 20km 반경 우선, 비면 전국 재검색 (호출측 거리 가드가 오매칭 차단)
 // ── 검색 오류 분류·안내 (인증/할당량/네트워크/무결과 구분) ──
 // 운영자용 상세(코드·원문)는 콘솔에만 남기고, 사용자에겐 짧은 재시도 안내만 보여준다.
-function classifySearchErr(e){
-  const m=(((e&&(e.message||e.code))||e||'')+'').toLowerCase();
-  if(/failed to fetch|networkerror|network error|load failed|timeout/.test(m)) return 'network';
-  if(/quota|over_query|resource_exhausted|rate limit|too many/.test(m)) return 'quota';
-  if(/denied|not authorized|unauthorized|forbidden|api ?key|permission|referer|referrer|invalid key/.test(m)) return 'auth';
-  return 'error';
-}
+// classifySearchErr·isKoreanSearch는 lib.js가 단일 소스 (Next 검색과 공유)
 const SEARCH_ERR_MSG={
   auth:'검색 키 인증·권한 문제예요 — 관리자 확인이 필요합니다',
   quota:'검색 사용량 한도를 넘었어요 — 잠시 후 다시 시도해주세요',
@@ -2911,18 +2885,7 @@ async function kakaoSearch(q, near, limit){
   }
   return run({size});
 }
-// Google Places 텍스트 검색 (신 API) → [{name,addr,lat,lng}]
-// 구글 Place 영업시간(regularOpeningHours.periods) → {d:요일0=일,o:분,c:분}[] 정규화 (24/7은 d:-1)
-function normHours(oh){
-  const ps=oh&&oh.periods; if(!ps||!ps.length) return null;
-  const out=[];
-  for(const p of ps){
-    if(p.open && !p.close){ return [{d:-1,o:0,c:1440}]; }   // 상시영업
-    if(!p.open||!p.close) continue;
-    out.push({d:p.open.day, o:p.open.hour*60+p.open.minute, c:p.close.hour*60+p.close.minute});
-  }
-  return out.length?out:null;
-}
+// normHours(구글 영업시간 정규화)는 lib.js가 단일 소스 (Next 검색과 공유)
 // Google Places 텍스트 검색 → {list, err}. 오류는 분류해 코드로 반환(콘솔엔 원문).
 async function googlePlaces(q, near, limit){
   if(!map) return {list:[], err:'network'};   // 지도 SDK 미로드
@@ -2952,7 +2915,7 @@ function cityAnchorOf(city){
 // 질의 하나를 라우팅해 검색 (국내 앵커면 카카오 우선→구글 폴백, 해외면 구글)
 // 결과 배열을 반환하되, 결과가 없을 땐 배열에 .err(오류코드)를 실어 '무결과'와 '오류'를 구분하게 한다.
 async function routedSearch(q, near, limit){
-  const korean = near? inKorea(near) : /[가-힣]/.test(q);
+  const korean = isKoreanSearch(q, near);   // 라우팅 판단은 lib 단일 소스
   let err=null;
   if(korean){
     const k=await kakaoSearch(q, near, limit);

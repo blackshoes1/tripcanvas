@@ -70,6 +70,20 @@ declare module '@legacy/lib.js' {
     carEventsOn(bookings: unknown[], iso: string):
       { kind: 'pickup' | 'return'; id: string; title: string; place: string; code: string; time: string }[];
     spotCatOf(s: unknown): { id: string; icon: string; name: string } | null;
+    catFromKakao(groupCode: unknown): string | null;
+    catFromGoogle(types: unknown, primaryType?: unknown): string | null;
+    /** 카카오 주소 → 도시명 (검색 결과용) */
+    cityFromKoreanAddr(addr: string | undefined): string;
+    /** 구글 Place → 표시 이름 (displayName 형태 차이·빈값 방어, 주소 폴백) */
+    placeName(p: unknown): string;
+    /** 구글 addressComponents → 도시명 */
+    cityFromGoogle(comps: unknown): string;
+    /** 구글 regularOpeningHours → {d,o,c}[] (상시영업 d:-1) */
+    normHours(oh: unknown): { d: number; o: number; c: number }[] | null;
+    /** 검색 실패 원인 분류 */
+    classifySearchErr(e: unknown): 'network' | 'quota' | 'auth' | 'error';
+    /** 국내 검색인지 — 앵커가 있으면 좌표로, 없으면 질의의 한글 여부로 */
+    isKoreanSearch(q: string, near?: { lat: number; lng: number } | null): boolean;
     SPOT_CATS: readonly { id: string; icon: string; name: string }[];
     TC_LIMITS: Readonly<Record<string, number>>;
     TC_SCHEMA: number;

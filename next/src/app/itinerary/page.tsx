@@ -7,7 +7,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { DayCard } from '@/features/itinerary/components/DayCard';
 import { SpotEditor } from '@/features/itinerary/components/SpotEditor';
 import { buildDayView, tripCostBreakdownOf } from '@/features/itinerary/domain/dayView';
-import { applySpotEdit, moveSpot, removeSpot } from '@/features/itinerary/domain/spotEditor';
+import {
+  applySpotAdd, applySpotEdit, moveSpot, newSpotDraft, removeSpot
+} from '@/features/itinerary/domain/spotEditor';
 import { useLegCache } from '@/features/itinerary/hooks/useLegCache';
 import { MapView } from '@/features/map/components/MapView';
 import { buildMapScene, dayColor, entryFitOf, fitTargetOf } from '@/features/map/domain/scene';
@@ -28,6 +30,8 @@ export default function ItineraryPage() {
   const [sel, setSel] = useState<{ di: number; si: number } | null>(null);
   /** 편집 중인 장소 위치 — 열려 있는 동안만 */
   const [editing, setEditing] = useState<{ di: number; si: number } | null>(null);
+  /** 추가 중인 자리 — after는 편집기를 '열 때' 확정한다 (레거시 editing.after와 같은 의미) */
+  const [adding, setAdding] = useState<{ di: number; after: number | null } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
   const views = useMemo(
@@ -65,6 +69,22 @@ export default function ItineraryPage() {
     setEditing(null);
     setSel(null);   // 일자 이동·재정렬로 자리가 바뀔 수 있어 선택은 놓는다
     setNotice(ok ? (sorted ? '저장됨 · 시간순 정렬' : '저장됨') : SAVE_FAILED);
+  };
+
+  // 넣은 장소를 선택해 둔다 — 연달아 추가하면 계속 그 뒤로 붙는다 (레거시와 같은 흐름)
+  const addSpot = (next: Spot, targetDi: number) => {
+    if (!adding) return;
+    let sorted = false;
+    let placed = -1;
+    const ok = updateActiveTrip(trip => {
+      const r = applySpotAdd(trip, next, { openedDi: adding.di, targetDi, after: adding.after });
+      sorted = r.sorted;
+      placed = r.si;
+      return r.trip;
+    });
+    setAdding(null);
+    if (ok && placed >= 0) setSel({ di: targetDi, si: placed });
+    setNotice(ok ? (sorted ? '추가됨 · 시간순 정렬' : '추가됨') : SAVE_FAILED);
   };
 
   const deleteSpot = () => {
@@ -144,12 +164,13 @@ export default function ItineraryPage() {
               onHeaderClick={() => selectDay(activeDay === v.dayNo ? 0 : v.dayNo)}
               onEditSpot={si => { setNotice(null); setEditing({ di: v.di, si }); }}
               onMoveSpot={(si, delta) => move(v.di, si, delta)}
+              onAddSpot={after => { setNotice(null); setAdding({ di: v.di, after }); }}
             />
           ))}
         </div>
       </div>
       <p className="hint">
-        장소 편집·순서 변경·삭제를 여기서 할 수 있어요. 장소 추가·위치 지정(검색·지도 클릭)·재생은
+        장소 추가·검색·편집·순서 변경·삭제를 여기서 할 수 있어요. 지도 클릭으로 위치 담기와 재생은
         아직 기존 앱 담당입니다. 이동 시간·경로선은 자동으로 조회해 채웁니다 (조회 전에는 직선 추정).
       </p>
       {editing && editingSpot && (
@@ -157,6 +178,14 @@ export default function ItineraryPage() {
           <SpotEditor
             spot={editingSpot} di={editing.di} days={activeTrip.days}
             onSave={saveSpot} onDelete={deleteSpot} onCancel={() => setEditing(null)}
+          />
+        </div>
+      )}
+      {adding && (
+        <div className="itEditorBg" onClick={e => { if (e.target === e.currentTarget) setAdding(null); }}>
+          <SpotEditor
+            isNew spot={newSpotDraft(activeTrip.days[adding.di])} di={adding.di} days={activeTrip.days}
+            onSave={addSpot} onCancel={() => setAdding(null)}
           />
         </div>
       )}

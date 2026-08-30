@@ -42,6 +42,65 @@ test('sortDayByTime — 고정 시각은 제자리로, 자동 시각은 직전 �
   assert.deepEqual(tie.spots.map(s=>s.name), ['A','B']);
 });
 
+test('classifySearchErr — 실패를 원인별로 가른다 (재시도할 일 vs 관리자 일)', () => {
+  assert.equal(L.classifySearchErr(new Error('Failed to fetch')), 'network');
+  assert.equal(L.classifySearchErr(new Error('The request timeout')), 'network');
+  assert.equal(L.classifySearchErr(new Error('OVER_QUERY_LIMIT')), 'quota');
+  assert.equal(L.classifySearchErr({ code: 'RESOURCE_EXHAUSTED' }), 'quota');
+  assert.equal(L.classifySearchErr(new Error('This IP, site or mobile application is not authorized')), 'auth');
+  assert.equal(L.classifySearchErr(new Error('RefererNotAllowedMapError')), 'auth');
+  assert.equal(L.classifySearchErr(new Error('무슨 일인지 모를 오류')), 'error');
+  assert.equal(L.classifySearchErr(null), 'error');
+});
+
+test('isKoreanSearch — 앵커가 있으면 좌표로, 없으면 질의 문자로 가른다', () => {
+  assert.equal(L.isKoreanSearch('gyeongju', { lat: 35.8, lng: 129.2 }), true);   // 앵커가 국내면 질의 언어와 무관
+  assert.equal(L.isKoreanSearch('성산일출봉', { lat: 41.9, lng: 12.5 }), false); // 앵커가 해외면 한글이어도 구글
+  assert.equal(L.isKoreanSearch('성산일출봉', null), true);                       // 앵커 없으면 한글 여부로
+  assert.equal(L.isKoreanSearch('Sagrada Familia'), false);
+  assert.equal(L.isKoreanSearch(''), false);
+});
+
+test('cityFromKoreanAddr — 광역시는 그 자체, 도는 시·군까지', () => {
+  assert.equal(L.cityFromKoreanAddr('서울특별시 중구 세종대로 110'), '서울');
+  assert.equal(L.cityFromKoreanAddr('제주특별자치도 서귀포시 성산읍'), '서귀포');
+  assert.equal(L.cityFromKoreanAddr('경상북도 경주시 노동동'), '경주');
+  assert.equal(L.cityFromKoreanAddr('서울'), '');        // 토큰이 하나뿐이면 판단 보류
+  assert.equal(L.cityFromKoreanAddr(''), '');
+});
+
+test('placeName — displayName이 문자열이든 객체든 비어도 이름을 만든다', () => {
+  assert.equal(L.placeName({ displayName: 'Sagrada Família' }), 'Sagrada Família');
+  assert.equal(L.placeName({ displayName: { text: 'Park Güell' } }), 'Park Güell');
+  // 이름이 비면 주소 앞부분으로 폴백 — 이름 없는 결과가 조용히 빈칸으로 들어가지 않게
+  assert.equal(L.placeName({ displayName: '', formattedAddress: 'Carrer de Mallorca, 401, Barcelona' }),
+    'Carrer de Mallorca');
+  assert.equal(L.placeName({}), '');
+  assert.equal(L.placeName(null), '');
+});
+
+test('cityFromGoogle — locality 우선, 도쿄 특별구는 도쿄로 묶는다', () => {
+  const comp = (types, longText) => ({ types, longText });
+  assert.equal(L.cityFromGoogle([comp(['locality'], 'Barcelona')]), 'Barcelona');
+  assert.equal(L.cityFromGoogle([
+    comp(['locality'], 'Minato City'), comp(['administrative_area_level_1'], 'Tokyo')
+  ]), 'Tokyo');
+  // locality가 없으면 상위 행정구역으로 폴백
+  assert.equal(L.cityFromGoogle([comp(['administrative_area_level_2'], 'Girona')]), 'Girona');
+  assert.equal(L.cityFromGoogle([]), '');
+  assert.equal(L.cityFromGoogle(null), '');
+});
+
+test('normHours — 구글 영업시간을 분 단위로, 상시영업은 d:-1', () => {
+  assert.deepEqual(L.normHours({ periods: [
+    { open: { day: 1, hour: 9, minute: 30 }, close: { day: 1, hour: 18, minute: 0 } }
+  ] }), [{ d: 1, o: 570, c: 1080 }]);
+  // close가 없으면 24시간 영업
+  assert.deepEqual(L.normHours({ periods: [{ open: { day: 0, hour: 0, minute: 0 } }] }), [{ d: -1, o: 0, c: 1440 }]);
+  assert.equal(L.normHours({ periods: [] }), null);
+  assert.equal(L.normHours(null), null);
+});
+
 test('haversine 근사 (경주역→감포 ~30km)', () => {
   const d = L.haversine({lat:35.7965,lng:129.1349},{lat:35.8093,lng:129.5015});
   assert.ok(d>28 && d<36, `got ${d}`);

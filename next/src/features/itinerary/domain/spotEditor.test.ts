@@ -2,8 +2,12 @@
 // 특히 편집이 '값만 고치는 일'이라는 계약: 좌표·예약 연결은 폼을 거치지 않고 원본에서 물려받는다.
 import { describe, expect, it } from 'vitest';
 
+import type { PlaceResult } from '@/features/search/domain/types';
 import type { Day, Spot, Trip } from '@/features/trip/domain/types';
-import { applySpotEdit, formFromSpot, moveSpot, removeSpot, spotFromForm } from './spotEditor';
+import {
+  applyPlaceToForm, applySpotAdd, applySpotEdit, formFromSpot, insertIndexOf,
+  moveSpot, newSpotDraft, removeSpot, spotFromForm
+} from './spotEditor';
 
 const spot = (name: string, extra: Partial<Spot> = {}): Spot =>
   ({ name, city: '제주', desc: '', lat: 33.5, lng: 126.5, ...extra });
@@ -119,6 +123,103 @@ describe('applySpotEdit — 배치 규칙', () => {
     const t = trip([day([spot('A')])]);
     expect(applySpotEdit(t, { di: 0, si: 9 }, spot('X'), 0).trip).toBe(t);
     expect(applySpotEdit(t, { di: 0, si: 0 }, spot('X'), 5).trip).toBe(t);
+  });
+});
+
+describe('applySpotAdd — 새 장소가 들어갈 자리', () => {
+  const NEW = (): Spot => spot('새 장소');
+
+  it('선택한 장소 바로 뒤에 들어간다', () => {
+    const t = trip([day([spot('A'), spot('B'), spot('C')])]);
+    const r = applySpotAdd(t, NEW(), { openedDi: 0, targetDi: 0, after: 0 });
+    expect(r.trip.days[0].spots.map(s => s.name)).toEqual(['A', '새 장소', 'B', 'C']);
+    expect(r.si).toBe(1);   // 방금 넣은 자리를 알려준다 — 연달아 추가하면 그 뒤로 붙게
+  });
+
+  it('선택이 없으면 맨 뒤', () => {
+    const t = trip([day([spot('A'), spot('B')])]);
+    const r = applySpotAdd(t, NEW(), { openedDi: 0, targetDi: 0, after: null });
+    expect(r.trip.days[0].spots.map(s => s.name)).toEqual(['A', 'B', '새 장소']);
+  });
+
+  it('저장하며 일자를 바꿨으면 선택 위치를 버리고 대상 날 맨 뒤로', () => {
+    const t = trip([day([spot('A'), spot('B')]), day([spot('X')])]);
+    const r = applySpotAdd(t, NEW(), { openedDi: 0, targetDi: 1, after: 0 });
+    expect(r.trip.days[0].spots.map(s => s.name)).toEqual(['A', 'B']);
+    expect(r.trip.days[1].spots.map(s => s.name)).toEqual(['X', '새 장소']);
+  });
+
+  it('고정 시각이 있으면 넣은 뒤 시간순으로 정렬한다', () => {
+    const t = trip([day([spot('A', { at: '13:00' }), spot('B')], { startAt: '09:00' })]);
+    const r = applySpotAdd(t, spot('아침', { at: '08:00' }), { openedDi: 0, targetDi: 0, after: 1 });
+    expect(r.sorted).toBe(true);
+    expect(r.trip.days[0].spots.map(s => s.name)).toEqual(['아침', 'A', 'B']);
+    expect(r.trip.days[0].spots[r.si].name).toBe('아침');   // 정렬 뒤 자리를 가리킨다
+  });
+
+  it('원본 trip을 변형하지 않고, 없는 일자는 아무것도 하지 않는다', () => {
+    const t = trip([day([spot('A')])]);
+    const snapshot = JSON.stringify(t);
+    applySpotAdd(t, NEW(), { openedDi: 0, targetDi: 0, after: null });
+    expect(JSON.stringify(t)).toBe(snapshot);
+    expect(applySpotAdd(t, NEW(), { openedDi: 0, targetDi: 9, after: null }).trip).toBe(t);
+  });
+
+  it('insertIndexOf — 선택 인덱스가 범위를 넘어도 맨 뒤로 클램프된다', () => {
+    const spots = [spot('A'), spot('B')];
+    expect(insertIndexOf(spots, { openedDi: 0, targetDi: 0, after: 5 })).toBe(2);
+    expect(insertIndexOf(spots, { openedDi: 0, targetDi: 0, after: 0 })).toBe(1);
+    expect(insertIndexOf(spots, { openedDi: 0, targetDi: 1, after: 0 })).toBe(2);
+  });
+});
+
+describe('newSpotDraft / applyPlaceToForm — 검색 결과 반영', () => {
+  const place: PlaceResult = {
+    name: 'Park Güell', addr: 'Carrer d\'Olot', city: 'Barcelona',
+    lat: 41.4145, lng: 2.1527, cat: 'sight', hours: [{ d: 1, o: 540, c: 1080 }], placeId: 'ChIJ_pk'
+  };
+
+  it('초안의 도시는 그 날 첫 장소를 따라간다', () => {
+    expect(newSpotDraft(day([spot('A')])).city).toBe('제주');
+    expect(newSpotDraft(day([])).city).toBe('');
+    expect(newSpotDraft(undefined).city).toBe('');
+    expect(newSpotDraft(day([])).lat).toBe(null);
+  });
+
+  it('결과를 고르면 이름·도시·분류는 폼에, 좌표·placeId·영업시간은 초안에 담긴다', () => {
+    const draft = newSpotDraft(undefined);
+    const r = applyPlaceToForm(formFromSpot(draft, 0), draft, place);
+    expect(r.form).toMatchObject({ name: 'Park Güell', city: 'Barcelona', cat: 'sight' });
+    expect(r.draft).toMatchObject({ lat: 41.4145, lng: 2.1527, placeId: 'ChIJ_pk' });
+    expect(r.draft.hours).toEqual([{ d: 1, o: 540, c: 1080 }]);
+    // 그대로 저장하면 초안의 값이 장소로 넘어간다
+    const saved = spotFromForm(r.form, r.draft, { requireLocation: true });
+    expect(saved.ok && saved.spot).toMatchObject({ name: 'Park Güell', lat: 41.4145, placeId: 'ChIJ_pk', cat: 'sight' });
+  });
+
+  it('결과가 도시를 모르면 기존 도시를 지우지 않는다', () => {
+    const draft = newSpotDraft(day([spot('A')]));   // city: '제주'
+    const r = applyPlaceToForm(formFromSpot(draft, 0), draft, { ...place, city: '' });
+    expect(r.form.city).toBe('제주');
+  });
+
+  it('다른 결과를 다시 고르면 이전 결과의 placeId·영업시간이 남지 않는다', () => {
+    const draft = newSpotDraft(undefined);
+    const first = applyPlaceToForm(formFromSpot(draft, 0), draft, place);
+    const second = applyPlaceToForm(first.form, first.draft,
+      { name: '이름만', addr: '', city: '', lat: 1, lng: 2 });
+    expect('placeId' in second.draft).toBe(false);
+    expect('hours' in second.draft).toBe(false);
+    expect(second.draft).toMatchObject({ lat: 1, lng: 2 });
+  });
+
+  it('새 장소는 위치 없이 저장되지 않는다 — 기존 장소는 위치 없이도 고칠 수 있다', () => {
+    const draft = newSpotDraft(undefined);
+    const form = { ...formFromSpot(draft, 0), name: '어딘가' };
+    expect(spotFromForm(form, draft, { requireLocation: true }))
+      .toEqual({ ok: false, error: 'LOCATION_REQUIRED' });
+    const kept = spotFromForm(form, draft);
+    expect(kept.ok && kept.spot.lat).toBe(null);
   });
 });
 

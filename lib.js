@@ -676,6 +676,72 @@
     return two||one;
   }
 
+  // ───────────────── 검색 결과 정규화 ─────────────────
+  // 지도 SDK가 돌려준 원본을 장소(spot) 필드로 옮기는 순수 변환. 레거시와 Next 검색이 같은 결과를 내도록
+  // 여기가 단일 소스다. (cityFromKakaoAddress와 규칙이 다르지만 둘 다 쓰이는 곳이 달라 합치지 않는다)
+
+  /** 카카오 주소 → 도시명 (검색 결과용) @param {string=} addr @returns {string} */
+  function cityFromKoreanAddr(addr){
+    const t=(addr||'').trim().split(/\s+/); if(t.length<2) return '';
+    const one=t[0], two=t[1];
+    if(/(특별시|광역시|특별자치시)$/.test(one)) return one.replace(/(특별시|광역시|특별자치시)$/,'');
+    return two.replace(/(시|군)$/,'') || one.replace(/(도|특별자치도)$/,'');
+  }
+
+  /**
+   * 구글 Place → 표시 이름. displayName이 문자열이든 {text} 객체든 빈값이든 방어하고,
+   * 비면 주소 앞부분으로 폴백한다 (신 Places API 버전/필드 차이로 이름 채움이 조용히 실패하던 문제 방어).
+   * @param {any} p @returns {string}
+   */
+  function placeName(p){
+    const dn=p&&p.displayName;
+    const s=(dn&&typeof dn==='object')?(dn.text||''):(dn||'');
+    return (s || String((p&&p.formattedAddress)||'').split(',')[0]||'').trim();
+  }
+
+  /** 구글 Place addressComponents → 도시명(locality 우선) @param {any[]=} comps @returns {string} */
+  function cityFromGoogle(comps){
+    if(!comps||!comps.length) return '';
+    const pick=(/**@type{string}*/t)=>{ const c=comps.find(x=>(x.types||[]).includes(t)); return c?(c.longText||c.shortText||''):''; };
+    const loc=pick('locality'), aa1=pick('administrative_area_level_1'), aa2=pick('administrative_area_level_2');
+    if(/^(tokyo|도쿄)/i.test(aa1) && loc && !/^(tokyo|도쿄)/i.test(loc)) return aa1;   // 도쿄 특별구(Minato City 등) → '도쿄'로 묶음
+    return (loc||aa2||aa1||'').replace(/(특별시|광역시|특별자치시)$/,'').replace(/(시|군)$/,'');   // 한국 지명 접미사 정리
+  }
+
+  /** 구글 영업시간(regularOpeningHours) → {d:요일0=일,o:분,c:분}[] (상시영업은 d:-1) @param {any} oh @returns {any[]|null} */
+  function normHours(oh){
+    const ps=oh&&oh.periods; if(!ps||!ps.length) return null;
+    /** @type {any[]} */ const out=[];
+    for(const p of ps){
+      if(p.open && !p.close){ return [{d:-1,o:0,c:1440}]; }   // 상시영업
+      if(!p.open||!p.close) continue;
+      out.push({d:p.open.day, o:p.open.hour*60+p.open.minute, c:p.close.hour*60+p.close.minute});
+    }
+    return out.length?out:null;
+  }
+
+  /**
+   * 검색 실패를 원인별로 분류한다 — 사용자에게 '왜 안 됐는지'를 구분해 보여주기 위해서다
+   * (인증·할당량은 관리자 일, 네트워크는 재시도할 일). 상세 원문은 호출측이 콘솔에만 남긴다.
+   * @param {any} e @returns {'network'|'quota'|'auth'|'error'}
+   */
+  function classifySearchErr(e){
+    const m=(((e&&(e.message||e.code))||e||'')+'').toLowerCase();
+    if(/failed to fetch|networkerror|network error|load failed|timeout/.test(m)) return 'network';
+    if(/quota|over_query|resource_exhausted|rate limit|too many/.test(m)) return 'quota';
+    if(/denied|not authorized|unauthorized|forbidden|api ?key|permission|referer|referrer|invalid key/.test(m)) return 'auth';
+    return 'error';
+  }
+
+  /**
+   * 검색 라우팅 판단: 국내면 카카오 우선(→구글 폴백), 해외면 구글.
+   * 앵커 좌표가 있으면 그 위치로, 없으면 질의에 한글이 있는지로 가른다.
+   * @param {string} q @param {LatLng|null=} near @returns {boolean} 국내 검색인지
+   */
+  function isKoreanSearch(q, near){
+    return near? inKorea(near) : /[가-힣]/.test(String(q||''));
+  }
+
   // ───────────────── 장소 카테고리 ─────────────────
   // 목록 순서 = 편집 모달 선택지 순서. id는 저장값이므로 바꾸면 기존 데이터가 '미지정'이 된다.
   const SPOT_CATS=[
@@ -748,7 +814,7 @@
     return spotCat(catFromName(s.name));
   }
 
-  const TC={SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,normHM,sortDayByTime,inKorea,simplifyName,parseDirect,parseMoney,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,computeTimeline,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,localMode,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
+  const TC={SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,cityFromKoreanAddr,placeName,cityFromGoogle,normHours,classifySearchErr,isKoreanSearch,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,normHM,sortDayByTime,inKorea,simplifyName,parseDirect,parseMoney,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,computeTimeline,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,localMode,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
   if(typeof module!=='undefined' && module.exports){ module.exports=TC; }   // Node (테스트)
   else { const r=/**@type {any}*/(root); for(const k in TC) r[k]=/**@type {any}*/(TC)[k]; }   // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);

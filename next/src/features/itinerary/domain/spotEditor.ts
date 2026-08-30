@@ -6,6 +6,7 @@
 // 좌표는 폼을 거치지 않는다.
 import legacyLib from '@legacy/lib.js';
 
+import type { PlaceResult } from '@/features/search/domain/types';
 import type { CurrencyCode, Day, Spot, SpotCategory, TransportMode, Trip } from '@/features/trip/domain/types';
 
 /** 편집 폼 상태 — 입력 중에는 사람이 친 문자열 그대로 들고 있다가 저장할 때 정규화한다 */
@@ -30,7 +31,7 @@ export interface SpotForm {
   targetDi: number;
 }
 
-export type SpotFormError = 'NAME_REQUIRED';
+export type SpotFormError = 'NAME_REQUIRED' | 'LOCATION_REQUIRED';
 
 /** 예약 편집기 소관이라 이 폼이 만들지도 지우지도 않는 연결 — 편집 시 원본에서 그대로 물려준다 */
 const LINK_KEYS = ['bookingId', 'carPickupId', 'carReturnId'] as const;
@@ -63,10 +64,15 @@ export function formFromSpot(spot: Spot, di: number): SpotForm {
  */
 export function spotFromForm(
   form: SpotForm,
-  original: Spot
+  original: Spot,
+  opts: { requireLocation?: boolean } = {}
 ): { ok: true; spot: Spot } | { ok: false; error: SpotFormError } {
   const name = form.name.trim();
   if (!name) return { ok: false, error: 'NAME_REQUIRED' };
+  // 새 장소는 좌표가 있어야 한다(레거시와 동일) — 동선·ETA·지도에 들어갈 자리를 만드는 일이라서.
+  // 반대로 이미 있는 장소는 좌표 없이도 고칠 수 있게 둔다: 이름·메모만 고치려는데 검색을 강요하지 않는다.
+  if (opts.requireLocation && (original.lat == null || original.lng == null))
+    return { ok: false, error: 'LOCATION_REQUIRED' };
 
   const nights = legacyLib.stayNights({ nights: form.nights });
   const costDigits = form.cost.replace(/[^\d]/g, '');
@@ -129,6 +135,72 @@ export function applySpotEdit(
   const { day, sorted } = resortIfTimed(days[targetDi]);
   days[targetDi] = day;
   return { trip: { ...trip, days }, sorted };
+}
+
+/**
+ * 새 장소를 넣을 자리 — 레거시 spotSave의 삽입 규칙 그대로.
+ * 모달을 **열 때** 선택돼 있던 장소 바로 뒤. 저장하며 일자를 바꿨거나 선택이 없었으면 맨 뒤.
+ * @param openedDi 모달을 연 일자 · targetDi 저장할 일자 · after 열 때 선택돼 있던 인덱스
+ */
+export function insertIndexOf(
+  spots: Spot[],
+  { openedDi, targetDi, after }: { openedDi: number; targetDi: number; after: number | null }
+): number {
+  if (after == null || targetDi !== openedDi) return spots.length;
+  return Math.min(after + 1, spots.length);
+}
+
+/**
+ * 새 장소 추가 — 불변 갱신. 넣은 뒤 그 날에 고정 시각이 있으면 시간순 정렬한다.
+ * 넣은 장소의 최종 인덱스를 함께 돌려준다 — 호출측이 그걸 선택해 두면
+ * 연달아 추가할 때 계속 그 뒤로 붙는다 (레거시와 같은 흐름).
+ */
+export function applySpotAdd(
+  trip: Trip,
+  spot: Spot,
+  at: { openedDi: number; targetDi: number; after: number | null }
+): { trip: Trip; sorted: boolean; si: number } {
+  if (!trip.days[at.targetDi]) return { trip, sorted: false, si: -1 };
+
+  const target = trip.days[at.targetDi];
+  const idx = insertIndexOf(target.spots, at);
+  const spots = [...target.spots];
+  spots.splice(idx, 0, spot);
+
+  const days = trip.days.map((d, i) => (i === at.targetDi ? { ...d, spots } : d));
+  const { day, sorted } = resortIfTimed(days[at.targetDi]);
+  days[at.targetDi] = day;
+  return { trip: { ...trip, days }, sorted, si: day.spots.indexOf(spot) };
+}
+
+/** 검색 결과가 없는 상태의 새 장소 초안 — 도시는 그 날 첫 장소를 따라간다 (레거시 프리필) */
+export function newSpotDraft(day: Day | undefined): Spot {
+  return { name: '', city: day?.spots[0]?.city ?? '', desc: '', lat: null, lng: null };
+}
+
+/**
+ * 검색 결과를 고른 결과를 폼과 초안에 반영한다 (레거시 검색 결과 클릭 핸들러와 동일).
+ * 결과 선택은 명시적 조작이라 이름·도시를 덮어쓴다. 좌표·placeId·영업시간은 폼이 아니라
+ * 초안(원본)에 담긴다 — spotFromForm이 폼 밖의 값을 원본에서 물려받기 때문.
+ * 결과가 도시를 모르면 기존 도시를 지우지 않는다(빈 값으로 덮어쓰면 '기타'로 떨어진다).
+ */
+export function applyPlaceToForm(
+  form: SpotForm,
+  draft: Spot,
+  place: PlaceResult
+): { form: SpotForm; draft: Spot } {
+  const next: Spot = { ...draft, lat: place.lat, lng: place.lng };
+  if (place.placeId) next.placeId = place.placeId; else delete next.placeId;
+  if (place.hours) next.hours = place.hours; else delete next.hours;
+  return {
+    form: {
+      ...form,
+      name: place.name || form.name,
+      city: place.city || form.city,
+      cat: place.cat ?? form.cat
+    },
+    draft: next
+  };
 }
 
 /** 장소 삭제 — 불변 갱신 (레거시 deleteSpot) */

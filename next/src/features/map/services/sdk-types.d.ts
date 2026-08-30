@@ -28,6 +28,29 @@ declare namespace google.maps {
     function addListenerOnce(m: Map, ev: string, cb: () => void): void;
     function trigger(m: Map, ev: string): void;
   }
+  /** 신 Places API는 동적 로드 — 초기 libraries에 없어도 필요할 때 받아온다 (Phase 6c 검색) */
+  function importLibrary(name: 'places'): Promise<{ Place: typeof places.Place }>;
+  namespace places {
+    class Place {
+      static searchByText(req: Record<string, unknown>): Promise<{ places: PlaceLike[] | null }>;
+    }
+    interface PlaceLike {
+      id?: string;
+      displayName?: unknown;
+      formattedAddress?: string;
+      addressComponents?: unknown;
+      regularOpeningHours?: unknown;
+      primaryType?: unknown;
+      types?: unknown;
+      location: { lat(): number; lng(): number };
+    }
+  }
+  class Geocoder {
+    geocode(
+      req: { address: string },
+      cb: (r: { geometry: { location: { lat(): number; lng(): number } } }[] | null, status: string) => void
+    ): void;
+  }
 }
 
 declare namespace kakao.maps {
@@ -53,5 +76,24 @@ declare namespace kakao.maps {
   class CustomOverlay {
     constructor(opts: Record<string, unknown>);
     setMap(m: Map | null): void;
+  }
+  /** 키워드 검색 (Phase 6c) — SDK는 콜백 스타일이라 서비스가 Promise로 감싼다 */
+  namespace services {
+    const Status: { OK: string; ZERO_RESULT: string; ERROR: string };
+    interface PlaceItem {
+      place_name: string;
+      road_address_name?: string;
+      address_name?: string;
+      category_group_code?: string;
+      /** 위도 문자열 */ y: string;
+      /** 경도 문자열 */ x: string;
+    }
+    class Places {
+      keywordSearch(
+        q: string,
+        cb: (data: PlaceItem[] | null, status: string) => void,
+        opts?: { size?: number; location?: LatLng; radius?: number }
+      ): void;
+    }
   }
 }
