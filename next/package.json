@@ -5,6 +5,7 @@
   "description": "Trip Canvas — Next.js 점진 이관 워크스페이스 (Strangler Migration). 루트 정적 앱과 병행하며, 기능 동등성 확보 전에는 레거시를 대체하지 않는다.",
   "scripts": {
     "dev": "next dev -p 3000",
+    "dev:8000": "next dev -p 8000",
     "build": "next build",
     "start": "next start",
     "lint": "eslint src",

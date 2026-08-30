@@ -1,5 +1,49 @@
 /* 일정 읽기 뷰 — 레거시 dayCard/.spot의 시각 언어를 최소 이식 */
-.itPage { max-width: 640px; margin: 0 auto; padding: 24px 16px 64px; }
+.itPage { max-width: 1100px; margin: 0 auto; padding: 24px 16px 64px; }
+
+/* ── 지도 + 카드 레이아웃: 모바일은 지도 상단 고정, 데스크톱은 지도 왼쪽 고정 ── */
+.itLayout { display: grid; gap: 16px; margin-top: 10px; }
+.itCards { min-width: 0; max-width: 640px; }
+.itMapWrap { position: sticky; top: 8px; z-index: 5; height: 44vh; border-radius: 12px; overflow: hidden;
+  background: var(--card); border: 1px solid color-mix(in srgb, var(--fg) 10%, transparent); }
+@media (min-width: 900px) {
+  .itLayout { grid-template-columns: minmax(0, 1fr) 440px; align-items: start; }
+  .itMapWrap { top: 16px; height: calc(100vh - 32px); }
+  .itCards { max-width: none; }
+}
+.itMapCanvas { width: 100%; height: 100%; }
+.itMapHint { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  color: var(--muted); font-size: 13px; text-align: center; padding: 16px; }
+
+/* 일자 필터 칩 (지도 범례 겸용 — 점 색 = 일자 색 = 경로선 색) */
+.itDayChips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; }
+.itDayChip { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; padding: 4px 10px;
+  border-radius: 999px; cursor: pointer; color: var(--fg);
+  background: var(--card); border: 1px solid color-mix(in srgb, var(--fg) 15%, transparent); }
+.itDayChip.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 18%, var(--card)); }
+.itDayChip .dot { width: 8px; height: 8px; border-radius: 50%; }
+.itLegendNote { color: #f6bd60; font-size: 11px; margin-left: 4px; }
+
+/* 지도 오버레이 (레거시 style.css 동일 클래스) */
+.num-icon { position: relative; display: flex; align-items: center; justify-content: center; border-radius: 50%;
+  color: #fff; font-weight: 700; font-size: 12px; border: 2.5px solid #fff; box-shadow: 0 1px 5px rgba(0,0,0,.5);
+  animation: pinIn .28s cubic-bezier(.34,1.4,.64,1) both; }
+.num-icon:hover { transform: scale(1.15); transition: transform .15s; }
+.pinCat { position: absolute; right: -7px; top: -7px; width: 15px; height: 15px; display: flex;
+  align-items: center; justify-content: center; border-radius: 50%; background: #fff;
+  border: 1px solid rgba(0,0,0,.18); box-shadow: 0 1px 3px rgba(0,0,0,.35); font-size: 9px; line-height: 1;
+  pointer-events: none; }
+@keyframes pinIn { from { transform: scale(.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.ghostStay { display: flex; align-items: center; justify-content: center; width: 22px; height: 22px;
+  border-radius: 50%; background: #fff; border: 2px dashed #7a86ad; font-size: 11px; line-height: 1;
+  opacity: .85; pointer-events: none; }
+.legChip { background: rgba(22,33,62,.92); color: #f6bd60; font-size: 11px; font-weight: 700;
+  padding: 2px 8px; border-radius: 10px; border: 1px solid #2a3457; white-space: nowrap; pointer-events: none; }
+
+/* 일자 필터·핀 선택 상태 */
+.itDay.dim { opacity: .45; }
+.itDayHead.clickable { cursor: pointer; }
+.itSpot.sel { outline: 2px solid var(--accent); outline-offset: 1px; }
 .itPage h1 { font-size: 20px; }
 .itPage .hint { color: var(--muted); font-size: 12px; margin: 6px 0; }
 .itPage .opt { color: var(--muted); font-size: 11px; margin-left: 6px; }
