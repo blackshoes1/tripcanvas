@@ -45,3 +45,20 @@ declare module '@legacy/lib.js' {
   };
   export = api;
 }
+
+declare module '@legacy/api/hotel-offers.js' {
+  import type { LegacyNodeHandler } from '@/lib/legacy/nodeHandler';
+  interface HandlerDeps {
+    fetchImpl?: (url: string, init?: unknown) => Promise<unknown>;
+    env?: Record<string, string | undefined>;
+    now?: () => number;
+    verifiers?: unknown[];
+  }
+  const handler: LegacyNodeHandler & {
+    createHandler(deps?: HandlerDeps): LegacyNodeHandler;
+    runSearch(deps: HandlerDeps, request: unknown): Promise<unknown>;
+    providerHealth(env: Record<string, string | undefined>): { id: string; role: string; status: string }[];
+    _private: { buckets: Map<string, unknown>; resetProviderMemory(): void } & Record<string, unknown>;
+  };
+  export = handler;
+}
