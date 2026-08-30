@@ -1,15 +1,16 @@
 'use client';
 // 일정(Itinerary) — 레거시 사이드바+지도와 같은 데이터(tripcanvas_v1·tripcanvas_legs_v4)를
 // 같은 규칙(anchor/carry·타임라인·렌터카 연결·비용 배분·지도 장면)으로 보여주고 편집하는 병행 화면.
-// 드래그 정렬·재생은 아직 레거시 담당.
+// 재생(여행 모드)만 아직 레거시 담당.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { DayCard } from '@/features/itinerary/components/DayCard';
 import { SpotEditor } from '@/features/itinerary/components/SpotEditor';
 import { buildDayView, tripCostBreakdownOf } from '@/features/itinerary/domain/dayView';
 import {
-  applySpotAdd, applySpotEdit, moveSpot, newSpotDraft, removeSpot
+  applySpotAdd, applySpotEdit, moveDay, moveSpot, moveSpotTo, newSpotDraft, removeSpot
 } from '@/features/itinerary/domain/spotEditor';
+import { useDragReorder, type SpotDrop } from '@/features/itinerary/hooks/useDragReorder';
 import { useLegCache } from '@/features/itinerary/hooks/useLegCache';
 import { MapView } from '@/features/map/components/MapView';
 import type { TapPoint } from '@/features/map/domain/mapPick';
@@ -147,6 +148,44 @@ export default function ItineraryPage() {
     else setNotice(SAVE_FAILED);
   };
 
+  // 드래그 정렬 (Phase 6e). 콜백은 안정적이어야 Sortable 인스턴스가 매 렌더 재생성되지 않는데,
+  // updateActiveTrip과 setNotice는 이미 렌더 간 동일한 참조라 그대로 쓰면 된다.
+  const onSpotDrop = useCallback((d: SpotDrop) => {
+    let sorted = false;
+    let placed = -1;
+    let moved = false;
+    const ok = updateActiveTrip(trip => {
+      const r = moveSpotTo(trip, d.from, d.to);
+      if (!r) return trip;
+      moved = true; sorted = r.sorted; placed = r.si;
+      return r.trip;
+    });
+    if (!moved) return;                       // 제자리 드롭 — 알릴 것도 없다
+    if (!ok) { setNotice(SAVE_FAILED); return; }
+    setSel({ di: d.to.di, si: placed });
+    setNotice(
+      d.from.di !== d.to.di ? `Day ${d.to.di + 1}(으)로 이동${sorted ? ' · 시간순 정렬' : ''}`
+        : sorted ? '시간순으로 정렬됨' : null
+    );
+  }, [updateActiveTrip]);
+
+  const onDayDrop = useCallback((from: number, to: number) => {
+    let moved = false;
+    const ok = updateActiveTrip(trip => {
+      const next = moveDay(trip, from, to);
+      if (!next) return trip;
+      moved = true;
+      return next;
+    });
+    if (!moved) return;
+    if (!ok) { setNotice(SAVE_FAILED); return; }
+    setActiveDay(0);         // 일자 번호의 의미가 바뀌었으니 필터는 푼다 (레거시 onDayDrop과 동일)
+    setSel(null);
+    setNotice('일자 순서 변경됨');
+  }, [updateActiveTrip]);
+
+  useDragReorder({ deps: views, onSpotDrop, onDayDrop });
+
   // 빠진 구간 백그라운드 조회 (Phase 6a) — 결과가 캐시에 쓰이면 legCache 구독으로 ETA·경로선이 갱신되고,
   // 그 갱신으로 출발시각이 바뀐 대중교통 구간은 재수집된다 (fetcher의 그룹 댐핑이 진동을 차단)
   useEffect(() => { if (activeTrip) ensureTripLegs(activeTrip); }, [activeTrip, legCache]);
@@ -216,8 +255,9 @@ export default function ItineraryPage() {
         </div>
       </div>
       <p className="hint">
-        지도를 탭하거나 검색해서 장소를 담고, 편집·순서 변경·삭제까지 여기서 할 수 있어요.
-        드래그 정렬과 재생은 아직 기존 앱 담당입니다. 이동 시간·경로선은 자동으로 조회해 채웁니다 (조회 전에는 직선 추정).
+        지도를 탭하거나 검색해서 장소를 담고, 편집·드래그 정렬·삭제까지 여기서 할 수 있어요.
+        장소는 다른 일자로도 끌어 옮길 수 있고, 카드 헤더를 잡으면 일자 순서가 바뀝니다.
+        재생은 아직 기존 앱 담당입니다. 이동 시간·경로선은 자동으로 조회해 채웁니다 (조회 전에는 직선 추정).
       </p>
       {editing && editingSpot && (
         <div className="itEditorBg" onClick={e => { if (e.target === e.currentTarget) setEditing(null); }}>

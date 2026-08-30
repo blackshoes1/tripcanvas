@@ -152,3 +152,10 @@
   font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 12px; cursor: pointer;
   box-shadow: 0 2px 6px rgba(17, 24, 39, .16); opacity: .94; }
 .poiChip:hover, .poiChip:focus-visible { opacity: 1; border-color: var(--accent); color: var(--accent); }
+
+/* ── 드래그 정렬 ── */
+.itSpotList { min-height: 4px; }              /* 빈 일자에도 끌어다 놓을 자리를 남긴다 */
+.itDragGhost { opacity: .35; }
+.itDragChosen { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.itDay .itDayHead.clickable { cursor: grab; }
+.itDay .itDayHead.clickable:active { cursor: grabbing; }

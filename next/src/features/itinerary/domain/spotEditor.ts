@@ -210,6 +210,43 @@ export function removeSpot(trip: Trip, di: number, si: number): Trip {
 }
 
 /**
+ * 드래그 드롭 — 장소를 (일자, 위치)로 옮긴다. 레거시 onSpotDrop과 같다:
+ * 원래 자리에서 빼고 대상 자리에 끼운 뒤, 그 날에 고정 시각이 있으면 시간순으로 재정렬한다.
+ * (버튼 이동과 달리 정렬을 하는 이유: 드래그는 '여기 놓고 싶다'는 뜻이지만 고정 시각은
+ *  '이 시각에 간다'는 더 강한 선언이라, 레거시가 시각을 우선하기로 정해 뒀다.)
+ * 옮길 것이 없거나 제자리면 null — 호출측이 '아무 일도 없었음'으로 다룬다.
+ */
+export function moveSpotTo(
+  trip: Trip,
+  from: { di: number; si: number },
+  to: { di: number; index: number }
+): { trip: Trip; sorted: boolean; si: number } | null {
+  const src = trip.days[from.di]?.spots[from.si];
+  if (!src || !trip.days[to.di]) return null;
+  if (from.di === to.di && from.si === to.index) return null;
+
+  const days = trip.days.map(d => ({ ...d, spots: [...d.spots] }));
+  days[from.di].spots.splice(from.si, 1);
+  days[to.di].spots.splice(Math.max(0, Math.min(to.index, days[to.di].spots.length)), 0, src);
+
+  const { day, sorted } = resortIfTimed(days[to.di]);
+  days[to.di] = day;
+  return { trip: { ...trip, days }, sorted, si: day.spots.indexOf(src) };
+}
+
+/**
+ * 일자 순서 변경 (레거시 onDayDrop). 인덱스 기반이라 날짜는 자동으로 따라붙는다 —
+ * days 배열의 자리가 곧 Day N이고, 날짜는 trip.start + 인덱스로 계산되기 때문.
+ */
+export function moveDay(trip: Trip, from: number, to: number): Trip | null {
+  if (!trip.days[from] || to < 0 || to >= trip.days.length || from === to) return null;
+  const days = [...trip.days];
+  const [moved] = days.splice(from, 1);
+  days.splice(to, 0, moved);
+  return { ...trip, days };
+}
+
+/**
  * 순서 변경 — 이웃과 자리를 맞바꾼다(레거시 moveSpot). 시간순 재정렬은 하지 않는다:
  * 손으로 옮긴 순서를 저장 직후 되돌려버리면 조작이 먹히지 않는 것처럼 보인다.
  * 범위를 벗어나면 null (호출측이 '움직일 곳 없음'으로 다룬다).

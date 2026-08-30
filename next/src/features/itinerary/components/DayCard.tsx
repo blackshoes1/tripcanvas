@@ -164,9 +164,12 @@ export function DayCard({
           </div>
         )}
         {view.carPickups.map(ev => <CarEventRow key={`p-${ev.bookingId}`} ev={ev} />)}
-        {view.spots.map(s => (
-          <SpotRow key={s.si} s={s} dayIndex={view.di} selected={selectedSi === s.si} actions={actions} />
-        ))}
+        {/* 드래그 대상은 장소만 — 렌터카 독립 행·숙소 복귀가 섞이면 드롭 인덱스가 어긋난다 */}
+        <div className="itSpotList" data-di={view.di}>
+          {view.spots.map(s => (
+            <SpotRow key={s.si} s={s} dayIndex={view.di} selected={selectedSi === s.si} actions={actions} />
+          ))}
+        </div>
         {view.carReturns.map(ev => <CarEventRow key={`r-${ev.bookingId}`} ev={ev} />)}
         {view.back && (
           <div className="itSpot itCarry" title="오늘 묵는 숙소 — 동선이 닫히도록 자동으로 이어 붙였습니다">

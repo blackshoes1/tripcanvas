@@ -6,7 +6,7 @@ import type { PlaceResult } from '@/features/search/domain/types';
 import type { Day, Spot, Trip } from '@/features/trip/domain/types';
 import {
   applyPlaceToForm, applySpotAdd, applySpotEdit, formFromSpot, insertIndexOf,
-  moveSpot, newSpotDraft, removeSpot, spotFromForm
+  moveDay, moveSpot, moveSpotTo, newSpotDraft, removeSpot, spotFromForm
 } from './spotEditor';
 
 const spot = (name: string, extra: Partial<Spot> = {}): Spot =>
@@ -241,5 +241,89 @@ describe('removeSpot / moveSpot', () => {
   it('손으로 옮긴 순서를 시간순 정렬이 되돌리지 않는다', () => {
     const t = trip([day([spot('A', { at: '09:00' }), spot('B', { at: '11:00' })], { startAt: '09:00' })]);
     expect(moveSpot(t, 0, 0, 1)?.days[0].spots.map(s => s.name)).toEqual(['B', 'A']);
+  });
+});
+
+describe('moveSpotTo — 드래그 드롭', () => {
+  it('같은 날 안에서 원하는 자리로 옮긴다', () => {
+    const t = trip([day([spot('A'), spot('B'), spot('C')])]);
+    const r = moveSpotTo(t, { di: 0, si: 2 }, { di: 0, index: 0 })!;
+    expect(r.trip.days[0].spots.map(s => s.name)).toEqual(['C', 'A', 'B']);
+    expect(r.si).toBe(0);
+  });
+
+  it('다른 날로 끌어다 놓으면 원래 날에서 빠진다', () => {
+    const t = trip([day([spot('A'), spot('B')]), day([spot('X'), spot('Y')])]);
+    const r = moveSpotTo(t, { di: 0, si: 0 }, { di: 1, index: 1 })!;
+    expect(r.trip.days[0].spots.map(s => s.name)).toEqual(['B']);
+    expect(r.trip.days[1].spots.map(s => s.name)).toEqual(['X', 'A', 'Y']);
+  });
+
+  it('고정 시각이 있는 날에 놓으면 시간순으로 재정렬된다 (시각이 순서를 이긴다)', () => {
+    const t = trip([
+      day([spot('늦은밤', { at: '22:00' })]),
+      day([spot('아침', { at: '08:00' }), spot('점심', { at: '12:00' })], { startAt: '08:00' })
+    ]);
+    const r = moveSpotTo(t, { di: 0, si: 0 }, { di: 1, index: 0 })!;
+    expect(r.sorted).toBe(true);
+    expect(r.trip.days[1].spots.map(s => s.name)).toEqual(['아침', '점심', '늦은밤']);
+    expect(r.trip.days[1].spots[r.si].name).toBe('늦은밤');   // 정렬 뒤 자리를 가리킨다
+  });
+
+  it('고정 시각이 없으면 놓은 자리를 그대로 지킨다', () => {
+    const t = trip([day([spot('A'), spot('B'), spot('C')])]);
+    const r = moveSpotTo(t, { di: 0, si: 0 }, { di: 0, index: 2 })!;
+    expect(r.sorted).toBe(false);
+    expect(r.trip.days[0].spots.map(s => s.name)).toEqual(['B', 'C', 'A']);
+  });
+
+  it('제자리에 놓거나 없는 것을 옮기면 null (아무 일도 없었음)', () => {
+    const t = trip([day([spot('A'), spot('B')])]);
+    expect(moveSpotTo(t, { di: 0, si: 0 }, { di: 0, index: 0 })).toBe(null);
+    expect(moveSpotTo(t, { di: 0, si: 9 }, { di: 0, index: 0 })).toBe(null);
+    expect(moveSpotTo(t, { di: 0, si: 0 }, { di: 5, index: 0 })).toBe(null);
+  });
+
+  it('범위를 넘는 위치는 맨 뒤로 클램프된다', () => {
+    const t = trip([day([spot('A'), spot('B')])]);
+    expect(moveSpotTo(t, { di: 0, si: 0 }, { di: 0, index: 99 })!.trip.days[0].spots.map(s => s.name))
+      .toEqual(['B', 'A']);
+  });
+
+  it('원본 trip을 변형하지 않는다', () => {
+    const t = trip([day([spot('A'), spot('B')]), day([spot('X')])]);
+    const snapshot = JSON.stringify(t);
+    moveSpotTo(t, { di: 0, si: 0 }, { di: 1, index: 0 });
+    expect(JSON.stringify(t)).toBe(snapshot);
+  });
+});
+
+describe('moveDay — 일자 순서 변경', () => {
+  const named = (title: string) => day([], { title });
+
+  it('일자를 옮기면 나머지가 밀린다 (날짜는 인덱스를 따라간다)', () => {
+    const t = trip([named('1일'), named('2일'), named('3일')]);
+    expect(moveDay(t, 2, 0)!.days.map(d => d.title)).toEqual(['3일', '1일', '2일']);
+    expect(moveDay(t, 0, 2)!.days.map(d => d.title)).toEqual(['2일', '3일', '1일']);
+  });
+
+  it('장소는 그 일자를 따라 함께 움직인다', () => {
+    const t = trip([day([spot('A')]), day([spot('B')])]);
+    expect(moveDay(t, 1, 0)!.days.map(d => d.spots[0].name)).toEqual(['B', 'A']);
+  });
+
+  it('제자리·범위 밖이면 null', () => {
+    const t = trip([named('1일'), named('2일')]);
+    expect(moveDay(t, 0, 0)).toBe(null);
+    expect(moveDay(t, 0, 5)).toBe(null);
+    expect(moveDay(t, 9, 0)).toBe(null);
+    expect(moveDay(t, 0, -1)).toBe(null);
+  });
+
+  it('원본 trip을 변형하지 않는다', () => {
+    const t = trip([named('1일'), named('2일')]);
+    const snapshot = JSON.stringify(t);
+    moveDay(t, 0, 1);
+    expect(JSON.stringify(t)).toBe(snapshot);
   });
 });
