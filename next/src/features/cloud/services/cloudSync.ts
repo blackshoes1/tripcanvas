@@ -9,6 +9,7 @@ import legacySync from '@legacy/sync.js';
 
 import type { Trip } from '@/features/trip/domain/types';
 import { canUpload, pendingDeletes } from '../domain/syncDecisions';
+import { snapshotTrip } from './tripSnapshots';
 import { supabase } from './supabaseClient';
 import {
   beginInFlight, endInFlight, getSyncMeta, persistSyncMeta, replaceSyncMeta,
@@ -88,6 +89,8 @@ export async function syncTripCloud(
     entry.op = '';
     entry.hash = hashTrip(trip);
     persistSyncMeta();
+    // 올라간 시점이 되돌릴 수 있는 지점이다 (여행별 10분에 한 번, 실패해도 업로드는 유효)
+    void snapshotTrip(trip, entry.revision);
   } catch (e) {
     entry.status = 'error';
     persistSyncMeta();

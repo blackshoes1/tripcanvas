@@ -377,6 +377,12 @@ export default function ItineraryPage() {
           <TripBar
             trips={trips} activeTrip={activeTrip}
             onSwitch={onSwitchTrip} onNew={createTrip} onSave={saveTripMeta} onDelete={deleteActiveTrip}
+            signedIn={!!cloud.user}
+            onRestore={t => {
+              // 되돌린 여행은 지금 여행을 대체한다 (id가 같으므로 제자리 교체)
+              setNotice(updateActiveTrip(() => t) ? '그 시점으로 되돌렸어요' : SAVE_FAILED);
+              setActiveDay(0); setSel(null); setDidEntry(false); setEditingDay(null);
+            }}
           />
           <AuthBar
             user={cloud.user} available={cloud.available} statusLabel={cloud.statusLabel}
