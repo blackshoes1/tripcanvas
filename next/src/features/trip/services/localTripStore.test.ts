@@ -22,6 +22,7 @@ Object.defineProperty(globalThis, 'window', {
 const {
   addTrip, getTripStoreSnapshot, removeTrip, saveTrip, undoLastChange
 } = await import('./localTripStore');
+const REJECTED_KEY = 'tripcanvas_rejected_backup_v1';
 const { recordWrite, getUndoDepth, resetUndoForTest } = await import('./undoStore');
 
 const LS_KEY = 'tripcanvas_v1';
@@ -98,5 +99,34 @@ describe('undoLastChange', () => {
     expect(undoLastChange()).toBe('invalid');
     expect(raw()).toBe(before);
     expect(getUndoDepth()).toBe(0);
+  });
+});
+
+// 원문이 깨졌거나 더 새로운 스키마라 못 읽으면 화면은 '여행이 없어요'로 떨어진다.
+// 거기서 새 여행을 만드는 순간 원문이 사라지는 게 없으면 조용한 유실이다 (레거시 load()와 같은 방어).
+describe('검증에 걸린 저장소 보존', () => {
+  it('못 읽는 원문을 덮어쓰기 전에 남긴다', () => {
+    const broken = '{"trips": [{"id": 그런데 이건 JSON이 아니다}]}';
+    mem.set(LS_KEY, broken);
+    resetUndoForTest();
+
+    expect(getTripStoreSnapshot()).toBeNull();       // 화면에는 여행이 없다
+    expect(addTrip(named('새로 만든 여행', 'n1'))).toBe(true);
+
+    expect(mem.get(REJECTED_KEY)).toBe(broken);      // 원문은 남아 있다
+    expect(getTripStoreSnapshot()?.trips.map(t => t.id)).toEqual(['n1']);
+  });
+
+  it('멀쩡한 원문은 백업하지 않는다', () => {
+    mem.delete(REJECTED_KEY);
+    saveTrip(named('그냥 편집', 't1'));
+    expect(mem.has(REJECTED_KEY)).toBe(false);
+  });
+
+  it('저장소가 비어 있으면 백업할 것도 없다', () => {
+    mem.clear();
+    resetUndoForTest();
+    addTrip(named('첫 여행', 't1'));
+    expect(mem.has(REJECTED_KEY)).toBe(false);
   });
 });

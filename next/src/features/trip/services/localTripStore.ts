@@ -8,6 +8,8 @@ import type { Trip } from '@/features/trip/domain/types';
 import { dropUndoTop, readUndo, recordWrite } from './undoStore';
 
 const LS_KEY = 'tripcanvas_v1';
+/** 검증에 걸린 원문을 덮어쓰기 전에 남겨 두는 자리 — 레거시 load()와 같은 키 */
+const REJECTED_KEY = 'tripcanvas_rejected_backup_v1';
 
 export interface TripStore {
   trips: Trip[];
@@ -59,6 +61,7 @@ function writeStore(next: TripStore, history = true): boolean {
   try {
     const ser = JSON.stringify(next);
     const prev = window.localStorage.getItem(LS_KEY);
+    backupIfRejected(prev);
     window.localStorage.setItem(LS_KEY, ser);
     recordWrite(prev, ser, history);
     emit();
@@ -66,6 +69,19 @@ function writeStore(next: TripStore, history = true): boolean {
   } catch {
     return false;   // 쿼터 초과 등 — 호출측이 실패를 알린다
   }
+}
+
+/**
+ * 검증에 걸린 저장소를 덮어쓰기 **전에** 한 번 남긴다 (레거시 load()와 같은 자리·같은 키).
+ *
+ * ⚠️ 없으면 조용한 유실이다: 원문이 깨졌거나 더 새로운 스키마라 읽지 못하면 화면은
+ * '여행이 없어요'로 떨어지고, 거기서 새 여행을 만드는 순간 원문이 사라진다.
+ * 읽지 못한다고 버릴 이유는 없다 — 고쳐서 되살릴 수 있는 데이터일 수 있다.
+ */
+function backupIfRejected(prev: string | null): void {
+  if (!prev || prev.length > legacyLib.TC_LIMITS.storeBytes) return;   // 없거나 너무 크면 두지 않는다
+  if (legacyLib.parseStorePayload(prev).ok) return;                     // 멀쩡한 원문은 백업 대상이 아니다
+  try { window.localStorage.setItem(REJECTED_KEY, prev); } catch { /* 최선 노력 — 저장 자체는 진행한다 */ }
 }
 
 /**
