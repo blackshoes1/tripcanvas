@@ -21,9 +21,14 @@ import type { PoiPick } from '@/features/map/services/kakaoPoiLayer';
 import { PlayDayCard, PlayHud } from '@/features/playback/components/PlayHud';
 import { usePlayback } from '@/features/playback/hooks/usePlayback';
 import { ensureTripLegs } from '@/features/routing/services/ensureTripLegs';
+import { TripCard, CARD_WIDTH } from '@/features/export/components/TripCard';
+import { buildTripCard, type TripCard as CardModel } from '@/features/export/domain/tripCard';
+import { captureNode } from '@/features/export/services/imageExport';
 import { PasteModal } from '@/features/paste/components/PasteModal';
 import type { DraftTarget } from '@/features/paste/domain/pasteDraft';
 import { ReadOnlyBar } from '@/features/share/components/ReadOnlyBar';
+import { downloadDataUrl } from '@/features/share/services/fileTransfer';
+import { exportFilename } from '@/features/share/domain/tripFile';
 import { TripFileBar } from '@/features/share/components/TripFileBar';
 import { useSharedTrip } from '@/features/share/hooks/useSharedTrip';
 import { DayEditor } from '@/features/trip/components/DayEditor';
@@ -64,6 +69,9 @@ export default function ItineraryPage() {
   /** 편집 중인 일자 — 열려 있는 동안만 */
   const [editingDay, setEditingDay] = useState<number | null>(null);
   const [pasting, setPasting] = useState(false);
+  /** 이미지로 찍는 중인 카드 — 화면 밖에 그려 두고 캡처한다 */
+  const [card, setCard] = useState<CardModel | null>(null);
+  const cardRef = useRef<HTMLDivElement | null>(null);
   const mapHandle = useRef<MapHandle | null>(null);
 
   const views = useMemo(
@@ -305,6 +313,20 @@ export default function ItineraryPage() {
     if (sel) document.getElementById(`it-d${sel.di}-s${sel.si}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, [sel]);
 
+  // 카드가 화면 밖에 그려진 다음에 캡처한다 (렌더 전에 찍으면 빈 이미지가 나온다)
+  useEffect(() => {
+    if (!card || !cardRef.current) return;
+    let alive = true;
+    void (async () => {
+      const shot = await captureNode(cardRef.current!, '#141b33');
+      if (!alive) return;
+      if (shot.ok) downloadDataUrl(shot.dataUrl, exportFilename(card.name, 'png'));
+      setNotice(shot.ok ? '이미지가 저장되었습니다' : shot.error);
+      setCard(null);
+    })();
+    return () => { alive = false; };
+  }, [card]);
+
 
   if (!shownTrip) {
     return (
@@ -352,6 +374,10 @@ export default function ItineraryPage() {
             trip={activeTrip} newId={newTripId} onNotice={setNotice}
             onImport={t => { const ok = addTrip(t); if (ok) { setActiveDay(0); setSel(null); setDidEntry(false); } return ok; }}
             onPaste={() => setPasting(true)}
+            onImage={() => {
+              setNotice('이미지 만드는 중…');
+              setCard(buildTripCard(activeTrip, views, dayColor));
+            }}
           />
         </>
       )}
@@ -428,6 +454,11 @@ export default function ItineraryPage() {
             onPause={play.pause} onResume={play.resume}
           />
         </>
+      )}
+      {card && (
+        <div style={{ position: 'fixed', left: -10000, top: 0, width: CARD_WIDTH }} aria-hidden="true">
+          <TripCard card={card} innerRef={cardRef} />
+        </div>
       )}
       {!readOnly && pasting && (
         <PasteModal

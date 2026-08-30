@@ -11,6 +11,14 @@ export function downloadText(text: string, filename: string, type = 'application
   setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
+/** data: URL을 파일로 내려받는다 (이미지 내보내기 — Blob과 달리 회수할 objectURL이 없다) */
+export function downloadDataUrl(dataUrl: string, filename: string): void {
+  const a = document.createElement('a');
+  a.href = dataUrl;
+  a.download = filename;
+  a.click();
+}
+
 export type FileRead = { ok: true; text: string } | { ok: false; error: string };
 
 /**
