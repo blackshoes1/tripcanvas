@@ -436,6 +436,28 @@
   }
 
   /**
+   * 예산에 넣을 예약만 — 일정의 장소가 이미 그 금액을 들고 있으면 뺀다.
+   *
+   * 숙박 예약은 일정의 숙소 장소와 연결(`spot.bookingId`)된다. 예약 편집기에서 장소를 고르면
+   * 자동으로 걸리고, 그렇게 연결된 둘은 **같은 숙박**이다. 그런데 하루 비용은 장소 비용과
+   * 예약 하루치를 더하고 전체 비용은 장소 비용과 예약 전액을 더하므로, 양쪽에 금액을 넣으면
+   * 숙박비가 두 번 잡혔다.
+   *
+   * 기준은 **일정 카드에 입력한 금액**이다 — 연결된 장소에 비용이 있으면 그 예약은 예산에서 뺀다.
+   * 장소에 비용이 없을 때만 예약 금액을 쓴다(안 그러면 예약에만 적은 돈이 그냥 사라진다).
+   * 연결이 없는 예약은 일정에 대응하는 장소가 없으므로 그대로 센다.
+   * @param {any[]} bookings @param {any[]} days @returns {any[]}
+   */
+  function budgetBookings(bookings, days){
+    /** @type {Object<string,boolean>} */ const covered={};
+    for(const d of Array.isArray(days)?days:[]){
+      const spots=(d&&Array.isArray(d.spots))?d.spots:[];
+      for(const s of spots) if(s&&s.bookingId&&+s.cost>0) covered[_str(s.bookingId)]=true;
+    }
+    return (Array.isArray(bookings)?bookings:[]).filter((/**@type{any}*/b)=>b&&!covered[_str(b.id)]);
+  }
+
+  /**
    * 일정에 연결된 렌터카 픽업·반납 지점 — `spot.carPickupId`·`spot.carReturnId` 역참조.
    * 연결이 있으면 그 장소 행에 붙여 순서를 맞추고, 없으면 날짜 기준 독립 행으로 표시한다(carEventsOn).
    * 같은 예약이 여러 장소에 붙어 있으면(장소 복사 등) 처음 하나만 유효한 것으로 본다.
@@ -864,7 +886,7 @@
     return spotCat(catFromName(s.name));
   }
 
-  const TC={SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,cityFromKoreanAddr,placeName,cityFromGoogle,normHours,classifySearchErr,isKoreanSearch,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,normHM,sortDayByTime,inKorea,simplifyName,parseDirect,parseMoney,normalizeDraftDays,extractJson,extMapLink,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,computeTimeline,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,localMode,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
+  const TC={SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,cityFromKoreanAddr,placeName,cityFromGoogle,normHours,classifySearchErr,isKoreanSearch,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,normHM,sortDayByTime,inKorea,simplifyName,parseDirect,parseMoney,normalizeDraftDays,extractJson,extMapLink,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,computeTimeline,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,budgetBookings,localMode,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
   if(typeof module!=='undefined' && module.exports){ module.exports=TC; }   // Node (테스트)
   else { const r=/**@type {any}*/(root); for(const k in TC) r[k]=/**@type {any}*/(TC)[k]; }   // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);
