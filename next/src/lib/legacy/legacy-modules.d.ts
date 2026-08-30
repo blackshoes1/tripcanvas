@@ -1,0 +1,33 @@
+// 레거시 UMD 모듈(../../price.js 등)의 앰비언트 선언 — 구현은 저장소 루트의 단일 소스를 그대로 쓴다.
+// 여기 선언은 engine.ts가 좁혀서 노출하는 타입의 최소 계약만 담는다.
+declare module '@legacy/price.js' {
+  const api: {
+    PRICE_CFG: Readonly<Record<string, number>>;
+    cancelFeeNow(b: unknown, today?: string): number;
+    calcSaving(b: unknown, current: number, today?: string): { saving: number; rate: number; fee: number };
+    savingWorth(sv: { saving: number; rate: number }, krwRate?: number, cfg?: unknown): boolean;
+    bookingPriceStatus(b: unknown, obs: unknown[], opts?: unknown):
+      { state: string; current: number; saving: number; rate: number; fee: number } | null;
+    offerPrice(o: unknown): number;
+    matchQuality(b: unknown, o: unknown): string;
+    basisMismatch(b: unknown, basis: unknown): boolean;
+    qualityWithBasis(q: string, b: unknown, basis: unknown): string;
+    verificationStatus(o: unknown): string;
+    offerRank(q: string, verified: boolean): number;
+    decideSaving(b: unknown, offers: unknown[], opts?: unknown): {
+      confirmed: { offer: unknown; saving: number; rate: number } | null;
+      potential: { offer: unknown; delta: number } | null;
+      fee: number;
+    };
+    hotelTrackState(b: unknown, rec: unknown, opts?: unknown): Record<string, unknown> | null;
+    identityScore(idn: unknown, prop: unknown): number;
+    tripHotelSummary(bookings: unknown[], recById: Record<string, unknown>, opts?: unknown):
+      { booked: number; confirmed: number; potential: number; actual: number; count: number };
+    carMatchQuality(b: unknown, o: unknown): string;
+    normTransmission(v: unknown): string;
+    normMileage(v: unknown): string;
+    normInsurance(v: unknown): string;
+    normCarClass(v: unknown): string;
+  };
+  export = api;
+}
