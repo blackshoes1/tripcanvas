@@ -30,6 +30,8 @@ declare namespace google.maps {
     class AdvancedMarkerElement {
       constructor(opts: { map: Map; position: { lat: number; lng: number }; content?: HTMLElement; zIndex?: number });
       map: Map | null;
+      /** 재생 마커는 매 프레임 위치만 바꾼다 (Phase 6f) */
+      position: { lat: number; lng: number } | null;
       addEventListener(type: 'gmp-click', cb: () => void): void;
     }
   }
@@ -105,10 +107,13 @@ declare namespace kakao.maps {
   class CustomOverlay {
     constructor(opts: Record<string, unknown>);
     setMap(m: Map | null): void;
+    /** 재생 마커 이동 (Phase 6f) */
+    setPosition(p: LatLng): void;
   }
   namespace event {
     function addListener(target: Map, ev: 'click' | 'dblclick' | 'rightclick', cb: (e: { latLng: LatLng2 }) => void): void;
-    function addListener(target: Map, ev: 'idle' | 'drag', cb: () => void): void;
+    function addListener(target: Map, ev: 'idle' | 'drag' | 'tilesloaded', cb: () => void): void;
+    function removeListener(target: Map, ev: string, cb: () => void): void;
   }
   namespace services {
     const Status: { OK: string; ZERO_RESULT: string; ERROR: string };

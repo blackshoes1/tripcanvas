@@ -2,7 +2,7 @@
 // 지도 뷰 — buildMapScene 결과를 그리는 SDK 어댑터 (판정·규칙은 전부 domain/scene·domain/mapPick).
 // 레거시 Engines 어댑터의 google/kakao 분기를 그대로 옮겼다: 오버레이 핸들은 remove() 목록으로 통일.
 // Phase 6d에서 '지도에서 담기'가 붙었다 — 해외는 POI 탭의 placeId, 국내는 우리가 깐 POI 칩.
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useImperativeHandle, useRef, useState } from 'react';
 
 import { createTapGate, type TapPoint } from '@/features/map/domain/mapPick';
 import type { FitTarget, MapScene } from '@/features/map/domain/types';
@@ -10,6 +10,18 @@ import { createKakaoPoiLayer, type PoiPick } from '@/features/map/services/kakao
 import { loadGoogleMaps, loadKakaoMaps } from '@/features/map/services/sdkLoader';
 
 type PinClick = (di: number, si: number) => void;
+
+/** 재생이 지도를 직접 몰아야 해서 여는 명령형 창구 (Phase 6f) — 장면 그리기는 여전히 scene이 한다 */
+export interface MapHandle {
+  ready(): boolean;
+  /** 이 점들이 한 화면에 들어오게 (maxZoom = 그 구간의 줌 상한) */
+  fitPts(pts: [number, number][], pad: number, maxZoom: number): void;
+  /** 재생 마커 하나 — 매 프레임 위치만 바꾼다 */
+  moveMarker(lat: number, lng: number, el: HTMLElement): { move(lat: number, lng: number): void; remove(): void };
+  /** 타일 로딩이 끝날 때까지(최대 timeout) — 출발 직전에 화면을 깨끗이 만든다 */
+  waitTiles(timeout: number): Promise<void>;
+  relayout(): void;
+}
 
 // ── 오버레이 DOM (레거시 mkPin/ghostStay/legChip와 같은 클래스) ──
 function mkPinEl(color: string, label: number, opt: boolean, catIcon: string | null, title: string): HTMLDivElement {
@@ -143,10 +155,12 @@ function waitForSize(el: HTMLElement): Promise<void> {
   });
 }
 
-export function MapView({ scene, fit, onPinClick, onMapTap, onPoiPick }: {
+export function MapView({ scene, fit, onPinClick, onMapTap, onPoiPick, handleRef }: {
   scene: MapScene;
   fit: FitTarget | null;
   onPinClick?: PinClick;
+  /** 재생이 카메라·마커를 직접 몰기 위한 핸들 */
+  handleRef?: React.Ref<MapHandle>;
   /** 빈 자리·해외 POI 탭 — 좌표(+placeId)로 새 장소를 담는다 */
   onMapTap?: (p: TapPoint) => void;
   /** 국내 POI 칩 탭 — 무엇을 눌렀는지 아는 경로라 추측이 필요 없다 */
@@ -219,6 +233,48 @@ export function MapView({ scene, fit, onPinClick, onMapTap, onPoiPick }: {
   }, [scene.engine]);
 
   const engineReady = scene.engine === 'kakao' ? ready.kakao : ready.google;
+
+  useImperativeHandle(handleRef, (): MapHandle => ({
+    ready: () => (scene.engine === 'kakao' ? !!kMap.current : !!gMap.current),
+    fitPts(pts, pad, maxZoom) {
+      if (!pts.length) return;
+      if (scene.engine === 'kakao' && kMap.current) fitKakao(kMap.current, { pts, pad, maxZoom });
+      else if (gMap.current) fitGoogle(gMap.current, { pts, pad, maxZoom });
+    },
+    moveMarker(lat, lng, el) {
+      if (scene.engine === 'kakao' && kMap.current) {
+        const ov = new kakao.maps.CustomOverlay({
+          position: new kakao.maps.LatLng(lat, lng), content: el, xAnchor: 0.5, yAnchor: 0.5, zIndex: 9999
+        });
+        ov.setMap(kMap.current);
+        return { move: (la, ln) => ov.setPosition(new kakao.maps.LatLng(la, ln)), remove: () => ov.setMap(null) };
+      }
+      if (gMap.current) {
+        const m = new google.maps.marker.AdvancedMarkerElement({
+          map: gMap.current, position: { lat, lng }, content: el, zIndex: 9999
+        });
+        return { move: (la, ln) => { m.position = { lat: la, lng: ln }; }, remove: () => { m.map = null; } };
+      }
+      return { move: () => {}, remove: () => {} };   // 지도가 아직 없으면 조용히 무시
+    },
+    waitTiles(timeout) {
+      return new Promise<void>(res => {
+        let done = false;
+        const fin = () => {
+          if (done) return;
+          done = true;
+          if (scene.engine === 'kakao' && kMap.current) {
+            try { kakao.maps.event.removeListener(kMap.current, 'tilesloaded', fin); } catch { /* 이미 떨어진 지도 */ }
+          }
+          res();
+        };
+        if (scene.engine === 'kakao' && kMap.current) kakao.maps.event.addListener(kMap.current, 'tilesloaded', fin);
+        else if (gMap.current) google.maps.event.addListenerOnce(gMap.current, 'tilesloaded', fin);
+        setTimeout(fin, timeout || 1600);            // 타일이 안 와도 출발은 한다
+      });
+    },
+    relayout() { if (scene.engine === 'kakao') kMap.current?.relayout(); }
+  }), [scene.engine]);
 
   // 장면 그리기 — 이전 오버레이는 엔진과 무관하게 전부 제거 후 다시
   useEffect(() => {

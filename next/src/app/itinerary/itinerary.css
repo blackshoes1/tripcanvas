@@ -159,3 +159,47 @@
 .itDragChosen { background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .itDay .itDayHead.clickable { cursor: grab; }
 .itDay .itDayHead.clickable:active { cursor: grabbing; }
+
+/* ── 재생 (여행 모드) ── */
+.itPlayBtn { margin-left: auto; font-size: 12px; padding: 4px 10px; cursor: pointer; border-radius: 999px;
+  background: var(--card); color: var(--fg);
+  border: 1px solid color-mix(in srgb, var(--fg) 18%, transparent); }
+.itPlayBtn:hover { border-color: var(--accent); color: var(--accent); }
+
+/* HUD는 지도 위에 고정 — 카드 목록을 스크롤해도 컨트롤이 따라다닌다 */
+.itPlayHud { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 30;
+  width: min(560px, calc(100vw - 24px)); padding: 10px 12px; border-radius: 12px;
+  background: color-mix(in srgb, var(--card) 94%, transparent); backdrop-filter: blur(6px);
+  border: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
+  box-shadow: 0 6px 22px rgba(0, 0, 0, .28); }
+.itPlayLeg { font-size: 12px; font-weight: 600; margin-bottom: 6px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.itPlayBar { height: 8px; border-radius: 999px; cursor: pointer; touch-action: none;
+  background: color-mix(in srgb, var(--fg) 14%, transparent); }
+.itPlayBarFill { height: 100%; border-radius: 999px; background: var(--accent); }
+.itPlayCtl { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+.itPlayCtl button { font-size: 13px; padding: 4px 9px; cursor: pointer; border-radius: 8px;
+  background: var(--bg); color: var(--fg);
+  border: 1px solid color-mix(in srgb, var(--fg) 16%, transparent); }
+.itPlaySeg { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.itPlaySpeeds { display: inline-flex; gap: 3px; margin-left: auto; }
+.itPlaySpeeds button { font-size: 11px; padding: 3px 7px; }
+.itPlaySpeeds button.on { background: var(--accent); border-color: var(--accent); color: #0b1020; font-weight: 700; }
+.itPlayCtl .itPlayStop { color: #ff8fa3; }
+
+/* 날짜 전환 카드 — 스스로 사라진다 (호출측이 key로 리마운트해 다시 재생) */
+.itPlayDayCard { position: fixed; left: 50%; top: 18%; transform: translateX(-50%); z-index: 31;
+  padding: 10px 18px; border-radius: 12px; font-size: 16px; font-weight: 700; pointer-events: none;
+  background: color-mix(in srgb, var(--card) 92%, transparent); color: var(--fg);
+  border: 1px solid color-mix(in srgb, var(--fg) 14%, transparent);
+  box-shadow: 0 8px 26px rgba(0, 0, 0, .3);
+  animation: itDayCardFlash 1.9s ease forwards; }
+@keyframes itDayCardFlash {
+  0% { opacity: 0; transform: translateX(-50%) translateY(6px); }
+  12% { opacity: 1; transform: translateX(-50%) translateY(0); }
+  80% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .itPlayDayCard { animation-duration: 1.9s; animation-timing-function: step-end; }
+}

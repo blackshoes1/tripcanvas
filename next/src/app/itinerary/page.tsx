@@ -1,7 +1,7 @@
 'use client';
 // 일정(Itinerary) — 레거시 사이드바+지도와 같은 데이터(tripcanvas_v1·tripcanvas_legs_v4)를
 // 같은 규칙(anchor/carry·타임라인·렌터카 연결·비용 배분·지도 장면)으로 보여주고 편집하는 병행 화면.
-// 재생(여행 모드)만 아직 레거시 담당.
+// Phase 6 이관 완료 — 읽기·편집·추가·검색·지도 담기·드래그·재생이 모두 여기서 돈다.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { DayCard } from '@/features/itinerary/components/DayCard';
@@ -12,11 +12,13 @@ import {
 } from '@/features/itinerary/domain/spotEditor';
 import { useDragReorder, type SpotDrop } from '@/features/itinerary/hooks/useDragReorder';
 import { useLegCache } from '@/features/itinerary/hooks/useLegCache';
-import { MapView } from '@/features/map/components/MapView';
+import { MapView, type MapHandle } from '@/features/map/components/MapView';
 import type { TapPoint } from '@/features/map/domain/mapPick';
 import { buildMapScene, dayColor, entryFitOf, fitTargetOf } from '@/features/map/domain/scene';
 import { reverseSpot, type ReverseResult } from '@/features/map/services/reverseSpot';
 import type { PoiPick } from '@/features/map/services/kakaoPoiLayer';
+import { PlayDayCard, PlayHud } from '@/features/playback/components/PlayHud';
+import { usePlayback } from '@/features/playback/hooks/usePlayback';
 import { ensureTripLegs } from '@/features/routing/services/ensureTripLegs';
 import { useTripStore } from '@/features/trip/hooks/useTripStore';
 import type { Spot } from '@/features/trip/domain/types';
@@ -39,6 +41,7 @@ export default function ItineraryPage() {
   /** 지도에서 담은 좌표의 신원 — 늦게 도착해 편집기에 흘려 넣는다 */
   const [identity, setIdentity] = useState<ReverseResult | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const mapHandle = useRef<MapHandle | null>(null);
 
   const views = useMemo(
     () => (activeTrip ? activeTrip.days.map((_, di) => buildDayView(activeTrip, legCache, di)) : []),
@@ -56,6 +59,25 @@ export default function ItineraryPage() {
     () => (activeTrip ? (didEntry ? fitTargetOf(activeTrip, activeDay) : entryFitOf(activeTrip)) : null),
     [activeTrip, activeDay, didEntry]
   );
+
+  // 재생이 끝나면 카메라를 원래 프레임으로 되돌린다 (일자 재생이면 그 일자, 전체면 전체)
+  const refit = useCallback(() => setDidEntry(v => !v || v), []);
+  const play = usePlayback({
+    trip: activeTrip, legCache, activeDay, map: mapHandle,
+    onNotice: setNotice, onEnd: refit
+  });
+
+  // 전체 재생 중 날짜가 바뀌면 카드를 잠깐 띄운다 (일자 재생 중엔 바뀔 일이 없다).
+  // 상태·타이머 없이 파생값 + key 리마운트로 — CSS 애니메이션이 스스로 사라진다
+  // (레거시가 reflow로 애니메이션을 재시작하던 것과 같은 효과).
+  const playDi = play.status.playing && !activeDay ? play.status.at?.di ?? null : null;
+  const dayCardLabel = (() => {
+    if (playDi == null) return null;
+    const day = activeTrip?.days[playDi];
+    if (!day) return null;
+    const sub = day.title || day.spots.find(s => s.lat != null)?.city || '';
+    return `Day ${playDi + 1}${sub ? ` · ${sub}` : ''}`;
+  })();
 
   const selectDay = (d: number) => { setDidEntry(true); setActiveDay(d); };
   const onPinClick = useCallback((di: number, si: number) => setSel({ di, si }), []);
@@ -193,6 +215,7 @@ export default function ItineraryPage() {
     if (sel) document.getElementById(`it-d${sel.di}-s${sel.si}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, [sel]);
 
+
   if (!activeTrip) {
     return (
       <main className="itPage">
@@ -235,10 +258,17 @@ export default function ItineraryPage() {
           </button>
         ))}
         <span className="itLegendNote" aria-hidden="true">- - - 일자 간 이동</span>
+        <button type="button" className="itPlayBtn" onClick={play.toggle}
+          title={activeDay ? `Day ${activeDay} 동선을 따라 재생` : '전체 동선을 따라 재생'}>
+          {play.status.playing ? '⏹ 정지' : '▶️ 재생'}
+        </button>
       </div>
       <div className="itLayout">
         {scene && (
-          <MapView scene={scene} fit={fit} onPinClick={onPinClick} onMapTap={onMapTap} onPoiPick={onPoiPick} />
+          <MapView
+            scene={scene} fit={play.status.playing ? null : fit} handleRef={mapHandle}
+            onPinClick={onPinClick} onMapTap={onMapTap} onPoiPick={onPoiPick}
+          />
         )}
         <div className="itCards">
           {views.map(v => (
@@ -259,6 +289,18 @@ export default function ItineraryPage() {
         장소는 다른 일자로도 끌어 옮길 수 있고, 카드 헤더를 잡으면 일자 순서가 바뀝니다.
         재생은 아직 기존 앱 담당입니다. 이동 시간·경로선은 자동으로 조회해 채웁니다 (조회 전에는 직선 추정).
       </p>
+      {play.status.playing && (
+        <>
+          {dayCardLabel && <PlayDayCard key={playDi} label={dayCardLabel} />}
+          <PlayHud
+            status={play.status} speed={play.speed} onSpeed={play.setSpeed}
+            onToggle={() => (play.status.paused ? play.resume() : play.pause())}
+            onPrev={play.prevSeg} onNext={play.nextSeg} onStop={play.stop}
+            onSeekPreview={play.seekPreview} onSeekCommit={play.seekCommit}
+            onPause={play.pause} onResume={play.resume}
+          />
+        </>
+      )}
       {editing && editingSpot && (
         <div className="itEditorBg" onClick={e => { if (e.target === e.currentTarget) setEditing(null); }}>
           <SpotEditor
