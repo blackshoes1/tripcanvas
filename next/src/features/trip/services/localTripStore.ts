@@ -49,6 +49,51 @@ export function subscribeTripStore(cb: () => void): () => void {
   return () => { listeners.delete(cb); };
 }
 
+/** 저장소 전체를 되쓴다 — 여행 추가·전환·삭제처럼 목록 자체가 바뀔 때 */
+function writeStore(next: TripStore): boolean {
+  try {
+    window.localStorage.setItem(LS_KEY, JSON.stringify(next));
+    emit();
+    return true;
+  } catch {
+    return false;   // 쿼터 초과 등 — 호출측이 실패를 알린다
+  }
+}
+
+/**
+ * 새 여행을 넣고 활성으로 — 정규화를 통과 못 하면 넣지 않는다.
+ * 저장소가 아직 없으면(첫 방문·초기화 직후) 여기서 만든다 — 안 그러면 첫 여행을 영영 못 만든다.
+ */
+export function addTrip(trip: Trip): boolean {
+  if (typeof window === 'undefined') return false;
+  const normalized = legacyLib.normalizeTrip(trip) as Trip | null;
+  if (!normalized) return false;
+  const store = getTripStoreSnapshot() ?? { trips: [], activeId: '' };
+  return writeStore({ trips: [...store.trips, normalized], activeId: normalized.id });
+}
+
+/** 활성 여행 전환 */
+export function switchTrip(id: string): boolean {
+  if (typeof window === 'undefined') return false;
+  const store = getTripStoreSnapshot();
+  if (!store || !store.trips.some(t => t.id === id)) return false;
+  return writeStore({ ...store, activeId: id });
+}
+
+/**
+ * 여행 삭제. 마지막 하나는 지우지 않는다 — 빈 저장소가 되면 레거시·Next 양쪽에서
+ * '여행이 없어요' 상태로 떨어져 복구 경로가 사라진다.
+ * 활성 여행을 지우면 남은 첫 여행으로 옮겨간다.
+ */
+export function removeTrip(id: string): boolean {
+  if (typeof window === 'undefined') return false;
+  const store = getTripStoreSnapshot();
+  if (!store || store.trips.length <= 1) return false;
+  const trips = store.trips.filter(t => t.id !== id);
+  if (trips.length === store.trips.length) return false;
+  return writeStore({ trips, activeId: store.activeId === id ? trips[0].id : store.activeId });
+}
+
 /** 한 여행만 정규화해 되쓴다 — 다른 여행·필드는 건드리지 않는다 */
 export function saveTrip(updated: Trip): boolean {
   if (typeof window === 'undefined') return false;
@@ -58,12 +103,5 @@ export function saveTrip(updated: Trip): boolean {
   if (!normalized) return false;
   const i = store.trips.findIndex(t => t.id === normalized.id);
   if (i < 0) return false;
-  const nextStore = { ...store, trips: store.trips.map((t, k) => (k === i ? normalized : t)) };
-  try {
-    window.localStorage.setItem(LS_KEY, JSON.stringify(nextStore));
-    emit();
-    return true;
-  } catch {
-    return false;   // 쿼터 초과 등 — 호출측이 실패를 알린다
-  }
+  return writeStore({ ...store, trips: store.trips.map((t, k) => (k === i ? normalized : t)) });
 }

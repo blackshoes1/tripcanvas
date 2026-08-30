@@ -94,7 +94,7 @@ function SpotRow({ s, dayIndex, selected, actions }: {
 }
 
 export function DayCard({
-  view, dim = false, selectedSi = null, onHeaderClick, onEditSpot, onMoveSpot, onAddSpot
+  view, dim = false, selectedSi = null, onHeaderClick, onEditSpot, onMoveSpot, onAddSpot, onEditDay
 }: {
   view: DayView;
   /** 일자 필터 중 다른 날 — 흐리게 (레거시 .dayCard.dim) */
@@ -109,6 +109,8 @@ export function DayCard({
   onMoveSpot?: (si: number, delta: number) => void;
   /** 새 장소 추가 — 선택된 장소가 있으면 그 바로 뒤에 넣는다 */
   onAddSpot?: (after: number | null) => void;
+  /** 일자 편집기 열기 (날짜·시간대·수단·항공) */
+  onEditDay?: () => void;
 }) {
   const actions = onEditSpot && onMoveSpot
     ? { onEdit: onEditSpot, onMove: onMoveSpot, count: view.spots.length }
@@ -131,7 +133,14 @@ export function DayCard({
         }}
         title={onHeaderClick ? '탭하면 이 일자만 지도에 표시' : undefined}
       >
-        <div className="itDayTitle">Day {view.dayNo}{view.title ? ` · ${view.title}` : ''}</div>
+        <div className="itDayTitle">
+          Day {view.dayNo}{view.title ? ` · ${view.title}` : ''}
+          {onEditDay && (
+            <button type="button" className="itDayEdit" title="일자 편집 (날짜·시간대·수단)"
+              aria-label={`Day ${view.dayNo} 편집`}
+              onClick={e => { e.stopPropagation(); onEditDay(); }}>✎</button>
+          )}
+        </div>
         <div className="itDayMeta">
           {view.dateLabel || '📅 날짜 미지정'}
           {' · '}{view.timeZone ? `🌐 ${view.timeZone}` : '🌐 시간대 미설정'}

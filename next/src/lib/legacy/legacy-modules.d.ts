@@ -86,6 +86,8 @@ declare module '@legacy/lib.js' {
     classifySearchErr(e: unknown): 'network' | 'quota' | 'auth' | 'error';
     /** 국내 검색인지 — 앵커가 있으면 좌표로, 없으면 질의의 한글 여부로 */
     isKoreanSearch(q: string, near?: { lat: number; lng: number } | null): boolean;
+    /** IANA 시간대 문자열인지 (Asia/Tokyo 등) */
+    validTimeZone(value: unknown): boolean;
     SPOT_CATS: readonly { id: string; icon: string; name: string }[];
     TC_LIMITS: Readonly<Record<string, number>>;
     TC_SCHEMA: number;

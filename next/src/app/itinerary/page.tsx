@@ -20,13 +20,19 @@ import type { PoiPick } from '@/features/map/services/kakaoPoiLayer';
 import { PlayDayCard, PlayHud } from '@/features/playback/components/PlayHud';
 import { usePlayback } from '@/features/playback/hooks/usePlayback';
 import { ensureTripLegs } from '@/features/routing/services/ensureTripLegs';
+import { DayEditor } from '@/features/trip/components/DayEditor';
+import { TripBar } from '@/features/trip/components/TripBar';
+import { addDay, duplicateDay, newTrip, newTripId, removeDay } from '@/features/trip/domain/tripEditor';
 import { useTripStore } from '@/features/trip/hooks/useTripStore';
-import type { Spot } from '@/features/trip/domain/types';
+import type { Spot, Trip } from '@/features/trip/domain/types';
+import { todayISO } from '@/lib/date/today';
 import { fmtMoney } from '@/lib/currency/format';
 import './itinerary.css';
 
+const SAVE_FAILED = '저장에 실패했어요 — 저장 공간을 확인해주세요';
+
 export default function ItineraryPage() {
-  const { activeTrip, updateActiveTrip } = useTripStore();
+  const { activeTrip, updateActiveTrip, trips, addTrip, switchTrip, removeTrip } = useTripStore();
   const legCache = useLegCache();
 
   /** 1-based 일자 필터, 0=전체 (레거시 activeDay와 동일 의미) */
@@ -41,6 +47,8 @@ export default function ItineraryPage() {
   /** 지도에서 담은 좌표의 신원 — 늦게 도착해 편집기에 흘려 넣는다 */
   const [identity, setIdentity] = useState<ReverseResult | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  /** 편집 중인 일자 — 열려 있는 동안만 */
+  const [editingDay, setEditingDay] = useState<number | null>(null);
   const mapHandle = useRef<MapHandle | null>(null);
 
   const views = useMemo(
@@ -59,6 +67,57 @@ export default function ItineraryPage() {
     () => (activeTrip ? (didEntry ? fitTargetOf(activeTrip, activeDay) : entryFitOf(activeTrip)) : null),
     [activeTrip, activeDay, didEntry]
   );
+
+  // ── 여행·일자 관리 ──
+  const saveTripMeta = (next: Trip) => {
+    setNotice(updateActiveTrip(() => next) ? '저장됨' : SAVE_FAILED);
+  };
+  const createTrip = () => {
+    const t = newTrip('새 여행', todayISO(), newTripId());
+    if (!addTrip(t)) { setNotice(SAVE_FAILED); return; }
+    setActiveDay(0); setSel(null); setDidEntry(false);
+    setNotice('새 여행을 만들었어요 — 여행 정보에서 이름·날짜를 정해주세요');
+  };
+  const deleteActiveTrip = () => {
+    if (!activeTrip) return;
+    if (!window.confirm(`"${activeTrip.name}" 여행을 삭제할까요? 되돌릴 수 없습니다.`)) return;
+    if (!removeTrip(activeTrip.id)) { setNotice('여행이 하나뿐이라 지울 수 없어요'); return; }
+    setActiveDay(0); setSel(null); setDidEntry(false);
+    setNotice('여행 삭제됨');
+  };
+  const onSwitchTrip = (id: string) => {
+    if (!switchTrip(id)) { setNotice(SAVE_FAILED); return; }
+    setActiveDay(0); setSel(null); setDidEntry(false); setNotice(null);
+  };
+
+  const appendDay = () => {
+    let di = -1;
+    const ok = updateActiveTrip(trip => { const r = addDay(trip); di = r.di; return r.trip; });
+    if (!ok) { setNotice(SAVE_FAILED); return; }
+    setNotice('일자 추가됨');
+    setEditingDay(di);                       // 바로 날짜·제목을 정하도록 편집기를 연다
+  };
+  const copyDay = (di: number) => {
+    const ok = updateActiveTrip(trip => duplicateDay(trip, di) ?? trip);
+    setEditingDay(null);
+    setNotice(ok ? '일자를 복사했어요' : SAVE_FAILED);
+  };
+  const deleteDay = (di: number) => {
+    const day = activeTrip?.days[di];
+    if (!day) return;
+    if (activeTrip!.days.length <= 1) { setNotice('여행에는 일자가 하나 이상 필요합니다'); return; }
+    if (day.spots.length && !window.confirm('이 일자의 장소도 함께 삭제됩니다. 계속할까요?')) return;
+    let failed: string | null = null;
+    const ok = updateActiveTrip(trip => {
+      const r = removeDay(trip, di);
+      if (!r.ok) { failed = '여행에는 일자가 하나 이상 필요합니다'; return trip; }
+      return r.trip;
+    });
+    setEditingDay(null);
+    setActiveDay(0);                          // 일자 번호의 의미가 바뀐다
+    setSel(null);
+    setNotice(failed ?? (ok ? '일자 삭제됨' : SAVE_FAILED));
+  };
 
   // 재생이 끝나면 카메라를 원래 프레임으로 되돌린다 (일자 재생이면 그 일자, 전체면 전체)
   const refit = useCallback(() => setDidEntry(v => !v || v), []);
@@ -83,7 +142,6 @@ export default function ItineraryPage() {
   const onPinClick = useCallback((di: number, si: number) => setSel({ di, si }), []);
 
   const editingSpot = editing ? activeTrip?.days[editing.di]?.spots[editing.si] ?? null : null;
-  const SAVE_FAILED = '저장에 실패했어요 — 저장 공간을 확인해주세요';
 
   /** 지도로 담을 때의 대상 일자·삽입 위치 — 레거시 addSpotAt과 같다(필터 중인 일자, 선택한 장소 뒤) */
   const mapTarget = () => {
@@ -220,9 +278,11 @@ export default function ItineraryPage() {
     return (
       <main className="itPage">
         <h1>일정</h1>
+        {notice && <div className="hint" role="status">{notice}</div>}
         <p className="hint">
-          이 브라우저에 저장된 여행이 없어요. 기존 앱에서 여행을 만들면 같은 데이터를 여기서 볼 수 있습니다.
+          이 브라우저에 저장된 여행이 없어요. 새로 만들거나, 기존 앱에서 만든 여행을 여기서 이어서 볼 수 있습니다.
         </p>
+        <button type="button" className="itAddDay" onClick={createTrip}>＋ 새 여행 만들기</button>
       </main>
     );
   }
@@ -234,7 +294,11 @@ export default function ItineraryPage() {
 
   return (
     <main className="itPage">
-      <h1>일정 <span className="opt">{activeTrip.name}</span></h1>
+      <h1>일정</h1>
+      <TripBar
+        trips={trips} activeTrip={activeTrip}
+        onSwitch={onSwitchTrip} onNew={createTrip} onSave={saveTripMeta} onDelete={deleteActiveTrip}
+      />
       {notice && <div className="hint" role="status">{notice}</div>}
       {cost && cost.total > 0 && (
         <div className="itTripCost" title="예약(숙박·렌터카·항공)은 전액 — 기간이 일정 밖으로 나가면 하루 합계보다 큽니다">
@@ -280,14 +344,16 @@ export default function ItineraryPage() {
               onEditSpot={si => { setNotice(null); setEditing({ di: v.di, si }); }}
               onMoveSpot={(si, delta) => move(v.di, si, delta)}
               onAddSpot={after => openAdd(v.di, after, newSpotDraft(activeTrip.days[v.di]))}
+              onEditDay={() => { setNotice(null); setEditingDay(v.di); }}
             />
           ))}
+          <button type="button" className="itAddDay" onClick={appendDay}>＋ 일자 추가</button>
         </div>
       </div>
       <p className="hint">
         지도를 탭하거나 검색해서 장소를 담고, 편집·드래그 정렬·삭제까지 여기서 할 수 있어요.
         장소는 다른 일자로도 끌어 옮길 수 있고, 카드 헤더를 잡으면 일자 순서가 바뀝니다.
-        재생은 아직 기존 앱 담당입니다. 이동 시간·경로선은 자동으로 조회해 채웁니다 (조회 전에는 직선 추정).
+        여행·일자는 위의 여행 정보와 각 카드의 ✎로 고칩니다. 이동 시간·경로선은 자동으로 조회해 채웁니다 (조회 전에는 직선 추정).
       </p>
       {play.status.playing && (
         <>
@@ -300,6 +366,15 @@ export default function ItineraryPage() {
             onPause={play.pause} onResume={play.resume}
           />
         </>
+      )}
+      {editingDay != null && activeTrip.days[editingDay] && (
+        <DayEditor
+          trip={activeTrip} di={editingDay}
+          onSave={next => { saveTripMeta(next); setEditingDay(null); }}
+          onDuplicate={() => copyDay(editingDay)}
+          onDelete={() => deleteDay(editingDay)}
+          onCancel={() => setEditingDay(null)}
+        />
       )}
       {editing && editingSpot && (
         <div className="itEditorBg" onClick={e => { if (e.target === e.currentTarget) setEditing(null); }}>

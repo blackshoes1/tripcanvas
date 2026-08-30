@@ -203,3 +203,21 @@
 @media (prefers-reduced-motion: reduce) {
   .itPlayDayCard { animation-duration: 1.9s; animation-timing-function: step-end; }
 }
+
+/* ── 여행·일자 관리 ── */
+.itTripBar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 8px 0 4px; }
+.itTripBar > button { font-size: 12px; padding: 4px 10px; cursor: pointer; border-radius: 999px;
+  background: var(--card); color: var(--fg);
+  border: 1px solid color-mix(in srgb, var(--fg) 18%, transparent); }
+.itTripBar > button:hover { border-color: var(--accent); color: var(--accent); }
+.itTripName { font-size: 13px; font-weight: 700; }
+.itTripSel { font-size: 13px; font-weight: 700; padding: 4px 8px; border-radius: 8px;
+  background: var(--card); color: var(--fg);
+  border: 1px solid color-mix(in srgb, var(--fg) 18%, transparent); }
+.itDayEdit { margin-left: 6px; font-size: 11px; padding: 2px 6px; cursor: pointer; border-radius: 6px;
+  background: transparent; color: var(--muted); border: 1px solid transparent; }
+.itDayEdit:hover { color: var(--fg); border-color: color-mix(in srgb, var(--fg) 20%, transparent); }
+.itAddDay { display: block; width: 100%; margin-top: 10px; padding: 10px; font-size: 13px; cursor: pointer;
+  background: transparent; color: var(--muted); border-radius: 10px;
+  border: 1px dashed color-mix(in srgb, var(--fg) 25%, transparent); }
+.itAddDay:hover { color: var(--fg); border-color: var(--accent); }
