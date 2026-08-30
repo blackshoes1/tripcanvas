@@ -22,7 +22,7 @@ test('car-offers: 연결된 Provider가 없으면 AUTH_REQUIRED를 그대로 알
   // health — 미연결 상태 표시
   const res = response();
   await handler({ method: 'GET', url: '/api/car-offers?health', headers: {}, socket: {} }, res);
-  assert.equal(JSON.parse(res.body).providers[0].status, 'AUTH_REQUIRED');
+  assert.equal(JSON.parse(res.body).providers[0].status, 'UNCONFIGURED', 'P0-2: 키도 adapter도 없음 → UNCONFIGURED');
   // 검색 — 503 AUTH_REQUIRED (mock 대체 없음)
   const r = await invoke(handler);
   assert.equal(r.status, 503);
@@ -75,11 +75,11 @@ test('car-offers: health가 자격증명 등록 여부를 구분해 알린다 (�
     return JSON.parse(res.body).providers[0];
   };
   const none = await call({});
-  assert.equal(none.status, 'AUTH_REQUIRED');
+  assert.equal(none.status, 'UNCONFIGURED');
   assert.equal(none.credentials, 'MISSING', '키 없음');
 
   const withKey = await call({ CAR_DISCOVERY_API_KEY: 'tp_secret_value', CAR_DISCOVERY_MARKER: '566775' });
-  assert.equal(withKey.status, 'AUTH_REQUIRED', 'adapter가 없으면 여전히 미연결 — 키가 있다고 가짜로 연결됐다 하지 않는다');
+  assert.equal(withKey.status, 'CREDENTIAL_READY', 'P0-2: adapter가 없으면 키가 있어도 CONNECTED 금지 — 자격증명 준비 상태만');
   assert.equal(withKey.credentials, 'PRESENT', '키 등록됨을 확인할 수 있어야 원인 구분이 된다');
   assert.deepEqual(withKey.envKeys, ['CAR_DISCOVERY_API_KEY']);
   assert.equal(withKey.marker, true);

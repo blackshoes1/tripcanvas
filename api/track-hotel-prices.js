@@ -29,6 +29,18 @@ function identityOf(tripData, booking) {
   return { name: booking.title };
 }
 
+// P1-1: 오래 확인되지 않은 예약 우선 — 고정 순서 slice(0,N)은 매일 같은 앞 예약만 처리해
+// 뒤 예약이 영영 조회되지 않는 starvation을 만든다. 마지막 관측이 오래된(없으면 최우선) 순으로 정렬하고,
+// 같으면 체크인이 임박한 예약을 앞세운다.
+function orderJobs(jobs, lastAt) {
+  const at = booking => (lastAt && lastAt.get(booking.id)) || '';
+  return jobs.slice().sort((a, b) => {
+    const la = at(a.booking), lb = at(b.booking);
+    if (la !== lb) return la < lb ? -1 : 1;
+    return String(a.booking.start || '').localeCompare(String(b.booking.start || ''));
+  });
+}
+
 function dueBookings(rows, today) {
   const jobs = [];
   for (const row of rows || []) {
@@ -66,8 +78,13 @@ function createHandler({ fetchImpl = globalThis.fetch, env = process.env } = {})
       const rows = await tripsRes.json();
       const doneRes = await supa(`hotel_price_snapshots?select=booking_id&observed_at=gte.${today}`);
       const done = new Set(doneRes.ok ? (await doneRes.json()).map(r => r.booking_id) : []);
+      // 최근 14일 관측 시각으로 '누가 오래 굶었는지'를 판단 (P1-1). 조회 실패 시 빈 맵 — 정렬만 무작위해질 뿐 실행은 계속.
+      const since = new Date(Date.now() - 14 * 864e5).toISOString();
+      const lastRes = await supa(`hotel_price_snapshots?select=booking_id,observed_at&observed_at=gte.${since}&order=observed_at.asc`);
+      const lastAt = new Map();
+      if (lastRes.ok) for (const r of await lastRes.json()) lastAt.set(r.booking_id, r.observed_at);   // asc → 마지막 대입이 최신
 
-      const jobs = dueBookings(rows, today).filter(j => !done.has(j.booking.id)).slice(0, MAX_PER_RUN);
+      const jobs = orderJobs(dueBookings(rows, today).filter(j => !done.has(j.booking.id)), lastAt).slice(0, MAX_PER_RUN);
       const cycle = new Map();   // 같은 호텔·날짜·인원은 이번 사이클에서 결과 공유 (§39)
       for (const job of jobs) {
         const b = job.booking;
@@ -81,7 +98,9 @@ function createHandler({ fetchImpl = globalThis.fetch, env = process.env } = {})
           const result = cycle.get(key) || await runSearch({ env, fetchImpl }, request);
           cycle.set(key, result);
           if (result.unmatched) { errors.push('UNMATCHED'); continue; }
-          const offers = result.offers.map(o => ({ ...o, quality: P.matchQuality(b, o) }));
+          // P0-1: 응답 basis(1실 고정)와 예약 객실 수가 다르면 확정 등급 금지 — 클라이언트와 같은 규칙
+          const basis = result.basis || { rooms: 1 };
+          const offers = result.offers.map(o => ({ ...o, quality: P.qualityWithBasis(P.matchQuality(b, o), b, basis) }));
           const decided = P.decideSaving(b, offers, { today });
           const top = decided.confirmed ? decided.confirmed.offer
             : (decided.potential ? decided.potential.offer : offers[0]);
@@ -108,4 +127,4 @@ function createHandler({ fetchImpl = globalThis.fetch, env = process.env } = {})
 
 module.exports = createHandler();
 module.exports.createHandler = createHandler;
-module.exports._private = { dueBookings, identityOf };
+module.exports._private = { dueBookings, identityOf, orderJobs };

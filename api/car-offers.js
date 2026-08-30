@@ -94,7 +94,7 @@ function validRequest(body) {
 // ── Provider 레지스트리 ──
 // 현재 셀프서비스로 접근 가능한 렌터카 Discovery API가 확인되지 않았다(RentSyst·Booking.com Demand·
 // CarTrawler 모두 파트너 계약 필요). 계약/키가 생기면 여기에 adapter를 추가한다 — 계약(contract):
-//   { id, role:'discovery', status():'CONNECTED'|'AUTH_REQUIRED'|'UNAVAILABLE', search(q):Promise<{offers:[...]}> }
+//   { id, role:'discovery', status():'UNCONFIGURED'|'AUTH_REQUIRED'|'CREDENTIAL_READY'|'CONNECTED'|'ERROR', search(q):Promise<{offers:[...]}> }
 // 키 없이는 AUTH_REQUIRED를 그대로 알린다. 가짜 가격·mock으로 대체하지 않는다(테스트에서만 adapters 주입 허용).
 function buildAdapters(env) {
   const adapters = [];
@@ -119,9 +119,10 @@ function providerHealth(env, adapters) {
   const list = (adapters && adapters.length) ? adapters : buildAdapters(env);
   if (!list.length) {
     // 연결된 소스가 없다는 사실은 그대로 두되, 원인을 구분해 알린다.
+    // P0-2: adapter(구현)가 없으면 키가 있어도 CONNECTED가 아니다 — 자격증명만 있으면 CREDENTIAL_READY, 아무것도 없으면 UNCONFIGURED.
     const cred = credentialState(env);
     return [{
-      id: 'car-market', role: 'discovery', status: 'AUTH_REQUIRED',
+      id: 'car-market', role: 'discovery', status: cred.present ? 'CREDENTIAL_READY' : 'UNCONFIGURED',
       credentials: cred.present ? 'PRESENT' : 'MISSING',
       envKeys: cred.keys, marker: cred.marker,
       detail: cred.present
@@ -160,7 +161,8 @@ function normalizeOffers(offers, currency) {
 // Failover: 한 Provider 실패가 전체를 막지 않는다 — 성공한 결과만 합친다
 async function runSearch(ctx, request) {
   const adapters = (ctx.adapters && ctx.adapters.length) ? ctx.adapters : buildAdapters(ctx.env);
-  const connected = adapters.filter(a => a.status() === 'CONNECTED');
+  // adapter가 존재한다 = 구현이 있다. 키가 준비된(CREDENTIAL_READY) 상태부터 시도할 수 있고, CONNECTED는 성공 이력 표시일 뿐이다 (P0-2)
+  const connected = adapters.filter(a => { const s = a.status(); return s === 'CONNECTED' || s === 'CREDENTIAL_READY'; });
   if (!connected.length) throw Object.assign(new Error('no_provider'), { code: 'AUTH_REQUIRED' });
   const all = []; let lastErr = null;
   for (const adapter of connected) {

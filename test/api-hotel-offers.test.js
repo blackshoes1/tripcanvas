@@ -35,7 +35,7 @@ const DETAIL = {
 };
 const fetchOK = async url => ({ ok: true, text: async () => JSON.stringify(String(url).includes('property_token') ? DETAIL : LIST) });
 
-test.beforeEach(() => _private.buckets.clear());
+test.beforeEach(() => { _private.buckets.clear(); _private.resetProviderMemory(); });
 
 test('hotel-offers: 검증 — 메서드·요청 필드·키 없음(AUTH_REQUIRED)', async () => {
   const withKey = createHandler({ env: { HOTEL_METASEARCH_API_KEY: 'k' }, fetchImpl: fetchOK });
@@ -140,10 +140,29 @@ test('hotel-offers: health — Provider 상태를 키 노출 없이 보고 (§34
   await handler(req, res);
   const json = JSON.parse(res.body);
   const by = Object.fromEntries(json.providers.map(p => [p.id, p.status]));
-  assert.equal(by['google-hotels (serpapi)'], 'CONNECTED');
-  assert.equal(by['expedia'], 'CONNECTED');
+  // P0-2: 키 존재만으로는 CREDENTIAL_READY — CONNECTED는 실제 호출 성공(discovery) 또는 verify 구현+성공이 있어야 한다
+  assert.equal(by['google-hotels (serpapi)'], 'CREDENTIAL_READY', '키만 있고 성공 호출 전 → CONNECTED 금지');
+  assert.equal(by['expedia'], 'CREDENTIAL_READY', 'verify 미구현 Provider는 키가 있어도 CONNECTED 금지');
   assert.equal(by['booking.com'], 'AUTH_REQUIRED');
   assert.equal(by['agoda'], 'AUTH_REQUIRED');
+});
+
+test('hotel-offers: P0-2 — 실제 호출이 성공한 뒤에야 discovery가 CONNECTED로 승격된다', async () => {
+  const env = { HOTEL_METASEARCH_API_KEY: 'k' };
+  const handler = createHandler({ env, fetchImpl: fetchOK });
+  assert.equal((await invoke(handler)).status, 200);   // 성공 호출
+  const res = response();
+  await handler({ method: 'GET', url: '/api/hotel-offers?health=1', headers: {}, socket: {} }, res);
+  const by = Object.fromEntries(JSON.parse(res.body).providers.map(p => [p.id, p.status]));
+  assert.equal(by['google-hotels (serpapi)'], 'CONNECTED');
+});
+
+test('hotel-offers: P0-1 — 응답 basis는 1실 고정 + 요청 객실 수를 그대로 알린다', async () => {
+  const handler = createHandler({ env: { HOTEL_METASEARCH_API_KEY: 'k' }, fetchImpl: fetchOK });
+  const out = await invoke(handler, { body: { ...BODY, rooms: 2 } });
+  assert.equal(out.status, 200);
+  assert.equal(out.json.basis.rooms, 1, '메타서치 시세는 항상 1실 기준');
+  assert.equal(out.json.basis.requestedRooms, 2, '요청 객실 수를 되돌려 클라이언트가 불일치를 판단');
 });
 
 test('hotel-offers: Verification Provider가 연결되면 오퍼에 verified 표시 — 실패해도 미검증으로 유지 (§36)', async () => {
