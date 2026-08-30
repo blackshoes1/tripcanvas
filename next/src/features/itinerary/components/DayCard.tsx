@@ -16,7 +16,17 @@ function CarEventRow({ ev }: { ev: CarEventRowView }) {
   );
 }
 
-function SpotRow({ s, dayIndex, selected }: { s: SpotView; dayIndex: number; selected: boolean }) {
+/** 장소 행 조작 — 편집기를 열거나 위아래로 한 칸 옮긴다 (레거시 사이드바 버튼과 같은 역할) */
+interface SpotActions {
+  onEdit: (si: number) => void;
+  onMove: (si: number, delta: number) => void;
+  /** 끝에서 비활성화하려면 필요 */
+  count: number;
+}
+
+function SpotRow({ s, dayIndex, selected, actions }: {
+  s: SpotView; dayIndex: number; selected: boolean; actions?: SpotActions;
+}) {
   const bookHref = safeUrl(s.bookUrl);
   return (
     <div id={`it-d${dayIndex}-s${s.si}`} className={`itSpot${selected ? ' sel' : ''}`}>
@@ -34,6 +44,16 @@ function SpotRow({ s, dayIndex, selected }: { s: SpotView; dayIndex: number; sel
           {s.catIcon && <span className="itCat" title={s.catName ?? undefined} aria-hidden="true">{s.catIcon}</span>}
           {s.name}
         </span>
+        {actions && (
+          <span className="itSpotActs">
+            <button type="button" title="위로" aria-label={`${s.name} 위로`}
+              disabled={s.si === 0} onClick={() => actions.onMove(s.si, -1)}>↑</button>
+            <button type="button" title="아래로" aria-label={`${s.name} 아래로`}
+              disabled={s.si === actions.count - 1} onClick={() => actions.onMove(s.si, 1)}>↓</button>
+            <button type="button" title="편집" aria-label={`${s.name} 편집`}
+              onClick={() => actions.onEdit(s.si)}>✏️</button>
+          </span>
+        )}
       </div>
       {(s.stayLabel || s.optional || s.noLoc || s.cost || s.book || bookHref || s.carChips.length > 0 || s.hoursWarn) && (
         <div className="itMeta">
@@ -73,7 +93,7 @@ function SpotRow({ s, dayIndex, selected }: { s: SpotView; dayIndex: number; sel
   );
 }
 
-export function DayCard({ view, dim = false, selectedSi = null, onHeaderClick }: {
+export function DayCard({ view, dim = false, selectedSi = null, onHeaderClick, onEditSpot, onMoveSpot }: {
   view: DayView;
   /** 일자 필터 중 다른 날 — 흐리게 (레거시 .dayCard.dim) */
   dim?: boolean;
@@ -81,7 +101,14 @@ export function DayCard({ view, dim = false, selectedSi = null, onHeaderClick }:
   selectedSi?: number | null;
   /** 헤더 탭 → 그 일자 필터 토글 + 지도 포커스 */
   onHeaderClick?: () => void;
+  /** 편집기 열기 — 없으면 읽기 전용으로 그린다 */
+  onEditSpot?: (si: number) => void;
+  /** 이웃과 자리 맞바꾸기 */
+  onMoveSpot?: (si: number, delta: number) => void;
 }) {
+  const actions = onEditSpot && onMoveSpot
+    ? { onEdit: onEditSpot, onMove: onMoveSpot, count: view.spots.length }
+    : undefined;
   return (
     <section className={`itDay${dim ? ' dim' : ''}`} aria-label={`Day ${view.dayNo} ${view.title}`}>
       <header
@@ -127,7 +154,9 @@ export function DayCard({ view, dim = false, selectedSi = null, onHeaderClick }:
           </div>
         )}
         {view.carPickups.map(ev => <CarEventRow key={`p-${ev.bookingId}`} ev={ev} />)}
-        {view.spots.map(s => <SpotRow key={s.si} s={s} dayIndex={view.di} selected={selectedSi === s.si} />)}
+        {view.spots.map(s => (
+          <SpotRow key={s.si} s={s} dayIndex={view.di} selected={selectedSi === s.si} actions={actions} />
+        ))}
         {view.carReturns.map(ev => <CarEventRow key={`r-${ev.bookingId}`} ev={ev} />)}
         {view.back && (
           <div className="itSpot itCarry" title="오늘 묵는 숙소 — 동선이 닫히도록 자동으로 이어 붙였습니다">

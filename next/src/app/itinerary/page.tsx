@@ -5,17 +5,20 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { DayCard } from '@/features/itinerary/components/DayCard';
+import { SpotEditor } from '@/features/itinerary/components/SpotEditor';
 import { buildDayView, tripCostBreakdownOf } from '@/features/itinerary/domain/dayView';
+import { applySpotEdit, moveSpot, removeSpot } from '@/features/itinerary/domain/spotEditor';
 import { useLegCache } from '@/features/itinerary/hooks/useLegCache';
 import { MapView } from '@/features/map/components/MapView';
 import { buildMapScene, dayColor, entryFitOf, fitTargetOf } from '@/features/map/domain/scene';
 import { ensureTripLegs } from '@/features/routing/services/ensureTripLegs';
 import { useTripStore } from '@/features/trip/hooks/useTripStore';
+import type { Spot } from '@/features/trip/domain/types';
 import { fmtMoney } from '@/lib/currency/format';
 import './itinerary.css';
 
 export default function ItineraryPage() {
-  const { activeTrip } = useTripStore();
+  const { activeTrip, updateActiveTrip } = useTripStore();
   const legCache = useLegCache();
 
   /** 1-based 일자 필터, 0=전체 (레거시 activeDay와 동일 의미) */
@@ -23,6 +26,9 @@ export default function ItineraryPage() {
   /** 첫 조작 전에는 진입 프레이밍(위치 있는 첫 일자)을 유지 */
   const [didEntry, setDidEntry] = useState(false);
   const [sel, setSel] = useState<{ di: number; si: number } | null>(null);
+  /** 편집 중인 장소 위치 — 열려 있는 동안만 */
+  const [editing, setEditing] = useState<{ di: number; si: number } | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const views = useMemo(
     () => (activeTrip ? activeTrip.days.map((_, di) => buildDayView(activeTrip, legCache, di)) : []),
@@ -43,6 +49,39 @@ export default function ItineraryPage() {
 
   const selectDay = (d: number) => { setDidEntry(true); setActiveDay(d); };
   const onPinClick = useCallback((di: number, si: number) => setSel({ di, si }), []);
+
+  const editingSpot = editing ? activeTrip?.days[editing.di]?.spots[editing.si] ?? null : null;
+  const SAVE_FAILED = '저장에 실패했어요 — 저장 공간을 확인해주세요';
+
+  // updateActiveTrip은 mutate를 동기로 부른다 — 정렬 여부를 그때 받아 안내 문구를 고른다
+  const saveSpot = (next: Spot, targetDi: number) => {
+    if (!editing) return;
+    let sorted = false;
+    const ok = updateActiveTrip(trip => {
+      const r = applySpotEdit(trip, editing, next, targetDi);
+      sorted = r.sorted;
+      return r.trip;
+    });
+    setEditing(null);
+    setSel(null);   // 일자 이동·재정렬로 자리가 바뀔 수 있어 선택은 놓는다
+    setNotice(ok ? (sorted ? '저장됨 · 시간순 정렬' : '저장됨') : SAVE_FAILED);
+  };
+
+  const deleteSpot = () => {
+    if (!editing || !editingSpot) return;
+    if (!window.confirm(`"${editingSpot.name}"을(를) 일정에서 뺄까요?`)) return;
+    const ok = updateActiveTrip(trip => removeSpot(trip, editing.di, editing.si));
+    setEditing(null);
+    setSel(null);
+    setNotice(ok ? '장소 삭제됨' : SAVE_FAILED);
+  };
+
+  // 끝에서는 버튼이 비활성이라 moveSpot이 null을 줄 일은 없지만, 도메인 가드를 그대로 존중한다
+  const move = (di: number, si: number, delta: number) => {
+    const ok = updateActiveTrip(trip => moveSpot(trip, di, si, delta) ?? trip);
+    if (ok) { setSel({ di, si: si + delta }); setNotice(null); }
+    else setNotice(SAVE_FAILED);
+  };
 
   // 빠진 구간 백그라운드 조회 (Phase 6a) — 결과가 캐시에 쓰이면 legCache 구독으로 ETA·경로선이 갱신되고,
   // 그 갱신으로 출발시각이 바뀐 대중교통 구간은 재수집된다 (fetcher의 그룹 댐핑이 진동을 차단)
@@ -70,6 +109,7 @@ export default function ItineraryPage() {
   return (
     <main className="itPage">
       <h1>일정 <span className="opt">{activeTrip.name}</span></h1>
+      {notice && <div className="hint" role="status">{notice}</div>}
       {cost && cost.total > 0 && (
         <div className="itTripCost" title="예약(숙박·렌터카·항공)은 전액 — 기간이 일정 밖으로 나가면 하루 합계보다 큽니다">
           💳 전체 비용 약 ₩{fmtMoney(cost.total)}
@@ -102,14 +142,24 @@ export default function ItineraryPage() {
               dim={activeDay !== 0 && activeDay !== v.dayNo}
               selectedSi={sel?.di === v.di ? sel.si : null}
               onHeaderClick={() => selectDay(activeDay === v.dayNo ? 0 : v.dayNo)}
+              onEditSpot={si => { setNotice(null); setEditing({ di: v.di, si }); }}
+              onMoveSpot={(si, delta) => move(v.di, si, delta)}
             />
           ))}
         </div>
       </div>
       <p className="hint">
-        읽기 뷰입니다 — 장소 편집·드래그·지도에서 장소 담기·재생은 기존 앱에서 계속 할 수 있어요.
-        이동 시간·경로선은 자동으로 조회해 채웁니다 (조회 전에는 직선 추정).
+        장소 편집·순서 변경·삭제를 여기서 할 수 있어요. 장소 추가·위치 지정(검색·지도 클릭)·재생은
+        아직 기존 앱 담당입니다. 이동 시간·경로선은 자동으로 조회해 채웁니다 (조회 전에는 직선 추정).
       </p>
+      {editing && editingSpot && (
+        <div className="itEditorBg" onClick={e => { if (e.target === e.currentTarget) setEditing(null); }}>
+          <SpotEditor
+            spot={editingSpot} di={editing.di} days={activeTrip.days}
+            onSave={saveSpot} onDelete={deleteSpot} onCancel={() => setEditing(null)}
+          />
+        </div>
+      )}
     </main>
   );
 }

@@ -90,3 +90,34 @@
 .itLegMode { margin-right: 2px; }
 .itEmpty { color: var(--muted); font-size: 12px; padding: 12px 4px; }
 .itNote { color: var(--muted); font-size: 12px; margin-top: 8px; }
+
+/* ── 장소 편집 ── */
+.itSpotActs { margin-left: auto; display: inline-flex; gap: 2px; flex: none; }
+.itSpotActs button { font-size: 12px; line-height: 1; padding: 3px 6px; cursor: pointer;
+  background: transparent; color: var(--muted); border: 1px solid transparent; border-radius: 6px; }
+.itSpotActs button:hover:not(:disabled) { color: var(--fg); border-color: color-mix(in srgb, var(--fg) 20%, transparent); }
+.itSpotActs button:disabled { opacity: .25; cursor: default; }
+
+/* 모바일에서 스크롤 뒤로 가려지지 않게 화면에 고정해 띄운다 */
+.itEditorBg { position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center;
+  padding: 16px; background: rgba(0,0,0,.55); overflow-y: auto; }
+.itEditor { width: 100%; max-width: 480px; max-height: 90vh; overflow-y: auto;
+  background: var(--card); border-radius: 12px; padding: 16px;
+  border: 1px solid color-mix(in srgb, var(--fg) 12%, transparent); }
+.itEditor h2 { font-size: 16px; margin: 0 0 4px; }
+.itEditor label { display: block; font-size: 12px; color: var(--muted); margin-top: 10px; }
+.itEditor input, .itEditor select, .itEditor textarea { width: 100%; margin-top: 4px; padding: 7px 9px;
+  font-size: 14px; font-family: inherit; background: var(--bg); color: var(--fg);
+  border: 1px solid color-mix(in srgb, var(--fg) 15%, transparent); border-radius: 8px; }
+.itEditRow2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-items: end; }
+.itEditChk { display: flex; align-items: center; gap: 6px; margin-top: 10px; }
+.itEditChk input { width: auto; margin-top: 0; }
+.itEditMore { margin-top: 12px; font-size: 12px; padding: 4px 0; cursor: pointer;
+  background: none; border: 0; color: var(--muted); }
+.itEditAdv { border-top: 1px solid color-mix(in srgb, var(--fg) 10%, transparent); padding-top: 4px; }
+.itEditErr { color: #ff6b6b; font-size: 13px; margin-top: 10px; }
+.itEditBtns { display: flex; gap: 8px; margin-top: 16px; }
+.itEditBtns button { padding: 8px 14px; font-size: 13px; cursor: pointer; border-radius: 8px;
+  background: var(--bg); color: var(--fg); border: 1px solid color-mix(in srgb, var(--fg) 18%, transparent); }
+.itEditBtns .itEditDel { margin-right: auto; color: #ff8fa3; }
+.itEditBtns .itEditSave { background: var(--accent); border-color: var(--accent); color: #0b1020; font-weight: 700; }

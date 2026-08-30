@@ -1211,6 +1211,29 @@ test('통합: 픽업을 일정 장소와 연결하면 그 장소 행에 붙고 �
   w.close();
 });
 
+test('통합: 장소를 편집해도 예약·렌터카 연결은 그대로 남는다', { skip: noJsdom }, () => {
+  const w=boot();
+  withTrip(w, `[{title:'D1',drive:'',note:'',mode:'car',spots:[{name:'공항',city:'P',desc:'',lat:39.55,lng:2.73}]}]`);
+  w.eval(`trip().bookings=[
+      {id:'c1',type:'car',title:'차',price:1,start:'2026-08-01',end:'2026-08-01',carPickupTime:'11:30',carReturnTime:'19:00'},
+      {id:'h1',type:'hotel',title:'호텔',price:1,start:'2026-08-01',end:'2026-08-02'}];
+    const s=trip().days[0].spots[0]; s.carPickupId='c1'; s.carReturnId='c1'; s.bookingId='h1';
+    activeDay=0; render(); openSpotModal(0,0);`);
+  // 메모만 고쳐 저장 — 연결을 건드리는 조작이 아니다
+  w.document.getElementById('spotDesc').value='터미널 2';
+  w.document.getElementById('spotSave').click();
+
+  const s = () => w.eval(`JSON.stringify(trip().days[0].spots[0])`);
+  assert.equal(w.eval(`trip().days[0].spots[0].desc`), '터미널 2', '편집은 반영된다');
+  assert.equal(w.eval(`trip().days[0].spots[0].carPickupId`), 'c1', `픽업 연결 유지: ${s()}`);
+  assert.equal(w.eval(`trip().days[0].spots[0].carReturnId`), 'c1', '반납 연결 유지');
+  assert.equal(w.eval(`trip().days[0].spots[0].bookingId`), 'h1', '숙박 예약 연결 유지');
+  // 연결이 살아 있으니 픽업·반납은 독립 행으로 되돌아가지 않는다
+  assert.equal(w.document.querySelectorAll('.spot.carbk').length, 0, '독립 행으로 되돌아가면 안 된다');
+  assert.equal(w.document.querySelectorAll('.carbkChip').length, 2, '그 장소 행에 픽업·반납 칩이 그대로');
+  w.close();
+});
+
 test('통합: 예약을 지우면 일정에 남은 픽업·반납 연결도 함께 정리된다', { skip: noJsdom }, () => {
   const w=boot();
   withTrip(w, `[{title:'D1',drive:'',note:'',mode:'car',spots:[{name:'공항',city:'P',desc:'',lat:39.55,lng:2.73}]}]`);

@@ -33,6 +33,23 @@
   function parseHM(t){ const m=/^(\d{1,2}):(\d{2})$/.exec(t||''); return m? (+m[1])*60+(+m[2]) : 9*60; }
   /** 분 → HH:MM (24h 래핑) @param {number} min @returns {string} */
   function hm(min){ min=((Math.round(min)%1440)+1440)%1440; return `${String(Math.floor(min/60)).padStart(2,'0')}:${String(min%60).padStart(2,'0')}`; }
+  /**
+   * 사람이 친 시각 입력 → HH:MM 정규화. 숫자만 쳐도 받는다 ("930"→09:30, "1830"→18:30).
+   * 범위를 벗어나면 빈 문자열 — 호출측이 "미지정"으로 다룬다.
+   * @param {string|number=} v @returns {string}
+   */
+  function normHM(v){
+    const s=String(v==null?'':v).trim(); let h,m;
+    const c=/^(\d{1,2}):(\d{1,2})$/.exec(s);
+    if(c){ h=+c[1]; m=+c[2]; }
+    else{
+      const d=s.replace(/\D/g,''); if(!d) return '';
+      if(d.length<=2){ h=+d; m=0; }
+      else if(d.length===3){ h=+d.slice(0,1); m=+d.slice(1); }
+      else{ h=+d.slice(0,2); m=+d.slice(2,4); }
+    }
+    return (h>23||m>59)? '' : String(h).padStart(2,'0')+':'+String(m).padStart(2,'0');
+  }
 
   /** 한국 영역 여부 @param {LatLng=} p @returns {boolean} */
   function inKorea(p){ return !!p && p.lat>=33 && p.lat<=39 && p.lng>=124.5 && p.lng<=132; }
@@ -263,6 +280,22 @@
       // natural=이동상 자연 도착(고정 전), wait=예약 시각까지 기다리는 시간 → UI가 이유를 설명할 수 있게
       return {eta, fixed:!!s.at, conflict, natural, wait:Math.max(0, depart-eta)};
     });
+  }
+
+  /**
+   * 도착시각 순으로 그 날 장소를 정렬한다(제자리 변경). 고정 시각(at) 장소는 그 시각으로 옮기고,
+   * 자동 시각 장소는 '직전 고정 시각'에 묶여 원래 상대순서를 지킨다(자동끼리 뒤섞이지 않게).
+   * 안정 정렬 — 같은 기준 시각이면 원래 순서 유지. 순서가 실제로 바뀌었으면 true.
+   * @param {any} day @returns {boolean}
+   */
+  function sortDayByTime(day){
+    /** @type {any[]} */ const spots=(day&&day.spots)||[];
+    const before=spots.slice();
+    let anchor=parseHM(day&&day.startAt);
+    /** @type {number[]} */ const key=spots.map(s=>{ if(s&&s.at) anchor=parseHM(s.at); return anchor; });
+    /** @type {number[]} */ const order=spots.map((_,i)=>i).sort((a,b)=> (key[a]-key[b]) || (a-b));
+    day.spots=order.map(i=>spots[i]);
+    return before.some((s,i)=>s!==day.spots[i]);
   }
 
   /** 숙소 연박 수 (미지정=1박, 상한 60). Day D 체크인 + N박이면 D+1..D+N 아침의 출발점이 그 숙소.
@@ -715,7 +748,7 @@
     return spotCat(catFromName(s.name));
   }
 
-  const TC={SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,inKorea,simplifyName,parseDirect,parseMoney,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,computeTimeline,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,localMode,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
+  const TC={SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,normHM,sortDayByTime,inKorea,simplifyName,parseDirect,parseMoney,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,computeTimeline,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,localMode,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
   if(typeof module!=='undefined' && module.exports){ module.exports=TC; }   // Node (테스트)
   else { const r=/**@type {any}*/(root); for(const k in TC) r[k]=/**@type {any}*/(TC)[k]; }   // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);

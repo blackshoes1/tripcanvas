@@ -711,13 +711,7 @@ function legModeBtn(day,di,si,lm){
   const t=set?`이 구간만 ${MODE_NAME[lm]} — 탭해서 변경 (계속 누르면 일정 기본으로 되돌아감)`:`일정 기본 ${MODE_NAME[dmn]} — 탭하면 이 구간만 바꿔요`;
   return `<button class="legModeBtn${set?' set':''}" onclick="event.stopPropagation();cycleLegMode(${di},${si})" title="${escAttr(t)}">${MODE_ICON[lm]}</button>`;
 }
-function normHM(v){
-  const s=String(v||'').trim();let h,m;
-  const c=/^(\d{1,2}):(\d{1,2})$/.exec(s);
-  if(c){h=+c[1];m=+c[2];}
-  else{const d=s.replace(/\D/g,'');if(!d)return '';if(d.length<=2){h=+d;m=0;}else if(d.length===3){h=+d.slice(0,1);m=+d.slice(1);}else{h=+d.slice(0,2);m=+d.slice(2,4);}}
-  return (h>23||m>59)?'':String(h).padStart(2,'0')+':'+String(m).padStart(2,'0');
-}
+// normHM·sortDayByTime은 lib.js가 단일 소스 (Next 편집기와 공유)
 document.addEventListener('input',e=>{const t=e.target;if(t&&t.classList&&t.classList.contains('timeIn'))t.value=t.value.replace(/[^\d:]/g,'').slice(0,5);});
 document.addEventListener('blur',e=>{const t=e.target;if(t&&t.classList&&t.classList.contains('timeIn')&&t.value.trim()!=='')t.value=normHM(t.value);},true);
 function planDepartISO(isoDate,localMinutes,timeZone){
@@ -832,16 +826,7 @@ function legDepartMinute(day,timeline,spotIndex){
   const prev=day.spots[spotIndex-1], state=timeline[spotIndex-1];
   return state.eta+(state.wait||0)+(prev.stayMin!=null?+prev.stayMin:60);
 }
-// 도착시각 순으로 정렬. 고정 시각 장소는 그 시각으로 이동, 자동 시각 장소는 '직전 고정 시각'에
-// 묶여 원래 상대순서를 유지(자동끼리 뒤섞이지 않음). 안정 정렬. 순서가 바뀌면 true.
-function sortDayByTime(day){
-  const before=day.spots.slice();
-  let anchor=parseHM(day.startAt);
-  const key=day.spots.map(s=>{ if(s.at) anchor=parseHM(s.at); return anchor; });   // 각 스팟의 기준 시각
-  const order=day.spots.map((_,i)=>i).sort((a,b)=> (key[a]-key[b]) || (a-b));       // 동시각은 원래 순서 유지
-  day.spots=order.map(i=>day.spots[i]);
-  return before.some((s,i)=>s!==day.spots[i]);
-}
+// sortDayByTime은 lib.js가 단일 소스
 // 하루 장소 비용 합계
 // ── 통화·환율 (원/달러/엔/위안 → 원 환산) ──
 const CUR = { KRW:{sym:'₩',name:'원'}, USD:{sym:'$',name:'달러'}, EUR:{sym:'€',name:'유로'}, JPY:{sym:'¥',name:'엔'}, CNY:{sym:'元',name:'위안'} };
@@ -1811,6 +1796,14 @@ document.getElementById('spotSave').onclick=()=>{
     hours:_pickedHours||undefined,lat,lng};
   const targetDay=parseInt(document.getElementById('spotDay').value);
   const isEdit=editing.si>=0;
+  // 예약·렌터카 연결은 이 모달에서 만들지도 지우지도 않는다(예약 편집기 소관) → 편집 시 그대로 물려준다.
+  // 새 객체로 갈아끼우느라 떨어뜨리면, 메모만 고쳐도 픽업이 연결에서 풀려 독립 행으로 되돌아간다.
+  if(isEdit){
+    const prev=trip().days[editing.di].spots[editing.si]||{};
+    if(prev.bookingId) s.bookingId=prev.bookingId;
+    if(prev.carPickupId) s.carPickupId=prev.carPickupId;
+    if(prev.carReturnId) s.carReturnId=prev.carReturnId;
+  }
   if(isEdit && targetDay===editing.di){
     trip().days[targetDay].spots[editing.si]=s;         // 같은 날 편집은 제자리 교체 (맨 뒤로 밀지 않음)
   }else{

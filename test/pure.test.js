@@ -12,6 +12,36 @@ test('parseHM / hm 왕복·경계', () => {
   assert.equal(L.hm(-30), '23:30');          // 음수 방어
 });
 
+test('normHM — 사람이 친 시각 입력을 HH:MM으로', () => {
+  assert.equal(L.normHM('9:5'), '09:05');      // 한 자리 분도 받는다
+  assert.equal(L.normHM('930'), '09:30');      // 숫자만 3자리
+  assert.equal(L.normHM('1830'), '18:30');     // 숫자만 4자리
+  assert.equal(L.normHM('7'), '07:00');        // 시만
+  assert.equal(L.normHM(''), '');              // 미지정
+  assert.equal(L.normHM('25:00'), '');         // 범위 밖은 미지정으로
+  assert.equal(L.normHM('12:75'), '');
+  assert.equal(L.normHM(undefined), '');
+});
+
+test('sortDayByTime — 고정 시각은 제자리로, 자동 시각은 직전 고정에 묶여 순서 유지', () => {
+  const day = { startAt:'09:00', spots:[
+    {name:'A'}, {name:'B'}, {name:'C', at:'08:00'}, {name:'D'}
+  ]};
+  assert.equal(L.sortDayByTime(day), true);
+  // C(08:00)가 앞으로, D는 C에 묶여 따라온다. A·B는 09:00 기준으로 원래 순서 유지
+  assert.deepEqual(day.spots.map(s=>s.name), ['C','D','A','B']);
+
+  // 이미 시간순이면 순서가 바뀌지 않고 false
+  const sorted = { startAt:'09:00', spots:[{name:'A', at:'09:00'},{name:'B', at:'11:00'}] };
+  assert.equal(L.sortDayByTime(sorted), false);
+  assert.deepEqual(sorted.spots.map(s=>s.name), ['A','B']);
+
+  // 같은 기준 시각이면 원래 순서 유지 (안정 정렬)
+  const tie = { startAt:'09:00', spots:[{name:'A', at:'10:00'},{name:'B', at:'10:00'}] };
+  assert.equal(L.sortDayByTime(tie), false);
+  assert.deepEqual(tie.spots.map(s=>s.name), ['A','B']);
+});
+
 test('haversine 근사 (경주역→감포 ~30km)', () => {
   const d = L.haversine({lat:35.7965,lng:129.1349},{lat:35.8093,lng:129.5015});
   assert.ok(d>28 && d<36, `got ${d}`);
