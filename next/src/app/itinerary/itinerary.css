@@ -252,3 +252,21 @@
 .itPasteFmt:hover { border-color: var(--accent); color: var(--accent); }
 .itPasteBusy { font-size: 12px; padding: 6px 10px; border-radius: 8px;
   background: color-mix(in srgb, var(--accent) 12%, var(--card)); color: var(--fg); }
+
+/* ── 로그인 · 클라우드 동기화 ── */
+.itCloudBar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 0 8px; }
+.itCloudStatus { flex: 1 1 200px; min-width: 0; font-size: 11.5px; color: var(--muted); }
+.itCloudBar > button { font-size: 12px; padding: 4px 10px; cursor: pointer; border-radius: 999px;
+  background: var(--card); color: var(--muted);
+  border: 1px solid color-mix(in srgb, var(--fg) 14%, transparent); }
+.itCloudBar > button:hover { border-color: var(--accent); color: var(--accent); }
+.itCloudBar .itCloudIn { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+
+.itConflictBtns { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+.itConflictBtns button { display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  padding: 10px 14px; font-size: 13.5px; font-weight: 600; cursor: pointer; border-radius: 10px;
+  background: var(--card); color: var(--fg); text-align: left;
+  border: 1px solid color-mix(in srgb, var(--fg) 16%, transparent); }
+.itConflictBtns button:hover:not(:disabled) { border-color: var(--accent); }
+.itConflictBtns button:disabled { opacity: .45; cursor: default; }
+.itConflictBtns small { font-size: 11.5px; font-weight: 400; color: var(--muted); }

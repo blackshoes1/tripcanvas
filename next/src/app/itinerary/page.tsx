@@ -6,6 +6,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { DayCard } from '@/features/itinerary/components/DayCard';
 import { SpotEditor } from '@/features/itinerary/components/SpotEditor';
+import { AuthBar } from '@/features/cloud/components/AuthBar';
+import { ConflictModal } from '@/features/cloud/components/ConflictModal';
+import { useCloudSync } from '@/features/cloud/hooks/useCloudSync';
 import { useFxRates } from '@/features/currency/hooks/useFxRates';
 import { buildDayView, tripCostBreakdownOf } from '@/features/itinerary/domain/dayView';
 import {
@@ -43,7 +46,7 @@ import './itinerary.css';
 const SAVE_FAILED = '저장에 실패했어요 — 저장 공간을 확인해주세요';
 
 export default function ItineraryPage() {
-  const { activeTrip, updateActiveTrip, trips, addTrip, switchTrip, removeTrip } = useTripStore();
+  const { activeTrip, updateActiveTrip, trips, addTrip, switchTrip, removeTrip, replaceTrips } = useTripStore();
   const legCache = useLegCache();
   // 환율은 하루 한 번 갱신된다. 뷰 계산에 **인자로 넣어** 값이 바뀌면 환산액이 다시 그려지게 한다
   // (모듈 전역에서 몰래 읽으면 memo가 바뀐 줄 몰라 옛 금액이 그대로 남는다)
@@ -69,6 +72,8 @@ export default function ItineraryPage() {
   /** 편집 중인 일자 — 열려 있는 동안만 */
   const [editingDay, setEditingDay] = useState<number | null>(null);
   const [pasting, setPasting] = useState(false);
+  // 클라우드 동기화 — 로그인하면 이 기기 밖에도 저장된다 (읽기전용 보기에서는 쓰지 않는다)
+  const cloud = useCloudSync(trips, activeTrip?.id ?? null, replaceTrips, setNotice);
   /** 이미지로 찍는 중인 카드 — 화면 밖에 그려 두고 캡처한다 */
   const [card, setCard] = useState<CardModel | null>(null);
   const cardRef = useRef<HTMLDivElement | null>(null);
@@ -104,7 +109,10 @@ export default function ItineraryPage() {
   const deleteActiveTrip = () => {
     if (!activeTrip) return;
     if (!window.confirm(`"${activeTrip.name}" 여행을 삭제할까요? 되돌릴 수 없습니다.`)) return;
+    const doomed = activeTrip;
     if (!removeTrip(activeTrip.id)) { setNotice('여행이 하나뿐이라 지울 수 없어요'); return; }
+    // 클라우드에도 지웠다고 알린다 — 안 하면 다음 로그인 병합이 이 여행을 되살린다
+    cloud.deleteFromCloud(doomed.id, doomed);
     setActiveDay(0); setSel(null); setDidEntry(false);
     setNotice('여행 삭제됨');
   };
@@ -370,6 +378,10 @@ export default function ItineraryPage() {
             trips={trips} activeTrip={activeTrip}
             onSwitch={onSwitchTrip} onNew={createTrip} onSave={saveTripMeta} onDelete={deleteActiveTrip}
           />
+          <AuthBar
+            user={cloud.user} available={cloud.available} statusLabel={cloud.statusLabel}
+            onSignIn={cloud.signIn} onSignOut={() => { void cloud.signOut(); setNotice('로그아웃됐어요'); }}
+          />
           <TripFileBar
             trip={activeTrip} newId={newTripId} onNotice={setNotice}
             onImport={t => { const ok = addTrip(t); if (ok) { setActiveDay(0); setSel(null); setDidEntry(false); } return ok; }}
@@ -459,6 +471,11 @@ export default function ItineraryPage() {
             onPause={play.pause} onResume={play.resume}
           />
         </>
+      )}
+      {cloud.conflict && (
+        <ConflictModal
+          conflict={cloud.conflict} remaining={cloud.remainingConflicts} onChoose={cloud.resolve}
+        />
       )}
       {card && (
         <div style={{ position: 'fixed', left: -10000, top: 0, width: CARD_WIDTH }} aria-hidden="true">

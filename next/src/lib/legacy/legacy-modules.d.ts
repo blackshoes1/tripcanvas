@@ -110,6 +110,51 @@ declare module '@legacy/lib.js' {
   export = api;
 }
 
+declare module '@legacy/sync.js' {
+  interface SyncEntryShape {
+    revision: number | null;
+    status: string;
+    op: string;
+    hash: string;
+  }
+  interface RemoteRow {
+    client_id: string;
+    data: unknown;
+    revision: number | string;
+    deleted_at: string | null;
+  }
+  interface MergeConflict {
+    kind: 'remote-missing' | 'remote-deleted' | 'changed-both';
+    local: unknown;
+    remote: unknown;
+    revision: number | null;
+    deleted_at: string | null;
+  }
+  const api: {
+    /** 저장된 메타 문자열 + v1 id 배열 → 정규화된 meta */
+    loadMeta(raw: string | null, legacyIds: string[]): Record<string, SyncEntryShape>;
+    sameData(a: unknown, b: unknown): boolean;
+    /** 마지막으로 올린 내용의 지문 — revision만으로는 '로컬이 그 revision 그대로인지'를 알 수 없다 */
+    hashTrip(value: unknown): string;
+    /** 로그인 병합 — 원격이 더 새롭거나 tombstone이면 덮어쓰지 않고 conflict로 보존한다 */
+    mergeForLogin(
+      localTrips: unknown[], remoteRows: RemoteRow[], currentMeta: Record<string, SyncEntryShape>
+    ): {
+      trips: unknown[];
+      actions: { kind: 'upload'; trip: { id: string } & Record<string, unknown>; force: boolean }[];
+      conflicts: MergeConflict[];
+      meta: Record<string, SyncEntryShape>;
+    };
+    beginDelete(meta: Record<string, SyncEntryShape>, id: string, op: string): SyncEntryShape;
+    /** 부활한 여행은 반드시 재업로드된다 */
+    undoDelete(meta: Record<string, SyncEntryShape>, id: string): SyncEntryShape;
+    finishDelete(
+      meta: Record<string, SyncEntryShape>, id: string, op: string, revision: number
+    ): { resync: boolean; entry: SyncEntryShape };
+  };
+  export = api;
+}
+
 declare module '@legacy/routing.js' {
   type RoutePoint = { lat: number | string; lng: number | string };
   interface RouteResult {
