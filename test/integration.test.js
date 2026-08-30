@@ -217,10 +217,10 @@ test('통합: 예약 가격 추적 — 확정 배지·확정/잠재 분리 요�
   assert.match(summary, /현재 확정 절약 가능/);
   assert.match(summary, /조건 확인 필요/);
   assert.match(summary, /190,000/);
-  // 상세 박스 — 판매처 비교에 ✓ 동일 조건 vs 조건 확인 필요 구분 + 마지막 확인 시각
+  // 상세 박스 — 판매처 비교에 매칭·검증 두 축 구분 표시 (P0-3: 미검증 확정은 '검증 필요'를 함께)
   w.eval(`editingBooking='bk1'; renderBookingStatusBox(bookingOf('bk1'))`);
   const boxText = w.document.getElementById('bkStatus').textContent;
-  assert.match(boxText, /✓ 동일 조건/);
+  assert.match(boxText, /조건상 동일해 보임 · 판매처 검증 필요/, '메타서치 확정가는 검증 필요를 명시');
   assert.match(boxText, /조건 확인 필요/);
   assert.match(boxText, /마지막 가격 확인/);
   assert.ok(w.document.querySelector('#bkStatus #bkRebooked'), '[재예약했어요] 액션 제공');
@@ -1385,5 +1385,64 @@ test('통합: 기존 장소 편집은 제자리를 지킨다 (삽입 위치 로�
   w.document.getElementById('spotName').value='C수정';
   w.document.getElementById('spotSave').click();
   assert.deepEqual(w.eval(`trip().days[0].spots.map(s=>s.name)`), ['A','B','C수정']);
+  w.close();
+});
+
+// ── Golden: P0-1 다객실 예약 — 1실 기준 시세로 절약을 단정하지 않는다 (배선 검증) ──
+test('통합: 2객실 예약은 1실 시세로 🔴 절약을 만들지 않고, 1객실이면 기존대로 만든다', { skip: noJsdom }, async () => {
+  const w=boot();
+  withTrip(w, `[{title:'D1',drive:'',note:'',mode:'car',spots:[{name:'Cap Rocat',city:'P',desc:'',lat:39.47,lng:2.72}]}]`);
+  const resp={status:'OK', property:{name:'Cap Rocat', token:'tok1', confidence:0.95},
+    offers:[{seller:'Expedia', price:700000, total:700000, cur:'KRW', refundable:true}],
+    basis:{rooms:1, adults:2, requestedRooms:2}, checkedAt:'2026-08-30T00:00:00Z'};
+  w.eval(`window.fetch=async()=>({ok:true,status:200,json:async()=>(${JSON.stringify(resp)})})`);
+  w.eval(`trip().bookings=[{id:'hb2', type:'hotel', title:'Cap Rocat', price:1400000, cur:'KRW',
+    rooms:2, refundable:true, track:true, start:'2026-10-30', end:'2026-11-01'}]`);
+  await w.eval(`checkBookingPrice('hb2',{force:true})`);
+  assert.equal(w.eval(`priceStore.hb2.offers[0].quality`), 'UNSUPPORTED_BASIS', '기준 불일치 → 등급 강등');
+  assert.equal(w.eval(`priceStore.hb2.basis.rooms`), 1, '응답 basis를 기록');
+  const badge=w.eval(`bookingBadgeHtml(bookingOf('hb2'))`);
+  assert.ok(!badge.includes('절약 가능'), '1실 700,000 vs 2실 1,400,000은 절약이 아니다');
+  assert.ok(!badge.includes('더 저렴한 옵션'), '잠재(최대 차액)로도 단정하지 않는다');
+  w.eval(`renderBookingStatusBox(bookingOf('hb2'))`);
+  assert.match(w.document.getElementById('bkStatus').textContent, /1객실 기준/, '왜 판단하지 않는지 설명');
+
+  // 대조군: 1객실 예약이면 같은 응답으로 확정 절약이 뜬다 (회귀 방지)
+  w.eval(`trip().bookings=[{id:'hb1', type:'hotel', title:'Cap Rocat', price:1400000, cur:'KRW',
+    rooms:1, refundable:true, track:true, start:'2026-10-30', end:'2026-11-01'}]`);
+  const resp1={...resp, basis:{rooms:1, adults:2, requestedRooms:1}};
+  w.eval(`window.fetch=async()=>({ok:true,status:200,json:async()=>(${JSON.stringify(resp1)})})`);
+  await w.eval(`checkBookingPrice('hb1',{force:true})`);
+  assert.match(w.eval(`bookingBadgeHtml(bookingOf('hb1'))`), /절약 가능/, '기준이 맞으면 기존 판단 유지');
+  w.close();
+});
+
+// ── Golden: 예약 삭제 — 일정에 남은 참조(bookingId·carPickupId·carReturnId)를 깨끗이 정리한다 ──
+test('통합: 예약을 삭제하면 스팟의 예약·렌터카 연결 참조가 모두 정리된다', { skip: noJsdom }, () => {
+  const w=boot();
+  withTrip(w, `[{title:'D1',drive:'',note:'',mode:'car',spots:[
+    {name:'공항',city:'P',desc:'',lat:39.55,lng:2.73},
+    {name:'호텔',city:'P',desc:'',lat:39.56,lng:2.74}]}]`);
+  w.eval(`
+    trip().bookings=[
+      {id:'bh', type:'hotel', title:'H', price:100000, start:'2026-10-01', end:'2026-10-02'},
+      {id:'bc', type:'car',   title:'C', price:80000,  start:'2026-10-01', end:'2026-10-02'}];
+    trip().days[0].spots[1].bookingId='bh';
+    trip().days[0].spots[0].carPickupId='bc';
+    trip().days[0].spots[1].carReturnId='bc';
+    priceStore.bc={obs:[{price:80000,at:'2026-08-30T00:00:00Z'}],offers:[],at:null,err:null};
+    window.confirm=()=>true; render();`);
+  // 렌터카 예약 삭제 → carPickupId·carReturnId 정리 + 가격 기록 제거, 호텔 연결은 유지
+  w.eval(`editingBooking='bc'`);
+  w.document.getElementById('bkDelBtn').click();
+  assert.deepEqual(w.eval(`trip().bookings.map(b=>b.id)`), ['bh']);
+  assert.equal(w.eval(`trip().days[0].spots.some(s=>s.carPickupId||s.carReturnId)`), false, '렌터카 참조 정리');
+  assert.equal(w.eval(`trip().days[0].spots[1].bookingId`), 'bh', '다른 예약 연결은 보존');
+  assert.equal(w.eval(`'bc' in priceStore`), false, '가격 관측 기록도 함께 제거');
+  // 호텔 예약 삭제 → bookingId 정리, bookings 키 자체 제거
+  w.eval(`editingBooking='bh'`);
+  w.document.getElementById('bkDelBtn').click();
+  assert.equal(w.eval(`trip().days[0].spots.some(s=>s.bookingId)`), false);
+  assert.equal(w.eval(`trip().bookings`), undefined, '빈 배열 대신 키 제거(기존 규칙)');
   w.close();
 });

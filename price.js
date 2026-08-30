@@ -56,11 +56,14 @@
     if(!isFinite(current)||current<=0) return null;
     const sv=calcSaving(b,current,o.today);
     let state='WATCHING';
-    if(savingWorth(sv,o.krwRate,c)) state='SAVING_AVAILABLE';
-    else{
-      let min=Infinity;
-      for(const x of obs){ const p=+x.price; if(isFinite(p)&&p>0&&p<min) min=p; }
-      if(obs.length>=c.goodMinObs && current<=min*(1+c.goodMargin) && current<+b.price) state='GOOD_PRICE';
+    // 1실 기준 등 기준이 다른 관측은 예약가와 비교할 수 없다 — 절약/좋은가격 판정 금지 (P0-1)
+    if(obs[obs.length-1].quality!=='UNSUPPORTED_BASIS'){
+      if(savingWorth(sv,o.krwRate,c)) state='SAVING_AVAILABLE';
+      else{
+        let min=Infinity;
+        for(const x of obs){ const p=+x.price; if(isFinite(p)&&p>0&&p<min) min=p; }
+        if(obs.length>=c.goodMinObs && current<=min*(1+c.goodMargin) && current<+b.price) state='GOOD_PRICE';
+      }
     }
     return {state, current, saving:sv.saving, rate:sv.rate, fee:sv.fee};
   }
@@ -99,7 +102,34 @@
     return 'SIMILAR';
   }
 
-  /** §20 신뢰 사다리 — 검증EXACT(0) > 검증EQUIV(1) > 메타EXACT(2) > 메타EQUIV(3) > SIMILAR(4) @param {string} q @param {boolean} verified @returns {number} */
+  // ── P0-1: 비교 기준(basis) — 응답 시세의 객실 수가 예약과 다르면 확정도 잠재도 금지 ──
+  /** 응답 basis의 객실 수가 예약과 다른가 @param {any} b 예약 @param {any} basis 응답 기준({rooms}) @returns {boolean} */
+  function basisMismatch(b,basis){
+    const br=+(basis&&basis.rooms);
+    if(!isFinite(br)||br<=0) return false;              // 기준 미제공 → 판단 근거 없음(등급 유지)
+    return (+((b&&b.rooms))||1)!==br;
+  }
+  /**
+   * 기준 불일치 시 등급 강등 — EXACT/EQUIVALENT 확정은 물론 SIMILAR의 '최대 차액'도 성립하지 않으므로
+   * UNSUPPORTED_BASIS(절약 판단 제외, 참고 표시 전용)로 바꾼다. 객실 수 임의 곱셈 보정은 하지 않는다.
+   * @param {string} q matchQuality 결과 @param {any} b 예약 @param {any} basis 응답 기준 @returns {string}
+   */
+  function qualityWithBasis(q,b,basis){
+    if(q==='UNMATCHED') return q;
+    return basisMismatch(b,basis)? 'UNSUPPORTED_BASIS' : q;
+  }
+  /**
+   * P0-3: 검증 축 — 조건 매칭(MatchQuality: 같은 상품인가)과 별개로 '판매처가 확인해 준 값인가'.
+   * VERIFIED=공식 API 재검증됨 · METASEARCH_ONLY=메타서치 표시가(판매처 검증 필요) · UNKNOWN=수동 관측 등 출처 불명확.
+   * @param {any} o 오퍼 @returns {'VERIFIED'|'METASEARCH_ONLY'|'UNKNOWN'}
+   */
+  function verificationStatus(o){
+    if(o&&o.verified===true) return 'VERIFIED';
+    if(o&&o.manual) return 'UNKNOWN';                   // 사용자가 직접 본 값 — 자동 소스 검증은 아님
+    return 'METASEARCH_ONLY';
+  }
+
+  /** §20 신뢰 사다리 — 검증EXACT(0) > 검증EQUIV(1) > 메타EXACT(2) > 메타EQUIV(3) > SIMILAR(4). UNSUPPORTED_BASIS·UNMATCHED는 9(절약 판단 제외) @param {string} q @param {boolean} verified @returns {number} */
   function offerRank(q,verified){
     if(q==='EXACT') return verified?0:2;
     if(q==='EQUIVALENT') return verified?1:3;
@@ -136,9 +166,9 @@
    * 추적 상태 — 카드 배지·상세 헤더·요약이 공유하는 단일 판정.
    * SAVING_AVAILABLE(확정 절약, threshold 충족) > CHEAPER_UNVERIFIED(잠재 — 조건 확인 필요) >
    * GOOD_PRICE(관측 최저 수준) > WATCHING. 성공 조회가 한 번도 없고 실패만 있으면 ERROR.
-   * @param {any} b @param {{obs?:PriceObs[],offers?:any[],at?:string|null,err?:any}|null|undefined} rec
+   * @param {any} b @param {{obs?:PriceObs[],offers?:any[],at?:string|null,err?:any,basis?:any}|null|undefined} rec
    * @param {{today?:string,krwRate?:number,cfg?:PriceCfg}=} opts
-   * @returns {{state:string,confirmed:any,potential:any,fee:number,at:string|null,err:any}|null}
+   * @returns {{state:string,confirmed:any,potential:any,fee:number,at:string|null,err:any,basisLimited:boolean}|null}
    */
   function hotelTrackState(b,rec,opts){
     if(!b||b.track===false) return null;
@@ -149,7 +179,8 @@
     else if(d.potential && savingWorth({saving:d.potential.delta,rate:(+b.price>0? d.potential.delta/+b.price:0)},o.krwRate,c)) state='CHEAPER_UNVERIFIED';
     else{ const st=bookingPriceStatus(b,r.obs||[],{today:o.today,krwRate:o.krwRate,cfg:c}); if(st&&st.state==='GOOD_PRICE') state='GOOD_PRICE'; }
     if(!r.at&&r.err) state='ERROR';
-    return {state, confirmed:d.confirmed, potential:d.potential, fee:d.fee, at:r.at||null, err:r.err||null};
+    // 기준 불일치(P0-1) — 오퍼가 전부 UNSUPPORTED_BASIS로 강등돼 확정·잠재가 비는 이유를 UI가 설명할 수 있게 알린다
+    return {state, confirmed:d.confirmed, potential:d.potential, fee:d.fee, at:r.at||null, err:r.err||null, basisLimited:basisMismatch(b,r.basis)};
   }
 
   // ── Hotel Identity Matching — 메타서치 결과가 '내 호텔'인지 점수화 ──
@@ -289,7 +320,7 @@
     return 'SIMILAR';                                                      // 아무 조건도 확인 못 함 → 확정 금지
   }
 
-  const API={PRICE_CFG,cancelFeeNow,calcSaving,savingWorth,bookingPriceStatus,offerPrice,matchQuality,offerRank,decideSaving,hotelTrackState,identityScore,tripHotelSummary,carMatchQuality,normTransmission,normMileage,normInsurance,normCarClass};
+  const API={PRICE_CFG,cancelFeeNow,calcSaving,savingWorth,bookingPriceStatus,offerPrice,matchQuality,basisMismatch,qualityWithBasis,verificationStatus,offerRank,decideSaving,hotelTrackState,identityScore,tripHotelSummary,carMatchQuality,normTransmission,normMileage,normInsurance,normCarClass};
   if(typeof module!=='undefined'&&module.exports) module.exports=API;   // Node (테스트)
   else /** @type {any} */(root).TC_PRICE=API;                           // 브라우저 전역 (sync/routing과 동일 패턴)
 })(typeof window!=='undefined'?window:globalThis);

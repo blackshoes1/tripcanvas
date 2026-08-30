@@ -2131,10 +2131,15 @@ function bookingBadgeHtml(b){
   }
   const st=hotelStateOf(b);
   if(st&&st.state==='SAVING_AVAILABLE'){ const o=st.confirmed.offer;
-    return `<span class="pxBadge pxSave" title="${escAttr(`${o.seller} ${costLabel(TC_PRICE.offerPrice(o),b.cur)} · ✓ 동일 조건${o.verified?' 확인됨':''}${st.fee?' · 취소 수수료 반영':''}`)}">🔴 ₩${fmtMoney(toKRW(st.confirmed.saving,b.cur))} 절약 가능</span>`; }
+    // 매칭(동일 조건)과 검증(판매처 확인)은 다른 축 — 미검증 확정 절약은 '검증 필요'를 함께 알린다 (P0-3)
+    const vf=o.verified?'✓ 동일 조건 · 판매처 확인됨':'조건상 동일해 보임 · 판매처 검증 필요';
+    return `<span class="pxBadge pxSave" title="${escAttr(`${o.seller} ${costLabel(TC_PRICE.offerPrice(o),b.cur)} · ${vf}${st.fee?' · 취소 수수료 반영':''}`)}">🔴 ₩${fmtMoney(toKRW(st.confirmed.saving,b.cur))} 절약 가능</span>`; }
   if(st&&st.state==='CHEAPER_UNVERIFIED'){ const o=st.potential.offer;
     return `<span class="pxBadge pxWarn" title="${escAttr(`${o.seller}에서 최대 ${costLabel(st.potential.delta,b.cur)} 저렴 — 현재 예약과 조건이 다르거나 확인되지 않았어요`)}">🟠 더 저렴한 옵션 발견</span>`; }
   if(st&&st.state==='GOOD_PRICE') return `<span class="pxBadge pxGood" title="현재가가 관측 최저 수준 — 지금 예약 유지 권장">🟢 좋은 가격</span>`;
+  // §34: 소스 미연결은 '실패'가 아니라 기능 상태 — '추적 중'으로도 '실패'로도 오해시키지 않는다
+  if(st&&st.state==='ERROR'&&st.err&&st.err.code==='AUTH_REQUIRED')
+    return `<span class="pxBadge pxWatch" title="자동 가격 소스가 아직 연결되지 않았어요 — 직접 가격 확인은 가능합니다">🔌 자동 소스 미연결</span>`;
   if(st&&st.state==='ERROR') return `<span class="pxBadge pxWarn" title="${escAttr(PX_ERR_MSG[(st.err&&st.err.code)||'PROVIDER_ERROR']||'가격 확인 실패')}">⚠️ 확인 실패</span>`;
   if(b.track!==false) return `<span class="pxBadge pxWatch" title="시세를 계속 확인 중 — 아직 의미 있는 하락이 없어요">🟡 가격 추적 중</span>`;
   return `<span class="pxBadge pxOff">추적 꺼짐</span>`;
@@ -2184,7 +2189,7 @@ async function loadPxHealth(){
 }
 function pxSourceLineHtml(list){
   if(!list) return '가격 소스 상태 확인 불가 — 서버 함수(/api) 접근 필요 (로컬 정적 서버에선 미지원)';
-  const ko={CONNECTED:'연결됨',AUTH_REQUIRED:'인증 필요',UNAVAILABLE:'미지원'};
+  const ko={CONNECTED:'연결됨',CREDENTIAL_READY:'키 등록 · 연결 확인 전',AUTH_REQUIRED:'인증 필요',UNCONFIGURED:'미설정',ERROR:'오류',UNAVAILABLE:'미지원'};
   return '가격 소스: '+list.map(p=>`${esc(p.id)} ${ko[p.status]||esc(p.status)}`).join(' · ');
 }
 
@@ -2194,7 +2199,8 @@ function onSavingOpportunity(fn){ savingListeners.push(fn); }
 function emitSavingOpportunity(op){ savingListeners.forEach(fn=>{ try{ fn(op); }catch(e){} }); }
 onSavingOpportunity(op=>{
   const b=bookingOf(op.bookingId);
-  toast(`💰 "${op.title}" ${op.sellerName} ✓ 동일 조건 — 약 ₩${fmtMoney(toKRW(op.savingAmount,(b&&b.cur)))} 절약 가능`, '#7c5cff', {label:'보기', fn:openBookingList});
+  const vf=op.verified?'✓ 동일 조건 확인':'조건 일치로 보임 · 검증 필요';
+  toast(`💰 "${op.title}" ${op.sellerName} ${vf} — 약 ₩${fmtMoney(toKRW(op.savingAmount,(b&&b.cur)))} 절약 가능`, '#7c5cff', {label:'보기', fn:openBookingList});
 });
 
 // ── PriceTrackingService: Discovery 조회 → 정규화·매칭 → 관측 기록 → 판단·알림 ──
@@ -2242,8 +2248,11 @@ async function checkBookingPrice(id,opts){
     pickupCode:(o.pickupCode?String(o.pickupCode):undefined), returnCode:(o.returnCode?String(o.returnCode):undefined),
     verified:!!o.verified, verifiedBy:o.verifiedBy
   }));
-  offers.forEach(o=>{ o.quality = b.type==='car' ? TC_PRICE.carMatchQuality(b,o) : TC_PRICE.matchQuality(b,o); });
-  rec.offers=offers; rec.at=atIso; rec.err=null; delete rec.candidates;
+  // P0-1: 호텔 시세는 1실 기준(basis) — 예약 객실 수와 다르면 확정·잠재 등급을 금지한다 (임의 곱셈 보정 없음)
+  const basis = b.type==='hotel' ? (resp.basis||{rooms:1}) : null;
+  offers.forEach(o=>{ o.quality = b.type==='car' ? TC_PRICE.carMatchQuality(b,o)
+                                                 : TC_PRICE.qualityWithBasis(TC_PRICE.matchQuality(b,o), b, basis); });
+  rec.offers=offers; rec.at=atIso; rec.err=null; rec.basis=basis; delete rec.candidates;
   if(resp.property&&resp.property.token&&b.ptoken!==resp.property.token) b.ptoken=resp.property.token;   // property 매핑 캐시(§23) — 다음부턴 검색 1회 생략, render의 save()로 저장
   // 하루 1점 관측: 확정 후보 우선, 없으면 최저가 — 등급을 함께 남겨 '미확정' 기록임을 구분
   const decided=TC_PRICE.decideSaving(b,offers,{today});
@@ -2478,7 +2487,7 @@ function renderBookingStatusBox(b){
   else if(b.track===false) head=`<div class="pxState pxOff">가격 추적이 꺼져 있어요 — 켜면 시세를 계속 확인합니다</div>`;
   else if(st&&st.state==='SAVING_AVAILABLE'){
     const o=st.confirmed.offer, eff=TC_PRICE.offerPrice(o), link=safeUrl(o.link||'');
-    head=`<div class="pxState pxSave">🔴 재예약 시 약 ${costLabel(st.confirmed.saving,b.cur)} 절약 — ${esc(o.seller)} <span class="pxQ pxQok">✓ 동일 조건${o.verified?' 확인됨':''}</span></div>
+    head=`<div class="pxState pxSave">🔴 재예약 시 약 ${costLabel(st.confirmed.saving,b.cur)} 절약 — ${esc(o.seller)} <span class="pxQ pxQok">${o.verified?'✓ 동일 조건 · 판매처 확인됨':'조건상 동일해 보임 · 판매처 검증 필요'}</span></div>
       <div class="hint">현재 예약 ${costLabel(b.price,b.cur)} → ${esc(o.seller)} ${costLabel(eff,b.cur)}${st.fee?` · 취소 수수료 ${costLabel(st.fee,b.cur)} 반영`:''} — 재예약·기존 예약 취소는 직접 결정하세요</div>
       <div class="pxActions">${link?`<a class="btn" href="${escAttr(link)}" target="_blank" rel="noopener">판매처에서 확인 ↗</a>`:''}<button type="button" class="btn" id="bkRebooked">재예약했어요</button></div>`;
   }
@@ -2497,18 +2506,21 @@ function renderBookingStatusBox(b){
     const ed=(st.err&&st.err.detail)?` <span class="opt">· ${esc(String(st.err.detail).slice(0,120))}</span>`:'';
     head=`<div class="pxState pxWarnT">⚠️ 현재 가격을 확인하지 못했어요</div><div class="hint">${esc(PX_ERR_MSG[ec]||'')} <span class="opt">(${esc(ec)})</span>${ed}</div>`; }
   else head=`<div class="pxState pxWatch">🟡 가격 추적 중 — 아직 의미 있는 하락이 없어요</div>`;
-  // 시세 조회는 1실 기준이라, 2실 이상 예약은 총액이 달라진다 — 절약액을 그대로 믿지 않도록 알린다
+  // P0-1: 시세는 1실 기준 — 다객실 예약은 기준이 달라 확정·잠재 절약 판단에서 제외한다 (임의 곱셈 추정 금지)
   if(b.type==='hotel' && !missing && b.track!==false && (b.rooms||1)>1)
-    head+=`<div class="hint">비교 가격은 <b>1실 기준</b>이에요 — 이 예약은 ${b.rooms}실이라 실제 총액은 다를 수 있습니다</div>`;
+    head+=`<div class="hint"><b>1객실 기준</b> 시세만 확인 가능해요 — 현재 예약은 ${b.rooms}객실입니다. 기준이 달라 자동 절약 판단에는 쓰지 않아요</div>`;
   // 매칭 후보 — 낮은 신뢰도는 자동 확정하지 않고 사용자가 고른다 (§22)
   const cand=(rec.err&&rec.err.code==='UNMATCHED'&&rec.candidates&&rec.candidates.length)?
     `<label>호텔 자동 매칭이 확실하지 않아요 — 맞는 호텔을 선택해주세요</label><div class="pxHist">`+rec.candidates.map((c,i)=>
       `<div><span>${esc(c.name)}</span><button type="button" class="btn pxPick" data-i="${i}" style="font-size:11px;padding:2px 8px">이 호텔이에요</button></div>`).join('')+`</div>` : '';
   // 판매처별 가격 비교 — 신뢰도(✓ 동일 조건 / 조건 확인 필요)를 반드시 구분 표시 (§16·21)
   const qLabel=o=>{ const q=o.quality||TC_PRICE.matchQuality(b,o);
-    return (q==='EXACT'||q==='EQUIVALENT')
-      ? `<span class="pxQ pxQok">✓ 동일 조건${o.verified?' 확인됨':''}</span>`
-      : (q==='SIMILAR'? `<span class="pxQ pxQask">조건 확인 필요</span>` : `<span class="pxQ">비교 불가</span>`); };
+    if(q==='EXACT'||q==='EQUIVALENT')
+      return TC_PRICE.verificationStatus(o)==='VERIFIED'
+        ? `<span class="pxQ pxQok">✓ 동일 조건 · 판매처 확인됨</span>`
+        : `<span class="pxQ pxQok">조건 일치로 보임 · 검증 필요</span>`;
+    if(q==='UNSUPPORTED_BASIS') return `<span class="pxQ pxQask">1실 기준 · 참고용</span>`;
+    return q==='SIMILAR'? `<span class="pxQ pxQask">조건 확인 필요</span>` : `<span class="pxQ">비교 불가</span>`; };
   const offersHtml=(rec.offers||[]).slice(0,6).map(o=>{
     const link=safeUrl(o.link||'');
     const carMeta=(b.type==='car')?[o.vehicleName||o.vehicleClass,o.transmission,o.mileage,o.insurance].filter(Boolean).join(' · '):'';
@@ -2522,7 +2534,7 @@ function renderBookingStatusBox(b){
     checkedLine=`<div class="hint">마지막 가격 확인 ${fmtDT(rec.at)}${ageH>CFG.staleNoticeHours?' — <b>가격 정보가 오래되었습니다</b>':''}${rec.err?` · 최근 재확인 실패 — 마지막 성공 조회 기준으로 표시 중`:''}</div>`;
   } else if(rec.err&&rec.err.code!=='UNMATCHED') checkedLine=`<div class="hint">아직 성공한 가격 조회가 없어요 (${fmtDT(rec.err.at)} 시도)</div>`;
   const hist=(rec.obs||[]).slice(-8).reverse().map(o=>
-    `<div><span>${esc(String(o.at||'').slice(5,10).replace('-','/'))} · ${esc(o.seller||o.provider||'')}${(o.quality&&o.quality!=='EXACT'&&o.quality!=='EQUIVALENT')?' <span class="pxQ pxQask">미확정</span>':''}</span><b>${costLabel(o.price,o.cur)}</b></div>`).join('');
+    `<div><span>${esc(String(o.at||'').slice(5,10).replace('-','/'))} · ${esc(o.seller||o.provider||'')}${o.quality==='UNSUPPORTED_BASIS'?' <span class="pxQ pxQask">1실 기준</span>':(o.quality&&o.quality!=='EXACT'&&o.quality!=='EQUIVALENT')?' <span class="pxQ pxQask">미확정</span>':''}</span><b>${costLabel(o.price,o.cur)}</b></div>`).join('');
   box.innerHTML=`${head}
     ${b.freeCancelUntil?`<div class="hint">무료 취소 ${esc(b.freeCancelUntil)}까지${todayISO()<=b.freeCancelUntil?'':' — 기한이 지나 취소 수수료가 적용됩니다'}</div>`:''}
     ${cand}

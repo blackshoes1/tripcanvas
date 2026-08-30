@@ -14,6 +14,10 @@ const MATCH_MIN = 0.55;                // 이 미만 신뢰도는 자동 확정�
 const MAX_OFFERS = 20;
 const CURS = ['KRW', 'USD', 'EUR', 'JPY', 'CNY'];
 const buckets = new Map();
+// P0-2: ProviderStatus — UNCONFIGURED | AUTH_REQUIRED | CREDENTIAL_READY | CONNECTED | ERROR.
+// CONNECTED는 '실제 구현이 있고 upstream 호출이 성공한 적이 있는' 경우에만 쓴다(키 존재만으로는 CREDENTIAL_READY).
+// 서버리스 인스턴스 메모리라 cold start에서 리셋된다 — 최선 노력 관측이며, 없는 연결을 지어내지는 않는다.
+let metasearchOkAt = null;
 
 function send(res, status, body) {
   res.statusCode = status;
@@ -145,7 +149,7 @@ function serpapiAdapter(env, fetchImpl) {
       }
       const text = await upstream.text();
       if (Buffer.byteLength(text) > 2 * 1024 * 1024) throw Object.assign(new Error('big'), { code: 'INVALID_RESPONSE' });
-      try { return JSON.parse(text); }
+      try { const parsed = JSON.parse(text); metasearchOkAt = Date.now(); return parsed; }
       catch (_) { throw Object.assign(new Error('json'), { code: 'INVALID_RESPONSE' }); }
     } catch (error) {
       if (error && error.code) throw error;
@@ -154,7 +158,8 @@ function serpapiAdapter(env, fetchImpl) {
   }
   return {
     id: 'google-hotels', via: 'serpapi', role: 'discovery',
-    status() { return key ? 'CONNECTED' : 'AUTH_REQUIRED'; },
+    // 키 없음=AUTH_REQUIRED · 키 있음=CREDENTIAL_READY · 이 인스턴스에서 실제 호출 성공=CONNECTED (P0-2)
+    status() { return key ? (metasearchOkAt ? 'CONNECTED' : 'CREDENTIAL_READY') : 'AUTH_REQUIRED'; },
     async search(q, retriedWithoutToken) {
       const base = {
         check_in_date: q.checkIn, check_out_date: q.checkOut,
@@ -178,7 +183,7 @@ function serpapiAdapter(env, fetchImpl) {
           }
           const offers = normalizeDetail(list, q.currency);
           if (!offers.length) throw Object.assign(new Error('empty'), { code: 'NO_AVAILABILITY' });
-          return { property: { name: prop.name, token: prop.token, confidence: Math.round(score * 100) / 100 }, offers };
+          return { property: { name: prop.name, token: prop.token, confidence: Math.round(score * 100) / 100 }, offers, basis: { rooms: 1 } };
         }
         if (!properties.length) {
           console.log('[hotel-offers] no properties; upstream keys:', Object.keys(list).slice(0, 20).join(','));   // 진단용 — 응답 최상위 키 이름만
@@ -216,7 +221,8 @@ function serpapiAdapter(env, fetchImpl) {
       if (!offers.length) throw Object.assign(new Error('empty'), { code: 'NO_AVAILABILITY' });
       return {
         property: { name: str(detail.name, 160) || matchedName || q.name || '', token, confidence: Math.round(confidence * 100) / 100 },
-        offers
+        offers,
+        basis: { rooms: 1 }   // google_hotels는 객실 수 파라미터가 없다 — 시세는 항상 1실 기준 (P0-1)
       };
     }
   };
@@ -263,18 +269,21 @@ function normalizeDetail(json, currency) {
 
 // ── Official Verification Provider Registry — credential 없으면 AUTH_REQUIRED, 임의 우회 없음 (§13·14) ──
 // 새 Provider는 여기 항목 추가만으로 붙는다: match(판매처명)·status()·verify(offer, request).
+// P0-2: verify가 null(미구현)인 Provider는 키가 있어도 CREDENTIAL_READY까지만 — CONNECTED는
+// 실제 verify 구현 + 호출 성공이 있어야 쓴다. 키 존재만으로 '연결됨'을 표시하지 않는다.
 function defaultVerifiers(env) {
+  const status = key => (key ? 'CREDENTIAL_READY' : 'AUTH_REQUIRED');
   return [
-    { id: 'booking.com', role: 'verification', match: s => /booking\.com/i.test(s || ''), status: () => (env.BOOKING_API_KEY ? 'CONNECTED' : 'AUTH_REQUIRED'), verify: null },
-    { id: 'expedia', role: 'verification', match: s => /expedia/i.test(s || ''), status: () => (env.EXPEDIA_API_KEY ? 'CONNECTED' : 'AUTH_REQUIRED'), verify: null },
-    { id: 'agoda', role: 'verification', match: s => /agoda/i.test(s || ''), status: () => (env.AGODA_API_KEY ? 'CONNECTED' : 'AUTH_REQUIRED'), verify: null }
+    { id: 'booking.com', role: 'verification', match: s => /booking\.com/i.test(s || ''), status: () => status(env.BOOKING_API_KEY), verify: null },
+    { id: 'expedia', role: 'verification', match: s => /expedia/i.test(s || ''), status: () => status(env.EXPEDIA_API_KEY), verify: null },
+    { id: 'agoda', role: 'verification', match: s => /agoda/i.test(s || ''), status: () => status(env.AGODA_API_KEY), verify: null }
   ];
 }
 
 // 하락 후보를 공식 API로 재검증 (연결된 Provider가 있을 때만). 한 Provider 실패가 전체를 막지 않는다 (§35·36)
 async function verifyOffers(offers, verifiers, request) {
   for (const offer of offers) {
-    const v = (verifiers || []).find(x => x.match(offer.seller) && x.status() === 'CONNECTED' && typeof x.verify === 'function');
+    const v = (verifiers || []).find(x => x.match(offer.seller) && typeof x.verify === 'function' && (x.status() === 'CONNECTED' || x.status() === 'CREDENTIAL_READY'));
     if (!v) continue;
     try {
       const result = await v.verify(offer, request);
@@ -291,9 +300,10 @@ async function runSearch(deps, request) {
   const which = env.HOTEL_METASEARCH_PROVIDER || 'serpapi';
   if (which !== 'serpapi') throw Object.assign(new Error('unknown_provider'), { code: 'PROVIDER_ERROR' });
   const adapter = serpapiAdapter(env, fetchImpl);
-  if (adapter.status() !== 'CONNECTED') throw Object.assign(new Error('no_key'), { code: 'AUTH_REQUIRED' });
+  if (adapter.status() === 'AUTH_REQUIRED') throw Object.assign(new Error('no_key'), { code: 'AUTH_REQUIRED' });
   const result = await adapter.search(request);
   if (result.unmatched) return result;
+  if (!result.basis) result.basis = { rooms: 1 };   // adapter가 명시하지 않으면 메타서치 계약 기본값
   result.offers = await verifyOffers(result.offers, deps.verifiers || defaultVerifiers(env), request);
   return result;
 }
@@ -332,7 +342,8 @@ function createHandler({ fetchImpl = globalThis.fetch, env = process.env, now = 
       const result = await runSearch({ env, fetchImpl, verifiers }, request);
       if (result.unmatched) return send(res, 200, { status: 'UNMATCHED', candidates: result.candidates });
       return send(res, 200, { status: 'OK', property: result.property, offers: result.offers,
-        basis: { rooms: 1, adults: request.adults, requestedRooms: request.rooms },   // 비교 가격의 기준 — 1실 고정
+        // 비교 가격의 기준 — adapter가 명시한 basis(현재 1실 고정) + 요청 객실 수. 불일치면 클라이언트가 확정 판단을 금지한다 (P0-1)
+        basis: { ...(result.basis || { rooms: 1 }), adults: request.adults, requestedRooms: request.rooms },
         checkedAt: new Date().toISOString() });
     } catch (error) {
       const code = (error && error.code) || 'PROVIDER_ERROR';
@@ -352,4 +363,4 @@ module.exports = createHandler();
 module.exports.createHandler = createHandler;
 module.exports.runSearch = runSearch;
 module.exports.providerHealth = providerHealth;
-module.exports._private = { validRequest, normalizeDetail, safeLink, defaultVerifiers, verifyOffers, buckets, MATCH_MIN };
+module.exports._private = { validRequest, normalizeDetail, safeLink, defaultVerifiers, verifyOffers, buckets, MATCH_MIN, resetProviderMemory: () => { metasearchOkAt = null; } };

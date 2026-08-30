@@ -269,3 +269,70 @@ test('car 조건 정규화 — 표기 차이 흡수', () => {
   assert.equal(P.normCarClass('Compact SUV'), 'compact');
   assert.equal(P.normCarClass('준중형'), 'compact');
 });
+
+// ── P0-1: 비교 기준(basis) — 다객실 예약에 1실 시세로 확정 절약을 만들지 않는다 ──
+test('P0-1: qualityWithBasis — 객실 수 불일치면 어떤 등급도 UNSUPPORTED_BASIS로 강등', () => {
+  const b2 = { rooms: 2 }, b1 = { rooms: 1 }, basis1 = { rooms: 1 };
+  assert.equal(P.qualityWithBasis('EXACT', b2, basis1), 'UNSUPPORTED_BASIS', 'EXACT 확정 금지');
+  assert.equal(P.qualityWithBasis('EQUIVALENT', b2, basis1), 'UNSUPPORTED_BASIS');
+  assert.equal(P.qualityWithBasis('SIMILAR', b2, basis1), 'UNSUPPORTED_BASIS', '잠재(최대 차액)도 기준이 달라 성립 안 함');
+  assert.equal(P.qualityWithBasis('UNMATCHED', b2, basis1), 'UNMATCHED');
+  assert.equal(P.qualityWithBasis('EXACT', b1, basis1), 'EXACT', '기준 일치 → 유지');
+  assert.equal(P.qualityWithBasis('EXACT', {}, basis1), 'EXACT', 'rooms 미지정 = 1실');
+  assert.equal(P.qualityWithBasis('EXACT', b2, null), 'EXACT', 'basis 미제공(구 기록) → 판단 근거 없음, 유지');
+  assert.equal(P.basisMismatch(b2, basis1), true);
+  assert.equal(P.basisMismatch(b1, basis1), false);
+});
+
+test('P0-1: UNSUPPORTED_BASIS 오퍼는 확정도 잠재도 만들지 않는다 (임의 곱셈 금지)', () => {
+  const b = { price: 1400000, rooms: 2, cur: 'KRW', refundable: true };
+  const basis = { rooms: 1 };
+  // 1실 기준 700,000 — 2실 예약가 1,400,000보다 "싸 보이지만" 기준이 다르다
+  const offers = [{ seller: 'Expedia', price: 700000, refundable: true }]
+    .map(o => ({ ...o, quality: P.qualityWithBasis(P.matchQuality(b, o), b, basis) }));
+  assert.equal(offers[0].quality, 'UNSUPPORTED_BASIS');
+  const d = P.decideSaving(b, offers, { today: '2026-08-25' });
+  assert.equal(d.confirmed, null, '확정 절약 금지');
+  assert.equal(d.potential, null, "잠재('최대 차액')도 금지");
+  assert.equal(P.offerRank('UNSUPPORTED_BASIS', false), 9, '신뢰 사다리 밖');
+});
+
+test('P0-1: hotelTrackState — basis 불일치는 basisLimited로 알리고 상태는 WATCHING에 머문다', () => {
+  const b = { price: 1400000, rooms: 2, cur: 'KRW', track: true };
+  const rec = { at: '2026-08-25T09:00:00Z', basis: { rooms: 1, requestedRooms: 2 },
+    offers: [{ seller: 'Expedia', price: 700000, quality: 'UNSUPPORTED_BASIS' }],
+    obs: [{ price: 700000, at: '2026-08-25T09:00:00Z', quality: 'UNSUPPORTED_BASIS' }] };
+  const st = P.hotelTrackState(b, rec, { today: '2026-08-25' });
+  assert.equal(st.state, 'WATCHING', '절약 가능으로 단정하지 않는다');
+  assert.equal(st.basisLimited, true, 'UI가 "1객실 기준만 확인 가능"을 설명할 근거');
+  // 기준 일치 기록이면 플래그 없음
+  const ok = P.hotelTrackState({ ...b, rooms: 1 }, { ...rec, basis: { rooms: 1 } }, { today: '2026-08-25' });
+  assert.equal(ok.basisLimited, false);
+});
+
+test('P0-1: bookingPriceStatus — 기준이 다른 관측으로는 절약/좋은가격을 판정하지 않는다', () => {
+  const b = { price: 1400000, rooms: 2, track: true };
+  const mk = q => [
+    { price: 720000, at: '2026-08-23T09:00:00Z', quality: q },
+    { price: 710000, at: '2026-08-24T09:00:00Z', quality: q },
+    { price: 700000, at: '2026-08-25T09:00:00Z', quality: q }
+  ];
+  const st = P.bookingPriceStatus(b, mk('UNSUPPORTED_BASIS'), { today: '2026-08-25' });
+  assert.equal(st.state, 'WATCHING', '1실 기준 관측 → 2실 예약가와 비교 금지');
+  // 같은 수치라도 기준이 맞으면 기존 판정 그대로 (회귀 방지)
+  const st2 = P.bookingPriceStatus({ price: 1400000, track: true }, mk('EXACT'), { today: '2026-08-25' });
+  assert.equal(st2.state, 'SAVING_AVAILABLE');
+});
+
+// ── P0-3: MatchQuality(같은 상품인가)와 VerificationStatus(판매처가 확인했는가)는 다른 축 ──
+test('P0-3: verificationStatus — 매칭 등급과 무관하게 검증 축만 답한다', () => {
+  assert.equal(P.verificationStatus({ verified: true }), 'VERIFIED');
+  assert.equal(P.verificationStatus({ verified: false }), 'METASEARCH_ONLY', '메타서치 표시가 — 판매처 검증 필요');
+  assert.equal(P.verificationStatus({}), 'METASEARCH_ONLY');
+  assert.equal(P.verificationStatus({ manual: 1 }), 'UNKNOWN', '수동 관측 — 자동 소스 검증 아님');
+  // EXACT + METASEARCH_ONLY 조합이 가능해야 한다 (등급이 검증을 함의하지 않는다)
+  const b = { price: 100, cur: 'KRW', refundable: true };
+  const o = { seller: 'E', price: 90, refundable: true, verified: false };
+  assert.equal(P.matchQuality(b, o), 'EQUIVALENT');
+  assert.equal(P.verificationStatus(o), 'METASEARCH_ONLY');
+});

@@ -45,3 +45,20 @@ test('track cron: dueBookings — 추적 중·기간 있음·숙박 시작 전 �
   assert.deepEqual(jobs[0].identity, { name: 'Cap Rocat', placeId: 'P1', lat: 1, lng: 2 });
   assert.deepEqual(_private.identityOf({}, { id: 'x', title: '독립 예약' }), { name: '독립 예약' });
 });
+
+test('track cron: P1-1 — 오래 확인 안 된 예약 우선, 미확인이 최우선 (starvation 방지)', () => {
+  const j = id => ({ booking: { id, start: '2026-10-0' + id.slice(-1) } });
+  const jobs = [j('b1'), j('b2'), j('b3'), j('b4')];
+  const lastAt = new Map([
+    ['b1', '2026-08-29T21:00:00Z'],   // 어제 확인 — 가장 뒤
+    ['b2', '2026-08-20T21:00:00Z'],   // 열흘 전
+    // b3: 관측 없음 — 최우선
+    ['b4', '2026-08-25T21:00:00Z']
+  ]);
+  assert.deepEqual(_private.orderJobs(jobs, lastAt).map(x => x.booking.id), ['b3', 'b2', 'b4', 'b1']);
+  // 관측 시각이 같으면 체크인 임박 순
+  const tie = [{ booking: { id: 'x', start: '2026-11-05' } }, { booking: { id: 'y', start: '2026-10-01' } }];
+  assert.deepEqual(_private.orderJobs(tie, new Map()).map(x => x.booking.id), ['y', 'x']);
+  // 원본 배열은 건드리지 않는다
+  assert.deepEqual(jobs.map(x => x.booking.id), ['b1', 'b2', 'b3', 'b4']);
+});
