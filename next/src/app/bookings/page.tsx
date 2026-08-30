@@ -8,6 +8,7 @@ import { BookingEditor } from '@/features/booking/components/BookingEditor';
 import { BookingList } from '@/features/booking/components/BookingList';
 import { deleteBooking, upsertBooking } from '@/features/booking/domain/operations';
 import type { Booking } from '@/features/booking/domain/types';
+import { useFxRates } from '@/features/currency/hooks/useFxRates';
 import { usePriceStore } from '@/features/pricing/hooks/usePriceStore';
 import { deletePriceRecord } from '@/features/pricing/services/localPriceStore';
 import { useTripStore } from '@/features/trip/hooks/useTripStore';
@@ -18,6 +19,7 @@ type View = { mode: 'list' } | { mode: 'detail'; id: string } | { mode: 'edit'; 
 export default function BookingsPage() {
   const { activeTrip, updateActiveTrip } = useTripStore();
   const { prices } = usePriceStore();
+  useFxRates();                    // 환율을 하루 한 번 갱신하고, 바뀌면 다시 그린다
   const [view, setView] = useState<View>({ mode: 'list' });
   const [notice, setNotice] = useState<string | null>(null);
 

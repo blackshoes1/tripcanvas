@@ -4,7 +4,8 @@ import { useCallback, useSyncExternalStore } from 'react';
 
 import type { Trip } from '@/features/trip/domain/types';
 import {
-  getTripStoreServerSnapshot, getTripStoreSnapshot, saveTrip, subscribeTripStore
+  addTrip, getTripStoreServerSnapshot, getTripStoreSnapshot, removeTrip, saveTrip,
+  subscribeTripStore, switchTrip
 } from '../services/localTripStore';
 
 export function useTripStore() {
@@ -19,5 +20,9 @@ export function useTripStore() {
     return saveTrip(mutate(trip));
   }, []);
 
-  return { store, activeTrip, updateActiveTrip };
+  return {
+    store, activeTrip, updateActiveTrip,
+    trips: store?.trips ?? [],
+    addTrip, switchTrip, removeTrip
+  };
 }

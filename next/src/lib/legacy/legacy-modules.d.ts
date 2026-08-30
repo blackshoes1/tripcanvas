@@ -35,12 +35,31 @@ declare module '@legacy/price.js' {
 declare module '@legacy/lib.js' {
   const api: {
     parseStorePayload(text: string | null): { ok: true; value: unknown } | { ok: false; error: string };
+    /** 여행 파일·공유 링크 본문 → 검증·정규화된 여행 (크기·모양이 어긋나면 이유를 돌려준다) */
+    parseTripPayload(text: string): { ok: true; value: unknown } | { ok: false; error: string };
+    /** 여행 문서 검증 — 모양이 틀리면 통째로 거절한다 */
+    validateTripPayload(value: unknown, options?: { maxBytes?: number }):
+      { ok: true; value: unknown } | { ok: false; error: string };
+    /** 붙여넣기 직접 형식 → 구조화 */
+    parseDirect(text: string): { name: string; start: string; days: unknown[] };
+    /** 자유로운 초안의 days를 여행 스키마 모양으로 눕힌다 (AI 응답·직접 형식 공통) */
+    normalizeDraftDays(days: unknown): unknown[];
+    /** 모델 응답에서 JSON 본문만 떼어낸다 (인사말·코드펜스 제거) */
+    extractJson(text: string | undefined): string;
+    /** 검색 질의를 좁히는 이름 단순화 ('~ 앞바다' 같은 꼬리 제거) */
+    simplifyName(name: string): string;
+    /** 외부 지도 링크 — 국내는 카카오맵, 해외는 구글 */
+    extMapLink(s: { name: string; lat: number | string; lng: number | string }): { href: string; label: string };
     normalizeTrip(t: unknown): unknown | null;
     normalizeBooking(b: unknown): unknown | null;
     carReturnPoint(b: unknown): { place: string; code: string };
     bookingShareOn(bookings: unknown[], iso: string): { id: string; type: string; title: string; amount: number; cur?: string }[];
     parseHM(t: string | undefined): number;
     hm(min: number): string;
+    /** 사람이 친 시각 입력 → HH:MM (범위 밖·빈 값이면 '') */
+    normHM(v: string | number | undefined): string;
+    /** 그 날 장소를 도착시각 순으로 제자리 정렬 — 순서가 바뀌면 true */
+    sortDayByTime(day: unknown): boolean;
     toISO(d: Date): string;
     haversine(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number;
     legKey(a: { lat: number; lng: number }, b: { lat: number; lng: number }, mode?: string): string;
@@ -66,6 +85,24 @@ declare module '@legacy/lib.js' {
     carEventsOn(bookings: unknown[], iso: string):
       { kind: 'pickup' | 'return'; id: string; title: string; place: string; code: string; time: string }[];
     spotCatOf(s: unknown): { id: string; icon: string; name: string } | null;
+    catFromKakao(groupCode: unknown): string | null;
+    catFromGoogle(types: unknown, primaryType?: unknown): string | null;
+    /** 카카오 주소 → 도시명 (검색 결과용) */
+    cityFromKoreanAddr(addr: string | undefined): string;
+    /** 카카오 지번주소 → 도시명 (POI 칩용 — cityFromKoreanAddr와 규칙이 다르다) */
+    cityFromKakaoAddress(addr: string | undefined): string;
+    /** 구글 Place → 표시 이름 (displayName 형태 차이·빈값 방어, 주소 폴백) */
+    placeName(p: unknown): string;
+    /** 구글 addressComponents → 도시명 */
+    cityFromGoogle(comps: unknown): string;
+    /** 구글 regularOpeningHours → {d,o,c}[] (상시영업 d:-1) */
+    normHours(oh: unknown): { d: number; o: number; c: number }[] | null;
+    /** 검색 실패 원인 분류 */
+    classifySearchErr(e: unknown): 'network' | 'quota' | 'auth' | 'error';
+    /** 국내 검색인지 — 앵커가 있으면 좌표로, 없으면 질의의 한글 여부로 */
+    isKoreanSearch(q: string, near?: { lat: number; lng: number } | null): boolean;
+    /** IANA 시간대 문자열인지 (Asia/Tokyo 등) */
+    validTimeZone(value: unknown): boolean;
     SPOT_CATS: readonly { id: string; icon: string; name: string }[];
     TC_LIMITS: Readonly<Record<string, number>>;
     TC_SCHEMA: number;

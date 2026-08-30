@@ -1,28 +1,26 @@
 // 통화 표기 — 레거시 app.js costLabel/toKRW/fmtMoney와 같은 규칙.
-// 환율은 레거시가 갱신하는 tripcanvas_fx 캐시를 읽고, 없으면 같은 폴백 근사를 쓴다.
+// 환율 캐시(tripcanvas_fx)의 읽기·갱신은 features/currency가 맡고, 여기서는 그 값을 쓰기만 한다.
+import { getFxSnapshot } from '@/features/currency/services/fxStore';
 import type { CurrencyCode } from '@/features/trip/domain/types';
 
-const FX_KEY = 'tripcanvas_fx';
-const FALLBACK: Record<CurrencyCode, number> = { KRW: 1, USD: 1380, EUR: 1500, JPY: 9.1, CNY: 192 };
-const SYMBOL: Record<CurrencyCode, string> = { KRW: '₩', USD: '$', EUR: '€', JPY: '¥', CNY: '¥' };
+// 기호는 레거시 CUR와 같아야 한다 — 같은 데이터를 두 앱이 다르게 표기하면 같은 여행으로 안 보인다
+const SYMBOL: Record<CurrencyCode, string> = { KRW: '₩', USD: '$', EUR: '€', JPY: '¥', CNY: '元' };
 
 export function fxRates(): Record<string, number> {
-  if (typeof window === 'undefined') return { ...FALLBACK };
-  try {
-    const c = JSON.parse(window.localStorage.getItem(FX_KEY) ?? 'null') as { rates?: Record<string, number> } | null;
-    // 기본값 '위에 덮어쓰기' — 캐시에 없는 통화가 1:1로 깨지지 않게 (레거시와 동일)
-    return { ...FALLBACK, ...(c?.rates ?? {}) };
-  } catch {
-    return { ...FALLBACK };
-  }
+  return getFxSnapshot();
 }
 
-export function krwRateOf(cur?: string): number {
-  return fxRates()[cur ?? 'KRW'] ?? 1;
+/** 통화 1단위 = ? 원 */
+export type FxRates = Record<string, number>;
+
+export function krwRateOf(cur?: string, rates: FxRates = fxRates()): number {
+  return rates[cur ?? 'KRW'] ?? 1;
 }
 
-export function toKRW(amount: number, cur?: string): number {
-  return Math.round((+amount || 0) * krwRateOf(cur));
+// 환율을 인자로 받는 이유: 이 값이 바뀌면 화면의 환산액도 다시 계산돼야 하는데,
+// 모듈 전역에서 몰래 읽으면 호출측 memo가 그 사실을 알 수 없어 옛 금액이 그대로 남는다.
+export function toKRW(amount: number, cur?: string, rates: FxRates = fxRates()): number {
+  return Math.round((+amount || 0) * krwRateOf(cur, rates));
 }
 
 export function fmtMoney(n: number): string {
@@ -35,9 +33,9 @@ export function currencySymbol(cur?: string): string | null {
 }
 
 /** KRW면 "₩68,000", 아니면 "€300 ≈ ₩450,000". 알 수 없는 통화는 KRW 폴백(렌더 크래시 방지) */
-export function costLabel(amount: number, cur?: string): string {
+export function costLabel(amount: number, cur?: string, rates: FxRates = fxRates()): string {
   const c = (cur ?? 'KRW') as CurrencyCode;
   const sym = SYMBOL[c];
   if (!sym || c === 'KRW') return `₩${fmtMoney(amount)}`;
-  return `${sym}${fmtMoney(amount)} ≈ ₩${fmtMoney(toKRW(amount, c))}`;
+  return `${sym}${fmtMoney(amount)} ≈ ₩${fmtMoney(toKRW(amount, c, rates))}`;
 }

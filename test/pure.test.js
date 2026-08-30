@@ -12,6 +12,95 @@ test('parseHM / hm 왕복·경계', () => {
   assert.equal(L.hm(-30), '23:30');          // 음수 방어
 });
 
+test('normHM — 사람이 친 시각 입력을 HH:MM으로', () => {
+  assert.equal(L.normHM('9:5'), '09:05');      // 한 자리 분도 받는다
+  assert.equal(L.normHM('930'), '09:30');      // 숫자만 3자리
+  assert.equal(L.normHM('1830'), '18:30');     // 숫자만 4자리
+  assert.equal(L.normHM('7'), '07:00');        // 시만
+  assert.equal(L.normHM(''), '');              // 미지정
+  assert.equal(L.normHM('25:00'), '');         // 범위 밖은 미지정으로
+  assert.equal(L.normHM('12:75'), '');
+  assert.equal(L.normHM(undefined), '');
+});
+
+test('sortDayByTime — 고정 시각은 제자리로, 자동 시각은 직전 고정에 묶여 순서 유지', () => {
+  const day = { startAt:'09:00', spots:[
+    {name:'A'}, {name:'B'}, {name:'C', at:'08:00'}, {name:'D'}
+  ]};
+  assert.equal(L.sortDayByTime(day), true);
+  // C(08:00)가 앞으로, D는 C에 묶여 따라온다. A·B는 09:00 기준으로 원래 순서 유지
+  assert.deepEqual(day.spots.map(s=>s.name), ['C','D','A','B']);
+
+  // 이미 시간순이면 순서가 바뀌지 않고 false
+  const sorted = { startAt:'09:00', spots:[{name:'A', at:'09:00'},{name:'B', at:'11:00'}] };
+  assert.equal(L.sortDayByTime(sorted), false);
+  assert.deepEqual(sorted.spots.map(s=>s.name), ['A','B']);
+
+  // 같은 기준 시각이면 원래 순서 유지 (안정 정렬)
+  const tie = { startAt:'09:00', spots:[{name:'A', at:'10:00'},{name:'B', at:'10:00'}] };
+  assert.equal(L.sortDayByTime(tie), false);
+  assert.deepEqual(tie.spots.map(s=>s.name), ['A','B']);
+});
+
+test('classifySearchErr — 실패를 원인별로 가른다 (재시도할 일 vs 관리자 일)', () => {
+  assert.equal(L.classifySearchErr(new Error('Failed to fetch')), 'network');
+  assert.equal(L.classifySearchErr(new Error('The request timeout')), 'network');
+  assert.equal(L.classifySearchErr(new Error('OVER_QUERY_LIMIT')), 'quota');
+  assert.equal(L.classifySearchErr({ code: 'RESOURCE_EXHAUSTED' }), 'quota');
+  assert.equal(L.classifySearchErr(new Error('This IP, site or mobile application is not authorized')), 'auth');
+  assert.equal(L.classifySearchErr(new Error('RefererNotAllowedMapError')), 'auth');
+  assert.equal(L.classifySearchErr(new Error('무슨 일인지 모를 오류')), 'error');
+  assert.equal(L.classifySearchErr(null), 'error');
+});
+
+test('isKoreanSearch — 앵커가 있으면 좌표로, 없으면 질의 문자로 가른다', () => {
+  assert.equal(L.isKoreanSearch('gyeongju', { lat: 35.8, lng: 129.2 }), true);   // 앵커가 국내면 질의 언어와 무관
+  assert.equal(L.isKoreanSearch('성산일출봉', { lat: 41.9, lng: 12.5 }), false); // 앵커가 해외면 한글이어도 구글
+  assert.equal(L.isKoreanSearch('성산일출봉', null), true);                       // 앵커 없으면 한글 여부로
+  assert.equal(L.isKoreanSearch('Sagrada Familia'), false);
+  assert.equal(L.isKoreanSearch(''), false);
+});
+
+test('cityFromKoreanAddr — 광역시는 그 자체, 도는 시·군까지', () => {
+  assert.equal(L.cityFromKoreanAddr('서울특별시 중구 세종대로 110'), '서울');
+  assert.equal(L.cityFromKoreanAddr('제주특별자치도 서귀포시 성산읍'), '서귀포');
+  assert.equal(L.cityFromKoreanAddr('경상북도 경주시 노동동'), '경주');
+  assert.equal(L.cityFromKoreanAddr('서울'), '');        // 토큰이 하나뿐이면 판단 보류
+  assert.equal(L.cityFromKoreanAddr(''), '');
+});
+
+test('placeName — displayName이 문자열이든 객체든 비어도 이름을 만든다', () => {
+  assert.equal(L.placeName({ displayName: 'Sagrada Família' }), 'Sagrada Família');
+  assert.equal(L.placeName({ displayName: { text: 'Park Güell' } }), 'Park Güell');
+  // 이름이 비면 주소 앞부분으로 폴백 — 이름 없는 결과가 조용히 빈칸으로 들어가지 않게
+  assert.equal(L.placeName({ displayName: '', formattedAddress: 'Carrer de Mallorca, 401, Barcelona' }),
+    'Carrer de Mallorca');
+  assert.equal(L.placeName({}), '');
+  assert.equal(L.placeName(null), '');
+});
+
+test('cityFromGoogle — locality 우선, 도쿄 특별구는 도쿄로 묶는다', () => {
+  const comp = (types, longText) => ({ types, longText });
+  assert.equal(L.cityFromGoogle([comp(['locality'], 'Barcelona')]), 'Barcelona');
+  assert.equal(L.cityFromGoogle([
+    comp(['locality'], 'Minato City'), comp(['administrative_area_level_1'], 'Tokyo')
+  ]), 'Tokyo');
+  // locality가 없으면 상위 행정구역으로 폴백
+  assert.equal(L.cityFromGoogle([comp(['administrative_area_level_2'], 'Girona')]), 'Girona');
+  assert.equal(L.cityFromGoogle([]), '');
+  assert.equal(L.cityFromGoogle(null), '');
+});
+
+test('normHours — 구글 영업시간을 분 단위로, 상시영업은 d:-1', () => {
+  assert.deepEqual(L.normHours({ periods: [
+    { open: { day: 1, hour: 9, minute: 30 }, close: { day: 1, hour: 18, minute: 0 } }
+  ] }), [{ d: 1, o: 570, c: 1080 }]);
+  // close가 없으면 24시간 영업
+  assert.deepEqual(L.normHours({ periods: [{ open: { day: 0, hour: 0, minute: 0 } }] }), [{ d: -1, o: 0, c: 1440 }]);
+  assert.equal(L.normHours({ periods: [] }), null);
+  assert.equal(L.normHours(null), null);
+});
+
 test('haversine 근사 (경주역→감포 ~30km)', () => {
   const d = L.haversine({lat:35.7965,lng:129.1349},{lat:35.8093,lng:129.5015});
   assert.ok(d>28 && d<36, `got ${d}`);
@@ -146,6 +235,83 @@ test('parseDirect — 여행/일자/장소/옵션/숙소/좌표', () => {
   // 도시 미기입 시 직전 도시(lastCity) 상속
   const r2=L.parseDirect('- A | 부산\n- B');
   assert.equal(r2.days[0].spots[1].city, '부산');
+});
+
+test('normalizeDraftDays — 자유로운 초안을 여행 스키마로 눕힌다', () => {
+  // AI 응답은 필드가 빠지거나 엉뚱한 값이 오기 쉽다. 통째로 거절하면 초안 하나가
+  // 필드 하나 때문에 버려지므로, 아는 값만 남기고 나머지는 기본값으로 눕힌다.
+  const r = L.normalizeDraftDays([{
+    title:'도착', mode:'순간이동', startAt:'9시',
+    spots:[
+      {name:' 경주역 ', city:' 경주 ', mode:'x', at:'10:30', bookAt:'없음', stayMin:'90', cost:'12000', cur:'GBP', lat:'35.79', lng:'129.13'},
+      {name:'', city:'경주'},                                   // 이름 없는 장소는 버린다
+      {name:'감포', opt:1, stay:'y', legMode:'train', stayMin:-5, cost:null}
+    ]
+  }, null]);
+  assert.equal(r.length, 2);
+  assert.equal(r[0].mode, 'car');            // 알 수 없는 수단 → 기본값
+  assert.equal(r[0].startAt, '09:00');       // 형식 아닌 시각 → 기본값
+  assert.equal(r[0].spots.length, 2);        // 이름 없는 장소 제외
+  const a = r[0].spots[0];
+  assert.equal(a.name, '경주역');             // 앞뒤 공백 제거
+  assert.equal(a.city, '경주');
+  assert.equal(a.at, '10:30');
+  assert.equal(a.bookAt, '');                // 형식 아니면 빈 값
+  assert.equal(a.stayMin, 90);               // 숫자 문자열도 받는다
+  assert.equal(a.cost, 12000);
+  assert.equal(a.cur, undefined);            // 모르는 통화는 떨군다(KRW 취급)
+  assert.deepEqual([a.lat, a.lng], [35.79, 129.13]);
+  const b = r[0].spots[1];
+  assert.equal(b.opt, true);                 // 참 같은 값 → boolean
+  assert.equal(b.stay, true);
+  assert.equal(b.legMode, 'train');
+  assert.equal(b.stayMin, null);             // 음수는 없는 것으로
+  assert.equal(b.city, '기타');               // 도시 없으면 기본값
+  assert.equal(b.lat, null);                 // 좌표 없음은 null (0으로 둔갑 금지)
+  // 빈 일자도 모양은 갖춘다
+  assert.deepEqual(r[1].spots, []);
+  assert.equal(r[1].mode, 'car');
+  assert.deepEqual(L.normalizeDraftDays(null), []);
+  assert.deepEqual(L.normalizeDraftDays('nope'), []);
+});
+
+test('normalizeDraftDays 결과는 validateTripPayload를 통과한다', () => {
+  // 눕히는 목적이 바로 이것 — 자유 입력이 검증에서 통째로 거절되지 않게
+  const days = L.normalizeDraftDays([{ title:'x', spots:[{name:'A', lat:'33.5', lng:'126.5'}] }]);
+  const r = L.validateTripPayload({ name:'초안', start:'2026-08-01', days });
+  assert.equal(r.ok, true);
+  assert.equal(r.value.days[0].spots[0].name, 'A');
+});
+
+test('extractJson — 인사말·코드펜스가 붙어도 JSON만 떼어낸다', () => {
+  assert.equal(L.extractJson('네, 정리했습니다!\n```json\n{"a":1}\n```'), '{"a":1}');
+  assert.equal(L.extractJson('{"a":1}'), '{"a":1}');
+  assert.equal(L.extractJson('  {"a":{"b":2}} 뒤에 말 '), '{"a":{"b":2}}');
+  // 중괄호가 없으면 원문 그대로 — 호출측이 JSON.parse 실패로 다룬다
+  assert.equal(L.extractJson('중괄호 없음'), '중괄호 없음');
+  assert.equal(L.extractJson(''), '');
+  assert.equal(L.extractJson(undefined), '');
+});
+
+test('extMapLink — 국내는 카카오맵, 해외는 구글', () => {
+  // 한국에서는 카카오맵만 실제 내비가 된다
+  const kr = L.extMapLink({ name: '제주공항', lat: 33.5104, lng: 126.4914 });
+  assert.ok(kr.href.startsWith('https://map.kakao.com/link/to/'));
+  assert.ok(kr.href.includes('33.5104,126.4914'));
+  assert.match(kr.label, /카카오맵/);
+
+  const jp = L.extMapLink({ name: 'Tokyo Tower', lat: 35.6586, lng: 139.7454 });
+  assert.ok(jp.href.startsWith('https://www.google.com/maps/search/'));
+  assert.match(jp.label, /Google/);
+
+  // 이름은 URL 인코딩된다 — 공백·특수문자가 링크를 깨뜨리지 않게
+  const enc = L.extMapLink({ name: '카페 & 로스터리', lat: 37.5, lng: 127.0 });
+  assert.ok(!enc.href.includes(' '));
+  assert.ok(enc.href.includes(encodeURIComponent('카페 & 로스터리')));
+
+  // 문자열 좌표도 받는다 (유입 데이터)
+  const str = L.extMapLink({ name: 'x', lat: '33.5', lng: '126.5' });
+  assert.ok(str.href.includes('33.5,126.5'));
 });
 
 test('parseMoney — 통화 기호·접미사 (유로 포함)', () => {

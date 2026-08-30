@@ -434,27 +434,7 @@ function fillSpotFromCoords(lat,lng,forceCity,placeId,known){
   });
 }
 // 한국 지번주소 "시도 시군구 …" → 도시명 (광역시는 시도, 그 외는 시군구에서 시/군 제거)
-function cityFromKoreanAddr(addr){
-  const t=(addr||'').trim().split(/\s+/); if(t.length<2) return '';
-  const one=t[0], two=t[1];
-  if(/(특별시|광역시|특별자치시)$/.test(one)) return one.replace(/(특별시|광역시|특별자치시)$/,'');
-  return two.replace(/(시|군)$/,'') || one.replace(/(도|특별자치도)$/,'');
-}
-// 구글 Place → 표시 이름. displayName이 문자열이든 {text} 객체든 빈값이든 방어하고, 비면 주소 앞부분으로 폴백.
-// (신 Places API 버전/필드에 따라 displayName이 문자열이 아닐 수 있어 이름 채움이 조용히 실패하던 문제 방어)
-function placeName(p){
-  const dn=p&&p.displayName;
-  const s=(dn&&typeof dn==='object')?(dn.text||''):(dn||'');
-  return (s || String((p&&p.formattedAddress)||'').split(',')[0]||'').trim();
-}
-// 구글 Place addressComponents → 도시명(locality 우선)
-function cityFromGoogle(comps){
-  if(!comps||!comps.length) return '';
-  const pick=t=>{ const c=comps.find(x=>(x.types||[]).includes(t)); return c?(c.longText||c.shortText||''):''; };
-  const loc=pick('locality'), aa1=pick('administrative_area_level_1'), aa2=pick('administrative_area_level_2');
-  if(/^(tokyo|도쿄)/i.test(aa1) && loc && !/^(tokyo|도쿄)/i.test(loc)) return aa1;   // 도쿄 특별구(Minato City 등) → '도쿄'로 묶음
-  return (loc||aa2||aa1||'').replace(/(특별시|광역시|특별자치시)$/,'').replace(/(시|군)$/,'');   // 한국 지명 접미사 정리
-}
+// cityFromKoreanAddr·placeName·cityFromGoogle은 lib.js가 단일 소스 (Next 검색과 공유)
 window.__gmapsReady=function(){
   map=new google.maps.Map(document.getElementById('map'),{
     center:{lat:40,lng:-3.7}, zoom:6, mapId:'DEMO_MAP_ID',
@@ -647,13 +627,7 @@ function dayWeatherHtml(day,di){
   if(!w) return '';
   return `<span class="wx" title="${esc(first.name)} 기준 예보">${w.icon} ${w.tmax}° <span style="opacity:.6">/ ${w.tmin}°</span></span>`;
 }
-function gmapsLink(s){ return `https://www.google.com/maps/search/?api=1&query=${s.lat},${s.lng}(${encodeURIComponent(s.name)})`; }
-// 외부 지도 링크 — 국내는 카카오맵(한국서 실제 내비 가능), 해외는 구글
-function extMapLink(s){
-  return inKorea({lat:+s.lat,lng:+s.lng})
-    ? {href:`https://map.kakao.com/link/to/${encodeURIComponent(s.name)},${s.lat},${s.lng}`, label:'카카오맵 길찾기 ↗'}
-    : {href:gmapsLink(s), label:'Google 지도 ↗'};
-}
+// 외부 지도 링크는 lib.js extMapLink — Next 여행 모드와 같은 링크를 쓴다
 function hasLoc(s){ return s && s.lat!=null && s.lng!=null && isFinite(+s.lat) && isFinite(+s.lng); }
 // 색상 기준: 'city'(도시별) | 'day'(일자별). trip에 저장, 기본 city
 function colorByMode(){ return (trip().colorBy==='city') ? 'city' : 'day'; }   // 기본 일자별 (경로 색 가독성)
@@ -711,13 +685,7 @@ function legModeBtn(day,di,si,lm){
   const t=set?`이 구간만 ${MODE_NAME[lm]} — 탭해서 변경 (계속 누르면 일정 기본으로 되돌아감)`:`일정 기본 ${MODE_NAME[dmn]} — 탭하면 이 구간만 바꿔요`;
   return `<button class="legModeBtn${set?' set':''}" onclick="event.stopPropagation();cycleLegMode(${di},${si})" title="${escAttr(t)}">${MODE_ICON[lm]}</button>`;
 }
-function normHM(v){
-  const s=String(v||'').trim();let h,m;
-  const c=/^(\d{1,2}):(\d{1,2})$/.exec(s);
-  if(c){h=+c[1];m=+c[2];}
-  else{const d=s.replace(/\D/g,'');if(!d)return '';if(d.length<=2){h=+d;m=0;}else if(d.length===3){h=+d.slice(0,1);m=+d.slice(1);}else{h=+d.slice(0,2);m=+d.slice(2,4);}}
-  return (h>23||m>59)?'':String(h).padStart(2,'0')+':'+String(m).padStart(2,'0');
-}
+// normHM·sortDayByTime은 lib.js가 단일 소스 (Next 편집기와 공유)
 document.addEventListener('input',e=>{const t=e.target;if(t&&t.classList&&t.classList.contains('timeIn'))t.value=t.value.replace(/[^\d:]/g,'').slice(0,5);});
 document.addEventListener('blur',e=>{const t=e.target;if(t&&t.classList&&t.classList.contains('timeIn')&&t.value.trim()!=='')t.value=normHM(t.value);},true);
 function planDepartISO(isoDate,localMinutes,timeZone){
@@ -832,16 +800,7 @@ function legDepartMinute(day,timeline,spotIndex){
   const prev=day.spots[spotIndex-1], state=timeline[spotIndex-1];
   return state.eta+(state.wait||0)+(prev.stayMin!=null?+prev.stayMin:60);
 }
-// 도착시각 순으로 정렬. 고정 시각 장소는 그 시각으로 이동, 자동 시각 장소는 '직전 고정 시각'에
-// 묶여 원래 상대순서를 유지(자동끼리 뒤섞이지 않음). 안정 정렬. 순서가 바뀌면 true.
-function sortDayByTime(day){
-  const before=day.spots.slice();
-  let anchor=parseHM(day.startAt);
-  const key=day.spots.map(s=>{ if(s.at) anchor=parseHM(s.at); return anchor; });   // 각 스팟의 기준 시각
-  const order=day.spots.map((_,i)=>i).sort((a,b)=> (key[a]-key[b]) || (a-b));       // 동시각은 원래 순서 유지
-  day.spots=order.map(i=>day.spots[i]);
-  return before.some((s,i)=>s!==day.spots[i]);
-}
+// sortDayByTime은 lib.js가 단일 소스
 // 하루 장소 비용 합계
 // ── 통화·환율 (원/달러/엔/위안 → 원 환산) ──
 const CUR = { KRW:{sym:'₩',name:'원'}, USD:{sym:'$',name:'달러'}, EUR:{sym:'€',name:'유로'}, JPY:{sym:'¥',name:'엔'}, CNY:{sym:'元',name:'위안'} };
@@ -1811,6 +1770,14 @@ document.getElementById('spotSave').onclick=()=>{
     hours:_pickedHours||undefined,lat,lng};
   const targetDay=parseInt(document.getElementById('spotDay').value);
   const isEdit=editing.si>=0;
+  // 예약·렌터카 연결은 이 모달에서 만들지도 지우지도 않는다(예약 편집기 소관) → 편집 시 그대로 물려준다.
+  // 새 객체로 갈아끼우느라 떨어뜨리면, 메모만 고쳐도 픽업이 연결에서 풀려 독립 행으로 되돌아간다.
+  if(isEdit){
+    const prev=trip().days[editing.di].spots[editing.si]||{};
+    if(prev.bookingId) s.bookingId=prev.bookingId;
+    if(prev.carPickupId) s.carPickupId=prev.carPickupId;
+    if(prev.carReturnId) s.carReturnId=prev.carReturnId;
+  }
   if(isEdit && targetDay===editing.di){
     trip().days[targetDay].spots[editing.si]=s;         // 같은 날 편집은 제자리 교체 (맨 뒤로 밀지 않음)
   }else{
@@ -2882,13 +2849,7 @@ function loadKakao(){
 // near가 있으면 20km 반경 우선, 비면 전국 재검색 (호출측 거리 가드가 오매칭 차단)
 // ── 검색 오류 분류·안내 (인증/할당량/네트워크/무결과 구분) ──
 // 운영자용 상세(코드·원문)는 콘솔에만 남기고, 사용자에겐 짧은 재시도 안내만 보여준다.
-function classifySearchErr(e){
-  const m=(((e&&(e.message||e.code))||e||'')+'').toLowerCase();
-  if(/failed to fetch|networkerror|network error|load failed|timeout/.test(m)) return 'network';
-  if(/quota|over_query|resource_exhausted|rate limit|too many/.test(m)) return 'quota';
-  if(/denied|not authorized|unauthorized|forbidden|api ?key|permission|referer|referrer|invalid key/.test(m)) return 'auth';
-  return 'error';
-}
+// classifySearchErr·isKoreanSearch는 lib.js가 단일 소스 (Next 검색과 공유)
 const SEARCH_ERR_MSG={
   auth:'검색 키 인증·권한 문제예요 — 관리자 확인이 필요합니다',
   quota:'검색 사용량 한도를 넘었어요 — 잠시 후 다시 시도해주세요',
@@ -2918,18 +2879,7 @@ async function kakaoSearch(q, near, limit){
   }
   return run({size});
 }
-// Google Places 텍스트 검색 (신 API) → [{name,addr,lat,lng}]
-// 구글 Place 영업시간(regularOpeningHours.periods) → {d:요일0=일,o:분,c:분}[] 정규화 (24/7은 d:-1)
-function normHours(oh){
-  const ps=oh&&oh.periods; if(!ps||!ps.length) return null;
-  const out=[];
-  for(const p of ps){
-    if(p.open && !p.close){ return [{d:-1,o:0,c:1440}]; }   // 상시영업
-    if(!p.open||!p.close) continue;
-    out.push({d:p.open.day, o:p.open.hour*60+p.open.minute, c:p.close.hour*60+p.close.minute});
-  }
-  return out.length?out:null;
-}
+// normHours(구글 영업시간 정규화)는 lib.js가 단일 소스 (Next 검색과 공유)
 // Google Places 텍스트 검색 → {list, err}. 오류는 분류해 코드로 반환(콘솔엔 원문).
 async function googlePlaces(q, near, limit){
   if(!map) return {list:[], err:'network'};   // 지도 SDK 미로드
@@ -2959,7 +2909,7 @@ function cityAnchorOf(city){
 // 질의 하나를 라우팅해 검색 (국내 앵커면 카카오 우선→구글 폴백, 해외면 구글)
 // 결과 배열을 반환하되, 결과가 없을 땐 배열에 .err(오류코드)를 실어 '무결과'와 '오류'를 구분하게 한다.
 async function routedSearch(q, near, limit){
-  const korean = near? inKorea(near) : /[가-힣]/.test(q);
+  const korean = isKoreanSearch(q, near);   // 라우팅 판단은 lib 단일 소스
   let err=null;
   if(korean){
     const k=await kakaoSearch(q, near, limit);
@@ -3014,10 +2964,7 @@ async function parseAI(text){
   });
   if(!r.ok){ const t=await r.text().catch(()=>''); throw new Error(`API 오류 ${r.status} · ${t.slice(0,120)}`); }
   const data=await r.json();
-  let txt=(data.content?.[0]?.text||'').trim();
-  const a=txt.indexOf('{'), b=txt.lastIndexOf('}');
-  if(a>=0&&b>a) txt=txt.slice(a,b+1);
-  return JSON.parse(txt);
+  return JSON.parse(extractJson(data.content?.[0]?.text||''));
 }
 
 function openPaste(){
@@ -3057,18 +3004,8 @@ async function runPaste(){
     else parsed=parseDirect(text);
   }catch(e){ reportOperationalError('paste.parse',e); toast('일정을 해석하지 못했습니다. 입력 형식과 연결 상태를 확인해 주세요','#e63946'); return; }
   if(!parsed||!Array.isArray(parsed.days)||!parsed.days.length){ toast('일정을 못 읽었어 — 형식을 확인해줘','#e63946'); return; }
-  // 정규화
-  const MODES=['car','taxi','transit','train','walk','bike','flight'];
-  const hhmm=v=>/^\d{1,2}:\d{2}$/.test(v||'')?v:'';
-  const posInt=v=>{const n=parseInt(v); return (v==null||isNaN(n)||n<0)?null:n;};
-  parsed.days=parsed.days.map(d=>({
-    title:d.title||'', drive:d.drive||'', note:d.note||'',
-    mode:MODES.includes(d.mode)?d.mode:'car', startAt:hhmm(d.startAt)||'09:00',
-    spots:(d.spots||[]).map(s=>({name:(s.name||'').trim(), city:(s.city||'기타').trim(), desc:s.desc||'',
-      opt:!!s.opt, stay:!!s.stay, legMode:(MODES.includes(s.legMode)?s.legMode:undefined), at:(hhmm(s.at)||undefined), stayMin:(s.stayMin==null?null:posInt(s.stayMin)),
-      cost:(s.cost==null?null:posInt(s.cost)), cur:(['USD','EUR','JPY','CNY'].includes(s.cur)?s.cur:undefined), bookAt:hhmm(s.bookAt),
-      lat:(s.lat==null?null:+s.lat), lng:(s.lng==null?null:+s.lng)})).filter(s=>s.name)
-  }));
+  // 정규화 (lib.js normalizeDraftDays — Next 붙여넣기와 같은 규칙을 쓴다)
+  parsed.days=normalizeDraftDays(parsed.days);
   const checked=validateTripPayload({name:parsed.name||'붙여넣은 여행',start:parsed.start||'',days:parsed.days});
   if(!checked.ok){ reportOperationalError('paste.invalid',new Error('validation')); toast(checked.error,'#e63946'); return; }
   parsed=checked.value;

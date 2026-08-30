@@ -90,3 +90,165 @@
 .itLegMode { margin-right: 2px; }
 .itEmpty { color: var(--muted); font-size: 12px; padding: 12px 4px; }
 .itNote { color: var(--muted); font-size: 12px; margin-top: 8px; }
+
+/* ── 장소 편집 ── */
+.itSpotActs { margin-left: auto; display: inline-flex; gap: 2px; flex: none; }
+.itSpotActs button { font-size: 12px; line-height: 1; padding: 3px 6px; cursor: pointer;
+  background: transparent; color: var(--muted); border: 1px solid transparent; border-radius: 6px; }
+.itSpotActs button:hover:not(:disabled) { color: var(--fg); border-color: color-mix(in srgb, var(--fg) 20%, transparent); }
+.itSpotActs button:disabled { opacity: .25; cursor: default; }
+
+/* 모바일에서 스크롤 뒤로 가려지지 않게 화면에 고정해 띄운다 */
+.itEditorBg { position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center;
+  padding: 16px; background: rgba(0,0,0,.55); overflow-y: auto; }
+.itEditor { width: 100%; max-width: 480px; max-height: 90vh; overflow-y: auto;
+  background: var(--card); border-radius: 12px; padding: 16px;
+  border: 1px solid color-mix(in srgb, var(--fg) 12%, transparent); }
+.itEditor h2 { font-size: 16px; margin: 0 0 4px; }
+.itEditor label { display: block; font-size: 12px; color: var(--muted); margin-top: 10px; }
+.itEditor input, .itEditor select, .itEditor textarea { width: 100%; margin-top: 4px; padding: 7px 9px;
+  font-size: 14px; font-family: inherit; background: var(--bg); color: var(--fg);
+  border: 1px solid color-mix(in srgb, var(--fg) 15%, transparent); border-radius: 8px; }
+.itEditRow2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-items: end; }
+.itEditChk { display: flex; align-items: center; gap: 6px; margin-top: 10px; }
+.itEditChk input { width: auto; margin-top: 0; }
+.itEditMore { margin-top: 12px; font-size: 12px; padding: 4px 0; cursor: pointer;
+  background: none; border: 0; color: var(--muted); }
+.itEditAdv { border-top: 1px solid color-mix(in srgb, var(--fg) 10%, transparent); padding-top: 4px; }
+.itEditErr { color: #ff6b6b; font-size: 13px; margin-top: 10px; }
+.itEditBtns { display: flex; gap: 8px; margin-top: 16px; }
+.itEditBtns button { padding: 8px 14px; font-size: 13px; cursor: pointer; border-radius: 8px;
+  background: var(--bg); color: var(--fg); border: 1px solid color-mix(in srgb, var(--fg) 18%, transparent); }
+.itEditBtns .itEditDel { margin-right: auto; color: #ff8fa3; }
+.itEditBtns .itEditSave { background: var(--accent); border-color: var(--accent); color: #0b1020; font-weight: 700; }
+
+/* ── 장소 검색 (편집기 안) ── */
+.itAddSpot { display: block; width: 100%; margin-top: 8px; padding: 8px; font-size: 13px; cursor: pointer;
+  background: transparent; color: var(--muted); border-radius: 8px;
+  border: 1px dashed color-mix(in srgb, var(--fg) 25%, transparent); }
+.itAddSpot:hover { color: var(--fg); border-color: var(--accent); }
+
+.itEditSearch { display: flex; gap: 6px; margin-top: 4px; }
+.itEditSearch input { margin-top: 0; }
+.itEditSearch button { flex: none; padding: 7px 12px; font-size: 13px; cursor: pointer; border-radius: 8px;
+  background: var(--bg); color: var(--fg); border: 1px solid color-mix(in srgb, var(--fg) 18%, transparent); }
+.itEditSearch button:disabled { opacity: .5; cursor: default; }
+.itEditCoord { font-size: 12px; color: #ffa94d; margin-top: 6px; }
+.itEditCoord.ok { color: #69db7c; }
+.itEditSearchMsg { font-size: 12px; color: var(--muted); margin-top: 6px; }
+.itEditResults { list-style: none; margin: 6px 0 0; padding: 0; max-height: 200px; overflow-y: auto;
+  border: 1px solid color-mix(in srgb, var(--fg) 12%, transparent); border-radius: 8px; }
+.itEditResults li + li { border-top: 1px solid color-mix(in srgb, var(--fg) 8%, transparent); }
+.itEditResults button { display: block; width: 100%; text-align: left; padding: 8px 10px; cursor: pointer;
+  background: transparent; color: var(--fg); border: 0; font-size: 13px; font-family: inherit; }
+.itEditResults button:hover { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.itEditResName { display: block; font-weight: 600; }
+.itEditResAddr { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
+
+/* ── 국내 POI 칩 (지도 위) — 레거시 style.css .poiChip와 같은 모양 ── */
+.poiChip { max-width: 124px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  background: var(--card); color: var(--fg); font-family: inherit; line-height: 1.3;
+  border: 1px solid color-mix(in srgb, var(--fg) 18%, transparent);
+  font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 12px; cursor: pointer;
+  box-shadow: 0 2px 6px rgba(17, 24, 39, .16); opacity: .94; }
+.poiChip:hover, .poiChip:focus-visible { opacity: 1; border-color: var(--accent); color: var(--accent); }
+
+/* ── 드래그 정렬 ── */
+.itSpotList { min-height: 4px; }              /* 빈 일자에도 끌어다 놓을 자리를 남긴다 */
+.itDragGhost { opacity: .35; }
+.itDragChosen { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.itDay .itDayHead.clickable { cursor: grab; }
+.itDay .itDayHead.clickable:active { cursor: grabbing; }
+
+/* ── 재생 (여행 모드) ── */
+.itPlayBtn { margin-left: auto; font-size: 12px; padding: 4px 10px; cursor: pointer; border-radius: 999px;
+  background: var(--card); color: var(--fg);
+  border: 1px solid color-mix(in srgb, var(--fg) 18%, transparent); }
+.itPlayBtn:hover { border-color: var(--accent); color: var(--accent); }
+
+/* HUD는 지도 위에 고정 — 카드 목록을 스크롤해도 컨트롤이 따라다닌다 */
+.itPlayHud { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 30;
+  width: min(560px, calc(100vw - 24px)); padding: 10px 12px; border-radius: 12px;
+  background: color-mix(in srgb, var(--card) 94%, transparent); backdrop-filter: blur(6px);
+  border: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
+  box-shadow: 0 6px 22px rgba(0, 0, 0, .28); }
+.itPlayLeg { font-size: 12px; font-weight: 600; margin-bottom: 6px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.itPlayBar { height: 8px; border-radius: 999px; cursor: pointer; touch-action: none;
+  background: color-mix(in srgb, var(--fg) 14%, transparent); }
+.itPlayBarFill { height: 100%; border-radius: 999px; background: var(--accent); }
+.itPlayCtl { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+.itPlayCtl button { font-size: 13px; padding: 4px 9px; cursor: pointer; border-radius: 8px;
+  background: var(--bg); color: var(--fg);
+  border: 1px solid color-mix(in srgb, var(--fg) 16%, transparent); }
+.itPlaySeg { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.itPlaySpeeds { display: inline-flex; gap: 3px; margin-left: auto; }
+.itPlaySpeeds button { font-size: 11px; padding: 3px 7px; }
+.itPlaySpeeds button.on { background: var(--accent); border-color: var(--accent); color: #0b1020; font-weight: 700; }
+.itPlayCtl .itPlayStop { color: #ff8fa3; }
+
+/* 날짜 전환 카드 — 스스로 사라진다 (호출측이 key로 리마운트해 다시 재생) */
+.itPlayDayCard { position: fixed; left: 50%; top: 18%; transform: translateX(-50%); z-index: 31;
+  padding: 10px 18px; border-radius: 12px; font-size: 16px; font-weight: 700; pointer-events: none;
+  background: color-mix(in srgb, var(--card) 92%, transparent); color: var(--fg);
+  border: 1px solid color-mix(in srgb, var(--fg) 14%, transparent);
+  box-shadow: 0 8px 26px rgba(0, 0, 0, .3);
+  animation: itDayCardFlash 1.9s ease forwards; }
+@keyframes itDayCardFlash {
+  0% { opacity: 0; transform: translateX(-50%) translateY(6px); }
+  12% { opacity: 1; transform: translateX(-50%) translateY(0); }
+  80% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .itPlayDayCard { animation-duration: 1.9s; animation-timing-function: step-end; }
+}
+
+/* ── 여행·일자 관리 ── */
+.itTripBar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 8px 0 4px; }
+.itTripBar > button { font-size: 12px; padding: 4px 10px; cursor: pointer; border-radius: 999px;
+  background: var(--card); color: var(--fg);
+  border: 1px solid color-mix(in srgb, var(--fg) 18%, transparent); }
+.itTripBar > button:hover { border-color: var(--accent); color: var(--accent); }
+.itTripName { font-size: 13px; font-weight: 700; }
+.itTripSel { font-size: 13px; font-weight: 700; padding: 4px 8px; border-radius: 8px;
+  background: var(--card); color: var(--fg);
+  border: 1px solid color-mix(in srgb, var(--fg) 18%, transparent); }
+.itDayEdit { margin-left: 6px; font-size: 11px; padding: 2px 6px; cursor: pointer; border-radius: 6px;
+  background: transparent; color: var(--muted); border: 1px solid transparent; }
+.itDayEdit:hover { color: var(--fg); border-color: color-mix(in srgb, var(--fg) 20%, transparent); }
+.itAddDay { display: block; width: 100%; margin-top: 10px; padding: 10px; font-size: 13px; cursor: pointer;
+  background: transparent; color: var(--muted); border-radius: 10px;
+  border: 1px dashed color-mix(in srgb, var(--fg) 25%, transparent); }
+.itAddDay:hover { color: var(--fg); border-color: var(--accent); }
+
+/* ── 가져오기·내보내기·공유 ── */
+.itFileBar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 0 0 8px; }
+.itFileBar > button { font-size: 12px; padding: 4px 10px; cursor: pointer; border-radius: 999px;
+  background: var(--card); color: var(--muted);
+  border: 1px solid color-mix(in srgb, var(--fg) 14%, transparent); }
+.itFileBar > button:hover { border-color: var(--accent); color: var(--accent); }
+.itShareUrl { flex: 1 1 220px; min-width: 0; font-size: 11px; padding: 4px 8px; border-radius: 8px;
+  background: var(--card); color: var(--muted);
+  border: 1px solid color-mix(in srgb, var(--fg) 18%, transparent); }
+
+/* ── 읽기전용 공유 보기 ── */
+.itRoBar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 8px 0;
+  padding: 8px 12px; font-size: 13px; border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 12%, var(--card));
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); }
+.itRoBar > span { flex: 1 1 240px; }
+.itRoBar button { font-size: 12px; padding: 4px 10px; cursor: pointer; border-radius: 999px;
+  background: var(--card); color: var(--fg);
+  border: 1px solid color-mix(in srgb, var(--fg) 18%, transparent); }
+.itRoBar .itRoSave { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 700; }
+
+/* ── 붙여넣기 초안 ── */
+.itPaste { max-width: 620px; }
+.itPaste textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.5; }
+.itPasteFmt { align-self: flex-start; font-size: 12px; padding: 4px 10px; cursor: pointer; border-radius: 999px;
+  background: var(--card); color: var(--muted);
+  border: 1px solid color-mix(in srgb, var(--fg) 18%, transparent); }
+.itPasteFmt:hover { border-color: var(--accent); color: var(--accent); }
+.itPasteBusy { font-size: 12px; padding: 6px 10px; border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 12%, var(--card)); color: var(--fg); }
