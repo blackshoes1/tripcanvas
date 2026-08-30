@@ -26,6 +26,10 @@ export interface Spot {
   /** 좌표 없는 장소는 null (동선·ETA·지도에서 제외) */
   lat: number | null;
   lng: number | null;
+  /** 숙소 — 그 날의 종료 기준점(dayAnchor)·다음 날 이월(dayStartAnchor)의 근거 */
+  stay?: boolean;
+  /** 선택 코스 (필수 아님 표시) */
+  opt?: boolean;
   /** 도착 고정 시각 HH:MM — 내가 정한 계획 */
   at?: string;
   /** 예약·입장 시각 HH:MM — 상대가 정한 약속 (일찍 오면 대기, 늦으면 ⚠️) */
