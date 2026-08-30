@@ -35,6 +35,8 @@ declare module '@legacy/price.js' {
 declare module '@legacy/lib.js' {
   const api: {
     parseStorePayload(text: string | null): { ok: true; value: unknown } | { ok: false; error: string };
+    /** 여행 파일·공유 링크 본문 → 검증·정규화된 여행 (크기·모양이 어긋나면 이유를 돌려준다) */
+    parseTripPayload(text: string): { ok: true; value: unknown } | { ok: false; error: string };
     normalizeTrip(t: unknown): unknown | null;
     normalizeBooking(b: unknown): unknown | null;
     carReturnPoint(b: unknown): { place: string; code: string };

@@ -20,6 +20,9 @@ import type { PoiPick } from '@/features/map/services/kakaoPoiLayer';
 import { PlayDayCard, PlayHud } from '@/features/playback/components/PlayHud';
 import { usePlayback } from '@/features/playback/hooks/usePlayback';
 import { ensureTripLegs } from '@/features/routing/services/ensureTripLegs';
+import { ReadOnlyBar } from '@/features/share/components/ReadOnlyBar';
+import { TripFileBar } from '@/features/share/components/TripFileBar';
+import { useSharedTrip } from '@/features/share/hooks/useSharedTrip';
 import { DayEditor } from '@/features/trip/components/DayEditor';
 import { TripBar } from '@/features/trip/components/TripBar';
 import { addDay, duplicateDay, newTrip, newTripId, removeDay } from '@/features/trip/domain/tripEditor';
@@ -34,6 +37,11 @@ const SAVE_FAILED = '저장에 실패했어요 — 저장 공간을 확인해주
 export default function ItineraryPage() {
   const { activeTrip, updateActiveTrip, trips, addTrip, switchTrip, removeTrip } = useTripStore();
   const legCache = useLegCache();
+  // 남의 공유 링크(#v=)로 열렸으면 그 여행을 **저장소에 넣지 않고** 보여준다
+  const { shared, claim, dismiss } = useSharedTrip();
+  const readOnly = shared.kind === 'view';
+  /** 화면에 그리는 여행 — 읽기전용일 땐 공유받은 것, 아니면 내 활성 여행 */
+  const shownTrip: Trip | null = shared.kind === 'view' ? shared.trip : activeTrip;
 
   /** 1-based 일자 필터, 0=전체 (레거시 activeDay와 동일 의미) */
   const [activeDay, setActiveDay] = useState(0);
@@ -52,20 +60,20 @@ export default function ItineraryPage() {
   const mapHandle = useRef<MapHandle | null>(null);
 
   const views = useMemo(
-    () => (activeTrip ? activeTrip.days.map((_, di) => buildDayView(activeTrip, legCache, di)) : []),
-    [activeTrip, legCache]
+    () => (shownTrip ? shownTrip.days.map((_, di) => buildDayView(shownTrip, legCache, di)) : []),
+    [shownTrip, legCache]
   );
   const cost = useMemo(
-    () => (activeTrip ? tripCostBreakdownOf(activeTrip, legCache) : null),
-    [activeTrip, legCache]
+    () => (shownTrip ? tripCostBreakdownOf(shownTrip, legCache) : null),
+    [shownTrip, legCache]
   );
   const scene = useMemo(
-    () => (activeTrip ? buildMapScene(activeTrip, legCache, activeDay) : null),
-    [activeTrip, legCache, activeDay]
+    () => (shownTrip ? buildMapScene(shownTrip, legCache, activeDay) : null),
+    [shownTrip, legCache, activeDay]
   );
   const fit = useMemo(
-    () => (activeTrip ? (didEntry ? fitTargetOf(activeTrip, activeDay) : entryFitOf(activeTrip)) : null),
-    [activeTrip, activeDay, didEntry]
+    () => (shownTrip ? (didEntry ? fitTargetOf(shownTrip, activeDay) : entryFitOf(shownTrip)) : null),
+    [shownTrip, activeDay, didEntry]
   );
 
   // ── 여행·일자 관리 ──
@@ -122,7 +130,7 @@ export default function ItineraryPage() {
   // 재생이 끝나면 카메라를 원래 프레임으로 되돌린다 (일자 재생이면 그 일자, 전체면 전체)
   const refit = useCallback(() => setDidEntry(v => !v || v), []);
   const play = usePlayback({
-    trip: activeTrip, legCache, activeDay, map: mapHandle,
+    trip: shownTrip, legCache, activeDay, map: mapHandle,
     onNotice: setNotice, onEnd: refit
   });
 
@@ -132,11 +140,17 @@ export default function ItineraryPage() {
   const playDi = play.status.playing && !activeDay ? play.status.at?.di ?? null : null;
   const dayCardLabel = (() => {
     if (playDi == null) return null;
-    const day = activeTrip?.days[playDi];
+    const day = shownTrip?.days[playDi];
     if (!day) return null;
     const sub = day.title || day.spots.find(s => s.lat != null)?.city || '';
     return `Day ${playDi + 1}${sub ? ` · ${sub}` : ''}`;
   })();
+
+  // 공유 링크 처리 결과 — 읽기전용은 배너가 말하므로 여기서는 알리지 않는다
+  const shareNotice =
+    shared.kind === 'error' ? `공유 링크를 열 수 없습니다 — ${shared.message}`
+      : shared.kind === 'claimed' ? `"${shared.name || '공유된 여행'}"을(를) 내 여행으로 저장했습니다`
+        : null;
 
   const selectDay = (d: number) => { setDidEntry(true); setActiveDay(d); };
   const onPinClick = useCallback((di: number, si: number) => setSel({ di, si }), []);
@@ -264,21 +278,23 @@ export default function ItineraryPage() {
     setNotice('일자 순서 변경됨');
   }, [updateActiveTrip]);
 
-  useDragReorder({ deps: views, onSpotDrop, onDayDrop });
+  // 읽기전용에서는 드래그를 끈다 — 핸들러가 '내 활성 여행'을 고치므로,
+  // 남의 여행을 보다가 끌면 엉뚱하게 내 여행이 바뀐다
+  useDragReorder({ deps: views, enabled: !readOnly, onSpotDrop, onDayDrop });
 
   // 빠진 구간 백그라운드 조회 (Phase 6a) — 결과가 캐시에 쓰이면 legCache 구독으로 ETA·경로선이 갱신되고,
   // 그 갱신으로 출발시각이 바뀐 대중교통 구간은 재수집된다 (fetcher의 그룹 댐핑이 진동을 차단)
-  useEffect(() => { if (activeTrip) ensureTripLegs(activeTrip); }, [activeTrip, legCache]);
+  useEffect(() => { if (shownTrip) ensureTripLegs(shownTrip); }, [shownTrip, legCache]);
   useEffect(() => {
     if (sel) document.getElementById(`it-d${sel.di}-s${sel.si}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, [sel]);
 
 
-  if (!activeTrip) {
+  if (!shownTrip) {
     return (
       <main className="itPage">
         <h1>일정</h1>
-        {notice && <div className="hint" role="status">{notice}</div>}
+        {(shareNotice || notice) && <div className="hint" role="status">{shareNotice ?? notice}</div>}
         <p className="hint">
           이 브라우저에 저장된 여행이 없어요. 새로 만들거나, 기존 앱에서 만든 여행을 여기서 이어서 볼 수 있습니다.
         </p>
@@ -295,11 +311,25 @@ export default function ItineraryPage() {
   return (
     <main className="itPage">
       <h1>일정</h1>
-      <TripBar
-        trips={trips} activeTrip={activeTrip}
-        onSwitch={onSwitchTrip} onNew={createTrip} onSave={saveTripMeta} onDelete={deleteActiveTrip}
-      />
-      {notice && <div className="hint" role="status">{notice}</div>}
+      {readOnly ? (
+        <ReadOnlyBar
+          name={shownTrip.name}
+          onClaim={() => setNotice(claim() ? '내 여행으로 저장되었습니다' : SAVE_FAILED)}
+          onDismiss={dismiss}
+        />
+      ) : activeTrip && (
+        <>
+          <TripBar
+            trips={trips} activeTrip={activeTrip}
+            onSwitch={onSwitchTrip} onNew={createTrip} onSave={saveTripMeta} onDelete={deleteActiveTrip}
+          />
+          <TripFileBar
+            trip={activeTrip} newId={newTripId} onNotice={setNotice}
+            onImport={t => { const ok = addTrip(t); if (ok) { setActiveDay(0); setSel(null); setDidEntry(false); } return ok; }}
+          />
+        </>
+      )}
+      {(shareNotice || notice) && <div className="hint" role="status">{shareNotice ?? notice}</div>}
       {cost && cost.total > 0 && (
         <div className="itTripCost" title="예약(숙박·렌터카·항공)은 전액 — 기간이 일정 밖으로 나가면 하루 합계보다 큽니다">
           💳 전체 비용 약 ₩{fmtMoney(cost.total)}
@@ -331,7 +361,9 @@ export default function ItineraryPage() {
         {scene && (
           <MapView
             scene={scene} fit={play.status.playing ? null : fit} handleRef={mapHandle}
-            onPinClick={onPinClick} onMapTap={onMapTap} onPoiPick={onPoiPick}
+            onPinClick={onPinClick}
+            onMapTap={readOnly ? undefined : onMapTap}
+            onPoiPick={readOnly ? undefined : onPoiPick}
           />
         )}
         <div className="itCards">
@@ -341,19 +373,23 @@ export default function ItineraryPage() {
               dim={activeDay !== 0 && activeDay !== v.dayNo}
               selectedSi={sel?.di === v.di ? sel.si : null}
               onHeaderClick={() => selectDay(activeDay === v.dayNo ? 0 : v.dayNo)}
-              onEditSpot={si => { setNotice(null); setEditing({ di: v.di, si }); }}
-              onMoveSpot={(si, delta) => move(v.di, si, delta)}
-              onAddSpot={after => openAdd(v.di, after, newSpotDraft(activeTrip.days[v.di]))}
-              onEditDay={() => { setNotice(null); setEditingDay(v.di); }}
+              onEditSpot={readOnly ? undefined : si => { setNotice(null); setEditing({ di: v.di, si }); }}
+              onMoveSpot={readOnly ? undefined : (si, delta) => move(v.di, si, delta)}
+              onAddSpot={readOnly ? undefined : after => openAdd(v.di, after, newSpotDraft(shownTrip.days[v.di]))}
+              onEditDay={readOnly ? undefined : () => { setNotice(null); setEditingDay(v.di); }}
             />
           ))}
-          <button type="button" className="itAddDay" onClick={appendDay}>＋ 일자 추가</button>
+          {!readOnly && (
+            <button type="button" className="itAddDay" onClick={appendDay}>＋ 일자 추가</button>
+          )}
         </div>
       </div>
       <p className="hint">
-        지도를 탭하거나 검색해서 장소를 담고, 편집·드래그 정렬·삭제까지 여기서 할 수 있어요.
-        장소는 다른 일자로도 끌어 옮길 수 있고, 카드 헤더를 잡으면 일자 순서가 바뀝니다.
-        여행·일자는 위의 여행 정보와 각 카드의 ✎로 고칩니다. 이동 시간·경로선은 자동으로 조회해 채웁니다 (조회 전에는 직선 추정).
+        {readOnly
+          ? '남이 공유한 여행을 읽기전용으로 보는 중입니다 — 지도·재생은 그대로 쓸 수 있고, 고치려면 내 여행으로 저장하세요.'
+          : '지도를 탭하거나 검색해서 장소를 담고, 편집·드래그 정렬·삭제까지 여기서 할 수 있어요. '
+            + '장소는 다른 일자로도 끌어 옮길 수 있고, 카드 헤더를 잡으면 일자 순서가 바뀝니다. '
+            + '여행·일자는 위의 여행 정보와 각 카드의 ✎로 고칩니다. 이동 시간·경로선은 자동으로 조회해 채웁니다 (조회 전에는 직선 추정).'}
       </p>
       {play.status.playing && (
         <>
@@ -367,7 +403,7 @@ export default function ItineraryPage() {
           />
         </>
       )}
-      {editingDay != null && activeTrip.days[editingDay] && (
+      {!readOnly && activeTrip && editingDay != null && activeTrip.days[editingDay] && (
         <DayEditor
           trip={activeTrip} di={editingDay}
           onSave={next => { saveTripMeta(next); setEditingDay(null); }}
@@ -376,7 +412,7 @@ export default function ItineraryPage() {
           onCancel={() => setEditingDay(null)}
         />
       )}
-      {editing && editingSpot && (
+      {!readOnly && activeTrip && editing && editingSpot && (
         <div className="itEditorBg" onClick={e => { if (e.target === e.currentTarget) setEditing(null); }}>
           <SpotEditor
             spot={editingSpot} di={editing.di} days={activeTrip.days}
@@ -384,7 +420,7 @@ export default function ItineraryPage() {
           />
         </div>
       )}
-      {adding && (
+      {!readOnly && activeTrip && adding && (
         <div className="itEditorBg" onClick={e => { if (e.target === e.currentTarget) setAdding(null); }}>
           <SpotEditor
             isNew spot={adding.draft} di={adding.di} days={activeTrip.days} identity={identity}

@@ -221,3 +221,24 @@
   background: transparent; color: var(--muted); border-radius: 10px;
   border: 1px dashed color-mix(in srgb, var(--fg) 25%, transparent); }
 .itAddDay:hover { color: var(--fg); border-color: var(--accent); }
+
+/* ── 가져오기·내보내기·공유 ── */
+.itFileBar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 0 0 8px; }
+.itFileBar > button { font-size: 12px; padding: 4px 10px; cursor: pointer; border-radius: 999px;
+  background: var(--card); color: var(--muted);
+  border: 1px solid color-mix(in srgb, var(--fg) 14%, transparent); }
+.itFileBar > button:hover { border-color: var(--accent); color: var(--accent); }
+.itShareUrl { flex: 1 1 220px; min-width: 0; font-size: 11px; padding: 4px 8px; border-radius: 8px;
+  background: var(--card); color: var(--muted);
+  border: 1px solid color-mix(in srgb, var(--fg) 18%, transparent); }
+
+/* ── 읽기전용 공유 보기 ── */
+.itRoBar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 8px 0;
+  padding: 8px 12px; font-size: 13px; border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 12%, var(--card));
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); }
+.itRoBar > span { flex: 1 1 240px; }
+.itRoBar button { font-size: 12px; padding: 4px 10px; cursor: pointer; border-radius: 999px;
+  background: var(--card); color: var(--fg);
+  border: 1px solid color-mix(in srgb, var(--fg) 18%, transparent); }
+.itRoBar .itRoSave { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 700; }
