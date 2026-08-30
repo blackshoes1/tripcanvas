@@ -526,7 +526,10 @@
   function normalizeSpot(s){
     s = (s && typeof s==='object') ? Object.assign({}, s) : {};
     s.name=_str(s.name); s.city=_str(s.city).trim()||'기타'; s.desc=_str(s.desc);
-    const lat=+s.lat, lng=+s.lng;
+    // 좌표는 숫자·숫자 문자열만 인정한다. +null·+''는 0이라 '위치 없음'(lat:null — normalizeSpot
+    // 자신의 출력 형식)이 재로드 정규화에서 (0,0) 실좌표로 둔갑해 동선·ETA를 오염시켰다.
+    const num=(/**@type {any}*/v)=>{ if(typeof v==='number') return v; if(typeof v==='string' && v.trim()!=='') return +v; return NaN; };
+    const lat=num(s.lat), lng=num(s.lng);
     if(_fin(lat)&&_fin(lng)&&lat>=-90&&lat<=90&&lng>=-180&&lng<=180){ s.lat=lat; s.lng=lng; }
     else { s.lat=null; s.lng=null; }
     if(_hm(s.at)===undefined) delete s.at;

@@ -278,6 +278,16 @@ test('normalizeTrip — 유입 데이터 검증·기본값·크래시 방어', (
   // 잘못된 좌표 → null
   const bad=L.normalizeTrip({days:[{spots:[{name:'X',lat:'zz',lng:999}]}]});
   assert.equal(bad.days[0].spots[0].lat,null); assert.equal(bad.days[0].spots[0].lng,null);
+  // 회귀: '위치 없음'(lat:null — normalizeSpot 자신의 출력)이 재정규화에서 (0,0)이 되면 안 된다
+  // (+null=0이라 저장→재로드 시 위치 미지정 장소가 아프리카 앞바다 실좌표로 둔갑했다)
+  const round=L.normalizeTrip(JSON.parse(JSON.stringify(
+    L.normalizeTrip({days:[{spots:[{name:'위치미정'}]}]}))));
+  assert.equal(round.days[0].spots[0].lat,null); assert.equal(round.days[0].spots[0].lng,null);
+  const blank=L.normalizeTrip({days:[{spots:[{name:'B',lat:'',lng:' '},{name:'C',lat:true,lng:[]}]}]});
+  assert.equal(blank.days[0].spots[0].lat,null); assert.equal(blank.days[0].spots[1].lat,null);
+  // 숫자 문자열 좌표는 계속 인정
+  const strNum=L.normalizeTrip({days:[{spots:[{name:'D',lat:'35.8',lng:'129.2'}]}]});
+  assert.equal(strNum.days[0].spots[0].lat,35.8);
   // 알 수 없는 mode·통화·구간수단·정책·시각·값 → 제거/기본
   const cl=L.normalizeTrip({start:'nope',days:[{mode:'zzz',startPolicy:'weird',startAt:'25:99',spots:[{name:'Y',cur:'GBP',legMode:'rocket',at:'9:5',stayMin:'x',cost:-5}]}]});
   assert.equal(cl.start,'');                    // 잘못된 날짜 → ''
