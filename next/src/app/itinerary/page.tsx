@@ -1,12 +1,14 @@
 'use client';
-// 일정(Itinerary) 읽기 뷰 — 레거시 사이드바 일자 카드와 같은 데이터(tripcanvas_v1·tripcanvas_legs_v4)를
-// 같은 규칙(anchor/carry·타임라인·렌터카 연결·비용 배분)으로 보여주는 병행 화면.
-// 편집·지도·경로 조회는 아직 레거시 담당 (Phase 5·6에서 이관).
-import { useMemo } from 'react';
+// 일정(Itinerary) 읽기 뷰 — 레거시 사이드바+지도와 같은 데이터(tripcanvas_v1·tripcanvas_legs_v4)를
+// 같은 규칙(anchor/carry·타임라인·렌터카 연결·비용 배분·지도 장면)으로 보여주는 병행 화면.
+// 편집·드래그·POI 담기·검색·재생·경로 조회는 아직 레거시 담당 (Phase 6에서 이관).
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { DayCard } from '@/features/itinerary/components/DayCard';
 import { buildDayView, tripCostBreakdownOf } from '@/features/itinerary/domain/dayView';
 import { useLegCache } from '@/features/itinerary/hooks/useLegCache';
+import { MapView } from '@/features/map/components/MapView';
+import { buildMapScene, dayColor, entryFitOf, fitTargetOf } from '@/features/map/domain/scene';
 import { useTripStore } from '@/features/trip/hooks/useTripStore';
 import { fmtMoney } from '@/lib/currency/format';
 import './itinerary.css';
@@ -14,6 +16,12 @@ import './itinerary.css';
 export default function ItineraryPage() {
   const { activeTrip } = useTripStore();
   const legCache = useLegCache();
+
+  /** 1-based 일자 필터, 0=전체 (레거시 activeDay와 동일 의미) */
+  const [activeDay, setActiveDay] = useState(0);
+  /** 첫 조작 전에는 진입 프레이밍(위치 있는 첫 일자)을 유지 */
+  const [didEntry, setDidEntry] = useState(false);
+  const [sel, setSel] = useState<{ di: number; si: number } | null>(null);
 
   const views = useMemo(
     () => (activeTrip ? activeTrip.days.map((_, di) => buildDayView(activeTrip, legCache, di)) : []),
@@ -23,6 +31,20 @@ export default function ItineraryPage() {
     () => (activeTrip ? tripCostBreakdownOf(activeTrip, legCache) : null),
     [activeTrip, legCache]
   );
+  const scene = useMemo(
+    () => (activeTrip ? buildMapScene(activeTrip, legCache, activeDay) : null),
+    [activeTrip, legCache, activeDay]
+  );
+  const fit = useMemo(
+    () => (activeTrip ? (didEntry ? fitTargetOf(activeTrip, activeDay) : entryFitOf(activeTrip)) : null),
+    [activeTrip, activeDay, didEntry]
+  );
+
+  const selectDay = (d: number) => { setDidEntry(true); setActiveDay(d); };
+  const onPinClick = useCallback((di: number, si: number) => setSel({ di, si }), []);
+  useEffect(() => {
+    if (sel) document.getElementById(`it-d${sel.di}-s${sel.si}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [sel]);
 
   if (!activeTrip) {
     return (
@@ -51,10 +73,37 @@ export default function ItineraryPage() {
           )}
         </div>
       )}
-      {views.map(v => <DayCard key={v.di} view={v} />)}
+      <div className="itDayChips" role="group" aria-label="지도에 표시할 일자">
+        <button type="button" className={`itDayChip${activeDay === 0 ? ' on' : ''}`} onClick={() => selectDay(0)}>
+          전체
+        </button>
+        {views.map(v => (
+          <button
+            key={v.di} type="button"
+            className={`itDayChip${activeDay === v.dayNo ? ' on' : ''}`}
+            onClick={() => selectDay(activeDay === v.dayNo ? 0 : v.dayNo)}
+          >
+            <i className="dot" style={{ background: dayColor(v.di) }} aria-hidden="true" />Day {v.dayNo}
+          </button>
+        ))}
+        <span className="itLegendNote" aria-hidden="true">- - - 일자 간 이동</span>
+      </div>
+      <div className="itLayout">
+        {scene && <MapView scene={scene} fit={fit} onPinClick={onPinClick} />}
+        <div className="itCards">
+          {views.map(v => (
+            <DayCard
+              key={v.di} view={v}
+              dim={activeDay !== 0 && activeDay !== v.dayNo}
+              selectedSi={sel?.di === v.di ? sel.si : null}
+              onHeaderClick={() => selectDay(activeDay === v.dayNo ? 0 : v.dayNo)}
+            />
+          ))}
+        </div>
+      </div>
       <p className="hint">
-        읽기 뷰입니다 — 장소 편집·드래그·지도는 기존 앱에서 계속 할 수 있어요. 이동 시간은 기존 앱이
-        저장한 경로 캐시를 쓰고, 캐시가 없는 구간은 직선거리 기반 추정입니다.
+        읽기 뷰입니다 — 장소 편집·드래그·지도에서 장소 담기·재생은 기존 앱에서 계속 할 수 있어요.
+        이동 시간·경로선은 기존 앱이 저장한 경로 캐시를 쓰고, 캐시가 없는 구간은 추정(선은 미표시)입니다.
       </p>
     </main>
   );

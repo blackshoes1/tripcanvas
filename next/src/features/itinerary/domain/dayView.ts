@@ -25,10 +25,10 @@ export const MODE_NAME: Record<TransportMode, string> =
 const MODE_SPEED: Record<TransportMode, number> =
   { car: 40, taxi: 40, transit: 25, train: 160, walk: 4.5, bike: 15, flight: 700 };
 
-type LatLng = { lat: number; lng: number };
-type LocatedSpot = Spot & LatLng;
+export type LatLng = { lat: number; lng: number };
+export type LocatedSpot = Spot & LatLng;
 
-function hasCoord(s: Spot | null | undefined): s is LocatedSpot {
+export function hasCoord(s: Spot | null | undefined): s is LocatedSpot {
   return !!s && s.lat != null && s.lng != null && isFinite(+s.lat) && isFinite(+s.lng);
 }
 
@@ -73,7 +73,7 @@ export function legMinutes(legCache: LegCache, a: LatLng, b: LatLng, mode: Trans
   return (haversine(a, b) / MODE_SPEED[m]) * 60;
 }
 
-function fmtDur(sec: number): string {
+export function fmtDur(sec: number): string {
   const m = Math.round(sec / 60);
   return m < 60 ? `${m}분` : `${Math.floor(m / 60)}시간${m % 60 ? ' ' + (m % 60) + '분' : ''}`;
 }
@@ -120,7 +120,7 @@ export function dayTimelineOf(trip: Trip, legCache: LegCache, di: number): Timel
 }
 
 /** 숙소 복귀 자동 구간 — 합성 구간이라 '일자 기본 수단'을 근거리 보정(localMode)해 쓴다 */
-function backLegOf(day: Day, back: Spot | null): { from: LocatedSpot; to: LocatedSpot; mode: TransportMode } | null {
+export function backLegOf(day: Day, back: Spot | null): { from: LocatedSpot; to: LocatedSpot; mode: TransportMode } | null {
   const loc = day.spots.filter(hasCoord);
   if (!back || !hasCoord(back) || !loc.length) return null;
   return { from: loc[loc.length - 1], to: back, mode: localMode(dayModeOf(day)) as TransportMode };

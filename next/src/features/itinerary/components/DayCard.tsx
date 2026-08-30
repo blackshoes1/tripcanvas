@@ -16,10 +16,10 @@ function CarEventRow({ ev }: { ev: CarEventRowView }) {
   );
 }
 
-function SpotRow({ s }: { s: SpotView }) {
+function SpotRow({ s, dayIndex, selected }: { s: SpotView; dayIndex: number; selected: boolean }) {
   const bookHref = safeUrl(s.bookUrl);
   return (
-    <div className="itSpot">
+    <div id={`it-d${dayIndex}-s${s.si}`} className={`itSpot${selected ? ' sel' : ''}`}>
       {s.leg && (
         <div className="itLeg" title={s.leg.title}>
           <span className="itLegMode" aria-hidden="true">{s.leg.modeIcon}</span> {s.leg.label}
@@ -73,10 +73,27 @@ function SpotRow({ s }: { s: SpotView }) {
   );
 }
 
-export function DayCard({ view }: { view: DayView }) {
+export function DayCard({ view, dim = false, selectedSi = null, onHeaderClick }: {
+  view: DayView;
+  /** 일자 필터 중 다른 날 — 흐리게 (레거시 .dayCard.dim) */
+  dim?: boolean;
+  /** 지도 핀에서 선택된 장소 강조 */
+  selectedSi?: number | null;
+  /** 헤더 탭 → 그 일자 필터 토글 + 지도 포커스 */
+  onHeaderClick?: () => void;
+}) {
   return (
-    <section className="itDay" aria-label={`Day ${view.dayNo} ${view.title}`}>
-      <header className="itDayHead">
+    <section className={`itDay${dim ? ' dim' : ''}`} aria-label={`Day ${view.dayNo} ${view.title}`}>
+      <header
+        className={`itDayHead${onHeaderClick ? ' clickable' : ''}`}
+        onClick={onHeaderClick}
+        role={onHeaderClick ? 'button' : undefined}
+        tabIndex={onHeaderClick ? 0 : undefined}
+        onKeyDown={e => {
+          if (onHeaderClick && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onHeaderClick(); }
+        }}
+        title={onHeaderClick ? '탭하면 이 일자만 지도에 표시' : undefined}
+      >
         <div className="itDayTitle">Day {view.dayNo}{view.title ? ` · ${view.title}` : ''}</div>
         <div className="itDayMeta">
           {view.dateLabel || '📅 날짜 미지정'}
@@ -110,7 +127,7 @@ export function DayCard({ view }: { view: DayView }) {
           </div>
         )}
         {view.carPickups.map(ev => <CarEventRow key={`p-${ev.bookingId}`} ev={ev} />)}
-        {view.spots.map(s => <SpotRow key={s.si} s={s} />)}
+        {view.spots.map(s => <SpotRow key={s.si} s={s} dayIndex={view.di} selected={selectedSi === s.si} />)}
         {view.carReturns.map(ev => <CarEventRow key={`r-${ev.bookingId}`} ev={ev} />)}
         {view.back && (
           <div className="itSpot itCarry" title="오늘 묵는 숙소 — 동선이 닫히도록 자동으로 이어 붙였습니다">

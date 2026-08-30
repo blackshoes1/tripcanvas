@@ -44,6 +44,9 @@ declare module '@legacy/lib.js' {
     toISO(d: Date): string;
     haversine(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number;
     legKey(a: { lat: number; lng: number }, b: { lat: number; lng: number }, mode?: string): string;
+    decodePolyline(str: string | null | undefined): { lat: number; lng: number }[];
+    encodePolyline(points: { lat: number; lng: number }[]): string;
+    inKorea(p: { lat: number; lng: number } | null | undefined): boolean;
     stayNights(s: unknown): number;
     localMode(mode: unknown): string;
     isOpenAt(periods: unknown, weekday: number, min: number): boolean | null;
