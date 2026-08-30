@@ -1,0 +1,41 @@
+/* Booking/Price 화면 — 레거시 style.css의 px* 클래스와 같은 시각 언어 (최소 이식) */
+.bkPage { max-width: 640px; margin: 0 auto; padding: 24px 16px 64px; }
+.bkPage h1 { font-size: 20px; }
+.bkPage h2 { font-size: 17px; margin: 12px 0 4px; }
+.hint { color: var(--muted); font-size: 12px; margin: 6px 0; }
+.opt { color: var(--muted); font-size: 11px; margin-left: 6px; }
+.btn { background: var(--card); color: var(--fg); border: 1px solid color-mix(in srgb, var(--fg) 15%, transparent);
+  border-radius: 8px; padding: 6px 12px; font-size: 13px; cursor: pointer; }
+.btn.primary { background: var(--accent); color: #fff; border-color: transparent; }
+.btn.danger { color: #e63946; border-color: #e6394655; }
+.addBtn { width: 100%; margin-top: 10px; }
+.pxRow { display: flex; width: 100%; justify-content: space-between; align-items: center; gap: 8px; text-align: left;
+  background: var(--card); border: 1px solid color-mix(in srgb, var(--fg) 10%, transparent);
+  border-radius: 10px; padding: 10px 12px; margin-top: 8px; cursor: pointer; color: var(--fg); }
+.pxRow .tn { display: flex; flex-direction: column; font-size: 14px; }
+.pxBadge { font-size: 11px; padding: 3px 8px; border-radius: 999px; white-space: nowrap; }
+.pxSave { background: #e6394622; color: #ff6b6b; }
+.pxWarn, .pxWarnT { background: #ff922b22; color: #ffa94d; }
+.pxGood { background: #37b24d22; color: #69db7c; }
+.pxWatch { background: #fab00522; color: #ffd43b; }
+.pxOff { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--muted); }
+.pxSummary { background: var(--card); border-radius: 10px; padding: 10px 12px; font-size: 13px; }
+.pxSummary > div { display: flex; justify-content: space-between; padding: 2px 0; }
+.pxSaveRow b { color: #ff6b6b; }
+.pxPotRow b { color: #ffa94d; }
+.pxActualRow b { color: #69db7c; }
+.pxState { border-radius: 8px; padding: 8px 10px; font-size: 13px; margin-top: 10px; }
+.pxQ { font-size: 11px; padding: 1px 6px; border-radius: 999px; margin-left: 4px; }
+.pxQok { background: #37b24d22; color: #69db7c; }
+.pxQask { background: #ff922b22; color: #ffa94d; }
+.pxHist { background: var(--card); border-radius: 8px; padding: 6px 10px; font-size: 12px; }
+.pxHist > div { display: flex; justify-content: space-between; padding: 3px 0; gap: 8px; }
+.pxActions { display: flex; gap: 8px; margin-top: 10px; align-items: center; }
+.bookingEditor label { display: block; font-size: 12px; color: var(--muted); margin-top: 10px; }
+.bookingEditor input, .bookingEditor select { width: 100%; margin-top: 4px; padding: 7px 9px; font-size: 14px;
+  background: var(--card); color: var(--fg); border: 1px solid color-mix(in srgb, var(--fg) 15%, transparent); border-radius: 8px; }
+.bookingEditor .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.bookingEditor .rowCheck { display: flex; align-items: center; gap: 6px; }
+.bookingEditor .rowCheck input { width: auto; }
+.formError { color: #e63946; font-size: 13px; margin-top: 8px; }
+label { font-size: 12px; color: var(--muted); display: block; margin-top: 10px; }

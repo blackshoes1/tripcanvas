@@ -31,3 +31,17 @@ declare module '@legacy/price.js' {
   };
   export = api;
 }
+
+declare module '@legacy/lib.js' {
+  const api: {
+    parseStorePayload(text: string | null): { ok: true; value: unknown } | { ok: false; error: string };
+    normalizeTrip(t: unknown): unknown | null;
+    normalizeBooking(b: unknown): unknown | null;
+    carReturnPoint(b: unknown): { place: string; code: string };
+    bookingShareOn(bookings: unknown[], iso: string): { id: string; type: string; title: string; amount: number; cur?: string }[];
+    parseHM(t: string): number;
+    TC_LIMITS: Readonly<Record<string, number>>;
+    TC_SCHEMA: number;
+  };
+  export = api;
+}
