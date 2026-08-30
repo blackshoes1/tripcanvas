@@ -17,9 +17,12 @@ export interface CachedLeg {
   /** 직선/도로거리 기반 추정 여부 (비행기·기차 등) */
   est?: boolean;
   /** 인근 도로 스냅으로 보정된 경로 */
-  snapped?: boolean;
-  /** 인근 도로 탐색까지 실패 */
-  fail?: boolean;
+  snapped?: boolean | number;
+  /** 인근 도로 탐색까지 실패 (레거시는 Date.now() 타임스탬프를 기록) */
+  fail?: boolean | number;
+  /** 대중교통 시각별 결과 스탬프 (레거시 pumpLegs 동일) */
+  when?: string;
+  timeZone?: string;
 }
 export type LegCache = Readonly<Record<string, CachedLeg>>;
 

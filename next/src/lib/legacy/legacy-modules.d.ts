@@ -46,6 +46,8 @@ declare module '@legacy/lib.js' {
     legKey(a: { lat: number; lng: number }, b: { lat: number; lng: number }, mode?: string): string;
     decodePolyline(str: string | null | undefined): { lat: number; lng: number }[];
     encodePolyline(points: { lat: number; lng: number }[]): string;
+    ringPts(p: { lat: number; lng: number }, r: number): { lat: number; lng: number }[];
+    zonedMinutesToISOString(isoDate: string, minutes: number, timeZone: string): string | null;
     inKorea(p: { lat: number; lng: number } | null | undefined): boolean;
     stayNights(s: unknown): number;
     localMode(mode: unknown): string;
@@ -69,6 +71,41 @@ declare module '@legacy/lib.js' {
     TC_SCHEMA: number;
   };
   export = api;
+}
+
+declare module '@legacy/routing.js' {
+  type RoutePoint = { lat: number | string; lng: number | string };
+  interface RouteResult {
+    sec: number; m: number; path: string | null;
+    mode?: string; est?: number; snapped?: number; taxi?: number;
+  }
+  const api: {
+    createRoutingClient(deps: {
+      fetchImpl: typeof fetch;
+      googleKey: string;
+      encodePolyline: (points: { lat: number; lng: number }[]) => string;
+      ringPts: (p: { lat: number; lng: number }, r: number) => { lat: number; lng: number }[];
+      haversine: (a: { lat: number; lng: number }, b: { lat: number; lng: number }) => number;
+      inKorea: (p: { lat: number; lng: number }) => boolean;
+    }): {
+      fetchLeg(a: RoutePoint, b: RoutePoint, mode: string, when?: string | null): Promise<RouteResult | null>;
+    };
+  };
+  export = api;
+}
+
+declare module '@legacy/api/kakao-directions.js' {
+  import type { LegacyNodeHandler } from '@/lib/legacy/nodeHandler';
+  interface HandlerDeps {
+    fetchImpl?: (url: string, init?: unknown) => Promise<unknown>;
+    env?: Record<string, string | undefined>;
+    now?: () => number;
+  }
+  const handler: LegacyNodeHandler & {
+    createHandler(deps?: HandlerDeps): LegacyNodeHandler;
+    _private: { buckets: Map<string, unknown> } & Record<string, unknown>;
+  };
+  export = handler;
 }
 
 declare module '@legacy/api/hotel-offers.js' {
