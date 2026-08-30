@@ -848,3 +848,22 @@ test('bookingShareOn — 기간·가격이 없으면 어느 날에도 배분하�
   assert.deepEqual(L.bookingShareOn(null,'2026-09-01'), []);
   assert.deepEqual(L.bookingShareOn([{id:'a',type:'car',price:1,start:'2026-09-01',end:'2026-09-01'}],'2026-9-1'), [], '날짜 형식');
 });
+
+test('sampleTrip — 저장소에 그대로 심어지므로 검증을 통과해야 한다', () => {
+  const t = L.sampleTrip();
+  assert.ok(L.validateTripPayload(t).ok, '유입 검증 통과');
+  assert.ok(L.normalizeTrip(t), '정규화 통과');
+  assert.ok(t.days.length > 0 && t.days.some(d => d.spots.length), '둘러볼 내용이 있어야');
+  // 클라우드 제외가 이 id로 걸러진다 — 바뀌면 데모가 계정마다 하나씩 올라간다
+  assert.equal(t.id, 'spain2026');
+  assert.equal(t.sample, true);
+});
+
+test('sampleTrip — 부를 때마다 새 객체 (공유하면 한쪽 편집이 다른 쪽에 샌다)', () => {
+  const a = L.sampleTrip(), b = L.sampleTrip();
+  assert.notStrictEqual(a, b);
+  assert.notStrictEqual(a.days, b.days);
+  assert.notStrictEqual(a.days[0].spots[0], b.days[0].spots[0]);
+  a.days[0].spots[0].name = '바뀐 이름';
+  assert.notEqual(b.days[0].spots[0].name, '바뀐 이름');
+});

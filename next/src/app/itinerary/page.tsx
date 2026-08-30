@@ -38,6 +38,11 @@ import { DayEditor } from '@/features/trip/components/DayEditor';
 import { TripBar } from '@/features/trip/components/TripBar';
 import { addDay, duplicateDay, newTrip, newTripId, removeDay } from '@/features/trip/domain/tripEditor';
 import { useTripStore } from '@/features/trip/hooks/useTripStore';
+import { useUndo } from '@/features/trip/hooks/useUndo';
+import { useOnboarding } from '@/features/trip/hooks/useOnboarding';
+import { Onboarding } from '@/features/trip/components/Onboarding';
+import { SAMPLE_TRIP_ID } from '@/features/cloud/domain/syncDecisions';
+import legacyLib from '@legacy/lib.js';
 import type { Spot, Trip } from '@/features/trip/domain/types';
 import { todayISO } from '@/lib/date/today';
 import { fmtMoney } from '@/lib/currency/format';
@@ -72,8 +77,15 @@ export default function ItineraryPage() {
   /** 편집 중인 일자 — 열려 있는 동안만 */
   const [editingDay, setEditingDay] = useState<number | null>(null);
   const [pasting, setPasting] = useState(false);
+  /** 로그인 창 — 첫 방문 소개에서도 열 수 있어야 해서 여기서 들고 있는다 */
+  const [signInOpen, setSignInOpen] = useState(false);
   // 클라우드 동기화 — 로그인하면 이 기기 밖에도 저장된다 (읽기전용 보기에서는 쓰지 않는다)
   const cloud = useCloudSync(trips, activeTrip?.id ?? null, replaceTrips, setNotice);
+  // 되돌리면 선택·펼친 일자가 사라진 장소를 가리킬 수 있다 (레거시도 activeDay를 0으로 되돌린다)
+  const onboarding = useOnboarding(trips, !readOnly);
+  const undoable = useUndo(!readOnly, setNotice, () => {
+    setActiveDay(0); setSel(null); setDidEntry(false); setEditingDay(null); setEditing(null); setAdding(null);
+  });
   /** 이미지로 찍는 중인 카드 — 화면 밖에 그려 두고 캡처한다 */
   const [card, setCard] = useState<CardModel | null>(null);
   const cardRef = useRef<HTMLDivElement | null>(null);
@@ -106,9 +118,19 @@ export default function ItineraryPage() {
     setActiveDay(0); setSel(null); setDidEntry(false);
     setNotice('새 여행을 만들었어요 — 여행 정보에서 이름·날짜를 정해주세요');
   };
+  /**
+   * 샘플 둘러보기 — 레거시가 첫 방문에 심어 주는 여행을 Next에서는 **눌렀을 때만** 넣는다.
+   * (자동으로 심으면 만든 적 없는 여행이 목록에 생긴다. 클라우드에는 올리지 않는다 — uploadable)
+   */
+  const browseSample = () => {
+    if (trips.some(t => t.id === SAMPLE_TRIP_ID)) { onSwitchTrip(SAMPLE_TRIP_ID); return; }
+    if (!addTrip(legacyLib.sampleTrip() as Trip)) { setNotice(SAVE_FAILED); return; }
+    setActiveDay(0); setSel(null); setDidEntry(false);
+    setNotice('샘플 여행이에요 — 마음껏 고쳐 보고, 필요 없으면 지워도 됩니다');
+  };
   const deleteActiveTrip = () => {
     if (!activeTrip) return;
-    if (!window.confirm(`"${activeTrip.name}" 여행을 삭제할까요? 되돌릴 수 없습니다.`)) return;
+    if (!window.confirm(`"${activeTrip.name}" 여행을 삭제할까요? (↩️ 실행취소로 되돌릴 수 있어요)`)) return;
     const doomed = activeTrip;
     if (!removeTrip(activeTrip.id)) { setNotice('여행이 하나뿐이라 지울 수 없어요'); return; }
     // 클라우드에도 지웠다고 알린다 — 안 하면 다음 로그인 병합이 이 여행을 되살린다
@@ -336,6 +358,19 @@ export default function ItineraryPage() {
   }, [card]);
 
 
+  // 첫 방문 소개 — 어느 갈래를 골라도 소개를 닫고 곧바로 그 일을 시작한다
+  if (onboarding.show) {
+    return (
+      <Onboarding
+        canSignIn={cloud.available}
+        onPaste={() => { onboarding.dismiss(); setPasting(true); }}
+        onNew={() => { onboarding.dismiss(); createTrip(); }}
+        onSample={() => { onboarding.dismiss(); browseSample(); }}
+        onSignIn={() => { onboarding.dismiss(); setSignInOpen(true); }}
+      />
+    );
+  }
+
   if (!shownTrip) {
     return (
       <main className="itPage">
@@ -378,6 +413,7 @@ export default function ItineraryPage() {
             trips={trips} activeTrip={activeTrip}
             onSwitch={onSwitchTrip} onNew={createTrip} onSave={saveTripMeta} onDelete={deleteActiveTrip}
             signedIn={!!cloud.user}
+            canUndo={undoable.canUndo} onUndo={undoable.undo}
             onRestore={t => {
               // 되돌린 여행은 지금 여행을 대체한다 (id가 같으므로 제자리 교체)
               setNotice(updateActiveTrip(() => t) ? '그 시점으로 되돌렸어요' : SAVE_FAILED);
@@ -387,6 +423,7 @@ export default function ItineraryPage() {
           <AuthBar
             user={cloud.user} available={cloud.available} statusLabel={cloud.statusLabel}
             onSignIn={cloud.signIn} onSignOut={() => { void cloud.signOut(); setNotice('로그아웃됐어요'); }}
+            open={signInOpen} onOpenChange={setSignInOpen}
           />
           <TripFileBar
             trip={activeTrip} newId={newTripId} onNotice={setNotice}

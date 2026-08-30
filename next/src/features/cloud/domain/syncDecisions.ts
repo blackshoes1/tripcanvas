@@ -31,6 +31,31 @@ export function staleTrips(trips: Trip[], meta: SyncMeta): Trip[] {
   });
 }
 
+/** 레거시가 첫 방문에 심어 주는 샘플 여행의 id (app.js seedSpain) */
+export const SAMPLE_TRIP_ID = 'spain2026';
+
+/**
+ * 샘플 여행을 클라우드에 올려도 되는가.
+ *
+ * ⚠️ 샘플은 **모든 기기에 똑같이 심어지는 데모**다. 그대로 올리면 계정마다 만든 적 없는
+ * 여행이 하나씩 생기고, 기기가 둘이면 서로 다른 편집본이 충돌로 뜬다. 레거시는 올리지 않는데
+ * Next만 올리면 레거시 사용자 계정에도 샘플이 들어간다 — 병행 운영에서 갈라지면 안 되는 판정.
+ * 이미 클라우드에 있는(revision이 붙은) 것만 계속 동기화한다.
+ */
+export function uploadable(trip: Trip, entry: SyncEntry | undefined): boolean {
+  return trip.id !== SAMPLE_TRIP_ID || !!entry?.revision;
+}
+
+/**
+ * 로그인 병합에 넣을 로컬 여행 목록. 클라우드에 행이 없는 샘플은 뺀다 —
+ * 넣으면 병합이 '아직 안 올라간 로컬 여행'으로 보고 계정에 심는다.
+ */
+export function mergeInput(trips: Trip[], rows: { client_id?: string }[]): Trip[] {
+  return trips.filter(
+    t => t.id !== SAMPLE_TRIP_ID || (rows ?? []).some(r => r && r.client_id === t.id)
+  );
+}
+
 /** 지금 올릴 수 있는 상태인가 — 미해결 충돌은 사용자가 고르기 전까지 건드리지 않는다 */
 export function canUpload(entry: SyncEntry | undefined, force: boolean): boolean {
   if (force) return true;

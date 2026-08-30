@@ -284,3 +284,20 @@
   background: transparent; color: var(--accent);
   border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); }
 .itSnapRow button:disabled { opacity: .5; cursor: default; }
+
+/* ── 첫 방문 소개 ── */
+.itOnboardBg { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center;
+  justify-content: center; padding: 20px; background: var(--bg); overflow-y: auto; }
+.itOnboard { width: 100%; max-width: 400px; text-align: center; }
+.itOnboardMark { font-size: 40px; line-height: 1; color: var(--accent, #4f8cff); }
+.itOnboardEyebrow { margin: 10px 0 0; font-size: 11px; letter-spacing: .18em; color: var(--muted); }
+.itOnboard h1 { margin: 6px 0 10px; font-size: 26px; line-height: 1.35; }
+.itOnboardLead { margin: 0 0 24px; font-size: 14px; color: var(--muted); }
+.itOnboardActions { display: flex; flex-direction: column; gap: 8px; }
+.itOnboardActions button { padding: 12px 14px; font-size: 14px; font-family: inherit; cursor: pointer;
+  border-radius: 10px; background: var(--card); color: var(--fg);
+  border: 1px solid color-mix(in srgb, var(--fg) 18%, transparent); }
+.itOnboardActions .itOnboardPrimary { background: var(--accent, #4f8cff); color: #fff; border-color: transparent; }
+.itOnboardActions .itOnboardGhost { background: none; color: var(--muted); }
+.itOnboardLogin { margin-top: 20px; padding: 6px; font-size: 13px; font-family: inherit; cursor: pointer;
+  background: none; border: 0; color: var(--muted); }

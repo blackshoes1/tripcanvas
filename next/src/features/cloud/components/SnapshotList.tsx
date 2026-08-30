@@ -39,7 +39,7 @@ export function SnapshotList({ clientId, signedIn, onRestore }: {
   }
 
   const restore = async (id: number) => {
-    if (!window.confirm('이 시점으로 되돌릴까요? 지금 내용은 덮어씁니다.')) return;
+    if (!window.confirm('이 시점으로 되돌릴까요? (지금 내용은 ↩️ 실행취소로 되돌릴 수 있어요)')) return;
     setBusy(true);
     setError(null);
     try {

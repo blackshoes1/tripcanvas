@@ -4,7 +4,8 @@ import { describe, expect, it } from 'vitest';
 import type { Trip } from '@/features/trip/domain/types';
 import type { SyncEntry, SyncMeta } from '../services/syncMetaStore';
 import {
-  canUpload, isSettled, pendingDeletes, resurrectedIds, shouldMergeOnAuth, staleTrips, syncLabel
+  canUpload, isSettled, mergeInput, pendingDeletes, resurrectedIds, SAMPLE_TRIP_ID,
+  shouldMergeOnAuth, staleTrips, syncLabel, uploadable
 } from './syncDecisions';
 
 const { hashTrip } = legacySync;
@@ -184,5 +185,40 @@ describe('mergeForLogin 계약 (sync.js 공유)', () => {
     const r = legacySync.mergeForLogin([trip('t1')], [], {});
     expect(r.conflicts).toEqual([]);
     expect(r.actions.map(a => a.kind)).toEqual(['upload']);
+  });
+});
+
+// 샘플은 모든 기기에 똑같이 심어지는 데모다. 레거시는 안 올리는데 Next만 올리면
+// 레거시 사용자 계정에도 만든 적 없는 여행이 생긴다.
+describe('uploadable · mergeInput (샘플 여행)', () => {
+  const sample = trip(SAMPLE_TRIP_ID, '🇪🇸 스페인 신혼여행');
+  const mine = trip('t1', '내 여행');
+
+  it('내 여행은 언제나 올린다', () => {
+    expect(uploadable(mine, undefined)).toBe(true);
+    expect(uploadable(mine, entry({ revision: 0 }))).toBe(true);
+  });
+
+  it('아직 클라우드에 없는 샘플은 올리지 않는다', () => {
+    expect(uploadable(sample, undefined)).toBe(false);
+    expect(uploadable(sample, entry({ revision: 0 }))).toBe(false);
+  });
+
+  // 한 번 올라간 뒤엔 편집이 끊기면 안 된다 (그 기기에서 진짜 쓰는 여행이 된 것)
+  it('이미 클라우드에 있는 샘플은 계속 동기화한다', () => {
+    expect(uploadable(sample, entry({ revision: 3 }))).toBe(true);
+  });
+
+  it('병합 입력에서 클라우드에 없는 샘플을 뺀다', () => {
+    expect(mergeInput([mine, sample], []).map(t => t.id)).toEqual(['t1']);
+  });
+
+  it('클라우드에 행이 있으면 병합 입력에 넣는다', () => {
+    const rows = [{ client_id: SAMPLE_TRIP_ID }];
+    expect(mergeInput([mine, sample], rows).map(t => t.id)).toEqual(['t1', SAMPLE_TRIP_ID]);
+  });
+
+  it('행 목록이 비거나 이상해도 내 여행은 남는다', () => {
+    expect(mergeInput([mine], []).map(t => t.id)).toEqual(['t1']);
   });
 });

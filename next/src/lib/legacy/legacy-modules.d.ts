@@ -51,6 +51,8 @@ declare module '@legacy/lib.js' {
     /** 외부 지도 링크 — 국내는 카카오맵, 해외는 구글 */
     extMapLink(s: { name: string; lat: number | string; lng: number | string }): { href: string; label: string };
     normalizeTrip(t: unknown): unknown | null;
+    /** 첫 방문에 심어 주는 샘플 여행 — 부를 때마다 새 객체 */
+    sampleTrip(): unknown;
     normalizeBooking(b: unknown): unknown | null;
     carReturnPoint(b: unknown): { place: string; code: string };
     bookingShareOn(bookings: unknown[], iso: string): { id: string; type: string; title: string; amount: number; cur?: string }[];
