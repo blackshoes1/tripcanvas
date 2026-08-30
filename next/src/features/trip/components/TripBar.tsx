@@ -2,6 +2,7 @@
 // 여행 전환·생성·편집 — 레거시 헤더의 여행 선택 + 여행 모달과 같은 역할.
 import { useState } from 'react';
 
+import { SnapshotList } from '@/features/cloud/components/SnapshotList';
 import type { Trip } from '../domain/types';
 import { updateTripMeta, type TripEditError } from '../domain/tripEditor';
 
@@ -11,13 +12,17 @@ const ERR_MSG: Record<TripEditError, string> = {
   NO_SUCH_DAY: '그 일자를 찾지 못했어요'
 };
 
-export function TripBar({ trips, activeTrip, onSwitch, onNew, onSave, onDelete }: {
+export function TripBar({ trips, activeTrip, onSwitch, onNew, onSave, onDelete, signedIn, onRestore }: {
   trips: Trip[];
   activeTrip: Trip;
   onSwitch: (id: string) => void;
   onNew: () => void;
   onSave: (next: Trip) => void;
   onDelete: () => void;
+  /** 로그인 상태 — 버전 히스토리는 클라우드에 쌓인다 */
+  signedIn?: boolean;
+  /** 그 시점으로 되돌리기 */
+  onRestore?: (trip: Trip) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(activeTrip.name);
@@ -69,6 +74,15 @@ export function TripBar({ trips, activeTrip, onSwitch, onNew, onSave, onDelete }
               </label>
             </div>
             <p className="hint">시작일을 바꾸면 모든 일자가 함께 움직입니다. 시간대는 대중교통 시각 계산에 쓰입니다.</p>
+            {onRestore && (
+              <details className="itSnapDetails">
+                <summary>🕘 버전 기록</summary>
+                <SnapshotList
+                  clientId={activeTrip.id} signedIn={!!signedIn}
+                  onRestore={t => { setOpen(false); onRestore(t); }}
+                />
+              </details>
+            )}
             {error && <div className="itEditErr" role="alert">{error}</div>}
             <div className="itEditBtns">
               {trips.length > 1 && (

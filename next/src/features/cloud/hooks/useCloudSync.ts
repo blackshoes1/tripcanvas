@@ -3,6 +3,8 @@
 // 판정은 domain, 네트워크는 services/cloudSync, 여기는 React와 잇는 일만 한다 (§27).
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 
+import { pullPriceSnapshots } from '@/features/pricing/services/priceCloud';
+import { getPriceStoreSnapshot, replacePriceStore } from '@/features/pricing/services/localPriceStore';
 import { newTrip, newTripId } from '@/features/trip/domain/tripEditor';
 import type { Trip } from '@/features/trip/domain/types';
 import { todayISO } from '@/lib/date/today';
@@ -50,6 +52,13 @@ export function useCloudSync(
     void (async () => {
       await syncOnLogin(tripsRef.current, hooks);
       await reconcileUndoDeletes(tripsRef.current, hooks);
+      // 서버 cron·다른 기기가 남긴 가격 관측을 합친다 (실패해도 동기화는 유효)
+      try {
+        const merged = await pullPriceSnapshots(tripsRef.current, getPriceStoreSnapshot());
+        if (merged) replacePriceStore(merged);
+      } catch (e) {
+        console.warn('price.cloud-pull 실패:', e instanceof Error ? e.message : e);
+      }
     })();
   }, [hooks]);
 

@@ -65,6 +65,21 @@ export function subscribePriceStore(cb: () => void): () => void {
   return () => { listeners.delete(cb); };
 }
 
+/**
+ * 관측 기록을 통째로 되쓴다 (클라우드에서 받아온 기록 병합).
+ * 저장에 실패하면 false — 호출측이 화면만 바꿔 놓고 저장된 줄 알지 않게.
+ */
+export function replacePriceStore(next: PriceStore): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    window.localStorage.setItem(PRICE_KEY, JSON.stringify(next));
+    emit();
+    return true;
+  } catch {
+    return false;   // 쿼터 초과 등
+  }
+}
+
 /** 예약 삭제 시 관측 기록도 함께 정리 (골든: 참조 정리) */
 export function deletePriceRecord(bookingId: string): void {
   if (typeof window === 'undefined') return;
