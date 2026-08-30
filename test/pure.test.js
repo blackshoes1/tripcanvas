@@ -314,6 +314,38 @@ test('extMapLink — 국내는 카카오맵, 해외는 구글', () => {
   assert.ok(str.href.includes('33.5,126.5'));
 });
 
+test('budgetBookings — 연결된 숙박은 일정 카드 금액이 기준 (이중 계산 방지)', () => {
+  const bookings = [
+    { id: 'b1', type: 'hotel', title: '제주호텔', price: 200000 },
+    { id: 'b2', type: 'car', title: '렌터카', price: 90000 }
+  ];
+  // 숙소 장소에 비용을 적고 예약과 연결했다 → 그 예약은 예산에서 뺀다(장소 금액이 기준)
+  const linkedWithCost = [{ spots: [
+    { name: '제주호텔', stay: true, bookingId: 'b1', cost: 200000 }
+  ] }];
+  assert.deepEqual(L.budgetBookings(bookings, linkedWithCost).map(b => b.id), ['b2']);
+
+  // 연결했지만 장소에 비용이 없으면 예약 금액을 쓴다 — 안 그러면 돈이 사라진다
+  const linkedNoCost = [{ spots: [{ name: '제주호텔', stay: true, bookingId: 'b1' }] }];
+  assert.deepEqual(L.budgetBookings(bookings, linkedNoCost).map(b => b.id), ['b1', 'b2']);
+
+  // 비용이 0이면 '입력 안 함'과 같다
+  const zeroCost = [{ spots: [{ name: '제주호텔', bookingId: 'b1', cost: 0 }] }];
+  assert.deepEqual(L.budgetBookings(bookings, zeroCost).map(b => b.id), ['b1', 'b2']);
+
+  // 연결이 없으면 일정에 대응하는 장소가 없다 → 그대로 센다
+  const unlinked = [{ spots: [{ name: '어떤 숙소', stay: true, cost: 200000 }] }];
+  assert.deepEqual(L.budgetBookings(bookings, unlinked).map(b => b.id), ['b1', 'b2']);
+
+  // 렌터카·항공은 장소 연결(bookingId)이 없으므로 영향받지 않는다
+  const carLinked = [{ spots: [{ name: '제주공항', carPickupId: 'b2', cost: 50000 }] }];
+  assert.deepEqual(L.budgetBookings(bookings, carLinked).map(b => b.id), ['b1', 'b2']);
+
+  // 방어: 이상한 입력
+  assert.deepEqual(L.budgetBookings(null, null), []);
+  assert.deepEqual(L.budgetBookings(bookings, [{ spots: null }, null]).map(b => b.id), ['b1', 'b2']);
+});
+
 test('parseMoney — 통화 기호·접미사 (유로 포함)', () => {
   assert.deepEqual(L.parseMoney('입장료 €80'), {cost:80,cur:'EUR',raw:'€80'});
   assert.deepEqual(L.parseMoney('120,000 유로'), {cost:120000,cur:'EUR',raw:'120,000 유로'});

@@ -12,7 +12,7 @@ import type {
 } from './types';
 
 const {
-  bookingShareOn, carEventsOn, carSpotLinks, computeTimeline, dayReturnStay, dayStartAnchor,
+  bookingShareOn, budgetBookings, carEventsOn, carSpotLinks, computeTimeline, dayReturnStay, dayStartAnchor,
   haversine, hm, isOpenAt, legKey, localMode, parseHM, spotCatOf, stayNights, toISO
 } = legacyLib;
 
@@ -174,7 +174,9 @@ function daySpotCost(day: Day, fx: FxRates): number {
 }
 function dayBookingCost(trip: Trip, iso: string, fx: FxRates): number {
   if (!iso) return 0;
-  return bookingShareOn(tripBookings(trip), iso).reduce((a, x) => a + toKRW(x.amount, x.cur, fx), 0);
+  // 일정 장소가 이미 값을 들고 있는 예약(연결된 숙박)은 뺀다 — 안 그러면 숙박비가 두 번 잡힌다
+  return bookingShareOn(budgetBookings(tripBookings(trip), trip.days), iso)
+    .reduce((a, x) => a + toKRW(x.amount, x.cur, fx), 0);
 }
 function dayCostPartsOf(
   trip: Trip, legCache: LegCache, di: number, fx: FxRates
@@ -200,7 +202,7 @@ export function tripCostBreakdownOf(trip: Trip, legCache: LegCache, fx: FxRates 
     if (dm === 'car' || dm === 'taxi')
       out.taxi += dayRouteOf(legCache, d, dayReturnStay(trip.days as unknown[], i) as Spot | null)?.taxi ?? 0;
   });
-  tripBookings(trip).forEach(b => {
+  budgetBookings(tripBookings(trip), trip.days).forEach(b => {
     const k = b.type === 'car' || b.type === 'flight' ? b.type : 'hotel';
     out[k] += toKRW(+b.price || 0, b.cur, fx);
   });

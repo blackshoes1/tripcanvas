@@ -54,6 +54,11 @@ declare module '@legacy/lib.js' {
     normalizeBooking(b: unknown): unknown | null;
     carReturnPoint(b: unknown): { place: string; code: string };
     bookingShareOn(bookings: unknown[], iso: string): { id: string; type: string; title: string; amount: number; cur?: string }[];
+    /**
+     * 예산에 넣을 예약만 — 일정 장소가 이미 그 금액을 들고 있으면(연결된 숙박에 비용 입력) 뺀다.
+     * 기준은 일정 카드에 입력한 금액이고, 장소에 비용이 없을 때만 예약 금액을 쓴다.
+     */
+    budgetBookings<T>(bookings: T[], days: unknown[]): T[];
     parseHM(t: string | undefined): number;
     hm(min: number): string;
     /** 사람이 친 시각 입력 → HH:MM (범위 밖·빈 값이면 '') */

@@ -834,7 +834,9 @@ function loadFx(){
 function dayCost(day){ return day.spots.reduce((a,s)=>a+(s.cost? toKRW(s.cost,s.cur):0),0); }
 // 그 날짜에 배분된 예약비(숙박·렌터카·항공 하루치) — 원화 환산 합계
 function dayBookingCost(iso){
-  return bookingShareOn(tripBookings(), iso).reduce((a,x)=>a+toKRW(x.amount,x.cur),0);
+  // 일정 장소가 이미 값을 들고 있는 예약(연결된 숙박)은 뺀다 — 안 그러면 숙박비가 두 번 잡힌다
+  return bookingShareOn(budgetBookings(tripBookings(), trip().days), iso)
+    .reduce((a,x)=>a+toKRW(x.amount,x.cur),0);
 }
 function dayTaxiCost(day,di){
   const m=dayModeOf(day);
@@ -845,7 +847,7 @@ function dayTaxiCost(day,di){
 function tripCostBreakdown(){
   const out={spots:0, taxi:0, hotel:0, car:0, flight:0, total:0};
   trip().days.forEach((d,i)=>{ out.spots+=dayCost(d); out.taxi+=dayTaxiCost(d,i); });
-  tripBookings().forEach(b=>{
+  budgetBookings(tripBookings(), trip().days).forEach(b=>{
     const k=(b.type==='car'||b.type==='flight')? b.type : 'hotel';
     out[k]+=toKRW(+b.price||0, b.cur);
   });

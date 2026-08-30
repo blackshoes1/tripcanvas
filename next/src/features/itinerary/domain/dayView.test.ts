@@ -281,6 +281,60 @@ describe('그 외 표시 배선', () => {
     expect(v.spots[0].cost?.converted).toBeNull();
   });
 
+  // 사용자 제보: 숙소 금액이 일정 카드와 예약 추적 양쪽에 잡혀 예산이 두 배로 보였다.
+  // 예약 편집기에서 장소를 고르면 spot.bookingId가 걸리므로, 연결된 둘은 같은 숙박이다.
+  describe('숙박비 이중 계산', () => {
+    const hotelBooking = (over: Partial<Booking> = {}): Booking => ({
+      id: 'b1', type: 'hotel', title: '제주호텔', price: 200000, track: true,
+      start: '2026-10-01', end: '2026-10-02', ...over
+    } as Booking);
+
+    const linked = (cost?: number) => trip(
+      [day([hotel(cost != null ? { bookingId: 'b1', cost } : { bookingId: 'b1' })])],
+      { bookings: [hotelBooking()] }
+    );
+
+    it('연결된 숙박은 일정 카드 금액만 센다 — 예약 금액을 더하지 않는다', () => {
+      const t = linked(180000);
+      expect(tripCostBreakdownOf(t, NONE).spots).toBe(180000);
+      expect(tripCostBreakdownOf(t, NONE).hotel).toBe(0);
+      expect(tripCostBreakdownOf(t, NONE).total).toBe(180000);   // 380000이 아니다
+    });
+
+    it('하루 비용에서도 두 번 잡히지 않는다', () => {
+      const v = buildDayView(linked(180000), NONE, 0);
+      expect(v.cost.total).toBe(180000);
+      expect(v.cost.parts.map(p => p.label)).toEqual(['장소']);   // '예약' 몫이 없다
+    });
+
+    it('장소에 비용을 안 적었으면 예약 금액을 쓴다 — 돈이 사라지지 않게', () => {
+      const t = linked();
+      expect(tripCostBreakdownOf(t, NONE).hotel).toBe(200000);
+      expect(tripCostBreakdownOf(t, NONE).total).toBe(200000);
+      const v = buildDayView(t, NONE, 0);
+      expect(v.cost.parts.map(p => p.label)).toEqual(['예약']);
+    });
+
+    it('연결 안 된 예약은 그대로 센다 — 일정에 대응하는 장소가 없다', () => {
+      const t = trip([day([hotel({ cost: 180000 })])], { bookings: [hotelBooking()] });
+      expect(tripCostBreakdownOf(t, NONE).spots).toBe(180000);
+      expect(tripCostBreakdownOf(t, NONE).hotel).toBe(200000);
+    });
+
+    it('렌터카·항공은 영향받지 않는다', () => {
+      const t = trip([day([hotel({ bookingId: 'b1', cost: 180000 })])], {
+        bookings: [hotelBooking(), {
+          id: 'b2', type: 'car', title: '렌터카', price: 90000, track: true,
+          start: '2026-10-01', end: '2026-10-02'
+        } as Booking]
+      });
+      const c = tripCostBreakdownOf(t, NONE);
+      expect(c.hotel).toBe(0);
+      expect(c.car).toBe(90000);
+      expect(c.total).toBe(180000 + 90000);
+    });
+  });
+
   it('숙소 연박·항공편·빈 일자 표기', () => {
     const t = trip([day([hotel({ nights: 2 })], { flight: { code: 'KE1234', dep: 'GMP', arr: 'CJU', depAt: '07:30', arrAt: '08:40' } })]);
     const v = buildDayView(t, NONE, 0);

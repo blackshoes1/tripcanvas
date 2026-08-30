@@ -1316,6 +1316,41 @@ test('통합: 하루 비용에 예약 하루치가 들어가고, 하루 합계�
   w.close();
 });
 
+test('통합: 연결된 숙박은 일정 카드 금액이 예산 기준 (이중 계산 없음)', { skip: noJsdom }, () => {
+  // 제보: 숙소 금액이 일정 카드와 예약 추적 양쪽에 잡혀 예산이 두 배로 보였다.
+  // 예약 편집기에서 장소를 고르면 spot.bookingId가 걸리므로 연결된 둘은 같은 숙박이다.
+  const w=boot();
+  withTrip(w, `[
+    {title:'D1',drive:'',note:'',mode:'transit',spots:[
+      {name:'호텔',city:'P',desc:'',lat:39.5,lng:2.7,stay:true,bookingId:'h1',cost:180000}]},
+    {title:'D2',drive:'',note:'',mode:'transit',spots:[
+      {name:'해변',city:'P',desc:'',lat:39.34,lng:2.97,cost:12000}]}
+  ]`);
+  w.eval(`trip().bookings=[{id:'h1',type:'hotel',title:'호텔',price:200000,
+    start:'2026-08-01',end:'2026-08-02'}]; activeDay=0; render()`);
+
+  const cb=()=>w.eval(`JSON.parse(JSON.stringify(tripCostBreakdown()))`);
+  assert.deepEqual(cb(), {spots:192000, taxi:0, hotel:0, car:0, flight:0, total:192000},
+    '연결된 숙박 예약(200,000)은 예산에서 빠지고 장소 금액(180,000)이 기준');
+
+  const dayCosts=()=>[...w.document.querySelectorAll('.dayCard')].map(c=>{
+    const el=[...c.querySelectorAll('.dist')].find(x=>x.textContent.includes('하루 비용'));
+    return el? +el.textContent.replace(/\s+/g,'').match(/하루비용약₩([\d,]+)/)[1].replace(/,/g,'') : 0;
+  });
+  assert.deepEqual(dayCosts(), [180000, 12000], '하루 비용에서도 두 번 잡히지 않는다');
+
+  // 장소에 비용을 안 적었으면 예약 금액을 쓴다 — 돈이 사라지지 않게
+  w.eval(`delete trip().days[0].spots[0].cost; render()`);
+  assert.equal(cb().hotel, 200000);
+  assert.equal(cb().total, 212000);
+
+  // 연결을 떼면 일정에 대응하는 장소가 없으므로 그대로 센다
+  w.eval(`trip().days[0].spots[0].cost=180000; delete trip().days[0].spots[0].bookingId; render()`);
+  assert.equal(cb().hotel, 200000);
+  assert.equal(cb().total, 392000, '연결이 없으면 둘 다 센다(같은 숙박인지 알 수 없다)');
+  w.close();
+});
+
 test('통합: 예약 통화가 달라도 원화로 환산해 합산한다', { skip: noJsdom }, () => {
   const w=boot();
   withTrip(w, `[{title:'D1',drive:'',note:'',mode:'transit',spots:[{name:'A',city:'P',desc:'',lat:39.5,lng:2.7}]}]`);
