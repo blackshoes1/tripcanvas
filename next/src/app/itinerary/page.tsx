@@ -9,6 +9,7 @@ import { buildDayView, tripCostBreakdownOf } from '@/features/itinerary/domain/d
 import { useLegCache } from '@/features/itinerary/hooks/useLegCache';
 import { MapView } from '@/features/map/components/MapView';
 import { buildMapScene, dayColor, entryFitOf, fitTargetOf } from '@/features/map/domain/scene';
+import { ensureTripLegs } from '@/features/routing/services/ensureTripLegs';
 import { useTripStore } from '@/features/trip/hooks/useTripStore';
 import { fmtMoney } from '@/lib/currency/format';
 import './itinerary.css';
@@ -42,6 +43,10 @@ export default function ItineraryPage() {
 
   const selectDay = (d: number) => { setDidEntry(true); setActiveDay(d); };
   const onPinClick = useCallback((di: number, si: number) => setSel({ di, si }), []);
+
+  // 빠진 구간 백그라운드 조회 (Phase 6a) — 결과가 캐시에 쓰이면 legCache 구독으로 ETA·경로선이 갱신되고,
+  // 그 갱신으로 출발시각이 바뀐 대중교통 구간은 재수집된다 (fetcher의 그룹 댐핑이 진동을 차단)
+  useEffect(() => { if (activeTrip) ensureTripLegs(activeTrip); }, [activeTrip, legCache]);
   useEffect(() => {
     if (sel) document.getElementById(`it-d${sel.di}-s${sel.si}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, [sel]);
@@ -103,7 +108,7 @@ export default function ItineraryPage() {
       </div>
       <p className="hint">
         읽기 뷰입니다 — 장소 편집·드래그·지도에서 장소 담기·재생은 기존 앱에서 계속 할 수 있어요.
-        이동 시간·경로선은 기존 앱이 저장한 경로 캐시를 쓰고, 캐시가 없는 구간은 추정(선은 미표시)입니다.
+        이동 시간·경로선은 자동으로 조회해 채웁니다 (조회 전에는 직선 추정).
       </p>
     </main>
   );
