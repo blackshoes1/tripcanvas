@@ -6,7 +6,7 @@ import legacyLib from '@legacy/lib.js';
 
 import type { Booking, CarBooking } from '@/features/booking/domain/types';
 import type { Day, Spot, TransportMode, Trip } from '@/features/trip/domain/types';
-import { costLabel, currencySymbol, fmtMoney, toKRW } from '@/lib/currency/format';
+import { costLabel, currencySymbol, fmtMoney, type FxRates, fxRates, toKRW } from '@/lib/currency/format';
 import type {
   CachedLeg, CarChipView, CarEventRowView, DayCostPart, DayView, LegCache, LegView, SpotView, TripCostView
 } from './types';
@@ -169,38 +169,40 @@ function dayDistanceOf(day: Day, back: Spot | null): number {
 function tripBookings(trip: Trip): Booking[] {
   return trip.bookings ?? [];
 }
-function daySpotCost(day: Day): number {
-  return day.spots.reduce((a, s) => a + (s.cost ? toKRW(s.cost, s.cur) : 0), 0);
+function daySpotCost(day: Day, fx: FxRates): number {
+  return day.spots.reduce((a, s) => a + (s.cost ? toKRW(s.cost, s.cur, fx) : 0), 0);
 }
-function dayBookingCost(trip: Trip, iso: string): number {
+function dayBookingCost(trip: Trip, iso: string, fx: FxRates): number {
   if (!iso) return 0;
-  return bookingShareOn(tripBookings(trip), iso).reduce((a, x) => a + toKRW(x.amount, x.cur), 0);
+  return bookingShareOn(tripBookings(trip), iso).reduce((a, x) => a + toKRW(x.amount, x.cur, fx), 0);
 }
-function dayCostPartsOf(trip: Trip, legCache: LegCache, di: number): { total: number; parts: DayCostPart[] } {
+function dayCostPartsOf(
+  trip: Trip, legCache: LegCache, di: number, fx: FxRates
+): { total: number; parts: DayCostPart[] } {
   const day = trip.days[di];
   const dm = dayModeOf(day);
   const road = dm === 'car' || dm === 'taxi';
   const rt = road ? dayRouteOf(legCache, day, dayReturnStay(trip.days as unknown[], di) as Spot | null) : null;
   const parts = ([
-    { label: '장소', amount: daySpotCost(day) },
+    { label: '장소', amount: daySpotCost(day, fx) },
     { label: '택시', amount: rt?.taxi ?? 0 },
-    { label: '예약', amount: dayBookingCost(trip, isoDateOf(trip, di)) }
+    { label: '예약', amount: dayBookingCost(trip, isoDateOf(trip, di), fx) }
   ] as DayCostPart[]).filter(p => p.amount > 0);
   return { total: parts.reduce((a, p) => a + p.amount, 0), parts };
 }
 
 /** 필터바 '전체 비용'과 같은 규칙 — 장소 + (자차·택시일) 택시 + 예약 전액 */
-export function tripCostBreakdownOf(trip: Trip, legCache: LegCache): TripCostView {
+export function tripCostBreakdownOf(trip: Trip, legCache: LegCache, fx: FxRates = fxRates()): TripCostView {
   const out: TripCostView = { spots: 0, taxi: 0, hotel: 0, car: 0, flight: 0, total: 0 };
   trip.days.forEach((d, i) => {
-    out.spots += daySpotCost(d);
+    out.spots += daySpotCost(d, fx);
     const dm = dayModeOf(d);
     if (dm === 'car' || dm === 'taxi')
       out.taxi += dayRouteOf(legCache, d, dayReturnStay(trip.days as unknown[], i) as Spot | null)?.taxi ?? 0;
   });
   tripBookings(trip).forEach(b => {
     const k = b.type === 'car' || b.type === 'flight' ? b.type : 'hotel';
-    out[k] += toKRW(+b.price || 0, b.cur);
+    out[k] += toKRW(+b.price || 0, b.cur, fx);
   });
   out.total = out.spots + out.taxi + out.hotel + out.car + out.flight;
   return out;
@@ -230,20 +232,20 @@ function carEventRowOf(e: ReturnType<typeof carEventsOn>[number]): CarEventRowVi
 }
 
 // ── 장소 행 ──
-function spotCostView(s: Spot): SpotView['cost'] {
+function spotCostView(s: Spot, fx: FxRates): SpotView['cost'] {
   if (!s.cost) return null;
   const sym = currencySymbol(s.cur);
   const nonKrw = !!sym && s.cur !== 'KRW';
   return {
     label: nonKrw ? `💳 ${sym}${fmtMoney(s.cost)}` : `💳 ₩${fmtMoney(s.cost)}`,
-    converted: nonKrw ? `약 ₩${fmtMoney(toKRW(s.cost, s.cur))}` : null,
-    title: nonKrw ? costLabel(s.cost, s.cur) : null
+    converted: nonKrw ? `약 ₩${fmtMoney(toKRW(s.cost, s.cur, fx))}` : null,
+    title: nonKrw ? costLabel(s.cost, s.cur, fx) : null
   };
 }
 
 function spotViewOf(
   trip: Trip, legCache: LegCache, day: Day, iso: string,
-  s: Spot, si: number, tl: TimelineEntry[], incoming: LocatedSpot | null
+  s: Spot, si: number, tl: TimelineEntry[], incoming: LocatedSpot | null, fx: FxRates
 ): SpotView {
   const t = tl[si];
   const inMode = legModeOf(day, s);
@@ -306,12 +308,12 @@ function spotViewOf(
     catIcon: cat?.icon ?? null, catName: cat?.name ?? null,
     etaText: hm(t.eta), fixed: t.fixed, conflict, etaTitle,
     stayLabel, optional: !!s.opt, noLoc: !located,
-    cost: spotCostView(s), book, bookUrl: s.bookUrl ?? null, carChips, hoursWarn, leg
+    cost: spotCostView(s, fx), book, bookUrl: s.bookUrl ?? null, carChips, hoursWarn, leg
   };
 }
 
 // ── 일자 뷰 ──
-export function buildDayView(trip: Trip, legCache: LegCache, di: number): DayView {
+export function buildDayView(trip: Trip, legCache: LegCache, di: number, fx: FxRates = fxRates()): DayView {
   const day = trip.days[di];
   const days = trip.days as unknown[];
   const iso = isoDateOf(trip, di);
@@ -328,7 +330,7 @@ export function buildDayView(trip: Trip, legCache: LegCache, di: number): DayVie
 
   let incoming: LocatedSpot | null = hasCoord(anchor) ? anchor : null;
   const spots = day.spots.map((s, si) => {
-    const v = spotViewOf(trip, legCache, day, iso, s, si, tl, incoming);
+    const v = spotViewOf(trip, legCache, day, iso, s, si, tl, incoming, fx);
     if (hasCoord(s)) incoming = s;
     return v;
   });
@@ -375,6 +377,6 @@ export function buildDayView(trip: Trip, legCache: LegCache, di: number): DayVie
     carReturns: carEv.filter(e => e.kind === 'return').map(carEventRowOf),
     back: bl ? { name: bl.to.name, modeIcon: MODE_ICON[bl.mode], leg: legViewOf(legCache, bl.from, bl.to, bl.mode) } : null,
     routeLabel, overloadLabel,
-    cost: dayCostPartsOf(trip, legCache, di)
+    cost: dayCostPartsOf(trip, legCache, di, fx)
   };
 }

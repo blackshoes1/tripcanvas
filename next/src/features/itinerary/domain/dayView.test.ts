@@ -253,6 +253,34 @@ describe('그 외 표시 배선', () => {
     expect(v.spots[2].leg).not.toBeNull();   // 공항→성산으로 이어짐
   });
 
+  // 환율은 하루 한 번 바뀐다. 뷰가 환율을 **인자로** 받지 않으면(모듈 전역에서 몰래 읽으면)
+  // 환율이 갱신돼도 호출측 memo가 그 사실을 몰라 옛 환산액이 화면에 남는다.
+  it('환율이 바뀌면 환산액도 바뀐다 — 환율은 뷰의 입력이다', () => {
+    const t = trip([day([spot('파리 식당', 48.86, 2.35, { cost: 100, cur: 'EUR' })])]);
+    const a = buildDayView(t, NONE, 0, { KRW: 1, EUR: 1500 });
+    const b = buildDayView(t, NONE, 0, { KRW: 1, EUR: 1600 });
+    expect(a.spots[0].cost?.converted).toBe('약 ₩150,000');
+    expect(b.spots[0].cost?.converted).toBe('약 ₩160,000');
+    // 원본 표기는 환율과 무관하다
+    expect(a.spots[0].cost?.label).toBe(b.spots[0].cost?.label);
+  });
+
+  it('전체 비용도 환율을 인자로 받는다', () => {
+    const t = trip([day([spot('파리 식당', 48.86, 2.35, { cost: 100, cur: 'EUR' })])], {
+      bookings: [{ id: 'b1', type: 'hotel', title: '파리 호텔', price: 200, cur: 'EUR', track: true,
+        start: '2026-10-01', end: '2026-10-02' }] as Booking[]
+    });
+    expect(tripCostBreakdownOf(t, NONE, { KRW: 1, EUR: 1500 }).total).toBe(100 * 1500 + 200 * 1500);
+    expect(tripCostBreakdownOf(t, NONE, { KRW: 1, EUR: 1600 }).total).toBe(100 * 1600 + 200 * 1600);
+  });
+
+  it('모르는 통화는 1:1로 눕힌다 — 환산 못 해도 금액은 보여준다', () => {
+    const t = trip([day([spot('런던 펍', 51.5, -0.12, { cost: 50, cur: 'GBP' as 'USD' })])]);
+    const v = buildDayView(t, NONE, 0, { KRW: 1, EUR: 1500 });
+    expect(v.spots[0].cost?.label).toBe('💳 ₩50');     // 기호를 모르면 원화 표기로 폴백
+    expect(v.spots[0].cost?.converted).toBeNull();
+  });
+
   it('숙소 연박·항공편·빈 일자 표기', () => {
     const t = trip([day([hotel({ nights: 2 })], { flight: { code: 'KE1234', dep: 'GMP', arr: 'CJU', depAt: '07:30', arrAt: '08:40' } })]);
     const v = buildDayView(t, NONE, 0);

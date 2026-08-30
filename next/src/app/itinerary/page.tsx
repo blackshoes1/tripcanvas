@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { DayCard } from '@/features/itinerary/components/DayCard';
 import { SpotEditor } from '@/features/itinerary/components/SpotEditor';
+import { useFxRates } from '@/features/currency/hooks/useFxRates';
 import { buildDayView, tripCostBreakdownOf } from '@/features/itinerary/domain/dayView';
 import {
   applySpotAdd, applySpotEdit, moveDay, moveSpot, moveSpotTo, newSpotDraft, removeSpot
@@ -37,6 +38,9 @@ const SAVE_FAILED = '저장에 실패했어요 — 저장 공간을 확인해주
 export default function ItineraryPage() {
   const { activeTrip, updateActiveTrip, trips, addTrip, switchTrip, removeTrip } = useTripStore();
   const legCache = useLegCache();
+  // 환율은 하루 한 번 갱신된다. 뷰 계산에 **인자로 넣어** 값이 바뀌면 환산액이 다시 그려지게 한다
+  // (모듈 전역에서 몰래 읽으면 memo가 바뀐 줄 몰라 옛 금액이 그대로 남는다)
+  const fx = useFxRates();
   // 남의 공유 링크(#v=)로 열렸으면 그 여행을 **저장소에 넣지 않고** 보여준다
   const { shared, claim, dismiss } = useSharedTrip();
   const readOnly = shared.kind === 'view';
@@ -60,12 +64,12 @@ export default function ItineraryPage() {
   const mapHandle = useRef<MapHandle | null>(null);
 
   const views = useMemo(
-    () => (shownTrip ? shownTrip.days.map((_, di) => buildDayView(shownTrip, legCache, di)) : []),
-    [shownTrip, legCache]
+    () => (shownTrip ? shownTrip.days.map((_, di) => buildDayView(shownTrip, legCache, di, fx)) : []),
+    [shownTrip, legCache, fx]
   );
   const cost = useMemo(
-    () => (shownTrip ? tripCostBreakdownOf(shownTrip, legCache) : null),
-    [shownTrip, legCache]
+    () => (shownTrip ? tripCostBreakdownOf(shownTrip, legCache, fx) : null),
+    [shownTrip, legCache, fx]
   );
   const scene = useMemo(
     () => (shownTrip ? buildMapScene(shownTrip, legCache, activeDay) : null),
