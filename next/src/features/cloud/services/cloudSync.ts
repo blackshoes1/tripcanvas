@@ -8,7 +8,7 @@ import legacyLib from '@legacy/lib.js';
 import legacySync from '@legacy/sync.js';
 
 import type { Trip } from '@/features/trip/domain/types';
-import { canUpload, pendingDeletes } from '../domain/syncDecisions';
+import { canUpload, mergeInput, pendingDeletes, SAMPLE_TRIP_ID, uploadable } from '../domain/syncDecisions';
 import { snapshotTrip } from './tripSnapshots';
 import { supabase } from './supabaseClient';
 import {
@@ -64,6 +64,8 @@ export async function syncTripCloud(
   if (!sb || !trip) return;
   const entry = syncEntry(trip.id);
   const force = !!opts.force;
+  // 아직 클라우드에 없는 샘플 여행은 올리지 않는다 (계정마다 데모가 하나씩 생긴다)
+  if (!uploadable(trip, entry)) return;
   if (!canUpload(entry, force)) return;
 
   entry.status = 'syncing';
@@ -191,7 +193,7 @@ export async function syncOnLogin(localTrips: Trip[], hooks: SyncHooks): Promise
       .select('client_id,data,revision,deleted_at,updated_at');
     if (error) throw error;
 
-    const merged = mergeForLogin(localTrips, rows ?? [], getSyncMeta());
+    const merged = mergeForLogin(mergeInput(localTrips, rows ?? []), rows ?? [], getSyncMeta());
     replaceSyncMeta(merged.meta as SyncMeta);
 
     // 클라우드에서 온 여행도 정규화·검증을 통과해야 한다 (§유입 데이터)
@@ -204,7 +206,10 @@ export async function syncOnLogin(localTrips: Trip[], hooks: SyncHooks): Promise
       return;
     }
     for (const c of merged.conflicts) hooks.onConflict(c as SyncConflict);
-    for (const a of merged.actions) await syncTripCloud(a.trip as unknown as Trip, hooks, { force: a.force });
+    for (const a of merged.actions) {
+      if ((a.trip as { id?: string }).id === SAMPLE_TRIP_ID) continue;   // 샘플은 병합 뒤에도 올리지 않는다
+      await syncTripCloud(a.trip as unknown as Trip, hooks, { force: a.force });
+    }
     await flushPendingSync(hooks);
 
     hooks.onNotice(

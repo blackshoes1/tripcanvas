@@ -11,8 +11,8 @@ const AREAS: { name: string; status: '이관됨' | '진행 중' | '레거시' }[
   { name: '재생(동선 따라가기) · 여행·일자 관리 · 환율 갱신', status: '이관됨' },
   { name: '가져오기·내보내기·공유 링크·이미지(PNG)·붙여넣기 초안', status: '이관됨' },
   { name: '여행 모드 (/travel — 현장에서 보는 화면)', status: '이관됨' },
-  { name: '클라우드 동기화 · 로그인 (Supabase)', status: '레거시' },
-  { name: '온보딩 · 설정 메뉴 전반', status: '레거시' }
+  { name: '클라우드 동기화 · 로그인 · 버전 히스토리 (Supabase)', status: '이관됨' },
+  { name: '온보딩 · 실행취소 · 설정 메뉴 전반', status: '이관됨' }
 ];
 
 const LINKS = [
@@ -48,6 +48,13 @@ export default function Home() {
           </li>
         ))}
       </ul>
+      <p style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.7 }}>
+        레거시 앱에만 남는 것: ☰ 메뉴 하단의 <b>버전 표시</b>. 서비스 워커가 캐시한 앱 셸이
+        옛 버전인지 보는 장치라, 앱 셸을 캐시하지 않는 이 워크스페이스에는 해당이 없다.
+        <br />
+        기능이 옮겨졌다고 레거시를 내리는 것은 아니다 — 실제 키(지도·검색·환율·AI)로 확인하기
+        전까지 프로덕션은 루트의 정적 앱이다.
+      </p>
     </main>
   );
 }

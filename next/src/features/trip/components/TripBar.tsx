@@ -12,7 +12,9 @@ const ERR_MSG: Record<TripEditError, string> = {
   NO_SUCH_DAY: '그 일자를 찾지 못했어요'
 };
 
-export function TripBar({ trips, activeTrip, onSwitch, onNew, onSave, onDelete, signedIn, onRestore }: {
+export function TripBar({
+  trips, activeTrip, onSwitch, onNew, onSave, onDelete, signedIn, onRestore, canUndo, onUndo
+}: {
   trips: Trip[];
   activeTrip: Trip;
   onSwitch: (id: string) => void;
@@ -23,6 +25,9 @@ export function TripBar({ trips, activeTrip, onSwitch, onNew, onSave, onDelete, 
   signedIn?: boolean;
   /** 그 시점으로 되돌리기 */
   onRestore?: (trip: Trip) => void;
+  /** 되돌릴 편집이 있는지 */
+  canUndo?: boolean;
+  onUndo?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(activeTrip.name);
@@ -57,6 +62,10 @@ export function TripBar({ trips, activeTrip, onSwitch, onNew, onSave, onDelete, 
       )}
       <button type="button" onClick={openEditor} title="여행 이름·날짜·시간대">✎ 여행 정보</button>
       <button type="button" onClick={onNew} title="새 여행 만들기">＋ 새 여행</button>
+      {onUndo && (
+        <button type="button" onClick={onUndo} disabled={!canUndo}
+          title="마지막 편집 되돌리기 (Ctrl+Z)">↩️ 실행취소</button>
+      )}
 
       {open && (
         <div className="itEditorBg" onClick={e => { if (e.target === e.currentTarget) setOpen(false); }}>

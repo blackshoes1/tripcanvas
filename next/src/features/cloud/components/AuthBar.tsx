@@ -4,15 +4,18 @@ import { useState } from 'react';
 
 import type { CloudUser } from '../hooks/useCloudAuth';
 
-export function AuthBar({ user, available, statusLabel, onSignIn, onSignOut }: {
+export function AuthBar({ user, available, statusLabel, onSignIn, onSignOut, open, onOpenChange }: {
   user: CloudUser | null;
   available: boolean;
   /** 활성 여행의 동기화 상태 한 줄 */
   statusLabel: string;
   onSignIn: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
   onSignOut: () => void;
+  /** 로그인 창 열림 — 첫 방문 소개의 '로그인'에서도 바로 열 수 있게 바깥이 들고 있는다 */
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const setOpen = onOpenChange;
   const [email, setEmail] = useState('');
   const [pass, setPass] = useState('');
   const [busy, setBusy] = useState(false);

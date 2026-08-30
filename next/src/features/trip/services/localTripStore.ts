@@ -5,6 +5,7 @@
 import legacyLib from '@legacy/lib.js';
 
 import type { Trip } from '@/features/trip/domain/types';
+import { dropUndoTop, readUndo, recordWrite } from './undoStore';
 
 const LS_KEY = 'tripcanvas_v1';
 
@@ -49,10 +50,17 @@ export function subscribeTripStore(cb: () => void): () => void {
   return () => { listeners.delete(cb); };
 }
 
-/** 저장소 전체를 되쓴다 — 여행 추가·전환·삭제처럼 목록 자체가 바뀔 때 */
-function writeStore(next: TripStore): boolean {
+/**
+ * 저장소 전체를 되쓴다 — 여행 추가·전환·삭제처럼 목록 자체가 바뀔 때.
+ * 성공했을 때만 되돌리기 히스토리에 직전 상태를 남긴다.
+ * @param history 되돌리기 자신의 되쓰기는 false (undoLastChange 참고)
+ */
+function writeStore(next: TripStore, history = true): boolean {
   try {
-    window.localStorage.setItem(LS_KEY, JSON.stringify(next));
+    const ser = JSON.stringify(next);
+    const prev = window.localStorage.getItem(LS_KEY);
+    window.localStorage.setItem(LS_KEY, ser);
+    recordWrite(prev, ser, history);
     emit();
     return true;
   } catch {
@@ -122,4 +130,32 @@ export function saveTrip(updated: Trip): boolean {
   const i = store.trips.findIndex(t => t.id === normalized.id);
   if (i < 0) return false;
   return writeStore({ ...store, trips: store.trips.map((t, k) => (k === i ? normalized : t)) });
+}
+
+/** 되돌리기 결과 — 화면이 이유별로 다른 말을 하도록 구분한다 */
+export type UndoResult = 'ok' | 'empty' | 'stale' | 'invalid' | 'failed';
+
+/**
+ * 마지막 편집을 되돌린다.
+ *
+ * 우리가 남긴 스냅샷이라도 되쓰기 전에 유입 검증(parseStorePayload)을 통과시킨다 —
+ * 검증을 건너뛰면 손상된 상태를 되살려 렌더가 깨진다.
+ * 되돌리기 자체는 히스토리에 쌓지 않는다(레거시 histLock).
+ */
+export function undoLastChange(): UndoResult {
+  if (typeof window === 'undefined') return 'failed';
+  const { verdict, snapshot } = readUndo(window.localStorage.getItem(LS_KEY));
+  if (verdict !== 'ok' || snapshot == null) return verdict === 'ok' ? 'failed' : verdict;
+
+  const parsed = legacyLib.parseStorePayload(snapshot);
+  if (!parsed.ok) { dropUndoTop(); return 'invalid'; }   // 못 되살릴 칸은 붙들고 있지 않는다
+  const store = parsed.value as TripStore;
+  // 활성 여행이 없는 스냅샷이면 남은 첫 여행으로 (레거시 undo와 동일)
+  const activeId = store.trips.some(t => t.id === store.activeId)
+    ? store.activeId
+    : (store.trips[0]?.id ?? '');
+
+  if (!writeStore({ ...store, activeId }, false)) return 'failed';
+  dropUndoTop();
+  return 'ok';
 }
