@@ -62,3 +62,35 @@ declare module '@legacy/api/hotel-offers.js' {
   };
   export = handler;
 }
+
+declare module '@legacy/api/car-offers.js' {
+  import type { LegacyNodeHandler } from '@/lib/legacy/nodeHandler';
+  interface CarAdapter {
+    id: string;
+    status(): string;
+    search(q: unknown): Promise<{ offers: unknown[] }>;
+  }
+  interface HandlerDeps {
+    env?: Record<string, string | undefined>;
+    adapters?: CarAdapter[];
+    now?: () => number;
+  }
+  const handler: LegacyNodeHandler & {
+    createHandler(deps?: HandlerDeps): LegacyNodeHandler;
+    _private: { buckets: Map<string, unknown> } & Record<string, unknown>;
+  };
+  export = handler;
+}
+
+declare module '@legacy/api/track-hotel-prices.js' {
+  import type { LegacyNodeHandler } from '@/lib/legacy/nodeHandler';
+  interface HandlerDeps {
+    fetchImpl?: (url: string, init?: unknown) => Promise<unknown>;
+    env?: Record<string, string | undefined>;
+  }
+  const handler: LegacyNodeHandler & {
+    createHandler(deps?: HandlerDeps): LegacyNodeHandler;
+    _private: Record<string, unknown>;
+  };
+  export = handler;
+}
