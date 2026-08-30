@@ -3,8 +3,7 @@
 const AREAS: { name: string; status: '이관됨' | '진행 중' | '레거시' }[] = [
   { name: 'Booking/Pricing 도메인 타입 + Saving Engine', status: '이관됨' },
   { name: 'Booking/Price UI (/bookings)', status: '진행 중' },
-  { name: 'API — hotel-offers (Route Handler)', status: '이관됨' },
-  { name: 'API — car-offers · cron', status: '레거시' },
+  { name: 'API — hotel-offers · car-offers · cron (Route Handler)', status: '이관됨' },
   { name: 'Itinerary (Trip/Day/Spot)', status: '레거시' },
   { name: 'Map', status: '레거시' }
 ];
