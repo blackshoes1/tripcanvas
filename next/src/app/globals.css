@@ -1,0 +1,19 @@
+/* 이관 중 최소 전역 스타일 — 기존 앱의 look은 기능 이관 시 컴포넌트 단위로 옮긴다 */
+:root {
+  color-scheme: light dark;
+  --bg: #0f1220;
+  --fg: #e8eaf2;
+  --muted: #8892b0;
+  --card: #1a1f33;
+  --accent: #7c5cff;
+}
+@media (prefers-color-scheme: light) {
+  :root { --bg: #f7f8fc; --fg: #1a1f33; --muted: #5b6478; --card: #ffffff; }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+}

@@ -1,0 +1,28 @@
+{
+  "name": "tripcanvas-next",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Trip Canvas — Next.js 점진 이관 워크스페이스 (Strangler Migration). 루트 정적 앱과 병행하며, 기능 동등성 확보 전에는 레거시를 대체하지 않는다.",
+  "scripts": {
+    "dev": "next dev -p 3000",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint src",
+    "check:types": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "next": "16.3.3",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "eslint": "^9.34.0",
+    "eslint-config-next": "16.3.3",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
+}
