@@ -8,12 +8,14 @@ import { IMPORT_MAX_BYTES, exportFilename, exportJson, importTrip } from '../dom
 import { compressShare } from '../services/shareCodec';
 import { copyText, downloadText, readTextFile } from '../services/fileTransfer';
 
-export function TripFileBar({ trip, onImport, onNotice, newId }: {
+export function TripFileBar({ trip, onImport, onNotice, newId, onPaste }: {
   trip: Trip;
   /** 가져온 여행을 저장소에 넣는다 — 실패하면 false */
   onImport: (t: Trip) => boolean;
   onNotice: (msg: string) => void;
   newId: () => string;
+  /** 붙여넣기 초안 모달 열기 */
+  onPaste?: () => void;
 }) {
   const fileRef = useRef<HTMLInputElement | null>(null);
   /** 클립보드가 막혔을 때 손으로 복사하도록 링크를 그대로 보여준다 */
@@ -49,6 +51,9 @@ export function TripFileBar({ trip, onImport, onNotice, newId }: {
         ⬆ 가져오기
       </button>
       <button type="button" onClick={doShare} title="읽기전용 보기 링크를 복사">🔗 공유</button>
+      {onPaste && (
+        <button type="button" onClick={onPaste} title="글을 붙여넣어 일정 초안 만들기">📋 붙여넣기</button>
+      )}
       <input
         ref={fileRef} type="file" accept="application/json,.json" hidden
         aria-label="여행 파일 가져오기"

@@ -21,6 +21,8 @@ import type { PoiPick } from '@/features/map/services/kakaoPoiLayer';
 import { PlayDayCard, PlayHud } from '@/features/playback/components/PlayHud';
 import { usePlayback } from '@/features/playback/hooks/usePlayback';
 import { ensureTripLegs } from '@/features/routing/services/ensureTripLegs';
+import { PasteModal } from '@/features/paste/components/PasteModal';
+import type { DraftTarget } from '@/features/paste/domain/pasteDraft';
 import { ReadOnlyBar } from '@/features/share/components/ReadOnlyBar';
 import { TripFileBar } from '@/features/share/components/TripFileBar';
 import { useSharedTrip } from '@/features/share/hooks/useSharedTrip';
@@ -61,6 +63,7 @@ export default function ItineraryPage() {
   const [notice, setNotice] = useState<string | null>(null);
   /** 편집 중인 일자 — 열려 있는 동안만 */
   const [editingDay, setEditingDay] = useState<number | null>(null);
+  const [pasting, setPasting] = useState(false);
   const mapHandle = useRef<MapHandle | null>(null);
 
   const views = useMemo(
@@ -97,6 +100,15 @@ export default function ItineraryPage() {
     setActiveDay(0); setSel(null); setDidEntry(false);
     setNotice('여행 삭제됨');
   };
+  /** 붙여넣기 초안 적용 — 새 여행이면 넣고, 기존 여행이면 갈아끼운다 */
+  const applyPasted = (t: Trip, target: DraftTarget, noLoc: number): boolean => {
+    const ok = target === 'new' ? addTrip(t) : updateActiveTrip(() => t);
+    if (!ok) return false;
+    setActiveDay(0); setSel(null); setDidEntry(false); setEditingDay(null);
+    setNotice(`초안 생성 완료${noLoc ? ` · ${noLoc}곳은 위치 미지정 (카드에서 ✏️로 지정)` : ''}`);
+    return true;
+  };
+
   const onSwitchTrip = (id: string) => {
     if (!switchTrip(id)) { setNotice(SAVE_FAILED); return; }
     setActiveDay(0); setSel(null); setDidEntry(false); setNotice(null);
@@ -303,6 +315,15 @@ export default function ItineraryPage() {
           이 브라우저에 저장된 여행이 없어요. 새로 만들거나, 기존 앱에서 만든 여행을 여기서 이어서 볼 수 있습니다.
         </p>
         <button type="button" className="itAddDay" onClick={createTrip}>＋ 새 여행 만들기</button>
+        <button type="button" className="itAddDay" onClick={() => setPasting(true)}>
+          📋 붙여넣기로 초안 만들기
+        </button>
+        {pasting && (
+          <PasteModal
+            current={null} onApply={applyPasted} onClose={() => setPasting(false)}
+            ids={{ newId: newTripId, today: todayISO }}
+          />
+        )}
       </main>
     );
   }
@@ -330,6 +351,7 @@ export default function ItineraryPage() {
           <TripFileBar
             trip={activeTrip} newId={newTripId} onNotice={setNotice}
             onImport={t => { const ok = addTrip(t); if (ok) { setActiveDay(0); setSel(null); setDidEntry(false); } return ok; }}
+            onPaste={() => setPasting(true)}
           />
         </>
       )}
@@ -406,6 +428,12 @@ export default function ItineraryPage() {
             onPause={play.pause} onResume={play.resume}
           />
         </>
+      )}
+      {!readOnly && pasting && (
+        <PasteModal
+          current={activeTrip} onApply={applyPasted} onClose={() => setPasting(false)}
+          ids={{ newId: newTripId, today: todayISO }}
+        />
       )}
       {!readOnly && activeTrip && editingDay != null && activeTrip.days[editingDay] && (
         <DayEditor

@@ -237,6 +237,62 @@ test('parseDirect — 여행/일자/장소/옵션/숙소/좌표', () => {
   assert.equal(r2.days[0].spots[1].city, '부산');
 });
 
+test('normalizeDraftDays — 자유로운 초안을 여행 스키마로 눕힌다', () => {
+  // AI 응답은 필드가 빠지거나 엉뚱한 값이 오기 쉽다. 통째로 거절하면 초안 하나가
+  // 필드 하나 때문에 버려지므로, 아는 값만 남기고 나머지는 기본값으로 눕힌다.
+  const r = L.normalizeDraftDays([{
+    title:'도착', mode:'순간이동', startAt:'9시',
+    spots:[
+      {name:' 경주역 ', city:' 경주 ', mode:'x', at:'10:30', bookAt:'없음', stayMin:'90', cost:'12000', cur:'GBP', lat:'35.79', lng:'129.13'},
+      {name:'', city:'경주'},                                   // 이름 없는 장소는 버린다
+      {name:'감포', opt:1, stay:'y', legMode:'train', stayMin:-5, cost:null}
+    ]
+  }, null]);
+  assert.equal(r.length, 2);
+  assert.equal(r[0].mode, 'car');            // 알 수 없는 수단 → 기본값
+  assert.equal(r[0].startAt, '09:00');       // 형식 아닌 시각 → 기본값
+  assert.equal(r[0].spots.length, 2);        // 이름 없는 장소 제외
+  const a = r[0].spots[0];
+  assert.equal(a.name, '경주역');             // 앞뒤 공백 제거
+  assert.equal(a.city, '경주');
+  assert.equal(a.at, '10:30');
+  assert.equal(a.bookAt, '');                // 형식 아니면 빈 값
+  assert.equal(a.stayMin, 90);               // 숫자 문자열도 받는다
+  assert.equal(a.cost, 12000);
+  assert.equal(a.cur, undefined);            // 모르는 통화는 떨군다(KRW 취급)
+  assert.deepEqual([a.lat, a.lng], [35.79, 129.13]);
+  const b = r[0].spots[1];
+  assert.equal(b.opt, true);                 // 참 같은 값 → boolean
+  assert.equal(b.stay, true);
+  assert.equal(b.legMode, 'train');
+  assert.equal(b.stayMin, null);             // 음수는 없는 것으로
+  assert.equal(b.city, '기타');               // 도시 없으면 기본값
+  assert.equal(b.lat, null);                 // 좌표 없음은 null (0으로 둔갑 금지)
+  // 빈 일자도 모양은 갖춘다
+  assert.deepEqual(r[1].spots, []);
+  assert.equal(r[1].mode, 'car');
+  assert.deepEqual(L.normalizeDraftDays(null), []);
+  assert.deepEqual(L.normalizeDraftDays('nope'), []);
+});
+
+test('normalizeDraftDays 결과는 validateTripPayload를 통과한다', () => {
+  // 눕히는 목적이 바로 이것 — 자유 입력이 검증에서 통째로 거절되지 않게
+  const days = L.normalizeDraftDays([{ title:'x', spots:[{name:'A', lat:'33.5', lng:'126.5'}] }]);
+  const r = L.validateTripPayload({ name:'초안', start:'2026-08-01', days });
+  assert.equal(r.ok, true);
+  assert.equal(r.value.days[0].spots[0].name, 'A');
+});
+
+test('extractJson — 인사말·코드펜스가 붙어도 JSON만 떼어낸다', () => {
+  assert.equal(L.extractJson('네, 정리했습니다!\n```json\n{"a":1}\n```'), '{"a":1}');
+  assert.equal(L.extractJson('{"a":1}'), '{"a":1}');
+  assert.equal(L.extractJson('  {"a":{"b":2}} 뒤에 말 '), '{"a":{"b":2}}');
+  // 중괄호가 없으면 원문 그대로 — 호출측이 JSON.parse 실패로 다룬다
+  assert.equal(L.extractJson('중괄호 없음'), '중괄호 없음');
+  assert.equal(L.extractJson(''), '');
+  assert.equal(L.extractJson(undefined), '');
+});
+
 test('parseMoney — 통화 기호·접미사 (유로 포함)', () => {
   assert.deepEqual(L.parseMoney('입장료 €80'), {cost:80,cur:'EUR',raw:'€80'});
   assert.deepEqual(L.parseMoney('120,000 유로'), {cost:120000,cur:'EUR',raw:'120,000 유로'});

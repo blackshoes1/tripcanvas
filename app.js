@@ -2970,10 +2970,7 @@ async function parseAI(text){
   });
   if(!r.ok){ const t=await r.text().catch(()=>''); throw new Error(`API 오류 ${r.status} · ${t.slice(0,120)}`); }
   const data=await r.json();
-  let txt=(data.content?.[0]?.text||'').trim();
-  const a=txt.indexOf('{'), b=txt.lastIndexOf('}');
-  if(a>=0&&b>a) txt=txt.slice(a,b+1);
-  return JSON.parse(txt);
+  return JSON.parse(extractJson(data.content?.[0]?.text||''));
 }
 
 function openPaste(){
@@ -3013,18 +3010,8 @@ async function runPaste(){
     else parsed=parseDirect(text);
   }catch(e){ reportOperationalError('paste.parse',e); toast('일정을 해석하지 못했습니다. 입력 형식과 연결 상태를 확인해 주세요','#e63946'); return; }
   if(!parsed||!Array.isArray(parsed.days)||!parsed.days.length){ toast('일정을 못 읽었어 — 형식을 확인해줘','#e63946'); return; }
-  // 정규화
-  const MODES=['car','taxi','transit','train','walk','bike','flight'];
-  const hhmm=v=>/^\d{1,2}:\d{2}$/.test(v||'')?v:'';
-  const posInt=v=>{const n=parseInt(v); return (v==null||isNaN(n)||n<0)?null:n;};
-  parsed.days=parsed.days.map(d=>({
-    title:d.title||'', drive:d.drive||'', note:d.note||'',
-    mode:MODES.includes(d.mode)?d.mode:'car', startAt:hhmm(d.startAt)||'09:00',
-    spots:(d.spots||[]).map(s=>({name:(s.name||'').trim(), city:(s.city||'기타').trim(), desc:s.desc||'',
-      opt:!!s.opt, stay:!!s.stay, legMode:(MODES.includes(s.legMode)?s.legMode:undefined), at:(hhmm(s.at)||undefined), stayMin:(s.stayMin==null?null:posInt(s.stayMin)),
-      cost:(s.cost==null?null:posInt(s.cost)), cur:(['USD','EUR','JPY','CNY'].includes(s.cur)?s.cur:undefined), bookAt:hhmm(s.bookAt),
-      lat:(s.lat==null?null:+s.lat), lng:(s.lng==null?null:+s.lng)})).filter(s=>s.name)
-  }));
+  // 정규화 (lib.js normalizeDraftDays — Next 붙여넣기와 같은 규칙을 쓴다)
+  parsed.days=normalizeDraftDays(parsed.days);
   const checked=validateTripPayload({name:parsed.name||'붙여넣은 여행',start:parsed.start||'',days:parsed.days});
   if(!checked.ok){ reportOperationalError('paste.invalid',new Error('validation')); toast(checked.error,'#e63946'); return; }
   parsed=checked.value;

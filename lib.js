@@ -117,6 +117,43 @@
     return out;
   }
 
+  /**
+   * 붙여넣기 초안(직접 형식·AI 응답)의 days를 여행 스키마 모양으로 눕힌다.
+   * validateTripPayload는 '모양이 틀리면 통째로 거절'하므로, 자유로운 입력(특히 AI 응답)을
+   * 그대로 넘기면 초안 하나가 필드 하나 때문에 버려진다 — 여기서 먼저 아는 값만 남기고
+   * 나머지는 기본값으로 눕힌 뒤 검증에 넘긴다.
+   * @param {any} days @returns {any[]}
+   */
+  function normalizeDraftDays(days){
+    const hhmm=(/**@type{any}*/v)=>/^\d{1,2}:\d{2}$/.test(String(v||''))?String(v):'';
+    const posInt=(/**@type{any}*/v)=>{ const n=parseInt(v); return (v==null||isNaN(n)||n<0)?null:n; };
+    return (Array.isArray(days)?days:[]).map((/**@type{any}*/d)=>({
+      title:(d&&d.title)||'', drive:(d&&d.drive)||'', note:(d&&d.note)||'',
+      mode:_MODES.includes(d&&d.mode)?d.mode:'car', startAt:hhmm(d&&d.startAt)||'09:00',
+      spots:((d&&d.spots)||[]).map((/**@type{any}*/s)=>({
+        name:String((s&&s.name)||'').trim(), city:String((s&&s.city)||'기타').trim(), desc:(s&&s.desc)||'',
+        opt:!!(s&&s.opt), stay:!!(s&&s.stay),
+        legMode:_MODES.includes(s&&s.legMode)?s.legMode:undefined,
+        at:hhmm(s&&s.at)||undefined, stayMin:(s&&s.stayMin)==null?null:posInt(s.stayMin),
+        cost:(s&&s.cost)==null?null:posInt(s.cost),
+        cur:['USD','EUR','JPY','CNY'].includes(s&&s.cur)?s.cur:undefined,
+        bookAt:hhmm(s&&s.bookAt),
+        lat:(s&&s.lat)==null?null:+s.lat, lng:(s&&s.lng)==null?null:+s.lng
+      })).filter((/**@type{any}*/s)=>s.name)
+    }));
+  }
+
+  /**
+   * 모델 응답에서 JSON 본문만 떼어낸다 — 인사말·코드펜스가 앞뒤에 붙어 와도 읽히게.
+   * 중괄호를 못 찾으면 원문 그대로 (호출측이 JSON.parse 실패로 다룬다).
+   * @param {string=} text @returns {string}
+   */
+  function extractJson(text){
+    const t=String(text||'').trim();
+    const a=t.indexOf('{'), b=t.lastIndexOf('}');
+    return (a>=0&&b>a)? t.slice(a,b+1) : t;
+  }
+
   // 폴리라인 인코딩/디코딩 (Google 알고리즘, precision 5) — SDK 비의존, 구글 encodedPolyline과 호환
   /** @param {LatLng[]} points @returns {string} */
   function encodePolyline(points){
@@ -814,7 +851,7 @@
     return spotCat(catFromName(s.name));
   }
 
-  const TC={SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,cityFromKoreanAddr,placeName,cityFromGoogle,normHours,classifySearchErr,isKoreanSearch,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,normHM,sortDayByTime,inKorea,simplifyName,parseDirect,parseMoney,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,computeTimeline,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,localMode,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
+  const TC={SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,cityFromKoreanAddr,placeName,cityFromGoogle,normHours,classifySearchErr,isKoreanSearch,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,normHM,sortDayByTime,inKorea,simplifyName,parseDirect,parseMoney,normalizeDraftDays,extractJson,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,computeTimeline,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,localMode,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
   if(typeof module!=='undefined' && module.exports){ module.exports=TC; }   // Node (테스트)
   else { const r=/**@type {any}*/(root); for(const k in TC) r[k]=/**@type {any}*/(TC)[k]; }   // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);

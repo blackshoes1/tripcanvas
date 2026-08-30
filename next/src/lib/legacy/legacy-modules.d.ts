@@ -37,6 +37,17 @@ declare module '@legacy/lib.js' {
     parseStorePayload(text: string | null): { ok: true; value: unknown } | { ok: false; error: string };
     /** 여행 파일·공유 링크 본문 → 검증·정규화된 여행 (크기·모양이 어긋나면 이유를 돌려준다) */
     parseTripPayload(text: string): { ok: true; value: unknown } | { ok: false; error: string };
+    /** 여행 문서 검증 — 모양이 틀리면 통째로 거절한다 */
+    validateTripPayload(value: unknown, options?: { maxBytes?: number }):
+      { ok: true; value: unknown } | { ok: false; error: string };
+    /** 붙여넣기 직접 형식 → 구조화 */
+    parseDirect(text: string): { name: string; start: string; days: unknown[] };
+    /** 자유로운 초안의 days를 여행 스키마 모양으로 눕힌다 (AI 응답·직접 형식 공통) */
+    normalizeDraftDays(days: unknown): unknown[];
+    /** 모델 응답에서 JSON 본문만 떼어낸다 (인사말·코드펜스 제거) */
+    extractJson(text: string | undefined): string;
+    /** 검색 질의를 좁히는 이름 단순화 ('~ 앞바다' 같은 꼬리 제거) */
+    simplifyName(name: string): string;
     normalizeTrip(t: unknown): unknown | null;
     normalizeBooking(b: unknown): unknown | null;
     carReturnPoint(b: unknown): { place: string; code: string };
