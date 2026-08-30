@@ -1,8 +1,8 @@
 // 이관 상태 랜딩 — 병행 운영 중 어느 영역이 Next로 넘어왔는지 보여준다.
 // 레거시 앱(루트 index.html)은 기능 동등성 확보 전까지 그대로 프로덕션이다 (§12·§24).
 const AREAS: { name: string; status: '이관됨' | '진행 중' | '레거시' }[] = [
-  { name: 'Booking/Pricing 도메인 타입 + Saving Engine', status: '진행 중' },
-  { name: 'Booking/Price UI', status: '레거시' },
+  { name: 'Booking/Pricing 도메인 타입 + Saving Engine', status: '이관됨' },
+  { name: 'Booking/Price UI (/bookings)', status: '진행 중' },
   { name: 'API (hotel-offers · car-offers · cron)', status: '레거시' },
   { name: 'Itinerary (Trip/Day/Spot)', status: '레거시' },
   { name: 'Map', status: '레거시' }
