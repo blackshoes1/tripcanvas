@@ -135,3 +135,34 @@ test('여행 모드에서 거절한 제안은 다시 올라오지 않는다',asy
   await expect(suggest).not.toContainText('레티로 공원');
   expect(await page.evaluate(()=>trip().days[1].spots[0].name)).toBe('레티로 공원');   // 거절은 여행 데이터를 건드리지 않는다
 });
+
+test('여행 모드는 자연어 요청을 반영하고 하루 일정을 미리보기로 제안한다',async({context,page})=>{
+  await prepare(context); await page.goto('/'); await createTrip(page,'하루 추천 테스트');
+  await page.evaluate(()=>{
+    const t=store.trips.find(x=>x.id===store.activeId);
+    t.start='2026-09-01';
+    t.days=[
+      {title:'',drive:'',note:'',mode:'car',startAt:'09:00',spots:[
+        {name:'숙소',city:'마드리드',lat:40.40,lng:-3.70,stay:true,stayMin:0},
+        {name:'저녁 예약',city:'마드리드',lat:40.41,lng:-3.70,bookAt:'19:00',stayMin:90}]},
+      {title:'',drive:'',note:'',mode:'car',spots:[
+        {name:'공원',city:'마드리드',lat:40.405,lng:-3.70,stayMin:90},
+        {name:'미술관',city:'마드리드',lat:40.407,lng:-3.70,stayMin:120}]}];
+    todayISO=()=>'2026-09-01'; nowMinutes=()=>13*60;
+    render();
+  });
+  await page.locator('#travelBtn').click();
+  // 자연어 → 무엇으로 알아들었는지 되돌려 말한다
+  await page.locator('#travelIntent').fill('오늘 좀 피곤해서 많이 걷기 싫어');
+  await page.locator('#travelIntentApply').click();
+  await expect(page.locator('#travelIntentEcho')).toContainText('이렇게 이해했어요');
+  // 하루 flow 미리보기 → 수락해야만 반영
+  await page.locator('#travelEnergy button',{hasText:/빈 시간 채우기|오늘 하루 추천받기/}).click();
+  const plan=page.locator('#travelPlan .sgCard');
+  await expect(plan).toBeVisible();
+  await expect(plan).toContainText('저녁 예약');
+  expect(await page.evaluate(()=>trip().days[1].spots.length)).toBe(2);   // 아직 안 옮겼다
+  await plan.getByRole('button',{name:'이 일정으로 시작'}).click();
+  await expect.poll(()=>page.evaluate(()=>trip().days[0].spots.map(s=>s.name).join(','))).toContain('공원');
+  expect(await page.evaluate(()=>trip().days[0].spots.slice(-1)[0].name)).toBe('저녁 예약');
+});

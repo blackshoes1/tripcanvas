@@ -367,3 +367,24 @@ body.playing #playHud{
 /* 제안 카드가 늘어나면 '오늘 일정'이 화면 밖으로 밀리므로 패널 전체를 스크롤시킨다 (내부 list만 스크롤하면 닿지 않는다) */
 #travel{overflow-y:auto}
 #travel .list{flex:1 0 auto;overflow-y:visible;min-height:0}
+/* 자연어 요청 · 하루 flow 미리보기 */
+.travelTune{display:flex;gap:6px;margin:0 2px 6px}
+.travelTune input{flex:1;font-size:12.5px;min-height:36px}
+.travelIntentEcho{font-size:11.5px;color:var(--meta-good);margin:0 4px 8px;line-height:1.5}
+.travelIntentEcho.miss{color:var(--subtle)}
+.travelIntentEcho:empty{display:none}
+.btn.sgFlowBtn{min-height:30px;padding:5px 10px;font-size:11.5px;border-radius:999px;margin-left:auto}
+.travelPlan{display:grid;gap:8px;margin-bottom:10px}
+.travelPlan:empty{display:none}
+.sgCard[data-type="DAY_FLOW"]{border-left-color:var(--focus)}
+.sgFlow{margin-top:9px;display:grid;gap:2px}
+.sgFlowRow{display:grid;grid-template-columns:38px 44px 1fr;align-items:baseline;gap:8px;font-size:12.5px;padding:5px 7px;border-radius:8px}
+.sgFlowRow.fixed{background:var(--surface-2)}
+.sgFlowSeg{font-size:10.5px;color:var(--subtle);font-weight:700}
+.sgFlowTime{font-size:11px;color:var(--meta-eta);font-variant-numeric:tabular-nums;font-weight:700}
+.sgFlowName{color:var(--ink);min-width:0;overflow-wrap:anywhere}
+.sgFlowRow.fixed .sgFlowName{font-weight:700}
+/* 출발 안내 — 지금 나서면 되는지 */
+.travelDepart{font-size:12px;font-weight:700;margin-top:5px;color:var(--meta-good)}
+.travelDepart.now{color:var(--meta-eta)}
+.travelDepart.late{color:var(--meta-danger)}

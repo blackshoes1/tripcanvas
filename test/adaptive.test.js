@@ -311,3 +311,128 @@ test('여행 기간 밖(계획 중)에는 live가 아니고 일자 시작 시각
   assert.equal(s.nowMin, 600);
   assert.equal(s.items[0].status, 'PLANNED', '지나간 시각이어도 자동 완료 처리하지 않는다');
 });
+
+// ── 자연어 요청 · 출발 안내 · 빈칸 채우기 · 하루 flow ──
+
+test('parseIntent: "오늘 좀 피곤해서 많이 걷기 싫어"를 옵션으로 바꾼다', () => {
+  const r = A.parseIntent('오늘 좀 피곤해서 많이 걷기 싫어');
+  assert.equal(r.energyLevel, 'LOW');
+  assert.equal(r.prefs.walkAverse, true);
+  assert.equal(r.prefs.maxTravelMin, 20);
+  assert.ok(r.reasons.length >= 2, '무엇으로 알아들었는지 말할 수 있어야 한다');
+  assert.equal(r.understood, true);
+
+  const near = A.parseIntent('가까운 곳으로만 보고 싶어');
+  assert.equal(near.prefs.maxTravelMin, 15);
+  const both = A.parseIntent('걷기 싫고 가까운 데만');
+  assert.equal(both.prefs.maxTravelMin, 15, '더 좁은 요구를 따른다');
+  const high = A.parseIntent('오늘 쌩쌩해서 더 보고 싶어');
+  assert.equal(high.energyLevel, 'HIGH');
+
+  const none = A.parseIntent('음');
+  assert.equal(none.understood, false, '못 알아들으면 알아들은 척하지 않는다');
+  assert.deepEqual(none.prefs, {});
+  assert.equal(A.parseIntent('').understood, false);
+});
+
+test('선호(prefs)는 추천 범위를 실제로 좁힌다', () => {
+  const trip = tripOf([
+    { startAt: '09:00', mode: 'walk', spots: [Object.assign({ name: '숙소', city: '마드리드', stay: true, stayMin: 0 }, P(40.40))] },
+    { spots: [Object.assign({ name: '가까운 골목', city: '마드리드', stayMin: 60 }, P(40.405)),
+      Object.assign({ name: '건너편 언덕', city: '마드리드', stayMin: 60 }, P(40.60))] }   // 편도 44분
+  ]);
+  const base = stateOf(trip, { todayISO: TODAY, nowMin: 10 * 60, live: true });
+  const wide = A.rankNextActions(base, A.buildCandidates(trip, base, {}), { legMin: LEG }).map((r) => r.title);
+  assert.ok(wide.indexOf('건너편 언덕') >= 0, '기본에서는 후보로 남는다');
+
+  const near = stateOf(trip, { todayISO: TODAY, nowMin: 10 * 60, live: true, prefs: { maxTravelMin: 15 } });
+  const narrow = A.rankNextActions(near, A.buildCandidates(trip, near, {}), { legMin: LEG }).map((r) => r.title);
+  assert.ok(narrow.indexOf('가까운 골목') >= 0);
+  assert.equal(narrow.indexOf('건너편 언덕'), -1, '"가까운 데만"이면 먼 곳은 후보에서 뺀다');
+});
+
+test('departureAdvice: 언제 나서면 되는지 문장으로 답한다', () => {
+  const trip = tripOf([{
+    startAt: '09:00', mode: 'walk', spots: [
+      Object.assign({ name: '숙소', city: '마드리드', stay: true, stayMin: 0 }, P(40.40)),
+      Object.assign({ name: '저녁 예약', city: '마드리드', bookAt: '19:00', stayMin: 90 }, P(40.42))]
+  }]);
+  const at = (min) => stateOf(trip, { todayISO: TODAY, nowMin: min, live: true });
+  const early = A.departureAdvice(at(18 * 60 + 20), at(18 * 60 + 20).items[1], 20);
+  assert.equal(early.level, 'EARLY');
+  assert.match(early.text, /18:40/);
+  assert.equal(early.slackMin, 20);
+  const now = A.departureAdvice(at(18 * 60 + 35), at(18 * 60 + 35).items[1], 20);
+  assert.equal(now.level, 'NOW');
+  assert.match(now.text, /지금 출발하면 약 5분 여유/);
+  const late = A.departureAdvice(at(18 * 60 + 50), at(18 * 60 + 50).items[1], 20);
+  assert.equal(late.level, 'LATE');
+  assert.match(late.text, /약 10분 늦습니다/);
+  assert.equal(A.departureAdvice(at(600), null, 10), null);
+});
+
+test('fillGaps: 빈 시간을 한 칸이 아니라 있는 만큼 채운다 (저장은 하지 않는다)', () => {
+  const trip = tripOf([
+    {
+      startAt: '09:00', mode: 'walk', spots: [
+        Object.assign({ name: '숙소', city: '마드리드', stay: true, stayMin: 0 }, P(40.40)),
+        Object.assign({ name: '저녁 예약', city: '마드리드', bookAt: '19:00', stayMin: 90 }, P(40.42))]
+    },
+    {
+      spots: [Object.assign({ name: '공원', city: '마드리드', stayMin: 90 }, P(40.405)),
+        Object.assign({ name: '미술관', city: '마드리드', stayMin: 120 }, P(40.41)),
+        Object.assign({ name: '카페', city: '마드리드', stayMin: 60 }, P(40.415))]
+    }
+  ]);
+  const s = stateOf(trip, { todayISO: TODAY, nowMin: 13 * 60, live: true });
+  const fill = A.fillGaps(trip, s, { legMin: LEG });
+  assert.ok(fill.slots.length >= 2, '13:00~19:00 사이를 여러 칸으로 채운다 — got ' + fill.slots.length);
+  const titles = fill.slots.map((x) => x.pick.title);
+  assert.equal(new Set(titles).size, titles.length, '같은 곳을 두 번 넣지 않는다');
+  assert.equal(titles.indexOf('저녁 예약'), -1, '이미 오늘 일정에 있는 곳은 채우기 대상이 아니다');
+  let cursor = -1;
+  fill.slots.forEach((x) => { assert.ok(x.startMin >= cursor, '시간이 겹치지 않는다'); cursor = x.endMin; });
+  assert.ok(fill.slots.every((x) => x.endMin <= 19 * 60), '고정 예약 시각을 넘겨 채우지 않는다');
+  assert.deepEqual(trip.days[1].spots.map((x) => x.name), ['공원', '미술관', '카페'], '미리보기일 뿐 데이터를 바꾸지 않는다');
+});
+
+test('planDayFlow: "오늘 하루 추천해줘" — 고정 예약을 자리에 두고 오전/점심/오후/저녁 흐름을 만든다', () => {
+  const trip = tripOf([
+    {
+      startAt: '09:00', mode: 'walk', spots: [
+        Object.assign({ name: '숙소', city: '마드리드', stay: true, stayMin: 0 }, P(40.40)),
+        Object.assign({ name: '저녁 예약', city: '마드리드', bookAt: '19:00', stayMin: 90 }, P(40.42))]
+    },
+    {
+      spots: [Object.assign({ name: '공원', city: '마드리드', stayMin: 90 }, P(40.405)),
+        Object.assign({ name: '미술관', city: '마드리드', stayMin: 120 }, P(40.41))]
+    }
+  ]);
+  const s = stateOf(trip, { todayISO: TODAY, nowMin: 10 * 60, live: true });
+  const flow = A.planDayFlow(trip, s, { legMin: LEG });
+  assert.equal(flow.empty, false);
+  const fixed = flow.blocks.filter((b) => b.kind === 'FIXED');
+  assert.equal(fixed.length, 1);
+  assert.equal(fixed[0].title, '저녁 예약');
+  assert.equal(fixed[0].segment, '저녁');
+  const suggested = flow.blocks.filter((b) => b.kind === 'SUGGESTED');
+  assert.ok(suggested.length >= 1);
+  assert.ok(suggested.every((b) => b.startMin < fixed[0].startMin), '제안은 고정 예약 앞에만 놓인다');
+  let cursor = -1;
+  flow.blocks.forEach((b) => { assert.ok(b.startMin >= cursor, '시간순으로 정렬된다'); cursor = b.startMin; });
+  assert.ok(['오전', '점심', '오후'].indexOf(suggested[0].segment) >= 0);
+  assert.deepEqual(A.planDayFlow(trip, s, { legMin: LEG }).blocks.map((b) => b.title),
+    flow.blocks.map((b) => b.title), '같은 상태면 같은 하루를 만든다');
+});
+
+test('planDayFlow: 채울 것이 없으면 빈 계획을 그대로 알린다', () => {
+  const trip = tripOf([{
+    startAt: '09:00', mode: 'walk', spots: [
+      Object.assign({ name: '숙소', city: '마드리드', stay: true, stayMin: 0 }, P(40.40)),
+      Object.assign({ name: '저녁 예약', city: '마드리드', bookAt: '19:00', stayMin: 90 }, P(40.42))]
+  }]);
+  const s = stateOf(trip, { todayISO: TODAY, nowMin: 18 * 60 + 40, live: true });
+  const flow = A.planDayFlow(trip, s, { legMin: LEG });
+  assert.equal(flow.empty, true, '없는 일정을 지어내지 않는다');
+  assert.ok(flow.blocks.some((b) => b.kind === 'FIXED'), '남은 고정 예약은 그대로 보여준다');
+});
