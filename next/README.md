@@ -20,18 +20,19 @@
 
 프로젝트 설정을 바꿔도 이미 떠 있는 배포에는 적용되지 않는다. 설정 화면에 `Configuration Settings in the current Production deployment differ from your current Project Settings` 경고가 보이면 아직 반영 전이라는 뜻이다.
 
-##  는 두 프로젝트가 함께 읽는다
+## `.vercelignore` 는 두 프로젝트가 함께 읽는다
 
-저장소 루트의  하나를 **두 Vercel 프로젝트가 공유한다.** 여기에  를 넣으면
-API 프로젝트의 업로드에서  까지 사라져 빌드 로그에 이렇게 뜬다:
+저장소 루트의 `.vercelignore` 하나를 **두 Vercel 프로젝트가 공유한다.** 여기에 `next` 를 넣으면 API 프로젝트의 업로드에서 `next/package.json` 까지 사라져 빌드 로그에 이렇게 뜬다:
 
-
+```
+Found .vercelignore (repository root)
+Removed 204 ignored files defined in .vercelignore
+Error: No Next.js version detected.
+```
 
 Root Directory 설정이 맞아도 이 메시지가 나온다 — 파일 자체가 없어서다.
 
-그래서  는 제외하지 않는다. 대신 **정적 사이트가 소스를 서빙하지 않도록** 루트  의
- 가  를 막는다(저장소가 비공개라 소스가 공개로 열리면 안 된다).
-**둘 중 하나만 바꾸면 뚫리거나 깨진다.**
+그래서 `next` 는 제외하지 않는다. 대신 **정적 사이트가 소스를 서빙하지 않도록** 루트 `vercel.json` 의 `redirects` 가 `/next/*` 를 막는다(저장소가 비공개라 소스가 공개로 열리면 안 된다). **둘 중 하나만 바꾸면 뚫리거나 깨진다.**
 
 ## 환경변수
 
