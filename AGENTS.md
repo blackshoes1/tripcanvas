@@ -31,6 +31,7 @@ npm test && npm run lint && npm run check:types && npm run security:scan && npm 
 - `app.js` — 앱 로직 전체 (DOM·지도·네트워크)
 - `lib.js` — 순수 로직 (파서·거리·시각·앵커·타임라인·정규화). **유닛 테스트 + `tsc` 타입 검사 대상**
 - `price.js` — 예약 가격 추적 순수 계산: 실질 절약액·오퍼 조건 매칭(EXACT/EQUIVALENT/SIMILAR)·확정/잠재 절약 판단·호텔 identity 점수 · 렌터카 조건 매칭(carMatchQuality — 차급·변속기·보험·주행거리가 다르면 확정 절약 금지). 예약(`trip.bookings`)은 여행 데이터로 동기화·공유되고, 가격 관측 기록은 기기 로컬 + 로그인 시 `hotel_price_snapshots`. 시세는 `api/hotel-offers.js` 프록시(Metasearch 키 서버 전용)로만 조회 — 키 없으면 미연결 상태를 그대로 표시(가짜 가격 금지). **유닛 테스트 + `tsc` 대상**
+- `adaptive.js` — **Adaptive Travel OS 도메인**(순수): 현재 여행 상태(`buildTripState`) · 고정/유동 분류(`commitmentOf`) · 빈 시간 탐지(`findFreeWindows`) · 다음 행동 후보와 순위(`buildCandidates`/`rankNextActions`) · 일정 재구성(`generateReplan`) · 제안(`buildSuggestions`). DOM·네트워크·현재시각을 모르고 전부 인자로 받는다. **유닛 테스트 + `tsc` 대상**
 - `style.css` — 스타일
 - `sync.js` — 클라우드 동기화(리비전 CAS·충돌·tombstone). **`tsc` 대상**
 - `routing.js` — 경로 조회 transport 격리 (app.js는 `fetchLeg` 호환 shim만 씀). **`tsc` 대상**
@@ -39,7 +40,7 @@ npm test && npm run lint && npm run check:types && npm run security:scan && npm 
 - `api/` — Vercel 서버 함수(**서버 전용 키**): `kakao-directions.js`(카카오내비 프록시) · `hotel-offers.js`(호텔 시세 메타서치 프록시) · `car-offers.js`(렌터카 시장가 프록시 — Provider 미연결 시 AUTH_REQUIRED, 수동 관측 fallback) · `track-hotel-prices.js`(가격 스냅샷 크론)
 - `supabase/migrations/` — RLS·동기화 무결성·가격 스냅샷 스키마
 - `scripts/` — `bump-version.js` · `check-version-sync.js` · `check-secrets.js`
-- `test/` — 순수·통합·API 테스트 (`pure` · `integration` · `price` · `routing` · `sync` · `api-*` · `migration`)
+- `test/` — 순수·통합·API 테스트 (`pure` · `integration` · `adaptive` · `price` · `routing` · `sync` · `api-*` · `migration`)
 - `e2e/` — Playwright 시나리오 (`core-flows` · `pwa` · `accessibility` · `ux-wireframe`)
 - `proto/` — 실험용 프로토타입. 프로덕션 앱과 무관
 - `.github/workflows/ci.yml` — **Quality**(구문 → 버전 동기 → lint → 시크릿 스캔 → `tsc` → 유닛 → 통합 → `npm audit`) + **E2E**(Playwright) 두 잡
@@ -48,7 +49,7 @@ npm test && npm run lint && npm run check:types && npm run security:scan && npm 
 검색: 국내 카카오 로컬 · 해외 Google Places (`routedSearch`가 라우팅) · 저장: localStorage + Supabase
 지도에서 장소 담기: 해외는 `clickableIcons`로 POI 탭 시 `placeId`를 그대로 받고, **국내는 카카오 SDK가 POI 탭 신원을 주지 않아** 카테고리 검색으로 POI 칩을 직접 깔아 그걸 누르게 한다(`refreshKakaoPOI`). 좌표 역추적(`reverseSpot`)은 둘 다 실패했을 때의 최후 수단이다 — 추측이라 엉뚱한 상호가 들어갈 수 있다.
 API 키: app.js 상단 `GMAPS_KEY`(리퍼러 제한)·`KAKAO_KEY`(JS, 플랫폼 도메인 제한)·`KAKAO_REST_KEY`(카카오내비) — `localhost:8000`, `tripcanvas-ai.vercel.app` 등록 필요
-localStorage: `tripcanvas_v1`(여행) · `tripcanvas_legs_v4`(구간 캐시, 수단별 키) · `tripcanvas_synced` · `tripcanvas_prices_v1`(예약 가격 관측 기록) · `tripcanvas_cfg` · `tripcanvas_fx`
+localStorage: `tripcanvas_v1`(여행) · `tripcanvas_legs_v4`(구간 캐시, 수단별 키) · `tripcanvas_synced` · `tripcanvas_prices_v1`(예약 가격 관측 기록) · `tripcanvas_suggest_v1`(제안 거절 이력·컨디션 — 여행 데이터가 아니라 기기 로컬) · `tripcanvas_cfg` · `tripcanvas_fx`
 주의: Google 약관상 지도 타일 캐시 금지 → 오프라인 지도 기능 없음 (SW는 앱 셸만 캐시)
 
 ## 핵심 개념 (배선 실수가 잦은 곳)
@@ -65,6 +66,16 @@ localStorage: `tripcanvas_v1`(여행) · `tripcanvas_legs_v4`(구간 캐시, 수
 라우팅(`fetchLeg`): 비행기·기차는 **직선거리 기반 추정**(실시간 시각표 없음) · 국내 자차/택시=카카오내비(도로 없으면 인근 도로 스냅) · 국내 대중교통=Google Routes TRANSIT · 국내 도보/자전거=카카오 도로거리 기반 추정 · 해외=Google Routes
 
 **시간 3종을 구분한다.** 도착 **예상**(자동 계산) / `at` 도착 **고정**(내가 정한 계획) / `bookAt` **예약·입장 시각**(상대가 정한 약속 — 일찍 도착하면 그 시각까지 대기로 계산, 늦으면 ⚠️).
+
+**Adaptive Travel OS — 상태 → 제안 → 반영은 한 패턴이다.** 일정 추천·일정 재구성·가격 절약이 각자 다른 흐름을 만들면 안 된다.
+
+- 판단은 전부 `adaptive.js`(순수)에 있고 `app.js`는 배선·표시만 한다. 시각·이동시간·영업요일은 **인자로 주입**한다 → 같은 상태면 항상 같은 추천(렌더마다 순서가 바뀌면 안 됨).
+- `adaptState(di)`(app)는 `dayContext(di)`의 `anchor`·`timeline`을 **그대로** 넘긴다. 추천이 출발 기준점을 따로 추론하면 화면과 다른 숫자를 말하게 된다.
+- 일정 성격: `bookAt`(상대가 정한 약속)·항공·기차 = **FIXED(침범 금지)** · `at`(내가 정한 시각)·숙소·렌터카 = SEMI_FIXED · 나머지 = FLEXIBLE. 재구성은 **고정 보호 → 완료 유지 → `must` 보호 → 낮은 우선순위(`opt`)부터 제거** 순서를 지킨다.
+- 실행 상태는 `spot.status`(`COMPLETED`/`SKIPPED`/`CANCELLED`, 기본 PLANNED는 저장 안 함). **자동 완료 판정은 하지 않는다** — 사용자가 누른다.
+- 제안은 한 번에 3(+1)개까지. 불가능한 후보(시간 초과·영업 종료·완료·건너뜀)는 **아예 제외**하고, 넣을 게 없으면 억지로 만들지 말고 쉬는 선택지를 남긴다. 점수는 내부값이고 UI에는 `reasons` 문장만 쓴다.
+- 거절(`SKIPPED`)은 `tripcanvas_suggest_v1`에 **그날 날짜와 함께** 저장돼 같은 날 반복되지 않는다. 추천 결과 자체는 여행 데이터에 저장하지 않는다 — 수락한 것만 일정에 반영된다.
+- UI는 여행 모드(`#travel`) 안의 `#travelSuggest`. 카드 버튼은 inline onclick 없이 `createElement`+`onclick`으로 만든다(장소명 이스케이프 사고 방지).
 
 **유입 데이터는 반드시 정규화한다.** 가져오기·공유 링크(`#v=`/`#t=`)·클라우드·로컬 로드 **5개 지점 모두** `normalizeTrip()`(lib)을 통과시킨다. 좌표·시각·통화·수단·`startPolicy`를 검증하고 알 수 없는 값은 기본값으로 폴백해 렌더 크래시를 막는다(`schemaVersion` 스탬프).
 

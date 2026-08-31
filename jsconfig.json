@@ -7,5 +7,5 @@
     "lib": ["ES2020", "DOM"],
     "skipLibCheck": true
   },
-  "include": ["lib.js", "sync.js", "routing.js", "price.js", "types/env.d.ts"]
+  "include": ["lib.js", "sync.js", "routing.js", "price.js", "adaptive.js", "types/env.d.ts"]
 }

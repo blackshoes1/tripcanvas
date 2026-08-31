@@ -5,14 +5,14 @@
   "description": "Trip Canvas — 대화로 만드는 멀티시티 여행 동선 플래너 (정적 PWA, 빌드 도구 없음)",
   "scripts": {
     "test": "npm run test:unit && npm run test:integration",
-    "test:unit": "node --test test/api-car-offers.test.js test/api-hotel-offers.test.js test/api-kakao.test.js test/api-track.test.js test/metasearch.integration.test.js test/migration.test.js test/price.test.js test/pure.test.js test/routing.test.js test/sync.test.js",
+    "test:unit": "node --test test/api-car-offers.test.js test/api-hotel-offers.test.js test/api-kakao.test.js test/api-track.test.js test/metasearch.integration.test.js test/migration.test.js test/adaptive.test.js test/price.test.js test/pure.test.js test/routing.test.js test/sync.test.js",
     "test:integration": "node --test test/integration.test.js",
     "test:e2e": "playwright test",
-    "check:syntax": "node --check app.js && node --check lib.js && node --check sync.js && node --check routing.js && node --check price.js && node --check sw.js && node --check api/car-offers.js && node --check api/kakao-directions.js && node --check api/hotel-offers.js && node --check api/track-hotel-prices.js",
+    "check:syntax": "node --check app.js && node --check lib.js && node --check sync.js && node --check routing.js && node --check price.js && node --check adaptive.js && node --check sw.js && node --check api/car-offers.js && node --check api/kakao-directions.js && node --check api/hotel-offers.js && node --check api/track-hotel-prices.js",
     "check:types": "tsc -p jsconfig.json",
     "check:version": "node scripts/check-version-sync.js",
     "bump:version": "node scripts/bump-version.js",
-    "lint": "eslint lib.js sync.js routing.js price.js api scripts",
+    "lint": "eslint lib.js sync.js routing.js price.js adaptive.js api scripts",
     "security:scan": "node scripts/check-secrets.js"
   },
   "devDependencies": {

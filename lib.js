@@ -530,6 +530,7 @@
   const _MODES=['car','taxi','transit','train','walk','bike','flight'];
   const _CURS=['KRW','USD','EUR','JPY','CNY'];
   const _ID_RE=/^[A-Za-z0-9_-]{1,40}$/;   // uid() 형식 — inline onclick 인자로도 안전한 문자만
+  const _STATUS=['PLANNED','COMPLETED','SKIPPED','CANCELLED'];   // 일정 실행 상태 (adaptive.js와 공유)
   /** @param {any} x @returns {string} */
   function _str(x){ return typeof x==='string'? x : (x==null? '' : String(x)); }
   /** @param {any} t @returns {string|undefined} 00:00~23:59 형식만 통과, 아니면 undefined */
@@ -652,6 +653,10 @@
     if(s.placeId!=null && !(typeof s.placeId==='string' && /^[A-Za-z0-9_-]{5,200}$/.test(s.placeId))) delete s.placeId;   // 구글 Place ID (호텔 identity)
     if(s.cat!=null && _CAT_IDS.indexOf(s.cat)<0) delete s.cat;              // 알 수 없는 카테고리 → 미지정(이름 추론으로 폴백)
     if(s.hours!=null && !(Array.isArray(s.hours)&&s.hours.every((/**@type{any}*/h)=>h&&_fin(h.d)&&_fin(h.o)&&_fin(h.c)))) delete s.hours;
+    // 실행 상태·중요도 (Adaptive: 상태 계산·재구성 보호). 기본값(PLANNED/false)은 저장하지 않는다 — 공유 링크 크기
+    if(s.status!=null && _STATUS.indexOf(s.status)<0) delete s.status;
+    if(s.status==='PLANNED') delete s.status;
+    if(s.must!=null){ if(s.must) s.must=true; else delete s.must; }
     return s;
   }
   /** 예약(가격 추적) 항목 정규화 — id가 불량하면 항목째 버린다(참조·inline onclick 안전) @param {any} b @returns {any} */

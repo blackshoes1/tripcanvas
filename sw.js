@@ -1,5 +1,5 @@
 // Trip Canvas Service Worker
-const VER = 'tc-v158';
+const VER = 'tc-v159';
 const SHELL_CACHE = VER + '-shell';
 
 const SHELL = [
@@ -11,6 +11,7 @@ const SHELL = [
   './sync.js',
   './routing.js',
   './price.js',
+  './adaptive.js',
   './manifest.json',
   './icon-192.png',
   './icon-512.png'

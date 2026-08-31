@@ -867,3 +867,20 @@ test('sampleTrip — 부를 때마다 새 객체 (공유하면 한쪽 편집이 
   a.days[0].spots[0].name = '바뀐 이름';
   assert.notEqual(b.days[0].spots[0].name, '바뀐 이름');
 });
+
+test('normalizeSpot — 일정 실행 상태(status)·꼭 가야 함(must)은 알려진 값만 통과', () => {
+  const ok = L.normalizeTrip({ days:[{spots:[
+    { name:'A', status:'COMPLETED', must:true },
+    { name:'B', status:'SKIPPED', must:false },
+    { name:'C', status:'해킹', must:'yes' },
+    { name:'D', status:'PLANNED' }
+  ]}]});
+  const s = ok.days[0].spots;
+  assert.equal(s[0].status, 'COMPLETED');
+  assert.equal(s[0].must, true);
+  assert.equal(s[1].status, 'SKIPPED');
+  assert.equal('must' in s[1], false, '기본값(false)은 저장하지 않는다 — 공유 링크 크기');
+  assert.equal('status' in s[2], false, '알 수 없는 상태는 버리고 기본(PLANNED)으로 둔다');
+  assert.equal(s[2].must, true, 'truthy 값은 true로 정규화');
+  assert.equal('status' in s[3], false, '기본값 PLANNED는 저장하지 않는다');
+});

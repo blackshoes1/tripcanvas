@@ -86,3 +86,52 @@ test('긴 장소명과 많은 메타데이터도 모바일 일정 카드 경계�
     expect(result.metaNoWrap).toBeTruthy();
   }
 });
+
+test('여행 모드는 지금 무엇을 할지 제안하고, 받아들이면 일정에 반영된다',async({context,page})=>{
+  await prepare(context); await page.goto('/'); await createTrip(page,'적응형 여행');
+  await page.evaluate(()=>{
+    const t=store.trips.find(x=>x.id===store.activeId);
+    t.start='2026-09-01';
+    t.days=[
+      {title:'마드리드',drive:'',note:'',mode:'car',startAt:'09:00',spots:[
+        {name:'프라도',city:'마드리드',lat:40.41,lng:-3.70,stayMin:120},
+        {name:'저녁 예약',city:'마드리드',lat:40.42,lng:-3.70,bookAt:'19:30',stayMin:90}]},
+      {title:'마드리드',drive:'',note:'',mode:'car',spots:[
+        {name:'레티로 공원',city:'마드리드',lat:40.415,lng:-3.70,stayMin:90}]}];
+    todayISO=()=>'2026-09-01'; nowMinutes=()=>11*60;   // 여행 중 11:00로 고정 (시각 의존 제거)
+    render();
+  });
+  await page.locator('#travelBtn').click();
+  const suggest=page.locator('#travelSuggest');
+  await expect(suggest.locator('.sgCard').first()).toBeVisible();
+  await expect(suggest).toContainText('레티로 공원');
+  await expect(suggest.locator('.sgWhy li').first()).toBeVisible();   // 추천 이유를 항상 설명한다
+  await suggest.locator('.sgCard',{hasText:'레티로 공원'}).getByRole('button',{name:'오늘 일정에 넣기'}).click();
+  await expect.poll(()=>page.evaluate(()=>trip().days[0].spots.map(s=>s.name).join(','))).toContain('레티로 공원');
+  await page.locator('#travelList .tSpot').first().getByRole('button',{name:'다녀왔어요'}).click();
+  await expect(page.locator('#travelList .tSpot').first()).toHaveClass(/done/);
+  await expect(page.locator('#travelNext')).toContainText('레티로 공원');
+});
+
+test('여행 모드에서 거절한 제안은 다시 올라오지 않는다',async({context,page})=>{
+  await prepare(context); await page.goto('/'); await createTrip(page,'거절 테스트');
+  await page.evaluate(()=>{
+    const t=store.trips.find(x=>x.id===store.activeId);
+    t.start='2026-09-01';
+    t.days=[
+      {title:'',drive:'',note:'',mode:'car',startAt:'09:00',spots:[
+        {name:'프라도',city:'마드리드',lat:40.41,lng:-3.70,stayMin:120},
+        {name:'저녁 예약',city:'마드리드',lat:40.42,lng:-3.70,bookAt:'19:30',stayMin:90}]},
+      {title:'',drive:'',note:'',mode:'car',spots:[
+        {name:'레티로 공원',city:'마드리드',lat:40.415,lng:-3.70,stayMin:90}]}];
+    todayISO=()=>'2026-09-01'; nowMinutes=()=>11*60;
+    render();
+  });
+  await page.locator('#travelBtn').click();
+  const suggest=page.locator('#travelSuggest');
+  await suggest.locator('.sgCard',{hasText:'레티로 공원'}).getByRole('button',{name:'건너뛰기'}).click();
+  await expect(suggest).not.toContainText('레티로 공원');
+  await page.evaluate(()=>renderTravel(0));
+  await expect(suggest).not.toContainText('레티로 공원');
+  expect(await page.evaluate(()=>trip().days[1].spots[0].name)).toBe('레티로 공원');   // 거절은 여행 데이터를 건드리지 않는다
+});
