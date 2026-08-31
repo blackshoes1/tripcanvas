@@ -50,3 +50,21 @@ test('같은 상황을 두 번 알리지 않도록 dedupe 키가 유일하다',(
 test('알림 기반 테이블에 위치를 저장하지 않는다',()=>{
   assert.ok(!/\blat\b|\blng\b|latitude|longitude/i.test(pushSql),'위치 history를 남기지 않는다');
 });
+
+const memorySql=fs.readFileSync(path.join(__dirname,'..','supabase','migrations','202608310003_trip_memories.sql'),'utf8');
+
+test('여행 기록도 RLS owner 정책 아래에 있다',()=>{
+  assert.match(memorySql,/alter table public\.trip_memories enable row level security/i);
+  assert.match(memorySql,/trip_memories_owner_select[\s\S]*auth\.uid\(\)\)=user_id/i);
+  assert.match(memorySql,/revoke all on public\.trip_memories from anon/i);
+});
+
+test('사진 원본을 서버에 담지 않는다 — 식별자만 남긴다',()=>{
+  assert.match(memorySql,/asset_refs jsonb/i);
+  assert.ok(!/bytea|base64|image_data|blob/i.test(memorySql),'이미지 바이트를 저장하는 컬럼이 없어야 한다');
+});
+
+test('오프라인에서 만든 기록이 두 번 올라가지 않는다',()=>{
+  assert.match(memorySql,/client_key text/i);
+  assert.match(memorySql,/unique \(user_id, client_key\)/i);
+});

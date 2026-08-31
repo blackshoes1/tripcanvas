@@ -42,6 +42,8 @@ targets:
         TCSupabaseAnonKey: ""
     dependencies:
       - target: TripCanvasWidgets
+      - target: TripCanvasShare
+      - target: TripCanvasWatch
     entitlements:
       path: TripCanvas/TripCanvas.entitlements
       properties:
@@ -76,6 +78,60 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ai.tripcanvas.ios.widgets
         TARGETED_DEVICE_FAMILY: "1"
+
+  # 공유받은 것을 그대로 큐에 넣고 바로 닫는다. 파싱·저장은 앱이 한다(§55).
+  TripCanvasShare:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: TripCanvasShare
+      - path: TripCanvasShared
+      - path: TripCanvas/Core/Models/Contract.swift
+    info:
+      path: TripCanvasShare/Info.plist
+      properties:
+        CFBundleDisplayName: TripCanvas
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: ShareViewController
+          NSExtensionAttributes:
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsWebURLWithMaxCount: 1
+              NSExtensionActivationSupportsWebPageWithMaxCount: 1
+              NSExtensionActivationSupportsText: true
+    entitlements:
+      path: TripCanvasShare/TripCanvasShare.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.ai.tripcanvas.ios
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ai.tripcanvas.ios.share
+        TARGETED_DEVICE_FAMILY: "1"
+
+  # iPhone이 App Group에 써 둔 압축본만 읽는다. 도메인을 다시 구현하지 않는다(§36).
+  TripCanvasWatch:
+    type: application
+    platform: watchOS
+    deploymentTarget: "10.0"
+    sources:
+      - path: TripCanvasWatch
+      - path: TripCanvasShared
+      - path: TripCanvas/Core/Models/Contract.swift
+    info:
+      path: TripCanvasWatch/Info.plist
+      properties:
+        CFBundleDisplayName: TripCanvas
+        WKApplication: true
+        WKCompanionAppBundleIdentifier: ai.tripcanvas.ios
+    entitlements:
+      path: TripCanvasWatch/TripCanvasWatch.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.ai.tripcanvas.ios
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ai.tripcanvas.ios.watchkitapp
 
   TripCanvasTests:
     type: bundle.unit-test

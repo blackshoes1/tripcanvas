@@ -5,6 +5,7 @@ import { createClient } from '@supabase/supabase-js';
 
 import type { PriceObservation } from '../domain/bookingsView';
 import type { DeviceRegistration } from '../domain/contract';
+import type { MemoryRow } from '../domain/intakeView';
 import type { Gateway, TripRow } from './handlers';
 import type { TripDoc } from '../domain/todayView';
 
@@ -125,6 +126,32 @@ export async function supabaseGatewayFor(token: string): Promise<Gateway | null>
         updated_at: new Date().toISOString()
       }, { onConflict: 'user_id,device_id' });
       if (e) throw e;
+    },
+    async listMemories(tripId: string, dayIndex: number | null): Promise<MemoryRow[]> {
+      let query = sb.from('trip_memories')
+        .select('id,day_index,activity_id,type,caption,asset_refs,lat,lng,at_minutes,captured_at,client_key')
+        .eq('trip_client_id', tripId)
+        .order('at_minutes', { ascending: true })
+        .limit(500);
+      if (dayIndex != null) query = query.eq('day_index', dayIndex);
+      const { data, error: e } = await query;
+      if (e) throw e;
+      return (data ?? []) as unknown as MemoryRow[];
+    },
+    async saveMemory(tripId, row) {
+      // 오프라인에서 만든 기록이 온라인 복귀 후 두 번 올라가지 않게 clientKey로 먼저 찾는다.
+      if (row.client_key) {
+        const { data: found } = await sb.from('trip_memories')
+          .select('id,day_index,activity_id,type,caption,asset_refs,lat,lng,at_minutes,captured_at,client_key')
+          .eq('client_key', row.client_key).maybeSingle();
+        if (found) return { row: found as unknown as MemoryRow, created: false };
+      }
+      const { data, error: e } = await sb.from('trip_memories')
+        .insert({ user_id: userId, trip_client_id: tripId, ...row })
+        .select('id,day_index,activity_id,type,caption,asset_refs,lat,lng,at_minutes,captured_at,client_key')
+        .single();
+      if (e) throw e;
+      return { row: data as unknown as MemoryRow, created: true };
     },
     async removeDevice(deviceId: string) {
       const { error: e } = await sb.from('device_tokens').delete().eq('device_id', deviceId);

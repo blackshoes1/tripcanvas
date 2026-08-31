@@ -466,3 +466,134 @@ struct DeviceRegistrationResponse: Codable, Sendable {
     let registered: Bool
     let deviceId: String
 }
+
+// MARK: - 유입 (공유 → 예약 후보) · 여행 기록
+
+enum ShareKind: String, UnknownDecodable, Sendable {
+    case booking = "BOOKING", place = "PLACE", transport = "TRANSPORT", note = "NOTE", unknown = "UNKNOWN"
+    static var unknownCase: ShareKind { .unknown }
+}
+
+enum CandidateType: String, UnknownDecodable, Sendable {
+    case hotel = "HOTEL", flight = "FLIGHT", train = "TRAIN", car = "CAR"
+    case restaurant = "RESTAURANT", tour = "TOUR", other = "OTHER", unknown
+    static var unknownCase: CandidateType { .unknown }
+}
+
+/// 이 후보를 어떻게 다룰지. **AUTO여도 저장은 사용자가 확인한 뒤에만** 일어난다(§76.2).
+enum CandidateDisposition: String, UnknownDecodable, Sendable {
+    case auto = "AUTO", review = "REVIEW", manual = "MANUAL", unknown
+    static var unknownCase: CandidateDisposition { .unknown }
+}
+
+struct BookingCandidate: Codable, Hashable, Sendable {
+    let type: CandidateType
+    let title: String?
+    let provider: String?
+    let providerId: String?
+    let confirmationNumber: String?
+    let startAt: String?
+    let endAt: String?
+    let location: String?
+    let amount: Double?
+    let currency: String?
+    let sourceUrl: String?
+    let sourceTitle: String?
+    /// 숫자를 그대로 보여주지 않는다 — disposition으로 다룬다.
+    let confidence: Double
+    /// 못 읽은 필수 항목. 미리보기가 빈 칸을 그대로 보여주게 한다.
+    let missingFields: [String]
+    /// 날짜·통화처럼 확실하지 않은 것. 있으면 자동으로 넘기지 않는다.
+    let ambiguities: [String]
+    let reasons: [String]
+    let disposition: CandidateDisposition
+}
+
+struct TripMatch: Codable, Hashable, Sendable, Identifiable {
+    let tripId: String
+    let name: String
+    let score: Double
+    let reasons: [String]
+    var id: String { tripId }
+}
+
+struct DuplicateBookingMatch: Codable, Hashable, Sendable {
+    let tripId: String
+    let bookingId: String
+    let title: String
+    let score: Double
+    let reasons: [String]
+}
+
+struct ImportPreviewResponse: Codable, Sendable {
+    let schemaVersion: Int
+    /// 같은 공유를 두 번 처리하지 않기 위한 키.
+    let idempotencyKey: String
+    let kind: ShareKind
+    let kindConfidence: Double
+    let kindReasons: [String]
+    let candidate: BookingCandidate?
+    let tripMatches: [TripMatch]
+    let duplicate: DuplicateBookingMatch?
+    /// 못 읽어도 버리지 않는다 — 메모로 남길 수 있게 원문이 함께 온다.
+    let rawText: String?
+    let rawUrl: String?
+    let rawTitle: String?
+}
+
+struct ImportCommitResponse: Codable, Sendable {
+    let schemaVersion: Int
+    let bookingId: String
+    let revision: Int
+    /// 저장으로 끝나지 않는다 — 새 예약이 남은 일정과 부딪히는지 함께 온다.
+    let replan: ReplanPreview
+    let today: TodayResponse
+}
+
+enum MemoryType: String, UnknownDecodable, Sendable {
+    case photo = "PHOTO", note = "NOTE", visit = "VISIT", moment = "MOMENT", unknown
+    static var unknownCase: MemoryType { .unknown }
+}
+
+struct MemoryEvent: Codable, Hashable, Sendable, Identifiable {
+    let id: String
+    let dayIndex: Int?
+    let activityId: String?
+    let type: MemoryType
+    let caption: String?
+    /// 기기 사진 보관함의 식별자. 원본 이미지는 서버로 올리지 않는다.
+    let assetRefs: [String]
+    let location: GeoPoint?
+    let atMinutes: Int?
+    let capturedAt: String
+    let clientKey: String?
+}
+
+struct MemoryTimelineGroup: Codable, Hashable, Sendable, Identifiable {
+    let activityId: String?
+    let title: String
+    let atMinutes: Int
+    let photos: Int
+    let notes: Int
+    let eventIds: [String]
+    var id: String { activityId ?? "unassigned-\(atMinutes)" }
+}
+
+struct MemoryListResponse: Codable, Sendable {
+    let schemaVersion: Int
+    let events: [MemoryEvent]
+    let timeline: [MemoryTimelineGroup]
+}
+
+struct MemoryCreateResponse: Codable, Sendable {
+    let schemaVersion: Int
+    let event: MemoryEvent
+    /// 어느 일정에 붙였는지, 왜 그렇게 붙였는지.
+    let association: MemoryAssociation
+    let alreadyExists: Bool
+}
+
+struct MemoryAssociation: Codable, Hashable, Sendable {
+    let activityId: String?
+    let reason: String
+}

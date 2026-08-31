@@ -348,6 +348,116 @@ export interface TravelStateResponse {
   travelMode: boolean;
 }
 
+// ── 유입 (공유 → 예약 후보) · 여행 기록 ──
+
+export type ShareKind = 'BOOKING' | 'PLACE' | 'TRANSPORT' | 'NOTE' | 'UNKNOWN';
+export type CandidateType = 'HOTEL' | 'FLIGHT' | 'TRAIN' | 'CAR' | 'RESTAURANT' | 'TOUR' | 'OTHER';
+/** 이 후보를 어떻게 다룰지. AUTO여도 저장은 사용자가 확인한 뒤에만 일어난다(§16). */
+export type CandidateDisposition = 'AUTO' | 'REVIEW' | 'MANUAL';
+
+export interface BookingCandidate {
+  type: CandidateType;
+  title: string | null;
+  provider: string | null;
+  providerId: string | null;
+  confirmationNumber: string | null;
+  startAt: string | null;
+  endAt: string | null;
+  location: string | null;
+  amount: number | null;
+  currency: string | null;
+  sourceUrl: string | null;
+  sourceTitle: string | null;
+  /** 0~1. 얼마나 믿을 만한가 — 숫자를 그대로 보여주지 않고 disposition으로 다룬다 */
+  confidence: number;
+  /** 못 읽은 필수 항목. 미리보기가 빈 칸을 그대로 보여주게 한다 */
+  missingFields: string[];
+  /** 날짜·통화처럼 확실하지 않은 것. 있으면 자동으로 넘기지 않는다 */
+  ambiguities: string[];
+  reasons: string[];
+  disposition: CandidateDisposition;
+}
+
+export interface TripMatch {
+  tripId: string;
+  name: string;
+  score: number;
+  reasons: string[];
+}
+
+export interface DuplicateBookingMatch {
+  tripId: string;
+  bookingId: string;
+  title: string;
+  score: number;
+  reasons: string[];
+}
+
+export interface ImportPreviewResponse {
+  schemaVersion: number;
+  /** 같은 공유를 두 번 처리하지 않기 위한 키(§57) */
+  idempotencyKey: string;
+  kind: ShareKind;
+  kindConfidence: number;
+  kindReasons: string[];
+  /** 예약으로 볼 만할 때만. 장소·메모는 null이다 */
+  candidate: BookingCandidate | null;
+  tripMatches: TripMatch[];
+  duplicate: DuplicateBookingMatch | null;
+  /** 못 읽어도 버리지 않는다 — 메모로 남길 수 있게 원문을 돌려준다(§50) */
+  rawText: string | null;
+  rawUrl: string | null;
+  rawTitle: string | null;
+}
+
+export interface ImportCommitResponse {
+  schemaVersion: number;
+  bookingId: string;
+  revision: number;
+  /** 새 예약이 남은 일정과 부딪히는지 — 저장으로 끝나지 않고 다음 행동으로 이어진다(§42) */
+  replan: ReplanPreview;
+  today: TodayResponse;
+}
+
+export type MemoryType = 'PHOTO' | 'NOTE' | 'VISIT' | 'MOMENT';
+
+export interface MemoryEvent {
+  id: string;
+  dayIndex: number | null;
+  activityId: string | null;
+  type: MemoryType;
+  caption: string | null;
+  /** 기기 사진 보관함의 식별자. 원본 이미지는 서버로 올리지 않는다(§76.6) */
+  assetRefs: string[];
+  location: GeoPoint | null;
+  atMinutes: number | null;
+  capturedAt: string;
+  clientKey: string | null;
+}
+
+export interface MemoryTimelineGroup {
+  activityId: string | null;
+  title: string;
+  atMinutes: number;
+  photos: number;
+  notes: number;
+  eventIds: string[];
+}
+
+export interface MemoryListResponse {
+  schemaVersion: number;
+  events: MemoryEvent[];
+  timeline: MemoryTimelineGroup[];
+}
+
+export interface MemoryCreateResponse {
+  schemaVersion: number;
+  event: MemoryEvent;
+  /** 어느 일정에 붙였는지, 왜 그렇게 붙였는지 */
+  association: { activityId: string | null; reason: string };
+  alreadyExists: boolean;
+}
+
 export interface DeviceRegistration {
   deviceId: string;
   platform: 'ios' | 'web';

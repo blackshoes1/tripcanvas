@@ -81,6 +81,17 @@ Tests/        디코딩·상태 계산·ViewModel
 **APNs 키와 서명은 각자 설정해야 한다.** 서버 → APNs 실제 발송은 아직 붙이지 않았다 —
 서버는 "무엇을 보낼 만한가"(`notifications`)까지만 계산하고, 지금은 기기가 그중 자기 몫만 로컬로 띄운다.
 
+## 확장 표면 (Siri · 공유 · Watch · 기록)
+
+| 무엇 | 어디 | 규칙 |
+|---|---|---|
+| App Intents | Features/Intents/TripCanvasIntents.swift | 판단을 넣지 않는다. 서비스를 부르고 짧게 답한다. "지금 일정 완료"는 대상이 하나로 정해질 때만 |
+| Action Router | Core/Routing/ActionRouter.swift | Siri·Push·위젯·Watch·공유가 **같은 딥링크 체계 하나**를 쓴다 |
+| Share Extension | TripCanvasShare/ | 파싱하지 않는다. 받은 것을 큐에 넣고 바로 닫는다 — 네트워크가 없어도 유실되지 않게 |
+| Booking Import | 서버 /api/v1/import/* | 미리보기까지만. 저장은 사용자가 확인한 뒤 별도 요청 |
+| Apple Watch | TripCanvasWatch/ | 축소판이 아니다. "다음 뭐지?" 하나만. App Group 압축본만 읽는다 |
+| Trip Memory | 서버 /api/v1/trips/:id/memories | 어느 일정인지 서버가 시각·위치로 짚는다. 사진 원본은 올리지 않는다 |
+
 ## 이번 단계에서 하지 않은 것
 
 Apple Watch · Siri/App Intents · Share Extension · 서버발 APNs 발송 · Live Activity remote update ·

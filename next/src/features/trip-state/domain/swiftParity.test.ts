@@ -14,6 +14,7 @@ import { computeToday } from './todayView';
 import type { TripDoc } from './todayView';
 import { buildBookings } from './bookingsView';
 import { buildTravelState } from './travelState';
+import { buildImportPreview } from './intakeView';
 
 const SWIFT = readFileSync(path.join(__dirname, '../../../../../ios/TripCanvas/Core/Models/Contract.swift'), 'utf8');
 
@@ -168,5 +169,56 @@ describe('Travel State도 Swift가 전부 담는다', () => {
     mkdirSync(dir, { recursive: true });
     writeFileSync(path.join(dir, 'travel-state.json'), JSON.stringify(travel, null, 2) + String.fromCharCode(10));
     expect(travel.stateVersion).toBe(travel.liveActivity.stateVersion);
+  });
+});
+
+const preview = buildImportPreview(
+  {
+    url: 'https://www.booking.com/hotel/es/cap-rocat.html',
+    title: 'Cap Rocat | Booking.com',
+    text: '예약 번호: ABC12345\n체크인 2026-09-02\n체크아웃 2026-09-04\n총액 EUR 1,420'
+  },
+  [{ client_id: 'parity', data: trip }],
+  { year: 2026 }
+);
+
+describe('유입·기록 계약도 Swift가 전부 담는다', () => {
+  it('ImportPreviewResponse와 BookingCandidate', () => {
+    expectCovered('ImportPreviewResponse', preview as unknown as Record<string, unknown>);
+    expect(preview.candidate).toBeTruthy();
+    expectCovered('BookingCandidate', preview.candidate as unknown as Record<string, unknown>);
+    expect(preview.tripMatches.length).toBeGreaterThan(0);
+    expectCovered('TripMatch', preview.tripMatches[0] as unknown as Record<string, unknown>);
+  });
+
+  it('유입 enum도 Swift가 안다', () => {
+    ['BOOKING', 'PLACE', 'TRANSPORT', 'NOTE', 'UNKNOWN'].forEach((s) => expect(SWIFT, `ShareKind.${s}`).toContain(`"${s}"`));
+    ['HOTEL', 'FLIGHT', 'TRAIN', 'CAR', 'RESTAURANT', 'TOUR', 'OTHER'].forEach((s) => expect(SWIFT).toContain(`"${s}"`));
+    ['AUTO', 'REVIEW', 'MANUAL'].forEach((s) => expect(SWIFT, `CandidateDisposition.${s}`).toContain(`"${s}"`));
+    ['PHOTO', 'NOTE', 'VISIT', 'MOMENT'].forEach((s) => expect(SWIFT, `MemoryType.${s}`).toContain(`"${s}"`));
+  });
+
+  it('공유 키 규칙이 앱과 서버에서 같다 — 다르면 같은 공유가 두 번 처리된다', () => {
+    // Swift의 SharedTravelInput.makeId와 같은 알고리즘이어야 한다(djb2 xor, UTF-16 단위, base36).
+    const swiftSource = readFileSync(
+      path.join(__dirname, '../../../../../ios/TripCanvasShared/ShareQueue.swift'), 'utf8');
+    expect(swiftSource).toContain('hash = ((hash &* 33) ^ UInt32(unit))');
+    expect(swiftSource).toContain('radix: 36');
+    expect(swiftSource).toContain('prefix(500)');
+    expect(preview.idempotencyKey).toMatch(/^sh[0-9a-z]+$/);
+  });
+
+  it('예약 후보를 미리보기 없이 저장하는 경로가 없다', () => {
+    // disposition이 AUTO여도 저장은 별도 요청(commit)이다.
+    expect(['AUTO', 'REVIEW', 'MANUAL']).toContain(preview.candidate!.disposition);
+    expect(preview).not.toHaveProperty('bookingId');
+    expect(preview).not.toHaveProperty('saved');
+  });
+
+  it('iOS 테스트 픽스처(import-preview)도 실제 응답으로 갱신한다', () => {
+    const dir = path.join(__dirname, '../../../../../ios/TripCanvasTests/Fixtures');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(path.join(dir, 'import-preview.json'), JSON.stringify(preview, null, 2) + String.fromCharCode(10));
+    expect(preview.schemaVersion).toBe(1);
   });
 });

@@ -342,3 +342,53 @@ declare module '@legacy/adaptive.js' {
   };
   export = api;
 }
+
+declare module '@legacy/intake.js' {
+  type ShareKind = 'BOOKING' | 'PLACE' | 'TRANSPORT' | 'NOTE' | 'UNKNOWN';
+  type CandidateType = 'HOTEL' | 'FLIGHT' | 'TRAIN' | 'CAR' | 'RESTAURANT' | 'TOUR' | 'OTHER';
+  interface SharedInput {
+    sourceType?: string; url?: string; text?: string; title?: string;
+    receivedAt?: string; locale?: string; timeZone?: string;
+  }
+  interface Candidate {
+    type: CandidateType; title: string | null; provider: string | null; providerId: string | null;
+    confirmationNumber: string | null; startAt: string | null; endAt: string | null;
+    location: string | null; amount: number | null; currency: string | null;
+    sourceUrl: string | null; sourceTitle: string | null; receivedAt: string | null;
+    reasons: string[]; ambiguities: string[]; missingFields: string[]; confidence: number;
+  }
+  const api: {
+    INTAKE_CFG: Readonly<Record<string, number>>;
+    MEMORY_CFG: Readonly<Record<string, number>>;
+    SHARE_STATES: readonly string[];
+    MEMORY_TYPES: readonly string[];
+    PROVIDER_ADAPTERS: readonly { id: string; hosts: readonly string[]; type: CandidateType; name: string }[];
+    classifyShare(input: SharedInput): { kind: ShareKind; confidence: number; reasons: string[] };
+    normalizeDate(raw: string, opts?: { locale?: string; year?: number }):
+      { iso: string | null; ambiguous: boolean; alternative: string | null };
+    normalizeCurrency(raw: string, opts?: { hint?: string }): { code: string | null; ambiguous: boolean };
+    normalizeAmount(raw: string): number | null;
+    providerFor(url?: string): { id: string; type: CandidateType; name: string } | null;
+    parseBookingCandidate(input: SharedInput, opts?: { locale?: string; year?: number; currencyHint?: string }): Candidate;
+    candidateDisposition(c: unknown, opts?: unknown): 'AUTO' | 'REVIEW' | 'MANUAL';
+    findDuplicateBooking(candidate: unknown, bookings: unknown[], opts?: unknown):
+      { booking: unknown; score: number; reasons: string[] } | null;
+    matchTripForBooking(candidate: unknown, trips: unknown[], opts?: unknown):
+      { tripId: string; name: string; score: number; reasons: string[] }[];
+    candidateToBooking(candidate: unknown, id: string): Record<string, unknown>;
+    shareIdempotencyKey(input: SharedInput): string;
+    shareQueueNext(state: string, event: string): string;
+    titleSimilarity(a: string, b: string): number;
+    associateMemory(
+      capture: { atMinutes: number; location?: { lat: number; lng: number } | null },
+      activities: unknown[], opts?: unknown
+    ): { activityId: string | null; reason: string };
+    memoryTimeline(events: unknown[], activities: unknown[]): {
+      activityId: string | null; title: string; atMinutes: number;
+      photos: number; notes: number; events: unknown[];
+    }[];
+    plannedVsActual(activities: unknown[], events: unknown[]):
+      { planned: string[]; visited: string[]; missed: string[]; unplanned: number };
+  };
+  export = api;
+}

@@ -2,7 +2,11 @@
 // 검증 대상은 "iOS가 이 응답만 보고 오늘 무엇을 할지 알 수 있는가"와 "두 기기가 부딪혀도 조용히 덮어쓰지 않는가"다.
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import type { BookingListResponse, DeviceRegistration, MutationResponse, TodayResponse, TravelStateResponse, TripListResponse } from '../domain/contract';
+import type {
+  BookingListResponse, DeviceRegistration, ImportCommitResponse, ImportPreviewResponse,
+  MemoryCreateResponse, MemoryListResponse, MutationResponse, TodayResponse, TravelStateResponse, TripListResponse
+} from '../domain/contract';
+import type { MemoryRow } from '../domain/intakeView';
 import type { PriceObservation } from '../domain/bookingsView';
 import type { Gateway, TripRow } from './handlers';
 import { createHandlers, resolveClock } from './handlers';
@@ -38,12 +42,12 @@ function tripDoc(): TripDoc {
 
 interface Store {
   rows: Map<string, TripRow>; dismissed: Map<string, string[]>; feedback: string[];
-  observations: PriceObservation[]; sentKeys: string[]; devices: DeviceRegistration[];
+  observations: PriceObservation[]; sentKeys: string[]; devices: DeviceRegistration[]; memories: MemoryRow[];
 }
 function makeStore(): Store {
   const rows = new Map<string, TripRow>();
   rows.set('trip-1', { client_id: 'trip-1', data: tripDoc(), revision: 3, updated_at: '2026-08-31T00:00:00Z', deleted_at: null });
-  return { rows, dismissed: new Map(), feedback: [], observations: [], sentKeys: [], devices: [] };
+  return { rows, dismissed: new Map(), feedback: [], observations: [], sentKeys: [], devices: [], memories: [] };
 }
 function gatewayOf(store: Store): Gateway {
   return {
@@ -67,6 +71,16 @@ function gatewayOf(store: Store): Gateway {
       store.devices = store.devices.filter((d) => d.deviceId !== registration.deviceId).concat(registration);
     },
     async removeDevice(deviceId) { store.devices = store.devices.filter((d) => d.deviceId !== deviceId); },
+    async listMemories(_tripId, dayIndex) {
+      return dayIndex == null ? store.memories : store.memories.filter((m) => m.day_index === dayIndex);
+    },
+    async saveMemory(_tripId, row) {
+      const existing = row.client_key ? store.memories.find((m) => m.client_key === row.client_key) : undefined;
+      if (existing) return { row: existing, created: false };
+      const saved: MemoryRow = { id: `mem${store.memories.length + 1}`, ...row };
+      store.memories.push(saved);
+      return { row: saved, created: true };
+    },
     async recordFeedback(id, day, key, action) {
       store.feedback.push(`${action}:${key}`);
       if (action !== 'SKIPPED') return;
@@ -511,5 +525,156 @@ describe('POST/DELETE /devices — push 토큰(§45)', () => {
     expect(res.status).toBe(200);
     expect(store.devices).toHaveLength(0);
     expect((await api.unregisterDevice(new Request('http://localhost/api/v1/devices', auth({ method: 'DELETE' })))).status).toBe(400);
+  });
+});
+
+describe('POST /import/preview — 공유된 것을 훑기만 한다(§76.2)', () => {
+  const preview = (body: unknown) =>
+    api.importPreview(new Request('http://localhost/api/v1/import/preview', auth({ method: 'POST', body: JSON.stringify(body) })));
+
+  const HOTEL = {
+    url: 'https://www.booking.com/hotel/es/cap-rocat.html',
+    title: 'Cap Rocat | Booking.com',
+    text: '예약 번호: ABC12345\n체크인 2026-09-02\n체크아웃 2026-09-04\n총액 EUR 1,420'
+  };
+
+  it('예약 후보와 소속 여행 후보를 함께 주고, 아무것도 저장하지 않는다', async () => {
+    const res = await preview(HOTEL);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as ImportPreviewResponse;
+    expect(body.kind).toBe('BOOKING');
+    expect(body.candidate?.title).toBe('Cap Rocat');
+    expect(body.candidate?.confirmationNumber).toBe('ABC12345');
+    expect(body.candidate?.disposition).toBe('AUTO');
+    expect(body.tripMatches[0]?.tripId).toBe('trip-1');
+    expect(body.tripMatches[0]?.reasons.length).toBeGreaterThan(0);
+    expect(body.idempotencyKey).toBeTruthy();
+    // 저장 흔적 없음
+    expect(store.rows.get('trip-1')!.revision).toBe(3);
+    expect(store.rows.get('trip-1')!.data.bookings ?? []).toHaveLength(0);
+  });
+
+  it('모든 공유를 예약으로 가정하지 않는다', async () => {
+    const place = (await (await preview({ url: 'https://maps.apple.com/?ll=39.57,2.65&q=Sa+Calobra' })).json()) as ImportPreviewResponse;
+    expect(place.kind).toBe('PLACE');
+    expect(place.candidate).toBeNull();
+
+    const note = (await (await preview({ text: '여기 저녁에 다시 오자' })).json()) as ImportPreviewResponse;
+    expect(note.kind).toBe('NOTE');
+    expect(note.candidate).toBeNull();
+    expect(note.rawText).toBe('여기 저녁에 다시 오자');   // 못 읽어도 버리지 않는다(§50)
+  });
+
+  it('같은 공유는 같은 키를 낸다 — 두 번 처리되지 않게', async () => {
+    const a = (await (await preview(HOTEL)).json()) as ImportPreviewResponse;
+    const b = (await (await preview({ ...HOTEL, receivedAt: '2026-09-01T10:00:00Z' })).json()) as ImportPreviewResponse;
+    expect(b.idempotencyKey).toBe(a.idempotencyKey);
+  });
+
+  it('빈 요청은 400', async () => {
+    expect((await preview({})).status).toBe(400);
+  });
+});
+
+describe('POST /import/commit — 확인한 것만 저장하고, 다음 행동으로 잇는다(§42)', () => {
+  const commit = (body: unknown) =>
+    api.importCommit(new Request('http://localhost/api/v1/trips/trip-1/import/commit',
+      auth({ method: 'POST', body: JSON.stringify(body) })), 'trip-1');
+
+  const candidateFor = async () => {
+    const res = await api.importPreview(new Request('http://localhost/api/v1/import/preview', auth({
+      method: 'POST',
+      body: JSON.stringify({
+        url: 'https://www.booking.com/hotel/es/cap-rocat.html',
+        title: 'Cap Rocat | Booking.com',
+        text: '예약 번호: ABC12345\n체크인 2026-09-02\n체크아웃 2026-09-04\n총액 EUR 1,420'
+      })
+    })));
+    return ((await res.json()) as ImportPreviewResponse).candidate!;
+  };
+
+  it('예약을 여행에 붙이고 최신 상태를 함께 돌려준다', async () => {
+    const candidate = await candidateFor();
+    const res = await commit({ candidate, expectedRevision: 3 });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as ImportCommitResponse;
+    expect(body.revision).toBe(4);
+    const bookings = store.rows.get('trip-1')!.data.bookings as { id: string; title: string; confirmation?: string }[];
+    expect(bookings).toHaveLength(1);
+    expect(bookings[0].title).toBe('Cap Rocat');
+    expect(bookings[0].confirmation).toBe('ABC12345');
+    expect(body.replan).toBeTruthy();   // 저장으로 끝나지 않는다
+    expect(body.today.trip.revision).toBe(4);
+  });
+
+  it('여러 번 들여와도 id가 겹치지 않는다', async () => {
+    const candidate = await candidateFor();
+    await commit({ candidate });
+    await commit({ candidate });
+    const bookings = store.rows.get('trip-1')!.data.bookings as { id: string }[];
+    expect(new Set(bookings.map((b) => b.id)).size).toBe(bookings.length);
+  });
+
+  it('다른 기기가 먼저 바꿨으면 409', async () => {
+    const candidate = await candidateFor();
+    const res = await commit({ candidate, expectedRevision: 1 });
+    expect(res.status).toBe(409);
+    expect(store.rows.get('trip-1')!.data.bookings ?? []).toHaveLength(0);
+  });
+
+  it('후보가 없으면 400', async () => {
+    expect((await commit({})).status).toBe(400);
+  });
+});
+
+describe('여행 기록 — 어디였는지 다시 묻지 않는다(§27)', () => {
+  const create = (body: unknown) =>
+    api.createMemory(new Request('http://localhost/api/v1/trips/trip-1/memories?now=19:30',
+      auth({ method: 'POST', body: JSON.stringify(body) })), 'trip-1');
+
+  it('시각으로 일정을 자동 연결하고 왜 그렇게 붙였는지 말한다', async () => {
+    const res = await create({ type: 'PHOTO', assetRefs: ['ph1', 'ph2'] });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as MemoryCreateResponse;
+    expect(body.event.type).toBe('PHOTO');
+    expect(body.event.assetRefs).toEqual(['ph1', 'ph2']);
+    expect(body.association.activityId).toBe('d0s1');   // 19:30 = 저녁 예약 진행 중
+    expect(body.association.reason.length).toBeGreaterThan(0);
+    expect(body.alreadyExists).toBe(false);
+  });
+
+  it('클라이언트가 보낸 activityId를 그대로 믿지 않는다', async () => {
+    const body = (await (await create({ type: 'NOTE', caption: '메모', activityId: 'd9s9' })).json()) as MemoryCreateResponse;
+    expect(body.event.activityId).not.toBe('d9s9');
+  });
+
+  it('오프라인에서 만든 기록이 온라인 복귀 후 두 번 올라가지 않는다(§57)', async () => {
+    const first = (await (await create({ type: 'NOTE', caption: '메모', clientKey: 'local-1' })).json()) as MemoryCreateResponse;
+    const again = (await (await create({ type: 'NOTE', caption: '메모', clientKey: 'local-1' })).json()) as MemoryCreateResponse;
+    expect(again.alreadyExists).toBe(true);
+    expect(again.event.id).toBe(first.event.id);
+    expect(store.memories).toHaveLength(1);
+  });
+
+  it('알 수 없는 종류는 400', async () => {
+    expect((await create({ type: 'VIDEO' })).status).toBe(400);
+  });
+
+  it('기록을 일정과 나란히 놓아 돌려준다', async () => {
+    await create({ type: 'PHOTO', assetRefs: ['a'] });
+    await create({ type: 'NOTE', caption: '좋았다' });
+    const res = await api.memories(new Request('http://localhost/api/v1/trips/trip-1/memories', auth()), 'trip-1');
+    const body = (await res.json()) as MemoryListResponse;
+    expect(body.events).toHaveLength(2);
+    expect(body.timeline.length).toBeGreaterThan(0);
+    expect(body.timeline[0].photos + body.timeline[0].notes).toBeGreaterThan(0);
+  });
+
+  it('사진 원본을 서버에 담지 않는다 — 식별자만 남는다(§76.6)', async () => {
+    const body = (await (await create({ type: 'PHOTO', assetRefs: ['local-identifier-1'] })).json()) as MemoryCreateResponse;
+    const text = JSON.stringify(body);
+    expect(text).toContain('local-identifier-1');
+    expect(text).not.toContain('base64');
+    expect(text).not.toContain('data:image');
   });
 });

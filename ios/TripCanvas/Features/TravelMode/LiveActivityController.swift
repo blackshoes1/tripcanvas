@@ -98,6 +98,15 @@ enum Analytics {
         case locationSuggestionShown = "location_suggestion_shown"
         case locationSuggestionAccepted = "location_suggestion_accepted"
         case replanNotificationOpened = "replan_notification_opened"
+        case intentUsed = "intent_used"
+        case shareReceived = "share_received"
+        case shareParsed = "share_parsed"
+        case bookingImportPreviewed = "booking_import_previewed"
+        case bookingImportAccepted = "booking_import_accepted"
+        case bookingImportCorrected = "booking_import_corrected"
+        case watchOpened = "watch_opened"
+        case memoryCreated = "memory_created"
+        case photoAttached = "photo_attached"
     }
 
     /// 최근 것만 들고 있는다. 외부로 보내지 않는다 — 보낼 곳이 정해지면 여기만 바꾼다.

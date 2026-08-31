@@ -12,6 +12,7 @@ const SHELL = [
   './routing.js',
   './price.js',
   './adaptive.js',
+  './intake.js',
   './manifest.json',
   './icon-192.png',
   './icon-512.png'

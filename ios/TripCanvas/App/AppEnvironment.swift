@@ -28,6 +28,18 @@ enum AppConfig {
 final class AppEnvironment {
     let auth: AuthStore
     let service: TripService
+    /// Siri · Push · Widget · Watch · Share가 함께 쓰는 단 하나의 라우터(§41).
+    let router = ActionRouter()
+    let location = LocationProvider()
+    let liveActivity = LiveActivityController()
+    private(set) lazy var push = PushService { [weak self] token in
+        guard let self else { return }
+        try? await self.service.registerDevice(
+            deviceId: DeviceIdentity.current, pushToken: token,
+            preferences: [:], appVersion: AppConfig.version)
+    }
+    private(set) lazy var travelMode = TravelModeController(
+        service: self.service, location: self.location, push: self.push, liveActivity: self.liveActivity)
 
     init(auth: AuthStore? = nil, service: TripService? = nil) {
         let authStore = auth ?? AuthStore(
@@ -36,5 +48,26 @@ final class AppEnvironment {
         self.service = service ?? TripService(
             api: APIClient(baseURL: AppConfig.apiBaseURL, tokens: AuthTokenProvider(store: authStore)),
             cache: TripCache())
+    }
+}
+
+/// 기기 하나를 가리키는 값. 사용자를 식별하지 않는다 — 로그아웃하면 토큰과 함께 지운다(§45).
+enum DeviceIdentity {
+    private static let store = KeychainStore(account: "device.id")
+    private struct Wrapper: Codable { let id: String }
+
+    static var current: String = {
+        if let saved = store.read(Wrapper.self)?.id { return saved }
+        let created = UUID().uuidString
+        store.write(Wrapper(id: created))
+        return created
+    }()
+
+    static func reset() { store.clear() }
+}
+
+extension AppConfig {
+    static var version: String {
+        (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "0"
     }
 }
