@@ -7,10 +7,12 @@
 - **작업은 `main`에 직접 커밋·푸시한다.** 별도 브랜치·PR 없이 바로 반영한다.
 - ⚠️ `main` 푸시는 Vercel 자동 배포와 연결돼 있어 **커밋 즉시 프로덕션(`tripcanvas-ai.vercel.app`)에 나간다.** 푸시 전에 변경을 스스로 검토하고, 아래 **릴리스 체크리스트**를 반드시 지킬 것.
 - **여러 기기(집·회사)에서 작업한다.** 세션 시작·커밋 전에 `git fetch`로 `origin/main`이 앞서 있는지 확인하고, 뒤처졌으면 `git pull --ff-only` 후 작업한다.
+- **커밋 메시지 제목은 명사형으로 끝낸다.** `… 기능 추가` · `… 오류 수정` · `… 규칙 정리` 처럼 맺는다. `추가한다`·`고쳤다` 같은 서술형 어미로 끝내지 않는다. (본문은 서술형으로 써도 된다 — 제목만 명사형)
 
 ## 배포
 
 - 원격 `main` 푸시 시 **Vercel 자동 배포** (프로젝트 `tripcanvas`, 프로덕션 `tripcanvas-ai.vercel.app`).
+- ⚠️ **Vercel 프로젝트가 둘이다.** `tripcanvas`(정적 루트) 와 `tripcanvas-api`(Root Directory `next`, `tripcanvas-api.vercel.app`). `/api/v1/*` 은 **후자만** 서빙한다 — iOS `TCApiBaseURL` 이 정적 쪽을 가리키면 모든 호출이 404가 되고 앱에는 "여행 없음"으로 보인다. 설정·함정은 `next/README.md`.
 - 커밋 author 이메일은 반드시 **GitHub 계정과 매칭되는 유효한 주소**여야 한다 (`blackshoes85@gmail.com`).
   `.local` 등 로컬 호스트 기반 자동 이메일이면 Vercel이 배포를 거부한다.
 
@@ -106,10 +108,12 @@ localStorage: `tripcanvas_v1`(여행) · `tripcanvas_legs_v4`(구간 캐시, 수
 - **작업은 `main`에 직접 커밋·푸시한다.** 별도 브랜치·PR 없이 바로 반영한다.
 - ⚠️ `main` 푸시는 Vercel 자동 배포와 연결돼 있어 **커밋 즉시 프로덕션(`tripcanvas-ai.vercel.app`)에 나간다.** 푸시 전에 변경을 스스로 검토하고, 아래 **릴리스 체크리스트**를 반드시 지킬 것.
 - **여러 기기(집·회사)에서 작업한다.** 세션 시작·커밋 전에 `git fetch`로 `origin/main`이 앞서 있는지 확인하고, 뒤처졌으면 `git pull --ff-only` 후 작업한다.
+- **커밋 메시지 제목은 명사형으로 끝낸다.** `… 기능 추가` · `… 오류 수정` · `… 규칙 정리` 처럼 맺는다. `추가한다`·`고쳤다` 같은 서술형 어미로 끝내지 않는다. (본문은 서술형으로 써도 된다 — 제목만 명사형)
 
 ## 배포
 
 - 원격 `main` 푸시 시 **Vercel 자동 배포** (프로젝트 `tripcanvas`, 프로덕션 `tripcanvas-ai.vercel.app`).
+- ⚠️ **Vercel 프로젝트가 둘이다.** `tripcanvas`(정적 루트) 와 `tripcanvas-api`(Root Directory `next`, `tripcanvas-api.vercel.app`). `/api/v1/*` 은 **후자만** 서빙한다 — iOS `TCApiBaseURL` 이 정적 쪽을 가리키면 모든 호출이 404가 되고 앱에는 "여행 없음"으로 보인다. 설정·함정은 `next/README.md`.
 - 커밋 author 이메일은 반드시 **GitHub 계정과 매칭되는 유효한 주소**여야 한다 (`blackshoes85@gmail.com`).
   `.local` 등 로컬 호스트 기반 자동 이메일이면 Vercel이 배포를 거부한다.
 
