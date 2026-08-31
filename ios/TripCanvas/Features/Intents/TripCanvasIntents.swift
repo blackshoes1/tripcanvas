@@ -64,8 +64,8 @@ struct ShowTodayIntent: AppIntent {
         if !rest.isEmpty { lines.append("이후 " + rest.joined(separator: ", ")) }
 
         return .result(
-            dialog: IntentDialog(stringLiteral: lines.joined(separator: ". ")),
-            opensIntent: OpenTodayIntent(tripId: trip.id))
+            opensIntent: OpenTodayIntent(tripId: trip.id),
+            dialog: IntentDialog(stringLiteral: lines.joined(separator: ". ")))
     }
 }
 
@@ -144,8 +144,8 @@ struct CompleteCurrentActivityIntent: AppIntent {
         let inProgress = today.activities.filter { $0.status == .inProgress }
         guard inProgress.count == 1, let target = inProgress.first else {
             return .result(
-                dialog: "지금 어떤 일정인지 확실하지 않아요. 앱에서 골라 주세요.",
-                opensIntent: OpenTodayIntent(tripId: trip.id))
+                opensIntent: OpenTodayIntent(tripId: trip.id),
+                dialog: "지금 어떤 일정인지 확실하지 않아요. 앱에서 골라 주세요.")
         }
         let response = try await env.service.setActivity(
             tripId: trip.id, activityId: target.id, action: .complete,
@@ -154,8 +154,8 @@ struct CompleteCurrentActivityIntent: AppIntent {
         let dialog = response.alreadyApplied
             ? "\(target.name)은 이미 다녀온 것으로 되어 있어요."
             : "\(target.name)을 다녀온 것으로 표시했어요."
-        return .result(dialog: IntentDialog(stringLiteral: dialog),
-                       opensIntent: OpenTodayIntent(tripId: trip.id))
+        return .result(opensIntent: OpenTodayIntent(tripId: trip.id),
+                       dialog: IntentDialog(stringLiteral: dialog))
     }
 }
 
