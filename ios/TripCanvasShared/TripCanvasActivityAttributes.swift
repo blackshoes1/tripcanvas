@@ -12,7 +12,7 @@ import ActivityKit
 /// 여기에 여행 전체 일정표를 넣지 않는다(§75.5). 잠긴 화면에 계속 떠 있는 정보이므로
 /// 예약번호·항공편·주소·좌표도 넣지 않는다(§54). 담는 것은 "지금 무엇을, 언제, 얼마나 걸려서"뿐이다.
 struct TripCanvasActivityAttributes: ActivityAttributes {
-    public struct ContentState: Codable, Hashable {
+    struct ContentState: Codable, Hashable {
         /// 다음에 할 일. 없으면 "오늘 남은 일정 없음".
         var nextTitle: String
         var nextStartAt: Date?

@@ -7,9 +7,13 @@ import Foundation
 /// 네트워크도 인증도 없다.
 ///
 /// 여기 들어가는 값에 예약번호·항공편·좌표를 넣지 않는다(§54). 잠금화면은 잠긴 상태에서도 보인다.
-public enum SharedStore {
+///
+/// ⚠️ 접근 수준은 internal로 둔다. TripCanvasShared/ 는 프레임워크가 아니라 각 타깃에
+/// **소스로** 들어가므로(project.yml) 앱·위젯·확장 안에서 이미 같은 모듈이다.
+/// public을 붙이면 Contract.swift의 internal 타입을 시그니처에 드러내 컴파일이 막힌다.
+enum SharedStore {
     /// project.yml의 App Group과 같아야 한다.
-    public static let appGroupId = "group.ai.tripcanvas.ios"
+    static let appGroupId = "group.ai.tripcanvas.ios"
 
     private static let widgetKey = "widget.snapshot.v1"
     private static let activityKey = "liveactivity.state.v1"
@@ -29,10 +33,10 @@ public enum SharedStore {
     }()
 
     /// 저장한 값과 저장 시각. 위젯이 "언제 받은 정보인지" 말할 수 있어야 한다(§29).
-    public struct Stamped<T: Codable>: Codable {
-        public let value: T
-        public let savedAt: Date
-        public init(value: T, savedAt: Date) {
+    struct Stamped<T: Codable>: Codable {
+        let value: T
+        let savedAt: Date
+        init(value: T, savedAt: Date) {
             self.value = value
             self.savedAt = savedAt
         }
@@ -47,36 +51,36 @@ public enum SharedStore {
         return try? decoder.decode(Stamped<T>.self, from: data)
     }
 
-    public static func saveWidgetSnapshot(_ snapshot: WidgetSnapshot) { write(snapshot, key: widgetKey) }
-    public static func loadWidgetSnapshot() -> Stamped<WidgetSnapshot>? { read(WidgetSnapshot.self, key: widgetKey) }
+    static func saveWidgetSnapshot(_ snapshot: WidgetSnapshot) { write(snapshot, key: widgetKey) }
+    static func loadWidgetSnapshot() -> Stamped<WidgetSnapshot>? { read(WidgetSnapshot.self, key: widgetKey) }
 
-    public static func saveActivityState(_ state: LiveActivityState) { write(state, key: activityKey) }
-    public static func loadActivityState() -> Stamped<LiveActivityState>? { read(LiveActivityState.self, key: activityKey) }
+    static func saveActivityState(_ state: LiveActivityState) { write(state, key: activityKey) }
+    static func loadActivityState() -> Stamped<LiveActivityState>? { read(LiveActivityState.self, key: activityKey) }
 
-    public static func saveTravelMode(_ state: TravelModeSnapshot) { write(state, key: travelModeKey) }
-    public static func loadTravelMode() -> Stamped<TravelModeSnapshot>? { read(TravelModeSnapshot.self, key: travelModeKey) }
+    static func saveTravelMode(_ state: TravelModeSnapshot) { write(state, key: travelModeKey) }
+    static func loadTravelMode() -> Stamped<TravelModeSnapshot>? { read(TravelModeSnapshot.self, key: travelModeKey) }
 
-    public static func clear() {
+    static func clear() {
         [widgetKey, activityKey, travelModeKey].forEach { defaults?.removeObject(forKey: $0) }
     }
 }
 
 /// Travel Mode의 지속 상태 — 앱이 죽었다 살아나도 이어져야 한다(§9 "진행 상태를 보존한다").
-public struct TravelModeSnapshot: Codable, Hashable, Sendable {
-    public enum State: String, Codable, Sendable { case inactive, active, paused }
+struct TravelModeSnapshot: Codable, Hashable, Sendable {
+    enum State: String, Codable, Sendable { case inactive, active, paused }
 
-    public var state: State
-    public var tripId: String?
-    public var dayIndex: Int?
-    public var startedAt: Date?
+    var state: State
+    var tripId: String?
+    var dayIndex: Int?
+    var startedAt: Date?
     /// "오늘은 쉬기"를 고른 뒤의 침묵 구간(§36). 이 시각까지는 먼저 제안하지 않는다.
-    public var suppressUntil: Date?
+    var suppressUntil: Date?
     /// 마지막으로 잠금화면에 반영한 상태 지문 — 같으면 다시 그리지 않는다(§21).
-    public var lastStateVersion: String?
+    var lastStateVersion: String?
     /// 이미 띄운 알림 키 — 같은 상황을 두 번 알리지 않는다(§46).
-    public var sentNotificationKeys: [String]
+    var sentNotificationKeys: [String]
 
-    public init(state: State = .inactive, tripId: String? = nil, dayIndex: Int? = nil,
+    init(state: State = .inactive, tripId: String? = nil, dayIndex: Int? = nil,
                 startedAt: Date? = nil, suppressUntil: Date? = nil,
                 lastStateVersion: String? = nil, sentNotificationKeys: [String] = []) {
         self.state = state
@@ -88,5 +92,5 @@ public struct TravelModeSnapshot: Codable, Hashable, Sendable {
         self.sentNotificationKeys = sentNotificationKeys
     }
 
-    public var isActive: Bool { state == .active }
+    var isActive: Bool { state == .active }
 }
