@@ -1,5 +1,11 @@
-import ActivityKit
 import Foundation
+
+// ActivityKit은 iOS 전용이다 — watchOS 타깃에는 모듈 자체가 없다.
+// TripCanvasShared/ 는 앱·위젯·공유확장·Watch 네 타깃에 소스로 들어가므로
+// Live Activity 정의는 반드시 이 가드 안에 있어야 한다.
+// (포맷터처럼 플랫폼 무관한 것은 SharedFormatters.swift 로 뺐다.)
+#if canImport(ActivityKit)
+import ActivityKit
 
 /// 잠금화면·Dynamic Island가 쓰는 상태. 앱과 위젯 확장이 **같은 정의**를 봐야 해서 공유 타깃에 둔다.
 ///
@@ -40,15 +46,6 @@ struct TripCanvasActivityAttributes: ActivityAttributes {
     let dayLabel: String
 }
 
-extension ISO8601DateFormatter {
-    /// 서버는 소수점 없는 Z 형식을 보낸다. 매번 만들면 비싸서 공유한다.
-    static let tripCanvas: ISO8601DateFormatter = {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime]
-        return f
-    }()
-}
-
 /// Dynamic Island·잠금화면이 공유하는 표시 규칙. 뷰마다 다시 쓰지 않는다.
 enum ActivityPresentation {
     /// Compact trailing: "🚗 22m" — 정보를 극도로 압축한다(§20).
@@ -74,3 +71,4 @@ enum ActivityPresentation {
         return state.pulseText
     }
 }
+#endif
