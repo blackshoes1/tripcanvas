@@ -2,7 +2,7 @@
 // 검증 대상은 "iOS가 이 응답만 보고 오늘 무엇을 할지 알 수 있는가"와 "두 기기가 부딪혀도 조용히 덮어쓰지 않는가"다.
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import type { BookingListResponse, MutationResponse, TodayResponse, TripListResponse } from '../domain/contract';
+import type { BookingListResponse, DeviceRegistration, MutationResponse, TodayResponse, TravelStateResponse, TripListResponse } from '../domain/contract';
 import type { PriceObservation } from '../domain/bookingsView';
 import type { Gateway, TripRow } from './handlers';
 import { createHandlers, resolveClock } from './handlers';
@@ -36,11 +36,14 @@ function tripDoc(): TripDoc {
   };
 }
 
-interface Store { rows: Map<string, TripRow>; dismissed: Map<string, string[]>; feedback: string[]; observations: PriceObservation[] }
+interface Store {
+  rows: Map<string, TripRow>; dismissed: Map<string, string[]>; feedback: string[];
+  observations: PriceObservation[]; sentKeys: string[]; devices: DeviceRegistration[];
+}
 function makeStore(): Store {
   const rows = new Map<string, TripRow>();
   rows.set('trip-1', { client_id: 'trip-1', data: tripDoc(), revision: 3, updated_at: '2026-08-31T00:00:00Z', deleted_at: null });
-  return { rows, dismissed: new Map(), feedback: [], observations: [] };
+  return { rows, dismissed: new Map(), feedback: [], observations: [], sentKeys: [], devices: [] };
 }
 function gatewayOf(store: Store): Gateway {
   return {
@@ -56,6 +59,14 @@ function gatewayOf(store: Store): Gateway {
     },
     async listDismissed(id, day) { return store.dismissed.get(`${id}|${day}`) ?? []; },
     async listPriceObservations() { return store.observations; },
+    async listSentNotificationKeys() { return store.sentKeys; },
+    async recordNotifications(_tripId, _day, items) {
+      items.forEach((n) => { if (!store.sentKeys.includes(n.dedupeKey)) store.sentKeys.push(n.dedupeKey); });
+    },
+    async saveDevice(registration) {
+      store.devices = store.devices.filter((d) => d.deviceId !== registration.deviceId).concat(registration);
+    },
+    async removeDevice(deviceId) { store.devices = store.devices.filter((d) => d.deviceId !== deviceId); },
     async recordFeedback(id, day, key, action) {
       store.feedback.push(`${action}:${key}`);
       if (action !== 'SKIPPED') return;
@@ -372,5 +383,133 @@ describe('GET /bookings — 여행 당일에 필요한 것만 빠르게(§45)', 
     const res = await broken.bookings(new Request('http://localhost/api/v1/trips/trip-1/bookings', auth()), 'trip-1');
     expect(res.status).toBe(200);
     expect(((await res.json()) as BookingListResponse).bookings).toHaveLength(1);
+  });
+});
+
+describe('GET /travel-state — 여행 중 단 하나의 조회(§57)', () => {
+  const call = (query = '') =>
+    api.travelState(new Request(`http://localhost/api/v1/trips/trip-1/travel-state${query}`, auth()), 'trip-1');
+  const state = async (query = ''): Promise<TravelStateResponse> => {
+    const res = await call(query);
+    expect(res.status).toBe(200);
+    return res.json() as Promise<TravelStateResponse>;
+  };
+
+  it('Today·Pulse·출발 계획·잠금화면·위젯을 한 번에 준다', async () => {
+    const body = await state();
+    expect(body.today.trip.id).toBe('trip-1');
+    expect(body.pulse.text.length).toBeGreaterThan(0);
+    expect(body.pulse.code).toBeTruthy();
+    expect(body.departure?.activityId).toBe('d0s1');
+    expect(body.liveActivity.nextTitle).toBe('저녁 예약');
+    expect(body.widget.upcoming.length).toBeGreaterThan(0);
+    expect(body.stateVersion).toBe(body.liveActivity.stateVersion);
+    expect(body.stateVersion).toBe(body.widget.stateVersion);
+  });
+
+  it('같은 상태면 stateVersion이 그대로다 — 분마다 잠금화면을 새로 그리지 않는다', async () => {
+    const first = await state('?now=13:00');
+    const later = await state('?now=13:07');
+    expect(later.stateVersion).toBe(first.stateVersion);
+  });
+
+  it('일정 상태가 바뀌면 stateVersion도 바뀐다', async () => {
+    const before = await state('?now=13:00');
+    await api.activityAction(
+      new Request('http://localhost/api/v1/trips/trip-1/activities/d0s0/complete', auth({ method: 'POST', body: '{}' })),
+      'trip-1', 'd0s0', 'complete');
+    const after = await state('?now=13:00');
+    expect(after.stateVersion).not.toBe(before.stateVersion);
+  });
+
+  it('위치를 주면 그 위치에서 계산하고, 저장하지는 않는다', async () => {
+    const nearHotel = await state('?now=13:00');   // 위치가 없으면 숙소(앵커) 기준
+    const farAway = await state('?now=13:00&lat=40.59&lng=-3.70&locUpdatedAt=2026-09-01T04:00:00Z');
+    expect(farAway.locationUsed).toEqual({ lat: 40.59, lng: -3.7 });
+    expect(farAway.locationUpdatedAt).toBe('2026-09-01T04:00:00Z');
+    // 멀리 있으면 이동시간이 늘고, 그만큼 더 일찍 나서라고 말한다
+    expect(farAway.departure!.travelMinutes).toBeGreaterThan(nearHotel.departure!.travelMinutes);
+    expect(farAway.departure!.leaveMinutes).toBeLessThan(nearHotel.departure!.leaveMinutes);
+    // 저장 흔적이 없다 (여행 문서는 그대로)
+    expect(store.rows.get('trip-1')!.revision).toBe(3);
+  });
+
+  it('출발할 때가 되면 알림 계획이 생기고, 그 전에는 조용하다', async () => {
+    const calm = await state('?now=13:00');
+    expect(calm.notifications.filter((n) => n.kind === 'departureReminder')).toHaveLength(0);
+
+    const ready = await state('?now=18:58');
+    const dep = ready.notifications.find((n) => n.kind === 'departureReminder' || n.kind === 'scheduleDelay');
+    expect(dep).toBeTruthy();
+    expect(dep!.deepLink).toContain('/today?focus=');
+    expect(dep!.origin).toBe('DEVICE');
+  });
+
+  it('markSent=1이면 같은 알림이 다음 호출에서 빠진다', async () => {
+    const first = await state('?now=18:58&markSent=1');
+    expect(first.notifications.length).toBeGreaterThan(0);
+    expect(store.sentKeys.length).toBeGreaterThan(0);
+    const second = await state('?now=18:58');
+    expect(second.notifications).toHaveLength(0);
+  });
+
+  it('Travel Mode를 켜야 빈 시간 제안 알림이 나온다', async () => {
+    const off = await state('?now=13:00');
+    expect(off.notifications.filter((n) => n.kind === 'emptySlotSuggestion')).toHaveLength(0);
+    const on = await state('?now=13:00&travelMode=1');
+    expect(on.notifications.filter((n) => n.kind === 'emptySlotSuggestion').length).toBeGreaterThan(0);
+    const resting = await state('?now=13:00&travelMode=1&suppressUntil=18:00');
+    expect(resting.notifications.filter((n) => n.kind === 'emptySlotSuggestion')).toHaveLength(0);
+  });
+
+  it('잠금화면 상태에 예약번호 같은 민감한 값을 담지 않는다', async () => {
+    const body = await state();
+    const serialized = JSON.stringify(body.liveActivity) + JSON.stringify(body.widget);
+    expect(serialized).not.toContain('confirmation');
+    expect(serialized).not.toContain('bookUrl');
+    expect(body.widget.upcoming.length).toBeLessThanOrEqual(3);
+  });
+
+  it('제안 만료 시각을 함께 준다 — 낡은 추천을 그대로 쓰지 않기 위해', async () => {
+    const body = await state('?now=13:00');
+    expect(body.suggestionsExpireMinutes).toBeGreaterThan(13 * 60);
+    expect(body.suggestionsExpireAtISO).toBeTruthy();
+  });
+
+  it('없는 여행은 404, 토큰 없으면 401', async () => {
+    expect((await api.travelState(new Request('http://localhost/api/v1/trips/nope/travel-state', auth()), 'nope')).status).toBe(404);
+    expect((await api.travelState(new Request('http://localhost/api/v1/trips/trip-1/travel-state'), 'trip-1')).status).toBe(401);
+  });
+});
+
+describe('POST/DELETE /devices — push 토큰(§45)', () => {
+  const register = (body: unknown) =>
+    api.registerDevice(new Request('http://localhost/api/v1/devices', auth({ method: 'POST', body: JSON.stringify(body) })));
+
+  it('기기를 등록하고 같은 기기는 한 행으로 유지한다', async () => {
+    const res = await register({ deviceId: 'dev-1', pushToken: 'token-a', appVersion: '1.0' });
+    expect(res.status).toBe(200);
+    expect(store.devices).toHaveLength(1);
+    await register({ deviceId: 'dev-1', pushToken: 'token-b' });
+    expect(store.devices).toHaveLength(1);
+    expect(store.devices[0].pushToken).toBe('token-b');
+  });
+
+  it('알 수 없는 설정 키는 통과시키지 않는다', async () => {
+    await register({ deviceId: 'dev-1', pushToken: 't', preferences: { departure: false, hack: true, price: 'yes' } });
+    expect(store.devices[0].preferences).toEqual({ departure: false });
+  });
+
+  it('deviceId나 토큰이 없으면 400', async () => {
+    expect((await register({ pushToken: 't' })).status).toBe(400);
+    expect((await register({ deviceId: 'd' })).status).toBe(400);
+  });
+
+  it('로그아웃 시 토큰을 지운다', async () => {
+    await register({ deviceId: 'dev-1', pushToken: 't' });
+    const res = await api.unregisterDevice(new Request('http://localhost/api/v1/devices?deviceId=dev-1', auth({ method: 'DELETE' })));
+    expect(res.status).toBe(200);
+    expect(store.devices).toHaveLength(0);
+    expect((await api.unregisterDevice(new Request('http://localhost/api/v1/devices', auth({ method: 'DELETE' })))).status).toBe(400);
   });
 });

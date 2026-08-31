@@ -13,6 +13,7 @@ import { describe, expect, it } from 'vitest';
 import { computeToday } from './todayView';
 import type { TripDoc } from './todayView';
 import { buildBookings } from './bookingsView';
+import { buildTravelState } from './travelState';
 
 const SWIFT = readFileSync(path.join(__dirname, '../../../../../ios/TripCanvas/Core/Models/Contract.swift'), 'utf8');
 
@@ -121,5 +122,51 @@ describe('iOS Contract.swift가 실제 응답을 전부 담는다', () => {
     mkdirSync(dir, { recursive: true });
     writeFileSync(path.join(dir, 'today.json'), JSON.stringify(today, null, 2) + String.fromCharCode(10));
     expect(today.schemaVersion).toBe(1);
+  });
+});
+
+const travel = buildTravelState({
+  tripId: 'parity', trip, revision: 2, updatedAt: '2026-08-31T00:00:00Z',
+  todayISO: '2026-09-01', nowMinutes: 18 * 60 + 55, generatedAt: '2026-09-01T09:55:00Z',
+  travelMode: true
+});
+
+describe('Travel State도 Swift가 전부 담는다', () => {
+  it('TravelStateResponse와 그 안의 구조체', () => {
+    expectCovered('TravelStateResponse', travel as unknown as Record<string, unknown>);
+    expectCovered('TripPulse', travel.pulse as unknown as Record<string, unknown>);
+    expect(travel.departure).toBeTruthy();
+    expectCovered('DeparturePlan', travel.departure as unknown as Record<string, unknown>);
+    expectCovered('LiveActivityState', travel.liveActivity as unknown as Record<string, unknown>);
+    expectCovered('WidgetSnapshot', travel.widget as unknown as Record<string, unknown>);
+    expect(travel.widget.nextActivity).toBeTruthy();
+    expectCovered('WidgetActivity', travel.widget.nextActivity as unknown as Record<string, unknown>);
+    expect(travel.notifications.length).toBeGreaterThan(0);
+    expectCovered('NotificationPlanItem', travel.notifications[0] as unknown as Record<string, unknown>);
+  });
+
+  it('Travel State enum도 Swift가 안다', () => {
+    ['NO_PLAN', 'ON_TRACK', 'AHEAD', 'DELAYED', 'FREE_TIME', 'NEEDS_ATTENTION', 'RESTING', 'DAY_COMPLETE']
+      .forEach((s) => expect(SWIFT, `TripPulseCode.${s}`).toContain(`"${s}"`));
+    ['UPCOMING', 'READY_TO_LEAVE', 'LATE_RISK'].forEach((s) => expect(SWIFT).toContain(`"${s}"`));
+    ['DEVICE', 'SERVER'].forEach((s) => expect(SWIFT).toContain(`"${s}"`));
+    // 알림 종류는 Swift에서 case 이름 그대로 쓴다(rawValue 생략)
+    ['departureReminder', 'fixedCommitmentReminder', 'scheduleDelay', 'replanSuggestion', 'emptySlotSuggestion', 'priceSaving']
+      .forEach((s) => expect(SWIFT, `NotificationKind.${s}`).toContain(s));
+  });
+
+  it('잠금화면·위젯 압축본에 민감한 값이 들어가지 않는다 (§54)', () => {
+    const serialized = JSON.stringify(travel.liveActivity) + JSON.stringify(travel.widget);
+    ['confirmation', 'bookUrl', 'placeId', 'bookingId'].forEach((key) => {
+      expect(serialized, `${key}는 잠금화면에 나가면 안 된다`).not.toContain(key);
+    });
+    expect(travel.widget.upcoming.length).toBeLessThanOrEqual(3);
+  });
+
+  it('iOS 테스트 픽스처(travel-state)도 실제 응답으로 갱신한다', () => {
+    const dir = path.join(__dirname, '../../../../../ios/TripCanvasTests/Fixtures');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(path.join(dir, 'travel-state.json'), JSON.stringify(travel, null, 2) + String.fromCharCode(10));
+    expect(travel.stateVersion).toBe(travel.liveActivity.stateVersion);
   });
 });

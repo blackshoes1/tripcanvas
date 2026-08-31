@@ -36,7 +36,11 @@
     dayEndMin: 21*60,        // 하루 활동 종료 기준(빈 시간 탐지의 꼬리)
     nearKm: 1.5,             // 이 안이면 '바로 근처'
     fallbackSpeedKmh: 25,    // 이동시간 주입이 없을 때의 직선거리 환산 속도
-    lookAheadDays: 3         // 다른 날에서 후보를 끌어올 때 살펴볼 앞뒤 일자 범위
+    lookAheadDays: 3,        // 다른 날에서 후보를 끌어올 때 살펴볼 앞뒤 일자 범위
+    readyWindowMin: 12,      // 출발 권장 시각 이 안으로 들어오면 '지금 나서기 좋음'
+    aheadMin: 30,            // 다음 일정까지 이보다 많이 남고 앞 일정을 끝냈으면 '여유 있음'
+    freeTimeMin: 90,         // 이만큼 비면 '빈 시간'으로 본다(제안을 만들 가치가 있는 크기)
+    suggestionTTLMin: 90     // 위치·시각 기반 제안의 유효기간 — 지나면 표시도 알림도 하지 않는다
   });
   const MEAL_WINDOWS = Object.freeze([
     Object.freeze({key:'lunch', from:11*60+30, to:13*60+30, label:'점심'}),
@@ -661,7 +665,239 @@
     blocks.sort((a,b)=> (a.startMin-b.startMin) || (a.title<b.title? -1 : (a.title>b.title? 1 : 0)));
     return {blocks, picks:fill.slots.map((/**@type{any}*/x)=>x.pick), empty:!blocks.some((b)=>b.kind==='SUGGESTED'), impact:fill.impact};
   }
-  const API={ADAPT_CFG, MEAL_WINDOWS, DAY_SEGMENTS, parseIntent, departureAdvice, fillGaps, planDayFlow, segmentLabel, currentDayIndex, weekdayOf, commitmentOf, priorityOf, statusOf, planningModeHint,
+  // ── 11. 출발 계획 · Trip Pulse · 알림 계획 ──────────────────────
+  //
+  // 여기부터는 "앱을 열지 않아도 다음을 이어준다"를 위한 계산이다. 판단은 전부 이 파일에 있고
+  // iOS와 서버는 결과만 쓴다 — 두 곳에서 따로 계산하면 잠금화면과 앱 화면이 다른 말을 하게 된다.
+
+  /** 일정 성격별 안전 여유(분). 열차를 관광지와 같은 여유로 다루면 놓친다. @type {Record<string,number>} */
+  const SAFETY_BUFFER = Object.freeze({
+    FLIGHT: 120,      // 수속·보안 — 이 값만으로 충분하지 않으므로 UI는 별도 안내를 함께 낸다
+    TRAIN: 30,
+    CAR: 20,          // 렌터카 픽업 — 서류·차량 확인
+    RESTAURANT: 15,
+    TOUR: 15,
+    HOTEL: 10,
+    OTHER: 10
+  });
+  /**
+   * 이 일정에 붙일 안전 여유. 사용자가 정한 값(spot.bufferMin)이 있으면 그것이 이긴다.
+   * @param {any} item TripItem @param {any=} opts
+   * @returns {number}
+   */
+  function safetyBufferFor(item, opts){
+    const custom = item && item.spot && item.spot.bufferMin;
+    if(custom!=null && isFinite(+custom) && +custom>=0) return Math.min(240, Math.round(+custom));
+    const over = (opts&&opts.buffers)||null;
+    const type = (item&&item.type)||'OTHER';
+    if(over && over[type]!=null && isFinite(+over[type])) return Math.max(0, Math.round(+over[type]));
+    return SAFETY_BUFFER[type]!=null? SAFETY_BUFFER[type] : SAFETY_BUFFER.OTHER;
+  }
+
+  /**
+   * 출발 계획 — 권장 출발시각 = 약속시각 − 이동시간 − 안전여유.
+   * 단계(UPCOMING → READY_TO_LEAVE → LATE_RISK)는 알림을 "상태가 바뀔 때만" 보내기 위한 것이다(§15).
+   * @param {any} state @param {any} item TripItem @param {number} travelMin @param {any=} opts
+   * @returns {{leaveMin:number, slackMin:number, bufferMin:number, travelMin:number, level:('EARLY'|'NOW'|'LATE'), stage:('UPCOMING'|'READY_TO_LEAVE'|'LATE_RISK'), lateByMin:number, text:string, targetMin:number}|null}
+   */
+  function departurePlan(state, item, travelMin, opts){
+    if(!item) return null;
+    const c=cfgOf(opts);
+    const travel=Math.max(0, Math.round(num(travelMin,0)));
+    const bufferMin=safetyBufferFor(item, opts);
+    const targetMin=(item.fixedAt!=null? item.fixedAt : item.eta);
+    const leaveMin=Math.round(targetMin-travel-bufferMin);
+    if(!state.live){
+      return {leaveMin, slackMin:0, bufferMin, travelMin:travel, level:'EARLY', stage:'UPCOMING', lateByMin:0, targetMin,
+        text:LIB.hm(leaveMin)+'쯤 출발하는 일정이에요'};
+    }
+    const slackMin=Math.round(leaveMin-state.nowMin);
+    // 늦음 판정은 여유(buffer)를 뺀 순수 이동시간 기준이다 — 여유를 못 지키는 것과 약속에 늦는 것은 다르다.
+    const lateByMin=Math.max(0, Math.round((state.nowMin+travel)-targetMin));
+    if(lateByMin>0){
+      return {leaveMin, slackMin, bufferMin, travelMin:travel, level:'LATE', stage:'LATE_RISK', lateByMin, targetMin,
+        text:'지금 출발해도 '+lateByMin+'분쯤 늦어요'+(item.name?' — '+item.name+'에 미리 알려두면 좋겠어요':'')};
+    }
+    if(slackMin<=0){
+      return {leaveMin, slackMin, bufferMin, travelMin:travel, level:'NOW', stage:'LATE_RISK', lateByMin:0, targetMin,
+        text:'지금 움직이면 '+LIB.hm(targetMin)+'까지 딱 맞아요'};
+    }
+    if(slackMin<=c.readyWindowMin){
+      return {leaveMin, slackMin, bufferMin, travelMin:travel, level:'NOW', stage:'READY_TO_LEAVE', lateByMin:0, targetMin,
+        text:'이제 출발하면 여유 있게 도착할 수 있어요 (약 '+travel+'분 거리)'};
+    }
+    return {leaveMin, slackMin, bufferMin, travelMin:travel, level:'EARLY', stage:'UPCOMING', lateByMin:0, targetMin,
+      text:LIB.hm(leaveMin)+'쯤 움직이면 여유가 있어요 (약 '+travel+'분 거리, 지금부터 '+slackMin+'분 남음)'};
+  }
+
+  /**
+   * 하루 상태를 한 마디로. 내부 코드는 사용자에게 보여주지 않고 text만 쓴다(§51).
+   * 규칙 기반이다 — 모델에게 맡기지 않는다(§52).
+   * @param {any} state @param {any} replan @param {any=} departure @param {any=} opts
+   * @returns {{code:string, text:string, detail:string}}
+   */
+  function tripPulse(state, replan, departure, opts){
+    const c=cfgOf(opts);
+    const remaining=state.items.filter((/**@type{any}*/it)=>it.status!=='COMPLETED'&&it.status!=='SKIPPED'&&it.status!=='CANCELLED');
+    if(!state.items.length) return {code:'NO_PLAN', text:'오늘은 정해둔 일정이 없어요', detail:'지금 상황에 맞는 곳을 골라 시작해도 되고, 그냥 쉬어도 괜찮아요.'};
+    if(!remaining.length) return {code:'DAY_COMPLETE', text:'오늘 계획한 일정은 다 마쳤어요', detail:'남은 시간은 편하게 쓰셔도 돼요.'};
+    if(replan && replan.needed) return {code:'NEEDS_ATTENTION', text:'일정을 조금 손보면 좋겠어요',
+      detail:(replan.lateBy>0? replan.lateBy+'분 밀려서 ':'')+'이대로면 예약 시간을 지키기 어려워요.'};
+    if(departure && departure.level==='LATE') return {code:'DELAYED', text:'약 '+departure.lateByMin+'분 늦어지고 있어요',
+      detail:'서두르기보다 도착 시각을 알려두는 편이 나을 수 있어요.'};
+    if(state.energyLevel==='LOW') return {code:'RESTING', text:'지금은 쉬어가는 중이에요', detail:'무리하지 않는 선에서 이어가면 돼요.'};
+    if(state.availableMin>=c.freeTimeMin && state.nextFixed) return {code:'FREE_TIME', text:'다음 일정까지 '+Math.round(state.availableMin/60*10)/10+'시간 여유가 있어요',
+      detail:state.nextFixed.title+' '+LIB.hm(state.nextFixed.startMin)+'까지는 시간이 넉넉해요.'};
+    const next=state.nextItem;
+    if(state.live && next && (next.eta-state.nowMin)>=c.aheadMin && state.completedItems.length)
+      return {code:'AHEAD', text:'계획보다 앞서 가고 있어요', detail:'다음 일정까지 여유가 있어요.'};
+    return {code:'ON_TRACK', text:'일정대로 잘 가고 있어요', detail:next? next.name+'까지 이어가면 돼요.' : ''};
+  }
+
+  /**
+   * 상태 지문 — 이 값이 그대로면 아무것도 바뀌지 않은 것이다.
+   * Live Activity 갱신·알림 중복 제거·낡은 제안 판별의 기준이 된다(§46·§47).
+   * 시각은 분 단위로 반올림해 1초마다 값이 달라지지 않게 한다.
+   * @param {any} state @param {any=} extra
+   * @returns {string}
+   */
+  function stateVersion(state, extra){
+    const parts=[
+      state.tripId||'-', 'd'+state.currentDay, state.todayISO||'',
+      state.items.map((/**@type{any}*/it)=>it.id+':'+it.status+':'+Math.round(it.depart)).join(','),
+      'e'+(state.energyLevel||''),
+      (extra&&extra.stage)||'', (extra&&extra.pulse)||''
+    ];
+    let h=5381;
+    const raw=parts.join('|');
+    for(let i=0;i<raw.length;i++){ h=((h*33)^raw.charCodeAt(i))>>>0; }
+    return 'v'+h.toString(36);
+  }
+
+  /** 알림 종류 — 서버가 판단할 것과 기기가 판단할 것을 나눈다(§11). */
+  const NOTIFICATION_KINDS = Object.freeze({
+    DEPARTURE: 'departureReminder',
+    FIXED_COMMITMENT: 'fixedCommitmentReminder',
+    SCHEDULE_DELAY: 'scheduleDelay',
+    REPLAN: 'replanSuggestion',
+    EMPTY_SLOT: 'emptySlotSuggestion',
+    PRICE_SAVING: 'priceSaving'
+  });
+
+  /**
+   * 지금 보낼 만한 알림. **많이 보내는 것이 성공이 아니다**(§3) — 각 항목은 "지금 다음 행동을
+   * 정하는 데 실제로 도움이 되는가"를 통과해야 한다. 단계(stage)가 바뀔 때만 나오고,
+   * 같은 단계는 dedupeKey가 같아 다시 나가지 않는다.
+   * @param {any} state
+   * @param {{departure?:any, pulse?:any, replan?:any, suggestions?:any[], suppressUntilMin?:number, travelMode?:boolean, quiet?:boolean}=} input
+   * @param {any=} opts
+   * @returns {{kind:string, origin:('DEVICE'|'SERVER'), dedupeKey:string, title:string, body:string, deepLink:string, targetId:(string|null), priority:number, expiresAtMin:(number|null)}[]}
+   */
+  function notificationPlan(state, input, opts){
+    const i=input||{}, c=cfgOf(opts);
+    /** @type {any[]} */ const out=[];
+    const day=state.todayISO||('d'+state.currentDay);
+    const key=(/**@type{string}*/kind,/**@type{string}*/source,/**@type{string}*/stage)=>
+      [state.tripId||'-', day, kind, source, stage].join('|');
+    // 여행 중이 아니면 먼저 말 걸지 않는다. 계획 화면을 보는 사람에게 출발 알림은 소음이다.
+    if(!state.live) return out;
+
+    const dep=i.departure, next=state.nextItem;
+    if(dep && next && (dep.stage==='READY_TO_LEAVE'||dep.stage==='LATE_RISK')){
+      const late=dep.level==='LATE';
+      out.push({
+        kind:late? NOTIFICATION_KINDS.SCHEDULE_DELAY : NOTIFICATION_KINDS.DEPARTURE,
+        origin:'DEVICE',                       // 현재 위치가 필요하다 — 기기가 판단한다
+        dedupeKey:key(late? NOTIFICATION_KINDS.SCHEDULE_DELAY : NOTIFICATION_KINDS.DEPARTURE, next.id, dep.stage),
+        title:next.name,
+        body:dep.text,
+        deepLink:'tripcanvas://trip/'+(state.tripId||'')+'/today?focus='+next.id,
+        targetId:next.id,
+        priority:late? 2 : 1,
+        expiresAtMin:dep.targetMin
+      });
+    }
+
+    if(i.replan && i.replan.needed){
+      const dropped=(i.replan.dropNames||[]).join(', ');
+      out.push({
+        kind:NOTIFICATION_KINDS.REPLAN,
+        origin:'SERVER',                       // 일정 전체를 다시 굴려야 한다 — 서버가 판단한다
+        dedupeKey:key(NOTIFICATION_KINDS.REPLAN, (i.replan.drop||[]).join(',')||'none', 'needed'),
+        title:'일정을 조금 손보면 어떨까요',
+        body:(i.replan.lateBy>0? '약 '+i.replan.lateBy+'분 늦어지고 있어요. ':'')+
+          (dropped? dropped+'을(를) 빼면 예약 시간은 그대로 지킬 수 있어요.' : '남은 일정을 다시 확인해 보세요.'),
+        deepLink:'tripcanvas://trip/'+(state.tripId||'')+'/replan',
+        targetId:null,
+        priority:2,
+        expiresAtMin:state.nextFixed? state.nextFixed.startMin : null
+      });
+    }
+
+    // 빈 시간 제안은 가장 조심스러운 알림이다. Travel Mode를 켠 사람에게만, 쉬겠다고
+    // 한 뒤에는 보내지 않고, 남은 시간이 충분할 때만 낸다(§35·§36).
+    const suppressed=i.suppressUntilMin!=null && state.nowMin<i.suppressUntilMin;
+    const restingByChoice=state.energyLevel==='LOW';
+    if(i.travelMode && !suppressed && !restingByChoice && !i.quiet && state.availableMin>=c.freeTimeMin){
+      const pick=(i.suggestions||[]).filter((/**@type{any}*/s)=>s.type==='NEXT_ACTIVITY')[0];
+      if(pick) out.push({
+        kind:NOTIFICATION_KINDS.EMPTY_SLOT,
+        origin:'DEVICE',
+        dedupeKey:key(NOTIFICATION_KINDS.EMPTY_SLOT, pick.id, 'offered'),
+        title:'지금 들르기 좋은 곳이 있어요',
+        body:pick.title+(pick.description? ' · '+pick.description : ''),
+        deepLink:'tripcanvas://trip/'+(state.tripId||'')+'/suggestion/'+encodeURIComponent(pick.id),
+        targetId:pick.id,
+        priority:0,
+        expiresAtMin:state.nextFixed? state.nextFixed.startMin : state.dayEndMin
+      });
+    }
+
+    (i.suggestions||[]).filter((/**@type{any}*/s)=>s.type==='PRICE_SAVING').forEach((/**@type{any}*/s)=>{
+      out.push({
+        kind:NOTIFICATION_KINDS.PRICE_SAVING,
+        origin:'SERVER',
+        dedupeKey:key(NOTIFICATION_KINDS.PRICE_SAVING, s.id, 'found'),
+        title:s.title,
+        body:s.description||'같은 조건이 더 싼 곳이 있어요.',
+        deepLink:'tripcanvas://trip/'+(state.tripId||'')+'/bookings',
+        targetId:s.id,
+        priority:0,
+        expiresAtMin:null
+      });
+    });
+
+    // 우선순위 → 종류 순으로 안정 정렬. 같은 상태면 같은 순서가 나와야 중복 제거가 성립한다.
+    out.sort((a,b)=> (b.priority-a.priority) || (a.kind<b.kind? -1 : (a.kind>b.kind? 1 : 0)));
+    return out;
+  }
+
+  /**
+   * 이미 보낸 알림을 뺀다(§46). 같은 dedupeKey는 다시 나가지 않는다 —
+   * 단계가 바뀌면 키가 달라지므로 "정말 새로운 상황"만 통과한다.
+   * @param {any[]} plan @param {string[]} sentKeys
+   * @returns {any[]}
+   */
+  function pendingNotifications(plan, sentKeys){
+    const sent=Object.create(null);
+    (sentKeys||[]).forEach((/**@type{string}*/k)=>{ sent[k]=1; });
+    return (plan||[]).filter((/**@type{any}*/n)=>!sent[n.dedupeKey]);
+  }
+
+  /**
+   * 제안의 유효기간(§48). 위치·시각 기반 추천은 금방 낡는다 — 다음 고정 일정 시작,
+   * 하루 끝, TTL 중 가장 이른 시각까지만 유효하다.
+   * @param {any} state @param {any=} opts
+   * @returns {number} 그 날 자정부터 분
+   */
+  function suggestionExpiryMin(state, opts){
+    const c=cfgOf(opts);
+    const base=state.live? state.nowMin : state.dayStartMin;
+    const candidates=[base+c.suggestionTTLMin, state.dayEndMin];
+    if(state.nextFixed) candidates.push(state.nextFixed.startMin);
+    return Math.round(Math.min.apply(null, candidates));
+  }
+  const API={ADAPT_CFG, MEAL_WINDOWS, DAY_SEGMENTS, SAFETY_BUFFER, NOTIFICATION_KINDS, safetyBufferFor, departurePlan, tripPulse, stateVersion, notificationPlan, pendingNotifications, suggestionExpiryMin, parseIntent, departureAdvice, fillGaps, planDayFlow, segmentLabel, currentDayIndex, weekdayOf, commitmentOf, priorityOf, statusOf, planningModeHint,
     buildTripState, findFreeWindows, mealOverlap, buildCandidates, rankNextActions, simulate, generateReplan,
     calcSuggestionImpact, suggestionKey, buildSuggestions, feedbackEntry, travelMinutes};
   if(typeof module!=='undefined' && module.exports) module.exports=API;   // Node (테스트)

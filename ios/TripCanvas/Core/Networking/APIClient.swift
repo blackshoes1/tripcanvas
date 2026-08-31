@@ -58,6 +58,10 @@ struct APIClient {
         return try await send(path: path, method: "POST", query: query, body: data)
     }
 
+    func delete<T: Decodable>(_ path: String, query: [URLQueryItem] = []) async throws -> T {
+        try await send(path: path, method: "DELETE", query: query, body: nil)
+    }
+
     /// 401이면 토큰을 한 번 갱신해 재시도한다. 그래도 401이면 로그인 화면으로 돌려보낸다.
     private func send<T: Decodable>(path: String, method: String, query: [URLQueryItem], body: Data?) async throws -> T {
         do {

@@ -436,3 +436,182 @@ test('planDayFlow: 채울 것이 없으면 빈 계획을 그대로 알린다', (
   assert.equal(flow.empty, true, '없는 일정을 지어내지 않는다');
   assert.ok(flow.blocks.some((b) => b.kind === 'FIXED'), '남은 고정 예약은 그대로 보여준다');
 });
+
+// ── Travel State: 출발 계획 · Trip Pulse · 알림 계획 ──
+
+/** 고정 예약 하나만 있는 하루 — 출발 계산의 기준 fixture (숙소 → 22.2km 떨어진 식당) */
+function dinnerTrip() {
+  return tripOf([{
+    startAt: '09:00', mode: 'car', spots: [
+      Object.assign({ name: '숙소', city: '마드리드', stay: true, stayMin: 0 }, P(40.40)),
+      Object.assign({ name: '저녁 예약', city: '마드리드', bookAt: '19:00', stayMin: 90 }, P(40.60))
+    ]
+  }]);
+}
+
+test('safetyBufferFor: 열차·항공은 관광지와 다른 여유를 가진다', () => {
+  const at = (type, spot) => ({ type, spot: spot || {} });
+  assert.equal(A.safetyBufferFor(at('FLIGHT')), 120);
+  assert.equal(A.safetyBufferFor(at('TRAIN')), 30);
+  assert.equal(A.safetyBufferFor(at('RESTAURANT')), 15);
+  assert.equal(A.safetyBufferFor(at('OTHER')), 10);
+  assert.equal(A.safetyBufferFor(at('CAR')), 20);
+  assert.equal(A.safetyBufferFor(at('OTHER', { bufferMin: 45 })), 45, '사용자가 정한 값이 이긴다');
+  assert.equal(A.safetyBufferFor(at('TRAIN'), { buffers: { TRAIN: 50 } }), 50, '설정으로 덮어쓸 수 있다');
+});
+
+test('departurePlan: 권장 출발 = 약속 − 이동 − 여유, 단계는 상태 변화에만 반응한다', () => {
+  const trip = dinnerTrip();
+  const state = (min) => stateOf(trip, { todayISO: TODAY, nowMin: min, live: true, startAnchor: P(40.40) });
+  const item = (min) => state(min).items[1];
+
+  const early = A.departurePlan(state(14 * 60), item(14 * 60), 44);
+  assert.equal(early.bufferMin, 15, 'bookAt이 있는 약속은 TOUR로 분류돼 15분');
+  assert.equal(early.leaveMin, 19 * 60 - 44 - 15);
+  assert.equal(early.stage, 'UPCOMING');
+  assert.equal(early.level, 'EARLY');
+  assert.match(early.text, /18:01/);
+
+  const ready = A.departurePlan(state(17 * 60 + 55), item(17 * 60 + 55), 44);
+  assert.equal(ready.stage, 'READY_TO_LEAVE');
+  assert.equal(ready.level, 'NOW');
+  assert.match(ready.text, /이제 출발하면/);
+  assert.ok(!/출발하세요/.test(ready.text), '명령형을 쓰지 않는다');
+
+  const late = A.departurePlan(state(18 * 60 + 30), item(18 * 60 + 30), 44);
+  assert.equal(late.stage, 'LATE_RISK');
+  assert.equal(late.level, 'LATE');
+  assert.equal(late.lateByMin, 14, '18:30 + 44분 = 19:14 → 14분 지각');
+  assert.match(late.text, /14분/);
+});
+
+test('departurePlan: 여유를 못 지키는 것과 약속에 늦는 것은 다르다', () => {
+  const s = stateOf(dinnerTrip(), { todayISO: TODAY, nowMin: 18 * 60 + 10, live: true, startAnchor: P(40.40) });
+  const plan = A.departurePlan(s, s.items[1], 44);
+  assert.equal(plan.level, 'NOW', '18:54 도착 — 15분 여유는 못 지키지만');
+  assert.equal(plan.lateByMin, 0, '19:00 약속에 늦지는 않는다');
+  assert.ok(plan.slackMin < 0);
+});
+
+test('departurePlan: 계획 중(여행 기간 밖)에는 재촉하지 않는다', () => {
+  const s = stateOf(dinnerTrip(), { todayISO: '2026-12-25' });
+  const plan = A.departurePlan(s, s.items[1], 44);
+  assert.equal(plan.stage, 'UPCOMING');
+  assert.match(plan.text, /쯤 출발하는 일정/);
+});
+
+test('tripPulse: 하루 상태를 규칙으로 한 마디로 요약한다', () => {
+  const empty = stateOf(tripOf([{ startAt: '09:00', spots: [] }]), { todayISO: TODAY, nowMin: 600, live: true });
+  assert.equal(A.tripPulse(empty, { needed: false }).code, 'NO_PLAN');
+
+  const doneTrip = tripOf([{ startAt: '09:00', spots: [Object.assign({ name: 'A', city: 'M', stayMin: 60, status: 'COMPLETED' }, P(40.40))] }]);
+  assert.equal(A.tripPulse(stateOf(doneTrip, { todayISO: TODAY, nowMin: 700, live: true }), { needed: false }).code, 'DAY_COMPLETE');
+
+  const s = stateOf(dinnerTrip(), { todayISO: TODAY, nowMin: 13 * 60, live: true, startAnchor: P(40.40) });
+  assert.equal(A.tripPulse(s, { needed: true, lateBy: 40, dropNames: ['Cafe'] }).code, 'NEEDS_ATTENTION');
+  assert.equal(A.tripPulse(s, { needed: false }, { level: 'LATE', lateByMin: 20 }).code, 'DELAYED');
+  assert.equal(A.tripPulse(s, { needed: false }).code, 'FREE_TIME', '저녁까지 6시간 — 빈 시간이다');
+
+  const tired = stateOf(dinnerTrip(), { todayISO: TODAY, nowMin: 13 * 60, live: true, energyLevel: 'LOW', startAnchor: P(40.40) });
+  assert.equal(A.tripPulse(tired, { needed: false }).code, 'RESTING');
+});
+
+test('tripPulse: 내부 코드가 사용자 문구로 새지 않는다', () => {
+  const s = stateOf(dinnerTrip(), { todayISO: TODAY, nowMin: 13 * 60, live: true, startAnchor: P(40.40) });
+  const cases = [
+    A.tripPulse(s, { needed: false }),
+    A.tripPulse(s, { needed: true, lateBy: 10, dropNames: ['Cafe'] }),
+    A.tripPulse(s, { needed: false }, { level: 'LATE', lateByMin: 10 })
+  ];
+  cases.forEach((pulse) => {
+    assert.ok(pulse.text.length > 0, '항상 사람이 읽을 문장이 있다');
+    assert.ok(!/[A-Z_]{4,}/.test(pulse.text), '내부 enum이 문구에 새지 않는다');
+  });
+});
+
+test('stateVersion: 같은 상태면 같은 지문, 하나라도 바뀌면 달라진다', () => {
+  const trip = dinnerTrip();
+  const a = stateOf(trip, { todayISO: TODAY, nowMin: 13 * 60, live: true });
+  const b = stateOf(trip, { todayISO: TODAY, nowMin: 13 * 60 + 7, live: true });
+  assert.equal(A.stateVersion(a), A.stateVersion(b), '시간만 흘러선 바뀌지 않는다 (분마다 갱신하지 않기 위해)');
+
+  const changed = JSON.parse(JSON.stringify(trip));
+  changed.days[0].spots[0].status = 'COMPLETED';
+  const c = stateOf(changed, { todayISO: TODAY, nowMin: 13 * 60, live: true });
+  assert.notEqual(A.stateVersion(a), A.stateVersion(c), '일정 상태가 바뀌면 지문도 바뀐다');
+  assert.notEqual(A.stateVersion(a), A.stateVersion(a, { stage: 'READY_TO_LEAVE' }));
+});
+
+test('notificationPlan: 상태가 바뀔 때만 나오고, 같은 단계는 다시 나가지 않는다', () => {
+  const trip = dinnerTrip();
+  const at = (min) => stateOf(trip, { todayISO: TODAY, nowMin: min, live: true, startAnchor: P(40.40) });
+
+  const calm = at(13 * 60);
+  const calmPlan = A.notificationPlan(calm, { departure: A.departurePlan(calm, calm.items[1], 44), replan: { needed: false } });
+  assert.equal(calmPlan.filter((n) => n.kind === 'departureReminder').length, 0, '아직 한참 남았으면 조용하다');
+
+  const ready = at(17 * 60 + 55);
+  const readyPlan = A.notificationPlan(ready, { departure: A.departurePlan(ready, ready.items[1], 44), replan: { needed: false } });
+  const dep = readyPlan.filter((n) => n.kind === 'departureReminder')[0];
+  assert.ok(dep, '출발할 때가 되면 알린다');
+  assert.equal(dep.origin, 'DEVICE', '현재 위치가 필요한 판단은 기기가 한다');
+  assert.match(dep.deepLink, /\/today\?focus=d0s1/, '홈이 아니라 그 일정으로 바로 간다');
+  assert.match(dep.dedupeKey, /READY_TO_LEAVE/);
+
+  assert.deepEqual(
+    A.pendingNotifications(readyPlan, [dep.dedupeKey]).filter((n) => n.kind === 'departureReminder'), [],
+    '같은 단계에서는 다시 보내지 않는다');
+
+  const late = at(18 * 60 + 30);
+  const latePlan = A.notificationPlan(late, { departure: A.departurePlan(late, late.items[1], 44), replan: { needed: false } });
+  const delay = latePlan.filter((n) => n.kind === 'scheduleDelay')[0];
+  assert.ok(delay);
+  assert.notEqual(delay.dedupeKey, dep.dedupeKey, '단계가 바뀌면 새 알림이다');
+  assert.equal(A.pendingNotifications(latePlan, [dep.dedupeKey]).length, latePlan.length);
+});
+
+test('notificationPlan: 여행 중이 아니면 먼저 말을 걸지 않는다', () => {
+  const s = stateOf(dinnerTrip(), { todayISO: '2026-12-25' });
+  assert.deepEqual(A.notificationPlan(s, { replan: { needed: true, lateBy: 40, dropNames: ['A'], drop: ['d0s0'] } }), []);
+});
+
+test('notificationPlan: 빈 시간 제안은 Travel Mode에서만, 쉬겠다고 하면 보내지 않는다', () => {
+  const trip = dinnerTrip();
+  const s = stateOf(trip, { todayISO: TODAY, nowMin: 13 * 60, live: true, startAnchor: P(40.40) });
+  const suggestions = [{ id: 's1', type: 'NEXT_ACTIVITY', title: '레티로 공원', description: '8분 거리' }];
+  const kinds = (opts) => A.notificationPlan(s, opts).filter((n) => n.kind === 'emptySlotSuggestion').length;
+
+  assert.equal(kinds({ suggestions }), 0, 'Travel Mode를 안 켰으면 조용하다');
+  assert.equal(kinds({ suggestions, travelMode: true }), 1);
+  assert.equal(kinds({ suggestions, travelMode: true, suppressUntilMin: 18 * 60 }), 0, '"오늘은 쉬기" 뒤에는 참견하지 않는다');
+  assert.equal(kinds({ suggestions, travelMode: true, quiet: true }), 0);
+
+  const tired = stateOf(trip, { todayISO: TODAY, nowMin: 13 * 60, live: true, energyLevel: 'LOW', startAnchor: P(40.40) });
+  assert.equal(A.notificationPlan(tired, { suggestions, travelMode: true }).filter((n) => n.kind === 'emptySlotSuggestion').length, 0);
+});
+
+test('notificationPlan: 재구성·가격은 서버가, 출발은 기기가 판단한다 (중복 판단 금지)', () => {
+  const s = stateOf(dinnerTrip(), { todayISO: TODAY, nowMin: 17 * 60 + 55, live: true, startAnchor: P(40.40) });
+  const input = {
+    departure: A.departurePlan(s, s.items[1], 44),
+    replan: { needed: true, lateBy: 40, dropNames: ['Cafe'], drop: ['d0s2'] },
+    suggestions: [{ id: 'px1', type: 'PRICE_SAVING', title: '호텔 12만원 절약 가능', description: '동일 조건' }]
+  };
+  const plan = A.notificationPlan(s, input);
+  const byKind = {};
+  plan.forEach((n) => { byKind[n.kind] = n; });
+  assert.equal(byKind.departureReminder.origin, 'DEVICE');
+  assert.equal(byKind.replanSuggestion.origin, 'SERVER');
+  assert.equal(byKind.priceSaving.origin, 'SERVER');
+  assert.match(byKind.replanSuggestion.deepLink, /\/replan$/);
+  assert.match(byKind.priceSaving.deepLink, /\/bookings$/);
+  assert.ok(plan[0].priority >= plan[plan.length - 1].priority, '급한 것이 위로');
+  assert.deepEqual(A.notificationPlan(s, input).map((n) => n.dedupeKey), plan.map((n) => n.dedupeKey), '같은 상태면 같은 결과');
+});
+
+test('suggestionExpiryMin: 위치·시각 기반 제안은 다음 고정 일정 전에 만료된다', () => {
+  const s = stateOf(dinnerTrip(), { todayISO: TODAY, nowMin: 13 * 60, live: true, startAnchor: P(40.40) });
+  assert.equal(A.suggestionExpiryMin(s), 13 * 60 + 90, 'TTL 90분이 가장 이르다');
+  const near = stateOf(dinnerTrip(), { todayISO: TODAY, nowMin: 18 * 60 + 30, live: true, startAnchor: P(40.40) });
+  assert.equal(A.suggestionExpiryMin(near), 19 * 60, '저녁 예약 시작이 더 이르면 그때 만료');
+});

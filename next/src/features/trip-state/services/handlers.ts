@@ -6,10 +6,14 @@
 //
 // 쓰기는 전부 revision CAS(sync_trip)를 지난다. 같은 요청을 두 번 받아도 결과가 같고(alreadyApplied),
 // 다른 기기가 먼저 바꿨으면 409로 최신 revision을 알려 준다 — 조용히 덮어쓰지 않는다.
-import type { ApiError, ApiErrorCode, BookingListResponse, MutationResponse, TodayResponse, TripListResponse } from '../domain/contract';
+import type {
+  ApiError, ApiErrorCode, BookingListResponse, DeviceRegistration, MutationResponse,
+  NotificationPlanItem, TodayResponse, TravelStateResponse, TripListResponse
+} from '../domain/contract';
 import { CONTRACT_SCHEMA_VERSION } from '../domain/contract';
 import type { PriceObservation } from '../domain/bookingsView';
 import { buildBookings } from '../domain/bookingsView';
+import { buildTravelState } from '../domain/travelState';
 import type { SettableStatus } from '../domain/mutations';
 import { applyActivityStatus, applySuggestion } from '../domain/mutations';
 import type { TodayInput, TripDoc } from '../domain/todayView';
@@ -33,6 +37,11 @@ export interface Gateway {
   recordFeedback(tripId: string, dayISO: string, key: string, action: string): Promise<void>;
   /** 가격 관측 (hotel_price_snapshots). 없으면 빈 배열 — 가짜 가격을 만들지 않는다 */
   listPriceObservations(tripId: string): Promise<PriceObservation[]>;
+  /** 이미 보낸 알림 키 — 같은 상황을 두 번 알리지 않기 위해(§46) */
+  listSentNotificationKeys(tripId: string, dayISO: string): Promise<string[]>;
+  recordNotifications(tripId: string, dayISO: string, items: { kind: string; dedupeKey: string; stateVersion: string }[]): Promise<void>;
+  saveDevice(registration: DeviceRegistration): Promise<void>;
+  removeDevice(deviceId: string): Promise<void>;
 }
 
 export interface HandlerDeps {
@@ -98,6 +107,39 @@ export function resolveClock(
     if (m) nowMinutes = Math.min(1439, Math.max(0, Number(m[1]) * 60 + Number(m[2])));
   }
   return { todayISO, nowMinutes };
+}
+
+/** 위치는 쿼리로만 받는다. 저장하지 않고 이번 계산에만 쓴다(§55). */
+export function readLocation(url: URL): { point: { lat: number; lng: number } | null; updatedAt: string | null } {
+  const lat = Number(url.searchParams.get('lat'));
+  const lng = Number(url.searchParams.get('lng'));
+  const valid = Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180
+    && url.searchParams.has('lat') && url.searchParams.has('lng');
+  return {
+    point: valid ? { lat, lng } : null,
+    updatedAt: url.searchParams.get('locUpdatedAt')
+  };
+}
+
+function readMinutes(raw: string | null): number | null {
+  if (!raw) return null;
+  const m = /^(\d{1,2}):(\d{2})$/.exec(raw);
+  if (m) return Math.min(1439, Math.max(0, Number(m[1]) * 60 + Number(m[2])));
+  const n = Number(raw);
+  return Number.isFinite(n) ? Math.round(n) : null;
+}
+
+/** 범주별 on/off만 통과시킨다 — 임의 키가 그대로 들어가지 않게. */
+function sanitizePreferences(raw: unknown): Record<string, boolean> {
+  const allowed = ['departure', 'booking', 'replan', 'price', 'suggestion'];
+  const out: Record<string, boolean> = {};
+  if (raw && typeof raw === 'object') {
+    for (const key of allowed) {
+      const value = (raw as Record<string, unknown>)[key];
+      if (typeof value === 'boolean') out[key] = value;
+    }
+  }
+  return out;
 }
 
 function readDayIndex(url: URL): number | undefined {
@@ -277,5 +319,79 @@ export function createHandlers(deps: HandlerDeps) {
     return ok(body);
   }
 
-  return { trips, today, bookings, replanPreview, activityAction, suggestionAction };
+  /**
+   * GET /api/v1/trips/:tripId/travel-state
+   * 여행 중 iOS가 쓰는 단 하나의 조회(§57). Today + Trip Pulse + 출발 계획 + 알림 계획 +
+   * 잠금화면/위젯 압축 상태를 한 번에 준다 — 연속 호출은 그대로 배터리다.
+   *
+   * 위치(lat/lng)는 이번 계산에만 쓰고 저장하지 않는다(§55).
+   * markSent=1이면 돌려준 알림을 '보낸 것'으로 기록해 다음 호출에서 빠진다.
+   */
+  async function travelState(request: Request, tripId: string): Promise<Response> {
+    const gateway = await auth(request);
+    if (gateway instanceof Response) return gateway;
+    let row: TripRow | null;
+    try { row = await gateway.getTrip(tripId); } catch { return fail('UPSTREAM_ERROR'); }
+    if (!row || row.deleted_at) return fail('TRIP_NOT_FOUND');
+
+    const url = new URL(request.url);
+    const dayIndex = readDayIndex(url);
+    const clock = resolveClock(row.data, dayIndex ?? null, url, now());
+    const [dismissed, sentKeys] = await Promise.all([
+      gateway.listDismissed(tripId, clock.todayISO).catch((): string[] => []),
+      gateway.listSentNotificationKeys(tripId, clock.todayISO).catch((): string[] => [])
+    ]);
+
+    const location = readLocation(url);
+    const response = buildTravelState({
+      tripId, trip: row.data, revision: row.revision, updatedAt: row.updated_at,
+      todayISO: clock.todayISO, nowMinutes: clock.nowMinutes, dayIndex, dismissed,
+      generatedAt: now().toISOString(),
+      currentLocation: location.point,
+      locationUpdatedAt: location.updatedAt,
+      travelMode: url.searchParams.get('travelMode') === '1',
+      suppressUntilMinutes: readMinutes(url.searchParams.get('suppressUntil')),
+      sentNotificationKeys: sentKeys
+    });
+
+    if (url.searchParams.get('markSent') === '1' && response.notifications.length) {
+      await gateway.recordNotifications(tripId, clock.todayISO,
+        response.notifications.map((n: NotificationPlanItem) => ({
+          kind: n.kind, dedupeKey: n.dedupeKey, stateVersion: response.stateVersion
+        }))).catch(() => undefined);
+    }
+    return ok(response satisfies TravelStateResponse);
+  }
+
+  /** POST /api/v1/devices — 기기 등록. 로그아웃·알림 끄기는 DELETE로(§45). */
+  async function registerDevice(request: Request): Promise<Response> {
+    const gateway = await auth(request);
+    if (gateway instanceof Response) return gateway;
+    const body = await readBody(request);
+    const deviceId = typeof body.deviceId === 'string' ? body.deviceId.trim() : '';
+    const pushToken = typeof body.pushToken === 'string' ? body.pushToken.trim() : '';
+    if (!deviceId || !pushToken) return fail('BAD_REQUEST');
+    const registration: DeviceRegistration = {
+      deviceId,
+      platform: body.platform === 'web' ? 'web' : 'ios',
+      pushToken,
+      enabled: body.enabled !== false,
+      preferences: sanitizePreferences(body.preferences),
+      appVersion: typeof body.appVersion === 'string' ? body.appVersion : null
+    };
+    try { await gateway.saveDevice(registration); } catch { return fail('UPSTREAM_ERROR'); }
+    return ok({ schemaVersion: CONTRACT_SCHEMA_VERSION, registered: true, deviceId });
+  }
+
+  /** DELETE /api/v1/devices?deviceId=... — 로그아웃 시 토큰을 지운다. */
+  async function unregisterDevice(request: Request): Promise<Response> {
+    const gateway = await auth(request);
+    if (gateway instanceof Response) return gateway;
+    const deviceId = new URL(request.url).searchParams.get('deviceId')?.trim() ?? '';
+    if (!deviceId) return fail('BAD_REQUEST');
+    try { await gateway.removeDevice(deviceId); } catch { return fail('UPSTREAM_ERROR'); }
+    return ok({ schemaVersion: CONTRACT_SCHEMA_VERSION, registered: false, deviceId });
+  }
+
+  return { trips, today, bookings, travelState, replanPreview, activityAction, suggestionAction, registerDevice, unregisterDevice };
 }

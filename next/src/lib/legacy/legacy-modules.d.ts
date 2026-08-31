@@ -317,6 +317,27 @@ declare module '@legacy/adaptive.js' {
     planDayFlow(trip: unknown, state: TripState, opts?: Record<string, unknown>):
       { blocks: { kind: string; startMin: number; endMin?: number; title: string; segment: string; afterId?: string | null; itemId?: string; pick?: NextActionCandidate }[]; picks: NextActionCandidate[]; empty: boolean; impact: SuggestionImpact };
     suggestionKey(type: string, what: string, state: TripState): string;
+    // ── Travel State 계층 (출발 계획 · Trip Pulse · 알림 계획) ──
+    SAFETY_BUFFER: Readonly<Record<string, number>>;
+    NOTIFICATION_KINDS: Readonly<Record<string, string>>;
+    safetyBufferFor(item: TripItem, opts?: Record<string, unknown>): number;
+    departurePlan(state: TripState, item: TripItem | null, travelMin: number, opts?: Record<string, unknown>): {
+      leaveMin: number; slackMin: number; bufferMin: number; travelMin: number;
+      level: 'EARLY' | 'NOW' | 'LATE'; stage: 'UPCOMING' | 'READY_TO_LEAVE' | 'LATE_RISK';
+      lateByMin: number; text: string; targetMin: number;
+    } | null;
+    tripPulse(state: TripState, replan: ReplanResult | null, departure?: unknown, opts?: Record<string, unknown>):
+      { code: string; text: string; detail: string };
+    stateVersion(state: TripState, extra?: { stage?: string; pulse?: string }): string;
+    notificationPlan(state: TripState, input?: {
+      departure?: unknown; pulse?: unknown; replan?: unknown; suggestions?: unknown[];
+      suppressUntilMin?: number; travelMode?: boolean; quiet?: boolean;
+    }, opts?: Record<string, unknown>): {
+      kind: string; origin: 'DEVICE' | 'SERVER'; dedupeKey: string; title: string; body: string;
+      deepLink: string; targetId: string | null; priority: number; expiresAtMin: number | null;
+    }[];
+    pendingNotifications<T extends { dedupeKey: string }>(plan: T[], sentKeys: string[]): T[];
+    suggestionExpiryMin(state: TripState, opts?: Record<string, unknown>): number;
     feedbackEntry(sug: unknown, action: string, atISO: string): { recommendationId: string; key: string; type: string; action: string; createdAt: string };
   };
   export = api;

@@ -333,3 +333,136 @@ struct APIErrorBody: Codable, Sendable {
     let message: String
     let revision: Int?
 }
+
+// MARK: - Travel State (여행 중 단 하나의 조회)
+//
+// 여행 중에는 endpoint를 연달아 부르는 것 자체가 배터리다(§57).
+// Today + 하루 상태 + 출발 계획 + 알림 계획 + 잠금화면/위젯 압축본이 이 응답 하나에 있다.
+
+enum TripPulseCode: String, UnknownDecodable, Sendable {
+    case noPlan = "NO_PLAN", onTrack = "ON_TRACK", ahead = "AHEAD", delayed = "DELAYED"
+    case freeTime = "FREE_TIME", needsAttention = "NEEDS_ATTENTION", resting = "RESTING"
+    case dayComplete = "DAY_COMPLETE", unknown
+    static var unknownCase: TripPulseCode { .unknown }
+}
+
+/// 하루 상태 한 마디. **code를 화면에 쓰지 않는다** — text만 보여준다(§51).
+struct TripPulse: Codable, Hashable, Sendable {
+    let code: TripPulseCode
+    let text: String
+    let detail: String
+}
+
+/// 출발 단계. 알림은 이 값이 바뀔 때만 검토한다(§15) — 같은 단계에서 반복하지 않는다.
+enum DepartureStage: String, UnknownDecodable, Sendable {
+    case upcoming = "UPCOMING", readyToLeave = "READY_TO_LEAVE", lateRisk = "LATE_RISK", unknown
+    static var unknownCase: DepartureStage { .unknown }
+}
+
+struct DeparturePlan: Codable, Hashable, Sendable {
+    let activityId: String
+    /// 권장 출발 = 약속 − 이동 − 안전여유
+    let leaveMinutes: Int
+    let leaveAtISO: String?
+    let slackMinutes: Int
+    /// 일정 성격별 안전 여유 (열차 30분, 항공 120분 …)
+    let bufferMinutes: Int
+    let travelMinutes: Int
+    let targetMinutes: Int
+    /// 지금 나서도 약속에 늦는 분. 0이면 늦지 않는다.
+    let lateByMinutes: Int
+    let level: DepartureLevel
+    let stage: DepartureStage
+    let text: String
+}
+
+enum NotificationKind: String, UnknownDecodable, Sendable {
+    case departureReminder, fixedCommitmentReminder, scheduleDelay
+    case replanSuggestion, emptySlotSuggestion, priceSaving, unknown
+    static var unknownCase: NotificationKind { .unknown }
+}
+
+enum NotificationOrigin: String, UnknownDecodable, Sendable {
+    case device = "DEVICE", server = "SERVER", unknown
+    static var unknownCase: NotificationOrigin { .unknown }
+}
+
+struct NotificationPlanItem: Codable, Hashable, Sendable, Identifiable {
+    let kind: NotificationKind
+    /// 누가 판단하는가 — 기기는 DEVICE 항목만 예약한다. 서버 것까지 띄우면 두 번 온다(§11).
+    let origin: NotificationOrigin
+    /// 같은 상황을 두 번 알리지 않기 위한 키(§46)
+    let dedupeKey: String
+    let title: String
+    let body: String
+    /// 홈이 아니라 그 화면으로 바로 간다(§40)
+    let deepLink: String
+    let targetId: String?
+    let priority: Int
+    let expiresAtISO: String?
+
+    var id: String { dedupeKey }
+}
+
+/// 잠금화면·Dynamic Island가 그릴 압축 상태. 일정표를 통째로 넣지 않는다(§75.5).
+struct LiveActivityState: Codable, Hashable, Sendable {
+    let tripName: String
+    let dayLabel: String
+    let status: TravelStatus
+    let nextTitle: String
+    let nextStartISO: String?
+    let travelMinutes: Int?
+    let departureText: String?
+    let fixedTitle: String?
+    let fixedStartISO: String?
+    let pulseText: String
+    let stateVersion: String
+}
+
+struct WidgetActivity: Codable, Hashable, Sendable, Identifiable {
+    let id: String
+    let title: String
+    let startMinutes: Int
+    let startISO: String?
+    let type: CommitmentType
+    let isFixed: Bool
+}
+
+/// 위젯은 앱 데이터를 복제하지 않고 이 압축본만 App Group으로 공유한다(§28).
+struct WidgetSnapshot: Codable, Hashable, Sendable {
+    let tripId: String
+    let tripName: String
+    let dayLabel: String
+    let dayTitle: String
+    let pulseText: String
+    let nextActivity: WidgetActivity?
+    let nextTravelMinutes: Int?
+    let upcoming: [WidgetActivity]
+    let updatedAtISO: String
+    let stateVersion: String
+}
+
+struct TravelStateResponse: Codable, Sendable {
+    let schemaVersion: Int
+    /// 이 값이 그대로면 아무것도 바뀌지 않은 것이다 — 잠금화면을 다시 그릴지의 기준(§21·§47).
+    let stateVersion: String
+    let today: TodayResponse
+    let pulse: TripPulse
+    let departure: DeparturePlan?
+    /// 아직 보내지 않은 것만 담겨 온다.
+    let notifications: [NotificationPlanItem]
+    let liveActivity: LiveActivityState
+    let widget: WidgetSnapshot
+    let suggestionsExpireAtISO: String?
+    let suggestionsExpireMinutes: Int
+    /// 이번 계산에 쓴 위치. 서버에 저장되지 않는다(§55).
+    let locationUsed: GeoPoint?
+    let locationUpdatedAt: String?
+    let travelMode: Bool
+}
+
+struct DeviceRegistrationResponse: Codable, Sendable {
+    let schemaVersion: Int
+    let registered: Bool
+    let deviceId: String
+}

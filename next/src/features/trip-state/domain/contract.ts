@@ -240,6 +240,124 @@ export interface BookingListResponse {
   bookings: BookingSummary[];
 }
 
+// ── Travel State (여행 중 iOS가 쓰는 집약 응답) ──
+
+/** 하루 상태 한 마디. 내부 코드는 화면에 그대로 쓰지 않고 text만 보여준다(§51). */
+export type TripPulseCode =
+  | 'NO_PLAN' | 'ON_TRACK' | 'AHEAD' | 'DELAYED' | 'FREE_TIME' | 'NEEDS_ATTENTION' | 'RESTING' | 'DAY_COMPLETE';
+
+export interface TripPulse {
+  code: TripPulseCode;
+  text: string;
+  detail: string;
+}
+
+/** 출발 단계 — 알림은 이 값이 바뀔 때만 검토한다(§15). */
+export type DepartureStage = 'UPCOMING' | 'READY_TO_LEAVE' | 'LATE_RISK';
+
+export interface DeparturePlan {
+  activityId: string;
+  /** 권장 출발 = 약속 − 이동 − 안전여유 */
+  leaveMinutes: number;
+  leaveAtISO: string | null;
+  slackMinutes: number;
+  /** 일정 성격별 안전 여유 (열차 30분, 항공 120분 …) */
+  bufferMinutes: number;
+  travelMinutes: number;
+  targetMinutes: number;
+  /** 지금 나서도 약속에 늦는 분. 0이면 늦지 않는다 */
+  lateByMinutes: number;
+  level: 'EARLY' | 'NOW' | 'LATE';
+  stage: DepartureStage;
+  text: string;
+}
+
+export type NotificationKind =
+  | 'departureReminder' | 'fixedCommitmentReminder' | 'scheduleDelay'
+  | 'replanSuggestion' | 'emptySlotSuggestion' | 'priceSaving';
+
+export interface NotificationPlanItem {
+  kind: NotificationKind;
+  /** 누가 판단하는가 — 위치가 필요한 것은 기기, 일정 전체·가격은 서버(§11) */
+  origin: 'DEVICE' | 'SERVER';
+  /** 같은 상황을 두 번 알리지 않기 위한 키. 단계가 바뀌면 값도 바뀐다(§46) */
+  dedupeKey: string;
+  title: string;
+  body: string;
+  /** 홈이 아니라 그 화면으로 바로 간다(§40) */
+  deepLink: string;
+  targetId: string | null;
+  priority: number;
+  expiresAtISO: string | null;
+}
+
+/** 잠금화면·Dynamic Island가 그릴 압축 상태. 일정표를 통째로 넣지 않는다(§75.5). */
+export interface LiveActivityState {
+  tripName: string;
+  dayLabel: string;
+  status: TravelStatus;
+  nextTitle: string;
+  nextStartISO: string | null;
+  travelMinutes: number | null;
+  departureText: string | null;
+  fixedTitle: string | null;
+  fixedStartISO: string | null;
+  pulseText: string;
+  stateVersion: string;
+}
+
+export interface WidgetActivity {
+  id: string;
+  title: string;
+  startMinutes: number;
+  startISO: string | null;
+  type: CommitmentType;
+  isFixed: boolean;
+}
+
+/** 위젯은 앱 데이터를 복제하지 않고 이 압축본만 공유한다(§28). */
+export interface WidgetSnapshot {
+  tripId: string;
+  tripName: string;
+  dayLabel: string;
+  dayTitle: string;
+  pulseText: string;
+  nextActivity: WidgetActivity | null;
+  nextTravelMinutes: number | null;
+  upcoming: WidgetActivity[];
+  updatedAtISO: string;
+  stateVersion: string;
+}
+
+export interface TravelStateResponse {
+  schemaVersion: number;
+  /** 이 값이 그대로면 아무것도 바뀌지 않은 것이다 — Live Activity 갱신·알림 중복 제거의 기준(§47) */
+  stateVersion: string;
+  today: TodayResponse;
+  pulse: TripPulse;
+  departure: DeparturePlan | null;
+  /** 아직 보내지 않은 것만 담긴다 */
+  notifications: NotificationPlanItem[];
+  liveActivity: LiveActivityState;
+  widget: WidgetSnapshot;
+  suggestionsExpireAtISO: string | null;
+  suggestionsExpireMinutes: number;
+  /** 이번 계산에 쓴 위치. 서버에 저장하지 않는다(§55) */
+  locationUsed: GeoPoint | null;
+  locationUpdatedAt: string | null;
+  travelMode: boolean;
+}
+
+export interface DeviceRegistration {
+  deviceId: string;
+  platform: 'ios' | 'web';
+  pushToken: string;
+  enabled: boolean;
+  /** 범주별 on/off — 없는 키는 켜진 것으로 본다(§41) */
+  preferences: Record<string, boolean>;
+  appVersion: string | null;
+}
+
 export interface TripListResponse {
   schemaVersion: number;
   trips: TripSummary[];

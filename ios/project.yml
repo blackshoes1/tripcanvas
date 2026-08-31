@@ -1,10 +1,14 @@
 # XcodeGen 명세 — project.pbxproj를 손으로 쓰면 깨지기 쉬워 여기서 생성한다.
 #   brew install xcodegen && cd ios && xcodegen generate && open TripCanvas.xcodeproj
+#
+# 공유 코드(TripCanvasShared/ + Contract.swift)는 프레임워크로 만들지 않고 앱과 위젯 확장에
+# **소스로 함께 넣는다.** 프레임워크로 빼면 같은 타입이 두 모듈에 따로 생겨 경계에서 어긋난다.
+# 두 타깃은 App Group의 UserDefaults만 주고받으므로 각자 디코딩하면 충분하다.
 name: TripCanvas
 options:
   bundleIdPrefix: ai.tripcanvas
   deploymentTarget:
-    iOS: "17.0"          # @Observable(Observation) 사용
+    iOS: "17.0"          # @Observable(Observation) · ActivityKit Live Activity
   createIntermediateGroups: true
   generateEmptyDirectories: false
 
@@ -21,6 +25,7 @@ targets:
     platform: iOS
     sources:
       - path: TripCanvas
+      - path: TripCanvasShared
     info:
       path: TripCanvas/Info.plist
       properties:
@@ -28,15 +33,48 @@ targets:
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
-        # 첫 실행에 권한을 몰아 요청하지 않는다 — 지도에서 현재 위치가 필요할 때만 묻는다(§42).
-        NSLocationWhenInUseUsageDescription: 지도에서 현재 위치를 보여주고, 다음 장소까지 얼마나 걸리는지 알려주기 위해 사용합니다.
+        NSSupportsLiveActivities: true
+        # 첫 실행에 권한을 몰아 요청하지 않는다 — 쓸모를 설명할 수 있을 때 묻는다(§6·§42).
+        NSLocationWhenInUseUsageDescription: 다음 장소까지 걸리는 시간과 나서기 좋은 시간을 알려드리기 위해 사용합니다. 위치는 그때 계산에만 쓰고 저장하지 않습니다.
         # 로컬 서버로 붙일 때만 덮어쓴다. 비어 있으면 프로덕션을 쓴다.
         TCApiBaseURL: ""
         TCSupabaseURL: ""
         TCSupabaseAnonKey: ""
+    dependencies:
+      - target: TripCanvasWidgets
+    entitlements:
+      path: TripCanvas/TripCanvas.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.ai.tripcanvas.ios
+        aps-environment: development
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ai.tripcanvas.ios
+        TARGETED_DEVICE_FAMILY: "1"
+
+  # 위젯 + Live Activity. 네트워크도 인증도 없다 — 앱이 App Group에 써 둔 압축본만 읽는다(§28).
+  TripCanvasWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: TripCanvasWidgets
+      - path: TripCanvasShared
+      - path: TripCanvas/Core/Models/Contract.swift
+    info:
+      path: TripCanvasWidgets/Info.plist
+      properties:
+        CFBundleDisplayName: TripCanvas
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: TripCanvasWidgets/TripCanvasWidgets.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.ai.tripcanvas.ios
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ai.tripcanvas.ios.widgets
         TARGETED_DEVICE_FAMILY: "1"
 
   TripCanvasTests:

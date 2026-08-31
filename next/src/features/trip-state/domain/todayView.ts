@@ -77,6 +77,8 @@ export interface TodayInput {
   dayIndex?: number;
   energyLevel?: EnergyLevel;
   prefs?: Record<string, unknown>;
+  /** 기기가 알려준 현재 위치. 저장하지 않고 이번 계산에만 쓴다 */
+  currentLocation?: { lat: number; lng: number } | null;
   /** 그날 이미 거절한 제안 키 */
   dismissed?: string[];
   generatedAt?: string;
@@ -124,6 +126,9 @@ function actionKindOf(sug: { type: string; action: { kind?: string; fromDay?: nu
 export interface TodayComputation {
   response: TodayResponse;
   dayIndex: number;
+  /** 엔진 원본 — Travel State 계층이 그대로 이어 쓴다(다시 계산하지 않기 위해) */
+  state: ReturnType<typeof adapt.buildTripState>;
+  replan: ReturnType<typeof adapt.generateReplan>;
   /** 그 시점의 첫 빈 시간 — 옮겨온 일정을 어디에 끼울지의 기준 */
   windowAfterId: string | null;
   rawSuggestions: { id: string; type: string; title: string; action: Record<string, unknown> }[];
@@ -155,7 +160,8 @@ export function computeToday(input: TodayInput): TodayComputation {
 
   const state = adapt.buildTripState(trip, {
     dayIndex, todayISO: input.todayISO, nowMin: input.nowMinutes, timeline,
-    startAnchor: anchor, legMin, energyLevel: input.energyLevel ?? 'NORMAL', prefs: input.prefs ?? {}
+    startAnchor: anchor, legMin, energyLevel: input.energyLevel ?? 'NORMAL', prefs: input.prefs ?? {},
+    currentLocation: input.currentLocation ?? undefined
   });
   const built = adapt.buildSuggestions(trip, state, { legMin, dismissed: input.dismissed ?? [] });
 
@@ -322,6 +328,8 @@ export function computeToday(input: TodayInput): TodayComputation {
   return {
     response,
     dayIndex,
+    state,
+    replan: replanRaw,
     windowAfterId: built.window?.afterId ?? null,
     rawSuggestions: built.suggestions.map((s) => ({ id: s.id, type: s.type, title: s.title, action: s.action as unknown as Record<string, unknown> }))
   };

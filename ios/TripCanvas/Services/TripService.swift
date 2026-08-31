@@ -17,8 +17,9 @@ protocol TripDataSource {
 
 @MainActor
 final class TripService: TripDataSource {
-    private let api: APIClient
-    private let cache: TripCache
+    // extension(TravelStateSource)에서도 쓰므로 private이 아니다.
+    let api: APIClient
+    let cache: TripCache
 
     init(api: APIClient, cache: TripCache) {
         self.api = api
@@ -98,5 +99,50 @@ final class TripService: TripDataSource {
         struct Envelope: Codable { let schemaVersion: Int; let replan: ReplanPreview; let today: TodayResponse }
         let response: Envelope = try await api.post("/api/v1/trips/\(tripId)/replan-preview")
         return response.replan
+    }
+}
+
+// MARK: - Travel State · 기기 등록
+//
+// 여행 중에는 이 하나만 부른다(§57). 여러 endpoint를 연달아 부르는 것이 곧 배터리다.
+extension TripService: TravelStateSource {
+    func travelState(tripId: String, location: GeoPoint?, locationUpdatedAt: String?,
+                     travelMode: Bool, suppressUntil: String?, markSent: Bool) async throws -> TravelStateResponse {
+        var query: [URLQueryItem] = []
+        if let location {
+            // 위치는 이번 계산에만 쓰인다 — 서버가 저장하지 않는다(§55).
+            query.append(URLQueryItem(name: "lat", value: String(location.lat)))
+            query.append(URLQueryItem(name: "lng", value: String(location.lng)))
+            if let locationUpdatedAt { query.append(URLQueryItem(name: "locUpdatedAt", value: locationUpdatedAt)) }
+        }
+        if travelMode { query.append(URLQueryItem(name: "travelMode", value: "1")) }
+        if let suppressUntil { query.append(URLQueryItem(name: "suppressUntil", value: suppressUntil)) }
+        if markSent { query.append(URLQueryItem(name: "markSent", value: "1")) }
+
+        let key = "travel-state-\(tripId)"
+        do {
+            let response: TravelStateResponse = try await api.get("/api/v1/trips/\(tripId)/travel-state", query: query)
+            await cache.save(response, key: key)
+            return response
+        } catch let error as APIError where error.isOffline {
+            // 오프라인이어도 잠금화면·위젯이 비지 않게 마지막 상태를 돌려준다(§58·§59).
+            guard let cached = await cache.load(TravelStateResponse.self, key: key) else { throw error }
+            return cached.value
+        }
+    }
+
+    /// 로그인한 기기를 등록한다. 토큰이 바뀌면 다시 부르면 되고, 같은 기기는 한 행으로 유지된다(§45).
+    func registerDevice(deviceId: String, pushToken: String, preferences: [String: Bool], appVersion: String?) async throws {
+        struct Ack: Codable { let registered: Bool }
+        let _: Ack = try await api.post("/api/v1/devices", body: [
+            "deviceId": deviceId, "platform": "ios", "pushToken": pushToken,
+            "enabled": true, "preferences": preferences, "appVersion": appVersion ?? ""
+        ])
+    }
+
+    /// 로그아웃 시 반드시 부른다 — 남의 기기로 알림이 가면 안 된다.
+    func unregisterDevice(deviceId: String) async throws {
+        struct Ack: Codable { let registered: Bool }
+        let _: Ack = try await api.delete("/api/v1/devices", query: [URLQueryItem(name: "deviceId", value: deviceId)])
     }
 }

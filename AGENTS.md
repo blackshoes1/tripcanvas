@@ -38,8 +38,8 @@ npm test && npm run lint && npm run check:types && npm run security:scan && npm 
 - `sw.js` — 서비스 워커 (앱 셸 캐시). `/api/`와 GET 외 요청은 건드리지 않는다
 - `manifest.json` · `icon-*.png` — PWA
 - `api/` — Vercel 서버 함수(**서버 전용 키**): `kakao-directions.js`(카카오내비 프록시) · `hotel-offers.js`(호텔 시세 메타서치 프록시) · `car-offers.js`(렌터카 시장가 프록시 — Provider 미연결 시 AUTH_REQUIRED, 수동 관측 fallback) · `track-hotel-prices.js`(가격 스냅샷 크론)
-- `supabase/migrations/` — RLS·동기화 무결성·가격 스냅샷·추천 반응 기록 스키마
-- `ios/` — **네이티브 iOS 앱(SwiftUI)**. 웹은 여행을 *계획*하고, iOS는 여행을 *실행*한다. 판단 로직을 Swift로 복제하지 않는다 — `/api/v1`이 준 결과를 그리기만 한다. ⚠️ 작성 환경(Windows)에 Xcode가 없어 **빌드 미검증** 상태다 (`ios/README.md`)
+- `supabase/migrations/` — RLS·동기화 무결성·가격 스냅샷·추천 반응 기록·기기 토큰/발송 기록 스키마
+- `ios/` — **네이티브 iOS 앱(SwiftUI)** + `TripCanvasWidgets`(위젯·Live Activity 확장) + `TripCanvasShared`(App Group 공유 상태). 웹은 여행을 *계획*하고, iOS는 여행을 *실행*한다. 판단 로직을 Swift로 복제하지 않는다 — `/api/v1`이 준 결과를 그리기만 한다. ⚠️ 작성 환경(Windows)에 Xcode가 없어 **빌드 미검증** 상태다 (`ios/README.md`)
 - `next/src/features/trip-state/` — 웹·iOS 공통 API 계층. `contract.ts`(단일 출처 계약) · `todayView.ts`(엔진 결과를 계약 모양으로) · `mutations.ts`(문서 변경 순수 함수) · `handlers.ts`(주입 가능한 라우트 핸들러) · `supabaseGateway.ts`(RLS 아래 읽기·쓰기)
 - `scripts/` — `bump-version.js` · `check-version-sync.js` · `check-secrets.js`
 - `test/` — 순수·통합·API 테스트 (`pure` · `integration` · `adaptive` · `price` · `routing` · `sync` · `api-*` · `migration`)
@@ -68,6 +68,17 @@ localStorage: `tripcanvas_v1`(여행) · `tripcanvas_legs_v4`(구간 캐시, 수
 라우팅(`fetchLeg`): 비행기·기차는 **직선거리 기반 추정**(실시간 시각표 없음) · 국내 자차/택시=카카오내비(도로 없으면 인근 도로 스냅) · 국내 대중교통=Google Routes TRANSIT · 국내 도보/자전거=카카오 도로거리 기반 추정 · 해외=Google Routes
 
 **시간 3종을 구분한다.** 도착 **예상**(자동 계산) / `at` 도착 **고정**(내가 정한 계획) / `bookAt` **예약·입장 시각**(상대가 정한 약속 — 일찍 도착하면 그 시각까지 대기로 계산, 늦으면 ⚠️).
+
+**알림은 적게 보내는 것이 목표다.** 이 앱은 일정 알람 앱이 아니라 여행 흐름 판단 앱이다.
+
+- 판단 순서: `departurePlan`(약속 − 이동 − 안전여유) → `tripPulse`(하루 상태 한 마디) → `notificationPlan`(보낼 만한 것) → `pendingNotifications`(이미 보낸 것 제외). 전부 `adaptive.js`에 있다.
+- **알림은 단계(stage)가 바뀔 때만 나간다** — `UPCOMING → READY_TO_LEAVE → LATE_RISK`. `dedupeKey`에 단계가 들어 있어 같은 상황은 두 번 나가지 않는다(`notification_log`의 unique).
+- 판단 주체를 나눈다: 위치가 필요한 출발·지연은 **기기**(`origin:'DEVICE'`, 로컬 알림), 일정 전체·가격은 **서버**(`origin:'SERVER'`, APNs). 양쪽이 같이 판단하면 두 번 온다.
+- 빈 시간 제안 알림은 **Travel Mode가 켜져 있고**, "오늘은 쉬기"(`suppressUntil`) 중이 아니고, 남은 시간이 충분할 때만.
+- ⚠️ `stateVersion`은 **계획이 바뀌었을 때만** 달라진다(시간 경과·`availableMin`은 넣지 않는다). 잠금화면·위젯은 이 값이 같으면 다시 그리지 않는다 — 여기에 시간 의존 값을 넣으면 1분마다 갱신되어 배터리를 먹는다.
+- `GET /api/v1/trips/:id/travel-state` 하나로 Today + Pulse + 출발 계획 + 알림 계획 + 잠금화면/위젯 압축본을 받는다. 여행 중 연속 호출은 그대로 배터리다.
+- 위치는 쿼리로만 받고 **저장하지 않는다**(`locationUsed`로 무엇을 썼는지만 돌려준다). 위치 history를 남기지 않는다.
+- 잠금화면·위젯 압축본에 예약번호·URL·placeId를 넣지 않는다 — 잠긴 화면에 계속 떠 있는 정보다. `swiftParity.test.ts`가 이걸 검사한다.
 
 **엔진은 하나다 — iOS는 클라이언트다.** `adaptive.js`를 Swift로 다시 만들면 두 플랫폼의 답이 갈라진다.
 

@@ -4,6 +4,7 @@
 import { createClient } from '@supabase/supabase-js';
 
 import type { PriceObservation } from '../domain/bookingsView';
+import type { DeviceRegistration } from '../domain/contract';
 import type { Gateway, TripRow } from './handlers';
 import type { TripDoc } from '../domain/todayView';
 
@@ -90,6 +91,44 @@ export async function supabaseGatewayFor(token: string): Promise<Gateway | null>
         offers: Array.isArray(r.offers) ? (r.offers as unknown[]) : null,
         observed_at: String(r.observed_at)
       }));
+    },
+    async listSentNotificationKeys(tripId: string, dayISO: string): Promise<string[]> {
+      const { data, error: e } = await sb
+        .from('notification_log')
+        .select('dedupe_key')
+        .eq('trip_client_id', tripId)
+        .eq('day_iso', dayISO);
+      if (e) throw e;
+      return (data ?? []).map((r) => String(r.dedupe_key));
+    },
+    async recordNotifications(tripId, dayISO, items) {
+      if (!items.length) return;
+      // 같은 키는 한 행이다 — 중복 발송이 오류가 되지 않게(§46).
+      const { error: e } = await sb.from('notification_log').upsert(
+        items.map((n) => ({
+          user_id: userId, trip_client_id: tripId, day_iso: dayISO,
+          kind: n.kind, dedupe_key: n.dedupeKey, state_version: n.stateVersion
+        })),
+        { onConflict: 'user_id,dedupe_key', ignoreDuplicates: true }
+      );
+      if (e) throw e;
+    },
+    async saveDevice(registration: DeviceRegistration) {
+      const { error: e } = await sb.from('device_tokens').upsert({
+        user_id: userId,
+        device_id: registration.deviceId,
+        platform: registration.platform,
+        push_token: registration.pushToken,
+        enabled: registration.enabled,
+        preferences: registration.preferences,
+        app_version: registration.appVersion,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'user_id,device_id' });
+      if (e) throw e;
+    },
+    async removeDevice(deviceId: string) {
+      const { error: e } = await sb.from('device_tokens').delete().eq('device_id', deviceId);
+      if (e) throw e;
     },
     async recordFeedback(tripId, dayISO, key, action) {
       // 같은 제안을 두 번 건너뛰어도 한 행이다 — 중복 제출이 오류가 되지 않게.

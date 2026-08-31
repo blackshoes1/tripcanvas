@@ -61,7 +61,29 @@ DesignSystem/ 간격·타이포·공용 컴포넌트
 Tests/        디코딩·상태 계산·ViewModel
 ```
 
+## 네이티브 계층 (Travel Mode · Push · Live Activity · Widget)
+
+판단은 여전히 서버(= 저장소 루트 `adaptive.js`)가 한다. 네이티브가 하는 일은 **언제 물어볼지**와
+**어떻게 보여줄지**뿐이다.
+
+| 무엇 | 어디 | 규칙 |
+|---|---|---|
+| Travel Mode | `Features/TravelMode/TravelModeController.swift` | 켜져 있을 때만 먼저 말을 건다. 시계로 polling하지 않고 앱 전환·사용자 동작·알림 열기에만 갱신 |
+| 출발 알림 | `Core/Push/PushService.swift` | 기기가 판단하는 것(`origin: DEVICE`)만 로컬 알림. `dedupeKey`가 식별자라 같은 상황은 한 번만 뜬다 |
+| 잠금화면 | `TripCanvasWidgets/` + `TripCanvasShared/TripCanvasActivityAttributes.swift` | `stateVersion`이 같으면 **갱신하지 않는다**. 오류가 나도 마지막 상태를 유지 |
+| 위젯 | `TripCanvasWidgets/TripCanvasWidgets.swift` | 네트워크·인증 없음. 앱이 App Group에 써 둔 압축본만 읽고, 30분이 지나면 받은 시각을 함께 표시 |
+| 위치 | `Core/Location/LocationProvider.swift` + `LocationPrimerView` | 첫 실행에 묻지 않는다. 필요한 순간에 이유를 먼저 말하고 단발성으로만 조회 |
+
+서버는 `GET /api/v1/trips/:id/travel-state` 하나로 Today + Trip Pulse + 출발 계획 + 알림 계획 +
+잠금화면/위젯 압축본을 준다. 여행 중에 endpoint를 연달아 부르는 것이 곧 배터리다.
+
+⚠️ `NSSupportsLiveActivities`·App Group·`aps-environment`는 `project.yml`에 선언돼 있지만
+**APNs 키와 서명은 각자 설정해야 한다.** 서버 → APNs 실제 발송은 아직 붙이지 않았다 —
+서버는 "무엇을 보낼 만한가"(`notifications`)까지만 계산하고, 지금은 기기가 그중 자기 몫만 로컬로 띄운다.
+
 ## 이번 단계에서 하지 않은 것
 
-Push · Widget · Live Activity · Dynamic Island · Apple Watch · 연속 위치 추적 · 완전 offline-first ·
-자동 예약/결제. `TravelActivityState`(Live Activity가 그대로 쓸 compact state)와 위치 주입 지점만 열어 두었다.
+Apple Watch · Siri/App Intents · Share Extension · 서버발 APNs 발송 · Live Activity remote update ·
+연속 위치 추적 · 백그라운드 geofencing · 완전 offline-first · 자동 예약/결제 · 실시간 항공/교통 API.
+구조상 막히지 않도록 자리는 열어 두었다: 알림 계획에 `origin: SERVER` 항목이 이미 나오고,
+`notification_log`가 중복을 막고, `TravelActivityState`는 ActivityKit이 그대로 쓰는 모양이다.

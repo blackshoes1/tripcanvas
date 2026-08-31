@@ -31,3 +31,22 @@ test('같은 제안을 두 번 건너뛰어도 한 행이다 (중복 제출 방�
   assert.match(feedbackSql,/unique \(user_id, trip_client_id, day_iso, suggestion_key\)/i);
   assert.match(feedbackSql,/check \(action in \('ACCEPTED','SKIPPED','DISMISSED','REPLACED'\)\)/i);
 });
+
+const pushSql=fs.readFileSync(path.join(__dirname,'..','supabase','migrations','202608310002_push_delivery.sql'),'utf8');
+
+test('기기 토큰·발송 기록도 RLS owner 정책 아래에 있다',()=>{
+  assert.match(pushSql,/alter table public\.device_tokens enable row level security/i);
+  assert.match(pushSql,/alter table public\.notification_log enable row level security/i);
+  assert.match(pushSql,/device_tokens_owner_update[\s\S]*using[\s\S]*with check/i);
+  assert.match(pushSql,/revoke all on public\.device_tokens, public\.notification_log from anon/i);
+});
+
+test('같은 상황을 두 번 알리지 않도록 dedupe 키가 유일하다',()=>{
+  assert.match(pushSql,/unique \(user_id, dedupe_key\)/i);
+  assert.match(pushSql,/unique \(user_id, device_id\)/i);
+  assert.match(pushSql,/state_version text/i,'낡은 알림으로 낡은 제안을 적용하지 않기 위해 상태 지문을 남긴다');
+});
+
+test('알림 기반 테이블에 위치를 저장하지 않는다',()=>{
+  assert.ok(!/\blat\b|\blng\b|latitude|longitude/i.test(pushSql),'위치 history를 남기지 않는다');
+});
