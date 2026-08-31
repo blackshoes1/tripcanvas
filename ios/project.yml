@@ -36,8 +36,9 @@ targets:
         NSSupportsLiveActivities: true
         # 첫 실행에 권한을 몰아 요청하지 않는다 — 쓸모를 설명할 수 있을 때 묻는다(§6·§42).
         NSLocationWhenInUseUsageDescription: 다음 장소까지 걸리는 시간과 나서기 좋은 시간을 알려드리기 위해 사용합니다. 위치는 그때 계산에만 쓰고 저장하지 않습니다.
-        # 로컬 서버로 붙일 때만 덮어쓴다. 비어 있으면 프로덕션을 쓴다.
-        TCApiBaseURL: ""
+        # /api/v1 은 정적 웹(tripcanvas-ai)이 아니라 별도 Next 프로젝트가 서빙한다.
+        # 로컬 서버로 붙일 때만 이 값을 바꾼다.
+        TCApiBaseURL: "https://tripcanvas-api.vercel.app"
         TCSupabaseURL: ""
         TCSupabaseAnonKey: ""
     dependencies:

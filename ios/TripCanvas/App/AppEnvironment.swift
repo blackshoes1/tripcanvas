@@ -7,7 +7,9 @@ enum AppConfig {
     static let apiBaseURL: URL = {
         if let raw = Bundle.main.object(forInfoDictionaryKey: "TCApiBaseURL") as? String,
            let url = URL(string: raw), !raw.isEmpty { return url }
-        return URL(string: "https://tripcanvas-ai.vercel.app")!
+        // 정적 웹(tripcanvas-ai)에는 /api/v1 이 없다 — 그쪽을 가리키면 모든 호출이 404가 되고
+        // 앱에는 오류가 아니라 "여행 없음"으로 보인다. 기본값은 반드시 API 프로젝트여야 한다.
+        return URL(string: "https://tripcanvas-api.vercel.app")!
     }()
 
     static let supabaseURL: URL = {
