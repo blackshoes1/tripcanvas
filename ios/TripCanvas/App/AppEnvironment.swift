@@ -30,24 +30,36 @@ final class AppEnvironment {
     let service: TripService
     /// Siri · Push · Widget · Watch · Share가 함께 쓰는 단 하나의 라우터(§41).
     let router = ActionRouter()
-    let location = LocationProvider()
-    let liveActivity = LiveActivityController()
-    private(set) lazy var push = PushService { [weak self] token in
-        guard let self else { return }
-        try? await self.service.registerDevice(
-            deviceId: DeviceIdentity.current, pushToken: token,
-            preferences: [:], appVersion: AppConfig.version)
-    }
-    private(set) lazy var travelMode = TravelModeController(
-        service: self.service, location: self.location, push: self.push, liveActivity: self.liveActivity)
+    let location: LocationProvider
+    let liveActivity: LiveActivityController
+    let push: PushService
+    let travelMode: TravelModeController
 
+    /// @Observable은 저장 프로퍼티를 init 접근자로 바꾼다 — lazy와 함께 쓸 수 없다.
+    /// 그래서 의존 관계는 여기서 지역 상수로 조립한다. 클로저도 self가 아니라 지역 상수를
+    /// 붙잡으므로 순환 참조도, 초기화 순서 문제도 생기지 않는다.
     init(auth: AuthStore? = nil, service: TripService? = nil) {
         let authStore = auth ?? AuthStore(
             client: SupabaseAuthClient(baseURL: AppConfig.supabaseURL, anonKey: AppConfig.supabaseAnonKey))
-        self.auth = authStore
-        self.service = service ?? TripService(
+        let tripService = service ?? TripService(
             api: APIClient(baseURL: AppConfig.apiBaseURL, tokens: AuthTokenProvider(store: authStore)),
             cache: TripCache())
+        let locationProvider = LocationProvider()
+        let liveActivityController = LiveActivityController()
+        let pushService = PushService { token in
+            try? await tripService.registerDevice(
+                deviceId: DeviceIdentity.current, pushToken: token,
+                preferences: [:], appVersion: AppConfig.version)
+        }
+
+        self.auth = authStore
+        self.service = tripService
+        self.location = locationProvider
+        self.liveActivity = liveActivityController
+        self.push = pushService
+        self.travelMode = TravelModeController(
+            service: tripService, location: locationProvider,
+            push: pushService, liveActivity: liveActivityController)
     }
 }
 
