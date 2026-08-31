@@ -1,4 +1,7 @@
 # Next.js 이관 워크스페이스 — 루트 정적 배포에 포함 금지 (소스가 정적 파일로 서빙되는 것 방지)
 next
+
+# 네이티브 iOS 소스 — 웹 배포와 무관
+ios
 node_modules
 test-results

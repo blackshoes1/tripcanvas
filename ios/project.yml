@@ -1,0 +1,63 @@
+# XcodeGen 명세 — project.pbxproj를 손으로 쓰면 깨지기 쉬워 여기서 생성한다.
+#   brew install xcodegen && cd ios && xcodegen generate && open TripCanvas.xcodeproj
+name: TripCanvas
+options:
+  bundleIdPrefix: ai.tripcanvas
+  deploymentTarget:
+    iOS: "17.0"          # @Observable(Observation) 사용
+  createIntermediateGroups: true
+  generateEmptyDirectories: false
+
+settings:
+  base:
+    SWIFT_VERSION: "5.10"
+    DEVELOPMENT_TEAM: ""           # 서명은 각자 로컬에서 채운다
+    CODE_SIGN_STYLE: Automatic
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+
+targets:
+  TripCanvas:
+    type: application
+    platform: iOS
+    sources:
+      - path: TripCanvas
+    info:
+      path: TripCanvas/Info.plist
+      properties:
+        CFBundleDisplayName: TripCanvas
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        # 첫 실행에 권한을 몰아 요청하지 않는다 — 지도에서 현재 위치가 필요할 때만 묻는다(§42).
+        NSLocationWhenInUseUsageDescription: 지도에서 현재 위치를 보여주고, 다음 장소까지 얼마나 걸리는지 알려주기 위해 사용합니다.
+        # 로컬 서버로 붙일 때만 덮어쓴다. 비어 있으면 프로덕션을 쓴다.
+        TCApiBaseURL: ""
+        TCSupabaseURL: ""
+        TCSupabaseAnonKey: ""
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ai.tripcanvas.ios
+        TARGETED_DEVICE_FAMILY: "1"
+
+  TripCanvasTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: TripCanvasTests
+    dependencies:
+      - target: TripCanvas
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ai.tripcanvas.ios.tests
+
+schemes:
+  TripCanvas:
+    build:
+      targets:
+        TripCanvas: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - TripCanvasTests

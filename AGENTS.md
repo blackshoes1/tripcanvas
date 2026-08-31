@@ -38,7 +38,9 @@ npm test && npm run lint && npm run check:types && npm run security:scan && npm 
 - `sw.js` — 서비스 워커 (앱 셸 캐시). `/api/`와 GET 외 요청은 건드리지 않는다
 - `manifest.json` · `icon-*.png` — PWA
 - `api/` — Vercel 서버 함수(**서버 전용 키**): `kakao-directions.js`(카카오내비 프록시) · `hotel-offers.js`(호텔 시세 메타서치 프록시) · `car-offers.js`(렌터카 시장가 프록시 — Provider 미연결 시 AUTH_REQUIRED, 수동 관측 fallback) · `track-hotel-prices.js`(가격 스냅샷 크론)
-- `supabase/migrations/` — RLS·동기화 무결성·가격 스냅샷 스키마
+- `supabase/migrations/` — RLS·동기화 무결성·가격 스냅샷·추천 반응 기록 스키마
+- `ios/` — **네이티브 iOS 앱(SwiftUI)**. 웹은 여행을 *계획*하고, iOS는 여행을 *실행*한다. 판단 로직을 Swift로 복제하지 않는다 — `/api/v1`이 준 결과를 그리기만 한다. ⚠️ 작성 환경(Windows)에 Xcode가 없어 **빌드 미검증** 상태다 (`ios/README.md`)
+- `next/src/features/trip-state/` — 웹·iOS 공통 API 계층. `contract.ts`(단일 출처 계약) · `todayView.ts`(엔진 결과를 계약 모양으로) · `mutations.ts`(문서 변경 순수 함수) · `handlers.ts`(주입 가능한 라우트 핸들러) · `supabaseGateway.ts`(RLS 아래 읽기·쓰기)
 - `scripts/` — `bump-version.js` · `check-version-sync.js` · `check-secrets.js`
 - `test/` — 순수·통합·API 테스트 (`pure` · `integration` · `adaptive` · `price` · `routing` · `sync` · `api-*` · `migration`)
 - `e2e/` — Playwright 시나리오 (`core-flows` · `pwa` · `accessibility` · `ux-wireframe`)
@@ -66,6 +68,22 @@ localStorage: `tripcanvas_v1`(여행) · `tripcanvas_legs_v4`(구간 캐시, 수
 라우팅(`fetchLeg`): 비행기·기차는 **직선거리 기반 추정**(실시간 시각표 없음) · 국내 자차/택시=카카오내비(도로 없으면 인근 도로 스냅) · 국내 대중교통=Google Routes TRANSIT · 국내 도보/자전거=카카오 도로거리 기반 추정 · 해외=Google Routes
 
 **시간 3종을 구분한다.** 도착 **예상**(자동 계산) / `at` 도착 **고정**(내가 정한 계획) / `bookAt` **예약·입장 시각**(상대가 정한 약속 — 일찍 도착하면 그 시각까지 대기로 계산, 늦으면 ⚠️).
+
+**엔진은 하나다 — iOS는 클라이언트다.** `adaptive.js`를 Swift로 다시 만들면 두 플랫폼의 답이 갈라진다.
+
+```
+            adaptive.js  (판단은 여기서만)
+                  │
+       ┌──────────┴──────────┐
+  레거시 웹 · Next 웹      /api/v1  →  iOS
+```
+
+- `/api/v1` 라우트는 `@legacy/adaptive.js`를 **그대로 import** 한다(`next/tsconfig.json`의 `@legacy/*` → 저장소 루트). 새 규칙이 필요하면 `adaptive.js`에 넣는다 — `todayView.ts`에 넣으면 웹과 어긋난다.
+- 역할 분리: **단순 조회(Trip·Day·Spot)는 Supabase 직접**, **도메인 판단(Today·Suggestion·Replan)은 서버 API**.
+- 쓰기는 전부 `sync_trip` RPC(revision CAS)를 지난다. 같은 요청을 두 번 받아도 결과가 같고(`alreadyApplied`), 다른 기기가 먼저 바꿨으면 409로 알린다 — 조용히 덮어쓰지 않는다.
+- 서버에는 구간 캐시가 없어 이동시간이 **직선거리 추정**이다. 응답의 `travelTimeSource`로 그 사실을 실어 보내고 클라이언트가 "예상"이라고 표기한다.
+- 제안 거절은 `suggestion_feedback` 테이블(RLS)에 날짜와 함께 남는다 — 기기가 바뀌어도 같은 제안이 그날 다시 올라오지 않는다. ⚠️ 레거시 웹은 아직 localStorage를 쓴다(양쪽이 아직 공유되지 않음).
+- `next`의 `swiftParity.test.ts`가 **실제 Today 응답 ↔ `ios/.../Contract.swift`** 를 맞춰 보고 `ios/TripCanvasTests/Fixtures/today.json`을 다시 만든다. 계약을 바꾸면 여기가 먼저 깨진다.
 
 **Adaptive Travel OS — 상태 → 제안 → 반영은 한 패턴이다.** 일정 추천·일정 재구성·가격 절약이 각자 다른 흐름을 만들면 안 된다.
 

@@ -245,3 +245,79 @@ declare module '@legacy/api/track-hotel-prices.js' {
   };
   export = handler;
 }
+
+declare module '@legacy/adaptive.js' {
+  type Flexibility = 'FIXED' | 'SEMI_FIXED' | 'FLEXIBLE';
+  type ActivityStatus = 'PLANNED' | 'READY' | 'IN_PROGRESS' | 'COMPLETED' | 'SKIPPED' | 'CANCELLED';
+  type CommitmentType = 'FLIGHT' | 'TRAIN' | 'HOTEL' | 'RESTAURANT' | 'TOUR' | 'CAR' | 'OTHER';
+  type PlanningMode = 'MANUAL' | 'ASSISTED' | 'DELEGATED';
+  type EnergyLevel = 'LOW' | 'NORMAL' | 'HIGH';
+  interface LatLng { lat: number; lng: number }
+  interface TripItem {
+    id: string; si: number; name: string; spot: Record<string, unknown>;
+    eta: number; natural: number; travelIn: number; depart: number; end: number; stayMin: number;
+    status: ActivityStatus; flexibility: Flexibility; type: CommitmentType; priority: number;
+    location: LatLng | null; fixedAt: number | null; conflict: boolean;
+  }
+  interface FixedCommitment {
+    id: string; itemId: string; type: CommitmentType; title: string;
+    startMin: number; endMin: number; location: LatLng | null; flexibility: Flexibility;
+  }
+  interface FreeWindow {
+    startMin: number; endMin: number; minutes: number; anchor: LatLng | null;
+    afterId: string | null; beforeId: string | null; beforeFixed: boolean;
+  }
+  interface NextActionCandidate {
+    type: string; id: string; targetId: string | null; title: string; score: number; reasons: string[];
+    estimatedDuration: number; estimatedTravelTime: number; arriveMin: number; endMin: number;
+    fromDay: number | null; si: number | null; spot: Record<string, unknown> | null;
+  }
+  interface SuggestionImpact {
+    timeChangeMinutes?: number; travelTimeChangeMinutes?: number; costChange?: number;
+    removedActivities?: string[]; addedActivities?: string[];
+  }
+  interface TripSuggestion {
+    id: string; key: string; type: string; title: string; description: string; reasons: string[];
+    impact: SuggestionImpact; status: string;
+    action: { kind: string; si?: number | null; fromDay?: number | null; candidateId?: string; startMin?: number; drop?: string[]; keep?: string[]; bookingId?: string };
+  }
+  interface TripState {
+    tripId: string; tripName: string; currentDay: number; todayIndex: number; dayCount: number;
+    todayISO: string; weekday: number; live: boolean; nowMin: number; dayStartMin: number; dayEndMin: number;
+    day: Record<string, unknown>; items: TripItem[];
+    completedItems: string[]; remainingItems: string[]; skippedItems: string[];
+    fixedCommitments: FixedCommitment[]; nextFixed: FixedCommitment | null;
+    currentItem: TripItem | null; nextItem: TripItem | null;
+    currentLocation: LatLng | null; startLocation: LatLng | null; hotelLocation: LatLng | null;
+    availableMin: number; delayMin: number; travelMinToday: number;
+    planningMode: PlanningMode; energyLevel: EnergyLevel; prefs: Record<string, unknown>;
+  }
+  interface ReplanResult {
+    needed: boolean; feasible: boolean; keep: string[]; drop: string[]; dropNames: string[];
+    lateBy: number; before: string[]; after: string[]; impact: SuggestionImpact;
+  }
+  const api: {
+    ADAPT_CFG: Readonly<Record<string, number>>;
+    currentDayIndex(trip: unknown, todayISO: string): number;
+    weekdayOf(iso: string): number;
+    commitmentOf(spot: unknown, day: unknown, bookings?: unknown[]): { type: CommitmentType; flexibility: Flexibility; bookingId: string | null };
+    planningModeHint(trip: unknown): PlanningMode;
+    buildTripState(trip: unknown, opts?: Record<string, unknown>): TripState;
+    findFreeWindows(state: TripState, opts?: Record<string, unknown>): FreeWindow[];
+    buildCandidates(trip: unknown, state: TripState, opts?: Record<string, unknown>): unknown[];
+    rankNextActions(state: TripState, candidates: unknown[], opts?: Record<string, unknown>): NextActionCandidate[];
+    generateReplan(state: TripState, opts?: Record<string, unknown>): ReplanResult;
+    buildSuggestions(trip: unknown, state: TripState, opts?: Record<string, unknown>):
+      { suggestions: TripSuggestion[]; windows: FreeWindow[]; replan: ReplanResult; ranked: NextActionCandidate[]; window: FreeWindow | null; empty: boolean };
+    parseIntent(text: string): { energyLevel: EnergyLevel | null; prefs: Record<string, unknown>; reasons: string[]; understood: boolean };
+    departureAdvice(state: TripState, item: TripItem | null, travelMin: number):
+      { leaveMin: number; slackMin: number; level: 'EARLY' | 'NOW' | 'LATE'; text: string } | null;
+    fillGaps(trip: unknown, state: TripState, opts?: Record<string, unknown>):
+      { slots: { startMin: number; endMin: number; afterId: string | null; pick: NextActionCandidate }[]; impact: SuggestionImpact };
+    planDayFlow(trip: unknown, state: TripState, opts?: Record<string, unknown>):
+      { blocks: { kind: string; startMin: number; endMin?: number; title: string; segment: string; afterId?: string | null; itemId?: string; pick?: NextActionCandidate }[]; picks: NextActionCandidate[]; empty: boolean; impact: SuggestionImpact };
+    suggestionKey(type: string, what: string, state: TripState): string;
+    feedbackEntry(sug: unknown, action: string, atISO: string): { recommendationId: string; key: string; type: string; action: string; createdAt: string };
+  };
+  export = api;
+}

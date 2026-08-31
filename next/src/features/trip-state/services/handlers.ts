@@ -1,0 +1,281 @@
+// /api/v1 핸들러 — 저장소 접근(Gateway)을 주입받아 테스트에서 Supabase 없이 그대로 돌릴 수 있다.
+//
+// 역할 분리(§8):
+//   단순 조회(Trip·Day·Spot)  → 클라이언트가 Supabase SDK로 직접 봐도 된다
+//   도메인 판단(Today·Suggestion·Replan) → 여기. 서버가 판단하고 클라이언트는 표현만 한다
+//
+// 쓰기는 전부 revision CAS(sync_trip)를 지난다. 같은 요청을 두 번 받아도 결과가 같고(alreadyApplied),
+// 다른 기기가 먼저 바꿨으면 409로 최신 revision을 알려 준다 — 조용히 덮어쓰지 않는다.
+import type { ApiError, ApiErrorCode, BookingListResponse, MutationResponse, TodayResponse, TripListResponse } from '../domain/contract';
+import { CONTRACT_SCHEMA_VERSION } from '../domain/contract';
+import type { PriceObservation } from '../domain/bookingsView';
+import { buildBookings } from '../domain/bookingsView';
+import type { SettableStatus } from '../domain/mutations';
+import { applyActivityStatus, applySuggestion } from '../domain/mutations';
+import type { TodayInput, TripDoc } from '../domain/todayView';
+import { computeToday, summarizeTrip } from '../domain/todayView';
+
+export interface TripRow {
+  client_id: string;
+  data: TripDoc;
+  revision: number;
+  updated_at: string;
+  deleted_at: string | null;
+}
+
+export interface Gateway {
+  listTrips(): Promise<TripRow[]>;
+  getTrip(tripId: string): Promise<TripRow | null>;
+  /** sync_trip RPC (revision CAS). conflict면 applied=false + 현재 revision */
+  saveTrip(tripId: string, data: TripDoc, expectedRevision: number): Promise<{ applied: boolean; conflict: boolean; revision: number; data: TripDoc | null }>;
+  /** 그 여행·그 날 이미 거절한 제안 키 */
+  listDismissed(tripId: string, dayISO: string): Promise<string[]>;
+  recordFeedback(tripId: string, dayISO: string, key: string, action: string): Promise<void>;
+  /** 가격 관측 (hotel_price_snapshots). 없으면 빈 배열 — 가짜 가격을 만들지 않는다 */
+  listPriceObservations(tripId: string): Promise<PriceObservation[]>;
+}
+
+export interface HandlerDeps {
+  /** 토큰으로 사용자 컨텍스트를 만든다. 인증 실패는 null */
+  gatewayFor(token: string): Promise<Gateway | null> | Gateway | null;
+  now?: () => Date;
+}
+
+const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' };
+const STATUS: Record<ApiErrorCode, number> = {
+  UNAUTHORIZED: 401, TRIP_NOT_FOUND: 404, ACTIVITY_NOT_FOUND: 404,
+  SUGGESTION_STALE: 409, REVISION_CONFLICT: 409, BAD_REQUEST: 400, UPSTREAM_ERROR: 502
+};
+const MESSAGES: Record<ApiErrorCode, string> = {
+  UNAUTHORIZED: '로그인이 필요합니다.',
+  TRIP_NOT_FOUND: '그 여행을 찾을 수 없습니다.',
+  ACTIVITY_NOT_FOUND: '그 일정을 찾을 수 없습니다 — 목록을 새로 불러와 주세요.',
+  SUGGESTION_STALE: '상황이 바뀌어 그 제안은 더 이상 맞지 않습니다 — 새 제안을 확인해 주세요.',
+  REVISION_CONFLICT: '다른 기기에서 먼저 바뀌었습니다 — 최신 일정을 불러온 뒤 다시 시도해 주세요.',
+  BAD_REQUEST: '요청 형식이 올바르지 않습니다.',
+  UPSTREAM_ERROR: '데이터를 가져오지 못했습니다.'
+};
+
+function ok(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
+}
+function fail(code: ApiErrorCode, extra?: Partial<ApiError>): Response {
+  const body: ApiError = { error: code, message: extra?.message ?? MESSAGES[code], ...(extra?.revision != null ? { revision: extra.revision } : {}) };
+  return ok(body, STATUS[code]);
+}
+/** Authorization: Bearer <supabase access token> */
+export function bearerToken(request: Request): string | null {
+  const raw = request.headers.get('authorization') ?? '';
+  const m = /^Bearer\s+(.+)$/i.exec(raw.trim());
+  return m ? m[1].trim() : null;
+}
+
+/** 여행지 현지 기준 날짜·분. 클라이언트가 명시하면 그 값이 이긴다(기기가 현지 시각을 안다). */
+export function resolveClock(
+  trip: TripDoc, dayIndexHint: number | null, url: URL, now: Date
+): { todayISO: string; nowMinutes: number } {
+  const qDate = url.searchParams.get('date');
+  const qNow = url.searchParams.get('now');
+  const zone = trip.days?.[dayIndexHint ?? 0]?.timeZone || trip.timeZone || '';
+  let todayISO = '';
+  let nowMinutes = 9 * 60;
+  try {
+    const fmt = new Intl.DateTimeFormat('en-CA', {
+      timeZone: zone || 'UTC', year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
+    });
+    const parts: Record<string, string> = {};
+    fmt.formatToParts(now).forEach((p) => { if (p.type !== 'literal') parts[p.type] = p.value; });
+    todayISO = `${parts.year}-${parts.month}-${parts.day}`;
+    nowMinutes = Number(parts.hour) * 60 + Number(parts.minute);
+  } catch {
+    todayISO = now.toISOString().slice(0, 10);
+    nowMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
+  }
+  if (qDate && /^\d{4}-\d{2}-\d{2}$/.test(qDate)) todayISO = qDate;
+  if (qNow) {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(qNow);
+    if (m) nowMinutes = Math.min(1439, Math.max(0, Number(m[1]) * 60 + Number(m[2])));
+  }
+  return { todayISO, nowMinutes };
+}
+
+function readDayIndex(url: URL): number | undefined {
+  const raw = url.searchParams.get('day');
+  if (raw == null || raw === '') return undefined;
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 0 ? n : undefined;
+}
+
+export function createHandlers(deps: HandlerDeps) {
+  const now = deps.now ?? (() => new Date());
+
+  async function auth(request: Request): Promise<Gateway | Response> {
+    const token = bearerToken(request);
+    if (!token) return fail('UNAUTHORIZED');
+    const gateway = await deps.gatewayFor(token);
+    return gateway ?? fail('UNAUTHORIZED');
+  }
+
+  async function todayFor(gateway: Gateway, row: TripRow, url: URL, extra?: Partial<TodayInput>): Promise<TodayResponse> {
+    const dayIndex = readDayIndex(url);
+    const clock = resolveClock(row.data, dayIndex ?? null, url, now());
+    const dismissed = await gateway.listDismissed(row.client_id, clock.todayISO).catch((): string[] => []);
+    return computeToday({
+      tripId: row.client_id, trip: row.data, revision: row.revision, updatedAt: row.updated_at,
+      todayISO: clock.todayISO, nowMinutes: clock.nowMinutes, dayIndex, dismissed,
+      generatedAt: now().toISOString(), ...extra
+    }).response;
+  }
+
+  /** GET /api/v1/trips — 여행 목록. 삭제(tombstone)된 여행은 빼고, 최근 수정 순. */
+  async function trips(request: Request): Promise<Response> {
+    const gateway = await auth(request);
+    if (gateway instanceof Response) return gateway;
+    let rows: TripRow[];
+    try { rows = await gateway.listTrips(); } catch { return fail('UPSTREAM_ERROR'); }
+    const stamp = now().toISOString().slice(0, 10);
+    const body: TripListResponse = {
+      schemaVersion: CONTRACT_SCHEMA_VERSION,
+      trips: rows.filter((r) => !r.deleted_at).map((r) => summarizeTrip(r, stamp))
+    };
+    return ok(body);
+  }
+
+  /** GET /api/v1/trips/:tripId/today */
+  async function today(request: Request, tripId: string): Promise<Response> {
+    const gateway = await auth(request);
+    if (gateway instanceof Response) return gateway;
+    let row: TripRow | null;
+    try { row = await gateway.getTrip(tripId); } catch { return fail('UPSTREAM_ERROR'); }
+    if (!row || row.deleted_at) return fail('TRIP_NOT_FOUND');
+    return ok(await todayFor(gateway, row, new URL(request.url)));
+  }
+
+  /** POST /api/v1/trips/:tripId/replan-preview — 미리보기만. 아무것도 저장하지 않는다. */
+  async function replanPreview(request: Request, tripId: string): Promise<Response> {
+    const gateway = await auth(request);
+    if (gateway instanceof Response) return gateway;
+    let row: TripRow | null;
+    try { row = await gateway.getTrip(tripId); } catch { return fail('UPSTREAM_ERROR'); }
+    if (!row || row.deleted_at) return fail('TRIP_NOT_FOUND');
+    const response = await todayFor(gateway, row, new URL(request.url));
+    return ok({ schemaVersion: CONTRACT_SCHEMA_VERSION, replan: response.replan, today: response });
+  }
+
+  async function readBody(request: Request): Promise<Record<string, unknown>> {
+    try { return (await request.json()) as Record<string, unknown>; } catch { return {}; }
+  }
+
+  /** 저장 후 최신 Today를 함께 돌려준다 — 여행 중에는 왕복 횟수가 곧 체감 속도다. */
+  async function persist(
+    gateway: Gateway, row: TripRow, next: TripDoc, url: URL, applied: boolean, alreadyApplied: boolean
+  ): Promise<Response> {
+    if (!applied) {
+      const body: MutationResponse = {
+        schemaVersion: CONTRACT_SCHEMA_VERSION, applied: false, alreadyApplied,
+        revision: row.revision, today: await todayFor(gateway, row, url)
+      };
+      return ok(body);
+    }
+    let saved;
+    try { saved = await gateway.saveTrip(row.client_id, next, row.revision); } catch { return fail('UPSTREAM_ERROR'); }
+    if (!saved.applied) return fail('REVISION_CONFLICT', { revision: saved.revision });
+    const savedRow: TripRow = { ...row, data: saved.data ?? next, revision: saved.revision, updated_at: new Date().toISOString() };
+    const body: MutationResponse = {
+      schemaVersion: CONTRACT_SCHEMA_VERSION, applied: true, alreadyApplied: false,
+      revision: saved.revision, today: await todayFor(gateway, savedRow, url)
+    };
+    return ok(body);
+  }
+
+  /** POST /api/v1/trips/:tripId/activities/:activityId/:action  (complete | skip | reset) */
+  async function activityAction(request: Request, tripId: string, activityId: string, action: string): Promise<Response> {
+    const gateway = await auth(request);
+    if (gateway instanceof Response) return gateway;
+    const status: SettableStatus | null =
+      action === 'complete' ? 'COMPLETED' : action === 'skip' ? 'SKIPPED' : action === 'reset' ? 'PLANNED' : null;
+    if (!status) return fail('BAD_REQUEST');
+    let row: TripRow | null;
+    try { row = await gateway.getTrip(tripId); } catch { return fail('UPSTREAM_ERROR'); }
+    if (!row || row.deleted_at) return fail('TRIP_NOT_FOUND');
+
+    const body = await readBody(request);
+    const expected = body.expectedRevision;
+    if (typeof expected === 'number' && expected !== row.revision) return fail('REVISION_CONFLICT', { revision: row.revision });
+    const expectedName = typeof body.expectedName === 'string' ? body.expectedName : undefined;
+
+    const result = applyActivityStatus(row.data, activityId, status, expectedName);
+    if (!result.ok) {
+      return result.error === 'NAME_MISMATCH'
+        ? fail('SUGGESTION_STALE', { message: '그 사이 일정 순서가 바뀌었습니다 — 새로 불러온 뒤 다시 시도해 주세요.', revision: row.revision })
+        : fail('ACTIVITY_NOT_FOUND');
+    }
+    return persist(gateway, row, result.trip, new URL(request.url), result.applied, result.alreadyApplied);
+  }
+
+  /** POST /api/v1/trips/:tripId/suggestions/:action  (accept | skip), body: { suggestionId } */
+  async function suggestionAction(request: Request, tripId: string, action: string): Promise<Response> {
+    const gateway = await auth(request);
+    if (gateway instanceof Response) return gateway;
+    if (action !== 'accept' && action !== 'skip') return fail('BAD_REQUEST');
+    let row: TripRow | null;
+    try { row = await gateway.getTrip(tripId); } catch { return fail('UPSTREAM_ERROR'); }
+    if (!row || row.deleted_at) return fail('TRIP_NOT_FOUND');
+
+    const body = await readBody(request);
+    const suggestionId = typeof body.suggestionId === 'string' ? body.suggestionId : '';
+    if (!suggestionId) return fail('BAD_REQUEST');
+    const expected = body.expectedRevision;
+    if (typeof expected === 'number' && expected !== row.revision) return fail('REVISION_CONFLICT', { revision: row.revision });
+
+    const url = new URL(request.url);
+    const dayIndex = readDayIndex(url);
+    const clock = resolveClock(row.data, dayIndex ?? null, url, now());
+    const dismissed = await gateway.listDismissed(tripId, clock.todayISO).catch((): string[] => []);
+    // 클라이언트가 보낸 id로 '서버가 방금 다시 계산한' 제안을 찾는다 — 인덱스를 그대로 믿지 않는다.
+    const computed = computeToday({
+      tripId, trip: row.data, revision: row.revision, updatedAt: row.updated_at,
+      todayISO: clock.todayISO, nowMinutes: clock.nowMinutes, dayIndex, dismissed, generatedAt: now().toISOString()
+    });
+    const raw = computed.rawSuggestions.find((s) => s.id === suggestionId);
+    // 이미 거절한 제안을 또 건너뛰는 것은 오류가 아니다(같은 결과) — 수락만 신선도를 요구한다.
+    if (!raw && !(action === 'skip' && dismissed.includes(suggestionId))) return fail('SUGGESTION_STALE');
+
+    await gateway.recordFeedback(tripId, clock.todayISO, suggestionId, action === 'accept' ? 'ACCEPTED' : 'SKIPPED').catch(() => undefined);
+    if (action === 'skip') {
+      const body2: MutationResponse = {
+        schemaVersion: CONTRACT_SCHEMA_VERSION, applied: true, alreadyApplied: !raw, revision: row.revision,
+        today: await todayFor(gateway, row, url)
+      };
+      return ok(body2);
+    }
+    const result = applySuggestion(
+      row.data, computed.dayIndex,
+      { id: raw!.id, type: raw!.type, title: raw!.title, action: raw!.action as { kind?: string; si?: number | null; fromDay?: number | null; drop?: string[] } },
+      computed.windowAfterId
+    );
+    if (!result.ok) return fail('SUGGESTION_STALE');
+    return persist(gateway, row, result.trip, url, result.applied, result.alreadyApplied);
+  }
+
+  /** GET /api/v1/trips/:tripId/bookings — 여행 당일에 필요한 것만: 시간·장소·상태·번호·링크 */
+  async function bookings(request: Request, tripId: string): Promise<Response> {
+    const gateway = await auth(request);
+    if (gateway instanceof Response) return gateway;
+    let row: TripRow | null;
+    try { row = await gateway.getTrip(tripId); } catch { return fail('UPSTREAM_ERROR'); }
+    if (!row || row.deleted_at) return fail('TRIP_NOT_FOUND');
+    const url = new URL(request.url);
+    const clock = resolveClock(row.data, readDayIndex(url) ?? null, url, now());
+    // 가격 관측이 없어도 예약 목록 자체는 보여야 한다 — 가격은 없으면 없는 대로.
+    const observations = await gateway.listPriceObservations(tripId).catch((): PriceObservation[] => []);
+    const body: BookingListResponse = {
+      schemaVersion: CONTRACT_SCHEMA_VERSION,
+      bookings: buildBookings(row.data, observations, clock.todayISO)
+    };
+    return ok(body);
+  }
+
+  return { trips, today, bookings, replanPreview, activityAction, suggestionAction };
+}

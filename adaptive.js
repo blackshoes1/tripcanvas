@@ -212,7 +212,10 @@
       live, nowMin, dayStartMin, dayEndMin, day,
       items, completedItems:completed.map(it=>it.id), remainingItems:remaining.map(it=>it.id),
       skippedItems:items.filter(it=>it.status==='SKIPPED').map(it=>it.id),
-      fixedCommitments, nextFixed, currentItem:inProgress, nextItem:remaining[0]||null,
+      fixedCommitments, nextFixed, currentItem:inProgress,
+      // 다음 행동은 '아직 끝나지 않은' 것이다. 여행 중이라면 이미 끝났어야 할 항목(사용자가 완료를
+      // 안 눌렀을 뿐)을 '다음'으로 내밀지 않는다. 전부 지났으면 가장 이른 미완료가 다음이다(밀린 상태).
+      nextItem:(live? (remaining.filter(it=>it.end>nowMin)[0]||remaining[0]||null) : (remaining[0]||null)),
       currentLocation, startLocation, hotelLocation:(hotel&&hotel.location)||startLocation,
       availableMin, delayMin, travelMinToday:travelToday,
       prefs:o.prefs||{},   // {maxTravelMin?, walkAverse?, mealFocus?} — 자연어 요청이 추천 범위를 좁힌다

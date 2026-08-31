@@ -1,0 +1,125 @@
+// contract.ts ↔ iOS Contract.swift 정합성.
+//
+// 계약이 갈라지는 사고는 조용히 일어난다: 서버가 필드 이름을 바꿔도 웹은 TypeScript가 잡아주지만
+// Swift는 다음 빌드까지 아무도 모른다. 여기서 **실제 Today 응답**을 만들어 Swift 구조체의
+// 프로퍼티 이름과 맞춰 본다. Swift를 컴파일하지 않고도 이름이 어긋난 것은 잡힌다.
+//
+// 이 테스트가 깨지면 둘 중 하나다: contract.ts를 고치고 Swift를 안 고쳤거나, 그 반대.
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+
+import { describe, expect, it } from 'vitest';
+
+import { computeToday } from './todayView';
+import type { TripDoc } from './todayView';
+import { buildBookings } from './bookingsView';
+
+const SWIFT = readFileSync(path.join(__dirname, '../../../../../ios/TripCanvas/Core/Models/Contract.swift'), 'utf8');
+
+/** Contract.swift에서 struct 하나의 저장 프로퍼티 이름을 뽑는다 (계산 프로퍼티 `var x: T { ... }`는 제외). */
+function swiftProperties(structName: string): Set<string> {
+  const start = SWIFT.indexOf(`struct ${structName}:`);
+  if (start < 0) throw new Error(`Contract.swift에 struct ${structName}이 없습니다`);
+  // 중괄호 깊이로 struct 본문 끝을 찾는다 (중첩 struct 대응).
+  let depth = 0;
+  let i = SWIFT.indexOf('{', start);
+  const bodyStart = i + 1;
+  for (; i < SWIFT.length; i++) {
+    if (SWIFT[i] === '{') depth++;
+    else if (SWIFT[i] === '}') { depth--; if (depth === 0) break; }
+  }
+  const body = SWIFT.slice(bodyStart, i);
+  const names = new Set<string>();
+  for (const line of body.split('\n')) {
+    const m = /^\s*(?:let|var)\s+([A-Za-z_][A-Za-z0-9_]*)\s*:/.exec(line);
+    if (!m) continue;
+    if (line.includes('{')) continue;   // 계산 프로퍼티는 JSON 키가 아니다
+    names.add(m[1]);
+  }
+  return names;
+}
+
+const trip: TripDoc = {
+  id: 'parity', name: '정합성', start: '2026-09-01', timeZone: 'Asia/Seoul',
+  days: [
+    {
+      title: '첫날', mode: 'car', startAt: '09:00', spots: [
+        { name: '숙소', city: '마드리드', stay: true, stayMin: 0, lat: 40.40, lng: -3.70 },
+        { name: '저녁 예약', city: '마드리드', bookAt: '19:00', stayMin: 90, lat: 40.41, lng: -3.70, bookUrl: 'https://example.com', bookingId: 'bk1' }
+      ]
+    },
+    { title: '이튿날', mode: 'car', spots: [{ name: '공원', city: '마드리드', stayMin: 90, lat: 40.405, lng: -3.70 }] }
+  ],
+  bookings: [{ id: 'bk1', type: 'hotel', title: '호텔', provider: 'Booking', price: 100000, cur: 'KRW', start: '2026-09-01', end: '2026-09-03' }]
+};
+
+const today = computeToday({
+  tripId: 'parity', trip, revision: 2, updatedAt: '2026-08-31T00:00:00Z',
+  todayISO: '2026-09-01', nowMinutes: 13 * 60, generatedAt: '2026-09-01T04:00:00Z'
+}).response;
+
+/** JSON 객체의 키가 Swift 프로퍼티에 전부 있는지 (Swift에만 있는 여분은 허용 — 옵셔널일 수 있다) */
+function expectCovered(structName: string, value: Record<string, unknown>) {
+  const swift = swiftProperties(structName);
+  const missing = Object.keys(value).filter((k) => !swift.has(k));
+  expect(missing, `${structName}에 없는 필드`).toEqual([]);
+}
+
+describe('iOS Contract.swift가 실제 응답을 전부 담는다', () => {
+  it('TodayResponse와 그 안의 모든 구조체', () => {
+    expectCovered('TodayResponse', today as unknown as Record<string, unknown>);
+    expectCovered('TripSummary', today.trip as unknown as Record<string, unknown>);
+    expectCovered('DaySummary', today.day as unknown as Record<string, unknown>);
+    expectCovered('TripStateSummary', today.currentState as unknown as Record<string, unknown>);
+    expectCovered('ReplanPreview', today.replan as unknown as Record<string, unknown>);
+    expectCovered('TravelActivityState', today.activityState as unknown as Record<string, unknown>);
+    expect(today.activities.length).toBeGreaterThan(0);
+    expectCovered('ActivitySummary', today.activities[0] as unknown as Record<string, unknown>);
+    expect(today.fixedCommitments.length).toBeGreaterThan(0);
+    expectCovered('FixedCommitmentSummary', today.fixedCommitments[0] as unknown as Record<string, unknown>);
+    expect(today.nextAction).toBeTruthy();
+    expectCovered('NextAction', today.nextAction as unknown as Record<string, unknown>);
+    expectCovered('DepartureAdvice', today.nextAction!.departure as unknown as Record<string, unknown>);
+    expect(today.suggestions.length).toBeGreaterThan(0);
+    expectCovered('TripSuggestion', today.suggestions[0] as unknown as Record<string, unknown>);
+    expectCovered('SuggestionAction', today.suggestions[0].action as unknown as Record<string, unknown>);
+  });
+
+  it('BookingSummary와 PriceStatus', () => {
+    const bookings = buildBookings(trip, [{
+      booking_id: 'bk1', seller: 'Agoda', price: 90000, currency: 'KRW', quality: 'EXACT', verified: true,
+      offers: [{ seller: 'Agoda', price: 90000, cur: 'KRW', quality: 'EXACT', verified: true }],
+      observed_at: '2026-08-31T21:00:00Z'
+    }], '2026-09-01');
+    expect(bookings).toHaveLength(1);
+    expectCovered('BookingSummary', bookings[0] as unknown as Record<string, unknown>);
+    expect(bookings[0].priceStatus).toBeTruthy();
+    expectCovered('PriceStatus', bookings[0].priceStatus as unknown as Record<string, unknown>);
+  });
+
+  it('Swift enum이 서버가 실제로 보내는 값을 전부 안다', () => {
+    // 서버가 새 값을 보내도 앱이 죽지 않도록 .unknown 폴백을 두었지만,
+    // '지금 보내는 값'까지 unknown으로 떨어지면 화면이 "상태 확인 필요"만 반복한다.
+    const statuses = ['NO_PLAN', 'UPCOMING', 'READY_TO_LEAVE', 'TRAVELING', 'ARRIVED', 'IN_PROGRESS', 'DELAYED', 'COMPLETED'];
+    statuses.forEach((s) => expect(SWIFT, `TravelStatus.${s}`).toContain(`"${s}"`));
+    ['FIXED', 'SEMI_FIXED', 'FLEXIBLE'].forEach((s) => expect(SWIFT).toContain(`"${s}"`));
+    ['PLANNED', 'READY', 'IN_PROGRESS', 'COMPLETED', 'SKIPPED', 'CANCELLED'].forEach((s) => expect(SWIFT).toContain(`"${s}"`));
+    ['FLIGHT', 'TRAIN', 'HOTEL', 'RESTAURANT', 'TOUR', 'CAR', 'OTHER'].forEach((s) => expect(SWIFT).toContain(`"${s}"`));
+    ['NEXT_ACTIVITY', 'REPLAN', 'PRICE_SAVING', 'REST'].forEach((s) => expect(SWIFT).toContain(`"${s}"`));
+    ['VISIT_PLACE', 'CHECK_IN', 'MOVE_TO_TODAY', 'RETURN_TO_HOTEL', 'EAT', 'OPEN_BOOKING'].forEach((s) => expect(SWIFT).toContain(`"${s}"`));
+    ['SAVING_AVAILABLE', 'CHEAPER_UNVERIFIED', 'GOOD_PRICE', 'WATCHING', 'ERROR', 'UNTRACKED'].forEach((s) => expect(SWIFT).toContain(`"${s}"`));
+    ['STRAIGHT_LINE_ESTIMATE', 'ROUTED'].forEach((s) => expect(SWIFT).toContain(`"${s}"`));
+    ['MANUAL', 'ASSISTED', 'DELEGATED'].forEach((s) => expect(SWIFT).toContain(`"${s}"`));
+    ['LOW', 'NORMAL', 'HIGH'].forEach((s) => expect(SWIFT).toContain(`"${s}"`));
+    ['EARLY', 'NOW', 'LATE'].forEach((s) => expect(SWIFT).toContain(`"${s}"`));
+  });
+
+  it('iOS 테스트 픽스처를 실제 응답으로 갱신한다', () => {
+    // 픽스처를 손으로 쓰면 반드시 실제 응답과 갈라진다. 여기서 매번 다시 쓴다 —
+    // generatedAt까지 고정된 결정적 값이라 diff가 생기면 계약이 바뀐 것이다.
+    const dir = path.join(__dirname, '../../../../../ios/TripCanvasTests/Fixtures');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(path.join(dir, 'today.json'), JSON.stringify(today, null, 2) + String.fromCharCode(10));
+    expect(today.schemaVersion).toBe(1);
+  });
+});

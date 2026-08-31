@@ -1,0 +1,312 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-01T04:00:00Z",
+  "travelTimeSource": "STRAIGHT_LINE_ESTIMATE",
+  "trip": {
+    "id": "parity",
+    "name": "정합성",
+    "start": "2026-09-01",
+    "dayCount": 2,
+    "revision": 2,
+    "updatedAt": "2026-08-31T00:00:00Z",
+    "timeZone": "Asia/Seoul",
+    "cities": [
+      "마드리드"
+    ],
+    "todayIndex": 0
+  },
+  "day": {
+    "index": 0,
+    "date": "2026-09-01",
+    "title": "첫날",
+    "mode": "car",
+    "startMinutes": 540,
+    "spotCount": 2,
+    "timeZone": "Asia/Seoul"
+  },
+  "currentState": {
+    "currentDay": 0,
+    "todayIndex": 0,
+    "dayCount": 2,
+    "live": true,
+    "nowMinutes": 780,
+    "dayStartMinutes": 540,
+    "dayEndMinutes": 1260,
+    "availableMinutes": 360,
+    "delayMinutes": 240,
+    "travelMinutesToday": 2,
+    "planningMode": "ASSISTED",
+    "energyLevel": "NORMAL",
+    "completedActivityIds": [],
+    "remainingActivityIds": [
+      "d0s0",
+      "d0s1"
+    ],
+    "skippedActivityIds": [],
+    "currentLocation": {
+      "lat": 40.4,
+      "lng": -3.7
+    }
+  },
+  "nextAction": {
+    "activityId": "d0s1",
+    "title": "저녁 예약",
+    "status": "UPCOMING",
+    "travelMinutes": 2,
+    "etaMinutes": 542,
+    "startMinutes": 1140,
+    "stayMinutes": 90,
+    "departure": {
+      "leaveMinutes": 1138,
+      "slackMinutes": 358,
+      "level": "EARLY",
+      "text": "18:58쯤 출발하면 여유 있게 도착해요 (지금부터 358분 남음)"
+    },
+    "location": {
+      "lat": 40.41,
+      "lng": -3.7
+    },
+    "type": "HOTEL",
+    "flexibility": "FIXED",
+    "reasons": [
+      "18:58쯤 출발하면 여유 있게 도착해요 (지금부터 358분 남음)"
+    ]
+  },
+  "suggestions": [
+    {
+      "id": "parity|2026-09-01|VISIT_PLACE|공원",
+      "type": "NEXT_ACTIVITY",
+      "title": "공원",
+      "description": "1분 이동 · 13:01 도착 · 14:31까지",
+      "reasons": [
+        "현재 위치에서 이동 약 1분",
+        "Day 2 일정에서 옮겨올 수 있습니다",
+        "저녁 예약 동선과 같은 방향입니다",
+        "약 1.5시간이면 둘러볼 수 있습니다"
+      ],
+      "impact": {
+        "timeChangeMinutes": 91,
+        "addedActivities": [
+          "공원"
+        ],
+        "removedActivities": []
+      },
+      "action": {
+        "kind": "MOVE_TO_TODAY",
+        "activityId": null,
+        "fromDay": 1,
+        "bookingId": null,
+        "dropActivityIds": [],
+        "startMinutes": 780
+      },
+      "acceptable": true
+    },
+    {
+      "id": "parity|2026-09-01|CHECK_IN|숙소",
+      "type": "NEXT_ACTIVITY",
+      "title": "숙소",
+      "description": "13:00 도착 · 13:00까지",
+      "reasons": [
+        "원래 오늘 일정에 있던 곳입니다",
+        "저녁 예약 동선과 같은 방향입니다"
+      ],
+      "impact": {
+        "timeChangeMinutes": 0,
+        "addedActivities": [
+          "숙소"
+        ],
+        "removedActivities": []
+      },
+      "action": {
+        "kind": "CHECK_IN",
+        "activityId": "d0s0",
+        "fromDay": null,
+        "bookingId": null,
+        "dropActivityIds": [],
+        "startMinutes": 780
+      },
+      "acceptable": false
+    },
+    {
+      "id": "parity|2026-09-01|EAT|점심 시간이 비어 있어요",
+      "type": "NEXT_ACTIVITY",
+      "title": "점심 시간이 비어 있어요",
+      "description": "13:00부터 비어 있어요",
+      "reasons": [
+        "점심 시간대에 일정이 비어 있습니다",
+        "이 시간에 식사를 넣으면 남은 일정이 밀리지 않습니다"
+      ],
+      "impact": {
+        "timeChangeMinutes": 60,
+        "addedActivities": [],
+        "removedActivities": []
+      },
+      "action": {
+        "kind": "EAT",
+        "activityId": null,
+        "fromDay": null,
+        "bookingId": null,
+        "dropActivityIds": [],
+        "startMinutes": 780
+      },
+      "acceptable": false
+    }
+  ],
+  "remainingActivities": [
+    {
+      "id": "d0s0",
+      "name": "숙소",
+      "city": "마드리드",
+      "desc": "",
+      "status": "PLANNED",
+      "flexibility": "SEMI_FIXED",
+      "type": "HOTEL",
+      "etaMinutes": 540,
+      "startMinutes": 540,
+      "endMinutes": 540,
+      "stayMinutes": 0,
+      "travelInMinutes": 0,
+      "fixedAtMinutes": null,
+      "location": {
+        "lat": 40.4,
+        "lng": -3.7
+      },
+      "mustVisit": false,
+      "optional": false,
+      "bookingId": null,
+      "bookUrl": null,
+      "placeId": null
+    },
+    {
+      "id": "d0s1",
+      "name": "저녁 예약",
+      "city": "마드리드",
+      "desc": "",
+      "status": "PLANNED",
+      "flexibility": "FIXED",
+      "type": "HOTEL",
+      "etaMinutes": 542,
+      "startMinutes": 1140,
+      "endMinutes": 1230,
+      "stayMinutes": 90,
+      "travelInMinutes": 2,
+      "fixedAtMinutes": 1140,
+      "location": {
+        "lat": 40.41,
+        "lng": -3.7
+      },
+      "mustVisit": false,
+      "optional": false,
+      "bookingId": "bk1",
+      "bookUrl": "https://example.com",
+      "placeId": null
+    }
+  ],
+  "activities": [
+    {
+      "id": "d0s0",
+      "name": "숙소",
+      "city": "마드리드",
+      "desc": "",
+      "status": "PLANNED",
+      "flexibility": "SEMI_FIXED",
+      "type": "HOTEL",
+      "etaMinutes": 540,
+      "startMinutes": 540,
+      "endMinutes": 540,
+      "stayMinutes": 0,
+      "travelInMinutes": 0,
+      "fixedAtMinutes": null,
+      "location": {
+        "lat": 40.4,
+        "lng": -3.7
+      },
+      "mustVisit": false,
+      "optional": false,
+      "bookingId": null,
+      "bookUrl": null,
+      "placeId": null
+    },
+    {
+      "id": "d0s1",
+      "name": "저녁 예약",
+      "city": "마드리드",
+      "desc": "",
+      "status": "PLANNED",
+      "flexibility": "FIXED",
+      "type": "HOTEL",
+      "etaMinutes": 542,
+      "startMinutes": 1140,
+      "endMinutes": 1230,
+      "stayMinutes": 90,
+      "travelInMinutes": 2,
+      "fixedAtMinutes": 1140,
+      "location": {
+        "lat": 40.41,
+        "lng": -3.7
+      },
+      "mustVisit": false,
+      "optional": false,
+      "bookingId": "bk1",
+      "bookUrl": "https://example.com",
+      "placeId": null
+    }
+  ],
+  "fixedCommitments": [
+    {
+      "id": "fc-d0s0",
+      "activityId": "d0s0",
+      "type": "HOTEL",
+      "title": "숙소",
+      "startMinutes": 540,
+      "endMinutes": 540,
+      "location": {
+        "lat": 40.4,
+        "lng": -3.7
+      },
+      "flexibility": "SEMI_FIXED"
+    },
+    {
+      "id": "fc-d0s1",
+      "activityId": "d0s1",
+      "type": "HOTEL",
+      "title": "저녁 예약",
+      "startMinutes": 1140,
+      "endMinutes": 1230,
+      "location": {
+        "lat": 40.41,
+        "lng": -3.7
+      },
+      "flexibility": "FIXED"
+    }
+  ],
+  "replan": {
+    "needed": false,
+    "feasible": true,
+    "lateMinutes": 0,
+    "before": [
+      "숙소",
+      "저녁 예약"
+    ],
+    "after": [
+      "숙소",
+      "저녁 예약"
+    ],
+    "dropActivityIds": [],
+    "dropNames": [],
+    "movesToNextDay": true,
+    "impact": {
+      "timeChangeMinutes": 0,
+      "removedActivities": [],
+      "addedActivities": []
+    }
+  },
+  "activityState": {
+    "tripName": "정합성",
+    "dayLabel": "Day 1",
+    "nextTitle": "저녁 예약",
+    "startAtISO": "2026-09-01T10:00:00Z",
+    "travelMinutes": 2,
+    "status": "UPCOMING"
+  }
+}
