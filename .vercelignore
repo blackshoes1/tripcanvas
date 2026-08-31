@@ -1,7 +1,11 @@
-# Next.js 이관 워크스페이스 — 루트 정적 배포에 포함 금지 (소스가 정적 파일로 서빙되는 것 방지)
-next
+# ⚠️ 이 파일은 두 Vercel 프로젝트가 함께 읽는다 (tripcanvas = 정적 루트, tripcanvas-api = next/).
+# 여기서 next 를 제외하면 API 프로젝트의 package.json 까지 사라져
+# "No Next.js version detected" 로 빌드가 죽는다. 그래서 next 는 제외하지 않는다.
+#
+# 대신 정적 사이트가 next/ 소스를 서빙하지 않도록 vercel.json 의 redirects 로 막는다
+# (저장소가 비공개라 소스가 공개로 열리면 안 된다). 둘 중 하나만 바꾸지 말 것.
 
-# 네이티브 iOS 소스 — 웹 배포와 무관
+# 네이티브 iOS 소스 — 어느 웹 배포와도 무관
 ios
 node_modules
 test-results
