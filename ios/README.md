@@ -2,14 +2,17 @@
 
 여행을 **실행하는** 앱. 계획·편집·예약 관리는 웹이 하고, 여기서는 "지금 무엇을 하면 되는가"에 답한다.
 
-> ## ⚠️ 이 코드는 아직 한 번도 컴파일되지 않았다
+> ## 검증 상태
 >
-> 작성 환경이 Windows라 Xcode·Swift 툴체인·시뮬레이터가 없었다. 아래 소스는 계약(`next/src/features/trip-state/domain/contract.ts`)에
-> 맞춰 작성했지만 **빌드·실행·테스트 검증을 거치지 않았다.** Mac에서 처음 열면 컴파일 오류가 나올 수 있고,
-> 그건 정상이다 — 먼저 빌드를 통과시킨 뒤 동작을 확인할 것.
+> **시뮬레이터 빌드·실행 확인됨** — 로그인하면 웹에서 만든 여행이 그대로 보인다.
+> Windows에서 작성해 처음 Mac에서 열었을 때 나온 컴파일 오류(플랫폼 격리 · 프로토콜 요구사항 ·
+> 접근 수준 · 매크로 충돌 · SDK 인자 순서)는 모두 잡혔다.
 >
-> 반대로 **서버 쪽(`/api/v1`)은 전부 검증됐다** — `next` 워크스페이스에서 29개 계약 테스트가 통과한다.
-> iOS가 붙기 전에도 `curl`로 응답을 그대로 확인할 수 있다.
+> **아직 확인하지 않은 것**: XCTest 미실행. 그리고 위젯 · Live Activity · 공유 확장 · Watch 는
+> App Group·푸시 권한이 필요해 **유료 Developer Program 없이는 실기기 검증이 불가능하다.**
+>
+> 서버 쪽(`/api/v1`)은 별도로 검증됐다 — `next` 워크스페이스의 계약 테스트가 통과하고,
+> 배포된 라우트는 `curl` 로 바로 확인할 수 있다.
 
 ## 판단은 서버가, 표현은 iOS가
 
@@ -39,6 +42,32 @@ XcodeGen을 쓰고 싶지 않다면 Xcode에서 iOS App 프로젝트를 새로 �
 
 - 최소 iOS 17 (`@Observable` 사용)
 - 외부 의존성 없음 — Supabase Auth도 REST + `URLSession`으로 직접 부른다 (SDK를 넣지 않았다)
+
+## 무료 Apple ID로 내 아이폰에서 실행
+
+App Group(`group.ai.tripcanvas.ios`)과 푸시(`aps-environment`)는 **유료 Developer Program에서만** 발급된다.
+무료 Apple ID로 `project.yml` 을 쓰면 서명에서 막힌다. 그래서 본체 앱만 만드는 `project-free.yml` 을 따로 둔다.
+
+```bash
+cd ios && xcodegen generate --spec project-free.yml && open TripCanvasFree.xcodeproj
+```
+
+1. **폰**: 설정 → 개인정보 보호 및 보안 → **개발자 모드** 켜기 → 재시동 (iOS 16+)
+2. 케이블로 Mac에 연결하고 폰에서 **이 컴퓨터를 신뢰** 선택
+3. **Xcode**: TARGETS → TripCanvas → Signing & Capabilities → **Team** 에서 Personal Team 선택
+4. 상단 destination 에서 **내 아이폰** 선택 후 `⌘R`
+5. 첫 실행은 거부된다 — **폰**: 설정 → 일반 → VPN 및 기기 관리 → 개발자 앱 → **신뢰**
+
+무료 계정의 제약:
+
+- **7일 뒤 만료** — 다시 `⌘R` 로 설치해야 열린다
+- 위젯 · 잠금화면 · 공유 확장 · Watch 는 **뜨지 않는다** (App Group이 없어 상태를 주고받지 못한다)
+- 원격 푸시는 오지 않는다. 로컬 알림은 동작한다
+- `failed to register bundle identifier` 가 나오면 `project-free.yml` 의 `PRODUCT_BUNDLE_IDENTIFIER` 를
+  겹치지 않는 값으로 바꾼다 (예: `ai.tripcanvas.ios.<본인닉>`)
+
+앱 코드는 손대지 않아도 된다 — App Group 접근은 `UserDefaults?` 라 권한이 없으면 `nil` 로 떨어지고,
+Live Activity 는 `areActivitiesEnabled` 가 false 라 조용히 건너뛴다.
 
 ## 설정
 

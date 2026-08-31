@@ -20,3 +20,10 @@ blob-report/
 # 비밀값 — 절대 커밋 금지
 .env
 .env.*
+
+# XcodeGen 생성물 — ios/ 에서 xcodegen generate 로 만든다 (커밋하지 않는다)
+ios/*.xcodeproj/
+ios/*.xcworkspace/
+ios/TripCanvasFree-Info.plist
+ios/*/Info.plist
+ios/*/*.entitlements
