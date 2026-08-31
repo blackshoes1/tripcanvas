@@ -10,22 +10,27 @@ import Foundation
 //
 // 서버가 새 상태를 추가해도 구버전 앱이 즉시 깨지면 안 된다(§10). 모든 문자열 enum은
 // 모르는 값을 .unknown으로 받는다 — 화면은 '알 수 없음'으로 그리되 앱은 계속 동작한다.
-protocol UnknownDecodable: RawRepresentable, Decodable where RawValue == String {
+//
+// Decodable만으로는 부족하다. 이 enum들을 품은 struct가 전부 Codable이고,
+// 특히 Live Activity의 ContentState는 ActivityKit이 Codable & Hashable을 요구한다.
+// 인코딩 구현은 표준 라이브러리가 준다(RawRepresentable where RawValue == String).
+// 인코딩 대상은 전부 기기 안(Keychain·캐시·App Group)이라 서버 payload는 달라지지 않는다.
+protocol UnknownCodable: RawRepresentable, Codable where RawValue == String {
     static var unknownCase: Self { get }
 }
-extension UnknownDecodable {
+extension UnknownCodable {
     init(from decoder: Decoder) throws {
         let raw = try decoder.singleValueContainer().decode(String.self)
         self = Self(rawValue: raw) ?? Self.unknownCase
     }
 }
 
-enum Flexibility: String, UnknownDecodable, Sendable {
+enum Flexibility: String, UnknownCodable, Sendable {
     case fixed = "FIXED", semiFixed = "SEMI_FIXED", flexible = "FLEXIBLE", unknown
     static var unknownCase: Flexibility { .unknown }
 }
 
-enum ActivityStatus: String, UnknownDecodable, Sendable {
+enum ActivityStatus: String, UnknownCodable, Sendable {
     case planned = "PLANNED", ready = "READY", inProgress = "IN_PROGRESS"
     case completed = "COMPLETED", skipped = "SKIPPED", cancelled = "CANCELLED", unknown
     static var unknownCase: ActivityStatus { .unknown }
@@ -33,7 +38,7 @@ enum ActivityStatus: String, UnknownDecodable, Sendable {
     var isDone: Bool { self == .completed || self == .skipped || self == .cancelled }
 }
 
-enum CommitmentType: String, UnknownDecodable, Sendable {
+enum CommitmentType: String, UnknownCodable, Sendable {
     case flight = "FLIGHT", train = "TRAIN", hotel = "HOTEL", restaurant = "RESTAURANT"
     case tour = "TOUR", car = "CAR", other = "OTHER", unknown
     static var unknownCase: CommitmentType { .unknown }
@@ -52,51 +57,51 @@ enum CommitmentType: String, UnknownDecodable, Sendable {
     }
 }
 
-enum TravelStatus: String, UnknownDecodable, Sendable {
+enum TravelStatus: String, UnknownCodable, Sendable {
     case noPlan = "NO_PLAN", upcoming = "UPCOMING", readyToLeave = "READY_TO_LEAVE"
     case traveling = "TRAVELING", arrived = "ARRIVED", inProgress = "IN_PROGRESS"
     case delayed = "DELAYED", completed = "COMPLETED", unknown
     static var unknownCase: TravelStatus { .unknown }
 }
 
-enum SuggestionType: String, UnknownDecodable, Sendable {
+enum SuggestionType: String, UnknownCodable, Sendable {
     case nextActivity = "NEXT_ACTIVITY", replan = "REPLAN", priceSaving = "PRICE_SAVING", rest = "REST", unknown
     static var unknownCase: SuggestionType { .unknown }
 }
 
-enum SuggestionActionKind: String, UnknownDecodable, Sendable {
+enum SuggestionActionKind: String, UnknownCodable, Sendable {
     case visitPlace = "VISIT_PLACE", checkIn = "CHECK_IN", moveToToday = "MOVE_TO_TODAY"
     case rest = "REST", returnToHotel = "RETURN_TO_HOTEL", eat = "EAT", replan = "REPLAN", openBooking = "OPEN_BOOKING", unknown
     static var unknownCase: SuggestionActionKind { .unknown }
 }
 
-enum PlanningMode: String, UnknownDecodable, Sendable {
+enum PlanningMode: String, UnknownCodable, Sendable {
     case manual = "MANUAL", assisted = "ASSISTED", delegated = "DELEGATED", unknown
     static var unknownCase: PlanningMode { .unknown }
 }
 
-enum EnergyLevel: String, UnknownDecodable, Sendable {
+enum EnergyLevel: String, UnknownCodable, Sendable {
     case low = "LOW", normal = "NORMAL", high = "HIGH", unknown
     static var unknownCase: EnergyLevel { .unknown }
 }
 
-enum DepartureLevel: String, UnknownDecodable, Sendable {
+enum DepartureLevel: String, UnknownCodable, Sendable {
     case early = "EARLY", now = "NOW", late = "LATE", unknown
     static var unknownCase: DepartureLevel { .unknown }
 }
 
-enum PriceState: String, UnknownDecodable, Sendable {
+enum PriceState: String, UnknownCodable, Sendable {
     case savingAvailable = "SAVING_AVAILABLE", cheaperUnverified = "CHEAPER_UNVERIFIED"
     case goodPrice = "GOOD_PRICE", watching = "WATCHING", error = "ERROR", untracked = "UNTRACKED", unknown
     static var unknownCase: PriceState { .unknown }
 }
 
-enum TravelTimeSource: String, UnknownDecodable, Sendable {
+enum TravelTimeSource: String, UnknownCodable, Sendable {
     case straightLineEstimate = "STRAIGHT_LINE_ESTIMATE", routed = "ROUTED", unknown
     static var unknownCase: TravelTimeSource { .unknown }
 }
 
-enum BookingKind: String, UnknownDecodable, Sendable {
+enum BookingKind: String, UnknownCodable, Sendable {
     case hotel, car, flight, unknown
     static var unknownCase: BookingKind { .unknown }
 }
@@ -339,7 +344,7 @@ struct APIErrorBody: Codable, Sendable {
 // 여행 중에는 endpoint를 연달아 부르는 것 자체가 배터리다(§57).
 // Today + 하루 상태 + 출발 계획 + 알림 계획 + 잠금화면/위젯 압축본이 이 응답 하나에 있다.
 
-enum TripPulseCode: String, UnknownDecodable, Sendable {
+enum TripPulseCode: String, UnknownCodable, Sendable {
     case noPlan = "NO_PLAN", onTrack = "ON_TRACK", ahead = "AHEAD", delayed = "DELAYED"
     case freeTime = "FREE_TIME", needsAttention = "NEEDS_ATTENTION", resting = "RESTING"
     case dayComplete = "DAY_COMPLETE", unknown
@@ -354,7 +359,7 @@ struct TripPulse: Codable, Hashable, Sendable {
 }
 
 /// 출발 단계. 알림은 이 값이 바뀔 때만 검토한다(§15) — 같은 단계에서 반복하지 않는다.
-enum DepartureStage: String, UnknownDecodable, Sendable {
+enum DepartureStage: String, UnknownCodable, Sendable {
     case upcoming = "UPCOMING", readyToLeave = "READY_TO_LEAVE", lateRisk = "LATE_RISK", unknown
     static var unknownCase: DepartureStage { .unknown }
 }
@@ -376,13 +381,13 @@ struct DeparturePlan: Codable, Hashable, Sendable {
     let text: String
 }
 
-enum NotificationKind: String, UnknownDecodable, Sendable {
+enum NotificationKind: String, UnknownCodable, Sendable {
     case departureReminder, fixedCommitmentReminder, scheduleDelay
     case replanSuggestion, emptySlotSuggestion, priceSaving, unknown
     static var unknownCase: NotificationKind { .unknown }
 }
 
-enum NotificationOrigin: String, UnknownDecodable, Sendable {
+enum NotificationOrigin: String, UnknownCodable, Sendable {
     case device = "DEVICE", server = "SERVER", unknown
     static var unknownCase: NotificationOrigin { .unknown }
 }
@@ -469,19 +474,19 @@ struct DeviceRegistrationResponse: Codable, Sendable {
 
 // MARK: - 유입 (공유 → 예약 후보) · 여행 기록
 
-enum ShareKind: String, UnknownDecodable, Sendable {
+enum ShareKind: String, UnknownCodable, Sendable {
     case booking = "BOOKING", place = "PLACE", transport = "TRANSPORT", note = "NOTE", unknown = "UNKNOWN"
     static var unknownCase: ShareKind { .unknown }
 }
 
-enum CandidateType: String, UnknownDecodable, Sendable {
+enum CandidateType: String, UnknownCodable, Sendable {
     case hotel = "HOTEL", flight = "FLIGHT", train = "TRAIN", car = "CAR"
     case restaurant = "RESTAURANT", tour = "TOUR", other = "OTHER", unknown
     static var unknownCase: CandidateType { .unknown }
 }
 
 /// 이 후보를 어떻게 다룰지. **AUTO여도 저장은 사용자가 확인한 뒤에만** 일어난다(§76.2).
-enum CandidateDisposition: String, UnknownDecodable, Sendable {
+enum CandidateDisposition: String, UnknownCodable, Sendable {
     case auto = "AUTO", review = "REVIEW", manual = "MANUAL", unknown
     static var unknownCase: CandidateDisposition { .unknown }
 }
@@ -550,7 +555,7 @@ struct ImportCommitResponse: Codable, Sendable {
     let today: TodayResponse
 }
 
-enum MemoryType: String, UnknownDecodable, Sendable {
+enum MemoryType: String, UnknownCodable, Sendable {
     case photo = "PHOTO", note = "NOTE", visit = "VISIT", moment = "MOMENT", unknown
     static var unknownCase: MemoryType { .unknown }
 }
