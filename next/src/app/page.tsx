@@ -24,7 +24,7 @@ const LINKS = [
 export default function Home() {
   return (
     <main style={{ maxWidth: 640, margin: '0 auto', padding: '48px 20px' }}>
-      <h1>Trip Canvas — Next 이관 워크스페이스</h1>
+      <h1>From J — Next 이관 워크스페이스</h1>
       <p style={{ color: 'var(--muted)' }}>
         Strangler Migration: 레거시 정적 앱과 병행하며 기능 단위로 이관한다.
         같은 저장소(<code>tripcanvas_v1</code>)를 쓰므로 두 앱을 오가며 같은 여행을 볼 수 있다.

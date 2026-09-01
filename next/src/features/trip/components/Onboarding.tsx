@@ -18,7 +18,7 @@ export function Onboarding({ onPaste, onNew, onSample, onSignIn, canSignIn }: {
     <div className="itOnboardBg" role="dialog" aria-modal="true" aria-labelledby="itOnboardTitle">
       <div className="itOnboard">
         <div className="itOnboardMark" aria-hidden="true">▣</div>
-        <p className="itOnboardEyebrow">TRIP CANVAS</p>
+        <p className="itOnboardEyebrow">FROM J</p>
         <h1 id="itOnboardTitle">여행을<br />더 쉽게 계획하세요</h1>
         <p className="itOnboardLead">대화로 입력하고, 지도에서 동선을 한눈에 확인하세요.</p>
         <div className="itOnboardActions">

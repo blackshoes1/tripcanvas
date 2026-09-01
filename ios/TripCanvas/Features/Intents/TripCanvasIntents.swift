@@ -33,7 +33,7 @@ enum IntentError: Error, CustomLocalizedStringResourceConvertible {
 
     var localizedStringResource: LocalizedStringResource {
         switch self {
-        case .noTrip: "아직 여행이 없어요. 웹 TripCanvas에서 여행을 만들면 여기서도 보여요."
+        case .noTrip: "아직 여행이 없어요. 웹 From J에서 여행을 만들면 여기서도 보여요."
         case .ambiguous: "지금 어떤 일정인지 확실하지 않아요. 앱에서 확인해 주세요."
         }
     }

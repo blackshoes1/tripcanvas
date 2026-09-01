@@ -55,7 +55,7 @@ struct BookingListView: View {
                         EmptyStateView(
                             symbol: "ticket",
                             title: "등록된 예약이 없어요",
-                            message: "웹 TripCanvas에서 예약을 추가하면 여기에 나타납니다.")
+                            message: "웹 From J에서 예약을 추가하면 여기에 나타납니다.")
                     }
                     ForEach(model.bookings) { booking in
                         BookingCard(booking: booking)

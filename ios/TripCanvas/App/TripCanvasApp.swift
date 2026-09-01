@@ -62,7 +62,7 @@ struct SignInView: View {
             }
             .disabled(email.isEmpty || password.isEmpty)
 
-            Text("웹 TripCanvas와 같은 계정을 사용합니다.")
+            Text("웹 From J와 같은 계정을 사용합니다.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Spacer()
