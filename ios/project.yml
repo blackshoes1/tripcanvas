@@ -41,7 +41,7 @@ targets:
     info:
       path: TripCanvas/Info.plist
       properties:
-        CFBundleDisplayName: TripCanvas
+        CFBundleDisplayName: From J
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         UILaunchScreen: {}
@@ -82,7 +82,7 @@ targets:
     info:
       path: TripCanvasWidgets/Info.plist
       properties:
-        CFBundleDisplayName: TripCanvas
+        CFBundleDisplayName: From J
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         NSExtension:
@@ -108,7 +108,7 @@ targets:
     info:
       path: TripCanvasShare/Info.plist
       properties:
-        CFBundleDisplayName: TripCanvas
+        CFBundleDisplayName: From J
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         NSExtension:
@@ -141,7 +141,7 @@ targets:
     info:
       path: TripCanvasWatch/Info.plist
       properties:
-        CFBundleDisplayName: TripCanvas
+        CFBundleDisplayName: From J
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         WKApplication: true

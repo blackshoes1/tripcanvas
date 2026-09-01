@@ -39,7 +39,7 @@ enum IntentError: Error, CustomLocalizedStringResourceConvertible {
     }
 }
 
-/// "TripCanvas 오늘 일정" — 다음 하나와 그 뒤 두 줄까지만(§6).
+/// "From J 오늘 일정" — 다음 하나와 그 뒤 두 줄까지만(§6).
 struct ShowTodayIntent: AppIntent {
     static var title: LocalizedStringResource = "오늘 일정 보기"
     static var description = IntentDescription("오늘 남은 일정과 다음에 할 일을 알려줍니다.")
@@ -94,7 +94,7 @@ struct ShowNextActionIntent: AppIntent {
     }
 }
 
-/// "TripCanvas 여행 모드 시작" — 이미 켜져 있으면 다시 켜지 않는다(§8, idempotent).
+/// "From J 여행 모드 시작" — 이미 켜져 있으면 다시 켜지 않는다(§8, idempotent).
 struct StartTravelModeIntent: AppIntent {
     static var title: LocalizedStringResource = "여행 모드 시작"
     static var description = IntentDescription("다음 일정과 이동 시간을 잠금화면에서 바로 볼 수 있게 합니다.")

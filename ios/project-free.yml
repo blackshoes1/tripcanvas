@@ -36,7 +36,7 @@ targets:
     info:
       path: TripCanvasFree-Info.plist
       properties:
-        CFBundleDisplayName: TripCanvas
+        CFBundleDisplayName: From J
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         UILaunchScreen: {}
