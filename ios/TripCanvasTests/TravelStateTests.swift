@@ -22,10 +22,21 @@ final class TravelStateTests: XCTestCase {
     }
 
     /// 하루 상태를 사용자에게는 문장으로만 보여준다(§51) — 내부 코드가 새면 안 된다.
+    ///
+    /// ⚠️ "uppercased() == self" 로는 가릴 수 없다. 한글은 대소문자가 없어 그 비교가 **항상 참**이라
+    /// 멀쩡한 한국어 문장이 전부 걸린다(이 테스트가 처음 돌자마자 그렇게 깨졌다).
+    /// 코드는 영문 대문자·밑줄·숫자로만 이뤄진다(ON_TRACK · AHEAD) — 그 모양인지를 본다.
     func testPulseNeverLeaksInternalCode() throws {
         let state = try fixture()
-        XCTAssertFalse(state.pulse.text.contains("_"))
-        XCTAssertFalse(state.pulse.text.uppercased() == state.pulse.text && state.pulse.text.count > 6)
+        XCTAssertFalse(state.pulse.text.contains("_"), "코드가 문장 자리에 들어왔다: \(state.pulse.text)")
+        XCTAssertFalse(looksLikeInternalCode(state.pulse.text), "코드가 문장 자리에 들어왔다: \(state.pulse.text)")
+        XCTAssertFalse(looksLikeInternalCode(state.pulse.detail), "코드가 설명 자리에 들어왔다: \(state.pulse.detail)")
+    }
+
+    /// 영문 대문자·밑줄·숫자로만 이뤄졌으면 사람에게 보일 문장이 아니다.
+    private func looksLikeInternalCode(_ text: String) -> Bool {
+        guard !text.isEmpty else { return false }
+        return text.allSatisfy { $0.isUppercase || $0 == "_" || $0.isNumber }
     }
 
     func testDepartureCarriesBufferAndSentence() throws {

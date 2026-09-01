@@ -44,11 +44,20 @@ final class ContractDecodingTests: XCTestCase {
         }
     }
 
+    /// ⚠️ 두 목록은 **범위가 다르다.** 서버의 fixedCommitments는 FLEXIBLE이 아닌 것 전부(= SEMI_FIXED 포함,
+    /// adaptive.js)이고, 화면이 눈에 띄게 표시하는 isFixedCommitment는 FIXED만이다. 그래서 .first끼리
+    /// 비교하면 정렬·구성이 다를 때 헛되이 깨진다(이 테스트가 처음 돌자마자 그렇게 깨졌다).
+    /// 지켜야 할 것은 포함 관계다 — 화면이 약속이라 부르는 것은 서버도 약속으로 잡고 있어야 한다.
     func testFixedCommitmentIsDistinguishable() throws {
         let today = try loadTodayFixture()
         let fixed = today.activities.filter(\.isFixedCommitment)
         XCTAssertFalse(fixed.isEmpty, "예약된 일정은 다른 일정과 구분돼야 한다")
-        XCTAssertEqual(today.fixedCommitments.first?.title, fixed.first?.name)
+
+        let commitmentIds = Set(today.fixedCommitments.map(\.activityId))
+        for activity in fixed {
+            XCTAssertTrue(commitmentIds.contains(activity.id),
+                          "화면이 약속으로 표시하는 \(activity.name)이 서버 약속 목록에 없다")
+        }
     }
 
     /// §10 — 서버가 새 값을 추가해도 구버전 앱이 즉시 깨지지 않아야 한다.
