@@ -13,7 +13,7 @@ import Foundation
 /// public을 붙이면 Contract.swift의 internal 타입을 시그니처에 드러내 컴파일이 막힌다.
 enum SharedStore {
     /// project.yml의 App Group과 같아야 한다.
-    static let appGroupId = "group.ai.tripcanvas.ios"
+    static let appGroupId = "group.com.fromj.trip"
 
     private static let widgetKey = "widget.snapshot.v1"
     private static let activityKey = "liveactivity.state.v1"

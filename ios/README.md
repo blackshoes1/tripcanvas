@@ -8,8 +8,16 @@
 > Windows에서 작성해 처음 Mac에서 열었을 때 나온 컴파일 오류(플랫폼 격리 · 프로토콜 요구사항 ·
 > 접근 수준 · 매크로 충돌 · SDK 인자 순서)는 모두 잡혔다.
 >
-> **아직 확인하지 않은 것**: XCTest 미실행. 그리고 위젯 · Live Activity · 공유 확장 · Watch 는
-> App Group·푸시 권한이 필요해 **유료 Developer Program 없이는 실기기 검증이 불가능하다.**
+> **CI가 자동으로 보는 것** (`.github/workflows/ios.yml`, `ios/` 변경 시에만 — macOS 러너는 10배 과금):
+> XcodeGen 생성 · 전 타깃 컴파일 · **XCTest** · Release 빌드 · 무료 스펙 생성.
+> 서명 없이 시뮬레이터로만 돌기 때문에 Apple 계정 없이 돌아간다.
+>
+> **CI가 못 보는 것**: 서명 · 실기기 설치 · 실제 푸시 도착 · 위젯/Live Activity 실제 표시 ·
+> Archive · TestFlight. 이건 기기에서만 확인된다 — [docs/ios-device-setup.md](../docs/ios-device-setup.md)
+> 의 체크리스트를 쓴다.
+>
+> **TestFlight는 눌러서 올린다**: Actions → *iOS TestFlight* → Run workflow.
+> App Store Connect API 키 네 개를 저장소 시크릿에 넣어두면 Xcode를 열 일이 없다(문서 참고).
 >
 > 서버 쪽(`/api/v1`)은 별도로 검증됐다 — `next` 워크스페이스의 계약 테스트가 통과하고,
 > 배포된 라우트는 `curl` 로 바로 확인할 수 있다.
@@ -45,7 +53,10 @@ XcodeGen을 쓰고 싶지 않다면 Xcode에서 iOS App 프로젝트를 새로 �
 
 ## 무료 Apple ID로 내 아이폰에서 실행
 
-App Group(`group.ai.tripcanvas.ios`)과 푸시(`aps-environment`)는 **유료 Developer Program에서만** 발급된다.
+> 처음이라면 **[docs/ios-device-setup.md](../docs/ios-device-setup.md)** 를 따라가는 편이 빠르다 —
+> 준비물부터 기기 점검 체크리스트·자주 나는 오류까지 순서대로 적어 두었다.
+
+App Group(`group.com.fromj.trip`)과 푸시(`aps-environment`)는 **유료 Developer Program에서만** 발급된다.
 무료 Apple ID로 `project.yml` 을 쓰면 서명에서 막힌다. 그래서 본체 앱만 만드는 `project-free.yml` 을 따로 둔다.
 
 ```bash
@@ -64,14 +75,14 @@ cd ios && xcodegen generate --spec project-free.yml && open TripCanvasFree.xcode
 - 위젯 · 잠금화면 · 공유 확장 · Watch 는 **뜨지 않는다** (App Group이 없어 상태를 주고받지 못한다)
 - 원격 푸시는 오지 않는다. 로컬 알림은 동작한다
 - `failed to register bundle identifier` 가 나오면 `project-free.yml` 의 `PRODUCT_BUNDLE_IDENTIFIER` 를
-  겹치지 않는 값으로 바꾼다 (예: `ai.tripcanvas.ios.<본인닉>`)
+  겹치지 않는 값으로 바꾼다 (예: `com.fromj.trip.<본인닉>`)
 
 앱 코드는 손대지 않아도 된다 — App Group 접근은 `UserDefaults?` 라 권한이 없으면 `nil` 로 떨어지고,
 Live Activity 는 `areActivitiesEnabled` 가 false 라 조용히 건너뛴다.
 
 ## 설정
 
-`TripCanvas/App/AppConfig.swift`의 기본값은 프로덕션(`https://tripcanvas-ai.vercel.app`)과 기존 Supabase 프로젝트를 가리킨다.
+`TripCanvas/App/AppEnvironment.swift`의 `AppConfig`가 기본값을 들고 있다 — API는 `https://tripcanvas-api.vercel.app`(정적 웹이 아니다), Supabase는 기존 프로젝트.
 로컬 서버로 붙일 때는 `Info.plist`의 `TCApiBaseURL`을 덮어쓴다.
 
 ## 구조

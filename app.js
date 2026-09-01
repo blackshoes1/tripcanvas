@@ -2263,7 +2263,7 @@ function renderBookingList(){
       <div><span>현재 예약 총액</span><b>₩${fmtMoney(s.booked)}</b></div>
       <div class="pxSaveRow"><span>현재 확정 절약 가능</span><b>${s.confirmed>0?`₩${fmtMoney(s.confirmed)}`:'—'}</b></div>
       ${s.potential>0?`<div class="pxPotRow"><span>조건 확인 필요</span><b>최대 ₩${fmtMoney(s.potential)}</b></div>`:''}
-      ${s.actual>0?`<div class="pxActualRow"><span>TripCanvas로 실제 절약</span><b>₩${fmtMoney(s.actual)}</b></div>`:''}
+      ${s.actual>0?`<div class="pxActualRow"><span>From J로 실제 절약</span><b>₩${fmtMoney(s.actual)}</b></div>`:''}
     </div>`:'';
   document.getElementById('bookingListBody').innerHTML = bookings.length? bookings.map(b=>{
     const period=[b.start,b.end].filter(Boolean).map(esc).join(' ~ ');
@@ -2696,7 +2696,7 @@ function buildTripCard(){
     if(day.note) html+=`<div style="font-size:10.5px;color:#9aa5c4;margin-top:6px;white-space:pre-wrap">📝 ${esc(day.note)}</div>`;
     html+='</div>';
   });
-  html+='<div style="font-size:10px;color:#5a6690;text-align:right">made with Trip Canvas</div>';
+  html+='<div style="font-size:10px;color:#5a6690;text-align:right">made with From J</div>';
   w.innerHTML=html;
   return w;
 }
@@ -3349,8 +3349,18 @@ function renderTravel(di){
   const current=d.spots[currentIndex], currentLink=hasLoc(current)?extMapLink(current):null;
   const currentFacts=[`${hm(etas[currentIndex])} 도착 예상`,current.bookAt?`예약 ${current.bookAt}`:'예약 없음',current.stayMin!=null?`체류 ${current.stayMin}분`:null].filter(Boolean);
   currentBox.innerHTML=`<div class="travelKicker">${today?'현재 장소':'선택한 날의 시작 장소'}</div><div class="travelPlace">${catPrefix(current)}${esc(current.name)}</div><div class="travelFacts">${currentFacts.map(esc).join(' · ')}${current.desc?`<br>${esc(current.desc)}`:''}</div><div class="travelActions">${currentLink?`<a href="${escAttr(currentLink.href)}" target="_blank" rel="noopener">길찾기</a>`:''}${safeUrl(current.bookUrl)?`<a href="${escAttr(safeUrl(current.bookUrl))}" target="_blank" rel="noopener">예약 정보</a>`:''}</div>`;
-  let nextIdx=currentIndex+1;
-  while(d.spots[nextIdx] && (d.spots[nextIdx].status==='COMPLETED'||d.spots[nextIdx].status==='SKIPPED')) nextIdx++;   // 다녀왔거나 건너뛴 곳은 '다음'이 아니다
+  // '다음'은 현재 항목의 **뒤**가 아니라 **아직 끝나지 않은 것**이다. currentIndex는 시계로만
+  // 정해지는데(현재 장소 표시용), 장소가 가까워 ETA가 전부 지나 있으면 마지막 항목에 머문다 —
+  // 그 상태로 +1을 하면 다녀왔다고 표시해도 '오늘 일정 완료'로 떨어졌다.
+  // 판단은 엔진 하나가 한다: nextItem은 완료·건너뜀을 뺀 것 중 아직 안 끝난 것을 고르고,
+  // 전부 지났으면 가장 이른 미완료를 준다(밀린 상태). items는 spots와 1:1이라 si로 되짚는다.
+  let nextIdx;
+  if(_adapt && _adapt.di===di && _adapt.state){
+    nextIdx = _adapt.state.nextItem ? _adapt.state.nextItem.si : -1;   // -1 → 아래에서 '완료'로 떨어진다
+  }else{
+    nextIdx=currentIndex+1;
+    while(d.spots[nextIdx] && (d.spots[nextIdx].status==='COMPLETED'||d.spots[nextIdx].status==='SKIPPED')) nextIdx++;
+  }
   const next=d.spots[nextIdx]; nextBox.hidden=false;
   if(next){
     const mode=legModeOf(d,next),route=(hasLoc(current)&&hasLoc(next))?requestLeg(current,next,mode,mode==='transit'?planDepartISO(iso,legDepartMinute(d,tl,nextIdx),ctx.timeZone):null,ctx.timeZone):null;

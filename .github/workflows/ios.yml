@@ -1,0 +1,80 @@
+# iOS 컴파일 검증 — 실기기 기능은 여기서 보지 않는다(§37).
+# 여기서 잡는 것은 "Mac에서 열었을 때 빌드가 되는가" 하나이고, 그게 지금까지 사람 손에만 달려 있었다.
+#
+# ⚠️ macOS 러너는 비공개 저장소에서 **분당 10배**로 과금된다 → ios/ 가 바뀔 때만 돈다.
+# 서명은 하지 않는다 — 시뮬레이터 빌드는 서명이 필요 없어서 Apple 계정 없이도 돌아간다.
+# 그래서 여기서 확인되는 것과 확인되지 않는 것이 갈린다:
+#   확인됨   : 컴파일 · 링크 · XCTest · Release 설정 · XcodeGen 명세
+#   확인 안 됨: 서명 · 실기기 설치 · 푸시 · 위젯/Live Activity 실제 표시 · Archive · TestFlight
+name: iOS
+on:
+  pull_request:
+    paths: ['ios/**', '.github/workflows/ios.yml']
+  push:
+    branches: [main]
+    paths: ['ios/**', '.github/workflows/ios.yml']
+
+env:
+  # 서명 없이 시뮬레이터로만 빌드한다
+  NOSIGN: CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=
+
+jobs:
+  build:
+    name: Build + unit tests (simulator)
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: sw_vers && xcodebuild -version
+
+      # project.pbxproj는 커밋하지 않는다 — 명세에서 만든다(ios/README.md).
+      # 이 단계가 실패하면 project.yml 자체가 깨진 것이다.
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        working-directory: ios
+        run: xcodegen generate
+
+      # 기기 이름을 박아두면 러너 이미지가 바뀔 때 조용히 깨진다 —
+      # 그 이미지에 실제로 있는 것 중 첫 번째 iPhone을 고른다.
+      - name: Pick an available iPhone simulator
+        id: sim
+        run: |
+          NAME=$(xcrun simctl list devices available \
+            | awk -F' \\(' '/^ +iPhone/ { sub(/^ +/, "", $1); print $1; exit }')
+          if [ -z "$NAME" ]; then
+            echo "사용 가능한 iPhone 시뮬레이터가 없다"; xcrun simctl list devices available; exit 1
+          fi
+          echo "사용할 시뮬레이터: $NAME"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+
+      # test가 Debug 빌드까지 겸한다 — 컴파일 오류는 여기서 잡힌다.
+      # ios/README.md 기준 XCTest는 한 번도 돌지 않았다. 여기서 처음 돈다.
+      - name: Build + test (Debug)
+        working-directory: ios
+        run: |
+          xcodebuild test \
+            -project TripCanvas.xcodeproj \
+            -scheme TripCanvas \
+            -destination "platform=iOS Simulator,name=${{ steps.sim.outputs.name }}" \
+            $NOSIGN
+
+      # Debug에서만 되는 상태로 두지 않는다(§40) — Release에서만 켜지는 최적화·경고가 있다.
+      - name: Build (Release)
+        working-directory: ios
+        run: |
+          xcodebuild build \
+            -project TripCanvas.xcodeproj \
+            -scheme TripCanvas \
+            -destination 'generic/platform=iOS Simulator' \
+            -configuration Release \
+            $NOSIGN
+
+      # 무료 Apple ID 경로도 살아 있어야 한다 — 문서가 그 길을 안내하는데
+      # 스펙이 깨져 있으면 처음 시도하는 사람이 그대로 막힌다.
+      - name: Free-account spec still generates
+        working-directory: ios
+        run: xcodegen generate --spec project-free.yml

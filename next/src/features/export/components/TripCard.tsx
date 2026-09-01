@@ -47,7 +47,7 @@ export function TripCard({ card, innerRef }: {
           )}
         </div>
       ))}
-      <div style={{ fontSize: 10, color: '#5a6690', textAlign: 'right' }}>made with Trip Canvas</div>
+      <div style={{ fontSize: 10, color: '#5a6690', textAlign: 'right' }}>made with From J</div>
     </div>
   );
 }

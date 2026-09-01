@@ -68,7 +68,7 @@ struct WatchNextView: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Image(systemName: "iphone.gen3").font(.title3).foregroundStyle(.secondary)
                         Text("아직 받은 일정이 없어요").font(.headline)
-                        Text("iPhone에서 TripCanvas를 한 번 열면 여기에 다음 일정이 나타나요.")
+                        Text("iPhone에서 From J를 한 번 열면 여기에 다음 일정이 나타나요.")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
@@ -77,7 +77,7 @@ struct WatchNextView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 4)
         }
-        .navigationTitle("TripCanvas")
+        .navigationTitle("From J")
         .onAppear(perform: reload)
         // 워치에서 시계로 자주 깨우지 않는다 — 화면이 다시 보일 때만 읽는다.
         .onReceive(NotificationCenter.default.publisher(for: WKApplication.didBecomeActiveNotification)) { _ in

@@ -1,6 +1,6 @@
 # 무료 Apple ID로 **내 아이폰에 올려 보기 위한** 스펙.
 #
-# App Group(group.ai.tripcanvas.ios)과 푸시(aps-environment)는 유료 Developer Program
+# App Group(group.com.fromj.trip)과 푸시(aps-environment)는 유료 Developer Program
 # 에서만 발급된다. 무료 계정으로 project.yml 을 쓰면 서명 단계에서 막힌다.
 # 그래서 여기서는 **본체 앱 하나만** 만든다.
 #
@@ -13,7 +13,7 @@
 # 전체 기능을 보려면 유료 멤버십 + project.yml 을 쓸 것.
 name: TripCanvasFree
 options:
-  bundleIdPrefix: ai.tripcanvas
+  bundleIdPrefix: com.fromj
   deploymentTarget:
     iOS: "17.0"
   createIntermediateGroups: true
@@ -23,6 +23,8 @@ settings:
   base:
     SWIFT_VERSION: "5.10"
     CODE_SIGN_STYLE: Automatic
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
 
 targets:
   TripCanvas:
@@ -34,7 +36,9 @@ targets:
     info:
       path: TripCanvasFree-Info.plist
       properties:
-        CFBundleDisplayName: TripCanvas
+        CFBundleDisplayName: From J
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
@@ -46,8 +50,9 @@ targets:
         TCSupabaseAnonKey: ""
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: ai.tripcanvas.ios
+        PRODUCT_BUNDLE_IDENTIFIER: com.fromj.trip
         TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
 
 schemes:
   TripCanvas:
