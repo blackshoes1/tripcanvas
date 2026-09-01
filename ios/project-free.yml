@@ -23,6 +23,8 @@ settings:
   base:
     SWIFT_VERSION: "5.10"
     CODE_SIGN_STYLE: Automatic
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
 
 targets:
   TripCanvas:
@@ -35,6 +37,8 @@ targets:
       path: TripCanvasFree-Info.plist
       properties:
         CFBundleDisplayName: TripCanvas
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
@@ -48,6 +52,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ai.tripcanvas.ios
         TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
 
 schemes:
   TripCanvas:

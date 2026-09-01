@@ -45,6 +45,9 @@ XcodeGen을 쓰고 싶지 않다면 Xcode에서 iOS App 프로젝트를 새로 �
 
 ## 무료 Apple ID로 내 아이폰에서 실행
 
+> 처음이라면 **[docs/ios-device-setup.md](../docs/ios-device-setup.md)** 를 따라가는 편이 빠르다 —
+> 준비물부터 기기 점검 체크리스트·자주 나는 오류까지 순서대로 적어 두었다.
+
 App Group(`group.ai.tripcanvas.ios`)과 푸시(`aps-environment`)는 **유료 Developer Program에서만** 발급된다.
 무료 Apple ID로 `project.yml` 을 쓰면 서명에서 막힌다. 그래서 본체 앱만 만드는 `project-free.yml` 을 따로 둔다.
 
@@ -71,7 +74,7 @@ Live Activity 는 `areActivitiesEnabled` 가 false 라 조용히 건너뛴다.
 
 ## 설정
 
-`TripCanvas/App/AppConfig.swift`의 기본값은 프로덕션(`https://tripcanvas-ai.vercel.app`)과 기존 Supabase 프로젝트를 가리킨다.
+`TripCanvas/App/AppEnvironment.swift`의 `AppConfig`가 기본값을 들고 있다 — API는 `https://tripcanvas-api.vercel.app`(정적 웹이 아니다), Supabase는 기존 프로젝트.
 로컬 서버로 붙일 때는 `Info.plist`의 `TCApiBaseURL`을 덮어쓴다.
 
 ## 구조

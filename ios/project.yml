@@ -18,6 +18,10 @@ settings:
     DEVELOPMENT_TEAM: ""           # 서명은 각자 로컬에서 채운다
     CODE_SIGN_STYLE: Automatic
     ENABLE_USER_SCRIPT_SANDBOXING: YES
+    # ⚠️ 확장·Watch의 버전이 본체와 다르면 App Store Connect가 업로드를 거부한다.
+    # 그래서 여기(프로젝트 base)에 한 번만 두고 모든 타깃이 물려받게 한다.
+    MARKETING_VERSION: "0.1.0"     # 사람이 보는 버전 (TestFlight에 표시)
+    CURRENT_PROJECT_VERSION: "1"   # 빌드 번호 — 업로드마다 반드시 올린다
 
 targets:
   TripCanvas:
@@ -30,6 +34,8 @@ targets:
       path: TripCanvas/Info.plist
       properties:
         CFBundleDisplayName: TripCanvas
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
@@ -55,6 +61,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ai.tripcanvas.ios
         TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
 
   # 위젯 + Live Activity. 네트워크도 인증도 없다 — 앱이 App Group에 써 둔 압축본만 읽는다(§28).
   TripCanvasWidgets:
@@ -68,6 +75,8 @@ targets:
       path: TripCanvasWidgets/Info.plist
       properties:
         CFBundleDisplayName: TripCanvas
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     entitlements:
@@ -92,6 +101,8 @@ targets:
       path: TripCanvasShare/Info.plist
       properties:
         CFBundleDisplayName: TripCanvas
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.share-services
           NSExtensionPrincipalClass: ShareViewController
@@ -123,6 +134,8 @@ targets:
       path: TripCanvasWatch/Info.plist
       properties:
         CFBundleDisplayName: TripCanvas
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         WKApplication: true
         WKCompanionAppBundleIdentifier: ai.tripcanvas.ios
     entitlements:
@@ -133,6 +146,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ai.tripcanvas.ios.watchkitapp
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
 
   TripCanvasTests:
     type: bundle.unit-test
