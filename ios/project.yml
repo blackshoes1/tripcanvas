@@ -21,7 +21,15 @@ settings:
     # ⚠️ 확장·Watch의 버전이 본체와 다르면 App Store Connect가 업로드를 거부한다.
     # 그래서 여기(프로젝트 base)에 한 번만 두고 모든 타깃이 물려받게 한다.
     MARKETING_VERSION: "0.1.0"     # 사람이 보는 버전 (TestFlight에 표시)
-    CURRENT_PROJECT_VERSION: "1"   # 빌드 번호 — 업로드마다 반드시 올린다
+    CURRENT_PROJECT_VERSION: "1"   # 빌드 번호 — 업로드마다 반드시 올린다(CI는 run number를 넣는다)
+  configs:
+    # ⚠️ TestFlight·App Store 빌드는 **production** APNs를 쓴다. development로 올리면
+    # 기기가 샌드박스에 등록돼 실제 푸시가 조용히 안 온다 — 원인 찾기 어려운 부류다.
+    # entitlements에서 $(APS_ENVIRONMENT)로 받아 구성에 따라 갈린다.
+    Debug:
+      APS_ENVIRONMENT: development
+    Release:
+      APS_ENVIRONMENT: production
 
 targets:
   TripCanvas:
@@ -56,7 +64,7 @@ targets:
       properties:
         com.apple.security.application-groups:
           - group.ai.tripcanvas.ios
-        aps-environment: development
+        aps-environment: $(APS_ENVIRONMENT)
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ai.tripcanvas.ios

@@ -8,8 +8,16 @@
 > Windows에서 작성해 처음 Mac에서 열었을 때 나온 컴파일 오류(플랫폼 격리 · 프로토콜 요구사항 ·
 > 접근 수준 · 매크로 충돌 · SDK 인자 순서)는 모두 잡혔다.
 >
-> **아직 확인하지 않은 것**: XCTest 미실행. 그리고 위젯 · Live Activity · 공유 확장 · Watch 는
-> App Group·푸시 권한이 필요해 **유료 Developer Program 없이는 실기기 검증이 불가능하다.**
+> **CI가 자동으로 보는 것** (`.github/workflows/ios.yml`, `ios/` 변경 시에만 — macOS 러너는 10배 과금):
+> XcodeGen 생성 · 전 타깃 컴파일 · **XCTest** · Release 빌드 · 무료 스펙 생성.
+> 서명 없이 시뮬레이터로만 돌기 때문에 Apple 계정 없이 돌아간다.
+>
+> **CI가 못 보는 것**: 서명 · 실기기 설치 · 실제 푸시 도착 · 위젯/Live Activity 실제 표시 ·
+> Archive · TestFlight. 이건 기기에서만 확인된다 — [docs/ios-device-setup.md](../docs/ios-device-setup.md)
+> 의 체크리스트를 쓴다.
+>
+> **TestFlight는 눌러서 올린다**: Actions → *iOS TestFlight* → Run workflow.
+> App Store Connect API 키 네 개를 저장소 시크릿에 넣어두면 Xcode를 열 일이 없다(문서 참고).
 >
 > 서버 쪽(`/api/v1`)은 별도로 검증됐다 — `next` 워크스페이스의 계약 테스트가 통과하고,
 > 배포된 라우트는 `curl` 로 바로 확인할 수 있다.
