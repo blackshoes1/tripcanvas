@@ -22,7 +22,7 @@ CI가 빌드해서 TestFlight에 올리고, 폰의 TestFlight 앱에서 받는�
 2. 같은 화면의 **Issuer ID** 와 방금 만든 **Key ID** 를 적어둔다
 3. [developer.apple.com → Membership](https://developer.apple.com/account#MembershipDetailsCard) 에서
    **Team ID**(10자리)를 적어둔다
-4. App Store Connect → **My Apps → + → New App** 으로 앱 레코드를 만든다 (Bundle ID: `ai.tripcanvas.ios`)
+4. App Store Connect → **My Apps → + → New App** 으로 앱 레코드를 만든다 (Bundle ID: `com.fromj.trip`)
 5. GitHub 저장소 → **Settings → Secrets and variables → Actions → New repository secret** 으로 네 개를 넣는다:
 
    | 이름 | 값 |
@@ -106,13 +106,13 @@ TripCanvas   TripCanvasWidgets   TripCanvasShare   TripCanvasWatch   TripCanvasT
 **본체만 고르고 위젯을 빼먹는 것이 가장 흔한 실수다** — 빌드가 서명에서 멈춘다.
 
 그리고 [Apple Developer 콘솔](https://developer.apple.com/account/resources/identifiers/list/applicationGroup)에서
-App Group `group.ai.tripcanvas.ios` 를 만들어 둔다. 이 문자열은 세 군데가 정확히 같아야 한다:
+App Group `group.com.fromj.trip` 를 만들어 둔다. 이 문자열은 세 군데가 정확히 같아야 한다:
 
 | 어디 | 값 |
 |---|---|
-| `ios/project.yml` 의 각 타깃 entitlements | `group.ai.tripcanvas.ios` |
-| 코드 `TripCanvasShared/SharedSnapshotStore.swift` 의 `appGroupId` | `group.ai.tripcanvas.ios` |
-| Developer 콘솔에 등록된 App Group | `group.ai.tripcanvas.ios` |
+| `ios/project.yml` 의 각 타깃 entitlements | `group.com.fromj.trip` |
+| 코드 `TripCanvasShared/SharedSnapshotStore.swift` 의 `appGroupId` | `group.com.fromj.trip` |
+| Developer 콘솔에 등록된 App Group | `group.com.fromj.trip` |
 
 하나라도 다르면 **오류 없이 조용히** 위젯이 빈 화면으로 뜬다.
 
@@ -221,7 +221,7 @@ Team을 안 골랐다. TARGETS → Signing & Capabilities → Team.
 `ios/project-free.yml` 의 `PRODUCT_BUNDLE_IDENTIFIER` 를 겹치지 않게 바꾼다:
 
 ```yaml
-PRODUCT_BUNDLE_IDENTIFIER: ai.tripcanvas.ios.내닉네임
+PRODUCT_BUNDLE_IDENTIFIER: com.fromj.trip.내닉네임
 ```
 
 바꾼 뒤 `xcodegen generate --spec project-free.yml` 을 다시 돌린다.
@@ -265,8 +265,8 @@ App Group은 붙었는데 값이 없는 상태다. 앱을 열어 Today를 한 �
 
 ### TestFlight 업로드가 실패한다
 
-- **`No profiles for 'ai.tripcanvas.ios' were found`** → App Store Connect에 앱 레코드를 안 만들었다
-  (My Apps → + → New App, Bundle ID `ai.tripcanvas.ios`)
+- **`No profiles for 'com.fromj.trip' were found`** → App Store Connect에 앱 레코드를 안 만들었다
+  (My Apps → + → New App, Bundle ID `com.fromj.trip`)
 - **`already been used`** → 같은 빌드 번호를 두 번 올렸다. CI는 실행 번호를 쓰므로 보통 안 나지만,
   손으로 올렸다면 올린다
 - **인증 오류** → API 키 역할이 **App Manager** 인지, `.p8` 내용을 `BEGIN` 줄부터 `END` 줄까지

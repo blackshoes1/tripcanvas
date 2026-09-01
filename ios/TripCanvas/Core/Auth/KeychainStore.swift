@@ -6,7 +6,7 @@ struct KeychainStore {
     let service: String
     let account: String
 
-    init(service: String = "ai.tripcanvas.ios", account: String) {
+    init(service: String = "com.fromj.trip", account: String) {
         self.service = service
         self.account = account
     }

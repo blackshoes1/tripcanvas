@@ -56,7 +56,7 @@ XcodeGen을 쓰고 싶지 않다면 Xcode에서 iOS App 프로젝트를 새로 �
 > 처음이라면 **[docs/ios-device-setup.md](../docs/ios-device-setup.md)** 를 따라가는 편이 빠르다 —
 > 준비물부터 기기 점검 체크리스트·자주 나는 오류까지 순서대로 적어 두었다.
 
-App Group(`group.ai.tripcanvas.ios`)과 푸시(`aps-environment`)는 **유료 Developer Program에서만** 발급된다.
+App Group(`group.com.fromj.trip`)과 푸시(`aps-environment`)는 **유료 Developer Program에서만** 발급된다.
 무료 Apple ID로 `project.yml` 을 쓰면 서명에서 막힌다. 그래서 본체 앱만 만드는 `project-free.yml` 을 따로 둔다.
 
 ```bash
@@ -75,7 +75,7 @@ cd ios && xcodegen generate --spec project-free.yml && open TripCanvasFree.xcode
 - 위젯 · 잠금화면 · 공유 확장 · Watch 는 **뜨지 않는다** (App Group이 없어 상태를 주고받지 못한다)
 - 원격 푸시는 오지 않는다. 로컬 알림은 동작한다
 - `failed to register bundle identifier` 가 나오면 `project-free.yml` 의 `PRODUCT_BUNDLE_IDENTIFIER` 를
-  겹치지 않는 값으로 바꾼다 (예: `ai.tripcanvas.ios.<본인닉>`)
+  겹치지 않는 값으로 바꾼다 (예: `com.fromj.trip.<본인닉>`)
 
 앱 코드는 손대지 않아도 된다 — App Group 접근은 `UserDefaults?` 라 권한이 없으면 `nil` 로 떨어지고,
 Live Activity 는 `areActivitiesEnabled` 가 false 라 조용히 건너뛴다.

@@ -6,7 +6,7 @@
 # 두 타깃은 App Group의 UserDefaults만 주고받으므로 각자 디코딩하면 충분하다.
 name: TripCanvas
 options:
-  bundleIdPrefix: ai.tripcanvas
+  bundleIdPrefix: com.fromj
   deploymentTarget:
     iOS: "17.0"          # @Observable(Observation) · ActivityKit Live Activity
   createIntermediateGroups: true
@@ -63,11 +63,11 @@ targets:
       path: TripCanvas/TripCanvas.entitlements
       properties:
         com.apple.security.application-groups:
-          - group.ai.tripcanvas.ios
+          - group.com.fromj.trip
         aps-environment: $(APS_ENVIRONMENT)
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: ai.tripcanvas.ios
+        PRODUCT_BUNDLE_IDENTIFIER: com.fromj.trip
         TARGETED_DEVICE_FAMILY: "1"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
 
@@ -91,10 +91,10 @@ targets:
       path: TripCanvasWidgets/TripCanvasWidgets.entitlements
       properties:
         com.apple.security.application-groups:
-          - group.ai.tripcanvas.ios
+          - group.com.fromj.trip
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: ai.tripcanvas.ios.widgets
+        PRODUCT_BUNDLE_IDENTIFIER: com.fromj.trip.widgets
         TARGETED_DEVICE_FAMILY: "1"
 
   # 공유받은 것을 그대로 큐에 넣고 바로 닫는다. 파싱·저장은 앱이 한다(§55).
@@ -123,10 +123,10 @@ targets:
       path: TripCanvasShare/TripCanvasShare.entitlements
       properties:
         com.apple.security.application-groups:
-          - group.ai.tripcanvas.ios
+          - group.com.fromj.trip
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: ai.tripcanvas.ios.share
+        PRODUCT_BUNDLE_IDENTIFIER: com.fromj.trip.share
         TARGETED_DEVICE_FAMILY: "1"
 
   # iPhone이 App Group에 써 둔 압축본만 읽는다. 도메인을 다시 구현하지 않는다(§36).
@@ -145,15 +145,15 @@ targets:
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         WKApplication: true
-        WKCompanionAppBundleIdentifier: ai.tripcanvas.ios
+        WKCompanionAppBundleIdentifier: com.fromj.trip
     entitlements:
       path: TripCanvasWatch/TripCanvasWatch.entitlements
       properties:
         com.apple.security.application-groups:
-          - group.ai.tripcanvas.ios
+          - group.com.fromj.trip
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: ai.tripcanvas.ios.watchkitapp
+        PRODUCT_BUNDLE_IDENTIFIER: com.fromj.trip.watchkitapp
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
 
   TripCanvasTests:
@@ -165,7 +165,7 @@ targets:
       - target: TripCanvas
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: ai.tripcanvas.ios.tests
+        PRODUCT_BUNDLE_IDENTIFIER: com.fromj.trip.tests
 
 schemes:
   TripCanvas:
