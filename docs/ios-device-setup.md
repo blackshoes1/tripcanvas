@@ -271,6 +271,12 @@ App Group은 붙었는데 값이 없는 상태다. 앱을 열어 Today를 한 �
   손으로 올렸다면 올린다
 - **인증 오류** → API 키 역할이 **App Manager** 인지, `.p8` 내용을 `BEGIN` 줄부터 `END` 줄까지
   줄바꿈까지 통째로 넣었는지 확인
+- **`Your team has no devices from which to generate a provisioning profile`**
+  → 메시지가 헷갈리는데 **기기를 등록하라는 뜻이 아니다.** Xcode가 배포용이 아니라
+  **개발용(App Development)** 프로파일을 만들려 해서 나는 오류다. 개발용은 등록된 기기를
+  요구하고, App Store 배포용은 요구하지 않는다. 워크플로는 이걸 피하려고 **archive를 서명 없이**
+  만들고 **export에서만 배포용으로 서명**한다 — archive 단계에 `-allowProvisioningUpdates` 나
+  자동 서명을 되살리면 이 오류가 다시 난다
 
 ### `xcodegen: command not found`
 
