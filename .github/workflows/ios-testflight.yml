@@ -5,7 +5,10 @@
 #
 # ── 처음 한 번만: 저장소 Settings → Secrets and variables → Actions 에 네 개를 넣는다 ──
 #   APPSTORE_ISSUER_ID    App Store Connect → 사용자 및 액세스 → 통합 → App Store Connect API 의 Issuer ID
-#   APPSTORE_KEY_ID       같은 화면에서 키를 만들면 나오는 Key ID (역할: App Manager)
+#   APPSTORE_KEY_ID       같은 화면에서 키를 만들면 나오는 Key ID
+#                         ⚠️ 역할은 **Admin** 이어야 한다. -allowProvisioningUpdates 가 인증서·프로파일을
+#                         만들려면 Certificates, Identifiers & Profiles 접근이 필요한데 App Manager 에는
+#                         그 권한이 없다 — 'Cloud signing permission error' 로 죽는다.
 #   APPSTORE_PRIVATE_KEY  그때 딱 한 번 받는 .p8 파일 내용 전체 (BEGIN 줄부터 END 줄까지, 줄바꿈 포함)
 #   APPLE_TEAM_ID         developer.apple.com → Membership 의 Team ID (10자리)
 #

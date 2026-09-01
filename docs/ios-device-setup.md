@@ -17,7 +17,7 @@ CI가 빌드해서 TestFlight에 올리고, 폰의 TestFlight 앱에서 받는�
 ### 처음 한 번만 (10분)
 
 1. [App Store Connect → 사용자 및 액세스 → 통합 → App Store Connect API](https://appstoreconnect.apple.com/access/integrations/api)
-   에서 키를 만든다 (역할: **App Manager**).
+   에서 키를 만든다 — **역할은 `Admin`** (App Manager 로는 안 된다, 아래 주의 참고).
    **`.p8` 파일은 그때 딱 한 번만 받을 수 있다** — 잘 보관할 것
 2. 같은 화면의 **Issuer ID** 와 방금 만든 **Key ID** 를 적어둔다
 3. [developer.apple.com → Membership](https://developer.apple.com/account#MembershipDetailsCard) 에서
@@ -42,6 +42,11 @@ App Store Connect 처리에 보통 5~15분, 그다음 폰의 TestFlight 앱에 �
 
 > 인증서·프로비저닝 프로파일을 따로 만들 필요가 없다. API 키만 있으면 Xcode가 필요한 것을
 > 알아서 만들고 내려받는다(`-allowProvisioningUpdates`). `.p12`를 주고받는 일도 없다.
+>
+> ⚠️ **그래서 키 역할이 `Admin` 이어야 한다.** 인증서·프로파일을 만드는 일이라
+> **Certificates, Identifiers & Profiles** 접근이 필요한데 `App Manager` 에는 그 권한이 없다.
+> 역할은 나중에 바꿀 수 없으니, App Manager 로 만들었다면 그 키를 취소하고 Admin 으로 새로 만든다
+> (Issuer ID는 그대로, Key ID와 `.p8` 만 새로 넣으면 된다).
 
 ### 그래도 Xcode가 필요한 경우
 
@@ -269,8 +274,11 @@ App Group은 붙었는데 값이 없는 상태다. 앱을 열어 Today를 한 �
   (My Apps → + → New App, Bundle ID `com.fromj.trip`)
 - **`already been used`** → 같은 빌드 번호를 두 번 올렸다. CI는 실행 번호를 쓰므로 보통 안 나지만,
   손으로 올렸다면 올린다
-- **인증 오류** → API 키 역할이 **App Manager** 인지, `.p8` 내용을 `BEGIN` 줄부터 `END` 줄까지
-  줄바꿈까지 통째로 넣었는지 확인
+- **`Cloud signing permission error` / `No profiles for '...' were found` (export 단계)**
+  → **API 키 역할이 `Admin` 이 아니다.** 프로파일을 만들려면 Certificates, Identifiers & Profiles
+  접근이 필요한데 `App Manager` 에는 없다. 역할은 바꿀 수 없으니 Admin 키를 새로 만들어
+  `APPSTORE_KEY_ID` 와 `APPSTORE_PRIVATE_KEY` 를 교체한다 (Issuer ID는 그대로)
+- **인증 오류** → `.p8` 내용을 `BEGIN` 줄부터 `END` 줄까지 줄바꿈까지 통째로 넣었는지 확인
 - **`Your team has no devices from which to generate a provisioning profile`**
   → 메시지가 헷갈리는데 **기기를 등록하라는 뜻이 아니다.** Xcode가 배포용이 아니라
   **개발용(App Development)** 프로파일을 만들려 해서 나는 오류다. 개발용은 등록된 기기를
