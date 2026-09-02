@@ -92,7 +92,10 @@ test('협업: trips는 소유자 또는 활성 멤버만 읽고, EDITOR까지만
 });
 
 test('협업: 정책이 부르는 헬퍼는 security definer라 재귀가 없고, 소유자 변경은 트리거가 막는다',()=>{
-  assert.match(collabSql,/function public\.tc_trip_role\(p_trip_id bigint\)[\s\S]*security definer/i);
+  assert.match(collabSql,/function public\.tc_trip_role\(p_trip_id public\.trips\.id%type\)[\s\S]*security definer/i);
+  // 운영 DB의 trips.id는 uuid, 저장소 기본 마이그레이션은 bigint — 어느 쪽에도 적용되도록 타입을 읽어서 만든다
+  assert.match(collabSql,/format_type\(a\.atttypid, a\.atttypmod\)[\s\S]*trip_id %s not null references public\.trips\(id\)/i,'trip_id는 trips.id의 실제 타입으로');
+  assert.ok(!/trip_id bigint/i.test(collabSql),'trip_id 타입을 bigint로 박아두면 운영(uuid)에서 외래키가 실패한다');
   assert.match(collabSql,/function public\.tc_trips_lock_owner\(\)[\s\S]*new\.user_id is distinct from old\.user_id[\s\S]*raise exception/i);
   assert.match(collabSql,/create trigger tc_trips_lock_owner before update on public\.trips/i);
   // 기존 여행의 소유자는 OWNER 멤버십을 갖는다(§96) — 트리거(새 여행)와 백필(기존 여행) 둘 다
