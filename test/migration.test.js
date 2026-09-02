@@ -277,3 +277,37 @@ test('활동: security definer 함수는 전부 public에서 실행 권한을 �
   assert.match(actSql,/function public\.tc_touch_updated_at\(\) returns trigger\s+language plpgsql set search_path=public/);
   assert.match(actSql,/function public\.tc_trips_lock_owner\(\) returns trigger\s+language plpgsql set search_path=public/);
 });
+
+// ── 여행 취향 (4단계) ──
+const prefSql=fs.readFileSync(path.join(__dirname,'..','supabase','migrations','202609020004_member_preferences.sql'),'utf8');
+
+test('취향: trip_members 행에 산다(여행별 §18) — 고정 프로필 테이블이 아니다',()=>{
+  assert.match(prefSql,/alter table public\.trip_members add column if not exists prefs jsonb not null default '\{\}'::jsonb/);
+  assert.ok(!/create table/i.test(prefSql),'새 테이블 없음');
+});
+
+test('취향: 서버가 아는 값만 남긴다 — 화면이 무엇을 보내든(§16 선택형)',()=>{
+  const norm=prefSql.slice(prefSql.indexOf('function public.tc_norm_prefs('),prefSql.indexOf('-- ── RPC'));
+  assert.match(norm,/'RELAXED','NORMAL','PACKED'/); assert.match(norm,/'LOW','NORMAL','HIGH'/);
+  assert.match(norm,/jsonb_typeof\(p->'morning'\)='boolean'/); assert.match(norm,/jsonb_typeof\(p->'night'\)='boolean'/);
+  assert.match(norm,/limit 12/); assert.match(norm,/left\(btrim\(e\), 30\)/); assert.match(norm,/left\(btrim\(coalesce\(p->>'note',''\)\), 120\)/);
+  assert.match(norm,/return o;/,'모르는 키는 결과에 없다');
+});
+
+test('취향: 본인 것만 · 활성 멤버 전원(보기 권한 포함) · 멤버가 아니면 42501',()=>{
+  const set=prefSql.slice(prefSql.indexOf('function public.set_trip_preference('),prefSql.indexOf('function public.list_trip_preferences('));
+  assert.match(set,/where m\.trip_id=v_trip_id and m\.user_id=v_uid and m\.status='ACTIVE'/,'본인 활성 행만');
+  assert.ok(!/EDITOR/.test(set),'편집 권한을 요구하지 않는다 — 취향은 의견이다');
+  assert.match(set,/TRIP_FORBIDDEN' using errcode='42501'/);
+  assert.match(set,/return v_prefs/,'정규화된 결과를 돌려준다 — 화면은 그것을 믿는다');
+  const list=prefSql.slice(prefSql.indexOf('function public.list_trip_preferences('),prefSql.indexOf('-- ── 권한'));
+  assert.match(list,/tc_member_label/); assert.ok(!/email/i.test(prefSql),'이메일은 없다(§69)');
+  assert.match(list,/m\.status='ACTIVE'/);
+});
+
+test('취향: 실행 권한 — RPC는 authenticated만, 정규화 함수는 클라이언트가 못 부른다',()=>{
+  assert.match(prefSql,/revoke all on function public\.tc_norm_prefs\(jsonb\) from public, anon, authenticated/);
+  assert.match(prefSql,/revoke all on function public\.set_trip_preference\(text,jsonb\) from public,anon/);
+  assert.match(prefSql,/grant execute on function public\.set_trip_preference\(text,jsonb\) to authenticated/);
+  assert.match(prefSql,/grant execute on function public\.list_trip_preferences\(text\) to authenticated/);
+});

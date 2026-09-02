@@ -357,6 +357,43 @@ reset role;
 insert into t_out select 'act.publication', string_agg(tablename, ',' order by tablename) from pg_publication_tables where pubname='supabase_realtime';
 set role authenticated;
 
+-- ══ 4단계: 여행별 멤버 취향 ═════════════════════════════════════════════════
+-- 여기 오기까지: A=OWNER · B=EDITOR(활성) · C=멤버 아님(client_id 'trip1'인 제 여행이 있다).
+select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000b"}',false);
+-- 모르는 키·값은 버리고 아는 것만 남는다(화면이 무엇을 보내든). 배열은 정리·중복 제거·12개 제한
+insert into t_out select 'pref.b.set', public.set_trip_preference('trip1',
+  '{"pace":"RELAXED","walking":"LOW","morning":false,"night":true,"interests":["야경","미술관"," 야경 ","",null],"dislikes":["쇼핑"],"note":"  신혼여행이라 여유롭게  ","junk":"x","pace2":"PACKED"}'::jsonb)::text;
+insert into t_out select 'pref.b.bad_values', public.set_trip_preference('trip1','{"pace":"FAST","walking":"LOW","morning":"yes","interests":"미술관"}'::jsonb)::text;
+insert into t_out select 'pref.b.not_object', public.set_trip_preference('trip1','[1,2]'::jsonb)::text;
+insert into t_out select 'pref.b.empty_arrays', public.set_trip_preference('trip1','{"interests":[],"dislikes":[""],"pace":"NORMAL"}'::jsonb)::text;
+insert into t_out select 'pref.b.limit', jsonb_array_length((public.set_trip_preference('trip1',
+  ('{"interests":' || (select jsonb_agg('관심'||g) from generate_series(1,20) g)::text || '}')::jsonb))->'interests')::text;
+select public.set_trip_preference('trip1','{"pace":"RELAXED","walking":"LOW","night":true,"interests":["미술관","야경"],"dislikes":["쇼핑"]}'::jsonb);
+-- 같은 여행 멤버끼리 서로 본다 · 이름표만, 이메일 없음
+select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000a"}',false);
+insert into t_out select 'pref.a.list', string_agg(label||'/'||role||'/'||mine||'/'||prefs::text, ' | ' order by (role='OWNER') desc) from public.list_trip_preferences('trip1');
+insert into t_out select 'pref.a.set', (public.set_trip_preference('trip1','{"pace":"PACKED","interests":["미술관","맛집"]}'::jsonb)->>'pace');
+-- 남의 취향은 못 바꾼다 — RPC는 본인 행만 갱신하고, 테이블 직접 쓰기는 권한 자체가 없다
+select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000b"}',false);
+do $$ begin update public.trip_members set prefs='{"pace":"PACKED"}'::jsonb where user_id='00000000-0000-0000-0000-00000000000a'; insert into t_out values('pref.b.direct','ok');
+  exception when others then insert into t_out values('pref.b.direct',sqlstate); end $$;
+insert into t_out select 'pref.a.unchanged', (prefs->>'pace') from public.list_trip_preferences('trip1') where not mine;
+-- 보기 권한도 취향은 남긴다(의견이다)
+select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000a"}',false);
+select public.manage_trip_member((select m.id from public.trip_members m join public.trips t on t.id=m.trip_id where t.client_id='trip1' and m.user_id='00000000-0000-0000-0000-00000000000b'),'SET_ROLE','VIEWER');
+select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000b"}',false);
+insert into t_out select 'pref.viewer.set', (public.set_trip_preference('trip1','{"walking":"HIGH"}'::jsonb)->>'walking');
+-- C(멤버 아님)의 'trip1' 저장은 제 여행에만 들어가고, A의 목록에는 C가 없다
+select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000c"}',false);
+insert into t_out select 'pref.c.set', (public.set_trip_preference('trip1','{"pace":"NORMAL"}'::jsonb)->>'pace');
+insert into t_out select 'pref.c.list', string_agg(label||'/'||role, ',') from public.list_trip_preferences('trip1');
+select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000a"}',false);
+insert into t_out select 'pref.a.count', count(*)::text from public.list_trip_preferences('trip1');
+-- 취향 변경은 활동 기록에 남지 않는다(§38 — 의미 있는 변경만)
+insert into t_out select 'pref.no_activity', (not exists(select 1 from public.list_trip_activity('trip1',200) where subject ? 'prefs'))::text;
+-- 되돌리기: B를 편집자로
+select public.manage_trip_member((select m.id from public.trip_members m join public.trips t on t.id=m.trip_id where t.client_id='trip1' and m.user_id='00000000-0000-0000-0000-00000000000b'),'SET_ROLE','EDITOR');
+
 -- ── 스냅샷·기존 소유자 흐름은 그대로 ──
 select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000a"}',false);
 insert into public.trip_snapshots(user_id,client_id,name,data,source_revision) values('00000000-0000-0000-0000-00000000000a','trip1','스페인','{}'::jsonb,2);

@@ -358,8 +358,8 @@
     const key = (c)=>String(c.created_at||'')+'#'+String(c.id||'');
     if(mode!=='interest') return list.sort((a,b)=> key(b).localeCompare(key(a)));
     return list.sort((a,b)=>{
-      const ta=tallyReactions(a,memberCount), tb=tallyReactions(b,memberCount);
-      return (tb.must-ta.must) || (tb.ok-ta.ok) || (ta.pass-tb.pass) || key(b).localeCompare(key(a));
+      const ca=consensusOf(a,memberCount), cb=consensusOf(b,memberCount);
+      return (cb.score-ca.score) || (cb.strongSupportCount-ca.strongSupportCount) || key(b).localeCompare(key(a));
     });
   }
 
@@ -483,14 +483,177 @@
             notify:!mine&&(kind==='CANDIDATE_PROPOSED'||kind==='MEMBER_JOINED')};
   }
 
-  const API={ROLES, ROLE_LABEL, COLLAB_CFG, JOIN_REASON, REACTIONS, REACTION_LABEL, REACTION_ICON, MOOD_TEXT, ACTIVITY_KINDS,
+  // ── 여행 취향 · 그룹 컨텍스트 · 합의 (4단계) ─────────────────────────────
+  //
+  // 취향은 **이 여행에 대한** 것이다(§18) — 고정 프로필이 아니다. 선택형이 기본(§16).
+  // 그룹 컨텍스트(§19)와 합의(§20~§22)는 여기서 계산한다. 점수는 내부값이고 **사용자에게는 문장만** 보인다(§21·§22).
+  // 결정은 하지 않는다(§62) — "의견이 갈려 있어요"까지만 말하고 자동으로 빼지 않는다(§23).
+
+  /** @typedef {{pace?:'RELAXED'|'NORMAL'|'PACKED', walking?:'LOW'|'NORMAL'|'HIGH', morning?:boolean, night?:boolean, interests?:string[], dislikes?:string[], note?:string}} Prefs */
+
+  const PREF = Object.freeze({
+    pace: Object.freeze([['RELAXED','여유롭게'],['NORMAL','보통'],['PACKED','빡빡하게']]),
+    walking: Object.freeze([['LOW','많이 걷기 싫어요'],['NORMAL','걷는 건 보통'],['HIGH','많이 걸어도 좋아요']]),
+    topics: Object.freeze(['미술관','박물관','자연','야경','맛집','카페','쇼핑','시장','건축','공연','액티비티','휴식']),
+    listMax: 12, itemMax: 30, noteMax: 120
+  });
+  /** @type {Readonly<Record<string,string>>} */
+  const PACE_LABEL = Object.freeze({RELAXED:'여유롭게', NORMAL:'보통', PACKED:'빡빡하게'});
+  /** @type {Readonly<Record<string,string>>} */
+  const WALK_LABEL = Object.freeze({LOW:'많이 걷기 싫어요', NORMAL:'걷는 건 보통', HIGH:'많이 걸어도 좋아요'});
+  /** @type {Readonly<Record<string,string>>} */
+  const CONSENSUS_TEXT = Object.freeze({
+    STRONG_MATCH: '모두가 좋아할 가능성이 높아요',
+    GOOD_MATCH:   '괜찮아 보여요 — 반대가 없어요',
+    MIXED:        '의견이 조금 갈려요',
+    CONFLICT:     '의견이 갈려 있어요'
+  });
+
+  /**
+   * 화면이 무엇을 보내든 아는 값만 남긴다 — 서버(tc_norm_prefs)와 **같은 규칙**이다. 저장 뒤에는 서버가 돌려준 것이 이긴다.
+   * @param {unknown} p @returns {Prefs}
+   */
+  function normPrefs(p){
+    const src = (p && typeof p==='object' && !Array.isArray(p)) ? /** @type {any} */(p) : {};
+    /** @type {any} */ const out={};
+    if(['RELAXED','NORMAL','PACKED'].indexOf(src.pace)>=0) out.pace=src.pace;
+    if(['LOW','NORMAL','HIGH'].indexOf(src.walking)>=0) out.walking=src.walking;
+    if(typeof src.morning==='boolean') out.morning=src.morning;
+    if(typeof src.night==='boolean') out.night=src.night;
+    for(const k of ['interests','dislikes']){
+      if(!Array.isArray(src[k])) continue;
+      const seen=new Set(); /** @type {string[]} */ const arr=[];
+      for(const e of src[k]){
+        if(typeof e!=='string') continue;
+        const v=e.trim().slice(0,PREF.itemMax); if(!v||seen.has(v)) continue;
+        seen.add(v); arr.push(v); if(arr.length>=PREF.listMax) break;
+      }
+      arr.sort((a,b)=> a<b?-1:a>b?1:0);
+      if(arr.length) out[k]=arr;   // 빈 배열은 정보가 없다 — 서버(tc_norm_prefs)도 같다
+    }
+    const note=String(src.note==null?'':src.note).trim().slice(0,PREF.noteMax); if(note) out.note=note;
+    return out;
+  }
+
+  /** 취향 한 줄 — '여유롭게 · 많이 걷기 싫어요 · 관심: 미술관, 야경 · 별로: 쇼핑' @param {unknown} p @returns {string} */
+  function prefsText(p){
+    const q=normPrefs(p); /** @type {string[]} */ const parts=[];
+    if(q.pace) parts.push(PACE_LABEL[q.pace]);
+    if(q.walking) parts.push(WALK_LABEL[q.walking]);
+    if(q.morning===true) parts.push('아침 일찍도 괜찮아요'); else if(q.morning===false) parts.push('아침 일찍은 어려워요');
+    if(q.night===true) parts.push('늦은 밤도 좋아요'); else if(q.night===false) parts.push('늦은 밤은 싫어요');
+    if(q.interests&&q.interests.length) parts.push('관심: '+q.interests.join(', '));
+    if(q.dislikes&&q.dislikes.length) parts.push('별로: '+q.dislikes.join(', '));
+    if(q.note) parts.push('“'+q.note+'”');
+    return parts.join(' · ');
+  }
+
+  /**
+   * §19 GroupTravelContext. 여행 전체의 결정은 여기서 하지 않는다 — 어디가 맞고 어디가 갈리는지만 정리한다.
+   * - pace: 다수. 동률이면 null. paceSplit: 여유/빡빡이 같이 있으면 true
+   * - walking: 답한 사람 중 **가장 낮은** 허용치 — 제약은 가장 약한 사람 기준이다
+   * - morningNo/nightNo: 아침 일찍·늦은 밤이 어려운 사람
+   * - sharedInterests: 두 명 이상이 고른 관심(빈도순, 같으면 이름순)
+   * - conflicts: 한 사람의 관심이 다른 사람의 '별로'에 있는 주제
+   * @param {Array<{label?:string|null,mine?:boolean,prefs?:unknown}>|null} rows @param {number} [memberCount]
+   */
+  function groupContext(rows, memberCount){
+    const list=(Array.isArray(rows)?rows:[]).filter(Boolean)
+      .map(r=>({name: r.mine?'나':(String(r.label||'').trim()||'멤버'), p: normPrefs(r.prefs)}));
+    const answered=list.filter(x=>Object.keys(x.p).length>0);
+    const members=Math.max(Number(memberCount)||0, list.length, 1);
+    /** @type {Record<string,number>} */ const paceCount={RELAXED:0,NORMAL:0,PACKED:0};
+    for(const x of answered) if(x.p.pace) paceCount[x.p.pace]++;
+    /** @type {{value:string,count:number}|null} */ let pace=null;
+    { const e=Object.entries(paceCount).sort((a,b)=>b[1]-a[1]); if(e[0][1]>0 && e[0][1]>e[1][1]) pace={value:e[0][0], count:e[0][1]}; }
+    const paceSplit = paceCount.RELAXED>0 && paceCount.PACKED>0;
+    /** @type {Record<string,number>} */ const order={LOW:0,NORMAL:1,HIGH:2};
+    /** @type {string|null} */ let walking=null;
+    let walkingWho=/** @type {string[]} */([]);
+    for(const x of answered){
+      if(!x.p.walking) continue;
+      if(walking===null || order[x.p.walking]<order[walking]){ walking=x.p.walking; walkingWho=[x.name]; }
+      else if(x.p.walking===walking) walkingWho.push(x.name);
+    }
+    const morningNo=answered.filter(x=>x.p.morning===false).map(x=>x.name);
+    const nightNo=answered.filter(x=>x.p.night===false).map(x=>x.name);
+    /** @type {Map<string,string[]>} */ const likes=new Map(); /** @type {Map<string,string[]>} */ const dislikes=new Map();
+    for(const x of answered){
+      for(const t of (x.p.interests||[])) likes.set(t,(likes.get(t)||[]).concat(x.name));
+      for(const t of (x.p.dislikes||[])) dislikes.set(t,(dislikes.get(t)||[]).concat(x.name));
+    }
+    const byCountThenName=(/** @type {[string,string[]]} */a,/** @type {[string,string[]]} */b)=> (b[1].length-a[1].length) || (a[0]<b[0]?-1:a[0]>b[0]?1:0);
+    const sharedInterests=[...likes.entries()].filter(([,who])=>who.length>=2).sort(byCountThenName).map(([t])=>t);
+    const conflicts=[...likes.entries()].filter(([t])=>dislikes.has(t))
+      .map(([t,who])=>({topic:t, likes:who, dislikes:dislikes.get(t)||[]}))
+      .sort((a,b)=> a.topic<b.topic?-1:a.topic>b.topic?1:0);
+    return {members, answered:answered.length, pace, paceSplit, walking, walkingWho, morningNo, nightNo, sharedInterests, conflicts};
+  }
+
+  /** 그룹 요약 문장들(§19·§61의 "현재 의견" 정리). 결정하지 않고 정리만 한다(§62). @param {ReturnType<typeof groupContext>|null} ctx @returns {string[]} */
+  function groupContextText(ctx){
+    if(!ctx||!ctx.answered) return ['아직 아무도 취향을 남기지 않았어요. 내 취향을 남기면 일행이 참고할 수 있어요.'];
+    /** @type {string[]} */ const out=[`${ctx.members}명 중 ${ctx.answered}명이 취향을 남겼어요`];
+    if(ctx.paceSplit) out.push('여유롭게 vs 빡빡하게 — 페이스 생각이 갈려요');
+    else if(ctx.pace) out.push(`${ctx.pace.count}명이 "${PACE_LABEL[ctx.pace.value]}"를 원해요`);
+    if(ctx.walking==='LOW') out.push(`많이 걷기 싫어요 (${ctx.walkingWho.join(', ')}) — 동선은 이 기준으로`);
+    if(ctx.morningNo.length) out.push(`아침 일찍은 어려워요 (${ctx.morningNo.join(', ')})`);
+    if(ctx.nightNo.length) out.push(`늦은 밤은 싫어요 (${ctx.nightNo.join(', ')})`);
+    if(ctx.sharedInterests.length) out.push('함께 관심: '+ctx.sharedInterests.join(', '));
+    for(const c of ctx.conflicts) out.push(`${c.topic}: ${c.likes.join(', ')}은(는) 좋고 ${c.dislikes.join(', ')}은(는) 별로예요`);
+    return out;
+  }
+
+  /**
+   * §20~§22 합의. 단순 다수결이 아니다 — MUST와 PASS의 무게가 다르고, 아직 말하지 않은 사람이 있으면 확신을 줄인다.
+   * score는 0~100 **내부값**이다. 화면에 숫자를 쓰지 않는다(§21).
+   * status: STRONG_MATCH(전원이 말했고 반대 없고 절반 이상이 MUST) · GOOD_MATCH(반대 없음) ·
+   *         MIXED(MUST 없이 PASS가 있음) · CONFLICT(MUST와 PASS가 같이) · null(아무도 안 말함)
+   * §20의 예: 장소 A(MUST2·OK1·PASS1)는 CONFLICT, 장소 B(MUST1·OK3)는 GOOD_MATCH — B가 위다.
+   * @param {any} cand @param {number} [memberCount]
+   * @returns {{score:number,strongSupportCount:number,oppositionCount:number,status:'STRONG_MATCH'|'GOOD_MATCH'|'MIXED'|'CONFLICT'|null,voted:number,members:number}}
+   */
+  function consensusOf(cand, memberCount){
+    const t=tallyReactions(cand, memberCount);
+    if(t.voted===0) return {score:50, strongSupportCount:0, oppositionCount:0, status:null, voted:0, members:t.members};
+    const raw=(t.must + t.ok*0.5 - t.pass)/t.members;          // -1 ~ 1
+    let score=50+50*raw;
+    score=50+(score-50)*(t.voted/t.members);                     // 아직 안 말한 사람만큼 확신을 줄인다
+    score=Math.max(0, Math.min(100, Math.round(score)));
+    /** @type {'STRONG_MATCH'|'GOOD_MATCH'|'MIXED'|'CONFLICT'} */ let status;
+    if(t.must>0 && t.pass>0) status='CONFLICT';
+    else if(t.pass>0) status='MIXED';
+    else if(t.must>0 && t.silent===0 && t.must*2>=t.members) status='STRONG_MATCH';
+    else status='GOOD_MATCH';
+    return {score, strongSupportCount:t.must, oppositionCount:t.pass, status, voted:t.voted, members:t.members};
+  }
+
+  /** @param {unknown} status @returns {string} */
+  function consensusText(status){ return CONSENSUS_TEXT[String(status||'')] || ''; }
+
+  /**
+   * 카드 배지. 두 명 이상이 말했으면 합의 문장(§22), 아니면 '무엇을 더 하면 되는지'(mood). 숫자는 없다.
+   * @param {any} cand @param {number} [memberCount] @returns {{text:string,tone:'good'|'split'|'mixed'|'quiet',status:string|null}}
+   */
+  function candidateVerdict(cand, memberCount){
+    const c=consensusOf(cand, memberCount);
+    if(c.status && c.voted>=2){
+      const tone = (c.status==='STRONG_MATCH'||c.status==='GOOD_MATCH') ? 'good' : c.status==='CONFLICT' ? 'split' : 'mixed';
+      return {text:consensusText(c.status), tone, status:c.status};
+    }
+    const m=candidateMood(cand, memberCount);
+    return {text:moodText(m), tone: m==='LOVED'?'good': m==='SPLIT'?'split':'quiet', status:null};
+  }
+
+  const API={ROLES, ROLE_LABEL, COLLAB_CFG, JOIN_REASON, REACTIONS, REACTION_LABEL, REACTION_ICON, MOOD_TEXT, ACTIVITY_KINDS, PREF, PACE_LABEL, WALK_LABEL, CONSENSUS_TEXT,
     normRole, canEdit, canManage, canLeave, canDelete, roleLabel, roleIcon, roleOf, tripRoleMap,
     memberName, displayNameFromEmail, memberSummary,
     buildInviteLink, parseJoinHash, inviteVerdict, joinReasonText, inviteRangeText,
     isForbiddenError, forbiddenText,
     normReaction, reactionLabel, reactionIcon, canPropose, canReact, canScheduleCandidate, canRemoveCandidate,
     tallyReactions, candidateMood, moodText, groupCandidates, reactionSummary, candidateAttribution, sortCandidates,
-    canComment, canDeleteComment, objParticle, activityText, condenseActivity, relativeTime, liveEffects};
+    canComment, canDeleteComment, objParticle, activityText, condenseActivity, relativeTime, liveEffects,
+    normPrefs, prefsText, groupContext, groupContextText, consensusOf, consensusText, candidateVerdict};
   if(typeof module!=='undefined' && module.exports) module.exports=API;   // Node (테스트)
   else /** @type {any} */(root).TC_COLLAB=API;                            // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);

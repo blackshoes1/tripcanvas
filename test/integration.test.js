@@ -2156,3 +2156,71 @@ test('통합: 실시간이 없어도(channel 미지원·서버 id 없음) 앱은
   assert.match(w.document.getElementById('liveState').textContent, /새로고침으로 갱신/);
   w.close();
 });
+
+test('통합: 여행 취향 — 그룹 요약은 문장으로, 내 칩은 한 번의 탭, 저장은 정규화해 보내고 서버 응답이 이긴다(§16~§19)', { skip: noJsdom }, async () => {
+  const w = boot();
+  const rpc = [];
+  const tick = () => new Promise(r => setTimeout(r, 0));
+  w.__rows = [
+    { user_id: 'u1', label: '민수', role: 'OWNER', mine: true, prefs: { pace: 'RELAXED', interests: ['미술관'] } },
+    { user_id: 'u2', label: '영희', role: 'EDITOR', mine: false, prefs: { pace: 'RELAXED', walking: 'LOW', morning: false, interests: ['미술관', '야경'], dislikes: ['쇼핑'] } },
+    { user_id: 'u3', label: '철수', role: 'VIEWER', mine: false, prefs: {} }
+  ];
+  w.eval(`user={id:'u1'}; membersTripId='t1'; tripRoles={t1:{role:'OWNER',count:3,owner:true,serverId:''}};`);
+  w.sb = { rpc: async (name, args) => { rpc.push([name, args]);
+    if (name === 'list_trip_preferences') return { data: w.__rows, error: null };
+    if (name === 'set_trip_preference') { // 서버는 정규화한 결과를 돌려준다 — 모르는 키는 사라지고 note는 잘린다
+      const saved = { pace: args.p_prefs.pace, walking: args.p_prefs.walking, interests: args.p_prefs.interests, note: '서버가 돌려준 메모' };
+      w.__rows = w.__rows.map(r => r.mine ? Object.assign({}, r, { prefs: saved }) : r);
+      return { data: saved, error: null };
+    }
+    return { data: [], error: null }; } };
+  w.eval(`sb=window.sb`);
+  await w.eval(`renderPrefs()`);
+  const lines = [...w.document.querySelectorAll('#prefGroup .prefLine')].map(e => e.textContent);
+  assert.deepEqual(lines, ['3명 중 2명이 취향을 남겼어요', '2명이 "여유롭게"를 원해요', '많이 걷기 싫어요 (영희) — 동선은 이 기준으로', '아침 일찍은 어려워요 (영희)', '함께 관심: 미술관']);
+  assert.ok(!/\d{2,}/.test(lines.join(' ')), '점수 같은 숫자는 없다');
+  const others = [...w.document.querySelectorAll('#prefOthers .prefLine')].map(e => e.textContent);
+  assert.deepEqual(others, ['영희: 여유롭게 · 많이 걷기 싫어요 · 아침 일찍은 어려워요 · 관심: 미술관, 야경 · 별로: 쇼핑', '철수: 아직 안 남겼어요']);
+  const chip = (k, text) => [...w.document.querySelectorAll(`#prefSection .prefChips[data-pref="${k}"] button`)].find(b => b.textContent === text);
+  assert.equal(chip('pace', '여유롭게').getAttribute('aria-pressed'), 'true', '내 취향이 칩에 반영된다');
+  assert.equal(chip('interests', '미술관').getAttribute('aria-pressed'), 'true');
+  // 한 번의 탭: 페이스 바꾸기 · 걷기 고르기 · 관심을 별로로 옮기면 관심에서 빠진다
+  chip('pace', '빡빡하게').click(); chip('walking', '많이 걷기 싫어요').click(); chip('dislikes', '미술관').click(); chip('interests', '야경').click();
+  assert.equal(chip('pace', '빡빡하게').getAttribute('aria-pressed'), 'true');
+  assert.equal(chip('pace', '여유롭게').getAttribute('aria-pressed'), 'false', '페이스는 하나만');
+  assert.equal(chip('interests', '미술관').getAttribute('aria-pressed'), 'false', '같은 주제가 관심과 별로에 동시에 있을 수 없다');
+  assert.equal(chip('dislikes', '미술관').getAttribute('aria-pressed'), 'true');
+  w.document.getElementById('prefNote').value = '  이번엔 여유롭게  ';
+  w.document.getElementById('prefSave').click();
+  await tick(); await tick(); await tick();
+  const sent = rpc.find(r => r[0] === 'set_trip_preference')[1];
+  assert.deepEqual(sent, { p_client_id: 't1', p_prefs: { pace: 'PACKED', walking: 'LOW', interests: ['야경'], dislikes: ['미술관'], note: '이번엔 여유롭게' } }, '정규화해서 보낸다');
+  // 서버가 돌려준 것이 이긴다 — 별로는 사라졌고 메모는 서버 것
+  assert.equal(chip('dislikes', '미술관').getAttribute('aria-pressed'), 'false');
+  assert.equal(w.document.getElementById('prefNote').value, '서버가 돌려준 메모');
+  w.close();
+});
+
+test('통합: 후보 배지 — 두 명 이상이 말했으면 합의 문장, 아니면 무엇을 더 하면 되는지. 숫자는 없다(§21·§22)', { skip: noJsdom }, async () => {
+  const w = boot();
+  w.eval(`user={id:'u1'}; store.trips=[{id:'t1',name:'스페인',days:[{spots:[]}]}]; store.activeId='t1';
+    syncMeta={t1:{revision:3,status:'clean'}}; tripRoles={t1:{role:'EDITOR',count:4,owner:false,serverId:''}}; candTripId='t1';
+    candRows=[
+      {id:1,title:'A',status:'PROPOSED',must_count:2,ok_count:1,pass_count:1,my_reaction:null,proposed_by_label:'민수',mine:false,created_at:'2026-01-01'},
+      {id:2,title:'B',status:'PROPOSED',must_count:1,ok_count:3,pass_count:0,my_reaction:null,proposed_by_label:'민수',mine:false,created_at:'2026-01-02'},
+      {id:3,title:'C',status:'PROPOSED',must_count:1,ok_count:0,pass_count:0,my_reaction:null,proposed_by_label:'민수',mine:false,created_at:'2026-01-03'},
+      {id:4,title:'D',status:'PROPOSED',must_count:2,ok_count:1,pass_count:0,my_reaction:null,proposed_by_label:'민수',mine:false,created_at:'2026-01-04'}];
+    sb={rpc:async()=>({data:[],error:null})}; drawCandidates();`);
+  const badgeOf = (title) => [...w.document.querySelectorAll('#candList .candCard')].find(c => c.querySelector('.candName').textContent.startsWith(title)).querySelector('.candMood');
+  assert.equal(badgeOf('A').textContent, '의견이 갈려 있어요'); assert.ok(badgeOf('A').classList.contains('split'));
+  assert.equal(badgeOf('B').textContent, '괜찮아 보여요 — 반대가 없어요'); assert.ok(badgeOf('B').classList.contains('good'));
+  assert.equal(badgeOf('C').textContent, '의견이 더 필요해요', '한 명만 말했으면 합의를 말하지 않는다');
+  for (const t of ['A', 'B', 'C']) assert.doesNotMatch(badgeOf(t).textContent, /\d/);
+  // 묶음이 먼저다 — 결정 못 한 것(A·C·D)이 위, 다들 좋아하는 것(B)이 아래. 정렬은 묶음 안에서만 바뀐다(§12 표시일 뿐 결정이 아니다)
+  const order = () => [...w.document.querySelectorAll('#candList .candCard .candName')].map(e => e.textContent[0]);
+  assert.deepEqual(order(), ['D', 'C', 'A', 'B'], '최근 순');
+  w.document.getElementById('candSort').value = 'interest'; w.eval('drawCandidates()');
+  assert.deepEqual(order(), ['D', 'A', 'C', 'B'], '관심 순 — 반대 없는 D가 갈린 A보다 위(§20), 한 명만 말한 C는 아래');
+  w.close();
+});

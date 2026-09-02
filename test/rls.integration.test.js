@@ -103,6 +103,18 @@ const EXPECTED = {
   'act.a.limit': '3',
   // 실시간 퍼블리케이션에는 활동 테이블만 — 여행 문서(jsonb 전체)를 내보내지 않는다
   'act.publication': 'trip_activity',
+  // ── 4단계: 여행별 멤버 취향 ──
+  // 화면이 무엇을 보내든 DB에는 아는 값만 남는다 — 모르는 키·값은 버리고, 배열은 정리·중복 제거·12개 제한
+  'pref.b.set': '{"note": "신혼여행이라 여유롭게", "pace": "RELAXED", "night": true, "morning": false, "walking": "LOW", "dislikes": ["쇼핑"], "interests": ["미술관", "야경"]}',
+  'pref.b.bad_values': '{"walking": "LOW"}', 'pref.b.not_object': '{}', 'pref.b.limit': '12',
+  'pref.b.empty_arrays': '{"pace": "NORMAL"}',
+  // 같은 여행 멤버끼리 서로 본다(§10) · 이름표만(이메일 없음) · 본인 것만 바꾼다 · 직접 쓰기는 권한 자체가 없다
+  'pref.a.list': '주최자/OWNER/true/{} | 영희/EDITOR/false/{"pace": "RELAXED", "night": true, "walking": "LOW", "dislikes": ["쇼핑"], "interests": ["미술관", "야경"]}',
+  'pref.a.set': 'PACKED', 'pref.b.direct': '42501', 'pref.a.unchanged': 'PACKED',
+  // 보기 권한도 취향은 남긴다(의견이다) · 비멤버의 같은 client_id 저장은 제 여행에만
+  'pref.viewer.set': 'HIGH', 'pref.c.set': 'NORMAL', 'pref.c.list': '주최자/OWNER', 'pref.a.count': '2',
+  // 취향 변경은 활동 기록에 남지 않는다(§38)
+  'pref.no_activity': 'true',
   // 기존 단일 사용자 흐름은 그대로(§95)
   'a.snapshots': '1', 'b.snapshots': '0', 'a.tombstone_by_owner': 'true'
 };
@@ -137,10 +149,12 @@ for (const shape of ['bigint', 'uuid']) test(`RLS(trips.id=${shape}): 마이그�
     psql(db, ['-f', sql('supabase/migrations/202609020001_trip_collaboration.sql')]);
     psql(db, ['-f', sql('supabase/migrations/202609020002_trip_candidates.sql')]);
     psql(db, ['-f', sql('supabase/migrations/202609020003_trip_comments_activity.sql')]);
+    psql(db, ['-f', sql('supabase/migrations/202609020004_member_preferences.sql')]);
     // 두 번 적용해도 같다 — 운영에서 재실행돼도 안전해야 한다
     psql(db, ['-f', sql('supabase/migrations/202609020001_trip_collaboration.sql')]);
     psql(db, ['-f', sql('supabase/migrations/202609020002_trip_candidates.sql')]);
     psql(db, ['-f', sql('supabase/migrations/202609020003_trip_comments_activity.sql')]);
+    psql(db, ['-f', sql('supabase/migrations/202609020004_member_preferences.sql')]);
     const out = psql(db, ['-f', sql('test/rls/collaboration.sql')]);
     const got = {};
     for (const line of out.split('\n')) {

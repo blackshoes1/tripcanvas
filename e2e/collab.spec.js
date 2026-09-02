@@ -179,3 +179,41 @@ test('함께하기 모달의 최근 활동은 사람 말 한 줄이고, 실시�
   await expect(page.locator('#activityList')).toContainText('영희님이 구엘 공원을 후보로 담았어요');
   await expect(page.locator('#liveState')).toContainText('새로고침으로 갱신');
 });
+
+test('여행 취향: 칩 한 번의 탭으로 고르고 저장하면 정규화된 값이 가고, 그룹 요약이 문장으로 바뀐다',async({context,page})=>{
+  await fakeSupabase(context);
+  await page.goto('/');
+  await createTrip(page,'E2E 취향');
+  await page.evaluate(()=>{
+    user={id:'u1'};
+    const id=store.activeId;
+    syncMeta[id]={revision:3,status:'clean'};
+    tripRoles[id]={role:'OWNER',count:2,owner:true,serverId:''};
+    window.__sent=[];
+    window.__rows=[{user_id:'u1',label:'민수',role:'OWNER',mine:true,prefs:{}},
+                   {user_id:'u2',label:'영희',role:'EDITOR',mine:false,prefs:{pace:'RELAXED',interests:['미술관']}}];
+    sb={rpc:async(name,args)=>{ window.__sent.push([name,args]);
+      if(name==='list_trip_members') return {data:[{id:1,user_id:'u1',role:'OWNER',status:'ACTIVE',display_name:'민수',joined_at:null,me:true},{id:2,user_id:'u2',role:'EDITOR',status:'ACTIVE',display_name:'영희',joined_at:'2026-09-01',me:false}],error:null};
+      if(name==='list_trip_preferences') return {data:window.__rows,error:null};
+      if(name==='set_trip_preference'){ window.__rows=window.__rows.map(r=>r.mine?Object.assign({},r,{prefs:args.p_prefs}):r); return {data:args.p_prefs,error:null}; }
+      return {data:[],error:null}; }};
+  });
+  await clickMore(page,'#membersMenuBtn');
+  await expect(page.locator('#membersModalBg')).toHaveClass(/show/);
+  await expect(page.locator('#prefGroup')).toContainText('2명 중 1명이 취향을 남겼어요');
+  await expect(page.locator('#prefOthers')).toContainText('영희: 여유롭게 · 관심: 미술관');
+  await page.locator('#prefSection .prefChips[data-pref="pace"] button',{hasText:'여유롭게'}).click();
+  await page.locator('#prefSection .prefChips[data-pref="interests"] button',{hasText:'미술관'}).click();
+  await page.locator('#prefSection .prefChips[data-pref="time"] button',{hasText:'늦은 밤은 싫어요'}).click();
+  await page.locator('#prefNote').fill('  신혼여행이라 여유롭게 ');
+  await page.locator('#prefSave').click();
+  await expect(page.locator('#toast')).toContainText('취향을 저장했어요');
+  expect(await page.evaluate(()=>window.__sent.find(x=>x[0]==='set_trip_preference')[1].p_prefs))
+    .toEqual({pace:'RELAXED',night:false,interests:['미술관'],note:'신혼여행이라 여유롭게'});
+  // 다시 읽은 그룹 요약: 둘 다 여유롭게 · 둘 다 미술관
+  await expect(page.locator('#prefGroup')).toContainText('2명 중 2명이 취향을 남겼어요');
+  await expect(page.locator('#prefGroup')).toContainText('2명이 "여유롭게"를 원해요');
+  await expect(page.locator('#prefGroup')).toContainText('함께 관심: 미술관');
+  await expect(page.locator('#prefGroup')).toContainText('늦은 밤은 싫어요 (나)');
+  await expect(page.locator('#prefSection .prefChips[data-pref="pace"] button[aria-pressed="true"]')).toHaveText('여유롭게');
+});

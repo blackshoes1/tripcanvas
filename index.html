@@ -13,7 +13,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js" integrity="sha384-+pWnyi8LtZx+cgXfD2arWgUX7pHIaEL215cEPPk9WrsegNlgvDL9DNjaqsceQq6o" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js" integrity="sha384-BSxuMLxX+FCbTdYec3TbXlnMGEEM2QXTFdtDaveen71o+jswm2J36+xFqp8k4VHM" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.min.js" integrity="sha384-l8ah+VgaWtk1mvOe9VC+OirC6qHFF4yH7l7mKRidV9MSti3E9F463bMp6ZVN4kuC" crossorigin="anonymous"></script>
-<link rel="stylesheet" href="style.css?v=tc-v164">
+<link rel="stylesheet" href="style.css?v=tc-v165">
 <!-- Travelpayouts 사이트 소유 인증 (파트너 가입 검증용 — DiscoverCars API 신청에 필요) -->
 <script nowprocket data-noptimize="1" data-cfasync="false" data-wpfc-render="false" seraph-accel-crit="1" data-no-defer="1" data-cmp-ab="2">
   (function () {
@@ -182,6 +182,17 @@
     <label for="myMemberName">이 여행에서 내 이름</label>
     <div class="fieldRow"><input type="text" id="myMemberName" maxlength="40" placeholder="예: 민수"><button class="btn" id="myMemberNameSave">저장</button></div>
     <div class="hint">계정 이메일은 다른 멤버에게 보이지 않아요. 여기 적은 이름만 보입니다.</div>
+  </div>
+  <div class="memberSection" id="prefSection">
+    <div class="memberSectionHead"><b>여행 취향</b><span class="hint">이 여행에서만 — 평소 성향과 달라도 돼요</span></div>
+    <div id="prefGroup" class="prefGroup"></div>
+    <div class="prefRow"><span class="prefLabel">페이스</span><div class="prefChips" data-pref="pace"></div></div>
+    <div class="prefRow"><span class="prefLabel">걷기</span><div class="prefChips" data-pref="walking"></div></div>
+    <div class="prefRow"><span class="prefLabel">시간대</span><div class="prefChips" data-pref="time"></div></div>
+    <div class="prefRow"><span class="prefLabel">관심</span><div class="prefChips" data-pref="interests"></div></div>
+    <div class="prefRow"><span class="prefLabel">별로</span><div class="prefChips" data-pref="dislikes"></div></div>
+    <div class="fieldRow"><input type="text" id="prefNote" maxlength="120" placeholder="한 줄 (예: 신혼여행이라 여유롭게)" aria-label="취향 메모"><button class="btn primary" id="prefSave">저장</button></div>
+    <div id="prefOthers" class="prefOthers"></div>
   </div>
   <div class="memberSection" id="inviteSection">
     <div class="memberSectionHead"><b>초대</b></div>
@@ -477,13 +488,13 @@
   </div>
 </div>
 
-<script src="lib.js?v=tc-v164"></script>
-<script src="sync.js?v=tc-v164"></script>
-<script src="routing.js?v=tc-v164"></script>
-<script src="price.js?v=tc-v164"></script>
-<script src="adaptive.js?v=tc-v164"></script>
-<script src="intake.js?v=tc-v164"></script>
-<script src="collab.js?v=tc-v164"></script>
-<script src="app.js?v=tc-v164"></script>
+<script src="lib.js?v=tc-v165"></script>
+<script src="sync.js?v=tc-v165"></script>
+<script src="routing.js?v=tc-v165"></script>
+<script src="price.js?v=tc-v165"></script>
+<script src="adaptive.js?v=tc-v165"></script>
+<script src="intake.js?v=tc-v165"></script>
+<script src="collab.js?v=tc-v165"></script>
+<script src="app.js?v=tc-v165"></script>
 </body>
 </html>

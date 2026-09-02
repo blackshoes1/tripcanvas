@@ -364,3 +364,109 @@ test('tripRoleMap: 서버 id(trip_id)를 문자열로 든다 — 실시간 구�
   assert.equal(map.y.serverId, '42');
   assert.equal(C.tripRoleMap([{ client_id: 'z', role: 'OWNER' }]).z.serverId, '', '없으면 빈 문자열 — 구독하지 않는다');
 });
+
+// ── 여행 취향 · 그룹 컨텍스트 · 합의 (4단계) ──
+
+test('normPrefs: 아는 키·값만 남긴다 — 서버 tc_norm_prefs와 같은 규칙', () => {
+  const p = C.normPrefs({ pace: 'RELAXED', walking: 'LOW', morning: false, night: true,
+    interests: ['야경', '미술관', ' 야경 ', '', null, 42], dislikes: ['쇼핑'], note: '  신혼여행이라 여유롭게  ', junk: 'x', pace2: 'PACKED' });
+  assert.deepEqual(p, { pace: 'RELAXED', walking: 'LOW', morning: false, night: true, interests: ['미술관', '야경'], dislikes: ['쇼핑'], note: '신혼여행이라 여유롭게' });
+  assert.deepEqual(C.normPrefs({ pace: 'FAST', walking: 'LOW', morning: 'yes', interests: '미술관' }), { walking: 'LOW' });
+  assert.deepEqual(C.normPrefs([1, 2]), {});
+  assert.deepEqual(C.normPrefs(null), {});
+  assert.equal(C.normPrefs({ interests: Array.from({ length: 20 }, (_, i) => '관심' + i) }).interests.length, 12, '12개 제한');
+  assert.equal(C.normPrefs({ note: 'x'.repeat(200) }).note.length, 120);
+  assert.equal(C.normPrefs({ interests: ['a'.repeat(50)] }).interests[0].length, 30);
+  assert.deepEqual(C.normPrefs({ interests: [], dislikes: ['쇼핑'], note: '' }), { dislikes: ['쇼핑'] }, '빈 배열·빈 메모는 정보가 없다 — 남기지 않는다');
+});
+
+test('prefsText: 한 줄로', () => {
+  assert.equal(C.prefsText({ pace: 'RELAXED', walking: 'LOW', night: false, interests: ['미술관', '야경'], dislikes: ['쇼핑'], note: '여유롭게' }),
+    '여유롭게 · 많이 걷기 싫어요 · 늦은 밤은 싫어요 · 관심: 미술관, 야경 · 별로: 쇼핑 · “여유롭게”');
+  assert.equal(C.prefsText({}), '');
+  assert.equal(C.prefsText({ morning: true }), '아침 일찍도 괜찮아요');
+});
+
+test('groupContext(§19): 다수 페이스 · 가장 약한 걷기 기준 · 아침/밤 제약 · 함께 관심 · 관심 vs 별로 충돌', () => {
+  const ctx = C.groupContext([
+    { label: '민수', mine: true, prefs: { pace: 'RELAXED', walking: 'HIGH', interests: ['미술관', '야경'], dislikes: [] } },
+    { label: '영희', prefs: { pace: 'RELAXED', walking: 'LOW', morning: false, interests: ['미술관', '쇼핑'] } },
+    { label: '철수', prefs: { pace: 'PACKED', night: false, interests: ['야경'], dislikes: ['쇼핑'] } },
+    { label: '지은', prefs: {} }
+  ], 4);
+  assert.equal(ctx.members, 4);
+  assert.equal(ctx.answered, 3, '빈 취향은 답하지 않은 것');
+  assert.deepEqual(ctx.pace, { value: 'RELAXED', count: 2 });
+  assert.equal(ctx.paceSplit, true, '여유 vs 빡빡이 같이 있다');
+  assert.equal(ctx.walking, 'LOW'); assert.deepEqual(ctx.walkingWho, ['영희'], '제약은 가장 약한 사람 기준');
+  assert.deepEqual(ctx.morningNo, ['영희']); assert.deepEqual(ctx.nightNo, ['철수']);
+  assert.deepEqual(ctx.sharedInterests, ['미술관', '야경'], '두 명 이상이 고른 것만, 빈도순');
+  assert.deepEqual(ctx.conflicts, [{ topic: '쇼핑', likes: ['영희'], dislikes: ['철수'] }]);
+  // 동률이면 다수 페이스 없음
+  assert.equal(C.groupContext([{ prefs: { pace: 'RELAXED' } }, { prefs: { pace: 'PACKED' } }], 2).pace, null);
+  assert.equal(C.groupContext(null, 3).answered, 0);
+  assert.equal(C.groupContext([{ prefs: {} }], 0).members, 1);
+});
+
+test('groupContextText: 정리만 하고 결정하지 않는다(§62)', () => {
+  const lines = C.groupContextText(C.groupContext([
+    { label: '민수', mine: true, prefs: { pace: 'RELAXED', walking: 'LOW', interests: ['미술관'] } },
+    { label: '영희', prefs: { pace: 'RELAXED', morning: false, interests: ['미술관'], dislikes: ['쇼핑'] } },
+    { label: '철수', prefs: { interests: ['쇼핑'] } }
+  ], 4));
+  assert.deepEqual(lines, [
+    '4명 중 3명이 취향을 남겼어요',
+    '2명이 "여유롭게"를 원해요',
+    '많이 걷기 싫어요 (나) — 동선은 이 기준으로',
+    '아침 일찍은 어려워요 (영희)',
+    '함께 관심: 미술관',
+    '쇼핑: 철수은(는) 좋고 영희은(는) 별로예요'
+  ]);
+  assert.ok(!lines.join(' ').includes('제외'), '자동으로 빼자고 하지 않는다');
+  assert.match(C.groupContextText(null)[0], /아직 아무도/);
+  assert.match(C.groupContextText(C.groupContext([{ prefs: { pace: 'RELAXED' } }, { prefs: { pace: 'PACKED' } }], 2))[1], /페이스 생각이 갈려요/);
+});
+
+test('consensusOf(§20): 단순 다수결이 아니다 — 장소 B(MUST1·OK3)가 장소 A(MUST2·OK1·PASS1)보다 위다', () => {
+  const A = C.consensusOf({ must_count: 2, ok_count: 1, pass_count: 1 }, 4);
+  const B = C.consensusOf({ must_count: 1, ok_count: 3, pass_count: 0 }, 4);
+  assert.equal(A.status, 'CONFLICT'); assert.equal(B.status, 'GOOD_MATCH');
+  assert.ok(B.score > A.score, `B ${B.score} > A ${A.score}`);
+  assert.equal(A.strongSupportCount, 2); assert.equal(A.oppositionCount, 1);
+});
+
+test('consensusOf(§91 fixture): 전원 MUST · MUST+OK · MUST+PASS · 전원 PASS · 의견 없음 · 2명 split', () => {
+  const s = (must, ok, pass, members) => C.consensusOf({ must_count: must, ok_count: ok, pass_count: pass }, members);
+  assert.deepEqual([s(4, 0, 0, 4).status, s(4, 0, 0, 4).score], ['STRONG_MATCH', 100]);
+  assert.equal(s(2, 2, 0, 4).status, 'STRONG_MATCH', '반대 없고 절반이 MUST');
+  assert.equal(s(1, 3, 0, 4).status, 'GOOD_MATCH', '반대는 없지만 MUST가 절반 미만');
+  assert.equal(s(2, 0, 2, 4).status, 'CONFLICT');
+  assert.deepEqual([s(0, 0, 4, 4).status, s(0, 0, 4, 4).score], ['MIXED', 0]);
+  assert.deepEqual([s(0, 0, 0, 4).status, s(0, 0, 0, 4).score], [null, 50], '아무도 말하지 않았으면 모른다');
+  assert.equal(s(1, 0, 1, 2).status, 'CONFLICT');
+  // 아직 안 말한 사람이 있으면 확신을 줄인다 — STRONG이라 하지 않고 점수도 50 쪽으로
+  assert.equal(s(2, 0, 0, 4).status, 'GOOD_MATCH');
+  assert.ok(s(2, 0, 0, 4).score < s(2, 0, 0, 2).score);
+  assert.ok(s(1, 0, 0, 4).score > 50 && s(1, 0, 0, 4).score < 60);
+});
+
+test('consensusText·candidateVerdict: 사용자에게는 문장만 — 숫자는 어디에도 없다(§21·§22)', () => {
+  for (const k of ['STRONG_MATCH', 'GOOD_MATCH', 'MIXED', 'CONFLICT']) assert.doesNotMatch(C.consensusText(k), /\d/);
+  assert.equal(C.consensusText('???'), '');
+  const v = C.candidateVerdict({ must_count: 1, ok_count: 3, pass_count: 0 }, 4);
+  assert.deepEqual(v, { text: '괜찮아 보여요 — 반대가 없어요', tone: 'good', status: 'GOOD_MATCH' });
+  assert.equal(C.candidateVerdict({ must_count: 2, ok_count: 0, pass_count: 2 }, 4).tone, 'split');
+  assert.equal(C.candidateVerdict({ must_count: 0, ok_count: 0, pass_count: 2 }, 4).tone, 'mixed');
+  // 한 명만 말했으면 합의를 말하지 않고 '무엇을 더 하면 되는지'
+  assert.deepEqual(C.candidateVerdict({ must_count: 1, ok_count: 0, pass_count: 0 }, 4), { text: C.MOOD_TEXT.QUIET, tone: 'quiet', status: null });
+  assert.deepEqual(C.candidateVerdict({ must_count: 0, ok_count: 0, pass_count: 0 }, 4).text, C.MOOD_TEXT.NONE);
+  assert.doesNotMatch(C.candidateVerdict({ must_count: 3, ok_count: 1, pass_count: 0 }, 4).text, /\d/);
+});
+
+test('sortCandidates(interest): 합의 점수 순 — 표시일 뿐 결정이 아니다(§12)', () => {
+  const rows = [
+    { id: 'A', created_at: '2026-01-01', must_count: 2, ok_count: 1, pass_count: 1 },
+    { id: 'B', created_at: '2026-01-01', must_count: 1, ok_count: 3, pass_count: 0 }
+  ];
+  assert.deepEqual(C.sortCandidates(rows, 'interest', 4).map(c => c.id), ['B', 'A'], '§20의 예 — 반대 없는 B가 위');
+});

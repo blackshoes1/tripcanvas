@@ -3813,10 +3813,12 @@ async function renderMembers(){
     list.innerHTML='<div class="hint">이 여행이 클라우드에 올라간 뒤에 초대할 수 있어요. 지금 올리는 중이니 잠시 후 다시 열어 주세요.</div>';
     document.getElementById('inviteSection').style.display='none';
     document.getElementById('myNameSection').style.display='none';
+    document.getElementById('prefSection').style.display='none';
     syncTripCloud(t);
     return;
   }
   document.getElementById('myNameSection').style.display='block';
+  document.getElementById('prefSection').style.display='block';
   try{
     const {data:members,error}=await sb.rpc('list_trip_members',{p_client_id:id});
     if(error) throw error;
@@ -3845,6 +3847,7 @@ async function renderMembers(){
   }catch(e){ reportOperationalError('collab.members',e); list.innerHTML='<div class="hint">멤버를 불러오지 못했어요 — 잠시 후 다시 시도해 주세요</div>'; }
   if(owner) renderInvites();
   renderActivity();
+  renderPrefs();
 }
 async function manageMember(memberId,action,value){
   try{
@@ -3978,7 +3981,7 @@ function candidateCard(c,role,members){
   const card=document.createElement('div');
   card.className='candCard'+(c.status==='SCHEDULED'?' scheduled':'');
   card.dataset.candId=String(c.id);
-  const mood=TC_COLLAB.candidateMood(c,members), summary=TC_COLLAB.reactionSummary(c,members);
+  const summary=TC_COLLAB.reactionSummary(c,members);
 
   const head=document.createElement('div'); head.className='candHead';
   const nameBox=document.createElement('div'); nameBox.className='candName';
@@ -3987,10 +3990,11 @@ function candidateCard(c,role,members){
   meta.textContent=[TC_COLLAB.candidateAttribution(c), summary, c.addr||''].filter(Boolean).join(' · ');
   nameBox.appendChild(meta);
   head.appendChild(nameBox);
-  const badge=document.createElement('span'); badge.className='candMood '+mood.toLowerCase();
+  const verdict=TC_COLLAB.candidateVerdict(c,members);   // 점수는 내부값 — 화면에는 문장만(§21·§22)
+  const badge=document.createElement('span'); badge.className='candMood '+(c.status==='SCHEDULED'?'quiet':verdict.tone);
   badge.textContent=c.status==='SCHEDULED'
     ? `🗓 ${c.scheduled_ref?`Day ${c.scheduled_ref}`:'일정에 있음'}`
-    : TC_COLLAB.moodText(mood);
+    : verdict.text;
   head.appendChild(badge);
   card.appendChild(head);
 
@@ -4267,6 +4271,71 @@ async function scheduleCandidate(c){
   });
   await manageCandidate(c.id,'SCHEDULE',String(di+1));
 }
+
+// ── 여행 취향 (함께하기 모달) ─────────────────────────────────────────────
+// 이 여행에 대한 것이다(§18) — 고정 프로필이 아니다. 선택형 칩 한 번의 탭(§16). 판정(정규화·그룹 요약·합의)은 collab.js에.
+let myPrefs={}, prefRows=[];
+async function renderPrefs(){
+  const id=membersTripId, box=document.getElementById('prefGroup'); if(!box||!sb||!user||!id) return;
+  try{
+    const {data,error}=await sb.rpc('list_trip_preferences',{p_client_id:id});
+    if(error) throw error;
+    prefRows=(data||[]).filter(Boolean);
+    const mine=prefRows.find(r=>r.mine); myPrefs=TC_COLLAB.normPrefs(mine?mine.prefs:{});
+    drawPrefChips(); document.getElementById('prefNote').value=myPrefs.note||'';
+    const info=tripRoles[id], ctx=TC_COLLAB.groupContext(prefRows, info?info.count:prefRows.length);
+    box.innerHTML='';
+    TC_COLLAB.groupContextText(ctx).forEach(t=>{ const d=document.createElement('div'); d.className='prefLine'; d.textContent=t; box.appendChild(d); });
+    const others=document.getElementById('prefOthers'); others.innerHTML='';
+    prefRows.filter(r=>!r.mine).forEach(r=>{
+      const d=document.createElement('div'); d.className='prefLine other';
+      d.textContent=`${String(r.label||'').trim()||'멤버'}: ${TC_COLLAB.prefsText(r.prefs)||'아직 안 남겼어요'}`;
+      others.appendChild(d);
+    });
+  }catch(e){ reportOperationalError('collab.prefs',e); box.innerHTML='<div class="hint">취향을 불러오지 못했어요</div>'; }
+}
+function drawPrefChips(){
+  const q=(k)=>document.querySelector(`#prefSection .prefChips[data-pref="${k}"]`);
+  const mk=(host,items,isOn,onTap)=>{
+    if(!host) return; host.innerHTML='';
+    items.forEach(([v,l])=>{
+      const b=document.createElement('button'); b.type='button'; b.textContent=l;
+      b.setAttribute('aria-pressed',isOn(v)?'true':'false');
+      b.onclick=()=>{ onTap(v); drawPrefChips(); };
+      host.appendChild(b);
+    });
+  };
+  mk(q('pace'), TC_COLLAB.PREF.pace, v=>myPrefs.pace===v, v=>{ myPrefs.pace = myPrefs.pace===v? undefined : v; });
+  mk(q('walking'), TC_COLLAB.PREF.walking, v=>myPrefs.walking===v, v=>{ myPrefs.walking = myPrefs.walking===v? undefined : v; });
+  mk(q('time'), [['m1','아침 일찍 괜찮아요'],['m0','아침 일찍은 어려워요'],['n1','늦은 밤도 좋아요'],['n0','늦은 밤은 싫어요']],
+     v=>{ const k=v[0]==='m'?'morning':'night'; return myPrefs[k]===(v[1]==='1'); },
+     v=>{ const k=v[0]==='m'?'morning':'night', val=v[1]==='1'; myPrefs[k] = myPrefs[k]===val? undefined : val; });
+  const topics=TC_COLLAB.PREF.topics.map(t=>[t,t]);
+  mk(q('interests'), topics, v=>(myPrefs.interests||[]).includes(v), v=>togglePrefTopic('interests','dislikes',v));
+  mk(q('dislikes'), topics, v=>(myPrefs.dislikes||[]).includes(v), v=>togglePrefTopic('dislikes','interests',v));
+}
+// 같은 주제가 관심과 별로에 동시에 있을 수는 없다
+function togglePrefTopic(k,other,v){
+  const a=new Set(myPrefs[k]||[]);
+  if(a.has(v)) a.delete(v); else { a.add(v); const o=new Set(myPrefs[other]||[]); o.delete(v); myPrefs[other]=[...o]; }
+  myPrefs[k]=[...a];
+}
+async function savePrefs(){
+  const btn=document.getElementById('prefSave'); if(!sb||!user||!membersTripId) return;
+  btn.disabled=true;
+  const draft=TC_COLLAB.normPrefs(Object.assign({},myPrefs,{note:document.getElementById('prefNote').value}));
+  try{
+    const {data,error}=await sb.rpc('set_trip_preference',{p_client_id:membersTripId,p_prefs:draft});
+    if(error) throw error;
+    myPrefs=TC_COLLAB.normPrefs(data);   // 서버가 돌려준 것이 이긴다 — 화면 미리보기와 저장본이 갈리지 않게
+    toast('취향을 저장했어요 — 일행이 참고할 수 있어요');
+    await renderPrefs();
+  }catch(e){
+    reportOperationalError('collab.prefs.save',e);
+    toast(TC_COLLAB.isForbiddenError(e)?TC_COLLAB.forbiddenText(e,myRole(membersTripId)):'취향을 저장하지 못했어요','#e63946');
+  }finally{ btn.disabled=false; }
+}
+document.getElementById('prefSave').onclick=savePrefs;
 
 document.getElementById('candMenuBtn').onclick=openCandidates;
 document.getElementById('candClose').onclick=()=>document.getElementById('candModalBg').classList.remove('show');
