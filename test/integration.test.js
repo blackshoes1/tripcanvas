@@ -1564,10 +1564,26 @@ test('통합: 제안을 수락하면 그 장소가 오늘 일정으로 옮겨온
     { spots: [S('레티로 공원', 40.415, { stayMin: 90 })] }
   ]);
   w.eval('renderTravel(0)');
-  const card = cardsIn(w).filter((c) => /레티로 공원/.test(c.textContent))[0];
-  buttonIn(card, '오늘 일정에 넣기').click();
+  const card = cardsIn(w).filter((c) => c.dataset.type === 'MOVE_FROM_OTHER_DAY' && /레티로 공원/.test(c.textContent))[0];
+  assert.equal(card.dataset.suggestionType, 'NEXT_ACTIVITY');
+  assert.equal(card.querySelector('[data-action="ACCEPT"]').textContent, '오늘 일정에 넣기', '표시 문구와 별개로 수락 동작을 식별한다');
+  card.querySelector('[data-action="ACCEPT"]').click();
   assert.deepEqual(w.eval("trip().days[0].spots.map(s=>s.name)"), ['프라도', '레티로 공원', '저녁 예약']);
   assert.equal(w.eval('trip().days[1].spots.length'), 0, '원래 있던 날에서는 빠진다');
+  w.close();
+});
+
+test('통합: 여행 모드의 날짜 선택과 추천은 같은 주입 clock을 사용한다', { skip: noJsdom }, () => {
+  const w = boot();
+  withAdaptTrip(w, [
+    { startAt: '09:00', mode: 'car', spots: [S('오늘 장소', 40.41)] },
+    { spots: [S('내일 장소', 40.42)] }
+  ], { today: '2026-09-01', now: 13 * 60 });
+  w.document.getElementById('travelBtn').click();
+  assert.equal(w.document.getElementById('travelDay').value, '0', '호스트 실제 날짜가 아니라 주입 날짜로 오늘을 고른다');
+  assert.equal(w.eval('_adapt.state.currentDay'), 0);
+  assert.equal(w.eval('_adapt.state.nowMin'), 13 * 60, '같은 스냅샷 시각이 추천 엔진까지 전달된다');
+  assert.match(w.document.getElementById('travelCurrent').textContent, /현재 장소/, '현재 장소 판정도 같은 주입 날짜를 쓴다');
   w.close();
 });
 

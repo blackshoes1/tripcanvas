@@ -2057,9 +2057,9 @@ function identityForBooking(b){
   return found? {name:found.name||b.title, placeId:found.placeId, lat:(hasLoc(found)? +found.lat:undefined), lng:(hasLoc(found)? +found.lng:undefined)}
               : {name:b.title};
 }
-function hotelStateOf(b){
+function hotelStateOf(b, today){
   if(!b||(b.type!=='hotel'&&b.type!=='car')) return null;   // 렌터카도 같은 판단 엔진 사용(항공은 소스 준비 전)
-  return TC_PRICE.hotelTrackState(b, priceStore[b.id]||null, {today:todayISO(), krwRate:fxRates[b.cur||'KRW']||1});
+  return TC_PRICE.hotelTrackState(b, priceStore[b.id]||null, {today:today||todayISO(), krwRate:fxRates[b.cur||'KRW']||1});
 }
 function tripSavingInfo(){
   return TC_PRICE.tripHotelSummary(tripBookings(), priceStore, {today:todayISO(), krwRateOf:c=>fxRates[c||'KRW']||1});
@@ -3051,9 +3051,9 @@ function loadSuggest(){
 function saveSuggest(){ try{ localStorage.setItem(SUGGEST_KEY, JSON.stringify({v:1, energy:adaptEnergy, prefs:adaptPrefs, intent:adaptIntent, trips:suggestStore})); }catch(e){} }
 function suggestBox(){ const id=trip().id||'_'; return suggestStore[id]||(suggestStore[id]={dismissed:{},feedback:[]}); }
 // 거절은 '오늘 하루'만 유효 — 같은 제안을 반복하지 않되 내일은 다시 볼 수 있게 한다
-function dismissedKeys(){
-  const box=suggestBox(), today=todayISO(), out=[];
-  Object.keys(box.dismissed||{}).forEach(k=>{ if(box.dismissed[k]===today) out.push(k); else delete box.dismissed[k]; });
+function dismissedKeys(today){
+  const box=suggestBox(), day=today||todayISO(), out=[];
+  Object.keys(box.dismissed||{}).forEach(k=>{ if(box.dismissed[k]===day) out.push(k); else delete box.dismissed[k]; });
   return out;
 }
 function trackAdapt(name, props){
@@ -3069,19 +3069,22 @@ function recordFeedback(sug, action){
   trackAdapt(action==='ACCEPTED'?'suggestion_accepted':'suggestion_skipped', {type:sug.type, key:sug.key});
 }
 function nowMinutes(){ const n=new Date(); return n.getHours()*60+n.getMinutes(); }
+// 여행 모드 한 번의 계산은 날짜와 시각을 한 스냅샷으로 공유한다. 테스트/호스트가 주입한 clock을
+// 화면 선택·TripState·추천에서 제각각 다시 읽으면 자정 경계와 고정 clock 테스트가 어긋난다.
+function travelClock(){ return {todayISO:todayISO(), nowMin:nowMinutes()}; }
 // 추천이 쓰는 이동시간은 화면과 같은 캐시·수단을 쓴다 (추천만 다른 숫자를 보지 않게)
 function adaptLegMin(day){ return (a,b)=>legMinutes(a,b,dayModeOf(day),null,dayTimeZone(day)); }
 // dayContext(anchor/timeline)를 그대로 넘긴다 — 출발 기준점의 단일 진실을 추천도 공유한다
-function adaptState(di){
-  const ctx=dayContext(di);
-  return TC_ADAPT.buildTripState(trip(), {dayIndex:di, todayISO:todayISO(), nowMin:nowMinutes(),
+function adaptState(di, clock){
+  const ctx=dayContext(di), when=clock||travelClock();
+  return TC_ADAPT.buildTripState(trip(), {dayIndex:di, todayISO:when.todayISO, nowMin:when.nowMin,
     timeline:ctx.timeline, startAnchor:ctx.anchor, legMin:adaptLegMin(ctx.day), energyLevel:adaptEnergy, prefs:adaptPrefs});
 }
 // 가격 추적도 같은 제안 목록으로 올린다 — 단, '확정 절약'만. 추정치로 사용자를 흔들지 않는다.
-function priceSuggestions(){
+function priceSuggestions(today){
   const out=[];
   tripBookings().forEach(b=>{
-    const st=hotelStateOf(b);
+    const st=hotelStateOf(b,today);
     if(!st||st.state!=='SAVING_AVAILABLE'||!st.confirmed) return;
     const o=st.confirmed.offer;
     out.push({bookingId:b.id, title:`${b.title} · ₩${fmtMoney(toKRW(st.confirmed.saving,b.cur))} 절약 가능`,
@@ -3093,9 +3096,9 @@ function priceSuggestions(){
 }
 
 const SG_KICKER={REPLAN:'일정 조정 제안', NEXT_ACTIVITY:'지금 가장 자연스러운 다음 일정', REST:'쉬어도 괜찮습니다', PRICE_SAVING:'예약 다시 보기'};
-function sgButton(label, primary, fn){
+function sgButton(label, primary, fn, action){
   const b=document.createElement('button'); b.className='btn'+(primary?' primary':''); b.type='button';
-  b.textContent=label; b.onclick=fn; return b;
+  b.textContent=label; b.onclick=fn; if(action) b.dataset.action=action; return b;
 }
 // 일정 실행 상태 변경 — 방문 판정은 자동이 아니라 사용자가 누른다
 function setSpotStatus(di, si, status){
@@ -3151,19 +3154,19 @@ function acceptMove(sug, di, action){
 // 제안별 주 동작. 추천은 '수락 / 건너뛰기 / 다른 추천 / 직접 수정' 중 하나로 언제든 빠져나갈 수 있어야 한다.
 function sgPrimaryButtons(sug, di){
   const a=sug.action||{};
-  if(sug.type==='REPLAN') return [sgButton('이대로 변경', true, ()=>applyReplan(sug,di)),
-    sgButton('직접 수정', false, ()=>{ recordFeedback(sug,'REPLACED'); document.getElementById('travel').classList.remove('show'); })];
-  if(sug.type==='PRICE_SAVING') return [sgButton('예약 보기', true, ()=>{ recordFeedback(sug,'ACCEPTED'); openBookingList(); })];
+  if(sug.type==='REPLAN') return [sgButton('이대로 변경', true, ()=>applyReplan(sug,di), 'ACCEPT'),
+    sgButton('직접 수정', false, ()=>{ recordFeedback(sug,'REPLACED'); document.getElementById('travel').classList.remove('show'); }, 'EDIT')];
+  if(sug.type==='PRICE_SAVING') return [sgButton('예약 보기', true, ()=>{ recordFeedback(sug,'ACCEPTED'); openBookingList(); }, 'ACCEPT')];
   if(a.kind==='REST'||a.kind==='RETURN_TO_HOTEL') return [sgButton(a.kind==='REST'?'그렇게 하기':'숙소로 가기', true, ()=>{
-    recordFeedback(sug,'ACCEPTED'); toast('알겠습니다 — 남은 일정은 그대로 둡니다','#2a9d3f'); renderSuggestions(di); })];
+    recordFeedback(sug,'ACCEPTED'); toast('알겠습니다 — 남은 일정은 그대로 둡니다','#2a9d3f'); renderSuggestions(di); }, 'ACCEPT')];
   if(a.kind==='EAT') return [sgButton('식사 장소 추가', true, ()=>{
     recordFeedback(sug,'ACCEPTED'); document.getElementById('travel').classList.remove('show');
-    openSpotModal(di,-1); const at=document.getElementById('spotAt'); if(at&&a.startMin!=null) at.value=hm(a.startMin); })];
-  if(a.fromDay!=null && a.si!=null) return [sgButton('오늘 일정에 넣기', true, ()=>acceptMove(sug,di,a))];
+    openSpotModal(di,-1); const at=document.getElementById('spotAt'); if(at&&a.startMin!=null) at.value=hm(a.startMin); }, 'ACCEPT')];
+  if(a.fromDay!=null && a.si!=null) return [sgButton('오늘 일정에 넣기', true, ()=>acceptMove(sug,di,a), 'ACCEPT')];
   if(a.si!=null){
     const sp=trip().days[di].spots[a.si], out=[];
-    if(hasLoc(sp)) out.push(sgButton('길찾기', true, ()=>{ recordFeedback(sug,'ACCEPTED'); const l=extMapLink(sp); window.open(l.href,'_blank','noopener'); renderSuggestions(di); }));
-    out.push(sgButton('다녀왔어요', !out.length, ()=>{ recordFeedback(sug,'ACCEPTED'); setSpotStatus(di,a.si,'COMPLETED'); }));
+    if(hasLoc(sp)) out.push(sgButton('길찾기', true, ()=>{ recordFeedback(sug,'ACCEPTED'); const l=extMapLink(sp); window.open(l.href,'_blank','noopener'); renderSuggestions(di); }, 'ACCEPT'));
+    out.push(sgButton('다녀왔어요', !out.length, ()=>{ recordFeedback(sug,'ACCEPTED'); setSpotStatus(di,a.si,'COMPLETED'); }, 'ACCEPT'));
     return out;
   }
   return [];
@@ -3266,13 +3269,13 @@ function renderDayFlow(di){
   });
   card.appendChild(list);
   const act=document.createElement('div'); act.className='sgActions';
-  if(!flow.empty) act.appendChild(sgButton('이 일정으로 시작', true, ()=>applyDayFlow(di)));
+  if(!flow.empty) act.appendChild(sgButton('이 일정으로 시작', true, ()=>applyDayFlow(di), 'ACCEPT'));
   act.appendChild(sgButton('다른 제안', false, ()=>{
     (flow.picks||[]).forEach(p=>{ if(_flowExclude.indexOf(p.id)<0) _flowExclude.push(p.id); });
     buildDayFlow(di);
-  }));
+  }, 'REFRESH'));
   act.appendChild(sgButton('오늘은 쉬기', false, ()=>{
-    _dayFlow=null; renderDayFlow(di); toast('알겠습니다 — 일정은 그대로 둡니다','#2a9d3f'); }));
+    _dayFlow=null; renderDayFlow(di); toast('알겠습니다 — 일정은 그대로 둡니다','#2a9d3f'); }, 'DISMISS'));
   card.appendChild(act);
   host.appendChild(card);
   trackAdapt('day_flow_shown',{blocks:flow.blocks.length, added:(flow.picks||[]).length});
@@ -3296,12 +3299,12 @@ function renderEnergy(di){
   renderIntentEcho();
 }
 // 제안 목록. 후보가 없으면 억지로 만들지 않고 왜 없는지를 말한다.
-function renderSuggestions(di){
+function renderSuggestions(di, clock){
   const host=document.getElementById('travelSuggest'); if(!host) return;
   host.innerHTML='';
   if(_adapt && _adapt.di!==di){ _dayFlow=null; _flowExclude=[]; }   // 다른 날로 넘어가면 미리보기는 버린다
-  const t=trip(), state=adaptState(di);
-  const res=TC_ADAPT.buildSuggestions(t, state, {legMin:adaptLegMin(state.day), dismissed:dismissedKeys(), priceSuggestions:priceSuggestions()});
+  const t=trip(), when=clock||travelClock(), state=adaptState(di,when);
+  const res=TC_ADAPT.buildSuggestions(t, state, {legMin:adaptLegMin(state.day), dismissed:dismissedKeys(when.todayISO), priceSuggestions:priceSuggestions(when.todayISO)});
   _adapt={di, state, res};
   if(!res.suggestions.length){
     const d=document.createElement('div'); d.className='sgEmpty';
@@ -3312,7 +3315,9 @@ function renderSuggestions(di){
     return;
   }
   res.suggestions.forEach(sug=>{
-    const card=document.createElement('div'); card.className='sgCard'; card.dataset.type=sug.type;
+    const card=document.createElement('div'); card.className='sgCard';
+    card.dataset.type=(sug.action&&sug.action.fromDay!=null)?'MOVE_FROM_OTHER_DAY':sug.type;
+    card.dataset.suggestionType=sug.type;
     const k=document.createElement('div'); k.className='sgKicker'; k.textContent=SG_KICKER[sug.type]||'제안'; card.appendChild(k);
     const ti=document.createElement('div'); ti.className='sgTitle'; ti.textContent=sug.title; card.appendChild(ti);
     if(sug.description){ const de=document.createElement('div'); de.className='sgDesc'; de.textContent=sug.description; card.appendChild(de); }
@@ -3324,32 +3329,32 @@ function renderSuggestions(di){
     if(sug.type==='REPLAN') card.appendChild(replanPreview(di));
     const act=document.createElement('div'); act.className='sgActions';
     sgPrimaryButtons(sug,di).forEach(b=>act.appendChild(b));
-    act.appendChild(sgButton('건너뛰기', false, ()=>{ recordFeedback(sug,'SKIPPED'); renderSuggestions(di); }));
+    act.appendChild(sgButton('건너뛰기', false, ()=>{ recordFeedback(sug,'SKIPPED'); renderSuggestions(di); }, 'SKIP'));
     card.appendChild(act);
     host.appendChild(card);
     trackAdapt(sug.type==='REPLAN'?'replan_shown':'suggestion_shown', {type:sug.type, key:sug.key});
   });
   if(res.suggestions.some(s=>s.type==='NEXT_ACTIVITY'||s.type==='REST')){
     const more=sgButton('다른 제안 보기', false, ()=>{
-      const box=suggestBox();
-      res.suggestions.forEach(s=>{ if(s.type==='NEXT_ACTIVITY'||s.type==='REST') box.dismissed[s.key]=todayISO(); });
-      saveSuggest(); renderSuggestions(di);
-    });
+      const box=suggestBox(), nextClock=travelClock();
+      res.suggestions.forEach(s=>{ if(s.type==='NEXT_ACTIVITY'||s.type==='REST') box.dismissed[s.key]=nextClock.todayISO; });
+      saveSuggest(); renderSuggestions(di,nextClock);
+    }, 'REFRESH');
     more.className='btn sgMore'; host.appendChild(more);
   }
 }
 
 // ───────────────── 여행 모드 ─────────────────
 document.getElementById('travelBtn').onclick=()=>{
-  const t=trip(); let di=0;
+  const t=trip(), clock=travelClock(); let di=0;
   if(t.start){
-    const diff=Math.floor((new Date().setHours(0,0,0,0)-new Date(t.start+'T00:00:00'))/86400000);
+    const diff=Math.floor((Date.parse(clock.todayISO+'T00:00:00Z')-Date.parse(t.start+'T00:00:00Z'))/86400000);
     di=Math.min(Math.max(diff,0),t.days.length-1);
   }
   const sel=document.getElementById('travelDay');
   sel.innerHTML=t.days.map((d,i)=>`<option value="${i}" ${i===di?'selected':''}>Day ${i+1} · ${dateOf(i)} · ${esc(d.title)}</option>`).join('');
   sel.onchange=()=>renderTravel(parseInt(sel.value));
-  renderTravel(di);
+  renderTravel(di,clock);
   document.getElementById('travel').classList.add('show');
 };
 document.getElementById('travelClose').onclick=()=>document.getElementById('travel').classList.remove('show');
@@ -3358,20 +3363,20 @@ document.getElementById('travelIntentApply').onclick=()=>{
   applyIntent(document.getElementById('travelIntent').value, di);
 };
 document.getElementById('travelIntent').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); document.getElementById('travelIntentApply').click(); } });
-function renderTravel(di){
-  const t=trip(), d=t.days[di], colors=cityColors();
+function renderTravel(di, clock){
+  const when=clock||travelClock(), t=trip(), d=t.days[di], colors=cityColors();
   document.getElementById('travelTitle').textContent=`Day ${di+1} · ${d.title||''}`;
   document.getElementById('travelSub').textContent=[dateOf(di),d.drive,d.note].filter(Boolean).join('  ·  ');
   const list=document.getElementById('travelList'); list.innerHTML='';
   const currentBox=document.getElementById('travelCurrent'),nextBox=document.getElementById('travelNext');
   currentBox.innerHTML=''; nextBox.innerHTML='';
-  renderEnergy(di); renderSuggestions(di); renderDayFlow(di);   // 장소가 없는 날에도 "지금 뭐 하지"에는 답해야 한다
+  renderEnergy(di); renderSuggestions(di,when); renderDayFlow(di);   // 장소가 없는 날에도 "지금 뭐 하지"에는 답해야 한다
   if(!d.spots.length){ currentBox.innerHTML='<div class="travelKicker">현재 장소</div><div class="travelPlace">자유 일정</div>'; nextBox.hidden=true; list.innerHTML='<div class="hint" style="padding:20px 4px">등록된 장소가 없습니다 — 이동일이거나 자유 일정입니다.</div>'; return; }
   // 전날 숙소 이월: Day 2+에서 전날 숙소가 있으면 상단에 가상 항목으로 표시(오늘 데이터엔 복제 안 함).
   // 타임라인·첫 장소 구간이 숙소에서 출발하도록 prevLoc/etas를 숙소로 시드 (사이드바·재생과 동일 기준).
   const ctx=dayContext(di), carry=ctx.carry, tl=ctx.timeline, iso=isoDateOf(di);
   const etas=tl.map(x=>x.eta), dm=ctx.mode;   // ETA는 anchor 기준(사이드바·이미지와 동일)
-  const now=new Date(),today=iso===toISO(now),nowMin=now.getHours()*60+now.getMinutes();
+  const today=iso===when.todayISO, nowMin=when.nowMin;
   let currentIndex=0;
   if(today){ for(let i=0;i<etas.length;i++) if(etas[i]<=nowMin) currentIndex=i; }
   const current=d.spots[currentIndex], currentLink=hasLoc(current)?extMapLink(current):null;
