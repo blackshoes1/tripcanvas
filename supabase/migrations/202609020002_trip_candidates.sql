@@ -139,7 +139,9 @@ end $$;
 
 -- 한 여행의 후보 전부 + 반응 집계 + 내 반응 + 누가 남겼는지.
 -- 반응은 서로 볼 수 있다(§10 — 이번 단계는 공개 의견이 기본). 이름은 이 여행에서 쓰는 이름뿐이다.
-create or replace function public.list_trip_candidates(p_client_id text)
+-- 반환형이 뒤 단계에서 바뀔 수 있어 지웠다 만든다(create or replace는 반환형 변경을 거부한다 — 재적용 안전성).
+drop function if exists public.list_trip_candidates(text);
+create function public.list_trip_candidates(p_client_id text)
 returns table(id bigint, title text, place_id text, lat double precision, lng double precision,
               addr text, note text, url text, status text, scheduled_ref text,
               proposed_by_label text, mine boolean, my_reaction text,

@@ -9,7 +9,7 @@
 
   /** @typedef {'OWNER'|'EDITOR'|'VIEWER'} Role */
   /** @typedef {{id?:number|string,user_id?:string,role?:string,status?:string,display_name?:string|null,joined_at?:string|null,me?:boolean}} MemberRow */
-  /** @typedef {{client_id?:string,role?:string,member_count?:number,owner?:boolean}} RoleRow */
+  /** @typedef {{client_id?:string,trip_id?:string|number|null,role?:string,member_count?:number,owner?:boolean}} RoleRow */
   /** @typedef {{valid?:boolean,reason?:string|null,trip_name?:string|null,start_date?:string|null,day_count?:number|null,role?:string|null,expires_at?:string|null,already_member?:boolean}} InvitePreview */
 
   const ROLES = Object.freeze(['OWNER','EDITOR','VIEWER']);
@@ -74,13 +74,14 @@
    * @returns {Record<string, {role:Role, count:number, owner:boolean}>}
    */
   function tripRoleMap(rows){
-    /** @type {Record<string, {role:Role, count:number, owner:boolean}>} */ const out={};
+    /** @type {Record<string, {role:Role, count:number, owner:boolean, serverId:string}>} */ const out={};
     (rows||[]).forEach((r)=>{
       if(!r || !r.client_id) return;
       const role=normRole(r.role); if(!role) return;
       const id=String(r.client_id);
       if(out[id] && out[id].owner && !r.owner) return;
-      out[id]={role, count:Math.max(1, Math.round(Number(r.member_count)||1)), owner:!!r.owner};
+      // serverId(trips.id)는 실시간 구독 필터에 쓴다 — 클라이언트는 그 타입(uuid/bigint)을 모르고 문자열로만 다룬다
+      out[id]={role, count:Math.max(1, Math.round(Number(r.member_count)||1)), owner:!!r.owner, serverId:String(r.trip_id==null?'':r.trip_id)};
     });
     return out;
   }
@@ -362,13 +363,134 @@
     });
   }
 
-  const API={ROLES, ROLE_LABEL, COLLAB_CFG, JOIN_REASON, REACTIONS, REACTION_LABEL, REACTION_ICON, MOOD_TEXT,
+  // ── 코멘트 · 활동 기록 · 실시간 (3단계) ─────────────────────────────────
+  //
+  // 활동 기록의 **문장**은 여기서 만든다(§39 — 내부 구조를 그대로 노출하지 않는다). 서버는 재료(kind·subject·이름표)만 준다.
+  // 실시간 이벤트를 받으면 **무엇을 다시 읽을지**도 여기서 정한다(§41 — payload를 믿지 않고 RPC로 다시 읽는다).
+
+  const ACTIVITY_KINDS = Object.freeze(['MEMBER_JOINED','MEMBER_LEFT','MEMBER_REMOVED',
+    'CANDIDATE_PROPOSED','CANDIDATE_SCHEDULED','REACTION','COMMENT_ADDED','SCHEDULE_CHANGED','BOOKING_ADDED']);
+
+  /** 코멘트는 의견이다 — 반응과 같은 규칙: 활성 멤버 전원 */
+  /** @param {unknown} role @returns {boolean} */
+  function canComment(role){ return normRole(role)!==null; }
+  /** 지우기는 쓴 사람이나 주최자만 */
+  /** @param {unknown} role @param {{mine?:boolean}|null} comment @returns {boolean} */
+  function canDeleteComment(role, comment){ return !!(comment && comment.mine) || normRole(role)==='OWNER'; }
+
+  /** 을/를 — 받침이 있으면 '을'. 한글이 아니면 '를'(외국어 상호가 많다) */
+  /** @param {unknown} word @returns {string} */
+  function objParticle(word){
+    const s=String(word==null?'':word); if(!s) return '를';
+    const code=s.charCodeAt(s.length-1)-0xAC00;
+    if(code<0||code>11171) return '를';
+    return (code%28)===0? '를':'을';
+  }
+
+  /**
+   * 활동 한 건을 사람 말로(§37). 모르는 종류는 빈 문자열 — 화면이 그 줄을 건너뛴다.
+   * @param {{kind?:string,mine?:boolean,actor_label?:string|null,member_label?:string|null,subject?:any,count?:number}|null} ev
+   * @returns {string}
+   */
+  function activityText(ev){
+    if(!ev) return '';
+    const s=(ev.subject&&typeof ev.subject==='object')? ev.subject : {};
+    const who = ev.mine? '내가' : (String(ev.actor_label||'').trim()||'멤버')+'님이';
+    const member = String(ev.member_label||'').trim()||'멤버';
+    const title = String(s.title||'').trim()||'후보';
+    const t = title+objParticle(title);
+    switch(String(ev.kind||'')){
+      case 'MEMBER_JOINED':      return ev.mine? '내가 함께하게 됐어요' : `${member}님이 함께하게 됐어요`;
+      case 'MEMBER_LEFT':        return ev.mine? '내가 여행에서 나갔어요' : `${member}님이 여행에서 나갔어요`;
+      case 'MEMBER_REMOVED':     return `${who} ${member}님을 내보냈어요`;
+      case 'CANDIDATE_PROPOSED': return `${who} ${t} 후보로 담았어요`;
+      case 'CANDIDATE_SCHEDULED':return s.ref? `${who} ${t} Day ${s.ref}에 넣었어요` : `${who} ${t} 일정에 넣었어요`;
+      case 'REACTION': {
+        const r=normReaction(s.reaction);
+        return r? `${who} ${t} "${REACTION_LABEL[r]}"로 골랐어요` : `${who} ${t} 골랐어요`;
+      }
+      case 'COMMENT_ADDED': {
+        const ex=String(s.excerpt||'').trim();
+        return ex? `${who} ${title}에 한마디: “${ex}”` : `${who} ${title}에 한마디 남겼어요`;
+      }
+      case 'SCHEDULE_CHANGED': { const n=Number(ev.count)||1; return n>1? `${who} 일정을 바꿨어요 (${n}번)` : `${who} 일정을 바꿨어요`; }
+      case 'BOOKING_ADDED':    { const n=Number(s.count)||1; return n>1? `${who} 예약 ${n}건을 추가했어요` : `${who} 예약을 추가했어요`; }
+      default: return '';
+    }
+  }
+
+  /** @param {any} a @param {any} b */
+  function sameActor(a,b){ return !!a.mine===!!b.mine && String(a.actor_label||'')===String(b.actor_label||''); }
+
+  /**
+   * 읽기 쉬운 피드(§38·§39): 서버는 저장마다 한 줄씩 남기지만 화면은 그걸 그대로 보이지 않는다.
+   * - 같은 사람의 **연속** 일정 변경은 한 줄로(횟수 표시). 창(windowMs) 안에서만 묶는다.
+   * - 같은 사람이 같은 후보에 남긴 반응은 **마지막 것만** — 마음이 바뀐 흔적을 줄줄이 보이지 않는다.
+   * 입력·출력 모두 최신순이다. 원본은 건드리지 않는다.
+   * @param {Array<any>|null} rows @param {number} [windowMs]
+   * @returns {any[]}
+   */
+  function condenseActivity(rows, windowMs){
+    const W = (Number(windowMs)>0)? Number(windowMs) : 10*60*1000;
+    /** @type {any[]} */ const out=[]; const seenReact=new Set();
+    for(const ev of (Array.isArray(rows)?rows:[])){
+      if(!ev) continue;
+      const kind=String(ev.kind||'');
+      if(kind==='REACTION'){
+        const key=`${ev.mine?'me':String(ev.actor_label||'')}#${(ev.subject||{}).candidate_id}`;
+        if(seenReact.has(key)) continue; seenReact.add(key);
+      }
+      const last=out[out.length-1];
+      if(kind==='SCHEDULE_CHANGED' && last && last.kind==='SCHEDULE_CHANGED' && sameActor(last,ev)){
+        const edge=Date.parse(last.first_at||last.created_at||''), cur=Date.parse(ev.created_at||'');
+        if(isFinite(edge)&&isFinite(cur)&&Math.abs(edge-cur)<=W){ last.count=(last.count||1)+1; last.first_at=ev.created_at; continue; }
+      }
+      out.push(Object.assign({}, ev, kind==='SCHEDULE_CHANGED'? {count:1, first_at:ev.created_at} : {}));
+    }
+    return out;
+  }
+
+  /** '방금' · 'N분 전' · 'N시간 전' · 'N일 전' · 'M/D'. 시각을 모르면 빈 문자열 */
+  /** @param {unknown} iso @param {number} [now] @returns {string} */
+  function relativeTime(iso, now){
+    const t=Date.parse(String(iso==null?'':iso)); if(!isFinite(t)) return '';
+    const n=(typeof now==='number')? now : Date.now();
+    const d=Math.max(0, n-t);
+    if(d<60e3) return '방금';
+    if(d<3600e3) return Math.floor(d/60e3)+'분 전';
+    if(d<86400e3) return Math.floor(d/3600e3)+'시간 전';
+    if(d<7*86400e3) return Math.floor(d/86400e3)+'일 전';
+    const dt=new Date(t); return `${dt.getMonth()+1}/${dt.getDate()}`;
+  }
+
+  /**
+   * 실시간으로 받은 활동 한 건이 화면에 **무엇을 요구하는가**. payload의 내용은 믿지 않는다 —
+   * 다시 읽을 것만 고른다(§41). `mine`은 호출측이 actor_id로 계산해 넣는다.
+   * - candidates: 후보 보드를 다시 읽는다 (후보·반응·코멘트)
+   * - members:    역할·인원을 다시 읽는다
+   * - pull:       여행 문서를 당겨온다 — 남의 저장일 때만(내 저장은 이미 내 화면이다)
+   * - notify:     조용히 알릴 만한가 — 남이 후보를 담았을 때와 새 멤버가 왔을 때만(§51). 반응·코멘트·일정 변경은 화면 갱신으로 충분하다
+   * @param {{kind?:string,mine?:boolean}|null} ev
+   * @returns {{candidates:boolean,members:boolean,pull:boolean,activity:boolean,notify:boolean}}
+   */
+  function liveEffects(ev){
+    const kind=String((ev&&ev.kind)||''); const mine=!!(ev&&ev.mine);
+    const known=ACTIVITY_KINDS.indexOf(kind)>=0;
+    const cand=/^CANDIDATE_|^REACTION$|^COMMENT_ADDED$/.test(kind);
+    const mem=/^MEMBER_/.test(kind);
+    const doc=kind==='SCHEDULE_CHANGED'||kind==='BOOKING_ADDED';
+    return {candidates:cand, members:mem, pull:doc&&!mine, activity:known,
+            notify:!mine&&(kind==='CANDIDATE_PROPOSED'||kind==='MEMBER_JOINED')};
+  }
+
+  const API={ROLES, ROLE_LABEL, COLLAB_CFG, JOIN_REASON, REACTIONS, REACTION_LABEL, REACTION_ICON, MOOD_TEXT, ACTIVITY_KINDS,
     normRole, canEdit, canManage, canLeave, canDelete, roleLabel, roleIcon, roleOf, tripRoleMap,
     memberName, displayNameFromEmail, memberSummary,
     buildInviteLink, parseJoinHash, inviteVerdict, joinReasonText, inviteRangeText,
     isForbiddenError, forbiddenText,
     normReaction, reactionLabel, reactionIcon, canPropose, canReact, canScheduleCandidate, canRemoveCandidate,
-    tallyReactions, candidateMood, moodText, groupCandidates, reactionSummary, candidateAttribution, sortCandidates};
+    tallyReactions, candidateMood, moodText, groupCandidates, reactionSummary, candidateAttribution, sortCandidates,
+    canComment, canDeleteComment, objParticle, activityText, condenseActivity, relativeTime, liveEffects};
   if(typeof module!=='undefined' && module.exports) module.exports=API;   // Node (테스트)
   else /** @type {any} */(root).TC_COLLAB=API;                            // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);

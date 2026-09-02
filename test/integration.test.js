@@ -1941,8 +1941,10 @@ test('통합: 후보 보드 — 보기 권한은 담는 칸이 없고 반응은 
   const pressed = [...campNou.querySelectorAll('.candReact button')].filter(b => b.getAttribute('aria-pressed') === 'true');
   assert.equal(pressed.length, 1, '한 사람 한 표 — 눌린 버튼은 하나');
   assert.match(pressed[0].textContent, /이번엔 패스/);
-  // 일정에 넣기·후보에서 빼기는 보기 권한에 없다
-  assert.equal(campNou.querySelector('.candActions'), null);
+  // 일정에 넣기·후보에서 빼기는 보기 권한에 없다 — 남는 것은 한마디(코멘트)뿐이다(의견이라 보기 권한도 남긴다)
+  const actions = [...campNou.querySelectorAll('.candActions button')].map(b => b.textContent);
+  assert.equal(actions.some(t => /일정에 넣기|후보에서 빼기|되돌리기/.test(t)), false);
+  assert.equal(actions.filter(t => t.startsWith('💬')).length, 1);
   w.close();
 });
 
@@ -2001,5 +2003,156 @@ test('통합: 후보를 일정에 넣으면 고른 날의 맨 뒤에 붙고 후�
   await w.eval(`scheduleCandidate({id:8,title:'몬주익'})`);
   assert.equal(w.eval(`store.trips[0].days.reduce((n,d)=>n+d.spots.length,0)`), 2, '없는 날짜에는 넣지 않는다');
   assert.equal(rpc.length, 0);
+  w.close();
+});
+
+test('통합: 후보 한마디 — 펼치면 불러오고, 남기면 수가 오르고, 보기 권한은 제 것만 지우고, 다시 그려도 쓰던 글이 남는다', { skip: noJsdom }, async () => {
+  const w = boot();
+  const rpc = [];
+  const tick = () => new Promise(r => setTimeout(r, 0));
+  w.__comments = [
+    { id: 1, body: '야경 보고 저녁 먹자', author_label: '민수', mine: false, created_at: '2026-09-02T10:00:00Z' },
+    { id: 2, body: '내가 남긴 말', author_label: '나', mine: true, created_at: '2026-09-02T10:05:00Z' }
+  ];
+  w.eval(`user={id:'u1'}; store.trips=[{id:'t1',name:'스페인',days:[{spots:[]}]}]; store.activeId='t1';
+    syncMeta={t1:{revision:3,status:'clean'}}; tripRoles={t1:{role:'VIEWER',count:3,owner:false,serverId:''}};
+    candTripId='t1'; candOpen=new Set(); candComments={}; candDraft={};
+    candRows=[{id:1,title:'사그라다 파밀리아',status:'PROPOSED',must_count:1,ok_count:0,pass_count:0,comment_count:2,
+      my_reaction:null,proposed_by_label:'민수',mine:false,created_at:'2026-01-01',reactions:[]}];`);
+  w.sb = { rpc: async (name, args) => { rpc.push([name, args]);
+    if (name === 'list_candidate_comments') return { data: w.__comments, error: null };
+    if (name === 'add_candidate_comment') { w.__comments = w.__comments.concat([{ id: 3, body: args.p_body, author_label: '나', mine: true, created_at: '2026-09-02T10:06:00Z' }]); return { data: 3, error: null }; }
+    if (name === 'delete_candidate_comment') { w.__comments = w.__comments.filter(c => c.id !== args.p_comment_id); return { data: true, error: null }; }
+    return { data: null, error: null }; } };
+  w.eval(`sb=window.sb; drawCandidates();`);
+  const card = () => w.document.querySelector('#candList .candCard');
+  const cbtn = () => [...card().querySelectorAll('.candActions button')].find(b => b.textContent.startsWith('💬'));
+  assert.equal(cbtn().textContent, '💬 2');
+  assert.equal(card().querySelector('.candComments'), null, '접혀 있으면 불러오지 않는다');
+  cbtn().click(); await tick(); await tick();
+  assert.deepEqual(rpc[0], ['list_candidate_comments', { p_candidate_id: 1 }]);
+  const rows = [...card().querySelectorAll('.commentRow')];
+  assert.equal(rows.length, 2);
+  assert.match(rows[0].textContent, /민수.*야경 보고 저녁 먹자/);
+  assert.equal(rows[0].querySelector('.cx'), null, '남의 한마디는 못 지운다(보기 권한)');
+  assert.ok(rows[1].querySelector('.cx'), '내 것은 지운다');
+  // 쓰다 만 글은 다시 그려도 남는다(실시간 갱신이 타이핑 중에 와도)
+  const inp = () => card().querySelector('.commentForm input');
+  inp().value = '쓰는 중'; inp().dispatchEvent(new w.Event('input'));
+  w.eval('drawCandidates()');
+  assert.equal(inp().value, '쓰는 중');
+  // 남기기 → RPC → 수가 오르고 목록을 다시 읽는다
+  inp().value = '저녁 예약이랑 가까움'; inp().dispatchEvent(new w.Event('input'));
+  card().querySelector('.commentForm').dispatchEvent(new w.Event('submit', { cancelable: true }));
+  await tick(); await tick(); await tick();
+  assert.deepEqual(rpc.find(r => r[0] === 'add_candidate_comment')[1], { p_candidate_id: 1, p_body: '저녁 예약이랑 가까움' });
+  assert.equal(cbtn().textContent, '💬 3');
+  assert.equal(card().querySelectorAll('.commentRow').length, 3);
+  assert.equal(inp().value, '', '남긴 뒤 입력칸은 비운다');
+  // 빈 말은 보내지 않는다
+  const before = rpc.length;
+  card().querySelector('.commentForm').dispatchEvent(new w.Event('submit', { cancelable: true }));
+  await tick();
+  assert.equal(rpc.length, before);
+  // 내 것 지우기
+  card().querySelectorAll('.commentRow')[1].querySelector('.cx').click();
+  await tick(); await tick(); await tick();
+  assert.deepEqual(rpc.find(r => r[0] === 'delete_candidate_comment')[1], { p_comment_id: 2 });
+  assert.equal(cbtn().textContent, '💬 2');
+  w.close();
+});
+
+test('통합: 최근 활동 — 서버 재료를 문장으로 옮기고, 같은 사람의 연속 저장은 한 줄로 묶는다(§39)', { skip: noJsdom }, async () => {
+  const w = boot();
+  const at = (m) => new Date(Date.UTC(2026, 8, 2, 10, m)).toISOString();
+  w.eval(`user={id:'u1'}; membersTripId='t1';`);
+  w.sb = { rpc: async (name) => ({ data: name === 'list_trip_activity' ? [
+    { id: 5, kind: 'SCHEDULE_CHANGED', actor_label: '영희', mine: false, subject: {}, created_at: at(30) },
+    { id: 4, kind: 'SCHEDULE_CHANGED', actor_label: '영희', mine: false, subject: {}, created_at: at(29) },
+    { id: 3, kind: 'REACTION', actor_label: '영희', mine: false, subject: { title: '카사 바트요', candidate_id: 1, reaction: 'MUST' }, created_at: at(20) },
+    { id: 2, kind: 'CANDIDATE_PROPOSED', actor_label: '주최자', mine: true, subject: { title: '카사 바트요', candidate_id: 1 }, created_at: at(10) },
+    { id: 1, kind: 'MEMBER_JOINED', actor_label: '영희', member_label: '영희', mine: false, subject: {}, created_at: at(0) }
+  ] : [], error: null }) };
+  w.eval(`sb=window.sb`);
+  await w.eval(`renderActivity()`);
+  const lines = [...w.document.querySelectorAll('#activityList .activityRow .tx')].map(e => e.textContent);
+  assert.deepEqual(lines, [
+    '영희님이 일정을 바꿨어요 (2번)',
+    '영희님이 카사 바트요를 "꼭 가고 싶어요"로 골랐어요',
+    '내가 카사 바트요를 후보로 담았어요',
+    '영희님이 함께하게 됐어요'
+  ]);
+  w.close();
+});
+
+test('통합: 실시간은 전달 수단이다 — 이벤트를 받으면 payload가 아니라 RPC로 다시 읽고, 여행을 바꾸거나 로그아웃하면 구독을 끊는다(§40·§41)', { skip: noJsdom }, async () => {
+  const w = boot();
+  const channels = [], removed = [], calls = { pull: [], cand: 0, roles: 0, toasts: [] };
+  let handler = null;
+  w.__mk = (name) => { const ch = { name, on: (ev, opts, cb) => { ch.opts = opts; handler = cb; return ch; }, subscribe: (cb) => { cb('SUBSCRIBED'); return ch; } }; channels.push(ch); return ch; };
+  w.eval(`user={id:'u1'}; store.trips=[{id:'t1',name:'스페인',days:[{spots:[]}]},{id:'t2',name:'일본',days:[{spots:[]}]}]; store.activeId='t1';
+    syncMeta={t1:{revision:3,status:'clean'},t2:{revision:1,status:'clean'}};
+    tripRoles={t1:{role:'EDITOR',count:3,owner:false,serverId:'srv-1'},t2:{role:'OWNER',count:1,owner:true,serverId:'srv-2'}};`);
+  w.sb = { channel: (name) => w.__mk(name), removeChannel: (ch) => { removed.push(ch.name); },
+    rpc: async (name, args) => ({ data: name === 'list_trip_activity'
+      ? [{ id: 9, kind: 'CANDIDATE_PROPOSED', actor_label: '영희', mine: false, subject: { title: '구엘 공원' }, created_at: '2026-09-02T10:00:00Z' }]
+      : name === 'my_trip_roles' ? [{ client_id: 't1', trip_id: 'srv-1', role: 'EDITOR', member_count: 4, owner: false }, { client_id: 't2', trip_id: 'srv-2', role: 'OWNER', member_count: 1, owner: true }] : [], error: null }) };
+  w.eval(`sb=window.sb;
+    pullTrip=async(id,opts)=>{ window.__pull=(window.__pull||[]); window.__pull.push([id,!!(opts&&opts.force)]); return true; };
+    renderCandidates=async()=>{ window.__cand=(window.__cand||0)+1; };
+    toast=(m)=>{ window.__toasts=(window.__toasts||[]); window.__toasts.push(m); };
+    updateCollabUI();`);
+  assert.equal(channels.length, 1);
+  assert.equal(channels[0].name, 'trip-activity-srv-1');
+  assert.deepEqual(channels[0].opts, { event: 'INSERT', schema: 'public', table: 'trip_activity', filter: 'trip_id=eq.srv-1' });
+  assert.match(w.document.getElementById('liveState').textContent, /실시간/);
+  w.eval('updateCollabUI()');
+  assert.equal(channels.length, 1, '같은 여행이면 다시 구독하지 않는다');
+
+  const wait = () => new Promise(r => setTimeout(r, 480));
+  // 남의 일정 변경 → 문서를 당겨온다(force). 내 저장은 당기지 않는다
+  handler({ new: { kind: 'SCHEDULE_CHANGED', actor_id: 'u2' } });
+  handler({ new: { kind: 'SCHEDULE_CHANGED', actor_id: 'u2' } });
+  await wait();
+  assert.deepEqual(w.eval('JSON.stringify(window.__pull||[])'), JSON.stringify([['t1', true]]), '연달아 와도 한 번만');
+  handler({ new: { kind: 'SCHEDULE_CHANGED', actor_id: 'u1' } });
+  await wait();
+  assert.equal(w.eval('(window.__pull||[]).length'), 1, '내 저장은 이미 내 화면이다');
+  // 남이 후보를 담음 → 보드가 닫혀 있으면 다시 읽지 않고, 알림 문장은 RPC 행으로 만든다
+  handler({ new: { kind: 'CANDIDATE_PROPOSED', actor_id: 'u2' } });
+  await wait();
+  assert.equal(w.eval('window.__cand||0'), 0);
+  assert.deepEqual(w.eval('JSON.stringify(window.__toasts||[])'), JSON.stringify(['영희님이 구엘 공원을 후보로 담았어요']));
+  // 보드가 열려 있으면 다시 읽는다. 반응은 조용히(알림 없음)
+  w.eval(`candTripId='t1'; document.getElementById('candModalBg').classList.add('show');`);
+  handler({ new: { kind: 'REACTION', actor_id: 'u2' } });
+  await wait();
+  assert.equal(w.eval('window.__cand||0'), 1);
+  assert.equal(w.eval('(window.__toasts||[]).length'), 1, '반응은 알리지 않는다(§51)');
+  // 새 멤버 → 역할·인원을 다시 읽는다
+  handler({ new: { kind: 'MEMBER_JOINED', actor_id: 'u3' } });
+  await wait();
+  assert.equal(w.eval('tripRoles.t1.count'), 4);
+  // 여행을 바꾸면 갈아 끼운다
+  w.eval(`store.activeId='t2'; updateCollabUI();`);
+  assert.deepEqual(removed, ['trip-activity-srv-1']);
+  assert.equal(channels[1].name, 'trip-activity-srv-2');
+  // 로그아웃하면 끊는다
+  w.eval(`user=null; tripRoles={}; updateCollabUI();`);
+  assert.deepEqual(removed, ['trip-activity-srv-1', 'trip-activity-srv-2']);
+  assert.equal(channels.length, 2);
+  w.close();
+});
+
+test('통합: 실시간이 없어도(channel 미지원·서버 id 없음) 앱은 그대로다(§40)', { skip: noJsdom }, async () => {
+  const w = boot();
+  w.eval(`user={id:'u1'}; store.trips=[{id:'t1',name:'스페인',days:[{spots:[]}]}]; store.activeId='t1';
+    tripRoles={t1:{role:'EDITOR',count:2,owner:false,serverId:''}};`);
+  w.sb = { rpc: async () => ({ data: [], error: null }) };   // channel 없음
+  w.eval(`sb=window.sb; updateCollabUI();`);
+  assert.equal(w.eval('liveCh'), null);
+  w.eval(`tripRoles.t1.serverId='srv-1'; updateCollabUI();`);
+  assert.equal(w.eval('liveCh'), null, 'channel을 모르는 클라이언트면 구독하지 않고 조용히 지나간다');
+  assert.match(w.document.getElementById('liveState').textContent, /새로고침으로 갱신/);
   w.close();
 });

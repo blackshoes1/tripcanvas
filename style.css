@@ -223,6 +223,21 @@
   .candWho{color:var(--subtle);font-size:11.5px;margin-top:6px;overflow-wrap:anywhere}
   .candActions{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
   .candActions .btn{font-size:11.5px;padding:3px 10px;min-height:28px}
+  /* 코멘트 — 후보에 붙는 짧은 의견. 채팅이 아니다(§15) */
+  .candComments{margin-top:8px;border-top:1px dashed var(--border);padding-top:6px}
+  .commentRow{display:flex;gap:6px;align-items:baseline;font-size:12px;padding:3px 0}
+  .commentRow .cn{font-weight:700;white-space:nowrap}
+  .commentRow .cb{flex:1;min-width:0;overflow-wrap:anywhere;color:var(--ink)}
+  .commentRow .at{color:var(--subtle);font-size:11px;white-space:nowrap}
+  .commentRow .cx{color:#ff8fa3;background:none;border:0;font-size:12px;padding:0 4px;min-height:auto;cursor:pointer}
+  .commentForm{display:flex;gap:6px;margin-top:6px}.commentForm input{flex:1;font-size:12px;min-width:0}
+  /* 최근 활동 — 읽기 쉬운 문장 한 줄씩(§39) */
+  .activityList{display:grid;gap:2px;max-height:240px;overflow-y:auto}
+  .activityRow{display:flex;gap:8px;align-items:baseline;font-size:12px;color:var(--ink);padding:5px 2px;border-bottom:1px dashed var(--border)}
+  .activityRow .tx{flex:1;min-width:0;overflow-wrap:anywhere}
+  .activityRow .at{color:var(--subtle);font-size:11px;white-space:nowrap}
+  .liveDot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--subtle);margin-right:4px;vertical-align:middle}
+  .liveDot.on{background:#16a34a}
   @media (max-width:760px){
     #main{display:block;min-height:0}
     #map,#kmap{position:absolute;inset:0;width:100%;height:100%}

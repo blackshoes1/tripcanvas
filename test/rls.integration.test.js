@@ -83,6 +83,26 @@ const EXPECTED = {
   'cand.schedule': 'true', 'cand.scheduled': 'SCHEDULED:2', 'cand.unschedule': 'PROPOSED:-',
   // 나간 사람은 반응도 못 남기고 후보도 안 보인다
   'cand.left.react': '42501', 'cand.left.list': '0',
+  // ── 3단계: 코멘트 · 활동 기록 ──
+  // 코멘트는 의견이다 — 보기 권한도 남긴다. 멤버가 아니면 남기지도 보지도 못한다. 빈 말은 거절
+  'cm.b.rejoin': 'true:EDITOR', 'cm.b.add': 'true', 'cm.empty': '22023',
+  'cm.c.add': '42501', 'cm.c.select': '0', 'cm.c.list': '0',
+  'cm.viewer.add': 'true', 'cm.list': '영희/야경 보고 저녁 먹자/true,영희/보기 권한의 한마디/true', 'cm.count': '2',
+  // 지우기는 쓴 사람이나 주최자만. 두 번 지워도 같다. 테이블 직접 쓰기는 권한 자체가 없다
+  'cm.b.delete_others': '42501', 'cm.b.delete_own': 'true', 'cm.b.delete_again': 'false',
+  'cm.owner.delete_any': 'true', 'cm.after': '주최자/주최자 코멘트', 'cm.direct': '42501', 'act.direct': '42501',
+  // 문서 저장: 예약이 늘면 BOOKING_ADDED, 아니면 SCHEDULE_CHANGED. 혼자 쓰는 여행(C)의 저장은 기록하지 않는다
+  'act.b.booking': 'true:3', 'act.b.schedule': 'true:4', 'act.c.solo_save': 'true',
+  'act.c.kinds': 'CANDIDATE_PROPOSED', 'act.c.select': '1',
+  // A가 보는 기록 — 의미 있는 것만 순서대로. 소유자의 참여 행 없음 · 제안자의 자동 MUST 없음 · 반응 거두기 없음
+  'act.a.kinds': 'MEMBER_JOINED,SCHEDULE_CHANGED,MEMBER_LEFT,MEMBER_JOINED,MEMBER_REMOVED,MEMBER_JOINED,CANDIDATE_PROPOSED,CANDIDATE_PROPOSED,REACTION,REACTION,REACTION,REACTION,CANDIDATE_SCHEDULED,CANDIDATE_PROPOSED,REACTION,MEMBER_LEFT,MEMBER_JOINED,COMMENT_ADDED,COMMENT_ADDED,COMMENT_ADDED,BOOKING_ADDED,SCHEDULE_CHANGED',
+  'act.a.no_owner_join': '0',
+  // 이름표는 읽는 시점에 만들고(나간 뒤에도 남는다), 내보내기의 actor는 소유자·대상은 member_label
+  'act.a.labels': 'MEMBER_JOINED=영희/영희/false,MEMBER_JOINED=영희/영희/false,MEMBER_REMOVED=주최자/영희/true,MEMBER_JOINED=영희/영희/false,CANDIDATE_PROPOSED=주최자/-/true,CANDIDATE_PROPOSED=영희/-/false,CANDIDATE_PROPOSED=주최자/-/true,MEMBER_JOINED=영희/영희/false,COMMENT_ADDED=영희/-/false,COMMENT_ADDED=영희/-/false,COMMENT_ADDED=주최자/-/true,BOOKING_ADDED=영희/-/false',
+  'act.a.subjects': '{"ref": "2", "title": "사그라다 파밀리아", "candidate_id": 1}|{"title": "사그라다 파밀리아", "excerpt": "야경 보고 저녁 먹자", "candidate_id": 1}|{"title": "사그라다 파밀리아", "excerpt": "보기 권한의 한마디", "candidate_id": 1}|{"title": "사그라다 파밀리아", "excerpt": "주최자 코멘트", "candidate_id": 1}|{"count": 1}',
+  'act.a.limit': '3',
+  // 실시간 퍼블리케이션에는 활동 테이블만 — 여행 문서(jsonb 전체)를 내보내지 않는다
+  'act.publication': 'trip_activity',
   // 기존 단일 사용자 흐름은 그대로(§95)
   'a.snapshots': '1', 'b.snapshots': '0', 'a.tombstone_by_owner': 'true'
 };
@@ -116,9 +136,11 @@ for (const shape of ['bigint', 'uuid']) test(`RLS(trips.id=${shape}): 마이그�
     assert.equal(idType, shape, '기본 스키마 모양');
     psql(db, ['-f', sql('supabase/migrations/202609020001_trip_collaboration.sql')]);
     psql(db, ['-f', sql('supabase/migrations/202609020002_trip_candidates.sql')]);
+    psql(db, ['-f', sql('supabase/migrations/202609020003_trip_comments_activity.sql')]);
     // 두 번 적용해도 같다 — 운영에서 재실행돼도 안전해야 한다
     psql(db, ['-f', sql('supabase/migrations/202609020001_trip_collaboration.sql')]);
     psql(db, ['-f', sql('supabase/migrations/202609020002_trip_candidates.sql')]);
+    psql(db, ['-f', sql('supabase/migrations/202609020003_trip_comments_activity.sql')]);
     const out = psql(db, ['-f', sql('test/rls/collaboration.sql')]);
     const got = {};
     for (const line of out.split('\n')) {

@@ -34,6 +34,8 @@ function syncEntry(id){ return syncMeta[id]||(syncMeta[id]={revision:null,status
 // my_trip_roles 결과(client_id → {role,count,owner}). 로그인 직후·멤버 패널에서 갱신하고 로그아웃하면 비운다.
 // 접근 제어의 경계는 DB(RLS·RPC)다 — 여기 값은 화면을 맞추고 서버가 거절할 요청을 미리 막는 데만 쓴다.
 let tripRoles={};
+// 실시간 구독 상태 — 로드 직후(updateAuthUI→updateCollabUI→ensureLiveChannel)부터 읽히므로 여기서 선언한다
+let liveCh=null, liveKey='', liveT=null, livePending=[], liveOn=false;
 const JOIN_KEY='tripcanvas_join_v1';   // 초대 수락 대기 토큰 (로그인·메일 인증을 거쳐 돌아와도 참여 흐름이 이어지게)
 let pendingJoinToken=null;
 function myRole(id){ return TC_COLLAB.roleOf(tripRoles, id||(store&&store.activeId), !!user); }
@@ -3740,6 +3742,7 @@ function updateCollabUI(){
   const viewer=!!user&&!viewMode&&role==='VIEWER';
   document.body.classList.toggle('roleViewer',viewer);
   const bar=document.getElementById('roleBar'); if(bar) bar.style.display=viewer?'flex':'none';
+  ensureLiveChannel();
 }
 function roleBadgeHtml(id){
   if(!user) return '';
@@ -3841,6 +3844,7 @@ async function renderMembers(){
     const info=tripRoles[id]; if(info&&(members||[]).length) info.count=(members||[]).length; updateCollabUI();
   }catch(e){ reportOperationalError('collab.members',e); list.innerHTML='<div class="hint">멤버를 불러오지 못했어요 — 잠시 후 다시 시도해 주세요</div>'; }
   if(owner) renderInvites();
+  renderActivity();
 }
 async function manageMember(memberId,action,value){
   try{
@@ -3903,6 +3907,8 @@ document.getElementById('membersLeave').onclick=()=>{
 // 아직 일정이 아닌 '가고 싶은 곳'. 판정(집계·묶음·권한)은 전부 collab.js에 있고 여기는 배선·표시만 한다.
 // 후보와 반응은 여행 문서가 아니라 제 테이블에 산다 — 넷이 동시에 하트를 눌러도 리비전 CAS가 서로를 걷어차지 않는다.
 let candTripId=null, candRows=[], candBusy=false;
+// 펼친 카드의 코멘트·쓰다 만 글 — 카드는 매번 다시 그려지므로(실시간 갱신 포함) 상태를 따로 든다
+let candOpen=new Set(), candComments={}, candDraft={};
 
 function openCandidates(){
   if(viewMode){ toast('읽기전용 보기입니다 — "내 여행으로 저장" 후 이용하세요','#8892b0'); return; }
@@ -3941,6 +3947,8 @@ async function renderCandidates(){
 /** 서버에서 받은 후보를 화면에 그린다. 낙관적 갱신 뒤에도 이 함수만 다시 부르면 된다. */
 function drawCandidates(){
   const box=document.getElementById('candList'); if(!box) return;
+  const ae=document.activeElement, fc=ae&&ae.closest?ae.closest('.candCard'):null;
+  const focusCand=(fc&&/^[\w-]+$/.test(fc.dataset.candId||''))?fc.dataset.candId:null;
   const role=myRole(candTripId), members=(tripRoles[candTripId]||{}).count||0;
   const mode=document.getElementById('candSort').value==='interest'?'interest':'recent';
   const sorted=TC_COLLAB.sortCandidates(candRows,mode,members);
@@ -3958,6 +3966,10 @@ function drawCandidates(){
     if(!rows.length) continue;
     const h=document.createElement('div'); h.className='candGroup'; h.textContent=label; box.appendChild(h);
     rows.forEach(c=>box.appendChild(candidateCard(c,role,members)));
+  }
+  if(focusCand){   // 실시간 갱신이 타이핑 중에 와도 커서를 빼앗지 않는다
+    const inp=box.querySelector(`.candCard[data-cand-id="${focusCand}"] .commentForm input`);
+    if(inp){ inp.focus(); try{ inp.setSelectionRange(inp.value.length,inp.value.length); }catch(e){ /* 지원 안 하는 입력 */ } }
   }
 }
 
@@ -4009,6 +4021,14 @@ function candidateCard(c,role,members){
   }
 
   const acts=document.createElement('div'); acts.className='candActions';
+  // 한마디(코멘트) — 의견이라 반응과 같은 규칙으로 활성 멤버 전원. 채팅이 아니라 이 장소에 붙는 짧은 말이다(§14·§15)
+  if(TC_COLLAB.canComment(role)){
+    const k=String(c.id), open=candOpen.has(k), n=Number(c.comment_count)||0;
+    const cb=document.createElement('button'); cb.type='button'; cb.className='btn'; cb.textContent=`💬 ${n||'한마디'}`;
+    cb.setAttribute('aria-expanded',open?'true':'false'); cb.setAttribute('aria-label',`${c.title||'후보'} 한마디 ${n}개`);
+    cb.onclick=()=>{ if(candOpen.has(k)) candOpen.delete(k); else { candOpen.add(k); loadComments(c.id); } drawCandidates(); };
+    acts.appendChild(cb);
+  }
   if(TC_COLLAB.canScheduleCandidate(role)){
     if(c.status==='SCHEDULED'){
       const un=document.createElement('button'); un.className='btn'; un.textContent='후보로 되돌리기';
@@ -4027,7 +4047,140 @@ function candidateCard(c,role,members){
     acts.appendChild(rm);
   }
   if(acts.children.length) card.appendChild(acts);
+  if(candOpen.has(String(c.id))) card.appendChild(commentsPanel(c,role));
   return card;
+}
+
+/** 펼친 카드의 코멘트 목록과 입력칸. 목록은 candComments[id](없으면 불러오는 중). @param {any} c @param {string} role */
+function commentsPanel(c,role){
+  const k=String(c.id), box=document.createElement('div'); box.className='candComments';
+  const rows=candComments[k];
+  const hint=(t)=>{ const h=document.createElement('div'); h.className='hint'; h.textContent=t; box.appendChild(h); };
+  if(rows==null) hint('불러오는 중…');
+  else if(!rows.length) hint('아직 한마디도 없어요. 왜 가고 싶은지, 언제가 좋을지 남겨 보세요.');
+  else rows.forEach(cm=>{
+    const r=document.createElement('div'); r.className='commentRow';
+    const n=document.createElement('span'); n.className='cn'; n.textContent=cm.mine?'나':(cm.author_label||'멤버');
+    const b=document.createElement('span'); b.className='cb'; b.textContent=cm.body||'';
+    const t=document.createElement('span'); t.className='at'; t.textContent=TC_COLLAB.relativeTime(cm.created_at);
+    r.appendChild(n); r.appendChild(b); r.appendChild(t);
+    if(TC_COLLAB.canDeleteComment(role,cm)){
+      const x=document.createElement('button'); x.type='button'; x.className='cx'; x.textContent='✕'; x.title='이 한마디 지우기'; x.setAttribute('aria-label','한마디 지우기');
+      x.onclick=()=>deleteComment(c.id,cm.id);
+      r.appendChild(x);
+    }
+    box.appendChild(r);
+  });
+  const form=document.createElement('form'); form.className='commentForm';
+  const inp=document.createElement('input'); inp.type='text'; inp.maxLength=500; inp.placeholder='한마디 (예: 야경 보고 저녁 먹자)';
+  inp.setAttribute('aria-label',`${c.title||'후보'}에 한마디`); inp.value=candDraft[k]||'';
+  inp.oninput=()=>{ candDraft[k]=inp.value; };   // 실시간 갱신으로 다시 그려져도 쓰던 글이 남는다
+  const send=document.createElement('button'); send.type='submit'; send.className='btn primary'; send.textContent='남기기';
+  send.style.cssText='font-size:11.5px;padding:3px 10px;min-height:28px';
+  form.appendChild(inp); form.appendChild(send);
+  form.onsubmit=(e)=>{ e.preventDefault(); addComment(c.id,inp.value); };
+  box.appendChild(form);
+  return box;
+}
+async function loadComments(candId){
+  const k=String(candId);
+  try{
+    const {data,error}=await sb.rpc('list_candidate_comments',{p_candidate_id:candId});
+    if(error) throw error;
+    candComments[k]=(data||[]).filter(Boolean);
+  }catch(e){ reportOperationalError('collab.comments',e); candComments[k]=[]; }
+  drawCandidates();
+}
+async function addComment(candId,body){
+  const text=String(body||'').trim(); if(!text){ toast('한마디를 적어 주세요','#8892b0'); return; }
+  try{
+    const {error}=await sb.rpc('add_candidate_comment',{p_candidate_id:candId,p_body:text});
+    if(error) throw error;
+    delete candDraft[String(candId)];
+    const row=candRows.find(c=>String(c.id)===String(candId)); if(row) row.comment_count=(Number(row.comment_count)||0)+1;
+    await loadComments(candId);
+  }catch(e){
+    reportOperationalError('collab.comment.add',e);
+    toast(TC_COLLAB.isForbiddenError(e)?TC_COLLAB.forbiddenText(e,myRole(candTripId)):'한마디를 남기지 못했어요','#e63946');
+  }
+}
+async function deleteComment(candId,commentId){
+  try{
+    const {error}=await sb.rpc('delete_candidate_comment',{p_comment_id:commentId});
+    if(error) throw error;
+    const row=candRows.find(c=>String(c.id)===String(candId)); if(row) row.comment_count=Math.max(0,(Number(row.comment_count)||0)-1);
+    await loadComments(candId);
+  }catch(e){
+    reportOperationalError('collab.comment.delete',e);
+    toast(TC_COLLAB.isForbiddenError(e)?TC_COLLAB.forbiddenText(e,myRole(candTripId)):'지우지 못했어요','#e63946');
+  }
+}
+
+// ── 최근 활동 (함께하기 모달) ─────────────────────────────────────────────
+// 서버는 재료만 주고 문장은 collab.js(activityText)가 만든다(§39). 저장마다 남은 줄은 condenseActivity가 묶는다.
+async function renderActivity(){
+  const box=document.getElementById('activityList'); if(!box||!sb||!user||!membersTripId) return;
+  try{
+    const {data,error}=await sb.rpc('list_trip_activity',{p_client_id:membersTripId,p_limit:40});
+    if(error) throw error;
+    const rows=TC_COLLAB.condenseActivity((data||[]).filter(Boolean));
+    box.innerHTML='';
+    if(!rows.length){ box.innerHTML='<div class="hint">아직 기록이 없어요. 일행이 후보를 담거나 일정을 바꾸면 여기에 쌓여요.</div>'; return; }
+    rows.forEach(ev=>{
+      const text=TC_COLLAB.activityText(ev); if(!text) return;
+      const r=document.createElement('div'); r.className='activityRow';
+      const tx=document.createElement('span'); tx.className='tx'; tx.textContent=text;
+      const at=document.createElement('span'); at.className='at'; at.textContent=TC_COLLAB.relativeTime(ev.created_at);
+      r.appendChild(tx); r.appendChild(at); box.appendChild(r);
+    });
+  }catch(e){ reportOperationalError('collab.activity',e); box.innerHTML='<div class="hint">최근 활동을 불러오지 못했어요</div>'; }
+}
+
+// ── 실시간 — 전달 수단일 뿐이다(§40·§41) ──────────────────────────────────
+// trip_activity의 INSERT만 받는다. payload는 '무엇이 바뀌었는지'의 신호로만 쓰고 내용은 RPC로 다시 읽는다.
+// 실패해도 앱은 그대로다 — 탭 복귀·패널 열기의 pull이 폴백이다. 구독은 보고 있는 여행 하나뿐이고,
+// 여행을 바꾸거나 로그아웃하면 ensureLiveChannel(렌더마다 불린다)이 갈아 끼우거나 끊는다.
+function ensureLiveChannel(){
+  const id=(!viewMode&&store)?store.activeId:null, info=id?tripRoles[id]:null;
+  const want=(sb&&user&&info&&info.serverId&&typeof sb.channel==='function')? `${id}|${info.serverId}` : '';
+  if(want===liveKey){ setLiveState(liveOn); return; }   // 바뀐 게 없어도 라벨은 현재 상태를 보인다(패널이 나중에 열릴 수 있다)
+  if(liveCh){ try{ sb.removeChannel(liveCh); }catch(e){ /* 이미 닫힘 */ } liveCh=null; }
+  liveKey=want; liveOn=false; setLiveState(false);
+  if(!want) return;
+  try{
+    liveCh=sb.channel(`trip-activity-${info.serverId}`)
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:'trip_activity',filter:`trip_id=eq.${info.serverId}`},
+          (payload)=>onLiveEvent(id,payload&&payload.new))
+      .subscribe((status)=>{ liveOn=(status==='SUBSCRIBED'); setLiveState(liveOn); });
+  }catch(e){ reportOperationalError('collab.live',e); liveCh=null; liveKey=''; }
+}
+function setLiveState(on){
+  const el=document.getElementById('liveState'); if(!el) return;
+  el.innerHTML=''; const d=document.createElement('span'); d.className='liveDot'+(on?' on':'');
+  el.appendChild(d); el.appendChild(document.createTextNode(on?'실시간':'새로고침으로 갱신'));
+}
+function onLiveEvent(tripId,row){
+  if(!row||!store||tripId!==store.activeId) return;
+  livePending.push(Object.assign({},row,{mine:!!(user&&row.actor_id===user.id)}));
+  clearTimeout(liveT); liveT=setTimeout(()=>{ flushLive(tripId); },400);   // 넷이 동시에 누르면 한 번만 다시 읽는다
+}
+async function flushLive(tripId){
+  const batch=livePending.splice(0); if(!batch.length||!sb||!user) return;
+  const fx=batch.map(TC_COLLAB.liveEffects), any=(k)=>fx.some(f=>f[k]);
+  try{
+    if(any('members')) await refreshTripRoles();
+    if(any('pull')) await pullTrip(tripId,{force:true});
+    const boardOpen=document.getElementById('candModalBg').classList.contains('show')&&candTripId===tripId;
+    if(any('candidates')&&boardOpen){ candOpen.forEach(k=>loadComments(Number(k))); await renderCandidates(); }
+    const membersOpen=document.getElementById('membersModalBg').classList.contains('show')&&membersTripId===tripId;
+    if(membersOpen){ if(any('members')) await renderMembers(); else await renderActivity(); }
+    if(any('notify')){   // 남이 후보를 담았거나 새 멤버가 왔을 때만(§51). 문장은 이름표가 있는 RPC 행으로 만든다
+      const {data}=await sb.rpc('list_trip_activity',{p_client_id:tripId,p_limit:batch.length});
+      const notable=(data||[]).find(r=>r&&!r.mine&&TC_COLLAB.liveEffects(r).notify);
+      const text=notable?TC_COLLAB.activityText(notable):'';
+      if(text) toast(text,'#1d6fd6');
+    }
+  }catch(e){ reportOperationalError('collab.live.flush',e); }
 }
 
 async function addCandidate(){

@@ -263,3 +263,104 @@ test('sortCandidates: 정렬은 표시일 뿐 — 같은 값이면 순서가 흔
   ], 'interest', 4);
   assert.deepEqual(withPass.map(c => c.id), ['y', 'x']);
 });
+
+// ── 코멘트 · 활동 기록 · 실시간 (3단계) ──
+
+test('코멘트 권한: 의견이라 활성 멤버 전원이 남기고, 지우기는 쓴 사람이나 주최자만', () => {
+  assert.equal(C.canComment('VIEWER'), true);
+  assert.equal(C.canComment('nope'), false);
+  assert.equal(C.canDeleteComment('EDITOR', { mine: false }), false);
+  assert.equal(C.canDeleteComment('EDITOR', { mine: true }), true);
+  assert.equal(C.canDeleteComment('OWNER', { mine: false }), true);
+  assert.equal(C.canDeleteComment('VIEWER', null), false);
+});
+
+test('objParticle: 받침에 따라 을/를, 한글이 아니면 를', () => {
+  assert.equal(C.objParticle('사그라다 파밀리아'), '를');
+  assert.equal(C.objParticle('구엘 공원'), '을');
+  assert.equal(C.objParticle('Camp Nou'), '를');
+  assert.equal(C.objParticle(''), '를');
+});
+
+test('activityText: 종류마다 사람 말 한 줄(§37) — 내 것은 "내가", 모르는 종류는 빈 문자열', () => {
+  const t = (kind, extra) => C.activityText(Object.assign({ kind, actor_label: '영희', mine: false }, extra));
+  assert.equal(t('MEMBER_JOINED', { member_label: '영희' }), '영희님이 함께하게 됐어요');
+  assert.equal(t('MEMBER_JOINED', { member_label: '영희', mine: true }), '내가 함께하게 됐어요');
+  assert.equal(t('MEMBER_LEFT', { member_label: '철수' }), '철수님이 여행에서 나갔어요');
+  assert.equal(t('MEMBER_REMOVED', { actor_label: '주최자', member_label: '영희', mine: true }), '내가 영희님을 내보냈어요');
+  assert.equal(t('CANDIDATE_PROPOSED', { subject: { title: '카사 바트요' } }), '영희님이 카사 바트요를 후보로 담았어요');
+  assert.equal(t('CANDIDATE_PROPOSED', { subject: { title: '구엘 공원' }, mine: true }), '내가 구엘 공원을 후보로 담았어요');
+  assert.equal(t('CANDIDATE_SCHEDULED', { subject: { title: '구엘 공원', ref: '2' } }), '영희님이 구엘 공원을 Day 2에 넣었어요');
+  assert.equal(t('CANDIDATE_SCHEDULED', { subject: { title: '구엘 공원' } }), '영희님이 구엘 공원을 일정에 넣었어요');
+  assert.equal(t('REACTION', { subject: { title: '카사 바트요', reaction: 'MUST' } }), '영희님이 카사 바트요를 "꼭 가고 싶어요"로 골랐어요');
+  assert.equal(t('COMMENT_ADDED', { subject: { title: '카사 바트요', excerpt: '야경 보고 싶어' } }), '영희님이 카사 바트요에 한마디: “야경 보고 싶어”');
+  assert.equal(t('SCHEDULE_CHANGED', {}), '영희님이 일정을 바꿨어요');
+  assert.equal(t('SCHEDULE_CHANGED', { count: 4 }), '영희님이 일정을 바꿨어요 (4번)');
+  assert.equal(t('BOOKING_ADDED', { subject: { count: 1 } }), '영희님이 예약을 추가했어요');
+  assert.equal(t('BOOKING_ADDED', { subject: { count: 2 } }), '영희님이 예약 2건을 추가했어요');
+  assert.equal(t('WHATEVER', {}), '', '모르는 종류는 화면이 건너뛴다');
+  assert.equal(C.activityText({ kind: 'CANDIDATE_PROPOSED', actor_label: '', subject: {} }), '멤버님이 후보를 후보로 담았어요', '이름표·제목이 비어도 깨지지 않는다');
+  assert.equal(C.activityText(null), '');
+});
+
+test('condenseActivity: 같은 사람의 연속 일정 변경은 한 줄로, 같은 후보에 대한 반응은 마지막 것만(§38·§39)', () => {
+  const at = (m) => new Date(Date.UTC(2026, 8, 2, 10, m)).toISOString();
+  const rows = [   // 최신순
+    { id: 9, kind: 'SCHEDULE_CHANGED', actor_label: '영희', created_at: at(30) },
+    { id: 8, kind: 'SCHEDULE_CHANGED', actor_label: '영희', created_at: at(28) },
+    { id: 7, kind: 'SCHEDULE_CHANGED', actor_label: '영희', created_at: at(25) },
+    { id: 6, kind: 'REACTION', actor_label: '영희', subject: { candidate_id: 1, reaction: 'MUST' }, created_at: at(20) },
+    { id: 5, kind: 'SCHEDULE_CHANGED', actor_label: '주최자', mine: true, created_at: at(18) },
+    { id: 4, kind: 'REACTION', actor_label: '영희', subject: { candidate_id: 1, reaction: 'OK' }, created_at: at(15) },
+    { id: 3, kind: 'REACTION', actor_label: '영희', subject: { candidate_id: 2, reaction: 'PASS' }, created_at: at(14) },
+    { id: 2, kind: 'SCHEDULE_CHANGED', actor_label: '영희', created_at: at(0) },
+    { id: 1, kind: 'CANDIDATE_PROPOSED', actor_label: '영희', subject: { title: 'x' }, created_at: at(0) }
+  ];
+  const out = C.condenseActivity(rows);
+  assert.deepEqual(out.map(e => e.id), [9, 6, 5, 3, 2, 1]);
+  assert.equal(out[0].count, 3, '연속 세 번의 저장이 한 줄');
+  assert.equal(out[0].first_at, at(25));
+  assert.equal(out[4].count, 1, '다른 사람의 변경이 사이에 있으면 묶지 않는다');
+  assert.equal(rows.length, 9, '원본은 그대로');
+  // 창 밖이면 묶지 않는다
+  const far = C.condenseActivity([
+    { id: 2, kind: 'SCHEDULE_CHANGED', actor_label: '영희', created_at: at(30) },
+    { id: 1, kind: 'SCHEDULE_CHANGED', actor_label: '영희', created_at: at(0) }
+  ]);
+  assert.equal(far.length, 2);
+  assert.deepEqual(C.condenseActivity(null), []);
+});
+
+test('relativeTime: 방금 · N분 전 · N시간 전 · N일 전 · 그 뒤엔 날짜', () => {
+  const now = Date.UTC(2026, 8, 2, 12, 0, 0);
+  const ago = (ms) => new Date(now - ms).toISOString();
+  assert.equal(C.relativeTime(ago(10e3), now), '방금');
+  assert.equal(C.relativeTime(ago(5 * 60e3), now), '5분 전');
+  assert.equal(C.relativeTime(ago(3 * 3600e3), now), '3시간 전');
+  assert.equal(C.relativeTime(ago(2 * 86400e3), now), '2일 전');
+  assert.match(C.relativeTime(ago(30 * 86400e3), now), /^\d{1,2}\/\d{1,2}$/);
+  assert.equal(C.relativeTime('garbage', now), '');
+  assert.equal(C.relativeTime(ago(-60e3), now), '방금', '미래 시각(시계 어긋남)도 방금으로');
+});
+
+test('liveEffects: 이벤트 종류가 무엇을 다시 읽을지 정한다 — payload를 믿지 않는다(§41)', () => {
+  const e = (kind, mine) => C.liveEffects({ kind, mine });
+  assert.deepEqual(e('CANDIDATE_PROPOSED', false), { candidates: true, members: false, pull: false, activity: true, notify: true });
+  assert.deepEqual(e('CANDIDATE_PROPOSED', true), { candidates: true, members: false, pull: false, activity: true, notify: false }, '내가 한 일은 알리지 않는다');
+  assert.deepEqual(e('REACTION', false), { candidates: true, members: false, pull: false, activity: true, notify: false }, '반응은 조용히(§51)');
+  assert.deepEqual(e('COMMENT_ADDED', false), { candidates: true, members: false, pull: false, activity: true, notify: false });
+  assert.deepEqual(e('MEMBER_JOINED', false), { candidates: false, members: true, pull: false, activity: true, notify: true });
+  assert.deepEqual(e('MEMBER_LEFT', false), { candidates: false, members: true, pull: false, activity: true, notify: false });
+  assert.deepEqual(e('SCHEDULE_CHANGED', false), { candidates: false, members: false, pull: true, activity: true, notify: false });
+  assert.deepEqual(e('SCHEDULE_CHANGED', true), { candidates: false, members: false, pull: false, activity: true, notify: false }, '내 저장은 이미 내 화면이다');
+  assert.deepEqual(e('BOOKING_ADDED', false).pull, true);
+  assert.deepEqual(e('???', false), { candidates: false, members: false, pull: false, activity: false, notify: false });
+  assert.deepEqual(C.liveEffects(null).activity, false);
+});
+
+test('tripRoleMap: 서버 id(trip_id)를 문자열로 든다 — 실시간 구독 필터에 쓴다', () => {
+  const map = C.tripRoleMap([{ client_id: 'x', trip_id: 'a1b2-uuid', role: 'EDITOR', member_count: 2, owner: false }, { client_id: 'y', trip_id: 42, role: 'OWNER', owner: true }]);
+  assert.equal(map.x.serverId, 'a1b2-uuid');
+  assert.equal(map.y.serverId, '42');
+  assert.equal(C.tripRoleMap([{ client_id: 'z', role: 'OWNER' }]).z.serverId, '', '없으면 빈 문자열 — 구독하지 않는다');
+});

@@ -276,6 +276,87 @@ insert into t_out select 'cand.left.list', count(*)::text from public.list_trip_
 -- 여행이 지워지면 후보도 따라 지워진다
 select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000a"}',false);
 
+-- ══ 3단계: 코멘트 · 활동 기록 ═══════════════════════════════════════════════
+-- 여기 오기까지: A=OWNER · B=LEFT · C=멤버 아님(client_id 'trip1'인 제 여행이 있다). B를 새 링크로 다시 들인다.
+select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000a"}',false);
+create temp table t_inv4 as select * from public.create_trip_invite('trip1','EDITOR',168,null);
+grant select on t_inv4 to public;
+select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000b"}',false);
+insert into t_out select 'cm.b.rejoin', ok::text||':'||role from public.accept_trip_invite((select token from t_inv4),'영희');
+
+-- B(편집자)가 후보에 한마디 남긴다. 빈 말은 거절
+create temp table t_cm as select public.add_candidate_comment((select id from t_cand),'야경 보고 저녁 먹자') as id;
+grant select on t_cm to public;
+insert into t_out select 'cm.b.add', (id is not null)::text from t_cm;
+do $$ begin perform public.add_candidate_comment((select id from t_cand),'   '); insert into t_out values('cm.empty','ok');
+  exception when others then insert into t_out values('cm.empty',sqlstate); end $$;
+
+-- C(멤버 아님)는 남기지도 보지도 못한다
+select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000c"}',false);
+do $$ begin perform public.add_candidate_comment((select id from t_cand),'몰래'); insert into t_out values('cm.c.add','ok');
+  exception when others then insert into t_out values('cm.c.add',sqlstate); end $$;
+insert into t_out select 'cm.c.select', count(*)::text from public.trip_comments;
+insert into t_out select 'cm.c.list', count(*)::text from public.list_candidate_comments((select id from t_cand));
+
+-- 보기 권한도 코멘트는 남긴다 — 의견이다(반응과 같은 규칙)
+select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000a"}',false);
+select public.manage_trip_member((select m.id from public.trip_members m join public.trips t on t.id=m.trip_id where t.client_id='trip1' and m.user_id='00000000-0000-0000-0000-00000000000b'),'SET_ROLE','VIEWER');
+select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000b"}',false);
+create temp table t_cm2 as select public.add_candidate_comment((select id from t_cand),'보기 권한의 한마디') as id;
+grant select on t_cm2 to public;
+insert into t_out select 'cm.viewer.add', (id is not null)::text from t_cm2;
+insert into t_out select 'cm.list', string_agg(author_label||'/'||body||'/'||mine, ',' order by id) from public.list_candidate_comments((select id from t_cand));
+insert into t_out select 'cm.count', comment_count::text from public.list_trip_candidates('trip1') where id=(select id from t_cand);
+
+-- 지우기: 쓴 사람이나 주최자만. 두 번 지워도 같다
+select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000a"}',false);
+create temp table t_cm3 as select public.add_candidate_comment((select id from t_cand),'주최자 코멘트') as id;
+grant select on t_cm3 to public;
+select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000b"}',false);
+do $$ begin perform public.delete_candidate_comment((select id from t_cm3)); insert into t_out values('cm.b.delete_others','ok');
+  exception when others then insert into t_out values('cm.b.delete_others',sqlstate); end $$;
+insert into t_out select 'cm.b.delete_own', public.delete_candidate_comment((select id from t_cm2))::text;
+insert into t_out select 'cm.b.delete_again', public.delete_candidate_comment((select id from t_cm2))::text;
+select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000a"}',false);
+insert into t_out select 'cm.owner.delete_any', public.delete_candidate_comment((select id from t_cm))::text;
+insert into t_out select 'cm.after', string_agg(author_label||'/'||body, ',' order by id) from public.list_candidate_comments((select id from t_cand));
+-- 테이블 직접 쓰기는 권한 자체가 없다
+select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000b"}',false);
+do $$ begin insert into public.trip_comments(trip_id,candidate_id,user_id,body) values((select c.trip_id from public.trip_candidates c where c.id=(select id from t_cand)),(select id from t_cand),'00000000-0000-0000-0000-00000000000b','직접'); insert into t_out values('cm.direct','ok');
+  exception when others then insert into t_out values('cm.direct',sqlstate); end $$;
+do $$ begin insert into public.trip_activity(trip_id,kind) values((select c.trip_id from public.trip_candidates c where c.id=(select id from t_cand)),'SCHEDULE_CHANGED'); insert into t_out values('act.direct','ok');
+  exception when others then insert into t_out values('act.direct',sqlstate); end $$;
+
+-- ── 활동 기록: 예약 추가와 일정 변경은 다른 멤버가 있을 때만 남고, 종류가 갈린다 ──
+select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000a"}',false);
+select public.manage_trip_member((select m.id from public.trip_members m join public.trips t on t.id=m.trip_id where t.client_id='trip1' and m.user_id='00000000-0000-0000-0000-00000000000b'),'SET_ROLE','EDITOR');
+select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000b"}',false);
+insert into t_out select 'act.b.booking', applied::text||':'||revision from public.sync_trip('trip1',
+  '{"id":"trip1","name":"스페인 (영희 편집)","start":"2026-10-25","days":[{"spots":[]},{"spots":[]}],"bookings":[{"id":"bk1","kind":"hotel","name":"호텔"}]}'::jsonb,
+  (select t.revision from public.trips t where t.client_id='trip1' and t.user_id='00000000-0000-0000-0000-00000000000a'), false);
+insert into t_out select 'act.b.schedule', applied::text||':'||revision from public.sync_trip('trip1',
+  '{"id":"trip1","name":"스페인 (영희 편집2)","start":"2026-10-25","days":[{"spots":[]},{"spots":[]}],"bookings":[{"id":"bk1","kind":"hotel","name":"호텔"}]}'::jsonb,
+  (select t.revision from public.trips t where t.client_id='trip1' and t.user_id='00000000-0000-0000-0000-00000000000a'), false);
+-- 혼자 쓰는 여행의 저장은 기록하지 않는다 — C의 제 여행
+select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000c"}',false);
+insert into t_out select 'act.c.solo_save', applied::text from public.sync_trip('trip1','{"id":"trip1","name":"C의 trip1 (수정)","days":[{"spots":[]}]}'::jsonb,
+  (select t.revision from public.trips t where t.client_id='trip1' and t.user_id='00000000-0000-0000-0000-00000000000c'), false);
+insert into t_out select 'act.c.kinds', string_agg(kind, ',' order by id) from public.list_trip_activity('trip1', 50);
+insert into t_out select 'act.c.select', count(*)::text from public.trip_activity;
+
+-- A가 보는 기록: 의미 있는 것만, 순서대로. 소유자의 참여는 없고, 제안자의 자동 MUST는 없다
+select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000a"}',false);
+insert into t_out select 'act.a.kinds', string_agg(kind, ',' order by id) from public.list_trip_activity('trip1', 200);
+insert into t_out select 'act.a.no_owner_join', count(*)::text from public.list_trip_activity('trip1', 200) where kind='MEMBER_JOINED' and member_label='주최자';
+insert into t_out select 'act.a.labels', string_agg(kind||'='||actor_label||'/'||coalesce(member_label,'-')||'/'||mine, ',' order by id)
+  from public.list_trip_activity('trip1', 200) where kind in ('MEMBER_JOINED','MEMBER_REMOVED','CANDIDATE_PROPOSED','COMMENT_ADDED','BOOKING_ADDED');
+insert into t_out select 'act.a.subjects', string_agg(subject::text, '|' order by id) from public.list_trip_activity('trip1', 200) where kind in ('CANDIDATE_SCHEDULED','BOOKING_ADDED','COMMENT_ADDED');
+insert into t_out select 'act.a.limit', count(*)::text from public.list_trip_activity('trip1', 3);
+-- 실시간 퍼블리케이션에 활동 테이블만 실려 있다 — 여행 문서(jsonb 전체)는 내보내지 않는다
+reset role;
+insert into t_out select 'act.publication', string_agg(tablename, ',' order by tablename) from pg_publication_tables where pubname='supabase_realtime';
+set role authenticated;
+
 -- ── 스냅샷·기존 소유자 흐름은 그대로 ──
 select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000a"}',false);
 insert into public.trip_snapshots(user_id,client_id,name,data,source_revision) values('00000000-0000-0000-0000-00000000000a','trip1','스페인','{}'::jsonb,2);
@@ -283,7 +364,7 @@ insert into t_out select 'a.snapshots', count(*)::text from public.trip_snapshot
 select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000b"}',false);
 insert into t_out select 'b.snapshots', count(*)::text from public.trip_snapshots;
 select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000a"}',false);
-insert into t_out select 'a.tombstone_by_owner', applied::text from public.tombstone_trip('trip1',2,false);
+insert into t_out select 'a.tombstone_by_owner', applied::text from public.tombstone_trip('trip1',(select t.revision from public.trips t where t.client_id='trip1' and t.user_id='00000000-0000-0000-0000-00000000000a'),false);
 
 reset role;
 select 'OUT:'||k||'='||coalesce(v,'<null>') from t_out order by k;

@@ -124,3 +124,58 @@ test('후보 보드: 한 번의 탭으로 의견을 바꾸고, 다시 누르면 
   await expect(page.locator('.candReact button[aria-pressed="true"]')).toHaveCount(0);
   expect(await page.evaluate(()=>window.__sent.filter(x=>x[0]==='react_to_candidate').map(x=>x[1].p_reaction))).toEqual(['MUST','PASS',null]);
 });
+
+test('후보 한마디: 펼치면 불러오고, 남기면 바로 목록에 붙는다',async({context,page})=>{
+  await fakeSupabase(context);
+  await page.goto('/');
+  await createTrip(page,'E2E 한마디');
+  await page.evaluate(()=>{
+    user={id:'u1'};
+    const id=store.activeId;
+    syncMeta[id]={revision:3,status:'clean'};
+    tripRoles[id]={role:'EDITOR',count:3,owner:false,serverId:''};
+    window.__sent=[]; window.__cm=[{id:1,body:'야경 보고 저녁 먹자',author_label:'민수',mine:false,created_at:'2026-09-02T10:00:00Z'}];
+    sb={rpc:async(name,args)=>{ window.__sent.push([name,args]);
+      if(name==='list_trip_candidates') return {data:[{id:1,title:'사그라다 파밀리아',status:'PROPOSED',must_count:1,ok_count:0,pass_count:0,
+        comment_count:window.__cm.length,my_reaction:null,proposed_by_label:'민수',mine:false,created_at:'2026-01-01',reactions:[]}],error:null};
+      if(name==='list_candidate_comments') return {data:window.__cm,error:null};
+      if(name==='add_candidate_comment'){ window.__cm=window.__cm.concat([{id:2,body:args.p_body,author_label:'나',mine:true,created_at:'2026-09-02T10:05:00Z'}]); return {data:2,error:null}; }
+      return {data:true,error:null}; }};
+  });
+  await clickMore(page,'#candMenuBtn');
+  const cbtn=page.locator('.candActions button',{hasText:'💬'});
+  await expect(cbtn).toHaveText('💬 1');
+  await expect(page.locator('.candComments')).toHaveCount(0);
+  await cbtn.click();
+  await expect(page.locator('.commentRow')).toHaveCount(1);
+  await expect(page.locator('.commentRow').first()).toContainText('야경 보고 저녁 먹자');
+  await page.locator('.commentForm input').fill('저녁 예약이랑 가까움');
+  await page.locator('.commentForm input').press('Enter');
+  await expect(page.locator('.commentRow')).toHaveCount(2);
+  await expect(cbtn).toHaveText('💬 2');
+  expect(await page.evaluate(()=>window.__sent.find(x=>x[0]==='add_candidate_comment')[1])).toEqual({p_candidate_id:1,p_body:'저녁 예약이랑 가까움'});
+});
+
+test('함께하기 모달의 최근 활동은 사람 말 한 줄이고, 실시간이 없으면 그렇다고 표시한다',async({context,page})=>{
+  await fakeSupabase(context);
+  await page.goto('/');
+  await createTrip(page,'E2E 활동');
+  await page.evaluate(()=>{
+    user={id:'u1'};
+    const id=store.activeId;
+    syncMeta[id]={revision:3,status:'clean'};
+    tripRoles[id]={role:'OWNER',count:2,owner:true,serverId:''};
+    sb={rpc:async(name)=>{
+      if(name==='list_trip_members') return {data:[{id:1,user_id:'u1',role:'OWNER',status:'ACTIVE',display_name:'민수',joined_at:null,me:true},{id:2,user_id:'u2',role:'EDITOR',status:'ACTIVE',display_name:'영희',joined_at:'2026-09-01',me:false}],error:null};
+      if(name==='list_trip_activity') return {data:[
+        {id:2,kind:'REACTION',actor_label:'영희',mine:false,subject:{title:'구엘 공원',candidate_id:1,reaction:'MUST'},created_at:'2026-09-02T10:05:00Z'},
+        {id:1,kind:'CANDIDATE_PROPOSED',actor_label:'영희',mine:false,subject:{title:'구엘 공원',candidate_id:1},created_at:'2026-09-02T10:00:00Z'}],error:null};
+      return {data:[],error:null}; }};
+  });
+  await clickMore(page,'#membersMenuBtn');
+  await expect(page.locator('#membersModalBg')).toHaveClass(/show/);
+  await expect(page.locator('#activityList .activityRow')).toHaveCount(2);
+  await expect(page.locator('#activityList')).toContainText('영희님이 구엘 공원을 "꼭 가고 싶어요"로 골랐어요');
+  await expect(page.locator('#activityList')).toContainText('영희님이 구엘 공원을 후보로 담았어요');
+  await expect(page.locator('#liveState')).toContainText('새로고침으로 갱신');
+});
