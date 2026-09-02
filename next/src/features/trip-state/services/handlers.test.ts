@@ -4,13 +4,17 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import type {
   BookingListResponse, DeviceRegistration, ImportCommitResponse, ImportPreviewResponse,
-  MemoryCreateResponse, MemoryListResponse, MutationResponse, TodayResponse, TravelStateResponse, TripListResponse
+  ActivityListResponse, CandidateBoardResponse, CommentListResponse,
+  MemoryCreateResponse, MemoryListResponse, MutationResponse, PreferenceResponse, TodayResponse,
+  TravelStateResponse, TripListResponse
 } from '../domain/contract';
+import type { ActivityRow, CandidateRow, CommentRow, PrefRow } from '../domain/candidatesView';
 import type { MemoryRow } from '../domain/intakeView';
 import type { PriceObservation } from '../domain/bookingsView';
 import type { Gateway, TripRow } from './handlers';
 import { createHandlers, resolveClock } from './handlers';
 import type { TripDoc } from '../domain/todayView';
+import collabModule from '@legacy/collab.js';
 
 const TOKEN = 'test-token';
 const NOW = new Date('2026-09-01T04:00:00Z');   // Asia/Seoul 13:00
@@ -40,14 +44,28 @@ function tripDoc(): TripDoc {
   };
 }
 
+/** 가짜 후보 한 줄 — RPC가 주는 모양 그대로에 소속 여행만 더한다 */
+interface FakeCandidate extends CandidateRow { trip_id: string }
+interface FakeComment extends CommentRow { trip_id: string; candidate_id: string }
+
 interface Store {
   rows: Map<string, TripRow>; dismissed: Map<string, string[]>; feedback: string[];
   observations: PriceObservation[]; sentKeys: string[]; devices: DeviceRegistration[]; memories: MemoryRow[];
+  candidates: FakeCandidate[]; comments: FakeComment[]; prefs: Map<string, PrefRow[]>; activity: ActivityRow[];
+  seq: number;
 }
 function makeStore(): Store {
   const rows = new Map<string, TripRow>();
   rows.set('trip-1', { client_id: 'trip-1', data: tripDoc(), revision: 3, updated_at: '2026-08-31T00:00:00Z', deleted_at: null });
-  return { rows, dismissed: new Map(), feedback: [], observations: [], sentKeys: [], devices: [], memories: [] };
+  return {
+    rows, dismissed: new Map(), feedback: [], observations: [], sentKeys: [], devices: [], memories: [],
+    candidates: [], comments: [], prefs: new Map(), activity: [], seq: 0
+  };
+}
+
+/** DB의 42501을 그대로 흉내낸다 — 핸들러가 이걸 403으로 옮기는지 보려면 모양이 같아야 한다 */
+function forbidden(hint: string): never {
+  throw Object.assign(new Error('permission denied'), { code: '42501', hint });
 }
 function gatewayOf(store: Store): Gateway {
   return {
@@ -64,6 +82,84 @@ function gatewayOf(store: Store): Gateway {
       return { applied: true, conflict: false, revision, data };
     },
     async listDismissed(id, day) { return store.dismissed.get(`${id}|${day}`) ?? []; },
+
+    // 함께하기 — 권한 판정은 진짜 DB에서 RPC가 한다. 여기서도 같은 규칙을 흉내내야 핸들러 테스트가 의미가 있다.
+    async listCandidates(tripId) { return store.candidates.filter((c) => c.trip_id === tripId); },
+    async addCandidate(tripId, input) {
+      const role = store.rows.get(tripId)?.role ?? null;
+      if (role != null && role !== 'OWNER' && role !== 'EDITOR') forbidden('후보 추가는 편집 권한이 필요하다');
+      const id = String(++store.seq);
+      store.candidates.unshift({
+        trip_id: tripId, id, title: input.title, place_id: input.placeId, lat: input.lat, lng: input.lng,
+        addr: input.addr, note: input.note, url: input.url, status: 'PROPOSED', scheduled_ref: null,
+        proposed_by_label: '나', mine: true, my_reaction: 'MUST',
+        must_count: 1, ok_count: 0, pass_count: 0,
+        reactions: [{ name: '나', reaction: 'MUST', me: true }], comment_count: 0,
+        created_at: `2026-09-02T00:00:${String(store.seq).padStart(2, '0')}Z`
+      });
+      return id;
+    },
+    async reactCandidate(candidateId, reaction) {
+      const cand = store.candidates.find((c) => String(c.id) === candidateId);
+      if (!cand) forbidden('없는 후보');
+      // 반응은 활성 멤버 전원 — 보기 권한도 의견은 낸다(§12)
+      const list = (cand.reactions ?? []).filter((r) => !r.me);
+      if (reaction) list.push({ name: '나', reaction, me: true });
+      cand.reactions = list;
+      cand.my_reaction = reaction;
+      cand.must_count = list.filter((r) => r.reaction === 'MUST').length;
+      cand.ok_count = list.filter((r) => r.reaction === 'OK').length;
+      cand.pass_count = list.filter((r) => r.reaction === 'PASS').length;
+    },
+    async manageCandidate(candidateId, action, value) {
+      const cand = store.candidates.find((c) => String(c.id) === candidateId);
+      if (!cand) forbidden('없는 후보');
+      const role = store.rows.get(cand.trip_id)?.role ?? null;
+      const canEdit = role == null || role === 'OWNER' || role === 'EDITOR';
+      if (action === 'REMOVE') {
+        // 빼는 기준은 역할이 아니라 '누가 냈는가'
+        if (!cand.mine && role !== 'OWNER' && role != null) forbidden('내가 낸 후보만 뺄 수 있다');
+        store.candidates = store.candidates.filter((c) => c !== cand);
+        return;
+      }
+      if (!canEdit) forbidden('상태 변경은 편집 권한이 필요하다');
+      if (action === 'SCHEDULE') { cand.status = 'SCHEDULED'; cand.scheduled_ref = value; return; }
+      if (action === 'UNSCHEDULE') { cand.status = 'PROPOSED'; cand.scheduled_ref = null; return; }
+      if (action === 'REJECT') { cand.status = 'REJECTED'; cand.scheduled_ref = null; return; }
+      if (action === 'REOPEN') { cand.status = 'PROPOSED'; cand.scheduled_ref = null; return; }
+      forbidden('모르는 동작');
+    },
+    async listComments(candidateId) { return store.comments.filter((c) => c.candidate_id === candidateId); },
+    async addComment(candidateId, body) {
+      const cand = store.candidates.find((c) => String(c.id) === candidateId);
+      if (!cand) forbidden('없는 후보');
+      const id = String(++store.seq);
+      store.comments.push({
+        trip_id: cand.trip_id, candidate_id: candidateId, id, body,
+        author_label: '나', mine: true, created_at: `2026-09-02T01:00:${String(store.seq).padStart(2, '0')}Z`
+      });
+      cand.comment_count = (cand.comment_count ?? 0) + 1;
+      return id;
+    },
+    async deleteComment(commentId) {
+      const cm = store.comments.find((c) => String(c.id) === commentId);
+      if (!cm) forbidden('없는 코멘트');
+      const role = store.rows.get(cm.trip_id)?.role ?? null;
+      if (!cm.mine && role !== 'OWNER' && role != null) forbidden('쓴 사람이나 주최자만 지운다');
+      store.comments = store.comments.filter((c) => c !== cm);
+      const cand = store.candidates.find((c) => String(c.id) === cm.candidate_id);
+      if (cand) cand.comment_count = Math.max(0, (cand.comment_count ?? 1) - 1);
+    },
+    async listPreferences(tripId) { return store.prefs.get(tripId) ?? []; },
+    async savePreference(tripId, prefs) {
+      // 진짜 서버는 tc_norm_prefs로 아는 값만 남긴다. 여기서는 클라이언트와 같은 화이트리스트를 쓴다.
+      const normalized = collabModule.normPrefs(prefs);
+      const rows = (store.prefs.get(tripId) ?? []).filter((r) => !r.mine);
+      rows.unshift({ label: '나', mine: true, prefs: normalized });
+      store.prefs.set(tripId, rows);
+      return normalized;
+    },
+    async listActivity(_tripId, limit) { return store.activity.slice(0, limit); },
     async listPriceObservations() { return store.observations; },
     async listSentNotificationKeys() { return store.sentKeys; },
     async recordNotifications(_tripId, _day, items) {
@@ -719,5 +815,245 @@ describe('여행 기록 — 어디였는지 다시 묻지 않는다(§27)', () =
     expect(text).toContain('local-identifier-1');
     expect(text).not.toContain('base64');
     expect(text).not.toContain('data:image');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 함께하기 — 후보 보드 · 반응 · 코멘트 · 취향 · 활동
+//
+// iOS는 이 응답만 보고 그린다. 그래서 여기서 확인하는 것은 두 가지다:
+//   "묶음·문장·선택지가 이미 다 만들어져 오는가"와 "화면에 점수가 새어 나가지 않는가".
+
+const board = (res: Response) => res.json() as Promise<CandidateBoardResponse>;
+const boardUrl = 'http://localhost/api/v1/trips/trip-1/candidates';
+
+/** 다른 사람들의 반응을 심는다 — 진짜 RPC가 주는 모양(reactions 배열 + 카운트)을 그대로 맞춘다 */
+function seedReactions(store: Store, candidateId: string, others: Array<{ name: string; reaction: 'MUST' | 'OK' | 'PASS' }>) {
+  const cand = store.candidates.find((c) => String(c.id) === candidateId)!;
+  const list = (cand.reactions ?? []).concat(others.map((o) => ({ name: o.name, reaction: o.reaction, me: false })));
+  cand.reactions = list;
+  cand.must_count = list.filter((r) => r.reaction === 'MUST').length;
+  cand.ok_count = list.filter((r) => r.reaction === 'OK').length;
+  cand.pass_count = list.filter((r) => r.reaction === 'PASS').length;
+}
+
+async function addCandidate(api: ReturnType<typeof createHandlers>, title: string, location?: { lat: number; lng: number }) {
+  return board(await api.addCandidate(
+    new Request(boardUrl, auth({ method: 'POST', body: JSON.stringify({ title, ...(location ? { location } : {}) }) })), 'trip-1'));
+}
+
+describe('함께하기 — 후보 보드', () => {
+  it('후보를 담으면 묶음과 배지 문장까지 만들어져 온다 — iOS가 다시 계산할 것이 없다', async () => {
+    const body = await addCandidate(api, '프라도 미술관');
+    const all = body.groups.flatMap((g) => g.candidates);
+    expect(all).toHaveLength(1);
+    const cand = all[0];
+    expect(cand.title).toBe('프라도 미술관');
+    expect(cand.proposedBy).toBe('내가 추가');
+    expect(cand.myReaction).toBe('MUST');          // 제안자에게는 MUST가 자동으로 붙는다
+    expect(cand.verdict.text).not.toBe('');
+    expect(cand.reactionSummary).toContain('1');
+    expect(body.canPropose).toBe(true);
+  });
+
+  it('묶음은 결정하지 못한 것이 맨 위다 — 순위가 아니라 어디에 한마디가 필요한지다', async () => {
+    await addCandidate(api, '갈린 곳');
+    seedReactions(store, '1', [{ name: '지민', reaction: 'PASS' }]);
+    await addCandidate(api, '다들 좋은 곳');
+    seedReactions(store, '2', [{ name: '지민', reaction: 'MUST' }]);
+    const body = await board(await api.candidates(new Request(boardUrl, auth()), 'trip-1'));
+    expect(body.groups.map((g) => g.key)).toEqual(['NEEDS_OPINION', 'LOVED']);
+    expect(body.groups[0].title).toBe('의견이 필요해요');
+  });
+
+  it('갈린 후보에는 세 선택지가 붙고 자동으로 빠지지 않는다 (§23·§24)', async () => {
+    await addCandidate(api, '투우 박물관');
+    seedReactions(store, '1', [{ name: '지민', reaction: 'PASS' }, { name: '현우', reaction: 'OK' }]);
+    const body = await board(await api.candidates(new Request(boardUrl, auth()), 'trip-1'));
+    const cand = body.groups.flatMap((g) => g.candidates)[0];
+    expect(cand.status).toBe('PROPOSED');                       // 갈렸다고 빼지 않는다
+    expect(cand.conflict).not.toBeNull();
+    expect(cand.conflict!.must).toEqual(['나']);
+    expect(cand.conflict!.pass).toEqual(['지민']);
+    expect(cand.conflict!.options.map((o) => o.key)).toEqual(['TOGETHER', 'SPLIT', 'SKIP']);
+    // 분리는 아직 안내만이라 누를 동작이 없다
+    expect(cand.conflict!.options.map((o) => o.action)).toEqual(['SCHEDULE', null, 'REJECT']);
+  });
+
+  it('화면에 나가는 문장에 합의 점수가 없다 (§21·§22 — 점수는 내부값이다)', async () => {
+    await addCandidate(api, '레티로 공원');
+    seedReactions(store, '1', [{ name: '지민', reaction: 'MUST' }, { name: '현우', reaction: 'OK' }]);
+    const body = await board(await api.candidates(new Request(boardUrl, auth()), 'trip-1'));
+    const cand = body.groups.flatMap((g) => g.candidates)[0];
+    expect(cand.verdict.text).not.toMatch(/\d/);
+    expect(JSON.stringify(cand.verdict)).not.toContain('score');
+    expect(JSON.stringify(body)).not.toContain('"score"');
+  });
+
+  it('빼기(REJECT)는 지우지 않는다 — 이번엔 뺐어요로 내려가고 되돌리면 후보로 돌아온다', async () => {
+    await addCandidate(api, '쇼핑몰');
+    const manage = (action: string) => api.manageCandidate(
+      new Request(`${boardUrl}/1/manage`, auth({ method: 'POST', body: JSON.stringify({ action }) })), 'trip-1', '1');
+
+    const rejected = await board(await manage('REJECT'));
+    const rejectedGroup = rejected.groups.find((g) => g.key === 'REJECTED')!;
+    expect(rejectedGroup.title).toBe('이번엔 뺐어요');
+    expect(rejectedGroup.candidates[0].status).toBe('REJECTED');
+    expect(rejectedGroup.candidates[0].reactionSummary).not.toBe('');   // 의견은 그대로 남는다
+
+    const reopened = await board(await manage('REOPEN'));
+    expect(reopened.groups.some((g) => g.key === 'REJECTED')).toBe(false);
+    expect(reopened.groups.flatMap((g) => g.candidates)[0].status).toBe('PROPOSED');
+  });
+
+  it('모르는 동작은 400이다 — RPC까지 가지 않는다', async () => {
+    await addCandidate(api, '아무 곳');
+    const res = await api.manageCandidate(
+      new Request(`${boardUrl}/1/manage`, auth({ method: 'POST', body: JSON.stringify({ action: 'DROP' }) })), 'trip-1', '1');
+    expect(res.status).toBe(400);
+    expect(store.candidates).toHaveLength(1);
+  });
+
+  it('이름 없는 후보는 400이다', async () => {
+    const res = await api.addCandidate(new Request(boardUrl, auth({ method: 'POST', body: JSON.stringify({ title: '   ' }) })), 'trip-1');
+    expect(res.status).toBe(400);
+    expect(store.candidates).toHaveLength(0);
+  });
+});
+
+describe('함께하기 — 보기 권한은 의견만 낸다 (§12)', () => {
+  beforeEach(() => {
+    const row = store.rows.get('trip-1')!;
+    store.rows.set('trip-1', { ...row, role: 'VIEWER', member_count: 3 });
+    store.candidates.push({
+      trip_id: 'trip-1', id: '9', title: '지민이 담은 곳', place_id: null, lat: null, lng: null,
+      addr: null, note: null, url: null, status: 'PROPOSED', scheduled_ref: null,
+      proposed_by_label: '지민', mine: false, my_reaction: null,
+      must_count: 1, ok_count: 0, pass_count: 0,
+      reactions: [{ name: '지민', reaction: 'MUST', me: false }], comment_count: 0,
+      created_at: '2026-09-01T00:00:00Z'
+    });
+  });
+
+  it('후보 추가는 403이고 보드는 그대로다', async () => {
+    const res = await api.addCandidate(new Request(boardUrl, auth({ method: 'POST', body: JSON.stringify({ title: '몰래' }) })), 'trip-1');
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({ error: 'FORBIDDEN' });
+    expect(store.candidates).toHaveLength(1);
+  });
+
+  it('반응은 된다 — 의견을 내는 것은 여행에 내용을 만드는 것이 아니다', async () => {
+    const body = await board(await api.reactCandidate(
+      new Request(`${boardUrl}/9/react`, auth({ method: 'POST', body: JSON.stringify({ reaction: 'OK' }) })), 'trip-1', '9'));
+    expect(body.canReact).toBe(true);
+    expect(body.canPropose).toBe(false);
+    expect(body.groups.flatMap((g) => g.candidates)[0].myReaction).toBe('OK');
+  });
+
+  it('같은 반응을 두 번 눌러도 결과가 같고, 비우면 거둔다', async () => {
+    const react = (reaction: string | null) => api.reactCandidate(
+      new Request(`${boardUrl}/9/react`, auth({ method: 'POST', body: JSON.stringify({ reaction }) })), 'trip-1', '9');
+    await react('OK');
+    const twice = await board(await react('OK'));
+    expect(twice.groups.flatMap((g) => g.candidates)[0].myReaction).toBe('OK');
+    const cleared = await board(await react(null));
+    expect(cleared.groups.flatMap((g) => g.candidates)[0].myReaction).toBeNull();
+  });
+
+  it('알 수 없는 반응은 400이다', async () => {
+    const res = await api.reactCandidate(
+      new Request(`${boardUrl}/9/react`, auth({ method: 'POST', body: JSON.stringify({ reaction: 'LOVE' }) })), 'trip-1', '9');
+    expect(res.status).toBe(400);
+  });
+
+  it('남이 낸 후보는 뺄 수 없다 — 기준은 역할이 아니라 누가 냈는가다', async () => {
+    const body = await board(await api.candidates(new Request(boardUrl, auth()), 'trip-1'));
+    expect(body.groups.flatMap((g) => g.candidates)[0].canRemove).toBe(false);
+    const res = await api.manageCandidate(
+      new Request(`${boardUrl}/9/manage`, auth({ method: 'POST', body: JSON.stringify({ action: 'REMOVE' }) })), 'trip-1', '9');
+    expect(res.status).toBe(403);
+    expect(store.candidates).toHaveLength(1);
+  });
+
+  it('일정에 넣는 것도 403이다 — 상태 변경은 편집 권한 이상', async () => {
+    const res = await api.manageCandidate(
+      new Request(`${boardUrl}/9/manage`, auth({ method: 'POST', body: JSON.stringify({ action: 'SCHEDULE', value: '2' }) })), 'trip-1', '9');
+    expect(res.status).toBe(403);
+  });
+});
+
+describe('함께하기 — 코멘트', () => {
+  beforeEach(async () => { await addCandidate(api, '타파스 골목'); });
+
+  it('남기면 목록과 후보의 코멘트 수가 함께 는다', async () => {
+    const res = await api.addComment(
+      new Request(`${boardUrl}/1/comments`, auth({ method: 'POST', body: JSON.stringify({ body: '여기 저녁이 좋대요' }) })), 'trip-1', '1');
+    const body = (await res.json()) as CommentListResponse;
+    expect(body.comments).toHaveLength(1);
+    expect(body.comments[0].body).toBe('여기 저녁이 좋대요');
+    expect(body.comments[0].canDelete).toBe(true);
+    const boardBody = await board(await api.candidates(new Request(boardUrl, auth()), 'trip-1'));
+    expect(boardBody.groups.flatMap((g) => g.candidates)[0].commentCount).toBe(1);
+  });
+
+  it('빈 한마디는 400이다', async () => {
+    const res = await api.addComment(
+      new Request(`${boardUrl}/1/comments`, auth({ method: 'POST', body: JSON.stringify({ body: '  ' }) })), 'trip-1', '1');
+    expect(res.status).toBe(400);
+    expect(store.comments).toHaveLength(0);
+  });
+
+  it('지우면 목록에서 빠진다', async () => {
+    await api.addComment(new Request(`${boardUrl}/1/comments`, auth({ method: 'POST', body: JSON.stringify({ body: '한마디' }) })), 'trip-1', '1');
+    const id = String(store.comments[0].id);
+    const body = (await (await api.deleteComment(
+      new Request(`${boardUrl}/1/comments/${id}`, auth({ method: 'DELETE' })), 'trip-1', '1', id)).json()) as CommentListResponse;
+    expect(body.comments).toHaveLength(0);
+  });
+});
+
+describe('함께하기 — 여행 취향', () => {
+  const prefUrl = 'http://localhost/api/v1/trips/trip-1/preferences';
+  const save = (prefs: unknown) => api.savePreferences(new Request(prefUrl, auth({ method: 'PUT', body: JSON.stringify({ prefs }) })), 'trip-1');
+
+  it('서버가 아는 값만 남는다 — 모르는 키와 빈 배열은 떨어진다', async () => {
+    const body = (await (await save({ pace: 'RELAXED', walking: 'LOW', dislikes: [], secret: 'x', note: '  천천히  ' })).json()) as PreferenceResponse;
+    expect(body.mine.pace).toBe('RELAXED');
+    expect(body.mine.walking).toBe('LOW');
+    expect(body.mine.dislikes).toEqual([]);
+    expect(body.mine.note).toBe('천천히');
+    expect(JSON.stringify(body.mine)).not.toContain('secret');
+  });
+
+  it('그룹 정리는 가장 약한 사람 기준으로 걷기를 말하고, 결정하지 않는다 (§19·§62)', async () => {
+    store.prefs.set('trip-1', [
+      { label: '나', mine: true, prefs: { pace: 'RELAXED', walking: 'NORMAL' } },
+      { label: '지민', mine: false, prefs: { walking: 'LOW', night: false } }
+    ]);
+    const body = (await (await api.preferences(new Request(prefUrl, auth()), 'trip-1')).json()) as PreferenceResponse;
+    expect(body.groupContext.some((t) => t.includes('많이 걷기 싫어요') && t.includes('지민'))).toBe(true);
+    expect(body.groupContext.some((t) => t.includes('늦은 밤은 싫어요'))).toBe(true);
+    expect(body.members.find((m) => m.mine)!.name).toBe('나');
+    expect(body.groupContext.join(' ')).not.toContain('빼');   // 자동으로 빼자고 하지 않는다
+  });
+
+  it('아무도 안 남겼으면 그렇게 말한다', async () => {
+    const body = (await (await api.preferences(new Request(prefUrl, auth()), 'trip-1')).json()) as PreferenceResponse;
+    expect(body.groupContext[0]).toContain('아직 아무도');
+    expect(body.mine.interests).toEqual([]);
+  });
+});
+
+describe('함께하기 — 활동 기록', () => {
+  it('문장과 상대시각까지 만들어 오고, 못 만드는 종류는 아예 빠진다 (§37·§39)', async () => {
+    store.activity = [
+      { id: 3, kind: 'CANDIDATE_PROPOSED', mine: false, actor_label: '지민', subject: { title: '프라도' }, created_at: '2026-09-01T03:59:00Z' },
+      { id: 2, kind: 'MEMBER_JOINED', mine: false, actor_label: '현우', member_label: '현우', subject: {}, created_at: '2026-09-01T03:00:00Z' },
+      { id: 1, kind: 'WHO_KNOWS', mine: false, actor_label: '지민', subject: {}, created_at: '2026-09-01T02:00:00Z' }
+    ];
+    const body = (await (await api.activity(new Request('http://localhost/api/v1/trips/trip-1/activity', auth()), 'trip-1')).json()) as ActivityListResponse;
+    expect(body.entries.map((e) => e.id)).toEqual(['3', '2']);
+    expect(body.entries[0].text).toContain('지민');
+    expect(body.entries[0].relative).toBe('1분 전');
   });
 });

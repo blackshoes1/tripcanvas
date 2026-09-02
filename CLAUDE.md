@@ -43,8 +43,8 @@ npm test && npm run lint && npm run check:types && npm run security:scan && npm 
 - `manifest.json` · `icon-*.png` — PWA
 - `api/` — Vercel 서버 함수(**서버 전용 키**): `kakao-directions.js`(카카오내비 프록시) · `hotel-offers.js`(호텔 시세 메타서치 프록시) · `car-offers.js`(렌터카 시장가 프록시 — Provider 미연결 시 AUTH_REQUIRED, 수동 관측 fallback) · `track-hotel-prices.js`(가격 스냅샷 크론)
 - `supabase/migrations/` — RLS·동기화 무결성·가격 스냅샷·추천 반응 기록·기기 토큰/발송 기록·여행 기록·**함께하기(멤버·초대·역할 RLS · 후보 장소·반응 · 코멘트·활동 기록·실시간 퍼블리케이션 · 여행별 멤버 취향 · 후보 결정 REJECT/REOPEN)** 스키마
-- `ios/` — **네이티브 iOS 앱(SwiftUI)** + `TripCanvasWidgets`(위젯·Live Activity 확장) + `TripCanvasShared`(App Group 공유 상태). 웹은 여행을 *계획*하고, iOS는 여행을 *실행*한다. 판단 로직을 Swift로 복제하지 않는다 — `/api/v1`이 준 결과를 그리기만 한다. ⚠️ 작성 환경(Windows)에 Xcode가 없어 **빌드 미검증** 상태다 (`ios/README.md`)
-- `next/src/features/trip-state/` — 웹·iOS 공통 API 계층. `contract.ts`(단일 출처 계약) · `todayView.ts`(엔진 결과를 계약 모양으로) · `mutations.ts`(문서 변경 순수 함수) · `handlers.ts`(주입 가능한 라우트 핸들러) · `supabaseGateway.ts`(RLS 아래 읽기·쓰기)
+- `ios/` — **네이티브 iOS 앱(SwiftUI)** + `TripCanvasWidgets`(위젯·Live Activity 확장) + `TripCanvasShared`(App Group 공유 상태). 지도 위의 본격적인 계획은 웹이 하고, iOS는 여행을 *실행*하며 **함께하기(후보·반응·코멘트·취향)** 를 맡는다 — 후보 담기와 하트 누르기는 침대에서 10초 안에 하는 행동이라 폰이 제자리다. 판단 로직을 Swift로 복제하지 않는다 — `/api/v1`이 준 결과를 그리기만 한다. ⚠️ 작성 환경(Windows)에 Xcode가 없어 **빌드 미검증** 상태다 (`ios/README.md`)
+- `next/src/features/trip-state/` — 웹·iOS 공통 API 계층. `contract.ts`(단일 출처 계약) · `todayView.ts`(엔진 결과를 계약 모양으로) · `candidatesView.ts`(함께하기 보드·코멘트·취향·활동을 계약 모양으로) · `mutations.ts`(문서 변경 순수 함수) · `handlers.ts`(주입 가능한 라우트 핸들러) · `supabaseGateway.ts`(RLS 아래 읽기·쓰기)
 - `scripts/` — `bump-version.js` · `check-version-sync.js` · `check-secrets.js`
 - `test/` — 순수·통합·API 테스트 (`pure` · `integration` · `adaptive` · `intake` · `collab` · `price` · `routing` · `sync` · `api-*` · `migration` · `rls.integration`(로컬 PostgreSQL이 있을 때만 — `scripts/pg-local.sh`))
 - `e2e/` — Playwright 시나리오 (`core-flows` · `pwa` · `accessibility` · `ux-wireframe` · `collab`)
@@ -145,8 +145,8 @@ npm test && npm run lint && npm run check:types && npm run security:scan && npm 
 - `manifest.json` · `icon-*.png` — PWA
 - `api/` — Vercel 서버 함수(**서버 전용 키**): `kakao-directions.js`(카카오내비 프록시) · `hotel-offers.js`(호텔 시세 메타서치 프록시) · `car-offers.js`(렌터카 시장가 프록시 — Provider 미연결 시 AUTH_REQUIRED, 수동 관측 fallback) · `track-hotel-prices.js`(가격 스냅샷 크론)
 - `supabase/migrations/` — RLS·동기화 무결성·가격 스냅샷·추천 반응 기록·기기 토큰/발송 기록·여행 기록·**함께하기(멤버·초대·역할 RLS · 후보 장소·반응 · 코멘트·활동 기록·실시간 퍼블리케이션 · 여행별 멤버 취향 · 후보 결정 REJECT/REOPEN)** 스키마
-- `ios/` — **네이티브 iOS 앱(SwiftUI)** + `TripCanvasWidgets`(위젯·Live Activity 확장) + `TripCanvasShared`(App Group 공유 상태). 웹은 여행을 *계획*하고, iOS는 여행을 *실행*한다. 판단 로직을 Swift로 복제하지 않는다 — `/api/v1`이 준 결과를 그리기만 한다. ⚠️ 작성 환경(Windows)에 Xcode가 없어 **빌드 미검증** 상태다 (`ios/README.md`)
-- `next/src/features/trip-state/` — 웹·iOS 공통 API 계층. `contract.ts`(단일 출처 계약) · `todayView.ts`(엔진 결과를 계약 모양으로) · `mutations.ts`(문서 변경 순수 함수) · `handlers.ts`(주입 가능한 라우트 핸들러) · `supabaseGateway.ts`(RLS 아래 읽기·쓰기)
+- `ios/` — **네이티브 iOS 앱(SwiftUI)** + `TripCanvasWidgets`(위젯·Live Activity 확장) + `TripCanvasShared`(App Group 공유 상태). 지도 위의 본격적인 계획은 웹이 하고, iOS는 여행을 *실행*하며 **함께하기(후보·반응·코멘트·취향)** 를 맡는다 — 후보 담기와 하트 누르기는 침대에서 10초 안에 하는 행동이라 폰이 제자리다. 판단 로직을 Swift로 복제하지 않는다 — `/api/v1`이 준 결과를 그리기만 한다. ⚠️ 작성 환경(Windows)에 Xcode가 없어 **빌드 미검증** 상태다 (`ios/README.md`)
+- `next/src/features/trip-state/` — 웹·iOS 공통 API 계층. `contract.ts`(단일 출처 계약) · `todayView.ts`(엔진 결과를 계약 모양으로) · `candidatesView.ts`(함께하기 보드·코멘트·취향·활동을 계약 모양으로) · `mutations.ts`(문서 변경 순수 함수) · `handlers.ts`(주입 가능한 라우트 핸들러) · `supabaseGateway.ts`(RLS 아래 읽기·쓰기)
 - `scripts/` — `bump-version.js` · `check-version-sync.js` · `check-secrets.js`
 - `test/` — 순수·통합·API 테스트 (`pure` · `integration` · `adaptive` · `intake` · `collab` · `price` · `routing` · `sync` · `api-*` · `migration` · `rls.integration`(로컬 PostgreSQL이 있을 때만 — `scripts/pg-local.sh`))
 - `e2e/` — Playwright 시나리오 (`core-flows` · `pwa` · `accessibility` · `ux-wireframe` · `collab`)
@@ -214,10 +214,10 @@ localStorage: `tripcanvas_v1`(여행) · `tripcanvas_legs_v4`(구간 캐시, 수
 - 위치는 쿼리로만 받고 **저장하지 않는다**(`locationUsed`로 무엇을 썼는지만 돌려준다). 위치 history를 남기지 않는다.
 - 잠금화면·위젯 압축본에 예약번호·URL·placeId를 넣지 않는다 — 잠긴 화면에 계속 떠 있는 정보다. `swiftParity.test.ts`가 이걸 검사한다.
 
-**엔진은 하나다 — iOS는 클라이언트다.** `adaptive.js`를 Swift로 다시 만들면 두 플랫폼의 답이 갈라진다.
+**판단은 한 곳, 화면은 양쪽.** `adaptive.js`·`collab.js`를 Swift로 다시 만들면 두 플랫폼의 답이 갈라진다. 막는 것은 *판단의 복제*이지 iOS의 화면이 아니다 — 어떤 UI를 iOS에 두느냐는 별개의 결정이다.
 
 ```
-            adaptive.js  (판단은 여기서만)
+     adaptive.js · collab.js  (판단은 여기서만)
                   │
        ┌──────────┴──────────┐
   레거시 웹 · Next 웹      /api/v1  →  iOS
@@ -228,7 +228,9 @@ localStorage: `tripcanvas_v1`(여행) · `tripcanvas_legs_v4`(구간 캐시, 수
 - 쓰기는 전부 `sync_trip` RPC(revision CAS)를 지난다. 같은 요청을 두 번 받아도 결과가 같고(`alreadyApplied`), 다른 기기가 먼저 바꿨으면 409로 알린다 — 조용히 덮어쓰지 않는다.
 - 서버에는 구간 캐시가 없어 이동시간이 **직선거리 추정**이다. 응답의 `travelTimeSource`로 그 사실을 실어 보내고 클라이언트가 "예상"이라고 표기한다.
 - 제안 거절은 `suggestion_feedback` 테이블(RLS)에 날짜와 함께 남는다 — 기기가 바뀌어도 같은 제안이 그날 다시 올라오지 않는다. ⚠️ 레거시 웹은 아직 localStorage를 쓴다(양쪽이 아직 공유되지 않음).
-- `next`의 `swiftParity.test.ts`가 **실제 Today 응답 ↔ `ios/.../Contract.swift`** 를 맞춰 보고 `ios/TripCanvasTests/Fixtures/today.json`을 다시 만든다. 계약을 바꾸면 여기가 먼저 깨진다.
+- `next`의 `swiftParity.test.ts`가 **실제 응답 ↔ `ios/.../Contract.swift`** 를 맞춰 보고 `ios/TripCanvasTests/Fixtures/`의 `today.json`·`candidate-board.json`을 다시 만든다. 계약을 바꾸면 여기가 먼저 깨진다.
+- **함께하기도 같은 규칙이다.** `candidatesView.ts`가 `@legacy/collab.js`로 묶음·배지 문장·충돌 선택지·그룹 제안·취향 요약을 **서버에서 다 만들어** 보내고, iOS(`CollabService`·`Features/Collab/`)는 그리기만 한다. 그래서 반응 하나를 눌러도 응답이 **보드 전체**다 — 묶음이 옮겨 가고 배지가 바뀌고 제안이 다시 계산되는 파급을 클라이언트가 흉내내면 웹과 갈린다.
+- ⚠️ 합의 점수(0~100)는 계약에 **필드 자체가 없다**(§21·§22). `swiftParity.test.ts`가 응답 JSON에 `score`가 없고 배지 문장에 숫자가 없음을 확인한다.
 
 **Adaptive Travel OS — 상태 → 제안 → 반영은 한 패턴이다.** 일정 추천·일정 재구성·가격 절약이 각자 다른 흐름을 만들면 안 된다.
 

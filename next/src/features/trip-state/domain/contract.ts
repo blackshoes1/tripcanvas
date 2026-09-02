@@ -504,3 +504,169 @@ export interface ApiError {
   message: string;          // 사용자에게 그대로 보여도 되는 한국어 문장
   revision?: number;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 함께하기 — 후보 장소 · 반응 · 코멘트 · 취향 · 활동 기록
+//
+// **판단은 서버에서 끝난다.** 묶음·배지 문장·충돌 선택지·그룹 제안은 전부 `collab.js`가 만들고
+// 여기에는 그 결과만 담긴다. iOS가 mood나 합의를 다시 계산하면 웹과 다른 답을 하게 된다(§8).
+// 합의 점수(0~100)는 내부값이라 이 계약에 **없다** — 문장만 나간다(§21·§22).
+
+export type CandidateStatus = 'PROPOSED' | 'SCHEDULED' | 'REJECTED';
+export type ReactionKind = 'MUST' | 'OK' | 'PASS';
+/** 배지 색조. 이름이 곧 의미다 — 색만으로 구분하지 않고 늘 문장이 함께 간다(§47) */
+export type VerdictTone = 'good' | 'split' | 'mixed' | 'quiet';
+
+/** 누가 어떤 반응을 남겼는지. name은 `tc_member_label()`이 만든 이름표다 — 계정 이메일은 여행에 나오지 않는다(§69) */
+export interface CandidateReactor {
+  name: string;
+  reaction: ReactionKind;
+  me: boolean;
+}
+
+export interface CandidateVerdict {
+  /** 두 명 이상이 말했으면 합의 문장, 아니면 '무엇을 더 하면 되는지'. 숫자는 들어가지 않는다 */
+  text: string;
+  tone: VerdictTone;
+}
+
+/** §24 갈린 후보의 세 선택지. SPLIT은 아직 안내만이라 action이 없다 */
+export interface ConflictOption {
+  key: 'TOGETHER' | 'SPLIT' | 'SKIP';
+  title: string;
+  text: string;
+  action: 'SCHEDULE' | 'REJECT' | null;
+}
+
+/** MUST와 PASS가 같이 있을 때만 채워진다. 자동으로 빼지 않는다(§23) */
+export interface CandidateConflict {
+  must: string[];
+  ok: string[];
+  pass: string[];
+  options: ConflictOption[];
+}
+
+export interface TripCandidate {
+  /** bigint를 문자열로 — JS number의 안전 범위 밖을 대비한다 */
+  id: string;
+  title: string;
+  placeId: string | null;
+  location: GeoPoint | null;
+  addr: string | null;
+  note: string | null;
+  url: string | null;
+  status: CandidateStatus;
+  /** '2'(2일차) 같은 위치 표시다 — 장소 id가 아니다 */
+  scheduledRef: string | null;
+  /** '내가 추가' · '지민이 추가' 처럼 완성된 문장 */
+  proposedBy: string;
+  mine: boolean;
+  myReaction: ReactionKind | null;
+  /** '❤️ 3 · 👍 1'. 0인 것은 빠진다 */
+  reactionSummary: string;
+  reactors: CandidateReactor[];
+  commentCount: number;
+  verdict: CandidateVerdict;
+  conflict: CandidateConflict | null;
+  createdAt: string;
+  /** 이 후보를 뺄 수 있는가 — 역할이 아니라 '누가 냈는가'로 갈린다 */
+  canRemove: boolean;
+}
+
+export type CandidateGroupKey = 'LOVED' | 'NEEDS_OPINION' | 'RESTING' | 'SCHEDULED' | 'REJECTED';
+
+/** 보드의 묶음. **묶음이 정렬보다 먼저다** — 순서가 아니라 어디에 한마디가 필요한지를 보인다 */
+export interface CandidateGroup {
+  key: CandidateGroupKey;
+  title: string;
+  candidates: TripCandidate[];
+}
+
+export interface GroupProposalPick {
+  candidateId: string;
+  title: string;
+  dayIndex: number;
+  distanceKm: number | null;
+  reasons: string[];
+}
+
+/** §28·§29 미리보기다 — 저장되지 않는다. 사람이 눌러야 일정에 들어간다(§79) */
+export interface GroupProposal {
+  headline: string;
+  picks: GroupProposalPick[];
+}
+
+export interface CandidateBoardResponse {
+  schemaVersion: number;
+  tripId: string;
+  role: MemberRole | null;
+  memberCount: number;
+  /** 후보 추가·일정 반영은 편집 권한 이상. 반응·코멘트는 활성 멤버 전원(§12) */
+  canPropose: boolean;
+  canReact: boolean;
+  groups: CandidateGroup[];
+  proposal: GroupProposal | null;
+  /** 취향 요약 문장들. 정리만 하고 결정하지 않는다(§62) */
+  groupContext: string[];
+}
+
+export interface CandidateComment {
+  id: string;
+  body: string;
+  authorLabel: string;
+  mine: boolean;
+  createdAt: string;
+  canDelete: boolean;
+}
+
+export interface CommentListResponse {
+  schemaVersion: number;
+  candidateId: string;
+  canComment: boolean;
+  comments: CandidateComment[];
+}
+
+export type PacePreference = 'RELAXED' | 'NORMAL' | 'PACKED';
+export type WalkingPreference = 'LOW' | 'NORMAL' | 'HIGH';
+
+/** 여행별 취향이다 — 고정 프로필이 아니다(§18). 서버 `tc_norm_prefs`가 아는 값만 남는다 */
+export interface MemberPreference {
+  pace: PacePreference | null;
+  walking: WalkingPreference | null;
+  /** 아침 일찍이 괜찮은가. null은 답하지 않음 */
+  morning: boolean | null;
+  night: boolean | null;
+  interests: string[];
+  dislikes: string[];
+  note: string | null;
+}
+
+export interface MemberPreferenceRow {
+  name: string;
+  mine: boolean;
+  /** '여유롭게 · 관심: 미술관' 한 줄 요약 */
+  summary: string;
+  prefs: MemberPreference;
+}
+
+export interface PreferenceResponse {
+  schemaVersion: number;
+  mine: MemberPreference;
+  members: MemberPreferenceRow[];
+  groupContext: string[];
+}
+
+export interface ActivityEntry {
+  id: string;
+  /** 완성된 한국어 문장. 내부 구조를 그대로 내보내지 않는다(§39) */
+  text: string;
+  mine: boolean;
+  at: string;
+  /** '3분 전' */
+  relative: string;
+}
+
+export interface ActivityListResponse {
+  schemaVersion: number;
+  entries: ActivityEntry[];
+}

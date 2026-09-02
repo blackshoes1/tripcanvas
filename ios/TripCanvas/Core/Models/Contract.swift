@@ -623,3 +623,239 @@ struct MemoryAssociation: Codable, Hashable, Sendable {
     let activityId: String?
     let reason: String
 }
+
+// MARK: - 함께하기 (후보 장소 · 반응 · 코멘트 · 취향 · 활동)
+//
+// **판단은 서버에서 끝나 있다.** 묶음·배지 문장·충돌 선택지·그룹 제안·취향 요약은 전부
+// `collab.js`가 만든 결과이고 여기서는 그리기만 한다. mood나 합의를 Swift로 다시 계산하면
+// 웹과 다른 답을 하게 된다(§8). 합의 점수는 계약에 아예 없다 — 화면에는 문장만 있다(§21·§22).
+
+enum CandidateStatus: String, UnknownCodable, Sendable {
+    case proposed = "PROPOSED", scheduled = "SCHEDULED", rejected = "REJECTED", unknown
+    static var unknownCase: CandidateStatus { .unknown }
+}
+
+enum ReactionKind: String, UnknownCodable, Sendable {
+    case must = "MUST", ok = "OK", pass = "PASS", unknown
+    static var unknownCase: ReactionKind { .unknown }
+
+    /// 색만으로 구분하지 않는다 — 기호와 문구가 늘 함께 간다(§47).
+    var symbol: String {
+        switch self {
+        case .must: "heart.fill"
+        case .ok: "hand.thumbsup.fill"
+        case .pass: "hand.raised.fill"
+        case .unknown: "questionmark"
+        }
+    }
+    var label: String {
+        switch self {
+        case .must: "꼭 가고 싶어요"
+        case .ok: "좋아요"
+        case .pass: "이번엔 패스"
+        case .unknown: "의견 없음"
+        }
+    }
+}
+
+enum VerdictTone: String, UnknownCodable, Sendable {
+    case good, split, mixed, quiet, unknown
+    static var unknownCase: VerdictTone { .unknown }
+}
+
+struct CandidateReactor: Codable, Hashable, Sendable {
+    /// 서버의 `tc_member_label()`이 만든 이름표다 — 계정 이메일은 여행에 나오지 않는다(§69).
+    let name: String
+    let reaction: ReactionKind
+    let me: Bool
+}
+
+struct CandidateVerdict: Codable, Hashable, Sendable {
+    /// 완성된 문장. 숫자가 들어 있지 않다.
+    let text: String
+    let tone: VerdictTone
+}
+
+struct ConflictOption: Codable, Hashable, Sendable {
+    let key: String
+    let title: String
+    let text: String
+    /// 누를 동작이 없는 선택지(자유시간 분리)는 nil이다 — 안내만 한다.
+    let action: String?
+}
+
+struct CandidateConflict: Codable, Hashable, Sendable {
+    let must: [String]
+    let ok: [String]
+    let pass: [String]
+    let options: [ConflictOption]
+}
+
+struct TripCandidate: Codable, Identifiable, Hashable, Sendable {
+    let id: String
+    let title: String
+    let placeId: String?
+    let location: GeoPoint?
+    let addr: String?
+    let note: String?
+    let url: String?
+    let status: CandidateStatus
+    let scheduledRef: String?
+    /// '내가 추가' · '지민이 추가' 처럼 이미 완성된 문장.
+    let proposedBy: String
+    let mine: Bool
+    let myReaction: ReactionKind?
+    let reactionSummary: String
+    let reactors: [CandidateReactor]
+    let commentCount: Int
+    let verdict: CandidateVerdict
+    let conflict: CandidateConflict?
+    let createdAt: String
+    let canRemove: Bool
+}
+
+enum CandidateGroupKey: String, UnknownCodable, Sendable {
+    case loved = "LOVED", needsOpinion = "NEEDS_OPINION", resting = "RESTING"
+    case scheduled = "SCHEDULED", rejected = "REJECTED", unknown
+    static var unknownCase: CandidateGroupKey { .unknown }
+}
+
+struct CandidateGroup: Codable, Identifiable, Hashable, Sendable {
+    let key: CandidateGroupKey
+    let title: String
+    let candidates: [TripCandidate]
+
+    var id: String { key.rawValue }
+}
+
+struct GroupProposalPick: Codable, Identifiable, Hashable, Sendable {
+    let candidateId: String
+    let title: String
+    let dayIndex: Int
+    let distanceKm: Double?
+    let reasons: [String]
+
+    var id: String { candidateId }
+}
+
+/// 미리보기다 — 저장되지 않는다. 사람이 눌러야 일정에 들어간다(§79).
+struct GroupProposal: Codable, Hashable, Sendable {
+    let headline: String
+    let picks: [GroupProposalPick]
+}
+
+struct CandidateBoardResponse: Codable, Sendable {
+    let schemaVersion: Int
+    let tripId: String
+    let role: MemberRole?
+    let memberCount: Int
+    let canPropose: Bool
+    let canReact: Bool
+    let groups: [CandidateGroup]
+    let proposal: GroupProposal?
+    let groupContext: [String]
+
+    var isEmpty: Bool { groups.allSatisfy { $0.candidates.isEmpty } }
+}
+
+struct CandidateComment: Codable, Identifiable, Hashable, Sendable {
+    let id: String
+    let body: String
+    let authorLabel: String
+    let mine: Bool
+    let createdAt: String
+    let canDelete: Bool
+}
+
+struct CommentListResponse: Codable, Sendable {
+    let schemaVersion: Int
+    let candidateId: String
+    let canComment: Bool
+    let comments: [CandidateComment]
+}
+
+enum PacePreference: String, UnknownCodable, Sendable {
+    case relaxed = "RELAXED", normal = "NORMAL", packed = "PACKED", unknown
+    static var unknownCase: PacePreference { .unknown }
+
+    var label: String {
+        switch self {
+        case .relaxed: "여유롭게"
+        case .normal: "적당하게"
+        case .packed: "빡빡하게"
+        case .unknown: "정하지 않음"
+        }
+    }
+}
+
+enum WalkingPreference: String, UnknownCodable, Sendable {
+    case low = "LOW", normal = "NORMAL", high = "HIGH", unknown
+    static var unknownCase: WalkingPreference { .unknown }
+
+    var label: String {
+        switch self {
+        case .low: "많이 걷기 싫어요"
+        case .normal: "적당히 걸어요"
+        case .high: "많이 걸어도 좋아요"
+        case .unknown: "정하지 않음"
+        }
+    }
+}
+
+/// 여행별 취향이다 — 고정 프로필이 아니다(§18). 답하지 않은 항목은 nil이다.
+struct MemberPreference: Codable, Hashable, Sendable {
+    let pace: PacePreference?
+    let walking: WalkingPreference?
+    let morning: Bool?
+    let night: Bool?
+    let interests: [String]
+    let dislikes: [String]
+    let note: String?
+
+    static let empty = MemberPreference(
+        pace: nil, walking: nil, morning: nil, night: nil, interests: [], dislikes: [], note: nil)
+
+    /// 서버가 아는 키만 보낸다 — 값이 없는 항목은 아예 빼서 서버의 화이트리스트와 결과가 갈리지 않게 한다.
+    var payload: [String: Any] {
+        var out: [String: Any] = [:]
+        if let pace, pace != .unknown { out["pace"] = pace.rawValue }
+        if let walking, walking != .unknown { out["walking"] = walking.rawValue }
+        if let morning { out["morning"] = morning }
+        if let night { out["night"] = night }
+        if !interests.isEmpty { out["interests"] = interests }
+        if !dislikes.isEmpty { out["dislikes"] = dislikes }
+        if let note, !note.isEmpty { out["note"] = note }
+        return out
+    }
+}
+
+struct MemberPreferenceRow: Codable, Identifiable, Hashable, Sendable {
+    let name: String
+    let mine: Bool
+    /// '여유롭게 · 관심: 미술관' 한 줄 요약.
+    let summary: String
+    let prefs: MemberPreference
+
+    var id: String { name }
+}
+
+struct PreferenceResponse: Codable, Sendable {
+    let schemaVersion: Int
+    let mine: MemberPreference
+    let members: [MemberPreferenceRow]
+    let groupContext: [String]
+}
+
+struct ActivityEntry: Codable, Identifiable, Hashable, Sendable {
+    let id: String
+    /// 완성된 한국어 문장. 내부 구조를 그대로 내보내지 않는다(§39).
+    let text: String
+    let mine: Bool
+    let at: String
+    let relative: String
+}
+
+struct ActivityListResponse: Codable, Sendable {
+    let schemaVersion: Int
+    let entries: [ActivityEntry]
+}

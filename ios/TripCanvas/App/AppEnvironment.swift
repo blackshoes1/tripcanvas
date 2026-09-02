@@ -30,6 +30,8 @@ enum AppConfig {
 final class AppEnvironment {
     let auth: AuthStore
     let service: TripService
+    /// 함께하기 — 후보·반응·코멘트·취향. 판단은 서버가 하고 이 계층은 경로만 만든다.
+    let collab: CollabService
     /// Siri · Push · Widget · Watch · Share가 함께 쓰는 단 하나의 라우터(§41).
     let router = ActionRouter()
     let location: LocationProvider
@@ -43,9 +45,8 @@ final class AppEnvironment {
     init(auth: AuthStore? = nil, service: TripService? = nil) {
         let authStore = auth ?? AuthStore(
             client: SupabaseAuthClient(baseURL: AppConfig.supabaseURL, anonKey: AppConfig.supabaseAnonKey))
-        let tripService = service ?? TripService(
-            api: APIClient(baseURL: AppConfig.apiBaseURL, tokens: AuthTokenProvider(store: authStore)),
-            cache: TripCache())
+        let apiClient = APIClient(baseURL: AppConfig.apiBaseURL, tokens: AuthTokenProvider(store: authStore))
+        let tripService = service ?? TripService(api: apiClient, cache: TripCache())
         let locationProvider = LocationProvider()
         let liveActivityController = LiveActivityController()
         let pushService = PushService { token in
@@ -56,6 +57,7 @@ final class AppEnvironment {
 
         self.auth = authStore
         self.service = tripService
+        self.collab = CollabService(api: apiClient)
         self.location = locationProvider
         self.liveActivity = liveActivityController
         self.push = pushService

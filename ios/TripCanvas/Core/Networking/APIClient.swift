@@ -60,6 +60,11 @@ struct APIClient {
         return try await send(path: path, method: "POST", query: query, body: data)
     }
 
+    func put<T: Decodable>(_ path: String, query: [URLQueryItem] = [], body: [String: Any]? = nil) async throws -> T {
+        let data = try body.map { try JSONSerialization.data(withJSONObject: $0) }
+        return try await send(path: path, method: "PUT", query: query, body: data)
+    }
+
     func delete<T: Decodable>(_ path: String, query: [URLQueryItem] = []) async throws -> T {
         try await send(path: path, method: "DELETE", query: query, body: nil)
     }

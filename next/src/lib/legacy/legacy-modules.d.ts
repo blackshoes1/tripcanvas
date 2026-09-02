@@ -348,6 +348,31 @@ declare module '@legacy/collab.js' {
   interface MemberRow { id?: number | string; user_id?: string; role?: string; status?: string; display_name?: string | null; joined_at?: string | null; me?: boolean }
   interface RoleRow { client_id?: string; role?: string; member_count?: number; owner?: boolean }
   interface InvitePreview { valid?: boolean; reason?: string | null; trip_name?: string | null; start_date?: string | null; day_count?: number | null; role?: string | null; expires_at?: string | null; already_member?: boolean }
+  type Reaction = 'MUST' | 'OK' | 'PASS';
+  type Mood = 'NONE' | 'SPLIT' | 'COOL' | 'LOVED' | 'QUIET';
+  type ConsensusStatus = 'STRONG_MATCH' | 'GOOD_MATCH' | 'MIXED' | 'CONFLICT';
+  interface CandidateRow {
+    id?: number | string; title?: string | null; place_id?: string | null; lat?: number | null; lng?: number | null;
+    addr?: string | null; note?: string | null; url?: string | null; status?: string | null; scheduled_ref?: string | null;
+    proposed_by_label?: string | null; mine?: boolean; my_reaction?: string | null;
+    must_count?: number; ok_count?: number; pass_count?: number;
+    reactions?: Array<{ name?: string | null; reaction?: string | null; me?: boolean }> | null;
+    comment_count?: number; created_at?: string | null;
+  }
+  interface ActivityRow {
+    id?: number | string; kind?: string | null; mine?: boolean; actor_label?: string | null; member_label?: string | null;
+    subject?: unknown; created_at?: string | null; count?: number; first_at?: string | null;
+  }
+  interface Prefs {
+    pace?: 'RELAXED' | 'NORMAL' | 'PACKED'; walking?: 'LOW' | 'NORMAL' | 'HIGH';
+    morning?: boolean; night?: boolean; interests?: string[]; dislikes?: string[]; note?: string;
+  }
+  interface PrefRow { label?: string | null; mine?: boolean; prefs?: unknown }
+  interface GroupCtx {
+    members: number; answered: number; pace: { value: string; count: number } | null; paceSplit: boolean;
+    walking: string | null; walkingWho: string[]; morningNo: string[]; nightNo: string[];
+    sharedInterests: string[]; conflicts: Array<{ topic: string; likes: string[]; dislikes: string[] }>;
+  }
   const api: {
     ROLES: readonly Role[];
     ROLE_LABEL: Readonly<Record<Role, string>>;
@@ -373,6 +398,60 @@ declare module '@legacy/collab.js' {
     inviteRangeText(start: string | null | undefined, dayCount: number | null | undefined): string;
     isForbiddenError(err: unknown): boolean;
     forbiddenText(err: unknown, role: Role | null | undefined): string;
+
+    // ── 후보 장소 · 반응 · 코멘트 · 취향 · 합의 · 충돌 · 제안 (2~5단계) ──
+    REACTIONS: readonly Reaction[];
+    REACTION_LABEL: Readonly<Record<Reaction, string>>;
+    REACTION_ICON: Readonly<Record<Reaction, string>>;
+    MOOD_TEXT: Readonly<Record<string, string>>;
+    ACTIVITY_KINDS: readonly string[];
+    PREF: Readonly<Record<string, number>>;
+    PACE_LABEL: Readonly<Record<string, string>>;
+    WALK_LABEL: Readonly<Record<string, string>>;
+    CONSENSUS_TEXT: Readonly<Record<string, string>>;
+    normReaction(r: unknown): Reaction | null;
+    reactionLabel(reaction: unknown): string;
+    reactionIcon(reaction: unknown): string;
+    canPropose(role: unknown): boolean;
+    canReact(role: unknown): boolean;
+    canScheduleCandidate(role: unknown): boolean;
+    canRemoveCandidate(role: unknown, cand: { mine?: boolean } | null | undefined): boolean;
+    tallyReactions(cand: CandidateRow | null | undefined, memberCount?: number):
+      { must: number; ok: number; pass: number; voted: number; silent: number; members: number };
+    candidateMood(cand: CandidateRow | null | undefined, memberCount?: number): Mood;
+    moodText(mood: unknown): string;
+    groupCandidates(candidates: CandidateRow[] | null | undefined, memberCount?: number):
+      { loved: CandidateRow[]; needsOpinion: CandidateRow[]; resting: CandidateRow[]; scheduled: CandidateRow[]; rejected: CandidateRow[] };
+    reactionSummary(cand: CandidateRow | null | undefined, memberCount?: number): string;
+    candidateAttribution(cand: { mine?: boolean; proposed_by_label?: string | null } | null | undefined): string;
+    sortCandidates(candidates: CandidateRow[] | null | undefined, mode?: 'recent' | 'interest', memberCount?: number): CandidateRow[];
+    canComment(role: unknown): boolean;
+    canDeleteComment(role: unknown, comment: { mine?: boolean } | null | undefined): boolean;
+    objParticle(word: unknown): string;
+    activityText(ev: ActivityRow | null | undefined): string;
+    condenseActivity(rows: ActivityRow[] | null | undefined, windowMs?: number): ActivityRow[];
+    relativeTime(iso: unknown, now?: number): string;
+    liveEffects(ev: ActivityRow | null | undefined): { candidates: boolean; members: boolean; pull: boolean; activity: boolean; notify: string };
+    normPrefs(p: unknown): Prefs;
+    prefsText(p: unknown): string;
+    groupContext(rows: PrefRow[] | null | undefined, memberCount?: number): GroupCtx;
+    groupContextText(ctx: GroupCtx | null | undefined): string[];
+    /** score는 내부값이다 — 화면·계약에 숫자를 내보내지 않는다(§21) */
+    consensusOf(cand: CandidateRow | null | undefined, memberCount?: number):
+      { score: number; strongSupportCount: number; oppositionCount: number; status: ConsensusStatus | null; voted: number; members: number };
+    consensusText(status: unknown): string;
+    candidateVerdict(cand: CandidateRow | null | undefined, memberCount?: number):
+      { text: string; tone: 'good' | 'split' | 'mixed' | 'quiet'; status: ConsensusStatus | null };
+    candidateConflict(cand: CandidateRow | null | undefined, memberCount?: number):
+      { title: string; must: string[]; ok: string[]; pass: string[] } | null;
+    conflictOptions(conflict: { title: string; must: string[]; pass: string[] } | null | undefined):
+      Array<{ key: 'TOGETHER' | 'SPLIT' | 'SKIP'; title: string; text: string; action: 'SCHEDULE' | 'REJECT' | null }>;
+    distanceKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number;
+    buildGroupProposal(
+      candidates: CandidateRow[] | null | undefined,
+      days: Array<{ spots?: Array<{ name?: string; lat?: number | null; lng?: number | null } | null> } | null> | null | undefined,
+      memberCount?: number, ctx?: { walking?: string | null } | null, max?: number
+    ): { headline: string; picks: Array<{ candidate: CandidateRow; di: number; km: number | null; reasons: string[] }> } | null;
   };
   export = api;
 }

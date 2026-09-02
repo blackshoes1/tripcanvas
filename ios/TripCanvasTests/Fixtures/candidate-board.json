@@ -1,0 +1,150 @@
+{
+  "schemaVersion": 1,
+  "tripId": "parity",
+  "role": "EDITOR",
+  "memberCount": 3,
+  "canPropose": true,
+  "canReact": true,
+  "groups": [
+    {
+      "key": "NEEDS_OPINION",
+      "title": "의견이 필요해요",
+      "candidates": [
+        {
+          "id": "12",
+          "title": "벼룩시장",
+          "placeId": null,
+          "location": null,
+          "addr": null,
+          "note": null,
+          "url": null,
+          "status": "PROPOSED",
+          "scheduledRef": null,
+          "proposedBy": "내가 추가",
+          "mine": true,
+          "myReaction": "MUST",
+          "reactionSummary": "❤️ 1 · 👋 1",
+          "reactors": [
+            {
+              "name": "나",
+              "reaction": "MUST",
+              "me": true
+            },
+            {
+              "name": "현우",
+              "reaction": "PASS",
+              "me": false
+            }
+          ],
+          "commentCount": 0,
+          "verdict": {
+            "text": "의견이 갈려 있어요",
+            "tone": "split"
+          },
+          "conflict": {
+            "must": [
+              "나"
+            ],
+            "ok": [],
+            "pass": [
+              "현우"
+            ],
+            "options": [
+              {
+                "key": "TOGETHER",
+                "title": "다 같이 방문",
+                "text": "현우도 함께 — 짧게 들르는 걸로",
+                "action": "SCHEDULE"
+              },
+              {
+                "key": "SPLIT",
+                "title": "자유시간으로 분리",
+                "text": "나은(는) 벼룩시장 · 현우은(는) 다른 곳 — 분리 일정은 다음 단계에서",
+                "action": null
+              },
+              {
+                "key": "SKIP",
+                "title": "이번 일정에서는 제외",
+                "text": "후보에는 남겨 두고 이번엔 빼요 — 언제든 되돌릴 수 있어요",
+                "action": "REJECT"
+              }
+            ]
+          },
+          "createdAt": "2026-08-30T11:00:00Z",
+          "canRemove": true
+        }
+      ]
+    },
+    {
+      "key": "LOVED",
+      "title": "다들 좋아해요",
+      "candidates": [
+        {
+          "id": "11",
+          "title": "프라도 미술관",
+          "placeId": null,
+          "location": {
+            "lat": 40.4138,
+            "lng": -3.6921
+          },
+          "addr": null,
+          "note": null,
+          "url": null,
+          "status": "PROPOSED",
+          "scheduledRef": null,
+          "proposedBy": "지민가 추가",
+          "mine": false,
+          "myReaction": "MUST",
+          "reactionSummary": "❤️ 2 · 👍 1",
+          "reactors": [
+            {
+              "name": "지민",
+              "reaction": "MUST",
+              "me": false
+            },
+            {
+              "name": "나",
+              "reaction": "MUST",
+              "me": true
+            },
+            {
+              "name": "현우",
+              "reaction": "OK",
+              "me": false
+            }
+          ],
+          "commentCount": 2,
+          "verdict": {
+            "text": "모두가 좋아할 가능성이 높아요",
+            "tone": "good"
+          },
+          "conflict": null,
+          "createdAt": "2026-08-30T10:00:00Z",
+          "canRemove": false
+        }
+      ]
+    }
+  ],
+  "proposal": {
+    "headline": "이 1곳은 다들 좋아해요 — Day 1에 넣으면 동선이 자연스러워요",
+    "picks": [
+      {
+        "candidateId": "11",
+        "title": "프라도 미술관",
+        "dayIndex": 0,
+        "distanceKm": 1.673942299261363,
+        "reasons": [
+          "3명 모두 관심 있어요 · 반대 없음",
+          "Day 1 마지막 장소(숙소)에서 약 1.7 km",
+          "걷기 부담이 적은 거리예요"
+        ]
+      }
+    ]
+  },
+  "groupContext": [
+    "3명 중 2명이 취향을 남겼어요",
+    "1명이 \"여유롭게\"를 원해요",
+    "많이 걷기 싫어요 (현우) — 동선은 이 기준으로",
+    "늦은 밤은 싫어요 (현우)"
+  ]
+}

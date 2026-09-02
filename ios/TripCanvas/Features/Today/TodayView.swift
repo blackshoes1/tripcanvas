@@ -104,6 +104,26 @@ struct TodayView: View {
         .background(Color(.systemGroupedBackground))
         .navigationTitle(trip.name)
         .navigationBarTitleDisplayMode(.inline)
+        // 함께하기는 여행 중에도 손이 가는 곳이라 화면 밖으로 밀지 않는다 —
+        // 후보 담기와 하트 누르기는 침대에서 10초 안에 하는 행동이다.
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Menu {
+                    NavigationLink {
+                        CandidateBoardView(trip: trip, service: env.collab)
+                    } label: {
+                        Label("가고 싶은 곳", systemImage: "heart.text.square")
+                    }
+                    NavigationLink {
+                        PreferenceView(trip: trip, service: env.collab)
+                    } label: {
+                        Label("여행 취향", systemImage: "slider.horizontal.3")
+                    }
+                } label: {
+                    Label("함께하기", systemImage: "person.2")
+                }
+            }
+        }
         .refreshable { await model?.load() }
         .task {
             if model == nil { model = TodayViewModel(trip: trip, service: env.service) }

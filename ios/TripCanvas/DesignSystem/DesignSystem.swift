@@ -199,3 +199,29 @@ struct InlineErrorBanner: View {
         .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: Radius.card))
     }
 }
+
+/// 결과를 알려주는 짧은 문구. 명령형이 아니라 "이렇게 됐어요" 톤으로 쓴다.
+/// 2.5초 뒤 스스로 사라진다 — 사용자가 지우는 일을 만들지 않는다.
+private struct ToastOverlay: ViewModifier {
+    let text: String?
+    let onDismiss: () -> Void
+
+    func body(content: Content) -> some View {
+        content.overlay(alignment: .bottom) {
+            if let text {
+                ToastView(text: text)
+                    .padding(Space.l)
+                    .task {
+                        try? await Task.sleep(for: .seconds(2.5))
+                        onDismiss()
+                    }
+            }
+        }
+    }
+}
+
+extension View {
+    func toast(_ text: String?, onDismiss: @escaping () -> Void) -> some View {
+        modifier(ToastOverlay(text: text, onDismiss: onDismiss))
+    }
+}

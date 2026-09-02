@@ -75,3 +75,97 @@ final class ContractDecodingTests: XCTestCase {
         XCTAssertFalse(ActivityStatus.inProgress.isDone)
     }
 }
+
+/// 함께하기 계약 — 후보 보드가 서버 응답 그대로 디코딩되는가.
+///
+/// 여기서 확인하는 것은 "묶음·문장·선택지가 이미 만들어져 오는가"다. iOS가 다시 계산할 것이
+/// 남아 있으면 웹과 답이 갈린다(§8). 그리고 점수는 아예 오지 않아야 한다(§21·§22).
+final class CandidateBoardDecodingTests: XCTestCase {
+
+    private func loadBoard() throws -> CandidateBoardResponse {
+        let url = try XCTUnwrap(
+            Bundle(for: Self.self).url(forResource: "candidate-board", withExtension: "json"),
+            "candidate-board.json 픽스처를 테스트 번들에 포함시켜야 합니다")
+        return try JSONDecoder().decode(CandidateBoardResponse.self, from: Data(contentsOf: url))
+    }
+
+    func testDecodesBoardWithGroupsAndVerdicts() throws {
+        let board = try loadBoard()
+        XCTAssertEqual(board.schemaVersion, 1)
+        XCTAssertEqual(board.role, .editor)
+        XCTAssertTrue(board.canPropose)
+        XCTAssertTrue(board.canReact)
+        XCTAssertFalse(board.groups.isEmpty)
+        for group in board.groups {
+            XCTAssertNotEqual(group.key, .unknown, "서버가 보내는 묶음을 Swift가 모르면 안 된다")
+            XCTAssertFalse(group.title.isEmpty)
+        }
+    }
+
+    /// 결정하지 못한 것이 맨 위다 — 순위가 아니라 어디에 한마디가 필요한지다(§57·§58).
+    func testUndecidedGroupComesFirst() throws {
+        let board = try loadBoard()
+        XCTAssertEqual(board.groups.first?.key, .needsOpinion)
+    }
+
+    func testEveryCandidateCarriesAFinishedSentence() throws {
+        let board = try loadBoard()
+        let candidates = board.groups.flatMap(\.candidates)
+        XCTAssertFalse(candidates.isEmpty)
+        for candidate in candidates {
+            XCTAssertFalse(candidate.verdict.text.isEmpty, "배지 문장은 서버가 만든다")
+            XCTAssertNotEqual(candidate.verdict.tone, .unknown)
+            XCTAssertFalse(candidate.proposedBy.isEmpty)
+            XCTAssertNotEqual(candidate.status, .unknown)
+            // 점수는 화면에 없다 — 문장에 숫자가 섞여 있으면 계약이 새고 있는 것이다.
+            XCTAssertNil(candidate.verdict.text.rangeOfCharacter(from: .decimalDigits),
+                         "배지 문장에 숫자가 있으면 안 된다: \(candidate.verdict.text)")
+        }
+    }
+
+    /// 갈렸다고 자동으로 빼지 않는다 — 선택지를 주고 사람이 고른다(§23·§24).
+    func testSplitCandidateOffersThreeChoicesAndStaysProposed() throws {
+        let board = try loadBoard()
+        let split = try XCTUnwrap(board.groups.flatMap(\.candidates).first { $0.conflict != nil })
+        XCTAssertEqual(split.status, .proposed)
+        let conflict = try XCTUnwrap(split.conflict)
+        XCTAssertFalse(conflict.must.isEmpty)
+        XCTAssertFalse(conflict.pass.isEmpty)
+        XCTAssertEqual(conflict.options.map(\.key), ["TOGETHER", "SPLIT", "SKIP"])
+        // 자유시간 분리는 아직 안내만이라 누를 동작이 없다.
+        XCTAssertEqual(conflict.options.map(\.action), ["SCHEDULE", nil, "REJECT"])
+    }
+
+    /// 제안은 미리보기다 — 이유가 함께 오고, 누르기 전에는 아무것도 저장되지 않는다(§79).
+    func testProposalExplainsItself() throws {
+        let board = try loadBoard()
+        let proposal = try XCTUnwrap(board.proposal)
+        XCTAssertFalse(proposal.headline.isEmpty)
+        XCTAssertFalse(proposal.picks.isEmpty)
+        for pick in proposal.picks {
+            XCTAssertFalse(pick.reasons.isEmpty, "왜 그 날인지 말하지 않는 제안은 없다")
+            XCTAssertGreaterThanOrEqual(pick.dayIndex, 0)
+        }
+    }
+
+    func testGroupContextSummarizesWithoutDeciding() throws {
+        let board = try loadBoard()
+        XCTAssertFalse(board.groupContext.isEmpty)
+        for line in board.groupContext {
+            XCTAssertFalse(line.isEmpty)
+        }
+    }
+
+    /// 서버가 모르는 값을 보내도 앱이 죽지 않는다(§10) — 화면은 '알 수 없음'으로 그리고 계속 간다.
+    func testUnknownEnumValuesDecodeSafely() throws {
+        let json = Data("""
+        {"schemaVersion":1,"tripId":"t","role":"ARCHIVIST","memberCount":2,
+         "canPropose":true,"canReact":true,"groups":[{"key":"BRAND_NEW","title":"새 묶음","candidates":[]}],
+         "proposal":null,"groupContext":[]}
+        """.utf8)
+        let board = try JSONDecoder().decode(CandidateBoardResponse.self, from: json)
+        XCTAssertEqual(board.role, .unknown)
+        XCTAssertEqual(board.groups.first?.key, .unknown)
+        XCTAssertEqual(board.groups.first?.title, "새 묶음")
+    }
+}

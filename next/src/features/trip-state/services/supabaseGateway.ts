@@ -6,6 +6,7 @@ import { createClient } from '@supabase/supabase-js';
 import type { PriceObservation } from '../domain/bookingsView';
 import type { DeviceRegistration } from '../domain/contract';
 import type { MemoryRow } from '../domain/intakeView';
+import type { ActivityRow, CandidateRow, CommentRow, PrefRow } from '../domain/candidatesView';
 import type { Gateway, TripRow } from './handlers';
 import type { TripDoc } from '../domain/todayView';
 
@@ -191,6 +192,65 @@ export async function supabaseGatewayFor(token: string): Promise<Gateway | null>
     async removeDevice(deviceId: string) {
       const { error: e } = await sb.from('device_tokens').delete().eq('device_id', deviceId);
       if (e) throw e;
+    },
+    // ── 함께하기 ─────────────────────────────────────────────────────────
+    // 조회는 security invoker(RLS가 거른다), 변경은 security definer RPC다.
+    // 여기서 테이블을 직접 건드리지 않는다 — 후보·반응·코멘트에는 쓰기 정책이 아예 없다.
+    async listCandidates(tripId: string): Promise<CandidateRow[]> {
+      const { data, error: e } = await sb.rpc('list_trip_candidates', { p_client_id: tripId });
+      if (e) throw e;
+      return (data ?? []) as unknown as CandidateRow[];
+    },
+    async addCandidate(tripId, input) {
+      const { data, error: e } = await sb.rpc('add_trip_candidate', {
+        p_client_id: tripId, p_title: input.title, p_place_id: input.placeId,
+        p_lat: input.lat, p_lng: input.lng, p_addr: input.addr, p_note: input.note, p_url: input.url
+      });
+      if (e) throw e;
+      return String(data);
+    },
+    async reactCandidate(candidateId, reaction) {
+      const { error: e } = await sb.rpc('react_to_candidate', {
+        p_candidate_id: Number(candidateId), p_reaction: reaction
+      });
+      if (e) throw e;
+    },
+    async manageCandidate(candidateId, action, value) {
+      const { error: e } = await sb.rpc('manage_trip_candidate', {
+        p_candidate_id: Number(candidateId), p_action: action, p_value: value
+      });
+      if (e) throw e;
+    },
+    async listComments(candidateId: string): Promise<CommentRow[]> {
+      const { data, error: e } = await sb.rpc('list_candidate_comments', { p_candidate_id: Number(candidateId) });
+      if (e) throw e;
+      return (data ?? []) as unknown as CommentRow[];
+    },
+    async addComment(candidateId, body) {
+      const { data, error: e } = await sb.rpc('add_candidate_comment', {
+        p_candidate_id: Number(candidateId), p_body: body
+      });
+      if (e) throw e;
+      return String(data);
+    },
+    async deleteComment(commentId) {
+      const { error: e } = await sb.rpc('delete_candidate_comment', { p_comment_id: Number(commentId) });
+      if (e) throw e;
+    },
+    async listPreferences(tripId: string): Promise<PrefRow[]> {
+      const { data, error: e } = await sb.rpc('list_trip_preferences', { p_client_id: tripId });
+      if (e) throw e;
+      return (data ?? []) as unknown as PrefRow[];
+    },
+    async savePreference(tripId, prefs) {
+      const { data, error: e } = await sb.rpc('set_trip_preference', { p_client_id: tripId, p_prefs: prefs });
+      if (e) throw e;
+      return data;
+    },
+    async listActivity(tripId: string, limit: number): Promise<ActivityRow[]> {
+      const { data, error: e } = await sb.rpc('list_trip_activity', { p_client_id: tripId, p_limit: limit });
+      if (e) throw e;
+      return (data ?? []) as unknown as ActivityRow[];
     },
     async recordFeedback(tripId, dayISO, key, action) {
       // 같은 제안을 두 번 건너뛰어도 한 행이다 — 중복 제출이 오류가 되지 않게.

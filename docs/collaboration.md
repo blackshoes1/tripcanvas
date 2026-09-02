@@ -1,8 +1,8 @@
-# 함께하기 (Collaborative Trip Planning) — 1단계: 멤버십 · 권한 · 초대 / 2단계: 후보 · 반응 / 3단계: 코멘트 · 활동 · 실시간 / 4단계: 취향 · 합의 / 5단계: 결정 · 제안
+# 함께하기 (Collaborative Trip Planning) — 1단계: 멤버십 · 권한 · 초대 / 2단계: 후보 · 반응 / 3단계: 코멘트 · 활동 · 실시간 / 4단계: 취향 · 합의 / 5단계: 결정 · 제안 / iOS: 폰으로
 
 한 사람이 만들고 나머지는 읽기전용 링크로 보던 구조에서, **일행이 같은 여행을 함께 보고 바꾸는** 구조로 가는 첫 단계다.
 이번 단계가 하는 일은 딱 하나다 — *누가 이 여행을 볼 수 있고, 바꿀 수 있는가*를 DB가 결정하게 만든다.
-후보 장소·의견(2단계), 코멘트·활동 기록·실시간(3단계), 여행 취향·그룹 컨텍스트·합의(4단계), 갈린 후보의 결정·그룹 제안(5단계)이 그 위에 올라갔다(아래). 분리 활동·참가자·시간대 배치·여행 중 재구성은 다음 단계다.
+후보 장소·의견(2단계), 코멘트·활동 기록·실시간(3단계), 여행 취향·그룹 컨텍스트·합의(4단계), 갈린 후보의 결정·그룹 제안(5단계)이 그 위에 올라갔고, 그 전부를 **iOS 앱에서도** 쓸 수 있게 했다(아래). 분리 활동·참가자·시간대 배치·여행 중 재구성은 다음 단계다.
 
 ## 현재 구조 (바꾸지 않은 것)
 
@@ -376,6 +376,59 @@ scripts/pg-local.sh start && eval "$(scripts/pg-local.sh env)" && npm run test:r
 6. 4단계(`202609020004_member_preferences.sql`)는 `trip_members`에 `prefs` 열을 더한다 — 새 테이블 없음, 재실행 안전.
 7. 5단계(`202609020005_candidate_decisions.sql`)는 RPC 하나와 트리거·CHECK 제약을 바꾼다 — 새 테이블·열 없음, 재실행 안전.
 
+# iOS — 함께하기를 폰으로
+
+후보를 담고 하트를 누르고 한마디를 남기는 일은 **침대에서 10초 안에** 하는 행동이다. 데스크톱에서만 되게 두면
+기능이 거의 죽는다. 그래서 지도 위의 본격적인 계획은 웹에 두되 함께하기는 앱으로 가져왔다.
+
+## 판단은 서버가 끝낸다
+
+`collab.js`를 Swift로 옮기지 않는다. 대신 `next/src/features/trip-state/domain/candidatesView.ts`가
+그 함수들을 그대로 불러 **계약 모양**으로 만들어 보낸다.
+
+| 서버가 이미 만들어 보내는 것 | 만든 함수 |
+|---|---|
+| 묶음과 그 순서 | `groupCandidates` — 결정 못 한 것이 맨 위 |
+| 카드 배지 문장 | `candidateVerdict` — 두 명 이상이면 합의 문장, 아니면 mood |
+| 갈렸을 때의 세 선택지 | `candidateConflict` + `conflictOptions` |
+| 그룹 제안과 그 이유 | `buildGroupProposal` |
+| 취향 요약 문장 | `groupContext` + `groupContextText` |
+| 활동 한 줄과 상대시각 | `condenseActivity` + `activityText` + `relativeTime` |
+
+⚠️ **합의 점수는 계약에 필드가 없다**(§21·§22). `swiftParity.test.ts`가 응답 JSON에 `score`가 없고
+배지 문장에 숫자가 없음을 확인한다.
+
+## 왜 변경 응답이 보드 전체인가
+
+반응 하나에 달라지는 것은 그 카드만이 아니다. 묶음이 옮겨 가고, 배지 문장이 바뀌고, 그룹 제안이 다시 계산된다.
+그 파급을 클라이언트가 흉내내면 웹과 갈린다. 그래서 `react`·`manage`·`addCandidate`는 전부 **바뀐 보드 전체**를
+돌려준다 — 왕복도 한 번으로 끝난다.
+
+## 엔드포인트
+
+| 메서드 | 경로 | 누가 |
+|---|---|---|
+| GET | `/api/v1/trips/:id/candidates` | 활성 멤버 전원 |
+| POST | `/api/v1/trips/:id/candidates` | EDITOR 이상 |
+| POST | `/api/v1/trips/:id/candidates/:cid/react` | 활성 멤버 전원 (`reaction: null`이면 거두기) |
+| POST | `/api/v1/trips/:id/candidates/:cid/manage` | REMOVE는 제안자·소유자, 나머지는 EDITOR 이상 |
+| GET·POST | `/api/v1/trips/:id/candidates/:cid/comments` | 활성 멤버 전원 |
+| DELETE | `…/comments/:commentId` | 쓴 사람·소유자 |
+| GET·PUT | `/api/v1/trips/:id/preferences` | 활성 멤버 전원, 본인 것만 |
+| GET | `/api/v1/trips/:id/activity` | 활성 멤버 전원 |
+
+권한 판정은 전부 **DB(RLS·RPC)** 가 한다. 핸들러가 하는 일은 여행이 보이는지 확인하고, RPC를 부르고,
+42501을 403 `FORBIDDEN`으로 옮기는 것뿐이다. 미리 막는 것은 헛된 왕복을 아끼는 곳에서만 한다.
+
+## 앱 쪽 구성
+
+- `ios/TripCanvas/Services/CollabService.swift` — 경로와 본문만 만든다
+- `ios/TripCanvas/Features/Collab/` — 보드·코멘트·취향 화면과 뷰모델
+- 진입점은 Today 화면 오른쪽 위의 **함께하기** 메뉴
+- `ios/TripCanvasTests/ContractDecodingTests.swift`의 `CandidateBoardDecodingTests` — 실제 응답 픽스처로 디코딩과 규칙을 확인한다
+
+⚠️ 이 컨테이너에는 Swift 툴체인이 없어 **컴파일은 iOS CI(macOS 러너)에서 처음 검증된다**.
+
 ## 아직 아닌 것 (Known Limitations)
 
 - **실시간은 활동 기록 기준이다** — 다른 멤버가 무언가 하면 그 이벤트로 다시 읽는다(3단계). 보고 있는 여행 하나만 구독하고, 실시간이 끊기면 탭이 다시 보일 때·패널을 열 때의 pull이 폴백이다. 같은 문서를 둘이 동시에 고치면 revision CAS가 충돌을 잡고 사용자가 고른다(문서 단위, 항목 단위 아님 — §33~35의 항목 단위 충돌 응답은 다음 단계).
@@ -384,8 +437,10 @@ scripts/pg-local.sh start && eval "$(scripts/pg-local.sh env)" && npm run test:r
 - `client_id`는 사용자별로만 유일하다. 내가 소유한 여행과 공유받은 여행의 id가 같으면(7자 난수, 확률은 낮다) 소유한 쪽만 보인다.
 - 예약의 민감 필드(예약번호·URL·금액)는 아직 멤버 전원에게 보인다(§68 정책은 다음 단계).
 - 이메일 초대(계정 기반)는 없다 — 링크 초대만.
-- **합의 점수가 없다**(§20). 지금 보드는 세는 것과 묶는 것까지고, "Day 2 오후에 넣으면 이동시간이 가장 짧습니다" 같은
-  제안은 다음 단계다.
+- **합의 점수는 화면에 없다**(§21·§22) — 내부값이라 계약에도 필드가 없다.
+- iOS의 함께하기에 **활동 기록 화면과 실시간이 아직 없다** — 서버 엔드포인트(`/activity`)는 있고 화면을 열 때마다 다시 읽는다.
+- iOS에서 후보를 **일정에 넣는 것**은 되지만(제안 수락·SCHEDULE) 지도에서 좌표를 붙여 담는 것은 아직 웹뿐이다.
+- 취향의 관심·별로 주제 고르기는 iOS에 아직 없다 — 페이스·걷기·시간대만 있다(서버는 전부 받는다).
 - 코멘트는 **후보에만** 붙는다 — 일정의 장소에는 안정적인 id가 없어 못 붙인다. 수정도 없다(지우고 다시 쓴다).
 - 활동 기록에 역할 변경은 없다. 여행당 최근 300건만 남는다.
 - 취향은 그룹 요약과 제안의 "걷기 부담" 한 줄에만 쓰이고 **후보 합의 점수에는 아직 안 들어간다** — 후보에 카테고리가 없다.

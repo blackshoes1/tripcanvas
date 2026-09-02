@@ -15,6 +15,7 @@ import type { TripDoc } from './todayView';
 import { buildBookings } from './bookingsView';
 import { buildTravelState } from './travelState';
 import { buildImportPreview } from './intakeView';
+import { buildActivity, buildCandidateBoard, buildComments, buildPreferences } from './candidatesView';
 
 const SWIFT = readFileSync(path.join(__dirname, '../../../../../ios/TripCanvas/Core/Models/Contract.swift'), 'utf8');
 
@@ -221,5 +222,115 @@ describe('유입·기록 계약도 Swift가 전부 담는다', () => {
     mkdirSync(dir, { recursive: true });
     writeFileSync(path.join(dir, 'import-preview.json'), JSON.stringify(preview, null, 2) + String.fromCharCode(10));
     expect(preview.schemaVersion).toBe(1);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 함께하기 — 후보 보드 · 코멘트 · 취향 · 활동
+//
+// 웹과 iOS가 **같은 판단 결과**를 그리는지 여기서 잡는다. 특히 점수: 합의 점수는 내부값이라
+// 계약에 필드가 없어야 하고, 화면에 나가는 문장에도 숫자가 없어야 한다(§21·§22).
+
+const boardRows = [
+  {
+    id: 11, title: '프라도 미술관', place_id: null, lat: 40.4138, lng: -3.6921,
+    addr: null, note: null, url: null, status: 'PROPOSED', scheduled_ref: null,
+    proposed_by_label: '지민', mine: false, my_reaction: 'MUST',
+    must_count: 2, ok_count: 1, pass_count: 0,
+    reactions: [
+      { name: '지민', reaction: 'MUST', me: false },
+      { name: '나', reaction: 'MUST', me: true },
+      { name: '현우', reaction: 'OK', me: false }
+    ],
+    comment_count: 2, created_at: '2026-08-30T10:00:00Z'
+  },
+  {
+    id: 12, title: '벼룩시장', place_id: null, lat: null, lng: null,
+    addr: null, note: null, url: null, status: 'PROPOSED', scheduled_ref: null,
+    proposed_by_label: '나', mine: true, my_reaction: 'MUST',
+    must_count: 1, ok_count: 0, pass_count: 1,
+    reactions: [
+      { name: '나', reaction: 'MUST', me: true },
+      { name: '현우', reaction: 'PASS', me: false }
+    ],
+    comment_count: 0, created_at: '2026-08-30T11:00:00Z'
+  }
+];
+const prefRows = [
+  { label: '나', mine: true, prefs: { pace: 'RELAXED', walking: 'NORMAL', interests: ['미술관'] } },
+  { label: '현우', mine: false, prefs: { walking: 'LOW', night: false, dislikes: ['쇼핑'] } }
+];
+const boardResponse = buildCandidateBoard({
+  tripId: 'parity', rows: boardRows, prefRows,
+  days: [{ spots: [{ name: '숙소', lat: 40.40, lng: -3.70 }] }, { spots: [] }],
+  role: 'EDITOR', memberCount: 3
+});
+
+describe('함께하기 계약도 Swift가 전부 담는다', () => {
+  it('CandidateBoardResponse와 그 안의 구조체', () => {
+    expectCovered('CandidateBoardResponse', boardResponse as unknown as Record<string, unknown>);
+    expect(boardResponse.groups.length).toBeGreaterThan(0);
+    expectCovered('CandidateGroup', boardResponse.groups[0] as unknown as Record<string, unknown>);
+    const candidate = boardResponse.groups.flatMap((g) => g.candidates)[0];
+    expectCovered('TripCandidate', candidate as unknown as Record<string, unknown>);
+    expect(candidate.reactors.length).toBeGreaterThan(0);
+    expectCovered('CandidateReactor', candidate.reactors[0] as unknown as Record<string, unknown>);
+    expectCovered('CandidateVerdict', candidate.verdict as unknown as Record<string, unknown>);
+    const split = boardResponse.groups.flatMap((g) => g.candidates).find((c) => c.conflict);
+    expect(split, '갈린 후보가 있어야 충돌 계약을 검사한다').toBeTruthy();
+    expectCovered('CandidateConflict', split!.conflict as unknown as Record<string, unknown>);
+    expectCovered('ConflictOption', split!.conflict!.options[0] as unknown as Record<string, unknown>);
+    expect(boardResponse.proposal, '반대 없는 후보가 있으면 제안이 나온다').toBeTruthy();
+    expectCovered('GroupProposal', boardResponse.proposal as unknown as Record<string, unknown>);
+    expectCovered('GroupProposalPick', boardResponse.proposal!.picks[0] as unknown as Record<string, unknown>);
+  });
+
+  it('코멘트·취향·활동 계약', () => {
+    const comments = buildComments('11', [
+      { id: 5, body: '여기 저녁이 좋대요', author_label: '지민', mine: false, created_at: '2026-08-31T02:00:00Z' }
+    ], 'EDITOR');
+    expectCovered('CommentListResponse', comments as unknown as Record<string, unknown>);
+    expectCovered('CandidateComment', comments.comments[0] as unknown as Record<string, unknown>);
+
+    const prefs = buildPreferences(prefRows, 3);
+    expectCovered('PreferenceResponse', prefs as unknown as Record<string, unknown>);
+    expectCovered('MemberPreference', prefs.mine as unknown as Record<string, unknown>);
+    expectCovered('MemberPreferenceRow', prefs.members[0] as unknown as Record<string, unknown>);
+
+    const activity = buildActivity([
+      { id: 7, kind: 'CANDIDATE_PROPOSED', mine: false, actor_label: '지민', subject: { title: '프라도' }, created_at: '2026-09-01T03:59:00Z' }
+    ], Date.parse('2026-09-01T04:00:00Z'));
+    expectCovered('ActivityListResponse', activity as unknown as Record<string, unknown>);
+    expect(activity.entries.length).toBeGreaterThan(0);
+    expectCovered('ActivityEntry', activity.entries[0] as unknown as Record<string, unknown>);
+  });
+
+  it('함께하기 enum도 Swift가 안다', () => {
+    ['PROPOSED', 'SCHEDULED', 'REJECTED'].forEach((s) => expect(SWIFT, `CandidateStatus.${s}`).toContain(`"${s}"`));
+    ['MUST', 'OK', 'PASS'].forEach((s) => expect(SWIFT, `ReactionKind.${s}`).toContain(`"${s}"`));
+    ['LOVED', 'NEEDS_OPINION', 'RESTING'].forEach((s) => expect(SWIFT, `CandidateGroupKey.${s}`).toContain(`"${s}"`));
+    ['RELAXED', 'PACKED'].forEach((s) => expect(SWIFT, `PacePreference.${s}`).toContain(`"${s}"`));
+    // tone은 소문자 그대로 나간다 — Swift도 같은 철자여야 한다
+    ['good', 'split', 'mixed', 'quiet'].forEach((s) => expect(SWIFT, `VerdictTone.${s}`).toContain(s));
+    // 충돌 선택지의 key는 화면이 분기에 쓴다
+    ['TOGETHER', 'SPLIT', 'SKIP'].forEach((s) =>
+      expect(JSON.stringify(boardResponse), `ConflictOption.${s}`).toContain(`"${s}"`));
+  });
+
+  it('합의 점수가 계약 밖으로 새지 않는다 (§21·§22 — 점수는 내부값이다)', () => {
+    const json = JSON.stringify(boardResponse);
+    expect(json).not.toContain('"score"');
+    expect(json).not.toContain('strongSupportCount');
+    // 화면에 그대로 나가는 문장에는 숫자가 없다
+    for (const c of boardResponse.groups.flatMap((g) => g.candidates)) {
+      expect(c.verdict.text, `배지 문장: ${c.verdict.text}`).not.toMatch(/\d/);
+    }
+  });
+
+  it('iOS 테스트 픽스처(candidate-board)도 실제 응답으로 갱신한다', () => {
+    const dir = path.join(__dirname, '../../../../../ios/TripCanvasTests/Fixtures');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(path.join(dir, 'candidate-board.json'), JSON.stringify(boardResponse, null, 2) + String.fromCharCode(10));
+    expect(boardResponse.schemaVersion).toBe(1);
   });
 });
