@@ -343,6 +343,40 @@ declare module '@legacy/adaptive.js' {
   export = api;
 }
 
+declare module '@legacy/collab.js' {
+  type Role = 'OWNER' | 'EDITOR' | 'VIEWER';
+  interface MemberRow { id?: number | string; user_id?: string; role?: string; status?: string; display_name?: string | null; joined_at?: string | null; me?: boolean }
+  interface RoleRow { client_id?: string; role?: string; member_count?: number; owner?: boolean }
+  interface InvitePreview { valid?: boolean; reason?: string | null; trip_name?: string | null; start_date?: string | null; day_count?: number | null; role?: string | null; expires_at?: string | null; already_member?: boolean }
+  const api: {
+    ROLES: readonly Role[];
+    ROLE_LABEL: Readonly<Record<Role, string>>;
+    COLLAB_CFG: Readonly<Record<string, number>>;
+    JOIN_REASON: Readonly<Record<string, string>>;
+    normRole(role: unknown): Role | null;
+    canEdit(role: unknown): boolean;
+    canManage(role: unknown): boolean;
+    canLeave(role: unknown): boolean;
+    canDelete(role: unknown): boolean;
+    roleLabel(role: unknown): string;
+    roleIcon(role: unknown): string;
+    /** 로그아웃·역할 정보 없음(로컬 전용)은 소유자 — 혼자 쓰는 여행은 예전 그대로다 */
+    roleOf(roles: Record<string, RoleRow> | null | undefined, clientId: string, signedIn: boolean): Role;
+    tripRoleMap(rows: RoleRow[] | null | undefined): Record<string, { role: Role; count: number; owner: boolean }>;
+    memberName(m: MemberRow | null | undefined): string;
+    displayNameFromEmail(email: string | null | undefined): string;
+    memberSummary(members: MemberRow[] | null | undefined): { total: number; owners: number; editors: number; viewers: number; names: string[] };
+    buildInviteLink(pageUrl: string, token: string): string;
+    parseJoinHash(hash: string | null | undefined): string | null;
+    inviteVerdict(preview: InvitePreview | null | undefined): { ok: boolean; reason: string; text: string; alreadyMember: boolean; role: Role | null };
+    joinReasonText(reason: string | null | undefined): string;
+    inviteRangeText(start: string | null | undefined, dayCount: number | null | undefined): string;
+    isForbiddenError(err: unknown): boolean;
+    forbiddenText(err: unknown, role: Role | null | undefined): string;
+  };
+  export = api;
+}
+
 declare module '@legacy/intake.js' {
   type ShareKind = 'BOOKING' | 'PLACE' | 'TRANSPORT' | 'NOTE' | 'UNKNOWN';
   type CandidateType = 'HOTEL' | 'FLIGHT' | 'TRAIN' | 'CAR' | 'RESTAURANT' | 'TOUR' | 'OTHER';

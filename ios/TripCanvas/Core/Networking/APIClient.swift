@@ -9,6 +9,8 @@ enum APIError: Error, LocalizedError, Equatable {
     case revisionConflict(message: String, revision: Int?)
     /// 상황이 바뀌어 그 제안이 더는 유효하지 않다.
     case stale(String)
+    /// 이 여행을 바꿀 권한이 없다(보기 권한·내보내짐). 재시도해도 같다 — 주최자에게 요청한다.
+    case forbidden(String)
     case badRequest(String)
     case server(status: Int, message: String)
     /// 네트워크 자체가 안 된다 — 캐시로 떨어질 신호다.
@@ -17,7 +19,7 @@ enum APIError: Error, LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .unauthorized: "로그인이 필요합니다."
-        case .notFound(let m), .stale(let m), .badRequest(let m): m
+        case .notFound(let m), .stale(let m), .badRequest(let m), .forbidden(let m): m
         case .revisionConflict(let m, _): m
         case .server(_, let m): m
         case .offline: "네트워크에 연결되어 있지 않아요."
@@ -119,6 +121,7 @@ struct APIClient {
         case "TRIP_NOT_FOUND", "ACTIVITY_NOT_FOUND": return .notFound(message)
         case "REVISION_CONFLICT": return .revisionConflict(message: message, revision: body?.revision)
         case "SUGGESTION_STALE": return .stale(message)
+        case "FORBIDDEN": return .forbidden(message)
         case "BAD_REQUEST": return .badRequest(message)
         default:
             if status == 401 { return .unauthorized }

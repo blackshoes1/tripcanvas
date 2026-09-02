@@ -17,4 +17,14 @@
 - RLS는 authenticated 사용자에게 자신의 행만 보이고, insert/update에는 `WITH CHECK`로 소유자 변경도 차단한다.
 - 스냅샷은 `user_id`를 명시하고 원본 여행 revision을 기록한다.
 
-실제 다른 사용자 격리 테스트는 로컬 Supabase 또는 staging 프로젝트가 필요하다. 저장소의 Node 테스트는 SQL 정책 존재와 클라이언트 상태 전이만 확인하며 DB 엔진에서의 RLS 실행을 통과했다고 주장하지 않는다.
+저장소의 Node 테스트 대부분은 SQL 정책 존재와 클라이언트 상태 전이만 확인한다. **다른 사용자 격리는 `npm run test:rls`가 실제 PostgreSQL에서 판정한다**(아래 함께하기 절) — Supabase 자체는 아니므로(auth·확장은 대역) 운영 적용 전 staging 확인은 여전히 필요하다.
+
+## 202609020001_trip_collaboration (함께하기 1단계)
+
+- `trip_members`·`trip_invites`를 만들고 `trips` 정책을 **소유자 또는 활성 멤버**로 바꾼다. 기존 여행 전부에 OWNER 멤버십을 백필한다(몇 번 돌려도 같다).
+- `sync_trip`·`tombstone_trip`을 멤버 인식으로 다시 정의한다 — 시그니처는 같아 기존 클라이언트가 그대로 돈다.
+- `pgcrypto`(`extensions` 스키마)를 쓴다 — Supabase 기본 확장이다.
+- **앱보다 먼저 적용한다.** 새 앱은 `my_trip_roles`가 없으면 역할 없이(전부 소유자로) 동작하지만 초대·참여는 실패한다.
+- 적용 전 로컬에서 실제 PostgreSQL로 확인할 수 있다: `scripts/pg-local.sh start && eval "$(scripts/pg-local.sh env)" && npm run test:rls`
+  (Supabase 대역 `test/rls/supabase-stub.sql`에 적용해 사용자 A·B·C 격리 시나리오를 돌린다 — 이것이 "RLS 교차 사용자 테스트"의 자동화판이다.)
+- 설계·권한표·RPC 목록은 `docs/collaboration.md`.

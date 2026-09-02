@@ -13,7 +13,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js" integrity="sha384-+pWnyi8LtZx+cgXfD2arWgUX7pHIaEL215cEPPk9WrsegNlgvDL9DNjaqsceQq6o" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js" integrity="sha384-BSxuMLxX+FCbTdYec3TbXlnMGEEM2QXTFdtDaveen71o+jswm2J36+xFqp8k4VHM" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.min.js" integrity="sha384-l8ah+VgaWtk1mvOe9VC+OirC6qHFF4yH7l7mKRidV9MSti3E9F463bMp6ZVN4kuC" crossorigin="anonymous"></script>
-<link rel="stylesheet" href="style.css?v=tc-v161">
+<link rel="stylesheet" href="style.css?v=tc-v162">
 <!-- Travelpayouts 사이트 소유 인증 (파트너 가입 검증용 — DiscoverCars API 신청에 필요) -->
 <script nowprocket data-noptimize="1" data-cfasync="false" data-wpfc-render="false" seraph-accel-crit="1" data-no-defer="1" data-cmp-ab="2">
   (function () {
@@ -44,6 +44,7 @@
   <h1>🗺 From J</h1>
   <select id="tripSel" class="srOnly" aria-label="현재 여행 선택"></select>
   <button class="tripPicker" id="tripPickerBtn" aria-haspopup="dialog"><span id="tripPickerName">여행 선택</span>⌄</button>
+  <button class="membersPill" id="membersBtn" hidden title="함께하기 — 멤버·초대" aria-haspopup="dialog">👥 1</button>
   <span class="hdrSpacer"></span>
   <button class="btn" id="pasteBtn">▧ 일정 붙여넣기</button>
   <button class="btn primary" id="travelBtn">📍 여행 모드</button>
@@ -55,7 +56,8 @@
     <button class="btn" id="tripEditBtn">⚙️ 여행 설정</button>
     <button class="btn" id="bookingBtn" title="숙박·렌터카·항공 예약 가격을 계속 추적해 절약 기회를 알려줘요">💰 예약 추적</button>
     <button class="btn" id="pasteMenuBtn">▧ 일정 붙여넣기</button>
-    <button class="btn ghost" id="shareBtn">🔗 공유</button>
+    <button class="btn" id="membersMenuBtn" title="일행을 초대해 같은 여행을 함께 계획해요">👥 함께하기</button>
+    <button class="btn ghost" id="shareBtn" title="읽기전용 링크 — 받는 쪽은 사본으로 저장할 수 있어요">🔗 공유</button>
     <button class="btn ghost" id="exportBtn">📤 내보내기</button>
     <button class="btn ghost" id="imgBtn" title="일정을 이미지로 저장">🖼 이미지</button>
     <button class="btn ghost" id="importBtn">📥 가져오기</button>
@@ -65,6 +67,7 @@
   <input type="file" id="importFile" accept=".json" style="display:none">
 </header>
 <div id="roBar" style="display:none">👀 읽기전용으로 보는 중 — 편집하려면 내 여행으로 저장하세요 <button class="btn primary" id="roSave" style="margin-left:auto">내 여행으로 저장</button></div>
+<div id="roleBar" style="display:none">👀 보기 권한으로 함께 보는 중 — 일정을 바꾸려면 주최자에게 편집 권한을 요청하세요</div>
 <div id="filterbar"></div>
 <div id="main">
   <aside id="sidebar"></aside>
@@ -166,9 +169,58 @@
   </div>
 </div></div>
 
+<!-- 함께하기 — 멤버 · 초대 · 나가기 (접근 제어는 DB의 RLS·RPC가 결정한다. 여기는 그 결과를 보여줄 뿐) -->
+<div class="modalBg" id="membersModalBg"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="membersTitle">
+  <div class="modalTitleRow"><div><p class="eyebrow">TOGETHER</p><h2 id="membersTitle">👥 함께하기</h2></div><span class="stepBadge" id="membersRoleBadge"></span></div>
+  <p class="hint" id="membersHint">같은 여행을 여러 명이 함께 봅니다. 편집자는 일정을 바꿀 수 있고, 보기 권한은 볼 수만 있어요.</p>
+  <div class="memberSection">
+    <div class="memberSectionHead"><b>멤버</b><button class="btn" id="membersRefresh" style="font-size:11px;padding:3px 9px;min-height:28px" title="다른 멤버가 바꾼 최신 일정과 멤버 목록을 불러와요">↻ 새로고침</button></div>
+    <div id="membersList" class="memberList"></div>
+  </div>
+  <div class="memberSection" id="myNameSection">
+    <label for="myMemberName">이 여행에서 내 이름</label>
+    <div class="fieldRow"><input type="text" id="myMemberName" maxlength="40" placeholder="예: 민수"><button class="btn" id="myMemberNameSave">저장</button></div>
+    <div class="hint">계정 이메일은 다른 멤버에게 보이지 않아요. 여기 적은 이름만 보입니다.</div>
+  </div>
+  <div class="memberSection" id="inviteSection">
+    <div class="memberSectionHead"><b>초대</b></div>
+    <div class="fieldRow">
+      <select id="inviteRole" class="compactSelect" aria-label="초대 권한"><option value="EDITOR">✏️ 편집자로</option><option value="VIEWER">👀 보기만</option></select>
+      <button class="btn primary" id="inviteCreate">🔗 초대 링크 만들기</button>
+    </div>
+    <div id="inviteResult" class="inviteResult" hidden>
+      <input type="text" id="inviteLink" readonly aria-label="초대 링크">
+      <button class="btn" id="inviteCopy">복사</button>
+    </div>
+    <div class="hint">링크를 아는 사람은 누구나 참여할 수 있어요 · 7일 뒤 만료 · 아래에서 언제든 취소할 수 있어요</div>
+    <div id="inviteList" class="memberList"></div>
+  </div>
+  <div class="row modalActions">
+    <button class="btn" id="membersLeave" style="margin-right:auto;color:#ff8fa3;display:none">🚪 여행에서 나가기</button>
+    <button class="btn primary" id="membersClose">닫기</button>
+  </div>
+</div></div>
+
+<!-- 초대 링크로 열었을 때 (#join=) — 미리보기 → (로그인) → 참여. 참여 전에는 여행 본문을 받지 않는다 -->
+<div class="modalBg" id="joinModalBg"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="joinTitle">
+  <p class="eyebrow">INVITATION</p>
+  <h2 id="joinTitle">여행에 초대받았어요</h2>
+  <div class="joinCard" id="joinCard">
+    <div class="joinTripName" id="joinTripName">불러오는 중…</div>
+    <div class="joinTripMeta" id="joinTripMeta"></div>
+  </div>
+  <p class="hint" id="joinHint"></p>
+  <div id="joinNameWrap"><label for="joinName">이 여행에서 보일 내 이름</label><input type="text" id="joinName" maxlength="40" placeholder="예: 영희"></div>
+  <div class="row modalActions">
+    <button class="btn" id="joinCancel" style="margin-right:auto">나중에</button>
+    <button class="btn primary" id="joinAccept">여행 참여하기</button>
+  </div>
+</div></div>
+
 <!-- 여행 설정 모달 -->
 <div class="modalBg" id="tripModalBg"><div class="modal">
   <h2>여행 설정</h2>
+  <div class="hint" id="tripRoleHint" style="display:none"></div>
   <label>여행 이름</label><input type="text" id="tripName">
   <label>시작일 (Day 1)</label><input type="date" id="tripStart">
   <label>여행 기본 시간대</label><input type="text" id="tripTimeZone" list="timezoneList" placeholder="예: Asia/Tokyo">
@@ -396,12 +448,13 @@
   </div>
 </div>
 
-<script src="lib.js?v=tc-v161"></script>
-<script src="sync.js?v=tc-v161"></script>
-<script src="routing.js?v=tc-v161"></script>
-<script src="price.js?v=tc-v161"></script>
-<script src="adaptive.js?v=tc-v161"></script>
-<script src="intake.js?v=tc-v161"></script>
-<script src="app.js?v=tc-v161"></script>
+<script src="lib.js?v=tc-v162"></script>
+<script src="sync.js?v=tc-v162"></script>
+<script src="routing.js?v=tc-v162"></script>
+<script src="price.js?v=tc-v162"></script>
+<script src="adaptive.js?v=tc-v162"></script>
+<script src="intake.js?v=tc-v162"></script>
+<script src="collab.js?v=tc-v162"></script>
+<script src="app.js?v=tc-v162"></script>
 </body>
 </html>

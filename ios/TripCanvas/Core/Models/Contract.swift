@@ -57,6 +57,22 @@ enum CommitmentType: String, UnknownCodable, Sendable {
     }
 }
 
+/// 함께하기 — 이 여행에서 나의 역할. 접근 제어는 서버(RLS)가 하고, 앱은 편집 도구를 감출 뿐이다.
+enum MemberRole: String, UnknownCodable, Sendable {
+    case owner = "OWNER", editor = "EDITOR", viewer = "VIEWER", unknown
+    static var unknownCase: MemberRole { .unknown }
+
+    var canEdit: Bool { self == .owner || self == .editor }
+    var label: String {
+        switch self {
+        case .owner: "주최자"
+        case .editor: "편집"
+        case .viewer: "보기"
+        case .unknown: "멤버"
+        }
+    }
+}
+
 enum TravelStatus: String, UnknownCodable, Sendable {
     case noPlan = "NO_PLAN", upcoming = "UPCOMING", readyToLeave = "READY_TO_LEAVE"
     case traveling = "TRAVELING", arrived = "ARRIVED", inProgress = "IN_PROGRESS"
@@ -124,8 +140,13 @@ struct TripSummary: Codable, Identifiable, Hashable, Sendable {
     let cities: [String]
     /// 오늘이 몇 일차인지. -1이면 여행 기간 밖이다.
     let todayIndex: Int
+    /// 함께하기 — 구버전 서버 응답에는 없을 수 있어 옵셔널로 받는다(없으면 혼자 쓰는 여행으로 본다).
+    let role: MemberRole?
+    let memberCount: Int?
 
     var isLive: Bool { todayIndex >= 0 }
+    var isShared: Bool { (memberCount ?? 1) > 1 }
+    var canEdit: Bool { (role ?? .owner).canEdit }
 }
 
 struct DaySummary: Codable, Hashable, Sendable {

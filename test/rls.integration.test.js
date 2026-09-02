@@ -1,0 +1,90 @@
+// 함께하기 RLS·RPC — **진짜 PostgreSQL**에서 돈다(§94).
+//
+// 정규식으로 "정책이 파일에 있다"를 확인하는 migration.test.js와 달리, 여기서는 마이그레이션을 실제로 적용하고
+// 사용자 A·B·C로 번갈아 접속해 "B가 A의 여행을 볼 수 없다 / 보기 권한은 저장이 거절된다 / 나간 사람의 저장이
+// 조용히 복제되지 않는다"를 DB가 판정하게 한다.
+//
+// 로컬 PostgreSQL이 있어야 한다(없으면 skip):
+//   scripts/pg-local.sh start && eval "$(scripts/pg-local.sh env)" && npm run test:rls
+// Supabase가 아니라 대역(test/rls/supabase-stub.sql)이지만, RLS·security definer·errcode는 PostgreSQL 그 자체다.
+'use strict';
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const { execFileSync } = require('node:child_process');
+const path = require('node:path');
+
+const PSQL = process.env.TC_PSQL, HOST = process.env.TC_PGHOST, PORT = process.env.TC_PGPORT || '5432';
+const skip = (PSQL && HOST) ? false : '로컬 PostgreSQL 없음 — scripts/pg-local.sh start 후 TC_PSQL·TC_PGHOST·TC_PGPORT 설정';
+const root = path.join(__dirname, '..');
+const sql = (f) => path.join(root, f);
+
+function psql(db, args) {
+  return execFileSync(PSQL, ['-h', HOST, '-p', PORT, '-U', 'postgres', '-X', '-q', '-A', '-t', '-v', 'ON_ERROR_STOP=1', '-d', db, ...args],
+    { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+}
+
+// 시나리오(test/rls/collaboration.sql)가 남기는 결과. 키 이름은 그 파일의 t_out 행이다.
+const EXPECTED = {
+  'a.trips': '1', 'a.owner_member': '1', 'a.roles': 'OWNER:1',
+  // 초대 전 B는 A의 아무것도 못 본다 — 여행·멤버·초대 전부
+  'b.before.trips': '0', 'b.before.members': '0', 'b.before.invites': '0', 'b.before.list_members': '0',
+  'b.own.trips': '1',
+  'b.invite.forbidden': '42501',
+  // 토큰은 32자 URL-safe, 원문은 저장되지 않고 sha256만 있다
+  'a.invite.token_len': '32', 'a.invite.role': 'EDITOR',
+  'db.token_not_stored': 'true', 'db.token_hash_is_sha256': 'true',
+  // 로그인 전: 미리보기(이름·시작일·일수·역할)만. 수락·여행 읽기는 권한 오류
+  'anon.preview': 'true:OK:스페인:2026-10-25:2:EDITOR', 'anon.accept': '42501', 'anon.trips': '42501',
+  'anon.preview.garbage': 'false:INVALID',
+  // 토큰을 알아도 참여 전에는 본문을 못 본다(§67)
+  'c.preview.valid': 'true', 'c.trips': '0',
+  // 수락은 멱등(§74) — 두 번째는 already_member, 사용 횟수는 그대로
+  'b.accept': 'true:OK:trip1:스페인:EDITOR:false', 'b.accept.again': 'true:OK:true',
+  'b.after.trips': '2', 'b.after.roles': 'b-own=OWNER:1:true,trip1=EDITOR:2:false',
+  'b.after.members': '영희/EDITOR/true,-/OWNER/false', 'db.invite.use_count': '1',
+  // 편집자의 저장은 CAS를 그대로 지나고 주최자에게 보인다
+  'b.edit': 'true:false:2', 'b.edit.stale': 'false:true:2', 'a.sees_edit': '스페인 (영희 편집)', 'a.roles.after': 'OWNER:2',
+  // 편집자가 못 하는 것: 소유권 가로채기(트리거) · 삭제 · 다른 멤버 관리. 본인 이름은 된다
+  'b.hijack': '42501', 'b.tombstone': '42501', 'b.remove_owner': '42501', 'b.rename': 'ok', 'b.rename.check': '영희(수정)',
+  // 보기 권한: 읽기만. RPC도 직접 update도 막힌다
+  'a.demote': 'ok', 'b.viewer.reads': '1', 'b.viewer.write': '42501', 'b.viewer.direct_update': '0',
+  'a.after_viewer_write': '스페인 (영희 편집)',
+  // 소유자 행은 못 바꾸고(§72 전까지) 주최자는 못 나간다(§71)
+  'a.self_demote': '42501', 'a.leave': '42501',
+  // client_id는 사용자별 — C의 같은 id 저장은 제 여행이 될 뿐 A의 행은 그대로
+  'c.sync_same_id': 'true:1', 'c.trips.after_sync': 'C의 trip1', 'a.after_c': '스페인 (영희 편집):2',
+  // 나가기: 멱등, 나간 뒤엔 안 보이고, 나간 사람의 저장은 조용한 복제가 아니라 거절
+  'b.leave': 'true', 'b.leave.again': 'true', 'b.left.trips': 'b-own', 'b.left.write': '42501',
+  // 취소된 링크 · 내보내진 사람은 이전 링크로 못 돌아오고 새 링크는 된다(§70) · 만료
+  'a.revoke': 'true', 'a.invites.active': '0/1', 'c.revoked.preview': 'false:REVOKED', 'c.revoked.accept': 'false:REVOKED',
+  'b.rejoin': 'true:OK:VIEWER:false', 'a.remove_b': 'ok', 'b.removed.trips': '0',
+  'b.removed.old_link': 'false:REMOVED', 'b.removed.new_link': 'true:OK:EDITOR',
+  'c.expired.preview': 'false:EXPIRED', 'c.expired.accept': 'false:EXPIRED',
+  'b.expired.but_member': 'false:EXPIRED:true', 'b.expired.accept_member': 'true:true',
+  // 기존 단일 사용자 흐름은 그대로(§95)
+  'a.snapshots': '1', 'b.snapshots': '0', 'a.tombstone_by_owner': 'true'
+};
+
+test('RLS: 마이그레이션을 실제 PostgreSQL에 적용하고 사용자 A·B·C 격리 시나리오를 DB가 판정한다', { skip }, () => {
+  const db = 'tc_rls_' + Date.now().toString(36);
+  psql('postgres', ['-c', `create database ${db}`]);
+  try {
+    psql(db, ['-f', sql('test/rls/supabase-stub.sql')]);
+    psql(db, ['-f', sql('supabase/migrations/202608190001_sync_integrity.sql')]);
+    psql(db, ['-f', sql('supabase/migrations/202609020001_trip_collaboration.sql')]);
+    // 두 번 적용해도 같다 — 운영에서 재실행돼도 안전해야 한다
+    psql(db, ['-f', sql('supabase/migrations/202609020001_trip_collaboration.sql')]);
+    const out = psql(db, ['-f', sql('test/rls/collaboration.sql')]);
+    const got = {};
+    for (const line of out.split('\n')) {
+      if (!line.startsWith('OUT:')) continue;
+      const i = line.indexOf('=');
+      got[line.slice(4, i)] = line.slice(i + 1);
+    }
+    const missing = Object.keys(EXPECTED).filter((k) => !(k in got));
+    assert.deepEqual(missing, [], '시나리오가 남기지 않은 키');
+    for (const [k, v] of Object.entries(EXPECTED)) assert.equal(got[k], v, k);
+  } finally {
+    try { psql('postgres', ['-c', `drop database if exists ${db}`]); } catch (_) { /* 정리 실패는 결과에 영향 없음 */ }
+  }
+});

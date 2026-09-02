@@ -4,6 +4,7 @@
 //
 // 낙관적 동시성(CAS): 서버는 우리가 읽은 revision과 현재 revision이 다르면 conflict를 준다.
 // 실패해도 로컬 편집은 절대 버리지 않는다.
+import legacyCollab from '@legacy/collab.js';
 import legacyLib from '@legacy/lib.js';
 import legacySync from '@legacy/sync.js';
 
@@ -94,6 +95,13 @@ export async function syncTripCloud(
     // 올라간 시점이 되돌릴 수 있는 지점이다 (여행별 10분에 한 번, 실패해도 업로드는 유효)
     void snapshotTrip(trip, entry.revision);
   } catch (e) {
+    if (legacyCollab.isForbiddenError(e)) {
+      // 보기 권한·내보내진 멤버 — 재시도 루프에 넣지 않는다. 로컬 편집은 그대로 남는다
+      entry.status = 'forbidden';
+      persistSyncMeta();
+      hooks.onNotice(legacyCollab.forbiddenText(e, null), 'error');
+      return;
+    }
     entry.status = 'error';
     persistSyncMeta();
     console.warn('cloud.sync 실패:', e instanceof Error ? e.message : e);

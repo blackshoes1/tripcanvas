@@ -28,6 +28,14 @@ jobs:
         run: npm run test:unit
       - name: Integration tests
         run: npm run test:integration
+      # 함께하기 RLS — 러너에 깔린 PostgreSQL로 마이그레이션을 실제 적용하고 사용자 격리를 DB가 판정한다(§94).
+      # 로컬에서 바이너리가 없으면 테스트는 skip되지만, CI에서는 반드시 돌아야 한다.
+      - name: RLS on real PostgreSQL
+        run: |
+          scripts/pg-local.sh start
+          eval "$(scripts/pg-local.sh env)"
+          npm run test:rls 2>&1 | tee rls.log
+          grep -q "# skipped 0" rls.log
       - name: Dependency audit (high severity)
         run: npm audit --audit-level=high
 
