@@ -169,6 +169,113 @@ select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000
 insert into t_out select 'b.expired.but_member', valid::text||':'||reason||':'||already_member from public.invite_preview((select token from t_inv3));
 insert into t_out select 'b.expired.accept_member', ok::text||':'||already_member from public.accept_trip_invite((select token from t_inv3),'영희');
 
+-- ══ 2단계: 후보 장소와 반응 ══════════════════════════════════════════════════
+-- 여기 오기까지의 상태: A=OWNER · B=EDITOR(활성) · C=멤버 아님.
+
+-- A가 후보를 낸다. 낸 사람은 이미 가고 싶다는 뜻이라 MUST가 자동으로 붙는다.
+select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000a"}',false);
+create temp table t_cand as select public.add_trip_candidate('trip1','사그라다 파밀리아','ChIJ1',41.4036,2.1744,'Barcelona','야경이 좋대',null) as id;
+grant select on t_cand to public;
+insert into t_out select 'cand.a.add', (id is not null)::text from t_cand;
+insert into t_out select 'cand.a.auto_must', must_count::text||':'||coalesce(my_reaction,'-') from public.list_trip_candidates('trip1');
+
+-- B(편집자)도 후보를 낼 수 있다
+select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000b"}',false);
+create temp table t_cand2 as select public.add_trip_candidate('trip1','카사 바트요',null,null,null,null,null,null) as id;
+grant select on t_cand2 to public;
+insert into t_out select 'cand.b.count', count(*)::text from public.list_trip_candidates('trip1');
+-- 제안자 이름은 이 여행에서 쓰는 이름이다 — 계정 이메일은 나오지 않는다(§69)
+insert into t_out select 'cand.labels', string_agg(proposed_by_label,',' order by title) from public.list_trip_candidates('trip1');
+insert into t_out select 'cand.no_email', (not exists(select 1 from public.list_trip_candidates('trip1') where proposed_by_label like '%@%'))::text;
+
+-- ── C(멤버 아님)는 후보를 못 본다 · 못 만든다 · 반응도 못 한다 ──
+select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000c"}',false);
+insert into t_out select 'cand.c.select', count(*)::text from public.trip_candidates;
+insert into t_out select 'cand.c.reactions', count(*)::text from public.candidate_reactions;
+insert into t_out select 'cand.c.list', count(*)::text from public.list_trip_candidates('trip1');
+-- C에게도 client_id가 'trip1'인 제 여행이 있다(앞의 c.sync_same_id) — 그래서 추가 자체는 된다.
+-- 중요한 것은 그것이 **C의 여행에** 들어가고 A의 여행은 그대로라는 점이다.
+do $$ begin perform public.add_trip_candidate('trip1','몰래 추가',null,null,null,null,null,null); insert into t_out values('cand.c.add','ok');
+  exception when others then insert into t_out values('cand.c.add',sqlstate); end $$;
+insert into t_out select 'cand.c.add_lands_in_own', string_agg(title,',') from public.list_trip_candidates('trip1');
+do $$ begin perform public.react_to_candidate((select id from t_cand),'MUST'); insert into t_out values('cand.c.react','ok');
+  exception when others then insert into t_out values('cand.c.react',sqlstate); end $$;
+
+-- A의 여행은 C의 추가에 흔들리지 않았다
+select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000a"}',false);
+insert into t_out select 'cand.a.untouched', string_agg(title,',' order by title) from public.list_trip_candidates('trip1');
+
+-- ── 반응은 한 사람 한 표이고 다시 눌러도 같다(멱등 §66) ──
+select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000b"}',false);
+select public.react_to_candidate((select id from t_cand),'OK');
+select public.react_to_candidate((select id from t_cand),'OK');
+insert into t_out select 'cand.react.idempotent', count(*)::text from public.candidate_reactions r where r.candidate_id=(select id from t_cand) and r.user_id='00000000-0000-0000-0000-00000000000b';
+-- 마음이 바뀌면 표가 옮겨간다 — 행이 늘지 않는다
+select public.react_to_candidate((select id from t_cand),'MUST');
+insert into t_out select 'cand.react.changed', must_count::text||':'||ok_count::text||':'||pass_count::text
+  from public.list_trip_candidates('trip1') where id=(select id from t_cand);
+insert into t_out select 'cand.react.rows', count(*)::text from public.candidate_reactions r where r.candidate_id=(select id from t_cand);
+-- 서로의 의견은 보인다(§10 — 이번 단계는 공개가 기본)
+insert into t_out select 'cand.react.who', (select string_agg(x->>'name'||'/'||(x->>'reaction'),',') from public.list_trip_candidates('trip1') c, jsonb_array_elements(c.reactions) x where c.id=(select id from t_cand));
+-- 반응 거두기
+select public.react_to_candidate((select id from t_cand),null);
+insert into t_out select 'cand.react.cleared', coalesce(my_reaction,'-')||':'||must_count::text from public.list_trip_candidates('trip1') where id=(select id from t_cand);
+select public.react_to_candidate((select id from t_cand),'MUST');
+do $$ begin perform public.react_to_candidate((select id from t_cand),'LOVE'); insert into t_out values('cand.react.invalid','ok');
+  exception when others then insert into t_out values('cand.react.invalid',sqlstate); end $$;
+
+-- ── 보기 권한: 의견은 내지만 후보를 만들지는 못한다 ──
+select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000a"}',false);
+select public.manage_trip_member((select m.id from public.trip_members m join public.trips t on t.id=m.trip_id where t.client_id='trip1' and m.user_id='00000000-0000-0000-0000-00000000000b'),'SET_ROLE','VIEWER');
+select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000b"}',false);
+insert into t_out select 'cand.viewer.reads', count(*)::text from public.list_trip_candidates('trip1');
+insert into t_out select 'cand.viewer.react', public.react_to_candidate((select id from t_cand),'PASS')::text;
+insert into t_out select 'cand.viewer.react.applied', coalesce(my_reaction,'-') from public.list_trip_candidates('trip1') where id=(select id from t_cand);
+do $$ begin perform public.add_trip_candidate('trip1','보기 권한이 낸 후보',null,null,null,null,null,null); insert into t_out values('cand.viewer.add','ok');
+  exception when others then insert into t_out values('cand.viewer.add',sqlstate); end $$;
+do $$ begin perform public.manage_trip_candidate((select id from t_cand),'SCHEDULE','2'); insert into t_out values('cand.viewer.schedule','ok');
+  exception when others then insert into t_out values('cand.viewer.schedule',sqlstate); end $$;
+-- 정책이 아니라 권한 자체가 없다 — 테이블에 직접 쓰지 못한다
+do $$ begin insert into public.candidate_reactions(candidate_id,user_id,reaction) values((select id from t_cand),'00000000-0000-0000-0000-00000000000b','MUST'); insert into t_out values('cand.viewer.direct_react','ok');
+  exception when others then insert into t_out values('cand.viewer.direct_react',sqlstate); end $$;
+do $$ begin insert into public.trip_candidates(trip_id,title,proposed_by) values((select t.id from public.trips t where t.client_id='trip1'),'직접','00000000-0000-0000-0000-00000000000b'); insert into t_out values('cand.viewer.direct_add','ok');
+  exception when others then insert into t_out values('cand.viewer.direct_add',sqlstate); end $$;
+-- 남의 후보는 못 지운다. 내가 낸 것은 지운다
+do $$ begin perform public.manage_trip_candidate((select id from t_cand),'REMOVE'); insert into t_out values('cand.b.remove_others','ok');
+  exception when others then insert into t_out values('cand.b.remove_others',sqlstate); end $$;
+
+-- ── 편집자로 되돌리고 일정에 넣는다 — 인기순 자동 반영은 없다(§12·§79) ──
+select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000a"}',false);
+select public.manage_trip_member((select m.id from public.trip_members m join public.trips t on t.id=m.trip_id where t.client_id='trip1' and m.user_id='00000000-0000-0000-0000-00000000000b'),'SET_ROLE','EDITOR');
+select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000b"}',false);
+insert into t_out select 'cand.schedule', public.manage_trip_candidate((select id from t_cand),'SCHEDULE','2')::text;
+insert into t_out select 'cand.scheduled', status||':'||coalesce(scheduled_ref,'-') from public.list_trip_candidates('trip1') where id=(select id from t_cand);
+select public.manage_trip_candidate((select id from t_cand),'UNSCHEDULE');
+insert into t_out select 'cand.unschedule', status||':'||coalesce(scheduled_ref,'-') from public.list_trip_candidates('trip1') where id=(select id from t_cand);
+-- 편집 권한이어도 남의 후보는 못 지운다 — 여기서 갈리는 것은 역할이 아니라 '누가 냈는가'다
+do $$ begin perform public.manage_trip_candidate((select id from t_cand),'REMOVE'); insert into t_out values('cand.editor.remove_others','ok');
+  exception when others then insert into t_out values('cand.editor.remove_others',sqlstate); end $$;
+-- 내가 낸 후보는 내가 거둔다. 반응도 같이 사라진다
+insert into t_out select 'cand.b.remove_own', public.manage_trip_candidate((select id from t_cand2),'REMOVE')::text;
+insert into t_out select 'cand.after_remove', count(*)::text from public.list_trip_candidates('trip1');
+insert into t_out select 'cand.reactions_cascade', count(*)::text from public.candidate_reactions r where r.candidate_id=(select id from t_cand2);
+-- 주최자는 남의 후보도 거둘 수 있다
+select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000a"}',false);
+create temp table t_cand3 as select public.add_trip_candidate('trip1','구엘 공원',null,null,null,null,null,null) as id;
+grant select on t_cand3 to public;
+select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000b"}',false);
+select public.react_to_candidate((select id from t_cand3),'PASS');
+select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000a"}',false);
+insert into t_out select 'cand.owner_removes_any', public.manage_trip_candidate((select id from t_cand3),'REMOVE')::text;
+-- 나간 사람은 반응도 못 남긴다
+select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000b"}',false);
+select public.leave_trip('trip1');
+do $$ begin perform public.react_to_candidate((select id from t_cand),'MUST'); insert into t_out values('cand.left.react','ok');
+  exception when others then insert into t_out values('cand.left.react',sqlstate); end $$;
+insert into t_out select 'cand.left.list', count(*)::text from public.list_trip_candidates('trip1');
+-- 여행이 지워지면 후보도 따라 지워진다
+select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000a"}',false);
+
 -- ── 스냅샷·기존 소유자 흐름은 그대로 ──
 select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000a"}',false);
 insert into public.trip_snapshots(user_id,client_id,name,data,source_revision) values('00000000-0000-0000-0000-00000000000a','trip1','스페인','{}'::jsonb,2);

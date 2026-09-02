@@ -13,7 +13,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js" integrity="sha384-+pWnyi8LtZx+cgXfD2arWgUX7pHIaEL215cEPPk9WrsegNlgvDL9DNjaqsceQq6o" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js" integrity="sha384-BSxuMLxX+FCbTdYec3TbXlnMGEEM2QXTFdtDaveen71o+jswm2J36+xFqp8k4VHM" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.min.js" integrity="sha384-l8ah+VgaWtk1mvOe9VC+OirC6qHFF4yH7l7mKRidV9MSti3E9F463bMp6ZVN4kuC" crossorigin="anonymous"></script>
-<link rel="stylesheet" href="style.css?v=tc-v162">
+<link rel="stylesheet" href="style.css?v=tc-v163">
 <!-- Travelpayouts 사이트 소유 인증 (파트너 가입 검증용 — DiscoverCars API 신청에 필요) -->
 <script nowprocket data-noptimize="1" data-cfasync="false" data-wpfc-render="false" seraph-accel-crit="1" data-no-defer="1" data-cmp-ab="2">
   (function () {
@@ -57,6 +57,7 @@
     <button class="btn" id="bookingBtn" title="숙박·렌터카·항공 예약 가격을 계속 추적해 절약 기회를 알려줘요">💰 예약 추적</button>
     <button class="btn" id="pasteMenuBtn">▧ 일정 붙여넣기</button>
     <button class="btn" id="membersMenuBtn" title="일행을 초대해 같은 여행을 함께 계획해요">👥 함께하기</button>
+    <button class="btn" id="candMenuBtn" title="아직 일정이 아닌 '가고 싶은 곳'을 일행과 함께 골라요">📍 가고 싶은 곳</button>
     <button class="btn ghost" id="shareBtn" title="읽기전용 링크 — 받는 쪽은 사본으로 저장할 수 있어요">🔗 공유</button>
     <button class="btn ghost" id="exportBtn">📤 내보내기</button>
     <button class="btn ghost" id="imgBtn" title="일정을 이미지로 저장">🖼 이미지</button>
@@ -199,6 +200,30 @@
     <button class="btn" id="membersLeave" style="margin-right:auto;color:#ff8fa3;display:none">🚪 여행에서 나가기</button>
     <button class="btn primary" id="membersClose">닫기</button>
   </div>
+</div></div>
+
+<!-- 후보 보드 — 아직 일정이 아닌 '가고 싶은 곳'. 인기가 많다고 자동으로 일정에 들어가지 않는다(§12·§79) -->
+<div class="modalBg" id="candModalBg"><div class="modal wide" role="dialog" aria-modal="true" aria-labelledby="candTitle">
+  <div class="modalTitleRow"><div><p class="eyebrow">CANDIDATES</p><h2 id="candTitle">📍 가고 싶은 곳</h2></div><span class="stepBadge" id="candRoleBadge"></span></div>
+  <p class="hint" id="candHint">일정에 넣기 전에 일행과 먼저 골라 봐요. 반응은 서로 보이고, 일정에 넣는 건 언제나 직접 누를 때만 일어나요.</p>
+  <div class="memberSection" id="candAddSection">
+    <div class="fieldRow">
+      <input type="text" id="candTitleInput" maxlength="120" placeholder="가고 싶은 곳 (예: 사그라다 파밀리아)" aria-label="후보 이름">
+      <button class="btn primary" id="candAdd">＋ 후보로 담기</button>
+    </div>
+    <input type="text" id="candNoteInput" maxlength="300" placeholder="한 줄 메모 (선택) — 예: 야경이 좋대" aria-label="후보 메모">
+  </div>
+  <div class="memberSection">
+    <div class="memberSectionHead">
+      <b>후보</b>
+      <span class="row" style="gap:6px">
+        <select id="candSort" class="compactSelect" aria-label="후보 정렬"><option value="recent">최근 순</option><option value="interest">관심 순</option></select>
+        <button class="btn" id="candRefresh" style="font-size:11px;padding:3px 9px;min-height:28px" title="일행이 남긴 최신 후보와 반응을 불러와요">↻ 새로고침</button>
+      </span>
+    </div>
+    <div id="candList" class="candList"></div>
+  </div>
+  <div class="row modalActions"><button class="btn primary" id="candClose">닫기</button></div>
 </div></div>
 
 <!-- 초대 링크로 열었을 때 (#join=) — 미리보기 → (로그인) → 참여. 참여 전에는 여행 본문을 받지 않는다 -->
@@ -448,13 +473,13 @@
   </div>
 </div>
 
-<script src="lib.js?v=tc-v162"></script>
-<script src="sync.js?v=tc-v162"></script>
-<script src="routing.js?v=tc-v162"></script>
-<script src="price.js?v=tc-v162"></script>
-<script src="adaptive.js?v=tc-v162"></script>
-<script src="intake.js?v=tc-v162"></script>
-<script src="collab.js?v=tc-v162"></script>
-<script src="app.js?v=tc-v162"></script>
+<script src="lib.js?v=tc-v163"></script>
+<script src="sync.js?v=tc-v163"></script>
+<script src="routing.js?v=tc-v163"></script>
+<script src="price.js?v=tc-v163"></script>
+<script src="adaptive.js?v=tc-v163"></script>
+<script src="intake.js?v=tc-v163"></script>
+<script src="collab.js?v=tc-v163"></script>
+<script src="app.js?v=tc-v163"></script>
 </body>
 </html>

@@ -165,3 +165,53 @@ test('협업: 소유자 삭제 정책과 스냅샷 정책은 그대로다 — �
   assert.match(collabSql,/"trips_owner_delete"/);
   assert.ok(!/trip_snapshots/i.test(collabSql),'스냅샷은 사용자별 기록이라 손대지 않는다');
 });
+
+// ── 후보 장소와 반응 (2단계) ──
+const candSql=fs.readFileSync(path.join(__dirname,'..','supabase','migrations','202609020002_trip_candidates.sql'),'utf8');
+
+test('후보: 쓰기 정책은 만들지 않는다 — 읽기만 열고 나머지는 RPC를 지난다',()=>{
+  assert.match(candSql,/alter table public\.trip_candidates enable row level security/);
+  assert.match(candSql,/alter table public\.candidate_reactions enable row level security/);
+  assert.match(candSql,/"trip_candidates_member_select" on public\.trip_candidates for select/);
+  assert.match(candSql,/"candidate_reactions_member_select" on public\.candidate_reactions for select/);
+  const writes=[...candSql.matchAll(/create policy[^;]*for (insert|update|delete)/gi)];
+  assert.deepEqual(writes.map(m=>m[0]),[],'쓰기 정책이 있으면 RPC를 우회할 수 있다');
+  // Supabase가 새 테이블에 기본 부여하는 ALL을 거두고 select만 준다
+  assert.match(candSql,/revoke all on public\.trip_candidates, public\.candidate_reactions from anon, authenticated, public/);
+  assert.match(candSql,/grant select on public\.trip_candidates, public\.candidate_reactions to authenticated/);
+});
+
+test('후보: 읽기는 멤버만 · 한 사람 한 표는 DB가 보장한다',()=>{
+  assert.match(candSql,/using \(public\.tc_trip_role\(trip_id\) is not null\)/);
+  assert.match(candSql,/using \(public\.tc_candidate_role\(candidate_id\) is not null\)/);
+  assert.match(candSql,/unique \(candidate_id, user_id\)/,'한 사람 한 표');
+  assert.match(candSql,/reaction text not null check \(reaction in \('MUST','OK','PASS'\)\)/);
+  assert.match(candSql,/references public\.trip_candidates\(id\) on delete cascade/,'후보를 지우면 반응도 함께');
+});
+
+test('후보: 보기 권한은 의견만 낸다 — 후보 추가·일정 반영은 편집 권한',()=>{
+  const add=candSql.slice(candSql.indexOf('function public.add_trip_candidate('),candSql.indexOf('function public.list_trip_candidates('));
+  assert.match(add,/v_role is distinct from 'OWNER' and v_role is distinct from 'EDITOR'[\s\S]*42501/,'보기 권한은 후보를 만들지 못한다');
+  const react=candSql.slice(candSql.indexOf('function public.react_to_candidate('),candSql.indexOf('function public.manage_trip_candidate('));
+  assert.ok(!/EDITOR/.test(react),'반응에는 편집 권한을 요구하지 않는다 — 의견은 일정을 바꾸는 것이 아니다');
+  assert.match(react,/tc_candidate_role\(p_candidate_id\)[\s\S]*is null[\s\S]*42501/,'멤버가 아니면 반응도 못 한다');
+  assert.match(react,/on conflict \(candidate_id, user_id\) do update/,'같은 요청을 두 번 받아도 결과가 같다(§66)');
+  const manage=candSql.slice(candSql.indexOf('function public.manage_trip_candidate('),candSql.indexOf('-- ── 권한'));
+  assert.match(manage,/v_uid<>v_cand\.proposed_by and v_uid<>v_owner[\s\S]*42501/,'후보를 지우는 기준은 역할이 아니라 누가 냈는가');
+  assert.match(manage,/p_action='SCHEDULE'[\s\S]*status='SCHEDULED'/);
+});
+
+test('후보: 여행 이름표에 계정 정보를 싣지 않는다(§69)',()=>{
+  const label=candSql.slice(candSql.indexOf('function public.tc_member_label('),candSql.indexOf('-- ── RLS'));
+  assert.match(label,/display_name/);
+  assert.ok(!/email/i.test(label),'이메일은 여행에 노출하지 않는다');
+  assert.ok(!/email/i.test(candSql),'마이그레이션 어디에서도 계정 이메일을 읽지 않는다');
+});
+
+test('후보: security definer 함수는 전부 public에서 실행 권한을 거둔다',()=>{
+  const defs=[...candSql.matchAll(/create or replace function public\.(\w+)\(([^)]*)\)[\s\S]*?language \w+[^;]*?security definer/gi)].map(m=>m[1]);
+  assert.ok(defs.length>=4,'security definer 함수가 있어야 한다: '+defs.join(','));
+  for(const name of defs){
+    assert.match(candSql,new RegExp(`revoke all on function public\\.${name}\\([^)]*\\) from public`,'i'),`${name}: revoke from public`);
+  }
+});

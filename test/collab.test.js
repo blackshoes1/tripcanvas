@@ -158,3 +158,108 @@ test('forbiddenText: 서버 hint를 우선하고, 보기 권한이면 편집 권
   assert.match(C.forbiddenText({ message: 'TRIP_FORBIDDEN' }, 'VIEWER'), /편집 권한을 요청/);
   assert.match(C.forbiddenText({}, 'EDITOR'), /권한이 없어요/);
 });
+
+// ── 후보 장소와 반응 (2단계) ──
+
+test('normReaction: 아는 반응만 통과시킨다', () => {
+  assert.equal(C.normReaction(' must '), 'MUST');
+  assert.equal(C.normReaction('ok'), 'OK');
+  assert.equal(C.normReaction('LOVE'), null);
+  assert.equal(C.normReaction(null), null);
+  assert.equal(C.reactionLabel('PASS'), '이번엔 패스');
+  assert.equal(C.reactionLabel('???'), '의견 없음');
+  assert.equal(C.reactionIcon('MUST'), '❤️');
+});
+
+test('후보 권한: 보기 권한은 의견만 낸다 — 후보를 만들거나 일정에 넣지는 못한다', () => {
+  assert.equal(C.canPropose('EDITOR'), true);
+  assert.equal(C.canPropose('VIEWER'), false, '보기 권한은 여행에 내용을 만들지 않는다');
+  assert.equal(C.canReact('VIEWER'), true, '의견을 내는 것은 일정을 바꾸는 것이 아니다');
+  assert.equal(C.canReact('nonsense'), false);
+  assert.equal(C.canScheduleCandidate('VIEWER'), false);
+  assert.equal(C.canScheduleCandidate('OWNER'), true);
+});
+
+test('canRemoveCandidate: 역할이 아니라 누가 냈는가로 갈린다', () => {
+  assert.equal(C.canRemoveCandidate('EDITOR', { mine: true }), true);
+  assert.equal(C.canRemoveCandidate('EDITOR', { mine: false }), false, '편집자도 남의 후보는 못 지운다');
+  assert.equal(C.canRemoveCandidate('OWNER', { mine: false }), true);
+  assert.equal(C.canRemoveCandidate('VIEWER', { mine: true }), true, '내가 낸 것은 내가 거둔다');
+  assert.equal(C.canRemoveCandidate('OWNER', null), true);
+});
+
+test('tallyReactions: 반응 목록이 있으면 그걸 세고, 없으면 서버 집계를 쓴다', () => {
+  const byList = C.tallyReactions({ reactions: [
+    { reaction: 'MUST' }, { reaction: 'MUST' }, { reaction: 'OK' }, { reaction: 'PASS' }, { reaction: '???' }
+  ] }, 5);
+  assert.deepEqual([byList.must, byList.ok, byList.pass, byList.voted, byList.silent], [2, 1, 1, 4, 1]);
+  const byCount = C.tallyReactions({ must_count: 3, ok_count: 1, pass_count: 0 }, 4);
+  assert.deepEqual([byCount.must, byCount.voted, byCount.silent], [3, 4, 0]);
+  // 멤버 수를 모르면 표를 낸 사람 수가 하한 — 침묵을 지어내지 않는다
+  assert.equal(C.tallyReactions({ must_count: 2 }).silent, 0);
+  assert.equal(C.tallyReactions(null).voted, 0);
+  assert.equal(C.tallyReactions({ must_count: -5 }).must, 0, '음수는 0으로');
+});
+
+test('candidateMood(§91 fixture): 전원 MUST · MUST+OK · MUST+PASS · 전원 PASS · 의견 없음 · 2명 split', () => {
+  const m = (must, ok, pass, members) => C.candidateMood({ must_count: must, ok_count: ok, pass_count: pass }, members);
+  assert.equal(m(4, 0, 0, 4), 'LOVED', '전원 MUST');
+  assert.equal(m(2, 2, 0, 4), 'LOVED', 'MUST + OK — 아무도 패스하지 않았다');
+  assert.equal(m(2, 0, 2, 4), 'SPLIT', 'MUST + PASS');
+  assert.equal(m(0, 0, 4, 4), 'COOL', '전원 PASS');
+  assert.equal(m(0, 0, 0, 4), 'NONE', '의견 없음');
+  assert.equal(m(1, 0, 1, 2), 'SPLIT', '2명 split');
+  // 아직 다 말하지 않았으면 '다들 좋아해요'라고 하지 않는다 — 둘의 마음으로 넷을 말하지 않는다
+  assert.equal(m(2, 0, 0, 4), 'QUIET');
+  assert.equal(m(1, 0, 0, 1), 'LOVED', '혼자 쓰는 여행이면 내 한 표가 전원이다');
+  assert.equal(C.moodText('SPLIT'), C.MOOD_TEXT.SPLIT);
+  assert.equal(C.moodText('???'), C.MOOD_TEXT.QUIET, '모르는 상태는 의견을 더 받는 쪽으로');
+});
+
+test('groupCandidates: 일정에 들어간 것은 따로 빼고, 결정 못 한 것만 "의견 필요"로 모은다(§57·§58)', () => {
+  const g = C.groupCandidates([
+    { id: 1, must_count: 3, ok_count: 0, pass_count: 0 },              // LOVED
+    { id: 2, must_count: 1, ok_count: 0, pass_count: 2 },              // SPLIT
+    { id: 3, must_count: 0, ok_count: 0, pass_count: 0 },              // NONE
+    { id: 4, must_count: 0, ok_count: 0, pass_count: 3 },              // COOL
+    { id: 5, must_count: 3, ok_count: 0, pass_count: 0, status: 'SCHEDULED' },
+    null
+  ], 3);
+  assert.deepEqual(g.loved.map(c => c.id), [1]);
+  assert.deepEqual(g.needsOpinion.map(c => c.id), [2, 3], '갈리는 것과 아직 안 낸 것은 같이 묶는다');
+  assert.deepEqual(g.resting.map(c => c.id), [4]);
+  assert.deepEqual(g.scheduled.map(c => c.id), [5], '이미 정한 것을 계속 물어보지 않는다');
+  assert.deepEqual(C.groupCandidates(null).loved, []);
+});
+
+test('reactionSummary: 0인 반응은 쓰지 않는다', () => {
+  assert.equal(C.reactionSummary({ must_count: 3, ok_count: 1, pass_count: 0 }), '❤️ 3 · 👍 1');
+  assert.equal(C.reactionSummary({ must_count: 0, ok_count: 0, pass_count: 2 }), '👋 2');
+  assert.equal(C.reactionSummary({ must_count: 0, ok_count: 0, pass_count: 0 }), '');
+});
+
+test('candidateAttribution: 가볍게 — 책임을 묻는 말이 되지 않게(§13)', () => {
+  assert.equal(C.candidateAttribution({ mine: true, proposed_by_label: '민수' }), '내가 추가');
+  assert.equal(C.candidateAttribution({ proposed_by_label: '영희' }), '영희가 추가');
+  assert.equal(C.candidateAttribution({ proposed_by_label: '' }), '멤버가 추가');
+  assert.equal(C.candidateAttribution(null), '');
+});
+
+test('sortCandidates: 정렬은 표시일 뿐 — 같은 값이면 순서가 흔들리지 않는다', () => {
+  const list = [
+    { id: 'a', created_at: '2026-01-01', must_count: 1 },
+    { id: 'b', created_at: '2026-01-03', must_count: 1 },
+    { id: 'c', created_at: '2026-01-02', must_count: 3 }
+  ];
+  assert.deepEqual(C.sortCandidates(list, 'recent').map(c => c.id), ['b', 'c', 'a']);
+  assert.deepEqual(C.sortCandidates(list, 'interest', 3).map(c => c.id), ['c', 'b', 'a']);
+  // 같은 입력이면 언제나 같은 순서 — 원본을 건드리지 않는다
+  assert.deepEqual(C.sortCandidates(list, 'interest', 3).map(c => c.id), ['c', 'b', 'a']);
+  assert.equal(list[0].id, 'a', '원본 배열은 그대로');
+  // PASS가 많으면 뒤로
+  const withPass = C.sortCandidates([
+    { id: 'x', created_at: '2026-01-01', must_count: 2, pass_count: 2 },
+    { id: 'y', created_at: '2026-01-01', must_count: 2, pass_count: 0 }
+  ], 'interest', 4);
+  assert.deepEqual(withPass.map(c => c.id), ['y', 'x']);
+});

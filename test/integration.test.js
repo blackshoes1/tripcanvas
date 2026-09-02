@@ -1906,3 +1906,100 @@ test('통합: 다른 멤버의 최신본 당겨오기 — 로컬이 깨끗하면
   assert.equal(w.document.getElementById('syncConflictBg').classList.contains('show'), true);
   w.close();
 });
+
+test('통합: 후보 보드 — 보기 권한은 담는 칸이 없고 반응은 되며, 결정 못 한 것이 맨 위에 온다', { skip: noJsdom }, async () => {
+  const w = boot();
+  const rpc = [];
+  const rows = [
+    { id: 1, title: '사그라다 파밀리아', status: 'PROPOSED', must_count: 2, ok_count: 0, pass_count: 0,
+      my_reaction: null, proposed_by_label: '민수', mine: false, created_at: '2026-01-01',
+      reactions: [{ name: '민수', reaction: 'MUST', me: false }, { name: '영희', reaction: 'MUST', me: false }] },
+    { id: 2, title: '캄프 누', status: 'PROPOSED', must_count: 1, ok_count: 0, pass_count: 1,
+      my_reaction: 'PASS', proposed_by_label: '영희', mine: false, created_at: '2026-01-02',
+      reactions: [{ name: '민수', reaction: 'MUST', me: false }, { name: '나', reaction: 'PASS', me: true }] },
+    { id: 3, title: '구엘 공원', status: 'SCHEDULED', scheduled_ref: '2', must_count: 1, ok_count: 0, pass_count: 0,
+      my_reaction: null, proposed_by_label: '민수', mine: false, created_at: '2026-01-03', reactions: [] }
+  ];
+  w.eval(`user={id:'u1'}; store.trips=[{id:'t1',name:'스페인',start:'2026-10-25',days:[{spots:[]},{spots:[]}]}]; store.activeId='t1';
+    syncMeta={t1:{revision:3,status:'clean'}}; tripRoles={t1:{role:'VIEWER',count:2,owner:false}};`);
+  w.__rows = rows;
+  w.sb = { rpc: async (name, args) => { rpc.push([name, args]); return { data: name === 'list_trip_candidates' ? w.__rows : true, error: null }; } };
+  w.eval(`sb=window.sb; candTripId='t1';`);
+  await w.eval(`renderCandidates()`);
+
+  // 보기 권한: 후보를 담는 칸은 감춘다(서버도 42501로 막는다)
+  assert.equal(w.document.getElementById('candAddSection').style.display, 'none');
+  const groups = [...w.document.querySelectorAll('#candList .candGroup')].map(e => e.textContent);
+  assert.equal(groups[0], '의견이 필요해요', '결정 못 한 것이 맨 위 — 보드는 어디에 한마디가 필요한지 가리킨다');
+  assert.ok(groups.includes('일정에 넣었어요'));
+  // 이미 정한 것은 계속 물어보지 않는다 — 일정에 넣은 후보는 따로 묶인다
+  const scheduled = w.document.querySelector('#candList .candCard.scheduled');
+  assert.match(scheduled.textContent, /Day 2/);
+  // 보기 권한도 반응은 할 수 있다
+  const cards = [...w.document.querySelectorAll('#candList .candCard')];
+  const campNou = cards.find(c => c.textContent.includes('캄프 누'));
+  const pressed = [...campNou.querySelectorAll('.candReact button')].filter(b => b.getAttribute('aria-pressed') === 'true');
+  assert.equal(pressed.length, 1, '한 사람 한 표 — 눌린 버튼은 하나');
+  assert.match(pressed[0].textContent, /이번엔 패스/);
+  // 일정에 넣기·후보에서 빼기는 보기 권한에 없다
+  assert.equal(campNou.querySelector('.candActions'), null);
+  w.close();
+});
+
+test('통합: 반응은 탭 즉시 반영되고 서버가 거절하면 되돌아간다 — 한 사람 한 표라 옛 표는 사라진다', { skip: noJsdom }, async () => {
+  const w = boot();
+  let fail = false, sent = [];
+  w.eval(`user={id:'u1'}; store.trips=[{id:'t1',name:'스페인',days:[{spots:[]}]}]; store.activeId='t1';
+    syncMeta={t1:{revision:3,status:'clean'}}; tripRoles={t1:{role:'EDITOR',count:3,owner:false}};
+    candTripId='t1';
+    candRows=[{id:1,title:'사그라다 파밀리아',status:'PROPOSED',must_count:1,ok_count:0,pass_count:0,
+      my_reaction:'MUST',proposed_by_label:'나',mine:true,created_at:'2026-01-01',
+      reactions:[{name:'나',reaction:'MUST',me:true}]}];`);
+  w.__state = () => ({ fail, sent });
+  w.sb = { rpc: async (name, args) => { sent.push([name, args]); return fail ? { data: null, error: { message: 'boom' } } : { data: true, error: null }; } };
+  w.eval(`sb=window.sb; drawCandidates();`);
+
+  await w.eval(`reactCandidate(1,'OK')`);
+  assert.deepEqual(sent[0], ['react_to_candidate', { p_candidate_id: 1, p_reaction: 'OK' }]);
+  assert.equal(w.eval(`candRows[0].my_reaction`), 'OK');
+  assert.equal(w.eval(`candRows[0].must_count`), 0, '옛 표는 빠진다');
+  assert.equal(w.eval(`candRows[0].ok_count`), 1);
+  assert.equal(w.eval(`candRows[0].reactions.filter(x=>x.me).length`), 1, '내 반응은 하나만 남는다');
+
+  // 다시 같은 것을 누르면 의견을 거둔다
+  await w.eval(`reactCandidate(1,null)`);
+  assert.equal(w.eval(`candRows[0].my_reaction`), null);
+  assert.equal(w.eval(`candRows[0].ok_count`), 0);
+  assert.equal(w.eval(`candRows[0].reactions.length`), 0);
+
+  // 서버가 거절하면 화면을 원래대로 되돌린다 — 저장되지 않은 것이 저장된 척하지 않는다
+  fail = true;
+  await w.eval(`reactCandidate(1,'MUST')`);
+  assert.equal(w.eval(`candRows[0].my_reaction`), null, '거절되면 눌리기 전으로');
+  assert.equal(w.eval(`candRows[0].must_count`), 0);
+  w.close();
+});
+
+test('통합: 후보를 일정에 넣으면 고른 날의 맨 뒤에 붙고 후보에는 그 날이 표시된다 — 자동 배치는 없다', { skip: noJsdom }, async () => {
+  const w = boot();
+  const rpc = [];
+  w.eval(`user={id:'u1'}; store.trips=[{id:'t1',name:'스페인',start:'2026-10-25',days:[{title:'',spots:[{name:'기존'}]},{title:'',spots:[]}]}];
+    store.activeId='t1'; activeDay=0; syncMeta={t1:{revision:3,status:'clean'}};
+    tripRoles={t1:{role:'EDITOR',count:2,owner:false}}; candTripId='t1'; candRows=[];`);
+  w.prompt = () => '2';
+  w.sb = { rpc: async (name, args) => { rpc.push([name, args]); return { data: name === 'list_trip_candidates' ? [] : true, error: null }; } };
+  w.eval(`sb=window.sb`);
+  await w.eval(`scheduleCandidate({id:7,title:'카사 바트요',note:'가우디',lat:41.39,lng:2.16})`);
+  const days = w.eval(`JSON.stringify(store.trips[0].days.map(d=>d.spots.map(s=>s.name)))`);
+  assert.deepEqual(JSON.parse(days), [['기존'], ['카사 바트요']], '고른 날의 맨 뒤에만 붙는다');
+  assert.equal(w.eval(`store.trips[0].days[1].spots[0].lat`), 41.39);
+  assert.deepEqual(rpc.find(r => r[0] === 'manage_trip_candidate')[1],
+    { p_candidate_id: 7, p_action: 'SCHEDULE', p_value: '2' });
+  // 일정에 없는 날을 고르면 아무것도 하지 않는다
+  w.prompt = () => '9';
+  rpc.length = 0;
+  await w.eval(`scheduleCandidate({id:8,title:'몬주익'})`);
+  assert.equal(w.eval(`store.trips[0].days.reduce((n,d)=>n+d.spots.length,0)`), 2, '없는 날짜에는 넣지 않는다');
+  assert.equal(rpc.length, 0);
+  w.close();
+});

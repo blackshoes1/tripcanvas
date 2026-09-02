@@ -3898,6 +3898,230 @@ document.getElementById('membersLeave').onclick=()=>{
   const id=membersTripId, t=store.trips.find(x=>x.id===id);
   if(t&&leaveTripUI(id,t)) document.getElementById('membersModalBg').classList.remove('show');
 };
+
+// ── 후보 보드 ────────────────────────────────────────────────────────────────
+// 아직 일정이 아닌 '가고 싶은 곳'. 판정(집계·묶음·권한)은 전부 collab.js에 있고 여기는 배선·표시만 한다.
+// 후보와 반응은 여행 문서가 아니라 제 테이블에 산다 — 넷이 동시에 하트를 눌러도 리비전 CAS가 서로를 걷어차지 않는다.
+let candTripId=null, candRows=[], candBusy=false;
+
+function openCandidates(){
+  if(viewMode){ toast('읽기전용 보기입니다 — "내 여행으로 저장" 후 이용하세요','#8892b0'); return; }
+  if(!sb||!user){ toast('로그인하면 일행과 후보를 함께 고를 수 있어요','#1d6fd6'); document.getElementById('authBtn').click(); return; }
+  candTripId=store.activeId;
+  document.getElementById('candTitle').textContent=`📍 가고 싶은 곳 · ${trip().name||'여행'}`;
+  document.getElementById('candTitleInput').value=''; document.getElementById('candNoteInput').value='';
+  document.getElementById('candModalBg').classList.add('show');
+  renderCandidates();
+}
+
+async function renderCandidates(){
+  const id=candTripId, box=document.getElementById('candList'); if(!box) return;
+  const role=myRole(id);
+  document.getElementById('candRoleBadge').textContent=`나: ${TC_COLLAB.roleIcon(role)} ${TC_COLLAB.roleLabel(role)}`;
+  // 보기 권한은 의견만 낸다 — 후보를 만드는 칸 자체를 감춘다(서버도 42501로 막는다)
+  document.getElementById('candAddSection').style.display=TC_COLLAB.canPropose(role)?'block':'none';
+  const entry=syncMeta[id];
+  if(!entry||!entry.revision){
+    box.innerHTML='<div class="hint">이 여행이 클라우드에 올라간 뒤에 후보를 담을 수 있어요. 지금 올리는 중이니 잠시 후 다시 열어 주세요.</div>';
+    const t=store.trips.find(x=>x.id===id); if(t) syncTripCloud(t);
+    return;
+  }
+  box.innerHTML='<div class="hint">불러오는 중…</div>';
+  try{
+    const {data,error}=await sb.rpc('list_trip_candidates',{p_client_id:id});
+    if(error) throw error;
+    candRows=(data||[]).filter(Boolean);
+    drawCandidates();
+  }catch(e){
+    reportOperationalError('collab.candidates',e);
+    box.innerHTML=`<div class="hint">${esc(TC_COLLAB.isForbiddenError(e)?TC_COLLAB.forbiddenText(e,role):'후보를 불러오지 못했어요 — 잠시 후 다시 시도해 주세요')}</div>`;
+  }
+}
+
+/** 서버에서 받은 후보를 화면에 그린다. 낙관적 갱신 뒤에도 이 함수만 다시 부르면 된다. */
+function drawCandidates(){
+  const box=document.getElementById('candList'); if(!box) return;
+  const role=myRole(candTripId), members=(tripRoles[candTripId]||{}).count||0;
+  const mode=document.getElementById('candSort').value==='interest'?'interest':'recent';
+  const sorted=TC_COLLAB.sortCandidates(candRows,mode,members);
+  const g=TC_COLLAB.groupCandidates(sorted,members);
+  box.innerHTML='';
+  if(!candRows.length){
+    box.innerHTML=`<div class="hint">${TC_COLLAB.canPropose(role)
+      ? '아직 담은 곳이 없어요. 위에 이름을 적어 후보로 담으면 일행이 반응할 수 있어요.'
+      : '아직 담은 곳이 없어요. 주최자나 편집자가 후보를 담으면 여기에서 의견을 낼 수 있어요.'}</div>`;
+    return;
+  }
+  // 결정 못 한 것을 맨 위에 — 보드가 할 일은 '어디에 한마디가 필요한지' 가리키는 것이다(§57·§58)
+  const groups=[['의견이 필요해요',g.needsOpinion],['다들 좋아해요',g.loved],['아직 끌리는 사람이 없어요',g.resting],['일정에 넣었어요',g.scheduled]];
+  for(const [label,rows] of groups){
+    if(!rows.length) continue;
+    const h=document.createElement('div'); h.className='candGroup'; h.textContent=label; box.appendChild(h);
+    rows.forEach(c=>box.appendChild(candidateCard(c,role,members)));
+  }
+}
+
+/** @param {any} c @param {string} role @param {number} members */
+function candidateCard(c,role,members){
+  const card=document.createElement('div');
+  card.className='candCard'+(c.status==='SCHEDULED'?' scheduled':'');
+  card.dataset.candId=String(c.id);
+  const mood=TC_COLLAB.candidateMood(c,members), summary=TC_COLLAB.reactionSummary(c,members);
+
+  const head=document.createElement('div'); head.className='candHead';
+  const nameBox=document.createElement('div'); nameBox.className='candName';
+  nameBox.textContent=c.title||'이름 없는 곳';
+  const meta=document.createElement('div'); meta.className='candMeta';
+  meta.textContent=[TC_COLLAB.candidateAttribution(c), summary, c.addr||''].filter(Boolean).join(' · ');
+  nameBox.appendChild(meta);
+  head.appendChild(nameBox);
+  const badge=document.createElement('span'); badge.className='candMood '+mood.toLowerCase();
+  badge.textContent=c.status==='SCHEDULED'
+    ? `🗓 ${c.scheduled_ref?`Day ${c.scheduled_ref}`:'일정에 있음'}`
+    : TC_COLLAB.moodText(mood);
+  head.appendChild(badge);
+  card.appendChild(head);
+
+  if(c.note){ const n=document.createElement('div'); n.className='candNote'; n.textContent=c.note; card.appendChild(n); }
+  if(c.url){ const u=safeUrl(c.url); if(u){ const a=document.createElement('a'); a.href=u; a.target='_blank'; a.rel='noopener noreferrer'; a.className='candNote'; a.style.display='block'; a.textContent='🔗 링크'; card.appendChild(a); } }
+
+  // 한 번의 탭으로 고른다 — 설문처럼 만들지 않는다(§9). 이미 고른 것을 다시 누르면 의견을 거둔다.
+  if(TC_COLLAB.canReact(role)){
+    const row=document.createElement('div'); row.className='candReact';
+    TC_COLLAB.REACTIONS.forEach(r=>{
+      const b=document.createElement('button'); b.type='button';
+      const on=TC_COLLAB.normReaction(c.my_reaction)===r;
+      b.textContent=`${TC_COLLAB.REACTION_ICON[r]} ${TC_COLLAB.REACTION_LABEL[r]}`;
+      b.setAttribute('aria-pressed',on?'true':'false');
+      b.setAttribute('aria-label',`${c.title||'후보'} — ${TC_COLLAB.REACTION_LABEL[r]}`);
+      b.onclick=()=>reactCandidate(c.id, on?null:r);
+      row.appendChild(b);
+    });
+    card.appendChild(row);
+  }
+
+  // 서로의 의견은 보인다(§10 — 이번 단계는 공개가 기본)
+  const who=(Array.isArray(c.reactions)?c.reactions:[]).filter(Boolean);
+  if(who.length){
+    const w=document.createElement('div'); w.className='candWho';
+    w.textContent=who.map(x=>`${TC_COLLAB.reactionIcon(x.reaction)} ${x.me?'나':(x.name||'멤버')}`).join('   ');
+    card.appendChild(w);
+  }
+
+  const acts=document.createElement('div'); acts.className='candActions';
+  if(TC_COLLAB.canScheduleCandidate(role)){
+    if(c.status==='SCHEDULED'){
+      const un=document.createElement('button'); un.className='btn'; un.textContent='후보로 되돌리기';
+      un.title='후보 표시만 되돌려요 — 일정에 넣은 장소는 그대로 남습니다';
+      un.onclick=()=>manageCandidate(c.id,'UNSCHEDULE');
+      acts.appendChild(un);
+    }else{
+      const add=document.createElement('button'); add.className='btn primary'; add.textContent='🗓 일정에 넣기';
+      add.onclick=()=>scheduleCandidate(c);
+      acts.appendChild(add);
+    }
+  }
+  if(TC_COLLAB.canRemoveCandidate(role,c)){
+    const rm=document.createElement('button'); rm.className='btn'; rm.style.color='#ff8fa3'; rm.textContent='후보에서 빼기';
+    rm.onclick=()=>{ if(confirm(`"${c.title}" 을(를) 후보에서 뺄까요? 남은 반응도 함께 사라져요.`)) manageCandidate(c.id,'REMOVE'); };
+    acts.appendChild(rm);
+  }
+  if(acts.children.length) card.appendChild(acts);
+  return card;
+}
+
+async function addCandidate(){
+  if(candBusy) return;
+  const title=document.getElementById('candTitleInput').value.trim();
+  const note=document.getElementById('candNoteInput').value.trim();
+  if(!title){ toast('가고 싶은 곳의 이름을 적어 주세요','#8892b0'); return; }
+  candBusy=true; document.getElementById('candAdd').disabled=true;
+  try{
+    const {error}=await sb.rpc('add_trip_candidate',{p_client_id:candTripId,p_title:title,p_note:note||null});
+    if(error) throw error;
+    document.getElementById('candTitleInput').value=''; document.getElementById('candNoteInput').value='';
+    toast('후보로 담았어요 — 일행에게 물어볼까요?');
+    await renderCandidates();
+  }catch(e){
+    reportOperationalError('collab.candidate.add',e);
+    toast(TC_COLLAB.isForbiddenError(e)?TC_COLLAB.forbiddenText(e,myRole(candTripId)):'후보를 담지 못했어요','#e63946');
+  }finally{ candBusy=false; document.getElementById('candAdd').disabled=false; }
+}
+
+/** @param {number|string} candId @param {string|null} reaction */
+async function reactCandidate(candId,reaction){
+  const row=candRows.find(c=>String(c.id)===String(candId)); if(!row) return;
+  const before=row.my_reaction;
+  applyLocalReaction(row,reaction);   // 탭이 바로 반응하게 — 서버가 거절하면 되돌린다
+  drawCandidates();
+  try{
+    const {error}=await sb.rpc('react_to_candidate',{p_candidate_id:candId,p_reaction:reaction});
+    if(error) throw error;
+  }catch(e){
+    applyLocalReaction(row,before||null); drawCandidates();
+    reportOperationalError('collab.candidate.react',e);
+    toast(TC_COLLAB.isForbiddenError(e)?TC_COLLAB.forbiddenText(e,myRole(candTripId)):'의견을 저장하지 못했어요','#e63946');
+  }
+}
+
+/**
+ * 화면 안에서만 반응을 옮긴다 — 집계와 '누가 뭐라 했는지'가 서버 응답과 같은 모양으로 유지돼야
+ * 다시 그렸을 때 숫자가 튀지 않는다. 한 사람 한 표라 옛 표는 반드시 뺀다.
+ * @param {any} row @param {string|null} reaction
+ */
+function applyLocalReaction(row,reaction){
+  const key=(/**@type{string}*/r)=>({MUST:'must_count',OK:'ok_count',PASS:'pass_count'})[r];
+  const old=TC_COLLAB.normReaction(row.my_reaction), next=TC_COLLAB.normReaction(reaction);
+  if(old) row[key(old)]=Math.max(0,(Number(row[key(old)])||0)-1);
+  if(next) row[key(next)]=(Number(row[key(next)])||0)+1;
+  row.my_reaction=next;
+  const list=(Array.isArray(row.reactions)?row.reactions:[]).filter(x=>x&&!x.me);
+  if(next) list.push({name:'나',reaction:next,me:true});
+  row.reactions=list;
+}
+
+/** @param {number|string} candId @param {string} action @param {string=} value */
+async function manageCandidate(candId,action,value){
+  try{
+    const {error}=await sb.rpc('manage_trip_candidate',{p_candidate_id:candId,p_action:action,p_value:value==null?null:String(value)});
+    if(error) throw error;
+    toast(action==='REMOVE'?'후보에서 뺐어요':action==='SCHEDULE'?'일정에 넣었어요':'후보로 되돌렸어요');
+    await renderCandidates();
+  }catch(e){
+    reportOperationalError('collab.candidate.manage',e);
+    toast(TC_COLLAB.isForbiddenError(e)?TC_COLLAB.forbiddenText(e,myRole(candTripId)):'변경을 저장하지 못했어요','#e63946');
+  }
+}
+
+/**
+ * 후보를 실제 일정으로. **인기순 자동 반영은 하지 않는다**(§12·§79) — 어느 날에 넣을지 사람이 고르고,
+ * 넣는 순간에도 최적 위치를 추측하지 않고 그 날 맨 뒤에 붙인다(재배치는 기존 드래그·재구성이 한다).
+ * @param {any} c
+ */
+async function scheduleCandidate(c){
+  if(!guardEdit()) return;
+  const t=store.trips.find(x=>x.id===candTripId); if(!t) return;
+  const opts=t.days.map((d,i)=>`${i+1}: ${d.title||dateOf(i)||('Day '+(i+1))}`).join('\n');
+  const answer=prompt(`"${c.title}" 을(를) 며칠째에 넣을까요?\n\n${opts}`, String(activeDay||1));
+  if(answer==null) return;
+  const di=Math.round(Number(answer))-1;
+  if(!(di>=0&&di<t.days.length)){ toast('그 날짜는 일정에 없어요','#e63946'); return; }
+  commit(()=>{
+    t.days[di].spots.push({
+      name:c.title, city:'기타', desc:c.note||'',
+      lat:c.lat==null?null:+c.lat, lng:c.lng==null?null:+c.lng, opt:false, stay:false
+    });
+  });
+  await manageCandidate(c.id,'SCHEDULE',String(di+1));
+}
+
+document.getElementById('candMenuBtn').onclick=openCandidates;
+document.getElementById('candClose').onclick=()=>document.getElementById('candModalBg').classList.remove('show');
+document.getElementById('candAdd').onclick=addCandidate;
+document.getElementById('candRefresh').onclick=renderCandidates;
+document.getElementById('candSort').onchange=drawCandidates;
+document.getElementById('candTitleInput').onkeydown=(e)=>{ if(e.key==='Enter'){ e.preventDefault(); addCandidate(); } };
+
 document.getElementById('membersBtn').onclick=openMembers;
 document.getElementById('membersMenuBtn').onclick=openMembers;
 

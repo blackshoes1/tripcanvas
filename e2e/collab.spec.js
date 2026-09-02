@@ -76,3 +76,51 @@ test('로그아웃 상태: 헤더 배지는 숨고, 메뉴의 함께하기는 �
   await expect(page.locator('.addSpot').first()).toBeVisible();
   expect(await page.evaluate(()=>readOnly())).toBe(false);
 });
+
+test('로그아웃 상태: 가고 싶은 곳도 로그인으로 안내한다 — 혼자 쓰는 여행은 그대로 편집된다(§95)',async({context,page})=>{
+  await fakeSupabase(context);
+  await page.goto('/');
+  await createTrip(page,'E2E 후보');
+  await clickMore(page,'#candMenuBtn');
+  await expect(page.locator('#authModalBg')).toHaveClass(/show/);
+  await expect(page.locator('#toast')).toContainText('로그인하면');
+  await expect(page.locator('#candModalBg')).not.toHaveClass(/show/);
+  await page.locator('#authCancel').click();
+  await expect(page.locator('.addSpot').first()).toBeVisible();
+});
+
+test('후보 보드: 한 번의 탭으로 의견을 바꾸고, 다시 누르면 거둔다',async({context,page})=>{
+  await fakeSupabase(context);
+  await page.goto('/');
+  await createTrip(page,'E2E 후보');
+  // 로그인한 편집자 상태로 만들고 서버 응답을 후보 하나로 고정한다
+  await page.evaluate(()=>{
+    user={id:'u1'};
+    const id=store.activeId;
+    syncMeta[id]={revision:3,status:'clean'};
+    tripRoles[id]={role:'EDITOR',count:3,owner:false};
+    window.__sent=[];
+    sb={rpc:async(name,args)=>{ window.__sent.push([name,args]);
+      if(name==='list_trip_candidates') return {data:[{id:1,title:'사그라다 파밀리아',status:'PROPOSED',
+        must_count:2,ok_count:0,pass_count:0,my_reaction:null,proposed_by_label:'민수',mine:false,
+        created_at:'2026-01-01',reactions:[{name:'민수',reaction:'MUST',me:false},{name:'영희',reaction:'MUST',me:false}]}],error:null};
+      return {data:true,error:null}; }};
+  });
+  await clickMore(page,'#candMenuBtn');
+  await expect(page.locator('#candModalBg')).toHaveClass(/show/);
+  await expect(page.locator('.candCard')).toContainText('사그라다 파밀리아');
+  await expect(page.locator('.candCard')).toContainText('민수가 추가');
+  // 셋 중 하나도 눌려 있지 않다
+  await expect(page.locator('.candReact button[aria-pressed="true"]')).toHaveCount(0);
+  await page.locator('.candReact button', {hasText:'꼭 가고 싶어요'}).click();
+  await expect(page.locator('.candReact button[aria-pressed="true"]')).toHaveCount(1);
+  expect(await page.evaluate(()=>window.__sent.filter(x=>x[0]==='react_to_candidate').map(x=>x[1].p_reaction))).toEqual(['MUST']);
+  // 마음이 바뀌면 표가 옮겨간다 — 한 사람 한 표
+  await page.locator('.candReact button', {hasText:'이번엔 패스'}).click();
+  await expect(page.locator('.candReact button[aria-pressed="true"]')).toHaveCount(1);
+  await expect(page.locator('.candReact button[aria-pressed="true"]')).toContainText('이번엔 패스');
+  // 눌린 것을 다시 누르면 의견을 거둔다
+  await page.locator('.candReact button', {hasText:'이번엔 패스'}).click();
+  await expect(page.locator('.candReact button[aria-pressed="true"]')).toHaveCount(0);
+  expect(await page.evaluate(()=>window.__sent.filter(x=>x[0]==='react_to_candidate').map(x=>x[1].p_reaction))).toEqual(['MUST','PASS',null]);
+});

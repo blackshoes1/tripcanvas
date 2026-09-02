@@ -210,11 +210,165 @@
     return '이 여행을 바꿀 권한이 없어요';
   }
 
-  const API={ROLES, ROLE_LABEL, COLLAB_CFG, JOIN_REASON,
+  // ── 후보 장소와 반응 (2단계) ────────────────────────────────────────────
+  //
+  // 여기 있는 것은 **집계와 표현**이다. 합의 점수(§20)는 다음 단계고, 이 단계는
+  // "몇 명이 뭐라고 했는가"와 "어디에 의견이 더 필요한가"까지만 말한다.
+  // 인기가 많다고 일정에 자동으로 들어가는 일은 없다(§12·§79) — 넣는 것은 언제나 사람이 누른다.
+
+  const REACTIONS = Object.freeze(['MUST','OK','PASS']);
+  /** @type {Readonly<Record<string,string>>} */
+  const REACTION_LABEL = Object.freeze({MUST:'꼭 가고 싶어요', OK:'괜찮아요', PASS:'이번엔 패스'});
+  /** @type {Readonly<Record<string,string>>} */
+  const REACTION_ICON = Object.freeze({MUST:'❤️', OK:'👍', PASS:'👋'});
+  /** 후보가 지금 어떤 상태인지 — 점수가 아니라 '무엇을 더 하면 되는지'를 가리킨다(§57·§58) */
+  /** @type {Readonly<Record<string,string>>} */
+  const MOOD_TEXT = Object.freeze({
+    NONE:  '아직 아무도 의견을 안 냈어요',
+    QUIET: '의견이 더 필요해요',
+    SPLIT: '의견이 갈려요',
+    COOL:  '아직 끌리는 사람이 없어요',
+    LOVED: '다들 좋아해요'
+  });
+
+  /** @param {unknown} r @returns {'MUST'|'OK'|'PASS'|null} */
+  function normReaction(r){
+    const v = String(r==null?'':r).trim().toUpperCase();
+    return REACTIONS.indexOf(v)>=0 ? /** @type {'MUST'|'OK'|'PASS'} */(v) : null;
+  }
+
+  /** @param {unknown} reaction @returns {string} */
+  function reactionLabel(reaction){ const r=normReaction(reaction); return r? REACTION_LABEL[r] : '의견 없음'; }
+  /** @param {unknown} reaction @returns {string} */
+  function reactionIcon(reaction){ const r=normReaction(reaction); return r? REACTION_ICON[r] : '·'; }
+
+  /** 후보를 낼 수 있는가 — 보기 권한은 의견만 낸다(여행에 내용을 만들지는 않는다) */
+  /** @param {unknown} role @returns {boolean} */
+  function canPropose(role){ return canEdit(role); }
+  /** 반응은 활성 멤버라면 누구나 — 의견을 내는 것은 일정을 바꾸는 것이 아니다 */
+  /** @param {unknown} role @returns {boolean} */
+  function canReact(role){ return normRole(role)!==null; }
+  /** 일정에 넣기·되돌리기는 편집 권한 (여행 문서를 실제로 바꾼다) */
+  /** @param {unknown} role @returns {boolean} */
+  function canScheduleCandidate(role){ return canEdit(role); }
+  /** 후보를 거두는 기준은 역할이 아니라 '누가 냈는가'다 — 낸 사람이나 주최자만 */
+  /** @param {unknown} role @param {{mine?:boolean}|null} cand @returns {boolean} */
+  function canRemoveCandidate(role, cand){ return !!(cand && cand.mine) || normRole(role)==='OWNER'; }
+
+  /**
+   * 반응 집계. 서버가 이미 세어 주지만(must_count 등) 화면이 낙관적으로 바꾼 뒤에도 같은 답이 나와야 해서
+   * 여기서 한 번 더 순수하게 센다.
+   * @param {{must_count?:number,ok_count?:number,pass_count?:number,reactions?:Array<{reaction?:string}>|null}|null} cand
+   * @param {number} [memberCount] 이 여행의 활성 멤버 수 — 몇 명이 아직 말하지 않았는지 알려면 필요하다
+   * @returns {{must:number,ok:number,pass:number,voted:number,silent:number,members:number}}
+   */
+  function tallyReactions(cand, memberCount){
+    let must=0, ok=0, pass=0;
+    const list = cand && Array.isArray(cand.reactions) ? cand.reactions : null;
+    if(list){
+      for(const r of list){
+        const v = normReaction(r && r.reaction);
+        if(v==='MUST') must++; else if(v==='OK') ok++; else if(v==='PASS') pass++;
+      }
+    } else if(cand){
+      must = Math.max(0, Number(cand.must_count)||0);
+      ok   = Math.max(0, Number(cand.ok_count)||0);
+      pass = Math.max(0, Number(cand.pass_count)||0);
+    }
+    const voted = must+ok+pass;
+    const members = Math.max(Number(memberCount)||0, voted, 1);
+    return {must, ok, pass, voted, silent: Math.max(0, members-voted), members};
+  }
+
+  /**
+   * 이 후보가 지금 어떤 상태인가. 점수가 아니라 **다음에 무엇을 하면 되는지**를 가리키는 이름이다.
+   * 순서가 곧 규칙이다: 아무도 말 안 함 → 갈림 → 아무도 안 끌림 → 전원 찬성 → 아직 다 말 안 함.
+   * '다들 좋아해요'는 **전원이 의견을 냈고 아무도 패스하지 않았을 때만** 쓴다 — 두 명이 좋다고 넷의 마음을 말하지 않는다.
+   * @param {{must_count?:number,ok_count?:number,pass_count?:number,reactions?:Array<{reaction?:string}>|null}|null} cand
+   * @param {number} [memberCount]
+   * @returns {'NONE'|'SPLIT'|'COOL'|'LOVED'|'QUIET'}
+   */
+  function candidateMood(cand, memberCount){
+    const t = tallyReactions(cand, memberCount);
+    if(t.voted===0) return 'NONE';
+    if(t.must>0 && t.pass>0) return 'SPLIT';
+    if(t.must===0 && t.pass>0) return 'COOL';
+    if(t.pass===0 && t.must>0 && t.silent===0) return 'LOVED';
+    return 'QUIET';
+  }
+
+  /** @param {unknown} mood @returns {string} */
+  function moodText(mood){ const m=String(mood||''); return MOOD_TEXT[m] || MOOD_TEXT.QUIET; }
+
+  /**
+   * 보드의 세 묶음(§57·§58). '의견 필요'는 **아직 결정하지 못한 것**이지 나쁜 것이 아니다.
+   * 일정에 들어간 후보(SCHEDULED)는 따로 뺀다 — 이미 결정된 것을 계속 물어보지 않는다.
+   * @param {Array<any>|null} candidates
+   * @param {number} [memberCount]
+   * @returns {{loved:any[],needsOpinion:any[],resting:any[],scheduled:any[]}}
+   */
+  function groupCandidates(candidates, memberCount){
+    const loved=[], needsOpinion=[], resting=[], scheduled=[];
+    for(const c of (Array.isArray(candidates)?candidates:[])){
+      if(!c) continue;
+      if(String(c.status||'')==='SCHEDULED'){ scheduled.push(c); continue; }
+      const mood = candidateMood(c, memberCount);
+      if(mood==='LOVED') loved.push(c);
+      else if(mood==='COOL') resting.push(c);
+      else needsOpinion.push(c);   // NONE · QUIET · SPLIT — 사람이 한마디 하면 풀린다
+    }
+    return {loved, needsOpinion, resting, scheduled};
+  }
+
+  /**
+   * 반응 요약 한 줄 — '❤️ 3 · 👍 1'. 0인 것은 쓰지 않는다.
+   * @param {any} cand @param {number} [memberCount] @returns {string}
+   */
+  function reactionSummary(cand, memberCount){
+    const t = tallyReactions(cand, memberCount);
+    const parts=[];
+    if(t.must) parts.push(REACTION_ICON.MUST+' '+t.must);
+    if(t.ok)   parts.push(REACTION_ICON.OK+' '+t.ok);
+    if(t.pass) parts.push(REACTION_ICON.PASS+' '+t.pass);
+    return parts.join(' · ');
+  }
+
+  /**
+   * 누가 냈는지 — 가볍게. 책임을 묻는 말이 되지 않게 한다(§13).
+   * @param {{mine?:boolean,proposed_by_label?:string|null}|null} cand @returns {string}
+   */
+  function candidateAttribution(cand){
+    if(!cand) return '';
+    if(cand.mine) return '내가 추가';
+    const name = String(cand.proposed_by_label||'').trim();
+    return (name || '멤버') + '가 추가';
+  }
+
+  /**
+   * 화면 정렬. 기본은 최근 순(서버가 주는 순서)이고, 'interest'는 관심이 모인 순이다.
+   * **정렬은 표시일 뿐 결정이 아니다** — 위에 있다고 일정에 자동으로 들어가지 않는다(§12).
+   * 같은 값이면 만든 순으로 갈라 렌더마다 순서가 흔들리지 않게 한다.
+   * @param {Array<any>|null} candidates @param {'recent'|'interest'} [mode] @param {number} [memberCount]
+   * @returns {any[]}
+   */
+  function sortCandidates(candidates, mode, memberCount){
+    const list = (Array.isArray(candidates)?candidates:[]).filter(Boolean).slice();
+    /** @param {any} c */
+    const key = (c)=>String(c.created_at||'')+'#'+String(c.id||'');
+    if(mode!=='interest') return list.sort((a,b)=> key(b).localeCompare(key(a)));
+    return list.sort((a,b)=>{
+      const ta=tallyReactions(a,memberCount), tb=tallyReactions(b,memberCount);
+      return (tb.must-ta.must) || (tb.ok-ta.ok) || (ta.pass-tb.pass) || key(b).localeCompare(key(a));
+    });
+  }
+
+  const API={ROLES, ROLE_LABEL, COLLAB_CFG, JOIN_REASON, REACTIONS, REACTION_LABEL, REACTION_ICON, MOOD_TEXT,
     normRole, canEdit, canManage, canLeave, canDelete, roleLabel, roleIcon, roleOf, tripRoleMap,
     memberName, displayNameFromEmail, memberSummary,
     buildInviteLink, parseJoinHash, inviteVerdict, joinReasonText, inviteRangeText,
-    isForbiddenError, forbiddenText};
+    isForbiddenError, forbiddenText,
+    normReaction, reactionLabel, reactionIcon, canPropose, canReact, canScheduleCandidate, canRemoveCandidate,
+    tallyReactions, candidateMood, moodText, groupCandidates, reactionSummary, candidateAttribution, sortCandidates};
   if(typeof module!=='undefined' && module.exports) module.exports=API;   // Node (테스트)
   else /** @type {any} */(root).TC_COLLAB=API;                            // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);

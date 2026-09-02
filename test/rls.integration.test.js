@@ -61,6 +61,28 @@ const EXPECTED = {
   'b.removed.old_link': 'false:REMOVED', 'b.removed.new_link': 'true:OK:EDITOR',
   'c.expired.preview': 'false:EXPIRED', 'c.expired.accept': 'false:EXPIRED',
   'b.expired.but_member': 'false:EXPIRED:true', 'b.expired.accept_member': 'true:true',
+  // ── 2단계: 후보 장소와 반응 ──
+  // 낸 사람은 이미 가고 싶다는 뜻이라 MUST가 자동으로 붙는다 · 이름은 여행 안 이름뿐(이메일 없음 §69)
+  'cand.a.add': 'true', 'cand.a.auto_must': '1:MUST', 'cand.b.count': '2',
+  'cand.labels': '주최자,영희', 'cand.no_email': 'true',
+  // 멤버가 아니면 후보도 반응도 보이지 않고 남기지도 못한다. C의 같은 client_id 저장은 제 여행에만 들어간다
+  'cand.c.select': '0', 'cand.c.reactions': '0', 'cand.c.list': '0', 'cand.c.react': '42501',
+  'cand.c.add': 'ok', 'cand.c.add_lands_in_own': '몰래 추가', 'cand.a.untouched': '사그라다 파밀리아,카사 바트요',
+  // 한 사람 한 표 — 두 번 눌러도, 마음이 바뀌어도 행은 하나. 서로의 의견은 보인다(§10)
+  'cand.react.idempotent': '1', 'cand.react.changed': '2:0:0', 'cand.react.rows': '2',
+  'cand.react.who': '주최자/MUST,영희/MUST', 'cand.react.cleared': '-:1', 'cand.react.invalid': '22023',
+  // 보기 권한은 **의견만** 낸다 — 후보를 만들거나 일정에 넣지는 못하고, 테이블에 직접 쓸 권한도 없다
+  'cand.viewer.reads': '2', 'cand.viewer.react': 'true', 'cand.viewer.react.applied': 'PASS',
+  'cand.viewer.add': '42501', 'cand.viewer.schedule': '42501',
+  'cand.viewer.direct_react': '42501', 'cand.viewer.direct_add': '42501',
+  // 후보를 지우는 기준은 역할이 아니라 '누가 냈는가'다 — 편집자도 남의 것은 못 지우고 주최자는 지운다
+  'cand.b.remove_others': '42501', 'cand.editor.remove_others': '42501',
+  'cand.b.remove_own': 'true', 'cand.after_remove': '1', 'cand.reactions_cascade': '0',
+  'cand.owner_removes_any': 'true',
+  // 일정에 넣는 것은 사람이 누른다(§12·§79) — 되돌릴 수도 있다
+  'cand.schedule': 'true', 'cand.scheduled': 'SCHEDULED:2', 'cand.unschedule': 'PROPOSED:-',
+  // 나간 사람은 반응도 못 남기고 후보도 안 보인다
+  'cand.left.react': '42501', 'cand.left.list': '0',
   // 기존 단일 사용자 흐름은 그대로(§95)
   'a.snapshots': '1', 'b.snapshots': '0', 'a.tombstone_by_owner': 'true'
 };
@@ -93,8 +115,10 @@ for (const shape of ['bigint', 'uuid']) test(`RLS(trips.id=${shape}): 마이그�
     const idType = psql(db, ['-c', "select format_type(atttypid, atttypmod) from pg_attribute where attrelid='public.trips'::regclass and attname='id'"]).trim();
     assert.equal(idType, shape, '기본 스키마 모양');
     psql(db, ['-f', sql('supabase/migrations/202609020001_trip_collaboration.sql')]);
+    psql(db, ['-f', sql('supabase/migrations/202609020002_trip_candidates.sql')]);
     // 두 번 적용해도 같다 — 운영에서 재실행돼도 안전해야 한다
     psql(db, ['-f', sql('supabase/migrations/202609020001_trip_collaboration.sql')]);
+    psql(db, ['-f', sql('supabase/migrations/202609020002_trip_candidates.sql')]);
     const out = psql(db, ['-f', sql('test/rls/collaboration.sql')]);
     const got = {};
     for (const line of out.split('\n')) {
