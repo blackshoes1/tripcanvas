@@ -115,6 +115,12 @@ const EXPECTED = {
   'pref.viewer.set': 'HIGH', 'pref.c.set': 'NORMAL', 'pref.c.list': '주최자/OWNER', 'pref.a.count': '2',
   // 취향 변경은 활동 기록에 남지 않는다(§38)
   'pref.no_activity': 'true',
+  // ── 5단계: 갈린 후보의 결정 ──
+  // "이번 일정에서는 제외"는 지우기가 아니라 상태다 — 의견·코멘트는 남고 언제든 되돌린다. 결정은 활동 기록에 한 번만, 되돌리기는 안 남긴다
+  'dec.b.reject': 'true', 'dec.status': 'REJECTED:-', 'dec.activity': '1', 'dec.activity.subject': '사그라다 파밀리아',
+  'dec.b.reopen': 'true', 'dec.reopened': 'PROPOSED:1:1', 'dec.activity.after_reopen': '1',
+  // 결정은 편집 권한만 — 보기 권한·비멤버는 42501, 모르는 액션은 22023, 주최자는 된다
+  'dec.viewer.reject': '42501', 'dec.viewer.reopen': '42501', 'dec.invalid': '22023', 'dec.c.reject': '42501', 'dec.a.reject': 'true',
   // 기존 단일 사용자 흐름은 그대로(§95)
   'a.snapshots': '1', 'b.snapshots': '0', 'a.tombstone_by_owner': 'true'
 };
@@ -150,11 +156,13 @@ for (const shape of ['bigint', 'uuid']) test(`RLS(trips.id=${shape}): 마이그�
     psql(db, ['-f', sql('supabase/migrations/202609020002_trip_candidates.sql')]);
     psql(db, ['-f', sql('supabase/migrations/202609020003_trip_comments_activity.sql')]);
     psql(db, ['-f', sql('supabase/migrations/202609020004_member_preferences.sql')]);
+    psql(db, ['-f', sql('supabase/migrations/202609020005_candidate_decisions.sql')]);
     // 두 번 적용해도 같다 — 운영에서 재실행돼도 안전해야 한다
     psql(db, ['-f', sql('supabase/migrations/202609020001_trip_collaboration.sql')]);
     psql(db, ['-f', sql('supabase/migrations/202609020002_trip_candidates.sql')]);
     psql(db, ['-f', sql('supabase/migrations/202609020003_trip_comments_activity.sql')]);
     psql(db, ['-f', sql('supabase/migrations/202609020004_member_preferences.sql')]);
+    psql(db, ['-f', sql('supabase/migrations/202609020005_candidate_decisions.sql')]);
     const out = psql(db, ['-f', sql('test/rls/collaboration.sql')]);
     const got = {};
     for (const line of out.split('\n')) {

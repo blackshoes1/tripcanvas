@@ -311,3 +311,25 @@ test('취향: 실행 권한 — RPC는 authenticated만, 정규화 함수는 클
   assert.match(prefSql,/grant execute on function public\.set_trip_preference\(text,jsonb\) to authenticated/);
   assert.match(prefSql,/grant execute on function public\.list_trip_preferences\(text\) to authenticated/);
 });
+
+// ── 갈린 후보의 결정 (5단계) ──
+const decSql=fs.readFileSync(path.join(__dirname,'..','supabase','migrations','202609020005_candidate_decisions.sql'),'utf8');
+
+test('결정: 제외는 지우기가 아니라 상태다 — REJECT/REOPEN은 편집 권한, REMOVE 규칙은 그대로',()=>{
+  const fn=decSql.slice(decSql.indexOf('function public.manage_trip_candidate('));
+  assert.match(fn,/p_action='REJECT'[\s\S]*status='REJECTED', scheduled_ref=null/);
+  assert.match(fn,/p_action='REOPEN'[\s\S]*status='PROPOSED', scheduled_ref=null/);
+  assert.match(fn,/v_uid<>v_cand\.proposed_by and v_uid<>v_owner[\s\S]*42501/,'빼기(REMOVE) 규칙은 그대로');
+  assert.ok(fn.indexOf("v_role is distinct from 'OWNER' and v_role is distinct from 'EDITOR'") < fn.indexOf("p_action='REJECT'"),'결정은 편집 권한 확인 뒤에');
+  assert.match(fn,/REMOVE · SCHEDULE · UNSCHEDULE · REJECT · REOPEN/);
+  assert.match(decSql,/revoke all on function public\.manage_trip_candidate\(bigint,text,text\) from public,anon/);
+});
+
+test('결정: 활동 종류에 CANDIDATE_REJECTED를 더하고(제약 이름은 실제 것을 찾아 지운다) 트리거가 상태 변화 때만 남긴다',()=>{
+  assert.match(decSql,/pg_get_constraintdef\(oid\) like '%kind%'/);
+  assert.match(decSql,/add constraint trip_activity_kind_check check \(kind in \([\s\S]*'CANDIDATE_REJECTED'/);
+  const trg=decSql.slice(decSql.indexOf('function public.tc_act_candidates('),decSql.indexOf('-- ── manage_trip_candidate'));
+  assert.match(trg,/new\.status='REJECTED' and old\.status is distinct from 'REJECTED'/,'두 번 눌러도 한 번만');
+  assert.ok(!/REOPEN|PROPOSED'/.test(trg.replace(/CANDIDATE_PROPOSED/g,'')),'되돌리기는 기록하지 않는다');
+  assert.match(trg,/security definer set search_path=public/);
+});

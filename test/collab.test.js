@@ -470,3 +470,77 @@ test('sortCandidates(interest): 합의 점수 순 — 표시일 뿐 결정이 �
   ];
   assert.deepEqual(C.sortCandidates(rows, 'interest', 4).map(c => c.id), ['B', 'A'], '§20의 예 — 반대 없는 B가 위');
 });
+
+// ── 충돌과 제안 (5단계) ──
+
+const rx = (name, reaction, me) => ({ name, reaction, me: !!me });
+
+test('candidateConflict(§23): MUST와 PASS가 같이 있을 때만, 누가 그런지 이름으로 — 자동 제거는 없다', () => {
+  const c = C.candidateConflict({ title: 'Camp Nou', must_count: 1, ok_count: 1, pass_count: 1,
+    reactions: [rx('민수', 'MUST'), rx('나', 'OK', true), rx('영희', 'PASS')] }, 3);
+  assert.deepEqual(c, { title: 'Camp Nou', must: ['민수'], ok: ['나'], pass: ['영희'] });
+  assert.equal(C.candidateConflict({ must_count: 2, ok_count: 1, pass_count: 0, reactions: [rx('a', 'MUST'), rx('b', 'MUST'), rx('c', 'OK')] }, 3), null, '반대가 없으면 충돌이 아니다');
+  assert.equal(C.candidateConflict({ must_count: 0, pass_count: 2, reactions: [rx('a', 'PASS'), rx('b', 'PASS')] }, 3), null, 'MUST 없는 PASS는 MIXED지 충돌이 아니다');
+  assert.equal(C.candidateConflict(null), null);
+});
+
+test('conflictOptions(§24): 함께 / 분리(다음 단계 안내) / 제외 — 제외는 지우기가 아니라 상태다', () => {
+  const opts = C.conflictOptions({ title: 'Camp Nou', must: ['민수', '철수'], ok: [], pass: ['영희'] });
+  assert.deepEqual(opts.map(o => [o.key, o.action]), [['TOGETHER', 'SCHEDULE'], ['SPLIT', null], ['SKIP', 'REJECT']]);
+  assert.equal(opts[0].text, '영희도 함께 — 짧게 들르는 걸로');
+  assert.match(opts[1].text, /민수, 철수은\(는\) Camp Nou · 영희은\(는\) 다른 곳/);
+  assert.match(opts[2].text, /되돌릴 수 있어요/);
+  assert.deepEqual(C.conflictOptions(null), []);
+});
+
+test('distanceKm: 하버사인 — 서울↔부산 약 325km', () => {
+  const km = C.distanceKm({ lat: 37.5665, lng: 126.978 }, { lat: 35.1796, lng: 129.0756 });
+  assert.ok(km > 320 && km < 330, String(km));
+  assert.equal(C.distanceKm({ lat: 1, lng: 1 }, { lat: 1, lng: 1 }), 0);
+});
+
+test('buildGroupProposal(§28·§29): 반대 없고 두 명 이상 말한 후보만, 좌표가 있으면 가장 가까운 날, 없으면 가장 여유로운 날 — 미리보기다', () => {
+  const days = [
+    { spots: [{ name: '광장', lat: 41.387, lng: 2.170 }, { name: '대성당', lat: 41.384, lng: 2.176 }] },
+    { spots: [{ name: '해변', lat: 41.378, lng: 2.192 }] },
+    { spots: [] }
+  ];
+  const cands = [
+    { id: 1, title: '카사 바트요', status: 'PROPOSED', lat: 41.392, lng: 2.165, must_count: 3, ok_count: 1, pass_count: 0, created_at: '2026-01-01' },   // 전원 관심, 광장 근처 → Day 1
+    { id: 2, title: '바르셀로네타', status: 'PROPOSED', lat: 41.380, lng: 2.190, must_count: 1, ok_count: 2, pass_count: 0, created_at: '2026-01-02' },  // 해변 근처 → Day 2
+    { id: 3, title: '좌표 없는 곳', status: 'PROPOSED', must_count: 2, ok_count: 0, pass_count: 0, created_at: '2026-01-03' },                  // 여유로운 Day 3
+    { id: 4, title: '갈린 곳', status: 'PROPOSED', lat: 41.38, lng: 2.12, must_count: 2, ok_count: 0, pass_count: 2, created_at: '2026-01-04' },        // CONFLICT → 제외
+    { id: 5, title: '한 명만', status: 'PROPOSED', lat: 41.38, lng: 2.12, must_count: 1, ok_count: 0, pass_count: 0, created_at: '2026-01-05' },        // 한 명 → 제외
+    { id: 6, title: '이미 넣음', status: 'SCHEDULED', must_count: 4, ok_count: 0, pass_count: 0, created_at: '2026-01-06' }
+  ];
+  const p = C.buildGroupProposal(cands, days, 4, { walking: 'LOW' });
+  assert.ok(p);
+  // 점수 순: 1(전원, 반대 없음) > 2(셋이 말함) > 3(둘이 말함 — 아직 안 말한 사람만큼 확신을 줄인다)
+  assert.deepEqual(p.picks.map(x => [x.candidate.id, x.di]), [[1, 0], [2, 1], [3, 2]], '합의 점수 순 · 각자 맞는 날');
+  assert.match(p.picks[0].reasons[0], /4명 모두 관심 있어요 · 반대 없음/);
+  assert.match(p.picks[0].reasons[1], /Day 1 마지막 장소\(대성당\)에서 약 \d\.\d km/);
+  assert.match(p.picks[0].reasons[2], /걷기 부담이 적은 거리예요/);
+  assert.match(p.picks[1].reasons[1], /Day 2 마지막 장소\(해변\)에서 약 \d\.\d km/);
+  assert.match(p.picks[2].reasons[1], /Day 3이 가장 여유로워요 \(장소 0개\)/);
+  assert.equal(p.picks[2].km, null);
+  assert.match(p.headline, /이 3곳은 다들 좋아해요 — 각각 가장 맞는 날에 넣으면 무리가 없어요/);
+  // 같은 입력이면 같은 답
+  assert.deepEqual(C.buildGroupProposal(cands, days, 4, { walking: 'LOW' }), p);
+  // 최대 개수 · 한 날에 다 모이면 그렇게 말한다
+  const one = C.buildGroupProposal([cands[0]], days, 4, null, 1);
+  assert.equal(one.picks.length, 1);
+  assert.match(one.headline, /Day 1에 넣으면 동선이 자연스러워요/);
+  // 넣을 게 없으면 억지로 만들지 않는다
+  assert.equal(C.buildGroupProposal([cands[3], cands[4]], days, 4), null);
+  assert.equal(C.buildGroupProposal(cands, [], 4), null, '일자가 없으면 제안도 없다');
+  for (const pick of p.picks) for (const r of pick.reasons) assert.doesNotMatch(r, /점수|score/);
+});
+
+test('groupCandidates: 이번엔 뺀 후보는 따로 묶인다 · activityText: 뺀 결정 문장', () => {
+  const g = C.groupCandidates([{ id: 1, status: 'REJECTED', must_count: 2 }, { id: 2, status: 'PROPOSED', must_count: 0 }], 2);
+  assert.deepEqual(g.rejected.map(c => c.id), [1]);
+  assert.deepEqual(g.needsOpinion.map(c => c.id), [2]);
+  assert.equal(C.activityText({ kind: 'CANDIDATE_REJECTED', actor_label: '영희', subject: { title: '캄프 누' } }), '영희님이 캄프 누를 이번 일정에서 뺐어요');
+  assert.equal(C.liveEffects({ kind: 'CANDIDATE_REJECTED', mine: false }).candidates, true);
+  assert.equal(C.liveEffects({ kind: 'CANDIDATE_REJECTED', mine: false }).notify, false, '결정은 화면 갱신으로 충분하다(§51)');
+});

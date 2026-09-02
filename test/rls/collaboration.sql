@@ -394,6 +394,39 @@ insert into t_out select 'pref.no_activity', (not exists(select 1 from public.li
 -- 되돌리기: B를 편집자로
 select public.manage_trip_member((select m.id from public.trip_members m join public.trips t on t.id=m.trip_id where t.client_id='trip1' and m.user_id='00000000-0000-0000-0000-00000000000b'),'SET_ROLE','EDITOR');
 
+-- ══ 5단계: 갈린 후보의 결정 — 이번 일정에서는 제외 / 되돌리기 ═══════════════
+-- 여기 오기까지: A=OWNER · B=EDITOR(활성) · C=멤버 아님. t_cand는 PROPOSED(UNSCHEDULE 뒤).
+select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000b"}',false);
+insert into t_out select 'dec.b.reject', public.manage_trip_candidate((select id from t_cand),'REJECT')::text;
+insert into t_out select 'dec.status', status||':'||coalesce(scheduled_ref,'-') from public.list_trip_candidates('trip1') where id=(select id from t_cand);
+-- 결정은 활동 기록에 남는다 — 상태가 안 바뀌면(두 번 눌러도) 한 번만
+select public.manage_trip_candidate((select id from t_cand),'REJECT');
+insert into t_out select 'dec.activity', count(*)::text from public.list_trip_activity('trip1',200) where kind='CANDIDATE_REJECTED';
+insert into t_out select 'dec.activity.subject', subject->>'title' from public.list_trip_activity('trip1',200) where kind='CANDIDATE_REJECTED' limit 1;
+-- 되돌리기 → PROPOSED, 기록 없음. 의견·코멘트는 그대로
+insert into t_out select 'dec.b.reopen', public.manage_trip_candidate((select id from t_cand),'REOPEN')::text;
+insert into t_out select 'dec.reopened', status||':'||must_count||':'||comment_count from public.list_trip_candidates('trip1') where id=(select id from t_cand);
+insert into t_out select 'dec.activity.after_reopen', count(*)::text from public.list_trip_activity('trip1',200) where kind='CANDIDATE_REJECTED';
+-- 보기 권한은 결정하지 못한다 · 모르는 액션은 22023 · 멤버 아니면 42501
+select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000a"}',false);
+select public.manage_trip_member((select m.id from public.trip_members m join public.trips t on t.id=m.trip_id where t.client_id='trip1' and m.user_id='00000000-0000-0000-0000-00000000000b'),'SET_ROLE','VIEWER');
+select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000b"}',false);
+do $$ begin perform public.manage_trip_candidate((select id from t_cand),'REJECT'); insert into t_out values('dec.viewer.reject','ok');
+  exception when others then insert into t_out values('dec.viewer.reject',sqlstate); end $$;
+do $$ begin perform public.manage_trip_candidate((select id from t_cand),'REOPEN'); insert into t_out values('dec.viewer.reopen','ok');
+  exception when others then insert into t_out values('dec.viewer.reopen',sqlstate); end $$;
+select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000a"}',false);
+select public.manage_trip_member((select m.id from public.trip_members m join public.trips t on t.id=m.trip_id where t.client_id='trip1' and m.user_id='00000000-0000-0000-0000-00000000000b'),'SET_ROLE','EDITOR');
+do $$ begin perform public.manage_trip_candidate((select id from t_cand),'NUKE'); insert into t_out values('dec.invalid','ok');
+  exception when others then insert into t_out values('dec.invalid',sqlstate); end $$;
+select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000c"}',false);
+do $$ begin perform public.manage_trip_candidate((select id from t_cand),'REJECT'); insert into t_out values('dec.c.reject','ok');
+  exception when others then insert into t_out values('dec.c.reject',sqlstate); end $$;
+-- 주최자도 뺄 수 있다(편집 권한)
+select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000a"}',false);
+insert into t_out select 'dec.a.reject', public.manage_trip_candidate((select id from t_cand),'REJECT')::text;
+select public.manage_trip_candidate((select id from t_cand),'REOPEN');
+
 -- ── 스냅샷·기존 소유자 흐름은 그대로 ──
 select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000a"}',false);
 insert into public.trip_snapshots(user_id,client_id,name,data,source_revision) values('00000000-0000-0000-0000-00000000000a','trip1','스페인','{}'::jsonb,2);

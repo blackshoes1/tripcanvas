@@ -217,3 +217,38 @@ test('여행 취향: 칩 한 번의 탭으로 고르고 저장하면 정규화�
   await expect(page.locator('#prefGroup')).toContainText('늦은 밤은 싫어요 (나)');
   await expect(page.locator('#prefSection .prefChips[data-pref="pace"] button[aria-pressed="true"]')).toHaveText('여유롭게');
 });
+
+test('갈린 후보: 선택지에서 "이번 일정에서는 제외"를 고르면 뺀 묶음으로 가고, 되돌릴 수 있다 · 반대 없는 후보는 제안 카드에 정리된다',async({context,page})=>{
+  await fakeSupabase(context);
+  await page.goto('/');
+  await createTrip(page,'E2E 결정');
+  await page.evaluate(()=>{
+    user={id:'u1'};
+    const id=store.activeId;
+    syncMeta[id]={revision:3,status:'clean'};
+    tripRoles[id]={role:'EDITOR',count:3,owner:false,serverId:''};
+    window.__sent=[];
+    window.__rows=[
+      {id:1,title:'캄프 누',status:'PROPOSED',must_count:1,ok_count:0,pass_count:1,my_reaction:null,proposed_by_label:'민수',mine:false,created_at:'2026-01-01',
+       reactions:[{name:'민수',reaction:'MUST',me:false},{name:'영희',reaction:'PASS',me:false}]},
+      {id:2,title:'구엘 공원',status:'PROPOSED',must_count:2,ok_count:1,pass_count:0,my_reaction:null,proposed_by_label:'민수',mine:false,created_at:'2026-01-02',
+       reactions:[{name:'민수',reaction:'MUST',me:false},{name:'영희',reaction:'MUST',me:false},{name:'철수',reaction:'OK',me:false}]}];
+    sb={rpc:async(name,args)=>{ window.__sent.push([name,args]);
+      if(name==='list_trip_candidates') return {data:window.__rows,error:null};
+      if(name==='manage_trip_candidate'){ const r=window.__rows.find(x=>x.id===args.p_candidate_id); if(r) r.status=args.p_action==='REJECT'?'REJECTED':'PROPOSED'; return {data:true,error:null}; }
+      return {data:[],error:null}; }};
+  });
+  await clickMore(page,'#candMenuBtn');
+  await expect(page.locator('.proposalCard')).toBeVisible();
+  await expect(page.locator('.proposalCard')).toContainText('이 1곳은 다들 좋아해요');
+  await expect(page.locator('.proposalCard')).toContainText('구엘 공원');
+  await expect(page.locator('.candConflict')).toContainText('의견이 갈려 있어요');
+  await page.locator('.candOption[data-option="SKIP"] button').click();
+  await expect(page.locator('#toast')).toContainText('이번 일정에서는 뺐어요');
+  await expect(page.locator('.candGroup',{hasText:'이번엔 뺐어요'})).toBeVisible();
+  await expect(page.locator('.candConflict')).toHaveCount(0);
+  expect(await page.evaluate(()=>window.__sent.find(x=>x[0]==='manage_trip_candidate')[1])).toEqual({p_candidate_id:1,p_action:'REJECT',p_value:null});
+  await page.locator('.candActions button',{hasText:'후보로 되돌리기'}).click();
+  await expect(page.locator('#toast')).toContainText('후보로 되돌렸어요');
+  await expect(page.locator('.candConflict')).toHaveCount(1);
+});

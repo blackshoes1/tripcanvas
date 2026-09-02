@@ -2224,3 +2224,88 @@ test('통합: 후보 배지 — 두 명 이상이 말했으면 합의 문장, �
   assert.deepEqual(order(), ['D', 'A', 'C', 'B'], '관심 순 — 반대 없는 D가 갈린 A보다 위(§20), 한 명만 말한 C는 아래');
   w.close();
 });
+
+test('통합: 갈린 후보 — 자동으로 빼지 않고 선택지를 보여주며, 제외는 상태(REJECT)고 되돌린다(§23·§24)', { skip: noJsdom }, async () => {
+  const w = boot();
+  const rpc = [];
+  const tick = () => new Promise(r => setTimeout(r, 0));
+  w.__status = 'PROPOSED';
+  const row = () => ({ id: 1, title: '캄프 누', status: w.__status, must_count: 1, ok_count: 0, pass_count: 1, my_reaction: null, proposed_by_label: '민수', mine: false,
+    created_at: '2026-01-01', reactions: [{ name: '민수', reaction: 'MUST', me: false }, { name: '영희', reaction: 'PASS', me: false }] });
+  w.eval(`user={id:'u1'}; store.trips=[{id:'t1',name:'스페인',days:[{spots:[]}]}]; store.activeId='t1';
+    syncMeta={t1:{revision:3,status:'clean'}}; tripRoles={t1:{role:'EDITOR',count:3,owner:false,serverId:''}}; candTripId='t1';`);
+  w.sb = { rpc: async (name, args) => { rpc.push([name, args]);
+    if (name === 'list_trip_candidates') return { data: [row()], error: null };
+    if (name === 'manage_trip_candidate') { w.__status = args.p_action === 'REJECT' ? 'REJECTED' : 'PROPOSED'; return { data: true, error: null }; }
+    return { data: [], error: null }; } };
+  w.eval(`sb=window.sb`);
+  await w.eval(`renderCandidates()`);
+  const panel = w.document.querySelector('#candList .candConflict');
+  assert.ok(panel, '선택지 패널');
+  assert.match(panel.textContent, /의견이 갈려 있어요/);
+  const opts = [...panel.querySelectorAll('.candOption')];
+  assert.deepEqual(opts.map(o => o.dataset.option), ['TOGETHER', 'SPLIT', 'SKIP']);
+  assert.equal(opts[1].querySelector('button'), null, '분리는 다음 단계 — 안내만');
+  assert.match(opts[1].textContent, /민수은\(는\) 캄프 누 · 영희은\(는\) 다른 곳/);
+  assert.equal(w.document.querySelector('#candList .candGroup').textContent, '의견이 필요해요', '갈린 후보는 결정 못 한 묶음에 있다');
+  // 제외 → REJECT RPC → '이번엔 뺐어요' 묶음으로, 의견은 그대로, 되돌리기 버튼
+  opts[2].querySelector('button').click();
+  await tick(); await tick(); await tick();
+  assert.deepEqual(rpc.find(r => r[0] === 'manage_trip_candidate')[1], { p_candidate_id: 1, p_action: 'REJECT', p_value: null });
+  const groups = [...w.document.querySelectorAll('#candList .candGroup')].map(e => e.textContent);
+  assert.deepEqual(groups, ['이번엔 뺐어요']);
+  assert.equal(w.document.querySelector('#candList .candMood').textContent, '이번엔 뺐어요');
+  assert.equal(w.document.querySelector('#candList .candConflict'), null, '뺀 뒤엔 선택지를 묻지 않는다');
+  assert.ok(w.document.querySelector('#candList .candWho'), '의견은 그대로 남는다');
+  const back = [...w.document.querySelectorAll('#candList .candActions button')].find(b => b.textContent === '후보로 되돌리기');
+  assert.ok(back); back.click();
+  await tick(); await tick(); await tick();
+  assert.equal(rpc.filter(r => r[0] === 'manage_trip_candidate').pop()[1].p_action, 'REOPEN');
+  assert.equal(w.document.querySelector('#candList .candGroup').textContent, '의견이 필요해요');
+  // 보기 권한: 선택지는 보이지만 고를 수 없다
+  w.eval(`tripRoles.t1.role='VIEWER'; drawCandidates();`);
+  assert.ok(w.document.querySelector('#candList .candConflict'));
+  assert.equal(w.document.querySelectorAll('#candList .candConflict button').length, 0);
+  w.close();
+});
+
+test('통합: 그룹 제안 — 반대 없는 후보를 어느 날에 넣을지 미리보기로, 수락하면 그 날 맨 뒤에 붙고 후보에 표시된다(§28·§29·§60)', { skip: noJsdom }, async () => {
+  const w = boot();
+  const rpc = [];
+  const tick = () => new Promise(r => setTimeout(r, 0));
+  w.eval(`user={id:'u1'}; store.trips=[{id:'t1',name:'스페인',start:'2026-10-25',days:[
+      {title:'',spots:[{name:'광장',lat:41.387,lng:2.170},{name:'대성당',lat:41.384,lng:2.176}]},
+      {title:'',spots:[{name:'해변',lat:41.378,lng:2.192}]}]}]; store.activeId='t1';
+    syncMeta={t1:{revision:3,status:'clean'}}; tripRoles={t1:{role:'EDITOR',count:3,owner:false,serverId:''}}; candTripId='t1'; proposalDismissed='';
+    candRows=[
+      {id:1,title:'카사 바트요',status:'PROPOSED',lat:41.392,lng:2.165,must_count:3,ok_count:0,pass_count:0,my_reaction:null,proposed_by_label:'민수',mine:false,created_at:'2026-01-01'},
+      {id:2,title:'바르셀로네타',status:'PROPOSED',lat:41.380,lng:2.190,must_count:1,ok_count:1,pass_count:0,my_reaction:null,proposed_by_label:'민수',mine:false,created_at:'2026-01-02'},
+      {id:3,title:'갈린 곳',status:'PROPOSED',must_count:1,ok_count:0,pass_count:1,my_reaction:null,proposed_by_label:'민수',mine:false,created_at:'2026-01-03',reactions:[{name:'민수',reaction:'MUST'},{name:'영희',reaction:'PASS'}]}];`);
+  w.sb = { rpc: async (name, args) => { rpc.push([name, args]); return { data: name === 'list_trip_candidates' ? w.eval('candRows') : true, error: null }; } };
+  w.eval(`sb=window.sb; drawCandidates();`);
+  const card = w.document.querySelector('#candList .proposalCard');
+  assert.ok(card, '제안 카드');
+  assert.match(card.querySelector('.proposalHead').textContent, /이 2곳은 다들 좋아해요/);
+  const picks = [...card.querySelectorAll('.proposalPick .pt')].map(e => e.textContent);
+  assert.deepEqual(picks, ['Day 1 · 카사 바트요', 'Day 2 · 바르셀로네타'], '각각 가장 가까운 날');
+  assert.match(card.querySelector('.proposalPick .pr').textContent, /3명 모두 관심 있어요 · 반대 없음 · Day 1 마지막 장소\(대성당\)에서 약 \d\.\d km/);
+  assert.equal(card.textContent.includes('갈린 곳'), false, '갈린 후보는 제안에 넣지 않는다');
+  assert.doesNotMatch(card.textContent, /점수/);
+  // 수락 → 그 날 맨 뒤에 붙고 SCHEDULE 표시
+  [...card.querySelectorAll('button')].find(b => /일정으로 만들기/.test(b.textContent)).click();
+  await tick(); await tick(); await tick(); await tick();
+  const names = JSON.parse(w.eval(`JSON.stringify(store.trips[0].days.map(d=>d.spots.map(s=>s.name)))`));
+  assert.deepEqual(names, [['광장', '대성당', '카사 바트요'], ['해변', '바르셀로네타']]);
+  assert.deepEqual(rpc.filter(r => r[0] === 'manage_trip_candidate').map(r => [r[1].p_candidate_id, r[1].p_action, r[1].p_value]), [[1, 'SCHEDULE', '1'], [2, 'SCHEDULE', '2']]);
+  // 넘기기: 같은 제안은 다시 보이지 않고, 후보는 그대로
+  w.eval(`candRows.forEach(c=>{ c.status='PROPOSED'; }); store.trips[0].days[0].spots.pop(); store.trips[0].days[1].spots.pop(); drawCandidates();`);
+  [...w.document.querySelectorAll('#candList .proposalCard button')].find(b => b.textContent === '이번엔 넘기기').click();
+  assert.equal(w.document.querySelector('#candList .proposalCard'), null);
+  assert.equal(w.document.querySelectorAll('#candList .candCard').length, 3);
+  // 보기 권한: 제안은 보이되 수락 버튼은 없다
+  w.eval(`proposalDismissed=''; tripRoles.t1.role='VIEWER'; drawCandidates();`);
+  const vcard = w.document.querySelector('#candList .proposalCard');
+  assert.ok(vcard);
+  assert.equal([...vcard.querySelectorAll('button')].some(b => /일정으로 만들기/.test(b.textContent)), false);
+  w.close();
+});

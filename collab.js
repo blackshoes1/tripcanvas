@@ -301,24 +301,28 @@
   /** @param {unknown} mood @returns {string} */
   function moodText(mood){ const m=String(mood||''); return MOOD_TEXT[m] || MOOD_TEXT.QUIET; }
 
+  /** 만든 순으로 가르는 안정 키 — 정렬과 제안이 같은 키를 써서 렌더마다 순서가 흔들리지 않는다 @param {any} c */
+  function candKey(c){ return String((c&&c.created_at)||'')+'#'+String((c&&c.id)||''); }
+
   /**
    * 보드의 세 묶음(§57·§58). '의견 필요'는 **아직 결정하지 못한 것**이지 나쁜 것이 아니다.
    * 일정에 들어간 후보(SCHEDULED)는 따로 뺀다 — 이미 결정된 것을 계속 물어보지 않는다.
    * @param {Array<any>|null} candidates
    * @param {number} [memberCount]
-   * @returns {{loved:any[],needsOpinion:any[],resting:any[],scheduled:any[]}}
+   * @returns {{loved:any[],needsOpinion:any[],resting:any[],scheduled:any[],rejected:any[]}}
    */
   function groupCandidates(candidates, memberCount){
-    const loved=[], needsOpinion=[], resting=[], scheduled=[];
+    const loved=[], needsOpinion=[], resting=[], scheduled=[], rejected=[];
     for(const c of (Array.isArray(candidates)?candidates:[])){
       if(!c) continue;
       if(String(c.status||'')==='SCHEDULED'){ scheduled.push(c); continue; }
+      if(String(c.status||'')==='REJECTED'){ rejected.push(c); continue; }   // 이번엔 뺀 것 — 의견은 남아 있고 되돌릴 수 있다
       const mood = candidateMood(c, memberCount);
       if(mood==='LOVED') loved.push(c);
       else if(mood==='COOL') resting.push(c);
       else needsOpinion.push(c);   // NONE · QUIET · SPLIT — 사람이 한마디 하면 풀린다
     }
-    return {loved, needsOpinion, resting, scheduled};
+    return {loved, needsOpinion, resting, scheduled, rejected};
   }
 
   /**
@@ -354,12 +358,10 @@
    */
   function sortCandidates(candidates, mode, memberCount){
     const list = (Array.isArray(candidates)?candidates:[]).filter(Boolean).slice();
-    /** @param {any} c */
-    const key = (c)=>String(c.created_at||'')+'#'+String(c.id||'');
-    if(mode!=='interest') return list.sort((a,b)=> key(b).localeCompare(key(a)));
+    if(mode!=='interest') return list.sort((a,b)=> candKey(b).localeCompare(candKey(a)));
     return list.sort((a,b)=>{
       const ca=consensusOf(a,memberCount), cb=consensusOf(b,memberCount);
-      return (cb.score-ca.score) || (cb.strongSupportCount-ca.strongSupportCount) || key(b).localeCompare(key(a));
+      return (cb.score-ca.score) || (cb.strongSupportCount-ca.strongSupportCount) || candKey(b).localeCompare(candKey(a));
     });
   }
 
@@ -369,7 +371,7 @@
   // 실시간 이벤트를 받으면 **무엇을 다시 읽을지**도 여기서 정한다(§41 — payload를 믿지 않고 RPC로 다시 읽는다).
 
   const ACTIVITY_KINDS = Object.freeze(['MEMBER_JOINED','MEMBER_LEFT','MEMBER_REMOVED',
-    'CANDIDATE_PROPOSED','CANDIDATE_SCHEDULED','REACTION','COMMENT_ADDED','SCHEDULE_CHANGED','BOOKING_ADDED']);
+    'CANDIDATE_PROPOSED','CANDIDATE_SCHEDULED','CANDIDATE_REJECTED','REACTION','COMMENT_ADDED','SCHEDULE_CHANGED','BOOKING_ADDED']);
 
   /** 코멘트는 의견이다 — 반응과 같은 규칙: 활성 멤버 전원 */
   /** @param {unknown} role @returns {boolean} */
@@ -405,6 +407,7 @@
       case 'MEMBER_REMOVED':     return `${who} ${member}님을 내보냈어요`;
       case 'CANDIDATE_PROPOSED': return `${who} ${t} 후보로 담았어요`;
       case 'CANDIDATE_SCHEDULED':return s.ref? `${who} ${t} Day ${s.ref}에 넣었어요` : `${who} ${t} 일정에 넣었어요`;
+      case 'CANDIDATE_REJECTED': return `${who} ${t} 이번 일정에서 뺐어요`;
       case 'REACTION': {
         const r=normReaction(s.reaction);
         return r? `${who} ${t} "${REACTION_LABEL[r]}"로 골랐어요` : `${who} ${t} 골랐어요`;
@@ -645,6 +648,99 @@
     return {text:moodText(m), tone: m==='LOVED'?'good': m==='SPLIT'?'split':'quiet', status:null};
   }
 
+  // ── 충돌과 제안 (5단계) ─────────────────────────────────────────────────
+  //
+  // 의견이 갈린 후보를 자동으로 빼지 않는다(§23). 선택지를 보여주고(§24) 사람이 고른다.
+  // 제안(§28·§29)은 미리보기다 — 반대 없는 후보를 동선(거리)·여유 기준으로 어느 날에 넣을지 정리하고 이유를 붙인다.
+  // 시간·운영시간·예약 충돌은 여기서 판단하지 않는다(§63 — 기존 도메인 로직의 몫). 여기는 '어느 날'까지만.
+
+  /** @param {any} cand @param {'MUST'|'OK'|'PASS'} reaction @returns {string[]} */
+  function namesBy(cand, reaction){
+    /** @type {any[]} */ const list=(cand && Array.isArray(cand.reactions))? cand.reactions : [];
+    return list.filter(r=>r && normReaction(r.reaction)===reaction).map(r=> r.me? '나' : (String(r.name||'').trim()||'멤버'));
+  }
+
+  /**
+   * §23 충돌 탐지 — MUST와 PASS가 같이 있을 때만. 자동 제거는 없다.
+   * @param {any} cand @param {number} [memberCount]
+   * @returns {{title:string,must:string[],ok:string[],pass:string[]}|null}
+   */
+  function candidateConflict(cand, memberCount){
+    if(!cand) return null;
+    if(consensusOf(cand, memberCount).status!=='CONFLICT') return null;
+    return {title:String(cand.title||'').trim()||'후보', must:namesBy(cand,'MUST'), ok:namesBy(cand,'OK'), pass:namesBy(cand,'PASS')};
+  }
+
+  /**
+   * §24 세 선택지. action은 서버 액션(SCHEDULE·REJECT) — 분리(SPLIT)는 다음 단계라 action이 없다(안내만).
+   * @param {{title:string,must:string[],pass:string[]}|null} conflict
+   * @returns {Array<{key:'TOGETHER'|'SPLIT'|'SKIP',title:string,text:string,action:'SCHEDULE'|'REJECT'|null}>}
+   */
+  function conflictOptions(conflict){
+    if(!conflict) return [];
+    const who=(/** @type {string[]} */a)=>a.length? a.join(', ') : '';
+    const must=who(conflict.must), pass=who(conflict.pass);
+    return [
+      {key:'TOGETHER', title:'다 같이 방문', text: pass? `${pass}도 함께 — 짧게 들르는 걸로` : '다 같이 들러요', action:'SCHEDULE'},
+      {key:'SPLIT', title:'자유시간으로 분리',
+       text: `${must||'원하는 분'}은(는) ${conflict.title} · ${pass||'다른 분'}은(는) 다른 곳 — 분리 일정은 다음 단계에서`, action:null},
+      {key:'SKIP', title:'이번 일정에서는 제외', text:'후보에는 남겨 두고 이번엔 빼요 — 언제든 되돌릴 수 있어요', action:'REJECT'}
+    ];
+  }
+
+  /** 두 좌표 사이 km(하버사인). lib.js에도 있지만 이 모듈은 의존이 없어야 해서 작게 하나 둔다. */
+  /** @param {{lat:number,lng:number}} a @param {{lat:number,lng:number}} b @returns {number} */
+  function distanceKm(a,b){
+    const R=6371, toR=(/** @type {number} */d)=>d*Math.PI/180;
+    const dLat=toR(b.lat-a.lat), dLng=toR(b.lng-a.lng);
+    const h=Math.sin(dLat/2)**2 + Math.cos(toR(a.lat))*Math.cos(toR(b.lat))*Math.sin(dLng/2)**2;
+    return 2*R*Math.asin(Math.sqrt(h));
+  }
+  /** @param {any} p @returns {p is {lat:number,lng:number}} */
+  function hasCoord(p){ return !!p && p.lat!=null && p.lng!=null && isFinite(Number(p.lat)) && isFinite(Number(p.lng)); }
+
+  /**
+   * §28·§29 그룹 제안 — **미리보기**다. 반대 없고 두 명 이상이 말한 후보를 골라(합의 점수 순, 최대 max개)
+   * 각각 어느 날에 넣을지 정한다: 좌표가 있으면 그 날 마지막 장소에서 가장 가까운 날, 없으면 장소가 가장 적은 날.
+   * 넣는 위치는 그 날 **맨 뒤**다(최적 위치를 추측하지 않는다 — 재배치는 기존 드래그·재구성이 한다).
+   * 같은 입력이면 같은 답이다. 점수는 정렬에만 쓰고 문장에는 없다.
+   * @param {any[]|null} candidates
+   * @param {Array<{spots?:Array<{name?:string,lat?:number|null,lng?:number|null}|null>}|null>|null} days
+   * @param {number} [memberCount] @param {{walking?:string|null}|null} [ctx] @param {number} [max]
+   * @returns {{headline:string,picks:Array<{candidate:any,di:number,km:number|null,reasons:string[]}>}|null}
+   */
+  function buildGroupProposal(candidates, days, memberCount, ctx, max){
+    const limit=(Number(max)>0)? Number(max) : 3;
+    const dayList=(Array.isArray(days)?days:[]).map((d,i)=>({di:i, spots:((d&&Array.isArray(d.spots))?d.spots:[]).filter(Boolean)}));
+    if(!dayList.length) return null;
+    const eligible=(Array.isArray(candidates)?candidates:[]).filter(c=>c && String(c.status||'PROPOSED')==='PROPOSED')
+      .map(c=>({c, k:consensusOf(c, memberCount)}))
+      .filter(x=>x.k.voted>=2 && (x.k.status==='STRONG_MATCH'||x.k.status==='GOOD_MATCH'))
+      .sort((a,b)=>(b.k.score-a.k.score)||(b.k.strongSupportCount-a.k.strongSupportCount)||candKey(b.c).localeCompare(candKey(a.c)));
+    /** @type {Array<{candidate:any,di:number,km:number|null,reasons:string[]}>} */ const picks=[];
+    for(const {c,k} of eligible.slice(0,limit)){
+      /** @type {{di:number,km:number|null,last:any,score:number,count:number}|null} */ let best=null;
+      for(const d of dayList){
+        const last=[...d.spots].reverse().find(hasCoord);
+        const km=(hasCoord(c)&&last)? distanceKm({lat:+c.lat,lng:+c.lng},{lat:+last.lat,lng:+last.lng}) : null;
+        const score= km!=null ? km : 1000+d.spots.length;   // 좌표를 모르면 여유로운 날(장소가 적은 날) — 앞의 날이 먼저
+        if(!best || score<best.score) best={di:d.di, km, last, score, count:d.spots.length};
+      }
+      if(!best) continue;
+      /** @type {string[]} */ const reasons=[];
+      reasons.push(k.voted>=k.members ? `${k.members}명 모두 관심 있어요 · 반대 없음` : `${k.strongSupportCount}명이 꼭 가고 싶어 해요 · 반대 없음`);
+      if(best.km!=null) reasons.push(`Day ${best.di+1} 마지막 장소(${String(best.last.name||'장소')})에서 약 ${best.km<10? best.km.toFixed(1) : String(Math.round(best.km))} km`);
+      else reasons.push(`Day ${best.di+1}이 가장 여유로워요 (장소 ${best.count}개)`);
+      if(ctx&&ctx.walking==='LOW'&&best.km!=null&&best.km<=2) reasons.push('걷기 부담이 적은 거리예요');
+      picks.push({candidate:c, di:best.di, km:best.km, reasons});
+    }
+    if(!picks.length) return null;
+    const dayset=[...new Set(picks.map(p=>p.di))], allKm=picks.every(p=>p.km!=null);
+    const where = dayset.length===1 ? `Day ${dayset[0]+1}에 넣으면` : '각각 가장 맞는 날에 넣으면';
+    const headline=`이 ${picks.length}곳은 다들 좋아해요 — ${where} ${allKm? '동선이 자연스러워요' : '무리가 없어요'}`;
+    return {headline, picks};
+  }
+
   const API={ROLES, ROLE_LABEL, COLLAB_CFG, JOIN_REASON, REACTIONS, REACTION_LABEL, REACTION_ICON, MOOD_TEXT, ACTIVITY_KINDS, PREF, PACE_LABEL, WALK_LABEL, CONSENSUS_TEXT,
     normRole, canEdit, canManage, canLeave, canDelete, roleLabel, roleIcon, roleOf, tripRoleMap,
     memberName, displayNameFromEmail, memberSummary,
@@ -653,7 +749,8 @@
     normReaction, reactionLabel, reactionIcon, canPropose, canReact, canScheduleCandidate, canRemoveCandidate,
     tallyReactions, candidateMood, moodText, groupCandidates, reactionSummary, candidateAttribution, sortCandidates,
     canComment, canDeleteComment, objParticle, activityText, condenseActivity, relativeTime, liveEffects,
-    normPrefs, prefsText, groupContext, groupContextText, consensusOf, consensusText, candidateVerdict};
+    normPrefs, prefsText, groupContext, groupContextText, consensusOf, consensusText, candidateVerdict,
+    candidateConflict, conflictOptions, distanceKm, buildGroupProposal};
   if(typeof module!=='undefined' && module.exports) module.exports=API;   // Node (테스트)
   else /** @type {any} */(root).TC_COLLAB=API;                            // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);
