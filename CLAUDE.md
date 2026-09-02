@@ -31,18 +31,18 @@ npm test && npm run lint && npm run check:types && npm run security:scan && npm 
 
 - `index.html` — 마크업 (모달·헤더·재생 HUD 등)
 - `app.js` — 앱 로직 전체 (DOM·지도·네트워크)
-- `lib.js` — 순수 로직 (파서·거리·시각·앵커·타임라인·정규화). **유닛 테스트 + `tsc` 타입 검사 대상**
+- `lib.js` — 순수 로직 (파서·거리·시각·앵커·타임라인·정규화 · **분리 구간**`splitSegments`/`whoKey`). **유닛 테스트 + `tsc` 타입 검사 대상**
 - `price.js` — 예약 가격 추적 순수 계산: 실질 절약액·오퍼 조건 매칭(EXACT/EQUIVALENT/SIMILAR)·확정/잠재 절약 판단·호텔 identity 점수 · 렌터카 조건 매칭(carMatchQuality — 차급·변속기·보험·주행거리가 다르면 확정 절약 금지). 예약(`trip.bookings`)은 여행 데이터로 동기화·공유되고, 가격 관측 기록은 기기 로컬 + 로그인 시 `hotel_price_snapshots`. 시세는 `api/hotel-offers.js` 프록시(Metasearch 키 서버 전용)로만 조회 — 키 없으면 미연결 상태를 그대로 표시(가짜 가격 금지). **유닛 테스트 + `tsc` 대상**
 - `adaptive.js` — **Adaptive Travel OS 도메인**(순수): 현재 여행 상태(`buildTripState`) · 고정/유동 분류(`commitmentOf`) · 빈 시간 탐지(`findFreeWindows`) · 다음 행동 후보와 순위(`buildCandidates`/`rankNextActions`) · 일정 재구성(`generateReplan`) · 제안(`buildSuggestions`) · 자연어 해석(`parseIntent`) · 출발 안내(`departureAdvice`) · 빈칸 채우기와 하루 flow(`fillGaps`/`planDayFlow`). DOM·네트워크·현재시각을 모르고 전부 인자로 받는다. **유닛 테스트 + `tsc` 대상**
 - `intake.js` — **유입 계층**(순수): 공유 분류(`classifyShare`) · 날짜/통화 정규화 · 예약 후보 파싱(`parseBookingCandidate`) · 중복(`findDuplicateBooking`) · 여행 매칭(`matchTripForBooking`) · 기록 연결(`associateMemory`). **저장은 하지 않는다** — 확인한 것만 저장된다. **유닛 테스트 + `tsc` 대상**
-- `collab.js` — **함께하기(협업)** 순수 로직: 역할 판정(`canEdit/canManage/canLeave/canDelete`) · 초대 링크 만들기/읽기(`#join=`) · 초대 판정 문구 · 권한 오류 판별 · **후보 장소와 반응**(집계 `tallyReactions` · 상태 `candidateMood` · 보드 묶음 `groupCandidates` · `canPropose/canReact/canRemoveCandidate`) · **활동 기록과 실시간**(문장 `activityText` · 묶음 `condenseActivity` · 이벤트 판정 `liveEffects` · 코멘트 권한) · **여행 취향과 합의**(`normPrefs` 서버와 같은 규칙 · `groupContext` · `consensusOf` 점수는 내부값 · `candidateVerdict`) · **충돌과 제안**(`candidateConflict` · `conflictOptions` · `buildGroupProposal` 미리보기). 접근 제어의 경계는 DB(RLS·RPC)고 여기는 화면 판정만. **유닛 테스트 + `tsc` 대상**
+- `collab.js` — **함께하기(협업)** 순수 로직: 역할 판정(`canEdit/canManage/canLeave/canDelete`) · 초대 링크 만들기/읽기(`#join=`) · 초대 판정 문구 · 권한 오류 판별 · **후보 장소와 반응**(집계 `tallyReactions` · 상태 `candidateMood` · 보드 묶음 `groupCandidates` · `canPropose/canReact/canRemoveCandidate`) · **활동 기록과 실시간**(문장 `activityText` · 묶음 `condenseActivity` · 이벤트 판정 `liveEffects` · 코멘트 권한) · **여행 취향과 합의**(`normPrefs` 서버와 같은 규칙 · `groupContext` · `consensusOf` 점수는 내부값 · `candidateVerdict`) · **충돌과 제안**(`candidateConflict` · `conflictOptions` · `buildGroupProposal` 미리보기) · **함께 움직이지 않는 시간**(참여자 문장 `whoText`/`whoLabels` · `includesMe` · 분리 미리보기 `buildSplitPlan` · 합류 안내 `reunionText`). 접근 제어의 경계는 DB(RLS·RPC)고 여기는 화면 판정만. **유닛 테스트 + `tsc` 대상**
 - `style.css` — 스타일
 - `sync.js` — 클라우드 동기화(리비전 CAS·충돌·tombstone). **`tsc` 대상**
 - `routing.js` — 경로 조회 transport 격리 (app.js는 `fetchLeg` 호환 shim만 씀). **`tsc` 대상**
 - `sw.js` — 서비스 워커 (앱 셸 캐시). `/api/`와 GET 외 요청은 건드리지 않는다
 - `manifest.json` · `icon-*.png` — PWA
 - `api/` — Vercel 서버 함수(**서버 전용 키**): `kakao-directions.js`(카카오내비 프록시) · `hotel-offers.js`(호텔 시세 메타서치 프록시) · `car-offers.js`(렌터카 시장가 프록시 — Provider 미연결 시 AUTH_REQUIRED, 수동 관측 fallback) · `track-hotel-prices.js`(가격 스냅샷 크론)
-- `supabase/migrations/` — RLS·동기화 무결성·가격 스냅샷·추천 반응 기록·기기 토큰/발송 기록·여행 기록·**함께하기(멤버·초대·역할 RLS · 후보 장소·반응 · 코멘트·활동 기록·실시간 퍼블리케이션 · 여행별 멤버 취향 · 후보 결정 REJECT/REOPEN)** 스키마
+- `supabase/migrations/` — RLS·동기화 무결성·가격 스냅샷·추천 반응 기록·기기 토큰/발송 기록·여행 기록·**함께하기(멤버·초대·역할 RLS · 후보 장소·반응 · 코멘트·활동 기록·실시간 퍼블리케이션 · 여행별 멤버 취향 · 후보 결정 REJECT/REOPEN · 반응 user_id)** 스키마
 - `ios/` — **네이티브 iOS 앱(SwiftUI)** + `TripCanvasWidgets`(위젯·Live Activity 확장) + `TripCanvasShared`(App Group 공유 상태). 지도 위의 본격적인 계획은 웹이 하고, iOS는 여행을 *실행*하며 **함께하기(후보·반응·코멘트·취향)** 를 맡는다 — 후보 담기와 하트 누르기는 침대에서 10초 안에 하는 행동이라 폰이 제자리다. 판단 로직을 Swift로 복제하지 않는다 — `/api/v1`이 준 결과를 그리기만 한다. ⚠️ 작성 환경(Windows)에 Xcode가 없어 **빌드 미검증** 상태다 (`ios/README.md`)
 - `next/src/features/trip-state/` — 웹·iOS 공통 API 계층. `contract.ts`(단일 출처 계약) · `todayView.ts`(엔진 결과를 계약 모양으로) · `candidatesView.ts`(함께하기 보드·코멘트·취향·활동을 계약 모양으로) · `mutations.ts`(문서 변경 순수 함수) · `handlers.ts`(주입 가능한 라우트 핸들러) · `supabaseGateway.ts`(RLS 아래 읽기·쓰기)
 - `scripts/` — `bump-version.js` · `check-version-sync.js` · `check-secrets.js`
@@ -133,18 +133,18 @@ npm test && npm run lint && npm run check:types && npm run security:scan && npm 
 
 - `index.html` — 마크업 (모달·헤더·재생 HUD 등)
 - `app.js` — 앱 로직 전체 (DOM·지도·네트워크)
-- `lib.js` — 순수 로직 (파서·거리·시각·앵커·타임라인·정규화). **유닛 테스트 + `tsc` 타입 검사 대상**
+- `lib.js` — 순수 로직 (파서·거리·시각·앵커·타임라인·정규화 · **분리 구간**`splitSegments`/`whoKey`). **유닛 테스트 + `tsc` 타입 검사 대상**
 - `price.js` — 예약 가격 추적 순수 계산: 실질 절약액·오퍼 조건 매칭(EXACT/EQUIVALENT/SIMILAR)·확정/잠재 절약 판단·호텔 identity 점수 · 렌터카 조건 매칭(carMatchQuality — 차급·변속기·보험·주행거리가 다르면 확정 절약 금지). 예약(`trip.bookings`)은 여행 데이터로 동기화·공유되고, 가격 관측 기록은 기기 로컬 + 로그인 시 `hotel_price_snapshots`. 시세는 `api/hotel-offers.js` 프록시(Metasearch 키 서버 전용)로만 조회 — 키 없으면 미연결 상태를 그대로 표시(가짜 가격 금지). **유닛 테스트 + `tsc` 대상**
 - `adaptive.js` — **Adaptive Travel OS 도메인**(순수): 현재 여행 상태(`buildTripState`) · 고정/유동 분류(`commitmentOf`) · 빈 시간 탐지(`findFreeWindows`) · 다음 행동 후보와 순위(`buildCandidates`/`rankNextActions`) · 일정 재구성(`generateReplan`) · 제안(`buildSuggestions`) · 자연어 해석(`parseIntent`) · 출발 안내(`departureAdvice`) · 빈칸 채우기와 하루 flow(`fillGaps`/`planDayFlow`). DOM·네트워크·현재시각을 모르고 전부 인자로 받는다. **유닛 테스트 + `tsc` 대상**
 - `intake.js` — **유입 계층**(순수): 공유 분류(`classifyShare`) · 날짜/통화 정규화 · 예약 후보 파싱(`parseBookingCandidate`) · 중복(`findDuplicateBooking`) · 여행 매칭(`matchTripForBooking`) · 기록 연결(`associateMemory`). **저장은 하지 않는다** — 확인한 것만 저장된다. **유닛 테스트 + `tsc` 대상**
-- `collab.js` — **함께하기(협업)** 순수 로직: 역할 판정(`canEdit/canManage/canLeave/canDelete`) · 초대 링크 만들기/읽기(`#join=`) · 초대 판정 문구 · 권한 오류 판별 · **후보 장소와 반응**(집계 `tallyReactions` · 상태 `candidateMood` · 보드 묶음 `groupCandidates` · `canPropose/canReact/canRemoveCandidate`) · **활동 기록과 실시간**(문장 `activityText` · 묶음 `condenseActivity` · 이벤트 판정 `liveEffects` · 코멘트 권한) · **여행 취향과 합의**(`normPrefs` 서버와 같은 규칙 · `groupContext` · `consensusOf` 점수는 내부값 · `candidateVerdict`) · **충돌과 제안**(`candidateConflict` · `conflictOptions` · `buildGroupProposal` 미리보기). 접근 제어의 경계는 DB(RLS·RPC)고 여기는 화면 판정만. **유닛 테스트 + `tsc` 대상**
+- `collab.js` — **함께하기(협업)** 순수 로직: 역할 판정(`canEdit/canManage/canLeave/canDelete`) · 초대 링크 만들기/읽기(`#join=`) · 초대 판정 문구 · 권한 오류 판별 · **후보 장소와 반응**(집계 `tallyReactions` · 상태 `candidateMood` · 보드 묶음 `groupCandidates` · `canPropose/canReact/canRemoveCandidate`) · **활동 기록과 실시간**(문장 `activityText` · 묶음 `condenseActivity` · 이벤트 판정 `liveEffects` · 코멘트 권한) · **여행 취향과 합의**(`normPrefs` 서버와 같은 규칙 · `groupContext` · `consensusOf` 점수는 내부값 · `candidateVerdict`) · **충돌과 제안**(`candidateConflict` · `conflictOptions` · `buildGroupProposal` 미리보기) · **함께 움직이지 않는 시간**(참여자 문장 `whoText`/`whoLabels` · `includesMe` · 분리 미리보기 `buildSplitPlan` · 합류 안내 `reunionText`). 접근 제어의 경계는 DB(RLS·RPC)고 여기는 화면 판정만. **유닛 테스트 + `tsc` 대상**
 - `style.css` — 스타일
 - `sync.js` — 클라우드 동기화(리비전 CAS·충돌·tombstone). **`tsc` 대상**
 - `routing.js` — 경로 조회 transport 격리 (app.js는 `fetchLeg` 호환 shim만 씀). **`tsc` 대상**
 - `sw.js` — 서비스 워커 (앱 셸 캐시). `/api/`와 GET 외 요청은 건드리지 않는다
 - `manifest.json` · `icon-*.png` — PWA
 - `api/` — Vercel 서버 함수(**서버 전용 키**): `kakao-directions.js`(카카오내비 프록시) · `hotel-offers.js`(호텔 시세 메타서치 프록시) · `car-offers.js`(렌터카 시장가 프록시 — Provider 미연결 시 AUTH_REQUIRED, 수동 관측 fallback) · `track-hotel-prices.js`(가격 스냅샷 크론)
-- `supabase/migrations/` — RLS·동기화 무결성·가격 스냅샷·추천 반응 기록·기기 토큰/발송 기록·여행 기록·**함께하기(멤버·초대·역할 RLS · 후보 장소·반응 · 코멘트·활동 기록·실시간 퍼블리케이션 · 여행별 멤버 취향 · 후보 결정 REJECT/REOPEN)** 스키마
+- `supabase/migrations/` — RLS·동기화 무결성·가격 스냅샷·추천 반응 기록·기기 토큰/발송 기록·여행 기록·**함께하기(멤버·초대·역할 RLS · 후보 장소·반응 · 코멘트·활동 기록·실시간 퍼블리케이션 · 여행별 멤버 취향 · 후보 결정 REJECT/REOPEN · 반응 user_id)** 스키마
 - `ios/` — **네이티브 iOS 앱(SwiftUI)** + `TripCanvasWidgets`(위젯·Live Activity 확장) + `TripCanvasShared`(App Group 공유 상태). 지도 위의 본격적인 계획은 웹이 하고, iOS는 여행을 *실행*하며 **함께하기(후보·반응·코멘트·취향)** 를 맡는다 — 후보 담기와 하트 누르기는 침대에서 10초 안에 하는 행동이라 폰이 제자리다. 판단 로직을 Swift로 복제하지 않는다 — `/api/v1`이 준 결과를 그리기만 한다. ⚠️ 작성 환경(Windows)에 Xcode가 없어 **빌드 미검증** 상태다 (`ios/README.md`)
 - `next/src/features/trip-state/` — 웹·iOS 공통 API 계층. `contract.ts`(단일 출처 계약) · `todayView.ts`(엔진 결과를 계약 모양으로) · `candidatesView.ts`(함께하기 보드·코멘트·취향·활동을 계약 모양으로) · `mutations.ts`(문서 변경 순수 함수) · `handlers.ts`(주입 가능한 라우트 핸들러) · `supabaseGateway.ts`(RLS 아래 읽기·쓰기)
 - `scripts/` — `bump-version.js` · `check-version-sync.js` · `check-secrets.js`
@@ -244,6 +244,18 @@ localStorage: `tripcanvas_v1`(여행) · `tripcanvas_legs_v4`(구간 캐시, 수
 - 빈칸 채우기(일부 계획 있음)와 하루 flow(계획 없음)는 **같은 엔진**이다 — `fillGaps`가 창마다 여러 칸을 채우고 `planDayFlow`가 고정 예약과 합쳐 오전/점심/오후/저녁으로 묶는다. 둘 다 **미리보기**이고 수락해야 일정에 들어간다.
 - ⚠️ 활동의 시작은 도착 예정(`eta`)이 아니라 `depart`다. 19시 예약을 13시에 "진행 중"으로 보면 그 대기시간이 빈 시간에서 통째로 사라진다.
 - UI는 여행 모드(`#travel`) 안의 `#travelSuggest`. 카드 버튼은 inline onclick 없이 `createElement`+`onclick`으로 만든다(장소명 이스케이프 사고 방지).
+
+**함께 움직이지 않는 시간은 타임라인의 예외다.** 모든 멤버가 늘 같이 다닌다고 가정하지 않는다(§25~§27).
+
+- `spot.who`(참여자 user_id 배열) — **비었으면 모든 여행자다**(§26). 기본값이라 저장하지 않는다.
+- `spot.split`(묶음 키) — 같은 키가 **이어지는 구간**이 한 묶음이고, 그 안에서 **참여자가 같은 장소들이 한 가지**다(`whoKey`).
+- `spot.reunion` — 갈라졌던 사람들이 다시 만나는 지점. 표시일 뿐이고 시각은 타임라인이 정한다.
+- ⚠️ `computeTimeline`이 유일한 계산처다: 한 묶음의 가지는 **전부 같은 출발점에서** 시작하고(나란히 일어나므로 서로를 밀지 않는다), 묶음 다음은 **가장 늦게 끝나는 가지**를 따른다(다 모여야 합류한다). 분리가 없으면 예전과 **완전히 같다** — 테스트가 그것부터 확인한다.
+- ⚠️ `splitSegments`(lib)를 화면과 타임라인이 **같이** 쓴다. 화면이 따로 가르면 그림과 시각이 어긋난다.
+- ⚠️ 나란한 가지를 `.spotList` 안에서 **열로 쪼개지 않는다.** 드래그 인덱스가 자식 순서로 계산돼서(`onSpotDrop`의 `oldIndex`) 다른 요소를 끼우면 순서가 어긋난다. 줄은 1:1로 두고 CSS(`.spot.inSplit`)와 메타 칩으로 묶어 보인다.
+- 장소 모달은 분리 묶음을 **만들지도 지우지도 않는다** — 예약 연결과 같은 이유로 편집 시 그대로 물려준다.
+- 분리를 만드는 곳은 갈린 후보의 "자유시간으로 분리" 하나다(`buildSplitPlan`). 가고 싶은 사람은 그 후보로, 나머지는 **자유시간**으로 간다 — 무엇을 할지는 앱이 고르지 않는다(§23). 반응에 `user_id`가 실려 있어야 동명이인이 섞이지 않는다(마이그레이션 `202609020006`).
+- ⚠️ `ensureMembers`(app)는 목록을 받아도 **다시 그리지 않는다.** `render()`는 순수한 다시 그리기가 아니라 클라우드 동기화까지 건드린다 — 이름표 하나 때문에 저장이 돌면 안 된다. 필요한 곳이 직접 `await` 한다.
 
 **함께하기(협업)는 DB가 결정한다 — 화면은 감출 뿐이다.** (`docs/collaboration.md`)
 

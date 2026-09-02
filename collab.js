@@ -741,6 +741,127 @@
     return {headline, picks};
   }
 
+  // ── 함께 움직이지 않는 시간 (6단계 · §25~§27) ─────────────────────────────
+  //
+  // 모든 멤버가 늘 함께 움직인다고 가정하지 않는다(§25). 일정에 참여자를 지정할 수 있고(§26),
+  // 갈라졌다가 다시 만나는 지점을 둔다(§27).
+  //
+  // 여기는 **문장과 판정만** 만든다. 시각 계산은 lib.js의 computeTimeline이 하고,
+  // 갈리는 규칙(같은 참여자 = 한 가지)은 lib.js의 whoKey/splitSegments가 단일 소스다.
+
+  /** 참여자 지정은 일정을 바꾸는 일이다 — 의견이 아니라 편집 권한(§12) @param {unknown} role @returns {boolean} */
+  function canAssignWho(role){ return canEdit(role); }
+
+  /**
+   * user_id → 이름표. 이름표는 서버(`tc_member_label`)가 만든 것을 그대로 쓴다 — 이메일은 여행에 나오지 않는다(§69).
+   * @param {Array<{user_id?:string,display_name?:string|null,me?:boolean}>|null} members
+   * @returns {Map<string,{name:string,me:boolean}>}
+   */
+  function memberLabelMap(members){
+    /** @type {Map<string,{name:string,me:boolean}>} */ const map=new Map();
+    for(const m of (Array.isArray(members)?members:[])){
+      if(!m || typeof m.user_id!=='string') continue;
+      map.set(m.user_id, {name:String(m.display_name||'').trim()||'멤버', me:!!m.me});
+    }
+    return map;
+  }
+
+  /**
+   * 참여자 이름표 목록. 나는 늘 '나'로 부르고 맨 앞에 둔다 — 내 일정인지 한눈에 보이게.
+   * 모르는 id는 '멤버'로 둔다(나간 사람일 수 있다 — 지우지 않는다: 지난 일정의 기록이다).
+   * @param {string[]|null|undefined} who @param {Array<any>|null} members @returns {string[]}
+   */
+  function whoLabels(who, members){
+    const map=memberLabelMap(members);
+    /** @type {string[]} */ const mine=[]; /** @type {string[]} */ const rest=[];
+    for(const id of (Array.isArray(who)?who:[])){
+      const hit=map.get(String(id));
+      if(hit && hit.me) mine.push('나');
+      else rest.push(hit? hit.name : '멤버');
+    }
+    return mine.concat(rest);
+  }
+
+  /**
+   * '모두' 또는 '나 · 지민'. 값이 없으면 **모든 여행자**다(§26) — 기본이 함께 다니는 것이다.
+   * @param {any} spot @param {Array<any>|null} members @returns {string}
+   */
+  function whoText(spot, members){
+    const who=(spot && Array.isArray(spot.who))? spot.who : null;
+    if(!who || !who.length) return '모두';
+    return whoLabels(who, members).join(' · ');
+  }
+
+  /** 이 일정에 내가 들어 있는가. 지정이 없으면 모두이므로 참이다. @param {any} spot @param {string|null|undefined} myId @returns {boolean} */
+  function includesMe(spot, myId){
+    const who=(spot && Array.isArray(spot.who))? spot.who : null;
+    if(!who || !who.length) return true;
+    return !!myId && who.indexOf(String(myId)) >= 0;
+  }
+
+  /**
+   * 반응에서 사람을 갈라낸다 — 분리를 만들려면 이름이 아니라 id가 필요하다(동명이인).
+   * `list_trip_candidates`가 reactions에 user_id를 함께 준다.
+   * @param {any} cand @param {'MUST'|'OK'|'PASS'} reaction @returns {string[]}
+   */
+  function reactorIds(cand, reaction){
+    /** @type {any[]} */ const list=(cand && Array.isArray(cand.reactions))? cand.reactions : [];
+    /** @type {string[]} */ const out=[]; const seen=new Set();
+    for(const r of list){
+      if(!r || normReaction(r.reaction)!==reaction) continue;
+      const id=(typeof r.user_id==='string')? r.user_id : '';
+      if(!id || seen.has(id)) continue;
+      seen.add(id); out.push(id);
+    }
+    return out;
+  }
+
+  /**
+   * §24의 "자유시간으로 분리"를 실제 일정으로. **미리보기다** — 누르기 전에는 저장되지 않는다.
+   *
+   * 가고 싶은 사람은 그 후보로, 나머지는 자유시간으로 간다. 자유시간에는 장소를 정해 주지 않는다 —
+   * 무엇을 할지는 그 사람들이 정할 일이지 앱이 고를 일이 아니다(§23).
+   * 합류(§27)는 장소를 모르므로 표시만 만들고, 시각은 타임라인이 정한다.
+   *
+   * @param {any} cand 후보 (reactions에 user_id 포함)
+   * @param {Array<any>|null} members
+   * @param {{stayMin?:number, splitId?:string}} [opts]
+   * @returns {{goers:string[], others:string[], spots:any[], text:string}|null}
+   */
+  function buildSplitPlan(cand, members, opts){
+    if(!cand) return null;
+    const goers=reactorIds(cand,'MUST').concat(reactorIds(cand,'OK'));
+    const others=reactorIds(cand,'PASS');
+    // 한쪽이 비면 갈릴 것이 없다 — 다 같이 가거나, 아무도 안 가거나다.
+    if(!goers.length || !others.length) return null;
+    const splitId=String((opts&&opts.splitId)||'').trim() || ('sp'+Math.random().toString(36).slice(2,8));
+    const stayMin=(opts&&Number(opts.stayMin)>0)? Math.round(Number(opts.stayMin)) : 120;
+    const title=String(cand.title||'').trim()||'후보';
+    /** @type {any[]} */ const spots=[
+      {name:title, city:String(cand.addr||'').trim()||'', desc:String(cand.note||''),
+       lat:(cand.lat==null?null:Number(cand.lat)), lng:(cand.lng==null?null:Number(cand.lng)),
+       stayMin, split:splitId, who:goers.slice()},
+      {name:'자유시간', city:'', desc:'가고 싶은 곳을 각자 정해요',
+       lat:null, lng:null, stayMin, split:splitId, who:others.slice()},
+      {name:'다시 만나기', city:'', lat:null, lng:null, stayMin:0, reunion:true}
+    ];
+    const a=whoLabels(goers, members).join(', '), b=whoLabels(others, members).join(', ');
+    return {goers, others, spots, text:`${a}은(는) ${title}, ${b}은(는) 자유시간 — 끝나면 다시 만나요`};
+  }
+
+  /**
+   * 합류 안내 한 줄. 장소를 정했으면 그것을, 아니면 정하라고 말한다 — 아는 척하지 않는다.
+   * @param {any} spot @param {string} [when] 'HH:MM'
+   * @returns {string}
+   */
+  function reunionText(spot, when){
+    const place=String((spot&&spot.name)||'').trim();
+    const named=place && place!=='다시 만나기';
+    const at=String(when||'').trim();
+    if(named) return at? `${at} ${place}에서 만나요` : `${place}에서 만나요`;
+    return at? `${at}에 만나요 — 어디서 만날지는 정해 주세요` : '어디서 만날지 정해 주세요';
+  }
+
   const API={ROLES, ROLE_LABEL, COLLAB_CFG, JOIN_REASON, REACTIONS, REACTION_LABEL, REACTION_ICON, MOOD_TEXT, ACTIVITY_KINDS, PREF, PACE_LABEL, WALK_LABEL, CONSENSUS_TEXT,
     normRole, canEdit, canManage, canLeave, canDelete, roleLabel, roleIcon, roleOf, tripRoleMap,
     memberName, displayNameFromEmail, memberSummary,
@@ -750,7 +871,8 @@
     tallyReactions, candidateMood, moodText, groupCandidates, reactionSummary, candidateAttribution, sortCandidates,
     canComment, canDeleteComment, objParticle, activityText, condenseActivity, relativeTime, liveEffects,
     normPrefs, prefsText, groupContext, groupContextText, consensusOf, consensusText, candidateVerdict,
-    candidateConflict, conflictOptions, distanceKm, buildGroupProposal};
+    candidateConflict, conflictOptions, distanceKm, buildGroupProposal,
+    canAssignWho, memberLabelMap, whoLabels, whoText, includesMe, reactorIds, buildSplitPlan, reunionText};
   if(typeof module!=='undefined' && module.exports) module.exports=API;   // Node (테스트)
   else /** @type {any} */(root).TC_COLLAB=API;                            // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);

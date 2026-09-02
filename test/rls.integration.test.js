@@ -65,6 +65,8 @@ const EXPECTED = {
   // 낸 사람은 이미 가고 싶다는 뜻이라 MUST가 자동으로 붙는다 · 이름은 여행 안 이름뿐(이메일 없음 §69)
   'cand.a.add': 'true', 'cand.a.auto_must': '1:MUST', 'cand.b.count': '2',
   'cand.labels': '주최자,영희', 'cand.no_email': 'true',
+  // 6단계: 분리는 이름이 아니라 id로 가른다(동명이인) — 이메일은 여전히 없다
+  'cand.reactor_ids': 'true', 'cand.reactions_no_email': 'true',
   // 멤버가 아니면 후보도 반응도 보이지 않고 남기지도 못한다. C의 같은 client_id 저장은 제 여행에만 들어간다
   'cand.c.select': '0', 'cand.c.reactions': '0', 'cand.c.list': '0', 'cand.c.react': '42501',
   'cand.c.add': 'ok', 'cand.c.add_lands_in_own': '몰래 추가', 'cand.a.untouched': '사그라다 파밀리아,카사 바트요',
@@ -157,12 +159,14 @@ for (const shape of ['bigint', 'uuid']) test(`RLS(trips.id=${shape}): 마이그�
     psql(db, ['-f', sql('supabase/migrations/202609020003_trip_comments_activity.sql')]);
     psql(db, ['-f', sql('supabase/migrations/202609020004_member_preferences.sql')]);
     psql(db, ['-f', sql('supabase/migrations/202609020005_candidate_decisions.sql')]);
+    psql(db, ['-f', sql('supabase/migrations/202609020006_candidate_reactor_ids.sql')]);
     // 두 번 적용해도 같다 — 운영에서 재실행돼도 안전해야 한다
     psql(db, ['-f', sql('supabase/migrations/202609020001_trip_collaboration.sql')]);
     psql(db, ['-f', sql('supabase/migrations/202609020002_trip_candidates.sql')]);
     psql(db, ['-f', sql('supabase/migrations/202609020003_trip_comments_activity.sql')]);
     psql(db, ['-f', sql('supabase/migrations/202609020004_member_preferences.sql')]);
     psql(db, ['-f', sql('supabase/migrations/202609020005_candidate_decisions.sql')]);
+    psql(db, ['-f', sql('supabase/migrations/202609020006_candidate_reactor_ids.sql')]);
     const out = psql(db, ['-f', sql('test/rls/collaboration.sql')]);
     const got = {};
     for (const line of out.split('\n')) {

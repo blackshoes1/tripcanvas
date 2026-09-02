@@ -2245,7 +2245,8 @@ test('통합: 갈린 후보 — 자동으로 빼지 않고 선택지를 보여�
   assert.match(panel.textContent, /의견이 갈려 있어요/);
   const opts = [...panel.querySelectorAll('.candOption')];
   assert.deepEqual(opts.map(o => o.dataset.option), ['TOGETHER', 'SPLIT', 'SKIP']);
-  assert.equal(opts[1].querySelector('button'), null, '분리는 다음 단계 — 안내만');
+  // 반응에 user_id가 없는(옛 서버) 응답은 누가 어느 쪽인지 가릴 수 없어 분리를 만들지 않는다 — 안내만 남는다
+  assert.equal(opts[1].querySelector('button'), null, 'id 없이는 갈라 세울 수 없다');
   assert.match(opts[1].textContent, /민수은\(는\) 캄프 누 · 영희은\(는\) 다른 곳/);
   assert.equal(w.document.querySelector('#candList .candGroup').textContent, '의견이 필요해요', '갈린 후보는 결정 못 한 묶음에 있다');
   // 제외 → REJECT RPC → '이번엔 뺐어요' 묶음으로, 의견은 그대로, 되돌리기 버튼
@@ -2307,5 +2308,111 @@ test('통합: 그룹 제안 — 반대 없는 후보를 어느 날에 넣을지 
   const vcard = w.document.querySelector('#candList .proposalCard');
   assert.ok(vcard);
   assert.equal([...vcard.querySelectorAll('button')].some(b => /일정으로 만들기/.test(b.textContent)), false);
+  w.close();
+});
+
+// ── 함께 움직이지 않는 시간 (6단계 · §25~§27) ────────────────────────────────
+
+const SU1 = '11111111-1111-4111-8111-111111111111';
+const SU2 = '22222222-2222-4222-8222-222222222222';
+
+test('통합: 갈린 후보를 자유시간으로 분리하면 같은 시간에 나란한 일정 두 개와 합류가 생긴다(§25~§27)', { skip: noJsdom }, async () => {
+  const w = boot();
+  const rpc = [];
+  const tick = () => new Promise(r => setTimeout(r, 0));
+  const row = () => ({ id: 1, title: '캄프 누', status: 'PROPOSED', lat: 41.38, lng: 2.12,
+    must_count: 1, ok_count: 0, pass_count: 1, my_reaction: 'MUST', proposed_by_label: '민수', mine: true,
+    created_at: '2026-01-01',
+    reactions: [{ user_id: SU1, name: '민수', reaction: 'MUST', me: true },
+                { user_id: SU2, name: '영희', reaction: 'PASS', me: false }] });
+  w.eval(`user={id:'u1'}; store.trips=[{id:'t1',name:'스페인',days:[{title:'첫날',spots:[]}]}]; store.activeId='t1';
+    syncMeta={t1:{revision:3,status:'clean'}}; tripRoles={t1:{role:'EDITOR',count:2,owner:false,serverId:''}}; candTripId='t1';
+    tripMembers=[{user_id:'${SU1}',display_name:'민수',me:true},{user_id:'${SU2}',display_name:'영희',me:false}];`);
+  w.sb = { rpc: async (name, args) => { rpc.push([name, args]); return { data: name === 'list_trip_candidates' ? [row()] : true, error: null }; } };
+  w.eval(`sb=window.sb`);
+  w.prompt = () => '1';
+  await w.eval(`renderCandidates()`);
+
+  const opts = [...w.document.querySelectorAll('#candList .candOption')];
+  const split = opts.find(o => o.dataset.option === 'SPLIT');
+  const btn = split.querySelector('button');
+  assert.ok(btn, 'user_id가 있으면 분리를 실제로 만들 수 있다');
+  btn.click();
+  await tick(); await tick(); await tick();
+
+  const spots = w.eval(`JSON.stringify(store.trips[0].days[0].spots)`);
+  const parsed = JSON.parse(spots);
+  assert.equal(parsed.length, 3, '가는 쪽 · 자유시간 · 합류');
+  assert.equal(parsed[0].name, '캄프 누');
+  assert.deepEqual(parsed[0].who, [SU1], '꼭 가고 싶은 사람');
+  assert.equal(parsed[1].name, '자유시간');
+  assert.deepEqual(parsed[1].who, [SU2]);
+  assert.equal(parsed[0].split, parsed[1].split, '같은 묶음이라 나란히 일어난다');
+  assert.ok(parsed[0].split, '묶음 키가 있다');
+  assert.equal(parsed[2].reunion, true);
+  assert.equal(parsed[2].split, undefined, '합류는 묶음 밖 — 다 모인 뒤다');
+  // 후보는 일정에 들어간 것으로 표시된다
+  assert.equal(rpc.filter(r => r[0] === 'manage_trip_candidate').pop()[1].p_action, 'SCHEDULE');
+  w.close();
+});
+
+test('통합: 일자 카드가 참여자와 합류를 보이고, 나란한 줄에 표시를 붙인다', { skip: noJsdom }, async () => {
+  const w = boot();
+  w.eval(`user={id:'u1'}; tripMembers=[{user_id:'${SU1}',display_name:'민수',me:true},{user_id:'${SU2}',display_name:'영희',me:false}];`);
+  withTrip(w, JSON.stringify([{ title: '첫날', spots: [
+    { name: '캄프 누', city: 'BCN', lat: 41.38, lng: 2.12, stayMin: 120, split: 'sp1', who: [SU1] },
+    { name: '쇼핑', city: 'BCN', lat: 41.39, lng: 2.16, stayMin: 120, split: 'sp1', who: [SU2] },
+    { name: '카탈루냐 광장', city: 'BCN', lat: 41.387, lng: 2.17, reunion: true }
+  ] }]));
+  w.eval(`render()`);
+  const rows = [...w.document.querySelectorAll('#sidebar .spotList .spot')];
+  assert.equal(rows.length, 3, '나란한 가지도 .spotList의 자식 수는 장소 수와 같다 — 드래그 인덱스가 어긋나면 안 된다');
+  assert.ok(rows[0].classList.contains('inSplit'));
+  assert.ok(rows[1].classList.contains('inSplit'));
+  assert.equal(rows[0].dataset.split, 'sp1');
+  assert.ok(rows[2].classList.contains('isReunion'));
+  assert.match(rows[0].querySelector('.whoChip').textContent, /나/, '나는 "나"로 부른다');
+  assert.match(rows[1].querySelector('.whoChip').textContent, /영희/);
+  assert.ok(rows[2].querySelector('.reunionChip'), '합류 배지');
+  // 나란한 두 줄은 같은 시각에서 시작한다 — 뒤에 줄서지 않는다
+  const etas = rows.slice(0, 2).map(r => r.querySelector('.spotTime').textContent.replace(/[^\d:]/g, ''));
+  assert.equal(etas[0], etas[1], '가지는 서로의 시간을 밀지 않는다');
+  w.close();
+});
+
+test('통합: 참여자를 고르지 않으면 모두이고, 편집해도 분리·합류 표시가 떨어지지 않는다', { skip: noJsdom }, async () => {
+  const w = boot();
+  w.eval(`user={id:'u1'}; tripRoles={__it__:{role:'EDITOR',count:2,owner:false,serverId:''}};
+    syncMeta={__it__:{revision:3,status:'clean'}};
+    tripMembers=[{user_id:'${SU1}',display_name:'민수',me:true},{user_id:'${SU2}',display_name:'영희',me:false}];`);
+  // 저장은 클라우드 동기화를 부른다 — 통하지 않는 sb를 두면 재시도 타이머가 남아 러너가 끝나지 않는다
+  w.sb = { rpc: async () => ({ data: [], error: null }),
+    from: () => ({ upsert: async () => ({ data: null, error: null }), select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) }) };
+  w.eval(`sb=window.sb`);
+  withTrip(w, JSON.stringify([{ title: '첫날', spots: [
+    { name: '캄프 누', city: 'BCN', lat: 41.38, lng: 2.12, stayMin: 120, split: 'sp1', who: [SU1] }
+  ] }]));
+  w.eval(`render(); openSpotModal(0,0)`);
+
+  const chips = [...w.document.querySelectorAll('#spotWho .whoChipBtn')];
+  assert.equal(w.document.getElementById('spotWhoSection').style.display, 'block', '함께하는 여행에서만 보인다');
+  assert.deepEqual(chips.map(c => c.textContent), ['👥 모두', '나', '영희']);
+  assert.ok(chips[1].classList.contains('active'), '지금 참여자가 켜져 있다');
+
+  // 메모만 고쳐 저장해도 묶음이 유지된다
+  w.document.getElementById('spotDesc').value = '메모만 수정';
+  w.document.getElementById('spotSave').click();
+  let s = JSON.parse(w.eval(`JSON.stringify(trip().days[0].spots[0])`));
+  assert.equal(s.split, 'sp1', '묶음은 이 모달에서 만들지도 지우지도 않는다');
+  assert.deepEqual(s.who, [SU1]);
+
+  // '모두'를 누르면 참여자가 비고, 그게 곧 모든 여행자다
+  w.eval(`openSpotModal(0,0)`);
+  w.document.querySelector('#spotWho .whoChipBtn').click();
+  w.document.getElementById('spotSave').click();
+  s = JSON.parse(w.eval(`JSON.stringify(trip().days[0].spots[0])`));
+  assert.equal('who' in s, false, '기본값은 저장하지 않는다');
+  w.eval(`render()`);
+  assert.equal(w.document.querySelector('#sidebar .spot .whoChip'), null, '모두일 때는 아무 표시도 하지 않는다');
   w.close();
 });

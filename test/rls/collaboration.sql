@@ -187,6 +187,14 @@ insert into t_out select 'cand.b.count', count(*)::text from public.list_trip_ca
 -- 제안자 이름은 이 여행에서 쓰는 이름이다 — 계정 이메일은 나오지 않는다(§69)
 insert into t_out select 'cand.labels', string_agg(proposed_by_label,',' order by title) from public.list_trip_candidates('trip1');
 insert into t_out select 'cand.no_email', (not exists(select 1 from public.list_trip_candidates('trip1') where proposed_by_label like '%@%'))::text;
+-- 6단계: 반응에 user_id가 실린다 — 갈린 후보를 분리할 때 이름이 아니라 id로 갈라야 동명이인이 섞이지 않는다.
+-- 이메일은 여전히 어디에도 없다(§69).
+insert into t_out select 'cand.reactor_ids', (
+  select bool_and((r->>'user_id') is not null and (r->>'user_id') ~ '^[0-9a-f-]{36}$')::text
+    from public.list_trip_candidates('trip1') c, jsonb_array_elements(c.reactions) r);
+insert into t_out select 'cand.reactions_no_email', (not exists(
+  select 1 from public.list_trip_candidates('trip1') c, jsonb_array_elements(c.reactions) r
+   where (r->>'name') like '%@%'))::text;
 
 -- ── C(멤버 아님)는 후보를 못 본다 · 못 만든다 · 반응도 못 한다 ──
 select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000c"}',false);

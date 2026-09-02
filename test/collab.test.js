@@ -544,3 +544,93 @@ test('groupCandidates: 이번엔 뺀 후보는 따로 묶인다 · activityText:
   assert.equal(C.liveEffects({ kind: 'CANDIDATE_REJECTED', mine: false }).candidates, true);
   assert.equal(C.liveEffects({ kind: 'CANDIDATE_REJECTED', mine: false }).notify, false, '결정은 화면 갱신으로 충분하다(§51)');
 });
+
+// ── 함께 움직이지 않는 시간 (6단계 · §25~§27) ────────────────────────────────
+
+const M1='11111111-1111-4111-8111-111111111111';
+const M2='22222222-2222-4222-8222-222222222222';
+const M3='33333333-3333-4333-8333-333333333333';
+const MEMBERS=[
+  {user_id:M1, display_name:'민수', me:true},
+  {user_id:M2, display_name:'지민', me:false},
+  {user_id:M3, display_name:'현우', me:false}
+];
+
+test('참여자 문장 — 지정이 없으면 모두, 나는 늘 맨 앞에서 "나"', () => {
+  assert.equal(C.whoText({}, MEMBERS), '모두');
+  assert.equal(C.whoText({who:[]}, MEMBERS), '모두');
+  assert.equal(C.whoText({who:[M2,M1]}, MEMBERS), '나 · 지민', '나를 앞으로 당긴다');
+  assert.equal(C.whoText({who:[M2,M3]}, MEMBERS), '지민 · 현우');
+});
+
+test('참여자 문장 — 모르는 사람은 지우지 않고 "멤버"로 둔다 (지난 일정의 기록이다)', () => {
+  assert.equal(C.whoText({who:['99999999-9999-4999-8999-999999999999']}, MEMBERS), '멤버');
+});
+
+test('includesMe — 지정이 없으면 모두라서 참이다', () => {
+  assert.equal(C.includesMe({}, M1), true);
+  assert.equal(C.includesMe({who:[M1]}, M1), true);
+  assert.equal(C.includesMe({who:[M2]}, M1), false);
+  assert.equal(C.includesMe({who:[M2]}, null), false, '내가 누군지 모르면 내 일정이라 말하지 않는다');
+});
+
+test('참여자 지정은 편집 권한이다 — 의견이 아니라 일정 변경', () => {
+  assert.equal(C.canAssignWho('OWNER'), true);
+  assert.equal(C.canAssignWho('EDITOR'), true);
+  assert.equal(C.canAssignWho('VIEWER'), false);
+});
+
+test('reactorIds — 이름이 아니라 id로 가른다 (동명이인)', () => {
+  const cand={reactions:[
+    {user_id:M1, name:'민수', reaction:'MUST', me:true},
+    {user_id:M2, name:'민수', reaction:'PASS', me:false},
+    {user_id:M3, name:'현우', reaction:'OK', me:false},
+    {name:'id 없는 옛 응답', reaction:'MUST'}
+  ]};
+  assert.deepEqual(C.reactorIds(cand,'MUST'), [M1]);
+  assert.deepEqual(C.reactorIds(cand,'PASS'), [M2]);
+  assert.deepEqual(C.reactorIds(cand,'OK'), [M3]);
+});
+
+test('분리 미리보기 — 가고 싶은 사람과 나머지를 갈라 자유시간과 합류를 붙인다', () => {
+  const cand={title:'캄프 누', lat:41.38, lng:2.12, reactions:[
+    {user_id:M1, name:'민수', reaction:'MUST', me:true},
+    {user_id:M3, name:'현우', reaction:'OK', me:false},
+    {user_id:M2, name:'지민', reaction:'PASS', me:false}
+  ]};
+  const plan=C.buildSplitPlan(cand, MEMBERS, {splitId:'sp1', stayMin:120});
+  assert.deepEqual(plan.goers, [M1,M3], 'MUST 다음에 OK');
+  assert.deepEqual(plan.others, [M2]);
+  assert.equal(plan.spots.length, 3);
+  assert.equal(plan.spots[0].name, '캄프 누');
+  assert.deepEqual(plan.spots[0].who, [M1,M3]);
+  assert.equal(plan.spots[0].split, 'sp1');
+  assert.equal(plan.spots[1].name, '자유시간');
+  assert.equal(plan.spots[1].lat, null, '자유시간에는 장소를 정해 주지 않는다');
+  assert.equal(plan.spots[1].split, 'sp1', '같은 묶음이라 나란히 일어난다');
+  assert.equal(plan.spots[2].reunion, true);
+  assert.equal('split' in plan.spots[2], false, '합류는 묶음 밖 — 다 모인 뒤다');
+  assert.match(plan.text, /나, 현우/);
+  assert.match(plan.text, /지민/);
+});
+
+test('분리 미리보기 — 한쪽이 비면 갈릴 것이 없어 만들지 않는다', () => {
+  const allYes={title:'X', reactions:[{user_id:M1, reaction:'MUST'},{user_id:M2, reaction:'OK'}]};
+  assert.equal(C.buildSplitPlan(allYes, MEMBERS), null);
+  const allNo={title:'X', reactions:[{user_id:M1, reaction:'PASS'}]};
+  assert.equal(C.buildSplitPlan(allNo, MEMBERS), null);
+  assert.equal(C.buildSplitPlan(null, MEMBERS), null);
+});
+
+test('분리 미리보기는 같은 입력이면 같은 결과다 (splitId를 주면)', () => {
+  const cand={title:'X', reactions:[{user_id:M1, reaction:'MUST'},{user_id:M2, reaction:'PASS'}]};
+  const a=C.buildSplitPlan(cand, MEMBERS, {splitId:'fixed'});
+  const b=C.buildSplitPlan(cand, MEMBERS, {splitId:'fixed'});
+  assert.deepEqual(a.spots, b.spots);
+});
+
+test('합류 안내 — 장소를 모르면 아는 척하지 않는다', () => {
+  assert.equal(C.reunionText({name:'다시 만나기'}, '17:30'), '17:30에 만나요 — 어디서 만날지는 정해 주세요');
+  assert.equal(C.reunionText({name:'카탈루냐 광장'}, '17:30'), '17:30 카탈루냐 광장에서 만나요');
+  assert.equal(C.reunionText({name:'카탈루냐 광장'}), '카탈루냐 광장에서 만나요');
+});

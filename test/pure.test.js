@@ -884,3 +884,127 @@ test('normalizeSpot — 일정 실행 상태(status)·꼭 가야 함(must)은 �
   assert.equal(s[2].must, true, 'truthy 값은 true로 정규화');
   assert.equal('status' in s[3], false, '기본값 PLANNED는 저장하지 않는다');
 });
+
+// ── 함께 움직이지 않는 시간 (§25~§27) ────────────────────────────────────────
+//
+// 분리는 **타임라인의 예외**다. 그래서 여기서 가장 먼저 확인하는 것은 새 기능이 아니라
+// "분리가 없을 때 예전과 완전히 같은가"다 — ETA·앵커·지도·재생이 전부 이 함수에 달려 있다.
+
+const U1='11111111-1111-4111-8111-111111111111';
+const U2='22222222-2222-4222-8222-222222222222';
+const U3='33333333-3333-4333-8333-333333333333';
+
+test('참여자·분리 정규화 — 아는 값만 남고 기본값은 저장하지 않는다', () => {
+  const ok = L.normalizeTrip({ days:[{ spots:[
+    { name:'A', who:[U1,U2,U1,'not-a-uuid',7] },
+    { name:'B', who:[] },
+    { name:'C', who:'혼자' },
+    { name:'D', split:'s1', reunion:true },
+    { name:'E', split:'나쁜 키!', reunion:false }
+  ]}]});
+  const s = ok.days[0].spots;
+  assert.deepEqual(s[0].who, [U1,U2], '중복·불량 id는 버린다');
+  assert.equal('who' in s[1], false, '빈 참여자는 모든 여행자 — 저장하지 않는다');
+  assert.equal('who' in s[2], false, '배열이 아니면 버린다');
+  assert.equal(s[3].split, 's1');
+  assert.equal(s[3].reunion, true);
+  assert.equal('split' in s[4], false, '불량 묶음 키는 버린다');
+  assert.equal('reunion' in s[4], false, '기본값(false)은 저장하지 않는다');
+});
+
+test('참여자 상한 — 20명을 넘으면 자른다', () => {
+  const many = Array.from({length:25}, (_,i)=> `${String(i).padStart(8,'0')}-1111-4111-8111-111111111111`);
+  const ok = L.normalizeTrip({ days:[{ spots:[{ name:'A', who:many }] }] });
+  assert.equal(ok.days[0].spots[0].who.length, 20);
+});
+
+test('whoKey — 순서가 달라도 같은 사람들이면 같은 가지, 비면 모두', () => {
+  assert.equal(L.whoKey({who:[U1,U2]}), L.whoKey({who:[U2,U1]}));
+  assert.equal(L.whoKey({}), '*');
+  assert.equal(L.whoKey({who:[]}), '*');
+  assert.notEqual(L.whoKey({who:[U1]}), L.whoKey({who:[U2]}));
+});
+
+test('computeTimeline — 분리가 없으면 예전 계산과 완전히 같다', () => {
+  const day={ startAt:'09:00', spots:[
+    { name:'A', lat:1, lng:1, stayMin:60 },
+    { name:'B', lat:2, lng:2, stayMin:30 },
+    { name:'C', lat:3, lng:3, at:'15:00' }
+  ]};
+  const tl=L.computeTimeline(day,{legMin:()=>40});
+  // 09:00 → A는 직전 위치가 없어 이동 0 → 09:00 도착, 60분 체류 → 10:00 출발
+  // B는 40분 이동 → 10:40 도착, 30분 체류 → 11:10 출발 → C는 40분 이동 → 11:50이지만 고정 15:00
+  assert.deepEqual(tl.map(x=>x.eta), [540, 640, 900]);
+  assert.equal(tl[2].fixed, true);
+  assert.equal(tl[2].conflict, false, '고정 시각이 자연 도착보다 늦으면 충돌이 아니다');
+  assert.equal(tl[2].natural, 710);
+});
+
+test('computeTimeline — 나란한 가지는 서로의 시간을 밀지 않는다', () => {
+  const day={ startAt:'09:00', spots:[
+    { name:'출발', lat:0, lng:0, stayMin:0 },
+    { name:'캄프 누',   lat:1, lng:1, stayMin:120, split:'s1', who:[U1,U2] },
+    { name:'쇼핑',      lat:2, lng:2, stayMin:90,  split:'s1', who:[U3] },
+    { name:'다시 만나기', lat:3, lng:3, reunion:true }
+  ]};
+  const tl=L.computeTimeline(day,{legMin:()=>30});
+  // 출발 09:00(이동 없음) → 09:00 끝. 두 가지 모두 09:00에서 30분 이동 → 둘 다 09:30 도착.
+  assert.equal(tl[1].eta, 570, '첫 가지는 출발점에서 계산한다');
+  assert.equal(tl[2].eta, 570, '둘째 가지도 **같은 출발점**에서 — 앞 가지 뒤에 줄서지 않는다');
+  // 캄프 누는 09:30+120=11:30에 끝나고 쇼핑은 09:30+90=11:00에 끝난다 → 합류는 늦은 쪽 기준 11:30+30
+  assert.equal(tl[3].eta, 720, '합류는 가장 늦게 끝나는 가지를 기다린다');
+});
+
+test('computeTimeline — 한 가지에 장소가 여럿이면 그 안에서는 순서대로 이어진다', () => {
+  const day={ startAt:'09:00', spots:[
+    { name:'경기장', lat:1, lng:1, stayMin:60, split:'s1', who:[U1] },
+    { name:'맥주',   lat:2, lng:2, stayMin:60, split:'s1', who:[U1] },
+    { name:'미술관', lat:3, lng:3, stayMin:30, split:'s1', who:[U2] }
+  ]};
+  const tl=L.computeTimeline(day,{legMin:()=>30});
+  assert.equal(tl[0].eta, 540, '가지의 첫 장소는 이동 없이 09:00');
+  assert.equal(tl[1].eta, 630, '같은 가지의 다음 장소는 앞 장소 뒤에 이어진다 (09:00+60+30)');
+  assert.equal(tl[2].eta, 540, '다른 가지는 다시 출발점에서');
+});
+
+test('computeTimeline — 분리 묶음이 끝나면 다시 한 줄로 이어진다', () => {
+  const day={ startAt:'09:00', spots:[
+    { name:'A', lat:1, lng:1, stayMin:60, split:'s1', who:[U1] },
+    { name:'B', lat:2, lng:2, stayMin:30, split:'s1', who:[U2] },
+    { name:'C', lat:3, lng:3, stayMin:60 },
+    { name:'D', lat:4, lng:4, stayMin:60 }
+  ]};
+  const tl=L.computeTimeline(day,{legMin:()=>30});
+  assert.equal(tl[2].eta, 630, '묶음 뒤는 늦은 가지(09:00+60) + 이동 30');
+  assert.equal(tl[3].eta, 720, '그 뒤로는 평소처럼 순차');
+});
+
+test('splitSegments — 화면과 타임라인이 같은 규칙으로 가른다', () => {
+  const day={ spots:[
+    { name:'A' },
+    { name:'B', split:'s1', who:[U1] },
+    { name:'C', split:'s1', who:[U2] },
+    { name:'D', split:'s1', who:[U1] },
+    { name:'E' }
+  ]};
+  const segs=L.splitSegments(day);
+  assert.equal(segs.length, 3, '순차 · 분리 · 순차');
+  assert.equal(segs[0].split, null);
+  assert.equal(segs[1].split, 's1');
+  assert.deepEqual([segs[1].from, segs[1].to], [1,4]);
+  assert.equal(segs[1].branches.length, 2, '참여자가 같은 장소들이 한 가지');
+  assert.deepEqual(segs[1].branches[0].idx, [1,3], '같은 가지 안에서는 원래 순서를 지킨다');
+  assert.deepEqual(segs[1].branches[1].idx, [2]);
+  assert.equal(segs[2].split, null);
+});
+
+test('splitSegments — 같은 키가 떨어져 있으면 각각 별개 묶음이다', () => {
+  const day={ spots:[
+    { name:'A', split:'s1', who:[U1] },
+    { name:'B' },
+    { name:'C', split:'s1', who:[U1] }
+  ]};
+  const segs=L.splitSegments(day);
+  assert.equal(segs.length, 3);
+  assert.deepEqual(segs.map(x=>x.split), ['s1', null, 's1']);
+});

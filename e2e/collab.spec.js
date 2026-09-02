@@ -252,3 +252,49 @@ test('갈린 후보: 선택지에서 "이번 일정에서는 제외"를 고르�
   await expect(page.locator('#toast')).toContainText('후보로 되돌렸어요');
   await expect(page.locator('.candConflict')).toHaveCount(1);
 });
+
+test('갈린 후보를 "자유시간으로 분리"하면 같은 시간에 나란한 일정 두 개와 합류가 생기고, 일정에 참여자가 보인다',async({context,page})=>{
+  await fakeSupabase(context);
+  await page.goto('/');
+  await createTrip(page,'E2E 분리');
+  const U1='11111111-1111-4111-8111-111111111111';
+  const U2='22222222-2222-4222-8222-222222222222';
+  await page.evaluate(({u1,u2})=>{
+    user={id:'u1'};
+    const id=store.activeId;
+    syncMeta[id]={revision:3,status:'clean'};
+    tripRoles[id]={role:'EDITOR',count:2,owner:false,serverId:''};
+    tripMembers=[{user_id:u1,display_name:'민수',me:true},{user_id:u2,display_name:'영희',me:false}];
+    window.__sent=[];
+    window.__rows=[{id:1,title:'캄프 누',status:'PROPOSED',lat:41.38,lng:2.12,
+      must_count:1,ok_count:0,pass_count:1,my_reaction:'MUST',proposed_by_label:'민수',mine:true,created_at:'2026-01-01',
+      reactions:[{user_id:u1,name:'민수',reaction:'MUST',me:true},{user_id:u2,name:'영희',reaction:'PASS',me:false}]}];
+    sb={rpc:async(name,args)=>{ window.__sent.push([name,args]);
+      if(name==='list_trip_candidates') return {data:window.__rows,error:null};
+      if(name==='manage_trip_candidate'){ const r=window.__rows.find(x=>x.id===args.p_candidate_id); if(r) r.status='SCHEDULED'; return {data:true,error:null}; }
+      return {data:[],error:null}; }};
+    window.prompt=()=>'1';
+  },{u1:U1,u2:U2});
+
+  await clickMore(page,'#candMenuBtn');
+  await expect(page.locator('.candConflict')).toContainText('의견이 갈려 있어요');
+  await page.locator('.candOption[data-option="SPLIT"] button').click();
+  await expect(page.locator('#toast')).toContainText('같은 시간에 나란히 넣었어요');
+
+  // 저장된 일정: 가는 쪽 · 자유시간 · 합류
+  const spots=await page.evaluate(()=>trip().days[0].spots.map(s=>({name:s.name,who:s.who||null,split:s.split||null,reunion:!!s.reunion})));
+  expect(spots.map(s=>s.name)).toEqual(['캄프 누','자유시간','다시 만나기']);
+  expect(spots[0].who).toEqual([U1]);
+  expect(spots[1].who).toEqual([U2]);
+  expect(spots[0].split).toBe(spots[1].split);
+  expect(spots[2].reunion).toBe(true);
+
+  // 닫고 사이드바에서 확인 — 나란한 두 줄은 같은 시각에서 시작하고, 참여자와 합류가 보인다
+  await page.locator('#candClose').click();
+  await expect(page.locator('#sidebar .spot.inSplit')).toHaveCount(2);
+  await expect(page.locator('#sidebar .spot.isReunion')).toHaveCount(1);
+  await expect(page.locator('#sidebar .spot.inSplit').first().locator('.whoChip')).toContainText('나');
+  await expect(page.locator('#sidebar .spot.inSplit').nth(1).locator('.whoChip')).toContainText('영희');
+  const etas=await page.evaluate(()=>[...document.querySelectorAll('#sidebar .spot.inSplit .spotTime')].map(e=>e.textContent.replace(/[^\d:]/g,'')));
+  expect(etas[0]).toBe(etas[1]);
+});
