@@ -81,7 +81,8 @@ test('협업: 멤버·초대 테이블은 RLS 아래에 있고 쓰기 정책이 
   assert.match(collabSql,/create policy "trip_invites_owner_select"[\s\S]*tc_trip_role\(trip_id\)='OWNER'/i);
   assert.ok(!/create policy "trip_members_\w+_(insert|update|delete)"/i.test(collabSql),'멤버 행을 클라이언트가 직접 쓰는 정책이 없어야 한다');
   assert.ok(!/create policy "trip_invites_\w+_(insert|update|delete)"/i.test(collabSql),'초대 행을 클라이언트가 직접 쓰는 정책이 없어야 한다');
-  assert.match(collabSql,/revoke all on public\.trip_members, public\.trip_invites from anon, public/i);
+  // Supabase는 새 테이블에 authenticated에게도 ALL을 기본 부여한다 — RLS에만 기대지 않도록 명시적으로 거둔다
+  assert.match(collabSql,/revoke all on public\.trip_members, public\.trip_invites from anon, authenticated, public/i);
 });
 
 test('협업: trips는 소유자 또는 활성 멤버만 읽고, EDITOR까지만 쓰고, 삭제는 소유자만(§66)',()=>{

@@ -168,7 +168,9 @@ create policy "trip_members_member_select" on public.trip_members for select to 
 create policy "trip_invites_owner_select" on public.trip_invites for select to authenticated
   using (public.tc_trip_role(trip_id)='OWNER');
 
-revoke all on public.trip_members, public.trip_invites from anon, public;
+-- Supabase는 public의 새 테이블에 authenticated에게도 ALL을 기본 부여한다(default privileges) — 명시적으로 거둔다.
+-- RLS에 쓰기 정책이 없어 어차피 막히지만, 테이블 권한이 RLS 하나에만 기대게 두지 않는다.
+revoke all on public.trip_members, public.trip_invites from anon, authenticated, public;
 grant select on public.trip_members, public.trip_invites to authenticated;
 
 -- ── 동기화 RPC (멤버 인식) ──────────────────────────────────────────────────
