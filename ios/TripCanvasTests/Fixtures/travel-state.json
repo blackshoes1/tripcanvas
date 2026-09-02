@@ -16,7 +16,9 @@
       "cities": [
         "마드리드"
       ],
-      "todayIndex": 0
+      "todayIndex": 0,
+      "role": "OWNER",
+      "memberCount": 1
     },
     "day": {
       "index": 0,

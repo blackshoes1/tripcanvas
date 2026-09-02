@@ -425,6 +425,21 @@ test('planDayFlow: "오늘 하루 추천해줘" — 고정 예약을 자리에 �
     flow.blocks.map((b) => b.title), '같은 상태면 같은 하루를 만든다');
 });
 
+test('planDayFlow invariant: bookAt이 있는 FIXED 일정은 빈칸을 채워도 결과와 원본에 유지된다', () => {
+  const trip = tripOf([
+    { startAt: '09:00', mode: 'walk', spots: [
+      Object.assign({ name: '숙소', stay: true, stayMin: 0 }, P(40.40)),
+      Object.assign({ name: '저녁 예약', bookAt: '19:00', stayMin: 90 }, P(40.42))] },
+    { spots: [Object.assign({ name: '공원', stayMin: 90 }, P(40.405))] }
+  ]);
+  const before = JSON.stringify(trip);
+  const state = stateOf(trip, { todayISO: TODAY, nowMin: 13 * 60, live: true });
+  const flow = A.planDayFlow(trip, state, { legMin: LEG });
+  const fixedTitles = flow.blocks.filter((b) => b.kind === 'FIXED').map((b) => b.title);
+  assert.deepEqual(fixedTitles, ['저녁 예약'], 'bookAt 일정은 빈 시간 안내로 대체되지 않는다');
+  assert.equal(JSON.stringify(trip), before, '미리보기 계산은 FIXED 일정과 원본 여행을 변경하지 않는다');
+});
+
 test('planDayFlow: 채울 것이 없으면 빈 계획을 그대로 알린다', () => {
   const trip = tripOf([{
     startAt: '09:00', mode: 'walk', spots: [

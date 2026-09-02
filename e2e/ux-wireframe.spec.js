@@ -106,7 +106,9 @@ test('여행 모드는 지금 무엇을 할지 제안하고, 받아들이면 일
   await expect(suggest.locator('.sgCard').first()).toBeVisible();
   await expect(suggest).toContainText('레티로 공원');
   await expect(suggest.locator('.sgWhy li').first()).toBeVisible();   // 추천 이유를 항상 설명한다
-  await suggest.locator('.sgCard',{hasText:'레티로 공원'}).getByRole('button',{name:'오늘 일정에 넣기'}).click();
+  const move=suggest.locator('.sgCard[data-type="MOVE_FROM_OTHER_DAY"]',{hasText:'레티로 공원'});
+  await expect(move.getByRole('button',{name:'오늘 일정에 넣기'})).toBeVisible();   // accessible name은 사용자 계약
+  await move.locator('button[data-action="ACCEPT"]').click();                    // 동작 선택은 의미 기반 계약
   await expect.poll(()=>page.evaluate(()=>trip().days[0].spots.map(s=>s.name).join(','))).toContain('레티로 공원');
   await page.locator('#travelList .tSpot').first().getByRole('button',{name:'다녀왔어요'}).click();
   await expect(page.locator('#travelList .tSpot').first()).toHaveClass(/done/);
@@ -158,11 +160,12 @@ test('여행 모드는 자연어 요청을 반영하고 하루 일정을 미리�
   await expect(page.locator('#travelIntentEcho')).toContainText('이렇게 이해했어요');
   // 하루 flow 미리보기 → 수락해야만 반영
   await page.locator('#travelEnergy button',{hasText:/빈 시간 채우기|오늘 하루 추천받기/}).click();
-  const plan=page.locator('#travelPlan .sgCard');
+  const plan=page.locator('#travelPlan .sgCard[data-type="DAY_FLOW"]');
   await expect(plan).toBeVisible();
   await expect(plan).toContainText('저녁 예약');
   expect(await page.evaluate(()=>trip().days[1].spots.length)).toBe(2);   // 아직 안 옮겼다
-  await plan.getByRole('button',{name:'이 일정으로 시작'}).click();
+  await expect(plan.getByRole('button',{name:'이 일정으로 시작'})).toBeVisible();
+  await plan.locator('button[data-action="ACCEPT"]').click();
   await expect.poll(()=>page.evaluate(()=>trip().days[0].spots.map(s=>s.name).join(','))).toContain('공원');
   expect(await page.evaluate(()=>trip().days[0].spots.slice(-1)[0].name)).toBe('저녁 예약');
 });

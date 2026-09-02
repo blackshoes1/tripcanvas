@@ -32,6 +32,8 @@ function boot() {
   inject('routing.js');
   inject('price.js');
   inject('adaptive.js');
+  inject('intake.js');
+  inject('collab.js');
   inject('app.js');
   return window;
 }
@@ -1562,10 +1564,26 @@ test('통합: 제안을 수락하면 그 장소가 오늘 일정으로 옮겨온
     { spots: [S('레티로 공원', 40.415, { stayMin: 90 })] }
   ]);
   w.eval('renderTravel(0)');
-  const card = cardsIn(w).filter((c) => /레티로 공원/.test(c.textContent))[0];
-  buttonIn(card, '오늘 일정에 넣기').click();
+  const card = cardsIn(w).filter((c) => c.dataset.type === 'MOVE_FROM_OTHER_DAY' && /레티로 공원/.test(c.textContent))[0];
+  assert.equal(card.dataset.suggestionType, 'NEXT_ACTIVITY');
+  assert.equal(card.querySelector('[data-action="ACCEPT"]').textContent, '오늘 일정에 넣기', '표시 문구와 별개로 수락 동작을 식별한다');
+  card.querySelector('[data-action="ACCEPT"]').click();
   assert.deepEqual(w.eval("trip().days[0].spots.map(s=>s.name)"), ['프라도', '레티로 공원', '저녁 예약']);
   assert.equal(w.eval('trip().days[1].spots.length'), 0, '원래 있던 날에서는 빠진다');
+  w.close();
+});
+
+test('통합: 여행 모드의 날짜 선택과 추천은 같은 주입 clock을 사용한다', { skip: noJsdom }, () => {
+  const w = boot();
+  withAdaptTrip(w, [
+    { startAt: '09:00', mode: 'car', spots: [S('오늘 장소', 40.41)] },
+    { spots: [S('내일 장소', 40.42)] }
+  ], { today: '2026-09-01', now: 13 * 60 });
+  w.document.getElementById('travelBtn').click();
+  assert.equal(w.document.getElementById('travelDay').value, '0', '호스트 실제 날짜가 아니라 주입 날짜로 오늘을 고른다');
+  assert.equal(w.eval('_adapt.state.currentDay'), 0);
+  assert.equal(w.eval('_adapt.state.nowMin'), 13 * 60, '같은 스냅샷 시각이 추천 엔진까지 전달된다');
+  assert.match(w.document.getElementById('travelCurrent').textContent, /현재 장소/, '현재 장소 판정도 같은 주입 날짜를 쓴다');
   w.close();
 });
 
@@ -1752,5 +1770,139 @@ test('통합: 다음 장소에 "언제 나서면 되는지"를 함께 알려준�
   const late = w.document.querySelector('#travelNext .travelDepart');
   assert.ok(late.classList.contains('late'), '이미 늦었으면 그렇게 말한다');
   assert.match(late.textContent, /늦습니다/);
+  w.close();
+});
+
+// ── 함께하기 (협업) 배선 ──
+// 접근 제어는 DB가 하지만, 화면이 서버가 거절할 요청을 만들지 않는지 · 권한 오류가 재시도 루프에 빠지지 않는지는 여기서 본다.
+
+test('통합: 보기 권한(VIEWER) 여행에서는 편집 진입점이 막히고 배지·안내가 뜬다', { skip: noJsdom }, () => {
+  const w = boot();
+  withTrip(w, `[{title:'',drive:'',note:'',spots:[{name:'A',city:'S',lat:37.5,lng:127}]}]`);
+  w.eval(`user={id:'u1',email:'me@example.com'}; tripRoles={__it__:{role:'VIEWER',count:3,owner:false}}; render();`);
+  assert.equal(w.eval(`readOnly()`), true);
+  assert.equal(w.eval(`myRole()`), 'VIEWER');
+  assert.equal(w.document.body.classList.contains('roleViewer'), true, '편집 도구를 감추는 body 클래스');
+  assert.equal(w.document.getElementById('roleBar').style.display, 'flex', '보기 권한 안내 바');
+  assert.equal(w.document.getElementById('membersBtn').hidden, false);
+  assert.equal(w.document.getElementById('membersBtn').textContent, '👥 3');
+  // 편집 진입점: 모달이 열리지 않는다
+  w.eval(`openSpotModal(0,-1)`);
+  assert.equal(w.document.getElementById('spotModalBg').classList.contains('show'), false);
+  w.eval(`openDayModal(0)`);
+  assert.equal(w.document.getElementById('dayModalBg').classList.contains('show'), false);
+  const before = w.eval(`JSON.stringify(trip().days[0].spots)`);
+  w.eval(`window.confirm=()=>true; deleteSpot(0,0); copySpot(0,0); cycleMode(0);`);
+  assert.equal(w.eval(`JSON.stringify(trip().days[0].spots)`), before, '장소가 지워지거나 복사되지 않는다');
+  assert.equal(w.eval(`trip().days[0].mode||'car'`), 'car');
+  w.close();
+});
+
+test('통합: 편집자(EDITOR)·로그아웃·로컬 전용 여행은 예전과 똑같이 편집된다(§95)', { skip: noJsdom }, () => {
+  const w = boot();
+  withTrip(w, `[{title:'',drive:'',note:'',spots:[]}]`);
+  assert.equal(w.eval(`readOnly()`), false, '로그아웃: 소유자');
+  w.eval(`user={id:'u1'}; tripRoles={};`);
+  assert.equal(w.eval(`readOnly()`), false, '로그인했지만 역할 정보 없음(로컬 전용): 소유자');
+  w.eval(`tripRoles={__it__:{role:'EDITOR',count:2,owner:false}}; render();`);
+  assert.equal(w.eval(`readOnly()`), false);
+  assert.equal(w.document.body.classList.contains('roleViewer'), false);
+  w.eval(`openSpotModal(0,-1)`);
+  assert.equal(w.document.getElementById('spotModalBg').classList.contains('show'), true, '편집자는 장소를 추가할 수 있다');
+  w.close();
+});
+
+test('통합: 보기 권한 여행은 클라우드에 올리지 않고, 권한 오류(42501)는 재시도 없이 멈춘다', { skip: noJsdom }, async () => {
+  const w = boot();
+  let calls = 0;
+  w.eval(`user={id:'u1'}; tripRoles={v1:{role:'VIEWER',count:2,owner:false}};`);
+  w.sb = { rpc: async () => { calls++; return { data: null, error: { code: '42501', message: 'TRIP_FORBIDDEN' } }; } };
+  w.eval(`sb=window.sb`);
+  await w.eval(`syncTripCloud({id:'v1',name:'V',days:[{spots:[]}]})`);
+  assert.equal(calls, 0, '보기 권한은 서버에 요청 자체를 보내지 않는다');
+  // 편집자였는데 서버가 거절(나갔거나 내보내진 경우) → forbidden으로 멈추고 재시도 타이머를 걸지 않는다
+  w.eval(`tripRoles={e1:{role:'EDITOR',count:2,owner:false}};`);
+  await w.eval(`syncTripCloud({id:'e1',name:'E',days:[{spots:[]}]})`);
+  assert.equal(calls, 1);
+  assert.equal(w.eval(`syncMeta.e1.status`), 'forbidden');
+  assert.equal(w.eval(`cloudRetryT`), null, '재시도 타이머 없음');
+  await w.eval(`syncTripCloud({id:'e1',name:'E',days:[{spots:[]}]})`);
+  assert.equal(calls, 1, 'forbidden 상태에서는 다시 요청하지 않는다');
+  // 역할이 편집 가능으로 확인되면 다시 dirty
+  w.sb.rpc = async (name) => { calls++; return name === 'my_trip_roles' ? { data: [{ client_id: 'e1', role: 'EDITOR', member_count: 2, owner: false }], error: null } : { data: null, error: null }; };
+  await w.eval(`refreshTripRoles()`);
+  assert.equal(w.eval(`syncMeta.e1.status`), 'dirty');
+  w.close();
+});
+
+test('통합: 초대 링크(#join=)로 열면 여행 본문 없이 미리보기만 받아 참여 모달을 띄운다', { skip: noJsdom }, async () => {
+  const w = boot();
+  const token = 'T'.repeat(32);
+  const rpc = [];
+  w.sb = { rpc: async (name, args) => { rpc.push([name, args]); return { data: [{ valid: true, reason: 'OK', trip_name: '스페인 여행', start_date: '2026-10-25', day_count: 14, role: 'EDITOR', already_member: false }], error: null }; } };
+  w.eval(`sb=window.sb; user=null;`);
+  await w.eval(`startJoin(${JSON.stringify(token)})`);
+  assert.deepEqual(rpc[0], ['invite_preview', { p_token: token }]);
+  assert.equal(w.document.getElementById('joinModalBg').classList.contains('show'), true);
+  assert.equal(w.document.getElementById('joinTripName').textContent, '스페인 여행');
+  assert.match(w.document.getElementById('joinTripMeta').textContent, /10\/25 ~ 11\/7 · 14일/);
+  assert.match(w.document.getElementById('joinTripMeta').textContent, /편집 권한/);
+  assert.equal(w.document.getElementById('joinAccept').textContent, '로그인하고 참여하기', '로그인 전에는 먼저 로그인');
+  assert.equal(w.eval(`store.trips.some(t=>t.name==='스페인 여행')`), false, '참여 전에는 여행이 내려오지 않는다');
+  // 로그인하면 버튼이 참여로 바뀌고 이름이 이메일에서 채워진다
+  w.eval(`user={id:'u2',email:'younghee@example.com'}`);
+  await w.eval(`completePendingJoin()`);
+  assert.equal(w.document.getElementById('joinAccept').textContent, '여행 참여하기');
+  assert.equal(w.document.getElementById('joinName').value, 'younghee');
+  w.close();
+});
+
+test('통합: 만료·취소된 초대는 참여 버튼 없이 이유를 보여준다', { skip: noJsdom }, async () => {
+  const w = boot();
+  w.sb = { rpc: async () => ({ data: [{ valid: false, reason: 'EXPIRED', trip_name: '스페인 여행', role: 'VIEWER' }], error: null }) };
+  w.eval(`sb=window.sb; user={id:'u2',email:'a@b.c'};`);
+  await w.eval(`startJoin('${'X'.repeat(24)}')`);
+  assert.equal(w.document.getElementById('joinAccept').style.display, 'none');
+  assert.match(w.document.getElementById('joinHint').textContent, /만료/);
+  w.close();
+});
+
+test('통합: 형식이 어긋난 #join= 해시는 서버에 보내지 않는다', { skip: noJsdom }, () => {
+  assert.equal(require('../collab.js').parseJoinHash('#join=<script>'), null);
+  assert.equal(require('../collab.js').parseJoinHash('#join=' + 'a'.repeat(200)), null);
+});
+
+test('통합: 공유받은 여행의 "삭제"는 나가기가 되고 주최자만 삭제한다', { skip: noJsdom }, async () => {
+  const w = boot();
+  withTrip(w, `[{title:'',drive:'',note:'',spots:[]}]`);
+  const rpc = [];
+  w.sb = { rpc: async (name, args) => { rpc.push([name, args]); return { data: true, error: null }; } };
+  w.eval(`sb=window.sb; user={id:'u2'}; tripRoles={__it__:{role:'EDITOR',count:2,owner:false}}; window.confirm=()=>true;`);
+  assert.equal(w.eval(`deleteTrip('__it__')`), true);
+  await new Promise(r => setTimeout(r, 20));
+  assert.deepEqual(rpc[0], ['leave_trip', { p_client_id: '__it__' }], 'tombstone_trip이 아니라 leave_trip');
+  assert.equal(w.eval(`store.trips.some(t=>t.id==='__it__')`), false, '이 기기의 사본도 지워진다');
+  assert.equal(w.eval(`syncMeta.__it__`), undefined);
+  w.close();
+});
+
+test('통합: 다른 멤버의 최신본 당겨오기 — 로컬이 깨끗하면 교체, 로컬 편집이 있으면 충돌로', { skip: noJsdom }, async () => {
+  const w = boot();
+  withTrip(w, `[{title:'',drive:'',note:'',spots:[]}]`);
+  const remote = { id: '__it__', name: 'T (영희 편집)', start: '2026-08-01', days: [{ title: '', drive: '', note: '', spots: [] }] };
+  w.sb = { from: () => ({ select: () => ({ eq: async () => ({ data: [{ client_id: '__it__', data: remote, revision: 5, deleted_at: null, updated_at: '' }], error: null }) }) }) };
+  w.eval(`sb=window.sb; user={id:'u2'}; tripRoles={__it__:{role:'EDITOR',count:2,owner:false}};
+    syncMeta.__it__={revision:4,status:'clean',op:'',hash:TC_SYNC.hashTrip(trip())};`);
+  assert.equal(await w.eval(`pullTrip('__it__',{force:true})`), true);
+  assert.equal(w.eval(`trip().name`), 'T (영희 편집)');
+  assert.equal(w.eval(`syncMeta.__it__.revision`), 5);
+  // 로컬에 미반영 편집이 있는 경우: 덮어쓰지 않고 충돌 카드
+  w.eval(`trip().name='내가 바꾼 이름'; syncMeta.__it__={revision:5,status:'clean',op:'',hash:'stale-hash'};`);
+  remote.name = 'T (철수 편집)';
+  w.sb.from = () => ({ select: () => ({ eq: async () => ({ data: [{ client_id: '__it__', data: remote, revision: 6, deleted_at: null, updated_at: '' }], error: null }) }) });
+  assert.equal(await w.eval(`pullTrip('__it__',{force:true})`), true);
+  assert.equal(w.eval(`trip().name`), '내가 바꾼 이름', '로컬 편집은 보존된다');
+  assert.equal(w.eval(`syncMeta.__it__.status`), 'conflict');
+  assert.equal(w.document.getElementById('syncConflictBg').classList.contains('show'), true);
   w.close();
 });

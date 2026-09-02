@@ -178,6 +178,31 @@
   .readonly #newTripBtn,.readonly #tripEditBtn,.readonly #pasteBtn,.readonly #importBtn,.readonly #authBtn,.readonly #undoBtn{display:none!important}
   #undoBtn:disabled{opacity:.35;cursor:default}
   .readonly .spot,.readonly .dayHead{cursor:default}
+  /* 함께하기 — 보기 권한(VIEWER)으로 보는 여행: 편집 도구만 감춘다. 로그인·새 여행·설정(나가기)은 그대로 쓴다 */
+  .roleViewer .tools,.roleViewer .addSpot,.roleViewer #addDayBtn,.roleViewer .noloc,.roleViewer .dragHandle,
+  .roleViewer #undoBtn,.roleViewer #pasteBtn,.roleViewer #pasteMenuBtn,.roleViewer #bookingAdd{display:none!important}
+  .roleViewer .spot,.roleViewer .dayHead{cursor:default}
+  .roleViewer .modeBtn{pointer-events:none}
+  #roleBar{background:#1d4ed8;color:#fff;padding:6px 12px;font-size:12.5px;display:flex;align-items:center;gap:10px;z-index:1001}
+  .membersPill{border:1px solid var(--border);background:var(--surface);color:var(--ink);border-radius:999px;padding:5px 10px;font-size:12px;font-weight:700;min-height:30px;white-space:nowrap}
+  .membersPill:hover{background:var(--surface-2)}
+  .memberSection{margin-top:12px;padding-top:10px;border-top:1px solid var(--border)}
+  .memberSectionHead{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;font-size:13px}
+  .memberList{display:grid;gap:5px}
+  .memberRow{display:flex;align-items:center;gap:8px;padding:7px 9px;border:1px solid var(--border);border-radius:9px;font-size:12.5px;background:var(--surface)}
+  .memberRow .mn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .memberRow .me{color:var(--subtle);font-size:11px;margin-left:4px}
+  .memberRow select{padding:4px 6px;font-size:12px;border-radius:7px}
+  .roleBadge{font-size:11px;padding:2px 8px;border-radius:999px;background:var(--surface-2);color:var(--muted);white-space:nowrap}
+  .roleBadge.owner{background:#fef3c7;color:#92400e}.roleBadge.editor{background:#dbeafe;color:#1e40af}.roleBadge.viewer{background:var(--surface-2);color:var(--subtle)}
+  body.theme-dark .roleBadge.owner{background:#4a3a12;color:#fde68a}body.theme-dark .roleBadge.editor{background:#1e2b45;color:#93c5fd}
+  .inviteResult{display:flex;gap:6px;margin-top:6px}.inviteResult input{flex:1;font-size:12px}
+  .inviteRow{display:flex;align-items:center;gap:8px;padding:6px 9px;border:1px dashed var(--border);border-radius:9px;font-size:12px;color:var(--muted)}
+  .inviteRow .il{flex:1}.inviteRow.dead{opacity:.55}
+  .joinCard{border:1px solid var(--border);border-radius:12px;padding:14px;background:var(--surface-2);margin:6px 0 4px}
+  .joinTripName{font-size:18px;font-weight:800;color:var(--ink)}
+  .joinTripMeta{color:var(--muted);font-size:13px;margin-top:4px}
+  .tripRow .roleBadge{margin-left:2px}
   @media (max-width:760px){
     #main{display:block;min-height:0}
     #map,#kmap{position:absolute;inset:0;width:100%;height:100%}

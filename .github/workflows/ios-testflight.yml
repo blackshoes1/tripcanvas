@@ -5,7 +5,10 @@
 #
 # ── 처음 한 번만: 저장소 Settings → Secrets and variables → Actions 에 네 개를 넣는다 ──
 #   APPSTORE_ISSUER_ID    App Store Connect → 사용자 및 액세스 → 통합 → App Store Connect API 의 Issuer ID
-#   APPSTORE_KEY_ID       같은 화면에서 키를 만들면 나오는 Key ID (역할: App Manager)
+#   APPSTORE_KEY_ID       같은 화면에서 키를 만들면 나오는 Key ID
+#                         ⚠️ 역할은 **Admin** 이어야 한다. -allowProvisioningUpdates 가 인증서·프로파일을
+#                         만들려면 Certificates, Identifiers & Profiles 접근이 필요한데 App Manager 에는
+#                         그 권한이 없다 — 'Cloud signing permission error' 로 죽는다.
 #   APPSTORE_PRIVATE_KEY  그때 딱 한 번 받는 .p8 파일 내용 전체 (BEGIN 줄부터 END 줄까지, 줄바꿈 포함)
 #   APPLE_TEAM_ID         developer.apple.com → Membership 의 Team ID (10자리)
 #
@@ -112,6 +115,29 @@ jobs:
             -authenticationKeyPath ~/private_keys/AuthKey_${{ secrets.APPSTORE_KEY_ID }}.p8 \
             -authenticationKeyID ${{ secrets.APPSTORE_KEY_ID }} \
             -authenticationKeyIssuerID ${{ secrets.APPSTORE_ISSUER_ID }}
+
+      # 이 실패는 Apple 메시지("No profiles ... were found")가 엉뚱한 곳을 가리킨다 —
+      # 번들 ID나 앱 레코드 문제로 읽히지만 실제로는 **키 권한**이다. 로그를 파고들지 않아도
+      # 되게 요약에 바로 적는다. run #2가 이걸로 죽었다.
+      - name: Why the upload failed
+        if: failure()
+        run: |
+          {
+            echo "### 업로드 실패 — 먼저 API 키 역할부터 볼 것"
+            echo ""
+            echo "로그에 \`Cloud signing permission error\` 또는"
+            echo "\`No profiles for 'com.fromj.trip...' were found\` 가 있으면"
+            echo "**App Store Connect API 키 역할이 \`Admin\` 이 아니다.**"
+            echo ""
+            echo "\`-allowProvisioningUpdates\` 가 프로비저닝 프로파일을 직접 만드는데,"
+            echo "그건 **Certificates, Identifiers & Profiles** 접근을 요구한다."
+            echo "\`App Manager\` 에는 그 권한이 없다."
+            echo ""
+            echo "키의 역할은 나중에 바꿀 수 없다 → **Admin 으로 키를 새로 만들어**"
+            echo "\`APPSTORE_KEY_ID\` 와 \`APPSTORE_PRIVATE_KEY\` 를 교체한다 (Issuer ID는 그대로)."
+            echo ""
+            echo "그 밖의 원인은 \`docs/ios-device-setup.md\` 의 문제 해결 절에 정리돼 있다."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove API key
         if: always()

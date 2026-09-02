@@ -17,6 +17,8 @@ export type Flexibility = 'FIXED' | 'SEMI_FIXED' | 'FLEXIBLE';
 export type ActivityStatus = 'PLANNED' | 'READY' | 'IN_PROGRESS' | 'COMPLETED' | 'SKIPPED' | 'CANCELLED';
 export type CommitmentType = 'FLIGHT' | 'TRAIN' | 'HOTEL' | 'RESTAURANT' | 'TOUR' | 'CAR' | 'OTHER';
 export type PlanningMode = 'MANUAL' | 'ASSISTED' | 'DELEGATED';
+/** 이 여행에서 호출자의 역할(함께하기). 접근 제어는 DB(RLS)가 하고, 이 값은 화면이 편집 도구를 감추는 데 쓴다. */
+export type MemberRole = 'OWNER' | 'EDITOR' | 'VIEWER';
 export type EnergyLevel = 'LOW' | 'NORMAL' | 'HIGH';
 
 /** 지금 사용자가 놓인 상태 — Today 화면의 헤드라인을 결정한다. */
@@ -42,6 +44,8 @@ export interface TripSummary {
   timeZone: string;         // '' 가능
   cities: string[];
   todayIndex: number;       // 오늘이 몇 일차인지. -1이면 여행 기간 밖
+  role: MemberRole;         // 내 역할 — VIEWER면 쓰기 요청은 403(FORBIDDEN)이다
+  memberCount: number;      // 활성 멤버 수(주최자 포함). 1이면 혼자 쓰는 여행
 }
 
 export interface DaySummary {
@@ -490,6 +494,7 @@ export type ApiErrorCode =
   | 'TRIP_NOT_FOUND'
   | 'ACTIVITY_NOT_FOUND'
   | 'SUGGESTION_STALE'    // 상태가 바뀌어 그 제안이 더는 유효하지 않음 → Today 새로고침
+  | 'FORBIDDEN'           // 이 여행을 바꿀 권한이 없음(보기 권한·내보내짐) → 편집 도구를 감추고 주최자에게 요청
   | 'REVISION_CONFLICT'   // 다른 기기가 먼저 바꿈 → 최신 Today를 받아 다시 시도
   | 'BAD_REQUEST'
   | 'UPSTREAM_ERROR';

@@ -13,6 +13,13 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://gdnhrwtfid
 const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_2C-n1YFvE9Cw9B7L7B6Trw_XO3Val5q';
 
 interface SyncTripRow { applied: boolean; conflict: boolean; revision: number | string; data: TripDoc | null }
+interface RoleRow { client_id: string; role: string; member_count: number; owner: boolean }
+
+/** RPC/PostgREST 오류가 권한 거절(42501 → 403)인가 — 재시도해도 같다 */
+function isForbidden(e: unknown): boolean {
+  const err = e as { code?: unknown; status?: unknown; message?: unknown } | null;
+  return !!err && (String(err.code ?? '') === '42501' || Number(err.status) === 403 || /TRIP_FORBIDDEN/.test(String(err.message ?? '')));
+}
 
 /**
  * 토큰 검증까지 겸한다 — getUser()가 사용자를 돌려주지 못하면 null(호출측이 401).
@@ -28,37 +35,65 @@ export async function supabaseGatewayFor(token: string): Promise<Gateway | null>
   const userId = userData?.user?.id;
   if (error || !userId) return null;
 
+  /** 함께하기 — 내가 볼 수 있는 여행 전부의 역할·인원 (한 번의 RPC). 실패하면 빈 맵 — 쓰기는 어차피 RLS가 지킨다 */
+  async function rolesByClientId(): Promise<Map<string, RoleRow>> {
+    const map = new Map<string, RoleRow>();
+    const { data, error: e } = await sb.rpc('my_trip_roles');
+    if (e || !Array.isArray(data)) return map;
+    for (const r of data as RoleRow[]) {
+      if (!r?.client_id) continue;
+      const prev = map.get(r.client_id);
+      if (prev?.owner && !r.owner) continue;   // 같은 client_id면 소유한 쪽이 이긴다
+      map.set(r.client_id, r);
+    }
+    return map;
+  }
+  function withRole(r: { client_id: unknown; data: unknown; revision: unknown; updated_at: unknown; deleted_at?: unknown }, roles: Map<string, RoleRow>): TripRow {
+    const role = roles.get(String(r.client_id));
+    return {
+      client_id: String(r.client_id), data: (r.data ?? {}) as TripDoc,
+      revision: Number(r.revision) || 1, updated_at: String(r.updated_at), deleted_at: (r.deleted_at as string | null) ?? null,
+      role: role?.role ?? null, member_count: role?.member_count ?? null
+    };
+  }
+
   return {
     async listTrips(): Promise<TripRow[]> {
-      const { data, error: e } = await sb
-        .from('trips')
-        .select('client_id,data,revision,updated_at,deleted_at')
-        .is('deleted_at', null)
-        .order('updated_at', { ascending: false });
+      const [{ data, error: e }, roles] = await Promise.all([
+        sb.from('trips')
+          .select('client_id,user_id,data,revision,updated_at,deleted_at')
+          .is('deleted_at', null)
+          .order('updated_at', { ascending: false }),
+        rolesByClientId()
+      ]);
       if (e) throw e;
-      return (data ?? []).map((r) => ({
-        client_id: String(r.client_id), data: (r.data ?? {}) as TripDoc,
-        revision: Number(r.revision) || 1, updated_at: String(r.updated_at), deleted_at: r.deleted_at ?? null
-      }));
+      // 같은 client_id가 둘(내 것 + 공유받은 것)이면 소유한 쪽만 — 클라이언트는 id 하나에 여행 하나다
+      const seen = new Set<string>();
+      const rows = (data ?? []).slice().sort((a, b) => Number(b.user_id === userId) - Number(a.user_id === userId));
+      return rows.filter((r) => { const id = String(r.client_id); if (seen.has(id)) return false; seen.add(id); return true; })
+        .map((r) => withRole(r, roles));
     },
     async getTrip(tripId: string): Promise<TripRow | null> {
-      const { data, error: e } = await sb
-        .from('trips')
-        .select('client_id,data,revision,updated_at,deleted_at')
-        .eq('client_id', tripId)
-        .maybeSingle();
+      const [{ data, error: e }, roles] = await Promise.all([
+        sb.from('trips')
+          .select('client_id,user_id,data,revision,updated_at,deleted_at')
+          .eq('client_id', tripId)
+          .limit(2),
+        rolesByClientId()
+      ]);
       if (e) throw e;
-      if (!data) return null;
-      return {
-        client_id: String(data.client_id), data: (data.data ?? {}) as TripDoc,
-        revision: Number(data.revision) || 1, updated_at: String(data.updated_at), deleted_at: data.deleted_at ?? null
-      };
+      const rows = data ?? [];
+      const picked = rows.find((r) => r.user_id === userId) ?? rows[0];
+      if (!picked) return null;
+      return withRole(picked, roles);
     },
     async saveTrip(tripId, doc, expectedRevision) {
       // 웹과 **같은 RPC**를 쓴다. 여기서 직접 update하면 웹의 CAS·tombstone 규칙을 우회하게 된다.
       const { data, error: e } = await sb.rpc('sync_trip', {
         p_client_id: tripId, p_data: doc, p_expected_revision: expectedRevision
       });
+      // 보기 권한·내보내진 멤버의 쓰기는 42501 — 충돌이 아니라 권한 문제라 따로 알린다(재시도해도 같다)
+      if (e && isForbidden(e)) return { applied: false, conflict: false, forbidden: true, revision: expectedRevision, data: null };
       if (e) throw e;
       const row = (Array.isArray(data) ? data[0] : data) as SyncTripRow | undefined;
       if (!row) throw new Error('sync_trip returned no row');

@@ -23,6 +23,7 @@ import type { SettableStatus } from '../domain/mutations';
 import { applyActivityStatus, applySuggestion } from '../domain/mutations';
 import type { TodayInput, TripDoc } from '../domain/todayView';
 import { computeToday, summarizeTrip } from '../domain/todayView';
+import collab from '@legacy/collab.js';
 
 export interface TripRow {
   client_id: string;
@@ -30,13 +31,16 @@ export interface TripRow {
   revision: number;
   updated_at: string;
   deleted_at: string | null;
+  /** 함께하기 — 호출자의 역할·활성 멤버 수 (my_trip_roles). 없으면 혼자 쓰는 여행 */
+  role?: string | null;
+  member_count?: number | null;
 }
 
 export interface Gateway {
   listTrips(): Promise<TripRow[]>;
   getTrip(tripId: string): Promise<TripRow | null>;
-  /** sync_trip RPC (revision CAS). conflict면 applied=false + 현재 revision */
-  saveTrip(tripId: string, data: TripDoc, expectedRevision: number): Promise<{ applied: boolean; conflict: boolean; revision: number; data: TripDoc | null }>;
+  /** sync_trip RPC (revision CAS). conflict면 applied=false + 현재 revision. forbidden이면 권한 없음(42501) — 재시도해도 같다 */
+  saveTrip(tripId: string, data: TripDoc, expectedRevision: number): Promise<{ applied: boolean; conflict: boolean; revision: number; data: TripDoc | null; forbidden?: boolean }>;
   /** 그 여행·그 날 이미 거절한 제안 키 */
   listDismissed(tripId: string, dayISO: string): Promise<string[]>;
   recordFeedback(tripId: string, dayISO: string, key: string, action: string): Promise<void>;
@@ -61,7 +65,7 @@ export interface HandlerDeps {
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' };
 const STATUS: Record<ApiErrorCode, number> = {
   UNAUTHORIZED: 401, TRIP_NOT_FOUND: 404, ACTIVITY_NOT_FOUND: 404,
-  SUGGESTION_STALE: 409, REVISION_CONFLICT: 409, BAD_REQUEST: 400, UPSTREAM_ERROR: 502
+  SUGGESTION_STALE: 409, REVISION_CONFLICT: 409, BAD_REQUEST: 400, UPSTREAM_ERROR: 502, FORBIDDEN: 403
 };
 const MESSAGES: Record<ApiErrorCode, string> = {
   UNAUTHORIZED: '로그인이 필요합니다.',
@@ -70,7 +74,8 @@ const MESSAGES: Record<ApiErrorCode, string> = {
   SUGGESTION_STALE: '상황이 바뀌어 그 제안은 더 이상 맞지 않습니다 — 새 제안을 확인해 주세요.',
   REVISION_CONFLICT: '다른 기기에서 먼저 바뀌었습니다 — 최신 일정을 불러온 뒤 다시 시도해 주세요.',
   BAD_REQUEST: '요청 형식이 올바르지 않습니다.',
-  UPSTREAM_ERROR: '데이터를 가져오지 못했습니다.'
+  UPSTREAM_ERROR: '데이터를 가져오지 못했습니다.',
+  FORBIDDEN: '이 여행을 바꿀 권한이 없습니다 — 주최자에게 편집 권한을 요청해 주세요.'
 };
 
 function ok(body: unknown, status = 200): Response {
@@ -193,6 +198,7 @@ export function createHandlers(deps: HandlerDeps) {
     const dismissed = await gateway.listDismissed(row.client_id, clock.todayISO).catch((): string[] => []);
     return computeToday({
       tripId: row.client_id, trip: row.data, revision: row.revision, updatedAt: row.updated_at,
+      role: row.role, memberCount: row.member_count,
       todayISO: clock.todayISO, nowMinutes: clock.nowMinutes, dayIndex, dismissed,
       generatedAt: now().toISOString(), ...extra
     }).response;
@@ -248,8 +254,11 @@ export function createHandlers(deps: HandlerDeps) {
       };
       return ok(body);
     }
+    // 보기 권한은 서버(RLS)가 어차피 거절한다 — 헛된 RPC 없이 바로 알린다
+    if (row.role != null && !collab.canEdit(row.role)) return fail('FORBIDDEN');
     let saved;
     try { saved = await gateway.saveTrip(row.client_id, next, row.revision); } catch { return fail('UPSTREAM_ERROR'); }
+    if (saved.forbidden) return fail('FORBIDDEN');
     if (!saved.applied) return fail('REVISION_CONFLICT', { revision: saved.revision });
     const savedRow: TripRow = { ...row, data: saved.data ?? next, revision: saved.revision, updated_at: new Date().toISOString() };
     const body: MutationResponse = {
@@ -469,8 +478,10 @@ export function createHandlers(deps: HandlerDeps) {
     const next: TripDoc = JSON.parse(JSON.stringify(row.data));
     next.bookings = ((next.bookings ?? []) as unknown[]).concat([candidateToBookingDoc(candidate, bookingId)]);
 
+    if (row.role != null && !collab.canEdit(row.role)) return fail('FORBIDDEN');
     let saved;
     try { saved = await gateway.saveTrip(tripId, next, row.revision); } catch { return fail('UPSTREAM_ERROR'); }
+    if (saved.forbidden) return fail('FORBIDDEN');
     if (!saved.applied) return fail('REVISION_CONFLICT', { revision: saved.revision });
 
     const url = new URL(request.url);

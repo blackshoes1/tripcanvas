@@ -56,6 +56,8 @@ function gatewayOf(store: Store): Gateway {
     async saveTrip(id, data, expected) {
       const row = store.rows.get(id);
       if (!row) return { applied: false, conflict: true, revision: 0, data: null };
+      // 진짜 게이트웨이는 sync_trip의 42501을 forbidden으로 옮긴다 — 보기 권한 행이면 같은 답을 낸다
+      if (row.role === 'VIEWER') return { applied: false, conflict: false, forbidden: true, revision: row.revision, data: null };
       if (row.revision !== expected) return { applied: false, conflict: true, revision: row.revision, data: row.data };
       const revision = row.revision + 1;
       store.rows.set(id, { ...row, data, revision, updated_at: new Date().toISOString() });
@@ -191,6 +193,47 @@ describe('GET /today — iOS가 이 응답 하나로 오늘을 안다', () => {
     const res = await api.today(new Request('http://localhost/api/v1/trips/nope/today', auth()), 'nope');
     expect(res.status).toBe(404);
     expect(await res.json()).toMatchObject({ error: 'TRIP_NOT_FOUND' });
+  });
+});
+
+describe('함께하기 — 역할과 권한(§76: 판단은 서버가 한다)', () => {
+  it('여행 목록·Today의 TripSummary에 내 역할과 인원이 실린다 (없으면 혼자 쓰는 여행: OWNER·1)', async () => {
+    store.rows.set('shared', { client_id: 'shared', data: { ...tripDoc(), id: 'shared', name: '공유' }, revision: 1, updated_at: '2026-08-31T00:00:00Z', deleted_at: null, role: 'EDITOR', member_count: 3 });
+    const body = (await (await api.trips(new Request('http://localhost/api/v1/trips', auth()))).json()) as TripListResponse;
+    const mine = body.trips.find((t) => t.id === 'trip-1')!;
+    const shared = body.trips.find((t) => t.id === 'shared')!;
+    expect([mine.role, mine.memberCount]).toEqual(['OWNER', 1]);
+    expect([shared.role, shared.memberCount]).toEqual(['EDITOR', 3]);
+    const today = (await (await api.today(new Request('http://localhost/api/v1/trips/shared/today', auth()), 'shared')).json()) as TodayResponse;
+    expect([today.trip.role, today.trip.memberCount]).toEqual(['EDITOR', 3]);
+  });
+
+  it('보기 권한(VIEWER)의 쓰기는 403 FORBIDDEN이고 문서는 그대로다 — 서버에 헛된 저장 요청을 보내지 않는다', async () => {
+    const row = store.rows.get('trip-1')!;
+    store.rows.set('trip-1', { ...row, role: 'VIEWER', member_count: 2 });
+    const res = await api.activityAction(
+      new Request('http://localhost/api/v1/trips/trip-1/activities/d0s0/complete', auth({ method: 'POST', body: JSON.stringify({ expectedRevision: 3 }) })),
+      'trip-1', 'd0s0', 'complete');
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({ error: 'FORBIDDEN' });
+    expect(store.rows.get('trip-1')!.revision).toBe(3);
+    expect(store.rows.get('trip-1')!.data.days![0].spots![0].status).toBeUndefined();
+    // 읽기는 된다 — 보기 권한도 Today를 본다
+    const today = await api.today(new Request('http://localhost/api/v1/trips/trip-1/today', auth()), 'trip-1');
+    expect(today.status).toBe(200);
+  });
+
+  it('역할 정보 없이도 게이트웨이가 forbidden을 돌려주면 403이다 (RLS가 마지막 경계)', async () => {
+    const row = store.rows.get('trip-1')!;
+    // 역할은 모르지만(구버전 목록) sync_trip이 42501 → 게이트웨이 forbidden
+    const gw = gatewayOf(store);
+    const forbiddenGw: Gateway = { ...gw, async saveTrip(id, data, expected) { return { applied: false, conflict: false, forbidden: true, revision: expected, data: null }; } };
+    const local = createHandlers({ gatewayFor: () => forbiddenGw, now: () => NOW });
+    const res = await local.activityAction(
+      new Request('http://localhost/api/v1/trips/trip-1/activities/d0s0/complete', auth({ method: 'POST', body: JSON.stringify({ expectedRevision: row.revision }) })),
+      'trip-1', 'd0s0', 'complete');
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({ error: 'FORBIDDEN' });
   });
 });
 

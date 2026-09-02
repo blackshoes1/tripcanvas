@@ -114,6 +114,7 @@ describe('iOS Contract.swift가 실제 응답을 전부 담는다', () => {
     ['MANUAL', 'ASSISTED', 'DELEGATED'].forEach((s) => expect(SWIFT).toContain(`"${s}"`));
     ['LOW', 'NORMAL', 'HIGH'].forEach((s) => expect(SWIFT).toContain(`"${s}"`));
     ['EARLY', 'NOW', 'LATE'].forEach((s) => expect(SWIFT).toContain(`"${s}"`));
+    ['OWNER', 'EDITOR', 'VIEWER'].forEach((s) => expect(SWIFT, `MemberRole.${s}`).toContain(`"${s}"`));
   });
 
   it('iOS 테스트 픽스처를 실제 응답으로 갱신한다', () => {

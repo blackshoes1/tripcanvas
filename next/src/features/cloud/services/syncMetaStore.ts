@@ -11,7 +11,7 @@ const META_KEY = 'tripcanvas_sync_v2';
 const V1_KEY = 'tripcanvas_synced';
 
 export type SyncStatus =
-  | 'new' | 'clean' | 'dirty' | 'syncing' | 'conflict' | 'error'
+  | 'new' | 'clean' | 'dirty' | 'syncing' | 'conflict' | 'error' | 'forbidden'
   | 'delete-pending' | 'delete-error' | 'tombstoned' | 'legacy';
 
 export interface SyncEntry {

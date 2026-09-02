@@ -59,7 +59,8 @@ export function mergeInput(trips: Trip[], rows: { client_id?: string }[]): Trip[
 /** 지금 올릴 수 있는 상태인가 — 미해결 충돌은 사용자가 고르기 전까지 건드리지 않는다 */
 export function canUpload(entry: SyncEntry | undefined, force: boolean): boolean {
   if (force) return true;
-  return entry?.status !== 'conflict';
+  // 권한 오류(보기 권한·내보내짐)는 재시도해도 같다 — 다음 로그인 병합이 역할을 다시 본다
+  return entry?.status !== 'conflict' && entry?.status !== 'forbidden';
 }
 
 /** 삭제 동기화가 밀려 있는 항목들 (온라인 복귀·로그인 직후 밀어낸다) */
@@ -86,6 +87,7 @@ export function syncLabel(status: SyncStatus | undefined, signedIn: boolean): st
     case 'syncing': return '⏳ 올리는 중…';
     case 'conflict': return '⚠️ 다른 기기와 충돌 — 버전을 골라주세요';
     case 'error': return '⚠️ 저장 실패 — 로컬 편집은 보존됨';
+    case 'forbidden': return '👀 보기 권한 — 이 여행은 저장되지 않음';
     case 'delete-pending':
     case 'delete-error': return '🗑 삭제 동기화 대기';
     case 'tombstoned': return '🗑 클라우드에서 삭제됨';

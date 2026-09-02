@@ -5,6 +5,7 @@
 // 웹과 같은 수단별 평균속도로 계산한 **직선거리 추정**이고, 응답에 travelTimeSource로 그 사실을 실어 보낸다.
 // (웹은 캐시된 실제 경로가 있으면 그 값을 쓰므로 분 단위로 다를 수 있다 — 클라이언트가 '추정'이라고 표기한다.)
 import adapt from '@legacy/adaptive.js';
+import collab from '@legacy/collab.js';
 import lib from '@legacy/lib.js';
 
 import type {
@@ -69,6 +70,9 @@ export interface TodayInput {
   trip: TripDoc;
   revision: number;
   updatedAt: string;
+  /** 함께하기 — 호출자의 역할·활성 멤버 수. 없으면 혼자 쓰는 여행(OWNER·1)으로 본다 */
+  role?: string | null;
+  memberCount?: number | null;
   /** 여행지 기준 오늘 (YYYY-MM-DD) */
   todayISO: string;
   /** 여행지 기준 현재 시각(자정부터 분) */
@@ -263,7 +267,9 @@ export function computeToday(input: TodayInput): TodayComputation {
     updatedAt: input.updatedAt,
     timeZone: String(trip.timeZone ?? ''),
     cities: Array.from(new Set(days.flatMap((d) => (d.spots ?? []).map((s) => String(s.city ?? ''))).filter(Boolean))),
-    todayIndex
+    todayIndex,
+    role: collab.normRole(input.role) ?? 'OWNER',
+    memberCount: Math.max(1, Math.round(Number(input.memberCount) || 1))
   };
   const daySummary: DaySummary = {
     index: dayIndex,
@@ -336,7 +342,10 @@ export function computeToday(input: TodayInput): TodayComputation {
 }
 
 /** 여행 목록 요약 — 상세를 열지 않고도 '오늘 며칠째인지'까지 보인다. */
-export function summarizeTrip(row: { client_id: string; data: TripDoc; revision: number; updated_at: string }, todayISO: string): TripSummary {
+export function summarizeTrip(
+  row: { client_id: string; data: TripDoc; revision: number; updated_at: string; role?: string | null; member_count?: number | null },
+  todayISO: string
+): TripSummary {
   const trip = row.data ?? {};
   const days = trip.days ?? [];
   return {
@@ -348,6 +357,8 @@ export function summarizeTrip(row: { client_id: string; data: TripDoc; revision:
     updatedAt: row.updated_at,
     timeZone: String(trip.timeZone ?? ''),
     cities: Array.from(new Set(days.flatMap((d) => (d.spots ?? []).map((s) => String(s.city ?? ''))).filter(Boolean))),
-    todayIndex: adapt.currentDayIndex(trip, todayISO)
+    todayIndex: adapt.currentDayIndex(trip, todayISO),
+    role: collab.normRole(row.role) ?? 'OWNER',
+    memberCount: Math.max(1, Math.round(Number(row.member_count) || 1))
   };
 }
