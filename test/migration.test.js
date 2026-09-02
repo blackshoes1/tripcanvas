@@ -153,7 +153,7 @@ test('협업: 수락은 멱등이고(§74), 내보내진 사람은 이전 링크
 });
 
 test('협업: security definer 함수는 전부 public에서 실행 권한을 거둔다',()=>{
-  const defs=[...collabSql.matchAll(/create or replace function public\.(\w+)\(([^)]*)\)[\s\S]*?language \w+[^;]*?security definer/gi)].map(m=>m[1]);
+  const defs=[...collabSql.matchAll(/create or replace function public\.(\w+)\(([^)]*)\)\s*returns[^$]*?\bsecurity definer\b/gi)].map(m=>m[1]);
   assert.ok(defs.length>=8,'security definer 함수가 있어야 한다: '+defs.join(','));
   for(const name of defs){
     if(/^tc_trips_|^tc_touch/.test(name)) continue;   // 트리거 함수는 직접 호출되지 않는다
@@ -164,4 +164,172 @@ test('협업: security definer 함수는 전부 public에서 실행 권한을 �
 test('협업: 소유자 삭제 정책과 스냅샷 정책은 그대로다 — 기존 단일 사용자 흐름을 깨지 않는다(§95)',()=>{
   assert.match(collabSql,/"trips_owner_delete"/);
   assert.ok(!/trip_snapshots/i.test(collabSql),'스냅샷은 사용자별 기록이라 손대지 않는다');
+});
+
+// ── 후보 장소와 반응 (2단계) ──
+const candSql=fs.readFileSync(path.join(__dirname,'..','supabase','migrations','202609020002_trip_candidates.sql'),'utf8');
+
+test('후보: 쓰기 정책은 만들지 않는다 — 읽기만 열고 나머지는 RPC를 지난다',()=>{
+  assert.match(candSql,/alter table public\.trip_candidates enable row level security/);
+  assert.match(candSql,/alter table public\.candidate_reactions enable row level security/);
+  assert.match(candSql,/"trip_candidates_member_select" on public\.trip_candidates for select/);
+  assert.match(candSql,/"candidate_reactions_member_select" on public\.candidate_reactions for select/);
+  const writes=[...candSql.matchAll(/create policy[^;]*for (insert|update|delete)/gi)];
+  assert.deepEqual(writes.map(m=>m[0]),[],'쓰기 정책이 있으면 RPC를 우회할 수 있다');
+  // Supabase가 새 테이블에 기본 부여하는 ALL을 거두고 select만 준다
+  assert.match(candSql,/revoke all on public\.trip_candidates, public\.candidate_reactions from anon, authenticated, public/);
+  assert.match(candSql,/grant select on public\.trip_candidates, public\.candidate_reactions to authenticated/);
+});
+
+test('후보: 읽기는 멤버만 · 한 사람 한 표는 DB가 보장한다',()=>{
+  assert.match(candSql,/using \(public\.tc_trip_role\(trip_id\) is not null\)/);
+  assert.match(candSql,/using \(public\.tc_candidate_role\(candidate_id\) is not null\)/);
+  assert.match(candSql,/unique \(candidate_id, user_id\)/,'한 사람 한 표');
+  assert.match(candSql,/reaction text not null check \(reaction in \('MUST','OK','PASS'\)\)/);
+  assert.match(candSql,/references public\.trip_candidates\(id\) on delete cascade/,'후보를 지우면 반응도 함께');
+});
+
+test('후보: 보기 권한은 의견만 낸다 — 후보 추가·일정 반영은 편집 권한',()=>{
+  const add=candSql.slice(candSql.indexOf('function public.add_trip_candidate('),candSql.indexOf('function public.list_trip_candidates('));
+  assert.match(add,/v_role is distinct from 'OWNER' and v_role is distinct from 'EDITOR'[\s\S]*42501/,'보기 권한은 후보를 만들지 못한다');
+  const react=candSql.slice(candSql.indexOf('function public.react_to_candidate('),candSql.indexOf('function public.manage_trip_candidate('));
+  assert.ok(!/EDITOR/.test(react),'반응에는 편집 권한을 요구하지 않는다 — 의견은 일정을 바꾸는 것이 아니다');
+  assert.match(react,/tc_candidate_role\(p_candidate_id\)[\s\S]*is null[\s\S]*42501/,'멤버가 아니면 반응도 못 한다');
+  assert.match(react,/on conflict \(candidate_id, user_id\) do update/,'같은 요청을 두 번 받아도 결과가 같다(§66)');
+  const manage=candSql.slice(candSql.indexOf('function public.manage_trip_candidate('),candSql.indexOf('-- ── 권한'));
+  assert.match(manage,/v_uid<>v_cand\.proposed_by and v_uid<>v_owner[\s\S]*42501/,'후보를 지우는 기준은 역할이 아니라 누가 냈는가');
+  assert.match(manage,/p_action='SCHEDULE'[\s\S]*status='SCHEDULED'/);
+});
+
+test('후보: 여행 이름표에 계정 정보를 싣지 않는다(§69)',()=>{
+  const label=candSql.slice(candSql.indexOf('function public.tc_member_label('),candSql.indexOf('-- ── RLS'));
+  assert.match(label,/display_name/);
+  assert.ok(!/email/i.test(label),'이메일은 여행에 노출하지 않는다');
+  assert.ok(!/email/i.test(candSql),'마이그레이션 어디에서도 계정 이메일을 읽지 않는다');
+});
+
+test('후보: security definer 함수는 전부 public에서 실행 권한을 거둔다',()=>{
+  const defs=[...candSql.matchAll(/create or replace function public\.(\w+)\(([^)]*)\)\s*returns[^$]*?\bsecurity definer\b/gi)].map(m=>m[1]);
+  assert.ok(defs.length>=4,'security definer 함수가 있어야 한다: '+defs.join(','));
+  for(const name of defs){
+    assert.match(candSql,new RegExp(`revoke all on function public\\.${name}\\([^)]*\\) from public`,'i'),`${name}: revoke from public`);
+  }
+});
+
+// ── 코멘트 · 활동 기록 · 실시간 (3단계) ──
+const actSql=fs.readFileSync(path.join(__dirname,'..','supabase','migrations','202609020003_trip_comments_activity.sql'),'utf8');
+
+test('활동: 두 테이블 모두 읽기 정책만 — 쓰기는 트리거·RPC를 지난다',()=>{
+  assert.match(actSql,/alter table public\.trip_comments enable row level security/);
+  assert.match(actSql,/alter table public\.trip_activity enable row level security/);
+  assert.match(actSql,/"trip_comments_member_select" on public\.trip_comments for select/);
+  assert.match(actSql,/"trip_activity_member_select" on public\.trip_activity for select/);
+  assert.deepEqual([...actSql.matchAll(/create policy[^;]*for (insert|update|delete)/gi)].map(m=>m[0]),[]);
+  assert.match(actSql,/revoke all on public\.trip_comments, public\.trip_activity from anon, authenticated, public/);
+  assert.match(actSql,/grant select on public\.trip_comments, public\.trip_activity to authenticated/);
+  // 활동을 쓰는 함수는 클라이언트가 부를 수 없다
+  assert.match(actSql,/revoke all on function public\.tc_log_activity\(%s, text, jsonb\) from public, anon, authenticated/);
+});
+
+test('활동: 트리거가 쓴다 — 1·2단계 RPC 본문은 건드리지 않고, 의미 있는 변경만 남긴다(§38)',()=>{
+  for(const t of ['tc_act_candidates','tc_act_reactions','tc_act_comments','tc_act_members','tc_act_trips']){
+    assert.match(actSql,new RegExp(`create trigger ${t} after`),`${t} 트리거`);
+  }
+  assert.ok(!/function public\.(sync_trip|react_to_candidate|add_trip_candidate|accept_trip_invite|leave_trip|manage_trip_member)\(/.test(actSql),'기존 RPC를 다시 정의하지 않는다');
+  const members=actSql.slice(actSql.indexOf('function public.tc_act_members('),actSql.indexOf('function public.tc_act_trips('));
+  assert.match(members,/if new\.role='OWNER' then return null/,'소유자 행(여행 생성·백필)은 기록하지 않는다');
+  const reactions=actSql.slice(actSql.indexOf('function public.tc_act_reactions('),actSql.indexOf('function public.tc_act_comments('));
+  assert.match(reactions,/proposed_by=new\.user_id and v_cand\.created_at>=now\(\)-interval '1 second' then return null/,'제안자의 자동 MUST는 기록하지 않는다');
+  assert.match(reactions,/after insert or update on public\.candidate_reactions/,'반응 거두기(delete)는 기록하지 않는다');
+  const trips=actSql.slice(actSql.indexOf('function public.tc_act_trips('),actSql.indexOf('-- ── RLS'));
+  assert.match(trips,/m\.user_id<>new\.user_id and m\.status='ACTIVE'/,'다른 활성 멤버가 있을 때만 — 혼자 쓰는 여행은 기록하지 않는다(§95)');
+  assert.match(trips,/BOOKING_ADDED/); assert.match(trips,/SCHEDULE_CHANGED/);
+  assert.match(trips,/offset 300 limit 1/,'여행당 최근 300건만');
+  assert.match(trips,/when \(old\.data is distinct from new\.data\)/);
+});
+
+test('코멘트: 의견이라 활성 멤버 전원이 남기고, 지우기는 쓴 사람이나 주최자만',()=>{
+  const add=actSql.slice(actSql.indexOf('function public.add_candidate_comment('),actSql.indexOf('function public.delete_candidate_comment('));
+  assert.ok(!/EDITOR/.test(add),'코멘트에 편집 권한을 요구하지 않는다');
+  assert.match(add,/tc_trip_role\(v_cand\.trip_id\) is null[\s\S]*42501/);
+  assert.match(add,/length\(body\) <= 500|left\(btrim\(coalesce\(p_body,''\)\), 500\)/);
+  const del=actSql.slice(actSql.indexOf('function public.delete_candidate_comment('),actSql.indexOf('function public.list_candidate_comments('));
+  assert.match(del,/v_uid<>v_cm\.user_id and v_uid<>v_owner[\s\S]*42501/);
+  assert.match(del,/if not found then return false/,'두 번 지워도 같다');
+});
+
+test('실시간: 활동 테이블만 퍼블리케이션에 싣고, 퍼블리케이션이 없어도·이미 있어도 안전하다',()=>{
+  assert.match(actSql,/alter publication supabase_realtime add table public\.trip_activity/);
+  assert.match(actSql,/if not exists \(select 1 from pg_publication_tables[\s\S]*tablename='trip_activity'\)/);
+  assert.ok(!/add table public\.trips\b/.test(actSql),'여행 문서(jsonb 전체)는 실시간으로 내보내지 않는다');
+});
+
+test('활동: security definer 함수는 전부 public에서 실행 권한을 거둔다 · 1단계 트리거의 search_path를 고정한다',()=>{
+  const defs=[...actSql.matchAll(/create or replace function public\.(\w+)\(([^)]*)\)\s*returns[^$]*?\bsecurity definer\b/gi)].map(m=>m[1]);
+  assert.ok(defs.length>=8,'security definer 함수: '+defs.join(','));
+  for(const name of defs){
+    if(/^tc_act_/.test(name)) continue;   // 트리거 함수는 PostgreSQL이 직접 호출을 거부한다(trigger 반환형)
+    assert.match(actSql,new RegExp(`revoke all on function public\\.${name}\\([^)]*\\) from public`,'i'),`${name}: revoke from public`);
+  }
+  for(const m of actSql.matchAll(/create or replace function public\.(tc_\w+)\(\) returns trigger\s+language plpgsql([^$]*)\$\$/g)){
+    assert.match(m[2],/set search_path=public/,`${m[1]}: search_path 고정`);
+  }
+  assert.match(actSql,/function public\.tc_touch_updated_at\(\) returns trigger\s+language plpgsql set search_path=public/);
+  assert.match(actSql,/function public\.tc_trips_lock_owner\(\) returns trigger\s+language plpgsql set search_path=public/);
+});
+
+// ── 여행 취향 (4단계) ──
+const prefSql=fs.readFileSync(path.join(__dirname,'..','supabase','migrations','202609020004_member_preferences.sql'),'utf8');
+
+test('취향: trip_members 행에 산다(여행별 §18) — 고정 프로필 테이블이 아니다',()=>{
+  assert.match(prefSql,/alter table public\.trip_members add column if not exists prefs jsonb not null default '\{\}'::jsonb/);
+  assert.ok(!/create table/i.test(prefSql),'새 테이블 없음');
+});
+
+test('취향: 서버가 아는 값만 남긴다 — 화면이 무엇을 보내든(§16 선택형)',()=>{
+  const norm=prefSql.slice(prefSql.indexOf('function public.tc_norm_prefs('),prefSql.indexOf('-- ── RPC'));
+  assert.match(norm,/'RELAXED','NORMAL','PACKED'/); assert.match(norm,/'LOW','NORMAL','HIGH'/);
+  assert.match(norm,/jsonb_typeof\(p->'morning'\)='boolean'/); assert.match(norm,/jsonb_typeof\(p->'night'\)='boolean'/);
+  assert.match(norm,/limit 12/); assert.match(norm,/left\(btrim\(e\), 30\)/); assert.match(norm,/left\(btrim\(coalesce\(p->>'note',''\)\), 120\)/);
+  assert.match(norm,/return o;/,'모르는 키는 결과에 없다');
+});
+
+test('취향: 본인 것만 · 활성 멤버 전원(보기 권한 포함) · 멤버가 아니면 42501',()=>{
+  const set=prefSql.slice(prefSql.indexOf('function public.set_trip_preference('),prefSql.indexOf('function public.list_trip_preferences('));
+  assert.match(set,/where m\.trip_id=v_trip_id and m\.user_id=v_uid and m\.status='ACTIVE'/,'본인 활성 행만');
+  assert.ok(!/EDITOR/.test(set),'편집 권한을 요구하지 않는다 — 취향은 의견이다');
+  assert.match(set,/TRIP_FORBIDDEN' using errcode='42501'/);
+  assert.match(set,/return v_prefs/,'정규화된 결과를 돌려준다 — 화면은 그것을 믿는다');
+  const list=prefSql.slice(prefSql.indexOf('function public.list_trip_preferences('),prefSql.indexOf('-- ── 권한'));
+  assert.match(list,/tc_member_label/); assert.ok(!/email/i.test(prefSql),'이메일은 없다(§69)');
+  assert.match(list,/m\.status='ACTIVE'/);
+});
+
+test('취향: 실행 권한 — RPC는 authenticated만, 정규화 함수는 클라이언트가 못 부른다',()=>{
+  assert.match(prefSql,/revoke all on function public\.tc_norm_prefs\(jsonb\) from public, anon, authenticated/);
+  assert.match(prefSql,/revoke all on function public\.set_trip_preference\(text,jsonb\) from public,anon/);
+  assert.match(prefSql,/grant execute on function public\.set_trip_preference\(text,jsonb\) to authenticated/);
+  assert.match(prefSql,/grant execute on function public\.list_trip_preferences\(text\) to authenticated/);
+});
+
+// ── 갈린 후보의 결정 (5단계) ──
+const decSql=fs.readFileSync(path.join(__dirname,'..','supabase','migrations','202609020005_candidate_decisions.sql'),'utf8');
+
+test('결정: 제외는 지우기가 아니라 상태다 — REJECT/REOPEN은 편집 권한, REMOVE 규칙은 그대로',()=>{
+  const fn=decSql.slice(decSql.indexOf('function public.manage_trip_candidate('));
+  assert.match(fn,/p_action='REJECT'[\s\S]*status='REJECTED', scheduled_ref=null/);
+  assert.match(fn,/p_action='REOPEN'[\s\S]*status='PROPOSED', scheduled_ref=null/);
+  assert.match(fn,/v_uid<>v_cand\.proposed_by and v_uid<>v_owner[\s\S]*42501/,'빼기(REMOVE) 규칙은 그대로');
+  assert.ok(fn.indexOf("v_role is distinct from 'OWNER' and v_role is distinct from 'EDITOR'") < fn.indexOf("p_action='REJECT'"),'결정은 편집 권한 확인 뒤에');
+  assert.match(fn,/REMOVE · SCHEDULE · UNSCHEDULE · REJECT · REOPEN/);
+  assert.match(decSql,/revoke all on function public\.manage_trip_candidate\(bigint,text,text\) from public,anon/);
+});
+
+test('결정: 활동 종류에 CANDIDATE_REJECTED를 더하고(제약 이름은 실제 것을 찾아 지운다) 트리거가 상태 변화 때만 남긴다',()=>{
+  assert.match(decSql,/pg_get_constraintdef\(oid\) like '%kind%'/);
+  assert.match(decSql,/add constraint trip_activity_kind_check check \(kind in \([\s\S]*'CANDIDATE_REJECTED'/);
+  const trg=decSql.slice(decSql.indexOf('function public.tc_act_candidates('),decSql.indexOf('-- ── manage_trip_candidate'));
+  assert.match(trg,/new\.status='REJECTED' and old\.status is distinct from 'REJECTED'/,'두 번 눌러도 한 번만');
+  assert.ok(!/REOPEN|PROPOSED'/.test(trg.replace(/CANDIDATE_PROPOSED/g,'')),'되돌리기는 기록하지 않는다');
+  assert.match(trg,/security definer set search_path=public/);
 });
