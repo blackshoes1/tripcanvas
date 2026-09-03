@@ -1829,8 +1829,11 @@ test('통합: 보기 권한 여행은 클라우드에 올리지 않고, 권한 �
   assert.equal(w.eval(`cloudRetryT`), null, '재시도 타이머 없음');
   await w.eval(`syncTripCloud({id:'e1',name:'E',days:[{spots:[]}]})`);
   assert.equal(calls, 1, 'forbidden 상태에서는 다시 요청하지 않는다');
-  // 역할이 편집 가능으로 확인되면 다시 dirty
-  w.sb.rpc = async (name) => { calls++; return name === 'my_trip_roles' ? { data: [{ client_id: 'e1', role: 'EDITOR', member_count: 2, owner: false }], error: null } : { data: null, error: null }; };
+  // 역할이 편집 가능으로 확인되면 다시 dirty (역할은 이제 GET /api/v1/me가 준다)
+  w.TC_API.me = async () => ({
+    data: { trips: [{ id: 'e1', role: 'EDITOR', memberCount: 2, owner: false, supabaseTripId: 'row-e1' }], realtime: { provider: 'SUPABASE', url: null } },
+    error: null
+  });
   await w.eval(`refreshTripRoles()`);
   assert.equal(w.eval(`syncMeta.e1.status`), 'dirty');
   w.close();
@@ -2097,8 +2100,16 @@ test('통합: 실시간은 전달 수단이다 — 이벤트를 받으면 payloa
   w.sb = { channel: (name) => w.__mk(name), removeChannel: (ch) => { removed.push(ch.name); },
     rpc: async (name, args) => ({ data: name === 'list_trip_activity'
       ? [{ id: 9, kind: 'CANDIDATE_PROPOSED', actor_label: '영희', mine: false, subject: { title: '구엘 공원' }, created_at: '2026-09-02T10:00:00Z' }]
-      : name === 'my_trip_roles' ? [{ client_id: 't1', trip_id: 'srv-1', role: 'EDITOR', member_count: 4, owner: false }, { client_id: 't2', trip_id: 'srv-2', role: 'OWNER', member_count: 1, owner: true }] : [], error: null }) };
-  w.eval(`sb=window.sb; TC_API.rpc=window.sb.rpc;
+      : [], error: null }) };
+  // 역할·인원과 '어느 실시간을 쓸지'는 GET /api/v1/me가 준다. 협업이 아직 Supabase면 내부 id(supabaseTripId)를 함께 준다
+  w.TC_API_ME = async () => ({
+    data: {
+      trips: [{ id: 't1', role: 'EDITOR', memberCount: 4, owner: false, supabaseTripId: 'srv-1' },
+              { id: 't2', role: 'OWNER', memberCount: 1, owner: true, supabaseTripId: 'srv-2' }],
+      realtime: { provider: 'SUPABASE', url: null }
+    }, error: null
+  });
+  w.eval(`sb=window.sb; TC_API.rpc=window.sb.rpc; TC_API.me=window.TC_API_ME;
     pullTrip=async(id,opts)=>{ window.__pull=(window.__pull||[]); window.__pull.push([id,!!(opts&&opts.force)]); return true; };
     renderCandidates=async()=>{ window.__cand=(window.__cand||0)+1; };
     toast=(m)=>{ window.__toasts=(window.__toasts||[]); window.__toasts.push(m); };
@@ -2308,5 +2319,41 @@ test('통합: 그룹 제안 — 반대 없는 후보를 어느 날에 넣을지 
   const vcard = w.document.querySelector('#candList .proposalCard');
   assert.ok(vcard);
   assert.equal([...vcard.querySelectorAll('button')].some(b => /일정으로 만들기/.test(b.textContent)), false);
+  w.close();
+});
+
+test('통합: 서버가 자체 실시간을 쓰라고 하면 client_id로 구독하고 mine은 서버 값을 믿는다', { skip: noJsdom }, async () => {
+  const w = boot();
+  const opened = [];
+  w.eval(`user={id:'u1'}; store.trips=[{id:'t1',name:'스페인',days:[{spots:[]}]}]; store.activeId='t1';
+    syncMeta={t1:{revision:3,status:'clean'}};`);
+  // Supabase 채널이 있어도 서버 선택이 우선이다 — 내부 id(serverId)는 아예 오지 않는다
+  w.sb = { channel: () => { throw new Error('Supabase 채널을 쓰면 안 된다'); }, removeChannel: () => {}, rpc: async () => ({ data: [], error: null }) };
+  w.TC_API_ME = async () => ({
+    data: { trips: [{ id: 't1', role: 'EDITOR', memberCount: 3, owner: false }],
+            realtime: { provider: 'TRIPCANVAS', url: 'wss://api.test/ws' } }, error: null
+  });
+  w.TC_API_CONNECT = (options) => { opened.push(options); options.onState(true); return { close: () => { opened.push('closed'); } }; };
+  w.eval(`sb=window.sb; TC_API.me=window.TC_API_ME; TC_API.realtime={connect:window.TC_API_CONNECT};
+    pullTrip=async(id,opts)=>{ window.__pull=(window.__pull||[]); window.__pull.push([id,!!(opts&&opts.force)]); return true; };`);
+  await w.eval(`refreshTripRoles()`);
+
+  assert.equal(opened.length, 1);
+  assert.equal(opened[0].url, 'wss://api.test/ws');
+  assert.equal(opened[0].tripId, 't1', '내부 id가 아니라 client_id로 구독한다');
+  assert.equal(w.eval(`tripRoles.t1.serverId`), '', '자체 실시간이면 내부 id를 받지 않는다');
+  assert.match(w.document.getElementById('liveState').textContent, /실시간/);
+
+  // 서버가 붙여 준 mine을 그대로 믿는다 — 내 저장은 다시 당기지 않는다
+  opened[0].onEvent({ type: 'ACTIVITY', tripId: 't1', id: 7, kind: 'SCHEDULE_CHANGED', mine: true });
+  await new Promise((r) => setTimeout(r, 480));
+  assert.equal(w.eval('(window.__pull||[]).length'), 0);
+  opened[0].onEvent({ type: 'ACTIVITY', tripId: 't1', id: 8, kind: 'SCHEDULE_CHANGED', mine: false });
+  await new Promise((r) => setTimeout(r, 480));
+  assert.deepEqual(w.eval('JSON.stringify(window.__pull||[])'), JSON.stringify([['t1', true]]));
+
+  // 로그아웃하면 끊는다
+  w.eval(`user=null; tripRoles={}; updateCollabUI();`);
+  assert.equal(opened.at(-1), 'closed');
   w.close();
 });

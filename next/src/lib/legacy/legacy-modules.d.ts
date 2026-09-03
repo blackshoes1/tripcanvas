@@ -346,7 +346,9 @@ declare module '@legacy/adaptive.js' {
 declare module '@legacy/collab.js' {
   type Role = 'OWNER' | 'EDITOR' | 'VIEWER';
   interface MemberRow { id?: number | string; user_id?: string; role?: string; status?: string; display_name?: string | null; joined_at?: string | null; me?: boolean }
-  interface RoleRow { client_id?: string; role?: string; member_count?: number; owner?: boolean }
+  interface RoleRow { role?: string }
+  /** GET /api/v1/me의 여행 한 줄. supabaseTripId는 Supabase 실시간을 쓸 때만 온다 */
+  interface MeTripRow { id?: string; role?: string; memberCount?: number; owner?: boolean; supabaseTripId?: string | number | null }
   interface InvitePreview { valid?: boolean; reason?: string | null; trip_name?: string | null; start_date?: string | null; day_count?: number | null; role?: string | null; expires_at?: string | null; already_member?: boolean }
   const api: {
     ROLES: readonly Role[];
@@ -364,7 +366,7 @@ declare module '@legacy/collab.js' {
     roleIcon(role: unknown): string;
     /** 로그아웃·역할 정보 없음(로컬 전용)은 소유자 — 혼자 쓰는 여행은 예전 그대로다 */
     roleOf(roles: Record<string, RoleRow> | null | undefined, clientId: string, signedIn: boolean): Role;
-    tripRoleMap(rows: RoleRow[] | null | undefined): Record<string, { role: Role; count: number; owner: boolean }>;
+    tripRoleMap(rows: MeTripRow[] | null | undefined): Record<string, { role: Role; count: number; owner: boolean; serverId: string }>;
     memberName(m: MemberRow | null | undefined): string;
     displayNameFromEmail(email: string | null | undefined): string;
     memberSummary(members: MemberRow[] | null | undefined): { total: number; owners: number; editors: number; viewers: number; names: string[] };

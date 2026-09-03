@@ -158,7 +158,76 @@
     }
   };
 
-  const API = { configure, rpc, snapshots, DEFAULT_BASE };
+  /** 내 역할·인원과 어느 실시간을 쓸지 — 로그인 직후·역할 갱신 때 한 번(my_trip_roles 대체) */
+  async function me() {
+    return request('GET', '/api/v1/me');
+  }
+
+  /**
+   * 자체 실시간(WebSocket). 서버가 /me에서 쓰라고 한 경우에만 부른다.
+   *
+   * 규약(server/realtime/hub.ts): 붙으면 첫 프레임으로 AUTH — **토큰을 URL에 싣지 않는다**(프록시·접근 로그에 남는다).
+   * READY 뒤에 SUBSCRIBE, 그다음부터 ACTIVITY가 온다. PING에는 PONG으로 답해야 끊기지 않는다.
+   * 페이로드는 신호일 뿐이라 내용은 호출측이 API로 다시 읽는다(§41·§45).
+   *
+   * 거절(4401·4403)은 다시 붙지 않는다 — 재시도해도 같은 답이다. 그냥 끊긴 것은 다시 붙는다.
+   * @param {{url:string, tripId:string, getToken:()=>Promise<string|null>, onEvent:(e:any)=>void,
+   *          onState:(on:boolean)=>void, socketImpl?:any, retryMs?:number}} options
+   */
+  function connectRealtime(options) {
+    const retryMs = options.retryMs || 3000;
+    const Socket = options.socketImpl || (typeof WebSocket !== 'undefined' ? WebSocket : null);
+    /** @type {any} */ let socket = null;
+    /** @type {any} */ let timer = null;
+    let stopped = false, attempts = 0;
+
+    /** @param {boolean} on */
+    const setState = (on) => { try { options.onState(on); } catch (_) { /* 화면 갱신 실패는 삼킨다 */ } };
+
+    async function open() {
+      if (stopped || !Socket) return;
+      // 구독이 열리기 전까지는 '실시간'이 아니다 — 호출측이 초기 상태를 추측하지 않게 여기서 알린다
+      setState(false);
+      const token = await options.getToken();
+      if (stopped || !token) { setState(false); return; }   // 로그아웃 상태면 붙지 않는다
+      let ws;
+      try { ws = new Socket(options.url); } catch (_) { setState(false); schedule(); return; }
+      socket = ws;
+      ws.onopen = () => { try { ws.send(JSON.stringify({ type: 'AUTH', token: token })); } catch (_) { /* 곧 onclose가 온다 */ } };
+      ws.onmessage = (/** @type {any} */ event) => {
+        let msg = null;
+        try { msg = JSON.parse(String(event && event.data)); } catch (_) { return; }
+        if (!msg || typeof msg !== 'object') return;
+        if (msg.type === 'READY') { ws.send(JSON.stringify({ type: 'SUBSCRIBE', tripId: options.tripId })); return; }
+        if (msg.type === 'SUBSCRIBED') { attempts = 0; setState(true); return; }
+        if (msg.type === 'PING') { ws.send(JSON.stringify({ type: 'PONG' })); return; }
+        if (msg.type === 'ERROR') { stopped = true; setState(false); return; }   // 권한·형식 문제는 재시도해도 같다
+        if (msg.type === 'ACTIVITY') { try { options.onEvent(msg); } catch (_) { /* 화면 갱신 실패는 삼킨다 */ } }
+      };
+      ws.onerror = () => { /* onclose가 이어서 온다 */ };
+      ws.onclose = () => { socket = null; setState(false); schedule(); };
+    }
+
+    function schedule() {
+      if (stopped || timer) return;
+      attempts += 1;
+      // 흔들리는 네트워크에 매달리지 않는다 — 폴백(탭 복귀 pull)이 있으므로 몇 번만 시도한다
+      if (attempts > 5) return;
+      timer = setTimeout(() => { timer = null; void open(); }, retryMs * Math.min(attempts, 4));
+    }
+
+    void open();
+    return {
+      close() {
+        stopped = true;
+        if (timer) { clearTimeout(timer); timer = null; }
+        const current = socket; socket = null;
+        if (current) { try { current.close(1000); } catch (_) { /* 이미 닫힘 */ } }
+      }
+    };
+  }
+
+  const API = { configure, rpc, snapshots, me, realtime: { connect: connectRealtime }, DEFAULT_BASE };
   if (typeof module !== 'undefined' && module.exports) { module.exports = API; }   // Node (테스트)
   global.TC_API = API;
 })(/** @type {any} */ (typeof globalThis !== 'undefined' ? globalThis : this));

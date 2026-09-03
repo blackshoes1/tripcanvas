@@ -172,3 +172,108 @@ test('로그인했으면 미리보기에도 토큰을 실어 already_member가 �
   await TC_API.rpc('invite_preview', { p_token: 'x'.repeat(20) });
   assert.equal(f.calls[0].headers.authorization, 'Bearer tok-1');
 });
+
+// ── /me 와 자체 실시간 (PR12b) ──
+
+test('/me — 역할·인원과 실시간 선택을 한 번에 받는다', async () => {
+  const f = setup(() => ({ body: {
+    user: { id: 'u1', email: 'a@b.c' },
+    trips: [{ id: 'trip1', role: 'EDITOR', memberCount: 3, owner: false, supabaseTripId: 'row-1' }],
+    realtime: { provider: 'SUPABASE', url: null }
+  } }));
+  const { data, error } = await TC_API.me();
+  assert.equal(error, null);
+  assert.equal(f.calls[0].url, 'https://api.test/api/v1/me');
+  assert.equal(data.trips[0].supabaseTripId, 'row-1');
+  assert.equal(data.realtime.provider, 'SUPABASE');
+});
+
+/** 가짜 WebSocket — 열림·메시지·닫힘을 손으로 몬다 */
+function fakeSocketFactory() {
+  const made = [];
+  class FakeSocket {
+    constructor(url) { this.url = url; this.sent = []; this.closed = null; made.push(this); }
+    send(raw) { this.sent.push(JSON.parse(raw)); }
+    close(code) { this.closed = code || 1000; if (this.onclose) this.onclose({ code: this.closed }); }
+    open() { if (this.onopen) this.onopen(); }
+    deliver(msg) { if (this.onmessage) this.onmessage({ data: JSON.stringify(msg) }); }
+  }
+  return { made, FakeSocket };
+}
+
+test('실시간 — 붙으면 인증하고 구독한다. 여행 id는 client_id다(내부 id를 쓰지 않는다)', async () => {
+  const { made, FakeSocket } = fakeSocketFactory();
+  const events = [], states = [];
+  const conn = TC_API.realtime.connect({
+    url: 'wss://api.test/ws', tripId: 'trip1', getToken: async () => 'tok-1',
+    onEvent: (e) => events.push(e), onState: (on) => states.push(on), socketImpl: FakeSocket
+  });
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(made[0].url, 'wss://api.test/ws');
+  made[0].open();
+  await new Promise((r) => setTimeout(r, 0));
+  assert.deepEqual(made[0].sent[0], { type: 'AUTH', token: 'tok-1' });
+
+  made[0].deliver({ type: 'READY' });
+  assert.deepEqual(made[0].sent[1], { type: 'SUBSCRIBE', tripId: 'trip1' });
+  assert.deepEqual(states, [false]);                       // 구독 전에는 아직 '실시간'이 아니다
+
+  made[0].deliver({ type: 'SUBSCRIBED', tripId: 'trip1' });
+  assert.deepEqual(states, [false, true]);
+
+  made[0].deliver({ type: 'ACTIVITY', tripId: 'trip1', id: 7, kind: 'REACTION', mine: false });
+  assert.deepEqual(events, [{ type: 'ACTIVITY', tripId: 'trip1', id: 7, kind: 'REACTION', mine: false }]);
+  conn.close();
+  assert.equal(made[0].closed, 1000);
+});
+
+test('실시간 — PING에 PONG으로 답한다(답하지 않으면 서버가 끊는다)', async () => {
+  const { made, FakeSocket } = fakeSocketFactory();
+  TC_API.realtime.connect({ url: 'wss://x/ws', tripId: 't', getToken: async () => 'tok', onEvent: () => {}, onState: () => {}, socketImpl: FakeSocket });
+  await new Promise((r) => setTimeout(r, 0));
+  made[0].open(); await new Promise((r) => setTimeout(r, 0));
+  made[0].deliver({ type: 'PING' });
+  assert.deepEqual(made[0].sent.at(-1), { type: 'PONG' });
+});
+
+test('실시간 — 거절당하면 상태를 내리고 다시 붙지 않는다(권한 문제는 재시도해도 같다)', async () => {
+  const { made, FakeSocket } = fakeSocketFactory();
+  const states = [];
+  TC_API.realtime.connect({ url: 'wss://x/ws', tripId: 't', getToken: async () => 'tok', onEvent: () => {}, onState: (on) => states.push(on), socketImpl: FakeSocket, retryMs: 1 });
+  await new Promise((r) => setTimeout(r, 0));
+  made[0].open(); await new Promise((r) => setTimeout(r, 0));
+  made[0].deliver({ type: 'ERROR', code: 'FORBIDDEN', tripId: 't' });
+  made[0].close(4403);
+  await new Promise((r) => setTimeout(r, 30));
+  assert.equal(made.length, 1, '재시도하지 않아야 한다');
+  assert.equal(states.at(-1), false);
+});
+
+test('실시간 — 그냥 끊기면 다시 붙는다(네트워크는 흔들린다)', async () => {
+  const { made, FakeSocket } = fakeSocketFactory();
+  const conn = TC_API.realtime.connect({ url: 'wss://x/ws', tripId: 't', getToken: async () => 'tok', onEvent: () => {}, onState: () => {}, socketImpl: FakeSocket, retryMs: 1 });
+  await new Promise((r) => setTimeout(r, 0));
+  made[0].open(); await new Promise((r) => setTimeout(r, 0));
+  made[0].close(1006);
+  await new Promise((r) => setTimeout(r, 40));
+  assert.equal(made.length, 2, '다시 붙어야 한다');
+  conn.close();
+});
+
+test('실시간 — 닫은 뒤에는 다시 붙지 않는다', async () => {
+  const { made, FakeSocket } = fakeSocketFactory();
+  const conn = TC_API.realtime.connect({ url: 'wss://x/ws', tripId: 't', getToken: async () => 'tok', onEvent: () => {}, onState: () => {}, socketImpl: FakeSocket, retryMs: 1 });
+  await new Promise((r) => setTimeout(r, 0));
+  made[0].open(); await new Promise((r) => setTimeout(r, 0));
+  conn.close();
+  made[0].close(1000);
+  await new Promise((r) => setTimeout(r, 30));
+  assert.equal(made.length, 1);
+});
+
+test('실시간 — 토큰이 없으면 붙지 않는다', async () => {
+  const { made, FakeSocket } = fakeSocketFactory();
+  TC_API.realtime.connect({ url: 'wss://x/ws', tripId: 't', getToken: async () => null, onEvent: () => {}, onState: () => {}, socketImpl: FakeSocket });
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(made.length, 0);
+});

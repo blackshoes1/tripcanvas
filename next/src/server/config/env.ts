@@ -24,6 +24,8 @@ export interface ServerEnv {
   apiBaseUrl: string;
   /** 브라우저에서 이 API를 부르는 출처(§72). 비어 있으면 baseURL만 신뢰한다 */
   trustedOrigins: string[];
+  /** 자체 실시간 사이드카의 공개 주소(wss://…/ws). 없으면 자체 실시간을 쓰지 않는다 */
+  realtimeUrl: string | null;
   smtp: SmtpConfig | null;
   /** 자체 Auth를 켤 수 있는가 — 비밀과 DB가 둘 다 있어야 한다 */
   newAuthEnabled: boolean;
@@ -69,6 +71,7 @@ export function parseEnv(env: Record<string, string | undefined>, warn?: (m: str
     authSecret,
     apiBaseUrl: (env.API_BASE_URL || 'http://localhost:3000').replace(/\/+$/, ''),
     trustedOrigins: (env.TRUSTED_ORIGINS ?? '').split(',').map((o) => o.trim()).filter(Boolean),
+    realtimeUrl: (env.REALTIME_URL ?? '').trim() || null,
     smtp: readSmtp(env),
     newAuthEnabled: !!authSecret && !!databaseUrl,
     registry: readRegistry(env, warn)

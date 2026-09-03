@@ -12,6 +12,7 @@ import type { TripDoc } from '@/features/trip-state/domain/todayView';
 import { composeGateway } from '@/server/api/composeGateway';
 import { ApiError } from '@/server/api/errors';
 import { createCollabRoutes } from '@/server/api/collabRoutes';
+import { createMeRoutes } from '@/server/api/meRoutes';
 import { createSnapshotRoutes } from '@/server/api/snapshotRoutes';
 import { createTripRoutes } from '@/server/api/tripRoutes';
 import { TripAuthorizationService } from '@/server/application/authorization/tripAuthorization';
@@ -106,6 +107,17 @@ export async function collabApiFor(ctx: RequestContext | null, token: string): P
 }
 
 export const collabRoutes = createCollabRoutes({ verifier, apiFor: collabApiFor });
+
+/**
+ * /me — 역할·인원과 실시간 선택. 여행 목록은 TripService가 주므로 레지스트리를 그대로 따라간다.
+ * 실시간 선택은 서버만 알 수 있다: 협업이 아직 Supabase면 새 사이드카에는 보낼 이벤트가 없다.
+ */
+export const meRoutes = createMeRoutes({
+  verifier,
+  listTrips: async (ctx, token) => (await tripServiceFor(ctx, token)).list(ctx),
+  registry: env.registry,
+  realtimeUrl: env.realtimeUrl
+});
 
 function toRow(v: TripView): TripRow {
   return {

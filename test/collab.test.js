@@ -36,12 +36,12 @@ test('roleOf: 로그아웃·역할 정보 없음(로컬 전용 여행)은 소유
   assert.equal(C.roleOf({ t1: { role: 'nonsense' } }, 't1', true), 'OWNER');
 });
 
-test('tripRoleMap: 같은 client_id가 둘이면 소유한 쪽이 이긴다', () => {
+test('tripRoleMap: 같은 여행 id가 둘이면 소유한 쪽이 이긴다', () => {
   const map = C.tripRoleMap([
-    { client_id: 'x', role: 'VIEWER', member_count: 3, owner: false },
-    { client_id: 'x', role: 'OWNER', member_count: 1, owner: true },
-    { client_id: 'y', role: 'EDITOR', member_count: 2, owner: false },
-    { client_id: '', role: 'OWNER' }, null
+    { id: 'x', role: 'VIEWER', memberCount: 3, owner: false },
+    { id: 'x', role: 'OWNER', memberCount: 1, owner: true },
+    { id: 'y', role: 'EDITOR', memberCount: 2, owner: false },
+    { id: '', role: 'OWNER' }, null
   ]);
   assert.equal(map.x.role, 'OWNER');
   assert.equal(map.x.count, 1);
@@ -50,8 +50,8 @@ test('tripRoleMap: 같은 client_id가 둘이면 소유한 쪽이 이긴다', ()
   assert.equal(Object.keys(map).length, 2);
   // 순서를 바꿔도 같다
   const rev = C.tripRoleMap([
-    { client_id: 'x', role: 'OWNER', member_count: 1, owner: true },
-    { client_id: 'x', role: 'VIEWER', member_count: 3, owner: false }
+    { id: 'x', role: 'OWNER', memberCount: 1, owner: true },
+    { id: 'x', role: 'VIEWER', memberCount: 3, owner: false }
   ]);
   assert.equal(rev.x.role, 'OWNER');
 });
@@ -358,11 +358,12 @@ test('liveEffects: 이벤트 종류가 무엇을 다시 읽을지 정한다 — 
   assert.deepEqual(C.liveEffects(null).activity, false);
 });
 
-test('tripRoleMap: 서버 id(trip_id)를 문자열로 든다 — 실시간 구독 필터에 쓴다', () => {
-  const map = C.tripRoleMap([{ client_id: 'x', trip_id: 'a1b2-uuid', role: 'EDITOR', member_count: 2, owner: false }, { client_id: 'y', trip_id: 42, role: 'OWNER', owner: true }]);
+test('tripRoleMap: Supabase 실시간을 쓸 때만 오는 내부 id를 문자열로 든다', () => {
+  const map = C.tripRoleMap([{ id: 'x', supabaseTripId: 'a1b2-uuid', role: 'EDITOR', memberCount: 2, owner: false }, { id: 'y', supabaseTripId: 42, role: 'OWNER', owner: true }]);
   assert.equal(map.x.serverId, 'a1b2-uuid');
   assert.equal(map.y.serverId, '42');
-  assert.equal(C.tripRoleMap([{ client_id: 'z', role: 'OWNER' }]).z.serverId, '', '없으면 빈 문자열 — 구독하지 않는다');
+  // 자체 실시간을 쓰면 서버가 내부 id를 보내지 않는다 — client_id로 구독하므로 필요 없다
+  assert.equal(C.tripRoleMap([{ id: 'z', role: 'OWNER' }]).z.serverId, '');
 });
 
 // ── 여행 취향 · 그룹 컨텍스트 · 합의 (4단계) ──

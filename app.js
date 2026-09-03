@@ -36,6 +36,8 @@ function syncEntry(id){ return syncMeta[id]||(syncMeta[id]={revision:null,status
 let tripRoles={};
 // 실시간 구독 상태 — 로드 직후(updateAuthUI→updateCollabUI→ensureLiveChannel)부터 읽히므로 여기서 선언한다
 let liveCh=null, liveKey='', liveT=null, livePending=[], liveOn=false;
+// 자체 실시간 접속(TC_API.realtime)과 서버가 알려 준 선택. /me가 채운다 — 기본은 예전 경로(Supabase)다.
+let liveConn=null, liveChoice={provider:'SUPABASE',url:null};
 const JOIN_KEY='tripcanvas_join_v1';   // 초대 수락 대기 토큰 (로그인·메일 인증을 거쳐 돌아와도 참여 흐름이 이어지게)
 let pendingJoinToken=null;
 function myRole(id){ return TC_COLLAB.roleOf(tripRoles, id||(store&&store.activeId), !!user); }
@@ -3464,13 +3466,16 @@ const SUPA_KEY='sb_publishable_2C-n1YFvE9Cw9B7L7B6Trw_XO3Val5q';
 // 서버가 LEGACY 레지스트리면 API가 다시 Supabase를 부르므로, 데이터는 그대로 있고 앞단만 바뀐 것이다.
 const API_BASE = (typeof window!=='undefined' && window.__TC_API_BASE) ||
   (/^(localhost|127\.0\.0\.1)$/.test(location.hostname) ? 'http://localhost:3000' : TC_API.DEFAULT_BASE);
+/** API·실시간이 함께 쓰는 토큰 — Supabase 세션의 access token을 서버가 직접 검증한다(Phase A) */
+async function apiToken(){
+  if(!sb) return null;
+  try{ const {data}=await sb.auth.getSession(); return (data&&data.session&&data.session.access_token)||null; }
+  catch(_){ return null; }
+}
 if(window.supabase){
   sb = window.supabase.createClient(SUPA_URL, SUPA_KEY);
   // API는 Supabase 세션의 access token을 그대로 쓴다 — 서버가 그 JWT를 직접 검증한다(Phase A)
-  TC_API.configure({baseUrl:API_BASE, getToken:async()=>{
-    try{ const {data}=await sb.auth.getSession(); return (data&&data.session&&data.session.access_token)||null; }
-    catch(_){ return null; }
-  }});
+  TC_API.configure({baseUrl:API_BASE, getToken:apiToken});
   sb.auth.onAuthStateChange((_e, session)=>{
     const next = session?.user || null;
     // 로그인 병합은 "계정이 바뀐 순간"에만 돈다. 토큰 자동 갱신(TOKEN_REFRESHED)에도 병합을 돌리면
@@ -3729,11 +3734,13 @@ updateAuthUI();
 // 접근 제어는 DB(RLS·RPC)가 결정한다. 여기서는 그 결과를 보여주고, 서버가 거절할 요청을 미리 막을 뿐이다.
 // 실시간 반영은 다음 단계다 — 지금은 탭이 다시 보일 때와 패널을 열 때 최신본을 당겨온다(pullTrip).
 async function refreshTripRoles(){
-  if(!sb||!user){ tripRoles={}; updateCollabUI(); return; }
+  if(!sb||!user){ tripRoles={}; liveChoice={provider:'SUPABASE',url:null}; updateCollabUI(); return; }
   try{
-    const {data,error}=await sb.rpc('my_trip_roles');
+    const {data,error}=await TC_API.me();
     if(error) throw error;
-    tripRoles=TC_COLLAB.tripRoleMap(data||[]);
+    tripRoles=TC_COLLAB.tripRoleMap((data&&data.trips)||[]);
+    // 어느 실시간을 쓸지는 서버가 정한다 — 협업 데이터가 아직 Supabase면 새 사이드카에는 보낼 이벤트가 없다
+    liveChoice=(data&&data.realtime)||{provider:'SUPABASE',url:null};
     // 권한 오류로 멈춰 있던 여행이 편집 가능해졌으면 다시 올린다
     for(const [id,entry] of Object.entries(syncMeta)){
       if(entry.status==='forbidden'&&TC_COLLAB.canEdit(myRole(id))){ entry.status='dirty'; entry.hash=''; }
@@ -4186,19 +4193,36 @@ async function renderActivity(){
 // trip_activity의 INSERT만 받는다. payload는 '무엇이 바뀌었는지'의 신호로만 쓰고 내용은 RPC로 다시 읽는다.
 // 실패해도 앱은 그대로다 — 탭 복귀·패널 열기의 pull이 폴백이다. 구독은 보고 있는 여행 하나뿐이고,
 // 여행을 바꾸거나 로그아웃하면 ensureLiveChannel(렌더마다 불린다)이 갈아 끼우거나 끊는다.
+// 어느 실시간을 쓸지는 **서버가 정한다**(/api/v1/me). 협업 데이터가 아직 Supabase에 있으면 자체 사이드카에는
+// 보낼 이벤트가 없어, 클라이언트가 스스로 고르면 '실시간'이라 표시해 놓고 아무것도 안 오는 상태가 된다.
+function closeLive(){
+  if(liveConn){ try{ liveConn.close(); }catch(e){ /* 이미 닫힘 */ } liveConn=null; }
+  if(liveCh){ try{ sb.removeChannel(liveCh); }catch(e){ /* 이미 닫힘 */ } liveCh=null; }
+}
 function ensureLiveChannel(){
   const id=(!viewMode&&store)?store.activeId:null, info=id?tripRoles[id]:null;
-  const want=(sb&&user&&info&&info.serverId&&typeof sb.channel==='function')? `${id}|${info.serverId}` : '';
+  const useOwn=liveChoice.provider==='TRIPCANVAS'&&!!liveChoice.url;
+  // 자체 실시간은 client_id로 구독한다 — 내부 trips.id가 필요 없다
+  const want=(user&&id&&info)
+    ? (useOwn ? `tc|${id}`
+      : (sb&&info.serverId&&typeof sb.channel==='function' ? `sb|${id}|${info.serverId}` : ''))
+    : '';
   if(want===liveKey){ setLiveState(liveOn); return; }   // 바뀐 게 없어도 라벨은 현재 상태를 보인다(패널이 나중에 열릴 수 있다)
-  if(liveCh){ try{ sb.removeChannel(liveCh); }catch(e){ /* 이미 닫힘 */ } liveCh=null; }
+  closeLive();
   liveKey=want; liveOn=false; setLiveState(false);
   if(!want) return;
   try{
+    if(useOwn){
+      liveConn=TC_API.realtime.connect({url:liveChoice.url, tripId:id, getToken:apiToken,
+        onEvent:(e)=>onLiveEvent(id,e),
+        onState:(on)=>{ liveOn=on; setLiveState(on); }});
+      return;
+    }
     liveCh=sb.channel(`trip-activity-${info.serverId}`)
       .on('postgres_changes',{event:'INSERT',schema:'public',table:'trip_activity',filter:`trip_id=eq.${info.serverId}`},
           (payload)=>onLiveEvent(id,payload&&payload.new))
       .subscribe((status)=>{ liveOn=(status==='SUBSCRIBED'); setLiveState(liveOn); });
-  }catch(e){ reportOperationalError('collab.live',e); liveCh=null; liveKey=''; }
+  }catch(e){ reportOperationalError('collab.live',e); closeLive(); liveKey=''; }
 }
 function setLiveState(on){
   const el=document.getElementById('liveState'); if(!el) return;
@@ -4207,7 +4231,10 @@ function setLiveState(on){
 }
 function onLiveEvent(tripId,row){
   if(!row||!store||tripId!==store.activeId) return;
-  livePending.push(Object.assign({},row,{mine:!!(user&&row.actor_id===user.id)}));
+  // 자체 실시간은 서버가 구독자마다 mine을 계산해 붙여 준다(남의 user id를 내보내지 않는다).
+  // Supabase 채널은 행을 통째로 주므로 여기서 판정한다.
+  const mine=('mine' in row)? !!row.mine : !!(user&&row.actor_id===user.id);
+  livePending.push(Object.assign({},row,{mine:mine}));
   clearTimeout(liveT); liveT=setTimeout(()=>{ flushLive(tripId); },400);   // 넷이 동시에 누르면 한 번만 다시 읽는다
 }
 async function flushLive(tripId){

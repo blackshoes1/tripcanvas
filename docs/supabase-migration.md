@@ -137,7 +137,7 @@ Supabase 전용 의존:
 | 6 | Realtime WebSocket | ✅ PR8 — 트리거 pg_notify → LISTEN → 허브 → 구독자. 서버 완성, 웹 전환은 PR12 |
 | 7 | Storage (MinIO) — **현재 쓰는 곳이 없어 새 기능 전까지 보류** | PR9 |
 | 8 | 새 Auth (가입·인증메일·세션·재설정) · 기존 사용자 이관 · 웹/iOS 전환 | ✅ PR10(기반) — 아래. 기존 사용자 이관·웹/iOS 전환은 PR11 |
-| 9 | 웹 Supabase 클라이언트 제거 · iOS GoTrue 호출 제거 | 🔸 PR12 진행 중 — 함께하기 RPC 16종과 버전 이력이 API로 옮겨졌다. 남은 것: 여행 동기화(`sync_trip`)·`my_trip_roles`·실시간·가격 관측·로그인 |
+| 9 | 웹 Supabase 클라이언트 제거 · iOS GoTrue 호출 제거 | 🔸 PR12 진행 중 — 함께하기·버전 이력·역할·실시간이 API로 옮겨졌다. 남은 것: 여행 동기화(`sync_trip`)·가격 관측·로그인 |
 | 10 | 데이터 이관 리허설 · NAS 프로덕션 · 롤백 테스트 · Supabase read-only → 종료 | PR14 — **R0 완료**(이관·검증 스크립트 + 21개 테스트, CI에서 매번). R1·R2는 접속 정보가 있는 환경에서. **리허설 방식 확정**: `pg_dump` 직접 추출 · 전환 시 전면 중단(증분 동기화 없음) · R0/R1/R2 3단계. 절차는 `docs/backup-restore.md` |
 
 ## 협업 API (PR7)
@@ -209,17 +209,30 @@ Supabase Realtime을 대신한다. **PostgreSQL이 진실이고 소켓은 알림
 
 | | |
 |---|---|
+| 역할·실시간 | `GET /api/v1/me` — 역할·인원(`my_trip_roles` 대체)과 **어느 실시간을 쓸지**를 한 번에 준다 |
 | 클라이언트 | `api.js`(`TC_API`) — `{data,error}`를 돌려주고 **예외를 던지지 않는다**. 호출부의 모양을 바꾸지 않으려는 설계다 |
 | 오류 | 서버의 `FORBIDDEN`을 Supabase가 주던 `42501`/403으로 옮긴다 — `collab.js`의 `isForbiddenError`와 '재시도하지 않는다' 규칙이 그대로 동작한다 |
 | 토큰 | Supabase 세션의 access token을 그대로 싣는다(서버가 직접 검증, Phase A). **초대 미리보기만 토큰 없이** 나간다(§6) |
 | 주소 | `API_BASE` — 운영은 `tripcanvas-api.vercel.app`, localhost는 `:3000`, 테스트는 `window.__TC_API_BASE` |
 | CORS | 두 프로젝트가 다른 출처라 필요하다. `TRUSTED_ORIGINS`에 있는 출처만 허용하고 `*`를 쓰지 않는다(§72, `next/src/proxy.ts`) |
 
+### 실시간은 서버가 고른다
+
+협업 데이터가 아직 Supabase에 있으면 자체 사이드카에는 **보낼 이벤트가 없다**(트리거가 새 DB에만 있다).
+클라이언트가 스스로 고르면 "실시간이라 표시해 놓고 아무것도 안 오는" 상태가 되므로, 레지스트리를 아는 서버가 정한다.
+
+| `/me`의 realtime | 웹이 하는 일 |
+|---|---|
+| `SUPABASE` (COLLAB=LEGACY) | 예전 그대로 Supabase 채널. 이때만 `supabaseTripId`(내부 trips.id)를 함께 받는다 |
+| `TRIPCANVAS` (COLLAB≠LEGACY + `REALTIME_URL`) | 자체 WebSocket에 붙어 **client_id로 구독**한다 — 내부 id가 필요 없다 |
+| `NONE` (주소 없음) | 실시간 없이 "새로고침으로 갱신". 켜진 척하지 않는다 |
+
+`mine`은 자체 실시간에서는 **서버가 구독자마다 계산해** 붙인다(남의 user id를 내보내지 않는다). Supabase 채널은 행을 통째로 주므로 클라이언트가 판정한다.
+
 **아직 Supabase에 남은 것**과 이유:
 
 - **로그인·세션** — 자체 Auth 전환은 PR11이다
 - **여행 동기화**(`sync_trip`·`tombstone_trip`·목록·`pullTrip`) — CAS·충돌 처리가 가장 위험한 코드다. 따로 옮긴다
-- **`my_trip_roles`와 실시간** — 실시간 채널이 이 호출이 주는 내부 `trip_id`를 쓴다. 둘은 함께 옮겨야 한다
 - **가격 관측**(`hotel_price_snapshots`) — 쓰기 엔드포인트가 아직 없다
 
 ## 지금 할 수 있는 것 / 아직 못 하는 것

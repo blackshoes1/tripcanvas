@@ -9,7 +9,8 @@
 
   /** @typedef {'OWNER'|'EDITOR'|'VIEWER'} Role */
   /** @typedef {{id?:number|string,user_id?:string,role?:string,status?:string,display_name?:string|null,joined_at?:string|null,me?:boolean}} MemberRow */
-  /** @typedef {{client_id?:string,trip_id?:string|number|null,role?:string,member_count?:number,owner?:boolean}} RoleRow */
+  /** @typedef {{role?:string}} RoleRow  역할만 보면 되는 것(roleOf) */
+  /** @typedef {{id?:string,role?:string,memberCount?:number,owner?:boolean,supabaseTripId?:string|number|null}} MeTripRow  GET /api/v1/me의 여행 한 줄 */
   /** @typedef {{valid?:boolean,reason?:string|null,trip_name?:string|null,start_date?:string|null,day_count?:number|null,role?:string|null,expires_at?:string|null,already_member?:boolean}} InvitePreview */
 
   const ROLES = Object.freeze(['OWNER','EDITOR','VIEWER']);
@@ -57,7 +58,7 @@
   /**
    * 이 기기에서 이 여행을 어떤 역할로 다루는가.
    * 로그아웃 상태·역할 정보가 없는 여행(로컬 전용)은 **소유자**다 — 혼자 쓰는 여행은 지금까지처럼 전부 된다(§95).
-   * @param {Record<string, RoleRow>|null|undefined} roles  my_trip_roles 결과를 client_id로 인덱싱한 것
+   * @param {Record<string, RoleRow>|null|undefined} roles  여행 id로 인덱싱한 역할 맵(tripRoleMap 결과)
    * @param {string} clientId
    * @param {boolean} signedIn
    * @returns {Role}
@@ -69,19 +70,21 @@
   }
 
   /**
-   * my_trip_roles 행들 → client_id 인덱스. 같은 client_id가 둘이면(내 것 + 공유받은 것) 소유한 쪽이 이긴다.
-   * @param {RoleRow[]|null|undefined} rows
+   * GET /api/v1/me의 여행들 → 여행 id 인덱스. 같은 id가 둘이면(내 것 + 공유받은 것) 소유한 쪽이 이긴다.
+   * @param {MeTripRow[]|null|undefined} rows
    * @returns {Record<string, {role:Role, count:number, owner:boolean}>}
    */
   function tripRoleMap(rows){
     /** @type {Record<string, {role:Role, count:number, owner:boolean, serverId:string}>} */ const out={};
     (rows||[]).forEach((r)=>{
-      if(!r || !r.client_id) return;
+      if(!r || !r.id) return;
       const role=normRole(r.role); if(!role) return;
-      const id=String(r.client_id);
+      const id=String(r.id);
       if(out[id] && out[id].owner && !r.owner) return;
-      // serverId(trips.id)는 실시간 구독 필터에 쓴다 — 클라이언트는 그 타입(uuid/bigint)을 모르고 문자열로만 다룬다
-      out[id]={role, count:Math.max(1, Math.round(Number(r.member_count)||1)), owner:!!r.owner, serverId:String(r.trip_id==null?'':r.trip_id)};
+      // serverId는 **Supabase 실시간을 쓸 때만** 온다(GET /api/v1/me의 supabaseTripId).
+      // 자체 실시간은 client_id로 구독하므로 내부 id가 필요 없고, 서버도 그때는 보내지 않는다.
+      out[id]={role, count:Math.max(1, Math.round(Number(r.memberCount)||1)), owner:!!r.owner,
+               serverId:String(r.supabaseTripId==null?'':r.supabaseTripId)};
     });
     return out;
   }
