@@ -81,6 +81,13 @@ export class MemoryTripRepository implements TripRepository {
       .sort((a, b) => b.record.updatedAt.localeCompare(a.record.updatedAt));
   }
 
+  async listForSync(userId: string): Promise<TripView[]> {
+    const seen = new Set<string>();
+    return (await this.visible(userId))
+      .filter((v) => !seen.has(v.record.clientId) && seen.add(v.record.clientId))
+      .sort((a, b) => b.record.updatedAt.localeCompare(a.record.updatedAt));
+  }
+
   async findVisible(userId: string, clientId: string): Promise<TripView | null> {
     return (await this.visible(userId)).find((v) => v.record.clientId === clientId) ?? null;
   }

@@ -17,6 +17,14 @@ export class DualReadTripRepository implements TripRepository {
     return [...a, ...extra].sort((x, y) => y.record.updatedAt.localeCompare(x.record.updatedAt));
   }
 
+  async listForSync(userId: string): Promise<TripView[]> {
+    const [a, b] = await Promise.all([this.primary.listForSync(userId), this.fallback.listForSync(userId)]);
+    const seen = new Set(a.map((v) => v.record.clientId));
+    const extra = b.filter((v) => !seen.has(v.record.clientId));
+    extra.forEach((v) => this.fromFallback.add(v.record.id));
+    return [...a, ...extra].sort((x, y) => y.record.updatedAt.localeCompare(x.record.updatedAt));
+  }
+
   async findVisible(userId: string, clientId: string): Promise<TripView | null> {
     const hit = await this.primary.findVisible(userId, clientId);
     if (hit) return hit;

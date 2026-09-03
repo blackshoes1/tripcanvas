@@ -137,7 +137,7 @@ Supabase 전용 의존:
 | 6 | Realtime WebSocket | ✅ PR8 — 트리거 pg_notify → LISTEN → 허브 → 구독자. 서버 완성, 웹 전환은 PR12 |
 | 7 | Storage (MinIO) — **현재 쓰는 곳이 없어 새 기능 전까지 보류** | PR9 |
 | 8 | 새 Auth (가입·인증메일·세션·재설정) · 기존 사용자 이관 · 웹/iOS 전환 | ✅ PR10(기반) — 아래. 기존 사용자 이관·웹/iOS 전환은 PR11 |
-| 9 | 웹 Supabase 클라이언트 제거 · iOS GoTrue 호출 제거 | 🔸 PR12 진행 중 — 함께하기·버전 이력·역할·실시간이 API로 옮겨졌다. 남은 것: 여행 동기화(`sync_trip`)·가격 관측·로그인 |
+| 9 | 웹 Supabase 클라이언트 제거 · iOS GoTrue 호출 제거 | 🔸 PR12 — 웹의 **데이터 접근이 전부 API를 지난다**(동기화·함께하기·버전 이력·역할). 남은 것: 로그인·가격 관측·Supabase 실시간 폴백 |
 | 10 | 데이터 이관 리허설 · NAS 프로덕션 · 롤백 테스트 · Supabase read-only → 종료 | PR14 — **R0 완료**(이관·검증 스크립트 + 21개 테스트, CI에서 매번). R1·R2는 접속 정보가 있는 환경에서. **리허설 방식 확정**: `pg_dump` 직접 추출 · 전환 시 전면 중단(증분 동기화 없음) · R0/R1/R2 3단계. 절차는 `docs/backup-restore.md` |
 
 ## 협업 API (PR7)
@@ -209,6 +209,7 @@ Supabase Realtime을 대신한다. **PostgreSQL이 진실이고 소켓은 알림
 
 | | |
 |---|---|
+| 여행 동기화 | `GET /api/v1/sync/trips`(문서·tombstone 포함) · `PUT/POST/DELETE /trips`. `TC_API.sync`가 예전 `sync_trip`/`tombstone_trip`의 반환 모양으로 옮긴다 |
 | 역할·실시간 | `GET /api/v1/me` — 역할·인원(`my_trip_roles` 대체)과 **어느 실시간을 쓸지**를 한 번에 준다 |
 | 클라이언트 | `api.js`(`TC_API`) — `{data,error}`를 돌려주고 **예외를 던지지 않는다**. 호출부의 모양을 바꾸지 않으려는 설계다 |
 | 오류 | 서버의 `FORBIDDEN`을 Supabase가 주던 `42501`/403으로 옮긴다 — `collab.js`의 `isForbiddenError`와 '재시도하지 않는다' 규칙이 그대로 동작한다 |
@@ -229,10 +230,19 @@ Supabase Realtime을 대신한다. **PostgreSQL이 진실이고 소켓은 알림
 
 `mine`은 자체 실시간에서는 **서버가 구독자마다 계산해** 붙인다(남의 user id를 내보내지 않는다). Supabase 채널은 행을 통째로 주므로 클라이언트가 판정한다.
 
+### 동기화는 웹의 CAS 로직을 한 줄도 바꾸지 않았다
+
+`sync_trip`/`tombstone_trip`은 `{applied, conflict, revision, data, deleted_at}`을 준다. 이 앱에서 가장 위험한 코드(충돌 보존·base revision 유지)가 그 모양에 기대고 있어, **번역을 `api.js`에 두고 `app.js`는 그대로 뒀다.**
+
+- 충돌은 오류가 아니라 CAS의 정상 결과다 — 서버가 409(`STALE_VERSION`/`CONFLICT`)에 **현재 문서와 deletedAt**을 실어 주면 어댑터가 행으로 바꾼다. 충돌 카드가 원격본을 보여줘야 하기 때문이다.
+- 권한 오류(403)와 그 밖의 실패는 **던진다** — 호출부가 forbidden으로 멈추거나 재시도한다.
+- 처음 올리는 여행(revision 없음)과 서버에 없는 여행(404)은 새로 만든다 — 예전 RPC의 upsert와 같다.
+- 삭제는 서버에 없어도 성공이다(멱등).
+- `GET /api/v1/sync/trips`는 `/trips`(요약)와 달리 **문서 전체와 tombstone**을 준다 — 다른 기기가 지운 여행을 병합해야 한다.
+
 **아직 Supabase에 남은 것**과 이유:
 
 - **로그인·세션** — 자체 Auth 전환은 PR11이다
-- **여행 동기화**(`sync_trip`·`tombstone_trip`·목록·`pullTrip`) — CAS·충돌 처리가 가장 위험한 코드다. 따로 옮긴다
 - **가격 관측**(`hotel_price_snapshots`) — 쓰기 엔드포인트가 아직 없다
 
 ## 지금 할 수 있는 것 / 아직 못 하는 것

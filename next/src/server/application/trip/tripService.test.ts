@@ -153,3 +153,66 @@ describe('delete', () => {
     expect(await code(service.delete(A, 'nope', 1))).toBe('NOT_FOUND');
   });
 });
+
+describe('동기화(웹의 CAS)를 위해 서버가 현재 상태를 함께 알린다', () => {
+  it('stale write는 현재 revision과 **현재 문서**를 함께 준다 — 충돌 카드가 원격본을 보여야 한다', async () => {
+    await service.create(A, doc('스페인'));
+    await service.update(A, 'trip1', doc('서버가 먼저'), 1);
+    try {
+      await service.update(A, 'trip1', doc('내 것'), 1);
+      expect.unreachable();
+    } catch (e) {
+      const err = e as ApiError;
+      expect(err.code).toBe('STALE_VERSION');
+      expect(err.details?.revision).toBe(2);
+      expect(err.details?.document).toMatchObject({ name: '서버가 먼저' });
+      expect(err.details?.deletedAt).toBeNull();
+    }
+  });
+
+  it('삭제된 여행에 저장하면 그 사실을 알린다 — 웹은 remote-deleted 충돌로 다룬다', async () => {
+    const made = await service.create(A, doc('스페인'));
+    await service.delete(A, 'trip1', made.record.revision);
+    try {
+      await service.update(A, 'trip1', doc('되살리기?'), 1);
+      expect.unreachable();
+    } catch (e) {
+      expect((e as ApiError).details?.deletedAt).toBeTruthy();
+    }
+  });
+
+  it('같은 id로 처음 올리는데 서버에 이미 있으면 현재 문서를 준다', async () => {
+    await service.create(A, doc('서버 것'));
+    try {
+      await service.create(A, doc('내 것'));
+      expect.unreachable();
+    } catch (e) {
+      const err = e as ApiError;
+      expect(err.code).toBe('CONFLICT');
+      expect(err.details?.revision).toBe(1);
+      expect(err.details?.document).toMatchObject({ name: '서버 것' });
+    }
+  });
+
+  it('삭제 충돌도 현재 상태를 준다', async () => {
+    await service.create(A, doc('스페인'));
+    await service.update(A, 'trip1', doc('v2'), 1);
+    try {
+      await service.delete(A, 'trip1', 1);
+      expect.unreachable();
+    } catch (e) {
+      expect((e as ApiError).details?.revision).toBe(2);
+      expect((e as ApiError).details?.document).toMatchObject({ name: 'v2' });
+    }
+  });
+
+  it('동기화 목록은 **삭제된 여행도** 준다 — 다른 기기의 삭제를 병합해야 한다', async () => {
+    await service.create(A, doc('남은 것'));
+    const gone = await service.create(A, { ...doc('지운 것'), id: 'trip2' });
+    await service.delete(A, 'trip2', gone.record.revision);
+
+    expect((await service.list(A)).map((v) => v.record.clientId)).toEqual(['trip1']);
+    const forSync = await service.listForSync(A);
+    expect(forSync.map((r) => [r.record.clientId, !!r.record.deletedAt]).sort()).toEqual([['trip1', false], ['trip2', true]]);
+  });
+});

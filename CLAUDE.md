@@ -37,7 +37,7 @@ npm test && npm run lint && npm run check:types && npm run security:scan && npm 
 - `intake.js` — **유입 계층**(순수): 공유 분류(`classifyShare`) · 날짜/통화 정규화 · 예약 후보 파싱(`parseBookingCandidate`) · 중복(`findDuplicateBooking`) · 여행 매칭(`matchTripForBooking`) · 기록 연결(`associateMemory`). **저장은 하지 않는다** — 확인한 것만 저장된다. **유닛 테스트 + `tsc` 대상**
 - `collab.js` — **함께하기(협업)** 순수 로직: 역할 판정(`canEdit/canManage/canLeave/canDelete`) · 초대 링크 만들기/읽기(`#join=`) · 초대 판정 문구 · 권한 오류 판별 · **후보 장소와 반응**(집계 `tallyReactions` · 상태 `candidateMood` · 보드 묶음 `groupCandidates` · `canPropose/canReact/canRemoveCandidate`) · **활동 기록과 실시간**(문장 `activityText` · 묶음 `condenseActivity` · 이벤트 판정 `liveEffects` · 코멘트 권한) · **여행 취향과 합의**(`normPrefs` 서버와 같은 규칙 · `groupContext` · `consensusOf` 점수는 내부값 · `candidateVerdict`) · **충돌과 제안**(`candidateConflict` · `conflictOptions` · `buildGroupProposal` 미리보기). 접근 제어의 경계는 DB(RLS·RPC)고 여기는 화면 판정만. **유닛 테스트 + `tsc` 대상**
 - `style.css` — 스타일
-- `api.js` — **TripCanvas API 클라이언트**(함께하기·버전 이력). `{data,error}`를 돌려주고 예외를 던지지 않으며, 서버의 `FORBIDDEN`을 Supabase가 주던 `42501`로 옮겨 기존 권한 처리가 그대로 돌게 한다. 초대 미리보기만 토큰 없이 나간다. **유닛 테스트 + `tsc` 대상**
+- `api.js` — **TripCanvas API 클라이언트**(여행 동기화·함께하기·버전 이력·역할·실시간). `TC_API.sync`는 예전 `sync_trip`/`tombstone_trip`의 반환 모양(`{applied,conflict,revision,data,deleted_at}`)을 그대로 재현한다 — app.js의 CAS·충돌 로직을 건드리지 않기 위해서다. `{data,error}`를 돌려주고 예외를 던지지 않으며, 서버의 `FORBIDDEN`을 Supabase가 주던 `42501`로 옮겨 기존 권한 처리가 그대로 돌게 한다. 초대 미리보기만 토큰 없이 나간다. **유닛 테스트 + `tsc` 대상**
 - `sync.js` — 클라우드 동기화(리비전 CAS·충돌·tombstone). **`tsc` 대상**
 - `routing.js` — 경로 조회 transport 격리 (app.js는 `fetchLeg` 호환 shim만 씀). **`tsc` 대상**
 - `sw.js` — 서비스 워커 (앱 셸 캐시). `/api/`와 GET 외 요청은 건드리지 않는다

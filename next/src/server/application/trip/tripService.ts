@@ -10,7 +10,7 @@ import { randomBytes } from 'node:crypto';
 
 import { ApiError } from '../../api/errors';
 import type { RequestContext } from '../../auth/types';
-import type { MembershipRepository, TripRepository, TripView } from '../../repositories/types';
+import type { MembershipRepository, TripRecord, TripRepository, TripView } from '../../repositories/types';
 import type { TripAuthorizationService } from '../authorization/tripAuthorization';
 
 export interface TripServiceDeps {
@@ -22,6 +22,11 @@ export interface TripServiceDeps {
 /** 웹의 uid()와 같은 모양(영숫자 7자) — 예약·장소 id 규칙(normalizeBooking)이 같은 문자 집합을 본다 */
 function newClientId(): string {
   return randomBytes(6).toString('base64url').replace(/[^A-Za-z0-9]/g, '').slice(0, 7).padEnd(7, '0').toLowerCase();
+}
+
+/** 충돌 응답에 실을 서버의 현재 상태 — 클라이언트가 두 버전을 보여 주고 고르게 하려면 문서가 필요하다 */
+function staleDetails(record: TripRecord): Record<string, unknown> {
+  return { revision: record.revision, deletedAt: record.deletedAt, document: record.data };
 }
 
 function normalize(input: unknown): Record<string, unknown> {
@@ -37,6 +42,11 @@ export class TripService {
     return this.deps.trips.listVisible(ctx.userId);
   }
 
+  /** 동기화용 — 삭제(tombstone)된 여행까지. 다른 기기의 삭제를 병합하려면 필요하다 */
+  listForSync(ctx: RequestContext): Promise<TripView[]> {
+    return this.deps.trips.listForSync(ctx.userId);
+  }
+
   async get(ctx: RequestContext, clientId: string): Promise<TripView> {
     const view = await this.deps.trips.findVisible(ctx.userId, clientId);
     if (!view || view.record.deletedAt) throw new ApiError('NOT_FOUND');
@@ -49,7 +59,13 @@ export class TripService {
     const clientId = requested || newClientId();
     doc.id = clientId;
     const existing = await this.deps.trips.findVisible(ctx.userId, clientId);
-    if (existing?.record.ownerId === ctx.userId) throw new ApiError('CONFLICT', { message: '같은 id의 여행이 이미 있습니다 — 수정(PUT)으로 저장해 주세요.', details: { revision: existing.record.revision } });
+    if (existing?.record.ownerId === ctx.userId) {
+      // 충돌에는 **서버의 현재 문서**를 함께 싣는다 — 클라이언트가 두 버전을 보여 주고 고르게 해야 한다
+      throw new ApiError('CONFLICT', {
+        message: '같은 id의 여행이 이미 있습니다 — 수정(PUT)으로 저장해 주세요.',
+        details: { revision: existing.record.revision, document: existing.record.data, deletedAt: existing.record.deletedAt }
+      });
+    }
     if (await this.deps.members.wasMember(ctx.userId, clientId)) {
       throw new ApiError('FORBIDDEN', { message: '이 여행에서 나갔거나 내보내졌습니다 — 사본을 새로 만들 수 없습니다.' });
     }
@@ -67,7 +83,7 @@ export class TripService {
     }
     if (!(await this.deps.authz.canEdit(ctx.userId, view.record.id))) throw new ApiError('FORBIDDEN');
     const result = await this.deps.trips.updateCas(view.record.id, doc, expectedRevision, { ...opts, actorId: ctx.userId });
-    if (!result.applied) throw new ApiError('STALE_VERSION', { details: { revision: result.record.revision, deleted: !!result.record.deletedAt } });
+    if (!result.applied) throw new ApiError('STALE_VERSION', { details: staleDetails(result.record) });
     return { ...view, record: result.record };
   }
 
@@ -79,7 +95,7 @@ export class TripService {
     }
     if (view.record.deletedAt) return view;
     const result = await this.deps.trips.tombstoneCas(view.record.id, expectedRevision, opts);
-    if (!result.applied) throw new ApiError('STALE_VERSION', { details: { revision: result.record.revision } });
+    if (!result.applied) throw new ApiError('STALE_VERSION', { details: staleDetails(result.record) });
     return { ...view, record: result.record };
   }
 }

@@ -158,6 +158,96 @@
     }
   };
 
+  /**
+   * 여행 동기화 — 예전 sync_trip / tombstone_trip의 **반환 모양을 그대로** 재현한다.
+   * app.js의 CAS·충돌 처리는 이 앱에서 가장 위험한 코드다. 한 줄도 바꾸지 않으려고 번역을 여기서 한다.
+   *
+   *   {applied, conflict, revision, data, deleted_at}
+   *
+   * 충돌은 오류가 아니라 CAS의 정상적인 결과다 — 서버가 409에 현재 문서를 실어 주면 여기서 행으로 바꾼다.
+   * 권한 오류(403)와 그 밖의 실패는 **던진다**: 호출부가 forbidden으로 멈추거나 재시도해야 하기 때문이다.
+   */
+  const CONFLICT_CODES = ['STALE_VERSION', 'CONFLICT'];
+
+  /**
+   * @param {any} error @param {number|null|undefined} fallbackRevision
+   * @returns {{applied:boolean,conflict:boolean,revision:number,data:any,deleted_at:string|null}|null}
+   */
+  function conflictRow(error, fallbackRevision) {
+    if (!error || CONFLICT_CODES.indexOf(error.apiCode) < 0) return null;
+    const d = error.details || {};
+    return {
+      applied: false, conflict: true,
+      revision: Number(d.revision != null ? d.revision : error.revision) || fallbackRevision || 1,
+      data: d.document == null ? null : d.document,
+      deleted_at: d.deletedAt == null ? null : String(d.deletedAt)
+    };
+  }
+  /** 오류를 그대로 던진다 — 예전 rpcRow가 그랬듯이 @param {any} error */
+  function raise(error) {
+    const e = new Error(error.message || '요청이 실패했습니다');
+    return Object.assign(e, error);
+  }
+
+  const sync = {
+    /** 로그인 병합용 전체 조회 — 삭제(tombstone)된 여행까지, 예전 trips select와 같은 행 모양으로 */
+    list: async () => {
+      const r = await request('GET', '/api/v1/sync/trips');
+      if (r.error) return r;
+      const rows = (r.data && r.data.trips) || [];
+      return { data: rows.map((/** @type {any} */ t) => ({
+        client_id: t.id, data: t.document == null ? null : t.document,
+        revision: Number(t.revision) || 1, deleted_at: t.deletedAt == null ? null : t.deletedAt,
+        updated_at: t.updatedAt
+      })), error: null };
+    },
+
+    /**
+     * sync_trip 자리. revision이 없으면 새로 만들고, 서버에 없으면(404) 만든다 — 예전 RPC의 upsert와 같다.
+     * @param {string} tripId @param {any} doc @param {number|null} expectedRevision @param {boolean} force
+     */
+    save: async (tripId, doc, expectedRevision, force) => {
+      const applied = (/** @type {any} */ payload) => ({
+        applied: true, conflict: false,
+        revision: Number(payload && payload.trip && payload.trip.revision) || 1,
+        data: (payload && payload.document) || null, deleted_at: null
+      });
+      const create = async () => {
+        const r = await request('POST', '/api/v1/trips', { trip: doc });
+        if (!r.error) return applied(r.data);
+        const conflict = conflictRow(r.error, expectedRevision);
+        if (conflict) return conflict;
+        throw raise(r.error);
+      };
+      if (expectedRevision == null) return create();
+
+      const r = await request('PUT', '/api/v1/trips/' + seg(tripId), { trip: doc, expectedRevision: expectedRevision, force: !!force });
+      if (!r.error) return applied(r.data);
+      // 로컬에 revision이 남아 있어도 서버에 그 여행이 없을 수 있다(다른 계정·이관 직후) — 예전 RPC처럼 새로 만든다
+      if (r.error.apiCode === 'NOT_FOUND') return create();
+      const conflict = conflictRow(r.error, expectedRevision);
+      if (conflict) return conflict;
+      throw raise(r.error);
+    },
+
+    /**
+     * tombstone_trip 자리. 서버에 없는 여행을 지우는 것은 성공이다(멱등)
+     * @param {string} tripId @param {number|null} expectedRevision
+     */
+    tombstone: async (tripId, expectedRevision) => {
+      const r = await request('DELETE', '/api/v1/trips/' + seg(tripId) + '?expectedRevision=' + encodeURIComponent(String(expectedRevision == null ? 1 : expectedRevision)));
+      if (!r.error) {
+        return { applied: true, conflict: false, revision: Number(r.data && r.data.revision) || expectedRevision || 1, data: null, deleted_at: null };
+      }
+      if (r.error.apiCode === 'NOT_FOUND') {
+        return { applied: true, conflict: false, revision: expectedRevision || 1, data: null, deleted_at: null };
+      }
+      const conflict = conflictRow(r.error, expectedRevision);
+      if (conflict) return conflict;
+      throw raise(r.error);
+    }
+  };
+
   /** 내 역할·인원과 어느 실시간을 쓸지 — 로그인 직후·역할 갱신 때 한 번(my_trip_roles 대체) */
   async function me() {
     return request('GET', '/api/v1/me');
@@ -227,7 +317,7 @@
     };
   }
 
-  const API = { configure, rpc, snapshots, me, realtime: { connect: connectRealtime }, DEFAULT_BASE };
+  const API = { configure, rpc, snapshots, me, sync, realtime: { connect: connectRealtime }, DEFAULT_BASE };
   if (typeof module !== 'undefined' && module.exports) { module.exports = API; }   // Node (테스트)
   global.TC_API = API;
 })(/** @type {any} */ (typeof globalThis !== 'undefined' ? globalThis : this));

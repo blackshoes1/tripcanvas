@@ -64,6 +64,23 @@ export function createTripRoutes(deps: TripRouteDeps) {
       const body: TripListResponse = { schemaVersion: CONTRACT_SCHEMA_VERSION, trips: views.map((v) => detail(v).trip) };
       return ok(body);
     }),
+    /**
+     * GET /api/v1/sync/trips — 동기화용 전체 조회(문서 포함 · tombstone 포함).
+     * 로그인 병합이 "다른 기기가 지운 여행"을 알아야 하므로 삭제된 것도 준다.
+     */
+    syncList: (request: Request) => withService(request, async (ctx, service) => {
+      const views = await service.listForSync(ctx);
+      return ok({
+        schemaVersion: CONTRACT_SCHEMA_VERSION,
+        trips: views.map((v) => ({
+          id: v.record.clientId,
+          document: v.record.data,
+          revision: v.record.revision,
+          deletedAt: v.record.deletedAt,
+          updatedAt: v.record.updatedAt
+        }))
+      });
+    }),
     /** POST /api/v1/trips  { trip } */
     create: (request: Request) => withService(request, async (ctx, service) => {
       const body = await parseBody(request, TripBody);

@@ -36,6 +36,8 @@ function boot() {
   inject('collab.js');
   inject('api.js');
   inject('app.js');
+  // 안전장치: 테스트가 진짜 네트워크를 때리면 즉시 실패한다(가짜를 빠뜨린 것을 조용히 넘기지 않는다)
+  window.TC_API.configure({ fetchImpl: async () => { throw new Error('테스트에서 실제 네트워크 호출'); } });
   return window;
 }
 // 여행 하나를 store에 넣고 activeId·activeDay 지정
@@ -51,10 +53,10 @@ test('통합 부트: index.html+lib+app 무크래시 로드', { skip: noJsdom },
 
 test('통합: 동기화 실패 상태를 보존하고 명시적 재시도로 회복한다', { skip: noJsdom }, async () => {
   const w=boot();
-  w.eval(`user={id:'u1'}; sb={rpc:async()=>({data:null,error:{message:'offline'}})};`);
+  w.eval(`user={id:'u1'}; sb={}; TC_API.sync.save=async()=>{ throw new Error('offline'); };`);
   await w.eval(`syncTripCloud({id:'retry1',name:'R',days:[{spots:[]}]})`);
   assert.equal(w.eval(`syncMeta.retry1.status`),'error');
-  w.eval(`clearTimeout(cloudRetryT); sb={rpc:async()=>({data:[{applied:true,conflict:false,revision:2,data:null,deleted_at:null}],error:null})};`);
+  w.eval(`clearTimeout(cloudRetryT); TC_API.sync.save=async()=>({applied:true,conflict:false,revision:2,data:null,deleted_at:null});`);
   await w.eval(`syncTripCloud({id:'retry1',name:'R',days:[{spots:[]}]})`);
   assert.equal(w.eval(`syncMeta.retry1.status`),'clean');
   assert.equal(w.eval(`syncMeta.retry1.revision`),2);
@@ -849,7 +851,7 @@ test('통합: 지도가 크기를 못 잡아 bounds가 한 점이면 중심 반�
 test('통합: 충돌 응답은 로컬 base revision을 서버 값으로 덮어쓰지 않는다', { skip: noJsdom }, async () => {
   const w=boot();
   w.eval(`user={id:'u1'}; syncMeta.c1={revision:3,status:'clean',op:'',hash:''};
-    sb={rpc:async()=>({data:[{applied:false,conflict:true,revision:9,data:{id:'c1',name:'cloud',days:[{spots:[]}]},deleted_at:null}],error:null})};`);
+    sb={}; TC_API.sync.save=async()=>({applied:false,conflict:true,revision:9,data:{id:'c1',name:'cloud',days:[{spots:[]}]},deleted_at:null});`);
   await w.eval(`syncTripCloud({id:'c1',name:'local',days:[{spots:[]}]})`);
   assert.equal(w.eval(`syncMeta.c1.status`),'conflict');
   assert.equal(w.eval(`syncMeta.c1.revision`),3,'base revision 유지 — 다음 병합이 조용한 덮어쓰기로 바뀌지 않게');
@@ -870,7 +872,8 @@ test('통합: 지금 보고 있지 않은 여행의 편집도 클라우드로 �
     user={id:'u1'};
     // 성공 경로는 버전 스냅샷까지 타므로 from() 체인도 최소한으로 흉내낸다
     const q={insert:async()=>({error:null}),select(){return this},eq(){return this},order(){return this},range:async()=>({data:[],error:null}),delete(){return this},in:async()=>({error:null})};
-    sb={from:()=>q,rpc:async(n,a)=>{ window.__sent.push(a.p_client_id); return {data:[{applied:true,conflict:false,revision:2,data:null,deleted_at:null}],error:null}; }};
+    sb={from:()=>q};
+    TC_API.sync.save=async(tripId)=>{ window.__sent.push(tripId); return {applied:true,conflict:false,revision:2,data:null,deleted_at:null}; };
     syncStaleTrips();
     await new Promise(r=>setTimeout(r,0));
     return window.__sent.join(',');
@@ -902,7 +905,7 @@ test('통합: 다른 탭의 변경을 받아들여도 되쓰기·클라우드 �
     window.__wrote=0; window.__synced=0;
     const realSet=localStorage.setItem.bind(localStorage);
     localStorage.setItem=(k,v)=>{ if(k==='tripcanvas_v1') window.__wrote++; return realSet(k,v); };
-    user={id:'u1'}; sb={rpc:async()=>{ window.__synced++; return {data:[{applied:true,conflict:false,revision:2,data:null,deleted_at:null}],error:null}; }};`);
+    user={id:'u1'}; TC_API.sync.save=async()=>{ window.__synced++; return {applied:true,conflict:false,revision:2,data:null,deleted_at:null}; };`);
   const fresh=JSON.stringify({trips:[{id:'T1',name:'다른 탭',start:'',days:[{title:'',drive:'',note:'',spots:[]}]}],activeId:'T1'});
   fireStorage(w,'tripcanvas_v1',fresh);
   assert.equal(w.eval(`store.trips[0].name`),'다른 탭');
@@ -1818,7 +1821,8 @@ test('통합: 보기 권한 여행은 클라우드에 올리지 않고, 권한 �
   let calls = 0;
   w.eval(`user={id:'u1'}; tripRoles={v1:{role:'VIEWER',count:2,owner:false}};`);
   w.sb = { rpc: async () => { calls++; return { data: null, error: { code: '42501', message: 'TRIP_FORBIDDEN' } }; } };
-  w.eval(`sb=window.sb; TC_API.rpc=window.sb.rpc`);
+  w.SYNC_SAVE = async () => { calls++; throw Object.assign(new Error('TRIP_FORBIDDEN'), { code: '42501', status: 403 }); };
+  w.eval(`sb=window.sb; TC_API.rpc=window.sb.rpc; TC_API.sync.save=window.SYNC_SAVE`);
   await w.eval(`syncTripCloud({id:'v1',name:'V',days:[{spots:[]}]})`);
   assert.equal(calls, 0, '보기 권한은 서버에 요청 자체를 보내지 않는다');
   // 편집자였는데 서버가 거절(나갔거나 내보내진 경우) → forbidden으로 멈추고 재시도 타이머를 걸지 않는다
@@ -1894,8 +1898,9 @@ test('통합: 다른 멤버의 최신본 당겨오기 — 로컬이 깨끗하면
   const w = boot();
   withTrip(w, `[{title:'',drive:'',note:'',spots:[]}]`);
   const remote = { id: '__it__', name: 'T (영희 편집)', start: '2026-08-01', days: [{ title: '', drive: '', note: '', spots: [] }] };
-  w.sb = { from: () => ({ select: () => ({ eq: async () => ({ data: [{ client_id: '__it__', data: remote, revision: 5, deleted_at: null, updated_at: '' }], error: null }) }) }) };
-  w.eval(`sb=window.sb; TC_API.rpc=window.sb.rpc; user={id:'u2'}; tripRoles={__it__:{role:'EDITOR',count:2,owner:false}};
+  w.sb = {};
+  w.SYNC_LIST = async () => ({ data: [{ client_id: '__it__', data: remote, revision: 5, deleted_at: null, updated_at: '' }], error: null });
+  w.eval(`sb=window.sb; TC_API.sync.list=window.SYNC_LIST; user={id:'u2'}; tripRoles={__it__:{role:'EDITOR',count:2,owner:false}};
     syncMeta.__it__={revision:4,status:'clean',op:'',hash:TC_SYNC.hashTrip(trip())};`);
   assert.equal(await w.eval(`pullTrip('__it__',{force:true})`), true);
   assert.equal(w.eval(`trip().name`), 'T (영희 편집)');
@@ -1903,7 +1908,8 @@ test('통합: 다른 멤버의 최신본 당겨오기 — 로컬이 깨끗하면
   // 로컬에 미반영 편집이 있는 경우: 덮어쓰지 않고 충돌 카드
   w.eval(`trip().name='내가 바꾼 이름'; syncMeta.__it__={revision:5,status:'clean',op:'',hash:'stale-hash'};`);
   remote.name = 'T (철수 편집)';
-  w.sb.from = () => ({ select: () => ({ eq: async () => ({ data: [{ client_id: '__it__', data: remote, revision: 6, deleted_at: null, updated_at: '' }], error: null }) }) });
+  w.SYNC_LIST2 = async () => ({ data: [{ client_id: '__it__', data: remote, revision: 6, deleted_at: null, updated_at: '' }], error: null });
+  w.eval(`TC_API.sync.list=window.SYNC_LIST2`);
   assert.equal(await w.eval(`pullTrip('__it__',{force:true})`), true);
   assert.equal(w.eval(`trip().name`), '내가 바꾼 이름', '로컬 편집은 보존된다');
   assert.equal(w.eval(`syncMeta.__it__.status`), 'conflict');

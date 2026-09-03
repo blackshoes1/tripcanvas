@@ -277,3 +277,101 @@ test('실시간 — 토큰이 없으면 붙지 않는다', async () => {
   await new Promise((r) => setTimeout(r, 10));
   assert.equal(made.length, 0);
 });
+
+// ── 여행 동기화 (PR12c) — sync_trip / tombstone_trip 의 반환 모양을 그대로 재현한다 ──
+// app.js의 CAS·충돌 처리는 이 모양에 기대고 있고 가장 위험한 코드다. 한 줄도 바꾸지 않기 위해 여기서 맞춘다.
+
+const TRIP = { id: 'trip1', name: '스페인', days: [{ spots: [] }] };
+
+test('동기화 저장 — 성공하면 applied와 새 revision', async () => {
+  const f = setup(() => ({ body: { trip: { revision: 4 }, document: TRIP } }));
+  const row = await TC_API.sync.save('trip1', TRIP, 3, false);
+  assert.deepEqual(row, { applied: true, conflict: false, revision: 4, data: TRIP, deleted_at: null });
+  assert.equal(f.calls[0].method, 'PUT');
+  assert.equal(f.calls[0].url, 'https://api.test/api/v1/trips/trip1');
+  assert.deepEqual(f.calls[0].body, { trip: TRIP, expectedRevision: 3, force: false });
+});
+
+test('동기화 저장 — stale이면 conflict와 **서버의 현재 문서**를 준다(충돌 카드가 원격본을 보여야 한다)', async () => {
+  const server = { id: 'trip1', name: '서버 것', days: [] };
+  setup(() => ({ status: 409, body: { code: 'STALE_VERSION', message: '먼저 바뀜', details: { revision: 9, document: server, deletedAt: null } } }));
+  const row = await TC_API.sync.save('trip1', TRIP, 3, false);
+  assert.deepEqual(row, { applied: false, conflict: true, revision: 9, data: server, deleted_at: null });
+});
+
+test('동기화 저장 — 서버에서 지워진 여행이면 deleted_at을 실어 준다(remote-deleted 충돌)', async () => {
+  setup(() => ({ status: 409, body: { code: 'STALE_VERSION', details: { revision: 5, document: null, deletedAt: '2026-09-01T00:00:00Z' } } }));
+  const row = await TC_API.sync.save('trip1', TRIP, 3, false);
+  assert.equal(row.conflict, true);
+  assert.equal(row.deleted_at, '2026-09-01T00:00:00Z');
+});
+
+test('동기화 저장 — 처음 올리는 여행(revision 없음)은 새로 만든다', async () => {
+  const f = setup(() => ({ status: 201, body: { trip: { revision: 1 }, document: TRIP } }));
+  const row = await TC_API.sync.save('trip1', TRIP, null, false);
+  assert.deepEqual(row, { applied: true, conflict: false, revision: 1, data: TRIP, deleted_at: null });
+  assert.equal(f.calls[0].method, 'POST');
+  assert.equal(f.calls[0].url, 'https://api.test/api/v1/trips');
+  assert.deepEqual(f.calls[0].body, { trip: TRIP });
+});
+
+test('동기화 저장 — 처음 올리는데 서버에 이미 있으면 충돌이다(조용히 덮어쓰지 않는다)', async () => {
+  const server = { id: 'trip1', name: '서버 것', days: [] };
+  setup(() => ({ status: 409, body: { code: 'CONFLICT', details: { revision: 2, document: server, deletedAt: null } } }));
+  const row = await TC_API.sync.save('trip1', TRIP, null, false);
+  assert.deepEqual(row, { applied: false, conflict: true, revision: 2, data: server, deleted_at: null });
+});
+
+test('동기화 저장 — 로컬만 있던 여행에 revision이 있어도 서버에 없으면 새로 만든다', async () => {
+  const calls = [];
+  const f = setup((url, init) => {
+    calls.push((init && init.method) || 'GET');
+    return calls.length === 1 ? { status: 404, body: { code: 'NOT_FOUND' } } : { status: 201, body: { trip: { revision: 1 }, document: TRIP } };
+  });
+  const row = await TC_API.sync.save('trip1', TRIP, 7, false);
+  assert.equal(row.applied, true);
+  assert.deepEqual(f.calls.map((c) => c.method), ['PUT', 'POST']);
+});
+
+test('동기화 저장 — 권한 오류는 그대로 던진다(호출부가 forbidden으로 멈춘다)', async () => {
+  setup(() => ({ status: 403, body: { code: 'FORBIDDEN', message: '권한 없음' } }));
+  await assert.rejects(() => TC_API.sync.save('trip1', TRIP, 3, false), (e) => TC_COLLAB.isForbiddenError(e));
+});
+
+test('동기화 저장 — 그 밖의 실패는 던진다(재시도 대상이다)', async () => {
+  setup(() => ({ status: 500, body: { code: 'INTERNAL_ERROR', message: '서버 오류' } }));
+  await assert.rejects(() => TC_API.sync.save('trip1', TRIP, 3, false), /서버 오류/);
+});
+
+test('동기화 삭제 — 성공·충돌·이미 없음(멱등)', async () => {
+  const f = setup(() => ({ body: { deleted: true, revision: 4 } }));
+  assert.deepEqual(await TC_API.sync.tombstone('trip1', 3), { applied: true, conflict: false, revision: 4, data: null, deleted_at: null });
+  assert.equal(f.calls[0].method, 'DELETE');
+  assert.equal(f.calls[0].url, 'https://api.test/api/v1/trips/trip1?expectedRevision=3');
+
+  setup(() => ({ status: 409, body: { code: 'STALE_VERSION', details: { revision: 9, document: TRIP, deletedAt: null } } }));
+  assert.deepEqual(await TC_API.sync.tombstone('trip1', 3), { applied: false, conflict: true, revision: 9, data: TRIP, deleted_at: null });
+
+  // 서버에 없는 여행을 지우는 것은 성공이다 — 예전 tombstone_trip과 같다
+  setup(() => ({ status: 404, body: { code: 'NOT_FOUND' } }));
+  assert.deepEqual(await TC_API.sync.tombstone('trip1', 3), { applied: true, conflict: false, revision: 3, data: null, deleted_at: null });
+});
+
+test('동기화 삭제 — 주최자가 아니면 권한 오류를 던진다', async () => {
+  setup(() => ({ status: 403, body: { code: 'FORBIDDEN', message: '주최자만' } }));
+  await assert.rejects(() => TC_API.sync.tombstone('trip1', 3), (e) => TC_COLLAB.isForbiddenError(e));
+});
+
+test('동기화 목록 — 삭제된 여행까지 예전 행 모양으로 준다(로그인 병합이 그 모양을 읽는다)', async () => {
+  const f = setup(() => ({ body: { trips: [
+    { id: 'trip1', document: TRIP, revision: 3, deletedAt: null, updatedAt: '2026-09-02T00:00:00Z' },
+    { id: 'trip2', document: null, revision: 5, deletedAt: '2026-09-01T00:00:00Z', updatedAt: '2026-09-01T00:00:00Z' }
+  ] } }));
+  const { data, error } = await TC_API.sync.list();
+  assert.equal(error, null);
+  assert.equal(f.calls[0].url, 'https://api.test/api/v1/sync/trips');
+  assert.deepEqual(data, [
+    { client_id: 'trip1', data: TRIP, revision: 3, deleted_at: null, updated_at: '2026-09-02T00:00:00Z' },
+    { client_id: 'trip2', data: null, revision: 5, deleted_at: '2026-09-01T00:00:00Z', updated_at: '2026-09-01T00:00:00Z' }
+  ]);
+});

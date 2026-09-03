@@ -3496,12 +3496,7 @@ function updateAuthUI(){
 }
 // revision 비교 후에만 쓰는 낙관적 동시성 제어(CAS). 실패해도 로컬 편집은 유지한다.
 let cloudRetryT=null, syncConflicts=[], currentSyncConflict=null;
-async function rpcRow(name,args){
-  const {data,error}=await sb.rpc(name,args);
-  if(error) throw error;
-  return Array.isArray(data)?data[0]:data;
-}
-/** rpcRow의 API 짝 — 오류를 던지는 규약까지 같아 호출부가 그대로다 */
+/** 예전 rpcRow 자리 — 오류를 던지는 규약까지 같아 호출부가 그대로다 */
 async function apiRow(name,args,tripId){
   const {data,error}=await TC_API.rpc(name,args,tripId);
   if(error) throw error;
@@ -3531,7 +3526,7 @@ async function syncTripCloud(t,opts){
   entry.status='syncing'; persistSyncMeta();
   syncInFlight++;
   try{
-    const row=await rpcRow('sync_trip',{p_client_id:t.id,p_data:t,p_expected_revision:entry.revision,p_force:force});
+    const row=await TC_API.sync.save(t.id,t,entry.revision,force);
     if(!row) throw new Error('empty sync response');
     if(row.conflict){
       // entry.revision(로컬이 파생된 base)은 그대로 둔다 — 서버 revision을 stamp하면 미해결 충돌이
@@ -3611,7 +3606,7 @@ function cloudDelete(clientId,deletedTrip){
 async function performCloudDelete(clientId,op,deletedTrip){
   const entry=syncEntry(clientId);
   try{
-    const row=await rpcRow('tombstone_trip',{p_client_id:clientId,p_expected_revision:entry.revision,p_force:false});
+    const row=await TC_API.sync.tombstone(clientId,entry.revision);
     if(row&&row.conflict){
       entry.status='conflict'; persistSyncMeta();   // base revision 유지 (위 syncTripCloud와 같은 이유)
       enqueueSyncConflict({kind:row.deleted_at?'remote-deleted':'changed-both',local:deletedTrip||null,remote:row.data||null,revision:Number(row.revision)||entry.revision,deleted_at:row.deleted_at||null});
@@ -3666,7 +3661,8 @@ document.getElementById('syncKeepCopy').onclick=()=>{
 // 로그인 직후: 서버 revision과 로컬이 읽은 revision을 비교해 안전한 변경만 자동 병합한다.
 async function syncOnLogin(){
   try{
-    const {data:rows,error}=await sb.from('trips').select('client_id,data,revision,deleted_at,updated_at');
+    // 삭제(tombstone)된 여행까지 받는다 — 다른 기기가 지운 것을 병합해야 한다
+    const {data:rows,error}=await TC_API.sync.list();
     if(error) throw error;
     const local=store.trips.filter(t=>t.id!=='spain2026'||(rows||[]).some(r=>r.client_id===t.id));
     const merged=TC_SYNC.mergeForLogin(local,rows||[],syncMeta);
@@ -3777,7 +3773,7 @@ async function pullTrip(id,opts){
   const now=Date.now(); if(!(opts&&opts.force)&&_pullAt[id]&&now-_pullAt[id]<30000) return false;
   _pullAt[id]=now;
   try{
-    const {data:rows,error}=await sb.from('trips').select('client_id,data,revision,deleted_at,updated_at').eq('client_id',id);
+    const {data:rows,error}=await TC_API.sync.list();
     if(error) throw error;
     const row=(rows||[]).find(r=>r&&r.client_id===id); if(!row) return false;
     const entry=syncEntry(id), local=store.trips.find(t=>t.id===id), remoteRev=Number(row.revision)||1;
@@ -4540,7 +4536,7 @@ document.getElementById('joinAccept').onclick=async()=>{
   if(!user){ document.getElementById('authBtn').click(); return; }   // 로그인 → onAuthStateChange → syncOnLogin → completePendingJoin
   const btn=document.getElementById('joinAccept'); btn.disabled=true;
   try{
-    const row=await rpcRow('accept_trip_invite',{p_token:token,p_display_name:document.getElementById('joinName').value.trim()||null});
+    const row=await apiRow('accept_trip_invite',{p_token:token,p_display_name:document.getElementById('joinName').value.trim()||null});
     if(!row) throw new Error('empty accept');
     if(!row.ok){
       joinPreview=Object.assign({},joinPreview,{valid:false,reason:row.reason,already_member:false});

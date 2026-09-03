@@ -42,6 +42,8 @@ export interface CasResult {
 export interface TripRepository {
   /** 삭제되지 않은, 내가 소유하거나 활성 멤버인 여행. 같은 clientId가 둘이면 소유한 쪽만. 최근 수정 순 */
   listVisible(userId: string): Promise<TripView[]>;
+  /** 동기화용 — **삭제(tombstone)된 것까지** 준다. 다른 기기의 삭제를 병합하려면 필요하다 */
+  listForSync(userId: string): Promise<TripView[]>;
   /** clientId로 하나 — 소유한 쪽 우선. tombstone도 돌려준다(호출측이 판단). 볼 수 없으면 null */
   findVisible(userId: string, clientId: string): Promise<TripView | null>;
   /** 새 여행(revision 1) + 같은 트랜잭션의 OWNER 멤버 행. (ownerId, clientId)가 이미 있으면 던진다 */

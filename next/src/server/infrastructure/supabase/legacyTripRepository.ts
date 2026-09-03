@@ -87,6 +87,21 @@ export class LegacyTripRepository implements TripRepository {
     return out.sort((a, b) => b.record.updatedAt.localeCompare(a.record.updatedAt));
   }
 
+  /** 동기화용 — tombstone까지. is('deleted_at', null) 필터를 걸지 않는 것만 다르다 */
+  async listForSync(userId: string): Promise<TripView[]> {
+    const { data, error } = await this.session.sb.from('trips').select(COLS).order('updated_at', { ascending: false });
+    if (error) throw error;
+    const rows = ((data ?? []) as unknown as TripRow[]).slice().sort((a, b) => Number(b.user_id === userId) - Number(a.user_id === userId));
+    const seen = new Set<string>();
+    const out: TripView[] = [];
+    for (const r of rows) {
+      if (seen.has(r.client_id)) continue;
+      seen.add(r.client_id);
+      out.push(await this.toView(r));
+    }
+    return out.sort((a, b) => b.record.updatedAt.localeCompare(a.record.updatedAt));
+  }
+
   async findVisible(userId: string, clientId: string): Promise<TripView | null> {
     const { data, error } = await this.session.sb.from('trips').select(COLS).eq('client_id', clientId).limit(2);
     if (error) throw error;

@@ -44,6 +44,20 @@ export class PgTripRepository implements TripRepository {
     return out.sort((a, b) => b.record.updatedAt.localeCompare(a.record.updatedAt));
   }
 
+  /** 동기화용 — tombstone까지 포함한다(웹의 로그인 병합이 삭제를 알아야 한다) */
+  async listForSync(userId: string): Promise<TripView[]> {
+    const rows = await this.visibleQuery(userId)
+      .orderBy(desc(sql`${trips.userId} = ${userId}`), desc(trips.updatedAt));
+    const seen = new Set<string>();
+    const out: TripView[] = [];
+    for (const r of rows) {
+      if (seen.has(r.row.clientId)) continue;
+      seen.add(r.row.clientId);
+      out.push(this.toView(r));
+    }
+    return out;
+  }
+
   async findVisible(userId: string, clientId: string): Promise<TripView | null> {
     const rows = await this.visibleQuery(userId)
       .orderBy(desc(sql`${trips.userId} = ${userId}`), trips.id);
