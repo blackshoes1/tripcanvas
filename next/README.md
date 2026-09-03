@@ -36,12 +36,36 @@ Root Directory 설정이 맞아도 이 메시지가 나온다 — 파일 자체�
 
 ## 환경변수
 
-```
-NEXT_PUBLIC_SUPABASE_URL
-NEXT_PUBLIC_SUPABASE_ANON_KEY
+**Vercel 대시보드 → `tripcanvas-api` 프로젝트 → Settings → Environment Variables.** (정적 웹 `tripcanvas` 쪽이 아니다.)
+
+| 이름 | 값 | 없으면 |
+|---|---|---|
+| `TRUSTED_ORIGINS` | `https://tripcanvas-ai.vercel.app` (쉼표로 여러 개) | ⚠️ **웹이 이 API를 못 부른다** — 브라우저가 교차 출처 요청을 막는다 |
+| `NEXT_PUBLIC_SUPABASE_URL` · `NEXT_PUBLIC_SUPABASE_ANON_KEY` | 공개용 키 — 데이터는 RLS가 지킨다. **`service_role` 키를 쓰지 않는다** | 레거시 프로젝트로 붙는다(기본값이 코드에 있다) |
+| `SUPABASE_JWT_SECRET` | 프로젝트 JWT secret | HS256 토큰이면 서버 로그에 폴백 경고가 뜬다 |
+| `DATABASE_URL` · `TC_MIGRATION_*` | 독립 PostgreSQL과 이관 레지스트리 | 전부 LEGACY(오늘의 동작) |
+| `AUTH_SECRET` · `API_BASE_URL` · `SMTP_*` | 자체 Auth(PR10) | `/api/auth/*`가 404 |
+| `REALTIME_URL` | 실시간 사이드카 주소 | 웹이 Supabase 실시간을 그대로 쓴다 |
+
+전체 목록과 설명은 `.env.example`. 로컬은 `next/.env.local`에 같은 이름으로 둔다.
+
+### ⚠️ TRUSTED_ORIGINS는 먼저 넣고 배포한다
+
+정적 웹(`tripcanvas-ai.vercel.app`)과 이 API(`tripcanvas-api.vercel.app`)는 **다른 출처**다. 웹의 여행 동기화·함께하기가
+전부 이 API를 지나므로, 이 값이 없으면 **로그인해도 여행이 안 뜨고 저장도 안 된다.**
+
+- 경로나 끝 슬래시를 붙이지 않는다 — 브라우저가 보내는 `Origin` 헤더와 **글자 그대로** 비교한다
+- 로컬에서 `python3 -m http.server 8000`으로 열어 본다면 `http://localhost:8000`도 함께 넣는다
+- 값을 바꾼 뒤에는 **재배포해야 반영된다.** 이 프로젝트는 "Skip deployments when there are no changes to the root directory"가
+  켜져 있어 `next/` 밖만 바뀐 커밋은 다시 빌드하지 않는다 — 값만 바꿨다면 대시보드에서 **Redeploy**를 누른다
+
+확인:
+
+```bash
+curl -si -X OPTIONS https://tripcanvas-api.vercel.app/api/v1/me -H "Origin: https://tripcanvas-ai.vercel.app" | grep -i access-control
 ```
 
-둘 다 공개용이다 — 데이터는 RLS가 지킨다. 서버는 사용자의 bearer 토큰을 그대로 Supabase에 넘겨 RLS 아래에서 읽고 쓴다. **`service_role` 키를 쓰지 않는다.**
+허용된 출처면 `access-control-allow-origin`이 그대로 돌아오고, 모르는 출처면 그 헤더가 없다(브라우저가 막는다).
 
 ## 살아 있는지 확인
 
