@@ -478,6 +478,23 @@ export interface TripListResponse {
 }
 
 /**
+ * GET/POST/PUT /api/v1/trips[/:id] — 여행 문서 전체. 단순 조회·저장은 판단이 없으므로 문서 그대로다.
+ * 쓰기(PUT)는 마지막에 읽은 revision을 expectedRevision으로 실어 보낸다 — 다르면 409 STALE_VERSION(현재 revision 동봉).
+ */
+export interface TripDetailResponse {
+  schemaVersion: number;
+  trip: TripSummary;
+  /** 정규화된 여행 문서(normalizeTrip을 지난 것) — 웹 localStorage의 trip과 같은 모양 */
+  document: Record<string, unknown>;
+}
+
+export interface TripDeleteResponse {
+  schemaVersion: number;
+  deleted: true;
+  revision: number;
+}
+
+/**
  * 쓰기 응답. 바뀐 뒤의 Today를 함께 돌려준다 — 여행 중에는 왕복 횟수가 곧 체감 속도다.
  * alreadyApplied는 오류가 아니다: 같은 요청을 두 번 보내도 같은 결과가 되도록(idempotent) 설계했다.
  */

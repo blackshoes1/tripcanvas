@@ -41,7 +41,7 @@ export class MemoryMembershipRepository implements MembershipRepository {
     return this.store.members.some((m) => m.userId === userId && (m.status === 'LEFT' || m.status === 'REMOVED')
       && this.store.trips.get(m.tripId)?.clientId === clientId);
   }
-  async add(input: { tripId: string; userId: string; role: MemberRole; displayName: string | null }): Promise<void> {
+  async add(input: { tripId: string; userId: string; role: MemberRole; displayName: string | null; invitedBy: string | null }): Promise<void> {
     const existing = this.store.members.find((m) => m.tripId === input.tripId && m.userId === input.userId);
     if (existing) Object.assign(existing, { role: input.role, status: 'ACTIVE', displayName: input.displayName });
     else this.store.members.push({ tripId: input.tripId, userId: input.userId, role: input.role, status: 'ACTIVE', displayName: input.displayName });

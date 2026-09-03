@@ -25,15 +25,19 @@ function isForbidden(e: unknown): boolean {
  * 토큰 검증까지 겸한다 — getUser()가 사용자를 돌려주지 못하면 null(호출측이 401).
  * user_id를 알아야 suggestion_feedback upsert의 충돌 대상(unique 4개 컬럼)을 지정할 수 있다.
  */
-export async function supabaseGatewayFor(token: string): Promise<Gateway | null> {
+export async function supabaseGatewayFor(token: string, knownUserId?: string): Promise<Gateway | null> {
   if (!token) return null;
   const sb = createClient(SUPABASE_URL, SUPABASE_KEY, {
     global: { headers: { Authorization: `Bearer ${token}` } },
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
   });
-  const { data: userData, error } = await sb.auth.getUser();
-  const userId = userData?.user?.id;
-  if (error || !userId) return null;
+  // 서버가 JWT를 이미 검증했으면(server/auth) 다시 묻지 않는다 — 요청마다 Supabase 왕복 하나가 준다.
+  let userId = knownUserId;
+  if (!userId) {
+    const { data: userData, error } = await sb.auth.getUser();
+    userId = userData?.user?.id;
+    if (error || !userId) return null;
+  }
 
   /** 함께하기 — 내가 볼 수 있는 여행 전부의 역할·인원 (한 번의 RPC). 실패하면 빈 맵 — 쓰기는 어차피 RLS가 지킨다 */
   async function rolesByClientId(): Promise<Map<string, RoleRow>> {
