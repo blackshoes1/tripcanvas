@@ -1,5 +1,6 @@
 // R0 — 이관 스크립트 자체를 진짜 PostgreSQL(PGlite)에서 검증한다. 여기서 잡지 못하면 전환 당일에야 드러난다.
 // docs/backup-restore.md가 나열한 함정 그대로: FK 순서 · identity 시퀀스 · 알림 트리거 · 운영 미적용 테이블 · 멱등성.
+import { sql } from 'drizzle-orm';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { createTestDatabase, type TestDatabase } from '../infrastructure/database/testDb';
@@ -141,5 +142,76 @@ describe('importAll', () => {
     const src = source();
     src.tables.trip_members!.push({ id: 99, trip_id: TRIP, user_id: '00000000-0000-0000-0000-0000000000ff', role: 'VIEWER', status: 'ACTIVE', display_name: null, invited_by: null, joined_at: null, prefs: {}, created_at: '2026-08-01T00:00:00Z', updated_at: '2026-08-01T00:00:00Z' });
     await expect(importAll(db.db, src)).rejects.toThrow(/trip_members/);
+  });
+});
+
+describe('전부 아니면 전무 — 한 트랜잭션', () => {
+  it('중간에 제약에 걸리면 앞서 넣은 것도 남지 않는다 (반쯤 채워진 DB를 만들지 않는다)', async () => {
+    const bad = source();
+    // trip_activity.kind는 새 스키마에만 CHECK가 있다 — 운영 값이 목록을 벗어나면 여기서 걸린다
+    bad.tables.trip_activity = [{ id: 30, trip_id: TRIP, actor_id: A, kind: '옛날_이벤트', subject: {}, created_at: '2026-08-03T00:00:00Z' }];
+
+    await expect(importAll(db.db, bad)).rejects.toThrow();
+
+    // 활동보다 먼저 넣는 것들이 전부 되돌아갔는가
+    for (const table of ['users', 'trips', 'trip_members', 'trip_candidates']) {
+      const { rows } = (await db.db.execute(sql`select count(*)::int n from ${sql.identifier(table)}`)) as { rows: { n: number }[] };
+      expect(Number(rows[0]?.n), `${table}이 남아 있다`).toBe(0);
+    }
+  });
+
+  it('검증이 실패하면 커밋하지 않는다 — 도구가 "통과 못 하면 전환 안 한다"를 지킨다', async () => {
+    await expect(importAll(db.db, source(), {
+      inTransaction: async () => { throw new Error('검증 실패'); }
+    })).rejects.toThrow('검증 실패');
+    const { rows } = (await db.db.execute(sql`select count(*)::int n from trips`)) as { rows: { n: number }[] };
+    expect(Number(rows[0]?.n)).toBe(0);
+  });
+});
+
+describe('예행(trial) — 해 보고 되돌린다', () => {
+  it('전부 옮긴 것으로 보고하지만 대상에는 아무것도 남지 않는다', async () => {
+    const report = await importAll(db.db, source(), { trial: true });
+    expect(report.ok).toBe(true);
+    expect(report.tables.find((t) => t.table === 'trips')?.inserted).toBe(1);
+
+    for (const table of ['users', 'trips', 'trip_members', 'trip_activity']) {
+      const { rows } = (await db.db.execute(sql`select count(*)::int n from ${sql.identifier(table)}`)) as { rows: { n: number }[] };
+      expect(Number(rows[0]?.n), `예행인데 ${table}에 남았다`).toBe(0);
+    }
+  });
+
+  it('예행 안에서는 검증이 실제 데이터를 본다 — 되돌리기 전에 판정한다', async () => {
+    let seen = -1;
+    await importAll(db.db, source(), {
+      trial: true,
+      inTransaction: async (tx) => {
+        const { rows } = (await tx.execute(sql`select count(*)::int n from trips`)) as { rows: { n: number }[] };
+        seen = Number(rows[0]?.n);
+      }
+    });
+    expect(seen).toBe(1);
+  });
+
+  it('예행은 시퀀스를 건드리지 않는다 — setval은 되돌아가지 않기 때문이다', async () => {
+    const seqBefore = (await db.db.execute(sql`select last_value from trip_members_id_seq`)) as { rows: { last_value: unknown }[] };
+    const report = await importAll(db.db, source(), { trial: true });
+    const seqAfter = (await db.db.execute(sql`select last_value from trip_members_id_seq`)) as { rows: { last_value: unknown }[] };
+
+    expect(report.sequencesReset).toContain('trip_members.id');   // 무엇을 맞출지는 보고한다
+    expect(String(seqAfter.rows[0]?.last_value))
+      .toBe(String(seqBefore.rows[0]?.last_value));
+  });
+
+  it('예행 뒤에 실제로 옮겨도 정상이다 — 같은 경로를 두 번 지난다', async () => {
+    await importAll(db.db, source(), { trial: true });
+    const report = await importAll(db.db, source());
+    expect(report.ok).toBe(true);
+    const { rows } = (await db.db.execute(sql`select count(*)::int n from trips`)) as { rows: { n: number }[] };
+    expect(Number(rows[0]?.n)).toBe(1);
+    // 시퀀스가 맞았으니 전환 후 첫 쓰기가 중복키로 죽지 않는다 (원본의 후보 id는 5였다)
+    const { rows: made } = (await db.db.execute(sql`
+      insert into trip_candidates (trip_id, title, proposed_by) values (${TRIP}, '새 후보', ${A}) returning id`)) as { rows: { id: number }[] };
+    expect(Number(made[0]?.id)).toBeGreaterThan(5);
   });
 });

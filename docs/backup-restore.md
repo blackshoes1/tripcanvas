@@ -57,6 +57,35 @@ curl -s https://$API_DOMAIN/api/health
 | **R1** | 운영 스냅샷 사본 | 실데이터의 이상값 — 깨진 참조·예상 못 한 null·규모와 소요시간 | 스크립트를 고칠 때마다 |
 | **R2** | R1 결과 + staging 앱 | 전환 예행 — 로그인·저장·협업이 실제로 도는가, 롤백이 되는가 | 전환 직전 1~2회 |
 
+### R1 1차 결과 (2026-09-03) — 운영 조사
+
+운영 DB를 **읽기만** 해서 이상값을 전수로 훑었다. 새 스키마가 운영보다 훨씬 엄격하기 때문에(NOT NULL·CHECK 10여 개·unique),
+데이터가 그 제약에 맞는지가 이관 성패를 가른다.
+
+| | 운영 | |
+|---|---|---|
+| `auth.users` | 3 | email NULL 0 |
+| `trips` | 8 | tombstone 3 · revision≤0 0 · (user,client) 중복 0 |
+| `trip_snapshots` | 98 | max id 277 |
+| `trip_members` | 9 | role `OWNER,EDITOR` · status `ACTIVE` |
+| `trip_invites` | 1 | role `EDITOR` · token_hash 중복 0 |
+| `trip_activity` | 4 | kind `MEMBER_JOINED,SCHEDULE_CHANGED` |
+| `trip_candidates`·`candidate_reactions`·`trip_comments` | 0 | |
+| `hotel_price_snapshots` | 33 | |
+| `suggestion_feedback`·`device_tokens`·`notification_log`·`trip_memories` | **테이블 없음** | 운영 미적용 — 정상 |
+
+- **위반 0건.** 고아 참조 0 · NOT NULL 위반 0 · CHECK 위반 0 · unique 중복 0. 옮길 데이터 자체는 손댈 것이 없다.
+- 전체 153행. 규모로 인한 문제는 없다 — 소요시간은 초 단위다.
+- `trip_snapshots` 98건 중 **18건이 지금 `trips`에 없는 (user, client)** 다. 삭제한 여행의 버전 이력이고,
+  새 스키마의 `trip_snapshots`에는 `trips` 외래키가 없어(사용자만 참조) 그대로 옮겨진다. 정상이다.
+- ⚠️ 스키마가 한 곳 어긋난다: `trip_snapshots.name` 이 운영은 nullable, 새 스키마는 `NOT NULL default ''`.
+  오늘은 NULL이 0건이라 걸리지 않지만 **전환 전에 한 건이라도 생기면 이관이 멈춘다.** 전환 직전에 이 조사를 다시 돌린다.
+
+**이 조사로 찾은 진짜 결함은 데이터가 아니라 스크립트였다** — `importAll`이 트랜잭션이 아니어서
+중간에 걸리면 앞 테이블이 커밋된 채 남았다. 위 "전부 아니면 전무"가 그 수정이고, R0에 회귀 테스트를 넣었다.
+
+남은 것은 **실제 데이터를 옮겨 보는 것**(pg_dump → 복원 → `--trial`)이다. NAS의 PostgreSQL이 필요하다.
+
 ### 추출
 
 ```bash
@@ -76,18 +105,25 @@ psql "$SUPABASE_DIRECT_URL" -Atc "copy (select id, email from auth.users) to std
 cd next && npm test -- src/server/migration     # 이관기·검증·원본 21개 시나리오
 ```
 
-**R1**은 복원한 사본을 가리키고 CLI를 돌린다. 기본은 **검사만**(dry-run)이라 실수로 쓰지 않는다.
+**R1**은 복원한 사본을 가리키고 CLI를 돌린다. 세 단계가 **같은 경로**를 지난다 — 다른 것은 마지막에 커밋하느냐뿐이라, 예행이 통과했는데 당일에 처음 보는 오류가 나지 않는다.
 
 ```bash
 cd next && npm run tools:build
-# 1) 무엇이 옮겨질지 세어만 본다
+# 1) 무엇이 옮겨질지 세어만 본다 (원본만 읽는다)
 LEGACY_DATABASE_URL=postgres://…/legacy_copy DATABASE_URL=postgres://…/tripcanvas npm run migrate:import
-# 2) 실제로 옮기고 검증까지 (대상을 비우고 시작)
+# 2) 예행 — 전부 옮기고 검증까지 한 뒤 **되돌린다**. 대상에는 아무것도 남지 않는다
+LEGACY_DATABASE_URL=… DATABASE_URL=… npm run migrate:import -- --trial --reset
+# 3) 실제로 (전환 당일)
 LEGACY_DATABASE_URL=… DATABASE_URL=… npm run migrate:import -- --apply --reset
 ```
 
-원본과 대상이 같으면 시작하지 않는다. 검증이 실패하면 종료 코드가 1이라 자동화에서도 막힌다.
-계정 테이블이 `auth.users`가 아니면 `LEGACY_USERS_TABLE=public.legacy_users`로 알려 준다.
+원본과 대상이 같으면 시작하지 않는다. 계정 테이블이 `auth.users`가 아니면 `LEGACY_USERS_TABLE=public.legacy_users`로 알려 준다.
+
+**전부 아니면 전무다.** 이관 전체가 한 트랜잭션이고, **검증도 커밋 전에 같은 트랜잭션 안에서** 돈다.
+어긋나면 아무것도 쓰이지 않고 종료 코드가 1이다 — "통과하지 못하면 전환하지 않는다"를 사람이 리포트를 읽고 지키는 대신 도구가 지킨다.
+나눠서 커밋하면 14개 테이블 중 7번째에서 걸렸을 때 **반쯤 채워진 DB**가 남고, 그것을 중단 시간에 수습해야 한다.
+
+⚠️ `setval`은 트랜잭션을 따르지 않는다 — 되돌려도 시퀀스 값은 남는다. 그래서 예행에서는 시퀀스를 건드리지 않고 무엇을 맞출지만 보고한다.
 
 ### 이관 스크립트가 반드시 다뤄야 할 것
 

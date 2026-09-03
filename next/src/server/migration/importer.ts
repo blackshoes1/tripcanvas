@@ -86,7 +86,12 @@ async function importTable(
  * identity 컬럼의 시퀀스를 현재 최대값 다음으로 올린다.
  * 카탈로그에서 **시퀀스가 실제로 붙어 있는 컬럼만** 찾는다 — uuid 기본키에 max()를 걸지 않기 위해서다.
  */
-async function resetSequences(db: Db): Promise<string[]> {
+/**
+ * identity 시퀀스를 데이터의 max(id)로 다시 맞춘다.
+ * ⚠️ setval은 **트랜잭션을 따르지 않는다** — 되돌려도 시퀀스 값은 남는다.
+ * 그래서 예행(trial)에서는 실행하지 않고 무엇을 맞출지만 돌려준다.
+ */
+async function resetSequences(db: Db, opts: { apply: boolean }): Promise<string[]> {
   const names = MIGRATION_ORDER.map((t) => sql`${t}`);
   const { rows } = (await db.execute(sql`
     select c.relname::text as tbl, a.attname::text as col,
@@ -100,6 +105,7 @@ async function resetSequences(db: Db): Promise<string[]> {
 
   const reset: string[] = [];
   for (const row of rows) {
+    if (!opts.apply) { reset.push(`${row.tbl}.${row.col}`); continue; }
     await db.execute(sql`
       select setval(${row.seq}::regclass,
                     coalesce((select max(${sql.identifier(row.col)}) from ${sql.identifier(row.tbl)}), 0) + 1,
@@ -112,22 +118,58 @@ async function resetSequences(db: Db): Promise<string[]> {
 export interface ImportOptions {
   /** 넣기 전에 대상 테이블을 비운다(역순). 전환 당일처럼 "정확히 같게" 만들 때 */
   reset?: boolean;
+  /**
+   * 예행 — 전부 해 본 뒤 **되돌린다**. 대상에는 아무것도 남지 않는다.
+   * 전환 당일의 중단 시간에 처음 돌려 보는 일이 없게 한다(§61).
+   */
+  trial?: boolean;
+  /**
+   * 커밋(또는 되돌리기) 직전에 **같은 트랜잭션 안에서** 돌릴 검사.
+   * 여기서 던지면 이관 전체가 없던 일이 된다 — "검증을 통과하지 못하면 전환하지 않는다"를
+   * 사람의 판단이 아니라 도구가 지킨다(§79).
+   */
+  inTransaction?: (tx: Db) => Promise<void>;
 }
 
-export async function importAll(db: Db, source: MigrationSource, opts: ImportOptions = {}): Promise<ImportReport> {
-  if (opts.reset) {
-    const names = [...MIGRATION_ORDER].reverse().map((t) => sql.identifier(t));
-    await db.execute(sql`truncate table ${sql.join(names, sql`, `)} restart identity cascade`);
-  }
+/** 예행에서 트랜잭션을 되돌리기 위한 신호. 실패가 아니다 */
+class TrialRollback extends Error {
+  constructor(readonly report: ImportReport) { super('trial rollback'); }
+}
 
-  // 활동 행이 들어갈 때마다 실시간 알림이 나가면 안 된다(마이그레이션 0004의 트리거)
-  await db.execute(sql`alter table trip_activity disable trigger tc_notify_activity`);
-  try {
+/**
+ * 전부 **한 트랜잭션**에서 옮긴다 — 중간에 걸리면 대상은 손대기 전 그대로다.
+ * 나눠서 커밋하면 14개 중 7번째에서 제약에 걸렸을 때 반쯤 채워진 DB가 남고,
+ * 그것을 전환 당일 중단 시간에 수습해야 한다.
+ */
+export async function importAll(db: Db, source: MigrationSource, opts: ImportOptions = {}): Promise<ImportReport> {
+  const run = async (tx: Db): Promise<ImportReport> => {
+    if (opts.reset) {
+      const names = [...MIGRATION_ORDER].reverse().map((t) => sql.identifier(t));
+      await tx.execute(sql`truncate table ${sql.join(names, sql`, `)} restart identity cascade`);
+    }
+
+    // 활동 행이 들어갈 때마다 실시간 알림이 나가면 안 된다(마이그레이션 0004의 트리거).
+    // 되돌리기는 트랜잭션이 같이 해 주므로 finally로 감싸지 않는다 —
+    // 이미 실패한 트랜잭션 안에서 alter를 또 부르면 원래 오류가 그것으로 덮인다.
+    await tx.execute(sql`alter table trip_activity disable trigger tc_notify_activity`);
     const tables: TableImportReport[] = [];
-    for (const table of MIGRATION_ORDER) tables.push(await importTable(db, table, source));
-    const sequencesReset = await resetSequences(db);
-    return { ok: true, tables, sequencesReset };
-  } finally {
-    await db.execute(sql`alter table trip_activity enable trigger tc_notify_activity`);
+    for (const table of MIGRATION_ORDER) tables.push(await importTable(tx, table, source));
+    const sequencesReset = await resetSequences(tx, { apply: !opts.trial });
+    await tx.execute(sql`alter table trip_activity enable trigger tc_notify_activity`);
+
+    const report: ImportReport = { ok: true, tables, sequencesReset };
+    if (opts.inTransaction) await opts.inTransaction(tx);   // 검증이 여기서 던지면 통째로 되돌아간다
+    return report;
+  };
+
+  try {
+    return await db.transaction(async (tx) => {
+      const report = await run(tx as unknown as Db);
+      if (opts.trial) throw new TrialRollback(report);
+      return report;
+    });
+  } catch (err) {
+    if (err instanceof TrialRollback) return err.report;
+    throw err;
   }
 }
