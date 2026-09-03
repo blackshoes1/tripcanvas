@@ -16,7 +16,7 @@
   .tripPicker{border:0;background:transparent;color:var(--ink);font-weight:800;font-size:14px;display:flex;align-items:center;gap:7px;padding:8px;border-radius:8px}
   .tripPicker:hover{background:var(--surface-2)}
   .hdrSpacer{flex:1}
-  #hdrMenu{display:none;position:absolute;top:calc(100% + 4px);right:8px;flex-direction:column;gap:5px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:8px;min-width:202px;box-shadow:var(--shadow);z-index:2200}
+  #hdrMenu{display:none;position:absolute;top:calc(100% + 4px);right:8px;flex-direction:column;gap:5px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:8px;min-width:202px;box-shadow:var(--shadow);z-index:2200;max-height:calc(100dvh - 64px);overflow-y:auto;overscroll-behavior:contain}
   #hdrMenu.open{display:flex}#hdrMenu .btn{display:flex;align-items:center;width:100%;padding:9px 11px;border-radius:9px}#hdrMenu #verLabel{color:var(--subtle);border-color:var(--border)}
   #pasteMenuBtn{display:none}
   #moreBtn{display:inline-flex;align-items:center;justify-content:center}
@@ -273,6 +273,10 @@
     #map,#kmap{position:absolute;inset:0;width:100%;height:100%}
     #sidebar{position:fixed;left:0;right:0;bottom:0;width:100%;min-width:0;height:45dvh;max-height:none;z-index:1100;border:1px solid var(--border);border-bottom:0;border-radius:18px 18px 0 0;padding:0 10px 12px;box-shadow:0 -10px 28px rgba(17,24,39,.16);transition:height .22s ease;overscroll-behavior:contain}
     #sidebar.dragging{transition:none;user-select:none}
+    /* ⚠️ header는 position:relative+z-index로 **자기 쌓임 맥락**을 만든다 — 안쪽 #hdrMenu의 z-index:2200은
+       바깥에서 힘이 없다. 일정 시트(#sidebar z-index:1100)가 헤더를 통째로 덮어 메뉴 아래쪽(로그인)이
+       가려졌다. 헤더 자체를 시트 위로 올린다 — 헤더는 시트가 전체(88dvh)로 열려도 보여야 한다. */
+    header{z-index:1200}
     #sheetHandle{display:flex;position:sticky;top:0;z-index:4;width:100%;height:40px;border:0;background:linear-gradient(var(--surface-2) 72%,transparent);align-items:flex-start;justify-content:center;padding-top:8px;touch-action:none}
     #sheetHandle:before{content:'';width:42px;height:4px;border-radius:4px;background:#9ca3af}
     #sidebar[data-snap="collapsed"]{height:15dvh}#sidebar[data-snap="half"]{height:45dvh}#sidebar[data-snap="expanded"]{height:88dvh}

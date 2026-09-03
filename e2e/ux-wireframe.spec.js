@@ -169,3 +169,20 @@ test('여행 모드는 자연어 요청을 반영하고 하루 일정을 미리�
   await expect.poll(()=>page.evaluate(()=>trip().days[0].spots.map(s=>s.name).join(','))).toContain('공원');
   expect(await page.evaluate(()=>trip().days[0].spots.slice(-1)[0].name)).toBe('저녁 예약');
 });
+
+test('모바일 ☰ 메뉴는 일정 시트에 가리지 않고, 맨 아래 로그인까지 닿는다',async({context,page})=>{
+  await prepare(context); await page.setViewportSize({width:390,height:740}); await page.goto('/');
+  await page.locator('#moreBtn').click();
+  await expect(page.locator('#hdrMenu')).toBeVisible();
+  // 메뉴가 화면보다 길면 스크롤된다 — 항목이 14개라 작은 폰에서는 다 안 들어간다
+  await page.locator('#authBtn').scrollIntoViewIfNeeded();
+  // toBeVisible은 '덮였는지'를 보지 않는다 — 실제로 그 자리를 누르면 무엇이 잡히는지 확인한다
+  const hit=await page.evaluate(()=>{
+    const b=document.getElementById('authBtn').getBoundingClientRect();
+    const el=document.elementFromPoint(b.left+b.width/2,b.top+b.height/2);
+    return {inMenu:!!(el&&el.closest('#hdrMenu')),covering:el?(el.id||el.className||el.tagName):'없음'};
+  });
+  expect(hit,'로그인 버튼이 다른 요소에 덮였다').toEqual({inMenu:true,covering:'authBtn'});
+  // 실제로 눌린다 (Playwright가 hit-test를 한다)
+  await page.locator('#authBtn').click({timeout:2000});
+});
