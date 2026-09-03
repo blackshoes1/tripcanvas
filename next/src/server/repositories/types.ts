@@ -61,3 +61,72 @@ export interface MembershipRepository {
   add(input: { tripId: string; userId: string; role: MemberRole; displayName: string | null; invitedBy: string | null }): Promise<void>;
   setStatus(tripId: string, userId: string, status: MemberStatus): Promise<void>;
 }
+
+// ── Adaptive 저장소(Phase 4) — 판단은 adaptive.js가 하고, 여기는 사용자별 기록만 ──
+
+export interface SuggestionFeedbackRepository {
+  /** 그 여행·그 날 이미 거절(SKIPPED)한 제안 키 */
+  listDismissed(userId: string, tripClientId: string, dayISO: string): Promise<string[]>;
+  /** 같은 제안을 두 번 기록해도 한 행(unique 4개 컬럼 upsert) */
+  record(userId: string, tripClientId: string, dayISO: string, suggestionKey: string, action: string, source: string): Promise<void>;
+}
+
+export interface NotificationLogRepository {
+  listSentKeys(userId: string, tripClientId: string, dayISO: string): Promise<string[]>;
+  /** 같은 dedupe_key는 한 행 — 중복 발송이 오류가 되지 않게 */
+  record(userId: string, tripClientId: string, dayISO: string, items: { kind: string; dedupeKey: string; stateVersion: string }[]): Promise<void>;
+}
+
+export interface DeviceRegistrationRow {
+  deviceId: string;
+  platform: 'ios' | 'web';
+  pushToken: string;
+  enabled: boolean;
+  preferences: Record<string, boolean>;
+  appVersion: string | null;
+}
+
+export interface DeviceRepository {
+  save(userId: string, registration: DeviceRegistrationRow): Promise<void>;
+  remove(userId: string, deviceId: string): Promise<void>;
+}
+
+/** intakeView.MemoryRow와 같은 모양(snake_case 유지 — 기존 핸들러·계약이 그대로 쓴다) */
+export interface MemoryRecord {
+  id: string;
+  day_index: number | null;
+  activity_id: string | null;
+  type: string;
+  caption: string | null;
+  asset_refs: unknown;
+  lat: number | null;
+  lng: number | null;
+  at_minutes: number | null;
+  captured_at: string;
+  client_key: string | null;
+}
+
+export interface MemoryRepository {
+  list(userId: string, tripClientId: string, dayIndex: number | null): Promise<MemoryRecord[]>;
+  /** client_key가 이미 있으면 새로 만들지 않고 그것을 돌려준다(오프라인 재시도) */
+  save(userId: string, tripClientId: string, row: Omit<MemoryRecord, 'id'>): Promise<{ row: MemoryRecord; created: boolean }>;
+}
+
+// ── 가격 관측(Pricing) — 판정은 price.js, 여기는 관측 행만 ──
+
+export interface PriceObservationRecord {
+  booking_id: string;
+  seller: string | null;
+  price: number | null;
+  currency: string | null;
+  quality: string | null;
+  verified: boolean;
+  offers: unknown[] | null;
+  observed_at: string;
+}
+
+export interface PriceObservationRepository {
+  /** 여행의 관측 전부, 오래된 순, 최대 500 */
+  listForTrip(userId: string, tripClientId: string): Promise<PriceObservationRecord[]>;
+  append(userId: string, tripClientId: string, obs: Omit<PriceObservationRecord, 'observed_at'> & { observed_at?: string; ptoken?: string | null }): Promise<void>;
+}

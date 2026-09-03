@@ -5,10 +5,11 @@
 //   DUAL_READ    새 PostgreSQL → 없으면 Supabase. 쓰기는 그 행이 온 곳으로
 //   NEW_BACKEND  새 PostgreSQL만
 // 기존 핸들러(Today·travel-state…)의 Trip 읽기/쓰기(listTrips/getTrip/saveTrip)도 같은 TripService를 지난다.
-// 나머지(제안 거절·가격·알림·기기·기록)는 아직 Supabase다 — Phase 4.
+// 제안 거절·알림·기기·기록(ADAPTIVE)과 가격 관측(PRICING)도 각 레지스트리 값으로 조립한다(composeGateway).
 import { createHandlers, type Gateway, type TripRow } from '@/features/trip-state/services/handlers';
 import { supabaseGatewayFor } from '@/features/trip-state/services/supabaseGateway';
 import type { TripDoc } from '@/features/trip-state/domain/todayView';
+import { composeGateway } from '@/server/api/composeGateway';
 import { ApiError } from '@/server/api/errors';
 import { createTripRoutes } from '@/server/api/tripRoutes';
 import { TripAuthorizationService } from '@/server/application/authorization/tripAuthorization';
@@ -19,7 +20,11 @@ import type { RequestContext } from '@/server/auth/types';
 import { withRemoteFallback } from '@/server/auth/withRemoteFallback';
 import { getEnv } from '@/server/config/env';
 import { getDb } from '@/server/infrastructure/database/client';
+import {
+  PgDeviceRepository, PgMemoryRepository, PgNotificationLogRepository, PgSuggestionFeedbackRepository
+} from '@/server/infrastructure/database/pgAdaptiveRepositories';
 import { PgMembershipRepository } from '@/server/infrastructure/database/pgMembershipRepository';
+import { PgPriceObservationRepository } from '@/server/infrastructure/database/pgPriceObservationRepository';
 import { PgTripRepository } from '@/server/infrastructure/database/pgTripRepository';
 import { PgUserRepository } from '@/server/infrastructure/database/pgUserRepository';
 import {
@@ -68,15 +73,28 @@ function toRow(v: TripView): TripRow {
   };
 }
 
-/** 기존 핸들러의 Gateway — Trip 읽기/쓰기만 TripService로, 나머지는 Supabase 그대로 */
+/** 기존 핸들러의 Gateway — 레지스트리가 LEGACY인 도메인은 Supabase 그대로, 아니면 새 저장소로 메서드를 바꿔 끼운다 */
 async function gatewayFor(token: string): Promise<Gateway | null> {
   const ctx = await verifier.verify(token);
   if (!ctx) return null;
   const legacy = await supabaseGatewayFor(token, ctx.userId);
-  if (!legacy || env.registry.TRIP === 'LEGACY') return legacy;
+  if (!legacy) return null;
+  const db = getDb();
+  if (db && (env.registry.ADAPTIVE !== 'LEGACY' || env.registry.PRICING !== 'LEGACY')) {
+    await new PgUserRepository(db).ensure({ id: ctx.userId, email: ctx.email });
+  }
+  const composed = composeGateway({
+    registry: env.registry, userId: ctx.userId, legacy,
+    adaptive: db ? {
+      feedback: new PgSuggestionFeedbackRepository(db), notifications: new PgNotificationLogRepository(db),
+      devices: new PgDeviceRepository(db), memories: new PgMemoryRepository(db)
+    } : null,
+    pricing: db ? new PgPriceObservationRepository(db) : null
+  });
+  if (env.registry.TRIP === 'LEGACY') return composed;
   const service = await tripServiceFor(ctx, token);
   return {
-    ...legacy,
+    ...composed,
     async listTrips() { return (await service.list(ctx)).map(toRow); },
     async getTrip(tripId) {
       try { return toRow(await service.get(ctx, tripId)); } catch (e) { if (e instanceof ApiError && e.code === 'NOT_FOUND') return null; throw e; }
