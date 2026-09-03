@@ -199,3 +199,23 @@ export interface AuthIdentityRepository {
   /** 새 도메인 사용자(새 uuid)를 만들고 이어 붙인다 */
   createLinked(email: string, authUserId: string): Promise<string>;
 }
+
+// ── 여행 버전 이력 — 사람마다 제 행, 여행당 최근 15개(운영과 같은 규칙) ──
+
+export interface TripSnapshotSummary {
+  id: number;
+  name: string;
+  source_revision: number | null;
+  created_at: string;
+}
+export interface TripSnapshotRecord extends TripSnapshotSummary {
+  data: unknown;
+}
+
+export interface TripSnapshotRepository {
+  /** 만들고 나서 오래된 것을 정리한다(같은 트랜잭션) */
+  create(userId: string, clientId: string, input: { name: string; data: unknown; sourceRevision: number | null }): Promise<TripSnapshotSummary>;
+  list(userId: string, clientId: string): Promise<TripSnapshotSummary[]>;
+  /** 남의 스냅샷은 id를 알아도 돌려주지 않는다 */
+  find(userId: string, clientId: string, id: number): Promise<TripSnapshotRecord | null>;
+}

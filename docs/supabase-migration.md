@@ -138,7 +138,7 @@ Supabase 전용 의존:
 | 7 | Storage (MinIO) — **현재 쓰는 곳이 없어 새 기능 전까지 보류** | PR9 |
 | 8 | 새 Auth (가입·인증메일·세션·재설정) · 기존 사용자 이관 · 웹/iOS 전환 | ✅ PR10(기반) — 아래. 기존 사용자 이관·웹/iOS 전환은 PR11 |
 | 9 | 웹 Supabase 클라이언트 제거 · iOS GoTrue 호출 제거 | PR12·PR13 |
-| 10 | 데이터 이관 리허설 · NAS 프로덕션 · 롤백 테스트 · Supabase read-only → 종료 | PR14 — **리허설 방식 확정**: `pg_dump` 직접 추출 · 전환 시 전면 중단(증분 동기화 없음) · R0/R1/R2 3단계. 절차는 `docs/backup-restore.md` |
+| 10 | 데이터 이관 리허설 · NAS 프로덕션 · 롤백 테스트 · Supabase read-only → 종료 | PR14 — **R0 완료**(이관·검증 스크립트 + 21개 테스트, CI에서 매번). R1·R2는 접속 정보가 있는 환경에서. **리허설 방식 확정**: `pg_dump` 직접 추출 · 전환 시 전면 중단(증분 동기화 없음) · R0/R1/R2 3단계. 절차는 `docs/backup-restore.md` |
 
 ## 협업 API (PR7)
 
@@ -206,7 +206,7 @@ Supabase Realtime을 대신한다. **PostgreSQL이 진실이고 소켓은 알림
 
 - 새 API(`POST /api/v1/trips` · `GET/PUT/DELETE /api/v1/trips/:id`)는 레지스트리가 `LEGACY`여도 동작한다 — Supabase를 같은 Repository 계약으로 감쌌기 때문이다. 웹·iOS가 `sync_trip` 대신 이 API로 옮겨 탈 수 있다(PR12·PR13의 준비).
 - Supabase 토큰은 서버가 직접 검증한다. 로컬 검증이 실패하면 예전처럼 `getUser`로 확인하고 **경고 로그**를 남긴다 — 그 로그가 보이면 프로젝트가 HS256이므로 `SUPABASE_JWT_SECRET`을 넣는다.
-- ⚠️ **`trip_snapshots`가 새 DB에 없다.** 운영에는 있고 웹이 쓰는 여행 버전 이력이다 — 이관 전에 스키마·Repository·저장/조회 경로를 채워야 한다. 안 채우면 사용자의 버전 이력이 사라진다.
+- `trip_snapshots`(여행 버전 이력)를 새 DB에 채웠다 — `/api/v1/trips/:id/snapshots`. 이관 대상에도 들어 있다.
 - 가격 크론 `api/track-hotel-prices.js`는 모든 사용자의 여행을 읽어 관측을 쓰는 **시스템 작업**이라 사용자 토큰 모델에 맞지 않는다. 새 backend로 옮길 때는 서비스 계정 경로(내부 전용 라우트 + `CRON_SECRET`)로 다시 만든다 — Phase 10 전에.
 - `NEW_BACKEND`·`DUAL_READ`는 코드·테스트가 있지만 **데이터 이관 스크립트가 아직 없다**(Phase 10). staging에서 빈 DB로 먼저 돌려 본다.
 - 미검증: 실제 SMTP 발송(테스트는 어댑터를 가짜로 넣는다), `next/Dockerfile`·`deploy/docker-compose.yml`(작성 환경에 Docker 없음), 실제 PostgreSQL 서버(테스트는 PGlite — 실시간 트리거·LISTEN은 PGlite에서 진짜로 돌지만 `pg` 드라이버 경로는 미검증), 실제 Supabase JWKS 응답(테스트는 로컬 키).

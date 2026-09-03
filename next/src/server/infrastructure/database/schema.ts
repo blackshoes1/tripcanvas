@@ -35,6 +35,23 @@ export const trips = pgTable('trips', {
   check('trips_revision_check', sql`${t.revision} > 0`)
 ]);
 
+/**
+ * 여행 버전 이력 — 저장 전에 떠 두는 사본. 운영 스키마 그대로다.
+ * 사람마다 제 행을 본다(운영 RLS가 소유자 행만 보여줬다) — 여행당 최근 15개만 남긴다.
+ */
+export const tripSnapshots = pgTable('trip_snapshots', {
+  id: bigint('id', { mode: 'number' }).primaryKey().generatedByDefaultAsIdentity(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  clientId: text('client_id').notNull(),
+  name: text('name').notNull().default(''),
+  data: jsonb('data').notNull(),
+  sourceRevision: bigint('source_revision', { mode: 'number' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+}, (t) => [
+  index('trip_snapshots_user_client_created_idx').on(t.userId, t.clientId, t.createdAt),
+  check('trip_snapshots_revision_check', sql`${t.sourceRevision} is null or ${t.sourceRevision} > 0`)
+]);
+
 export const tripMembers = pgTable('trip_members', {
   id: bigint('id', { mode: 'number' }).primaryKey().generatedByDefaultAsIdentity(),
   tripId: uuid('trip_id').notNull().references(() => trips.id, { onDelete: 'cascade' }),

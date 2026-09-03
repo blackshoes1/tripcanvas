@@ -1,4 +1,4 @@
-// 실시간 사이드카만 따로 컴파일한다(Next 번들과 무관한 독립 프로세스라 별도 진입점이 필요하다).
+// Next 번들과 무관한 독립 실행 도구들(실시간 사이드카 · 데이터 이관)을 따로 컴파일한다.
 // module: commonjs — 확장자 없는 상대 경로를 Node가 그대로 해석한다. 이 하위 트리는 경로 별칭(@/·@legacy/)을 쓰지 않는다.
 {
   "compilerOptions": {
@@ -9,11 +9,11 @@
     "esModuleInterop": true,
     "strict": true,
     "skipLibCheck": true,
-    "outDir": "dist-realtime",
+    "outDir": "dist-tools",
     "rootDir": "src",
     "sourceMap": true,
     "types": ["node"]
   },
-  "include": ["src/server/realtime/main.ts"],
+  "include": ["src/server/realtime/main.ts", "src/server/migration/main.ts"],
   "exclude": ["**/*.test.ts"]
 }

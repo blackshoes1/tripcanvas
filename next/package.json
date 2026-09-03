@@ -13,8 +13,9 @@
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "realtime:build": "tsc -p tsconfig.realtime.json",
-    "realtime": "node dist-realtime/server/realtime/main.js"
+    "realtime": "node dist-tools/server/realtime/main.js",
+    "tools:build": "tsc -p tsconfig.tools.json",
+    "migrate:import": "node dist-tools/server/migration/main.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",

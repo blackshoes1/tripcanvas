@@ -12,10 +12,12 @@ import type { TripDoc } from '@/features/trip-state/domain/todayView';
 import { composeGateway } from '@/server/api/composeGateway';
 import { ApiError } from '@/server/api/errors';
 import { createCollabRoutes } from '@/server/api/collabRoutes';
+import { createSnapshotRoutes } from '@/server/api/snapshotRoutes';
 import { createTripRoutes } from '@/server/api/tripRoutes';
 import { TripAuthorizationService } from '@/server/application/authorization/tripAuthorization';
 import { CollabService } from '@/server/application/collaboration/collabService';
 import type { CollabApi } from '@/server/application/collaboration/types';
+import { SnapshotService } from '@/server/application/trip/snapshotService';
 import { TripService } from '@/server/application/trip/tripService';
 import { composeVerifiers } from '@/server/auth/compositeVerifier';
 import { getNewAuth } from '@/server/auth/instance';
@@ -32,6 +34,7 @@ import { PgCollabRepository } from '@/server/infrastructure/database/pgCollabRep
 import { PgMembershipRepository } from '@/server/infrastructure/database/pgMembershipRepository';
 import { PgPriceObservationRepository } from '@/server/infrastructure/database/pgPriceObservationRepository';
 import { PgTripRepository } from '@/server/infrastructure/database/pgTripRepository';
+import { PgTripSnapshotRepository } from '@/server/infrastructure/database/pgTripSnapshotRepository';
 import { PgUserRepository } from '@/server/infrastructure/database/pgUserRepository';
 import { LegacySupabaseCollabService } from '@/server/infrastructure/supabase/legacyCollabService';
 import {
@@ -77,6 +80,19 @@ export async function tripServiceFor(ctx: RequestContext, token: string): Promis
 }
 
 export const tripRoutes = createTripRoutes({ verifier, serviceFor: tripServiceFor });
+
+/**
+ * 여행 버전 이력 — 새 DB에만 있다. 레거시(Supabase)의 trip_snapshots는 웹이 직접 읽고 쓰던 것이고,
+ * 이 라우트는 이관 뒤(TRIP이 LEGACY가 아닐 때)를 위한 것이다. DB가 없으면 NOT_FOUND로 정직하게 답한다.
+ */
+export const snapshotRoutes = createSnapshotRoutes({
+  verifier,
+  serviceFor: async (ctx, token) => {
+    const db = getDb();
+    if (!db) throw new ApiError('NOT_FOUND', { message: '버전 이력은 아직 이 배포에서 쓸 수 없습니다.' });
+    return new SnapshotService({ trips: await tripServiceFor(ctx, token), snapshots: new PgTripSnapshotRepository(db) });
+  }
+});
 
 /**
  * 협업 API — COLLAB 레지스트리. LEGACY면 Supabase RPC 어댑터(판정은 RPC), 아니면 새 DB(CollabService).

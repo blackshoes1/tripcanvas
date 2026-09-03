@@ -136,6 +136,7 @@ compositeVerifier   Supabase 토큰 · 자체 세션을 함께 받는다(전환�
 | Auth | `supabaseJwt.test.ts` · `withRemoteFallback.test.ts` | ES256 JWKS · HS256 · issuer/audience/만료/서명 거절 · 폴백 |
 | API 경계 | `tripRoutes.test.ts` | 401/400/403/404/409 + 응답 계약 |
 | 자체 Auth | `betterAuthVerifier.test.ts`(PGlite+better-auth 실제 가입→확인→로그인) · `identity.test.ts` · `cooldownMailService.test.ts` · `compositeVerifier.test.ts` | 이메일 확인 전 연결 거부 · 기존 사용자 이관 · 쿨다운 · 전환기 검증 |
+| 데이터 이관 | `migration/importer.test.ts` · `verify.test.ts` · `pgSource.test.ts` | FK 순서·시퀀스 재설정·알림 트리거·멱등성·전수 검증 |
 | 실시간 | `hub.test.ts` · `events.test.ts` · `pgListener.test.ts` · `pgNotify.test.ts`(PGlite) · `server.test.ts`(진짜 WebSocket) | 인증·구독 권한·방송·토큰 만료·재연결·트리거 |
 | 레거시 보존 | `handlers.test.ts` · `swiftParity.test.ts` | 기존 `/api/v1` 계약이 그대로다 |
 

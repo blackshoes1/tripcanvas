@@ -42,10 +42,10 @@ curl -s https://$API_DOMAIN/api/health
 전환 방식은 정해져 있다: **추출은 `pg_dump` 직접 연결, 전환 시점에는 앱을 완전히 내린다.**
 전면 중단이 가능하므로 증분 동기화(dual write)를 만들지 않는다 — divergence 위험이 가장 큰 부분이 통째로 사라진다(§33).
 
-### ⚠️ 선행 과제: `trip_snapshots`
+### 선행 과제: `trip_snapshots` — 해결됨
 
-운영에는 있고 새 DB에는 **없다**. 웹의 여행 버전 이력(여행당 15개, `app.js`·`tripSnapshots.ts`)이 이 테이블에 산다.
-지금 이관하면 사용자의 버전 이력이 사라진다. **스키마·Repository·저장/조회 경로를 먼저 채운 뒤에** 리허설을 시작한다.
+운영에는 있는데 새 DB에 없어 이관하면 버전 이력이 사라질 뻔했다. 스키마·Repository·API(`/api/v1/trips/:id/snapshots`)를 채웠고
+이관 대상에도 들어 있다. 규칙은 운영 그대로다: 사람마다 제 스냅샷, 여행당 최근 15개.
 
 ### 리허설 3단계
 
@@ -68,9 +68,30 @@ psql "$SUPABASE_DIRECT_URL" -Atc "copy (select id, email from auth.users) to std
 
 `SUPABASE_DIRECT_URL`은 셸 히스토리·로그에 남기지 않는다(§58).
 
+### 돌리는 방법
+
+**R0**는 테스트다 — 손으로 돌릴 것이 없다.
+
+```bash
+cd next && npm test -- src/server/migration     # 이관기·검증·원본 21개 시나리오
+```
+
+**R1**은 복원한 사본을 가리키고 CLI를 돌린다. 기본은 **검사만**(dry-run)이라 실수로 쓰지 않는다.
+
+```bash
+cd next && npm run tools:build
+# 1) 무엇이 옮겨질지 세어만 본다
+LEGACY_DATABASE_URL=postgres://…/legacy_copy DATABASE_URL=postgres://…/tripcanvas npm run migrate:import
+# 2) 실제로 옮기고 검증까지 (대상을 비우고 시작)
+LEGACY_DATABASE_URL=… DATABASE_URL=… npm run migrate:import -- --apply --reset
+```
+
+원본과 대상이 같으면 시작하지 않는다. 검증이 실패하면 종료 코드가 1이라 자동화에서도 막힌다.
+계정 테이블이 `auth.users`가 아니면 `LEGACY_USERS_TABLE=public.legacy_users`로 알려 준다.
+
 ### 이관 스크립트가 반드시 다뤄야 할 것
 
-R0가 이 항목들을 전부 테스트로 잡는다. 하나라도 빠지면 전환 후에야 드러난다.
+R0가 이 항목들을 전부 테스트로 잡는다(`next/src/server/migration/`). 하나라도 빠지면 전환 후에야 드러난다.
 
 1. **identity 시퀀스 재설정.** 협업·adaptive 테이블(`trip_members`·`trip_invites`·`trip_candidates`·`candidate_reactions`·`trip_comments`·`trip_activity`·`suggestion_feedback`·`device_tokens`·`notification_log`)이 자동 증가 id를 쓴다. 기존 id를 그대로 넣은 뒤 `setval`을 하지 않으면 **전환 후 첫 쓰기가 중복키로 죽는다.**
 2. **알림 트리거 끄기.** `trip_activity` import는 행마다 `pg_notify`를 쏜다(마이그레이션 0004). import 동안 `alter table trip_activity disable trigger tc_notify_activity`, 끝나면 되돌린다.

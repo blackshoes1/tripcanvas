@@ -50,6 +50,13 @@
       "when": 1788404031719,
       "tag": "0006_auth_rate_limit",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1788409415369,
+      "tag": "0007_trip_snapshots",
+      "breakpoints": true
     }
   ]
 }
