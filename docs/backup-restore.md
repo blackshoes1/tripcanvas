@@ -37,10 +37,67 @@ curl -s https://$API_DOMAIN/api/health
 4. 임의 사용자 하나의 여행을 `/api/v1/trips`로 읽어 문서가 열리는지 본다(레지스트리 `NEW_BACKEND`, staging 토큰).
 5. 걸린 시간을 기록한다 — 그것이 RTO다.
 
-## Supabase → 새 PostgreSQL 데이터 이관 (Phase 10 리허설의 뼈대)
+## Supabase → 새 PostgreSQL 데이터 이관과 리허설 (Phase 10)
 
-아직 스크립트가 없다(다음 단계). 원칙만 적어 둔다:
+전환 방식은 정해져 있다: **추출은 `pg_dump` 직접 연결, 전환 시점에는 앱을 완전히 내린다.**
+전면 중단이 가능하므로 증분 동기화(dual write)를 만들지 않는다 — divergence 위험이 가장 큰 부분이 통째로 사라진다(§33).
 
-- Supabase에서 `trips` · `trip_members` · `auth.users(id,email)`를 내보내고 **id를 그대로** 넣는다(`users.id` = Supabase user id, `trips.id` uuid 그대로). 외래키·소유권이 안 깨진다(§13).
-- 이관 뒤 검증(§79·§80): 사용자 수 · 여행 수(삭제 포함/제외) · 멤버 수 · 여행별 `(client_id, revision)` 쌍이 양쪽에서 같은가 · 임의 표본의 `data` jsonb가 같은가.
-- 검증이 통과한 뒤에만 `TC_MIGRATION_TRIP=NEW_BACKEND`. Supabase는 read-only로 일정 기간 보존한다(§102).
+### ⚠️ 선행 과제: `trip_snapshots`
+
+운영에는 있고 새 DB에는 **없다**. 웹의 여행 버전 이력(여행당 15개, `app.js`·`tripSnapshots.ts`)이 이 테이블에 산다.
+지금 이관하면 사용자의 버전 이력이 사라진다. **스키마·Repository·저장/조회 경로를 먼저 채운 뒤에** 리허설을 시작한다.
+
+### 리허설 3단계
+
+운영 DB는 리허설 내내 **읽기만** 한다. 쓰는 쪽은 언제나 사본이다.
+
+| | 무엇으로 | 무엇을 잡는가 | 언제 |
+|---|---|---|---|
+| **R0** | 합성 데이터 + PGlite | 스크립트 자체 — 순서·시퀀스·트리거·멱등성 | CI에서 매번 |
+| **R1** | 운영 스냅샷 사본 | 실데이터의 이상값 — 깨진 참조·예상 못 한 null·규모와 소요시간 | 스크립트를 고칠 때마다 |
+| **R2** | R1 결과 + staging 앱 | 전환 예행 — 로그인·저장·협업이 실제로 도는가, 롤백이 되는가 | 전환 직전 1~2회 |
+
+### 추출
+
+```bash
+# 운영 Supabase(직접 연결). 읽기만 한다
+pg_dump "$SUPABASE_DIRECT_URL" --data-only --schema=public --no-owner --no-privileges -f dump/public.sql
+# 계정은 id·email만 — 해시·메타데이터는 가져오지 않는다(§19)
+psql "$SUPABASE_DIRECT_URL" -Atc "copy (select id, email from auth.users) to stdout with csv" > dump/users.csv
+```
+
+`SUPABASE_DIRECT_URL`은 셸 히스토리·로그에 남기지 않는다(§58).
+
+### 이관 스크립트가 반드시 다뤄야 할 것
+
+R0가 이 항목들을 전부 테스트로 잡는다. 하나라도 빠지면 전환 후에야 드러난다.
+
+1. **identity 시퀀스 재설정.** 협업·adaptive 테이블(`trip_members`·`trip_invites`·`trip_candidates`·`candidate_reactions`·`trip_comments`·`trip_activity`·`suggestion_feedback`·`device_tokens`·`notification_log`)이 자동 증가 id를 쓴다. 기존 id를 그대로 넣은 뒤 `setval`을 하지 않으면 **전환 후 첫 쓰기가 중복키로 죽는다.**
+2. **알림 트리거 끄기.** `trip_activity` import는 행마다 `pg_notify`를 쏜다(마이그레이션 0004). import 동안 `alter table trip_activity disable trigger tc_notify_activity`, 끝나면 되돌린다.
+3. **FK 순서**: `users → trips → trip_members → trip_invites → trip_candidates → candidate_reactions → trip_comments → trip_activity → trip_snapshots → (adaptive·pricing)`.
+4. **운영에 없는 테이블 3개.** `suggestion_feedback` · `device_tokens`/`notification_log` · `trip_memories`는 운영에 적용돼 있지 않다(2026-09-02 확인). 원본이 비어 있는 것이 정상이므로 스크립트는 **"없음"과 "실패"를 구분**해야 한다.
+5. **`auth.users` → `users`**: `id`를 그대로 보존하고 `email`만 옮긴다. `auth_user_id`는 null — 각자 새 Auth로 가입해 이메일을 확인할 때 이어진다(§13·§19).
+6. **멱등성**: 두 번 돌려도 같은 결과여야 R1을 반복할 수 있다.
+
+### 검증 스크립트가 리허설의 본체다 (§79·§80)
+
+"돌았다"가 아니라 **"같다"**를 판정한다. 표본이 아니라 전수로 본다.
+
+| 검사 | 방법 |
+|---|---|
+| 개수 | 테이블별 행 수를 양쪽에서 세어 비교 |
+| 관계 무결성 | 고아 행 0 — 멤버→여행, 반응→후보, 코멘트→후보, 여행→사용자 |
+| 내용 동일성 | 여행별 `(client_id, revision)` 쌍 집합 + `data` jsonb 해시 집계 비교 (한 글자만 달라도 걸린다) |
+| 소유권 | `trips.user_id` 집합이 전부 `users.id`에 있는가 |
+
+결과는 사람이 읽는 리포트로 남긴다. **통과하지 못하면 전환하지 않는다**는 기준선이다.
+
+### 전환 당일 순서
+
+```
+공지 → 앱 내리기(정적 웹·API) → pg_dump → import → 검증 스크립트 통과 확인
+→ TC_MIGRATION_* 전환 → 앱 올리기 → 실사용 확인(로그인·여행 열기·저장·협업)
+```
+
+되돌리기: `TC_MIGRATION_*`를 `LEGACY`로 되돌리고 앱 재시작. 그 사이 새 DB에 쌓인 변경은 버린다.
+**관찰 기간에는 Supabase를 읽기전용으로 만들지 않는다** — 되돌릴 여지를 남긴다. 관찰이 끝난 뒤에 read-only → 종료 순서다(§102).
