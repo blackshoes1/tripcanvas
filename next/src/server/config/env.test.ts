@@ -56,6 +56,7 @@ describe('parseEnv — 자체 Auth(§57·§58)', () => {
 
   it('신뢰 출처(§72)는 쉼표로 나누고 빈 값은 버린다', () => {
     expect(parseEnv({ TRUSTED_ORIGINS: 'https://a.com, https://b.com ,' }).trustedOrigins).toEqual(['https://a.com', 'https://b.com']);
-    expect(parseEnv({}).trustedOrigins).toEqual([]);
+    // 설정이 없으면 이 앱의 알려진 웹 주소 — 배포할 때 뭘 설정하지 않아도 동작해야 한다
+    expect(parseEnv({}).trustedOrigins).toContain('https://tripcanvas-ai.vercel.app');
   });
 });

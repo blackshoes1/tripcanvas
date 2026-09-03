@@ -1,4 +1,5 @@
 // 서버 환경(§57). 비밀은 여기서만 읽고 도메인 코드는 모른다. 값이 없으면 오늘의 배포(Supabase 레거시)와 같은 동작이다.
+import { readAllowedOrigins } from '../api/cors';
 import { readRegistry, type MigrationRegistry } from './migrationRegistry';
 
 export interface SmtpConfig {
@@ -70,7 +71,8 @@ export function parseEnv(env: Record<string, string | undefined>, warn?: (m: str
     supabaseJwtSecret: env.SUPABASE_JWT_SECRET || null,
     authSecret,
     apiBaseUrl: (env.API_BASE_URL || 'http://localhost:3000').replace(/\/+$/, ''),
-    trustedOrigins: (env.TRUSTED_ORIGINS ?? '').split(',').map((o) => o.trim()).filter(Boolean),
+    // CORS와 같은 목록을 쓴다 — 설정이 없으면 이 앱의 알려진 웹 주소
+    trustedOrigins: readAllowedOrigins(env),
     realtimeUrl: (env.REALTIME_URL ?? '').trim() || null,
     smtp: readSmtp(env),
     newAuthEnabled: !!authSecret && !!databaseUrl,

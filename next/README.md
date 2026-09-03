@@ -38,9 +38,11 @@ Root Directory 설정이 맞아도 이 메시지가 나온다 — 파일 자체�
 
 **Vercel 대시보드 → `tripcanvas-api` 프로젝트 → Settings → Environment Variables.** (정적 웹 `tripcanvas` 쪽이 아니다.)
 
+**오늘 배포에 필수인 값은 없다** — 전부 없으면 예전 동작(Supabase 레거시)으로 돌아간다.
+
 | 이름 | 값 | 없으면 |
 |---|---|---|
-| `TRUSTED_ORIGINS` | `https://tripcanvas-ai.vercel.app` (쉼표로 여러 개) | ⚠️ **웹이 이 API를 못 부른다** — 브라우저가 교차 출처 요청을 막는다 |
+| `TRUSTED_ORIGINS` | 허용할 웹 주소(쉼표로 여러 개) | `tripcanvas-ai.vercel.app`·`localhost:8000`이 기본값 — **보통 설정할 필요 없다** |
 | `NEXT_PUBLIC_SUPABASE_URL` · `NEXT_PUBLIC_SUPABASE_ANON_KEY` | 공개용 키 — 데이터는 RLS가 지킨다. **`service_role` 키를 쓰지 않는다** | 레거시 프로젝트로 붙는다(기본값이 코드에 있다) |
 | `SUPABASE_JWT_SECRET` | 프로젝트 JWT secret | HS256 토큰이면 서버 로그에 폴백 경고가 뜬다 |
 | `DATABASE_URL` · `TC_MIGRATION_*` | 독립 PostgreSQL과 이관 레지스트리 | 전부 LEGACY(오늘의 동작) |
@@ -49,13 +51,17 @@ Root Directory 설정이 맞아도 이 메시지가 나온다 — 파일 자체�
 
 전체 목록과 설명은 `.env.example`. 로컬은 `next/.env.local`에 같은 이름으로 둔다.
 
-### ⚠️ TRUSTED_ORIGINS는 먼저 넣고 배포한다
+### 웹 주소가 바뀔 때만 TRUSTED_ORIGINS
 
-정적 웹(`tripcanvas-ai.vercel.app`)과 이 API(`tripcanvas-api.vercel.app`)는 **다른 출처**다. 웹의 여행 동기화·함께하기가
-전부 이 API를 지나므로, 이 값이 없으면 **로그인해도 여행이 안 뜨고 저장도 안 된다.**
+정적 웹(`tripcanvas-ai.vercel.app`)과 이 API(`tripcanvas-api.vercel.app`)는 **다른 출처**다 — 브라우저는 이 API가
+"저 웹은 괜찮다"고 응답에 적어 줘야 호출을 통과시킨다. 웹의 여행 동기화·함께하기가 전부 이 API를 지나므로,
+허용 목록에 없는 주소에서 열면 **로그인해도 여행이 안 뜨고 저장도 안 된다.**
 
+그래서 알려진 주소는 코드에 기본값으로 박아 뒀다(`src/server/api/cors.ts`의 `DEFAULT_ORIGINS`). 커스텀 도메인을
+붙이거나 Preview 배포에서 쓸 때만 `TRUSTED_ORIGINS`로 덮어쓴다.
+
+- **덮어쓰면 기본값은 안 쓴다** — 프로덕션 주소도 같이 적는다
 - 경로나 끝 슬래시를 붙이지 않는다 — 브라우저가 보내는 `Origin` 헤더와 **글자 그대로** 비교한다
-- 로컬에서 `python3 -m http.server 8000`으로 열어 본다면 `http://localhost:8000`도 함께 넣는다
 - 값을 바꾼 뒤에는 **재배포해야 반영된다.** 이 프로젝트는 "Skip deployments when there are no changes to the root directory"가
   켜져 있어 `next/` 밖만 바뀐 커밋은 다시 빌드하지 않는다 — 값만 바꿨다면 대시보드에서 **Redeploy**를 누른다
 

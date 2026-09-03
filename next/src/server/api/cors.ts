@@ -1,8 +1,11 @@
 // CORS(§72). 정적 웹(tripcanvas-ai.vercel.app)과 API(tripcanvas-api.vercel.app)는 **다른 출처**다 —
 // 웹이 Supabase 대신 이 API를 부르려면 브라우저가 교차 출처 요청을 허용해야 한다.
 //
-// `*`를 production 기본값으로 쓰지 않는다: 허용 목록(TRUSTED_ORIGINS)에 있는 출처만 그대로 되돌려 준다.
-// 목록이 비어 있으면 아무 출처도 열지 않는다 — 설정을 잊었을 때 조용히 전부 열리는 편보다 막히는 편이 낫다.
+// `*`를 쓰지 않는다: 허용 목록에 있는 출처만 그대로 되돌려 준다.
+//
+// 이 앱의 웹 주소는 하나로 정해져 있으므로 **기본값으로 넣어 둔다** — 배포할 때 뭘 설정하지 않아도 그냥 동작해야 한다.
+// 다른 주소를 쓰게 되면 TRUSTED_ORIGINS로 덮어쓴다(그때는 기본값을 쓰지 않는다).
+// CORS는 '어느 웹사이트가 브라우저에서 이 API를 부를 수 있는가'만 정한다 — 데이터 접근은 여전히 토큰이 지킨다.
 //
 // /api/v1은 쿠키를 쓰지 않고 Authorization 헤더만 본다. 그래서 Allow-Credentials를 켜지 않는다
 // (켜면 브라우저가 자격증명을 실어 보낼 수 있게 되고, 그만큼 실수의 여지가 는다).
@@ -11,6 +14,12 @@ const ALLOW_METHODS = 'GET, POST, PUT, PATCH, DELETE, OPTIONS';
 const ALLOW_HEADERS = 'Authorization, Content-Type';
 /** 사전 요청 결과를 브라우저가 캐시하는 시간(초) */
 const MAX_AGE = 600;
+
+/** 이 앱이 실제로 쓰는 웹 주소. 설정이 없으면 이 목록을 쓴다 */
+export const DEFAULT_ORIGINS = Object.freeze([
+  'https://tripcanvas-ai.vercel.app',
+  'http://localhost:8000'     // 로컬에서 열어 볼 때(README의 python3 -m http.server 8000)
+]);
 
 export function corsHeadersFor(origin: string | null, allowed: string[]): Record<string, string> {
   if (!origin) return {};
@@ -30,7 +39,11 @@ export function preflightResponse(origin: string | null, allowed: string[]): Res
   return new Response(null, { status: 204, headers });
 }
 
-/** 환경변수에서 허용 출처 목록. proxy는 무거운 모듈을 끌어오지 않으므로 여기서 직접 읽는다 */
+/**
+ * 허용 출처 — 설정이 있으면 그것, 없으면 이 앱의 알려진 주소.
+ * proxy는 무거운 모듈을 끌어오지 않으므로 여기서 직접 읽는다.
+ */
 export function readAllowedOrigins(env: Record<string, string | undefined>): string[] {
-  return (env.TRUSTED_ORIGINS ?? '').split(',').map((o) => o.trim()).filter(Boolean);
+  const configured = (env.TRUSTED_ORIGINS ?? '').split(',').map((o) => o.trim()).filter(Boolean);
+  return configured.length ? configured : [...DEFAULT_ORIGINS];
 }

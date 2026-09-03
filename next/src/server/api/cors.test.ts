@@ -2,7 +2,7 @@
 // `*`를 쓰지 않는다: 허용 목록에 있는 출처만 그대로 되돌려 준다. 모르는 출처에는 헤더를 붙이지 않아 브라우저가 막는다.
 import { describe, expect, it } from 'vitest';
 
-import { corsHeadersFor, preflightResponse } from './cors';
+import { corsHeadersFor, DEFAULT_ORIGINS, preflightResponse, readAllowedOrigins } from './cors';
 
 const ALLOWED = ['https://tripcanvas-ai.vercel.app', 'http://localhost:8000'];
 
@@ -23,13 +23,29 @@ describe('corsHeadersFor', () => {
     expect(corsHeadersFor(null, ALLOWED)).toEqual({});
   });
 
-  it('허용 목록이 비어 있으면 아무 출처도 열지 않는다 — 설정을 잊었을 때 조용히 전부 열리지 않게', () => {
+  it('빈 목록을 직접 넘기면 아무 출처도 열지 않는다', () => {
     expect(corsHeadersFor('https://tripcanvas-ai.vercel.app', [])).toEqual({ vary: 'Origin' });
   });
 
   it('와일드카드는 만들지 않는다', () => {
     const headers = corsHeadersFor('https://tripcanvas-ai.vercel.app', ALLOWED);
     expect(Object.values(headers)).not.toContain('*');
+  });
+});
+
+describe('readAllowedOrigins', () => {
+  it('설정이 없으면 이 앱의 알려진 웹 주소를 쓴다 — 배포할 때 뭘 설정하지 않아도 동작해야 한다', () => {
+    expect(readAllowedOrigins({})).toEqual([...DEFAULT_ORIGINS]);
+    expect(readAllowedOrigins({ TRUSTED_ORIGINS: '  ' })).toEqual([...DEFAULT_ORIGINS]);
+    expect(readAllowedOrigins({}).some((o) => o.includes('tripcanvas-ai'))).toBe(true);
+  });
+
+  it('설정이 있으면 그것만 쓴다 — 기본값을 섞지 않는다', () => {
+    expect(readAllowedOrigins({ TRUSTED_ORIGINS: 'https://staging.example.com' })).toEqual(['https://staging.example.com']);
+  });
+
+  it('기본값에도 와일드카드는 없다', () => {
+    expect(readAllowedOrigins({})).not.toContain('*');
   });
 });
 
