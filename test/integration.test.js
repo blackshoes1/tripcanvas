@@ -34,6 +34,7 @@ function boot() {
   inject('adaptive.js');
   inject('intake.js');
   inject('collab.js');
+  inject('api.js');
   inject('app.js');
   return window;
 }
@@ -1817,7 +1818,7 @@ test('통합: 보기 권한 여행은 클라우드에 올리지 않고, 권한 �
   let calls = 0;
   w.eval(`user={id:'u1'}; tripRoles={v1:{role:'VIEWER',count:2,owner:false}};`);
   w.sb = { rpc: async () => { calls++; return { data: null, error: { code: '42501', message: 'TRIP_FORBIDDEN' } }; } };
-  w.eval(`sb=window.sb`);
+  w.eval(`sb=window.sb; TC_API.rpc=window.sb.rpc`);
   await w.eval(`syncTripCloud({id:'v1',name:'V',days:[{spots:[]}]})`);
   assert.equal(calls, 0, '보기 권한은 서버에 요청 자체를 보내지 않는다');
   // 편집자였는데 서버가 거절(나갔거나 내보내진 경우) → forbidden으로 멈추고 재시도 타이머를 걸지 않는다
@@ -1840,7 +1841,7 @@ test('통합: 초대 링크(#join=)로 열면 여행 본문 없이 미리보기�
   const token = 'T'.repeat(32);
   const rpc = [];
   w.sb = { rpc: async (name, args) => { rpc.push([name, args]); return { data: [{ valid: true, reason: 'OK', trip_name: '스페인 여행', start_date: '2026-10-25', day_count: 14, role: 'EDITOR', already_member: false }], error: null }; } };
-  w.eval(`sb=window.sb; user=null;`);
+  w.eval(`sb=window.sb; TC_API.rpc=window.sb.rpc; user=null;`);
   await w.eval(`startJoin(${JSON.stringify(token)})`);
   assert.deepEqual(rpc[0], ['invite_preview', { p_token: token }]);
   assert.equal(w.document.getElementById('joinModalBg').classList.contains('show'), true);
@@ -1860,7 +1861,7 @@ test('통합: 초대 링크(#join=)로 열면 여행 본문 없이 미리보기�
 test('통합: 만료·취소된 초대는 참여 버튼 없이 이유를 보여준다', { skip: noJsdom }, async () => {
   const w = boot();
   w.sb = { rpc: async () => ({ data: [{ valid: false, reason: 'EXPIRED', trip_name: '스페인 여행', role: 'VIEWER' }], error: null }) };
-  w.eval(`sb=window.sb; user={id:'u2',email:'a@b.c'};`);
+  w.eval(`sb=window.sb; TC_API.rpc=window.sb.rpc; user={id:'u2',email:'a@b.c'};`);
   await w.eval(`startJoin('${'X'.repeat(24)}')`);
   assert.equal(w.document.getElementById('joinAccept').style.display, 'none');
   assert.match(w.document.getElementById('joinHint').textContent, /만료/);
@@ -1877,7 +1878,7 @@ test('통합: 공유받은 여행의 "삭제"는 나가기가 되고 주최자�
   withTrip(w, `[{title:'',drive:'',note:'',spots:[]}]`);
   const rpc = [];
   w.sb = { rpc: async (name, args) => { rpc.push([name, args]); return { data: true, error: null }; } };
-  w.eval(`sb=window.sb; user={id:'u2'}; tripRoles={__it__:{role:'EDITOR',count:2,owner:false}}; window.confirm=()=>true;`);
+  w.eval(`sb=window.sb; TC_API.rpc=window.sb.rpc; user={id:'u2'}; tripRoles={__it__:{role:'EDITOR',count:2,owner:false}}; window.confirm=()=>true;`);
   assert.equal(w.eval(`deleteTrip('__it__')`), true);
   await new Promise(r => setTimeout(r, 20));
   assert.deepEqual(rpc[0], ['leave_trip', { p_client_id: '__it__' }], 'tombstone_trip이 아니라 leave_trip');
@@ -1891,7 +1892,7 @@ test('통합: 다른 멤버의 최신본 당겨오기 — 로컬이 깨끗하면
   withTrip(w, `[{title:'',drive:'',note:'',spots:[]}]`);
   const remote = { id: '__it__', name: 'T (영희 편집)', start: '2026-08-01', days: [{ title: '', drive: '', note: '', spots: [] }] };
   w.sb = { from: () => ({ select: () => ({ eq: async () => ({ data: [{ client_id: '__it__', data: remote, revision: 5, deleted_at: null, updated_at: '' }], error: null }) }) }) };
-  w.eval(`sb=window.sb; user={id:'u2'}; tripRoles={__it__:{role:'EDITOR',count:2,owner:false}};
+  w.eval(`sb=window.sb; TC_API.rpc=window.sb.rpc; user={id:'u2'}; tripRoles={__it__:{role:'EDITOR',count:2,owner:false}};
     syncMeta.__it__={revision:4,status:'clean',op:'',hash:TC_SYNC.hashTrip(trip())};`);
   assert.equal(await w.eval(`pullTrip('__it__',{force:true})`), true);
   assert.equal(w.eval(`trip().name`), 'T (영희 편집)');
@@ -1924,7 +1925,7 @@ test('통합: 후보 보드 — 보기 권한은 담는 칸이 없고 반응은 
     syncMeta={t1:{revision:3,status:'clean'}}; tripRoles={t1:{role:'VIEWER',count:2,owner:false}};`);
   w.__rows = rows;
   w.sb = { rpc: async (name, args) => { rpc.push([name, args]); return { data: name === 'list_trip_candidates' ? w.__rows : true, error: null }; } };
-  w.eval(`sb=window.sb; candTripId='t1';`);
+  w.eval(`sb=window.sb; TC_API.rpc=window.sb.rpc; candTripId='t1';`);
   await w.eval(`renderCandidates()`);
 
   // 보기 권한: 후보를 담는 칸은 감춘다(서버도 42501로 막는다)
@@ -1959,7 +1960,7 @@ test('통합: 반응은 탭 즉시 반영되고 서버가 거절하면 되돌아
       reactions:[{name:'나',reaction:'MUST',me:true}]}];`);
   w.__state = () => ({ fail, sent });
   w.sb = { rpc: async (name, args) => { sent.push([name, args]); return fail ? { data: null, error: { message: 'boom' } } : { data: true, error: null }; } };
-  w.eval(`sb=window.sb; drawCandidates();`);
+  w.eval(`sb=window.sb; TC_API.rpc=window.sb.rpc; drawCandidates();`);
 
   await w.eval(`reactCandidate(1,'OK')`);
   assert.deepEqual(sent[0], ['react_to_candidate', { p_candidate_id: 1, p_reaction: 'OK' }]);
@@ -1990,7 +1991,7 @@ test('통합: 후보를 일정에 넣으면 고른 날의 맨 뒤에 붙고 후�
     tripRoles={t1:{role:'EDITOR',count:2,owner:false}}; candTripId='t1'; candRows=[];`);
   w.prompt = () => '2';
   w.sb = { rpc: async (name, args) => { rpc.push([name, args]); return { data: name === 'list_trip_candidates' ? [] : true, error: null }; } };
-  w.eval(`sb=window.sb`);
+  w.eval(`sb=window.sb; TC_API.rpc=window.sb.rpc`);
   await w.eval(`scheduleCandidate({id:7,title:'카사 바트요',note:'가우디',lat:41.39,lng:2.16})`);
   const days = w.eval(`JSON.stringify(store.trips[0].days.map(d=>d.spots.map(s=>s.name)))`);
   assert.deepEqual(JSON.parse(days), [['기존'], ['카사 바트요']], '고른 날의 맨 뒤에만 붙는다');
@@ -2024,7 +2025,7 @@ test('통합: 후보 한마디 — 펼치면 불러오고, 남기면 수가 오�
     if (name === 'add_candidate_comment') { w.__comments = w.__comments.concat([{ id: 3, body: args.p_body, author_label: '나', mine: true, created_at: '2026-09-02T10:06:00Z' }]); return { data: 3, error: null }; }
     if (name === 'delete_candidate_comment') { w.__comments = w.__comments.filter(c => c.id !== args.p_comment_id); return { data: true, error: null }; }
     return { data: null, error: null }; } };
-  w.eval(`sb=window.sb; drawCandidates();`);
+  w.eval(`sb=window.sb; TC_API.rpc=window.sb.rpc; drawCandidates();`);
   const card = () => w.document.querySelector('#candList .candCard');
   const cbtn = () => [...card().querySelectorAll('.candActions button')].find(b => b.textContent.startsWith('💬'));
   assert.equal(cbtn().textContent, '💬 2');
@@ -2073,7 +2074,7 @@ test('통합: 최근 활동 — 서버 재료를 문장으로 옮기고, 같은 
     { id: 2, kind: 'CANDIDATE_PROPOSED', actor_label: '주최자', mine: true, subject: { title: '카사 바트요', candidate_id: 1 }, created_at: at(10) },
     { id: 1, kind: 'MEMBER_JOINED', actor_label: '영희', member_label: '영희', mine: false, subject: {}, created_at: at(0) }
   ] : [], error: null }) };
-  w.eval(`sb=window.sb`);
+  w.eval(`sb=window.sb; TC_API.rpc=window.sb.rpc`);
   await w.eval(`renderActivity()`);
   const lines = [...w.document.querySelectorAll('#activityList .activityRow .tx')].map(e => e.textContent);
   assert.deepEqual(lines, [
@@ -2097,7 +2098,7 @@ test('통합: 실시간은 전달 수단이다 — 이벤트를 받으면 payloa
     rpc: async (name, args) => ({ data: name === 'list_trip_activity'
       ? [{ id: 9, kind: 'CANDIDATE_PROPOSED', actor_label: '영희', mine: false, subject: { title: '구엘 공원' }, created_at: '2026-09-02T10:00:00Z' }]
       : name === 'my_trip_roles' ? [{ client_id: 't1', trip_id: 'srv-1', role: 'EDITOR', member_count: 4, owner: false }, { client_id: 't2', trip_id: 'srv-2', role: 'OWNER', member_count: 1, owner: true }] : [], error: null }) };
-  w.eval(`sb=window.sb;
+  w.eval(`sb=window.sb; TC_API.rpc=window.sb.rpc;
     pullTrip=async(id,opts)=>{ window.__pull=(window.__pull||[]); window.__pull.push([id,!!(opts&&opts.force)]); return true; };
     renderCandidates=async()=>{ window.__cand=(window.__cand||0)+1; };
     toast=(m)=>{ window.__toasts=(window.__toasts||[]); window.__toasts.push(m); };
@@ -2149,7 +2150,7 @@ test('통합: 실시간이 없어도(channel 미지원·서버 id 없음) 앱은
   w.eval(`user={id:'u1'}; store.trips=[{id:'t1',name:'스페인',days:[{spots:[]}]}]; store.activeId='t1';
     tripRoles={t1:{role:'EDITOR',count:2,owner:false,serverId:''}};`);
   w.sb = { rpc: async () => ({ data: [], error: null }) };   // channel 없음
-  w.eval(`sb=window.sb; updateCollabUI();`);
+  w.eval(`sb=window.sb; TC_API.rpc=window.sb.rpc; updateCollabUI();`);
   assert.equal(w.eval('liveCh'), null);
   w.eval(`tripRoles.t1.serverId='srv-1'; updateCollabUI();`);
   assert.equal(w.eval('liveCh'), null, 'channel을 모르는 클라이언트면 구독하지 않고 조용히 지나간다');
@@ -2175,7 +2176,7 @@ test('통합: 여행 취향 — 그룹 요약은 문장으로, 내 칩은 한 �
       return { data: saved, error: null };
     }
     return { data: [], error: null }; } };
-  w.eval(`sb=window.sb`);
+  w.eval(`sb=window.sb; TC_API.rpc=window.sb.rpc`);
   await w.eval(`renderPrefs()`);
   const lines = [...w.document.querySelectorAll('#prefGroup .prefLine')].map(e => e.textContent);
   assert.deepEqual(lines, ['3명 중 2명이 취향을 남겼어요', '2명이 "여유롭게"를 원해요', '많이 걷기 싫어요 (영희) — 동선은 이 기준으로', '아침 일찍은 어려워요 (영희)', '함께 관심: 미술관']);
@@ -2238,7 +2239,7 @@ test('통합: 갈린 후보 — 자동으로 빼지 않고 선택지를 보여�
     if (name === 'list_trip_candidates') return { data: [row()], error: null };
     if (name === 'manage_trip_candidate') { w.__status = args.p_action === 'REJECT' ? 'REJECTED' : 'PROPOSED'; return { data: true, error: null }; }
     return { data: [], error: null }; } };
-  w.eval(`sb=window.sb`);
+  w.eval(`sb=window.sb; TC_API.rpc=window.sb.rpc`);
   await w.eval(`renderCandidates()`);
   const panel = w.document.querySelector('#candList .candConflict');
   assert.ok(panel, '선택지 패널');
@@ -2282,7 +2283,7 @@ test('통합: 그룹 제안 — 반대 없는 후보를 어느 날에 넣을지 
       {id:2,title:'바르셀로네타',status:'PROPOSED',lat:41.380,lng:2.190,must_count:1,ok_count:1,pass_count:0,my_reaction:null,proposed_by_label:'민수',mine:false,created_at:'2026-01-02'},
       {id:3,title:'갈린 곳',status:'PROPOSED',must_count:1,ok_count:0,pass_count:1,my_reaction:null,proposed_by_label:'민수',mine:false,created_at:'2026-01-03',reactions:[{name:'민수',reaction:'MUST'},{name:'영희',reaction:'PASS'}]}];`);
   w.sb = { rpc: async (name, args) => { rpc.push([name, args]); return { data: name === 'list_trip_candidates' ? w.eval('candRows') : true, error: null }; } };
-  w.eval(`sb=window.sb; drawCandidates();`);
+  w.eval(`sb=window.sb; TC_API.rpc=window.sb.rpc; drawCandidates();`);
   const card = w.document.querySelector('#candList .proposalCard');
   assert.ok(card, '제안 카드');
   assert.match(card.querySelector('.proposalHead').textContent, /이 2곳은 다들 좋아해요/);

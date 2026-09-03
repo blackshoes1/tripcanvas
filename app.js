@@ -3460,8 +3460,17 @@ function renderTravel(di, clock){
 // ───────────────── 로그인 · 클라우드 동기화 (Supabase) ─────────────────
 const SUPA_URL='https://gdnhrwtfidjimtabgovh.supabase.co';
 const SUPA_KEY='sb_publishable_2C-n1YFvE9Cw9B7L7B6Trw_XO3Val5q';
+// 함께하기·버전 이력은 이제 TripCanvas API를 지난다(PR12). 로그인·여행 동기화·실시간은 아직 Supabase다.
+// 서버가 LEGACY 레지스트리면 API가 다시 Supabase를 부르므로, 데이터는 그대로 있고 앞단만 바뀐 것이다.
+const API_BASE = (typeof window!=='undefined' && window.__TC_API_BASE) ||
+  (/^(localhost|127\.0\.0\.1)$/.test(location.hostname) ? 'http://localhost:3000' : TC_API.DEFAULT_BASE);
 if(window.supabase){
   sb = window.supabase.createClient(SUPA_URL, SUPA_KEY);
+  // API는 Supabase 세션의 access token을 그대로 쓴다 — 서버가 그 JWT를 직접 검증한다(Phase A)
+  TC_API.configure({baseUrl:API_BASE, getToken:async()=>{
+    try{ const {data}=await sb.auth.getSession(); return (data&&data.session&&data.session.access_token)||null; }
+    catch(_){ return null; }
+  }});
   sb.auth.onAuthStateChange((_e, session)=>{
     const next = session?.user || null;
     // 로그인 병합은 "계정이 바뀐 순간"에만 돈다. 토큰 자동 갱신(TOKEN_REFRESHED)에도 병합을 돌리면
@@ -3484,6 +3493,12 @@ function updateAuthUI(){
 let cloudRetryT=null, syncConflicts=[], currentSyncConflict=null;
 async function rpcRow(name,args){
   const {data,error}=await sb.rpc(name,args);
+  if(error) throw error;
+  return Array.isArray(data)?data[0]:data;
+}
+/** rpcRow의 API 짝 — 오류를 던지는 규약까지 같아 호출부가 그대로다 */
+async function apiRow(name,args,tripId){
+  const {data,error}=await TC_API.rpc(name,args,tripId);
   if(error) throw error;
   return Array.isArray(data)?data[0]:data;
 }
@@ -3552,11 +3567,9 @@ async function cloudSnapshot(t,revision){
   if(_snapAt[t.id]&&now-_snapAt[t.id]<10*60*1000) return;
   _snapAt[t.id]=now;
   try{
-    const {error}=await sb.from('trip_snapshots').insert({user_id:user.id,client_id:t.id,name:t.name,data:t,source_revision:revision});
+    // 방금 동기화가 성공한 직후라 저장본과 이 여행이 같다 — 서버가 저장본을 떠 두고 오래된 것도 알아서 정리한다
+    const {error}=await TC_API.snapshots.create(t.id,t.name);
     if(error) throw error;
-    const {data:rows,error:listError}=await sb.from('trip_snapshots').select('id').eq('client_id',t.id).order('created_at',{ascending:false}).range(15,100);
-    if(listError) throw listError;
-    if(rows&&rows.length){ const {error:deleteError}=await sb.from('trip_snapshots').delete().in('id',rows.map(r=>r.id)); if(deleteError) throw deleteError; }
   }catch(e){ reportOperationalError('cloud.snapshot',e); }
 }
 // 버전 기록 목록 (여행 설정 모달)
@@ -3564,8 +3577,7 @@ async function loadSnapList(){
   const box=document.getElementById('snapList');
   if(!sb || !user){ box.innerHTML='<div class="hint">로그인하면 자동으로 버전이 기록됩니다 (10분 간격)</div>'; return; }
   box.innerHTML='<div class="hint">불러오는 중…</div>';
-  const {data,error}=await sb.from('trip_snapshots').select('id,created_at')
-    .eq('client_id',store.activeId).order('created_at',{ascending:false}).limit(15);
+  const {data,error}=await TC_API.snapshots.list(store.activeId);
   if(error||!data||!data.length){ box.innerHTML='<div class="hint">저장된 버전이 없습니다 (10분 간격 자동 기록)</div>'; return; }
   box.innerHTML='';
   data.forEach(r=>{
@@ -3575,7 +3587,7 @@ async function loadSnapList(){
     const btn=document.createElement('button'); btn.className='btn'; btn.textContent='복원'; btn.style.cssText='font-size:11px;padding:2px 10px';
     btn.onclick=async()=>{
       if(!confirm('이 시점으로 복원할까요? (현재 상태는 ↩️ 실행취소로 되돌릴 수 있습니다)'))return;
-      const {data:full,error:fe}=await sb.from('trip_snapshots').select('data').eq('id',r.id).single();
+      const {data:full,error:fe}=await TC_API.snapshots.load(store.activeId,r.id);
       const restoredResult=full&&validateTripPayload(full.data);
       const restored=restoredResult&&restoredResult.ok&&restoredResult.value;
       if(fe||!restored){ toast('손상된 버전이라 복원하지 않았습니다','#e63946'); return; }
@@ -3820,7 +3832,7 @@ async function renderMembers(){
   document.getElementById('myNameSection').style.display='block';
   document.getElementById('prefSection').style.display='block';
   try{
-    const {data:members,error}=await sb.rpc('list_trip_members',{p_client_id:id});
+    const {data:members,error}=await TC_API.rpc('list_trip_members',{p_client_id:id});
     if(error) throw error;
     list.innerHTML='';
     (members||[]).forEach(m=>{
@@ -3851,7 +3863,7 @@ async function renderMembers(){
 }
 async function manageMember(memberId,action,value){
   try{
-    const {error}=await sb.rpc('manage_trip_member',{p_member_id:memberId,p_action:action,p_value:value==null?null:String(value)});
+    const {error}=await TC_API.rpc('manage_trip_member',{p_member_id:memberId,p_action:action,p_value:value==null?null:String(value)},membersTripId);
     if(error) throw error;
     toast(action==='REMOVE'?'멤버를 내보냈어요':action==='SET_ROLE'?'권한을 바꿨어요':'이름을 저장했어요');
     renderMembers();
@@ -3860,7 +3872,7 @@ async function manageMember(memberId,action,value){
 async function renderInvites(){
   const box=document.getElementById('inviteList'); box.innerHTML='';
   try{
-    const {data,error}=await sb.rpc('list_trip_invites',{p_client_id:membersTripId});
+    const {data,error}=await TC_API.rpc('list_trip_invites',{p_client_id:membersTripId});
     if(error) throw error;
     (data||[]).filter(i=>i&&i.active).forEach(i=>{
       const row=document.createElement('div'); row.className='inviteRow';
@@ -3870,7 +3882,7 @@ async function renderInvites(){
       row.appendChild(l);
       const rv=document.createElement('button'); rv.className='btn'; rv.style.cssText='font-size:11px;padding:2px 9px;min-height:26px'; rv.textContent='취소';
       rv.onclick=async()=>{
-        try{ const {error:e2}=await sb.rpc('revoke_trip_invite',{p_invite_id:i.id}); if(e2) throw e2; toast('초대 링크를 취소했어요'); renderInvites(); }
+        try{ const {error:e2}=await TC_API.rpc('revoke_trip_invite',{p_invite_id:i.id},membersTripId); if(e2) throw e2; toast('초대 링크를 취소했어요'); renderInvites(); }
         catch(e){ reportOperationalError('collab.revoke',e); toast('취소하지 못했어요','#e63946'); }
       };
       row.appendChild(rv); box.appendChild(row);
@@ -3881,7 +3893,7 @@ document.getElementById('inviteCreate').onclick=async()=>{
   const role=document.getElementById('inviteRole').value, btn=document.getElementById('inviteCreate');
   btn.disabled=true;
   try{
-    const row=await rpcRow('create_trip_invite',{p_client_id:membersTripId,p_role:role,p_hours:TC_COLLAB.COLLAB_CFG.inviteHours});
+    const row=await apiRow('create_trip_invite',{p_client_id:membersTripId,p_role:role,p_hours:TC_COLLAB.COLLAB_CFG.inviteHours});
     if(!row||!row.token) throw new Error('empty invite');
     const link=TC_COLLAB.buildInviteLink(location.href,row.token);
     document.getElementById('inviteLink').value=link; document.getElementById('inviteResult').hidden=false;
@@ -3937,7 +3949,7 @@ async function renderCandidates(){
   }
   box.innerHTML='<div class="hint">불러오는 중…</div>';
   try{
-    const {data,error}=await sb.rpc('list_trip_candidates',{p_client_id:id});
+    const {data,error}=await TC_API.rpc('list_trip_candidates',{p_client_id:id});
     if(error) throw error;
     candRows=(data||[]).filter(Boolean);
     drawCandidates();
@@ -4119,7 +4131,7 @@ function commentsPanel(c,role){
 async function loadComments(candId){
   const k=String(candId);
   try{
-    const {data,error}=await sb.rpc('list_candidate_comments',{p_candidate_id:candId});
+    const {data,error}=await TC_API.rpc('list_candidate_comments',{p_candidate_id:candId},candTripId);
     if(error) throw error;
     candComments[k]=(data||[]).filter(Boolean);
   }catch(e){ reportOperationalError('collab.comments',e); candComments[k]=[]; }
@@ -4128,7 +4140,7 @@ async function loadComments(candId){
 async function addComment(candId,body){
   const text=String(body||'').trim(); if(!text){ toast('한마디를 적어 주세요','#8892b0'); return; }
   try{
-    const {error}=await sb.rpc('add_candidate_comment',{p_candidate_id:candId,p_body:text});
+    const {error}=await TC_API.rpc('add_candidate_comment',{p_candidate_id:candId,p_body:text},candTripId);
     if(error) throw error;
     delete candDraft[String(candId)];
     const row=candRows.find(c=>String(c.id)===String(candId)); if(row) row.comment_count=(Number(row.comment_count)||0)+1;
@@ -4140,7 +4152,7 @@ async function addComment(candId,body){
 }
 async function deleteComment(candId,commentId){
   try{
-    const {error}=await sb.rpc('delete_candidate_comment',{p_comment_id:commentId});
+    const {error}=await TC_API.rpc('delete_candidate_comment',{p_comment_id:commentId},candTripId);
     if(error) throw error;
     const row=candRows.find(c=>String(c.id)===String(candId)); if(row) row.comment_count=Math.max(0,(Number(row.comment_count)||0)-1);
     await loadComments(candId);
@@ -4155,7 +4167,7 @@ async function deleteComment(candId,commentId){
 async function renderActivity(){
   const box=document.getElementById('activityList'); if(!box||!sb||!user||!membersTripId) return;
   try{
-    const {data,error}=await sb.rpc('list_trip_activity',{p_client_id:membersTripId,p_limit:40});
+    const {data,error}=await TC_API.rpc('list_trip_activity',{p_client_id:membersTripId,p_limit:40});
     if(error) throw error;
     const rows=TC_COLLAB.condenseActivity((data||[]).filter(Boolean));
     box.innerHTML='';
@@ -4209,7 +4221,7 @@ async function flushLive(tripId){
     const membersOpen=document.getElementById('membersModalBg').classList.contains('show')&&membersTripId===tripId;
     if(membersOpen){ if(any('members')) await renderMembers(); else await renderActivity(); }
     if(any('notify')){   // 남이 후보를 담았거나 새 멤버가 왔을 때만(§51). 문장은 이름표가 있는 RPC 행으로 만든다
-      const {data}=await sb.rpc('list_trip_activity',{p_client_id:tripId,p_limit:batch.length});
+      const {data}=await TC_API.rpc('list_trip_activity',{p_client_id:tripId,p_limit:batch.length});
       const notable=(data||[]).find(r=>r&&!r.mine&&TC_COLLAB.liveEffects(r).notify);
       const text=notable?TC_COLLAB.activityText(notable):'';
       if(text) toast(text,'#1d6fd6');
@@ -4224,7 +4236,7 @@ async function addCandidate(){
   if(!title){ toast('가고 싶은 곳의 이름을 적어 주세요','#8892b0'); return; }
   candBusy=true; document.getElementById('candAdd').disabled=true;
   try{
-    const {error}=await sb.rpc('add_trip_candidate',{p_client_id:candTripId,p_title:title,p_note:note||null});
+    const {error}=await TC_API.rpc('add_trip_candidate',{p_client_id:candTripId,p_title:title,p_note:note||null});
     if(error) throw error;
     document.getElementById('candTitleInput').value=''; document.getElementById('candNoteInput').value='';
     toast('후보로 담았어요 — 일행에게 물어볼까요?');
@@ -4242,7 +4254,7 @@ async function reactCandidate(candId,reaction){
   applyLocalReaction(row,reaction);   // 탭이 바로 반응하게 — 서버가 거절하면 되돌린다
   drawCandidates();
   try{
-    const {error}=await sb.rpc('react_to_candidate',{p_candidate_id:candId,p_reaction:reaction});
+    const {error}=await TC_API.rpc('react_to_candidate',{p_candidate_id:candId,p_reaction:reaction},candTripId);
     if(error) throw error;
   }catch(e){
     applyLocalReaction(row,before||null); drawCandidates();
@@ -4270,7 +4282,7 @@ function applyLocalReaction(row,reaction){
 /** @param {number|string} candId @param {string} action @param {string=} value */
 async function manageCandidate(candId,action,value){
   try{
-    const {error}=await sb.rpc('manage_trip_candidate',{p_candidate_id:candId,p_action:action,p_value:value==null?null:String(value)});
+    const {error}=await TC_API.rpc('manage_trip_candidate',{p_candidate_id:candId,p_action:action,p_value:value==null?null:String(value)},candTripId);
     if(error) throw error;
     toast(action==='REMOVE'?'후보에서 뺐어요':action==='SCHEDULE'?'일정에 넣었어요':action==='REJECT'?'이번 일정에서는 뺐어요 — 언제든 되돌릴 수 있어요':'후보로 되돌렸어요');
     await renderCandidates();
@@ -4338,7 +4350,7 @@ async function acceptProposal(p){
   commit(()=>{ picks.forEach(x=>appendCandidateSpot(t,x.di,x.candidate)); });
   let done=0;
   for(const x of picks){
-    try{ const {error}=await sb.rpc('manage_trip_candidate',{p_candidate_id:x.candidate.id,p_action:'SCHEDULE',p_value:String(x.di+1)}); if(error) throw error; done++; }
+    try{ const {error}=await TC_API.rpc('manage_trip_candidate',{p_candidate_id:x.candidate.id,p_action:'SCHEDULE',p_value:String(x.di+1)},candTripId); if(error) throw error; done++; }
     catch(e){ reportOperationalError('collab.proposal.accept',e); }
   }
   toast(done===picks.length?`${done}곳을 일정에 넣었어요`:`${done}/${picks.length}곳만 표시했어요 — 일정에는 전부 들어갔어요`, done===picks.length?undefined:'#e63946');
@@ -4352,7 +4364,7 @@ let myPrefs={}, prefRows=[];
 async function renderPrefs(){
   const id=membersTripId, box=document.getElementById('prefGroup'); if(!box||!sb||!user||!id) return;
   try{
-    const {data,error}=await sb.rpc('list_trip_preferences',{p_client_id:id});
+    const {data,error}=await TC_API.rpc('list_trip_preferences',{p_client_id:id});
     if(error) throw error;
     prefRows=(data||[]).filter(Boolean);
     const mine=prefRows.find(r=>r.mine); myPrefs=TC_COLLAB.normPrefs(mine?mine.prefs:{});
@@ -4399,7 +4411,7 @@ async function savePrefs(){
   btn.disabled=true;
   const draft=TC_COLLAB.normPrefs(Object.assign({},myPrefs,{note:document.getElementById('prefNote').value}));
   try{
-    const {data,error}=await sb.rpc('set_trip_preference',{p_client_id:membersTripId,p_prefs:draft});
+    const {data,error}=await TC_API.rpc('set_trip_preference',{p_client_id:membersTripId,p_prefs:draft});
     if(error) throw error;
     myPrefs=TC_COLLAB.normPrefs(data);   // 서버가 돌려준 것이 이긴다 — 화면 미리보기와 저장본이 갈리지 않게
     toast('취향을 저장했어요 — 일행이 참고할 수 있어요');
@@ -4425,7 +4437,7 @@ document.getElementById('membersMenuBtn').onclick=openMembers;
 function leaveTripUI(id,t){
   if(!sb||!user) return false;
   if(!confirm(`"${t.name}" 여행에서 나갈까요? 이 기기의 사본도 함께 지워집니다.`)) return false;
-  sb.rpc('leave_trip',{p_client_id:id}).then(({error})=>{
+  TC_API.rpc('leave_trip',{p_client_id:id}).then(({error})=>{
     if(error) throw error;
     delete syncMeta[id]; delete tripRoles[id]; persistSyncMeta();
     store.trips=store.trips.filter(x=>x.id!==id);
@@ -4465,7 +4477,7 @@ async function startJoin(token){
     document.getElementById('joinHint').textContent='온라인 상태에서 이 링크를 다시 열어 주세요';
     updateJoinModal(); return;
   }
-  try{ joinPreview=await rpcRow('invite_preview',{p_token:token}); }
+  try{ joinPreview=await apiRow('invite_preview',{p_token:token}); }
   catch(e){ reportOperationalError('collab.preview',e); joinPreview=null; }
   const v=TC_COLLAB.inviteVerdict(joinPreview);
   document.getElementById('joinTripName').textContent=(joinPreview&&joinPreview.trip_name)||'초대';
@@ -4492,7 +4504,7 @@ async function completePendingJoin(){
   const token=pendingJoinToken; if(!token||!sb||!user) return;
   if(!document.getElementById('joinModalBg').classList.contains('show')) return startJoin(token);
   if(!joinPreview){ return startJoin(token); }
-  try{ joinPreview=await rpcRow('invite_preview',{p_token:token}); }catch(_){}   // 로그인 후엔 already_member가 정확해진다
+  try{ joinPreview=await apiRow('invite_preview',{p_token:token}); }catch(_){}   // 로그인 후엔 already_member가 정확해진다
   updateJoinModal();
 }
 document.getElementById('joinCancel').onclick=()=>{ document.getElementById('joinModalBg').classList.remove('show'); clearPendingJoin(); };

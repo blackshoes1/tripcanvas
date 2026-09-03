@@ -18,7 +18,7 @@ PostgreSQL + 독립 Auth + TripCanvas API 중심의 자체 Backend로 옮기는 
 | BOOKING | LEGACY | 문서 안(`trip.bookings`) + `hotel_price_snapshots` |
 | PRICING | LEGACY (→ `DUAL_READ` → `NEW_BACKEND` 가능) | `/api/v1` 가격 관측 읽기(`listPriceObservations`)는 새 Repository 준비됨(`TC_MIGRATION_PRICING`). **크론(`api/track-hotel-prices.js`, service_role)과 웹의 직접 insert는 아직 Supabase** — 관측을 쓰는 쪽이 옮겨 오기 전까지 새 DB는 이관된 과거 관측만 갖는다 |
 | ADAPTIVE (Today·Suggestion·Replan) | LEGACY (→ `DUAL_READ` → `NEW_BACKEND` 가능) | 판단은 이미 `/api/v1`(adaptive.js). 저장(`suggestion_feedback`·`notification_log`·`device_tokens`·`trip_memories`)이 새 Repository로 준비됨(`TC_MIGRATION_ADAPTIVE`). DUAL_READ는 거절·알림 키의 **합집합**(잃으면 같은 알림이 두 번 간다) |
-| COLLAB | LEGACY (→ `NEW_BACKEND` 가능) | 협업 API 20개 라우트 준비됨(`TC_MIGRATION_COLLAB`). LEGACY면 같은 라우트가 Supabase RPC 어댑터로 돈다(판정은 RPC). 웹은 아직 RPC를 직접 부른다(PR12) |
+| COLLAB | LEGACY (→ `NEW_BACKEND` 가능) | 협업 API 20개 라우트. LEGACY면 같은 라우트가 Supabase RPC 어댑터로 돈다(판정은 RPC). **웹은 이제 API를 지난다**(PR12) — Supabase RPC 직접 호출 없음 |
 | REALTIME | LEGACY (→ `NEW_BACKEND` 가능) | 자체 WebSocket 사이드카 준비됨(아래). 새 DB가 진실일 때만 의미가 있다 — 협업이 LEGACY면 새 DB에 활동 행이 안 쌓인다. 웹은 아직 Supabase Realtime을 쓴다(PR12) |
 | STORAGE | — | **쓰지 않는다**(사진 원본은 기기에만) |
 
@@ -137,7 +137,7 @@ Supabase 전용 의존:
 | 6 | Realtime WebSocket | ✅ PR8 — 트리거 pg_notify → LISTEN → 허브 → 구독자. 서버 완성, 웹 전환은 PR12 |
 | 7 | Storage (MinIO) — **현재 쓰는 곳이 없어 새 기능 전까지 보류** | PR9 |
 | 8 | 새 Auth (가입·인증메일·세션·재설정) · 기존 사용자 이관 · 웹/iOS 전환 | ✅ PR10(기반) — 아래. 기존 사용자 이관·웹/iOS 전환은 PR11 |
-| 9 | 웹 Supabase 클라이언트 제거 · iOS GoTrue 호출 제거 | PR12·PR13 |
+| 9 | 웹 Supabase 클라이언트 제거 · iOS GoTrue 호출 제거 | 🔸 PR12 진행 중 — 함께하기 RPC 16종과 버전 이력이 API로 옮겨졌다. 남은 것: 여행 동기화(`sync_trip`)·`my_trip_roles`·실시간·가격 관측·로그인 |
 | 10 | 데이터 이관 리허설 · NAS 프로덕션 · 롤백 테스트 · Supabase read-only → 종료 | PR14 — **R0 완료**(이관·검증 스크립트 + 21개 테스트, CI에서 매번). R1·R2는 접속 정보가 있는 환경에서. **리허설 방식 확정**: `pg_dump` 직접 추출 · 전환 시 전면 중단(증분 동기화 없음) · R0/R1/R2 3단계. 절차는 `docs/backup-restore.md` |
 
 ## 협업 API (PR7)
@@ -201,6 +201,26 @@ Supabase Realtime을 대신한다. **PostgreSQL이 진실이고 소켓은 알림
 - 실시간 사이드카는 아직 Supabase 검증만 한다. better-auth가 ESM 전용이고 사이드카는 CommonJS로 컴파일되기 때문이다 — AUTH를 실제로 넘길 때(PR11) 사이드카를 ESM으로 바꾼다.
 - 웹·iOS의 로그인 화면은 그대로 Supabase다. 전환은 PR11.
 - CSRF(§71)는 better-auth의 기본 보호에 기대고 있다. 쿠키 기반 웹 전환(PR12) 때 실제 출처 설정과 함께 확인한다.
+
+## 웹의 Supabase 제거 (PR12)
+
+정적 웹이 **함께하기와 버전 이력**을 TripCanvas API로 부른다. 서버 레지스트리가 `LEGACY`면 API가 다시 Supabase를 부르므로
+데이터는 그대로 있고 앞단만 바뀌었다 — 이것이 Strangler의 실제 모습이다.
+
+| | |
+|---|---|
+| 클라이언트 | `api.js`(`TC_API`) — `{data,error}`를 돌려주고 **예외를 던지지 않는다**. 호출부의 모양을 바꾸지 않으려는 설계다 |
+| 오류 | 서버의 `FORBIDDEN`을 Supabase가 주던 `42501`/403으로 옮긴다 — `collab.js`의 `isForbiddenError`와 '재시도하지 않는다' 규칙이 그대로 동작한다 |
+| 토큰 | Supabase 세션의 access token을 그대로 싣는다(서버가 직접 검증, Phase A). **초대 미리보기만 토큰 없이** 나간다(§6) |
+| 주소 | `API_BASE` — 운영은 `tripcanvas-api.vercel.app`, localhost는 `:3000`, 테스트는 `window.__TC_API_BASE` |
+| CORS | 두 프로젝트가 다른 출처라 필요하다. `TRUSTED_ORIGINS`에 있는 출처만 허용하고 `*`를 쓰지 않는다(§72, `next/src/proxy.ts`) |
+
+**아직 Supabase에 남은 것**과 이유:
+
+- **로그인·세션** — 자체 Auth 전환은 PR11이다
+- **여행 동기화**(`sync_trip`·`tombstone_trip`·목록·`pullTrip`) — CAS·충돌 처리가 가장 위험한 코드다. 따로 옮긴다
+- **`my_trip_roles`와 실시간** — 실시간 채널이 이 호출이 주는 내부 `trip_id`를 쓴다. 둘은 함께 옮겨야 한다
+- **가격 관측**(`hotel_price_snapshots`) — 쓰기 엔드포인트가 아직 없다
 
 ## 지금 할 수 있는 것 / 아직 못 하는 것
 
