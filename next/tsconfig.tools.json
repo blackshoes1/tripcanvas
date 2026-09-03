@@ -14,6 +14,6 @@
     "sourceMap": true,
     "types": ["node"]
   },
-  "include": ["src/server/realtime/main.ts", "src/server/migration/main.ts"],
+  "include": ["src/server/realtime/main.ts", "src/server/migration/main.ts", "src/server/infrastructure/mail/main.ts"],
   "exclude": ["**/*.test.ts"]
 }

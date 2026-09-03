@@ -15,7 +15,8 @@
     "db:migrate": "drizzle-kit migrate",
     "realtime": "node dist-tools/server/realtime/main.js",
     "tools:build": "tsc -p tsconfig.tools.json",
-    "migrate:import": "node dist-tools/server/migration/main.js"
+    "migrate:import": "node dist-tools/server/migration/main.js",
+    "mail:test": "node dist-tools/server/infrastructure/mail/main.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",

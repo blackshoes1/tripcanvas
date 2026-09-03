@@ -19,13 +19,21 @@ function body(title: string, lead: string, action: string, url: string): { text:
   return { text, html };
 }
 
-export function createSmtpMailService(config: SmtpConfig, transport?: Transporter): MailService {
-  const tx = transport ?? nodemailer.createTransport({
+/**
+ * 설정 → nodemailer transport. 어댑터와 점검 도구(`npm run mail:test`)가 **같은 것**을 쓴다 —
+ * 점검이 따로 만들면 "점검은 통과했는데 실제 발송은 안 되는" 상태가 생긴다.
+ */
+export function createSmtpTransport(config: SmtpConfig): Transporter {
+  return nodemailer.createTransport({
     host: config.host,
     port: config.port,
     secure: config.secure,
     ...(config.user ? { auth: { user: config.user, pass: config.password ?? '' } } : {})
   });
+}
+
+export function createSmtpMailService(config: SmtpConfig, transport?: Transporter): MailService {
+  const tx = transport ?? createSmtpTransport(config);
 
   async function send(to: string, subject: string, content: { text: string; html: string }): Promise<void> {
     await tx.sendMail({ from: config.from, to, subject, text: content.text, html: content.html });

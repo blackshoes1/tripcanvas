@@ -305,7 +305,7 @@ auth_session.token 에는 **서명 없는 token만** 들어 있다
 - `trip_snapshots`(여행 버전 이력)를 새 DB에 채웠다 — `/api/v1/trips/:id/snapshots`. 이관 대상에도 들어 있다.
 - 가격 크론 `api/track-hotel-prices.js`는 모든 사용자의 여행을 읽어 관측을 쓰는 **시스템 작업**이라 사용자 토큰 모델에 맞지 않는다. 새 backend로 옮길 때는 서비스 계정 경로(내부 전용 라우트 + `CRON_SECRET`)로 다시 만든다 — Phase 10 전에.
 - `NEW_BACKEND`·`DUAL_READ`는 코드·테스트가 있지만 **데이터 이관 스크립트가 아직 없다**(Phase 10). staging에서 빈 DB로 먼저 돌려 본다.
-- 미검증: 실제 SMTP 발송(테스트는 어댑터를 가짜로 넣는다), `next/Dockerfile`·`deploy/docker-compose.yml`(작성 환경에 Docker 없음), 실제 PostgreSQL 서버(테스트는 PGlite — 실시간 트리거·LISTEN은 PGlite에서 진짜로 돌지만 `pg` 드라이버 경로는 미검증), 실제 Supabase JWKS 응답(테스트는 로컬 키).
+- 미검증: 실제 SMTP **전달률**(provider 계정이 아직 없다). 코드 경로는 확인했다 — `npm run mail:test`가 앱과 같은 어댑터로 진짜 SMTP 대화를 하고, 로컬 수신기로 두 통이 도착하는 것(From·multipart text+html·링크·RFC 2047 한글 제목)을 확인했다. 남은 것은 provider를 붙이고 **받은 편지함에 오는지**(스팸함 아닌) 보는 것뿐이다, `next/Dockerfile`·`deploy/docker-compose.yml`(작성 환경에 Docker 없음), 실제 PostgreSQL 서버(테스트는 PGlite — 실시간 트리거·LISTEN은 PGlite에서 진짜로 돌지만 `pg` 드라이버 경로는 미검증), 실제 Supabase JWKS 응답(테스트는 로컬 키).
 
 ## 롤백
 
