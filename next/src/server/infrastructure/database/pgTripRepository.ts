@@ -4,7 +4,7 @@ import { and, desc, eq, or, sql } from 'drizzle-orm';
 
 import type { CasResult, MemberRole, TripRecord, TripRepository, TripView } from '../../repositories/types';
 import type { Db } from './db';
-import { tripMembers, trips } from './schema';
+import { tripActivity, tripMembers, trips } from './schema';
 
 type Row = typeof trips.$inferSelect;
 
@@ -61,7 +61,7 @@ export class PgTripRepository implements TripRepository {
     });
   }
 
-  async updateCas(id: string, data: unknown, expectedRevision: number, opts: { force?: boolean } = {}): Promise<CasResult> {
+  async updateCas(id: string, data: unknown, expectedRevision: number, opts: { force?: boolean; actorId?: string } = {}): Promise<CasResult> {
     return this.db.transaction(async (tx) => {
       const [current] = await tx.select().from(trips).where(eq(trips.id, id)).for('update');
       if (!current) throw new Error(`trip ${id} not found`);
@@ -71,8 +71,28 @@ export class PgTripRepository implements TripRepository {
       const [row] = await tx.update(trips)
         .set({ data, revision: Number(current.revision) + 1, deletedAt: null, updatedAt: sql`now()` })
         .where(eq(trips.id, id)).returning();
+      await this.logSave(tx, current, row, opts.actorId ?? null);
       return { applied: true, conflict: false, record: toRecord(row) };
     });
+  }
+
+  /**
+   * 문서 저장의 활동 기록(Supabase의 tc_act_trips 트리거와 같은 규칙): **다른 활성 멤버가 있을 때만** — 혼자 쓰는 여행의
+   * 저장마다 행을 쌓을 이유가 없다(§95). 예약이 늘면 BOOKING_ADDED, 아니면 SCHEDULE_CHANGED. 여행당 최근 300건만 남긴다.
+   * 같은 사람의 연속 저장을 합치지 않는다 — 행을 UPDATE하면 실시간 INSERT 구독자가 못 받는다(묶음은 화면이 한다).
+   */
+  private async logSave(tx: Db, before: Row, after: Row, actorId: string | null): Promise<void> {
+    if (after.deletedAt || JSON.stringify(before.data) === JSON.stringify(after.data)) return;
+    const [other] = await tx.select({ id: tripMembers.id }).from(tripMembers)
+      .where(and(eq(tripMembers.tripId, after.id), sql`${tripMembers.userId} <> ${after.userId}`, eq(tripMembers.status, 'ACTIVE'))).limit(1);
+    if (!other) return;
+    const count = (d: unknown) => { const b = (d as { bookings?: unknown } | null)?.bookings; return Array.isArray(b) ? b.length : 0; };
+    const grew = count(after.data) - count(before.data);
+    await tx.insert(tripActivity).values(grew > 0
+      ? { tripId: after.id, actorId, kind: 'BOOKING_ADDED', subject: { count: grew } }
+      : { tripId: after.id, actorId, kind: 'SCHEDULE_CHANGED', subject: { revision: Number(after.revision) } });
+    await tx.execute(sql`delete from trip_activity a where a.trip_id = ${after.id}
+      and a.id < coalesce((select x.id from trip_activity x where x.trip_id = ${after.id} order by x.id desc offset 300 limit 1), 0)`);
   }
 
   async tombstoneCas(id: string, expectedRevision: number, opts: { force?: boolean } = {}): Promise<CasResult> {

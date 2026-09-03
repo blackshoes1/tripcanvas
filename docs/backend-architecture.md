@@ -72,6 +72,9 @@ DB에는 RLS가 없다(새 DB). `TripAuthorizationService`가 `roleOf → canRea
 | `TripRepository` | `listVisible` · `findVisible`(소유한 쪽 우선) · `create`(OWNER 멤버 행까지 한 트랜잭션) · `updateCas` · `tombstoneCas` | `PgTripRepository` · `LegacyTripRepository`(Supabase) · `DualReadTripRepository` · `MemoryTripRepository`(테스트) |
 | `MembershipRepository` | `roleOf` · `wasMember` · `add` · `setStatus` | 같은 세 구현 |
 | `UserRepository` | `ensure`(멱등) · `findById` | `PgUserRepository` |
+| `CollabRepository` | 멤버·초대·후보·반응·코멘트·활동 저장과 뷰 조회(이름표·집계는 SQL) — 활동 기록은 같은 트랜잭션에서 | `PgCollabRepository` |
+| `CollabApi`(application 계약) | RPC 21종에 대응하는 use case | `CollabService`(새 DB, 판정은 application) · `LegacySupabaseCollabService`(RPC 1:1) |
+| Adaptive · Pricing | `SuggestionFeedback` · `NotificationLog` · `Device` · `Memory` · `PriceObservation` | `pgAdaptiveRepositories` · `pgPriceObservationRepository` (+ 레거시는 기존 Gateway, `composeGateway`가 조립) |
 
 application/domain 코드에 SQL·ORM 쿼리를 쓰지 않는다. 새 구현은 `pgRepositories.test.ts`(PGlite)와 `tripService.test.ts`(메모리)가 같은 결론을 내야 한다.
 

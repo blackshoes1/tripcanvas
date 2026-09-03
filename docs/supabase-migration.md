@@ -18,7 +18,7 @@ PostgreSQL + 독립 Auth + TripCanvas API 중심의 자체 Backend로 옮기는 
 | BOOKING | LEGACY | 문서 안(`trip.bookings`) + `hotel_price_snapshots` |
 | PRICING | LEGACY (→ `DUAL_READ` → `NEW_BACKEND` 가능) | `/api/v1` 가격 관측 읽기(`listPriceObservations`)는 새 Repository 준비됨(`TC_MIGRATION_PRICING`). **크론(`api/track-hotel-prices.js`, service_role)과 웹의 직접 insert는 아직 Supabase** — 관측을 쓰는 쪽이 옮겨 오기 전까지 새 DB는 이관된 과거 관측만 갖는다 |
 | ADAPTIVE (Today·Suggestion·Replan) | LEGACY (→ `DUAL_READ` → `NEW_BACKEND` 가능) | 판단은 이미 `/api/v1`(adaptive.js). 저장(`suggestion_feedback`·`notification_log`·`device_tokens`·`trip_memories`)이 새 Repository로 준비됨(`TC_MIGRATION_ADAPTIVE`). DUAL_READ는 거절·알림 키의 **합집합**(잃으면 같은 알림이 두 번 간다) |
-| COLLAB | LEGACY | 웹이 RPC 16종을 직접 부른다 |
+| COLLAB | LEGACY (→ `NEW_BACKEND` 가능) | 협업 API 20개 라우트 준비됨(`TC_MIGRATION_COLLAB`). LEGACY면 같은 라우트가 Supabase RPC 어댑터로 돈다(판정은 RPC). 웹은 아직 RPC를 직접 부른다(PR12) |
 | REALTIME | LEGACY | `trip_activity` INSERT 구독(웹만) |
 | STORAGE | — | **쓰지 않는다**(사진 원본은 기기에만) |
 
@@ -133,12 +133,26 @@ Supabase 전용 의존:
 | 2 | Supabase JWT 검증 · 인가 서비스 | ✅ PR2 (`5aa853a`) |
 | 3 | Trip API (목록·상세·생성·수정·삭제) — 레지스트리로 분기 | ✅ PR3 (`bfe6cba`) — Day·Spot·예약 문서는 여행 문서 안이라 함께. **데이터 이관 전이라 프로덕션은 LEGACY** |
 | 4 | Adaptive 저장소(제안 거절·알림·기기·기록) · Pricing 관측 Repository | ✅ PR5·PR6 — 기존 핸들러의 Gateway를 `composeGateway`가 레지스트리로 조립. 크론의 service_role 쓰기는 남아 있다(아래) |
-| 5 | Collaboration (멤버·초대·후보·반응·코멘트·제안·활동) API | PR7 |
+| 5 | Collaboration (멤버·초대·후보·반응·코멘트·제안·활동) API | ✅ PR7 — 새 DB 5 테이블 + `CollabService`(RPC 21종의 판정을 application으로) + 라우트 14 파일 + 레거시 RPC 어댑터. 활동 기록은 트리거 대신 Repository가 같은 트랜잭션에서. 그룹 제안(`buildGroupProposal`)은 순수 미리보기라 클라이언트에 그대로 남는다 |
 | 6 | Realtime WebSocket | PR8 |
 | 7 | Storage (MinIO) — **현재 쓰는 곳이 없어 새 기능 전까지 보류** | PR9 |
 | 8 | 새 Auth (가입·인증메일·세션·재설정) · 기존 사용자 이관 · 웹/iOS 전환 | PR10·PR11 |
 | 9 | 웹 Supabase 클라이언트 제거 · iOS GoTrue 호출 제거 | PR12·PR13 |
 | 10 | 데이터 이관 리허설 · NAS 프로덕션 · 롤백 테스트 · Supabase read-only → 종료 | PR14 |
+
+## 협업 API (PR7)
+
+| 라우트 | RPC 대응 |
+|---|---|
+| `GET /api/v1/trips/:id/members` · `PATCH …/members/:memberId {action,value}` · `POST …/members/leave` | `list_trip_members` · `manage_trip_member` · `leave_trip` |
+| `GET/PUT /api/v1/trips/:id/preferences` | `list_trip_preferences` · `set_trip_preference` |
+| `GET/POST /api/v1/trips/:id/invites` · `DELETE …/invites/:inviteId` | `list_trip_invites` · `create_trip_invite` · `revoke_trip_invite` |
+| `GET /api/v1/invites/:token`(익명 가능) · `POST /api/v1/invites/:token/accept` | `invite_preview` · `accept_trip_invite` |
+| `GET/POST /api/v1/trips/:id/candidates` · `PATCH …/candidates/:cid {action,value}` · `PUT …/candidates/:cid/reaction` | `list_trip_candidates` · `add_trip_candidate` · `manage_trip_candidate` · `react_to_candidate` |
+| `GET/POST …/candidates/:cid/comments` · `DELETE …/comments/:commentId` | `list_candidate_comments` · `add_candidate_comment` · `delete_candidate_comment` |
+| `GET /api/v1/trips/:id/activity?limit=` | `list_trip_activity` |
+
+응답 모양은 RPC 반환형(snake_case)과 같다 — 웹이 옮겨 탈 때 화면 코드가 바뀌지 않게. 차이 하나: 새 backend는 남의 여행을 **NOT_FOUND**로 답하고, 레거시 어댑터는 RPC 그대로(빈 목록 또는 42501→FORBIDDEN).
 
 ## 지금 할 수 있는 것 / 아직 못 하는 것
 

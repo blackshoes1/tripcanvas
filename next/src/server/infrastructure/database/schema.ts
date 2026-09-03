@@ -146,3 +146,83 @@ export const hotelPriceSnapshots = pgTable('hotel_price_snapshots', {
   index('hotel_price_snapshots_user_idx').on(t.userId, t.observedAt),
   index('hotel_price_snapshots_trip_idx').on(t.userId, t.tripClientId)
 ]);
+
+// ── 협업(함께하기) — 여행 문서 밖의 것들. 활동 기록은 Repository가 같은 트랜잭션에서 쓴다(Supabase의 트리거 대신) ──
+
+export const tripInvites = pgTable('trip_invites', {
+  id: bigint('id', { mode: 'number' }).primaryKey().generatedByDefaultAsIdentity(),
+  tripId: uuid('trip_id').notNull().references(() => trips.id, { onDelete: 'cascade' }),
+  // sha256(token) hex — 토큰 원문은 만든 순간 한 번만 돌려주고 어디에도 남기지 않는다
+  tokenHash: text('token_hash').notNull().unique(),
+  role: text('role').notNull(),
+  createdBy: uuid('created_by').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  maxUses: integer('max_uses'),
+  useCount: integer('use_count').notNull().default(0),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+}, (t) => [
+  index('trip_invites_trip_idx').on(t.tripId, t.createdAt),
+  check('trip_invites_role_check', sql`${t.role} in ('EDITOR','VIEWER')`),
+  check('trip_invites_max_uses_check', sql`${t.maxUses} is null or ${t.maxUses} > 0`)
+]);
+
+export const tripCandidates = pgTable('trip_candidates', {
+  id: bigint('id', { mode: 'number' }).primaryKey().generatedByDefaultAsIdentity(),
+  tripId: uuid('trip_id').notNull().references(() => trips.id, { onDelete: 'cascade' }),
+  title: text('title').notNull(),
+  placeId: text('place_id'),
+  lat: doublePrecision('lat'),
+  lng: doublePrecision('lng'),
+  addr: text('addr'),
+  note: text('note'),
+  url: text('url'),
+  proposedBy: uuid('proposed_by').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  status: text('status').notNull().default('PROPOSED'),
+  // '2'(2일차) 같은 위치 표시 — 장소에는 안정적인 id가 없다
+  scheduledRef: text('scheduled_ref'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, (t) => [
+  index('trip_candidates_trip_idx').on(t.tripId, t.createdAt),
+  check('trip_candidates_title_check', sql`btrim(${t.title}) <> ''`),
+  check('trip_candidates_status_check', sql`${t.status} in ('PROPOSED','ACCEPTED','REJECTED','SCHEDULED')`)
+]);
+
+export const candidateReactions = pgTable('candidate_reactions', {
+  id: bigint('id', { mode: 'number' }).primaryKey().generatedByDefaultAsIdentity(),
+  candidateId: bigint('candidate_id', { mode: 'number' }).notNull().references(() => tripCandidates.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  reaction: text('reaction').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, (t) => [
+  // 한 사람 한 표 — DB가 보장한다
+  uniqueIndex('candidate_reactions_cand_user_uidx').on(t.candidateId, t.userId),
+  check('candidate_reactions_reaction_check', sql`${t.reaction} in ('MUST','OK','PASS')`)
+]);
+
+export const tripComments = pgTable('trip_comments', {
+  id: bigint('id', { mode: 'number' }).primaryKey().generatedByDefaultAsIdentity(),
+  tripId: uuid('trip_id').notNull().references(() => trips.id, { onDelete: 'cascade' }),
+  candidateId: bigint('candidate_id', { mode: 'number' }).notNull().references(() => tripCandidates.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  body: text('body').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, (t) => [
+  index('trip_comments_cand_idx').on(t.candidateId, t.createdAt),
+  check('trip_comments_body_check', sql`btrim(${t.body}) <> '' and length(${t.body}) <= 500`)
+]);
+
+export const tripActivity = pgTable('trip_activity', {
+  id: bigint('id', { mode: 'number' }).primaryKey().generatedByDefaultAsIdentity(),
+  tripId: uuid('trip_id').notNull().references(() => trips.id, { onDelete: 'cascade' }),
+  actorId: uuid('actor_id').references(() => users.id, { onDelete: 'set null' }),
+  kind: text('kind').notNull(),
+  subject: jsonb('subject').notNull().default(sql`'{}'::jsonb`),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+}, (t) => [
+  index('trip_activity_trip_idx').on(t.tripId, t.id),
+  check('trip_activity_kind_check', sql`${t.kind} in ('MEMBER_JOINED','MEMBER_LEFT','MEMBER_REMOVED','CANDIDATE_PROPOSED','CANDIDATE_SCHEDULED','CANDIDATE_REJECTED','REACTION','COMMENT_ADDED','SCHEDULE_CHANGED','BOOKING_ADDED')`)
+]);

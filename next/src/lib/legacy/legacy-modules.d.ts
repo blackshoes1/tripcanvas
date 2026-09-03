@@ -354,6 +354,8 @@ declare module '@legacy/collab.js' {
     COLLAB_CFG: Readonly<Record<string, number>>;
     JOIN_REASON: Readonly<Record<string, string>>;
     normRole(role: unknown): Role | null;
+    /** 여행 취향 화이트리스트 — 서버(tc_norm_prefs · CollabService)와 같은 규칙 */
+    normPrefs(p: unknown): Record<string, unknown>;
     canEdit(role: unknown): boolean;
     canManage(role: unknown): boolean;
     canLeave(role: unknown): boolean;

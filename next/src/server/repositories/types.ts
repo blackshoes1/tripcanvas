@@ -46,8 +46,8 @@ export interface TripRepository {
   findVisible(userId: string, clientId: string): Promise<TripView | null>;
   /** 새 여행(revision 1) + 같은 트랜잭션의 OWNER 멤버 행. (ownerId, clientId)가 이미 있으면 던진다 */
   create(input: { ownerId: string; clientId: string; data: unknown }): Promise<TripRecord>;
-  /** revision CAS 저장. force면 revision·tombstone을 무시하고 덮어쓰며 되살린다(sync_trip p_force) */
-  updateCas(id: string, data: unknown, expectedRevision: number, opts?: { force?: boolean }): Promise<CasResult>;
+  /** revision CAS 저장. force면 revision·tombstone을 무시하고 덮어쓰며 되살린다(sync_trip p_force). actorId는 활동 기록의 주체 */
+  updateCas(id: string, data: unknown, expectedRevision: number, opts?: { force?: boolean; actorId?: string }): Promise<CasResult>;
   /** revision CAS tombstone. 행은 남고 deleted_at·revision이 오른다 */
   tombstoneCas(id: string, expectedRevision: number, opts?: { force?: boolean }): Promise<CasResult>;
 }
@@ -129,4 +129,60 @@ export interface PriceObservationRepository {
   /** 여행의 관측 전부, 오래된 순, 최대 500 */
   listForTrip(userId: string, tripClientId: string): Promise<PriceObservationRecord[]>;
   append(userId: string, tripClientId: string, obs: Omit<PriceObservationRecord, 'observed_at'> & { observed_at?: string; ptoken?: string | null }): Promise<void>;
+}
+
+// ── 협업(함께하기) 저장소 — 인가·검증은 CollabService, 여기는 저장과 조회(이름표·집계는 SQL이 만든다) ──
+// 활동 기록(trip_activity)은 Supabase에서 트리거가 쓰던 것을 **같은 트랜잭션에서 Repository가** 쓴다 — 어떤 경로로 바뀌든 같은 기록.
+
+import type {
+  ActivityView, CandidateInput, CandidateView, CommentView, InviteView, MemberView, PreferenceView
+} from '../application/collaboration/types';
+
+export interface MemberRow {
+  id: number; tripId: string; userId: string; role: MemberRole; status: MemberStatus; displayName: string | null; updatedAt: string;
+}
+export interface InviteRow {
+  id: number; tripId: string; role: string; createdBy: string; expiresAt: string; revokedAt: string | null; maxUses: number | null; useCount: number; createdAt: string;
+  trip: { ownerId: string; clientId: string; deletedAt: string | null; name: string; start: string; dayCount: number };
+}
+export interface CandidateRow { id: number; tripId: string; proposedBy: string; title: string; status: string; createdAt: string }
+export interface CommentRow { id: number; tripId: string; candidateId: number; userId: string }
+
+export interface CollabRepository {
+  listMembers(tripId: string, viewerId: string): Promise<MemberView[]>;
+  findMember(memberId: number): Promise<MemberRow | null>;
+  findMembership(tripId: string, userId: string): Promise<MemberRow | null>;
+  renameMember(memberId: number, displayName: string | null): Promise<void>;
+  setMemberRole(memberId: number, role: MemberRole): Promise<void>;
+  /** 상태 변경 + 활동 기록(MEMBER_LEFT/MEMBER_REMOVED, 소유자 행은 기록하지 않는다). actorId는 기록의 주체 */
+  setMemberStatus(memberId: number, status: MemberStatus, actorId: string): Promise<void>;
+  listPreferences(tripId: string, viewerId: string): Promise<PreferenceView[]>;
+  /** 활성 멤버 행이 없으면 false */
+  setPreference(tripId: string, userId: string, prefs: Record<string, unknown>): Promise<boolean>;
+
+  createInvite(input: { tripId: string; tokenHash: string; role: string; createdBy: string; expiresAt: string; maxUses: number | null }): Promise<{ id: number; expiresAt: string }>;
+  listInvites(tripId: string): Promise<InviteView[]>;
+  /** 소유자 확인은 서비스가 했다. 두 번 취소해도 첫 취소 시각 유지. 없으면 false */
+  revokeInvite(inviteId: number, tripId: string): Promise<boolean>;
+  findInviteByHash(tokenHash: string): Promise<InviteRow | null>;
+  /** 멤버 upsert(ACTIVE) + use_count + MEMBER_JOINED — 한 트랜잭션 */
+  acceptInvite(input: { inviteId: number; tripId: string; userId: string; role: string; displayName: string | null; invitedBy: string }): Promise<void>;
+
+  listCandidates(tripId: string, viewerId: string): Promise<CandidateView[]>;
+  findCandidate(candidateId: number): Promise<CandidateRow | null>;
+  /** 후보 + 제안자 자동 MUST + CANDIDATE_PROPOSED — 한 트랜잭션 */
+  addCandidate(tripId: string, userId: string, input: Required<CandidateInput>): Promise<number>;
+  /** null이면 거두기(기록 없음). 새 반응·바뀐 반응만 REACTION 기록. 제안자의 자동 MUST는 기록하지 않는다 */
+  setReaction(candidateId: number, userId: string, reaction: string | null): Promise<void>;
+  /** SCHEDULED로 바뀌면 CANDIDATE_SCHEDULED, REJECTED로 바뀌면 CANDIDATE_REJECTED 기록 */
+  setCandidateStatus(candidateId: number, status: string, scheduledRef: string | null, actorId: string): Promise<void>;
+  removeCandidate(candidateId: number): Promise<void>;
+
+  listComments(candidateId: number, viewerId: string): Promise<CommentView[]>;
+  /** 코멘트 + COMMENT_ADDED(excerpt 60자) */
+  addComment(tripId: string, candidateId: number, userId: string, body: string): Promise<number>;
+  findComment(commentId: number): Promise<CommentRow | null>;
+  deleteComment(commentId: number): Promise<boolean>;
+
+  listActivity(tripId: string, viewerId: string, limit: number): Promise<ActivityView[]>;
 }

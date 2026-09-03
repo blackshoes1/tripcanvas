@@ -11,8 +11,11 @@ import { supabaseGatewayFor } from '@/features/trip-state/services/supabaseGatew
 import type { TripDoc } from '@/features/trip-state/domain/todayView';
 import { composeGateway } from '@/server/api/composeGateway';
 import { ApiError } from '@/server/api/errors';
+import { createCollabRoutes } from '@/server/api/collabRoutes';
 import { createTripRoutes } from '@/server/api/tripRoutes';
 import { TripAuthorizationService } from '@/server/application/authorization/tripAuthorization';
+import { CollabService } from '@/server/application/collaboration/collabService';
+import type { CollabApi } from '@/server/application/collaboration/types';
 import { TripService } from '@/server/application/trip/tripService';
 import { remoteSupabaseUser } from '@/server/auth/remoteSupabaseUser';
 import { createSupabaseVerifier } from '@/server/auth/supabaseJwt';
@@ -23,10 +26,12 @@ import { getDb } from '@/server/infrastructure/database/client';
 import {
   PgDeviceRepository, PgMemoryRepository, PgNotificationLogRepository, PgSuggestionFeedbackRepository
 } from '@/server/infrastructure/database/pgAdaptiveRepositories';
+import { PgCollabRepository } from '@/server/infrastructure/database/pgCollabRepository';
 import { PgMembershipRepository } from '@/server/infrastructure/database/pgMembershipRepository';
 import { PgPriceObservationRepository } from '@/server/infrastructure/database/pgPriceObservationRepository';
 import { PgTripRepository } from '@/server/infrastructure/database/pgTripRepository';
 import { PgUserRepository } from '@/server/infrastructure/database/pgUserRepository';
+import { LegacySupabaseCollabService } from '@/server/infrastructure/supabase/legacyCollabService';
 import {
   LegacyMembershipRepository, LegacySupabaseSession, LegacyTripRepository
 } from '@/server/infrastructure/supabase/legacyTripRepository';
@@ -65,6 +70,19 @@ export async function tripServiceFor(ctx: RequestContext, token: string): Promis
 }
 
 export const tripRoutes = createTripRoutes({ verifier, serviceFor: tripServiceFor });
+
+/**
+ * 협업 API — COLLAB 레지스트리. LEGACY면 Supabase RPC 어댑터(판정은 RPC), 아니면 새 DB(CollabService).
+ * 협업 테이블은 한 덩어리라 DUAL_READ를 따로 두지 않는다 — LEGACY가 아니면 새 DB다. 로그인 전(미리보기)은 항상 레거시 익명 클라이언트 또는 새 DB.
+ */
+export async function collabApiFor(ctx: RequestContext | null, token: string): Promise<CollabApi> {
+  const db = env.registry.COLLAB === 'LEGACY' ? null : getDb();
+  if (!db) return new LegacySupabaseCollabService(token, env.supabaseUrl);
+  if (ctx) await new PgUserRepository(db).ensure({ id: ctx.userId, email: ctx.email });
+  return new CollabService({ trips: new PgTripRepository(db), collab: new PgCollabRepository(db) });
+}
+
+export const collabRoutes = createCollabRoutes({ verifier, apiFor: collabApiFor });
 
 function toRow(v: TripView): TripRow {
   return {

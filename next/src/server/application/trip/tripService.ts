@@ -66,7 +66,7 @@ export class TripService {
       throw new ApiError('NOT_FOUND');
     }
     if (!(await this.deps.authz.canEdit(ctx.userId, view.record.id))) throw new ApiError('FORBIDDEN');
-    const result = await this.deps.trips.updateCas(view.record.id, doc, expectedRevision, opts);
+    const result = await this.deps.trips.updateCas(view.record.id, doc, expectedRevision, { ...opts, actorId: ctx.userId });
     if (!result.applied) throw new ApiError('STALE_VERSION', { details: { revision: result.record.revision, deleted: !!result.record.deletedAt } });
     return { ...view, record: result.record };
   }
