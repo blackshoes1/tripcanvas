@@ -35,9 +35,12 @@ function boot() {
   inject('intake.js');
   inject('collab.js');
   inject('api.js');
+  inject('auth.js');
   inject('app.js');
   // 안전장치: 테스트가 진짜 네트워크를 때리면 즉시 실패한다(가짜를 빠뜨린 것을 조용히 넘기지 않는다)
-  window.TC_API.configure({ fetchImpl: async () => { throw new Error('테스트에서 실제 네트워크 호출'); } });
+  const boom = async () => { throw new Error('테스트에서 실제 네트워크 호출'); };
+  window.TC_API.configure({ fetchImpl: boom });
+  window.TC_AUTH.configure({ fetchImpl: boom });
   return window;
 }
 // 여행 하나를 store에 넣고 activeId·activeDay 지정

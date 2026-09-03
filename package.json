@@ -5,7 +5,7 @@
   "description": "Trip Canvas — 대화로 만드는 멀티시티 여행 동선 플래너 (정적 PWA, 빌드 도구 없음)",
   "scripts": {
     "test": "npm run test:unit && npm run test:integration",
-    "test:unit": "node --test test/api-client.test.js test/api-car-offers.test.js test/api-hotel-offers.test.js test/api-kakao.test.js test/api-track.test.js test/metasearch.integration.test.js test/migration.test.js test/adaptive.test.js test/intake.test.js test/collab.test.js test/rls.integration.test.js test/price.test.js test/pure.test.js test/routing.test.js test/sync.test.js",
+    "test:unit": "node --test test/api-client.test.js test/auth-client.test.js test/api-car-offers.test.js test/api-hotel-offers.test.js test/api-kakao.test.js test/api-track.test.js test/metasearch.integration.test.js test/migration.test.js test/adaptive.test.js test/intake.test.js test/collab.test.js test/rls.integration.test.js test/price.test.js test/pure.test.js test/routing.test.js test/sync.test.js",
     "test:integration": "node --test test/integration.test.js",
     "test:e2e": "playwright test",
     "test:rls": "node --test test/rls.integration.test.js",
@@ -13,7 +13,7 @@
     "check:types": "tsc -p jsconfig.json",
     "check:version": "node scripts/check-version-sync.js",
     "bump:version": "node scripts/bump-version.js",
-    "lint": "eslint lib.js sync.js routing.js price.js adaptive.js intake.js collab.js api.js api scripts",
+    "lint": "eslint lib.js sync.js routing.js price.js adaptive.js intake.js collab.js api.js auth.js api scripts",
     "security:scan": "node scripts/check-secrets.js"
   },
   "devDependencies": {

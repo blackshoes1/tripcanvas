@@ -38,6 +38,7 @@ npm test && npm run lint && npm run check:types && npm run security:scan && npm 
 - `collab.js` — **함께하기(협업)** 순수 로직: 역할 판정(`canEdit/canManage/canLeave/canDelete`) · 초대 링크 만들기/읽기(`#join=`) · 초대 판정 문구 · 권한 오류 판별 · **후보 장소와 반응**(집계 `tallyReactions` · 상태 `candidateMood` · 보드 묶음 `groupCandidates` · `canPropose/canReact/canRemoveCandidate`) · **활동 기록과 실시간**(문장 `activityText` · 묶음 `condenseActivity` · 이벤트 판정 `liveEffects` · 코멘트 권한) · **여행 취향과 합의**(`normPrefs` 서버와 같은 규칙 · `groupContext` · `consensusOf` 점수는 내부값 · `candidateVerdict`) · **충돌과 제안**(`candidateConflict` · `conflictOptions` · `buildGroupProposal` 미리보기). 접근 제어의 경계는 DB(RLS·RPC)고 여기는 화면 판정만. **유닛 테스트 + `tsc` 대상**
 - `style.css` — 스타일
 - `api.js` — **TripCanvas API 클라이언트**(여행 동기화·함께하기·버전 이력·역할·실시간). `TC_API.sync`는 예전 `sync_trip`/`tombstone_trip`의 반환 모양(`{applied,conflict,revision,data,deleted_at}`)을 그대로 재현한다 — app.js의 CAS·충돌 로직을 건드리지 않기 위해서다. `{data,error}`를 돌려주고 예외를 던지지 않으며, 서버의 `FORBIDDEN`을 Supabase가 주던 `42501`로 옮겨 기존 권한 처리가 그대로 돌게 한다. 초대 미리보기만 토큰 없이 나간다. **유닛 테스트 + `tsc` 대상**
+- `auth.js` — **인증 클라이언트**(PR11). Supabase Auth와 자체 Auth를 같은 모양으로 감싼다 — `{data,error}`에 **코드**(`INVALID_CREDENTIALS`·`EMAIL_NOT_VERIFIED`·`RATE_LIMITED`·`NETWORK`)를 실어 화면이 제공자별 문구를 모르게 한다. 로그인 상태 변화는 `onChange` 하나로 나간다(예전 `onAuthStateChange` 자리). ⚠️ **어느 Auth를 쓸지는 서버가 정한다**(`GET /api/v1/auth-config`) — 답이 없으면 SUPABASE로 남아 오늘의 동작이 이어진다. 자체 Auth 세션은 bearer 토큰(`tripcanvas_auth_v1`)이다: 교차 출처라 쿠키를 쓰지 않는다. **유닛 테스트 + `tsc` 대상**
 - `sync.js` — 클라우드 동기화(리비전 CAS·충돌·tombstone). **`tsc` 대상**
 - `routing.js` — 경로 조회 transport 격리 (app.js는 `fetchLeg` 호환 shim만 씀). **`tsc` 대상**
 - `sw.js` — 서비스 워커 (앱 셸 캐시). `/api/`와 GET 외 요청은 건드리지 않는다
@@ -57,7 +58,7 @@ npm test && npm run lint && npm run check:types && npm run security:scan && npm 
 검색: 국내 카카오 로컬 · 해외 Google Places (`routedSearch`가 라우팅) · 저장: localStorage + Supabase
 지도에서 장소 담기: 해외는 `clickableIcons`로 POI 탭 시 `placeId`를 그대로 받고, **국내는 카카오 SDK가 POI 탭 신원을 주지 않아** 카테고리 검색으로 POI 칩을 직접 깔아 그걸 누르게 한다(`refreshKakaoPOI`). 좌표 역추적(`reverseSpot`)은 둘 다 실패했을 때의 최후 수단이다 — 추측이라 엉뚱한 상호가 들어갈 수 있다.
 API 키: app.js 상단 `GMAPS_KEY`(리퍼러 제한)·`KAKAO_KEY`(JS, 플랫폼 도메인 제한)·`KAKAO_REST_KEY`(카카오내비) — `localhost:8000`, `tripcanvas-ai.vercel.app` 등록 필요
-localStorage: `tripcanvas_v1`(여행) · `tripcanvas_legs_v4`(구간 캐시, 수단별 키) · `tripcanvas_synced` · `tripcanvas_prices_v1`(예약 가격 관측 기록) · `tripcanvas_suggest_v1`(제안 거절 이력·컨디션 — 여행 데이터가 아니라 기기 로컬) · `tripcanvas_cfg` · `tripcanvas_fx` · `tripcanvas_join_v1`(초대 수락 대기 토큰)
+localStorage: `tripcanvas_v1`(여행) · `tripcanvas_legs_v4`(구간 캐시, 수단별 키) · `tripcanvas_synced` · `tripcanvas_prices_v1`(예약 가격 관측 기록) · `tripcanvas_suggest_v1`(제안 거절 이력·컨디션 — 여행 데이터가 아니라 기기 로컬) · `tripcanvas_cfg` · `tripcanvas_fx` · `tripcanvas_join_v1`(초대 수락 대기 토큰) · `tripcanvas_auth_v1`(자체 Auth 세션 토큰 — Supabase 모드에서는 쓰지 않는다)
 주의: Google 약관상 지도 타일 캐시 금지 → 오프라인 지도 기능 없음 (SW는 앱 셸만 캐시)
 
 ## 핵심 개념 (배선 실수가 잦은 곳)
@@ -159,7 +160,7 @@ npm test && npm run lint && npm run check:types && npm run security:scan && npm 
 검색: 국내 카카오 로컬 · 해외 Google Places (`routedSearch`가 라우팅) · 저장: localStorage + Supabase
 지도에서 장소 담기: 해외는 `clickableIcons`로 POI 탭 시 `placeId`를 그대로 받고, **국내는 카카오 SDK가 POI 탭 신원을 주지 않아** 카테고리 검색으로 POI 칩을 직접 깔아 그걸 누르게 한다(`refreshKakaoPOI`). 좌표 역추적(`reverseSpot`)은 둘 다 실패했을 때의 최후 수단이다 — 추측이라 엉뚱한 상호가 들어갈 수 있다.
 API 키: app.js 상단 `GMAPS_KEY`(리퍼러 제한)·`KAKAO_KEY`(JS, 플랫폼 도메인 제한)·`KAKAO_REST_KEY`(카카오내비) — `localhost:8000`, `tripcanvas-ai.vercel.app` 등록 필요
-localStorage: `tripcanvas_v1`(여행) · `tripcanvas_legs_v4`(구간 캐시, 수단별 키) · `tripcanvas_synced` · `tripcanvas_prices_v1`(예약 가격 관측 기록) · `tripcanvas_suggest_v1`(제안 거절 이력·컨디션 — 여행 데이터가 아니라 기기 로컬) · `tripcanvas_cfg` · `tripcanvas_fx` · `tripcanvas_join_v1`(초대 수락 대기 토큰)
+localStorage: `tripcanvas_v1`(여행) · `tripcanvas_legs_v4`(구간 캐시, 수단별 키) · `tripcanvas_synced` · `tripcanvas_prices_v1`(예약 가격 관측 기록) · `tripcanvas_suggest_v1`(제안 거절 이력·컨디션 — 여행 데이터가 아니라 기기 로컬) · `tripcanvas_cfg` · `tripcanvas_fx` · `tripcanvas_join_v1`(초대 수락 대기 토큰) · `tripcanvas_auth_v1`(자체 Auth 세션 토큰 — Supabase 모드에서는 쓰지 않는다)
 주의: Google 약관상 지도 타일 캐시 금지 → 오프라인 지도 기능 없음 (SW는 앱 셸만 캐시)
 
 ## 핵심 개념 (배선 실수가 잦은 곳)

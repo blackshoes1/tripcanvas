@@ -3462,32 +3462,34 @@ function renderTravel(di, clock){
 // ───────────────── 로그인 · 클라우드 동기화 (Supabase) ─────────────────
 const SUPA_URL='https://gdnhrwtfidjimtabgovh.supabase.co';
 const SUPA_KEY='sb_publishable_2C-n1YFvE9Cw9B7L7B6Trw_XO3Val5q';
-// 함께하기·버전 이력은 이제 TripCanvas API를 지난다(PR12). 로그인·여행 동기화·실시간은 아직 Supabase다.
+// 함께하기·버전 이력·여행 동기화·실시간은 TripCanvas API를 지난다(PR12). 로그인은 auth.js가 감싼다(PR11).
 // 서버가 LEGACY 레지스트리면 API가 다시 Supabase를 부르므로, 데이터는 그대로 있고 앞단만 바뀐 것이다.
 const API_BASE = (typeof window!=='undefined' && window.__TC_API_BASE) ||
   (/^(localhost|127\.0\.0\.1)$/.test(location.hostname) ? 'http://localhost:3000' : TC_API.DEFAULT_BASE);
-/** API·실시간이 함께 쓰는 토큰 — Supabase 세션의 access token을 서버가 직접 검증한다(Phase A) */
-async function apiToken(){
-  if(!sb) return null;
-  try{ const {data}=await sb.auth.getSession(); return (data&&data.session&&data.session.access_token)||null; }
-  catch(_){ return null; }
-}
-if(window.supabase){
-  sb = window.supabase.createClient(SUPA_URL, SUPA_KEY);
-  // API는 Supabase 세션의 access token을 그대로 쓴다 — 서버가 그 JWT를 직접 검증한다(Phase A)
-  TC_API.configure({baseUrl:API_BASE, getToken:apiToken});
-  sb.auth.onAuthStateChange((_e, session)=>{
-    const next = session?.user || null;
-    // 로그인 병합은 "계정이 바뀐 순간"에만 돈다. 토큰 자동 갱신(TOKEN_REFRESHED)에도 병합을 돌리면
-    // 오래 열어둔 탭이 몇 시간 뒤 제 로컬본을 다시 올려 다른 기기의 최신 편집을 덮어썼다.
-    const switched = (next&&next.id) !== (user&&user.id);
-    user = next;
-    if(!user) tripRoles={};   // 로그아웃하면 서버 역할은 의미가 없다 — 로컬 사본은 소유자로 다룬다
-    updateAuthUI();
-    if(user && switched) syncOnLogin().then(completePendingJoin);
-    else if(!user) updateCollabUI();
-  });
-}
+/** API·실시간이 함께 쓰는 토큰. Supabase JWT든 자체 Auth 세션이든 auth.js가 같은 모양으로 준다 */
+async function apiToken(){ return TC_AUTH.getToken(); }
+// Supabase 클라이언트는 아직 남는다 — 가격 관측 기록(sb.from)이 그쪽에 있다. 로그인은 더 이상 여기서 하지 않는다.
+if(window.supabase) sb = window.supabase.createClient(SUPA_URL, SUPA_KEY);
+TC_API.configure({baseUrl:API_BASE, getToken:apiToken});
+TC_AUTH.configure({baseUrl:API_BASE, supabase:sb,
+  storage:(typeof localStorage!=='undefined' ? localStorage : null)});
+// 로그인 상태가 바뀌는 자리는 **하나다** — 어느 Auth를 쓰든 여기로 온다.
+TC_AUTH.onChange(next=>{
+  // 로그인 병합은 "계정이 바뀐 순간"에만 돈다. 토큰 자동 갱신(TOKEN_REFRESHED)에도 병합을 돌리면
+  // 오래 열어둔 탭이 몇 시간 뒤 제 로컬본을 다시 올려 다른 기기의 최신 편집을 덮어썼다.
+  const switched = (next&&next.id) !== (user&&user.id);
+  user = next;
+  if(!user) tripRoles={};   // 로그아웃하면 서버 역할은 의미가 없다 — 로컬 사본은 소유자로 다룬다
+  updateAuthUI();
+  if(user && switched) syncOnLogin().then(completePendingJoin);
+  else if(!user) updateCollabUI();
+});
+// ⚠️ 어느 Auth로 로그인할지는 **서버가 정한다**(/api/v1/auth-config). 여기서 고르면, 서버에 자체 Auth가
+// 꺼져 있는데 웹만 그쪽으로 로그인하려다 아무 데도 못 들어간다. 답이 없으면 오늘 그대로(Supabase)다.
+TC_AUTH.resolveProvider().then(p=>{
+  if(p==='TRIPCANVAS') return TC_AUTH.restore();
+  TC_AUTH.attachSupabase();   // SDK가 제 저장소에서 세션을 복구하고 onChange로 알려 준다
+});
 function updateAuthUI(){
   const b=document.getElementById('authBtn'); if(!b) return;
   if(user){ b.textContent='👤 '+(user.email||'').split('@')[0]; b.title='클릭하면 로그아웃'; b.classList.add('primary'); }
@@ -3690,10 +3692,11 @@ async function syncOnLogin(){
 }
 // 로그인 모달 (이메일 + 비밀번호)
 document.getElementById('authBtn').onclick=()=>{
-  if(!sb){ toast('온라인 상태에서 다시 시도해줘','#e63946'); return; }
-  if(user){ if(confirm(`${user.email} — 로그아웃할까?`)){ sb.auth.signOut(); toast('로그아웃됨','#8892b0'); } return; }
+  if(user){ if(confirm(`${user.email} — 로그아웃할까?`)){ TC_AUTH.signOut(); toast('로그아웃됨','#8892b0'); } return; }
   document.getElementById('authEmail').value='';
   document.getElementById('authPass').value='';
+  // 재설정 안내는 필요해질 때만 — 처음부터 보이면 뭘 잘못한 것처럼 읽힌다
+  const hint=document.getElementById('authResetHint'); if(hint) hint.style.display='none';
   document.getElementById('authModalBg').classList.add('show');
   document.getElementById('authEmail').focus();
 };
@@ -3705,22 +3708,47 @@ function authCreds(){
   if((password||'').length<6){ toast('비밀번호는 6자 이상','#e63946'); return null; }
   return {email, password};
 }
+/**
+ * 로그인 실패를 문구가 아니라 **코드**로 갈라 보여준다.
+ * ⚠️ 자체 Auth로 넘어간 뒤 예전 사용자는 비밀번호가 없다(해시를 옮기지 않는다 §19).
+ * 그 사람에게 "비밀번호가 틀렸다"만 말하면 영영 못 들어온다 — 재설정 길을 함께 연다.
+ */
+function showAuthError(error){
+  if(error.code==='INVALID_CREDENTIALS' && TC_AUTH.provider()==='TRIPCANVAS'){
+    const hint=document.getElementById('authResetHint'); if(hint) hint.style.display='';
+    toast('이메일 또는 비밀번호가 맞지 않아 — 예전 계정이면 비밀번호를 새로 정해줘','#e63946');
+    return;
+  }
+  toast(error.message,'#e63946');
+}
 document.getElementById('authLogin').onclick=async()=>{
   const c=authCreds(); if(!c) return;
   const btn=document.getElementById('authLogin'); btn.textContent='로그인 중…'; btn.disabled=true;
-  const {error}=await sb.auth.signInWithPassword(c);
+  const {error}=await TC_AUTH.signIn(c);
   btn.textContent='로그인'; btn.disabled=false;
-  if(error){ toast(/invalid/i.test(error.message)?'이메일 또는 비밀번호가 틀렸어 (처음이면 가입)':'로그인 실패: '+error.message,'#e63946'); return; }
+  if(error){ showAuthError(error); return; }
   document.getElementById('authModalBg').classList.remove('show'); toast('로그인 완료!');
 };
 document.getElementById('authSignup').onclick=async()=>{
   const c=authCreds(); if(!c) return;
   const btn=document.getElementById('authSignup'); btn.textContent='가입 중…'; btn.disabled=true;
-  const {data,error}=await sb.auth.signUp(c);
+  const {error,verificationSent}=await TC_AUTH.signUp(c);
   btn.textContent='가입'; btn.disabled=false;
   if(error){ toast('가입 실패: '+error.message,'#e63946'); return; }
-  if(data && data.session){ document.getElementById('authModalBg').classList.remove('show'); toast('가입 완료 — 로그인됨!'); }
-  else { document.getElementById('authModalBg').classList.remove('show'); toast('확인 메일을 보냈어! 메일의 링크를 누르면 인증되고 자동 로그인돼 (스팸함도 확인)','#1d6fd6'); }
+  document.getElementById('authModalBg').classList.remove('show');
+  toast(verificationSent
+    ? '확인 메일을 보냈어! 메일의 링크를 누르면 인증돼 (스팸함도 확인)'
+    : '가입 완료 — 로그인됨!', verificationSent?'#1d6fd6':undefined);
+};
+// 비밀번호 재설정 — 예전 계정이 자체 Auth로 넘어오는 길이기도 하다.
+// **가입된 이메일인지 알려주지 않는다**: 있든 없든 같은 문구다(계정 유무를 떠보는 데 쓰이지 않게).
+document.getElementById('authReset').onclick=async()=>{
+  const email=document.getElementById('authEmail').value.trim();
+  if(!/.+@.+\..+/.test(email)){ toast('이메일을 먼저 입력해줘','#e63946'); return; }
+  const btn=document.getElementById('authReset'); btn.disabled=true;
+  await TC_AUTH.requestPasswordReset(email);
+  btn.disabled=false;
+  toast('가입된 이메일이라면 재설정 메일이 갔어 — 메일함(스팸함도) 확인해줘','#1d6fd6');
 };
 document.getElementById('authPass').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('authLogin').click();});
 updateAuthUI();

@@ -54,6 +54,8 @@ const supabaseVerifier = withRemoteFallback(
 );
 const newAuth = getNewAuth();
 export const verifier = newAuth ? composeVerifiers(supabaseVerifier, newAuth.verifier) : supabaseVerifier;
+/** 자체 Auth가 실제로 조립됐는가 — /api/v1/auth-config가 웹에 이 사실을 알린다(PR11) */
+export const newAuthEnabled = newAuth !== null;
 
 function legacyRepos(ctx: RequestContext, token: string): { trips: TripRepository; members: MembershipRepository } {
   const session = new LegacySupabaseSession(token, env.supabaseUrl, ctx.userId);

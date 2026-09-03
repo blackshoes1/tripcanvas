@@ -16,7 +16,10 @@ async function fakeSupabase(context,options={}){
     window.fetch=async(url,init)=>{
       const u=String(url&&url.url?url.url:url), method=(init&&init.method)||'GET';
       if(u.indexOf('https://api.e2e.test/')!==0) return originalFetch(url,init);
-      window.__rpc.push([u.replace('https://api.e2e.test',''),method]);
+      const path=u.replace('https://api.e2e.test','');
+      // /api/v1/auth-config는 부팅 때 무엇으로 로그인할지 묻는 것이라 데이터 호출이 아니다(PR11).
+      // 여기 섞으면 "초대 때 무엇을 보냈나"를 보는 검사가 흔들린다.
+      if(path.indexOf('/api/v1/auth-config')!==0) window.__rpc.push([path,method]);
       const body=u.indexOf('/api/v1/invites/')>=0 ? {preview} : {};
       return new Response(JSON.stringify(body),{status:200,headers:{'content-type':'application/json'}});
     };

@@ -19,6 +19,7 @@
     "intake.js",
     "collab.js",
     "api.js",
+    "auth.js",
     "types/env.d.ts"
   ]
 }
