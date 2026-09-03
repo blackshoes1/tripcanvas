@@ -1,0 +1,19 @@
+// 실시간 사이드카만 따로 컴파일한다(Next 번들과 무관한 독립 프로세스라 별도 진입점이 필요하다).
+// module: commonjs — 확장자 없는 상대 경로를 Node가 그대로 해석한다. 이 하위 트리는 경로 별칭(@/·@legacy/)을 쓰지 않는다.
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["esnext"],
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "outDir": "dist-realtime",
+    "rootDir": "src",
+    "sourceMap": true,
+    "types": ["node"]
+  },
+  "include": ["src/server/realtime/main.ts"],
+  "exclude": ["**/*.test.ts"]
+}

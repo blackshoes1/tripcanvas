@@ -91,11 +91,24 @@ application/domain 코드에 SQL·ORM 쿼리를 쓰지 않는다. 새 구현은 
 `TC_MIGRATION_<DOMAIN>=LEGACY|DUAL_READ|NEW_BACKEND`. `DATABASE_URL`이 없으면 전부 LEGACY. `route-deps.ts`가 요청마다 이 값으로 저장소를 고른다.
 롤백은 값을 되돌리는 것뿐이다(§78) — 단 새 DB에 쓴 뒤 LEGACY로 돌아가면 그 사이 변경은 Supabase에 없다(`docs/supabase-migration.md` 롤백 절).
 
+## 실시간 (`server/realtime/`)
+
+별도 프로세스(사이드카)다 — Next Route Handler는 WebSocket 업그레이드를 다루지 않는다. Vercel은 API만 띄우고 NAS는 둘 다 띄운다.
+
+```
+trip_activity INSERT
+  → 트리거 tc_notify_activity (마이그레이션 0004) — pg_notify는 트랜잭션이라 커밋된 뒤에만 나간다
+  → pgListener  전용 연결로 LISTEN(Pool 금지). 끊기면 다시 붙고 status()로 알린다 — 끊긴 LISTEN은 조용하다
+  → hub         접속 상태 기계: AUTH(첫 프레임) → SUBSCRIBE(멤버십 확인) → 방송. 토큰 만료·죽은 접속 정리
+  → server      ws/http 배선과 /health 뿐
+```
+
+페이로드는 `{type, tripId, id, kind, mine}` 뿐이다(§44). `mine`은 구독자마다 계산해 붙이고, 내부 식별자(`trips.id`)와 다른 사람의 user id는 나가지 않는다. 구독 권한은 API와 **같은 규칙·같은 Repository**(`TripRepository.findVisible`)로 판정한다.
+
 ## 아직 Infrastructure에 없는 것
 
 | 어댑터 | 계획 |
 |---|---|
-| Realtime | Phase 6 — 커밋 후 `{type, id, version}`만 발행 → WebSocket. PostgreSQL이 진실, 소켓은 알림(§45). Next 단독 프로세스라 사이드카(작은 ws 서버) 또는 custom server 필요 |
 | Storage | Phase 7 — 현재 쓰는 곳이 없어 새 기능 전까지 보류. 들어오면 MinIO + `object_key`만 저장(§51) |
 | Mail | Phase 8 — `MailService` 어댑터(verification · reset · invite). 외부 SMTP(§21) |
 | Auth(자체) | Phase 8 — 검증된 라이브러리. 비밀번호 해시·세션 토큰을 직접 설계하지 않는다(§18) |
@@ -108,6 +121,7 @@ application/domain 코드에 SQL·ORM 쿼리를 쓰지 않는다. 새 구현은 
 | Application | `tripService.test.ts` · `tripAuthorization.test.ts` · `dualRead.test.ts` | 메모리 저장소로 use case · 권한 5종 · dual read 규칙 |
 | Auth | `supabaseJwt.test.ts` · `withRemoteFallback.test.ts` | ES256 JWKS · HS256 · issuer/audience/만료/서명 거절 · 폴백 |
 | API 경계 | `tripRoutes.test.ts` | 401/400/403/404/409 + 응답 계약 |
+| 실시간 | `hub.test.ts` · `events.test.ts` · `pgListener.test.ts` · `pgNotify.test.ts`(PGlite) · `server.test.ts`(진짜 WebSocket) | 인증·구독 권한·방송·토큰 만료·재연결·트리거 |
 | 레거시 보존 | `handlers.test.ts` · `swiftParity.test.ts` | 기존 `/api/v1` 계약이 그대로다 |
 
 `cd next && npm test` — CI의 Next 잡이 돈다(PGlite는 Linux 러너에서도 그대로).

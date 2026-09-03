@@ -5,6 +5,8 @@ export interface RequestContext {
   legacySupabaseUserId: string | null;
   email: string | null;
   sessionId: string | null;
+  /** 토큰 만료(epoch 초). 실시간 접속이 토큰보다 오래 살지 않게 쓴다 — 없으면 만료로 끊지 않는다 */
+  expiresAt?: number;
   tokenSource: 'supabase';
 }
 

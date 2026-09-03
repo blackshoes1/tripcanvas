@@ -41,7 +41,9 @@ describe('createSupabaseVerifier', () => {
   it('JWKS(ES256)로 서명된 토큰 → RequestContext. 도메인은 JWT payload를 모른다(§16)', async () => {
     const verifier = createSupabaseVerifier({ supabaseUrl: SUPABASE_URL, jwtSecret: null, jwks });
     const ctx = await verifier.verify(await signEs(claims()));
-    expect(ctx).toEqual({ userId: SUB, legacySupabaseUserId: SUB, email: 'a@example.com', sessionId: 'sess-1', tokenSource: 'supabase' });
+    // expiresAt(exp)는 실시간 접속이 토큰보다 오래 살지 않게 쓴다
+    expect(ctx).toEqual({ userId: SUB, legacySupabaseUserId: SUB, email: 'a@example.com', sessionId: 'sess-1', expiresAt: expect.any(Number), tokenSource: 'supabase' });
+    expect(ctx!.expiresAt! * 1000).toBeGreaterThan(Date.now());
   });
 
   it('HS256은 secret이 설정돼 있을 때만 받는다', async () => {

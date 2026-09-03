@@ -60,6 +60,9 @@ jobs:
         run: npm test
       - name: Build
         run: npm run build
+      # 실시간 사이드카는 Next 번들과 따로 컴파일된다 — 여기서 안 돌리면 조용히 깨진 채로 남는다
+      - name: Build realtime sidecar
+        run: npm run realtime:build
 
   e2e:
     name: E2E

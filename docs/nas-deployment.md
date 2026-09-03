@@ -11,6 +11,7 @@
 |---|---|---|---|
 | `reverse-proxy` | caddy:2 | HTTPS 자동 발급, `api:3000`으로 전달 | **80·443만 외부** |
 | `api` | `next/Dockerfile` (target `runtime`) | Next standalone, `/api/v1/*` · `/api/health` | 내부 3000 |
+| `realtime` | `next/Dockerfile` (target `realtime`) | WebSocket 사이드카 `/ws` — pg_notify를 듣고 중계 | 내부 3001 |
 | `migrate` | `next/Dockerfile` (target `migrate`) | `drizzle-kit migrate` 일회 실행. 성공해야 `api`가 뜬다 | — |
 | `postgres` | postgres:17 | source of truth | 내부 네트워크만(5432 비공개, §54) |
 | `backup` | postgres:17 | 매일 `pg_dump` → `BACKUP_DIR` | — |
@@ -40,7 +41,9 @@ curl -s https://$API_DOMAIN/api/health                       # {"ok":true,"api":
 curl -s -o /dev/null -w "%{http_code}\n" https://$API_DOMAIN/api/v1/trips   # 401 — 정상(인증 요구)
 ```
 
-확인 순서: `migrate`가 성공했는가 → `api` healthcheck가 healthy인가 → 401이 오는가 → 실제 Supabase 토큰으로 `/api/v1/trips`가 200인가.
+확인 순서: `migrate`가 성공했는가 → `api` healthcheck가 healthy인가 → 401이 오는가 → 실제 Supabase 토큰으로 `/api/v1/trips`가 200인가 → `realtime` 헬스가 `LISTENING`인가.
+
+⚠️ 실시간 헬스가 `RECONNECTING`이면 **503**이다. 끊긴 LISTEN은 오류를 내지 않고 이벤트만 영원히 안 오므로, 이 값을 모니터링에 넣는다.
 
 ## 빌드 주의
 
@@ -60,6 +63,5 @@ NAS Backend 완성 → staging 검증(위 확인 절차) → 데이터 이관 �
 
 ## 아직 없는 것
 
-- Realtime(WebSocket) 서비스 — Phase 6. Caddy에 `/ws` 경로를 더해 사이드카로 붙일 자리
 - MinIO — Phase 7(현재 필요 없음)
 - 오프사이트 백업 복제 — NAS 쪽 설정(Hyper Backup 등). `docs/backup-restore.md`

@@ -37,6 +37,7 @@ export function createSupabaseVerifier(opts: SupabaseVerifierOptions): TokenVeri
           legacySupabaseUserId: sub,
           email: typeof payload.email === 'string' && payload.email ? payload.email : null,
           sessionId: typeof payload.session_id === 'string' && payload.session_id ? payload.session_id : null,
+          ...(typeof payload.exp === 'number' ? { expiresAt: payload.exp } : {}),
           tokenSource: 'supabase'
         };
       } catch {

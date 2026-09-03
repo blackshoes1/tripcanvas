@@ -34,3 +34,12 @@ USER tc
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 CMD wget -qO- http://127.0.0.1:3000/api/health || exit 1
 CMD ["node", "next/server.js"]
+
+# ── realtime: WebSocket 사이드카(§42). Next와 별도 프로세스다 — Route Handler는 업그레이드를 다루지 않는다 ──
+FROM build AS realtime
+WORKDIR /repo/next
+RUN npm run realtime:build
+ENV REALTIME_PORT=3001
+EXPOSE 3001
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 CMD wget -qO- http://127.0.0.1:3001/health || exit 1
+CMD ["node", "dist-realtime/server/realtime/main.js"]

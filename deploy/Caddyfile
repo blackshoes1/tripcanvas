@@ -7,6 +7,12 @@
 		Referrer-Policy strict-origin-when-cross-origin
 		-Server
 	}
+	# 실시간 WebSocket — 업그레이드는 Caddy가 그대로 넘긴다. 토큰은 첫 프레임(AUTH)으로 가므로 URL·접근 로그에 남지 않는다
+	handle /ws* {
+		reverse_proxy realtime:3001
+	}
 	# API만 연다. 정적 웹(PWA)은 여전히 Vercel — 여기로 옮길 때 이 블록에 file_server를 더한다
-	reverse_proxy api:3000
+	handle {
+		reverse_proxy api:3000
+	}
 }

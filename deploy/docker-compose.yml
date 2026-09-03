@@ -50,6 +50,23 @@ services:
     networks: [internal, edge]
     expose: ["3000"]
 
+  # 실시간(§42) — trip_activity 트리거의 pg_notify를 듣고 WebSocket으로 중계한다. 죽어도 앱은 돈다(폴백은 API 재조회)
+  realtime:
+    build:
+      context: ..
+      dockerfile: next/Dockerfile
+      target: realtime
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-tripcanvas}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-tripcanvas}
+      REALTIME_PORT: 3001
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    networks: [internal, edge]
+    expose: ["3001"]
+
   reverse-proxy:
     image: caddy:2-alpine
     restart: unless-stopped
@@ -61,7 +78,7 @@ services:
       - caddy_data:/data
       - caddy_config:/config
     networks: [edge]
-    depends_on: [api]
+    depends_on: [api, realtime]
 
   # 매일 pg_dump(§59). 백업은 DB 볼륨과 다른 볼륨/경로에 둔다(§60) — NAS 스냅샷·오프사이트 복제는 NAS 쪽 설정
   backup:

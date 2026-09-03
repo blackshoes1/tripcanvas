@@ -10,6 +10,8 @@ import * as schema from './schema';
 
 export interface TestDatabase {
   db: Db;
+  /** LISTEN — 실시간 알림 트리거를 진짜로 받아 본다 */
+  listen(channel: string, onPayload: (payload: string) => void): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -17,5 +19,9 @@ export async function createTestDatabase(): Promise<TestDatabase> {
   const client = new PGlite();
   const db = drizzle(client, { schema });
   await migrate(db, { migrationsFolder: MIGRATIONS_FOLDER });
-  return { db, close: () => client.close() };
+  return {
+    db,
+    listen: async (channel, onPayload) => { await client.listen(channel, onPayload); },
+    close: () => client.close()
+  };
 }

@@ -19,7 +19,7 @@ PostgreSQL + 독립 Auth + TripCanvas API 중심의 자체 Backend로 옮기는 
 | PRICING | LEGACY (→ `DUAL_READ` → `NEW_BACKEND` 가능) | `/api/v1` 가격 관측 읽기(`listPriceObservations`)는 새 Repository 준비됨(`TC_MIGRATION_PRICING`). **크론(`api/track-hotel-prices.js`, service_role)과 웹의 직접 insert는 아직 Supabase** — 관측을 쓰는 쪽이 옮겨 오기 전까지 새 DB는 이관된 과거 관측만 갖는다 |
 | ADAPTIVE (Today·Suggestion·Replan) | LEGACY (→ `DUAL_READ` → `NEW_BACKEND` 가능) | 판단은 이미 `/api/v1`(adaptive.js). 저장(`suggestion_feedback`·`notification_log`·`device_tokens`·`trip_memories`)이 새 Repository로 준비됨(`TC_MIGRATION_ADAPTIVE`). DUAL_READ는 거절·알림 키의 **합집합**(잃으면 같은 알림이 두 번 간다) |
 | COLLAB | LEGACY (→ `NEW_BACKEND` 가능) | 협업 API 20개 라우트 준비됨(`TC_MIGRATION_COLLAB`). LEGACY면 같은 라우트가 Supabase RPC 어댑터로 돈다(판정은 RPC). 웹은 아직 RPC를 직접 부른다(PR12) |
-| REALTIME | LEGACY | `trip_activity` INSERT 구독(웹만) |
+| REALTIME | LEGACY (→ `NEW_BACKEND` 가능) | 자체 WebSocket 사이드카 준비됨(아래). 새 DB가 진실일 때만 의미가 있다 — 협업이 LEGACY면 새 DB에 활동 행이 안 쌓인다. 웹은 아직 Supabase Realtime을 쓴다(PR12) |
 | STORAGE | — | **쓰지 않는다**(사진 원본은 기기에만) |
 
 ## Phase 0 — Supabase 사용 인벤토리 (2026-09-03)
@@ -134,7 +134,7 @@ Supabase 전용 의존:
 | 3 | Trip API (목록·상세·생성·수정·삭제) — 레지스트리로 분기 | ✅ PR3 (`bfe6cba`) — Day·Spot·예약 문서는 여행 문서 안이라 함께. **데이터 이관 전이라 프로덕션은 LEGACY** |
 | 4 | Adaptive 저장소(제안 거절·알림·기기·기록) · Pricing 관측 Repository | ✅ PR5·PR6 — 기존 핸들러의 Gateway를 `composeGateway`가 레지스트리로 조립. 크론의 service_role 쓰기는 남아 있다(아래) |
 | 5 | Collaboration (멤버·초대·후보·반응·코멘트·제안·활동) API | ✅ PR7 — 새 DB 5 테이블 + `CollabService`(RPC 21종의 판정을 application으로) + 라우트 14 파일 + 레거시 RPC 어댑터. 활동 기록은 트리거 대신 Repository가 같은 트랜잭션에서. 그룹 제안(`buildGroupProposal`)은 순수 미리보기라 클라이언트에 그대로 남는다 |
-| 6 | Realtime WebSocket | PR8 |
+| 6 | Realtime WebSocket | ✅ PR8 — 트리거 pg_notify → LISTEN → 허브 → 구독자. 서버 완성, 웹 전환은 PR12 |
 | 7 | Storage (MinIO) — **현재 쓰는 곳이 없어 새 기능 전까지 보류** | PR9 |
 | 8 | 새 Auth (가입·인증메일·세션·재설정) · 기존 사용자 이관 · 웹/iOS 전환 | PR10·PR11 |
 | 9 | 웹 Supabase 클라이언트 제거 · iOS GoTrue 호출 제거 | PR12·PR13 |
@@ -154,13 +154,32 @@ Supabase 전용 의존:
 
 응답 모양은 RPC 반환형(snake_case)과 같다 — 웹이 옮겨 탈 때 화면 코드가 바뀌지 않게. 차이 하나: 새 backend는 남의 여행을 **NOT_FOUND**로 답하고, 레거시 어댑터는 RPC 그대로(빈 목록 또는 42501→FORBIDDEN).
 
+## 실시간 (PR8)
+
+```
+trip_activity INSERT → 트리거 pg_notify(커밋 시점) → LISTEN(전용 연결) → 허브 → 구독자
+```
+
+Supabase Realtime을 대신한다. **PostgreSQL이 진실이고 소켓은 알림 채널일 뿐이다**(§45) — 사이드카가 죽어도 앱은 그대로 돌고, 클라이언트는 탭 복귀·패널 열기에 API로 다시 읽는 폴백을 그대로 쓴다.
+
+| | |
+|---|---|
+| 주소 | `wss://<API_DOMAIN>/ws` (Caddy가 `realtime:3001`로 넘긴다) |
+| 인증 | 접속 후 **첫 프레임** `{"type":"AUTH","token":"<bearer>"}`. 쿼리스트링에 토큰을 싣지 않는다(프록시·접근 로그에 남는다). 제한 시간 10초 |
+| 구독 | `{"type":"SUBSCRIBE","tripId":"<client_id>"}` — **서버가 멤버십을 확인한 뒤에만** 열린다(§41). 아니면 `FORBIDDEN` |
+| 받는 것 | `{"type":"ACTIVITY","tripId","id","kind","mine"}` — 이게 전부다(§44). 내용은 API로 다시 읽는다 |
+| 수명 | 토큰이 만료되면 끊는다(4440). PING에 PONG이 없으면 끊는다(4408). 닫힘 코드: 4401 인증 실패 · 4408 시간 초과 · 4440 토큰 만료 |
+| 헬스 | `GET /health` — LISTEN이 붙어 있지 않으면 **503**이다(끊긴 채 조용히 살아 있지 않게) |
+
+트리거 페이로드에는 제목·본문·문서가 없고, `actorId`는 서버 안에서만 쓴다 — 구독자마다 `mine`을 계산해 붙이고 다른 사람의 user id는 내보내지 않는다.
+
 ## 지금 할 수 있는 것 / 아직 못 하는 것
 
 - 새 API(`POST /api/v1/trips` · `GET/PUT/DELETE /api/v1/trips/:id`)는 레지스트리가 `LEGACY`여도 동작한다 — Supabase를 같은 Repository 계약으로 감쌌기 때문이다. 웹·iOS가 `sync_trip` 대신 이 API로 옮겨 탈 수 있다(PR12·PR13의 준비).
 - Supabase 토큰은 서버가 직접 검증한다. 로컬 검증이 실패하면 예전처럼 `getUser`로 확인하고 **경고 로그**를 남긴다 — 그 로그가 보이면 프로젝트가 HS256이므로 `SUPABASE_JWT_SECRET`을 넣는다.
 - 가격 크론 `api/track-hotel-prices.js`는 모든 사용자의 여행을 읽어 관측을 쓰는 **시스템 작업**이라 사용자 토큰 모델에 맞지 않는다. 새 backend로 옮길 때는 서비스 계정 경로(내부 전용 라우트 + `CRON_SECRET`)로 다시 만든다 — Phase 10 전에.
 - `NEW_BACKEND`·`DUAL_READ`는 코드·테스트가 있지만 **데이터 이관 스크립트가 아직 없다**(Phase 10). staging에서 빈 DB로 먼저 돌려 본다.
-- 미검증: `next/Dockerfile`·`deploy/docker-compose.yml`(작성 환경에 Docker 없음), 실제 PostgreSQL 서버(테스트는 PGlite), 실제 Supabase JWKS 응답(테스트는 로컬 키).
+- 미검증: `next/Dockerfile`·`deploy/docker-compose.yml`(작성 환경에 Docker 없음), 실제 PostgreSQL 서버(테스트는 PGlite — 실시간 트리거·LISTEN은 PGlite에서 진짜로 돌지만 `pg` 드라이버 경로는 미검증), 실제 Supabase JWKS 응답(테스트는 로컬 키).
 
 ## 롤백
 
