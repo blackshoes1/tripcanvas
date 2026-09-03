@@ -8,11 +8,15 @@
 import { Pool } from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
 
+import { composeVerifiers } from '../auth/compositeVerifier';
 import { remoteSupabaseUser } from '../auth/remoteSupabaseUser';
+import { createSessionTokenVerifier } from '../auth/sessionTokenVerifier';
 import { createSupabaseVerifier } from '../auth/supabaseJwt';
 import { withRemoteFallback } from '../auth/withRemoteFallback';
 import { parseEnv } from '../config/env';
 import * as schema from '../infrastructure/database/schema';
+import { PgAuthIdentityRepository } from '../infrastructure/database/pgAuthIdentityRepository';
+import { PgAuthSessionRepository } from '../infrastructure/database/pgAuthSessionRepository';
 import { PgTripRepository } from '../infrastructure/database/pgTripRepository';
 import { REALTIME_CHANNEL } from './events';
 import { createRealtimeHub } from './hub';
@@ -28,12 +32,27 @@ async function main(): Promise<void> {
   }
   const port = Number(process.env.REALTIME_PORT || 3001);
   const pool = new Pool({ connectionString: env.databaseUrl, max: 4 });
-  const trips = new PgTripRepository(drizzle(pool, { schema }));
+  const db = drizzle(pool, { schema });
+  const trips = new PgTripRepository(db);
 
-  const verifier = withRemoteFallback(
+  const supabase = withRemoteFallback(
     createSupabaseVerifier({ supabaseUrl: env.supabaseUrl, jwtSecret: env.supabaseJwtSecret }),
     remoteSupabaseUser(env.supabaseUrl)
   );
+  // 자체 Auth를 켜면 웹·iOS가 better-auth 세션 토큰을 들고 온다. 사이드카가 그걸 모르면
+  // **Auth를 넘기는 순간 실시간이 통째로 끊긴다.** better-auth는 ESM 전용이라 이 CommonJS 빌드에
+  // 들어오지 않으므로, 같은 세션을 DB로 판정한다(auth/sessionTokenVerifier.ts — API와 같은 기준).
+  // API가 자체 Auth를 켠 것과 **같은 조건**(newAuthEnabled)을 쓴다 — 두 프로세스가 갈리면
+  // 한쪽만 받아들이는 토큰이 생긴다. AUTH_SECRET도 반드시 같아야 한다.
+  const selfAuth = env.newAuthEnabled && env.authSecret
+    ? createSessionTokenVerifier({
+      sessions: new PgAuthSessionRepository(db),
+      identities: new PgAuthIdentityRepository(db),
+      secret: env.authSecret
+    })
+    : null;
+  if (!selfAuth) console.log('[tripcanvas-realtime] AUTH_SECRET 없음 — Supabase 토큰만 받는다');
+  const verifier = selfAuth ? composeVerifiers(supabase, selfAuth) : supabase;
 
   const hub = createRealtimeHub({
     verifier,

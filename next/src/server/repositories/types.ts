@@ -191,6 +191,21 @@ export interface CollabRepository {
 
 // ── 자체 Auth 계정 ↔ 도메인 사용자 연결(§13). 규칙은 server/auth/identity.ts ──
 
+/** 자체 Auth 세션 한 건 — 실시간 사이드카가 토큰을 판정할 때 필요한 것만 */
+export interface AuthSessionView {
+  sessionId: string;
+  /** auth_user.id (도메인 users.id가 아니다 — 잇는 것은 identity.ts) */
+  authUserId: string;
+  email: string | null;
+  emailVerified: boolean;
+  expiresAt: Date;
+}
+
+export interface AuthSessionRepository {
+  /** 서명을 벗긴 세션 토큰으로 찾는다. 없으면 null */
+  findByToken(token: string): Promise<AuthSessionView | null>;
+}
+
 export interface AuthIdentityRepository {
   /** 이 Auth 계정에 이어진 도메인 users.id */
   findByAuthUserId(authUserId: string): Promise<string | null>;
