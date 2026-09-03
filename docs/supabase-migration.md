@@ -12,7 +12,7 @@ PostgreSQL + 독립 Auth + TripCanvas API 중심의 자체 Backend로 옮기는 
 
 | 도메인 | 상태 | 비고 |
 |---|---|---|
-| AUTH | LEGACY | Supabase Auth 토큰을 새 API가 **직접 검증**한다(Phase A). 로그인 UI·토큰 발급은 그대로 Supabase |
+| AUTH | LEGACY (자체 Auth 준비됨) | Supabase 토큰을 새 API가 **직접 검증**한다(Phase A). 자체 Auth(better-auth)가 `/api/auth/*`에 올라가 있고 두 토큰이 함께 통한다 — `AUTH_SECRET`이 없으면 꺼진 채다. 로그인 화면 전환은 PR11 |
 | TRIP | LEGACY (→ `DUAL_READ` → `NEW_BACKEND` 가능) | 목록·상세·생성·수정(CAS)·삭제(tombstone)가 새 Repository로 준비됨. `TC_MIGRATION_TRIP`으로 전환·롤백 |
 | ITINERARY (Day·Spot) | LEGACY | 여행 문서(jsonb) 안에 있어 TRIP과 함께 움직인다 |
 | BOOKING | LEGACY | 문서 안(`trip.bookings`) + `hotel_price_snapshots` |
@@ -136,7 +136,7 @@ Supabase 전용 의존:
 | 5 | Collaboration (멤버·초대·후보·반응·코멘트·제안·활동) API | ✅ PR7 — 새 DB 5 테이블 + `CollabService`(RPC 21종의 판정을 application으로) + 라우트 14 파일 + 레거시 RPC 어댑터. 활동 기록은 트리거 대신 Repository가 같은 트랜잭션에서. 그룹 제안(`buildGroupProposal`)은 순수 미리보기라 클라이언트에 그대로 남는다 |
 | 6 | Realtime WebSocket | ✅ PR8 — 트리거 pg_notify → LISTEN → 허브 → 구독자. 서버 완성, 웹 전환은 PR12 |
 | 7 | Storage (MinIO) — **현재 쓰는 곳이 없어 새 기능 전까지 보류** | PR9 |
-| 8 | 새 Auth (가입·인증메일·세션·재설정) · 기존 사용자 이관 · 웹/iOS 전환 | PR10·PR11 |
+| 8 | 새 Auth (가입·인증메일·세션·재설정) · 기존 사용자 이관 · 웹/iOS 전환 | ✅ PR10(기반) — 아래. 기존 사용자 이관·웹/iOS 전환은 PR11 |
 | 9 | 웹 Supabase 클라이언트 제거 · iOS GoTrue 호출 제거 | PR12·PR13 |
 | 10 | 데이터 이관 리허설 · NAS 프로덕션 · 롤백 테스트 · Supabase read-only → 종료 | PR14 |
 
@@ -173,13 +173,42 @@ Supabase Realtime을 대신한다. **PostgreSQL이 진실이고 소켓은 알림
 
 트리거 페이로드에는 제목·본문·문서가 없고, `actorId`는 서버 안에서만 쓴다 — 구독자마다 `mine`을 계산해 붙이고 다른 사람의 user id는 내보내지 않는다.
 
+## 자체 Auth (PR10)
+
+라이브러리는 **better-auth 1.7.2**다. 비밀번호 해시·세션 토큰·인증/재설정 토큰을 직접 설계하지 않는다(§18) — 우리는 정책만 정한다.
+
+| | |
+|---|---|
+| 경로 | `/api/auth/*` (가입·확인·로그인·로그아웃·세션·재설정). `AUTH_SECRET`+`DATABASE_URL`이 없으면 **404** |
+| 세션 | 웹은 쿠키, iOS는 `Authorization: Bearer <세션 토큰>`(bearer 플러그인) — 같은 세션이다(§70) |
+| 이메일 확인 | 가입 시 발송, **확인 전에는 로그인 불가**. 링크는 `/api/auth/verify-email` |
+| 비밀번호 재설정 | `POST /api/auth/request-password-reset` → 메일 → `/api/auth/reset-password/:token` |
+| rate limit | DB 저장소(`auth_rate_limit`) — 재시작에도 유지된다(§66) |
+| 메일 쿨다운 | (이메일, 종류)당 60초. 건너뛸 때 **오류를 내지 않는다** — 가입 여부를 밖에서 알아낼 통로가 되면 안 된다(§67) |
+| 메일 | 외부 SMTP(§21). 설정이 없으면 링크가 서버 로그로 떨어진다 — 조용히 삼키지 않는다 |
+
+### 계정 연결이 이관의 핵심이다 (§13·§19)
+
+`users`(도메인)와 `auth_user`(라이브러리)는 **분리**돼 있고 `users.auth_user_id`로 이어진다.
+
+- `users.id`는 **Supabase user id 그대로**다. 그래서 `trips.user_id`·`trip_members.user_id`·후보·코멘트·기록의 참조가 하나도 안 깨진다.
+- 기존 사용자는 **같은 이메일로 가입해 이메일을 확인하면** 예전 사용자 행에 이어지고 여행이 그대로 따라온다.
+- ⚠️ 이어 주는 조건은 **확인된 이메일뿐**이다. 확인 전에 이어 주면 남의 이메일로 가입해 그 사람의 여행을 가져가는 계정 탈취가 된다. `identity.ts`와 better-auth 양쪽에서 막는다.
+- 비밀번호 해시는 옮기지 않는다(§19) — Supabase의 해시에 접근할 수 없고 위험한 변환을 하지 않는다. 기존 사용자는 확인 메일 또는 재설정으로 새 비밀번호를 정한다.
+
+### 남은 것
+
+- 실시간 사이드카는 아직 Supabase 검증만 한다. better-auth가 ESM 전용이고 사이드카는 CommonJS로 컴파일되기 때문이다 — AUTH를 실제로 넘길 때(PR11) 사이드카를 ESM으로 바꾼다.
+- 웹·iOS의 로그인 화면은 그대로 Supabase다. 전환은 PR11.
+- CSRF(§71)는 better-auth의 기본 보호에 기대고 있다. 쿠키 기반 웹 전환(PR12) 때 실제 출처 설정과 함께 확인한다.
+
 ## 지금 할 수 있는 것 / 아직 못 하는 것
 
 - 새 API(`POST /api/v1/trips` · `GET/PUT/DELETE /api/v1/trips/:id`)는 레지스트리가 `LEGACY`여도 동작한다 — Supabase를 같은 Repository 계약으로 감쌌기 때문이다. 웹·iOS가 `sync_trip` 대신 이 API로 옮겨 탈 수 있다(PR12·PR13의 준비).
 - Supabase 토큰은 서버가 직접 검증한다. 로컬 검증이 실패하면 예전처럼 `getUser`로 확인하고 **경고 로그**를 남긴다 — 그 로그가 보이면 프로젝트가 HS256이므로 `SUPABASE_JWT_SECRET`을 넣는다.
 - 가격 크론 `api/track-hotel-prices.js`는 모든 사용자의 여행을 읽어 관측을 쓰는 **시스템 작업**이라 사용자 토큰 모델에 맞지 않는다. 새 backend로 옮길 때는 서비스 계정 경로(내부 전용 라우트 + `CRON_SECRET`)로 다시 만든다 — Phase 10 전에.
 - `NEW_BACKEND`·`DUAL_READ`는 코드·테스트가 있지만 **데이터 이관 스크립트가 아직 없다**(Phase 10). staging에서 빈 DB로 먼저 돌려 본다.
-- 미검증: `next/Dockerfile`·`deploy/docker-compose.yml`(작성 환경에 Docker 없음), 실제 PostgreSQL 서버(테스트는 PGlite — 실시간 트리거·LISTEN은 PGlite에서 진짜로 돌지만 `pg` 드라이버 경로는 미검증), 실제 Supabase JWKS 응답(테스트는 로컬 키).
+- 미검증: 실제 SMTP 발송(테스트는 어댑터를 가짜로 넣는다), `next/Dockerfile`·`deploy/docker-compose.yml`(작성 환경에 Docker 없음), 실제 PostgreSQL 서버(테스트는 PGlite — 실시간 트리거·LISTEN은 PGlite에서 진짜로 돌지만 `pg` 드라이버 경로는 미검증), 실제 Supabase JWKS 응답(테스트는 로컬 키).
 
 ## 롤백
 

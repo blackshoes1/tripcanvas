@@ -1,13 +1,14 @@
 // 요청 컨텍스트(§16) — 인증 결과의 플랫폼 중립적 모양. 도메인 코드는 JWT payload를 모른다.
 export interface RequestContext {
-  /** 자체 users.id. Phase A에서는 Supabase user id와 같다 */
+  /** 자체 users.id. Supabase 시절 id를 그대로 보존하므로 기존 참조가 깨지지 않는다(§13) */
   userId: string;
   legacySupabaseUserId: string | null;
   email: string | null;
   sessionId: string | null;
   /** 토큰 만료(epoch 초). 실시간 접속이 토큰보다 오래 살지 않게 쓴다 — 없으면 만료로 끊지 않는다 */
   expiresAt?: number;
-  tokenSource: 'supabase';
+  /** 어느 Auth로 들어왔는가. 전환기에는 둘이 함께 산다(§14) */
+  tokenSource: 'supabase' | 'tripcanvas';
 }
 
 /** 토큰 → 컨텍스트. Phase 8의 새 Auth는 다른 구현을 꽂는다 — 호출측은 이 인터페이스만 본다 */

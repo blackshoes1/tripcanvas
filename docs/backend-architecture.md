@@ -105,13 +105,27 @@ trip_activity INSERT
 
 페이로드는 `{type, tripId, id, kind, mine}` 뿐이다(§44). `mine`은 구독자마다 계산해 붙이고, 내부 식별자(`trips.id`)와 다른 사람의 user id는 나가지 않는다. 구독 권한은 API와 **같은 규칙·같은 Repository**(`TripRepository.findVisible`)로 판정한다.
 
+## 자체 Auth (`server/auth/`, Phase 8)
+
+better-auth가 계정·세션·토큰을 소유하고(§18) 우리는 정책과 **연결**만 갖는다.
+
+```
+/api/auth/*  →  better-auth (가입·확인·로그인·재설정·세션)
+                  ↓ auth_user / auth_session / auth_account / auth_verification
+betterAuthVerifier  세션 → resolveDomainUser → RequestContext(userId = 도메인 users.id)
+compositeVerifier   Supabase 토큰 · 자체 세션을 함께 받는다(전환기, §14)
+```
+
+- `users`(도메인)와 `auth_user`(라이브러리)는 분리하고 `users.auth_user_id`로 잇는다(§12·§13). `users.id`가 Supabase user id 그대로라 기존 참조가 안 깨진다.
+- **확인된 이메일로만 잇는다** — 계정 탈취 방지(`identity.ts`).
+- 메일은 교체 가능한 어댑터(`infrastructure/mail/`): SMTP(§21) 또는 콘솔. 쿨다운 데코레이터가 반복 발송을 막는다(§67).
+- `TokenVerifier` 인터페이스 덕분에 라우트·실시간 허브는 어느 Auth로 들어왔는지 모른다(§16).
+
 ## 아직 Infrastructure에 없는 것
 
 | 어댑터 | 계획 |
 |---|---|
 | Storage | Phase 7 — 현재 쓰는 곳이 없어 새 기능 전까지 보류. 들어오면 MinIO + `object_key`만 저장(§51) |
-| Mail | Phase 8 — `MailService` 어댑터(verification · reset · invite). 외부 SMTP(§21) |
-| Auth(자체) | Phase 8 — 검증된 라이브러리. 비밀번호 해시·세션 토큰을 직접 설계하지 않는다(§18) |
 
 ## 테스트 (§81~§86)
 
@@ -121,6 +135,7 @@ trip_activity INSERT
 | Application | `tripService.test.ts` · `tripAuthorization.test.ts` · `dualRead.test.ts` | 메모리 저장소로 use case · 권한 5종 · dual read 규칙 |
 | Auth | `supabaseJwt.test.ts` · `withRemoteFallback.test.ts` | ES256 JWKS · HS256 · issuer/audience/만료/서명 거절 · 폴백 |
 | API 경계 | `tripRoutes.test.ts` | 401/400/403/404/409 + 응답 계약 |
+| 자체 Auth | `betterAuthVerifier.test.ts`(PGlite+better-auth 실제 가입→확인→로그인) · `identity.test.ts` · `cooldownMailService.test.ts` · `compositeVerifier.test.ts` | 이메일 확인 전 연결 거부 · 기존 사용자 이관 · 쿨다운 · 전환기 검증 |
 | 실시간 | `hub.test.ts` · `events.test.ts` · `pgListener.test.ts` · `pgNotify.test.ts`(PGlite) · `server.test.ts`(진짜 WebSocket) | 인증·구독 권한·방송·토큰 만료·재연결·트리거 |
 | 레거시 보존 | `handlers.test.ts` · `swiftParity.test.ts` | 기존 `/api/v1` 계약이 그대로다 |
 

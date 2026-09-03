@@ -5,7 +5,7 @@
 // 마이그레이션 SQL은 drizzle-kit이 이 파일에서 만든다(migrations/). 손으로 SQL을 고치지 않는다(§62).
 import { sql } from 'drizzle-orm';
 import {
-  bigint, boolean, check, date, doublePrecision, index, integer, jsonb, numeric, pgTable, text, timestamp, uniqueIndex, uuid
+  bigint, boolean, check, date, doublePrecision, index, integer, jsonb, numeric, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid
 } from 'drizzle-orm/pg-core';
 
 export const users = pgTable('users', {
@@ -14,7 +14,9 @@ export const users = pgTable('users', {
   // Supabase 시절의 id. 지금은 id와 같다 — Phase 8(새 Auth)에서 계정을 새로 만들 때 매핑 근거가 된다
   legacySupabaseUserId: uuid('legacy_supabase_user_id').unique(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  lastSeenAt: timestamp('last_seen_at', { withTimezone: true })
+  lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
+  /** 자체 Auth 계정(Phase 8)과의 연결. Supabase 시절 사용자는 이메일 확인 뒤에 이어진다(§13 · server/auth/identity.ts) */
+  authUserId: text('auth_user_id').unique()
 });
 
 export const trips = pgTable('trips', {
@@ -226,3 +228,72 @@ export const tripActivity = pgTable('trip_activity', {
   index('trip_activity_trip_idx').on(t.tripId, t.id),
   check('trip_activity_kind_check', sql`${t.kind} in ('MEMBER_JOINED','MEMBER_LEFT','MEMBER_REMOVED','CANDIDATE_PROPOSED','CANDIDATE_SCHEDULED','CANDIDATE_REJECTED','REACTION','COMMENT_ADDED','SCHEDULE_CHANGED','BOOKING_ADDED')`)
 ]);
+
+// ── 자체 Auth(Phase 8) — better-auth가 소유하는 테이블. 모양은 라이브러리가 정한다(getAuthTables로 확인해 옮겼다).
+// 비밀번호 해시·세션 토큰·인증 토큰을 우리가 설계하지 않는다(§18) — 이 테이블들은 라이브러리가 읽고 쓴다.
+//
+// 도메인 사용자(users)와는 **분리**한다(§12): users.id는 Supabase user id 그대로여서 기존 참조가 안 깨지고,
+// 새 계정은 users.auth_user_id로 이어 붙인다(§13). 잇는 규칙은 server/auth/identity.ts.
+
+export const authUser = pgTable('auth_user', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  email: text('email').notNull().unique(),
+  emailVerified: boolean('email_verified').notNull().default(false),
+  image: text('image'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+});
+
+export const authSession = pgTable('auth_session', {
+  id: text('id').primaryKey(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  token: text('token').notNull().unique(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  ipAddress: text('ip_address'),
+  userAgent: text('user_agent'),
+  userId: text('user_id').notNull().references(() => authUser.id, { onDelete: 'cascade' })
+}, (t) => [index('auth_session_user_idx').on(t.userId)]);
+
+export const authAccount = pgTable('auth_account', {
+  id: text('id').primaryKey(),
+  issuer: text('issuer').notNull(),
+  accountId: text('account_id').notNull(),
+  providerId: text('provider_id').notNull(),
+  userId: text('user_id').notNull().references(() => authUser.id, { onDelete: 'cascade' }),
+  accessToken: text('access_token'),
+  refreshToken: text('refresh_token'),
+  idToken: text('id_token'),
+  accessTokenExpiresAt: timestamp('access_token_expires_at', { withTimezone: true }),
+  refreshTokenExpiresAt: timestamp('refresh_token_expires_at', { withTimezone: true }),
+  scope: text('scope'),
+  // 비밀번호 해시 — better-auth가 만들고 검증한다. 우리 코드는 읽지 않는다
+  password: text('password'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, (t) => [index('auth_account_user_idx').on(t.userId)]);
+
+export const authVerification = pgTable('auth_verification', {
+  id: text('id').primaryKey(),
+  identifier: text('identifier').notNull(),
+  value: text('value').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, (t) => [index('auth_verification_identifier_idx').on(t.identifier)]);
+
+/** rate limit(§66) — 로그인·가입·재설정·인증 메일. better-auth가 읽고 쓴다. 재시작에도 유지되도록 DB 저장소를 쓴다 */
+export const authRateLimit = pgTable('auth_rate_limit', {
+  id: text('id').primaryKey(),
+  key: text('key').notNull(),
+  count: integer('count').notNull(),
+  lastRequest: bigint('last_request', { mode: 'number' }).notNull()
+}, (t) => [index('auth_rate_limit_key_idx').on(t.key)]);
+
+/** 메일 쿨다운(§67) — (이메일, 종류)당 마지막 발송 시각. 재시작·다중 인스턴스에서도 유지되도록 DB에 둔다 */
+export const authMailCooldown = pgTable('auth_mail_cooldown', {
+  email: text('email').notNull(),
+  kind: text('kind').notNull(),
+  lastSentAt: timestamp('last_sent_at', { withTimezone: true }).notNull().defaultNow()
+}, (t) => [primaryKey({ columns: [t.email, t.kind] })]);

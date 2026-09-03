@@ -186,3 +186,16 @@ export interface CollabRepository {
 
   listActivity(tripId: string, viewerId: string, limit: number): Promise<ActivityView[]>;
 }
+
+// ── 자체 Auth 계정 ↔ 도메인 사용자 연결(§13). 규칙은 server/auth/identity.ts ──
+
+export interface AuthIdentityRepository {
+  /** 이 Auth 계정에 이어진 도메인 users.id */
+  findByAuthUserId(authUserId: string): Promise<string | null>;
+  /** 아직 아무 Auth 계정과도 이어지지 않은, 이 이메일의 기존 사용자 */
+  findUnlinkedByEmail(email: string): Promise<string | null>;
+  /** 이어 붙인다. 그 사이 다른 계정이 먼저 이어졌으면 false */
+  link(userId: string, authUserId: string): Promise<boolean>;
+  /** 새 도메인 사용자(새 uuid)를 만들고 이어 붙인다 */
+  createLinked(email: string, authUserId: string): Promise<string>;
+}

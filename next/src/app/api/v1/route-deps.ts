@@ -17,6 +17,8 @@ import { TripAuthorizationService } from '@/server/application/authorization/tri
 import { CollabService } from '@/server/application/collaboration/collabService';
 import type { CollabApi } from '@/server/application/collaboration/types';
 import { TripService } from '@/server/application/trip/tripService';
+import { composeVerifiers } from '@/server/auth/compositeVerifier';
+import { getNewAuth } from '@/server/auth/instance';
 import { remoteSupabaseUser } from '@/server/auth/remoteSupabaseUser';
 import { createSupabaseVerifier } from '@/server/auth/supabaseJwt';
 import type { RequestContext } from '@/server/auth/types';
@@ -39,10 +41,15 @@ import { DualReadMembershipRepository, DualReadTripRepository } from '@/server/r
 import type { MembershipRepository, TripRepository, TripView } from '@/server/repositories/types';
 
 const env = getEnv();
-export const verifier = withRemoteFallback(
+
+// 전환기에는 Supabase 토큰과 자체 Auth 세션이 함께 산다(§14). Supabase를 먼저 보는 이유는 오늘의 트래픽이 전부 그쪽이라서다 —
+// 자체 Auth가 꺼져 있으면(AUTH_SECRET·DATABASE_URL 없음) 예전과 완전히 같은 경로다.
+const supabaseVerifier = withRemoteFallback(
   createSupabaseVerifier({ supabaseUrl: env.supabaseUrl, jwtSecret: env.supabaseJwtSecret }),
   remoteSupabaseUser(env.supabaseUrl)
 );
+const newAuth = getNewAuth();
+export const verifier = newAuth ? composeVerifiers(supabaseVerifier, newAuth.verifier) : supabaseVerifier;
 
 function legacyRepos(ctx: RequestContext, token: string): { trips: TripRepository; members: MembershipRepository } {
   const session = new LegacySupabaseSession(token, env.supabaseUrl, ctx.userId);

@@ -3,6 +3,9 @@
 // 폴백이 실제로 쓰이면 한 번 경고를 남긴다: 그게 보이면 secret을 넣거나 프로젝트를 비대칭 키로 옮긴다.
 import type { RequestContext, TokenVerifier } from './types';
 
+/** JWT는 점으로 나뉜 세 조각이다. 자체 Auth의 세션 토큰은 이 모양이 아니라 물어볼 이유가 없다 */
+const JWT_SHAPED = /^[^.\s]+\.[^.\s]+\.[^.\s]+$/;
+
 export function withRemoteFallback(
   local: TokenVerifier,
   remote: (token: string) => Promise<RequestContext | null>,
@@ -13,6 +16,8 @@ export function withRemoteFallback(
     async verify(token: string): Promise<RequestContext | null> {
       const ctx = await local.verify(token);
       if (ctx) return ctx;
+      // 자체 Auth 세션 토큰이면 Supabase에 물어봐야 소용없다 — 요청마다 헛된 왕복이 된다
+      if (!JWT_SHAPED.test(token)) return null;
       try {
         const remoteCtx = await remote(token);
         if (remoteCtx && !warned) {
