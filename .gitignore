@@ -27,3 +27,6 @@ ios/*.xcworkspace/
 ios/TripCanvasFree-Info.plist
 ios/*/Info.plist
 ios/*/*.entitlements
+
+# 예시 환경변수 파일은 올린다 (실제 값은 .env.local 등에 — 위 규칙으로 무시된다)
+!.env.example

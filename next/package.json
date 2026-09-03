@@ -10,21 +10,30 @@
     "start": "next start",
     "lint": "eslint src",
     "check:types": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",
     "@types/sortablejs": "^1.15.9",
+    "drizzle-orm": "^0.45.2",
+    "jose": "^6.2.10",
     "lz-string": "^1.5.0",
     "next": "16.3.3",
+    "pg": "^8.23.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "sortablejs": "^1.15.7"
+    "sortablejs": "^1.15.7",
+    "zod": "^4.5.4"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
     "@types/node": "^24.3.0",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
+    "drizzle-kit": "^0.31.10",
     "eslint": "^9.34.0",
     "eslint-config-next": "16.3.3",
     "typescript": "^5.9.2",
