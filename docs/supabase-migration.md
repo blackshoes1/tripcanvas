@@ -129,9 +129,9 @@ Supabase 전용 의존:
 | Phase | 내용 | 상태 |
 |---|---|---|
 | 0 | 인벤토리 (위) | ✅ |
-| 1 | Backend foundation — PostgreSQL 스키마 · Drizzle · Repository · 요청 컨텍스트 · 오류 계약 · health | PR1 |
-| 2 | Supabase JWT 검증 · 인가 서비스 | PR2 |
-| 3 | Trip API (목록·상세·생성·수정·삭제) — 레지스트리로 분기 | PR3 (Day·Spot·예약 문서는 여행 문서 안이라 함께) |
+| 1 | Backend foundation — PostgreSQL 스키마 · Drizzle · Repository · 요청 컨텍스트 · 오류 계약 · health | ✅ PR1 (`7fa65d4`) |
+| 2 | Supabase JWT 검증 · 인가 서비스 | ✅ PR2 (`5aa853a`) |
+| 3 | Trip API (목록·상세·생성·수정·삭제) — 레지스트리로 분기 | ✅ PR3 (`bfe6cba`) — Day·Spot·예약 문서는 여행 문서 안이라 함께. **데이터 이관 전이라 프로덕션은 LEGACY** |
 | 4 | Adaptive 저장소(제안 거절·알림·기기·기록) · Pricing 관측 Repository | PR5·PR6 |
 | 5 | Collaboration (멤버·초대·후보·반응·코멘트·제안·활동) API | PR7 |
 | 6 | Realtime WebSocket | PR8 |
@@ -139,6 +139,13 @@ Supabase 전용 의존:
 | 8 | 새 Auth (가입·인증메일·세션·재설정) · 기존 사용자 이관 · 웹/iOS 전환 | PR10·PR11 |
 | 9 | 웹 Supabase 클라이언트 제거 · iOS GoTrue 호출 제거 | PR12·PR13 |
 | 10 | 데이터 이관 리허설 · NAS 프로덕션 · 롤백 테스트 · Supabase read-only → 종료 | PR14 |
+
+## 지금 할 수 있는 것 / 아직 못 하는 것
+
+- 새 API(`POST /api/v1/trips` · `GET/PUT/DELETE /api/v1/trips/:id`)는 레지스트리가 `LEGACY`여도 동작한다 — Supabase를 같은 Repository 계약으로 감쌌기 때문이다. 웹·iOS가 `sync_trip` 대신 이 API로 옮겨 탈 수 있다(PR12·PR13의 준비).
+- Supabase 토큰은 서버가 직접 검증한다. 로컬 검증이 실패하면 예전처럼 `getUser`로 확인하고 **경고 로그**를 남긴다 — 그 로그가 보이면 프로젝트가 HS256이므로 `SUPABASE_JWT_SECRET`을 넣는다.
+- `NEW_BACKEND`·`DUAL_READ`는 코드·테스트가 있지만 **데이터 이관 스크립트가 아직 없다**(Phase 10). staging에서 빈 DB로 먼저 돌려 본다.
+- 미검증: `next/Dockerfile`·`deploy/docker-compose.yml`(작성 환경에 Docker 없음), 실제 PostgreSQL 서버(테스트는 PGlite), 실제 Supabase JWKS 응답(테스트는 로컬 키).
 
 ## 롤백
 

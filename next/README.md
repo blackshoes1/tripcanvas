@@ -58,3 +58,20 @@ curl -s -o /dev/null -w "%{http_code}\n" https://tripcanvas-api.vercel.app/api/v
 ```bash
 npm install && npm run dev
 ```
+
+## 독립 Backend (Supabase 이관)
+
+`src/server/`가 새 backend 계층이다 — `docs/backend-architecture.md`. 오늘의 Vercel 배포에는 `DATABASE_URL`이 없으므로 새 경로는 어디서도 불리지 않는다(이관 레지스트리 강제 `LEGACY`). 달라진 것은 하나: **Supabase 토큰을 서버가 직접 검증**하고, 실패하면 예전처럼 `getUser`로 확인한다(경고 로그).
+
+```
+TC_MIGRATION_TRIP=LEGACY|DUAL_READ|NEW_BACKEND   # 기본 LEGACY
+DATABASE_URL=postgres://...                      # 있어야 LEGACY 외 값이 유효
+SUPABASE_JWT_SECRET=                             # 프로젝트가 HS256이면 필요(경고 로그가 알려 준다)
+```
+
+```bash
+npm run db:generate   # schema.ts → migrations/*.sql
+npm run db:migrate    # DATABASE_URL에 적용 (drizzle-kit)
+```
+
+NAS 배포는 `deploy/`와 `docs/nas-deployment.md`(미검증).

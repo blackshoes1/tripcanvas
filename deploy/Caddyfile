@@ -1,0 +1,12 @@
+# reverse proxy(§56) — HTTPS 자동 발급(Let's Encrypt). 클라이언트는 이 도메인만 안다(§73).
+{$API_DOMAIN} {
+	encode zstd gzip
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+	# API만 연다. 정적 웹(PWA)은 여전히 Vercel — 여기로 옮길 때 이 블록에 file_server를 더한다
+	reverse_proxy api:3000
+}
