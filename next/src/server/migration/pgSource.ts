@@ -48,6 +48,25 @@ export function createPgSource(client: SourceQueryClient, opts: PgSourceOptions 
   };
 }
 
+/**
+ * 이 연결이 실제로 어디를 보고 있는가 — `계정@호스트/DB` 한 줄.
+ *
+ * 검증(verify.ts)은 **원본과 대상이 같은가**만 본다. 원본이 운영인지는 아무도 확인하지 않으므로
+ * 낡은 사본을 가리켜도 조용히 통과한다(2026-09-04에 실제로 그랬다 — 멤버 한 명이 빠진 채 "통과").
+ * 그래서 무엇을 읽고 어디에 쓰는지 사람이 눈으로 확인할 수 있게 시작할 때 찍는다.
+ */
+export async function describeConnection(client: SourceQueryClient): Promise<string> {
+  try {
+    const { rows } = await client.query(
+      `select current_database() as db, current_user as usr, coalesce(host(inet_server_addr()), 'local') as host`
+    );
+    const r = rows[0] ?? {};
+    return `${String(r.usr ?? '?')}@${String(r.host ?? '?')}/${String(r.db ?? '?')}`;
+  } catch {
+    return '(확인 불가)';   // 진단용 한 줄 때문에 이관을 막지 않는다
+  }
+}
+
 /** 운영용 — 레거시 사본에 붙는 pg 연결 */
 export async function pgSourceClient(connectionString: string): Promise<SourceQueryClient & { end(): Promise<void> }> {
   const { Client } = await import('pg');

@@ -3,7 +3,7 @@
 import { PGlite } from '@electric-sql/pglite';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { createPgSource, type SourceQueryClient } from './pgSource';
+import { createPgSource, describeConnection, type SourceQueryClient } from './pgSource';
 
 let legacy: PGlite;
 let client: SourceQueryClient;
@@ -59,5 +59,33 @@ describe('createPgSource', () => {
 
   it('사용자 테이블조차 없으면 null — 조용히 빈 이관을 만들지 않는다', async () => {
     expect(await createPgSource(client, { usersTable: 'public.nope' }).rows('users')).toBeNull();
+  });
+});
+
+// 검증은 "원본과 대상이 같은가"만 본다 — 원본이 운영인지는 아무도 확인하지 않아, 낡은 사본을 가리켜도
+// 조용히 통과한다(2026-09-04에 실제로 그랬다). 그래서 어디를 읽는지 사람이 눈으로 볼 수 있어야 한다.
+describe('describeConnection', () => {
+  it('계정@호스트/DB 한 줄로 알려 준다', async () => {
+    const fake: SourceQueryClient = {
+      query: async () => ({ rows: [{ db: 'legacy_copy', usr: 'tripcanvas', host: '10.0.0.2' }] })
+    };
+    expect(await describeConnection(fake)).toBe('tripcanvas@10.0.0.2/legacy_copy');
+  });
+
+  it('소켓 연결이라 서버 주소가 없으면 local', async () => {
+    const fake: SourceQueryClient = {
+      query: async () => ({ rows: [{ db: 'postgres', usr: 'postgres', host: 'local' }] })
+    };
+    expect(await describeConnection(fake)).toBe('postgres@local/postgres');
+  });
+
+  it('물어볼 수 없어도 이관을 막지 않는다 — 진단용 한 줄이다', async () => {
+    const broken: SourceQueryClient = { query: async () => { throw new Error('no such function'); } };
+    expect(await describeConnection(broken)).toBe('(확인 불가)');
+  });
+
+  it('진짜 연결에도 물어본다 — 무엇을 읽는지 이름은 나온다', async () => {
+    const line = await describeConnection(client);
+    expect(line).toMatch(/\//);
   });
 });

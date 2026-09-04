@@ -55,7 +55,7 @@ curl -s https://$API_DOMAIN/api/health
 |---|---|---|---|---|
 | **R0** | 합성 데이터 + PGlite | 스크립트 자체 — 순서·시퀀스·트리거·멱등성 | CI에서 매번 | 통과 |
 | **R1** | 운영 데이터(읽기 전용) | 실데이터의 이상값 — 깨진 참조·예상 못 한 null·규모와 소요시간 | 스크립트를 고칠 때마다 | **2026-09-04 통과** |
-| **R2** | 덤프 복원 + staging 앱 | 복원 경로와 전환 예행 — 로그인·저장·협업이 도는가, 롤백이 되는가 | 전환 직전 1~2회 | **이관 부분 2026-09-04 통과** · 앱 검증 **로그인·저장·협업 통과**(NAS 0~3단계 + 컨테이너 Chromium 14/14) · **롤백만 남음**(`docs/staging-verification.md`) |
+| **R2** | 덤프 복원 + staging 앱 | 복원 경로와 전환 예행 — 로그인·저장·협업이 도는가, 롤백이 되는가 | 전환 직전 1~2회 | **2026-09-04 통과** — 이관·로그인·저장·협업·롤백 전부(NAS + 컨테이너 Chromium 14/14). 낡은 원본을 읽어 멤버 한 명이 빠진 사고를 여기서 잡았다(`docs/staging-verification.md`) |
 
 ### R1 1차 결과 (2026-09-03) — 운영 조사
 
@@ -121,8 +121,8 @@ psql -d legacy_copy < dump/public.sql
 ```
 
 예상했던 역할·정책 오류는 **한 줄도 나지 않았다** — 스텁이 참조 대상을 모두 채우기 때문이다.
-전환 당일에 처음 보게 될 오류는 이제 없다. R2에 남은 것은 staging 앱 검증(로그인·저장·협업·롤백)뿐이고,
-그 절차는 **`docs/staging-verification.md`** 에 따로 있다 — 여기까지가 "데이터가 같다"고, 거기부터가 "앱이 돈다"다.
+전환 당일에 처음 보게 될 오류는 이제 없다. 이어진 staging 앱 검증(로그인·저장·협업·롤백)도 같은 날 통과했고,
+그 절차와 결과는 **`docs/staging-verification.md`** 에 있다 — 여기까지가 "데이터가 같다"고, 거기부터가 "앱이 돈다"다.
 
 ### 추출 — 사본을 만들 것인가, 운영을 직접 읽을 것인가
 
@@ -145,6 +145,9 @@ psql "$SUPABASE_DIRECT_URL" -Atc "copy (select id, email from auth.users) to std
 
 `SUPABASE_DIRECT_URL`은 셸 히스토리·로그에 남기지 않는다(§58). NAS가 IPv4면 직접 연결(`db.<ref>.supabase.co`)은
 IPv6 전용이라 붙지 않는다 — **Session pooler**(`aws-1-<region>.pooler.supabase.com:5432`, 사용자 `postgres.<ref>`)를 쓴다.
+쿼리스트링은 **`?uselibpqcompat=true&sslmode=require`** 다 — 요즘 `pg`는 `sslmode=require`를 `verify-full`로 읽어 인증서 체인에 걸린다(`SELF_SIGNED_CERT_IN_CHAIN`).
+
+RLS는 걸림돌이 아니다: 운영 표에 RLS가 켜져 있어도 **`postgres` 역할은 `BYPASSRLS`** 라 pooler로 붙으면 모든 행이 보인다(2026-09-04 확인).
 
 ### Synology에서 실제로 막힌 곳 (2026-09-04)
 
@@ -168,6 +171,9 @@ IPv6 전용이라 붙지 않는다 — **Session pooler**(`aws-1-<region>.pooler
 | `migrate`가 문구 없이 `Exited (1)`, `api`는 `Created` | `.env`의 `POSTGRES_PASSWORD`가 실제와 다르다(`alter user`로 바꾼 뒤 `.env`는 옛 값). `pg_isready`는 인증을 안 해 `healthy`로 보인다. 비밀번호는 URI 안전 문자로 |
 | macOS `rsync`가 `Permission denied`(ssh는 됨) | macOS 15의 openrsync. `tar -czf - . \| ssh nas 'tar -xzf - -C ~/tripcanvas'` |
 | NAS에 git이 없다 | 위 tar로 저장소 통째로. `api`·`realtime`은 저장소 루트에서 빌드한다 |
+| `SELF_SIGNED_CERT_IN_CHAIN` | 요즘 `pg`는 `sslmode=require`를 `verify-full`로 해석한다. pooler URI에 **`uselibpqcompat=true&sslmode=require`** (URI는 작은따옴표로 감싼다 — `&`가 백그라운드로 샌다) |
+| `LEGACY_DATABASE_URL … 필요하다` | 환경변수를 줄 끝 백슬래시로 나눠 붙여넣다 끊겼다. **한 줄로** 넣는다 |
+| `read: -p: no coprocess` | zsh에는 `read -p`가 없다. `read "PW?비밀번호: "` 또는 `printf '...'; IFS= read -r PW` |
 
 `.env`에 비밀번호를 넣을 때는 셸 히스토리에 남지 않게 `read`로 받는다:
 
@@ -190,6 +196,9 @@ cd next && npm test -- src/server/migration     # 이관기·검증·원본 21�
 
 원본은 운영(Session pooler) 또는 복원한 사본 어느 쪽이어도 된다 — 이관기는 원본에 쓰지 않는다(위 "추출").
 대상은 NAS의 PostgreSQL이고, 노트북에서 붙으려면 `127.0.0.1:15432`로 publish해 tailnet으로 닿는다.
+
+⚠️ **어느 쪽을 가리켰는지 첫 줄로 확인한다.** 이관기가 `[migration] 원본 <계정@호스트/DB> → 대상 …`을 찍는다 —
+사본을 가리킨 채 "통과"를 받는 사고가 실제로 있었다(위 "검증 스크립트가 리허설의 본체다").
 
 ```bash
 cd next && npm run tools:build
@@ -226,6 +235,10 @@ R0가 이 항목들을 전부 테스트로 잡는다(`next/src/server/migration/
 ### 검증 스크립트가 리허설의 본체다 (§79·§80)
 
 "돌았다"가 아니라 **"같다"**를 판정한다. 표본이 아니라 전수로 본다.
+
+⚠️ **검증이 답하지 않는 질문이 하나 있다: "원본이 운영인가."** 원본과 대상이 같은지만 보므로 **낡은 사본을 가리키면 조용히 통과한다** —
+2026-09-04에 실제로 그랬다(멤버 한 명이 빠진 채 통과). 그래서 이관기가 시작할 때 `[migration] 원본 <계정@호스트/DB> → 대상 …` 한 줄을 찍는다.
+**그 줄부터 읽고 시작한다.**
 
 | 검사 | 방법 |
 |---|---|

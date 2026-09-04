@@ -65,28 +65,37 @@ sudo docker ps --format '{{.Names}}\t{{.Ports}}' | grep postgres      # 127.0.0.
 ## 0. staging DB를 실데이터로 채운다
 
 R1·R2는 `--trial`이라 되돌렸다. 앱 검증은 되돌려진 트랜잭션 위에서 할 수 없으므로 **여기서 한 번은 커밋한다.**
-원본은 **운영 Supabase를 직접** 가리켜도 된다 — 이관기는 원본에 `select` 세 종류만 보내고, R1이 그렇게 통과했다. Session pooler URI는
-`postgres://postgres.<ref>:<DB비밀번호>@aws-1-<region>.pooler.supabase.com:5432/postgres?sslmode=require` 꼴이고(`sslmode`를 빼면 SSL 협상 없이 시도하다 거절당한다),
-정확한 호스트는 대시보드 **Connect → Session pooler**에 있다.
+원본은 **운영 Supabase를 직접** 가리켜도 된다 — 이관기는 원본에 `select` 세 종류만 보내고, R1이 그렇게 통과했다.
+Session pooler URI는 이 꼴이고, 정확한 호스트는 대시보드 **Connect → Session pooler**에 있다(`aws-0-`인 프로젝트도 있다):
+
+```
+postgres://postgres.<ref>:<DB비밀번호>@aws-1-<region>.pooler.supabase.com:5432/postgres?uselibpqcompat=true&sslmode=require
+```
+
+⚠️ **`uselibpqcompat=true`를 빼지 말 것.** 요즘 `pg`는 `sslmode=require`를 `verify-full`로 해석해서 Supabase 인증서 체인에 걸린다
+(`SELF_SIGNED_CERT_IN_CHAIN`). 이 옵션이 예전(libpq) 뜻으로 되돌린다 — 암호화는 하되 체인 검증은 하지 않는다.
+
+명령은 **환경변수와 함께 한 줄로** 넣는다(맥에서 돌린다 — NAS엔 `node_modules`가 없다):
 
 ```bash
-cd next && npm run tools:build
-read -r -p "원본(운영 또는 복원한 사본) URI: " LEGACY
-read -r -p "NAS DB 비밀번호: " PW
-TARGET="postgres://tripcanvas:$PW@<NAS의 tailscale IP>:15432/tripcanvas"
-
-DATABASE_URL="$TARGET" npm run db:migrate                                          # 스키마 최신화
-LEGACY_DATABASE_URL="$LEGACY" DATABASE_URL="$TARGET" npm run migrate:import -- --apply --reset
-unset LEGACY PW
+cd <저장소>/next && npm ci && npm run tools:build
+# 아래 두 줄은 각각 한 줄이다. 줄 끝 백슬래시로 나누면 붙여넣다 끊겨 환경변수가 실리지 않는다
+DATABASE_URL='postgres://tripcanvas:<NAS비번>@<NAS tailscale IP>:15432/tripcanvas' npm run db:migrate
+LEGACY_DATABASE_URL='<위 pooler URI>' DATABASE_URL='postgres://tripcanvas:<NAS비번>@<NAS tailscale IP>:15432/tripcanvas' npm run migrate:import -- --apply --reset
 ```
+
+작은따옴표로 감싸야 URI 안의 `&`가 백그라운드로 새지 않는다. zsh에는 `read -p`가 없다(`no coprocess`) — 쓰려면 `read "PW?..."`다.
 
 `--apply`는 `--trial`과 **같은 경로**를 지난다 — 다른 것은 마지막에 커밋하느냐뿐이다. 검증도 커밋 전 같은 트랜잭션에서 돌아, 어긋나면 아무것도 쓰이지 않고 종료 코드가 1이다.
 
-⚠️ **대상이 staging인지 먼저 확인한다.** 원본과 대상이 같으면 스크립트가 거부하지만, 그 앞의 실수(운영을 대상으로 적음)는 막아 주지 않는다.
+⚠️⚠️ **검증은 "원본이 운영인가"를 묻지 않는다.** 원본과 대상의 행 수·내용이 같은지만 본다 — 낡은 사본을 가리키면 **조용히 통과한다.**
+그래서 이관기가 시작할 때 어디를 읽고 어디에 쓰는지 한 줄 찍는다. 그 줄이 `postgres@…pooler.supabase.com/postgres`가 아니면 멈춘다:
 
-```bash
-psql "$TARGET" -Atc "select current_database(), inet_server_addr(), (select count(*) from trips)"
 ```
+[migration] 원본 postgres@52.x.x.x/postgres  →  대상 tripcanvas@10.x.x.x/tripcanvas
+```
+
+⚠️ **대상이 staging인지도 눈으로 확인한다.** 원본과 대상 URI가 같으면 스크립트가 거부하지만, 그 앞의 실수(운영을 대상으로 적음)는 막아 주지 않는다.
 
 ⚠️ 이 시점부터 **staging DB는 버려도 되는 DB다.** 전환 당일 `--apply --reset`이 다시 비우고 채우므로, 아래에서 만드는 초대·후보·코멘트는 그때 전부 사라진다.
 
@@ -270,7 +279,19 @@ staging 동안 새 DB에 쌓은 변경은 Supabase에 없다. 그것이 롤백�
 | 4 실시간 | B 반응 → A 보드 새로고침 없이 갱신 · 사이드카 `LISTENING` |
 | 4-6 나가기 | `status=LEFT`, 여행은 그대로 |
 
-**남은 것**: 5단계 롤백 — NAS에서만 의미가 있다(`LEGACY`는 운영 Supabase를 부른다). `.env`의 `TC_MIGRATION_*` 넷을 `LEGACY`로 → `up -d api` → `/api/v1/me`의 `realtime.provider`가 `SUPABASE`로 바뀌는지, **읽기만**.
+**5단계 롤백(NAS)**: `.env`의 `TC_MIGRATION_*` 넷을 `LEGACY`로 → `up -d api` → 시크릿 창에서 보니 **운영 데이터가 그대로** 보였고, `NEW_BACKEND`로 되돌리니 staging 편집이 다시 나왔다. 통과.
+
+### 그때 드러난 것 — 검증이 통과했는데 멤버 한 명이 없었다
+
+롤백 뒤 함께하기에서 **공유 멤버(`복구`, EDITOR)가 사라져 있었다.** 운영과 대조하니 세 테이블이 조금씩 뒤처져 있었다:
+`trip_members` 9 → 8 · `trip_activity` 31 → 30 · `hotel_price_snapshots` 38 → 34.
+
+- 이관 자체는 멀쩡했다. 그날의 `--apply`가 **운영이 아니라 낡은 사본을 원본으로 읽었고**, 검증은 원본·대상만 비교하므로 그대로 통과했다.
+- 운영을 가리켜 다시 돌리니 `trip_members 9행 → 9건`으로 맞았다(개수·고아·내용 전부 ok, 3초).
+- RLS 때문이 아님을 먼저 배제했다: 운영은 RLS가 켜져 있지만 `postgres` 역할은 `BYPASSRLS`라 pooler로 붙으면 9행이 다 보인다. `pgSource`의 읽기도 `select *` 한 줄이라 거르는 것이 없다.
+- 그래서 **원본·대상 신원을 시작할 때 찍는 한 줄**을 이관기에 넣었다(`describeConnection`). 전환 당일 같은 실수를 반복하지 않기 위해서다.
+
+이것이 이번 리허설이 실제로 잡아낸 유일한 사고이고, 잡힌 곳이 staging이라 리허설이 제 몫을 했다.
 
 확인된 것 하나 더: `member_count`는 레거시 `my_trip_roles`도 `trip_members` ACTIVE 행 수라(`202609020001:250`), 소유자 행이 없는 이관 여행의 인원 표시는 **전과 같다** — 회귀가 아니다.
 

@@ -15,7 +15,7 @@ import { Pool } from 'pg';
 
 import * as schema from '../infrastructure/database/schema';
 import { importAll } from './importer';
-import { createPgSource, pgSourceClient } from './pgSource';
+import { createPgSource, describeConnection, pgSourceClient, type SourceQueryClient } from './pgSource';
 import { MIGRATION_ORDER } from './types';
 import { verifyMigration, type VerificationReport } from './verify';
 
@@ -47,6 +47,9 @@ async function main(): Promise<void> {
   const source = createPgSource(legacy, { usersTable: process.env.LEGACY_USERS_TABLE || undefined });
 
   try {
+    // 무엇을 읽고 어디에 쓰는지 먼저 찍는다 — 검증은 원본이 운영인지 알려 주지 않는다(describeConnection)
+    const target: SourceQueryClient = { query: async (text) => ({ rows: (await pool.query(text)).rows }) };
+    console.log(`[migration] 원본 ${await describeConnection(legacy)}  →  대상 ${await describeConnection(target)}\n`);
     if (!apply && !trial) {
       console.log('[migration] 세어만 본다. 예행은 --trial, 실제 이관은 --apply\n');
       for (const table of MIGRATION_ORDER) {
