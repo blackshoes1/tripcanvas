@@ -16,7 +16,7 @@ PostgreSQL + 독립 Auth + TripCanvas API 중심의 자체 Backend로 옮기는 
 | TRIP | LEGACY (→ `DUAL_READ` → `NEW_BACKEND` 가능) | 목록·상세·생성·수정(CAS)·삭제(tombstone)가 새 Repository로 준비됨. `TC_MIGRATION_TRIP`으로 전환·롤백 |
 | ITINERARY (Day·Spot) | LEGACY | 여행 문서(jsonb) 안에 있어 TRIP과 함께 움직인다 |
 | BOOKING | LEGACY | 문서 안(`trip.bookings`) + `hotel_price_snapshots` |
-| PRICING | LEGACY (→ `DUAL_READ` → `NEW_BACKEND` 가능) | `/api/v1` 가격 관측 읽기(`listPriceObservations`)는 새 Repository 준비됨(`TC_MIGRATION_PRICING`). **크론(`api/track-hotel-prices.js`, service_role)과 웹의 직접 insert는 아직 Supabase** — 관측을 쓰는 쪽이 옮겨 오기 전까지 새 DB는 이관된 과거 관측만 갖는다 |
+| PRICING | **NEW_BACKEND** (2026-09-04) | 읽기·쓰기 모두 `/api/v1/trips/:id/prices`. 웹의 Supabase 직접 경로는 없어졌다. ⚠️ 크론(`api/track-hotel-prices.js`)은 **스케줄을 껐다** — Supabase의 `trips`를 읽고 그쪽에 쓰던 것이라, 서비스 계정 경로로 다시 만들기 전까지는 앱의 하루 1회 확인이 대신한다 |
 | ADAPTIVE (Today·Suggestion·Replan) | LEGACY (→ `DUAL_READ` → `NEW_BACKEND` 가능) | 판단은 이미 `/api/v1`(adaptive.js). 저장(`suggestion_feedback`·`notification_log`·`device_tokens`·`trip_memories`)이 새 Repository로 준비됨(`TC_MIGRATION_ADAPTIVE`). DUAL_READ는 거절·알림 키의 **합집합**(잃으면 같은 알림이 두 번 간다) |
 | COLLAB | LEGACY (→ `NEW_BACKEND` 가능) | 협업 API 20개 라우트. LEGACY면 같은 라우트가 Supabase RPC 어댑터로 돈다(판정은 RPC). **웹은 이제 API를 지난다**(PR12) — Supabase RPC 직접 호출 없음 |
 | REALTIME | LEGACY (→ `NEW_BACKEND` 가능) | 자체 WebSocket 사이드카 준비됨(아래). 새 DB가 진실일 때만 의미가 있다 — 협업이 LEGACY면 새 DB에 활동 행이 안 쌓인다. 웹은 아직 Supabase Realtime을 쓴다(PR12) |
@@ -310,14 +310,14 @@ auth_session.token 에는 **서명 없는 token만** 들어 있다
 **아직 Supabase에 남은 것**과 이유:
 
 - **로그인·세션** — 자체 Auth 전환은 PR11이다
-- **가격 관측**(`hotel_price_snapshots`) — 쓰기 엔드포인트가 아직 없다
+- ~~**가격 관측**~~ — 옮겼다(2026-09-04, `/api/v1/trips/:id/prices`). 이제 웹에 Supabase 직접 호출은 없다
 
 ## 지금 할 수 있는 것 / 아직 못 하는 것
 
 - 새 API(`POST /api/v1/trips` · `GET/PUT/DELETE /api/v1/trips/:id`)는 레지스트리가 `LEGACY`여도 동작한다 — Supabase를 같은 Repository 계약으로 감쌌기 때문이다. 웹·iOS가 `sync_trip` 대신 이 API로 옮겨 탈 수 있다(PR12·PR13의 준비).
 - Supabase 토큰은 서버가 직접 검증한다. 로컬 검증이 실패하면 예전처럼 `getUser`로 확인하고 **경고 로그**를 남긴다 — 그 로그가 보이면 프로젝트가 HS256이므로 `SUPABASE_JWT_SECRET`을 넣는다.
 - `trip_snapshots`(여행 버전 이력)를 새 DB에 채웠다 — `/api/v1/trips/:id/snapshots`. 이관 대상에도 들어 있다.
-- 가격 크론 `api/track-hotel-prices.js`는 모든 사용자의 여행을 읽어 관측을 쓰는 **시스템 작업**이라 사용자 토큰 모델에 맞지 않는다. 새 backend로 옮길 때는 서비스 계정 경로(내부 전용 라우트 + `CRON_SECRET`)로 다시 만든다 — Phase 10 전에.
+- 가격 크론 `api/track-hotel-prices.js`는 모든 사용자의 여행을 읽어 관측을 쓰는 **시스템 작업**이라 사용자 토큰 모델에 맞지 않는다. 전환하며 **스케줄을 껐고**(`vercel.json`), 새 backend에 서비스 계정 경로(내부 전용 라우트 + `CRON_SECRET`)로 다시 만든다. 그때까지 서버 쪽 자동 추적은 없다 — 앱의 하루 1회 확인만 돈다.
 - 데이터 이관은 **R1·R2를 모두 통과했다**(2026-09-04). R1은 실데이터 예행(NAS PostgreSQL 17, 183행, 1초, 개수·고아·내용 일치), R2는 덤프 복원 경로에 이어 **staging 앱 검증까지**(로그인·저장·협업·롤백 — NAS + 컨테이너 Chromium 14/14). 절차와 결과는 `docs/staging-verification.md`, 추출·복원과 Synology 함정은 `docs/backup-restore.md`.
 - R2가 실제로 잡아낸 사고 하나: 이관기가 **낡은 사본을 원본으로 읽었는데 검증이 통과했다**(검증은 원본·대상이 같은지만 본다). 이제 시작할 때 `[migration] 원본 <계정@호스트/DB> → 대상 …`을 찍는다 — 전환 당일 그 줄부터 읽는다.
 - **전환 완료 (2026-09-04)** — 같은 날 저녁, 운영 데이터를 NAS PostgreSQL로 옮기고(`--apply --reset`, 커밋 전 검증 통과) 웹의 `DEFAULT_BASE`를 `https://bokbok9.tail8b977f.ts.net`으로 바꿔 배포했다(`tc-v173`). 폰에서 로그인·저장 확인. Vercel에는 정적 웹만 남고, `tripcanvas-api` 프로젝트는 **롤백 대상**으로 살려 두었다.
