@@ -71,7 +71,7 @@ test('서버가 자체 Auth라고 하면 Supabase 로그인을 쓰지 않는다'
   expect(await page.evaluate(()=>localStorage.getItem('tripcanvas_auth_v1'))).toBe('tok-e2e');
 });
 
-test('예전 계정으로 로그인 실패하면 "틀렸다"로 끝내지 않고 재설정 길을 연다 (§19)',async({context,page})=>{
+test('예전 계정으로 로그인 실패하면 "틀렸다"로 끝내지 않고 가입 길을 연다 (§19)',async({context,page})=>{
   await fakeApi(context,{signInStatus:401});
   await page.goto('/');
   await openLogin(page);
@@ -82,7 +82,9 @@ test('예전 계정으로 로그인 실패하면 "틀렸다"로 끝내지 않고
   await page.locator('#authLogin').click();
 
   await expect(page.locator('#authResetHint')).toBeVisible();
-  await expect(page.locator('#authResetHint')).toContainText('비밀번호를 새로 정해야');
+  // 예전 계정에는 새 Auth의 계정 행이 없어 재설정이 닿지 않는다 — 길은 같은 이메일로 **가입**이다
+  await expect(page.locator('#authResetHint')).toContainText('가입');
+  await expect(page.locator('#authSignup')).toBeVisible();
   await expect(page.locator('#authModalBg')).toHaveClass(/show/);   // 모달은 열린 채 — 바로 이어서 할 수 있게
   await expect(page.locator('#authReset')).toBeVisible();
 });

@@ -21,5 +21,8 @@ export function proxy(request: NextRequest): Response {
 }
 
 export const config = {
-  matcher: '/api/v1/:path*'
+  // ⚠️ 자체 Auth(`/api/auth/*`)도 반드시 포함한다. 라우트가 GET·POST만 내보내므로
+  // 여기서 안 받으면 preflight(OPTIONS)가 405가 되고, 브라우저는 그것을 '네트워크 오류'로 보여 준다 —
+  // 웹과 API가 다른 출처인 한 로그인·가입이 통째로 막힌다(2026-09-04에 실제로 그랬다).
+  matcher: ['/api/v1/:path*', '/api/auth/:path*']
 };

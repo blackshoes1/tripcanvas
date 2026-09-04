@@ -3720,8 +3720,11 @@ function authCreds(){
  */
 function showAuthError(error){
   if(error.code==='INVALID_CREDENTIALS' && TC_AUTH.provider()==='TRIPCANVAS'){
+    // ⚠️ 예전(Supabase) 계정에는 새 Auth의 계정 행이 아직 없다 — 그래서 **재설정이 닿지 않는다**
+    // (서버는 계정 유무를 알려주지 않으므로 메일도 오지 않고 사용자는 갇힌다). 길은 같은 이메일로 **가입**이고,
+    // 이메일이 확인되는 순간 기존 사용자에 이어 붙는다(server/auth/identity.ts).
     const hint=document.getElementById('authResetHint'); if(hint) hint.style.display='';
-    toast('이메일 또는 비밀번호가 맞지 않아 — 예전 계정이면 비밀번호를 새로 정해줘','#e63946');
+    toast('이 기기에서 처음이면 같은 이메일로 가입해줘 — 여행은 그대로 이어져','#e63946');
     return;
   }
   toast(error.message,'#e63946');
