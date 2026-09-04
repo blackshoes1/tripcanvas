@@ -39,7 +39,6 @@ final class TripListViewModel {
 struct TripListView: View {
     @Environment(AppEnvironment.self) private var env
     @State private var model: TripListViewModel?
-    @State private var showsWeb = false
 
     var body: some View {
         NavigationStack {
@@ -52,11 +51,6 @@ struct TripListView: View {
             }
             .navigationTitle("내 여행")
             .toolbar {
-                // 계획·편집은 웹에만 있다 — 앱에서 나갔다 오지 않게 그 화면을 여기서 연다.
-                ToolbarItem(placement: .topBarLeading) {
-                    Button { showsWeb = true } label: { Image(systemName: "globe") }
-                        .accessibilityLabel("웹 화면 열기")
-                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         if let email = env.auth.email { Text(email) }
@@ -67,9 +61,6 @@ struct TripListView: View {
                     .accessibilityLabel("계정")
                 }
             }
-        }
-        .fullScreenCover(isPresented: $showsWeb) {
-            WebAppView(url: AppConfig.webBaseURL)
         }
         .task {
             if model == nil { model = TripListViewModel(service: env.service) }

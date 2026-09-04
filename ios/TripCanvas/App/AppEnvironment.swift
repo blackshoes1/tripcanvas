@@ -12,14 +12,6 @@ enum AppConfig {
         return URL(string: "https://bokbok9.tail8b977f.ts.net")!
     }()
 
-    /// 앱 안에서 띄우는 웹 화면(`WebAppView`). API와 달리 여기는 **정적 웹**(Vercel)이다 —
-    /// 같은 주소를 쓰면 /api/v1 만 있는 NAS를 웹 화면으로 열게 된다.
-    static let webBaseURL: URL = {
-        if let raw = Bundle.main.object(forInfoDictionaryKey: "TCWebBaseURL") as? String,
-           let url = URL(string: raw), !raw.isEmpty { return url }
-        return URL(string: "https://tripcanvas-ai.vercel.app")!
-    }()
-
     static let supabaseURL: URL = {
         if let raw = Bundle.main.object(forInfoDictionaryKey: "TCSupabaseURL") as? String,
            let url = URL(string: raw), !raw.isEmpty { return url }
