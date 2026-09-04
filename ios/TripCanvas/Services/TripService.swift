@@ -146,3 +146,51 @@ extension TripService: TravelStateSource {
         let _: Ack = try await api.delete("/api/v1/devices", query: [URLQueryItem(name: "deviceId", value: deviceId)])
     }
 }
+
+// MARK: - 여행 문서 (편집)
+
+/// 편집 화면이 쓰는 계약. 테스트에서 가짜로 갈아끼울 수 있게 따로 둔다.
+@MainActor
+protocol TripDocumentSource {
+    func document(tripId: String) async throws -> TripDocumentSnapshot
+    func saveDocument(tripId: String, document: TripDocument, expectedRevision: Int) async throws -> TripDocumentSnapshot
+}
+
+/// 문서와 그 문서를 읽은 시점의 revision. 저장은 이 revision을 그대로 되돌려 준다(CAS).
+struct TripDocumentSnapshot: Sendable {
+    let document: TripDocument
+    let revision: Int
+    let role: MemberRole
+
+    var canEdit: Bool { role.canEdit }
+}
+
+extension TripService: TripDocumentSource {
+    /// 여행 문서 전체 + revision + 내 역할.
+    ///
+    /// 캐시로 떨어지지 않는다 — 편집은 최신 revision을 알아야 하고, 오래된 문서 위에서 고치면
+    /// 저장할 때 전부 충돌로 돌아온다. 오프라인이면 그냥 오프라인이라고 말한다.
+    func document(tripId: String) async throws -> TripDocumentSnapshot {
+        let response: TripDetailResponse = try await api.get("/api/v1/trips/\(tripId)")
+        return TripDocumentSnapshot(
+            document: TripDocument(raw: response.document),
+            revision: response.trip.revision,
+            role: response.trip.role ?? .owner)
+    }
+
+    /// revision CAS 저장. 다른 기기가 먼저 바꿨으면 `APIError.revisionConflict`가 나온다 —
+    /// 화면은 그때 최신을 다시 읽어 사용자에게 물어야 한다. 조용히 덮어쓰지 않는다(§91).
+    @discardableResult
+    func saveDocument(tripId: String, document: TripDocument, expectedRevision: Int) async throws -> TripDocumentSnapshot {
+        let body: [String: JSONValue] = [
+            "trip": .object(document.raw),
+            "expectedRevision": .number(expectedRevision)
+        ]
+        let response: TripDetailResponse = try await api.put(
+            "/api/v1/trips/\(tripId)", jsonBody: try JSONValue.data(from: body))
+        return TripDocumentSnapshot(
+            document: TripDocument(raw: response.document),
+            revision: response.trip.revision,
+            role: response.trip.role ?? .owner)
+    }
+}

@@ -64,6 +64,12 @@ struct APIClient {
         try await send(path: path, method: "DELETE", query: query, body: nil)
     }
 
+    /// 이미 만들어 둔 JSON 본문을 그대로 보낸다. 여행 문서는 원문(JSONValue)이라
+    /// [String: Any]로 옮기면 숫자·null 모양이 바뀔 수 있어 직접 인코딩한 데이터를 받는다.
+    func put<T: Decodable>(_ path: String, jsonBody: Data) async throws -> T {
+        try await send(path: path, method: "PUT", query: [], body: jsonBody)
+    }
+
     /// 401이면 토큰을 한 번 갱신해 재시도한다. 그래도 401이면 로그인 화면으로 돌려보낸다.
     private func send<T: Decodable>(path: String, method: String, query: [URLQueryItem], body: Data?) async throws -> T {
         do {
@@ -119,10 +125,11 @@ struct APIClient {
         switch body?.error {
         case "UNAUTHORIZED": return .unauthorized
         case "TRIP_NOT_FOUND", "ACTIVITY_NOT_FOUND": return .notFound(message)
-        case "REVISION_CONFLICT": return .revisionConflict(message: message, revision: body?.revision)
+        // 같은 뜻인데 라우트마다 이름이 다르다: 여행 문서 PUT은 STALE_VERSION, Today 계열은 REVISION_CONFLICT.
+        case "REVISION_CONFLICT", "STALE_VERSION": return .revisionConflict(message: message, revision: body?.revision)
         case "SUGGESTION_STALE": return .stale(message)
         case "FORBIDDEN": return .forbidden(message)
-        case "BAD_REQUEST": return .badRequest(message)
+        case "BAD_REQUEST", "VALIDATION_ERROR": return .badRequest(message)
         default:
             if status == 401 { return .unauthorized }
             return .server(status: status, message: message)
