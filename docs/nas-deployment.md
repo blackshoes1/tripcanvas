@@ -57,7 +57,7 @@ curl -s -o /dev/null -w "%{http_code}\n" https://$API_DOMAIN/api/v1/trips   # 40
 ## 프로덕션 전환 순서 (§101)
 
 ```
-NAS Backend 완성 → staging 검증(위 확인 절차) → 데이터 이관 리허설(docs/backup-restore.md) → Web staging(docs/staging-verification.md) → iOS staging(TCApiBaseURL)
+NAS Backend 완성 ✓ → staging 검증 ✓ → 데이터 이관 리허설 ✓(docs/backup-restore.md) → Web staging ✓ → iOS staging ✓(TCApiBaseURL — 2026-09-04, docs/staging-verification.md)
 → 실사용 테스트 → 프로덕션 DB 이관 → TC_MIGRATION_TRIP=NEW_BACKEND → Supabase read-only → 관찰 → Supabase 종료(일정 기간 보존, §102)
 ```
 

@@ -293,10 +293,32 @@ staging 동안 새 DB에 쌓은 변경은 Supabase에 없다. 그것이 롤백�
 
 이것이 이번 리허설이 실제로 잡아낸 유일한 사고이고, 잡힌 곳이 staging이라 리허설이 제 몫을 했다.
 
+### iOS staging도 같은 날 통과했다
+
+웹과 달리 iOS는 자동 감지가 없다 — `Info.plist`의 `TCApiBaseURL`을 바꿔야 한다(`AppEnvironment.swift`). `ios/project.yml`에서 두 줄만 고치고 **커밋하지 않는다**:
+
+```yaml
+        TCApiBaseURL: "http://localhost:3000"   # 시뮬레이터는 맥의 localhost를 그대로 쓴다(터널 필요)
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true          # http라서 ATS 예외가 필요하다
+```
+
+```bash
+brew install xcodegen
+cd ios && xcodegen generate && open TripCanvas.xcodeproj
+# 되돌리기: git checkout ios/project.yml && cd ios && xcodegen generate
+```
+
+확인된 것: **로그인**(운영 Supabase 토큰을 staging API가 검증) · **여행 목록 4개** · **오늘 화면**(`/api/v1/trips/:id/today`가 판단한 순서·시각·지도) · **이동시간 "(예상)" 표기**(`travelTimeSource != .routed` — 서버엔 구간 캐시가 없어 직선거리 추정이다).
+
+⚠️ 시뮬레이터가 `Application failed preflight checks`로 실행을 거부하면 앱이 아니라 시뮬레이터 상태다:
+`xcrun simctl shutdown all; xcrun simctl erase all` 뒤 다시. 그래도 막히면 entitlements(App Group·푸시)가 없는 `project-free.yml`로 본체 앱만 만든다.
+
 확인된 것 하나 더: `member_count`는 레거시 `my_trip_roles`도 `trip_members` ACTIVE 행 수라(`202609020001:250`), 소유자 행이 없는 이관 여행의 인원 표시는 **전과 같다** — 회귀가 아니다.
 
 ## 검증이 끝나면
 
 - staging DB는 손댄 상태다. 전환 당일 `--apply --reset`이 비우고 다시 채우므로 **정리할 것은 없다.**
 - staging override는 운영 전환 전에 뺀다 — `-f deploy/docker-compose.staging.yml` 없이 `up -d`. 포트가 다시 닫힌다.
-- 다음은 iOS staging(`TCApiBaseURL`)이고, 그다음이 전환 당일 순서다(`docs/backup-restore.md`).
+- iOS staging까지 끝났으므로(위 실행 기록) 다음은 **전환 당일 순서**다(`docs/backup-restore.md`). 오늘 확인한 것들이 그대로 쓰인다 — 원본 신원 한 줄 · `--apply --reset` · 커밋 전 검증.
+- staging override는 그때까지만 얹어 둔다. 검증을 쉬는 동안에는 빼서 포트를 닫는 편이 낫다(tailnet 안이라도 열려 있다).
