@@ -319,6 +319,6 @@ cd ios && xcodegen generate && open TripCanvas.xcodeproj
 ## 검증이 끝나면
 
 - staging DB는 손댄 상태다. 전환 당일 `--apply --reset`이 비우고 다시 채우므로 **정리할 것은 없다.**
-- staging override는 운영 전환 전에 뺀다 — `-f deploy/docker-compose.staging.yml` 없이 `up -d`. 포트가 다시 닫힌다.
+- ~~staging override는 운영 전환 전에 뺀다~~ — **2026-09-04 전환 뒤로는 빼면 안 된다.** Funnel이 호스트의 `3000`·`3001`로 넘기는데 그 포트를 내는 것이 이 override다. 빼면 API가 죽는다(`docs/nas-deployment.md`).
 - iOS staging까지 끝났으므로(위 실행 기록) 다음은 **전환 당일 순서**다(`docs/backup-restore.md`). 오늘 확인한 것들이 그대로 쓰인다 — 원본 신원 한 줄 · `--apply --reset` · 커밋 전 검증.
-- staging override는 그때까지만 얹어 둔다. 검증을 쉬는 동안에는 빼서 포트를 닫는 편이 낫다(tailnet 안이라도 열려 있다).
+- 그때는 검증이 끝나면 포트를 닫는 게 맞았지만, 지금은 같은 override가 운영을 떠받치고 있다 — 닫아도 되는 것은 postgres의 `15432`뿐이다.

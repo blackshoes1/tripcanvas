@@ -1,4 +1,6 @@
-# staging 검증 전용 override — 절차는 docs/staging-verification.md. **운영에는 쓰지 않는다.**
+# 포트 공개 override — 절차는 docs/staging-verification.md.
+# ⚠️ 이름은 staging이지만 **2026-09-04 전환 뒤로는 운영에도 필요하다.** Tailscale Funnel이
+#    호스트의 localhost:3000·3001로 넘기는데, 그 포트를 내는 것이 이 파일뿐이다. 빼고 올리면 API가 죽는다.
 #
 #   docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.staging.yml up -d
 #

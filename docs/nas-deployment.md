@@ -35,7 +35,19 @@ sudo tailscale funnel status                     # "Available on the internet:" 
 
 `internal` 네트워크는 `internal: true`라 인터넷과 단절돼 있다. MinIO·Redis는 필요해질 때 같은 방식으로 붙인다(§46·§47·§55).
 
-`deploy/docker-compose.staging.yml`은 **staging 검증 동안만** 얹는 override다 — api·realtime·postgres 포트를 호스트 `127.0.0.1`에만 내어 노트북에서 `ssh -L`로 당겨 쓴다. 검증이 끝나면 이 파일 없이 다시 올려 포트를 닫는다(`docs/staging-verification.md`).
+⚠️ **`deploy/docker-compose.staging.yml`은 이름과 달리 지금 운영에 필요하다.** Funnel은 NAS **호스트의**
+`localhost:3000`·`3001`로 넘기는데, 그 포트를 호스트에 내는 것이 이 override뿐이다(운영 compose는 `expose`만 하고
+Caddy를 거치게 돼 있다 — 도메인이 없어 그 경로를 안 쓴다). 그래서 올릴 때 **항상 두 파일을 같이 준다.**
+
+```bash
+cd ~/tripcanvas
+sudo docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.staging.yml build api realtime
+sudo docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.staging.yml up -d api realtime
+```
+
+override 없이 `up -d` 하면 포트가 닫혀 **API가 통째로 죽는다**(폰에서 "클라우드 저장 실패"). 검증용 override와
+운영에 필요한 포트 공개가 한 파일에 섞여 있는 것이 원인이라, 정리는 포트 공개를 운영 compose로 옮기는 쪽이다(아직 안 함).
+postgres의 `15432`만은 검증용이라 빼도 된다.
 
 ## 환경변수
 
