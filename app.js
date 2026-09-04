@@ -1989,7 +1989,7 @@ document.getElementById('tripListNew').onclick=()=>{
 // ───────────────── 예약 가격 추적 (다중 소스 · 실데이터) ─────────────────
 // "이미 세운 계획에서 출발 전까지 계속 돈을 아껴주는" 기능. 예약(booking)·호텔 identity·매핑 캐시(ptoken)는
 // 여행 데이터(trip.bookings)에 저장돼 공유·클라우드 동기화를 따라가고, 가격 관측 기록은 기기 로컬 +
-// (로그인 시) hotel_price_snapshots 클라우드 테이블에 쌓인다.
+// (로그인 시) `/api/v1/trips/:id/prices` 를 지나 서버에 쌓인다(여행과 같은 저장소 · 같은 권한).
 // 구조: Metasearch(Discovery, /api/hotel-offers 서버 프록시 — 키는 서버 전용) → Offer 정규화 →
 // 조건 매칭(price.js matchQuality) → Saving Decision(decideSaving: 확정/잠재 분리) → UI·알림.
 // 가짜/모의 가격은 production에서 쓰지 않는다 — 소스 미연결이면 그 상태를 그대로 보여준다.
@@ -2242,28 +2242,33 @@ async function checkTripPrices(opts){
   });
 }
 
-// ── 클라우드 관측 공유 (hotel_price_snapshots, RLS 본인 행) — 서버 cron 기록 + 기기 간 히스토리 병합 ──
+// ── 클라우드 관측 공유 — 기기 간 히스토리 병합. 여행과 같은 API를 지난다(예전에는 Supabase 직접 경로였다) ──
 let _pxCloudWarned=false;
 function pushPriceSnapshot(b, rec, top){
-  if(!sb||!user||!top) return;
-  sb.from('hotel_price_snapshots').insert({user_id:user.id, trip_client_id:trip().id, booking_id:b.id,
-    seller:top.seller, price:TC_PRICE.offerPrice(top), currency:b.cur||'KRW',
-    quality:top.quality||'SIMILAR', verified:!!top.verified, ptoken:b.ptoken||null, offers:rec.offers.slice(0,10)})
+  if(!user||!top) return;
+  TC_API.prices.append(trip().id, {bookingId:b.id, seller:top.seller, price:TC_PRICE.offerPrice(top),
+    currency:b.cur||'KRW', quality:top.quality||'SIMILAR', verified:!!top.verified,
+    ptoken:b.ptoken||null, offers:rec.offers.slice(0,10)})
     .then(({error})=>{ if(error&&!_pxCloudWarned){ _pxCloudWarned=true; reportOperationalError('price.cloud',error); } })
     .catch(()=>{});
 }
 async function pullPriceSnapshots(){
-  if(!sb||!user) return;
-  const ids=[]; store.trips.forEach(t=>(t.bookings||[]).forEach(b=>{ if(b.type==='hotel') ids.push(b.id); }));
-  if(!ids.length) return;
+  if(!user) return;
+  // 관측은 여행 단위로 내려온다 — 예전 쿼리는 예약 id 목록으로 한 번에 긁었지만, 이제 여행이 권한의 단위다.
+  const trips=store.trips.filter(t=>(t.bookings||[]).some(b=>b.type==='hotel'));
+  if(!trips.length) return;
   try{
     const since=new Date(Date.now()-7*864e5).toISOString();
-    const {data,error}=await sb.from('hotel_price_snapshots')
-      .select('booking_id,seller,price,currency,quality,verified,offers,observed_at')
-      .in('booking_id',ids).gte('observed_at',since).order('observed_at',{ascending:true}).limit(200);
-    if(error||!data||!data.length) return;
+    const rows=[];
+    for(const t of trips){
+      const {data,error}=await TC_API.prices.list(t.id);
+      if(error||!Array.isArray(data)) continue;
+      data.forEach(r=>{ if(String(r.observed_at||'')>=since) rows.push(r); });
+    }
+    if(!rows.length) return;
+    rows.sort((a,b)=>String(a.observed_at||'').localeCompare(String(b.observed_at||'')));
     let changed=false;
-    data.forEach(r=>{
+    rows.forEach(r=>{
       const rec=recOf(r.booking_id), day=String(r.observed_at).slice(0,10);
       if(!rec.obs.some(o=>String(o.at||'').slice(0,10)===day)){
         rec.obs.push({price:+r.price||0, cur:r.currency||'KRW', seller:r.seller||'', quality:r.quality||'SIMILAR', verified:!!r.verified, at:r.observed_at});

@@ -141,6 +141,23 @@
     return { data: spec.unwrap(data), error: null };
   }
 
+  /**
+   * 가격 관측 — 예전에는 hotel_price_snapshots 를 Supabase에서 직접 읽고 썼다(마지막 직접 경로였다).
+   * 판정(확정/잠재 절약)은 여전히 price.js가 한다. 여기는 관측 행만 오간다.
+   */
+  const prices = {
+    /** @param {string} tripId */
+    list: async (tripId) => {
+      const r = await request('GET', `/api/v1/trips/${seg(tripId)}/prices`);
+      return r.error ? r : { data: r.data.observations || [], error: null };
+    },
+    /** @param {string} tripId @param {any} obs */
+    append: async (tripId, obs) => {
+      const r = await request('POST', `/api/v1/trips/${seg(tripId)}/prices`, obs);
+      return r.error ? r : { data: true, error: null };
+    }
+  };
+
   /** 여행 버전 이력 — 예전에는 trip_snapshots 테이블을 직접 읽고 썼다. 오래된 것 정리는 이제 서버가 한다 */
   const snapshots = {
     /** @param {string} tripId @param {string=} name */
@@ -319,7 +336,7 @@
     };
   }
 
-  const API = { configure, rpc, snapshots, me, sync, realtime: { connect: connectRealtime }, DEFAULT_BASE };
+  const API = { configure, rpc, snapshots, prices, me, sync, realtime: { connect: connectRealtime }, DEFAULT_BASE };
   if (typeof module !== 'undefined' && module.exports) { module.exports = API; }   // Node (테스트)
   global.TC_API = API;
 })(/** @type {any} */ (typeof globalThis !== 'undefined' ? globalThis : this));

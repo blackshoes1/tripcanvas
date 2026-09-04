@@ -65,6 +65,7 @@ function gatewayOf(store: Store): Gateway {
     },
     async listDismissed(id, day) { return store.dismissed.get(`${id}|${day}`) ?? []; },
     async listPriceObservations() { return store.observations; },
+    async savePriceObservation(_t, obs) { store.observations.push({ ...obs, observed_at: '2026-09-04T00:00:00.000Z' }); },
     async listSentNotificationKeys() { return store.sentKeys; },
     async recordNotifications(_tripId, _day, items) {
       items.forEach((n) => { if (!store.sentKeys.includes(n.dedupeKey)) store.sentKeys.push(n.dedupeKey); });
@@ -667,6 +668,45 @@ describe('POST /import/commit — 확인한 것만 저장하고, 다음 행동�
 
   it('후보가 없으면 400', async () => {
     expect((await commit({})).status).toBe(400);
+  });
+});
+
+describe('가격 관측 — 남기기만 하고 만들어 내지 않는다(§28)', () => {
+  const post = (body: unknown) =>
+    api.createPrice(new Request('http://localhost/api/v1/trips/trip-1/prices',
+      auth({ method: 'POST', body: JSON.stringify(body) })), 'trip-1');
+  const list = () => api.prices(new Request('http://localhost/api/v1/trips/trip-1/prices', auth()), 'trip-1');
+
+  it('관측을 남기고 그대로 돌려준다', async () => {
+    const res = await post({ bookingId: 'bk1', seller: 'Agoda', price: 120000, currency: 'KRW', quality: 'EXACT', verified: true });
+    expect(res.status).toBe(201);
+    const body = (await (await list()).json()) as { observations: PriceObservation[] };
+    expect(body.observations).toHaveLength(1);
+    expect(body.observations[0]).toMatchObject({ booking_id: 'bk1', seller: 'Agoda', price: 120000, quality: 'EXACT', verified: true });
+  });
+
+  it('가격이 숫자가 아니면 거절한다 — 없는 값을 0으로 만들지 않는다', async () => {
+    expect((await post({ bookingId: 'bk1', price: '싸요' })).status).toBe(400);
+    expect((await post({ bookingId: 'bk1' })).status).toBe(400);
+    expect((await post({ price: 1000 })).status).toBe(400);
+  });
+
+  it('오퍼 원본을 통째로 보관하지 않는다 — 상위 10개까지', async () => {
+    await post({ bookingId: 'bk1', price: 1000, offers: Array.from({ length: 30 }, (_, i) => ({ i })) });
+    const body = (await (await list()).json()) as { observations: PriceObservation[] };
+    expect(body.observations[0].offers).toHaveLength(10);
+  });
+
+  it('없는 여행이면 404 — 남의 여행에 관측을 붙이지 못한다', async () => {
+    const res = await api.createPrice(new Request('http://localhost/api/v1/trips/nope/prices',
+      auth({ method: 'POST', body: JSON.stringify({ bookingId: 'b', price: 1 }) })), 'nope');
+    expect(res.status).toBe(404);
+    expect((await api.prices(new Request('http://localhost/api/v1/trips/nope/prices', auth()), 'nope')).status).toBe(404);
+  });
+
+  it('로그인하지 않으면 401', async () => {
+    const res = await api.prices(new Request('http://localhost/api/v1/trips/trip-1/prices'), 'trip-1');
+    expect(res.status).toBe(401);
   });
 });
 

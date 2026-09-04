@@ -71,6 +71,8 @@ export function composeGateway(input: ComposeGatewayInput): Gateway {
       const old = await legacy.listPriceObservations(tripId);
       return [...fresh, ...old].sort((x, y) => x.observed_at.localeCompare(y.observed_at));
     };
+    // 쓰기는 언제나 새 저장소다 — DUAL_READ는 읽기만 두 곳을 본다(이관 기간 한정, §32)
+    gw.savePriceObservation = (tripId, obs) => repo.append(userId, tripId, obs);
   }
 
   return gw;

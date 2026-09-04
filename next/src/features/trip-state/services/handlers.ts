@@ -46,6 +46,8 @@ export interface Gateway {
   recordFeedback(tripId: string, dayISO: string, key: string, action: string): Promise<void>;
   /** 가격 관측 (hotel_price_snapshots). 없으면 빈 배열 — 가짜 가격을 만들지 않는다 */
   listPriceObservations(tripId: string): Promise<PriceObservation[]>;
+  /** 관측 한 건 추가 (append-only). 판정은 price.js가 하고 여기는 남기기만 한다 */
+  savePriceObservation(tripId: string, obs: Omit<PriceObservation, 'observed_at'> & { ptoken?: string | null }): Promise<void>;
   /** 이미 보낸 알림 키 — 같은 상황을 두 번 알리지 않기 위해(§46) */
   listSentNotificationKeys(tripId: string, dayISO: string): Promise<string[]>;
   recordNotifications(tripId: string, dayISO: string, items: { kind: string; dedupeKey: string; stateVersion: string }[]): Promise<void>;
@@ -569,8 +571,55 @@ export function createHandlers(deps: HandlerDeps) {
     return ok(response);
   }
 
+  /**
+   * GET /api/v1/trips/:tripId/prices — 그 여행의 가격 관측.
+   * 기기 로컬 기록과 합치는 것은 클라이언트가 한다(웹은 예전부터 그랬다).
+   */
+  async function prices(request: Request, tripId: string): Promise<Response> {
+    const gateway = await auth(request);
+    if (gateway instanceof Response) return gateway;
+    let row: TripRow | null;
+    try { row = await gateway.getTrip(tripId); } catch { return fail('UPSTREAM_ERROR'); }
+    if (!row || row.deleted_at) return fail('TRIP_NOT_FOUND');
+    let observations: PriceObservation[];
+    try { observations = await gateway.listPriceObservations(tripId); } catch { return fail('UPSTREAM_ERROR'); }
+    return ok({ schemaVersion: CONTRACT_SCHEMA_VERSION, observations });
+  }
+
+  /**
+   * POST /api/v1/trips/:tripId/prices — 관측 한 건.
+   * ⚠️ 가격을 만들어 내지 않는다: 숫자가 아니면 거절하고, 없는 값은 null로 남긴다(§28).
+   */
+  async function createPrice(request: Request, tripId: string): Promise<Response> {
+    const gateway = await auth(request);
+    if (gateway instanceof Response) return gateway;
+    const body = await readBody(request);
+    const bookingId = typeof body.bookingId === 'string' ? body.bookingId.trim() : '';
+    const price = typeof body.price === 'number' && Number.isFinite(body.price) ? body.price : null;
+    if (!bookingId || price == null) return fail('BAD_REQUEST');
+    let row: TripRow | null;
+    try { row = await gateway.getTrip(tripId); } catch { return fail('UPSTREAM_ERROR'); }
+    if (!row || row.deleted_at) return fail('TRIP_NOT_FOUND');
+    const str = (v: unknown, max: number): string | null => (typeof v === 'string' && v ? v.slice(0, max) : null);
+    try {
+      await gateway.savePriceObservation(tripId, {
+        booking_id: bookingId.slice(0, 64),
+        seller: str(body.seller, 120),
+        price,
+        currency: str(body.currency, 8),
+        quality: str(body.quality, 20),
+        verified: body.verified === true,
+        // 원본 응답을 통째로 오래 보관하지 않는다(§28) — 상위 10개까지만
+        offers: Array.isArray(body.offers) ? (body.offers as unknown[]).slice(0, 10) : null,
+        ptoken: str(body.ptoken, 200)
+      });
+    } catch { return fail('UPSTREAM_ERROR'); }
+    return ok({ schemaVersion: CONTRACT_SCHEMA_VERSION, saved: true }, 201);
+  }
+
   return {
     trips, today, bookings, travelState, replanPreview, activityAction, suggestionAction,
-    registerDevice, unregisterDevice, importPreview, importCommit, memories, createMemory
+    registerDevice, unregisterDevice, importPreview, importCommit, memories, createMemory,
+    prices, createPrice
   };
 }

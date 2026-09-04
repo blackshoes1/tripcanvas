@@ -1,4 +1,9 @@
 'use strict';
+// ⚠️ 2026-09-04 NAS 전환으로 **스케줄을 껐다**(vercel.json의 crons 제거). 이 함수는 Supabase의 trips를
+// 읽고 hotel_price_snapshots에 쓰는데, 그 둘은 이제 진실이 아니다 — 여행도 관측도 NAS PostgreSQL에 있다.
+// 켠 채 두면 멈춘 데이터를 조회해 아무도 읽지 않는 곳에 쌓는다. 서버 쪽 추적은 새 backend에
+// 서비스 계정 경로(내부 전용 라우트 + CRON_SECRET)로 다시 만든다. 그때까지는 앱의 하루 1회 확인이 대신한다.
+//
 // 주기 가격 추적 (Vercel Cron이 매일 호출) — 활성 호텔 예약만 골라 메타서치를 돌리고
 // 결과를 hotel_price_snapshots에 남긴다. 클라이언트는 로그인 시 이 기록을 당겨와 로컬 기록과 합친다.
 // 필요한 env(CRON_SECRET·SUPABASE_SERVICE_ROLE_KEY·HOTEL_METASEARCH_API_KEY)가 없으면 조용히 skip —

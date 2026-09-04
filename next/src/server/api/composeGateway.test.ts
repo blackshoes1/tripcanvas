@@ -22,6 +22,7 @@ function legacyGateway(log: string[]): Gateway {
     async listDismissed() { log.push('legacy.listDismissed'); return ['legacy-key']; },
     async recordFeedback() { log.push('legacy.recordFeedback'); },
     async listPriceObservations() { log.push('legacy.listPriceObservations'); return [{ booking_id: 'b', seller: 'legacy', price: 1, currency: 'KRW', quality: null, verified: false, offers: null, observed_at: '2026-01-01T00:00:00.000Z' }]; },
+    async savePriceObservation() { log.push('legacy.savePriceObservation'); },
     async listSentNotificationKeys() { log.push('legacy.listSentNotificationKeys'); return ['legacy-sent']; },
     async recordNotifications() { log.push('legacy.recordNotifications'); },
     async saveDevice() { log.push('legacy.saveDevice'); },

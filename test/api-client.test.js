@@ -152,6 +152,28 @@ test('버전 이력 — 만들기·목록·불러오기', async () => {
   assert.equal(f.calls[2].url, 'https://api.test/api/v1/trips/trip1/snapshots/3');
 });
 
+test('가격 관측 — 여행 단위로 읽고 쓴다 (예전의 Supabase 직접 경로 자리)', async () => {
+  const obs = { booking_id: 'bk1', seller: 'Agoda', price: 120000, currency: 'KRW', quality: 'EXACT', verified: true, offers: [], observed_at: '2026-09-04T00:00:00Z' };
+  const f = setup(() => ({ body: { observations: [obs], saved: true } }));
+
+  const list = await TC_API.prices.list('trip1');
+  assert.deepEqual(list.data, [obs]);
+  assert.equal(f.calls[0].url, 'https://api.test/api/v1/trips/trip1/prices');
+  assert.equal(f.calls[0].method, 'GET');
+
+  const saved = await TC_API.prices.append('trip1', { bookingId: 'bk1', price: 120000 });
+  assert.equal(saved.error, null);
+  assert.equal(f.calls[1].method, 'POST');
+  assert.deepEqual(f.calls[1].body, { bookingId: 'bk1', price: 120000 });
+});
+
+test('가격 관측 실패는 던지지 않고 error로 온다 — 관측이 안 돼도 앱은 돈다', async () => {
+  setup(() => ({ status: 502, body: { code: 'UPSTREAM_ERROR', message: '실패' } }));
+  const r = await TC_API.prices.append('trip1', { bookingId: 'bk1', price: 1 });
+  assert.equal(r.data, null);
+  assert.equal(r.error.status, 502);
+});
+
 test('여행 id에 특수문자가 있어도 경로가 깨지지 않는다', async () => {
   const f = setup(() => ({ body: { members: [] } }));
   await TC_API.rpc('list_trip_members', { p_client_id: 'a b/c?d' });

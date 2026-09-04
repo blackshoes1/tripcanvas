@@ -132,6 +132,14 @@ export async function supabaseGatewayFor(token: string, knownUserId?: string): P
         observed_at: String(r.observed_at)
       }));
     },
+    async savePriceObservation(tripId, obs): Promise<void> {
+      const { error: e } = await sb.from('hotel_price_snapshots').insert({
+        user_id: userId, trip_client_id: tripId, booking_id: obs.booking_id,
+        seller: obs.seller, price: obs.price, currency: obs.currency,
+        quality: obs.quality, verified: obs.verified, ptoken: obs.ptoken ?? null, offers: obs.offers
+      });
+      if (e) throw e;
+    },
     async listSentNotificationKeys(tripId: string, dayISO: string): Promise<string[]> {
       const { data, error: e } = await sb
         .from('notification_log')

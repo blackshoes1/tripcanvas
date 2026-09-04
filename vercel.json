@@ -76,11 +76,5 @@
     "api/track-hotel-prices.js": {
       "maxDuration": 60
     }
-  },
-  "crons": [
-    {
-      "path": "/api/track-hotel-prices",
-      "schedule": "0 21 * * *"
-    }
-  ]
+  }
 }
