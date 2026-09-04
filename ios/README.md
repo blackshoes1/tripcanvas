@@ -1,6 +1,9 @@
 # TripCanvas iOS (SwiftUI)
 
-여행을 **실행하는** 앱. 계획·편집·예약 관리는 웹이 하고, 여기서는 "지금 무엇을 하면 되는가"에 답한다.
+여행을 **실행하는** 앱. 여기서 답하는 것은 "지금 무엇을 하면 되는가"다.
+
+계획도 앱에서 한다 — **일정 편집(일자·장소)이 네이티브로 들어왔다**(`Features/Plan`). 지도·장소 검색·예약 편집·
+함께하기는 아직 웹에만 있고 순서대로 옮긴다. 웹뷰로 감싸는 길은 택하지 않았다.
 
 > ## 검증 상태
 >
@@ -21,6 +24,17 @@
 >
 > 서버 쪽(`/api/v1`)은 별도로 검증됐다 — `next` 워크스페이스의 계약 테스트가 통과하고,
 > 배포된 라우트는 `curl` 로 바로 확인할 수 있다.
+
+## 일정 편집 (Features/Plan)
+
+여행 문서를 **원문 그대로** 들고 아는 필드만 덮어 읽고 쓴다(`Core/Models/JSONValue.swift` · `TripDocument.swift`).
+아는 필드만 담은 구조체로 디코딩하면 웹이 쓰는 `who`·`split`·`reunion`·`hours`·`flight`가 앱에서 한 번 저장할 때마다
+사라진다. 기본값(PLANNED·must:false·빈 값)도 새로 써 넣지 않는다 — 웹의 `normalizeSpot`과 같은 규칙이다.
+
+- 저장 버튼이 없다. 바꾸면 곧바로 `PUT /api/v1/trips/:id`(revision CAS)로 올라가고, **실패하면 화면을 되돌린다.**
+- 충돌(다른 기기가 먼저 저장)은 조용히 덮어쓰지 않는다 — 무엇이 사라지는지 말하고 사용자가 고른다.
+- 보기 권한(VIEWER)은 편집 진입점이 아예 뜨지 않는다.
+- ⚠️ 판단은 여전히 서버다. 여기서 하는 것은 **문서 편집**뿐이고 ETA·앵커·추천은 `/api/v1`이 준 것을 그린다.
 
 ## 판단은 서버가, 표현은 iOS가
 
@@ -95,7 +109,7 @@ Core/
   Auth/       Supabase Auth REST + Keychain 세션
   Storage/    마지막 Today 캐시 (오프라인 읽기)
   Location/   단발성 위치 조회 (연속 추적 없음)
-Features/     Trips · Today · Suggestions · Replan · Booking · Map
+Features/     Trips · Today · Plan(일정 편집) · Suggestions · Replan · Booking · Map
 Services/     TripService (API 호출을 화면에서 감춘다)
 DesignSystem/ 간격·타이포·공용 컴포넌트
 Tests/        디코딩·상태 계산·ViewModel

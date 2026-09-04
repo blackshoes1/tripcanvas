@@ -104,6 +104,13 @@ struct TodayView: View {
         .background(Color(.systemGroupedBackground))
         .navigationTitle(trip.name)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            // 오늘 화면은 "지금 무엇을" 이고, 계획을 고치는 것은 그 옆이다.
+            ToolbarItem(placement: .topBarTrailing) {
+                NavigationLink { TripPlanView(trip: trip) } label: { Image(systemName: "list.bullet.rectangle") }
+                    .accessibilityLabel("일정 편집")
+            }
+        }
         .refreshable { await model?.load() }
         .task {
             if model == nil { model = TodayViewModel(trip: trip, service: env.service) }
