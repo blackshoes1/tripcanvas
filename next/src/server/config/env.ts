@@ -30,6 +30,8 @@ export interface ServerEnv {
   /** 메일 속 링크가 도착할 웹 주소. API 호스트에는 사람이 볼 화면이 없다 */
   webBaseUrl: string;
   smtp: SmtpConfig | null;
+  /** 국내 장소 검색(카카오 로컬)용 **서버 전용** REST 키. 없으면 검색 라우트가 '미연결'이라고 답한다 */
+  kakaoRestKey: string;
   /** 자체 Auth를 켤 수 있는가 — 비밀과 DB가 둘 다 있어야 한다 */
   newAuthEnabled: boolean;
   registry: MigrationRegistry;
@@ -78,6 +80,8 @@ export function parseEnv(env: Record<string, string | undefined>, warn?: (m: str
     realtimeUrl: (env.REALTIME_URL ?? '').trim() || null,
     // 설정이 없으면 허용 출처의 첫 번째 — 이 앱의 웹 주소다. 그래야 배포에 값을 하나 더 넣지 않아도 링크가 산다
     webBaseUrl: ((env.WEB_BASE_URL ?? '').trim() || readAllowedOrigins(env)[0] || '').replace(/\/+$/, ''),
+    // 카카오내비 프록시가 이미 쓰는 이름을 그대로 쓴다 — 같은 키다
+    kakaoRestKey: (env.KAKAO_REST_API_KEY ?? '').trim(),
     smtp: readSmtp(env),
     newAuthEnabled: !!authSecret && !!databaseUrl,
     registry: readRegistry(env, warn)

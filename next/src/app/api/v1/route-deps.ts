@@ -13,6 +13,7 @@ import { composeGateway } from '@/server/api/composeGateway';
 import { ApiError } from '@/server/api/errors';
 import { createCollabRoutes } from '@/server/api/collabRoutes';
 import { createMeRoutes } from '@/server/api/meRoutes';
+import { createPlaceRoutes } from '@/server/api/placeRoutes';
 import { createSnapshotRoutes } from '@/server/api/snapshotRoutes';
 import { createTripRoutes } from '@/server/api/tripRoutes';
 import { TripAuthorizationService } from '@/server/application/authorization/tripAuthorization';
@@ -120,6 +121,12 @@ export const meRoutes = createMeRoutes({
   registry: env.registry,
   realtimeUrl: env.realtimeUrl
 });
+
+/**
+ * 장소 검색 — 국내만 여기를 지난다. 해외는 앱이 번들 ID로 제한된 키로 구글에 직접 묻는다.
+ * 우리 REST 키로 나가는 요청이라 로그인해야 부를 수 있다(placeRoutes).
+ */
+export const placeRoutes = createPlaceRoutes({ verifier, kakaoRestKey: env.kakaoRestKey });
 
 function toRow(v: TripView): TripRow {
   return {
