@@ -26,6 +26,16 @@ settings:
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
 
+# 지도 SDK — 처음 들어온 외부 의존성이다. 둘 다 바이너리 xcframework라 빌드가 아니라 링크만 한다.
+#   구글: iOS 16+, 해외 지도 · 카카오: 국내 지도(POI 탭 신원을 주지 않는 제약은 웹과 같다)
+packages:
+  GoogleMaps:
+    url: https://github.com/googlemaps/ios-maps-sdk
+    from: "11.1.0"
+  KakaoMapsSDK:
+    url: https://github.com/kakao-mapsSDK/KakaoMapsSDK-SPM
+    from: "2.12.19"
+
 targets:
   TripCanvas:
     type: application
@@ -47,8 +57,16 @@ targets:
         # 운영 API는 NAS다(2026-09-04 전환) — Tailscale Funnel이 ts.net 이름에 HTTPS를 붙인다.
         # 로컬 서버로 붙일 때만 이 값을 바꾼다(그때는 http라 NSAppTransportSecurity 예외가 필요하다).
         TCApiBaseURL: "https://bokbok9.tail8b977f.ts.net"
+        # 지도 SDK 네이티브 키 — 번들 ID 제한(com.fromj.trip). 무료 스펙에서 번들 ID를 바꿨다면 콘솔의 제한에 그 값도 넣는다.
+        TCGoogleMapsKey: "AIzaSyC5b_lS9bW-qGFnL9KQ0Kn8SBr0a0VodIg"
+        TCKakaoNativeKey: "fd08ca0a759ed5b4f1240887ed814957"
         TCSupabaseURL: ""
         TCSupabaseAnonKey: ""
+    dependencies:
+      - package: GoogleMaps
+        product: GoogleMaps
+      - package: KakaoMapsSDK
+        product: KakaoMapsSDK-SPM
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.fromj.trip

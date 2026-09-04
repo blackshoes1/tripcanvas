@@ -2,8 +2,8 @@
 
 여행을 **실행하는** 앱. 여기서 답하는 것은 "지금 무엇을 하면 되는가"다.
 
-계획도 앱에서 한다 — **일정 편집(일자·장소)이 네이티브로 들어왔다**(`Features/Plan`). 지도·장소 검색·예약 편집·
-함께하기는 아직 웹에만 있고 순서대로 옮긴다. 웹뷰로 감싸는 길은 택하지 않았다.
+계획도 앱에서 한다 — **일정 편집(일자·장소)과 지도·장소 검색이 네이티브로 들어왔다**(`Features/Plan` · `Features/Map`).
+예약 편집·함께하기는 아직 웹에만 있고 순서대로 옮긴다. 웹뷰로 감싸는 길은 택하지 않았다.
 
 > ## 검증 상태
 >
@@ -36,6 +36,24 @@
 - 보기 권한(VIEWER)은 편집 진입점이 아예 뜨지 않는다.
 - ⚠️ 판단은 여전히 서버다. 여기서 하는 것은 **문서 편집**뿐이고 ETA·앵커·추천은 `/api/v1`이 준 것을 그린다.
 
+## 지도·장소 검색 (Features/Map)
+
+웹과 같은 듀얼 엔진이다 — **국내는 카카오맵 SDK, 해외는 Google Maps SDK**(`MapEngineView`, 판정은 `lib.js`의 `inKorea`와 같다).
+검색도 같은 규칙(`isKoreanSearch`)으로 가른다. 키 세 종류가 서로 다른 곳에 산다:
+
+| 무엇 | 어디서 | 키 |
+|---|---|---|
+| 국내 지도 | 앱, 카카오맵 SDK | 카카오 **네이티브 앱 키** (`TCKakaoNativeKey`, 번들 ID 제한) |
+| 해외 지도 | 앱, Maps SDK for iOS | 구글 **iOS 키** (`TCGoogleMapsKey`, 번들 ID 제한) |
+| 국내 검색 | **서버** `GET /api/v1/places/search` | 카카오 REST 키 — 앱에 넣을 수 없다(제한 불가) |
+| 해외 검색 | 앱, Places API (New) REST | 구글 iOS 키 + `X-Ios-Bundle-Identifier` 헤더 |
+
+- 웹 키(리퍼러·도메인 제한)는 앱에서 거부된다. 구글 키는 제한을 한 종류만 걸 수 있어 **웹 키와 iOS 키가 따로**다.
+- 무료 스펙에서 번들 ID를 바꿔 쓰면 콘솔(구글·카카오 둘 다)의 제한에 그 값도 넣어야 폰에서 지도가 뜬다. 안 넣으면 오류 없이 지도만 비어 있다(카카오는 `authenticationFailed` 로그).
+- 카카오 SDK는 POI 탭 신원을 주지 않는다(웹과 같은 제약) — 국내 지도에서 고른 자리는 좌표뿐이고 이름은 사용자가 쓴다. 해외는 POI를 탭하면 `placeId`·이름이 온다.
+- 좌표 역추적(이름 추측)은 하지 않는다 — 웹의 `reverseSpot`은 최후 수단이고, 여기서는 아예 없다.
+- ⚠️ `PlaceSearchModel.swift`의 `inKorea`·`isKoreanSearch`·`cityFromGoogle`·`catFromGoogle`은 `lib.js`의 **복사본**이다. 규칙을 바꿀 때 `lib.js`를 먼저 고치고 여기를 따라 맞춘다.
+
 ## 판단은 서버가, 표현은 iOS가
 
 웹의 `NextActionEngine`·`TripState`·`Replan`을 Swift로 다시 만들지 않았다. 두 벌을 두면 같은 상황에서
@@ -63,7 +81,8 @@ XcodeGen을 쓰고 싶지 않다면 Xcode에서 iOS App 프로젝트를 새로 �
 (Bundle ID·Deployment Target은 `project.yml`의 값을 참고).
 
 - 최소 iOS 17 (`@Observable` 사용)
-- 외부 의존성 없음 — Supabase Auth도 REST + `URLSession`으로 직접 부른다 (SDK를 넣지 않았다)
+- 외부 의존성은 **지도 SDK 둘뿐**(SPM: `googlemaps/ios-maps-sdk` · `kakao-mapsSDK/KakaoMapsSDK-SPM`). 나머지는 REST + `URLSession`이다
+  — Supabase Auth도 SDK 없이 직접 부른다
 
 ## 무료 Apple ID로 내 아이폰에서 실행
 
@@ -109,7 +128,7 @@ Core/
   Auth/       Supabase Auth REST + Keychain 세션
   Storage/    마지막 Today 캐시 (오프라인 읽기)
   Location/   단발성 위치 조회 (연속 추적 없음)
-Features/     Trips · Today · Plan(일정 편집) · Suggestions · Replan · Booking · Map
+Features/     Trips · Today · Plan(일정 편집) · Map(듀얼 엔진 지도·검색) · Suggestions · Replan · Booking
 Services/     TripService (API 호출을 화면에서 감춘다)
 DesignSystem/ 간격·타이포·공용 컴포넌트
 Tests/        디코딩·상태 계산·ViewModel

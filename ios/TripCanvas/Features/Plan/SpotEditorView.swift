@@ -41,6 +41,7 @@ struct SpotEditorView: View {
     @State private var draft: TripSpot
     @State private var costText: String
     @State private var showsDeleteConfirm = false
+    @State private var showsMapPicker = false
 
     init(target: SpotEditorTarget,
          dayCount: Int,
@@ -70,6 +71,30 @@ struct SpotEditorView: View {
                             Text("\(category.icon) \(category.label)").tag(SpotCategory?.some(category))
                         }
                     }
+                }
+
+                Section {
+                    if let point = draft.point {
+                        LabeledContent("좌표", value: String(format: "%.5f, %.5f", point.lat, point.lng))
+                            .font(.subheadline)
+                    } else {
+                        Label("위치 없음 — 동선·도착 예상에서 빠집니다", systemImage: "mappin.slash")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    Button {
+                        showsMapPicker = true
+                    } label: {
+                        Label(draft.point == nil ? "지도에서 자리 고르기" : "지도에서 자리 바꾸기", systemImage: "map")
+                    }
+                    if draft.point != nil {
+                        Button("좌표 지우기", role: .destructive) {
+                            draft.point = nil
+                            draft.placeId = nil
+                        }
+                    }
+                } header: {
+                    Text("위치")
                 }
 
                 Section {
@@ -149,6 +174,14 @@ struct SpotEditorView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("완료") { save() }
                         .disabled(draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+            .sheet(isPresented: $showsMapPicker) {
+                // 이름이 비어 있고 해외 POI를 탭했으면 그 이름을 받는다. 있는 이름을 덮지는 않는다.
+                MapPickerView(initial: draft.point, regionHint: MapRegion.isKoreanSearch(draft.name, near: nil)) { pick in
+                    draft.point = pick.point
+                    draft.placeId = pick.placeId
+                    if draft.name.trimmingCharacters(in: .whitespaces).isEmpty, let name = pick.name { draft.name = name }
                 }
             }
             .confirmationDialog("이 장소를 일정에서 뺄까요?", isPresented: $showsDeleteConfirm, titleVisibility: .visible) {

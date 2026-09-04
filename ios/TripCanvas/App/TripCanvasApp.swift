@@ -1,8 +1,16 @@
+import GoogleMaps
+import KakaoMapsSDK
 import SwiftUI
 
 @main
 struct TripCanvasApp: App {
     @State private var environment = AppEnvironment()
+
+    init() {
+        // 지도 SDK는 첫 지도 화면보다 먼저 키를 받아야 한다. 여기 한 번이면 끝이다.
+        GMSServices.provideAPIKey(AppConfig.googleMapsKey)
+        SDKInitializer.InitSDK(appKey: AppConfig.kakaoNativeKey)
+    }
 
     var body: some Scene {
         WindowGroup {

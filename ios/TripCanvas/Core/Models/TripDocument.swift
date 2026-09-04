@@ -152,6 +152,12 @@ struct TripSpot: Hashable, Sendable {
         set { raw.setOrRemove("cat", newValue.map { .string($0.rawValue) }) }
     }
 
+    /// 구글 Place ID — 호텔 identity·시세 조회에 쓴다. 카카오로 담은 장소에는 없다.
+    var placeId: String? {
+        get { raw["placeId"]?.stringValue }
+        set { raw.setOrRemove("placeId", newValue.flatMap { $0.isEmpty ? nil : .string($0) }) }
+    }
+
     /// 숙소 연박 수.
     var nights: Int? {
         get { raw["nights"]?.intValue }

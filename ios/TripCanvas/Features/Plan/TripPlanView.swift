@@ -10,6 +10,8 @@ struct TripPlanView: View {
     @Environment(AppEnvironment.self) private var env
     @State private var model: TripPlanViewModel?
     @State private var editor: SpotEditorTarget?
+    @State private var showsSearch = false
+    @State private var showsMap = false
 
     var body: some View {
         Group {
@@ -25,14 +27,28 @@ struct TripPlanView: View {
             if let model, model.canEdit, model.day != nil {
                 ToolbarItem(placement: .topBarTrailing) { EditButton() }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { editor = .create } label: { Image(systemName: "plus") }
-                        .accessibilityLabel("장소 추가")
+                    // 검색이 먼저다 — 좌표가 있어야 동선·ETA·지도에 들어간다. 직접 입력은 그다음.
+                    Menu {
+                        Button { showsSearch = true } label: { Label("검색해서 담기", systemImage: "magnifyingglass") }
+                        Button { editor = .create } label: { Label("직접 입력", systemImage: "square.and.pencil") }
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                    .accessibilityLabel("장소 추가")
                 }
             }
         }
         .task {
             if model == nil { model = TripPlanViewModel(tripId: trip.id, service: env.service) }
             await model?.load()
+        }
+        .sheet(isPresented: $showsSearch) {
+            if let model {
+                // 근처 우선의 기준은 그날 마지막 좌표 — 웹이 앵커로 검색하는 것과 같다.
+                PlaceSearchView(near: model.day?.pins.last?.point) { spot in
+                    Task { await model.addSpot(spot) }
+                }
+            }
         }
         .sheet(item: $editor) { target in
             if let model {
@@ -71,8 +87,19 @@ struct TripPlanView: View {
         } else {
             VStack(spacing: 0) {
                 dayPicker(model)
+                Picker("보기", selection: $showsMap) {
+                    Text("목록").tag(false)
+                    Text("지도").tag(true)
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, Space.l)
+                .padding(.bottom, Space.s)
                 Divider()
-                spotList(model)
+                if showsMap {
+                    dayMap(model)
+                } else {
+                    spotList(model)
+                }
             }
             .overlay(alignment: .top) {
                 if let error = model.errorMessage {
@@ -179,6 +206,34 @@ struct TripPlanView: View {
             .refreshable { await model.load() }
         } else {
             EmptyStateView(symbol: "calendar", title: "일자가 없어요", message: "웹에서 일자를 먼저 만들어 주세요.")
+        }
+    }
+
+    /// 그날의 동선. 좌표 없는 장소는 여기 안 나온다 — 목록의 '위치 없음'이 그 사실을 말한다.
+    @ViewBuilder
+    private func dayMap(_ model: TripPlanViewModel) -> some View {
+        if let day = model.day {
+            let pins = day.pins
+            if pins.isEmpty {
+                EmptyStateView(
+                    symbol: "map",
+                    title: "지도에 놓을 장소가 없어요",
+                    message: "검색해서 담으면 좌표가 함께 들어와 여기에 보입니다.")
+            } else {
+                MapEngineView(pins: pins)
+                    .ignoresSafeArea(edges: .bottom)
+                    .overlay(alignment: .topTrailing) {
+                        let missing = day.spots.count - pins.count
+                        if missing > 0 {
+                            Text("위치 없는 장소 \(missing)곳은 지도에 없어요")
+                                .font(.caption)
+                                .padding(.horizontal, Space.m)
+                                .padding(.vertical, Space.xs + 2)
+                                .background(.thinMaterial, in: Capsule())
+                                .padding(Space.m)
+                        }
+                    }
+            }
         }
     }
 
