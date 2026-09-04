@@ -51,11 +51,11 @@ curl -s https://$API_DOMAIN/api/health
 
 운영 DB는 리허설 내내 **읽기만** 한다. 쓰는 쪽은 언제나 사본이다.
 
-| | 무엇으로 | 무엇을 잡는가 | 언제 |
-|---|---|---|---|
-| **R0** | 합성 데이터 + PGlite | 스크립트 자체 — 순서·시퀀스·트리거·멱등성 | CI에서 매번 |
-| **R1** | 운영 스냅샷 사본 | 실데이터의 이상값 — 깨진 참조·예상 못 한 null·규모와 소요시간 | 스크립트를 고칠 때마다 |
-| **R2** | R1 결과 + staging 앱 | 전환 예행 — 로그인·저장·협업이 실제로 도는가, 롤백이 되는가 | 전환 직전 1~2회 |
+| | 무엇으로 | 무엇을 잡는가 | 언제 | 상태 |
+|---|---|---|---|---|
+| **R0** | 합성 데이터 + PGlite | 스크립트 자체 — 순서·시퀀스·트리거·멱등성 | CI에서 매번 | 통과 |
+| **R1** | 운영 데이터(읽기 전용) | 실데이터의 이상값 — 깨진 참조·예상 못 한 null·규모와 소요시간 | 스크립트를 고칠 때마다 | **2026-09-04 통과** |
+| **R2** | 덤프 복원 + staging 앱 | 복원 경로와 전환 예행 — 로그인·저장·협업이 도는가, 롤백이 되는가 | 전환 직전 1~2회 | 미실시 |
 
 ### R1 1차 결과 (2026-09-03) — 운영 조사
 
@@ -84,18 +84,56 @@ curl -s https://$API_DOMAIN/api/health
 **이 조사로 찾은 진짜 결함은 데이터가 아니라 스크립트였다** — `importAll`이 트랜잭션이 아니어서
 중간에 걸리면 앞 테이블이 커밋된 채 남았다. 위 "전부 아니면 전무"가 그 수정이고, R0에 회귀 테스트를 넣었다.
 
-남은 것은 **실제 데이터를 옮겨 보는 것**(pg_dump → 복원 → `--trial`)이다. NAS의 PostgreSQL이 필요하다.
+### R1 2차 결과 (2026-09-04) — 실데이터로 예행 통과
 
-### 추출
+NAS(Synology DS920+)에 PostgreSQL 17을 띄우고 **운영 데이터 그대로** 예행했다. `--trial --reset`.
+
+```
+183행 (9개 테이블) · 걸린 시간 1초 · 시퀀스 10개 재설정
+개수 전수 일치 · 고아 행 7개 검사 모두 0
+내용 trips.data · trips.revision · trip_snapshots.data 해시 일치
+```
+
+숫자는 9/3 조사와 같고 `trip_activity` 30(당시 4) · `hotel_price_snapshots` 34(33)만 늘었다 — 그 사이 앱을 쓴 만큼이다.
+"원본에 없음" 넷도 그대로다. **이 스크립트로 옮기면 데이터가 그대로 온다**는 것이 실물로 확인됐다.
+
+**아직 예행하지 않은 것: 덤프 → 복원 경로.** 아래처럼 운영을 직접 읽었기 때문이다. 그 경로는 R2에서 처음 돌게 된다.
+
+### 추출 — 사본을 만들 것인가, 운영을 직접 읽을 것인가
+
+**이관기는 원본에 절대 쓰지 않는다.** `pgSource.ts`가 원본에 보내는 SQL은 셋뿐이다:
+`select to_regclass(...)` · `select id, email from auth.users` · `select * from public.<표>`.
+`importer.ts`의 `truncate`는 대상 트랜잭션이다. 그래서 **R1은 `LEGACY_DATABASE_URL`을 운영에 직접 걸어도 안전하다** — 실제로 그렇게 통과했다.
+
+⚠️ 예전에 여기 적혀 있던 `--data-only` 덤프만으로는 **빈 DB에 복원할 수 없다.** CREATE TABLE이 없다.
+사본을 만들려면 스키마도 함께 떠야 하고, Supabase 스키마는 `auth.uid()`·`anon`/`authenticated` 역할을 참조하므로
+`test/rls/supabase-stub.sql`을 먼저 적용해야 한다. 순서는 **스텁 → schema.sql → public.sql → users.csv**.
 
 ```bash
-# 운영 Supabase(직접 연결). 읽기만 한다
-pg_dump "$SUPABASE_DIRECT_URL" --data-only --schema=public --no-owner --no-privileges -f dump/public.sql
+# 전환 당일에 쓸 스냅샷(과 R2의 복원 예행용)
+pg_dump "$SUPABASE_DIRECT_URL" --schema-only --schema=public --no-owner --no-privileges -f dump/schema.sql
+pg_dump "$SUPABASE_DIRECT_URL" --data-only   --schema=public --no-owner --no-privileges -f dump/public.sql
 # 계정은 id·email만 — 해시·메타데이터는 가져오지 않는다(§19)
 psql "$SUPABASE_DIRECT_URL" -Atc "copy (select id, email from auth.users) to stdout with csv" > dump/users.csv
 ```
 
-`SUPABASE_DIRECT_URL`은 셸 히스토리·로그에 남기지 않는다(§58).
+`SUPABASE_DIRECT_URL`은 셸 히스토리·로그에 남기지 않는다(§58). NAS가 IPv4면 직접 연결(`db.<ref>.supabase.co`)은
+IPv6 전용이라 붙지 않는다 — **Session pooler**(`aws-1-<region>.pooler.supabase.com:5432`, 사용자 `postgres.<ref>`)를 쓴다.
+
+### Synology에서 실제로 막힌 곳 (2026-09-04)
+
+전부 한 번씩 겪었다. R2에서 같은 데서 멈추지 않도록 남긴다.
+
+| 증상 | 원인과 처방 |
+|---|---|
+| `scp: Connection closed` | Synology sshd에 SFTP 서브시스템이 없다. `scp -O`(예전 프로토콜) |
+| `.env` 파싱 오류 (`unexpected character in variable name`) | Windows 체크아웃의 CRLF. `.gitattributes`가 `deploy/**`를 `eol=lf`로 고정한다 |
+| compose YAML이 안 열림 | `:?` 기본 오류 메시지 안의 콜론. 값을 따옴표로 감싼다 |
+| `no pg_hba.conf entry for host "127.0.0.1"` | **DSM 자체 PostgreSQL이 5432를 이미 쓴다.** 다른 포트(15432 등)로 |
+| 포트를 열었는데 안 닿음 | Tailscale이 tailnet 트래픽을 NAS의 **localhost로 넘긴다**. `127.0.0.1:15432:5432`로 publish해야 한다 |
+| `docker compose port`가 매핑 없음 | `internal: true` 네트워크에만 붙은 컨테이너는 포트를 못 낸다. `networks: [internal, edge]` |
+| 비밀번호를 바꿨는데 인증 실패 | `POSTGRES_PASSWORD`는 **볼륨을 처음 만들 때만** 적용된다. `alter user ... with password`로 직접 바꾼다 |
+| 컨테이너 이름 충돌 | 남은 컨테이너가 이름을 잡고 있다. `docker compose down` 후 `up -d` (**`-v`는 붙이지 않는다** — 볼륨이 날아간다) |
 
 ### 돌리는 방법
 
@@ -105,14 +143,20 @@ psql "$SUPABASE_DIRECT_URL" -Atc "copy (select id, email from auth.users) to std
 cd next && npm test -- src/server/migration     # 이관기·검증·원본 21개 시나리오
 ```
 
-**R1**은 복원한 사본을 가리키고 CLI를 돌린다. 세 단계가 **같은 경로**를 지난다 — 다른 것은 마지막에 커밋하느냐뿐이라, 예행이 통과했는데 당일에 처음 보는 오류가 나지 않는다.
+**R1**은 원본을 가리키고 CLI를 돌린다. 세 단계가 **같은 경로**를 지난다 — 다른 것은 마지막에 커밋하느냐뿐이라, 예행이 통과했는데 당일에 처음 보는 오류가 나지 않는다.
+
+원본은 운영(Session pooler) 또는 복원한 사본 어느 쪽이어도 된다 — 이관기는 원본에 쓰지 않는다(위 "추출").
+대상은 NAS의 PostgreSQL이고, 노트북에서 붙으려면 `127.0.0.1:15432`로 publish해 tailnet으로 닿는다.
 
 ```bash
 cd next && npm run tools:build
-# 1) 무엇이 옮겨질지 세어만 본다 (원본만 읽는다)
-LEGACY_DATABASE_URL=postgres://…/legacy_copy DATABASE_URL=postgres://…/tripcanvas npm run migrate:import
-# 2) 예행 — 전부 옮기고 검증까지 한 뒤 **되돌린다**. 대상에는 아무것도 남지 않는다
-LEGACY_DATABASE_URL=… DATABASE_URL=… npm run migrate:import -- --trial --reset
+read -r -p "Supabase URI: " LEGACY     # 히스토리에 남기지 않는다
+read -r -p "NAS DB 비밀번호: " PW
+TARGET="postgres://tripcanvas:$PW@<NAS의 tailscale IP>:15432/tripcanvas"
+
+DATABASE_URL="$TARGET" npm run db:migrate                                    # 대상에 스키마
+LEGACY_DATABASE_URL="$LEGACY" DATABASE_URL="$TARGET" npm run migrate:import  # 1) 세어만 본다
+LEGACY_DATABASE_URL="$LEGACY" DATABASE_URL="$TARGET" npm run migrate:import -- --trial --reset
 # 3) 실제로 (전환 당일)
 LEGACY_DATABASE_URL=… DATABASE_URL=… npm run migrate:import -- --apply --reset
 ```
