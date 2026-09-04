@@ -318,7 +318,8 @@ auth_session.token 에는 **서명 없는 token만** 들어 있다
 - Supabase 토큰은 서버가 직접 검증한다. 로컬 검증이 실패하면 예전처럼 `getUser`로 확인하고 **경고 로그**를 남긴다 — 그 로그가 보이면 프로젝트가 HS256이므로 `SUPABASE_JWT_SECRET`을 넣는다.
 - `trip_snapshots`(여행 버전 이력)를 새 DB에 채웠다 — `/api/v1/trips/:id/snapshots`. 이관 대상에도 들어 있다.
 - 가격 크론 `api/track-hotel-prices.js`는 모든 사용자의 여행을 읽어 관측을 쓰는 **시스템 작업**이라 사용자 토큰 모델에 맞지 않는다. 새 backend로 옮길 때는 서비스 계정 경로(내부 전용 라우트 + `CRON_SECRET`)로 다시 만든다 — Phase 10 전에.
-- 데이터 이관은 **실데이터로 예행을 통과했다**(R1, 2026-09-04 — NAS PostgreSQL 17, 183행, 1초, 개수·고아·내용 전부 일치). 같은 날 **덤프 복원 경로까지 확인했다**(R2 이관 부분 — 복원 오류 0줄, 사본 기준 이관·검증 통과). R2에 남은 것은 staging 앱 검증(로그인·저장·협업·롤백)이다. 절차와 Synology 함정은 `docs/backup-restore.md`.
+- 데이터 이관은 **R1·R2를 모두 통과했다**(2026-09-04). R1은 실데이터 예행(NAS PostgreSQL 17, 183행, 1초, 개수·고아·내용 일치), R2는 덤프 복원 경로에 이어 **staging 앱 검증까지**(로그인·저장·협업·롤백 — NAS + 컨테이너 Chromium 14/14). 절차와 결과는 `docs/staging-verification.md`, 추출·복원과 Synology 함정은 `docs/backup-restore.md`.
+- R2가 실제로 잡아낸 사고 하나: 이관기가 **낡은 사본을 원본으로 읽었는데 검증이 통과했다**(검증은 원본·대상이 같은지만 본다). 이제 시작할 때 `[migration] 원본 <계정@호스트/DB> → 대상 …`을 찍는다 — 전환 당일 그 줄부터 읽는다.
 - 미검증: `next/Dockerfile`·`deploy/docker-compose.yml`(작성 환경에 Docker 없음), 실제 PostgreSQL 서버(테스트는 PGlite — 실시간 트리거·LISTEN은 PGlite에서 진짜로 돌지만 `pg` 드라이버 경로는 미검증), 실제 Supabase JWKS 응답(테스트는 로컬 키).
 
 ## 롤백
