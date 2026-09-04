@@ -82,8 +82,8 @@ Live Activity 는 `areActivitiesEnabled` 가 false 라 조용히 건너뛴다.
 
 ## 설정
 
-`TripCanvas/App/AppEnvironment.swift`의 `AppConfig`가 기본값을 들고 있다 — API는 `https://tripcanvas-api.vercel.app`(정적 웹이 아니다), Supabase는 기존 프로젝트.
-로컬 서버로 붙일 때는 `Info.plist`의 `TCApiBaseURL`을 덮어쓴다.
+`TripCanvas/App/AppEnvironment.swift`의 `AppConfig`가 기본값을 들고 있다 — API는 **NAS**(`https://bokbok9.tail8b977f.ts.net`, Tailscale Funnel이 HTTPS를 붙인다. 2026-09-04 전환),
+Supabase는 로그인에만 쓰는 기존 프로젝트. 로컬 서버로 붙을 때는 `Info.plist`의 `TCApiBaseURL`을 덮어쓴다 — http라면 ATS 예외(`NSAllowsLocalNetworking`)도 함께 넣는다.
 
 ## 구조
 

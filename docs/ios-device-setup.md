@@ -299,7 +299,7 @@ API 주소를 잘못 보고 있을 가능성이 높다. `/api/v1` 은 정적 웹
 **별도 Next 프로젝트**(`tripcanvas-api`)가 서빙한다. 정적 웹을 가리키면 모든 호출이 404가 되는데
 앱에는 오류가 아니라 **"여행 없음"** 으로 보인다.
 
-`ios/project.yml` 의 `TCApiBaseURL` 이 `https://tripcanvas-api.vercel.app` 인지 확인한다.
+`ios/project.yml` 의 `TCApiBaseURL` 이 `https://bokbok9.tail8b977f.ts.net` (NAS, 2026-09-04 전환) 인지 확인한다.
 
 ---
 
@@ -309,7 +309,7 @@ API 주소를 잘못 보고 있을 가능성이 높다. `/api/v1` 은 정적 웹
 
 | 키 | 기본값 | 언제 바꾸나 |
 |---|---|---|
-| `TCApiBaseURL` | `https://tripcanvas-api.vercel.app` | 로컬 API 서버로 붙일 때 |
+| `TCApiBaseURL` | `https://bokbok9.tail8b977f.ts.net` (NAS) | 로컬 API 서버로 붙을 때. http라면 `NSAppTransportSecurity: {NSAllowsLocalNetworking: true}` 도 함께 |
 | `TCSupabaseURL` | 비움 → 코드 기본값 | 다른 Supabase 프로젝트를 볼 때 |
 | `TCSupabaseAnonKey` | 비움 → 코드 기본값 | 위와 같음 |
 

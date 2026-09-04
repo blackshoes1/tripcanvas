@@ -13,7 +13,7 @@
 
 - 원격 `main` 푸시 시 **Vercel 자동 배포** (프로젝트 `tripcanvas`, 프로덕션 `tripcanvas-ai.vercel.app`).
 - ⚠️ **API는 이제 NAS다**(2026-09-04 전환). 웹이 부르는 주소는 `https://bokbok9.tail8b977f.ts.net`(Tailscale Funnel이 HTTPS를 붙인다)이고 데이터는 NAS PostgreSQL이다. Vercel에는 정적 웹만 남았고, `tripcanvas-api` 프로젝트는 **롤백 대상**으로 남겨 두었다(여전히 Supabase를 본다). 전환 스위치는 `api.js`·`auth.js`의 `DEFAULT_BASE` 두 줄이다 — `docs/nas-deployment.md`.
-- ⚠️ 그래서 **가용성이 집 NAS에 걸린다.** NAS가 꺼지거나 Tailscale이 끊기면 저장이 안 된다(로컬 편집은 보존된다). iOS `TCApiBaseURL` 은 아직 Vercel API를 가리킨다.
+- ⚠️ 그래서 **가용성이 집 NAS에 걸린다.** NAS가 꺼지거나 Tailscale이 끊기면 저장이 안 된다(로컬 편집은 보존된다). iOS(`TCApiBaseURL`)도 같은 주소로 옮겼다.
 - 커밋 author 이메일은 반드시 **GitHub 계정과 매칭되는 유효한 주소**여야 한다 (`blackshoes85@gmail.com`).
   `.local` 등 로컬 호스트 기반 자동 이메일이면 Vercel이 배포를 거부한다.
 
