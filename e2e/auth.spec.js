@@ -28,6 +28,12 @@ async function fakeApi(context,options={}){
       }
       // 재설정은 계정 유무를 알려주지 않는다 — 서버도 같은 답을 준다
       if(path==='/api/auth/request-password-reset') return new Response('{}',{status:200});
+      // 새 비밀번호 — 링크는 한 번만 쓸 수 있다. 만료·재사용은 400이다
+      if(path==='/api/auth/reset-password'){
+        const body=init&&init.body?JSON.parse(init.body):{};
+        if(body.token!=='good-token') return new Response(JSON.stringify({message:'invalid token'}),{status:400});
+        return new Response('{}',{status:200});
+      }
       if(path==='/api/v1/me') return new Response(JSON.stringify({trips:[],realtime:{provider:'NONE',url:null}}),{status:200});
       if(path==='/api/v1/trips') return new Response(JSON.stringify({trips:[]}),{status:200});
       return new Response('{}',{status:200});
@@ -111,4 +117,43 @@ test('이메일 없이 재설정을 누르면 서버에 보내지 않는다',asy
   await page.locator('#authReset').click();
   await expect(page.locator('#toast')).toContainText('이메일을 먼저');
   expect(await page.evaluate(()=>window.__calls.filter(c=>c[0].indexOf('/api/auth/')===0).length)).toBe(0);
+});
+
+// 메일의 재설정 링크로 들어오는 길 — API 호스트에는 화면이 없어서 링크는 웹으로 온다(#reset=<token>).
+test('#reset= 링크로 새 비밀번호를 정하고, 토큰은 주소창에 남지 않는다',async({context,page})=>{
+  await fakeApi(context);
+  await page.goto('/#reset=good-token');
+
+  await expect(page.locator('#resetModalBg')).toHaveClass(/show/);
+  expect(await page.evaluate(()=>location.hash)).toBe('');   // 토큰을 기록에 남기지 않는다
+
+  await page.locator('#resetPass').fill('12345');
+  await page.locator('#resetSubmit').click();
+  await expect(page.locator('#toast')).toContainText('6자 이상');   // 짧으면 서버까지 가지 않는다
+  expect(await page.evaluate(()=>window.__calls.filter(c=>c[0]==='/api/auth/reset-password').length)).toBe(0);
+
+  await page.locator('#resetPass').fill('newpw123456');
+  await page.locator('#resetSubmit').click();
+
+  await expect(page.locator('#resetModalBg')).not.toHaveClass(/show/);
+  await expect(page.locator('#authModalBg')).toHaveClass(/show/);   // 바로 로그인으로 이어 준다
+  const sent=await page.evaluate(()=>window.__calls.find(c=>c[0]==='/api/auth/reset-password'));
+  expect(sent[2]).toEqual({newPassword:'newpw123456',token:'good-token'});
+});
+
+test('만료된 재설정 링크는 다시 요청하라고 말한다 — 조용히 실패하지 않는다',async({context,page})=>{
+  await fakeApi(context);
+  await page.goto('/#reset=stale-token');
+  await page.locator('#resetPass').fill('newpw123456');
+  await page.locator('#resetSubmit').click();
+  await expect(page.locator('#toast')).toContainText('다시 요청');
+  await expect(page.locator('#resetModalBg')).toHaveClass(/show/);   // 열어 둔다 — 새 링크를 받아 다시 넣을 수 있게
+});
+
+test('가입 확인을 마치고 돌아오면 로그인으로 이어 준다',async({context,page})=>{
+  await fakeApi(context);
+  await page.goto('/#verified=1');
+  await expect(page.locator('#toast')).toContainText('이메일이 확인됐어요');
+  await expect(page.locator('#authModalBg')).toHaveClass(/show/);
+  expect(await page.evaluate(()=>location.hash)).toBe('');
 });

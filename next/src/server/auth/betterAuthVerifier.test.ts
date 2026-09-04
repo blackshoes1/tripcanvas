@@ -26,7 +26,7 @@ const mail: MailService = {
 beforeEach(async () => {
   db = await createTestDatabase();
   mails = [];
-  auth = createBetterAuth({ db: db.db, mail, secret: 'test-secret-at-least-32-characters-long!!', baseURL: BASE });
+  auth = createBetterAuth({ db: db.db, mail, secret: 'test-secret-at-least-32-characters-long!!', baseURL: BASE, webBaseURL: 'https://web.test' });
   verifier = createBetterAuthVerifier(auth, new PgAuthIdentityRepository(db.db));
 });
 

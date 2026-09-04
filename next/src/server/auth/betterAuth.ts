@@ -24,6 +24,30 @@ export interface BetterAuthOptions {
   baseURL: string;
   /** 브라우저에서 이 API를 부르는 출처(§72). `*`를 쓰지 않는다 */
   trustedOrigins?: string[];
+  /**
+   * 메일 속 링크가 **사람이 도착할 곳**. API 호스트에는 화면이 없다 — 기본값(baseURL)으로 두면
+   * 확인·재설정 링크가 빈 페이지로 떨어진다(2026-09-04에 실제로 그랬다: `.../?error=INVALID_TOKEN`).
+   */
+  webBaseURL: string;
+}
+
+/**
+ * better-auth가 만든 확인 링크의 도착지를 웹으로 바꾼다.
+ * 토큰 검증은 그대로 better-auth의 엔드포인트가 하고(그래야 email_verified가 올라간다), 그 뒤 이동만 웹으로.
+ */
+export function withWebCallback(url: string, webBaseURL: string): string {
+  try {
+    const parsed = new URL(url);
+    parsed.searchParams.set('callbackURL', `${webBaseURL.replace(/\/+$/, '')}/#verified=1`);
+    return parsed.toString();
+  } catch {
+    return url;   // 모양이 예상과 다르면 라이브러리가 준 것을 그대로 쓴다
+  }
+}
+
+/** 재설정은 웹이 새 비밀번호를 받아야 한다 — 링크를 웹으로 직접 보낸다(토큰은 웹이 API로 되돌려준다) */
+export function resetLink(token: string, webBaseURL: string): string {
+  return `${webBaseURL.replace(/\/+$/, '')}/#reset=${encodeURIComponent(token)}`;
 }
 
 export function createBetterAuth(opts: BetterAuthOptions) {
@@ -50,12 +74,13 @@ export function createBetterAuth(opts: BetterAuthOptions) {
       enabled: true,
       // 확인되지 않은 이메일로는 로그인할 수 없다 — 남의 이메일로 가입해 그 사람의 여행을 가져가는 길을 막는다
       requireEmailVerification: true,
-      sendResetPassword: async ({ user, url }) => { await opts.mail.sendPasswordReset(user.email, url); }
+      // ⚠️ 라이브러리가 준 url이 아니라 **웹 주소**로 보낸다 — 새 비밀번호를 받는 화면은 웹에만 있다
+      sendResetPassword: async ({ user, token }) => { await opts.mail.sendPasswordReset(user.email, resetLink(token, opts.webBaseURL)); }
     },
     emailVerification: {
       sendOnSignUp: true,
       autoSignInAfterVerification: false,
-      sendVerificationEmail: async ({ user, url }) => { await opts.mail.sendVerificationEmail(user.email, url); }
+      sendVerificationEmail: async ({ user, url }) => { await opts.mail.sendVerificationEmail(user.email, withWebCallback(url, opts.webBaseURL)); }
     },
     // iOS는 쿠키를 쓰지 않는다 — Authorization: Bearer <session token>으로 같은 세션을 쓴다(§70)
     plugins: [bearer()],

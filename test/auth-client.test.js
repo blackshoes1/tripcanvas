@@ -221,3 +221,25 @@ test('SUPABASE 모드에서는 자체 Auth 저장소를 건드리지 않는다',
   await TC_AUTH.signOut();
   assert.equal(storage.size, 0);
 });
+
+test('새 비밀번호 — 토큰과 함께 보내고, 못 쓰는 링크는 그렇다고 말한다', async () => {
+  let seen = null;
+  const f = setup((url, init) => {
+    seen = { url, body: init && init.body ? JSON.parse(init.body) : null };
+    return { status: 200, body: {} };
+  });
+  const ok = await TC_AUTH.resetPassword('tok-1', 'newpw123456');
+  assert.equal(ok.error, null);
+  assert.ok(seen.url.endsWith('/api/auth/reset-password'), seen.url);
+  assert.deepEqual(seen.body, { newPassword: 'newpw123456', token: 'tok-1' });
+  assert.ok(f);
+
+  // 만료·재사용은 '비밀번호가 틀렸다'와 다른 상황이다 — 본문에는 invalid 밖에 없어도 갈라 준다
+  setup(() => ({ status: 400, body: { message: 'invalid token' } }));
+  const stale = await TC_AUTH.resetPassword('tok-1', 'newpw123456');
+  assert.equal(stale.error.code, 'INVALID_RESET_TOKEN');
+
+  setup(() => ({ status: 429, body: {} }));
+  const limited = await TC_AUTH.resetPassword('tok-1', 'newpw123456');
+  assert.equal(limited.error.code, 'RATE_LIMITED');
+});

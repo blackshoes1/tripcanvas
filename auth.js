@@ -234,6 +234,30 @@
     return { error: null };
   }
 
+  /**
+   * 메일 링크로 받은 토큰 + 새 비밀번호. 토큰 검증은 서버(better-auth)가 한다.
+   * @param {string} token @param {string} password
+   */
+  async function resetPassword(token, password) {
+    if (_provider === 'SUPABASE') return { error: { code: 'UNAVAILABLE', message: '지금은 할 수 없어' } };
+    try {
+      const res = await call('/api/auth/reset-password', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ newPassword: password, token: token })
+      });
+      if (!res.ok) {
+        const mapped = toError(res.status, await readBody(res));
+        // 토큰 문제는 '비밀번호가 틀렸다'와 전혀 다른 상황이다 — 링크는 한 번만 쓰이고, 새로 요청하면 앞의 것이 무효가 된다.
+        // 일반 매퍼는 그것을 알 수 없으므로(본문에 'invalid'만 온다) 여기서 갈라 준다.
+        if (mapped.code !== 'RATE_LIMITED' && res.status >= 400 && res.status < 500) {
+          return { error: { code: 'INVALID_RESET_TOKEN', message: '링크가 만료됐거나 이미 쓴 링크야 — 재설정을 다시 요청해줘' } };
+        }
+        return { error: mapped };
+      }
+      return { error: null };
+    } catch (err) { return { error: networkError(err) }; }
+  }
+
   async function signOut() {
     if (_provider === 'SUPABASE') {
       if (_sb) { try { await _sb.auth.signOut(); } catch (_) { /* 이미 끊김 */ } }
@@ -266,7 +290,7 @@
 
   const AUTH = {
     configure, resolveProvider, provider, use, attachSupabase, restore,
-    signIn, signUp, signOut, requestPasswordReset, getToken, user, onChange,
+    signIn, signUp, signOut, requestPasswordReset, resetPassword, getToken, user, onChange,
     DEFAULT_BASE, TOKEN_KEY
   };
   if (typeof module !== 'undefined' && module.exports) { module.exports = AUTH; }   // Node (테스트)

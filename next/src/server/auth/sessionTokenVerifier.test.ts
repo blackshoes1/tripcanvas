@@ -34,7 +34,7 @@ const mail: MailService = {
 beforeEach(async () => {
   db = await createTestDatabase();
   mails = [];
-  auth = createBetterAuth({ db: db.db, mail, secret: SECRET, baseURL: BASE });
+  auth = createBetterAuth({ db: db.db, mail, secret: SECRET, baseURL: BASE, webBaseURL: 'https://web.test' });
   api = createBetterAuthVerifier(auth, new PgAuthIdentityRepository(db.db));
   sidecar = createSessionTokenVerifier({
     sessions: new PgAuthSessionRepository(db.db),

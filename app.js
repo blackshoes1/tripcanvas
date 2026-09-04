@@ -40,6 +40,8 @@ let liveCh=null, liveKey='', liveT=null, livePending=[], liveOn=false;
 let liveConn=null, liveChoice={provider:'SUPABASE',url:null};
 const JOIN_KEY='tripcanvas_join_v1';   // 초대 수락 대기 토큰 (로그인·메일 인증을 거쳐 돌아와도 참여 흐름이 이어지게)
 let pendingJoinToken=null;
+// ⚠️ 부팅 해시 라우터(#reset=)가 이 값을 먼저 대입한다 — 아래에 두면 TDZ로 스크립트가 죽는다
+let pendingResetToken='';
 function myRole(id){ return TC_COLLAB.roleOf(tripRoles, id||(store&&store.activeId), !!user); }
 // 읽기전용 보기(#v=)와 보기 권한(VIEWER)을 한 곳에서 판단한다 — 편집 진입점은 전부 이걸 본다
 function readOnly(){ return !!viewMode || !TC_COLLAB.canEdit(myRole()); }
@@ -2788,6 +2790,15 @@ document.getElementById('roSave').onclick=()=>{
     pendingJoinToken=TC_COLLAB.parseJoinHash(h);
     try{ localStorage.setItem(JOIN_KEY,pendingJoinToken); }catch(_){}
     setTimeout(()=>startJoin(pendingJoinToken),0);   // sb는 스크립트 끝에서 만들어진다 — 한 틱 뒤에
+  }else if(h.startsWith('#reset=')){
+    // 재설정 메일의 링크 — 토큰만 들고 온다. 새 비밀번호는 여기서 받아 서버가 검증한다.
+    pendingResetToken=decodeURIComponent(h.slice(7));
+    history.replaceState(null,'',location.pathname);   // 토큰을 주소창·기록에 남기지 않는다
+    setTimeout(openResetModal,0);
+  }else if(h==='#verified=1'){
+    // 가입 확인을 마치고 돌아온 길 — 확인만 됐을 뿐 로그인은 아직이다
+    history.replaceState(null,'',location.pathname);
+    setTimeout(()=>{ toast('이메일이 확인됐어요 — 이제 로그인해 주세요'); document.getElementById('authBtn').click(); },400);
   }else if(h.startsWith('#t=')){
     try{
       const result=decodeSharedTrip(h.slice(3)), t=result.ok&&result.value;
@@ -3758,6 +3769,32 @@ document.getElementById('authReset').onclick=async()=>{
   btn.disabled=false;
   toast('가입된 이메일이라면 재설정 메일이 갔어 — 메일함(스팸함도) 확인해줘','#1d6fd6');
 };
+// ── 새 비밀번호 (메일의 #reset= 링크) ──
+function openResetModal(){
+  document.getElementById('resetPass').value='';
+  document.getElementById('resetModalBg').classList.add('show');
+  document.getElementById('resetPass').focus();
+}
+document.getElementById('resetCancel').onclick=()=>{ pendingResetToken=''; document.getElementById('resetModalBg').classList.remove('show'); };
+document.getElementById('resetSubmit').onclick=async()=>{
+  const pw=document.getElementById('resetPass').value;
+  if((pw||'').length<6){ toast('비밀번호는 6자 이상','#e63946'); return; }
+  if(!pendingResetToken){ toast('링크가 올바르지 않아 — 재설정을 다시 요청해줘','#e63946'); return; }
+  const btn=document.getElementById('resetSubmit'); btn.disabled=true; btn.textContent='바꾸는 중…';
+  const {error}=await TC_AUTH.resetPassword(pendingResetToken,pw);
+  btn.disabled=false; btn.textContent='비밀번호 정하기';
+  if(error){
+    reportOperationalError('auth.reset',error);
+    // 링크는 한 번만 쓸 수 있고, 새로 요청하면 앞의 것은 무효가 된다 — 그 사실을 그대로 말한다
+    toast(error.code==='INVALID_RESET_TOKEN'?error.message:'비밀번호를 바꾸지 못했어 — 잠시 뒤에 다시 해줘','#e63946');
+    return;
+  }
+  pendingResetToken='';
+  document.getElementById('resetModalBg').classList.remove('show');
+  toast('비밀번호를 바꿨어 — 새 비밀번호로 로그인해줘');
+  document.getElementById('authBtn').click();
+};
+document.getElementById('resetPass').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('resetSubmit').click();});
 document.getElementById('authPass').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('authLogin').click();});
 updateAuthUI();
 

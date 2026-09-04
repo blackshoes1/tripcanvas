@@ -27,6 +27,8 @@ export interface ServerEnv {
   trustedOrigins: string[];
   /** 자체 실시간 사이드카의 공개 주소(wss://…/ws). 없으면 자체 실시간을 쓰지 않는다 */
   realtimeUrl: string | null;
+  /** 메일 속 링크가 도착할 웹 주소. API 호스트에는 사람이 볼 화면이 없다 */
+  webBaseUrl: string;
   smtp: SmtpConfig | null;
   /** 자체 Auth를 켤 수 있는가 — 비밀과 DB가 둘 다 있어야 한다 */
   newAuthEnabled: boolean;
@@ -74,6 +76,8 @@ export function parseEnv(env: Record<string, string | undefined>, warn?: (m: str
     // CORS와 같은 목록을 쓴다 — 설정이 없으면 이 앱의 알려진 웹 주소
     trustedOrigins: readAllowedOrigins(env),
     realtimeUrl: (env.REALTIME_URL ?? '').trim() || null,
+    // 설정이 없으면 허용 출처의 첫 번째 — 이 앱의 웹 주소다. 그래야 배포에 값을 하나 더 넣지 않아도 링크가 산다
+    webBaseUrl: ((env.WEB_BASE_URL ?? '').trim() || readAllowedOrigins(env)[0] || '').replace(/\/+$/, ''),
     smtp: readSmtp(env),
     newAuthEnabled: !!authSecret && !!databaseUrl,
     registry: readRegistry(env, warn)
