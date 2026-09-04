@@ -235,6 +235,20 @@ Supabase JS도 지금 localStorage에 토큰을 두므로 이 점은 달라지�
 - 로그아웃은 로컬 세션을 **먼저** 지운다 — 서버 호출이 실패해도 이 기기에서는 끝나야 한다.
 - 제공자를 정하면(`use`) 들고 있던 세션은 버린다 — 다른 Auth의 사용자를 이어서 들고 있으면 로그인한 것처럼 보이면서 아무것도 못 한다.
 
+### 메일 발송은 확인됐다 (2026-09-04)
+
+`npm run mail:test`로 **실제로 보내고 받은편지함에 도착하는 것**까지 확인했다(스팸함 아님). 발신은 Gmail 앱 비밀번호다 —
+도메인이 없어 `no-reply@…`를 쓸 수 없기 때문이고, 사용자 3명 규모에는 충분하다. 도메인이 생기면 `SMTP_*` 네 줄만 바꾸면 되고 코드는 그대로다.
+
+```
+SMTP_HOST=smtp.gmail.com  SMTP_PORT=587
+SMTP_USER=<계정>          SMTP_PASSWORD=<앱 비밀번호 16자, Google 계정에서 발급>
+MAIL_FROM=Trip Canvas <같은 계정>      # Gmail은 SMTP_USER와 다른 발신자를 거절한다
+```
+
+⚠️ **`API_BASE_URL`을 함께 넣어야 한다.** 없으면 기본값 `http://localhost:3000`이 쓰여 **메일 속 링크가 localhost가 된다**(`config/env.ts`).
+자체 Auth를 켤 때 `AUTH_SECRET`·`SMTP_*`와 **한 묶음**으로 넣는다.
+
 ### 실시간 사이드카도 자체 Auth 세션을 받는다
 
 `AUTH_SECRET`을 넣는 순간 웹·iOS는 better-auth 세션 토큰을 들고 온다. 사이드카가 그걸 모르면 **Auth를 넘기는 순간 실시간이 통째로 끊긴다** —
@@ -305,7 +319,7 @@ auth_session.token 에는 **서명 없는 token만** 들어 있다
 - `trip_snapshots`(여행 버전 이력)를 새 DB에 채웠다 — `/api/v1/trips/:id/snapshots`. 이관 대상에도 들어 있다.
 - 가격 크론 `api/track-hotel-prices.js`는 모든 사용자의 여행을 읽어 관측을 쓰는 **시스템 작업**이라 사용자 토큰 모델에 맞지 않는다. 새 backend로 옮길 때는 서비스 계정 경로(내부 전용 라우트 + `CRON_SECRET`)로 다시 만든다 — Phase 10 전에.
 - 데이터 이관은 **실데이터로 예행을 통과했다**(R1, 2026-09-04 — NAS PostgreSQL 17, 183행, 1초, 개수·고아·내용 전부 일치). 같은 날 **덤프 복원 경로까지 확인했다**(R2 이관 부분 — 복원 오류 0줄, 사본 기준 이관·검증 통과). R2에 남은 것은 staging 앱 검증(로그인·저장·협업·롤백)이다. 절차와 Synology 함정은 `docs/backup-restore.md`.
-- 미검증: 실제 SMTP **전달률**(provider 계정이 아직 없다). 코드 경로는 확인했다 — `npm run mail:test`가 앱과 같은 어댑터로 진짜 SMTP 대화를 하고, 로컬 수신기로 두 통이 도착하는 것(From·multipart text+html·링크·RFC 2047 한글 제목)을 확인했다. 남은 것은 provider를 붙이고 **받은 편지함에 오는지**(스팸함 아닌) 보는 것뿐이다, `next/Dockerfile`·`deploy/docker-compose.yml`(작성 환경에 Docker 없음), 실제 PostgreSQL 서버(테스트는 PGlite — 실시간 트리거·LISTEN은 PGlite에서 진짜로 돌지만 `pg` 드라이버 경로는 미검증), 실제 Supabase JWKS 응답(테스트는 로컬 키).
+- 미검증: `next/Dockerfile`·`deploy/docker-compose.yml`(작성 환경에 Docker 없음), 실제 PostgreSQL 서버(테스트는 PGlite — 실시간 트리거·LISTEN은 PGlite에서 진짜로 돌지만 `pg` 드라이버 경로는 미검증), 실제 Supabase JWKS 응답(테스트는 로컬 키).
 
 ## 롤백
 

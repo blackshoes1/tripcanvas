@@ -46,14 +46,14 @@ Root Directory 설정이 맞아도 이 메시지가 나온다 — 파일 자체�
 | `NEXT_PUBLIC_SUPABASE_URL` · `NEXT_PUBLIC_SUPABASE_ANON_KEY` | 공개용 키 — 데이터는 RLS가 지킨다. **`service_role` 키를 쓰지 않는다** | 레거시 프로젝트로 붙는다(기본값이 코드에 있다) |
 | `SUPABASE_JWT_SECRET` | 프로젝트 JWT secret | HS256 토큰이면 서버 로그에 폴백 경고가 뜬다 |
 | `DATABASE_URL` · `TC_MIGRATION_*` | 독립 PostgreSQL과 이관 레지스트리 | 전부 LEGACY(오늘의 동작) |
-| `AUTH_SECRET` · `API_BASE_URL` · `SMTP_*` | 자체 Auth | `/api/auth/*`가 404, 웹은 Supabase 로그인 |
+| `AUTH_SECRET` · `API_BASE_URL` · `SMTP_*` | 자체 Auth. 셋은 **한 묶음**이다 | `/api/auth/*`가 404, 웹은 Supabase 로그인 |
 | `REALTIME_URL` | 실시간 사이드카 주소 | 웹이 Supabase 실시간을 그대로 쓴다 |
 
 전체 목록과 설명은 `.env.example`. 로컬은 `next/.env.local`에 같은 이름으로 둔다.
 
 ⚠️ **`AUTH_SECRET`을 넣는 순간 웹 로그인이 자체 Auth로 바뀐다.** `GET /api/v1/auth-config`가 `TRIPCANVAS`를 답하고
 웹이 그것을 따르기 때문이다(PR11). 기존 사용자는 **비밀번호를 새로 정해야** 로그인된다(해시를 옮기지 않는다 §19) —
-`SMTP_*`가 함께 설정돼 있어야 재설정 메일이 실제로 나간다. 되돌리려면 `AUTH_SECRET`을 지우고 재배포한다.
+`SMTP_*`가 함께 설정돼 있어야 재설정 메일이 실제로 나간다(발송·전달은 2026-09-04 확인). ⚠️ `API_BASE_URL`도 함께 넣어야 한다 — 없으면 메일 속 링크가 `localhost`가 된다. 되돌리려면 `AUTH_SECRET`을 지우고 재배포한다.
 
 ### 웹 주소가 바뀔 때만 TRUSTED_ORIGINS
 
