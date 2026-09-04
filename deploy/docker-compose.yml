@@ -72,7 +72,8 @@ services:
     restart: unless-stopped
     ports: ["80:80", "443:443"]
     environment:
-      API_DOMAIN: ${API_DOMAIN:?API_DOMAIN 필요 (예: api.example.com)}
+      # ⚠️ 따옴표를 벗기지 말 것 — :? 뒤 메시지에 콜론이 들어가면 YAML이 매핑으로 읽어 파일 전체가 안 열린다
+      API_DOMAIN: "${API_DOMAIN:?API_DOMAIN 필요 — 예 api.example.com}"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
