@@ -11,9 +11,63 @@
 2. **운영 Supabase는 읽기만.** 이관기는 원본에 쓰지 않는다. 다만 **롤백 검증(5단계)만은 다르다** — 그때는 staging API가 운영에 쓸 수 있다. 그 절에 따로 적는다.
 3. **운영 웹(`tripcanvas-ai.vercel.app`)을 staging에 붙이지 않는다.** 같이 쓰는 사람이 staging DB를 보게 된다. 웹은 로컬에서 연다.
 
-## 0. 준비 — staging DB를 실데이터로 채운다
+## 준비 — NAS에 저장소를 올리고 포트를 연다
+
+⚠️ 0단계는 노트북에서 NAS의 `15432`로 붙는데, 그 포트를 여는 것이 아래 override다. 그래서 **override가 0단계보다 먼저**다.
+그리고 `api`·`realtime`은 `build: context: ..`로 **저장소 루트에서** 빌드한다(판단 엔진 `adaptive.js`가 루트에 있다) — deploy 파일만 옮겨 둔 NAS에서는 빌드가 안 된다.
+
+**NAS에 저장소 통째로.** Synology에 git이 없으면 맥에서 tar로 보낸다 — macOS 15의 `rsync`는 openrsync라 ssh 인증이 어긋나 `Permission denied`가 난다. `scp`는 SFTP 서브시스템이 없어 `-O`가 필요하다. tar가 제일 덜 걸린다.
+
+```bash
+# 맥
+cd <저장소> && tar --exclude=node_modules --exclude=.git --exclude=.next --exclude=test-results -czf - . \
+  | ssh <계정>@<NAS tailscale IP> 'mkdir -p ~/tripcanvas && tar -xzf - -C ~/tripcanvas'
+# "Ignoring unknown extended header keyword" 경고는 macOS 확장속성이라 무해하다
+```
+
+**기존 `.env`를 새 위치로.** 경로는 떠 있는 컨테이너의 라벨에서 꺼낸다 — 직접 찾지 않는다.
+
+```bash
+# NAS
+cp "$(sudo docker inspect tripcanvas-postgres-1 --format '{{index .Config.Labels "com.docker.compose.project.working_dir"}}')/.env" ~/tripcanvas/deploy/.env
+grep -c '^POSTGRES_PASSWORD=' ~/tripcanvas/deploy/.env     # 1
+```
+
+compose에 `name: tripcanvas`가 박혀 있어 **디렉터리가 바뀌어도 같은 프로젝트**다 — 떠 있던 postgres를 그대로 붙잡는다.
+
+⚠️ **`.env`의 `POSTGRES_PASSWORD`가 실제 DB 비밀번호와 같은지 먼저 확인한다.** 볼륨 최초 생성 때 값이 굳고, 뒤에 `alter user`로 바꿨다면 `.env`는 옛 값이다. 그러면 `migrate`가 **오류 문구 없이** `applying migrations...`에서 죽고(`Exited (1)`), `api`·`realtime`은 `depends_on` 때문에 `Created`에서 영영 안 뜬다. postgres의 healthcheck(`pg_isready`)는 인증을 안 해서 `healthy`로 보인다 — 속기 딱 좋다. 판정은 한 줄이다:
+
+```bash
+cd ~/tripcanvas && sudo docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.staging.yml run --rm --entrypoint sh migrate \
+  -c 'node -e "const{Client}=require(\"pg\");const c=new Client({connectionString:process.env.DATABASE_URL});c.connect().then(()=>{console.log(\"CONNECT OK\");process.exit(0)}).catch(e=>{console.error(\"CONNECT FAIL:\",e.message);process.exit(1)})"'
+```
+
+`CONNECT FAIL: password authentication failed`면 비밀번호를 **URI에 안전한 문자(영숫자와 `. _ ~ -`)** 로 새로 정해 양쪽을 맞춘다 — compose가 `DATABASE_URL`을 문자열로 조립해서 `@ : / ?`가 들어가면 또 깨진다. 컨테이너 안 psql은 소켓으로 붙어 옛 비밀번호가 필요 없다:
+
+```bash
+read -r -p "새 DB 비밀번호: " PW
+```
+```bash
+printf "alter user tripcanvas with password '%s';\n" "$PW" | sudo docker exec -i tripcanvas-postgres-1 psql -U tripcanvas -d tripcanvas
+cd ~/tripcanvas/deploy && grep -v '^POSTGRES_PASSWORD=' .env > .t && printf 'POSTGRES_PASSWORD=%s\n' "$PW" >> .t && mv .t .env && unset PW
+```
+
+**postgres부터 override로.** 0단계엔 이것만 있으면 된다.
+
+```bash
+cd ~/tripcanvas
+sudo docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.staging.yml up -d postgres
+sudo docker ps --format '{{.Names}}\t{{.Ports}}' | grep postgres      # 127.0.0.1:15432->5432
+```
+
+**맥에는 `next` 빌드.** 기기가 바뀌었으면 `node_modules`·`dist-tools`가 없다: `cd <저장소>/next && npm ci && npm run tools:build`.
+
+## 0. staging DB를 실데이터로 채운다
 
 R1·R2는 `--trial`이라 되돌렸다. 앱 검증은 되돌려진 트랜잭션 위에서 할 수 없으므로 **여기서 한 번은 커밋한다.**
+원본은 **운영 Supabase를 직접** 가리켜도 된다 — 이관기는 원본에 `select` 세 종류만 보내고, R1이 그렇게 통과했다. Session pooler URI는
+`postgres://postgres.<ref>:<DB비밀번호>@aws-1-<region>.pooler.supabase.com:5432/postgres?sslmode=require` 꼴이고(`sslmode`를 빼면 SSL 협상 없이 시도하다 거절당한다),
+정확한 호스트는 대시보드 **Connect → Session pooler**에 있다.
 
 ```bash
 cd next && npm run tools:build
@@ -41,13 +95,30 @@ psql "$TARGET" -Atc "select current_database(), inet_server_addr(), (select coun
 가장 짧은 길은 **SSH 로컬 포워딩**이다. `app.js`는 hostname이 `localhost`면 API를 `http://localhost:3000`으로 잡고(`app.js:3467`), CORS 기본 허용 목록에 `http://localhost:8000`이 이미 들어 있다(`next/src/server/api/cors.ts`). **코드도 설정도 건드릴 것이 없다.**
 
 ```bash
-# NAS — api·realtime·postgres 포트를 호스트 127.0.0.1에만 낸다(staging 전용 override)
-docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.staging.yml up -d
+# NAS — 빌드(DS920+에서 몇 분) → api·realtime만 올린다. reverse-proxy는 뺀다: 도메인이 없어 Caddy가 인증서를 못 받는다
+cd ~/tripcanvas
+sudo docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.staging.yml build api realtime
+sudo docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.staging.yml up -d api realtime
+sudo docker ps --format '{{.Names}}\t{{.Status}}\t{{.Ports}}'        # api Up · 127.0.0.1:3000->3000
+curl -s http://127.0.0.1:3000/api/health                              # Next 부팅에 10초쯤 — 3초 만에 찍으면 000이다
 
-# 노트북 — 두 포트를 당겨 온다
-ssh -N -L 3000:127.0.0.1:3000 -L 3001:127.0.0.1:3001 <NAS>
+# 노트북 — 두 포트를 당겨 온다. keepalive가 없으면 조용히 끊긴다(아래 ⚠️)
+ssh -N -o ServerAliveInterval=30 -L 3000:127.0.0.1:3000 -L 3001:127.0.0.1:3001 <NAS>
 python3 -m http.server 8000     # 저장소 루트에서 — http://localhost:8000
 ```
+
+`-N`은 명령 없이 터널만 여는 옵션이라 **성공하면 아무것도 안 찍고 멈춰 있는 것이 정상**이다. 그 창은 검증 내내 살아 있어야 한다.
+
+⚠️ **Synology sshd는 `AllowTcpForwarding no`가 기본이다.** 터널 창에 `channel N: open failed: administratively prohibited`가 반복되면 그것이다. 열린 세션은 닫지 말고(잠기면 여기서 되돌린다):
+
+```bash
+sudo cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak
+sudo sed -i 's/^#\?AllowTcpForwarding.*/AllowTcpForwarding yes/' /etc/ssh/sshd_config
+sudo grep -i allowtcpforwarding /etc/ssh/sshd_config      # 줄이 없으면 echo 'AllowTcpForwarding yes' | sudo tee -a /etc/ssh/sshd_config
+sudo synosystemctl restart sshd                            # DSM 7. 기존 세션은 유지된다
+```
+
+⚠️ **터널은 소리 없이 죽는다.** 실제로 로그인·목록은 됐는데 잠시 뒤 저장만 "클라우드 저장 실패"가 났고, 서버·데이터는 멀쩡했다 — 그사이 터널이 끊긴 것이다. `curl localhost:3000/api/health`가 `000`이면 다른 것을 의심하기 전에 터널 창부터 본다(`pgrep -fl "ssh -N"`).
 
 `deploy/.env`에서 이번에 바꾸는 값:
 
@@ -92,10 +163,14 @@ psql "$TARGET" -c "select client_id, revision, updated_at, deleted_at from trips
 ```
 
 - [ ] 장소 하나 추가 → 저장 → 위 쿼리에서 그 여행의 `revision`이 **1 오른다**
-- [ ] 같은 여행을 두 탭에서 열고 양쪽에서 편집 → 뒤늦은 쪽에 **충돌 카드**가 뜬다(409 `STALE_VERSION` → `api.js`가 예전 CAS 모양으로 옮긴다). 조용히 덮어쓰면 실패다
-- [ ] 여행 삭제 → `deleted_at`이 찍히고 다른 탭에서 사라진다(tombstone)
-- [ ] 되돌리기(undo)로 복원 → 다시 목록에 나온다
+- [ ] **서로 모르는 두 클라이언트**(일반 창 + 시크릿 창, 같은 계정)에서 같은 여행을 열고 양쪽에서 편집 → 뒤늦은 쪽에 **충돌 카드**가 뜬다(409 `STALE_VERSION` → `api.js`가 예전 CAS 모양으로 옮긴다). 조용히 덮어쓰면 실패다
+- [ ] 여행 삭제 → `deleted_at`이 찍히고 다른 창에서 사라진다(tombstone)
+- [ ] 되돌리기(undo) → **충돌 카드(remote-deleted)가 뜨고 [이 기기 버전]을 고르면** 복원돼 다시 목록에 나온다
 - [ ] 버전 이력 패널 → 이관된 스냅샷이 보인다(`GET /api/v1/trips/:id/snapshots`)
+
+⚠️ **같은 브라우저의 탭 둘로는 충돌이 안 난다.** 탭들이 localStorage를 공유해서, B 탭이 편집하기 전에 A의 변경을 storage 이벤트로 먼저 받아 버린다("다른 탭의 변경을 불러왔습니다"). 그건 탭 간 동기화가 동작한 것이지 CAS 검증이 아니다 — 충돌은 시크릿 창이나 다른 기기로 본다.
+
+⚠️ **되돌리기가 카드 없이 곧장 복원되면 그게 오히려 이상하다.** 되살리려는 PUT을 서버가 tombstone 행이라 거절하고(`updateCas`의 `deletedAt` 검사), 레거시 `sync_trip`도 같은 규칙이었다(`202609020001_trip_collaboration.sql:209`). 카드에서 기기 버전을 고르면 `force`로 올라간다.
 
 ⚠️ **예약 가격 기능은 만지지 않는다.** 가격 관측은 웹이 아직 Supabase를 직접 부른다(`app.js:2249`) — staging에서 관측을 남기면 **운영 Supabase에 쓴다.** 이관 대상 밖의 유일한 쓰기 경로다.
 
@@ -164,6 +239,40 @@ staging 동안 새 DB에 쌓은 변경은 Supabase에 없다. 그것이 롤백�
 | 실시간만 안 온다 | `/me`의 provider → 사이드카 `/health`의 `listener` 순서로 |
 | 저장이 42501 | 역할이 VIEWER다. 의도한 것이 아니면 `trip_members`의 role |
 | `docker compose port`가 비어 있다 | override 없이 올렸다 — `-f deploy/docker-compose.staging.yml`을 빠뜨렸는지 |
+| curl이 **전부** `000` | 터널이 죽었다. `pgrep -fl "ssh -N"` → 없으면 keepalive 붙여 다시. NAS 안에서 `curl 127.0.0.1:3000/api/health`가 200이면 확실히 터널이다 |
+| 터널 창에 `administratively prohibited` | sshd의 `AllowTcpForwarding no` — 1단계 ⚠️ |
+| `api`·`realtime`이 `Created`에서 안 움직인다 | `migrate`가 죽었다(`sudo docker logs tripcanvas-migrate-1`). 오류 문구 없이 `applying migrations...`에서 끝났으면 **`.env` 비밀번호 불일치** — 준비 절의 CONNECT 판정 한 줄 |
+| `rsync`가 `Permission denied`인데 `ssh`는 된다 | macOS 15의 rsync(openrsync). tar over ssh로 |
+| "여행 N개"가 운영과 다르다 | 계정별로 센다 — 운영 8건 중 tombstone 3을 뺀 5는 **계정 셋의 합**이지 한 계정의 수가 아니다. 같은 계정으로 운영 웹을 열어 세는 것이 기준 |
+
+## 실행 기록
+
+### 2026-09-04 — NAS(DS920+) 0~3단계 · 컨테이너 Chromium 2~4단계
+
+**NAS에서 사람이**: 준비(저장소 tar 전송 · `.env` 비밀번호 불일치 → 재설정 · `AllowTcpForwarding`) → 0단계 `--apply --reset`(3 · 8 · 98) → 1단계 배선 3줄 → 2단계 로그인·**여행 4개 = 운영 4개** → 3단계 저장·삭제·복원·이력 ok. 충돌은 같은 브라우저 탭으로 시도해 "다른 탭의 변경을 불러왔습니다"만 봤다(위 ⚠️ — 검증이 아니다). 4·5단계는 NAS에서 아직 안 밟았다.
+
+막힌 곳은 전부 **배선**이었고 서버·데이터 결함은 없었다: 터널 keepalive 없이 끊김 → "클라우드 저장 실패"(재연결 후 바로 저장됨).
+
+**컨테이너에서 Chromium으로**: 같은 스택(정적 웹 :8000 · Next API :3000 `NEW_BACKEND` · 실시간 :3001 · PostgreSQL 16)을 띄우고 이관된 모양 그대로 시드했다 —
+`users`·`trips`를 **직접 insert**(소유자 멤버 행 없음) · 스냅샷 3건 · B가 EDITOR인 공유 여행. Auth만 대역이다: `SUPABASE_JWT_SECRET`을 테스트 값으로 두고 HS256 토큰을 찍어
+`window.supabase` 자리에 세션만 주는 가짜 클라이언트를 넣었다(e2e의 `fakeSupabase`와 같은 수법). **데이터 호출은 전부 진짜 API·DB**다. 독립 컨텍스트 넷(A · A의 두 번째 기기 · B · 로그아웃)으로 **14/14 통과**:
+
+| | 결과 |
+|---|---|
+| 2 로그인·목록 | 여행 2개, 역할 OWNER·OWNER, "클라우드 동기화 완료" · 장소 카드 25 |
+| 3-1 저장 | revision 7 → 8 |
+| 3-2 충돌 | 뒤늦은 기기에 카드, 서버 revision 안 덮임 |
+| 3-3 삭제 → 되돌리기 | tombstone → 카드(remote-deleted) → [이 기기 버전] → 복원 |
+| 3-4 버전 이력 | 이관 3 + 저장분 1 = 4행 |
+| 4-1~3 초대·미리보기·수락 | 로그아웃 미리보기는 기간·역할만 · 수락 후 A 목록에 B(EDITOR) |
+| 4-4 VIEWER 저장 | **PUT 0회** — 클라이언트가 `canEdit`에서 막아 보내지도 않는다 · roleBar 표시 |
+| 4-5 후보·반응·코멘트 | DB 1 / 2 / 1 |
+| 4 실시간 | B 반응 → A 보드 새로고침 없이 갱신 · 사이드카 `LISTENING` |
+| 4-6 나가기 | `status=LEFT`, 여행은 그대로 |
+
+**남은 것**: 5단계 롤백 — NAS에서만 의미가 있다(`LEGACY`는 운영 Supabase를 부른다). `.env`의 `TC_MIGRATION_*` 넷을 `LEGACY`로 → `up -d api` → `/api/v1/me`의 `realtime.provider`가 `SUPABASE`로 바뀌는지, **읽기만**.
+
+확인된 것 하나 더: `member_count`는 레거시 `my_trip_roles`도 `trip_members` ACTIVE 행 수라(`202609020001:250`), 소유자 행이 없는 이관 여행의 인원 표시는 **전과 같다** — 회귀가 아니다.
 
 ## 검증이 끝나면
 

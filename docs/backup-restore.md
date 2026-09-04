@@ -55,7 +55,7 @@ curl -s https://$API_DOMAIN/api/health
 |---|---|---|---|---|
 | **R0** | 합성 데이터 + PGlite | 스크립트 자체 — 순서·시퀀스·트리거·멱등성 | CI에서 매번 | 통과 |
 | **R1** | 운영 데이터(읽기 전용) | 실데이터의 이상값 — 깨진 참조·예상 못 한 null·규모와 소요시간 | 스크립트를 고칠 때마다 | **2026-09-04 통과** |
-| **R2** | 덤프 복원 + staging 앱 | 복원 경로와 전환 예행 — 로그인·저장·협업이 도는가, 롤백이 되는가 | 전환 직전 1~2회 | **이관 부분 2026-09-04 통과** · staging 앱 검증은 남음(`docs/staging-verification.md`) |
+| **R2** | 덤프 복원 + staging 앱 | 복원 경로와 전환 예행 — 로그인·저장·협업이 도는가, 롤백이 되는가 | 전환 직전 1~2회 | **이관 부분 2026-09-04 통과** · 앱 검증 **로그인·저장·협업 통과**(NAS 0~3단계 + 컨테이너 Chromium 14/14) · **롤백만 남음**(`docs/staging-verification.md`) |
 
 ### R1 1차 결과 (2026-09-03) — 운영 조사
 
@@ -163,6 +163,11 @@ IPv6 전용이라 붙지 않는다 — **Session pooler**(`aws-1-<region>.pooler
 | `password authentication failed`인데 비밀번호는 맞다 | URI 안의 **특수문자**다. 비밀번호를 URI에서 빼고 `PGPASSWORD`로 따로 넘기면 인코딩이 필요 없다 |
 | `Password:` 프롬프트가 두 번 | 하나는 `sudo`(DSM 계정), 하나는 DB다. 헷갈리면 무엇을 묻는지부터 볼 것 |
 | `.env`가 조용히 망가짐 | 붙여넣기가 꼬여 같은 키가 여러 줄로 쌓인다. `grep -c '^KEY=' .env`가 **1**인지 늘 확인하고, 편집은 `vi` 대신 `grep -v` + `printf`로 |
+| `ssh -L` 터널에 `administratively prohibited` | Synology sshd는 `AllowTcpForwarding no`가 기본. `/etc/ssh/sshd_config`에서 `yes`로, `synosystemctl restart sshd` |
+| 터널이 소리 없이 끊겨 저장만 실패 | `ssh -N`에 `-o ServerAliveInterval=30`. `curl localhost:3000/api/health`가 `000`이면 터널부터 |
+| `migrate`가 문구 없이 `Exited (1)`, `api`는 `Created` | `.env`의 `POSTGRES_PASSWORD`가 실제와 다르다(`alter user`로 바꾼 뒤 `.env`는 옛 값). `pg_isready`는 인증을 안 해 `healthy`로 보인다. 비밀번호는 URI 안전 문자로 |
+| macOS `rsync`가 `Permission denied`(ssh는 됨) | macOS 15의 openrsync. `tar -czf - . \| ssh nas 'tar -xzf - -C ~/tripcanvas'` |
+| NAS에 git이 없다 | 위 tar로 저장소 통째로. `api`·`realtime`은 저장소 루트에서 빌드한다 |
 
 `.env`에 비밀번호를 넣을 때는 셸 히스토리에 남지 않게 `read`로 받는다:
 
