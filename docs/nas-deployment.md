@@ -18,6 +18,8 @@
 
 `internal` 네트워크는 `internal: true`라 인터넷과 단절돼 있다. MinIO·Redis는 필요해질 때 같은 방식으로 붙인다(§46·§47·§55).
 
+`deploy/docker-compose.staging.yml`은 **staging 검증 동안만** 얹는 override다 — api·realtime·postgres 포트를 호스트 `127.0.0.1`에만 내어 노트북에서 `ssh -L`로 당겨 쓴다. 검증이 끝나면 이 파일 없이 다시 올려 포트를 닫는다(`docs/staging-verification.md`).
+
 ## 환경변수
 
 `deploy/.env.example` → `deploy/.env`. 비밀은 Git에 올리지 않는다(§58). `api`는 이 파일과 `DATABASE_URL`(compose가 조립)을 받는다.
@@ -55,7 +57,7 @@ curl -s -o /dev/null -w "%{http_code}\n" https://$API_DOMAIN/api/v1/trips   # 40
 ## 프로덕션 전환 순서 (§101)
 
 ```
-NAS Backend 완성 → staging 검증(위 확인 절차) → 데이터 이관 리허설(docs/backup-restore.md) → Web staging → iOS staging(TCApiBaseURL)
+NAS Backend 완성 → staging 검증(위 확인 절차) → 데이터 이관 리허설(docs/backup-restore.md) → Web staging(docs/staging-verification.md) → iOS staging(TCApiBaseURL)
 → 실사용 테스트 → 프로덕션 DB 이관 → TC_MIGRATION_TRIP=NEW_BACKEND → Supabase read-only → 관찰 → Supabase 종료(일정 기간 보존, §102)
 ```
 
