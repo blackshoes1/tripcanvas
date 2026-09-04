@@ -53,6 +53,8 @@ targets:
         # 운영 API는 NAS다(2026-09-04 전환) — Tailscale Funnel이 ts.net 이름에 HTTPS를 붙인다.
         # 로컬 서버로 붙일 때만 이 값을 바꾼다(그때는 http라 NSAppTransportSecurity 예외가 필요하다).
         TCApiBaseURL: "https://bokbok9.tail8b977f.ts.net"
+        # 앱 안 웹 화면(WebAppView)이 여는 주소 — 정적 웹이라 API와 다르다.
+        TCWebBaseURL: "https://tripcanvas-ai.vercel.app"
         TCSupabaseURL: ""
         TCSupabaseAnonKey: ""
     dependencies:

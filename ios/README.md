@@ -85,6 +85,20 @@ Live Activity 는 `areActivitiesEnabled` 가 false 라 조용히 건너뛴다.
 `TripCanvas/App/AppEnvironment.swift`의 `AppConfig`가 기본값을 들고 있다 — API는 **NAS**(`https://bokbok9.tail8b977f.ts.net`, Tailscale Funnel이 HTTPS를 붙인다. 2026-09-04 전환),
 Supabase는 로그인에만 쓰는 기존 프로젝트. 로컬 서버로 붙을 때는 `Info.plist`의 `TCApiBaseURL`을 덮어쓴다 — http라면 ATS 예외(`NSAllowsLocalNetworking`)도 함께 넣는다.
 
+앱 안 웹 화면이 여는 주소는 `TCWebBaseURL`(기본 `https://tripcanvas-ai.vercel.app`)로 **따로** 둔다 — 웹은 Vercel의 정적 웹이고 NAS에는 `/api/v1`밖에 없어서, 둘을 같은 값으로 두면 웹 화면이 404가 된다.
+
+## 웹 화면을 앱 안에서 (Features/Web)
+
+여행 목록 왼쪽 위 🌐 를 누르면 모바일 웹이 그대로 뜬다(`WebAppView`, WKWebView). 계획·편집·지도·공유는 웹에만 있고,
+그 화면을 Swift로 다시 만들면 같은 판단이 두 벌이 되기 때문에 **복제하지 않고 웹을 그대로 보여준다.**
+
+- ⚠️ **로그인 세션이 따로다.** 웹뷰 저장소와 네이티브 Keychain 세션은 공유되지 않아 웹 화면에서 한 번 더 로그인해야 한다.
+  그 세션은 `WKWebsiteDataStore.default()`에 남아 앱을 껐다 켜도 유지된다.
+- `confirm()`·`alert()`·`prompt()`를 `WKUIDelegate`로 받는다 — 안 받으면 `confirm()`이 조용히 false가 되어 **삭제·초기화가 먹통**이 된다.
+- 내보내기(JSON·이미지)는 `<a download>`라 웹뷰가 그냥 무시한다 → `WKDownload`로 받아 공유 시트로 넘긴다.
+- 링크는 **호스트가 아니라 스킴으로** 가른다(`WebLink.route`) — 지도·검색 SDK가 다른 호스트에서 오므로 호스트로 가르면 지도가 죽는다.
+  `tel:`·`mailto:`·`kakaomap:` 같은 것만 시스템에 넘긴다.
+
 ## 구조
 
 ```
@@ -95,7 +109,7 @@ Core/
   Auth/       Supabase Auth REST + Keychain 세션
   Storage/    마지막 Today 캐시 (오프라인 읽기)
   Location/   단발성 위치 조회 (연속 추적 없음)
-Features/     Trips · Today · Suggestions · Replan · Booking · Map
+Features/     Trips · Today · Suggestions · Replan · Booking · Map · Web(웹 화면 그대로 띄우기)
 Services/     TripService (API 호출을 화면에서 감춘다)
 DesignSystem/ 간격·타이포·공용 컴포넌트
 Tests/        디코딩·상태 계산·ViewModel
