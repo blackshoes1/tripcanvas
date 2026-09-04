@@ -281,7 +281,7 @@ auth_session.token 에는 **서명 없는 token만** 들어 있다
 | 클라이언트 | `api.js`(`TC_API`) — `{data,error}`를 돌려주고 **예외를 던지지 않는다**. 호출부의 모양을 바꾸지 않으려는 설계다 |
 | 오류 | 서버의 `FORBIDDEN`을 Supabase가 주던 `42501`/403으로 옮긴다 — `collab.js`의 `isForbiddenError`와 '재시도하지 않는다' 규칙이 그대로 동작한다 |
 | 토큰 | Supabase 세션의 access token을 그대로 싣는다(서버가 직접 검증, Phase A). **초대 미리보기만 토큰 없이** 나간다(§6) |
-| 주소 | `API_BASE` — 운영은 `tripcanvas-api.vercel.app`, localhost는 `:3000`, 테스트는 `window.__TC_API_BASE` |
+| 주소 | `API_BASE` — 운영은 **`bokbok9.tail8b977f.ts.net`(NAS, 2026-09-04 전환)**, localhost는 `:3000`, 테스트는 `window.__TC_API_BASE` |
 | CORS | 두 프로젝트가 다른 출처라 필요하다. `TRUSTED_ORIGINS`에 있는 출처만 허용하고 `*`를 쓰지 않는다(§72, `next/src/proxy.ts`) |
 
 ### 실시간은 서버가 고른다
@@ -320,7 +320,12 @@ auth_session.token 에는 **서명 없는 token만** 들어 있다
 - 가격 크론 `api/track-hotel-prices.js`는 모든 사용자의 여행을 읽어 관측을 쓰는 **시스템 작업**이라 사용자 토큰 모델에 맞지 않는다. 새 backend로 옮길 때는 서비스 계정 경로(내부 전용 라우트 + `CRON_SECRET`)로 다시 만든다 — Phase 10 전에.
 - 데이터 이관은 **R1·R2를 모두 통과했다**(2026-09-04). R1은 실데이터 예행(NAS PostgreSQL 17, 183행, 1초, 개수·고아·내용 일치), R2는 덤프 복원 경로에 이어 **staging 앱 검증까지**(로그인·저장·협업·롤백 — NAS + 컨테이너 Chromium 14/14). 절차와 결과는 `docs/staging-verification.md`, 추출·복원과 Synology 함정은 `docs/backup-restore.md`.
 - R2가 실제로 잡아낸 사고 하나: 이관기가 **낡은 사본을 원본으로 읽었는데 검증이 통과했다**(검증은 원본·대상이 같은지만 본다). 이제 시작할 때 `[migration] 원본 <계정@호스트/DB> → 대상 …`을 찍는다 — 전환 당일 그 줄부터 읽는다.
-- 미검증: `next/Dockerfile`·`deploy/docker-compose.yml`(작성 환경에 Docker 없음), 실제 PostgreSQL 서버(테스트는 PGlite — 실시간 트리거·LISTEN은 PGlite에서 진짜로 돌지만 `pg` 드라이버 경로는 미검증), 실제 Supabase JWKS 응답(테스트는 로컬 키).
+- **전환 완료 (2026-09-04)** — 같은 날 저녁, 운영 데이터를 NAS PostgreSQL로 옮기고(`--apply --reset`, 커밋 전 검증 통과) 웹의 `DEFAULT_BASE`를 `https://bokbok9.tail8b977f.ts.net`으로 바꿔 배포했다(`tc-v173`). 폰에서 로그인·저장 확인. Vercel에는 정적 웹만 남고, `tripcanvas-api` 프로젝트는 **롤백 대상**으로 살려 두었다.
+  - 공개 주소는 **Tailscale Funnel**이다 — 도메인을 사지 않고 `*.ts.net`에 HTTPS를 얻는다. Vercel 함수가 tailnet 안의 DB에 닿을 수 없어 API를 NAS로 옮긴 것이다(`docs/nas-deployment.md`).
+  - ⚠️ tailnet **안에서** 한 curl은 Funnel을 지나지 않는다(MagicDNS가 100.x로 푼다). 공개 경로는 tailnet 밖에서 확인해야 한다.
+  - ⚠️ 이제 가용성이 집 NAS에 걸린다. 그리고 **iOS는 아직 Vercel API**를 가리킨다(`TCApiBaseURL`) — 옮기기 전까지 두 클라이언트가 서로 다른 데이터를 본다.
+  - 여전히 Supabase에 쓰는 것: **가격 관측**(`app.js:2249` — 쓰기 엔드포인트가 아직 없다).
+- 미검증: 실제 Supabase JWKS 응답(테스트는 로컬 키). `next/Dockerfile`·`deploy/docker-compose.yml`과 실제 PostgreSQL 경로는 이번 전환으로 운영에서 돌고 있다.
 
 ## 롤백
 

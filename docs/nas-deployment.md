@@ -1,7 +1,24 @@
 # NAS 배포 — TripCanvas API
 
-> ⚠️ 이 구성은 **Docker가 없는 환경에서 작성돼 실행해 보지 않았다.** 첫 배포는 아래 "처음 띄울 때"의 확인 절차를 그대로 밟을 것.
-> 오늘의 프로덕션은 여전히 Vercel(`tripcanvas-api.vercel.app`)이다. NAS는 staging으로 먼저 쓴다(§101).
+> **2026-09-04 — 프로덕션이 여기다.** 웹(`tripcanvas-ai.vercel.app`)이 부르는 API는 NAS의
+> `https://bokbok9.tail8b977f.ts.net` 이고, 데이터는 NAS PostgreSQL이다. Vercel에는 정적 웹만 남았다.
+> Vercel의 `tripcanvas-api` 프로젝트는 지우지 않았다 — **롤백 대상**이다(아래 "롤백").
+
+## 공개 주소는 Tailscale Funnel이다 — 도메인이 없다
+
+Vercel 함수는 tailnet 안의 PostgreSQL에 닿을 수 없다. 그래서 API를 NAS에서 돌리는데, 도메인이 없어 Caddy가 인증서를 못 받는다.
+**Tailscale Funnel**이 `*.ts.net` 이름에 HTTPS를 붙여 공개해 준다 — TLS는 Tailscale이 끝내고 NAS의 로컬 포트로 넘긴다.
+
+```bash
+sudo tailscale funnel --bg 3000                  # /      → api
+sudo tailscale funnel --bg --set-path=/ws 3001   # /ws    → realtime 사이드카
+sudo tailscale funnel status                     # "Available on the internet:" 확인
+```
+
+⚠️ **tailnet 안에서 한 curl은 Funnel을 지나지 않는다** — MagicDNS가 같은 이름을 100.x로 풀어 버린다.
+공개 경로는 tailnet 밖(폰의 셀룰러 등)에서 확인해야 한다. 켜자마자 폰에서 "클라우드 동기화 실패"가 났던 것도 이 구간이었다.
+
+⚠️ 가용성이 집 NAS에 걸린다. NAS가 꺼지거나 Tailscale이 끊기면 **저장이 안 된다**(로컬 편집은 보존되고 복구되면 올라간다).
 
 ## 구성 (§52~§56)
 
@@ -61,7 +78,16 @@ NAS Backend 완성 ✓ → staging 검증 ✓ → 데이터 이관 리허설 ✓
 → 실사용 테스트 → 프로덕션 DB 이관 → TC_MIGRATION_TRIP=NEW_BACKEND → Supabase read-only → 관찰 → Supabase 종료(일정 기간 보존, §102)
 ```
 
-롤백: `TC_MIGRATION_TRIP=LEGACY`로 되돌리고 `api` 재시작. 단 새 DB에 쓴 뒤라면 그 변경은 Supabase에 없다 — 전환 직후 관찰 기간에는 두 쪽을 비교한다(§79·§80).
+## 롤백 (2026-09-04 전환 기준)
+
+전환 스위치는 **웹의 API 주소 두 줄**이다(`api.js`·`auth.js`의 `DEFAULT_BASE`). Vercel의 `tripcanvas-api`는 살아 있고 여전히 Supabase를 본다.
+
+```
+DEFAULT_BASE 를 https://tripcanvas-api.vercel.app 로 되돌리고 → main 푸시 → Vercel 재배포 (약 1분)
+```
+
+⚠️ 되돌리는 순간 **전환 후 NAS에 쌓인 변경은 사라진다**(Supabase에 없다). 그래서 관찰 기간에는 Supabase를 읽기전용으로 만들지 않고, 되돌릴 일이 생기면 NAS 쪽 변경을 먼저 확인한다(§79·§80).
+NAS 안에서의 되돌리기(`TC_MIGRATION_*=LEGACY` + `api` 재시작)는 API가 다시 Supabase를 보게 하는 것이라 데이터를 잃지 않지만, 그때는 NAS를 거칠 이유가 없다.
 
 ## 아직 없는 것
 
