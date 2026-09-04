@@ -55,7 +55,7 @@ curl -s https://$API_DOMAIN/api/health
 |---|---|---|---|---|
 | **R0** | 합성 데이터 + PGlite | 스크립트 자체 — 순서·시퀀스·트리거·멱등성 | CI에서 매번 | 통과 |
 | **R1** | 운영 데이터(읽기 전용) | 실데이터의 이상값 — 깨진 참조·예상 못 한 null·규모와 소요시간 | 스크립트를 고칠 때마다 | **2026-09-04 통과** |
-| **R2** | 덤프 복원 + staging 앱 | 복원 경로와 전환 예행 — 로그인·저장·협업이 도는가, 롤백이 되는가 | 전환 직전 1~2회 | 미실시 |
+| **R2** | 덤프 복원 + staging 앱 | 복원 경로와 전환 예행 — 로그인·저장·협업이 도는가, 롤백이 되는가 | 전환 직전 1~2회 | **이관 부분 2026-09-04 통과** · staging 앱 검증은 남음 |
 
 ### R1 1차 결과 (2026-09-03) — 운영 조사
 
@@ -97,7 +97,31 @@ NAS(Synology DS920+)에 PostgreSQL 17을 띄우고 **운영 데이터 그대로*
 숫자는 9/3 조사와 같고 `trip_activity` 30(당시 4) · `hotel_price_snapshots` 34(33)만 늘었다 — 그 사이 앱을 쓴 만큼이다.
 "원본에 없음" 넷도 그대로다. **이 스크립트로 옮기면 데이터가 그대로 온다**는 것이 실물로 확인됐다.
 
-**아직 예행하지 않은 것: 덤프 → 복원 경로.** 아래처럼 운영을 직접 읽었기 때문이다. 그 경로는 R2에서 처음 돌게 된다.
+여기서는 운영을 직접 읽었다. 덤프 → 복원 경로는 같은 날 R2에서 이어서 확인했다(아래).
+
+### R2 이관 결과 (2026-09-04) — 덤프에서 복원해 예행 통과
+
+R1에서 유일하게 안 해본 경로를 마저 돌렸다. 운영 덤프로 `legacy_copy`를 세우고, 그것을 원본 삼아 `--trial --reset`.
+
+```
+복원 오류 0줄 (스텁·스키마·데이터 전부)
+legacy_copy 행 수 = 덤프 시점 운영과 일치 (3 · 8 · 98 · 9 · 1 · 30 · 34)
+그 사본 기준 이관·검증 통과 — R1과 같은 결과
+```
+
+**복원 순서가 중요하다: 스텁 → 스키마 → 계정 → 데이터.**
+운영 스키마의 `user_id`가 `auth.users`를 참조하므로 계정을 데이터보다 **먼저** 넣어야 외래키에 걸리지 않는다.
+`test/rls/supabase-stub.sql`이 `auth` 스키마·`auth.users`·`auth.uid()`·`anon`/`authenticated` 역할을 먼저 만들어 준다.
+
+```bash
+psql -d legacy_copy < dump/supabase-stub.sql
+psql -d legacy_copy < dump/schema.sql
+psql -d legacy_copy -c "\copy auth.users(id,email) from stdin with csv" < dump/users.csv   # COPY 3
+psql -d legacy_copy < dump/public.sql
+```
+
+예상했던 역할·정책 오류는 **한 줄도 나지 않았다** — 스텁이 참조 대상을 모두 채우기 때문이다.
+전환 당일에 처음 보게 될 오류는 이제 없다. R2에 남은 것은 staging 앱 검증(로그인·저장·협업·롤백)뿐이다.
 
 ### 추출 — 사본을 만들 것인가, 운영을 직접 읽을 것인가
 
@@ -107,7 +131,8 @@ NAS(Synology DS920+)에 PostgreSQL 17을 띄우고 **운영 데이터 그대로*
 
 ⚠️ 예전에 여기 적혀 있던 `--data-only` 덤프만으로는 **빈 DB에 복원할 수 없다.** CREATE TABLE이 없다.
 사본을 만들려면 스키마도 함께 떠야 하고, Supabase 스키마는 `auth.uid()`·`anon`/`authenticated` 역할을 참조하므로
-`test/rls/supabase-stub.sql`을 먼저 적용해야 한다. 순서는 **스텁 → schema.sql → public.sql → users.csv**.
+`test/rls/supabase-stub.sql`을 먼저 적용해야 한다. 순서는 **스텁 → schema.sql → users.csv → public.sql**
+— 계정이 데이터보다 먼저다(위 R2).
 
 ```bash
 # 전환 당일에 쓸 스냅샷(과 R2의 복원 예행용)
@@ -134,6 +159,18 @@ IPv6 전용이라 붙지 않는다 — **Session pooler**(`aws-1-<region>.pooler
 | `docker compose port`가 매핑 없음 | `internal: true` 네트워크에만 붙은 컨테이너는 포트를 못 낸다. `networks: [internal, edge]` |
 | 비밀번호를 바꿨는데 인증 실패 | `POSTGRES_PASSWORD`는 **볼륨을 처음 만들 때만** 적용된다. `alter user ... with password`로 직접 바꾼다 |
 | 컨테이너 이름 충돌 | 남은 컨테이너가 이름을 잡고 있다. `docker compose down` 후 `up -d` (**`-v`는 붙이지 않는다** — 볼륨이 날아간다) |
+| `password authentication failed`인데 비밀번호는 맞다 | URI 안의 **특수문자**다. 비밀번호를 URI에서 빼고 `PGPASSWORD`로 따로 넘기면 인코딩이 필요 없다 |
+| `Password:` 프롬프트가 두 번 | 하나는 `sudo`(DSM 계정), 하나는 DB다. 헷갈리면 무엇을 묻는지부터 볼 것 |
+| `.env`가 조용히 망가짐 | 붙여넣기가 꼬여 같은 키가 여러 줄로 쌓인다. `grep -c '^KEY=' .env`가 **1**인지 늘 확인하고, 편집은 `vi` 대신 `grep -v` + `printf`로 |
+
+`.env`에 비밀번호를 넣을 때는 셸 히스토리에 남지 않게 `read`로 받는다:
+
+```bash
+read -r -p "값: " V
+grep -v '^KEY=' .env > .t && printf 'KEY=%s\n' "$V" >> .t && mv .t .env && unset V
+```
+
+⚠️ `read`와 뒷줄을 **한 번에 붙여넣지 않는다** — 입력이 명령으로 먹혀 비밀번호가 화면과 히스토리에 찍힌다.
 
 ### 돌리는 방법
 
