@@ -11,7 +11,9 @@
 (function (global) {
   'use strict';
 
-  const DEFAULT_BASE = 'https://tripcanvas-api.vercel.app';
+  // 운영 API는 NAS다(2026-09-04 전환). Tailscale Funnel이 ts.net 이름에 HTTPS를 붙여 준다 —
+  // 도메인을 사지 않고 공개 주소를 얻는 길이고, TLS는 Tailscale이 끝낸다(docs/nas-deployment.md).
+  const DEFAULT_BASE = 'https://bokbok9.tail8b977f.ts.net';
   let _base = DEFAULT_BASE;
   /** @type {()=>Promise<string|null>} */
   let _getToken = async () => null;
