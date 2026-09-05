@@ -209,10 +209,20 @@ describe('비용 — 하루치(배분)와 전액을 구분한다', () => {
 
 describe('하루의 끝 — 숙소 복귀·과밀 경고', () => {
   it('마지막 장소가 숙소가 아니면 숙소 복귀 자동 구간이 붙는다', () => {
-    const t = trip([day([hotel(), seongsan()])]);
+    const t = trip([day([hotel(), seongsan()]), day([])]);
     const v = buildDayView(t, NONE, 0);
     expect(v.back?.name).toBe('제주호텔');
     expect(v.back?.leg.label).toMatch(/^↳/);
+  });
+
+  // 마지막 날은 돌아가는 날이 아니라 떠나는 날이다 — 체크아웃하고 공항으로 간 뒤에
+  // '🏠 호텔 복귀'가 따라붙으면 있지도 않은 이동이 하루 거리·시간·택시비에 얹힌다.
+  it('일정의 마지막 날에는 숙소 복귀가 붙지 않는다', () => {
+    const t = trip([day([hotel(), seongsan()])]);
+    expect(buildDayView(t, NONE, 0).back).toBeNull();
+
+    const multi = trip([day([hotel()]), day([hotel(), seongsan()])]);
+    expect(buildDayView(multi, NONE, 1).back).toBeNull();
   });
 
   it('이미 숙소로 끝나면 복귀 구간이 없다', () => {

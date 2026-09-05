@@ -25,7 +25,8 @@ describe('collectLegRequests', () => {
   it('연속 쌍 + 숙소 복귀 + 이월 앵커→첫 장소, 좌표 없는 장소는 건너뛴다', () => {
     const t = trip([
       day([airport(), spot('미정', null, null), hotel()]),
-      day([seongsan()])
+      day([seongsan()]),
+      day([])                                  // 마지막 날에는 복귀가 없다
     ]);
     const reqs = collectLegRequests(t, {}, NOW);
     const bases = reqs.map(r => r.base);
