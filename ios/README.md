@@ -2,8 +2,8 @@
 
 여행을 **실행하는** 앱. 여기서 답하는 것은 "지금 무엇을 하면 되는가"다.
 
-계획도 앱에서 한다 — **일정 편집(일자·장소)과 지도·장소 검색이 네이티브로 들어왔다**(`Features/Plan` · `Features/Map`).
-예약 편집·함께하기는 아직 웹에만 있고 순서대로 옮긴다. 웹뷰로 감싸는 길은 택하지 않았다.
+계획도 앱에서 한다 — **일정 편집(일자·장소) · 지도·장소 검색 · 예약 편집 · 함께하기가 네이티브로 들어왔다**
+(`Features/Plan` · `Features/Map` · `Features/Booking` · `Features/Collab`). 웹뷰로 감싸는 길은 택하지 않았다.
 
 > ## 검증 상태
 >
@@ -53,6 +53,44 @@
 - 카카오 SDK는 POI 탭 신원을 주지 않는다(웹과 같은 제약) — 국내 지도에서 고른 자리는 좌표뿐이고 이름은 사용자가 쓴다. 해외는 POI를 탭하면 `placeId`·이름이 온다.
 - 좌표 역추적(이름 추측)은 하지 않는다 — 웹의 `reverseSpot`은 최후 수단이고, 여기서는 아예 없다.
 - ⚠️ `PlaceSearchModel.swift`의 `inKorea`·`isKoreanSearch`·`cityFromGoogle`·`catFromGoogle`은 `lib.js`의 **복사본**이다. 규칙을 바꿀 때 `lib.js`를 먼저 고치고 여기를 따라 맞춘다.
+
+## 예약 편집 (Features/Booking)
+
+예약(`trip.bookings`)은 **여행 문서의 일부**라 장소와 같은 길로 저장된다 — `TripPlanViewModel`이 `PUT /api/v1/trips/:id`(revision CAS)로
+올리고, 실패하면 되돌리고, 충돌이면 묻는다. 목록은 서버 요약(`GET /bookings` — 가격 상태가 붙어 온다)을 읽고, 저장한 뒤 요약을 다시 읽는다.
+모델은 `Core/Models/TripBooking.swift`(`lib.js`의 `normalizeBooking`과 같은 모양) — 시세 조회가 남긴 `ptoken`·`enName`·`saved`는 앱이 모르는 채로 보존된다.
+
+- 검증은 웹 `bkSave`·서버 `validateBookingDraft`와 **같은 규칙**이다: 이름·가격 필수, 숙박은 추적 on이면 기간 필수·체크아웃은 체크인 뒤,
+  **렌터카 당일 대여는 정상**(같은 날이면 픽업 시각 < 반납 시각). 문장도 웹 toast와 같다(`BookingDraftError.message`).
+- 연결은 **한 예약당 한 곳**: 숙박은 숙소로 표시한 장소(`spot.bookingId`), 렌터카는 픽업·반납 장소(`carPickupId`·`carReturnId`).
+  저장할 때 이 예약을 가리키던 옛 연결을 모두 풀고 새로 맺는다. 빼면 연결도 함께 푼다.
+- 반납 지점은 (장소, 공항코드) **한 쌍**이다(`returnPoint` — `lib.js`의 `carReturnPoint`). 둘 다 비었을 때만 픽업과 같다.
+- 이름·기간(identity)이 바뀌면 `ptoken`을 지운다(웹과 같다) — provider 매핑을 다시 찾아야 한다.
+- 가격 관측·시세 비교·재예약 기록은 여기 없다. 저장하면 서버가 추적하고, 결과는 목록의 가격 칩이 보여준다. 자동 재예약은 하지 않는다.
+- 장소 편집에 **숙소** 토글이 생겼다(`spot.stay` — 웹의 체크박스와 같다). 그날의 종료 기준점이 되고 숙박 예약과 이을 수 있다.
+
+## 함께하기 (Features/Collab)
+
+멤버 · 초대 · 여행 취향 · 최근 활동(`CollabView`)과 가고 싶은 곳(`CandidateBoardView`), 초대 참여(`JoinInviteView`).
+**접근 제어의 경계는 DB(RLS·RPC)고 여기는 화면 판정만 한다** — 여기서 '편집 가능'이라 해도 서버가 거절하면 그게 답이다.
+판정은 `Core/Models/CollabModel.swift`(순수)에 모여 있고 화면은 배선만 한다.
+
+- 한 줄 규칙: **보기 권한은 의견만 낸다 — 여행에 내용을 만들지는 않는다.** 반응·한마디·취향은 활성 멤버 전원,
+  후보 추가·일정 반영은 편집 권한, 초대·역할·내보내기는 주최자. 후보를 **빼는** 기준은 역할이 아니라 '누가 냈는가'다.
+- 후보와 반응은 여행 문서가 아니라 제 테이블에 산다(`/candidates`) — 넷이 동시에 하트를 눌러도 리비전 CAS가 서로를 걷어차지 않는다.
+  반응은 **낙관적**이고 서버가 거절하면 되돌린다.
+- **일정에 넣기는 문서 저장이 먼저다**: 최신 문서를 읽어 고른 날 **맨 뒤**에 붙이고(CAS 저장) 그다음 후보를 `SCHEDULE`로 표시한다.
+  표시가 실패해도 "일정에는 넣었지만 표시를 못 바꿨다"고 정직하게 말한다. ⚠️ 인기순 자동 반영은 없다(§12·§79).
+- 갈린 후보(MUST와 PASS가 같이)는 자동으로 빼지 않는다 — 카드가 세 선택지를 보이고 사람이 고른다. '제외'는 **상태**라 되돌릴 수 있다.
+- ⚠️ **합의 점수(0~100)는 내부값이다 — 화면에는 문장만**(§21·§22). 테스트가 문장에 숫자가 없음을 확인한다.
+  '다들 좋아해요'는 전원이 의견을 냈고 아무도 PASS하지 않았을 때만이다.
+- 초대 링크는 **웹 주소**(`…/#join=<토큰>`)로 만든다 — 받는 사람에게 앱이 없을 수 있다. 토큰만 싣고 여행 id·역할·만료는 서버가 찾는다.
+  받는 쪽은 딥링크(`tripcanvas://join/<토큰>`)로 열거나 링크를 붙여넣는다. 형식이 어긋나면 서버에 보내지 않는다.
+- 이름표는 서버가 만든다 — **계정 이메일은 여행에 절대 나오지 않는다**(§69).
+- ⚠️ `CollabModel.swift`는 `collab.js`의 **복사본**이다. 규칙을 바꿀 때 `collab.js`를 먼저 고치고 여기를 따라 맞춘다
+  (`test/collab.test.js` ↔ `CollabModelTests`).
+- 아직 없는 것: **실시간**(웹은 활동 기록 이벤트를 받지만 앱은 당겨서 새로고침한다) · 지도에서 바로 후보 담기 ·
+  그룹 제안 카드(`buildGroupProposal`) · 분리 일정.
 
 ## 판단은 서버가, 표현은 iOS가
 
@@ -128,7 +166,8 @@ Core/
   Auth/       Supabase Auth REST + Keychain 세션
   Storage/    마지막 Today 캐시 (오프라인 읽기)
   Location/   단발성 위치 조회 (연속 추적 없음)
-Features/     Trips · Today · Plan(일정 편집) · Map(듀얼 엔진 지도·검색) · Suggestions · Replan · Booking
+Features/     Trips · Today · Plan(일정 편집) · Map(듀얼 엔진 지도·검색) · Booking(예약 목록·편집) ·
+              Collab(멤버·초대·취향·활동 · 후보 보드 · 초대 참여) · Suggestions · Replan
 Services/     TripService (API 호출을 화면에서 감춘다)
 DesignSystem/ 간격·타이포·공용 컴포넌트
 Tests/        디코딩·상태 계산·ViewModel

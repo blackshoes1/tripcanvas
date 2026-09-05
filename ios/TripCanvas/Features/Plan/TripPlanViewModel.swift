@@ -110,6 +110,28 @@ final class TripPlanViewModel {
         }
     }
 
+    // MARK: 예약 — 장소와 같은 문서라 같은 길로 저장된다
+
+    var bookings: [TripBooking] { document?.bookings ?? [] }
+
+    /// 예약을 넣거나 고친다. 검증(웹 `bkSave`와 같은 규칙)을 지나지 못하면 저장하지 않고 이유를 말한다.
+    /// 돌려주는 값은 저장 요청이 나갔는지다 — 화면은 이걸 보고 닫을지 정한다.
+    @discardableResult
+    func saveBooking(_ booking: TripBooking, links: BookingLinks = .empty) async -> Bool {
+        if let problem = booking.validate() {
+            errorMessage = problem.message
+            return false
+        }
+        let isNew = document?.booking(id: booking.id) == nil
+        await edit(isNew ? "예약을 추가했어요" : "예약을 저장했어요") { $0.upsertBooking(booking, links: links) }
+        return true
+    }
+
+    /// 예약 추적을 뺀다. 실제 예약이 취소되지는 않는다 — 화면이 그렇게 말한 뒤에 부른다.
+    func removeBooking(id: String) async {
+        await edit("예약을 뺐어요") { $0.removeBooking(id: id) }
+    }
+
     /// 고치고 → 화면에 먼저 반영하고 → 저장한다. 실패하면 **서버가 아는 상태로 되돌린다** —
     /// 저장되지 않은 것이 저장된 것처럼 남아 있으면 다음 편집이 그 위에 쌓인다.
     private func edit(_ successToast: String?, _ change: (inout TripDocument) -> Void) async {

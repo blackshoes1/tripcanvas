@@ -27,6 +27,13 @@ enum AppConfig {
     /// 구글 Places REST가 요구하는 `X-Ios-Bundle-Identifier` 값. 무료 스펙에서 번들 ID를 바꿨다면 그 값이 나간다.
     static let bundleId: String = Bundle.main.bundleIdentifier ?? "com.fromj.trip"
 
+    /// 초대 링크가 가리키는 **웹** 주소. 받는 사람에게 앱이 없을 수 있어 링크는 웹(`#join=`)으로 만든다.
+    static let webBaseURL: URL = {
+        if let raw = Bundle.main.object(forInfoDictionaryKey: "TCWebBaseURL") as? String,
+           let url = URL(string: raw), !raw.isEmpty { return url }
+        return URL(string: "https://tripcanvas-ai.vercel.app/")!
+    }()
+
     static let supabaseURL: URL = {
         if let raw = Bundle.main.object(forInfoDictionaryKey: "TCSupabaseURL") as? String,
            let url = URL(string: raw), !raw.isEmpty { return url }

@@ -110,6 +110,16 @@ struct TodayView: View {
                 NavigationLink { TripPlanView(trip: trip) } label: { Image(systemName: "list.bullet.rectangle") }
                     .accessibilityLabel("일정 편집")
             }
+            // 함께하기는 여행 하나에 붙는 것이라 여기서 들어간다 — 로그아웃·로컬 전용 여행에는 없다.
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    NavigationLink { CandidateBoardView(trip: trip) } label: { Label("가고 싶은 곳", systemImage: "mappin.and.ellipse") }
+                    NavigationLink { CollabView(trip: trip) } label: { Label("함께하기", systemImage: "person.2") }
+                } label: {
+                    Image(systemName: "person.2")
+                }
+                .accessibilityLabel("함께하기")
+            }
         }
         .refreshable { await model?.load() }
         .task {

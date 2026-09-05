@@ -19,6 +19,8 @@ final class ActionRouter {
         /// 공유로 들어온 것을 확인하는 화면. tripId는 아직 모를 수 있다.
         case inbox(shareKey: String?)
         case memory(tripId: String)
+        /// 초대 링크로 참여 — 토큰만 싣는다(여행 id·역할은 서버가 토큰으로 찾는다).
+        case join(token: String)
     }
 
     func open(_ destination: Destination) { self.destination = destination }
@@ -46,6 +48,10 @@ final class ActionRouter {
             let key = URLComponents(url: url, resolvingAgainstBaseURL: false)?
                 .queryItems?.first { $0.name == "share" }?.value
             return .inbox(shareKey: key)
+        }
+        if head == "join" {
+            guard parts.count >= 2, CollabModel.isValidToken(parts[1]) else { return nil }
+            return .join(token: parts[1])
         }
 
         guard head == "trip", parts.count >= 2 else { return nil }
@@ -78,6 +84,8 @@ final class ActionRouter {
             return URL(string: "tripcanvas://trip/\(id)/suggestion/\(encoded)")
         case .inbox(let key):
             return URL(string: key.map { "tripcanvas://inbox?share=\($0)" } ?? "tripcanvas://inbox")
+        case .join(let token):
+            return URL(string: "tripcanvas://join/\(token)")
         }
     }
 }

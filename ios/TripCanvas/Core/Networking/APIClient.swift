@@ -64,6 +64,16 @@ struct APIClient {
         try await send(path: path, method: "DELETE", query: query, body: nil)
     }
 
+    /// 함께하기의 부분 변경(멤버 역할·후보 상태) — 본문은 작은 사전이다.
+    func patch<T: Decodable>(_ path: String, body: [String: Any]) async throws -> T {
+        try await send(path: path, method: "PATCH", query: [], body: try JSONSerialization.data(withJSONObject: body))
+    }
+
+    /// 사전 본문의 PUT(반응·취향). 여행 문서처럼 원문을 보내야 할 때는 `put(_:jsonBody:)`를 쓴다.
+    func put<T: Decodable>(_ path: String, body: [String: Any]) async throws -> T {
+        try await send(path: path, method: "PUT", query: [], body: try JSONSerialization.data(withJSONObject: body))
+    }
+
     /// 이미 만들어 둔 JSON 본문을 그대로 보낸다. 여행 문서는 원문(JSONValue)이라
     /// [String: Any]로 옮기면 숫자·null 모양이 바뀔 수 있어 직접 인코딩한 데이터를 받는다.
     func put<T: Decodable>(_ path: String, jsonBody: Data) async throws -> T {
