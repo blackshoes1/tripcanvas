@@ -106,8 +106,8 @@ LEGACY_DATABASE_URL='<위 pooler URI>' DATABASE_URL='postgres://tripcanvas:<NAS�
 ```bash
 # NAS — 빌드(DS920+에서 몇 분) → api·realtime만 올린다. reverse-proxy는 뺀다: 도메인이 없어 Caddy가 인증서를 못 받는다
 cd ~/tripcanvas
-sudo docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.staging.yml build api realtime
-sudo docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.staging.yml up -d api realtime
+sudo docker compose -f deploy/docker-compose.yml build api realtime
+sudo docker compose -f deploy/docker-compose.yml up -d api realtime
 sudo docker ps --format '{{.Names}}\t{{.Status}}\t{{.Ports}}'        # api Up · 127.0.0.1:3000->3000
 curl -s http://127.0.0.1:3000/api/health                              # Next 부팅에 10초쯤 — 3초 만에 찍으면 000이다
 
@@ -215,7 +215,7 @@ docker compose -f deploy/docker-compose.yml exec realtime wget -qO- localhost:30
 
 ```bash
 # deploy/.env 의 TC_MIGRATION_* 를 전부 LEGACY 로
-docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.staging.yml up -d api
+docker compose -f deploy/docker-compose.yml up -d api
 ```
 
 - [ ] `/api/v1/me`의 `realtime.provider`가 `SUPABASE`로 돌아온다
@@ -247,7 +247,7 @@ staging 동안 새 DB에 쌓은 변경은 Supabase에 없다. 그것이 롤백�
 | 웹이 운영 API를 부른다 | 터널이 끊겼고 hostname이 localhost가 아니다 — 주소창이 `localhost:8000`인지 |
 | 실시간만 안 온다 | `/me`의 provider → 사이드카 `/health`의 `listener` 순서로 |
 | 저장이 42501 | 역할이 VIEWER다. 의도한 것이 아니면 `trip_members`의 role |
-| `docker compose port`가 비어 있다 | override 없이 올렸다 — `-f deploy/docker-compose.staging.yml`을 빠뜨렸는지 |
+| `docker compose port`가 비어 있다 | api·realtime의 루프백 publish는 **운영 compose에** 있다(2026-09-05~). postgres(15432)만 `-f deploy/docker-compose.staging.yml`이 필요하다 |
 | curl이 **전부** `000` | 터널이 죽었다. `pgrep -fl "ssh -N"` → 없으면 keepalive 붙여 다시. NAS 안에서 `curl 127.0.0.1:3000/api/health`가 200이면 확실히 터널이다 |
 | 터널 창에 `administratively prohibited` | sshd의 `AllowTcpForwarding no` — 1단계 ⚠️ |
 | `api`·`realtime`이 `Created`에서 안 움직인다 | `migrate`가 죽었다(`sudo docker logs tripcanvas-migrate-1`). 오류 문구 없이 `applying migrations...`에서 끝났으면 **`.env` 비밀번호 불일치** — 준비 절의 CONNECT 판정 한 줄 |

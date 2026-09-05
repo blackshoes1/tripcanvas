@@ -1,27 +1,18 @@
-# 포트 공개 override — 절차는 docs/staging-verification.md.
-# ⚠️ 이름은 staging이지만 **2026-09-04 전환 뒤로는 운영에도 필요하다.** Tailscale Funnel이
-#    호스트의 localhost:3000·3001로 넘기는데, 그 포트를 내는 것이 이 파일뿐이다. 빼고 올리면 API가 죽는다.
+# 리허설·디버그 전용 override. **운영은 이걸 겹치지 않는다** —
+# 겹쳐야만 운영이 도는 상태였던 것을 2026-09-05에 끝냈다(loopback publish는 base로 옮겼다).
 #
 #   docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.staging.yml up -d
 #
-# 하는 일은 하나다: api·realtime·postgres 포트를 **호스트의 127.0.0.1에만** 낸다.
-# 노트북에서 `ssh -L`로 당겨 쓰기 위한 것이고(그래야 웹이 localhost:3000을 API로 잡는다),
-# 0.0.0.0에 열지 않으므로 공유기·인터넷 쪽으로는 그대로 닫혀 있다.
+# 하는 일은 하나다: **PostgreSQL을 호스트 루프백에 낸다.** 복원 리허설·데이터 이관·스키마 확인처럼
+# DB에 직접 붙어야 할 때만 쓰고, 끝나면 이 override 없이 다시 올려 원래대로 닫는다(§54).
 #
-# ⚠️ Tailscale은 tailnet 트래픽을 NAS의 localhost로 넘긴다 — 127.0.0.1 바인딩이어도 **tailnet 안에서는 닿는다.**
-#    그래서 SSH 터널 없이 tailnet 주소로 붙을 수도 있고, 반대로 tailnet에 있는 기기에는 열려 있다는 뜻이기도 하다.
-# ⚠️ postgres는 원래 internal 네트워크에만 있다(§54). 포트를 내려면 edge에도 붙어야 하므로
-#    여기서만 그렇게 하고, 검증이 끝나면 이 override 없이 다시 올려 원래대로 닫는다.
+# ⚠️ postgres는 원래 internal 네트워크에만 있다. 포트를 내려면 edge에도 붙어야 하므로 여기서만 그렇게 한다.
 # ⚠️ DSM 자체 PostgreSQL이 5432를 이미 쓴다 — 호스트 쪽은 15432다.
+# ⚠️ 127.0.0.1 바인딩이어도 **tailnet 안에서는 닿는다**(Tailscale이 tailnet 트래픽을 localhost로 넘긴다).
+#    올려둔 채로 잊지 말 것.
 name: tripcanvas
 
 services:
-  api:
-    ports: ["127.0.0.1:3000:3000"]
-
-  realtime:
-    ports: ["127.0.0.1:3001:3001"]
-
   postgres:
     networks: [internal, edge]
     ports: ["127.0.0.1:15432:5432"]
