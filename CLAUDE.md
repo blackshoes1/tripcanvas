@@ -4,10 +4,18 @@
 
 ## Git 워크플로 (중요)
 
-- **작업은 `main`에 직접 커밋·푸시한다.** 별도 브랜치·PR 없이 바로 반영한다.
-- ⚠️ `main` 푸시는 Vercel 자동 배포와 연결돼 있어 **커밋 즉시 프로덕션(`tripcanvas-ai.vercel.app`)에 나간다.** 푸시 전에 변경을 스스로 검토하고, 아래 **릴리스 체크리스트**를 반드시 지킬 것.
+- **`main`에 직접 커밋·푸시하지 않는다.** 브랜치를 만들고 PR로 넣는다:
+
+  ```
+  브랜치 → PR → 게이트 통과 → merge → 배포
+  ```
+
+  브랜치 이름은 `feat/*` · `fix/*` · `chore/*` · `docs/*` · `release/*`.
+- ⚠️ `main` merge는 Vercel 자동 배포와 연결돼 있어 **merge 즉시 프로덕션(`tripcanvas-ai.vercel.app`)에 나간다.** merge 전에 아래 **릴리스 체크리스트**를 반드시 지킬 것. (API·DB는 Vercel 배포로 바뀌지 않는다 — NAS에서 따로 올린다)
+- **필수 체크가 빨간 상태로 merge하지 않는다.** 빨간 이유가 코드가 아니라 러너·과금이면 그 사실과 대신 무엇으로 검증했는지를 PR에 남기고 **사람이 판단한다** — `docs/ci.md`
 - **여러 기기(집·회사)에서 작업한다.** 세션 시작·커밋 전에 `git fetch`로 `origin/main`이 앞서 있는지 확인하고, 뒤처졌으면 `git pull --ff-only` 후 작업한다.
 - **커밋 메시지 제목은 명사형으로 끝낸다.** `… 기능 추가` · `… 오류 수정` · `… 규칙 정리` 처럼 맺는다. `추가한다`·`고쳤다` 같은 서술형 어미로 끝내지 않는다. (본문은 서술형으로 써도 된다 — 제목만 명사형)
+- PR 본문은 무엇이 바뀌었는지·왜·사용자와 프로덕션에 무슨 영향인지·무엇으로 검증했는지·되돌리는 법을 적는다. **`테스트 작성됨`과 `테스트 통과`를 섞지 않는다.**
 
 ## 배포
 
@@ -68,6 +76,7 @@ With J          ← 제품 (앱 이름 · 웹 타이틀 · PWA · 메일 제목 
 - `next/src/server/` — **독립 Backend**(Supabase 이관 중, `docs/backend-architecture.md` · `docs/supabase-migration.md`): `auth/`(Supabase JWT 직접 검증 → `RequestContext`) · `api/`(오류 계약 · Trip 라우트) · `application/`(TripService · TripAuthorizationService — RLS 대체) · `repositories/`(인터페이스 · dual read · memory) · `auth/`에 **자체 Auth**(better-auth — `/api/auth/*`, 이메일 확인·세션·재설정. `users.auth_user_id`로 도메인 사용자와 잇고 **확인된 이메일로만** 연결한다) · `infrastructure/mail/`(SMTP 어댑터·쿨다운) · `infrastructure/database/`(Drizzle 스키마 · 마이그레이션 · PostgreSQL Repository, 테스트는 PGlite) · `infrastructure/supabase/`(레거시 경로) · `migration/`(Supabase → 새 DB 데이터 이관·검증. `npm run migrate:import`, 절차는 `docs/backup-restore.md`) · `realtime/`(**WebSocket 사이드카** — `trip_activity` 트리거의 `pg_notify`를 LISTEN해 중계한다. 별도 프로세스: `npm run tools:build && npm run realtime`. 페이로드는 신호뿐이고 내용은 API로 다시 읽는다. ⚠️ CommonJS로 컴파일되므로 ESM 전용인 better-auth를 import하지 않는다 — 자체 Auth 세션은 `auth/sessionTokenVerifier.ts`가 **DB로** 판정한다(서명까지 확인해 API와 같은 기준). API와 **같은 `AUTH_SECRET`**을 써야 하고, 다르면 아무도 실시간에 못 붙는다). Route Handler에 비즈니스 로직을 두지 않는다. 이관 레지스트리 `TC_MIGRATION_<DOMAIN>`(기본 LEGACY, `DATABASE_URL` 없으면 강제 LEGACY)이 요청마다 저장소를 고른다. `deploy/`(docker-compose · Caddy · 백업)는 **미검증**(`docs/nas-deployment.md`)
 - `next/src/features/trip-state/` — 웹·iOS 공통 API 계층. `contract.ts`(단일 출처 계약) · `todayView.ts`(엔진 결과를 계약 모양으로) · `mutations.ts`(문서 변경 순수 함수) · `handlers.ts`(주입 가능한 라우트 핸들러) · `supabaseGateway.ts`(RLS 아래 읽기·쓰기)
 - `scripts/` — `bump-version.js` · `check-version-sync.js` · `check-secrets.js` · `verify-all.sh`(릴리스 게이트를 로컬에서 통째로 — `docs/ci.md`)
+- `.githooks/pre-push` — `main` 직접 푸시 차단. **클론마다 `git config core.hooksPath .githooks` 한 번** — GitHub branch protection이 이 플랜(비공개+무료)에서 막혀 있어 강제할 수 있는 곳이 여기뿐이다(`docs/deployment-workflow.md`)
 - `test/` — 순수·통합·API 테스트 (`pure` · `integration` · `adaptive` · `intake` · `collab` · `price` · `routing` · `sync` · `api-*` · `migration` · `rls.integration`(로컬 PostgreSQL이 있을 때만 — `scripts/pg-local.sh`))
 - `e2e/` — Playwright 시나리오 (`core-flows` · `pwa` · `accessibility` · `ux-wireframe` · `collab`)
 - `proto/` — 실험용 프로토타입. 프로덕션 앱과 무관
