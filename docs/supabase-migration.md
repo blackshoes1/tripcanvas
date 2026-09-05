@@ -12,7 +12,7 @@ PostgreSQL + 독립 Auth + TripCanvas API 중심의 자체 Backend로 옮기는 
 
 | 도메인 | 상태 | 비고 |
 |---|---|---|
-| AUTH | LEGACY (자체 Auth 준비됨) | Supabase 토큰을 새 API가 **직접 검증**한다(Phase A). 자체 Auth(better-auth)가 `/api/auth/*`에 올라가 있고 두 토큰이 함께 통한다 — `AUTH_SECRET`이 없으면 꺼진 채다. 로그인 화면 전환은 PR11 |
+| AUTH | **NEW_BACKEND** (웹 2026-09-04 · iOS 2026-09-05) | 프로덕션 `GET /api/v1/auth-config`가 `TRIPCANVAS`를 준다 — 웹·iOS 모두 자체 Auth(better-auth, `/api/auth/*`)로 로그인한다. ⚠️ 서버는 **아직 Supabase 토큰도 받는다**(`compositeVerifier`) — 업데이트하지 않은 옛 iOS 앱 때문이다. 그 앱이 사라질 때까지 `supabaseJwt.ts`를 지우지 않는다 |
 | TRIP | LEGACY (→ `DUAL_READ` → `NEW_BACKEND` 가능) | 목록·상세·생성·수정(CAS)·삭제(tombstone)가 새 Repository로 준비됨. `TC_MIGRATION_TRIP`으로 전환·롤백 |
 | ITINERARY (Day·Spot) | LEGACY | 여행 문서(jsonb) 안에 있어 TRIP과 함께 움직인다 |
 | BOOKING | LEGACY | 문서 안(`trip.bookings`) + `hotel_price_snapshots` |
@@ -21,6 +21,37 @@ PostgreSQL + 독립 Auth + TripCanvas API 중심의 자체 Backend로 옮기는 
 | COLLAB | LEGACY (→ `NEW_BACKEND` 가능) | 협업 API 20개 라우트. LEGACY면 같은 라우트가 Supabase RPC 어댑터로 돈다(판정은 RPC). **웹은 이제 API를 지난다**(PR12) — Supabase RPC 직접 호출 없음 |
 | REALTIME | LEGACY (→ `NEW_BACKEND` 가능) | 자체 WebSocket 사이드카 준비됨(아래). 새 DB가 진실일 때만 의미가 있다 — 협업이 LEGACY면 새 DB에 활동 행이 안 쌓인다. 웹은 아직 Supabase Realtime을 쓴다(PR12) |
 | STORAGE | — | **쓰지 않는다**(사진 원본은 기기에만) |
+
+## 인벤토리 재실행 (2026-09-05)
+
+`git grep -licE 'supabase|SUPABASE_|auth/v1|createClient'` 결과를 **분류**한 것이다.
+숫자만 세면 "아직 120곳이나 남았다"로 읽히지만, **실제로 도는 것**과 **남겨 둔 것**은 다르다.
+
+| 분류 | 파일 | 지금 도는가 | 언제 지우나 |
+|---|---|---|---|
+| **Production runtime — 서버** | `next/src/server/auth/supabaseJwt.ts`(9) · `compositeVerifier.ts` · `remoteSupabaseUser.ts` · `withRemoteFallback.ts` · `app/api/v1/route-deps.ts`(20) | **예.** 옛 iOS 앱이 보내는 Supabase 토큰을 검증한다 | 그 앱이 사라진 뒤 |
+| **Legacy fallback — 서버** | `infrastructure/supabase/legacyTripRepository.ts`(12) · `legacyCollabService.ts`(8) · `config/migrationRegistry.ts` | 레지스트리가 `LEGACY`인 도메인에서만 | 도메인별 `NEW_BACKEND` 전환 후 |
+| **실행되지 않는 분기 — 웹** | `auth.js`(24) · `app.js`(19: `SUPA_URL`·`createClient`·`TC_AUTH.configure`) · `api.js`(5) · `collab.js`(4) · `index.html`(SDK 로드) · `sw.js` | **아니오.** 서버가 `provider: TRIPCANVAS`를 준다 | 롤백 대상(`tripcanvas-api`)을 접을 때 |
+| **실행되지 않는 분기 — Next 웹** | `features/cloud/services/supabaseClient.ts`(7) · `cloudSync.ts`(8) · `tripSnapshots.ts`(5) · `useCloudAuth.ts`(6) · `trip-state/services/supabaseGateway.ts`(7) | 레지스트리에 따라 | 위와 같음 |
+| **iOS 런타임** | **없음** | — | ✅ 2026-09-05 완료 |
+| 이관 도구 | `server/migration/*` · `test/migration.test.js` | 필요할 때만 | 이관이 끝나도 남긴다(감사 기록) |
+| 테스트 fixture | `test/*.test.js` · `test/rls/*` · `next/**/*.test.ts` | 테스트에서만 | 해당 코드가 사라질 때 |
+| 스키마 원본 | `supabase/migrations/*` | 아니오 | 남긴다 — RLS·RPC 설계의 역사다 |
+| 문서 | `docs/*` · `README.md` · `CLAUDE.md` · `AGENTS.md` | — | — |
+
+### Production Runtime Supabase Dependency
+
+| 플랫폼 | 파일 수 | 목록 |
+|---|---|---|
+| iOS | **0** | — |
+| 웹(브라우저) | **0**(실행 기준) | 코드는 있으나 `provider`가 `TRIPCANVAS`라 타지 않는다 |
+| 서버 | **5** | `supabaseJwt.ts` · `compositeVerifier.ts` · `remoteSupabaseUser.ts` · `withRemoteFallback.ts` · `route-deps.ts` |
+
+서버의 5개는 **의도적으로 남긴다.** 지우면 업데이트하지 않은 앱이 그날로 로그인 불가가 된다.
+목표 0은 "옛 앱 지원 종료"라는 제품 결정이 먼저 있어야 하고, 그건 이 스프린트의 범위가 아니다.
+
+⚠️ 웹의 Supabase 분기를 지우는 것은 **롤백을 반쪽으로 만든다** — `tripcanvas-api`(Vercel, 여전히 Supabase를 봄)로
+되돌릴 때 웹이 그쪽 Auth로 붙을 수 없게 된다. NAS 운영이 충분히 안정됐다고 판단한 뒤에 별도 PR로 한다.
 
 ## Phase 0 — Supabase 사용 인벤토리 (2026-09-03)
 
@@ -40,6 +71,11 @@ PostgreSQL + 독립 Auth + TripCanvas API 중심의 자체 Backend로 옮기는 
 `POST /auth/v1/token`(`password`·`refresh_token`)으로만 쓴다. 데이터는 전부 `/api/v1` 9개 엔드포인트(`Services/TripService.swift`).
 토큰은 기기 전용 Keychain(`supabase.session`), 위젯·워치·공유 확장은 자격증명 없이 App Group 스냅샷만 읽는다.
 → iOS 이관은 **Phase 8(Auth 교체)에서 로그인 엔드포인트만 바꾸면 끝난다.** 하드코딩된 값은 `AppEnvironment.swift:12,18,23`(API URL·Supabase URL·publishable 키).
+
+> **2026-09-05 갱신 — 위 iOS 문단은 이제 역사다.** GoTrue 호출 2종, `TCSupabaseURL`·`TCSupabaseAnonKey`,
+> Keychain `supabase.session`이 전부 사라졌다. 로그인은 웹과 같은 `/api/auth/*`이고 세션은
+> `withj.auth.session.v1`이다. **iOS 런타임의 Supabase 의존성 = 0** — 남은 문자열은 옛 Keychain 항목을
+> *지우는* 이름뿐이다. 최신 인벤토리는 아래 §"인벤토리 재실행" 참고.
 
 ### Auth (8)
 
