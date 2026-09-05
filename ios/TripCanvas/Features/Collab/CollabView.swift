@@ -65,6 +65,10 @@ struct CollabView: View {
             syncDrafts()
         }
         .onChange(of: model?.preferences) { _, _ in syncDrafts() }
+        // 저장하면 서버가 정규화한 값이 이긴다 — 서버가 떨어뜨린 값이 입력칸에 남아 있으면 안 된다.
+        .onChange(of: model?.prefsSaveStamp) { _, _ in
+            if let model { prefsDraft = model.myPrefs }
+        }
         .onChange(of: model?.hasLeft) { _, left in
             if left == true { onLeft?(); dismiss() }
         }

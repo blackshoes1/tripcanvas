@@ -233,7 +233,9 @@ struct CandidateCard: View {
                             }
                             Spacer(minLength: Space.s)
                             if let action = option.action, CollabModel.canScheduleCandidate(role) {
-                                Button("이렇게 할게요") { action == "SCHEDULE" ? onSchedule() : onReject() }
+                                Button("이렇게 할게요") {
+                                    if action == "SCHEDULE" { onSchedule() } else { onReject() }
+                                }
                                     .font(.caption2)
                                     .buttonStyle(.bordered)
                                     .controlSize(.small)

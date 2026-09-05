@@ -18,6 +18,9 @@ final class CollabViewModel {
     private(set) var toast: String?
     /// 방금 만든 초대 링크. 토큰은 서버가 다시 주지 않으므로 여기서만 보인다.
     private(set) var createdInviteLink: String?
+    /// 취향을 저장할 때마다 오른다. 화면은 이 값이 바뀌면 **서버가 돌려준 것으로** 입력칸을 맞춘다 —
+    /// 서버가 모르는 값을 떨어뜨렸으면 화면에도 그렇게 보여야 한다.
+    private(set) var prefsSaveStamp = 0
     /// 나갔다 — 화면은 이걸 보고 목록으로 돌아간다.
     private(set) var hasLeft = false
 
@@ -123,6 +126,7 @@ final class CollabViewModel {
             _ = try await service.savePreferences(tripId: trip.id, prefs: prefs.raw)
             toast = "취향을 저장했어요"
             preferences = (try? await service.preferences(tripId: trip.id)) ?? preferences   // 서버가 돌려준 것이 이긴다
+            prefsSaveStamp += 1
         } catch {
             errorMessage = message(for: error)
         }
@@ -143,8 +147,8 @@ final class CollabViewModel {
     }
 
     private func isForbidden(_ error: Error) -> Bool {
-        if case .forbidden = error as? APIError { return true }
-        return false
+        guard let apiError = error as? APIError, case .forbidden = apiError else { return false }
+        return true
     }
 
     private func message(for error: Error) -> String {
