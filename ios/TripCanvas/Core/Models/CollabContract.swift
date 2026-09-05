@@ -176,3 +176,22 @@ struct PreferencesResponse: Codable, Sendable { let preferences: [PreferenceView
 struct PrefsSavedResponse: Codable, Sendable { let prefs: [String: JSONValue] }
 struct OkResponse: Codable, Sendable { let ok: Bool }
 struct CreatedIdResponse: Codable, Sendable { let id: Int }
+
+/// `GET /api/v1/me` — **실시간을 쓸지, 어디에 붙을지는 서버가 정한다**(§40).
+/// 앱이 고르면 협업이 아직 옛 저장소일 때 아무 이벤트도 오지 않는 데 붙어 "실시간"이라고 말하게 된다.
+struct RealtimeChoice: Codable, Sendable {
+    /// `TRIPCANVAS` · `SUPABASE` · `NONE`. 앱은 TRIPCANVAS일 때만 붙는다 —
+    /// Supabase Realtime SDK는 앱에 없고, 넣지 않는다.
+    let provider: String
+    let url: String?
+
+    var socketURL: URL? {
+        guard provider == "TRIPCANVAS", let url, !url.isEmpty else { return nil }
+        return URL(string: url)
+    }
+}
+
+struct MeResponse: Codable, Sendable {
+    let realtime: RealtimeChoice
+}
+

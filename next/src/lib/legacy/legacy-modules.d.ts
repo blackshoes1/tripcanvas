@@ -377,6 +377,11 @@ declare module '@legacy/collab.js' {
     inviteRangeText(start: string | null | undefined, dayCount: number | null | undefined): string;
     isForbiddenError(err: unknown): boolean;
     forbiddenText(err: unknown, role: Role | null | undefined): string;
+    readonly ACTIVITY_KINDS: readonly string[];
+    /** 실시간 이벤트 하나가 **무엇을 다시 읽게 하는가**. payload를 화면 상태로 쓰지 않기 위한 단일 규칙(§41) */
+    liveEffects(event: { kind?: string; mine?: boolean } | null | undefined): {
+      candidates: boolean; members: boolean; pull: boolean; activity: boolean; notify: boolean;
+    };
     /** 여행 취향 요약. 점수가 아니라 정리다 — 자동으로 무엇을 빼자고 하지 않는다(§62) */
     groupContext(rows: unknown[] | null | undefined, memberCount: number | null | undefined): GroupCtx;
     groupContextText(ctx: GroupCtx | null | undefined): string[];

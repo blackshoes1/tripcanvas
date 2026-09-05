@@ -122,6 +122,28 @@
   ⚠️ 합의 점수는 계약에 없다. 수락하면 **문서 저장이 먼저**고 후보 표시가 그다음이며, 여러 곳을 넣어도
   문서는 **한 번만** 저장한다(픽마다 저장하면 스스로 revision 충돌을 만든다).
 
+## 실시간 (Core/Networking/RealtimeClient)
+
+WebSocket 사이드카(`server/realtime/hub.ts`)에 붙는다. 규약은 웹(`api.js`의 `connectRealtime`)과 **같다**:
+
+```
+붙음 → AUTH(첫 프레임) → READY → SUBSCRIBE → SUBSCRIBED → ACTIVITY…
+                                  PING ↔ PONG
+```
+
+- ⚠️ **토큰을 URL에 싣지 않는다** — 프록시·접근 로그에 남는다. 첫 프레임 `AUTH`로 보낸다.
+- **payload를 화면 상태로 쓰지 않는다**(§41). 오는 것은 `{tripId, id, kind, mine}`뿐이고 내용은 API로 다시 읽는다.
+  무엇을 다시 읽을지는 `CollabModel.liveEffects`가 정한다.
+- ⚠️ `liveEffects`는 `collab.js`의 **복사본**이다. `next`의 `liveEffectsParity.test.ts`가 모든 kind × mine의 답을
+  `Fixtures/live-effects.json`으로 떨어뜨리고 `LiveEffectsParityTests`가 그 파일로 검사한다 —
+  규칙을 바꿀 때는 `collab.js`를 먼저 고친다. 그러면 픽스처가 바뀌고 Swift 테스트가 깨진다.
+- **붙일지·어디에 붙을지는 서버가 정한다**(`GET /api/v1/me`의 `realtime`). `TRIPCANVAS`가 아니면 붙지 않는다 —
+  Supabase Realtime SDK는 앱에 없고 넣지 않는다. 주소는 한 번만 물어보고 들고 있는다.
+- **실시간이 없어도 앱은 그대로 돈다.** 몇 번 시도해도 안 되면 조용히 폴백(당겨서 새로고침)으로 가고,
+  화면이 그 사실을 말한다. 실시간을 못 붙였다고 오류 화면을 띄우지 않는다.
+- ⚠️ **백그라운드에서 소켓을 붙들지 않는다**(§34). 뒤로 가면 끊고, 돌아오면 다시 붙으면서 최신을 읽는다.
+- 구독은 **보고 있는 여행 하나**다. 권한·형식 오류(`ERROR`)는 재시도해도 같으므로 매달리지 않는다.
+
 ## 판단은 서버가, 표현은 iOS가
 
 웹의 `NextActionEngine`·`TripState`·`Replan`을 Swift로 다시 만들지 않았다. 두 벌을 두면 같은 상황에서

@@ -659,3 +659,51 @@ extension ISODateText {
         return nil
     }
 }
+
+// MARK: - 실시간 (§41·§43~§45)
+
+/// 이벤트 하나가 **무엇을 다시 읽게 하는가**.
+///
+/// 소켓은 알림 채널일 뿐이고 진실은 PostgreSQL이다 — payload를 화면 상태로 쓰지 않는다.
+/// 무엇이 바뀌었는지만 받고 내용은 API로 다시 읽는다.
+struct LiveEffects: Equatable, Sendable {
+    /// 후보 보드를 다시 읽는다
+    let candidates: Bool
+    /// 멤버·역할을 다시 읽는다
+    let members: Bool
+    /// 여행 문서를 당긴다 (내 저장이면 당기지 않는다)
+    let pull: Bool
+    /// 최근 활동 목록을 다시 읽는다
+    let activity: Bool
+    /// 토스트로 알린다 — 남이 후보를 담았을 때와 새 멤버뿐이다
+    let notify: Bool
+}
+
+extension CollabModel {
+    /// 실시간 이벤트가 무엇을 다시 읽게 하는지.
+    ///
+    /// ⚠️ **`collab.js`의 `liveEffects` 복사본이다.** 규칙을 바꿀 때는 `collab.js`를 먼저 고친다 —
+    /// `liveEffectsParity.test.ts`가 모든 kind × mine의 답을 fixture로 떨어뜨리고
+    /// `RealtimeTests`가 그 파일로 이 함수를 검사한다.
+    static let activityKinds: [String] = [
+        "MEMBER_JOINED", "MEMBER_LEFT", "MEMBER_REMOVED",
+        "CANDIDATE_PROPOSED", "CANDIDATE_SCHEDULED", "CANDIDATE_REJECTED",
+        "REACTION", "COMMENT_ADDED", "SCHEDULE_CHANGED", "BOOKING_ADDED"
+    ]
+
+    static func liveEffects(kind: String, mine: Bool) -> LiveEffects {
+        let known = activityKinds.contains(kind)
+        let candidates = kind.hasPrefix("CANDIDATE_") || kind == "REACTION" || kind == "COMMENT_ADDED"
+        let members = kind.hasPrefix("MEMBER_")
+        let doc = kind == "SCHEDULE_CHANGED" || kind == "BOOKING_ADDED"
+        return LiveEffects(
+            candidates: candidates,
+            members: members,
+            pull: doc && !mine,
+            activity: known,
+            // 알림은 적게 — 남이 후보를 담았을 때와 새 멤버뿐이다. 반응·코멘트·일정 변경은 화면 갱신으로 끝.
+            notify: !mine && (kind == "CANDIDATE_PROPOSED" || kind == "MEMBER_JOINED")
+        )
+    }
+}
+

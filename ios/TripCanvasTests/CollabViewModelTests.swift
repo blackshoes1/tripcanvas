@@ -511,6 +511,7 @@ private final class FakeCollabService: CollabSource {
     var proposalResult: GroupProposalView?
     var failProposal = false
     private(set) var proposalReads = 0
+    func realtimeChoice() async throws -> RealtimeChoice { RealtimeChoice(provider: "NONE", url: nil) }
     func groupProposal(tripId: String) async throws -> GroupProposalView? {
         proposalReads += 1
         if failProposal { throw APIError.offline }

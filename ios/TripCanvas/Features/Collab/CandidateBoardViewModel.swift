@@ -106,6 +106,19 @@ final class CandidateBoardViewModel {
         if let notice { errorMessage = notice }
     }
 
+    /// 실시간 이벤트 하나. **payload를 화면 상태로 쓰지 않는다**(§41) —
+    /// 무엇을 다시 읽을지만 판정하고(`CollabModel.liveEffects`, `collab.js`와 같은 규칙) 내용은 API로 다시 읽는다.
+    ///
+    /// 이 화면이 다시 읽는 것은 후보 보드뿐이다. 멤버·문서는 각자의 화면이 본다.
+    func handle(_ event: RealtimeActivity) async {
+        guard event.tripId == trip.id else { return }
+        let effects = CollabModel.liveEffects(kind: event.kind, mine: event.mine)
+        // 알림은 적게(§51) — 남이 후보를 담았을 때와 새 멤버뿐이다.
+        if effects.notify, event.kind == "CANDIDATE_PROPOSED" { toast = "일행이 가고 싶은 곳을 담았어요" }
+        guard effects.candidates else { return }
+        await load()
+    }
+
     func clearToast() { toast = nil }
     func dismissError() { errorMessage = nil }
 
