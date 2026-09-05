@@ -69,6 +69,56 @@ sudo docker compose -f deploy/docker-compose.yml ps        # postgres·api·real
 
 `reverse-proxy`가 돌고 있었다면 이때 내려간다. 80·443을 쓰던 것도 함께 풀린다.
 
+## Funnel — 외부 경로가 죽으면 아무도 모른다
+
+**2026-09-05에 실제로 죽어 있었다.** tailnet 안에서는 전부 정상으로 보였고, 폰(LTE)으로 눌러 보고서야 알았다.
+
+### 왜 안 보였나
+
+- `tailscale status`·`funnel status`·`/api/health` 모두 정상이었다. **설정이 맞아도 인그레스 등록이 끊길 수 있다.**
+- ⚠️ **tailnet 안에서 한 curl은 Funnel을 지나지 않는다.** MagicDNS가 같은 이름을 100.x로 풀어 버려서, 개발 기기에서
+  아무리 확인해도 외부 경로를 검증한 것이 아니다.
+- ⚠️ 맥이 NAS를 **exit node로 쓰고 있으면** `--resolve`로 공인 IP를 찍어도 무효다 — 트래픽이 NAS를 한 바퀴 돌고,
+  공유기가 hairpinning을 지원하지 않으면 타임아웃이 난다(`tailscale netcheck`의 `HairPinning: false`).
+
+### 되살리는 법
+
+인그레스 등록이 끊겼을 때는 `reset` 후 다시 건다:
+
+```bash
+sudo /var/packages/Tailscale/target/bin/tailscale funnel reset
+sudo /var/packages/Tailscale/target/bin/tailscale funnel --bg 3000
+sudo /var/packages/Tailscale/target/bin/tailscale funnel --bg --set-path=/ws http://127.0.0.1:3001/ws
+```
+
+⚠️ `funnel 443 off/on` 문법은 **없어졌다**(1.58 기준). `funnel <target>` · `funnel status` · `funnel reset` 셋뿐이다.
+
+### 실시간(`/ws`)은 경로를 지켜야 한다
+
+사이드카는 **`/ws`에서만** 받는다(`/`는 거절). `--set-path=/ws 3001`처럼 포트만 주면 Tailscale이 경로를 **떼고** 넘겨서
+502가 난다. 대상에 경로를 붙여야 한다:
+
+```
+|-- /   proxy http://127.0.0.1:3000
+|-- /ws proxy http://127.0.0.1:3001/ws      ← 경로가 붙어야 한다
+```
+
+> ⚠️ **2026-09-05 현재 미해결**: 경로를 고쳐도 WebSocket 업그레이드는 502다. 평범한 GET은 404(정상)로 지나가므로
+> 프록시·라우팅은 맞고 **업그레이드만** 실패한다. tailnet 안(serve)에서도 같아 Funnel 인그레스가 아니라
+> **tailscaled 1.58.2(2024-02)의 문제**로 보인다. → 업그레이드 또는 별도 포트(8443) 노출을 검토.
+> 그동안 실시간은 폴백(당겨서 새로고침)으로 동작한다 — 앱·웹 모두 그렇게 설계돼 있다.
+
+### 확인하는 법 (반드시 tailnet 밖에서)
+
+```bash
+# 공인 IP를 직접 찍어 인그레스 경로를 그대로 지난다
+IP=$(dig +short @8.8.8.8 bokbok9.tail8b977f.ts.net A | head -1)
+curl -m 20 --resolve "bokbok9.tail8b977f.ts.net:443:$IP" https://bokbok9.tail8b977f.ts.net/api/health
+```
+
+⚠️ exit node를 쓰고 있으면 이것도 무효다 — 폰의 LTE가 가장 확실하다.
+⚠️ WebSocket을 볼 때는 **`--http1.1`을 줘야 한다.** HTTP/2로는 업그레이드가 성립하지 않아 엉뚱한 404로 보인다.
+
 ## NAS의 실제 환경 — 처음 붙는 사람이 걸리는 것들
 
 여기 적힌 것은 전부 2026-09-05에 실제로 걸렸던 것이다.
