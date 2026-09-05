@@ -1,5 +1,6 @@
 import SwiftUI
 import Observation
+import UIKit
 
 @Observable
 @MainActor
@@ -39,6 +40,11 @@ final class TripListViewModel {
 struct TripListView: View {
     @Environment(AppEnvironment.self) private var env
     @State private var model: TripListViewModel?
+    /// 초대 링크로 참여 — 딥링크(`tripcanvas://join/…`)로 오거나 링크를 붙여넣어 연다.
+    @State private var joinToken: String?
+    @State private var pasteText = ""
+    @State private var showsPastePrompt = false
+    @State private var joinError: String?
 
     var body: some View {
         NavigationStack {
@@ -54,6 +60,12 @@ struct TripListView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         if let email = env.auth.email { Text(email) }
+                        Button {
+                            pasteText = UIPasteboard.general.string ?? ""
+                            showsPastePrompt = true
+                        } label: {
+                            Label("초대 링크로 참여", systemImage: "link")
+                        }
                         Button("로그아웃", role: .destructive) { env.auth.signOut() }
                     } label: {
                         Image(systemName: "person.crop.circle")
@@ -65,6 +77,34 @@ struct TripListView: View {
         .task {
             if model == nil { model = TripListViewModel(service: env.service) }
             await model?.load()
+        }
+        // 딥링크는 라우터 하나를 지난다 — 앱을 열어 둔 채로 링크를 눌러도 같은 화면이 뜬다.
+        .onOpenURL { url in env.router.open(url: url) }
+        .onChange(of: env.router.destination) { _, destination in
+            if case .join(let token) = destination {
+                joinToken = token
+                env.router.clear()
+            }
+        }
+        .sheet(item: Binding(get: { joinToken.map(JoinToken.init) }, set: { joinToken = $0?.value })) { item in
+            JoinInviteView(token: item.value) { _ in
+                Task { await model?.load() }
+            }
+        }
+        .alert("초대 링크로 참여", isPresented: $showsPastePrompt) {
+            TextField("https://…#join=…", text: $pasteText)
+            Button("참여") {
+                if let token = CollabModel.joinToken(from: pasteText) { joinToken = token; pasteText = "" }
+                else { joinError = CollabModel.joinReasonText("INVALID") }
+            }
+            Button("취소", role: .cancel) { pasteText = "" }
+        } message: {
+            Text("받은 초대 링크를 붙여 넣으세요. 여행 이름과 권한을 먼저 확인한 뒤 참여합니다.")
+        }
+        .alert("참여할 수 없어요", isPresented: Binding(get: { joinError != nil }, set: { if !$0 { joinError = nil } })) {
+            Button("확인") { joinError = nil }
+        } message: {
+            Text(joinError ?? "")
         }
     }
 
@@ -112,6 +152,10 @@ struct TripRow: View {
                 Text(trip.name).font(.headline)
                 if trip.isLive {
                     StatusChip(text: "Day \(trip.todayIndex + 1)", symbol: "location.fill", tint: .blue)
+                }
+                if trip.isShared {
+                    // 함께 보는 여행인지 목록에서 바로 안다 — 편집 권한은 여행 안에서 말한다.
+                    StatusChip(text: "\(trip.memberCount ?? 1)명", symbol: "person.2.fill")
                 }
             }
             Text(subtitle)
