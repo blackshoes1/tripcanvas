@@ -13,6 +13,35 @@
 
 `BACKUP_DIR`는 **DB 볼륨과 다른 곳**이어야 한다(§60). 같은 디스크 한 개가 죽으면 둘 다 잃는다.
 
+## ⚠️ 백업이 실제로 도는지부터 확인한다
+
+2026-09-05에 처음 NAS에 붙어 보니 **덤프가 한 개도 없었다.** 이 문서는 매일 pg_dump가 돈다고 적고 있었지만:
+
+- `backup` 컨테이너가 **생성조차 되지 않았다** — 절차서가 `up -d api realtime`처럼 서비스를 지정해 올리라고 해서 `backup`은 한 번도 대상이 아니었다.
+- `BACKUP_DIR`이 가리키던 경로가 **존재하지 않았다.** (지금은 DB가 있는 `/volume1`과 다른 `/volume2` 아래로 옮겼다 — §60)
+
+지금은 `docker compose -f deploy/docker-compose.yml up -d`(서비스 지정 없이)가 `backup`까지 올린다. 확인:
+
+```bash
+sudo docker compose -f deploy/docker-compose.yml ps           # backup이 Up인가
+sudo docker logs tripcanvas-backup-1 | tail -3                # "[backup] wrote …"
+ls -la "$(grep '^BACKUP_DIR=' deploy/.env | cut -d= -f2-)"     # 덤프가 실제로 있는가
+```
+
+### 실패는 시끄러워야 한다
+
+같은 날 재부팅 시험에서 두 번째 문제가 나왔다. `backup`이 **postgres보다 먼저 떠서** `pg_dump`가 실패했는데
+스크립트가 그대로 **`[backup] wrote …`를 찍고 넘어갔다.** 0바이트 `.tmp`만 남고 다음 시도는 24시간 뒤였다.
+
+원인 둘:
+
+- `pg_dump … && mv …` 는 `&&` 목록이라 **`set -e`가 걸리지 않는다**(실패가 '검사된' 것으로 취급된다). 그래서 아래 `echo`가 그대로 돌았다.
+- compose의 `depends_on: postgres: condition: service_healthy`는 **데몬 재시작(재부팅)에는 적용되지 않는다.**
+
+`deploy/backup.sh`가 이제 (1) `pg_isready`로 최대 5분 기다리고, (2) 실패하면 `.tmp`를 지우고 **아무것도 "wrote"라고 말하지 않으며 1로 끝나고**, (3) 지난 `.tmp` 찌꺼기를 치운다 — 완성되지 않은 파일이 오프사이트로 복제되지 않게.
+
+entrypoint도 `… && sleep 86400 || sleep 300`이라 **실패하면 5분 뒤 다시 시도한다** — 일시적 실패로 하루를 통째로 건너뛰지 않는다.
+
 ## 복구
 
 ```bash

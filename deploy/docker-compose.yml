@@ -93,7 +93,9 @@ services:
     volumes:
       - ./backup.sh:/backup.sh:ro
       - ${BACKUP_DIR:-./backups}:/backups
-    entrypoint: ["sh", "-c", "while true; do sh /backup.sh; sleep 86400; done"]
+    # 성공하면 하루 쉬고, 실패하면 5분 뒤 다시 — 재부팅 직후처럼 일시적인 실패로
+    # **하루를 통째로 건너뛰지 않게** 한다.
+    entrypoint: ["sh", "-c", "while true; do sh /backup.sh && sleep 86400 || sleep 300; done"]
     depends_on:
       postgres:
         condition: service_healthy
