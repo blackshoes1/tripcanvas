@@ -116,7 +116,7 @@ struct TripListView: View {
             EmptyStateView(
                 symbol: "suitcase",
                 title: "아직 여행이 없어요",
-                message: "웹 From J에서 만든 여행이 여기에 나타납니다.")
+                message: "웹 With J에서 만든 여행이 여기에 나타납니다.")
         } else {
             List {
                 if let cachedAt = model.cachedAt {

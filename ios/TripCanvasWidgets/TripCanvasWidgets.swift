@@ -66,7 +66,7 @@ struct TodayWidgetView: View {
             }
         } else {
             VStack(alignment: .leading, spacing: 4) {
-                Text("From J").font(.caption.weight(.semibold))
+                Text("With J").font(.caption.weight(.semibold))
                 Text("앱에서 여행을 한 번 열면 오늘 일정이 여기에 나타나요.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)

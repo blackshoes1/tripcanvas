@@ -33,6 +33,19 @@ npm run verify:all
 - [ ] **필수 체크가 빨간 상태로 merge하지 않는다.** 빨간 이유가 코드가 아니라 러너·과금이면 그 사실과 대신 무엇으로 검증했는지를 PR에 남긴다 — `docs/ci.md`
 - [ ] 푸시 후 폰에서 실제 동작 확인 — ☰ 메뉴 하단의 **버전 표시**로 새 버전이 적용됐는지 먼저 볼 것 (캐시된 옛 버전이면 그 글자를 탭해 갱신)
 
+## 브랜드 — With J / From J
+
+사용자에게 보이는 제품 이름은 **With J**다. `From J`는 앱 이름이 아니라 **J가 사용자에게 보내는 제안의 서명**이다.
+
+```
+With J          ← 제품 (앱 이름 · 웹 타이틀 · PWA · 메일 제목 · 화면 문구)
+  └─ From J     ← 제안 카드에만 붙는 서명 (`sgKicker`의 `.sgFrom` · iOS `SuggestionCard`)
+```
+
+- **기술 식별자는 브랜드를 따라가지 않는다** — 저장소 `tripcanvas` · 번들 ID `com.fromj.trip` · App Group · DB 테이블 · API 경로 · 소스 파일 헤더 주석은 그대로 둔다. 바꾸면 서명·스토어·이관이 깨진다.
+- 화면 문구에 내부 용어를 쓰지 않는다: NextAction→**다음** · Suggestion→**From J** · TripPulse→**오늘의 흐름** · Replan→**다시 맞추기** · Collaboration→**같이 짜기** · Candidate→**가고 싶은 곳** · Conflict→**의견이 갈려요** · Travel Mode→**여행 중**.
+- J는 계획적·침착하고 먼저 챙기되 **대신 결정하지 않는다.** 제안에는 언제나 빠져나갈 길이 함께 있다.
+
 ## 구조
 
 - `index.html` — 마크업 (모달·헤더·재생 HUD 등)

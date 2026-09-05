@@ -40,9 +40,9 @@ export function createSmtpMailService(config: SmtpConfig, transport?: Transporte
   }
 
   return {
-    sendVerificationEmail: (to, url) => send(to, '[Trip Canvas] 이메일 확인',
+    sendVerificationEmail: (to, url) => send(to, '[With J] 이메일 확인',
       body('이메일을 확인해 주세요', '아래 버튼을 누르면 가입이 완료되고 로그인할 수 있습니다.', '이메일 확인하기', url)),
-    sendPasswordReset: (to, url) => send(to, '[Trip Canvas] 비밀번호 재설정',
+    sendPasswordReset: (to, url) => send(to, '[With J] 비밀번호 재설정',
       body('비밀번호를 새로 정해 주세요', '아래 버튼을 누르면 새 비밀번호를 정할 수 있습니다.', '비밀번호 재설정하기', url))
   };
 }

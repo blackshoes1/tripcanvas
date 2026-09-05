@@ -1,6 +1,6 @@
 {
-  "name": "From J — 여행 동선 지도",
-  "short_name": "From J",
+  "name": "With J — 같이 계획하는 여행",
+  "short_name": "With J",
   "description": "대화로 만드는 여행 동선 플래너",
   "start_url": "./",
   "scope": "./",

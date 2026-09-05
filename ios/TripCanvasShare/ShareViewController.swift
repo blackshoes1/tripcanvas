@@ -102,7 +102,7 @@ struct ShareResultView: View {
             Text(message).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
             HStack(spacing: 8) {
                 if state != .empty {
-                    Button("From J에서 확인") { done(true) }.buttonStyle(.borderedProminent)
+                    Button("With J에서 확인") { done(true) }.buttonStyle(.borderedProminent)
                 }
                 Button("닫기") { done(false) }.buttonStyle(.bordered)
             }
@@ -119,7 +119,7 @@ struct ShareResultView: View {
     }
     private var title: String {
         switch state {
-        case .saved: "From J에 담았어요"
+        case .saved: "With J에 담았어요"
         case .duplicate: "이미 담아 둔 내용이에요"
         case .empty: "가져올 내용을 찾지 못했어요"
         }
