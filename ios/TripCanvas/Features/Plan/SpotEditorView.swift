@@ -132,15 +132,23 @@ struct SpotEditorView: View {
                     }
                 }
 
-                Section("계획") {
+                Section {
                     Toggle("꼭 가기", isOn: $draft.isMust)
                     Picker("상태", selection: $draft.status) {
                         ForEach(SpotStatus.allCases, id: \.self) { status in
                             Text(status.label).tag(status)
                         }
                     }
-                    if draft.category == .stay {
+                    // 숙소는 종류와 별개의 표시다 — 그날의 종료 기준점이 되고 숙박 예약과 이어진다(웹의 체크박스와 같다).
+                    Toggle("숙소", isOn: $draft.isStay)
+                    if draft.isStay || draft.category == .stay {
                         Stepper("연박 \(draft.nights ?? 1)박", value: nightsBinding, in: 1...60)
+                    }
+                } header: {
+                    Text("계획")
+                } footer: {
+                    if draft.isStay {
+                        Text("숙소는 그날의 마지막 기준점이 됩니다. 숙박 예약은 예약 화면에서 이 숙소와 연결합니다.")
                     }
                 }
 
@@ -261,5 +269,21 @@ enum ClockText {
 
     static func text(hour: Int, minute: Int) -> String {
         String(format: "%02d:%02d", min(23, max(0, hour)), min(59, max(0, minute)))
+    }
+
+    /// `lib.js`의 `_hm`과 같은 판정 — `H:MM`·`HH:MM`, 24시간.
+    static func isValid(_ text: String) -> Bool {
+        let pieces = text.split(separator: ":", omittingEmptySubsequences: false)
+        guard pieces.count == 2, pieces[0].count >= 1, pieces[0].count <= 2, pieces[1].count == 2,
+              let hour = Int(pieces[0]), let minute = Int(pieces[1]),
+              pieces[0].allSatisfy(\.isNumber), pieces[1].allSatisfy(\.isNumber) else { return false }
+        return (0...23).contains(hour) && (0...59).contains(minute)
+    }
+
+    /// 자정부터의 분. 형식이 아니면 0 — 앞뒤 비교 전에 `isValid`로 거른다.
+    static func minutes(_ text: String) -> Int {
+        guard isValid(text) else { return 0 }
+        let split = Self.parts(text)
+        return split.hour * 60 + split.minute
     }
 }

@@ -103,6 +103,62 @@ final class TripPlanViewModelTests: XCTestCase {
         XCTAssertTrue(service.saves.isEmpty)
     }
 
+    // MARK: 예약 — 장소와 같은 길
+
+    func testBookingSavesThroughTheSameDocumentPath() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(), revision: 5, role: .editor))
+        let model = TripPlanViewModel(tripId: "t1", service: service)
+        await model.load()
+
+        var booking = TripBooking(type: .hotel, id: "bkNew")
+        booking.title = "호텔"
+        booking.price = 300
+        booking.track = false
+        let saved = await model.saveBooking(booking, links: BookingLinks(stay: SpotRef(day: 0, index: 0)))
+
+        XCTAssertTrue(saved)
+        XCTAssertEqual(service.saves.count, 1)
+        XCTAssertEqual(service.saves.first?.expectedRevision, 5)
+        XCTAssertEqual(model.bookings.map(\.id), ["bkNew"])
+        XCTAssertEqual(model.document?.days[0].spots[0].bookingId, "bkNew")
+        XCTAssertEqual(model.revision, 6)
+        XCTAssertEqual(model.toast, "예약을 추가했어요")
+
+        await model.removeBooking(id: "bkNew")
+        XCTAssertTrue(model.bookings.isEmpty)
+        XCTAssertNil(model.document?.days[0].spots[0].bookingId)
+        XCTAssertEqual(service.saves.count, 2)
+    }
+
+    /// 검증에 걸리면 요청이 나가지 않고 이유를 말한다 — 웹 toast와 같은 문장.
+    func testInvalidBookingIsNotSaved() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(), revision: 5, role: .owner))
+        let model = TripPlanViewModel(tripId: "t1", service: service)
+        await model.load()
+
+        var booking = TripBooking(type: .hotel, id: "bkNew")
+        booking.title = "호텔"
+        booking.price = 300          // 추적 on인데 기간이 없다
+        let saved = await model.saveBooking(booking)
+
+        XCTAssertFalse(saved)
+        XCTAssertTrue(service.saves.isEmpty)
+        XCTAssertEqual(model.errorMessage, BookingDraftError.trackNeedsDates.message)
+    }
+
+    func testViewerCannotSaveBookings() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(), revision: 5, role: .viewer))
+        let model = TripPlanViewModel(tripId: "t1", service: service)
+        await model.load()
+
+        var booking = TripBooking(type: .flight, id: "bkNew")
+        booking.title = "KE001"
+        booking.price = 1
+        await model.saveBooking(booking)
+        XCTAssertTrue(service.saves.isEmpty)
+        XCTAssertTrue(model.bookings.isEmpty)
+    }
+
     func testCostTextAcceptsOnlyNumbers() {
         XCTAssertEqual(SpotEditorView.cost(from: "12,000원"), 12000)
         XCTAssertEqual(SpotEditorView.cost(from: ""), nil)

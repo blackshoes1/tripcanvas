@@ -32,6 +32,9 @@ struct TripDocument: Hashable, Sendable {
         get { (raw["days"]?.arrayValue ?? []).map { TripDay(raw: $0.objectValue ?? [:]) } }
         set { raw["days"] = .array(newValue.map { .object($0.raw) }) }
     }
+
+    /// 다른 파일의 확장(`TripBooking.swift`)이 문서 수준 필드를 쓰는 유일한 길. nil이면 키를 지운다.
+    mutating func setField(_ key: String, _ value: JSONValue?) { raw.setOrRemove(key, value) }
 }
 
 /// 하루. 장소 목록과 그날의 기본 이동수단·시작시각을 가진다.
@@ -174,6 +177,31 @@ struct TripSpot: Hashable, Sendable {
     var isMust: Bool {
         get { raw["must"]?.boolValue ?? false }
         set { raw.setOrRemove("must", newValue ? .bool(true) : nil) }
+    }
+
+    /// 숙소. 그날의 종료 기준점(`dayAnchor`)이 되고, 숙박 예약과 연결할 수 있는 장소다.
+    /// 종류(`cat: stay`)와는 별개의 표시다 — 웹의 `spotStay` 체크박스와 같다. false는 저장하지 않는다.
+    var isStay: Bool {
+        get { raw["stay"]?.boolValue ?? false }
+        set { raw.setOrRemove("stay", newValue ? .bool(true) : nil) }
+    }
+
+    /// 이 숙소에 연결된 숙박 예약(`trip.bookings`의 id). 연결은 예약 편집에서 맺고 푼다.
+    var bookingId: String? {
+        get { raw["bookingId"]?.stringValue }
+        set { raw.setOrRemove("bookingId", newValue.flatMap { $0.isEmpty ? nil : .string($0) }) }
+    }
+
+    /// 이 장소에서 렌터카를 받는 예약. 공항에서 픽업하는 경우 도착 행에 붙어 순서가 맞는다.
+    var carPickupId: String? {
+        get { raw["carPickupId"]?.stringValue }
+        set { raw.setOrRemove("carPickupId", newValue.flatMap { $0.isEmpty ? nil : .string($0) }) }
+    }
+
+    /// 이 장소에서 렌터카를 반납하는 예약.
+    var carReturnId: String? {
+        get { raw["carReturnId"]?.stringValue }
+        set { raw.setOrRemove("carReturnId", newValue.flatMap { $0.isEmpty ? nil : .string($0) }) }
     }
 }
 
@@ -334,8 +362,9 @@ enum SpotStatus: String, CaseIterable, Sendable {
     }
 }
 
-private extension Dictionary where Key == String, Value == JSONValue {
+extension Dictionary where Key == String, Value == JSONValue {
     /// 값이 없으면 **키를 지운다**. 웹이 기본값을 저장하지 않는 규칙을 앱도 그대로 지킨다.
+    /// `TripBooking`도 같은 규칙을 쓰므로 파일 밖에서도 보인다.
     mutating func setOrRemove(_ key: String, _ value: JSONValue?) {
         if let value { self[key] = value } else { removeValue(forKey: key) }
     }

@@ -33,10 +33,18 @@ final class BookingListViewModel {
     }
 }
 
+/// 예약 목록. 읽기는 서버 요약(`/bookings` — 가격 상태가 붙어 온다)이고, **편집은 여행 문서**다.
+///
+/// 예약은 장소와 같은 문서(`trip.bookings`)에 살아서 저장 경로도 같다 — `TripPlanViewModel`이 revision CAS로
+/// 올리고, 실패하면 되돌리고, 충돌이면 묻는다. 저장한 뒤에는 요약을 다시 읽어 가격 상태를 그대로 보여준다.
 struct BookingListView: View {
     let trip: TripSummary
     @Environment(AppEnvironment.self) private var env
     @State private var model: BookingListViewModel?
+    /// 편집할 때만 문서를 연다 — 보기만 하는 사람은 요약 하나로 끝난다.
+    @State private var plan: TripPlanViewModel?
+    @State private var editor: BookingEditorTarget?
+    @State private var isPreparing = false
 
     var body: some View {
         ScrollView {
@@ -51,14 +59,28 @@ struct BookingListView: View {
                             Task { await model.load() }
                         }
                     }
+                    if let plan, let error = plan.errorMessage {
+                        InlineErrorBanner(message: "예약을 바꾸지 못했어요", detail: error) {
+                            Task { await plan.load() }
+                        }
+                    }
                     if model.bookings.isEmpty && !model.isLoading {
                         EmptyStateView(
                             symbol: "ticket",
                             title: "등록된 예약이 없어요",
-                            message: "웹 From J에서 예약을 추가하면 여기에 나타납니다.")
+                            message: trip.canEdit
+                                ? "오른쪽 위 ＋로 숙박·렌터카·항공 예약을 추가합니다. 가격 추적을 켜 두면 절약 기회를 알려줘요."
+                                : "주최자나 편집자가 예약을 추가하면 여기에 나타납니다.")
                     }
                     ForEach(model.bookings) { booking in
-                        BookingCard(booking: booking)
+                        BookingCard(booking: booking, editable: trip.canEdit)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                guard trip.canEdit else { return }
+                                Task { await openEditor(bookingId: booking.id) }
+                            }
+                            .accessibilityAddTraits(trip.canEdit ? [.isButton] : [])
+                            .accessibilityHint(trip.canEdit ? "예약을 고칩니다" : "")
                     }
                     if model.isLoading && model.bookings.isEmpty {
                         ProgressView().frame(maxWidth: .infinity, minHeight: 160)
@@ -70,16 +92,90 @@ struct BookingListView: View {
         .background(Color(.systemGroupedBackground))
         .navigationTitle("예약")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if trip.canEdit {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        Task { await openEditor(bookingId: nil) }
+                    } label: {
+                        if isPreparing { ProgressView() } else { Image(systemName: "plus") }
+                    }
+                    .disabled(isPreparing)
+                    .accessibilityLabel("예약 추가")
+                }
+            }
+        }
         .refreshable { await model?.load() }
         .task {
             if model == nil { model = BookingListViewModel(tripId: trip.id, service: env.service) }
             await model?.load()
+        }
+        .sheet(item: $editor) { target in
+            if let plan, let document = plan.document {
+                BookingEditorView(
+                    target: target,
+                    document: document,
+                    onSave: { booking, links in
+                        Task {
+                            if await plan.saveBooking(booking, links: links) { await model?.load() }
+                        }
+                    },
+                    onDelete: { id in
+                        Task {
+                            await plan.removeBooking(id: id)
+                            await model?.load()
+                        }
+                    })
+            }
+        }
+        .overlay(alignment: .bottom) {
+            if let plan, let toast = plan.toast {
+                ToastView(text: toast)
+                    .padding(Space.l)
+                    .task {
+                        try? await Task.sleep(for: .seconds(2))
+                        plan.clearToast()
+                    }
+            }
+        }
+        // 충돌은 자동으로 어느 쪽도 고르지 않는다 — 무엇이 사라지는지 말하고 사용자가 고른다(§91).
+        .alert("다른 기기에서 먼저 바뀌었어요", isPresented: conflictBinding) {
+            Button("최신 불러오기") { Task { await plan?.reloadFromServer(); await model?.load() } }
+            Button("그대로 두기", role: .cancel) { plan?.dismissConflict() }
+        } message: {
+            Text("최신 여행을 불러오면 방금 바꾼 예약은 사라집니다. 방금 바꾼 것은 아직 저장되지 않았어요.")
+        }
+    }
+
+    private var conflictBinding: Binding<Bool> {
+        Binding(get: { plan?.conflict != nil }, set: { if !$0 { plan?.dismissConflict() } })
+    }
+
+    /// 편집기는 **최신 문서** 위에서 연다 — 오래된 문서 위에서 고치면 저장이 전부 충돌로 돌아온다.
+    private func openEditor(bookingId: String?) async {
+        isPreparing = true
+        defer { isPreparing = false }
+        let plan = self.plan ?? TripPlanViewModel(tripId: trip.id, service: env.service)
+        self.plan = plan
+        await plan.load()
+        guard let document = plan.document else { return }   // 오류는 배너가 말한다
+        guard plan.canEdit else { return }
+        if let bookingId {
+            guard let booking = document.booking(id: bookingId) else {
+                // 목록이 옛것이다 — 다른 기기가 이미 뺐다. 요약을 다시 읽어 그 사실을 보여준다.
+                await model?.load()
+                return
+            }
+            editor = .edit(booking)
+        } else {
+            editor = .create
         }
     }
 }
 
 struct BookingCard: View {
     let booking: BookingSummary
+    var editable = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.s) {
@@ -89,6 +185,9 @@ struct BookingCard: View {
                 Spacer()
                 if let status = booking.priceStatus {
                     PriceChip(status: status)
+                }
+                if editable {
+                    Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
                 }
             }
 
