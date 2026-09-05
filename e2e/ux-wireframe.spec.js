@@ -34,6 +34,65 @@ test('모바일 일정 패널은 접힘·반판·전체 3단계로 전환된다'
   await page.locator('#sheetHandle').click(); await expect(sidebar).toHaveAttribute('data-snap','half');
 });
 
+// 시트 높이는 .22s 전환한다 — 3단계를 연달아 넘기면 그 도중에 다시 탭하게 된다.
+// 여기서 어긋나면 탭 한 번이 단계를 0칸 또는 2칸 옮긴다(#138 후속 flaky의 실체).
+test('전환 도중 핸들을 잡아도 시트가 손가락 아래에서 튀지 않는다',async({context,page})=>{
+  await prepare(context); await page.setViewportSize({width:390,height:844}); await page.goto('/');
+  const jump=await page.evaluate(async()=>{
+    const sb=document.getElementById('sidebar'), handle=document.getElementById('sheetHandle');
+    sb.dataset.snap='half'; await new Promise(r=>setTimeout(r,400));
+    sb.dataset.snap='expanded';                       // 전환 시작
+    await new Promise(r=>setTimeout(r,80));           // 아직 전환 중
+    const before=sb.getBoundingClientRect().height, r=handle.getBoundingClientRect();
+    handle.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,cancelable:true,clientX:100,clientY:r.top+2,pointerId:1,isPrimary:true,pointerType:'touch'}));
+    return {before,after:sb.getBoundingClientRect().height};
+  });
+  // 끌기로 확정되기 전에 .dragging(transition:none)을 걸면 여기서 최종 높이로 튄다.
+  // 그러면 핸들이 커서 밖으로 빠져 click의 target이 #sidebar가 되고 그 탭은 무시된다.
+  expect(Math.abs(jump.after-jump.before)).toBeLessThan(4);
+});
+
+test('전환 도중 다시 탭해도 일정 패널 단계는 한 칸씩만 움직인다',async({context,page})=>{
+  await prepare(context); await page.setViewportSize({width:390,height:844}); await page.goto('/');
+  for(const gap of [100,60,30]){
+    await page.evaluate(()=>{ document.getElementById('sidebar').dataset.snap='half'; });
+    await page.waitForTimeout(400);
+    const seq=await page.evaluate(async gap=>{
+      const sb=document.getElementById('sidebar'), handle=document.getElementById('sheetHandle');
+      const out=[];
+      const send=(el,type,y)=>el.dispatchEvent(new PointerEvent(type,{bubbles:true,cancelable:true,clientX:100,clientY:y,pointerId:1,isPrimary:true,pointerType:'touch'}));
+      for(let i=0;i<3;i++){
+        const r=handle.getBoundingClientRect(), y=r.top+r.height/2;
+        send(handle,'pointerdown',y);
+        send(window,'pointermove',y+2);      // 문턱(4px) 아래 = 손가락 흔들림이지 끌기가 아니다
+        send(window,'pointerup',y+2);
+        handle.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,clientX:100,clientY:y}));
+        out.push(sb.dataset.snap);
+        await new Promise(r=>setTimeout(r,gap));
+      }
+      return out;
+    },gap);
+    expect(seq,`탭 간격 ${gap}ms`).toEqual(['expanded','collapsed','half']);
+  }
+});
+
+test('핸들 드래그는 놓은 높이의 비율로 스냅한다',async({context,page})=>{
+  await prepare(context); await page.setViewportSize({width:390,height:844}); await page.goto('/');
+  const sb=page.locator('#sidebar');
+  const dragTo=async y=>{
+    const b=await page.locator('#sheetHandle').boundingBox();
+    await page.mouse.move(b.x+b.width/2,b.y+b.height/2); await page.mouse.down();
+    for(let i=1;i<=8;i++) await page.mouse.move(b.x+b.width/2,b.y+b.height/2+(y-(b.y+b.height/2))*i/8);
+    await page.mouse.up(); await page.waitForTimeout(350);
+    return sb.getAttribute('data-snap');
+  };
+  expect(await dragTo(100)).toBe('expanded');
+  expect(await dragTo(800)).toBe('collapsed');
+  expect(await dragTo(450)).toBe('half');
+  expect(await sb.evaluate(el=>el.style.height)).toBe('');   // 스냅 뒤 인라인 높이는 남지 않는다
+});
+
+
 test('여행 모드는 현재 장소와 다음 장소를 우선 표시한다',async({context,page})=>{
   await prepare(context); await page.goto('/'); await createTrip(page,'여행 모드 테스트');
   await page.evaluate(()=>{ const d=store.trips.find(t=>t.id===store.activeId).days[0]; d.spots=[{name:'현재 장소',city:'서울',lat:37.5,lng:127,stayMin:60},{name:'다음 장소',city:'서울',lat:37.51,lng:127.01,stayMin:60}]; render(); });
