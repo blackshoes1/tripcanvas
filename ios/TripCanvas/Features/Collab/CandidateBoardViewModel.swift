@@ -116,13 +116,16 @@ final class CandidateBoardViewModel {
             errorMessage = message(for: error)
             return
         }
+        var marking: String?
         do {
             try await service.manageCandidate(tripId: trip.id, candidateId: candidateId, action: "SCHEDULE", value: String(dayIndex + 1))
             toast = "Day \(dayIndex + 1)에 넣었어요"
         } catch {
-            errorMessage = "일정에는 넣었지만 후보 표시를 바꾸지 못했어요 — \(message(for: error))"
+            marking = "일정에는 넣었지만 후보 표시를 바꾸지 못했어요 — \(message(for: error))"
         }
+        // 목록을 다시 읽으면 errorMessage가 지워진다 — 반쪽 성공은 그 뒤에 다시 말한다.
         await load()
+        if let marking { errorMessage = marking }
     }
 
     /// 웹 `appendCandidateSpot`과 같은 모양 — 좌표가 없으면 위치 없는 장소다.
