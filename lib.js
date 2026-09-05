@@ -316,20 +316,96 @@
    */
   function computeTimeline(day, opts){
     const legMin=opts.legMin;
+    /** @type {any[]} */ const spots=((day&&day.spots)||[]);
     let clock=parseHM(day&&day.startAt);
     /** @type {any} */
     let prev = (opts.startAnchor && hasCoord(opts.startAnchor)) ? opts.startAnchor : null;
-    return ((day&&day.spots)||[]).map((/**@type{any}*/s)=>{
-      if(hasCoord(s) && prev) clock+=legMin(prev,s,{depart:clock});
-      const natural=clock;
+
+    /**
+     * 장소 하나를 (시계, 직전 위치) 상태에서 계산하고 다음 상태를 함께 돌려준다.
+     * 순차 구간과 분리 구간이 **같은 규칙**을 쓰게 하려고 한 곳에 모았다.
+     * @param {any} s @param {number} at @param {any} from
+     */
+    function step(s, at, from){
+      let c=at;
+      if(hasCoord(s) && from) c+=legMin(from,s,{depart:c});
+      const natural=c;
       let eta=natural, conflict=false;
       if(s.at){ eta=parseHM(s.at); conflict = eta < natural-0.5; }   // 고정 시각인데 이동상 도착이 더 늦으면 충돌
       const depart = s.bookAt ? Math.max(eta, parseHM(s.bookAt)) : eta;
-      clock = depart + (s.stayMin!=null? +s.stayMin : 60);
-      if(hasCoord(s)) prev=s;
-      // natural=이동상 자연 도착(고정 전), wait=예약 시각까지 기다리는 시간 → UI가 이유를 설명할 수 있게
-      return {eta, fixed:!!s.at, conflict, natural, wait:Math.max(0, depart-eta)};
-    });
+      return {
+        // natural=이동상 자연 도착(고정 전), wait=예약 시각까지 기다리는 시간 → UI가 이유를 설명할 수 있게
+        state:{eta, fixed:!!s.at, conflict, natural, wait:Math.max(0, depart-eta)},
+        clock: depart + (s.stayMin!=null? +s.stayMin : 60),
+        prev: hasCoord(s)? s : from
+      };
+    }
+
+    /** @type {any[]} */ const out=new Array(spots.length);
+    let i=0;
+    while(i<spots.length){
+      const key=spots[i] && spots[i].split;
+      if(!key){                                   // 평소의 하루 — 분리가 없으면 예전과 완전히 같다
+        const r=step(spots[i], clock, prev);
+        out[i]=r.state; clock=r.clock; prev=r.prev; i++;
+        continue;
+      }
+      // 분리 구간(§25): 같은 키가 이어지는 동안이 한 묶음이고, 그 안에서 **참여자가 같은 장소들이 한 가지**다.
+      // 가지는 전부 같은 출발점에서 시작한다 — 나란히 일어나는 일이라 서로의 시간을 밀지 않는다.
+      let end=i; while(end<spots.length && spots[end] && spots[end].split===key) end++;
+      const entryClock=clock, entryPrev=prev;
+      /** @type {Map<string,{clock:number,prev:any}>} */ const branches=new Map();
+      for(let j=i;j<end;j++){
+        const bk=whoKey(spots[j]);
+        const b=branches.get(bk) || {clock:entryClock, prev:entryPrev};
+        const r=step(spots[j], b.clock, b.prev);
+        out[j]=r.state;
+        branches.set(bk, {clock:r.clock, prev:r.prev});
+      }
+      // 묶음 다음은 **가장 늦게 끝나는 가지**를 따른다 — 다 모여야 합류할 수 있다(§27).
+      /** @type {{clock:number,prev:any}|null} */ let latest=null;
+      for(const b of branches.values()) if(!latest || b.clock>latest.clock) latest=b;
+      if(latest){ clock=latest.clock; prev=latest.prev; }
+      i=end;
+    }
+    return out;
+  }
+
+  /**
+   * 참여자 집합의 안정 키. 순서가 달라도 같은 사람들이면 같은 가지다.
+   * 비었으면 '*' — 모든 여행자(§26).
+   * @param {any} s @returns {string}
+   */
+  function whoKey(s){
+    const w=(s && Array.isArray(s.who))? s.who : null;
+    return (w && w.length)? w.slice().sort().join(',') : '*';
+  }
+
+  /**
+   * 하루를 순차 구간과 분리 구간으로 나눈다. **타임라인과 화면이 같은 함수로 갈라야** 시각과 그림이 어긋나지 않는다.
+   * 분리 구간의 가지는 참여자로 갈리고, 각 가지는 장소 인덱스 목록을 갖는다(원래 순서 유지).
+   * @param {any} day
+   * @returns {Array<{split:string|null, from:number, to:number, branches:Array<{key:string, who:string[], idx:number[]}>}>}
+   */
+  function splitSegments(day){
+    /** @type {any[]} */ const spots=((day&&day.spots)||[]);
+    /** @type {Array<{split:string|null, from:number, to:number, branches:Array<{key:string, who:string[], idx:number[]}>}>} */ const out=[];
+    let i=0;
+    while(i<spots.length){
+      const key=spots[i] && spots[i].split;
+      if(!key){ out.push({split:null, from:i, to:i+1, branches:[{key:whoKey(spots[i]), who:(spots[i]&&spots[i].who)||[], idx:[i]}]}); i++; continue; }
+      let end=i; while(end<spots.length && spots[end] && spots[end].split===key) end++;
+      /** @type {Map<string,{key:string, who:string[], idx:number[]}>} */ const branches=new Map();
+      for(let j=i;j<end;j++){
+        const bk=whoKey(spots[j]);
+        /** @type {{key:string, who:string[], idx:number[]}} */
+        const b=branches.get(bk) || {key:bk, who:(spots[j].who||[]).slice(), idx:/** @type {number[]} */([])};
+        b.idx.push(j); branches.set(bk, b);
+      }
+      out.push({split:key, from:i, to:end, branches:[...branches.values()]});
+      i=end;
+    }
+    return out;
   }
 
   /**
@@ -531,6 +607,10 @@
   const _CURS=['KRW','USD','EUR','JPY','CNY'];
   const _ID_RE=/^[A-Za-z0-9_-]{1,40}$/;   // uid() 형식 — inline onclick 인자로도 안전한 문자만
   const _STATUS=['PLANNED','COMPLETED','SKIPPED','CANCELLED'];   // 일정 실행 상태 (adaptive.js와 공유)
+  // 함께 움직이지 않는 시간(§25~§27). who=참여자, split=같은 시간대에 갈라지는 묶음 키.
+  // 참여자는 멤버의 user_id(uuid)다 — 이름은 바뀌지만 id는 안 바뀌고, '이게 나인가'를 확실히 가른다.
+  const _WHO_MAX=20;
+  const _UUID_RE=/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
   /** @param {any} x @returns {string} */
   function _str(x){ return typeof x==='string'? x : (x==null? '' : String(x)); }
   /** @param {any} t @returns {string|undefined} 00:00~23:59 형식만 통과, 아니면 undefined */
@@ -657,6 +737,22 @@
     if(s.status!=null && _STATUS.indexOf(s.status)<0) delete s.status;
     if(s.status==='PLANNED') delete s.status;
     if(s.must!=null){ if(s.must) s.must=true; else delete s.must; }
+    // 참여자(§26): 없거나 비면 **모든 여행자**다 — 기본값을 저장하지 않는다(공유 링크 크기).
+    // 중복·불량 id는 버리고, 상한을 넘으면 자른다. 순서는 안정적으로 둔다(렌더마다 이름 순서가 바뀌지 않게).
+    if(s.who!=null){
+      if(Array.isArray(s.who)){
+        /** @type {string[]} */ const who=[]; const seen=new Set();
+        for(const v of s.who){
+          if(typeof v!=='string' || !_UUID_RE.test(v) || seen.has(v)) continue;
+          seen.add(v); who.push(v); if(who.length>=_WHO_MAX) break;
+        }
+        if(who.length) s.who=who; else delete s.who;
+      } else delete s.who;
+    }
+    // 분리 묶음(§25): 같은 키를 가진 장소들이 **같은 시간대에 나란히** 일어난다.
+    if(s.split!=null && !(typeof s.split==='string' && _ID_RE.test(s.split))) delete s.split;
+    // 합류(§27): 갈라졌던 사람들이 다시 만나는 지점. 표시일 뿐이고 시각은 타임라인이 정한다.
+    if(s.reunion!=null){ if(s.reunion) s.reunion=true; else delete s.reunion; }
     return s;
   }
   /** 예약(가격 추적) 항목 정규화 — id가 불량하면 항목째 버린다(참조·inline onclick 안전) @param {any} b @returns {any} */
@@ -944,7 +1040,7 @@
     };
   }
 
-  const TC={SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,cityFromKoreanAddr,placeName,cityFromGoogle,normHours,classifySearchErr,isKoreanSearch,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,normHM,sortDayByTime,inKorea,simplifyName,parseDirect,parseMoney,normalizeDraftDays,extractJson,extMapLink,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,computeTimeline,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,budgetBookings,localMode,sampleTrip,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
+  const TC={SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,cityFromKoreanAddr,placeName,cityFromGoogle,normHours,classifySearchErr,isKoreanSearch,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,normHM,sortDayByTime,inKorea,simplifyName,parseDirect,parseMoney,normalizeDraftDays,extractJson,extMapLink,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,computeTimeline,whoKey,splitSegments,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,budgetBookings,localMode,sampleTrip,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
   if(typeof module!=='undefined' && module.exports){ module.exports=TC; }   // Node (테스트)
   else { const r=/**@type {any}*/(root); for(const k in TC) r[k]=/**@type {any}*/(TC)[k]; }   // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);
