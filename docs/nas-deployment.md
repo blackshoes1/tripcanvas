@@ -108,7 +108,36 @@ sudo /var/packages/Tailscale/target/bin/tailscale funnel --bg --set-path=/ws htt
 > **tailscaled 1.58.2(2024-02)의 문제**로 보인다. → 업그레이드 또는 별도 포트(8443) 노출을 검토.
 > 그동안 실시간은 폴백(당겨서 새로고침)으로 동작한다 — 앱·웹 모두 그렇게 설계돼 있다.
 
-### 확인하는 법 (반드시 tailnet 밖에서)
+### 감시 — `GET /api/health-watch` (Vercel)
+
+**우리 인프라 중 tailnet 밖에 있는 것은 Vercel뿐이다.** 그래서 외부 경로 감시는 거기서 돈다:
+
+```
+https://tripcanvas-ai.vercel.app/api/health-watch
+```
+
+NAS의 `/api/health`·`/api/v1/trips`(401)·`/ws`(업그레이드)를 **바깥에서** 찔러 보고 상태 코드로 답한다:
+
+| 응답 | 뜻 | 알림 |
+|---|---|---|
+| `200 UP` | 전부 정상 | — |
+| `200 DEGRADED` | 실시간만 죽음 — 폴백(당겨서 새로고침)이 있어 기능은 산다 | 울리지 않는다 |
+| **`503 DOWN`** | **저장 경로가 죽었다 — 사용자가 여행을 저장할 수 없다** | 울린다 |
+
+> 실시간 하나로 새벽에 깨우지 않는다. 저장과 실시간의 무게가 다르다.
+
+**알림을 받으려면** 무료 uptime 모니터(UptimeRobot·Better Stack 등)를 이 URL에 걸어 둔다 —
+503이면 알림이 온다. Vercel 무료 플랜의 크론은 하루 1회라 감시 주기로는 부족하다.
+
+사람이 볼 때도 같은 URL이면 된다:
+
+```bash
+curl -s https://tripcanvas-ai.vercel.app/api/health-watch | head -20
+```
+
+⚠️ 비밀은 아무것도 나오지 않는다 — 공개 주소와 살았나/죽었나뿐이다(§47).
+
+### 손으로 확인하는 법 (반드시 tailnet 밖에서)
 
 ```bash
 # 공인 IP를 직접 찍어 인그레스 경로를 그대로 지난다

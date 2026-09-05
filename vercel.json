@@ -75,6 +75,9 @@
     },
     "api/track-hotel-prices.js": {
       "maxDuration": 60
+    },
+    "api/health-watch.js": {
+      "maxDuration": 20
     }
   }
 }
