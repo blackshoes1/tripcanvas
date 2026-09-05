@@ -192,6 +192,19 @@ final class CollabViewModelTests: XCTestCase {
         XCTAssertTrue(model.errorMessage?.contains("일정에는 넣었지만") == true)
     }
 
+    /// 남기기는 됐는데 다시 읽기가 실패하면 그 사실이 남아야 한다 — 목록을 다시 읽는 것이 안내를 지우면 안 된다.
+    func testCommentReloadFailureIsNotSwallowed() async {
+        let service = FakeCollabService()
+        service.candidateList = [candidate()]
+        let model = CandidateBoardViewModel(trip: trip(), service: service, documents: FakeDocumentStore())
+        await model.load()
+
+        service.failCommentReads = true
+        let sent = await model.addComment(candidateId: 1, body: "야경 보고 저녁 먹자")
+        XCTAssertTrue(sent, "한마디는 남았다")
+        XCTAssertNotNil(model.errorMessage, "다시 읽지 못한 사실을 삼키지 않는다")
+    }
+
     func testScheduleRefusesADayThatIsNotThere() async {
         let service = FakeCollabService()
         service.candidateList = [candidate()]
@@ -270,6 +283,8 @@ private final class FakeCollabService: CollabSource {
     var prefRows: [PreferenceView] = [PreferenceView(userId: "u1", label: "나", role: .owner, mine: true, prefs: ["pace": .string("PACKED")])]
     var failure: APIError?
     var failCandidateActions = false
+    /// 한마디를 다시 읽는 것만 실패시킨다 — 남기기는 됐는데 목록을 못 읽는 경우.
+    var failCommentReads = false
     let issuedToken = String(repeating: "z", count: 32)
     var acceptResult = InviteAccept(ok: true, reason: "OK", clientId: "t1", tripName: "바르셀로나", role: .editor, alreadyMember: false)
 
@@ -317,7 +332,11 @@ private final class FakeCollabService: CollabSource {
         candidateActions.append((action, value))
     }
 
-    func comments(tripId: String, candidateId: Int) async throws -> [CommentView] { try check(); return [] }
+    func comments(tripId: String, candidateId: Int) async throws -> [CommentView] {
+        try check()
+        if failCommentReads { throw APIError.offline }
+        return []
+    }
     func addComment(tripId: String, candidateId: Int, body: String) async throws { try check() }
     func deleteComment(tripId: String, commentId: Int) async throws { try check() }
 

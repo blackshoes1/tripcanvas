@@ -154,8 +154,10 @@ final class CandidateBoardViewModel {
         guard !text.isEmpty else { return false }
         do {
             try await service.addComment(tripId: trip.id, candidateId: candidateId, body: String(text.prefix(500)))
+            // 목록(comment_count)을 먼저 읽는다 — load()가 errorMessage를 지우므로,
+            // 한마디를 다시 읽다 실패한 안내는 그 뒤에 남아야 한다(§일정 넣기와 같은 이유).
+            await load()
             await loadComments(candidateId: candidateId)
-            await load()   // comment_count
             return true
         } catch {
             errorMessage = message(for: error)
@@ -166,8 +168,8 @@ final class CandidateBoardViewModel {
     func deleteComment(candidateId: Int, commentId: Int) async {
         do {
             try await service.deleteComment(tripId: trip.id, commentId: commentId)
-            await loadComments(candidateId: candidateId)
             await load()
+            await loadComments(candidateId: candidateId)
         } catch {
             errorMessage = message(for: error)
         }
