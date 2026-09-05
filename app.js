@@ -680,21 +680,39 @@ function setSheetSnap(snap){
   sb.style.height=''; sb.dataset.snap=snap;
 }
 (function initMobileSheet(){
-  const sb=document.getElementById('sidebar'); let drag=null,moved=false;
+  // ⚠️ 시트 높이는 .22s 전환한다 — 그 도중에 다시 탭하는 일이 흔하다(3단계를 연달아 넘길 때).
+  // 탭 하나가 단계를 정확히 한 칸만 옮기려면 아래 셋을 지켜야 한다:
+  //   1) 끌기로 확정되기 전에는 시트를 건드리지 않는다 (아래 pointermove)
+  //   2) 비율 스냅은 실제로 끌었을 때만 (아래 pointerup)
+  //   3) 탭 여부는 손가락이 **닿은** 곳으로 판단한다 (아래 click)
+  const sb=document.getElementById('sidebar'); let drag=null,moved=false,downOnHandle=false;
   sb.addEventListener('pointerdown',e=>{
+    downOnHandle=false; moved=false;                     // 새 제스처 — 직전 것을 물려받지 않는다
     if(!e.target.closest('#sheetHandle')||!matchMedia('(max-width:760px)').matches) return;
-    drag={y:e.clientY,h:sb.getBoundingClientRect().height}; moved=false; sb.classList.add('dragging'); e.preventDefault();
+    drag={y:e.clientY,h:0}; downOnHandle=true; e.preventDefault();
   });
+  // ⚠️ .dragging(transition:none)을 pointerdown에서 걸면 전환 도중의 탭에서 시트가 손가락 아래에서
+  // 최종 높이로 **튄다** — 핸들이 커서 밖으로 빠져 pointerup이 다른 요소에 떨어지고, click의 target이
+  // 공통 조상(#sidebar)으로 바뀌어 그 탭이 통째로 무시된다. 그래서 4px을 넘겨 '끌기'가 된 순간에 건다.
   window.addEventListener('pointermove',e=>{
-    if(!drag) return; const h=Math.max(innerHeight*.15,Math.min(innerHeight*.9,drag.h+drag.y-e.clientY));
-    if(Math.abs(e.clientY-drag.y)>4)moved=true; sb.style.height=h+'px';
+    if(!drag) return;
+    if(!moved){
+      if(Math.abs(e.clientY-drag.y)<=4) return;          // 아직 탭 — 손가락 흔들림이지 끌기가 아니다
+      moved=true; drag.y=e.clientY;                      // 잡은 순간을 기준으로 다시 잡는다
+      drag.h=sb.getBoundingClientRect().height; sb.classList.add('dragging');   // 측정 먼저 — 그래야 안 튄다
+    }
+    sb.style.height=Math.max(innerHeight*.15,Math.min(innerHeight*.9,drag.h+drag.y-e.clientY))+'px';
   });
   window.addEventListener('pointerup',()=>{
     if(!drag)return; const ratio=sb.getBoundingClientRect().height/innerHeight; drag=null; sb.classList.remove('dragging');
-    setSheetSnap(ratio<.3?'collapsed':ratio<.68?'half':'expanded');
+    if(moved) setSheetSnap(ratio<.3?'collapsed':ratio<.68?'half':'expanded');   // 탭은 아래 click의 순환 하나로 끝난다
   });
   sb.addEventListener('click',e=>{
-    if(e.target.closest('#sheetHandle')&&!moved){ setSheetSnap(sb.dataset.snap==='collapsed'?'half':sb.dataset.snap==='half'?'expanded':'collapsed'); }
+    // 전환 중에는 시트가 움직여 click target이 핸들이 아닐 수 있다 → 닿은 곳(downOnHandle)으로 판단한다.
+    // 키보드 활성화는 pointerdown이 없으므로 target으로 본다. 두 플래그는 여기서 한 제스처를 끝낸다.
+    const onHandle=downOnHandle||!!e.target.closest('#sheetHandle'), dragged=moved;
+    downOnHandle=false; moved=false;
+    if(onHandle){ if(!dragged) setSheetSnap(sb.dataset.snap==='collapsed'?'half':sb.dataset.snap==='half'?'expanded':'collapsed'); }
     else if(sb.dataset.snap==='collapsed'&&e.target.closest('.dayCard')) setSheetSnap('half');
   });
   ['map','kmap'].forEach(id=>document.getElementById(id).addEventListener('pointerdown',()=>setSheetSnap('collapsed'),true));
