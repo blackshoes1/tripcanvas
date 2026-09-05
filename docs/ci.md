@@ -56,3 +56,6 @@ Vercel 배포는 별개 시스템이라 초록으로 남는다 — **Vercel succ
   `gh run rerun <run-id>` 로 다시 돌린다.
 - ⚠️ macOS 러너(iOS 워크플로)는 비공개 저장소에서 **분당 10배**로 과금된다. 한도를 다시 세울 때 이걸 감안한다.
 - 풀리기 전까지는 `npm run verify:all` 결과를 PR 본문에 적고, 무엇을 못 돌렸는지(RLS 등)를 함께 밝힌다.
+- **TestFlight 업로드도 같이 막힌다** — `iOS TestFlight` 워크플로도 잡을 시작조차 못 한다(2026-09-06 확인, run #5).
+  그동안은 `scripts/testflight-upload.sh`로 이 Mac에서 올린다. 워크플로와 같은 순서이고,
+  빌드 번호만 손으로 준다(run number와 한 줄에 세면 나중에 충돌하지 않는다) — `docs/ios-device-setup.md`.

@@ -48,6 +48,24 @@ App Store Connect 처리에 보통 5~15분, 그다음 폰의 TestFlight 앱에 �
 > 역할은 나중에 바꿀 수 없으니, App Manager 로 만들었다면 그 키를 취소하고 Admin 으로 새로 만든다
 > (Issuer ID는 그대로, Key ID와 `.p8` 만 새로 넣으면 된다).
 
+### Actions를 못 쓸 때 — 이 Mac에서 직접 올리기
+
+러너가 안 도는 동안에는(과금 중단 등) 위 버튼이 **잡을 시작조차 못 한다** — `docs/ci.md`.
+그때는 같은 순서를 로컬에서 돌린다:
+
+```bash
+source ~/.tripcanvas-testflight.env     # KEY_ID · ISSUER_ID · TEAM_ID (저장소 밖에 둔다)
+BUILD=6 scripts/testflight-upload.sh
+```
+
+- `.p8`은 `~/private_keys/AuthKey_<KeyID>.p8`에 두고 `chmod 600`. **저장소에는 넣지 않는다.**
+- `BUILD`는 직접 준다. 같은 번호는 두 번 못 올리므로 Actions의 run number와 **한 줄에 세는 것이 안전하다** —
+  `gh run list --workflow=ios-testflight.yml`의 가장 큰 번호보다 크게.
+- 스크립트가 하는 일은 워크플로와 같다: XcodeGen → **서명 없는** Release 아카이브 → 배포용 서명 + 업로드.
+  아카이브에서 자동 서명을 켜지 않는 이유도 같다(개발용 프로파일은 등록된 기기를 요구한다).
+- 실패가 `Cloud signing permission error`나 `No profiles for ...`면 **API 키 역할이 Admin이 아닌 것**이다.
+  스크립트가 그 경우를 알아보고 먼저 알려 준다.
+
 ### 그래도 Xcode가 필요한 경우
 
 - **디버깅** — 콘솔 로그를 보거나 중단점을 걸어야 할 때
