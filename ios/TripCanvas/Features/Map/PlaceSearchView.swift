@@ -6,7 +6,9 @@ import SwiftUI
 struct PlaceSearchView: View {
     /// 근처 우선 검색의 기준. 보통 그날 마지막 장소의 좌표
     let near: GeoPoint?
-    let onPick: (TripSpot) -> Void
+    /// 고른 검색 결과를 **그대로** 넘긴다 — 일정에 넣을지 후보로 담을지는 부르는 쪽이 정한다.
+    /// (`TripSpot`으로 미리 바꾸면 후보에 필요한 주소가 사라진다)
+    let onPick: (PlaceHit) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @Environment(AppEnvironment.self) private var env
@@ -37,7 +39,7 @@ struct PlaceSearchView: View {
                 Section {
                     ForEach(hits) { hit in
                         Button {
-                            onPick(hit.makeSpot())
+                            onPick(hit)
                             dismiss()
                         } label: {
                             HStack(alignment: .top, spacing: Space.m) {

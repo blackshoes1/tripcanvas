@@ -15,6 +15,9 @@ struct CandidateBoardView: View {
     @State private var commentDrafts: [Int: String] = [:]
     @State private var scheduling: CandidateView?
     @State private var removing: CandidateView?
+    @State private var showsSearch = false
+    /// 지도에서 고른 자리. **아직 아무에게도 안 갔다** — 확인을 눌러야 후보가 된다(§37).
+    @State private var pickedPlace: PlaceHit?
 
     var body: some View {
         Group {
@@ -26,6 +29,16 @@ struct CandidateBoardView: View {
         }
         .navigationTitle("가고 싶은 곳")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showsSearch) {
+            // 근처 우선의 기준은 이미 담은 후보의 좌표 — 없으면 그냥 검색어로 찾는다.
+            PlaceSearchView(near: model?.candidates.lazy.compactMap { c in
+                c.lat.flatMap { lat in c.lng.map { GeoPoint(lat: lat, lng: $0) } }
+            }.first) { hit in
+                // ⚠️ 여기서 저장하지 않는다. 탭 한 번으로 일행에게 공유되지 않게(§37).
+                pickedPlace = hit
+                if titleDraft.trimmingCharacters(in: .whitespaces).isEmpty { titleDraft = hit.name }
+            }
+        }
         .task {
             if model == nil { model = CandidateBoardViewModel(trip: trip, service: env.service, documents: env.service) }
             await model?.load()
@@ -67,9 +80,44 @@ struct CandidateBoardView: View {
                 Section {
                     TextField("가고 싶은 곳 (예: 사그라다 파밀리아)", text: $titleDraft)
                     TextField("한 줄 메모 (선택) — 예: 야경이 좋대", text: $noteDraft)
+
+                    Button { showsSearch = true } label: {
+                        Label("지도에서 찾기", systemImage: "map")
+                    }
+                    .disabled(model.isWorking)
+
+                    // 고른 자리는 여기까지만 와 있다 — 담기를 눌러야 일행에게 간다(§37).
+                    if let place = pickedPlace {
+                        HStack(alignment: .top, spacing: Space.s) {
+                            Text(place.category?.icon ?? "📍")
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(place.name).font(.subheadline.weight(.medium))
+                                if !place.address.isEmpty {
+                                    Text(place.address).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                                }
+                                Text("위치가 함께 담겨요 — 어느 날에 넣을지 정할 때 쓰여요")
+                                    .font(.caption2).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Button {
+                                pickedPlace = nil
+                            } label: {
+                                Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("고른 자리 지우기")
+                        }
+                    }
+
                     Button {
+                        let place = pickedPlace
                         Task {
-                            if await model.add(title: titleDraft, note: noteDraft) { titleDraft = ""; noteDraft = "" }
+                            if await model.add(title: titleDraft, note: noteDraft,
+                                               lat: place?.point.lat, lng: place?.point.lng,
+                                               placeId: place?.placeId,
+                                               addr: (place?.address).flatMap { $0.isEmpty ? nil : $0 }) {
+                                titleDraft = ""; noteDraft = ""; pickedPlace = nil
+                            }
                         }
                     } label: {
                         Label("후보로 담기", systemImage: "plus.circle")

@@ -45,7 +45,8 @@ struct TripPlanView: View {
         .sheet(isPresented: $showsSearch) {
             if let model {
                 // 근처 우선의 기준은 그날 마지막 좌표 — 웹이 앵커로 검색하는 것과 같다.
-                PlaceSearchView(near: model.day?.pins.last?.point) { spot in
+                PlaceSearchView(near: model.day?.pins.last?.point) { hit in
+                    let spot = hit.makeSpot()
                     Task { await model.addSpot(spot) }
                 }
             }

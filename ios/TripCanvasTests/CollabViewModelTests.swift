@@ -218,6 +218,51 @@ final class CollabViewModelTests: XCTestCase {
         XCTAssertEqual(model.errorMessage, "그 날짜는 일정에 없어요")
     }
 
+    // ── 지도에서 후보 담기 (§37) ────────────────────────────────────────────
+
+    /// 지도에서 고른 자리가 좌표와 함께 후보가 된다 — 그래야 "어느 날에 넣을지"를 정할 수 있다.
+    func testAddCarriesTheLocationFromTheMap() async {
+        let service = FakeCollabService()
+        let model = CandidateBoardViewModel(trip: trip(), service: service, documents: FakeDocumentStore())
+        await model.load()
+
+        let added = await model.add(title: "카사 바트요", note: "야경이 좋대",
+                                    lat: 41.3916, lng: 2.1649,
+                                    placeId: "ChIJ_place", addr: "Passeig de Gràcia 43")
+
+        XCTAssertTrue(added)
+        let detail = service.addedDetails.last
+        XCTAssertEqual(detail?.lat, 41.3916)
+        XCTAssertEqual(detail?.lng, 2.1649)
+        XCTAssertEqual(detail?.placeId, "ChIJ_place")
+        XCTAssertEqual(detail?.addr, "Passeig de Gràcia 43")
+    }
+
+    /// 위치 없이도 담긴다 — 이름만 아는 곳(“그 골목 라멘집”)을 막지 않는다.
+    func testAddWithoutLocationStillWorks() async {
+        let service = FakeCollabService()
+        let model = CandidateBoardViewModel(trip: trip(), service: service, documents: FakeDocumentStore())
+        await model.load()
+
+        let added = await model.add(title: "그 골목 라멘집", note: "")
+        XCTAssertTrue(added)
+        let detail = service.addedDetails.last
+        XCTAssertNil(detail?.lat)
+        XCTAssertNil(detail?.placeId)
+    }
+
+    /// ⚠️ §37 — 보기 권한은 지도에서 골라도 후보를 만들지 못한다. 의견만 낸다.
+    func testViewerCannotAddFromTheMap() async {
+        let service = FakeCollabService()
+        let model = CandidateBoardViewModel(trip: trip(role: .viewer), service: service, documents: FakeDocumentStore())
+        await model.load()
+
+        let added = await model.add(title: "카사 바트요", note: "", lat: 41.39, lng: 2.16, placeId: nil, addr: nil)
+
+        XCTAssertFalse(added)
+        XCTAssertTrue(service.addedDetails.isEmpty, "요청 자체가 나가지 않는다")
+    }
+
     // ── 그룹 제안 (§35) — 앱은 판정하지 않고 서버가 준 것을 그린다 ───────────────
 
     private func proposal(_ picks: [(Int, Int, String)]) -> GroupProposalView {
@@ -400,6 +445,8 @@ private final class FakeCollabService: CollabSource {
     private(set) var savedPrefs: [[String: JSONValue]] = []
     private(set) var reactions: [(candidateId: Int, reaction: Reaction?)] = []
     private(set) var addedCandidates: [String] = []
+    /// 지도에서 담을 때 좌표·placeId·주소가 함께 가는지 보려면 인자를 통째로 봐야 한다.
+    private(set) var addedDetails: [(title: String, lat: Double?, lng: Double?, placeId: String?, addr: String?)] = []
     private(set) var candidateActions: [(action: String, value: String?)] = []
     private(set) var acceptedNames: [String?] = []
 
@@ -427,7 +474,10 @@ private final class FakeCollabService: CollabSource {
 
     func candidates(tripId: String) async throws -> [CandidateView] { try check(); return candidateList }
     func addCandidate(tripId: String, title: String, note: String?, lat: Double?, lng: Double?, placeId: String?, addr: String?) async throws -> Int {
-        try check(); addedCandidates.append(title); return 99
+        try check()
+        addedCandidates.append(title)
+        addedDetails.append((title, lat, lng, placeId, addr))
+        return 99
     }
     func react(tripId: String, candidateId: Int, reaction: Reaction?) async throws {
         try check(); reactions.append((candidateId, reaction))
