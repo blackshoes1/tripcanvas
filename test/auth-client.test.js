@@ -98,6 +98,8 @@ test('실패는 제공자 문구가 아니라 코드로 분기한다', async () 
   const cases = [
     [401, { message: 'Invalid email or password' }, 'INVALID_CREDENTIALS'],
     [403, { code: 'EMAIL_NOT_VERIFIED', message: 'Email not verified' }, 'EMAIL_NOT_VERIFIED'],
+    // 코드 없이 문장만 오는 배포도 있다 — 그때 '비밀번호가 틀렸다'로 보내면 링크만 누르면 될 사람이 막힌다
+    [403, { message: 'Email not verified' }, 'EMAIL_NOT_VERIFIED'],
     [429, { message: 'Too many requests' }, 'RATE_LIMITED'],
     [500, { message: '' }, 'UNKNOWN']
   ];

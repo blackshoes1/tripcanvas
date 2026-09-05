@@ -92,6 +92,25 @@
 - 아직 없는 것: **실시간**(웹은 활동 기록 이벤트를 받지만 앱은 당겨서 새로고침한다) · 지도에서 바로 후보 담기 ·
   그룹 제안 카드(`buildGroupProposal`) · 분리 일정.
 
+## 로그인 (Core/Auth)
+
+**웹(`auth.js`)과 같은 서버·같은 계약**이다 — `/api/auth/sign-in/email` · `sign-up/email` · `get-session` ·
+`request-password-reset` · `sign-out`. Supabase GoTrue를 직접 부르던 경로는 없앴다(2026-09-05).
+
+- 세션은 **bearer 토큰 하나**다. 교차 출처라 쿠키를 쓰지 않고 **refresh 그랜트도 없다** —
+  401을 만나면 `get-session`으로 "이 세션이 아직 사는가"를 묻고, 죽었으면 로그인 화면으로 돌려보낸다.
+- Keychain 계정 이름은 `withj.auth.session.v1`(제공자 중립). 예전 이름 `supabase.session`은 **지우기만 한다**.
+- ⚠️ **예전 Supabase 세션을 자체 Auth 세션으로 변환하지 않는다.** 다른 Auth가 발급한 토큰을 이어서 들고 있으면
+  로그인한 것처럼 보이면서 아무것도 못 한다. 지우고 "로그인 방식이 변경되어 한 번만 다시 로그인해 주세요 —
+  저장된 여행은 그대로 유지됩니다"라고 말한다.
+- 이메일 확인 전에는 로그인이 열리지 않는다(`requireEmailVerification`). 가입은 세션을 주지 않고 확인 메일만 보낸다.
+- 기존 사용자는 **같은 이메일로 다시 가입 → 확인 → 기존 여행 연결**이다(비밀번호 해시를 옮기지 않는다).
+  연결은 **확인된 이메일에서만** 일어난다 — 서버 `auth/identity.ts`.
+- ⚠️ `AuthError.from(status:body:)`는 `auth.js`의 `toError`와 **같은 규칙의 복사본**이다.
+  규칙을 바꿀 때 `auth.js`를 먼저 고치고 여기를 따라 맞춘다.
+- **새 비밀번호를 정하는 화면은 웹에만 있다** — 재설정 메일의 링크가 웹(`#reset=`)으로 간다.
+  앱은 요청까지 하고 "메일의 링크에서 정해주세요"라고 안내한다.
+
 ## 판단은 서버가, 표현은 iOS가
 
 웹의 `NextActionEngine`·`TripState`·`Replan`을 Swift로 다시 만들지 않았다. 두 벌을 두면 같은 상황에서
@@ -120,7 +139,7 @@ XcodeGen을 쓰고 싶지 않다면 Xcode에서 iOS App 프로젝트를 새로 �
 
 - 최소 iOS 17 (`@Observable` 사용)
 - 외부 의존성은 **지도 SDK 둘뿐**(SPM: `googlemaps/ios-maps-sdk` · `kakao-mapsSDK/KakaoMapsSDK-SPM`). 나머지는 REST + `URLSession`이다
-  — Supabase Auth도 SDK 없이 직접 부른다
+  — 로그인도 SDK 없이 `/api/auth/*`를 직접 부른다
 
 ## 무료 Apple ID로 내 아이폰에서 실행
 
@@ -153,8 +172,8 @@ Live Activity 는 `areActivitiesEnabled` 가 false 라 조용히 건너뛴다.
 
 ## 설정
 
-`TripCanvas/App/AppEnvironment.swift`의 `AppConfig`가 기본값을 들고 있다 — API는 **NAS**(`https://bokbok9.tail8b977f.ts.net`, Tailscale Funnel이 HTTPS를 붙인다. 2026-09-04 전환),
-Supabase는 로그인에만 쓰는 기존 프로젝트. 로컬 서버로 붙을 때는 `Info.plist`의 `TCApiBaseURL`을 덮어쓴다 — http라면 ATS 예외(`NSAllowsLocalNetworking`)도 함께 넣는다.
+`TripCanvas/App/AppEnvironment.swift`의 `AppConfig`가 기본값을 들고 있다 — API는 **NAS**(`https://bokbok9.tail8b977f.ts.net`, Tailscale Funnel이 HTTPS를 붙인다. 2026-09-04 전환)이고
+**로그인도 같은 서버**다. 로컬 서버로 붙을 때는 `Info.plist`의 `TCApiBaseURL`을 덮어쓴다 — http라면 ATS 예외(`NSAllowsLocalNetworking`)도 함께 넣는다.
 
 ## 구조
 
@@ -163,7 +182,7 @@ App/          진입점·환경·설정
 Core/
   Models/     contract.ts를 그대로 옮긴 Codable (알 수 없는 enum 값은 .unknown으로 떨어진다)
   Networking/ URLSession + Bearer + 오류 매핑
-  Auth/       Supabase Auth REST + Keychain 세션
+  Auth/       TripCanvas Auth(`/api/auth/*`) + Keychain 세션
   Storage/    마지막 Today 캐시 (오프라인 읽기)
   Location/   단발성 위치 조회 (연속 추적 없음)
 Features/     Trips · Today · Plan(일정 편집) · Map(듀얼 엔진 지도·검색) · Booking(예약 목록·편집) ·

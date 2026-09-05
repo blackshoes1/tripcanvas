@@ -60,8 +60,6 @@ targets:
         # 지도 SDK 네이티브 키 — 번들 ID 제한(com.fromj.trip). 무료 스펙에서 번들 ID를 바꿨다면 콘솔의 제한에 그 값도 넣는다.
         TCGoogleMapsKey: "AIzaSyC5b_lS9bW-qGFnL9KQ0Kn8SBr0a0VodIg"
         TCKakaoNativeKey: "fd08ca0a759ed5b4f1240887ed814957"
-        TCSupabaseURL: ""
-        TCSupabaseAnonKey: ""
     dependencies:
       - package: GoogleMaps
         product: GoogleMaps
