@@ -80,7 +80,9 @@
     const raw = String(b.message || b.error || b.code || '');
     const code = String(b.code || '');
     if (status === 429) return { code: 'RATE_LIMITED', message: '너무 여러 번 시도했어 — 잠시 뒤에 다시 해줘' };
-    if (/EMAIL_NOT_VERIFIED|verify|verification/i.test(code + ' ' + raw)) {
+    // 'verified'까지 잡는다 — 코드 없이 'Email not verified' 문장만 오면 앞의 규칙은 이걸 놓치고
+    // 아래 INVALID_CREDENTIALS로 떨어뜨려, 링크만 누르면 될 사람에게 비밀번호를 다시 묻게 된다.
+    if (/EMAIL_NOT_VERIFIED|verif(y|ication|ied)/i.test(code + ' ' + raw)) {
       return { code: 'EMAIL_NOT_VERIFIED', message: '메일의 확인 링크를 먼저 눌러줘 (스팸함도 확인)' };
     }
     if (status === 401 || status === 403 || /invalid|credential|password/i.test(code + ' ' + raw)) {
