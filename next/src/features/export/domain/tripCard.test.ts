@@ -67,7 +67,7 @@ describe('buildTripCard', () => {
       spot('제주공항', 33.5104, 126.4914),
       spot('제주호텔', 33.4996, 126.5312, { stay: true }),
       spot('성산일출봉', 33.4587, 126.9425)
-    ])]);
+    ]), day([])]);   // 마지막 날에는 복귀가 없다 — 뒷날을 붙여 '중간 날'로 본다
     const c = cardOf(t);
     const last = c.days[0].lines[c.days[0].lines.length - 1];
     expect(last.kind).toBe('stay');

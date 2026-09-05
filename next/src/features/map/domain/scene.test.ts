@@ -115,7 +115,7 @@ describe('동선 라인 — 실경로 우선, 조회 중엔 없음, 실패만 �
 describe('숙소 복귀·일자 간 연결 — 자동 합성 구간은 점선', () => {
   it('숙소 복귀는 캐시된 경우에만 점선(0.85배 투명도)으로 붙는다', () => {
     const h = hotel(), b = seongsan();
-    const t = trip([day([h, b])]);
+    const t = trip([day([h, b]), day([])]);   // 마지막 날에는 복귀가 없다
     expect(buildMapScene(t, NONE, 0).lines).toHaveLength(0);   // 조회 중 — 없음
     const v = buildMapScene(t, { [K(b, h)]: { sec: 900, m: 9000 } }, 1);
     const back = v.lines.find(l => l.dashed)!;
@@ -125,7 +125,7 @@ describe('숙소 복귀·일자 간 연결 — 자동 합성 구간은 점선', 
 
   it('연박 이월 숙소(그날 목록에 없음)로 돌아가면 👻🏠 표식이 남는다', () => {
     const h = hotel({ nights: 2 });
-    const t = trip([day([h]), day([seongsan()])]);
+    const t = trip([day([h]), day([seongsan()]), day([])]);
     const v = buildMapScene(t, NONE, 2);   // 2일차만 보기 — 복귀 대상이 전날 숙소
     expect(v.ghosts).toHaveLength(1);
     expect(v.ghosts[0].title).toBe('제주호텔');
