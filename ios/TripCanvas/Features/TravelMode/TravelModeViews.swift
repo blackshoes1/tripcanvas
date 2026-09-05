@@ -12,7 +12,8 @@ struct TravelModeInviteCard: View {
             Label("오늘 여행 일정이 있어요", systemImage: "location.circle")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
-            Text("Travel Mode를 시작하면")
+            // 내부 이름은 Travel Mode지만 화면에서는 "여행 중"이다(§28).
+            Text("여행 중으로 바꾸면")
                 .font(.headline)
             VStack(alignment: .leading, spacing: Space.xs) {
                 BulletLine("다음 일정까지 이동 시간을")

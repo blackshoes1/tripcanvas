@@ -2293,7 +2293,7 @@ function renderBookingList(){
       <div><span>현재 예약 총액</span><b>₩${fmtMoney(s.booked)}</b></div>
       <div class="pxSaveRow"><span>현재 확정 절약 가능</span><b>${s.confirmed>0?`₩${fmtMoney(s.confirmed)}`:'—'}</b></div>
       ${s.potential>0?`<div class="pxPotRow"><span>조건 확인 필요</span><b>최대 ₩${fmtMoney(s.potential)}</b></div>`:''}
-      ${s.actual>0?`<div class="pxActualRow"><span>From J로 실제 절약</span><b>₩${fmtMoney(s.actual)}</b></div>`:''}
+      ${s.actual>0?`<div class="pxActualRow"><span>With J로 실제 절약</span><b>₩${fmtMoney(s.actual)}</b></div>`:''}
     </div>`:'';
   document.getElementById('bookingListBody').innerHTML = bookings.length? bookings.map(b=>{
     const period=[b.start,b.end].filter(Boolean).map(esc).join(' ~ ');
@@ -2726,7 +2726,7 @@ function buildTripCard(){
     if(day.note) html+=`<div style="font-size:10.5px;color:#9aa5c4;margin-top:6px;white-space:pre-wrap">📝 ${esc(day.note)}</div>`;
     html+='</div>';
   });
-  html+='<div style="font-size:10px;color:#5a6690;text-align:right">made with From J</div>';
+  html+='<div style="font-size:10px;color:#5a6690;text-align:right">With J로 만든 일정</div>';
   w.innerHTML=html;
   return w;
 }
@@ -3116,6 +3116,13 @@ function priceSuggestions(today){
 }
 
 const SG_KICKER={REPLAN:'일정 조정 제안', NEXT_ACTIVITY:'지금 가장 자연스러운 다음 일정', REST:'쉬어도 괜찮습니다', PRICE_SAVING:'예약 다시 보기'};
+// 제안 카드의 머리. **From J는 앱 이름이 아니라 J가 보내는 제안의 서명이다** — 앱은 With J고,
+// 이 서명이 붙은 것만 '제안'이다(일정 표시·오류 안내에는 붙지 않는다).
+function sgKicker(text){
+  const k=document.createElement('div'); k.className='sgKicker';
+  const from=document.createElement('span'); from.className='sgFrom'; from.textContent='From J';
+  k.appendChild(from); k.appendChild(document.createTextNode(' '+text)); return k;
+}
 function sgButton(label, primary, fn, action){
   const b=document.createElement('button'); b.className='btn'+(primary?' primary':''); b.type='button';
   b.textContent=label; b.onclick=fn; if(action) b.dataset.action=action; return b;
@@ -3272,8 +3279,7 @@ function renderDayFlow(di){
   if(!_dayFlow) return;
   const flow=_dayFlow, live=!!(_adapt&&_adapt.state&&_adapt.state.live);
   const card=document.createElement('div'); card.className='sgCard'; card.dataset.type='DAY_FLOW';
-  const k=document.createElement('div'); k.className='sgKicker';
-  k.textContent=live?'오늘 이렇게 이어가면 어떨까요':'이 날을 이렇게 채우면 어떨까요'; card.appendChild(k);
+  card.appendChild(sgKicker(live?'오늘 이렇게 이어가면 어떨까요':'이 날을 이렇게 채우면 어떨까요'));
   if(flow.empty){
     const e=document.createElement('div'); e.className='sgDesc';
     e.textContent='지금 넣을 만한 곳이 없습니다 — 남은 고정 일정만 그대로 이어가면 됩니다.'; card.appendChild(e);
@@ -3338,7 +3344,7 @@ function renderSuggestions(di, clock){
     const card=document.createElement('div'); card.className='sgCard';
     card.dataset.type=(sug.action&&sug.action.fromDay!=null)?'MOVE_FROM_OTHER_DAY':sug.type;
     card.dataset.suggestionType=sug.type;
-    const k=document.createElement('div'); k.className='sgKicker'; k.textContent=SG_KICKER[sug.type]||'제안'; card.appendChild(k);
+    card.appendChild(sgKicker(SG_KICKER[sug.type]||'제안'));
     const ti=document.createElement('div'); ti.className='sgTitle'; ti.textContent=sug.title; card.appendChild(ti);
     if(sug.description){ const de=document.createElement('div'); de.className='sgDesc'; de.textContent=sug.description; card.appendChild(de); }
     if(sug.reasons&&sug.reasons.length){

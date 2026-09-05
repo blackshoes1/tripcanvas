@@ -33,13 +33,13 @@ enum IntentError: Error, CustomLocalizedStringResourceConvertible {
 
     var localizedStringResource: LocalizedStringResource {
         switch self {
-        case .noTrip: "아직 여행이 없어요. 웹 From J에서 여행을 만들면 여기서도 보여요."
+        case .noTrip: "아직 여행이 없어요. 웹 With J에서 여행을 만들면 여기서도 보여요."
         case .ambiguous: "지금 어떤 일정인지 확실하지 않아요. 앱에서 확인해 주세요."
         }
     }
 }
 
-/// "From J 오늘 일정" — 다음 하나와 그 뒤 두 줄까지만(§6).
+/// "With J 오늘 일정" — 다음 하나와 그 뒤 두 줄까지만(§6).
 struct ShowTodayIntent: AppIntent {
     static var title: LocalizedStringResource = "오늘 일정 보기"
     static var description = IntentDescription("오늘 남은 일정과 다음에 할 일을 알려줍니다.")
@@ -94,7 +94,7 @@ struct ShowNextActionIntent: AppIntent {
     }
 }
 
-/// "From J 여행 모드 시작" — 이미 켜져 있으면 다시 켜지 않는다(§8, idempotent).
+/// "With J 여행 모드 시작" — 이미 켜져 있으면 다시 켜지 않는다(§8, idempotent).
 struct StartTravelModeIntent: AppIntent {
     static var title: LocalizedStringResource = "여행 모드 시작"
     static var description = IntentDescription("다음 일정과 이동 시간을 잠금화면에서 바로 볼 수 있게 합니다.")

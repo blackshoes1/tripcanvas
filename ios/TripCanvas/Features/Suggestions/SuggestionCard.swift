@@ -11,6 +11,13 @@ struct SuggestionCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Space.m) {
             HStack(spacing: Space.s) {
+                // **From J는 앱 이름이 아니라 J가 보내는 제안의 서명이다** — 앱은 With J고,
+                // 이 서명이 붙은 것만 제안이다(일정 표시·오류 안내에는 붙지 않는다).
+                Text("From J")
+                    .font(.caption2.weight(.semibold))
+                    .padding(.horizontal, Space.s).padding(.vertical, 2)
+                    .background(kicker.tint.opacity(0.15), in: Capsule())
+                    .foregroundStyle(kicker.tint)
                 Image(systemName: kicker.symbol).foregroundStyle(kicker.tint)
                 Text(kicker.text)
                     .font(.caption.weight(.semibold))
@@ -53,7 +60,7 @@ struct SuggestionCard: View {
         }
         .card()
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("\(kicker.text) 제안: \(suggestion.title)")
+        .accessibilityLabel("From J \(kicker.text) 제안: \(suggestion.title)")
     }
 
     private var acceptTitle: String {
