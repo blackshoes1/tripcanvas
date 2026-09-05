@@ -1,0 +1,21 @@
+#!/bin/sh
+# main 직접 푸시를 막는다.
+#
+# GitHub branch protection이 이 저장소에서는 쓸 수 없다(비공개 + 무료 플랜 → 403).
+# 그래서 강제할 수 있는 곳이 여기뿐이다. main 푸시는 Vercel 자동 배포와 연결돼 있어
+# **즉시 프로덕션에 나간다** — 실수 한 번의 값이 크다.
+#
+# 켜기:  git config core.hooksPath .githooks
+# 우회:  git push --no-verify   (긴급 복구에만. 왜 그랬는지 남길 것)
+
+while read -r _local_ref _local_sha remote_ref _remote_sha; do
+  case "$remote_ref" in
+    refs/heads/main)
+      echo "✗ main에 직접 푸시하지 않는다 — 브랜치를 만들고 PR로 넣는다." >&2
+      echo "  main merge는 즉시 프로덕션 배포다. 게이트: npm run verify:all" >&2
+      echo "  정말 필요하면: git push --no-verify" >&2
+      exit 1
+      ;;
+  esac
+done
+exit 0

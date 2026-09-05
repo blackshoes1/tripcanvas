@@ -4,10 +4,18 @@
 
 ## Git 워크플로 (중요)
 
-- **작업은 `main`에 직접 커밋·푸시한다.** 별도 브랜치·PR 없이 바로 반영한다.
-- ⚠️ `main` 푸시는 Vercel 자동 배포와 연결돼 있어 **커밋 즉시 프로덕션(`tripcanvas-ai.vercel.app`)에 나간다.** 푸시 전에 변경을 스스로 검토하고, 아래 **릴리스 체크리스트**를 반드시 지킬 것.
+- **`main`에 직접 커밋·푸시하지 않는다.** 브랜치를 만들고 PR로 넣는다:
+
+  ```
+  브랜치 → PR → 게이트 통과 → merge → 배포
+  ```
+
+  브랜치 이름은 `feat/*` · `fix/*` · `chore/*` · `docs/*` · `release/*`.
+- ⚠️ `main` merge는 Vercel 자동 배포와 연결돼 있어 **merge 즉시 프로덕션(`tripcanvas-ai.vercel.app`)에 나간다.** merge 전에 아래 **릴리스 체크리스트**를 반드시 지킬 것. (API·DB는 Vercel 배포로 바뀌지 않는다 — NAS에서 따로 올린다)
+- **필수 체크가 빨간 상태로 merge하지 않는다.** 빨간 이유가 코드가 아니라 러너·과금이면 그 사실과 대신 무엇으로 검증했는지를 PR에 남기고 **사람이 판단한다** — `docs/ci.md`
 - **여러 기기(집·회사)에서 작업한다.** 세션 시작·커밋 전에 `git fetch`로 `origin/main`이 앞서 있는지 확인하고, 뒤처졌으면 `git pull --ff-only` 후 작업한다.
 - **커밋 메시지 제목은 명사형으로 끝낸다.** `… 기능 추가` · `… 오류 수정` · `… 규칙 정리` 처럼 맺는다. `추가한다`·`고쳤다` 같은 서술형 어미로 끝내지 않는다. (본문은 서술형으로 써도 된다 — 제목만 명사형)
+- PR 본문은 무엇이 바뀌었는지·왜·사용자와 프로덕션에 무슨 영향인지·무엇으로 검증했는지·되돌리는 법을 적는다. **`테스트 작성됨`과 `테스트 통과`를 섞지 않는다.**
 
 ## 배포
 
@@ -65,6 +73,7 @@ With J          ← 제품 (앱 이름 · 웹 타이틀 · PWA · 메일 제목 
 - `ios/` — **네이티브 iOS 앱(SwiftUI)** + `TripCanvasWidgets`(위젯·Live Activity 확장) + `TripCanvasShared`(App Group 공유 상태). 웹은 여행을 *계획*하고, iOS는 여행을 *실행*한다. **로그인은 웹과 같은 자체 Auth**(`/api/auth/*`, bearer 세션 · Keychain `withj.auth.session.v1`)다 — Supabase GoTrue 직접 호출은 없앴다(2026-09-05). refresh 그랜트가 없어 401은 `get-session`으로 확인하고, 예전 Supabase 세션은 **변환하지 않고 지운 뒤 한 번 다시 묻는다**. 판단 로직을 Swift로 복제하지 않는다 — `/api/v1`이 준 결과를 그리기만 한다. 계획 화면은 **네이티브로 옮기는 중**이다(일정 편집 `Features/Plan` · 지도·검색 `Features/Map`이 들어왔고 예약·함께하기가 남았다). 지도는 웹과 같은 듀얼 엔진(국내 카카오맵 SDK · 해외 Google Maps SDK — 처음 들어온 외부 의존성, SPM)이고 키는 **번들 ID로 제한된 네이티브 키**(`TCGoogleMapsKey`·`TCKakaoNativeKey`)다. 국내 검색은 카카오 REST 키를 앱에 못 넣어 서버 `GET /api/v1/places/search`를 지나고, 해외 검색은 iOS 키로 Places API(New)에 직접 묻는다(`ios/README.md` 표). 여행 문서는 아는 필드만 담은 구조체로 디코딩하지 않고 **원문 트리(`JSONValue`)로 들고 아는 필드만 덮어 쓴다** — 그러지 않으면 웹이 쓰는 `who`·`split`·`hours` 같은 필드가 앱 저장 한 번에 사라진다. 저장은 `PUT /api/v1/trips/:id`(revision CAS)이고 실패하면 화면을 되돌린다. 빌드·XCTest는 CI가 시뮬레이터로 본다(`.github/workflows/ios.yml`, `ios/` 변경 시에만 — macOS 러너는 10배 과금). **staging API로도 확인됐다**(2026-09-04 — `TCApiBaseURL`을 터널로 돌려 로그인·여행 목록·오늘 화면). 서명·실기기·푸시·위젯 실제 표시는 여전히 기기에서만 확인된다 (`ios/README.md` · `docs/ios-device-setup.md`)
 - `next/src/features/trip-state/` — 웹·iOS 공통 API 계층. `contract.ts`(단일 출처 계약) · `todayView.ts`(엔진 결과를 계약 모양으로) · `mutations.ts`(문서 변경 순수 함수) · `handlers.ts`(주입 가능한 라우트 핸들러) · `supabaseGateway.ts`(RLS 아래 읽기·쓰기)
 - `scripts/` — `bump-version.js` · `check-version-sync.js` · `check-secrets.js` · `verify-all.sh`(릴리스 게이트를 로컬에서 통째로 — `docs/ci.md`)
+- `.githooks/pre-push` — `main` 직접 푸시 차단. **클론마다 `git config core.hooksPath .githooks` 한 번** — GitHub branch protection이 이 플랜(비공개+무료)에서 막혀 있어 강제할 수 있는 곳이 여기뿐이다(`docs/deployment-workflow.md`)
 - `test/` — 순수·통합·API 테스트 (`pure` · `integration` · `adaptive` · `intake` · `collab` · `price` · `routing` · `sync` · `api-*` · `migration` · `rls.integration`(로컬 PostgreSQL이 있을 때만 — `scripts/pg-local.sh`))
 - `e2e/` — Playwright 시나리오 (`core-flows` · `pwa` · `accessibility` · `ux-wireframe` · `collab`)
 - `proto/` — 실험용 프로토타입. 프로덕션 앱과 무관
