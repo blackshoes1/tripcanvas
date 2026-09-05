@@ -29,6 +29,55 @@ docker compose -f deploy/docker-compose.yml exec postgres psql -U tripcanvas -d 
 curl -s https://$API_DOMAIN/api/health
 ```
 
+## Off-site — Synology Hyper Backup
+
+`deploy/backup.sh`가 매일 `BACKUP_DIR`에 덤프를 쓰지만 **그건 아직 NAS 안이다.** 디스크 하나가 아니라
+NAS 자체가 죽으면(화재·도난·펌웨어) 같이 사라진다. 외부로 한 벌 더 보낸다.
+
+```
+PostgreSQL → deploy/backup.sh(매일 pg_dump) → BACKUP_DIR → Hyper Backup → 외부 목적지
+```
+
+DSM에서 한 번 설정한다:
+
+1. **Hyper Backup → 백업 작업 만들기 → 폴더와 패키지**
+2. 목적지: NAS 밖 어디든 — Synology C2 · 다른 NAS · S3 호환 · USB(오프사이트로 들고 나가는 경우)
+3. 원본에 **`BACKUP_DIR`가 가리키는 공유 폴더**를 포함한다(`deploy/.env`의 값, 기본 `/volume1/backups/tripcanvas`)
+4. 일정: 매일 — `backup` 컨테이너가 덤프를 쓴 **뒤** 시각으로
+5. **백업 무결성 검사** 켜기
+6. **실패 알림** 켜기 — 조용히 멈춘 백업이 가장 위험하다
+7. 버전 관리: Smart Recycle 등으로 최소 30일
+
+⚠️ `deploy/.env`(비밀)는 이 경로에 넣지 않는다. 별도로 관리한다 — 백업 볼륨에 평문으로 두지 않는다.
+
+### 검증 — 설정했다로 끝내지 않는다
+
+**off-site 목적지에서 파일을 다시 내려받아** 리허설을 돌린다. NAS 로컬 사본으로 돌리면
+외부 복제가 실제로 됐는지는 여전히 모른다.
+
+```bash
+# 1) Hyper Backup 목적지에서 최신 덤프를 회수해 둔다 (이 시간도 RTO의 일부다)
+# 2) 격리된 PostgreSQL에 복원하고 운영과 비교한다 — 운영은 읽기만 한다
+TC_PROD_PSQL="docker compose -f deploy/docker-compose.yml exec -T postgres psql -U tripcanvas -d tripcanvas" \
+  deploy/restore-rehearsal.sh ~/recovered/tripcanvas-<UTC>.dump
+```
+
+스크립트가 하는 일: 격리 컨테이너 기동 → `pg_restore` → `drizzle-kit migrate`(덤프가 옛 스키마여도 따라잡는다)
+→ 14개 표의 행 수를 운영과 대조 → **RTO 출력** → 컨테이너·볼륨 정리.
+
+운영 DB는 건드리지 않는다. 복원은 이름이 다른 컨테이너(`tripcanvas-rehearsal`)와 볼륨에서만 일어난다.
+
+행 수가 다르면 두 가지 중 하나다:
+
+- **덤프 시각 이후의 쓰기** — 정상이다. 그 차이가 곧 **손실 구간(RPO)**이고, 하루 1회 덤프면 최대 24시간이다.
+- **복원 실패** — `pg_restore` 로그를 본다.
+
+결과(날짜 · 행 수 · RTO)를 아래 표에 남긴다.
+
+| 날짜 | 덤프 | 목적지에서 회수 | 복원+마이그레이션 | 합계 RTO | 결과 |
+|---|---|---|---|---|---|
+| _(아직 없음)_ | | | | | |
+
 ## 복구 리허설 (§61) — 분기마다, 그리고 데이터 이관 직전에
 
 1. 어제 덤프를 **별도 컨테이너**(예: `postgres-rehearsal`)에 복원한다.
