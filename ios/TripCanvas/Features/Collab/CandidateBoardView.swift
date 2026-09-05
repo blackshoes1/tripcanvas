@@ -99,6 +99,11 @@ struct CandidateBoardView: View {
                     }
                     .pickerStyle(.segmented)
                 }
+                if let plan = model.proposal, model.canSchedule {
+                    Section { GroupProposalCard(plan: plan, isBusy: model.isWorking,
+                                                onAccept: { Task { await model.acceptProposal() } },
+                                                onDismiss: { model.dismissProposal() }) }
+                }
                 let groups = model.groups
                 group("의견이 필요해요", groups.needsOpinion, model)
                 group("다들 좋아해요", groups.loved, model)
@@ -403,5 +408,64 @@ struct DayPickerSheet: View {
               let date = ISODateText.calendar.date(byAdding: .day, value: index, to: first) else { return nil }
         let parts = ISODateText.calendar.dateComponents([.month, .day], from: date)
         return "\(parts.month ?? 1)/\(parts.day ?? 1)"
+    }
+}
+
+/// 그룹 제안 카드(§29·§36) — **서버가 만든 것을 그리기만 한다.**
+/// 판정을 Swift로 복제하지 않는다: 같은 규칙 두 벌은 같은 상황에서 다른 답을 말하게 된다(§35).
+/// 자동으로 적용하지 않는다 — 미리보기를 보이고 사람이 고른다(§79).
+struct GroupProposalCard: View {
+    let plan: GroupProposalView
+    let isBusy: Bool
+    let onAccept: () -> Void
+    let onDismiss: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Space.m) {
+            // 제안의 서명. 앱 이름(With J)이 아니라 제안에만 붙는다.
+            Text("From J")
+                .font(.caption2.weight(.semibold))
+                .padding(.horizontal, Space.s).padding(.vertical, 2)
+                .background(Color.accentColor.opacity(0.15), in: Capsule())
+                .foregroundStyle(Color.accentColor)
+
+            Text(plan.summary).font(.headline)
+
+            VStack(alignment: .leading, spacing: Space.s) {
+                ForEach(plan.picks) { pick in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("\(pick.dayLabel) · \(pick.title)").font(.subheadline.weight(.medium))
+                        // 이유는 서버가 준 문장 그대로다 — 여기서 다시 쓰지 않는다.
+                        ForEach(pick.reasons, id: \.self) { reason in
+                            Text(reason).font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+
+            if !plan.groupNotes.isEmpty {
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(plan.groupNotes, id: \.self) { note in
+                        Text(note).font(.caption2).foregroundStyle(.secondary)
+                    }
+                }
+            }
+
+            HStack(spacing: Space.s) {
+                PrimaryActionButton(title: acceptLabel, isBusy: isBusy, action: onAccept)
+                SecondaryActionButton(title: dismissLabel, action: onDismiss)
+            }
+        }
+        .padding(.vertical, Space.xs)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("From J 제안: \(plan.summary)")
+    }
+
+    /// 문구는 서버가 준 것을 쓰되, 없으면 기본값으로 — 계약이 앞서 나가도 버튼이 비지 않게.
+    private var acceptLabel: String {
+        plan.options.first { $0.action == .accept }?.label ?? "이대로 할래요"
+    }
+    private var dismissLabel: String {
+        plan.options.first { $0.action == .dismiss }?.label ?? "나중에"
     }
 }

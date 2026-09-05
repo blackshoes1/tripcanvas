@@ -623,3 +623,59 @@ struct MemoryAssociation: Codable, Hashable, Sendable {
     let activityId: String?
     let reason: String
 }
+
+// MARK: - 그룹 제안 (§28·§29·§35)
+
+/// 반대 없이 두 명 이상이 말한 후보를 **어느 날에** 넣을지 정리한 미리보기.
+///
+/// ⚠️ 판정은 서버가 한다(`collab.js`의 `buildGroupProposal`) — 앱은 **그리기만** 한다.
+/// 같은 규칙을 Swift로 다시 만들면 웹과 앱이 같은 상황에서 서로 다른 답을 말하게 된다.
+/// ⚠️ 합의 점수는 계약에 없다(§21·§22). 화면에 나가는 것은 `reasons` 문장뿐이다.
+struct GroupProposalPick: Codable, Hashable, Sendable, Identifiable {
+    let candidateId: Int
+    let title: String
+    /// 0부터 센 일자. 화면 표기는 `dayLabel`을 쓴다.
+    let dayIndex: Int
+    let dayLabel: String
+    let reasons: [String]
+    /// 그 날 마지막 장소에서의 거리. 좌표를 모르면 nil — 추측하지 않는다.
+    let distanceKm: Double?
+
+    var id: Int { candidateId }
+}
+
+struct GroupProposalImpact: Codable, Hashable, Sendable {
+    let spotsAdded: Int
+    let daysTouched: Int
+}
+
+/// 수락 말고도 빠져나갈 길이 늘 있다 — 자동 적용은 하지 않는다(§79).
+enum GroupProposalOptionKey: String, Codable, Sendable {
+    case accept = "ACCEPT"
+    case adjust = "ADJUST"
+    case dismiss = "DISMISS"
+}
+
+struct GroupProposalOption: Codable, Hashable, Sendable, Identifiable {
+    let key: String
+    let label: String
+
+    var id: String { key }
+    /// 모르는 값이 와도 화면이 죽지 않게 — 계약이 앞서 나갔을 수 있다.
+    var action: GroupProposalOptionKey? { GroupProposalOptionKey(rawValue: key) }
+}
+
+struct GroupProposalView: Codable, Hashable, Sendable {
+    let summary: String
+    let picks: [GroupProposalPick]
+    let impact: GroupProposalImpact
+    let options: [GroupProposalOption]
+    /// 취향을 남긴 사람이 있을 때의 요약 문장. 없으면 빈 배열이다.
+    let groupNotes: [String]
+}
+
+/// 제안할 것이 없으면 `proposal`이 nil이다 — 억지로 만들지 않는다.
+struct GroupProposalResponse: Codable, Sendable {
+    let schemaVersion: Int
+    let proposal: GroupProposalView?
+}

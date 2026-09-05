@@ -110,9 +110,10 @@ final class CollabViewModelTests: XCTestCase {
 
     // MARK: 후보 보드
 
-    private func candidate(id: Int = 1, status: String = "PROPOSED", mine: Bool = false, myReaction: String? = nil,
+    private func candidate(id: Int = 1, title: String = "카사 바트요", status: String = "PROPOSED", mine: Bool = false,
+                           myReaction: String? = nil,
                            reactions: [CandidateView.ReactionEntry] = []) -> CandidateView {
-        CandidateView(id: id, title: "카사 바트요", placeId: nil, lat: 41.4, lng: 2.16, addr: nil, note: nil, url: nil,
+        CandidateView(id: id, title: title, placeId: nil, lat: 41.4, lng: 2.16, addr: nil, note: nil, url: nil,
                       status: status, scheduledRef: nil, proposedByLabel: "영희", mine: mine, myReaction: myReaction,
                       mustCount: reactions.filter { $0.reaction == "MUST" }.count,
                       okCount: reactions.filter { $0.reaction == "OK" }.count,
@@ -215,6 +216,111 @@ final class CollabViewModelTests: XCTestCase {
         await model.schedule(candidateId: 1, dayIndex: 9)
         XCTAssertTrue(documents.saves.isEmpty)
         XCTAssertEqual(model.errorMessage, "그 날짜는 일정에 없어요")
+    }
+
+    // ── 그룹 제안 (§35) — 앱은 판정하지 않고 서버가 준 것을 그린다 ───────────────
+
+    private func proposal(_ picks: [(Int, Int, String)]) -> GroupProposalView {
+        GroupProposalView(
+            summary: "이 \(picks.count)곳은 다들 좋아해요",
+            picks: picks.map { GroupProposalPick(candidateId: $0.0, title: $0.2, dayIndex: $0.1,
+                                                 dayLabel: "Day \($0.1 + 1)", reasons: ["반대 없음"], distanceKm: nil) },
+            impact: GroupProposalImpact(spotsAdded: picks.count, daysTouched: Set(picks.map(\.1)).count),
+            options: [GroupProposalOption(key: "ACCEPT", label: "이대로 할래요"),
+                      GroupProposalOption(key: "DISMISS", label: "나중에")],
+            groupNotes: [])
+    }
+
+    func testProposalComesFromTheServerAndIsNotComputedHere() async {
+        let service = FakeCollabService()
+        service.candidateList = [candidate()]
+        service.proposalResult = proposal([(1, 1, "카사 바트요")])
+        let model = CandidateBoardViewModel(trip: trip(), service: service, documents: FakeDocumentStore())
+
+        await model.load()
+
+        XCTAssertEqual(service.proposalReads, 1, "서버에 물어본다")
+        XCTAssertEqual(model.proposal?.summary, "이 1곳은 다들 좋아해요")
+    }
+
+    /// 제안을 못 읽어도 보드는 그대로 뜬다 — 곁들이가 본체를 막지 않는다.
+    func testProposalFailureDoesNotBreakTheBoard() async {
+        let service = FakeCollabService()
+        service.candidateList = [candidate()]
+        service.failProposal = true
+        let model = CandidateBoardViewModel(trip: trip(), service: service, documents: FakeDocumentStore())
+
+        await model.load()
+
+        XCTAssertEqual(model.candidates.count, 1)
+        XCTAssertNil(model.proposal)
+        XCTAssertNil(model.errorMessage, "제안이 없다고 오류를 띄우지 않는다")
+    }
+
+    /// 여러 곳을 넣어도 문서 저장은 **한 번**이다 — 스스로 CAS 충돌을 만들지 않는다.
+    func testAcceptSavesTheDocumentOnceThenMarksEach() async {
+        let service = FakeCollabService()
+        service.candidateList = [candidate(), candidate(id: 2, title: "공원")]
+        service.proposalResult = proposal([(1, 1, "카사 바트요"), (2, 2, "공원")])
+        let documents = FakeDocumentStore()
+        let model = CandidateBoardViewModel(trip: trip(), service: service, documents: documents)
+        await model.load()
+
+        await model.acceptProposal()
+
+        XCTAssertEqual(documents.saves.count, 1, "한 번만 저장한다")
+        XCTAssertEqual(documents.saves.first?.expectedRevision, 7)
+        let saved = documents.saves.first?.document
+        XCTAssertEqual(saved?.days[1].spots.map(\.name), ["기존 장소", "카사 바트요"])
+        XCTAssertEqual(saved?.days[2].spots.map(\.name), ["공원"])
+        XCTAssertEqual(service.candidateActions.map(\.action), ["SCHEDULE", "SCHEDULE"])
+        XCTAssertEqual(service.candidateActions.map(\.value), ["2", "3"], "표시는 1부터 센 날짜")
+        XCTAssertNil(model.proposal, "수락한 제안은 사라진다")
+    }
+
+    /// 표시가 실패해도 일정에는 들어가 있다고 정직하게 말한다.
+    func testAcceptTellsTheTruthWhenMarkingFails() async {
+        let service = FakeCollabService()
+        service.candidateList = [candidate()]
+        service.proposalResult = proposal([(1, 1, "카사 바트요")])
+        service.failCandidateActions = true
+        let documents = FakeDocumentStore()
+        let model = CandidateBoardViewModel(trip: trip(), service: service, documents: documents)
+        await model.load()
+
+        await model.acceptProposal()
+
+        XCTAssertEqual(documents.saves.count, 1, "문서에는 들어갔다")
+        XCTAssertEqual(model.errorMessage?.contains("일정에는"), true)
+    }
+
+    /// 자동으로 적용하지 않는다 — "나중에"는 이 세션에서 다시 올라오지 않는다(§79).
+    func testDismissKeepsItAwayForTheSession() async {
+        let service = FakeCollabService()
+        service.candidateList = [candidate()]
+        service.proposalResult = proposal([(1, 1, "카사 바트요")])
+        let model = CandidateBoardViewModel(trip: trip(), service: service, documents: FakeDocumentStore())
+        await model.load()
+        XCTAssertNotNil(model.proposal)
+
+        model.dismissProposal()
+        XCTAssertNil(model.proposal)
+
+        await model.load()
+        XCTAssertNil(model.proposal, "거절한 제안을 다시 올리지 않는다")
+        XCTAssertEqual(service.proposalReads, 1, "다시 묻지도 않는다")
+    }
+
+    func testViewerSeesNoProposalAction() async {
+        let service = FakeCollabService()
+        service.candidateList = [candidate()]
+        service.proposalResult = proposal([(1, 1, "카사 바트요")])
+        let model = CandidateBoardViewModel(trip: trip(role: .viewer), service: service, documents: FakeDocumentStore())
+        await model.load()
+
+        await model.acceptProposal()
+        XCTAssertFalse(model.canSchedule)
+        XCTAssertEqual(service.candidateActions.count, 0, "보기 권한은 일정에 넣지 않는다")
     }
 
     func testRejectKeepsTheCandidateAndReopenBringsItBack() async {
@@ -330,6 +436,16 @@ private final class FakeCollabService: CollabSource {
         if failCandidateActions { throw APIError.server(status: 500, message: "서버 오류") }
         try check()
         candidateActions.append((action, value))
+        // 서버는 SCHEDULE된 후보를 더는 제안하지 않는다(buildGroupProposal은 PROPOSED만 본다).
+        // 가짜도 그렇게 굴어야 "수락하면 그 제안이 사라진다"를 진짜로 확인할 수 있다.
+        if action == "SCHEDULE", let index = candidateList.firstIndex(where: { $0.id == candidateId }) {
+            let c = candidateList[index]
+            candidateList[index] = CandidateView(
+                id: c.id, title: c.title, placeId: c.placeId, lat: c.lat, lng: c.lng, addr: c.addr, note: c.note,
+                url: c.url, status: "SCHEDULED", scheduledRef: value, proposedByLabel: c.proposedByLabel, mine: c.mine,
+                myReaction: c.myReaction, mustCount: c.mustCount, okCount: c.okCount, passCount: c.passCount,
+                reactions: c.reactions, commentCount: c.commentCount, createdAt: c.createdAt)
+        }
     }
 
     func comments(tripId: String, candidateId: Int) async throws -> [CommentView] {
@@ -341,6 +457,22 @@ private final class FakeCollabService: CollabSource {
     func deleteComment(tripId: String, commentId: Int) async throws { try check() }
 
     func activity(tripId: String, limit: Int) async throws -> [ActivityView] { try check(); return activityRows }
+    /// 판정은 서버가 한다 — 앱 테스트는 "받은 것을 그대로 쓰는가"만 본다.
+    var proposalResult: GroupProposalView?
+    var failProposal = false
+    private(set) var proposalReads = 0
+    func groupProposal(tripId: String) async throws -> GroupProposalView? {
+        proposalReads += 1
+        if failProposal { throw APIError.offline }
+        guard let plan = proposalResult else { return nil }
+        // 서버와 같은 규칙: 이미 일정에 들어간 후보는 제안하지 않는다.
+        let open = plan.picks.filter { pick in
+            candidateList.first { $0.id == pick.candidateId }.map { $0.status == "PROPOSED" } ?? false
+        }
+        guard !open.isEmpty else { return nil }
+        return GroupProposalView(summary: plan.summary, picks: open, impact: plan.impact,
+                                 options: plan.options, groupNotes: plan.groupNotes)
+    }
     func preferences(tripId: String) async throws -> [PreferenceView] { try check(); return prefRows }
     /// 서버는 정규화한 결과를 돌려준다 — 여기서는 '서버가 이긴다'를 보이려 일부러 다른 값을 돌려준다.
     func savePreferences(tripId: String, prefs: [String: JSONValue]) async throws -> [String: JSONValue] {

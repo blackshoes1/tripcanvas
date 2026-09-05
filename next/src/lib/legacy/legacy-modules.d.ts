@@ -377,7 +377,31 @@ declare module '@legacy/collab.js' {
     inviteRangeText(start: string | null | undefined, dayCount: number | null | undefined): string;
     isForbiddenError(err: unknown): boolean;
     forbiddenText(err: unknown, role: Role | null | undefined): string;
+    /** 여행 취향 요약. 점수가 아니라 정리다 — 자동으로 무엇을 빼자고 하지 않는다(§62) */
+    groupContext(rows: unknown[] | null | undefined, memberCount: number | null | undefined): GroupCtx;
+    groupContextText(ctx: GroupCtx | null | undefined): string[];
+    /** ⚠️ score는 **내부값**이다 — 화면·계약에 싣지 않는다(§21·§22) */
+    consensusOf(candidate: unknown, memberCount: number | null | undefined): {
+      score: number; strongSupportCount: number; oppositionCount: number;
+      status: string | null; voted: number; members: number;
+    };
+    /** 반대 없고 두 명 이상이 말한 후보를 어느 날에 넣을지. 저장하지 않는 **미리보기**다(§79) */
+    buildGroupProposal(
+      candidates: unknown[] | null | undefined, days: unknown[] | null | undefined,
+      memberCount: number | null | undefined, ctx?: GroupCtx | null, max?: number
+    ): { headline: string; picks: ProposalPick[] } | null;
   };
+  interface GroupCtx {
+    members: number; answered: number;
+    pace: { value: string; count: number } | null; paceSplit: boolean;
+    walking: string | null; walkingWho: string[];
+    morningNo: string[]; nightNo: string[];
+    sharedInterests: string[]; conflicts: { interest: string; want: string[]; avoid: string[] }[];
+  }
+  interface ProposalPick {
+    candidate: { id?: number | string; title?: string | null; lat?: number | null; lng?: number | null };
+    di: number; km: number | null; reasons: string[];
+  }
   export = api;
 }
 

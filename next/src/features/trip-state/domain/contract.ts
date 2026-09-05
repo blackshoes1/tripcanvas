@@ -506,6 +506,57 @@ export interface MutationResponse {
   today: TodayResponse;
 }
 
+/**
+ * 그룹 제안 — 반대 없이 두 명 이상이 말한 후보를 **어느 날에** 넣을지 정리한 미리보기(§28·§29).
+ *
+ * 판정은 `collab.js`의 `buildGroupProposal` 하나가 한다 — 웹과 iOS가 각자 계산하면 같은 상황에서
+ * 서로 다른 답을 말하게 된다(§79). 앱은 이 응답을 **그리기만** 한다.
+ *
+ * ⚠️ **합의 점수(0~100)는 내부값이라 여기에 싣지 않는다**(§21·§22). 화면에 나가는 것은 `reasons` 문장뿐이다.
+ * ⚠️ 이것은 미리보기다 — 서버는 아무것도 저장하지 않는다. 사람이 수락해야 일정이 된다(§79).
+ */
+export interface GroupProposalPick {
+  candidateId: number;
+  title: string;
+  /** 0부터 센 일자. 화면 표기는 dayLabel을 쓴다 */
+  dayIndex: number;
+  dayLabel: string;
+  /** 왜 이 날인지 — 사람 말 문장. 점수는 들어 있지 않다 */
+  reasons: string[];
+  /** 그 날 마지막 장소에서의 거리. 좌표를 모르면 null(추측하지 않는다) */
+  distanceKm: number | null;
+}
+
+/** 수락 말고도 빠져나갈 길이 늘 있다 — 자동 적용은 하지 않는다(§79) */
+export type GroupProposalOptionKey = 'ACCEPT' | 'ADJUST' | 'DISMISS';
+
+export interface GroupProposalOption {
+  key: GroupProposalOptionKey;
+  label: string;
+}
+
+export interface GroupProposalView {
+  /** 한 줄 요약 — "이 2곳은 다들 좋아해요 — 각각 가장 맞는 날에 넣으면 동선이 자연스러워요" */
+  summary: string;
+  picks: GroupProposalPick[];
+  /** 수락하면 무엇이 달라지는지. 사람이 판단할 재료다 */
+  impact: {
+    /** 새로 들어갈 장소 수 */
+    spotsAdded: number;
+    /** 바뀌는 일자 수 */
+    daysTouched: number;
+  };
+  options: GroupProposalOption[];
+  /** 취향을 남긴 사람이 있으면 그 요약 문장들. 없으면 빈 배열 */
+  groupNotes: string[];
+}
+
+/** 제안할 것이 없으면 `proposal: null`이다 — 억지로 만들지 않는다(§79) */
+export interface GroupProposalResponse {
+  schemaVersion: number;
+  proposal: GroupProposalView | null;
+}
+
 export type ApiErrorCode =
   | 'UNAUTHORIZED'        // 토큰 없음/만료 → 재로그인
   | 'TRIP_NOT_FOUND'

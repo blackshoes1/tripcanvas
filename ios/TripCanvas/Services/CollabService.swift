@@ -26,6 +26,8 @@ protocol CollabSource {
     func deleteComment(tripId: String, commentId: Int) async throws
 
     func activity(tripId: String, limit: Int) async throws -> [ActivityView]
+    /// 그룹 제안 — **판정은 서버가 한다**(§35). 제안할 것이 없으면 nil이다.
+    func groupProposal(tripId: String) async throws -> GroupProposalView?
     func preferences(tripId: String) async throws -> [PreferenceView]
     func savePreferences(tripId: String, prefs: [String: JSONValue]) async throws -> [String: JSONValue]
 }
@@ -79,6 +81,13 @@ extension TripService: CollabSource {
     func candidates(tripId: String) async throws -> [CandidateView] {
         let response: CandidatesResponse = try await api.get("\(tripPath(tripId))/candidates")
         return response.candidates
+    }
+
+    /// 후보 보드와 따로 읽는다 — 보드는 바로 뜨고 제안 카드는 준비되면 얹힌다.
+    /// 서버가 `collab.js`로 판정하므로 앱은 여기서 아무것도 계산하지 않는다.
+    func groupProposal(tripId: String) async throws -> GroupProposalView? {
+        let response: GroupProposalResponse = try await api.get("\(tripPath(tripId))/group-proposal")
+        return response.proposal
     }
 
     func addCandidate(tripId: String, title: String, note: String?, lat: Double?, lng: Double?, placeId: String?, addr: String?) async throws -> Int {

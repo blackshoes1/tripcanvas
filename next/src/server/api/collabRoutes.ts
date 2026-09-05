@@ -3,6 +3,7 @@
 import { z } from 'zod';
 
 import { CONTRACT_SCHEMA_VERSION } from '@/features/trip-state/domain/contract';
+import { buildGroupProposalView } from '@/features/trip-state/domain/groupProposalView';
 import type { CollabApi } from '../application/collaboration/types';
 import { authenticate, bearerToken } from '../auth/authenticate';
 import type { RequestContext, TokenVerifier } from '../auth/types';
@@ -12,6 +13,12 @@ export interface CollabRouteDeps {
   verifier: TokenVerifier;
   /** 레지스트리에 따라 새 DB(CollabService) 또는 Supabase RPC 어댑터. ctx가 null이면 로그인 전(미리보기) */
   apiFor(ctx: RequestContext | null, token: string): Promise<CollabApi>;
+  /**
+   * 그룹 제안이 "어느 날에 넣을지"를 정하려면 일자와 그 날 마지막 장소가 필요하다.
+   * 후보는 CollabApi에 있고 일정은 여행 문서에 있어서, 문서를 읽는 길만 따로 받는다.
+   * 없거나 실패하면 제안을 만들지 않는다(null) — 틀린 날을 추측하지 않는다.
+   */
+  tripDaysFor?(ctx: RequestContext, token: string, tripId: string): Promise<unknown[] | null>;
 }
 
 const MemberBody = z.object({ action: z.enum(['SET_ROLE', 'REMOVE', 'RENAME']), value: z.string().max(200).nullable().optional() });
@@ -121,6 +128,30 @@ export function createCollabRoutes(deps: CollabRouteDeps) {
       ok({ ok: await api.deleteComment(ctx, tripId, intParam(commentId, 'commentId')) })),
 
     // ── 활동 ──
+    /**
+     * GET /api/v1/trips/:tripId/group-proposal — 반대 없는 후보를 어느 날에 넣을지 **미리보기**.
+     *
+     * 판정은 `collab.js`의 `buildGroupProposal` 하나가 한다 — 앱이 같은 규칙을 다시 만들지 않게(§35).
+     * **아무것도 저장하지 않는다.** 수락은 사람이 누르고, 그때 문서 저장과 후보 표시가 따로 일어난다(§79).
+     * 제안할 것이 없으면 `proposal: null`로 정직하게 답한다.
+     */
+    groupProposal: (request: Request, tripId: string) => withApi(request, async (ctx, api) => {
+      const days = deps.tripDaysFor ? await deps.tripDaysFor(ctx, bearerToken(request) ?? '', tripId).catch(() => null) : null;
+      if (!days || !days.length) return ok({ proposal: null });
+      const [candidates, members, preferences] = await Promise.all([
+        api.listCandidates(ctx, tripId),
+        api.listMembers(ctx, tripId),
+        // 취향은 있으면 좋고 없어도 제안은 나간다 — 하나가 죽어서 전부 막히지 않게
+        api.listPreferences(ctx, tripId).catch(() => [] as unknown[])
+      ]);
+      return ok({
+        proposal: buildGroupProposalView({
+          candidates: candidates as unknown[], days,
+          memberCount: (members as unknown[]).length, preferences: preferences as unknown[]
+        })
+      });
+    }),
+
     listActivity: (request: Request, tripId: string) => withApi(request, async (ctx, api) => {
       const raw = new URL(request.url).searchParams.get('limit');
       const limit = raw && /^\d+$/.test(raw) ? Number(raw) : null;
