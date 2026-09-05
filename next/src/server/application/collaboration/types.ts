@@ -28,7 +28,9 @@ export interface CandidateInput {
 export interface CandidateView {
   id: number; title: string; place_id: string | null; lat: number | null; lng: number | null; addr: string | null; note: string | null;
   url: string | null; status: string; scheduled_ref: string | null; proposed_by_label: string; mine: boolean; my_reaction: string | null;
-  must_count: number; ok_count: number; pass_count: number; reactions: { name: string; reaction: string; me: boolean }[];
+  must_count: number; ok_count: number; pass_count: number;
+  /** user_id는 분리 일정이 누가 어느 쪽인지 가르는 데 쓴다(이름으로 가르면 동명이인이 섞인다). 이메일은 없다(§69) */
+  reactions: { user_id: string; name: string; reaction: string; me: boolean }[];
   comment_count: number; created_at: string;
 }
 export type CandidateAction = 'REMOVE' | 'SCHEDULE' | 'UNSCHEDULE' | 'REJECT' | 'REOPEN';
