@@ -995,7 +995,10 @@ test('통합: 하루의 끝을 숙소 복귀로 닫고, 이미 닫힌 날엔 덧
     {title:'D2',drive:'',note:'',spots:[{name:'박물관',city:'M',desc:'',lat:40.42,lng:-3.71}]},
     {title:'D3',drive:'',note:'',spots:[
       {name:'시내',city:'M',desc:'',lat:40.43,lng:-3.72},
-      {name:'다른 호텔',city:'M',desc:'',lat:40.44,lng:-3.73,stay:true}
+      {name:'다른 호텔',city:'M',desc:'',lat:40.44,lng:-3.73,stay:true,nights:2}
+    ]},
+    {title:'D4',drive:'',note:'',spots:[
+      {name:'공항',city:'M',desc:'',lat:40.49,lng:-3.56}
     ]}
   ]`);
   w.eval('activeDay=0; render()');
@@ -1004,6 +1007,8 @@ test('통합: 하루의 끝을 숙소 복귀로 닫고, 이미 닫힌 날엔 덧
   assert.equal(back(0),'호텔','숙소가 중간에 있으면 그 숙소로 복귀');
   assert.equal(back(1),'호텔','연박이면 그날 숙소가 없어도 전날 숙소로 복귀');
   assert.equal(back(2),null,'이미 숙소로 끝나는 날엔 안 붙인다');
+  // 마지막 날은 돌아가는 날이 아니라 떠나는 날이다 — 연박이 그날까지 이어져도 붙이지 않는다
+  assert.equal(back(3),null,'일정의 마지막 날엔 숙소 복귀가 없다');
   assert.match(cards[0].querySelector('.spot.back .spotMeta').textContent,/자동/,'자동으로 이어 붙였음을 밝힌다');
 
   // 복귀는 표시·계산용일 뿐 데이터에 들어가지 않는다
@@ -1033,7 +1038,7 @@ test('통합: 비행기 일자의 숙소 복귀는 ✈️가 아니라 근거리
     {name:'공항',city:'M',desc:'',lat:40.49,lng:-3.56},
     {name:'호텔',city:'M',desc:'',lat:40.40,lng:-3.69,stay:true},
     {name:'식당',city:'M',desc:'',lat:40.41,lng:-3.70}
-  ]}]`);
+  ]},{title:'다음날',drive:'',note:'',spots:[]}]`);   // 마지막 날에는 복귀가 없다
   seedLegs(w,0); w.eval('render()');
   assert.equal(w.eval(`backLegOf(trip().days[0],0,dayReturnStay(trip().days,0)).mode`),'car');
   const meta=w.document.querySelector('.dayCard .spot.back .spotMeta').textContent;

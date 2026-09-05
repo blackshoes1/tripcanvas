@@ -91,7 +91,7 @@ describe('buildTravelView', () => {
   });
 
   it('마지막 장소 다음은 숙소 복귀', () => {
-    const t = trip([day([hotel(), airport(), seongsan()], { startAt: '09:00' })]);
+    const t = trip([day([hotel(), airport(), seongsan()], { startAt: '09:00' }), day([])]);
     const v = viewOf(t, 0, 23 * 60, '2026-10-01');
     expect(v.next?.isBackToStay).toBe(true);
     expect(v.next?.name).toBe('제주호텔');

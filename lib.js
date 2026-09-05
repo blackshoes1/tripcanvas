@@ -462,10 +462,16 @@
    * 그 날 마지막에 '돌아갈 숙소' — 동선을 닫기 위한 표시·계산용이며 데이터에는 쓰지 않는다.
    * 그날 등록한 숙소 → 없으면 연박으로 그날도 묵고 있는 숙소. 이미 그 숙소로 끝나면(=동선이 닫혀 있으면) null.
    * 숙소를 못 찾으면 null — 출국일·야간열차처럼 돌아갈 곳이 없는 날엔 아무것도 덧붙이지 않는다.
+   *
+   * ⚠️ **일정의 마지막 날에는 붙이지 않는다.** 그날은 돌아가는 날이 아니라 떠나는 날이라,
+   * 체크아웃하고 공항으로 간 뒤에 '🏠 호텔 복귀'가 따라붙으면 있지도 않은 이동이 생긴다
+   * (그 구간의 거리·시간·택시비까지 하루 합계에 얹힌다). 정말 숙소로 끝나는 날이면
+   * 마지막 장소가 이미 그 숙소라 어차피 아래에서 null이다.
    * @param {any[]} days @param {number} di @returns {any|null}
    */
   function dayReturnStay(days, di){
     const day = days && days[di]; if(!day) return null;
+    if(di >= days.length - 1) return null;   // 마지막 날 — 돌아갈 곳이 아니라 떠나는 날이다
     const loc = ((day.spots)||[]).filter(hasCoord);
     if(!loc.length) return null;
     const own = loc.filter((/**@type{any}*/s)=>s.stay).pop();
