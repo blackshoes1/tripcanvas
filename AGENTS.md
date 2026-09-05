@@ -19,13 +19,18 @@
 
 ## 릴리스 체크리스트
 
-- [ ] `npm run bump:version` 으로 버전 올리기 (`sw.js`의 `VER`과 `index.html`의 `?v=`를 함께 갱신 — 안 올리면 stale 캐시로 변경이 반영 안 됨). `npm run check:version` 으로 동기 확인
-- [ ] **아래 검사를 전부** 통과시킬 것 — 특히 `npm run test:e2e`를 빼먹지 말 것 (유닛·통합만 돌리고 배포했다가 실제 조작이 깨진 회귀를 낸 적이 있다)
+- [ ] 웹 자산(`app.js`·`index.html`·`style.css`…)을 바꿨으면 `npm run bump:version` 으로 버전 올리기 (`sw.js`의 `VER`과 `index.html`의 `?v=`를 함께 갱신 — 안 올리면 stale 캐시로 변경이 반영 안 됨)
+- [ ] **게이트를 통째로** 통과시킬 것:
 
 ```bash
-npm test && npm run lint && npm run check:types && npm run security:scan && npm run test:e2e
+npm run verify:all
 ```
 
+  루트(구문·버전·lint·시크릿·`tsc`·유닛·통합·RLS·audit·E2E) + `next/`(lint·`tsc`·vitest·build·tools:build) + iOS(XcodeGen·XCTest·Release)를 한 번에 돌리고 끝에 PASS/FAIL/**SKIP** 표를 찍는다.
+  범위만 돌리려면 `scripts/verify-all.sh web|next|ios`.
+  ⚠️ **SKIP은 통과가 아니다** — 무엇을 못 돌렸는지 PR에 밝힌다.
+
+- [ ] **필수 체크가 빨간 상태로 merge하지 않는다.** 빨간 이유가 코드가 아니라 러너·과금이면 그 사실과 대신 무엇으로 검증했는지를 PR에 남긴다 — `docs/ci.md`
 - [ ] 푸시 후 폰에서 실제 동작 확인 — ☰ 메뉴 하단의 **버전 표시**로 새 버전이 적용됐는지 먼저 볼 것 (캐시된 옛 버전이면 그 글자를 탭해 갱신)
 
 ## 구조
@@ -46,7 +51,7 @@ npm test && npm run lint && npm run check:types && npm run security:scan && npm 
 - `supabase/migrations/` — RLS·동기화 무결성·가격 스냅샷·추천 반응 기록·기기 토큰/발송 기록·여행 기록·**함께하기(멤버·초대·역할 RLS)** 스키마
 - `ios/` — **네이티브 iOS 앱(SwiftUI)** + `TripCanvasWidgets`(위젯·Live Activity 확장) + `TripCanvasShared`(App Group 공유 상태). 웹은 여행을 *계획*하고, iOS는 여행을 *실행*한다. 판단 로직을 Swift로 복제하지 않는다 — `/api/v1`이 준 결과를 그리기만 한다. 계획 화면은 **네이티브로 옮기는 중**이다(일정 편집 `Features/Plan` · 지도·검색 `Features/Map`이 들어왔고 예약·함께하기가 남았다). 지도는 웹과 같은 듀얼 엔진(국내 카카오맵 SDK · 해외 Google Maps SDK — 처음 들어온 외부 의존성, SPM)이고 키는 **번들 ID로 제한된 네이티브 키**(`TCGoogleMapsKey`·`TCKakaoNativeKey`)다. 국내 검색은 카카오 REST 키를 앱에 못 넣어 서버 `GET /api/v1/places/search`를 지나고, 해외 검색은 iOS 키로 Places API(New)에 직접 묻는다(`ios/README.md` 표). 여행 문서는 아는 필드만 담은 구조체로 디코딩하지 않고 **원문 트리(`JSONValue`)로 들고 아는 필드만 덮어 쓴다** — 그러지 않으면 웹이 쓰는 `who`·`split`·`hours` 같은 필드가 앱 저장 한 번에 사라진다. 저장은 `PUT /api/v1/trips/:id`(revision CAS)이고 실패하면 화면을 되돌린다. 빌드·XCTest는 CI가 시뮬레이터로 본다(`.github/workflows/ios.yml`, `ios/` 변경 시에만 — macOS 러너는 10배 과금). **staging API로도 확인됐다**(2026-09-04 — `TCApiBaseURL`을 터널로 돌려 로그인·여행 목록·오늘 화면). 서명·실기기·푸시·위젯 실제 표시는 여전히 기기에서만 확인된다 (`ios/README.md` · `docs/ios-device-setup.md`)
 - `next/src/features/trip-state/` — 웹·iOS 공통 API 계층. `contract.ts`(단일 출처 계약) · `todayView.ts`(엔진 결과를 계약 모양으로) · `mutations.ts`(문서 변경 순수 함수) · `handlers.ts`(주입 가능한 라우트 핸들러) · `supabaseGateway.ts`(RLS 아래 읽기·쓰기)
-- `scripts/` — `bump-version.js` · `check-version-sync.js` · `check-secrets.js`
+- `scripts/` — `bump-version.js` · `check-version-sync.js` · `check-secrets.js` · `verify-all.sh`(릴리스 게이트를 로컬에서 통째로 — `docs/ci.md`)
 - `test/` — 순수·통합·API 테스트 (`pure` · `integration` · `adaptive` · `intake` · `collab` · `price` · `routing` · `sync` · `api-*` · `migration` · `rls.integration`(로컬 PostgreSQL이 있을 때만 — `scripts/pg-local.sh`))
 - `e2e/` — Playwright 시나리오 (`core-flows` · `pwa` · `accessibility` · `ux-wireframe` · `collab`)
 - `proto/` — 실험용 프로토타입. 프로덕션 앱과 무관
