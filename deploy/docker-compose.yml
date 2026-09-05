@@ -1,7 +1,18 @@
-# TripCanvas 독립 Backend — NAS 배포(§52~§56). 외부에 열리는 것은 reverse-proxy(443)뿐이다.
-# PostgreSQL 5432·(나중의) MinIO는 내부 네트워크에만 있다.
+# TripCanvas 독립 Backend — NAS 운영(§52~§56).
+#
 #   cp deploy/.env.example deploy/.env  →  값 채우기  →  docker compose -f deploy/docker-compose.yml up -d
-# ⚠️ 작성 환경에 Docker가 없어 미검증 — docs/nas-deployment.md.
+#
+# **이 파일 하나로 운영이 뜬다.** override를 겹쳐야만 도는 상태로 두지 않는다 —
+# 2026-09-04~09-05에는 loopback publish가 docker-compose.staging.yml에만 있어서
+# 그 파일을 빼고 올리면 Funnel이 닿을 곳이 없어 API가 통째로 죽었다.
+#
+# 인터넷에서 들어오는 길(오늘의 실제 구조):
+#
+#   Internet → Tailscale Funnel(HTTPS) → 127.0.0.1:3000 (api) / 127.0.0.1:3001 (realtime)
+#
+# 그래서 api·realtime은 **호스트 루프백에만** 낸다(0.0.0.0 아님). PostgreSQL은 internal 네트워크에만 있어
+# 호스트에도 나오지 않는다 — 리허설로 붙을 때만 docker-compose.staging.yml을 겹친다.
+# 도메인 + Caddy로 갈 때는 docker-compose.caddy.yml을 겹친다(오늘은 쓰지 않는다).
 name: tripcanvas
 
 services:
@@ -48,7 +59,9 @@ services:
       migrate:
         condition: service_completed_successfully
     networks: [internal, edge]
-    expose: ["3000"]
+    # Tailscale Funnel이 호스트의 루프백으로 넘긴다. 0.0.0.0에 열지 않는다 —
+    # ⚠️ tailnet 안의 기기에서는 이 포트에 닿는다(Tailscale이 tailnet 트래픽을 localhost로 넘긴다).
+    ports: ["127.0.0.1:3000:3000"]
 
   # 실시간(§42) — trip_activity 트리거의 pg_notify를 듣고 WebSocket으로 중계한다. 죽어도 앱은 돈다(폴백은 API 재조회)
   realtime:
@@ -65,21 +78,7 @@ services:
       migrate:
         condition: service_completed_successfully
     networks: [internal, edge]
-    expose: ["3001"]
-
-  reverse-proxy:
-    image: caddy:2-alpine
-    restart: unless-stopped
-    ports: ["80:80", "443:443"]
-    environment:
-      # ⚠️ 따옴표를 벗기지 말 것 — :? 뒤 메시지에 콜론이 들어가면 YAML이 매핑으로 읽어 파일 전체가 안 열린다
-      API_DOMAIN: "${API_DOMAIN:?API_DOMAIN 필요 — 예 api.example.com}"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    networks: [edge]
-    depends_on: [api, realtime]
+    ports: ["127.0.0.1:3001:3001"]
 
   # 매일 pg_dump(§59). 백업은 DB 볼륨과 다른 볼륨/경로에 둔다(§60) — NAS 스냅샷·오프사이트 복제는 NAS 쪽 설정
   backup:
@@ -107,5 +106,3 @@ networks:
 
 volumes:
   pgdata:
-  caddy_data:
-  caddy_config:

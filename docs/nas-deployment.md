@@ -35,19 +35,36 @@ sudo tailscale funnel status                     # "Available on the internet:" 
 
 `internal` 네트워크는 `internal: true`라 인터넷과 단절돼 있다. MinIO·Redis는 필요해질 때 같은 방식으로 붙인다(§46·§47·§55).
 
-⚠️ **`deploy/docker-compose.staging.yml`은 이름과 달리 지금 운영에 필요하다.** Funnel은 NAS **호스트의**
-`localhost:3000`·`3001`로 넘기는데, 그 포트를 호스트에 내는 것이 이 override뿐이다(운영 compose는 `expose`만 하고
-Caddy를 거치게 돼 있다 — 도메인이 없어 그 경로를 안 쓴다). 그래서 올릴 때 **항상 두 파일을 같이 준다.**
+### 운영은 파일 하나로 뜬다
 
 ```bash
 cd ~/tripcanvas
-sudo docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.staging.yml build api realtime
-sudo docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.staging.yml up -d api realtime
+sudo docker compose -f deploy/docker-compose.yml up -d
 ```
 
-override 없이 `up -d` 하면 포트가 닫혀 **API가 통째로 죽는다**(폰에서 "클라우드 저장 실패"). 검증용 override와
-운영에 필요한 포트 공개가 한 파일에 섞여 있는 것이 원인이라, 정리는 포트 공개를 운영 compose로 옮기는 쪽이다(아직 안 함).
-postgres의 `15432`만은 검증용이라 빼도 된다.
+override를 겹치지 않는다. Funnel이 넘겨주는 **호스트 루프백 publish(`127.0.0.1:3000`·`3001`)가 운영 compose 안에**
+있기 때문이다.
+
+> 2026-09-04~09-05에는 그 publish가 `docker-compose.staging.yml`에만 있어서, 그 파일을 빼고 올리면 Funnel이 닿을 곳이
+> 없어 **API가 통째로 죽었다**(폰에서 "클라우드 저장 실패"). 검증용 override가 운영을 떠받치고 있던 것이고,
+> 2026-09-05에 publish를 운영 compose로 옮겨 끝냈다.
+
+겹치는 파일은 둘 다 **선택**이고 용도가 다르다:
+
+| override | 언제 | 무엇을 |
+|---|---|---|
+| `docker-compose.staging.yml` | 복원 리허설·데이터 이관처럼 **DB에 직접 붙어야 할 때만** | postgres를 `127.0.0.1:15432`에 낸다 |
+| `docker-compose.caddy.yml` | 도메인 + Caddy로 갈 때 (**오늘은 안 씀**) | 80·443과 reverse-proxy |
+
+⚠️ 예전처럼 두 파일을 겹쳐 올려 둔 상태에서 위 명령으로 바꿀 때는 **남은 컨테이너를 정리한다** —
+compose는 파일에서 사라진 서비스를 저절로 지우지 않는다:
+
+```bash
+sudo docker compose -f deploy/docker-compose.yml up -d --remove-orphans
+sudo docker compose -f deploy/docker-compose.yml ps        # postgres·api·realtime·backup만 남는다
+```
+
+`reverse-proxy`가 돌고 있었다면 이때 내려간다. 80·443을 쓰던 것도 함께 풀린다.
 
 ## 환경변수
 
@@ -55,7 +72,7 @@ postgres의 `15432`만은 검증용이라 빼도 된다.
 
 | 변수 | 뜻 |
 |---|---|
-| `API_DOMAIN` | Caddy가 인증서를 받을 도메인. 클라이언트는 이 주소만 안다 |
+| `API_DOMAIN` | **`docker-compose.caddy.yml`을 겹칠 때만.** 오늘의 ingress는 Funnel이라 운영에는 없어도 된다 |
 | `POSTGRES_*` | DB 계정 |
 | `TC_MIGRATION_TRIP` | 이관 레지스트리. staging은 `NEW_BACKEND`, 프로덕션 전환 전에는 `LEGACY` |
 | `NEXT_PUBLIC_SUPABASE_*` · `SUPABASE_JWT_SECRET` | Phase A — Supabase 토큰 검증 |
@@ -68,8 +85,9 @@ cp deploy/.env.example deploy/.env      # 값 채우기
 docker compose -f deploy/docker-compose.yml build
 docker compose -f deploy/docker-compose.yml up -d
 docker compose -f deploy/docker-compose.yml logs migrate     # "[✓] migrations applied" 류의 성공 로그
-curl -s https://$API_DOMAIN/api/health                       # {"ok":true,"api":"ok","database":"ok",...}
-curl -s -o /dev/null -w "%{http_code}\n" https://$API_DOMAIN/api/v1/trips   # 401 — 정상(인증 요구)
+# 공개 주소는 Funnel의 ts.net 이름이다(도메인 아님) — tailnet 밖에서 확인할 것(§7)
+curl -s https://bokbok9.tail8b977f.ts.net/api/health                        # {"ok":true,"api":"ok","database":"ok",...}
+curl -s -o /dev/null -w "%{http_code}\n" https://bokbok9.tail8b977f.ts.net/api/v1/trips   # 401 — 정상(인증 요구)
 ```
 
 확인 순서: `migrate`가 성공했는가 → `api` healthcheck가 healthy인가 → 401이 오는가 → 실제 Supabase 토큰으로 `/api/v1/trips`가 200인가 → `realtime` 헬스가 `LISTENING`인가.
