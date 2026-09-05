@@ -38,6 +38,9 @@ let tripRoles={};
 let liveCh=null, liveKey='', liveT=null, livePending=[], liveOn=false;
 // 자체 실시간 접속(TC_API.realtime)과 서버가 알려 준 선택. /me가 채운다 — 기본은 예전 경로(Supabase)다.
 let liveConn=null, liveChoice={provider:'SUPABASE',url:null};
+// 멤버 이름표 캐시 (user_id → 이름). 일정에 참여자를 표시하려면 렌더마다 필요해서 여기 둔다 —
+// tripRoles와 같은 이유로 파일 위쪽이다(updateCollabUI가 로드 직후 읽는다).
+let tripMembers=[], membersFor='';
 const JOIN_KEY='tripcanvas_join_v1';   // 초대 수락 대기 토큰 (로그인·메일 인증을 거쳐 돌아와도 참여 흐름이 이어지게)
 let pendingJoinToken=null;
 // ⚠️ 부팅 해시 라우터(#reset=)가 이 값을 먼저 대입한다 — 아래에 두면 TDZ로 스크립트가 죽는다
@@ -1421,6 +1424,13 @@ function renderSidebar(){
         const open=isOpenAt(s.hours, wd, Math.round(etas[si]));
         if(open===false) meta.push(`<span class="spotMetaItem closed" title="${'일월화수목금토'[wd]}요일 도착 예상 ${hm(etas[si])}에 영업 종료/휴무 — 시간을 확인하세요">🚫 영업시간 확인</span>`);
       }
+      // 함께 움직이지 않는 시간(§25~§27). 지정이 없으면 '모두'라 아무 표시도 하지 않는다 —
+      // 기본이 함께 다니는 것이고, 모든 줄에 '모두'를 붙이면 그게 소음이다.
+      if(s.who && s.who.length){
+        const names=TC_COLLAB.whoText(s, tripMembers);
+        meta.push(`<span class="spotMetaItem whoChip" title="${escAttr(`이 시간에 가는 사람: ${names}`)}">👣 ${esc(names)}</span>`);
+      }
+      if(s.reunion) meta.push(`<span class="spotMetaItem reunionChip" title="갈라졌던 일행이 다시 만나는 지점 — 가장 늦게 끝나는 쪽에 맞춰 시각이 계산됩니다">🤝 다시 합류</span>`);
       const metaHtml=meta.length?`<div class="spotMeta">${meta.join(' ')}</div>`:'';
       // 시각 배지: 📌=내가 고정한 도착 / 없으면 자동 계산한 도착 예상 / ⚠️=고정 시각이 이동상 불가능
       const natMin=tl[si].natural, natTxt=(natMin>=1440? `${Math.floor(natMin/1440)}일 뒤 ${hm(natMin)}` : hm(natMin));   // 24시간 초과분은 '며칠 뒤'로
@@ -1434,7 +1444,8 @@ function renderSidebar(){
                 : `📌 도착 고정 ${esc(s.at)} — 이동시간상 ${natTxt}에야 도착합니다. 앞 일정을 줄이거나 이 시각을 늦추세요`)
             : `📌 도착 고정 — 직접 정한 시각. 자동 계산 대신 이 시각을 씁니다 (이 날은 시각 순서로 정렬됩니다)`)
         : `도착 예상 — 시작 시각 + 이동시간 + 머무는 시간으로 자동 계산한 추정값`;
-      spotsHtml+=`<div class="spot" data-di="${di}" data-si="${si}" style="--c:${dotC}">
+      const splitCls=s.split? ' inSplit':'';
+      spotsHtml+=`<div class="spot${splitCls}${s.reunion?' isReunion':''}" data-di="${di}" data-si="${si}"${s.split?` data-split="${escAttr(s.split)}"`:''} style="--c:${dotC}">
         <div class="spotMain">
           <span class="spotTime eta${tl[si].fixed?' fixed':''}" title="${escAttr(etaTip)}">${tl[si].fixed?'📌':''}${hm(etas[si])}${showConflict?'⚠️':''}</span>
           <button type="button" class="spotIdentity nm" onclick="focusSpot(${di},${si})" title="${escAttr(s.name)}" aria-label="${escAttr(cat?`${cat.name} ${s.name}`:s.name)} 지도에서 보기"><span class="spotOrder">${si+1}.</span>${cat?`<span class="spotCat" title="${escAttr(cat.name)}" aria-hidden="true">${cat.icon}</span>`:''}<span class="spotName">${esc(s.name)}</span></button>
@@ -1706,8 +1717,54 @@ window.openSpotModal=(di,si)=>{
   document.getElementById('spotSearch').value=''; document.getElementById('searchRes').innerHTML='';
   const daySel=document.getElementById('spotDay');
   daySel.innerHTML=trip().days.map((d,i)=>`<option value="${i}" ${i===di?'selected':''}>Day ${i+1} · ${esc(d.title||dateOf(i))}</option>`).join('');
+  drawWhoChips(s.who);
+  // 이름표가 아직 없으면 받아서 칩만 다시 그린다 — 페이지 전체를 다시 그리지 않는다
+  const info=tripRoles[trip().id];
+  if(info && info.count>1 && !tripMembers.length)
+    ensureMembers(trip().id, info).then(()=>{
+      // 응답이 늦게 오면 그 사이 모달이 닫혔을 수도, 페이지가 사라졌을 수도 있다 — 늦은 응답이 예외를 던지지 않게 한다
+      try{ const bg=document.getElementById('spotModalBg'); if(bg && bg.classList.contains('show')) drawWhoChips(s.who); }catch(e){}
+    });
   document.getElementById('spotModalBg').classList.add('show');
 };
+
+/**
+ * "누가 가나요" 칩. 혼자 쓰는 여행에서는 아예 보이지 않는다 — 고를 사람이 없다.
+ * 아무도 고르지 않은 것이 기본이고 그게 '모두'다(§26) — 전원을 고른 것과 같은 뜻이라 저장할 때 비운다.
+ */
+function drawWhoChips(who){
+  const wrap=document.getElementById('spotWho'), section=document.getElementById('spotWhoSection');
+  if(!wrap||!section) return;
+  const members=tripMembers.filter(m=>m&&m.user_id);
+  section.style.display = (members.length>1 && TC_COLLAB.canAssignWho(myRole())) ? 'block' : 'none';
+  wrap.innerHTML='';
+  if(members.length<=1) return;
+  const picked=new Set(Array.isArray(who)?who:[]);
+  const all=document.createElement('button');
+  all.type='button'; all.className='chip whoChipBtn'+(picked.size?'':' active');
+  all.textContent='👥 모두';
+  all.onclick=()=>drawWhoChips([]);
+  wrap.appendChild(all);
+  for(const m of members){
+    const b=document.createElement('button');
+    b.type='button'; b.className='chip whoChipBtn'+(picked.has(m.user_id)?' active':'');
+    b.dataset.uid=m.user_id;
+    b.textContent=(m.me?'나':TC_COLLAB.memberName(m));
+    b.onclick=()=>{
+      const next=new Set(picked);
+      if(next.has(m.user_id)) next.delete(m.user_id); else next.add(m.user_id);
+      // 전원을 고르면 '모두'와 같은 뜻이다 — 같은 것을 두 가지로 저장하지 않는다
+      drawWhoChips(next.size===members.length ? [] : [...next]);
+    };
+    wrap.appendChild(b);
+  }
+}
+/** 지금 골라진 참여자. 아무도 없으면 undefined(=모두) — 기본값은 저장하지 않는다 */
+function pickedWho(){
+  const wrap=document.getElementById('spotWho'); if(!wrap) return undefined;
+  const ids=[...wrap.querySelectorAll('.whoChipBtn.active[data-uid]')].map(b=>b.dataset.uid);
+  return ids.length? ids : undefined;
+}
 document.getElementById('spotCancel').onclick=()=>document.getElementById('spotModalBg').classList.remove('show');
 document.getElementById('spotAdvanced').addEventListener('toggle',e=>{
   const badge=document.querySelector('#spotModalBg .stepBadge'); if(badge) badge.textContent=e.target.open?'상세 설정':'기본 정보';
@@ -1744,6 +1801,7 @@ document.getElementById('spotSave').onclick=()=>{
     bookUrl:document.getElementById('spotBookUrl').value.trim(),
     placeId:(document.getElementById('spotPlaceId').value||undefined),   // 예약 가격 추적의 호텔 identity
     cat:(document.getElementById('spotCat').value||undefined),           // 미지정이면 이름 추론에 맡긴다
+    who:pickedWho(),                                                     // 비었으면 모두(§26)
     hours:_pickedHours||undefined,lat,lng};
   const targetDay=parseInt(document.getElementById('spotDay').value);
   const isEdit=editing.si>=0;
@@ -1754,6 +1812,9 @@ document.getElementById('spotSave').onclick=()=>{
     if(prev.bookingId) s.bookingId=prev.bookingId;
     if(prev.carPickupId) s.carPickupId=prev.carPickupId;
     if(prev.carReturnId) s.carReturnId=prev.carReturnId;
+    // 분리 묶음·합류 표시도 이 모달에서 만들지 않는다 — 메모만 고쳐도 나란한 일정이 풀리면 안 된다
+    if(prev.split) s.split=prev.split;
+    if(prev.reunion) s.reunion=prev.reunion;
   }
   if(isEdit && targetDay===editing.di){
     trip().days[targetDay].spots[editing.si]=s;         // 같은 날 편집은 제자리 교체 (맨 뒤로 밀지 않음)
@@ -3836,7 +3897,31 @@ function updateCollabUI(){
   const viewer=!!user&&!viewMode&&role==='VIEWER';
   document.body.classList.toggle('roleViewer',viewer);
   const bar=document.getElementById('roleBar'); if(bar) bar.style.display=viewer?'flex':'none';
+  ensureMembers(id, info);
   ensureLiveChannel();
+}
+
+/**
+ * 참여자 이름표를 그리려면 멤버 목록이 있어야 한다. 혼자 쓰는 여행에서는 부르지 않는다 —
+ * 갈라질 일행이 없고, 로그아웃 상태에서는 RPC 자체가 거절된다.
+ * 실패해도 조용히 넘어간다: 이름표가 없으면 '멤버'로 그려질 뿐 화면은 살아 있다.
+ *
+ * ⚠️ 목록이 들어와도 여기서 다시 그리지 않는다. `render()`는 순수한 다시 그리기가 아니라
+ * 클라우드 동기화까지 건드려서, 이름표 하나 때문에 저장이 도는 일이 생긴다.
+ * 이름표가 꼭 필요한 곳(장소 모달·후보 보드)이 직접 await 한다.
+ */
+async function ensureMembers(id, info){
+  if(!user || viewMode || !id || !sb || !info || info.count<=1){
+    if(!id || !user) { tripMembers=[]; membersFor=''; }
+    return;
+  }
+  if(membersFor===id) return;
+  membersFor=id;
+  try{
+    const {data,error}=await sb.rpc('list_trip_members',{p_client_id:id});
+    if(error) throw error;
+    tripMembers=(data||[]).filter(m=>m&&m.status!=='REMOVED');
+  }catch(e){ membersFor=''; }
 }
 function roleBadgeHtml(id){
   if(!user) return '';
@@ -4133,10 +4218,16 @@ function candidateCard(c,role,members){
       const t=document.createElement('span'); t.className='ot'; t.textContent=o.title;
       const x=document.createElement('span'); x.className='ox'; x.textContent=o.text;
       row.appendChild(t); row.appendChild(x);
-      if(o.action&&TC_COLLAB.canScheduleCandidate(role)){
+      // 분리(§25~§27)는 이제 안내가 아니라 실제 일정이 된다 — 반응에 user_id가 실려 누가 어느 쪽인지 정확히 갈린다.
+      const splittable = o.key==='SPLIT' && TC_COLLAB.buildSplitPlan(c, tripMembers);
+      if((o.action||splittable)&&TC_COLLAB.canScheduleCandidate(role)){
         const b=document.createElement('button'); b.type='button'; b.className='btn'; b.textContent='이렇게 할게요';
         b.setAttribute('aria-label',`${c.title||'후보'} — ${o.title}`);
-        b.onclick=()=>{ if(o.action==='SCHEDULE') scheduleCandidate(c); else manageCandidate(c.id,'REJECT'); };
+        b.onclick=()=>{
+          if(o.key==='SPLIT') splitCandidate(c);
+          else if(o.action==='SCHEDULE') scheduleCandidate(c);
+          else manageCandidate(c.id,'REJECT');
+        };
         row.appendChild(b);
       }
       panel.appendChild(row);
@@ -4410,6 +4501,26 @@ async function scheduleCandidate(c){
   commit(()=>{ appendCandidateSpot(t,di,c); });
   await manageCandidate(c.id,'SCHEDULE',String(di+1));
 }
+/**
+ * "자유시간으로 분리"(§24 → §25~§27). 가고 싶은 사람은 그 후보로, 나머지는 자유시간으로 가고 끝나면 합류한다.
+ * 세 장소를 그 날 **맨 뒤**에 붙인다 — 후보를 넣을 때와 같은 규칙이라 위치를 추측하지 않는다(§12).
+ * 만들어 주는 것은 자리와 참여자까지고, 자유시간에 무엇을 할지는 그 사람들이 정한다(§23).
+ */
+async function splitCandidate(c){
+  if(!guardEdit()) return;
+  const plan=TC_COLLAB.buildSplitPlan(c, tripMembers);
+  if(!plan){ toast('갈릴 사람이 없어요 — 다 같이 가거나, 이번엔 빼는 쪽이에요','#e63946'); return; }
+  const t=store.trips.find(x=>x.id===candTripId); if(!t) return;
+  const opts=t.days.map((d,i)=>`${i+1}: ${d.title||dateOf(i)||('Day '+(i+1))}`).join('\n');
+  const answer=prompt(`${plan.text}\n\n며칠째에 넣을까요?\n\n${opts}`, String(activeDay||1));
+  if(answer==null) return;
+  const di=Math.round(Number(answer))-1;
+  if(!(di>=0&&di<t.days.length)){ toast('그 날짜는 일정에 없어요','#e63946'); return; }
+  commit(()=>{ plan.spots.forEach(sp=>t.days[di].spots.push(sp)); });
+  await manageCandidate(c.id,'SCHEDULE',String(di+1));
+  toast('같은 시간에 나란히 넣었어요 — 끝나면 합류합니다');
+}
+
 /** 후보를 그 날 맨 뒤에 장소로 붙인다 — 최적 위치를 추측하지 않는다(재배치는 드래그·재구성이 한다). commit() 안에서 부른다. */
 function appendCandidateSpot(t,di,c){
   t.days[di].spots.push({

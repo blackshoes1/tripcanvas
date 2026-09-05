@@ -484,3 +484,16 @@ body.playing #playHud{
 .travelDepart{font-size:12px;font-weight:700;margin-top:5px;color:var(--meta-good)}
 .travelDepart.now{color:var(--meta-eta)}
 .travelDepart.late{color:var(--meta-danger)}
+  /* 함께 움직이지 않는 시간(§25~§27) — 참여자·나란한 가지·합류 */
+  .spotMetaItem.whoChip{color:var(--meta-link);font-weight:600}
+  .spotMetaItem.reunionChip{color:var(--meta-good);font-weight:600}
+  /* 나란히 일어나는 줄은 왼쪽 띠로 묶어 보인다. .spotList의 자식 구조는 건드리지 않는다 —
+     드래그 인덱스가 자식 순서로 계산돼서 여기에 다른 요소를 끼우면 순서가 어긋난다. */
+  .spot.inSplit{border-left:3px solid color-mix(in srgb,var(--meta-link) 55%,transparent);padding-left:11px;background:color-mix(in srgb,var(--meta-link) 6%,transparent);border-radius:0 8px 8px 0}
+  .spot.inSplit + .spot.inSplit{margin-top:-4px}
+  .spot.isReunion{border-left:3px solid color-mix(in srgb,var(--meta-good) 55%,transparent);padding-left:11px}
+  /* 장소 모달의 "누가 가나요" */
+  .whoChips{display:flex;flex-wrap:wrap;gap:5px;padding:2px 0}
+  .whoChips .whoChipBtn{border:1px solid var(--border);border-radius:14px;padding:6px 11px;font-size:12px;background:var(--surface);color:var(--muted);min-height:34px}
+  .whoChips .whoChipBtn.active{background:#fee2e2;border-color:var(--primary);color:var(--primary-dark);font-weight:700}
+  body.theme-dark .whoChips .whoChipBtn.active{background:color-mix(in srgb,var(--primary) 26%,transparent);color:#ffd9d9}
