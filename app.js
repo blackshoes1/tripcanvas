@@ -39,6 +39,8 @@ let liveCh=null, liveKey='', liveT=null, livePending=[], liveOn=false;
 // 드래그 중에는 다시 그리지 않는다 — render()가 Sortable 인스턴스를 재생성해
 // 목록이 손가락 아래에서 갈린다. 일행의 변경은 드래그가 끝난 뒤에 반영한다.
 let dragActive=false;
+// 일행이 바꾼 날 — 읽으면(그 날을 열면) 사라진다. 여행 데이터가 아니라 이 탭의 표시 상태다.
+let remoteChangedDays=new Set(), presenceT=null;
 // onEnd가 못 오는 경우(드래그 도중 다른 경로의 render()로 Sortable이 갈아 끼워짐)의 안전망 —
 // 포인터를 떼면 드래그는 끝난 것이다. 이게 없으면 실시간 반영이 영영 멈춘다.
 document.addEventListener('pointerup',()=>{ dragActive=false; });
@@ -1380,7 +1382,9 @@ function renderSidebar(){
   const dayList=document.createElement('div'); dayList.id='dayList';
   trip().days.forEach((day,di)=>{
     const headC = colorByMode()==='day' ? dayColor(di) : (day.spots.length?(colors[day.spots[0].city]||'#556'):'#556');
-    const card=document.createElement('div'); card.className='dayCard'+(activeDay&&activeDay!==di+1?' dim':''); card.style.setProperty('--c',headC);
+    const card=document.createElement('div');
+    card.className='dayCard'+(activeDay&&activeDay!==di+1?' dim':'')+(remoteChangedDays.has(di)?' remoteChanged':'');
+    card.style.setProperty('--c',headC);
     // 전날 숙소(🏠 등록)가 있으면 오늘 첫 일정으로 '가상 이월' — prevLoc를 숙소로 시드해 첫 장소에 이동거리 표시
     const ctx=dayContext(di), carry=ctx.carry;   // anchor=ETA용(숙소/전날 마지막), carry=🏠 표시용(숙소만)
     let spotsHtml='', prevLoc=carry;
@@ -1534,6 +1538,7 @@ function renderSidebar(){
       </div>`;
     card.querySelector('.dayHead').onclick=(e)=>{
       if(e.target.closest('.iconb'))return;
+      remoteChangedDays.delete(di);   // 열었으면 읽은 것이다
       activeDay=di+1;render();
       const pts=day.spots.filter(hasLoc).map(s=>[s.lat,s.lng]);
       fitTo(pts,64,15);
@@ -2060,6 +2065,7 @@ function renderTripList(){
 }
 window.switchTrip=(id)=>{
   if(id===store.activeId){ document.getElementById('tripListBg').classList.remove('show'); return; }
+  clearPresence();   // 표시는 일자 번호라 여행이 바뀌면 뜻이 달라진다
   commit(()=>{ store.activeId=id; activeDay=0; }, {fit:fitEntry});
   document.getElementById('tripListBg').classList.remove('show');
 };
@@ -3961,6 +3967,28 @@ const _pullAt={};
 // 안 그러면 디바운스(800ms) 창 안에 일행 이벤트가 들어왔을 때, 아직 서버에 올라가지도 않은 내 편집이
 // pullTrip 눈에는 '미반영 편집'으로 보여 충돌 모달이 뜬다 — 서버는 아무것도 거절하지 않았는데도.
 // 충돌 판정은 로컬 해시 경합이 아니라 **서버 CAS**가 한다. 그래야 물어볼 값어치가 있는 충돌만 남는다.
+// 어느 날이 바뀌었는지. 장소가 아니라 '날' 단위다 — 화면에 남기는 것이 일자 카드의 표시이기 때문이다.
+// ⚠️ 양쪽 모두 normalizeTrip을 지난 문서라는 전제로 키 순서까지 같다고 본다(TC_SYNC.hashTrip과 같은 전제).
+// 표시가 틀려도 데이터에는 영향이 없다 — 최악이 '안 바뀐 날에 점이 남는 것'이다.
+function changedDayIndexes(before,after){
+  const a=(before&&before.days)||[], b=(after&&after.days)||[], out=[];
+  for(let i=0;i<Math.max(a.length,b.length);i++){
+    if(JSON.stringify(a[i]||null)!==JSON.stringify(b[i]||null)) out.push(i);
+  }
+  return out;
+}
+// 일행이 바꿨다는 한 줄. 토스트와 달리 **쌓이지 않고 갈린다** — 같은 사람이 계속 바꾸면
+// 문장만 바뀌고(“(3번)”) 알림이 여러 개 생기지 않는다.
+function clearPresence(){
+  remoteChangedDays.clear();
+  clearTimeout(presenceT);
+  const el=document.getElementById('livePresence'); if(el) el.hidden=true;
+}
+function showPresence(text){
+  const el=document.getElementById('livePresence'); if(!el||!text) return;
+  el.textContent=text; el.hidden=false;
+  clearTimeout(presenceT); presenceT=setTimeout(()=>{ el.hidden=true; },6000);
+}
 async function pushLocalFirst(id){
   if(!sb||!user||!store) return;
   const local=store.trips.find(t=>t.id===id); if(!local) return;
@@ -3992,8 +4020,10 @@ async function pullTrip(id,opts){
     if(idx>=0) store.trips[idx]=checked.value;
     syncMeta[id]={revision:remoteRev,status:'clean',op:'',hash:TC_SYNC.hashTrip(checked.value)}; persistSyncMeta();
     activeDay=Math.min(activeDay,checked.value.days.length);
+    // 바뀐 날에 표시를 남긴다. 토스트는 띄우지 않는다 — 변경은 이미 화면에 그려지고,
+    // 일행이 편집을 이어가면 저장마다 같은 문장이 반복돼 잔소리가 된다.
+    for(const di of changedDayIndexes(local,checked.value)) remoteChangedDays.add(di);
     suppressCloudOnce=true; render();
-    toast('다른 멤버의 변경을 불러왔어요','#1d6fd6');
     return true;
   }catch(e){ reportOperationalError('collab.pull',e); return false; }
 }
@@ -4455,11 +4485,19 @@ async function flushLive(tripId){
     if(any('candidates')&&boardOpen){ candOpen.forEach(k=>loadComments(Number(k))); await renderCandidates(); }
     const membersOpen=document.getElementById('membersModalBg').classList.contains('show')&&membersTripId===tripId;
     if(membersOpen){ if(any('members')) await renderMembers(); else await renderActivity(); }
-    if(any('notify')){   // 남이 후보를 담았거나 새 멤버가 왔을 때만(§51). 문장은 이름표가 있는 RPC 행으로 만든다
-      const {data}=await TC_API.rpc('list_trip_activity',{p_client_id:tripId,p_limit:batch.length});
-      const notable=(data||[]).find(r=>r&&!r.mine&&TC_COLLAB.liveEffects(r).notify);
-      const text=notable?TC_COLLAB.activityText(notable):'';
-      if(text) toast(text,'#1d6fd6');
+    if(any('notify')||any('pull')){   // 문장은 이름표가 있는 RPC 행으로 만든다 — payload에는 이름이 없다
+      const {data}=await TC_API.rpc('list_trip_activity',{p_client_id:tripId,p_limit:Math.min(30,Math.max(batch.length,10))});
+      const rows=TC_COLLAB.condenseActivity(data||[]);   // 같은 사람의 연속 저장은 "(N번)"으로 묶인다
+      if(any('notify')){   // 남이 후보를 담았거나 새 멤버가 왔을 때만 토스트(§51)
+        const notable=rows.find(r=>r&&!r.mine&&TC_COLLAB.liveEffects(r).notify);
+        const text=notable?TC_COLLAB.activityText(notable):'';
+        if(text) toast(text,'#1d6fd6');
+      }
+      if(any('pull')){   // 일정·예약 변경은 화면이 이미 바뀌었다 — 누가 바꿨는지만 조용히 한 줄
+        const doc=rows.find(r=>r&&!r.mine&&TC_COLLAB.liveEffects(r).pull);
+        const text=doc?TC_COLLAB.activityText(doc):'';
+        if(text) showPresence(text);
+      }
     }
   }catch(e){ reportOperationalError('collab.live.flush',e); }
 }

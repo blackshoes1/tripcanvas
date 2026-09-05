@@ -205,6 +205,7 @@ localStorage: `tripcanvas_v1`(여행) · `tripcanvas_legs_v4`(구간 캐시, 수
 - ⚠️ 실시간 전역(`liveCh`·`liveKey`…)은 `app.js` **위쪽**(`tripRoles` 곁)에 둔다 — `updateAuthUI()`가 로드 직후 `ensureLiveChannel()`까지 부르므로 아래에 두면 TDZ로 스크립트가 죽는다.
 - 무엇을 **안** 남기는가: 소유자 멤버 행 · 제안자 자동 MUST(같은 트랜잭션의 `created_at`으로 구별) · 반응 거두기 · 후보 빼기 · **혼자 쓰는 여행의 저장**(§95). 여행당 최근 300건.
 - 알림(toast)은 **남이 후보를 담았을 때와 새 멤버뿐**(§51). 반응·코멘트·일정 변경은 화면 갱신으로 끝. 내 저장(`mine`)은 당기지 않는다.
+- ⚠️ 일행의 **일정 변경은 토스트를 띄우지 않는다.** 변경은 이미 화면에 그려져 있고, 일행이 편집을 이어가면 저장마다 같은 문장이 반복된다. 대신 둘로 알린다: 헤더 아래 `#livePresence` 한 줄(누가 바꿨는지 — `condenseActivity`가 연속 저장을 "(N번)"으로 묶고 **쌓이지 않고 갈린다**)과, 바뀐 일자 카드의 `.remoteChanged` 점(그 날을 열면 지워진다 — `remoteChangedDays`). 어느 날이 바뀌었는지는 `changedDayIndexes`가 pull 직전/직후 문서를 비교해 정한다.
 - 코멘트는 **후보에만** 붙는다(장소에는 안정적 id가 없다). 의견이라 보기 권한도 남기고, 지우기는 쓴 사람·주최자. 문장은 `activityText`, 이름표는 `tc_member_label()` — 이메일은 없다.
 - 반환형이 바뀌는 RPC(`list_trip_candidates`)는 `drop function` 후 `create` — `create or replace`는 반환형 변경을 거부해 마이그레이션 재적용이 깨진다.
 
