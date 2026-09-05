@@ -14,7 +14,8 @@
     "check:version": "node scripts/check-version-sync.js",
     "bump:version": "node scripts/bump-version.js",
     "lint": "eslint lib.js sync.js routing.js price.js adaptive.js intake.js collab.js api.js auth.js api scripts",
-    "security:scan": "node scripts/check-secrets.js"
+    "security:scan": "node scripts/check-secrets.js",
+    "verify:all": "bash scripts/verify-all.sh"
   },
   "devDependencies": {
     "@playwright/test": "1.62.1",
