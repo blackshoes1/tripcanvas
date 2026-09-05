@@ -15,6 +15,7 @@ import type { TripDoc } from './todayView';
 import { buildBookings } from './bookingsView';
 import { buildTravelState } from './travelState';
 import { buildImportPreview } from './intakeView';
+import { buildGroupProposalView } from './groupProposalView';
 
 const SWIFT = readFileSync(path.join(__dirname, '../../../../../ios/TripCanvas/Core/Models/Contract.swift'), 'utf8');
 
@@ -85,6 +86,38 @@ describe('iOS Contract.swift가 실제 응답을 전부 담는다', () => {
     expect(today.suggestions.length).toBeGreaterThan(0);
     expectCovered('TripSuggestion', today.suggestions[0] as unknown as Record<string, unknown>);
     expectCovered('SuggestionAction', today.suggestions[0].action as unknown as Record<string, unknown>);
+  });
+
+  /**
+   * 그룹 제안(§35) — 판정은 서버 하나(`collab.js`)가 하고 앱은 그린다.
+   * 계약이 갈라지면 앱이 조용히 빈 카드를 그리게 되므로 여기서 이름을 맞춰 본다.
+   */
+  it('GroupProposalView와 그 안의 구조체', () => {
+    const reactions = [
+      { user_id: 'u1', name: '민수', reaction: 'MUST', me: true },
+      { user_id: 'u2', name: '영희', reaction: 'MUST', me: false }
+    ];
+    const proposal = buildGroupProposalView({
+      candidates: [
+        { id: 1, title: '카사 바트요', status: 'PROPOSED', lat: 40.41, lng: -3.70, must_count: 2, ok_count: 0, pass_count: 0, reactions },
+        { id: 2, title: '공원 산책', status: 'PROPOSED', must_count: 2, ok_count: 0, pass_count: 0, reactions }
+      ],
+      days: trip.days ?? [],
+      memberCount: 2,
+      preferences: [{ mine: true, label: '나', prefs: { pace: 'RELAXED', walking: 'LOW' } }]
+    });
+    expect(proposal, '제안이 만들어져야 이름을 맞춰 볼 수 있다').toBeTruthy();
+    expectCovered('GroupProposalView', proposal as unknown as Record<string, unknown>);
+    expectCovered('GroupProposalPick', proposal!.picks[0] as unknown as Record<string, unknown>);
+    expectCovered('GroupProposalImpact', proposal!.impact as unknown as Record<string, unknown>);
+    expectCovered('GroupProposalOption', proposal!.options[0] as unknown as Record<string, unknown>);
+
+    // 좌표를 모르는 후보는 거리도 null이다 — 0으로 채우지 않는다
+    const noCoord = proposal!.picks.find((p) => p.title === '공원 산책');
+    expect(noCoord?.distanceKm).toBeNull();
+
+    // ⚠️ 점수는 내부값이다(§21·§22) — 앱에 내려가는 JSON 어디에도 없다
+    expect(JSON.stringify(proposal)).not.toContain('score');
   });
 
   it('BookingSummary와 PriceStatus', () => {

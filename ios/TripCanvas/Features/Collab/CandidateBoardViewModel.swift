@@ -16,6 +16,10 @@ final class CandidateBoardViewModel {
     private(set) var toast: String?
     /// 펼친 카드의 한마디 목록. nil이면 아직 안 읽었다.
     private(set) var comments: [Int: [CommentView]] = [:]
+    /// 서버가 만든 그룹 제안(§35). 앱은 판정하지 않고 이걸 그린다. 없으면 카드도 없다.
+    private(set) var proposal: GroupProposalView?
+    /// 이 세션에서 "나중에"를 누른 제안은 다시 올리지 않는다 — 거절한 제안을 반복하지 않는다(§79).
+    private var proposalDismissed = false
     private(set) var memberCount: Int
     var sortByInterest = false
 
@@ -51,6 +55,55 @@ final class CandidateBoardViewModel {
         } catch {
             errorMessage = message(for: error)
         }
+        // 제안은 곁들이다 — 못 읽어도 보드는 그대로 뜬다(오류로 만들지 않는다).
+        if !proposalDismissed { proposal = try? await service.groupProposal(tripId: trip.id) }
+    }
+
+    /// "나중에" — 이 세션에서는 다시 올리지 않는다. 서버에 남기지 않는다(제안은 저장되지 않는다).
+    func dismissProposal() {
+        proposalDismissed = true
+        proposal = nil
+    }
+
+    /// 제안을 그대로 받아들인다. **문서 저장이 먼저**고 후보 표시가 그다음이다 — `schedule`과 같은 순서다.
+    /// 여러 곳을 한 번에 넣으므로 문서는 **한 번만** 저장한다(CAS 충돌을 스스로 만들지 않기 위해).
+    func acceptProposal() async {
+        guard canSchedule, let plan = proposal, !plan.picks.isEmpty else { return }
+        isWorking = true
+        defer { isWorking = false }
+
+        var placed: [GroupProposalPick] = []
+        do {
+            let snapshot = try await documents.document(tripId: trip.id)
+            var document = snapshot.document
+            for pick in plan.picks {
+                guard document.hasDay(pick.dayIndex),
+                      let candidate = candidates.first(where: { $0.id == pick.candidateId }) else { continue }
+                document.insertSpot(CandidateBoardViewModel.spot(from: candidate), dayIndex: pick.dayIndex)
+                placed.append(pick)
+            }
+            guard !placed.isEmpty else { errorMessage = "넣을 수 있는 곳이 없어요 — 목록을 새로 읽어볼게요"; await load(); return }
+            _ = try await documents.saveDocument(tripId: trip.id, document: document, expectedRevision: snapshot.revision)
+        } catch {
+            errorMessage = message(for: error)
+            return
+        }
+
+        // 표시가 실패해도 일정에는 들어가 있다 — 정직하게 말한다.
+        var failed = 0
+        for pick in placed {
+            do {
+                try await service.manageCandidate(tripId: trip.id, candidateId: pick.candidateId,
+                                                  action: "SCHEDULE", value: String(pick.dayIndex + 1))
+            } catch { failed += 1 }
+        }
+        let notice = failed > 0
+            ? "일정에는 \(placed.count)곳을 넣었지만 후보 표시 \(failed)건을 바꾸지 못했어요"
+            : nil
+        if notice == nil { toast = "\(placed.count)곳을 일정에 넣었어요" }
+        proposal = nil
+        await load()
+        if let notice { errorMessage = notice }
     }
 
     func clearToast() { toast = nil }

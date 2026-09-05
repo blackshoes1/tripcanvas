@@ -107,3 +107,96 @@ describe('검증과 인자 전달', () => {
     expect(await res.json()).toMatchObject({ prefs: { pace: 'RELAXED' } });
   });
 });
+
+// ── 그룹 제안 (§28·§29·§35) ────────────────────────────────────────────────
+//
+// 판정은 collab.js가 하고(그쪽 테스트가 규칙을 본다) 여기서 지키는 것은 경계다:
+// 저장하지 않는가 · 점수가 새지 않는가 · 재료가 없을 때 억지로 만들지 않는가.
+
+const CAND = (id: number, title: string, lat: number, lng: number) => ({
+  id, title, status: 'PROPOSED', lat, lng, must_count: 3, ok_count: 0, pass_count: 0,
+  my_reaction: 'MUST', proposed_by_label: '민수', mine: false, created_at: '2026-01-01',
+  reactions: [{ user_id: 'u1', name: '민수', reaction: 'MUST', me: true },
+              { user_id: 'u2', name: '영희', reaction: 'MUST', me: false },
+              { user_id: 'u3', name: '철수', reaction: 'MUST', me: false }]
+});
+
+const DAYS = [
+  { title: '', spots: [{ name: '광장', lat: 41.387, lng: 2.170 }, { name: '대성당', lat: 41.384, lng: 2.176 }] },
+  { title: '', spots: [{ name: '해변', lat: 41.378, lng: 2.192 }] }
+];
+
+function proposalSetup(over: Partial<{ candidates: unknown[]; days: unknown[] | null; members: unknown[] }> = {}) {
+  const calls: unknown[][] = [];
+  const base = fakeApi(calls);
+  const api: CollabApi = {
+    ...base,
+    listCandidates: async (...a: unknown[]) => { calls.push(['listCandidates', ...a]); return (over.candidates ?? [CAND(1, '카사 바트요', 41.392, 2.165)]) as never; },
+    listMembers: async (...a: unknown[]) => { calls.push(['listMembers', ...a]); return (over.members ?? [{}, {}, {}]) as never; }
+  };
+  const routes = createCollabRoutes({
+    verifier, apiFor: async () => api,
+    tripDaysFor: async () => (over.days === undefined ? DAYS : over.days)
+  });
+  return { calls, routes };
+}
+
+describe('그룹 제안', () => {
+  it('반대 없는 후보를 어느 날에 넣을지 문장으로 준다 — 저장은 하지 않는다', async () => {
+    const { calls, routes } = proposalSetup();
+    const res = await routes.groupProposal(req('GET', '/x', 'tok-a'), 'trip1');
+    expect(res.status).toBe(200);
+    const body = await res.json();
+
+    expect(body.proposal.summary).toContain('다들 좋아해요');
+    expect(body.proposal.picks).toHaveLength(1);
+    expect(body.proposal.picks[0].candidateId).toBe(1);
+    expect(body.proposal.picks[0].dayLabel).toBe('Day 1');
+    expect(body.proposal.picks[0].reasons.length).toBeGreaterThan(0);
+    expect(body.proposal.impact).toEqual({ spotsAdded: 1, daysTouched: 1 });
+    expect(body.proposal.options.map((o: { key: string }) => o.key)).toEqual(['ACCEPT', 'ADJUST', 'DISMISS']);
+
+    // 읽기만 한다 — 후보를 바꾸는 호출이 하나도 나가지 않는다(§79)
+    const names = calls.map((c) => c[0]);
+    expect(names).not.toContain('manageCandidate');
+    expect(names).not.toContain('addCandidate');
+    expect(names).not.toContain('reactToCandidate');
+  });
+
+  /** §21·§22 — 합의 점수(0~100)는 내부값이다. 계약 어디에도 실리지 않는다. */
+  it('점수를 내보내지 않는다', async () => {
+    const { routes } = proposalSetup();
+    const body = await (await routes.groupProposal(req('GET', '/x', 'tok-a'), 'trip1')).json();
+    const json = JSON.stringify(body);
+    expect(json).not.toContain('score');
+    expect(json).not.toContain('consensus');
+    for (const r of body.proposal.picks[0].reasons as string[]) expect(r).not.toMatch(/점수/);
+  });
+
+  it('일정이 없으면 제안하지 않는다 — 넣을 날을 추측하지 않는다', async () => {
+    const { routes } = proposalSetup({ days: [] });
+    const body = await (await routes.groupProposal(req('GET', '/x', 'tok-a'), 'trip1')).json();
+    expect(body.proposal).toBeNull();
+  });
+
+  it('여행 문서를 못 읽으면 제안하지 않는다', async () => {
+    const routes = createCollabRoutes({
+      verifier, apiFor: async () => fakeApi([]),
+      tripDaysFor: async () => { throw new Error('upstream'); }
+    });
+    const body = await (await routes.groupProposal(req('GET', '/x', 'tok-a'), 'trip1')).json();
+    expect(body.proposal).toBeNull();
+  });
+
+  it('후보가 없으면 억지로 만들지 않는다', async () => {
+    const { routes } = proposalSetup({ candidates: [] });
+    const body = await (await routes.groupProposal(req('GET', '/x', 'tok-a'), 'trip1')).json();
+    expect(body.proposal).toBeNull();
+  });
+
+  it('로그인하지 않으면 거절한다', async () => {
+    const { routes } = proposalSetup();
+    const res = await routes.groupProposal(req('GET', '/x', null), 'trip1');
+    expect(res.status).toBe(401);
+  });
+});

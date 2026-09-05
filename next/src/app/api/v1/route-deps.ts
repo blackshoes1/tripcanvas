@@ -109,7 +109,16 @@ export async function collabApiFor(ctx: RequestContext | null, token: string): P
   return new CollabService({ trips: new PgTripRepository(db), collab: new PgCollabRepository(db) });
 }
 
-export const collabRoutes = createCollabRoutes({ verifier, apiFor: collabApiFor });
+export const collabRoutes = createCollabRoutes({
+  verifier,
+  apiFor: collabApiFor,
+  // 그룹 제안은 후보(CollabApi)와 일정(TripService)을 함께 봐야 한다 — 문서를 읽는 길만 여기서 잇는다.
+  tripDaysFor: async (ctx, token, tripId) => {
+    const view = await tripServiceFor(ctx, token).then((s) => s.get(ctx, tripId));
+    const data = view.record.data as { days?: unknown } | null;
+    return Array.isArray(data?.days) ? data.days : null;
+  }
+});
 
 /**
  * /me — 역할·인원과 실시간 선택. 여행 목록은 TripService가 주므로 레지스트리를 그대로 따라간다.
