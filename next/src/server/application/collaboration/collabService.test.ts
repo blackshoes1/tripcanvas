@@ -177,7 +177,9 @@ describe('후보 · 반응 · 코멘트 · 결정', () => {
     const first = list.find((c) => c.id === id)!;
     expect(first).toMatchObject({ must_count: 1, my_reaction: null, mine: false, proposed_by_label: '주최자', comment_count: 0 });
     expect(first.note?.length).toBe(300);
-    expect(first.reactions).toEqual([{ name: '주최자', reaction: 'MUST', me: false }]);
+    // ⚠️ user_id는 분리 일정(§25~§27)이 누가 어느 쪽인지 가르는 데 쓴다 — 이름으로 가르면 동명이인이 섞인다.
+    expect(first.reactions).toEqual([{ user_id: A.userId, name: '주최자', reaction: 'MUST', me: false }]);
+    // 이메일은 여전히 어디에도 나오지 않는다(§69) — 이름표는 tc_member_label이 만든다.
     expect(JSON.stringify(list)).not.toMatch(/@example\.com/);
     expect(await code(service.addCandidate(A, 'trip1', { title: '   ' }))).toBe('VALIDATION_ERROR');
     expect(await kinds(A)).toEqual(['MEMBER_JOINED', 'CANDIDATE_PROPOSED', 'CANDIDATE_PROPOSED']);   // 자동 MUST는 기록 없음
@@ -190,6 +192,8 @@ describe('후보 · 반응 · 코멘트 · 결정', () => {
     let [c] = await service.listCandidates(A, 'trip1');
     expect([c.must_count, c.ok_count, c.pass_count]).toEqual([2, 0, 0]);
     expect(c.reactions.map((r) => r.name)).toEqual(['주최자', '영희']);
+    // user_id가 이름과 짝이 맞는다 — 순서까지 같아야 분리가 엉뚱한 사람을 보내지 않는다
+    expect(c.reactions.map((r) => r.user_id)).toEqual([A.userId, B.userId]);
     await service.reactToCandidate(B, 'trip1', id, 'OK');
     await service.reactToCandidate(B, 'trip1', id, null);
     [c] = await service.listCandidates(B, 'trip1');

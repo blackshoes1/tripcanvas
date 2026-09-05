@@ -179,6 +179,10 @@ export class PgCollabRepository implements CollabRepository {
              (select count(*)::int from candidate_reactions r where r.candidate_id=c.id and r.reaction='OK') as ok_count,
              (select count(*)::int from candidate_reactions r where r.candidate_id=c.id and r.reaction='PASS') as pass_count,
              coalesce((select jsonb_agg(jsonb_build_object(
+                         -- user_id는 **분리 일정(§25~§27)에 필요하다** — 누가 어느 쪽인지 이름으로 가르면
+                         -- 동명이인이 섞인다. 새로 드러나는 것은 없다: 같은 여행의 멤버는 이미
+                         -- list_trip_members로 서로의 user_id를 본다. 이메일은 여전히 나오지 않는다(§69).
+                         'user_id', r.user_id,
                          'name', ${label('c.trip_id', 'r.user_id')}, 'reaction', r.reaction, 'me', r.user_id=$viewer)
                          order by r.created_at, r.id)
                         from candidate_reactions r where r.candidate_id=c.id), '[]'::jsonb) as reactions,
