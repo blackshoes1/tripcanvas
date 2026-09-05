@@ -39,7 +39,7 @@ gh run view <run-id> --log-failed # 로그가 없으면 잡이 시작되지 않�
 | `npm ci` 실패 | 의존성·lockfile | lockfile 동기 확인 |
 | 매번 다른 스텝에서 시간 초과 | 러너 성능·flaky | 재현부터 |
 
-## 알려진 실패 — GitHub Actions 과금 중단 (2026-09-05, 미해결)
+## 지나간 실패 — GitHub Actions 과금 중단 (2026-09-05 ~ 2026-09-06, 해소)
 
 PR #131 이후 **모든 잡이 2초 만에 실패**했다. 로그는 없고 주석만 남는다:
 
@@ -56,6 +56,25 @@ Vercel 배포는 별개 시스템이라 초록으로 남는다 — **Vercel succ
   `gh run rerun <run-id>` 로 다시 돌린다.
 - ⚠️ macOS 러너(iOS 워크플로)는 비공개 저장소에서 **분당 10배**로 과금된다. 한도를 다시 세울 때 이걸 감안한다.
 - 풀리기 전까지는 `npm run verify:all` 결과를 PR 본문에 적고, 무엇을 못 돌렸는지(RLS 등)를 함께 밝힌다.
-- **TestFlight 업로드도 같이 막힌다** — `iOS TestFlight` 워크플로도 잡을 시작조차 못 한다(2026-09-06 확인, run #5).
-  그동안은 `scripts/testflight-upload.sh`로 이 Mac에서 올린다. 워크플로와 같은 순서이고,
-  빌드 번호만 손으로 준다(run number와 한 줄에 세면 나중에 충돌하지 않는다) — `docs/ios-device-setup.md`.
+- **TestFlight 업로드도 같이 막혔다** — `iOS TestFlight` 워크플로도 잡을 시작조차 못 했다.
+  러너를 못 쓰는 동안의 우회로는 `scripts/testflight-upload.sh`다(이 Mac에서 같은 순서로 올린다) —
+  `docs/ios-device-setup.md`.
+
+### 어떻게 풀렸나 (2026-09-06)
+
+결제를 정리하는 대신 **저장소를 공개로 바꿨다.** 공개 저장소는 Actions 표준 러너가 무료라
+지출 한도·결제 실패에 걸리지 않는다. 바꾼 직후 확인한 것:
+
+| | 결과 |
+|---|---|
+| `iOS TestFlight` run #5 | **success** — 0.1.0 (5) 업로드, 4분 48초 |
+| `CI` (Quality · Next workspace · E2E) | **success** — 셋 다 |
+
+따라 오는 것 둘:
+
+- **branch protection이 공짜가 됐다.** 지금까지 `main` 직접 푸시를 막는 곳이 `.githooks/pre-push`
+  하나뿐이었는데(클론마다 `git config core.hooksPath .githooks`가 필요했다) 이제 서버가 막을 수 있다.
+  `docs/deployment-workflow.md`
+- ⚠️ **`app.js`의 지도 키가 공개 저장소에 그대로 있다**(`GMAPS_KEY`·`KAKAO_KEY`). 정적 HTML로 이미
+  배포돼 있어 새로 새는 것은 아니지만, 이제 스크래퍼가 자동으로 긁어간다. **도메인·리퍼러 제한이
+  유일한 방어선**이므로 살아 있는지 확인하고 예산 알림을 유지한다.
