@@ -36,6 +36,13 @@ function syncEntry(id){ return syncMeta[id]||(syncMeta[id]={revision:null,status
 let tripRoles={};
 // 실시간 구독 상태 — 로드 직후(updateAuthUI→updateCollabUI→ensureLiveChannel)부터 읽히므로 여기서 선언한다
 let liveCh=null, liveKey='', liveT=null, livePending=[], liveOn=false;
+// 드래그 중에는 다시 그리지 않는다 — render()가 Sortable 인스턴스를 재생성해
+// 목록이 손가락 아래에서 갈린다. 일행의 변경은 드래그가 끝난 뒤에 반영한다.
+let dragActive=false;
+// onEnd가 못 오는 경우(드래그 도중 다른 경로의 render()로 Sortable이 갈아 끼워짐)의 안전망 —
+// 포인터를 떼면 드래그는 끝난 것이다. 이게 없으면 실시간 반영이 영영 멈춘다.
+document.addEventListener('pointerup',()=>{ dragActive=false; });
+document.addEventListener('pointercancel',()=>{ dragActive=false; });
 // 자체 실시간 접속(TC_API.realtime)과 서버가 알려 준 선택. /me가 채운다 — 기본은 예전 경로(Supabase)다.
 let liveConn=null, liveChoice={provider:'SUPABASE',url:null};
 // 멤버 이름표 캐시 (user_id → 이름). 일정에 참여자를 표시하려면 렌더마다 필요해서 여기 둔다 —
@@ -1535,7 +1542,7 @@ function renderSidebar(){
     if(window.Sortable && !readOnly()) sortables.push(Sortable.create(card.querySelector('.spotList'),{
       group:'spots', animation:150, filter:'.iconb,.noloc', preventOnFilter:false,
       delay:120, delayOnTouchOnly:true, ghostClass:'sortable-ghost', chosenClass:'sortable-chosen',
-      onEnd:onSpotDrop
+      onStart:()=>{ dragActive=true; }, onEnd:(e)=>{ dragActive=false; onSpotDrop(e); }
     }));
     dayList.appendChild(card);
   });
@@ -1544,7 +1551,7 @@ function renderSidebar(){
   if(window.Sortable && !readOnly()) sortables.push(Sortable.create(dayList,{
     handle:'.dayHead', animation:150, filter:'.iconb', preventOnFilter:false,
     delay:120, delayOnTouchOnly:true, ghostClass:'sortable-ghost', chosenClass:'sortable-chosen',
-    onEnd:onDayDrop
+    onStart:()=>{ dragActive=true; }, onEnd:(e)=>{ dragActive=false; onDayDrop(e); }
   }));
   const add=document.createElement('button'); add.className='btn'; add.id='addDayBtn'; add.textContent='＋ 일자 추가';
   add.onclick=()=>{ if(!guardEdit()) return; commit(()=>{ trip().days.push({title:'',drive:'',note:'',spots:[]}); }); openDayModal(trip().days.length-1); };
@@ -3950,6 +3957,18 @@ function roleBadgeHtml(id){
 // 다른 멤버가 바꾼 최신본 당겨오기. 로컬이 마지막으로 맞춘 그대로면 조용히 교체하고,
 // 로컬에 미반영 편집이 있으면 기존 충돌 흐름으로 넘긴다 — 조용히 덮어쓰지 않는다.
 const _pullAt={};
+// 일행의 변경을 당기기 **전에** 내 편집을 먼저 올린다.
+// 안 그러면 디바운스(800ms) 창 안에 일행 이벤트가 들어왔을 때, 아직 서버에 올라가지도 않은 내 편집이
+// pullTrip 눈에는 '미반영 편집'으로 보여 충돌 모달이 뜬다 — 서버는 아무것도 거절하지 않았는데도.
+// 충돌 판정은 로컬 해시 경합이 아니라 **서버 CAS**가 한다. 그래야 물어볼 값어치가 있는 충돌만 남는다.
+async function pushLocalFirst(id){
+  if(!sb||!user||!store) return;
+  const local=store.trips.find(t=>t.id===id); if(!local) return;
+  const entry=syncMeta[id];
+  if(entry&&entry.hash===TC_SYNC.hashTrip(local)) return;   // 올릴 것이 없다
+  clearTimeout(syncTimer); clearTimeout(cloudRetryT);       // 디바운스가 뒤늦게 같은 것을 또 올리지 않게
+  await syncTripCloud(local);
+}
 async function pullTrip(id,opts){
   if(!sb||!user||!id) return false;
   const now=Date.now(); if(!(opts&&opts.force)&&_pullAt[id]&&now-_pullAt[id]<30000) return false;
@@ -3982,7 +4001,7 @@ function pullActiveIfShared(){
   if(viewMode||!user||!sb||!store) return;
   const id=store.activeId, info=tripRoles[id];
   if(!info||info.count<=1) return;   // 혼자 쓰는 여행에는 다른 멤버의 변경이 없다
-  pullTrip(id);
+  pushLocalFirst(id).then(()=>pullTrip(id));   // 실시간과 같은 순서 — 내 것부터 올리고 당긴다
 }
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') pullActiveIfShared(); });
 
@@ -4423,10 +4442,15 @@ function onLiveEvent(tripId,row){
 }
 async function flushLive(tripId){
   const batch=livePending.splice(0); if(!batch.length||!sb||!user) return;
+  if(dragActive){   // 손이 목록 위에 있다 — 끝나면 그때 한 번에 반영한다(버리지 않는다)
+    livePending.unshift.apply(livePending,batch);
+    clearTimeout(liveT); liveT=setTimeout(()=>{ flushLive(tripId); },600);
+    return;
+  }
   const fx=batch.map(TC_COLLAB.liveEffects), any=(k)=>fx.some(f=>f[k]);
   try{
     if(any('members')) await refreshTripRoles();
-    if(any('pull')) await pullTrip(tripId,{force:true});
+    if(any('pull')){ await pushLocalFirst(tripId); await pullTrip(tripId,{force:true}); }
     const boardOpen=document.getElementById('candModalBg').classList.contains('show')&&candTripId===tripId;
     if(any('candidates')&&boardOpen){ candOpen.forEach(k=>loadComments(Number(k))); await renderCandidates(); }
     const membersOpen=document.getElementById('membersModalBg').classList.contains('show')&&membersTripId===tripId;

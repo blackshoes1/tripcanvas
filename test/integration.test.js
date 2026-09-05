@@ -1920,6 +1920,66 @@ test('통합: 다른 멤버의 최신본 당겨오기 — 로컬이 깨끗하면
   w.close();
 });
 
+// 실시간이 붙은 뒤로 일행의 저장이 400ms 만에 도착한다. 그 사이 내 편집이 아직 디바운스(800ms)에
+// 걸려 있으면 pullTrip 눈에는 '미반영 편집'으로 보여 모달이 떴다 — 서버는 아무것도 거절하지 않았는데도.
+test('통합: 일행의 변경을 당기기 전에 내 편집부터 올린다 — 헛충돌 모달이 뜨지 않는다', { skip: noJsdom }, async () => {
+  const w = boot();
+  withTrip(w, `[{title:'',drive:'',note:'',spots:[]}]`);
+  const order = [];
+  const remote = { id: '__it__', name: 'T', start: '2026-08-01', days: [{ title: '', drive: '', note: '', spots: [] }] };
+  w.sb = {};
+  w.SYNC_SAVE = async (id, t) => { order.push('save'); remote.name = t.name; return { applied: true, conflict: false, revision: 6, data: null, deleted_at: null }; };
+  w.SYNC_LIST = async () => { order.push('list'); return { data: [{ client_id: '__it__', data: remote, revision: 6, deleted_at: null, updated_at: '' }], error: null }; };
+  w.eval(`sb=window.sb; user={id:'u1'}; TC_API.sync.save=window.SYNC_SAVE; TC_API.sync.list=window.SYNC_LIST;
+    TC_API.rpc=async()=>({data:[],error:null});
+    tripRoles={__it__:{role:'EDITOR',count:2,owner:false}};
+    syncMeta.__it__={revision:5,status:'clean',op:'',hash:TC_SYNC.hashTrip(trip())};
+    trip().name='내가 방금 바꾼 이름';`);   // 아직 안 올라간 편집 — 디바운스 중이다
+  w.eval(`onLiveEvent('__it__',{kind:'SCHEDULE_CHANGED',actor_id:'u2'})`);
+  await new Promise(r => setTimeout(r, 700));
+  assert.deepEqual(order, ['save', 'list'], '당기기 전에 내 것부터 올린다');
+  assert.equal(w.document.getElementById('syncConflictBg').classList.contains('show'), false, '서버가 거절하지 않았으면 물어보지 않는다');
+  assert.equal(w.eval(`syncMeta.__it__.status`), 'clean');
+  assert.equal(w.eval(`trip().name`), '내가 방금 바꾼 이름', '내 편집이 살아 있다');
+  w.close();
+});
+
+test('통합: 서버가 거절한 진짜 충돌은 그대로 물어본다', { skip: noJsdom }, async () => {
+  const w = boot();
+  withTrip(w, `[{title:'',drive:'',note:'',spots:[]}]`);
+  w.sb = {};
+  w.SYNC_SAVE = async () => ({ applied: false, conflict: true, revision: 9, data: { id: '__it__', name: 'T (영희 편집)', days: [{ spots: [] }] }, deleted_at: null });
+  w.eval(`sb=window.sb; user={id:'u1'}; TC_API.sync.save=window.SYNC_SAVE;
+    TC_API.sync.list=async()=>({data:[],error:null}); TC_API.rpc=async()=>({data:[],error:null});
+    tripRoles={__it__:{role:'EDITOR',count:2,owner:false}};
+    syncMeta.__it__={revision:5,status:'clean',op:'',hash:'stale-hash'};`);
+  w.eval(`onLiveEvent('__it__',{kind:'SCHEDULE_CHANGED',actor_id:'u2'})`);
+  await new Promise(r => setTimeout(r, 700));
+  assert.equal(w.eval(`syncMeta.__it__.status`), 'conflict');
+  assert.equal(w.document.getElementById('syncConflictBg').classList.contains('show'), true, 'CAS가 거절한 것은 물어볼 값어치가 있다');
+  w.close();
+});
+
+// render()가 Sortable 인스턴스를 재생성하므로, 끌고 있는 도중에 다시 그리면 목록이 손가락 아래에서 갈린다
+test('통합: 드래그 중에는 일행의 변경을 미뤘다가 끝난 뒤 반영한다', { skip: noJsdom }, async () => {
+  const w = boot();
+  withTrip(w, `[{title:'',drive:'',note:'',spots:[]}]`);
+  w.sb = {};
+  w.eval(`sb=window.sb; user={id:'u1'}; TC_API.rpc=async()=>({data:[],error:null});
+    tripRoles={__it__:{role:'EDITOR',count:2,owner:false}};
+    pushLocalFirst=async()=>{};
+    pullTrip=async()=>{ window.__pulls=(window.__pulls||0)+1; return true; };
+    dragActive=true;`);
+  w.eval(`onLiveEvent('__it__',{kind:'SCHEDULE_CHANGED',actor_id:'u2'})`);
+  await new Promise(r => setTimeout(r, 700));
+  assert.equal(w.eval(`window.__pulls||0`), 0, '끌고 있는 동안에는 다시 그리지 않는다');
+  assert.equal(w.eval(`livePending.length`), 1, '버리지 않고 들고 있는다');
+  w.eval(`dragActive=false;`);
+  await new Promise(r => setTimeout(r, 800));
+  assert.equal(w.eval(`window.__pulls||0`), 1, '손을 떼면 반영한다');
+  w.close();
+});
+
 test('통합: 후보 보드 — 보기 권한은 담는 칸이 없고 반응은 되며, 결정 못 한 것이 맨 위에 온다', { skip: noJsdom }, async () => {
   const w = boot();
   const rpc = [];
@@ -2119,6 +2179,7 @@ test('통합: 실시간은 전달 수단이다 — 이벤트를 받으면 payloa
     }, error: null
   });
   w.eval(`sb=window.sb; TC_API.rpc=window.sb.rpc; TC_API.me=window.TC_API_ME;
+    pushLocalFirst=async()=>{};   // 여기서 보는 것은 이벤트 배선이지 업로드가 아니다
     pullTrip=async(id,opts)=>{ window.__pull=(window.__pull||[]); window.__pull.push([id,!!(opts&&opts.force)]); return true; };
     renderCandidates=async()=>{ window.__cand=(window.__cand||0)+1; };
     toast=(m)=>{ window.__toasts=(window.__toasts||[]); window.__toasts.push(m); };
@@ -2345,6 +2406,7 @@ test('통합: 서버가 자체 실시간을 쓰라고 하면 client_id로 구독
   });
   w.TC_API_CONNECT = (options) => { opened.push(options); options.onState(true); return { close: () => { opened.push('closed'); } }; };
   w.eval(`sb=window.sb; TC_API.me=window.TC_API_ME; TC_API.realtime={connect:window.TC_API_CONNECT};
+    pushLocalFirst=async()=>{};   // 여기서 보는 것은 이벤트 배선이지 업로드가 아니다
     pullTrip=async(id,opts)=>{ window.__pull=(window.__pull||[]); window.__pull.push([id,!!(opts&&opts.force)]); return true; };`);
   await w.eval(`refreshTripRoles()`);
 
