@@ -126,7 +126,8 @@ final class CandidateBoardViewModel {
     }
 
     /// 웹 `appendCandidateSpot`과 같은 모양 — 좌표가 없으면 위치 없는 장소다.
-    static func spot(from candidate: CandidateView) -> TripSpot {
+    /// 순수 매핑이라 화면 상태를 건드리지 않는다 — `nonisolated`로 두어 어디서든(테스트 포함) 부를 수 있게 한다.
+    nonisolated static func spot(from candidate: CandidateView) -> TripSpot {
         var spot = TripSpot(name: candidate.title, city: "기타")
         spot.desc = candidate.note ?? ""
         if let lat = candidate.lat, let lng = candidate.lng { spot.point = GeoPoint(lat: lat, lng: lng) } else { spot.point = nil }
