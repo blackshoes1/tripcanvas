@@ -91,7 +91,7 @@ sudo /var/packages/Tailscale/target/bin/tailscale funnel --bg 3000
 sudo /var/packages/Tailscale/target/bin/tailscale funnel --bg --set-path=/ws http://127.0.0.1:3001/ws
 ```
 
-⚠️ `funnel 443 off/on` 문법은 **없어졌다**(1.58 기준). `funnel <target>` · `funnel status` · `funnel reset` 셋뿐이다.
+⚠️ `funnel 443 off/on` 문법은 **없어졌다**. `funnel <target>` · `funnel status` · `funnel reset` 셋뿐이다.
 
 ### 실시간(`/ws`)은 경로를 지켜야 한다
 
@@ -103,10 +103,21 @@ sudo /var/packages/Tailscale/target/bin/tailscale funnel --bg --set-path=/ws htt
 |-- /ws proxy http://127.0.0.1:3001/ws      ← 경로가 붙어야 한다
 ```
 
-> ⚠️ **2026-09-05 현재 미해결**: 경로를 고쳐도 WebSocket 업그레이드는 502다. 평범한 GET은 404(정상)로 지나가므로
-> 프록시·라우팅은 맞고 **업그레이드만** 실패한다. tailnet 안(serve)에서도 같아 Funnel 인그레스가 아니라
-> **tailscaled 1.58.2(2024-02)의 문제**로 보인다. → 업그레이드 또는 별도 포트(8443) 노출을 검토.
-> 그동안 실시간은 폴백(당겨서 새로고침)으로 동작한다 — 앱·웹 모두 그렇게 설계돼 있다.
+#### 업그레이드로 풀린 것 (2026-09-06)
+
+경로를 고쳐도 WebSocket 업그레이드가 502였다. 평범한 GET은 404(사이드카가 `/` 거절)로 지나가서
+프록시·라우팅은 맞고 **업그레이드만** 실패했다. 별도 포트(8443)로 바로 물려도 같은 502라
+경로 마운트가 아니라 **tailscaled 1.58.2(2024-02)** 자체가 원인이었다.
+
+**1.102.3으로 올리니 101이 됐다.** Synology 패키지 센터의 Tailscale은 1.58.2에 멈춰 있으므로
+[pkgs.tailscale.com/stable](https://pkgs.tailscale.com/stable/)의 `tailscale-x86_64-<버전>-dsm7.spk`를
+DSM 패키지 센터 → 수동 설치로 올린다(신뢰 수준을 **모든 게시자**로 잠깐 내려야 한다).
+업그레이드 후 funnel 설정은 그대로 살아남았다.
+
+밖에서 확인하는 법은 아래 감시(`/api/health-watch`)의 `checks.realtime.status`가 **101**인지 보는 것이다.
+
+> 그동안(그리고 앞으로 실시간이 죽었을 때도) 실시간은 폴백(당겨서 새로고침)으로 동작한다 —
+> 앱·웹 모두 그렇게 설계돼 있다. 그래서 실시간만 죽은 상태는 `200 DEGRADED`이고 알림을 울리지 않는다.
 
 ### 감시 — `GET /api/health-watch` (Vercel)
 
