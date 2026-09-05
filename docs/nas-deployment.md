@@ -42,6 +42,9 @@ cd ~/tripcanvas
 sudo docker compose -f deploy/docker-compose.yml up -d
 ```
 
+> **2026-09-05 실제 NAS(DS920+, DSM Linux 4.4)에서 검증됐다.** migrate 성공 · postgres·api·realtime healthy ·
+> `backup`이 첫 덤프를 씀 · `/api/health` 정상. 그때 드러난 함정은 아래 **NAS의 실제 환경**에 적었다.
+
 override를 겹치지 않는다. Funnel이 넘겨주는 **호스트 루프백 publish(`127.0.0.1:3000`·`3001`)가 운영 compose 안에**
 있기 때문이다.
 
@@ -66,6 +69,37 @@ sudo docker compose -f deploy/docker-compose.yml ps        # postgres·api·real
 
 `reverse-proxy`가 돌고 있었다면 이때 내려간다. 80·443을 쓰던 것도 함께 풀린다.
 
+## NAS의 실제 환경 — 처음 붙는 사람이 걸리는 것들
+
+여기 적힌 것은 전부 2026-09-05에 실제로 걸렸던 것이다.
+
+| 함정 | 실제 |
+|---|---|
+| **`~/tripcanvas`는 git 클론이 아니다** | `.git`이 없고 **NAS에 git도 깔려 있지 않다.** `git pull`로 배포할 수 없다 — 파일을 보내야 한다 |
+| **비로그인 셸의 PATH가 짧다** | `/usr/bin:/bin:/usr/sbin:/sbin`뿐이라 `docker`가 안 잡힌다. `ssh nas 'docker …'`는 실패하고 **`/usr/local/bin/docker`** 전체 경로를 써야 한다 |
+| **docker 그룹이 없다** | 소켓이 `root:root`(`srw-rw----`)다. `synogroup --member docker`는 그룹 자체가 없어 성립하지 않는다 |
+| **sudo에 비밀번호가 필요하다** | `administrators` 소속이어도 그렇다. 자동화하려면 `/etc/sudoers.d/`에 NOPASSWD를 두어야 한다 (⚠️ docker 접근은 **사실상 root**다 — 범위 제한은 실수 방지용이지 권한 축소가 아니다) |
+| **`visudo`가 없다** | 문법 검사를 건너뛰게 된다. 파일을 쓴 뒤 `sudo -n /usr/local/bin/docker version`으로 실제 동작을 확인한다 |
+| **SFTP가 막혀 있다** | 그냥 `scp`는 `Connection closed`로 끊긴다. **`scp -O`**(레거시 프로토콜)를 쓴다 |
+| **macOS의 `rsync`는 openrsync다** | `-e` 처리가 달라 ssh 인증이 깨진다. 파일 몇 개면 `scp -O`가 낫다 |
+| **볼륨이 둘이다** | DB는 `/volume1/@docker/volumes/...`, 홈은 `/volume2`다. **백업은 반드시 다른 볼륨에** 둔다(§60) |
+
+### 파일 배포
+
+git이 없으므로 맥에서 보낸다:
+
+```bash
+scp -O deploy/docker-compose.yml deploy/docker-compose.staging.yml deploy/docker-compose.caddy.yml \
+    nas:~/tripcanvas/deploy/
+# API 코드를 바꿨으면 해당 소스도 보내고 다시 빌드한다
+sudo docker compose -f deploy/docker-compose.yml build api
+sudo docker compose -f deploy/docker-compose.yml up -d api
+```
+
+`~/.ssh/config`에 별칭을 두면 편하다(`Host nas` / `HostName bokbok9.tail8b977f.ts.net` / `User <계정>`).
+
+⚠️ **`deploy/.env`는 보내지 않는다.** 비밀이 들어 있고 NAS 것이 진실이다.
+
 ## 환경변수
 
 `deploy/.env.example` → `deploy/.env`. 비밀은 Git에 올리지 않는다(§58). `api`는 이 파일과 `DATABASE_URL`(compose가 조립)을 받는다.
@@ -76,7 +110,7 @@ sudo docker compose -f deploy/docker-compose.yml ps        # postgres·api·real
 | `POSTGRES_*` | DB 계정 |
 | `TC_MIGRATION_TRIP` | 이관 레지스트리. staging은 `NEW_BACKEND`, 프로덕션 전환 전에는 `LEGACY` |
 | `NEXT_PUBLIC_SUPABASE_*` · `SUPABASE_JWT_SECRET` | Phase A — Supabase 토큰 검증 |
-| `BACKUP_DIR` · `BACKUP_KEEP_DAYS` | 덤프 위치(DB 볼륨과 다른 곳) · 보관 일수 |
+| `BACKUP_DIR` · `BACKUP_KEEP_DAYS` | 덤프 위치 · 보관 일수. ⚠️ **DB와 다른 볼륨**이어야 한다 — DB는 `/volume1`에 있으므로 `/volume2/...`를 쓴다(§60) |
 
 ## 처음 띄울 때
 
