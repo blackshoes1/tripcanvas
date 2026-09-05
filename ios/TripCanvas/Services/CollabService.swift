@@ -28,6 +28,8 @@ protocol CollabSource {
     func activity(tripId: String, limit: Int) async throws -> [ActivityView]
     /// 그룹 제안 — **판정은 서버가 한다**(§35). 제안할 것이 없으면 nil이다.
     func groupProposal(tripId: String) async throws -> GroupProposalView?
+    /// 실시간을 쓸지·어디에 붙을지. 서버가 정한다.
+    func realtimeChoice() async throws -> RealtimeChoice
     func preferences(tripId: String) async throws -> [PreferenceView]
     func savePreferences(tripId: String, prefs: [String: JSONValue]) async throws -> [String: JSONValue]
 }
@@ -81,6 +83,11 @@ extension TripService: CollabSource {
     func candidates(tripId: String) async throws -> [CandidateView] {
         let response: CandidatesResponse = try await api.get("\(tripPath(tripId))/candidates")
         return response.candidates
+    }
+
+    func realtimeChoice() async throws -> RealtimeChoice {
+        let response: MeResponse = try await api.get("/api/v1/me")
+        return response.realtime
     }
 
     /// 후보 보드와 따로 읽는다 — 보드는 바로 뜨고 제안 카드는 준비되면 얹힌다.

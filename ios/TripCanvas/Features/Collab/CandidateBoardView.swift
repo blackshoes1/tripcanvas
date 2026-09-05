@@ -8,6 +8,7 @@ struct CandidateBoardView: View {
     let trip: TripSummary
 
     @Environment(AppEnvironment.self) private var env
+    @Environment(\.scenePhase) private var scenePhase
     @State private var model: CandidateBoardViewModel?
     @State private var titleDraft = ""
     @State private var noteDraft = ""
@@ -39,9 +40,19 @@ struct CandidateBoardView: View {
                 if titleDraft.trimmingCharacters(in: .whitespaces).isEmpty { titleDraft = hit.name }
             }
         }
+        // 앱이 뒤로 가면 소켓을 붙들지 않는다(§34) — 돌아올 때 다시 붙고 그때 최신을 읽는다.
+        .onChange(of: scenePhase) { _, phase in
+            switch phase {
+            case .active: if let model { startLive(model) }
+            case .background, .inactive: env.realtime.disconnect()
+            @unknown default: break
+            }
+        }
+        .onDisappear { env.realtime.disconnect() }
         .task {
             if model == nil { model = CandidateBoardViewModel(trip: trip, service: env.service, documents: env.service) }
             await model?.load()
+            if let model { startLive(model) }
         }
         .sheet(item: $scheduling) { candidate in
             if let model {
@@ -64,6 +75,13 @@ struct CandidateBoardView: View {
         }
     }
 
+    /// 실시간을 붙인다. **못 붙어도 앱은 그대로** — 상태만 바뀌고 폴백(당겨서 새로고침)으로 간다.
+    private func startLive(_ model: CandidateBoardViewModel) {
+        env.realtime.connect(tripId: trip.id) { event in
+            Task { await model.handle(event) }
+        }
+    }
+
     @ViewBuilder
     private func content(_ model: CandidateBoardViewModel) -> some View {
         List {
@@ -74,6 +92,16 @@ struct CandidateBoardView: View {
                 }
                 .listRowInsets(EdgeInsets())
                 .listRowBackground(Color.clear)
+            }
+
+            // 실시간인지 아닌지를 숨기지 않는다 — 안 되면 당겨서 새로고침하면 된다고 말한다.
+            if env.realtime.state != .live {
+                Section {
+                    Label(env.realtime.state == .connecting ? "연결 중이에요" : "당겨서 새로고침하면 최신으로 볼 수 있어요",
+                          systemImage: env.realtime.state == .connecting ? "antenna.radiowaves.left.and.right" : "arrow.clockwise")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             if model.canPropose {

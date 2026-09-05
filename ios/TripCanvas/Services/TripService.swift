@@ -26,6 +26,16 @@ final class TripService: TripDataSource {
         self.cache = cache
     }
 
+    /// 실시간 주소는 잘 바뀌지 않는다 — 한 번 물어보고 들고 있는다.
+    /// 못 물어보면 nil이고, 그러면 실시간 없이 폴백(당겨서 새로고침)으로 간다.
+    private var realtimeURL: URL??
+    func cachedRealtimeURL() async -> URL? {
+        if let cached = realtimeURL { return cached }
+        let resolved = (try? await realtimeChoice())?.socketURL
+        realtimeURL = .some(resolved)
+        return resolved
+    }
+
     struct Fetched<T: Codable> {
         let value: T
         /// 캐시에서 꺼낸 것이면 언제 받아온 것인지. nil이면 방금 서버에서 온 값이다.

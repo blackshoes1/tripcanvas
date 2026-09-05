@@ -1,0 +1,268 @@
+{
+  "cases": [
+    {
+      "kind": "MEMBER_JOINED",
+      "mine": false,
+      "effects": {
+        "candidates": false,
+        "members": true,
+        "pull": false,
+        "activity": true,
+        "notify": true
+      }
+    },
+    {
+      "kind": "MEMBER_JOINED",
+      "mine": true,
+      "effects": {
+        "candidates": false,
+        "members": true,
+        "pull": false,
+        "activity": true,
+        "notify": false
+      }
+    },
+    {
+      "kind": "MEMBER_LEFT",
+      "mine": false,
+      "effects": {
+        "candidates": false,
+        "members": true,
+        "pull": false,
+        "activity": true,
+        "notify": false
+      }
+    },
+    {
+      "kind": "MEMBER_LEFT",
+      "mine": true,
+      "effects": {
+        "candidates": false,
+        "members": true,
+        "pull": false,
+        "activity": true,
+        "notify": false
+      }
+    },
+    {
+      "kind": "MEMBER_REMOVED",
+      "mine": false,
+      "effects": {
+        "candidates": false,
+        "members": true,
+        "pull": false,
+        "activity": true,
+        "notify": false
+      }
+    },
+    {
+      "kind": "MEMBER_REMOVED",
+      "mine": true,
+      "effects": {
+        "candidates": false,
+        "members": true,
+        "pull": false,
+        "activity": true,
+        "notify": false
+      }
+    },
+    {
+      "kind": "CANDIDATE_PROPOSED",
+      "mine": false,
+      "effects": {
+        "candidates": true,
+        "members": false,
+        "pull": false,
+        "activity": true,
+        "notify": true
+      }
+    },
+    {
+      "kind": "CANDIDATE_PROPOSED",
+      "mine": true,
+      "effects": {
+        "candidates": true,
+        "members": false,
+        "pull": false,
+        "activity": true,
+        "notify": false
+      }
+    },
+    {
+      "kind": "CANDIDATE_SCHEDULED",
+      "mine": false,
+      "effects": {
+        "candidates": true,
+        "members": false,
+        "pull": false,
+        "activity": true,
+        "notify": false
+      }
+    },
+    {
+      "kind": "CANDIDATE_SCHEDULED",
+      "mine": true,
+      "effects": {
+        "candidates": true,
+        "members": false,
+        "pull": false,
+        "activity": true,
+        "notify": false
+      }
+    },
+    {
+      "kind": "CANDIDATE_REJECTED",
+      "mine": false,
+      "effects": {
+        "candidates": true,
+        "members": false,
+        "pull": false,
+        "activity": true,
+        "notify": false
+      }
+    },
+    {
+      "kind": "CANDIDATE_REJECTED",
+      "mine": true,
+      "effects": {
+        "candidates": true,
+        "members": false,
+        "pull": false,
+        "activity": true,
+        "notify": false
+      }
+    },
+    {
+      "kind": "REACTION",
+      "mine": false,
+      "effects": {
+        "candidates": true,
+        "members": false,
+        "pull": false,
+        "activity": true,
+        "notify": false
+      }
+    },
+    {
+      "kind": "REACTION",
+      "mine": true,
+      "effects": {
+        "candidates": true,
+        "members": false,
+        "pull": false,
+        "activity": true,
+        "notify": false
+      }
+    },
+    {
+      "kind": "COMMENT_ADDED",
+      "mine": false,
+      "effects": {
+        "candidates": true,
+        "members": false,
+        "pull": false,
+        "activity": true,
+        "notify": false
+      }
+    },
+    {
+      "kind": "COMMENT_ADDED",
+      "mine": true,
+      "effects": {
+        "candidates": true,
+        "members": false,
+        "pull": false,
+        "activity": true,
+        "notify": false
+      }
+    },
+    {
+      "kind": "SCHEDULE_CHANGED",
+      "mine": false,
+      "effects": {
+        "candidates": false,
+        "members": false,
+        "pull": true,
+        "activity": true,
+        "notify": false
+      }
+    },
+    {
+      "kind": "SCHEDULE_CHANGED",
+      "mine": true,
+      "effects": {
+        "candidates": false,
+        "members": false,
+        "pull": false,
+        "activity": true,
+        "notify": false
+      }
+    },
+    {
+      "kind": "BOOKING_ADDED",
+      "mine": false,
+      "effects": {
+        "candidates": false,
+        "members": false,
+        "pull": true,
+        "activity": true,
+        "notify": false
+      }
+    },
+    {
+      "kind": "BOOKING_ADDED",
+      "mine": true,
+      "effects": {
+        "candidates": false,
+        "members": false,
+        "pull": false,
+        "activity": true,
+        "notify": false
+      }
+    },
+    {
+      "kind": "UNKNOWN_KIND",
+      "mine": false,
+      "effects": {
+        "candidates": false,
+        "members": false,
+        "pull": false,
+        "activity": false,
+        "notify": false
+      }
+    },
+    {
+      "kind": "UNKNOWN_KIND",
+      "mine": true,
+      "effects": {
+        "candidates": false,
+        "members": false,
+        "pull": false,
+        "activity": false,
+        "notify": false
+      }
+    },
+    {
+      "kind": "",
+      "mine": false,
+      "effects": {
+        "candidates": false,
+        "members": false,
+        "pull": false,
+        "activity": false,
+        "notify": false
+      }
+    },
+    {
+      "kind": "",
+      "mine": true,
+      "effects": {
+        "candidates": false,
+        "members": false,
+        "pull": false,
+        "activity": false,
+        "notify": false
+      }
+    }
+  ]
+}
