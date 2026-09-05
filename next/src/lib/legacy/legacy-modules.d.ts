@@ -267,6 +267,12 @@ declare module '@legacy/adaptive.js' {
     startMin: number; endMin: number; minutes: number; anchor: LatLng | null;
     afterId: string | null; beforeId: string | null; beforeFixed: boolean;
   }
+  /** 그룹 제안의 자리 — '그 날 몇 번째에 넣으면 몇 시쯤'. 시각을 박는 것이 아니라 예상이다 */
+  interface ProposalSlot {
+    di: number; insertAt: number; startMin: number; endMin: number;
+    segment: string; startText: string; endText: string;
+    afterName: string | null; travelMin: number; spot: Record<string, unknown>;
+  }
   interface NextActionCandidate {
     type: string; id: string; targetId: string | null; title: string; score: number; reasons: string[];
     estimatedDuration: number; estimatedTravelTime: number; arriveMin: number; endMin: number;
@@ -317,6 +323,16 @@ declare module '@legacy/adaptive.js' {
     planDayFlow(trip: unknown, state: TripState, opts?: Record<string, unknown>):
       { blocks: { kind: string; startMin: number; endMin?: number; title: string; segment: string; afterId?: string | null; itemId?: string; pick?: NextActionCandidate }[]; picks: NextActionCandidate[]; empty: boolean; impact: SuggestionImpact };
     suggestionKey(type: string, what: string, state: TripState): string;
+    /**
+     * 그룹 제안(§63)을 그 날 **어디에** 끼울지 고르는 함수를 만든다. 자리가 없으면 null —
+     * 억지로 맨 뒤에 밀어 넣고 시각을 말하지 않는다. `pending`은 이 제안 안에서 앞서 정해진 자리들이다.
+     */
+    proposalPlacer(trip: unknown, opts?: Record<string, unknown>):
+      (di: number, cand: unknown, pending?: unknown[] | null) => ProposalSlot | null;
+    /** 후보 → 일정 장소. 미리보기와 실제로 들어가는 것이 같은 모양이어야 한다 */
+    candidateSpot(cand: unknown): Record<string, unknown>;
+    /** trip.start + di → YYYY-MM-DD */
+    dayISO(trip: unknown, di: number): string;
     // ── Travel State 계층 (출발 계획 · Trip Pulse · 알림 계획) ──
     SAFETY_BUFFER: Readonly<Record<string, number>>;
     NOTIFICATION_KINDS: Readonly<Record<string, string>>;
@@ -390,10 +406,14 @@ declare module '@legacy/collab.js' {
       score: number; strongSupportCount: number; oppositionCount: number;
       status: string | null; voted: number; members: number;
     };
-    /** 반대 없고 두 명 이상이 말한 후보를 어느 날에 넣을지. 저장하지 않는 **미리보기**다(§79) */
+    /**
+     * 반대 없고 두 명 이상이 말한 후보를 어느 날에 넣을지. 저장하지 않는 **미리보기**다(§79).
+     * `opts.slotOf`(=`adaptive.js`의 `proposalPlacer`)를 주면 그 날 어디에·몇 시쯤까지 말한다(§63).
+     */
     buildGroupProposal(
       candidates: unknown[] | null | undefined, days: unknown[] | null | undefined,
-      memberCount: number | null | undefined, ctx?: GroupCtx | null, max?: number
+      memberCount: number | null | undefined, ctx?: GroupCtx | null, max?: number,
+      opts?: { slotOf?: ((di: number, cand: unknown, placed: unknown[]) => unknown) | null } | null
     ): { headline: string; picks: ProposalPick[] } | null;
   };
   interface GroupCtx {
@@ -406,6 +426,12 @@ declare module '@legacy/collab.js' {
   interface ProposalPick {
     candidate: { id?: number | string; title?: string | null; lat?: number | null; lng?: number | null };
     di: number; km: number | null; reasons: string[];
+    /** 자리를 못 찾았으면 null — 그 날 맨 뒤이고 시각은 말하지 않는다 */
+    slot: {
+      di: number; insertAt: number; startMin: number; endMin: number;
+      segment: string; startText: string; endText: string;
+      afterName: string | null; travelMin: number; spot: Record<string, unknown>;
+    } | null;
   }
   export = api;
 }

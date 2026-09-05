@@ -665,6 +665,106 @@
     blocks.sort((a,b)=> (a.startMin-b.startMin) || (a.title<b.title? -1 : (a.title>b.title? 1 : 0)));
     return {blocks, picks:fill.slots.map((/**@type{any}*/x)=>x.pick), empty:!blocks.some((b)=>b.kind==='SUGGESTED'), impact:fill.impact};
   }
+  // ── 10-b. 그룹 제안의 시간대 배치 (§63) ──────────────────────────
+  //
+  // 함께하기의 그룹 제안(`collab.js`의 `buildGroupProposal`)은 **어느 날**까지만 정한다.
+  // 그 날 어디에 끼울지는 일정 도메인의 몫이라 여기 있다 — 새 규칙을 만들지 않고 이미 있는 것을 쓴다:
+  // 타임라인은 `lib.computeTimeline`, 빈 시간은 `findFreeWindows`, 운영시간은 `lib.isOpenAt`,
+  // 고정 약속의 무게는 `commitmentOf`가 이미 정한 대로다.
+  //
+  // ⚠️ 시각을 **박지 않는다** — 돌려주는 것은 "몇 번째 자리에 넣으면 몇 시쯤"이라는 예상이고, 넣은 뒤의
+  //    실제 시각은 언제나 타임라인이 다시 계산한다. `spot.at`을 쓰면 사용자가 정하지도 않은 약속이 생긴다.
+  // ⚠️ 들어갈 자리가 없으면 **null**이다. 억지로 맨 뒤에 밀어 넣고 시간을 말하지 않는다 —
+  //    그때 제안은 예전처럼 '어느 날'까지만 말한다.
+
+  /** @typedef {{di:number,insertAt:number,startMin:number,endMin:number,segment:string,startText:string,endText:string,afterName:(string|null),travelMin:number,spot:any}} ProposalSlot */
+
+  /** `trip.start` + di → YYYY-MM-DD. 운영시간을 보려면 요일이 필요하다. @param {any} trip @param {number} di @returns {string} */
+  function dayISO(trip, di){
+    const start=String((trip&&trip.start)||'');
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(start) || !(di>=0)) return '';
+    const ms=Date.parse(start+'T00:00:00Z');
+    if(!isFinite(ms)) return '';
+    return new Date(ms+Math.round(di)*86400000).toISOString().slice(0,10);
+  }
+
+  /**
+   * 후보('가고 싶은 곳') → 일정 장소. **수락했을 때 실제로 들어가는 것과 같은 모양이어야** 한다 —
+   * 미리보기와 결과가 다르면 "15:20쯤"이 거짓말이 된다. 그래서 넣는 쪽도 이 결과를 그대로 쓴다.
+   * @param {any} cand @returns {any}
+   */
+  function candidateSpot(cand){
+    const c=cand||{};
+    /** @type {any} */
+    const spot={name:String(c.title||c.name||'').trim()||'가고 싶은 곳', city:'기타', desc:String(c.note||''),
+      lat:hasCoord(c)? +c.lat : null, lng:hasCoord(c)? +c.lng : null, opt:false, stay:false};
+    if(Array.isArray(c.hours) && c.hours.length) spot.hours=c.hours;
+    return spot;
+  }
+
+  /**
+   * 제안 하나를 그 날 어디에 끼울지 고르는 함수를 만든다. 같은 여행·같은 호출 순서면 같은 답이다.
+   *
+   * 돌려주는 함수 `(di, cand, pending) => ProposalSlot|null`:
+   * - `pending`은 **이 제안 안에서 이미 자리를 잡은 것들**이다. 두 곳을 같은 틈에 밀어 넣지 않으려면
+   *   앞의 결정이 보여야 한다 — 순서대로 다시 끼워 놓고 남은 틈을 본다.
+   * - 고른 자리는 다음 약속을 밀지 않는 자리다(빈 시간 안에 이동+체류가 다 들어가고, 뒤가 고정이면 여유까지).
+   * - 운영시간을 아는 곳은 도착과 나올 때 모두 열려 있어야 한다.
+   * - 후보가 여럿이면 **이동이 가장 짧은 자리**, 같으면 **이른 자리**.
+   *
+   * @param {any} trip
+   * @param {{legMin?:any, legMinFor?:((day:any,di:number)=>any), cfg?:any, startAnchor?:any}=} opts
+   *   `legMinFor`는 일자마다 이동수단이 다를 때 쓴다(웹의 `adaptLegMin`) — 없으면 직선거리 환산이다.
+   * @returns {(di:number, cand:any, pending?:ProposalSlot[]|null) => (ProposalSlot|null)}
+   */
+  function proposalPlacer(trip, opts){
+    const o=opts||{}, c=cfgOf(o);
+    return function place(di, cand, pending){
+      const days=(trip&&trip.days)||[];
+      if(!(di>=0 && di<days.length)) return null;
+      const base=days[di]||{};
+      // 이동시간과 출발 기준점은 앱이 쓰는 것과 같아야 한다 — 여기서만 다르게 재면 "10:39쯤"이 화면과 어긋난다.
+      /** @type {any} */
+      const dayOpts=(typeof o.legMinFor==='function')? {cfg:c, legMin:o.legMinFor(base, di)} : o;
+      const anchor=(o.startAnchor!=null)? o.startAnchor : LIB.dayStartAnchor(days, di);
+      const legMin=(/**@type{any}*/a,/**@type{any}*/b)=>travelMinutes(a,b,dayOpts);
+      const spot=candidateSpot(cand);
+      const spots=((base&&base.spots)||[]).slice();
+      // 앞의 결정을 순서대로 다시 끼운다 — 각 insertAt은 그때의 배열을 가리키므로 그대로 재생하면 같은 모양이 된다.
+      (Array.isArray(pending)? pending : []).forEach((/**@type{any}*/p)=>{
+        if(p && p.di===di && p.spot) spots.splice(Math.max(0, Math.min(p.insertAt, spots.length)), 0, p.spot);
+      });
+      const day={startAt:base.startAt, spots};
+      /** @type {any} */
+      const tripView={id:(trip&&trip.id)||'', name:(trip&&trip.name)||'', start:(trip&&trip.start)||'',
+        bookings:(trip&&trip.bookings)||[], days:days.slice()};
+      tripView.days[di]=day;
+      const timeline=LIB.computeTimeline(day, {legMin, startAnchor:anchor});
+      const state=buildTripState(tripView, {dayIndex:di, live:false, timeline, cfg:c, legMin, startAnchor:anchor});
+      const stay=c.defaultStayMin, weekday=weekdayOf(dayISO(trip, di));
+      /** @type {ProposalSlot|null} */
+      let best=null;
+      findFreeWindows(state, {cfg:c, minMinutes:30}).forEach((/**@type{FreeWindow}*/win)=>{
+        const travel=(win.anchor && hasCoord(spot))? travelMinutes(win.anchor, spot, dayOpts) : 0;
+        const arrive=win.startMin+travel, finish=arrive+stay;
+        const guard=win.beforeFixed? c.bufferMin : 0;
+        if(finish+guard>win.endMin) return;                                   // 이 틈에는 이동+체류가 안 들어간다
+        if(weekday>=0 && spot.hours && spot.hours.length){
+          if(LIB.isOpenAt(spot.hours, weekday, arrive)===false) return;       // 도착할 때 닫혀 있다
+          if(LIB.isOpenAt(spot.hours, weekday, Math.max(arrive, finish-1))===false) return;   // 머무는 중에 문을 닫는다
+        }
+        if(best && !(travel<best.travelMin || (travel===best.travelMin && arrive<best.startMin))) return;
+        const after=win.afterId? state.items.filter((/**@type{TripItem}*/it)=>it.id===win.afterId)[0] : null;
+        const before=win.beforeId? state.items.filter((/**@type{TripItem}*/it)=>it.id===win.beforeId)[0] : null;
+        best={di, insertAt:(before? before.si : spots.length),
+          startMin:Math.round(arrive), endMin:Math.round(finish), segment:segmentLabel(arrive),
+          startText:LIB.hm(arrive), endText:LIB.hm(finish),
+          afterName:(after && after.name)? after.name : null, travelMin:travel, spot};
+      });
+      return best;
+    };
+  }
+
   // ── 11. 출발 계획 · Trip Pulse · 알림 계획 ──────────────────────
   //
   // 여기부터는 "앱을 열지 않아도 다음을 이어준다"를 위한 계산이다. 판단은 전부 이 파일에 있고
@@ -897,7 +997,7 @@
     if(state.nextFixed) candidates.push(state.nextFixed.startMin);
     return Math.round(Math.min.apply(null, candidates));
   }
-  const API={ADAPT_CFG, MEAL_WINDOWS, DAY_SEGMENTS, SAFETY_BUFFER, NOTIFICATION_KINDS, safetyBufferFor, departurePlan, tripPulse, stateVersion, notificationPlan, pendingNotifications, suggestionExpiryMin, parseIntent, departureAdvice, fillGaps, planDayFlow, segmentLabel, currentDayIndex, weekdayOf, commitmentOf, priorityOf, statusOf, planningModeHint,
+  const API={ADAPT_CFG, MEAL_WINDOWS, DAY_SEGMENTS, SAFETY_BUFFER, NOTIFICATION_KINDS, safetyBufferFor, departurePlan, tripPulse, stateVersion, notificationPlan, pendingNotifications, suggestionExpiryMin, parseIntent, departureAdvice, fillGaps, planDayFlow, segmentLabel, proposalPlacer, candidateSpot, dayISO, currentDayIndex, weekdayOf, commitmentOf, priorityOf, statusOf, planningModeHint,
     buildTripState, findFreeWindows, mealOverlap, buildCandidates, rankNextActions, simulate, generateReplan,
     calcSuggestionImpact, suggestionKey, buildSuggestions, feedbackEntry, travelMinutes};
   if(typeof module!=='undefined' && module.exports) module.exports=API;   // Node (테스트)

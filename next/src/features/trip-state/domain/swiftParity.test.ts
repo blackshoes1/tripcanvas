@@ -102,7 +102,7 @@ describe('iOS Contract.swift가 실제 응답을 전부 담는다', () => {
         { id: 1, title: '카사 바트요', status: 'PROPOSED', lat: 40.41, lng: -3.70, must_count: 2, ok_count: 0, pass_count: 0, reactions },
         { id: 2, title: '공원 산책', status: 'PROPOSED', must_count: 2, ok_count: 0, pass_count: 0, reactions }
       ],
-      days: trip.days ?? [],
+      trip,
       memberCount: 2,
       preferences: [{ mine: true, label: '나', prefs: { pace: 'RELAXED', walking: 'LOW' } }]
     });
@@ -115,6 +115,11 @@ describe('iOS Contract.swift가 실제 응답을 전부 담는다', () => {
     // 좌표를 모르는 후보는 거리도 null이다 — 0으로 채우지 않는다
     const noCoord = proposal!.picks.find((p) => p.title === '공원 산책');
     expect(noCoord?.distanceKm).toBeNull();
+
+    // 자리(§63)도 계약에 있다 — 이름이 Swift와 어긋나면 앱이 시간을 못 그린다
+    const placed = proposal!.picks.find((p) => p.slot);
+    expect(placed, '일정에 빈 시간이 있으면 자리가 나와야 한다').toBeTruthy();
+    expectCovered('GroupProposalSlot', placed!.slot as unknown as Record<string, unknown>);
 
     // ⚠️ 점수는 내부값이다(§21·§22) — 앱에 내려가는 JSON 어디에도 없다
     expect(JSON.stringify(proposal)).not.toContain('score');

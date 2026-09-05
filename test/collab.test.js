@@ -635,3 +635,44 @@ test('합류 안내 — 장소를 모르면 아는 척하지 않는다', () => {
   assert.equal(C.reunionText({name:'카탈루냐 광장'}, '17:30'), '17:30 카탈루냐 광장에서 만나요');
   assert.equal(C.reunionText({name:'카탈루냐 광장'}), '카탈루냐 광장에서 만나요');
 });
+
+test('buildGroupProposal(§63): 자리를 주면 시간대까지 말하고, 못 찾으면 예전처럼 어느 날까지만 말한다', () => {
+  const days = [{ spots: [{ name: '대성당', lat: 41.384, lng: 2.176 }] }, { spots: [] }];
+  const cands = [
+    { id: 1, title: '카사 바트요', status: 'PROPOSED', lat: 41.392, lng: 2.165, must_count: 3, ok_count: 0, pass_count: 0, created_at: '2026-01-01' },
+    { id: 2, title: '구엘 공원', status: 'PROPOSED', lat: 41.414, lng: 2.153, must_count: 2, ok_count: 1, pass_count: 0, created_at: '2026-01-02' }
+  ];
+  // 배치는 이 모듈의 일이 아니다(§63) — 주입만 받는다. 여기서는 진짜 배치기 대신 최소한의 대역을 쓴다.
+  const seen = [];
+  const slotOf = (di, cand, placed) => {
+    seen.push([di, cand.id, placed.length]);
+    return { di, insertAt: placed.length, startMin: 14 * 60 + placed.length * 60,
+      endMin: 15 * 60 + placed.length * 60, segment: '오후',
+      startText: placed.length ? '15:00' : '14:00', endText: '16:00',
+      afterName: placed.length ? '카사 바트요' : '대성당', travelMin: 12, spot: { name: cand.title } };
+  };
+  const p = C.buildGroupProposal(cands, days, 4, null, 3, { slotOf });
+
+  assert.deepEqual(seen, [[0, 1, 0], [0, 2, 1]], '앞의 결정을 함께 넘긴다 — 두 곳이 같은 틈을 차지하지 않게');
+  assert.match(p.picks[0].reasons[1], /^Day 1 오후 14:00쯤 · 대성당 다음 \(이동 약 12분\)$/);
+  assert.match(p.picks[1].reasons[1], /^Day 1 오후 15:00쯤 · 카사 바트요 다음/);
+  for (const pick of p.picks) {
+    assert.doesNotMatch(pick.reasons.join(' '), /마지막 장소/, '자리를 알면 거리 문장은 빼서 두 문장이 다른 곳을 가리키지 않게 한다');
+    assert.doesNotMatch(pick.reasons.join(' '), /점수|score/);
+  }
+  assert.equal(p.picks[0].slot.insertAt, 0);
+  assert.equal(p.picks[1].slot.insertAt, 1);
+  assert.match(p.headline, /시간까지 무리 없이 들어가요/);
+
+  // 자리를 못 찾으면 시각을 지어내지 않는다 — 문장도 결과도 주입 전과 같다
+  const none = C.buildGroupProposal(cands, days, 4, null, 3, { slotOf: () => null });
+  assert.deepEqual(none, C.buildGroupProposal(cands, days, 4, null, 3));
+  assert.equal(none.picks[0].slot, null);
+  assert.match(none.picks[0].reasons[1], /Day 1 마지막 장소\(대성당\)에서 약 \d\.\d km/);
+  assert.doesNotMatch(none.headline, /시간까지/);
+
+  // 하나만 자리를 찾으면 머리 문장은 시간을 약속하지 않는다
+  const half = C.buildGroupProposal(cands, days, 4, null, 3, { slotOf: (di, cand, placed) => (cand.id === 1 ? slotOf(di, cand, placed) : null) });
+  assert.doesNotMatch(half.headline, /시간까지/);
+  assert.ok(half.picks[0].slot && half.picks[1].slot === null);
+});

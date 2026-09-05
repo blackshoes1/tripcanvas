@@ -14,11 +14,13 @@ export interface CollabRouteDeps {
   /** 레지스트리에 따라 새 DB(CollabService) 또는 Supabase RPC 어댑터. ctx가 null이면 로그인 전(미리보기) */
   apiFor(ctx: RequestContext | null, token: string): Promise<CollabApi>;
   /**
-   * 그룹 제안이 "어느 날에 넣을지"를 정하려면 일자와 그 날 마지막 장소가 필요하다.
+   * 그룹 제안이 "어느 날 어느 자리에 넣을지"를 정하려면 여행 문서가 필요하다 —
+   * 일자와 그 날 마지막 장소뿐 아니라 시작일(요일→운영시간)과 예약까지 본다(§63).
    * 후보는 CollabApi에 있고 일정은 여행 문서에 있어서, 문서를 읽는 길만 따로 받는다.
    * 없거나 실패하면 제안을 만들지 않는다(null) — 틀린 날을 추측하지 않는다.
    */
-  tripDaysFor?(ctx: RequestContext, token: string, tripId: string): Promise<unknown[] | null>;
+  tripDocFor?(ctx: RequestContext, token: string, tripId: string):
+    Promise<{ days?: unknown[]; start?: string; bookings?: unknown[] } | null>;
 }
 
 const MemberBody = z.object({ action: z.enum(['SET_ROLE', 'REMOVE', 'RENAME']), value: z.string().max(200).nullable().optional() });
@@ -136,8 +138,9 @@ export function createCollabRoutes(deps: CollabRouteDeps) {
      * 제안할 것이 없으면 `proposal: null`로 정직하게 답한다.
      */
     groupProposal: (request: Request, tripId: string) => withApi(request, async (ctx, api) => {
-      const days = deps.tripDaysFor ? await deps.tripDaysFor(ctx, bearerToken(request) ?? '', tripId).catch(() => null) : null;
-      if (!days || !days.length) return ok({ proposal: null });
+      // 문서 전체가 필요하다 — days만으로는 요일(운영시간)도 예약도 몰라 '그 날 어디에'를 말할 수 없다(§63).
+      const trip = deps.tripDocFor ? await deps.tripDocFor(ctx, bearerToken(request) ?? '', tripId).catch(() => null) : null;
+      if (!trip || !Array.isArray(trip.days) || !trip.days.length) return ok({ proposal: null });
       const [candidates, members, preferences] = await Promise.all([
         api.listCandidates(ctx, tripId),
         api.listMembers(ctx, tripId),
@@ -146,7 +149,7 @@ export function createCollabRoutes(deps: CollabRouteDeps) {
       ]);
       return ok({
         proposal: buildGroupProposalView({
-          candidates: candidates as unknown[], days,
+          candidates: candidates as unknown[], trip,
           memberCount: (members as unknown[]).length, preferences: preferences as unknown[]
         })
       });

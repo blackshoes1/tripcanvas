@@ -113,10 +113,10 @@ export const collabRoutes = createCollabRoutes({
   verifier,
   apiFor: collabApiFor,
   // 그룹 제안은 후보(CollabApi)와 일정(TripService)을 함께 봐야 한다 — 문서를 읽는 길만 여기서 잇는다.
-  tripDaysFor: async (ctx, token, tripId) => {
+  tripDocFor: async (ctx, token, tripId) => {
     const view = await tripServiceFor(ctx, token).then((s) => s.get(ctx, tripId));
-    const data = view.record.data as { days?: unknown } | null;
-    return Array.isArray(data?.days) ? data.days : null;
+    const data = view.record.data as { days?: unknown[]; start?: string; bookings?: unknown[] } | null;
+    return Array.isArray(data?.days) ? data : null;
   }
 });
 

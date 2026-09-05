@@ -258,6 +258,8 @@ test('갈린 후보: 선택지에서 "이번 일정에서는 제외"를 고르�
   await expect(page.locator('.proposalCard')).toBeVisible();
   await expect(page.locator('.proposalCard')).toContainText('이 1곳은 다들 좋아해요');
   await expect(page.locator('.proposalCard')).toContainText('구엘 공원');
+  // 어느 날에 더해 그 날 언제인지까지(§63) — 자리를 찾았으면 시간대와 시각이 함께 나온다
+  await expect(page.locator('.proposalCard .pt')).toHaveText(/Day \d+ (오전|점심|오후|저녁) \d\d:\d\d · 구엘 공원/);
   await expect(page.locator('.candConflict')).toContainText('의견이 갈려 있어요');
   await page.locator('.candOption[data-option="SKIP"] button').click();
   await expect(page.locator('#toast')).toContainText('이번 일정에서는 뺐어요');

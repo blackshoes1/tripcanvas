@@ -136,7 +136,10 @@ function proposalSetup(over: Partial<{ candidates: unknown[]; days: unknown[] | 
   };
   const routes = createCollabRoutes({
     verifier, apiFor: async () => api,
-    tripDaysFor: async () => (over.days === undefined ? DAYS : over.days)
+    tripDocFor: async () => {
+      const days = over.days === undefined ? DAYS : over.days;
+      return days ? { days, start: '2026-09-01', bookings: [] } : null;
+    }
   });
   return { calls, routes };
 }
@@ -182,7 +185,7 @@ describe('그룹 제안', () => {
   it('여행 문서를 못 읽으면 제안하지 않는다', async () => {
     const routes = createCollabRoutes({
       verifier, apiFor: async () => fakeApi([]),
-      tripDaysFor: async () => { throw new Error('upstream'); }
+      tripDocFor: async () => { throw new Error('upstream'); }
     });
     const body = await (await routes.groupProposal(req('GET', '/x', 'tok-a'), 'trip1')).json();
     expect(body.proposal).toBeNull();

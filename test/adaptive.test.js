@@ -630,3 +630,87 @@ test('suggestionExpiryMin: 위치·시각 기반 제안은 다음 고정 일정 
   const near = stateOf(dinnerTrip(), { todayISO: TODAY, nowMin: 18 * 60 + 30, live: true, startAnchor: P(40.40) });
   assert.equal(A.suggestionExpiryMin(near), 19 * 60, '저녁 예약 시작이 더 이르면 그때 만료');
 });
+
+// ── 그룹 제안의 시간대 배치 (§63) ─────────────────────────────────────────
+// 협업의 제안은 '어느 날'까지고, '그 날 어디에'는 여기가 정한다. 자리를 못 찾으면 말하지 않는다.
+
+/** 오전에 광장, 저녁 19시에 예약 — 그 사이가 통째로 빈 하루 */
+function placeTrip() {
+  return {
+    id: 't-place', name: '배치', start: '2026-10-05', bookings: [],
+    days: [
+      { startAt: '09:00', spots: [
+        { name: '광장', lat: 40.40, lng: -3.70, stayMin: 60 },
+        { name: '저녁 예약', lat: 40.41, lng: -3.70, bookAt: '19:00', stayMin: 90 }
+      ] },
+      { startAt: '09:00', spots: [] }
+    ]
+  };
+}
+
+test('proposalPlacer(§63): 빈 시간에 끼우고 몇 시쯤인지 말한다 — 다음 약속 앞자리다', () => {
+  const trip = placeTrip();
+  const place = A.proposalPlacer(trip, { legMin: LEG });
+  const slot = place(0, { title: '미술관', lat: 40.42, lng: -3.70 });
+  assert.ok(slot, '빈 시간이 있으면 자리가 나온다');
+  assert.equal(slot.di, 0);
+  assert.equal(slot.insertAt, 1, '저녁 예약 앞 — 맨 뒤가 아니다');
+  assert.equal(slot.afterName, '광장');
+  assert.equal(slot.startText, TC.hm(slot.startMin));
+  assert.equal(slot.endMin - slot.startMin, A.ADAPT_CFG.defaultStayMin);
+  assert.equal(slot.segment, A.segmentLabel(slot.startMin));
+  assert.ok(slot.travelMin > 0, '광장에서의 이동시간이 반영된다');
+  assert.equal(slot.spot.name, '미술관');
+  assert.equal(slot.spot.at, undefined, '시각을 박지 않는다 — 예상이지 약속이 아니다');
+  // 같은 입력이면 같은 답
+  assert.deepEqual(A.proposalPlacer(trip, { legMin: LEG })(0, { title: '미술관', lat: 40.42, lng: -3.70 }), slot);
+});
+
+test('proposalPlacer(§63): 앞에서 정한 자리를 보고 다음 자리를 고른다 — 두 곳을 같은 틈에 넣지 않는다', () => {
+  const trip = placeTrip();
+  const place = A.proposalPlacer(trip, { legMin: LEG });
+  const first = place(0, { title: '미술관', lat: 40.42, lng: -3.70 });
+  const second = place(0, { title: '서점', lat: 40.43, lng: -3.70 }, [first]);
+  assert.ok(second);
+  assert.equal(second.afterName, '미술관', '앞의 결정 다음에 붙는다');
+  assert.equal(second.insertAt, first.insertAt + 1);
+  assert.ok(second.startMin >= first.endMin, '앞의 것이 끝난 뒤다');
+  // pending을 안 주면 앞의 결정을 모른다 — 둘 다 같은 자리를 고른다(그래서 호출측이 넘겨야 한다)
+  assert.equal(place(0, { title: '서점', lat: 40.43, lng: -3.70 }).insertAt, first.insertAt);
+});
+
+test('proposalPlacer(§63): 들어갈 자리가 없으면 null — 억지로 밀어 넣고 시간을 말하지 않는다', () => {
+  const trip = placeTrip();
+  // 하루를 예약으로 꽉 채운다: 09:00 시작, 21:00까지 빈 틈이 없다
+  trip.days[0] = { startAt: '09:00', spots: [{ name: '종일 투어', lat: 40.40, lng: -3.70, stayMin: 13 * 60 }] };
+  assert.equal(A.proposalPlacer(trip, { legMin: LEG })(0, { title: '미술관', lat: 40.42, lng: -3.70 }), null);
+  // 없는 일자도 null이다 — 추측하지 않는다
+  assert.equal(A.proposalPlacer(trip, { legMin: LEG })(9, { title: '미술관' }), null);
+});
+
+test('proposalPlacer(§63): 도착 시점에 닫혀 있으면 그 자리를 고르지 않는다', () => {
+  const trip = placeTrip();
+  const weekday = A.weekdayOf(A.dayISO(trip, 0));
+  const open = [{ d: weekday, o: 9 * 60, c: 23 * 60 }];
+  const shut = [{ d: weekday, o: 9 * 60, c: 9 * 60 + 30 }];   // 제안이 들어갈 시간에는 이미 닫혔다
+  assert.ok(A.proposalPlacer(trip, { legMin: LEG })(0, { title: '미술관', lat: 40.42, lng: -3.70, hours: open }));
+  assert.equal(A.proposalPlacer(trip, { legMin: LEG })(0, { title: '미술관', lat: 40.42, lng: -3.70, hours: shut }), null);
+});
+
+test('proposalPlacer(§63): 빈 날은 첫 일정으로, 앞날 숙소에서의 이동을 센다', () => {
+  const trip = placeTrip();
+  trip.days[0].spots[1] = { name: '숙소', lat: 40.41, lng: -3.70, stay: true, stayMin: 0 };
+  const slot = A.proposalPlacer(trip, { legMin: LEG })(1, { title: '공원', lat: 40.44, lng: -3.70 });
+  assert.ok(slot);
+  assert.equal(slot.insertAt, 0);
+  assert.equal(slot.afterName, null, '그 날 첫 일정이라 앞이 없다');
+  assert.ok(slot.travelMin > 0, '앞날 숙소에서 오는 이동시간');
+});
+
+test('proposalPlacer(§63): 좌표를 모르면 이동은 0이지만 자리는 잡는다 — 아는 만큼만 말한다', () => {
+  const slot = A.proposalPlacer(placeTrip(), { legMin: LEG })(0, { title: '이름만 아는 곳' });
+  assert.ok(slot);
+  assert.equal(slot.travelMin, 0);
+  assert.equal(slot.spot.lat, null);
+  assert.equal(slot.spot.lng, null);
+});

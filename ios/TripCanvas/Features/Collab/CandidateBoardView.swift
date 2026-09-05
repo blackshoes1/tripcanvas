@@ -510,7 +510,8 @@ struct GroupProposalCard: View {
             VStack(alignment: .leading, spacing: Space.s) {
                 ForEach(plan.picks) { pick in
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("\(pick.dayLabel) · \(pick.title)").font(.subheadline.weight(.medium))
+                        // 자리를 알면 시간대까지, 모르면 날짜까지만 — 없는 시각을 지어내지 않는다(§63).
+                        Text("\(pick.whenLabel) · \(pick.title)").font(.subheadline.weight(.medium))
                         // 이유는 서버가 준 문장 그대로다 — 여기서 다시 쓰지 않는다.
                         ForEach(pick.reasons, id: \.self) { reason in
                             Text(reason).font(.caption).foregroundStyle(.secondary)

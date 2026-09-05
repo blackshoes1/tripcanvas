@@ -705,14 +705,20 @@
   /**
    * §28·§29 그룹 제안 — **미리보기**다. 반대 없고 두 명 이상이 말한 후보를 골라(합의 점수 순, 최대 max개)
    * 각각 어느 날에 넣을지 정한다: 좌표가 있으면 그 날 마지막 장소에서 가장 가까운 날, 없으면 장소가 가장 적은 날.
-   * 넣는 위치는 그 날 **맨 뒤**다(최적 위치를 추측하지 않는다 — 재배치는 기존 드래그·재구성이 한다).
    * 같은 입력이면 같은 답이다. 점수는 정렬에만 쓰고 문장에는 없다.
+   *
+   * **그 날 어디에**는 이 모듈이 정하지 않는다(§63) — 타임라인·운영시간·예약을 아는 것은 일정 도메인이다.
+   * `opts.slotOf`를 주면(웹·서버 모두 `adaptive.js`의 `proposalPlacer`를 준다) 시간대까지 말하고,
+   * 없거나 자리를 못 찾으면 예전처럼 '어느 날'까지만 말하고 그 날 **맨 뒤**에 붙는다.
+   * 자리를 지어내지 않는다 — 모르면 말하지 않는다.
+   *
    * @param {any[]|null} candidates
    * @param {Array<{spots?:Array<{name?:string,lat?:number|null,lng?:number|null}|null>}|null>|null} days
    * @param {number} [memberCount] @param {{walking?:string|null}|null} [ctx] @param {number} [max]
-   * @returns {{headline:string,picks:Array<{candidate:any,di:number,km:number|null,reasons:string[]}>}|null}
+   * @param {{slotOf?:((di:number,cand:any,placed:any[])=>any)|null}|null} [opts] 앞의 결정(`placed`)을 함께 받는다 — 두 곳이 같은 틈을 차지하지 않게
+   * @returns {{headline:string,picks:Array<{candidate:any,di:number,km:number|null,reasons:string[],slot:any}>}|null}
    */
-  function buildGroupProposal(candidates, days, memberCount, ctx, max){
+  function buildGroupProposal(candidates, days, memberCount, ctx, max, opts){
     const limit=(Number(max)>0)? Number(max) : 3;
     const dayList=(Array.isArray(days)?days:[]).map((d,i)=>({di:i, spots:((d&&Array.isArray(d.spots))?d.spots:[]).filter(Boolean)}));
     if(!dayList.length) return null;
@@ -720,7 +726,9 @@
       .map(c=>({c, k:consensusOf(c, memberCount)}))
       .filter(x=>x.k.voted>=2 && (x.k.status==='STRONG_MATCH'||x.k.status==='GOOD_MATCH'))
       .sort((a,b)=>(b.k.score-a.k.score)||(b.k.strongSupportCount-a.k.strongSupportCount)||candKey(b.c).localeCompare(candKey(a.c)));
-    /** @type {Array<{candidate:any,di:number,km:number|null,reasons:string[]}>} */ const picks=[];
+    const slotOf=(opts&&typeof opts.slotOf==='function')? opts.slotOf : null;
+    /** @type {any[]} */ const placed=[];
+    /** @type {Array<{candidate:any,di:number,km:number|null,reasons:string[],slot:any}>} */ const picks=[];
     for(const {c,k} of eligible.slice(0,limit)){
       /** @type {{di:number,km:number|null,last:any,score:number,count:number}|null} */ let best=null;
       for(const d of dayList){
@@ -730,17 +738,25 @@
         if(!best || score<best.score) best={di:d.di, km, last, score, count:d.spots.length};
       }
       if(!best) continue;
+      // 시간대(§63) — 자리를 찾았을 때만 말한다. 못 찾았으면 그 날 맨 뒤이고, 시각은 말하지 않는다.
+      const slot=slotOf? (slotOf(best.di, c, placed)||null) : null;
+      if(slot) placed.push(slot);
       /** @type {string[]} */ const reasons=[];
       reasons.push(k.voted>=k.members ? `${k.members}명 모두 관심 있어요 · 반대 없음` : `${k.strongSupportCount}명이 꼭 가고 싶어 해요 · 반대 없음`);
-      if(best.km!=null) reasons.push(`Day ${best.di+1} 마지막 장소(${String(best.last.name||'장소')})에서 약 ${best.km<10? best.km.toFixed(1) : String(Math.round(best.km))} km`);
+      // 자리가 정해졌으면 자리를 말한다. '마지막 장소에서 몇 km'와 함께 쓰면 두 문장이 서로 다른 곳을 가리켜 헷갈린다.
+      if(slot) reasons.push(`Day ${best.di+1} ${slot.segment} ${slot.startText}쯤 · ${slot.afterName? slot.afterName+' 다음' : '그 날 첫 일정으로'}`
+        + (slot.travelMin>0 ? ` (이동 약 ${slot.travelMin}분)` : ''));
+      else if(best.km!=null) reasons.push(`Day ${best.di+1} 마지막 장소(${String(best.last.name||'장소')})에서 약 ${best.km<10? best.km.toFixed(1) : String(Math.round(best.km))} km`);
       else reasons.push(`Day ${best.di+1}이 가장 여유로워요 (장소 ${best.count}개)`);
       if(ctx&&ctx.walking==='LOW'&&best.km!=null&&best.km<=2) reasons.push('걷기 부담이 적은 거리예요');
-      picks.push({candidate:c, di:best.di, km:best.km, reasons});
+      picks.push({candidate:c, di:best.di, km:best.km, reasons, slot});
     }
     if(!picks.length) return null;
     const dayset=[...new Set(picks.map(p=>p.di))], allKm=picks.every(p=>p.km!=null);
+    const timed=picks.every(p=>p.slot);
     const where = dayset.length===1 ? `Day ${dayset[0]+1}에 넣으면` : '각각 가장 맞는 날에 넣으면';
-    const headline=`이 ${picks.length}곳은 다들 좋아해요 — ${where} ${allKm? '동선이 자연스러워요' : '무리가 없어요'}`;
+    const how = timed ? '시간까지 무리 없이 들어가요' : (allKm? '동선이 자연스러워요' : '무리가 없어요');
+    const headline=`이 ${picks.length}곳은 다들 좋아해요 — ${where} ${how}`;
     return {headline, picks};
   }
 

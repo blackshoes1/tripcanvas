@@ -2291,12 +2291,14 @@ test('통합: 갈린 후보 — 자동으로 빼지 않고 선택지를 보여�
   w.close();
 });
 
-test('통합: 그룹 제안 — 반대 없는 후보를 어느 날에 넣을지 미리보기로, 수락하면 그 날 맨 뒤에 붙고 후보에 표시된다(§28·§29·§60)', { skip: noJsdom }, async () => {
+test('통합: 그룹 제안 — 어느 날 어느 시간대인지까지 보이고, 수락하면 그 자리에 끼워지고 후보에 표시된다(§28·§29·§60·§63)', { skip: noJsdom }, async () => {
   const w = boot();
   const rpc = [];
   const tick = () => new Promise(r => setTimeout(r, 0));
+  // Day 1 끝에 저녁 예약을 둔다 — 제안이 '맨 뒤'가 아니라 예약 **앞** 빈 시간에 들어가야 한다(§63)
   w.eval(`user={id:'u1'}; store.trips=[{id:'t1',name:'스페인',start:'2026-10-25',days:[
-      {title:'',spots:[{name:'광장',lat:41.387,lng:2.170},{name:'대성당',lat:41.384,lng:2.176}]},
+      {title:'',spots:[{name:'광장',lat:41.387,lng:2.170},{name:'대성당',lat:41.384,lng:2.176},
+                       {name:'저녁 예약',lat:41.386,lng:2.173,bookAt:'19:00'}]},
       {title:'',spots:[{name:'해변',lat:41.378,lng:2.192}]}]}]; store.activeId='t1';
     syncMeta={t1:{revision:3,status:'clean'}}; tripRoles={t1:{role:'EDITOR',count:3,owner:false,serverId:''}}; candTripId='t1'; proposalDismissed='';
     candRows=[
@@ -2309,18 +2311,23 @@ test('통합: 그룹 제안 — 반대 없는 후보를 어느 날에 넣을지 
   assert.ok(card, '제안 카드');
   assert.match(card.querySelector('.proposalHead').textContent, /이 2곳은 다들 좋아해요/);
   const picks = [...card.querySelectorAll('.proposalPick .pt')].map(e => e.textContent);
-  assert.deepEqual(picks, ['Day 1 · 카사 바트요', 'Day 2 · 바르셀로네타'], '각각 가장 가까운 날');
-  assert.match(card.querySelector('.proposalPick .pr').textContent, /3명 모두 관심 있어요 · 반대 없음 · Day 1 마지막 장소\(대성당\)에서 약 \d\.\d km/);
+  assert.deepEqual(picks.map(t => t.replace(/\d\d:\d\d/, 'HH:MM')),
+    ['Day 1 오전 HH:MM · 카사 바트요', 'Day 2 오전 HH:MM · 바르셀로네타'], '어느 날에 더해 그 날 언제까지');
+  // 자리가 정해지면 '마지막 장소에서 몇 km' 대신 '어디 다음 몇 시쯤'을 말한다 — 두 문장이 서로 다른 곳을 가리키지 않게
+  assert.match(card.querySelector('.proposalPick .pr').textContent,
+    /3명 모두 관심 있어요 · 반대 없음 · Day 1 오전 \d\d:\d\d쯤 · 대성당 다음/);
   assert.equal(card.textContent.includes('갈린 곳'), false, '갈린 후보는 제안에 넣지 않는다');
   assert.doesNotMatch(card.textContent, /점수/);
-  // 수락 → 그 날 맨 뒤에 붙고 SCHEDULE 표시
+  // 수락 → 미리보기가 고른 그 자리에. 저녁 예약 뒤가 아니라 **앞**이다
   [...card.querySelectorAll('button')].find(b => /일정으로 만들기/.test(b.textContent)).click();
   await tick(); await tick(); await tick(); await tick();
   const names = JSON.parse(w.eval(`JSON.stringify(store.trips[0].days.map(d=>d.spots.map(s=>s.name)))`));
-  assert.deepEqual(names, [['광장', '대성당', '카사 바트요'], ['해변', '바르셀로네타']]);
+  assert.deepEqual(names, [['광장', '대성당', '카사 바트요', '저녁 예약'], ['해변', '바르셀로네타']]);
+  // 시각은 박지 않는다 — 넣은 뒤의 시각은 타임라인이 다시 계산한다(§63)
+  assert.equal(w.eval(`store.trips[0].days[0].spots[2].at||null`), null, '제안이 도착시각을 정해 두지 않는다');
   assert.deepEqual(rpc.filter(r => r[0] === 'manage_trip_candidate').map(r => [r[1].p_candidate_id, r[1].p_action, r[1].p_value]), [[1, 'SCHEDULE', '1'], [2, 'SCHEDULE', '2']]);
   // 넘기기: 같은 제안은 다시 보이지 않고, 후보는 그대로
-  w.eval(`candRows.forEach(c=>{ c.status='PROPOSED'; }); store.trips[0].days[0].spots.pop(); store.trips[0].days[1].spots.pop(); drawCandidates();`);
+  w.eval(`candRows.forEach(c=>{ c.status='PROPOSED'; }); store.trips[0].days[0].spots.splice(2,1); store.trips[0].days[1].spots.pop(); drawCandidates();`);
   [...w.document.querySelectorAll('#candList .proposalCard button')].find(b => b.textContent === '이번엔 넘기기').click();
   assert.equal(w.document.querySelector('#candList .proposalCard'), null);
   assert.equal(w.document.querySelectorAll('#candList .candCard').length, 3);

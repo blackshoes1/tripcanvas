@@ -624,12 +624,12 @@ struct MemoryAssociation: Codable, Hashable, Sendable {
     let reason: String
 }
 
-// MARK: - 그룹 제안 (§28·§29·§35)
+// MARK: - 그룹 제안 (§28·§29·§35·§63)
 
-/// 반대 없이 두 명 이상이 말한 후보를 **어느 날에** 넣을지 정리한 미리보기.
+/// 반대 없이 두 명 이상이 말한 후보를 **어느 날 어느 자리에** 넣을지 정리한 미리보기.
 ///
-/// ⚠️ 판정은 서버가 한다(`collab.js`의 `buildGroupProposal`) — 앱은 **그리기만** 한다.
-/// 같은 규칙을 Swift로 다시 만들면 웹과 앱이 같은 상황에서 서로 다른 답을 말하게 된다.
+/// ⚠️ 판정은 서버가 한다(`collab.js`의 `buildGroupProposal` + `adaptive.js`의 `proposalPlacer`) —
+/// 앱은 **그리기만** 한다. 같은 규칙을 Swift로 다시 만들면 웹과 앱이 서로 다른 답을 말하게 된다.
 /// ⚠️ 합의 점수는 계약에 없다(§21·§22). 화면에 나가는 것은 `reasons` 문장뿐이다.
 struct GroupProposalPick: Codable, Hashable, Sendable, Identifiable {
     let candidateId: Int
@@ -640,8 +640,33 @@ struct GroupProposalPick: Codable, Hashable, Sendable, Identifiable {
     let reasons: [String]
     /// 그 날 마지막 장소에서의 거리. 좌표를 모르면 nil — 추측하지 않는다.
     let distanceKm: Double?
+    /// 그 날 어디에 들어가는지(§63). 들어갈 자리를 못 찾았으면 nil —
+    /// 그때는 그 날 맨 뒤이고 **시각을 말하지 않는다**. 앱이 시간을 지어내지 않게.
+    let slot: GroupProposalSlot?
 
     var id: Int { candidateId }
+
+    /// "Day 2 오후 15:20" — 자리를 모르면 "Day 2"까지만.
+    var whenLabel: String {
+        guard let slot else { return dayLabel }
+        return "\(dayLabel) \(slot.segment) \(slot.startText)"
+    }
+}
+
+/// 제안의 자리 — '그 날 몇 번째에 넣으면 몇 시쯤'. 저장되는 값이 아니다.
+///
+/// ⚠️ `startText`는 **예상**이지 약속이 아니다 — 넣은 뒤의 실제 시각은 타임라인이 다시 계산한다.
+struct GroupProposalSlot: Codable, Hashable, Sendable {
+    /// 그 날 장소 목록에서 끼울 자리(0=맨 앞)
+    let insertAt: Int
+    /// 오전 · 점심 · 오후 · 저녁
+    let segment: String
+    /// HH:MM — 도착 예상 시각
+    let startText: String
+    /// 바로 앞 일정 이름. 그 날 첫 일정이면 nil
+    let afterName: String?
+    /// 앞 일정에서의 이동(분). 좌표를 모르면 0
+    let travelMin: Int
 }
 
 struct GroupProposalImpact: Codable, Hashable, Sendable {

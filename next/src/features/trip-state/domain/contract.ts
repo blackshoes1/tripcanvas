@@ -507,13 +507,15 @@ export interface MutationResponse {
 }
 
 /**
- * 그룹 제안 — 반대 없이 두 명 이상이 말한 후보를 **어느 날에** 넣을지 정리한 미리보기(§28·§29).
+ * 그룹 제안 — 반대 없이 두 명 이상이 말한 후보를 **어느 날 어느 자리에** 넣을지 정리한 미리보기(§28·§29·§63).
  *
  * 판정은 `collab.js`의 `buildGroupProposal` 하나가 한다 — 웹과 iOS가 각자 계산하면 같은 상황에서
  * 서로 다른 답을 말하게 된다(§79). 앱은 이 응답을 **그리기만** 한다.
+ * 시간대 배치는 그 안에서 `adaptive.js`의 `proposalPlacer`가 한다(빈 시간·운영시간·다음 약속).
  *
  * ⚠️ **합의 점수(0~100)는 내부값이라 여기에 싣지 않는다**(§21·§22). 화면에 나가는 것은 `reasons` 문장뿐이다.
  * ⚠️ 이것은 미리보기다 — 서버는 아무것도 저장하지 않는다. 사람이 수락해야 일정이 된다(§79).
+ * ⚠️ `startText`는 **예상**이지 약속이 아니다 — 넣은 뒤의 실제 시각은 타임라인이 다시 계산한다.
  */
 export interface GroupProposalPick {
   candidateId: number;
@@ -525,6 +527,25 @@ export interface GroupProposalPick {
   reasons: string[];
   /** 그 날 마지막 장소에서의 거리. 좌표를 모르면 null(추측하지 않는다) */
   distanceKm: number | null;
+  /**
+   * 그 날 어디에 들어가는지(§63). 들어갈 자리를 못 찾았으면 **null**이다 —
+   * 그때는 그 날 맨 뒤이고 시각을 말하지 않는다. 앱은 null이면 시간 표기를 감춘다.
+   */
+  slot: GroupProposalSlot | null;
+}
+
+/** 제안의 자리 — '그 날 몇 번째에 넣으면 몇 시쯤'. 저장되는 값이 아니다 */
+export interface GroupProposalSlot {
+  /** 그 날 장소 목록에서 끼울 자리(0=맨 앞) */
+  insertAt: number;
+  /** 오전 · 점심 · 오후 · 저녁 */
+  segment: string;
+  /** HH:MM — 도착 **예상** 시각 */
+  startText: string;
+  /** 바로 앞 일정 이름. 그 날 첫 일정이면 null */
+  afterName: string | null;
+  /** 앞 일정에서의 이동(분). 좌표를 모르면 0 */
+  travelMin: number;
 }
 
 /** 수락 말고도 빠져나갈 길이 늘 있다 — 자동 적용은 하지 않는다(§79) */

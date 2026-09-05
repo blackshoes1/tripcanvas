@@ -4163,8 +4163,12 @@ function drawCandidates(){
   // 결정 못 한 것을 맨 위에 — 보드가 할 일은 '어디에 한마디가 필요한지' 가리키는 것이다(§57·§58)
   // 제안(§28·§60)은 미리보기다 — 반대 없는 후보를 어느 날에 넣을지 정리만 하고, 넣는 것은 사람이 누른다
   const pctx=(membersTripId===candTripId&&prefRows.length)?TC_COLLAB.groupContext(prefRows,members):null;
-  const tDays=(store.trips.find(x=>x.id===candTripId)||{}).days||[];
-  const proposal=TC_COLLAB.buildGroupProposal(candRows,tDays,members,pctx);
+  const tTrip=store.trips.find(x=>x.id===candTripId)||null;
+  const tDays=(tTrip&&tTrip.days)||[];
+  // '어느 날'은 collab.js가, '그 날 어디에'(§63)는 adaptive.js가 정한다 — 여기서 규칙을 만들지 않는다.
+  // 이동시간은 앱이 쓰는 것과 같은 함수여야 예상 시각이 타임라인과 어긋나지 않는다.
+  const proposal=TC_COLLAB.buildGroupProposal(candRows,tDays,members,pctx,3,
+    tTrip?{slotOf:TC_ADAPT.proposalPlacer(tTrip,{legMinFor:(day)=>((a,b)=>legMinutes(a,b,dayModeOf(day),null,(day&&day.timeZone)||''))})}:null);
   if(proposal&&proposalKey(proposal)!==proposalDismissed) box.appendChild(proposalCard(proposal,role));
   const groups=[['의견이 필요해요',g.needsOpinion],['다들 좋아해요',g.loved],['아직 끌리는 사람이 없어요',g.resting],['일정에 넣었어요',g.scheduled],['이번엔 뺐어요',g.rejected]];
   for(const [label,rows] of groups){
@@ -4540,17 +4544,27 @@ async function splitCandidate(c){
 }
 
 /** 후보를 그 날 맨 뒤에 장소로 붙인다 — 최적 위치를 추측하지 않는다(재배치는 드래그·재구성이 한다). commit() 안에서 부른다. */
-function appendCandidateSpot(t,di,c){
-  t.days[di].spots.push({
+function appendCandidateSpot(t,di,c){ insertCandidateSpot(t,di,c,null); }
+/**
+ * 후보를 일정에 끼운다. 자리(slot)가 있으면 그 위치에, 없으면 맨 뒤에.
+ * 장소의 모양은 미리보기가 만든 것(`slot.spot`)을 그대로 쓴다 — 두 곳에서 따로 만들면
+ * "15:20쯤"이라고 보여준 뒤에 다른 것이 들어간다.
+ * @param {any} t @param {number} di @param {any} c @param {any} slot
+ */
+function insertCandidateSpot(t,di,c,slot){
+  const spots=t.days[di].spots;
+  const spot=(slot&&slot.spot)?slot.spot:{
     name:c.title, city:'기타', desc:c.note||'',
     lat:c.lat==null?null:+c.lat, lng:c.lng==null?null:+c.lng, opt:false, stay:false
-  });
+  };
+  const at=(slot&&slot.insertAt!=null)?Math.max(0,Math.min(slot.insertAt,spots.length)):spots.length;
+  spots.splice(at,0,spot);
 }
 
 // ── 그룹 제안 카드 (§28·§29·§60) ─────────────────────────────────────────
 // "정리해 보면 …" — 반대 없는 후보를 어느 날에 넣을지와 이유. 미리보기라 수락해야 일정에 들어간다.
 let proposalDismissed='';
-function proposalKey(p){ return p.picks.map(x=>`${x.candidate.id}@${x.di}`).join(','); }
+function proposalKey(p){ return p.picks.map(x=>`${x.candidate.id}@${x.di}${x.slot?'@'+x.slot.startMin:''}`).join(','); }
 /** @param {any} p @param {string} role */
 function proposalCard(p,role){
   const card=document.createElement('div'); card.className='proposalCard';
@@ -4558,7 +4572,8 @@ function proposalCard(p,role){
   const h=document.createElement('div'); h.className='proposalHead'; h.textContent=p.headline; card.appendChild(h);
   p.picks.forEach(x=>{
     const row=document.createElement('div'); row.className='proposalPick';
-    const t=document.createElement('div'); t.className='pt'; t.textContent=`Day ${x.di+1} · ${x.candidate.title||'후보'}`;
+    const t=document.createElement('div'); t.className='pt';
+    t.textContent=`Day ${x.di+1}${x.slot?` ${x.slot.segment} ${x.slot.startText}`:''} · ${x.candidate.title||'후보'}`;
     const r=document.createElement('div'); r.className='pr'; r.textContent=x.reasons.join(' · ');
     row.appendChild(t); row.appendChild(r); card.appendChild(row);
   });
@@ -4573,12 +4588,18 @@ function proposalCard(p,role){
   acts.appendChild(no); card.appendChild(acts);
   return card;
 }
-/** 제안 수락 — 각 후보를 고른 날 맨 뒤에 붙이고(한 번의 commit), 후보에는 어느 날인지 표시한다. */
+/**
+ * 제안 수락 — 각 후보를 고른 자리에 끼우고(한 번의 commit), 후보에는 어느 날인지 표시한다.
+ * 자리는 미리보기가 계산한 그것(§63)을 그대로 쓴다 — 다시 계산하면 카드에 적힌 시각과 달라진다.
+ * 시각은 박지 않는다: 넣은 뒤의 실제 시각은 타임라인이 다시 계산한다.
+ */
 async function acceptProposal(p){
   if(!guardEdit()) return;
   const t=store.trips.find(x=>x.id===candTripId); if(!t) return;
   const picks=p.picks.filter(x=>x.di>=0&&x.di<t.days.length); if(!picks.length) return;
-  commit(()=>{ picks.forEach(x=>appendCandidateSpot(t,x.di,x.candidate)); });
+  // 순서를 바꾸지 않는다 — insertAt은 '앞의 제안까지 끼운 상태'를 가리키므로 그 순서 그대로 재생해야 같은 모양이 된다.
+  // (제안을 본 뒤 다른 멤버가 그 날을 고쳤으면 자리가 한 칸 어긋날 수 있다. 범위는 넘지 않게 잘라 넣는다.)
+  commit(()=>{ picks.forEach(x=>insertCandidateSpot(t,x.di,x.candidate,x.slot)); });
   let done=0;
   for(const x of picks){
     try{ const {error}=await TC_API.rpc('manage_trip_candidate',{p_candidate_id:x.candidate.id,p_action:'SCHEDULE',p_value:String(x.di+1)},candTripId); if(error) throw error; done++; }
