@@ -172,6 +172,14 @@
   #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#2a9d3f;color:#fff;font-size:13px;padding:8px 18px;border-radius:20px;z-index:4000;display:none;align-items:center;gap:12px;max-width:92vw}
   #toast .toastAct{background:rgba(255,255,255,.22);border:none;color:#fff;font-weight:700;font-size:12px;padding:4px 10px;border-radius:12px;white-space:nowrap}
   #toast .toastAct:hover{background:rgba(255,255,255,.35)}
+  /* 일행이 바꿨다는 조용한 알림 — 토스트처럼 화면을 덮지 않고, 같은 사람이 계속 바꾸면 문장만 갈린다 */
+  #livePresence{background:#16304f;color:#cfe0f5;padding:5px 12px;font-size:12.5px;display:flex;align-items:center;gap:8px;
+    border-bottom:1px solid #23456e;animation:presenceIn .18s ease-out}
+  #livePresence::before{content:'';width:6px;height:6px;border-radius:50%;background:#4a9bff;flex:0 0 auto}
+  @keyframes presenceIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+  /* 안 보고 있는 날에 변경이 있었다는 표시 — 읽으면 사라진다 */
+  .dayCard.remoteChanged>.dayHead .dayTitle::after{content:'';display:inline-block;width:6px;height:6px;margin-left:6px;
+    border-radius:50%;background:#4a9bff;vertical-align:middle}
   /* 읽기전용 보기 */
   #roBar{background:#7c5c15;color:#fff;padding:6px 12px;font-size:12.5px;display:flex;align-items:center;gap:10px;z-index:1001}
   .readonly .tools,.readonly .addSpot,.readonly #addDayBtn,.readonly .noloc,.readonly .dragHandle,

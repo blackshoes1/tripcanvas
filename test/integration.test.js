@@ -1966,6 +1966,50 @@ test('통합: 서버가 거절한 진짜 충돌은 그대로 물어본다', { sk
 });
 
 // render()가 Sortable 인스턴스를 재생성하므로, 끌고 있는 도중에 다시 그리면 목록이 손가락 아래에서 갈린다
+// 실시간이 붙으면 일행이 저장할 때마다 이벤트가 온다. 저장마다 토스트를 띄우면
+// "다른 멤버의 변경을 불러왔어요"가 익명으로 반복돼 잔소리가 된다(§51의 정신).
+test('통합: 일행의 일정 변경은 토스트가 아니라 조용한 줄과 일자 표시로 알린다', { skip: noJsdom }, async () => {
+  const w = boot();
+  withTrip(w, `[{title:'D1',drive:'',note:'',spots:[]},{title:'D2',drive:'',note:'',spots:[]},{title:'D3',drive:'',note:'',spots:[]}]`);
+  const remote = { id: '__it__', name: 'T', start: '2026-08-01', days: [
+    { title: 'D1', drive: '', note: '', spots: [] },
+    { title: 'D2', drive: '', note: '', spots: [{ name: '영희가 넣은 곳', city: 'M', desc: '', lat: 40.4, lng: -3.7 }] },
+    { title: 'D3', drive: '', note: '', spots: [] }
+  ] };
+  w.sb = {};
+  w.SYNC_LIST = async () => ({ data: [{ client_id: '__it__', data: remote, revision: 6, deleted_at: null, updated_at: '' }], error: null });
+  w.RPC = async (name) => ({ data: name === 'list_trip_activity'
+    ? [{ id: 9, kind: 'SCHEDULE_CHANGED', actor_label: '영희', mine: false, subject: {}, created_at: '2026-09-06T10:00:00Z' },
+       { id: 8, kind: 'SCHEDULE_CHANGED', actor_label: '영희', mine: false, subject: {}, created_at: '2026-09-06T09:59:40Z' }]
+    : [], error: null });
+  w.eval(`sb=window.sb; user={id:'u1'}; TC_API.sync.list=window.SYNC_LIST; TC_API.rpc=window.RPC;
+    tripRoles={__it__:{role:'EDITOR',count:2,owner:false}};
+    // 앱은 유입 5개 지점 모두에서 normalizeTrip을 지난다 — 여기서도 같은 모양으로 둔다
+    (()=>{ const i=store.trips.findIndex(t=>t.id==='__it__'); store.trips[i]=normalizeTrip(store.trips[i]); })();
+    syncMeta.__it__={revision:5,status:'clean',op:'',hash:TC_SYNC.hashTrip(trip())};
+    pushLocalFirst=async()=>{};
+    activeDay=1;                                     // 1일차를 보는 중 — 바뀐 건 2일차다
+    window.__toasts=[]; toast=(m)=>{ window.__toasts.push(m); };`);
+  w.eval(`onLiveEvent('__it__',{kind:'SCHEDULE_CHANGED',actor_id:'u2'})`);
+  await new Promise(r => setTimeout(r, 700));
+
+  assert.deepEqual(w.eval(`window.__toasts`), [], '저장마다 토스트를 띄우지 않는다');
+  const line = w.document.getElementById('livePresence');
+  assert.equal(line.hidden, false, '누가 바꿨는지는 조용한 줄로 알린다');
+  assert.match(line.textContent, /영희님이/, '"다른 멤버"가 아니라 이름으로 말한다');
+  assert.match(line.textContent, /\(2번\)/, '연속 저장은 묶어서 한 줄');
+
+  // 변경은 이미 화면에 반영돼 있고, 안 보고 있던 날에는 표시가 남는다
+  assert.equal(w.eval(`trip().days[1].spots.length`), 1);
+  const cards = [...w.document.querySelectorAll('.dayCard')];
+  assert.equal(cards[1].classList.contains('remoteChanged'), true, '바뀐 날에 표시가 남는다');
+  assert.equal(cards[0].classList.contains('remoteChanged'), false, '안 바뀐 날은 그대로');
+
+  cards[1].querySelector('.dayHead').click();        // 열어 보면 읽은 것이다
+  assert.equal([...w.document.querySelectorAll('.dayCard')][1].classList.contains('remoteChanged'), false);
+  w.close();
+});
+
 test('통합: 드래그 중에는 일행의 변경을 미뤘다가 끝난 뒤 반영한다', { skip: noJsdom }, async () => {
   const w = boot();
   withTrip(w, `[{title:'',drive:'',note:'',spots:[]}]`);
