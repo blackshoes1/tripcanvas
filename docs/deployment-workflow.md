@@ -14,28 +14,30 @@ feat/* · fix/* · chore/* · docs/*  →  PR  →  게이트  →  merge  →  
 5. `main` merge가 Vercel Production 배포를 시작한다(정적 웹만). 배포 후 메뉴 버전과 핵심 흐름을 확인한다.
    **API·DB는 Vercel 배포로 바뀌지 않는다** — NAS에서 따로 올린다(`docs/nas-deployment.md`).
 
-## ⚠️ Branch protection은 지금 쓸 수 없다
+## Branch protection — 서버가 막는다 (2026-09-06~)
 
-이 저장소는 **비공개 + 무료 플랜**이라 GitHub이 branch protection과 ruleset을 막는다.
-관리자 토큰으로도 403이다(2026-09-05 확인):
+`main`은 GitHub branch protection으로 잠겨 있다. 이전에는 **비공개 + 무료 플랜**이라 이 기능이 403이었고
+로컬 훅이 유일한 방어였는데, **저장소를 공개로 바꾸면서** 쓸 수 있게 됐다(그 결정과 대가는 `docs/ci.md`).
 
-```
-$ gh api repos/blackshoes1/tripcanvas/branches/main/protection
-Upgrade to GitHub Pro or make this repository public to enable this feature. (HTTP 403)
-```
-
-**저장소를 공개로 돌리는 선택지는 없다** — 소스에 도메인 제한 API 키가 들어 있다.
-따라서 셋 중 하나다:
-
-| 길 | 상태 |
+| 규칙 | 값 |
 |---|---|
-| GitHub Pro로 올린다 | ⚠️ 지금은 계정 결제가 막혀 있어 이것도 못 한다(`docs/ci.md`) |
-| 규칙 + 로컬 훅으로 지킨다 | **오늘의 선택** — 아래 |
-| 규칙만 문서로 둔다 | 실수를 못 막는다 |
+| PR 없이 `main` 푸시 | **금지** (승인 필요 수는 0 — 혼자 쓰는 저장소라 자기 PR을 승인할 수 없다) |
+| 필수 통과 체크 | `Quality` · `Next workspace` · `E2E` |
+| 최신 상태 강제(strict) | 끔 — 머지마다 재실행을 강요하지 않는다 |
+| 관리자에게도 적용 | **켬** — 이걸 끄면 소유자 혼자 쓰는 저장소에서는 규칙이 없는 것과 같다 |
+| 강제 푸시 · 브랜치 삭제 | 금지 |
+| 대화(리뷰 코멘트) 해결 | 필수 |
 
-### 지금 쓰는 것 — 로컬 pre-push 훅
+⚠️ **iOS 워크플로는 필수 체크에 넣지 않았다.** `ios/` 변경에만 도는데 필수로 걸면 웹만 고친 PR이
+영영 안 오는 체크를 기다리며 멈춘다. iOS 변경은 `npm run verify:all ios`와 PR 본문으로 지킨다.
 
-`main` 직접 푸시를 막는다. 클론마다 한 번 켠다:
+⚠️ **이제 merge가 CI를 기다린다.** 열자마자 머지하던 흐름이 몇 분 늦어진다 — 그게 이 규칙의 값이다.
+정말 급하면 설정에서 잠시 끄고, 왜 그랬는지 남긴다.
+
+### 로컬 pre-push 훅 — 여전히 켠다
+
+서버가 막으니 훅은 이제 **유일한 방어가 아니라 빠른 방어**다. 서버까지 갔다가 거절당하는 대신
+푸시하기 전에 막아 준다. 클론마다 한 번 켠다:
 
 ```bash
 git config core.hooksPath .githooks
