@@ -4,6 +4,11 @@
 이번 단계가 하는 일은 딱 하나다 — *누가 이 여행을 볼 수 있고, 바꿀 수 있는가*를 DB가 결정하게 만든다.
 후보 장소·의견(2단계), 코멘트·활동 기록·실시간(3단계), 여행 취향·그룹 컨텍스트·합의(4단계), 갈린 후보의 결정·그룹 제안(5단계)이 그 위에 올라갔다(아래). 분리 활동·참가자·시간대 배치·여행 중 재구성은 다음 단계다.
 
+> **어디서 도는가 (2026-09-05)** — 아래 SQL(`supabase/migrations/*`)은 **설계의 원본**이다.
+> 프로덕션 데이터는 NAS PostgreSQL에 있고, 같은 스키마가 `next/src/server/infrastructure/database/migrations/`로
+> 다시 적용돼 있다. 권한 판정도 RLS가 아니라 API(`TripAuthorizationService`·`CollabService`)가 한다 —
+> **규칙은 그대로고 집행 지점만 옮겼다.** 웹·iOS 모두 `/api/v1`을 지난다(Supabase RPC 직접 호출 없음).
+
 ## 현재 구조 (바꾸지 않은 것)
 
 - 여행은 `trips` 한 행(문서 jsonb `data`) 그대로다. 저장은 여전히 `sync_trip`(revision CAS), 삭제는 `tombstone_trip`.

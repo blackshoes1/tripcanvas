@@ -309,11 +309,14 @@ API 주소를 잘못 보고 있을 가능성이 높다. `/api/v1` 은 정적 웹
 
 | 키 | 기본값 | 언제 바꾸나 |
 |---|---|---|
-| `TCApiBaseURL` | `https://bokbok9.tail8b977f.ts.net` (NAS) | 로컬 API 서버로 붙을 때. http라면 `NSAppTransportSecurity: {NSAllowsLocalNetworking: true}` 도 함께 |
-| `TCSupabaseURL` | 비움 → 코드 기본값 | 다른 Supabase 프로젝트를 볼 때 |
-| `TCSupabaseAnonKey` | 비움 → 코드 기본값 | 위와 같음 |
+| `TCApiBaseURL` | `https://bokbok9.tail8b977f.ts.net` (NAS) | 로컬 API 서버로 붙을 때. http라면 `NSAppTransportSecurity: {NSAllowsLocalNetworking: true}` 도 함께. **로그인(`/api/auth/*`)도 이 주소로 간다** |
+| `TCWebBaseURL` | `https://tripcanvas-ai.vercel.app/` | 초대 링크가 가리킬 웹 주소 |
+| `TCGoogleMapsKey` · `TCKakaoNativeKey` | 저장소의 네이티브 키 | 다른 키를 쓸 때. **번들 ID 제한**이라 무료 스펙으로 번들 ID를 바꿨으면 콘솔의 제한에 그 값도 넣어야 한다 |
 
 코드 쪽 기본값은 `ios/TripCanvas/App/AppEnvironment.swift` 의 `AppConfig` 에 있다.
 
-> Supabase anon 키는 **공개용**이다 (웹도 같은 값을 들고 있고, 데이터는 RLS가 지킨다).
-> service role 키나 Provider 비밀키는 **앱에 절대 넣지 않는다** — 그건 서버 함수에만 둔다.
+> `TCSupabaseURL`·`TCSupabaseAnonKey`는 **2026-09-05에 없어졌다.** 로그인이 웹과 같은 자체 Auth로 옮겨가면서
+> 앱에서 Supabase를 쓰지 않는다. 예전 빌드에서 올라온 Keychain 세션은 앱이 지우고 한 번 다시 묻는다.
+>
+> 지도 네이티브 키는 바이너리에 어차피 들어가므로 **번들 ID 제한이 실제 방어선**이다.
+> service role 키나 Provider 비밀키는 **앱에 절대 넣지 않는다** — 그건 서버에만 둔다.
