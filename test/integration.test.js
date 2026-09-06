@@ -851,6 +851,51 @@ test('통합: 지도가 크기를 못 잡아 bounds가 한 점이면 중심 반�
   w.close();
 });
 
+test('통합: 국내 장소는 카카오 장소 id를 물고 저장돼 지도 링크가 바로 길찾기가 된다', { skip: noJsdom }, async () => {
+  const w = boot();
+  withTrip(w, `[{mode:'car',startAt:'09:00',spots:[]}]`);
+  // ── POI 칩: 우리가 깐 것이라 무엇을 눌렀는지 안다
+  w.eval(`
+    window.kakao={maps:{
+      LatLng:function(a,b){this.getLat=()=>a;this.getLng=()=>b;},
+      CustomOverlay:function(o){ (window.__chips=window.__chips||[]).push(o.content); this.setMap=function(){}; },
+      event:{addListener:()=>{},removeListener:()=>{}},
+      services:{ Status:{OK:'OK'}, SortBy:{DISTANCE:'DISTANCE'},
+        Places:function(){
+          this.categorySearch=(code,cb)=>cb(code==='AT4'
+            ? [{id:'13525626',place_name:'성산일출봉',x:'126.9425',y:'33.458',address_name:'제주 서귀포시 성산읍'}] : [], 'OK');
+        } }
+    }};
+    kmap={ getLevel:()=>3, getCenter:()=>new kakao.maps.LatLng(33.458,126.9425),
+           getBounds:()=>({ getSouthWest:()=>({getLat:()=>33.4,getLng:()=>126.9}),
+                            getNorthEast:()=>({getLat:()=>33.5,getLng:()=>127.0}) }) };
+    engine='kakao';
+    refreshKakaoPOI();
+  `);
+  await new Promise(r=>setTimeout(r,20));
+  w.eval(`window.__chips[0].click()`);
+  assert.equal(w.document.getElementById('spotKakaoId').value, '13525626', 'POI 칩이 카카오 장소 id를 모달로 넘긴다');
+  w.eval(`document.getElementById('spotName').value='성산일출봉'; document.getElementById('spotCity').value='서귀포'; document.getElementById('spotSave').onclick();`);
+  const saved = JSON.parse(w.eval(`JSON.stringify(trip().days[0].spots[0])`));
+  assert.equal(saved.kakaoId, '13525626', '저장된 장소가 신원을 들고 있다');
+  assert.equal(w.eval(`extMapLink(trip().days[0].spots[0]).href`),
+    'https://map.kakao.com/link/to/13525626', '검색을 거치지 않고 그 장소로 바로 길찾기');
+
+  // ── 검색 결과를 골라도 같은 신원이 실린다
+  w.eval(`openSpotModal(0,-1)`);
+  w.eval(`document.getElementById('searchRes').innerHTML='';
+    (function(){ const it={name:'광장시장',city:'서울',lat:37.5701,lng:126.9996,kakaoId:'11576725'};
+      document.getElementById('spotLat').value=it.lat; document.getElementById('spotLng').value=it.lng;
+      document.getElementById('spotPlaceId').value=it.placeId||'';
+      document.getElementById('spotKakaoId').value=it.kakaoId||''; })();`);
+  assert.equal(w.document.getElementById('spotKakaoId').value, '11576725');
+
+  // ── 지도를 다시 찍으면 예전 신원은 그 장소가 아니다
+  w.eval(`pickMode=true; onMapPick(37.5, 127.0, '')`);
+  assert.equal(w.document.getElementById('spotKakaoId').value, '', '좌표를 새로 지정하면 신원을 비운다');
+  w.close();
+});
+
 test('통합: 충돌 응답은 로컬 base revision을 서버 값으로 덮어쓰지 않는다', { skip: noJsdom }, async () => {
   const w=boot();
   w.eval(`user={id:'u1'}; syncMeta.c1={revision:3,status:'clean',op:'',hash:''};

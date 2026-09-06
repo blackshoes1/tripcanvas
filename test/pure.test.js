@@ -339,6 +339,38 @@ test('extMapLink — 좌표가 아니라 이름으로 찾는다 (어긋난 좌�
   assert.ok(noNameJp.href.includes('35.6,139.7'));
 });
 
+test('extMapLink — 카카오 장소 id를 아는 국내 장소는 바로 길찾기', () => {
+  // 검색·POI 칩으로 고른 장소는 무엇인지 특정된다 — 검색을 한 번 더 거칠 이유가 없다
+  const id = L.extMapLink({ name: '성산일출봉', city: '서귀포', kakaoId: '13525626', lat: 33.458, lng: 126.94 });
+  assert.equal(id.href, 'https://map.kakao.com/link/to/13525626');
+  assert.match(id.label, /길찾기/);
+
+  // 신원이 이름·좌표를 이긴다 — 이름이 어긋나 있어도 그 장소로 간다
+  const renamed = L.extMapLink({ name: '점심', city: '서귀포', kakaoId: '13525626', lat: 33.458, lng: 126.94 });
+  assert.equal(renamed.href, 'https://map.kakao.com/link/to/13525626');
+
+  // 해외는 카카오 id가 있어도 카카오맵으로 보내지 않는다 (한국 밖은 길이 없다)
+  const jp = L.extMapLink({ name: 'Tokyo Tower', kakaoId: '13525626', lat: 35.6586, lng: 139.7454 });
+  assert.ok(jp.href.startsWith('https://www.google.com/maps/search/'));
+
+  // 불량 id는 링크에 들어가지 않는다 — 이름 검색으로 떨어진다
+  const bad = L.extMapLink({ name: '성산일출봉', city: '서귀포', kakaoId: 'javascript:alert(1)', lat: 33.458, lng: 126.94 });
+  assert.ok(bad.href.startsWith('https://map.kakao.com/link/search/'));
+  assert.match(bad.label, /보기/);
+});
+
+test('normalizeSpot — 카카오 장소 id는 숫자 문자열만 남는다', () => {
+  const spotOf = (kakaoId) => L.normalizeTrip({
+    name: 'T', start: '2026-10-01',
+    days: [{ title: '', spots: [{ name: '성산일출봉', city: '서귀포', lat: 33.458, lng: 126.94, kakaoId }] }]
+  }).days[0].spots[0];
+
+  assert.equal(spotOf('13525626').kakaoId, '13525626');
+  assert.equal(spotOf('ChIJ_google').kakaoId, undefined);   // 구글 id를 카카오 칸에 넣지 않는다
+  assert.equal(spotOf(13525626).kakaoId, undefined);        // 숫자가 아니라 문자열로만 저장한다
+  assert.equal(spotOf('').kakaoId, undefined);
+});
+
 test('budgetBookings — 연결된 숙박은 일정 카드 금액이 기준 (이중 계산 방지)', () => {
   const bookings = [
     { id: 'b1', type: 'hotel', title: '제주호텔', price: 200000 },

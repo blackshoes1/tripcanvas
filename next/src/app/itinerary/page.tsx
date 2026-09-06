@@ -247,7 +247,9 @@ export default function ItineraryPage() {
   const onPoiPick = useCallback((p: PoiPick) => {
     const { di, after } = mapTargetRef.current();
     const base = newSpotDraft(tripRef.current?.days[di]);
-    openAddRef.current(di, after, { ...base, name: p.name, city: p.city || base.city, lat: p.lat, lng: p.lng });
+    const draft: Spot = { ...base, name: p.name, city: p.city || base.city, lat: p.lat, lng: p.lng };
+    if (p.kakaoId) draft.kakaoId = p.kakaoId;   // 그 장소를 특정한다 — 지도 링크가 바로 길찾기로 열린다
+    openAddRef.current(di, after, draft);
   }, []);
 
   // updateActiveTrip은 mutate를 동기로 부른다 — 정렬 여부를 그때 받아 안내 문구를 고른다

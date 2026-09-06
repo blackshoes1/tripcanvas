@@ -99,6 +99,7 @@ export function spotFromForm(
   if (form.cur && form.cur !== 'KRW') spot.cur = form.cur;
   if (form.cat) spot.cat = form.cat;
   if (original.placeId) spot.placeId = original.placeId;
+  if (original.kakaoId) spot.kakaoId = original.kakaoId;
   if (original.hours) spot.hours = original.hours;
   for (const k of LINK_KEYS) if (original[k]) spot[k] = original[k];
 
@@ -191,6 +192,7 @@ export function applyPlaceToForm(
 ): { form: SpotForm; draft: Spot } {
   const next: Spot = { ...draft, lat: place.lat, lng: place.lng };
   if (place.placeId) next.placeId = place.placeId; else delete next.placeId;
+  if (place.kakaoId) next.kakaoId = place.kakaoId; else delete next.kakaoId;
   if (place.hours) next.hours = place.hours; else delete next.hours;
   return {
     form: {
