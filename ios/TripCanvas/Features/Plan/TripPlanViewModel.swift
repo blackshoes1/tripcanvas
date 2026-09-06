@@ -168,7 +168,7 @@ final class TripPlanViewModel {
         CollabModel.includesMe(ids, myId: members.first(where: { $0.me })?.userId)
     }
 
-    /// 이동시간이 실측인지 추정인지. 서버에 구간 캐시가 없어 지금은 늘 추정이다.
+    /// 이동시간이 실측인지 추정인지. **그날 구간이 전부 조회됐을 때만** 실측이라고 말한다.
     var travelTimeIsEstimate: Bool { plan?.travelTimeSource != .routed }
 
     /// 오늘이 몇 일차인지. 여행 기간 밖이면 nil이다(서버가 -1로 준다).

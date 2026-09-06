@@ -284,6 +284,15 @@ struct TripPlanView: View {
         }
     }
 
+    /// 이 선이 도로인지 직선인지 한 줄로. **전부 도로면 nil** — 맞는 말은 굳이 하지 않는다.
+    private func routeNote(_ routes: [MapRoute]) -> String? {
+        guard !routes.isEmpty else { return nil }
+        if routes.allSatisfy(\.routed) { return nil }
+        return routes.contains(where: \.routed)
+            ? "일부 구간은 장소를 곧게 이은 직선이에요"
+            : "장소를 순서대로 이은 직선이에요"
+    }
+
     /// 그날의 동선. 좌표 없는 장소는 여기 안 나온다 — 목록의 '위치 없음'이 그 사실을 말한다.
     @ViewBuilder
     private func dayMap(_ model: TripPlanViewModel) -> some View {
@@ -295,13 +304,14 @@ struct TripPlanView: View {
                     title: "지도에 놓을 장소가 없어요",
                     message: "검색해서 담으면 좌표가 함께 들어와 여기에 보입니다.")
             } else {
-                // 동선은 서버가 준 좌표를 순서대로 이은 것이다 — 계산을 못 받았으면 핀만 나온다.
-                MapEngineView(pins: pins, routes: model.planDay?.mapRoutes ?? [])
+                // 동선은 서버가 준 것이다 — 조회된 구간은 도로를 따르고, 계산을 못 받았으면 핀만 나온다.
+                let routes = model.planDay?.mapRoutes ?? []
+                MapEngineView(pins: pins, routes: routes)
                     .ignoresSafeArea(edges: .bottom)
                     .overlay(alignment: .topLeading) {
-                        // ⚠️ 실제 도로가 아니다. 도로처럼 보이게 두면 거짓말이 된다.
-                        if model.planDay?.mapRoutes.isEmpty == false {
-                            Label("장소를 순서대로 이은 직선이에요", systemImage: "line.diagonal")
+                        // ⚠️ 직선을 도로처럼 보이게 두면 거짓말이 된다. 전부 도로면 굳이 말하지 않는다.
+                        if let note = routeNote(routes) {
+                            Label(note, systemImage: "line.diagonal")
                                 .font(.caption)
                                 .padding(.horizontal, Space.m)
                                 .padding(.vertical, Space.xs + 2)

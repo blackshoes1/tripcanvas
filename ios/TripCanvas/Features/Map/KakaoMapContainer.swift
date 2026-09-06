@@ -137,7 +137,8 @@ struct KakaoMapContainer: UIViewRepresentable {
             controller?.getView(Self.viewName) as? KakaoMap
         }
 
-        /// ⚠️ 장소를 순서대로 이은 **직선**이다 — 실제 도로가 아니다(서버가 경로 좌표열을 주지 않는다).
+        /// 서버가 그 구간의 경로를 조회해 뒀으면 도로를 따르고, 아니면 두 점을 곧게 잇는다(`MapRoute.routed`).
+        /// ⚠️ 직선을 도로처럼 보이게 두지 않는다 — 그 사실은 화면이 말한다.
         private func drawRoutes(on map: KakaoMap) {
             guard let layer = map.getRouteManager().getRouteLayer(layerID: Self.routeLayerId) else { return }
             layer.clearAllRoutes()

@@ -269,7 +269,7 @@ final class TripPlanViewModelTests: XCTestCase {
         await model.load()
 
         XCTAssertEqual(model.planSpot(at: 0)?.etaMinutes, 540)
-        XCTAssertTrue(model.travelTimeIsEstimate, "서버에 구간 캐시가 없다 — 화면이 '예상'이라 말해야 한다")
+        XCTAssertTrue(model.travelTimeIsEstimate, "조회되지 않은 구간이 있다 — 화면이 '예상'이라 말해야 한다")
     }
 
     /// 장소를 막 추가·삭제한 직후에는 계산이 아직 옛 목록이다. 그때 옛 시각을 그리면 안 된다.
