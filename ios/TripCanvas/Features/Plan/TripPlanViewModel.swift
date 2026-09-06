@@ -104,6 +104,19 @@ final class TripPlanViewModel {
         }
     }
 
+    /// 그 장소의 서버 계산(예상 도착·구간). 보고 있는 날의 것이 아니면 nil이다.
+    /// 문서와 계산이 어긋난 순간(막 추가·삭제한 직후)에는 조용히 nil로 떨어진다 —
+    /// 그 상태에서 옛 시각을 그리면 없는 장소의 시각을 보여 주게 된다.
+    func planSpot(at index: Int) -> DayPlanSpot? {
+        guard let plan, plan.day.index == selectedDay, plan.day.spots.count == (day?.spots.count ?? -1) else {
+            return nil
+        }
+        return plan.day.spots.indices.contains(index) ? plan.day.spots[index] : nil
+    }
+
+    /// 이동시간이 실측인지 추정인지. 서버에 구간 캐시가 없어 지금은 늘 추정이다.
+    var travelTimeIsEstimate: Bool { plan?.travelTimeSource != .routed }
+
     /// 오늘이 몇 일차인지. 여행 기간 밖이면 nil이다(서버가 -1로 준다).
     var todayIndex: Int? {
         guard let index = plan?.trip.todayIndex, index >= 0 else { return nil }
