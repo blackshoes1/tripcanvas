@@ -18,7 +18,9 @@
 #
 # ── 올릴 때 ──────────────────────────────────────────────────────────────────
 #   source ~/.tripcanvas-testflight.env
-#   BUILD=6 scripts/testflight-upload.sh
+#   BUILD=6 NOTES='무엇이 바뀌었는지' scripts/testflight-upload.sh
+#
+#   NOTES는 폰의 TestFlight에 '테스트할 내용'으로 뜬다. 비우면 그 칸이 빈 채로 올라간다.
 #
 #   BUILD(빌드 번호)는 **직접 준다.** 같은 번호는 두 번 못 올리는데, 기본값을 추측하면
 #   조용히 충돌한다. Actions의 run number와 한 줄에 세는 것이 안전하다
@@ -103,6 +105,14 @@ if ! xcodebuild -exportArchive \
     echo "  역할은 나중에 못 바꿉니다 — Admin으로 키를 새로 만드세요(Issuer ID는 그대로)." >&2
   fi
   fail "업로드 실패 — 전체 로그: $WORK/upload.log"
+fi
+
+# 바이너리만 올리면 폰에서 뭐가 바뀐 빌드인지 알 수 없다. NOTES가 있으면 채운다.
+# ⚠️ 여기서 실패해도 업로드는 이미 성공이다 — 스크립트를 실패로 끝내지 않는다.
+if [ -n "${NOTES:-}" ]; then
+  echo "▸ 테스트할 내용 채우기"
+  APPSTORE_PRIVATE_KEY_PATH="$KEY" TC_BUILD_NUMBER="$BUILD" TC_WHATS_NEW="$NOTES" \
+    node "$PWD/scripts/testflight-notes.js" || echo "  (못 채웠습니다 — 빌드는 올라갔습니다)"
 fi
 
 echo "✔ 올렸습니다 — App Store Connect 처리에 5~15분, 그다음 폰의 TestFlight에 뜹니다."

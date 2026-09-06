@@ -139,6 +139,20 @@ jobs:
             echo "그 밖의 원인은 \`docs/ios-device-setup.md\` 의 문제 해결 절에 정리돼 있다."
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # 바이너리만 올리면 폰의 TestFlight에서 **뭐가 바뀐 빌드인지 알 수 없다.**
+      # `notes`가 여기까지 와야 의미가 있다 — 2026-09-06까지는 요약에만 찍히고 버려졌다.
+      # ⚠️ 실패해도 업로드를 되돌리지 않는다(빌드는 이미 산다) — continue-on-error.
+      - name: What to Test 채우기
+        if: success() && github.event.inputs.notes != ''
+        continue-on-error: true
+        env:
+          APPSTORE_ISSUER_ID: ${{ secrets.APPSTORE_ISSUER_ID }}
+          APPSTORE_KEY_ID: ${{ secrets.APPSTORE_KEY_ID }}
+          APPSTORE_PRIVATE_KEY_PATH: ~/private_keys/AuthKey_${{ secrets.APPSTORE_KEY_ID }}.p8
+          TC_BUILD_NUMBER: ${{ github.run_number }}
+          TC_WHATS_NEW: ${{ github.event.inputs.notes }}
+        run: node scripts/testflight-notes.js
+
       - name: Remove API key
         if: always()
         run: rm -rf ~/private_keys
