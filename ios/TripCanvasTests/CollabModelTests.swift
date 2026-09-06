@@ -393,3 +393,50 @@ final class CollabModelTests: XCTestCase {
         XCTAssertNil(ISODateText.parseTimestamp("어제"))
     }
 }
+
+/// 참여자 이름표가 `collab.js`와 **같은 답**을 내는지.
+///
+/// 픽스처는 `next`의 `whoTextParity.test.ts`가 `collab.js`로 만든다.
+/// 규칙을 바꾸면 그 테스트가 파일을 새로 쓰고 여기가 깨진다 — 그게 목적이다.
+final class WhoTextParityTests: XCTestCase {
+    private struct Fixture: Decodable {
+        struct Member: Decodable { let user_id: String; let display_name: String?; let me: Bool }
+        struct Case: Decodable {
+            let name: String
+            let who: [String]
+            let text: String
+            let labels: [String]
+            let includesMe: Bool
+        }
+        let members: [Member]
+        let cases: [Case]
+    }
+
+    private func load() throws -> Fixture {
+        let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "who-text", withExtension: "json"),
+                                "who-text.json 픽스처를 테스트 번들에 포함시켜야 합니다")
+        return try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: url))
+    }
+
+    func testMatchesTheJavaScriptRule() throws {
+        let fixture = try load()
+        let members = fixture.members.map {
+            MemberView(id: 0, userId: $0.user_id, role: .editor, status: "ACTIVE",
+                       displayName: $0.display_name, joinedAt: nil, me: $0.me)
+        }
+        XCTAssertGreaterThan(fixture.cases.count, 0)
+        for c in fixture.cases {
+            XCTAssertEqual(CollabModel.whoText(c.who, members: members), c.text, c.name)
+            XCTAssertEqual(CollabModel.whoLabels(c.who, members: members), c.labels, c.name)
+            XCTAssertEqual(CollabModel.includesMe(c.who, myId: "me"), c.includesMe, c.name)
+        }
+    }
+
+    /// 이름표에 계정 이메일이 나오면 안 된다(§69).
+    func testLabelsNeverLeakEmails() throws {
+        let fixture = try load()
+        for c in fixture.cases {
+            XCTAssertFalse(c.text.contains("@"), c.name)
+        }
+    }
+}

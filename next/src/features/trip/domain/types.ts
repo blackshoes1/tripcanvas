@@ -54,6 +54,15 @@ export interface Spot {
   placeId?: string;
   cat?: SpotCategory;
   hours?: OpeningHour[];
+  /** 실행 상태 — 기본 PLANNED는 저장하지 않는다. 자동 완료 판정은 하지 않는다(사용자가 누른다) */
+  status?: 'COMPLETED' | 'SKIPPED' | 'CANCELLED';
+  // ── 함께 움직이지 않는 시간(§25~§27) ──
+  /** 참여자 user_id. **비어 있으면 모든 여행자다** — 기본값이라 저장하지 않는다 */
+  who?: string[];
+  /** 분리 묶음 키. 같은 키가 **이어지는** 구간이 한 묶음이고, 그 안에서 참여자가 같은 장소들이 한 가지 */
+  split?: string;
+  /** 갈라졌던 사람들이 다시 만나는 지점. 표시일 뿐이고 시각은 타임라인이 정한다 */
+  reunion?: boolean;
 }
 
 export interface DayFlight {

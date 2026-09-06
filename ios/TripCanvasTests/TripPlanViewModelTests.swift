@@ -179,7 +179,7 @@ final class TripPlanViewModelTests: XCTestCase {
                                   todayIndex: todayIndex, role: nil, memberCount: nil)
         let day = DayPlanDay(index: selected, date: strip[selected].date, title: "", note: "", mode: "car",
                              startMinutes: 540, timeZone: "Asia/Seoul", carriedStay: nil, spots: [],
-                             carPickups: [], carReturns: [], back: nil, spotsWithoutLocation: 0,
+                             carPickups: [], carReturns: [], back: nil, spotsWithoutLocation: 0, splits: [],
                              totals: .init(distanceKm: 0, travelMinutes: 0, endMinutes: nil, overloaded: false,
                                            cost: .init(total: 0, parts: [])))
         return DayPlanResponse(schemaVersion: 1, generatedAt: "", travelTimeSource: .straightLineEstimate,
@@ -247,14 +247,15 @@ final class TripPlanViewModelTests: XCTestCase {
         let spots = (0..<count).map { i in
             DayPlanSpot(index: i, name: "장소 \(i)", city: "오사카", category: nil, location: nil,
                         etaMinutes: 540 + i * 60, fixed: false, conflict: false, bookedAtMinutes: nil,
-                        waitMinutes: 0, stayMinutes: nil, status: "PLANNED", incomingLeg: nil)
+                        waitMinutes: 0, stayMinutes: nil, status: "PLANNED",
+                        participants: [], reunion: false, incomingLeg: nil)
         }
         base = DayPlanResponse(
             schemaVersion: base.schemaVersion, generatedAt: base.generatedAt,
             travelTimeSource: base.travelTimeSource, trip: base.trip, dayCount: base.dayCount, days: base.days,
             day: DayPlanDay(index: dayIndex, date: base.day.date, title: "", note: "", mode: "car",
                             startMinutes: 540, timeZone: "Asia/Seoul", carriedStay: nil, spots: spots,
-                            carPickups: [], carReturns: [], back: nil, spotsWithoutLocation: 0,
+                            carPickups: [], carReturns: [], back: nil, spotsWithoutLocation: 0, splits: [],
                             totals: base.day.totals))
         return base
     }

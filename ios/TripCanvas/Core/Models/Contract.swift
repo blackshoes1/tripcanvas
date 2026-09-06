@@ -716,8 +716,34 @@ struct DayPlanSpot: Codable, Hashable, Sendable {
     let waitMinutes: Int
     let stayMinutes: Int?
     let status: String
+    /// 참여자 user_id. **비어 있으면 모든 여행자다** — 기본값이라 문서에 저장되지 않는다(§26).
+    let participants: [String]
+    /// 갈라졌던 사람들이 다시 만나는 지점. 표시일 뿐이고 시각은 타임라인이 정한다.
+    let reunion: Bool
     /// 좌표가 없으면 nil — 그 장소는 동선에서 빠진다.
     let incomingLeg: DayPlanLeg?
+}
+
+/// 분리 구간의 가지 하나 — 같은 참여자가 이어서 다니는 장소들.
+struct DayPlanSplitBranch: Codable, Hashable, Sendable {
+    /// 비어 있으면 모든 여행자다.
+    let participants: [String]
+    /// `day.spots` 안의 위치들. 원래 순서를 지킨다.
+    let spotIndexes: [Int]
+}
+
+/// 함께 움직이지 않는 구간.
+///
+/// ⚠️ 가르는 규칙은 서버(`lib.js`의 `splitSegments`) 하나다 — **타임라인도 같은 함수로 가른다.**
+/// 앱이 따로 가르면 그림과 시각이 어긋난다. 여기서는 받은 대로 그리기만 한다.
+struct DayPlanSplit: Codable, Hashable, Sendable, Identifiable {
+    let key: String
+    /// [from, to) — `day.spots`의 구간
+    let from: Int
+    let to: Int
+    let branches: [DayPlanSplitBranch]
+
+    var id: String { key }
 }
 
 /// 일정의 장소와 연결되지 않은 렌터카 픽업·반납. ⚠️ 좌표가 없어 동선·ETA·지도에 넣지 않는다.
@@ -779,6 +805,8 @@ struct DayPlanDay: Codable, Hashable, Sendable {
     let back: DayPlanBack?
     /// 좌표가 없어 동선·지도에서 빠지는 장소 수.
     let spotsWithoutLocation: Int
+    /// 함께 움직이지 않는 구간들. 비어 있으면 하루가 예전과 완전히 같다.
+    let splits: [DayPlanSplit]
     let totals: DayPlanTotals
 }
 

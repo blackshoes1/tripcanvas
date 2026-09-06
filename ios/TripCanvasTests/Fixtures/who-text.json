@@ -1,0 +1,91 @@
+{
+  "members": [
+    {
+      "user_id": "u1",
+      "display_name": "지민",
+      "me": false
+    },
+    {
+      "user_id": "me",
+      "display_name": "나야",
+      "me": true
+    },
+    {
+      "user_id": "u3",
+      "display_name": "   ",
+      "me": false
+    }
+  ],
+  "cases": [
+    {
+      "name": "비어 있으면 모두",
+      "who": [],
+      "text": "모두",
+      "labels": [],
+      "includesMe": true
+    },
+    {
+      "name": "나는 맨 앞에 그리고 나로 부른다",
+      "who": [
+        "u1",
+        "me"
+      ],
+      "text": "나 · 지민",
+      "labels": [
+        "나",
+        "지민"
+      ],
+      "includesMe": true
+    },
+    {
+      "name": "이름이 비면 멤버",
+      "who": [
+        "u3"
+      ],
+      "text": "멤버",
+      "labels": [
+        "멤버"
+      ],
+      "includesMe": false
+    },
+    {
+      "name": "모르는 id도 멤버 (나간 사람일 수 있다)",
+      "who": [
+        "ghost"
+      ],
+      "text": "멤버",
+      "labels": [
+        "멤버"
+      ],
+      "includesMe": false
+    },
+    {
+      "name": "나 혼자",
+      "who": [
+        "me"
+      ],
+      "text": "나",
+      "labels": [
+        "나"
+      ],
+      "includesMe": true
+    },
+    {
+      "name": "섞임",
+      "who": [
+        "ghost",
+        "me",
+        "u1",
+        "u3"
+      ],
+      "text": "나 · 멤버 · 지민 · 멤버",
+      "labels": [
+        "나",
+        "멤버",
+        "지민",
+        "멤버"
+      ],
+      "includesMe": true
+    }
+  ]
+}

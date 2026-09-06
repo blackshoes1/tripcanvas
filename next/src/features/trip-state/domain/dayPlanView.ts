@@ -23,10 +23,11 @@ import type { TripDoc } from './todayView';
 
 import { CONTRACT_SCHEMA_VERSION } from './contract';
 import type {
-  DayPlanCarEvent, DayPlanDay, DayPlanLeg, DayPlanResponse, DayPlanSpot, DayPlanStripEntry, TripSummary
+  DayPlanCarEvent, DayPlanDay, DayPlanLeg, DayPlanResponse, DayPlanSpot, DayPlanSplit, DayPlanStripEntry,
+  TripSummary
 } from './contract';
 
-const { carEventsOn, carSpotLinks, dayReturnStay, dayStartAnchor, haversine, parseHM, spotCatOf } = legacyLib;
+const { carEventsOn, carSpotLinks, dayReturnStay, dayStartAnchor, haversine, parseHM, spotCatOf, splitSegments } = legacyLib;
 
 /** 서버에는 구간 캐시가 없다 — 비어 있는 캐시를 넘기면 lib이 직선거리 추정으로 떨어진다. */
 const NO_CACHE: LegCache = Object.freeze({});
@@ -138,6 +139,8 @@ export function buildDayPlanView(input: DayPlanInput): DayPlanResponse | null {
       waitMinutes: Math.max(0, Math.round(entry.wait ?? 0)),
       stayMinutes: spot.stayMin != null ? Number(spot.stayMin) : null,
       status: String((spot as { status?: unknown }).status ?? 'PLANNED'),
+      participants: participantsOf(spot),
+      reunion: (spot as { reunion?: unknown }).reunion === true,
       incomingLeg: leg
     };
   });
@@ -175,6 +178,7 @@ export function buildDayPlanView(input: DayPlanInput): DayPlanResponse | null {
     carReturns: cars.returns,
     back,
     spotsWithoutLocation: spots.filter((s) => !hasCoord(s)).length,
+    splits: splitsOf(day),
     totals: {
       distanceKm: km(distanceKm),
       travelMinutes,
@@ -199,6 +203,36 @@ export function buildDayPlanView(input: DayPlanInput): DayPlanResponse | null {
     })),
     day: planDay
   };
+}
+
+/** 참여자 user_id. 비어 있으면 모든 여행자다 — 기본값이라 문서에 저장되지 않는다(§26). */
+function participantsOf(spot: Spot): string[] {
+  const who = (spot as { who?: unknown }).who;
+  return Array.isArray(who) ? who.map(String).filter(Boolean) : [];
+}
+
+/**
+ * 함께 움직이지 않는 구간들.
+ * ⚠️ 가르는 것은 `lib.js`의 `splitSegments` 하나다 — **타임라인도 같은 함수로 가른다.**
+ * 여기서 따로 가르면 화면의 그림과 시각이 어긋난다.
+ * 분리가 아닌(순차) 구간은 빼고 보낸다 — 하루가 전부 순차면 빈 배열이라 앱이 예전과 똑같이 그린다.
+ */
+function splitsOf(day: Day): DayPlanSplit[] {
+  const segments = splitSegments(day) as Array<{
+    split: string | null; from: number; to: number;
+    branches: Array<{ who: string[]; idx: number[] }>;
+  }>;
+  return segments
+    .filter((seg) => !!seg.split)
+    .map((seg) => ({
+      key: String(seg.split),
+      from: seg.from,
+      to: seg.to,
+      branches: seg.branches.map((b) => ({
+        participants: (b.who ?? []).map(String).filter(Boolean),
+        spotIndexes: b.idx.slice()
+      }))
+    }));
 }
 
 /**

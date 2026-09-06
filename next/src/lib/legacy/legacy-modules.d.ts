@@ -81,6 +81,15 @@ declare module '@legacy/lib.js' {
     dayAnchor(day: unknown): unknown;
     dayStartAnchor(days: unknown[], di: number): unknown;
     dayReturnStay(days: unknown[], di: number): unknown;
+    /** 하루를 순차 구간과 분리 구간으로 나눈다 — **타임라인과 화면이 같은 함수로 갈라야** 한다 */
+    splitSegments(day: unknown): Array<{
+      split: string | null;
+      from: number;
+      to: number;
+      branches: Array<{ key: string; who: string[]; idx: number[] }>;
+    }>;
+    /** 참여자 집합의 키. 비어 있으면 '*'(= 모든 여행자) */
+    whoKey(spot: unknown): string;
     computeTimeline(
       day: unknown,
       opts: { legMin: (a: unknown, b: unknown, context: { depart: number }) => number; startAnchor?: unknown }
@@ -391,6 +400,12 @@ declare module '@legacy/collab.js' {
       status: string | null; voted: number; members: number;
     };
     /** 반대 없고 두 명 이상이 말한 후보를 어느 날에 넣을지. 저장하지 않는 **미리보기**다(§79) */
+    /** 참여자 이름표 — 나는 늘 '나'로 부르고 맨 앞에 둔다. 모르는 id는 '멤버' */
+    whoLabels(who: string[] | null | undefined, members: unknown[] | null): string[];
+    /** '모두' 또는 '나 · 지민'. who가 비어 있으면 모든 여행자다(§26) */
+    whoText(spot: unknown, members: unknown[] | null): string;
+    /** 이 일정에 내가 들어 있는가. 지정이 없으면 모두이므로 참이다 */
+    includesMe(spot: unknown, myId: string | null | undefined): boolean;
     buildGroupProposal(
       candidates: unknown[] | null | undefined, days: unknown[] | null | undefined,
       memberCount: number | null | undefined, ctx?: GroupCtx | null, max?: number
