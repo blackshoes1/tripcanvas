@@ -15,6 +15,14 @@ function toRecord(row: Row): TripRecord {
   };
 }
 
+/**
+ * "최근 수정 순" — updated_at 하나로는 순서가 정해지지 않는다. 같은 트랜잭션에서 저장된 행들은 now()가 같고,
+ * 시계 해상도가 낮으면 잇달아 저장된 행들도 같은 값을 받는다. 동률은 저장 순서(updated_seq)가 가른다.
+ */
+function byRecency(a: { row: Row }, b: { row: Row }): number {
+  return b.row.updatedAt.getTime() - a.row.updatedAt.getTime() || Number(b.row.updatedSeq) - Number(a.row.updatedSeq);
+}
+
 export class PgTripRepository implements TripRepository {
   constructor(private readonly db: Db) {}
 
@@ -33,21 +41,21 @@ export class PgTripRepository implements TripRepository {
 
   async listVisible(userId: string): Promise<TripView[]> {
     const rows = await this.visibleQuery(userId)
-      .orderBy(desc(sql`${trips.userId} = ${userId}`), desc(trips.updatedAt));
+      .orderBy(desc(sql`${trips.userId} = ${userId}`), desc(trips.updatedAt), desc(trips.updatedSeq));
     const seen = new Set<string>();
-    const out: TripView[] = [];
+    const kept: typeof rows = [];
     for (const r of rows) {
       if (r.row.deletedAt || seen.has(r.row.clientId)) continue;
       seen.add(r.row.clientId);
-      out.push(this.toView(r));
+      kept.push(r);
     }
-    return out.sort((a, b) => b.record.updatedAt.localeCompare(a.record.updatedAt));
+    return kept.sort(byRecency).map((r) => this.toView(r));
   }
 
   /** 동기화용 — tombstone까지 포함한다(웹의 로그인 병합이 삭제를 알아야 한다) */
   async listForSync(userId: string): Promise<TripView[]> {
     const rows = await this.visibleQuery(userId)
-      .orderBy(desc(sql`${trips.userId} = ${userId}`), desc(trips.updatedAt));
+      .orderBy(desc(sql`${trips.userId} = ${userId}`), desc(trips.updatedAt), desc(trips.updatedSeq));
     const seen = new Set<string>();
     const out: TripView[] = [];
     for (const r of rows) {
@@ -83,7 +91,7 @@ export class PgTripRepository implements TripRepository {
         return { applied: false, conflict: true, record: toRecord(current) };
       }
       const [row] = await tx.update(trips)
-        .set({ data, revision: Number(current.revision) + 1, deletedAt: null, updatedAt: sql`now()` })
+        .set({ data, revision: Number(current.revision) + 1, deletedAt: null, updatedAt: sql`now()`, updatedSeq: sql`nextval('trips_updated_seq')` })
         .where(eq(trips.id, id)).returning();
       await this.logSave(tx, current, row, opts.actorId ?? null);
       return { applied: true, conflict: false, record: toRecord(row) };
@@ -117,7 +125,7 @@ export class PgTripRepository implements TripRepository {
         return { applied: false, conflict: true, record: toRecord(current) };
       }
       const [row] = await tx.update(trips)
-        .set({ revision: Number(current.revision) + 1, deletedAt: sql`now()`, updatedAt: sql`now()` })
+        .set({ revision: Number(current.revision) + 1, deletedAt: sql`now()`, updatedAt: sql`now()`, updatedSeq: sql`nextval('trips_updated_seq')` })
         .where(eq(trips.id, id)).returning();
       return { applied: true, conflict: false, record: toRecord(row) };
     });
