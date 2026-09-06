@@ -53,9 +53,21 @@ function makeToken({ issuerId, keyId, privateKey, now = Date.now() }) {
   return `${header}.${payload}.${signature}`;
 }
 
+/**
+ * App Store Connect가 `whatsNew`에서 **이모지를 거부한다** — 409
+ * `Text for whatsNew contains invalid characters:'[🏠]'`. 2026-09-06 run #12가 이걸로 죽었다.
+ * 그림문자만 걷어내고 글자·문장부호(`→` `·` `•`)는 남긴다.
+ */
+function stripPictographs(text) {
+  return String(text ?? '')
+    .replace(/[\p{Extended_Pictographic}\p{Regional_Indicator}\u{FE0F}\u{200D}\u{20E3}]/gu, '')
+    .replace(/[ \t]{2,}/g, ' ')          // 걷어낸 자리에 생긴 이중 공백
+    .replace(/^[ \t]+|[ \t]+$/gm, '');  // 줄 끝에 남은 공백
+}
+
 /** 4000자를 넘으면 자른다 — 잘렸다는 사실을 남긴다(조용히 삼키지 않는다). */
 function trimNotes(text) {
-  const value = String(text == null ? '' : text).trim();
+  const value = stripPictographs(text).trim();
   if (value.length <= MAX_WHATS_NEW) return value;
   const suffix = '\n…(줄임)';
   return value.slice(0, MAX_WHATS_NEW - suffix.length) + suffix;
@@ -156,7 +168,7 @@ async function main() {
   }
 }
 
-module.exports = { makeToken, trimNotes, planLocalizations, waitForBuild, resolvePath, _MAX_WHATS_NEW: MAX_WHATS_NEW };
+module.exports = { makeToken, trimNotes, stripPictographs, planLocalizations, waitForBuild, resolvePath, _MAX_WHATS_NEW: MAX_WHATS_NEW };
 
 if (require.main === module) {
   main().catch((error) => {
