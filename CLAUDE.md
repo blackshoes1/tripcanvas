@@ -48,6 +48,15 @@ ssh nas 'cd ~/tripcanvas && sudo /usr/local/bin/docker compose -f deploy/docker-
 curl -s -o /dev/null -w "%{http_code}\n" https://bokbok9.tail8b977f.ts.net/api/v1/trips   # 401이면 산다
 ```
 
+  ⚠️ **마이그레이션을 추가했으면 `migrate`도 다시 빌드한다.** `migrate`는 별도 이미지라 `build api`만 하면
+  옛 이미지가 돌고 **"migrations applied successfully"라고 찍으면서 새 테이블을 만들지 않는다**
+  (2026-09-06 `leg_cache`가 그랬다 — 로그는 초록인데 테이블이 없었다):
+
+```bash
+ssh nas 'cd ~/tripcanvas && sudo /usr/local/bin/docker compose -f deploy/docker-compose.yml build migrate && sudo /usr/local/bin/docker compose -f deploy/docker-compose.yml up -d migrate'
+ssh nas "sudo /usr/local/bin/docker exec tripcanvas-postgres-1 psql -U tripcanvas -d tripcanvas -c '\\d <새 테이블>'"   # 눈으로 확인한다
+```
+
   ⚠️ **새 라우트는 배포 전까지 404다.** 앱·웹이 그걸 "값이 없음"으로 조용히 넘기게 설계돼 있으면
   아무 오류 없이 화면에서 그 기능만 사라진다 — 2026-09-06에 일자 스트립 날짜가 그래서 안 보였다.
   ⚠️ `deploy/.env`는 추적되지 않으므로 이 아카이브에 없다. NAS 것이 그대로 남는다.

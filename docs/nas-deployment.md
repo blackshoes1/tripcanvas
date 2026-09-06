@@ -186,6 +186,16 @@ sudo docker compose -f deploy/docker-compose.yml build api
 sudo docker compose -f deploy/docker-compose.yml up -d api
 ```
 
+⚠️ **`migrate`는 별도 이미지다.** 마이그레이션을 추가했는데 `build api`만 하면 옛 `migrate` 이미지가 돌고,
+`[✓] migrations applied successfully!`라고 찍으면서 **새 테이블을 만들지 않는다.** 로그가 초록이라 더 안 보인다
+(2026-09-06 `leg_cache`가 그랬다). 스키마를 바꿨으면 반드시:
+
+```bash
+sudo docker compose -f deploy/docker-compose.yml build migrate
+sudo docker compose -f deploy/docker-compose.yml up -d migrate
+sudo docker exec tripcanvas-postgres-1 psql -U tripcanvas -d tripcanvas -c '\d <새 테이블>'   # 눈으로 확인
+```
+
 `~/.ssh/config`에 별칭을 두면 편하다(`Host nas` / `HostName bokbok9.tail8b977f.ts.net` / `User <계정>`).
 
 ⚠️ **`deploy/.env`는 보내지 않는다.** 비밀이 들어 있고 NAS 것이 진실이다.
