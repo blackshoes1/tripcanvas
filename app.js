@@ -224,6 +224,7 @@ function onMapPick(lat,lng,placeId){
   pickMode=false; document.getElementById('pickBanner').style.display='none';
   document.getElementById('spotLat').value=lat; document.getElementById('spotLng').value=lng;
   document.getElementById('spotPlaceId').value=placeId||'';   // 탭한 POI가 특정되면 그 id를 쓰고, 아니면 이전 검색값 무효화
+  document.getElementById('spotKakaoId').value='';            // 좌표를 새로 찍었으면 예전 카카오 장소 id는 그 장소가 아니다
   document.getElementById('coordHint').textContent=`좌표: ${lat.toFixed(4)}, ${lng.toFixed(4)} ✓`;
   fillSpotFromCoords(lat,lng,false,placeId);   // 이름·도시 비어있으면 자동 채움
   document.getElementById('spotModalBg').classList.add('show');
@@ -235,6 +236,7 @@ function addSpotAt(lat,lng,placeId,known){
   openSpotModal(di,-1);
   document.getElementById('spotLat').value=lat; document.getElementById('spotLng').value=lng;
   document.getElementById('spotPlaceId').value=placeId||'';
+  document.getElementById('spotKakaoId').value=(known&&known.kakaoId)||'';   // 국내 POI 칩은 무엇을 눌렀는지 안다
   document.getElementById('coordHint').textContent=`좌표: ${(+lat).toFixed(4)}, ${(+lng).toFixed(4)} ✓ (지도에서 지정)`;
   document.getElementById('spotName').value=''; _namePrefill='';
   fillSpotFromCoords(lat,lng,true,placeId,known);    // 지정 지점의 장소명·도시 자동 채움
@@ -304,7 +306,7 @@ function drawKakaoPOI(list){
     el.addEventListener('click',ev=>{
       ev.preventDefault(); ev.stopPropagation();
       cancelMapTap();                                       // 지도 탭의 지연 추가와 겹치지 않게
-      addSpotAt(lat,lng,'',{ name:p.place_name, city:cityFromKakaoAddress(p.address_name||p.road_address_name||'') });
+      addSpotAt(lat,lng,'',{ name:p.place_name, city:cityFromKakaoAddress(p.address_name||p.road_address_name||''), kakaoId:p.id||'' });
     });
     poiOverlays.push(Engines.kakao.marker(lat,lng,el));
   });
@@ -1743,6 +1745,7 @@ window.openSpotModal=(di,si)=>{
   document.getElementById('spotAdvanced').open=!isNew&&!!(s.legMode||s.cost||s.bookAt||s.bookUrl||s.opt||s.stay);
   document.getElementById('spotLat').value=s.lat; document.getElementById('spotLng').value=s.lng;
   document.getElementById('spotPlaceId').value=s.placeId||'';
+  document.getElementById('spotKakaoId').value=s.kakaoId||'';
   document.getElementById('coordHint').textContent = s.lat?`좌표: ${(+s.lat).toFixed(4)}, ${(+s.lng).toFixed(4)}`:'좌표: 미지정 (검색 또는 지도 클릭)';
   document.getElementById('spotSearch').value=''; document.getElementById('searchRes').innerHTML='';
   const daySel=document.getElementById('spotDay');
@@ -1830,6 +1833,7 @@ document.getElementById('spotSave').onclick=()=>{
     bookAt:normHM(document.getElementById('spotBookAt').value)||'',
     bookUrl:document.getElementById('spotBookUrl').value.trim(),
     placeId:(document.getElementById('spotPlaceId').value||undefined),   // 예약 가격 추적의 호텔 identity
+    kakaoId:(document.getElementById('spotKakaoId').value||undefined),   // 국내 장소 신원 — 지도 링크가 바로 길찾기로 열린다
     cat:(document.getElementById('spotCat').value||undefined),           // 미지정이면 이름 추론에 맡긴다
     who:pickedWho(),                                                     // 비었으면 모두(§26)
     hours:_pickedHours||undefined,lat,lng};
@@ -1900,6 +1904,7 @@ async function doSearch(){
       d.onclick=()=>{
         document.getElementById('spotLat').value=it.lat; document.getElementById('spotLng').value=it.lng;
         document.getElementById('spotPlaceId').value=it.placeId||'';   // 구글 결과면 호텔 identity용 placeId 보존
+        document.getElementById('spotKakaoId').value=it.kakaoId||'';   // 카카오 결과면 그 장소로 바로 길찾기
         fillNameValue(it.name, true);   // 검색 결과 선택은 명시적 → 기존 이름도 그 장소 이름으로 갱신
         document.getElementById('coordHint').textContent=`좌표: ${(+it.lat).toFixed(4)}, ${(+it.lng).toFixed(4)} ✓`+(it.hours?' · 영업시간 반영됨':'');
         if(it.city) fillCityValue(it.city);              // 결과가 아는 도시로 즉시 채움(신뢰성↑)
@@ -2960,7 +2965,7 @@ async function kakaoSearch(q, near, limit){
     try{
       new kakao.maps.services.Places().keywordSearch(q,(data,status)=>{
         const S=kakao.maps.services.Status;
-        if(status===S.OK && data) return res({list:data.map(d=>({name:d.place_name, addr:d.road_address_name||d.address_name||'', city:cityFromKoreanAddr(d.address_name||d.road_address_name||''), lat:+d.y, lng:+d.x, cat:catFromKakao(d.category_group_code)||undefined})), err:null});
+        if(status===S.OK && data) return res({list:data.map(d=>({name:d.place_name, addr:d.road_address_name||d.address_name||'', city:cityFromKoreanAddr(d.address_name||d.road_address_name||''), lat:+d.y, lng:+d.x, cat:catFromKakao(d.category_group_code)||undefined, kakaoId:d.id||undefined})), err:null});   // kakaoId: 국내 바로 길찾기의 신원
         if(status===S.ZERO_RESULT) return res({list:[], err:null});   // 진짜 결과 없음(오류 아님)
         console.warn('kakao 검색 오류 status:', status);
         res({list:[], err:'error'});

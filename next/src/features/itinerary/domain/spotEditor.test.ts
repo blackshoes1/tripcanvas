@@ -70,10 +70,10 @@ describe('편집은 값만 고친다 — 폼 밖의 것은 원본에서 물려�
     expect(after).toMatchObject({ bookingId: 'h1', carPickupId: 'c1', carReturnId: 'c1' });
   });
 
-  it('좌표·placeId·영업시간도 원본 그대로', () => {
+  it('좌표·placeId·kakaoId·영업시간도 원본 그대로', () => {
     const hours = [{ d: 1, o: 540, c: 1080 }];
-    const after = edit(spot('A', { placeId: 'ChIJ_x', hours }), { name: 'A2' });
-    expect(after).toMatchObject({ lat: 33.5, lng: 126.5, placeId: 'ChIJ_x' });
+    const after = edit(spot('A', { placeId: 'ChIJ_x', kakaoId: '13525626', hours }), { name: 'A2' });
+    expect(after).toMatchObject({ lat: 33.5, lng: 126.5, placeId: 'ChIJ_x', kakaoId: '13525626' });
     expect(after.hours).toEqual(hours);
   });
 
@@ -195,6 +195,22 @@ describe('newSpotDraft / applyPlaceToForm — 검색 결과 반영', () => {
     // 그대로 저장하면 초안의 값이 장소로 넘어간다
     const saved = spotFromForm(r.form, r.draft, { requireLocation: true });
     expect(saved.ok && saved.spot).toMatchObject({ name: 'Park Güell', lat: 41.4145, placeId: 'ChIJ_pk', cat: 'sight' });
+  });
+
+  it('국내 결과를 고르면 kakaoId가 초안에 담기고, 다른 결과를 고르면 지워진다', () => {
+    const kakao: PlaceResult = {
+      name: '성산일출봉', addr: '제주 서귀포시 성산읍', city: '서귀포',
+      lat: 33.458, lng: 126.9425, kakaoId: '13525626'
+    };
+    const draft = newSpotDraft(undefined);
+    const picked = applyPlaceToForm(formFromSpot(draft, 0), draft, kakao);
+    expect(picked.draft.kakaoId).toBe('13525626');
+    const saved = spotFromForm(picked.form, picked.draft, { requireLocation: true });
+    expect(saved.ok && saved.spot.kakaoId).toBe('13525626');
+
+    // 해외 결과로 갈아타면 국내 신원은 그 장소가 아니다
+    const again = applyPlaceToForm(picked.form, picked.draft, place);
+    expect(again.draft.kakaoId).toBeUndefined();
   });
 
   it('결과가 도시를 모르면 기존 도시를 지우지 않는다', () => {

@@ -14,6 +14,8 @@ export interface PoiPick {
   lng: number;
   name: string;
   city: string;
+  /** 우리가 깐 칩이라 무엇을 눌렀는지 안다 — 카카오 장소 ID */
+  kakaoId?: string;
 }
 
 /**
@@ -45,7 +47,8 @@ export function createKakaoPoiLayer(kmap: kakao.maps.Map, onPick: (p: PoiPick) =
         onPick({
           lat, lng,
           name: p.place_name,
-          city: legacyLib.cityFromKakaoAddress(p.address_name || p.road_address_name || '')
+          city: legacyLib.cityFromKakaoAddress(p.address_name || p.road_address_name || ''),
+          kakaoId: p.id || undefined
         });
       };
       const ov = new kakao.maps.CustomOverlay({

@@ -119,7 +119,6 @@ declare namespace kakao.maps {
     const Status: { OK: string; ZERO_RESULT: string; ERROR: string };
     const SortBy: { DISTANCE?: string };
     interface CategoryItem extends PlaceItem {
-      id?: string;
       /** 기준점에서의 거리(m) — 문자열로 온다 */
       distance?: string;
     }
@@ -134,6 +133,8 @@ declare namespace kakao.maps {
       ): void;
     }
     interface PlaceItem {
+      /** 카카오 장소 ID — 키워드 검색·카테고리 검색 모두 실어 준다 */
+      id?: string;
       place_name: string;
       road_address_name?: string;
       address_name?: string;

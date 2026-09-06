@@ -42,11 +42,11 @@ export interface TravelView {
   empty: boolean;
 }
 
-/** 좌표가 있을 때만 외부 지도 링크 (찾는 기준은 이름 — 좌표는 어느 지도를 열지만 정한다) */
-function linkOf(s: { name: string; city?: string; lat: number | null; lng: number | null }): MapLink | null {
+/** 좌표가 있을 때만 외부 지도 링크 (찾는 기준은 신원 → 이름 — 좌표는 어느 지도를 열지만 정한다) */
+function linkOf(s: { name: string; city?: string; kakaoId?: string; lat: number | null; lng: number | null }): MapLink | null {
   const { lat, lng } = s;
   if (lat == null || lng == null || !isFinite(lat) || !isFinite(lng)) return null;
-  return extMapLink({ name: s.name, city: s.city, lat, lng });
+  return extMapLink({ name: s.name, city: s.city, kakaoId: s.kakaoId, lat, lng });
 }
 
 /**

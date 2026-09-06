@@ -52,6 +52,8 @@ export interface Spot {
   carReturnId?: string;
   /** 구글 Place ID — 호텔 identity 매칭에 사용 */
   placeId?: string;
+  /** 카카오 장소 ID — 국내 장소를 특정해 지도 링크를 바로 길찾기로 연다 */
+  kakaoId?: string;
   cat?: SpotCategory;
   hours?: OpeningHour[];
   /** 실행 상태 — 기본 PLANNED는 저장하지 않는다. 자동 완료 판정은 하지 않는다(사용자가 누른다) */

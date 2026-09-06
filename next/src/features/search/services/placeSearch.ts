@@ -28,7 +28,8 @@ const kakaoProvider: SearchProvider = async (q, near, limit) => {
                 addr: d.road_address_name || d.address_name || '',
                 city: legacyLib.cityFromKoreanAddr(d.address_name || d.road_address_name || ''),
                 lat: +d.y, lng: +d.x,
-                cat: asCat(legacyLib.catFromKakao(d.category_group_code))
+                cat: asCat(legacyLib.catFromKakao(d.category_group_code)),
+                kakaoId: d.id || undefined   // 고른 그 장소의 신원 — 지도 링크가 바로 길찾기가 된다
               })),
               error: null
             });
