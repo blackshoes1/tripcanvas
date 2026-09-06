@@ -14,6 +14,8 @@
 
 const crypto = require('crypto');
 const fs = require('fs');
+const os = require('os');
+const path = require('path');
 
 const BUNDLE_ID = 'com.fromj.trip';
 const API = 'https://api.appstoreconnect.apple.com/v1';
@@ -22,6 +24,17 @@ const MAX_WHATS_NEW = 4000;
 /** 처리 대기 — 보통 5~15분이라 넉넉히 잡되 무한정 기다리지 않는다 */
 const POLL_INTERVAL_MS = 20_000;
 const POLL_TIMEOUT_MS = 20 * 60_000;
+
+/**
+ * `~`를 집 디렉터리로 편다. 셸을 거치지 않고 오는 경로가 있어서다 —
+ * YAML의 `env:`는 셸이 아니라 `~`가 그대로 온다(run #10이 그렇게 죽었다).
+ */
+function resolvePath(value) {
+  const text = String(value ?? '');
+  if (text === '~') return os.homedir();
+  if (text.startsWith('~/')) return path.join(os.homedir(), text.slice(2));
+  return text;
+}
 
 /** ES256 JWT. Node 22의 `ieee-p1363`이 JOSE 형식 서명을 그대로 준다(DER 변환 불필요). */
 function makeToken({ issuerId, keyId, privateKey, now = Date.now() }) {
@@ -110,7 +123,7 @@ async function main() {
   const token = makeToken({
     issuerId: env.APPSTORE_ISSUER_ID,
     keyId: env.APPSTORE_KEY_ID,
-    privateKey: fs.readFileSync(env.APPSTORE_PRIVATE_KEY_PATH, 'utf8')
+    privateKey: fs.readFileSync(resolvePath(env.APPSTORE_PRIVATE_KEY_PATH), 'utf8')
   });
   const call = client({ token });
 
@@ -143,7 +156,7 @@ async function main() {
   }
 }
 
-module.exports = { makeToken, trimNotes, planLocalizations, waitForBuild, _MAX_WHATS_NEW: MAX_WHATS_NEW };
+module.exports = { makeToken, trimNotes, planLocalizations, waitForBuild, resolvePath, _MAX_WHATS_NEW: MAX_WHATS_NEW };
 
 if (require.main === module) {
   main().catch((error) => {
