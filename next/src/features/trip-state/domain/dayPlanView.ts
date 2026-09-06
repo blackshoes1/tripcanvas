@@ -23,7 +23,7 @@ import type { TripDoc } from './todayView';
 
 import { CONTRACT_SCHEMA_VERSION } from './contract';
 import type {
-  DayPlanCarEvent, DayPlanDay, DayPlanLeg, DayPlanResponse, DayPlanSpot, TripSummary
+  DayPlanCarEvent, DayPlanDay, DayPlanLeg, DayPlanResponse, DayPlanSpot, DayPlanStripEntry, TripSummary
 } from './contract';
 
 const { carEventsOn, carSpotLinks, dayReturnStay, dayStartAnchor, haversine, parseHM, spotCatOf } = legacyLib;
@@ -191,6 +191,12 @@ export function buildDayPlanView(input: DayPlanInput): DayPlanResponse | null {
     travelTimeSource: 'STRAIGHT_LINE_ESTIMATE',
     trip: input.summary,
     dayCount: days.length,
+    days: days.map((d, i): DayPlanStripEntry => ({
+      index: i,
+      date: isoDateOf(trip, i),
+      title: String(d.title ?? ''),
+      spotCount: (d.spots ?? []).length
+    })),
     day: planDay
   };
 }

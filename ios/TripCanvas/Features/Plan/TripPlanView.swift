@@ -134,35 +134,83 @@ struct TripPlanView: View {
     }
 
     /// 며칠짜리든 한 줄에 담기지 않는다 — 가로 스크롤 칩으로 고른다.
+    ///
+    /// "며칠째"만 보여 주면 3일차가 무슨 요일인지, 오늘인지, 뭐가 들어 있는지 모른다.
+    /// 날짜·요일은 **서버가 준 것**을 쓴다(`start + index`를 앱에서 더하면 규칙이 두 곳이 된다).
     private func dayPicker(_ model: TripPlanViewModel) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: Space.s) {
-                ForEach(0..<model.dayCount, id: \.self) { index in
-                    let selected = index == model.selectedDay
-                    Button {
-                        model.selectedDay = index
-                    } label: {
-                        VStack(spacing: 2) {
-                            Text("Day \(index + 1)").font(.subheadline.weight(.semibold))
-                            let title = model.document?.days[index].title ?? ""
-                            if !title.isEmpty {
-                                Text(title).font(.caption2).lineLimit(1)
-                            }
-                        }
-                        .padding(.horizontal, Space.m)
-                        .padding(.vertical, Space.s)
-                        .frame(minWidth: 64)
-                        .background(selected ? Color.accentColor.opacity(0.16) : Color(.secondarySystemBackground),
-                                    in: RoundedRectangle(cornerRadius: Radius.card))
-                        .foregroundStyle(selected ? Color.accentColor : .primary)
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: Space.s) {
+                    ForEach(model.strip) { entry in
+                        dayChip(entry, model: model)
+                            .id(entry.index)
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityAddTraits(selected ? [.isSelected] : [])
                 }
+                .padding(.horizontal, Space.l)
+                .padding(.vertical, Space.s)
             }
-            .padding(.horizontal, Space.l)
-            .padding(.vertical, Space.s)
+            // 14일짜리 일정에서 고른 날이 화면 밖에 있으면 안 된다 — 여행 중이면 오늘로 옮겨진 뒤다.
+            .onChange(of: model.selectedDay) { _, day in
+                withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(day, anchor: .center) }
+            }
+            .onAppear { proxy.scrollTo(model.selectedDay, anchor: .center) }
         }
+    }
+
+    private func dayChip(_ entry: DayPlanStripEntry, model: TripPlanViewModel) -> some View {
+        let selected = entry.index == model.selectedDay
+        let isToday = entry.index == model.todayIndex
+        return Button {
+            model.selectedDay = entry.index
+        } label: {
+            VStack(spacing: 2) {
+                HStack(spacing: 4) {
+                    Text("Day \(entry.index + 1)").font(.subheadline.weight(.semibold))
+                    // 오늘은 번호보다 이 표시로 찾는다.
+                    if isToday {
+                        Text("오늘")
+                            .font(.caption2.weight(.bold))
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(Color.accentColor, in: Capsule())
+                            .foregroundStyle(.white)
+                    }
+                }
+                if let date = TimeFormat.dayChipLabel(entry.date) {
+                    Text(date).font(.caption2).foregroundStyle(selected ? Color.accentColor : .secondary)
+                }
+                Text(entry.title.isEmpty ? subtitle(for: entry) : entry.title)
+                    .font(.caption2)
+                    .lineLimit(1)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, Space.m)
+            .padding(.vertical, Space.s)
+            .frame(minWidth: 72)
+            .background(selected ? Color.accentColor.opacity(0.16) : Color(.secondarySystemBackground),
+                        in: RoundedRectangle(cornerRadius: Radius.card))
+            .overlay(RoundedRectangle(cornerRadius: Radius.card)
+                .stroke(isToday ? Color.accentColor : .clear, lineWidth: selected ? 0 : 1))
+            .foregroundStyle(selected ? Color.accentColor : .primary)
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityLabel(entry, isToday: isToday))
+        .accessibilityAddTraits(selected ? [.isSelected] : [])
+    }
+
+    /// 제목이 없는 날은 대신 그 날의 무게를 말한다 — 빈 날을 눈에 띄게.
+    private func subtitle(for entry: DayPlanStripEntry) -> String {
+        entry.spotCount == 0 ? "비어 있음" : "\(entry.spotCount)곳"
+    }
+
+    private func accessibilityLabel(_ entry: DayPlanStripEntry, isToday: Bool) -> String {
+        var parts = ["Day \(entry.index + 1)"]
+        if isToday { parts.append("오늘") }
+        if let date = TimeFormat.dayChipLabel(entry.date) { parts.append(date) }
+        if !entry.title.isEmpty { parts.append(entry.title) }
+        parts.append(subtitle(for: entry))
+        return parts.joined(separator: ", ")
     }
 
     @ViewBuilder

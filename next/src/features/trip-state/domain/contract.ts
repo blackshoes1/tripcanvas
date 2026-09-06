@@ -657,6 +657,19 @@ export interface DayPlanDay {
   };
 }
 
+/**
+ * 일자 스트립 한 칸. 화면이 "며칠째"만이 아니라 **언제, 어떤 날**인지 말할 수 있게 한다.
+ *
+ * ⚠️ 날짜를 앱에서 `start + index`로 더하지 않는다. 규칙(`isoDateOf`)이 웹에 이미 있고,
+ * 둘이 갈리면 같은 일정에 서로 다른 날짜가 찍힌다.
+ */
+export interface DayPlanStripEntry {
+  index: number;
+  date: string;             // YYYY-MM-DD ('' = 시작일 미지정)
+  title: string;
+  spotCount: number;
+}
+
 export interface DayPlanResponse {
   schemaVersion: number;
   generatedAt: string;
@@ -664,5 +677,7 @@ export interface DayPlanResponse {
   travelTimeSource: TravelTimeSource;
   trip: TripSummary;
   dayCount: number;
+  /** 일자 스트립 — 여행 전체의 날 목록. 어느 날을 보든 같이 온다(왕복을 늘리지 않는다). */
+  days: DayPlanStripEntry[];
   day: DayPlanDay;
 }

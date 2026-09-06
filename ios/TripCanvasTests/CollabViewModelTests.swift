@@ -554,4 +554,9 @@ private final class FakeDocumentStore: TripDocumentSource {
         saves.append((document, expectedRevision))
         return TripDocumentSnapshot(document: document, revision: expectedRevision + 1, role: .owner)
     }
+
+    /// 이 테스트는 서버 계산을 쓰지 않는다 — 계산이 없어도 일정 편집은 그대로 돈다.
+    func dayPlan(tripId: String, dayIndex: Int) async throws -> TripService.Fetched<DayPlanResponse> {
+        throw APIError.notFound("일자 계획 없음")
+    }
 }

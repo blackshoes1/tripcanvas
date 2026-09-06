@@ -22,13 +22,24 @@ final class TripPlanViewModel {
     private(set) var conflict: String?
     private(set) var toast: String?
 
+    /// 서버가 계산한 그 날의 흐름과 일자 스트립. 문서와 따로 온다 — 문서는 원문, 이건 계산이다.
+    /// nil이면 아직 못 받았거나 실패한 것이다. **없어도 일정 편집은 그대로 된다.**
+    private(set) var plan: DayPlanResponse?
+    /// 계산이 마지막으로 받아진 시점(오프라인일 때만 값이 있다).
+    private(set) var planCachedAt: Date?
+
     /// 보고 있는 일자. 문서가 줄어들면 마지막 날로 당긴다.
     var selectedDay = 0 {
-        didSet { if let document, selectedDay >= document.days.count { selectedDay = max(0, document.days.count - 1) } }
+        didSet {
+            if let document, selectedDay >= document.days.count { selectedDay = max(0, document.days.count - 1) }
+            if selectedDay != oldValue { Task { await loadPlan() } }
+        }
     }
 
     let tripId: String
     private let service: TripDocumentSource
+    /// 여행 중일 때 '오늘'로 한 번만 옮긴다.
+    private var didJumpToToday = false
 
     init(tripId: String, service: TripDocumentSource) {
         self.tripId = tripId
@@ -53,6 +64,50 @@ final class TripPlanViewModel {
         } catch {
             errorMessage = message(for: error)
         }
+        await loadPlan()
+    }
+
+    /// 서버 계산을 받아온다. **실패해도 조용하다** — 일정 편집은 문서만으로 되고,
+    /// 계산이 없으면 화면이 시각·구간을 감출 뿐이다. 여기서 오류 배너를 띄우면
+    /// 편집이 멀쩡한데 무언가 고장 난 것처럼 보인다.
+    func loadPlan() async {
+        guard dayCount > 0 else { plan = nil; return }
+        let day = selectedDay
+        do {
+            let fetched = try await service.dayPlan(tripId: tripId, dayIndex: day)
+            guard day == selectedDay else { return }   // 그 사이 다른 날로 옮겼으면 버린다
+            plan = fetched.value
+            planCachedAt = fetched.cachedAt
+            jumpToTodayOnce()
+        } catch {
+            plan = nil
+            planCachedAt = nil
+        }
+    }
+
+    /// 여행 중이면 오늘부터 본다 — 14일짜리 일정에서 1일차부터 스크롤하게 두지 않는다.
+    /// **한 번만** 옮긴다. 사용자가 고른 날을 나중에 되돌리면 안 된다.
+    private func jumpToTodayOnce() {
+        guard !didJumpToToday else { return }
+        didJumpToToday = true
+        guard let today = todayIndex, today != selectedDay, document?.hasDay(today) == true else { return }
+        selectedDay = today
+    }
+
+    /// 일자 스트립. 계산을 못 받았으면 문서에서 최소한(번호·제목·장소 수)만 만든다 —
+    /// ⚠️ 날짜는 넣지 않는다. `start + index`를 앱에서 더하면 규칙이 두 곳이 된다.
+    var strip: [DayPlanStripEntry] {
+        if let plan, plan.days.count == dayCount { return plan.days }
+        return (0..<dayCount).map { i in
+            DayPlanStripEntry(index: i, date: "", title: document?.days[i].title ?? "",
+                              spotCount: document?.days[i].spots.count ?? 0)
+        }
+    }
+
+    /// 오늘이 몇 일차인지. 여행 기간 밖이면 nil이다(서버가 -1로 준다).
+    var todayIndex: Int? {
+        guard let index = plan?.trip.todayIndex, index >= 0 else { return nil }
+        return index
     }
 
     /// 충돌 뒤 "최신 불러오기". 방금 바꾼 것은 서버에 없으므로 사라진다 — 화면이 그렇게 말한 뒤에 부른다.

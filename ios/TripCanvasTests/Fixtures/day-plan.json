@@ -18,6 +18,20 @@
     "memberCount": 1
   },
   "dayCount": 2,
+  "days": [
+    {
+      "index": 0,
+      "date": "2026-09-01",
+      "title": "첫날",
+      "spotCount": 2
+    },
+    {
+      "index": 1,
+      "date": "2026-09-02",
+      "title": "이튿날",
+      "spotCount": 1
+    }
+  ],
   "day": {
     "index": 0,
     "date": "2026-09-01",

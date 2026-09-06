@@ -80,6 +80,21 @@ enum TimeFormat {
         return symbol.map { "\($0)\(number)" } ?? "\(number) \(currency)"
     }
 
+    /// 일자 칩의 "10/2 (금)". 서버가 준 `YYYY-MM-DD`를 **그대로 읽기만** 한다 —
+    /// 날짜를 여기서 만들지 않는다(어느 날인지는 서버가 정한다).
+    /// 날짜가 없는 여행(`""`)이면 nil이라 칩에서 그 줄이 빠진다.
+    static func dayChipLabel(_ iso: String) -> String? {
+        let parts = iso.split(separator: "-")
+        guard parts.count == 3, let year = Int(parts[0]), let month = Int(parts[1]), let day = Int(parts[2]) else {
+            return nil
+        }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .gmt
+        guard let date = calendar.date(from: DateComponents(year: year, month: month, day: day)) else { return nil }
+        let weekday = ["일", "월", "화", "수", "목", "금", "토"][calendar.component(.weekday, from: date) - 1]
+        return "\(month)/\(day) (\(weekday))"
+    }
+
     /// "10:32에 받아온 정보예요" 같은 오프라인 표기용.
     static func shortTime(_ date: Date) -> String {
         let formatter = DateFormatter()
