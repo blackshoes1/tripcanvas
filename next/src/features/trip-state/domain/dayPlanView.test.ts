@@ -6,8 +6,12 @@
 //   3. 배선 실수가 잦은 곳(anchor/carry · 마지막 날 복귀 · 렌터카 연결)이 계약에도 그대로 반영된다
 import { describe, expect, it } from 'vitest';
 
+import lib from '@legacy/lib.js';
+
 import type { Booking } from '@/features/booking/domain/types';
 import type { Day, Spot, Trip } from '@/features/trip/domain/types';
+
+import type { LegCache } from '@/features/itinerary/domain/types';
 
 import type { TripSummary } from './contract';
 import { buildDayPlanView } from './dayPlanView';
@@ -29,8 +33,8 @@ const summary: TripSummary = {
   todayIndex: -1, daysUntilStart: 12, role: 'OWNER', memberCount: 1
 };
 
-const build = (t: Trip, di: number) =>
-  buildDayPlanView({ trip: t, di, summary, generatedAt: '2026-09-06T00:00:00Z' });
+const build = (t: Trip, di: number, legCache?: LegCache) =>
+  buildDayPlanView({ trip: t, di, summary, generatedAt: '2026-09-06T00:00:00Z', legCache });
 
 describe('buildDayPlanView', () => {
   it('없는 일자는 null이다 — 지어내지 않는다', () => {
@@ -194,5 +198,62 @@ describe('buildDayPlanView', () => {
     expect(pickups[0].kind).toBe('PICKUP');
     expect(pickups[0].place).toBe('제주공항점 (CJU)');
     expect(pickups[0].atMinutes).toBe(10 * 60);
+  });
+});
+
+// ── 구간 캐시 (서버가 실제 경로를 조회해 둔 뒤) ──
+// 여기서 지키는 것: **조회된 것만 도로라고 말한다.** 하나라도 추정이면 맨 위는 추정이다.
+describe('buildDayPlanView — 구간 캐시', () => {
+  const key = (a: Spot, b: Spot, mode = 'car') =>
+    lib.legKey({ lat: Number(a.lat), lng: Number(a.lng) }, { lat: Number(b.lat), lng: Number(b.lng) }, mode);
+
+  it('조회된 구간은 도로 시간·도로 거리·경로를 그대로 싣는다', () => {
+    const t = trip([day([airport(), seongsan()]), day([])]);
+    const cache: LegCache = { [key(airport(), seongsan())]: { sec: 3600, m: 52_300, path: 'encoded' } };
+    const leg = build(t, 0, cache)!.day.spots[1].incomingLeg!;
+    expect(leg.source).toBe('ROUTED');
+    expect(leg.minutes).toBe(60);
+    expect(leg.distanceKm).toBe(52.3);
+    expect(leg.path).toBe('encoded');
+  });
+
+  it('조회되지 않은 구간은 예전 그대로다 — 직선 추정이고 경로는 null이다', () => {
+    const t = trip([day([airport(), seongsan()]), day([])]);
+    const withCache = build(t, 0, {})!.day.spots[1].incomingLeg!;
+    const without = build(t, 0)!.day.spots[1].incomingLeg!;
+    expect(withCache).toEqual(without);
+    expect(without.path).toBeNull();
+    expect(without.source).toBe('STRAIGHT_LINE_ESTIMATE');
+  });
+
+  it('실패로 남은 구간은 조회된 것이 아니다 — 없는 경로를 그리게 두지 않는다', () => {
+    const t = trip([day([airport(), seongsan()]), day([])]);
+    const cache: LegCache = { [key(airport(), seongsan())]: { fail: true } };
+    const leg = build(t, 0, cache)!.day.spots[1].incomingLeg!;
+    expect(leg.source).toBe('STRAIGHT_LINE_ESTIMATE');
+    expect(leg.path).toBeNull();
+  });
+
+  it('하나라도 추정이면 맨 위는 추정이라고 말한다', () => {
+    const t = trip([day([airport(), seongsan(), hotel()]), day([])]);
+    const partial: LegCache = { [key(airport(), seongsan())]: { sec: 3600, m: 52_300, path: 'a' } };
+    expect(build(t, 0, partial)!.travelTimeSource).toBe('STRAIGHT_LINE_ESTIMATE');
+  });
+
+  it('숙소 복귀까지 전부 조회됐을 때만 ROUTED다', () => {
+    // 마지막 날에는 복귀가 없으므로(#152) 이틀을 두고 첫날을 본다
+    const t = trip([day([hotel(), airport(), seongsan()]), day([seongsan()])]);
+    const full: LegCache = {
+      [key(hotel(), airport())]: { sec: 600, m: 5_000, path: 'a' },
+      [key(airport(), seongsan())]: { sec: 3600, m: 52_300, path: 'b' },
+      [key(seongsan(), hotel())]: { sec: 1800, m: 40_000, path: 'c' }
+    };
+    const v = build(t, 0, full)!;
+    expect(v.day.back?.leg.source).toBe('ROUTED');
+    expect(v.day.back?.leg.path).toBe('c');
+    expect(v.travelTimeSource).toBe('ROUTED');
+    // 합계도 도로 값으로 — 97.3km · 100분
+    expect(v.day.totals.distanceKm).toBe(97.3);
+    expect(v.day.totals.travelMinutes).toBe(100);
   });
 });

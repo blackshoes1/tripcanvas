@@ -23,7 +23,8 @@ import type { SettableStatus } from '../domain/mutations';
 import { applyActivityStatus, applySuggestion } from '../domain/mutations';
 import type { TodayInput, TripDoc } from '../domain/todayView';
 import { buildDayPlanView } from '../domain/dayPlanView';
-import { computeToday, summarizeTrip } from '../domain/todayView';
+import { computeToday, resolveDayIndex, summarizeTrip } from '../domain/todayView';
+import type { LegCache } from '@/features/itinerary/domain/types';
 import collab from '@legacy/collab.js';
 
 export interface TripRow {
@@ -59,10 +60,23 @@ export interface Gateway {
   removeDevice(deviceId: string): Promise<void>;
 }
 
+/**
+ * 서버 구간 캐시. **없어도 된다** — 없으면 이동시간이 지금처럼 직선거리 추정이다.
+ *
+ * ⚠️ 응답을 경로 조회에 묶지 않는다: 읽기(`read`)는 이미 조회된 것만 보고, 없는 구간은
+ * 응답을 보낸 **뒤** `fillLater`가 채운다. 그래서 그 날을 처음 열면 추정이고 다음부터 도로다.
+ */
+export interface LegSupport {
+  read(trip: TripDoc, dayIndex: number): Promise<LegCache>;
+  /** 기다리지 않는다 — 배경에서 채우고 실패는 로그로 삼킨다 */
+  fillLater(trip: TripDoc, dayIndex: number): void;
+}
+
 export interface HandlerDeps {
   /** 토큰으로 사용자 컨텍스트를 만든다. 인증 실패는 null */
   gatewayFor(token: string): Promise<Gateway | null> | Gateway | null;
   now?: () => Date;
+  legs?: LegSupport;
 }
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' };
@@ -200,12 +214,19 @@ export function createHandlers(deps: HandlerDeps) {
     const dayIndex = readDayIndex(url);
     const clock = resolveClock(row.data, dayIndex ?? null, url, now());
     const dismissed = await gateway.listDismissed(row.client_id, clock.todayISO).catch((): string[] => []);
+    const legCache = await legCacheFor(row.data, resolveDayIndex(row.data, clock.todayISO, dayIndex));
     return computeToday({
       tripId: row.client_id, trip: row.data, revision: row.revision, updatedAt: row.updated_at,
       role: row.role, memberCount: row.member_count,
-      todayISO: clock.todayISO, nowMinutes: clock.nowMinutes, dayIndex, dismissed,
+      todayISO: clock.todayISO, nowMinutes: clock.nowMinutes, dayIndex, dismissed, legCache,
       generatedAt: now().toISOString(), ...extra
     }).response;
+  }
+
+  /** 이미 조회된 구간만. 캐시가 없거나 읽다 실패하면 빈 캐시 — 화면은 추정으로 나가고 멈추지 않는다 */
+  async function legCacheFor(trip: TripDoc, dayIndex: number): Promise<LegCache> {
+    if (!deps.legs) return {};
+    try { return await deps.legs.read(trip, dayIndex); } catch { return {}; }
   }
 
   /** GET /api/v1/trips — 여행 목록. 삭제(tombstone)된 여행은 빼고, 최근 수정 순. */
@@ -229,7 +250,11 @@ export function createHandlers(deps: HandlerDeps) {
     let row: TripRow | null;
     try { row = await gateway.getTrip(tripId); } catch { return fail('UPSTREAM_ERROR'); }
     if (!row || row.deleted_at) return fail('TRIP_NOT_FOUND');
-    return ok(await todayFor(gateway, row, new URL(request.url)));
+    const url = new URL(request.url);
+    const response = await todayFor(gateway, row, url);
+    // "지금" 화면도 그 날의 구간을 쓴다 — 여기서도 못 채운 것을 응답 뒤에 채운다.
+    deps.legs?.fillLater(row.data, response.day.index);
+    return ok(response);
   }
 
   /**
@@ -247,10 +272,13 @@ export function createHandlers(deps: HandlerDeps) {
     const stamp = now().toISOString().slice(0, 10);
     const body = buildDayPlanView({
       trip: row.data, di: dayIndex,
-      summary: summarizeTrip(row, stamp), generatedAt: now().toISOString()
+      summary: summarizeTrip(row, stamp), generatedAt: now().toISOString(),
+      legCache: await legCacheFor(row.data, dayIndex)
     });
     // 없는 날을 지어내지 않는다 — 여행은 있는데 그 일자가 없으면 404다.
     if (!body) return fail('DAY_NOT_FOUND');
+    // 못 채운 구간은 응답을 보낸 뒤에 채운다. 기다리면 그만큼 화면이 늦는다.
+    deps.legs?.fillLater(row.data, dayIndex);
     return ok(body);
   }
 

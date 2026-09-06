@@ -1,5 +1,6 @@
 // /api/v1 계약 테스트 — Supabase 없이 가짜 Gateway로 라우트 경계를 그대로 통과시킨다.
 // 검증 대상은 "iOS가 이 응답만 보고 오늘 무엇을 할지 알 수 있는가"와 "두 기기가 부딪혀도 조용히 덮어쓰지 않는가"다.
+import lib from '@legacy/lib.js';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import type {
@@ -770,8 +771,9 @@ describe('GET /api/v1/trips/:tripId/days/:dayIndex — 일정 화면이 쓰는 �
     expect(body.day.index).toBe(0);
     expect(body.dayCount).toBe(2);
     expect(body.trip.id).toBe('trip-1');
-    // 서버에는 구간 캐시가 없다 — 화면이 '예상'이라 말할 수 있게 실어 보낸다
+    // 캐시에 없는 구간은 추정이다 — 화면이 '예상'이라 말할 수 있게 실어 보낸다
     expect(body.travelTimeSource).toBe('STRAIGHT_LINE_ESTIMATE');
+    expect(body.day.spots[1].incomingLeg?.path).toBeNull();
     expect(body.day.spots[1].bookedAtMinutes).toBe(19 * 60);
     expect(typeof body.day.totals.travelMinutes).toBe('number');
   });
@@ -788,5 +790,63 @@ describe('GET /api/v1/trips/:tripId/days/:dayIndex — 일정 화면이 쓰는 �
     const missingDay = await api.dayPlan(new Request('https://x/y', auth()), 'trip-1', 9);
     expect(missingDay.status).toBe(404);
     expect((await missingDay.json()).error).toBe('DAY_NOT_FOUND');
+  });
+});
+
+// ── 구간 캐시 배선 ──
+// 여기서 지키는 것: **응답을 경로 조회에 묶지 않는다.** 이미 조회된 것만 실어 보내고,
+// 없는 것은 응답 뒤에 채운다. 캐시가 아예 없어도(키 없음) 예전과 같은 답이 나온다.
+describe('구간 캐시 — 읽기는 응답 전, 채우기는 응답 뒤', () => {
+  function withLegs(cache: Record<string, { sec?: number; m?: number; path?: string }>) {
+    const filled: number[] = [];
+    const read: number[] = [];
+    const handlers = createHandlers({
+      gatewayFor: (token) => (token === TOKEN ? gatewayOf(store) : null),
+      now: () => NOW,
+      legs: {
+        async read(_trip, dayIndex) { read.push(dayIndex); return cache; },
+        fillLater(_trip, dayIndex) { filled.push(dayIndex); }
+      }
+    });
+    return { handlers, filled, read };
+  }
+
+  it('조회된 구간이 있으면 그 값으로 답한다', async () => {
+    // 숙소 → 저녁 예약, 그리고 숙소 복귀. 둘 다 조회돼야 하루 전체가 도로다
+    const { handlers, read } = withLegs({
+      [lib.legKey(P(40.40), P(40.41), 'car')]: { sec: 1200, m: 9000, path: 'enc' },
+      [lib.legKey(P(40.41), P(40.40), 'car')]: { sec: 1100, m: 9000, path: 'back' }
+    });
+    const body = (await (await handlers.dayPlan(new Request('https://x/y', auth()), 'trip-1', 0)).json()) as DayPlanResponse;
+    expect(read).toEqual([0]);
+    expect(body.travelTimeSource).toBe('ROUTED');
+    const leg = body.day.spots[1].incomingLeg!;
+    expect(leg).toMatchObject({ source: 'ROUTED', minutes: 20, distanceKm: 9, path: 'enc' });
+  });
+
+  it('하루치를 주고 나서 못 채운 구간을 채운다', async () => {
+    const { handlers, filled } = withLegs({});
+    await handlers.dayPlan(new Request('https://x/y', auth()), 'trip-1', 1);
+    expect(filled).toEqual([1]);
+  });
+
+  it('"지금"도 같은 캐시를 쓰고, 본 날짜를 채운다', async () => {
+    const { handlers, filled } = withLegs({ [lib.legKey(P(40.40), P(40.41), 'car')]: { sec: 1200, m: 9000, path: 'enc' } });
+    const body = (await (await handlers.today(new Request('https://x/y?day=0', auth()), 'trip-1')).json()) as TodayResponse;
+    expect(body.travelTimeSource).toBe('ROUTED');
+    expect(filled).toEqual([body.day.index]);
+  });
+
+  it('캐시를 읽다 실패해도 답은 나간다 — 추정으로 떨어질 뿐이다', async () => {
+    const handlers = createHandlers({
+      gatewayFor: () => gatewayOf(store), now: () => NOW,
+      legs: {
+        async read() { throw new Error('DB 안 됨'); },
+        fillLater() {}
+      }
+    });
+    const res = await handlers.dayPlan(new Request('https://x/y', auth()), 'trip-1', 0);
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as DayPlanResponse).travelTimeSource).toBe('STRAIGHT_LINE_ESTIMATE');
   });
 });

@@ -182,7 +182,9 @@ localStorage: `tripcanvas_v1`(여행) · `tripcanvas_legs_v4`(구간 캐시, 수
 - `/api/v1` 라우트는 `@legacy/adaptive.js`를 **그대로 import** 한다(`next/tsconfig.json`의 `@legacy/*` → 저장소 루트). 새 규칙이 필요하면 `adaptive.js`에 넣는다 — `todayView.ts`에 넣으면 웹과 어긋난다.
 - 역할 분리: **단순 조회(Trip·Day·Spot)는 Supabase 직접**, **도메인 판단(Today·Suggestion·Replan)은 서버 API**.
 - 쓰기는 전부 `sync_trip` RPC(revision CAS)를 지난다. 같은 요청을 두 번 받아도 결과가 같고(`alreadyApplied`), 다른 기기가 먼저 바꿨으면 409로 알린다 — 조용히 덮어쓰지 않는다.
-- 서버에는 구간 캐시가 없어 이동시간이 **직선거리 추정**이다. 응답의 `travelTimeSource`로 그 사실을 실어 보내고 클라이언트가 "예상"이라고 표기한다.
+- 이동시간은 **서버 구간 캐시**(`leg_cache`)에 있는 구간만 실제 도로다. 나머지는 직선거리 추정이고, 구간마다 `source`·화면 전체로는 `travelTimeSource`로 그 사실을 실어 보낸다(**하나라도 추정이면 맨 위는 추정**). 클라이언트는 그때 "예상"이라고 표기한다.
+  - ⚠️ **응답을 경로 조회에 묶지 않는다.** 하루치는 이미 조회된 것만 싣고 즉시 나가고, 없는 구간은 응답을 보낸 뒤 `legFiller`가 채운다 — 그 날을 처음 열면 추정이고 다음부터 도로다. 판정은 복제하지 않는다: 서버도 웹 `routing.js`를 그대로 쓰고, 국내는 `/api/kakao-directions` 요청을 가로채 **같은 프록시 코드**를 안에서 돌린다.
+  - ⚠️ 키(`GOOGLE_ROUTES_API_KEY`·`KAKAO_REST_API_KEY`)가 없으면 라우터가 `null`이라 예전과 완전히 같다. 잠깐인 실패(프록시 429·업스트림 5xx)는 캐시에 남기지 않는다 — 혼잡이 한 시간짜리 "직선이에요"로 굳으면 안 된다.
 - 제안 거절은 `suggestion_feedback` 테이블(RLS)에 날짜와 함께 남는다 — 기기가 바뀌어도 같은 제안이 그날 다시 올라오지 않는다. ⚠️ 레거시 웹은 아직 localStorage를 쓴다(양쪽이 아직 공유되지 않음).
 - `next`의 `swiftParity.test.ts`가 **실제 Today 응답 ↔ `ios/.../Contract.swift`** 를 맞춰 보고 `ios/TripCanvasTests/Fixtures/today.json`을 다시 만든다. 계약을 바꾸면 여기가 먼저 깨진다.
 

@@ -6,7 +6,7 @@
 //   NEW_BACKEND  새 PostgreSQL만
 // 기존 핸들러(Today·travel-state…)의 Trip 읽기/쓰기(listTrips/getTrip/saveTrip)도 같은 TripService를 지난다.
 // 제안 거절·알림·기기·기록(ADAPTIVE)과 가격 관측(PRICING)도 각 레지스트리 값으로 조립한다(composeGateway).
-import { createHandlers, type Gateway, type TripRow } from '@/features/trip-state/services/handlers';
+import { createHandlers, type Gateway, type LegSupport, type TripRow } from '@/features/trip-state/services/handlers';
 import { supabaseGatewayFor } from '@/features/trip-state/services/supabaseGateway';
 import type { TripDoc } from '@/features/trip-state/domain/todayView';
 import { composeGateway } from '@/server/api/composeGateway';
@@ -33,6 +33,7 @@ import {
   PgDeviceRepository, PgMemoryRepository, PgNotificationLogRepository, PgSuggestionFeedbackRepository
 } from '@/server/infrastructure/database/pgAdaptiveRepositories';
 import { PgCollabRepository } from '@/server/infrastructure/database/pgCollabRepository';
+import { PgLegCacheRepository } from '@/server/infrastructure/database/pgLegCacheRepository';
 import { PgMembershipRepository } from '@/server/infrastructure/database/pgMembershipRepository';
 import { PgPriceObservationRepository } from '@/server/infrastructure/database/pgPriceObservationRepository';
 import { PgTripRepository } from '@/server/infrastructure/database/pgTripRepository';
@@ -43,7 +44,10 @@ import {
   LegacyMembershipRepository, LegacySupabaseSession, LegacyTripRepository
 } from '@/server/infrastructure/supabase/legacyTripRepository';
 import { DualReadMembershipRepository, DualReadTripRepository } from '@/server/repositories/dualRead';
+import { createLegFiller, legRequestsFor, toLegCache } from '@/server/routing/legFiller';
+import { createServerRouter } from '@/server/routing/serverRouting';
 import type { MembershipRepository, TripRepository, TripView } from '@/server/repositories/types';
+import type { Trip } from '@/features/trip/domain/types';
 
 const env = getEnv();
 
@@ -183,4 +187,32 @@ async function gatewayFor(token: string): Promise<Gateway | null> {
   };
 }
 
-export const handlers = createHandlers({ gatewayFor });
+/**
+ * 구간 캐시 — DB가 있어야 읽고, 지도 키가 있어야 채운다. 둘 다 없으면 `undefined`고
+ * 그때 이동시간은 지금까지처럼 전부 직선거리 추정이다(동작이 달라지지 않는다).
+ *
+ * ⚠️ 채우기는 응답 뒤다. 기다리면 하루치 화면이 구간 수만큼 늦어진다 — 다음 요청부터 도로가 된다.
+ */
+function legSupport(): LegSupport | undefined {
+  const db = getDb();
+  if (!db) return undefined;
+  const repo = new PgLegCacheRepository(db);
+  const router = createServerRouter({ googleRoutesKey: env.googleRoutesKey, kakaoRestKey: env.kakaoRestKey });
+  const filler = createLegFiller({ repo, router, log: (m) => console.warn(`[tripcanvas-api] ${m}`) });
+  return {
+    async read(trip, dayIndex) {
+      const requests = legRequestsFor(trip as unknown as Trip, dayIndex);
+      if (!requests.length) return {};
+      return toLegCache(await repo.getMany(requests.map((r) => r.key)));
+    },
+    fillLater(trip, dayIndex) {
+      if (!router) return;
+      const requests = legRequestsFor(trip as unknown as Trip, dayIndex);
+      if (!requests.length) return;
+      // 기다리지 않는다. 실패해도 응답은 이미 나갔고, 다음 요청이 다시 시도한다.
+      void filler.fill(requests).catch((e) => console.warn(`[tripcanvas-api] 구간 채우기 실패 — ${e}`));
+    }
+  };
+}
+
+export const handlers = createHandlers({ gatewayFor, legs: legSupport() });

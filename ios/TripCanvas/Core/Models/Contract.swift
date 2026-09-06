@@ -700,8 +700,11 @@ struct DayPlanLeg: Codable, Hashable, Sendable {
     /// car·taxi·transit·train·walk·bike·flight — 계약의 다른 곳(`DaySummary.mode`)과 같은 규칙이다.
     let mode: String
     let minutes: Int
+    /// ROUTED면 도로 거리, 아니면 직선 거리다.
     let distanceKm: Double
-    /// 실측 경로인지 추정인지. 서버에 구간 캐시가 없어 지금은 늘 추정이다 — 화면이 "예상"이라 말해야 한다.
+    /// 실제 경로의 인코딩 폴리라인. **없으면 nil**이고, 그때 지도는 두 점을 곧게 잇는다 — 없는 길을 그리지 않는다.
+    let path: String?
+    /// 실측 경로인지 추정인지. 구간마다 다를 수 있다(하나는 도로, 하나는 직선) — 화면이 "예상"이라 말해야 한다.
     let source: TravelTimeSource
 }
 

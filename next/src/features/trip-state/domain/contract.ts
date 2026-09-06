@@ -192,6 +192,10 @@ export interface TravelActivityState {
 }
 
 /** 이동시간의 출처. 서버는 캐시된 실제 경로가 없으므로 직선거리 추정이다 — 클라이언트가 그대로 표기한다. */
+/**
+ * 이동시간이 어디서 왔는가. `ROUTED`는 실제 경로 조회 결과고, 그 외는 직선거리 기반 추정이다.
+ * ⚠️ 응답 맨 위의 값은 **그 화면의 구간이 전부 조회됐을 때만** ROUTED다 — 하나라도 추정이면 추정으로 말한다.
+ */
 export type TravelTimeSource = 'STRAIGHT_LINE_ESTIMATE' | 'ROUTED';
 
 export interface TodayResponse {
@@ -595,8 +599,14 @@ export interface ApiError {
 export interface DayPlanLeg {
   mode: string;                    // car·taxi·transit·train·walk·bike·flight
   minutes: number;
+  /** ROUTED면 도로 거리, 아니면 직선 거리다 */
   distanceKm: number;
-  /** 이 구간이 실측 경로인지 추정인지. 서버에는 구간 캐시가 없어 지금은 늘 추정이다. */
+  /**
+   * 실제 경로의 인코딩 폴리라인(Google과 같은 형식). 조회되지 않은 구간은 **null**이고,
+   * 그때 지도는 두 점을 곧게 잇는다 — 없는 길을 지어내지 않는다.
+   */
+  path: string | null;
+  /** 이 구간이 실측 경로인지 추정인지. 구간마다 다를 수 있다(하나는 도로, 하나는 직선) */
   source: TravelTimeSource;
 }
 
