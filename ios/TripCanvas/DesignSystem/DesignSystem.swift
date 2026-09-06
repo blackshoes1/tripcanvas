@@ -63,6 +63,14 @@ enum TimeFormat {
         return String(format: "%02d:%02d", wrapped / 60, wrapped % 60)
     }
 
+    /// 자정을 넘는 시각. `clock()`은 1440으로 감싸서 `25:10`을 `01:10`으로 만드는데,
+    /// 그것만 보면 **오늘 새벽**으로 읽힌다. 넘어간 날을 함께 말한다.
+    static func clockAcrossMidnight(_ minutes: Int) -> String {
+        let days = Int(floor(Double(minutes) / 1440.0))
+        guard days > 0 else { return clock(minutes) }
+        return days == 1 ? "\(clock(minutes)) (익일)" : "\(clock(minutes)) (+\(days)일)"
+    }
+
     static func duration(_ minutes: Int) -> String {
         let m = max(0, minutes)
         if m < 60 { return "\(m)분" }

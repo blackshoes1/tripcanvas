@@ -453,3 +453,23 @@ private final class FakeMembers: MemberListing {
         return members
     }
 }
+
+/// 일정 줄의 자리 맞춤.
+///
+/// 시간 칸 폭과 그 아래 줄들(구간·참여자·합류)의 들여쓰기가 **한 곳에서** 나와야 한다.
+/// 따로 두면 폭을 바꿀 때 줄이 어긋나는데, 그건 화면을 보기 전까지 아무도 모른다.
+/// (2026-09-06: 48pt 고정 폭에 `📌 09:30`을 넣어 시간이 줄바꿈되던 것을 고치면서 생긴 규칙)
+final class SpotRowLayoutTests: XCTestCase {
+    func testSecondaryLinesLineUpWithTheTimeColumn() {
+        for width in [CGFloat(62), 80, 120] {
+            XCTAssertEqual(SpotRow.secondaryIndent(timeColumnWidth: width), width + Space.m,
+                           "들여쓰기는 시간 칸 폭에서 나온다 — 상수를 따로 두지 않는다")
+        }
+    }
+
+    /// 글자 크기를 키우면 시간 칸도 같이 커져야 한다 — 안 그러면 다시 줄이 바뀐다.
+    func testTheIndentGrowsWithTheColumn() {
+        XCTAssertGreaterThan(SpotRow.secondaryIndent(timeColumnWidth: 120),
+                             SpotRow.secondaryIndent(timeColumnWidth: 62))
+    }
+}

@@ -388,7 +388,7 @@ struct TripPlanView: View {
 
             // 자정을 넘긴다 — 넘긴다고 막지는 않는다. 그렇게 되어 있다고 말할 뿐이다.
             if totals.overloaded, let end = totals.endMinutes {
-                Label("이대로면 \(TimeFormat.clock(end))에 끝나요", systemImage: "moon.zzz")
+                Label("이대로면 \(TimeFormat.clockAcrossMidnight(end))에 끝나요", systemImage: "moon.zzz")
                     .font(.caption)
                     .foregroundStyle(.orange)
             }
@@ -451,6 +451,21 @@ struct SpotRow: View {
     /// 함께 다니지 않는 구간에 속할 때만. 규칙은 서버가 정하고 여기서는 그리기만 한다.
     var split: SplitInfo?
 
+    /// 시간 칸 폭. `📌 25:10 (익일)`이 한 줄에 들어가야 하고, 글자 크기 설정을 따라 커진다.
+    @ScaledMetric(relativeTo: .caption) private var timeColumnWidth: CGFloat = 92
+    /// 📌 자리. 고정 폭이라 아이콘 유무와 상관없이 시간이 같은 x에서 시작한다.
+    @ScaledMetric(relativeTo: .caption) private var pinSlotWidth: CGFloat = 16
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    /// 시간 칸 아래에 붙는 줄들(구간·참여자·합류)의 들여쓰기.
+    /// ⚠️ 시간 칸 폭과 **같은 곳에서** 나와야 한다 — 따로 두면 폭을 바꿀 때 줄이 어긋난다.
+    private var secondaryIndent: CGFloat {
+        // 시간이 이름 위로 올라가면 옆으로 맞출 기준이 없다 — 들여쓰지 않는다.
+        typeSize.isAccessibilitySize ? 0 : SpotRow.secondaryIndent(timeColumnWidth: timeColumnWidth)
+    }
+
+    static func secondaryIndent(timeColumnWidth: CGFloat) -> CGFloat { timeColumnWidth + Space.m }
+
     struct SplitInfo: Equatable {
         let whoText: String
         let includesMe: Bool
@@ -465,30 +480,17 @@ struct SpotRow: View {
             // 누가 가는지는 **가지가 시작될 때 한 번만** 말한다.
             if let split, split.isBranchStart { branchHeader(split) }
 
-            HStack(alignment: .top, spacing: Space.m) {
-                timeColumn
-                Text(spot.category?.icon ?? "📍").font(.title3)
+            // ⚠️ 접근성 글자 크기에서는 **옆에 두지 않는다.** 시간 칸이 화면의 절반을 먹어
+            //    이름이 글자 단위로 갈린다. 그때는 시간을 이름 위로 올린다.
+            if typeSize.isAccessibilitySize {
                 VStack(alignment: .leading, spacing: Space.xs) {
-                    HStack(spacing: Space.s) {
-                        Text(spot.name.isEmpty ? "이름 없는 장소" : spot.name)
-                            .font(.body.weight(.semibold))
-                            .strikethrough(spot.status == .skipped || spot.status == .cancelled)
-                        if spot.isMust { Image(systemName: "star.fill").font(.caption2).foregroundStyle(.orange) }
-                    }
-                    // 상대가 정한 약속은 가장 세게 말한다 — 내가 옮길 수 없는 시각이다.
-                    if let booked = bookedText { bookedChip(booked) }
-                    if !meta.isEmpty {
-                        Text(meta).font(.caption).foregroundStyle(.secondary)
-                    }
-                    if spot.point == nil {
-                        Label("위치 없음 · 동선에서 빠져요", systemImage: "mappin.slash")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
+                    timeColumn
+                    mainContent
                 }
-                Spacer(minLength: 0)
-                if spot.status != .planned {
-                    StatusChip(text: spot.status.label, symbol: statusSymbol, tint: statusTint)
+            } else {
+                HStack(alignment: .top, spacing: Space.m) {
+                    timeColumn
+                    mainContent
                 }
             }
             // 갈라졌던 사람들이 다시 만나는 지점. 시각은 타임라인이 정하므로 여기서 말하지 않는다.
@@ -496,7 +498,7 @@ struct SpotRow: View {
                 Label("여기서 다시 만나요", systemImage: "point.topleft.down.to.point.bottomright.curvepath")
                     .font(.caption2)
                     .foregroundStyle(Color.accentColor)
-                    .padding(.leading, 48)
+                    .padding(.leading, secondaryIndent)
             }
         }
         // ⚠️ 나란한 가지를 열로 쪼개지 않는다 — 드래그 인덱스가 자식 순서로 계산돼서
@@ -513,6 +515,35 @@ struct SpotRow: View {
         .contentShape(Rectangle())
     }
 
+    /// 아이콘·이름·시각·메모. 배치(옆/위)만 바깥에서 달라지고 내용은 하나다.
+    private var mainContent: some View {
+        HStack(alignment: .top, spacing: Space.m) {
+            Text(spot.category?.icon ?? "📍").font(.title3)
+            VStack(alignment: .leading, spacing: Space.xs) {
+                HStack(spacing: Space.s) {
+                    Text(spot.name.isEmpty ? "이름 없는 장소" : spot.name)
+                        .font(.body.weight(.semibold))
+                        .strikethrough(spot.status == .skipped || spot.status == .cancelled)
+                    if spot.isMust { Image(systemName: "star.fill").font(.caption2).foregroundStyle(.orange) }
+                }
+                // 상대가 정한 약속은 가장 세게 말한다 — 내가 옮길 수 없는 시각이다.
+                if let booked = bookedText { bookedChip(booked) }
+                if !meta.isEmpty {
+                    Text(meta).font(.caption).foregroundStyle(.secondary)
+                }
+                if spot.point == nil {
+                    Label("위치 없음 · 동선에서 빠져요", systemImage: "mappin.slash")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Spacer(minLength: 0)
+            if spot.status != .planned {
+                StatusChip(text: spot.status.label, symbol: statusSymbol, tint: statusTint)
+            }
+        }
+    }
+
     /// 이 가지에 누가 가는가. 내가 빠진 구간은 옅게 — 없는 일정처럼 보이지 않게 지우지는 않는다.
     private func branchHeader(_ split: SplitInfo) -> some View {
         HStack(spacing: 4) {
@@ -523,20 +554,30 @@ struct SpotRow: View {
             }
         }
         .foregroundStyle(split.includesMe ? Color.accentColor : .secondary)
-        .padding(.leading, 48)
+        .padding(.leading, secondaryIndent)
     }
 
     /// 시각 3종 중 둘 — 📌 도착 고정(내가 정한 계획)과 예상 도착(계산).
     /// 세기를 달리해서 "내가 정한 것"과 "계산된 것"이 눈으로 갈린다.
+    ///
+    /// ⚠️ 폭을 **고정하지 않는다.** 예전에는 48pt에 `📌 09:30`을 넣어서, 📌가 붙는 줄만
+    /// 시간이 줄바꿈됐다. 글자 크기 설정을 키우면 아이콘이 없어도 넘친다 —
+    /// 그래서 폭이 글자 크기를 따라가고(`@ScaledMetric`), 시간은 어떤 경우에도 한 줄이다.
     @ViewBuilder
     private var timeColumn: some View {
         if let plan {
-            VStack(spacing: 1) {
+            VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 2) {
-                    if plan.fixed { Text("📌").font(.caption2) }
-                    Text(TimeFormat.clock(plan.etaMinutes))
+                    // 📌 자리는 **있든 없든 같다** — 아니면 고정된 줄의 시간만 오른쪽으로 밀린다.
+                    Text(plan.fixed ? "📌" : "")
+                        .font(.caption2)
+                        .frame(width: pinSlotWidth, alignment: .leading)
+                    Text(TimeFormat.clockAcrossMidnight(plan.etaMinutes))
                         .font(.caption.weight(plan.fixed ? .bold : .regular))
                         .monospacedDigit()
+                        .lineLimit(1)
+                        // 접근성 글자 크기에서 폭이 모자라면 줄을 바꾸는 대신 조금 줄인다.
+                        .minimumScaleFactor(0.7)
                 }
                 if plan.conflict {
                     // 고정 시각이 이동상 불가능하다 — 조용히 넘기지 않는다.
@@ -544,7 +585,7 @@ struct SpotRow: View {
                 }
             }
             .foregroundStyle(plan.conflict ? Color.orange : (plan.fixed ? .primary : .secondary))
-            .frame(width: 48, alignment: .leading)
+            .frame(width: typeSize.isAccessibilitySize ? nil : timeColumnWidth, alignment: .leading)
             .accessibilityLabel(timeAccessibility(plan))
         } else {
             // 계산을 못 받았으면 자리만 비운다 — 문서의 `at`을 도착 예정처럼 보이게 하지 않는다.
@@ -554,21 +595,23 @@ struct SpotRow: View {
 
     private func timeAccessibility(_ plan: DayPlanSpot) -> String {
         var text = plan.fixed ? "도착 고정 " : "예상 도착 "
-        text += TimeFormat.clock(plan.etaMinutes)
+        text += TimeFormat.clockAcrossMidnight(plan.etaMinutes)
         if plan.conflict { text += ", 이동 시간상 맞추기 어려워요" }
         return text
     }
 
     private func legLine(_ leg: DayPlanLeg) -> some View {
         let mode = TravelMode(rawValue: leg.mode) ?? dayMode
-        return HStack(spacing: 4) {
-            Image(systemName: "arrow.turn.down.right").font(.caption2)
-            Image(systemName: mode.symbol).font(.caption2)
-            Text(TimeFormat.duration(leg.minutes)).font(.caption2)
-            Text("· \(distanceText(leg.distanceKm))").font(.caption2)
+        // ⚠️ 조각 Text를 HStack에 늘어놓으면 접근성 글자 크기에서 각 조각이 따로 줄바꿈돼
+        //    `12.4k` / `m` 처럼 단어가 잘린다. 문장 하나로 두면 단어 단위로 접힌다.
+        return HStack(alignment: .firstTextBaseline, spacing: 4) {
+            Image(systemName: "arrow.turn.down.right")
+            Image(systemName: mode.symbol)
+            Text("\(TimeFormat.duration(leg.minutes)) · \(distanceText(leg.distanceKm))")
         }
+        .font(.caption2)
         .foregroundStyle(.secondary)
-        .padding(.leading, 48)
+        .padding(.leading, secondaryIndent)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(mode.label)로 \(TimeFormat.duration(leg.minutes)), \(distanceText(leg.distanceKm))")
     }
