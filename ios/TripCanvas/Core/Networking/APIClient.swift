@@ -134,7 +134,7 @@ struct APIClient {
         let message = body?.message ?? "요청을 처리하지 못했어요."
         switch body?.error {
         case "UNAUTHORIZED": return .unauthorized
-        case "TRIP_NOT_FOUND", "ACTIVITY_NOT_FOUND": return .notFound(message)
+        case "TRIP_NOT_FOUND", "ACTIVITY_NOT_FOUND", "DAY_NOT_FOUND": return .notFound(message)
         // 같은 뜻인데 라우트마다 이름이 다르다: 여행 문서 PUT은 STALE_VERSION, Today 계열은 REVISION_CONFLICT.
         case "REVISION_CONFLICT", "STALE_VERSION": return .revisionConflict(message: message, revision: body?.revision)
         case "SUGGESTION_STALE": return .stale(message)

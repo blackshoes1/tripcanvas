@@ -3,7 +3,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import type {
-  BookingListResponse, DeviceRegistration, ImportCommitResponse, ImportPreviewResponse,
+  BookingListResponse, DayPlanResponse, DeviceRegistration, ImportCommitResponse, ImportPreviewResponse,
   MemoryCreateResponse, MemoryListResponse, MutationResponse, TodayResponse, TravelStateResponse, TripListResponse
 } from '../domain/contract';
 import type { MemoryRow } from '../domain/intakeView';
@@ -759,5 +759,34 @@ describe('여행 기록 — 어디였는지 다시 묻지 않는다(§27)', () =
     expect(text).toContain('local-identifier-1');
     expect(text).not.toContain('base64');
     expect(text).not.toContain('data:image');
+  });
+});
+
+describe('GET /api/v1/trips/:tripId/days/:dayIndex — 일정 화면이 쓰는 하루치', () => {
+  it('그 날의 흐름을 값으로 준다 — 라벨이 아니라', async () => {
+    const res = await api.dayPlan(new Request('https://x/api/v1/trips/trip-1/days/0', auth()), 'trip-1', 0);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as DayPlanResponse;
+    expect(body.day.index).toBe(0);
+    expect(body.dayCount).toBe(2);
+    expect(body.trip.id).toBe('trip-1');
+    // 서버에는 구간 캐시가 없다 — 화면이 '예상'이라 말할 수 있게 실어 보낸다
+    expect(body.travelTimeSource).toBe('STRAIGHT_LINE_ESTIMATE');
+    expect(body.day.spots[1].bookedAtMinutes).toBe(19 * 60);
+    expect(typeof body.day.totals.travelMinutes).toBe('number');
+  });
+
+  it('로그인하지 않으면 401이다', async () => {
+    const res = await api.dayPlan(new Request('https://x/api/v1/trips/trip-1/days/0'), 'trip-1', 0);
+    expect(res.status).toBe(401);
+  });
+
+  it('없는 여행은 404, 없는 일자도 404 — 지어내지 않는다', async () => {
+    const missingTrip = await api.dayPlan(new Request('https://x/y', auth()), 'nope', 0);
+    expect(missingTrip.status).toBe(404);
+
+    const missingDay = await api.dayPlan(new Request('https://x/y', auth()), 'trip-1', 9);
+    expect(missingDay.status).toBe(404);
+    expect((await missingDay.json()).error).toBe('DAY_NOT_FOUND');
   });
 });

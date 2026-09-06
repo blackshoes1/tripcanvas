@@ -75,3 +75,51 @@ final class ContractDecodingTests: XCTestCase {
         XCTAssertFalse(ActivityStatus.inProgress.isDone)
     }
 }
+
+/// 일자 계획 — 일정 화면이 쓰는 하루치.
+///
+/// 픽스처는 `swiftParity.test.ts`가 **실제 응답으로** 다시 쓴다. 계약이 바뀌면 여기가 먼저 깨진다.
+/// ⚠️ 특히 '분'은 서버 타임라인에서 소수로 나오는데, 계약이 정수로 반올림해 보낸다 —
+///    안 그러면 이 디코딩이 죽는다. 그 사고는 앱 빌드까지 아무도 모른다.
+final class DayPlanDecodingTests: XCTestCase {
+
+    private func loadFixture() throws -> DayPlanResponse {
+        let url = try XCTUnwrap(
+            Bundle(for: Self.self).url(forResource: "day-plan", withExtension: "json"),
+            "day-plan.json 픽스처를 테스트 번들에 포함시켜야 합니다")
+        return try JSONDecoder().decode(DayPlanResponse.self, from: Data(contentsOf: url))
+    }
+
+    func testDecodesRealServerResponse() throws {
+        let plan = try loadFixture()
+        XCTAssertEqual(plan.schemaVersion, 1)
+        XCTAssertEqual(plan.day.index, 0)
+        XCTAssertFalse(plan.day.spots.isEmpty)
+        XCTAssertEqual(plan.trip.name, "정합성")
+    }
+
+    /// 서버에는 구간 캐시가 없다 — 화면이 "예상"이라고 말할 수 있어야 한다.
+    func testSaysWhenTravelTimeIsAnEstimate() throws {
+        let plan = try loadFixture()
+        XCTAssertEqual(plan.travelTimeSource, .straightLineEstimate)
+        for spot in plan.day.spots {
+            if let leg = spot.incomingLeg { XCTAssertEqual(leg.source, .straightLineEstimate) }
+        }
+    }
+
+    /// 시각 3종을 구분해 받는다 — 예상 도착 · 도착 고정(📌) · 상대가 정한 약속.
+    func testKeepsTheThreeKindsOfTimeApart() throws {
+        let plan = try loadFixture()
+        let booked = plan.day.spots.first { $0.bookedAtMinutes != nil }
+        XCTAssertNotNil(booked, "픽스처에 예약 시각이 있는 장소가 있어야 한다")
+        XCTAssertGreaterThan(booked!.waitMinutes, 0, "일찍 도착하면 기다리는 시간이 잡힌다")
+    }
+
+    /// 계약이 문장이 아니라 값을 싣는지 — 앱이 서버가 만든 한국어를 그리면 안 된다.
+    func testCarriesValuesNotSentences() throws {
+        let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "day-plan", withExtension: "json"))
+        let raw = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertFalse(raw.contains("📏"), "완성된 문장이 계약에 들어오면 앱이 표기를 정할 수 없다")
+        XCTAssertFalse(raw.contains("하루 동선"))
+    }
+}

@@ -22,6 +22,7 @@ import {
 import type { SettableStatus } from '../domain/mutations';
 import { applyActivityStatus, applySuggestion } from '../domain/mutations';
 import type { TodayInput, TripDoc } from '../domain/todayView';
+import { buildDayPlanView } from '../domain/dayPlanView';
 import { computeToday, summarizeTrip } from '../domain/todayView';
 import collab from '@legacy/collab.js';
 
@@ -66,13 +67,14 @@ export interface HandlerDeps {
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' };
 const STATUS: Record<ApiErrorCode, number> = {
-  UNAUTHORIZED: 401, TRIP_NOT_FOUND: 404, ACTIVITY_NOT_FOUND: 404,
+  UNAUTHORIZED: 401, TRIP_NOT_FOUND: 404, ACTIVITY_NOT_FOUND: 404, DAY_NOT_FOUND: 404,
   SUGGESTION_STALE: 409, REVISION_CONFLICT: 409, BAD_REQUEST: 400, UPSTREAM_ERROR: 502, FORBIDDEN: 403
 };
 const MESSAGES: Record<ApiErrorCode, string> = {
   UNAUTHORIZED: '로그인이 필요합니다.',
   TRIP_NOT_FOUND: '그 여행을 찾을 수 없습니다.',
   ACTIVITY_NOT_FOUND: '그 일정을 찾을 수 없습니다 — 목록을 새로 불러와 주세요.',
+  DAY_NOT_FOUND: '그 일자가 없습니다 — 일정을 새로 불러와 주세요.',
   SUGGESTION_STALE: '상황이 바뀌어 그 제안은 더 이상 맞지 않습니다 — 새 제안을 확인해 주세요.',
   REVISION_CONFLICT: '다른 기기에서 먼저 바뀌었습니다 — 최신 일정을 불러온 뒤 다시 시도해 주세요.',
   BAD_REQUEST: '요청 형식이 올바르지 않습니다.',
@@ -228,6 +230,28 @@ export function createHandlers(deps: HandlerDeps) {
     try { row = await gateway.getTrip(tripId); } catch { return fail('UPSTREAM_ERROR'); }
     if (!row || row.deleted_at) return fail('TRIP_NOT_FOUND');
     return ok(await todayFor(gateway, row, new URL(request.url)));
+  }
+
+  /**
+   * GET /api/v1/trips/:tripId/days/:dayIndex — 그 날 전체가 어떻게 흐르는가.
+   *
+   * Today가 "지금 무엇을"이라면 이쪽은 일정 화면이 쓰는 하루치다. 계산은 전부
+   * `buildDayPlanView`(그 안은 `dayView.ts` → `lib.js`)가 하고 여기서는 권한과 모양만 본다.
+   */
+  async function dayPlan(request: Request, tripId: string, dayIndex: number): Promise<Response> {
+    const gateway = await auth(request);
+    if (gateway instanceof Response) return gateway;
+    let row: TripRow | null;
+    try { row = await gateway.getTrip(tripId); } catch { return fail('UPSTREAM_ERROR'); }
+    if (!row || row.deleted_at) return fail('TRIP_NOT_FOUND');
+    const stamp = now().toISOString().slice(0, 10);
+    const body = buildDayPlanView({
+      trip: row.data, di: dayIndex,
+      summary: summarizeTrip(row, stamp), generatedAt: now().toISOString()
+    });
+    // 없는 날을 지어내지 않는다 — 여행은 있는데 그 일자가 없으면 404다.
+    if (!body) return fail('DAY_NOT_FOUND');
+    return ok(body);
   }
 
   /** POST /api/v1/trips/:tripId/replan-preview — 미리보기만. 아무것도 저장하지 않는다. */
@@ -618,7 +642,7 @@ export function createHandlers(deps: HandlerDeps) {
   }
 
   return {
-    trips, today, bookings, travelState, replanPreview, activityAction, suggestionAction,
+    trips, today, dayPlan, bookings, travelState, replanPreview, activityAction, suggestionAction,
     registerDevice, unregisterDevice, importPreview, importCommit, memories, createMemory,
     prices, createPrice
   };

@@ -49,6 +49,7 @@ actor TripCache {
     static func todayKey(tripId: String, dayIndex: Int?) -> String {
         dayIndex.map { "today-\(tripId)-d\($0)" } ?? "today-\(tripId)"
     }
+    static func dayPlanKey(tripId: String, dayIndex: Int) -> String { "day-plan-\(tripId)-d\(dayIndex)" }
     static let tripsKey = "trips"
     static func bookingsKey(tripId: String) -> String { "bookings-\(tripId)" }
 }

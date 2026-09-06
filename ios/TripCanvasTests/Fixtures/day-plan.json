@@ -1,0 +1,105 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-01T04:00:00Z",
+  "travelTimeSource": "STRAIGHT_LINE_ESTIMATE",
+  "trip": {
+    "id": "parity",
+    "name": "정합성",
+    "start": "2026-09-01",
+    "dayCount": 2,
+    "revision": 2,
+    "updatedAt": "2026-08-31T00:00:00Z",
+    "timeZone": "Asia/Seoul",
+    "cities": [
+      "마드리드"
+    ],
+    "todayIndex": 0,
+    "role": "OWNER",
+    "memberCount": 1
+  },
+  "dayCount": 2,
+  "day": {
+    "index": 0,
+    "date": "2026-09-01",
+    "title": "첫날",
+    "note": "",
+    "mode": "car",
+    "startMinutes": 540,
+    "timeZone": "Asia/Seoul",
+    "carriedStay": null,
+    "spots": [
+      {
+        "index": 0,
+        "name": "숙소",
+        "city": "마드리드",
+        "category": "stay",
+        "location": {
+          "lat": 40.4,
+          "lng": -3.7
+        },
+        "etaMinutes": 540,
+        "fixed": false,
+        "conflict": false,
+        "bookedAtMinutes": null,
+        "waitMinutes": 0,
+        "stayMinutes": 0,
+        "status": "PLANNED",
+        "incomingLeg": null
+      },
+      {
+        "index": 1,
+        "name": "저녁 예약",
+        "city": "마드리드",
+        "category": null,
+        "location": {
+          "lat": 40.41,
+          "lng": -3.7
+        },
+        "etaMinutes": 542,
+        "fixed": false,
+        "conflict": false,
+        "bookedAtMinutes": 1140,
+        "waitMinutes": 598,
+        "stayMinutes": 90,
+        "status": "PLANNED",
+        "incomingLeg": {
+          "mode": "car",
+          "minutes": 2,
+          "distanceKm": 1.1,
+          "source": "STRAIGHT_LINE_ESTIMATE"
+        }
+      }
+    ],
+    "carPickups": [],
+    "carReturns": [],
+    "back": {
+      "name": "숙소",
+      "location": {
+        "lat": 40.4,
+        "lng": -3.7
+      },
+      "leg": {
+        "mode": "car",
+        "minutes": 2,
+        "distanceKm": 1.1,
+        "source": "STRAIGHT_LINE_ESTIMATE"
+      }
+    },
+    "spotsWithoutLocation": 0,
+    "totals": {
+      "distanceKm": 2.2,
+      "travelMinutes": 4,
+      "endMinutes": 1232,
+      "overloaded": false,
+      "cost": {
+        "total": 50000,
+        "parts": [
+          {
+            "label": "예약",
+            "amount": 50000
+          }
+        ]
+      }
+    }
+  }
+}

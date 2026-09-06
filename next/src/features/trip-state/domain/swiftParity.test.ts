@@ -15,6 +15,7 @@ import type { TripDoc } from './todayView';
 import { buildBookings } from './bookingsView';
 import { buildTravelState } from './travelState';
 import { buildImportPreview } from './intakeView';
+import { buildDayPlanView } from './dayPlanView';
 import { buildGroupProposalView } from './groupProposalView';
 
 const SWIFT = readFileSync(path.join(__dirname, '../../../../../ios/TripCanvas/Core/Models/Contract.swift'), 'utf8');
@@ -89,6 +90,26 @@ describe('iOS Contract.swift가 실제 응답을 전부 담는다', () => {
   });
 
   /**
+   * 일자 계획 — 일정 화면이 쓰는 하루치. 값(분·km)만 싣고 문장은 앱이 만든다.
+   * 계약이 갈라지면 앱이 조용히 빈 하루를 그리게 되므로 여기서 이름을 맞춰 본다.
+   */
+  it('DayPlanResponse와 그 안의 구조체', () => {
+    const plan = buildDayPlanView({
+      trip, di: 0, summary: today.trip, generatedAt: '2026-09-01T04:00:00Z'
+    });
+    expect(plan).toBeTruthy();
+    expectCovered('DayPlanResponse', plan as unknown as Record<string, unknown>);
+    expectCovered('DayPlanDay', plan!.day as unknown as Record<string, unknown>);
+    expectCovered('DayPlanTotals', plan!.day.totals as unknown as Record<string, unknown>);
+    expectCovered('DayPlanCost', plan!.day.totals.cost as unknown as Record<string, unknown>);
+    expect(plan!.day.spots.length).toBeGreaterThan(0);
+    expectCovered('DayPlanSpot', plan!.day.spots[0] as unknown as Record<string, unknown>);
+    const leg = plan!.day.spots.map((s) => s.incomingLeg).find(Boolean);
+    expect(leg, '구간이 하나는 있어야 계약을 맞춰 볼 수 있다').toBeTruthy();
+    expectCovered('DayPlanLeg', leg as unknown as Record<string, unknown>);
+  });
+
+  /**
    * 그룹 제안(§35) — 판정은 서버 하나(`collab.js`)가 하고 앱은 그린다.
    * 계약이 갈라지면 앱이 조용히 빈 카드를 그리게 되므로 여기서 이름을 맞춰 본다.
    */
@@ -156,7 +177,10 @@ describe('iOS Contract.swift가 실제 응답을 전부 담는다', () => {
     const dir = path.join(__dirname, '../../../../../ios/TripCanvasTests/Fixtures');
     mkdirSync(dir, { recursive: true });
     writeFileSync(path.join(dir, 'today.json'), JSON.stringify(today, null, 2) + String.fromCharCode(10));
+    const plan = buildDayPlanView({ trip, di: 0, summary: today.trip, generatedAt: '2026-09-01T04:00:00Z' });
+    writeFileSync(path.join(dir, 'day-plan.json'), JSON.stringify(plan, null, 2) + String.fromCharCode(10));
     expect(today.schemaVersion).toBe(1);
+    expect(plan!.schemaVersion).toBe(1);
   });
 });
 
