@@ -14,6 +14,10 @@ protocol TripDataSource {
     func bookings(tripId: String) async throws -> TripService.Fetched<[BookingSummary]>
     func setActivity(tripId: String, activityId: String, action: TripService.ActivityAction, expectedRevision: Int, expectedName: String?) async throws -> MutationResponse
     func decideSuggestion(tripId: String, suggestionId: String, decision: TripService.SuggestionDecision, expectedRevision: Int) async throws -> MutationResponse
+    /// 여행을 지운다(tombstone). **주최자만** — 서버도 그렇게 막는다.
+    func deleteTrip(tripId: String, expectedRevision: Int) async throws
+    /// 공유받은 여행에서 나간다. 여행 자체는 남는다.
+    func leaveTrip(tripId: String) async throws
 }
 
 @MainActor
@@ -83,6 +87,19 @@ final class TripService: TripDataSource {
             guard let cached = await cache.load(DayPlanResponse.self, key: key) else { throw error }
             return Fetched(value: cached.value, cachedAt: cached.savedAt)
         }
+    }
+
+    /// tombstone. `expectedRevision`이 어긋나면 서버가 409로 막는다 —
+    /// 다른 기기가 먼저 바꾼 여행을 조용히 지우지 않기 위해서다.
+    func deleteTrip(tripId: String, expectedRevision: Int) async throws {
+        let _: OkResponse = try await api.delete(
+            "/api/v1/trips/\(tripId)",
+            query: [URLQueryItem(name: "expectedRevision", value: String(expectedRevision))])
+    }
+
+    /// 나가기는 삭제가 아니다 — 여행은 남고 내 목록에서만 사라진다.
+    func leaveTrip(tripId: String) async throws {
+        try await leave(tripId: tripId)
     }
 
     func bookings(tripId: String) async throws -> Fetched<[BookingSummary]> {

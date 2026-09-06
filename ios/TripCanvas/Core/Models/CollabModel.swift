@@ -123,6 +123,9 @@ enum CollabModel {
     static func canManage(_ role: MemberRole) -> Bool { role == .owner }
     /// 소유자는 못 나간다(§71).
     static func canLeave(_ role: MemberRole) -> Bool { role == .editor || role == .viewer }
+    /// 여행을 **지우는** 것은 주최자만. 나머지는 `canLeave` — 나가기다.
+    /// ⚠️ 둘을 하나로 합치면 남의 여행을 지우거나, 내 여행에서 조용히 나가진다.
+    static func canDelete(_ role: MemberRole) -> Bool { role == .owner }
     static func canPropose(_ role: MemberRole) -> Bool { canEdit(role) }
     /// 반응·코멘트는 활성 멤버라면 누구나 — 의견을 내는 것은 일정을 바꾸는 것이 아니다.
     static func canReact(_ role: MemberRole) -> Bool { role != .unknown }

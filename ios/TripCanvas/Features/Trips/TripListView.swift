@@ -14,6 +14,63 @@ final class TripListViewModel {
 
     init(service: TripDataSource) { self.service = service }
 
+    /// 목록에서 뺀다. **역할에 따라 다른 일이다** — 주최자는 삭제(모두에게서 사라진다),
+    /// 나머지는 나가기(내 목록에서만 사라진다). 판정은 `collab.js` 복사본이 한다.
+    ///
+    /// 낙관적으로 먼저 지우고, 실패하면 **원래 자리로 되돌린다** — 실패를 삼키면
+    /// 다음 새로고침에 되살아나서 지워진 줄 알았던 여행이 돌아온다.
+    func remove(_ trip: TripSummary) async {
+        guard busyTripId == nil, let index = trips.firstIndex(where: { $0.id == trip.id }) else { return }
+        busyTripId = trip.id
+        defer { busyTripId = nil }
+
+        removing = (trip, index)
+        trips.remove(at: index)
+        errorMessage = nil
+
+        do {
+            if CollabModel.canDelete(trip.role ?? .owner) {
+                try await service.deleteTrip(tripId: trip.id, expectedRevision: trip.revision)
+            } else {
+                try await service.leaveTrip(tripId: trip.id)
+            }
+            removing = nil
+        } catch {
+            restore()
+            let message = removalMessage(for: error, trip: trip)
+            // 다른 기기가 먼저 바꿨으면 내가 들고 있는 revision이 낡았다 — 목록을 새로 받는다.
+            // ⚠️ `load()`는 성공하면 errorMessage를 지운다 — 그래서 **다시 받은 뒤에** 문구를 세운다.
+            if case .revisionConflict = (error as? APIError) { await load() }
+            errorMessage = message
+        }
+    }
+
+    private func restore() {
+        guard let pending = removing else { return }
+        trips.insert(pending.trip, at: min(pending.index, trips.count))
+        removing = nil
+    }
+
+    private func removalMessage(for error: Error, trip: TripSummary) -> String {
+        guard let api = error as? APIError else { return error.localizedDescription }
+        switch api {
+        case .revisionConflict:
+            return "다른 기기에서 먼저 바뀌었어요 — 목록을 새로 불러왔습니다. 다시 시도해 주세요."
+        case .forbidden:
+            return CollabModel.canDelete(trip.role ?? .owner)
+                ? "이 여행을 지울 권한이 없어요."
+                : "이 여행에서 나갈 수 없어요 — 주최자는 나가는 대신 삭제합니다."
+        default:
+            return api.errorDescription ?? "처리하지 못했어요."
+        }
+    }
+
+    /// 방금 지운(또는 나간) 여행. 되돌릴 수 있게 원래 자리를 함께 들고 있는다.
+    private var removing: (trip: TripSummary, index: Int)?
+
+    /// 지우는 중인 여행 id — 같은 행을 두 번 밀어도 두 번 부르지 않는다.
+    private(set) var busyTripId: String?
+
     /// 캐시가 있으면 먼저 그린다 — 긴 스피너만 보여주지 않는다(§32).
     func load() async {
         if trips.isEmpty { isLoading = true }
@@ -45,6 +102,8 @@ struct TripListView: View {
     @State private var pasteText = ""
     @State private var showsPastePrompt = false
     @State private var joinError: String?
+    /// 지우기·나가기를 확인받는 중인 여행. 무엇이 사라지는지 말한 뒤에만 실행한다.
+    @State private var pendingRemoval: TripSummary?
     /// 밀어 넣은 여행. 딥링크가 목록을 거치지 않고 바로 열 수 있게 경로를 들고 있는다.
     @State private var path: [TripSummary] = []
     /// 알림·딥링크가 정한 목적 화면. 규칙(`TripHomeTab.initial`)을 이긴다.
@@ -110,11 +169,43 @@ struct TripListView: View {
         } message: {
             Text("받은 초대 링크를 붙여 넣으세요. 여행 이름과 권한을 먼저 확인한 뒤 참여합니다.")
         }
+        // 삭제와 나가기는 문구가 다르다 — 무엇이 사라지는지가 다르기 때문이다.
+        .confirmationDialog(
+            pendingRemoval.map { TripListView.removalTitle(for: $0) + " — “\($0.name)”" } ?? "",
+            isPresented: Binding(get: { pendingRemoval != nil }, set: { if !$0 { pendingRemoval = nil } }),
+            titleVisibility: .visible
+        ) {
+            if let trip = pendingRemoval {
+                Button(TripListView.removalTitle(for: trip), role: .destructive) {
+                    pendingRemoval = nil
+                    Task { await model?.remove(trip) }
+                }
+            }
+            Button("취소", role: .cancel) { pendingRemoval = nil }
+        } message: {
+            if let trip = pendingRemoval { Text(TripListView.removalMessage(for: trip)) }
+        }
         .alert("참여할 수 없어요", isPresented: Binding(get: { joinError != nil }, set: { if !$0 { joinError = nil } })) {
             Button("확인") { joinError = nil }
         } message: {
             Text(joinError ?? "")
         }
+    }
+
+    /// 주최자는 삭제, 함께 보는 사람은 나가기. 판정은 `collab.js` 복사본이 한다.
+    static func removalTitle(for trip: TripSummary) -> String {
+        CollabModel.canDelete(trip.role ?? .owner) ? "삭제" : "나가기"
+    }
+
+    /// **무엇이 사라지는지**를 말한다. 둘은 결과가 다르다.
+    static func removalMessage(for trip: TripSummary) -> String {
+        CollabModel.canDelete(trip.role ?? .owner)
+            ? "함께 보는 사람들에게서도 사라집니다. 되돌릴 수 없어요."
+            : "내 목록에서만 사라집니다. 여행 자체는 남아요."
+    }
+
+    private func removalSymbol(for trip: TripSummary) -> String {
+        CollabModel.canDelete(trip.role ?? .owner) ? "trash" : "rectangle.portrait.and.arrow.right"
     }
 
     /// 딥링크 목적지를 화면 이동으로 옮긴다. 여행을 아직 못 찾으면 `false` — 목록을 받은 뒤 다시 부른다.
@@ -172,6 +263,13 @@ struct TripListView: View {
                 ForEach(model.ordered) { trip in
                     NavigationLink(value: trip) {
                         TripRow(trip: trip)
+                    }
+                    // ⚠️ 되돌릴 수 없는 동작이라 미는 것만으로는 사라지지 않는다 — 한 번 더 묻는다.
+                    .swipeActions(edge: .trailing) {
+                        Button(role: .destructive) { pendingRemoval = trip } label: {
+                            Label(TripListView.removalTitle(for: trip), systemImage: removalSymbol(for: trip))
+                        }
+                        .disabled(model.busyTripId != nil)
                     }
                 }
             }
