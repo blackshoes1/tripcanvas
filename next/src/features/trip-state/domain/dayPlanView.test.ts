@@ -26,7 +26,7 @@ const hotel = (extra: Partial<Spot> = {}) => spot('제주호텔', 33.4996, 126.5
 const summary: TripSummary = {
   id: 't1', name: '테스트 여행', start: '2026-10-01', dayCount: 2, revision: 3,
   updatedAt: '2026-09-06T00:00:00Z', timeZone: 'Asia/Seoul', cities: ['제주'],
-  todayIndex: -1, role: 'OWNER', memberCount: 1
+  todayIndex: -1, daysUntilStart: 12, role: 'OWNER', memberCount: 1
 };
 
 const build = (t: Trip, di: number) =>

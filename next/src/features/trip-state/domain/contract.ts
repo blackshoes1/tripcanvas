@@ -44,6 +44,12 @@ export interface TripSummary {
   timeZone: string;         // '' 가능
   cities: string[];
   todayIndex: number;       // 오늘이 몇 일차인지. -1이면 여행 기간 밖
+  /**
+   * 출발까지 남은 날. **아직 시작하지 않은 여행에만** 값이 있다 —
+   * 진행 중이거나 이미 끝났거나 날짜가 없으면 null이다.
+   * ⚠️ `todayIndex === -1`은 **시작 전과 끝난 뒤 둘 다**다. 둘을 가르는 것이 이 값이다.
+   */
+  daysUntilStart: number | null;
   role: MemberRole;         // 내 역할 — VIEWER면 쓰기 요청은 403(FORBIDDEN)이다
   memberCount: number;      // 활성 멤버 수(주최자 포함). 1이면 혼자 쓰는 여행
 }

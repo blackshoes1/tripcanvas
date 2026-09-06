@@ -268,6 +268,7 @@ export function computeToday(input: TodayInput): TodayComputation {
     timeZone: String(trip.timeZone ?? ''),
     cities: Array.from(new Set(days.flatMap((d) => (d.spots ?? []).map((s) => String(s.city ?? ''))).filter(Boolean))),
     todayIndex,
+    daysUntilStart: adapt.daysUntilStart(trip, input.todayISO),
     role: collab.normRole(input.role) ?? 'OWNER',
     memberCount: Math.max(1, Math.round(Number(input.memberCount) || 1))
   };
@@ -358,6 +359,7 @@ export function summarizeTrip(
     timeZone: String(trip.timeZone ?? ''),
     cities: Array.from(new Set(days.flatMap((d) => (d.spots ?? []).map((s) => String(s.city ?? ''))).filter(Boolean))),
     todayIndex: adapt.currentDayIndex(trip, todayISO),
+    daysUntilStart: adapt.daysUntilStart(trip, todayISO),
     role: collab.normRole(row.role) ?? 'OWNER',
     memberCount: Math.max(1, Math.round(Number(row.member_count) || 1))
   };

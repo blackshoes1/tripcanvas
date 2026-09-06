@@ -72,6 +72,22 @@
     const diff=Math.round((b-a)/86400000);
     return (diff>=0 && diff<days.length)? diff : -1;
   }
+  /**
+   * 출발까지 남은 날. **아직 시작하지 않은 여행에만** 값이 있다 —
+   * 진행 중이거나 이미 끝났으면 null이다(셀 것이 없다).
+   * ⚠️ `currentDayIndex`와 **같은 날짜 규칙**을 쓴다. 따로 세면 "D-1인데 이미 시작됨" 같은
+   * 어긋남이 생긴다.
+   * @param {any} trip @param {string} todayISO @returns {number|null}
+   */
+  function daysUntilStart(trip, todayISO){
+    const start=String((trip&&trip.start)||'');
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(String(todayISO||''))) return null;
+    const a=Date.parse(start+'T00:00:00Z'), b=Date.parse(todayISO+'T00:00:00Z');
+    if(!isFinite(a)||!isFinite(b)) return null;
+    const diff=Math.round((a-b)/86400000);
+    return diff>0? diff : null;   // 오늘이 출발일이면 이미 시작이다(D-0을 말하지 않는다)
+  }
+
   /** 이동시간(분) — 주입된 legMin 우선, 없으면 직선거리 환산. 좌표가 없으면 0(모름). @param {any} a @param {any} b @param {any=} opts @returns {number} */
   function travelMinutes(a,b,opts){
     if(!hasCoord(a)||!hasCoord(b)) return 0;
@@ -903,7 +919,7 @@
     if(state.nextFixed) candidates.push(state.nextFixed.startMin);
     return Math.round(Math.min.apply(null, candidates));
   }
-  const API={ADAPT_CFG, MEAL_WINDOWS, DAY_SEGMENTS, SAFETY_BUFFER, NOTIFICATION_KINDS, safetyBufferFor, departurePlan, tripPulse, stateVersion, notificationPlan, pendingNotifications, suggestionExpiryMin, parseIntent, departureAdvice, fillGaps, planDayFlow, segmentLabel, currentDayIndex, weekdayOf, commitmentOf, priorityOf, statusOf, planningModeHint,
+  const API={ADAPT_CFG, MEAL_WINDOWS, DAY_SEGMENTS, SAFETY_BUFFER, NOTIFICATION_KINDS, safetyBufferFor, departurePlan, tripPulse, stateVersion, notificationPlan, pendingNotifications, suggestionExpiryMin, parseIntent, departureAdvice, fillGaps, planDayFlow, segmentLabel, currentDayIndex, daysUntilStart, weekdayOf, commitmentOf, priorityOf, statusOf, planningModeHint,
     buildTripState, findFreeWindows, mealOverlap, buildCandidates, rankNextActions, simulate, generateReplan,
     calcSuggestionImpact, suggestionKey, buildSuggestions, feedbackEntry, travelMinutes};
   if(typeof module!=='undefined' && module.exports) module.exports=API;   // Node (테스트)

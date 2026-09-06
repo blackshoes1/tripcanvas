@@ -12,7 +12,7 @@ final class TripListRemovalTests: XCTestCase {
 
     private func trip(_ id: String, role: MemberRole?, revision: Int = 7) -> TripSummary {
         TripSummary(id: id, name: "여행 \(id)", start: "2026-10-01", dayCount: 3, revision: revision,
-                    updatedAt: "", timeZone: "Asia/Seoul", cities: [], todayIndex: -1,
+                    updatedAt: "", timeZone: "Asia/Seoul", cities: [], todayIndex: -1, daysUntilStart: nil,
                     role: role, memberCount: role == nil ? nil : 2)
     }
 

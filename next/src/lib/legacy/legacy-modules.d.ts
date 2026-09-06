@@ -308,6 +308,8 @@ declare module '@legacy/adaptive.js' {
   const api: {
     ADAPT_CFG: Readonly<Record<string, number>>;
     currentDayIndex(trip: unknown, todayISO: string): number;
+    /** 출발까지 남은 날. 시작 전에만 값이 있다 — 진행 중·끝난 뒤·날짜 없음은 null */
+    daysUntilStart(trip: unknown, todayISO: string): number | null;
     weekdayOf(iso: string): number;
     commitmentOf(spot: unknown, day: unknown, bookings?: unknown[]): { type: CommitmentType; flexibility: Flexibility; bookingId: string | null };
     planningModeHint(trip: unknown): PlanningMode;

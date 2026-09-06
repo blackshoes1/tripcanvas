@@ -657,3 +657,25 @@ test('체류 기본값: 계획된 장소는 0분이지만, 제안 후보의 소�
   assert.equal(candidates.find((c) => c.title === '오늘 장소').durationMin, 60,
                '오늘 장소도 마찬가지 — 계획 체류가 0이어도 제안 기준으로는 0을 쓰지 않는다');
 });
+
+// D-day는 '오늘 → 출발일'이고, 시작 전에만 값이 있다.
+// ⚠️ todayIndex === -1은 **시작 전과 끝난 뒤 둘 다**다 — 둘을 가르는 것이 이 값이다.
+test('daysUntilStart: 시작 전에만 값이 있고, currentDayIndex와 같은 날짜 규칙을 쓴다', () => {
+  const trip = tripOf([{ title: '1', mode: 'walk', spots: [] }, { title: '2', mode: 'walk', spots: [] }],
+                      { start: '2026-10-01' });
+
+  assert.equal(A.daysUntilStart(trip, '2026-09-19'), 12);
+  assert.equal(A.daysUntilStart(trip, '2026-09-30'), 1, '전날은 D-1');
+
+  // 출발일에는 이미 시작이다 — D-0을 말하지 않는다
+  assert.equal(A.daysUntilStart(trip, '2026-10-01'), null);
+  assert.ok(A.currentDayIndex(trip, '2026-10-01') >= 0, '같은 날을 두 함수가 다르게 보면 안 된다');
+
+  assert.equal(A.daysUntilStart(trip, '2026-10-02'), null, '진행 중');
+  assert.equal(A.daysUntilStart(trip, '2026-11-01'), null, '끝난 뒤');
+  assert.equal(A.currentDayIndex(trip, '2026-11-01'), -1, '끝난 뒤도 -1이다 — 그래서 이 값이 필요하다');
+
+  // 날짜 없는 여행은 셀 것이 없다
+  assert.equal(A.daysUntilStart(tripOf([{ title: '', mode: 'walk', spots: [] }], { start: '' }), '2026-09-19'), null);
+  assert.equal(A.daysUntilStart(null, '2026-09-19'), null);
+});

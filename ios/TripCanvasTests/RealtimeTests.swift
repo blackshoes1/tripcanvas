@@ -49,7 +49,7 @@ final class RealtimeHandlingTests: XCTestCase {
         CandidateBoardViewModel(
             trip: TripSummary(id: "t1", name: "바르셀로나", start: "2026-10-01", dayCount: 3, revision: 1,
                               updatedAt: "2026-09-01T00:00:00.000Z", timeZone: "Europe/Madrid",
-                              cities: ["바르셀로나"], todayIndex: 0, role: .owner, memberCount: 3),
+                              cities: ["바르셀로나"], todayIndex: 0, daysUntilStart: nil, role: .owner, memberCount: 3),
             service: service, documents: FakeRealtimeDocuments())
     }
 

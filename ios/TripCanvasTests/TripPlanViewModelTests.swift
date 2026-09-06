@@ -178,7 +178,7 @@ final class TripPlanViewModelTests: XCTestCase {
         }
         let summary = TripSummary(id: "t1", name: "오사카", start: "2026-10-01", dayCount: days, revision: 7,
                                   updatedAt: "", timeZone: "Asia/Seoul", cities: [],
-                                  todayIndex: todayIndex, role: nil, memberCount: nil)
+                                  todayIndex: todayIndex, daysUntilStart: nil, role: nil, memberCount: nil)
         let day = DayPlanDay(index: selected, date: strip[selected].date, title: "", note: "", mode: "car",
                              startMinutes: 540, timeZone: "Asia/Seoul", carriedStay: nil, spots: [],
                              carPickups: [], carReturns: [], back: nil, spotsWithoutLocation: 0, splits: [],
