@@ -146,6 +146,26 @@ test('가입하면 확인 메일을 기다린다 — 확인 전에는 로그인�
   assert.equal(calls[0].body.email, 'b@example.com');
 });
 
+// 확인 링크는 1시간이면 만료된다 — 다시 받는 길이 없으면 그 계정은 영영 못 연다.
+test('확인 메일 재발송도 계정 유무를 떠보는 데 쓰이지 않는다', async () => {
+  const seen = [];
+  setup((url, init) => { seen.push([url, JSON.parse(init.body)]); return { status: 404, body: { message: 'User not found' } }; });
+
+  const a = await TC_AUTH.resendVerification('있는@example.com');
+  const b = await TC_AUTH.resendVerification('없는@example.com');
+  assert.deepEqual(a, { error: null });
+  assert.deepEqual(b, { error: null });
+  assert.match(seen[0][0], /\/api\/auth\/send-verification-email$/);
+  assert.equal(seen[0][1].email, '있는@example.com');
+  // 돌아올 자리는 서버가 정한다(withWebCallback) — 클라이언트가 보내면 규칙이 두 곳이 된다
+  assert.equal(seen[0][1].callbackURL, undefined);
+});
+
+test('재발송은 네트워크가 끊겨도 같은 답이다', async () => {
+  setup(() => ({ throws: true }));
+  assert.deepEqual(await TC_AUTH.resendVerification('a@example.com'), { error: null });
+});
+
 // ───────────────── 세션 복구 · 로그아웃 ─────────────────
 
 test('저장된 토큰으로 로그인 상태를 복구한다', async () => {

@@ -237,6 +237,23 @@
   }
 
   /**
+   * 확인 메일을 다시 보낸다. 링크는 **1시간이면 만료**되므로 다시 받는 길이 반드시 있어야 한다.
+   * ⚠️ 있는 계정인지 밖에서 알아낼 수 없게 **언제나 같은 답**을 준다(재설정과 같은 규칙).
+   * @param {string} email
+   */
+  async function resendVerification(email) {
+    if (_provider === 'SUPABASE') return { error: { code: 'UNAVAILABLE', message: '지금은 할 수 없어' } };
+    try {
+      // callbackURL은 보내지 않는다 — 서버가 `withWebCallback`으로 **자기 값으로 덮어쓴다**.
+      // 여기서 만들면 두 곳이 되고, 브라우저 밖(테스트)에서는 `location`이 없어 터진다.
+      await call('/api/auth/send-verification-email', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email })
+      });
+    } catch (_) { /* 같은 답을 준다 */ }
+    return { error: null };
+  }
+
+  /**
    * 메일 링크로 받은 토큰 + 새 비밀번호. 토큰 검증은 서버(better-auth)가 한다.
    * @param {string} token @param {string} password
    */
@@ -292,7 +309,7 @@
 
   const AUTH = {
     configure, resolveProvider, provider, use, attachSupabase, restore,
-    signIn, signUp, signOut, requestPasswordReset, resetPassword, getToken, user, onChange,
+    signIn, signUp, signOut, requestPasswordReset, resendVerification, resetPassword, getToken, user, onChange,
     DEFAULT_BASE, TOKEN_KEY
   };
   if (typeof module !== 'undefined' && module.exports) { module.exports = AUTH; }   // Node (테스트)

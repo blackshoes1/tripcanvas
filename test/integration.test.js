@@ -15,9 +15,10 @@ const root = path.join(__dirname, '..');
 // index.html에서 <script> 태그를 모두 제거하고, lib.js·sync.js·routing.js·app.js를 인라인으로 주입해 실행한다.
 // 외부 SDK(google/kakao/supabase/Sortable)는 미정의, 네트워크(fetch)는 거부 스텁으로 두고
 // 앱의 가드(if(window.google)…, .catch 등)가 처리하게 한다.
-function boot() {
+/** @param {string} [url] 부팅 주소 — 해시 라우터(#verified=1 등)를 검증할 때만 준다 */
+function boot(url = 'http://localhost/') {
   const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8').replace(/<script\b[\s\S]*?<\/script>/gi, '');
-  const dom = new JSDOM(html, { url: 'http://localhost/', runScripts: 'dangerously', pretendToBeVisual: true });
+  const dom = new JSDOM(html, { url, runScripts: 'dangerously', pretendToBeVisual: true });
   const { window } = dom;
   window.fetch = () => Promise.reject(new Error('no-net'));                          // loadFx 등 네트워크 차단(가드가 catch)
   window.TextEncoder = TextEncoder;                                                 // jsdom에 없음 — lib의 크기 검증(_utf8Bytes)이 실제 브라우저처럼 돌게
@@ -2053,6 +2054,30 @@ test('통합: 일행의 일정 변경은 토스트가 아니라 조용한 줄과
   cards[1].querySelector('.dayHead').click();        // 열어 보면 읽은 것이다
   assert.equal([...w.document.querySelectorAll('.dayCard')][1].classList.contains('remoteChanged'), false);
   w.close();
+});
+
+// ⚠️ 확인 링크가 **실패해도** better-auth는 성공과 같은 해시로 돌려보낸다:
+//   성공  https://웹/#verified=1
+//   실패  https://웹/?error=INVALID_TOKEN#verified=1
+// 쿼리를 안 보면 "확인됐어요"라고 말해 놓고 로그인에서 다시 막힌다(2026-09-06 실제 신고).
+test('통합: 확인 링크가 실패하면 성공했다고 말하지 않는다', { skip: noJsdom }, async () => {
+  const fail = boot('http://localhost/?error=INVALID_TOKEN#verified=1');
+  fail.eval(`window.__asked=null; window.prompt=(m)=>{ window.__asked=m; return null; };
+    window.__toasts=[]; toast=(m)=>{ window.__toasts.push(m); };`);
+  await new Promise(r => setTimeout(r, 500));
+
+  assert.equal(fail.eval(`(window.__toasts||[]).some(t=>/확인됐어요/.test(t))`), false,
+               '실패했는데 확인됐다고 말하면 안 된다');
+  assert.match(fail.eval(`String(window.__asked||'')`), /만료|유효하지/, '왜 안 됐는지 말한다');
+  assert.match(fail.eval(`String(window.__asked||'')`), /다시 보내/, '다시 받는 길을 준다');
+  fail.close();
+
+  // 성공 경로는 그대로다
+  const ok = boot('http://localhost/#verified=1');
+  ok.eval(`window.__toasts=[]; toast=(m)=>{ window.__toasts.push(m); };`);
+  await new Promise(r => setTimeout(r, 500));
+  assert.equal(ok.eval(`(window.__toasts||[]).some(t=>/확인됐어요/.test(t))`), true);
+  ok.close();
 });
 
 test('통합: 드래그 중에는 일행의 변경을 미뤘다가 끝난 뒤 반영한다', { skip: noJsdom }, async () => {
