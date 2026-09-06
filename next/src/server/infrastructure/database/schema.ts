@@ -5,7 +5,8 @@
 // 마이그레이션 SQL은 drizzle-kit이 이 파일에서 만든다(migrations/). 손으로 SQL을 고치지 않는다(§62).
 import { sql } from 'drizzle-orm';
 import {
-  bigint, boolean, check, date, doublePrecision, index, integer, jsonb, numeric, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid
+  bigint, boolean, check, date, doublePrecision, index, integer, jsonb, numeric, pgSequence, pgTable, primaryKey, text, timestamp,
+  uniqueIndex, uuid
 } from 'drizzle-orm/pg-core';
 
 export const users = pgTable('users', {
@@ -19,6 +20,12 @@ export const users = pgTable('users', {
   authUserId: text('auth_user_id').unique()
 });
 
+/**
+ * 저장이 일어난 순서. updated_at은 같은 순간(트랜잭션 시각·낮은 시계 해상도)에 여러 행이 같은 값을 받을 수 있어
+ * "최근 수정 순" 목록의 순서가 갈린다 — 그때 무엇이 먼저인지를 이 값이 정한다.
+ */
+export const tripsUpdatedSeq = pgSequence('trips_updated_seq');
+
 export const trips = pgTable('trips', {
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
   userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
@@ -27,7 +34,9 @@ export const trips = pgTable('trips', {
   revision: bigint('revision', { mode: 'number' }).notNull().default(1),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  /** updated_at 동률을 가르는 2차 정렬 키(tripsUpdatedSeq). 저장할 때마다 새로 받는다 */
+  updatedSeq: bigint('updated_seq', { mode: 'number' }).notNull().default(sql`nextval('trips_updated_seq')`)
 }, (t) => [
   uniqueIndex('trips_user_client_uidx').on(t.userId, t.clientId),
   index('trips_user_updated_idx').on(t.userId, t.updatedAt),
