@@ -679,3 +679,114 @@ struct GroupProposalResponse: Codable, Sendable {
     let schemaVersion: Int
     let proposal: GroupProposalView?
 }
+
+// MARK: - 일자 계획 (일정 화면)
+//
+// Today가 "지금 무엇을"이라면 이쪽은 "그 날 전체가 어떻게 흐르는가"다.
+// ⚠️ 서버는 **값**을 준다 — 완성된 문장이 아니다. 표기(“약 12km · 25분”)는 앱이 정한다.
+// ⚠️ 계산은 서버 하나(`dayView.ts` → `lib.js`)가 한다. 여기서 시각·거리를 다시 계산하지 않는다 —
+//    그러면 웹과 앱이 같은 일정에 다른 시각을 말하게 된다.
+
+/// 한 장소로 '들어오는' 구간.
+struct DayPlanLeg: Codable, Hashable, Sendable {
+    /// car·taxi·transit·train·walk·bike·flight — 계약의 다른 곳(`DaySummary.mode`)과 같은 규칙이다.
+    let mode: String
+    let minutes: Int
+    let distanceKm: Double
+    /// 실측 경로인지 추정인지. 서버에 구간 캐시가 없어 지금은 늘 추정이다 — 화면이 "예상"이라 말해야 한다.
+    let source: TravelTimeSource
+}
+
+struct DayPlanSpot: Codable, Hashable, Sendable {
+    /// `days[di].spots` 안의 위치. 편집이 인덱스 기반이라 반드시 필요하다.
+    let index: Int
+    let name: String
+    let city: String
+    let category: String?
+    let location: GeoPoint?
+    /// 예상 도착 (자정 기준 분). 24시를 넘으면 1440보다 큰 값이 그대로 온다.
+    let etaMinutes: Int
+    /// 📌 내가 정한 도착 시각(`at`)이라 계산이 아니라 고정이다.
+    let fixed: Bool
+    /// 고정 시각이 이동상 불가능하다.
+    let conflict: Bool
+    /// 상대가 정한 약속(`bookAt`) — 예약·입장.
+    let bookedAtMinutes: Int?
+    /// 약속까지 기다리는 시간. 일찍 도착하면 0보다 크다.
+    let waitMinutes: Int
+    let stayMinutes: Int?
+    let status: String
+    /// 좌표가 없으면 nil — 그 장소는 동선에서 빠진다.
+    let incomingLeg: DayPlanLeg?
+}
+
+/// 일정의 장소와 연결되지 않은 렌터카 픽업·반납. ⚠️ 좌표가 없어 동선·ETA·지도에 넣지 않는다.
+struct DayPlanCarEvent: Codable, Hashable, Sendable {
+    enum Kind: String, Codable, Sendable { case pickup = "PICKUP", returned = "RETURN" }
+    let kind: Kind
+    let bookingId: String
+    let place: String
+    let atMinutes: Int?
+}
+
+struct DayPlanCostPart: Codable, Hashable, Sendable {
+    let label: String
+    let amount: Int
+}
+
+struct DayPlanCarriedStay: Codable, Hashable, Sendable {
+    let name: String
+    let location: GeoPoint?
+}
+
+struct DayPlanBack: Codable, Hashable, Sendable {
+    let name: String
+    let location: GeoPoint?
+    let leg: DayPlanLeg
+}
+
+struct DayPlanCost: Codable, Hashable, Sendable {
+    let total: Int
+    let parts: [DayPlanCostPart]
+}
+
+struct DayPlanTotals: Codable, Hashable, Sendable {
+    let distanceKm: Double
+    let travelMinutes: Int
+    /// 그날 마지막 일정이 끝나는 시각(자정 기준 분). 장소가 없으면 nil.
+    let endMinutes: Int?
+    /// 종료가 자정을 넘는다 — 일정 과밀.
+    let overloaded: Bool
+    let cost: DayPlanCost
+}
+
+struct DayPlanDay: Codable, Hashable, Sendable {
+    let index: Int
+    /// YYYY-MM-DD ('' = 시작일 미지정)
+    let date: String
+    let title: String
+    let note: String
+    /// 그날의 기본 이동수단. 구간별 재정의는 각 장소의 `incomingLeg.mode`가 이긴다.
+    let mode: String
+    let startMinutes: Int
+    let timeZone: String
+    /// 🏠 전날 숙소 이월 — **숙소일 때만.** ETA 계산의 기준점(anchor)과 다를 수 있다.
+    let carriedStay: DayPlanCarriedStay?
+    let spots: [DayPlanSpot]
+    let carPickups: [DayPlanCarEvent]
+    let carReturns: [DayPlanCarEvent]
+    /// 숙소 복귀 자동 구간. ⚠️ **일정의 마지막 날에는 없다**(떠나는 날이다).
+    let back: DayPlanBack?
+    /// 좌표가 없어 동선·지도에서 빠지는 장소 수.
+    let spotsWithoutLocation: Int
+    let totals: DayPlanTotals
+}
+
+struct DayPlanResponse: Codable, Hashable, Sendable {
+    let schemaVersion: Int
+    let generatedAt: String
+    let travelTimeSource: TravelTimeSource
+    let trip: TripSummary
+    let dayCount: Int
+    let day: DayPlanDay
+}

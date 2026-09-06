@@ -28,6 +28,12 @@ final class TodayViewModelTests: XCTestCase {
         func bookings(tripId: String) async throws -> TripService.Fetched<[BookingSummary]> {
             TripService.Fetched(value: [], cachedAt: nil)
         }
+        /// 오늘 화면 테스트는 일자 계획을 쓰지 않는다 — 프로토콜을 채우기만 한다.
+        var dayPlanResponse: DayPlanResponse?
+        func dayPlan(tripId: String, dayIndex: Int) async throws -> TripService.Fetched<DayPlanResponse> {
+            guard let dayPlanResponse else { throw APIError.notFound("일자 계획 스텁이 없습니다") }
+            return TripService.Fetched(value: dayPlanResponse, cachedAt: cachedAt)
+        }
         func setActivity(tripId: String, activityId: String, action: TripService.ActivityAction,
                          expectedRevision: Int, expectedName: String?) async throws -> MutationResponse {
             lastActivityCall = (activityId, action, expectedRevision)

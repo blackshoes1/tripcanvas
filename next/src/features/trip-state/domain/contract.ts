@@ -561,6 +561,7 @@ export type ApiErrorCode =
   | 'UNAUTHORIZED'        // 토큰 없음/만료 → 재로그인
   | 'TRIP_NOT_FOUND'
   | 'ACTIVITY_NOT_FOUND'
+  | 'DAY_NOT_FOUND'       // 여행은 있는데 그 일자가 없음 → 일자 수를 다시 받아 고른다
   | 'SUGGESTION_STALE'    // 상태가 바뀌어 그 제안이 더는 유효하지 않음 → Today 새로고침
   | 'FORBIDDEN'           // 이 여행을 바꿀 권한이 없음(보기 권한·내보내짐) → 편집 도구를 감추고 주최자에게 요청
   | 'REVISION_CONFLICT'   // 다른 기기가 먼저 바꿈 → 최신 Today를 받아 다시 시도
@@ -571,4 +572,97 @@ export interface ApiError {
   error: ApiErrorCode;
   message: string;          // 사용자에게 그대로 보여도 되는 한국어 문장
   revision?: number;
+}
+
+// ── 일자 계획(Day Plan) ─────────────────────────────────────────────────────
+//
+// iOS 일정 화면이 쓰는 조회. Today가 "지금 무엇을"이라면 이쪽은 "그 날 전체가 어떻게 흐르는가"다.
+//
+// ⚠️ **라벨이 아니라 값을 보낸다.** 웹의 `DayView`는 `"📏 하루 동선 약 12.4km · 🚗25분"` 같은
+// 완성된 문장을 들고 있는데, 그걸 그대로 보내면 앱이 서버가 만든 한국어를 그리게 되고
+// 거리와 시간을 따로 배치할 수도 없다. 계약의 나머지(NextAction·DaySummary)와 같은 규칙을 지킨다.
+//
+// 계산은 `next/src/features/itinerary/domain/dayView.ts`가 이미 하고 있고 그 안은 `lib.js`다.
+// 여기서 규칙을 새로 만들지 않는다(§엔진은 하나다).
+
+/** 한 장소로 '들어오는' 구간. */
+export interface DayPlanLeg {
+  mode: string;                    // car·taxi·transit·train·walk·bike·flight
+  minutes: number;
+  distanceKm: number;
+  /** 이 구간이 실측 경로인지 추정인지. 서버에는 구간 캐시가 없어 지금은 늘 추정이다. */
+  source: TravelTimeSource;
+}
+
+export interface DayPlanSpot {
+  /** `days[di].spots` 안의 위치. 편집이 인덱스 기반이라 반드시 필요하다. */
+  index: number;
+  name: string;
+  city: string;
+  category: string | null;
+  location: GeoPoint | null;
+  /** 예상 도착 (자정 기준 분). 24시를 넘으면 1440을 넘는 값이 그대로 온다. */
+  etaMinutes: number;
+  /** 📌 내가 정한 도착 시각(`at`)이라 계산이 아니라 고정이다. */
+  fixed: boolean;
+  /** 고정 시각이 이동상 불가능하다. */
+  conflict: boolean;
+  /** 상대가 정한 약속(`bookAt`) — 예약·입장. */
+  bookedAtMinutes: number | null;
+  /** 약속까지 기다리는 시간. 일찍 도착하면 0보다 크다. */
+  waitMinutes: number;
+  stayMinutes: number | null;
+  /** PLANNED·COMPLETED·SKIPPED·CANCELLED */
+  status: string;
+  /** 이 장소로 오는 구간. 첫 유효 장소는 이월 앵커에서 출발한다. 좌표가 없으면 null. */
+  incomingLeg: DayPlanLeg | null;
+}
+
+/** 일정의 장소와 연결되지 않은 렌터카 픽업·반납. ⚠️ 좌표가 없어 동선·ETA·지도에 넣지 않는다. */
+export interface DayPlanCarEvent {
+  kind: 'PICKUP' | 'RETURN';
+  bookingId: string;
+  place: string;
+  atMinutes: number | null;
+}
+
+export interface DayPlanCostPart { label: string; amount: number }
+
+export interface DayPlanDay {
+  index: number;
+  date: string;                    // YYYY-MM-DD ('' = 시작일 미지정)
+  title: string;
+  note: string;
+  /** 그날의 기본 이동수단. 구간별 재정의는 각 장소의 incomingLeg.mode가 이긴다. */
+  mode: string;
+  startMinutes: number;
+  timeZone: string;
+  /** 🏠 전날 숙소 이월 — **숙소일 때만.** ETA 계산의 기준점(anchor)과 다를 수 있다. */
+  carriedStay: { name: string; location: GeoPoint | null } | null;
+  spots: DayPlanSpot[];
+  carPickups: DayPlanCarEvent[];
+  carReturns: DayPlanCarEvent[];
+  /** 숙소 복귀 자동 구간. ⚠️ **일정의 마지막 날에는 없다**(떠나는 날이다). */
+  back: { name: string; location: GeoPoint | null; leg: DayPlanLeg } | null;
+  /** 좌표가 없어 동선·지도에서 빠지는 장소 수. 화면이 그 사실을 말할 수 있게. */
+  spotsWithoutLocation: number;
+  totals: {
+    distanceKm: number;
+    travelMinutes: number;
+    /** 그날 마지막 일정이 끝나는 시각(자정 기준 분). 장소가 없으면 null. */
+    endMinutes: number | null;
+    /** 종료가 자정을 넘는다 — 일정 과밀. */
+    overloaded: boolean;
+    cost: { total: number; parts: DayPlanCostPart[] };
+  };
+}
+
+export interface DayPlanResponse {
+  schemaVersion: number;
+  generatedAt: string;
+  /** ⚠️ 서버에는 구간 캐시가 없다 — 이동시간이 직선거리 추정이면 화면이 '예상'이라고 말해야 한다. */
+  travelTimeSource: TravelTimeSource;
+  trip: TripSummary;
+  dayCount: number;
+  day: DayPlanDay;
 }

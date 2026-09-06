@@ -10,6 +10,7 @@ import Foundation
 protocol TripDataSource {
     func trips() async throws -> TripService.Fetched<[TripSummary]>
     func today(tripId: String, dayIndex: Int?) async throws -> TripService.Fetched<TodayResponse>
+    func dayPlan(tripId: String, dayIndex: Int) async throws -> TripService.Fetched<DayPlanResponse>
     func bookings(tripId: String) async throws -> TripService.Fetched<[BookingSummary]>
     func setActivity(tripId: String, activityId: String, action: TripService.ActivityAction, expectedRevision: Int, expectedName: String?) async throws -> MutationResponse
     func decideSuggestion(tripId: String, suggestionId: String, decision: TripService.SuggestionDecision, expectedRevision: Int) async throws -> MutationResponse
@@ -66,6 +67,20 @@ final class TripService: TripDataSource {
             return Fetched(value: response, cachedAt: nil)
         } catch let error as APIError where error.isOffline {
             guard let cached = await cache.load(TodayResponse.self, key: key) else { throw error }
+            return Fetched(value: cached.value, cachedAt: cached.savedAt)
+        }
+    }
+
+    /// 일정 화면이 쓰는 하루치. 계산은 전부 서버가 한다 — 앱은 그린다.
+    /// 오프라인이면 마지막으로 받은 것을 언제 받았는지와 함께 돌려준다(§29).
+    func dayPlan(tripId: String, dayIndex: Int) async throws -> Fetched<DayPlanResponse> {
+        let key = TripCache.dayPlanKey(tripId: tripId, dayIndex: dayIndex)
+        do {
+            let response: DayPlanResponse = try await api.get("/api/v1/trips/\(tripId)/days/\(dayIndex)")
+            await cache.save(response, key: key)
+            return Fetched(value: response, cachedAt: nil)
+        } catch let error as APIError where error.isOffline {
+            guard let cached = await cache.load(DayPlanResponse.self, key: key) else { throw error }
             return Fetched(value: cached.value, cachedAt: cached.savedAt)
         }
     }
