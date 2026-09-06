@@ -108,13 +108,25 @@ describe('시간 3종 — 도착 예상 / at 고정 / bookAt 예약', () => {
   });
 
   it('bookAt이 도착보다 뒤면 대기(⏳)로, 5분 넘게 늦으면 경고로', () => {
-    const waiting = buildDayView(trip([day([airport(), { ...seongsan(), bookAt: '12:00' }])]), cache, 0).spots[1];
+    // 첫 장소의 체류를 **명시한다** — 이 테스트가 보는 것은 예약 대기이지 체류 기본값이 아니다.
+    const first = { ...airport(), stayMin: 60 };
+    const waiting = buildDayView(trip([day([first, { ...seongsan(), bookAt: '12:00' }])]), cache, 0).spots[1];
     expect(waiting.etaText).toBe('11:00');
     expect(waiting.book).toMatchObject({ at: '12:00', warn: false, waitMin: 60 });
 
-    const late = buildDayView(trip([day([airport(), { ...seongsan(), bookAt: '09:30' }])]), cache, 0).spots[1];
+    const late = buildDayView(trip([day([first, { ...seongsan(), bookAt: '09:30' }])]), cache, 0).spots[1];
     expect(late.book?.warn).toBe(true);
     expect(late.book?.title).toContain('약 90분 늦어요');
+  });
+
+  // 2026-09-06: 체류를 안 정하면 **머무르지 않는다**(예전에는 1시간을 먹었다).
+  // dayView는 lib과 별개로 같은 폴백을 들고 있어 여기서도 고정한다.
+  it('체류를 안 정한 장소는 다음 장소를 밀지 않는다', () => {
+    const later = (spots: Spot[]) => buildDayView(trip([day(spots)]), cache, 0).spots[1].etaText;
+
+    expect(later([airport(), seongsan()])).toBe('10:00');                    // 09:00 출발 + 이동 60분
+    expect(later([{ ...airport(), stayMin: 0 }, seongsan()])).toBe('10:00');  // 0분은 안 정한 것과 같다
+    expect(later([{ ...airport(), stayMin: 60 }, seongsan()])).toBe('11:00'); // 정하면 그만큼 밀린다
   });
 });
 

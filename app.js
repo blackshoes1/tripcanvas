@@ -790,7 +790,7 @@ function legMinutes(a,b,mode,when,timeZone){
   if(c&&c.sec) return (mode==='car'&&c.m<2000)? c.m/75 : c.sec/60;
   return haversine(a,b)/MODE_SPEED[mode]*60;
 }
-// 일자 타임라인: 시작시각(startAt, 기본 09:00)부터 체류(stayMin, 기본 60분)+이동 누적.
+// 일자 타임라인: 시작시각(startAt, 기본 09:00)부터 체류(stayMin, **안 정했으면 0분**)+이동 누적.
 // 순수 계산은 lib.js computeTimeline. startAnchor(전날 숙소 등)가 있으면 첫 유효 장소까지 이동시간을 먼저 더한다.
 function dayTimeZone(day){ return (day&&day.timeZone)||trip().timeZone||''; }
 function dayTimeline(day, startAnchor, di){
@@ -804,7 +804,7 @@ function dayEtas(day, startAnchor, di){ return dayTimeline(day,startAnchor,di).m
 function legDepartMinute(day,timeline,spotIndex){
   if(spotIndex<=0) return parseHM(day.startAt);
   const prev=day.spots[spotIndex-1], state=timeline[spotIndex-1];
-  return state.eta+(state.wait||0)+(prev.stayMin!=null?+prev.stayMin:60);
+  return state.eta+(state.wait||0)+(prev.stayMin!=null?+prev.stayMin:0);
 }
 // sortDayByTime은 lib.js가 단일 소스
 // 하루 장소 비용 합계
@@ -866,7 +866,7 @@ function dayEndMin(day, startAnchor, bl){
   if(!day.spots.length) return null;
   const etas=dayEtas(day, startAnchor), last=day.spots.length-1, s=day.spots[last];
   const base = s.bookAt ? Math.max(etas[last], parseHM(s.bookAt)) : etas[last];
-  const end = base + (s.stayMin!=null? +s.stayMin : 60);
+  const end = base + (s.stayMin!=null? +s.stayMin : 0);
   // 숙소로 돌아가는 시간까지 넣어야 '하루가 몇 시에 끝나는지'가 맞는다
   return bl ? end + legMinutes(bl.from, bl.to, bl.mode, bl.when, bl.timeZone) : end;
 }
@@ -1736,7 +1736,7 @@ window.openSpotModal=(di,si)=>{
   toggleNights();
   document.getElementById('spotAt').value=s.at||'';
   document.getElementById('spotLegMode').value=s.legMode||'';   // 이 지점으로 오는 구간 수단(빈값=일정 기본)
-  document.getElementById('spotStayMin').value=(s.stayMin!=null? s.stayMin : 60);
+  document.getElementById('spotStayMin').value=(s.stayMin!=null? s.stayMin : 0);
   document.getElementById('spotCost').value=(s.cost!=null? fmtMoney(s.cost) : '');
   document.getElementById('spotCur').value=s.cur||'KRW';
   updateCostHint();
@@ -1827,7 +1827,8 @@ document.getElementById('spotSave').onclick=()=>{
       ? stayNights({nights:document.getElementById('spotNights').value}) : undefined,
     at:normHM(document.getElementById('spotAt').value)||undefined,
     legMode:(document.getElementById('spotLegMode').value||undefined),   // 구간별 수단(빈값이면 일정 기본)
-    stayMin:Math.max(0,parseInt(document.getElementById('spotStayMin').value)||60),
+    // ⚠️ `parseInt(v)||60`으로 쓰면 **0을 넣어도 60이 된다**(0이 falsy). 0은 유효한 값이다.
+    stayMin:(()=>{ const n=parseInt(document.getElementById('spotStayMin').value); return isNaN(n)?0:Math.max(0,n); })(),
     cost:(isNaN(costV)?null:Math.max(0,costV)),
     cur:(curV&&curV!=='KRW'?curV:undefined),   // KRW는 기본값이라 저장 생략(하위호환)
     bookAt:normHM(document.getElementById('spotBookAt').value)||'',
@@ -3048,7 +3049,7 @@ async function parseAI(text){
 - startAt은 그날 시작 시각(예 "KTX 9시 출발"→"09:00"). 없으면 null.
 - at은 '도착 시각 고정'(내가 정하는 계획): 그 시각에 도착하도록 못박고 싶을 때(예 "점심 12시"→"12:00", "3시에 도착"→"15:00"). 없으면 null.
 - at과 bookAt 구분: at=내가 정한 도착 계획, bookAt=상대가 정한 약속(예매·공연·투어처럼 시각이 외부에서 정해진 것). 둘 다 24시간 표기 "HH:MM".
-- stayMin은 장소 체류시간(분). "알함브라 3시간"→180, "1시간"→60. 언급 없으면 null.
+- stayMin은 장소 체류시간(분). "알함브라 3시간"→180, "1시간"→60. 언급 없으면 null(= 머무는 시간을 계산에 넣지 않음).
 - cost는 예상 비용 숫자만(통화는 cur). "입장료 2만원"→20000, "$50"→50, "5000엔"→5000. 없으면 null.
 - cur는 cost의 통화: "달러/$"→"USD", "유로/€"→"EUR", "엔/¥"→"JPY", "위안/元"→"CNY", 그 외(원 포함)→"KRW".
 - bookAt은 '예약·입장 시각'(상대가 정한 약속 — 예매·공연·투어·식당 예약). 예 "나스르궁 14시 입장"→"14:00". 없으면 null.

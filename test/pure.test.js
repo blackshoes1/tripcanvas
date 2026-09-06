@@ -777,6 +777,28 @@ test('dayReturnStay — 일정의 마지막 날에는 숙소 복귀를 붙이지
   assert.equal(L.dayReturnStay(oneDay,0), null);
 });
 
+// 2026-09-06: 체류 시간을 안 정한 장소는 **머무르지 않는다**(예전에는 1시간을 먹었다).
+// 이 기본값은 그동안 어떤 테스트도 고정하지 않고 있었다 — 바꿔도 아무것도 안 깨졌다.
+test('computeTimeline — 체류 시간을 안 정하면 0분이고, 0은 유효한 값이다', () => {
+  const P = (lat) => ({lat, lng:1});
+  const mk = (stayMin) => ({
+    title:'', mode:'walk', startAt:'09:00',
+    spots:[
+      Object.assign({name:'첫 장소'}, P(1), stayMin==null? {} : {stayMin}),
+      Object.assign({name:'둘째'}, P(1.0001))   // 거의 같은 자리 — 이동시간을 0에 가깝게
+    ]
+  });
+  const opts = {legMin: () => 0};
+
+  const none = L.computeTimeline(mk(null), opts);
+  const zero = L.computeTimeline(mk(0), opts);
+  const hour = L.computeTimeline(mk(60), opts);
+
+  assert.equal(none[0].eta, 9*60, '첫 장소는 출발시각에 도착한다');
+  assert.equal(none[1].eta, zero[1].eta, '안 정한 것과 0분은 계산이 같다');
+  assert.equal(hour[1].eta - none[1].eta, 60, '60분을 정하면 그만큼 뒤로 밀린다');
+});
+
 test('localMode — 비행기·기차는 근거리 구간(숙소 복귀)의 수단이 될 수 없다', () => {
   assert.equal(L.localMode('flight'), 'car', '그날 기본이 ✈️여도 호텔엔 날아가지 않는다');
   assert.equal(L.localMode('train'), 'car');

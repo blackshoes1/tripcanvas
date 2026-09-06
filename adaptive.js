@@ -29,7 +29,9 @@
     minWindowMin: 45,        // 이보다 짧은 틈은 '일정을 넣을 빈 시간'으로 보지 않는다
     bufferMin: 15,           // 고정 일정 도착 전에 남겨둘 여유
     maxSuggest: 3,           // 한 번에 보여줄 제안 수 — 검색 결과 앱이 되지 않게
-    defaultStayMin: 60,      // 체류시간 미지정 장소의 기본값 (computeTimeline과 동일)
+    // ⚠️ 두 값을 섞지 말 것 — 하나는 '내가 계획한 체류', 다른 하나는 '제안할 활동의 예상 소요'다.
+    defaultStayMin: 0,       // 체류시간을 **안 정한** 장소는 머무르지 않는다 (computeTimeline과 동일)
+    suggestStayMin: 60,      // 제안할 활동의 예상 소요. 0으로 두면 어떤 빈 시간에도 무한히 들어간다
     readyLeadMin: 15,        // 도착 예정 이 시간 전부터 'READY'
     lateThresholdMin: 20,    // 현재 시각이 계획보다 이만큼 밀리면 '지연'
     heavyTravelMin: 180,     // 오늘 누적 이동이 이보다 크면 휴식 후보 가중
@@ -288,7 +290,10 @@
       if(it.status==='COMPLETED'||it.status==='SKIPPED'||it.status==='CANCELLED') return;
       if(it.flexibility==='FIXED') return;   // 고정 일정은 '추천'이 아니라 지켜야 할 약속이다
       out.push({id:'c-'+it.id, kind:(it.type==='HOTEL'?'CHECK_IN':'VISIT_PLACE'), title:it.name, location:it.location,
-        durationMin:it.stayMin, priority:it.priority, must:!!(it.spot&&it.spot.must), hours:(it.spot&&it.spot.hours)||null,
+        // ⚠️ 제안은 '남은 시간에 들어가느냐'를 판단한다 — 소요 0은 **어떤 빈 시간에도 들어간다.**
+        // 계획된 체류가 0(=안 정했거나 바로 이동)이면 제안 기준으로는 한 시간쯤 걸린다고 본다.
+        durationMin:(it.stayMin>0? it.stayMin : c.suggestStayMin),
+        priority:it.priority, must:!!(it.spot&&it.spot.must), hours:(it.spot&&it.spot.hours)||null,
         fromDay:null, si:it.si, inPlan:true, spot:it.spot});
     });
     /** @type {any} */
@@ -305,7 +310,8 @@
         const cm=commitmentOf(s, days[k], (trip&&trip.bookings)||[]);
         if(cm.flexibility!=='FLEXIBLE') return;
         out.push({id:'c-d'+k+'s'+si, kind:'VISIT_PLACE', title:String(s.name||''), location:locOf(s),
-          durationMin:(s.stayMin!=null? Math.max(0,num(s.stayMin,c.defaultStayMin)) : c.defaultStayMin),
+          // 제안 후보의 소요는 계획된 체류가 아니다 — 모르면 '한 시간쯤 걸린다'고 본다
+          durationMin:(s.stayMin!=null? Math.max(0,num(s.stayMin,c.suggestStayMin)) : c.suggestStayMin),
           priority:priorityOf(s, cm.flexibility), must:!!s.must, hours:s.hours||null,
           fromDay:k, si, inPlan:false, spot:s});
       });

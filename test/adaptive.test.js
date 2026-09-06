@@ -630,3 +630,30 @@ test('suggestionExpiryMin: 위치·시각 기반 제안은 다음 고정 일정 
   const near = stateOf(dinnerTrip(), { todayISO: TODAY, nowMin: 18 * 60 + 30, live: true, startAnchor: P(40.40) });
   assert.equal(A.suggestionExpiryMin(near), 19 * 60, '저녁 예약 시작이 더 이르면 그때 만료');
 });
+
+// 2026-09-06: 체류 기본값을 60 → 0으로 바꾸면서 **두 가지 일을 나눴다.**
+//   defaultStayMin  — 내가 계획한 장소가 시간을 안 정했으면 머무르지 않는다(0)
+//   suggestStayMin  — 제안할 활동의 예상 소요. 여기도 0으로 두면 어떤 빈 시간에도 무한히 들어간다
+test('체류 기본값: 계획된 장소는 0분이지만, 제안 후보의 소요는 여전히 1시간으로 본다', () => {
+  const trip = tripOf([
+    { title: '오늘', mode: 'walk', startAt: '09:00', spots: [
+      Object.assign({ name: '오늘 장소', city: 'M' }, P(40.40))
+    ] },
+    { title: '내일', mode: 'walk', startAt: '09:00', spots: [
+      Object.assign({ name: '옮겨올 후보', city: 'M' }, P(40.41))   // stayMin 없음
+    ] }
+  ]);
+  const state = stateOf(trip, { todayISO: TODAY, nowMinutes: 10 * 60 });
+
+  // 계획된 장소: 시간을 안 정했으니 머무르지 않는다 — 도착과 출발이 같다
+  const planned = state.items.find((it) => it.name === '오늘 장소');
+  assert.equal(planned.stayMin, 0, '안 정한 체류는 0분이다');
+  assert.equal(planned.end - planned.depart, 0, '머무르지 않으므로 도착과 출발이 같다');
+
+  // 제안 후보: 소요를 0으로 보면 **어떤 빈 시간에도 들어간다** — 그러면 무한히 채운다
+  const candidates = A.buildCandidates(trip, state, {});
+  assert.equal(candidates.find((c) => c.title === '옮겨올 후보').durationMin, 60,
+               '다른 날에서 옮겨올 후보의 소요를 모르면 한 시간쯤으로 본다');
+  assert.equal(candidates.find((c) => c.title === '오늘 장소').durationMin, 60,
+               '오늘 장소도 마찬가지 — 계획 체류가 0이어도 제안 기준으로는 0을 쓰지 않는다');
+});

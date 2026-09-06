@@ -110,13 +110,14 @@
         "id": "parity|2026-09-01|CHECK_IN|숙소",
         "type": "NEXT_ACTIVITY",
         "title": "숙소",
-        "description": "18:55 도착 · 18:55까지",
+        "description": "18:55 도착 · 19:55까지",
         "reasons": [
           "원래 오늘 일정에 있던 곳입니다",
-          "저녁 예약 동선과 같은 방향입니다"
+          "저녁 예약 동선과 같은 방향입니다",
+          "약 1시간이면 둘러볼 수 있습니다"
         ],
         "impact": {
-          "timeChangeMinutes": 0,
+          "timeChangeMinutes": 60,
           "addedActivities": [
             "숙소"
           ],
