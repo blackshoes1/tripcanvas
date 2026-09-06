@@ -218,11 +218,12 @@ struct TripPlanView: View {
         if let day = model.day {
             List {
                 Section {
-                    if day.spots.isEmpty {
-                        Text(model.canEdit ? "아직 장소가 없어요. 오른쪽 위 ＋로 추가합니다." : "이 날에는 장소가 없어요.")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
+                    if day.spots.isEmpty { emptyDay(model) }
+                    // 🏠 전날 숙소 이월 · 렌터카 픽업은 장소 목록 **앞**에 온다.
+                    // ⚠️ ForEach 밖에 둔다 — 드래그 인덱스는 ForEach의 컬렉션 기준이라
+                    //    이 줄들이 그 안에 섞이면 순서가 어긋난다.
+                    if let carry = model.planDay?.carriedStay { carryRow(carry) }
+                    ForEach(model.planDay?.carPickups ?? [], id: \.bookingId) { carEventRow($0) }
                     ForEach(Array(day.spots.enumerated()), id: \.offset) { index, spot in
                         Button {
                             guard model.canEdit else { return }
@@ -242,8 +243,14 @@ struct TripPlanView: View {
                     }
                     .deleteDisabled(!model.canEdit)
                     .moveDisabled(!model.canEdit)
+                    // 반납은 장소 뒤, 숙소 복귀 앞 — 웹 일자 카드와 같은 순서다.
+                    ForEach(model.planDay?.carReturns ?? [], id: \.bookingId) { carEventRow($0) }
+                    if let back = model.planDay?.back { backRow(back) }
                 } header: {
-                    dayHeader(model, day: day)
+                    VStack(alignment: .leading, spacing: Space.xs) {
+                        dayHeader(model, day: day)
+                        if let totals = model.planDay?.totals { daySummary(totals) }
+                    }
                 } footer: {
                     VStack(alignment: .leading, spacing: Space.xs) {
                         if !model.canEdit {
@@ -321,6 +328,98 @@ struct TripPlanView: View {
             }
         }
         .textCase(nil)
+    }
+
+    /// 빈 날. "장소가 없어요"로 끝내지 않는다 — 이미 담아 둔 후보에서 가져올 수 있다.
+    @ViewBuilder
+    private func emptyDay(_ model: TripPlanViewModel) -> some View {
+        VStack(alignment: .leading, spacing: Space.s) {
+            Text(model.canEdit ? "아직 장소가 없어요." : "이 날에는 장소가 없어요.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            if model.canEdit {
+                Text("오른쪽 위 ＋로 검색해서 담거나, 일행과 골라 둔 곳에서 가져옵니다.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                NavigationLink { CandidateBoardView(trip: trip) } label: {
+                    Label("가고 싶은 곳에서 가져오기", systemImage: "mappin.and.ellipse")
+                        .font(.subheadline.weight(.semibold))
+                }
+            }
+        }
+        .padding(.vertical, Space.xs)
+    }
+
+    /// 하루의 무게 — 얼마나 움직이고 얼마나 쓰는가. 값은 전부 서버가 계산한 것이다.
+    @ViewBuilder
+    private func daySummary(_ totals: DayPlanTotals) -> some View {
+        VStack(alignment: .leading, spacing: Space.xs) {
+            HStack(spacing: Space.m) {
+                if totals.distanceKm > 0 {
+                    Label(String(format: "%.1fkm", totals.distanceKm), systemImage: "ruler")
+                }
+                if totals.travelMinutes > 0 {
+                    Label(TimeFormat.duration(totals.travelMinutes), systemImage: "arrow.triangle.turn.up.right.diamond")
+                }
+                if totals.cost.total > 0 {
+                    Label(TimeFormat.money(Double(totals.cost.total), currency: "KRW"), systemImage: "wonsign.circle")
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+
+            // 자정을 넘긴다 — 넘긴다고 막지는 않는다. 그렇게 되어 있다고 말할 뿐이다.
+            if totals.overloaded, let end = totals.endMinutes {
+                Label("이대로면 \(TimeFormat.clock(end))에 끝나요", systemImage: "moon.zzz")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+        }
+        .textCase(nil)
+    }
+
+    /// 🏠 전날 숙소에서 이어지는 날. **표시일 뿐**이고 이 항목은 그날 일정이 아니다.
+    private func carryRow(_ carry: DayPlanCarriedStay) -> some View {
+        Label {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(carry.name).font(.subheadline)
+                Text("전날 숙소에서 출발").font(.caption2).foregroundStyle(.secondary)
+            }
+        } icon: {
+            Text("🏠")
+        }
+        .listRowBackground(Color(.secondarySystemGroupedBackground).opacity(0.6))
+    }
+
+    /// 자동으로 이어 붙인 숙소 복귀. 일정에 저장된 장소가 아니라는 것을 밝힌다.
+    /// ⚠️ 일정의 마지막 날에는 서버가 이걸 주지 않는다 — 떠나는 날이다.
+    private func backRow(_ back: DayPlanBack) -> some View {
+        HStack(alignment: .top, spacing: Space.m) {
+            Text("🏠").font(.title3)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(back.name).font(.subheadline)
+                let mode = TravelMode(rawValue: back.leg.mode)
+                Text("숙소 복귀 · 자동 · \(mode?.label ?? "") \(TimeFormat.duration(back.leg.minutes))")
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
+        }
+        .listRowBackground(Color(.secondarySystemGroupedBackground).opacity(0.6))
+    }
+
+    /// 렌터카 픽업·반납. ⚠️ **좌표가 없어 동선·ETA·지도에 들어가지 않는다** — 표시만 한다.
+    /// 그래서 시각을 ETA 칸이 아니라 메타 줄에 둔다(그날 계산된 도착 순서에 속하지 않는다).
+    private func carEventRow(_ event: DayPlanCarEvent) -> some View {
+        HStack(alignment: .top, spacing: Space.m) {
+            Image(systemName: "car.fill").font(.subheadline).foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(event.place.isEmpty ? (event.kind == .pickup ? "렌터카 픽업" : "렌터카 반납") : event.place)
+                    .font(.subheadline)
+                Text([event.kind == .pickup ? "렌터카 픽업" : "렌터카 반납",
+                      event.atMinutes.map(TimeFormat.clock)].compactMap { $0 }.joined(separator: " · "))
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
+        }
+        .listRowBackground(Color(.secondarySystemGroupedBackground).opacity(0.6))
     }
 }
 

@@ -302,6 +302,26 @@ final class TripPlanViewModelTests: XCTestCase {
         XCTAssertNil(model.errorMessage)
     }
 
+    /// 다른 날의 계산을 그 날에 그리면 있지도 않은 숙소 복귀·렌터카가 화면에 생긴다.
+    func testDayLevelPlanIsHiddenWhenTheDayDiffers() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(), revision: 7, role: .owner))
+        service.dayPlanResponse = planWithSpots(1, day: 1)   // 2일차 계산
+        let model = TripPlanViewModel(tripId: "t1", service: service)
+        await model.load()                                    // 보고 있는 날은 1일차
+
+        XCTAssertNil(model.planDay, "날이 다르면 하루 요약·복귀·렌터카를 그리지 않는다")
+        XCTAssertNotNil(model.plan, "응답 자체는 들고 있다(스트립은 여행 전체라 쓸 수 있다)")
+    }
+
+    func testDayLevelPlanIsUsedWhenTheDayMatches() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(), revision: 7, role: .owner))
+        service.dayPlanResponse = planWithSpots(1, day: 0)
+        let model = TripPlanViewModel(tripId: "t1", service: service)
+        await model.load()
+
+        XCTAssertEqual(model.planDay?.index, 0)
+    }
+
     func testClockTextRoundTrip() {
         XCTAssertEqual(ClockText.parts("18:35").hour, 18)
         XCTAssertEqual(ClockText.parts("18:35").minute, 35)
