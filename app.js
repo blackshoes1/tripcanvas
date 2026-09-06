@@ -2894,9 +2894,18 @@ document.getElementById('roSave').onclick=()=>{
     history.replaceState(null,'',location.pathname);   // 토큰을 주소창·기록에 남기지 않는다
     setTimeout(openResetModal,0);
   }else if(h==='#verified=1'){
-    // 가입 확인을 마치고 돌아온 길 — 확인만 됐을 뿐 로그인은 아직이다
+    // 가입 확인을 마치고 돌아온 길.
+    // ⚠️ **성공만 이 해시로 오는 것이 아니다.** 확인이 실패해도 better-auth는
+    //    `?error=INVALID_TOKEN#verified=1`로 보낸다 — 해시가 같다.
+    //    쿼리를 안 보면 "확인됐어요"라고 말해 놓고 로그인에서 다시 막히는 일이 생긴다
+    //    (2026-09-06에 실제로 그랬다: 링크는 1시간이면 만료된다).
+    const verifyError=new URLSearchParams(location.search).get('error');
     history.replaceState(null,'',location.pathname);
-    setTimeout(()=>{ toast('이메일이 확인됐어요 — 이제 로그인해 주세요'); document.getElementById('authBtn').click(); },400);
+    if(verifyError){
+      setTimeout(()=>openVerifyFailed(verifyError),400);
+    }else{
+      setTimeout(()=>{ toast('이메일이 확인됐어요 — 이제 로그인해 주세요'); document.getElementById('authBtn').click(); },400);
+    }
   }else if(h.startsWith('#t=')){
     try{
       const result=decodeSharedTrip(h.slice(3)), t=result.ok&&result.value;
@@ -3872,6 +3881,26 @@ document.getElementById('authReset').onclick=async()=>{
   toast('가입된 이메일이라면 재설정 메일이 갔어 — 메일함(스팸함도) 확인해줘','#1d6fd6');
 };
 // ── 새 비밀번호 (메일의 #reset= 링크) ──
+/**
+ * 확인 링크가 실패했을 때. **무엇이 잘못됐는지 말하고 다시 받는 길을 준다** —
+ * 링크는 1시간이면 만료되고, 만료된 링크를 눌러도 웹은 성공과 같은 주소로 돌아온다.
+ * @param {string} code better-auth가 쿼리로 준 이유(INVALID_TOKEN 등)
+ */
+function openVerifyFailed(code){
+  const why = code==='TOKEN_EXPIRED'
+    ? '확인 링크가 만료됐어요 (링크는 1시간 동안만 쓸 수 있어요).'
+    : '확인 링크가 더는 유효하지 않아요 — 만료됐거나 이미 사용된 링크예요.';
+  reportOperationalError('auth.verify.failed', new Error(String(code||'UNKNOWN')));
+  const email = prompt(`${why}\n\n가입한 이메일을 넣으면 확인 메일을 다시 보내드릴게요.`, '');
+  if(email===null) return;
+  const target=String(email).trim();
+  if(!target.includes('@')){ toast('이메일 형식이 아니에요','#e63946'); return; }
+  TC_AUTH.resendVerification(target).then(()=>{
+    // 있는 계정인지 밖에서 알아낼 수 없게 언제나 같은 말을 한다
+    toast('확인 메일을 보냈어요 — 스팸함도 확인해 주세요');
+  });
+}
+
 function openResetModal(){
   document.getElementById('resetPass').value='';
   document.getElementById('resetModalBg').classList.add('show');
