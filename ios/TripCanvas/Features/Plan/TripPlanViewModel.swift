@@ -36,14 +36,19 @@ final class TripPlanViewModel {
         }
     }
 
+    /// 참여자 이름표를 만드는 데만 쓴다. 없으면 이름 대신 인원만 말한다.
+    private(set) var members: [MemberView] = []
+
     let tripId: String
     private let service: TripDocumentSource
+    private let memberSource: MemberListing?
     /// 여행 중일 때 '오늘'로 한 번만 옮긴다.
     private var didJumpToToday = false
 
-    init(tripId: String, service: TripDocumentSource) {
+    init(tripId: String, service: TripDocumentSource, memberSource: MemberListing? = nil) {
         self.tripId = tripId
         self.service = service
+        self.memberSource = memberSource
     }
 
     var canEdit: Bool { role.canEdit }
@@ -67,6 +72,14 @@ final class TripPlanViewModel {
         await loadPlan()
     }
 
+    /// 이름표용 멤버. **분리가 있는 날에만, 한 번만** 부른다 —
+    /// 혼자 다니는 여행에는 분리가 없어 이름표가 필요 없다.
+    /// **실패해도 조용하다**: 이름 대신 인원만 말할 뿐 일정은 그대로 보인다.
+    private func loadMembers() async {
+        guard members.isEmpty, hasSplits, let memberSource else { return }
+        members = (try? await memberSource.members(tripId: tripId)) ?? []
+    }
+
     /// 서버 계산을 받아온다. **실패해도 조용하다** — 일정 편집은 문서만으로 되고,
     /// 계산이 없으면 화면이 시각·구간을 감출 뿐이다. 여기서 오류 배너를 띄우면
     /// 편집이 멀쩡한데 무언가 고장 난 것처럼 보인다.
@@ -79,6 +92,7 @@ final class TripPlanViewModel {
             plan = fetched.value
             planCachedAt = fetched.cachedAt
             jumpToTodayOnce()
+            await loadMembers()
         } catch {
             plan = nil
             planCachedAt = nil
@@ -119,6 +133,39 @@ final class TripPlanViewModel {
             return nil
         }
         return plan.day.spots.indices.contains(index) ? plan.day.spots[index] : nil
+    }
+
+    // ── 함께 움직이지 않는 시간 (§25~§27) ─────────────────────────────────────
+    //
+    // ⚠️ 가르는 것은 서버(`splitSegments`)다. 여기서는 **받은 구조를 읽기만** 한다 —
+    // 앱이 따로 가르면 타임라인과 그림이 어긋난다.
+
+    /// 이 날에 함께 다니지 않는 구간이 있는가.
+    var hasSplits: Bool { !(planDay?.splits.isEmpty ?? true) }
+
+    /// 그 장소가 속한 가지. 분리 구간이 아니면 nil이다.
+    func splitBranch(at index: Int) -> DayPlanSplitBranch? {
+        guard let splits = planDay?.splits else { return nil }
+        for split in splits where index >= split.from && index < split.to {
+            return split.branches.first { $0.spotIndexes.contains(index) }
+        }
+        return nil
+    }
+
+    /// 가지에서 **처음** 나오는 장소인가. 참여자 이름표를 여기에만 붙여 줄이 반복되지 않게.
+    func isBranchStart(at index: Int) -> Bool {
+        splitBranch(at: index)?.spotIndexes.first == index
+    }
+
+    /// '모두' 또는 '나 · 지민'. 규칙은 `collab.js` 복사본(`CollabModel`)이 들고 있다.
+    func participantsText(_ ids: [String]) -> String {
+        guard !members.isEmpty else { return ids.isEmpty ? "모두" : "\(ids.count)명" }
+        return CollabModel.whoText(ids, members: members)
+    }
+
+    /// 이 일정에 내가 들어 있는가. 지정이 없으면 모두이므로 참이다.
+    func includesMe(_ ids: [String]) -> Bool {
+        CollabModel.includesMe(ids, myId: members.first(where: { $0.me })?.userId)
     }
 
     /// 이동시간이 실측인지 추정인지. 서버에 구간 캐시가 없어 지금은 늘 추정이다.

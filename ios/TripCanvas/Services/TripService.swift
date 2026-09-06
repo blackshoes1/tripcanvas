@@ -176,6 +176,11 @@ extension TripService: TravelStateSource {
 
 /// 편집 화면이 쓰는 계약. 테스트에서 가짜로 갈아끼울 수 있게 따로 둔다.
 @MainActor
+/// 멤버 이름표만 필요한 화면을 위한 좁은 창구. 일정 화면이 함께하기 전체를 알 필요는 없다.
+protocol MemberListing {
+    func members(tripId: String) async throws -> [MemberView]
+}
+
 protocol TripDocumentSource {
     func document(tripId: String) async throws -> TripDocumentSnapshot
     func saveDocument(tripId: String, document: TripDocument, expectedRevision: Int) async throws -> TripDocumentSnapshot
@@ -191,6 +196,8 @@ struct TripDocumentSnapshot: Sendable {
 
     var canEdit: Bool { role.canEdit }
 }
+
+extension TripService: MemberListing {}
 
 extension TripService: TripDocumentSource {
     /// 여행 문서 전체 + revision + 내 역할.

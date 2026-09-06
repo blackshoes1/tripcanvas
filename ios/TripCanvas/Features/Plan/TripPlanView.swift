@@ -38,7 +38,9 @@ struct TripPlanView: View {
             }
         }
         .task {
-            if model == nil { model = TripPlanViewModel(tripId: trip.id, service: env.service) }
+            if model == nil {
+                model = TripPlanViewModel(tripId: trip.id, service: env.service, memberSource: env.service)
+            }
             await model?.load()
         }
         .sheet(isPresented: $showsSearch) {
@@ -229,7 +231,8 @@ struct TripPlanView: View {
                             guard model.canEdit else { return }
                             editor = .edit(index: index, spot: spot)
                         } label: {
-                            SpotRow(spot: spot, dayMode: day.mode, plan: model.planSpot(at: index))
+                            SpotRow(spot: spot, dayMode: day.mode, plan: model.planSpot(at: index),
+                                    split: splitInfo(model, at: index))
                         }
                         .buttonStyle(.plain)
                         .swipeActions(edge: .trailing) {
@@ -255,6 +258,11 @@ struct TripPlanView: View {
                     VStack(alignment: .leading, spacing: Space.xs) {
                         if !model.canEdit {
                             Text("보기 권한이라 일정을 바꿀 수 없어요. 주최자에게 요청하세요.")
+                        }
+                        // 나란한 가지를 열로 쪼개지 않는다(드래그 인덱스가 어긋난다) —
+                        // 대신 줄마다 표시를 붙이고, 하루 단위로 한 번 설명한다.
+                        if model.hasSplits {
+                            Text("이 날은 일부 시간을 따로 보내요 — 표시된 구간은 함께 다니지 않습니다.")
                         }
                         // 추정을 실측처럼 말하지 않는다. 구간마다 붙이면 잔소리가 되므로 하루에 한 번만.
                         if model.plan != nil, model.travelTimeIsEstimate, !day.spots.isEmpty {
@@ -328,6 +336,16 @@ struct TripPlanView: View {
             }
         }
         .textCase(nil)
+    }
+
+    /// 그 장소가 분리 구간에 속하는지와, 거기에 누가 있는지.
+    /// ⚠️ 가르는 것은 서버다 — 여기서는 받은 구조를 읽어 넘기기만 한다.
+    private func splitInfo(_ model: TripPlanViewModel, at index: Int) -> SpotRow.SplitInfo? {
+        guard let branch = model.splitBranch(at: index) else { return nil }
+        return SpotRow.SplitInfo(
+            whoText: model.participantsText(branch.participants),
+            includesMe: model.includesMe(branch.participants),
+            isBranchStart: model.isBranchStart(at: index))
     }
 
     /// 빈 날. "장소가 없어요"로 끝내지 않는다 — 이미 담아 둔 후보에서 가져올 수 있다.
@@ -430,11 +448,22 @@ struct SpotRow: View {
     /// 서버가 계산한 그 장소의 시각과 구간. nil이면 계산을 못 받은 것이다 —
     /// 그때는 **문서에 적힌 것만** 보인다(없는 시각을 앱이 지어내지 않는다).
     var plan: DayPlanSpot?
+    /// 함께 다니지 않는 구간에 속할 때만. 규칙은 서버가 정하고 여기서는 그리기만 한다.
+    var split: SplitInfo?
+
+    struct SplitInfo: Equatable {
+        let whoText: String
+        let includesMe: Bool
+        /// 가지에서 처음 나오는 장소. 이름표를 여기에만 붙여 줄이 반복되지 않게 한다.
+        let isBranchStart: Bool
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.xs) {
             // 이 장소로 '들어오는' 구간. 장소 사이가 비어 있으면 "여기서 저기까지 얼마나"를 알 수 없다.
             if let leg = plan?.incomingLeg { legLine(leg) }
+            // 누가 가는지는 **가지가 시작될 때 한 번만** 말한다.
+            if let split, split.isBranchStart { branchHeader(split) }
 
             HStack(alignment: .top, spacing: Space.m) {
                 timeColumn
@@ -462,9 +491,39 @@ struct SpotRow: View {
                     StatusChip(text: spot.status.label, symbol: statusSymbol, tint: statusTint)
                 }
             }
+            // 갈라졌던 사람들이 다시 만나는 지점. 시각은 타임라인이 정하므로 여기서 말하지 않는다.
+            if plan?.reunion == true {
+                Label("여기서 다시 만나요", systemImage: "point.topleft.down.to.point.bottomright.curvepath")
+                    .font(.caption2)
+                    .foregroundStyle(Color.accentColor)
+                    .padding(.leading, 48)
+            }
+        }
+        // ⚠️ 나란한 가지를 열로 쪼개지 않는다 — 드래그 인덱스가 자식 순서로 계산돼서
+        //    다른 요소를 끼우면 순서가 어긋난다. 줄은 1:1로 두고 왼쪽 선으로 묶어 보인다.
+        .padding(.leading, split != nil ? Space.s : 0)
+        .overlay(alignment: .leading) {
+            if split != nil {
+                Rectangle()
+                    .fill(Color.accentColor.opacity(0.35))
+                    .frame(width: 2)
+            }
         }
         .padding(.vertical, Space.xs)
         .contentShape(Rectangle())
+    }
+
+    /// 이 가지에 누가 가는가. 내가 빠진 구간은 옅게 — 없는 일정처럼 보이지 않게 지우지는 않는다.
+    private func branchHeader(_ split: SplitInfo) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: "person.2.fill").font(.caption2)
+            Text(split.whoText).font(.caption.weight(.semibold))
+            if !split.includesMe {
+                Text("· 나는 안 가요").font(.caption2)
+            }
+        }
+        .foregroundStyle(split.includesMe ? Color.accentColor : .secondary)
+        .padding(.leading, 48)
     }
 
     /// 시각 3종 중 둘 — 📌 도착 고정(내가 정한 계획)과 예상 도착(계산).

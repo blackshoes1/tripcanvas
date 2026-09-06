@@ -5,8 +5,10 @@ import XCTest
 /// **바꾸면 곧바로 저장한다**, **실패하면 화면을 되돌린다**, **충돌은 조용히 덮어쓰지 않는다.**
 @MainActor
 final class TripPlanViewModelTests: XCTestCase {
-    private func document(days: Int = 2) -> TripDocument {
-        var spots: [JSONValue] = [.object(["name": .string("도톤보리"), "city": .string("오사카")])]
+    private func document(days: Int = 2, spots spotCount: Int = 1) -> TripDocument {
+        var spots: [JSONValue] = (0..<spotCount).map {
+            .object(["name": .string($0 == 0 ? "도톤보리" : "장소 \($0)"), "city": .string("오사카")])
+        }
         if days == 0 { spots = [] }
         return TripDocument(raw: [
             "name": .string("오사카"),
@@ -323,6 +325,83 @@ final class TripPlanViewModelTests: XCTestCase {
         XCTAssertEqual(model.planDay?.index, 0)
     }
 
+    // ── 함께 움직이지 않는 시간 ───────────────────────────────────────────────
+    //
+    // ⚠️ 가르는 것은 서버다. 여기서 확인하는 것은 **받은 구조를 제대로 읽는가**뿐이다.
+
+    private func planWithSplit() -> DayPlanResponse {
+        var base = planWithSpots(4)
+        let split = DayPlanSplit(key: "s1", from: 1, to: 4, branches: [
+            DayPlanSplitBranch(participants: ["u1"], spotIndexes: [1, 2]),
+            DayPlanSplitBranch(participants: ["u2"], spotIndexes: [3])
+        ])
+        base = DayPlanResponse(
+            schemaVersion: base.schemaVersion, generatedAt: base.generatedAt,
+            travelTimeSource: base.travelTimeSource, trip: base.trip, dayCount: base.dayCount, days: base.days,
+            day: DayPlanDay(index: 0, date: base.day.date, title: "", note: "", mode: "car",
+                            startMinutes: 540, timeZone: "Asia/Seoul", carriedStay: nil, spots: base.day.spots,
+                            carPickups: [], carReturns: [], back: nil, spotsWithoutLocation: 0,
+                            splits: [split], totals: base.day.totals))
+        return base
+    }
+
+    private func loadedWithSplit(members: [MemberView]) async -> TripPlanViewModel {
+        let service = FakeDocumentService(snapshot: .init(document: document(days: 1, spots: 4),
+                                                          revision: 7, role: .owner))
+        service.dayPlanResponse = planWithSplit()
+        let model = TripPlanViewModel(tripId: "t1", service: service, memberSource: FakeMembers(members))
+        await model.load()
+        return model
+    }
+
+    func testReadsTheBranchesTheServerSent() async {
+        let model = await loadedWithSplit(members: [])
+        XCTAssertTrue(model.hasSplits)
+        XCTAssertNil(model.splitBranch(at: 0), "분리 밖의 장소는 가지가 없다")
+        XCTAssertEqual(model.splitBranch(at: 1)?.participants, ["u1"])
+        XCTAssertEqual(model.splitBranch(at: 3)?.participants, ["u2"])
+        // 이름표는 가지가 시작될 때 한 번만
+        XCTAssertTrue(model.isBranchStart(at: 1))
+        XCTAssertFalse(model.isBranchStart(at: 2))
+        XCTAssertTrue(model.isBranchStart(at: 3))
+    }
+
+    func testNamesParticipantsWithTheMemberLabels() async {
+        let members = [
+            MemberView(id: 1, userId: "u1", role: .editor, status: "ACTIVE", displayName: "지민",
+                       joinedAt: nil, me: true),
+            MemberView(id: 2, userId: "u2", role: .editor, status: "ACTIVE", displayName: "영희",
+                       joinedAt: nil, me: false)
+        ]
+        let model = await loadedWithSplit(members: members)
+
+        XCTAssertEqual(model.participantsText(["u1"]), "나", "나는 늘 '나'로 부른다")
+        XCTAssertEqual(model.participantsText(["u2"]), "영희")
+        XCTAssertEqual(model.participantsText([]), "모두", "비어 있으면 모든 여행자다")
+        XCTAssertTrue(model.includesMe(["u1"]))
+        XCTAssertFalse(model.includesMe(["u2"]))
+        XCTAssertTrue(model.includesMe([]), "지정이 없으면 나도 간다")
+    }
+
+    /// 멤버를 못 받아도 화면이 죽지 않는다 — 이름 대신 인원만 말한다.
+    func testFallsBackToCountWhenMembersAreMissing() async {
+        let model = await loadedWithSplit(members: [])
+        XCTAssertEqual(model.participantsText(["u1", "u2"]), "2명")
+        XCTAssertEqual(model.participantsText([]), "모두")
+    }
+
+    /// 분리가 없는 날에는 멤버를 부르지 않는다 — 혼자 다니는 여행에 쓸데없는 왕복을 만들지 않는다.
+    func testDoesNotFetchMembersWithoutSplits() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(), revision: 7, role: .owner))
+        service.dayPlanResponse = planWithSpots(1)     // 분리 없음
+        let members = FakeMembers([])
+        let model = TripPlanViewModel(tripId: "t1", service: service, memberSource: members)
+        await model.load()
+
+        XCTAssertFalse(model.hasSplits)
+        XCTAssertEqual(members.calls, 0)
+    }
+
     func testClockTextRoundTrip() {
         XCTAssertEqual(ClockText.parts("18:35").hour, 18)
         XCTAssertEqual(ClockText.parts("18:35").minute, 35)
@@ -360,5 +439,17 @@ private final class FakeDocumentService: TripDocumentSource {
         dayPlanCalls.append(dayIndex)
         guard let dayPlanResponse else { throw APIError.notFound("일자 계획 없음") }
         return TripService.Fetched(value: dayPlanResponse, cachedAt: nil)
+    }
+}
+
+
+@MainActor
+private final class FakeMembers: MemberListing {
+    private let members: [MemberView]
+    private(set) var calls = 0
+    init(_ members: [MemberView]) { self.members = members }
+    func members(tripId: String) async throws -> [MemberView] {
+        calls += 1
+        return members
     }
 }
