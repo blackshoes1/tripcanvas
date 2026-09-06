@@ -236,3 +236,25 @@ export interface TripSnapshotRepository {
   /** 남의 스냅샷은 id를 알아도 돌려주지 않는다 */
   find(userId: string, clientId: string, id: number): Promise<TripSnapshotRecord | null>;
 }
+
+// ── 구간 캐시 ─────────────────────────────────────────────────────────────
+
+/** 캐시 한 칸. 웹 `CachedLeg`와 같은 필드 이름이라 그대로 `LegCache`가 된다 */
+export interface LegCacheRow {
+  key: string;
+  sec: number | null;
+  m: number | null;
+  path: string | null;
+  taxi: number | null;
+  snapped: boolean;
+  fail: boolean;
+  provider: string;
+  fetchedAt: Date;
+}
+
+export interface LegCacheRepository {
+  /** 여러 키를 한 번에 — 하루치는 구간이 여럿이라 한 번의 왕복으로 읽는다 */
+  getMany(keys: string[]): Promise<LegCacheRow[]>;
+  /** 조회 결과를 넣는다. 같은 키면 덮어쓴다(재조회) */
+  put(row: Omit<LegCacheRow, 'fetchedAt'>): Promise<void>;
+}

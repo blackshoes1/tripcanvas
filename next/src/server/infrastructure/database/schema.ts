@@ -323,3 +323,22 @@ export const authMailCooldown = pgTable('auth_mail_cooldown', {
   kind: text('kind').notNull(),
   lastSentAt: timestamp('last_sent_at', { withTimezone: true }).notNull().defaultNow()
 }, (t) => [primaryKey({ columns: [t.email, t.kind] })]);
+
+/**
+ * 구간 캐시 — 두 좌표 사이의 실제 경로(시간·거리·폴리라인). **웹 localStorage 캐시와 같은 키·같은 모양**이라
+ * 나중에 합칠 수 있다(`lib.legKey`: `lat,lng>lat,lng#mode`, 좌표 4자리).
+ * 도로는 자주 안 바뀐다 — 30일 뒤에 다시 묻는다. 실패(`fail`)는 1시간 뒤에 다시 묻는다(무한 재시도는 할당량을 먹는다).
+ */
+export const legCache = pgTable('leg_cache', {
+  key: text('key').primaryKey(),
+  sec: integer('sec'),
+  m: integer('m'),
+  /** encodedPolyline — 지도가 도로 모양을 그리는 데 쓴다 */
+  path: text('path'),
+  taxi: integer('taxi'),
+  snapped: boolean('snapped').notNull().default(false),
+  /** 조회했는데 못 찾음(도로 스냅까지). 재시도 간격을 두려고 남긴다 */
+  fail: boolean('fail').notNull().default(false),
+  provider: text('provider').notNull(),
+  fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow()
+});

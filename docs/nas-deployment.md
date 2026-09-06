@@ -194,12 +194,16 @@ sudo docker compose -f deploy/docker-compose.yml up -d api
 
 `deploy/.env.example` → `deploy/.env`. 비밀은 Git에 올리지 않는다(§58). `api`는 이 파일과 `DATABASE_URL`(compose가 조립)을 받는다.
 
+⚠️ **지도 키가 없어도 서버는 그대로 돈다** — 경로 조회만 꺼지고 이동시간은 지금처럼 직선 추정이다. 키를 넣으면 그다음 요청부터 실제 도로로 바뀐다.
+
 | 변수 | 뜻 |
 |---|---|
 | `API_DOMAIN` | **`docker-compose.caddy.yml`을 겹칠 때만.** 오늘의 ingress는 Funnel이라 운영에는 없어도 된다 |
 | `POSTGRES_*` | DB 계정 |
 | `TC_MIGRATION_TRIP` | 이관 레지스트리. staging은 `NEW_BACKEND`, 프로덕션 전환 전에는 `LEGACY` |
 | `NEXT_PUBLIC_SUPABASE_*` · `SUPABASE_JWT_SECRET` | Phase A — Supabase 토큰 검증 |
+| `KAKAO_REST_API_KEY` | 국내 경로(카카오내비)·국내 장소 검색. Vercel에 있는 것과 **같은 키**를 복사해 넣는다 |
+| `GOOGLE_ROUTES_API_KEY` | 해외 경로(Google Routes)용 **서버 전용** 키. 웹 키(리퍼러 제한)·iOS 키(번들 제한)는 서버에서 거절된다 |
 | `BACKUP_DIR` · `BACKUP_KEEP_DAYS` | 덤프 위치 · 보관 일수. ⚠️ **DB와 다른 볼륨**이어야 한다 — DB는 `/volume1`에 있으므로 `/volume2/...`를 쓴다(§60) |
 
 ## 처음 띄울 때
