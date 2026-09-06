@@ -21,8 +21,7 @@ struct TripPlanView: View {
                 ProgressView()
             }
         }
-        .navigationTitle("일정")
-        .navigationBarTitleDisplayMode(.inline)
+        // 제목(여행 이름)은 `TripHomeView`가 정한다.
         .toolbar {
             if let model, model.canEdit, model.day != nil {
                 ToolbarItem(placement: .topBarTrailing) { EditButton() }

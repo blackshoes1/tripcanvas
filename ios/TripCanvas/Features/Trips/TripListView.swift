@@ -45,9 +45,15 @@ struct TripListView: View {
     @State private var pasteText = ""
     @State private var showsPastePrompt = false
     @State private var joinError: String?
+    /// 밀어 넣은 여행. 딥링크가 목록을 거치지 않고 바로 열 수 있게 경로를 들고 있는다.
+    @State private var path: [TripSummary] = []
+    /// 알림·딥링크가 정한 목적 화면. 규칙(`TripHomeTab.initial`)을 이긴다.
+    @State private var requestedTab: TripHomeTab?
+    /// 목록이 아직 안 왔을 때 들어온 딥링크 — 목록을 받은 뒤 다시 시도한다(콜드 스타트).
+    @State private var pendingDestination: ActionRouter.Destination?
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             Group {
                 if let model {
                     content(model)
@@ -77,14 +83,17 @@ struct TripListView: View {
         .task {
             if model == nil { model = TripListViewModel(service: env.service) }
             await model?.load()
+            // 목록보다 딥링크가 먼저 왔을 수 있다(알림으로 앱이 켜진 경우).
+            if let pending = pendingDestination, handle(pending) { pendingDestination = nil }
         }
+        // 목록으로 돌아오면 딥링크가 정했던 목적지를 지운다 — 다음에 목록에서 고른 여행은 규칙이 정한다.
+        .onChange(of: path) { _, current in if current.isEmpty { requestedTab = nil } }
         // 딥링크는 라우터 하나를 지난다 — 앱을 열어 둔 채로 링크를 눌러도 같은 화면이 뜬다.
         .onOpenURL { url in env.router.open(url: url) }
         .onChange(of: env.router.destination) { _, destination in
-            if case .join(let token) = destination {
-                joinToken = token
-                env.router.clear()
-            }
+            guard let destination else { return }
+            if handle(destination) { env.router.clear() }
+            else { pendingDestination = destination; env.router.clear() }
         }
         .sheet(item: Binding(get: { joinToken.map(JoinToken.init) }, set: { joinToken = $0?.value })) { item in
             JoinInviteView(token: item.value) { _ in
@@ -106,6 +115,38 @@ struct TripListView: View {
         } message: {
             Text(joinError ?? "")
         }
+    }
+
+    /// 딥링크 목적지를 화면 이동으로 옮긴다. 여행을 아직 못 찾으면 `false` — 목록을 받은 뒤 다시 부른다.
+    ///
+    /// ⚠️ 여기서 정한 `requestedTab`이 `TripHomeTab.initial`의 규칙을 이긴다.
+    /// 출발 알림을 눌렀는데 일정 편집 화면이 뜨면 안 된다.
+    private func handle(_ destination: ActionRouter.Destination) -> Bool {
+        switch destination {
+        case .join(let token):
+            joinToken = token
+            return true
+        case .today(let tripId, _):
+            // 여행을 특정하지 않는 짧은 형태(위젯·Siri)는 지금 진행 중인 여행을 연다.
+            guard let trip = tripId.flatMap(find) ?? model?.ordered.first(where: { $0.isLive }) else { return false }
+            open(trip, tab: .today)
+            return true
+        case .trip(let tripId), .replan(let tripId), .bookings(let tripId), .memory(let tripId),
+             .suggestion(let tripId, _):
+            // 세부 화면까지는 아직 안 간다 — 여행은 연다. 규칙이 어느 탭인지 정한다.
+            guard let trip = find(tripId) else { return false }
+            open(trip, tab: nil)
+            return true
+        case .inbox:
+            return false   // 확인 화면은 아직 없다
+        }
+    }
+
+    private func find(_ tripId: String) -> TripSummary? { model?.trips.first { $0.id == tripId } }
+
+    private func open(_ trip: TripSummary, tab: TripHomeTab?) {
+        requestedTab = tab
+        path = [trip]
     }
 
     @ViewBuilder
@@ -137,7 +178,7 @@ struct TripListView: View {
             .listStyle(.insetGrouped)
             .refreshable { await model.load() }
             .navigationDestination(for: TripSummary.self) { trip in
-                TodayView(trip: trip)
+                TripHomeView(trip: trip, requested: requestedTab)
             }
         }
     }
