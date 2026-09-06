@@ -166,6 +166,77 @@ final class TripPlanViewModelTests: XCTestCase {
         XCTAssertEqual(SpotEditorView.cost(from: "0"), nil)
     }
 
+    // ── 일자 스트립 ──────────────────────────────────────────────────────────
+    //
+    // 스트립은 "며칠째"만이 아니라 **언제, 어떤 날**인지 말해야 한다. 날짜는 서버가 준 것을 쓴다.
+
+    private func plan(days: Int = 2, todayIndex: Int = -1, selected: Int = 0) -> DayPlanResponse {
+        let strip = (0..<days).map { i in
+            DayPlanStripEntry(index: i, date: "2026-10-0\(i + 1)", title: "Day \(i + 1)", spotCount: i == 0 ? 1 : 0)
+        }
+        let summary = TripSummary(id: "t1", name: "오사카", start: "2026-10-01", dayCount: days, revision: 7,
+                                  updatedAt: "", timeZone: "Asia/Seoul", cities: [],
+                                  todayIndex: todayIndex, role: nil, memberCount: nil)
+        let day = DayPlanDay(index: selected, date: strip[selected].date, title: "", note: "", mode: "car",
+                             startMinutes: 540, timeZone: "Asia/Seoul", carriedStay: nil, spots: [],
+                             carPickups: [], carReturns: [], back: nil, spotsWithoutLocation: 0,
+                             totals: .init(distanceKm: 0, travelMinutes: 0, endMinutes: nil, overloaded: false,
+                                           cost: .init(total: 0, parts: [])))
+        return DayPlanResponse(schemaVersion: 1, generatedAt: "", travelTimeSource: .straightLineEstimate,
+                               trip: summary, dayCount: days, days: strip, day: day)
+    }
+
+    func testStripUsesTheServerDates() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(), revision: 7, role: .owner))
+        service.dayPlanResponse = plan()
+        let model = TripPlanViewModel(tripId: "t1", service: service)
+        await model.load()
+
+        XCTAssertEqual(model.strip.map(\.date), ["2026-10-01", "2026-10-02"])
+    }
+
+    /// 계산을 못 받아도 일정 편집은 그대로 된다 — 스트립만 날짜 없이 나온다.
+    func testStripFallsBackWithoutDatesWhenThePlanIsMissing() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(), revision: 7, role: .owner))
+        service.dayPlanResponse = nil                      // 서버 계산 실패
+        let model = TripPlanViewModel(tripId: "t1", service: service)
+        await model.load()
+
+        XCTAssertNil(model.plan)
+        XCTAssertNil(model.errorMessage, "계산이 없다고 편집 화면에 오류를 띄우지 않는다")
+        XCTAssertEqual(model.strip.count, 2)
+        // ⚠️ 날짜를 앱에서 지어내지 않는다 — start + index를 더하면 규칙이 두 곳이 된다
+        XCTAssertEqual(model.strip.map(\.date), ["", ""])
+        XCTAssertEqual(model.dayCount, 2, "편집은 문서만으로 그대로 돈다")
+    }
+
+    /// 14일짜리 일정에서 1일차부터 스크롤하게 두지 않는다.
+    func testJumpsToTodayOnceWhenTheTripIsRunning() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(days: 5), revision: 7, role: .owner))
+        service.dayPlanResponse = plan(days: 5, todayIndex: 2)
+        let model = TripPlanViewModel(tripId: "t1", service: service)
+        await model.load()
+
+        XCTAssertEqual(model.todayIndex, 2)
+        XCTAssertEqual(model.selectedDay, 2)
+
+        // 사용자가 고른 날을 나중에 되돌리면 안 된다
+        model.selectedDay = 0
+        await model.load()
+        XCTAssertEqual(model.selectedDay, 0, "오늘로 옮기는 것은 한 번뿐이다")
+    }
+
+    /// 여행 기간 밖이면 오늘이 없다 — 서버가 -1로 준다.
+    func testNoTodayOutsideTheTrip() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(days: 3), revision: 7, role: .owner))
+        service.dayPlanResponse = plan(days: 3, todayIndex: -1)
+        let model = TripPlanViewModel(tripId: "t1", service: service)
+        await model.load()
+
+        XCTAssertNil(model.todayIndex)
+        XCTAssertEqual(model.selectedDay, 0)
+    }
+
     func testClockTextRoundTrip() {
         XCTAssertEqual(ClockText.parts("18:35").hour, 18)
         XCTAssertEqual(ClockText.parts("18:35").minute, 35)
@@ -194,5 +265,14 @@ private final class FakeDocumentService: TripDocumentSource {
         if let failure { throw failure }
         snapshot = TripDocumentSnapshot(document: document, revision: expectedRevision + 1, role: snapshot.role)
         return snapshot
+    }
+
+    /// 서버 계산. nil이면 "못 받았다"는 뜻이고, 그래도 편집은 그대로 돌아야 한다.
+    var dayPlanResponse: DayPlanResponse?
+    var dayPlanCalls: [Int] = []
+    func dayPlan(tripId: String, dayIndex: Int) async throws -> TripService.Fetched<DayPlanResponse> {
+        dayPlanCalls.append(dayIndex)
+        guard let dayPlanResponse else { throw APIError.notFound("일자 계획 없음") }
+        return TripService.Fetched(value: dayPlanResponse, cachedAt: nil)
     }
 }

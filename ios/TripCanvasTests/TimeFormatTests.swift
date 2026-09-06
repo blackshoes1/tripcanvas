@@ -42,3 +42,18 @@ final class TimeFormatTests: XCTestCase {
         }
     }
 }
+
+/// 일자 칩의 날짜 표기. **날짜를 만들지 않고 읽기만** 한다 — 어느 날인지는 서버가 정한다.
+final class DayChipLabelTests: XCTestCase {
+    func testReadsTheServerDate() {
+        XCTAssertEqual(TimeFormat.dayChipLabel("2026-10-02"), "10/2 (금)")
+        XCTAssertEqual(TimeFormat.dayChipLabel("2026-01-01"), "1/1 (목)")
+    }
+
+    /// 날짜 없는 여행은 서버가 빈 문자열을 준다 — 오늘로부터 지어내지 않는다.
+    func testNoDateMeansNoLabel() {
+        XCTAssertNil(TimeFormat.dayChipLabel(""))
+        XCTAssertNil(TimeFormat.dayChipLabel("2026-10"))
+        XCTAssertNil(TimeFormat.dayChipLabel("어제"))
+    }
+}

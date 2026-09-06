@@ -107,6 +107,8 @@ describe('iOS Contract.swift가 실제 응답을 전부 담는다', () => {
     const leg = plan!.day.spots.map((s) => s.incomingLeg).find(Boolean);
     expect(leg, '구간이 하나는 있어야 계약을 맞춰 볼 수 있다').toBeTruthy();
     expectCovered('DayPlanLeg', leg as unknown as Record<string, unknown>);
+    expect(plan!.days.length).toBe(plan!.dayCount);
+    expectCovered('DayPlanStripEntry', plan!.days[0] as unknown as Record<string, unknown>);
   });
 
   /**

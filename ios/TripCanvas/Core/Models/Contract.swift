@@ -782,11 +782,25 @@ struct DayPlanDay: Codable, Hashable, Sendable {
     let totals: DayPlanTotals
 }
 
+/// 일자 스트립 한 칸. 화면이 "며칠째"만이 아니라 **언제, 어떤 날**인지 말할 수 있게 한다.
+/// ⚠️ 날짜를 앱에서 `start + index`로 더하지 않는다 — 규칙은 서버(`isoDateOf`)에 있다.
+struct DayPlanStripEntry: Codable, Hashable, Sendable, Identifiable {
+    let index: Int
+    /// YYYY-MM-DD ('' = 시작일 미지정)
+    let date: String
+    let title: String
+    let spotCount: Int
+
+    var id: Int { index }
+}
+
 struct DayPlanResponse: Codable, Hashable, Sendable {
     let schemaVersion: Int
     let generatedAt: String
     let travelTimeSource: TravelTimeSource
     let trip: TripSummary
     let dayCount: Int
+    /// 일자 스트립 — 여행 전체의 날 목록. 어느 날을 보든 같이 온다.
+    let days: [DayPlanStripEntry]
     let day: DayPlanDay
 }

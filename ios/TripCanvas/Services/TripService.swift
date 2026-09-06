@@ -179,6 +179,8 @@ extension TripService: TravelStateSource {
 protocol TripDocumentSource {
     func document(tripId: String) async throws -> TripDocumentSnapshot
     func saveDocument(tripId: String, document: TripDocument, expectedRevision: Int) async throws -> TripDocumentSnapshot
+    /// 그 날의 계산(예상 도착·구간·합계)과 일자 스트립. **계산은 서버가 한다** — 앱은 그린다.
+    func dayPlan(tripId: String, dayIndex: Int) async throws -> TripService.Fetched<DayPlanResponse>
 }
 
 /// 문서와 그 문서를 읽은 시점의 revision. 저장은 이 revision을 그대로 되돌려 준다(CAS).

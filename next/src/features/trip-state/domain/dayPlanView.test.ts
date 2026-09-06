@@ -40,6 +40,20 @@ describe('buildDayPlanView', () => {
     expect(build(t, 1.5)).toBeNull();
   });
 
+  // 앱이 `start + index`로 날짜를 더하면 규칙이 두 곳이 된다 — 서버가 정한 것을 그대로 준다.
+  it('일자 스트립에 모든 날의 날짜를 함께 싣는다', () => {
+    const t = trip([day([airport()]), day([seongsan()]), day([])]);
+    const v = build(t, 1)!;
+    expect(v.days.map((d) => d.date)).toEqual(['2026-10-01', '2026-10-02', '2026-10-03']);
+    expect(v.days.map((d) => d.spotCount)).toEqual([1, 1, 0]);
+    expect(v.days).toHaveLength(v.dayCount);
+  });
+
+  it('시작일이 없으면 날짜 칸은 비어 있다 — 오늘로부터 지어내지 않는다', () => {
+    const t = trip([day([airport()]), day([])], { start: '' });
+    expect(build(t, 0)!.days.every((d) => d.date === '')).toBe(true);
+  });
+
   it('라벨이 아니라 값을 싣는다 — 앱이 서버가 만든 문장을 그리지 않는다', () => {
     const t = trip([day([airport(), seongsan()]), day([])]);
     const v = build(t, 0)!;
