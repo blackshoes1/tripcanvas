@@ -228,7 +228,7 @@ struct TripPlanView: View {
                             guard model.canEdit else { return }
                             editor = .edit(index: index, spot: spot)
                         } label: {
-                            SpotRow(spot: spot, dayMode: day.mode)
+                            SpotRow(spot: spot, dayMode: day.mode, plan: model.planSpot(at: index))
                         }
                         .buttonStyle(.plain)
                         .swipeActions(edge: .trailing) {
@@ -245,8 +245,20 @@ struct TripPlanView: View {
                 } header: {
                     dayHeader(model, day: day)
                 } footer: {
-                    if !model.canEdit {
-                        Text("보기 권한이라 일정을 바꿀 수 없어요. 주최자에게 요청하세요.")
+                    VStack(alignment: .leading, spacing: Space.xs) {
+                        if !model.canEdit {
+                            Text("보기 권한이라 일정을 바꿀 수 없어요. 주최자에게 요청하세요.")
+                        }
+                        // 추정을 실측처럼 말하지 않는다. 구간마다 붙이면 잔소리가 되므로 하루에 한 번만.
+                        if model.plan != nil, model.travelTimeIsEstimate, !day.spots.isEmpty {
+                            Text("이동 시간은 직선거리 기준 예상이에요.")
+                        }
+                        // 계산이 없는 상태와 정상인 상태가 화면에서 구분되지 않으면,
+                        // 서버가 아직 준비 안 된 것을 아무도 모른다(2026-09-06에 그랬다).
+                        if model.plan == nil, !day.spots.isEmpty {
+                            Label("예상 도착 시각을 불러오지 못했어요 — 일정 편집은 그대로 됩니다.",
+                                  systemImage: "clock.badge.exclamationmark")
+                        }
                     }
                 }
             }
@@ -316,45 +328,126 @@ struct TripPlanView: View {
 struct SpotRow: View {
     let spot: TripSpot
     let dayMode: TravelMode
+    /// 서버가 계산한 그 장소의 시각과 구간. nil이면 계산을 못 받은 것이다 —
+    /// 그때는 **문서에 적힌 것만** 보인다(없는 시각을 앱이 지어내지 않는다).
+    var plan: DayPlanSpot?
 
     var body: some View {
-        HStack(alignment: .top, spacing: Space.m) {
-            Text(spot.category?.icon ?? "📍").font(.title3)
-            VStack(alignment: .leading, spacing: Space.xs) {
-                HStack(spacing: Space.s) {
-                    Text(spot.name.isEmpty ? "이름 없는 장소" : spot.name)
-                        .font(.body.weight(.semibold))
-                        .strikethrough(spot.status == .skipped || spot.status == .cancelled)
-                    if spot.isMust { Image(systemName: "star.fill").font(.caption2).foregroundStyle(.orange) }
+        VStack(alignment: .leading, spacing: Space.xs) {
+            // 이 장소로 '들어오는' 구간. 장소 사이가 비어 있으면 "여기서 저기까지 얼마나"를 알 수 없다.
+            if let leg = plan?.incomingLeg { legLine(leg) }
+
+            HStack(alignment: .top, spacing: Space.m) {
+                timeColumn
+                Text(spot.category?.icon ?? "📍").font(.title3)
+                VStack(alignment: .leading, spacing: Space.xs) {
+                    HStack(spacing: Space.s) {
+                        Text(spot.name.isEmpty ? "이름 없는 장소" : spot.name)
+                            .font(.body.weight(.semibold))
+                            .strikethrough(spot.status == .skipped || spot.status == .cancelled)
+                        if spot.isMust { Image(systemName: "star.fill").font(.caption2).foregroundStyle(.orange) }
+                    }
+                    // 상대가 정한 약속은 가장 세게 말한다 — 내가 옮길 수 없는 시각이다.
+                    if let booked = bookedText { bookedChip(booked) }
+                    if !meta.isEmpty {
+                        Text(meta).font(.caption).foregroundStyle(.secondary)
+                    }
+                    if spot.point == nil {
+                        Label("위치 없음 · 동선에서 빠져요", systemImage: "mappin.slash")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
                 }
-                if !meta.isEmpty {
-                    Text(meta).font(.caption).foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+                if spot.status != .planned {
+                    StatusChip(text: spot.status.label, symbol: statusSymbol, tint: statusTint)
                 }
-                if spot.point == nil {
-                    Label("위치 없음", systemImage: "mappin.slash")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            Spacer(minLength: 0)
-            if spot.status != .planned {
-                StatusChip(text: spot.status.label, symbol: statusSymbol, tint: statusTint)
             }
         }
         .padding(.vertical, Space.xs)
         .contentShape(Rectangle())
     }
 
-    /// 시각은 세 가지를 구분해 말한다 — 예약 시각(상대가 정함) · 도착 고정(내가 정함) · 머무는 시간.
+    /// 시각 3종 중 둘 — 📌 도착 고정(내가 정한 계획)과 예상 도착(계산).
+    /// 세기를 달리해서 "내가 정한 것"과 "계산된 것"이 눈으로 갈린다.
+    @ViewBuilder
+    private var timeColumn: some View {
+        if let plan {
+            VStack(spacing: 1) {
+                HStack(spacing: 2) {
+                    if plan.fixed { Text("📌").font(.caption2) }
+                    Text(TimeFormat.clock(plan.etaMinutes))
+                        .font(.caption.weight(plan.fixed ? .bold : .regular))
+                        .monospacedDigit()
+                }
+                if plan.conflict {
+                    // 고정 시각이 이동상 불가능하다 — 조용히 넘기지 않는다.
+                    Image(systemName: "exclamationmark.triangle.fill").font(.caption2)
+                }
+            }
+            .foregroundStyle(plan.conflict ? Color.orange : (plan.fixed ? .primary : .secondary))
+            .frame(width: 48, alignment: .leading)
+            .accessibilityLabel(timeAccessibility(plan))
+        } else {
+            // 계산을 못 받았으면 자리만 비운다 — 문서의 `at`을 도착 예정처럼 보이게 하지 않는다.
+            Color.clear.frame(width: 0, height: 0)
+        }
+    }
+
+    private func timeAccessibility(_ plan: DayPlanSpot) -> String {
+        var text = plan.fixed ? "도착 고정 " : "예상 도착 "
+        text += TimeFormat.clock(plan.etaMinutes)
+        if plan.conflict { text += ", 이동 시간상 맞추기 어려워요" }
+        return text
+    }
+
+    private func legLine(_ leg: DayPlanLeg) -> some View {
+        let mode = TravelMode(rawValue: leg.mode) ?? dayMode
+        return HStack(spacing: 4) {
+            Image(systemName: "arrow.turn.down.right").font(.caption2)
+            Image(systemName: mode.symbol).font(.caption2)
+            Text(TimeFormat.duration(leg.minutes)).font(.caption2)
+            Text("· \(distanceText(leg.distanceKm))").font(.caption2)
+        }
+        .foregroundStyle(.secondary)
+        .padding(.leading, 48)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(mode.label)로 \(TimeFormat.duration(leg.minutes)), \(distanceText(leg.distanceKm))")
+    }
+
+    private func distanceText(_ km: Double) -> String {
+        km < 1 ? "\(Int((km * 1000).rounded()))m" : String(format: "%.1fkm", km)
+    }
+
+    private var bookedText: String? {
+        if let minutes = plan?.bookedAtMinutes { return TimeFormat.clock(minutes) }
+        return spot.bookedAt      // 계산이 없으면 문서에 적힌 그대로
+    }
+
+    /// 예약·입장은 **상대가 정한** 시각이다. 늦으면 그 사실을 그 자리에서 말한다.
+    private func bookedChip(_ text: String) -> some View {
+        let late = plan.map { $0.etaMinutes > ($0.bookedAtMinutes ?? Int.max) } ?? false
+        return HStack(spacing: 4) {
+            Image(systemName: "ticket.fill").font(.caption2)
+            Text("예약 \(text)").font(.caption.weight(.semibold))
+            if late { Text("· 도착이 늦어요").font(.caption2) }
+        }
+        .foregroundStyle(late ? Color.orange : Color.accentColor)
+    }
+
+    /// 남는 것 — 머무는 시간 · 대기 · 구간 수단 재정의 · 도시.
+    /// 시각(예약·도착)은 위에서 따로 말하므로 여기 섞지 않는다.
     private var meta: String {
         var parts: [String] = []
-        if let booked = spot.bookedAt { parts.append("예약 \(booked)") }
-        if let arrive = spot.arriveAt { parts.append("도착 \(arrive)") }
-        if let stay = spot.stayMinutes, stay > 0 { parts.append("\(stay)분") }
+        if let stay = stayMinutes, stay > 0 { parts.append("\(stay)분 머무름") }
+        if let wait = plan?.waitMinutes, wait > 0 { parts.append("대기 \(TimeFormat.duration(wait))") }
+        if plan == nil, let arrive = spot.arriveAt { parts.append("도착 \(arrive)") }
         if let mode = spot.legMode, mode != dayMode { parts.append(mode.label) }
         if !spot.city.isEmpty && spot.city != "기타" { parts.append(spot.city) }
         return parts.joined(separator: "  ·  ")
     }
+
+    private var stayMinutes: Int? { plan?.stayMinutes ?? spot.stayMinutes }
 
     private var statusSymbol: String {
         switch spot.status {

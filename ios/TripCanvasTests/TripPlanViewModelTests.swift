@@ -237,6 +237,71 @@ final class TripPlanViewModelTests: XCTestCase {
         XCTAssertEqual(model.selectedDay, 0)
     }
 
+    // ── 서버 계산 붙이기 ─────────────────────────────────────────────────────
+    //
+    // 문서(원문)와 계산(서버)은 따로 온다. 둘이 어긋난 순간에 옛 시각을 그리면
+    // **없는 장소의 도착 시각**을 보여 주게 된다 — 그래서 어긋나면 조용히 감춘다.
+
+    private func planWithSpots(_ count: Int, day dayIndex: Int = 0) -> DayPlanResponse {
+        var base = plan(days: 2, selected: dayIndex)
+        let spots = (0..<count).map { i in
+            DayPlanSpot(index: i, name: "장소 \(i)", city: "오사카", category: nil, location: nil,
+                        etaMinutes: 540 + i * 60, fixed: false, conflict: false, bookedAtMinutes: nil,
+                        waitMinutes: 0, stayMinutes: nil, status: "PLANNED", incomingLeg: nil)
+        }
+        base = DayPlanResponse(
+            schemaVersion: base.schemaVersion, generatedAt: base.generatedAt,
+            travelTimeSource: base.travelTimeSource, trip: base.trip, dayCount: base.dayCount, days: base.days,
+            day: DayPlanDay(index: dayIndex, date: base.day.date, title: "", note: "", mode: "car",
+                            startMinutes: 540, timeZone: "Asia/Seoul", carriedStay: nil, spots: spots,
+                            carPickups: [], carReturns: [], back: nil, spotsWithoutLocation: 0,
+                            totals: base.day.totals))
+        return base
+    }
+
+    func testAttachesTheServerTimeToEachSpot() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(), revision: 7, role: .owner))
+        service.dayPlanResponse = planWithSpots(1)          // 1일차에 장소가 하나 있는 문서와 맞춘다
+        let model = TripPlanViewModel(tripId: "t1", service: service)
+        await model.load()
+
+        XCTAssertEqual(model.planSpot(at: 0)?.etaMinutes, 540)
+        XCTAssertTrue(model.travelTimeIsEstimate, "서버에 구간 캐시가 없다 — 화면이 '예상'이라 말해야 한다")
+    }
+
+    /// 장소를 막 추가·삭제한 직후에는 계산이 아직 옛 목록이다. 그때 옛 시각을 그리면 안 된다.
+    func testHidesStaleTimesWhenTheDocumentAndPlanDisagree() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(), revision: 7, role: .owner))
+        service.dayPlanResponse = planWithSpots(3)          // 문서에는 1곳뿐인데 계산은 3곳
+        let model = TripPlanViewModel(tripId: "t1", service: service)
+        await model.load()
+
+        XCTAssertNil(model.planSpot(at: 0), "개수가 어긋나면 시각을 그리지 않는다")
+    }
+
+    /// 다른 날의 계산을 그 날에 쓰면 안 된다.
+    func testDoesNotUseAnotherDaysPlan() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(), revision: 7, role: .owner))
+        service.dayPlanResponse = planWithSpots(1, day: 1)  // 2일차 계산
+        let model = TripPlanViewModel(tripId: "t1", service: service)
+        await model.load()                                  // 보고 있는 날은 1일차
+
+        XCTAssertNil(model.planSpot(at: 0))
+    }
+
+    /// 계산이 없어도 편집은 그대로다 — 시각만 빠진다.
+    func testEditingStillWorksWithoutThePlan() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(), revision: 7, role: .owner))
+        service.dayPlanResponse = nil
+        let model = TripPlanViewModel(tripId: "t1", service: service)
+        await model.load()
+        await model.addSpot(TripSpot(name: "우메다"))
+
+        XCTAssertNil(model.planSpot(at: 0))
+        XCTAssertEqual(service.saves.count, 1, "계산이 없어도 저장은 된다")
+        XCTAssertNil(model.errorMessage)
+    }
+
     func testClockTextRoundTrip() {
         XCTAssertEqual(ClockText.parts("18:35").hour, 18)
         XCTAssertEqual(ClockText.parts("18:35").minute, 35)
