@@ -1,12 +1,16 @@
 // Today 응답 구성 — 판단은 하지 않고, 저장소 루트 adaptive.js(웹이 쓰는 그 엔진)의 결과를 contract 모양으로 눕힌다.
 // 여기에 새 규칙을 넣지 말 것: 넣는 순간 웹과 iOS의 답이 갈라진다. 규칙이 필요하면 adaptive.js에 넣는다.
 //
-// 서버는 클라이언트의 구간 캐시(tripcanvas_legs_v4)를 갖고 있지 않다. 그래서 이동시간은
-// 웹과 같은 수단별 평균속도로 계산한 **직선거리 추정**이고, 응답에 travelTimeSource로 그 사실을 실어 보낸다.
-// (웹은 캐시된 실제 경로가 있으면 그 값을 쓰므로 분 단위로 다를 수 있다 — 클라이언트가 '추정'이라고 표기한다.)
+// 이동시간은 **서버 구간 캐시**(`leg_cache`)에 있는 구간만 실제 도로다. 없는 구간은 웹과 같은
+// 수단별 평균속도로 계산한 직선거리 추정이고, 응답의 travelTimeSource로 그 사실을 실어 보낸다.
+// (캐시가 비어 있으면 예전과 완전히 같다 — 키가 없는 배포에서 동작이 달라지지 않는다.)
 import adapt from '@legacy/adaptive.js';
 import collab from '@legacy/collab.js';
 import lib from '@legacy/lib.js';
+
+import { legMinutes as cachedLegMinutes } from '@/features/itinerary/domain/dayView';
+import type { LegCache } from '@/features/itinerary/domain/types';
+import type { TransportMode } from '@/features/trip/domain/types';
 
 import type {
   ActivitySummary, CommitmentType, DaySummary, EnergyLevel, Flexibility, GeoPoint,
@@ -86,6 +90,11 @@ export interface TodayInput {
   /** 그날 이미 거절한 제안 키 */
   dismissed?: string[];
   generatedAt?: string;
+  /**
+   * 서버 구간 캐시. 조회된 구간은 실제 도로 시간을 쓰고, 없는 구간은 지금처럼 직선거리 추정이다.
+   * ⚠️ **그날의 구간이 전부 조회됐을 때만** 응답이 ROUTED라고 말한다.
+   */
+  legCache?: LegCache;
 }
 
 /** 지금 사용자가 놓인 상태 — 시각만으로 결정되는 규칙(§20 deterministic). */
@@ -142,25 +151,49 @@ export function buildToday(input: TodayInput): TodayResponse {
   return computeToday(input).response;
 }
 
+/**
+ * 어느 날을 보여 줄 것인가 — 요청한 날이 범위 안이면 그 날, 아니면 오늘(기간 밖이면 첫날).
+ * ⚠️ 호출부가 **미리** 알아야 하는 값이라 밖으로 낸다(그 날의 구간 캐시를 읽어 넣어야 한다).
+ * 규칙이 갈리지 않게 `computeToday`도 이 함수를 쓴다.
+ */
+export function resolveDayIndex(trip: TripDoc, todayISO: string, requested?: number): number {
+  const days = trip?.days ?? [];
+  const todayIndex = adapt.currentDayIndex(trip, todayISO);
+  return requested != null && requested >= 0 && requested < days.length
+    ? requested
+    : (todayIndex >= 0 ? todayIndex : 0);
+}
+
 export function computeToday(input: TodayInput): TodayComputation {
   const trip = input.trip ?? {};
   const days = trip.days ?? [];
   const todayIndex = adapt.currentDayIndex(trip, input.todayISO);
-  const requested = input.dayIndex;
-  const dayIndex = requested != null && requested >= 0 && requested < days.length
-    ? requested
-    : (todayIndex >= 0 ? todayIndex : 0);
+  const dayIndex = resolveDayIndex(trip, input.todayISO, input.dayIndex);
   const day: DayDoc = days[dayIndex] ?? { spots: [] };
   const spots = day.spots ?? [];
   const timeZone = day.timeZone || trip.timeZone || '';
   const dayISO = isoDateOf(trip, dayIndex);
 
   const anchor = lib.dayStartAnchor(days, dayIndex);
+  // 조회된 구간은 실제 도로, 아니면 추정. 그날 타임라인이 쓴 구간만 세어 응답의 출처를 정한다 —
+  // 제안이 따져 보는 '가 볼 수도 있는 곳'까지 세면 하루가 전부 도로여도 추정이라고 말하게 된다.
+  const cache = input.legCache ?? {};
+  const seen = { routed: 0, total: 0 };
+  const legMinutesOf = (a: unknown, b: unknown, mode: string, count = false): number => {
+    if (!hasCoord(a) || !hasCoord(b)) return 0;
+    const from = { lat: Number(a.lat), lng: Number(a.lng) };
+    const to = { lat: Number(b.lat), lng: Number(b.lng) };
+    const entry = cache[lib.legKey(from, to, mode)];
+    const hit = !!(entry && entry.sec);
+    if (count) { seen.total += 1; if (hit) seen.routed += 1; }
+    // 캐시가 있으면 웹과 **같은 함수**로 분을 낸다(자차 2km 미만은 도보 대안까지 같은 규칙).
+    return hit ? cachedLegMinutes(cache, from, to, mode as TransportMode) : estimateLegMinutes(a, b, mode);
+  };
   const timeline = lib.computeTimeline(day, {
-    legMin: (a, b) => estimateLegMinutes(a, b, legModeOf(day, b)),
+    legMin: (a, b) => legMinutesOf(a, b, legModeOf(day, b), true),
     startAnchor: anchor
   });
-  const legMin = (a: unknown, b: unknown) => estimateLegMinutes(a, b, dayModeOf(day));
+  const legMin = (a: unknown, b: unknown) => legMinutesOf(a, b, dayModeOf(day));
 
   const state = adapt.buildTripState(trip, {
     dayIndex, todayISO: input.todayISO, nowMin: input.nowMinutes, timeline,
@@ -320,7 +353,8 @@ export function computeToday(input: TodayInput): TodayComputation {
   const response: TodayResponse = {
     schemaVersion: CONTRACT_SCHEMA_VERSION,
     generatedAt: input.generatedAt ?? new Date().toISOString(),
-    travelTimeSource: 'STRAIGHT_LINE_ESTIMATE',
+    // 하나라도 추정이면 추정이라고 말한다 — 절반만 도로인 하루를 "실제 경로"라 하지 않는다.
+    travelTimeSource: seen.total > 0 && seen.routed === seen.total ? 'ROUTED' : 'STRAIGHT_LINE_ESTIMATE',
     trip: tripSummary,
     day: daySummary,
     currentState,

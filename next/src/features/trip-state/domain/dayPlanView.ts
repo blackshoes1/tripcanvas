@@ -8,8 +8,9 @@
 // 완성된 문장을 들고 있다. 그걸 보내면 앱이 서버가 만든 한국어를 그리게 되고, 거리와 시간을
 // 따로 배치할 수도 없다. 계약의 나머지(NextAction·DaySummary)와 같은 규칙을 지킨다.
 //
-// ⚠️ 서버에는 구간 캐시가 없다 — 이동시간이 **직선거리 추정**이다. `travelTimeSource`로 그 사실을
-// 실어 보내고, 화면이 "예상"이라고 표기한다.
+// 이동시간은 **서버 구간 캐시**(`leg_cache`)에 있는 것만 실측이다. 없는 구간은 직선거리 추정이고,
+// 구간마다 `source`로, 화면 전체로는 `travelTimeSource`로 그 사실을 실어 보낸다 —
+// 하나라도 추정이면 맨 위는 추정이라고 말한다(전부 도로일 때만 ROUTED).
 import legacyLib from '@legacy/lib.js';
 
 import {
@@ -27,9 +28,11 @@ import type {
   TripSummary
 } from './contract';
 
-const { carEventsOn, carSpotLinks, dayReturnStay, dayStartAnchor, haversine, parseHM, spotCatOf, splitSegments } = legacyLib;
+const {
+  carEventsOn, carSpotLinks, dayReturnStay, dayStartAnchor, haversine, legKey, parseHM, spotCatOf, splitSegments
+} = legacyLib;
 
-/** 서버에는 구간 캐시가 없다 — 비어 있는 캐시를 넘기면 lib이 직선거리 추정으로 떨어진다. */
+/** 캐시가 비어 있으면 lib이 직선거리 추정으로 떨어진다 — 키가 없을 때의 오늘 동작이 그대로다. */
 const NO_CACHE: LegCache = Object.freeze({});
 
 /** ⚠️ lib의 haversine은 **km**를 돌려준다(R=6371km). 미터로 오해하면 거리가 1000배 어긋난다. */
@@ -41,13 +44,16 @@ function pointOf(spot: Spot | null | undefined): { lat: number; lng: number } | 
   return hasCoord(spot) ? { lat: spot.lat, lng: spot.lng } : null;
 }
 
-function legOf(from: LocatedSpot, to: LocatedSpot, mode: TransportMode): DayPlanLeg {
+function legOf(cache: LegCache, from: LocatedSpot, to: LocatedSpot, mode: TransportMode): DayPlanLeg {
+  // 조회된 구간이면 도로 거리·실제 경로를 그대로 쓴다. 실패로 남은 행(`fail`)은 조회된 것이 아니다.
+  const cached = cache[legKey(from, to, mode)];
+  const routed = !!(cached && cached.sec);
   return {
     mode,
-    minutes: Math.round(legMinutes(NO_CACHE, from, to, mode)),
-    distanceKm: km(haversine(from, to)),
-    // 캐시가 비어 있으므로 항상 추정이다. 캐시를 서버에 들이면 이 값이 구간마다 갈린다.
-    source: 'STRAIGHT_LINE_ESTIMATE'
+    minutes: Math.round(legMinutes(cache, from, to, mode)),
+    distanceKm: routed && cached.m != null ? km(cached.m / 1000) : km(haversine(from, to)),
+    path: routed ? cached.path ?? null : null,
+    source: routed ? 'ROUTED' : 'STRAIGHT_LINE_ESTIMATE'
   };
 }
 
@@ -88,6 +94,8 @@ export interface DayPlanInput {
   di: number;
   summary: TripSummary;
   generatedAt: string;
+  /** 서버 구간 캐시. 없으면(키 미설정·아직 안 채워짐) 전부 직선거리 추정이다 */
+  legCache?: LegCache;
 }
 
 /**
@@ -98,12 +106,13 @@ export function buildDayPlanView(input: DayPlanInput): DayPlanResponse | null {
   // 여기서 한 번만 좁힌다 — 호출부마다 캐스팅을 흩뿌리지 않는다.
   const trip = input.trip as unknown as Trip;
   const { di } = input;
+  const cache = input.legCache ?? NO_CACHE;
   const days = trip.days ?? [];
   if (!Number.isInteger(di) || di < 0 || di >= days.length) return null;
 
   const day: Day = days[di];
   const spots = day.spots ?? [];
-  const timeline = dayTimelineOf(trip, NO_CACHE, di);
+  const timeline = dayTimelineOf(trip, cache, di);
   const dayMode = dayModeOf(day);
 
   // ⚠️ anchor와 carry는 다르다: ETA는 anchor(숙소가 아니어도 전날 마지막 장소)에서 출발하고,
@@ -114,15 +123,17 @@ export function buildDayPlanView(input: DayPlanInput): DayPlanResponse | null {
   let incoming: LocatedSpot | null = hasCoord(anchor) ? anchor : null;
   let travelMinutes = 0;
   let distanceKm = 0;
+  const legs: DayPlanLeg[] = [];
 
   const planSpots: DayPlanSpot[] = spots.map((spot, si) => {
     const entry = timeline[si] ?? { eta: 0, fixed: false, conflict: false, wait: 0 };
     let leg: DayPlanLeg | null = null;
     if (hasCoord(spot) && incoming) {
       const mode = legModeOf(day, spot);
-      leg = legOf(incoming, spot, mode);
+      leg = legOf(cache, incoming, spot, mode);
       travelMinutes += leg.minutes;
-      distanceKm += haversine(incoming, spot);
+      distanceKm += leg.distanceKm;
+      legs.push(leg);
     }
     if (hasCoord(spot)) incoming = spot;
 
@@ -151,9 +162,10 @@ export function buildDayPlanView(input: DayPlanInput): DayPlanResponse | null {
   const backLeg = backLegOf(day, backSpot);
   let back: DayPlanDay['back'] = null;
   if (backLeg) {
-    const leg = legOf(backLeg.from, backLeg.to, backLeg.mode);
+    const leg = legOf(cache, backLeg.from, backLeg.to, backLeg.mode);
     travelMinutes += leg.minutes;
-    distanceKm += haversine(backLeg.from, backLeg.to);
+    distanceKm += leg.distanceKm;
+    legs.push(leg);
     back = { name: String(backLeg.to.name ?? ''), location: pointOf(backLeg.to), leg };
   }
 
@@ -161,7 +173,7 @@ export function buildDayPlanView(input: DayPlanInput): DayPlanResponse | null {
   const cars = carEventsFor(trip, di, iso);
   // ⚠️ 타임라인은 분을 소수로 들고 있다(이동시간이 실수라서). 계약의 '분'은 정수다 —
   // 소수를 그대로 보내면 Swift가 Int로 디코딩하다 죽는다. 표시도 분 단위라 잃는 것이 없다.
-  const rawEnd = dayEndMinOf(trip, NO_CACHE, di);
+  const rawEnd = dayEndMinOf(trip, cache, di);
   const endMinutes = rawEnd == null ? null : Math.round(rawEnd);
 
   const planDay: DayPlanDay = {
@@ -185,14 +197,15 @@ export function buildDayPlanView(input: DayPlanInput): DayPlanResponse | null {
       endMinutes,
       // 자정을 넘기면 과밀이다 — 웹의 '⚠️ 일정 과밀'과 같은 기준.
       overloaded: endMinutes != null && endMinutes > 24 * 60,
-      cost: dayCostOf(trip, di)
+      cost: dayCostOf(trip, cache, di)
     }
   };
 
   return {
     schemaVersion: CONTRACT_SCHEMA_VERSION,
     generatedAt: input.generatedAt,
-    travelTimeSource: 'STRAIGHT_LINE_ESTIMATE',
+    // 하나라도 추정이면 추정이라고 말한다 — 절반만 도로인 하루를 "실제 경로"라 하지 않는다.
+    travelTimeSource: legs.length && legs.every((l) => l.source === 'ROUTED') ? 'ROUTED' : 'STRAIGHT_LINE_ESTIMATE',
     trip: input.summary,
     dayCount: days.length,
     days: days.map((d, i): DayPlanStripEntry => ({
@@ -240,7 +253,7 @@ function splitsOf(day: Day): DayPlanSplit[] {
  * `buildDayView`가 이미 이 계산을 들고 있어 값만 꺼내 쓴다. 규칙을 두 곳에 두지 않는다.
  * (라벨까지 함께 만들지만 그 비용은 무시할 만하고, 계산을 복제하는 쪽이 훨씬 비싸다)
  */
-function dayCostOf(trip: Trip, di: number): DayPlanDay['totals']['cost'] {
-  const { cost } = buildDayView(trip, NO_CACHE, di);
+function dayCostOf(trip: Trip, cache: LegCache, di: number): DayPlanDay['totals']['cost'] {
+  const { cost } = buildDayView(trip, cache, di);
   return { total: cost.total, parts: cost.parts.map((p) => ({ label: p.label, amount: p.amount })) };
 }

@@ -309,7 +309,7 @@ cd ios && xcodegen generate && open TripCanvas.xcodeproj
 # 되돌리기: git checkout ios/project.yml && cd ios && xcodegen generate
 ```
 
-확인된 것: **로그인**(운영 Supabase 토큰을 staging API가 검증) · **여행 목록 4개** · **오늘 화면**(`/api/v1/trips/:id/today`가 판단한 순서·시각·지도) · **이동시간 "(예상)" 표기**(`travelTimeSource != .routed` — 서버엔 구간 캐시가 없어 직선거리 추정이다).
+확인된 것: **로그인**(운영 Supabase 토큰을 staging API가 검증) · **여행 목록 4개** · **오늘 화면**(`/api/v1/trips/:id/today`가 판단한 순서·시각·지도) · **이동시간 "(예상)" 표기**(`travelTimeSource != .routed` — 당시 서버엔 구간 캐시가 없어 직선거리 추정이었다. 2026-09-06에 `leg_cache`가 생겨, 조회된 구간은 도로로 나온다).
 
 ⚠️ 시뮬레이터가 `Application failed preflight checks`로 실행을 거부하면 앱이 아니라 시뮬레이터 상태다:
 `xcrun simctl shutdown all; xcrun simctl erase all` 뒤 다시. 그래도 막히면 entitlements(App Group·푸시)가 없는 `project-free.yml`로 본체 앱만 만든다.

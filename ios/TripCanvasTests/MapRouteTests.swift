@@ -24,7 +24,7 @@ final class MapRouteTests: XCTestCase {
                                  cost: .init(total: 0, parts: [])))
     }
 
-    private let leg = DayPlanLeg(mode: "car", minutes: 10, distanceKm: 3, source: .straightLineEstimate)
+    private let leg = DayPlanLeg(mode: "car", minutes: 10, distanceKm: 3, path: nil, source: .straightLineEstimate)
 
     func testConnectsLocatedSpotsInOrder() {
         let d = day([spot("공항", 33.51, 126.49), spot("호텔", 33.50, 126.53), spot("성산", 33.46, 126.94)])
