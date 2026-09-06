@@ -30,8 +30,13 @@ export interface ServerEnv {
   /** 메일 속 링크가 도착할 웹 주소. API 호스트에는 사람이 볼 화면이 없다 */
   webBaseUrl: string;
   smtp: SmtpConfig | null;
-  /** 국내 장소 검색(카카오 로컬)용 **서버 전용** REST 키. 없으면 검색 라우트가 '미연결'이라고 답한다 */
+  /** 국내 장소 검색(카카오 로컬)·국내 경로(카카오 내비)용 **서버 전용** REST 키. 없으면 그 기능이 '미연결'이다 */
   kakaoRestKey: string;
+  /**
+   * 해외 경로(Google Routes)용 **서버 전용** 키. 웹 키(리퍼러 제한)·iOS 키(번들 제한)는 서버에서 거절된다.
+   * 없으면 해외 구간은 직선 추정으로 남는다 — 동작이 달라지지 않는다.
+   */
+  googleRoutesKey: string;
   /** 자체 Auth를 켤 수 있는가 — 비밀과 DB가 둘 다 있어야 한다 */
   newAuthEnabled: boolean;
   registry: MigrationRegistry;
@@ -82,6 +87,7 @@ export function parseEnv(env: Record<string, string | undefined>, warn?: (m: str
     webBaseUrl: ((env.WEB_BASE_URL ?? '').trim() || readAllowedOrigins(env)[0] || '').replace(/\/+$/, ''),
     // 카카오내비 프록시가 이미 쓰는 이름을 그대로 쓴다 — 같은 키다
     kakaoRestKey: (env.KAKAO_REST_API_KEY ?? '').trim(),
+    googleRoutesKey: (env.GOOGLE_ROUTES_API_KEY ?? '').trim(),
     smtp: readSmtp(env),
     newAuthEnabled: !!authSecret && !!databaseUrl,
     registry: readRegistry(env, warn)
