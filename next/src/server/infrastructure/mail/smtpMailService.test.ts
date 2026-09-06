@@ -3,7 +3,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import type { SmtpConfig } from '../../config/env';
-import { createConsoleMailService, createSmtpMailService } from './smtpMailService';
+import { createConsoleMailService, createSmtpMailService, maskEmail } from './smtpMailService';
 
 const CONFIG: SmtpConfig = {
   host: 'smtp.example.com', port: 587, secure: false,
@@ -75,5 +75,62 @@ describe('SMTP가 없을 때', () => {
     expect(lines[0]).toContain('VERIFY');
     expect(lines[0]).toContain('https://api.test/v?token=t');
     expect(lines[1]).toContain('RESET');
+  });
+});
+
+// 2026-09-06: 한 계정이 "메일이 안 온다"고 신고했는데 **성공도 실패도 로그가 없어서**
+// 앱이 보냈는지 릴레이가 삼켰는지 알 수 없었다. 그 상태를 다시 만들지 않는다.
+describe('발송 결과를 남긴다', () => {
+  const CONFIG_2 = { host: 'smtp.test', port: 587, secure: false, user: null, password: null,
+                     from: 'With J <no-reply@test>' };
+
+  it('수락되면 릴레이 응답까지 로그에 남는다', async () => {
+    const logs: string[] = [];
+    const tx = { sendMail: async () => ({ accepted: ['t@example.com'], rejected: [], response: '250 2.0.0 OK 1' }) };
+    const mail = createSmtpMailService(CONFIG_2, tx as never, (m) => logs.push(m));
+
+    await mail.sendVerificationEmail('tester@example.com', 'https://x/verify?token=t');
+
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toContain('250 2.0.0 OK');
+    expect(logs[0]).toContain('이메일 확인');
+    // 주소를 통째로 남기지 않는다 — 운영 로그는 오래 남는다
+    expect(logs[0]).toContain('t***@example.com');
+    expect(logs[0]).not.toContain('tester@example.com');
+  });
+
+  /** 릴레이가 250을 주면서 수신자만 거절할 수 있다 — 그건 '보냈다'가 아니다. */
+  it('수신자가 거절되면 실패로 다룬다', async () => {
+    const logs: string[] = [];
+    const tx = { sendMail: async () => ({ accepted: [], rejected: ['t@example.com'], response: '250 queued' }) };
+    const mail = createSmtpMailService(CONFIG_2, tx as never, (m) => logs.push(m));
+
+    await expect(mail.sendVerificationEmail('t@example.com', 'https://x/v')).rejects.toThrow(/받지 않았습니다/);
+    expect(logs.some((l) => l.includes('발송 실패'))).toBe(true);
+  });
+
+  it('던져진 오류도 로그에 남고 그대로 올라간다', async () => {
+    const logs: string[] = [];
+    const tx = { sendMail: async () => { throw new Error('535 인증 실패'); } };
+    const mail = createSmtpMailService(CONFIG_2, tx as never, (m) => logs.push(m));
+
+    await expect(mail.sendPasswordReset('t@example.com', 'https://x/r')).rejects.toThrow('535 인증 실패');
+    expect(logs.some((l) => l.includes('535 인증 실패'))).toBe(true);
+  });
+
+  /** ⚠️ accepted를 안 채우는 transport가 있다 — 그걸 실패로 보면 멀쩡한 발송이 막힌다. */
+  it('accepted가 비어도 명시적 거절이 없으면 성공이다', async () => {
+    const logs: string[] = [];
+    const tx = { sendMail: async () => ({ response: '250 OK' }) };
+    const mail = createSmtpMailService(CONFIG_2, tx as never, (m) => logs.push(m));
+
+    await mail.sendVerificationEmail('t@example.com', 'https://x/v');
+    expect(logs.some((l) => l.includes('발송 실패'))).toBe(false);
+  });
+
+  it('마스킹은 주소 모양이 이상해도 안전하다', () => {
+    expect(maskEmail('a@b.com')).toBe('a***@b.com');
+    expect(maskEmail('@b.com')).toBe('***');
+    expect(maskEmail('없는주소')).toBe('***');
   });
 });
