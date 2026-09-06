@@ -104,6 +104,13 @@ final class TripPlanViewModel {
         }
     }
 
+    /// 보고 있는 날의 계산. **날이 다르면 nil이다** — 다른 날의 숙소 복귀·렌터카를 그리면
+    /// 있지도 않은 일정이 화면에 생긴다.
+    var planDay: DayPlanDay? {
+        guard let plan, plan.day.index == selectedDay else { return nil }
+        return plan.day
+    }
+
     /// 그 장소의 서버 계산(예상 도착·구간). 보고 있는 날의 것이 아니면 nil이다.
     /// 문서와 계산이 어긋난 순간(막 추가·삭제한 직후)에는 조용히 nil로 떨어진다 —
     /// 그 상태에서 옛 시각을 그리면 없는 장소의 시각을 보여 주게 된다.
