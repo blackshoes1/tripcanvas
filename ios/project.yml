@@ -58,6 +58,12 @@ targets:
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         NSSupportsLiveActivities: true
+        # ⚠️ 이게 없으면 업로드는 성공하는데 **TestFlight에 안 뜬다.** App Store Connect가
+        # 빌드마다 "수출 규정 준수"를 묻고, 답하기 전까지 빌드가 'Missing Compliance'로 묶여
+        # 테스터에게 안 내려간다. 왜 실패했는지 아무 데도 안 나와서 찾기 어렵다.
+        # false = '면제 대상 암호화만 쓴다'. 이 앱은 HTTPS와 Keychain뿐이고 자체 암호화가 없다
+        # (CryptoKit·CommonCrypto 사용 없음 — 그래서 면제다).
+        ITSAppUsesNonExemptEncryption: false
         # 첫 실행에 권한을 몰아 요청하지 않는다 — 쓸모를 설명할 수 있을 때 묻는다(§6·§42).
         NSLocationWhenInUseUsageDescription: 다음 장소까지 걸리는 시간과 나서기 좋은 시간을 알려드리기 위해 사용합니다. 위치는 그때 계산에만 쓰고 저장하지 않습니다.
         # 운영 API는 NAS다(2026-09-04 전환) — Tailscale Funnel이 ts.net 이름에 HTTPS를 붙인다.
