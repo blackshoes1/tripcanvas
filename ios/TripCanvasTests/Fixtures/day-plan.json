@@ -58,6 +58,8 @@
         "waitMinutes": 0,
         "stayMinutes": 0,
         "status": "PLANNED",
+        "participants": [],
+        "reunion": false,
         "incomingLeg": null
       },
       {
@@ -76,6 +78,8 @@
         "waitMinutes": 598,
         "stayMinutes": 90,
         "status": "PLANNED",
+        "participants": [],
+        "reunion": false,
         "incomingLeg": {
           "mode": "car",
           "minutes": 2,
@@ -100,6 +104,7 @@
       }
     },
     "spotsWithoutLocation": 0,
+    "splits": [],
     "totals": {
       "distanceKm": 2.2,
       "travelMinutes": 4,

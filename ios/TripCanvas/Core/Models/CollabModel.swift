@@ -161,6 +161,40 @@ enum CollabModel {
         return member.role == .owner ? "주최자" : "멤버"
     }
 
+    // MARK: 함께 움직이지 않는 시간 (§25~§27)
+    //
+    // ⚠️ `collab.js`의 `whoLabels`/`whoText`/`includesMe` **복사본**이다.
+    // 규칙을 바꿔야 하면 `collab.js`를 먼저 고치고, `who-text.json` 픽스처가 여기를 깨뜨린다.
+
+    /// 참여자 이름표. **나는 늘 '나'로 부르고 맨 앞에 둔다** — 내 일정인지 한눈에 보이게.
+    /// 모르는 id는 '멤버'로 둔다(나간 사람일 수 있다 — 지우지 않는다: 지난 일정의 기록이다).
+    static func whoLabels(_ who: [String], members: [MemberView]) -> [String] {
+        var byId: [String: (name: String, me: Bool)] = [:]
+        for member in members {
+            let name = (member.displayName ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            byId[member.userId] = (name.isEmpty ? "멤버" : name, member.me)
+        }
+        var mine: [String] = []
+        var rest: [String] = []
+        for id in who {
+            guard let hit = byId[id] else { rest.append("멤버"); continue }
+            if hit.me { mine.append("나") } else { rest.append(hit.name) }
+        }
+        return mine + rest
+    }
+
+    /// '모두' 또는 '나 · 지민'. **비어 있으면 모든 여행자다**(§26) — 기본이 함께 다니는 것이다.
+    static func whoText(_ who: [String], members: [MemberView]) -> String {
+        who.isEmpty ? "모두" : whoLabels(who, members: members).joined(separator: " · ")
+    }
+
+    /// 이 일정에 내가 들어 있는가. 지정이 없으면 모두이므로 참이다.
+    static func includesMe(_ who: [String], myId: String?) -> Bool {
+        if who.isEmpty { return true }
+        guard let myId, !myId.isEmpty else { return false }
+        return who.contains(myId)
+    }
+
     /// 이메일에서 기본 표시 이름(참여 화면의 프리필). 도메인은 버린다.
     static func displayNameFromEmail(_ email: String?) -> String {
         let local = (email ?? "").split(separator: "@", maxSplits: 1).first.map(String.init) ?? ""

@@ -614,8 +614,36 @@ export interface DayPlanSpot {
   stayMinutes: number | null;
   /** PLANNED·COMPLETED·SKIPPED·CANCELLED */
   status: string;
+  /** 참여자 user_id. **비어 있으면 모든 여행자다** — 기본값이라 문서에 저장되지 않는다. */
+  participants: string[];
+  /** 갈라졌던 사람들이 다시 만나는 지점. 표시일 뿐이고 시각은 타임라인이 정한다. */
+  reunion: boolean;
   /** 이 장소로 오는 구간. 첫 유효 장소는 이월 앵커에서 출발한다. 좌표가 없으면 null. */
   incomingLeg: DayPlanLeg | null;
+}
+
+/**
+ * 분리 구간의 가지 하나 — 같은 참여자가 이어서 다니는 장소들.
+ * ⚠️ 가르는 규칙은 `lib.js`의 `splitSegments`/`whoKey` 하나다. 앱이 따로 가르면
+ * 그림과 시각이 어긋난다(타임라인도 같은 함수로 가른다).
+ */
+export interface DayPlanSplitBranch {
+  /** 참여자 user_id. **비어 있으면 모든 여행자다**(§26) — 기본이 함께 다니는 것이다. */
+  participants: string[];
+  /** `day.spots` 안의 위치들. 원래 순서를 지킨다. */
+  spotIndexes: number[];
+}
+
+/**
+ * 함께 움직이지 않는 구간. 가지들은 **같은 출발점에서 나란히** 시작하고(서로를 밀지 않는다),
+ * 구간 다음은 **가장 늦게 끝나는 가지**를 따른다(다 모여야 합류한다) — 계산은 `computeTimeline`이 한다.
+ */
+export interface DayPlanSplit {
+  key: string;
+  /** [from, to) — day.spots의 구간 */
+  from: number;
+  to: number;
+  branches: DayPlanSplitBranch[];
 }
 
 /** 일정의 장소와 연결되지 않은 렌터카 픽업·반납. ⚠️ 좌표가 없어 동선·ETA·지도에 넣지 않는다. */
@@ -646,6 +674,8 @@ export interface DayPlanDay {
   back: { name: string; location: GeoPoint | null; leg: DayPlanLeg } | null;
   /** 좌표가 없어 동선·지도에서 빠지는 장소 수. 화면이 그 사실을 말할 수 있게. */
   spotsWithoutLocation: number;
+  /** 함께 움직이지 않는 구간들. 없으면 빈 배열이고, 그때 하루는 예전과 완전히 같다. */
+  splits: DayPlanSplit[];
   totals: {
     distanceKm: number;
     travelMinutes: number;

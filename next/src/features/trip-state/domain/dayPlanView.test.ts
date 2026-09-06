@@ -146,6 +146,37 @@ describe('buildDayPlanView', () => {
     for (const m of minutes) expect(Number.isInteger(m), `정수가 아닌 분: ${m}`).toBe(true);
   });
 
+  // 함께 움직이지 않는 시간(§25~§27). 가르는 규칙은 lib의 splitSegments 하나다 —
+  // 타임라인도 같은 함수로 가르므로 여기서 따로 가르면 그림과 시각이 어긋난다.
+  it('분리가 없으면 splits는 비어 있다 — 하루가 예전과 완전히 같다', () => {
+    const v = build(trip([day([airport(), seongsan()]), day([])]), 0)!;
+    expect(v.day.splits).toEqual([]);
+    expect(v.day.spots.every((s) => s.participants.length === 0)).toBe(true);
+    expect(v.day.spots.every((s) => s.reunion === false)).toBe(true);
+  });
+
+  it('참여자가 갈리면 가지로 묶고, 합류 지점을 표시한다', () => {
+    const t = trip([day([
+      spot('아침', 33.51, 126.49),
+      spot('미술관', 33.50, 126.50, { split: 's1', who: ['u1'] }),
+      spot('카페', 33.49, 126.51, { split: 's1', who: ['u1'] }),
+      spot('시장', 33.48, 126.52, { split: 's1', who: ['u2'] }),
+      spot('저녁', 33.47, 126.53, { reunion: true })
+    ]), day([])]);
+    const v = build(t, 0)!;
+
+    expect(v.day.splits).toHaveLength(1);
+    const [seg] = v.day.splits;
+    expect([seg.from, seg.to]).toEqual([1, 4]);
+    expect(seg.branches.map((b) => b.participants)).toEqual([['u1'], ['u2']]);
+    expect(seg.branches.map((b) => b.spotIndexes)).toEqual([[1, 2], [3]]);
+
+    // 참여자가 없는 장소는 '모두'다 — 기본값이라 저장되지 않는다
+    expect(v.day.spots[0].participants).toEqual([]);
+    expect(v.day.spots[1].participants).toEqual(['u1']);
+    expect(v.day.spots[4].reunion).toBe(true);
+  });
+
   it('일정의 장소와 연결된 렌터카는 독립 행으로 중복되지 않는다', () => {
     const booking = {
       id: 'b1', type: 'car', title: '렌터카', start: '2026-10-01', end: '2026-10-02',
