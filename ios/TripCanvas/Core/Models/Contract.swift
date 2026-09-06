@@ -140,11 +140,19 @@ struct TripSummary: Codable, Identifiable, Hashable, Sendable {
     let cities: [String]
     /// 오늘이 몇 일차인지. -1이면 여행 기간 밖이다.
     let todayIndex: Int
+    /// 출발까지 남은 날. **아직 시작하지 않은 여행에만** 값이 있다.
+    /// ⚠️ `todayIndex == -1`은 시작 전과 끝난 뒤 둘 다다 — 둘을 가르는 것이 이 값이다.
+    /// 구버전 서버는 안 보내므로 옵셔널이고, 없으면 D-day를 말하지 않는다.
+    let daysUntilStart: Int?
     /// 함께하기 — 구버전 서버 응답에는 없을 수 있어 옵셔널로 받는다(없으면 혼자 쓰는 여행으로 본다).
     let role: MemberRole?
     let memberCount: Int?
 
     var isLive: Bool { todayIndex >= 0 }
+    /// 아직 시작하지 않았고 며칠 남았는지 아는 여행.
+    var isUpcoming: Bool { !isLive && (daysUntilStart ?? 0) > 0 }
+    /// 여행이 끝났다 — 시작 전도 아니고 진행 중도 아니다.
+    var isFinished: Bool { !isLive && !isUpcoming && !start.isEmpty }
     var isShared: Bool { (memberCount ?? 1) > 1 }
     var canEdit: Bool { (role ?? .owner).canEdit }
 }

@@ -6,10 +6,17 @@ struct TodayView: View {
     let trip: TripSummary
     @Environment(AppEnvironment.self) private var env
     @State private var model: TodayViewModel?
+    /// 시작 전 여행에서 '여행 보기'를 눌렀는가. 이 여행을 보는 동안만 유지된다 —
+    /// 다시 들어오면 D-day부터 보인다(어느 화면이 왜 떴는지 예측할 수 있게).
+    @State private var showsPlanPreview = false
 
     var body: some View {
         ScrollView {
             if let model {
+                // 아직 시작하지 않은 여행에서는 '지금'이 할 말이 없다 — 며칠 남았는지부터 말한다.
+                if let days = model.daysUntilStart, !showsPlanPreview {
+                    countdown(days: days, startDate: trip.start)
+                } else {
                 VStack(alignment: .leading, spacing: Space.l) {
                     header(model)
                     if model.isOffline, let cachedAt = model.cachedAt {
@@ -97,6 +104,7 @@ struct TodayView: View {
                     }
                 }
                 .padding(Space.l)
+                }
             } else {
                 ProgressView().padding(Space.xl)
             }
@@ -134,6 +142,35 @@ struct TodayView: View {
     }
 
     @ViewBuilder
+    /// 출발까지 며칠 남았는지. 숫자는 서버가 센다 — 앱이 세면 여행지의 오늘과 어긋난다.
+    private func countdown(days: Int, startDate: String) -> some View {
+        VStack(spacing: Space.m) {
+            Spacer(minLength: Space.xl)
+            Text("D-\(days)")
+                .font(.system(size: 56, weight: .bold, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(Color.accentColor)
+            if let label = TimeFormat.dayChipLabel(startDate) {
+                Text("\(label) 출발").font(.headline).foregroundStyle(.secondary)
+            }
+            Text("아직 여행 전이에요. 일정 탭에서 계획을 다듬어 두세요.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+
+            // 막아 두는 것이 아니라 기본이 D-day라는 뜻이다 — 눌러서 볼 수 있다.
+            SecondaryActionButton(title: "여행 보기", systemImage: "eye") {
+                showsPlanPreview = true
+            }
+            .padding(.top, Space.s)
+            Spacer(minLength: Space.xl)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(Space.l)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("출발까지 \(days)일 남았어요")
+    }
+
     private func header(_ model: TodayViewModel) -> some View {
         VStack(alignment: .leading, spacing: Space.s) {
             HStack(spacing: Space.s) {

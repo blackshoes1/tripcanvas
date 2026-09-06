@@ -9,7 +9,7 @@ final class CollabViewModelTests: XCTestCase {
     private func trip(role: MemberRole = .owner, members: Int = 3, days: Int = 3) -> TripSummary {
         TripSummary(id: "t1", name: "바르셀로나", start: "2026-10-01", dayCount: days, revision: 4,
                     updatedAt: "2026-09-01T00:00:00.000Z", timeZone: "Europe/Madrid", cities: ["바르셀로나"],
-                    todayIndex: 0, role: role, memberCount: members)
+                    todayIndex: 0, daysUntilStart: nil, role: role, memberCount: members)
     }
 
     // MARK: 멤버 · 초대

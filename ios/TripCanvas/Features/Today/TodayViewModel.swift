@@ -25,6 +25,14 @@ final class TodayViewModel {
     }
 
     var dayIndex: Int? { today?.day.index }
+
+    /// 출발까지 남은 날 — **아직 시작하지 않은 여행에만** 값이 있다.
+    /// 서버가 센다(`adaptive.js`의 `daysUntilStart`). 앱이 `start`를 오늘과 비교하면
+    /// 여행지의 오늘과 어긋나 "D-1인데 이미 시작됨" 같은 일이 생긴다.
+    var daysUntilStart: Int? {
+        guard let summary = today?.trip, !summary.isLive else { return nil }
+        return summary.daysUntilStart
+    }
     var revision: Int { today?.trip.revision ?? trip.revision }
     var status: TravelStatus { today?.nextAction?.status ?? (today?.activities.isEmpty == false ? .upcoming : .noPlan) }
     var isOffline: Bool { cachedAt != nil }

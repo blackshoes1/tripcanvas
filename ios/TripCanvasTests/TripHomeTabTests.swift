@@ -45,10 +45,54 @@ final class TripHomeTabTests: XCTestCase {
     }
 }
 
+/// 시작 전 여행이 '지금' 탭에서 무엇을 보이는가.
+///
+/// ⚠️ `todayIndex == -1`은 **시작 전과 끝난 뒤 둘 다**다 — 둘을 가르는 것이 `daysUntilStart`다.
+/// 끝난 여행에 "D-12"가 뜨면 안 된다.
+final class TripCountdownTests: XCTestCase {
+    private func summary(todayIndex: Int, daysUntilStart: Int?, start: String = "2026-10-01") -> TripSummary {
+        TripSummary(id: "t1", name: "여행", start: start, dayCount: 3, revision: 1, updatedAt: "",
+                    timeZone: "Asia/Seoul", cities: [], todayIndex: todayIndex,
+                    daysUntilStart: daysUntilStart, role: nil, memberCount: nil)
+    }
+
+    func testUpcomingTripCountsDown() {
+        let trip = summary(todayIndex: -1, daysUntilStart: 12)
+        XCTAssertTrue(trip.isUpcoming)
+        XCTAssertFalse(trip.isLive)
+        XCTAssertFalse(trip.isFinished)
+    }
+
+    func testRunningTripHasNoCountdown() {
+        let trip = summary(todayIndex: 1, daysUntilStart: nil)
+        XCTAssertTrue(trip.isLive)
+        XCTAssertFalse(trip.isUpcoming, "진행 중인 여행에 D-day가 뜨면 안 된다")
+    }
+
+    /// 끝난 여행도 todayIndex는 -1이다 — 여기서 갈리지 않으면 "D-12"가 뜬다.
+    func testFinishedTripIsNotUpcoming() {
+        let trip = summary(todayIndex: -1, daysUntilStart: nil)
+        XCTAssertFalse(trip.isUpcoming)
+        XCTAssertTrue(trip.isFinished)
+    }
+
+    /// 날짜 없는 여행은 셀 것이 없다.
+    func testUndatedTripHasNothingToCount() {
+        let trip = summary(todayIndex: -1, daysUntilStart: nil, start: "")
+        XCTAssertFalse(trip.isUpcoming)
+        XCTAssertFalse(trip.isFinished, "날짜가 없으면 '끝났다'고도 말하지 않는다")
+    }
+
+    /// 구버전 서버는 이 값을 안 보낸다 — 그때는 D-day를 말하지 않는다(0이라고 하지 않는다).
+    func testMissingFieldMeansNoCountdown() {
+        XCTAssertFalse(summary(todayIndex: -1, daysUntilStart: nil).isUpcoming)
+    }
+}
+
 private extension TripSummary {
     static func stub(start: String = "2026-10-01", todayIndex: Int) -> TripSummary {
         TripSummary(id: "t1", name: "테스트 여행", start: start, dayCount: 5, revision: 1,
                     updatedAt: "2026-09-06T00:00:00Z", timeZone: "Asia/Seoul", cities: [],
-                    todayIndex: todayIndex, role: nil, memberCount: nil)
+                    todayIndex: todayIndex, daysUntilStart: nil, role: nil, memberCount: nil)
     }
 }
