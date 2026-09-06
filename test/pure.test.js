@@ -296,8 +296,7 @@ test('extractJson — 인사말·코드펜스가 붙어도 JSON만 떼어낸다'
 test('extMapLink — 국내는 카카오맵, 해외는 구글', () => {
   // 한국에서는 카카오맵만 실제 내비가 된다
   const kr = L.extMapLink({ name: '제주공항', lat: 33.5104, lng: 126.4914 });
-  assert.ok(kr.href.startsWith('https://map.kakao.com/link/to/'));
-  assert.ok(kr.href.includes('33.5104,126.4914'));
+  assert.ok(kr.href.startsWith('https://map.kakao.com/link/search/'));
   assert.match(kr.label, /카카오맵/);
 
   const jp = L.extMapLink({ name: 'Tokyo Tower', lat: 35.6586, lng: 139.7454 });
@@ -309,9 +308,35 @@ test('extMapLink — 국내는 카카오맵, 해외는 구글', () => {
   assert.ok(!enc.href.includes(' '));
   assert.ok(enc.href.includes(encodeURIComponent('카페 & 로스터리')));
 
-  // 문자열 좌표도 받는다 (유입 데이터)
+  // 문자열 좌표도 받는다 (유입 데이터) — 국내 판정만 좌표로 한다
   const str = L.extMapLink({ name: 'x', lat: '33.5', lng: '126.5' });
-  assert.ok(str.href.includes('33.5,126.5'));
+  assert.ok(str.href.startsWith('https://map.kakao.com/link/search/'));
+});
+
+test('extMapLink — 좌표가 아니라 이름으로 찾는다 (어긋난 좌표가 엉뚱한 곳을 열지 않게)', () => {
+  // 좌표는 어느 지도를 열지만 정하고, 질의에는 들어가지 않는다
+  const jp = L.extMapLink({ name: 'Tokyo Tower', city: '도쿄', lat: 35.6586, lng: 139.7454 });
+  assert.ok(!jp.href.includes('35.6586'));
+  assert.ok(!jp.href.includes('139.7454'));
+  assert.ok(jp.href.includes(encodeURIComponent('도쿄 Tokyo Tower')));
+
+  // 같은 상호가 여러 도시에 있으므로 도시를 앞에 붙인다
+  const kr = L.extMapLink({ name: '스타벅스', city: '부산', lat: 35.1, lng: 129.0 });
+  assert.ok(kr.href.endsWith(encodeURIComponent('부산 스타벅스')));
+
+  // 이름에 이미 도시가 들어 있으면 두 번 붙이지 않는다
+  const dup = L.extMapLink({ name: '부산역', city: '부산', lat: 35.115, lng: 129.04 });
+  assert.ok(dup.href.endsWith(encodeURIComponent('부산역')));
+
+  // 기본값 '기타'는 질의를 좁히지 못하므로 붙이지 않는다
+  const etc = L.extMapLink({ name: '해운대해수욕장', city: '기타', lat: 35.158, lng: 129.16 });
+  assert.ok(etc.href.endsWith(encodeURIComponent('해운대해수욕장')));
+
+  // 이름이 없을 때만 좌표로 찍는다 — 그때는 그것 말고 아는 것이 없다
+  const noName = L.extMapLink({ name: '', lat: 33.5, lng: 126.5 });
+  assert.ok(noName.href.includes('33.5,126.5'));
+  const noNameJp = L.extMapLink({ name: '', lat: 35.6, lng: 139.7 });
+  assert.ok(noNameJp.href.includes('35.6,139.7'));
 });
 
 test('budgetBookings — 연결된 숙박은 일정 카드 금액이 기준 (이중 계산 방지)', () => {

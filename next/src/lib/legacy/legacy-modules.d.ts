@@ -48,8 +48,8 @@ declare module '@legacy/lib.js' {
     extractJson(text: string | undefined): string;
     /** 검색 질의를 좁히는 이름 단순화 ('~ 앞바다' 같은 꼬리 제거) */
     simplifyName(name: string): string;
-    /** 외부 지도 링크 — 국내는 카카오맵, 해외는 구글 */
-    extMapLink(s: { name: string; lat: number | string; lng: number | string }): { href: string; label: string };
+    /** 외부 지도 링크 — 국내는 카카오맵, 해외는 구글. 찾는 기준은 이름 텍스트고 좌표는 지도 선택용 */
+    extMapLink(s: { name: string; city?: string; lat: number | string; lng: number | string }): { href: string; label: string };
     normalizeTrip(t: unknown): unknown | null;
     /** 첫 방문에 심어 주는 샘플 여행 — 부를 때마다 새 객체 */
     sampleTrip(): unknown;

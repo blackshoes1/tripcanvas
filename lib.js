@@ -120,14 +120,24 @@
   /**
    * 외부 지도 링크 — 국내는 카카오맵(한국에서 실제 내비가 된다), 해외는 구글.
    * 두 앱이 같은 장소에 다른 링크를 주면 안 되므로 여기 한 곳에서 만든다.
+   * ⚠️ **찾는 기준은 이름 텍스트다** — 좌표는 어느 지도를 열지만 정한다.
+   * 유입 좌표는 자주 어긋나 있고(좌표 역추적·붙여넣기·수동 입력) 그 좌표를 그대로 찍으면
+   * 길 건너 빈 땅이 열려 "그 가게가 없다"가 된다. 지도가 자기 DB에서 상호로 찾게 하는 편이 정확하다.
+   * 같은 상호가 여러 도시에 있으므로 도시를 앞에 붙인다(기본값 '기타'와 이름에 이미 든 도시는 뺀다).
+   * 이름이 없을 때만 좌표로 찍는다.
    * @param {any} s @returns {{href:string,label:string}}
    */
   function extMapLink(s){
-    const lat=+s.lat, lng=+s.lng, name=String(s.name||'');
+    const lat=+s.lat, lng=+s.lng;
+    const name=String(s.name||'').trim(), city=String(s.city||'').trim();
+    const q=(city&&city!=='기타'&&!name.includes(city))? `${city} ${name}` : name;
     return inKorea({lat,lng})
-      ? {href:`https://map.kakao.com/link/to/${encodeURIComponent(name)},${lat},${lng}`, label:'카카오맵 길찾기 ↗'}
-      : {href:`https://www.google.com/maps/search/?api=1&query=${lat},${lng}(${encodeURIComponent(name)})`,
-         label:'Google 지도 ↗'};
+      ? {href: name? `https://map.kakao.com/link/search/${encodeURIComponent(q)}`
+                   : `https://map.kakao.com/link/map/${encodeURIComponent('위치')},${lat},${lng}`,
+         label:'카카오맵에서 보기 ↗'}
+      : {href: name? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`
+                   : `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`,
+         label:'Google 지도에서 보기 ↗'};
   }
 
   /**
