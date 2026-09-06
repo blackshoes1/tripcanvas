@@ -98,7 +98,7 @@ final class DayPlanDecodingTests: XCTestCase {
         XCTAssertEqual(plan.trip.name, "정합성")
     }
 
-    /// 서버에는 구간 캐시가 없다 — 화면이 "예상"이라고 말할 수 있어야 한다.
+    /// 조회되지 않은 구간이 섞여 있으면 추정이다 — 화면이 "예상"이라고 말할 수 있어야 한다.
     func testSaysWhenTravelTimeIsAnEstimate() throws {
         let plan = try loadFixture()
         XCTAssertEqual(plan.travelTimeSource, .straightLineEstimate)

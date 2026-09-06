@@ -13,15 +13,17 @@ struct MapPin: Identifiable, Hashable {
 
 /// 지도에 그릴 동선 하나. 두 SDK가 같은 입력을 받는다.
 ///
-/// ⚠️ **실제 도로가 아니라 장소를 순서대로 이은 직선이다.** 서버에는 구간 캐시가 없어
-/// 경로 좌표열을 주지 않는다(`travelTimeSource: STRAIGHT_LINE_ESTIMATE`).
-/// 그래서 화면은 이것이 직선임을 함께 말해야 한다 — 도로처럼 보이면 거짓말이 된다.
+/// ⚠️ 점들이 **실제 도로일 수도, 두 점을 곧게 이은 직선일 수도** 있다. 서버가 그 구간의 경로를
+/// 조회해 뒀으면(`DayPlanLeg.path`) 도로를 따르고, 아니면 직선이다.
+/// 그 사실은 `routed`로 실어 보내고 **화면이 말해야 한다** — 직선을 도로처럼 보이게 두면 거짓말이 된다.
 struct MapRoute: Identifiable, Hashable {
     let id: String
     /// 순서대로 이을 점들. 두 개 미만이면 그릴 것이 없다.
     let points: [GeoPoint]
     /// 숙소 복귀처럼 **자동으로 이어 붙인** 구간인가 — 사용자가 넣은 이동이 아니라 옅게 그린다.
     let synthetic: Bool
+    /// 이 선의 **모든** 구간이 실제 경로인가. 하나라도 직선이면 false다.
+    var routed: Bool = false
 }
 
 /// 지도에서 사용자가 고른 자리. POI를 탭했으면 그 신원(placeId·이름)까지 온다.
