@@ -108,6 +108,12 @@ localStorage: `tripcanvas_v1`(여행) · `tripcanvas_legs_v4`(구간 캐시, 수
 - `dayContext(di)` (app) — `{day, anchor, carry, timeline, mode}`를 한 번에 반환. **사이드바·여행 모드·이미지 내보내기는 이걸 쓴다**
 - ⚠️ `anchor`와 `carry`를 혼동하지 말 것: **ETA·종료시각 계산은 `anchor`**(숙소가 아니어도 전날 마지막 장소 반영), **화면의 🏠 "전날 숙소" 항목 표시만 `carry`**(숙소일 때만)
 
+**체류 시간을 안 정하면 머무르지 않는다(0분).** 2026-09-06 이전에는 1시간을 먹었다. 계산처가 넷이라 함께 바꾼다 — `computeTimeline`(lib) · `dayEndMin`·`legDepartMinute`(app) · `dayView.ts`(next) · `adaptive.js`.
+
+- ⚠️ **`defaultStayMin`과 `suggestStayMin`을 섞지 말 것**(adaptive). 앞은 *내가 계획한 체류*(0 = 안 정함)이고, 뒤는 *제안할 활동의 예상 소요*(60)다. 제안 소요를 0으로 두면 **어떤 빈 시간에도 무한히 들어간다** — 계획 체류가 0인 장소를 제안할 때도 `suggestStayMin`을 쓴다.
+- ⚠️ 입력에서 `parseInt(v)||60` 같은 식을 쓰지 말 것 — **0이 falsy라 0을 넣어도 60이 된다.** 0은 유효한 값이다("들렀다 바로 이동").
+- 화면은 '정하지 않음'과 '0분'을 **둘 다 남긴다**. 계산은 같지만 "아직 안 정했다"와 "바로 간다"는 다른 말이다.
+
 **이동수단은 일자 기본 + 구간별 재정의.** `legModeOf(day, spot)` — 도착 장소의 `legMode`가 있으면 그것, 없으면 일자 기본. (첫날을 비행기로 둬도 도시 내 이동까지 비행기가 되지 않게)
 수단: 자차 · 택시 · 대중교통 · 기차 · 도보 · 자전거 · 비행기.
 라우팅(`fetchLeg`): 비행기·기차는 **직선거리 기반 추정**(실시간 시각표 없음) · 국내 자차/택시=카카오내비(도로 없으면 인근 도로 스냅) · 국내 대중교통=Google Routes TRANSIT · 국내 도보/자전거=카카오 도로거리 기반 추정 · 해외=Google Routes

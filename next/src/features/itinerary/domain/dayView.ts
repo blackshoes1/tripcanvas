@@ -134,7 +134,7 @@ export function dayEndMinOf(trip: Trip, legCache: LegCache, di: number): number 
   const last = day.spots.length - 1;
   const s = day.spots[last];
   const base = s.bookAt ? Math.max(tl[last].eta, parseHM(s.bookAt)) : tl[last].eta;
-  const end = base + (s.stayMin != null ? +s.stayMin : 60);
+  const end = base + (s.stayMin != null ? +s.stayMin : 0);   // 안 정했으면 머무르지 않는다
   const bl = backLegOf(day, dayReturnStay(trip.days as unknown[], di) as Spot | null);
   return bl ? end + legMinutes(legCache, bl.from, bl.to, bl.mode) : end;
 }

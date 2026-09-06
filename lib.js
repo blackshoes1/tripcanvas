@@ -354,7 +354,7 @@
       return {
         // natural=이동상 자연 도착(고정 전), wait=예약 시각까지 기다리는 시간 → UI가 이유를 설명할 수 있게
         state:{eta, fixed:!!s.at, conflict, natural, wait:Math.max(0, depart-eta)},
-        clock: depart + (s.stayMin!=null? +s.stayMin : 60),
+        clock: depart + (s.stayMin!=null? +s.stayMin : 0),   // 안 정했으면 머무르지 않는다(2026-09-06)
         prev: hasCoord(s)? s : from
       };
     }

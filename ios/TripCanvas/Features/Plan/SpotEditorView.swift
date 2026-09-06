@@ -101,9 +101,12 @@ struct SpotEditorView: View {
                     ClockField(title: "예약·입장 시각", text: $draft.bookedAt)
                     ClockField(title: "도착 시각", text: $draft.arriveAt)
                     Picker("머무는 시간", selection: $draft.stayMinutes) {
+                        // '정하지 않음'과 '0분'은 계산에서 같다(둘 다 머무르지 않는다).
+                        // 그래도 둘을 남긴다 — "아직 안 정했다"와 "들렀다 바로 간다"는 다른 말이다.
                         Text("정하지 않음").tag(Int?.none)
-                        ForEach([15, 30, 45, 60, 90, 120, 180, 240], id: \.self) { minutes in
-                            Text(TimeFormat.duration(minutes)).tag(Int?.some(minutes))
+                        ForEach([0, 15, 30, 45, 60, 90, 120, 180, 240], id: \.self) { minutes in
+                            Text(minutes == 0 ? "0분 (바로 이동)" : TimeFormat.duration(minutes))
+                                .tag(Int?.some(minutes))
                         }
                     }
                 } header: {
