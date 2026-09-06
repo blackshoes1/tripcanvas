@@ -32,11 +32,46 @@ export function createSmtpTransport(config: SmtpConfig): Transporter {
   });
 }
 
-export function createSmtpMailService(config: SmtpConfig, transport?: Transporter): MailService {
+/**
+ * 로그에 남길 받는 사람. 주소를 통째로 남기지 않는다 — 운영 로그는 오래 남는다.
+ * `t***@gmail.com` 정도면 "누구에게 갔나"를 확인하기에 충분하다.
+ */
+export function maskEmail(email: string): string {
+  const at = email.lastIndexOf('@');
+  if (at <= 0) return '***';
+  const local = email.slice(0, at);
+  return `${local[0]}***${email.slice(at)}`;
+}
+
+export function createSmtpMailService(
+  config: SmtpConfig,
+  transport?: Transporter,
+  log: (message: string) => void = (m) => console.log(`[tripcanvas-api] ${m}`)
+): MailService {
   const tx = transport ?? createSmtpTransport(config);
 
+  /**
+   * ⚠️ **결과를 반드시 남긴다.** 예전에는 성공도 실패도 아무 흔적이 없어서,
+   * "메일이 안 온다"는 신고를 받아도 앱이 보냈는지 릴레이가 삼켰는지 알 수 없었다
+   * (2026-09-06에 한 계정을 이것 때문에 오래 뒤졌다). SMTP가 준 응답을 그대로 적는다.
+   */
   async function send(to: string, subject: string, content: { text: string; html: string }): Promise<void> {
-    await tx.sendMail({ from: config.from, to, subject, text: content.text, html: content.html });
+    const who = maskEmail(to);
+    try {
+      const info = await tx.sendMail({ from: config.from, to, subject, text: content.text, html: content.html });
+      const accepted = (info?.accepted ?? []).length;
+      const rejected = (info?.rejected ?? []).length;
+      log(`메일 발송 → ${who} · ${subject} · 수락 ${accepted} 거절 ${rejected} · ${info?.response ?? '응답 없음'}`);
+      // 릴레이가 250을 주면서 특정 수신자만 거절할 수 있다 — 그건 '보냈다'가 아니다.
+      // ⚠️ `accepted === 0`은 실패로 보지 않는다: 이 값을 채우지 않는 transport가 있어서,
+      //    그걸 실패로 다루면 **멀쩡한 발송이 막힌다.** 명시적 거절만 실패다.
+      if (rejected > 0) {
+        throw new Error(`릴레이가 수신자를 받지 않았습니다 (수락 ${accepted} 거절 ${rejected})`);
+      }
+    } catch (error) {
+      log(`메일 발송 실패 → ${who} · ${subject} · ${error instanceof Error ? error.message : String(error)}`);
+      throw error;
+    }
   }
 
   return {
