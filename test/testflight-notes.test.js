@@ -1,7 +1,9 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('crypto');
-const { makeToken, trimNotes, planLocalizations, waitForBuild, _MAX_WHATS_NEW } = require('../scripts/testflight-notes.js');
+const os = require('os');
+const path = require('path');
+const { makeToken, trimNotes, planLocalizations, waitForBuild, resolvePath, _MAX_WHATS_NEW } = require('../scripts/testflight-notes.js');
 
 // 여기서 지키는 것: **빌드가 올라갔는데 설명이 비어 있지 않게** 한다.
 // 그리고 이 단계가 실패해도 업로드를 되돌리지 않는다(빌드는 이미 산다).
@@ -60,4 +62,13 @@ test('대기: 시간이 다 되면 null — 실패가 아니라 "아직"이다',
     appId: 'a1', buildNumber: '9', sleep: async () => { clock += 30_000; }, now: () => clock, timeoutMs: 60_000
   });
   assert.equal(build, null, '여기서 던지면 업로드가 성공했는데 워크플로가 빨개진다');
+});
+
+// YAML의 `env:`는 셸이 아니다 — `~`가 그대로 온다. run #10이 이걸로 죽었다.
+test('경로: ~를 편다 (셸을 안 거치고 오는 경로가 있다)', () => {
+  assert.equal(resolvePath('~/private_keys/AuthKey_X.p8'),
+               path.join(os.homedir(), 'private_keys/AuthKey_X.p8'));
+  assert.equal(resolvePath('~'), os.homedir());
+  assert.equal(resolvePath('/abs/AuthKey_X.p8'), '/abs/AuthKey_X.p8');
+  assert.equal(resolvePath('~notuser/x'), '~notuser/x', '홈이 아닌 ~는 건드리지 않는다');
 });
