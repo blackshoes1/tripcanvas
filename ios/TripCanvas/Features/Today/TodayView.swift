@@ -102,14 +102,9 @@ struct TodayView: View {
             }
         }
         .background(Color(.systemGroupedBackground))
-        .navigationTitle(trip.name)
-        .navigationBarTitleDisplayMode(.inline)
+        // 제목(여행 이름)은 `TripHomeView`가 정한다 — 두 형제 화면이 같은 제목을 써야 한다.
         .toolbar {
-            // 오늘 화면은 "지금 무엇을" 이고, 계획을 고치는 것은 그 옆이다.
-            ToolbarItem(placement: .topBarTrailing) {
-                NavigationLink { TripPlanView(trip: trip) } label: { Image(systemName: "list.bullet.rectangle") }
-                    .accessibilityLabel("일정 편집")
-            }
+            // 일정으로 가는 길은 여기 없다 — `TripHomeView`의 세그먼트가 형제로 나란히 놓는다.
             // 함께하기는 여행 하나에 붙는 것이라 여기서 들어간다 — 로그아웃·로컬 전용 여행에는 없다.
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
