@@ -39,6 +39,19 @@ npm run verify:all
   ⚠️ **SKIP은 통과가 아니다** — 무엇을 못 돌렸는지 PR에 밝힌다.
 
 - [ ] **필수 체크가 빨간 상태로 merge하지 않는다.** 빨간 이유가 코드가 아니라 러너·과금이면 그 사실과 대신 무엇으로 검증했는지를 PR에 남긴다 — `docs/ci.md`
+- [ ] **`next/src/app/api/**`·`next/src/server/**`·`next/src/features/**`을 바꿨으면 NAS에 따로 배포한다.** `main` 머지는 **Vercel 정적 웹만** 내보낸다 — API는 NAS 이미지라 다시 빌드하지 않으면 옛 코드가 그대로 돈다:
+
+```bash
+git archive --format=tar HEAD | gzip > /tmp/tc-main.tgz
+scp -O /tmp/tc-main.tgz nas:~/ && ssh nas 'cd ~/tripcanvas && tar -xzf ~/tc-main.tgz && rm ~/tc-main.tgz'
+ssh nas 'cd ~/tripcanvas && sudo /usr/local/bin/docker compose -f deploy/docker-compose.yml build api && sudo /usr/local/bin/docker compose -f deploy/docker-compose.yml up -d api'
+curl -s -o /dev/null -w "%{http_code}\n" https://bokbok9.tail8b977f.ts.net/api/v1/trips   # 401이면 산다
+```
+
+  ⚠️ **새 라우트는 배포 전까지 404다.** 앱·웹이 그걸 "값이 없음"으로 조용히 넘기게 설계돼 있으면
+  아무 오류 없이 화면에서 그 기능만 사라진다 — 2026-09-06에 일자 스트립 날짜가 그래서 안 보였다.
+  ⚠️ `deploy/.env`는 추적되지 않으므로 이 아카이브에 없다. NAS 것이 그대로 남는다.
+
 - [ ] 푸시 후 폰에서 실제 동작 확인 — ☰ 메뉴 하단의 **버전 표시**로 새 버전이 적용됐는지 먼저 볼 것 (캐시된 옛 버전이면 그 글자를 탭해 갱신)
 
 ## 브랜드 — With J / From J
