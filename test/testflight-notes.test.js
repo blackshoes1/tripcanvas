@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const crypto = require('crypto');
 const os = require('os');
 const path = require('path');
-const { makeToken, trimNotes, planLocalizations, waitForBuild, resolvePath, _MAX_WHATS_NEW } = require('../scripts/testflight-notes.js');
+const { makeToken, trimNotes, stripPictographs, planLocalizations, waitForBuild, resolvePath, _MAX_WHATS_NEW } = require('../scripts/testflight-notes.js');
 
 // 여기서 지키는 것: **빌드가 올라갔는데 설명이 비어 있지 않게** 한다.
 // 그리고 이 단계가 실패해도 업로드를 되돌리지 않는다(빌드는 이미 산다).
@@ -71,4 +71,14 @@ test('경로: ~를 편다 (셸을 안 거치고 오는 경로가 있다)', () =>
   assert.equal(resolvePath('~'), os.homedir());
   assert.equal(resolvePath('/abs/AuthKey_X.p8'), '/abs/AuthKey_X.p8');
   assert.equal(resolvePath('~notuser/x'), '~notuser/x', '홈이 아닌 ~는 건드리지 않는다');
+});
+
+// App Store Connect는 whatsNew에 이모지를 거부한다 — run #12가 '[🏠]'로 409를 맞았다.
+test('테스트할 내용: 이모지는 걷어내고 글자·문장부호는 남긴다', () => {
+  assert.equal(trimNotes('🏠 숙소 복귀 · 자동'), '숙소 복귀 · 자동');
+  assert.equal(trimNotes('• 시각 3종 — 📌 도착 고정 / 🎫 예약'), '• 시각 3종 — 도착 고정 / 예약');
+  assert.equal(trimNotes('⚠️ 주의'), '주의');
+  assert.equal(trimNotes('GMP → CJU'), 'GMP → CJU', '화살표는 이모지가 아니다');
+  assert.equal(trimNotes('한글 abc 123 (괄호) "따옴표"'), '한글 abc 123 (괄호) "따옴표"');
+  assert.equal(stripPictographs('a🇰🇷b'), 'ab', '국기(지역 지시자)도 이모지다');
 });
