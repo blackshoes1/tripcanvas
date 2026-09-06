@@ -3284,7 +3284,7 @@ function sgPrimaryButtons(sug, di){
   if(a.fromDay!=null && a.si!=null) return [sgButton('오늘 일정에 넣기', true, ()=>acceptMove(sug,di,a), 'ACCEPT')];
   if(a.si!=null){
     const sp=trip().days[di].spots[a.si], out=[];
-    if(hasLoc(sp)) out.push(sgButton('길찾기', true, ()=>{ recordFeedback(sug,'ACCEPTED'); const l=extMapLink(sp); window.open(l.href,'_blank','noopener'); renderSuggestions(di); }, 'ACCEPT'));
+    if(hasLoc(sp)) out.push(sgButton('지도에서 보기', true, ()=>{ recordFeedback(sug,'ACCEPTED'); const l=extMapLink(sp); window.open(l.href,'_blank','noopener'); renderSuggestions(di); }, 'ACCEPT'));
     out.push(sgButton('다녀왔어요', !out.length, ()=>{ recordFeedback(sug,'ACCEPTED'); setSpotStatus(di,a.si,'COMPLETED'); }, 'ACCEPT'));
     return out;
   }
@@ -3499,7 +3499,7 @@ function renderTravel(di, clock){
   if(today){ for(let i=0;i<etas.length;i++) if(etas[i]<=nowMin) currentIndex=i; }
   const current=d.spots[currentIndex], currentLink=hasLoc(current)?extMapLink(current):null;
   const currentFacts=[`${hm(etas[currentIndex])} 도착 예상`,current.bookAt?`예약 ${current.bookAt}`:'예약 없음',current.stayMin!=null?`체류 ${current.stayMin}분`:null].filter(Boolean);
-  currentBox.innerHTML=`<div class="travelKicker">${today?'현재 장소':'선택한 날의 시작 장소'}</div><div class="travelPlace">${catPrefix(current)}${esc(current.name)}</div><div class="travelFacts">${currentFacts.map(esc).join(' · ')}${current.desc?`<br>${esc(current.desc)}`:''}</div><div class="travelActions">${currentLink?`<a href="${escAttr(currentLink.href)}" target="_blank" rel="noopener">길찾기</a>`:''}${safeUrl(current.bookUrl)?`<a href="${escAttr(safeUrl(current.bookUrl))}" target="_blank" rel="noopener">예약 정보</a>`:''}</div>`;
+  currentBox.innerHTML=`<div class="travelKicker">${today?'현재 장소':'선택한 날의 시작 장소'}</div><div class="travelPlace">${catPrefix(current)}${esc(current.name)}</div><div class="travelFacts">${currentFacts.map(esc).join(' · ')}${current.desc?`<br>${esc(current.desc)}`:''}</div><div class="travelActions">${currentLink?`<a href="${escAttr(currentLink.href)}" target="_blank" rel="noopener">${currentLink.label}</a>`:''}${safeUrl(current.bookUrl)?`<a href="${escAttr(safeUrl(current.bookUrl))}" target="_blank" rel="noopener">예약 정보</a>`:''}</div>`;
   // '다음'은 현재 항목의 **뒤**가 아니라 **아직 끝나지 않은 것**이다. currentIndex는 시계로만
   // 정해지는데(현재 장소 표시용), 장소가 가까워 ETA가 전부 지나 있으면 마지막 항목에 머문다 —
   // 그 상태로 +1을 하면 다녀왔다고 표시해도 '오늘 일정 완료'로 떨어졌다.
@@ -3552,9 +3552,7 @@ function renderTravel(di, clock){
       `<div class="d">${esc(s.desc).replace(/\n/g,'<br>')}</div>`+
       ((bu=>bu?`<a href="${escAttr(bu)}" target="_blank" rel="noopener" style="background:#7c5cff;margin-right:6px">🎫 예약 열기</a>`:'')(safeUrl(s.bookUrl)))+
       (hasLoc(s)
-        ? (inKorea({lat:+s.lat,lng:+s.lng})
-            ? `<a href="https://map.kakao.com/link/to/${encodeURIComponent(s.name)},${s.lat},${s.lng}" target="_blank" rel="noopener">🧭 카카오맵 길찾기</a>`
-            : `<a href="https://www.google.com/maps/dir/?api=1&destination=${s.lat},${s.lng}&travelmode=walking" target="_blank" rel="noopener">🧭 여기로 길찾기</a>`)
+        ? ((el=>`<a href="${escAttr(el.href)}" target="_blank" rel="noopener">🧭 ${el.label}</a>`)(extMapLink(s)))
         : `<span style="font-size:12px;color:#f6bd60">📍 위치 미지정</span>`);
     div.appendChild(spotStatusRow(di,si,s));
     list.appendChild(div);
