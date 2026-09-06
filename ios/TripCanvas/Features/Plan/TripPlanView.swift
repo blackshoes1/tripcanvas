@@ -295,8 +295,20 @@ struct TripPlanView: View {
                     title: "지도에 놓을 장소가 없어요",
                     message: "검색해서 담으면 좌표가 함께 들어와 여기에 보입니다.")
             } else {
-                MapEngineView(pins: pins)
+                // 동선은 서버가 준 좌표를 순서대로 이은 것이다 — 계산을 못 받았으면 핀만 나온다.
+                MapEngineView(pins: pins, routes: model.planDay?.mapRoutes ?? [])
                     .ignoresSafeArea(edges: .bottom)
+                    .overlay(alignment: .topLeading) {
+                        // ⚠️ 실제 도로가 아니다. 도로처럼 보이게 두면 거짓말이 된다.
+                        if model.planDay?.mapRoutes.isEmpty == false {
+                            Label("장소를 순서대로 이은 직선이에요", systemImage: "line.diagonal")
+                                .font(.caption)
+                                .padding(.horizontal, Space.m)
+                                .padding(.vertical, Space.xs + 2)
+                                .background(.thinMaterial, in: Capsule())
+                                .padding(Space.m)
+                        }
+                    }
                     .overlay(alignment: .topTrailing) {
                         let missing = day.spots.count - pins.count
                         if missing > 0 {

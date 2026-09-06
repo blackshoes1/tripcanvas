@@ -10,10 +10,11 @@ import UIKit
 /// ⚠️ 카카오 SDK는 POI 탭 신원을 주지 않는다(웹과 같은 제약). 여기서 오는 pick은 좌표뿐이다.
 struct KakaoMapContainer: UIViewRepresentable {
     let pins: [MapPin]
+    var routes: [MapRoute] = []
     let focus: GeoPoint?
     let onPick: ((MapPick) -> Void)?
 
-    func makeCoordinator() -> Coordinator { Coordinator(pins: pins, focus: focus, onPick: onPick) }
+    func makeCoordinator() -> Coordinator { Coordinator(pins: pins, routes: routes, focus: focus, onPick: onPick) }
 
     func makeUIView(context: Context) -> KMViewContainer {
         let container = KMViewContainer(frame: CGRect(x: 0, y: 0, width: 320, height: 320))
@@ -23,7 +24,7 @@ struct KakaoMapContainer: UIViewRepresentable {
 
     func updateUIView(_ container: KMViewContainer, context: Context) {
         context.coordinator.onPick = onPick
-        context.coordinator.update(pins: pins, focus: focus)
+        context.coordinator.update(pins: pins, routes: routes, focus: focus)
     }
 
     static func dismantleUIView(_ container: KMViewContainer, coordinator: Coordinator) {
@@ -35,18 +36,22 @@ struct KakaoMapContainer: UIViewRepresentable {
         private static let layerId = "spots"
         private static let styleId = "spotPin"
         private static let pickStyleId = "pickPin"
+        private static let routeLayerId = "dayRoute"
+        private static let routeStyleId = "dayRouteStyle"
 
         var onPick: ((MapPick) -> Void)?
         private var pins: [MapPin]
         private var focus: GeoPoint?
+        private var routes: [MapRoute] = []
         private var controller: KMController?
         private var ready = false
         private var pendingRender = true
         private var tapHandler: DisposableEventHandler?
         private var pickPoi: Poi?
 
-        init(pins: [MapPin], focus: GeoPoint?, onPick: ((MapPick) -> Void)?) {
+        init(pins: [MapPin], routes: [MapRoute], focus: GeoPoint?, onPick: ((MapPick) -> Void)?) {
             self.pins = pins
+            self.routes = routes
             self.focus = focus
             self.onPick = onPick
         }
@@ -68,9 +73,10 @@ struct KakaoMapContainer: UIViewRepresentable {
             ready = false
         }
 
-        func update(pins: [MapPin], focus: GeoPoint?) {
-            let changed = pins != self.pins || focus != self.focus
+        func update(pins: [MapPin], routes: [MapRoute], focus: GeoPoint?) {
+            let changed = pins != self.pins || routes != self.routes || focus != self.focus
             self.pins = pins
+            self.routes = routes
             self.focus = focus
             guard changed else { return }
             if ready { render() } else { pendingRender = true }
@@ -97,6 +103,16 @@ struct KakaoMapContainer: UIViewRepresentable {
                 let pickIcon = PoiIconStyle(symbol: symbol.withTintColor(.systemOrange, renderingMode: .alwaysOriginal), anchorPoint: CGPoint(x: 0.5, y: 0.5))
                 manager.addPoiStyle(PoiStyle(styleID: Self.pickStyleId, styles: [PerLevelPoiStyle(iconStyle: pickIcon, level: 0)]))
             }
+            // 동선 — 자동 합성 구간(숙소 복귀)을 구분하려고 스타일을 둘 둔다(styleIndex 0/1).
+            let routeManager = map.getRouteManager()
+            routeManager.addRouteStyleSet(RouteStyleSet(styleID: Self.routeStyleId, styles: [
+                RouteStyle(styles: [PerLevelRouteStyle(width: 12, color: UIColor.tintColor.withAlphaComponent(0.85),
+                                                       strokeWidth: 0, strokeColor: .clear, level: 0)]),
+                RouteStyle(styles: [PerLevelRouteStyle(width: 6, color: UIColor.tintColor.withAlphaComponent(0.35),
+                                                       strokeWidth: 0, strokeColor: .clear, level: 0)])
+            ]))
+            _ = routeManager.addRouteLayer(layerID: Self.routeLayerId, zOrder: 0)
+
             tapHandler = map.addMapTappedEventHandler(target: self, handler: Coordinator.mapTapped)
             ready = true
             if pendingRender { render() }
@@ -121,9 +137,23 @@ struct KakaoMapContainer: UIViewRepresentable {
             controller?.getView(Self.viewName) as? KakaoMap
         }
 
+        /// ⚠️ 장소를 순서대로 이은 **직선**이다 — 실제 도로가 아니다(서버가 경로 좌표열을 주지 않는다).
+        private func drawRoutes(on map: KakaoMap) {
+            guard let layer = map.getRouteManager().getRouteLayer(layerID: Self.routeLayerId) else { return }
+            layer.clearAllRoutes()
+            for route in routes where route.points.count >= 2 {
+                let options = RouteOptions(routeID: route.id, styleID: Self.routeStyleId, zOrder: 0)
+                options.segments = [RouteSegment(
+                    points: route.points.map { MapPoint(longitude: $0.lng, latitude: $0.lat) },
+                    styleIndex: route.synthetic ? 1 : 0)]
+                _ = layer.addRoute(option: options)
+            }
+        }
+
         private func render() {
             pendingRender = false
             guard let map = mapView, let layer = map.getLabelManager().getLabelLayer(layerID: Self.layerId) else { return }
+            drawRoutes(on: map)
             layer.clearAllItems()
             for pin in pins {
                 let options = PoiOptions(styleID: Self.styleId, poiID: pin.id)
