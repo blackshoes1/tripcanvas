@@ -36,6 +36,10 @@ CI가 빌드해서 TestFlight에 올리고, 폰의 TestFlight 앱에서 받는�
 
 GitHub → **Actions → iOS TestFlight → Run workflow**.
 
+`테스터에게 보일 변경 사항`에 적은 것은 폰의 TestFlight에 **테스트할 내용**으로 뜬다
+(`scripts/testflight-notes.js`가 App Store Connect API로 넣는다 — `xcodebuild`는 바이너리만 올린다).
+비우면 그 칸이 빈 채로 올라가고, 폰에서는 뭐가 바뀐 빌드인지 알 수 없다.
+
 빌드 번호는 실행 번호가 자동으로 들어간다 — 같은 번호는 두 번 못 올리는데 손으로 하면 반드시 잊는다.
 App Store Connect 처리에 보통 5~15분, 그다음 폰의 TestFlight 앱에 뜬다.
 첫 업로드라면 **TestFlight → 내부 테스트**에 자기 계정을 테스터로 추가해야 보인다.
@@ -51,6 +55,17 @@ App Store Connect 처리에 보통 5~15분, 그다음 폰의 TestFlight 앱에 �
 | 빌드는 보이는데 **폰의 TestFlight에 없음** | 내부 테스트 그룹에 내 계정이 없다 | TestFlight → 내부 테스트 → 그룹에 테스터 추가 |
 | 폰에 **옛 빌드만** 보임 | 새 빌드가 그룹에 배포되지 않았다 | 그룹에서 빌드를 고른다 |
 | TestFlight 앱 자체에 앱이 없음 | 초대 메일을 안 받았다 | 테스터로 추가된 주소로 온 초대를 수락한다 |
+
+### 이메일은 오는데 푸시가 안 올 때
+
+**앱의 `자동 업데이트`가 켜져 있으면 푸시가 안 온다.** TestFlight가 조용히 설치하고 알리지 않는다 —
+"새 빌드가 있어요"는 사람이 눌러서 받아야 할 때만 보내는 알림이다.
+
+⚠️ 설치가 안 된 앱과 비교하면 착각하기 쉽다. 설치가 안 된 앱은 **자동으로 업데이트할 대상이 없어서**
+언제나 알림이 온다. 같은 기기·같은 계정인데 한쪽만 푸시가 오는 이유가 대개 이것이다.
+
+푸시를 받고 싶으면 TestFlight → 그 앱 → **자동 업데이트를 끈다.** 둘 다는 안 된다.
+(자동 업데이트는 iOS가 충전 중·Wi-Fi 같은 때에 알아서 하므로 즉시가 아니다 — 몇 시간 걸리기도 한다)
 
 ⚠️ **수출 규정 준수는 업로드 로그에 아무 흔적도 남기지 않는다.** 워크플로는 초록인데 폰에는 영영 안 뜬다.
 
@@ -69,7 +84,7 @@ App Store Connect 처리에 보통 5~15분, 그다음 폰의 TestFlight 앱에 �
 
 ```bash
 source ~/.tripcanvas-testflight.env     # KEY_ID · ISSUER_ID · TEAM_ID (저장소 밖에 둔다)
-BUILD=6 scripts/testflight-upload.sh
+BUILD=6 NOTES='무엇이 바뀌었는지' scripts/testflight-upload.sh
 ```
 
 - `.p8`은 `~/private_keys/AuthKey_<KeyID>.p8`에 두고 `chmod 600`. **저장소에는 넣지 않는다.**
