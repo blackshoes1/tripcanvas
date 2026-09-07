@@ -2939,6 +2939,25 @@ const DIRECT_PLACEHOLDER=`여행이름: 다롄 2박3일
 
 [Day 2] 시내
 - 여순 감옥 | 다롄 | 25000원`;
+// 밖에서 일정을 만들어 오는 사람이 이미 많다. 그 왕복을 짧게 만든다 — 이 지시문을 복사해
+// ChatGPT 같은 곳에 붙이면, 돌아온 답을 그대로 붙여넣을 수 있다.
+const AI_ASK_PROMPT=`아래 형식으로만 답해줘. 인사말·설명 없이 이 형식만.
+
+[day1] 7/21 (화) 첫날 제목
+- 장소 이름 | 도시 | 한 줄 설명 @09:00
+- 다음 장소 | 도시 | 설명 @12:00
+
+[day2] 7/22 (수) 둘째날 제목
+- (숙소) 숙소 이름 | 도시 | 설명
+
+규칙
+- 한 줄에 한 곳. 장소 이름은 **지도에서 찾을 수 있는 실제 이름**으로 써 줘.
+- 시각은 @HH:MM (24시간). 모르면 빼도 돼.
+- 숙소는 이름 앞에 (숙소), 안 가도 되는 곳은 (선택).
+- 이동·식사처럼 장소가 아닌 것은 넣지 않아도 돼.
+
+여행: `;
+
 const AI_PLACEHOLDER=`예) 다다음주 다롄 2박3일 갈 거야. 첫날 오후 인천서 출발해서 성해광장이랑 러시아거리 야경 보고, 둘째날은 여순감옥이랑 노호탄공원, 셋째날 오전에 시장 구경하고 귀국.`;
 
 // ── 장소검색 라우터: 국내=카카오 로컬, 해외=Google Places ──
@@ -3095,7 +3114,7 @@ function syncPasteMode(){
   document.getElementById('fmtHelp').style.display = ai?'none':'block';
   document.getElementById('pasteModeHint').textContent = ai
     ? '자연어로 자유롭게 붙여넣으면 AI가 날짜·도시·장소·좌표를 정리해줘.'
-    : '아래 형식으로 붙여넣으면 AI 없이 즉시 만들어. 좌표는 자동으로 찾음(국내 카카오·해외 구글).';
+    : 'AI가 준 일정을 그대로 붙여넣어도 돼 — 읽은 결과를 보여줄 테니 담을 것만 고르면 돼.';
   document.getElementById('pasteText').placeholder = ai?AI_PLACEHOLDER:DIRECT_PLACEHOLDER;
 }
 document.getElementById('pasteBtn').onclick=openPaste;
@@ -3104,6 +3123,19 @@ document.getElementById('aiToggle').onchange=()=>{ cfg.aiParse=document.getEleme
 document.getElementById('apiKey').oninput=e=>{ cfg.apiKey=e.target.value.trim(); saveCfg(); };
 document.getElementById('apiModel').onchange=e=>{ cfg.model=e.target.value; saveCfg(); };
 document.getElementById('fmtCopy').onclick=()=>{ document.getElementById('pasteText').value=document.getElementById('fmtSpec').textContent.split('\n\n규칙:')[0].trim(); };
+document.getElementById('aiPromptCopy').onclick=async()=>{
+  const ok=await copyText(AI_ASK_PROMPT);
+  toast(ok?'복사했어 — AI에게 붙여넣고, 답을 그대로 여기로 가져와':'복사가 안 돼서 아래 칸에 넣었어 — 여기서 복사해줘', ok?'#2a9d3f':'#f4862c');
+  if(!ok) document.getElementById('pasteText').value=AI_ASK_PROMPT;
+};
+
+/** 클립보드는 브라우저·권한에 따라 막힌다 — 실패를 삼키지 않고 알린다 @param {string} text */
+async function copyText(text){
+  try{
+    if(navigator.clipboard&&navigator.clipboard.writeText){ await navigator.clipboard.writeText(text); return true; }
+  }catch(e){ reportOperationalError('clipboard',e); }
+  return false;
+}
 document.getElementById('pasteCancel').onclick=()=>document.getElementById('pasteModalBg').classList.remove('show');
 document.getElementById('pasteRun').onclick=runPaste;
 
