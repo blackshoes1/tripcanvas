@@ -67,7 +67,11 @@ export interface Gateway {
  * 응답을 보낸 **뒤** `fillLater`가 채운다. 그래서 그 날을 처음 열면 추정이고 다음부터 도로다.
  */
 export interface LegSupport {
-  read(trip: TripDoc, dayIndex: number): Promise<LegCache>;
+  /**
+   * 이미 조회된 구간(`cache`)과, 아직 조회되지 않은 구간 수(`pending`).
+   * `pending`은 **곧 채워질 것만** 센다 — 실패로 기록된 구간은 곧 바뀌지 않으므로 빼고 센다.
+   */
+  read(trip: TripDoc, dayIndex: number): Promise<{ cache: LegCache; pending: number }>;
   /** 기다리지 않는다 — 배경에서 채우고 실패는 로그로 삼킨다 */
   fillLater(trip: TripDoc, dayIndex: number): void;
 }
@@ -214,19 +218,19 @@ export function createHandlers(deps: HandlerDeps) {
     const dayIndex = readDayIndex(url);
     const clock = resolveClock(row.data, dayIndex ?? null, url, now());
     const dismissed = await gateway.listDismissed(row.client_id, clock.todayISO).catch((): string[] => []);
-    const legCache = await legCacheFor(row.data, resolveDayIndex(row.data, clock.todayISO, dayIndex));
+    const legs = await legCacheFor(row.data, resolveDayIndex(row.data, clock.todayISO, dayIndex));
     return computeToday({
       tripId: row.client_id, trip: row.data, revision: row.revision, updatedAt: row.updated_at,
       role: row.role, memberCount: row.member_count,
-      todayISO: clock.todayISO, nowMinutes: clock.nowMinutes, dayIndex, dismissed, legCache,
+      todayISO: clock.todayISO, nowMinutes: clock.nowMinutes, dayIndex, dismissed, legCache: legs.cache,
       generatedAt: now().toISOString(), ...extra
     }).response;
   }
 
   /** 이미 조회된 구간만. 캐시가 없거나 읽다 실패하면 빈 캐시 — 화면은 추정으로 나가고 멈추지 않는다 */
-  async function legCacheFor(trip: TripDoc, dayIndex: number): Promise<LegCache> {
-    if (!deps.legs) return {};
-    try { return await deps.legs.read(trip, dayIndex); } catch { return {}; }
+  async function legCacheFor(trip: TripDoc, dayIndex: number): Promise<{ cache: LegCache; pending: number }> {
+    if (!deps.legs) return { cache: {}, pending: 0 };
+    try { return await deps.legs.read(trip, dayIndex); } catch { return { cache: {}, pending: 0 }; }
   }
 
   /** GET /api/v1/trips — 여행 목록. 삭제(tombstone)된 여행은 빼고, 최근 수정 순. */
@@ -270,10 +274,11 @@ export function createHandlers(deps: HandlerDeps) {
     try { row = await gateway.getTrip(tripId); } catch { return fail('UPSTREAM_ERROR'); }
     if (!row || row.deleted_at) return fail('TRIP_NOT_FOUND');
     const stamp = now().toISOString().slice(0, 10);
+    const legs = await legCacheFor(row.data, dayIndex);
     const body = buildDayPlanView({
       trip: row.data, di: dayIndex,
       summary: summarizeTrip(row, stamp), generatedAt: now().toISOString(),
-      legCache: await legCacheFor(row.data, dayIndex)
+      legCache: legs.cache, legsPending: legs.pending
     });
     // 없는 날을 지어내지 않는다 — 여행은 있는데 그 일자가 없으면 404다.
     if (!body) return fail('DAY_NOT_FOUND');

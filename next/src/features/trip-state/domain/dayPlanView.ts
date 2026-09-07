@@ -96,6 +96,8 @@ export interface DayPlanInput {
   generatedAt: string;
   /** 서버 구간 캐시. 없으면(키 미설정·아직 안 채워짐) 전부 직선거리 추정이다 */
   legCache?: LegCache;
+  /** 아직 조회되지 않은 구간 수 — 화면이 잠시 뒤 한 번 더 받아 볼지 정한다. 모르면 0 */
+  legsPending?: number;
 }
 
 /**
@@ -206,6 +208,7 @@ export function buildDayPlanView(input: DayPlanInput): DayPlanResponse | null {
     generatedAt: input.generatedAt,
     // 하나라도 추정이면 추정이라고 말한다 — 절반만 도로인 하루를 "실제 경로"라 하지 않는다.
     travelTimeSource: legs.length && legs.every((l) => l.source === 'ROUTED') ? 'ROUTED' : 'STRAIGHT_LINE_ESTIMATE',
+    legsPending: Math.max(0, Math.round(input.legsPending ?? 0)),
     trip: input.summary,
     dayCount: days.length,
     days: days.map((d, i): DayPlanStripEntry => ({
