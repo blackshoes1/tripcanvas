@@ -1535,6 +1535,7 @@ function renderSidebar(){
             <div class="spotLeg">${legTxt}</div>
           </div>`;
         })()}
+        ${firstStepCard(di)}
         <button class="addSpot addSpotBtn" data-di="${di}" onclick="openSpotModal(${di},-1)">＋ 장소 추가</button>${day.spots.filter(hasLoc).length>=3?`<button class="addSpot optBtn" onclick="optimizeDay(${di})" title="이 날의 방문 순서를 이동거리 최소로 재배열">🧭 동선 최적화</button>`:''}
         ${day.note?`<div class="note">📝 ${esc(day.note)}</div>`:''}
       </div>`;
@@ -1602,6 +1603,37 @@ function applySpotSelection(){
   }
   refreshAddSpotLabels();
 }
+// ── 처음 만든 여행의 다음 한 걸음 ──
+// 만들고 나서 빈 화면을 마주하게 두지 않는다. 장소가 **하나라도** 담기면 사라지고,
+// 일자마다 반복하지 않는다(첫 일자에만). 닫으면 그 여행에서는 다시 뜨지 않는다.
+const FIRST_STEP_KEY='tripcanvas_firststep_v1';
+function firstStepDismissed(id){
+  try{ return (JSON.parse(localStorage.getItem(FIRST_STEP_KEY))||[]).includes(id); }catch(_){ return false; }
+}
+function dismissFirstStep(){
+  const id=trip()&&trip().id; if(!id) return;
+  try{
+    const seen=JSON.parse(localStorage.getItem(FIRST_STEP_KEY))||[];
+    if(!seen.includes(id)) localStorage.setItem(FIRST_STEP_KEY,JSON.stringify(seen.slice(-49).concat(id)));
+  }catch(_){}
+  render();
+}
+/** @param {number} di @returns {string} */
+function firstStepCard(di){
+  const t=trip();
+  if(di!==0||!t||readOnly()) return '';
+  if(t.days.some(d=>d.spots.length)) return '';
+  if(firstStepDismissed(t.id)) return '';
+  return `<div class="firstStep">
+    <div class="firstStepTitle">어디부터 가볼까요?</div>
+    <div class="firstStepBtns">
+      <button class="btn primary" onclick="openSpotModal(0,-1)">🔍 장소 담기</button>
+      <button class="btn" onclick="document.getElementById('pasteBtn').click()">▧ 가진 일정 붙여넣기</button>
+    </div>
+    <button class="firstStepClose" type="button" onclick="dismissFirstStep()">이 안내 닫기</button>
+  </div>`;
+}
+
 // '＋ 장소 추가'가 어디에 넣을지 밝힌다 — 선택 위치는 카드 강조 말고는 눈에 안 보인다.
 // 선택은 render() 없이도 바뀌므로(장소 탭) 라벨 갱신을 applySpotSelection에 묶는다.
 function refreshAddSpotLabels(){
@@ -2010,15 +2042,67 @@ document.getElementById('dayDelBtn').onclick=()=>{
 
 // ───────────────── 여행 관리 ─────────────────
 document.getElementById('tripSel').onchange=e=>{ commit(()=>{ store.activeId=e.target.value; activeDay=0; }, {fit:fitEntry}); };
-function createNewTrip(askName){
-  const name=askName===false?'새 여행':prompt('새 여행 이름은?','새 여행'); if(name===null)return;
-  const t={id:uid(),name:name||'새 여행',start:new Date().toISOString().slice(0,10),days:[{title:'',drive:'',note:'',spots:[]}]};
-  commit(()=>{ store.trips.push(t); store.activeId=t.id; activeDay=0; });
-  document.getElementById('tripModalBg').classList.add('show');
-  document.getElementById('tripName').value=t.name; document.getElementById('tripStart').value=t.start;
-  document.getElementById('tripTimeZone').value='';
+// ── 새 여행 — 두 가지만 묻는다: 어디로, 언제 ──
+// 그 이상(장소·숙소·예산)은 만든 뒤에 채우면 되는 것들이다. 예전에는 이름 하나만 prompt로 묻고
+// **여행 설정 모달**(버전 기록·삭제 버튼이 있는 화면)을 띄웠다 — 처음 온 사람을 맞이하는 화면이 아니었다.
+// ⚠️ 도시는 **이름의 기본값**으로만 쓴다. 여행 문서에 우리만 아는 필드를 새로 만들지 않는다(iOS와 같은 규칙).
+const NT_FALLBACK_NAME='새 여행';
+let ntNameEdited=false;
+
+function openNewTrip(){
+  const today=new Date().toISOString().slice(0,10);
+  document.getElementById('ntCity').value='';
+  document.getElementById('ntName').value='';
+  document.getElementById('ntStart').value=today;
+  document.getElementById('ntDays').value='3';
+  ntNameEdited=false;
+  syncNewTripRange();
+  document.getElementById('newTripBg').classList.add('show');
+  requestAnimationFrame(()=>document.getElementById('ntCity').focus());
 }
-document.getElementById('newTripBtn').onclick=()=>createNewTrip(true);
+/** 며칠인지 숫자로만 말하지 않는다 — 끝나는 날이 보여야 정할 수 있다 */
+function syncNewTripRange(){
+  const start=document.getElementById('ntStart').value;
+  const n=newTripDayCount();
+  const label=document.getElementById('ntRange');
+  if(!start){ label.textContent=''; return; }
+  const base=new Date(start+'T00:00:00');
+  const end=new Date(base.getTime()+(n-1)*86400000);
+  const fmt=d=>`${d.getMonth()+1}/${d.getDate()}`;
+  label.textContent=n<=1? `${fmt(base)} 하루` : `${fmt(base)} → ${fmt(end)} · ${n}일`;
+}
+function newTripDayCount(){
+  const n=parseInt(document.getElementById('ntDays').value,10);
+  return Math.min(30,Math.max(1,isNaN(n)?1:n));
+}
+/** 빈 일자 N개짜리 여행. 나머지는 normalizeTrip이 채운다 — 웹·앱이 같은 모양을 만든다 */
+function createNewTrip(draft){
+  const n=Math.min(30,Math.max(1,Number(draft&&draft.dayCount)||1));
+  const days=[]; for(let i=0;i<n;i++) days.push({title:'',drive:'',note:'',spots:[]});
+  const t={id:uid(),name:(draft&&draft.name)||NT_FALLBACK_NAME,
+           start:(draft&&draft.start)||new Date().toISOString().slice(0,10),days};
+  commit(()=>{ store.trips.push(t); store.activeId=t.id; activeDay=0; }, {fit:fitEntry});
+  return t;
+}
+document.getElementById('ntCity').oninput=()=>{
+  if(ntNameEdited) return;
+  const city=document.getElementById('ntCity').value.trim();
+  document.getElementById('ntName').value=city? `${city} 여행`:'';
+};
+document.getElementById('ntName').oninput=()=>{ ntNameEdited=true; };
+document.getElementById('ntStart').oninput=syncNewTripRange;
+document.getElementById('ntDays').oninput=syncNewTripRange;
+document.getElementById('ntCancel').onclick=()=>document.getElementById('newTripBg').classList.remove('show');
+document.getElementById('ntRun').onclick=()=>{
+  // 이름을 안 적었다고 막지 않는다 — 눌리지 않는 버튼은 이유를 말해 주지 못한다
+  const name=document.getElementById('ntName').value.trim()||NT_FALLBACK_NAME;
+  const start=document.getElementById('ntStart').value;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(start)){ toast('시작일을 정해줘','#e63946'); return; }
+  document.getElementById('newTripBg').classList.remove('show');
+  createNewTrip({name,start,dayCount:newTripDayCount()});
+  toast(`${name} · ${newTripDayCount()}일 — 이제 장소를 담아 보세요`,'#2a9d3f');
+};
+document.getElementById('newTripBtn').onclick=openNewTrip;
 document.getElementById('tripEditBtn').onclick=()=>{
   document.getElementById('tripName').value=trip().name;
   document.getElementById('tripStart').value=trip().start||'';
@@ -5095,7 +5179,7 @@ document.getElementById('joinAccept').onclick=async()=>{
 document.getElementById('tripPickerBtn').onclick=()=>document.getElementById('tripListBtn').click();
 function dismissOnboarding(){ document.getElementById('onboarding').hidden=true; try{localStorage.setItem(ONBOARD_KEY,'1');}catch(_){} }
 document.getElementById('onboardSample').onclick=()=>{ dismissOnboarding(); fitEntry(); };
-document.getElementById('onboardNew').onclick=()=>{ dismissOnboarding(); createNewTrip(false); };
+document.getElementById('onboardNew').onclick=()=>{ dismissOnboarding(); openNewTrip(); };
 document.getElementById('onboardPaste').onclick=()=>{ dismissOnboarding(); document.getElementById('pasteBtn').click(); document.getElementById('pasteTarget').value='new'; };
 document.getElementById('onboardLogin').onclick=()=>{ dismissOnboarding(); document.getElementById('authBtn').click(); };
 

@@ -131,6 +131,17 @@
   .syncChoices{display:grid;gap:8px;margin-top:16px}.syncChoices .btn{width:100%;justify-content:center}
   .modal .chkrow{display:flex;align-items:center;gap:6px;margin-top:9px;font-size:12.5px}
   .searchRes{margin-top:6px;max-height:170px;overflow-y:auto}
+  /* 새 여행 — 어디로·언제 */
+  .ntWhen{display:flex;gap:8px;align-items:center}
+  .ntWhen input[type=date]{flex:1}
+  .ntDays{display:flex;align-items:center;gap:4px;flex:none}
+  .ntDays input{width:64px;text-align:right}
+  /* 처음 만든 여행의 다음 한 걸음 — 장소가 하나라도 담기면 사라진다 */
+  .firstStep{margin:8px 0;padding:12px;border:1px dashed var(--line);border-radius:12px;background:var(--bg)}
+  .firstStepTitle{font-size:13px;font-weight:700;margin-bottom:8px}
+  .firstStepBtns{display:flex;gap:6px;flex-wrap:wrap}
+  .firstStepBtns .btn{flex:1;justify-content:center;white-space:nowrap}
+  .firstStepClose{margin-top:8px;background:none;border:0;color:var(--muted);font-size:11px;text-decoration:underline;cursor:pointer;padding:0}
   /* 붙여넣기 미리보기 — 무엇을 담을지 사람이 고른다(§유입) */
   .pvList{margin-top:8px;max-height:46dvh;overflow-y:auto;border:1px solid var(--line);border-radius:10px}
   .pvDay{padding:7px 10px;background:var(--surface);font-size:12px;font-weight:700;color:var(--muted);position:sticky;top:0;z-index:1;box-shadow:0 1px 0 var(--line)}
