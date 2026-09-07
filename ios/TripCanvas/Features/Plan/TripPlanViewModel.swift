@@ -43,15 +43,18 @@ final class TripPlanViewModel {
     private let service: TripDocumentSource
     private let memberSource: MemberListing?
     /// 여행 중일 때 '오늘'로 한 번만 옮긴다.
-    private var didJumpToToday = false
 
-    /// - Parameter legRetryDelay: 경로가 채워지기를 기다리는 시간. 테스트는 짧게 준다.
+    /// - Parameters:
+    ///   - initialDay: 처음 볼 날. **여행 목록이 이미 아는 값**(`TripSummary.todayIndex`)을 받는다 —
+    ///     계산이 온 뒤에 옮기면 1일차를 보여 줬다가 오늘로 튄다.
+    ///   - legRetryDelay: 경로가 채워지기를 기다리는 시간. 테스트는 짧게 준다.
     init(tripId: String, service: TripDocumentSource, memberSource: MemberListing? = nil,
-         legRetryDelay: TimeInterval = 3) {
+         initialDay: Int = 0, legRetryDelay: TimeInterval = 3) {
         self.tripId = tripId
         self.service = service
         self.memberSource = memberSource
         self.legRetryDelay = legRetryDelay
+        self.selectedDay = max(0, initialDay)
     }
 
     var canEdit: Bool { role.canEdit }
@@ -61,6 +64,14 @@ final class TripPlanViewModel {
     private(set) var isLoadingTripRoutes = false
     /// 전체 동선도 한 번만 다시 받는다(하루치와 같은 규칙).
     private var retriedTripRoutes = false
+
+    /// 계산을 한 번이라도 **시도한** 날들.
+    ///
+    /// 계산이 오기 전의 목록에는 🏠 이월 숙소·렌터카·구간 줄·숙소 복귀·하루 합계가 없다.
+    /// 그 상태를 먼저 그렸다가 계산이 들어오면 줄이 통째로 밀린다 — 그래서 **첫 시도가 끝날 때까지**
+    /// 목록을 짓지 않는다(2026-09-07 '화면이 튄다' 보고). 캐시가 있으면 기다림은 0이다.
+    private var attemptedDays: Set<Int> = []
+    func planAttempted(for day: Int) -> Bool { attemptedDays.contains(day) }
 
     /// 경로가 채워지기를 기다렸다 한 번 더 받은 날들. **날마다 한 번뿐이다.**
     private var retriedLegs: Set<Int> = []
@@ -106,14 +117,20 @@ final class TripPlanViewModel {
             guard day == selectedDay else { return }   // 그 사이 다른 날로 옮겼으면 버린다
             plan = fetched.value
             planCachedAt = fetched.cachedAt
-            jumpToTodayOnce()
+            attemptedDays.insert(day)
             await loadMembers()
             // ⚠️ **기다리지 않는다.** 여기서 await 하면 `load()`가 3초 동안 안 끝나고,
             // 그동안 화면은 로딩 상태로 멈춘다 — 채우기를 기다리는 것과 화면을 세우는 것은 다른 일이다.
             scheduleLegRetry(day: day, pending: fetched.value.legsPending)
         } catch {
-            plan = nil
-            planCachedAt = nil
+            attemptedDays.insert(day)
+            // 못 받았다고 **이미 보여 준 계산을 지우지 않는다** — 화면이 비면서 또 튄다.
+            // 다만 그 계산이 지금 보는 날의 것이고 문서가 그대로일 때만 남긴다:
+            // 편집한 뒤의 옛 시각을 계속 보여 주면 틀린 숫자를 말하는 것이다.
+            if plan?.day.index != day || plan?.trip.revision != revision {
+                plan = nil
+                planCachedAt = nil
+            }
         }
     }
 
@@ -127,6 +144,7 @@ final class TripPlanViewModel {
         guard let cached = await service.cachedDayPlan(tripId: tripId, dayIndex: day) else { return }
         guard cached.trip.revision == revision, cached.day.index == day, day == selectedDay else { return }
         plan = cached
+        attemptedDays.insert(day)      // 지난 계산이 있으면 기다릴 것이 없다
     }
 
     /// 서버가 "아직 못 채운 구간이 있다"고 하면 **한 번만** 다시 받는다.
@@ -169,14 +187,6 @@ final class TripPlanViewModel {
         }
     }
 
-    /// 여행 중이면 오늘부터 본다 — 14일짜리 일정에서 1일차부터 스크롤하게 두지 않는다.
-    /// **한 번만** 옮긴다. 사용자가 고른 날을 나중에 되돌리면 안 된다.
-    private func jumpToTodayOnce() {
-        guard !didJumpToToday else { return }
-        didJumpToToday = true
-        guard let today = todayIndex, today != selectedDay, document?.hasDay(today) == true else { return }
-        selectedDay = today
-    }
 
     /// 일자 스트립. 계산을 못 받았으면 문서에서 최소한(번호·제목·장소 수)만 만든다 —
     /// ⚠️ 날짜는 넣지 않는다. `start + index`를 앱에서 더하면 규칙이 두 곳이 된다.
