@@ -99,7 +99,25 @@
     return {resync:false,entry:meta[id]};
   }
 
-  const API={loadMeta,sameData,hashTrip,mergeForLogin,beginDelete,undoDelete,finishDelete};
+  /**
+   * 저장이 **왜** 실패했는지 한 줄로. 원인을 감추지 않는다 — "저장에 실패했습니다"만 뜨면
+   * 사용자도 다음에 무엇을 할지 모르고, 나중에 되짚을 단서도 남지 않는다(2026-09-07에 그랬다).
+   *
+   * ⚠️ 서버가 준 문장을 그대로 쓴다(길이만 자른다). 여기서 원인을 다시 분류하면 서버와 말이 갈린다.
+   * @param {any} error @returns {string}
+   */
+  function saveFailText(error){
+    const status=Number(error&&error.status)||0;
+    const code=String((error&&(error.apiCode||error.code))||'');
+    if(status===401||code==='UNAUTHORIZED') return '로그인이 풀렸어요 — 다시 로그인해 주세요 (편집은 그대로 남아 있어요)';
+    if(!status||code==='NETWORK_ERROR') return '서버에 닿지 못했어요 — 연결을 확인해 주세요 (편집은 그대로 남아 있어요)';
+    if(status>=500) return '서버가 답하지 못했어요 — 잠시 후 다시 시도합니다 (편집은 그대로 남아 있어요)';
+    const message=String((error&&error.message)||'').trim();
+    const why=message?` — ${message.length>90?message.slice(0,90)+'…':message}`:'';
+    return `클라우드 저장 실패${why} (편집은 그대로 남아 있어요)`;
+  }
+
+  const API={loadMeta,sameData,hashTrip,mergeForLogin,beginDelete,undoDelete,finishDelete,saveFailText};
   if(typeof module!=='undefined'&&module.exports) module.exports=API;
   else /** @type {any} */(root).TC_SYNC=API;
 })(typeof window!=='undefined'?window:globalThis);

@@ -205,7 +205,11 @@
   /** 오류를 그대로 던진다 — 예전 rpcRow가 그랬듯이 @param {any} error */
   function raise(error) {
     const e = new Error(error.message || '요청이 실패했습니다');
-    return Object.assign(e, error);
+    // 이름에 서버 코드를 남긴다 — 진단 기록(reportOperationalError)이 'Error' 하나만 남기면
+    // 나중에 무엇이 실패했는지 아무도 모른다.
+    Object.assign(e, error);
+    e.name = String(error.apiCode || error.code || 'ApiError') || 'ApiError';
+    return e;
   }
 
   const sync = {
