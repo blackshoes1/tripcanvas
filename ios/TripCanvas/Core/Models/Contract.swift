@@ -896,3 +896,40 @@ struct ItineraryDraft: Codable, Hashable, Sendable {
 struct ItineraryParseResponse: Codable, Sendable {
     let draft: ItineraryDraft
 }
+
+// MARK: - 여행 전체 동선 (GET /api/v1/trips/:id/routes)
+//
+// 일자별 지도는 `DayPlanResponse`로 충분하지만, 전체를 한 화면에 보려면 며칠치를 한 번에 받아야 한다.
+// ⚠️ 그리는 데 필요한 것만 온다 — 시각·비용·예약은 일자 화면의 몫이다.
+
+struct TripRouteLeg: Codable, Hashable, Sendable {
+    let from: GeoPoint
+    let to: GeoPoint
+    let mode: String
+    /// 실제 경로. **없으면 nil**이고 그때 지도는 두 점을 곧게 잇는다.
+    let path: String?
+    let source: TravelTimeSource
+}
+
+struct TripRouteDay: Codable, Hashable, Sendable {
+    let index: Int
+    let date: String
+    let title: String
+    struct Spot: Codable, Hashable, Sendable {
+        let name: String
+        let location: GeoPoint
+    }
+    /// 좌표가 있는 장소만, 순서대로.
+    let spots: [Spot]
+    let legs: [TripRouteLeg]
+}
+
+struct TripRoutesResponse: Codable, Hashable, Sendable {
+    let schemaVersion: Int
+    let generatedAt: String
+    let travelTimeSource: TravelTimeSource
+    /// 아직 조회되지 않은 구간 수. 0보다 크면 곧 채워진다 — **한 번만** 다시 받아 본다.
+    let legsPending: Int
+    let trip: TripSummary
+    let days: [TripRouteDay]
+}

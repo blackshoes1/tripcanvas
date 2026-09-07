@@ -444,6 +444,9 @@ private final class FakeDocumentService: TripDocumentSource {
         guard let dayPlanResponse else { throw APIError.notFound("일자 계획 없음") }
         return TripService.Fetched(value: dayPlanResponse, cachedAt: nil)
     }
+    /// 전체 동선은 이 테스트의 관심사가 아니다 — 프로토콜을 채우기만 한다.
+    func tripRoutes(tripId: String) async throws -> TripRoutesResponse { throw APIError.offline }
+
 }
 
 

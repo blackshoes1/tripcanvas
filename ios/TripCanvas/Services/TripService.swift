@@ -242,6 +242,8 @@ protocol TripDocumentSource {
     func saveDocument(tripId: String, document: TripDocument, expectedRevision: Int) async throws -> TripDocumentSnapshot
     /// 그 날의 계산(예상 도착·구간·합계)과 일자 스트립. **계산은 서버가 한다** — 앱은 그린다.
     func dayPlan(tripId: String, dayIndex: Int) async throws -> TripService.Fetched<DayPlanResponse>
+    /// 여행 **전체**의 동선. 전체 지도를 볼 때만 부른다 — 열지도 않을 날까지 미리 받지 않는다.
+    func tripRoutes(tripId: String) async throws -> TripRoutesResponse
 }
 
 /// 새 여행에 필요한 최소한 — **어디로·언제·며칠**. 그 이상은 만든 뒤에 고치면 되는 것들이다.
@@ -286,6 +288,11 @@ extension TripService: TripDocumentSource {
             document: TripDocument(raw: response.document),
             revision: response.trip.revision,
             role: response.trip.role ?? .owner)
+    }
+
+    /// 여행 전체 동선. 그리는 데 필요한 것만 온다(시각·비용은 일자 화면의 몫).
+    func tripRoutes(tripId: String) async throws -> TripRoutesResponse {
+        try await api.get("/api/v1/trips/\(tripId)/routes")
     }
 
     /// revision CAS 저장. 다른 기기가 먼저 바꿨으면 `APIError.revisionConflict`가 나온다 —

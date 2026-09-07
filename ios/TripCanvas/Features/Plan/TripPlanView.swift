@@ -4,6 +4,9 @@ import SwiftUI
 ///
 /// 웹의 일자 카드를 그대로 옮기지 않았다. 아이폰에서는 하루를 골라 그 날의 장소만 목록으로 보고,
 /// 순서는 끌어서, 빼는 것은 스와이프로 한다. 바꾸는 즉시 저장된다(저장 버튼이 없다).
+/// 지도 보기 범위. 전체는 **누른 순간에만** 받는다 — 열지도 않을 날까지 미리 받지 않는다.
+enum MapScope: Hashable { case day, trip }
+
 struct TripPlanView: View {
     let trip: TripSummary
 
@@ -11,6 +14,8 @@ struct TripPlanView: View {
     @State private var model: TripPlanViewModel?
     @State private var editor: SpotEditorTarget?
     @State private var showsSearch = false
+    /// 지도를 하루만 볼지 여행 전체로 볼지.
+    @State private var mapScope: MapScope = .day
     @State private var showsMap = false
 
     var body: some View {
@@ -296,6 +301,54 @@ struct TripPlanView: View {
     /// 그날의 동선. 좌표 없는 장소는 여기 안 나온다 — 목록의 '위치 없음'이 그 사실을 말한다.
     @ViewBuilder
     private func dayMap(_ model: TripPlanViewModel) -> some View {
+        VStack(spacing: 0) {
+            // 하루만 볼지, 여행 전체를 볼지. 전체는 **누른 순간에만** 받는다(열지도 않을 날을 미리 받지 않는다).
+            Picker("보기", selection: $mapScope) {
+                Text("이 날").tag(MapScope.day)
+                Text("전체").tag(MapScope.trip)
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, Space.m)
+            .padding(.vertical, Space.xs)
+
+            if mapScope == .trip { tripMap(model) } else { singleDayMap(model) }
+        }
+        .task(id: mapScope) { if mapScope == .trip { await model.loadTripRoutes() } }
+    }
+
+    /// 여행 전체 — 날마다 색이 다르다(웹의 일자 색 순서와 같다).
+    @ViewBuilder
+    private func tripMap(_ model: TripPlanViewModel) -> some View {
+        if let routes = model.tripRoutes {
+            let days = routes.days.filter { !$0.spots.isEmpty }
+            if days.isEmpty {
+                EmptyStateView(symbol: "map", title: "지도에 놓을 장소가 없어요",
+                               message: "장소를 담으면 여행 전체 동선이 여기에 보입니다.")
+            } else {
+                MapEngineView(
+                    pins: days.flatMap(\.pins),
+                    routes: days.flatMap { $0.mapRoutes(colorIndex: $0.index) })
+                    .ignoresSafeArea(edges: .bottom)
+                    .overlay(alignment: .topLeading) {
+                        if let note = routeNote(days.flatMap { $0.mapRoutes(colorIndex: $0.index) }) {
+                            Label(note, systemImage: "line.diagonal")
+                                .font(.caption)
+                                .padding(.horizontal, Space.m).padding(.vertical, Space.xs + 2)
+                                .background(.thinMaterial, in: Capsule())
+                                .padding(Space.m)
+                        }
+                    }
+            }
+        } else if model.isLoadingTripRoutes {
+            ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            EmptyStateView(symbol: "map", title: "전체 동선을 불러오지 못했어요",
+                           message: "잠시 후 다시 시도해 주세요. 이 날 보기는 그대로 됩니다.")
+        }
+    }
+
+    @ViewBuilder
+    private func singleDayMap(_ model: TripPlanViewModel) -> some View {
         if let day = model.day {
             let pins = day.pins
             if pins.isEmpty {

@@ -24,6 +24,8 @@ struct MapRoute: Identifiable, Hashable {
     let synthetic: Bool
     /// 이 선의 **모든** 구간이 실제 경로인가. 하나라도 직선이면 false다.
     var routed: Bool = false
+    /// 며칠째 동선인가 — 여행 전체를 볼 때 날마다 색을 나눈다. **음수면 기본색**(하루만 볼 때).
+    var colorIndex: Int = -1
 }
 
 /// 지도에서 사용자가 고른 자리. POI를 탭했으면 그 신원(placeId·이름)까지 온다.
@@ -84,8 +86,8 @@ struct GoogleMapContainer: UIViewRepresentable {
                     for p in route.points { path.add(CLLocationCoordinate2D(latitude: p.lat, longitude: p.lng)) }
                     let line = GMSPolyline(path: path)
                     // 자동으로 이어 붙인 구간(숙소 복귀)은 옅고 가늘게 — 내가 넣은 이동과 구분한다.
-                    line.strokeColor = route.synthetic ? UIColor.tintColor.withAlphaComponent(0.35)
-                                                       : UIColor.tintColor.withAlphaComponent(0.85)
+                    let base = MapPalette.color(route.colorIndex)
+                    line.strokeColor = base.withAlphaComponent(route.synthetic ? 0.35 : 0.85)
                     line.strokeWidth = route.synthetic ? 2 : 4
                     line.geodesic = true
                     line.map = mapView

@@ -56,6 +56,12 @@ final class TripPlanViewModel {
 
     var canEdit: Bool { role.canEdit }
 
+    /// 여행 전체 동선. **전체 지도를 볼 때만** 받는다 — 열지도 않을 날까지 미리 받지 않는다.
+    private(set) var tripRoutes: TripRoutesResponse?
+    private(set) var isLoadingTripRoutes = false
+    /// 전체 동선도 한 번만 다시 받는다(하루치와 같은 규칙).
+    private var retriedTripRoutes = false
+
     /// 경로가 채워지기를 기다렸다 한 번 더 받은 날들. **날마다 한 번뿐이다.**
     private var retriedLegs: Set<Int> = []
     /// 채우기에 주는 시간. 구간 몇 개면 대개 이 안에 끝난다.
@@ -131,6 +137,23 @@ final class TripPlanViewModel {
         guard day == selectedDay else { return }        // 늦게 온 답이 화면을 되돌리지 않게
         plan = fetched.value
         planCachedAt = fetched.cachedAt
+    }
+
+    /// 여행 전체 동선을 받는다. **한 번만** 받고, 못 채운 구간이 있으면 한 번만 다시 받는다.
+    /// ⚠️ 실패해도 조용하다 — 전체 지도가 안 뜰 뿐 일자 지도와 편집은 그대로다.
+    func loadTripRoutes() async {
+        guard tripRoutes == nil, !isLoadingTripRoutes else { return }
+        isLoadingTripRoutes = true
+        defer { isLoadingTripRoutes = false }
+        guard let received = try? await service.tripRoutes(tripId: tripId) else { return }
+        tripRoutes = received
+        guard received.legsPending > 0, !retriedTripRoutes else { return }
+        retriedTripRoutes = true
+        Task { [weak self] in
+            guard let self else { return }
+            try? await Task.sleep(for: .seconds(self.legRetryDelay))
+            if let again = try? await self.service.tripRoutes(tripId: self.tripId) { self.tripRoutes = again }
+        }
     }
 
     /// 여행 중이면 오늘부터 본다 — 14일짜리 일정에서 1일차부터 스크롤하게 두지 않는다.
