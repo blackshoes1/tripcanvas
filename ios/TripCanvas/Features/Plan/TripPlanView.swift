@@ -378,9 +378,20 @@ struct TripPlanView: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
             if model.canEdit {
-                Text("오른쪽 위 ＋로 검색해서 담거나, 일행과 골라 둔 곳에서 가져옵니다.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                // 방금 만든 여행이면 **누를 것을 화면에 둔다.** 처음 온 사람에게
+                // "오른쪽 위 ＋를 누르세요"는 한 번 더 찾게 만드는 말이다.
+                if model.tripIsEmpty {
+                    Text("어디부터 가볼까요?").font(.subheadline.weight(.semibold))
+                    Button { showsSearch = true } label: {
+                        Label("장소 검색해서 담기", systemImage: "magnifyingglass")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                } else {
+                    Text("오른쪽 위 ＋로 검색해서 담거나, 일행과 골라 둔 곳에서 가져옵니다.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 NavigationLink { CandidateBoardView(trip: trip) } label: {
                     Label("가고 싶은 곳에서 가져오기", systemImage: "mappin.and.ellipse")
                         .font(.subheadline.weight(.semibold))

@@ -172,9 +172,10 @@ final class TripPlanViewModelTests: XCTestCase {
     //
     // 스트립은 "며칠째"만이 아니라 **언제, 어떤 날**인지 말해야 한다. 날짜는 서버가 준 것을 쓴다.
 
-    private func plan(days: Int = 2, todayIndex: Int = -1, selected: Int = 0) -> DayPlanResponse {
+    private func plan(days: Int = 2, todayIndex: Int = -1, selected: Int = 0, spotsInFirstDay: Int = 1) -> DayPlanResponse {
         let strip = (0..<days).map { i in
-            DayPlanStripEntry(index: i, date: "2026-10-0\(i + 1)", title: "Day \(i + 1)", spotCount: i == 0 ? 1 : 0)
+            DayPlanStripEntry(index: i, date: "2026-10-0\(i + 1)", title: "Day \(i + 1)",
+                              spotCount: i == 0 ? spotsInFirstDay : 0)
         }
         let summary = TripSummary(id: "t1", name: "오사카", start: "2026-10-01", dayCount: days, revision: 7,
                                   updatedAt: "", timeZone: "Asia/Seoul", cities: [],
@@ -471,5 +472,41 @@ final class SpotRowLayoutTests: XCTestCase {
     func testTheIndentGrowsWithTheColumn() {
         XCTAssertGreaterThan(SpotRow.secondaryIndent(timeColumnWidth: 120),
                              SpotRow.secondaryIndent(timeColumnWidth: 62))
+    }
+}
+
+// MARK: - 방금 만든 여행
+//
+// 장소가 하나도 없는 여행에서만 "어디부터 가볼까요?"가 뜬다.
+// 계산을 못 받았을 때 그 안내를 띄우면, 장소가 있는데도 없다고 말하게 된다.
+
+extension TripPlanViewModelTests {
+
+    func testTripIsEmptyOnlyWhenEveryDayIsEmpty() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(days: 2, spots: 0), revision: 7, role: .owner))
+        service.dayPlanResponse = plan(days: 3, spotsInFirstDay: 0)
+        let model = TripPlanViewModel(tripId: "t1", service: service)
+        await model.load()
+
+        XCTAssertTrue(model.tripIsEmpty)
+    }
+
+    func testTripIsNotEmptyWhenAnyDayHasSpots() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(), revision: 7, role: .owner))
+        service.dayPlanResponse = plan(days: 3, spotsInFirstDay: 1)
+        let model = TripPlanViewModel(tripId: "t1", service: service)
+        await model.load()
+
+        XCTAssertFalse(model.tripIsEmpty, "다른 날에 장소가 있으면 방금 만든 여행이 아니다")
+    }
+
+    /// 서버 계산을 못 받았으면 **모른다**. 모를 때 "장소가 없어요"라고 단정하지 않는다.
+    func testTripIsNotEmptyWhenThePlanIsMissing() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(), revision: 7, role: .owner))
+        service.dayPlanResponse = nil
+        let model = TripPlanViewModel(tripId: "t1", service: service)
+        await model.load()
+
+        XCTAssertFalse(model.tripIsEmpty)
     }
 }
