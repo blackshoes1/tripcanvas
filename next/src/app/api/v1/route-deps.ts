@@ -13,6 +13,7 @@ import { composeGateway } from '@/server/api/composeGateway';
 import { ApiError } from '@/server/api/errors';
 import { createCollabRoutes } from '@/server/api/collabRoutes';
 import { createMeRoutes } from '@/server/api/meRoutes';
+import { createItineraryRoutes } from '@/server/api/itineraryRoutes';
 import { createPlaceRoutes } from '@/server/api/placeRoutes';
 import { createSnapshotRoutes } from '@/server/api/snapshotRoutes';
 import { createTripRoutes } from '@/server/api/tripRoutes';
@@ -140,6 +141,12 @@ export const meRoutes = createMeRoutes({
  * 우리 REST 키로 나가는 요청이라 로그인해야 부를 수 있다(placeRoutes).
  */
 export const placeRoutes = createPlaceRoutes({ verifier, kakaoRestKey: env.kakaoRestKey });
+
+/**
+ * 붙여넣은 일정 읽기 — 앱이 파서를 복제하지 않도록 서버가 `intake.js`를 그대로 돌린다.
+ * 아무것도 저장하지 않는다. 로그인해야 부를 수 있다(우리 CPU를 공개해 두지 않는다).
+ */
+export const itineraryRoutes = createItineraryRoutes({ verifier });
 
 function toRow(v: TripView): TripRow {
   return {

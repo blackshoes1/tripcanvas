@@ -727,3 +727,63 @@ export interface DayPlanResponse {
   days: DayPlanStripEntry[];
   day: DayPlanDay;
 }
+
+// ── 붙여넣은 일정 읽기 ────────────────────────────────────────────────
+//
+// 사람이 쓴(또는 AI가 준) 일정 글 → 초안. 판정은 `intake.js`의 `parseItinerary` 하나가 한다 —
+// **앱이 파서를 다시 만들지 않는다**(§엔진은 하나다). 서버는 그 결과를 계약 모양으로 옮길 뿐이다.
+//
+// ⚠️ **저장하지 않는다.** 초안일 뿐이고, 담을 것을 고른 뒤 `POST /api/v1/trips`로 만든다.
+
+export type ItineraryItemKind = 'PLACE' | 'ACTIVITY' | 'MOVE' | 'STAY';
+
+export interface ItineraryDraftItem {
+  /** 읽은 원문 한 줄. 담지 않기로 한 줄은 이걸 그대로 메모에 남긴다 — 버리지 않는다 */
+  raw: string;
+  name: string;
+  city: string;
+  desc: string;
+  /**
+   * 도착 시각 `HH:MM`. ⚠️ 다른 계약(`DayPlan`)과 달리 분(정수)이 아니라 **문자열**이다 —
+   * 이 값은 계산 결과가 아니라 **여행 문서에 그대로 들어가는 값**이고, 문서의 `at`이 문자열이다.
+   */
+  at: string | null;
+  /** 끝 시각 `HH:MM`. `17:30 이후`처럼 끝이 없으면 null — 없는 값을 지어내지 않는다 */
+  endAt: string | null;
+  stayMinutes: number | null;
+  /** 글에 있던 링크(http/https만). 예약·안내 주소로 쓴다 */
+  url: string | null;
+  cost: number | null;
+  currency: string | null;
+  optional: boolean;
+  stay: boolean;
+  location: GeoPoint | null;
+  /**
+   * 장소로 보이는가 — **힌트일 뿐 확정이 아니다.** 담을지는 사람이 고른다(§유입).
+   * PLACE만 기본으로 담기고, 나머지는 이유(`reasons`)와 함께 꺼져 있다.
+   */
+  kind: ItineraryItemKind;
+  reasons: string[];
+}
+
+export interface ItineraryDraftDay {
+  index: number;
+  title: string;
+  /** 글에서 읽은 날짜(YYYY-MM-DD). 못 읽었으면 null */
+  date: string | null;
+  note: string;
+  items: ItineraryDraftItem[];
+}
+
+export interface ItineraryDraft {
+  name: string;
+  start: string | null;
+  /** 글에 연도가 없어 우리가 정했는가 — 감추지 않고 화면이 물어본다 */
+  startAmbiguous: boolean;
+  days: ItineraryDraftDay[];
+}
+
+export interface ItineraryParseResponse {
+  schemaVersion: number;
+  draft: ItineraryDraft;
+}
