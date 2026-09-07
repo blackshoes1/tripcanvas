@@ -45,6 +45,32 @@ final class TripListViewModel {
         }
     }
 
+    /// 여행을 만든다. 성공하면 목록 맨 앞에 넣고 그 여행을 돌려준다(바로 열 수 있게).
+    ///
+    /// ⚠️ 낙관적으로 먼저 넣지 않는다 — id는 **서버가 정한다**. 가짜 id로 줄을 만들면
+    /// 그 줄을 눌렀을 때 열 것이 없다(삭제와 반대 방향이라 규칙도 반대다).
+    func create(_ draft: NewTripDraft) async -> TripSummary? {
+        guard busyTripId == nil else { return nil }
+        errorMessage = nil
+        do {
+            let created = try await service.createTrip(draft)
+            trips.insert(created, at: 0)
+            return created
+        } catch {
+            errorMessage = createMessage(for: error)
+            return nil
+        }
+    }
+
+    private func createMessage(for error: Error) -> String {
+        guard let api = error as? APIError else { return error.localizedDescription }
+        switch api {
+        case .unauthorized: return "로그인이 필요해요 — 다시 로그인한 뒤 만들어 주세요."
+        case .offline: return "서버에 닿지 못했어요 — 연결을 확인하고 다시 시도해 주세요."
+        default: return "여행을 만들지 못했어요. 잠시 후 다시 시도해 주세요."
+        }
+    }
+
     private func restore() {
         guard let pending = removing else { return }
         trips.insert(pending.trip, at: min(pending.index, trips.count))
@@ -110,6 +136,8 @@ struct TripListView: View {
     @State private var requestedTab: TripHomeTab?
     /// 목록이 아직 안 왔을 때 들어온 딥링크 — 목록을 받은 뒤 다시 시도한다(콜드 스타트).
     @State private var pendingDestination: ActionRouter.Destination?
+    /// 여행 만들기 시트. 앱만 설치한 사람도 여기서 시작할 수 있어야 한다.
+    @State private var showsNewTrip = false
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -122,6 +150,10 @@ struct TripListView: View {
             }
             .navigationTitle("내 여행")
             .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showsNewTrip = true } label: { Image(systemName: "plus") }
+                        .accessibilityLabel("여행 만들기")
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         if let email = env.auth.email { Text(email) }
@@ -153,6 +185,15 @@ struct TripListView: View {
             guard let destination else { return }
             if handle(destination) { env.router.clear() }
             else { pendingDestination = destination; env.router.clear() }
+        }
+        .sheet(isPresented: $showsNewTrip) {
+            NewTripView { draft in
+                guard let model else { return "잠시 후 다시 시도해 주세요." }
+                let created = await model.create(draft)
+                // 만들자마자 그 여행으로 들어간다 — 목록으로 돌려보내면 무엇을 할지 다시 찾아야 한다.
+                if let created { path = [created] }
+                return created == nil ? model.errorMessage ?? "여행을 만들지 못했어요." : nil
+            }
         }
         .sheet(item: Binding(get: { joinToken.map(JoinToken.init) }, set: { joinToken = $0?.value })) { item in
             JoinInviteView(token: item.value) { _ in
@@ -245,10 +286,18 @@ struct TripListView: View {
         if model.isLoading && model.trips.isEmpty {
             ProgressView("여행을 불러오는 중")
         } else if model.trips.isEmpty {
-            EmptyStateView(
-                symbol: "suitcase",
-                title: "아직 여행이 없어요",
-                message: "웹 With J에서 만든 여행이 여기에 나타납니다.")
+            VStack(spacing: Space.m) {
+                EmptyStateView(
+                    symbol: "suitcase",
+                    title: "아직 여행이 없어요",
+                    message: "첫 여행을 만들어 보세요. 웹에서 만든 여행도 여기에 나타납니다.")
+                Button { showsNewTrip = true } label: {
+                    Label("여행 만들기", systemImage: "plus")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .padding(.horizontal, Space.xl)
+            }
         } else {
             List {
                 if let cachedAt = model.cachedAt {

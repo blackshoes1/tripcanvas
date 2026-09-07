@@ -187,6 +187,10 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.fromj.trip.tests
+        # ⚠️ 테스트 번들에 Info.plist가 없으면 Xcode가 **서명 단계에서** 멈춘다
+        # ("Cannot code sign because the target does not have an Info.plist file").
+        # 앱·확장과 달리 테스트는 plist를 따로 두지 않으므로 Xcode가 만들게 한다.
+        GENERATE_INFOPLIST_FILE: YES
 
 schemes:
   TripCanvas:

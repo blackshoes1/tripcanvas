@@ -28,7 +28,8 @@ final class TodayViewModelTests: XCTestCase {
         func bookings(tripId: String) async throws -> TripService.Fetched<[BookingSummary]> {
             TripService.Fetched(value: [], cachedAt: nil)
         }
-        /// 오늘 화면 테스트는 목록에서 지우지 않는다 — 프로토콜을 채우기만 한다.
+        /// 오늘 화면 테스트는 만들지도 지우지도 않는다 — 프로토콜을 채우기만 한다.
+        func createTrip(_ draft: NewTripDraft) async throws -> TripSummary { throw APIError.offline }
         func deleteTrip(tripId: String, expectedRevision: Int) async throws {}
         func leaveTrip(tripId: String) async throws {}
 
