@@ -23,6 +23,7 @@ import type { SettableStatus } from '../domain/mutations';
 import { applyActivityStatus, applySuggestion } from '../domain/mutations';
 import type { TodayInput, TripDoc } from '../domain/todayView';
 import { buildDayPlanView } from '../domain/dayPlanView';
+import { buildTripRoutes } from '../domain/tripRoutesView';
 import { computeToday, resolveDayIndex, summarizeTrip } from '../domain/todayView';
 import type { LegCache } from '@/features/itinerary/domain/types';
 import collab from '@legacy/collab.js';
@@ -75,8 +76,15 @@ export interface LegSupport {
    * 캐시가 이미 다 있으면 기다리지 않는다(두 번째 열람부터는 대기 0).
    */
   read(trip: TripDoc, dayIndex: number, waitMs?: number): Promise<{ cache: LegCache; pending: number }>;
+  /**
+   * 여행 **전체**의 구간. 전체 동선을 보겠다고 한 순간에만 부른다 —
+   * 열어 보지도 않을 날까지 미리 조회하면 그게 곧 청구서다.
+   */
+  readTrip(trip: TripDoc, waitMs?: number): Promise<{ cache: LegCache; pending: number }>;
   /** 기다리지 않는다 — 배경에서 채우고 실패는 로그로 삼킨다 */
   fillLater(trip: TripDoc, dayIndex: number): void;
+  /** 여행 전체를 배경에서 채운다(전체 동선을 연 뒤 남은 것) */
+  fillTripLater(trip: TripDoc): void;
 }
 
 /**
@@ -296,6 +304,33 @@ export function createHandlers(deps: HandlerDeps) {
     if (!body) return fail('DAY_NOT_FOUND');
     // 못 채운 구간은 응답을 보낸 뒤에 채운다. 기다리면 그만큼 화면이 늦는다.
     deps.legs?.fillLater(row.data, dayIndex);
+    return ok(body);
+  }
+
+  /**
+   * GET /api/v1/trips/:tripId/routes — 여행 **전체**의 동선.
+   *
+   * 일자별 지도는 `days/:i`로 충분하지만, 전체를 한 화면에 보려면 며칠치를 한 번에 받아야 한다
+   * (14일 여행을 하루씩 받으면 왕복이 14번이다). 그리는 데 필요한 것만 담는다.
+   */
+  async function tripRoutes(request: Request, tripId: string): Promise<Response> {
+    const gateway = await auth(request);
+    if (gateway instanceof Response) return gateway;
+    let row: TripRow | null;
+    try { row = await gateway.getTrip(tripId); } catch { return fail('UPSTREAM_ERROR'); }
+    if (!row || row.deleted_at) return fail('TRIP_NOT_FOUND');
+
+    // 전체를 보겠다고 한 순간이므로 여기서는 여행 전부를 채운다(상한까지만 기다린다).
+    let legs = { cache: {} as LegCache, pending: 0 };
+    if (deps.legs) {
+      try { legs = await deps.legs.readTrip(row.data, LEG_WAIT_MS); } catch { /* 추정으로 나간다 */ }
+    }
+    const stamp = now().toISOString().slice(0, 10);
+    const body = buildTripRoutes({
+      trip: row.data, summary: summarizeTrip(row, stamp), generatedAt: now().toISOString(),
+      legCache: legs.cache, legsPending: legs.pending
+    });
+    deps.legs?.fillTripLater(row.data);
     return ok(body);
   }
 
@@ -687,7 +722,7 @@ export function createHandlers(deps: HandlerDeps) {
   }
 
   return {
-    trips, today, dayPlan, bookings, travelState, replanPreview, activityAction, suggestionAction,
+    trips, today, dayPlan, tripRoutes, bookings, travelState, replanPreview, activityAction, suggestionAction,
     registerDevice, unregisterDevice, importPreview, importCommit, memories, createMemory,
     prices, createPrice
   };

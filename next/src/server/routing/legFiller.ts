@@ -1,23 +1,18 @@
 // 구간 채우기 — 하루의 구간 중 캐시에 없는 것을 조회해 넣는다.
 //
-// ⚠️ **요청을 라우팅에 묶지 않는다.** 하루치 응답은 캐시에 있는 것만 쓰고 즉시 나간다; 미스는 응답을 보낸 뒤
-// 여기서 채운다. Google Routes는 구간당 300ms쯤이라 10곳짜리 하루를 기다리면 화면이 멈춘다.
-// 다음 요청부터 도로다.
+// 못 채운 구간이 있으면 하루치를 주기 전에 **잠깐만**(상한) 기다리고, 남은 것은 배경에서 채운다.
+// 측정(2026-09-07, NAS): 구글 6건 병렬 277ms · 1건 65ms(커넥션 재사용) · 카카오 1건 ~300ms.
 //
 // 지키는 것:
 //   · 같은 구간을 동시에 두 번 묻지 않는다(진행 중 표시)
 //   · 실패는 1시간, 성공은 30일 지나야 다시 묻는다 — 무한 재시도는 할당량을 먹는다
 //   · 키가 없는 provider의 구간은 아예 묻지 않는다
-import legacyLib from '@legacy/lib.js';
-
-import { backLegOf, hasCoord, type LocatedSpot, legModeOf } from '@/features/itinerary/domain/dayView';
+import { dayLegs } from '@/features/itinerary/domain/dayView';
 import type { LegCache } from '@/features/itinerary/domain/types';
-import type { Day, Spot, Trip } from '@/features/trip/domain/types';
+import type { Trip } from '@/features/trip/domain/types';
 
 import type { LegCacheRepository, LegCacheRow } from '../repositories/types';
 import type { ServerRouter } from './serverRouting';
-
-const { dayReturnStay, dayStartAnchor, legKey } = legacyLib;
 
 /** 조회하지 않는 수단 — routing.js가 네트워크 없이 직선으로 추정한다(시각표가 없다) */
 const ESTIMATED_MODES = new Set(['flight', 'train']);
@@ -35,31 +30,20 @@ export const REFRESH_MS = 30 * 24 * 60 * 60 * 1000;   // 30일
 type P = { lat: number; lng: number };
 export interface LegRequest { key: string; a: P; b: P; mode: string }
 
-/**
- * 그 날이 필요로 하는 구간들 — `dayView.ts`·`collect.ts`와 **같은 순서**로 만든다:
- * 이월 앵커 → 첫 장소, 연속 쌍(좌표 없는 장소는 건너뜀), 마지막 → 숙소 복귀.
- */
+/** 그 날 **조회할** 구간들 — 걸음은 `dayLegs`가 정하고 여기서는 거르기만 한다 */
 export function legRequestsFor(trip: Trip, di: number): LegRequest[] {
-  const days = trip.days ?? [];
-  const day: Day | undefined = days[di];
-  if (!day) return [];
   const out: LegRequest[] = [];
-  const push = (a: P, b: P, mode: string) => {
-    if (ESTIMATED_MODES.has(mode)) return;
-    const key = legKey(a, b, mode);
-    if (!out.some((r) => r.key === key)) out.push({ key, a: { lat: +a.lat, lng: +a.lng }, b: { lat: +b.lat, lng: +b.lng }, mode });
-  };
-
-  const anchor = dayStartAnchor(days as unknown[], di) as Spot | null;
-  let prev: LocatedSpot | null = hasCoord(anchor) ? anchor : null;
-  for (const spot of day.spots ?? []) {
-    if (!hasCoord(spot)) continue;
-    if (prev) push(prev, spot, legModeOf(day, spot));
-    prev = spot;
+  // ⚠️ 걸음은 `dayLegs` 하나다 — 그리기(지도)와 조회가 갈리면 "이 구간만 직선"이 생긴다.
+  for (const leg of dayLegs(trip, di)) {
+    if (ESTIMATED_MODES.has(leg.mode)) continue;          // 비행기·기차는 네트워크 없이 추정한다
+    if (out.some((r) => r.key === leg.key)) continue;     // 같은 구간을 두 번 묻지 않는다
+    out.push({
+      key: leg.key,
+      a: { lat: +leg.from.lat, lng: +leg.from.lng },
+      b: { lat: +leg.to.lat, lng: +leg.to.lng },
+      mode: leg.mode
+    });
   }
-  // 숙소 복귀는 합성 구간이다 — 화면·타임라인이 쓰는 것과 **같은 함수**로 만든다.
-  const back = backLegOf(day, dayReturnStay(days as unknown[], di) as Spot | null);
-  if (back) push(back.from, back.to, back.mode);
   return out;
 }
 
@@ -96,14 +80,14 @@ export function createLegFiller(deps: LegFillerDeps) {
   const inFlight = new Set<string>();
 
   /** 채워야 할 구간만 골라낸다. 라우터가 없거나 그 provider 키가 없으면 비어 있다 */
-  async function pending(requests: LegRequest[]): Promise<LegRequest[]> {
+  async function pending(requests: LegRequest[], max?: number): Promise<LegRequest[]> {
     if (!deps.router) return [];
     const rows = await deps.repo.getMany(requests.map((r) => r.key));
     const byKey = new Map(rows.map((r) => [r.key, r]));
     const t = now();
     return requests
       .filter((r) => !inFlight.has(r.key) && deps.router!.canRoute(r.a, r.b) && isStale(byKey.get(r.key), t))
-      .slice(0, MAX_PER_FILL);
+      .slice(0, Math.max(1, max ?? MAX_PER_FILL));
   }
 
   /**
@@ -112,10 +96,10 @@ export function createLegFiller(deps: LegFillerDeps) {
    * `budgetMs`를 주면 **그만큼만 기다렸다 돌아온다.** 남은 조회는 배경에서 계속 돌아
    * 캐시에 들어가므로 버려지지 않는다 — 다음 요청이 그 결과를 본다.
    */
-  async function fill(requests: LegRequest[], opts?: { budgetMs?: number }): Promise<number> {
+  async function fill(requests: LegRequest[], opts?: { budgetMs?: number; max?: number }): Promise<number> {
     const router = deps.router;
     if (!router) return 0;
-    const queue = await pending(requests);
+    const queue = await pending(requests, opts?.max);
     if (!queue.length) return 0;
 
     let filled = 0;

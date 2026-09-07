@@ -795,3 +795,43 @@ export interface ItineraryParseResponse {
   schemaVersion: number;
   draft: ItineraryDraft;
 }
+
+// ── 여행 전체 동선 (GET /api/v1/trips/:id/routes) ──────────────────
+//
+// 일자별 지도는 `DayPlanResponse`로 충분하지만, **여행 전체를 한 화면에** 보려면 며칠치를
+// 한 번에 받아야 한다. 14일 여행을 하루씩 받으면 왕복이 14번이다.
+//
+// ⚠️ 여기에는 **그리는 데 필요한 것만** 담는다. 시각·비용·예약은 일자 화면(`DayPlan`)의 몫이다.
+
+export interface TripRouteLeg {
+  from: GeoPoint;
+  to: GeoPoint;
+  mode: string;
+  /**
+   * 실제 경로의 인코딩 폴리라인. 조회되지 않았으면 **null**이고, 그때 지도는 두 점을 곧게 잇는다.
+   * 없는 길을 지어내지 않는다.
+   */
+  path: string | null;
+  source: TravelTimeSource;
+}
+
+export interface TripRouteDay {
+  index: number;
+  date: string;
+  title: string;
+  /** 좌표가 있는 장소만, 순서대로. 핀과 번호에 쓴다 */
+  spots: { name: string; location: GeoPoint }[];
+  /** 이월 앵커 → 장소들 → 숙소 복귀. **일자 화면과 같은 걸음**(`dayLegs`)이다 */
+  legs: TripRouteLeg[];
+}
+
+export interface TripRoutesResponse {
+  schemaVersion: number;
+  generatedAt: string;
+  /** 전부 조회됐을 때만 ROUTED. 하나라도 추정이면 추정이라고 말한다 */
+  travelTimeSource: TravelTimeSource;
+  /** 아직 조회되지 않은 구간 수 — 0보다 크면 곧 채워진다(한 번만 다시 받아 본다) */
+  legsPending: number;
+  trip: TripSummary;
+  days: TripRouteDay[];
+}
