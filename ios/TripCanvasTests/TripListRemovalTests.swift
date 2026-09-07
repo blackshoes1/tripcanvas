@@ -101,6 +101,18 @@ private final class FakeTrips: TripDataSource {
         listCalls += 1
         return TripService.Fetched(value: stored, cachedAt: nil)
     }
+    /// 만들기는 서버가 id를 정한다 — 가짜도 그렇게 흉내 낸다.
+    var created: [NewTripDraft] = []
+    func createTrip(_ draft: NewTripDraft) async throws -> TripSummary {
+        if let failure { throw failure }
+        created.append(draft)
+        let made = TripSummary(
+            id: "made-\(created.count)", name: draft.name, start: draft.start, dayCount: draft.dayCount,
+            revision: 1, updatedAt: "", timeZone: "Asia/Seoul", cities: [], todayIndex: -1,
+            daysUntilStart: nil, role: .owner, memberCount: 1)
+        stored.insert(made, at: 0)
+        return made
+    }
     func deleteTrip(tripId: String, expectedRevision: Int) async throws {
         if let failure { throw failure }
         deleted.append((tripId, expectedRevision))
@@ -129,5 +141,56 @@ private final class FakeTrips: TripDataSource {
     func decideSuggestion(tripId: String, suggestionId: String, decision: TripService.SuggestionDecision,
                           expectedRevision: Int) async throws -> MutationResponse {
         throw APIError.notFound("안 씀")
+    }
+}
+
+// MARK: - 여행 만들기
+//
+// 여기서 지키는 것: **앱만 설치한 사람도 시작할 수 있다.**
+// 그리고 삭제와 반대 방향이라 규칙도 반대다 — id는 서버가 정하므로 **낙관적으로 먼저 넣지 않는다.**
+
+extension TripListRemovalTests {
+
+    func testCreateAddsTheTripTheServerMade() async {
+        let (model, service) = await loaded([])
+        let draft = NewTripDraft(name: "가루이자와 여행", start: "2026-07-21", dayCount: 4, city: "가루이자와")
+
+        let created = await model.create(draft)
+
+        XCTAssertEqual(service.created.count, 1)
+        XCTAssertEqual(service.created.first, draft, "고친 값 그대로 보낸다")
+        XCTAssertEqual(created?.name, "가루이자와 여행")
+        XCTAssertEqual(model.trips.first?.id, created?.id, "만든 여행이 목록 맨 앞에 온다")
+        XCTAssertNil(model.errorMessage)
+    }
+
+    func testCreateFailureLeavesNoPhantomRow() async {
+        let (model, service) = await loaded([])
+        service.failure = APIError.offline
+
+        let created = await model.create(NewTripDraft(name: "제주", start: "2026-07-21", dayCount: 2, city: nil))
+
+        XCTAssertNil(created)
+        XCTAssertTrue(model.trips.isEmpty, "실패했으면 목록에 아무것도 남기지 않는다 — 열 수 없는 줄을 만들지 않는다")
+        XCTAssertEqual(model.errorMessage, "서버에 닿지 못했어요 — 연결을 확인하고 다시 시도해 주세요.")
+    }
+
+    func testCreateSaysWhatToDoWhenSignedOut() async {
+        let (model, service) = await loaded([])
+        service.failure = APIError.unauthorized
+
+        _ = await model.create(NewTripDraft(name: "제주", start: "2026-07-21", dayCount: 2, city: nil))
+
+        XCTAssertEqual(model.errorMessage, "로그인이 필요해요 — 다시 로그인한 뒤 만들어 주세요.")
+    }
+
+    /// 만들 수 없는 값으로는 버튼이 눌리지 않아야 한다 — 판정은 화면이 아니라 값이 들고 있다.
+    func testDraftValidity() {
+        XCTAssertTrue(NewTripDraft(name: "제주", start: "2026-07-21", dayCount: 1, city: nil).isValid)
+        XCTAssertFalse(NewTripDraft(name: "  ", start: "2026-07-21", dayCount: 3, city: nil).isValid, "이름이 비면 못 만든다")
+        XCTAssertFalse(NewTripDraft(name: "제주", start: "", dayCount: 3, city: nil).isValid)
+        XCTAssertFalse(NewTripDraft(name: "제주", start: "2026-07-21", dayCount: 0, city: nil).isValid)
+        XCTAssertFalse(NewTripDraft(name: "제주", start: "2026-07-21", dayCount: NewTripDraft.maxDays + 1, city: nil).isValid,
+                       "앱에서 한 번에 만드는 길이에는 상한이 있다 — 더 긴 여행은 만든 뒤 웹에서 늘린다")
     }
 }

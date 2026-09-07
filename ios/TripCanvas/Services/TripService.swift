@@ -15,6 +15,8 @@ protocol TripDataSource {
     func setActivity(tripId: String, activityId: String, action: TripService.ActivityAction, expectedRevision: Int, expectedName: String?) async throws -> MutationResponse
     func decideSuggestion(tripId: String, suggestionId: String, decision: TripService.SuggestionDecision, expectedRevision: Int) async throws -> MutationResponse
     /// 여행을 지운다(tombstone). **주최자만** — 서버도 그렇게 막는다.
+    /// 여행을 만든다. 서버가 id를 정하고 만든 여행을 돌려준다 — 웹과 **같은 경로**(POST /api/v1/trips)다.
+    func createTrip(_ draft: NewTripDraft) async throws -> TripSummary
     func deleteTrip(tripId: String, expectedRevision: Int) async throws
     /// 공유받은 여행에서 나간다. 여행 자체는 남는다.
     func leaveTrip(tripId: String) async throws
@@ -87,6 +89,23 @@ final class TripService: TripDataSource {
             guard let cached = await cache.load(DayPlanResponse.self, key: key) else { throw error }
             return Fetched(value: cached.value, cachedAt: cached.savedAt)
         }
+    }
+
+    /// 여행 만들기. 문서는 **빈 일자 N개**뿐이다 — 우리가 모르는 필드를 지어내지 않고,
+    /// 기본값은 서버의 `normalizeTrip`이 채운다(웹에서 만든 여행과 같은 모양이 된다).
+    ///
+    /// ⚠️ 낙관적으로 목록에 먼저 넣지 않는다. 여행의 id는 **서버가 정한다** —
+    /// 가짜 id로 줄을 만들면 그 줄을 눌렀을 때 열 것이 없다.
+    func createTrip(_ draft: NewTripDraft) async throws -> TripSummary {
+        let days = (0..<draft.dayCount).map { _ in JSONValue.object(["title": .string(""), "spots": .array([])]) }
+        let document: [String: JSONValue] = [
+            "name": .string(draft.name),
+            "start": .string(draft.start),
+            "days": .array(days)
+        ]
+        let body = try JSONEncoder().encode(["trip": JSONValue.object(document)])
+        let response: TripDetailResponse = try await api.post("/api/v1/trips", jsonBody: body)
+        return response.trip
     }
 
     /// tombstone. `expectedRevision`이 어긋나면 서버가 409로 막는다 —
@@ -203,6 +222,26 @@ protocol TripDocumentSource {
     func saveDocument(tripId: String, document: TripDocument, expectedRevision: Int) async throws -> TripDocumentSnapshot
     /// 그 날의 계산(예상 도착·구간·합계)과 일자 스트립. **계산은 서버가 한다** — 앱은 그린다.
     func dayPlan(tripId: String, dayIndex: Int) async throws -> TripService.Fetched<DayPlanResponse>
+}
+
+/// 새 여행에 필요한 최소한 — **어디로·언제·며칠**. 그 이상은 만든 뒤에 고치면 되는 것들이다.
+///
+/// ⚠️ `city`는 이름의 기본값과 장소 검색을 좁히는 데만 쓴다 — **문서에 저장하지 않는다.**
+/// 여행 문서에 우리만 아는 필드를 새로 만들면 웹이 모르는 값이 생긴다.
+struct NewTripDraft: Sendable, Equatable {
+    var name: String = ""
+    var start: String = ""
+    var dayCount: Int = 3
+    var city: String? = nil
+
+    /// 앱에서 한 번에 만들 수 있는 최대 일수. 더 긴 여행은 만든 뒤 웹에서 늘린다.
+    static let maxDays = 30
+
+    var isValid: Bool {
+        !name.trimmingCharacters(in: .whitespaces).isEmpty
+            && start.count == 10
+            && (1...Self.maxDays).contains(dayCount)
+    }
 }
 
 /// 문서와 그 문서를 읽은 시점의 revision. 저장은 이 revision을 그대로 되돌려 준다(CAS).

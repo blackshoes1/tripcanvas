@@ -80,6 +80,11 @@ struct APIClient {
         try await send(path: path, method: "PUT", query: [], body: jsonBody)
     }
 
+    /// 같은 이유의 POST — 여행 만들기가 문서를 그대로 보낸다.
+    func post<T: Decodable>(_ path: String, jsonBody: Data) async throws -> T {
+        try await send(path: path, method: "POST", query: [], body: jsonBody)
+    }
+
     /// 401이면 토큰을 한 번 갱신해 재시도한다. 그래도 401이면 로그인 화면으로 돌려보낸다.
     private func send<T: Decodable>(path: String, method: String, query: [URLQueryItem], body: Data?) async throws -> T {
         do {
