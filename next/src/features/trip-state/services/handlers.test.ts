@@ -10,7 +10,7 @@ import type {
 import type { MemoryRow } from '../domain/intakeView';
 import type { PriceObservation } from '../domain/bookingsView';
 import type { Gateway, TripRow } from './handlers';
-import { createHandlers, resolveClock } from './handlers';
+import { createHandlers, LEG_WAIT_MS, resolveClock } from './handlers';
 import type { TripDoc } from '../domain/todayView';
 
 const TOKEN = 'test-token';
@@ -800,15 +800,16 @@ describe('구간 캐시 — 읽기는 응답 전, 채우기는 응답 뒤', () =
   function withLegs(cache: Record<string, { sec?: number; m?: number; path?: string }>, pending = 0) {
     const filled: number[] = [];
     const read: number[] = [];
+    const waited: number[] = [];
     const handlers = createHandlers({
       gatewayFor: (token) => (token === TOKEN ? gatewayOf(store) : null),
       now: () => NOW,
       legs: {
-        async read(_trip, dayIndex) { read.push(dayIndex); return { cache, pending }; },
+        async read(_trip, dayIndex, waitMs) { read.push(dayIndex); waited.push(waitMs ?? 0); return { cache, pending }; },
         fillLater(_trip, dayIndex) { filled.push(dayIndex); }
       }
     });
-    return { handlers, filled, read };
+    return { handlers, filled, read, waited };
   }
 
   it('조회된 구간이 있으면 그 값으로 답한다', async () => {
@@ -860,6 +861,14 @@ describe('구간 캐시 — 읽기는 응답 전, 채우기는 응답 뒤', () =
     const { handlers } = withLegs({}, 0);
     const body = (await (await handlers.dayPlan(new Request('https://x/y', auth()), 'trip-1', 0)).json()) as DayPlanResponse;
     expect(body.legsPending).toBe(0);
+  });
+
+  it('하루치를 주기 전에 잠깐 기다린다 — 처음 여는 날에도 도로가 보이게', async () => {
+    const { handlers, waited } = withLegs({}, 2);
+    await handlers.dayPlan(new Request('https://x/y', auth()), 'trip-1', 0);
+    expect(waited[0]).toBe(LEG_WAIT_MS);
+    // 상한이 길면 업스트림이 느린 날 화면이 그만큼 늦어진다 — 못 채운 것은 legsPending이 알린다
+    expect(LEG_WAIT_MS).toBeLessThanOrEqual(1000);
   });
 
   it('구간 캐시가 아예 없는 배포에서도 0이다', async () => {

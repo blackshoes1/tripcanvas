@@ -4,7 +4,9 @@ import { describe, expect, it } from 'vitest';
 import type { Trip } from '@/features/trip/domain/types';
 
 import type { LegCacheRepository, LegCacheRow } from '../repositories/types';
-import { createLegFiller, FAIL_RETRY_MS, isStale, legRequestsFor, MAX_PER_FILL, REFRESH_MS, toLegCache } from './legFiller';
+import {
+  createLegFiller, FAIL_RETRY_MS, FILL_CONCURRENCY, isStale, legRequestsFor, MAX_PER_FILL, REFRESH_MS, toLegCache
+} from './legFiller';
 import type { LegOutcome, ServerRouter } from './serverRouting';
 
 const { legKey, normalizeTrip } = legacyLib as unknown as {
@@ -211,5 +213,56 @@ describe('createLegFiller', () => {
     release!();
     await first;
     expect(asked).toBe(1);
+  });
+});
+
+// ── 병렬 채우기와 시간 상한 ──
+//
+// 측정(2026-09-07, NAS): 구글 6건 병렬 277ms · 순차 371ms · 1건 ~65ms(커넥션 재사용).
+// 그래서 하루치를 주기 전에 **잠깐 기다렸다** 도로를 함께 줄 수 있다.
+
+describe('createLegFiller — 병렬과 상한', () => {
+  const many = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({ key: `k${i}`, a: seoul, b: jeju, mode: 'car' }));
+
+  it('한 번에 여러 구간을 동시에 묻는다', async () => {
+    const { repo } = memoryRepo();
+    let inFlight = 0;
+    let peak = 0;
+    const filler = createLegFiller({
+      repo,
+      router: router(async () => {
+        inFlight += 1; peak = Math.max(peak, inFlight);
+        await new Promise((r) => setTimeout(r, 5));
+        inFlight -= 1;
+        return ok(60);
+      })
+    });
+    await filler.fill(many(FILL_CONCURRENCY + 2));
+    expect(peak).toBeGreaterThan(1);
+    expect(peak).toBeLessThanOrEqual(FILL_CONCURRENCY);
+  });
+
+  it('시간이 다 되면 기다리기를 멈추되, 조회는 배경에서 계속 돌아 캐시에 들어간다', async () => {
+    const { repo, puts } = memoryRepo();
+    const filler = createLegFiller({
+      repo,
+      router: router(async () => { await new Promise((r) => setTimeout(r, 60)); return ok(60); })
+    });
+
+    const started = Date.now();
+    await filler.fill(many(2), { budgetMs: 10 });
+    const waited = Date.now() - started;
+
+    expect(waited).toBeLessThan(50);           // 다 끝나기를 기다리지 않는다
+    expect(puts.length).toBe(0);               // 아직 안 끝났다
+    await new Promise((r) => setTimeout(r, 120));
+    expect(puts.length).toBe(2);               // ⚠️ 그만두지 않았다 — 배경에서 끝나 캐시에 들어간다
+  });
+
+  it('상한이 넉넉하면 다 채우고 돌아온다', async () => {
+    const { repo } = memoryRepo();
+    const filler = createLegFiller({ repo, router: router(async () => ok(60)) });
+    expect(await filler.fill(many(3), { budgetMs: 500 })).toBe(3);
   });
 });
