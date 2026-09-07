@@ -473,6 +473,25 @@ declare module '@legacy/intake.js' {
     }[];
     plannedVsActual(activities: unknown[], events: unknown[]):
       { planned: string[]; visited: string[]; missed: string[]; unplanned: number };
+    /**
+     * 붙여넣은 일정 글 → 초안. **저장하지 않는다** — 담을 것은 사람이 고른다.
+     * ⚠️ `kind`는 장소인지 아닌지의 **힌트**이고 확정이 아니다.
+     */
+    parseItinerary(text: string, opts?: { year?: number }): {
+      name: string;
+      start: string | null;
+      startAmbiguous: boolean;
+      days: {
+        title: string; date: string | null; drive: string; note: string;
+        items: {
+          raw: string; name: string; city: string; desc: string;
+          at: string | null; endAt: string | null; stayMin: number | null; url: string | null;
+          cost: number | null; cur: string | null; opt: boolean; stay: boolean;
+          lat: number | null; lng: number | null;
+          kind: 'PLACE' | 'ACTIVITY' | 'MOVE' | 'STAY'; reasons: string[];
+        }[];
+      }[];
+    };
   };
   export = api;
 }
