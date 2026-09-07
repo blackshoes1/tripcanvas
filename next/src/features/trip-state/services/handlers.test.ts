@@ -797,14 +797,14 @@ describe('GET /api/v1/trips/:tripId/days/:dayIndex — 일정 화면이 쓰는 �
 // 여기서 지키는 것: **응답을 경로 조회에 묶지 않는다.** 이미 조회된 것만 실어 보내고,
 // 없는 것은 응답 뒤에 채운다. 캐시가 아예 없어도(키 없음) 예전과 같은 답이 나온다.
 describe('구간 캐시 — 읽기는 응답 전, 채우기는 응답 뒤', () => {
-  function withLegs(cache: Record<string, { sec?: number; m?: number; path?: string }>) {
+  function withLegs(cache: Record<string, { sec?: number; m?: number; path?: string }>, pending = 0) {
     const filled: number[] = [];
     const read: number[] = [];
     const handlers = createHandlers({
       gatewayFor: (token) => (token === TOKEN ? gatewayOf(store) : null),
       now: () => NOW,
       legs: {
-        async read(_trip, dayIndex) { read.push(dayIndex); return cache; },
+        async read(_trip, dayIndex) { read.push(dayIndex); return { cache, pending }; },
         fillLater(_trip, dayIndex) { filled.push(dayIndex); }
       }
     });
@@ -848,5 +848,23 @@ describe('구간 캐시 — 읽기는 응답 전, 채우기는 응답 뒤', () =
     const res = await handlers.dayPlan(new Request('https://x/y', auth()), 'trip-1', 0);
     expect(res.status).toBe(200);
     expect(((await res.json()) as DayPlanResponse).travelTimeSource).toBe('STRAIGHT_LINE_ESTIMATE');
+  });
+
+  it('아직 못 채운 구간 수를 함께 준다 — 화면이 한 번 더 받아 볼지 정한다', async () => {
+    const { handlers } = withLegs({}, 3);
+    const body = (await (await handlers.dayPlan(new Request('https://x/y', auth()), 'trip-1', 0)).json()) as DayPlanResponse;
+    expect(body.legsPending).toBe(3);
+  });
+
+  it('채울 것이 없으면 0이다 — 기다릴 이유가 없는데 기다리게 하지 않는다', async () => {
+    const { handlers } = withLegs({}, 0);
+    const body = (await (await handlers.dayPlan(new Request('https://x/y', auth()), 'trip-1', 0)).json()) as DayPlanResponse;
+    expect(body.legsPending).toBe(0);
+  });
+
+  it('구간 캐시가 아예 없는 배포에서도 0이다', async () => {
+    const plain = createHandlers({ gatewayFor: () => gatewayOf(store), now: () => NOW });
+    const body = (await (await plain.dayPlan(new Request('https://x/y', auth()), 'trip-1', 0)).json()) as DayPlanResponse;
+    expect(body.legsPending).toBe(0);
   });
 });

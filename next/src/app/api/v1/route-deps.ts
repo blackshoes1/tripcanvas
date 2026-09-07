@@ -209,8 +209,18 @@ function legSupport(): LegSupport | undefined {
   return {
     async read(trip, dayIndex) {
       const requests = legRequestsFor(trip as unknown as Trip, dayIndex);
-      if (!requests.length) return {};
-      return toLegCache(await repo.getMany(requests.map((r) => r.key)));
+      if (!requests.length) return { cache: {}, pending: 0 };
+      const rows = await repo.getMany(requests.map((r) => r.key));
+      const byKey = new Map(rows.map((r) => [r.key, r]));
+      // 곧 채워질 것만 센다: 조회된 것도 아니고, 실패로 굳은 것도 아니고, 우리가 조회할 수 있는 구간
+      const pending = router
+        ? requests.filter((r) => {
+            const row = byKey.get(r.key);
+            if (row?.sec != null || row?.fail) return false;
+            return router.canRoute(r.a, r.b);
+          }).length
+        : 0;
+      return { cache: toLegCache(rows), pending };
     },
     fillLater(trip, dayIndex) {
       if (!router) return;

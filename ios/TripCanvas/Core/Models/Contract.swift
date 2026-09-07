@@ -837,6 +837,9 @@ struct DayPlanResponse: Codable, Hashable, Sendable {
     let schemaVersion: Int
     let generatedAt: String
     let travelTimeSource: TravelTimeSource
+    /// 아직 실제 경로를 못 받은 구간 수. 0보다 크면 곧 채워진다 — **한 번만** 다시 받아 본다.
+    /// ⚠️ 약속이 아니다. 두 번째에도 남아 있으면 더 기다리지 않고 직선으로 둔다.
+    let legsPending: Int
     let trip: TripSummary
     let dayCount: Int
     /// 일자 스트립 — 여행 전체의 날 목록. 어느 날을 보든 같이 온다.

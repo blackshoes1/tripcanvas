@@ -172,7 +172,8 @@ final class TripPlanViewModelTests: XCTestCase {
     //
     // 스트립은 "며칠째"만이 아니라 **언제, 어떤 날**인지 말해야 한다. 날짜는 서버가 준 것을 쓴다.
 
-    private func plan(days: Int = 2, todayIndex: Int = -1, selected: Int = 0, spotsInFirstDay: Int = 1) -> DayPlanResponse {
+    private func plan(days: Int = 2, todayIndex: Int = -1, selected: Int = 0, spotsInFirstDay: Int = 1,
+                      legsPending: Int = 0) -> DayPlanResponse {
         let strip = (0..<days).map { i in
             DayPlanStripEntry(index: i, date: "2026-10-0\(i + 1)", title: "Day \(i + 1)",
                               spotCount: i == 0 ? spotsInFirstDay : 0)
@@ -186,7 +187,7 @@ final class TripPlanViewModelTests: XCTestCase {
                              totals: .init(distanceKm: 0, travelMinutes: 0, endMinutes: nil, overloaded: false,
                                            cost: .init(total: 0, parts: [])))
         return DayPlanResponse(schemaVersion: 1, generatedAt: "", travelTimeSource: .straightLineEstimate,
-                               trip: summary, dayCount: days, days: strip, day: day)
+                               legsPending: legsPending, trip: summary, dayCount: days, days: strip, day: day)
     }
 
     func testStripUsesTheServerDates() async {
@@ -255,7 +256,8 @@ final class TripPlanViewModelTests: XCTestCase {
         }
         base = DayPlanResponse(
             schemaVersion: base.schemaVersion, generatedAt: base.generatedAt,
-            travelTimeSource: base.travelTimeSource, trip: base.trip, dayCount: base.dayCount, days: base.days,
+            travelTimeSource: base.travelTimeSource, legsPending: base.legsPending,
+            trip: base.trip, dayCount: base.dayCount, days: base.days,
             day: DayPlanDay(index: dayIndex, date: base.day.date, title: "", note: "", mode: "car",
                             startMinutes: 540, timeZone: "Asia/Seoul", carriedStay: nil, spots: spots,
                             carPickups: [], carReturns: [], back: nil, spotsWithoutLocation: 0, splits: [],
@@ -338,7 +340,8 @@ final class TripPlanViewModelTests: XCTestCase {
         ])
         base = DayPlanResponse(
             schemaVersion: base.schemaVersion, generatedAt: base.generatedAt,
-            travelTimeSource: base.travelTimeSource, trip: base.trip, dayCount: base.dayCount, days: base.days,
+            travelTimeSource: base.travelTimeSource, legsPending: base.legsPending,
+            trip: base.trip, dayCount: base.dayCount, days: base.days,
             day: DayPlanDay(index: 0, date: base.day.date, title: "", note: "", mode: "car",
                             startMinutes: 540, timeZone: "Asia/Seoul", carriedStay: nil, spots: base.day.spots,
                             carPickups: [], carReturns: [], back: nil, spotsWithoutLocation: 0,
@@ -508,5 +511,47 @@ extension TripPlanViewModelTests {
         await model.load()
 
         XCTAssertFalse(model.tripIsEmpty)
+    }
+}
+
+// MARK: - 경로가 채워지기를 기다린다
+//
+// 서버는 하루치를 먼저 보내고 경로를 그 뒤에 채운다. 그래서 처음 연 날은 직선이다.
+// 여기서 지키는 것: **한 번만** 다시 받는다 · 필요 없으면 안 받는다 · 늦게 온 답이 화면을 되돌리지 않는다.
+
+extension TripPlanViewModelTests {
+
+    func testRefetchesOnceWhenLegsAreStillComing() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(), revision: 7, role: .owner))
+        service.dayPlanResponse = plan(legsPending: 2)
+        let model = TripPlanViewModel(tripId: "t1", service: service, legRetryDelay: 0.01)
+        await model.load()
+        // 다시 받을 때는 채워진 응답이 온다
+        service.dayPlanResponse = plan(legsPending: 0)
+        try? await Task.sleep(for: .milliseconds(120))
+
+        XCTAssertEqual(service.dayPlanCalls.count, 2, "한 번만 더 받는다")
+        XCTAssertEqual(model.plan?.legsPending, 0)
+    }
+
+    func testDoesNotRefetchWhenNothingIsPending() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(), revision: 7, role: .owner))
+        service.dayPlanResponse = plan(legsPending: 0)
+        let model = TripPlanViewModel(tripId: "t1", service: service, legRetryDelay: 0.01)
+        await model.load()
+        try? await Task.sleep(for: .milliseconds(120))
+
+        XCTAssertEqual(service.dayPlanCalls.count, 1, "기다릴 이유가 없으면 다시 받지 않는다")
+    }
+
+    /// 두 번째에도 남아 있으면 멈춘다 — 나아지지 않는 요청을 반복하지 않는다.
+    func testStopsAfterOneRetryEvenIfLegsNeverArrive() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(), revision: 7, role: .owner))
+        service.dayPlanResponse = plan(legsPending: 5)
+        let model = TripPlanViewModel(tripId: "t1", service: service, legRetryDelay: 0.01)
+        await model.load()
+        try? await Task.sleep(for: .milliseconds(200))
+
+        XCTAssertEqual(service.dayPlanCalls.count, 2)
     }
 }

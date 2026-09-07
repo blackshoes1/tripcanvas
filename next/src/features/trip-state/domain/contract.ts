@@ -719,8 +719,16 @@ export interface DayPlanStripEntry {
 export interface DayPlanResponse {
   schemaVersion: number;
   generatedAt: string;
-  /** ⚠️ 서버에는 구간 캐시가 없다 — 이동시간이 직선거리 추정이면 화면이 '예상'이라고 말해야 한다. */
+  /** 이동시간이 직선거리 추정이면 화면이 '예상'이라고 말해야 한다. 전부 조회됐을 때만 ROUTED다. */
   travelTimeSource: TravelTimeSource;
+  /**
+   * 아직 실제 경로를 못 받은 구간 수. 0보다 크면 **곧 채워진다** — 화면이 잠시 뒤 한 번 더 받아 보면 된다.
+   *
+   * ⚠️ 약속이 아니다. 조회가 실패할 수도 있고, 그때는 다시 받아도 그대로다 —
+   * 그래서 클라이언트는 **한 번만** 다시 받고 멈춘다. 키가 없거나 채울 것이 없으면 0이다.
+   * ⚠️ 이미 '실패'로 기록된 구간은 세지 않는다. 곧 바뀌지 않을 것을 기다리게 하지 않는다.
+   */
+  legsPending: number;
   trip: TripSummary;
   dayCount: number;
   /** 일자 스트립 — 여행 전체의 날 목록. 어느 날을 보든 같이 온다(왕복을 늘리지 않는다). */

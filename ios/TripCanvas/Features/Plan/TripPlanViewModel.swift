@@ -45,13 +45,21 @@ final class TripPlanViewModel {
     /// 여행 중일 때 '오늘'로 한 번만 옮긴다.
     private var didJumpToToday = false
 
-    init(tripId: String, service: TripDocumentSource, memberSource: MemberListing? = nil) {
+    /// - Parameter legRetryDelay: 경로가 채워지기를 기다리는 시간. 테스트는 짧게 준다.
+    init(tripId: String, service: TripDocumentSource, memberSource: MemberListing? = nil,
+         legRetryDelay: TimeInterval = 3) {
         self.tripId = tripId
         self.service = service
         self.memberSource = memberSource
+        self.legRetryDelay = legRetryDelay
     }
 
     var canEdit: Bool { role.canEdit }
+
+    /// 경로가 채워지기를 기다렸다 한 번 더 받은 날들. **날마다 한 번뿐이다.**
+    private var retriedLegs: Set<Int> = []
+    /// 채우기에 주는 시간. 구간 몇 개면 대개 이 안에 끝난다.
+    private let legRetryDelay: TimeInterval
 
     var day: TripDay? {
         guard let document, document.hasDay(selectedDay) else { return nil }
@@ -93,10 +101,36 @@ final class TripPlanViewModel {
             planCachedAt = fetched.cachedAt
             jumpToTodayOnce()
             await loadMembers()
+            // ⚠️ **기다리지 않는다.** 여기서 await 하면 `load()`가 3초 동안 안 끝나고,
+            // 그동안 화면은 로딩 상태로 멈춘다 — 채우기를 기다리는 것과 화면을 세우는 것은 다른 일이다.
+            scheduleLegRetry(day: day, pending: fetched.value.legsPending)
         } catch {
             plan = nil
             planCachedAt = nil
         }
+    }
+
+    /// 서버가 "아직 못 채운 구간이 있다"고 하면 **한 번만** 다시 받는다.
+    ///
+    /// 서버는 하루치를 먼저 보내고 경로를 그 뒤에 채운다(응답을 조회에 묶으면 화면이 멈춘다).
+    /// 그래서 처음 연 날은 직선이고, 잠시 뒤 한 번 더 받으면 도로가 되어 있다.
+    ///
+    /// ⚠️ **두 번째에도 남아 있으면 멈춘다.** 조회는 실패할 수도 있고, 그때 계속 다시 받으면
+    /// 아무것도 나아지지 않는 요청만 반복된다.
+    /// ⚠️ 화면을 비우지 않는다 — 선이 바뀌는 것으로 충분하다.
+    private func scheduleLegRetry(day: Int, pending: Int) {
+        guard pending > 0, !retriedLegs.contains(day) else { return }
+        retriedLegs.insert(day)
+        Task { [weak self] in await self?.refetchWhenLegsArrive(day: day) }
+    }
+
+    private func refetchWhenLegsArrive(day: Int) async {
+        try? await Task.sleep(for: .seconds(legRetryDelay))
+        guard day == selectedDay else { return }        // 그 사이 다른 날로 옮겼으면 버린다
+        guard let fetched = try? await service.dayPlan(tripId: tripId, dayIndex: day) else { return }
+        guard day == selectedDay else { return }        // 늦게 온 답이 화면을 되돌리지 않게
+        plan = fetched.value
+        planCachedAt = fetched.cachedAt
     }
 
     /// 여행 중이면 오늘부터 본다 — 14일짜리 일정에서 1일차부터 스크롤하게 두지 않는다.
