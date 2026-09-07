@@ -707,3 +707,37 @@ extension TripPlanViewModelTests {
         XCTAssertNil(model.plan, "문서가 바뀌었으면 옛 계산을 쓰지 않는다")
     }
 }
+
+// MARK: - 앞뒤 날로 옮기기 (목록 가로 스와이프)
+//
+// 경계는 눈으로 확인하기 어렵다 — 첫 날에서 더 밀거나 마지막 날에서 더 밀 때
+// 되감기거나 넘어가면 안 된다.
+
+extension TripPlanViewModelTests {
+
+    func testStepsBetweenDays() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(days: 3), revision: 7, role: .owner))
+        service.dayPlanResponse = plan(days: 3)
+        let model = TripPlanViewModel(tripId: "t1", service: service, legRetryDelay: 0.01)
+        await model.load()
+
+        XCTAssertTrue(model.step(.next))
+        XCTAssertEqual(model.selectedDay, 1)
+        XCTAssertTrue(model.step(.previous))
+        XCTAssertEqual(model.selectedDay, 0)
+    }
+
+    func testDoesNotWrapAroundAtTheEdges() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(days: 2), revision: 7, role: .owner))
+        service.dayPlanResponse = plan(days: 2)
+        let model = TripPlanViewModel(tripId: "t1", service: service, legRetryDelay: 0.01)
+        await model.load()
+
+        XCTAssertFalse(model.step(.previous), "첫 날에서 뒤로 가면 아무 일도 없다")
+        XCTAssertEqual(model.selectedDay, 0)
+
+        model.selectedDay = 1
+        XCTAssertFalse(model.step(.next), "마지막 날에서 앞으로 가도 아무 일도 없다")
+        XCTAssertEqual(model.selectedDay, 1)
+    }
+}
