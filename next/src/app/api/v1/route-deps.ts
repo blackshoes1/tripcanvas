@@ -46,6 +46,12 @@ import {
 } from '@/server/infrastructure/supabase/legacyTripRepository';
 import { DualReadMembershipRepository, DualReadTripRepository } from '@/server/repositories/dualRead';
 import { createLegFiller, legRequestsFor, toLegCache } from '@/server/routing/legFiller';
+
+/**
+ * 전체 동선을 한 번에 채울 최대 구간 수. 하루치 상한(12)보다 크지만 무한은 아니다 —
+ * 30일짜리 여행이 한 요청으로 폭주하지 않게. 남은 것은 다음 요청이 채운다.
+ */
+const TRIP_FILL_MAX = 60;
 import { createServerRouter } from '@/server/routing/serverRouting';
 import type { MembershipRepository, TripRepository, TripView } from '@/server/repositories/types';
 import type { Trip } from '@/features/trip/domain/types';
@@ -231,6 +237,44 @@ function legSupport(): LegSupport | undefined {
         rows = await repo.getMany(keys);
       }
       return { cache: toLegCache(rows), pending: countPending(rows) };
+    },
+    /** 여행 전체. 전체 동선을 보겠다고 한 순간에만 부른다 */
+    async readTrip(trip, waitMs) {
+      const doc = trip as unknown as Trip;
+      const dayCount = Array.isArray(doc.days) ? doc.days.length : 0;
+      const unique = new Map(
+        Array.from({ length: dayCount }, (_, di) => legRequestsFor(doc, di)).flat().map((r) => [r.key, r])
+      );
+      const list = [...unique.values()];
+      if (!list.length) return { cache: {}, pending: 0 };
+      const keys = list.map((r) => r.key);
+      const countPending = (rows: Awaited<ReturnType<typeof repo.getMany>>) => {
+        if (!router) return 0;
+        const byKey = new Map(rows.map((r) => [r.key, r]));
+        return list.filter((r) => {
+          const row = byKey.get(r.key);
+          if (row?.sec != null || row?.fail) return false;
+          return router.canRoute(r.a, r.b);
+        }).length;
+      };
+
+      let rows = await repo.getMany(keys);
+      if (waitMs && countPending(rows) > 0) {
+        // 전체를 보겠다고 한 순간이라 한 번에 더 많이 채운다. 그래도 상한까지만 기다린다.
+        await filler.fill(list, { budgetMs: waitMs, max: TRIP_FILL_MAX })
+          .catch((e) => console.warn(`[tripcanvas-api] 전체 동선 예열 실패 — ${e}`));
+        rows = await repo.getMany(keys);
+      }
+      return { cache: toLegCache(rows), pending: countPending(rows) };
+    },
+    fillTripLater(trip) {
+      if (!router) return;
+      const doc = trip as unknown as Trip;
+      const dayCount = Array.isArray(doc.days) ? doc.days.length : 0;
+      const requests = Array.from({ length: dayCount }, (_, di) => legRequestsFor(doc, di)).flat();
+      if (!requests.length) return;
+      void filler.fill(requests, { max: TRIP_FILL_MAX })
+        .catch((e) => console.warn(`[tripcanvas-api] 전체 동선 채우기 실패 — ${e}`));
     },
     fillLater(trip, dayIndex) {
       if (!router) return;

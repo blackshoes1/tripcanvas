@@ -120,6 +120,33 @@ export function dayTimelineOf(trip: Trip, legCache: LegCache, di: number): Timel
 }
 
 /** 숙소 복귀 자동 구간 — 합성 구간이라 '일자 기본 수단'을 근거리 보정(localMode)해 쓴다 */
+/**
+ * 그 날의 구간 전부 — **순서대로, 거르지 않고**.
+ *
+ * 이월 앵커 → 첫 장소, 연속 쌍(좌표 없는 장소는 건너뜀), 마지막 → 숙소 복귀.
+ * ⚠️ **그리기(지도)와 조회(구간 캐시)가 이 하나를 같이 쓴다.** 각자 걸으면
+ * 조회한 구간과 그린 구간이 어긋나 "선은 도로인데 이 구간만 직선"이 된다.
+ */
+export function dayLegs(trip: Trip, di: number): { key: string; from: LocatedSpot; to: LocatedSpot; mode: TransportMode }[] {
+  const days = trip.days ?? [];
+  const day = days[di];
+  if (!day) return [];
+  const out: { key: string; from: LocatedSpot; to: LocatedSpot; mode: TransportMode }[] = [];
+  const add = (from: LocatedSpot, to: LocatedSpot, mode: TransportMode) =>
+    out.push({ key: legKey(from, to, mode), from, to, mode });
+
+  const anchor = dayStartAnchor(days as unknown[], di) as Spot | null;
+  let prev: LocatedSpot | null = hasCoord(anchor) ? anchor : null;
+  for (const spot of day.spots ?? []) {
+    if (!hasCoord(spot)) continue;
+    if (prev) add(prev, spot, legModeOf(day, spot));
+    prev = spot;
+  }
+  const back = backLegOf(day, dayReturnStay(days as unknown[], di) as Spot | null);
+  if (back) add(back.from, back.to, back.mode);
+  return out;
+}
+
 export function backLegOf(day: Day, back: Spot | null): { from: LocatedSpot; to: LocatedSpot; mode: TransportMode } | null {
   const loc = day.spots.filter(hasCoord);
   if (!back || !hasCoord(back) || !loc.length) return null;

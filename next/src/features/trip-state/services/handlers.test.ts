@@ -5,7 +5,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import type {
   BookingListResponse, DayPlanResponse, DeviceRegistration, ImportCommitResponse, ImportPreviewResponse,
-  MemoryCreateResponse, MemoryListResponse, MutationResponse, TodayResponse, TravelStateResponse, TripListResponse
+  MemoryCreateResponse, MemoryListResponse, MutationResponse, TodayResponse, TravelStateResponse,
+  TripListResponse, TripRoutesResponse
 } from '../domain/contract';
 import type { MemoryRow } from '../domain/intakeView';
 import type { PriceObservation } from '../domain/bookingsView';
@@ -796,22 +797,27 @@ describe('GET /api/v1/trips/:tripId/days/:dayIndex — 일정 화면이 쓰는 �
 // ── 구간 캐시 배선 ──
 // 여기서 지키는 것: **응답을 경로 조회에 묶지 않는다.** 이미 조회된 것만 실어 보내고,
 // 없는 것은 응답 뒤에 채운다. 캐시가 아예 없어도(키 없음) 예전과 같은 답이 나온다.
-describe('구간 캐시 — 읽기는 응답 전, 채우기는 응답 뒤', () => {
-  function withLegs(cache: Record<string, { sec?: number; m?: number; path?: string }>, pending = 0) {
-    const filled: number[] = [];
-    const read: number[] = [];
-    const waited: number[] = [];
-    const handlers = createHandlers({
-      gatewayFor: (token) => (token === TOKEN ? gatewayOf(store) : null),
-      now: () => NOW,
-      legs: {
-        async read(_trip, dayIndex, waitMs) { read.push(dayIndex); waited.push(waitMs ?? 0); return { cache, pending }; },
-        fillLater(_trip, dayIndex) { filled.push(dayIndex); }
-      }
-    });
-    return { handlers, filled, read, waited };
-  }
+/** 구간 캐시를 가진 핸들러 — 무엇을 읽고 무엇을 채웠는지 그대로 들고 있는다 */
+function withLegs(cache: Record<string, { sec?: number; m?: number; path?: string }>, pending = 0) {
+  const filled: number[] = [];
+  const read: number[] = [];
+  const waited: number[] = [];
+  let readWhole = 0;
+  let filledWhole = 0;
+  const handlers = createHandlers({
+    gatewayFor: (token) => (token === TOKEN ? gatewayOf(store) : null),
+    now: () => NOW,
+    legs: {
+      async read(_trip, dayIndex, waitMs) { read.push(dayIndex); waited.push(waitMs ?? 0); return { cache, pending }; },
+      async readTrip() { readWhole += 1; return { cache, pending }; },
+      fillLater(_trip, dayIndex) { filled.push(dayIndex); },
+      fillTripLater() { filledWhole += 1; }
+    }
+  });
+  return { handlers, filled, read, waited, whole: () => ({ read: readWhole, filled: filledWhole }) };
+}
 
+describe('구간 캐시 — 읽기는 응답 전, 채우기는 응답 뒤', () => {
   it('조회된 구간이 있으면 그 값으로 답한다', async () => {
     // 숙소 → 저녁 예약, 그리고 숙소 복귀. 둘 다 조회돼야 하루 전체가 도로다
     const { handlers, read } = withLegs({
@@ -843,7 +849,9 @@ describe('구간 캐시 — 읽기는 응답 전, 채우기는 응답 뒤', () =
       gatewayFor: () => gatewayOf(store), now: () => NOW,
       legs: {
         async read() { throw new Error('DB 안 됨'); },
-        fillLater() {}
+        async readTrip() { throw new Error('DB 안 됨'); },
+        fillLater() {},
+        fillTripLater() {}
       }
     });
     const res = await handlers.dayPlan(new Request('https://x/y', auth()), 'trip-1', 0);
@@ -875,5 +883,38 @@ describe('구간 캐시 — 읽기는 응답 전, 채우기는 응답 뒤', () =
     const plain = createHandlers({ gatewayFor: () => gatewayOf(store), now: () => NOW });
     const body = (await (await plain.dayPlan(new Request('https://x/y', auth()), 'trip-1', 0)).json()) as DayPlanResponse;
     expect(body.legsPending).toBe(0);
+  });
+});
+
+describe('GET /api/v1/trips/:tripId/routes — 여행 전체 동선', () => {
+  it('모든 날의 구간을 한 번에 준다 — 하루씩 받으면 왕복이 날 수만큼이다', async () => {
+    const { handlers, whole } = withLegs({});
+    const res = await handlers.tripRoutes(new Request('https://x/y', auth()), 'trip-1');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as TripRoutesResponse;
+
+    expect(body.days).toHaveLength(2);
+    expect(body.days[0].spots.map((s) => s.name)).toEqual(['숙소', '저녁 예약']);
+    expect(body.days[0].legs.length).toBeGreaterThan(0);
+    expect(whole().read).toBe(1);
+    expect(whole().filled).toBe(1);
+  });
+
+  it('조회된 구간은 경로를, 아닌 구간은 null을 준다 — 없는 길을 지어내지 않는다', async () => {
+    const key = lib.legKey(P(40.40), P(40.41), 'car');
+    const { handlers } = withLegs({ [key]: { sec: 1200, m: 9000, path: 'enc' } });
+    const body = (await (await handlers.tripRoutes(new Request('https://x/y', auth()), 'trip-1')).json()) as TripRoutesResponse;
+
+    const legs = body.days[0].legs;
+    expect(legs[0]).toMatchObject({ path: 'enc', source: 'ROUTED' });
+    expect(legs.some((l) => l.path === null && l.source === 'STRAIGHT_LINE_ESTIMATE')).toBe(true);
+    // 하나라도 추정이면 맨 위는 추정이다
+    expect(body.travelTimeSource).toBe('STRAIGHT_LINE_ESTIMATE');
+  });
+
+  it('로그인해야 하고, 없는 여행은 404다', async () => {
+    const { handlers } = withLegs({});
+    expect((await handlers.tripRoutes(new Request('https://x/y'), 'trip-1')).status).toBe(401);
+    expect((await handlers.tripRoutes(new Request('https://x/y', auth()), 'nope')).status).toBe(404);
   });
 });
