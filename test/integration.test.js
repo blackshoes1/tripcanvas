@@ -2669,10 +2669,12 @@ const PASTED_TEXT = [
   '* 08:00~09:00｜아침 식사'
 ].join('\n');
 
-/** 좌표 조회를 가짜로 — 실제 네트워크·SDK 없이 미리보기 배선만 본다 */
+/** 좌표 조회를 가짜로 — 실제 네트워크·SDK 없이 미리보기 배선만 본다. 어떤 도시로 좁혔는지도 기록한다 */
 function stubGeocode(w, results) {
-  w.eval(`window.__geo=[]; geocodeCandidates=async(name)=>{ window.__geo.push(name); return (${JSON.stringify(results)})[name]||[]; };`);
+  w.eval(`window.__geo=[]; geocodeCandidates=async(name,city)=>{ window.__geo.push({name,city}); return (${JSON.stringify(results)})[name]||[]; };`);
 }
+/** 조회한 이름만 (도시까지 볼 때는 window.__geo를 직접 본다) */
+function geoNames(w) { return w.eval('JSON.stringify(window.__geo.map(g=>g.name))') && JSON.parse(w.eval('JSON.stringify(window.__geo.map(g=>g.name))')); }
 
 test('붙여넣기: 미리보기가 뜨고, 확인 전에는 여행이 만들어지지 않는다', { skip: noJsdom }, async () => {
   const w = boot();
@@ -2696,7 +2698,7 @@ test('붙여넣기: 담기로 한 줄만 좌표를 찾는다 (활동·이동은 
   await w.eval('runPaste()');
   await w.eval('pvGeocodeAll()');
 
-  assert.deepEqual(w.eval('window.__geo'), ['규카루이자와 긴자 거리'], '체크된 줄만 조회한다');
+  assert.deepEqual(geoNames(w), ['규카루이자와 긴자 거리'], '체크된 줄만 조회한다');
   assert.equal(w.eval('pv.rows[1].geo.pick.lat'), 36.35);
 });
 
@@ -2741,4 +2743,52 @@ test('붙여넣기: 연도가 없으면 그 사실을 화면이 말한다', { sk
   await w.eval('runPaste()');
   assert.match(w.document.getElementById('pvStartWarn').textContent, /연도/);
   assert.match(w.document.getElementById('pvStart').value, /^\d{4}-07-21$/);
+});
+
+test('붙여넣기: 이미 찾은 장소의 도시로 다음 줄을 좁힌다 (일자 제목을 도시로 찍지 않는다)', { skip: noJsdom }, async () => {
+  const w = boot();
+  // 첫 줄은 찾히고, 둘째 줄은 도시를 알아야 찾힌다
+  stubGeocode(w, { '쿠모바 연못': [{ name: '쿠모바 연못', addr: '나가노', city: '가루이자와', lat: 36.35, lng: 138.6 }] });
+  w.document.getElementById('pasteText').value = '[day1] 7월 22일(목) — 쿠모바 연못·하루니레 테라스\n- 쿠모바 연못\n- 하루니레 테라스';
+  await w.eval('runPaste()');
+  await w.eval('pvGeocodeAll()');
+
+  const calls = JSON.parse(w.eval('JSON.stringify(window.__geo)'));
+  // 첫 조회는 앵커가 없다(여행 이름도 비었다). 일자 제목의 '쿠모바'를 도시로 찍으면 안 된다
+  assert.equal(calls[0].city, '');
+  // 한 곳을 찾은 뒤에는 그 도시로 좁힌다
+  assert.equal(calls[1].city, '가루이자와');
+  assert.equal(w.eval('pv.learnedCity'), '가루이자와');
+});
+
+test('붙여넣기: 앵커를 뒤늦게 알면 못 찾았던 줄을 한 번 더 본다', { skip: noJsdom }, async () => {
+  const w = boot();
+  stubGeocode(w, {
+    '하루니레 테라스': [{ name: '하루니레 테라스', addr: '나가노', city: '가루이자와', lat: 36.35, lng: 138.6 }]
+  });
+  w.document.getElementById('pasteText').value = '[day1] 도착\n- 톰보노유 온천\n- 하루니레 테라스';
+  await w.eval('runPaste()');
+  await w.eval('pvGeocodeAll()');
+
+  const calls = JSON.parse(w.eval('JSON.stringify(window.__geo)'));
+  const retry = calls.filter(c => c.name === '톰보노유 온천');
+  assert.equal(retry.length, 2, '앵커 없이 한 번, 알게 된 도시로 한 번');
+  assert.equal(retry[1].city, '가루이자와');
+  // 두 번째도 못 찾으면 못 찾은 채로 둔다 — 찾은 척하지 않는다
+  assert.equal(w.eval('pv.rows[0].geo.pick'), null);
+});
+
+test('붙여넣기: 날짜가 순서와 어긋나면 고치지 않고 말한다', { skip: noJsdom }, async () => {
+  const w = boot();
+  stubGeocode(w, {});
+  // 2일차가 하루 건너뛴다 (7/21 → 7/23)
+  w.document.getElementById('pasteText').value = '[day1] 7월 21일 도착\n- 어떤 곳\n[day2] 7월 23일 이튿날\n- 다른 곳';
+  await w.eval('runPaste()');
+
+  const heads = w.eval("JSON.stringify([...document.querySelectorAll('.pvDay')].map(e=>e.textContent))");
+  const [d1, d2] = JSON.parse(heads);
+  assert.ok(!d1.includes('⚠️'), '첫날은 어긋날 수 없다');
+  assert.match(d2, /글에는 \d{4}-07-23인데 순서로는 \d{4}-07-22/);
+  // 말할 뿐 고치지 않는다 — 읽은 날짜는 그대로다
+  assert.equal(w.eval('pv.draft.days[1].date').slice(5), '07-23');
 });
