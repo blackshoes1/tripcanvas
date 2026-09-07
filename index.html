@@ -13,7 +13,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js" integrity="sha384-+pWnyi8LtZx+cgXfD2arWgUX7pHIaEL215cEPPk9WrsegNlgvDL9DNjaqsceQq6o" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js" integrity="sha384-BSxuMLxX+FCbTdYec3TbXlnMGEEM2QXTFdtDaveen71o+jswm2J36+xFqp8k4VHM" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.min.js" integrity="sha384-l8ah+VgaWtk1mvOe9VC+OirC6qHFF4yH7l7mKRidV9MSti3E9F463bMp6ZVN4kuC" crossorigin="anonymous"></script>
-<link rel="stylesheet" href="style.css?v=tc-v189">
+<link rel="stylesheet" href="style.css?v=tc-v190">
 <!-- Travelpayouts 사이트 소유 인증 (파트너 가입 검증용 — DiscoverCars API 신청에 필요) -->
 <script nowprocket data-noptimize="1" data-cfasync="false" data-wpfc-render="false" seraph-accel-crit="1" data-no-defer="1" data-cmp-ab="2">
   (function () {
@@ -411,7 +411,24 @@
   </details>
   <div class="row">
     <button class="btn" id="pasteCancel">취소</button>
-    <button class="btn primary" id="pasteRun">초안 만들기</button>
+    <button class="btn primary" id="pasteRun">읽어 보기</button>
+  </div>
+</div></div>
+
+<!-- 붙여넣기 미리보기 — 확인한 것만 저장된다(§유입) -->
+<div class="modalBg" id="pastePvBg"><div class="modal">
+  <h2>📋 이렇게 읽었어요</h2>
+  <p class="hint" id="pvSummary" style="margin-bottom:6px"></p>
+  <div class="row" style="gap:8px;align-items:flex-end">
+    <div style="flex:2"><label>여행 이름</label><input type="text" id="pvName" placeholder="붙여넣은 여행"></div>
+    <div style="flex:1"><label>시작일</label><input type="date" id="pvStart"></div>
+  </div>
+  <p class="hint" id="pvStartWarn" style="margin:2px 0 6px"></p>
+  <div id="pvList" class="pvList"></div>
+  <details id="pvRaw" style="margin-top:8px"><summary>붙여넣은 원문 보기</summary><pre id="pvRawText" class="pvRawText"></pre></details>
+  <div class="row">
+    <button class="btn" id="pvCancel">취소</button>
+    <button class="btn primary" id="pvRun">담은 것으로 만들기</button>
   </div>
 </div></div>
 
@@ -507,15 +524,15 @@
   </div>
 </div>
 
-<script src="lib.js?v=tc-v189"></script>
-<script src="sync.js?v=tc-v189"></script>
-<script src="routing.js?v=tc-v189"></script>
-<script src="price.js?v=tc-v189"></script>
-<script src="adaptive.js?v=tc-v189"></script>
-<script src="intake.js?v=tc-v189"></script>
-<script src="collab.js?v=tc-v189"></script>
-<script src="api.js?v=tc-v189"></script>
-<script src="auth.js?v=tc-v189"></script>
-<script src="app.js?v=tc-v189"></script>
+<script src="lib.js?v=tc-v190"></script>
+<script src="sync.js?v=tc-v190"></script>
+<script src="routing.js?v=tc-v190"></script>
+<script src="price.js?v=tc-v190"></script>
+<script src="adaptive.js?v=tc-v190"></script>
+<script src="intake.js?v=tc-v190"></script>
+<script src="collab.js?v=tc-v190"></script>
+<script src="api.js?v=tc-v190"></script>
+<script src="auth.js?v=tc-v190"></script>
+<script src="app.js?v=tc-v190"></script>
 </body>
 </html>
