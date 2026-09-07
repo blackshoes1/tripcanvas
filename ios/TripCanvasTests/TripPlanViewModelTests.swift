@@ -446,6 +446,13 @@ private final class FakeDocumentService: TripDocumentSource {
     }
     /// 전체 동선은 이 테스트의 관심사가 아니다 — 프로토콜을 채우기만 한다.
     func tripRoutes(tripId: String) async throws -> TripRoutesResponse { throw APIError.offline }
+    /// 디스크에 남아 있던 지난 계산. 테스트가 직접 넣어 준다.
+    var cachedPlan: DayPlanResponse?
+    private(set) var cachedPlanReads = 0
+    func cachedDayPlan(tripId: String, dayIndex: Int) async -> DayPlanResponse? {
+        cachedPlanReads += 1
+        return cachedPlan
+    }
 
 }
 
@@ -556,5 +563,46 @@ extension TripPlanViewModelTests {
         try? await Task.sleep(for: .milliseconds(200))
 
         XCTAssertEqual(service.dayPlanCalls.count, 2)
+    }
+}
+
+// MARK: - 화면이 튀지 않게
+//
+// 진입할 때 시각이 늦게 들어오면서 줄이 움직이는 문제(2026-09-07 보고).
+// 여기서 지키는 것: **문서가 그대로일 때만** 지난 계산을 먼저 보여 준다 —
+// 편집한 뒤의 옛 시각을 잠깐이라도 보여 주면 틀린 숫자를 말하는 것이다.
+
+extension TripPlanViewModelTests {
+
+    func testShowsLastPlanWhileWaitingWhenTheDocumentIsUnchanged() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(), revision: 7, role: .owner))
+        service.cachedPlan = plan(days: 2)          // 같은 revision(7)으로 계산된 것
+        service.dayPlanResponse = plan(days: 2)
+        let model = TripPlanViewModel(tripId: "t1", service: service, legRetryDelay: 0.01)
+        await model.load()
+
+        XCTAssertEqual(service.cachedPlanReads, 1, "서버를 기다리기 전에 지난 계산을 먼저 본다")
+        XCTAssertNotNil(model.plan)
+    }
+
+    func testIgnoresTheCachedPlanWhenTheDocumentChanged() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(), revision: 9, role: .owner))
+        service.cachedPlan = plan(days: 2)          // revision 7로 계산된 옛 것
+        service.dayPlanResponse = nil               // 서버는 못 받는 상황
+        let model = TripPlanViewModel(tripId: "t1", service: service, legRetryDelay: 0.01)
+        await model.load()
+
+        XCTAssertNil(model.plan, "편집한 뒤의 옛 시각을 보여 주느니 비워 둔다")
+    }
+
+    /// 서버 응답이 오면 그것이 이긴다 — 캐시는 기다리는 동안의 임시일 뿐이다.
+    func testServerPlanReplacesTheCachedOne() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(), revision: 7, role: .owner))
+        service.cachedPlan = plan(days: 2, legsPending: 4)
+        service.dayPlanResponse = plan(days: 2, legsPending: 0)
+        let model = TripPlanViewModel(tripId: "t1", service: service, legRetryDelay: 0.01)
+        await model.load()
+
+        XCTAssertEqual(model.plan?.legsPending, 0)
     }
 }

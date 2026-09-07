@@ -559,7 +559,8 @@ private final class FakeDocumentStore: TripDocumentSource {
     func dayPlan(tripId: String, dayIndex: Int) async throws -> TripService.Fetched<DayPlanResponse> {
         throw APIError.notFound("일자 계획 없음")
     }
-    /// 전체 동선은 이 테스트의 관심사가 아니다 — 프로토콜을 채우기만 한다.
+    /// 전체 동선·지난 계산은 이 테스트의 관심사가 아니다 — 프로토콜을 채우기만 한다.
     func tripRoutes(tripId: String) async throws -> TripRoutesResponse { throw APIError.offline }
+    func cachedDayPlan(tripId: String, dayIndex: Int) async -> DayPlanResponse? { nil }
 
 }
