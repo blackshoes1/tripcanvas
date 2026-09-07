@@ -70,11 +70,23 @@ export interface LegSupport {
   /**
    * 이미 조회된 구간(`cache`)과, 아직 조회되지 않은 구간 수(`pending`).
    * `pending`은 **곧 채워질 것만** 센다 — 실패로 기록된 구간은 곧 바뀌지 않으므로 빼고 센다.
+   *
+   * `waitMs`를 주면 못 채운 구간이 있을 때 **그만큼만 기다렸다** 돌려준다.
+   * 캐시가 이미 다 있으면 기다리지 않는다(두 번째 열람부터는 대기 0).
    */
-  read(trip: TripDoc, dayIndex: number): Promise<{ cache: LegCache; pending: number }>;
+  read(trip: TripDoc, dayIndex: number, waitMs?: number): Promise<{ cache: LegCache; pending: number }>;
   /** 기다리지 않는다 — 배경에서 채우고 실패는 로그로 삼킨다 */
   fillLater(trip: TripDoc, dayIndex: number): void;
 }
+
+/**
+ * 하루치를 주기 전에 경로를 기다리는 상한.
+ *
+ * 측정(2026-09-07, NAS): 구글 6구간 병렬 277ms · 카카오 1건 ~300ms. 대개 이 안에 끝난다.
+ * ⚠️ 상한을 늘리면 업스트림이 느린 날 화면이 그만큼 늦어진다 — 못 채운 것은 `legsPending`으로
+ * 알리고 클라이언트가 한 번 더 받는 길이 이미 있다.
+ */
+export const LEG_WAIT_MS = 800;
 
 export interface HandlerDeps {
   /** 토큰으로 사용자 컨텍스트를 만든다. 인증 실패는 null */
@@ -230,7 +242,7 @@ export function createHandlers(deps: HandlerDeps) {
   /** 이미 조회된 구간만. 캐시가 없거나 읽다 실패하면 빈 캐시 — 화면은 추정으로 나가고 멈추지 않는다 */
   async function legCacheFor(trip: TripDoc, dayIndex: number): Promise<{ cache: LegCache; pending: number }> {
     if (!deps.legs) return { cache: {}, pending: 0 };
-    try { return await deps.legs.read(trip, dayIndex); } catch { return { cache: {}, pending: 0 }; }
+    try { return await deps.legs.read(trip, dayIndex, LEG_WAIT_MS); } catch { return { cache: {}, pending: 0 }; }
   }
 
   /** GET /api/v1/trips — 여행 목록. 삭제(tombstone)된 여행은 빼고, 최근 수정 순. */

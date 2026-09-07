@@ -24,6 +24,11 @@ const ESTIMATED_MODES = new Set(['flight', 'train']);
 
 /** 한 번에 조회할 최대 구간 수 — 한 요청이 할당량과 시간을 통째로 쓰지 않게. 나머지는 다음 요청이 채운다 */
 export const MAX_PER_FILL = 12;
+/**
+ * 동시에 물어보는 수. 측정(2026-09-07, NAS): 구글은 커넥션을 재사용해 1건 ~65ms,
+ * **6건 병렬 277ms / 순차 371ms**. 더 늘려도 이득이 적고 업스트림에 부담만 준다.
+ */
+export const FILL_CONCURRENCY = 6;
 export const FAIL_RETRY_MS = 60 * 60 * 1000;          // 1시간
 export const REFRESH_MS = 30 * 24 * 60 * 60 * 1000;   // 30일
 
@@ -101,39 +106,69 @@ export function createLegFiller(deps: LegFillerDeps) {
       .slice(0, MAX_PER_FILL);
   }
 
-  /** 미스를 조회해 넣는다. 예외는 삼키고 로그로 — 배경 작업이 요청을 죽이면 안 된다 */
-  async function fill(requests: LegRequest[]): Promise<number> {
+  /**
+   * 미스를 조회해 넣는다. 예외는 삼키고 로그로 — 배경 작업이 요청을 죽이면 안 된다.
+   *
+   * `budgetMs`를 주면 **그만큼만 기다렸다 돌아온다.** 남은 조회는 배경에서 계속 돌아
+   * 캐시에 들어가므로 버려지지 않는다 — 다음 요청이 그 결과를 본다.
+   */
+  async function fill(requests: LegRequest[], opts?: { budgetMs?: number }): Promise<number> {
     const router = deps.router;
     if (!router) return 0;
+    const queue = await pending(requests);
+    if (!queue.length) return 0;
+
     let filled = 0;
-    for (const r of await pending(requests)) {
-      inFlight.add(r.key);
-      try {
-        const provider = router.providerFor(r.a, r.b);
-        const outcome = await router.fetchLeg(r.a, r.b, r.mode);
-        if (outcome.ok) {
-          const { route } = outcome;
-          await deps.repo.put({
-            key: r.key, sec: Math.round(route.sec), m: Math.round(route.m), path: route.path,
-            taxi: route.taxi ?? null, snapped: !!route.snapped, fail: false, provider
-          });
-          filled += 1;
-        } else if (outcome.transient) {
-          // 지금 우리 쪽 사정이다 — 남기지 않는다. 다음 요청에서 다시 묻는다.
-          log(`구간 조회 보류 — ${provider} ${r.key}`);
-        } else {
-          await deps.repo.put({
-            key: r.key, sec: null, m: null, path: null, taxi: null, snapped: false, fail: true, provider
-          });
-          log(`구간 조회 실패 — ${provider} ${r.key}`);
-        }
-      } catch (error) {
-        log(`구간 채우기 오류 — ${r.key} · ${error instanceof Error ? error.message : String(error)}`);
-      } finally {
-        inFlight.delete(r.key);
+    const worker = async () => {
+      for (;;) {
+        const r = queue.shift();
+        if (!r) return;
+        if (await one(r)) filled += 1;
       }
+    };
+    const work = Promise.all(
+      Array.from({ length: Math.min(FILL_CONCURRENCY, queue.length) }, worker)
+    ).catch((error) => { log(`구간 채우기 오류 — ${error instanceof Error ? error.message : String(error)}`); });
+
+    if (opts?.budgetMs && opts.budgetMs > 0) {
+      // ⚠️ 남은 것을 취소하지 않는다. 시간이 다 된 것은 '기다리기'지 '그만두기'가 아니다.
+      await Promise.race([work, new Promise((resolve) => setTimeout(resolve, opts.budgetMs))]);
+    } else {
+      await work;
     }
     return filled;
+  }
+
+  /** 한 구간. 성공하면 true */
+  async function one(r: LegRequest): Promise<boolean> {
+    const router = deps.router;
+    if (!router) return false;
+    inFlight.add(r.key);
+    try {
+      const provider = router.providerFor(r.a, r.b);
+      const outcome = await router.fetchLeg(r.a, r.b, r.mode);
+      if (outcome.ok) {
+        const { route } = outcome;
+        await deps.repo.put({
+          key: r.key, sec: Math.round(route.sec), m: Math.round(route.m), path: route.path,
+          taxi: route.taxi ?? null, snapped: !!route.snapped, fail: false, provider
+        });
+        return true;
+      } else if (outcome.transient) {
+        // 지금 우리 쪽 사정이다 — 남기지 않는다. 다음 요청에서 다시 묻는다.
+        log(`구간 조회 보류 — ${provider} ${r.key}`);
+      } else {
+        await deps.repo.put({
+          key: r.key, sec: null, m: null, path: null, taxi: null, snapped: false, fail: true, provider
+        });
+        log(`구간 조회 실패 — ${provider} ${r.key}`);
+      }
+    } catch (error) {
+      log(`구간 채우기 오류 — ${r.key} · ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      inFlight.delete(r.key);
+    }
+    return false;
   }
 
   return { fill, pending };
