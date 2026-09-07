@@ -103,14 +103,18 @@ struct KakaoMapContainer: UIViewRepresentable {
                 let pickIcon = PoiIconStyle(symbol: symbol.withTintColor(.systemOrange, renderingMode: .alwaysOriginal), anchorPoint: CGPoint(x: 0.5, y: 0.5))
                 manager.addPoiStyle(PoiStyle(styleID: Self.pickStyleId, styles: [PerLevelPoiStyle(iconStyle: pickIcon, level: 0)]))
             }
-            // 동선 — 자동 합성 구간(숙소 복귀)을 구분하려고 스타일을 둘 둔다(styleIndex 0/1).
+            // 동선 스타일 — 카카오는 **미리 등록한 목록에서 번호로** 고른다.
+            // 짝수는 보통 선, 홀수는 자동 합성(숙소 복귀). 앞의 두 개는 기본색(하루만 볼 때),
+            // 그 뒤로 일자 색 10개가 같은 규칙으로 이어진다.
             let routeManager = map.getRouteManager()
-            routeManager.addRouteStyleSet(RouteStyleSet(styleID: Self.routeStyleId, styles: [
-                RouteStyle(styles: [PerLevelRouteStyle(width: 12, color: UIColor.tintColor.withAlphaComponent(0.85),
+            let pair: (UIColor) -> [RouteStyle] = { color in [
+                RouteStyle(styles: [PerLevelRouteStyle(width: 12, color: color.withAlphaComponent(0.85),
                                                        strokeWidth: 0, strokeColor: .clear, level: 0)]),
-                RouteStyle(styles: [PerLevelRouteStyle(width: 6, color: UIColor.tintColor.withAlphaComponent(0.35),
+                RouteStyle(styles: [PerLevelRouteStyle(width: 6, color: color.withAlphaComponent(0.35),
                                                        strokeWidth: 0, strokeColor: .clear, level: 0)])
-            ]))
+            ] }
+            let styles = pair(.tintColor) + MapPalette.colors.flatMap(pair)
+            routeManager.addRouteStyleSet(RouteStyleSet(styleID: Self.routeStyleId, styles: styles))
             _ = routeManager.addRouteLayer(layerID: Self.routeLayerId, zOrder: 0)
 
             tapHandler = map.addMapTappedEventHandler(target: self, handler: Coordinator.mapTapped)
@@ -144,9 +148,11 @@ struct KakaoMapContainer: UIViewRepresentable {
             layer.clearAllRoutes()
             for route in routes where route.points.count >= 2 {
                 let options = RouteOptions(routeID: route.id, styleID: Self.routeStyleId, zOrder: 0)
+                // 위에서 등록한 순서와 같은 규칙으로 번호를 고른다(기본 한 쌍 + 일자 색 쌍들).
+                let slot = route.colorIndex < 0 ? 0 : 1 + (route.colorIndex % MapPalette.colors.count)
                 options.segments = [RouteSegment(
                     points: route.points.map { MapPoint(longitude: $0.lng, latitude: $0.lat) },
-                    styleIndex: route.synthetic ? 1 : 0)]
+                    styleIndex: UInt(slot * 2 + (route.synthetic ? 1 : 0)))]
                 _ = layer.addRoute(option: options)
             }
         }

@@ -80,7 +80,7 @@ final class MapRouteTests: XCTestCase {
     // ── 조회된 경로 ──
 
     /// `lib.js`가 인코딩한 도로 좌표열. 두 점 사이를 크게 돌아가는 길이다.
-    private static let detour = "o|okEoa`cWoqPo_h@nwH_af@nqP_yF"
+    static let detour = "o|okEoa`cWoqPo_h@nwH_af@nqP_yF"
 
     func testFollowsTheRoadWhenTheServerGivesAPath() throws {
         let d = day([spot("공항", 33.51, 126.49), spot("성산", 33.46, 126.94, path: Self.detour)])
@@ -113,5 +113,59 @@ final class MapRouteTests: XCTestCase {
         XCTAssertTrue(routes[1].routed)
         XCTAssertEqual(routes[1].points.count, Polyline.decode(Self.detour).count)
         XCTAssertFalse(routes[0].routed, "장소 사이는 아직 직선이다")
+    }
+}
+
+// MARK: - 여행 전체 동선
+//
+// 여기서 지키는 것: 일자 지도와 **같은 규칙**으로 그린다 · 날마다 색이 다르다 ·
+// 번호는 그 날 안에서 매긴다(전체에 1..N을 매기면 14일차가 60번이 된다).
+
+extension MapRouteTests {
+
+    private func tripDay(_ index: Int, paths: [String?]) -> TripRouteDay {
+        let points = [GeoPoint(lat: 33.51, lng: 126.49), GeoPoint(lat: 33.50, lng: 126.53),
+                      GeoPoint(lat: 33.46, lng: 126.94)]
+        let legs = paths.enumerated().map { offset, path in
+            TripRouteLeg(from: points[offset], to: points[offset + 1], mode: "car",
+                         path: path, source: path == nil ? .straightLineEstimate : .routed)
+        }
+        return TripRouteDay(
+            index: index, date: "2026-10-0\(index + 1)", title: "Day \(index + 1)",
+            spots: points.map { TripRouteDay.Spot(name: "장소", location: $0) }, legs: legs)
+    }
+
+    func testTripDayFollowsRoadsWhenPathsArePresent() throws {
+        let day = tripDay(0, paths: [Self.detour, Self.detour])
+        let route = try XCTUnwrap(day.mapRoutes(colorIndex: 0).first)
+
+        XCTAssertTrue(route.routed)
+        XCTAssertEqual(route.points.count, 1 + Polyline.decode(Self.detour).count * 2)
+        XCTAssertEqual(route.colorIndex, 0)
+    }
+
+    func testTripDayIsNotRoutedWhenAnyLegIsStraight() throws {
+        let day = tripDay(1, paths: [Self.detour, nil])
+        let route = try XCTUnwrap(day.mapRoutes(colorIndex: 1).first)
+
+        XCTAssertFalse(route.routed, "하나라도 직선이면 도로라고 하지 않는다")
+        XCTAssertEqual(route.points.last?.lat, 33.46, "마지막 장소로 끝난다")
+    }
+
+    func testEachDayGetsItsOwnColour() {
+        let a = tripDay(0, paths: [nil, nil]).mapRoutes(colorIndex: 0).first
+        let b = tripDay(1, paths: [nil, nil]).mapRoutes(colorIndex: 1).first
+        XCTAssertNotEqual(a?.colorIndex, b?.colorIndex)
+        XCTAssertNotEqual(a?.id, b?.id, "선 id가 같으면 지도가 하나만 그린다")
+    }
+
+    /// 번호는 그 날 안에서 1부터 — 여행 전체로 매기면 뒷날 번호가 무의미해진다.
+    func testPinNumbersRestartEachDay() {
+        XCTAssertEqual(tripDay(3, paths: [nil, nil]).pins.map(\.order), [1, 2, 3])
+    }
+
+    func testNothingToDrawWhenADayHasNoLegs() {
+        let empty = TripRouteDay(index: 0, date: "", title: "", spots: [], legs: [])
+        XCTAssertTrue(empty.mapRoutes(colorIndex: 0).isEmpty)
     }
 }

@@ -80,3 +80,36 @@ extension TripDay {
         }
     }
 }
+
+// ⚠️ 이 확장은 `Contract.swift`가 아니라 여기 있다 — `MapRoute`·`MapPin`은 앱 타깃에만 있고
+// 계약 파일은 위젯·워치와 함께 쓰이기 때문이다(거기서는 지도 타입을 모른다).
+extension TripRouteDay {
+    /// 그 날의 동선. 구간에 조회된 경로가 있으면 도로를 따르고, 없으면 두 점을 곧게 잇는다.
+    /// ⚠️ 일자 지도(`DayPlanDay.mapRoutes`)와 **같은 규칙**이다.
+    func mapRoutes(colorIndex: Int) -> [MapRoute] {
+        var points: [GeoPoint] = []
+        var allRouted = true
+        for (offset, leg) in legs.enumerated() {
+            if offset == 0 { points.append(leg.from) }
+            let decoded = Polyline.decode(leg.path)
+            if decoded.count >= 2 {
+                points.append(contentsOf: decoded)
+            } else {
+                points.append(leg.to)
+                allRouted = false
+            }
+        }
+        guard points.count >= 2 else { return [] }
+        return [MapRoute(id: "trip-day-\(index)", points: points, synthetic: false,
+                         routed: allRouted, colorIndex: colorIndex)]
+    }
+
+    /// 핀. 번호는 **그 날 안에서** 매긴다 — 여행 전체에 1..N을 매기면 14일차가 60번이 된다.
+    var pins: [MapPin] {
+        spots.enumerated().map { index, spot in
+            MapPin(id: "trip-\(self.index)-\(index)",
+                   title: spot.name.isEmpty ? "이름 없는 장소" : spot.name,
+                   point: spot.location, order: index + 1)
+        }
+    }
+}
