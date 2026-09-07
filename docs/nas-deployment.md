@@ -216,6 +216,66 @@ sudo docker exec tripcanvas-postgres-1 psql -U tripcanvas -d tripcanvas -c '\d <
 | `GOOGLE_ROUTES_API_KEY` | 해외 경로(Google Routes)용 **서버 전용** 키. 웹 키(리퍼러 제한)·iOS 키(번들 제한)는 서버에서 거절된다 |
 | `BACKUP_DIR` · `BACKUP_KEEP_DAYS` | 덤프 위치 · 보관 일수. ⚠️ **DB와 다른 볼륨**이어야 한다 — DB는 `/volume1`에 있으므로 `/volume2/...`를 쓴다(§60) |
 
+### ⚠️ `.env`를 고쳤으면 **반드시 다시 띄운다**
+
+`.env`는 **컨테이너가 뜰 때 한 번만 읽힌다.** 파일만 고치면 화면에서는 아무것도 달라지지 않고,
+"고쳤는데 왜 안 되지"로 시간을 버린다(2026-09-07에 세 번 연속 이것 때문이었다).
+
+```bash
+ssh nas 'cd ~/tripcanvas && sudo /usr/local/bin/docker compose -f deploy/docker-compose.yml up -d --force-recreate api'
+```
+
+확인은 **파일이 아니라 컨테이너**를 본다 — 둘의 시각을 비교하면 바로 드러난다:
+
+```bash
+ssh nas 'stat -c "%y  .env 수정" ~/tripcanvas/deploy/.env; \
+         sudo /usr/local/bin/docker inspect -f "{{.State.StartedAt}}  api 시작" tripcanvas-api-1'
+```
+
+⚠️ **`deploy/` 안에서 실행하지 않는다.** compose는 현재 폴더 이름으로 프로젝트를 구분해서,
+`deploy`에서 돌리면 기존 컨테이너를 다시 띄우는 게 아니라 **`deploy-api-1`이라는 새 스택**을 만든다
+(같은 포트를 둘이 물면서 꼬인다). 항상 `~/tripcanvas`에서.
+
+### 지도 키 — 값이 아니라 **통하는지**를 확인한다
+
+키는 길이가 맞아도 **제한 때문에 거절될 수 있다.** 2026-09-07에 겪은 두 가지:
+
+| 증상 | 원인 |
+|---|---|
+| `HTTP 400 · API key not valid` | 붙여넣을 때 **끝 한 글자가 잘렸다**(구글 키는 39자) |
+| `HTTP 403 · Requests from this iOS client application <empty> are blocked` | **iOS 앱용 키**를 넣었다. 번들 ID로 제한돼 서버에서는 못 쓴다 |
+
+그래서 구글 키는 **두 개**가 된다. 콘솔에서 이름을 갈라 두면 다음에 헷갈리지 않는다:
+
+| 키 | 제한 | 쓰는 곳 |
+|---|---|---|
+| `withj-ios-maps` | 애플리케이션: **iOS 앱**(`com.fromj.trip`) | `ios/project.yml`의 `TCGoogleMapsKey` |
+| `withj-server-routes` | 애플리케이션: **없음** · API: **Routes API만** | NAS `.env`의 `GOOGLE_ROUTES_API_KEY` |
+
+⚠️ 서버 키에 애플리케이션 제한을 걸면 **반드시** 거절된다. 대신 **API 제한(Routes API 하나)** 이 방어선이다.
+
+넣은 뒤에는 **값을 찍지 말고 실제로 불러 본다**(값이 로그·기록에 남으면 그 키는 폐기해야 한다):
+
+```bash
+ssh nas "sudo /usr/local/bin/docker exec tripcanvas-api-1 node -e '
+const g=process.env.GOOGLE_ROUTES_API_KEY||\"\", k=process.env.KAKAO_REST_API_KEY||\"\";
+console.log(\"GOOGLE:\", g.length+\"자\", \"KAKAO:\", k.length+\"자\");
+fetch(\"https://routes.googleapis.com/directions/v2:computeRoutes\",{method:\"POST\",
+  headers:{\"Content-Type\":\"application/json\",\"X-Goog-Api-Key\":g,\"X-Goog-FieldMask\":\"routes.duration\"},
+  body:JSON.stringify({origin:{location:{latLng:{latitude:35.68,longitude:139.76}}},
+    destination:{location:{latLng:{latitude:35.65,longitude:139.70}}},travelMode:\"DRIVE\"})})
+ .then(async r=>console.log(\"구글:\", r.status, r.ok?\"통함\":(await r.text()).slice(0,120)));
+fetch(\"https://apis-navi.kakaomobility.com/v1/directions?origin=126.978,37.5665&destination=129.0756,35.1796\",
+  {headers:{Authorization:\"KakaoAK \"+k}}).then(r=>console.log(\"카카오:\", r.status, r.ok?\"통함\":\"거절\"));'"
+```
+
+둘 다 200이면 켜진 것이다. 그다음은 **누군가 일자 화면을 열어야** `leg_cache`에 행이 생긴다:
+
+```bash
+ssh nas "sudo /usr/local/bin/docker exec tripcanvas-postgres-1 psql -U tripcanvas -d tripcanvas \
+  -c 'select provider, count(*), count(*) filter (where fail) as 실패 from leg_cache group by provider;'"
+```
+
 ## 처음 띄울 때
 
 ```bash
