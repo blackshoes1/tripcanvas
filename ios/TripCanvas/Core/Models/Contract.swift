@@ -843,3 +843,53 @@ struct DayPlanResponse: Codable, Hashable, Sendable {
     let days: [DayPlanStripEntry]
     let day: DayPlanDay
 }
+
+// MARK: - 붙여넣은 일정 읽기 (POST /api/v1/itineraries/parse)
+//
+// 규칙(시간 접두사·전각 구분자·다음 줄 설명·링크·날짜·장소 힌트)은 **서버의 `intake.js` 하나**에 있다.
+// 앱은 파서를 복제하지 않는다 — 복제하면 웹과 앱이 같은 글을 다르게 읽기 시작한다.
+
+enum ItineraryItemKind: String, Codable, Sendable {
+    case place = "PLACE", activity = "ACTIVITY", move = "MOVE", stay = "STAY"
+}
+
+struct ItineraryDraftItem: Codable, Hashable, Sendable {
+    /// 읽은 원문 한 줄. 담지 않기로 한 줄은 이걸 그대로 메모로 남긴다 — 버리지 않는다.
+    let raw: String
+    let name: String
+    let city: String
+    let desc: String
+    /// `HH:MM`. 계산 결과가 아니라 **문서에 그대로 들어가는 값**이라 분(Int)이 아니라 문자열이다.
+    let at: String?
+    let endAt: String?
+    let stayMinutes: Int?
+    let url: String?
+    let cost: Int?
+    let currency: String?
+    let optional: Bool
+    let stay: Bool
+    let location: GeoPoint?
+    /// 장소로 보이는가 — **힌트일 뿐 확정이 아니다.** 담을지는 사람이 고른다.
+    let kind: ItineraryItemKind
+    let reasons: [String]
+}
+
+struct ItineraryDraftDay: Codable, Hashable, Sendable {
+    let index: Int
+    let title: String
+    let date: String?
+    let note: String
+    let items: [ItineraryDraftItem]
+}
+
+struct ItineraryDraft: Codable, Hashable, Sendable {
+    let name: String
+    let start: String?
+    /// 글에 연도가 없어 서버가 정했는가 — 감추지 않고 화면이 물어본다.
+    let startAmbiguous: Bool
+    let days: [ItineraryDraftDay]
+}
+
+struct ItineraryParseResponse: Codable, Sendable {
+    let draft: ItineraryDraft
+}

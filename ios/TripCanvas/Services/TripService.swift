@@ -17,6 +17,10 @@ protocol TripDataSource {
     /// 여행을 지운다(tombstone). **주최자만** — 서버도 그렇게 막는다.
     /// 여행을 만든다. 서버가 id를 정하고 만든 여행을 돌려준다 — 웹과 **같은 경로**(POST /api/v1/trips)다.
     func createTrip(_ draft: NewTripDraft) async throws -> TripSummary
+    /// 붙여넣은 글을 초안으로 읽는다. **서버가 읽는다** — 파서를 앱에 복제하지 않는다.
+    func parseItinerary(text: String) async throws -> ItineraryDraft
+    /// 초안에서 고른 것만으로 여행을 만든다. 만들기와 채우기를 한 번에 보낸다.
+    func createTrip(document: [String: JSONValue]) async throws -> TripSummary
     func deleteTrip(tripId: String, expectedRevision: Int) async throws
     /// 공유받은 여행에서 나간다. 여행 자체는 남는다.
     func leaveTrip(tripId: String) async throws
@@ -103,6 +107,22 @@ final class TripService: TripDataSource {
             "start": .string(draft.start),
             "days": .array(days)
         ]
+        let body = try JSONEncoder().encode(["trip": JSONValue.object(document)])
+        let response: TripDetailResponse = try await api.post("/api/v1/trips", jsonBody: body)
+        return response.trip
+    }
+
+    /// 붙여넣은 글 → 초안. 규칙은 서버의 `intake.js` 하나다(§엔진은 하나다).
+    /// **아무것도 저장되지 않는다** — 담을 것을 고른 뒤 `createTrip(document:)`으로 만든다.
+    func parseItinerary(text: String) async throws -> ItineraryDraft {
+        let year = Calendar.current.component(.year, from: Date())
+        let response: ItineraryParseResponse = try await api.post(
+            "/api/v1/itineraries/parse", body: ["text": text, "year": year])
+        return response.draft
+    }
+
+    /// 이미 만들어 둔 문서로 여행을 만든다(붙여넣기가 쓴다). 만들기와 장소 채우기가 한 번의 왕복이다.
+    func createTrip(document: [String: JSONValue]) async throws -> TripSummary {
         let body = try JSONEncoder().encode(["trip": JSONValue.object(document)])
         let response: TripDetailResponse = try await api.post("/api/v1/trips", jsonBody: body)
         return response.trip
