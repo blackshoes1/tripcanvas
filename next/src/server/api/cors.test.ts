@@ -98,13 +98,35 @@ describe('allowedRequestHeaders', () => {
   });
 
   it('사전 요청이 요구한 헤더를 응답에 싣는다 — 이것이 막히면 저장이 통째로 안 된다', () => {
-    const response = preflightResponse('https://tripcanvas-ai.vercel.app', ALLOWED, 'authorization,content-type,cache-control');
+    const response = preflightResponse('https://tripcanvas-ai.vercel.app', ALLOWED, { headers: 'authorization,content-type,cache-control' });
     expect(response.headers.get('access-control-allow-headers')).toContain('cache-control');
   });
 
   it('모르는 출처에는 여전히 아무것도 열지 않는다', () => {
-    const response = preflightResponse('https://evil.example.com', ALLOWED, 'authorization,cache-control');
+    const response = preflightResponse('https://evil.example.com', ALLOWED, { headers: 'authorization,cache-control' });
     expect(response.headers.get('access-control-allow-headers')).toBeNull();
+    expect(response.headers.get('access-control-allow-origin')).toBeNull();
+  });
+});
+
+// ── 사설망 신고(Private Network Access) ──
+// 우리 API 주소는 보는 사람에 따라 사설 주소로 풀린다(tailnet 100.x · 집 공유기의 MagicDNS).
+// 그때 Chrome은 "공개 페이지가 사설망을 부른다"고 보고 사전 요청에 신고를 붙인다 —
+// 답하지 않으면 요청이 막히고, 사용자에게는 원인 없는 CORS 오류로만 보인다(2026-09-07).
+describe('사설망 사전 요청', () => {
+  it('신고가 오면 허용을 함께 답한다', () => {
+    const response = preflightResponse('https://tripcanvas-ai.vercel.app', ALLOWED, { privateNetwork: true });
+    expect(response.headers.get('access-control-allow-private-network')).toBe('true');
+  });
+
+  it('신고가 없으면 붙이지 않는다 — 묻지 않은 것에 답하지 않는다', () => {
+    const response = preflightResponse('https://tripcanvas-ai.vercel.app', ALLOWED, {});
+    expect(response.headers.get('access-control-allow-private-network')).toBeNull();
+  });
+
+  it('모르는 출처에는 사설망도 열지 않는다', () => {
+    const response = preflightResponse('https://evil.example.com', ALLOWED, { privateNetwork: true });
+    expect(response.headers.get('access-control-allow-private-network')).toBeNull();
     expect(response.headers.get('access-control-allow-origin')).toBeNull();
   });
 });
