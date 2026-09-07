@@ -11,8 +11,14 @@ export function proxy(request: NextRequest): Response {
   const origin = request.headers.get('origin');
   const allowed = readAllowedOrigins(process.env);
 
-  // 브라우저가 보내겠다는 헤더를 그대로 허용한다 — 고정 목록이면 devtools의 cache-control 하나에 막힌다
-  if (request.method === 'OPTIONS') return preflightResponse(origin, allowed, request.headers.get('access-control-request-headers'));
+  // 브라우저가 보내겠다는 헤더를 그대로 허용한다 — 고정 목록이면 devtools의 cache-control 하나에 막힌다.
+  // 사설망 신고(ts.net이 100.x로 풀리는 경우)도 여기서 함께 답한다.
+  if (request.method === 'OPTIONS') {
+    return preflightResponse(origin, allowed, {
+      headers: request.headers.get('access-control-request-headers'),
+      privateNetwork: request.headers.get('access-control-request-private-network') === 'true'
+    });
+  }
 
   const response = NextResponse.next();
   for (const [key, value] of Object.entries(corsHeadersFor(origin, allowed))) {

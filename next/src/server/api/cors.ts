@@ -49,12 +49,30 @@ export function allowedRequestHeaders(requested: string | null): string {
   return names.length ? names.slice(0, MAX_REQUEST_HEADERS).join(', ') : ALLOW_HEADERS;
 }
 
-export function preflightResponse(origin: string | null, allowed: string[], requestedHeaders?: string | null): Response {
+/**
+ * 사전 요청 하나에 필요한 정보. 브라우저가 무엇을 하겠다고 했는지 그대로 받는다.
+ */
+export interface PreflightRequest {
+  /** Access-Control-Request-Headers */
+  headers?: string | null;
+  /**
+   * Access-Control-Request-Private-Network — "이 요청의 목적지가 사설망 주소다"라는 브라우저의 신고.
+   *
+   * ⚠️ 우리 API 주소(`*.ts.net`)는 **보는 사람에 따라 사설 주소로 풀린다**: tailnet 안에서는
+   * 100.x(RFC 6598)이고, 집 공유기가 MagicDNS를 쓰면 폰도 그렇게 받는다. 그러면 공개 출처인 웹이
+   * 사설 주소를 부르는 모양이 되어 Chrome이 막는다 — 사용자에게는 원인 없는 **CORS 오류**로만 보인다.
+   */
+  privateNetwork?: boolean;
+}
+
+export function preflightResponse(origin: string | null, allowed: string[], request: PreflightRequest = {}): Response {
   const headers = new Headers(corsHeadersFor(origin, allowed));
   if (headers.has('access-control-allow-origin')) {
     headers.set('access-control-allow-methods', ALLOW_METHODS);
-    headers.set('access-control-allow-headers', allowedRequestHeaders(requestedHeaders ?? null));
+    headers.set('access-control-allow-headers', allowedRequestHeaders(request.headers ?? null));
     headers.set('access-control-max-age', String(MAX_AGE));
+    // 허용 목록에 있는 출처일 때만 답한다 — 사설망 접근을 아무에게나 열지 않는다.
+    if (request.privateNetwork) headers.set('access-control-allow-private-network', 'true');
   }
   return new Response(null, { status: 204, headers });
 }
