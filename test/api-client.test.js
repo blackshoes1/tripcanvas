@@ -397,3 +397,14 @@ test('동기화 목록 — 삭제된 여행까지 예전 행 모양으로 준다
     { client_id: 'trip2', data: null, revision: 5, deleted_at: '2026-09-01T00:00:00Z', updated_at: '2026-09-01T00:00:00Z' }
   ]);
 });
+
+test('동기화 저장 — 다른 오류는 이유를 실어 던진다(화면이 원인을 말할 수 있게)', async () => {
+  setup(() => ({ status: 400, body: { code: 'VALIDATION_ERROR', message: '문자열이 허용 길이를 초과했습니다' } }));
+  const thrown = await TC_API.sync.save('trip1', TRIP, 3, false).then(() => null, (e) => e);
+  assert.ok(thrown instanceof Error);
+  assert.equal(thrown.status, 400);
+  assert.equal(thrown.apiCode, 'VALIDATION_ERROR');
+  assert.equal(thrown.message, '문자열이 허용 길이를 초과했습니다');
+  // 진단 기록은 error.name을 먼저 본다 — 'Error'만 남으면 나중에 무엇이 실패했는지 모른다
+  assert.equal(thrown.name, 'VALIDATION_ERROR');
+});

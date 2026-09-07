@@ -3674,10 +3674,11 @@ async function syncTripCloud(t,opts){
       return;
     }
     entry.status='error'; persistSyncMeta();
-    reportOperationalError('cloud.sync',e);
+    reportOperationalError('cloud.sync',e,{status:Number(e&&e.status)});
     clearTimeout(cloudRetryT);
     cloudRetryT=setTimeout(syncStaleTrips,15000);   // 여러 여행이 함께 실패해도 재시도에서 빠지지 않게 밀린 것 전부
-    toast('클라우드 저장 실패 — 로컬 편집은 보존됨','#e63946',{label:'재시도',fn:()=>syncTripCloud(t)});
+    // 원인을 감추지 않는다 — 서버가 준 문장을 그대로 보여 준다(§저장 실패는 스스로 설명해야 한다)
+    toast(TC_SYNC.saveFailText(e),'#e63946',{label:'재시도',fn:()=>syncTripCloud(t)});
   }finally{ syncInFlight--; if(!syncInFlight&&syncMetaStale) refreshSyncMetaFromStorage(); }
 }
 async function flushPendingSync(){
