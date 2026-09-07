@@ -113,6 +113,24 @@ private final class FakeTrips: TripDataSource {
         stored.insert(made, at: 0)
         return made
     }
+    /// 붙여넣기가 만든 문서. 무엇을 보냈는지 그대로 들고 있는다.
+    var createdDocuments: [[String: JSONValue]] = []
+    var draftToReturn: ItineraryDraft?
+    func createTrip(document: [String: JSONValue]) async throws -> TripSummary {
+        if let failure { throw failure }
+        createdDocuments.append(document)
+        let made = TripSummary(
+            id: "pasted-\(createdDocuments.count)", name: document["name"]?.stringValue ?? "",
+            start: document["start"]?.stringValue ?? "", dayCount: 1, revision: 1, updatedAt: "",
+            timeZone: "Asia/Seoul", cities: [], todayIndex: -1, daysUntilStart: nil, role: .owner, memberCount: 1)
+        stored.insert(made, at: 0)
+        return made
+    }
+    func parseItinerary(text: String) async throws -> ItineraryDraft {
+        if let failure { throw failure }
+        guard let draftToReturn else { throw APIError.offline }
+        return draftToReturn
+    }
     func deleteTrip(tripId: String, expectedRevision: Int) async throws {
         if let failure { throw failure }
         deleted.append((tripId, expectedRevision))

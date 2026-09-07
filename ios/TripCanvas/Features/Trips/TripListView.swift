@@ -138,6 +138,8 @@ struct TripListView: View {
     @State private var pendingDestination: ActionRouter.Destination?
     /// 여행 만들기 시트. 앱만 설치한 사람도 여기서 시작할 수 있어야 한다.
     @State private var showsNewTrip = false
+    /// 가진 일정 붙여넣기 시트.
+    @State private var showsPasteItinerary = false
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -151,8 +153,13 @@ struct TripListView: View {
             .navigationTitle("내 여행")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { showsNewTrip = true } label: { Image(systemName: "plus") }
-                        .accessibilityLabel("여행 만들기")
+                    Menu {
+                        Button { showsNewTrip = true } label: { Label("새 여행 만들기", systemImage: "plus") }
+                        Button { showsPasteItinerary = true } label: { Label("가진 일정 붙여넣기", systemImage: "doc.on.clipboard") }
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                    .accessibilityLabel("여행 만들기")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
@@ -185,6 +192,12 @@ struct TripListView: View {
             guard let destination else { return }
             if handle(destination) { env.router.clear() }
             else { pendingDestination = destination; env.router.clear() }
+        }
+        .sheet(isPresented: $showsPasteItinerary) {
+            PasteItineraryView(service: env.service, places: env.places) { created in
+                Task { await model?.load() }
+                path = [created]
+            }
         }
         .sheet(isPresented: $showsNewTrip) {
             NewTripView { draft in
@@ -291,11 +304,16 @@ struct TripListView: View {
                     symbol: "suitcase",
                     title: "아직 여행이 없어요",
                     message: "첫 여행을 만들어 보세요. 웹에서 만든 여행도 여기에 나타납니다.")
-                Button { showsNewTrip = true } label: {
-                    Label("여행 만들기", systemImage: "plus")
-                        .frame(maxWidth: .infinity)
+                VStack(spacing: Space.s) {
+                    Button { showsNewTrip = true } label: {
+                        Label("여행 만들기", systemImage: "plus").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    Button { showsPasteItinerary = true } label: {
+                        Label("가진 일정 붙여넣기", systemImage: "doc.on.clipboard").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
                 }
-                .buttonStyle(.borderedProminent)
                 .padding(.horizontal, Space.xl)
             }
         } else {
