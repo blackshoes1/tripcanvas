@@ -2792,3 +2792,25 @@ test('붙여넣기: 날짜가 순서와 어긋나면 고치지 않고 말한다'
   // 말할 뿐 고치지 않는다 — 읽은 날짜는 그대로다
   assert.equal(w.eval('pv.draft.days[1].date').slice(5), '07-23');
 });
+
+test('붙여넣기: AI에게 시킬 프롬프트를 복사해 준다', { skip: noJsdom }, async () => {
+  const w = boot();
+  w.eval("window.__copied=null; Object.defineProperty(navigator,'clipboard',{value:{writeText:async(t)=>{window.__copied=t;}},configurable:true});");
+  w.document.getElementById('aiPromptCopy').click();
+  await new Promise((r) => setTimeout(r, 0));
+
+  const copied = w.eval('window.__copied');
+  assert.ok(copied, '복사가 일어난다');
+  assert.match(copied, /\[day1\]/, '우리가 읽을 수 있는 형식을 요구한다');
+  assert.match(copied, /지도에서 찾을 수 있는 실제 이름/, '지오코딩되는 이름을 달라고 말한다');
+  assert.match(copied, /@HH:MM/);
+});
+
+test('붙여넣기: 클립보드가 막히면 삼키지 않고 칸에 넣어 준다', { skip: noJsdom }, async () => {
+  const w = boot();
+  w.eval("Object.defineProperty(navigator,'clipboard',{value:{writeText:async()=>{throw new Error('denied');}},configurable:true});");
+  w.document.getElementById('aiPromptCopy').click();
+  await new Promise((r) => setTimeout(r, 0));
+
+  assert.match(w.document.getElementById('pasteText').value, /\[day1\]/, '복사가 안 되면 직접 복사할 수 있게 남긴다');
+});
