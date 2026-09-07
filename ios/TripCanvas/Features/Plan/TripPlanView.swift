@@ -67,7 +67,7 @@ struct TripPlanView: View {
                     onSave: { spot in
                         Task {
                             switch target {
-                            case .create: await model.addSpot(spot)
+                            case .create, .createFromMap: await model.addSpot(spot)
                             case .edit(let index, _): await model.updateSpot(at: index, with: spot)
                             }
                         }
@@ -372,7 +372,9 @@ struct TripPlanView: View {
             } else {
                 // 동선은 서버가 준 것이다 — 조회된 구간은 도로를 따르고, 계산을 못 받았으면 핀만 나온다.
                 let routes = model.planDay?.mapRoutes ?? []
-                MapEngineView(pins: pins, routes: routes)
+                MapEngineView(pins: pins, routes: routes, onPick: model.canEdit ? { picked in
+                    editor = .createFromMap(SpotEditorTarget.spotFromMap(picked, fallbackCity: day.spots.first?.city))
+                } : nil)
                     .ignoresSafeArea(edges: .bottom)
                     .overlay(alignment: .topLeading) {
                         // ⚠️ 직선을 도로처럼 보이게 두면 거짓말이 된다. 전부 도로면 굳이 말하지 않는다.

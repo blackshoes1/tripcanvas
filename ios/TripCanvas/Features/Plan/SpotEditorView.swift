@@ -3,11 +3,16 @@ import SwiftUI
 /// 편집 화면이 무엇을 하러 열렸는지. 새로 만들기와 고치기가 같은 화면을 쓴다.
 enum SpotEditorTarget: Identifiable {
     case create
+    /// 지도에서 고른 자리로 시작한다 — 이름·좌표가 미리 채워진다.
+    /// ⚠️ **바로 저장하지 않는다.** 지도의 POI 이름이 늘 내가 부르고 싶은 이름은 아니고,
+    /// 국내 지도는 이름을 주지 않아 빈 채로 온다 — 확인은 사람이 한다(§유입).
+    case createFromMap(TripSpot)
     case edit(index: Int, spot: TripSpot)
 
     var id: String {
         switch self {
         case .create: "create"
+        case .createFromMap: "create-from-map"
         case .edit(let index, _): "edit-\(index)"
         }
     }
@@ -15,6 +20,7 @@ enum SpotEditorTarget: Identifiable {
     var spot: TripSpot {
         switch self {
         case .create: TripSpot(name: "")
+        case .createFromMap(let spot): spot
         case .edit(_, let spot): spot
         }
     }
@@ -22,6 +28,18 @@ enum SpotEditorTarget: Identifiable {
     var index: Int? {
         if case .edit(let index, _) = self { return index }
         return nil
+    }
+
+    /// 지도에서 고른 자리 → 편집기에 넣을 장소.
+    ///
+    /// 해외(구글)는 POI를 탭하면 이름과 `placeId`가 함께 온다 — 호텔 시세 추적이 그 id로 같은 곳인지 본다.
+    /// ⚠️ **국내(카카오)는 POI 신원을 주지 않는다**(SDK 제약, 웹과 같다). 그때는 좌표만 담기고
+    /// 이름은 비어 있다 — 지어내지 않는다.
+    static func spotFromMap(_ pick: MapPick, fallbackCity: String?) -> TripSpot {
+        var spot = TripSpot(name: pick.name ?? "", city: fallbackCity ?? "기타")
+        spot.point = pick.point
+        if let placeId = pick.placeId { spot.placeId = placeId }
+        return spot
     }
 }
 
