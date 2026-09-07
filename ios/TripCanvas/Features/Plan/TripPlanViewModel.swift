@@ -143,6 +143,13 @@ final class TripPlanViewModel {
     /// 이 날에 함께 다니지 않는 구간이 있는가.
     var hasSplits: Bool { !(planDay?.splits.isEmpty ?? true) }
 
+    /// 여행 전체에 장소가 하나도 없는가 — **방금 만든 여행**이라는 뜻이다.
+    /// 그때는 "오른쪽 위 ＋를 누르세요"가 아니라 누를 것을 화면에 둔다.
+    var tripIsEmpty: Bool {
+        guard let days = plan?.days, !days.isEmpty else { return false }
+        return days.allSatisfy { $0.spotCount == 0 }
+    }
+
     /// 그 장소가 속한 가지. 분리 구간이 아니면 nil이다.
     func splitBranch(at index: Int) -> DayPlanSplitBranch? {
         guard let splits = planDay?.splits else { return nil }
