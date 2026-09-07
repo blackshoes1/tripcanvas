@@ -44,7 +44,8 @@ struct TripPlanView: View {
         }
         .task {
             if model == nil {
-                model = TripPlanViewModel(tripId: trip.id, service: env.service, memberSource: env.service)
+                model = TripPlanViewModel(tripId: trip.id, service: env.service, memberSource: env.service,
+                                          initialDay: max(0, trip.todayIndex))
             }
             await model?.load()
         }
@@ -223,6 +224,16 @@ struct TripPlanView: View {
     @ViewBuilder
     private func spotList(_ model: TripPlanViewModel) -> some View {
         if let day = model.day {
+            // ⚠️ 계산이 오기 전의 목록에는 🏠 이월 숙소·렌터카·구간 줄·숙소 복귀·하루 합계가 없다.
+            //    그 상태를 먼저 그렸다가 계산이 들어오면 줄이 통째로 밀린다 — 첫 시도가 끝날 때까지 기다린다.
+            //    (지난 계산이 있으면 즉시 지나간다 — 기다림은 처음 여는 날에만 있다)
+            if model.plan == nil && !model.planAttempted(for: model.selectedDay) && !day.spots.isEmpty {
+                VStack(spacing: Space.s) {
+                    ProgressView()
+                    Text("도착 시각을 계산하는 중…").font(.caption).foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
             List {
                 Section {
                     if day.spots.isEmpty { emptyDay(model) }
@@ -275,7 +286,8 @@ struct TripPlanView: View {
                         }
                         // 계산이 없는 상태와 정상인 상태가 화면에서 구분되지 않으면,
                         // 서버가 아직 준비 안 된 것을 아무도 모른다(2026-09-06에 그랬다).
-                        if model.plan == nil, !day.spots.isEmpty {
+                        // 시도해 보고 못 받았을 때만 말한다 — 기다리는 중에 실패했다고 하지 않는다.
+                        if model.plan == nil, model.planAttempted(for: model.selectedDay), !day.spots.isEmpty {
                             Label("예상 도착 시각을 불러오지 못했어요 — 일정 편집은 그대로 됩니다.",
                                   systemImage: "clock.badge.exclamationmark")
                         }
@@ -284,6 +296,7 @@ struct TripPlanView: View {
             }
             .listStyle(.insetGrouped)
             .refreshable { await model.load() }
+            }
         } else {
             EmptyStateView(symbol: "calendar", title: "일자가 없어요", message: "웹에서 일자를 먼저 만들어 주세요.")
         }

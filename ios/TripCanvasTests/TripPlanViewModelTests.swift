@@ -215,26 +215,30 @@ final class TripPlanViewModelTests: XCTestCase {
     }
 
     /// 14일짜리 일정에서 1일차부터 스크롤하게 두지 않는다.
-    func testJumpsToTodayOnceWhenTheTripIsRunning() async {
+    ///
+    /// ⚠️ **시작할 때** 정한다. 계산이 온 뒤에 옮기면 1일차를 보여 줬다가 오늘로 튄다 —
+    /// 여행 목록이 이미 아는 값(`TripSummary.todayIndex`)을 그대로 받는다.
+    func testStartsOnTodayWithoutWaitingForThePlan() async {
         let service = FakeDocumentService(snapshot: .init(document: document(days: 5), revision: 7, role: .owner))
-        service.dayPlanResponse = plan(days: 5, todayIndex: 2)
-        let model = TripPlanViewModel(tripId: "t1", service: service)
-        await model.load()
+        service.dayPlanResponse = plan(days: 5, todayIndex: 2, selected: 2)
+        let model = TripPlanViewModel(tripId: "t1", service: service, initialDay: 2)
 
-        XCTAssertEqual(model.todayIndex, 2)
+        XCTAssertEqual(model.selectedDay, 2, "계산을 받기 전에 이미 오늘이다")
+        await model.load()
         XCTAssertEqual(model.selectedDay, 2)
 
         // 사용자가 고른 날을 나중에 되돌리면 안 된다
         model.selectedDay = 0
         await model.load()
-        XCTAssertEqual(model.selectedDay, 0, "오늘로 옮기는 것은 한 번뿐이다")
+        XCTAssertEqual(model.selectedDay, 0)
     }
 
     /// 여행 기간 밖이면 오늘이 없다 — 서버가 -1로 준다.
     func testNoTodayOutsideTheTrip() async {
         let service = FakeDocumentService(snapshot: .init(document: document(days: 3), revision: 7, role: .owner))
         service.dayPlanResponse = plan(days: 3, todayIndex: -1)
-        let model = TripPlanViewModel(tripId: "t1", service: service)
+        // 여행 목록이 -1을 주므로 화면은 0을 넘긴다
+        let model = TripPlanViewModel(tripId: "t1", service: service, initialDay: 0)
         await model.load()
 
         XCTAssertNil(model.todayIndex)
@@ -604,5 +608,46 @@ extension TripPlanViewModelTests {
         await model.load()
 
         XCTAssertEqual(model.plan?.legsPending, 0)
+    }
+}
+
+// MARK: - 반쯤 지어진 목록을 보여 주지 않는다
+//
+// 계산이 오기 전의 목록에는 🏠 이월 숙소·렌터카·구간 줄·숙소 복귀·하루 합계가 없다.
+// 그 상태를 먼저 그렸다가 계산이 들어오면 줄이 통째로 밀린다.
+
+extension TripPlanViewModelTests {
+
+    func testDayIsNotMarkedAttemptedBeforeTheFirstTry() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(), revision: 7, role: .owner))
+        service.dayPlanResponse = plan()
+        let model = TripPlanViewModel(tripId: "t1", service: service, legRetryDelay: 0.01)
+
+        XCTAssertFalse(model.planAttempted(for: 0), "받기 전에는 목록을 짓지 않는다")
+        await model.load()
+        XCTAssertTrue(model.planAttempted(for: 0))
+    }
+
+    /// 서버가 못 주면 그것도 '시도했다'다 — 계속 기다리게 두지 않는다.
+    func testAFailedTryStillCountsAsAttempted() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(), revision: 7, role: .owner))
+        service.dayPlanResponse = nil
+        let model = TripPlanViewModel(tripId: "t1", service: service, legRetryDelay: 0.01)
+        await model.load()
+
+        XCTAssertTrue(model.planAttempted(for: 0))
+        XCTAssertNil(model.plan)
+    }
+
+    /// 지난 계산이 있으면 기다릴 것이 없다.
+    func testACachedPlanCountsAsAttempted() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(), revision: 7, role: .owner))
+        service.cachedPlan = plan()
+        service.dayPlanResponse = nil
+        let model = TripPlanViewModel(tripId: "t1", service: service, legRetryDelay: 0.01)
+        await model.load()
+
+        XCTAssertTrue(model.planAttempted(for: 0))
+        XCTAssertNotNil(model.plan, "서버가 못 줘도 지난 계산은 남는다")
     }
 }
