@@ -3147,7 +3147,7 @@ function openPastePreview(draft,target,raw){
     di, item, include:item.kind==='PLACE', name:item.name,
     geo:{state:hasLoc(item)?'ok':'idle', cands:[], pick:hasLoc(item)?{lat:item.lat,lng:item.lng,name:item.name,addr:''}:null}
   })));
-  pv={draft,target,raw,rows,seq:0};
+  pv={draft,target,raw,rows,seq:0,learnedCity:'',retried:false};
   document.getElementById('pvName').value=draft.name||'';
   document.getElementById('pvStart').value=draft.start||'';
   const warn=document.getElementById('pvStartWarn');
@@ -3172,7 +3172,7 @@ function renderPastePreview(){
   pv.draft.days.forEach((d,di)=>{
     const head=document.createElement('div');
     head.className='pvDay';
-    head.textContent=`${di+1}일차${d.date?` · ${d.date}`:''}${d.title?` — ${d.title}`:''}`;
+    head.textContent=`${di+1}일차${d.date?` · ${d.date}`:''}${d.title?` — ${d.title}`:''}${pvDateNote(di)}`;
     list.appendChild(head);
     pv.rows.filter(r=>r.di===di).forEach(row=>list.appendChild(pvRowEl(row)));
   });
@@ -3197,7 +3197,7 @@ function pvRowEl(row){
   body.className='pvBody';
   const name=document.createElement('input');
   name.type='text'; name.className='pvName'; name.value=row.name;
-  name.oninput=()=>{ row.name=name.value.trim(); row.geo={state:'idle',cands:[],pick:null}; pvDebounceGeocode(); };
+  name.oninput=()=>{ row.name=name.value.trim(); row.geo={state:'idle',cands:[],pick:null}; pv.retried=false; pvDebounceGeocode(); };
   body.appendChild(name);
 
   const meta=document.createElement('div');
@@ -3245,25 +3245,62 @@ function pvDebounceGeocode(){ clearTimeout(pvGeoTimer); pvGeoTimer=setTimeout(()
 async function pvGeocodeAll(){
   if(!pv) return;
   const seq=++pv.seq;
-  for(const row of pv.rows){
-    if(!pv||pv.seq!==seq) return;                 // 그 사이 이름이 바뀌었거나 창이 닫혔다
-    if(!row.include||row.geo.pick||row.geo.state!=='idle'||!row.name) continue;
+  const pass=async(row)=>{
     row.geo.state='searching'; renderPastePreview();
-    const found=await geocodeCandidates(row.name, row.item.city||pvCityHint(row.di), 3);
-    if(!pv||pv.seq!==seq) return;
+    const found=await geocodeCandidates(row.name, pvCityHint(row), 3);
+    if(!pv||pv.seq!==seq) return false;
     row.geo.cands=found;
     row.geo.pick=found[0]||null;
     row.geo.state='done';
+    // 한 곳을 찾으면 그 도시가 다음 줄의 앵커가 된다 — 같은 여행이면 대개 같은 동네다
+    if(row.geo.pick&&row.geo.pick.city&&!pv.learnedCity) pv.learnedCity=row.geo.pick.city;
     renderPastePreview();
+    return true;
+  };
+  for(const row of pv.rows){
+    if(!pv||pv.seq!==seq) return;                 // 그 사이 이름이 바뀌었거나 창이 닫혔다
+    if(!row.include||row.geo.pick||row.geo.state!=='idle'||!row.name) continue;
+    if(!(await pass(row))) return;
+  }
+  // 앵커를 뒤늦게 알게 됐으면, 앵커 없이 못 찾았던 줄을 한 번만 다시 본다
+  if(!pv.learnedCity||pv.retried) return;
+  pv.retried=true;
+  for(const row of pv.rows){
+    if(!pv||pv.seq!==seq) return;
+    if(!row.include||row.geo.pick||!row.name||row.geo.triedWithCity) continue;
+    row.geo.triedWithCity=true;
+    if(!(await pass(row))) return;
   }
 }
-/** 도시가 안 적힌 줄은 그 날 제목·여행 이름에서 물려받는다 */
-function pvCityHint(di){
-  const d=pv.draft.days[di]||{};
-  const fromTitle=String(d.title||'').replace(/[0-9]{1,2}\s*월\s*[0-9]{1,2}\s*일|\(.*?\)|[-–—·]/g,' ').trim().split(/\s+/)[0]||'';
-  return fromTitle||pv.draft.name||'';
+/**
+ * 검색을 좁힐 도시. 순서가 곧 신뢰도다:
+ *   1. 그 줄에 적힌 도시  2. **이미 찾은 장소의 도시**(같은 여행이면 대개 같은 동네다)
+ *   3. 사용자가 입력한 여행 이름
+ * ⚠️ 일자 제목에서 뽑지 않는다 — "7월 22일(목) — 쿠모바 연못·…"의 첫 낱말은 '쿠모바'이고
+ *    그걸 도시로 찍으면 앵커가 엉뚱한 곳에 생겨 150km 필터가 맞는 결과까지 걷어낸다.
+ */
+function pvCityHint(row){
+  const named=String(row&&row.item&&row.item.city||'').trim();
+  if(named) return named;
+  if(pv.learnedCity) return pv.learnedCity;
+  return String(document.getElementById('pvName').value||pv.draft.name||'').trim();
 }
 
+/** 그 날의 날짜가 순서와 어긋나는가 — **고치지 않는다.** 사람에게 말할 뿐이다 */
+function pvDateNote(di){
+  const start=document.getElementById('pvStart').value;
+  const got=pv.draft.days[di]&&pv.draft.days[di].date;
+  if(!start||!got) return '';
+  const base=Date.parse(start+'T00:00:00Z');
+  if(!isFinite(base)) return '';
+  const expect=new Date(base+di*86400000).toISOString().slice(0,10);
+  return got===expect? '' : ` · ⚠️ 글에는 ${got}인데 순서로는 ${expect}`;
+}
+
+// 시작일을 고치면 날짜 어긋남 안내가 그 자리에서 다시 계산된다
+document.getElementById('pvStart').oninput=()=>{ if(pv) renderPastePreview(); };
+// 여행 이름은 검색을 좁히는 앵커이기도 하다 — 아직 못 찾은 줄에 한 번 더 기회를 준다
+document.getElementById('pvName').oninput=()=>{ if(pv){ pv.retried=false; pvDebounceGeocode(); } };
 document.getElementById('pvCancel').onclick=()=>{ pv=null; document.getElementById('pastePvBg').classList.remove('show'); };
 document.getElementById('pvRun').onclick=pvCommit;
 
