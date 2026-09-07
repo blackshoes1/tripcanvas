@@ -11,7 +11,11 @@
 // (켜면 브라우저가 자격증명을 실어 보낼 수 있게 되고, 그만큼 실수의 여지가 는다).
 
 const ALLOW_METHODS = 'GET, POST, PUT, PATCH, DELETE, OPTIONS';
+/** 우리가 실제로 읽는 헤더. 브라우저가 더 보내겠다고 하면 아래 allowedRequestHeaders가 그것을 되돌려 준다 */
 const ALLOW_HEADERS = 'Authorization, Content-Type';
+/** 헤더 이름으로 성립하는 문자만(RFC 7230 token). 이상한 값을 그대로 되비추지 않는다 */
+const HEADER_NAME = /^[A-Za-z0-9!#$%&'*+.^_`|~-]{1,64}$/;
+const MAX_REQUEST_HEADERS = 24;
 /** 사전 요청 결과를 브라우저가 캐시하는 시간(초) */
 const MAX_AGE = 600;
 
@@ -29,11 +33,27 @@ export function corsHeadersFor(origin: string | null, allowed: string[]): Record
   return headers;
 }
 
-export function preflightResponse(origin: string | null, allowed: string[]): Response {
+/**
+ * 사전 요청이 "이 헤더들을 보내겠다"고 하면 **그대로 허용한다**.
+ *
+ * ⚠️ 고정 목록(Authorization·Content-Type)만 돌려주면, 브라우저가 스스로 얹는 헤더 하나에
+ * 요청이 통째로 막힌다 — 개발자도구의 '캐시 사용 안 함'은 `cache-control`·`pragma`를 붙이고,
+ * 그러면 사용자에게는 원인 없는 **CORS 오류**로만 보인다(2026-09-07).
+ *
+ * 여기서 허용을 넓혀도 서버가 더 하는 일은 없다 — 서버는 읽던 헤더만 읽고, 권한은 여전히 토큰이 지킨다.
+ * 출처 허용 목록이 진짜 방어선이고 이건 브라우저에게 "그 헤더 보내도 된다"고 답하는 것뿐이다.
+ * @param requested Access-Control-Request-Headers 값
+ */
+export function allowedRequestHeaders(requested: string | null): string {
+  const names = (requested ?? '').split(',').map((h) => h.trim()).filter((h) => HEADER_NAME.test(h));
+  return names.length ? names.slice(0, MAX_REQUEST_HEADERS).join(', ') : ALLOW_HEADERS;
+}
+
+export function preflightResponse(origin: string | null, allowed: string[], requestedHeaders?: string | null): Response {
   const headers = new Headers(corsHeadersFor(origin, allowed));
   if (headers.has('access-control-allow-origin')) {
     headers.set('access-control-allow-methods', ALLOW_METHODS);
-    headers.set('access-control-allow-headers', ALLOW_HEADERS);
+    headers.set('access-control-allow-headers', allowedRequestHeaders(requestedHeaders ?? null));
     headers.set('access-control-max-age', String(MAX_AGE));
   }
   return new Response(null, { status: 204, headers });
