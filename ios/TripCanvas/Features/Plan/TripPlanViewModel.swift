@@ -24,9 +24,17 @@ final class TripPlanViewModel {
 
     /// 서버가 계산한 그 날의 흐름과 일자 스트립. 문서와 따로 온다 — 문서는 원문, 이건 계산이다.
     /// nil이면 아직 못 받았거나 실패한 것이다. **없어도 일정 편집은 그대로 된다.**
-    private(set) var plan: DayPlanResponse?
-    /// 계산이 마지막으로 받아진 시점(오프라인일 때만 값이 있다).
-    private(set) var planCachedAt: Date?
+    /// 날짜별 계산. **한 번 받은 날은 기억한다** — 날을 옮길 때마다 다시 받으면
+    /// 그때마다 목록이 새로 지어지고 화면이 튄다(2026-09-07 보고).
+    /// 문서가 바뀌면(revision) 통째로 버린다 — 옛 시각을 보여 주지 않는다.
+    private var plansByDay: [Int: DayPlanResponse] = [:]
+
+    /// 보고 있는 날의 계산.
+    var plan: DayPlanResponse? { plansByDay[selectedDay] }
+    /// 계산이 마지막으로 받아진 시점(오프라인일 때만 값이 있다). **날마다 따로** —
+    /// 하나로 두면 앞 날의 '오프라인' 표시가 다음 날에 그대로 남는다.
+    private var cachedAtByDay: [Int: Date] = [:]
+    var planCachedAt: Date? { cachedAtByDay[selectedDay] }
 
     /// 보고 있는 일자. 문서가 줄어들면 마지막 날로 당긴다.
     var selectedDay = 0 {
@@ -109,14 +117,14 @@ final class TripPlanViewModel {
     /// 계산이 없으면 화면이 시각·구간을 감출 뿐이다. 여기서 오류 배너를 띄우면
     /// 편집이 멀쩡한데 무언가 고장 난 것처럼 보인다.
     func loadPlan() async {
-        guard dayCount > 0 else { plan = nil; return }
+        guard dayCount > 0 else { plansByDay = [:]; cachedAtByDay = [:]; return }
         let day = selectedDay
         await showCachedPlan(for: day)
         do {
             let fetched = try await service.dayPlan(tripId: tripId, dayIndex: day)
             guard day == selectedDay else { return }   // 그 사이 다른 날로 옮겼으면 버린다
-            plan = fetched.value
-            planCachedAt = fetched.cachedAt
+            plansByDay[day] = fetched.value
+            cachedAtByDay[day] = fetched.cachedAt
             attemptedDays.insert(day)
             await loadMembers()
             // ⚠️ **기다리지 않는다.** 여기서 await 하면 `load()`가 3초 동안 안 끝나고,
@@ -127,9 +135,9 @@ final class TripPlanViewModel {
             // 못 받았다고 **이미 보여 준 계산을 지우지 않는다** — 화면이 비면서 또 튄다.
             // 다만 그 계산이 지금 보는 날의 것이고 문서가 그대로일 때만 남긴다:
             // 편집한 뒤의 옛 시각을 계속 보여 주면 틀린 숫자를 말하는 것이다.
-            if plan?.day.index != day || plan?.trip.revision != revision {
-                plan = nil
-                planCachedAt = nil
+            if plansByDay[day]?.trip.revision != revision {
+                plansByDay[day] = nil
+                cachedAtByDay[day] = nil
             }
         }
     }
@@ -140,10 +148,13 @@ final class TripPlanViewModel {
     /// ⚠️ **문서가 그때 그대로일 때만** 쓴다. 편집한 뒤의 옛 시각을 보여 주면
     /// 잠깐이라도 **틀린 숫자**를 말하게 된다 — 비어 있는 것보다 나쁘다.
     private func showCachedPlan(for day: Int) async {
-        guard plan == nil, revision > 0 else { return }
+        // ⚠️ **그 날의 계산이 없을 때** 읽는다. 예전에는 `plan == nil`을 봤는데,
+        //    날을 옮기면 앞 날의 계산이 남아 있어 조건이 거짓이 됐다 — 그래서 옮길 때마다
+        //    디스크에 있는데도 서버를 기다리며 다시 로딩했다.
+        guard plansByDay[day] == nil, revision > 0 else { return }
         guard let cached = await service.cachedDayPlan(tripId: tripId, dayIndex: day) else { return }
-        guard cached.trip.revision == revision, cached.day.index == day, day == selectedDay else { return }
-        plan = cached
+        guard cached.trip.revision == revision, cached.day.index == day else { return }
+        plansByDay[day] = cached
         attemptedDays.insert(day)      // 지난 계산이 있으면 기다릴 것이 없다
     }
 
@@ -166,8 +177,8 @@ final class TripPlanViewModel {
         guard day == selectedDay else { return }        // 그 사이 다른 날로 옮겼으면 버린다
         guard let fetched = try? await service.dayPlan(tripId: tripId, dayIndex: day) else { return }
         guard day == selectedDay else { return }        // 늦게 온 답이 화면을 되돌리지 않게
-        plan = fetched.value
-        planCachedAt = fetched.cachedAt
+        plansByDay[day] = fetched.value
+        cachedAtByDay[day] = fetched.cachedAt
     }
 
     /// 여행 전체 동선을 받는다. **한 번만** 받고, 못 채운 구간이 있으면 한 번만 다시 받는다.
@@ -370,6 +381,12 @@ final class TripPlanViewModel {
     }
 
     private func apply(_ snapshot: TripDocumentSnapshot) {
+        // 문서가 바뀌면 기억해 둔 계산은 전부 옛것이다 — 옛 시각을 보여 주느니 다시 받는다.
+        if snapshot.revision != revision {
+            plansByDay = [:]
+            cachedAtByDay = [:]
+            attemptedDays = []
+        }
         document = snapshot.document
         revision = snapshot.revision
         role = snapshot.role

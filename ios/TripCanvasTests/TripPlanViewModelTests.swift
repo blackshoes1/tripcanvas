@@ -651,3 +651,59 @@ extension TripPlanViewModelTests {
         XCTAssertNotNil(model.plan, "서버가 못 줘도 지난 계산은 남는다")
     }
 }
+
+// MARK: - 날을 옮길 때마다 다시 로딩하지 않는다
+//
+// "일정 옮길 때마다 새로 로딩한다"(2026-09-07 보고).
+// 한 번 받은 날은 기억하고, 문서가 바뀌면 통째로 버린다.
+
+extension TripPlanViewModelTests {
+
+    func testSwitchingBackToASeenDayShowsItImmediately() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(days: 3), revision: 7, role: .owner))
+        service.dayPlanResponse = plan(days: 3, selected: 0)
+        let model = TripPlanViewModel(tripId: "t1", service: service, legRetryDelay: 0.01)
+        await model.load()
+
+        service.dayPlanResponse = plan(days: 3, selected: 1)
+        model.selectedDay = 1
+        await model.loadPlan()
+
+        // 돌아왔을 때 **기다림이 없다** — 목록을 다시 짓지 않는다
+        model.selectedDay = 0
+        XCTAssertTrue(model.planAttempted(for: 0))
+        XCTAssertNotNil(model.plan, "한 번 받은 날은 기억한다")
+        XCTAssertEqual(model.plan?.day.index, 0, "그 날의 계산이어야 한다")
+    }
+
+    /// 디스크에 남은 계산도 **날을 옮길 때** 쓴다 — 예전에는 앞 날의 계산이 남아 있어 못 썼다.
+    func testUsesTheDiskCacheWhenMovingToAnotherDay() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(days: 3), revision: 7, role: .owner))
+        service.dayPlanResponse = plan(days: 3, selected: 0)
+        let model = TripPlanViewModel(tripId: "t1", service: service, legRetryDelay: 0.01)
+        await model.load()
+
+        service.cachedPlan = plan(days: 3, selected: 2)   // 2일차는 디스크에만 있다
+        service.dayPlanResponse = nil                     // 서버는 못 준다
+        model.selectedDay = 2
+        await model.loadPlan()
+
+        XCTAssertEqual(model.plan?.day.index, 2, "디스크에 있으면 기다리지 않는다")
+        XCTAssertTrue(model.planAttempted(for: 2))
+    }
+
+    /// 편집하면 기억한 계산은 전부 옛것이다 — 옛 시각을 보여 주느니 다시 받는다.
+    func testEditingThrowsAwayRememberedPlans() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(days: 3), revision: 7, role: .owner))
+        service.dayPlanResponse = plan(days: 3, selected: 0)
+        let model = TripPlanViewModel(tripId: "t1", service: service, legRetryDelay: 0.01)
+        await model.load()
+        XCTAssertNotNil(model.plan)
+
+        service.snapshot = .init(document: document(days: 3), revision: 8, role: .owner)
+        service.dayPlanResponse = nil
+        await model.load()
+
+        XCTAssertNil(model.plan, "문서가 바뀌었으면 옛 계산을 쓰지 않는다")
+    }
+}
