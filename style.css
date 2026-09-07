@@ -131,6 +131,8 @@
   .syncChoices{display:grid;gap:8px;margin-top:16px}.syncChoices .btn{width:100%;justify-content:center}
   .modal .chkrow{display:flex;align-items:center;gap:6px;margin-top:9px;font-size:12.5px}
   .searchRes{margin-top:6px;max-height:170px;overflow-y:auto}
+  /* 첫 화면 — 붙여넣기가 무슨 뜻인지 한 줄로 말한다 */
+  .onboardNote{margin:-2px 0 2px;font-size:11.5px;color:var(--muted);text-align:center;line-height:1.4}
   /* 새 여행 — 어디로·언제 */
   .ntWhen{display:flex;gap:8px;align-items:center}
   .ntWhen input[type=date]{flex:1}

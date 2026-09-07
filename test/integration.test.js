@@ -2902,3 +2902,31 @@ test('다음 한 걸음: 닫으면 그 여행에서는 다시 뜨지 않는다',
   w.eval('render()');
   assert.equal(w.document.querySelectorAll('.firstStep').length, 0, '다시 그려도 뜨지 않는다');
 });
+
+// ── 첫 화면 ──
+// 처음 온 사람의 말로 말한다. 그리고 한 번 닫으면 끝이 아니어야 한다.
+
+test('첫 화면: 만들기가 먼저고, 붙여넣기가 무엇인지 한 줄로 말한다', { skip: noJsdom }, async () => {
+  const w = boot();
+  const actions = w.document.querySelector('.onboardingActions');
+  const order = [...actions.querySelectorAll('button')].map((b) => b.id);
+  assert.deepEqual(order, ['onboardNew', 'onboardPaste', 'onboardSample'], '만들기가 첫 번째다');
+  assert.ok(actions.querySelector('#onboardNew').classList.contains('primary'));
+  assert.match(actions.querySelector('.onboardNote').textContent, /AI·블로그·메일/);
+});
+
+test('첫 화면: 닫아도 다시 볼 수 있다', { skip: noJsdom }, async () => {
+  const w = boot();
+  w.document.getElementById('onboardSample').click();
+  assert.equal(w.document.getElementById('onboarding').hidden, true);
+
+  w.document.getElementById('onboardAgainBtn').click();
+  assert.equal(w.document.getElementById('onboarding').hidden, false, '한 번 닫으면 끝이 아니다');
+});
+
+test('첫 화면: 만들기를 누르면 새 여행 모달이 뜬다', { skip: noJsdom }, async () => {
+  const w = boot();
+  w.document.getElementById('onboardNew').click();
+  assert.equal(w.document.getElementById('onboarding').hidden, true);
+  assert.ok(w.document.getElementById('newTripBg').classList.contains('show'));
+});
