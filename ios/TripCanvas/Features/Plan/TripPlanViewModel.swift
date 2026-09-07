@@ -67,6 +67,21 @@ final class TripPlanViewModel {
 
     var canEdit: Bool { role.canEdit }
 
+    /// 앞/뒤 날로 옮긴다. 끝에서는 **아무 일도 하지 않는다** — 되감기지 않는다.
+    /// 판정을 화면 밖에 두는 이유: 경계(첫 날·마지막 날)는 눈으로 확인하기 어렵다.
+    @discardableResult
+    func step(_ direction: DayStep) -> Bool {
+        let next = selectedDay + direction.offset
+        guard next >= 0, next < dayCount else { return false }
+        selectedDay = next
+        return true
+    }
+
+    enum DayStep {
+        case previous, next
+        var offset: Int { self == .next ? 1 : -1 }
+    }
+
     /// 여행 전체 동선. **전체 지도를 볼 때만** 받는다 — 열지도 않을 날까지 미리 받지 않는다.
     private(set) var tripRoutes: TripRoutesResponse?
     private(set) var isLoadingTripRoutes = false

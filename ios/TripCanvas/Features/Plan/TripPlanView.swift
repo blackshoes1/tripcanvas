@@ -251,11 +251,13 @@ struct TripPlanView: View {
                                     split: splitInfo(model, at: index))
                         }
                         .buttonStyle(.plain)
-                        .swipeActions(edge: .trailing) {
-                            if model.canEdit {
-                                Button("빼기", role: .destructive) { Task { await model.removeSpot(at: index) } }
-                            }
-                        }
+                    }
+                    // ⚠️ 행의 스와이프 삭제를 **편집 모드로 옮겼다**. 가로 스와이프를 날짜 이동에 쓰려면
+                    //    같은 제스처를 둘이 나눠 가질 수 없다 — 행 위에서는 삭제가 먼저 먹어 날이 안 넘어간다.
+                    //    빼기는 오른쪽 위 '편집'과 장소 편집기 안에 그대로 있다.
+                    .onDelete { offsets in
+                        guard let index = offsets.first else { return }
+                        Task { await model.removeSpot(at: index) }
                     }
                     .onMove { source, destination in
                         Task { await model.moveSpots(from: source, to: destination) }
@@ -296,10 +298,27 @@ struct TripPlanView: View {
             }
             .listStyle(.insetGrouped)
             .refreshable { await model.load() }
+            .simultaneousGesture(daySwipe(model))
             }
         } else {
             EmptyStateView(symbol: "calendar", title: "일자가 없어요", message: "웹에서 일자를 먼저 만들어 주세요.")
         }
+    }
+
+    /// 목록을 가로로 밀어 앞뒤 날로. 위아래 스크롤과 다투지 않게 **가로가 확실할 때만** 움직인다.
+    ///
+    /// ⚠️ 세로가 조금이라도 우세하면 무시한다 — 스크롤하다 손가락이 비스듬해질 때마다
+    /// 날이 바뀌면 목록을 읽을 수가 없다.
+    private func daySwipe(_ model: TripPlanViewModel) -> some Gesture {
+        DragGesture(minimumDistance: 24)
+            .onEnded { value in
+                let dx = value.translation.width
+                let dy = value.translation.height
+                guard abs(dx) > 60, abs(dx) > abs(dy) * 1.5 else { return }
+                withAnimation(.easeOut(duration: 0.18)) {
+                    model.step(dx < 0 ? .next : .previous)
+                }
+            }
     }
 
     /// 이 선이 도로인지 직선인지 한 줄로. **전부 도로면 nil** — 맞는 말은 굳이 하지 않는다.
