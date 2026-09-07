@@ -2654,3 +2654,91 @@ test('통합: 참여자를 고르지 않으면 모두이고, 편집해도 분리
   assert.equal(w.document.querySelector('#sidebar .spot .whoChip'), null, '모두일 때는 아무 표시도 하지 않는다');
   w.close();
 });
+
+// ── 붙여넣기: 확인 전에는 아무것도 저장되지 않는다 ──
+//
+// 이것이 이 화면의 계약이다(§밖에서 들어온 것은 확인 없이 저장하지 않는다).
+// 2026-09-07 이전에는 붙여넣는 즉시 여행이 만들어졌고, 무엇이 어떻게 들어갔는지 볼 방법이 없었다.
+
+const PASTED_TEXT = [
+  '[day1] 7월 21일(수) — 가루이자와 도착',
+  '',
+  '* 오전~오후｜이동',
+  '* 오후｜규카루이자와 긴자 거리',
+  '늦은 점심을 먹고 산책.',
+  '* 08:00~09:00｜아침 식사'
+].join('\n');
+
+/** 좌표 조회를 가짜로 — 실제 네트워크·SDK 없이 미리보기 배선만 본다 */
+function stubGeocode(w, results) {
+  w.eval(`window.__geo=[]; geocodeCandidates=async(name)=>{ window.__geo.push(name); return (${JSON.stringify(results)})[name]||[]; };`);
+}
+
+test('붙여넣기: 미리보기가 뜨고, 확인 전에는 여행이 만들어지지 않는다', { skip: noJsdom }, async () => {
+  const w = boot();
+  stubGeocode(w, {});
+  const before = w.eval('store.trips.length');
+  w.document.getElementById('pasteText').value = PASTED_TEXT;
+  w.document.getElementById('pasteTarget').value = 'new';
+  await w.eval('runPaste()');
+
+  assert.ok(w.document.getElementById('pastePvBg').classList.contains('show'), '미리보기가 떠야 한다');
+  assert.equal(w.eval('store.trips.length'), before, '아직 아무것도 저장되지 않는다');
+  assert.equal(w.eval('pv.rows.length'), 3, '읽은 줄은 전부 목록에 남는다 — 버리지 않는다');
+  // 장소로 보이는 줄만 기본 체크. '이동'·'아침 식사'는 사람이 고른다
+  assert.deepEqual(w.eval('pv.rows.map(r=>r.include)'), [false, true, false]);
+});
+
+test('붙여넣기: 담기로 한 줄만 좌표를 찾는다 (활동·이동은 조회하지 않는다)', { skip: noJsdom }, async () => {
+  const w = boot();
+  stubGeocode(w, { '규카루이자와 긴자 거리': [{ name: '규카루이자와 긴자', addr: '나가노현', city: '가루이자와', lat: 36.35, lng: 138.6 }] });
+  w.document.getElementById('pasteText').value = PASTED_TEXT;
+  await w.eval('runPaste()');
+  await w.eval('pvGeocodeAll()');
+
+  assert.deepEqual(w.eval('window.__geo'), ['규카루이자와 긴자 거리'], '체크된 줄만 조회한다');
+  assert.equal(w.eval('pv.rows[1].geo.pick.lat'), 36.35);
+});
+
+test('붙여넣기: 담은 것만 여행이 되고 담지 않은 줄은 메모로 남는다', { skip: noJsdom }, async () => {
+  const w = boot();
+  stubGeocode(w, { '규카루이자와 긴자 거리': [{ name: '규카루이자와 긴자', addr: '나가노현', city: '가루이자와', lat: 36.35, lng: 138.6 }] });
+  w.document.getElementById('pasteText').value = PASTED_TEXT;
+  await w.eval('runPaste()');
+  await w.eval('pvGeocodeAll()');
+  w.document.getElementById('pvName').value = '가루이자와';
+  w.eval('pvCommit()');
+
+  const trip = w.eval('JSON.stringify(store.trips[store.trips.length-1])');
+  const t = JSON.parse(trip);
+  assert.equal(t.name, '가루이자와');
+  assert.equal(t.days[0].spots.length, 1, '담기로 한 한 곳만 일정이 된다');
+  assert.equal(t.days[0].spots[0].name, '규카루이자와 긴자 거리', '이름은 내가 본 그대로 들어간다');
+  assert.equal(t.days[0].spots[0].lat, 36.35);
+  // 담지 않은 줄을 버리지 않는다 — 원문이 그 날 메모에 남는다
+  assert.ok(t.days[0].note.includes('이동'));
+  assert.ok(t.days[0].note.includes('아침 식사'));
+  assert.ok(!w.document.getElementById('pastePvBg').classList.contains('show'));
+});
+
+test('붙여넣기: 이름을 고치면 그 이름으로 다시 찾는다', { skip: noJsdom }, async () => {
+  const w = boot();
+  stubGeocode(w, { '하루니레 테라스': [{ name: '하루니레 테라스', addr: '나가노현', city: '가루이자와', lat: 36.35, lng: 138.6 }] });
+  w.document.getElementById('pasteText').value = '[day1] 도착\n- 하루니레';
+  await w.eval('runPaste()');
+  await w.eval('pvGeocodeAll()');
+  assert.equal(w.eval('pv.rows[0].geo.pick'), null, '못 찾으면 찾은 척하지 않는다');
+
+  w.eval("pv.rows[0].name='하루니레 테라스'; pv.rows[0].geo={state:'idle',cands:[],pick:null};");
+  await w.eval('pvGeocodeAll()');
+  assert.equal(w.eval('pv.rows[0].geo.pick.lat'), 36.35);
+});
+
+test('붙여넣기: 연도가 없으면 그 사실을 화면이 말한다', { skip: noJsdom }, async () => {
+  const w = boot();
+  stubGeocode(w, {});
+  w.document.getElementById('pasteText').value = '[day1] 7월 21일(수) 도착\n- 어떤 곳';
+  await w.eval('runPaste()');
+  assert.match(w.document.getElementById('pvStartWarn').textContent, /연도/);
+  assert.match(w.document.getElementById('pvStart').value, /^\d{4}-07-21$/);
+});

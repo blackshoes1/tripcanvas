@@ -131,6 +131,20 @@
   .syncChoices{display:grid;gap:8px;margin-top:16px}.syncChoices .btn{width:100%;justify-content:center}
   .modal .chkrow{display:flex;align-items:center;gap:6px;margin-top:9px;font-size:12.5px}
   .searchRes{margin-top:6px;max-height:170px;overflow-y:auto}
+  /* 붙여넣기 미리보기 — 무엇을 담을지 사람이 고른다(§유입) */
+  .pvList{margin-top:8px;max-height:46dvh;overflow-y:auto;border:1px solid var(--line);border-radius:10px}
+  .pvDay{padding:7px 10px;background:var(--surface);font-size:12px;font-weight:700;color:var(--muted);position:sticky;top:0;z-index:1;box-shadow:0 1px 0 var(--line)}
+  .pvRow{display:flex;gap:8px;align-items:flex-start;padding:7px 10px;border-top:1px solid var(--line)}
+  .pvRow.off{opacity:.5}
+  .pvRow input[type=checkbox]{margin-top:3px;flex:none}
+  .pvBody{flex:1;min-width:0}
+  .pvName{width:100%;font-size:13px;padding:3px 6px}
+  .pvMeta{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:3px;font-size:11px;color:var(--muted)}
+  .pvTime{flex:none;font-variant-numeric:tabular-nums;font-size:11px;color:var(--muted);padding-top:6px;min-width:38px}
+  .pvChip{border-radius:999px;padding:1px 7px;background:var(--bg);border:1px solid var(--line)}
+  .pvChip.ok{color:#2a9d3f}.pvChip.no{color:#c2410c}.pvChip.wait{color:var(--muted)}
+  .pvPick{font-size:11px;max-width:190px}
+  .pvRawText{white-space:pre-wrap;font-size:11px;max-height:160px;overflow:auto;color:var(--muted)}
   .searchRes div{font-size:12px;padding:6px 8px;border-radius:7px;cursor:pointer;color:var(--ink)}
   .searchRes div:hover{background:var(--hover-bg)}
   .hint{font-size:11px;color:var(--subtle);margin-top:4px}

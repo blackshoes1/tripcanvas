@@ -3031,18 +3031,21 @@ async function routedSearch(q, near, limit){
   const out=[]; out.err=g.err||err||null;   // 무결과면 err=null, 실패면 코드
   return out;
 }
-// 장소 하나의 좌표 탐색 — 도시 앵커에서 지나치게 먼 결과는 배제(오매칭 방지), 못 찾으면 null
-async function geocodeSpot(s){
-  const anchor=await cityAnchorOf(s.city);
-  const cand=[`${s.name} ${s.city||''}`.trim(), s.name];
-  const simp=simplifyName(s.name); if(simp && simp!==s.name) cand.push(simp);
+// 장소 하나의 좌표 **후보들** — 도시 앵커에서 지나치게 먼 결과는 배제(오매칭 방지). 못 찾으면 빈 배열.
+// ⚠️ 첫 결과를 조용히 채택하지 않는다 — 미리보기가 후보를 보여 주고 사람이 고른다.
+async function geocodeCandidates(name, city, limit){
+  const anchor=await cityAnchorOf(city);
+  const take=limit||3;
+  const cand=[`${name} ${city||''}`.trim(), name];
+  const simp=simplifyName(name); if(simp && simp!==name) cand.push(simp);
   const seen=new Set();
   for(const q of cand){
     const qq=(q||'').trim(); if(!qq||seen.has(qq)) continue; seen.add(qq);
-    const r=(await routedSearch(qq, anchor, 1))[0];
-    if(r && (!anchor || haversine(anchor,r)<=150)) return {lat:r.lat, lng:r.lng};
+    const list=await routedSearch(qq, anchor, take);
+    const near=(list||[]).filter(r=>!anchor||haversine(anchor,r)<=150);
+    if(near.length) return near.slice(0,take);
   }
-  return null;
+  return [];
 }
 
 // 직접 형식 → 구조화 (AI 불필요)
@@ -3108,29 +3111,191 @@ async function runPaste(){
   const text=document.getElementById('pasteText').value.trim();
   if(!text){ toast('내용을 붙여넣어줘','#e63946'); return; }
   const target=document.getElementById('pasteTarget').value;
-  let parsed;
+  let draft;
   try{
-    if(cfg.aiParse){ toast('AI가 일정을 정리하는 중…','#1d6fd6'); parsed=await parseAI(text); }
-    else parsed=parseDirect(text);
+    if(cfg.aiParse){ toast('AI가 일정을 정리하는 중…','#1d6fd6'); draft=draftFromAI(await parseAI(text)); }
+    else draft=TC_INTAKE.parseItinerary(text,{year:new Date().getFullYear()});
   }catch(e){ reportOperationalError('paste.parse',e); toast('일정을 해석하지 못했습니다. 입력 형식과 연결 상태를 확인해 주세요','#e63946'); return; }
-  if(!parsed||!Array.isArray(parsed.days)||!parsed.days.length){ toast('일정을 못 읽었어 — 형식을 확인해줘','#e63946'); return; }
-  // 정규화 (lib.js normalizeDraftDays — Next 붙여넣기와 같은 규칙을 쓴다)
-  parsed.days=normalizeDraftDays(parsed.days);
-  const checked=validateTripPayload({name:parsed.name||'붙여넣은 여행',start:parsed.start||'',days:parsed.days});
-  if(!checked.ok){ reportOperationalError('paste.invalid',new Error('validation')); toast(checked.error,'#e63946'); return; }
-  parsed=checked.value;
-  // 좌표 없는 장소 지오코딩
-  const need=[]; parsed.days.forEach(d=>d.spots.forEach(s=>{ if(s.lat==null||isNaN(s.lat)||s.lng==null||isNaN(s.lng)) need.push(s); }));
-  for(let i=0;i<need.length;i++){
-    const s=need[i];
-    toast(`좌표 찾는 중… (${i+1}/${need.length}) ${s.name}`,'#1d6fd6');
-    const g=await geocodeSpot(s);   // 국내=카카오/해외=구글 라우팅, 도시 앵커 150km 밖 결과는 배제
-    if(g){ s.lat=g.lat; s.lng=g.lng; }
+  if(!draft||!Array.isArray(draft.days)||!draft.days.length){ toast('일정을 못 읽었어 — 형식을 확인해줘','#e63946'); return; }
+  document.getElementById('pasteModalBg').classList.remove('show');
+  openPastePreview(draft,target,text);
+}
+
+/** AI 응답(이미 구조화됨)을 미리보기가 쓰는 초안 모양으로 — 같은 화면 하나로 확인한다 */
+function draftFromAI(parsed){
+  const days=(parsed&&parsed.days||[]).map(d=>({
+    title:d.title||'', date:null, drive:d.drive||'', note:d.note||'',
+    items:(d.spots||[]).map(sp=>({
+      raw:sp.name||'', name:sp.name||'', city:sp.city||'', desc:sp.desc||'',
+      at:sp.at||null, endAt:null, stayMin:sp.stayMin==null?null:+sp.stayMin, url:sp.bookUrl||null,
+      cost:sp.cost==null?null:+sp.cost, cur:sp.cur||null, opt:!!sp.opt, stay:!!sp.stay,
+      lat:sp.lat==null?null:+sp.lat, lng:sp.lng==null?null:+sp.lng,
+      kind:sp.stay?'STAY':'PLACE', reasons:['AI가 장소로 읽었어요']
+    }))
+  }));
+  return {name:parsed&&parsed.name||'', start:parsed&&parsed.start||null, startAmbiguous:false, days};
+}
+
+// ── 붙여넣기 미리보기 ──
+// 밖에서 들어온 것은 확인 없이 저장하지 않는다(§유입). 여기서 담을 것을 고르고, 담기로 한 것만 좌표를 찾는다.
+// 담지 않은 줄은 **버리지 않고** 그 날의 메모로 남는다.
+let pv=null;   // {draft, target, raw, rows:[{di,item,include,name,geo}], seq}
+
+function openPastePreview(draft,target,raw){
+  const rows=[];
+  draft.days.forEach((d,di)=>(d.items||[]).forEach(item=>rows.push({
+    di, item, include:item.kind==='PLACE', name:item.name,
+    geo:{state:hasLoc(item)?'ok':'idle', cands:[], pick:hasLoc(item)?{lat:item.lat,lng:item.lng,name:item.name,addr:''}:null}
+  })));
+  pv={draft,target,raw,rows,seq:0};
+  document.getElementById('pvName').value=draft.name||'';
+  document.getElementById('pvStart').value=draft.start||'';
+  const warn=document.getElementById('pvStartWarn');
+  warn.textContent=draft.startAmbiguous? '연도가 글에 없어서 올해로 봤어요 — 맞는지 확인해 주세요.' : '';
+  document.getElementById('pvRawText').textContent=raw;
+  renderPastePreview();
+  document.getElementById('pastePvBg').classList.add('show');
+  pvGeocodeAll();
+}
+
+function pvSummaryText(){
+  const kept=pv.rows.filter(r=>r.include);
+  const noloc=kept.filter(r=>!r.geo.pick).length;
+  const dropped=pv.rows.length-kept.length;
+  return `담을 장소 ${kept.length}곳${noloc?` · 위치 못 찾음 ${noloc}곳`:''}${dropped?` · 메모로 남길 줄 ${dropped}개`:''}`;
+}
+
+function renderPastePreview(){
+  document.getElementById('pvSummary').textContent=pvSummaryText();
+  const list=document.getElementById('pvList');
+  list.innerHTML='';
+  pv.draft.days.forEach((d,di)=>{
+    const head=document.createElement('div');
+    head.className='pvDay';
+    head.textContent=`${di+1}일차${d.date?` · ${d.date}`:''}${d.title?` — ${d.title}`:''}`;
+    list.appendChild(head);
+    pv.rows.filter(r=>r.di===di).forEach(row=>list.appendChild(pvRowEl(row)));
+  });
+}
+
+/** 한 줄. inline onclick 없이 만든다(이름 이스케이프 사고 방지 — §보안) */
+function pvRowEl(row){
+  const el=document.createElement('div');
+  el.className='pvRow'+(row.include?'':' off');
+
+  const chk=document.createElement('input');
+  chk.type='checkbox'; chk.checked=row.include;
+  chk.setAttribute('aria-label',`${row.name} 담기`);
+  chk.onchange=()=>{ row.include=chk.checked; renderPastePreview(); if(row.include) pvGeocodeAll(); };
+  el.appendChild(chk);
+
+  const time=document.createElement('div');
+  time.className='pvTime'; time.textContent=row.item.at||'';
+  el.appendChild(time);
+
+  const body=document.createElement('div');
+  body.className='pvBody';
+  const name=document.createElement('input');
+  name.type='text'; name.className='pvName'; name.value=row.name;
+  name.oninput=()=>{ row.name=name.value.trim(); row.geo={state:'idle',cands:[],pick:null}; pvDebounceGeocode(); };
+  body.appendChild(name);
+
+  const meta=document.createElement('div');
+  meta.className='pvMeta';
+  meta.appendChild(pvChip(row));
+  if(row.item.stayMin!=null) meta.appendChild(pvTag(`${row.item.stayMin}분`));
+  if(row.item.url) meta.appendChild(pvTag('링크 1개'));
+  if(!row.include && row.item.reasons[0]) meta.appendChild(pvTag(row.item.reasons[0]));
+  if(row.geo.cands.length>1){
+    const sel=document.createElement('select');
+    sel.className='pvPick';
+    row.geo.cands.forEach((c,i)=>{
+      const o=document.createElement('option');
+      o.value=String(i); o.textContent=c.addr? `${c.name} — ${c.addr}` : c.name;
+      sel.appendChild(o);
+    });
+    sel.value=String(Math.max(0,row.geo.cands.indexOf(row.geo.pick)));
+    sel.onchange=()=>{ row.geo.pick=row.geo.cands[+sel.value]||null; renderPastePreview(); };
+    meta.appendChild(sel);
   }
-  // 좌표 못 찾은 장소는 버리지 않고 유지 (카드에 남고, '위치 지정'으로 표시)
-  let noloc=0; parsed.days.forEach(d=>d.spots.forEach(s=>{ if(!hasLoc(s)) noloc++; }));
+  body.appendChild(meta);
+  if(row.item.desc){
+    const desc=document.createElement('div');
+    desc.className='pvMeta'; desc.textContent=row.item.desc.slice(0,120);
+    body.appendChild(desc);
+  }
+  el.appendChild(body);
+  return el;
+}
+function pvTag(text){ const s=document.createElement('span'); s.className='pvChip'; s.textContent=text; return s; }
+function pvChip(row){
+  const s=document.createElement('span');
+  if(!row.include){ s.className='pvChip'; s.textContent='메모로 남김'; return s; }
+  if(row.geo.state==='searching'){ s.className='pvChip wait'; s.textContent='찾는 중…'; return s; }
+  if(row.geo.pick){ s.className='pvChip ok'; s.textContent=`📍 ${row.geo.pick.city||row.geo.pick.addr||'찾음'}`.slice(0,28); return s; }
+  s.className='pvChip'+(row.geo.state==='done'?' no':'');
+  s.textContent=row.geo.state==='done'?'위치 없음':'대기 중';
+  return s;
+}
+
+let pvGeoTimer=null;
+function pvDebounceGeocode(){ clearTimeout(pvGeoTimer); pvGeoTimer=setTimeout(()=>{ renderPastePreview(); pvGeocodeAll(); },600); }
+
+/** 담기로 한 줄만 조회한다 — 활동·이동을 조회하면 할당량만 먹고 엉뚱한 좌표가 붙는다 */
+async function pvGeocodeAll(){
+  if(!pv) return;
+  const seq=++pv.seq;
+  for(const row of pv.rows){
+    if(!pv||pv.seq!==seq) return;                 // 그 사이 이름이 바뀌었거나 창이 닫혔다
+    if(!row.include||row.geo.pick||row.geo.state!=='idle'||!row.name) continue;
+    row.geo.state='searching'; renderPastePreview();
+    const found=await geocodeCandidates(row.name, row.item.city||pvCityHint(row.di), 3);
+    if(!pv||pv.seq!==seq) return;
+    row.geo.cands=found;
+    row.geo.pick=found[0]||null;
+    row.geo.state='done';
+    renderPastePreview();
+  }
+}
+/** 도시가 안 적힌 줄은 그 날 제목·여행 이름에서 물려받는다 */
+function pvCityHint(di){
+  const d=pv.draft.days[di]||{};
+  const fromTitle=String(d.title||'').replace(/[0-9]{1,2}\s*월\s*[0-9]{1,2}\s*일|\(.*?\)|[-–—·]/g,' ').trim().split(/\s+/)[0]||'';
+  return fromTitle||pv.draft.name||'';
+}
+
+document.getElementById('pvCancel').onclick=()=>{ pv=null; document.getElementById('pastePvBg').classList.remove('show'); };
+document.getElementById('pvRun').onclick=pvCommit;
+
+/** 담기로 한 것만 여행이 된다. 담지 않은 줄은 그 날 메모로 남는다 */
+function pvCommit(){
+  if(!pv) return;
+  const days=pv.draft.days.map((d,di)=>{
+    const rows=pv.rows.filter(r=>r.di===di);
+    const notes=[d.note||''];
+    const spots=[];
+    rows.forEach(r=>{
+      if(!r.include){ notes.push(`· ${r.item.raw}`); return; }
+      const pick=r.geo.pick;
+      spots.push({
+        name:r.name, city:r.item.city||(pick&&pick.city)||'', desc:r.item.desc||'',
+        opt:r.item.opt, stay:r.item.stay, at:r.item.at||undefined,
+        stayMin:r.item.stayMin, cost:r.item.cost, cur:r.item.cur||undefined,
+        bookUrl:r.item.url||undefined,
+        lat:pick?pick.lat:(r.item.lat==null?null:r.item.lat),
+        lng:pick?pick.lng:(r.item.lng==null?null:r.item.lng),
+        kakaoId:pick&&pick.kakaoId||undefined
+      });
+    });
+    return {title:d.title||'', drive:d.drive||'', note:notes.filter(Boolean).join('\n'), spots};
+  });
+  const name=document.getElementById('pvName').value.trim();
+  const start=document.getElementById('pvStart').value.trim();
+  const parsedDays=normalizeDraftDays(days);
+  const checked=validateTripPayload({name:name||'붙여넣은 여행',start,days:parsedDays});
+  if(!checked.ok){ reportOperationalError('paste.invalid',new Error('validation')); toast(checked.error,'#e63946'); return; }
+  const parsed=checked.value, target=pv.target;
   if(target!=='new' && !guardEdit()) return;   // 보기 권한 여행에는 이어붙이기·덮어쓰기를 못 한다
-  // 기존 여행과 결합한 최종 문서도 다시 검증해 append가 전체 한도를 넘는 경우 부분 적용을 막는다.
   let nextTrip;
   if(target==='append'){
     nextTrip=Object.assign({},trip(),{days:[...trip().days,...parsed.days],start:trip().start||parsed.start||''});
@@ -3139,12 +3304,15 @@ async function runPaste(){
   }else{
     nextTrip=Object.assign({},parsed,{id:uid(),name:parsed.name||'붙여넣은 여행',start:parsed.start||new Date().toISOString().slice(0,10)});
   }
+  // 기존 여행과 결합한 최종 문서도 다시 검증해 append가 전체 한도를 넘는 경우 부분 적용을 막는다.
   const finalResult=validateTripPayload(nextTrip);
   if(!finalResult.ok){ reportOperationalError('paste.combined.invalid',new Error('validation')); toast(finalResult.error,'#e63946'); return; }
   const finalTrip=finalResult.value, existing=store.trips.findIndex(t=>t.id===finalTrip.id);
   if(existing>=0) store.trips[existing]=finalTrip; else store.trips.push(finalTrip);
   store.activeId=finalTrip.id;
-  document.getElementById('pasteModalBg').classList.remove('show');
+  const noloc=parsed.days.reduce((n,d)=>n+d.spots.filter(sp=>!hasLoc(sp)).length,0);
+  pv=null;
+  document.getElementById('pastePvBg').classList.remove('show');
   commit(()=>{ activeDay=0; }, {fit:fitEntry});
   toast(`초안 생성 완료${noloc?` · ${noloc}곳은 위치 미지정 (카드에서 📍 지정)`:''}`, noloc?'#f4862c':'#2a9d3f');
 }
