@@ -13,7 +13,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js" integrity="sha384-+pWnyi8LtZx+cgXfD2arWgUX7pHIaEL215cEPPk9WrsegNlgvDL9DNjaqsceQq6o" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js" integrity="sha384-BSxuMLxX+FCbTdYec3TbXlnMGEEM2QXTFdtDaveen71o+jswm2J36+xFqp8k4VHM" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.min.js" integrity="sha384-l8ah+VgaWtk1mvOe9VC+OirC6qHFF4yH7l7mKRidV9MSti3E9F463bMp6ZVN4kuC" crossorigin="anonymous"></script>
-<link rel="stylesheet" href="style.css?v=tc-v193">
+<link rel="stylesheet" href="style.css?v=tc-v194">
 <!-- Travelpayouts 사이트 소유 인증 (파트너 가입 검증용 — DiscoverCars API 신청에 필요) -->
 <script nowprocket data-noptimize="1" data-cfasync="false" data-wpfc-render="false" seraph-accel-crit="1" data-no-defer="1" data-cmp-ab="2">
   (function () {
@@ -31,11 +31,12 @@
     <div class="brandMark" aria-hidden="true">▣</div>
     <p class="eyebrow">FROM J</p>
     <h1 id="onboardingTitle">여행을<br>더 쉽게 계획하세요</h1>
-    <p>대화로 입력하고, 지도에서 동선을 한눈에 확인하세요.</p>
+    <p>어디로 가는지만 정하면, 나머지는 같이 채워요.</p>
     <div class="onboardingActions">
-      <button class="btn primary" id="onboardPaste">▧ 일정 붙여넣기로 시작</button>
-      <button class="btn" id="onboardNew">＋ 새 여행 만들기</button>
-      <button class="btn ghost" id="onboardSample">⌁ 샘플 둘러보기</button>
+      <button class="btn primary" id="onboardNew">＋ 새 여행 만들기</button>
+      <button class="btn" id="onboardPaste">▧ 가진 일정 붙여넣기</button>
+      <p class="onboardNote">AI·블로그·메일에서 받은 일정을 그대로 붙여넣으면 읽어 드려요.</p>
+      <button class="btn ghost" id="onboardSample">⌁ 샘플 먼저 둘러보기</button>
     </div>
     <button class="onboardLogin" id="onboardLogin">이미 계정이 있으신가요? <u>로그인</u></button>
   </div>
@@ -62,6 +63,7 @@
     <button class="btn ghost" id="exportBtn">📤 내보내기</button>
     <button class="btn ghost" id="imgBtn" title="일정을 이미지로 저장">🖼 이미지</button>
     <button class="btn ghost" id="importBtn">📥 가져오기</button>
+    <button class="btn ghost" id="onboardAgainBtn" title="처음 화면을 다시 봅니다">💡 처음 화면 다시 보기</button>
     <button class="btn" id="authBtn" title="로그인하면 여행이 내 계정에 저장돼 어느 기기서든 열려요">로그인</button>
     <div id="verLabel" title="현재 실행 중인 앱 버전 (탭하면 최신 버전 확인)"></div>
   </div>
@@ -548,15 +550,15 @@
   </div>
 </div>
 
-<script src="lib.js?v=tc-v193"></script>
-<script src="sync.js?v=tc-v193"></script>
-<script src="routing.js?v=tc-v193"></script>
-<script src="price.js?v=tc-v193"></script>
-<script src="adaptive.js?v=tc-v193"></script>
-<script src="intake.js?v=tc-v193"></script>
-<script src="collab.js?v=tc-v193"></script>
-<script src="api.js?v=tc-v193"></script>
-<script src="auth.js?v=tc-v193"></script>
-<script src="app.js?v=tc-v193"></script>
+<script src="lib.js?v=tc-v194"></script>
+<script src="sync.js?v=tc-v194"></script>
+<script src="routing.js?v=tc-v194"></script>
+<script src="price.js?v=tc-v194"></script>
+<script src="adaptive.js?v=tc-v194"></script>
+<script src="intake.js?v=tc-v194"></script>
+<script src="collab.js?v=tc-v194"></script>
+<script src="api.js?v=tc-v194"></script>
+<script src="auth.js?v=tc-v194"></script>
+<script src="app.js?v=tc-v194"></script>
 </body>
 </html>

@@ -5182,6 +5182,12 @@ document.getElementById('onboardSample').onclick=()=>{ dismissOnboarding(); fitE
 document.getElementById('onboardNew').onclick=()=>{ dismissOnboarding(); openNewTrip(); };
 document.getElementById('onboardPaste').onclick=()=>{ dismissOnboarding(); document.getElementById('pasteBtn').click(); document.getElementById('pasteTarget').value='new'; };
 document.getElementById('onboardLogin').onclick=()=>{ dismissOnboarding(); document.getElementById('authBtn').click(); };
+// 한 번 닫으면 끝이던 것 — 처음 화면을 다시 볼 길을 남긴다.
+document.getElementById('onboardAgainBtn').onclick=()=>{
+  document.getElementById('hdrMenu').classList.remove('open');
+  document.getElementById('onboarding').hidden=false;
+  requestAnimationFrame(()=>document.getElementById('onboardNew').focus());
+};
 
 // ───────────────── 키보드·보조기술 접근성 ─────────────────
 function initAccessibility(){
