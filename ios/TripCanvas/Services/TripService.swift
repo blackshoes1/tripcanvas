@@ -242,6 +242,8 @@ protocol TripDocumentSource {
     func saveDocument(tripId: String, document: TripDocument, expectedRevision: Int) async throws -> TripDocumentSnapshot
     /// 그 날의 계산(예상 도착·구간·합계)과 일자 스트립. **계산은 서버가 한다** — 앱은 그린다.
     func dayPlan(tripId: String, dayIndex: Int) async throws -> TripService.Fetched<DayPlanResponse>
+    /// 디스크에 남아 있는 지난번 계산. **네트워크를 쓰지 않는다** — 화면을 먼저 채우는 용도다.
+    func cachedDayPlan(tripId: String, dayIndex: Int) async -> DayPlanResponse?
     /// 여행 **전체**의 동선. 전체 지도를 볼 때만 부른다 — 열지도 않을 날까지 미리 받지 않는다.
     func tripRoutes(tripId: String) async throws -> TripRoutesResponse
 }
@@ -288,6 +290,11 @@ extension TripService: TripDocumentSource {
             document: TripDocument(raw: response.document),
             revision: response.trip.revision,
             role: response.trip.role ?? .owner)
+    }
+
+    /// 지난번 계산 — 네트워크 없이 즉시. 쓸지 말지는 부르는 쪽이 정한다(리비전이 같을 때만 쓴다).
+    func cachedDayPlan(tripId: String, dayIndex: Int) async -> DayPlanResponse? {
+        await cache.load(DayPlanResponse.self, key: TripCache.dayPlanKey(tripId: tripId, dayIndex: dayIndex))?.value
     }
 
     /// 여행 전체 동선. 그리는 데 필요한 것만 온다(시각·비용은 일자 화면의 몫).

@@ -100,6 +100,7 @@ final class TripPlanViewModel {
     func loadPlan() async {
         guard dayCount > 0 else { plan = nil; return }
         let day = selectedDay
+        await showCachedPlan(for: day)
         do {
             let fetched = try await service.dayPlan(tripId: tripId, dayIndex: day)
             guard day == selectedDay else { return }   // 그 사이 다른 날로 옮겼으면 버린다
@@ -114,6 +115,18 @@ final class TripPlanViewModel {
             plan = nil
             planCachedAt = nil
         }
+    }
+
+    /// 지난번 계산을 **먼저** 보여 준다 — 서버를 기다리는 동안 시각 칸이 비어 있다가
+    /// 값이 들어오면서 줄이 움직이는 것을 없앤다(2026-09-07 '화면이 튄다' 보고).
+    ///
+    /// ⚠️ **문서가 그때 그대로일 때만** 쓴다. 편집한 뒤의 옛 시각을 보여 주면
+    /// 잠깐이라도 **틀린 숫자**를 말하게 된다 — 비어 있는 것보다 나쁘다.
+    private func showCachedPlan(for day: Int) async {
+        guard plan == nil, revision > 0 else { return }
+        guard let cached = await service.cachedDayPlan(tripId: tripId, dayIndex: day) else { return }
+        guard cached.trip.revision == revision, cached.day.index == day, day == selectedDay else { return }
+        plan = cached
     }
 
     /// 서버가 "아직 못 채운 구간이 있다"고 하면 **한 번만** 다시 받는다.

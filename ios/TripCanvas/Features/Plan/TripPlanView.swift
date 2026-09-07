@@ -674,8 +674,12 @@ struct SpotRow: View {
             .frame(width: typeSize.isAccessibilitySize ? nil : timeColumnWidth, alignment: .leading)
             .accessibilityLabel(timeAccessibility(plan))
         } else {
-            // 계산을 못 받았으면 자리만 비운다 — 문서의 `at`을 도착 예정처럼 보이게 하지 않는다.
-            Color.clear.frame(width: 0, height: 0)
+            // 계산이 오기 전에도 **자리는 잡아 둔다.** 폭을 0으로 두면 시각이 도착하는 순간
+            // 이름이 통째로 옆으로 밀려 화면이 튄다(2026-09-07 보고).
+            // 값은 비워 둔다 — 문서의 `at`을 도착 예정처럼 보이게 하지 않는다.
+            Color.clear
+                .frame(width: typeSize.isAccessibilitySize ? 0 : timeColumnWidth, height: 0)
+                .accessibilityHidden(true)
         }
     }
 
