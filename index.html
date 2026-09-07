@@ -13,7 +13,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js" integrity="sha384-+pWnyi8LtZx+cgXfD2arWgUX7pHIaEL215cEPPk9WrsegNlgvDL9DNjaqsceQq6o" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js" integrity="sha384-BSxuMLxX+FCbTdYec3TbXlnMGEEM2QXTFdtDaveen71o+jswm2J36+xFqp8k4VHM" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.min.js" integrity="sha384-l8ah+VgaWtk1mvOe9VC+OirC6qHFF4yH7l7mKRidV9MSti3E9F463bMp6ZVN4kuC" crossorigin="anonymous"></script>
-<link rel="stylesheet" href="style.css?v=tc-v192">
+<link rel="stylesheet" href="style.css?v=tc-v193">
 <!-- Travelpayouts 사이트 소유 인증 (파트너 가입 검증용 — DiscoverCars API 신청에 필요) -->
 <script nowprocket data-noptimize="1" data-cfasync="false" data-wpfc-render="false" seraph-accel-crit="1" data-no-defer="1" data-cmp-ab="2">
   (function () {
@@ -260,6 +260,27 @@
 </div></div>
 
 <!-- 여행 설정 모달 -->
+<!-- 새 여행 — 두 가지만 묻는다(어디로·언제). iOS의 새 여행 화면과 같은 질문이다 -->
+<div class="modalBg" id="newTripBg"><div class="modal">
+  <h2>새 여행</h2>
+  <label for="ntCity">어디로 가세요?</label>
+  <input type="text" id="ntCity" placeholder="가루이자와, 제주, 파리…" autocomplete="off">
+  <div class="hint">비워 두어도 됩니다. 여행 이름을 지어 주는 데만 씁니다.</div>
+  <label for="ntStart">언제 가세요?</label>
+  <div class="ntWhen">
+    <input type="date" id="ntStart">
+    <div class="ntDays"><input type="number" id="ntDays" min="1" max="30" step="1" value="3" aria-label="기간(일)"><span>일</span></div>
+  </div>
+  <div class="hint" id="ntRange"></div>
+  <label for="ntName">여행 이름</label>
+  <input type="text" id="ntName" placeholder="새 여행" autocomplete="off">
+  <div class="hint">비워 두면 ‘새 여행’으로 만들고, 나중에 바꿀 수 있어요.</div>
+  <div class="row">
+    <button class="btn" id="ntCancel">취소</button>
+    <button class="btn primary" id="ntRun">만들기</button>
+  </div>
+</div></div>
+
 <div class="modalBg" id="tripModalBg"><div class="modal">
   <h2>여행 설정</h2>
   <div class="hint" id="tripRoleHint" style="display:none"></div>
@@ -527,15 +548,15 @@
   </div>
 </div>
 
-<script src="lib.js?v=tc-v192"></script>
-<script src="sync.js?v=tc-v192"></script>
-<script src="routing.js?v=tc-v192"></script>
-<script src="price.js?v=tc-v192"></script>
-<script src="adaptive.js?v=tc-v192"></script>
-<script src="intake.js?v=tc-v192"></script>
-<script src="collab.js?v=tc-v192"></script>
-<script src="api.js?v=tc-v192"></script>
-<script src="auth.js?v=tc-v192"></script>
-<script src="app.js?v=tc-v192"></script>
+<script src="lib.js?v=tc-v193"></script>
+<script src="sync.js?v=tc-v193"></script>
+<script src="routing.js?v=tc-v193"></script>
+<script src="price.js?v=tc-v193"></script>
+<script src="adaptive.js?v=tc-v193"></script>
+<script src="intake.js?v=tc-v193"></script>
+<script src="collab.js?v=tc-v193"></script>
+<script src="api.js?v=tc-v193"></script>
+<script src="auth.js?v=tc-v193"></script>
+<script src="app.js?v=tc-v193"></script>
 </body>
 </html>

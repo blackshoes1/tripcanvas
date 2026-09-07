@@ -2814,3 +2814,91 @@ test('붙여넣기: 클립보드가 막히면 삼키지 않고 칸에 넣어 준
 
   assert.match(w.document.getElementById('pasteText').value, /\[day1\]/, '복사가 안 되면 직접 복사할 수 있게 남긴다');
 });
+
+// ── 새 여행: 두 가지만 묻는다 ──
+//
+// 예전에는 이름 하나를 prompt로 묻고 **여행 설정 모달**(버전 기록·삭제 버튼이 있는 화면)을 띄웠다.
+// 처음 온 사람을 맞이하는 화면이 아니었고, 며칠짜리인지 묻지 않아 빈 일자 하나로 시작했다.
+
+test('새 여행: 어디로·언제를 묻고, 일자를 그만큼 만든다', { skip: noJsdom }, async () => {
+  const w = boot();
+  w.eval("store.trips=[]; store.activeId=null;");
+  w.document.getElementById('newTripBtn').click();
+  assert.ok(w.document.getElementById('newTripBg').classList.contains('show'), '만들기 모달이 뜬다');
+
+  const city = w.document.getElementById('ntCity');
+  city.value = '가루이자와';
+  city.dispatchEvent(new w.Event('input'));
+  assert.equal(w.document.getElementById('ntName').value, '가루이자와 여행', '도시가 이름을 지어 준다');
+
+  w.document.getElementById('ntStart').value = '2026-07-21';
+  w.document.getElementById('ntDays').value = '4';
+  w.document.getElementById('ntDays').dispatchEvent(new w.Event('input'));
+  assert.match(w.document.getElementById('ntRange').textContent, /7\/21 → 7\/24 · 4일/, '끝나는 날을 보여 준다');
+
+  w.document.getElementById('ntRun').click();
+  const created = JSON.parse(w.eval('JSON.stringify(store.trips[store.trips.length-1])'));
+  assert.equal(created.name, '가루이자와 여행');
+  assert.equal(created.start, '2026-07-21');
+  assert.equal(created.days.length, 4, '며칠인지 물었으면 그만큼 만든다');
+  assert.deepEqual(created.days[0].spots, []);
+  assert.ok(!w.document.getElementById('newTripBg').classList.contains('show'));
+  // 여행 설정 모달로 맞이하지 않는다
+  assert.ok(!w.document.getElementById('tripModalBg').classList.contains('show'));
+});
+
+test('새 여행: 이름을 안 적어도 막지 않는다', { skip: noJsdom }, async () => {
+  const w = boot();
+  w.eval("store.trips=[]; store.activeId=null;");
+  w.document.getElementById('newTripBtn').click();
+  w.document.getElementById('ntStart').value = '2026-07-21';
+  w.document.getElementById('ntRun').click();
+
+  const created = JSON.parse(w.eval('JSON.stringify(store.trips[store.trips.length-1])'));
+  assert.equal(created.name, '새 여행');
+  assert.equal(created.days.length, 3, '기본 3일');
+});
+
+test('새 여행: 이름을 직접 고치면 도시가 덮어쓰지 않는다', { skip: noJsdom }, async () => {
+  const w = boot();
+  w.document.getElementById('newTripBtn').click();
+  const name = w.document.getElementById('ntName');
+  name.value = '엄마랑 둘이';
+  name.dispatchEvent(new w.Event('input'));
+  const city = w.document.getElementById('ntCity');
+  city.value = '제주';
+  city.dispatchEvent(new w.Event('input'));
+  assert.equal(name.value, '엄마랑 둘이');
+});
+
+// ── 만든 다음 한 걸음 ──
+
+test('다음 한 걸음: 빈 여행에만, 첫 일자에만 뜬다', { skip: noJsdom }, async () => {
+  const w = boot();
+  w.eval("store.trips=[]; store.activeId=null;");
+  w.document.getElementById('newTripBtn').click();
+  w.document.getElementById('ntStart').value = '2026-07-21';
+  w.document.getElementById('ntDays').value = '2';
+  w.document.getElementById('ntRun').click();
+
+  assert.equal(w.document.querySelectorAll('.firstStep').length, 1, '일자마다 반복하지 않는다');
+  assert.match(w.document.querySelector('.firstStep').textContent, /어디부터/);
+
+  // 장소가 하나라도 담기면 사라진다
+  w.eval("trip().days[0].spots.push({name:'성산일출봉',city:'제주',lat:33.4,lng:126.9}); render();");
+  assert.equal(w.document.querySelectorAll('.firstStep').length, 0);
+});
+
+test('다음 한 걸음: 닫으면 그 여행에서는 다시 뜨지 않는다', { skip: noJsdom }, async () => {
+  const w = boot();
+  w.eval("store.trips=[]; store.activeId=null;");
+  w.document.getElementById('newTripBtn').click();
+  w.document.getElementById('ntStart').value = '2026-07-21';
+  w.document.getElementById('ntRun').click();
+  assert.equal(w.document.querySelectorAll('.firstStep').length, 1);
+
+  w.document.querySelector('.firstStepClose').click();
+  assert.equal(w.document.querySelectorAll('.firstStep').length, 0);
+  w.eval('render()');
+  assert.equal(w.document.querySelectorAll('.firstStep').length, 0, '다시 그려도 뜨지 않는다');
+});
