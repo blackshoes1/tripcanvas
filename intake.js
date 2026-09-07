@@ -588,11 +588,225 @@
     return {planned, visited, missed, unplanned};
   }
 
+
+  // ── 6. 붙여넣은 일정 글 → 초안 ──────────────────────────────────
+  //
+  // 사람이 쓴 글(또는 AI가 준 일정)을 읽는다. 우리 형식(`장소 | 도시 | 설명 @09:00`)도 그대로 읽힌다.
+  //
+  // ⚠️ **확정하지 않는다.** 이 줄이 장소인지 활동인지는 `kind` **힌트**일 뿐이고, 무엇을 담을지는
+  // 미리보기에서 사람이 고른다(§밖에서 들어온 것은 확인 없이 저장하지 않는다).
+  // ⚠️ 이름을 고쳐 쓰지 않는다 — 분류할 때만 낱말을 걷어내고, 이름은 원문 그대로 남긴다.
+  //   ("가루이자와 프린스 쇼핑 플라자"에서 '쇼핑'을 지우면 지도가 못 찾는다)
+
+  /** @typedef {'PLACE'|'ACTIVITY'|'MOVE'|'STAY'} ItemKind */
+  /** @typedef {{raw:string,name:string,city:string,desc:string,at:string|null,endAt:string|null,stayMin:number|null,url:string|null,cost:number|null,cur:string|null,opt:boolean,stay:boolean,lat:number|null,lng:number|null,kind:ItemKind,reasons:string[]}} DraftItem */
+  /** @typedef {{title:string,date:string|null,drive:string,note:string,items:DraftItem[]}} DraftDay */
+
+  /** 숙소에 관한 말 */
+  const STAY_WORDS = ['체크인','체크아웃','체크 인','체크 아웃','숙소','호텔','료칸','민박','게스트하우스','짐','복귀','휴식'];
+  /** 이동에 관한 말 */
+  const MOVE_WORDS = ['이동','출발','도착','귀국','입국','경유','환승','왕복','픽업','반납','탑승','귀가'];
+  /** 행동에 관한 말 — 장소 이름에도 흔히 붙는다(산책·관람) */
+  const ACT_WORDS = ['아침','점심','저녁','브런치','간식','식사','먹기','자유시간','자유 시간','쇼핑','구경','관람','산책','투어','체험','카페','티타임','사진','촬영','주변','근처','일대','지역'];
+  /** 시간대를 가리키는 말 — 시각으로 못박지 않는다(내가 정하지 않은 시각을 계획에 넣지 않는다) */
+  const PART_WORDS = ['새벽','아침','오전','점심','정오','오후','저녁','밤','종일','하루종일','늦은','이른','식후','이후','전','후'];
+
+  /** @param {string} line @returns {{title:string}|null} 일자 머리글이면 제목, 아니면 null */
+  function dayHeader(line){
+    let s=String(line||'').trim(), heading=false;
+    const h=/^#{1,6}\s*(.*)$/.exec(s);
+    if(h){ s=h[1].trim(); heading=true; }
+    let m=/^\[?\s*day\s*(\d+)\s*\]?\s*[-–—:.)|｜]?\s*(.*)$/i.exec(s);
+    if(m) return {title:String(m[2]||'').trim()};
+    m=/^(\d+)\s*일\s*차\s*[-–—:.)|｜]?\s*(.*)$/.exec(s);
+    if(m) return {title:String(m[2]||'').trim()};
+    return heading? {title:s} : null;
+  }
+
+  /** @param {string} line @returns {string|null} 불릿이면 본문, 아니면 null */
+  function bulletBody(line){
+    const m=/^\s*(?:[-•*·▪◦‣]|\d{1,2}[.)]|[①-⑩])\s+(.+)$/.exec(String(line||''));
+    return m? m[1].trim() : null;
+  }
+
+  /** @param {string} t @returns {string|null} */
+  function hm(t){
+    const m=/^(\d{1,2})\s*:\s*(\d{2})$/.exec(String(t||'').trim());
+    if(!m) return null;
+    const h=+m[1], mi=+m[2];
+    return (h>=0&&h<=23&&mi>=0&&mi<=59)? `${String(h).padStart(2,'0')}:${String(mi).padStart(2,'0')}` : null;
+  }
+
+  /**
+   * 이름 앞에 붙은 시간 표시를 떼어낸다. `08:00~09:00｜아침 식사` → `아침 식사`
+   * ⚠️ '오후'·'저녁' 같은 말은 시각으로 바꾸지 않는다 — 구분자가 뒤따를 때만 떼어낸다.
+   * @param {string} body @returns {{rest:string,at:string|null,endAt:string|null}}
+   */
+  function stripTimePrefix(body){
+    let s=String(body||'');
+    let m=/^(\d{1,2}\s*:\s*\d{2})\s*[~\-–—]\s*(\d{1,2}\s*:\s*\d{2})\s*[|:：]?\s*/.exec(s);
+    if(m){ const a=hm(m[1]), b=hm(m[2]); if(a) return {rest:s.slice(m[0].length).trim(), at:a, endAt:b}; }
+    m=/^(\d{1,2}\s*:\s*\d{2})\s*(?:이후|부터|~|-|–|—)\s*[|:：]?\s*/.exec(s);
+    if(m){ const a=hm(m[1]); if(a) return {rest:s.slice(m[0].length).trim(), at:a, endAt:null}; }
+    m=/^(\d{1,2}\s*:\s*\d{2})\s*[|:：]\s*/.exec(s);
+    if(m){ const a=hm(m[1]); if(a) return {rest:s.slice(m[0].length).trim(), at:a, endAt:null}; }
+    m=/^(\d{1,2}\s*:\s*\d{2})\s+/.exec(s);
+    if(m){ const a=hm(m[1]); if(a) return {rest:s.slice(m[0].length).trim(), at:a, endAt:null}; }
+    // '오전~오후|이동' — 시간대 낱말만으로 이루어진 접두사는 버리고 순서만 남긴다
+    m=/^([^|]{1,14})\|\s*/.exec(s);
+    if(m){
+      const words=m[1].split(/[~\-–—·,\s]+/).filter(Boolean);
+      if(words.length && words.every((w)=>PART_WORDS.indexOf(w)>=0)) return {rest:s.slice(m[0].length).trim(), at:null, endAt:null};
+    }
+    return {rest:s.trim(), at:null, endAt:null};
+  }
+
+  /**
+   * 마크다운 링크와 맨 URL을 떼어낸다. 링크 문구는 남기고 문법만 지운다.
+   * ⚠️ http(s)만 받는다 — `javascript:` 같은 스킴을 문서에 들이지 않는다(§safeUrl과 같은 기준).
+   * @param {string} text @returns {{text:string,url:string|null}}
+   */
+  function pullLinks(text){
+    /** @type {string|null} */ let url=null;
+    let out=String(text||'').replace(/\[([^\]]*)\]\(\s*([^)\s]+)\s*\)/g, (_all, label, href)=>{
+      if(!url && /^https?:\/\//i.test(String(href))) url=String(href);
+      return String(label||'');
+    });
+    if(!url){
+      const m=/https?:\/\/\S+/i.exec(out);
+      if(m){ url=m[0]; out=out.replace(m[0],''); }
+    }
+    return {text: out.replace(/\s{2,}/g,' ').trim(), url};
+  }
+
+  /**
+   * 이 줄이 장소인가 — **힌트일 뿐이다.** 아는 낱말을 다 걷어낸 뒤 남는 말이 있으면 장소로 본다.
+   * 그래서 "쿠모바 연못 산책"은 장소('쿠모바 연못'이 남는다)이고 "아침 식사"는 아니다.
+   * @param {string} name @returns {{kind:ItemKind,reasons:string[]}}
+   */
+  function classifyItem(name){
+    const text=String(name||'').trim();
+    if(!text) return {kind:'ACTIVITY', reasons:['이름이 없어요']};
+    if(/→|->|~>/.test(text)) return {kind:'MOVE', reasons:['옮겨 가는 과정으로 보여요']};
+    let residue=text;
+    /** @type {string[]} */ const hitStay=[];
+    /** @type {string[]} */ const hitMove=[];
+    /** @type {string[]} */ const hitAct=[];
+    const strike=(/**@type{string[]}*/words, /**@type{string[]}*/hits)=>{
+      for(const w of words) if(residue.indexOf(w)>=0){ hits.push(w); residue=residue.split(w).join(' '); }
+    };
+    strike(STAY_WORDS, hitStay); strike(MOVE_WORDS, hitMove); strike(ACT_WORDS, hitAct); strike(PART_WORDS, hitAct);
+    residue=residue.replace(/[\s·,.\-–—|()[\]/]+/g,'').trim();
+    if(residue) return {kind:'PLACE', reasons:['장소 이름으로 보여요']};
+    const quoted=(/**@type{string[]}*/h)=>h.slice(0,2).map((w)=>`'${w}'`).join('·');
+    if(hitStay.length) return {kind:'STAY', reasons:[`${quoted(hitStay)} 같은 말뿐이라 숙소 관련으로 보여요`]};
+    if(hitMove.length) return {kind:'MOVE', reasons:[`${quoted(hitMove)} 같은 말뿐이라 이동으로 보여요`]};
+    if(hitAct.length) return {kind:'ACTIVITY', reasons:[`${quoted(hitAct)} 같은 말뿐이라 장소가 아니라 행동으로 보여요`]};
+    return {kind:'PLACE', reasons:['장소 이름으로 보여요']};
+  }
+
+  /** @param {string} title @param {number} year @returns {string|null} */
+  function dayDateOf(title, year){
+    const d=normalizeDate(title, {year});
+    if(d.iso) return d.iso;
+    const m=/(\d{1,2})\s*\/\s*(\d{1,2})(?!\s*[/\d])/.exec(String(title||''));
+    return m? isoOf(year, +m[1], +m[2]) : null;
+  }
+
+  /**
+   * 붙여넣은 일정 글 → 초안. **저장하지 않는다** — 미리보기에 쓸 후보를 만들 뿐이다.
+   * @param {string} text
+   * @param {{year?:number}=} opts 연도가 없는 글(`7월 21일`)에 쓸 연도. 없으면 올해
+   * @returns {{name:string,start:string|null,startAmbiguous:boolean,days:DraftDay[]}}
+   */
+  function parseItinerary(text, opts){
+    const o=opts||{};
+    const year=o.year || new Date().getUTCFullYear();
+    const raw=String(text||'');
+    const hasYear=/(19|20)\d{2}\s*[-./년]/.test(raw);
+    /** @type {{name:string,start:string|null,startAmbiguous:boolean,days:DraftDay[]}} */
+    const out={name:'', start:null, startAmbiguous:false, days:[]};
+    /** @type {DraftDay|null} */ let day=null;
+    /** @type {DraftItem|null} */ let item=null;   // 바로 앞 불릿 — 다음 줄 설명이 여기 붙는다
+    let lastCity='';
+
+    const newDay=(/**@type{string}*/title)=>{
+      day={title:String(title||'').trim(), date:null, drive:'', note:'', items:[]};
+      day.date=dayDateOf(day.title, year);
+      out.days.push(day); item=null;
+      return day;
+    };
+    /** 지금 쓰고 있는 일자 — 머리글이 없는 글도 하루짜리로 읽힌다 */
+    const curDay=()=> day || newDay('');
+    const addNote=(/**@type{string}*/line)=>{ const d=curDay(); d.note=(d.note? d.note+'\n':'')+line; };
+
+    raw.split(/\r?\n/).forEach((rawLine)=>{
+      const line=rawLine.trim();
+      if(!line){ item=null; return; }     // 빈 줄이 설명을 닫는다 — 그 뒤 문단은 그 날의 메모다
+      let m;
+      if(m=/^여행\s*이름\s*[:：]\s*(.+)$/.exec(line)){ out.name=m[1].trim(); return; }
+      if(m=/^시작일\s*[:：]\s*(.+)$/.exec(line)){ out.start=dayDateOf(m[1], year)||null; return; }
+      const head=dayHeader(line);
+      if(head){ newDay(head.title); return; }
+      const d=curDay();
+      if(m=/^이동\s*[:：]\s*(.+)$/.exec(line)){ d.drive=m[1].trim(); item=null; return; }
+      if(m=/^메모\s*[:：]\s*(.+)$/.exec(line)){ addNote(m[1].trim()); item=null; return; }
+
+      const body=bulletBody(line);
+      if(body==null){
+        // 불릿 바로 다음 줄은 그 항목의 설명, 그 밖은 일자 메모
+        if(item){
+          const pulled=pullLinks(line);
+          if(pulled.text) item.desc=(item.desc? item.desc+' ':'')+pulled.text;
+          if(pulled.url && !item.url) item.url=pulled.url;
+        } else addNote(line);
+        return;
+      }
+
+      // ── 불릿 한 줄 ──
+      let text2=body.split('｜').join('|');          // 전각 세로줄도 같은 구분자다
+      const pulled=pullLinks(text2); text2=pulled.text;
+      let opt=false, stay=false;
+      if(/^\(선택\)/.test(text2)){ opt=true; text2=text2.replace(/^\(선택\)\s*/,''); }
+      if(/^\(숙소\)/.test(text2)){ stay=true; text2=text2.replace(/^\(숙소\)\s*/,''); }
+      const timed=stripTimePrefix(text2); text2=timed.rest;
+      let at=timed.at;
+      const atM=/@\s*(\d{1,2}:\d{2})/.exec(text2);
+      if(atM){ const v=hm(atM[1]); if(v) at=v; text2=text2.replace(atM[0],''); }   // 우리 형식의 @는 앞선 표시를 이긴다
+      const money=LIB.parseMoney? LIB.parseMoney(text2) : null;
+      if(money) text2=text2.replace(money.raw,'');
+      text2=text2.replace(/\s{2,}/g,' ').trim();
+
+      const p=text2.split('|').map((x)=>x.trim());
+      if(p[1]) lastCity=p[1];
+      let lat=null, lng=null;
+      if(p[3]){ const c=/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/.exec(p[3]); if(c){ lat=+c[1]; lng=+c[2]; } }
+      const name=p[0]||'';
+      const verdict=classifyItem(name);
+      const stayMin=(at&&timed.endAt)? Math.max(0, LIB.parseHM(timed.endAt)-LIB.parseHM(at)) : null;
+      /** @type {DraftItem} */
+      const next={
+        raw:body, name, city:p[1]||lastCity||'', desc:p[2]||'',
+        at, endAt:timed.endAt, stayMin, url:pulled.url,
+        cost:money? money.cost : null, cur:(money&&money.cur!=='KRW')? money.cur : null,
+        opt, stay, lat, lng,
+        kind:verdict.kind, reasons:verdict.reasons
+      };
+      d.items.push(next); item=next;
+    });
+
+    const dated=out.days.filter((d)=>!!d.date)[0];
+    if(!out.start && dated) out.start=dated.date;
+    out.startAmbiguous=!!out.start && !hasYear;
+    return out;
+  }
+
   const API={INTAKE_CFG, MEMORY_CFG, SHARE_STATES, MEMORY_TYPES, PROVIDER_ADAPTERS,
     classifyShare, normalizeDate, normalizeCurrency, normalizeAmount, providerFor,
     parseBookingCandidate, candidateDisposition, findDuplicateBooking, matchTripForBooking,
     candidateToBooking, shareIdempotencyKey, shareQueueNext, titleSimilarity,
-    associateMemory, memoryTimeline, plannedVsActual};
+    associateMemory, memoryTimeline, plannedVsActual,
+    parseItinerary, classifyItem, stripTimePrefix, pullLinks, dayHeader};
   if(typeof module!=='undefined' && module.exports) module.exports=API;   // Node (테스트)
   else /** @type {any} */(root).TC_INTAKE=API;                            // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);

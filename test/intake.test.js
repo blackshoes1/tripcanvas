@@ -297,3 +297,168 @@ test('providerFor: 어댑터는 힌트일 뿐, 모르면 null', () => {
   assert.equal(I.providerFor('https://unknown.example/x'), null);
   assert.equal(I.providerFor(''), null);
 });
+
+// ── 6. 붙여넣은 일정 글 ──
+//
+// 여기서 지키는 것: 이름을 사람이 읽을 수 있게 남긴다 / 장소인지 아닌지 **단정하지 않는다** /
+// 못 읽은 줄도 버리지 않는다 / 우리 기존 형식이 그대로 읽힌다.
+
+// 실제로 붙여넣었다가 아무 장소도 못 찾았던 글이다(2026-09-07). 지어낸 값이 아니라 이 사고의 원문이다.
+const PASTED = [
+  '[day1] 7월 21일(수) — 가루이자와 도착·구시가지 산책',
+  '',
+  '* 오전~오후｜이동',
+  '일본 도착 → 도쿄역 또는 우에노역 이동 → 신칸센으로 가루이자와역 → 숙소에 짐 맡기기.',
+  '* 오후｜규카루이자와 긴자 거리',
+  '늦은 점심을 먹고 상점·베이커리를 구경하며 가볍게 산책.',
+  '',
+  '첫날 도착이 늦으면 구시가지 산책을 3일 차 오후로 옮기세요.',
+  '[day2] 7월 22일(목) — 쿠모바 연못·하루니레 테라스·온천',
+  '',
+  '* 08:00~09:00｜아침 식사',
+  '* 09:00~10:00｜쿠모바 연못 산책',
+  '연못 주변을 천천히 걸으며 여름 녹음 감상. [장소 안내](https://en.slow-style.com/spots/kumobaike/)',
+  '* 12:00~15:00｜하루니레 테라스',
+  '* 17:30 이후｜저녁 식사·숙소 복귀'
+].join('\n');
+
+test('붙여넣기: 시간 접두사를 떼어내 사람이 읽을 수 있는 이름을 남긴다', () => {
+  const r = I.parseItinerary(PASTED, { year: 2026 });
+  const names = r.days[1].items.map(i => i.name);
+  assert.deepEqual(names, ['아침 식사', '쿠모바 연못 산책', '하루니레 테라스', '저녁 식사·숙소 복귀']);
+  // 이름에 시각·구분자가 남으면 지도가 못 찾는다 — 이게 이 사고의 원인이었다
+  assert.ok(!names.some(n => /\d{1,2}:\d{2}|[|｜]/.test(n)));
+});
+
+test('붙여넣기: 시각과 머무는 시간을 값으로 만든다', () => {
+  const day2 = I.parseItinerary(PASTED, { year: 2026 }).days[1].items;
+  assert.equal(day2[1].at, '09:00');
+  assert.equal(day2[1].endAt, '10:00');
+  assert.equal(day2[1].stayMin, 60);
+  assert.equal(day2[2].stayMin, 180);
+  // '17:30 이후'는 끝 시각이 없다 — 없는 값을 지어내지 않는다
+  assert.equal(day2[3].at, '17:30');
+  assert.equal(day2[3].endAt, null);
+  assert.equal(day2[3].stayMin, null);
+});
+
+test('붙여넣기: 시간대를 가리키는 말은 시각으로 못박지 않는다', () => {
+  const day1 = I.parseItinerary(PASTED, { year: 2026 }).days[0].items;
+  assert.equal(day1[0].name, '이동');       // '오전~오후｜'는 떼어내되
+  assert.equal(day1[0].at, null);           // 내가 정하지 않은 시각을 계획에 넣지 않는다
+  assert.equal(day1[1].name, '규카루이자와 긴자 거리');
+});
+
+test('붙여넣기: 장소인지 아닌지는 힌트일 뿐이고 버리지 않는다', () => {
+  const r = I.parseItinerary(PASTED, { year: 2026 });
+  const kinds = r.days[1].items.map(i => i.kind);
+  assert.deepEqual(kinds, ['ACTIVITY', 'PLACE', 'PLACE', 'STAY']);
+  assert.equal(r.days[0].items[0].kind, 'MOVE');
+  // 장소가 아니어 보이는 줄도 목록에 남는다 — 담을지는 사람이 고른다
+  assert.equal(r.days[1].items.length, 4);
+  assert.ok(r.days[1].items[0].reasons[0].includes('행동'));
+});
+
+test('붙여넣기: 낱말이 붙은 장소 이름은 장소로 본다 — 이름은 그대로 남긴다', () => {
+  const r = I.parseItinerary('- 쿠모바 연못 산책\n- 가루이자와 프린스 쇼핑 플라자\n- 아침 식사\n- 체크아웃', {});
+  assert.deepEqual(r.days[0].items.map(i => i.kind), ['PLACE', 'PLACE', 'ACTIVITY', 'STAY']);
+  // '산책'·'쇼핑'을 지운 이름으로 검색하면 지도가 못 찾는다
+  assert.equal(r.days[0].items[1].name, '가루이자와 프린스 쇼핑 플라자');
+});
+
+test('붙여넣기: 전각 세로줄도 같은 구분자다', () => {
+  const wide = I.parseItinerary('- 성산일출봉｜제주｜해돋이', {});
+  const ascii = I.parseItinerary('- 성산일출봉|제주|해돋이', {});
+  const drop = (it) => Object.assign({}, it, { raw: null });   // raw는 원문이라 다른 게 맞다
+  assert.deepEqual(drop(wide.days[0].items[0]), drop(ascii.days[0].items[0]));
+  assert.equal(wide.days[0].items[0].city, '제주');
+  assert.equal(wide.days[0].items[0].raw, '성산일출봉｜제주｜해돋이', '원문은 손대지 않는다');
+});
+
+test('붙여넣기: 다음 줄 설명은 그 장소의 것이지 일자 메모가 아니다', () => {
+  const r = I.parseItinerary(PASTED, { year: 2026 });
+  assert.ok(r.days[1].items[1].desc.includes('연못 주변을'));
+  assert.ok(!r.days[1].note.includes('연못 주변을'));
+  // 빈 줄 뒤 문단은 그 날의 메모다
+  assert.ok(r.days[0].note.includes('첫날 도착이 늦으면'));
+});
+
+test('붙여넣기: 마크다운 링크는 주소로 옮기고 문법은 지운다', () => {
+  const r = I.parseItinerary(PASTED, { year: 2026 });
+  const spot = r.days[1].items[1];
+  assert.equal(spot.url, 'https://en.slow-style.com/spots/kumobaike/');
+  assert.ok(!/\[|\]\(/.test(spot.desc));
+  assert.ok(spot.desc.includes('장소 안내'), '링크 문구는 남긴다');
+});
+
+test('붙여넣기: http(s)가 아닌 링크는 문서에 들이지 않는다', () => {
+  const r = I.parseItinerary('- 어떤 곳\n[누르세요](javascript:alert(1))', {});
+  assert.equal(r.days[0].items[0].url, null);
+});
+
+test('붙여넣기: 날짜를 읽되 연도가 없으면 모호하다고 말한다', () => {
+  const r = I.parseItinerary(PASTED, { year: 2026 });
+  assert.equal(r.start, '2026-07-21');
+  assert.equal(r.days[1].date, '2026-07-22');
+  assert.equal(r.startAmbiguous, true, '연도를 우리가 정했다는 사실을 감추지 않는다');
+
+  const withYear = I.parseItinerary('[day1] 2026-07-21 도착\n- 어떤 곳', {});
+  assert.equal(withYear.start, '2026-07-21');
+  assert.equal(withYear.startAmbiguous, false);
+});
+
+test('붙여넣기: 7/21 같은 표기도 읽는다', () => {
+  const r = I.parseItinerary('[day1] 7/21 (화) 도착\n- 어떤 곳', { year: 2026 });
+  assert.equal(r.days[0].date, '2026-07-21');
+});
+
+test('붙여넣기: 우리 기존 형식이 그대로 읽힌다 (기존 사용자를 다치게 하지 않는다)', () => {
+  const r = I.parseItinerary([
+    '여행 이름: 제주 한 바퀴',
+    '시작일: 2026-10-01',
+    '[day1] 도착',
+    '이동: 렌터카',
+    '- (숙소) 제주호텔 | 제주 | 바다뷰 | 33.5,126.5 @15:00',
+    '- (선택) 성산일출봉 | 제주 | 해돋이',
+    '메모: 공항에서 바로'
+  ].join('\n'), {});
+  assert.equal(r.name, '제주 한 바퀴');
+  assert.equal(r.start, '2026-10-01');
+  assert.equal(r.days[0].drive, '렌터카');
+  assert.equal(r.days[0].note, '공항에서 바로');
+  const [hotel, sunrise] = r.days[0].items;
+  assert.equal(hotel.name, '제주호텔');
+  assert.equal(hotel.city, '제주');
+  assert.equal(hotel.desc, '바다뷰');
+  assert.equal(hotel.stay, true);
+  assert.equal(hotel.at, '15:00');
+  assert.equal(hotel.lat, 33.5);
+  assert.equal(hotel.lng, 126.5);
+  assert.equal(sunrise.opt, true);
+  assert.equal(sunrise.city, '제주');
+});
+
+test('붙여넣기: 여러 불릿 모양과 일자 머리글을 읽는다', () => {
+  const r = I.parseItinerary([
+    '## 1일차 도착',
+    '1. 첫 곳',
+    '• 둘째 곳',
+    '· 셋째 곳',
+    '### Day 2 — 이튿날',
+    '- 넷째 곳'
+  ].join('\n'), {});
+  assert.equal(r.days.length, 2);
+  assert.deepEqual(r.days[0].items.map(i => i.name), ['첫 곳', '둘째 곳', '셋째 곳']);
+  assert.equal(r.days[1].title, '이튿날');
+});
+
+test('붙여넣기: 아무것도 못 읽어도 죽지 않고, 원문을 버리지 않는다', () => {
+  assert.deepEqual(I.parseItinerary('', {}).days, []);
+  const plain = I.parseItinerary('그냥 메모 한 줄', {});
+  assert.equal(plain.days.length, 1);
+  assert.equal(plain.days[0].note, '그냥 메모 한 줄');
+  assert.equal(plain.start, null);
+  const r = I.parseItinerary('- 어떤 곳 @25:99', {});
+  assert.equal(r.days[0].items[0].at, null, '말이 안 되는 시각은 없는 값이다');
+  assert.equal(r.days[0].items[0].raw, '어떤 곳 @25:99', '읽은 원문은 남긴다');
+});
