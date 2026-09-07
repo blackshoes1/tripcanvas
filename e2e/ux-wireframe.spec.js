@@ -95,7 +95,18 @@ test('핸들 드래그는 놓은 높이의 비율로 스냅한다',async({contex
 
 test('여행 모드는 현재 장소와 다음 장소를 우선 표시한다',async({context,page})=>{
   await prepare(context); await page.goto('/'); await createTrip(page,'여행 모드 테스트');
-  await page.evaluate(()=>{ const d=store.trips.find(t=>t.id===store.activeId).days[0]; d.spots=[{name:'현재 장소',city:'서울',lat:37.5,lng:127,stayMin:60},{name:'다음 장소',city:'서울',lat:37.51,lng:127.01,stayMin:60}]; render(); });
+  await page.evaluate(()=>{
+    const t=store.trips.find(x=>x.id===store.activeId);
+    t.start='2026-09-01';
+    const d=t.days[0];
+    d.startAt='09:00';
+    d.spots=[{name:'현재 장소',city:'서울',lat:37.5,lng:127,stayMin:60},
+             {name:'다음 장소',city:'서울',lat:37.51,lng:127.01,stayMin:60}];
+    // ⚠️ 시각을 고정한다 — 실제 시계에 맡기면 자정을 넘긴 시간대에 '다음 장소'가 사라져
+    //    코드와 무관하게 게이트가 빨개진다(2026-09-08 00:20에 실제로 그랬다).
+    todayISO=()=>'2026-09-01'; nowMinutes=()=>10*60;
+    render();
+  });
   await page.locator('#travelBtn').click();
   await expect(page.locator('#travelCurrent')).toContainText('현재 장소');
   await expect(page.locator('#travelNext')).toContainText('다음 장소');
