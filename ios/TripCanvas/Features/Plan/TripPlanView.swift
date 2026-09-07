@@ -16,6 +16,11 @@ struct TripPlanView: View {
     @State private var showsSearch = false
     /// 지도를 하루만 볼지 여행 전체로 볼지.
     @State private var mapScope: MapScope = .day
+    /// 손가락을 따라 살짝 밀리는 양. 끌고 있는 동안만 값이 있다.
+    @State private var dragX: CGFloat = 0
+    /// 다음 날로 가는 중인가 — 들어오고 나가는 방향을 정한다.
+    @State private var goingForward = true
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showsMap = false
 
     var body: some View {
@@ -169,7 +174,8 @@ struct TripPlanView: View {
         let selected = entry.index == model.selectedDay
         let isToday = entry.index == model.todayIndex
         return Button {
-            model.selectedDay = entry.index
+            goingForward = entry.index > model.selectedDay
+            withAnimation(motion) { model.selectedDay = entry.index }
         } label: {
             VStack(spacing: 2) {
                 HStack(spacing: 4) {
@@ -298,6 +304,11 @@ struct TripPlanView: View {
             }
             .listStyle(.insetGrouped)
             .refreshable { await model.load() }
+            // 날이 바뀌면 **새 화면**이다 — 그래야 밀려 나가고 들어오는 것이 보인다.
+            .id(model.selectedDay)
+            .transition(daySlide)
+            // 끄는 동안 손가락을 조금 따라간다(감쇠) — 넘어갈지 말지를 손으로 알 수 있게.
+            .offset(x: dragX)
             .simultaneousGesture(daySwipe(model))
             }
         } else {
@@ -311,14 +322,41 @@ struct TripPlanView: View {
     /// 날이 바뀌면 목록을 읽을 수가 없다.
     private func daySwipe(_ model: TripPlanViewModel) -> some Gesture {
         DragGesture(minimumDistance: 24)
+            .onChanged { value in
+                let dx = value.translation.width
+                // 세로가 우세하면 따라가지 않는다 — 스크롤 중에 화면이 흔들리면 읽을 수가 없다.
+                guard abs(dx) > abs(value.translation.height) * 1.5 else {
+                    // 세로로 바뀌었으면 되돌린다 — 값을 그냥 0으로 떨구면 손 밑에서 툭 끊긴다.
+                    if dragX != 0 { withAnimation(.easeOut(duration: 0.12)) { dragX = 0 } }
+                    return
+                }
+                // 끝 날에서는 더 뻑뻑하게(0.12) — 더 갈 데가 없다는 것이 손에 느껴진다.
+                let atEdge = (dx < 0 && model.selectedDay >= model.dayCount - 1)
+                    || (dx > 0 && model.selectedDay <= 0)
+                dragX = dx * (atEdge ? 0.12 : 0.35)
+            }
             .onEnded { value in
                 let dx = value.translation.width
                 let dy = value.translation.height
-                guard abs(dx) > 60, abs(dx) > abs(dy) * 1.5 else { return }
-                withAnimation(.easeOut(duration: 0.18)) {
-                    model.step(dx < 0 ? .next : .previous)
+                let moved = abs(dx) > 60 && abs(dx) > abs(dy) * 1.5
+                goingForward = dx < 0
+                withAnimation(motion) {
+                    dragX = 0
+                    if moved { model.step(dx < 0 ? .next : .previous) }
                 }
             }
+    }
+
+    /// 넘어가는 느낌. ⚠️ '동작 줄이기'를 켠 사람에게는 밀지 않는다 — 그 설정은 취향이 아니라 필요다.
+    private var motion: Animation {
+        reduceMotion ? .easeInOut(duration: 0.15) : .snappy(duration: 0.28, extraBounce: 0.02)
+    }
+
+    private var daySlide: AnyTransition {
+        guard !reduceMotion else { return .opacity }
+        return .asymmetric(
+            insertion: .move(edge: goingForward ? .trailing : .leading).combined(with: .opacity),
+            removal: .move(edge: goingForward ? .leading : .trailing).combined(with: .opacity))
     }
 
     /// 이 선이 도로인지 직선인지 한 줄로. **전부 도로면 nil** — 맞는 말은 굳이 하지 않는다.
