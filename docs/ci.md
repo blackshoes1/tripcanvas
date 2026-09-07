@@ -79,3 +79,39 @@ Vercel 배포는 별개 시스템이라 초록으로 남는다 — **Vercel succ
 - ⚠️ **`app.js`의 지도 키가 공개 저장소에 그대로 있다**(`GMAPS_KEY`·`KAKAO_KEY`). 정적 HTML로 이미
   배포돼 있어 새로 새는 것은 아니지만, 이제 스크래퍼가 자동으로 긁어간다. **도메인·리퍼러 제한이
   유일한 방어선**이므로 살아 있는지 확인하고 예산 알림을 유지한다.
+
+## ⚠️ 저장소를 private으로 되돌리면 iOS CI·TestFlight가 멈춘다 (2026-09-07)
+
+private 저장소에서는 **macOS 러너가 10배로 과금**된다. Free 플랜의 월 2,000분은 macOS 기준 **200분**이고,
+이 앱 빌드가 한 번에 8~9분이므로 **월 22번 남짓**이면 한도가 끝난다.
+
+한도가 끝나면 이렇게 보인다 — **이게 찾기 어려운 이유다**:
+
+```
+Archive + upload: failure   (시작 5초 만에, 단계가 하나도 실행되지 않음)
+```
+
+- 워크플로 **로그가 비어 있다.** 단계가 시작조차 안 했으므로 볼 로그가 없다.
+- `gh api .../jobs`의 `steps`가 **빈 배열**이고 `annotations`는 **404**다. API로는 이유를 알 수 없다.
+- 이유는 **실행 페이지 맨 위 배너**에만 뜬다(`The job was not started because …`).
+- 같은 시각 ubuntu 잡(Quality·Next workspace·E2E)은 **멀쩡히 돈다** — 그래서 "CI가 죽었나?"로 안 보인다.
+
+실제로 2026-09-07 06:17 UTC 실행은 성공했고 06:38부터 macOS 잡이 전부 즉시 실패했다.
+저장소를 public으로 되돌리자 같은 워크플로가 그대로 통과했다.
+
+### 판정법
+
+```bash
+gh run list --workflow=ios.yml --limit 5 --json createdAt,status,conclusion
+gh api repos/blackshoes1/tripcanvas --jq .visibility
+```
+
+macOS 잡만, 5~10초 만에, 로그 없이 실패한다면 **거의 항상 과금·러너 배정 문제**지 코드 문제가 아니다.
+
+### private을 유지하면서 자동화하려면
+
+| 방법 | 비용 | 비고 |
+|---|---|---|
+| **맥을 셀프호스티드 러너로** | 0원 | 맥이 깨어 있어야 한다. `runs-on: [self-hosted, macOS]` · 서명 자산이 로컬에 남는다. **private일 때 권장되는 구성**(공개 저장소에서는 남의 PR이 내 기계에서 도는 위험이 있다) |
+| Actions 지출 한도 설정 | macOS 3코어 $0.08/분 → 월 $10 ≈ 14회 | 결제수단 등록 필요 |
+| Xcode Cloud | 유료 개발자 계정에 월 25시간 포함 | 새 시스템을 익혀야 한다 |

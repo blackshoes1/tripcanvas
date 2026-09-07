@@ -60,6 +60,9 @@ ssh nas "sudo /usr/local/bin/docker exec tripcanvas-postgres-1 psql -U tripcanva
   ⚠️ **새 라우트는 배포 전까지 404다.** 앱·웹이 그걸 "값이 없음"으로 조용히 넘기게 설계돼 있으면
   아무 오류 없이 화면에서 그 기능만 사라진다 — 2026-09-06에 일자 스트립 날짜가 그래서 안 보였다.
   ⚠️ `deploy/.env`는 추적되지 않으므로 이 아카이브에 없다. NAS 것이 그대로 남는다.
+  ⚠️ **`.env`를 고쳤으면 `--force-recreate api`까지 해야 적용된다** — 환경변수는 컨테이너가 뜰 때 한 번만 읽힌다.
+  파일이 아니라 **컨테이너 시작 시각**으로 확인한다(`docker inspect -f '{{.State.StartedAt}}'`) — `docs/nas-deployment.md`
+  ⚠️ 지도 키는 **서버용과 앱용이 다르다**: iOS 키(번들 제한)를 서버에 넣으면 403 `Requests from this iOS client application <empty> are blocked`
 
 - [ ] 푸시 후 폰에서 실제 동작 확인 — ☰ 메뉴 하단의 **버전 표시**로 새 버전이 적용됐는지 먼저 볼 것 (캐시된 옛 버전이면 그 글자를 탭해 갱신)
 
