@@ -20,7 +20,7 @@ enum AppConfig {
 
     static let kakaoNativeKey: String = {
         if let raw = Bundle.main.object(forInfoDictionaryKey: "TCKakaoNativeKey") as? String, !raw.isEmpty { return raw }
-        return "fd08ca0a759ed5b4f1240887ed814957"
+        return "d0e278002f9da70a5a7268e442537de9"
     }()
 
     /// 구글 Places REST가 요구하는 `X-Ios-Bundle-Identifier` 값. 무료 스펙에서 번들 ID를 바꿨다면 그 값이 나간다.

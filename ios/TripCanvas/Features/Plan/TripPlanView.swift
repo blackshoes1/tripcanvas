@@ -16,8 +16,9 @@ struct TripPlanView: View {
     @State private var showsSearch = false
     /// 지도를 하루만 볼지 여행 전체로 볼지.
     @State private var mapScope: MapScope = .day
-    /// 손가락을 따라 살짝 밀리는 양. 끌고 있는 동안만 값이 있다.
-    @State private var dragX: CGFloat = 0
+    /// 종료 콜백까지 방향을 보존한다. GestureState만 쓰면 onEnded 전에 초기화될 수 있다.
+    @State private var daySwipeIntent = PlanDaySwipeIntent()
+    @GestureState private var isSwipingDay = false
     /// 다음 날로 가는 중인가 — 들어오고 나가는 방향을 정한다.
     @State private var goingForward = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -113,7 +114,10 @@ struct TripPlanView: View {
                 if showsMap {
                     dayMap(model)
                 } else {
-                    spotList(model)
+                    // 나가는 목록과 들어오는 목록이 높이를 나눠 갖지 않게 같은 영역에 겹친다.
+                    ZStack { spotList(model) }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .clipped()
                 }
             }
             .overlay(alignment: .top) {
@@ -251,14 +255,13 @@ struct TripPlanView: View {
                     if let carry = model.planDay?.carriedStay { carryRow(carry) }
                     ForEach(model.planDay?.carPickups ?? [], id: \.bookingId) { carEventRow($0) }
                     ForEach(Array(day.spots.enumerated()), id: \.offset) { index, spot in
-                        Button {
-                            guard model.canEdit else { return }
-                            editor = .edit(index: index, spot: spot)
-                        } label: {
-                            SpotRow(spot: spot, dayMode: day.mode, plan: model.planSpot(at: index),
-                                    split: splitInfo(model, at: index))
-                        }
-                        .buttonStyle(.plain)
+                        SpotRow(spot: spot, dayMode: day.mode, plan: model.planSpot(at: index),
+                                split: splitInfo(model, at: index))
+                            // 12pt 이상 움직인 터치는 탭을 취소한다. 짧게 끌다 놓아도 편집을 열지 않는다.
+                            .overlay(PlanSpotTapSurface { editSpot(index, spot: spot, model: model) })
+                            .accessibilityElement(children: .combine)
+                            .accessibilityAddTraits(model.canEdit ? .isButton : [])
+                            .accessibilityAction { editSpot(index, spot: spot, model: model) }
                     }
                     // ⚠️ **편집 모드에서만** 지운다. `onDelete`는 편집 모드의 ⊖와 **스와이프 삭제를
                     //    둘 다** 켜는데, 가로 스와이프는 날짜 이동이 쓴다 — 행 위에서는 삭제가 먼저 먹어
@@ -311,43 +314,39 @@ struct TripPlanView: View {
             // 날이 바뀌면 **새 화면**이다 — 그래야 밀려 나가고 들어오는 것이 보인다.
             .id(model.selectedDay)
             .transition(daySlide)
-            // 끄는 동안 손가락을 조금 따라간다(감쇠) — 넘어갈지 말지를 손으로 알 수 있게.
-            .offset(x: dragX)
-            .simultaneousGesture(daySwipe(model))
+            // 가로 의도로 확정한 동안만 세로 이동을 멈춘다. 편집 모드의 재정렬은 그대로다.
+            .scrollDisabled(!isEditing && daySwipeIntent.axis == .horizontal)
+            .simultaneousGesture(daySwipe(model), including: isEditing ? .subviews : .all)
+            .onChange(of: isSwipingDay) { _, active in
+                // 시스템이 취소한 드래그도 방향 잠금을 남기지 않는다.
+                if !active { daySwipeIntent = PlanDaySwipeIntent() }
+            }
             }
         } else {
             EmptyStateView(symbol: "calendar", title: "일자가 없어요", message: "웹에서 일자를 먼저 만들어 주세요.")
         }
     }
 
-    /// 목록을 가로로 밀어 앞뒤 날로. 위아래 스크롤과 다투지 않게 **가로가 확실할 때만** 움직인다.
-    ///
-    /// ⚠️ 세로가 조금이라도 우세하면 무시한다 — 스크롤하다 손가락이 비스듬해질 때마다
-    /// 날이 바뀌면 목록을 읽을 수가 없다.
+    private func editSpot(_ index: Int, spot: TripSpot, model: TripPlanViewModel) {
+        guard model.canEdit else { return }
+        editor = .edit(index: index, spot: spot)
+    }
+
+    /// 세로로 읽기 시작한 손은 나중에 비스듬해져도 날짜를 바꾸지 않는다.
     private func daySwipe(_ model: TripPlanViewModel) -> some Gesture {
-        DragGesture(minimumDistance: 24)
+        DragGesture(minimumDistance: 12, coordinateSpace: .global)
+            .updating($isSwipingDay) { _, active, _ in active = true }
             .onChanged { value in
-                let dx = value.translation.width
-                // 세로가 우세하면 따라가지 않는다 — 스크롤 중에 화면이 흔들리면 읽을 수가 없다.
-                guard abs(dx) > abs(value.translation.height) * 1.5 else {
-                    // 세로로 바뀌었으면 되돌린다 — 값을 그냥 0으로 떨구면 손 밑에서 툭 끊긴다.
-                    if dragX != 0 { withAnimation(.easeOut(duration: 0.12)) { dragX = 0 } }
-                    return
-                }
-                // 끝 날에서는 더 뻑뻑하게(0.12) — 더 갈 데가 없다는 것이 손에 느껴진다.
-                let atEdge = (dx < 0 && model.selectedDay >= model.dayCount - 1)
-                    || (dx > 0 && model.selectedDay <= 0)
-                dragX = dx * (atEdge ? 0.12 : 0.35)
+                guard !isEditing else { return }
+                daySwipeIntent.update(value.translation)
             }
             .onEnded { value in
-                let dx = value.translation.width
-                let dy = value.translation.height
-                let moved = abs(dx) > 60 && abs(dx) > abs(dy) * 1.5
-                goingForward = dx < 0
-                withAnimation(motion) {
-                    dragX = 0
-                    if moved { model.step(dx < 0 ? .next : .previous) }
-                }
+                defer { daySwipeIntent = PlanDaySwipeIntent() }
+                guard let target = daySwipeIntent.destination(
+                    translation: value.translation, selectedDay: model.selectedDay,
+                    dayCount: model.dayCount, isEditing: isEditing) else { return }
+                goingForward = target > model.selectedDay
+                withAnimation(motion) { model.selectedDay = target }
             }
     }
 

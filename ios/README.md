@@ -262,3 +262,7 @@ Apple Watch · Siri/App Intents · Share Extension · 서버발 APNs 발송 · L
 연속 위치 추적 · 백그라운드 geofencing · 완전 offline-first · 자동 예약/결제 · 실시간 항공/교통 API.
 구조상 막히지 않도록 자리는 열어 두었다: 알림 계획에 `origin: SERVER` 항목이 이미 나오고,
 `notification_log`가 중복을 막고, `TravelActivityState`는 ActivityKit이 그대로 쓰는 모양이다.
+
+### 카카오 지도 키 운영
+
+2026-09-08부터 iOS 지도는 카카오 앱 `1503441`(모바일 청첩장 배달 서비스)의 네이티브 키를 함께 사용한다. 해당 앱은 카카오맵이 활성화돼 있고 `com.fromj.trip`이 등록돼 있다. 두 서비스는 같은 지도 쿼터를 사용한다. 키 변경 시 `project.yml`, `project-free.yml`, `AppConfig.kakaoNativeKey`를 함께 갱신하고 새 앱 빌드를 배포한다.
