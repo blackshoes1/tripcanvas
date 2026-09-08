@@ -21,6 +21,8 @@ struct TripPlanView: View {
     /// 다음 날로 가는 중인가 — 들어오고 나가는 방향을 정한다.
     @State private var goingForward = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.editMode) private var editMode
+    private var isEditing: Bool { editMode?.wrappedValue.isEditing == true }
     @State private var showsMap = false
 
     var body: some View {
@@ -258,13 +260,14 @@ struct TripPlanView: View {
                         }
                         .buttonStyle(.plain)
                     }
-                    // ⚠️ 행의 스와이프 삭제를 **편집 모드로 옮겼다**. 가로 스와이프를 날짜 이동에 쓰려면
-                    //    같은 제스처를 둘이 나눠 가질 수 없다 — 행 위에서는 삭제가 먼저 먹어 날이 안 넘어간다.
-                    //    빼기는 오른쪽 위 '편집'과 장소 편집기 안에 그대로 있다.
-                    .onDelete { offsets in
+                    // ⚠️ **편집 모드에서만** 지운다. `onDelete`는 편집 모드의 ⊖와 **스와이프 삭제를
+                    //    둘 다** 켜는데, 가로 스와이프는 날짜 이동이 쓴다 — 행 위에서는 삭제가 먼저 먹어
+                    //    날이 안 넘어간다(#208에서 `.swipeActions`를 이걸로 바꾸며 놓쳤다).
+                    //    `perform`에 nil을 주면 스와이프 삭제가 아예 붙지 않는다.
+                    .onDelete(perform: isEditing ? { offsets in
                         guard let index = offsets.first else { return }
                         Task { await model.removeSpot(at: index) }
-                    }
+                    } : nil)
                     .onMove { source, destination in
                         Task { await model.moveSpots(from: source, to: destination) }
                     }
