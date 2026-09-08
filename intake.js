@@ -607,15 +607,137 @@
   /** 이동에 관한 말 */
   const MOVE_WORDS = ['이동','출발','도착','귀국','입국','경유','환승','왕복','픽업','반납','탑승','귀가'];
   /** 행동에 관한 말 — 장소 이름에도 흔히 붙는다(산책·관람) */
-  const ACT_WORDS = ['아침','점심','저녁','브런치','간식','식사','먹기','자유시간','자유 시간','쇼핑','구경','관람','산책','투어','체험','카페','티타임','사진','촬영','주변','근처','일대','지역'];
+  const ACT_WORDS = ['아침','조식','점심','중식','저녁','석식','야식','디저트','브런치','간식','식사','먹기','자유시간','자유 시간','쇼핑','구경','관람','산책','투어','체험','카페','티타임','사진','촬영','주변','근처','일대','지역'];
   /** 시간대를 가리키는 말 — 시각으로 못박지 않는다(내가 정하지 않은 시각을 계획에 넣지 않는다) */
   const PART_WORDS = ['새벽','아침','오전','점심','정오','오후','저녁','밤','종일','하루종일','늦은','이른','식후','이후','전','후'];
+
+  /** 끼니·구분을 가리키는 라벨 — 뒤에 오는 것이 진짜 이름이다 */
+  const LABEL_DASH = ['아침','조식','점심','중식','저녁','석식','브런치','간식','디저트','야식','숙소','호텔','카페','티타임'];
+  /** 괄호 안이 '이름'이 아니라 '설명'임을 알려주는 말 */
+  const PAREN_META = /\d+\s*(?:분|시간|일|박|원|엔|달러|위안|바트|km|m|명|인)|도보|버스|지하철|차로|택시|입장료|무료|유료|예약|휴무|정기휴일|추천|소요|왕복|편도|맛집|명소|유명|인기|현지|근처|주변/;
+
+  /**
+   * 마크다운 꾸밈과 앞머리 이모지를 지운다. **AI 글이 우리 형식과 갈리는 가장 큰 이유다** —
+   * `**09:00**`는 시각으로 읽히지 않고 `🍱 점심`은 이름에 그림이 남는다.
+   * ⚠️ 밑줄(`_`)은 건드리지 않는다 — 이름·주소에 그대로 쓰인다.
+   * @param {string} s @returns {string}
+   */
+  function stripDecor(s){
+    let out=String(s||'').replace(/\*\*|__|`/g,'').replace(/\*/g,'');
+    out=out.replace(/^[\p{Extended_Pictographic}\uFE0F\u200D\s]+/u,'');
+    return out.replace(/[\p{Extended_Pictographic}\uFE0F\u200D\s]+$/u,'').replace(/\s{2,}/g,' ').trim();
+  }
+
+  /** @param {number} h @param {number} mi @returns {string} */
+  function hhmm(h, mi){ return `${String(h).padStart(2,'0')}:${String(mi).padStart(2,'0')}`; }
+
+  /**
+   * `오전 9시`·`저녁 7시 30분`처럼 사람이 쓰는 시각. AI 글에는 `09:00`보다 이 꼴이 흔하다.
+   * ⚠️ **오전/오후 표시가 없는 `7시`는 그대로 7시로 읽는다** — 저녁 7시일 수 있으므로
+   * 지어내지 않고 `ambiguous`로 알린다(§모호하면 추측하지 않는다).
+   * @param {string} s @returns {{at:string,len:number,ambiguous:boolean}|null}
+   */
+  function koTime(s){
+    const m=/^(오전|오후|아침|점심|저녁|밤|새벽)?\s*(\d{1,2})\s*시(?:\s*(\d{1,2})\s*분)?(?:\s*경)?/.exec(String(s||''));
+    if(!m) return null;
+    let h=+m[2]; const mi=m[3]? +m[3] : 0;
+    if(h>24||mi>59) return null;
+    const part=m[1]||'';
+    const pm=(part==='오후'||part==='저녁'||part==='밤');
+    const am=(part==='오전'||part==='아침'||part==='새벽');
+    if(pm && h<12) h+=12;
+    if(am && h===12) h=0;
+    if(h>23) return null;
+    return {at:hhmm(h,mi), len:m[0].length, ambiguous:!part && h<12};
+  }
+
+  /**
+   * 앞에 붙은 라벨과 뒤에 붙은 설명을 이름에서 떼어낸다.
+   * `점심: 카와카미안` → 이름은 `카와카미안` · `하루니레 테라스 — 산책하기 좋아요` → 설명은 뒤쪽.
+   * ⚠️ 괄호는 **안이 설명일 때만** 뗀다 — `이시노쿄카이 (돌의 교회)`의 괄호는 다른 이름이라 남긴다.
+   * @param {string} text @returns {{name:string,desc:string,stay:boolean}}
+   */
+  function splitNameDesc(text){
+    let s=String(text||'').trim(); const bits=[]; let stay=false;
+    // `X: Y` — X가 장소로 안 보이면 그건 라벨이고 이름은 Y다
+    let m=/^([^:：]{1,12})\s*[:：]\s*(\S.*)$/.exec(s);
+    if(m){
+      const left=classifyItem(stripDecor(m[1]));
+      if(left.kind!=='PLACE'){ bits.push(m[1].trim()); if(left.kind==='STAY') stay=true; s=m[2].trim(); }
+    }
+    // `점심 - 트라토리아` — 줄표는 애매해서 아는 라벨일 때만
+    m=/^([^-–—]{1,10})\s+[-–—]\s+(\S.*)$/.exec(s);
+    if(m && LABEL_DASH.indexOf(m[1].trim())>=0){ bits.push(m[1].trim()); s=m[2].trim(); }
+    // `이름 — 설명` — 긴 줄표는 설명을 붙이는 자리다
+    m=/^(\S.*?)\s+[—–]\s+(\S.*)$/.exec(s);
+    if(m){ s=m[1].trim(); bits.push(m[2].trim()); }
+    // `이름 (도보 20분)` — 안이 설명일 때만
+    m=/^(\S.*?)\s*\(([^()]*)\)\s*$/.exec(s);
+    if(m && PAREN_META.test(m[2])){ s=m[1].trim(); bits.push(m[2].trim()); }
+    const tidy=(/**@type{string}*/v)=>v.replace(/^[\s,·]+|[\s,·]+$/g,'').trim();
+    return {name:tidy(s), desc:tidy(bits.filter(Boolean).join(' · ')), stay};
+  }
+
+  /** @param {string} line @returns {string[]|null} 표의 한 줄이면 칸들, 아니면 null */
+  function tableCells(line){
+    const s=String(line||'').trim();
+    if(!/^\|.*\|$/.test(s) || s.indexOf('|',1)<0) return null;
+    return s.slice(1,-1).split('|').map((c)=>c.trim());
+  }
+  /** @param {string[]} cells @returns {boolean} `|---|---|` 구분선인가 */
+  function isRule(cells){ return cells.length>0 && cells.every((c)=>/^:?-{2,}:?$/.test(c)); }
+
+  const TH_TIME=/시간|시각|time/i, TH_CITY=/도시|지역|city|area/i;
+  const TH_NOTE=/메모|비고|설명|참고|note|remark/i, TH_COST=/비용|요금|가격|예산|cost|price/i;
+
+  /**
+   * 마크다운 표를 우리 불릿으로 편다. **표를 모르면 그 날이 통째로 사라진다** —
+   * AI가 하루를 표로 정리하는 일이 흔하다(2026-09-08에 하루치 4곳을 전부 잃었다).
+   * 구분선(`|---|`)이 있는 표만 편다 — 그냥 세로줄이 든 문장을 표로 오해하지 않기 위해서다.
+   * @param {string[]} lines @returns {string[]}
+   */
+  function expandTables(lines){
+    /** @type {string[]} */ const out=[];
+    for(let i=0;i<lines.length;i++){
+      const head=tableCells(lines[i]);
+      const rule=head? tableCells(lines[i+1]||'') : null;
+      if(!head || !rule || !isRule(rule)){ out.push(lines[i]); continue; }
+      const cols=head.map((h)=>stripDecor(h));
+      let iTime=-1, iCity=-1, iNote=-1, iCost=-1;
+      cols.forEach((h,ix)=>{
+        if(iTime<0 && TH_TIME.test(h)) iTime=ix;
+        else if(iCity<0 && TH_CITY.test(h)) iCity=ix;
+        else if(iNote<0 && TH_NOTE.test(h)) iNote=ix;
+        else if(iCost<0 && TH_COST.test(h)) iCost=ix;
+      });
+      let iName=cols.findIndex((h,ix)=>ix!==iTime&&ix!==iCity&&ix!==iNote&&ix!==iCost&&/장소|명소|일정|내용|코스|목적지|activity|place|spot/i.test(h));
+      if(iName<0) iName=cols.findIndex((_h,ix)=>ix!==iTime&&ix!==iCity&&ix!==iNote&&ix!==iCost);
+      if(iName<0){ out.push(lines[i]); continue; }
+      i++;                                              // 구분선을 건너뛴다
+      for(let j=i+1;j<lines.length;j++){
+        const row=tableCells(lines[j]);
+        if(!row){ i=j-1; break; }
+        i=j;
+        const cell=(/**@type{number}*/ix)=>(ix>=0 && ix<row.length)? stripDecor(row[ix]) : '';
+        const name=cell(iName);
+        if(!name) continue;
+        const note=[cell(iNote), cell(iCost)].filter(Boolean).join(' ');
+        let bullet=`- ${name} | ${cell(iCity)} | ${note}`;
+        const t=cell(iTime);
+        const clock=/^\d{1,2}\s*:\s*\d{2}$/.test(t)? t.replace(/\s/g,'') : (koTime(t)||{}).at;
+        if(clock) bullet+=` @${clock}`;
+        else if(t) bullet+=(note? ' ':'')+t;
+        out.push(bullet);
+      }
+    }
+    return out;
+  }
 
   /** @param {string} line @returns {{title:string}|null} 일자 머리글이면 제목, 아니면 null */
   function dayHeader(line){
     let s=String(line||'').trim(), heading=false;
     const h=/^#{1,6}\s*(.*)$/.exec(s);
-    if(h){ s=h[1].trim(); heading=true; }
+    if(h){ s=stripDecor(h[1]); heading=true; }
     let m=/^\[?\s*day\s*(\d+)\s*\]?\s*[-–—:.)|｜]?\s*(.*)$/i.exec(s);
     if(m) return {title:String(m[2]||'').trim()};
     m=/^(\d+)\s*일\s*차\s*[-–—:.)|｜]?\s*(.*)$/.exec(s);
@@ -640,7 +762,7 @@
   /**
    * 이름 앞에 붙은 시간 표시를 떼어낸다. `08:00~09:00｜아침 식사` → `아침 식사`
    * ⚠️ '오후'·'저녁' 같은 말은 시각으로 바꾸지 않는다 — 구분자가 뒤따를 때만 떼어낸다.
-   * @param {string} body @returns {{rest:string,at:string|null,endAt:string|null}}
+   * @param {string} body @returns {{rest:string,at:string|null,endAt:string|null,ambiguous?:boolean}}
    */
   function stripTimePrefix(body){
     let s=String(body||'');
@@ -652,6 +774,19 @@
     if(m){ const a=hm(m[1]); if(a) return {rest:s.slice(m[0].length).trim(), at:a, endAt:null}; }
     m=/^(\d{1,2}\s*:\s*\d{2})\s+/.exec(s);
     if(m){ const a=hm(m[1]); if(a) return {rest:s.slice(m[0].length).trim(), at:a, endAt:null}; }
+    // '오전 9시'·'저녁 7시 30분' — AI 글에는 이 꼴이 더 흔하다
+    const ko=koTime(s);
+    if(ko){
+      let rest=s.slice(ko.len);
+      const r2=/^\s*[~\-–—]\s*/.exec(rest);
+      let end=null;
+      if(r2){
+        const ko2=koTime(rest.slice(r2[0].length));
+        if(ko2){ end=ko2.at; rest=rest.slice(r2[0].length+ko2.len); }
+      }
+      rest=rest.replace(/^\s*[|:：·,]\s*/,'').trim();
+      if(rest) return {rest, at:ko.at, endAt:end, ambiguous:ko.ambiguous};
+    }
     // '오전~오후|이동' — 시간대 낱말만으로 이루어진 접두사는 버리고 순서만 남긴다
     m=/^([^|]{1,14})\|\s*/.exec(s);
     if(m){
@@ -740,13 +875,13 @@
     const curDay=()=> day || newDay('');
     const addNote=(/**@type{string}*/line)=>{ const d=curDay(); d.note=(d.note? d.note+'\n':'')+line; };
 
-    raw.split(/\r?\n/).forEach((rawLine)=>{
+    expandTables(raw.split(/\r?\n/)).forEach((rawLine)=>{
       const line=rawLine.trim();
       if(!line){ item=null; return; }     // 빈 줄이 설명을 닫는다 — 그 뒤 문단은 그 날의 메모다
       let m;
       if(m=/^여행\s*이름\s*[:：]\s*(.+)$/.exec(line)){ out.name=m[1].trim(); return; }
       if(m=/^시작일\s*[:：]\s*(.+)$/.exec(line)){ out.start=dayDateOf(m[1], year)||null; return; }
-      const head=dayHeader(line);
+      const head=dayHeader(stripDecor(line));
       if(head){ newDay(head.title); return; }
       const d=curDay();
       if(m=/^이동\s*[:：]\s*(.+)$/.exec(line)){ d.drive=m[1].trim(); item=null; return; }
@@ -766,27 +901,36 @@
       // ── 불릿 한 줄 ──
       let text2=body.split('｜').join('|');          // 전각 세로줄도 같은 구분자다
       const pulled=pullLinks(text2); text2=pulled.text;
+      text2=stripDecor(text2);                       // `**09:00**`·`🍱 `를 걷어야 그 뒤가 읽힌다
       let opt=false, stay=false;
-      if(/^\(선택\)/.test(text2)){ opt=true; text2=text2.replace(/^\(선택\)\s*/,''); }
-      if(/^\(숙소\)/.test(text2)){ stay=true; text2=text2.replace(/^\(숙소\)\s*/,''); }
+      // ⚠️ 시각보다 먼저 찾는다 — `15:00 (선택) …`처럼 뒤에 오기도 한다
+      if(/\(선택\)/.test(text2)){ opt=true; text2=text2.replace(/\(선택\)\s*/g,''); }
+      if(/\(숙소\)/.test(text2)){ stay=true; text2=text2.replace(/\(숙소\)\s*/g,''); }
       const timed=stripTimePrefix(text2); text2=timed.rest;
       let at=timed.at;
       const atM=/@\s*(\d{1,2}:\d{2})/.exec(text2);
       if(atM){ const v=hm(atM[1]); if(v) at=v; text2=text2.replace(atM[0],''); }   // 우리 형식의 @는 앞선 표시를 이긴다
       const money=LIB.parseMoney? LIB.parseMoney(text2) : null;
-      if(money) text2=text2.replace(money.raw,'');
+      if(money){
+        text2=text2.replace(money.raw,'');
+        // `(수타 소바, 약 )`처럼 금액을 뺀 자리에 남는 찌꺼기를 걷는다
+        text2=text2.replace(/[,·]?\s*(?:약|대략|정도)?\s*([)）])/g,'$1').replace(/[(（]\s*[)）]/g,'');
+      }
       text2=text2.replace(/\s{2,}/g,' ').trim();
 
       const p=text2.split('|').map((x)=>x.trim());
       if(p[1]) lastCity=p[1];
       let lat=null, lng=null;
       if(p[3]){ const c=/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/.exec(p[3]); if(c){ lat=+c[1]; lng=+c[2]; } }
-      const name=p[0]||'';
+      const split=splitNameDesc(p[0]||'');
+      const name=split.name;
+      if(split.stay) stay=true;
       const verdict=classifyItem(name);
+      if(timed.ambiguous && timed.at) verdict.reasons=verdict.reasons.concat([`'${+timed.at.slice(0,2)}시'가 오전인지 오후인지 안 적혀 있어 그대로 읽었어요`]);
       const stayMin=(at&&timed.endAt)? Math.max(0, LIB.parseHM(timed.endAt)-LIB.parseHM(at)) : null;
       /** @type {DraftItem} */
       const next={
-        raw:body, name, city:p[1]||lastCity||'', desc:p[2]||'',
+        raw:body, name, city:p[1]||lastCity||'', desc:[p[2]||'', split.desc].filter(Boolean).join(' · '),
         at, endAt:timed.endAt, stayMin, url:pulled.url,
         cost:money? money.cost : null, cur:(money&&money.cur!=='KRW')? money.cur : null,
         opt, stay, lat, lng,
@@ -795,6 +939,13 @@
       d.items.push(next); item=next;
     });
 
+    // 맨 앞의 제목·인사말은 일자가 아니다. AI 글은 거의 늘 이걸로 시작한다 —
+    // 그냥 두면 장소가 하나도 없는 1일차가 생겨 일정이 하루씩 밀린다.
+    if(out.days.length>1 && !out.days[0].items.length && !out.days[0].date){
+      const head=/** @type {DraftDay} */(out.days.shift());
+      if(head.title && !out.name) out.name=head.title;
+      if(head.note) out.days[0].note=(head.note+'\n'+out.days[0].note).trim();
+    }
     const dated=out.days.filter((d)=>!!d.date)[0];
     if(!out.start && dated) out.start=dated.date;
     out.startAmbiguous=!!out.start && !hasYear;
@@ -806,7 +957,8 @@
     parseBookingCandidate, candidateDisposition, findDuplicateBooking, matchTripForBooking,
     candidateToBooking, shareIdempotencyKey, shareQueueNext, titleSimilarity,
     associateMemory, memoryTimeline, plannedVsActual,
-    parseItinerary, classifyItem, stripTimePrefix, pullLinks, dayHeader};
+    parseItinerary, classifyItem, stripTimePrefix, pullLinks, dayHeader,
+    stripDecor, koTime, splitNameDesc, expandTables};
   if(typeof module!=='undefined' && module.exports) module.exports=API;   // Node (테스트)
   else /** @type {any} */(root).TC_INTAKE=API;                            // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);
