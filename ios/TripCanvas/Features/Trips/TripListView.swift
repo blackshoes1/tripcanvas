@@ -137,9 +137,10 @@ struct TripListView: View {
     /// 목록이 아직 안 왔을 때 들어온 딥링크 — 목록을 받은 뒤 다시 시도한다(콜드 스타트).
     @State private var pendingDestination: ActionRouter.Destination?
     /// 여행 만들기 시트. 앱만 설치한 사람도 여기서 시작할 수 있어야 한다.
-    @State private var showsNewTrip = false
+    @State private var showsCreateTrip = false
+    /// 어느 길로 열 것인가. 빈 목록 화면의 두 버튼이 각자 자기 길로 연다.
+    @State private var createStartMode: CreateTripMode = .scratch
     /// 가진 일정 붙여넣기 시트.
-    @State private var showsPasteItinerary = false
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -153,9 +154,10 @@ struct TripListView: View {
             .navigationTitle("내 여행")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        Button { showsNewTrip = true } label: { Label("새 여행 만들기", systemImage: "plus") }
-                        Button { showsPasteItinerary = true } label: { Label("가진 일정 붙여넣기", systemImage: "doc.on.clipboard") }
+                    // 메뉴가 아니라 버튼 하나다 — 두 길은 시트를 열면 나란히 보인다.
+                    Button {
+                        createStartMode = .scratch
+                        showsCreateTrip = true
                     } label: {
                         Image(systemName: "plus")
                     }
@@ -193,14 +195,11 @@ struct TripListView: View {
             if handle(destination) { env.router.clear() }
             else { pendingDestination = destination; env.router.clear() }
         }
-        .sheet(isPresented: $showsPasteItinerary) {
-            PasteItineraryView(service: env.service, places: env.places) { created in
+        .sheet(isPresented: $showsCreateTrip) {
+            CreateTripView(service: env.service, places: env.places, startMode: createStartMode) { created in
                 Task { await model?.load() }
                 path = [created]
-            }
-        }
-        .sheet(isPresented: $showsNewTrip) {
-            NewTripView { draft in
+            } onCreateFromScratch: { draft in
                 guard let model else { return "잠시 후 다시 시도해 주세요." }
                 let created = await model.create(draft)
                 // 만들자마자 그 여행으로 들어간다 — 목록으로 돌려보내면 무엇을 할지 다시 찾아야 한다.
@@ -305,11 +304,11 @@ struct TripListView: View {
                     title: "아직 여행이 없어요",
                     message: "첫 여행을 만들어 보세요. 웹에서 만든 여행도 여기에 나타납니다.")
                 VStack(spacing: Space.s) {
-                    Button { showsNewTrip = true } label: {
+                    Button { createStartMode = .scratch; showsCreateTrip = true } label: {
                         Label("여행 만들기", systemImage: "plus").frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
-                    Button { showsPasteItinerary = true } label: {
+                    Button { createStartMode = .paste; showsCreateTrip = true } label: {
                         Label("가진 일정 붙여넣기", systemImage: "doc.on.clipboard").frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.bordered)
