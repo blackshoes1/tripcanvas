@@ -1,0 +1,20 @@
+# next/Dockerfile builds from the repository root, including the realtime image.
+.git
+**/node_modules
+**/.next
+**/dist-tools
+**/.env
+**/.env.*
+**/.vercel
+**/backups
+**/*.dump
+**/*.dump.tmp
+**/*.tgz
+**/*.p12
+**/*.p8
+**/*.mobileprovision
+**/test-results
+**/playwright-report
+**/.DS_Store
+ios
+proto

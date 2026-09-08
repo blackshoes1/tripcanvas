@@ -10,13 +10,15 @@
 #   scripts/verify-all.sh next       Next 워크스페이스만
 #   scripts/verify-all.sh ios        iOS만 (macOS + Xcode + xcodegen 필요)
 #
-# 통과/실패를 끝에 표로 찍고, 하나라도 실패하면 1로 끝난다.
+# 통과/실패/미실행을 끝에 표로 찍는다. 실패는 1, 미실행은 2로 끝난다.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
 SCOPE="${1:-all}"
+case "$SCOPE" in all|web|next|ios) ;; *) echo "usage: $0 [all|web|next|ios]" >&2; exit 2 ;; esac
 RESULTS=()
 FAILED=0
+SKIPPED=0
 
 step() {                        # step <이름> <명령...>
   local name="$1"; shift
@@ -29,7 +31,7 @@ step() {                        # step <이름> <명령...>
   fi
 }
 
-skip() { RESULTS+=("SKIP  $1 — $2"); printf '\n\033[2m▶ %s (건너뜀: %s)\033[0m\n' "$1" "$2"; }
+skip() { SKIPPED=1; RESULTS+=("SKIP  $1 — $2"); printf '\n\033[2m▶ %s (건너뜀: %s)\033[0m\n' "$1" "$2"; }
 
 want() { [ "$SCOPE" = all ] || [ "$SCOPE" = "$1" ]; }
 
@@ -45,8 +47,8 @@ if want web; then
 
   # RLS는 진짜 PostgreSQL이 있어야 판정이 의미가 있다 — 없으면 테스트가 스스로 skip하므로
   # "돌렸는데 0건 통과"를 초록으로 착각하지 않도록 여기서도 건너뛴 것으로 표시한다.
-  if scripts/pg-local.sh status >/dev/null 2>&1 || command -v initdb >/dev/null 2>&1; then
-    step "RLS(실제 PostgreSQL)"  bash -c 'scripts/pg-local.sh start && eval "$(scripts/pg-local.sh env)" && npm run test:rls 2>&1 | tee /tmp/tc-rls.log && grep -q "# skipped 0" /tmp/tc-rls.log'
+  if scripts/pg-local.sh env >/dev/null 2>&1; then
+    step "RLS(실제 PostgreSQL)"  bash -o pipefail -c 'scripts/pg-local.sh start && eval "$(scripts/pg-local.sh env)" && log=$(mktemp) && { npm run test:rls 2>&1 | tee "$log"; } && grep -q "# skipped 0" "$log"; result=$?; rm -f "${log:-}"; exit "$result"'
   else
     skip "RLS(실제 PostgreSQL)" "로컬 PostgreSQL 바이너리 없음"
   fi
@@ -97,4 +99,5 @@ for r in "${RESULTS[@]}"; do
 done
 
 if [ "$FAILED" -ne 0 ]; then printf '\n\033[31m게이트 실패 — merge하지 않는다.\033[0m\n'; exit 1; fi
+if [ "$SKIPPED" -ne 0 ]; then printf '\n게이트 미완료 — SKIP을 해소하기 전에는 통과가 아니다.\n'; exit 2; fi
 printf '\n\033[32m게이트 통과.\033[0m\n'

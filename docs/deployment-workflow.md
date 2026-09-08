@@ -8,7 +8,7 @@ feat/* · fix/* · chore/* · docs/*  →  PR  →  게이트  →  merge  →  
 
 1. 작업별 브랜치와 Draft PR을 만든다. **`main`에 직접 커밋·푸시하지 않는다.**
 2. Vercel Preview에서 외부 API·모바일·PWA를 수동 확인한다.
-3. 게이트를 통과시킨다 — `npm run verify:all`(루트 + `next/` + iOS). CI가 살아 있으면 GitHub Actions가 같은 것을 본다.
+3. 새 API를 요구하는 웹은 [NAS 릴리스 절차](nas-release.md)에 따라 API 호환 검증·선배포를 마친다. 게이트를 통과시킨다 — `npm run verify:all`(루트 + `next/` + iOS). CI가 살아 있으면 GitHub Actions가 같은 것을 본다.
    **SKIP은 통과가 아니다** — 무엇을 못 돌렸는지 PR에 밝힌다.
 4. Draft를 Ready for review로 바꾸고 merge한다. **빨간 체크 위에서 merge하지 않는다.**
 5. `main` merge가 Vercel Production 배포를 시작한다(정적 웹만). 배포 후 메뉴 버전과 핵심 흐름을 확인한다.

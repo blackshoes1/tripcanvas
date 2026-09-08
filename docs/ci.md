@@ -13,6 +13,7 @@ merge 전에 통과해야 하는 것은 다음이 전부다. `.github/workflows/
 | XcodeGen · 컴파일 · XCTest · Release 빌드 · 무료 스펙 | iOS | `scripts/verify-all.sh ios` |
 
 `npm run verify:all` 은 셋을 한 번에 돌리고, 끝에 PASS/FAIL/SKIP 표를 찍는다.
+종료 코드는 PASS=0, FAIL=1, SKIP으로 미완료=2다. 알 수 없는 범위도 2로 종료한다. RLS 출력은 TAP으로 고정하고 파이프라인의 테스트 실패를 보존한다.
 **돌릴 수 없는 단계는 PASS가 아니라 SKIP으로 표시된다** — 로컬 PostgreSQL이 없으면 RLS가 그렇다.
 
 > ### merge 규칙

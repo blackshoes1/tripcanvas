@@ -42,29 +42,36 @@ ls -la "$(grep '^BACKUP_DIR=' deploy/.env | cut -d= -f2-)"     # 덤프가 실�
 
 entrypoint도 `… && sleep 86400 || sleep 300`이라 **실패하면 5분 뒤 다시 시도한다** — 일시적 실패로 하루를 통째로 건너뛰지 않는다.
 
-## 복구
+## 복구와 리허설
+
+운영 복구는 [NAS 릴리스의 복귀 절차](nas-release.md)를 따른다. **운영 compose의 DB에 `--clean`으로 바로 복원하지 않는다.** 새 DB에 먼저 복원하고 무결성과 앱을 확인한 뒤 승인받아 전환한다. 복원은 `pg_restore --single-transaction --exit-on-error --no-owner --no-privileges`로 오류 시 중단한다. [PostgreSQL 17 pg_restore](https://www.postgresql.org/docs/17/app-pgrestore.html)
+
+### 합성 데이터로 실행 가능한 리허설
 
 ```bash
-# 1. 새 PostgreSQL(같은 메이저 버전)
-docker compose -f deploy/docker-compose.yml up -d postgres
-# 2. 최신 덤프 복원 (--clean: 기존 객체 정리, --if-exists: 처음이어도 오류 없이)
-docker compose -f deploy/docker-compose.yml exec -T postgres \
-  pg_restore -U tripcanvas -d tripcanvas --clean --if-exists --no-owner --no-privileges < backups/tripcanvas-<UTC>.dump
-# 3. 마이그레이션 — 덤프가 옛 스키마면 여기서 따라잡는다
-docker compose -f deploy/docker-compose.yml run --rm migrate
-# 4. 무결성 확인
-docker compose -f deploy/docker-compose.yml exec postgres psql -U tripcanvas -d tripcanvas -c \
-  "select (select count(*) from users) users, (select count(*) from trips where deleted_at is null) trips, (select count(*) from trip_members where status='ACTIVE') members;"
-curl -s https://$API_DOMAIN/api/health
+npm --prefix next ci
+npm run rehearse:restore
 ```
 
-## 복구 리허설 (§61) — 분기마다, 그리고 데이터 이관 직전에
+PostgreSQL 17 바이너리가 필요하다(`TC_PGBIN`으로 경로 지정 가능). 도구는 새 임시 디렉터리의 로컬 소켓 클러스터만 만들며 외부 DB 주소·운영 덤프를 인자로 받지 않는다. 종료 시 자신이 만든 클러스터를 중지·제거한다. 기존 DB와 백업은 건드리지 않는다.
 
-1. 어제 덤프를 **별도 컨테이너**(예: `postgres-rehearsal`)에 복원한다.
-2. `migrate`를 그 DB에 돌린다.
-3. 아래 숫자를 운영과 비교한다: `users` · `trips`(삭제 제외) · `trip_members`(ACTIVE) · 여행별 `revision` 최댓값.
-4. 임의 사용자 하나의 여행을 `/api/v1/trips`로 읽어 문서가 열리는지 본다(레지스트리 `NEW_BACKEND`, staging 토큰).
-5. 걸린 시간을 기록한다 — 그것이 RTO다.
+최신 migration → 합성 사용자·활성/삭제 여행·멤버·버전 이력 생성 → 실제 `deploy/backup.sh` → 빈 DB에 custom 덤프 복원 → migration 재적용 → public·drizzle 표 전체의 행 수·내용 해시·시퀀스 비교 순서다. 새 필드 보존도 여행 문서 해시에 포함된다. 오류가 나면 실패로 종료한다.
+
+2026-09-08 Mac 로컬 PostgreSQL 17에서 이 경로를 검증했다. 운영 데이터·인증 API·오프사이트 복제·운영 규모는 이 결과에 포함되지 않는다. 기록된 소요 시간은 합성 데이터의 도구 실행 시간이며 운영 RTO가 아니다.
+
+### 운영 백업 리허설에서 추가로 할 일
+
+1. 승인된 운영 백업을 격리된 별도 PostgreSQL에 복원한다. 운영 DB 연결 문자열을 대상에 쓰지 않는다.
+2. 덤프 시점의 표별 개수·내용과 비교한다. 현재 운영 숫자는 덤프 이후 변경 때문에 달라질 수 있다.
+3. 대상 버전 migration을 적용하고 별도 staging API를 연결한다.
+4. 검증 계정으로 로그인·읽기·저장·권한·실시간 흐름을 확인한다. 메일·푸시 발송은 staging 전용 설정으로 제한한다.
+5. 백업 확보부터 서비스 재개까지 걸린 시간과 실제 복구 시점을 기록한다.
+
+### 백업 감시와 복구 목표
+
+`backup` healthcheck는 최근 26시간 안에 완성된 비어 있지 않은 덤프가 없으면 실패한다(5분 간격, 연속 실패 3회). `.tmp`는 성공으로 세지 않는다. 이것은 **파일 최신성 검사**이며 덤프의 복원 가능성을 보장하지 않는다. Docker unhealthy 상태를 알림으로 보내는 운영 설정과 오프사이트 복제는 별도 확인이 필요하다.
+
+정상적으로 매회 성공한다면 덤프 시작 간격은 약 24시간 + 덤프 실행 시간이다. 따라서 마지막 성공 덤프만으로 복구할 때 손실 가능 구간도 그 정도이며, 실패나 복제 지연이 있으면 더 늘어난다. RPO 목표를 만족한다는 뜻은 아니다. 운영 RTO는 실규모 리허설 전까지 미정이다. 사용자가 허용 손실·복구 시간 목표를 정한 뒤 백업 주기·복제·복구 절차를 조정한다.
 
 ## Supabase → 새 PostgreSQL 데이터 이관과 리허설 (Phase 10)
 
@@ -285,5 +292,5 @@ R0가 이 항목들을 전부 테스트로 잡는다(`next/src/server/migration/
 → TC_MIGRATION_* 전환 → 앱 올리기 → 실사용 확인(로그인·여행 열기·저장·협업)
 ```
 
-되돌리기: `TC_MIGRATION_*`를 `LEGACY`로 되돌리고 앱 재시작. 그 사이 새 DB에 쌓인 변경은 버린다.
+과거 이관 시점의 경로 복귀 방법은 `TC_MIGRATION_*`를 `LEGACY`로 바꾸는 것이었다. 현재 운영 복구에 그대로 적용하지 않는다. 새 DB에 쌓인 변경은 Supabase에 없으므로 쓰기 중단·차이 데이터 처리·허용 손실 승인 없이 되돌리지 않는다.
 **관찰 기간에는 Supabase를 읽기전용으로 만들지 않는다** — 되돌릴 여지를 남긴다. 관찰이 끝난 뒤에 read-only → 종료 순서다(§102).

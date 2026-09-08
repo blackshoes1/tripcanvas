@@ -25,6 +25,10 @@ fi
 
 case "${1:-}" in
   start)
+    if "$PGBIN/pg_ctl" -D "$TC_PGDIR/data" status >/dev/null 2>&1; then
+      echo "postgres 이미 실행 중: $TC_PGDIR"
+      exit 0
+    fi
     mkdir -p "$TC_PGDIR"
     if [ ! -f "$TC_PGDIR/data/PG_VERSION" ]; then
       "$PGBIN/initdb" -D "$TC_PGDIR/data" -U postgres --auth=trust -E UTF8 --locale=C >"$TC_PGDIR/initdb.log" 2>&1
@@ -36,9 +40,12 @@ case "${1:-}" in
   stop)
     "$PGBIN/pg_ctl" -D "$TC_PGDIR/data" -m fast stop >/dev/null 2>&1 || true
     ;;
+  status)
+    "$PGBIN/pg_ctl" -D "$TC_PGDIR/data" status
+    ;;
   env)
     echo "export TC_PGHOST=$TC_PGDIR TC_PGPORT=$TC_PGPORT TC_PSQL=$PGBIN/psql"
     ;;
   *)
-    echo "usage: $0 start|stop|env" >&2; exit 2;;
+    echo "usage: $0 start|stop|status|env" >&2; exit 2;;
 esac
