@@ -124,6 +124,7 @@ struct TodayView: View {
                 .accessibilityLabel("함께하기")
             }
         }
+        .paperGround()
         .refreshable { await model?.load() }
         .task {
             if model == nil { model = TodayViewModel(trip: trip, service: env.service) }

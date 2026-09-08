@@ -37,6 +37,7 @@ struct PasteItineraryView: View {
             Group {
                 if draft == nil { input } else { preview }
             }
+            .paperGround()
             .navigationTitle(draft == nil ? "일정 붙여넣기" : "이렇게 읽었어요")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
