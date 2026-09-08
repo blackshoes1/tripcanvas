@@ -94,6 +94,8 @@ final class TripPlanViewModel {
     /// 그 상태를 먼저 그렸다가 계산이 들어오면 줄이 통째로 밀린다 — 그래서 **첫 시도가 끝날 때까지**
     /// 목록을 짓지 않는다(2026-09-07 '화면이 튄다' 보고). 캐시가 있으면 기다림은 0이다.
     private var attemptedDays: Set<Int> = []
+    /// 미리 받는 중인 날. **같은 날을 두 번 받지 않기 위해서다** — 빠르게 밀면 요청이 쌓인다.
+    private var prefetching: Set<Int> = []
     func planAttempted(for day: Int) -> Bool { attemptedDays.contains(day) }
 
     /// 경로가 채워지기를 기다렸다 한 번 더 받은 날들. **날마다 한 번뿐이다.**
@@ -145,6 +147,7 @@ final class TripPlanViewModel {
             // ⚠️ **기다리지 않는다.** 여기서 await 하면 `load()`가 3초 동안 안 끝나고,
             // 그동안 화면은 로딩 상태로 멈춘다 — 채우기를 기다리는 것과 화면을 세우는 것은 다른 일이다.
             scheduleLegRetry(day: day, pending: fetched.value.legsPending)
+            prefetchNeighbours(of: day)
         } catch {
             attemptedDays.insert(day)
             // 못 받았다고 **이미 보여 준 계산을 지우지 않는다** — 화면이 비면서 또 튄다.
@@ -155,6 +158,32 @@ final class TripPlanViewModel {
                 cachedAtByDay[day] = nil
             }
         }
+    }
+
+    /// 앞뒤 하루를 미리 받아 둔다. **스와이프가 부드러워도 넘어간 뒤 목록이 늦게 지어지면
+    /// 튀는 것으로 보인다** — 날을 옮기는 순간 이미 계산이 있으면 기다릴 것이 없다.
+    ///
+    /// ⚠️ 지금 보는 날은 건드리지 않는다. ⚠️ 이미 이번 문서(revision)의 계산이 있으면 안 받는다.
+    /// ⚠️ **`scheduleLegRetry`를 걸지 않는다** — 보지도 않는 날 때문에 3초 뒤 재조회가 도는 것은
+    ///    배터리와 서버 낭비다. 그 날로 실제로 옮기면 `loadPlan`이 건다.
+    private func prefetchNeighbours(of day: Int) {
+        for next in [day + 1, day - 1] where next >= 0 && next < dayCount {
+            guard plansByDay[next] == nil, !prefetching.contains(next) else { continue }
+            prefetching.insert(next)
+            Task(priority: .utility) { [weak self] in await self?.prefetch(day: next) }
+        }
+    }
+
+    private func prefetch(day: Int) async {
+        defer { prefetching.remove(day) }
+        let asked = revision
+        guard let fetched = try? await service.dayPlan(tripId: tripId, dayIndex: day) else { return }
+        // 그 사이 문서가 바뀌었으면 버린다 — 옛 시각을 미리 넣어 두면 틀린 숫자를 보여 준다.
+        guard revision == asked, fetched.value.trip.revision == revision else { return }
+        guard plansByDay[day] == nil else { return }      // 그 사이 그 날을 열었으면 그쪽이 이긴다
+        plansByDay[day] = fetched.value
+        cachedAtByDay[day] = fetched.cachedAt
+        attemptedDays.insert(day)      // 넘어가는 순간 목록이 기다리지 않고 지어진다
     }
 
     /// 지난번 계산을 **먼저** 보여 준다 — 서버를 기다리는 동안 시각 칸이 비어 있다가
