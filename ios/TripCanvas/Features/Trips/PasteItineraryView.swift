@@ -8,6 +8,8 @@ import SwiftUI
 struct PasteItineraryView: View {
     let service: TripDataSource
     let places: PlaceSearching
+    /// 어떻게 시작할지 — 처음부터 만들기와 한 시트를 나눠 쓴다.
+    @Binding var mode: CreateTripMode
     /// 만든 여행. 부모가 그 여행으로 들어간다.
     let onCreated: (TripSummary) -> Void
 
@@ -78,6 +80,8 @@ struct PasteItineraryView: View {
 
     private var input: some View {
         Form {
+            // ⚠️ 미리보기 단계에는 없다 — 읽어 본 결과를 두고 길을 바꾸면 그게 사라진다.
+            Section { CreateTripModePicker(mode: $mode) }
             Section {
                 TextEditor(text: $text)
                     .frame(minHeight: 220)

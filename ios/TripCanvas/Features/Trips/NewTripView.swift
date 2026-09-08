@@ -7,6 +7,8 @@ import SwiftUI
 ///
 /// ⚠️ 도시는 **이름의 기본값**으로만 쓴다 — 여행 문서에 우리만 아는 필드를 새로 만들지 않는다.
 struct NewTripView: View {
+    /// 어떻게 시작할지 — 붙여넣기와 한 시트를 나눠 쓴다.
+    @Binding var mode: CreateTripMode
     /// 만들기. 실패하면 화면에 그대로 보여 줄 문구를 돌려준다(nil이면 성공).
     let onCreate: (NewTripDraft) async -> String?
 
@@ -23,6 +25,7 @@ struct NewTripView: View {
     var body: some View {
         NavigationStack {
             Form {
+                Section { CreateTripModePicker(mode: $mode) }
                 Section {
                     TextField("가루이자와, 제주, 파리…", text: $city)
                         .textInputAutocapitalization(.never)
