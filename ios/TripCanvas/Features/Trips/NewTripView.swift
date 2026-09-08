@@ -65,6 +65,7 @@ struct NewTripView: View {
                     Section { Text(errorMessage).foregroundStyle(.red).font(.footnote) }
                 }
             }
+            .paperGround()
             .navigationTitle("새 여행")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

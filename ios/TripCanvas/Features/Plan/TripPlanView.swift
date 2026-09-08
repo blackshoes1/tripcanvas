@@ -309,6 +309,7 @@ struct TripPlanView: View {
                 }
             }
             .listStyle(.insetGrouped)
+            .paperGround()
             .refreshable { await model.load() }
             // 날이 바뀌면 **새 화면**이다 — 그래야 밀려 나가고 들어오는 것이 보인다.
             .id(model.selectedDay)

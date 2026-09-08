@@ -340,6 +340,7 @@ struct TripListView: View {
                 }
             }
             .listStyle(.insetGrouped)
+            .paperGround()
             .refreshable { await model.load() }
             .navigationDestination(for: TripSummary.self) { trip in
                 TripHomeView(trip: trip, requested: requestedTab)
