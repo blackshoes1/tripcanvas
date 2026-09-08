@@ -544,7 +544,7 @@ extension TripPlanViewModelTests {
         service.dayPlanResponse = plan(legsPending: 0)
         try? await Task.sleep(for: .milliseconds(120))
 
-        XCTAssertEqual(service.dayPlanCalls.count, 2, "한 번만 더 받는다")
+        XCTAssertEqual(service.dayPlanCalls.filter { $0 == 0 }.count, 2, "한 번만 더 받는다")
         XCTAssertEqual(model.plan?.legsPending, 0)
     }
 
@@ -555,7 +555,7 @@ extension TripPlanViewModelTests {
         await model.load()
         try? await Task.sleep(for: .milliseconds(120))
 
-        XCTAssertEqual(service.dayPlanCalls.count, 1, "기다릴 이유가 없으면 다시 받지 않는다")
+        XCTAssertEqual(service.dayPlanCalls.filter { $0 == 0 }.count, 1, "기다릴 이유가 없으면 다시 받지 않는다")
     }
 
     /// 두 번째에도 남아 있으면 멈춘다 — 나아지지 않는 요청을 반복하지 않는다.
@@ -566,7 +566,75 @@ extension TripPlanViewModelTests {
         await model.load()
         try? await Task.sleep(for: .milliseconds(200))
 
-        XCTAssertEqual(service.dayPlanCalls.count, 2)
+        XCTAssertEqual(service.dayPlanCalls.filter { $0 == 0 }.count, 2)
+    }
+
+    /// ⚠️ 미리 받은 날에는 **재조회를 걸지 않는다** — 보지도 않는 날 때문에 3초 뒤 요청이 도는 것은
+    /// 배터리와 서버 낭비다. 그 날로 실제로 옮기면 `loadPlan`이 건다.
+    func testDoesNotChaseLegsForDaysNobodyIsLookingAt() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(days: 3), revision: 7, role: .owner))
+        service.dayPlanResponse = plan(days: 3, legsPending: 4)
+        let model = TripPlanViewModel(tripId: "t1", service: service, legRetryDelay: 0.01)
+        await model.load()
+        try? await Task.sleep(for: .milliseconds(200))
+
+        XCTAssertEqual(service.dayPlanCalls.filter { $0 == 1 }.count, 1, "미리 받는 것은 한 번뿐이다")
+    }
+}
+
+// MARK: - 앞뒤 하루를 미리 받아 둔다
+//
+// 스와이프가 부드러워도 **넘어간 뒤 목록이 늦게 지어지면** 튀는 것으로 보인다.
+// 여기서 지키는 것: 옆 날을 미리 받는다 / 같은 날을 두 번 받지 않는다 /
+// 문서가 바뀌면 미리 받아 둔 것을 쓰지 않는다 / 없는 날을 요청하지 않는다.
+
+extension TripPlanViewModelTests {
+
+    func testPrefetchesTheNextAndPreviousDay() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(days: 3), revision: 7, role: .owner))
+        service.dayPlanResponse = plan(days: 3)
+        let model = TripPlanViewModel(tripId: "t1", service: service, initialDay: 1, legRetryDelay: 0.01)
+        await model.load()
+        try? await Task.sleep(for: .milliseconds(120))
+
+        XCTAssertEqual(Set(service.dayPlanCalls), [0, 1, 2], "보는 날과 앞뒤 하루")
+        XCTAssertTrue(model.planAttempted(for: 0), "넘어가는 순간 기다릴 것이 없다")
+        XCTAssertTrue(model.planAttempted(for: 2))
+    }
+
+    /// 미리 받기의 값은 "요청을 아낀다"가 아니라 **"넘어가는 순간 빈 화면이 없다"**이다.
+    /// 옮기면 새로고침은 여전히 나가지만(그 사이 경로가 채워졌을 수 있다) 화면은 기다리지 않는다.
+    func testTheNextDayIsAlreadyThereWhenYouArrive() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(days: 3), revision: 7, role: .owner))
+        service.dayPlanResponse = plan(days: 3)
+        let model = TripPlanViewModel(tripId: "t1", service: service, legRetryDelay: 0.01)
+        await model.load()
+        try? await Task.sleep(for: .milliseconds(120))
+
+        model.step(.next)          // 넘어간 **직후** — 아직 아무것도 기다리지 않았다
+        XCTAssertTrue(model.planAttempted(for: 1), "목록이 계산을 기다리며 비어 있지 않다")
+        XCTAssertNotNil(model.plan, "시각·구간 줄이 뒤늦게 끼어들지 않는다")
+    }
+
+    /// 옆 날 하나씩만이다 — 긴 여행에서 열자마자 전부 받으면 그것대로 낭비다.
+    func testPrefetchesOnlyOneDayEachWay() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(days: 5), revision: 7, role: .owner))
+        service.dayPlanResponse = plan(days: 5)
+        let model = TripPlanViewModel(tripId: "t1", service: service, initialDay: 2, legRetryDelay: 0.01)
+        await model.load()
+        try? await Task.sleep(for: .milliseconds(150))
+
+        XCTAssertEqual(Set(service.dayPlanCalls), [1, 2, 3], "0·4일차까지 당겨오지 않는다")
+    }
+
+    func testDoesNotAskBeyondTheTrip() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(days: 1), revision: 7, role: .owner))
+        service.dayPlanResponse = plan(days: 1)
+        let model = TripPlanViewModel(tripId: "t1", service: service, legRetryDelay: 0.01)
+        await model.load()
+        try? await Task.sleep(for: .milliseconds(120))
+
+        XCTAssertEqual(service.dayPlanCalls, [0], "없는 날을 요청하지 않는다")
     }
 }
 
