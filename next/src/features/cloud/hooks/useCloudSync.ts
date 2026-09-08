@@ -18,6 +18,7 @@ import {
   getSyncMeta, persistSyncMeta, refreshSyncMetaFromStorage, statusOf, subscribeSyncMeta
 } from '../services/syncMetaStore';
 import { useCloudAuth, type CloudUser } from './useCloudAuth';
+import { cloudApi } from '../services/tripCanvasClient';
 
 /** 편집이 멈춘 뒤 이만큼 기다렸다 올린다 (레거시 cloudSyncActive와 같은 800ms) */
 const UPLOAD_DEBOUNCE = 800;
@@ -29,6 +30,7 @@ export function useCloudSync(
   onNotice: (msg: string) => void
 ) {
   const [conflicts, setConflicts] = useState<Conflict[]>([]);
+  const [access, setAccess] = useState<{ userId: string; roles: Record<string, string> } | null>(null);
 
   // 콜백은 최신 값을 봐야 하지만 참조는 안정적이어야 한다(엔진에 넘겨 두므로)
   const tripsRef = useRef(trips);
@@ -131,12 +133,30 @@ export function useCloudSync(
     () => undefined
   );
   const statusLabel = syncLabel(activeStatus, !!auth.user);
+  const remote = activeTripId ? !!getSyncMeta()[activeTripId]?.revision : false;
+  useEffect(() => {
+    const user = auth.user;
+    if (!user) return;
+    let alive = true;
+    const refresh = async () => {
+      const { data, error } = await cloudApi.me();
+      if (alive) setAccess({ userId: user.id, roles: !error && data ? Object.fromEntries(data.trips.map(t => [t.id, t.role])) : {} });
+    };
+    void refresh();
+    window.addEventListener('focus', refresh);
+    return () => { alive = false; window.removeEventListener('focus', refresh); };
+  }, [auth.user, activeTripId, remote]);
+  const role = auth.user && remote
+    ? (access?.userId === auth.user.id ? access.roles[activeTripId!] : null)
+    : 'OWNER';
 
   return {
     user: auth.user,
     available: auth.available,
     signIn: auth.signIn,
     signOut: auth.signOut,
+    canEdit: role === 'OWNER' || role === 'EDITOR',
+    canDelete: role === 'OWNER',
     statusLabel,
     conflict: conflicts[0] ?? null,
     remainingConflicts: Math.max(0, conflicts.length - 1),

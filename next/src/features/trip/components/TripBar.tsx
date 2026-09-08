@@ -13,7 +13,7 @@ const ERR_MSG: Record<TripEditError, string> = {
 };
 
 export function TripBar({
-  trips, activeTrip, onSwitch, onNew, onSave, onDelete, signedIn, onRestore, canUndo, onUndo
+  trips, activeTrip, onSwitch, onNew, onSave, onDelete, signedIn, onRestore, canUndo, onUndo, readOnly = false, canDelete = true
 }: {
   trips: Trip[];
   activeTrip: Trip;
@@ -23,6 +23,8 @@ export function TripBar({
   onDelete: () => void;
   /** 로그인 상태 — 버전 히스토리는 클라우드에 쌓인다 */
   signedIn?: boolean;
+  readOnly?: boolean;
+  canDelete?: boolean;
   /** 그 시점으로 되돌리기 */
   onRestore?: (trip: Trip) => void;
   /** 되돌릴 편집이 있는지 */
@@ -60,14 +62,14 @@ export function TripBar({
       ) : (
         <span className="itTripName">{activeTrip.name}</span>
       )}
-      <button type="button" onClick={openEditor} title="여행 이름·날짜·시간대">✎ 여행 정보</button>
+      <button type="button" disabled={readOnly} onClick={openEditor} title="여행 이름·날짜·시간대">✎ 여행 정보</button>
       <button type="button" onClick={onNew} title="새 여행 만들기">＋ 새 여행</button>
       {onUndo && (
-        <button type="button" onClick={onUndo} disabled={!canUndo}
+        <button type="button" onClick={onUndo} disabled={readOnly || !canUndo}
           title="마지막 편집 되돌리기 (Ctrl+Z)">↩️ 실행취소</button>
       )}
 
-      {open && (
+      {open && !readOnly && (
         <div className="itEditorBg" onClick={e => { if (e.target === e.currentTarget) setOpen(false); }}>
           <div className="itEditor" role="dialog" aria-modal="true" aria-label="여행 정보">
             <h2>여행 정보</h2>
@@ -94,7 +96,7 @@ export function TripBar({
             )}
             {error && <div className="itEditErr" role="alert">{error}</div>}
             <div className="itEditBtns">
-              {trips.length > 1 && (
+              {canDelete && trips.length > 1 && (
                 <button type="button" className="itEditDel" onClick={() => { setOpen(false); onDelete(); }}>
                   여행 삭제
                 </button>

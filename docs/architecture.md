@@ -14,9 +14,9 @@ flowchart TD
   WS --> Web
   WS --> iOS
   PG --> Backup[pg_dump / 별도 백업 경로]
-  NextWeb[Next 웹 / 이관 워크스페이스] --> Legacy[Supabase 직접 인증·동기화]
+  NextWeb[Next 웹 / 1차 전환·미배포] --> API
   NextWeb -. import .-> Engine
-  API -. 이관 플래그에 따른 레거시 경로 .-> Legacy
+  API -. 이관 플래그에 따른 레거시 경로 .-> Legacy[Supabase 레거시 저장소]
   Web --> Proxy[Vercel 프록시 함수 / 지도·가격]
   API --> Providers[지도·경로 외부 API]
 ```
@@ -26,7 +26,7 @@ flowchart TD
 | 구성요소 | 책임·상태 | 배포·설정 | 장애 시 영향 / 소스 |
 |---|---|---|---|
 | 정적 PWA | 편집·지도·로컬 문서·동기화 메타데이터·로컬 추천 거절 이력 | Vercel / 앱 셸 버전 | 캐시된 셸·로컬 편집은 남지만 서버 저장은 별개. `app.js`, `sw.js`, `api.js` |
-| Next 웹 | 별도 React 화면과 로컬 저장·Supabase 동기화 | 이관 워크스페이스. 루트 Vercel `/next`는 `/`로 리다이렉트 | 현 NAS 인증·저장과 동등하지 않음. `next/src/features/cloud/`, `vercel.json` |
+| Next 웹 | 별도 React 화면과 로컬 저장·공통 API 동기화 | 이관 워크스페이스. 루트 Vercel `/next`는 `/`로 리다이렉트 | 인증·저장 1차 전환 검증. 협업·PWA 동등성은 미완료. `next/src/features/cloud/`, `vercel.json` |
 | iOS | API 결과 표시, JSONValue 문서 편집, Keychain 세션, 응답 캐시 | 앱 배포 / `TCApiBaseURL` | 읽기 캐시 범위 밖은 API 필요. 실패한 쓰기를 웹의 오프라인 큐와 동일시하지 않음. `ios/TripCanvas/Services/TripService.swift`, `Core/Networking/`, `Core/Models/JSONValue.swift` |
 | API | 인증·검증·도메인 결과·권한·여행 저장 조립 | NAS `api` 이미지 | 로그인·공유 저장·서버 판단 중단. `next/src/app/api/v1/route-deps.ts` |
 | PostgreSQL | JSONB 여행+revision, 멤버, 자체 인증 세션, 이력, 가격, 구간 캐시 | NAS 볼륨 / `migrate` | API와 실시간 모두 영향. `next/src/server/infrastructure/database/schema.ts` |
@@ -36,7 +36,7 @@ flowchart TD
 
 ## 요청과 저장
 
-정적 웹의 로그인은 `auth.js`가 `/api/v1/auth-config`를 확인해 자체 인증 또는 레거시 인증을 선택한다. 여행·가격·협업 저장은 `api.js`를 통해 API로 간다. iOS는 자체 인증 세션을 사용한다. Next 웹의 `useCloudAuth.ts`, `cloudSync.ts`, `tripSnapshots.ts`는 아직 Supabase를 직접 사용한다.
+정적 웹의 로그인은 `auth.js`가 `/api/v1/auth-config`를 확인해 자체 인증 또는 레거시 인증을 선택한다. 여행·가격·협업 저장은 `api.js`를 통해 API로 간다. iOS는 자체 인증 세션을 사용한다. Next 웹의 `useCloudAuth.ts`, `cloudSync.ts`, `tripSnapshots.ts`도 1차 전환 코드에서 공통 인증·API transport를 사용한다(미배포). 기존 Supabase 직접 접근은 전환 전 구현이다.
 
 NAS 새 저장소 경로는 인증 → 라우트 검증 → 서비스의 권한 검사 → Repository의 트랜잭션·revision CAS 순서다. 여행은 JSONB 문서 전체를 저장한다. 클라이언트가 다른 기기의 revision을 덮어쓰려 하면 충돌을 반환한다. 이 방식은 서로 다른 장소의 동시 수정에도 충돌할 수 있지만, 현재 작업에서 빈도는 측정하지 않았다. [백엔드 상세](backend-architecture.md)
 
@@ -77,3 +77,8 @@ Trip Canvas는 빌드 단계 없이 classic script를 순서대로 로드한다.
 `routing.js`는 지도나 DOM 전역을 직접 읽지 않아 mock fetch로 단위 테스트할 수 있다. `sync.js`의 병합 함수도 네트워크 없이 테스트한다. 이 경계 덕분에 네트워크 실패와 UI 렌더링 실패를 서로 분리해 진단할 수 있다.
 
 현재 `app.js`의 기존 호출부를 작게 유지하기 위해 factory 결과의 `fetchLeg`을 같은 이름의 lexical shim으로 노출한다. 다음 단계에서 `app.js` 자체를 ES module로 전환할 때 명시적 import로 바꾸고 이 shim을 제거한다. 지도 SDK·inline handler가 전역 함수에 의존하므로 한 번에 module 전환하지 않는다.
+
+
+### Next 웹 전환 상태 (2026-09-08, 미배포)
+
+Next를 최종 웹으로 선택했다. 1차 전환 코드에서 `features/cloud`는 공통 `auth.js`·`api.js`를 통해 자체 인증과 `/api/v1` 저장·이력·가격 관측 읽기를 사용한다. 협업·실시간·PWA 동등성 확보 후 운영 전환하며 상세 검증과 잔여 범위는 [개선 검토](system-architecture-review.md#next-웹-1차-전환-결과)에 기록한다.

@@ -17,7 +17,8 @@
     "security:scan": "node scripts/check-secrets.js",
     "verify:all": "bash scripts/verify-all.sh",
     "deployment:plan": "node scripts/deployment-plan.js",
-    "rehearse:restore": "bash scripts/rehearse-restore.sh"
+    "rehearse:restore": "bash scripts/rehearse-restore.sh",
+    "test:e2e:next": "playwright test -c playwright.next.config.js"
   },
   "devDependencies": {
     "@playwright/test": "1.62.1",

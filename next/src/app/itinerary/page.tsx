@@ -58,7 +58,6 @@ export default function ItineraryPage() {
   const fx = useFxRates();
   // 남의 공유 링크(#v=)로 열렸으면 그 여행을 **저장소에 넣지 않고** 보여준다
   const { shared, claim, dismiss } = useSharedTrip();
-  const readOnly = shared.kind === 'view';
   /** 화면에 그리는 여행 — 읽기전용일 땐 공유받은 것, 아니면 내 활성 여행 */
   const shownTrip: Trip | null = shared.kind === 'view' ? shared.trip : activeTrip;
 
@@ -81,6 +80,7 @@ export default function ItineraryPage() {
   const [signInOpen, setSignInOpen] = useState(false);
   // 클라우드 동기화 — 로그인하면 이 기기 밖에도 저장된다 (읽기전용 보기에서는 쓰지 않는다)
   const cloud = useCloudSync(trips, activeTrip?.id ?? null, replaceTrips, setNotice);
+  const readOnly = shared.kind === 'view' || !cloud.canEdit;
   // 되돌리면 선택·펼친 일자가 사라진 장소를 가리킬 수 있다 (레거시도 activeDay를 0으로 되돌린다)
   const onboarding = useOnboarding(trips, !readOnly);
   const undoable = useUndo(!readOnly, setNotice, () => {
@@ -110,6 +110,7 @@ export default function ItineraryPage() {
 
   // ── 여행·일자 관리 ──
   const saveTripMeta = (next: Trip) => {
+    if (readOnly) return;
     setNotice(updateActiveTrip(() => next) ? '저장됨' : SAVE_FAILED);
   };
   const createTrip = () => {
@@ -129,7 +130,7 @@ export default function ItineraryPage() {
     setNotice('샘플 여행이에요 — 마음껏 고쳐 보고, 필요 없으면 지워도 됩니다');
   };
   const deleteActiveTrip = () => {
-    if (!activeTrip) return;
+    if (!activeTrip || !cloud.canDelete) return;
     if (!window.confirm(`"${activeTrip.name}" 여행을 삭제할까요? (↩️ 실행취소로 되돌릴 수 있어요)`)) return;
     const doomed = activeTrip;
     if (!removeTrip(activeTrip.id)) { setNotice('여행이 하나뿐이라 지울 수 없어요'); return; }
@@ -377,6 +378,11 @@ export default function ItineraryPage() {
     return (
       <main className="itPage">
         <h1>일정</h1>
+        <AuthBar
+          user={cloud.user} available={cloud.available} statusLabel={cloud.statusLabel}
+          onSignIn={cloud.signIn} onSignOut={() => { void cloud.signOut(); }}
+          open={signInOpen} onOpenChange={setSignInOpen}
+        />
         {(shareNotice || notice) && <div className="hint" role="status">{shareNotice ?? notice}</div>}
         <p className="hint">
           이 브라우저에 저장된 여행이 없어요. 새로 만들거나, 기존 앱에서 만든 여행을 여기서 이어서 볼 수 있습니다.
@@ -403,7 +409,7 @@ export default function ItineraryPage() {
   return (
     <main className="itPage">
       <h1>일정</h1>
-      {readOnly ? (
+      {shared.kind === 'view' ? (
         <ReadOnlyBar
           name={shownTrip.name}
           onClaim={() => setNotice(claim() ? '내 여행으로 저장되었습니다' : SAVE_FAILED)}
@@ -415,8 +421,9 @@ export default function ItineraryPage() {
             trips={trips} activeTrip={activeTrip}
             onSwitch={onSwitchTrip} onNew={createTrip} onSave={saveTripMeta} onDelete={deleteActiveTrip}
             signedIn={!!cloud.user}
+            readOnly={readOnly} canDelete={cloud.canDelete}
             canUndo={undoable.canUndo} onUndo={undoable.undo}
-            onRestore={t => {
+            onRestore={readOnly ? undefined : t => {
               // 되돌린 여행은 지금 여행을 대체한다 (id가 같으므로 제자리 교체)
               setNotice(updateActiveTrip(() => t) ? '그 시점으로 되돌렸어요' : SAVE_FAILED);
               setActiveDay(0); setSel(null); setDidEntry(false); setEditingDay(null);
@@ -430,7 +437,7 @@ export default function ItineraryPage() {
           <TripFileBar
             trip={activeTrip} newId={newTripId} onNotice={setNotice}
             onImport={t => { const ok = addTrip(t); if (ok) { setActiveDay(0); setSel(null); setDidEntry(false); } return ok; }}
-            onPaste={() => setPasting(true)}
+            onPaste={readOnly ? undefined : () => setPasting(true)}
             onImage={() => {
               setNotice('이미지 만드는 중…');
               setCard(buildTripCard(activeTrip, views, dayColor));

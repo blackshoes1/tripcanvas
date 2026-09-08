@@ -10,6 +10,7 @@ import type { Trip } from '@/features/trip/domain/types';
 type State =
   | { kind: 'off' }
   | { kind: 'loading' }
+  | { kind: 'error'; message: string }
   | { kind: 'ready'; rows: SnapshotRow[] };
 
 export function SnapshotList({ clientId, signedIn, onRestore }: {
@@ -26,7 +27,9 @@ export function SnapshotList({ clientId, signedIn, onRestore }: {
   useEffect(() => {
     if (!signedIn) return;
     let alive = true;
-    void listSnapshots(clientId).then(rows => { if (alive) setState({ kind: 'ready', rows }); });
+    void listSnapshots(clientId)
+      .then(rows => { if (alive) setState({ kind: 'ready', rows }); })
+      .catch(error => { if (alive) setState({ kind: 'error', message: error.message }); });
     return () => { alive = false; };
   }, [clientId, signedIn]);
 
@@ -34,6 +37,7 @@ export function SnapshotList({ clientId, signedIn, onRestore }: {
     return <p className="hint">로그인하면 자동으로 버전이 기록됩니다 (10분 간격, 최근 15개).</p>;
   }
   if (state.kind === 'loading') return <p className="hint">불러오는 중…</p>;
+  if (state.kind === 'error') return <p role="alert">{state.message}</p>;
   if (state.kind === 'off' || !state.rows.length) {
     return <p className="hint">저장된 버전이 없습니다 — 클라우드에 올라갈 때 10분 간격으로 기록됩니다.</p>;
   }
@@ -43,7 +47,7 @@ export function SnapshotList({ clientId, signedIn, onRestore }: {
     setBusy(true);
     setError(null);
     try {
-      const r = await loadSnapshot(id);
+      const r = await loadSnapshot(clientId, id);
       if (!r.ok) { setError(r.error); return; }
       onRestore(r.trip);
     } finally {

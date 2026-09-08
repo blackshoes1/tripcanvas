@@ -1,7 +1,7 @@
 'use client';
 // 가격 관측 공유 (hotel_price_snapshots) — 서버 cron과 다른 기기가 남긴 기록을 합친다.
 // 병합 규칙은 domain/priceSync가 정하고, 여기는 조회와 저장만 한다 (§9).
-import { supabase } from '@/features/cloud/services/supabaseClient';
+import { cloudApi, hasCloudSession } from '@/features/cloud/services/tripCanvasClient';
 import type { Trip } from '@/features/trip/domain/types';
 import { mergePriceSnapshots, trackedHotelIds, type PriceSnapshotRow } from '../domain/priceSync';
 import type { PriceStore } from './localPriceStore';
@@ -15,17 +15,20 @@ const MAX_ROWS = 200;
  * 호출측이 불필요하게 저장·재렌더하지 않게.
  */
 export async function pullPriceSnapshots(trips: Trip[], store: PriceStore): Promise<PriceStore | null> {
-  const sb = supabase();
-  if (!sb) return null;
+  if (!hasCloudSession()) return null;
   const ids = trackedHotelIds(trips);
   if (!ids.length) return null;
 
   const since = new Date(Date.now() - WINDOW_DAYS * 864e5).toISOString();
-  const { data, error } = await sb.from('hotel_price_snapshots')
-    .select('booking_id,seller,price,currency,quality,verified,offers,observed_at')
-    .in('booking_id', ids).gte('observed_at', since)
-    .order('observed_at', { ascending: true }).limit(MAX_ROWS);
-  if (error || !data || !data.length) return null;
+  const observations: PriceSnapshotRow[] = [];
+  for (const trip of trips) {
+    if (!trackedHotelIds([trip]).length) continue;
+    const { data, error } = await cloudApi.prices.list(trip.id);
+    if (error) throw new Error('가격 관측을 불러오지 못했어요');
+    observations.push(...(data ?? []).filter(row => ids.includes(row.booking_id) && row.observed_at >= since));
+  }
+  const data = observations.sort((a, b) => a.observed_at.localeCompare(b.observed_at)).slice(-MAX_ROWS);
+  if (!data.length) return null;
 
   const byBooking = new Map<string, PriceSnapshotRow[]>();
   for (const r of data as PriceSnapshotRow[]) {

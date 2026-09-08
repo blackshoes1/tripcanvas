@@ -65,6 +65,7 @@ if want next; then
     step "next: 테스트"       npm --prefix next test
     step "next: build"        npm --prefix next run build
     step "next: tools:build"  npm --prefix next run tools:build
+    step "next: API 연결 E2E" npm run test:e2e:next
   else
     skip "next 워크스페이스" "next/node_modules 없음 — npm --prefix next ci"
   fi

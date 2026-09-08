@@ -1,5 +1,56 @@
 // 레거시 UMD 모듈(../../price.js 등)의 앰비언트 선언 — 구현은 저장소 루트의 단일 소스를 그대로 쓴다.
 // 여기 선언은 engine.ts가 좁혀서 노출하는 타입의 최소 계약만 담는다.
+declare module '@legacy/auth.js' {
+  type User = { id: string; email: string };
+  type Result = { data?: unknown; error: { code: string; message: string } | null };
+  const auth: {
+    DEFAULT_BASE: string;
+    TOKEN_KEY: string;
+    configure(options: { baseUrl: string; storage: Storage | null }): void;
+    resolveProvider(): Promise<'SUPABASE' | 'TRIPCANVAS'>;
+    restore(): Promise<unknown>;
+    onChange(listener: (user: User | null) => void): void;
+    user(): User | null;
+    getToken(): Promise<string | null>;
+    signIn(credentials: { email: string; password: string }): Promise<Result>;
+    signUp(credentials: { email: string; password: string }): Promise<Result>;
+    signOut(): Promise<Result>;
+    requestPasswordReset(email: string): Promise<Result>;
+    resendVerification(email: string): Promise<Result>;
+    resetPassword(token: string, password: string): Promise<Result>;
+  };
+  export = auth;
+}
+
+declare module '@legacy/api.js' {
+  type Result<T> = { data: T | null; error: { code: string; apiCode: string; message: string } | null };
+  interface TripRow {
+    client_id: string; data: unknown; revision: number; deleted_at: string | null; updated_at: string;
+  }
+  interface CasRow {
+    applied: boolean; conflict: boolean; revision: number; data: unknown; deleted_at: string | null;
+  }
+  const api: {
+    configure(options: { baseUrl: string; getToken: () => Promise<string | null> }): void;
+    me(): Promise<Result<{ trips: Array<{ id: string; role: string }> }>>;
+    sync: {
+      list(): Promise<Result<TripRow[]>>;
+      save(id: string, document: unknown, revision: number | null, force?: boolean): Promise<CasRow>;
+      tombstone(id: string, revision: number | null): Promise<CasRow>;
+    };
+    snapshots: {
+      create(id: string, name: string): Promise<Result<unknown>>;
+      list(id: string): Promise<Result<Array<{ id: number; created_at: string }>>>;
+      load(id: string, snapshotId: number): Promise<Result<{ data: unknown }>>;
+    };
+    prices: {
+      list(id: string): Promise<Result<Array<import('@/features/pricing/domain/priceSync').PriceSnapshotRow>>>;
+      append(id: string, observation: unknown): Promise<Result<boolean>>;
+    };
+  };
+  export = api;
+}
+
 declare module '@legacy/price.js' {
   const api: {
     PRICE_CFG: Readonly<Record<string, number>>;
