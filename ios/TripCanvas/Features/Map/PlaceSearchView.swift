@@ -134,7 +134,7 @@ struct MapPickerView: View {
                     .disabled(picked == nil)
                 }
                 .padding(Space.l)
-                .background(Color(.systemBackground))
+                .background(Ink.raised)
             }
             .navigationTitle("지도에서 고르기")
             .navigationBarTitleDisplayMode(.inline)

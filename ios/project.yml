@@ -91,6 +91,9 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.fromj.trip
         TARGETED_DEVICE_FAMILY: "1"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        # 강조색을 에셋 카탈로그에서 가져온다 — 화면 곳곳의 `Color.accentColor`와 기본 컨트롤
+        # 색이 팔레트(`Ink.accent`)와 갈리지 않게 하는 유일한 지점이다.
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
 
   # 위젯 + Live Activity. 네트워크도 인증도 없다 — 앱이 App Group에 써 둔 압축본만 읽는다(§28).
   TripCanvasWidgets:

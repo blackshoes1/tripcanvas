@@ -203,11 +203,11 @@ struct TripPlanView: View {
             .padding(.horizontal, Space.m)
             .padding(.vertical, Space.s)
             .frame(minWidth: 72)
-            .background(selected ? Color.accentColor.opacity(0.16) : Color(.secondarySystemBackground),
+            .background(selected ? Ink.accent.opacity(0.16) : Ink.raised,
                         in: RoundedRectangle(cornerRadius: Radius.card))
             .overlay(RoundedRectangle(cornerRadius: Radius.card)
-                .stroke(isToday ? Color.accentColor : .clear, lineWidth: selected ? 0 : 1))
-            .foregroundStyle(selected ? Color.accentColor : .primary)
+                .stroke(isToday ? Ink.accent : Ink.hairline, lineWidth: selected ? 0 : 1))
+            .foregroundStyle(selected ? Ink.accent : Ink.ink)
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)
@@ -568,7 +568,7 @@ struct TripPlanView: View {
         } icon: {
             Text("🏠")
         }
-        .listRowBackground(Color(.secondarySystemGroupedBackground).opacity(0.6))
+        .listRowBackground(Ink.sunken)
     }
 
     /// 자동으로 이어 붙인 숙소 복귀. 일정에 저장된 장소가 아니라는 것을 밝힌다.
@@ -583,7 +583,7 @@ struct TripPlanView: View {
                     .font(.caption2).foregroundStyle(.secondary)
             }
         }
-        .listRowBackground(Color(.secondarySystemGroupedBackground).opacity(0.6))
+        .listRowBackground(Ink.sunken)
     }
 
     /// 렌터카 픽업·반납. ⚠️ **좌표가 없어 동선·ETA·지도에 들어가지 않는다** — 표시만 한다.
@@ -599,7 +599,7 @@ struct TripPlanView: View {
                     .font(.caption2).foregroundStyle(.secondary)
             }
         }
-        .listRowBackground(Color(.secondarySystemGroupedBackground).opacity(0.6))
+        .listRowBackground(Ink.sunken)
     }
 }
 
