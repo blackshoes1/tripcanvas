@@ -54,6 +54,26 @@ struct PasteItineraryView: View {
         .interactiveDismissDisabled(isBusy)
     }
 
+    /// 프롬프트를 복사했는지 — 클립보드는 눈에 안 보여서 눌렸는지 알 수 없다.
+    @State private var promptCopied = false
+
+    /// ⚠️ `app.js`의 `AI_ASK_PROMPT` 복사본이다. **문구를 바꿀 때는 웹을 먼저 고친다** —
+    /// 같은 안내가 기기마다 다르면 사용자가 무엇이 맞는지 알 수 없다.
+    static let aiAskPrompt = """
+    아래 조건에 맞춰 여행 일정을 짜 줘.
+
+    - 하루마다 머리글에 **날짜**를 넣어 줘. 예) ## 10월 3일 (금) — 난바 도착
+    - **한 줄에 한 곳**, 줄 앞에 시각. 예) - 13:00 도톤보리 | 오사카 | 글리코 간판 앞
+    - 장소 이름은 **지도에서 검색되는 정식 상호**로. '유명한 라멘집' 말고 실제 가게 이름으로 써 줘.
+    - 이름 뒤에 **| 도시**를 붙여 줘. 같은 이름이 여러 곳에 있어서 필요해.
+    - 숙소는 이름 앞에 (숙소), 안 가도 되는 곳은 (선택).
+    - **모르는 시각은 비워 둬** — 지어내지 마.
+
+    목록이든 표든 편한 대로 써도 되고, 설명이나 인사말이 섞여도 괜찮아.
+
+    여행: 
+    """
+
     // MARK: 붙여넣기
 
     private var input: some View {
@@ -65,7 +85,7 @@ struct PasteItineraryView: View {
             } header: {
                 Text("가진 일정을 그대로 붙여넣으세요")
             } footer: {
-                Text("AI·블로그·메일에서 받은 일정도 됩니다. 읽은 결과를 보여 드릴 테니 담을 것만 고르시면 돼요.")
+                Text("AI·블로그·메일에서 받은 일정도 됩니다. 마크다운·표·이모지·\"오후 3시\"까지 읽어요. 읽은 결과를 보여 드릴 테니 담을 것만 고르시면 돼요.")
             }
             Section {
                 Button {
@@ -73,6 +93,15 @@ struct PasteItineraryView: View {
                 } label: {
                     Label("클립보드에서 붙여넣기", systemImage: "doc.on.clipboard")
                 }
+                Button {
+                    UIPasteboard.general.string = Self.aiAskPrompt
+                    promptCopied = true
+                } label: {
+                    Label(promptCopied ? "복사했어요 — AI에 붙여넣고 답을 가져오세요" : "AI에게 시킬 프롬프트 복사",
+                          systemImage: promptCopied ? "checkmark" : "sparkles")
+                }
+            } footer: {
+                Text("아직 일정이 없다면 이걸 복사해 ChatGPT·Claude에 붙여넣고, 받은 답을 그대로 위에 넣으세요.")
             }
             if let errorMessage {
                 Section { Text(errorMessage).foregroundStyle(.red).font(.footnote) }

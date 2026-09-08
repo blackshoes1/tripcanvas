@@ -2801,9 +2801,12 @@ test('붙여넣기: AI에게 시킬 프롬프트를 복사해 준다', { skip: n
 
   const copied = w.eval('window.__copied');
   assert.ok(copied, '복사가 일어난다');
-  assert.match(copied, /\[day1\]/, '우리가 읽을 수 있는 형식을 요구한다');
-  assert.match(copied, /지도에서 찾을 수 있는 실제 이름/, '지오코딩되는 이름을 달라고 말한다');
-  assert.match(copied, /@HH:MM/);
+  // 파서가 마크다운·표·'오후 3시'를 읽으므로 형식을 강요하지 않는다 —
+  // 대신 **파서가 못 메우는 것**을 부탁한다. 이게 빠지면 좌표를 못 찾아 '위치 지정'으로 남는다.
+  assert.match(copied, /지도에서 검색되는 정식 상호/, '지오코딩되는 이름을 달라고 말한다');
+  assert.match(copied, /한 줄에 한 곳/, '한 줄에 여러 곳이 있으면 갈라낼 수 없다');
+  assert.match(copied, /날짜/, '일자 머리글에 날짜가 있어야 일정에 얹힌다');
+  assert.match(copied, /모르는 시각은 비워 둬/, '없는 시각을 지어내게 하지 않는다');
 });
 
 test('붙여넣기: 클립보드가 막히면 삼키지 않고 칸에 넣어 준다', { skip: noJsdom }, async () => {
@@ -2812,7 +2815,7 @@ test('붙여넣기: 클립보드가 막히면 삼키지 않고 칸에 넣어 준
   w.document.getElementById('aiPromptCopy').click();
   await new Promise((r) => setTimeout(r, 0));
 
-  assert.match(w.document.getElementById('pasteText').value, /\[day1\]/, '복사가 안 되면 직접 복사할 수 있게 남긴다');
+  assert.match(w.document.getElementById('pasteText').value, /지도에서 검색되는 정식 상호/, '복사가 안 되면 직접 복사할 수 있게 남긴다');
 });
 
 // ── 새 여행: 두 가지만 묻는다 ──

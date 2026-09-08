@@ -396,6 +396,101 @@ test('붙여넣기: http(s)가 아닌 링크는 문서에 들이지 않는다', 
   assert.equal(r.days[0].items[0].url, null);
 });
 
+// ── 6-b. AI가 준 글 그대로 ──
+//
+// 사람들은 우리 형식으로 다시 쓰지 않는다 — ChatGPT·Claude가 뱉은 그대로 붙여넣는다.
+// 2026-09-08에 실제로 붙여넣었더니 **하루가 통째로 비고**(표) 이름에 `**`와 이모지가 남아
+// 지도가 한 곳도 못 찾았다. 아래는 그 글의 모양이다.
+const AI_MD = [
+  '# 가루이자와 3박 4일 여행 일정 ✨',
+  '',
+  '안녕하세요! 요청하신 일정을 짜 봤어요.',
+  '',
+  '## 📅 Day 1 (7월 21일, 월) – 도착',
+  '',
+  '- 🍱 **13:00** 점심: **에키벤야 마츠리** (도쿄역 1층) — 도시락이 많아요',
+  '- 🏨 **16:30** 호텔 체크인: **가루이자와 프린스 호텔 웨스트**',
+  '- **18:30** 저녁: 카와카미안 (수타 소바 맛집, 약 2,500엔)',
+  '',
+  '## 📅 Day 2 (7월 22일, 화)',
+  '',
+  '| 시간 | 장소 | 메모 |',
+  '|------|------|------|',
+  '| 08:00 | 조식 | 호텔 뷔페 |',
+  '| 09:30 | 쿠모바 연못 | 산책 1시간 |',
+  '| 14:00 | 가루이자와 프린스 쇼핑 플라자 | 아웃렛 |'
+].join('\n');
+
+test('AI 글: 마크다운 꾸밈과 이모지를 걷어야 그 뒤의 시각·이름이 읽힌다', () => {
+  const day1 = I.parseItinerary(AI_MD, { year: 2026 }).days[0].items;
+  assert.deepEqual(day1.map(i => i.name),
+    ['에키벤야 마츠리 (도쿄역 1층)', '가루이자와 프린스 호텔 웨스트', '카와카미안']);
+  assert.deepEqual(day1.map(i => i.at), ['13:00', '16:30', '18:30']);
+  // `**`·이모지가 이름에 남으면 지도가 못 찾는다 — 이게 이 사고의 원인이었다
+  assert.ok(!day1.some(i => /[*`]|\p{Extended_Pictographic}/u.test(i.name)));
+});
+
+test('AI 글: 앞에 붙은 라벨은 이름이 아니라 설명이다', () => {
+  const day1 = I.parseItinerary(AI_MD, { year: 2026 }).days[0].items;
+  assert.equal(day1[0].name, '에키벤야 마츠리 (도쿄역 1층)');
+  assert.ok(day1[0].desc.includes('점심'), '떼어낸 라벨은 버리지 않고 설명으로 남긴다');
+  assert.equal(day1[1].stay, true, "'체크인'이 라벨이면 그건 숙소다");
+  // 금액은 값으로 빠지고, 남은 괄호가 이름을 더럽히지 않는다
+  assert.equal(day1[2].cost, 2500);
+  assert.equal(day1[2].name, '카와카미안');
+});
+
+test('AI 글: 마크다운 표도 하루의 일정이다 — 통째로 잃지 않는다', () => {
+  const day2 = I.parseItinerary(AI_MD, { year: 2026 }).days[1].items;
+  assert.deepEqual(day2.map(i => i.name), ['조식', '쿠모바 연못', '가루이자와 프린스 쇼핑 플라자']);
+  assert.deepEqual(day2.map(i => i.at), ['08:00', '09:30', '14:00']);
+  assert.equal(day2[1].desc, '산책 1시간', '메모 칸은 설명으로 간다');
+});
+
+test('AI 글: 구분선이 없으면 표가 아니다 — 세로줄이 든 문장을 표로 오해하지 않는다', () => {
+  const r = I.parseItinerary('- 성산일출봉|제주|해돋이', {});
+  assert.equal(r.days[0].items.length, 1);
+  assert.equal(r.days[0].items[0].city, '제주');
+});
+
+test('AI 글: 맨 앞 제목과 인사말이 빈 1일차를 만들지 않는다', () => {
+  const r = I.parseItinerary(AI_MD, { year: 2026 });
+  assert.equal(r.days.length, 2, '일정이 하루씩 밀리면 안 된다');
+  assert.equal(r.name, '가루이자와 3박 4일 여행 일정');
+  assert.ok(r.days[0].note.includes('안녕하세요'), '인사말도 버리지 않는다 — 그 날 메모로 남는다');
+  assert.equal(r.days[0].date, '2026-07-21');
+});
+
+test('AI 글: 사람이 쓰는 시각도 읽는다 — 오전/오후가 없으면 그렇게 말한다', () => {
+  const r = I.parseItinerary([
+    '- 오전 10시 간사이국제공항',
+    '- 오후 3시 30분 · 신사이바시스지',
+    '- 저녁 7시 이치란 라멘 본점',
+    '- 7시 스타벅스'
+  ].join('\n'), {});
+  const it = r.days[0].items;
+  assert.deepEqual(it.map(i => i.at), ['10:00', '15:30', '19:00', '07:00']);
+  assert.deepEqual(it.map(i => i.name),
+    ['간사이국제공항', '신사이바시스지', '이치란 라멘 본점', '스타벅스']);
+  // 오전인지 오후인지 안 적힌 '7시'는 지어내지 않고 그대로 읽되, 그 사실을 말한다
+  assert.ok(it[3].reasons.some(r2 => r2.includes('오전인지 오후인지')));
+  assert.ok(!it[2].reasons.some(r2 => r2.includes('오전인지 오후인지')), "'저녁 7시'는 모호하지 않다");
+});
+
+test('AI 글: 괄호는 안이 설명일 때만 뗀다 — 다른 이름은 남긴다', () => {
+  const r = I.parseItinerary('- 이시노쿄카이 (돌의 교회)\n- 시라이토 폭포 (도보 20분, 입장료 무료)', {});
+  assert.equal(r.days[0].items[0].name, '이시노쿄카이 (돌의 교회)');
+  assert.equal(r.days[0].items[1].name, '시라이토 폭포');
+  assert.equal(r.days[0].items[1].desc, '도보 20분, 입장료 무료');
+});
+
+test('AI 글: (선택)·(숙소) 표시는 시각 뒤에 와도 읽는다', () => {
+  const r = I.parseItinerary('- 15:00 (선택) 만페이 호텔\n- 20:00 (숙소) 프린스 호텔', {});
+  assert.equal(r.days[0].items[0].opt, true);
+  assert.equal(r.days[0].items[0].name, '만페이 호텔');
+  assert.equal(r.days[0].items[1].stay, true);
+});
+
 test('붙여넣기: 날짜를 읽되 연도가 없으면 모호하다고 말한다', () => {
   const r = I.parseItinerary(PASTED, { year: 2026 });
   assert.equal(r.start, '2026-07-21');
