@@ -2,7 +2,11 @@
 
 이관의 최종 모양과 계층 규칙. 이관 현황·인벤토리는 `docs/supabase-migration.md`, 배포는 `docs/nas-deployment.md`.
 
-## 최종 목표
+## 현재 구조와 이관 경로
+
+2026-09-08 코드 검토: 정적 웹·iOS는 NAS 주소를 기본으로 사용한다. Next 웹은 별도 Supabase 직접 경로가 남아 있다. 운영 읽기 전용 확인에서 TRIP·COLLAB·ADAPTIVE·PRICING=NEW_BACKEND를 확인했다. 다른 레거시 소비자의 종료 여부는 미확인이다. [구성도·장애 경계](architecture.md), [분기 종료 기준](system-architecture-review.md)를 함께 본다.
+
+### API 중심 구조
 
 ```
 Web ── iOS ── Widget ── Watch ── Extensions
@@ -43,7 +47,7 @@ Authorization: Bearer <token>
   → Response  { schemaVersion, trip, document }  /  { code, message, details?, error }
 ```
 
-### 인증 (Phase A)
+### 레거시 토큰 인증 (Phase A에서 도입, 호환 경로 유지)
 
 `server/auth/supabaseJwt.ts` — Supabase access token을 **서버가 직접** 검증한다: 비대칭 키(ES256/RS256)는 JWKS, HS256은 `SUPABASE_JWT_SECRET`이 있을 때만.
 issuer `${SUPABASE_URL}/auth/v1` · audience `authenticated`. 로컬 검증이 실패하면 `withRemoteFallback`이 예전처럼 `getUser()`로 한 번 더 확인하고 경고를 남긴다 —
@@ -89,11 +93,11 @@ application/domain 코드에 SQL·ORM 쿼리를 쓰지 않는다. 새 구현은 
 ## 이관 레지스트리 (§35·§77)
 
 `TC_MIGRATION_<DOMAIN>=LEGACY|DUAL_READ|NEW_BACKEND`. `DATABASE_URL`이 없으면 전부 LEGACY. `route-deps.ts`가 요청마다 이 값으로 저장소를 고른다.
-롤백은 값을 되돌리는 것뿐이다(§78) — 단 새 DB에 쓴 뒤 LEGACY로 돌아가면 그 사이 변경은 Supabase에 없다(`docs/supabase-migration.md` 롤백 절).
+플래그 변경은 경로만 되돌린다 — 새 DB에 쓴 뒤 LEGACY로 돌아가면 그 사이 변경은 Supabase에 없으므로 데이터 복귀 절차가 따로 필요하다(`docs/supabase-migration.md` 롤백 절).
 
 ## 실시간 (`server/realtime/`)
 
-별도 프로세스(사이드카)다 — Next Route Handler는 WebSocket 업그레이드를 다루지 않는다. Vercel은 API만 띄우고 NAS는 둘 다 띄운다.
+별도 프로세스(사이드카)다 — Next Route Handler는 WebSocket 업그레이드를 다루지 않는다. NAS는 API와 실시간을 함께 띄운다. 별도 Vercel API 프로젝트는 과거 호스팅·복귀 후보이며 현재 운영 트래픽 경로와 구분한다.
 
 ```
 trip_activity INSERT
@@ -141,3 +145,7 @@ compositeVerifier   Supabase 토큰 · 자체 세션을 함께 받는다(전환�
 | 레거시 보존 | `handlers.test.ts` · `swiftParity.test.ts` | 기존 `/api/v1` 계약이 그대로다 |
 
 `cd next && npm test` — CI의 Next 잡이 돈다(PGlite는 Linux 러너에서도 그대로).
+
+## 최신 코드의 이동시간 입력
+
+`route-deps.ts`의 `legSupport()`가 `PgLegCacheRepository`와 `createLegFiller()`를 조립한다. DB·지도 키가 있어야 조회를 채우며, 제한된 시간만 기다리고 나머지는 배경에서 채운다. Today와 하루 일정은 캐시를 받아 순수 엔진에 넣는다. 미조회·실패 구간은 추정으로 남는다. 구간 캐시와 시각·거절 이력은 웹과 API가 각각 보유하므로 같은 엔진만으로 결과 일치를 보장하지 않는다.

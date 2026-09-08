@@ -76,6 +76,13 @@ jobs:
       # 독립 실행 도구(실시간 사이드카 · 이관 CLI)는 Next 번들과 따로 컴파일된다 — 여기서 안 돌리면 조용히 깨진 채로 남는다
       - name: Build standalone tools (realtime · migration)
         run: npm run tools:build
+      - name: Install browser test dependencies
+        working-directory: .
+        run: |
+          npm ci --no-audit --no-fund
+          npx playwright install --with-deps chromium
+      - name: Next web API connection flows
+        run: npm --prefix .. run test:e2e:next
 
   e2e:
     name: E2E

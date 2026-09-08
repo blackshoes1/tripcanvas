@@ -11,7 +11,7 @@ import legacySync from '@legacy/sync.js';
 import type { Trip } from '@/features/trip/domain/types';
 import { canUpload, mergeInput, pendingDeletes, SAMPLE_TRIP_ID, uploadable } from '../domain/syncDecisions';
 import { snapshotTrip } from './tripSnapshots';
-import { supabase } from './supabaseClient';
+import { cloudApi, hasCloudSession } from './tripCanvasClient';
 import {
   beginInFlight, endInFlight, getSyncMeta, persistSyncMeta, replaceSyncMeta,
   syncEntry, type SyncMeta
@@ -26,23 +26,6 @@ export interface SyncConflict {
   remote: Trip | null;
   revision: number | null;
   deleted_at: string | null;
-}
-
-interface RpcRow {
-  applied: boolean;
-  conflict: boolean;
-  revision: number | string;
-  data: unknown;
-  deleted_at: string | null;
-}
-
-/** RPC는 table을 돌려주므로 첫 행만 쓴다 (레거시 rpcRow와 동일) */
-async function rpcRow(name: string, args: Record<string, unknown>): Promise<RpcRow | null> {
-  const sb = supabase();
-  if (!sb) return null;
-  const { data, error } = await sb.rpc(name, args);
-  if (error) throw error;
-  return (Array.isArray(data) ? data[0] : data) as RpcRow | null;
 }
 
 export interface SyncHooks {
@@ -61,8 +44,7 @@ export interface SyncHooks {
 export async function syncTripCloud(
   trip: Trip, hooks: SyncHooks, opts: { force?: boolean } = {}
 ): Promise<void> {
-  const sb = supabase();
-  if (!sb || !trip) return;
+  if (!hasCloudSession() || !trip) return;
   const entry = syncEntry(trip.id);
   const force = !!opts.force;
   // 아직 클라우드에 없는 샘플 여행은 올리지 않는다 (계정마다 데모가 하나씩 생긴다)
@@ -73,9 +55,7 @@ export async function syncTripCloud(
   persistSyncMeta();
   beginInFlight();
   try {
-    const row = await rpcRow('sync_trip', {
-      p_client_id: trip.id, p_data: trip, p_expected_revision: entry.revision, p_force: force
-    });
+    const row = await cloudApi.sync.save(trip.id, trip, entry.revision, force);
     if (!row) throw new Error('empty sync response');
     if (row.conflict) {
       entry.status = 'conflict';
@@ -93,7 +73,7 @@ export async function syncTripCloud(
     entry.hash = hashTrip(trip);
     persistSyncMeta();
     // 올라간 시점이 되돌릴 수 있는 지점이다 (여행별 10분에 한 번, 실패해도 업로드는 유효)
-    void snapshotTrip(trip, entry.revision);
+    void snapshotTrip(trip);
   } catch (e) {
     if (legacyCollab.isForbiddenError(e)) {
       // 보기 권한·내보내진 멤버 — 재시도 루프에 넣지 않는다. 로컬 편집은 그대로 남는다
@@ -113,8 +93,7 @@ export async function syncTripCloud(
 
 /** 밀린 여행을 전부 올린다 (활성 여행만 올리면 전환 시 편집이 유실된다) */
 export async function syncStaleTrips(trips: Trip[], hooks: SyncHooks): Promise<void> {
-  const sb = supabase();
-  if (!sb) return;
+  if (!hasCloudSession()) return;
   const meta = getSyncMeta();
   for (const t of trips) {
     const entry = meta[t.id];
@@ -127,7 +106,7 @@ export function cloudDelete(clientId: string, deleted: Trip | null, hooks: SyncH
   const op = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
   beginDelete(getSyncMeta(), clientId, op);
   persistSyncMeta();
-  if (supabase()) void performCloudDelete(clientId, op, deleted, hooks);
+  if (hasCloudSession()) void performCloudDelete(clientId, op, deleted, hooks);
 }
 
 export async function performCloudDelete(
@@ -136,9 +115,7 @@ export async function performCloudDelete(
   const entry = syncEntry(clientId);
   beginInFlight();
   try {
-    const row = await rpcRow('tombstone_trip', {
-      p_client_id: clientId, p_expected_revision: entry.revision, p_force: false
-    });
+    const row = await cloudApi.sync.tombstone(clientId, entry.revision);
     if (row?.conflict) {
       entry.status = 'conflict';          // base revision 유지 — 위와 같은 이유
       persistSyncMeta();
@@ -154,6 +131,12 @@ export async function performCloudDelete(
     // 그 사이 새 삭제가 시작됐으면(op 불일치) 이 응답은 낡았다 — 재업로드로 정리한다
     if (result.resync) hooks.onNotice('삭제 동기화가 엇갈려 다시 맞췄어요', 'warn');
   } catch (e) {
+    if (legacyCollab.isForbiddenError(e)) {
+      entry.status = 'forbidden';
+      persistSyncMeta();
+      hooks.onNotice(legacyCollab.forbiddenText(e, null), 'error');
+      return;
+    }
     entry.status = 'delete-error';
     entry.op = op;
     persistSyncMeta();
@@ -166,7 +149,7 @@ export async function performCloudDelete(
 
 /** 밀린 삭제를 밀어낸다 (온라인 복귀·로그인 직후) */
 export async function flushPendingSync(hooks: SyncHooks): Promise<void> {
-  if (!supabase()) return;
+  if (!hasCloudSession()) return;
   for (const { id, op } of pendingDeletes(getSyncMeta())) {
     await performCloudDelete(id, op, null, hooks);
   }
@@ -185,7 +168,7 @@ export async function reconcileUndoDeletes(trips: Trip[], hooks: SyncHooks): Pro
   }
   if (!revived.length) return;
   persistSyncMeta();
-  if (supabase()) for (const t of revived) await syncTripCloud(t, hooks);
+  if (hasCloudSession()) for (const t of revived) await syncTripCloud(t, hooks);
 }
 
 /**
@@ -193,12 +176,9 @@ export async function reconcileUndoDeletes(trips: Trip[], hooks: SyncHooks): Pro
  * 나머지는 conflict로 남겨 사용자가 고르게 한다. 유입 데이터는 전부 검증을 통과해야 한다.
  */
 export async function syncOnLogin(localTrips: Trip[], hooks: SyncHooks): Promise<void> {
-  const sb = supabase();
-  if (!sb) return;
+  if (!hasCloudSession()) return;
   try {
-    const { data: rows, error } = await sb
-      .from('trips')
-      .select('client_id,data,revision,deleted_at,updated_at');
+    const { data: rows, error } = await cloudApi.sync.list();
     if (error) throw error;
 
     const merged = mergeForLogin(mergeInput(localTrips, rows ?? []), rows ?? [], getSyncMeta());
@@ -209,7 +189,7 @@ export async function syncOnLogin(localTrips: Trip[], hooks: SyncHooks): Promise
     if (checked.some(r => !r.ok)) throw new Error('invalid cloud payload');
     const trips = checked.map(r => (r as { ok: true; value: Trip }).value);
 
-    if (trips.length && !hooks.applyTrips(trips)) {
+    if (!hooks.applyTrips(trips)) {
       hooks.onNotice('클라우드 데이터를 저장하지 못했어요 — 저장 공간을 확인해주세요', 'error');
       return;
     }

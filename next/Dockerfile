@@ -10,6 +10,8 @@ RUN npm ci --no-audit --no-fund
 
 # ── build: standalone 출력 ──
 FROM node:22-alpine AS build
+ARG TC_REVISION=unknown
+LABEL org.opencontainers.image.revision=$TC_REVISION
 WORKDIR /repo
 COPY . .
 COPY --from=deps /repo/next/node_modules ./next/node_modules
@@ -24,6 +26,8 @@ CMD ["npx", "drizzle-kit", "migrate"]
 
 # ── runtime: 최소 이미지 ──
 FROM node:22-alpine AS runtime
+ARG TC_REVISION=unknown
+LABEL org.opencontainers.image.revision=$TC_REVISION
 WORKDIR /app
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 HOSTNAME=0.0.0.0
 RUN addgroup -S tc && adduser -S tc -G tc

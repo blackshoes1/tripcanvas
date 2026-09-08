@@ -1,5 +1,7 @@
 # NAS 배포 — TripCanvas API
 
+> 2026-09-08: 반복 릴리스는 [NAS 릴리스 절차](nas-release.md)를 따른다. 이미지 셋의 동일 커밋 빌드·스키마 적용·backup 포함 기동·기능 확인이 필요하다. 아래의 과거 실측 기록은 현재 운영 점검 결과와 구분한다.
+
 > **2026-09-04 — 프로덕션이 여기다.** 웹(`tripcanvas-ai.vercel.app`)이 부르는 API는 NAS의
 > `https://bokbok9.tail8b977f.ts.net` 이고, 데이터는 NAS PostgreSQL이다. Vercel에는 정적 웹만 남았다.
 > Vercel의 `tripcanvas-api` 프로젝트는 지우지 않았다 — **롤백 대상**이다(아래 "롤백").

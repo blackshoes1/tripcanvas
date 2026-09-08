@@ -18,7 +18,8 @@ until pg_isready -q 2>/dev/null; do
 done
 
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
-OUT=/backups/tripcanvas-${STAMP}.dump
+BACKUP_DIR=${BACKUP_DIR:-/backups}
+OUT=$BACKUP_DIR/tripcanvas-${STAMP}.dump
 
 # ⚠️ `pg_dump … && mv …`로 쓰면 set -e가 걸리지 않는다(&& 목록의 실패는 '검사된' 것으로 친다).
 # 그래서 예전에는 덤프가 실패해도 그 아래 echo가 그대로 돌아 "wrote"라고 거짓말했다.
@@ -32,5 +33,5 @@ echo "[backup] wrote $OUT ($(du -h "$OUT" | cut -f1))"
 
 # 지난 회차가 남긴 찌꺼기(.tmp)와 보관 기간이 지난 덤프 정리.
 # .tmp는 완성되지 않은 파일이라 백업이 아니다 — 오프사이트로 복제되지 않게 치운다.
-find /backups -name 'tripcanvas-*.dump.tmp' -mmin +60 -delete
-find /backups -name 'tripcanvas-*.dump' -mtime +"${BACKUP_KEEP_DAYS:-30}" -delete
+find "$BACKUP_DIR" -name 'tripcanvas-*.dump.tmp' -mmin +60 -delete
+find "$BACKUP_DIR" -name 'tripcanvas-*.dump' -mtime +"${BACKUP_KEEP_DAYS:-30}" -delete

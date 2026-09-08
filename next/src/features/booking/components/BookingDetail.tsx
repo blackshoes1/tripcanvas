@@ -5,12 +5,13 @@ import type { Booking } from '../domain/types';
 import { BK_TYPE } from './BookingCard';
 import { PriceTrackingStatus } from './PriceTrackingStatus';
 
-export function BookingDetail({ booking, rec, onEdit, onDelete, onBack }: {
+export function BookingDetail({ booking, rec, onEdit, onDelete, onBack, readOnly = false }: {
   booking: Booking;
   rec: PriceRecord | null;
   onEdit: () => void;
   onDelete: () => void;
   onBack: () => void;
+  readOnly?: boolean;
 }) {
   return (
     <div className="bookingDetail">
@@ -31,10 +32,10 @@ export function BookingDetail({ booking, rec, onEdit, onDelete, onBack }: {
         </div>
       )}
       <PriceTrackingStatus booking={booking} rec={rec} />
-      <div className="pxActions">
+      {!readOnly && <div className="pxActions">
         <button type="button" className="btn" onClick={onEdit}>수정</button>
         <button type="button" className="btn danger" onClick={onDelete}>삭제</button>
-      </div>
+      </div>}
     </div>
   );
 }

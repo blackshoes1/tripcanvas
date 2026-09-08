@@ -1,5 +1,5 @@
 'use client';
-// 로그인 상태 — Supabase 세션을 구독한다.
+// 로그인 상태 — 정적 웹과 같은 자체 인증 세션을 구독한다.
 //
 // ⚠️ 로그인 병합은 **계정이 바뀐 순간에만** 돈다(shouldMergeOnAuth). 토큰 자동 갱신
 // (TOKEN_REFRESHED)에도 병합을 돌리면 오래 열어둔 탭이 몇 시간 뒤 제 로컬본을 다시 올려
@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 
 import { shouldMergeOnAuth } from '../domain/syncDecisions';
-import { supabase } from '../services/supabaseClient';
+import { cloudAuth, initializeCloud, subscribeCloudUser } from '../services/tripCanvasClient';
 
 export interface CloudUser {
   id: string;
@@ -22,36 +22,38 @@ const subscribeNever = () => () => {};
 
 export function useCloudAuth(onAccountSwitch: (user: CloudUser) => void) {
   const [user, setUser] = useState<CloudUser | null>(null);
-  const available = useSyncExternalStore(subscribeNever, () => supabase() !== null, () => false);
+  const available = useSyncExternalStore(subscribeNever, () => true, () => false);
   const seenUserId = useRef<string | null>(null);
   const switchCb = useRef(onAccountSwitch);
   useEffect(() => { switchCb.current = onAccountSwitch; });
 
   useEffect(() => {
-    const sb = supabase();
-    if (!sb) return;
-    const { data } = sb.auth.onAuthStateChange((_event, session) => {
-      const next = session?.user
-        ? { id: session.user.id, email: session.user.email ?? '' }
-        : null;
+    const unsubscribe = subscribeCloudUser(next => {
       const merge = shouldMergeOnAuth(seenUserId.current, next?.id ?? null);
       seenUserId.current = next?.id ?? null;
       setUser(next);
       if (merge && next) switchCb.current(next);
     });
-    return () => data.subscription.unsubscribe();
+    void initializeCloud().catch(() => { /* 로그인 조작 때 재시도하고 이유를 표시한다 */ });
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === cloudAuth.TOKEN_KEY || event.key === null) void cloudAuth.restore();
+    };
+    window.addEventListener('storage', onStorage);
+    return () => { unsubscribe(); window.removeEventListener('storage', onStorage); };
   }, []);
 
   const signIn = useCallback(async (email: string, password: string): Promise<AuthResult> => {
-    const sb = supabase();
-    if (!sb) return { ok: false, error: '온라인 상태에서 다시 시도해주세요' };
-    const { error } = await sb.auth.signInWithPassword({ email, password });
-    // 원문 대신 우리 문구로 — 어떤 계정이 있는지 알려주지 않는다
-    return error ? { ok: false, error: '이메일 또는 비밀번호가 맞지 않습니다' } : { ok: true };
+    try {
+      await initializeCloud();
+      const { error } = await cloudAuth.signIn({ email, password });
+      return error ? { ok: false, error: error.message } : { ok: true };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : '로그인하지 못했어요' };
+    }
   }, []);
 
   const signOut = useCallback(async (): Promise<void> => {
-    await supabase()?.auth.signOut();
+    await cloudAuth.signOut();
   }, []);
 
   return { user, available, signIn, signOut };

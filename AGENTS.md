@@ -20,7 +20,7 @@
 ## 배포
 
 - 원격 `main` 푸시 시 **Vercel 자동 배포** (프로젝트 `tripcanvas`, 프로덕션 `tripcanvas-ai.vercel.app`).
-- ⚠️ **API는 이제 NAS다**(2026-09-04 전환). 웹이 부르는 주소는 `https://bokbok9.tail8b977f.ts.net`(Tailscale Funnel이 HTTPS를 붙인다)이고 데이터는 NAS PostgreSQL이다. Vercel에는 정적 웹만 남았고, `tripcanvas-api` 프로젝트는 **롤백 대상**으로 남겨 두었다(여전히 Supabase를 본다). 전환 스위치는 `api.js`·`auth.js`의 `DEFAULT_BASE` 두 줄이다 — `docs/nas-deployment.md`.
+- ⚠️ **API는 이제 NAS다**(2026-09-04 전환). 웹이 부르는 주소는 `https://bokbok9.tail8b977f.ts.net`(Tailscale Funnel이 HTTPS를 붙인다)이고 데이터는 NAS PostgreSQL이다. Vercel에는 정적 웹과 일부 프록시·외부 감시 함수가 남았고, `tripcanvas-api` 프로젝트는 **롤백 대상**으로 남겨 두었다(여전히 Supabase를 본다). 전환 스위치는 `api.js`·`auth.js`의 `DEFAULT_BASE` 두 줄이다 — `docs/nas-deployment.md`.
 - ⚠️ 그래서 **가용성이 집 NAS에 걸린다.** NAS가 꺼지거나 Tailscale이 끊기면 저장이 안 된다(로컬 편집은 보존된다). iOS(`TCApiBaseURL`)도 같은 주소로 옮겼다.
 - 커밋 author 이메일은 반드시 **GitHub 계정과 매칭되는 유효한 주소**여야 한다 (`blackshoes85@gmail.com`).
   `.local` 등 로컬 호스트 기반 자동 이메일이면 Vercel이 배포를 거부한다.
@@ -39,18 +39,8 @@ npm run verify:all
   ⚠️ **SKIP은 통과가 아니다** — 무엇을 못 돌렸는지 PR에 밝힌다.
 
 - [ ] **필수 체크가 빨간 상태로 merge하지 않는다.** 빨간 이유가 코드가 아니라 러너·과금이면 그 사실과 대신 무엇으로 검증했는지를 PR에 남긴다 — `docs/ci.md`
-- [ ] **`next/src/app/api/**`·`next/src/server/**`·`next/src/features/**`을 바꿨으면 NAS에 따로 배포한다.** `main` 머지는 **Vercel 정적 웹만** 내보낸다 — API는 NAS 이미지라 다시 빌드하지 않으면 옛 코드가 그대로 돈다:
-
-```bash
-git archive --format=tar HEAD | gzip > /tmp/tc-main.tgz
-scp -O /tmp/tc-main.tgz nas:~/ && ssh nas 'cd ~/tripcanvas && tar -xzf ~/tc-main.tgz && rm ~/tc-main.tgz'
-ssh nas 'cd ~/tripcanvas && sudo /usr/local/bin/docker compose -f deploy/docker-compose.yml build api && sudo /usr/local/bin/docker compose -f deploy/docker-compose.yml up -d api'
-curl -s -o /dev/null -w "%{http_code}\n" https://bokbok9.tail8b977f.ts.net/api/v1/trips   # 401이면 산다
-```
-
-  ⚠️ **새 라우트는 배포 전까지 404다.** 앱·웹이 그걸 "값이 없음"으로 조용히 넘기게 설계돼 있으면
-  아무 오류 없이 화면에서 그 기능만 사라진다 — 2026-09-06에 일자 스트립 날짜가 그래서 안 보였다.
-  ⚠️ `deploy/.env`는 추적되지 않으므로 이 아카이브에 없다. NAS 것이 그대로 남는다.
+- [ ] **공통 루트 엔진·`next/`·Docker 구성을 바꿨으면 NAS 배포 대상을 확인한다.** `npm run deployment:plan -- <배포된-커밋> <대상-커밋>`으로 확인하고 [NAS 릴리스 절차](docs/nas-release.md)를 따른다. `migrate`·`api`·`realtime`을 같은 커밋으로 빌드하고 마이그레이션 성공 후 `backup`을 포함한 전체 구성을 올린다. API만 재빌드하지 않는다.
+  새 API가 필요한 웹은 API 호환 검증과 선배포 후 merge한다. 401 응답은 인증 경계 생존 확인일 뿐, 로그인·읽기·저장·실시간 성공을 뜻하지 않는다. 운영 `.env`는 아카이브에 없고 Docker 빌드에서도 제외한다.
 
 - [ ] 푸시 후 폰에서 실제 동작 확인 — ☰ 메뉴 하단의 **버전 표시**로 새 버전이 적용됐는지 먼저 볼 것 (캐시된 옛 버전이면 그 글자를 탭해 갱신)
 
@@ -75,7 +65,7 @@ With J          ← 제품 (앱 이름 · 웹 타이틀 · PWA · 메일 제목 
 - `price.js` — 예약 가격 추적 순수 계산: 실질 절약액·오퍼 조건 매칭(EXACT/EQUIVALENT/SIMILAR)·확정/잠재 절약 판단·호텔 identity 점수 · 렌터카 조건 매칭(carMatchQuality — 차급·변속기·보험·주행거리가 다르면 확정 절약 금지). 예약(`trip.bookings`)은 여행 데이터로 동기화·공유되고, 가격 관측 기록은 기기 로컬 + 로그인 시 **`/api/v1/trips/:id/prices`**(여행과 같은 저장소·같은 권한. 2026-09-04 전환 전에는 Supabase `hotel_price_snapshots` 직접 경로였다). 시세는 `api/hotel-offers.js` 프록시(Metasearch 키 서버 전용)로만 조회 — 키 없으면 미연결 상태를 그대로 표시(가짜 가격 금지). **유닛 테스트 + `tsc` 대상**
 - `adaptive.js` — **Adaptive Travel OS 도메인**(순수): 현재 여행 상태(`buildTripState`) · 고정/유동 분류(`commitmentOf`) · 빈 시간 탐지(`findFreeWindows`) · 다음 행동 후보와 순위(`buildCandidates`/`rankNextActions`) · 일정 재구성(`generateReplan`) · 제안(`buildSuggestions`) · 자연어 해석(`parseIntent`) · 출발 안내(`departureAdvice`) · 빈칸 채우기와 하루 flow(`fillGaps`/`planDayFlow`). DOM·네트워크·현재시각을 모르고 전부 인자로 받는다. **유닛 테스트 + `tsc` 대상**
 - `intake.js` — **유입 계층**(순수): 공유 분류(`classifyShare`) · 날짜/통화 정규화 · 예약 후보 파싱(`parseBookingCandidate`) · 중복(`findDuplicateBooking`) · 여행 매칭(`matchTripForBooking`) · 기록 연결(`associateMemory`). **저장은 하지 않는다** — 확인한 것만 저장된다. **유닛 테스트 + `tsc` 대상**
-- `collab.js` — **함께하기(협업)** 순수 로직: 역할 판정(`canEdit/canManage/canLeave/canDelete`) · 초대 링크 만들기/읽기(`#join=`) · 초대 판정 문구 · 권한 오류 판별. 접근 제어의 경계는 DB(RLS·RPC)고 여기는 화면 판정만. **유닛 테스트 + `tsc` 대상**
+- `collab.js` — **함께하기(협업)** 순수 로직: 역할 판정(`canEdit/canManage/canLeave/canDelete`) · 초대 링크 만들기/읽기(`#join=`) · 초대 판정 문구 · 권한 오류 판별. 권한 규칙을 화면과 NAS 서버가 공유한다. 강제 경계는 NAS 서비스 계층이며, 레거시 Supabase 경로는 DB(RLS·RPC)다. **유닛 테스트 + `tsc` 대상**
 - `style.css` — 스타일
 - `sync.js` — 클라우드 동기화(리비전 CAS·충돌·tombstone). **`tsc` 대상**
 - `routing.js` — 경로 조회 transport 격리 (app.js는 `fetchLeg` 호환 shim만 씀). **`tsc` 대상**
@@ -92,8 +82,8 @@ With J          ← 제품 (앱 이름 · 웹 타이틀 · PWA · 메일 제목 
 - `proto/` — 실험용 프로토타입. 프로덕션 앱과 무관
 - `.github/workflows/ci.yml` — **Quality**(구문 → 버전 동기 → lint → 시크릿 스캔 → `tsc` → 유닛 → 통합 → `npm audit`) + **E2E**(Playwright) 두 잡
 
-라이브러리(CDN): 지도 듀얼 엔진 — 해외 Google Maps JS SDK · 국내 카카오맵 JS SDK · LZString(공유 링크 압축) · SortableJS(드래그) · Supabase(로그인/클라우드 동기화)
-검색: 국내 카카오 로컬 · 해외 Google Places (`routedSearch`가 라우팅) · 저장: localStorage + Supabase
+라이브러리(CDN): 지도 듀얼 엔진 — 해외 Google Maps JS SDK · 국내 카카오맵 JS SDK · LZString(공유 링크 압축) · SortableJS(드래그) · Supabase(레거시 인증·실시간 호환)
+검색: 국내 카카오 로컬 · 해외 Google Places (`routedSearch`가 라우팅) · 저장: 정적 웹 localStorage + API(운영 NAS PostgreSQL). Next 웹의 직접 Supabase 경로는 이관 중
 지도에서 장소 담기: 해외는 `clickableIcons`로 POI 탭 시 `placeId`를 그대로 받고, **국내는 카카오 SDK가 POI 탭 신원을 주지 않아** 카테고리 검색으로 POI 칩을 직접 깔아 그걸 누르게 한다(`refreshKakaoPOI`). 좌표 역추적(`reverseSpot`)은 둘 다 실패했을 때의 최후 수단이다 — 추측이라 엉뚱한 상호가 들어갈 수 있다.
 API 키: app.js 상단 `GMAPS_KEY`(리퍼러 제한)·`KAKAO_KEY`(JS, 플랫폼 도메인 제한)·`KAKAO_REST_KEY`(카카오내비) — `localhost:8000`, `tripcanvas-ai.vercel.app` 등록 필요
 localStorage: `tripcanvas_v1`(여행) · `tripcanvas_legs_v4`(구간 캐시, 수단별 키) · `tripcanvas_synced` · `tripcanvas_prices_v1`(예약 가격 관측 기록) · `tripcanvas_suggest_v1`(제안 거절 이력·컨디션 — 여행 데이터가 아니라 기기 로컬) · `tripcanvas_cfg` · `tripcanvas_fx` · `tripcanvas_join_v1`(초대 수락 대기 토큰)
@@ -156,10 +146,10 @@ localStorage: `tripcanvas_v1`(여행) · `tripcanvas_legs_v4`(구간 캐시, 수
 ```
 
 - `/api/v1` 라우트는 `@legacy/adaptive.js`를 **그대로 import** 한다(`next/tsconfig.json`의 `@legacy/*` → 저장소 루트). 새 규칙이 필요하면 `adaptive.js`에 넣는다 — `todayView.ts`에 넣으면 웹과 어긋난다.
-- 역할 분리: **단순 조회(Trip·Day·Spot)는 Supabase 직접**, **도메인 판단(Today·Suggestion·Replan)은 서버 API**.
-- 쓰기는 전부 `sync_trip` RPC(revision CAS)를 지난다. 같은 요청을 두 번 받아도 결과가 같고(`alreadyApplied`), 다른 기기가 먼저 바꿨으면 409로 알린다 — 조용히 덮어쓰지 않는다.
-- 서버에는 구간 캐시가 없어 이동시간이 **직선거리 추정**이다. 응답의 `travelTimeSource`로 그 사실을 실어 보내고 클라이언트가 "예상"이라고 표기한다.
-- 제안 거절은 `suggestion_feedback` 테이블(RLS)에 날짜와 함께 남는다 — 기기가 바뀌어도 같은 제안이 그날 다시 올라오지 않는다. ⚠️ 레거시 웹은 아직 localStorage를 쓴다(양쪽이 아직 공유되지 않음).
+- 정적 웹·iOS의 여행 조회·저장과 도메인 응답은 API를 지난다. Next 웹은 아직 Supabase 직접 인증·저장을 사용한다 — `docs/architecture.md`.
+- NAS 여행 쓰기는 `TripService` → `PgTripRepository`의 트랜잭션·revision CAS를 지난다. 오래된 revision은 409다. `sync_trip` RPC와 `alreadyApplied` 설명은 레거시 경로에 해당하며, NAS 쓰기의 일반 멱등 보장으로 해석하지 않는다.
+- 서버는 PostgreSQL 구간 캐시와 외부 경로 조회를 사용한다. 미조회·실패·키 미설정 구간은 직선 추정으로 폴백한다. 응답의 `travelTimeSource`를 따라 표기한다.
+- API 제안 거절은 Gateway가 선택한 저장소의 `suggestion_feedback`에 날짜와 함께 남는다(NAS 권한은 서비스, 레거시는 RLS) — 기기가 바뀌어도 같은 제안이 그날 다시 올라오지 않는다. ⚠️ 레거시 웹은 아직 localStorage를 쓴다(양쪽이 아직 공유되지 않음).
 - `next`의 `swiftParity.test.ts`가 **실제 Today 응답 ↔ `ios/.../Contract.swift`** 를 맞춰 보고 `ios/TripCanvasTests/Fixtures/today.json`을 다시 만든다. 계약을 바꾸면 여기가 먼저 깨진다.
 
 **Adaptive Travel OS — 상태 → 제안 → 반영은 한 패턴이다.** 일정 추천·일정 재구성·가격 절약이 각자 다른 흐름을 만들면 안 된다.
@@ -175,14 +165,16 @@ localStorage: `tripcanvas_v1`(여행) · `tripcanvas_legs_v4`(구간 캐시, 수
 - ⚠️ 활동의 시작은 도착 예정(`eta`)이 아니라 `depart`다. 19시 예약을 13시에 "진행 중"으로 보면 그 대기시간이 빈 시간에서 통째로 사라진다.
 - UI는 여행 모드(`#travel`) 안의 `#travelSuggest`. 카드 버튼은 inline onclick 없이 `createElement`+`onclick`으로 만든다(장소명 이스케이프 사고 방지).
 
-**함께하기(협업)는 DB가 결정한다 — 화면은 감출 뿐이다.** (`docs/collaboration.md`)
+**함께하기(협업)는 서버가 강제한다 — 화면은 감출 뿐이다.** (`docs/collaboration.md` · `docs/backend-architecture.md`)
+
+NAS는 `CollabService`·`TripAuthorizationService`와 Repository가 강제하고 새 DB에는 RLS가 없다. 아래 RLS·RPC 세부는 레거시 Supabase 경로의 규칙이다. 새 서버 변경에는 NAS API 권한 테스트도 필요하다.
 
 - 여행은 여전히 `trips` 한 행이고 `trips.user_id`가 소유자다. `trip_members`가 EDITOR/VIEWER를 더하고, `trip_invites`는 **토큰 해시만** 저장한다(원문은 만든 순간 한 번만 돌려준다).
 - RLS: 읽기는 소유자 OR 활성 멤버 · 쓰기는 소유자 OR EDITOR · 삭제·초대·역할 변경은 소유자만. 정책은 전부 `tc_trip_role()`(security definer) 하나만 부른다 — 정책끼리 서로 참조하면 재귀다. ⚠️ `tc_trips_lock_owner` 트리거가 `user_id` 변경을 막는다 — 정책만으로는 편집자의 소유권 탈취를 못 막는다.
 - `sync_trip`/`tombstone_trip`은 멤버를 인식한다. VIEWER 쓰기·멤버의 삭제·나간 사람의 저장은 **42501**(hint에 이유). 클라이언트는 42501을 `forbidden`으로 멈추고 **재시도 루프에 넣지 않는다**(`isForbiddenError`).
 - 웹: `readOnly()`/`guardEdit()`가 `#v=` 읽기전용과 VIEWER를 한 곳에서 판단한다 — **편집 진입점을 새로 만들면 반드시 이걸 거친다.** 로그아웃·로컬 전용 여행은 항상 소유자(`roleOf`)라 혼자 쓰는 여행은 예전 그대로다.
 - 초대 링크는 `#join=<token>` 하나다. 미리보기(`invite_preview`, anon 가능)는 이름·기간·역할까지만 주고, 본문은 `accept_trip_invite`로 멤버가 된 뒤 RLS 아래에서 내려온다. 공유받은 여행의 "삭제"는 `leave_trip`이다.
-- 실시간은 아직 없다 — `pullTrip`이 탭 복귀·패널 열기에 최신본을 당기고, 로컬 편집이 있으면 기존 충돌 카드로 넘긴다(조용히 덮어쓰지 않는다).
+- 실시간은 PostgreSQL NOTIFY → WebSocket 사이드카로 구현돼 있다. `/me`가 `COLLAB` 설정과 공개 주소로 제공자를 선택한다. 탭 복귀·패널 열기의 `pullTrip`도 유지하며 로컬 편집이 있으면 충돌 카드로 넘긴다.
 
 **유입 데이터는 반드시 정규화한다.** 가져오기·공유 링크(`#v=`/`#t=`)·클라우드·로컬 로드 **5개 지점 모두** `normalizeTrip()`(lib)을 통과시킨다. 좌표·시각·통화·수단·`startPolicy`를 검증하고 알 수 없는 값은 기본값으로 폴백해 렌더 크래시를 막는다(`schemaVersion` 스탬프).
 
