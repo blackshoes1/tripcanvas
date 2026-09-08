@@ -109,7 +109,7 @@ struct TodayView: View {
                 ProgressView().padding(Space.xl)
             }
         }
-        .background(Color(.systemGroupedBackground))
+        // ⚠️ 여기에 배경을 두지 않는다 — 먼저 붙은 배경이 위에 깔려 `paperGround()`의 종이를 덮는다.
         // 제목(여행 이름)은 `TripHomeView`가 정한다 — 두 형제 화면이 같은 제목을 써야 한다.
         .toolbar {
             // 일정으로 가는 길은 여기 없다 — `TripHomeView`의 세그먼트가 형제로 나란히 놓는다.
@@ -363,7 +363,8 @@ struct FinishedRow: View {
         }
         .padding(.horizontal, Space.l)
         .padding(.vertical, Space.m)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: Radius.card))
+        .background(Ink.raised, in: RoundedRectangle(cornerRadius: Radius.card))
+        .overlay(RoundedRectangle(cornerRadius: Radius.card).strokeBorder(Ink.hairline))
         .accessibilityElement(children: .combine)
     }
 }
