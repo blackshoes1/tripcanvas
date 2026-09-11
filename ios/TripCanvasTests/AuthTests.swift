@@ -64,6 +64,15 @@ final class AuthErrorMappingTests: XCTestCase {
         XCTAssertEqual(AuthError.from(status: 401, body: nil).code, .invalidCredentials)
     }
 
+    func testOriginRejectionIsNotAWrongPassword() {
+        for code in ["MISSING_OR_NULL_ORIGIN", "INVALID_ORIGIN"] {
+            let error = AuthError.from(status: 403, body: ["code": code])
+            XCTAssertEqual(error.code, .unknown)
+            XCTAssertFalse(error.message.contains("비밀번호"))
+            XCTAssertFalse(error.message.contains(code))
+        }
+    }
+
     func testAlreadyRegistered() {
         XCTAssertEqual(AuthError.from(status: 400, body: ["message": "User already exists"]).code, .emailTaken)
     }
