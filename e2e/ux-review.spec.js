@@ -28,6 +28,7 @@ test('빈 여행은 이전 지도를 덮고 검색으로 확인한 첫 장소를
   await page.locator('#spotSearch').fill('도쿄역');
   await page.locator('#spotSearchBtn').click();
   await page.locator('#searchRes').getByText('도쿄역').click();
+  await page.getByRole('button',{name:'이 장소 선택',exact:true}).click();
   await page.locator('#spotSave').click();
   await expect(page.locator('#mapEmpty')).toBeHidden();
   await expect(page.locator('#map')).toHaveJSProperty('inert',false);

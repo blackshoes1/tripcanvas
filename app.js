@@ -113,6 +113,7 @@ function undo(){
   toast('실행취소됨','#8892b0');
 }
 document.addEventListener('keydown',e=>{
+  if(document.getElementById('placeDetails')?.open) return;
   if((e.metaKey||e.ctrlKey)&&!e.shiftKey&&e.key.toLowerCase()==='z'){
     if(e.target.matches('input,textarea,select'))return;   // 입력 중엔 브라우저 기본 동작
     e.preventDefault(); undo();
@@ -127,7 +128,7 @@ let pendingExternalStore=null;
 // 입력·검색·지도 지정 중이면 화면을 뺏지 않는다 (SW 자동 새로고침과 같은 판정)
 function isBusyEditing(){
   return pickMode || searching || _importing
-    || !!document.querySelector('.modalBg.show') || document.getElementById('travel').classList.contains('show');
+    || !!document.querySelector('.modalBg.show') || document.getElementById('placeDetails')?.open || document.getElementById('travel').classList.contains('show');
 }
 // syncMeta도 탭마다 메모리 사본이다. 안 갱신하면 이 탭이 옛 revision으로 업로드해 헛충돌을 만든다.
 function refreshSyncMetaFromStorage(){
@@ -249,14 +250,173 @@ function addSpotAt(lat,lng,placeId,known){
 const TAP_ADD_DELAY = 260;
 let _tapT = null;
 function cancelMapTap(){ if(_tapT){ clearTimeout(_tapT); _tapT=null; } }
+// 상세 응답은 패널 수명 동안만 보유한다. 여행 문서/로컬 저장/지도 캐시에 넣지 않는다.
+let placeDetailsSeq=0, placeDetailsFocus=null;
+function closePlaceDetails(){
+  ++placeDetailsSeq;
+  const dialog=document.getElementById('placeDetails');
+  if(dialog.open) dialog.close();
+  document.getElementById('placeDetailsContent').replaceChildren();
+  document.getElementById('placeDetailsActions').replaceChildren();
+  if(placeDetailsFocus?.isConnected) placeDetailsFocus.focus();
+}
+function placeText(parent,tag,text,className){
+  const el=document.createElement(tag); el.textContent=text;
+  if(className) el.className=className;
+  parent.appendChild(el); return el;
+}
+function placeLink(parent,label,url){
+  const href=safeUrl(url); if(!href) return;
+  const a=placeText(parent,'a',label); a.href=href; a.target='_blank'; a.rel='noopener noreferrer';
+  return a;
+}
+function placeButton(parent,label,action){
+  const b=placeText(parent,'button',label,'btn'); b.type='button'; b.onclick=action; return b;
+}
+function placeSourceURL(s){
+  if(s.kakaoId) return 'https://place.map.kakao.com/'+encodeURIComponent(s.kakaoId);
+  if(s.placeId) return 'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(s.name||'장소')+'&query_place_id='+encodeURIComponent(s.placeId);
+  return 'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent([s.name,s.city].filter(Boolean).join(' '));
+}
+async function placeRequest(request){
+  let timer;
+  try{ return await Promise.race([request,new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('network')),15000);})]); }
+  finally{clearTimeout(timer);}
+}
+async function fetchPlaceDetails(s){
+  if(s.kakaoId){
+    if(s.addr!==undefined && s.phone!==undefined) return {kind:'kakao',...s};
+    const found=await kakaoSearch(s.name,hasLoc(s)?{lat:+s.lat,lng:+s.lng}:null,15);
+    if(found.err) throw new Error(found.err);
+    const exact=found.list.find(p=>String(p.kakaoId)===String(s.kakaoId));
+    return {kind:'kakao',...s,...(exact||{}),unmatched:!exact};
+  }
+  // Google 콘텐츠를 국내 카카오 지도 위에 연결하지 않는다.
+  if(!s.placeId || engine==='kakao') return {kind:'saved',...s};
+  if(!window.google?.maps?.importLibrary) throw new Error('network');
+  const {Place}=await google.maps.importLibrary('places');
+  const place=new Place({id:s.placeId,requestedLanguage:'ko'});
+  await place.fetchFields({fields:['displayName','formattedAddress','primaryTypeDisplayName','nationalPhoneNumber','websiteURI','googleMapsURI','businessStatus','regularOpeningHours','currentOpeningHours','rating','userRatingCount','photos','attributions']});
+  return {kind:'google',...s,place,name:place.displayName||s.name,addr:place.formattedAddress,phone:place.nationalPhoneNumber,category:place.primaryTypeDisplayName};
+}
+function renderPlaceDetails(data,box,seq){
+  const p=data.place;
+  document.getElementById('placeDetailsTitle').textContent=data.name||'선택한 장소';
+  document.getElementById('placeDetailsProvider').textContent=p?'Google Maps':data.kind==='kakao'?'Kakao':'저장한 장소';
+  if(p) placeText(box,'p',p.rating!=null?`★ ${p.rating} · 평가 ${Number(p.userRatingCount??0).toLocaleString('ko-KR')}개`:'평점 정보 없음');
+  if(data.category) placeText(box,'p',data.category);
+  placeText(box,'p',data.addr||'주소 정보 없음');
+  placeText(box,'p',data.phone?'전화 · '+data.phone:'전화번호 정보 없음');
+  placeLink(box,'원문 지도에서 보기',placeSourceURL(data));
+  if(data.kind==='kakao'){
+    placeText(box,'p',data.unmatched?'같은 장소의 최신 정보를 찾지 못했어요. 원문 지도에서 확인해 주세요.':'사진·리뷰·평점·영업시간은 카카오 공개 API에서 제공하지 않아요. 원문 지도에서 확인해 주세요.');
+    placeText(box,'p','장소 정보 제공 · Kakao','placeSource'); return;
+  }
+  if(!p){ placeText(box,'p','연결된 매장 상세정보가 없어요. 이름이 비슷한 주변 매장으로 자동 연결하지 않습니다.'); return; }
+  const website=placeText(box,'p',''); placeLink(website,'공식 홈페이지',p.websiteURI);
+  if(p.businessStatus==='CLOSED_PERMANENTLY') placeText(box,'p','폐업으로 표시된 장소예요. 방문 전에 확인해 주세요.');
+  else if(p.businessStatus==='CLOSED_TEMPORARILY') placeText(box,'p','임시 휴업으로 표시된 장소예요.');
+  const hours=p.currentOpeningHours?.weekdayDescriptions||p.regularOpeningHours?.weekdayDescriptions;
+  placeText(box,'h3','영업시간');
+  if(hours?.length){ const ul=document.createElement('ul'); hours.forEach(h=>placeText(ul,'li',h)); box.appendChild(ul); }
+  else placeText(box,'p','영업시간 정보 없음');
+  placeText(box,'p','영업시간은 변경될 수 있어요. 예약과 방문 가능 여부는 매장에 확인해 주세요.','hint');
+  // 사진 한 장만 요청한다. 원문 링크와 작성자 표시는 사진과 함께 유지한다.
+  const photo=p.photos?.find(item=>safeUrl(item.googleMapsURI));
+  if(photo){
+    const figure=document.createElement('figure'), img=document.createElement('img');
+    let uri='';
+    try{uri=safeUrl(photo.getURI({maxWidth:720,maxHeight:480}));}catch(e){/* 사진 실패가 기본 정보를 가리지 않는다. */}
+    if(uri){
+      img.src=uri; img.alt=(data.name||'매장')+' 사진'; img.loading='lazy';
+      img.onerror=()=>{img.remove();}; figure.appendChild(img);
+      const cap=placeText(figure,'figcaption','사진 · ');
+      (photo.authorAttributions||[]).forEach(a=>{placeLink(cap,a.displayName||'작성자',a.uri)||placeText(cap,'span',a.displayName||'작성자');});
+      placeLink(cap,' · 원본 사진',photo.googleMapsURI); box.prepend(figure);
+    }
+  }else placeText(box,'p','표시할 사진이 없어요.');
+  const reviews=document.createElement('section'); box.appendChild(reviews);
+  const load=placeButton(reviews,'리뷰 보기',async()=>{
+    load.disabled=true; load.textContent='리뷰를 불러오는 중…';
+    try{
+      await placeRequest(p.fetchFields({fields:['reviews','attributions']}));
+      if(seq!==placeDetailsSeq||!window.document) return;
+      reviews.replaceChildren();
+      placeText(reviews,'h3','방문자 리뷰');
+      placeText(reviews,'p','Google이 관련성 순으로 제공한 일부 리뷰입니다.');
+      const rows=p.reviews||[];
+      if(!rows.length) placeText(reviews,'p','제공되는 리뷰가 없어요.');
+      rows.forEach(r=>{
+        const article=document.createElement('article'); article.className='placeReview';
+        const author=r.authorAttribution||{};
+        const avatar=safeUrl(author.photoURI);
+        if(avatar){const img=document.createElement('img');img.src=avatar;img.alt='';img.onerror=()=>img.remove();article.appendChild(img);}
+        placeLink(article,author.displayName||'작성자',author.uri)||placeText(article,'span',author.displayName||'작성자');
+        placeText(article,'p',[r.rating!=null?'★ '+r.rating:'',r.relativePublishTimeDescription].filter(Boolean).join(' · '));
+        placeText(article,'p',r.text||'작성된 내용이 없어요.');
+        placeLink(article,'원본 리뷰',r.googleMapsURI||p.googleMapsURI||placeSourceURL(data));
+        reviews.appendChild(article);
+      });
+    }catch(e){if(seq!==placeDetailsSeq||!window.document)return;load.disabled=false;load.textContent='리뷰를 불러오지 못했어요 · 다시 시도';}
+  });
+  const source=placeText(box,'p','Google Maps','placeSource');
+  (p.attributions||[]).forEach(a=>{ placeText(source,'span',' · ');placeLink(source,a.provider||'정보 제공자',a.providerURI)||placeText(source,'span',a.provider||'정보 제공자'); });
+}
+function openPlaceDetails(s,options={}){
+  const dialog=document.getElementById('placeDetails');
+  if(!dialog) return;
+  const seq=++placeDetailsSeq, tripId=trip().id;
+  if(!dialog.open) placeDetailsFocus=document.activeElement;
+  const box=document.getElementById('placeDetailsContent'), actions=document.getElementById('placeDetailsActions');
+  box.replaceChildren(); actions.replaceChildren();
+  document.getElementById('placeDetailsTitle').textContent=s.name||'선택한 장소';
+  document.getElementById('placeDetailsProvider').textContent='';
+  dialog.oncancel=e=>{e.preventDefault();closePlaceDetails();};
+  document.getElementById('placeDetailsClose').onclick=closePlaceDetails;
+  if(!dialog.open) dialog.showModal();
+  const load=async()=>{
+    box.replaceChildren(); placeText(box,'p','장소 정보를 불러오는 중…');
+    try{
+      const data=await placeRequest(fetchPlaceDetails(s));
+      if(seq!==placeDetailsSeq||!window.document) return;
+      box.replaceChildren(); renderPlaceDetails(data,box,seq);
+      // 조회한 상세 응답 전체가 아닌 장소의 기존 식별 정보만 편집기로 넘긴다.
+      if(!s.name && data.name) s={...s,name:data.name};
+    }catch(e){
+      if(seq!==placeDetailsSeq||!window.document) return;
+      box.replaceChildren();
+      placeText(box,'p','장소 정보를 불러오지 못했어요. 연결 또는 장소 API 설정을 확인한 뒤 다시 시도해 주세요.');
+      placeLink(box,'원문 지도에서 보기',placeSourceURL(s));placeButton(box,'다시 시도',load);
+    }
+  };
+  const edit=(fn)=>()=>{
+    if(trip().id!==tripId||!guardEdit())return;
+    if(options.existing && trip().days[options.existing.di]?.spots[options.existing.si]!==s){
+      closePlaceDetails();toast('일정이 바뀌었어요. 장소를 다시 선택해 주세요.');return;
+    }
+    closePlaceDetails();fn();
+  };
+  if(!readOnly()){
+    placeButton(actions,options.select?'이 장소 선택':options.existing?'일정 편집':'일정에 추가',edit(()=>{
+      if(options.select) options.select();
+      else if(options.existing) openSpotModal(options.existing.di,options.existing.si);
+      else addSpotAt(s.lat,s.lng,s.placeId,s.name?s:undefined);
+    })).classList.add('primary');
+    if(!options.select) placeButton(actions,'가고 싶은 곳에 담기',edit(()=>{
+      openCandidates({title:s.name||'',note:placeSourceURL(s)});
+    }));
+  }
+  load();
+}
+window.openSavedPlace=(di,si)=>{const s=trip().days[di]?.spots[si];if(s)openPlaceDetails(s,{existing:{di,si}});};
 function onMapTap(lat,lng,placeId){
   if(pickMode){ onMapPick(lat,lng,placeId); return; }   // 좌표 지정 중이면 그 흐름이 우선(지연 없음)
-  if(readOnly()) return;                        // 읽기전용·보기 권한에서는 추가하지 않는다
+  if(readOnly()&&!placeId) return;
   // 메뉴가 열려 있으면 이 탭은 '닫기'다 — 닫으려다 장소가 추가되면 안 된다.
   const hm=document.getElementById('hdrMenu');
   if(hm && hm.classList.contains('open')) return;
   cancelMapTap();
-  _tapT=setTimeout(()=>{ _tapT=null; addSpotAt(lat,lng,placeId); }, TAP_ADD_DELAY);
+  _tapT=setTimeout(()=>{ _tapT=null; if(placeId) openPlaceDetails({lat,lng,placeId}); else addSpotAt(lat,lng,placeId); }, TAP_ADD_DELAY);
 }
 // 좌표 → {name, city} 한 번의 조회. 국내=카카오 coord2Address(한국어), 해외=구글 Places 인근검색(영어명).
 // ── 국내 POI 레이어 ──────────────────────────────────────────────────────────
@@ -275,7 +435,7 @@ function clearKakaoPOI(){ poiOverlays.forEach(o=>{ try{ o.remove(); }catch(e){} 
 function scheduleKakaoPOI(){ clearTimeout(poiT); poiT=setTimeout(refreshKakaoPOI, 350); }   // 이동 중 연타 방지
 function refreshKakaoPOI(){
   const S=window.kakao&&kakao.maps&&kakao.maps.services;
-  if(engine!=='kakao'||!kmap||readOnly()||!S||!S.Places){ clearKakaoPOI(); return; }
+  if(engine!=='kakao'||!kmap||!S||!S.Places){ clearKakaoPOI(); return; }
   if(kmap.getLevel()>POI_MAX_LEVEL){ clearKakaoPOI(); return; }   // 넓게 보는 중엔 의미 없음
   const seq=++poiSeq, ps=new S.Places(), found=new Map();
   // 지도가 아직 크기를 못 잡았으면(전환 직후·숨김 상태) getBounds()가 한 점으로 접혀 조회가 0건이 된다.
@@ -307,7 +467,7 @@ function drawKakaoPOI(list){
     el.addEventListener('click',ev=>{
       ev.preventDefault(); ev.stopPropagation();
       cancelMapTap();                                       // 지도 탭의 지연 추가와 겹치지 않게
-      addSpotAt(lat,lng,'',{ name:p.place_name, city:cityFromKakaoAddress(p.address_name||p.road_address_name||''), kakaoId:p.id||'' });
+      openPlaceDetails({lat,lng,name:p.place_name,city:cityFromKakaoAddress(p.address_name||p.road_address_name||''),kakaoId:p.id||'',addr:p.road_address_name||p.address_name||'',phone:p.phone||'',category:p.category_name||''});
     });
     poiOverlays.push(Engines.kakao.marker(lat,lng,el));
   });
@@ -900,13 +1060,9 @@ function catPrefix(s){ const c=spotCatOf(s); return c? c.icon+' ' : ''; }
 function addPin(s,di,si,c){
   const cat=spotCatOf(s);
   const label=si+1;
-  const html=`<h3>${cat?cat.icon+' ':''}${esc(s.name)}</h3><span class="badge" style="background:${c}">Day ${di+1} · ${dateOf(di)}</span>`+
-    `<div>${esc(s.desc).replace(/\n/g,'<br>')}</div>`+
-    `<div style="margin-top:6px"><a href="${escAttr(extMapLink(s).href)}" target="_blank" rel="noopener">${extMapLink(s).label}</a> &nbsp; `+
-    `<a href="#" onclick="openSpotModal(${di},${si});return false;">✎ 편집</a></div>`;
   const pin=mkPin(c,label,s.opt,cat); pin.title=cat?`${cat.icon} ${cat.name} · ${s.name}`:s.name;
   const h=ME().marker(+s.lat,+s.lng,pin,()=>open());
-  const open=()=>{ ME().openPopup(html, +s.lat, +s.lng, h); setSheetSnap('half'); selectSpotCard(di,si); };
+  const open=()=>{ selectSpotCard(di,si); openSavedPlace(di,si); };
   markers.push({spot:s, open, h});
 }
 // 그날 목록엔 없지만 동선이 닿는 숙소(연박 등) — 클릭 대상이 아닌 옅은 표식
@@ -1486,6 +1642,7 @@ function renderSidebar(){
           <details class="actionMenu" onclick="event.stopPropagation()"><summary aria-label="${escAttr(s.name)} 작업 메뉴">⋮</summary><div class="actionMenuPanel">
           <button class="iconb mvup" onclick="moveSpot(${di},${si},-1)" title="위로">↑ <span>위로</span></button>
           <button class="iconb mvdown" onclick="moveSpot(${di},${si},1)" title="아래로">↓ <span>아래로</span></button>
+          <button class="iconb" onclick="openSavedPlace(${di},${si})" title="장소 정보">ⓘ <span>장소 정보</span></button>
           <button class="iconb" onclick="openSpotModal(${di},${si})" title="편집">✎ <span>편집</span></button>
           <button class="iconb" onclick="copySpot(${di},${si})" title="복사">⧉ <span>복사</span></button>
           <button class="iconb danger" onclick="deleteSpot(${di},${si})" title="삭제">⌫ <span>삭제</span></button>
@@ -1651,12 +1808,10 @@ function refreshAddSpotLabels(){
 window.focusSpot=(di,si)=>{
   selectSpotCard(di,si);
   const s=trip().days[di].spots[si];
-  if(!hasLoc(s)){ openSpotModal(di,si); return; }   // 위치 미지정이면 지정 모달 열기
+  if(!hasLoc(s)){ openSavedPlace(di,si); return; }
   if(activeDay && activeDay!==di+1){ activeDay=0; render(); }
-  if(!ME().ready()) return;
-  ME().panTo(+s.lat, +s.lng, 13);
-  setSheetSnap('half');
-  setTimeout(()=>{ const m=markers.find(m=>m.spot===s); if(m) m.open(); },400);
+  if(ME().ready()) ME().panTo(+s.lat, +s.lng, 13);
+  openSavedPlace(di,si);
 };
 // 좌표로 지도 포커스 (전날 숙소 이월 항목 탭 등 — 특정 spot 인덱스가 없을 때)
 window.focusLatLng=(lat,lng)=>{
@@ -1937,9 +2092,9 @@ async function doSearch(){
     }
     res.innerHTML='';
     list.forEach(it=>{
-      const d=document.createElement('div');
+      const d=document.createElement('button'); d.type='button'; d.className='placeSearchResult';
       d.textContent=it.name+(it.addr?` — ${it.addr}`:'');
-      d.onclick=()=>{
+      const select=()=>{
         document.getElementById('spotLat').value=it.lat; document.getElementById('spotLng').value=it.lng;
         document.getElementById('spotPlaceId').value=it.placeId||'';   // 구글 결과면 호텔 identity용 placeId 보존
         document.getElementById('spotKakaoId').value=it.kakaoId||'';   // 카카오 결과면 그 장소로 바로 길찾기
@@ -1952,6 +2107,7 @@ async function doSearch(){
 
         res.innerHTML='';
       };
+      d.onclick=()=>openPlaceDetails(it,{select});
       res.appendChild(d);
     });
   }catch(e){   // 예상 못한 예외도 원인 분류해 안내(상세는 콘솔에만)
@@ -3083,7 +3239,7 @@ async function kakaoSearch(q, near, limit){
     try{
       new kakao.maps.services.Places().keywordSearch(q,(data,status)=>{
         const S=kakao.maps.services.Status;
-        if(status===S.OK && data) return res({list:data.map(d=>({name:d.place_name, addr:d.road_address_name||d.address_name||'', city:cityFromKoreanAddr(d.address_name||d.road_address_name||''), lat:+d.y, lng:+d.x, cat:catFromKakao(d.category_group_code)||undefined, kakaoId:d.id||undefined})), err:null});   // kakaoId: 국내 바로 길찾기의 신원
+        if(status===S.OK && data) return res({list:data.map(d=>({name:d.place_name, addr:d.road_address_name||d.address_name||'', city:cityFromKoreanAddr(d.address_name||d.road_address_name||''), lat:+d.y, lng:+d.x, cat:catFromKakao(d.category_group_code)||undefined, kakaoId:d.id||undefined, phone:d.phone||'', category:d.category_name||''})), err:null});   // kakaoId: 국내 바로 길찾기의 신원
         if(status===S.ZERO_RESULT) return res({list:[], err:null});   // 진짜 결과 없음(오류 아님)
         console.warn('kakao 검색 오류 status:', status);
         res({list:[], err:'error'});
@@ -4520,12 +4676,15 @@ let candTripId=null, candRows=[], candBusy=false;
 // 펼친 카드의 코멘트·쓰다 만 글 — 카드는 매번 다시 그려지므로(실시간 갱신 포함) 상태를 따로 든다
 let candOpen=new Set(), candComments={}, candDraft={};
 
-function openCandidates(){
+function openCandidates(seed){
+  if(typeof seed?.title!=='string') seed=null; // onclick은 MouseEvent를 전달한다.
   if(viewMode){ toast('읽기전용 보기입니다 — "내 여행으로 저장" 후 이용하세요','#8892b0'); return; }
   if(!sb||!user){ toast('로그인하면 일행과 후보를 함께 고를 수 있어요','#1d6fd6'); document.getElementById('authBtn').click(); return; }
+  const keepDraft=seed && candTripId===store.activeId && (document.getElementById('candTitleInput').value.trim()||document.getElementById('candNoteInput').value.trim());
   candTripId=store.activeId;
   document.getElementById('candTitle').textContent=`📍 가고 싶은 곳 · ${trip().name||'여행'}`;
-  document.getElementById('candTitleInput').value=''; document.getElementById('candNoteInput').value='';
+  if(!keepDraft){ document.getElementById('candTitleInput').value=seed?.title||''; document.getElementById('candNoteInput').value=seed?.note||''; }
+  else toast('작성 중인 후보가 있어요. 먼저 확인해 주세요.');
   document.getElementById('candModalBg').classList.add('show');
   renderCandidates();
 }
@@ -5299,6 +5458,7 @@ function initAccessibility(){
     }
   })).observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['class']});
   document.addEventListener('keydown',e=>{
+    if(document.getElementById('placeDetails')?.open) return; // native dialog owns Escape/focus while nested over an editor
     const target=e.target;
     if((e.key==='Enter'||e.key===' ')&&target.matches('[role="button"]:not(button)')){ e.preventDefault(); target.click(); return; }
     const onboarding=document.getElementById('onboarding');
