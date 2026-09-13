@@ -21,6 +21,8 @@ function boot(url = 'http://localhost/') {
   const dom = new JSDOM(html, { url, runScripts: 'dangerously', pretendToBeVisual: true });
   const { window } = dom;
   window.fetch = () => Promise.reject(new Error('no-net'));                          // loadFx 등 네트워크 차단(가드가 catch)
+  window.HTMLDialogElement.prototype.showModal=function(){this.open=true;};
+  window.HTMLDialogElement.prototype.close=function(){this.open=false;};
   window.TextEncoder = TextEncoder;                                                 // jsdom에 없음 — lib의 크기 검증(_utf8Bytes)이 실제 브라우저처럼 돌게
   window.LZString = { compressToEncodedURIComponent: (x) => x, decompressFromEncodedURIComponent: (x) => x };
   const inject = (file) => {
@@ -696,6 +698,9 @@ test('통합: 탭한 POI의 placeId가 모달까지 전달된다', { skip: noJsd
 
   w.eval("onMapTap(39.5696,2.6502,'PLACE_ID_123')");
   await new Promise(r=>setTimeout(r,320));
+  assert.equal(w.document.getElementById('placeDetails').open,true,'정보 패널을 먼저 연다');
+  assert.equal(w.eval('trip().days[0].spots.length'),0,'조회는 저장하지 않는다');
+  w.document.querySelector('#placeDetailsActions .primary').click();
   assert.equal(w.document.getElementById('spotPlaceId').value, 'PLACE_ID_123', '검색 결과와 동일하게 placeId 보존');
   assert.equal(JSON.parse(w.eval('JSON.stringify(window.__rev)')).pid, 'PLACE_ID_123', '자동채움까지 관통');
   w.close();
@@ -781,6 +786,9 @@ test('통합: 국내 지도에 POI 마커를 깔고, 그걸 누르면 그 장소
   const el = w.eval('window.__ov[0].content');
   el.dispatchEvent(new w.Event('click',{bubbles:true,cancelable:true}));
   await new Promise(r=>setTimeout(r,20));
+  assert.equal(w.document.getElementById('placeDetails').open,true,'조회 패널을 먼저 연다');
+  w.document.querySelector('#placeDetailsActions .primary').click();
+  await new Promise(r=>setTimeout(r,20));
   assert.equal(w.document.getElementById('spotName').value, '탭한 국밥집', '누른 그 장소');
   assert.equal(w.document.getElementById('spotCity').value, '서울');
   assert.equal(w.eval('window.__reverseCalled'), 0, 'POI를 눌렀으면 좌표 역추적을 하지 않는다');
@@ -799,7 +807,7 @@ test('통합: POI 칩 이름은 textContent로 넣어 스크립트가 실행되�
   w.close();
 });
 
-test('통합: 넓게 보는 중이거나 읽기전용이면 POI를 깔지 않는다', { skip: noJsdom }, async () => {
+test('통합: 넓게 보면 POI를 숨기지만 읽기전용에서는 정보 조회를 허용한다', { skip: noJsdom }, async () => {
   const w = boot();
   withTrip(w, `[{mode:'car',startAt:'09:00',spots:[]}]`);
   stubKakaoPOI(w, { level:9 });                       // 넓은 범위
@@ -810,7 +818,10 @@ test('통합: 넓게 보는 중이거나 읽기전용이면 POI를 깔지 않는
   stubKakaoPOI(w, { level:3 });
   w.eval('viewMode=true; refreshKakaoPOI()');
   await new Promise(r=>setTimeout(r,20));
-  assert.equal(w.eval('poiOverlays.length'), 0, '읽기전용에선 표시 안 함');
+  assert.equal(w.eval('poiOverlays.length'), 2, '읽기전용에서도 조회 가능');
+  w.eval('window.__ov[0].content.click()');
+  assert.equal(w.document.querySelectorAll('#placeDetailsActions button').length,0,'편집은 제공하지 않는다');
+  w.eval('closePlaceDetails()');
   w.close();
 });
 
@@ -876,6 +887,8 @@ test('통합: 국내 장소는 카카오 장소 id를 물고 저장돼 지도 �
   `);
   await new Promise(r=>setTimeout(r,20));
   w.eval(`window.__chips[0].click()`);
+  assert.equal(w.document.getElementById('placeDetails').open,true);
+  w.document.querySelector('#placeDetailsActions .primary').click();
   assert.equal(w.document.getElementById('spotKakaoId').value, '13525626', 'POI 칩이 카카오 장소 id를 모달로 넘긴다');
   w.eval(`document.getElementById('spotName').value='성산일출봉'; document.getElementById('spotCity').value='서귀포'; document.getElementById('spotSave').onclick();`);
   const saved = JSON.parse(w.eval(`JSON.stringify(trip().days[0].spots[0])`));
