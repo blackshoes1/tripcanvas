@@ -93,7 +93,7 @@ enum StatusPalette {
         case .delayed: Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(rgb: 0xEF7A6A) : UIColor(rgb: 0xB4342A) })
         case .inProgress, .arrived: Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(rgb: 0x7FA9BC) : UIColor(rgb: 0x2E5C6E) })
         case .completed: Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(rgb: 0x8FA894) : UIColor(rgb: 0x4A5D4E) })
-        case .noPlan, .upcoming, .unknown: Ink.faint
+        case .noPlan, .upcoming, .unknown: Ink.soft
         }
     }
 
@@ -199,7 +199,7 @@ extension View {
 struct StatusChip: View {
     let text: String
     let symbol: String
-    var tint: Color = Ink.faint
+    var tint: Color = Ink.soft
 
     var body: some View {
         Label(text, systemImage: symbol)

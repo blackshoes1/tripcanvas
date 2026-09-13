@@ -26,8 +26,8 @@ enum BookingEditorTarget: Identifiable {
 struct BookingEditorView: View {
     let target: BookingEditorTarget
     let document: TripDocument
-    let onSave: (TripBooking, BookingLinks) -> Void
-    let onDelete: (String) -> Void
+    let onSave: (TripBooking, BookingLinks) async -> String?
+    let onDelete: (String) async -> String?
 
     @Environment(\.dismiss) private var dismiss
     @State private var draft: TripBooking
@@ -42,13 +42,25 @@ struct BookingEditorView: View {
     @State private var returnCode: String
     @State private var problem: BookingDraftError?
     @State private var showsDeleteConfirm = false
+    @State private var saving = EditorSaveState()
+    @State private var showsDiscardConfirm = false
+    @State private var initialDraft: TripBooking?
+    @State private var initialLinks: BookingLinks?
+    @State private var initialTexts: [String]?
+    private var textInputs: [String] {
+        [priceText, feeText, urlText, roomNameText, pickupPlace, pickupCode, returnPlace, returnCode]
+    }
+    private var isDirty: Bool {
+        guard let initialDraft, let initialLinks, let initialTexts else { return false }
+        return draft != initialDraft || links != initialLinks || textInputs != initialTexts
+    }
 
     private var isNew: Bool { target.booking == nil }
 
     init(target: BookingEditorTarget,
          document: TripDocument,
-         onSave: @escaping (TripBooking, BookingLinks) -> Void,
-         onDelete: @escaping (String) -> Void) {
+         onSave: @escaping (TripBooking, BookingLinks) async -> String?,
+         onDelete: @escaping (String) async -> String?) {
         self.target = target
         self.document = document
         self.onSave = onSave
@@ -69,6 +81,12 @@ struct BookingEditorView: View {
     var body: some View {
         NavigationStack {
             Form {
+                if let error = saving.error {
+                    Section {
+                        Text(error).foregroundStyle(.red)
+                        ShareLink("입력 복사·공유", item: "\(draft.title)\n\(draft.provider)\n\(priceText) \(draft.currency)\n\(draft.start ?? "미정") ~ \(draft.end ?? "미정")\n\(urlText)")
+                    }
+                }
                 Section("예약") {
                     Picker("종류", selection: $draft.type) {
                         ForEach(TripBookingType.allCases, id: \.self) { type in
@@ -136,13 +154,22 @@ struct BookingEditorView: View {
                     }
                 }
             }
+            .disabled(saving.isWorking)
+            .onAppear {
+                if initialDraft == nil { initialDraft = draft; initialLinks = links; initialTexts = textInputs }
+            }
+            .interactiveDismissDisabled(isDirty || saving.isWorking)
+            .confirmationDialog("입력한 내용을 버릴까요?", isPresented: $showsDiscardConfirm, titleVisibility: .visible) {
+                Button("내용 버리기", role: .destructive) { dismiss() }
+                Button("계속 편집", role: .cancel) { }
+            }
             .navigationTitle(isNew ? "예약 추가" : "예약")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) { Button("취소") { dismiss() } }
+                ToolbarItem(placement: .topBarLeading) { Button("취소") { if isDirty { showsDiscardConfirm = true } else { dismiss() } }.disabled(saving.isWorking) }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("완료") { save() }
-                        .disabled(draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    Button(saving.isWorking ? "저장 중…" : "완료") { Task { await save() } }
+                        .disabled(saving.isWorking || draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
             .onChange(of: links.stay) { _, ref in prefill(from: ref) }
@@ -153,8 +180,9 @@ struct BookingEditorView: View {
             }
             .confirmationDialog("이 예약 추적을 뺄까요?", isPresented: $showsDeleteConfirm, titleVisibility: .visible) {
                 Button("빼기", role: .destructive) {
-                    if let booking = target.booking { onDelete(booking.id) }
-                    dismiss()
+                    if let booking = target.booking {
+                        Task { if await saving.perform({ await onDelete(booking.id) }) { dismiss() } }
+                    }
                 }
             } message: {
                 Text("실제 예약이 취소되지는 않아요.")
@@ -304,7 +332,7 @@ struct BookingEditorView: View {
         if priceText.isEmpty, let cost = spot.cost, cost > 0 { priceText = String(cost) }
     }
 
-    private func save() {
+    private func save() async {
         var booking = draft
         booking.title = booking.title.trimmingCharacters(in: .whitespacesAndNewlines)
         booking.provider = booking.provider.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -331,8 +359,7 @@ struct BookingEditorView: View {
         var links = links
         if booking.type != .hotel { links.stay = nil }
         if booking.type != .car { links.carPickup = nil; links.carReturn = nil }
-        onSave(booking, links)
-        dismiss()
+        if await saving.perform({ await onSave(booking, links) }) { dismiss() }
     }
 }
 

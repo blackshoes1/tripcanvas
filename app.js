@@ -28,7 +28,7 @@ let syncMeta=TC_SYNC.loadMeta(localStorage.getItem(SYNC_META_KEY),legacySynced);
 let suppressCloudOnce=false;
 let syncInFlight=0;      // 진행 중인 업로드 수 — 이 사이엔 syncMeta를 통째로 갈아끼우지 않는다
 let syncMetaStale=false; // 업로드 중이라 미뤄둔 syncMeta 갱신이 있는지
-function persistSyncMeta(){ try{ localStorage.setItem(SYNC_META_KEY,JSON.stringify(syncMeta)); }catch(e){} }
+function persistSyncMeta(){ try{ localStorage.setItem(SYNC_META_KEY,JSON.stringify(syncMeta)); }catch(e){} updateSaveState(); }
 function syncEntry(id){ return syncMeta[id]||(syncMeta[id]={revision:null,status:'new',op:'',hash:''}); }
 // ── 함께하기: 역할 캐시 ──
 // my_trip_roles 결과(client_id → {role,count,owner}). 로그인 직후·멤버 패널에서 갱신하고 로그아웃하면 비운다.
@@ -96,6 +96,7 @@ function save(){
   try{ localStorage.setItem(LS_KEY, ser); lsDirty=false; }
   catch(e){ lsDirty=true; toast('저장 공간이 부족합니다. 오래된 여행을 내보내고 삭제해 주세요','#e63946'); }
   cloudSyncActive();
+  updateSaveState();
 }
 function updateUndoBtn(){ const b=document.getElementById('undoBtn'); if(b) b.disabled=!histStack.length; }
 function undo(){
@@ -221,7 +222,7 @@ let activeDay = 0, markers = [], lines = [], ghostStays = [], pickMode = false, 
 
 function onMapPick(lat,lng,placeId){
   if(!pickMode)return;
-  pickMode=false; document.getElementById('pickBanner').style.display='none';
+  pickMode=false; updateMapEmpty(); document.getElementById('pickBanner').style.display='none';
   document.getElementById('spotLat').value=lat; document.getElementById('spotLng').value=lng;
   document.getElementById('spotPlaceId').value=placeId||'';   // 탭한 POI가 특정되면 그 id를 쓰고, 아니면 이전 검색값 무효화
   document.getElementById('spotKakaoId').value='';            // 좌표를 새로 찍었으면 예전 카카오 장소 id는 그 장소가 아니다
@@ -953,6 +954,8 @@ function overlaySig(t,colors){
   return p.join('|');
 }
 function render(){
+  updateMapEmpty();
+  updateSaveState();
   const t = trip(), colors = cityColors();
   // 엔진 결정: 국내 여행이면 카카오 (SDK 미준비 시 준비 후 재렌더, 그동안 구글로)
   const want=desiredEngine();
@@ -1846,6 +1849,7 @@ function updateCostHint(){
 document.getElementById('spotCost').addEventListener('input',function(){ const d=this.value.replace(/[^\d]/g,''); this.value=d?(+d).toLocaleString('en-US'):''; updateCostHint(); });
 document.getElementById('spotCur').addEventListener('change',updateCostHint);
 document.getElementById('spotSave').onclick=()=>{
+  const hadLocations=trip().days.some(day=>day.spots.some(hasLoc));
   const name=document.getElementById('spotName').value.trim();
   const lat=parseFloat(document.getElementById('spotLat').value), lng=parseFloat(document.getElementById('spotLng').value);
   if(!name){toast('이름을 입력하세요','#e63946');return;}
@@ -1898,7 +1902,8 @@ document.getElementById('spotSave').onclick=()=>{
   // 렌더 전이라 DOM은 없다 → selectSpotCard가 아니라 상태만 두고, 렌더 끝의 applySpotSelection이 복원한다.
   if(!isEdit){ const ni=trip().days[targetDay].spots.indexOf(s); if(ni>=0) selectedSpot={di:targetDay, si:ni}; }
   document.getElementById('spotModalBg').classList.remove('show');
-  commit(); toast(sorted?'저장됨 · 시간순 정렬':'저장됨');
+  commit(); if(!hadLocations) fitEntry();
+  toast(sorted?'저장됨 · 시간순 정렬':'저장됨');
 };
 document.getElementById('spotDelBtn').onclick=()=>{
   const snap=snapshot();
@@ -1959,11 +1964,11 @@ document.getElementById('spotSearchBtn').onclick=doSearch;
 document.getElementById('spotSearch').addEventListener('keydown',e=>{if(e.key==='Enter')doSearch();});
 // 지도 클릭 지정
 document.getElementById('pickOnMap').onclick=()=>{
-  pickMode=true;
+  pickMode=true; updateMapEmpty();
   document.getElementById('spotModalBg').classList.remove('show');
   document.getElementById('pickBanner').style.display='block';
 };
-document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&pickMode){pickMode=false;document.getElementById('pickBanner').style.display='none';document.getElementById('spotModalBg').classList.add('show');} });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&pickMode){pickMode=false;updateMapEmpty();document.getElementById('pickBanner').style.display='none';document.getElementById('spotModalBg').classList.add('show');} });
 
 // ───────────────── 일자 모달 ─────────────────
 let editingDay=null;
@@ -2058,7 +2063,7 @@ function openNewTrip(){
   ntNameEdited=false;
   syncNewTripRange();
   document.getElementById('newTripBg').classList.add('show');
-  requestAnimationFrame(()=>document.getElementById('ntCity').focus());
+  requestAnimationFrame(()=>{ const bg=document.getElementById('newTripBg'); if(bg.classList.contains('show') && !bg.contains(document.activeElement)) document.getElementById('ntCity').focus(); });
 }
 /** 며칠인지 숫자로만 말하지 않는다 — 끝나는 날이 보여야 정할 수 있다 */
 function syncNewTripRange(){
@@ -3943,6 +3948,7 @@ function updateAuthUI(){
   if(user){ b.textContent='👤 '+(user.email||'').split('@')[0]; b.title='클릭하면 로그아웃'; b.classList.add('primary'); }
   else { b.textContent='로그인'; b.title='로그인하면 여행이 내 계정에 저장돼 어느 기기서든 열려요'; b.classList.remove('primary'); }
   updateCollabUI();
+  updateSaveState();
 }
 // revision 비교 후에만 쓰는 낙관적 동시성 제어(CAS). 실패해도 로컬 편집은 유지한다.
 let cloudRetryT=null, syncConflicts=[], currentSyncConflict=null;
@@ -5177,7 +5183,26 @@ document.getElementById('joinAccept').onclick=async()=>{
 };
 
 document.getElementById('tripPickerBtn').onclick=()=>document.getElementById('tripListBtn').click();
-function dismissOnboarding(){ document.getElementById('onboarding').hidden=true; try{localStorage.setItem(ONBOARD_KEY,'1');}catch(_){} }
+let onboardingReturnFocus=null;
+const onboardingInert=new Map();
+function showOnboarding(){
+  const onboarding=document.getElementById('onboarding');
+  onboardingReturnFocus=document.activeElement?.closest('#hdrMenu')?document.getElementById('moreBtn'):document.activeElement;
+  onboarding.hidden=false;
+  for(const child of document.body.children){
+    if(child===onboarding || child.matches('script')) continue;
+    onboardingInert.set(child,child.inert); child.inert=true;
+  }
+  document.getElementById('onboardNew').focus();
+}
+function dismissOnboarding(){
+  document.getElementById('onboarding').hidden=true;
+  for(const [child,wasInert] of onboardingInert) child.inert=wasInert;
+  onboardingInert.clear();
+  const target=onboardingReturnFocus;
+  (target && target!==document.body && target.isConnected?target:document.getElementById('tripPickerBtn')).focus();
+  try{localStorage.setItem(ONBOARD_KEY,'1');}catch(_){}
+}
 document.getElementById('onboardSample').onclick=()=>{ dismissOnboarding(); fitEntry(); };
 document.getElementById('onboardNew').onclick=()=>{ dismissOnboarding(); openNewTrip(); };
 document.getElementById('onboardPaste').onclick=()=>{ dismissOnboarding(); document.getElementById('pasteBtn').click(); document.getElementById('pasteTarget').value='new'; };
@@ -5185,9 +5210,50 @@ document.getElementById('onboardLogin').onclick=()=>{ dismissOnboarding(); docum
 // 한 번 닫으면 끝이던 것 — 처음 화면을 다시 볼 길을 남긴다.
 document.getElementById('onboardAgainBtn').onclick=()=>{
   document.getElementById('hdrMenu').classList.remove('open');
-  document.getElementById('onboarding').hidden=false;
-  requestAnimationFrame(()=>document.getElementById('onboardNew').focus());
+  showOnboarding();
 };
+
+function updateMapEmpty(){
+  const panel=document.getElementById('mapEmpty'); if(!panel) return;
+  const empty=!trip().days.some(day=>day.spots.some(hasLoc)) && !pickMode;
+  panel.hidden=!empty;
+  for(const id of ['map','kmap']) document.getElementById(id).inert=empty;
+  document.getElementById('mapEmptySearch').hidden=readOnly();
+  const message=readOnly()?'위치가 확인된 장소가 없어요. 편집자가 위치를 연결하면 지도가 나타나요.':'첫 장소를 검색해 위치를 확인하면 여기에 지도가 나타나요.';
+  const hint=panel.querySelector('p'); if(hint.textContent!==message) hint.textContent=message;
+}
+document.getElementById('mapEmptySearch').onclick=()=>{
+  if(!guardEdit()) return;
+  if(!trip().days.length){ toast('먼저 일자를 추가해 주세요'); return; }
+  openSpotModal(Math.max(0,Math.min(activeDay,trip().days.length-1)),-1);
+  document.getElementById('spotSearch').focus();
+};
+
+function updateSaveState(){
+  const label=document.getElementById('saveState'), action=document.getElementById('saveStateAction');
+  if(!label || !action) return;
+  const t=trip(), entry=syncMeta[t.id];
+  let state='local', message='이 기기에 저장됨', callback=null, actionText='다시 시도';
+  if(readOnly()){ state='readonly'; message='읽기 전용으로 보는 중'; }
+  else if(lsDirty){ state='error'; message='기기 저장 실패 · 화면을 닫기 전에 다시 저장해 주세요'; callback=()=>save(); }
+  else if(user && sb && !(t.id==='spain2026' && !entry?.revision)){
+    if(entry?.status==='conflict'){
+      state='conflict'; message='다른 기기와 변경이 겹쳤어요 · 내 입력은 기기에 남아 있어요';
+      actionText='변경 확인'; callback=()=>{ if(currentSyncConflict) document.getElementById('syncConflictBg').classList.add('show'); else if(syncConflicts.length) showNextSyncConflict(); else syncOnLogin(); };
+    }else if(entry?.status==='forbidden'){
+      state='error'; message='권한이 바뀌어 서버에 저장하지 못했어요 · 기기 입력은 보존됨';
+    }else if(entry?.status==='error'){
+      state='error'; message='서버 저장 실패 · 기기 입력은 보존됨'; callback=()=>syncTripCloud(t);
+    }else if(entry?.status==='syncing'){
+      state='syncing'; message='기기에 저장됨 · 서버에 저장 중…';
+    }else if(entry?.status==='clean' && entry.hash===TC_SYNC.hashTrip(t)){
+      state='clean'; message='동기화 완료';
+    }else{ state='pending'; message='기기에 저장됨 · 서버 저장 대기'; }
+  }
+  if(label.textContent!==message) label.textContent=message;
+  document.getElementById('saveStateBar').dataset.state=state;
+  action.hidden=!callback; action.textContent=actionText; action.onclick=callback;
+}
 
 // ───────────────── 키보드·보조기술 접근성 ─────────────────
 function initAccessibility(){
@@ -5216,6 +5282,7 @@ function initAccessibility(){
   document.getElementById('toast').setAttribute('role','status');
   document.getElementById('toast').setAttribute('aria-live','polite');
   new MutationObserver(changes=>changes.forEach(change=>{
+    if(!window.document) return;
     if(change.type==='childList') change.addedNodes.forEach(enhance);
     if(change.type==='attributes'){
       const bg=change.target; enhance(bg);
@@ -5224,7 +5291,7 @@ function initAccessibility(){
           const active=document.activeElement;
           returnFocus.set(bg,active&&active.closest&&active.closest('#hdrMenu')?document.getElementById('moreBtn'):active);
         }
-        setTimeout(()=>{ const target=bg.querySelector('[autofocus],input:not([type="hidden"]),textarea,select,button:not([disabled]),[href]'); if(target) target.focus(); },0);
+        setTimeout(()=>{ if(!window.document || !bg.classList.contains('show') || bg.contains(document.activeElement)) return; const target=bg.querySelector('[autofocus],input:not([type="hidden"]),textarea,select,button:not([disabled]),[href]'); if(target) target.focus(); },0);
       }else{
         const previous=returnFocus.get(bg); returnFocus.delete(bg);
         if(previous&&previous.isConnected) setTimeout(()=>previous.focus(),0);
@@ -5234,12 +5301,14 @@ function initAccessibility(){
   document.addEventListener('keydown',e=>{
     const target=e.target;
     if((e.key==='Enter'||e.key===' ')&&target.matches('[role="button"]:not(button)')){ e.preventDefault(); target.click(); return; }
-    const bg=document.querySelector('.modalBg.show'); if(!bg) return;
+    const onboarding=document.getElementById('onboarding');
+    const bg=!onboarding.hidden?onboarding:document.querySelector('.modalBg.show'); if(!bg) return;
+    if(bg===onboarding && e.key==='Escape'){ e.preventDefault(); dismissOnboarding(); return; }
     if(e.key==='Escape'&&bg.id!=='syncConflictBg'){
       e.preventDefault(); const close=bg.querySelector('[id$="Cancel"],[id$="Close"]'); if(close) close.click(); else bg.classList.remove('show'); return;
     }
     if(e.key!=='Tab') return;
-    const items=Array.from(bg.querySelectorAll(focusable)); if(!items.length){ e.preventDefault(); return; }
+    const items=Array.from(bg.querySelectorAll(focusable)).filter(el=>el.getClientRects().length && !el.closest('[hidden],[inert]')); if(!items.length){ e.preventDefault(); return; }
     const first=items[0],last=items[items.length-1];
     if(e.shiftKey&&document.activeElement===first){ e.preventDefault(); last.focus(); }
     else if(!e.shiftKey&&document.activeElement===last){ e.preventDefault(); first.focus(); }
@@ -5279,4 +5348,4 @@ if('serviceWorker' in navigator){
 prunePrices();   // 삭제된 여행·예약의 가격 기록 정리
 render();
 setTimeout(()=>{ checkTripPrices().catch(()=>{}); }, 2500);   // 예약 시세 자동 확인 (신선하면 조회 생략)
-if(firstVisit){ document.getElementById('onboarding').hidden=false; requestAnimationFrame(()=>document.getElementById('onboardPaste').focus()); }
+if(firstVisit) showOnboarding();

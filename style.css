@@ -532,3 +532,14 @@ body.playing #playHud{
   .whoChips .whoChipBtn{border:1px solid var(--border);border-radius:14px;padding:6px 11px;font-size:12px;background:var(--surface);color:var(--muted);min-height:34px}
   .whoChips .whoChipBtn.active{background:#fee2e2;border-color:var(--primary);color:var(--primary-dark);font-weight:700}
   body.theme-dark .whoChips .whoChipBtn.active{background:color-mix(in srgb,var(--primary) 26%,transparent);color:#ffd9d9}
+
+/* 여행 상태는 토스트가 사라진 뒤에도 확인할 수 있다. */
+#saveStateBar{display:flex;align-items:center;gap:8px;padding:3px 14px;background:var(--surface);color:var(--muted);font-size:12px;min-height:28px;border-bottom:1px solid var(--border)}
+#saveStateAction{min-height:44px;padding:4px 10px;margin-left:auto}
+#saveStateAction[hidden],.mapEmpty[hidden]{display:none}
+#saveStateBar[data-state="error"],#saveStateBar[data-state="conflict"]{color:var(--meta-danger)}
+.menuGroupLabel{font-size:12px;color:var(--muted);font-weight:700;padding:10px 10px 2px;border-top:1px solid var(--border)}
+.menuGroupLabel:first-child{border-top:0;padding-top:2px}
+.mapEmpty{position:absolute;inset:0 0 0 360px;z-index:10;display:grid;place-items:center;padding:24px;background:var(--surface-2);text-align:center}
+.mapEmpty>div{max-width:380px}.mapEmpty h2{font-size:22px;margin-bottom:12px}.mapEmpty p{color:var(--muted);line-height:1.7;margin-bottom:20px}.mapEmpty .btn{min-height:44px}
+@media(max-width:700px){.mapEmpty{inset:0;place-items:start center;padding:10dvh 16px 16px}.mapEmpty h2{font-size:18px}.mapEmpty p{font-size:13px;margin-bottom:12px}#saveStateBar{padding-inline:12px}}
