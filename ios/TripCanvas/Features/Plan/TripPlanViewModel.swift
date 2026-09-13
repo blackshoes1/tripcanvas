@@ -331,25 +331,36 @@ final class TripPlanViewModel {
     // MARK: 편집 — 전부 "문서를 고치고 저장한다" 한 갈래로 지나간다
 
     /// 편집 화면이 만든 장소를 그대로 넣는다. 이름만 있는 장소도 일정에 남는다(좌표는 나중에).
-    func addSpot(_ spot: TripSpot, after index: Int? = nil) async {
-        guard !spot.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        await edit("장소를 추가했어요") { $0.insertSpot(spot, dayIndex: self.selectedDay, after: index) }
+    @discardableResult
+    func addSpot(_ spot: TripSpot, after index: Int? = nil) async -> Bool {
+        guard !spot.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        return await edit("장소를 추가했어요") { $0.insertSpot(spot, dayIndex: self.selectedDay, after: index) }
     }
 
-    func updateSpot(at index: Int, with spot: TripSpot) async {
-        await edit(nil) { $0.updateSpot(dayIndex: self.selectedDay, at: index, with: spot) }
+    @discardableResult
+    func updateSpot(at index: Int, with spot: TripSpot) async -> Bool {
+        return await edit(nil) { $0.updateSpot(dayIndex: self.selectedDay, at: index, with: spot) }
     }
 
-    func removeSpot(at index: Int) async {
-        await edit("장소를 뺐어요") { $0.removeSpot(dayIndex: self.selectedDay, at: index) }
+    @discardableResult
+    func removeSpot(at index: Int) async -> Bool {
+        return await edit("장소를 뺐어요") { $0.removeSpot(dayIndex: self.selectedDay, at: index) }
     }
 
     func moveSpots(from source: IndexSet, to destination: Int) async {
         await edit(nil) { $0.moveSpots(dayIndex: self.selectedDay, from: source, to: destination) }
     }
 
-    func moveSpot(at index: Int, toDay targetDay: Int) async {
-        await edit("Day \(targetDay + 1)로 옮겼어요") { $0.moveSpot(from: (day: self.selectedDay, index: index), toDay: targetDay) }
+    @discardableResult
+    func moveSpot(at index: Int, toDay targetDay: Int, with spot: TripSpot? = nil) async -> Bool {
+        if let spot, spot.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            errorMessage = "장소 이름을 입력해 주세요."
+            return false
+        }
+        return await edit("Day \(targetDay + 1)로 옮겼어요") { document in
+            if let spot { document.updateSpot(dayIndex: self.selectedDay, at: index, with: spot) }
+            document.moveSpot(from: (day: self.selectedDay, index: index), toDay: targetDay)
+        }
     }
 
     func setDayMode(_ mode: TravelMode) async {
@@ -379,7 +390,7 @@ final class TripPlanViewModel {
     var bookings: [TripBooking] { document?.bookings ?? [] }
 
     /// 예약을 넣거나 고친다. 검증(웹 `bkSave`와 같은 규칙)을 지나지 못하면 저장하지 않고 이유를 말한다.
-    /// 돌려주는 값은 저장 요청이 나갔는지다 — 화면은 이걸 보고 닫을지 정한다.
+    /// 돌려주는 값은 저장에 성공했는지다 — 화면은 이걸 보고 닫을지 정한다.
     @discardableResult
     func saveBooking(_ booking: TripBooking, links: BookingLinks = .empty) async -> Bool {
         if let problem = booking.validate() {
@@ -387,22 +398,28 @@ final class TripPlanViewModel {
             return false
         }
         let isNew = document?.booking(id: booking.id) == nil
-        await edit(isNew ? "예약을 추가했어요" : "예약을 저장했어요") { $0.upsertBooking(booking, links: links) }
-        return true
+        return await edit(isNew ? "예약을 추가했어요" : "예약을 저장했어요") { $0.upsertBooking(booking, links: links) }
     }
 
     /// 예약 추적을 뺀다. 실제 예약이 취소되지는 않는다 — 화면이 그렇게 말한 뒤에 부른다.
-    func removeBooking(id: String) async {
-        await edit("예약을 뺐어요") { $0.removeBooking(id: id) }
+    @discardableResult
+    func removeBooking(id: String) async -> Bool {
+        return await edit("예약을 뺐어요") { $0.removeBooking(id: id) }
     }
 
     /// 고치고 → 화면에 먼저 반영하고 → 저장한다. 실패하면 **서버가 아는 상태로 되돌린다** —
     /// 저장되지 않은 것이 저장된 것처럼 남아 있으면 다음 편집이 그 위에 쌓인다.
-    private func edit(_ successToast: String?, _ change: (inout TripDocument) -> Void) async {
-        guard canEdit, let current = document else { return }
+    @discardableResult
+    private func edit(_ successToast: String?, _ change: (inout TripDocument) -> Void) async -> Bool {
+        guard !isSaving else { return false }
+        guard canEdit, let current = document else {
+            errorMessage = "이 일정을 바꿀 수 없어요. 권한과 연결 상태를 확인해 주세요."
+            return false
+        }
+        guard conflict == nil else { return false }
         var edited = current
         change(&edited)
-        guard edited != current else { return }
+        guard edited != current else { return true }
 
         document = edited
         isSaving = true
@@ -411,6 +428,7 @@ final class TripPlanViewModel {
             apply(try await service.saveDocument(tripId: tripId, document: edited, expectedRevision: revision))
             errorMessage = nil
             toast = successToast
+            return true
         } catch let error as APIError {
             document = current
             if case .revisionConflict(let message, _) = error {
@@ -422,6 +440,15 @@ final class TripPlanViewModel {
             document = current
             errorMessage = message(for: error)
         }
+        return false
+    }
+
+    /// 편집 시트는 이 문구를 보여주며 사용자의 초안을 계속 보존한다.
+    var saveFailureMessage: String {
+        if conflict != nil {
+            return "다른 기기에서 먼저 바뀌었어요. 입력은 여기에 남아 있어요. 입력을 복사한 뒤 닫고 최신 일정을 확인해 주세요."
+        }
+        return errorMessage ?? "아직 저장하지 못했어요. 잠시 후 다시 시도해 주세요."
     }
 
     private func apply(_ snapshot: TripDocumentSnapshot) {

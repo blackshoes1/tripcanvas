@@ -5,7 +5,7 @@ test('첫 방문 온보딩은 세 가지 진입점을 제공하고 샘플을 명
   const context=await browser.newContext(); await prepare(context,{onboarded:false});
   const page=await context.newPage(); await page.goto('/');
   await expect(page.locator('#onboarding')).toBeVisible();
-  await expect(page.locator('#onboardPaste')).toBeFocused();
+  await expect(page.locator('#onboardNew')).toBeFocused();
   await expect(page.locator('#onboardPaste')).toContainText('일정 붙여넣기');
   await expect(page.locator('#onboardNew')).toContainText('새 여행');
   await expect(page.locator('#onboardSample')).toContainText('샘플');

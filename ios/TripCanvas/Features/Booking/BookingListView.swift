@@ -59,6 +59,11 @@ struct BookingListView: View {
                             Task { await model.load() }
                         }
                     }
+                    if let plan, plan.conflict != nil {
+                        InlineErrorBanner(message: "다른 기기에서 예약이 바뀌었어요", detail: "방금 변경은 저장되지 않았어요. 최신 예약을 확인해 주세요.") {
+                            Task { await plan.reloadFromServer(); await model.load() }
+                        }
+                    }
                     if let plan, let error = plan.errorMessage {
                         InlineErrorBanner(message: "예약을 바꾸지 못했어요", detail: error) {
                             Task { await plan.load() }
@@ -116,15 +121,14 @@ struct BookingListView: View {
                     target: target,
                     document: document,
                     onSave: { booking, links in
-                        Task {
-                            if await plan.saveBooking(booking, links: links) { await model?.load() }
-                        }
+                        let saved = await plan.saveBooking(booking, links: links)
+                        if saved { await model?.load() }
+                        return saved ? nil : plan.saveFailureMessage
                     },
                     onDelete: { id in
-                        Task {
-                            await plan.removeBooking(id: id)
-                            await model?.load()
-                        }
+                        let saved = await plan.removeBooking(id: id)
+                        if saved { await model?.load() }
+                        return saved ? nil : plan.saveFailureMessage
                     })
             }
         }

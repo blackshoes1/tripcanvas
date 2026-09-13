@@ -13,7 +13,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js" integrity="sha384-+pWnyi8LtZx+cgXfD2arWgUX7pHIaEL215cEPPk9WrsegNlgvDL9DNjaqsceQq6o" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js" integrity="sha384-BSxuMLxX+FCbTdYec3TbXlnMGEEM2QXTFdtDaveen71o+jswm2J36+xFqp8k4VHM" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.min.js" integrity="sha384-l8ah+VgaWtk1mvOe9VC+OirC6qHFF4yH7l7mKRidV9MSti3E9F463bMp6ZVN4kuC" crossorigin="anonymous"></script>
-<link rel="stylesheet" href="style.css?v=tc-v195">
+<link rel="stylesheet" href="style.css?v=tc-v196">
 <!-- Travelpayouts 사이트 소유 인증 (파트너 가입 검증용 — DiscoverCars API 신청에 필요) -->
 <script nowprocket data-noptimize="1" data-cfasync="false" data-wpfc-render="false" seraph-accel-crit="1" data-no-defer="1" data-cmp-ab="2">
   (function () {
@@ -29,7 +29,7 @@
 <section id="onboarding" class="onboarding" hidden role="dialog" aria-modal="true" aria-labelledby="onboardingTitle">
   <div class="onboardingCard">
     <div class="brandMark" aria-hidden="true">▣</div>
-    <p class="eyebrow">FROM J</p>
+    <p class="eyebrow">With J</p>
     <h1 id="onboardingTitle">여행을<br>더 쉽게 계획하세요</h1>
     <p>어디로 가는지만 정하면, 나머지는 같이 채워요.</p>
     <div class="onboardingActions">
@@ -51,15 +51,18 @@
   <button class="btn primary" id="travelBtn">📍 여행 모드</button>
   <button class="btn ghost" id="moreBtn" aria-label="메뉴" onclick="toggleHdrMenu(event)">☰</button>
   <div id="hdrMenu">
+    <p class="menuGroupLabel">여행</p>
     <button class="btn ghost" id="undoBtn" title="실행취소 (Ctrl+Z)" disabled onclick="undo()">↩️ 실행취소</button>
     <button class="btn" id="newTripBtn">＋ 새 여행</button>
     <button class="btn" id="tripListBtn" title="여행 전환·삭제">🗂 여행 목록</button>
     <button class="btn" id="tripEditBtn">⚙️ 여행 설정</button>
-    <button class="btn" id="bookingBtn" title="숙박·렌터카·항공 예약 가격을 계속 추적해 절약 기회를 알려줘요">💰 예약 추적</button>
+    <button class="btn" id="bookingBtn" title="숙박·렌터카·항공 예약 가격을 계속 추적해 절약 기회를 알려줘요">🎟 예약·가격 추적</button>
     <button class="btn" id="pasteMenuBtn">▧ 일정 붙여넣기</button>
-    <button class="btn" id="membersMenuBtn" title="일행을 초대해 같은 여행을 함께 계획해요">👥 함께하기</button>
+    <p class="menuGroupLabel">같이 짜기</p>
+    <button class="btn" id="membersMenuBtn" title="일행을 초대해 같은 여행을 함께 계획해요">👥 멤버·편집 초대</button>
     <button class="btn" id="candMenuBtn" title="아직 일정이 아닌 '가고 싶은 곳'을 일행과 함께 골라요">📍 가고 싶은 곳</button>
-    <button class="btn ghost" id="shareBtn" title="읽기전용 링크 — 받는 쪽은 사본으로 저장할 수 있어요">🔗 공유</button>
+    <button class="btn ghost" id="shareBtn" title="읽기전용 링크 — 받는 쪽은 사본으로 저장할 수 있어요">🔗 읽기 전용 링크</button>
+    <p class="menuGroupLabel">파일·설정</p>
     <button class="btn ghost" id="exportBtn">📤 내보내기</button>
     <button class="btn ghost" id="imgBtn" title="일정을 이미지로 저장">🖼 이미지</button>
     <button class="btn ghost" id="importBtn">📥 가져오기</button>
@@ -69,6 +72,7 @@
   </div>
   <input type="file" id="importFile" accept=".json" style="display:none">
 </header>
+<div id="saveStateBar"><span id="saveState" role="status" aria-live="polite"></span><button class="btn" id="saveStateAction" hidden>다시 시도</button></div>
 <div id="livePresence" hidden aria-live="polite"></div>
 <div id="roBar" style="display:none">👀 읽기전용으로 보는 중 — 편집하려면 내 여행으로 저장하세요 <button class="btn primary" id="roSave" style="margin-left:auto">내 여행으로 저장</button></div>
 <div id="roleBar" style="display:none">👀 보기 권한으로 함께 보는 중 — 일정을 바꾸려면 주최자에게 편집 권한을 요청하세요</div>
@@ -77,6 +81,11 @@
   <aside id="sidebar"></aside>
   <div id="map"></div>
   <div id="kmap" style="display:none"></div>
+  <section id="mapEmpty" class="mapEmpty" hidden aria-labelledby="mapEmptyTitle">
+    <div><h2 id="mapEmptyTitle">어디부터 가볼까요?</h2>
+    <p>첫 장소를 검색해 위치를 확인하면 여기에 지도가 나타나요.</p>
+    <button class="btn primary" id="mapEmptySearch">첫 장소 검색</button></div>
+  </section>
   <div id="pickBanner">지도를 클릭해 위치를 지정하세요 (ESC 취소)</div>
   <div class="legend" id="legend"></div>
 </div>
@@ -96,8 +105,10 @@
     <div><label>도시/그룹 *</label><input type="text" id="spotCity" placeholder="예: 마드리드"></div>
     <div><label>카테고리</label><select id="spotCat"></select></div>
     <div><label>일자</label><select id="spotDay"></select></div>
-    <div><label>도착 시각</label><input type="text" id="spotAt" class="timeIn" inputmode="numeric" maxlength="5" placeholder="18:00"></div>
+    <div><label for="spotBookAt">예약·입장 시각</label><input type="text" id="spotBookAt" aria-describedby="spotTimeHelp" class="timeIn" inputmode="numeric" maxlength="5" placeholder="19:00"></div>
+    <div><label for="spotAt">내가 정한 도착 시각</label><input type="text" id="spotAt" aria-describedby="spotTimeHelp" class="timeIn" inputmode="numeric" maxlength="5" placeholder="비우면 자동 계산"></div>
     <div><label>체류 시간 (분)</label><input type="number" id="spotStayMin" min="0" step="5" placeholder="0" title="비우거나 0이면 머무는 시간을 계산에 넣지 않습니다"></div>
+    <p class="hint wide" id="spotTimeHelp">예약·입장 시각은 꼭 지켜야 할 약속이에요. 내가 정한 도착 시각을 비우면 앞 장소에서의 이동으로 예상해요.</p>
     <div class="wide"><label>메모</label><textarea id="spotDesc" placeholder="운영시간, 예약, 팁 등"></textarea></div>
   </div>
   <input type="hidden" id="spotLat"><input type="hidden" id="spotLng"><input type="hidden" id="spotPlaceId"><input type="hidden" id="spotKakaoId">
@@ -106,7 +117,6 @@
     <summary>상세 설정 보기 <span>⌄</span></summary>
     <div class="advancedGrid">
       <div><label>이동수단</label><select id="spotLegMode"><option value="">일정 기본</option><option value="car">🚗 자차</option><option value="taxi">🚕 택시</option><option value="transit">🚌 대중교통</option><option value="train">🚆 기차</option><option value="walk">🚶 도보</option><option value="bike">🚴 자전거</option><option value="flight">✈️ 비행기</option></select></div>
-      <div><label>예약·입장 시각</label><input type="text" id="spotBookAt" class="timeIn" inputmode="numeric" maxlength="5" placeholder="19:00"></div>
       <div class="wide"><label>예상 비용</label><div class="fieldRow"><input type="text" id="spotCost" inputmode="numeric" placeholder="0"><select id="spotCur" class="compactSelect"><option value="KRW">₩ 원</option><option value="USD">$ 달러</option><option value="EUR">€ 유로</option><option value="JPY">¥ 엔</option><option value="CNY">元 위안</option></select></div><div class="hint" id="costKrwHint"></div></div>
       <div class="wide"><label>예약 URL</label><input type="text" id="spotBookUrl" placeholder="https://..."></div>
       <div class="wide optionRows"><div class="chkrow"><input type="checkbox" id="spotOpt"><label for="spotOpt">선택 코스</label></div><div class="chkrow"><input type="checkbox" id="spotStay"><label for="spotStay">🏠 숙소</label><span id="nightsWrap"><input type="number" id="spotNights" min="1" max="60" step="1" value="1"><label for="spotNights">박</label></span></div></div>
@@ -550,15 +560,15 @@
   </div>
 </div>
 
-<script src="lib.js?v=tc-v195"></script>
-<script src="sync.js?v=tc-v195"></script>
-<script src="routing.js?v=tc-v195"></script>
-<script src="price.js?v=tc-v195"></script>
-<script src="adaptive.js?v=tc-v195"></script>
-<script src="intake.js?v=tc-v195"></script>
-<script src="collab.js?v=tc-v195"></script>
-<script src="api.js?v=tc-v195"></script>
-<script src="auth.js?v=tc-v195"></script>
-<script src="app.js?v=tc-v195"></script>
+<script src="lib.js?v=tc-v196"></script>
+<script src="sync.js?v=tc-v196"></script>
+<script src="routing.js?v=tc-v196"></script>
+<script src="price.js?v=tc-v196"></script>
+<script src="adaptive.js?v=tc-v196"></script>
+<script src="intake.js?v=tc-v196"></script>
+<script src="collab.js?v=tc-v196"></script>
+<script src="api.js?v=tc-v196"></script>
+<script src="auth.js?v=tc-v196"></script>
+<script src="app.js?v=tc-v196"></script>
 </body>
 </html>

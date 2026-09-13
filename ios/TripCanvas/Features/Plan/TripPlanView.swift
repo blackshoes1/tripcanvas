@@ -14,6 +14,7 @@ struct TripPlanView: View {
     @State private var model: TripPlanViewModel?
     @State private var editor: SpotEditorTarget?
     @State private var showsSearch = false
+    @State private var searchedSpot: TripSpot?
     /// 지도를 하루만 볼지 여행 전체로 볼지.
     @State private var mapScope: MapScope = .day
     /// 손가락을 따라 살짝 밀리는 양. 끌고 있는 동안만 값이 있다.
@@ -56,12 +57,13 @@ struct TripPlanView: View {
             }
             await model?.load()
         }
-        .sheet(isPresented: $showsSearch) {
+        .sheet(isPresented: $showsSearch, onDismiss: {
+            if let spot = searchedSpot { editor = .createFromMap(spot); searchedSpot = nil }
+        }) {
             if let model {
                 // 근처 우선의 기준은 그날 마지막 좌표 — 웹이 앵커로 검색하는 것과 같다.
                 PlaceSearchView(near: model.day?.pins.last?.point) { hit in
-                    let spot = hit.makeSpot()
-                    Task { await model.addSpot(spot) }
+                    searchedSpot = hit.makeSpot()
                 }
             }
         }
@@ -72,15 +74,19 @@ struct TripPlanView: View {
                     dayCount: model.dayCount,
                     currentDay: model.selectedDay,
                     onSave: { spot in
-                        Task {
-                            switch target {
-                            case .create, .createFromMap: await model.addSpot(spot)
-                            case .edit(let index, _): await model.updateSpot(at: index, with: spot)
-                            }
+                        let saved: Bool
+                        switch target {
+                        case .create, .createFromMap: saved = await model.addSpot(spot)
+                        case .edit(let index, _): saved = await model.updateSpot(at: index, with: spot)
                         }
+                        return saved ? nil : model.saveFailureMessage
                     },
-                    onDelete: { index in Task { await model.removeSpot(at: index) } },
-                    onMoveToDay: { index, day in Task { await model.moveSpot(at: index, toDay: day) } })
+                    onDelete: { index in
+                        await model.removeSpot(at: index) ? nil : model.saveFailureMessage
+                    },
+                    onMoveToDay: { index, day, spot in
+                        await model.moveSpot(at: index, toDay: day, with: spot) ? nil : model.saveFailureMessage
+                    })
             }
         }
     }
@@ -137,15 +143,15 @@ struct TripPlanView: View {
             // 충돌은 자동으로 어느 쪽도 고르지 않는다 — 무엇이 사라지는지 말하고 사용자가 고른다(§91).
             .alert("다른 기기에서 먼저 바뀌었어요", isPresented: conflictBinding(model)) {
                 Button("최신 불러오기") { Task { await model.reloadFromServer() } }
-                Button("그대로 두기", role: .cancel) { model.dismissConflict() }
+                Button("이전 일정 유지", role: .cancel) { model.dismissConflict() }
             } message: {
-                Text("최신 일정을 불러오면 방금 바꾼 것은 사라집니다. 방금 바꾼 것은 아직 저장되지 않았어요.")
+                Text("방금 변경은 저장되지 않아 이전 일정으로 돌아왔어요. 최신 일정을 불러와 확인해 주세요.")
             }
         }
     }
 
     private func conflictBinding(_ model: TripPlanViewModel) -> Binding<Bool> {
-        Binding(get: { model.conflict != nil }, set: { if !$0 { model.dismissConflict() } })
+        Binding(get: { model.conflict != nil && editor == nil }, set: { if !$0 { model.dismissConflict() } })
     }
 
     /// 며칠짜리든 한 줄에 담기지 않는다 — 가로 스크롤 칩으로 고른다.

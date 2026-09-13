@@ -134,6 +134,8 @@ struct TripListView: View {
     @State private var path: [TripSummary] = []
     /// 알림·딥링크가 정한 목적 화면. 규칙(`TripHomeTab.initial`)을 이긴다.
     @State private var requestedTab: TripHomeTab?
+    @State private var requestedPanel: TripPanel?
+    @State private var routeNotice: String?
     /// 목록이 아직 안 왔을 때 들어온 딥링크 — 목록을 받은 뒤 다시 시도한다(콜드 스타트).
     @State private var pendingDestination: ActionRouter.Destination?
     /// 여행 만들기 시트. 앱만 설치한 사람도 여기서 시작할 수 있어야 한다.
@@ -150,6 +152,9 @@ struct TripListView: View {
                 } else {
                     ProgressView()
                 }
+            }
+            .navigationDestination(for: TripSummary.self) { trip in
+                TripHomeView(trip: trip, requested: requestedTab, panel: $requestedPanel)
             }
             .navigationTitle("내 여행")
             .toolbar {
@@ -182,12 +187,16 @@ struct TripListView: View {
         }
         .task {
             if model == nil { model = TripListViewModel(service: env.service) }
+            if let destination = env.router.destination {
+                pendingDestination = destination
+                env.router.clear()
+            }
             await model?.load()
             // 목록보다 딥링크가 먼저 왔을 수 있다(알림으로 앱이 켜진 경우).
             if let pending = pendingDestination, handle(pending) { pendingDestination = nil }
         }
         // 목록으로 돌아오면 딥링크가 정했던 목적지를 지운다 — 다음에 목록에서 고른 여행은 규칙이 정한다.
-        .onChange(of: path) { _, current in if current.isEmpty { requestedTab = nil } }
+        .onChange(of: path) { _, current in if current.isEmpty { requestedTab = nil; requestedPanel = nil } }
         // 딥링크는 라우터 하나를 지난다 — 앱을 열어 둔 채로 링크를 눌러도 같은 화면이 뜬다.
         .onOpenURL { url in env.router.open(url: url) }
         .onChange(of: env.router.destination) { _, destination in
@@ -195,6 +204,12 @@ struct TripListView: View {
             if handle(destination) { env.router.clear() }
             else { pendingDestination = destination; env.router.clear() }
         }
+        .onChange(of: model?.trips) { _, _ in
+            if let pending = pendingDestination, handle(pending) { pendingDestination = nil }
+        }
+        .alert("화면 안내", isPresented: Binding(get: { routeNotice != nil }, set: { if !$0 { routeNotice = nil } })) {
+            Button("확인") { routeNotice = nil }
+        } message: { Text(routeNotice ?? "") }
         .sheet(isPresented: $showsCreateTrip) {
             CreateTripView(service: env.service, places: env.places, startMode: createStartMode) { created in
                 Task { await model?.load() }
@@ -275,20 +290,30 @@ struct TripListView: View {
             guard let trip = tripId.flatMap(find) ?? model?.ordered.first(where: { $0.isLive }) else { return false }
             open(trip, tab: .today)
             return true
-        case .trip(let tripId), .replan(let tripId), .bookings(let tripId), .memory(let tripId),
-             .suggestion(let tripId, _):
-            // 세부 화면까지는 아직 안 간다 — 여행은 연다. 규칙이 어느 탭인지 정한다.
+        case .bookings(let tripId):
+            guard let trip = find(tripId) else { return false }
+            requestedPanel = .bookings
+            requestedTab = nil
+            path = [trip]
+            return true
+        case .replan(let tripId), .suggestion(let tripId, _):
+            guard let trip = find(tripId) else { return false }
+            open(trip, tab: .today)
+            return true
+        case .trip(let tripId):
             guard let trip = find(tripId) else { return false }
             open(trip, tab: nil)
             return true
-        case .inbox:
-            return false   // 확인 화면은 아직 없다
+        case .memory, .inbox:
+            routeNotice = "이 링크의 기록·공유 확인 화면은 아직 지원하지 않아요. 여행 목록에서 일정을 열어 주세요."
+            return true
         }
     }
 
     private func find(_ tripId: String) -> TripSummary? { model?.trips.first { $0.id == tripId } }
 
     private func open(_ trip: TripSummary, tab: TripHomeTab?) {
+        requestedPanel = nil
         requestedTab = tab
         path = [trip]
     }
@@ -297,6 +322,14 @@ struct TripListView: View {
     private func content(_ model: TripListViewModel) -> some View {
         if model.isLoading && model.trips.isEmpty {
             ProgressView("여행을 불러오는 중")
+        } else if model.trips.isEmpty, let error = model.errorMessage {
+            VStack(spacing: Space.m) {
+                EmptyStateView(symbol: "exclamationmark.icloud", title: "여행을 불러오지 못했어요", message: error)
+                SecondaryActionButton(title: "다시 시도", systemImage: "arrow.clockwise") {
+                    Task { await model.load() }
+                }
+            }
+            .padding(Space.l)
         } else if model.trips.isEmpty {
             VStack(spacing: Space.m) {
                 EmptyStateView(
@@ -342,9 +375,6 @@ struct TripListView: View {
             .listStyle(.insetGrouped)
             .paperGround()
             .refreshable { await model.load() }
-            .navigationDestination(for: TripSummary.self) { trip in
-                TripHomeView(trip: trip, requested: requestedTab)
-            }
         }
     }
 }

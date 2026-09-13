@@ -111,19 +111,6 @@ struct TodayView: View {
         }
         .background(Color(.systemGroupedBackground))
         // 제목(여행 이름)은 `TripHomeView`가 정한다 — 두 형제 화면이 같은 제목을 써야 한다.
-        .toolbar {
-            // 일정으로 가는 길은 여기 없다 — `TripHomeView`의 세그먼트가 형제로 나란히 놓는다.
-            // 함께하기는 여행 하나에 붙는 것이라 여기서 들어간다 — 로그아웃·로컬 전용 여행에는 없다.
-            ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    NavigationLink { CandidateBoardView(trip: trip) } label: { Label("가고 싶은 곳", systemImage: "mappin.and.ellipse") }
-                    NavigationLink { CollabView(trip: trip) } label: { Label("함께하기", systemImage: "person.2") }
-                } label: {
-                    Image(systemName: "person.2")
-                }
-                .accessibilityLabel("함께하기")
-            }
-        }
         .paperGround()
         .refreshable { await model?.load() }
         .task {
@@ -322,6 +309,14 @@ struct ActivityRow: View {
                 }
             }
             Spacer(minLength: 0)
+            Menu {
+                Button("다녀왔어요", systemImage: "checkmark", action: onComplete)
+                Button("건너뛰기", systemImage: "arrow.uturn.forward", action: onSkip)
+            } label: {
+                Image(systemName: "ellipsis").frame(minWidth: 44, minHeight: 44)
+            }
+            .disabled(isBusy)
+            .accessibilityLabel("\(activity.name) 작업")
         }
         .card()
         // 한 번의 터치로 처리되게 — 메뉴 안으로 숨기지 않는다(§17).
@@ -336,7 +331,7 @@ struct ActivityRow: View {
         .overlay(alignment: .topTrailing) {
             if isBusy { ProgressView().controlSize(.small).padding(Space.m) }
         }
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
         .accessibilityActions {
             Button("다녀왔어요", action: onComplete)
             Button("건너뛰기", action: onSkip)

@@ -9,6 +9,7 @@ struct TripHomeView: View {
     let trip: TripSummary
     /// 알림·딥링크가 목적지를 정해서 들어온 경우. nil이면 아래 규칙이 정한다.
     var requested: TripHomeTab?
+    @Binding var panel: TripPanel?
 
     @State private var tab: TripHomeTab?
 
@@ -29,11 +30,36 @@ struct TripHomeView: View {
             .padding(.horizontal, Space.l)
             .padding(.vertical, Space.s)
 
+            HStack(spacing: Space.m) {
+                ForEach(TripPanel.allCases) { item in
+                    Button { panel = item } label: {
+                        Label(item.label, systemImage: item.symbol)
+                            .font(.subheadline).frame(maxWidth: .infinity, minHeight: 44)
+                    }
+                }
+            }
+            .padding(.horizontal, Space.l)
+
             switch selection.wrappedValue {
             case .today: TodayView(trip: trip)
             case .plan: TripPlanView(trip: trip)
             }
         }
+        .sheet(item: $panel) { item in
+            NavigationStack {
+                Group {
+                    switch item {
+                    case .bookings: BookingListView(trip: trip)
+                    case .collab: CollabView(trip: trip)
+                    case .candidates: CandidateBoardView(trip: trip)
+                    }
+                }
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) { Button("닫기") { panel = nil } }
+                }
+            }
+        }
+        .onChange(of: requested) { _, value in tab = value }
         .navigationTitle(trip.name)
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -64,5 +90,25 @@ enum TripHomeTab: String, CaseIterable, Hashable, Sendable {
     static func initial(isLive: Bool, requested: TripHomeTab?) -> TripHomeTab {
         if let requested { return requested }
         return isLive ? .today : .plan
+    }
+}
+
+/// 여행 전/중에 관계없이 같은 자리에서 연다.
+enum TripPanel: String, CaseIterable, Identifiable {
+    case bookings, collab, candidates
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .bookings: "예약"
+        case .collab: "같이 짜기"
+        case .candidates: "가고 싶은 곳"
+        }
+    }
+    var symbol: String {
+        switch self {
+        case .bookings: "ticket"
+        case .collab: "person.2"
+        case .candidates: "mappin.and.ellipse"
+        }
     }
 }

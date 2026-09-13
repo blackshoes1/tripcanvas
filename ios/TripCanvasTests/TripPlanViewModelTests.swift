@@ -809,3 +809,72 @@ extension TripPlanViewModelTests {
         XCTAssertEqual(model.selectedDay, 1)
     }
 }
+
+extension TripPlanViewModelTests {
+    func testEditorReceivesFailureAndCanRetryWithoutLosingItsDraft() async {
+        for failure in [APIError.offline, .server(status: 500, message: "저장 실패")] {
+            let service = FakeDocumentService(snapshot: .init(document: document(), revision: 4, role: .owner))
+            let model = TripPlanViewModel(tripId: "t1", service: service)
+            await model.load()
+            var draft = TripSpot(name: "새 장소")
+            draft.desc = "예약 메모"
+            draft.bookedAt = "19:00"
+            service.failure = failure
+            let failed = await model.addSpot(draft)
+            XCTAssertFalse(failed)
+            XCTAssertEqual(model.day?.spots.count, 1)
+            XCTAssertEqual(draft.desc, "예약 메모")
+            service.failure = nil
+            let retried = await model.addSpot(draft)
+            XCTAssertTrue(retried)
+            XCTAssertEqual(model.day?.spots.last?.bookedAt, "19:00")
+        }
+    }
+
+    func testBookingFailureIsNotReportedAsSuccess() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(), revision: 4, role: .owner))
+        let model = TripPlanViewModel(tripId: "t1", service: service)
+        await model.load()
+        var draft = TripBooking(type: .hotel, id: "bkFailed")
+        draft.title = "예약"
+        draft.price = 300
+        draft.track = false
+        service.failure = .offline
+        let failed = await model.saveBooking(draft)
+        XCTAssertFalse(failed)
+        XCTAssertTrue(model.bookings.isEmpty)
+        service.failure = nil
+        let retried = await model.saveBooking(draft)
+        XCTAssertTrue(retried)
+        XCTAssertEqual(model.bookings.first?.id, "bkFailed")
+    }
+
+    func testConflictDoesNotRetryBeforeTheUserReviewsLatest() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(), revision: 4, role: .owner))
+        let model = TripPlanViewModel(tripId: "t1", service: service)
+        await model.load()
+        service.failure = .revisionConflict(message: "충돌", revision: 9)
+        let failed = await model.addSpot(TripSpot(name: "초안"))
+        XCTAssertFalse(failed)
+        service.failure = nil
+        let blocked = await model.addSpot(TripSpot(name: "초안"))
+        XCTAssertFalse(blocked)
+        XCTAssertEqual(service.saves.count, 1)
+        XCTAssertTrue(model.saveFailureMessage.contains("입력"))
+    }
+}
+
+extension TripPlanViewModelTests {
+    func testMovingFromEditorSavesTheDraftAndMoveInOneRequest() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(), revision: 4, role: .owner))
+        let model = TripPlanViewModel(tripId: "t1", service: service)
+        await model.load()
+        var draft = model.day!.spots[0]
+        draft.desc = "수정한 메모"
+        let saved = await model.moveSpot(at: 0, toDay: 1, with: draft)
+        XCTAssertTrue(saved)
+        XCTAssertEqual(service.saves.count, 1)
+        XCTAssertTrue(model.document!.days[0].spots.isEmpty)
+        XCTAssertEqual(model.document!.days[1].spots.first?.desc, "수정한 메모")
+    }
+}

@@ -91,6 +91,7 @@ final class TripListRemovalTests: XCTestCase {
 private final class FakeTrips: TripDataSource {
     private var stored: [TripSummary]
     var failure: APIError?
+    var listFailure: APIError?
     private(set) var deleted: [(tripId: String, expectedRevision: Int)] = []
     private(set) var left: [String] = []
     private(set) var listCalls = 0
@@ -99,6 +100,7 @@ private final class FakeTrips: TripDataSource {
 
     func trips() async throws -> TripService.Fetched<[TripSummary]> {
         listCalls += 1
+        if let listFailure { throw listFailure }
         return TripService.Fetched(value: stored, cachedAt: nil)
     }
     /// 만들기는 서버가 id를 정한다 — 가짜도 그렇게 흉내 낸다.
@@ -210,5 +212,20 @@ extension TripListRemovalTests {
         XCTAssertFalse(NewTripDraft(name: "제주", start: "2026-07-21", dayCount: 0, city: nil).isValid)
         XCTAssertFalse(NewTripDraft(name: "제주", start: "2026-07-21", dayCount: NewTripDraft.maxDays + 1, city: nil).isValid,
                        "앱에서 한 번에 만드는 길이에는 상한이 있다 — 더 긴 여행은 만든 뒤 웹에서 늘린다")
+    }
+}
+
+extension TripListRemovalTests {
+    func testFirstLoadFailureIsNotAConfirmedEmptyListAndCanRetry() async {
+        let service = FakeTrips([trip("a", role: .owner)])
+        service.listFailure = .offline
+        let model = TripListViewModel(service: service)
+        await model.load()
+        XCTAssertTrue(model.trips.isEmpty)
+        XCTAssertNotNil(model.errorMessage)
+        service.listFailure = nil
+        await model.load()
+        XCTAssertEqual(model.trips.map(\.id), ["a"])
+        XCTAssertNil(model.errorMessage)
     }
 }
