@@ -44,6 +44,7 @@ struct KakaoMapContainer: UIViewRepresentable {
         private var focus: GeoPoint?
         private var routes: [MapRoute] = []
         private var controller: KMController?
+        private weak var container: KMViewContainer?
         private var ready = false
         private var pendingRender = true
         private var tapHandler: DisposableEventHandler?
@@ -57,6 +58,7 @@ struct KakaoMapContainer: UIViewRepresentable {
         }
 
         func attach(_ container: KMViewContainer) {
+            self.container = container
             let controller = KMController(viewContainer: container)
             controller.delegate = self
             self.controller = controller
@@ -70,6 +72,7 @@ struct KakaoMapContainer: UIViewRepresentable {
             controller?.pauseEngine()
             controller?.resetEngine()
             controller = nil
+            container = nil
             ready = false
         }
 
@@ -94,6 +97,8 @@ struct KakaoMapContainer: UIViewRepresentable {
 
         func addViewSucceeded(_ viewName: String, viewInfoName: String) {
             guard let map = mapView else { return }
+            // 인증 중 먼저 끝난 레이아웃을 반영한다. 이후 크기 변경은 containerDidResized가 처리한다.
+            if let container { map.viewRect = container.bounds }
             let manager = map.getLabelManager()
             _ = manager.addLabelLayer(option: LabelLayerOptions(
                 layerID: Self.layerId, competitionType: .none, competitionUnit: .poi, orderType: .rank, zOrder: 0))
