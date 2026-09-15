@@ -12,6 +12,9 @@ final class TodayViewModelTests: XCTestCase {
         var todayResponse: TodayResponse
         var mutationResult: Result<MutationResponse, Error>?
         var todayCallCount = 0
+        var activityCallCount = 0
+        var todayError: Error?
+        var todayHandler: (() async throws -> TripService.Fetched<TodayResponse>)?
         var lastActivityCall: (id: String, action: TripService.ActivityAction, revision: Int)?
         var lastSuggestionCall: (id: String, decision: TripService.SuggestionDecision)?
         var cachedAt: Date?
@@ -23,6 +26,8 @@ final class TodayViewModelTests: XCTestCase {
         }
         func today(tripId: String, dayIndex: Int?) async throws -> TripService.Fetched<TodayResponse> {
             todayCallCount += 1
+            if let todayError { throw todayError }
+            if let todayHandler { return try await todayHandler() }
             return TripService.Fetched(value: todayResponse, cachedAt: cachedAt)
         }
         func bookings(tripId: String) async throws -> TripService.Fetched<[BookingSummary]> {
@@ -43,6 +48,7 @@ final class TodayViewModelTests: XCTestCase {
         }
         func setActivity(tripId: String, activityId: String, action: TripService.ActivityAction,
                          expectedRevision: Int, expectedName: String?) async throws -> MutationResponse {
+            activityCallCount += 1
             lastActivityCall = (activityId, action, expectedRevision)
             return try result()
         }
@@ -125,8 +131,9 @@ final class TodayViewModelTests: XCTestCase {
         await model.complete(try XCTUnwrap(today.activities.first))
 
         XCTAssertEqual(stub.todayCallCount, loadsBefore + 1, "충돌이면 조용히 다시 불러온다")
-        XCTAssertNil(model.errorMessage, "여행 중에 실패 화면을 띄우지 않는다")
-        XCTAssertNotNil(model.toast)
+        XCTAssertNil(model.loadErrorMessage)
+        XCTAssertNotNil(model.actionErrorMessage, "충돌한 선택이 저장되지 않았음을 알린다")
+        XCTAssertFalse(model.canRetryAction, "순서가 바뀐 활동을 자동 재시도하지 않는다")
     }
 
     func testStaleSuggestionAlsoReloads() async throws {
@@ -140,7 +147,8 @@ final class TodayViewModelTests: XCTestCase {
         await model.accept(try XCTUnwrap(today.suggestions.first))
 
         XCTAssertEqual(stub.todayCallCount, loadsBefore + 1)
-        XCTAssertNil(model.errorMessage)
+        XCTAssertNotNil(model.actionErrorMessage)
+        XCTAssertFalse(model.canRetryAction)
     }
 
     func testOfflineWriteTellsUserItWasNotSaved() async throws {
@@ -173,4 +181,125 @@ final class TodayViewModelTests: XCTestCase {
             XCTAssertFalse(model.upcomingAfterNext.contains { $0.id == nextId })
         }
     }
+    private func changing(_ response: TodayResponse, tripValue key: String, to value: Any) throws -> TodayResponse {
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(response)) as? [String: Any])
+        var trip = try XCTUnwrap(object["trip"] as? [String: Any])
+        trip[key] = value
+        object["trip"] = trip
+        return try JSONDecoder().decode(TodayResponse.self, from: JSONSerialization.data(withJSONObject: object))
+    }
+
+    func testFailedActionRetriesTheWriteAfterCheckingTheOriginalRevision() async throws {
+        let today = try fixture()
+        let stub = StubDataSource(todayResponse: today)
+        let model = makeModel(stub, from: today)
+        await model.load()
+        let activity = try XCTUnwrap(today.activities.first)
+        stub.mutationResult = .failure(APIError.offline)
+        await model.complete(activity)
+        XCTAssertNil(model.loadErrorMessage)
+        XCTAssertEqual(model.actionErrorTitle, "완료 표시를 저장하지 못했어요")
+        XCTAssertTrue(model.canRetryAction)
+
+        stub.mutationResult = .success(MutationResponse(schemaVersion: 1, applied: true, alreadyApplied: false,
+                                                       revision: today.trip.revision + 1, today: today))
+        await model.retryAction()
+        XCTAssertEqual(stub.activityCallCount, 2)
+        XCTAssertEqual(stub.todayCallCount, 2)
+        XCTAssertEqual(stub.lastActivityCall?.id, activity.id)
+        XCTAssertEqual(stub.lastActivityCall?.action, .complete)
+        XCTAssertEqual(stub.lastActivityCall?.revision, today.trip.revision)
+        XCTAssertNil(model.actionErrorMessage)
+    }
+
+    func testAnUncertainWriteIsNotRepeatedWhenTheRevisionChanged() async throws {
+        let today = try fixture()
+        let stub = StubDataSource(todayResponse: today)
+        let model = makeModel(stub, from: today)
+        await model.load()
+        stub.mutationResult = .failure(APIError.offline)
+        await model.complete(try XCTUnwrap(today.activities.first))
+        stub.todayResponse = try changing(today, tripValue: "revision", to: today.trip.revision + 1)
+        await model.retryAction()
+        XCTAssertEqual(stub.activityCallCount, 1, "이미 저장됐거나 다른 사람이 바꿨을 수 있어 다시 쓰지 않는다")
+        XCTAssertEqual(model.revision, today.trip.revision + 1)
+        XCTAssertFalse(model.canRetryAction)
+        XCTAssertNotNil(model.actionErrorMessage)
+    }
+
+    func testOfflineCacheCannotAuthorizeAWriteRetry() async throws {
+        let today = try fixture()
+        let stub = StubDataSource(todayResponse: today)
+        let model = makeModel(stub, from: today)
+        await model.load()
+        stub.mutationResult = .failure(APIError.offline)
+        await model.complete(try XCTUnwrap(today.activities.first))
+        stub.cachedAt = Date()
+        await model.retryAction()
+        XCTAssertEqual(stub.activityCallCount, 1)
+        XCTAssertTrue(model.canRetryAction)
+        XCTAssertNotNil(model.actionErrorMessage)
+    }
+
+    func testRefreshFailureKeepsContentAndTheFailedAction() async throws {
+        let today = try fixture()
+        let stub = StubDataSource(todayResponse: today)
+        let model = makeModel(stub, from: today)
+        await model.load()
+        stub.mutationResult = .failure(APIError.offline)
+        await model.complete(try XCTUnwrap(today.activities.first))
+        let actionError = model.actionErrorMessage
+        stub.todayError = APIError.server(status: 503, message: "잠시 연결되지 않아요")
+        await model.load()
+        XCTAssertEqual(model.today, today)
+        XCTAssertEqual(model.actionErrorMessage, actionError)
+        XCTAssertNotNil(model.loadErrorMessage)
+        XCTAssertTrue(model.canRetryAction)
+    }
+
+    func testViewerCannotCompleteSkipUndoOrAcceptSuggestions() async throws {
+        let today = try changing(fixture(), tripValue: "role", to: "VIEWER")
+        let stub = StubDataSource(todayResponse: today)
+        let model = makeModel(stub, from: today)
+        await model.load()
+        XCTAssertFalse(model.canEdit)
+        let activity = try XCTUnwrap(today.activities.first)
+        await model.complete(activity)
+        await model.skip(activity)
+        await model.undo(activity)
+        let suggestion = try XCTUnwrap(today.suggestions.first)
+        await model.accept(suggestion)
+        await model.dismiss(suggestion)
+        XCTAssertEqual(stub.activityCallCount, 0)
+        XCTAssertNil(stub.lastSuggestionCall)
+    }
+
+    func testRefreshStartedBeforeAWriteCannotReplaceItsResult() async throws {
+        let today = try fixture()
+        let updated = try changing(today, tripValue: "revision", to: today.trip.revision + 1)
+        let stub = StubDataSource(todayResponse: today)
+        let model = makeModel(stub, from: today)
+        await model.load()
+        var continuation: CheckedContinuation<TripService.Fetched<TodayResponse>, Error>?
+        stub.todayHandler = { try await withCheckedThrowingContinuation { continuation = $0 } }
+        let refresh = Task { await model.load() }
+        for _ in 0..<100 where continuation == nil { await Task.yield() }
+        XCTAssertNotNil(continuation)
+        XCTAssertEqual(model.today, today, "앱 복귀 조회 중 기존 내용을 유지한다")
+        stub.mutationResult = .success(MutationResponse(schemaVersion: 1, applied: true, alreadyApplied: false,
+                                                       revision: updated.trip.revision, today: updated))
+        await model.complete(try XCTUnwrap(today.activities.first))
+        continuation?.resume(returning: TripService.Fetched(value: today, cachedAt: nil))
+        await refresh.value
+        XCTAssertEqual(model.today, updated)
+    }
+
+    func testNavigationIsPrimaryUntilTheServerSaysTheVisitStarted() {
+        XCTAssertFalse(NextActionCard.prioritizesCompletion(.upcoming))
+        XCTAssertFalse(NextActionCard.prioritizesCompletion(.readyToLeave))
+        XCTAssertFalse(NextActionCard.prioritizesCompletion(.traveling))
+        XCTAssertTrue(NextActionCard.prioritizesCompletion(.arrived))
+        XCTAssertTrue(NextActionCard.prioritizesCompletion(.inProgress))
+    }
+
 }

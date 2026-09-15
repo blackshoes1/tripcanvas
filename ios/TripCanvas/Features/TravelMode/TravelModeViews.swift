@@ -70,7 +70,7 @@ struct LocationPrimerView: View {
             }
         }
         .padding(Space.xl)
-        .presentationDetents([.medium])
+        .presentationDetents([.medium, .large])
     }
 }
 
@@ -95,7 +95,7 @@ struct NotificationPrimerView: View {
             }
         }
         .padding(Space.xl)
-        .presentationDetents([.medium])
+        .presentationDetents([.medium, .large])
     }
 }
 
@@ -116,8 +116,9 @@ struct TripPulseBar: View {
                 }
             }
             Spacer(minLength: Space.s)
-            Button(travelModeOn ? "끄기" : "Travel Mode", action: onToggle)
+            Button(travelModeOn ? "여행 종료" : "여행 시작", action: onToggle)
                 .font(.caption.weight(.semibold))
+                .frame(minHeight: 44)
                 .buttonStyle(.bordered)
         }
         .padding(Space.m)
@@ -145,5 +146,75 @@ struct TripPulseBar: View {
         case .dayComplete, .onTrack, .ahead: .green
         case .resting, .noPlan, .unknown: .secondary
         }
+    }
+}
+
+/// 시작을 고른 뒤에만 권한의 쓰임을 설명한다. 나중에를 골라도 여행은 시작할 수 있다.
+struct TravelModeSetupView: View {
+    let onStart: () async -> Void
+    @Environment(AppEnvironment.self) private var env
+    @Environment(\.dismiss) private var dismiss
+    @State private var step: Step = .loading
+    @State private var isWorking = false
+
+    private enum Step { case loading, location, notifications }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                switch step {
+                case .loading:
+                    ProgressView("여행 시작 준비 중").padding(Space.xl)
+                case .location:
+                    LocationPrimerView(
+                        onAllow: {
+                            Task {
+                                isWorking = true
+                                _ = await env.location.requestOnce()
+                                isWorking = false
+                                await nextStep()
+                            }
+                        },
+                        onSkip: { Task { await nextStep() } })
+                case .notifications:
+                    NotificationPrimerView(
+                        onAllow: {
+                            Task {
+                                isWorking = true
+                                await env.push.requestAuthorization()
+                                await start()
+                            }
+                        },
+                        onSkip: { Task { await start() } })
+                }
+            }
+            .disabled(isWorking)
+            .navigationTitle("여행 시작")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("취소") { dismiss() }.disabled(isWorking)
+                }
+            }
+            .task {
+                await env.push.refreshPermission()
+                if env.location.permission == .unknown { step = .location }
+                else { await nextStep() }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .interactiveDismissDisabled(isWorking)
+    }
+
+    private func nextStep() async {
+        if env.push.permission == .unknown { step = .notifications }
+        else { await start() }
+    }
+
+    private func start() async {
+        isWorking = true
+        step = .loading
+        await onStart()
+        dismiss()
     }
 }
