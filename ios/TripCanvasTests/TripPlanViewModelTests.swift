@@ -173,12 +173,12 @@ final class TripPlanViewModelTests: XCTestCase {
     // 스트립은 "며칠째"만이 아니라 **언제, 어떤 날**인지 말해야 한다. 날짜는 서버가 준 것을 쓴다.
 
     private func plan(days: Int = 2, todayIndex: Int = -1, selected: Int = 0, spotsInFirstDay: Int = 1,
-                      legsPending: Int = 0) -> DayPlanResponse {
+                      legsPending: Int = 0, revision: Int = 7) -> DayPlanResponse {
         let strip = (0..<days).map { i in
             DayPlanStripEntry(index: i, date: "2026-10-0\(i + 1)", title: "Day \(i + 1)",
                               spotCount: i == 0 ? spotsInFirstDay : 0)
         }
-        let summary = TripSummary(id: "t1", name: "오사카", start: "2026-10-01", dayCount: days, revision: 7,
+        let summary = TripSummary(id: "t1", name: "오사카", start: "2026-10-01", dayCount: days, revision: revision,
                                   updatedAt: "", timeZone: "Asia/Seoul", cities: [],
                                   todayIndex: todayIndex, daysUntilStart: nil, role: nil, memberCount: nil)
         let day = DayPlanDay(index: selected, date: strip[selected].date, title: "", note: "", mode: "car",
@@ -250,10 +250,12 @@ final class TripPlanViewModelTests: XCTestCase {
     // 문서(원문)와 계산(서버)은 따로 온다. 둘이 어긋난 순간에 옛 시각을 그리면
     // **없는 장소의 도착 시각**을 보여 주게 된다 — 그래서 어긋나면 조용히 감춘다.
 
-    private func planWithSpots(_ count: Int, day dayIndex: Int = 0) -> DayPlanResponse {
-        var base = plan(days: 2, selected: dayIndex)
+    private func planWithSpots(_ count: Int, day dayIndex: Int = 0, revision: Int = 7,
+                               names: [String] = []) -> DayPlanResponse {
+        var base = plan(days: 2, selected: dayIndex, revision: revision)
         let spots = (0..<count).map { i in
-            DayPlanSpot(index: i, name: "장소 \(i)", city: "오사카", category: nil, location: nil,
+            DayPlanSpot(index: i, name: names.indices.contains(i) ? names[i] : "장소 \(i)",
+                        city: "오사카", category: nil, location: nil,
                         etaMinutes: 540 + i * 60, fixed: false, conflict: false, bookedAtMinutes: nil,
                         waitMinutes: 0, stayMinutes: nil, status: "PLANNED",
                         participants: [], reunion: false, incomingLeg: nil)
@@ -443,8 +445,12 @@ private final class FakeDocumentService: TripDocumentSource {
     /// 서버 계산. nil이면 "못 받았다"는 뜻이고, 그래도 편집은 그대로 돌아야 한다.
     var dayPlanResponse: DayPlanResponse?
     var dayPlanCalls: [Int] = []
+    var dayPlanHandler: ((Int) async throws -> DayPlanResponse)?
     func dayPlan(tripId: String, dayIndex: Int) async throws -> TripService.Fetched<DayPlanResponse> {
         dayPlanCalls.append(dayIndex)
+        if let dayPlanHandler {
+            return TripService.Fetched(value: try await dayPlanHandler(dayIndex), cachedAt: nil)
+        }
         guard let dayPlanResponse else { throw APIError.notFound("일자 계획 없음") }
         return TripService.Fetched(value: dayPlanResponse, cachedAt: nil)
     }
@@ -876,5 +882,142 @@ extension TripPlanViewModelTests {
         XCTAssertEqual(service.saves.count, 1)
         XCTAssertTrue(model.document!.days[0].spots.isEmpty)
         XCTAssertEqual(model.document!.days[1].spots.first?.desc, "수정한 메모")
+    }
+}
+
+// MARK: - 저장 뒤 계산 다시 받기
+
+extension TripPlanViewModelTests {
+    private func waitForRefresh(_ condition: () -> Bool,
+                                file: StaticString = #filePath, line: UInt = #line) async {
+        for _ in 0..<100 {
+            if condition() { return }
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+        XCTAssertTrue(condition(), "계산 상태가 갱신되지 않았습니다", file: file, line: line)
+    }
+
+    func testAddingASpotRefreshesThePlanWithoutChangingDays() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(days: 1), revision: 7, role: .owner))
+        service.dayPlanResponse = planWithSpots(1, names: ["도톤보리"])
+        let model = TripPlanViewModel(tripId: "t1", service: service)
+        await model.load()
+
+        service.dayPlanResponse = planWithSpots(2, revision: 8, names: ["도톤보리", "우메다"])
+        let saved = await model.addSpot(TripSpot(name: "우메다"))
+        await waitForRefresh { model.plan?.trip.revision == 8 }
+
+        XCTAssertTrue(saved)
+        XCTAssertEqual(model.selectedDay, 0, "날짜를 옮겼다 돌아올 필요가 없다")
+        XCTAssertEqual(service.dayPlanCalls, [0, 0])
+        XCTAssertTrue(model.planAttempted(for: 0))
+        XCTAssertEqual(model.planSpot(at: 1)?.name, "우메다")
+        XCTAssertEqual(model.planSpot(at: 1)?.etaMinutes, 600)
+    }
+
+    func testReorderingSpotsRefreshesTimesEvenWhenTheCountIsUnchanged() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(days: 1, spots: 2), revision: 7, role: .owner))
+        service.dayPlanResponse = planWithSpots(2, names: ["도톤보리", "장소 1"])
+        let model = TripPlanViewModel(tripId: "t1", service: service)
+        await model.load()
+
+        service.dayPlanResponse = planWithSpots(2, revision: 8, names: ["장소 1", "도톤보리"])
+        await model.moveSpots(from: IndexSet(integer: 0), to: 2)
+        await waitForRefresh { model.plan?.trip.revision == 8 }
+
+        XCTAssertEqual(model.day?.spots.map(\.name), ["장소 1", "도톤보리"])
+        XCTAssertEqual(model.selectedDay, 0)
+        XCTAssertEqual(service.dayPlanCalls, [0, 0])
+        XCTAssertEqual(model.planSpot(at: 0)?.name, "장소 1")
+        XCTAssertEqual(model.planSpot(at: 1)?.name, "도톤보리")
+        XCTAssertEqual(model.planSpot(at: 1)?.etaMinutes, 600)
+    }
+
+    func testFailedCalculationAfterSavingEndsTheLoadingStateAndKeepsTheSave() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(days: 1), revision: 7, role: .owner))
+        service.dayPlanResponse = planWithSpots(1)
+        let model = TripPlanViewModel(tripId: "t1", service: service)
+        await model.load()
+
+        service.dayPlanResponse = nil
+        let saved = await model.addSpot(TripSpot(name: "우메다"))
+        await waitForRefresh { model.planAttempted(for: 0) }
+
+        XCTAssertTrue(saved, "계산 실패를 이미 성공한 저장 실패로 바꾸지 않는다")
+        XCTAssertEqual(model.day?.spots.map(\.name), ["도톤보리", "우메다"])
+        XCTAssertEqual(model.revision, 8)
+        XCTAssertEqual(service.dayPlanCalls, [0, 0])
+        XCTAssertNil(model.plan, "저장 전 시각을 다시 표시하지 않는다")
+        XCTAssertNil(model.errorMessage)
+        XCTAssertFalse(model.isSaving)
+    }
+
+    func testSlowCalculationDoesNotHoldTheEditorInSavingState() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(days: 1), revision: 7, role: .owner))
+        service.dayPlanResponse = planWithSpots(1)
+        let model = TripPlanViewModel(tripId: "t1", service: service)
+        await model.load()
+
+        var pending: CheckedContinuation<DayPlanResponse, Error>?
+        service.dayPlanHandler = { _ in
+            try await withCheckedThrowingContinuation { pending = $0 }
+        }
+        var saved: Bool?
+        let saveTask = Task { saved = await model.addSpot(TripSpot(name: "우메다")) }
+        await waitForRefresh { pending != nil }
+        await waitForRefresh { saved != nil }
+
+        XCTAssertEqual(saved, true, "계산 응답을 기다리지 않고 저장 성공을 돌려준다")
+        XCTAssertFalse(model.isSaving)
+        XCTAssertEqual(model.day?.spots.count, 2)
+        XCTAssertNil(model.plan, "느린 계산을 기다리는 동안 옛 시각을 쓰지 않는다")
+        XCTAssertFalse(model.planAttempted(for: 0))
+
+        pending?.resume(returning: planWithSpots(2, revision: 8))
+        await saveTask.value
+        await waitForRefresh { model.plan?.trip.revision == 8 }
+        XCTAssertTrue(model.planAttempted(for: 0))
+    }
+
+    func testAPlanRequestedBeforeSavingCannotOverwriteTheNewCalculation() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(days: 1), revision: 7, role: .owner))
+        service.dayPlanResponse = planWithSpots(1)
+        let model = TripPlanViewModel(tripId: "t1", service: service)
+        await model.load()
+
+        var pending: CheckedContinuation<DayPlanResponse, Error>?
+        service.dayPlanHandler = { _ in
+            try await withCheckedThrowingContinuation { pending = $0 }
+        }
+        let oldRequest = Task { await model.loadPlan() }
+        await waitForRefresh { pending != nil }
+
+        service.dayPlanHandler = nil
+        service.dayPlanResponse = planWithSpots(2, revision: 8, names: ["도톤보리", "우메다"])
+        await model.addSpot(TripSpot(name: "우메다"))
+        await waitForRefresh { model.plan?.trip.revision == 8 }
+        pending?.resume(returning: planWithSpots(1, revision: 7))
+        await oldRequest.value
+
+        XCTAssertEqual(model.plan?.trip.revision, 8)
+        XCTAssertEqual(model.planSpot(at: 1)?.name, "우메다")
+        XCTAssertTrue(model.planAttempted(for: 0))
+    }
+
+    func testNewlySavedLegsCanBeRetriedAfterTheOldRevisionWasRetried() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(days: 1), revision: 7, role: .owner))
+        service.dayPlanResponse = plan(days: 1, legsPending: 1)
+        let model = TripPlanViewModel(tripId: "t1", service: service, legRetryDelay: 0.02)
+        await model.load()
+        await waitForRefresh { service.dayPlanCalls.count == 2 }
+
+        service.dayPlanResponse = plan(days: 1, legsPending: 1, revision: 8)
+        await model.addSpot(TripSpot(name: "우메다"))
+        await waitForRefresh { model.plan?.trip.revision == 8 }
+        service.dayPlanResponse = plan(days: 1, legsPending: 0, revision: 8)
+        await waitForRefresh { model.plan?.legsPending == 0 }
+
+        XCTAssertEqual(service.dayPlanCalls, [0, 0, 0, 0], "새 문서의 구간도 한 번 다시 받는다")
+        XCTAssertEqual(model.plan?.trip.revision, 8)
     }
 }

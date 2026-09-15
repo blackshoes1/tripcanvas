@@ -136,20 +136,27 @@ final class TripPlanViewModel {
     func loadPlan() async {
         guard dayCount > 0 else { plansByDay = [:]; cachedAtByDay = [:]; return }
         let day = selectedDay
+        let askedRevision = revision
+        defer {
+            if revision == askedRevision { attemptedDays.insert(day) }
+        }
         await showCachedPlan(for: day)
+        guard revision == askedRevision else { return }
         do {
             let fetched = try await service.dayPlan(tripId: tripId, dayIndex: day)
-            guard day == selectedDay else { return }   // 그 사이 다른 날로 옮겼으면 버린다
+            guard day == selectedDay, revision == askedRevision,
+                  fetched.value.trip.revision == askedRevision else { return }
             plansByDay[day] = fetched.value
             cachedAtByDay[day] = fetched.cachedAt
             attemptedDays.insert(day)
             await loadMembers()
+            guard revision == askedRevision else { return }
             // ⚠️ **기다리지 않는다.** 여기서 await 하면 `load()`가 3초 동안 안 끝나고,
             // 그동안 화면은 로딩 상태로 멈춘다 — 채우기를 기다리는 것과 화면을 세우는 것은 다른 일이다.
             scheduleLegRetry(day: day, pending: fetched.value.legsPending)
             prefetchNeighbours(of: day)
         } catch {
-            attemptedDays.insert(day)
+            guard revision == askedRevision else { return }
             // 못 받았다고 **이미 보여 준 계산을 지우지 않는다** — 화면이 비면서 또 튄다.
             // 다만 그 계산이 지금 보는 날의 것이고 문서가 그대로일 때만 남긴다:
             // 편집한 뒤의 옛 시각을 계속 보여 주면 틀린 숫자를 말하는 것이다.
@@ -213,14 +220,16 @@ final class TripPlanViewModel {
     private func scheduleLegRetry(day: Int, pending: Int) {
         guard pending > 0, !retriedLegs.contains(day) else { return }
         retriedLegs.insert(day)
-        Task { [weak self] in await self?.refetchWhenLegsArrive(day: day) }
+        let askedRevision = revision
+        Task { [weak self] in await self?.refetchWhenLegsArrive(day: day, revision: askedRevision) }
     }
 
-    private func refetchWhenLegsArrive(day: Int) async {
+    private func refetchWhenLegsArrive(day: Int, revision askedRevision: Int) async {
         try? await Task.sleep(for: .seconds(legRetryDelay))
-        guard day == selectedDay else { return }        // 그 사이 다른 날로 옮겼으면 버린다
+        guard day == selectedDay, revision == askedRevision else { return }
         guard let fetched = try? await service.dayPlan(tripId: tripId, dayIndex: day) else { return }
-        guard day == selectedDay else { return }        // 늦게 온 답이 화면을 되돌리지 않게
+        guard day == selectedDay, revision == askedRevision,
+              fetched.value.trip.revision == askedRevision else { return }
         plansByDay[day] = fetched.value
         cachedAtByDay[day] = fetched.cachedAt
     }
@@ -428,6 +437,8 @@ final class TripPlanViewModel {
             apply(try await service.saveDocument(tripId: tripId, document: edited, expectedRevision: revision))
             errorMessage = nil
             toast = successToast
+            // 저장 완료를 계산 대기에 묶지 않고, 현재 일자의 로딩도 다시 끝나게 한다.
+            Task { [weak self] in await self?.loadPlan() }
             return true
         } catch let error as APIError {
             document = current
@@ -457,6 +468,7 @@ final class TripPlanViewModel {
             plansByDay = [:]
             cachedAtByDay = [:]
             attemptedDays = []
+            retriedLegs = []
         }
         document = snapshot.document
         revision = snapshot.revision
