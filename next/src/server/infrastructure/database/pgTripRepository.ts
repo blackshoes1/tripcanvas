@@ -1,10 +1,10 @@
 // trips Repository — sync_trip/tombstone_trip의 저장 규칙(CAS · tombstone · 소유한 쪽 우선)을 트랜잭션으로 낸다.
 // 누가 저장해도 되는가(역할)는 여기서 판정하지 않는다 — application(TripService)의 몫이다.
-import { and, desc, eq, or, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, or, sql } from 'drizzle-orm';
 
 import type { CasResult, MemberRole, TripRecord, TripRepository, TripView } from '../../repositories/types';
 import type { Db } from './db';
-import { tripActivity, tripMembers, trips } from './schema';
+import { tripActivity, tripCandidates, tripMembers, trips } from './schema';
 
 type Row = typeof trips.$inferSelect;
 
@@ -21,6 +21,24 @@ function toRecord(row: Row): TripRecord {
  */
 function byRecency(a: { row: Row }, b: { row: Row }): number {
   return b.row.updatedAt.getTime() - a.row.updatedAt.getTime() || Number(b.row.updatedSeq) - Number(a.row.updatedSeq);
+}
+
+/** 앱이 명시적으로 연결한 후보 ID만 쓴다. 이름·좌표·기존 scheduled_ref로 추측하지 않는다. */
+function candidateDays(document: unknown): Map<number, Set<number>> {
+  const result = new Map<number, Set<number>>();
+  const days = (document as { days?: unknown } | null)?.days;
+  if (!Array.isArray(days)) return result;
+  days.forEach((day, index) => {
+    if (!Array.isArray(day?.spots)) return;
+    for (const spot of day.spots) {
+      const id: unknown = spot?.candidateId;
+      if (typeof id !== 'number' || !Number.isSafeInteger(id) || id <= 0) continue;
+      const positions = result.get(id) ?? new Set<number>();
+      positions.add(index + 1);
+      result.set(id, positions);
+    }
+  });
+  return result;
 }
 
 export class PgTripRepository implements TripRepository {
@@ -85,7 +103,8 @@ export class PgTripRepository implements TripRepository {
 
   async updateCas(id: string, data: unknown, expectedRevision: number, opts: { force?: boolean; actorId?: string } = {}): Promise<CasResult> {
     return this.db.transaction(async (tx) => {
-      const [current] = await tx.select().from(trips).where(eq(trips.id, id)).for('update');
+      // 키는 바뀌지 않는다. CAS 쓰기는 직렬화하되 후보 활동 INSERT의 FK KEY SHARE와 서로 막히지 않는다.
+      const [current] = await tx.select().from(trips).where(eq(trips.id, id)).for('no key update');
       if (!current) throw new Error(`trip ${id} not found`);
       if (!opts.force && (current.deletedAt || Number(current.revision) !== expectedRevision)) {
         return { applied: false, conflict: true, record: toRecord(current) };
@@ -93,9 +112,31 @@ export class PgTripRepository implements TripRepository {
       const [row] = await tx.update(trips)
         .set({ data, revision: Number(current.revision) + 1, deletedAt: null, updatedAt: sql`now()`, updatedSeq: sql`nextval('trips_updated_seq')` })
         .where(eq(trips.id, id)).returning();
+      await this.syncCandidateReferences(tx, current, data);
       await this.logSave(tx, current, row, opts.actorId ?? null);
       return { applied: true, conflict: false, record: toRecord(row) };
     });
+  }
+
+  /** 문서 이동·삭제와 후보 표시는 같은 CAS 트랜잭션이다. 새 후보 배치의 상태/활동은 기존 SCHEDULE 요청에 맡긴다. */
+  private async syncCandidateReferences(tx: Db, before: Row, after: unknown): Promise<void> {
+    const previous = candidateDays(before.data);
+    if (!previous.size) return;
+    const next = candidateDays(after);
+    const candidates = await tx.select().from(tripCandidates).where(and(
+      eq(tripCandidates.tripId, before.id), eq(tripCandidates.status, 'SCHEDULED'),
+      inArray(tripCandidates.id, [...previous.keys()])
+    )).orderBy(tripCandidates.id).for('update');
+    for (const candidate of candidates) {
+      const positions = next.get(Number(candidate.id));
+      // 여러 날짜에 같은 ID를 복제한 문서는 목적지를 단정할 수 없다. 현재 표시를 보존한다.
+      if (positions && positions.size !== 1) continue;
+      const scheduledRef = positions ? String([...positions][0]) : null;
+      const status = positions ? 'SCHEDULED' : 'PROPOSED';
+      if (candidate.status === status && candidate.scheduledRef === scheduledRef) continue;
+      await tx.update(tripCandidates).set({ status, scheduledRef, updatedAt: sql`now()` })
+        .where(and(eq(tripCandidates.id, candidate.id), eq(tripCandidates.tripId, before.id)));
+    }
   }
 
   /**

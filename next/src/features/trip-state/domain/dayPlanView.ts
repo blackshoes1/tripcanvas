@@ -114,6 +114,7 @@ export function buildDayPlanView(input: DayPlanInput): DayPlanResponse | null {
 
   const day: Day = days[di];
   const spots = day.spots ?? [];
+  const dayView = buildDayView(trip, cache, di);
   const timeline = dayTimelineOf(trip, cache, di);
   const dayMode = dayModeOf(day);
 
@@ -138,6 +139,7 @@ export function buildDayPlanView(input: DayPlanInput): DayPlanResponse | null {
       legs.push(leg);
     }
     if (hasCoord(spot)) incoming = spot;
+    const booking = dayView.spots[si].book;
 
     return {
       index: si,
@@ -149,6 +151,7 @@ export function buildDayPlanView(input: DayPlanInput): DayPlanResponse | null {
       fixed: entry.fixed,
       conflict: entry.conflict,
       bookedAtMinutes: minutesOf(spot.bookAt),
+      bookingLateMinutes: booking?.warn ? Math.round(entry.eta - parseHM(booking.at)) : null,
       waitMinutes: Math.max(0, Math.round(entry.wait ?? 0)),
       stayMinutes: spot.stayMin != null ? Number(spot.stayMin) : null,
       status: String((spot as { status?: unknown }).status ?? 'PLANNED'),
@@ -199,7 +202,7 @@ export function buildDayPlanView(input: DayPlanInput): DayPlanResponse | null {
       endMinutes,
       // 자정을 넘기면 과밀이다 — 웹의 '⚠️ 일정 과밀'과 같은 기준.
       overloaded: endMinutes != null && endMinutes > 24 * 60,
-      cost: dayCostOf(trip, cache, di)
+      cost: dayCostOf(dayView.cost)
     }
   };
 
@@ -256,7 +259,8 @@ function splitsOf(day: Day): DayPlanSplit[] {
  * `buildDayView`가 이미 이 계산을 들고 있어 값만 꺼내 쓴다. 규칙을 두 곳에 두지 않는다.
  * (라벨까지 함께 만들지만 그 비용은 무시할 만하고, 계산을 복제하는 쪽이 훨씬 비싸다)
  */
-function dayCostOf(trip: Trip, cache: LegCache, di: number): DayPlanDay['totals']['cost'] {
-  const { cost } = buildDayView(trip, cache, di);
-  return { total: cost.total, parts: cost.parts.map((p) => ({ label: p.label, amount: p.amount })) };
+function dayCostOf(cost: DayPlanDay['totals']['cost']): DayPlanDay['totals']['cost'] {
+  // 서버에는 브라우저 환율 캐시가 없다. 기본 참고 환율임을 실제 응답에서 명시한다.
+  if (cost.details) cost.details.fxSource = 'FALLBACK';
+  return cost;
 }

@@ -93,6 +93,27 @@ describe('검증과 인자 전달', () => {
     expect((await res.json()).code).toBe('FORBIDDEN');
   });
 
+  it('지도 후보의 제공자와 원본 ID를 버리지 않고 서비스로 전달한다', async () => {
+    const { calls, routes } = setup();
+    const input = { title: '제주 카페', lat: 33.5, lng: 126.5, provider: 'kakao', providerId: '12345',
+      clientKey: '11111111-1111-4111-8111-111111111111', url: 'https://place.map.kakao.com/12345' };
+    const response = await routes.addCandidate(req('POST', '/x', 'tok-a', input), 'trip1');
+    expect(response.status).toBe(201);
+    expect((await response.json()).id).toBe(7);
+    expect(calls.at(-1)).toEqual(['addCandidate', A, 'trip1', input]);
+  });
+
+  it.each([
+    { lat: '', lng: '' }, { lat: true, lng: 126.5 }, { lat: 91, lng: 126.5 }, { lat: 33.5, lng: 181 },
+    { lat: 33.5 }, { lat: null, lng: 126.5 }, { provider: 'other', providerId: '12345' }, { provider: 'kakao', providerId: 12345 },
+    { clientKey: '' }, { clientKey: 'same-name' }, { clientKey: 123 }, { clientKey: '11111111-1111-4111-8111-111111111111x' }
+  ])('잘못된 후보 위치와 제공자 요청은 저장 서비스 전에 거절한다: %j', async fields => {
+    const { calls, routes } = setup();
+    const response = await routes.addCandidate(req('POST', '/x', 'tok-a', { title: '명소', ...fields }), 'trip1');
+    expect(response.status).toBe(400);
+    expect(calls).toEqual([]);
+  });
+
   it('활동 limit는 정수만, 아니면 null(기본값)', async () => {
     const { calls, routes } = setup();
     await routes.listActivity(req('GET', '/x?limit=20', 'tok-a'), 'trip1');

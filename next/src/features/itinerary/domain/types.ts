@@ -124,7 +124,7 @@ export interface DayView {
   /** "⚠️ 일정 과밀 — 예상 종료 23:10" */
   overloadLabel: string | null;
   /** 하루 비용 (장소 + 택시 + 예약 하루치) — 0이면 parts가 빈다 */
-  cost: { total: number; parts: DayCostPart[] };
+  cost: import('@/features/trip/domain/costTypes').DayCostSummary;
 }
 
 /** 필터바 '전체 비용'과 같은 규칙 — 예약은 전액이라 하루치 합계보다 클 수 있다 */

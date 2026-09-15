@@ -180,7 +180,7 @@
       "kind": "SCHEDULE_CHANGED",
       "mine": false,
       "effects": {
-        "candidates": false,
+        "candidates": true,
         "members": false,
         "pull": true,
         "activity": true,
@@ -191,7 +191,7 @@
       "kind": "SCHEDULE_CHANGED",
       "mine": true,
       "effects": {
-        "candidates": false,
+        "candidates": true,
         "members": false,
         "pull": false,
         "activity": true,
@@ -202,7 +202,7 @@
       "kind": "BOOKING_ADDED",
       "mine": false,
       "effects": {
-        "candidates": false,
+        "candidates": true,
         "members": false,
         "pull": true,
         "activity": true,
@@ -213,7 +213,7 @@
       "kind": "BOOKING_ADDED",
       "mine": true,
       "effects": {
-        "candidates": false,
+        "candidates": true,
         "members": false,
         "pull": false,
         "activity": true,

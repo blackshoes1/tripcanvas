@@ -77,8 +77,8 @@ final class RealtimeHandlingTests: XCTestCase {
         XCTAssertEqual(service.candidateReads, before)
     }
 
-    /// 후보와 무관한 신호로 목록을 다시 읽지 않는다 — 소켓이 시끄러워도 API는 조용하다.
-    func testUnrelatedEventDoesNotRefetch() async {
+    /// 날짜 이동·삭제는 후보의 배치 상태도 바꾸므로 보드를 다시 읽는다.
+    func testScheduleChangeRefetchesCandidates() async {
         let service = FakeRealtimeService()
         let model = board(service)
         await model.load()
@@ -86,7 +86,16 @@ final class RealtimeHandlingTests: XCTestCase {
 
         await model.handle(RealtimeActivity(tripId: "t1", id: 9, kind: "SCHEDULE_CHANGED", mine: false))
 
-        XCTAssertEqual(service.candidateReads, before, "문서 변경은 이 화면이 다시 읽을 것이 아니다")
+        XCTAssertEqual(service.candidateReads, before + 1, "문서 변경 뒤 후보의 배치 상태를 다시 읽는다")
+    }
+
+    func testUnrelatedEventDoesNotRefetch() async {
+        let service = FakeRealtimeService()
+        let model = board(service)
+        await model.load()
+        let before = service.candidateReads
+        await model.handle(RealtimeActivity(tripId: "t1", id: 9, kind: "UNRELATED_EVENT", mine: false))
+        XCTAssertEqual(service.candidateReads, before)
     }
 
     /// 알림은 적게(§51) — 남이 담았을 때만.

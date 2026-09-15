@@ -159,9 +159,31 @@ export class CollabService implements CollabApi {
     if (!title) throw new ApiError('VALIDATION_ERROR', { message: '후보에는 이름이 있어야 합니다.' });
     const view = await this.tripFor(ctx, clientId);
     if (!canEdit(view.role)) throw new ApiError('FORBIDDEN', { message: '보기 권한으로는 후보를 추가할 수 없습니다.' });
-    const num = (v: unknown) => (v == null || !Number.isFinite(Number(v)) ? null : Number(v));
+    // 누락된 좌표는 둘 다 null이다. 빈 문자열·불리언을 0으로 바꿔 실제 위치처럼 저장하지 않는다.
+    const hasLocation = input.lat != null || input.lng != null;
+    if (hasLocation && (typeof input.lat !== 'number' || !Number.isFinite(input.lat) || input.lat < -90 || input.lat > 90 ||
+      typeof input.lng !== 'number' || !Number.isFinite(input.lng) || input.lng < -180 || input.lng > 180)) {
+      throw new ApiError('VALIDATION_ERROR', { message: '후보의 위치가 올바르지 않습니다.' });
+    }
+    const provider = input.provider ?? null;
+    const providerId = input.providerId ?? null;
+    if (input.clientKey != null && (typeof input.clientKey !== 'string' ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.clientKey))) {
+      throw new ApiError('VALIDATION_ERROR', { message: '담기 요청 키는 UUID여야 합니다.' });
+    }
+    const clientKey = input.clientKey?.toLowerCase() ?? null;
+    if ((provider !== null && provider !== 'kakao' && provider !== 'google') ||
+      (providerId !== null && (typeof providerId !== 'string' || !provider ||
+        !(provider === 'kakao' ? /^\d{1,20}$/ : /^[A-Za-z0-9_-]{5,200}$/).test(providerId)))) {
+      throw new ApiError('VALIDATION_ERROR', { message: '장소 제공자와 장소 ID가 올바르지 않습니다.' });
+    }
+    const placeId = trimTo(input.place_id, 200);
+    if ((provider === 'kakao' && placeId) || (provider === 'google' && providerId && placeId && placeId !== providerId)) {
+      throw new ApiError('VALIDATION_ERROR', { message: '장소 제공자별 ID가 서로 맞지 않습니다.' });
+    }
     return this.deps.collab.addCandidate(view.record.id, ctx.userId, {
-      title, place_id: trimTo(input.place_id, 200), lat: num(input.lat), lng: num(input.lng),
+      title, provider, providerId, clientKey, place_id: provider === 'google' ? providerId ?? placeId : placeId,
+      lat: input.lat ?? null, lng: input.lng ?? null,
       addr: trimTo(input.addr, 200), note: trimTo(input.note, 300), url: trimTo(input.url, 500)
     });
   }

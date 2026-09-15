@@ -31,7 +31,7 @@ export interface SpotForm {
   targetDi: number;
 }
 
-export type SpotFormError = 'NAME_REQUIRED' | 'LOCATION_REQUIRED';
+export type SpotFormError = 'NAME_REQUIRED' | 'LOCATION_REQUIRED' | 'COST_INVALID';
 
 /** 예약 편집기 소관이라 이 폼이 만들지도 지우지도 않는 연결 — 편집 시 원본에서 그대로 물려준다 */
 const LINK_KEYS = ['bookingId', 'carPickupId', 'carReturnId'] as const;
@@ -75,7 +75,8 @@ export function spotFromForm(
     return { ok: false, error: 'LOCATION_REQUIRED' };
 
   const nights = legacyLib.stayNights({ nights: form.nights });
-  const costDigits = form.cost.replace(/[^\d]/g, '');
+  const cost = legacyLib.parseCostAmount(form.cost, form.cur);
+  if (form.cost.trim() && cost === null) return { ok: false, error: 'COST_INVALID' };
 
   const spot: Spot = {
     name,
@@ -91,7 +92,12 @@ export function spotFromForm(
   };
   // 값이 없거나 기본값이면 키 자체를 넣지 않는다 — 공유 링크를 줄이고,
   // normalizeTrip은 '비용 키 없음'과 '비용 null'을 똑같이 비용 없음으로 본다.
-  if (costDigits) spot.cost = Math.max(0, parseInt(costDigits, 10));
+  if (cost !== null) spot.cost = cost;
+  if (original.costBasis) spot.costBasis = original.costBasis;
+  if (original.costPeople) spot.costPeople = original.costPeople;
+  if (original.costPartial) spot.costPartial = original.costPartial;
+  if (original.admission) spot.admission = original.admission;
+  if (original.candidateId != null) spot.candidateId = original.candidateId;
   if (form.stay && nights > 1) spot.nights = nights;
   const at = legacyLib.normHM(form.at);
   if (at) spot.at = at;

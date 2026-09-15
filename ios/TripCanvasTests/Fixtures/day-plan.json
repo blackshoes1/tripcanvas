@@ -57,6 +57,7 @@
         "fixed": false,
         "conflict": false,
         "bookedAtMinutes": null,
+        "bookingLateMinutes": null,
         "waitMinutes": 0,
         "stayMinutes": 0,
         "status": "PLANNED",
@@ -77,6 +78,7 @@
         "fixed": false,
         "conflict": false,
         "bookedAtMinutes": 1140,
+        "bookingLateMinutes": null,
         "waitMinutes": 598,
         "stayMinutes": 90,
         "status": "PLANNED",
@@ -121,7 +123,61 @@
             "label": "예약",
             "amount": 50000
           }
-        ]
+        ],
+        "details": {
+          "items": [
+            {
+              "source": "SPOT",
+              "key": "0",
+              "title": "숙소",
+              "kind": "OTHER",
+              "amount": null,
+              "currency": "KRW",
+              "basis": "ENTERED",
+              "people": 1,
+              "totalKRW": null,
+              "state": "UNKNOWN"
+            },
+            {
+              "source": "SPOT",
+              "key": "1",
+              "title": "저녁 예약",
+              "kind": "OTHER",
+              "amount": null,
+              "currency": "KRW",
+              "basis": "ENTERED",
+              "people": 1,
+              "totalKRW": null,
+              "state": "BOOKING"
+            },
+            {
+              "source": "BOOKING",
+              "key": "bk1",
+              "title": "호텔",
+              "kind": "hotel",
+              "amount": 50000,
+              "currency": "KRW",
+              "basis": "ENTERED",
+              "people": 1,
+              "totalKRW": 50000,
+              "state": "KNOWN"
+            }
+          ],
+          "budget": null,
+          "unknownCount": 1,
+          "transportUnpriced": true,
+          "undatedBookings": 0,
+          "hasForeignCurrency": false,
+          "fxRates": {
+            "KRW": 1,
+            "USD": 1380,
+            "EUR": 1500,
+            "JPY": 9.1,
+            "CNY": 192
+          },
+          "fxSource": "FALLBACK",
+          "fxAsOf": null
+        }
       }
     }
   }

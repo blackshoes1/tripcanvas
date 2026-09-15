@@ -1287,6 +1287,23 @@ test('통합: 픽업을 일정 장소와 연결하면 그 장소 행에 붙고 �
   w.close();
 });
 
+test('통합: 웹 장소 편집에서 iOS 외화 소수·비용 기준·하루 예산을 보존한다', { skip: noJsdom }, async () => {
+  const w = boot();
+  withTrip(w, `[{title:'D1',drive:'',note:'',mode:'walk',budget:{amount:0},costItems:[{id:'bus',title:'버스',kind:'TRANSPORT',amount:2.5,cur:'USD'}],spots:[{name:'입장',city:'P',desc:'',lat:39.55,lng:2.73,cost:12.55,cur:'EUR',costBasis:'PER_PERSON',costPeople:2,costPartial:true,candidateId:123}]}]`);
+  w.eval('activeDay=0; render(); openSpotModal(0,0);');
+  assert.equal(w.document.getElementById('spotCost').value, '12.55');
+  w.document.getElementById('spotDesc').value = '메모만 변경';
+  w.document.getElementById('spotSave').click();
+  assert.equal(w.eval('trip().days[0].spots[0].cost'), 12.55);
+  assert.equal(w.eval('trip().days[0].spots[0].costPeople'), 2);
+  assert.equal(w.eval('trip().days[0].spots[0].costPartial'), true);
+  assert.equal(w.eval('trip().days[0].spots[0].candidateId'), 123);
+  assert.equal(w.eval('trip().days[0].budget.amount'), 0);
+  assert.equal(w.eval('dayCost(trip().days[0])'), 12.55 * 2 * 1500 + 2.5 * 1380);
+  await new Promise(resolve => w.setTimeout(resolve, 0));
+  w.close();
+});
+
 test('통합: 장소를 편집해도 예약·렌터카 연결은 그대로 남는다', { skip: noJsdom }, () => {
   const w=boot();
   withTrip(w, `[{title:'D1',drive:'',note:'',mode:'car',spots:[{name:'공항',city:'P',desc:'',lat:39.55,lng:2.73}]}]`);

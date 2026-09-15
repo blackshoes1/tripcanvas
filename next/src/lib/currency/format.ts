@@ -23,8 +23,8 @@ export function toKRW(amount: number, cur?: string, rates: FxRates = fxRates()):
   return Math.round((+amount || 0) * krwRateOf(cur, rates));
 }
 
-export function fmtMoney(n: number): string {
-  return Math.round(+n || 0).toLocaleString('en-US');
+export function fmtMoney(n: number, currency = 'KRW'): string {
+  return (+n || 0).toLocaleString('en-US', { maximumFractionDigits: ['USD', 'EUR', 'CNY'].includes(currency) ? 2 : 0 });
 }
 
 /** 통화 기호 — 알 수 없는 통화는 null (호출부가 KRW 폴백) */
@@ -37,5 +37,5 @@ export function costLabel(amount: number, cur?: string, rates: FxRates = fxRates
   const c = (cur ?? 'KRW') as CurrencyCode;
   const sym = SYMBOL[c];
   if (!sym || c === 'KRW') return `₩${fmtMoney(amount)}`;
-  return `${sym}${fmtMoney(amount)} ≈ ₩${fmtMoney(toKRW(amount, c, rates))}`;
+  return `${sym}${fmtMoney(amount, c)} ≈ ₩${fmtMoney(toKRW(amount, c, rates))}`;
 }

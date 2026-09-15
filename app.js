@@ -974,12 +974,12 @@ const CUR = { KRW:{sym:'₩',name:'원'}, USD:{sym:'$',name:'달러'}, EUR:{sym:
 const FX_KEY='tripcanvas_fx';
 let fxRates = { KRW:1, USD:1380, EUR:1500, JPY:9.1, CNY:192 };   // 통화 1단위 = ? 원. 네트워크 실패 시 폴백(근사)
 function toKRW(amount, cur){ return Math.round((+amount||0) * (fxRates[cur||'KRW']||1)); }
-function fmtMoney(n){ return Math.round(+n||0).toLocaleString('en-US'); }
+function fmtMoney(n,cur){ return (+n||0).toLocaleString('en-US',{maximumFractionDigits:['USD','EUR','CNY'].includes(cur)?2:0}); }
 // 원본+환산 표기: KRW면 "68,000원", 아니면 "$50 ≈ 68,000원"
 function costLabel(amount, cur){
   cur=cur||'KRW';
   const cu=CUR[cur];   // 외부 유입 데이터가 알 수 없는 통화(예: GBP)면 KRW로 폴백 — 렌더 크래시 방지
-  return (!cu || cur==='KRW') ? `₩${fmtMoney(amount)}` : `${cu.sym}${fmtMoney(amount)} ≈ ₩${fmtMoney(toKRW(amount,cur))}`;
+  return (!cu || cur==='KRW') ? `₩${fmtMoney(amount)}` : `${cu.sym}${fmtMoney(amount,cur)} ≈ ₩${fmtMoney(toKRW(amount,cur))}`;
 }
 // 환율 로드: localStorage 캐시(하루 1회 갱신), open.er-api.com에서 USD 기준 시세 → 원 환산율 계산
 function loadFx(){
@@ -998,7 +998,7 @@ function loadFx(){
     }
   }).catch(()=>{});   // 실패 시 폴백/캐시 유지
 }
-function dayCost(day){ return day.spots.reduce((a,s)=>a+(s.cost? toKRW(s.cost,s.cur):0),0); }
+function dayCost(day){ return dayEnteredCost(day,fxRates); }
 // 그 날짜에 배분된 예약비(숙박·렌터카·항공 하루치) — 원화 환산 합계
 function dayBookingCost(iso){
   // 일정 장소가 이미 값을 들고 있는 예약(연결된 숙박)은 뺀다 — 안 그러면 숙박비가 두 번 잡힌다
@@ -1006,6 +1006,7 @@ function dayBookingCost(iso){
     .reduce((a,x)=>a+toKRW(x.amount,x.cur),0);
 }
 function dayTaxiCost(day,di){
+  if(hasManualTransportCost(day)) return 0;
   const m=dayModeOf(day);
   return (m==='car'||m==='taxi')? ((dayRoute(day,backLegOf(day,di,dayReturnStay(trip().days,di)))||{}).taxi||0) : 0;
 }
@@ -1583,7 +1584,7 @@ function renderSidebar(){
       if(!hasLoc(s)) meta.push(`<button type="button" class="spotMetaItem noloc" onclick="event.stopPropagation();openSpotModal(${di},${si})">📍 위치 지정</button>`);
       if(s.cost){
         const cu=CUR[s.cur], nk=cu&&s.cur!=='KRW';
-        meta.push(`<span class="spotMetaItem cost"${nk?` title="${costLabel(s.cost,s.cur)}"`:''}>💳 ${nk?`${cu.sym}${fmtMoney(s.cost)}`:`₩${fmtMoney(s.cost)}`}</span>`);
+        meta.push(`<span class="spotMetaItem cost"${nk?` title="${costLabel(s.cost,s.cur)}"`:''}>💳 ${nk?`${cu.sym}${fmtMoney(s.cost,s.cur)}`:`₩${fmtMoney(s.cost)}`}</span>`);
         if(nk) meta.push(`<span class="spotMetaItem cost costConverted" aria-label="원화 환산 약 ${fmtMoney(toKRW(s.cost,s.cur))}원">약 ₩${fmtMoney(toKRW(s.cost,s.cur))}</span>`);
       }
       if(s.bookAt){
@@ -1672,8 +1673,7 @@ function renderSidebar(){
           return dayDistance(day,ctx.back)>0?`<div class="dist">📏 하루 동선 약 ${dayDistance(day,ctx.back).toFixed(1)}km <span style="opacity:.55">(직선)</span></div>`:'';})()}
         ${(()=>{const e=dayEndMin(day, ctx.anchor, ctx.backLeg); return (e!=null&&e>22*60)?`<div class="overload" title="시작시각+체류+이동 기준 예상 종료">⚠️ 일정 과밀 — 예상 종료 ${hm(e)}${e>=24*60?' (익일)':''}</div>`:'';})()}
         ${(()=>{
-          const road=(dm==='car'||dm==='taxi');
-          const parts=[['장소',dayCost(day)],['택시',road?((dayRoute(day,ctx.backLeg)||{}).taxi||0):0],['예약',iso?dayBookingCost(iso):0]]
+          const parts=[['장소·추가 비용',dayCost(day)],['택시',dayTaxiCost(day,di)],['예약',iso?dayBookingCost(iso):0]]
             .filter(p=>p[1]>0);
           const tot=parts.reduce((a,p)=>a+p[1],0); if(!tot) return '';
           const detail=parts.length>1?` <span style="opacity:.55">(${parts.map(p=>`${p[0]} ₩${p[1].toLocaleString()}`).join(' + ')})</span>`:'';
@@ -1927,7 +1927,7 @@ window.openSpotModal=(di,si)=>{
   document.getElementById('spotAt').value=s.at||'';
   document.getElementById('spotLegMode').value=s.legMode||'';   // 이 지점으로 오는 구간 수단(빈값=일정 기본)
   document.getElementById('spotStayMin').value=(s.stayMin!=null? s.stayMin : 0);
-  document.getElementById('spotCost').value=(s.cost!=null? fmtMoney(s.cost) : '');
+  document.getElementById('spotCost').value=(s.cost!=null? fmtMoney(s.cost,s.cur) : '');
   document.getElementById('spotCur').value=s.cur||'KRW';
   updateCostHint();
   document.getElementById('spotBookAt').value=s.bookAt||'';
@@ -1995,13 +1995,14 @@ document.getElementById('spotAdvanced').addEventListener('toggle',e=>{
 // 비용 입력: 천 단위 쉼표 + 통화별 원화 환산 힌트
 function updateCostHint(){
   const el=document.getElementById('costKrwHint');
-  const d=document.getElementById('spotCost').value.replace(/[^\d]/g,''), cur=document.getElementById('spotCur').value;
-  if(!d){ el.textContent=''; return; }
+  const cur=document.getElementById('spotCur').value;
+  const d=parseCostAmount(document.getElementById('spotCost').value,cur);
+  if(d===null){ el.textContent=''; return; }
   const rate=fxRates[cur], rateStr=rate<100?rate.toFixed(1):fmtMoney(rate);
   el.textContent = cur==='KRW' ? `= ₩${fmtMoney(d)}`
     : `≈ ₩${fmtMoney(toKRW(+d,cur))}  (1${CUR[cur].sym} ≈ ₩${rateStr})`;
 }
-document.getElementById('spotCost').addEventListener('input',function(){ const d=this.value.replace(/[^\d]/g,''); this.value=d?(+d).toLocaleString('en-US'):''; updateCostHint(); });
+document.getElementById('spotCost').addEventListener('input',updateCostHint);
 document.getElementById('spotCur').addEventListener('change',updateCostHint);
 document.getElementById('spotSave').onclick=()=>{
   const hadLocations=trip().days.some(day=>day.spots.some(hasLoc));
@@ -2009,8 +2010,10 @@ document.getElementById('spotSave').onclick=()=>{
   const lat=parseFloat(document.getElementById('spotLat').value), lng=parseFloat(document.getElementById('spotLng').value);
   if(!name){toast('이름을 입력하세요','#e63946');return;}
   if(isNaN(lat)||isNaN(lng)){toast('위치를 지정하세요 (검색 또는 지도 클릭)','#e63946');return;}
-  const costV=parseInt(document.getElementById('spotCost').value.replace(/[^\d]/g,''));   // 쉼표 제거 후 숫자
   const curV=document.getElementById('spotCur').value;
+  const costText=document.getElementById('spotCost').value;
+  const costV=parseCostAmount(costText,curV);
+  if(costText.trim()&&costV===null){toast('비용을 확인하세요 — 원·엔은 정수, 외화는 소수 둘째 자리까지 입력할 수 있어요','#e63946');return;}
   const s={name,city:document.getElementById('spotCity').value.trim()||'기타',desc:document.getElementById('spotDesc').value.trim(),
     opt:document.getElementById('spotOpt').checked,stay:document.getElementById('spotStay').checked,
     // 연박 수는 숙소일 때만 저장, 1박이면 생략(기본값 — 하위호환)
@@ -2020,7 +2023,7 @@ document.getElementById('spotSave').onclick=()=>{
     legMode:(document.getElementById('spotLegMode').value||undefined),   // 구간별 수단(빈값이면 일정 기본)
     // ⚠️ `parseInt(v)||60`으로 쓰면 **0을 넣어도 60이 된다**(0이 falsy). 0은 유효한 값이다.
     stayMin:(()=>{ const n=parseInt(document.getElementById('spotStayMin').value); return isNaN(n)?0:Math.max(0,n); })(),
-    cost:(isNaN(costV)?null:Math.max(0,costV)),
+    cost:costV,
     cur:(curV&&curV!=='KRW'?curV:undefined),   // KRW는 기본값이라 저장 생략(하위호환)
     bookAt:normHM(document.getElementById('spotBookAt').value)||'',
     bookUrl:document.getElementById('spotBookUrl').value.trim(),
@@ -2036,6 +2039,9 @@ document.getElementById('spotSave').onclick=()=>{
   if(isEdit){
     const prev=trip().days[editing.di].spots[editing.si]||{};
     if(prev.bookingId) s.bookingId=prev.bookingId;
+    for(const key of ['costBasis','costPeople','costPartial']) if(prev[key]!=null) s[key]=prev[key];
+    if(prev.admission) s.admission=prev.admission;
+    if(prev.candidateId!=null) s.candidateId=prev.candidateId;
     if(prev.carPickupId) s.carPickupId=prev.carPickupId;
     if(prev.carReturnId) s.carReturnId=prev.carReturnId;
     // 분리 묶음·합류 표시도 이 모달에서 만들지 않는다 — 메모만 고쳐도 나란한 일정이 풀리면 안 된다

@@ -93,6 +93,8 @@ struct CandidateView: Codable, Hashable, Sendable, Identifiable {
     let id: Int
     let title: String
     let placeId: String?
+    var provider: String? = nil
+    var providerId: String? = nil
     let lat: Double?
     let lng: Double?
     let addr: String?
@@ -111,7 +113,8 @@ struct CandidateView: Codable, Hashable, Sendable, Identifiable {
     let createdAt: String
 
     enum CodingKeys: String, CodingKey {
-        case id, title, lat, lng, addr, note, url, status, mine, reactions
+        case id, title, lat, lng, addr, note, url, status, mine, reactions, provider
+        case providerId = "provider_id"
         case placeId = "place_id", scheduledRef = "scheduled_ref", proposedByLabel = "proposed_by_label"
         case myReaction = "my_reaction", mustCount = "must_count", okCount = "ok_count", passCount = "pass_count"
         case commentCount = "comment_count", createdAt = "created_at"
@@ -194,4 +197,3 @@ struct RealtimeChoice: Codable, Sendable {
 struct MeResponse: Codable, Sendable {
     let realtime: RealtimeChoice
 }
-

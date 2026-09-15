@@ -485,7 +485,7 @@
     const cand=/^CANDIDATE_|^REACTION$|^COMMENT_ADDED$/.test(kind);
     const mem=/^MEMBER_/.test(kind);
     const doc=kind==='SCHEDULE_CHANGED'||kind==='BOOKING_ADDED';
-    return {candidates:cand, members:mem, pull:doc&&!mine, activity:known,
+    return {candidates:cand||doc, members:mem, pull:doc&&!mine, activity:known,
             notify:!mine&&(kind==='CANDIDATE_PROPOSED'||kind==='MEMBER_JOINED')};
   }
 
@@ -708,7 +708,7 @@
    * 넣는 위치는 그 날 **맨 뒤**다(최적 위치를 추측하지 않는다 — 재배치는 기존 드래그·재구성이 한다).
    * 같은 입력이면 같은 답이다. 점수는 정렬에만 쓰고 문장에는 없다.
    * @param {any[]|null} candidates
-   * @param {Array<{spots?:Array<{name?:string,lat?:number|null,lng?:number|null}|null>}|null>|null} days
+   * @param {Array<{spots?:Array<{name?:string,lat?:number|null,lng?:number|null,candidateId?:number}|null>}|null>|null} days
    * @param {number} [memberCount] @param {{walking?:string|null}|null} [ctx] @param {number} [max]
    * @returns {{headline:string,picks:Array<{candidate:any,di:number,km:number|null,reasons:string[]}>}|null}
    */
@@ -716,7 +716,8 @@
     const limit=(Number(max)>0)? Number(max) : 3;
     const dayList=(Array.isArray(days)?days:[]).map((d,i)=>({di:i, spots:((d&&Array.isArray(d.spots))?d.spots:[]).filter(Boolean)}));
     if(!dayList.length) return null;
-    const eligible=(Array.isArray(candidates)?candidates:[]).filter(c=>c && String(c.status||'PROPOSED')==='PROPOSED')
+    const placed=new Set(dayList.flatMap(d=>d.spots.map(s=>s&&s.candidateId)).filter(id=>typeof id==='number'&&Number.isSafeInteger(id)&&id>0));
+    const eligible=(Array.isArray(candidates)?candidates:[]).filter(c=>c && String(c.status||'PROPOSED')==='PROPOSED'&&!placed.has(c.id))
       .map(c=>({c, k:consensusOf(c, memberCount)}))
       .filter(x=>x.k.voted>=2 && (x.k.status==='STRONG_MATCH'||x.k.status==='GOOD_MATCH'))
       .sort((a,b)=>(b.k.score-a.k.score)||(b.k.strongSupportCount-a.k.strongSupportCount)||candKey(b.c).localeCompare(candKey(a.c)));
