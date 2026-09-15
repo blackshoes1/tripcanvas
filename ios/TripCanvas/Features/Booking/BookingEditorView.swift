@@ -68,8 +68,8 @@ struct BookingEditorView: View {
         let booking = target.booking ?? TripBooking()
         _draft = State(initialValue: booking)
         _links = State(initialValue: target.booking.map { document.links(forBooking: $0.id) } ?? .empty)
-        _priceText = State(initialValue: booking.price > 0 ? String(booking.price) : "")
-        _feeText = State(initialValue: booking.cancelFee.map(String.init) ?? "")
+        _priceText = State(initialValue: booking.price > 0 ? MoneyInput.text(amount: booking.price) : "")
+        _feeText = State(initialValue: MoneyInput.text(amount: booking.cancelFee))
         _urlText = State(initialValue: booking.url ?? "")
         _roomNameText = State(initialValue: booking.roomName ?? "")
         _pickupPlace = State(initialValue: booking.carPickup ?? "")
@@ -96,24 +96,11 @@ struct BookingEditorView: View {
                     .pickerStyle(.segmented)
                     TextField(titlePlaceholder, text: $draft.title)
                     TextField("예약처 (예: Booking.com)", text: $draft.provider)
-                }
-
-                Section {
-                    HStack {
-                        TextField("총액", text: $priceText)
-                            .keyboardType(.numberPad)
-                        Picker("통화", selection: currencyBinding) {
-                            ForEach(Currency.allCases, id: \.self) { currency in
-                                Text(currency.rawValue).tag(currency)
-                            }
-                        }
-                        .labelsHidden()
-                    }
-                    Toggle("가격 추적", isOn: $draft.track)
-                } header: {
-                    Text("가격")
-                } footer: {
-                    Text("켜두면 시세를 계속 확인해 절약 기회를 알려줘요. 자동으로 다시 예약하지는 않습니다.")
+                    TextField("예약번호", text: Binding(
+                        get: { draft.confirmation ?? "" },
+                        set: { draft.confirmation = $0 }))
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
                 }
 
                 Section("기간") {
@@ -123,27 +110,49 @@ struct BookingEditorView: View {
                     }
                 }
 
-                if draft.type == .hotel { hotelSection }
-                if draft.type == .car { carSection }
-
-                Section {
-                    Toggle("무료 취소 가능", isOn: $draft.refundable)
-                    if draft.refundable {
-                        DateField(title: "무료 취소 기한", text: $draft.freeCancelUntil) { Date() }
-                    }
-                    TextField("취소 수수료", text: $feeText)
-                        .keyboardType(.numberPad)
-                } header: {
-                    Text("취소 조건")
-                } footer: {
-                    Text("절약액은 취소 수수료를 뺀 실질 금액으로 계산합니다.")
-                }
-
                 Section("링크") {
                     TextField("예약 페이지 https://…", text: $urlText)
                         .keyboardType(.URL)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
+                }
+
+                Section {
+                    DisclosureGroup("가격과 추적") {
+                        HStack {
+                            TextField("총액", text: $priceText)
+                                .keyboardType(.decimalPad)
+                            Picker("통화", selection: currencyBinding) {
+                                ForEach(Currency.allCases, id: \.self) { currency in
+                                    Text(currency.rawValue).tag(currency)
+                                }
+                            }
+                            .labelsHidden()
+                        }
+                        Toggle("가격 추적", isOn: $draft.track)
+                    }
+                } header: {
+                    Text("가격")
+                } footer: {
+                    Text("켜두면 시세를 계속 확인해 절약 기회를 알려줘요. 자동으로 다시 예약하지는 않습니다.")
+                }
+
+                if draft.type == .hotel { hotelSection }
+                if draft.type == .car { carSection }
+
+                Section {
+                    DisclosureGroup("취소 조건") {
+                        Toggle("무료 취소 가능", isOn: $draft.refundable)
+                        if draft.refundable {
+                            DateField(title: "무료 취소 기한", text: $draft.freeCancelUntil) { Date() }
+                        }
+                        TextField("취소 수수료", text: $feeText)
+                            .keyboardType(.decimalPad)
+                    }
+                } header: {
+                    Text("취소 조건")
+                } footer: {
+                    Text("절약액은 취소 수수료를 뺀 실질 금액으로 계산합니다.")
                 }
 
                 if target.booking != nil {
@@ -194,20 +203,22 @@ struct BookingEditorView: View {
 
     private var hotelSection: some View {
         Section {
-            Picker("일정의 숙소와 연결", selection: $links.stay) {
-                Text("연결 안 함").tag(SpotRef?.none)
-                ForEach(document.stayRefs, id: \.self) { ref in
-                    Text(spotLabel(ref)).tag(SpotRef?.some(ref))
+            DisclosureGroup("숙박 세부 정보") {
+                Picker("일정의 숙소와 연결", selection: $links.stay) {
+                    Text("연결 안 함").tag(SpotRef?.none)
+                    ForEach(document.stayRefs, id: \.self) { ref in
+                        Text(spotLabel(ref)).tag(SpotRef?.some(ref))
+                    }
                 }
-            }
-            .pickerStyle(.navigationLink)
-            Stepper("투숙 인원 \(draft.adults ?? 2)명", value: adultsBinding, in: 1...8)
-            Stepper("객실 \(draft.rooms ?? 1)개", value: roomsBinding, in: 1...4)
-            TextField("객실명 (예: Deluxe Double)", text: $roomNameText)
-            Picker("조식", selection: $draft.breakfast) {
-                Text("모름").tag(Bool?.none)
-                Text("조식 포함").tag(Bool?.some(true))
-                Text("조식 없음").tag(Bool?.some(false))
+                .pickerStyle(.navigationLink)
+                Stepper("투숙 인원 \(draft.adults ?? 2)명", value: adultsBinding, in: 1...8)
+                Stepper("객실 \(draft.rooms ?? 1)개", value: roomsBinding, in: 1...4)
+                TextField("객실명 (예: Deluxe Double)", text: $roomNameText)
+                Picker("조식", selection: $draft.breakfast) {
+                    Text("모름").tag(Bool?.none)
+                    Text("조식 포함").tag(Bool?.some(true))
+                    Text("조식 없음").tag(Bool?.some(false))
+                }
             }
         } header: {
             Text("숙박")
@@ -222,50 +233,52 @@ struct BookingEditorView: View {
 
     private var carSection: some View {
         Section {
-            HStack {
-                TextField("픽업 장소", text: $pickupPlace)
-                TextField("PMI", text: $pickupCode)
-                    .frame(width: 64)
-                    .textInputAutocapitalization(.characters)
-                    .autocorrectionDisabled()
-            }
-            HStack {
-                TextField("반납 장소 (비우면 픽업과 동일)", text: $returnPlace)
-                TextField("공항", text: $returnCode)
-                    .frame(width: 64)
-                    .textInputAutocapitalization(.characters)
-                    .autocorrectionDisabled()
-            }
-            ClockField(title: "픽업 시각", text: $draft.carPickupTime)
-            ClockField(title: "반납 시각", text: $draft.carReturnTime)
-            Picker("차급", selection: carClassBinding) {
-                Text("모름").tag("")
-                ForEach(carClassOptions) { option in
-                    Text(option.label).tag(option.id)
+            DisclosureGroup("렌터카 세부 정보") {
+                HStack {
+                    TextField("픽업 장소", text: $pickupPlace)
+                    TextField("PMI", text: $pickupCode)
+                        .frame(width: 64)
+                        .textInputAutocapitalization(.characters)
+                        .autocorrectionDisabled()
                 }
+                HStack {
+                    TextField("반납 장소 (비우면 픽업과 동일)", text: $returnPlace)
+                    TextField("공항", text: $returnCode)
+                        .frame(width: 64)
+                        .textInputAutocapitalization(.characters)
+                        .autocorrectionDisabled()
+                }
+                ClockField(title: "픽업 시각", text: $draft.carPickupTime)
+                ClockField(title: "반납 시각", text: $draft.carReturnTime)
+                Picker("차급", selection: carClassBinding) {
+                    Text("모름").tag("")
+                    ForEach(carClassOptions) { option in
+                        Text(option.label).tag(option.id)
+                    }
+                }
+                Picker("변속기", selection: $draft.transmission) {
+                    Text("모름").tag(CarTransmission?.none)
+                    ForEach(CarTransmission.allCases, id: \.self) { Text($0.label).tag(CarTransmission?.some($0)) }
+                }
+                Picker("주행거리", selection: $draft.mileage) {
+                    Text("모름").tag(CarMileage?.none)
+                    ForEach(CarMileage.allCases, id: \.self) { Text($0.label).tag(CarMileage?.some($0)) }
+                }
+                Picker("보험", selection: $draft.insurance) {
+                    Text("모름").tag(CarInsurance?.none)
+                    ForEach(CarInsurance.allCases, id: \.self) { Text($0.label).tag(CarInsurance?.some($0)) }
+                }
+                Picker("픽업을 일정의 장소와 연결", selection: $links.carPickup) {
+                    Text("연결 안 함").tag(SpotRef?.none)
+                    ForEach(document.spotRefs, id: \.self) { ref in Text(spotLabel(ref)).tag(SpotRef?.some(ref)) }
+                }
+                .pickerStyle(.navigationLink)
+                Picker("반납을 일정의 장소와 연결", selection: $links.carReturn) {
+                    Text("연결 안 함").tag(SpotRef?.none)
+                    ForEach(document.spotRefs, id: \.self) { ref in Text(spotLabel(ref)).tag(SpotRef?.some(ref)) }
+                }
+                .pickerStyle(.navigationLink)
             }
-            Picker("변속기", selection: $draft.transmission) {
-                Text("모름").tag(CarTransmission?.none)
-                ForEach(CarTransmission.allCases, id: \.self) { Text($0.label).tag(CarTransmission?.some($0)) }
-            }
-            Picker("주행거리", selection: $draft.mileage) {
-                Text("모름").tag(CarMileage?.none)
-                ForEach(CarMileage.allCases, id: \.self) { Text($0.label).tag(CarMileage?.some($0)) }
-            }
-            Picker("보험", selection: $draft.insurance) {
-                Text("모름").tag(CarInsurance?.none)
-                ForEach(CarInsurance.allCases, id: \.self) { Text($0.label).tag(CarInsurance?.some($0)) }
-            }
-            Picker("픽업을 일정의 장소와 연결", selection: $links.carPickup) {
-                Text("연결 안 함").tag(SpotRef?.none)
-                ForEach(document.spotRefs, id: \.self) { ref in Text(spotLabel(ref)).tag(SpotRef?.some(ref)) }
-            }
-            .pickerStyle(.navigationLink)
-            Picker("반납을 일정의 장소와 연결", selection: $links.carReturn) {
-                Text("연결 안 함").tag(SpotRef?.none)
-                ForEach(document.spotRefs, id: \.self) { ref in Text(spotLabel(ref)).tag(SpotRef?.some(ref)) }
-            }
-            .pickerStyle(.navigationLink)
         } header: {
             Text("렌터카")
         } footer: {
@@ -329,16 +342,23 @@ struct BookingEditorView: View {
             }
         }
         if let currency = spot.currency { draft.currency = currency }
-        if priceText.isEmpty, let cost = spot.cost, cost > 0 { priceText = String(cost) }
+        if priceText.isEmpty, let cost = spot.cost, cost > 0 { priceText = MoneyInput.text(amount: cost) }
     }
 
     private func save() async {
         var booking = draft
         booking.title = booking.title.trimmingCharacters(in: .whitespacesAndNewlines)
         booking.provider = booking.provider.trimmingCharacters(in: .whitespacesAndNewlines)
-        booking.price = SpotEditorView.cost(from: priceText) ?? 0
+        let price = MoneyInput.amount(from: priceText, currency: draft.currency)
+        let fee = MoneyInput.amount(from: feeText, currency: draft.currency)
+        if (!priceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && price == nil)
+            || (!feeText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && fee == nil) {
+            problem = .invalidAmount
+            return
+        }
+        booking.price = price ?? 0
         booking.url = urlText.trimmingCharacters(in: .whitespacesAndNewlines)
-        booking.cancelFee = SpotEditorView.cost(from: feeText)
+        booking.cancelFee = fee
         if !booking.refundable { booking.freeCancelUntil = nil }
         if booking.type == .hotel {
             // 웹 폼의 기본값(성인 2·객실 1)과 같다 — 시세 비교에 조건이 있어야 한다.

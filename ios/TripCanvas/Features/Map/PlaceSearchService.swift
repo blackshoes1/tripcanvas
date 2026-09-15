@@ -8,6 +8,13 @@ import Foundation
 @MainActor
 protocol PlaceSearching {
     func search(_ query: String, near: GeoPoint?) async throws -> [PlaceHit]
+    func search(_ query: String, area: PlaceSearchArea?, category: PlaceSearchCategory?, region: PlaceSearchRegion) async throws -> [PlaceHit]
+}
+
+extension PlaceSearching {
+    func search(_ query: String, area: PlaceSearchArea?, category: PlaceSearchCategory?, region: PlaceSearchRegion) async throws -> [PlaceHit] {
+        try await search(query.isEmpty ? category?.label ?? "" : query, near: area?.center)
+    }
 }
 
 @MainActor
@@ -33,8 +40,22 @@ final class PlaceSearchService: PlaceSearching {
         return try await searchGoogle(trimmed, near: near)
     }
 
-    private func searchKorea(_ query: String, near: GeoPoint?) async throws -> [PlaceHit] {
+    func search(_ query: String, area: PlaceSearchArea?, category: PlaceSearchCategory?, region: PlaceSearchRegion) async throws -> [PlaceHit] {
+        let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty || category != nil else { return [] }
+        if let area, !area.isValid { throw APIError.server(status: 400, message: "검색할 지역을 더 좁혀 주세요.") }
+        if region == .korea {
+            return try await searchKorea(text, near: area?.center, area: area, category: category)
+        }
+        let hits = try await searchGoogle(text.isEmpty ? category?.googleType ?? "" : text,
+                                          near: nil, area: area, category: category)
+        return area.map { bounds in hits.filter { bounds.contains($0.point) } } ?? hits
+    }
+
+    private func searchKorea(_ query: String, near: GeoPoint?, area: PlaceSearchArea? = nil, category: PlaceSearchCategory? = nil) async throws -> [PlaceHit] {
         var items = [URLQueryItem(name: "q", value: query), URLQueryItem(name: "limit", value: "10")]
+        if let area { items.append(URLQueryItem(name: "bounds", value: area.queryValue)) }
+        if let category { items.append(URLQueryItem(name: "category", value: category.rawValue)) }
         if let near {
             items.append(URLQueryItem(name: "lat", value: String(near.lat)))
             items.append(URLQueryItem(name: "lng", value: String(near.lng)))
@@ -43,7 +64,7 @@ final class PlaceSearchService: PlaceSearching {
         return response.hits
     }
 
-    private func searchGoogle(_ query: String, near: GeoPoint?) async throws -> [PlaceHit] {
+    private func searchGoogle(_ query: String, near: GeoPoint?, area: PlaceSearchArea? = nil, category: PlaceSearchCategory? = nil) async throws -> [PlaceHit] {
         // 키가 없으면 빈 결과가 아니라 '연결 안 됨'이다 — 가짜로 "없다"고 말하지 않는다.
         guard !googleKey.isEmpty else { throw APIError.server(status: 0, message: "해외 장소 검색이 연결되어 있지 않아요.") }
 
@@ -55,8 +76,8 @@ final class PlaceSearchService: PlaceSearching {
         request.setValue(GooglePlaces.fieldMask, forHTTPHeaderField: "X-Goog-FieldMask")
         request.setValue(bundleId, forHTTPHeaderField: "X-Ios-Bundle-Identifier")
         let language = Locale.current.language.languageCode?.identifier ?? "ko"
-        request.httpBody = try JSONSerialization.data(
-            withJSONObject: GooglePlaces.requestBody(query: query, near: near, limit: 10, languageCode: language))
+        request.httpBody = try JSONSerialization.data(withJSONObject: Self.googleDiscoveryBody(
+            query: query, near: near, area: area, category: category, language: language))
 
         let data: Data
         let response: URLResponse
@@ -76,5 +97,21 @@ final class PlaceSearchService: PlaceSearching {
         }
         let decoded = try JSONDecoder().decode(GooglePlaces.Response.self, from: data)
         return GooglePlaces.hits(from: decoded)
+    }
+
+    static func googleDiscoveryBody(query: String, near: GeoPoint?, area: PlaceSearchArea?, category: PlaceSearchCategory?, language: String) -> [String: Any] {
+        var body = GooglePlaces.requestBody(query: query, near: near, limit: 10, languageCode: language)
+        if let area {
+            body.removeValue(forKey: "locationBias")
+            body["locationRestriction"] = ["rectangle": [
+                "low": ["latitude": area.south, "longitude": area.west],
+                "high": ["latitude": area.north, "longitude": area.east]
+            ]]
+        }
+        if let category {
+            body["includedType"] = category.googleType
+            body["strictTypeFiltering"] = true
+        }
+        return body
     }
 }

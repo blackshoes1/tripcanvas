@@ -9,8 +9,7 @@ import SwiftUI
 /// `onDismiss` 대기 플래그로 한 박자 넘겨야 하는데, 그 함정을 감수할 값이 아니다.
 /// 대신 두 화면이 각자 `NavigationStack`을 그대로 들고 이 안에서 갈린다.
 ///
-/// ⚠️ 길을 바꾸면 적던 내용은 사라진다 — 두 화면의 `@State`가 따로다. 서로 다른 일이라
-/// 이어 붙일 것도 없다(도시 이름과 붙여넣은 일정 글).
+/// 두 방식의 초안은 이 시트가 소유한다. 화면을 바꿔도 각자 적던 곳으로 돌아온다.
 struct CreateTripView: View {
     let service: TripDataSource
     let places: PlaceSearching
@@ -20,6 +19,8 @@ struct CreateTripView: View {
     let onCreateFromScratch: (NewTripDraft) async -> String?
 
     @State private var mode: CreateTripMode
+    @State private var scratchForm = NewTripFormState()
+    @State private var pasteForm = PasteItineraryFormState()
 
     init(service: TripDataSource, places: PlaceSearching, startMode: CreateTripMode = .scratch,
          onCreated: @escaping (TripSummary) -> Void,
@@ -34,9 +35,9 @@ struct CreateTripView: View {
     var body: some View {
         switch mode {
         case .scratch:
-            NewTripView(mode: $mode, onCreate: onCreateFromScratch)
+            NewTripView(mode: $mode, form: scratchForm, onCreate: onCreateFromScratch)
         case .paste:
-            PasteItineraryView(service: service, places: places, mode: $mode, onCreated: onCreated)
+            PasteItineraryView(service: service, places: places, mode: $mode, form: pasteForm, onCreated: onCreated)
         }
     }
 }

@@ -153,7 +153,7 @@ enum TimeFormat {
     static func money(_ amount: Double, currency: String) -> String {
         let formatter = NumberFormatter()
         formatter.numberStyle = .decimal
-        formatter.maximumFractionDigits = 0
+        formatter.maximumFractionDigits = ["USD", "EUR", "CNY"].contains(currency) ? 2 : 0
         let number = formatter.string(from: NSNumber(value: amount)) ?? "\(Int(amount))"
         let symbol = ["KRW": "₩", "USD": "$", "EUR": "€", "JPY": "¥", "CNY": "元"][currency]
         return symbol.map { "\($0)\(number)" } ?? "\(number) \(currency)"

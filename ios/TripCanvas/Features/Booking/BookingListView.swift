@@ -1,5 +1,6 @@
 import SwiftUI
 import Observation
+import UIKit
 
 /// 예약은 읽기 중심으로 시작한다(§45). 여행 당일 필요한 것만 빠르게: 시간·장소·상태·번호·링크.
 /// 자동 재예약은 하지 않는다(§44) — 더 싼 조건이 보이면 알려주고 판단은 사용자에게 맡긴다.
@@ -54,7 +55,7 @@ struct BookingListView: View {
                         Label("오프라인 · 마지막 동기화 \(TimeFormat.shortTime(cachedAt))", systemImage: "wifi.slash")
                             .font(.caption).foregroundStyle(.secondary)
                     }
-                    if let error = model.errorMessage, model.bookings.isEmpty {
+                    if let error = model.errorMessage {
                         InlineErrorBanner(message: "예약을 불러오지 못했어요", detail: error) {
                             Task { await model.load() }
                         }
@@ -69,7 +70,7 @@ struct BookingListView: View {
                             Task { await plan.load() }
                         }
                     }
-                    if model.bookings.isEmpty && !model.isLoading {
+                    if model.bookings.isEmpty && !model.isLoading && model.errorMessage == nil {
                         EmptyStateView(
                             symbol: "ticket",
                             title: "등록된 예약이 없어요",
@@ -78,14 +79,34 @@ struct BookingListView: View {
                                 : "주최자나 편집자가 예약을 추가하면 여기에 나타납니다.")
                     }
                     ForEach(model.bookings) { booking in
-                        BookingCard(booking: booking, editable: trip.canEdit)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                guard trip.canEdit else { return }
-                                Task { await openEditor(bookingId: booking.id) }
+                        NavigationLink {
+                            if let current = model.bookings.first(where: { $0.id == booking.id }) {
+                                BookingDetailView(booking: current, canEdit: trip.canEdit, isPreparing: isPreparing) {
+                                    Task { await openEditor(bookingId: booking.id) }
+                                }
+                            } else {
+                                EmptyStateView(symbol: "ticket", title: "이 예약은 목록에서 빠졌어요", message: "최신 예약은 예약 목록에서 확인해 주세요.")
                             }
-                            .accessibilityAddTraits(trip.canEdit ? [.isButton] : [])
-                            .accessibilityHint(trip.canEdit ? "예약을 고칩니다" : "")
+                        } label: {
+                            VStack(alignment: .leading, spacing: Space.s) {
+                                HStack {
+                                    Text(booking.title).font(.headline)
+                                    Spacer()
+                                    Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary)
+                                }
+                                if let start = booking.start {
+                                    Label([start, booking.startTime].compactMap { $0 }.joined(separator: " · "), systemImage: "calendar")
+                                        .font(.subheadline).foregroundStyle(.secondary)
+                                }
+                                if let place = booking.place, !place.isEmpty {
+                                    Text(place).font(.subheadline).foregroundStyle(.secondary)
+                                }
+                                Text(booking.confirmation == nil ? "예약 정보 보기" : "예약번호와 상세 보기")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                            .card()
+                        }
+                        .buttonStyle(.plain)
                     }
                     if model.isLoading && model.bookings.isEmpty {
                         ProgressView().frame(maxWidth: .infinity, minHeight: 160)
@@ -177,9 +198,35 @@ struct BookingListView: View {
     }
 }
 
+/// 현장에서 먼저 확인하고, 고치기는 명시적으로 선택한다.
+struct BookingDetailView: View {
+    let booking: BookingSummary
+    let canEdit: Bool
+    let isPreparing: Bool
+    let onEdit: () -> Void
+
+    var body: some View {
+        ScrollView {
+            BookingCard(booking: booking).padding(Space.l)
+        }
+        .background(Color(.systemGroupedBackground))
+        .navigationTitle("예약 정보")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if canEdit {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(isPreparing ? "불러오는 중…" : "편집", action: onEdit)
+                        .disabled(isPreparing)
+                }
+            }
+        }
+    }
+}
+
 struct BookingCard: View {
     let booking: BookingSummary
     var editable = false
+    @State private var copiedConfirmation = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.s) {
@@ -201,6 +248,20 @@ struct BookingCard: View {
             if let place = booking.place, !place.isEmpty {
                 Label(place, systemImage: "mappin.and.ellipse").font(.subheadline).foregroundStyle(.secondary)
             }
+            if let confirmation = booking.confirmation, !confirmation.isEmpty {
+                VStack(alignment: .leading, spacing: Space.xs) {
+                    Text("예약번호").font(.caption).foregroundStyle(.secondary)
+                    Text(confirmation).font(.title3.monospaced()).textSelection(.enabled)
+                    Button {
+                        UIPasteboard.general.string = confirmation
+                        copiedConfirmation = true
+                    } label: {
+                        Label(copiedConfirmation ? "예약번호를 복사했어요" : "예약번호 복사", systemImage: copiedConfirmation ? "checkmark" : "doc.on.doc")
+                            .frame(minHeight: 44)
+                    }
+                }
+            }
+
             HStack(spacing: Space.m) {
                 Text(TimeFormat.money(booking.price, currency: booking.currency)).font(.subheadline.weight(.semibold))
                 if let refundable = booking.refundable {
@@ -208,12 +269,6 @@ struct BookingCard: View {
                 }
             }
 
-            if let confirmation = booking.confirmation {
-                // 길게 눌러 복사 — 현장에서 번호를 불러야 할 때 가장 빠른 동작이다.
-                Text("예약번호 \(confirmation)")
-                    .font(.caption.monospaced())
-                    .textSelection(.enabled)
-            }
 
             if let status = booking.priceStatus {
                 VStack(alignment: .leading, spacing: 2) {
@@ -247,9 +302,9 @@ struct BookingCard: View {
 
     private var period: String? {
         switch (booking.start, booking.end) {
-        case let (start?, end?): "\(start) → \(end)"
-        case let (start?, nil): start
-        case let (nil, end?): end
+        case let (start?, end?): "\([start, booking.startTime].compactMap { $0 }.joined(separator: " ")) → \([end, booking.endTime].compactMap { $0 }.joined(separator: " "))"
+        case let (start?, nil): [start, booking.startTime].compactMap { $0 }.joined(separator: " ")
+        case let (nil, end?): [end, booking.endTime].compactMap { $0 }.joined(separator: " ")
         default: nil
         }
     }
