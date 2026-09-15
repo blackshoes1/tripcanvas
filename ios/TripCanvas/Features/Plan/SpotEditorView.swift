@@ -33,7 +33,7 @@ enum SpotEditorTarget: Identifiable {
     /// 지도에서 고른 자리 → 편집기에 넣을 장소.
     ///
     /// 해외(구글)는 POI를 탭하면 이름과 `placeId`가 함께 온다 — 호텔 시세 추적이 그 id로 같은 곳인지 본다.
-    /// ⚠️ **국내(카카오)는 POI 신원을 주지 않는다**(SDK 제약, 웹과 같다). 그때는 좌표만 담기고
+    /// 현재 일반 지형 선택은 좌표만 전달한다. 그때는 좌표만 담기고
     /// 이름은 비어 있다 — 지어내지 않는다.
     static func spotFromMap(_ pick: MapPick, fallbackCity: String?) -> TripSpot {
         var spot = TripSpot(name: pick.name ?? "", city: fallbackCity ?? "기타")
@@ -51,6 +51,7 @@ struct SpotEditorView: View {
     let target: SpotEditorTarget
     let dayCount: Int
     let currentDay: Int
+    let contextLabel: String?
     let onSave: (TripSpot) async -> String?
     let onDelete: (Int) async -> String?
     let onMoveToDay: (Int, Int, TripSpot) async -> String?
@@ -63,28 +64,33 @@ struct SpotEditorView: View {
     @State private var saving = EditorSaveState()
     @State private var showsDiscardConfirm = false
     private var isDirty: Bool {
-        draft != target.spot || costText != (target.spot.cost.map(String.init) ?? "")
+        draft != target.spot || costText != MoneyInput.text(amount: target.spot.cost)
     }
 
     init(target: SpotEditorTarget,
          dayCount: Int,
          currentDay: Int,
+         contextLabel: String? = nil,
          onSave: @escaping (TripSpot) async -> String?,
          onDelete: @escaping (Int) async -> String?,
          onMoveToDay: @escaping (Int, Int, TripSpot) async -> String?) {
         self.target = target
         self.dayCount = dayCount
         self.currentDay = currentDay
+        self.contextLabel = contextLabel
         self.onSave = onSave
         self.onDelete = onDelete
         self.onMoveToDay = onMoveToDay
         _draft = State(initialValue: target.spot)
-        _costText = State(initialValue: target.spot.cost.map(String.init) ?? "")
+        _costText = State(initialValue: MoneyInput.text(amount: target.spot.cost))
     }
 
     var body: some View {
         NavigationStack {
             Form {
+                if let contextLabel, !contextLabel.isEmpty {
+                    Section { Text(contextLabel).font(.subheadline.weight(.semibold)) }
+                }
                 if let error = saving.error {
                     Section {
                         Text(error).foregroundStyle(.red)
@@ -120,6 +126,7 @@ struct SpotEditorView: View {
                         Button("좌표 지우기", role: .destructive) {
                             draft.point = nil
                             draft.placeId = nil
+                            draft.kakaoId = nil
                         }
                     }
                 } header: {
@@ -145,6 +152,7 @@ struct SpotEditorView: View {
                 }
 
                 Section("이동·비용") {
+                    DisclosureGroup("이동수단·비용 설정") {
                     Picker("이동수단", selection: $draft.legMode) {
                         Text("그날 기본").tag(TravelMode?.none)
                         ForEach(TravelMode.allCases, id: \.self) { mode in
@@ -152,8 +160,8 @@ struct SpotEditorView: View {
                         }
                     }
                     HStack {
-                        TextField("비용", text: $costText)
-                            .keyboardType(.numberPad)
+                        TextField("비용 미정 (무료는 0)", text: $costText)
+                            .keyboardType(.decimalPad)
                         Picker("통화", selection: $draft.currency) {
                             Text("KRW").tag(Currency?.none)
                             ForEach(Currency.allCases, id: \.self) { currency in
@@ -162,7 +170,10 @@ struct SpotEditorView: View {
                         }
                         .labelsHidden()
                     }
+                    }
                 }
+
+                AdmissionEditorSection(spot: $draft)
 
                 Section {
                     Toggle("꼭 가기", isOn: $draft.isMust)
@@ -197,7 +208,7 @@ struct SpotEditorView: View {
                                     if day != currentDay {
                                         Button("Day \(day + 1)") {
                                             Task {
-                                                if await saving.perform({ await onMoveToDay(index, day, preparedSpot) }) { dismiss() }
+                                                await save(using: { await onMoveToDay(index, day, $0) })
                                             }
                                         }
                                     }
@@ -214,12 +225,14 @@ struct SpotEditorView: View {
                 Button("내용 버리기", role: .destructive) { dismiss() }
                 Button("계속 편집", role: .cancel) { }
             }
+            .paperGround()
+            .tint(Ink.accent)
             .navigationTitle(target.index == nil ? "장소 추가" : "장소")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { Button("취소") { if isDirty { showsDiscardConfirm = true } else { dismiss() } }.disabled(saving.isWorking) }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button(saving.isWorking ? "저장 중…" : "완료") { Task { await save() } }
+                    Button(saving.isWorking ? "저장 중…" : "완료") { Task { await save(using: onSave) } }
                         .disabled(saving.isWorking || draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
@@ -228,6 +241,8 @@ struct SpotEditorView: View {
                 MapPickerView(initial: draft.point, regionHint: MapRegion.isKoreanSearch(draft.name, near: nil)) { pick in
                     draft.point = pick.point
                     draft.placeId = pick.placeId
+                    draft.kakaoId = nil
+                    draft.setField("addr", nil)
                     if draft.name.trimmingCharacters(in: .whitespaces).isEmpty, let name = pick.name { draft.name = name }
                 }
             }
@@ -249,19 +264,35 @@ struct SpotEditorView: View {
         var spot = draft
         spot.name = spot.name.trimmingCharacters(in: .whitespacesAndNewlines)
         spot.city = spot.city.trimmingCharacters(in: .whitespacesAndNewlines)
-        spot.cost = SpotEditorView.cost(from: costText)
+        spot.cost = MoneyInput.amount(from: costText, currency: spot.currency)
         return spot
     }
 
-    private func save() async {
-        if await saving.perform({ await onSave(preparedSpot) }) { dismiss() }
+    /// 완료와 다른 날로 이동은 같은 입력을 저장한다. 검증 실패 시 초안·금액 문자열을 그대로 둔다.
+    private func save(using action: (TripSpot) async -> String?) async {
+        if let error = Self.validationError(for: draft, costText: costText) {
+            _ = await saving.perform { error }
+            return
+        }
+        if await saving.perform({ await action(preparedSpot) }) { dismiss() }
+    }
+
+    static func validationError(for draft: TripSpot, costText: String) -> String? {
+        let value = costText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !value.isEmpty && MoneyInput.amount(from: value, currency: draft.currency) == nil {
+            return "금액을 확인해 주세요. 원·엔은 정수, 그 밖의 통화는 소수 둘째 자리까지 입력할 수 있어요."
+        }
+        if !draft.admission.officialURL.isEmpty && SpotAdmission.safeURL(draft.admission.officialURL) == nil {
+            return "공식 페이지는 https 주소로 입력해 주세요."
+        }
+        return nil
     }
 
     /// 숫자가 아닌 것은 비용이 아니다 — 0으로 굳히지 않고 '없음'으로 둔다.
     static func cost(from text: String) -> Int? {
         let digits = text.filter(\.isNumber)
         guard !digits.isEmpty, let value = Int(digits) else { return nil }
-        return value > 0 ? value : nil
+        return value >= 0 ? value : nil
     }
 }
 
@@ -283,7 +314,7 @@ struct ClockField: View {
                     .labelsHidden()
                     Text(":")
                     Picker("분", selection: minuteBinding) {
-                        ForEach(Array(stride(from: 0, to: 60, by: 5)), id: \.self) { Text(String(format: "%02d", $0)).tag($0) }
+                        ForEach(0..<60, id: \.self) { Text(String(format: "%02d", $0)).tag($0) }
                     }
                     .labelsHidden()
                 }

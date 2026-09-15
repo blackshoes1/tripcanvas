@@ -56,8 +56,9 @@ struct CandidateBoardView: View {
         }
         .sheet(item: $scheduling) { candidate in
             if let model {
-                DayPickerSheet(trip: trip, title: candidate.title) { dayIndex in
-                    Task { await model.schedule(candidateId: candidate.id, dayIndex: dayIndex) }
+                CandidatePlacementSheet(trip: trip, candidate: candidate, source: env.service) { dayIndex, position, revision in
+                    await model.schedule(candidateId: candidate.id, dayIndex: dayIndex, position: position, expectedRevision: revision)
+                        ? nil : model.errorMessage ?? "일정에 넣지 못했어요."
                 }
             }
         }
@@ -143,7 +144,8 @@ struct CandidateBoardView: View {
                             if await model.add(title: titleDraft, note: noteDraft,
                                                lat: place?.point.lat, lng: place?.point.lng,
                                                placeId: place?.placeId,
-                                               addr: (place?.address).flatMap { $0.isEmpty ? nil : $0 }) {
+                                               addr: (place?.address).flatMap { $0.isEmpty ? nil : $0 },
+                                               provider: place?.provider, providerId: place?.providerId) {
                                 titleDraft = ""; noteDraft = ""; pickedPlace = nil
                             }
                         }
@@ -434,56 +436,6 @@ struct CandidateCard: View {
         case .mixed: return .yellow
         case .quiet: return .secondary
         }
-    }
-}
-
-/// 며칠째에 넣을지 고른다. 위치는 그 날 **맨 뒤** — 최적 위치를 추측하지 않는다(§79).
-struct DayPickerSheet: View {
-    let trip: TripSummary
-    let title: String
-    let onPick: (Int) -> Void
-
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            List {
-                Section {
-                    ForEach(0..<max(trip.dayCount, 1), id: \.self) { index in
-                        Button {
-                            onPick(index)
-                            dismiss()
-                        } label: {
-                            HStack {
-                                Text("Day \(index + 1)")
-                                if let date = dateText(index) {
-                                    Text(date).font(.caption).foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                                Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
-                            }
-                        }
-                        .buttonStyle(.plain)
-                    }
-                } header: {
-                    Text("\"\(title)\" 을(를) 며칠째에 넣을까요?")
-                } footer: {
-                    Text("고른 날 맨 뒤에 붙습니다. 순서는 일정 화면에서 끌어 옮길 수 있어요.")
-                }
-            }
-            .navigationTitle("일정에 넣기")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) { Button("취소") { dismiss() } }
-            }
-        }
-    }
-
-    private func dateText(_ index: Int) -> String? {
-        guard let first = ISODateText.date(from: trip.start),
-              let date = ISODateText.calendar.date(byAdding: .day, value: index, to: first) else { return nil }
-        let parts = ISODateText.calendar.dateComponents([.month, .day], from: date)
-        return "\(parts.month ?? 1)/\(parts.day ?? 1)"
     }
 }
 

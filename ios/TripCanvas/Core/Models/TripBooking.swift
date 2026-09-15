@@ -58,9 +58,24 @@ struct TripBooking: Hashable, Sendable, Identifiable {
         set { raw.setOrRemove("url", newValue.flatMap { $0.isEmpty ? nil : .string($0) }) }
     }
 
+    /// 가져온 예약번호의 예전 키도 읽고, 편집할 때는 하나의 키로 저장한다.
+    var confirmation: String? {
+        get {
+            ["confirmation", "confirmationNumber", "code"]
+                .compactMap { raw[$0]?.stringValue }
+                .first { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        }
+        set {
+            let value = newValue?.trimmingCharacters(in: .whitespacesAndNewlines)
+            raw.setOrRemove("confirmation", value.flatMap { $0.isEmpty ? nil : .string($0) })
+            raw.removeValue(forKey: "confirmationNumber")
+            raw.removeValue(forKey: "code")
+        }
+    }
+
     /// 총액. 예약은 여러 날에 걸친 총액이다 — 하루치는 `bookingShareOn`이 나눈다.
-    var price: Int {
-        get { raw["price"]?.intValue ?? 0 }
+    var price: Double {
+        get { raw["price"]?.doubleValue ?? 0 }
         set { raw["price"] = .number(max(0, newValue)) }
     }
 
@@ -103,8 +118,8 @@ struct TripBooking: Hashable, Sendable, Identifiable {
         set { raw.setOrRemove("freeCancelUntil", newValue.flatMap { ISODateText.isValid($0) ? .string($0) : nil }) }
     }
 
-    var cancelFee: Int? {
-        get { raw["cancelFee"]?.intValue }
+    var cancelFee: Double? {
+        get { raw["cancelFee"]?.doubleValue }
         set { raw.setOrRemove("cancelFee", newValue.flatMap { $0 > 0 ? .number($0) : nil }) }
     }
 
@@ -241,13 +256,14 @@ struct TripBooking: Hashable, Sendable, Identifiable {
 }
 
 enum BookingDraftError: Equatable, Sendable {
-    case titleRequired, priceRequired, trackNeedsDates, returnBeforePickup, sameDayNeedsTimes, checkoutNotAfterCheckin
+    case titleRequired, priceRequired, invalidAmount, trackNeedsDates, returnBeforePickup, sameDayNeedsTimes, checkoutNotAfterCheckin
 
     /// 웹 toast와 같은 문장.
     var message: String {
         switch self {
         case .titleRequired: "예약 이름을 입력하세요"
         case .priceRequired: "예약 가격을 입력하세요"
+        case .invalidAmount: "금액을 확인해 주세요. 원·엔은 정수로, 다른 통화는 소수 둘째 자리까지 입력할 수 있어요."
         case .trackNeedsDates: "가격 추적에는 체크인·체크아웃 날짜가 필요해요"
         case .returnBeforePickup: "반납일이 픽업일보다 앞설 수 없어요"
         case .sameDayNeedsTimes: "당일 대여는 픽업 시각과 그보다 늦은 반납 시각이 필요해요"

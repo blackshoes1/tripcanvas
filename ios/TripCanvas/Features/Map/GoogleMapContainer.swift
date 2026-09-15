@@ -4,11 +4,13 @@ import SwiftUI
 
 /// 지도에 찍을 핀 하나. 두 SDK가 같은 입력을 받는다.
 struct MapPin: Identifiable, Hashable {
+    enum Kind: String { case itinerary, candidate, searchResult }
     let id: String
     let title: String
     let point: GeoPoint
     /// 목록 순서(1부터). 동선 위에서 몇 번째인지 보이게
     let order: Int
+    var kind: Kind = .itinerary
 }
 
 /// 지도에 그릴 동선 하나. 두 SDK가 같은 입력을 받는다.
@@ -44,6 +46,10 @@ struct GoogleMapContainer: UIViewRepresentable {
     var routes: [MapRoute] = []
     let focus: GeoPoint?
     let onPick: ((MapPick) -> Void)?
+    var preservesCamera = false
+    var selectedPinID: String? = nil
+    var onPinSelected: ((String) -> Void)? = nil
+    var onAreaChanged: ((PlaceSearchArea) -> Void)? = nil
 
     func makeCoordinator() -> Coordinator { Coordinator(onPick: onPick) }
 
@@ -57,17 +63,26 @@ struct GoogleMapContainer: UIViewRepresentable {
         let mapView = GMSMapView(options: options)
         mapView.delegate = context.coordinator
         mapView.settings.compassButton = true
-        context.coordinator.render(pins: pins, routes: routes, focus: focus, on: mapView, animated: false)
+        context.coordinator.onPinSelected = onPinSelected
+        context.coordinator.onAreaChanged = onAreaChanged
+        context.coordinator.render(pins: pins, routes: routes, focus: focus, on: mapView, animated: false,
+                                   preservesCamera: preservesCamera, selectedPinID: selectedPinID)
         return mapView
     }
 
     func updateUIView(_ mapView: GMSMapView, context: Context) {
         context.coordinator.onPick = onPick
-        context.coordinator.render(pins: pins, routes: routes, focus: focus, on: mapView, animated: true)
+        context.coordinator.onPinSelected = onPinSelected
+        context.coordinator.onAreaChanged = onAreaChanged
+        context.coordinator.render(pins: pins, routes: routes, focus: focus, on: mapView, animated: true,
+                                   preservesCamera: preservesCamera, selectedPinID: selectedPinID)
     }
 
     final class Coordinator: NSObject, GMSMapViewDelegate {
         var onPick: ((MapPick) -> Void)?
+        var onPinSelected: ((String) -> Void)?
+        var onAreaChanged: ((PlaceSearchArea) -> Void)?
+        private var renderedSelection: String?
         private var rendered: [MapPin] = []
         private var renderedFocus: GeoPoint?
         private var markers: [GMSMarker] = []
@@ -77,7 +92,8 @@ struct GoogleMapContainer: UIViewRepresentable {
 
         init(onPick: ((MapPick) -> Void)?) { self.onPick = onPick }
 
-        func render(pins: [MapPin], routes: [MapRoute], focus: GeoPoint?, on mapView: GMSMapView, animated: Bool) {
+        func render(pins: [MapPin], routes: [MapRoute], focus: GeoPoint?, on mapView: GMSMapView, animated: Bool,
+                    preservesCamera: Bool = false, selectedPinID: String? = nil) {
             if routes != renderedRoutes {
                 polylines.forEach { $0.map = nil }
                 polylines = routes.compactMap { route in
@@ -95,23 +111,41 @@ struct GoogleMapContainer: UIViewRepresentable {
                 }
                 renderedRoutes = routes
             }
-            if pins != rendered {
+            if pins != rendered || renderedSelection != selectedPinID {
+                let pinsChanged = pins != rendered
                 markers.forEach { $0.map = nil }
                 markers = pins.map { pin in
                     let marker = GMSMarker(position: CLLocationCoordinate2D(latitude: pin.point.lat, longitude: pin.point.lng))
                     marker.title = pin.title
-                    marker.snippet = "\(pin.order)번째"
+                    marker.snippet = pin.kind == .itinerary ? "\(pin.order)번째" : pin.kind == .candidate ? "가고 싶은 곳" : "검색 결과"
+                    marker.userData = pin.id
+                    marker.icon = MapPinImage.make(pin: pin, selected: pin.id == selectedPinID)
                     marker.map = mapView
                     return marker
                 }
                 rendered = pins
-                fit(pins: pins, on: mapView, animated: animated)
+                renderedSelection = selectedPinID
+                if pinsChanged && !preservesCamera { fit(pins: pins, on: mapView, animated: animated) }
             }
             if let focus, focus != renderedFocus {
                 renderedFocus = focus
                 let update = GMSCameraUpdate.setTarget(CLLocationCoordinate2D(latitude: focus.lat, longitude: focus.lng), zoom: 15)
                 if animated { mapView.animate(with: update) } else { mapView.moveCamera(update) }
             }
+        }
+
+        func mapView(_ mapView: GMSMapView, idleAt position: GMSCameraPosition) {
+            let region = mapView.projection.visibleRegion()
+            let corners = [region.nearLeft, region.nearRight, region.farLeft, region.farRight]
+            let area = PlaceSearchArea(south: corners.map(\.latitude).min()!, west: corners.map(\.longitude).min()!,
+                                       north: corners.map(\.latitude).max()!, east: corners.map(\.longitude).max()!)
+            if area.isValid { onAreaChanged?(area) }
+        }
+
+        func mapView(_ mapView: GMSMapView, didTap marker: GMSMarker) -> Bool {
+            guard let id = marker.userData as? String, let onPinSelected else { return false }
+            onPinSelected(id)
+            return true
         }
 
         private func fit(pins: [MapPin], on mapView: GMSMapView, animated: Bool) {
@@ -148,6 +182,29 @@ struct GoogleMapContainer: UIViewRepresentable {
             guard let onPick else { return }
             showPick(at: location, title: name, on: mapView)
             onPick(MapPick(point: GeoPoint(lat: location.latitude, lng: location.longitude), name: name, placeId: placeID))
+        }
+    }
+}
+
+/// SDK에는 벡터 심볼 대신 색과 번호를 그린 비트맵을 넘긴다. 두 지도에서 모양이 같다.
+enum MapPinImage {
+    static func make(pin: MapPin, selected: Bool) -> UIImage {
+        let color: UIColor = selected ? .systemOrange : pin.kind == .candidate ? .systemGreen : .systemBlue
+        return UIGraphicsImageRenderer(size: CGSize(width: 36, height: 36)).image { _ in
+            UIColor.white.setFill()
+            UIBezierPath(ovalIn: CGRect(x: 0, y: 0, width: 36, height: 36)).fill()
+            color.setFill()
+            UIBezierPath(ovalIn: CGRect(x: 2, y: 2, width: 32, height: 32)).fill()
+            if pin.kind == .itinerary {
+                let text = String(pin.order) as NSString
+                let attributes: [NSAttributedString.Key: Any] = [.font: UIFont.boldSystemFont(ofSize: 15), .foregroundColor: UIColor.white]
+                let size = text.size(withAttributes: attributes)
+                text.draw(at: CGPoint(x: (36 - size.width) / 2, y: (36 - size.height) / 2), withAttributes: attributes)
+            } else {
+                UIImage(systemName: pin.kind == .candidate ? "star.fill" : "magnifyingglass")?
+                    .withTintColor(.white, renderingMode: .alwaysOriginal)
+                    .draw(in: CGRect(x: 9, y: 9, width: 18, height: 18))
+            }
         }
     }
 }

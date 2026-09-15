@@ -7,39 +7,53 @@ import UIKit
 /// 엔진 생명주기가 UIKit 뷰 컨트롤러에 맞춰져 있어(prepare → addViews → activate, 화면을 벗어나면 pause)
 /// 그 순서를 여기서 그대로 지킨다. 순서가 어긋나면 오류 없이 **검은 지도**만 남는다.
 ///
-/// ⚠️ 카카오 SDK는 POI 탭 신원을 주지 않는다(웹과 같은 제약). 여기서 오는 pick은 좌표뿐이다.
+/// 검색 결과로 추가한 핀은 ID로 선택하고, 일반 지형 선택은 좌표만 전달한다.
 struct KakaoMapContainer: UIViewRepresentable {
     let pins: [MapPin]
     var routes: [MapRoute] = []
     let focus: GeoPoint?
     let onPick: ((MapPick) -> Void)?
+    var preservesCamera = false
+    var selectedPinID: String? = nil
+    var onPinSelected: ((String) -> Void)? = nil
+    var onAreaChanged: ((PlaceSearchArea) -> Void)? = nil
 
     func makeCoordinator() -> Coordinator { Coordinator(pins: pins, routes: routes, focus: focus, onPick: onPick) }
 
     func makeUIView(context: Context) -> KMViewContainer {
         let container = KMViewContainer(frame: CGRect(x: 0, y: 0, width: 320, height: 320))
+        context.coordinator.preservesCamera = preservesCamera
+        context.coordinator.onPinSelected = onPinSelected
+        context.coordinator.onAreaChanged = onAreaChanged
         context.coordinator.attach(container)
         return container
     }
 
     func updateUIView(_ container: KMViewContainer, context: Context) {
         context.coordinator.onPick = onPick
-        context.coordinator.update(pins: pins, routes: routes, focus: focus)
+        context.coordinator.preservesCamera = preservesCamera
+        context.coordinator.onPinSelected = onPinSelected
+        context.coordinator.onAreaChanged = onAreaChanged
+        context.coordinator.update(pins: pins, routes: routes, focus: focus, selectedPinID: selectedPinID)
     }
 
     static func dismantleUIView(_ container: KMViewContainer, coordinator: Coordinator) {
         coordinator.detach()
     }
 
-    final class Coordinator: NSObject, MapControllerDelegate {
+    final class Coordinator: NSObject, MapControllerDelegate, KakaoMapEventDelegate {
         private static let viewName = "mapview"
         private static let layerId = "spots"
-        private static let styleId = "spotPin"
         private static let pickStyleId = "pickPin"
         private static let routeLayerId = "dayRoute"
         private static let routeStyleId = "dayRouteStyle"
 
         var onPick: ((MapPick) -> Void)?
+        var preservesCamera = false
+        var onPinSelected: ((String) -> Void)?
+        var onAreaChanged: ((PlaceSearchArea) -> Void)?
+        private var selectedPinID: String?
+        private var shouldMoveCamera = true
         private var pins: [MapPin]
         private var focus: GeoPoint?
         private var routes: [MapRoute] = []
@@ -47,7 +61,7 @@ struct KakaoMapContainer: UIViewRepresentable {
         private weak var container: KMViewContainer?
         private var ready = false
         private var pendingRender = true
-        private var tapHandler: DisposableEventHandler?
+        private var registeredPinStyles: Set<String> = []
         private var pickPoi: Poi?
 
         init(pins: [MapPin], routes: [MapRoute], focus: GeoPoint?, onPick: ((MapPick) -> Void)?) {
@@ -67,20 +81,22 @@ struct KakaoMapContainer: UIViewRepresentable {
         }
 
         func detach() {
-            tapHandler?.dispose()
-            tapHandler = nil
+            mapView?.eventDelegate = nil
             controller?.pauseEngine()
             controller?.resetEngine()
             controller = nil
             container = nil
             ready = false
+            registeredPinStyles = []
         }
 
-        func update(pins: [MapPin], routes: [MapRoute], focus: GeoPoint?) {
-            let changed = pins != self.pins || routes != self.routes || focus != self.focus
+        func update(pins: [MapPin], routes: [MapRoute], focus: GeoPoint?, selectedPinID: String? = nil) {
+            let changed = pins != self.pins || routes != self.routes || focus != self.focus || selectedPinID != self.selectedPinID
+            if focus != self.focus || (!preservesCamera && pins != self.pins) { shouldMoveCamera = true }
             self.pins = pins
             self.routes = routes
             self.focus = focus
+            self.selectedPinID = selectedPinID
             guard changed else { return }
             if ready { render() } else { pendingRender = true }
         }
@@ -102,12 +118,9 @@ struct KakaoMapContainer: UIViewRepresentable {
             let manager = map.getLabelManager()
             _ = manager.addLabelLayer(option: LabelLayerOptions(
                 layerID: Self.layerId, competitionType: .none, competitionUnit: .poi, orderType: .rank, zOrder: 0))
-            if let symbol = UIImage(systemName: "mappin.circle.fill") {
-                let icon = PoiIconStyle(symbol: symbol, anchorPoint: CGPoint(x: 0.5, y: 0.5))
-                manager.addPoiStyle(PoiStyle(styleID: Self.styleId, styles: [PerLevelPoiStyle(iconStyle: icon, level: 0)]))
-                let pickIcon = PoiIconStyle(symbol: symbol.withTintColor(.systemOrange, renderingMode: .alwaysOriginal), anchorPoint: CGPoint(x: 0.5, y: 0.5))
-                manager.addPoiStyle(PoiStyle(styleID: Self.pickStyleId, styles: [PerLevelPoiStyle(iconStyle: pickIcon, level: 0)]))
-            }
+            let selectedPoint = MapPin(id: "selected-point", title: "선택한 위치", point: GeoPoint(lat: 0, lng: 0), order: 0, kind: .searchResult)
+            let pickIcon = PoiIconStyle(symbol: MapPinImage.make(pin: selectedPoint, selected: true), anchorPoint: CGPoint(x: 0.5, y: 0.5))
+            manager.addPoiStyle(PoiStyle(styleID: Self.pickStyleId, styles: [PerLevelPoiStyle(iconStyle: pickIcon, level: 0)]))
             // 동선 스타일 — 카카오는 **미리 등록한 목록에서 번호로** 고른다.
             // 짝수는 보통 선, 홀수는 자동 합성(숙소 복귀). 앞의 두 개는 기본색(하루만 볼 때),
             // 그 뒤로 일자 색 10개가 같은 규칙으로 이어진다.
@@ -122,7 +135,7 @@ struct KakaoMapContainer: UIViewRepresentable {
             routeManager.addRouteStyleSet(RouteStyleSet(styleID: Self.routeStyleId, styles: styles))
             _ = routeManager.addRouteLayer(layerID: Self.routeLayerId, zOrder: 0)
 
-            tapHandler = map.addMapTappedEventHandler(target: self, handler: Coordinator.mapTapped)
+            map.eventDelegate = self
             ready = true
             if pendingRender { render() }
         }
@@ -168,12 +181,22 @@ struct KakaoMapContainer: UIViewRepresentable {
             drawRoutes(on: map)
             layer.clearAllItems()
             for pin in pins {
-                let options = PoiOptions(styleID: Self.styleId, poiID: pin.id)
+                let selected = pin.id == selectedPinID
+                let style = "pin-\(pin.kind.rawValue)-\(pin.kind == .itinerary ? pin.order : 0)-\(selected)"
+                if registeredPinStyles.insert(style).inserted {
+                    let image = MapPinImage.make(pin: pin, selected: selected)
+                    let icon = PoiIconStyle(symbol: image, anchorPoint: CGPoint(x: 0.5, y: 0.5))
+                    map.getLabelManager().addPoiStyle(PoiStyle(styleID: style, styles: [PerLevelPoiStyle(iconStyle: icon, level: 0)]))
+                }
+                let options = PoiOptions(styleID: style, poiID: pin.id)
                 options.rank = pin.order
+                options.clickable = true
                 if let poi = layer.addPoi(option: options, at: MapPoint(longitude: pin.point.lng, latitude: pin.point.lat)) {
                     poi.show()
                 }
             }
+            guard shouldMoveCamera else { return }
+            shouldMoveCamera = false
             if let focus {
                 map.moveCamera(CameraUpdate.make(target: MapPoint(longitude: focus.lng, latitude: focus.lat), zoomLevel: 16, mapView: map))
             } else if let first = pins.first {
@@ -190,9 +213,8 @@ struct KakaoMapContainer: UIViewRepresentable {
             }
         }
 
-        private func mapTapped(_ param: ViewInteractionEventParam) {
-            guard let onPick, let map = param.view as? KakaoMap else { return }
-            let position = map.getPosition(param.point)
+        func terrainDidTapped(kakaoMap map: KakaoMap, position: MapPoint) {
+            guard let onPick else { return }
             let point = GeoPoint(lat: position.wgsCoord.latitude, lng: position.wgsCoord.longitude)
             if let layer = map.getLabelManager().getLabelLayer(layerID: Self.layerId) {
                 pickPoi?.hide()
@@ -202,6 +224,21 @@ struct KakaoMapContainer: UIViewRepresentable {
                 }
             }
             onPick(MapPick(point: point, name: nil, placeId: nil))
+        }
+
+        func poiDidTapped(kakaoMap: KakaoMap, layerID: String, poiID: String, position: MapPoint) {
+            guard layerID == Self.layerId, pins.contains(where: { $0.id == poiID }) else { return }
+            onPinSelected?(poiID)
+        }
+
+        func cameraDidStopped(kakaoMap map: KakaoMap, by: MoveBy) {
+            let rect = map.viewRect
+            let corners = [CGPoint(x: rect.minX, y: rect.minY), CGPoint(x: rect.maxX, y: rect.minY),
+                           CGPoint(x: rect.minX, y: rect.maxY), CGPoint(x: rect.maxX, y: rect.maxY)]
+                .map { map.getPosition($0).wgsCoord }
+            let area = PlaceSearchArea(south: corners.map(\.latitude).min()!, west: corners.map(\.longitude).min()!,
+                                       north: corners.map(\.latitude).max()!, east: corners.map(\.longitude).max()!)
+            if area.isValid { onAreaChanged?(area) }
         }
     }
 }

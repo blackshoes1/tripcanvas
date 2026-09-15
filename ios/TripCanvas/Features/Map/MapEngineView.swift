@@ -11,6 +11,10 @@ struct MapEngineView: View {
     var focus: GeoPoint? = nil
     var regionHint: Bool = true
     var onPick: ((MapPick) -> Void)? = nil
+    var preservesCamera = false
+    var selectedPinID: String? = nil
+    var onPinSelected: ((String) -> Void)? = nil
+    var onAreaChanged: ((PlaceSearchArea) -> Void)? = nil
 
     private var usesKakao: Bool {
         if let anchor = focus ?? pins.first?.point { return MapRegion.isKorea(anchor) }
@@ -20,9 +24,13 @@ struct MapEngineView: View {
     var body: some View {
         Group {
             if usesKakao {
-                KakaoMapContainer(pins: pins, routes: routes, focus: focus, onPick: onPick)
+                KakaoMapContainer(pins: pins, routes: routes, focus: focus, onPick: onPick,
+                                  preservesCamera: preservesCamera, selectedPinID: selectedPinID,
+                                  onPinSelected: onPinSelected, onAreaChanged: onAreaChanged)
             } else {
-                GoogleMapContainer(pins: pins, routes: routes, focus: focus, onPick: onPick)
+                GoogleMapContainer(pins: pins, routes: routes, focus: focus, onPick: onPick,
+                                   preservesCamera: preservesCamera, selectedPinID: selectedPinID,
+                                   onPinSelected: onPinSelected, onAreaChanged: onAreaChanged)
             }
         }
         // 엔진이 바뀌면 뷰를 새로 만든다 — 같은 자리에 다른 SDK를 끼워 넣지 않는다.
