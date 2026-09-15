@@ -35,8 +35,10 @@ enum Ink {
     static let soft = adaptive(light: 0x6E655A, dark: 0xB5AB98)
     /// 라벨·메타 — 가장 흐리다
     static let faint = adaptive(light: 0x9A8F7E, dark: 0x8A8073)
-    /// 강조 — 누를 것, 지금 봐야 할 것
-    static let accent = adaptive(light: 0xC6482B, dark: 0xE0674A)
+    /// 강조 — 누를 것, 지금 봐야 할 것.
+    /// ⚠️ 에셋 카탈로그의 `AccentColor`와 **같은 값이어야 한다** — 그래야 화면 여기저기의
+    /// `Color.accentColor`와 기본 컨트롤 색이 이 팔레트와 갈리지 않는다.
+    static let accent = Color.accentColor
     /// 카드 테두리 — 그림자 대신 머리카락 선
     static let hairline = adaptive(light: 0x16130F, dark: 0xF4F1EA).opacity(0.08)
 
@@ -230,7 +232,6 @@ struct PrimaryActionButton: View {
             .frame(maxWidth: .infinity, minHeight: 48)
         }
         .buttonStyle(.borderedProminent)
-        .tint(Ink.accent)
         .disabled(isBusy)
     }
 }
