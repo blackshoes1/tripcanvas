@@ -200,6 +200,9 @@ export const tripCandidates = pgTable('trip_candidates', {
   tripId: uuid('trip_id').notNull().references(() => trips.id, { onDelete: 'cascade' }),
   title: text('title').notNull(),
   placeId: text('place_id'),
+  provider: text('provider'),
+  providerId: text('provider_id'),
+  clientKey: uuid('client_key'),
   lat: doublePrecision('lat'),
   lng: doublePrecision('lng'),
   addr: text('addr'),
@@ -213,6 +216,13 @@ export const tripCandidates = pgTable('trip_candidates', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 }, (t) => [
   index('trip_candidates_trip_idx').on(t.tripId, t.createdAt),
+  uniqueIndex('trip_candidates_provider_uidx').on(t.tripId, t.provider, t.providerId),
+  uniqueIndex('trip_candidates_client_key_uidx').on(t.tripId, t.clientKey),
+  check('trip_candidates_provider_check', sql`(${t.provider} is null and ${t.providerId} is null) or
+    (${t.provider} is not null and ${t.provider} in ('kakao','google') and
+      (${t.providerId} is null or (${t.provider} = 'kakao' and ${t.providerId} ~ '^[0-9]{1,20}$') or
+        (${t.provider} = 'google' and ${t.providerId} ~ '^[A-Za-z0-9_-]{5,200}$')))`),
+  check('trip_candidates_kakao_id_check', sql`${t.provider} is distinct from 'kakao' or ${t.placeId} is null`),
   check('trip_candidates_title_check', sql`btrim(${t.title}) <> ''`),
   check('trip_candidates_status_check', sql`${t.status} in ('PROPOSED','ACCEPTED','REJECTED','SCHEDULED')`)
 ]);

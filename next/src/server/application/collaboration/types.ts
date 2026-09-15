@@ -22,11 +22,17 @@ export interface InviteAccept {
   ok: boolean; reason: InviteReason; client_id: string | null; trip_name: string | null; role: string | null; already_member: boolean;
 }
 
+export type CandidateProvider = 'kakao' | 'google';
 export interface CandidateInput {
   title: string; place_id?: string | null; lat?: number | null; lng?: number | null; addr?: string | null; note?: string | null; url?: string | null;
+  provider?: CandidateProvider | null; providerId?: string | null;
+  /** 같은 담기 요청을 재시도할 때 유지하는 UUID. 장소 이름·좌표를 중복 키로 쓰지 않는다. */
+  clientKey?: string | null;
 }
 export interface CandidateView {
   id: number; title: string; place_id: string | null; lat: number | null; lng: number | null; addr: string | null; note: string | null;
+  /** place_id는 기존 Google 호환 필드. 카카오 ID를 여기에 섞지 않는다. */
+  provider?: CandidateProvider | null; provider_id?: string | null;
   url: string | null; status: string; scheduled_ref: string | null; proposed_by_label: string; mine: boolean; my_reaction: string | null;
   must_count: number; ok_count: number; pass_count: number;
   /** user_id는 분리 일정이 누가 어느 쪽인지 가르는 데 쓴다(이름으로 가르면 동명이인이 섞인다). 이메일은 없다(§69) */

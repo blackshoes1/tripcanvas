@@ -10,6 +10,7 @@ import { PgCollabRepository } from '../../infrastructure/database/pgCollabReposi
 import { PgTripRepository } from '../../infrastructure/database/pgTripRepository';
 import { PgUserRepository } from '../../infrastructure/database/pgUserRepository';
 import { CollabService } from './collabService';
+import type { CandidateInput } from './types';
 
 const ctx = (userId: string): RequestContext => ({ userId, legacySupabaseUserId: userId, email: `${userId.slice(-1)}@example.com`, sessionId: null, tokenSource: 'supabase' });
 const A = ctx('00000000-0000-0000-0000-00000000000a');
@@ -183,6 +184,141 @@ describe('후보 · 반응 · 코멘트 · 결정', () => {
     expect(JSON.stringify(list)).not.toMatch(/@example\.com/);
     expect(await code(service.addCandidate(A, 'trip1', { title: '   ' }))).toBe('VALIDATION_ERROR');
     expect(await kinds(A)).toEqual(['MEMBER_JOINED', 'CANDIDATE_PROPOSED', 'CANDIDATE_PROPOSED']);   // 자동 MUST는 기록 없음
+  });
+
+  it('카카오 원본 ID와 링크를 저장하고 Google place_id와 구분해 다시 읽는다', async () => {
+    const id = await service.addCandidate(A, 'trip1', {
+      title: '제주 카페', provider: 'kakao', providerId: '12345678', lat: 33.5, lng: 126.5,
+      addr: '제주시 연동', url: 'https://place.map.kakao.com/12345678'
+    });
+    const [candidate] = await service.listCandidates(B, 'trip1');
+    expect(candidate).toMatchObject({ id, title: '제주 카페', provider: 'kakao', provider_id: '12345678',
+      place_id: null, lat: 33.5, lng: 126.5, addr: '제주시 연동', url: 'https://place.map.kakao.com/12345678' });
+  });
+
+  it('Google 원본 ID는 구형 앱의 place_id에도 보존하고 구형 입력은 그대로 지원한다', async () => {
+    const id = await service.addCandidate(A, 'trip1', { title: '박물관', provider: 'google', providerId: 'ChIJ_test_place' });
+    const oldId = await service.addCandidate(A, 'trip1', { title: '구형 앱 장소', place_id: 'ChIJ_old_place' });
+    const candidates = await service.listCandidates(A, 'trip1');
+    expect(candidates.find(c => c.id === id)).toMatchObject({ provider: 'google', provider_id: 'ChIJ_test_place', place_id: 'ChIJ_test_place' });
+    expect(candidates.find(c => c.id === oldId)).toMatchObject({ provider: null, provider_id: null, place_id: 'ChIJ_old_place', lat: null, lng: null });
+  });
+
+  it('같은 제공자 ID의 동시 담기는 하나로 저장하고 기존 내용과 활동을 중복 변경하지 않는다', async () => {
+    const input = { title: '제주 카페', provider: 'kakao' as const, providerId: '12345678', note: '처음 메모' };
+    const ids = await Promise.all(Array.from({ length: 5 }, () => service.addCandidate(A, 'trip1', input)));
+    expect(new Set(ids).size).toBe(1);
+    await service.reactToCandidate(A, 'trip1', ids[0], 'PASS');
+    const again = await service.addCandidate(A, 'trip1', { ...input, title: '바뀐 검색 이름', note: '덮어쓰면 안 됨' });
+    expect(again).toBe(ids[0]);
+    const candidates = await service.listCandidates(A, 'trip1');
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]).toMatchObject({ title: '제주 카페', note: '처음 메모', my_reaction: 'PASS' });
+    expect((await kinds(A)).filter(kind => kind === 'CANDIDATE_PROPOSED')).toHaveLength(1);
+  });
+
+  it('다른 편집자가 같은 장소를 담으면 원래 후보에만 의견을 추가한다', async () => {
+    const input = { title: '제주 카페', provider: 'kakao' as const, providerId: '12345678' };
+    const first = await service.addCandidate(A, 'trip1', input);
+    const second = await service.addCandidate(B, 'trip1', input);
+    expect(second).toBe(first);
+    const [candidate] = await service.listCandidates(B, 'trip1');
+    expect(candidate).toMatchObject({ must_count: 2, mine: false, my_reaction: 'MUST' });
+    expect((await kinds(A)).filter(kind => kind === 'CANDIDATE_PROPOSED')).toHaveLength(1);
+  });
+
+  it('좌표·제공자 없는 장소도 같은 clientKey의 동시 재시도는 후보와 활동 하나다', async () => {
+    const input = { title: '직접 입력한 곳', clientKey: 'abcdefab-1111-4111-8111-111111111111', lat: null, lng: null };
+    const ids = await Promise.all(Array.from({ length: 5 }, () => service.addCandidate(A, 'trip1', input)));
+    expect(new Set(ids).size).toBe(1);
+    const again = await service.addCandidate(A, 'trip1', { ...input, title: '재시도 때 바뀐 제목', clientKey: input.clientKey.toUpperCase() });
+    expect(again).toBe(ids[0]);
+    expect(await service.listCandidates(A, 'trip1')).toHaveLength(1);
+    expect((await service.listCandidates(A, 'trip1'))[0]).toMatchObject({ title: input.title, lat: null, lng: null });
+    expect((await kinds(A)).filter(kind => kind === 'CANDIDATE_PROPOSED')).toHaveLength(1);
+  });
+
+  it('제공자 ID와 clientKey 어느 쪽이 충돌해도 기존 ID를 반환한다', async () => {
+    const base = { title: '카카오 원본', provider: 'kakao' as const, providerId: '12345' };
+    const key1 = '11111111-1111-4111-8111-111111111111', key2 = '22222222-2222-4222-8222-222222222222';
+    const first = await service.addCandidate(A, 'trip1', { ...base, clientKey: key1 });
+    expect(await service.addCandidate(A, 'trip1', { ...base, clientKey: key2 })).toBe(first);
+    expect(await service.addCandidate(A, 'trip1', { ...base, clientKey: key2 })).toBe(first);
+    expect(await service.addCandidate(A, 'trip1', { ...base, clientKey: key1 })).toBe(first);
+    expect(await service.listCandidates(A, 'trip1')).toHaveLength(1);
+    expect((await kinds(A)).filter(kind => kind === 'CANDIDATE_PROPOSED')).toHaveLength(1);
+  });
+
+  it('다른 요청 키와 다른 여행을 이름·좌표가 같다고 합치지 않는다', async () => {
+    const input = { title: '동일 이름', lat: null, lng: null, clientKey: '11111111-1111-4111-8111-111111111111' };
+    const first = await service.addCandidate(A, 'trip1', input);
+    const second = await service.addCandidate(A, 'trip1', { ...input, clientKey: '22222222-2222-4222-8222-222222222222' });
+    await trips.create({ ownerId: A.userId, clientId: 'trip2', data: { ...doc('두 번째'), id: 'trip2' } });
+    const third = await service.addCandidate(A, 'trip2', input);
+    expect(new Set([first, second, third]).size).toBe(3);
+  });
+
+  it('잘못된 clientKey는 저장하지 않고 재사용 키에도 권한을 확인한다', async () => {
+    for (const clientKey of ['', 'same-name', true, 123, '11111111-1111-4111-8111-111111111111x']) {
+      expect(await code(service.addCandidate(A, 'trip1', { title: '무효', clientKey } as CandidateInput))).toBe('VALIDATION_ERROR');
+    }
+    const input = { title: '유효', clientKey: '11111111-1111-4111-8111-111111111111' };
+    await service.addCandidate(A, 'trip1', input);
+    expect(await code(service.addCandidate(C, 'trip1', input))).toBe('NOT_FOUND');
+    const member = (await service.listMembers(A, 'trip1')).find(m => m.user_id === B.userId)!;
+    await service.manageMember(A, 'trip1', member.id, 'SET_ROLE', 'VIEWER');
+    expect(await code(service.addCandidate(B, 'trip1', input))).toBe('FORBIDDEN');
+    expect(await service.listCandidates(A, 'trip1')).toHaveLength(1);
+  });
+
+  it('동명이점·다른 제공자·ID 미상·다른 여행을 좌표만으로 합치지 않는다', async () => {
+    const input = { title: '같은 이름', lat: 33.5, lng: 126.5 };
+    const ids = [];
+    ids.push(await service.addCandidate(A, 'trip1', { ...input, provider: 'kakao', providerId: '12345' }));
+    ids.push(await service.addCandidate(A, 'trip1', { ...input, provider: 'kakao', providerId: '67890' }));
+    ids.push(await service.addCandidate(A, 'trip1', { ...input, provider: 'google', providerId: '12345' }));
+    ids.push(await service.addCandidate(A, 'trip1', input));
+    ids.push(await service.addCandidate(A, 'trip1', input));
+    await trips.create({ ownerId: A.userId, clientId: 'trip2', data: { ...doc('다른 여행'), id: 'trip2' } });
+    ids.push(await service.addCandidate(A, 'trip2', { ...input, provider: 'kakao', providerId: '12345' }));
+    expect(new Set(ids).size).toBe(6);
+    expect(await service.listCandidates(A, 'trip1')).toHaveLength(5);
+  });
+
+  it('위치 없음과 실제 0 좌표를 구분하고 부적절한 숫자는 저장하지 않는다', async () => {
+    const nilId = await service.addCandidate(A, 'trip1', { title: '위치 없음', lat: null, lng: null });
+    const zeroId = await service.addCandidate(A, 'trip1', { title: '좌표 0', lat: 0, lng: 0 });
+    for (const fields of [
+      { lat: '', lng: '' }, { lat: true, lng: false }, { lat: '33.5', lng: '126.5' },
+      { lat: 91, lng: 126.5 }, { lat: 33.5, lng: -181 }, { lat: 33.5 }, { lat: NaN, lng: 1 }, { lat: 0, lng: Infinity }
+    ]) {
+      expect(await code(service.addCandidate(A, 'trip1', { title: '잘못된 좌표', ...fields } as CandidateInput))).toBe('VALIDATION_ERROR');
+    }
+    const candidates = await service.listCandidates(A, 'trip1');
+    expect(candidates).toHaveLength(2);
+    expect(candidates.find(c => c.id === nilId)).toMatchObject({ lat: null, lng: null });
+    expect(candidates.find(c => c.id === zeroId)).toMatchObject({ lat: 0, lng: 0 });
+  });
+
+  it('제공자 ID의 혼용·유실된 제공자·불량 식별자는 저장하지 않는다', async () => {
+    for (const fields of [
+      { providerId: '12345' }, { provider: 'other', providerId: '12345' },
+      { provider: 'kakao', providerId: 'ChIJ_google' }, { provider: 'kakao', providerId: '12345', place_id: '12345' },
+      { provider: 'google', providerId: 'ChIJ_first', place_id: 'ChIJ_second' }, { provider: 'google', providerId: '' }
+    ]) {
+      expect(await code(service.addCandidate(A, 'trip1', { title: '불량 식별자', ...fields } as CandidateInput))).toBe('VALIDATION_ERROR');
+    }
+    expect(await service.listCandidates(A, 'trip1')).toEqual([]);
+  });
+
+  it('지도 후보 담기와 기존 ID 재사용에도 여행과 편집 권한을 확인한다', async () => {
+    const input = { title: '제주 카페', provider: 'kakao' as const, providerId: '12345678' };
+    await service.addCandidate(A, 'trip1', input);
+    expect(await code(service.addCandidate(C, 'trip1', input))).toBe('NOT_FOUND');
+    const member = (await service.listMembers(A, 'trip1')).find(m => m.user_id === B.userId)!;
+    await service.manageMember(A, 'trip1', member.id, 'SET_ROLE', 'VIEWER');
+    expect(await code(service.addCandidate(B, 'trip1', input))).toBe('FORBIDDEN');
+    expect(await service.listCandidates(A, 'trip1')).toHaveLength(1);
   });
 
   it('한 사람 한 표 — 두 번 눌러도, 마음이 바뀌어도 행은 하나. 거두기는 기록하지 않는다', async () => {

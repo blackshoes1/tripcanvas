@@ -351,8 +351,8 @@ test('liveEffects: 이벤트 종류가 무엇을 다시 읽을지 정한다 — 
   assert.deepEqual(e('COMMENT_ADDED', false), { candidates: true, members: false, pull: false, activity: true, notify: false });
   assert.deepEqual(e('MEMBER_JOINED', false), { candidates: false, members: true, pull: false, activity: true, notify: true });
   assert.deepEqual(e('MEMBER_LEFT', false), { candidates: false, members: true, pull: false, activity: true, notify: false });
-  assert.deepEqual(e('SCHEDULE_CHANGED', false), { candidates: false, members: false, pull: true, activity: true, notify: false });
-  assert.deepEqual(e('SCHEDULE_CHANGED', true), { candidates: false, members: false, pull: false, activity: true, notify: false }, '내 저장은 이미 내 화면이다');
+  assert.deepEqual(e('SCHEDULE_CHANGED', false), { candidates: true, members: false, pull: true, activity: true, notify: false });
+  assert.deepEqual(e('SCHEDULE_CHANGED', true), { candidates: true, members: false, pull: false, activity: true, notify: false }, '문서 이동·삭제에 따라 후보 날짜 표시도 다시 읽는다');
   assert.deepEqual(e('BOOKING_ADDED', false).pull, true);
   assert.deepEqual(e('???', false), { candidates: false, members: false, pull: false, activity: false, notify: false });
   assert.deepEqual(C.liveEffects(null).activity, false);
@@ -535,6 +535,18 @@ test('buildGroupProposal(§28·§29): 반대 없고 두 명 이상 말한 후보
   assert.equal(C.buildGroupProposal([cands[3], cands[4]], days, 4), null);
   assert.equal(C.buildGroupProposal(cands, [], 4), null, '일자가 없으면 제안도 없다');
   for (const pick of p.picks) for (const r of pick.reasons) assert.doesNotMatch(r, /점수|score/);
+});
+
+test('buildGroupProposal: 일정 저장 뒤 상태 표시만 실패한 후보는 다시 배치 제안하지 않는다', () => {
+  const first = { id: 1, title: '같은 이름', status: 'PROPOSED', must_count: 2, ok_count: 0, pass_count: 0 };
+  const second = { ...first, id: 2 };
+  const days = [{ spots: [{ name: '다른 이름으로 편집', candidateId: 1 }] }];
+  const before = JSON.stringify(days);
+  const proposal = C.buildGroupProposal([first, second], days, 2);
+  assert.deepEqual(proposal.picks.map(p => p.candidate.id), [2], '이름이 같아도 다른 확정 ID는 제외하지 않는다');
+  assert.equal(C.buildGroupProposal([first], days, 2), null);
+  assert.equal(C.buildGroupProposal([first], [{ spots: [{ name: first.title }] }], 2).picks.length, 1, 'ID 없는 legacy는 이름으로 추측하지 않는다');
+  assert.equal(JSON.stringify(days), before);
 });
 
 test('groupCandidates: 이번엔 뺀 후보는 따로 묶인다 · activityText: 뺀 결정 문장', () => {

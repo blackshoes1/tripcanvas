@@ -588,7 +588,7 @@ test('normalizeBooking / normalizeTrip.bookings — 예약(가격 추적) 유입
   // 정상: 기본값 채움 (type 기본 hotel, track 기본 on)
   const ok=L.normalizeBooking({id:'bk1', title:' Cap Rocat ', price:1350000.4, cur:'EUR', start:'2026-10-30', end:'2026-11-01', freeCancelUntil:'2026-10-20', cancelFee:100000});
   assert.equal(ok.type,'hotel'); assert.equal(ok.title,'Cap Rocat');
-  assert.equal(ok.price,1350000); assert.equal(ok.cur,'EUR'); assert.equal(ok.track,true);
+  assert.equal(ok.price,1350000.4); assert.equal(ok.cur,'EUR'); assert.equal(ok.track,true); // 외화 소수 보존
   assert.equal(ok.cancelFee,100000); assert.equal(ok.freeCancelUntil,'2026-10-20');
   // track:false는 유지
   assert.equal(L.normalizeBooking({id:'bk2', track:false}).track, false);

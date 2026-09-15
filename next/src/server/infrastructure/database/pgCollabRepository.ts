@@ -4,7 +4,7 @@
 import { and, desc, eq, sql } from 'drizzle-orm';
 
 import type {
-  ActivityView, CandidateInput, CandidateView, CommentView, InviteView, MemberView, PreferenceView
+  ActivityView, CandidateInput, CandidateProvider, CandidateView, CommentView, InviteView, MemberView, PreferenceView
 } from '../../application/collaboration/types';
 import type {
   CandidateRow, CollabRepository, CommentRow, InviteRow, MemberRole, MemberRow, MemberStatus
@@ -171,7 +171,7 @@ export class PgCollabRepository implements CollabRepository {
 
   async listCandidates(tripId: string, viewerId: string): Promise<CandidateView[]> {
     const q = sql.raw(`
-      select c.id, c.title, c.place_id, c.lat, c.lng, c.addr, c.note, c.url, c.status, c.scheduled_ref,
+      select c.id, c.title, c.place_id, c.provider, c.provider_id, c.lat, c.lng, c.addr, c.note, c.url, c.status, c.scheduled_ref,
              ${label('c.trip_id', 'c.proposed_by')} as proposed_by_label,
              (c.proposed_by = $viewer) as mine,
              (select r.reaction from candidate_reactions r where r.candidate_id=c.id and r.user_id=$viewer) as my_reaction,
@@ -195,6 +195,7 @@ export class PgCollabRepository implements CollabRepository {
     const { rows } = (await this.db.execute(q)) as Rows;
     return rows.map((r) => ({
       id: num(r.id), title: String(r.title), place_id: (r.place_id as string | null) ?? null, lat: r.lat == null ? null : Number(r.lat),
+      provider: (r.provider as CandidateProvider | null) ?? null, provider_id: (r.provider_id as string | null) ?? null,
       lng: r.lng == null ? null : Number(r.lng), addr: (r.addr as string | null) ?? null, note: (r.note as string | null) ?? null,
       url: (r.url as string | null) ?? null, status: String(r.status), scheduled_ref: (r.scheduled_ref as string | null) ?? null,
       proposed_by_label: String(r.proposed_by_label ?? '멤버'), mine: !!r.mine, my_reaction: (r.my_reaction as string | null) ?? null,
@@ -212,11 +213,21 @@ export class PgCollabRepository implements CollabRepository {
   /** 제안한 사람은 이미 가고 싶다는 뜻이라 MUST가 자동으로 붙는다 — 그 반응은 기록하지 않는다(담기 한 줄로 충분하다) */
   async addCandidate(tripId: string, userId: string, input: Required<CandidateInput>): Promise<number> {
     return this.db.transaction(async (tx) => {
-      const [c] = await tx.insert(tripCandidates).values({
-        tripId, title: input.title, placeId: input.place_id, lat: input.lat, lng: input.lng, addr: input.addr, note: input.note, url: input.url, proposedBy: userId
-      }).returning();
+      const [created] = await tx.insert(tripCandidates).values({
+        tripId, title: input.title, placeId: input.place_id, provider: input.provider, providerId: input.providerId, clientKey: input.clientKey,
+        lat: input.lat, lng: input.lng, addr: input.addr, note: input.note, url: input.url, proposedBy: userId
+      }).onConflictDoNothing().returning();
+      // 동일 제공자의 확정 ID만 중복으로 본다. 다른 사람이 먼저 담은 내용·예약 상태는 덮어쓰지 않는다.
+      let c = created;
+      if (!c && input.clientKey) c = (await tx.select().from(tripCandidates).where(and(
+        eq(tripCandidates.tripId, tripId), eq(tripCandidates.clientKey, input.clientKey)
+      )).limit(1))[0];
+      if (!c && input.provider && input.providerId) c = (await tx.select().from(tripCandidates).where(and(
+        eq(tripCandidates.tripId, tripId), eq(tripCandidates.provider, input.provider), eq(tripCandidates.providerId, input.providerId)
+      )).limit(1))[0];
+      if (!c) throw new Error('candidate_insert_missing');
       await tx.insert(candidateReactions).values({ candidateId: c.id, userId, reaction: 'MUST' }).onConflictDoNothing();
-      await this.log(tx, tripId, userId, 'CANDIDATE_PROPOSED', { title: c.title, candidate_id: Number(c.id) });
+      if (created) await this.log(tx, tripId, userId, 'CANDIDATE_PROPOSED', { title: c.title, candidate_id: Number(c.id) });
       return Number(c.id);
     });
   }

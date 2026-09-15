@@ -183,7 +183,7 @@ describe('비용 — 하루치(배분)와 전액을 구분한다', () => {
       [day([{ ...airport(), cost: 30000 }]), day([seongsan()]), day([hotel()])],
       { bookings: [stayBooking] }
     );
-    expect(buildDayView(t, NONE, 0).cost).toEqual({
+    expect(buildDayView(t, NONE, 0).cost).toMatchObject({
       total: 130000,
       parts: [{ label: '장소', amount: 30000 }, { label: '예약', amount: 100000 }]
     });

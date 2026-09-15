@@ -100,6 +100,17 @@ describe('buildDayPlanView', () => {
     expect(build(noStay, 1)!.day.spots[0].incomingLeg).not.toBeNull();
   });
 
+  it.each([[0, null], [5, null], [5.1, 5], [60, 60]])('예약 지연 %s분은 기존 웹 경고 기준으로 값만 전달한다', (delay, expected) => {
+    const t = trip([day([
+      spot('첫 장소', null, null, { stayMin: 60 + delay! }),
+      spot('예약', null, null, { bookAt: '10:00' }), spot('예약 없음', null, null)
+    ], { startAt: '09:00' })]);
+    const v = build(t, 0)!;
+    expect(v.day.spots[1].bookingLateMinutes).toBe(expected);
+    expect(v.day.spots[1].conflict).toBe(false); // at 충돌과 예약 지연은 다른 필드다.
+    expect(v.day.spots[2].bookingLateMinutes).toBeNull();
+  });
+
   it('숙소 복귀는 붙지만, 일정의 마지막 날에는 없다', () => {
     const t = trip([day([hotel(), seongsan()]), day([seongsan()])]);
     expect(build(t, 0)!.day.back?.name).toBe('제주호텔');
@@ -127,6 +138,21 @@ describe('buildDayPlanView', () => {
     expect(v.day.totals.endMinutes).not.toBeNull();
     expect(v.day.totals.cost.total).toBe(30000);
     expect(v.day.totals.cost.parts).toEqual([{ label: '장소', amount: 30000 }]);
+  });
+
+  it('하루 예산과 소수 외화·미정의 근거를 API에 함께 싣는다', () => {
+    const t = trip([day([
+      spot('입장', null, null, { cost: 12.55, cur: 'EUR', costBasis: 'PER_PERSON', costPeople: 2 }),
+      spot('무료', null, null, { cost: 0 }), spot('식사', null, null)
+    ], { budget: { amount: 0, cur: 'KRW' }, costItems: [{ id: 'bus', title: '버스', kind: 'TRANSPORT', amount: 2.5, cur: 'USD' }] })]);
+    const cost = build(t, 0)!.day.totals.cost;
+    expect(cost.total).toBe(12.55 * 2 * 1500 + 2.5 * 1380);
+    expect(cost.details?.budget?.differenceKRW).toBe(-cost.total);
+    expect(cost.details?.unknownCount).toBe(1);
+    expect(cost.details?.items.map(item => item.state)).toEqual(['KNOWN', 'FREE', 'UNKNOWN', 'KNOWN']);
+    expect(cost.details?.items[0].amount).toBe(12.55);
+    expect(cost.details?.fxSource).toBe('FALLBACK');
+    expect(cost.details?.fxAsOf).toBeNull();
   });
 
   // 타임라인은 분을 소수로 들고 있다. 그대로 보내면 Swift가 Int로 디코딩하다 죽는데,

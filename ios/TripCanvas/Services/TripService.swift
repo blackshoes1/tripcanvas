@@ -246,6 +246,18 @@ protocol TripDocumentSource {
     func cachedDayPlan(tripId: String, dayIndex: Int) async -> DayPlanResponse?
     /// 여행 **전체**의 동선. 전체 지도를 볼 때만 부른다 — 열지도 않을 날까지 미리 받지 않는다.
     func tripRoutes(tripId: String) async throws -> TripRoutesResponse
+    func planPreview(tripId: String, document: TripDocument, dayIndex: Int, revision: Int) async throws -> PlanChangePreview
+}
+
+struct PlanChangePreview: Codable, Hashable, Sendable {
+    let before: DayPlanResponse
+    let after: DayPlanResponse
+}
+
+extension TripDocumentSource {
+    func planPreview(tripId: String, document: TripDocument, dayIndex: Int, revision: Int) async throws -> PlanChangePreview {
+        throw APIError.notFound("변경 미리보기를 아직 사용할 수 없어요.")
+    }
 }
 
 /// 새 여행에 필요한 최소한 — **어디로·언제·며칠**. 그 이상은 만든 뒤에 고치면 되는 것들이다.
@@ -300,6 +312,11 @@ extension TripService: TripDocumentSource {
     /// 여행 전체 동선. 그리는 데 필요한 것만 온다(시각·비용은 일자 화면의 몫).
     func tripRoutes(tripId: String) async throws -> TripRoutesResponse {
         try await api.get("/api/v1/trips/\(tripId)/routes")
+    }
+
+    func planPreview(tripId: String, document: TripDocument, dayIndex: Int, revision: Int) async throws -> PlanChangePreview {
+        let body: [String: JSONValue] = ["document": .object(document.raw), "dayIndex": .number(dayIndex), "revision": .number(revision)]
+        return try await api.post("/api/v1/trips/\(tripId)/plan-preview", jsonBody: try JSONValue.data(from: body))
     }
 
     /// revision CAS 저장. 다른 기기가 먼저 바꿨으면 `APIError.revisionConflict`가 나온다 —

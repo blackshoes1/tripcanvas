@@ -18,6 +18,8 @@ protocol CollabSource {
 
     func candidates(tripId: String) async throws -> [CandidateView]
     func addCandidate(tripId: String, title: String, note: String?, lat: Double?, lng: Double?, placeId: String?, addr: String?) async throws -> Int
+    func addCandidate(tripId: String, title: String, note: String?, lat: Double?, lng: Double?, placeId: String?, addr: String?, provider: String?, providerId: String?) async throws -> Int
+    func addCandidate(tripId: String, title: String, note: String?, lat: Double?, lng: Double?, placeId: String?, addr: String?, provider: String?, providerId: String?, clientKey: String) async throws -> Int
     func react(tripId: String, candidateId: Int, reaction: Reaction?) async throws
     func manageCandidate(tripId: String, candidateId: Int, action: String, value: String?) async throws
 
@@ -32,6 +34,15 @@ protocol CollabSource {
     func realtimeChoice() async throws -> RealtimeChoice
     func preferences(tripId: String) async throws -> [PreferenceView]
     func savePreferences(tripId: String, prefs: [String: JSONValue]) async throws -> [String: JSONValue]
+}
+
+extension CollabSource {
+    func addCandidate(tripId: String, title: String, note: String?, lat: Double?, lng: Double?, placeId: String?, addr: String?, provider: String?, providerId: String?, clientKey: String) async throws -> Int {
+        try await addCandidate(tripId: tripId, title: title, note: note, lat: lat, lng: lng, placeId: placeId, addr: addr, provider: provider, providerId: providerId)
+    }
+    func addCandidate(tripId: String, title: String, note: String?, lat: Double?, lng: Double?, placeId: String?, addr: String?, provider: String?, providerId: String?) async throws -> Int {
+        try await addCandidate(tripId: tripId, title: title, note: note, lat: lat, lng: lng, placeId: placeId, addr: addr)
+    }
 }
 
 extension TripService: CollabSource {
@@ -98,9 +109,20 @@ extension TripService: CollabSource {
     }
 
     func addCandidate(tripId: String, title: String, note: String?, lat: Double?, lng: Double?, placeId: String?, addr: String?) async throws -> Int {
+        try await addCandidate(tripId: tripId, title: title, note: note, lat: lat, lng: lng,
+                               placeId: placeId, addr: addr, provider: nil, providerId: nil)
+    }
+
+    func addCandidate(tripId: String, title: String, note: String?, lat: Double?, lng: Double?, placeId: String?, addr: String?, provider: String?, providerId: String?) async throws -> Int {
+        try await addCandidate(tripId: tripId, title: title, note: note, lat: lat, lng: lng, placeId: placeId, addr: addr,
+                               provider: provider, providerId: providerId, clientKey: UUID().uuidString)
+    }
+
+    func addCandidate(tripId: String, title: String, note: String?, lat: Double?, lng: Double?, placeId: String?, addr: String?, provider: String?, providerId: String?, clientKey: String) async throws -> Int {
         let body: [String: Any] = [
             "title": title, "note": orNull(note), "lat": orNull(lat), "lng": orNull(lng),
-            "place_id": orNull(placeId), "addr": orNull(addr), "url": NSNull()
+            "place_id": orNull(placeId), "addr": orNull(addr), "url": NSNull(),
+            "provider": orNull(provider), "providerId": orNull(providerId), "clientKey": clientKey
         ]
         let response: CreatedIdResponse = try await api.post("\(tripPath(tripId))/candidates", body: body)
         return response.id
