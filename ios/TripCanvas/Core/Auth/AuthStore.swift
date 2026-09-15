@@ -37,6 +37,10 @@ struct AuthError: Error, LocalizedError, Equatable {
         let raw = [body?["message"], body?["error"], body?["code"]]
             .compactMap { $0 as? String }
             .joined(separator: " ")
+        if let code = body?["code"] as? String,
+           ["MISSING_OR_NULL_ORIGIN", "INVALID_ORIGIN"].contains(code) {
+            return AuthError(code: .unknown, message: "로그인 요청을 처리하지 못했어요. 앱을 업데이트한 뒤 다시 시도해 주세요.")
+        }
         if status == 429 {
             return AuthError(code: .rateLimited, message: "너무 여러 번 시도했어요 — 잠시 뒤에 다시 해주세요.")
         }
@@ -125,6 +129,8 @@ struct TripCanvasAuthClient: AuthClient {
         _ path: String, method: String = "POST", body: [String: Any]? = nil, token: String? = nil
     ) async throws -> (status: Int, body: [String: Any]?, headers: [String: String]) {
         var request = URLRequest(url: baseURL.appendingPathComponent(path))
+        // Bearer 인증에는 URLSession에 남은 쿠키를 섞지 않는다(쿠키는 서버의 Origin 검사를 유발한다).
+        request.httpShouldHandleCookies = false
         request.httpMethod = method
         request.timeoutInterval = 15
         if let token { request.setValue("Bearer " + token, forHTTPHeaderField: "authorization") }
