@@ -1,4 +1,16 @@
 import SwiftUI
+import Observation
+
+/// 원문뿐 아니라 사람이 고른 줄과 찾은 위치도 방식 전환 후 그대로 유지한다.
+@Observable
+@MainActor
+final class PasteItineraryFormState {
+    var text = ""
+    var draft: ItineraryDraft?
+    var rows: [PasteItineraryView.Row] = []
+    var tripName = ""
+    var start = ""
+}
 
 /// 가진 일정을 붙여넣어 여행 만들기.
 ///
@@ -10,15 +22,11 @@ struct PasteItineraryView: View {
     let places: PlaceSearching
     /// 어떻게 시작할지 — 처음부터 만들기와 한 시트를 나눠 쓴다.
     @Binding var mode: CreateTripMode
+    @Bindable var form: PasteItineraryFormState
     /// 만든 여행. 부모가 그 여행으로 들어간다.
     let onCreated: (TripSummary) -> Void
 
     @Environment(\.dismiss) private var dismiss
-    @State private var text = ""
-    @State private var draft: ItineraryDraft?
-    @State private var rows: [Row] = []
-    @State private var tripName = ""
-    @State private var start = ""
     @State private var isBusy = false
     @State private var errorMessage: String?
 
@@ -35,19 +43,19 @@ struct PasteItineraryView: View {
     var body: some View {
         NavigationStack {
             Group {
-                if draft == nil { input } else { preview }
+                if form.draft == nil { input } else { preview }
             }
             .paperGround()
-            .navigationTitle(draft == nil ? "일정 붙여넣기" : "이렇게 읽었어요")
+            .navigationTitle(form.draft == nil ? "일정 붙여넣기" : "이렇게 읽었어요")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("취소") { dismiss() }.disabled(isBusy)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    if isBusy { ProgressView() } else if draft == nil {
+                    if isBusy { ProgressView() } else if form.draft == nil {
                         Button("읽어 보기") { Task { await parse() } }
-                            .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                            .disabled(form.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     } else {
                         Button("만들기") { Task { await create() } }
                     }
@@ -81,10 +89,9 @@ struct PasteItineraryView: View {
 
     private var input: some View {
         Form {
-            // ⚠️ 미리보기 단계에는 없다 — 읽어 본 결과를 두고 길을 바꾸면 그게 사라진다.
-            Section { CreateTripModePicker(mode: $mode) }
+            Section { CreateTripModePicker(mode: $mode).disabled(isBusy) }
             Section {
-                TextEditor(text: $text)
+                TextEditor(text: $form.text)
                     .frame(minHeight: 220)
                     .font(.callout)
             } header: {
@@ -94,7 +101,7 @@ struct PasteItineraryView: View {
             }
             Section {
                 Button {
-                    text = UIPasteboard.general.string ?? text
+                    form.text = UIPasteboard.general.string ?? form.text
                 } label: {
                     Label("클립보드에서 붙여넣기", systemImage: "doc.on.clipboard")
                 }
@@ -118,10 +125,11 @@ struct PasteItineraryView: View {
 
     private var preview: some View {
         List {
+            Section { CreateTripModePicker(mode: $mode).disabled(isBusy) }
             Section {
-                TextField("여행 이름", text: $tripName)
-                LabeledContent("시작일", value: start.isEmpty ? "글에 없어요" : start)
-                if draft?.startAmbiguous == true {
+                TextField("여행 이름", text: $form.tripName)
+                LabeledContent("시작일", value: form.start.isEmpty ? "글에 없어요" : form.start)
+                if form.draft?.startAmbiguous == true {
                     Text("연도가 글에 없어서 올해로 봤어요 — 맞는지 확인해 주세요.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
@@ -129,10 +137,10 @@ struct PasteItineraryView: View {
                 Text(summaryText)
             }
 
-            ForEach(draft?.days ?? [], id: \.index) { day in
+            ForEach(form.draft?.days ?? [], id: \.index) { day in
                 Section(dayTitle(day)) {
-                    ForEach($rows.filter { $0.wrappedValue.dayIndex == day.index }) { $row in
-                        rowView($row)
+                    ForEach(rowBindings(for: day.index), id: \.wrappedValue.id) { row in
+                        rowView(row)
                     }
                 }
             }
@@ -141,6 +149,10 @@ struct PasteItineraryView: View {
                 Section { Text(errorMessage).foregroundStyle(.red).font(.footnote) }
             }
         }
+    }
+
+    private func rowBindings(for dayIndex: Int) -> [Binding<Row>] {
+        $form.rows.filter { $0.wrappedValue.dayIndex == dayIndex }
     }
 
     private func rowView(_ row: Binding<Row>) -> some View {
@@ -182,8 +194,8 @@ struct PasteItineraryView: View {
     }
 
     private var summaryText: String {
-        let kept = rows.filter(\.include).count
-        let dropped = rows.count - kept
+        let kept = form.rows.filter(\.include).count
+        let dropped = form.rows.count - kept
         return "담을 장소 \(kept)곳" + (dropped > 0 ? " · 메모로 남길 줄 \(dropped)개" : "")
     }
 
@@ -193,11 +205,11 @@ struct PasteItineraryView: View {
         isBusy = true
         errorMessage = nil
         do {
-            let parsed = try await service.parseItinerary(text: text)
-            draft = parsed
-            tripName = parsed.name.isEmpty ? NewTripView.fallbackName : parsed.name
-            start = parsed.start ?? ""
-            rows = parsed.days.flatMap { day in
+            let parsed = try await service.parseItinerary(text: form.text)
+            form.draft = parsed
+            form.tripName = parsed.name.isEmpty ? NewTripView.fallbackName : parsed.name
+            form.start = parsed.start ?? ""
+            form.rows = parsed.days.flatMap { day in
                 day.items.map { Row(dayIndex: day.index, item: $0, include: $0.kind == .place) }
             }
             isBusy = false
@@ -210,33 +222,33 @@ struct PasteItineraryView: View {
 
     /// 담기로 한 줄만 찾는다 — 활동·이동을 조회하면 할당량만 먹고 엉뚱한 좌표가 붙는다.
     private func locateAll() async {
-        for row in rows where row.include && !row.searched {
+        for row in form.rows where row.include && !row.searched {
             await locate(row.id)
         }
     }
 
     private func locate(_ id: UUID) async {
-        guard let index = rows.firstIndex(where: { $0.id == id }), rows[index].found == nil else { return }
-        let row = rows[index]
+        guard let index = form.rows.firstIndex(where: { $0.id == id }), form.rows[index].found == nil else { return }
+        let row = form.rows[index]
         guard row.include, !row.item.name.isEmpty else { return }
         // 이미 찾은 장소의 도시를 물려받는다 — 같은 여행이면 대개 같은 동네다(웹과 같은 사다리).
-        let hint = row.item.city.isEmpty ? (rows.compactMap(\.found).first?.city ?? "") : row.item.city
+        let hint = row.item.city.isEmpty ? (form.rows.compactMap(\.found).first?.city ?? "") : row.item.city
         let query = hint.isEmpty ? row.item.name : "\(row.item.name) \(hint)"
-        let hits = (try? await places.search(query, near: rows.compactMap(\.found).first?.point)) ?? []
-        guard let current = rows.firstIndex(where: { $0.id == id }) else { return }
-        rows[current].found = hits.first
-        rows[current].searched = true
+        let hits = (try? await places.search(query, near: form.rows.compactMap(\.found).first?.point)) ?? []
+        guard let current = form.rows.firstIndex(where: { $0.id == id }) else { return }
+        form.rows[current].found = hits.first
+        form.rows[current].searched = true
     }
 
     private func create() async {
-        guard let draft else { return }
+        guard let draft = form.draft else { return }
         isBusy = true
         errorMessage = nil
         do {
             let summary = try await service.createTrip(document: ItineraryDocument.make(
                 draft: draft,
-                lines: rows.map { .init(dayIndex: $0.dayIndex, item: $0.item, include: $0.include, found: $0.found) },
-                name: tripName, start: start))
+                lines: form.rows.map { .init(dayIndex: $0.dayIndex, item: $0.item, include: $0.include, found: $0.found) },
+                name: form.tripName, start: form.start))
             isBusy = false
             onCreated(summary)
             dismiss()

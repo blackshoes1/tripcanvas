@@ -193,6 +193,85 @@ final class CollabViewModelTests: XCTestCase {
         XCTAssertTrue(model.errorMessage?.contains("일정에는 넣었지만") == true)
     }
 
+    func testScheduleMovesAnExistingCandidateAndPreservesItsEditedFields() async {
+        let service = FakeCollabService()
+        service.candidateList = [candidate()]
+        let documents = FakeDocumentStore()
+        var document = documents.snapshot.document
+        var existing = CandidateBoardViewModel.spot(from: candidate())
+        existing.stayMinutes = 0
+        existing.setField("cost", .number(0))
+        existing.setField("bookAt", .string("14:00"))
+        existing.setField("bookingId", .string("booking-1"))
+        existing.setField("who", .array([.string("u1")]))
+        existing.setField("custom", .object(["keep": .bool(true)]))
+        document.insertSpot(existing, dayIndex: 0)
+        documents.snapshot = .init(document: document, revision: 8, role: .owner)
+        let model = CandidateBoardViewModel(trip: trip(), service: service, documents: documents)
+        await model.load()
+
+        // 문서에는 넣었지만 후보 표시는 아직 PROPOSED인 상태에서 다른 날로 다시 배치한다.
+        let saved = await model.schedule(candidateId: 1, dayIndex: 1, position: 0, expectedRevision: 8)
+
+        XCTAssertTrue(saved)
+        XCTAssertTrue(documents.snapshot.document.days[0].spots.isEmpty)
+        XCTAssertEqual(documents.snapshot.document.days[1].spots.map(\.name), ["카사 바트요", "기존 장소"])
+        XCTAssertEqual(documents.snapshot.document.days[1].spots.first?.raw, existing.raw, "예약·0분·비용·알 수 없는 필드까지 원문을 옮긴다")
+        XCTAssertEqual(documents.saves.count, 1)
+        XCTAssertEqual(service.candidateActions.last?.value, "2")
+    }
+
+    func testScheduleRepositionsAnExistingCandidateWithinTheSameDay() async {
+        let service = FakeCollabService()
+        service.candidateList = [candidate()]
+        let documents = FakeDocumentStore()
+        var document = documents.snapshot.document
+        document.insertSpot(CandidateBoardViewModel.spot(from: candidate()), dayIndex: 1)
+        documents.snapshot = .init(document: document, revision: 8, role: .owner)
+        let model = CandidateBoardViewModel(trip: trip(), service: service, documents: documents)
+        await model.load()
+
+        let saved = await model.schedule(candidateId: 1, dayIndex: 1, position: 0, expectedRevision: 8)
+
+        XCTAssertTrue(saved)
+        XCTAssertEqual(documents.snapshot.document.days[1].spots.map(\.name), ["카사 바트요", "기존 장소"])
+        XCTAssertEqual(documents.snapshot.document.days[1].spots.count, 2, "같은 날에도 복제하지 않는다")
+    }
+
+    func testScheduleDoesNotClaimToMoveALegacyCandidateWithoutALinkedSpot() async {
+        let service = FakeCollabService()
+        service.candidateList = [candidate(status: "SCHEDULED")]
+        let documents = FakeDocumentStore()
+        let model = CandidateBoardViewModel(trip: trip(), service: service, documents: documents)
+        await model.load()
+
+        let saved = await model.schedule(candidateId: 1, dayIndex: 1)
+
+        XCTAssertFalse(saved)
+        XCTAssertTrue(documents.saves.isEmpty)
+        XCTAssertTrue(service.candidateActions.isEmpty)
+        XCTAssertTrue(model.errorMessage?.contains("연결된 장소를 찾지 못했어요") == true)
+        XCTAssertNil(model.toast)
+    }
+
+    func testScheduleKeepsTheOriginalPositionWhenThePreviewRevisionIsStale() async {
+        let service = FakeCollabService()
+        service.candidateList = [candidate()]
+        let documents = FakeDocumentStore()
+        var document = documents.snapshot.document
+        document.insertSpot(CandidateBoardViewModel.spot(from: candidate()), dayIndex: 0)
+        documents.snapshot = .init(document: document, revision: 8, role: .owner)
+        let model = CandidateBoardViewModel(trip: trip(), service: service, documents: documents)
+        await model.load()
+
+        let saved = await model.schedule(candidateId: 1, dayIndex: 1, position: 0, expectedRevision: 7)
+
+        XCTAssertFalse(saved)
+        XCTAssertEqual(documents.snapshot.document, document)
+        XCTAssertTrue(documents.saves.isEmpty)
+        XCTAssertTrue(service.candidateActions.isEmpty)
+    }
+
     /// 남기기는 됐는데 다시 읽기가 실패하면 그 사실이 남아야 한다 — 목록을 다시 읽는 것이 안내를 지우면 안 된다.
     func testCommentReloadFailureIsNotSwallowed() async {
         let service = FakeCollabService()
@@ -339,6 +418,69 @@ final class CollabViewModelTests: XCTestCase {
         XCTAssertEqual(model.errorMessage?.contains("일정에는"), true)
     }
 
+    func testProposalRetryAfterALostSaveResponseDoesNotDuplicatePlaces() async {
+        let service = FakeCollabService()
+        service.candidateList = [candidate()]
+        service.proposalResult = proposal([(1, 1, "카사 바트요")])
+        let documents = FakeDocumentStore()
+        documents.loseNextSaveResponse = true
+        let model = CandidateBoardViewModel(trip: trip(), service: service, documents: documents)
+        await model.load()
+
+        await model.acceptProposal()
+        XCTAssertNotNil(model.errorMessage)
+        XCTAssertTrue(service.candidateActions.isEmpty)
+        XCTAssertNotNil(model.proposal, "응답이 끊긴 제안은 재시도할 수 있다")
+        await model.acceptProposal()
+
+        XCTAssertEqual(documents.saves.count, 1, "최신 문서에 이미 있으면 다시 저장하지 않는다")
+        XCTAssertEqual(documents.snapshot.document.days[1].spots.map(\.name), ["기존 장소", "카사 바트요"])
+        XCTAssertEqual(service.candidateActions.last?.value, "2")
+        XCTAssertNil(model.errorMessage)
+        XCTAssertNil(model.proposal)
+    }
+
+    func testProposalRetryRepairsTheActualDayAfterCandidateMarkingFailed() async {
+        let service = FakeCollabService()
+        service.candidateList = [candidate()]
+        service.proposalResult = proposal([(1, 1, "카사 바트요")])
+        service.failCandidateActions = true
+        let documents = FakeDocumentStore()
+        let model = CandidateBoardViewModel(trip: trip(), service: service, documents: documents)
+        await model.load()
+        await model.acceptProposal()
+
+        // 오래된 서버/응답이 다른 날짜를 다시 제안해도 기존 장소의 실제 위치를 우선한다.
+        service.failCandidateActions = false
+        service.proposalResult = proposal([(1, 2, "카사 바트요")])
+        await model.load()
+        await model.acceptProposal()
+
+        XCTAssertEqual(documents.saves.count, 1)
+        XCTAssertEqual(documents.snapshot.document.days[1].spots.map(\.name), ["기존 장소", "카사 바트요"])
+        XCTAssertTrue(documents.snapshot.document.days[2].spots.isEmpty)
+        XCTAssertEqual(service.candidateActions.last?.value, "2", "새 제안의 Day 3이 아니라 실제 Day 2의 표시를 복구한다")
+        XCTAssertNil(model.errorMessage)
+    }
+
+    func testFreshViewerRoleBlocksBothIndividualAndGroupPlacement() async {
+        let service = FakeCollabService()
+        service.candidateList = [candidate()]
+        service.proposalResult = proposal([(1, 1, "카사 바트요")])
+        let documents = FakeDocumentStore()
+        documents.snapshot = .init(document: documents.snapshot.document, revision: 8, role: .viewer)
+        let model = CandidateBoardViewModel(trip: trip(), service: service, documents: documents)
+        await model.load()
+
+        let saved = await model.schedule(candidateId: 1, dayIndex: 1)
+        await model.acceptProposal()
+
+        XCTAssertFalse(saved)
+        XCTAssertTrue(documents.saves.isEmpty, "여행 목록의 예전 OWNER 권한을 믿고 쓰지 않는다")
+        XCTAssertTrue(service.candidateActions.isEmpty)
+        XCTAssertTrue(model.errorMessage?.contains("권한") == true)
+    }
+
     /// 자동으로 적용하지 않는다 — "나중에"는 이 세션에서 다시 올라오지 않는다(§79).
     func testDismissKeepsItAwayForTheSession() async {
         let service = FakeCollabService()
@@ -427,13 +569,15 @@ final class CollabViewModelTests: XCTestCase {
 // MARK: - 가짜들
 
 @MainActor
-private final class FakeCollabService: CollabSource {
+final class FakeCollabService: CollabSource {
     var membersList: [MemberView] = []
     var candidateList: [CandidateView] = []
     var activityRows: [ActivityView] = []
     var prefRows: [PreferenceView] = [PreferenceView(userId: "u1", label: "나", role: .owner, mine: true, prefs: ["pace": .string("PACKED")])]
     var failure: APIError?
     var failCandidateActions = false
+    var candidateReads: (() async throws -> [CandidateView])?
+    private(set) var candidateWriteKeys: [String] = []
     /// 한마디를 다시 읽는 것만 실패시킨다 — 남기기는 됐는데 목록을 못 읽는 경우.
     var failCommentReads = false
     let issuedToken = String(repeating: "z", count: 32)
@@ -472,7 +616,14 @@ private final class FakeCollabService: CollabSource {
         try check(); acceptedNames.append(displayName); return acceptResult
     }
 
-    func candidates(tripId: String) async throws -> [CandidateView] { try check(); return candidateList }
+    func candidates(tripId: String) async throws -> [CandidateView] {
+        if let candidateReads { return try await candidateReads() }
+        try check(); return candidateList
+    }
+    func addCandidate(tripId: String, title: String, note: String?, lat: Double?, lng: Double?, placeId: String?, addr: String?, provider: String?, providerId: String?, clientKey: String) async throws -> Int {
+        candidateWriteKeys.append(clientKey)
+        return try await addCandidate(tripId: tripId, title: title, note: note, lat: lat, lng: lng, placeId: placeId, addr: addr)
+    }
     func addCandidate(tripId: String, title: String, note: String?, lat: Double?, lng: Double?, placeId: String?, addr: String?) async throws -> Int {
         try check()
         addedCandidates.append(title)
@@ -537,8 +688,10 @@ private final class FakeCollabService: CollabSource {
 @MainActor
 private final class FakeDocumentStore: TripDocumentSource {
     private(set) var saves: [(document: TripDocument, expectedRevision: Int)] = []
+    var snapshot: TripDocumentSnapshot
+    var loseNextSaveResponse = false
 
-    func document(tripId: String) async throws -> TripDocumentSnapshot {
+    init() {
         let raw: [String: JSONValue] = [
             "name": .string("바르셀로나"),
             "days": .array([
@@ -547,12 +700,19 @@ private final class FakeDocumentStore: TripDocumentSource {
                 .object(["title": .string("Day 3"), "spots": .array([])])
             ])
         ]
-        return TripDocumentSnapshot(document: TripDocument(raw: raw), revision: 7, role: .owner)
+        snapshot = TripDocumentSnapshot(document: TripDocument(raw: raw), revision: 7, role: .owner)
     }
 
+    func document(tripId: String) async throws -> TripDocumentSnapshot { snapshot }
+
     func saveDocument(tripId: String, document: TripDocument, expectedRevision: Int) async throws -> TripDocumentSnapshot {
+        guard snapshot.revision == expectedRevision else {
+            throw APIError.revisionConflict(message: "다른 기기에서 먼저 바뀌었어요", revision: snapshot.revision)
+        }
         saves.append((document, expectedRevision))
-        return TripDocumentSnapshot(document: document, revision: expectedRevision + 1, role: .owner)
+        snapshot = TripDocumentSnapshot(document: document, revision: expectedRevision + 1, role: snapshot.role)
+        if loseNextSaveResponse { loseNextSaveResponse = false; throw APIError.offline }
+        return snapshot
     }
 
     /// 이 테스트는 서버 계산을 쓰지 않는다 — 계산이 없어도 일정 편집은 그대로 돈다.

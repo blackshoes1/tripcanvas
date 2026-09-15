@@ -265,4 +265,31 @@ final class TripBookingTests: XCTestCase {
         XCTAssertFalse(ClockText.isValid(""))
         XCTAssertEqual(ClockText.minutes("10:30"), 630)
     }
+    func testConfirmationCanBeEditedAndClearedWithoutRestoringLegacyValues() throws {
+        var trip = try load()
+        var booking = TripBooking(raw: ["id": .string("bkOld1"), "confirmationNumber": .string("OLD123"),
+                                        "code": .string("OLDER"), "providerField": .string("keep")])
+        XCTAssertEqual(booking.confirmation, "OLD123")
+        booking.confirmation = "  NEW456  "
+        trip.upsertBooking(booking, links: .empty)
+        let saved = try XCTUnwrap(trip.booking(id: booking.id))
+        XCTAssertEqual(saved.confirmation, "NEW456")
+        XCTAssertEqual(saved.raw["providerField"]?.stringValue, "keep")
+        booking.confirmation = "  "
+        XCTAssertNil(booking.confirmation)
+        XCTAssertNil(booking.raw["confirmationNumber"])
+        XCTAssertNil(booking.raw["code"])
+    }
+
+    func testForeignBookingAmountAndFeeKeepCentsOnDocumentRoundTrip() throws {
+        var trip = try load()
+        var booking = try XCTUnwrap(trip.booking(id: "bkOld1"))
+        booking.price = 123.45
+        booking.cancelFee = 10.25
+        trip.upsertBooking(booking, links: trip.links(forBooking: booking.id))
+        let saved = try XCTUnwrap(TripDocument(raw: encoded(trip)).booking(id: booking.id))
+        XCTAssertEqual(saved.price, 123.45)
+        XCTAssertEqual(saved.cancelFee, 10.25)
+    }
+
 }

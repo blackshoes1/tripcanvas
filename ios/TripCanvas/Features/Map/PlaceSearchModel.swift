@@ -29,13 +29,18 @@ struct PlaceHit: Identifiable, Hashable, Sendable {
     let category: SpotCategory?
     /// 구글 Place ID(호텔 identity·시세 조회). 카카오 결과에는 없다.
     let placeId: String?
+    var provider: String? = nil
+    var providerId: String? = nil
+    var placeURL: URL? = nil
 
     /// 검색 결과 → 장소. 웹의 `kakaoSearch`/구글 담기가 만드는 필드와 같다.
     func makeSpot() -> TripSpot {
         var spot = TripSpot(name: name, city: city.isEmpty ? "기타" : city)
         spot.point = point
         spot.category = category
+        if !address.isEmpty { spot.setField("addr", .string(address)) }
         if let placeId { spot.placeId = placeId }
+        if provider == "kakao", let providerId { spot.kakaoId = providerId }
         return spot
     }
 }
@@ -51,6 +56,9 @@ struct PlaceSearchResponse: Codable, Sendable {
         let lat: Double
         let lng: Double
         let category: String?
+        let provider: String?
+        let providerId: String?
+        let placeUrl: String?
     }
     let provider: String
     let places: [Place]
@@ -58,11 +66,12 @@ struct PlaceSearchResponse: Codable, Sendable {
     var hits: [PlaceHit] {
         places.enumerated().map { index, place in
             PlaceHit(
-                id: "kakao-\(index)-\(place.lat)-\(place.lng)",
+                id: place.providerId.map { "kakao-\($0)" } ?? "kakao-\(index)-\(place.lat)-\(place.lng)",
                 name: place.name, city: place.city, address: place.address,
                 point: GeoPoint(lat: place.lat, lng: place.lng),
                 category: place.category.flatMap(SpotCategory.init(rawValue:)),
-                placeId: nil)
+                placeId: nil, provider: "kakao", providerId: place.providerId,
+                placeURL: place.placeUrl.flatMap(URL.init(string:)))
         }
     }
 }
@@ -128,7 +137,7 @@ enum GooglePlaces {
                 address: place.formattedAddress ?? "",
                 point: GeoPoint(lat: lat, lng: lng),
                 category: catFromGoogle(types: place.types ?? [], primary: place.primaryType),
-                placeId: placeId)
+                placeId: placeId, provider: "google", providerId: placeId)
         }
     }
 
