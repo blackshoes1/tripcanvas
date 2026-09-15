@@ -17,7 +17,8 @@ import {
 
 const ERR_MSG: Record<SpotFormError, string> = {
   NAME_REQUIRED: '장소 이름을 입력하세요',
-  LOCATION_REQUIRED: '위치를 지정하세요 — 검색 결과를 고르거나 지도를 탭하면 됩니다'
+  LOCATION_REQUIRED: '위치를 지정하세요 — 검색 결과를 고르거나 지도를 탭하면 됩니다',
+  COST_INVALID: '비용을 확인해 주세요 — 원·엔은 정수, 달러·유로·위안은 소수 둘째 자리까지 입력합니다'
 };
 
 // 실패 원인별 안내 — 레거시 SEARCH_ERR_MSG와 같은 문구 (상세 코드는 콘솔에만)
@@ -219,7 +220,7 @@ export function SpotEditor({ spot, di, days, isNew = false, identity = null, onS
           </div>
           <div className="itEditRow2">
             <label>예상 비용
-              <input value={form.cost} onChange={e => set({ cost: e.target.value })} inputMode="numeric" placeholder="0" />
+              <input value={form.cost} onChange={e => set({ cost: e.target.value })} inputMode="decimal" placeholder="미정 (무료는 0)" />
             </label>
             <label>통화
               <select value={form.cur} onChange={e => set({ cur: e.target.value as CurrencyCode })}>

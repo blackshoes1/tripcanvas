@@ -71,6 +71,13 @@
       "when": 1788712807375,
       "tag": "0009_leg_cache",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1789485559240,
+      "tag": "0010_candidate_place_provider",
+      "breakpoints": true
     }
   ]
 }

@@ -528,9 +528,10 @@
       const n=(b.type==='hotel')? (e0-s0) : (e0-s0+1);         // 숙박=박 수, 그 외=이용 일수
       if(!(n>=1)) return;
       const idx=d-s0; if(idx<0 || idx>=n) return;
-      const base=Math.floor(price/n), rem=price-base*n;
+      const scale=(b.cur==='USD'||b.cur==='EUR'||b.cur==='CNY')?100:1;
+      const units=Math.round(price*scale), base=Math.floor(units/n), rem=units-base*n;
       out.push({id:_str(b.id), type:_str(b.type)||'hotel', title:_str(b.title),
-        amount:base+(idx<rem?1:0), cur:_str(b.cur)||'KRW', days:n});
+        amount:(base+(idx<rem?1:0))/scale, cur:_str(b.cur)||'KRW', days:n});
     });
     return out;
   }
@@ -555,6 +556,84 @@
       for(const s of spots) if(s&&s.bookingId&&+s.cost>0) covered[_str(s.bookingId)]=true;
     }
     return (Array.isArray(bookings)?bookings:[]).filter((/**@type{any}*/b)=>b&&!covered[_str(b.id)]);
+  }
+
+  /** 원래 통화의 최소 단위로 반올림한다. 원·엔은 정수, 달러·유로·위안은 소수 둘째 자리.
+   * @param {number} amount @param {string=} cur @returns {number} */
+  function moneyAmount(amount,cur){
+    const scale=(cur==='USD'||cur==='EUR'||cur==='CNY')?100:1;
+    return Math.round((amount+Number.EPSILON)*scale)/scale;
+  }
+  /** 비용 입력은 빈 값·잘못된 값과 확인한 0을 구분한다. @param {string} text @param {string=} cur @returns {number|null} */
+  function parseCostAmount(text,cur){
+    const value=text.trim().replace(/원$/,'').trim();
+    if(!/^(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d{1,2})?$/.test(value)) return null;
+    const amount=Number(value.replace(/,/g,''));
+    if(!Number.isFinite(amount)||amount>TC_LIMITS.cost) return null;
+    if(!['USD','EUR','CNY'].includes(cur||'KRW')&&!Number.isInteger(amount)) return null;
+    return amount;
+  }
+  /** 명시적으로 1인 금액을 선택했을 때만 인원수를 곱한다. 기존 값의 기준은 추정하지 않는다.
+   * @param {any} item @param {string=} field @returns {number|null} */
+  function costAmountOf(item,field='cost'){
+    const amount=item&&item[field];
+    if(typeof amount!=='number'||!isFinite(amount)||amount<0) return null;
+    const people=item.costBasis==='PER_PERSON'&&Number.isInteger(item.costPeople)&&item.costPeople>0?item.costPeople:1;
+    return moneyAmount(amount*(item.costBasis==='PER_PERSON'?people:1),item.cur);
+  }
+  /** 장소와 수동 항목의 합계. 예약·자동 교통비는 별도로 더한다.
+   * @param {any} day @param {Record<string,number>} rates @returns {number} */
+  function dayEnteredCost(day,rates){
+    return [...(day.spots||[]).map((/**@type{any}*/s)=>({item:s,field:'cost'})),
+      ...(day.costItems||[]).map((/**@type{any}*/s)=>({item:s,field:'amount'}))]
+      .reduce((sum,x)=>sum+Math.round((costAmountOf(x.item,x.field)||0)*(rates[x.item.cur||'KRW']||1)),0);
+  }
+  /** 수동 교통비는 하루 교통비 전체를 대신한다 — 자동 추정과 이중 합산하지 않는다.
+   * @param {any} day @returns {boolean} */
+  function hasManualTransportCost(day){
+    return (day.costItems||[]).some((/**@type{any}*/item)=>item.kind==='TRANSPORT');
+  }
+  /**
+   * 하루 비용 상세의 단일 계산. 외부 조회·환율 시세를 만들지 않고 받은 값만 합친다.
+   * @param {any} trip @param {number} di
+   * @param {{date:string,rates:Record<string,number>,taxi:number|null,transportUnpriced:boolean}} input
+   * @returns {{total:number,parts:{label:string,amount:number}[],details:{items:any[],budget:any,unknownCount:number,transportUnpriced:boolean,undatedBookings:number,hasForeignCurrency:boolean,fxRates:Record<string,number>,fxSource:string,fxAsOf:string|null}}}
+   */
+  function dayCostSummary(trip,di,input){
+    const day=trip.days[di], rates=input.rates;
+    const bookings=budgetBookings(trip.bookings||[],trip.days);
+    const shares=bookingShareOn(bookings,input.date);
+    const covered=new Set(shares.map(s=>s.id));
+    /** @type {any[]} */ const items=[];
+    /** @param {any} item @param {string} field @param {any} identity */
+    function add(item,field,identity){
+      const amount=costAmountOf(item,field), cur=item.cur||'KRW';
+      const bookingCovered=identity.source==='SPOT'&&amount===null&&covered.has(item.bookingId);
+      items.push({...identity,amount:typeof item[field]==='number'?item[field]:null,currency:cur,
+        basis:item.costBasis||'ENTERED',people:item.costPeople||1,
+        totalKRW:amount===null?null:Math.round(amount*(rates[cur]||1)),
+        state:bookingCovered?'BOOKING':amount===null?'UNKNOWN':item.costPartial?'PARTIAL':amount===0?'FREE':'KNOWN'});
+    }
+    (day.spots||[]).forEach((/**@type{any}*/s,/**@type{number}*/index)=>add(s,'cost',{source:'SPOT',key:String(index),title:s.name||'장소',kind:s.cat||'OTHER'}));
+    (day.costItems||[]).forEach((/**@type{any}*/s)=>add(s,'amount',{source:'EXTRA',key:s.id,title:s.title||'비용',kind:s.kind||'OTHER'}));
+    for(const share of shares) add({amount:share.amount,cur:share.cur},'amount',{source:'BOOKING',key:share.id,title:share.title,kind:share.type});
+    const manualTransport=hasManualTransportCost(day);
+    if(!manualTransport&&input.taxi!==null&&input.taxi>0) add({amount:input.taxi,cur:'KRW'},'amount',{source:'TRANSPORT',key:'taxi',title:'자동 교통비 추정',kind:'TRANSPORT'});
+    const parts=[{label:'장소',amount:0},{label:'추가 비용',amount:0},{label:'택시',amount:0},{label:'예약',amount:0}];
+    for(const item of items) parts[item.source==='SPOT'?0:item.source==='EXTRA'?1:item.source==='TRANSPORT'?2:3].amount+=item.totalKRW||0;
+    const total=parts.reduce((sum,p)=>sum+p.amount,0);
+    const rawBudget=day.budget;
+    const budget=rawBudget&&typeof rawBudget.amount==='number'?{
+      amount:rawBudget.amount,currency:rawBudget.cur||'KRW',basis:rawBudget.costBasis||'TOTAL',people:rawBudget.costPeople||1,
+      totalKRW:Math.round((costAmountOf(rawBudget,'amount')||0)*(rates[rawBudget.cur||'KRW']||1)),differenceKRW:0
+    }:null;
+    if(budget) budget.differenceKRW=budget.totalKRW-total;
+    return {total,parts:parts.filter(p=>p.amount>0),details:{items,budget,
+      unknownCount:items.filter(i=>i.state==='UNKNOWN'||i.state==='PARTIAL').length,
+      transportUnpriced:!manualTransport&&input.transportUnpriced,
+      undatedBookings:bookings.filter((/**@type{any}*/b)=>b.price>0&&(!b.start||!b.end)).length,
+      hasForeignCurrency:items.some(i=>i.currency!=='KRW'&&i.amount!==null)||(budget!==null&&budget.currency!=='KRW'),
+      fxRates:rates,fxSource:'PROVIDED',fxAsOf:null}};
   }
 
   /**
@@ -642,6 +721,44 @@
   /** @param {any} x @returns {boolean} */
   function _fin(x){ const n=+x; return typeof n==='number' && isFinite(n); }
 
+  const _ADMISSION_REQUIREMENTS=['REQUIRED','RECOMMENDED','NOT_REQUIRED','UNKNOWN'];
+  /** 사용자 확인 시각만 검증한다. 현재 시각으로 채우지 않는다. @param {any} value @returns {boolean} */
+  function admissionCheckedAt(value){
+    if(typeof value!=='string') return false;
+    const match=value.match(/^(\d{4}-\d{2}-\d{2})T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,9})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/);
+    if(!match||!Number.isFinite(Date.parse(value))) return false;
+    const day=new Date(match[1]+'T00:00:00Z');
+    return Number.isFinite(day.getTime())&&day.toISOString().slice(0,10)===match[1];
+  }
+  /** 서버가 조회하지 않는 사용자 입력 링크. @param {any} value @returns {boolean} */
+  function admissionURL(value){
+    if(typeof value!=='string'||value.length>2000||!/^https:\/\//i.test(value.trim())) return false;
+    try{ const url=new URL(value); return url.protocol==='https:'&&!!url.hostname&&!url.username&&!url.password; }
+    catch(_){ return false; }
+  }
+  /** @param {any} value @returns {string|null} */
+  function admissionError(value){
+    if(!value||typeof value!=='object'||Array.isArray(value)||value.source!=='USER') return '명소 예약 정보는 사용자가 확인한 값이어야 합니다';
+    if(value.requirement!=null&&!_ADMISSION_REQUIREMENTS.includes(value.requirement)) return '예약 요건이 올바르지 않습니다';
+    if(value.personalStatus!=null&&!['NOT_BOOKED','BOOKED'].includes(value.personalStatus)) return '내 예약 상태가 올바르지 않습니다';
+    if(value.officialURL!=null&&!admissionURL(value.officialURL)) return '공식 페이지는 https URL이어야 합니다';
+    if(value.checkedAt!=null&&!admissionCheckedAt(value.checkedAt)) return '확인 시각은 ISO 형식이어야 합니다';
+    if(value.note!=null&&(typeof value.note!=='string'||value.note.length>1000)) return '예약 메모는 1000자까지 입력할 수 있습니다';
+    if(value.people!=null&&(!Number.isInteger(value.people)||value.people<1||value.people>100)) return '예약 인원은 1~100명이어야 합니다';
+    return null;
+  }
+  /** 불량 외부 입력은 예약 완료/무료로 추론하지 않는다. @param {any} value @returns {any} */
+  function normalizeAdmission(value){
+    if(!value||typeof value!=='object'||Array.isArray(value)||value.source!=='USER') return null;
+    const out=/** @type {Record<string,any>} */({source:'USER',requirement:_ADMISSION_REQUIREMENTS.includes(value.requirement)?value.requirement:'UNKNOWN'});
+    if(['NOT_BOOKED','BOOKED'].includes(value.personalStatus)) out.personalStatus=value.personalStatus;
+    if(admissionURL(value.officialURL)) out.officialURL=value.officialURL.trim();
+    if(admissionCheckedAt(value.checkedAt)) out.checkedAt=value.checkedAt;
+    if(typeof value.note==='string'&&value.note.trim()) out.note=value.note.trim().slice(0,1000);
+    if(Number.isInteger(value.people)&&value.people>=1&&value.people<=100) out.people=value.people;
+    return out;
+  }
+
   /** UTF-8 바이트 수. @param {string} value @returns {number} */
   function _utf8Bytes(value){ return new TextEncoder().encode(value).length; }
   /** @param {any} value @returns {any} */
@@ -678,14 +795,23 @@
       if(!day||typeof day!=='object'||Array.isArray(day)) return '일정 형식이 올바르지 않습니다';
       if(!Array.isArray(day.spots)) return '장소 목록 형식이 올바르지 않습니다';
       if(day.spots.length>TC_LIMITS.spotsPerDay) return `하루 장소는 ${TC_LIMITS.spotsPerDay}곳까지 허용됩니다`;
+      if(day.costItems!=null&&(!Array.isArray(day.costItems)||day.costItems.length>100)) return '추가 비용은 하루 100개까지 허용됩니다';
+      for(const item of [day.budget,...(day.costItems||[])]){
+        if(item==null) continue;
+        if(typeof item!=='object'||Array.isArray(item)) return '비용 형식이 올바르지 않습니다';
+        if(item.amount!=null&&(!_fin(item.amount)||+item.amount<0||+item.amount>TC_LIMITS.cost)) return '비용 범위가 올바르지 않습니다';
+        if(item.costPeople!=null&&(!Number.isInteger(item.costPeople)||item.costPeople<1||item.costPeople>100)) return '비용 적용 인원은 1~100명이어야 합니다';
+      }
       totalSpots+=day.spots.length;
       for(const spot of day.spots){
         if(!spot||typeof spot!=='object'||Array.isArray(spot)) return '장소 형식이 올바르지 않습니다';
+        if(spot.admission!=null){ const error=admissionError(spot.admission); if(error) return error; }
         const hasLat=spot.lat!=null, hasLng=spot.lng!=null;
         if(hasLat!==hasLng) return '위도와 경도는 함께 입력해야 합니다';
         if(hasLat&&(!_fin(spot.lat)||!_fin(spot.lng)||+spot.lat < -90||+spot.lat > 90||+spot.lng < -180||+spot.lng > 180)) return '좌표 범위가 올바르지 않습니다';
         for(const field of ['at','bookAt']) if(spot[field]!=null&&spot[field]!==''&&_hm(spot[field])===undefined) return '시각은 HH:MM 형식이어야 합니다';
         if(spot.cost!=null&&(!_fin(spot.cost)||+spot.cost<0||+spot.cost>TC_LIMITS.cost)) return '비용 범위가 올바르지 않습니다';
+        if(spot.costPeople!=null&&(!Number.isInteger(spot.costPeople)||spot.costPeople<1||spot.costPeople>100)) return '비용 적용 인원은 1~100명이어야 합니다';
         if(spot.bookUrl!=null&&spot.bookUrl!==''){
           if(typeof spot.bookUrl!=='string') return '예약 URL 형식이 올바르지 않습니다';
           try{ if(!/^https?:$/.test(new URL(spot.bookUrl).protocol)) return '예약 URL은 http(s)만 허용됩니다'; }
@@ -744,9 +870,10 @@
     else { s.lat=null; s.lng=null; }
     if(_hm(s.at)===undefined) delete s.at;
     if(_hm(s.bookAt)===undefined) delete s.bookAt;
+    if(s.admission!=null){ const admission=normalizeAdmission(s.admission); if(admission) s.admission=admission; else delete s.admission; }
     if(s.nights!=null){ if(_fin(s.nights)) s.nights=Math.min(60,Math.max(1,Math.round(+s.nights))); else delete s.nights; }   // 숙소 연박 수
     if(s.stayMin!=null){ if(_fin(s.stayMin)) s.stayMin=Math.max(0,Math.round(+s.stayMin)); else delete s.stayMin; }
-    if(s.cost!=null){ if(_fin(s.cost)) s.cost=Math.max(0,Math.round(+s.cost)); else delete s.cost; }
+    normalizeCostFields(s,'cost');
     if(s.cur!=null && _CURS.indexOf(s.cur)<0) delete s.cur;                 // 알 수 없는 통화 → 기본(KRW 취급)
     if(s.legMode!=null && _MODES.indexOf(s.legMode)<0) delete s.legMode;    // 알 수 없는 구간 수단 → 일정 기본
     if(s.bookUrl!=null && typeof s.bookUrl!=='string') delete s.bookUrl;
@@ -789,13 +916,13 @@
     b.title=_str(b.title).trim()||'예약';
     b.provider=_str(b.provider);
     if(b.url!=null && typeof b.url!=='string') delete b.url;
-    b.price=_fin(b.price)? Math.min(Math.max(0,Math.round(+b.price)),TC_LIMITS.cost):0;
+    b.price=_fin(b.price)? Math.min(Math.max(0,moneyAmount(+b.price,b.cur)),TC_LIMITS.cost):0;
     if(b.cur!=null && _CURS.indexOf(b.cur)<0) delete b.cur;                 // 알 수 없는 통화 → 기본(KRW 취급)
     const iso=(/**@type {any}*/v)=>/^\d{4}-\d{2}-\d{2}$/.test(_str(v));
     if(!iso(b.start)) delete b.start;
     if(!iso(b.end)) delete b.end;
     if(!iso(b.freeCancelUntil)) delete b.freeCancelUntil;
-    if(b.cancelFee!=null){ if(_fin(b.cancelFee)) b.cancelFee=Math.min(Math.max(0,Math.round(+b.cancelFee)),TC_LIMITS.cost); else delete b.cancelFee; }
+    if(b.cancelFee!=null){ if(_fin(b.cancelFee)) b.cancelFee=Math.min(Math.max(0,moneyAmount(+b.cancelFee,b.cur)),TC_LIMITS.cost); else delete b.cancelFee; }
     // 조건 매칭용 필드 — 투숙 조건·환불·조식·객실명. 미입력(undefined)은 '모름'으로 보존한다
     if(b.adults!=null){ if(_fin(b.adults)) b.adults=Math.min(8,Math.max(1,Math.round(+b.adults))); else delete b.adults; }
     if(b.rooms!=null){ if(_fin(b.rooms)) b.rooms=Math.min(4,Math.max(1,Math.round(+b.rooms))); else delete b.rooms; }
@@ -828,6 +955,18 @@
     d.title=_str(d.title); d.drive=_str(d.drive); d.note=_str(d.note);
     if(_MODES.indexOf(d.mode)<0) d.mode='car';
     d.spots = Array.isArray(d.spots)? d.spots.map(normalizeSpot) : [];
+    if(d.budget!=null){
+      if(typeof d.budget==='object'&&!Array.isArray(d.budget)&&_fin(d.budget.amount)){
+        d.budget=Object.assign({},d.budget); normalizeCostFields(d.budget,'amount');
+      } else delete d.budget;
+    }
+    if(d.costItems!=null){
+      d.costItems=(Array.isArray(d.costItems)?d.costItems:[]).filter((/**@type{any}*/i)=>i&&typeof i==='object'&&!Array.isArray(i)&&typeof i.id==='string'&&_ID_RE.test(i.id)).slice(0,100).map((/**@type{any}*/i)=>{
+        const item=Object.assign({},i); item.title=_str(item.title); normalizeCostFields(item,'amount');
+        if(!['FOOD','TICKET','TRANSPORT','STAY','OTHER'].includes(item.kind)) item.kind='OTHER';
+        return item;
+      });
+    }
     if(_hm(d.startAt)===undefined) delete d.startAt;                        // parseHM이 없으면 09:00 기본
     if(d.startPolicy!=null && d.startPolicy!=='none') delete d.startPolicy;  // 알 수 없는 정책 → 기본(previous)
     if(d.timeZone!=null && !validTimeZone(d.timeZone)) delete d.timeZone;
@@ -837,6 +976,14 @@
         if(_hm(f.depAt)===undefined) delete f.depAt; if(_hm(f.arrAt)===undefined) delete f.arrAt; }
     }
     return d;
+  }
+  /** 새 비용 필드만 정규화하며 알 수 없는 필드는 그대로 남긴다. @param {any} item @param {string} field */
+  function normalizeCostFields(item,field){
+    if(item[field]!=null){ if(_fin(item[field])) item[field]=Math.min(TC_LIMITS.cost,Math.max(0,moneyAmount(+item[field],item.cur))); else delete item[field]; }
+    if(item.cur!=null&&!_CURS.includes(item.cur)) delete item.cur;
+    if(item.costBasis!=null&&!['ENTERED','TOTAL','PER_PERSON'].includes(item.costBasis)) delete item.costBasis;
+    if(item.costPeople!=null){ if(Number.isInteger(item.costPeople)) item.costPeople=Math.min(100,Math.max(1,item.costPeople)); else delete item.costPeople; }
+    if(item.costPartial!==true) delete item.costPartial;
   }
   /**
    * 외부 유입(가져오기·공유·클라우드·로컬) 여행 데이터 정규화·검증. days가 없으면 복구 불가로 null.
@@ -1065,7 +1212,7 @@
     };
   }
 
-  const TC={SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,cityFromKoreanAddr,placeName,cityFromGoogle,normHours,classifySearchErr,isKoreanSearch,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,normHM,sortDayByTime,inKorea,simplifyName,parseDirect,parseMoney,normalizeDraftDays,extractJson,extMapLink,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,computeTimeline,whoKey,splitSegments,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,budgetBookings,localMode,sampleTrip,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
+  const TC={SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,cityFromKoreanAddr,placeName,cityFromGoogle,normHours,classifySearchErr,isKoreanSearch,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,normHM,sortDayByTime,inKorea,simplifyName,parseDirect,parseMoney,normalizeDraftDays,extractJson,extMapLink,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,computeTimeline,whoKey,splitSegments,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,budgetBookings,moneyAmount,parseCostAmount,costAmountOf,dayEnteredCost,hasManualTransportCost,dayCostSummary,localMode,sampleTrip,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
   if(typeof module!=='undefined' && module.exports){ module.exports=TC; }   // Node (테스트)
   else { const r=/**@type {any}*/(root); for(const k in TC) r[k]=/**@type {any}*/(TC)[k]; }   // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);

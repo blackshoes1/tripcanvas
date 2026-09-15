@@ -730,7 +730,7 @@ extension CollabModel {
 
     static func liveEffects(kind: String, mine: Bool) -> LiveEffects {
         let known = activityKinds.contains(kind)
-        let candidates = kind.hasPrefix("CANDIDATE_") || kind == "REACTION" || kind == "COMMENT_ADDED"
+        let candidates = kind.hasPrefix("CANDIDATE_") || kind == "REACTION" || kind == "COMMENT_ADDED" || kind == "SCHEDULE_CHANGED" || kind == "BOOKING_ADDED"
         let members = kind.hasPrefix("MEMBER_")
         let doc = kind == "SCHEDULE_CHANGED" || kind == "BOOKING_ADDED"
         return LiveEffects(
@@ -743,4 +743,3 @@ extension CollabModel {
         )
     }
 }
-

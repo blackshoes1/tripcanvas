@@ -112,6 +112,10 @@ declare module '@legacy/lib.js' {
      * 기준은 일정 카드에 입력한 금액이고, 장소에 비용이 없을 때만 예약 금액을 쓴다.
      */
     budgetBookings<T>(bookings: T[], days: unknown[]): T[];
+    dayEnteredCost(day: unknown, rates: Record<string, number>): number;
+    parseCostAmount(text: string, currency?: string): number | null;
+    hasManualTransportCost(day: unknown): boolean;
+    dayCostSummary(trip: unknown, di: number, input: { date: string; rates: Record<string, number>; taxi: number | null; transportUnpriced: boolean }): import('@/features/trip/domain/costTypes').DayCostSummary;
     parseHM(t: string | undefined): number;
     hm(min: number): string;
     /** 사람이 친 시각 입력 → HH:MM (범위 밖·빈 값이면 '') */

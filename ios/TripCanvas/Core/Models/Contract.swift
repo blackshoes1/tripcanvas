@@ -723,6 +723,7 @@ struct DayPlanSpot: Codable, Hashable, Sendable {
     let conflict: Bool
     /// 상대가 정한 약속(`bookAt`) — 예약·입장.
     let bookedAtMinutes: Int?
+    var bookingLateMinutes: Int? = nil
     /// 약속까지 기다리는 시간. 일찍 도착하면 0보다 크다.
     let waitMinutes: Int
     let stayMinutes: Int?
@@ -768,7 +769,7 @@ struct DayPlanCarEvent: Codable, Hashable, Sendable {
 
 struct DayPlanCostPart: Codable, Hashable, Sendable {
     let label: String
-    let amount: Int
+    let amount: Double
 }
 
 struct DayPlanCarriedStay: Codable, Hashable, Sendable {
@@ -783,8 +784,9 @@ struct DayPlanBack: Codable, Hashable, Sendable {
 }
 
 struct DayPlanCost: Codable, Hashable, Sendable {
-    let total: Int
+    let total: Double
     let parts: [DayPlanCostPart]
+    var details: DayCostDetails? = nil
 }
 
 struct DayPlanTotals: Codable, Hashable, Sendable {
@@ -932,4 +934,52 @@ struct TripRoutesResponse: Codable, Hashable, Sendable {
     let legsPending: Int
     let trip: TripSummary
     let days: [TripRouteDay]
+}
+
+// 하루 비용 계약은 위젯·공유 확장도 읽는 이 파일 안에 둔다.
+enum CostBasis: String, Codable, CaseIterable, Sendable {
+    case entered = "ENTERED", total = "TOTAL", perPerson = "PER_PERSON"
+
+    var label: String {
+        switch self {
+        case .entered: "입력 금액 그대로 · 인원 기준 미정"
+        case .total: "일행 전체 금액"
+        case .perPerson: "1인 금액"
+        }
+    }
+}
+
+struct DayCostDetails: Codable, Hashable, Sendable {
+    let items: [DayCostLine]
+    let budget: DayCostBudget?
+    let unknownCount: Int
+    let transportUnpriced: Bool
+    let undatedBookings: Int
+    let hasForeignCurrency: Bool
+    let fxRates: [String: Double]
+    let fxSource: String
+    let fxAsOf: String?
+}
+
+struct DayCostLine: Codable, Hashable, Sendable, Identifiable {
+    let source: String
+    let key: String
+    let title: String
+    let kind: String
+    let amount: Double?
+    let currency: String
+    let basis: CostBasis
+    let people: Int
+    let totalKRW: Double?
+    let state: String
+    var id: String { "\(source):\(key)" }
+}
+
+struct DayCostBudget: Codable, Hashable, Sendable {
+    let amount: Double
+    let currency: String
+    let basis: CostBasis
+    let people: Int
+    let totalKRW: Double
+    let differenceKRW: Double
 }
