@@ -234,6 +234,7 @@ final class AuthStoreTests: XCTestCase {
 
 /// 실제 AuthClient의 HTTP 응답 해석까지 지나되, 네트워크·실제 계정은 쓰지 않는다.
 private final class SessionResponseProtocol: URLProtocol, @unchecked Sendable {
+    static let signOutFinished = Notification.Name("AuthSessionRecoveryTests.signOutFinished")
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
@@ -254,6 +255,9 @@ private final class SessionResponseProtocol: URLProtocol, @unchecked Sendable {
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: Data(body.utf8))
         client?.urlProtocolDidFinishLoading(self)
+        if url.path.hasSuffix("/sign-out") {
+            NotificationCenter.default.post(name: Self.signOutFinished, object: host)
+        }
     }
     override func stopLoading() {}
 }
@@ -264,10 +268,18 @@ final class AuthSessionRecoveryTests: XCTestCase {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SessionResponseProtocol.self]
         let session = URLSession(configuration: config)
-        defer { session.invalidateAndCancel() }
+        defer { session.finishTasksAndInvalidate() }
+        // 명시적 만료는 비동기 로그아웃도 시작한다. 요청이 시작되기 전에 통신 연결을 닫지 않는다.
+        let signOut: XCTNSNotificationExpectation?
+        if host == "expired.test" || host == "401.test" {
+            let finished = XCTNSNotificationExpectation(name: SessionResponseProtocol.signOutFinished)
+            finished.handler = { ($0.object as? String) == host }
+            signOut = finished
+        } else { signOut = nil }
         let client = TripCanvasAuthClient(baseURL: URL(string: "https://\(host)")!, session: session)
         let store = FakeSessionStore(stored: AuthSession(token: "test-token", userId: "u1", email: "j@example.com"))
         await check(AuthStore(client: client, store: store), store)
+        if let signOut { await fulfillment(of: [signOut], timeout: 3) }
     }
 
     func testRestoreRetainsTheSessionForServerRateLimitAndMalformedResponses() async {
