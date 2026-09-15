@@ -6,6 +6,9 @@ struct TodayView: View {
     let trip: TripSummary
     @Environment(AppEnvironment.self) private var env
     @State private var model: TodayViewModel?
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var showsTravelSetup = false
+    @State private var deferredTravelInvite = false
     /// 시작 전 여행에서 '여행 보기'를 눌렀는가. 이 여행을 보는 동안만 유지된다 —
     /// 다시 들어오면 D-day부터 보인다(어느 화면이 왜 떴는지 예측할 수 있게).
     @State private var showsPlanPreview = false
@@ -24,41 +27,63 @@ struct TodayView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
-                    if let error = model.errorMessage {
+                    travelModeSection
+                    if !model.canEdit {
+                        Label("일정을 볼 수 있는 권한이에요", systemImage: "eye")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    if let error = model.loadErrorMessage {
                         InlineErrorBanner(
                             message: "일정을 새로 불러오지 못했어요",
-                            detail: model.today == nil ? error : "저장된 일정은 계속 볼 수 있어요."
+                            detail: error
                         ) { Task { await model.load() } }
                     }
 
+                    if let error = model.actionErrorMessage {
+                        VStack(alignment: .leading, spacing: Space.s) {
+                            Label(model.actionErrorTitle ?? "변경을 확인해 주세요", systemImage: "exclamationmark.circle")
+                                .font(.subheadline.weight(.semibold))
+                            Text(error).font(.caption).foregroundStyle(.secondary)
+                            HStack {
+                                if model.canRetryAction {
+                                    Button(model.isRetrying ? "확인 중…" : "다시 저장") { Task { await model.retryAction() } }
+                                        .disabled(model.isRetrying || !model.pending.isEmpty).frame(minHeight: 44)
+                                }
+                                Button("닫기") { model.dismissActionError() }.frame(minHeight: 44)
+                            }
+                        }
+                        .card()
+                    }
                     if let today = model.today {
                         if let next = today.nextAction, let activity = model.activity(id: next.activityId) {
                             NextActionCard(next: next, activity: activity, isEstimate: model.travelTimeIsEstimate,
-                                           isBusy: model.pending.contains(activity.id)) {
-                                Task { await model.complete(activity) }
-                            }
+                                           isBusy: !model.pending.isEmpty || model.isRetrying, canEdit: model.canEdit,
+                                           onComplete: { Task { await model.complete(activity) } },
+                                           onSkip: { Task { await model.skip(activity) } })
                         } else if today.activities.isEmpty {
                             EmptyStateView(
                                 symbol: "sparkles",
                                 title: "오늘은 정해둔 일정이 없어요",
-                                message: "아래 제안 중에서 골라 시작해도 되고, 그냥 쉬어도 괜찮아요.")
+                                message: model.canEdit
+                                    ? "아래 제안 중에서 골라 시작해도 되고, 그냥 쉬어도 괜찮아요."
+                                    : "일행이 일정을 추가하면 여기서 확인할 수 있어요.")
                                 .card()
                         } else {
                             DoneForTodayCard()
                         }
 
-                        if let replan = model.replanSuggestion {
+                        if model.canEdit, let replan = model.replanSuggestion {
                             ReplanCard(suggestion: replan, preview: today.replan,
-                                       isBusy: model.pending.contains(replan.id),
+                                       isBusy: !model.pending.isEmpty || model.isRetrying,
                                        onApply: { Task { await model.accept(replan) } },
                                        onKeep: { Task { await model.dismiss(replan) } })
                         }
 
-                        if !model.otherSuggestions.isEmpty {
+                        if model.canEdit && !model.otherSuggestions.isEmpty {
                             SectionHeader(title: "지금 하기 좋은 것")
                             ForEach(model.otherSuggestions) { suggestion in
                                 SuggestionCard(suggestion: suggestion,
-                                               isBusy: model.pending.contains(suggestion.id),
+                                               isBusy: !model.pending.isEmpty || model.isRetrying,
                                                onAccept: { Task { await model.accept(suggestion) } },
                                                onDismiss: { Task { await model.dismiss(suggestion) } })
                             }
@@ -69,7 +94,7 @@ struct TodayView: View {
                             VStack(spacing: Space.s) {
                                 ForEach(model.upcomingAfterNext) { activity in
                                     ActivityRow(activity: activity,
-                                                isBusy: model.pending.contains(activity.id),
+                                                isBusy: !model.pending.isEmpty || model.isRetrying, canEdit: model.canEdit,
                                                 onComplete: { Task { await model.complete(activity) } },
                                                 onSkip: { Task { await model.skip(activity) } })
                                 }
@@ -82,7 +107,7 @@ struct TodayView: View {
                             VStack(spacing: Space.s) {
                                 ForEach(done) { activity in
                                     FinishedRow(activity: activity,
-                                                isBusy: model.pending.contains(activity.id)) {
+                                                isBusy: !model.pending.isEmpty || model.isRetrying, canEdit: model.canEdit) {
                                         Task { await model.undo(activity) }
                                     }
                                 }
@@ -112,10 +137,21 @@ struct TodayView: View {
         .background(Color(.systemGroupedBackground))
         // 제목(여행 이름)은 `TripHomeView`가 정한다 — 두 형제 화면이 같은 제목을 써야 한다.
         .paperGround()
-        .refreshable { await model?.load() }
+        .refreshable { await refreshToday(reason: .manual) }
         .task {
             if model == nil { model = TodayViewModel(trip: trip, service: env.service) }
-            await model?.load()
+            await refreshToday(reason: .foreground)
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { Task { await refreshToday(reason: .foreground) } }
+        }
+        .onChange(of: model?.revision) { old, new in
+            if old != nil, old != new { Task { await refreshTravelMode(reason: .userAction) } }
+        }
+        .sheet(isPresented: $showsTravelSetup) {
+            TravelModeSetupView {
+                await env.travelMode.start(trip: model?.today?.trip ?? trip)
+            }
         }
         .overlay(alignment: .bottom) {
             if let toast = model?.toast {
@@ -125,6 +161,53 @@ struct TodayView: View {
                         try? await Task.sleep(for: .seconds(2.5))
                         model?.clearToast()
                     }
+            }
+        }
+    }
+
+    private func refreshToday(reason: TravelModeController.RefreshReason) async {
+        await model?.load()
+        await refreshTravelMode(reason: reason)
+    }
+
+    private func refreshTravelMode(reason: TravelModeController.RefreshReason) async {
+        guard env.travelMode.isActive, env.travelMode.snapshot.tripId == trip.id else { return }
+        await env.push.refreshPermission()
+        await env.travelMode.refresh(tripId: trip.id, reason: reason)
+    }
+
+    private func stopTravelMode() async {
+        deferredTravelInvite = true
+        await env.travelMode.stop()
+    }
+
+    @ViewBuilder
+    private var travelModeSection: some View {
+        if env.travelMode.isActive, env.travelMode.snapshot.tripId == trip.id {
+            if let pulse = env.travelMode.travelState?.pulse {
+                TripPulseBar(pulse: pulse, travelModeOn: true) { Task { await stopTravelMode() } }
+            } else {
+                HStack {
+                    Label("여행 중", systemImage: "location.fill")
+                    Spacer()
+                    Button("여행 종료") { Task { await stopTravelMode() } }.frame(minHeight: 44)
+                }
+                .card()
+            }
+            if let error = env.travelMode.lastError {
+                InlineErrorBanner(message: "여행 안내를 새로 확인하지 못했어요", detail: error) {
+                    Task { await refreshTravelMode(reason: .manual) }
+                }
+            }
+        } else if env.travelMode.shouldOfferStart(for: model?.today?.trip ?? trip) {
+            if deferredTravelInvite {
+                Button { showsTravelSetup = true } label: {
+                    Label("여행 시작", systemImage: "play.fill").frame(minHeight: 44)
+                }
+            } else {
+                TravelModeInviteCard(tripName: trip.name, isBusy: false,
+                                     onStart: { showsTravelSetup = true },
+                                     onLater: { deferredTravelInvite = true })
             }
         }
     }
@@ -223,7 +306,9 @@ struct NextActionCard: View {
     let activity: ActivitySummary
     let isEstimate: Bool
     let isBusy: Bool
+    var canEdit = true
     let onComplete: () -> Void
+    var onSkip: () -> Void = {}
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.m) {
@@ -262,13 +347,31 @@ struct NextActionCard: View {
                 StatusChip(text: "예약된 일정", symbol: "lock.fill", tint: .blue)
             }
 
-            HStack(spacing: Space.s) {
-                if let location = next.location {
-                    SecondaryActionButton(title: "길찾기", systemImage: "map") {
+            VStack(spacing: Space.s) {
+                if !NextActionCard.prioritizesCompletion(next.status), let location = next.location {
+                    PrimaryActionButton(title: "길찾기", systemImage: "map") {
                         MapLauncher.open(location: location, name: next.title)
                     }
                 }
-                PrimaryActionButton(title: "다녀왔어요", systemImage: "checkmark", isBusy: isBusy, action: onComplete)
+                if canEdit {
+                    if NextActionCard.prioritizesCompletion(next.status) || next.location == nil {
+                        PrimaryActionButton(title: "다녀왔어요", systemImage: "checkmark", isBusy: isBusy, action: onComplete)
+                    } else {
+                        SecondaryActionButton(title: "다녀왔어요", systemImage: "checkmark", action: onComplete)
+                            .disabled(isBusy)
+                    }
+                }
+                HStack {
+                    if NextActionCard.prioritizesCompletion(next.status), let location = next.location {
+                        SecondaryActionButton(title: "길찾기", systemImage: "map") {
+                            MapLauncher.open(location: location, name: next.title)
+                        }
+                    }
+                    if canEdit {
+                        SecondaryActionButton(title: "건너뛰기", systemImage: "arrow.uturn.forward", action: onSkip)
+                            .disabled(isBusy)
+                    }
+                }
             }
         }
         .card()
@@ -277,9 +380,16 @@ struct NextActionCard: View {
     }
 }
 
+extension NextActionCard {
+    static func prioritizesCompletion(_ status: TravelStatus) -> Bool {
+        status == .arrived || status == .inProgress || status == .completed
+    }
+}
+
 struct ActivityRow: View {
     let activity: ActivitySummary
     let isBusy: Bool
+    var canEdit = true
     let onComplete: () -> Void
     let onSkip: () -> Void
 
@@ -309,32 +419,40 @@ struct ActivityRow: View {
                 }
             }
             Spacer(minLength: 0)
-            Menu {
-                Button("다녀왔어요", systemImage: "checkmark", action: onComplete)
-                Button("건너뛰기", systemImage: "arrow.uturn.forward", action: onSkip)
-            } label: {
-                Image(systemName: "ellipsis").frame(minWidth: 44, minHeight: 44)
+            if canEdit {
+                Menu {
+                    Button("다녀왔어요", systemImage: "checkmark", action: onComplete)
+                    Button("건너뛰기", systemImage: "arrow.uturn.forward", action: onSkip)
+                } label: {
+                    Image(systemName: "ellipsis").frame(minWidth: 44, minHeight: 44)
+                }
+                .disabled(isBusy)
+                .accessibilityLabel("\(activity.name) 작업")
             }
-            .disabled(isBusy)
-            .accessibilityLabel("\(activity.name) 작업")
         }
         .card()
         // 한 번의 터치로 처리되게 — 메뉴 안으로 숨기지 않는다(§17).
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            Button(action: onSkip) { Label("건너뛰기", systemImage: "arrow.uturn.forward") }.tint(.orange)
-            Button(action: onComplete) { Label("다녀옴", systemImage: "checkmark") }.tint(.green)
+            if canEdit {
+                Button(action: onSkip) { Label("건너뛰기", systemImage: "arrow.uturn.forward") }.tint(.orange)
+                Button(action: onComplete) { Label("다녀옴", systemImage: "checkmark") }.tint(.green)
+            }
         }
         .contextMenu {
-            Button("다녀왔어요", systemImage: "checkmark", action: onComplete)
-            Button("건너뛰기", systemImage: "arrow.uturn.forward", action: onSkip)
+            if canEdit {
+                Button("다녀왔어요", systemImage: "checkmark", action: onComplete)
+                Button("건너뛰기", systemImage: "arrow.uturn.forward", action: onSkip)
+            }
         }
         .overlay(alignment: .topTrailing) {
             if isBusy { ProgressView().controlSize(.small).padding(Space.m) }
         }
         .accessibilityElement(children: .contain)
         .accessibilityActions {
-            Button("다녀왔어요", action: onComplete)
-            Button("건너뛰기", action: onSkip)
+            if canEdit {
+                Button("다녀왔어요", action: onComplete)
+                Button("건너뛰기", action: onSkip)
+            }
         }
     }
 }
@@ -342,6 +460,7 @@ struct ActivityRow: View {
 struct FinishedRow: View {
     let activity: ActivitySummary
     let isBusy: Bool
+    var canEdit = true
     let onUndo: () -> Void
 
     var body: some View {
@@ -352,9 +471,12 @@ struct FinishedRow: View {
                 .strikethrough(activity.status == .completed)
                 .foregroundStyle(.secondary)
             Spacer()
-            Button("되돌리기", action: onUndo)
-                .font(.caption)
-                .disabled(isBusy)
+            if canEdit {
+                Button("되돌리기", action: onUndo)
+                    .font(.caption)
+                    .disabled(isBusy)
+                    .frame(minWidth: 44, minHeight: 44)
+            }
         }
         .padding(.horizontal, Space.l)
         .padding(.vertical, Space.m)

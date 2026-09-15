@@ -11,7 +11,24 @@ final class TodayViewModel {
     private(set) var today: TodayResponse?
     private(set) var isLoading = false
     private(set) var cachedAt: Date?
-    private(set) var errorMessage: String?
+    private(set) var loadErrorMessage: String?
+    private(set) var actionErrorMessage: String?
+    private(set) var actionErrorTitle: String?
+    private(set) var isRetrying = false
+    private var failedAction: FailedAction?
+    private var contentGeneration = 0
+
+    private struct FailedAction {
+        let id: String
+        let revision: Int
+        let title: String
+        let operation: () async throws -> MutationResponse
+        let describe: (MutationResponse) -> String
+    }
+
+    var canEdit: Bool { (today?.trip ?? trip).canEdit }
+    var canRetryAction: Bool { failedAction != nil && canEdit }
+    var errorMessage: String? { actionErrorMessage ?? loadErrorMessage }
     /// 지금 서버 응답을 기다리는 대상(활동 id 또는 제안 id) — 버튼만 비활성화하고 화면은 살려 둔다.
     private(set) var pending: Set<String> = []
     /// 수락/완료 직후의 짧은 확인 문구. 명령형이 아니라 결과를 알려주는 톤으로.
@@ -41,60 +58,74 @@ final class TodayViewModel {
     var travelTimeIsEstimate: Bool { today?.travelTimeSource != .routed }
 
     func load() async {
-        if today == nil { isLoading = true }
+        guard !isLoading else { return }
+        isLoading = true
+        let generation = contentGeneration
         defer { isLoading = false }
         do {
             let fetched = try await service.today(tripId: trip.id, dayIndex: nil)
+            guard generation == contentGeneration, today == nil || fetched.value.trip.revision >= revision else { return }
             today = fetched.value
             cachedAt = fetched.cachedAt
-            errorMessage = nil
+            loadErrorMessage = nil
         } catch {
-            // 캐시가 남아 있으면 화면을 비우지 않는다(§33) — 배너만 띄운다.
-            errorMessage = error.localizedDescription
+            // 앱 복귀 조회가 실패해도 마지막 내용과 저장 실패 안내를 유지한다.
+            guard generation == contentGeneration else { return }
+            loadErrorMessage = error.localizedDescription
         }
     }
 
     // MARK: 일정 실행 상태 — 한 번의 터치로 끝난다(§17)
 
     func complete(_ activity: ActivitySummary) async {
-        await mutate(id: activity.id) {
-            try await self.service.setActivity(
-                tripId: self.trip.id, activityId: activity.id, action: .complete,
-                expectedRevision: self.revision, expectedName: activity.name)
+        guard !isRetrying else { return }
+        let expectedRevision = revision
+        await mutate(id: activity.id, revision: expectedRevision, title: "완료 표시를 저장하지 못했어요") { [service, tripId = trip.id] in
+            try await service.setActivity(
+                tripId: tripId, activityId: activity.id, action: .complete,
+                expectedRevision: expectedRevision, expectedName: activity.name)
         } describe: { _ in "\(activity.name) 다녀온 것으로 표시했어요." }
     }
 
     func skip(_ activity: ActivitySummary) async {
-        await mutate(id: activity.id) {
-            try await self.service.setActivity(
-                tripId: self.trip.id, activityId: activity.id, action: .skip,
-                expectedRevision: self.revision, expectedName: activity.name)
+        guard !isRetrying else { return }
+        let expectedRevision = revision
+        await mutate(id: activity.id, revision: expectedRevision, title: "건너뛰기를 저장하지 못했어요") { [service, tripId = trip.id] in
+            try await service.setActivity(
+                tripId: tripId, activityId: activity.id, action: .skip,
+                expectedRevision: expectedRevision, expectedName: activity.name)
         } describe: { _ in "\(activity.name)을(를) 건너뛰었어요. 남은 일정을 다시 확인했어요." }
     }
 
     func undo(_ activity: ActivitySummary) async {
-        await mutate(id: activity.id) {
-            try await self.service.setActivity(
-                tripId: self.trip.id, activityId: activity.id, action: .reset,
-                expectedRevision: self.revision, expectedName: activity.name)
+        guard !isRetrying else { return }
+        let expectedRevision = revision
+        await mutate(id: activity.id, revision: expectedRevision, title: "되돌리기를 저장하지 못했어요") { [service, tripId = trip.id] in
+            try await service.setActivity(
+                tripId: tripId, activityId: activity.id, action: .reset,
+                expectedRevision: expectedRevision, expectedName: activity.name)
         } describe: { _ in "\(activity.name)을(를) 되돌렸어요." }
     }
 
     // MARK: 제안
 
     func accept(_ suggestion: TripSuggestion) async {
-        await mutate(id: suggestion.id) {
-            try await self.service.decideSuggestion(
-                tripId: self.trip.id, suggestionId: suggestion.id, decision: .accept, expectedRevision: self.revision)
+        guard !isRetrying else { return }
+        let expectedRevision = revision
+        await mutate(id: suggestion.id, revision: expectedRevision, title: "제안을 반영하지 못했어요") { [service, tripId = trip.id] in
+            try await service.decideSuggestion(
+                tripId: tripId, suggestionId: suggestion.id, decision: .accept, expectedRevision: expectedRevision)
         } describe: { response in
             response.applied ? "\(suggestion.title) 반영했어요." : "알겠어요 — 일정은 그대로 둘게요."
         }
     }
 
     func dismiss(_ suggestion: TripSuggestion) async {
-        await mutate(id: suggestion.id) {
-            try await self.service.decideSuggestion(
-                tripId: self.trip.id, suggestionId: suggestion.id, decision: .skip, expectedRevision: self.revision)
+        guard !isRetrying else { return }
+        let expectedRevision = revision
+        await mutate(id: suggestion.id, revision: expectedRevision, title: "제안 건너뛰기를 저장하지 못했어요") { [service, tripId = trip.id] in
+            try await service.decideSuggestion(
+                tripId: tripId, suggestionId: suggestion.id, decision: .skip, expectedRevision: expectedRevision)
         } describe: { _ in "이번엔 건너뛸게요." }
     }
 
@@ -124,36 +155,87 @@ final class TodayViewModel {
 
     func clearToast() { toast = nil }
 
+    /// 응답이 끊겼을 때 이미 저장됐을 수 있다. 원래 revision을 확인한 뒤 같은 요청만 재시도한다.
+    func retryAction() async {
+        guard let failedAction, !isRetrying, pending.isEmpty, canEdit else { return }
+        isRetrying = true
+        defer { isRetrying = false }
+        do {
+            let fetched = try await service.today(tripId: trip.id, dayIndex: nil)
+            guard fetched.cachedAt == nil else { throw APIError.offline }
+            guard fetched.value.trip.revision >= revision else { throw APIError.stale("최신 일정을 확인하지 못했어요. 다시 확인해 주세요.") }
+            contentGeneration += 1
+            today = fetched.value
+            cachedAt = nil
+            loadErrorMessage = nil
+            guard canEdit else {
+                self.failedAction = nil
+                actionErrorMessage = "이 여행은 볼 수만 있어요. 주최자에게 편집 권한을 요청해 주세요."
+                return
+            }
+            guard revision == failedAction.revision else {
+                self.failedAction = nil
+                actionErrorMessage = "일정이 바뀌어 최신 내용을 불러왔어요. 이미 반영됐을 수 있으니 확인한 뒤 다시 선택해 주세요."
+                return
+            }
+            await mutate(id: failedAction.id, revision: failedAction.revision, title: failedAction.title,
+                         failedAction.operation, describe: failedAction.describe)
+        } catch {
+            actionErrorMessage = "저장 여부를 확인하지 못해 다시 보내지 않았어요. " + error.localizedDescription
+        }
+    }
+
+    func dismissActionError() {
+        failedAction = nil
+        actionErrorMessage = nil
+        actionErrorTitle = nil
+    }
+
     // MARK: 공통 변경 처리
-    //
-    // 409(다른 기기가 먼저 바꿈 / 제안이 낡음)는 오류로 보여주지 않는다 — 조용히 최신을 받아
-    // 다시 그리고, 무엇이 달라졌는지만 알린다. 여행 중에 실패 화면을 보여줄 이유가 없다.
+
     private func mutate(
         id: String,
+        revision: Int,
+        title: String,
         _ operation: @escaping () async throws -> MutationResponse,
         describe: @escaping (MutationResponse) -> String
     ) async {
-        guard !pending.contains(id) else { return }   // 연타로 두 번 보내지 않는다
+        guard canEdit, pending.isEmpty else { return }
         pending.insert(id)
+        contentGeneration += 1
         defer { pending.remove(id) }
         do {
             let response = try await operation()
+            contentGeneration += 1
             today = response.today
             cachedAt = nil
-            errorMessage = nil
+            loadErrorMessage = nil
+            dismissActionError()
             toast = response.alreadyApplied ? "이미 반영돼 있었어요." : describe(response)
         } catch let error as APIError {
             switch error {
             case .revisionConflict, .stale:
+                dismissActionError()
                 await load()
-                toast = "다른 곳에서 먼저 바뀌어서 최신 일정으로 새로 불러왔어요."
-            case .offline:
-                errorMessage = "지금은 연결이 없어 반영하지 못했어요. 연결되면 다시 눌러 주세요."
+                actionErrorTitle = title
+                actionErrorMessage = "일정이 먼저 바뀌어 방금 선택은 반영되지 않았어요. 최신 내용을 확인한 뒤 다시 선택해 주세요."
+            case .forbidden, .unauthorized, .badRequest, .notFound:
+                failedAction = nil
+                actionErrorTitle = title
+                actionErrorMessage = error.localizedDescription
             default:
-                errorMessage = error.localizedDescription
+                recordFailure(id: id, revision: revision, title: title, operation: operation, describe: describe, error: error)
             }
         } catch {
-            errorMessage = error.localizedDescription
+            recordFailure(id: id, revision: revision, title: title, operation: operation, describe: describe, error: error)
         }
+    }
+
+    private func recordFailure(id: String, revision: Int, title: String,
+                               operation: @escaping () async throws -> MutationResponse,
+                               describe: @escaping (MutationResponse) -> String, error: Error) {
+        failedAction = FailedAction(id: id, revision: revision, title: title, operation: operation, describe: describe)
+        actionErrorTitle = title
+        actionErrorMessage = "저장 완료를 확인하지 못했어요. 다시 시도하면 저장 여부부터 확인해요. " + error.localizedDescription
     }
 }
