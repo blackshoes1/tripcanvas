@@ -130,7 +130,7 @@ struct AdmissionEditorSection: View {
     }
 }
 
-/// 보기 권한에서도 현장에서 필요한 정보를 읽는다. 문서 변경이나 외부 정보 조회는 하지 않는다.
+/// 보기 권한에서도 장소 사진과 현장에서 필요한 정보를 읽는다. 여행 문서는 변경하지 않는다.
 struct SpotInformationView: View {
     let spot: TripSpot
     let contextLabel: String?
@@ -139,6 +139,9 @@ struct SpotInformationView: View {
     var body: some View {
         NavigationStack {
             List {
+                Section {
+                    PlacePhotoView(placeId: spot.placeId, kakaoId: spot.kakaoId, name: spot.name)
+                }
                 Section {
                     if let contextLabel, !contextLabel.isEmpty {
                         Text(contextLabel).font(.caption).foregroundStyle(.secondary)

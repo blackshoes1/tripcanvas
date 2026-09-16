@@ -243,6 +243,9 @@ struct MapDiscoveryView: View {
                 Button { model.selected = nil } label: { Image(systemName: "xmark").frame(width: 44, height: 44) }
                     .accessibilityLabel("장소 카드 닫기")
             }
+            PlacePhotoView(placeId: hit.placeId, kakaoId: hit.provider == "kakao" ? hit.providerId : nil,
+                           name: hit.name, allowsGooglePhoto: !MapRegion.isKorea(focus ?? pins(model).first?.point))
+                .id(hit.id)
             if hit.name.isEmpty {
                 Text("상호는 아직 확인되지 않았어요. 이름을 입력하거나 검색해서 골라 주세요.")
                     .font(.caption).foregroundStyle(.secondary)
