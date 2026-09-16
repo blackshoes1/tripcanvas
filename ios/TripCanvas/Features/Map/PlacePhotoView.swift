@@ -51,7 +51,7 @@ struct PlacePhotoView: View {
                     Button("다시 보기") { retry += 1 }.font(.caption).frame(minHeight: 44)
                 }
             } else {
-                Label(kakaoId?.isEmpty == false ? "카카오에서 사진을 제공하지 않는 장소예요" : "표시할 대표 사진이 없어요", systemImage: "photo")
+                Label(kakaoId?.isEmpty == false ? "앱에서 바로 표시할 사진 정보가 없어요" : "표시할 대표 사진이 없어요", systemImage: "photo")
                     .font(.caption).foregroundStyle(.secondary)
                 if let kakaoId, !kakaoId.isEmpty, kakaoId.allSatisfy(\.isNumber),
                    let url = URL(string: "https://place.map.kakao.com/\(kakaoId)") {
