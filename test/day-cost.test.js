@@ -93,3 +93,44 @@ test('비용 입력에서 소수점·0·잘못된 문자가 다른 뜻으로 바
   assert.equal(L.parseCostAmount('-10'), null);
   assert.equal(L.parseCostAmount('10abc'), null);
 });
+
+test('여행 비용은 날짜별·분류별 합계와 미배분 예약을 함께 보존한다', () => {
+  const trip = { days: [
+    { spots: [{ name: '식사', cat: 'food', cost: 10000 }, { name: '쇼핑', cat: 'shop', cost: 0 }],
+      costItems: [{ id: 'bus', kind: 'TRANSIT', amount: 2000 }] },
+    { spots: [{ name: '관람', cat: 'sight', cost: 12000 }], costItems: [{ id: 'rent', kind: 'RENT', amount: 30000 }] }
+  ], bookings: [
+    { id: 'stay', type: 'hotel', price: 90000, start: '2026-10-01', end: '2026-10-04', cur: 'KRW' },
+    { id: 'flight', type: 'flight', price: 200000, cur: 'KRW' }
+  ] };
+  const days = trip.days.map((_, index) => ({ index, cost: summary(trip, index) }));
+  const result = L.tripCostSummary(trip, days, rates);
+  assert.equal(result.totalKRW, 344000);
+  assert.equal(result.averagePerDayKRW, 172000);
+  assert.equal(result.categories.find(c => c.kind === 'STAY').totalKRW, 90000);
+  assert.equal(result.categories.find(c => c.kind === 'TRANSIT').totalKRW, 2000);
+  assert.equal(result.categories.find(c => c.kind === 'SHOPPING').items[0].state, 'FREE');
+  assert.equal(result.unallocated.reduce((s, i) => s + i.totalKRW, 0), 230000);
+  assert.equal(result.totalKRW, days.reduce((s, d) => s + d.cost.total, 0) + 230000);
+});
+
+test('새 비용 분류·장소 수동 분류는 정규화와 외화·인원 변경에도 보존한다', () => {
+  const trip = L.normalizeTrip({ days: [{ spots: [{ name: '식당', cat: 'food', costKind: 'SHOPPING', cost: 1.25, cur: 'USD', costBasis: 'PER_PERSON', costPeople: 2 }],
+    costItems: ['FLIGHT', 'RENT', 'TRANSIT', 'SHOPPING'].map((kind, i) => ({ id: 'cost-' + i, title: kind, kind, amount: 0 })) }] });
+  assert.deepEqual(trip.days[0].costItems.map(x => x.kind), ['FLIGHT', 'RENT', 'TRANSIT', 'SHOPPING']);
+  const result = L.tripCostSummary(trip, [{ index: 0, cost: summary(trip) }], rates);
+  assert.equal(result.categories.find(c => c.kind === 'SHOPPING').totalKRW, 3450);
+  assert.equal(result.categories.find(c => c.kind === 'FOOD').totalKRW, 0);
+  assert.equal(result.hasForeignCurrency, true);
+});
+
+test('연결된 숙박 금액은 중복하지 않고 빈 여행 평균·미정 비용은 0과 구분한다', () => {
+  const trip = { days: [{ spots: [{ name: '숙소', stay: true, bookingId: 'stay', cost: 90000 }, { name: '미정' }] }],
+    bookings: [{ id: 'stay', type: 'hotel', price: 90000, start: '2026-10-01', end: '2026-10-02' }, { id: 'unknown', type: 'flight' }] };
+  const result = L.tripCostSummary(trip, [{ index: 0, cost: summary(trip) }], rates);
+  assert.equal(result.totalKRW, 90000);
+  assert.equal(result.unknownCount, 2);
+  assert.equal(result.unallocated.length, 1);
+  assert.equal(result.unallocated[0].totalKRW, null);
+  assert.equal(L.tripCostSummary({ days: [] }, [], rates).averagePerDayKRW, null);
+});

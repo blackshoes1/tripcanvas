@@ -983,3 +983,47 @@ struct DayCostBudget: Codable, Hashable, Sendable {
     let totalKRW: Double
     let differenceKRW: Double
 }
+
+struct TripCostsResponse: Codable, Sendable {
+    let schemaVersion: Int
+    let revision: Int
+    let totalKRW: Double
+    let averagePerDayKRW: Double?
+    let days: [TripCostDay]
+    let categories: [TripCostCategory]
+    let unallocated: [TripCostLine]
+    let unknownCount: Int
+    let transportUnpriced: Bool
+    let hasForeignCurrency: Bool
+    let fxRates: [String: Double]
+    let fxSource: String
+    let fxAsOf: String?
+}
+struct TripCostDay: Codable, Sendable, Identifiable {
+    let index: Int
+    let title: String
+    let date: String
+    let cost: DayPlanCost
+    var id: Int { index }
+}
+struct TripCostCategory: Codable, Sendable, Identifiable {
+    let kind: String
+    let totalKRW: Double
+    let unknownCount: Int
+    let items: [TripCostLine]
+    var id: String { kind }
+}
+struct TripCostLine: Codable, Sendable, Identifiable {
+    let source: String
+    let key: String
+    let title: String
+    let kind: String
+    let amount: Double?
+    let currency: String
+    let basis: CostBasis
+    let people: Int
+    let totalKRW: Double?
+    let state: String
+    let dayIndex: Int?
+    var id: String { "\(dayIndex.map(String.init) ?? "undated"):\(source):\(key)" }
+}

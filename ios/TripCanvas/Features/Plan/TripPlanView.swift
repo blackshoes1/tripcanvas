@@ -26,7 +26,7 @@ struct TripPlanView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.editMode) private var editMode
     private var isEditing: Bool { editMode?.wrappedValue.isEditing == true }
-    @State private var showsMap = true
+    @State private var showsMap = false
     @State private var showsOverview = false
     @State private var showsSettings = false
     @State private var showsCosts = false

@@ -196,7 +196,7 @@ function dayDistanceOf(day: Day, back: Spot | null): number {
 function tripBookings(trip: Trip): Booking[] {
   return trip.bookings ?? [];
 }
-function dayCostPartsOf(trip: Trip, legCache: LegCache, di: number, fx: FxRates): DayView['cost'] {
+export function dayCostPartsOf(trip: Trip, legCache: LegCache, di: number, fx: FxRates): DayView['cost'] {
   const day = trip.days[di];
   const dm = dayModeOf(day);
   const road = dm === 'car' || dm === 'taxi';

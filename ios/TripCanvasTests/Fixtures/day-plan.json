@@ -130,7 +130,7 @@
               "source": "SPOT",
               "key": "0",
               "title": "숙소",
-              "kind": "OTHER",
+              "kind": "STAY",
               "amount": null,
               "currency": "KRW",
               "basis": "ENTERED",

@@ -2,6 +2,30 @@ import XCTest
 @testable import TripCanvas
 
 final class DayCostTests: XCTestCase {
+    func testTripCostsDecodesActualServerContract() throws {
+        let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "trip-costs", withExtension: "json"))
+        let costs = try JSONDecoder().decode(TripCostsResponse.self, from: Data(contentsOf: url))
+        XCTAssertEqual(costs.revision, 2)
+        XCTAssertEqual(costs.days.count, 2)
+        XCTAssertEqual(costs.categories.count, 9)
+        XCTAssertEqual(costs.categories.reduce(0) { $0 + $1.totalKRW }, costs.totalKRW)
+        XCTAssertEqual(costs.fxSource, "FALLBACK")
+        XCTAssertTrue(costs.categories.flatMap(\.items).contains { $0.source == "BOOKING" })
+    }
+
+    func testManualCostCategoryPreservesSpotAndCanReturnToAutomatic() {
+        var spot = TripSpot(raw: ["name": .string("장소"), "cat": .string("food"), "custom": .string("keep")])
+        var entry = CostEntry(spot: spot)
+        XCTAssertEqual(entry.kind, "AUTO")
+        entry.kind = "SHOPPING"
+        spot = entry.applying(to: spot)
+        XCTAssertEqual(spot.raw["costKind"], .string("SHOPPING"))
+        XCTAssertEqual(spot.raw["cat"], .string("food"))
+        XCTAssertEqual(spot.raw["custom"], .string("keep"))
+        entry.kind = "AUTO"
+        XCTAssertNil(entry.applying(to: spot).raw["costKind"])
+    }
+
     func testMoneyInputPreservesFreeAndForeignMinorUnits() {
         XCTAssertNil(MoneyInput.amount(from: ""))
         XCTAssertEqual(MoneyInput.amount(from: "0"), 0)

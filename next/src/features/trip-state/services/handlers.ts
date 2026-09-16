@@ -23,6 +23,7 @@ import type { SettableStatus } from '../domain/mutations';
 import { applyActivityStatus, applySuggestion } from '../domain/mutations';
 import type { TodayInput, TripDoc } from '../domain/todayView';
 import { buildDayPlanView } from '../domain/dayPlanView';
+import { buildTripCosts } from '../domain/tripCostsView';
 import { buildTripRoutes } from '../domain/tripRoutesView';
 import { computeToday, resolveDayIndex, summarizeTrip } from '../domain/todayView';
 import type { LegCache } from '@/features/itinerary/domain/types';
@@ -354,6 +355,23 @@ export function createHandlers(deps: HandlerDeps) {
       trip: row.data, summary: summarizeTrip(row, stamp), generatedAt: now().toISOString(),
       legCache: legs.cache, legsPending: legs.pending
     });
+    deps.legs?.fillTripLater(row.data);
+    return ok(body);
+  }
+
+  async function tripCosts(request: Request, tripId: string): Promise<Response> {
+    const gateway = await auth(request);
+    if (gateway instanceof Response) return gateway;
+    let row: TripRow | null;
+    try { row = await gateway.getTrip(tripId); } catch { return fail('UPSTREAM_ERROR'); }
+    if (!row || row.deleted_at) return fail('TRIP_NOT_FOUND');
+
+    // 전체를 보겠다고 한 순간이므로 여기서는 여행 전부를 채운다(상한까지만 기다린다).
+    let legs = { cache: {} as LegCache, pending: 0 };
+    if (deps.legs) {
+      try { legs = await deps.legs.readTrip(row.data, LEG_WAIT_MS); } catch { /* 추정으로 나간다 */ }
+    }
+    const body = buildTripCosts(row.data, legs.cache, row.revision);
     deps.legs?.fillTripLater(row.data);
     return ok(body);
   }
@@ -782,7 +800,7 @@ export function createHandlers(deps: HandlerDeps) {
   }
 
   return {
-    trips, today, dayPlan, tripRoutes, bookings, travelState, replanPreview, planPreview, activityAction, suggestionAction,
+    trips, today, dayPlan, tripRoutes, tripCosts, bookings, travelState, replanPreview, planPreview, activityAction, suggestionAction,
     registerDevice, unregisterDevice, importPreview, importCommit, memories, createMemory,
     prices, createPrice
   };

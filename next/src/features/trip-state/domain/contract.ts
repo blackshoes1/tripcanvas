@@ -843,3 +843,21 @@ export interface TripRoutesResponse {
   trip: TripSummary;
   days: TripRouteDay[];
 }
+
+/** 여행 전체 비용. 계산과 분류는 lib.js가 담당하며 앱은 값을 표시한다. */
+export interface TripCostsResponse {
+  schemaVersion: number;
+  revision: number;
+  totalKRW: number;
+  averagePerDayKRW: number | null;
+  days: { index: number; title: string; date: string; cost: import('@/features/trip/domain/costTypes').DayCostSummary }[];
+  categories: { kind: string; totalKRW: number; unknownCount: number; items: TripCostLine[] }[];
+  unallocated: TripCostLine[];
+  unknownCount: number;
+  transportUnpriced: boolean;
+  hasForeignCurrency: boolean;
+  fxRates: Record<string, number>;
+  fxSource: string;
+  fxAsOf: string | null;
+}
+export type TripCostLine = import('@/features/trip/domain/costTypes').CostDetails['items'][number] & { dayIndex: number | null };

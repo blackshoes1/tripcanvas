@@ -39,11 +39,13 @@ struct CostEntry: Hashable, Sendable, Identifiable {
         raw = spot.raw
         raw["amount"] = spot.raw["cost"]
         raw["title"] = .string(spot.name)
+        raw["kind"] = .string(spot.raw["costKind"]?.stringValue ?? "AUTO")
     }
 
     func applying(to original: TripSpot) -> TripSpot {
         var spot = original
         spot.cost = amount
+        spot.setField("costKind", kind == "AUTO" ? nil : .string(kind))
         for key in ["cur", "costBasis", "costPeople", "costPartial"] { spot.setField(key, raw[key]) }
         return spot
     }
@@ -78,5 +80,24 @@ enum MoneyInput {
             guard amount.rounded() == amount else { return nil }
         }
         return amount
+    }
+}
+
+/// 서버의 비용 분류 ID에 대응하는 표시 이름. 집계와 자동 분류는 서버가 한다.
+enum CostCategory: String, CaseIterable {
+    case flight = "FLIGHT", stay = "STAY", rent = "RENT", transit = "TRANSIT"
+    case food = "FOOD", shopping = "SHOPPING", ticket = "TICKET", transport = "TRANSPORT", other = "OTHER"
+    var label: String {
+        switch self {
+        case .flight: "항공"
+        case .stay: "숙박"
+        case .rent: "렌트"
+        case .transit: "대중교통"
+        case .food: "식비"
+        case .shopping: "쇼핑"
+        case .ticket: "입장권·관람권"
+        case .transport: "택시·기타 교통"
+        case .other: "기타"
+        }
     }
 }

@@ -217,9 +217,14 @@ private struct CostEntryEditor: View {
                 if target.isExtra {
                     Section {
                         TextField("항목 이름", text: $entry.title)
-                        Picker("종류", selection: $entry.kind) {
-                            Text("식사").tag("FOOD"); Text("입장료").tag("TICKET")
-                            Text("교통").tag("TRANSPORT"); Text("숙박").tag("STAY"); Text("기타").tag("OTHER")
+
+                    }
+                }
+                if !target.isBudget {
+                    Section {
+                        Picker("카테고리", selection: $entry.kind) {
+                            if !target.isExtra { Text("장소 분류에 따름").tag("AUTO") }
+                            ForEach(CostCategory.allCases, id: \.rawValue) { Text($0.label).tag($0.rawValue) }
                         }
                     }
                 }

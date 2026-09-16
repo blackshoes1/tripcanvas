@@ -918,3 +918,24 @@ describe('GET /api/v1/trips/:tripId/routes — 여행 전체 동선', () => {
     expect((await handlers.tripRoutes(new Request('https://x/y', auth()), 'nope')).status).toBe(404);
   });
 });
+
+describe('GET /costs — 여행 전체 비용의 인증·범위', () => {
+  it('로그인하지 않았거나 볼 수 없는 여행은 비용도 반환하지 않는다', async () => {
+    expect((await api.tripCosts(new Request('https://x/costs'), 'trip-1')).status).toBe(401);
+    expect((await api.tripCosts(new Request('https://x/costs', auth()), 'missing')).status).toBe(404);
+  });
+  it('읽기 전용 멤버도 같은 revision의 일별·분류별 비용을 읽고 저장하지 않는다', async () => {
+    const row = store.rows.get('trip-1')!;
+    row.role = 'VIEWER';
+    const before = JSON.stringify(row);
+    const response = await api.tripCosts(new Request('https://x/costs', auth()), 'trip-1');
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.revision).toBe(3);
+    expect(body.days).toHaveLength(2);
+    expect(body.categories.map((c: { kind: string }) => c.kind)).toEqual(['FLIGHT', 'STAY', 'RENT', 'TRANSIT', 'FOOD', 'SHOPPING', 'TICKET', 'TRANSPORT', 'OTHER']);
+    expect(body.fxSource).toBe('FALLBACK');
+    expect(body.totalKRW).toBe(body.categories.reduce((sum: number, c: { totalKRW: number }) => sum + c.totalKRW, 0));
+    expect(JSON.stringify(row)).toBe(before);
+  });
+});
