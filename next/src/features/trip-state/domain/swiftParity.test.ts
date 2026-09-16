@@ -308,3 +308,14 @@ describe('유입·기록 계약도 Swift가 전부 담는다', () => {
     expect(preview.schemaVersion).toBe(1);
   });
 });
+
+it('여행 전체 비용 계약과 Swift 필드 및 실제 디코딩 fixture가 일치한다', async () => {
+  const { buildTripCosts } = await import('./tripCostsView');
+  const response = buildTripCosts(trip, {}, 2);
+  expect(new Set(Object.keys(response))).toEqual(swiftProperties('TripCostsResponse'));
+  expect(new Set(Object.keys(response.days[0]))).toEqual(swiftProperties('TripCostDay'));
+  expect(new Set(Object.keys(response.categories[0]))).toEqual(swiftProperties('TripCostCategory'));
+  const item = response.categories.flatMap(c => c.items)[0];
+  expect(new Set(Object.keys(item))).toEqual(swiftProperties('TripCostLine'));
+  writeFileSync(path.join(__dirname, '../../../../../ios/TripCanvasTests/Fixtures/trip-costs.json'), JSON.stringify(response, null, 2) + '\n');
+});

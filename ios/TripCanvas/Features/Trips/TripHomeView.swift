@@ -30,7 +30,7 @@ struct TripHomeView: View {
             .padding(.horizontal, Space.l)
             .padding(.vertical, Space.s)
 
-            HStack(spacing: Space.m) {
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: Space.xs) {
                 ForEach(TripPanel.allCases) { item in
                     Button { panel = item } label: {
                         Label(item.label, systemImage: item.symbol)
@@ -49,6 +49,7 @@ struct TripHomeView: View {
             NavigationStack {
                 Group {
                     switch item {
+                    case .costs: TripCostsView(trip: trip)
                     case .bookings: BookingListView(trip: trip)
                     case .collab: CollabView(trip: trip)
                     case .candidates: CandidateBoardView(trip: trip)
@@ -95,10 +96,11 @@ enum TripHomeTab: String, CaseIterable, Hashable, Sendable {
 
 /// 여행 전/중에 관계없이 같은 자리에서 연다.
 enum TripPanel: String, CaseIterable, Identifiable {
-    case bookings, collab, candidates
+    case bookings, collab, candidates, costs
     var id: String { rawValue }
     var label: String {
         switch self {
+        case .costs: "비용"
         case .bookings: "예약"
         case .collab: "같이 짜기"
         case .candidates: "가고 싶은 곳"
@@ -106,6 +108,7 @@ enum TripPanel: String, CaseIterable, Identifiable {
     }
     var symbol: String {
         switch self {
+        case .costs: "wonsign.circle"
         case .bookings: "ticket"
         case .collab: "person.2"
         case .candidates: "mappin.and.ellipse"

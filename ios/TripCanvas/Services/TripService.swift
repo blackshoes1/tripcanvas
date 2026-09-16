@@ -310,6 +310,10 @@ extension TripService: TripDocumentSource {
     }
 
     /// 여행 전체 동선. 그리는 데 필요한 것만 온다(시각·비용은 일자 화면의 몫).
+    func tripCosts(tripId: String) async throws -> TripCostsResponse {
+        try await api.get("/api/v1/trips/\(tripId)/costs")
+    }
+
     func tripRoutes(tripId: String) async throws -> TripRoutesResponse {
         try await api.get("/api/v1/trips/\(tripId)/routes")
     }

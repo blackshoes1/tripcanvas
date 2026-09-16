@@ -90,7 +90,7 @@ export interface Day {
   mode: TransportMode;
   spots: Spot[];
   budget?: DayExpense;
-  costItems?: (DayExpense & { id: string; title: string; kind: 'FOOD' | 'TICKET' | 'TRANSPORT' | 'STAY' | 'OTHER' })[];
+  costItems?: (DayExpense & { id: string; title: string; kind: 'FOOD' | 'TICKET' | 'TRANSPORT' | 'STAY' | 'OTHER' | 'FLIGHT' | 'RENT' | 'TRANSIT' | 'SHOPPING' })[];
   /** 출발 시각 HH:MM (기본 09:00) */
   startAt?: string;
   /** 'none'이면 전날 이월 없음 (공항 이동일·야간열차) */
