@@ -48,6 +48,7 @@ final class AppEnvironment {
     let travelMode: TravelModeController
     /// 장소 검색 — 국내는 서버 프록시, 해외는 구글 직접(`PlaceSearchService`).
     let places: PlaceSearchService
+    let placePhotos: PlacePhotoService
     /// 함께하기 실시간. 붙일지·어디에 붙을지는 서버가 정하고(`/api/v1/me`), 못 붙어도 앱은 그대로 돈다.
     let realtime: RealtimeClient
 
@@ -73,6 +74,7 @@ final class AppEnvironment {
         self.liveActivity = liveActivityController
         self.push = pushService
         self.places = PlaceSearchService(api: apiClient, googleKey: AppConfig.googleMapsKey, bundleId: AppConfig.bundleId)
+        self.placePhotos = PlacePhotoService(key: AppConfig.googleMapsKey, bundleId: AppConfig.bundleId)
         // 주소는 한 번만 물어보고 들고 있는다 — 화면을 열 때마다 /me를 부르지 않는다.
         self.realtime = RealtimeClient(tokens: AuthTokenProvider(store: authStore)) { [weak tripService] in
             await tripService?.cachedRealtimeURL()

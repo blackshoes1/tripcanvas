@@ -235,6 +235,9 @@ struct MapDiscoveryView: View {
 
     private func placeCard(_ hit: PlaceHit, model: MapDiscoveryModel) -> some View {
         VStack(alignment: .leading, spacing: Space.s) {
+            PlacePhotoView(placeId: hit.placeId, kakaoId: hit.provider == "kakao" ? hit.providerId : nil,
+                           name: hit.name, allowsGooglePhoto: !MapRegion.isKorea(focus ?? pins(model).first?.point))
+                .id(hit.id)
             HStack {
                 if hit.name.isEmpty {
                     Text("지도에서 고른 위치").font(.headline)

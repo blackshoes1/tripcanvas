@@ -88,6 +88,11 @@ struct SpotEditorView: View {
     var body: some View {
         NavigationStack {
             Form {
+                if !target.spot.name.isEmpty {
+                    Section {
+                        PlacePhotoView(placeId: target.spot.placeId, kakaoId: target.spot.kakaoId, name: target.spot.name)
+                    }
+                }
                 if let contextLabel, !contextLabel.isEmpty {
                     Section { Text(contextLabel).font(.subheadline.weight(.semibold)) }
                 }
