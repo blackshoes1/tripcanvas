@@ -4,10 +4,13 @@ import SwiftUI
 struct MapDiscoveryView: View {
     let trip: TripSummary
     let document: TripDocument
+    /// **여행이 들고 있는** 모델(`TripScreenModels`) — 담은 후보·검색 결과가 지도를 닫았다 열어도 남는다.
+    let model: MapDiscoveryModel
+    /// 화면에 보이는가. 숨겨진 동안 지도 엔진을 쉬게 한다.
+    var isVisible: Bool = true
     let onReturnFromBoard: () async -> Void
     let onSelectItinerary: (Int, Int) -> Void
     @Environment(AppEnvironment.self) private var env
-    @State private var model: MapDiscoveryModel?
     @State private var focus: GeoPoint?
     @State private var showsRegion = false
     @State private var expanded = false
@@ -17,23 +20,19 @@ struct MapDiscoveryView: View {
     @State private var scheduling: CandidateView?
 
     var body: some View {
-        Group {
-            if let model { content(model) } else { ProgressView() }
-        }
+        content(model)
         .task {
-            if model == nil {
-                model = MapDiscoveryModel(trip: trip, searcher: env.places, source: env.service)
-                focus = document.days.lazy.flatMap(\.spots).compactMap(\.point).first
-            }
-            await model?.loadCandidates()
+            if focus == nil { focus = document.days.lazy.flatMap(\.spots).compactMap(\.point).first }
+            // 지도를 열 때마다 후보를 다시 받지 않는다 — 방금 받은 목록이면 그대로다.
+            await model.loadCandidatesIfStale()
             if focus == nil {
-                focus = model?.undatedCandidates.compactMap(candidatePoint).first
+                focus = model.undatedCandidates.compactMap(candidatePoint).first
             }
         }
         .sheet(isPresented: $showsRegion) {
             DiscoveryRegionSheet(searcher: env.places) { hit in
-                model?.invalidateSearch()
-                model?.area = nil
+                model.invalidateSearch()
+                model.area = nil
                 focus = hit.point
             }
         }
@@ -42,7 +41,7 @@ struct MapDiscoveryView: View {
                 let board = CandidateBoardViewModel(trip: trip, service: env.service, documents: env.service)
                 await board.load()
                 let saved = await board.schedule(candidateId: candidate.id, dayIndex: day, position: position, expectedRevision: revision)
-                await model?.loadCandidates()
+                await model.loadCandidates()
                 // 일정 저장만 성공하고 후보 표시가 실패해도 부모 일정은 새로 읽는다.
                 await onReturnFromBoard()
                 return saved ? nil : board.errorMessage ?? "일정에 넣지 못했어요."
@@ -76,7 +75,7 @@ struct MapDiscoveryView: View {
                                 }
                             }
                         }
-                    }, onAreaChanged: { model.updateArea($0) })
+                    }, onAreaChanged: { model.updateArea($0) }, isVisible: isVisible)
                     .frame(height: geometry.size.height * (expanded ? 0.35 : 0.58))
                     .overlay(alignment: .top) {
                         if focus == nil {

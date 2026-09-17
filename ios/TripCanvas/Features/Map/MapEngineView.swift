@@ -15,6 +15,9 @@ struct MapEngineView: View {
     var selectedPinID: String? = nil
     var onPinSelected: ((String) -> Void)? = nil
     var onAreaChanged: ((PlaceSearchArea) -> Void)? = nil
+    /// 화면에 보이는가. 숨긴 지도는 **버리지 않고 쉬게 한다** — 다시 보일 때 엔진을 새로 띄우고
+    /// 타일을 다시 받지 않게(2026-09-17). 카카오는 엔진을 pause/activate, 구글은 뷰를 숨긴다.
+    var isVisible: Bool = true
 
     private var usesKakao: Bool {
         if let anchor = focus ?? pins.first?.point { return MapRegion.isKorea(anchor) }
@@ -26,11 +29,11 @@ struct MapEngineView: View {
             if usesKakao {
                 KakaoMapContainer(pins: pins, routes: routes, focus: focus, onPick: onPick,
                                   preservesCamera: preservesCamera, selectedPinID: selectedPinID,
-                                  onPinSelected: onPinSelected, onAreaChanged: onAreaChanged)
+                                  onPinSelected: onPinSelected, onAreaChanged: onAreaChanged, isVisible: isVisible)
             } else {
                 GoogleMapContainer(pins: pins, routes: routes, focus: focus, onPick: onPick,
                                    preservesCamera: preservesCamera, selectedPinID: selectedPinID,
-                                   onPinSelected: onPinSelected, onAreaChanged: onAreaChanged)
+                                   onPinSelected: onPinSelected, onAreaChanged: onAreaChanged, isVisible: isVisible)
             }
         }
         // 엔진이 바뀌면 뷰를 새로 만든다 — 같은 자리에 다른 SDK를 끼워 넣지 않는다.

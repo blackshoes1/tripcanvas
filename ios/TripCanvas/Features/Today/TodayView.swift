@@ -4,20 +4,18 @@ import MapKit
 /// iOS의 중심 화면. 전체 일정표가 아니라 "지금 무엇을 하면 되는가"에 먼저 답한다(§11·§21).
 struct TodayView: View {
     let trip: TripSummary
+    /// **여행이 들고 있는** 모델(`TripScreenModels`). 이 화면은 탭을 바꾸면 죽지만 모델은 남는다 —
+    /// 그래서 돌아왔을 때 서버를 기다리지 않고 마지막 내용이 그대로 보인다.
+    let model: TodayViewModel
     @Environment(AppEnvironment.self) private var env
-    @State private var model: TodayViewModel?
     @Environment(\.scenePhase) private var scenePhase
     @State private var showsTravelSetup = false
-    @State private var deferredTravelInvite = false
-    /// 시작 전 여행에서 '여행 보기'를 눌렀는가. 이 여행을 보는 동안만 유지된다 —
-    /// 다시 들어오면 D-day부터 보인다(어느 화면이 왜 떴는지 예측할 수 있게).
-    @State private var showsPlanPreview = false
 
     var body: some View {
         ScrollView {
-            if let model {
                 // 아직 시작하지 않은 여행에서는 '지금'이 할 말이 없다 — 며칠 남았는지부터 말한다.
-                if let days = model.daysUntilStart, !showsPlanPreview {
+                // '여행 보기'를 눌렀는지는 모델이 기억한다 — 탭을 오갔다고 D-day로 되돌아가지 않는다.
+                if let days = model.daysUntilStart, !model.showsPlanPreview {
                     countdown(days: days, startDate: trip.start)
                 } else {
                 VStack(alignment: .leading, spacing: Space.l) {
@@ -130,43 +128,41 @@ struct TodayView: View {
                 }
                 .padding(Space.l)
                 }
-            } else {
-                ProgressView().padding(Space.xl)
-            }
         }
         .background(Color(.systemGroupedBackground))
         // 제목(여행 이름)은 `TripHomeView`가 정한다 — 두 형제 화면이 같은 제목을 써야 한다.
         .paperGround()
         .refreshable { await refreshToday(reason: .manual) }
         .task {
-            if model == nil { model = TodayViewModel(trip: trip, service: env.service) }
-            await refreshToday(reason: .foreground)
+            // 탭 진입 — 방금 받은 내용이 있으면 그대로 두고, 오래됐을 때만 뒤에서 새로 받는다.
+            // 여행 모드 갱신도 실제로 서버에 물었을 때만 따라간다(탭 전환은 앱 복귀가 아니다).
+            if await model.loadIfStale() { await refreshTravelMode(reason: .foreground) }
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { Task { await refreshToday(reason: .foreground) } }
         }
-        .onChange(of: model?.revision) { old, new in
-            if old != nil, old != new { Task { await refreshTravelMode(reason: .userAction) } }
+        .onChange(of: model.revision) { old, new in
+            if old != new { Task { await refreshTravelMode(reason: .userAction) } }
         }
         .sheet(isPresented: $showsTravelSetup) {
             TravelModeSetupView {
-                await env.travelMode.start(trip: model?.today?.trip ?? trip)
+                await env.travelMode.start(trip: model.today?.trip ?? trip)
             }
         }
         .overlay(alignment: .bottom) {
-            if let toast = model?.toast {
+            if let toast = model.toast {
                 ToastView(text: toast)
                     .padding(Space.l)
                     .task {
                         try? await Task.sleep(for: .seconds(2.5))
-                        model?.clearToast()
+                        model.clearToast()
                     }
             }
         }
     }
 
     private func refreshToday(reason: TravelModeController.RefreshReason) async {
-        await model?.load()
+        await model.load()
         await refreshTravelMode(reason: reason)
     }
 
@@ -177,7 +173,7 @@ struct TodayView: View {
     }
 
     private func stopTravelMode() async {
-        deferredTravelInvite = true
+        model.deferredTravelInvite = true
         await env.travelMode.stop()
     }
 
@@ -199,15 +195,15 @@ struct TodayView: View {
                     Task { await refreshTravelMode(reason: .manual) }
                 }
             }
-        } else if env.travelMode.shouldOfferStart(for: model?.today?.trip ?? trip) {
-            if deferredTravelInvite {
+        } else if env.travelMode.shouldOfferStart(for: model.today?.trip ?? trip) {
+            if model.deferredTravelInvite {
                 Button { showsTravelSetup = true } label: {
                     Label("여행 시작", systemImage: "play.fill").frame(minHeight: 44)
                 }
             } else {
                 TravelModeInviteCard(tripName: trip.name, isBusy: false,
                                      onStart: { showsTravelSetup = true },
-                                     onLater: { deferredTravelInvite = true })
+                                     onLater: { model.deferredTravelInvite = true })
             }
         }
     }
@@ -231,7 +227,7 @@ struct TodayView: View {
 
             // 막아 두는 것이 아니라 기본이 D-day라는 뜻이다 — 눌러서 볼 수 있다.
             SecondaryActionButton(title: "여행 보기", systemImage: "eye") {
-                showsPlanPreview = true
+                model.showsPlanPreview = true
             }
             .padding(.top, Space.s)
             Spacer(minLength: Space.xl)

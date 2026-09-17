@@ -154,7 +154,7 @@ struct TripListView: View {
                 }
             }
             .navigationDestination(for: TripSummary.self) { trip in
-                TripHomeView(trip: trip, requested: requestedTab, panel: $requestedPanel)
+                TripHomeView(trip: trip, requested: requestedTab, panel: $requestedPanel, env: env)
             }
             .navigationTitle("내 여행")
             .toolbar {

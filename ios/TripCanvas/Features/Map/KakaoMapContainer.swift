@@ -17,6 +17,8 @@ struct KakaoMapContainer: UIViewRepresentable {
     var selectedPinID: String? = nil
     var onPinSelected: ((String) -> Void)? = nil
     var onAreaChanged: ((PlaceSearchArea) -> Void)? = nil
+    /// 숨겨진 동안 엔진을 쉬게 한다(pause). 버리지 않으므로 다시 보일 때 인증·타일을 되풀이하지 않는다.
+    var isVisible = true
 
     func makeCoordinator() -> Coordinator { Coordinator(pins: pins, routes: routes, focus: focus, onPick: onPick) }
 
@@ -26,6 +28,7 @@ struct KakaoMapContainer: UIViewRepresentable {
         context.coordinator.onPinSelected = onPinSelected
         context.coordinator.onAreaChanged = onAreaChanged
         context.coordinator.attach(container)
+        context.coordinator.setVisible(isVisible)
         return container
     }
 
@@ -35,6 +38,7 @@ struct KakaoMapContainer: UIViewRepresentable {
         context.coordinator.onPinSelected = onPinSelected
         context.coordinator.onAreaChanged = onAreaChanged
         context.coordinator.update(pins: pins, routes: routes, focus: focus, selectedPinID: selectedPinID)
+        context.coordinator.setVisible(isVisible)
     }
 
     static func dismantleUIView(_ container: KMViewContainer, coordinator: Coordinator) {
@@ -87,7 +91,18 @@ struct KakaoMapContainer: UIViewRepresentable {
             controller = nil
             container = nil
             ready = false
+            paused = false
             registeredPinStyles = []
+        }
+
+        /// 보이지 않는 동안은 엔진을 멈춘다 — 화면 뒤에서 그리는 것은 배터리다. 다시 보이면 이어서 그린다.
+        /// ⚠️ 상태가 바뀔 때만 부른다: 이미 도는 엔진에 activate를 또 걸거나, 쉬는 엔진을 또 pause 하지 않는다.
+        private var paused = false
+        func setVisible(_ visible: Bool) {
+            container?.isHidden = !visible
+            guard let controller else { return }
+            if visible, paused { controller.activateEngine(); paused = false }
+            else if !visible, !paused { controller.pauseEngine(); paused = true }
         }
 
         func update(pins: [MapPin], routes: [MapRoute], focus: GeoPoint?, selectedPinID: String? = nil) {

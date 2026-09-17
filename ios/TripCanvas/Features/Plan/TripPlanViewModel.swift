@@ -16,6 +16,8 @@ final class TripPlanViewModel {
     private(set) var revision = 0
     private(set) var role: MemberRole = .owner
     private(set) var isLoading = false
+    /// 문서를 서버에서 마지막으로 받은 시각 — 탭에 다시 들어왔을 때 또 받을지의 기준.
+    private(set) var loadedAt: Date?
     private(set) var isSaving = false
     private(set) var errorMessage: String?
     /// 다른 기기가 먼저 바꿨다. 화면은 이걸 보고 물어본다 — 자동으로 어느 쪽도 고르지 않는다.
@@ -159,6 +161,14 @@ final class TripPlanViewModel {
         }
     }
 
+    /// 탭에 들어올 때 부른다. 문서가 있고 방금 받은 것이면 아무것도 하지 않는다 — 탭을 오갈 때마다
+    /// 문서·하루치를 다시 받으면 그때마다 로딩이 뜨고 고른 날이 튄다(2026-09-17). 오래됐으면 `load()`인데,
+    /// 문서가 이미 있으므로 화면은 로딩으로 바뀌지 않고 바뀐 것만 갈아끼워진다.
+    func loadIfStale(maxAge: TimeInterval = 60, now: Date = Date()) async {
+        if document != nil, let loadedAt, now.timeIntervalSince(loadedAt) < maxAge { return }
+        await load()
+    }
+
     func load() async {
         loadGeneration += 1
         let request = loadGeneration
@@ -169,6 +179,7 @@ final class TripPlanViewModel {
             let snapshot = try await service.document(tripId: tripId)
             guard request == loadGeneration, requestedRevision == revision, !isSaving else { return }
             apply(snapshot)
+            loadedAt = Date()
             errorMessage = nil
         } catch {
             guard request == loadGeneration, requestedRevision == revision, !isSaving else { return }

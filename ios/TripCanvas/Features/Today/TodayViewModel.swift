@@ -11,6 +11,12 @@ final class TodayViewModel {
     private(set) var today: TodayResponse?
     private(set) var isLoading = false
     private(set) var cachedAt: Date?
+    /// 서버에서 **직접** 받은 마지막 시각. 캐시로 그린 것은 세지 않는다 — 신선도 판단의 기준이다.
+    private(set) var loadedAt: Date?
+    /// 시작 전 여행에서 '여행 보기'를 눌렀는가. 탭을 오가도 유지된다 — 화면이 아니라 모델이 들고 있어서다.
+    var showsPlanPreview = false
+    /// 여행 모드 권유를 "나중에"로 미뤘는가. 같은 이유로 여기 있다.
+    var deferredTravelInvite = false
     private(set) var loadErrorMessage: String?
     private(set) var actionErrorMessage: String?
     private(set) var actionErrorTitle: String?
@@ -57,16 +63,35 @@ final class TodayViewModel {
     /// 이동시간이 추정치면 화면이 그렇게 말해야 한다 — 실제 경로 시간인 척하지 않는다.
     var travelTimeIsEstimate: Bool { today?.travelTimeSource != .routed }
 
+    /// 탭에 들어올 때 부른다. **탭 전환은 앱 복귀가 아니다** — 이미 보여 준 내용이 있고 방금
+    /// 받은 것이면 서버를 다시 묻지 않는다(그때마다 로딩이 떴다, 2026-09-17). 오래됐으면 뒤에서
+    /// 조용히 새로 받는다: 내용이 있으므로 화면은 로딩으로 바뀌지 않는다.
+    /// - Returns: 실제로 서버에 물었는가. 물었을 때만 여행 모드도 함께 갱신할 가치가 있다.
+    @discardableResult
+    func loadIfStale(maxAge: TimeInterval = 60, now: Date = Date()) async -> Bool {
+        if today != nil, cachedAt == nil, let loadedAt, now.timeIntervalSince(loadedAt) < maxAge { return false }
+        await load()
+        return true
+    }
+
     func load() async {
         guard !isLoading else { return }
         isLoading = true
         let generation = contentGeneration
         defer { isLoading = false }
+        // 지난번 화면을 **먼저** 그린다 — 서버를 기다리는 동안 빈 스피너 대신 마지막으로 본 오늘이 보인다.
+        // ⚠️ 문서가 그때 그대로일 때만(목록이 아는 revision과 같을 때) — 편집한 뒤의 옛 일정을 잠깐이라도
+        //    보여 주면 틀린 것을 말하는 것이다. 시각은 서버 답이 오면 갈아끼워진다.
+        if today == nil, let cached = await service.cachedToday(tripId: trip.id), cached.trip.revision == trip.revision {
+            guard generation == contentGeneration else { return }
+            today = cached
+        }
         do {
             let fetched = try await service.today(tripId: trip.id, dayIndex: nil)
             guard generation == contentGeneration, today == nil || fetched.value.trip.revision >= revision else { return }
             today = fetched.value
             cachedAt = fetched.cachedAt
+            if fetched.cachedAt == nil { loadedAt = Date() }
             loadErrorMessage = nil
         } catch {
             // 앱 복귀 조회가 실패해도 마지막 내용과 저장 실패 안내를 유지한다.

@@ -15,6 +15,20 @@ final class MapDiscoveryTests: XCTestCase {
             point: GeoPoint(lat: 37.56, lng: 126.98), category: .cafe, placeId: nil, provider: "kakao", providerId: id)
     }
 
+    /// 지도를 닫았다 열어도 후보를 다시 받지 않는다 — 방금 받은 목록이면 그대로다(2026-09-17).
+    func testReopeningTheMapDoesNotRefetchFreshCandidates() async {
+        let source = FakeCollabService()
+        var reads = 0
+        source.candidateReads = { reads += 1; return [] }
+        let model = MapDiscoveryModel(trip: trip(), searcher: DiscoverySearcher(), source: source)
+        await model.loadCandidatesIfStale()
+        await model.loadCandidatesIfStale()
+        XCTAssertEqual(reads, 1)
+        XCTAssertTrue(model.candidatesLoaded)
+        await model.loadCandidatesIfStale(now: Date().addingTimeInterval(120))
+        XCTAssertEqual(reads, 2, "오래됐으면 새로 받는다")
+    }
+
     func testFiveContinuousSavesPreserveSearchAndDoNotMergeBranches() async {
         let source = FakeCollabService()
         let searcher = DiscoverySearcher()
