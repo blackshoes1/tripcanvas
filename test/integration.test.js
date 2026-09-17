@@ -513,6 +513,36 @@ test('통합: 체크아웃이 체크인보다 앞서면 저장을 막는다(잘�
   w.close();
 });
 
+test('통합: 예약의 결제 상태는 결제함만 저장되고 예약 목록·전체 비용이 그 값을 따른다', { skip: noJsdom }, () => {
+  const w = boot();
+  withTrip(w, `[{mode:'car',startAt:'09:00',spots:[{name:'H',lat:37.5,lng:127,city:'S',stay:true}]}]`);
+  w.eval('openBookingModal(null)');
+  const set = (id, v) => { w.document.getElementById(id).value = v; };
+  set('bkType', 'flight'); set('bkTitle', '항공'); set('bkPrice', '300000'); set('bkPayState', 'PAID');
+  w.document.getElementById('bkSave').click();
+  assert.equal(w.eval('trip().bookings[0].payState'), 'PAID', '결제함은 저장된다');
+  w.eval('openBookingList()');
+  assert.ok(w.document.getElementById('bookingListBody').textContent.includes('결제함'), '목록이 상태를 말한다');
+  w.eval(`openBookingModal(trip().bookings[0].id)`);
+  assert.equal(w.document.getElementById('bkPayState').value, 'PAID', '다시 열면 그대로다');
+  set('bkPayState', '');
+  w.document.getElementById('bkSave').click();
+  assert.equal(w.eval('trip().bookings[0].payState'), undefined, '예약만 함은 저장하지 않는다 — 없으면 예약이다');
+  // 예약 외 준비 비용 — 폼으로 추가하고 지운다
+  set('prepTitle', '여행자보험'); set('prepAmount', '30,000'); set('prepKind', 'OTHER'); set('prepPayState', 'PAID');
+  w.document.getElementById('prepAdd').click();
+  assert.deepEqual(w.eval('JSON.stringify(trip().costItems.map(i=>[i.title,i.amount,i.kind,i.payState,i.costBasis]))'),
+    JSON.stringify([['여행자보험', 30000, 'OTHER', 'PAID', 'TOTAL']]));
+  assert.equal(w.eval('tripCostBreakdown().prep'), 30000);
+  assert.ok(w.document.getElementById('prepCostList').textContent.includes('여행자보험'));
+  set('prepTitle', '유심'); set('prepAmount', '12.345');
+  w.document.getElementById('prepAdd').click();
+  assert.equal(w.eval('trip().costItems.length'), 1, '원화 소수는 거절한다');
+  w.document.querySelector('[data-prep-del]').click();
+  assert.equal(w.eval('trip().costItems'), undefined, '비면 필드째 사라진다');
+  w.close();
+});
+
 test('통합: 렌터카 예약 — 조건 저장·시장 검색·매칭·절약 표시까지 End-to-End', { skip: noJsdom }, async () => {
   const w = boot();
   const day = (d) => new Date(Date.now() + d * 86400000).toISOString().slice(0, 10);
@@ -1398,7 +1428,15 @@ test('통합: 하루 비용에 예약 하루치가 들어가고, 하루 합계�
 
   // 필터바 전체 비용 — 예약은 총액 기준
   const cb=w.eval(`JSON.parse(JSON.stringify(tripCostBreakdown()))`);
-  assert.deepEqual(cb, {spots:39000, taxi:0, hotel:600000, car:420000, flight:180000, total:1239000});
+  assert.deepEqual(cb, {spots:39000, taxi:0, hotel:600000, car:420000, flight:180000, prep:0, total:1239000});
+  // 예약이 아닌 준비 비용(trip.costItems)은 어느 날에도 들어가지 않고 전체에만 더해진다
+  w.eval(`trip().costItems=[{id:'ins',title:'여행자보험',kind:'OTHER',amount:30000,payState:'PAID'},{id:'sim',title:'유심',kind:'OTHER',amount:10,cur:'USD'}]; render();`);
+  const withPrep=w.eval(`JSON.parse(JSON.stringify(tripCostBreakdown()))`);
+  assert.equal(withPrep.prep, 30000 + w.eval(`toKRW(10,'USD')`));
+  assert.equal(withPrep.total, 1239000 + withPrep.prep, '준비 비용은 전체에만');
+  assert.equal(w.eval(`dayCost(trip().days[0])`), 18000, '하루 비용은 그대로');
+  assert.ok(w.eval(`document.querySelector('.costMenu .viewMenuPanel').textContent`).includes('준비 비용(예약 외)'), '내역에 줄이 생긴다');
+  w.eval(`delete trip().costItems; render();`);   // 아래 단정은 준비 비용 없는 기준
   assert.match(w.document.querySelector('.costMenu summary').textContent, /₩1,239,000/);
   assert.match(w.document.querySelector('.costMenu').textContent, /렌터카/);
 
@@ -1427,7 +1465,7 @@ test('통합: 연결된 숙박은 일정 카드 금액이 예산 기준 (이중 
     start:'2026-08-01',end:'2026-08-02'}]; activeDay=0; render()`);
 
   const cb=()=>w.eval(`JSON.parse(JSON.stringify(tripCostBreakdown()))`);
-  assert.deepEqual(cb(), {spots:192000, taxi:0, hotel:0, car:0, flight:0, total:192000},
+  assert.deepEqual(cb(), {spots:192000, taxi:0, hotel:0, car:0, flight:0, prep:0, total:192000},
     '연결된 숙박 예약(200,000)은 예산에서 빠지고 장소 금액(180,000)이 기준');
 
   const dayCosts=()=>[...w.document.querySelectorAll('.dayCard')].map(c=>{
