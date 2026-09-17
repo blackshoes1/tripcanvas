@@ -11,7 +11,7 @@
                          │                            │
                          └───────────┬────────────────┘
                                      │  HTTPS
-                        Tailscale Funnel (bokbok9.tail8b977f.ts.net)
+                        Tailscale Funnel
                                      │
                             NAS ─────┴─────────────────────┐
                              │                             │
