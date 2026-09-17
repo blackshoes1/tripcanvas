@@ -4858,6 +4858,7 @@ function openCandidates(seed){
   if(!sb||!user){ toast('로그인하면 일행과 후보를 함께 고를 수 있어요','#1d6fd6'); document.getElementById('authBtn').click(); return; }
   const keepDraft=seed && candTripId===store.activeId && (document.getElementById('candTitleInput').value.trim()||document.getElementById('candNoteInput').value.trim());
   candTripId=store.activeId;
+  fillCandCatSelects();
   document.getElementById('candTitle').textContent=`📍 가고 싶은 곳 · ${trip().name||'여행'}`;
   if(!keepDraft){ document.getElementById('candTitleInput').value=seed?.title||''; document.getElementById('candNoteInput').value=seed?.note||''; }
   else toast('작성 중인 후보가 있어요. 먼저 확인해 주세요.');
@@ -4889,6 +4890,24 @@ async function renderCandidates(){
   }
 }
 
+// 가고 싶은 곳의 분류 — 값은 collab.js(서버 CHECK와 같은 목록)가 정하고, 보이는 이름만 여기서 붙인다.
+const CAND_CAT_LABELS={RESTAURANT:'🍽 레스토랑',CAFE:'☕ 카페',DESSERT:'🍰 디저트',SIGHT:'🏛 관광지',
+  LANDMARK:'📸 명소',NATURE:'🌿 자연',SHOPPING:'🛍 쇼핑',ACTIVITY:'🎟 체험·액티비티',STAY:'🛏 숙소',ETC:'📍 기타'};
+/** @param {any} c @returns {string} */
+function candCatLabel(c){ return CAND_CAT_LABELS[String(c)]||''; }
+let candFilterCat='';
+/** 분류 선택지는 한 번만 채운다 — 담기용(고르지 않음 포함)과 거르기용 */
+function fillCandCatSelects(){
+  const add=document.getElementById('candCatInput'), filter=document.getElementById('candCatFilter');
+  if(add.options.length) return;
+  add.appendChild(new Option('분류 없음',''));         // 고르지 않음은 기타와 다르다 — 단정하지 않는다
+  for(const id of TC_COLLAB.CANDIDATE_CATEGORIES){
+    add.appendChild(new Option(candCatLabel(id),id));
+    filter.appendChild(new Option(candCatLabel(id),id));
+  }
+  filter.appendChild(new Option('분류 없음','__NONE__'));
+}
+
 /** 서버에서 받은 후보를 화면에 그린다. 낙관적 갱신 뒤에도 이 함수만 다시 부르면 된다. */
 function drawCandidates(){
   const box=document.getElementById('candList'); if(!box) return;
@@ -4896,9 +4915,17 @@ function drawCandidates(){
   const focusCand=(fc&&/^[\w-]+$/.test(fc.dataset.candId||''))?fc.dataset.candId:null;
   const role=myRole(candTripId), members=(tripRoles[candTripId]||{}).count||0;
   const mode=document.getElementById('candSort').value==='interest'?'interest':'recent';
-  const sorted=TC_COLLAB.sortCandidates(candRows,mode,members);
+  // 분류는 거르기일 뿐이다 — 순위(§12·§79)나 묶음 규칙을 바꾸지 않는다
+  const visible=!candFilterCat? candRows
+    : candFilterCat==='__NONE__'? candRows.filter(c=>!TC_COLLAB.candidateCategoryOf(c.category))
+    : candRows.filter(c=>TC_COLLAB.candidateCategoryOf(c.category)===candFilterCat);
+  const sorted=TC_COLLAB.sortCandidates(visible,mode,members);
   const g=TC_COLLAB.groupCandidates(sorted,members);
   box.innerHTML='';
+  if(candRows.length && !visible.length){
+    box.innerHTML='<div class="hint">이 분류에는 담은 곳이 없어요.</div>';
+    return;
+  }
   if(!candRows.length){
     box.innerHTML=`<div class="hint">${TC_COLLAB.canPropose(role)
       ? '아직 담은 곳이 없어요. 위에 이름을 적어 후보로 담으면 일행이 반응할 수 있어요.'
@@ -4934,7 +4961,8 @@ function candidateCard(c,role,members){
   const nameBox=document.createElement('div'); nameBox.className='candName';
   nameBox.textContent=c.title||'이름 없는 곳';
   const meta=document.createElement('div'); meta.className='candMeta';
-  meta.textContent=[TC_COLLAB.candidateAttribution(c), summary, c.addr||''].filter(Boolean).join(' · ');
+  meta.textContent=[candCatLabel(TC_COLLAB.candidateCategoryOf(c.category)), TC_COLLAB.candidateAttribution(c), summary, c.addr||'']
+    .filter(Boolean).join(' · ');
   nameBox.appendChild(meta);
   head.appendChild(nameBox);
   const verdict=TC_COLLAB.candidateVerdict(c,members);   // 점수는 내부값 — 화면에는 문장만(§21·§22)
@@ -5205,7 +5233,9 @@ async function addCandidate(){
   if(!title){ toast('가고 싶은 곳의 이름을 적어 주세요','#8892b0'); return; }
   candBusy=true; document.getElementById('candAdd').disabled=true;
   try{
-    const {error}=await TC_API.rpc('add_trip_candidate',{p_client_id:candTripId,p_title:title,p_note:note||null});
+    const cat=TC_COLLAB.candidateCategoryOf(document.getElementById('candCatInput').value);
+    const {error}=await TC_API.rpc('add_trip_candidate',
+      {p_client_id:candTripId,p_title:title,p_note:note||null,p_category:cat});
     if(error) throw error;
     document.getElementById('candTitleInput').value=''; document.getElementById('candNoteInput').value='';
     toast('후보로 담았어요 — 일행에게 물어볼까요?');
@@ -5416,6 +5446,7 @@ document.getElementById('candMenuBtn').onclick=openCandidates;
 document.getElementById('candClose').onclick=()=>document.getElementById('candModalBg').classList.remove('show');
 document.getElementById('candAdd').onclick=addCandidate;
 document.getElementById('candRefresh').onclick=renderCandidates;
+document.getElementById('candCatFilter').onchange=e=>{ candFilterCat=e.target.value; drawCandidates(); };
 document.getElementById('candSort').onchange=drawCandidates;
 document.getElementById('candTitleInput').onkeydown=(e)=>{ if(e.key==='Enter'){ e.preventDefault(); addCandidate(); } };
 

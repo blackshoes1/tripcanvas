@@ -208,6 +208,8 @@ export const tripCandidates = pgTable('trip_candidates', {
   addr: text('addr'),
   note: text('note'),
   url: text('url'),
+  // 표시·거르기를 위한 분류. null(아직 고르지 않음)과 'ETC'(기타)는 다른 상태다.
+  category: text('category'),
   proposedBy: uuid('proposed_by').notNull().references(() => users.id, { onDelete: 'cascade' }),
   status: text('status').notNull().default('PROPOSED'),
   // '2'(2일차) 같은 위치 표시 — 장소에는 안정적인 id가 없다
@@ -224,7 +226,8 @@ export const tripCandidates = pgTable('trip_candidates', {
         (${t.provider} = 'google' and ${t.providerId} ~ '^[A-Za-z0-9_-]{5,200}$')))`),
   check('trip_candidates_kakao_id_check', sql`${t.provider} is distinct from 'kakao' or ${t.placeId} is null`),
   check('trip_candidates_title_check', sql`btrim(${t.title}) <> ''`),
-  check('trip_candidates_status_check', sql`${t.status} in ('PROPOSED','ACCEPTED','REJECTED','SCHEDULED')`)
+  check('trip_candidates_status_check', sql`${t.status} in ('PROPOSED','ACCEPTED','REJECTED','SCHEDULED')`),
+  check('trip_candidates_category_check', sql`${t.category} is null or ${t.category} in ('RESTAURANT','CAFE','DESSERT','SIGHT','LANDMARK','NATURE','SHOPPING','ACTIVITY','STAY','ETC')`)
 ]);
 
 export const candidateReactions = pgTable('candidate_reactions', {

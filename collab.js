@@ -259,6 +259,18 @@
   /** @param {unknown} role @param {{mine?:boolean}|null} cand @returns {boolean} */
   function canRemoveCandidate(role, cand){ return !!(cand && cand.mine) || normRole(role)==='OWNER'; }
 
+  // 가고 싶은 곳의 분류 — **표시와 거르기를 위한 것이지 결정이 아니다.**
+  // 후보가 늘면 "뭐 먹지"와 "어디 가지"가 한 목록에 섞여 고르기 어려워진다. 그래서 나눌 뿐,
+  // 분류가 순위를 바꾸거나 일정에 자동으로 넣지 않는다(§12·§79 — 인기순 자동 반영이 없는 것과 같은 이유).
+  // 값만 정하고 화면 이름은 웹·앱이 각자 붙인다. 서버(CHECK 제약)와 같은 목록이어야 한다.
+  // '아직 고르지 않음'(null)은 '기타'(ETC)와 다르다 — 고르지 않은 것을 기타로 단정하지 않는다.
+  const CANDIDATE_CATEGORIES=['RESTAURANT','CAFE','DESSERT','SIGHT','LANDMARK','NATURE','SHOPPING','ACTIVITY','STAY','ETC'];
+  /** 아는 분류면 그대로, 모르면 null(고르지 않음). 소문자로 와도 받는다. @param {any} v @returns {string|null} */
+  function candidateCategoryOf(v){
+    const t=String(v==null?'':v).trim().toUpperCase();
+    return CANDIDATE_CATEGORIES.indexOf(t)>=0? t : null;
+  }
+
   /**
    * 반응 집계. 서버가 이미 세어 주지만(must_count 등) 화면이 낙관적으로 바꾼 뒤에도 같은 답이 나와야 해서
    * 여기서 한 번 더 순수하게 센다.
@@ -876,7 +888,8 @@
     canComment, canDeleteComment, objParticle, activityText, condenseActivity, relativeTime, liveEffects,
     normPrefs, prefsText, groupContext, groupContextText, consensusOf, consensusText, candidateVerdict,
     candidateConflict, conflictOptions, distanceKm, buildGroupProposal,
-    canAssignWho, memberLabelMap, whoLabels, whoText, includesMe, reactorIds, buildSplitPlan, reunionText};
+    canAssignWho, memberLabelMap, whoLabels, whoText, includesMe, reactorIds, buildSplitPlan, reunionText,
+    CANDIDATE_CATEGORIES, candidateCategoryOf};
   if(typeof module!=='undefined' && module.exports) module.exports=API;   // Node (테스트)
   else /** @type {any} */(root).TC_COLLAB=API;                            // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);

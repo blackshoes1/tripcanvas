@@ -86,7 +86,7 @@ describe('importAll', () => {
     await importAll(db.db, source());
     // 기존 최대 id(후보 5 · 코멘트 3 · 활동 21 · 멤버 9)보다 큰 값이 나와야 한다
     const collab = new PgCollabRepository(db.db);
-    const candidateId = await collab.addCandidate(TRIP, A, { title: '새 후보', place_id: null, provider: null, providerId: null, clientKey: null, lat: null, lng: null, addr: null, note: null, url: null });
+    const candidateId = await collab.addCandidate(TRIP, A, { title: '새 후보', place_id: null, provider: null, providerId: null, clientKey: null, lat: null, lng: null, addr: null, note: null, url: null, category: null });
     expect(candidateId).toBeGreaterThan(5);
     const commentId = await collab.addComment(TRIP, candidateId, A, '새 코멘트');
     expect(commentId).toBeGreaterThan(3);
@@ -102,7 +102,7 @@ describe('importAll', () => {
     expect(received).toEqual([]);
 
     // 끝난 뒤에는 트리거가 다시 살아 있어야 한다
-    await new PgCollabRepository(db.db).addCandidate(TRIP, A, { title: '이건 알린다', place_id: null, provider: null, providerId: null, clientKey: null, lat: null, lng: null, addr: null, note: null, url: null });
+    await new PgCollabRepository(db.db).addCandidate(TRIP, A, { title: '이건 알린다', place_id: null, provider: null, providerId: null, clientKey: null, lat: null, lng: null, addr: null, note: null, url: null, category: null });
     await new Promise((r) => setTimeout(r, 60));
     expect(received).toHaveLength(1);
   });

@@ -109,7 +109,7 @@
     list_trip_candidates: (a) => ({ method: 'GET', path: `/api/v1/trips/${seg(a.p_client_id)}/candidates`, unwrap: pick('candidates') }),
     add_trip_candidate: (a) => ({
       method: 'POST', path: `/api/v1/trips/${seg(a.p_client_id)}/candidates`,
-      body: { title: a.p_title, place_id: a.p_place_id ?? null, lat: a.p_lat ?? null, lng: a.p_lng ?? null, addr: a.p_addr ?? null, note: a.p_note ?? null, url: a.p_url ?? null },
+      body: { title: a.p_title, place_id: a.p_place_id ?? null, lat: a.p_lat ?? null, lng: a.p_lng ?? null, addr: a.p_addr ?? null, note: a.p_note ?? null, url: a.p_url ?? null, category: a.p_category ?? null },
       unwrap: pick('id')
     }),
     react_to_candidate: (a, t) => ({ needsTrip: true, method: 'PUT', path: `/api/v1/trips/${seg(t)}/candidates/${seg(a.p_candidate_id)}/reaction`, body: { reaction: a.p_reaction == null ? null : String(a.p_reaction) }, unwrap: pick('ok') }),
