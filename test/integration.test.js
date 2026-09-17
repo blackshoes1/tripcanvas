@@ -2965,3 +2965,94 @@ test('첫 화면: 만들기를 누르면 새 여행 모달이 뜬다', { skip: n
   assert.equal(w.document.getElementById('onboarding').hidden, true);
   assert.ok(w.document.getElementById('newTripBg').classList.contains('show'));
 });
+
+// ── 여행 준비 메모 (날짜에 붙지 않는 준비 내용) ──
+
+test('통합: 여행 준비 메모를 추가·수정·확인·삭제하면 여행 문서에 남는다', { skip: noJsdom }, () => {
+  const w = boot();
+  withTrip(w, `[{title:'D1',drive:'',note:'',spots:[]}]`);
+  w.eval(`openNotes()`);
+  assert.ok(w.document.getElementById('noteModalBg').classList.contains('show'), '모달이 열린다');
+  assert.equal(w.eval(`document.getElementById('noteCatInput').options.length`), w.eval(`TRIP_NOTE_CATEGORIES.length`),
+    '분류 선택지가 순수 목록에서 채워진다');
+
+  w.eval(`document.getElementById('noteCatInput').value='VISA';
+          document.getElementById('noteTitleInput').value='비자';
+          document.getElementById('noteBodyInput').value='90일 무비자';
+          saveNote();`);
+  assert.equal(w.eval(`trip().notes.length`), 1);
+  assert.equal(w.eval(`trip().notes[0].cat`), 'VISA');
+  assert.equal(w.eval(`trip().notes[0].body`), '90일 무비자');
+  assert.equal(w.eval(`document.getElementById('noteTitleInput').value`), '', '저장하면 입력칸이 비워진다');
+
+  // 수정은 같은 폼을 쓴다 — 입력 자리가 두 곳이면 어디에 적었는지 헷갈린다
+  const id = w.eval(`trip().notes[0].id`);
+  w.eval(`startNoteEdit(${JSON.stringify(id)})`);
+  assert.equal(w.eval(`document.getElementById('noteTitleInput').value`), '비자');
+  w.eval(`document.getElementById('noteTitleInput').value='비자 (확인함)'; saveNote();`);
+  assert.equal(w.eval(`trip().notes.length`), 1, '수정이 새 메모를 만들지 않는다');
+  assert.equal(w.eval(`trip().notes[0].title`), '비자 (확인함)');
+
+  w.eval(`toggleNoteDone(${JSON.stringify(id)}, true)`);
+  assert.equal(w.eval(`trip().notes[0].done`), true);
+  w.eval(`toggleNoteDone(${JSON.stringify(id)}, false)`);
+  assert.equal(w.eval(`trip().notes[0].done`), undefined, '기본값은 문서에 남기지 않는다');
+
+  w.eval(`window.confirm=()=>true; removeNote(${JSON.stringify(id)})`);
+  assert.equal(w.eval(`trip().notes`), undefined, '마지막 메모를 지우면 필드째 사라진다');
+});
+
+test('통합: 메모 본문은 마크업이 되지 않는다', { skip: noJsdom }, () => {
+  const w = boot();
+  withTrip(w, `[{title:'D1',drive:'',note:'',spots:[]}]`);
+  w.eval(`openNotes();
+          document.getElementById('noteTitleInput').value='<img src=x onerror=alert(1)>';
+          document.getElementById('noteBodyInput').value='<script>bad()<\\/script>';
+          saveNote();`);
+  const list = w.document.getElementById('noteList');
+  assert.equal(list.querySelectorAll('img, script').length, 0, '사용자 글이 요소가 되지 않는다');
+  assert.ok(list.textContent.includes('<img src=x onerror=alert(1)>'), '글자 그대로 보인다');
+});
+
+// ── 여행 기간 수정 ──
+
+test('통합: 여행 설정에서 기간을 늘리고 줄인다 (앞날은 그대로)', { skip: noJsdom }, () => {
+  const w = boot();
+  withTrip(w, `[{title:'D1',drive:'',note:'',spots:[{name:'첫날 장소',city:'A',desc:'',lat:1,lng:1}]},{title:'D2',drive:'',note:'',spots:[]}]`);
+  w.eval(`document.getElementById('tripEditBtn').onclick()`);
+  assert.equal(w.eval(`document.getElementById('tripDays').value`), '2', '지금 일수가 채워진다');
+  assert.ok(w.eval(`document.getElementById('tripRange').textContent`).includes('2일'), '끝나는 날을 함께 보여 준다');
+
+  w.eval(`document.getElementById('tripDays').value='4'; document.getElementById('tripSave').onclick()`);
+  assert.equal(w.eval(`trip().days.length`), 4);
+  assert.equal(w.eval(`trip().days[0].spots.length`), 1, '있던 일정은 그대로다');
+  assert.equal(w.eval(`trip().days[0].title`), 'D1', '앞날이 밀리지 않는다');
+
+  // 지워질 날에 장소가 있으면 한 번 더 묻고, 아니라고 하면 아무 일도 없다
+  w.eval(`trip().days[2].spots.push({name:'셋째날 장소',city:'B',desc:'',lat:2,lng:2}); activeDay=2;`);
+  w.eval(`window.confirm=()=>false; document.getElementById('tripEditBtn').onclick();
+          document.getElementById('tripDays').value='2'; document.getElementById('tripSave').onclick()`);
+  assert.equal(w.eval(`trip().days.length`), 4, '취소하면 그대로다');
+
+  w.eval(`window.confirm=()=>true; document.getElementById('tripDays').value='2'; document.getElementById('tripSave').onclick()`);
+  assert.equal(w.eval(`trip().days.length`), 2);
+  assert.equal(w.eval(`trip().days[0].spots.length`), 1, '남은 날의 일정은 그대로다');
+  assert.equal(w.eval(`activeDay`), 1, '보던 날이 사라지면 남은 날로 옮긴다');
+
+  // 빈 날만 지울 때는 묻지 않는다 — 잃을 것이 없는데 확인을 요구하면 확인이 무뎌진다
+  w.eval(`window.confirm=()=>{ throw new Error('묻지 않아야 한다'); };
+          document.getElementById('tripEditBtn').onclick();
+          document.getElementById('tripDays').value='1'; document.getElementById('tripSave').onclick()`);
+  assert.equal(w.eval(`trip().days.length`), 1);
+});
+
+test('통합: 여행 기간은 1일 밑으로도, 저장 한도 위로도 가지 않는다', { skip: noJsdom }, () => {
+  const w = boot();
+  withTrip(w, `[{title:'D1',drive:'',note:'',spots:[]},{title:'D2',drive:'',note:'',spots:[]}]`);
+  w.eval(`window.confirm=()=>true; document.getElementById('tripEditBtn').onclick();
+          document.getElementById('tripDays').value='0'; document.getElementById('tripSave').onclick()`);
+  assert.equal(w.eval(`trip().days.length`), 1, '0일짜리 여행은 없다');
+  w.eval(`document.getElementById('tripEditBtn').onclick();
+          document.getElementById('tripDays').value='500'; document.getElementById('tripSave').onclick()`);
+  assert.equal(w.eval(`trip().days.length`), 90, '저장 한도까지만');
+});

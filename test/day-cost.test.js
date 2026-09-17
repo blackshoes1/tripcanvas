@@ -134,3 +134,78 @@ test('연결된 숙박 금액은 중복하지 않고 빈 여행 평균·미정 �
   assert.equal(result.unallocated[0].totalKRW, null);
   assert.equal(L.tripCostSummary({ days: [] }, [], rates).averagePerDayKRW, null);
 });
+
+// ── 예약·결제 구분(결제 상태) ──
+// 분류(무엇에 쓴 돈)와 결제 상태(냈는가)는 다른 축이다. 상태별 합계를 더하면 전체와 맞아야 한다.
+
+test('결제 상태는 예약·결제·미구분으로 갈리고 상태별 합계가 전체와 맞는다', () => {
+  const trip = {
+    bookings: [{ id: 'h1', type: 'hotel', title: '호텔', price: 200000, cur: 'KRW', start: '2026-10-01', end: '2026-10-03' }],
+    days: [{ spots: [{ name: '입장료', cost: 12000, payState: 'PAID' }, { name: '미정 식사' }],
+      costItems: [{ id: 'c1', title: '기차표', kind: 'TRANSIT', amount: 30000, payState: 'RESERVED' },
+        { id: 'c2', title: '간식', kind: 'FOOD', amount: 4000 }] }, { spots: [] }, { spots: [] }]
+  };
+  const cost = summary(trip);
+  assert.equal(cost.payTotals.PAID, 12000, '장소에 적은 결제 완료');
+  assert.equal(cost.payTotals.RESERVED, 130000, '기차표 + 숙박 하루치 10만원');
+  assert.equal(cost.payTotals.NONE, 4000, '고르지 않은 것은 미구분으로 남는다');
+  assert.equal(cost.payTotals.PAID + cost.payTotals.RESERVED + cost.payTotals.NONE, cost.total,
+    '상태별 합계의 합은 하루 합계와 같다');
+  const train = cost.details.items.find(i => i.key === 'c1');
+  assert.equal(train.payState, 'RESERVED');
+  assert.equal(cost.details.items.find(i => i.source === 'BOOKING').payState, 'RESERVED',
+    '예약에서 파생된 하루치는 언제나 예약이다');
+});
+
+test('결제 상태를 고르지 않은 비용을 결제나 예약으로 밀어 넣지 않는다', () => {
+  const trip = { days: [{ spots: [{ name: '카페', cost: 5000 }] }] };
+  const cost = summary(trip);
+  assert.equal(cost.payTotals.NONE, 5000);
+  assert.equal(cost.payTotals.PAID, 0);
+  assert.equal(cost.payTotals.RESERVED, 0);
+});
+
+test('금액을 모르는 비용은 어느 상태 합계도 늘리지 않는다', () => {
+  const trip = { days: [{ spots: [{ name: '미정', payState: 'PAID' }], costItems: [{ id: 'x', kind: 'FOOD', payState: 'RESERVED' }] }] };
+  const cost = summary(trip);
+  assert.deepEqual(cost.payTotals, { RESERVED: 0, PAID: 0, NONE: 0 });
+  assert.equal(cost.details.unknownCount, 2, '미정은 미정으로 센다');
+});
+
+test('여행 전체 비용도 결제 상태별로 나뉘고 미배분 예약은 예약으로 남는다', () => {
+  const trip = {
+    bookings: [{ id: 'f1', type: 'flight', title: '항공', price: 500000, cur: 'KRW' }],   // 날짜 없음 → 미배분
+    days: [{ spots: [{ name: '저녁', cost: 20000, payState: 'PAID' }] }]
+  };
+  const days = [{ index: 0, cost: summary(trip) }];
+  const result = L.tripCostSummary(trip, days, rates);
+  assert.equal(result.payTotals.PAID, 20000);
+  assert.equal(result.payTotals.RESERVED, 500000, '날짜 없는 예약도 예약 상태로 전체에 남는다');
+  assert.equal(result.payTotals.PAID + result.payTotals.RESERVED + result.payTotals.NONE, result.totalKRW);
+});
+
+test('알 수 없는 결제 상태는 정규화에서 떨어지고 미구분이 된다', () => {
+  const trip = L.normalizeTrip({ name: 'x', start: '2026-10-01',
+    days: [{ spots: [{ name: '장소', cost: 1000, payState: 'DONE' }], costItems: [{ id: 'c1', kind: 'FOOD', amount: 2000, payState: 'PAID' }] }] });
+  assert.equal(trip.days[0].spots[0].payState, undefined, '모르는 값은 남기지 않는다');
+  assert.equal(trip.days[0].costItems[0].payState, 'PAID', '아는 값은 왕복에서 살아남는다');
+  const cost = summary(trip);
+  assert.equal(cost.payTotals.NONE, 1000);
+  assert.equal(cost.payTotals.PAID, 2000);
+});
+
+// ── 비용 항목 사진(영수증·품목) ──
+
+test('비용 사진은 참조만 싣고 개수·길이를 제한한다 — 원본 이미지는 문서에 넣지 않는다', () => {
+  const many = Array.from({ length: 14 }, (_, i) => 'ref-' + i);
+  const trip = L.normalizeTrip({ name: 'x', start: '2026-10-01', days: [{ spots: [],
+    costItems: [{ id: 'c1', kind: 'FOOD', amount: 9000, photos: many },
+      { id: 'c2', kind: 'FOOD', amount: 1000, photos: ['ok', '', '   ', 42, 'x'.repeat(500)] },
+      { id: 'c3', kind: 'FOOD', amount: 1000, photos: [] }] }] });
+  const [a, b, c] = trip.days[0].costItems;
+  assert.equal(a.photos.length, 10, '10장을 넘기지 않는다');
+  assert.deepEqual(b.photos, ['ok'], '빈 값·숫자·지나치게 긴 참조는 버린다');
+  assert.equal(c.photos, undefined, '빈 목록은 필드째 생략한다');
+  assert.deepEqual(summary(trip).details.items.find(i => i.key === 'c2').photos, ['ok'],
+    '계산 결과가 사진 참조를 그대로 실어 화면이 다시 읽지 않게 한다');
+});
