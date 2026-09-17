@@ -65,9 +65,12 @@ async function main(): Promise<void> {
     heartbeatMs: 30_000
   });
 
+  // LISTEN은 **트랜잭션 모드 풀러(PgBouncer·Supavisor transaction)를 지나면 조용히 죽는다** — 알림이 영영 안 온다.
+  // 관리형 DB에서 앱은 풀러 주소를 쓰더라도 이 연결만은 직접 주소여야 한다(REALTIME_DATABASE_URL, docs/managed-infrastructure.md).
+  const listenUrl = (process.env.REALTIME_DATABASE_URL ?? '').trim() || env.databaseUrl;
   const listener = createPgListener({
     channel: REALTIME_CHANNEL,
-    connect: () => pgClientFactory(env.databaseUrl!),
+    connect: () => pgClientFactory(listenUrl),
     onPayload: (payload) => server.dispatch(payload)
   });
 
