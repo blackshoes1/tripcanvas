@@ -136,6 +136,7 @@
               "basis": "ENTERED",
               "people": 1,
               "totalKRW": null,
+              "lodging": null,
               "state": "UNKNOWN"
             },
             {
@@ -148,6 +149,7 @@
               "basis": "ENTERED",
               "people": 1,
               "totalKRW": null,
+              "lodging": null,
               "state": "BOOKING"
             },
             {
@@ -160,6 +162,11 @@
               "basis": "ENTERED",
               "people": 1,
               "totalKRW": 50000,
+              "lodging": {
+                "nights": 2,
+                "totalAmount": 100000,
+                "nightNumber": 1
+              },
               "state": "KNOWN"
             }
           ],

@@ -155,7 +155,7 @@ struct TripPlanView: View {
                     days[costDay].setField("costItems", edited.raw["costItems"])
                     var spots = days[costDay].spots
                     for index in spots.indices where edited.spots.indices.contains(index) {
-                        for key in ["cost", "cur", "costBasis", "costPeople", "costPartial", "costKind"] {
+                        for key in ["cost", "cur", "costBasis", "costPeople", "costPartial", "costKind", "nights"] {
                             spots[index].setField(key, edited.spots[index].raw[key])
                         }
                     }

@@ -939,3 +939,28 @@ describe('GET /costs — 여행 전체 비용의 인증·범위', () => {
     expect(JSON.stringify(row)).toBe(before);
   });
 });
+
+
+describe('비용 환율 스냅샷', () => {
+  it('하루·전체·카테고리·예산을 같은 최신 환율로 계산하고 문서는 바꾸지 않는다', async () => {
+    const row = store.rows.get('trip-1')!;
+    row.data.days = [
+      { mode: 'walk', spots: [{ name: '호텔', stay: true, nights: 2, cost: 100, cur: 'USD' }] },
+      { mode: 'walk', spots: [] }
+    ];
+    Object.assign(row.data.days[0], { budget: { amount: 80, cur: 'USD' } });
+    const before = JSON.stringify(row.data);
+    const fx = { rates: { KRW: 1, USD: 1400, EUR: 1750, JPY: 10, CNY: 200 }, source: 'LATEST' as const, asOf: '2026-09-17T00:00:00.000Z' };
+    const handlers = createHandlers({ gatewayFor: () => gatewayOf(store), now: () => NOW, fx: async () => fx });
+    const total = await (await handlers.tripCosts(new Request('https://x/costs', auth()), 'trip-1')).json();
+    const day = await (await handlers.dayPlan(new Request('https://x/day', auth()), 'trip-1', 0)).json();
+    expect(total.totalKRW).toBe(140000);
+    expect(total.days.map((d: { cost: { total: number } }) => d.cost.total)).toEqual([70000, 70000]);
+    expect(total.categories.find((c: { kind: string }) => c.kind === 'STAY').totalKRW).toBe(140000);
+    expect(day.day.totals.cost.total).toBe(70000);
+    expect(day.day.totals.cost.details.budget.totalKRW).toBe(112000);
+    expect(day.day.totals.cost.details.fxAsOf).toBe(fx.asOf);
+    expect(total.fxSource).toBe('LATEST');
+    expect(JSON.stringify(row.data)).toBe(before);
+  });
+});

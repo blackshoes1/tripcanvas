@@ -10,6 +10,10 @@ final class DayCostTests: XCTestCase {
         XCTAssertEqual(costs.categories.count, 9)
         XCTAssertEqual(costs.categories.reduce(0) { $0 + $1.totalKRW }, costs.totalKRW)
         XCTAssertEqual(costs.fxSource, "FALLBACK")
+        let lodging = costs.categories.flatMap(\.items).first { $0.source == "BOOKING" }?.lodging
+        XCTAssertEqual(lodging?.nights, 2)
+        XCTAssertEqual(lodging?.totalAmount, 100000)
+        XCTAssertEqual(lodging?.nightNumber, 1)
         XCTAssertTrue(costs.categories.flatMap(\.items).contains { $0.source == "BOOKING" })
     }
 
@@ -24,6 +28,21 @@ final class DayCostTests: XCTestCase {
         XCTAssertEqual(spot.raw["custom"], .string("keep"))
         entry.kind = "AUTO"
         XCTAssertNil(entry.applying(to: spot).raw["costKind"])
+    }
+
+    func testLodgingNightsEditingPreservesTotalAndUnknownFields() {
+        let spot = TripSpot(raw: ["name": .string("숙소"), "stay": .bool(true), "nights": .number(3), "cost": .number(300000), "unknown": .string("keep")])
+        var entry = CostEntry(spot: spot)
+        XCTAssertTrue(entry.isLodging)
+        XCTAssertEqual(entry.nights, 3)
+        entry.nights = 4
+        let edited = entry.applying(to: spot)
+        XCTAssertEqual(edited.nights, 4)
+        XCTAssertEqual(edited.cost, 300000)
+        XCTAssertEqual(edited.raw["unknown"], .string("keep"))
+        let extra = CostEntry(raw: ["kind": .string("STAY"), "nights": .number(3)])
+        XCTAssertTrue(extra.isLodging)
+        XCTAssertEqual(extra.nights, 3)
     }
 
     func testMoneyInputPreservesFreeAndForeignMinorUnits() {

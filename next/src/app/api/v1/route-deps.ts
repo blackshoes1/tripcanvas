@@ -1,3 +1,4 @@
+import { getServerFx } from '@/features/currency/services/serverFx';
 // /api/v1 라우트가 공유하는 실제 의존성. 테스트는 createHandlers/createTripRoutes에 가짜를 넣어 이 파일을 거치지 않는다.
 //
 // Strangler 분기(§35): 이관 레지스트리 TRIP 값에 따라
@@ -291,4 +292,4 @@ function legSupport(): LegSupport | undefined {
   };
 }
 
-export const handlers = createHandlers({ gatewayFor, legs: legSupport() });
+export const handlers = createHandlers({ gatewayFor, legs: legSupport(), fx: getServerFx });

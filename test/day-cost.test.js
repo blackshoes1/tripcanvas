@@ -134,3 +134,52 @@ test('연결된 숙박 금액은 중복하지 않고 빈 여행 평균·미정 �
   assert.equal(result.unallocated[0].totalKRW, null);
   assert.equal(L.tripCostSummary({ days: [] }, [], rates).averagePerDayKRW, null);
 });
+
+test('숙소 직접 입력 총액을 숙박일수로 배분하고 체크아웃 날은 제외한다', () => {
+  const trip = { days: [{ spots: [{ name: '3박 숙소', stay: true, nights: 3, cost: 300000 }] }, { spots: [] }, { spots: [] }, { spots: [] }] };
+  assert.deepEqual(trip.days.map((_, i) => summary(trip, i).total), [100000, 100000, 100000, 0]);
+  assert.deepEqual(summary(trip, 1).details.items[0].lodging, { nights: 3, totalAmount: 300000, nightNumber: 2 });
+  assert.equal(summary(trip, 1).details.items[0].source, 'LODGING');
+  assert.equal(L.dayAllocatedCost(trip, 1, rates), 100000);
+  assert.equal(L.dayEnteredCost(trip.days[0], rates), 300000, '입력 원금은 바꾸지 않는다');
+  const total = L.tripCostSummary(trip, trip.days.map((_, index) => ({ index, cost: summary(trip, index) })), rates);
+  assert.equal(total.totalKRW, 300000);
+  assert.equal(total.unallocated.length, 0);
+});
+
+test('원·외화 잔돈과 1인 금액을 나누어도 합계가 보존되고 예약은 중복하지 않는다', () => {
+  const trip = { days: [{ spots: [{ name: '숙소', stay: true, nights: 3, cost: 100000, bookingId: 'h' }] }, { spots: [] }, { spots: [] }],
+    bookings: [{ id: 'h', type: 'hotel', price: 100000, start: '2026-10-01', end: '2026-10-04' }] };
+  assert.deepEqual(trip.days.map((_, i) => summary(trip, i).total), [33334, 33333, 33333]);
+  assert(summary(trip).details.items.every(i => i.source !== 'BOOKING'));
+  Object.assign(trip.days[0].spots[0], { cost: 10.01, cur: 'USD', costBasis: 'PER_PERSON', costPeople: 2 });
+  const amounts = trip.days.map((_, i) => summary(trip, i).details.items[0].amount);
+  assert.deepEqual(amounts, [6.68, 6.67, 6.67]);
+  assert.equal(summary(trip).details.items[0].lodging.totalAmount, 20.02);
+});
+
+test('숙박 추가 비용·여행 밖 남은 숙박비·무료·미정·이동 후 배분', () => {
+  const trip = { days: [{ spots: [], costItems: [{ id: 'stay', title: '숙박', kind: 'STAY', amount: 100000, nights: 3 }] }, { spots: [] }] };
+  const total = () => L.tripCostSummary(trip, trip.days.map((_, index) => ({ index, cost: summary(trip, index) })), rates);
+  assert.equal(total().totalKRW, 100000);
+  assert.equal(total().unallocated[0].amount, 33333);
+  assert.equal(total().unallocated[0].lodging.nightNumber, null);
+  trip.days[1].costItems = trip.days[0].costItems; trip.days[0].costItems = [];
+  assert.equal(summary(trip, 0).total, 0);
+  assert.equal(summary(trip, 1).total, 33334);
+  assert.equal(total().totalKRW, 100000);
+  trip.days[1].costItems[0].amount = 0;
+  assert.equal(summary(trip, 1).details.items[0].state, 'FREE');
+  delete trip.days[1].costItems[0].amount;
+  assert.equal(summary(trip, 1).details.items[0].state, 'UNKNOWN');
+  assert.equal(L.normalizeTrip(trip).days[1].costItems[0].nights, 3);
+  trip.days[1].costItems[0].nights = 0;
+  assert.equal(L.validateTripPayload(trip).ok, false);
+});
+
+test('예약 숙박은 기존 배분을 유지하며 총액·박 수를 전달한다', () => {
+  const trip = { days: [{ spots: [] }, { spots: [] }, { spots: [] }, { spots: [] }],
+    bookings: [{ id: 'h', type: 'hotel', title: '예약', price: 300000, start: '2026-10-01', end: '2026-10-04' }] };
+  assert.deepEqual(trip.days.map((_, i) => summary(trip, i).total), [100000, 100000, 100000, 0]);
+  assert.deepEqual(summary(trip).details.items[0].lodging, { nights: 3, totalAmount: 300000, nightNumber: 1 });
+});

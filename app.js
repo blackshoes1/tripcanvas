@@ -1673,7 +1673,7 @@ function renderSidebar(){
           return dayDistance(day,ctx.back)>0?`<div class="dist">📏 하루 동선 약 ${dayDistance(day,ctx.back).toFixed(1)}km <span style="opacity:.55">(직선)</span></div>`:'';})()}
         ${(()=>{const e=dayEndMin(day, ctx.anchor, ctx.backLeg); return (e!=null&&e>22*60)?`<div class="overload" title="시작시각+체류+이동 기준 예상 종료">⚠️ 일정 과밀 — 예상 종료 ${hm(e)}${e>=24*60?' (익일)':''}</div>`:'';})()}
         ${(()=>{
-          const parts=[['장소·추가 비용',dayCost(day)],['택시',dayTaxiCost(day,di)],['예약',iso?dayBookingCost(iso):0]]
+          const parts=[['장소·추가 비용',dayAllocatedCost(trip(),di,fxRates)],['택시',dayTaxiCost(day,di)],['예약',iso?dayBookingCost(iso):0]]
             .filter(p=>p[1]>0);
           const tot=parts.reduce((a,p)=>a+p[1],0); if(!tot) return '';
           const detail=parts.length>1?` <span style="opacity:.55">(${parts.map(p=>`${p[0]} ₩${p[1].toLocaleString()}`).join(' + ')})</span>`:'';

@@ -1,3 +1,4 @@
+import { FALLBACK_FX, type FxSnapshot } from '@/features/currency/domain/fx';
 // /api/v1 핸들러 — 저장소 접근(Gateway)을 주입받아 테스트에서 Supabase 없이 그대로 돌릴 수 있다.
 //
 // 역할 분리(§8):
@@ -103,6 +104,7 @@ export interface HandlerDeps {
   gatewayFor(token: string): Promise<Gateway | null> | Gateway | null;
   now?: () => Date;
   legs?: LegSupport;
+  fx?: () => Promise<FxSnapshot>;
 }
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' };
@@ -323,7 +325,7 @@ export function createHandlers(deps: HandlerDeps) {
     const body = buildDayPlanView({
       trip: row.data, di: dayIndex,
       summary: summarizeTrip(row, stamp), generatedAt: now().toISOString(),
-      legCache: legs.cache, legsPending: legs.pending
+      legCache: legs.cache, legsPending: legs.pending, fx: await (deps.fx?.() ?? FALLBACK_FX)
     });
     // 없는 날을 지어내지 않는다 — 여행은 있는데 그 일자가 없으면 404다.
     if (!body) return fail('DAY_NOT_FOUND');
@@ -371,7 +373,7 @@ export function createHandlers(deps: HandlerDeps) {
     if (deps.legs) {
       try { legs = await deps.legs.readTrip(row.data, LEG_WAIT_MS); } catch { /* 추정으로 나간다 */ }
     }
-    const body = buildTripCosts(row.data, legs.cache, row.revision);
+    const body = buildTripCosts(row.data, legs.cache, row.revision, await (deps.fx?.() ?? FALLBACK_FX));
     deps.legs?.fillTripLater(row.data);
     return ok(body);
   }
@@ -411,13 +413,13 @@ export function createHandlers(deps: HandlerDeps) {
     const readCache = async (trip: TripDoc): Promise<LegCache> => {
       try { return (await deps.legs?.read(trip, dayIndex, 0))?.cache ?? {}; } catch { return {}; }
     };
-    const [beforeCache, afterCache] = await Promise.all([readCache(row.data), readCache(draft)]);
+    const [beforeCache, afterCache, fx] = await Promise.all([readCache(row.data), readCache(draft), deps.fx?.() ?? FALLBACK_FX]);
     const generatedAt = now().toISOString();
     const stamp = generatedAt.slice(0, 10);
     const before = buildDayPlanView({ trip: row.data, di: dayIndex, summary: summarizeTrip(row, stamp), generatedAt,
-      legCache: beforeCache, legsPending: 0 });
+      legCache: beforeCache, legsPending: 0, fx });
     const after = buildDayPlanView({ trip: draft, di: dayIndex, summary: summarizeTrip({ ...row, data: draft }, stamp), generatedAt,
-      legCache: afterCache, legsPending: 0 });
+      legCache: afterCache, legsPending: 0, fx });
     if (!before || !after) return fail('DAY_NOT_FOUND');
     const response: PlanPreviewResponse = { before, after };
     return ok(response);

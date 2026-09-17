@@ -97,11 +97,12 @@ struct DayCostView: View {
                     Text("장소에 적지 않은 식사·입장료·교통·숙박비를 적습니다. 교통 항목을 만들면 그날의 자동 교통비 추정을 대신합니다.")
                 }
                 if let details = cost?.details {
-                    Section("예약·자동 계산") {
-                        ForEach(details.items.filter { $0.source == "BOOKING" || $0.source == "TRANSPORT" }) { item in
+                    Section("예약·숙박 배분·자동 계산") {
+                        ForEach(details.items.filter { $0.source == "BOOKING" || $0.source == "TRANSPORT" || $0.source == "LODGING" }) { item in
                             VStack(alignment: .leading, spacing: Space.xs) {
                                 Text(item.title)
-                                Text("\(TimeFormat.money(item.amount ?? 0, currency: item.currency)) · \(item.source == "BOOKING" ? "예약의 하루 배분액" : "이동 경로 추정")")
+                                if let lodging = item.lodging { LodgingCostNote(allocation: lodging, currency: item.currency) }
+                                Text("\(TimeFormat.money(item.amount ?? 0, currency: item.currency)) · \(item.source == "LODGING" ? "숙박의 하루 배분액" : item.source == "BOOKING" ? "예약의 하루 배분액" : "이동 경로 추정")")
                                     .font(.caption).foregroundStyle(.secondary)
                             }
                         }
@@ -113,7 +114,7 @@ struct DayCostView: View {
                     }
                     if details.hasForeignCurrency {
                         Section("원화 환산 기준") {
-                            Text(details.fxSource == "FALLBACK" ? "기본 참고 환율 · 실시간 시세 아님 · 시세 기준일 없음" : "\(details.fxAsOf ?? "기준일 미제공") 환율")
+                            FxRateNote(source: details.fxSource, asOf: details.fxAsOf)
                                 .font(.caption)
                             ForEach(details.fxRates.keys.filter { $0 != "KRW" }.sorted(), id: \.self) { currency in
                                 Text("1 \(currency) ≈ \(MoneyInput.text(amount: details.fxRates[currency]))원").font(.caption)
@@ -168,7 +169,11 @@ struct DayCostView: View {
                 Text(line?.state == "BOOKING" ? "연결된 예약 금액에 포함" : "비용 미정")
                     .font(.subheadline).foregroundStyle(.secondary)
             }
-            if entry.currency != .krw, let converted = line?.totalKRW {
+            if let lodging = line?.lodging {
+                LodgingCostNote(allocation: lodging, currency: entry.currency.rawValue)
+                if let today = line?.totalKRW { Text("이날 반영 \(TimeFormat.money(today, currency: "KRW"))").font(.caption) }
+            }
+            if entry.currency != .krw, line?.lodging == nil, let converted = line?.totalKRW {
                 Text("합계 반영 약 \(TimeFormat.money(Double(converted), currency: "KRW"))")
                     .font(.caption).foregroundStyle(.secondary)
             }
@@ -228,8 +233,15 @@ private struct CostEntryEditor: View {
                         }
                     }
                 }
+                if !target.isBudget && entry.isLodging {
+                    Section {
+                        Stepper("숙박일수 \(entry.nights)박", value: $entry.nights, in: 1...60)
+                    } footer: {
+                        Text("금액은 숙박 전체 총액으로 입력하세요. 이 날부터 숙박일수만큼 나누고 체크아웃 날은 제외합니다.")
+                    }
+                }
                 Section {
-                    TextField(target.isBudget ? "예산 미설정" : "비용 미정", text: $amount).keyboardType(.decimalPad)
+                    TextField(target.isBudget ? "예산 미설정" : entry.isLodging ? "숙박 총액" : "비용 미정", text: $amount).keyboardType(.decimalPad)
                     Picker("통화", selection: $entry.currency) {
                         ForEach(Currency.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                     }
@@ -277,5 +289,41 @@ private struct CostEntryEditor: View {
         saving = true
         defer { saving = false }
         if await onSave(value) { dismiss() } else { failed = true }
+    }
+}
+
+struct LodgingCostNote: View {
+    let allocation: LodgingCostAllocation
+    let currency: String
+    var body: some View {
+        VStack(alignment: .leading, spacing: Space.xs) {
+            Text("숙박 총액 \(TimeFormat.money(allocation.totalAmount, currency: currency)) · \(allocation.nights)박")
+            if let night = allocation.nightNumber { Text("\(allocation.nights)박 중 \(night)박째 배분액") }
+        }.font(.caption).foregroundStyle(.secondary)
+    }
+}
+
+struct FxRateNote: View {
+    let source: String
+    let asOf: String?
+    private var rateDate: Date? {
+        guard let asOf else { return nil }
+        let parser = ISO8601DateFormatter()
+        parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return parser.date(from: asOf) ?? ISO8601DateFormatter().date(from: asOf)
+    }
+    var body: some View {
+        VStack(alignment: .leading, spacing: Space.xs) {
+            Text(source == "LATEST" ? "최신 제공 환율 · 하루 1회 갱신" : source == "STALE" ? "최신 환율을 받지 못해 이전 환율 사용 중" : "환율 미연결 · 기본 참고 환율 사용 중")
+            if let asOf {
+                if let date = rateDate {
+                    Text("시세 기준 \(date.formatted(date: .abbreviated, time: .shortened))")
+                } else { Text("시세 기준 \(asOf)") }
+            }
+            Text("실제 결제 환율·수수료와 다를 수 있어요.")
+            if source == "LATEST" || source == "STALE" {
+                Link("환율 제공: ExchangeRate-API", destination: URL(string: "https://www.exchangerate-api.com")!)
+            }
+        }.font(.caption).foregroundStyle(.secondary)
     }
 }

@@ -1,6 +1,6 @@
 export interface CostDetails {
   items: {
-    source: 'SPOT' | 'EXTRA' | 'BOOKING' | 'TRANSPORT';
+    source: 'SPOT' | 'EXTRA' | 'BOOKING' | 'TRANSPORT' | 'LODGING';
     key: string;
     title: string;
     kind: string;
@@ -9,6 +9,7 @@ export interface CostDetails {
     basis: 'ENTERED' | 'TOTAL' | 'PER_PERSON';
     people: number;
     totalKRW: number | null;
+    lodging?: { nights: number; totalAmount: number; nightNumber: number | null } | null;
     state: 'UNKNOWN' | 'PARTIAL' | 'FREE' | 'KNOWN' | 'BOOKING';
   }[];
   budget: {

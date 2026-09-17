@@ -1444,6 +1444,22 @@ test('통합: 연결된 숙박은 일정 카드 금액이 예산 기준 (이중 
   w.close();
 });
 
+test('통합: 숙박 총액을 숙박일마다 나누고 체크아웃 날에는 제외한다', { skip: noJsdom }, () => {
+  const w=boot();
+  withTrip(w, JSON.stringify(Array.from({length:4}, (_,i)=>({
+    title:`D${i+1}`,drive:'',note:'',mode:'transit',
+    spots:i===0?[{name:'호텔',city:'P',desc:'',lat:39.5,lng:2.7,stay:true,nights:3,cost:300000}]:[]
+  }))));
+  w.eval('activeDay=0; render()');
+  const amounts=[...w.document.querySelectorAll('.dayCard')].map(card=>{
+    const label=[...card.querySelectorAll('.dist')].find(x=>x.textContent.includes('하루 비용'));
+    return label?Number(label.textContent.replace(/\s+/g,'').match(/하루비용약₩([\d,]+)/)[1].replace(/,/g,'')):0;
+  });
+  assert.deepEqual(amounts,[100000,100000,100000,0]);
+  assert.equal(w.eval('tripCostBreakdown().total'),300000);
+  w.close();
+});
+
 test('통합: 예약 통화가 달라도 원화로 환산해 합산한다', { skip: noJsdom }, () => {
   const w=boot();
   withTrip(w, `[{title:'D1',drive:'',note:'',mode:'transit',spots:[{name:'A',city:'P',desc:'',lat:39.5,lng:2.7}]}]`);
