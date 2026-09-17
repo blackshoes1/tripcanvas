@@ -88,7 +88,7 @@ struct TripCostsView: View {
                     Section {
                         ForEach(response.unallocated) { item in costRow(item) }
                     } header: { Text("날짜에 배분되지 않은 예약 비용") } footer: {
-                        Text("날짜가 없거나 여행 기간 밖에 해당하는 예약 금액입니다. 전체·카테고리 합계에는 포함되며, 날짜별 합계에는 포함되지 않아요. 예약 메뉴에서 날짜와 금액을 수정할 수 있어요.")
+                        Text("항공처럼 날짜로 나누지 않는 예약과, 날짜가 없거나 여행 기간 밖인 예약 금액입니다. 전체·카테고리 합계에는 포함되며, 날짜별 합계에는 포함되지 않아요. 예약 메뉴에서 날짜와 금액을 수정할 수 있어요.")
                     }
                 }
                 if response.hasForeignCurrency {

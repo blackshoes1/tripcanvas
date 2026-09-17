@@ -1387,8 +1387,11 @@ test('통합: 하루 비용에 예약 하루치가 들어가고, 하루 합계�
     const el=[...c.querySelectorAll('.dist')].find(x=>x.textContent.includes('하루 비용'));
     return el? +el.textContent.replace(/\s+/g,'').match(/하루비용약₩([\d,]+)/)[1].replace(/,/g,'') : 0;
   });
-  // 렌터카 3일(양끝 포함) 140,000/일 · 숙박 2박 300,000/박 · 항공 1일 180,000
-  assert.deepEqual(dayCosts(), [18000, 632000, 449000, 140000]);
+  // 렌터카 3일(양끝 포함) 140,000/일 · 숙박 2박 300,000/박 · 항공은 나누지 않는다(전체에만)
+  assert.deepEqual(dayCosts(), [18000, 452000, 449000, 140000]);
+  assert.equal(w.eval(`(()=>{const e=[...document.querySelectorAll('.dayCard')][1].querySelectorAll('.dist');
+    return [...e].find(x=>x.textContent.includes('하루 비용')).textContent.includes('180,000')})()`), false,
+    '항공비는 어느 날의 하루 비용에도 들어가지 않는다');
   assert.equal(w.eval(`(()=>{const e=[...document.querySelectorAll('.dayCard')][3].querySelectorAll('.dist');
     return [...e].find(x=>x.textContent.includes('하루 비용')).textContent.includes('숙박')})()`), false,
     '체크아웃 날엔 숙박비가 붙지 않는다');
@@ -1399,8 +1402,9 @@ test('통합: 하루 비용에 예약 하루치가 들어가고, 하루 합계�
   assert.match(w.document.querySelector('.costMenu summary').textContent, /₩1,239,000/);
   assert.match(w.document.querySelector('.costMenu').textContent, /렌터카/);
 
-  // 예약 기간이 일정 안에 다 들어오면 하루 합계 = 전체 (날수로 나눠도 새는 돈이 없다)
-  assert.equal(dayCosts().reduce((a,x)=>a+x,0), cb.total);
+  // 예약 기간이 일정 안에 다 들어오면 하루 합계 + 항공 = 전체 (날수로 나눠도 새는 돈이 없다).
+  // 항공은 하루치가 없어 전체에만 있으므로 그만큼만 다르다 — 그 외에는 1원도 새지 않는다.
+  assert.equal(dayCosts().reduce((a,x)=>a+x,0) + cb.flight, cb.total);
 
   // 비용이 하나도 없으면 칩 자체를 띄우지 않는다
   w.eval(`trip().bookings=[]; trip().days.forEach(d=>d.spots.forEach(s=>delete s.cost)); render()`);

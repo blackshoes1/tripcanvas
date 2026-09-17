@@ -948,6 +948,20 @@ test('bookingShareOn — 여러 날 걸친 예약을 날수로 나눈 하루치'
   assert.deepEqual(L.bookingShareOn([hotel],'2026-09-04'), [], '체크아웃 날은 숙박비 없음');
 });
 
+test('bookingShareOn — 항공은 날짜로 나누지 않는다 (한 번 낸 돈이지 하루치가 아니다)', () => {
+  const flight = { id: 'f', type: 'flight', title: '왕복', price: 900000, start: '2026-09-01', end: '2026-09-05' };
+  for (const iso of ['2026-09-01', '2026-09-03', '2026-09-05']) {
+    assert.deepEqual(L.bookingShareOn([flight], iso), [], iso + '에 항공 하루치가 붙지 않는다');
+  }
+  // 숙박·렌터카는 그대로 나뉜다 — 항공을 뺐다고 다른 예약이 달라지면 안 된다
+  const car = { id: 'c', type: 'car', price: 300000, start: '2026-09-01', end: '2026-09-03' };
+  const hotel = { id: 'h', type: 'hotel', price: 200000, start: '2026-09-01', end: '2026-09-03' };
+  const shares = L.bookingShareOn([flight, car, hotel], '2026-09-02');
+  assert.deepEqual(shares.map(x => x.id).sort(), ['c', 'h']);
+  assert.equal(shares.find(x => x.id === 'c').amount, 100000, '렌터카 3일');
+  assert.equal(shares.find(x => x.id === 'h').amount, 100000, '숙박 2박');
+});
+
 test('bookingShareOn — 하루치의 합이 예약 총액과 정확히 맞는다 (반올림 누수 없음)', () => {
   const b = {id:'x', type:'car', title:'C', price:100000, start:'2026-09-01', end:'2026-09-03'};   // 3일, 안 나눠떨어짐
   const days = ['2026-09-01','2026-09-02','2026-09-03'];
