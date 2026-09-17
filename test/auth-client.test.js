@@ -194,6 +194,15 @@ test('네트워크 문제로는 토큰을 버리지 않는다 — 오프라인�
   assert.equal(storage.getItem(TC_AUTH.TOKEN_KEY), 'tok-1');
 });
 
+test('서버 5xx·429·점검 중으로는 토큰을 버리지 않는다 — 인프라 장애가 로그아웃이 되면 안 된다', async () => {
+  for (const status of [500, 502, 503, 429]) {
+    const { storage } = setup(() => ({ status, body: { code: 'MAINTENANCE', error: 'MAINTENANCE' } }));
+    storage.setItem(TC_AUTH.TOKEN_KEY, 'tok-1');
+    await TC_AUTH.restore();
+    assert.equal(storage.getItem(TC_AUTH.TOKEN_KEY), 'tok-1', `${status}이면 토큰을 지키고 다음에 다시 확인한다`);
+  }
+});
+
 test('로그아웃은 서버 호출이 실패해도 이 기기에서 끝난다', async () => {
   const { storage } = setup(() => ({ throws: true }));
   storage.setItem(TC_AUTH.TOKEN_KEY, 'tok-1');

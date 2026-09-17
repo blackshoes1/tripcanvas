@@ -6,6 +6,10 @@
 > `https://bokbok9.tail8b977f.ts.net` 이고, 데이터는 NAS PostgreSQL이다. Vercel에는 정적 웹만 남았다.
 > Vercel의 `tripcanvas-api` 프로젝트는 지우지 않았다 — **롤백 대상**이다(아래 "롤백").
 
+> **NAS의 다음 역할 (준비됨, 2026-09-17)**: API·PostgreSQL을 관리형으로 옮기면 NAS는 **오프사이트 백업 목적지**가 된다 —
+> `deploy/docker-compose.backup-only.yml`이 관리형 DB의 `pg_dump`를 이 디스크로 당겨 온다. 이 문서의 나머지는 그때까지의(그리고 롤백 대상으로 남는) 운영 스택이다.
+> 설계와 순서: `docs/managed-infrastructure.md` · `docs/production-cutover.md`.
+
 ## 공개 주소는 Tailscale Funnel이다 — 도메인이 없다
 
 Vercel 함수는 tailnet 안의 PostgreSQL에 닿을 수 없다. 그래서 API를 NAS에서 돌리는데, 도메인이 없어 Caddy가 인증서를 못 받는다.
@@ -133,9 +137,11 @@ NAS의 `/api/health`·`/api/v1/trips`(401)·`/ws`(업그레이드)를 **바깥�
 
 | 응답 | 뜻 | 알림 |
 |---|---|---|
-| `200 UP` | 전부 정상 | — |
-| `200 DEGRADED` | 실시간만 죽음 — 폴백(당겨서 새로고침)이 있어 기능은 산다 | 울리지 않는다 |
-| **`503 DOWN`** | **저장 경로가 죽었다 — 사용자가 여행을 저장할 수 없다** | 울린다 |
+| `200 HEALTHY` | 전부 정상 | — |
+| `200 DEGRADED` | 실시간·백업·점검 모드처럼 폴백이 있는 것만 어긋남(`degradedReasons`에 무엇인지) — 기능은 산다 | 울리지 않는다 |
+| **`503 UNAVAILABLE`** | **저장 경로가 죽었다 — 사용자가 여행을 저장할 수 없다** | 울린다 |
+
+감시 대상은 Vercel 환경변수로 옮긴다: `TC_WATCH_BASE`(API) · `TC_WATCH_REALTIME_BASE`(실시간이 다른 호스트일 때) · `TC_WATCH_WS_PATH`. 관리형 전환 때 이 셋만 바꾼다.
 
 > 실시간 하나로 새벽에 깨우지 않는다. 저장과 실시간의 무게가 다르다.
 
@@ -217,6 +223,8 @@ sudo docker exec tripcanvas-postgres-1 psql -U tripcanvas -d tripcanvas -c '\d <
 | `KAKAO_REST_API_KEY` | 국내 경로(카카오내비)·국내 장소 검색. Vercel에 있는 것과 **같은 키**를 복사해 넣는다 |
 | `GOOGLE_ROUTES_API_KEY` | 해외 경로(Google Routes)용 **서버 전용** 키. 웹 키(리퍼러 제한)·iOS 키(번들 제한)는 서버에서 거절된다 |
 | `BACKUP_DIR` · `BACKUP_KEEP_DAYS` | 덤프 위치 · 보관 일수. ⚠️ **DB와 다른 볼륨**이어야 한다 — DB는 `/volume1`에 있으므로 `/volume2/...`를 쓴다(§60) |
+| `BACKUP_MAX_AGE_HOURS` | `/api/health`가 `ops_backup_runs`의 마지막 성공을 이 시간과 비교한다(기본 26). 넘으면 DEGRADED |
+| `TC_READ_ONLY` | 점검(읽기 전용) 모드. **전환 직전 write freeze에만** `1`. 쓰기 라우트가 503 `MAINTENANCE` — `docs/production-cutover.md` |
 
 ### ⚠️ `.env`를 고쳤으면 **반드시 다시 띄운다**
 

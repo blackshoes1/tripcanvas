@@ -61,7 +61,8 @@ DB에는 RLS가 없다(새 DB). `TripAuthorizationService`가 `roleOf → canRea
 ### 오류 계약 (§29·§30)
 
 `{ code, message, details?, error }` — `error`는 `code`와 같은 값으로, 기존 iOS `APIErrorBody`가 읽는 필드다(§27).
-`UNAUTHORIZED 401 · FORBIDDEN 403 · NOT_FOUND 404 · VALIDATION_ERROR 400 · CONFLICT 409 · STALE_VERSION 409 · RATE_LIMITED 429 · INTERNAL_ERROR 500`.
+`UNAUTHORIZED 401 · FORBIDDEN 403 · NOT_FOUND 404 · VALIDATION_ERROR 400 · CONFLICT 409 · STALE_VERSION 409 · RATE_LIMITED 429 · UPSTREAM_ERROR 502 · MAINTENANCE 503 · INTERNAL_ERROR 500`.
+`MAINTENANCE`는 점검(읽기 전용) 모드(`TC_READ_ONLY=1`, `proxy.ts`)에서 쓰기 라우트가 돌려주는 답이다 — 404·빈 200이 아니라 503이어야 클라이언트가 재생성·덮어쓰기를 하지 않는다.
 `details.revision`은 최상위 `revision`으로도 올린다(기존 `REVISION_CONFLICT` 계약과 같은 자리). 기존 라우트의 코드(`TRIP_NOT_FOUND` 등)는 바꾸지 않는다.
 
 ### 낙관적 동시성 (§91)
@@ -88,12 +89,21 @@ application/domain 코드에 SQL·ORM 쿼리를 쓰지 않는다. 새 구현은 
 - 운영 Supabase 스키마를 그대로 옮겼다. `trips.id`는 운영과 같은 uuid, `users.id`는 Supabase user id를 보존한다(§13).
 - `auth.uid()` 기본값·RLS·security definer RPC는 없다 — 호출자는 API가 알고 규칙은 application이 판정한다.
 - 테스트는 **PGlite**(PostgreSQL WASM) 위에서 같은 마이그레이션을 적용한다 — 로컬 PostgreSQL 없이 SQL이 실제로 검증된다.
-- 운영은 node-postgres Pool(프로세스당 하나, `infrastructure/database/client.ts`).
+- 운영은 node-postgres Pool(프로세스당 하나, `infrastructure/database/client.ts`). TLS는 코드가 아니라 연결 문자열(`sslmode=require`)이 정한다.
+- 계정을 가를 수 있다: 마이그레이션은 `MIGRATE_DATABASE_URL`(소유자), 앱은 `DATABASE_URL`, 실시간의 LISTEN은 `REALTIME_DATABASE_URL`(**직접** 연결 — 트랜잭션 모드 풀러를 지나면 조용히 죽는다). 비우면 `DATABASE_URL`이다.
+- `ops_backup_runs`(0011)는 사용자 데이터가 아니라 운영 기록이다 — `deploy/backup.sh`가 쓰고 `/api/health`가 읽는다.
+- 두 PostgreSQL이 같은지는 `migration/verifyDb.ts`(`npm run verify:db`)가 전수로 판정한다 — 호스팅 이전·복원 리허설의 기준선(`docs/managed-db-migration.md`).
 
 ## 이관 레지스트리 (§35·§77)
 
 `TC_MIGRATION_<DOMAIN>=LEGACY|DUAL_READ|NEW_BACKEND`. `DATABASE_URL`이 없으면 전부 LEGACY. `route-deps.ts`가 요청마다 이 값으로 저장소를 고른다.
 플래그 변경은 경로만 되돌린다 — 새 DB에 쓴 뒤 LEGACY로 돌아가면 그 사이 변경은 Supabase에 없으므로 데이터 복귀 절차가 따로 필요하다(`docs/supabase-migration.md` 롤백 절).
+
+## health (`server/api/health.ts`)
+
+`GET /api/health` → `{ ok, status: HEALTHY|DEGRADED|UNAVAILABLE, api, database, readOnly, components: { api, database, realtime, backup }, checkedAt }`.
+503은 `database: error`일 때뿐이다. 실시간(`REALTIME_HEALTH_URL`의 `/health`가 `LISTENING`인가)·백업(`ops_backup_runs`가 `BACKUP_MAX_AGE_HOURS` 안인가)·점검 모드는 DEGRADED(200)다 — 폴백이 있는 것으로 새벽에 깨우지 않는다.
+비밀·연결 문자열·호스트는 싣지 않는다. 밖에서는 `api/health-watch.js`(Vercel)가 이 응답과 WebSocket 업그레이드를 함께 본다.
 
 ## 실시간 (`server/realtime/`)
 

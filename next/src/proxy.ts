@@ -6,6 +6,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 import { corsHeadersFor, preflightResponse, readAllowedOrigins } from '@/server/api/cors';
+import { blocksWrite, isReadOnly, maintenanceResponse } from '@/server/api/maintenance';
 
 export function proxy(request: NextRequest): Response {
   const origin = request.headers.get('origin');
@@ -18,6 +19,12 @@ export function proxy(request: NextRequest): Response {
       headers: request.headers.get('access-control-request-headers'),
       privateNetwork: request.headers.get('access-control-request-private-network') === 'true'
     });
+  }
+
+  // 점검(읽기 전용) 모드 — 전환 직전 write freeze. 읽기는 그대로 두고 쓰기만 503 MAINTENANCE로 돌려보낸다.
+  // 라우트마다 넣지 않고 여기서 한 번에 막는다: 놓친 쓰기 라우트 하나가 마지막 덤프 뒤의 변경을 만든다.
+  if (isReadOnly(process.env) && blocksWrite(request.method, request.nextUrl.pathname)) {
+    return maintenanceResponse(origin, allowed);
   }
 
   const response = NextResponse.next();

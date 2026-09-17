@@ -111,6 +111,7 @@
     const code=String((error&&(error.apiCode||error.code))||'');
     if(status===401||code==='UNAUTHORIZED') return '로그인이 풀렸어요 — 다시 로그인해 주세요 (편집은 그대로 남아 있어요)';
     if(!status||code==='NETWORK_ERROR') return '서버에 닿지 못했어요 — 연결을 확인해 주세요 (편집은 그대로 남아 있어요)';
+    if(code==='MAINTENANCE') return '점검 중이에요 — 잠시 후 자동으로 다시 저장합니다 (편집은 그대로 남아 있어요)';
     if(status>=500) return '서버가 답하지 못했어요 — 잠시 후 다시 시도합니다 (편집은 그대로 남아 있어요)';
     const message=String((error&&error.message)||'').trim();
     const why=message?` — ${message.length>90?message.slice(0,90)+'…':message}`:'';

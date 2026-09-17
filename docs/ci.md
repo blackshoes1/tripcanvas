@@ -7,14 +7,15 @@ merge 전에 통과해야 하는 것은 다음이 전부다. `.github/workflows/
 
 | 게이트 | 워크플로 잡 | 로컬 |
 |---|---|---|
-| 구문 · 버전 동기 · lint · 시크릿 · `tsc` · 유닛 · 통합 · RLS · `npm audit` | Quality | `scripts/verify-all.sh web` |
+| 구문 · 버전 동기 · lint · 시크릿 · `tsc` · 유닛 · 통합 · RLS · **복구 리허설**(pg_dump → pg_restore → 마이그레이션 → 전수 대조) · `npm audit` | Quality | `scripts/verify-all.sh web` |
 | lint · `tsc` · vitest · `next build` · `tools:build` | Next workspace | `scripts/verify-all.sh next` |
 | Playwright | E2E | `scripts/verify-all.sh web` |
 | XcodeGen · 컴파일 · XCTest · Release 빌드 · 무료 스펙 | iOS | `scripts/verify-all.sh ios` |
 
 `npm run verify:all` 은 셋을 한 번에 돌리고, 끝에 PASS/FAIL/SKIP 표를 찍는다.
 종료 코드는 PASS=0, FAIL=1, SKIP으로 미완료=2다. 알 수 없는 범위도 2로 종료한다. RLS 출력은 TAP으로 고정하고 파이프라인의 테스트 실패를 보존한다.
-**돌릴 수 없는 단계는 PASS가 아니라 SKIP으로 표시된다** — 로컬 PostgreSQL이 없으면 RLS가 그렇다.
+**돌릴 수 없는 단계는 PASS가 아니라 SKIP으로 표시된다** — 로컬 PostgreSQL이 없으면 RLS와 복구 리허설이 그렇다.
+⚠️ PostgreSQL은 root로 돌지 않는다(`initdb: cannot be run as root`) — 컨테이너 안에서 root라면 다른 사용자로 게이트를 돌린다.
 
 > ### merge 규칙
 >

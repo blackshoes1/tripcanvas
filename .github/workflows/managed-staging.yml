@@ -1,0 +1,63 @@
+# 관리형 런타임 **staging** 배포 — 버튼을 눌러야 돈다(workflow_dispatch). 프로덕션은 여기서 배포하지 않는다.
+#
+# 시크릿(저장소 Settings → Environments → managed-staging):
+#   FLY_API_TOKEN · FLY_APP_API_STAGING · FLY_APP_REALTIME_STAGING
+# 값은 어느 단계에서도 출력하지 않는다. 시크릿이 없으면 시작하지 않는다.
+# 마이그레이션은 이 워크플로가 돌리지 않는다 — 사람이 MIGRATE_DATABASE_URL로 돌린다(deploy/managed/README.md).
+name: Managed staging deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: '무엇을 올리나'
+        type: choice
+        default: both
+        options: [api, realtime, both]
+
+concurrency: managed-staging
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy to managed staging
+    runs-on: ubuntu-latest
+    environment: managed-staging
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      FLY_APP_API_STAGING: ${{ secrets.FLY_APP_API_STAGING }}
+      FLY_APP_REALTIME_STAGING: ${{ secrets.FLY_APP_REALTIME_STAGING }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check secrets (값은 출력하지 않는다)
+        run: |
+          missing=0
+          for v in FLY_API_TOKEN FLY_APP_API_STAGING FLY_APP_REALTIME_STAGING; do
+            if [ -z "${!v:-}" ]; then echo "::error::$v 시크릿이 없다 — Settings → Environments → managed-staging"; missing=1; fi
+          done
+          [ "$missing" -eq 0 ]
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Deploy api
+        if: ${{ inputs.target != 'realtime' }}
+        run: flyctl deploy . --config deploy/managed/fly.api.toml --app "$FLY_APP_API_STAGING" --remote-only --build-arg TC_REVISION="$GITHUB_SHA"
+      - name: Deploy realtime
+        if: ${{ inputs.target != 'api' }}
+        run: flyctl deploy . --config deploy/managed/fly.realtime.toml --app "$FLY_APP_REALTIME_STAGING" --remote-only --build-arg TC_REVISION="$GITHUB_SHA"
+      - name: Smoke from outside (health · 401 · websocket upgrade)
+        run: |
+          api="https://$FLY_APP_API_STAGING.fly.dev"
+          rt="https://$FLY_APP_REALTIME_STAGING.fly.dev"
+          curl -fsS "$api/api/health" | head -c 800; echo
+          code=$(curl -s -o /dev/null -w '%{http_code}' "$api/api/v1/trips"); [ "$code" = 401 ] || { echo "::error::/api/v1/trips가 401이 아니다: $code"; exit 1; }
+          ws=$(curl -s --http1.1 -o /dev/null -w '%{http_code}' -H 'Connection: Upgrade' -H 'Upgrade: websocket' -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' "$rt/ws")
+          [ "$ws" = 101 ] || echo "::warning::실시간 업그레이드가 101이 아니다($ws) — 앱은 새로고침 폴백으로 돈다. LISTEN 상태는 /api/health의 components.realtime"
+      - name: Summary
+        run: |
+          {
+            echo "## Managed staging"
+            echo "- commit: \`$GITHUB_SHA\`"
+            echo "- target: ${{ inputs.target }}"
+            echo "- 다음: 로그인 → 여행 목록 → 저장 → 충돌 → 협업 → 실시간 (docs/production-cutover.md Phase B)"
+          } >> "$GITHUB_STEP_SUMMARY"

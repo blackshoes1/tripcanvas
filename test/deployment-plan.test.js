@@ -20,3 +20,8 @@ test('legacy migrations are separate from NAS schema', () => {
 test('docs alone do not request a deployment', () => {
   assert.deepEqual(deploymentTargets(['docs/architecture.md']), []);
 });
+test('managed runtime config is its own target, separate from NAS config', () => {
+  assert.deepEqual(deploymentTargets(['deploy/managed/fly.api.toml']), ['managed-config']);
+  assert.deepEqual(deploymentTargets(['.github/workflows/managed-staging.yml']), ['managed-config']);
+  assert.deepEqual(deploymentTargets(['deploy/docker-compose.backup-only.yml']), ['nas-config']);
+});

@@ -64,6 +64,12 @@ Repository Settings → Branches 또는 Rulesets에서 `main`에:
 
 이 저장소 변경은 branch protection이나 Vercel 설정을 자동 변경하지 않는다.
 
+## 관리형 런타임 (준비됨 · 프로덕션은 아직 NAS)
+
+- `.github/workflows/managed-staging.yml`은 **버튼을 눌러야** 돈다(workflow_dispatch). `managed-staging` 환경의 시크릿이 없으면 시작하지 않고, 값을 출력하지 않는다. 프로덕션은 이 워크플로로 배포하지 않는다.
+- `npm run deployment:plan`이 `deploy/managed/**`·그 워크플로 변경을 `managed-config`로 따로 알린다.
+- 전환 자체(프로덕션 DB cutover · API 주소 변경 · NAS 종료)는 [`production-cutover.md`](production-cutover.md)의 체크리스트를 사람이 승인 후 순서대로 한다. 이 저장소의 어떤 자동화도 그것을 대신 하지 않는다.
+
 ## 실패와 롤백
 
 Preview가 실패하면 merge하지 않는다. Production 회귀는 해당 PR을 revert하는 새 PR로 복구한다. DB migration은 git revert가 아니라 이전 스키마와 호환되는 forward migration을 작성하며, migration 적용 전에 백업한다.

@@ -352,3 +352,20 @@ export const legCache = pgTable('leg_cache', {
   provider: text('provider').notNull(),
   fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow()
 });
+
+/**
+ * 백업 성공 기록(운영 관측용). `deploy/backup.sh`가 덤프를 완성한 뒤 한 행 남기고, `/api/health`가 마지막 성공 시각으로
+ * 백업 최신성을 판정한다 — 컨테이너가 Up이라는 사실은 백업이 있다는 뜻이 아니었다(2026-09-05, docs/backup-restore.md).
+ * 경로·주소·비밀은 넣지 않는다: 어디로 갔는지는 `destination` 한 단어(nas·offsite)뿐이다.
+ */
+export const opsBackupRuns = pgTable('ops_backup_runs', {
+  id: bigint('id', { mode: 'number' }).primaryKey().generatedByDefaultAsIdentity(),
+  startedAt: timestamp('started_at', { withTimezone: true }).notNull(),
+  finishedAt: timestamp('finished_at', { withTimezone: true }).notNull().defaultNow(),
+  ok: boolean('ok').notNull(),
+  bytes: bigint('bytes', { mode: 'number' }),
+  destination: text('destination').notNull(),
+  note: text('note')
+}, (t) => [
+  index('ops_backup_runs_finished_idx').on(t.finishedAt)
+]);
