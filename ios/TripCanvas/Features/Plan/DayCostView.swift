@@ -306,11 +306,17 @@ struct LodgingCostNote: View {
 struct FxRateNote: View {
     let source: String
     let asOf: String?
+    private var rateDate: Date? {
+        guard let asOf else { return nil }
+        let parser = ISO8601DateFormatter()
+        parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return parser.date(from: asOf) ?? ISO8601DateFormatter().date(from: asOf)
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: Space.xs) {
             Text(source == "LATEST" ? "최신 제공 환율 · 하루 1회 갱신" : source == "STALE" ? "최신 환율을 받지 못해 이전 환율 사용 중" : "환율 미연결 · 기본 참고 환율 사용 중")
             if let asOf {
-                if let date = try? Date(asOf, strategy: .iso8601) {
+                if let date = rateDate {
                     Text("시세 기준 \(date.formatted(date: .abbreviated, time: .shortened))")
                 } else { Text("시세 기준 \(asOf)") }
             }
