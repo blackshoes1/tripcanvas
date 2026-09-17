@@ -1,5 +1,6 @@
 // 서버 환경(§57). 비밀은 여기서만 읽고 도메인 코드는 모른다. 값이 없으면 오늘의 배포(Supabase 레거시)와 같은 동작이다.
 import { readAllowedOrigins } from '../api/cors';
+import { isReadOnly } from '../api/maintenance';
 import { readRegistry, type MigrationRegistry } from './migrationRegistry';
 
 export interface SmtpConfig {
@@ -27,6 +28,12 @@ export interface ServerEnv {
   trustedOrigins: string[];
   /** 자체 실시간 사이드카의 공개 주소(wss://…/ws). 없으면 자체 실시간을 쓰지 않는다 */
   realtimeUrl: string | null;
+  /** 실시간 사이드카의 **내부** 헬스 주소(http://realtime:3001/health). /api/health가 LISTEN 상태를 함께 보고한다. 없으면 검사하지 않는다 */
+  realtimeHealthUrl: string | null;
+  /** 백업이 이 시간(시간 단위) 안에 성공해야 정상. null이면 백업 최신성을 검사하지 않는다(ops_backup_runs) */
+  backupMaxAgeHours: number | null;
+  /** 점검(읽기 전용) 모드 — 쓰기 라우트가 503 MAINTENANCE로 답한다. 전환 직전의 write freeze에 쓴다(docs/production-cutover.md) */
+  readOnly: boolean;
   /** 메일 속 링크가 도착할 웹 주소. API 호스트에는 사람이 볼 화면이 없다 */
   webBaseUrl: string;
   smtp: SmtpConfig | null;
@@ -83,6 +90,9 @@ export function parseEnv(env: Record<string, string | undefined>, warn?: (m: str
     // CORS와 같은 목록을 쓴다 — 설정이 없으면 이 앱의 알려진 웹 주소
     trustedOrigins: readAllowedOrigins(env),
     realtimeUrl: (env.REALTIME_URL ?? '').trim() || null,
+    realtimeHealthUrl: (env.REALTIME_HEALTH_URL ?? '').trim() || null,
+    backupMaxAgeHours: Number(env.BACKUP_MAX_AGE_HOURS) > 0 ? Number(env.BACKUP_MAX_AGE_HOURS) : null,
+    readOnly: isReadOnly(env),
     // 설정이 없으면 허용 출처의 첫 번째 — 이 앱의 웹 주소다. 그래야 배포에 값을 하나 더 넣지 않아도 링크가 산다
     webBaseUrl: ((env.WEB_BASE_URL ?? '').trim() || readAllowedOrigins(env)[0] || '').replace(/\/+$/, ''),
     // 카카오내비 프록시가 이미 쓰는 이름을 그대로 쓴다 — 같은 키다

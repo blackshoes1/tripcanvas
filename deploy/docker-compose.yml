@@ -59,6 +59,9 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-tripcanvas}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-tripcanvas}
+      # /api/health가 실시간(LISTEN)과 백업 최신성(ops_backup_runs)까지 보고한다 — 내부 주소라 밖에 나가지 않는다
+      REALTIME_HEALTH_URL: http://realtime:3001/health
+      BACKUP_MAX_AGE_HOURS: ${BACKUP_MAX_AGE_HOURS:-26}
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -96,6 +99,8 @@ services:
       PGPASSWORD: ${POSTGRES_PASSWORD}
       PGDATABASE: ${POSTGRES_DB:-tripcanvas}
       BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-30}
+      # 성공 기록(ops_backup_runs)에 남는 목적지 이름 — 경로·주소가 아니라 한 단어
+      BACKUP_DESTINATION: nas
     volumes:
       - ./backup.sh:/backup.sh:ro
       - ${BACKUP_DIR:-./backups}:/backups
