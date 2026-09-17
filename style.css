@@ -244,6 +244,11 @@
   .candGroup{font-size:11.5px;font-weight:700;color:var(--subtle);letter-spacing:.02em;margin:6px 0 -2px}
   .candCard{border:1px solid var(--border);border-radius:11px;padding:10px 11px;background:var(--surface)}
   .candCard.scheduled{opacity:.72;border-style:dashed}
+  /* 확인한 준비 메모 — 지우지 않고 가라앉힌다(무엇을 이미 챙겼는지가 목록에 남아야 한다) */
+  /* 예약·결제 분리 줄 — 하루 비용 바로 아래, 한 칸 들여 보조 정보임을 드러낸다 */
+  .dist.payLine{opacity:.78;padding-left:14px}
+  .candCard.noteDone{opacity:.62}
+  .candCard.noteDone .candHead b{text-decoration:line-through}
   .candHead{display:flex;align-items:flex-start;gap:8px}
   .candName{flex:1;min-width:0;font-weight:700;font-size:13.5px;overflow-wrap:anywhere}
   .candMeta{color:var(--subtle);font-size:11.5px;margin-top:3px}

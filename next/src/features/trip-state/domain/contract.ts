@@ -853,6 +853,8 @@ export interface TripCostsResponse {
   days: { index: number; title: string; date: string; cost: import('@/features/trip/domain/costTypes').DayCostSummary }[];
   categories: { kind: string; totalKRW: number; unknownCount: number; items: TripCostLine[] }[];
   unallocated: TripCostLine[];
+  /** 여행 전체의 결제 상태별 원화 합계 — 예약해 둔 돈과 이미 낸 돈을 따로 본다. */
+  payTotals: Record<import('@/features/trip/domain/costTypes').CostPayState, number>;
   unknownCount: number;
   transportUnpriced: boolean;
   hasForeignCurrency: boolean;

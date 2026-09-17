@@ -647,3 +647,36 @@ test('합류 안내 — 장소를 모르면 아는 척하지 않는다', () => {
   assert.equal(C.reunionText({name:'카탈루냐 광장'}, '17:30'), '17:30 카탈루냐 광장에서 만나요');
   assert.equal(C.reunionText({name:'카탈루냐 광장'}), '카탈루냐 광장에서 만나요');
 });
+
+// ── 가고 싶은 곳의 분류 ──
+// 표시·거르기를 위한 것이지 결정이 아니다 — 순위나 묶음 규칙을 바꾸지 않는다.
+
+test('candidateCategoryOf — 아는 값만 받고 모르면 고르지 않음(null)', () => {
+  assert.equal(C.candidateCategoryOf('CAFE'), 'CAFE');
+  assert.equal(C.candidateCategoryOf('cafe'), 'CAFE', '소문자로 와도 받는다');
+  assert.equal(C.candidateCategoryOf('  dessert  '), 'DESSERT');
+  assert.equal(C.candidateCategoryOf('NOPE'), null);
+  assert.equal(C.candidateCategoryOf(''), null);
+  assert.equal(C.candidateCategoryOf(null), null);
+  assert.equal(C.candidateCategoryOf(undefined), null, '고르지 않은 것을 기타로 단정하지 않는다');
+  assert.notEqual(C.candidateCategoryOf('ETC'), null, '기타는 고른 값이다');
+});
+
+test('분류 목록은 서버 CHECK와 같은 값이고 사용자가 요청한 분류를 모두 담는다', () => {
+  assert.deepEqual(C.CANDIDATE_CATEGORIES,
+    ['RESTAURANT', 'CAFE', 'DESSERT', 'SIGHT', 'LANDMARK', 'NATURE', 'SHOPPING', 'ACTIVITY', 'STAY', 'ETC']);
+  const sql = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', 'supabase/migrations/202609020007_candidate_category.sql'), 'utf8');
+  for (const cat of C.CANDIDATE_CATEGORIES) {
+    assert.ok(sql.includes(`'${cat}'`), `${cat}가 DB 제약에도 있어야 한다`);
+  }
+});
+
+test('분류는 후보의 순위·묶음을 바꾸지 않는다 (표시일 뿐이다)', () => {
+  const base = { id: 1, title: 'A', created_at: '2026-01-01T00:00:00Z', status: 'PROPOSED', reactions: [{ user_id: 'u1', name: '나', reaction: 'MUST', me: true }] };
+  const withCat = { ...base, category: 'CAFE' };
+  assert.deepEqual(C.candidateMood(withCat, 2), C.candidateMood(base, 2));
+  assert.deepEqual(C.consensusOf(withCat, 2), C.consensusOf(base, 2));
+  const groups = (rows) => Object.fromEntries(Object.entries(C.groupCandidates(rows, 2)).map(([k, v]) => [k, v.map(x => x.id)]));
+  assert.deepEqual(groups([withCat]), groups([base]));
+});

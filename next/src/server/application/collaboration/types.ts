@@ -23,8 +23,13 @@ export interface InviteAccept {
 }
 
 export type CandidateProvider = 'kakao' | 'google';
+/** 가고 싶은 곳의 분류 — 화면 이름은 클라이언트가 붙인다(계약에 라벨을 싣지 않는다). */
+export const CANDIDATE_CATEGORIES = ['RESTAURANT','CAFE','DESSERT','SIGHT','LANDMARK','NATURE','SHOPPING','ACTIVITY','STAY','ETC'] as const;
+export type CandidateCategory = typeof CANDIDATE_CATEGORIES[number];
 export interface CandidateInput {
   title: string; place_id?: string | null; lat?: number | null; lng?: number | null; addr?: string | null; note?: string | null; url?: string | null;
+  /** 들어온 값은 아직 검증 전이라 자유 문자열이다 — 서비스가 아는 값으로 좁히고 모르면 null로 떨어뜨린다. */
+  category?: string | null;
   provider?: CandidateProvider | null; providerId?: string | null;
   /** 같은 담기 요청을 재시도할 때 유지하는 UUID. 장소 이름·좌표를 중복 키로 쓰지 않는다. */
   clientKey?: string | null;
@@ -33,13 +38,14 @@ export interface CandidateView {
   id: number; title: string; place_id: string | null; lat: number | null; lng: number | null; addr: string | null; note: string | null;
   /** place_id는 기존 Google 호환 필드. 카카오 ID를 여기에 섞지 않는다. */
   provider?: CandidateProvider | null; provider_id?: string | null;
-  url: string | null; status: string; scheduled_ref: string | null; proposed_by_label: string; mine: boolean; my_reaction: string | null;
+  url: string | null; category: CandidateCategory | null;
+  status: string; scheduled_ref: string | null; proposed_by_label: string; mine: boolean; my_reaction: string | null;
   must_count: number; ok_count: number; pass_count: number;
   /** user_id는 분리 일정이 누가 어느 쪽인지 가르는 데 쓴다(이름으로 가르면 동명이인이 섞인다). 이메일은 없다(§69) */
   reactions: { user_id: string; name: string; reaction: string; me: boolean }[];
   comment_count: number; created_at: string;
 }
-export type CandidateAction = 'REMOVE' | 'SCHEDULE' | 'UNSCHEDULE' | 'REJECT' | 'REOPEN';
+export type CandidateAction = 'REMOVE' | 'SCHEDULE' | 'UNSCHEDULE' | 'REJECT' | 'REOPEN' | 'CATEGORY';
 export type Reaction = 'MUST' | 'OK' | 'PASS';
 
 export interface CommentView { id: number; body: string; author_label: string; mine: boolean; created_at: string }

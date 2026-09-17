@@ -171,7 +171,7 @@ export class PgCollabRepository implements CollabRepository {
 
   async listCandidates(tripId: string, viewerId: string): Promise<CandidateView[]> {
     const q = sql.raw(`
-      select c.id, c.title, c.place_id, c.provider, c.provider_id, c.lat, c.lng, c.addr, c.note, c.url, c.status, c.scheduled_ref,
+      select c.id, c.title, c.place_id, c.provider, c.provider_id, c.lat, c.lng, c.addr, c.note, c.url, c.category, c.status, c.scheduled_ref,
              ${label('c.trip_id', 'c.proposed_by')} as proposed_by_label,
              (c.proposed_by = $viewer) as mine,
              (select r.reaction from candidate_reactions r where r.candidate_id=c.id and r.user_id=$viewer) as my_reaction,
@@ -197,7 +197,8 @@ export class PgCollabRepository implements CollabRepository {
       id: num(r.id), title: String(r.title), place_id: (r.place_id as string | null) ?? null, lat: r.lat == null ? null : Number(r.lat),
       provider: (r.provider as CandidateProvider | null) ?? null, provider_id: (r.provider_id as string | null) ?? null,
       lng: r.lng == null ? null : Number(r.lng), addr: (r.addr as string | null) ?? null, note: (r.note as string | null) ?? null,
-      url: (r.url as string | null) ?? null, status: String(r.status), scheduled_ref: (r.scheduled_ref as string | null) ?? null,
+      url: (r.url as string | null) ?? null, category: (r.category as CandidateView['category']) ?? null,
+      status: String(r.status), scheduled_ref: (r.scheduled_ref as string | null) ?? null,
       proposed_by_label: String(r.proposed_by_label ?? '멤버'), mine: !!r.mine, my_reaction: (r.my_reaction as string | null) ?? null,
       must_count: num(r.must_count), ok_count: num(r.ok_count), pass_count: num(r.pass_count),
       reactions: (Array.isArray(r.reactions) ? r.reactions : []) as CandidateView['reactions'],
@@ -215,7 +216,7 @@ export class PgCollabRepository implements CollabRepository {
     return this.db.transaction(async (tx) => {
       const [created] = await tx.insert(tripCandidates).values({
         tripId, title: input.title, placeId: input.place_id, provider: input.provider, providerId: input.providerId, clientKey: input.clientKey,
-        lat: input.lat, lng: input.lng, addr: input.addr, note: input.note, url: input.url, proposedBy: userId
+        lat: input.lat, lng: input.lng, addr: input.addr, note: input.note, url: input.url, category: input.category, proposedBy: userId
       }).onConflictDoNothing().returning();
       // 동일 제공자의 확정 ID만 중복으로 본다. 다른 사람이 먼저 담은 내용·예약 상태는 덮어쓰지 않는다.
       let c = created;
@@ -261,6 +262,11 @@ export class PgCollabRepository implements CollabRepository {
         await this.log(tx, c.tripId, actorId, 'CANDIDATE_REJECTED', { title: c.title, candidate_id: Number(c.id) });
       }
     });
+  }
+
+  /** 분류만 바꾼다. 상태(일정에 넣음·뺌)와 섞지 않는다 — 분류는 결정이 아니라 표시다. 기록에 남기지 않는다 */
+  async setCandidateCategory(candidateId: number, category: string | null): Promise<void> {
+    await this.db.update(tripCandidates).set({ category, updatedAt: sql`now()` }).where(eq(tripCandidates.id, candidateId));
   }
 
   /** 빼기는 기록하지 않는다. 반응·코멘트는 cascade */

@@ -36,6 +36,10 @@ const EXPECTED = {
   // 로그인 전: 미리보기(이름·시작일·일수·역할)만. 수락·여행 읽기는 권한 오류
   'anon.preview': 'true:OK:스페인:2026-10-25:2:EDITOR', 'anon.accept': '42501', 'anon.trips': '42501',
   'anon.preview.garbage': 'false:INVALID',
+  // 분류(7단계): 소문자도 받고, 모르는 값은 담기를 막지 않고 '고르지 않음'으로 떨어진다
+  'cat.add.lowercase': 'DESSERT', 'cat.add.unknown': '-', 'cat.add.omitted': '-',
+  'cat.set': 'true', 'cat.set.read': 'CAFE', 'cat.clear': 'true', 'cat.clear.read': '-',
+  'cat.invalid': '22023', 'cat.viewer': '42501',
   // 토큰을 알아도 참여 전에는 본문을 못 본다(§67)
   'c.preview.valid': 'true', 'c.trips': '0',
   // 수락은 멱등(§74) — 두 번째는 already_member, 사용 횟수는 그대로
@@ -160,6 +164,7 @@ for (const shape of ['bigint', 'uuid']) test(`RLS(trips.id=${shape}): 마이그�
     psql(db, ['-f', sql('supabase/migrations/202609020004_member_preferences.sql')]);
     psql(db, ['-f', sql('supabase/migrations/202609020005_candidate_decisions.sql')]);
     psql(db, ['-f', sql('supabase/migrations/202609020006_candidate_reactor_ids.sql')]);
+    psql(db, ['-f', sql('supabase/migrations/202609020007_candidate_category.sql')]);
     // 두 번 적용해도 같다 — 운영에서 재실행돼도 안전해야 한다
     psql(db, ['-f', sql('supabase/migrations/202609020001_trip_collaboration.sql')]);
     psql(db, ['-f', sql('supabase/migrations/202609020002_trip_candidates.sql')]);
@@ -167,6 +172,7 @@ for (const shape of ['bigint', 'uuid']) test(`RLS(trips.id=${shape}): 마이그�
     psql(db, ['-f', sql('supabase/migrations/202609020004_member_preferences.sql')]);
     psql(db, ['-f', sql('supabase/migrations/202609020005_candidate_decisions.sql')]);
     psql(db, ['-f', sql('supabase/migrations/202609020006_candidate_reactor_ids.sql')]);
+    psql(db, ['-f', sql('supabase/migrations/202609020007_candidate_category.sql')]);
     const out = psql(db, ['-f', sql('test/rls/collaboration.sql')]);
     const got = {};
     for (const line of out.split('\n')) {

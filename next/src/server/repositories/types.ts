@@ -178,6 +178,7 @@ export interface CollabRepository {
   setReaction(candidateId: number, userId: string, reaction: string | null): Promise<void>;
   /** SCHEDULED로 바뀌면 CANDIDATE_SCHEDULED, REJECTED로 바뀌면 CANDIDATE_REJECTED 기록 */
   setCandidateStatus(candidateId: number, status: string, scheduledRef: string | null, actorId: string): Promise<void>;
+  setCandidateCategory(candidateId: number, category: string | null): Promise<void>;
   removeCandidate(candidateId: number): Promise<void>;
 
   listComments(candidateId: number, viewerId: string): Promise<CommentView[]>;

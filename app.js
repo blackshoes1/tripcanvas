@@ -999,6 +999,25 @@ function loadFx(){
   }).catch(()=>{});   // 실패 시 폴백/캐시 유지
 }
 function dayCost(day){ return dayEnteredCost(day,fxRates); }
+/**
+ * 그 날의 결제 상태별 하루치 — [['예약',금액],['결제',금액]]. 값이 있는 것만, 표시 순서대로.
+ * 예약(trip.bookings)에서 나온 하루치는 언제나 '예약'이다. 고르지 않은 비용(미구분)은 빼고 돌려준다 —
+ * 미구분을 결제로 치면 이미 쓴 돈이 부풀고, 예약으로 치면 남은 지출이 부풀어 둘 다 거짓말이 된다.
+ * @param {any} day @param {number} di @param {string} iso @returns {[string,number][]}
+ */
+function dayPaySplit(day,di,iso){
+  /** @type {Record<string,number>} */ const sum={RESERVED:0,PAID:0};
+  const add=(/**@type{any}*/item,/**@type{number}*/krw)=>{
+    const st=costPayStateOf(item); if(st==='RESERVED'||st==='PAID') sum[st]+=krw;
+  };
+  (day.spots||[]).forEach((/**@type{any}*/sp)=>{ const v=costAmountOf(sp,'cost'); if(v!==null) add(sp,toKRW(v,sp.cur)); });
+  (day.costItems||[]).forEach((/**@type{any}*/it)=>{ const v=costAmountOf(it,'amount'); if(v!==null) add(it,toKRW(v,it.cur)); });
+  if(iso) sum.RESERVED+=dayBookingCost(iso);   // 예약의 하루치는 정의상 예약이다
+  /** @type {[string,number][]} */ const out=[];
+  if(sum.RESERVED>0) out.push(['🧾 예약',sum.RESERVED]);
+  if(sum.PAID>0) out.push(['💰 결제',sum.PAID]);
+  return out;
+}
 // 그 날짜에 배분된 예약비(숙박·렌터카·항공 하루치) — 원화 환산 합계
 function dayBookingCost(iso){
   // 일정 장소가 이미 값을 들고 있는 예약(연결된 숙박)은 뺀다 — 안 그러면 숙박비가 두 번 잡힌다
@@ -1677,7 +1696,11 @@ function renderSidebar(){
             .filter(p=>p[1]>0);
           const tot=parts.reduce((a,p)=>a+p[1],0); if(!tot) return '';
           const detail=parts.length>1?` <span style="opacity:.55">(${parts.map(p=>`${p[0]} ₩${p[1].toLocaleString()}`).join(' + ')})</span>`:'';
-          return `<div class="dist" title="${escAttr('여러 날 걸친 예약(숙박·렌터카·항공)은 날수로 나눈 하루치로 넣습니다')}">💳 하루 비용 약 ₩${tot.toLocaleString()}${detail}</div>`;
+          // 합계 하나로는 "얼마나 남았지"를 알 수 없다 — 예약해 둔 돈과 이미 낸 돈을 나눠 덧붙인다.
+          // 고르지 않은 것(미구분)은 어느 쪽으로도 세지 않으므로 줄에 쓰지 않는다.
+          const pay=dayPaySplit(day,di,iso);
+          const paidLine=pay.length? `<div class="dist payLine" title="${escAttr('비용마다 정한 결제 상태예요. 고르지 않은 비용은 어느 쪽에도 들어가지 않아요')}">${pay.map(p=>`${p[0]} ₩${p[1].toLocaleString()}`).join(' · ')}</div>`:'';
+          return `<div class="dist" title="${escAttr('여러 날 걸친 예약(숙박·렌터카·항공)은 날수로 나눈 하루치로 넣습니다')}">💳 하루 비용 약 ₩${tot.toLocaleString()}${detail}</div>${paidLine}`;
         })()}
         ${carry?`<div class="spot carry" style="--c:#7a86ad" title="전날 숙소 — 오늘 첫 일정으로 자동 이월 (탭하면 지도에서 보기 · 장소 편집의 🏠 숙소 체크로 관리)"><div class="spotMain"><span class="spotTime eta">🏠</span><button type="button" class="spotIdentity nm" onclick="focusLatLng(${+carry.lat},${+carry.lng})" title="${escAttr(carry.name)}" aria-label="${escAttr(carry.name)} 지도에서 보기"><span class="spotName">${esc(carry.name)}</span></button><span class="spotMenuSpacer" aria-hidden="true"></span></div><div class="spotMeta"><span class="spotMetaItem opt">전날 숙소</span></div></div>`:''}
         ${carEv.filter(e=>e.kind==='pickup').map(carEventRowHtml).join('')}
@@ -2273,6 +2296,8 @@ document.getElementById('newTripBtn').onclick=openNewTrip;
 document.getElementById('tripEditBtn').onclick=()=>{
   document.getElementById('tripName').value=trip().name;
   document.getElementById('tripStart').value=trip().start||'';
+  document.getElementById('tripDays').value=String(trip().days.length);
+  syncTripRangeLabel();
   document.getElementById('tripTimeZone').value=trip().timeZone||'';
   document.getElementById('tripModalBg').classList.add('show');
   loadSnapList();
@@ -2283,11 +2308,179 @@ document.getElementById('tripSave').onclick=()=>{
   if(!guardEdit()) return;
   const timeZone=document.getElementById('tripTimeZone').value.trim();
   if(timeZone&&!validTimeZone(timeZone)){ toast('시간대는 Asia/Tokyo 같은 IANA 형식으로 입력해 주세요','#e63946'); return; }
+  const want=tripDaysInput();
+  // 일정이 든 날을 말없이 지우지 않는다 — 되돌리기가 있어도 사라진 것을 먼저 알려 준다
+  const losing=trip().days.slice(want).filter(d=>(d.spots||[]).length).length;
+  if(losing && !confirm(`마지막 ${trip().days.length-want}일을 지웁니다. 그중 ${losing}일에는 담아 둔 장소가 있어요. 계속할까요?`)) return;
+  const snap=snapshot();
+  const changed=resizeTripDays(want);
   trip().name=document.getElementById('tripName').value.trim()||'이름 없는 여행';
   trip().start=document.getElementById('tripStart').value;
   if(timeZone) trip().timeZone=timeZone; else delete trip().timeZone;
-  document.getElementById('tripModalBg').classList.remove('show'); commit(); toast('저장됨');
+  document.getElementById('tripModalBg').classList.remove('show');
+  commit(null, changed<0?{fit:fitEntry}:undefined);   // 줄였으면 남은 일정에 지도를 다시 맞춘다
+  if(changed>0) toast(`${changed}일 늘렸어요`,'#2a9d3f');
+  else if(changed<0) toast(`${-changed}일 줄였어요`,'#8892b0',{fn:()=>undoWith(snap)});
+  else toast('저장됨');
 };
+/** 여행 설정의 일수 입력 — 1~90(저장 한도)으로 가둔다. @returns {number} */
+function tripDaysInput(){
+  const n=parseInt(document.getElementById('tripDays').value,10);
+  return Math.min(90,Math.max(1,isNaN(n)?trip().days.length:n));
+}
+/**
+ * 여행 기간을 n일로 맞춘다. 늘리면 빈 일자를 뒤에 붙이고, 줄이면 뒤에서부터 덜어낸다.
+ * 앞날을 건드리지 않으므로 이미 짜 둔 일정의 날짜가 밀리지 않는다(시작일은 그대로).
+ * @param {number} n @returns {number} 늘어난(+)·줄어든(-) 일수
+ */
+function resizeTripDays(n){
+  const days=trip().days, diff=n-days.length;
+  if(diff>0){ for(let i=0;i<diff;i++) days.push({title:'',drive:'',note:'',spots:[]}); }
+  else if(diff<0){ days.splice(n); if(activeDay>=days.length) activeDay=days.length-1; }
+  return diff;
+}
+/** 며칠인지 숫자로만 말하지 않는다 — 끝나는 날이 보여야 정할 수 있다(새 여행 모달과 같은 규칙) */
+function syncTripRangeLabel(){
+  const label=document.getElementById('tripRange');
+  const start=document.getElementById('tripStart').value, n=tripDaysInput();
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(start)){ label.textContent=`${n}일`; return; }
+  const base=new Date(start+'T00:00:00'), end=new Date(base.getTime()+(n-1)*86400000);
+  const fmt=(/**@type{Date}*/d)=>`${d.getMonth()+1}/${d.getDate()}`;
+  label.textContent = n<=1? `${fmt(base)} 하루` : `${fmt(base)} → ${fmt(end)} · ${n}일`;
+}
+document.getElementById('tripDays').oninput=syncTripRangeLabel;
+document.getElementById('tripStart').oninput=syncTripRangeLabel;
+
+// ───────────────── 여행 준비 메모 ─────────────────
+// 날짜에 붙지 않는 준비 내용(비자·입국 준비·교통 이용법·특산품…). **여행 문서에 산다** —
+// 일행이 같이 보고 같이 고쳐야 하므로 기기 로컬도, 개인 소유인 여행 기록도 아니다.
+// 일정이 아니므로 일자 카드에 끼우지 않는다: 시간을 차지하지 않는 것을 타임라인에 넣으면 동선이 거짓말을 한다.
+const NOTE_CAT_LABELS={VISA:'🛂 비자',ENTRY:'🛬 입국 준비',TRANSPORT:'🚇 교통',MONEY:'💱 환전·결제',
+  COMM:'📶 통신·유심',SHOPPING:'🎁 특산품·쇼핑',PACKING:'🎒 짐 챙기기',HEALTH:'🏥 건강·보험',ETC:'🗒 기타'};
+/** @param {string} c @returns {string} */
+function noteCatLabel(c){ return NOTE_CAT_LABELS[c]||NOTE_CAT_LABELS.ETC; }
+let noteFilterCat='', editingNoteId=null;
+/** @returns {any[]} */
+function tripNotes(){ return Array.isArray(trip().notes)? trip().notes : []; }
+
+function openNotes(){
+  const cat=document.getElementById('noteCatInput'), filter=document.getElementById('noteFilter');
+  if(!cat.options.length){
+    for(const id of TRIP_NOTE_CATEGORIES){
+      cat.appendChild(new Option(noteCatLabel(id),id));
+      filter.appendChild(new Option(noteCatLabel(id),id));
+    }
+  }
+  cancelNoteEdit();
+  filter.value=noteFilterCat;
+  document.getElementById('noteAddSection').style.display=readOnly()?'none':'';
+  renderNotes();
+  document.getElementById('noteModalBg').classList.add('show');
+}
+/** 편집을 접고 입력칸을 비운다 — '추가'와 '수정'이 같은 폼을 쓴다(입력 자리를 두 곳에 두지 않는다) */
+function cancelNoteEdit(){
+  editingNoteId=null;
+  document.getElementById('noteTitleInput').value='';
+  document.getElementById('noteBodyInput').value='';
+  document.getElementById('noteAdd').textContent='＋ 메모 추가';
+}
+function renderNotes(){
+  const box=document.getElementById('noteList'); box.textContent='';
+  const all=tripNotes();
+  const rows=noteFilterCat? all.filter(n=>n.cat===noteFilterCat) : all;
+  if(!rows.length){
+    const empty=document.createElement('p'); empty.className='hint';
+    empty.textContent=all.length? '이 분류에는 아직 메모가 없어요.' : '아직 메모가 없어요. 비자·입국 준비처럼 날짜에 붙지 않는 것부터 적어 두면 좋아요.';
+    box.appendChild(empty); return;
+  }
+  // 분류 순서는 목록 순서를 따른다 — 같은 분류끼리 모여야 준비물을 훑어볼 수 있다
+  const order=TRIP_NOTE_CATEGORIES.filter(c=>rows.some(n=>n.cat===c));
+  for(const cat of order){
+    const head=document.createElement('div'); head.className='memberSectionHead';
+    const label=document.createElement('b'); label.textContent=noteCatLabel(cat);
+    const count=document.createElement('span'); count.className='hint'; count.style.margin='0';
+    const done=rows.filter(n=>n.cat===cat&&n.done).length, total=rows.filter(n=>n.cat===cat).length;
+    count.textContent=done? `${done}/${total} 확인` : `${total}개`;
+    head.append(label,count); box.appendChild(head);
+    for(const note of rows.filter(n=>n.cat===cat)) box.appendChild(noteCard(note));
+  }
+}
+/** 카드는 createElement로 짓는다 — 메모 본문에 무엇이 들어와도 마크업이 되지 않게(inline onclick 금지) */
+function noteCard(note){
+  const card=document.createElement('div'); card.className='candCard'+(note.done?' noteDone':'');
+  const head=document.createElement('div'); head.className='candHead';
+  const check=document.createElement('input'); check.type='checkbox'; check.checked=!!note.done;
+  check.title='확인했으면 체크해 둬요'; check.setAttribute('aria-label',`${note.title||'메모'} 확인`);
+  check.disabled=readOnly();
+  check.onchange=()=>toggleNoteDone(note.id,check.checked);
+  const title=document.createElement('b'); title.textContent=note.title||'(제목 없음)';
+  head.append(check,title); card.appendChild(head);
+  if(note.body){ const body=document.createElement('p'); body.className='candNote'; body.style.whiteSpace='pre-wrap';
+    body.textContent=note.body; card.appendChild(body); }
+  if(!readOnly()){
+    const row=document.createElement('div'); row.className='row'; row.style.gap='6px';
+    const edit=document.createElement('button'); edit.className='btn'; edit.textContent='✏️ 수정';
+    edit.onclick=()=>startNoteEdit(note.id);
+    const del=document.createElement('button'); del.className='btn'; del.style.color='#ff8fa3'; del.textContent='🗑 삭제';
+    del.onclick=()=>removeNote(note.id);
+    row.append(edit,del); card.appendChild(row);
+  }
+  return card;
+}
+function startNoteEdit(id){
+  const note=tripNotes().find(n=>n.id===id); if(!note) return;
+  editingNoteId=id;
+  document.getElementById('noteCatInput').value=note.cat;
+  document.getElementById('noteTitleInput').value=note.title||'';
+  document.getElementById('noteBodyInput').value=note.body||'';
+  document.getElementById('noteAdd').textContent='저장';
+  document.getElementById('noteTitleInput').focus();
+}
+function saveNote(){
+  if(!guardEdit()) return;
+  const title=document.getElementById('noteTitleInput').value.trim();
+  const body=document.getElementById('noteBodyInput').value.trim();
+  if(!title && !body){ toast('메모 제목이나 내용을 적어 주세요','#e63946'); return; }
+  const cat=document.getElementById('noteCatInput').value;
+  const draft=normalizeTripNote({id:editingNoteId||uid(),cat,title,body,updatedAt:new Date().toISOString(),
+    done:editingNoteId? !!(tripNotes().find(n=>n.id===editingNoteId)||{}).done : undefined});
+  if(!draft){ toast('메모를 저장하지 못했어요','#e63946'); return; }
+  commit(()=>{
+    const notes=tripNotes().slice();
+    const at=notes.findIndex(n=>n.id===draft.id);
+    if(at>=0) notes[at]=draft; else notes.push(draft);
+    trip().notes=notes;
+  });
+  const edited=!!editingNoteId;
+  cancelNoteEdit(); renderNotes();
+  toast(edited?'메모 수정됨':'메모 추가됨','#2a9d3f');
+}
+function toggleNoteDone(id,done){
+  if(!guardEdit()){ renderNotes(); return; }
+  commit(()=>{
+    trip().notes=tripNotes().map(n=>{
+      if(n.id!==id) return n;
+      const next=Object.assign({},n,{updatedAt:new Date().toISOString()});
+      if(done) next.done=true; else delete next.done;
+      return next;
+    });
+  });
+  renderNotes();
+}
+function removeNote(id){
+  if(!guardEdit()) return;
+  const note=tripNotes().find(n=>n.id===id); if(!note) return;
+  const snap=snapshot();
+  commit(()=>{ trip().notes=tripNotes().filter(n=>n.id!==id); if(!trip().notes.length) delete trip().notes; });
+  if(editingNoteId===id) cancelNoteEdit();
+  renderNotes();
+  toast('메모 삭제됨','#8892b0',{fn:()=>{ undoWith(snap); renderNotes(); }});
+}
+document.getElementById('noteMenuBtn').onclick=openNotes;
+document.getElementById('noteAdd').onclick=saveNote;
+document.getElementById('noteClose').onclick=()=>document.getElementById('noteModalBg').classList.remove('show');
+document.getElementById('noteFilter').onchange=e=>{ noteFilterCat=e.target.value; renderNotes(); };
+document.getElementById('noteTitleInput').onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); saveNote(); } };
 // 여행 삭제 (활성/비활성 공통) — 설정 모달·여행 목록 양쪽에서 사용
 function deleteTrip(id){
   const t=store.trips.find(x=>x.id===id); if(!t) return false;
@@ -4688,6 +4881,7 @@ function openCandidates(seed){
   if(!sb||!user){ toast('로그인하면 일행과 후보를 함께 고를 수 있어요','#1d6fd6'); document.getElementById('authBtn').click(); return; }
   const keepDraft=seed && candTripId===store.activeId && (document.getElementById('candTitleInput').value.trim()||document.getElementById('candNoteInput').value.trim());
   candTripId=store.activeId;
+  fillCandCatSelects();
   document.getElementById('candTitle').textContent=`📍 가고 싶은 곳 · ${trip().name||'여행'}`;
   if(!keepDraft){ document.getElementById('candTitleInput').value=seed?.title||''; document.getElementById('candNoteInput').value=seed?.note||''; }
   else toast('작성 중인 후보가 있어요. 먼저 확인해 주세요.');
@@ -4719,6 +4913,24 @@ async function renderCandidates(){
   }
 }
 
+// 가고 싶은 곳의 분류 — 값은 collab.js(서버 CHECK와 같은 목록)가 정하고, 보이는 이름만 여기서 붙인다.
+const CAND_CAT_LABELS={RESTAURANT:'🍽 레스토랑',CAFE:'☕ 카페',DESSERT:'🍰 디저트',SIGHT:'🏛 관광지',
+  LANDMARK:'📸 명소',NATURE:'🌿 자연',SHOPPING:'🛍 쇼핑',ACTIVITY:'🎟 체험·액티비티',STAY:'🛏 숙소',ETC:'📍 기타'};
+/** @param {any} c @returns {string} */
+function candCatLabel(c){ return CAND_CAT_LABELS[String(c)]||''; }
+let candFilterCat='';
+/** 분류 선택지는 한 번만 채운다 — 담기용(고르지 않음 포함)과 거르기용 */
+function fillCandCatSelects(){
+  const add=document.getElementById('candCatInput'), filter=document.getElementById('candCatFilter');
+  if(add.options.length) return;
+  add.appendChild(new Option('분류 없음',''));         // 고르지 않음은 기타와 다르다 — 단정하지 않는다
+  for(const id of TC_COLLAB.CANDIDATE_CATEGORIES){
+    add.appendChild(new Option(candCatLabel(id),id));
+    filter.appendChild(new Option(candCatLabel(id),id));
+  }
+  filter.appendChild(new Option('분류 없음','__NONE__'));
+}
+
 /** 서버에서 받은 후보를 화면에 그린다. 낙관적 갱신 뒤에도 이 함수만 다시 부르면 된다. */
 function drawCandidates(){
   const box=document.getElementById('candList'); if(!box) return;
@@ -4726,9 +4938,17 @@ function drawCandidates(){
   const focusCand=(fc&&/^[\w-]+$/.test(fc.dataset.candId||''))?fc.dataset.candId:null;
   const role=myRole(candTripId), members=(tripRoles[candTripId]||{}).count||0;
   const mode=document.getElementById('candSort').value==='interest'?'interest':'recent';
-  const sorted=TC_COLLAB.sortCandidates(candRows,mode,members);
+  // 분류는 거르기일 뿐이다 — 순위(§12·§79)나 묶음 규칙을 바꾸지 않는다
+  const visible=!candFilterCat? candRows
+    : candFilterCat==='__NONE__'? candRows.filter(c=>!TC_COLLAB.candidateCategoryOf(c.category))
+    : candRows.filter(c=>TC_COLLAB.candidateCategoryOf(c.category)===candFilterCat);
+  const sorted=TC_COLLAB.sortCandidates(visible,mode,members);
   const g=TC_COLLAB.groupCandidates(sorted,members);
   box.innerHTML='';
+  if(candRows.length && !visible.length){
+    box.innerHTML='<div class="hint">이 분류에는 담은 곳이 없어요.</div>';
+    return;
+  }
   if(!candRows.length){
     box.innerHTML=`<div class="hint">${TC_COLLAB.canPropose(role)
       ? '아직 담은 곳이 없어요. 위에 이름을 적어 후보로 담으면 일행이 반응할 수 있어요.'
@@ -4764,7 +4984,8 @@ function candidateCard(c,role,members){
   const nameBox=document.createElement('div'); nameBox.className='candName';
   nameBox.textContent=c.title||'이름 없는 곳';
   const meta=document.createElement('div'); meta.className='candMeta';
-  meta.textContent=[TC_COLLAB.candidateAttribution(c), summary, c.addr||''].filter(Boolean).join(' · ');
+  meta.textContent=[candCatLabel(TC_COLLAB.candidateCategoryOf(c.category)), TC_COLLAB.candidateAttribution(c), summary, c.addr||'']
+    .filter(Boolean).join(' · ');
   nameBox.appendChild(meta);
   head.appendChild(nameBox);
   const verdict=TC_COLLAB.candidateVerdict(c,members);   // 점수는 내부값 — 화면에는 문장만(§21·§22)
@@ -5035,7 +5256,9 @@ async function addCandidate(){
   if(!title){ toast('가고 싶은 곳의 이름을 적어 주세요','#8892b0'); return; }
   candBusy=true; document.getElementById('candAdd').disabled=true;
   try{
-    const {error}=await TC_API.rpc('add_trip_candidate',{p_client_id:candTripId,p_title:title,p_note:note||null});
+    const cat=TC_COLLAB.candidateCategoryOf(document.getElementById('candCatInput').value);
+    const {error}=await TC_API.rpc('add_trip_candidate',
+      {p_client_id:candTripId,p_title:title,p_note:note||null,p_category:cat});
     if(error) throw error;
     document.getElementById('candTitleInput').value=''; document.getElementById('candNoteInput').value='';
     toast('후보로 담았어요 — 일행에게 물어볼까요?');
@@ -5246,6 +5469,7 @@ document.getElementById('candMenuBtn').onclick=openCandidates;
 document.getElementById('candClose').onclick=()=>document.getElementById('candModalBg').classList.remove('show');
 document.getElementById('candAdd').onclick=addCandidate;
 document.getElementById('candRefresh').onclick=renderCandidates;
+document.getElementById('candCatFilter').onchange=e=>{ candFilterCat=e.target.value; drawCandidates(); };
 document.getElementById('candSort').onchange=drawCandidates;
 document.getElementById('candTitleInput').onkeydown=(e)=>{ if(e.key==='Enter'){ e.preventDefault(); addCandidate(); } };
 

@@ -107,7 +107,9 @@ Vercel 함수가 tailnet 안쪽 DB에 접근할 수 없어서 API를 집 NAS로 
 ### 같이 짜기
 
 - **역할은 셋이다.** 주최자(소유자) · 편집 · 보기. 초대 링크는 `#join=<토큰>` 형식 하나를 쓰고, 서버에는 **토큰 해시만** 저장한다. 링크 미리보기에서는 이름·기간·역할까지만 보여 주고, 여행 본문은 멤버가 된 뒤에 내려온다.
-- **가고 싶은 곳.** 후보는 여행 문서가 아니라 별도 테이블에 저장한다. 반응은 MUST/OK/PASS 중 한 사람 한 표이고, 한마디(코멘트)는 후보에만 붙는다.
+- **가고 싶은 곳.** 후보는 여행 문서가 아니라 별도 테이블에 저장한다. 반응은 MUST/OK/PASS 중 한 사람 한 표이고, 한마디(코멘트)는 후보에만 붙는다. 레스토랑·카페·디저트·관광지·명소·자연·쇼핑·체험·숙소로 나눠 담고 거를 수 있다 — 분류는 표시일 뿐 순위를 바꾸지 않는다.
+- **여행 준비 메모.** 비자·입국 준비·교통 이용법·특산품처럼 날짜에 붙지 않는 것들을 분류해 모아 둔다. 여행 문서에 있어 일행에게도 보이고, 확인한 것은 체크해 두면 가라앉는다.
+- **예약과 결제를 나눠 본다.** 비용마다 '예약해 뒀다'와 '이미 냈다'를 정하면 하루·전체 합계가 그 둘로 갈린다. 고르지 않은 비용은 어느 쪽으로도 세지 않는다. 앱에서는 비용 항목에 영수증·품목 사진을 붙일 수 있고, 사진은 올리지 않고 그 기기에만 남는다.
   "다들 좋아해요"는 **전원이 의견을 냈고 아무도 PASS하지 않았을 때만** 표시한다. 인기순으로 일정에 자동 반영하지 않고, 실제 일정에 넣는 건 사람이 누른다.
 - **의견이 갈린 후보.** MUST와 PASS가 같이 있으면 카드에서 세 가지 선택지를 보여 준다: 다 같이 방문 · 자유시간으로 분리 · 이번 일정에서는 제외. 제외는 상태라 다시 되돌릴 수 있다.
   그룹 제안(`buildGroupProposal`)은 반대가 없고 두 명 이상 의견을 낸 후보를 어느 날에 넣을지 **미리보기**만 만들어 준다.
@@ -243,7 +245,7 @@ Vercel 함수가 tailnet 안쪽 DB에 접근할 수 없어서 API를 집 NAS로 
 | 제안·재구성 | `trips/:id/suggestions/:action` · `replan-preview` · `plan-preview` · `activities/:id/:action` | 제안 수락/거절 · 다시 맞추기 미리보기 · 편집한 초안의 하루치를 저장 없이 before/after로 계산 · 완료/건너뜀/되돌리기(응답에 바뀐 Today를 같이 실어 재조회를 없앤다) |
 | 예약·비용 | `trips/:id/bookings` · `prices` · `costs` | 예약 요약(가격 상태 포함) · 가격 관측 기록 · 여행 전체·날짜별·카테고리별 비용 |
 | 같이 짜기 | `trips/:id/members` · `members/:id` · `members/leave` · `invites` · `invites/:id` · `invites/:token` · `invites/:token/accept` | 멤버·역할·나가기 · 초대 만들기/취소 · 초대 미리보기(로그인 없이) · 수락 |
-| 가고 싶은 곳 | `trips/:id/candidates` · `candidates/:id` · `candidates/:id/reaction` · `candidates/:id/comments` · `comments/:id` · `group-proposal` · `preferences` · `activity` | 후보 · 결정(SCHEDULE/REJECT/REOPEN) · 반응(멱등) · 한마디 · 그룹 제안 · 여행별 취향 · 활동 기록 |
+| 가고 싶은 곳 | `trips/:id/candidates` · `candidates/:id` · `candidates/:id/reaction` · `candidates/:id/comments` · `comments/:id` · `group-proposal` · `preferences` · `activity` | 후보 · 결정(SCHEDULE/REJECT/REOPEN) · 분류(CATEGORY) · 반응(멱등) · 한마디 · 그룹 제안 · 여행별 취향 · 활동 기록 |
 | 유입 | `import/preview` · `trips/:id/import/commit` · `itineraries/parse` · `trips/:id/memories` | 공유 분류·후보 미리보기 · 확인 후 저장 · 붙여넣은 일정 글 읽기 · 사진·메모 기록 |
 | 장소 | `places/search` · `places/details` | 국내 검색(카카오 REST 키는 서버에만) · 상세(kakao/google) |
 | 계정·기기 | `me` · `auth-config` · `devices` | 프로필과 실시간 허용 여부 · 어느 Auth를 쓰는지 · 푸시 토큰 |

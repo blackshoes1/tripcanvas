@@ -9,8 +9,9 @@ import { ApiError } from '../../api/errors';
 import type { RequestContext } from '../../auth/types';
 import type { CollabRepository, MemberRole, TripRepository, TripView } from '../../repositories/types';
 import type { PgCollabRepository } from '../../infrastructure/database/pgCollabRepository';
+import { CANDIDATE_CATEGORIES } from './types';
 import type {
-  ActivityView, CandidateAction, CandidateInput, CandidateView, CollabApi, CommentView, InviteAccept, InviteCreated,
+  ActivityView, CandidateAction, CandidateCategory, CandidateInput, CandidateView, CollabApi, CommentView, InviteAccept, InviteCreated,
   InvitePreview, InviteView, MemberAction, MemberView, PreferenceView
 } from './types';
 
@@ -22,6 +23,12 @@ const trimTo = (v: unknown, max: number): string | null => {
   const s = String(v ?? '').trim().slice(0, max);
   return s || null;
 };
+
+/** 모르는 분류는 null이 된다 — 담기가 분류 하나 때문에 실패하지 않게. 소문자로 보내도 받는다. */
+function normalizeCandidateCategory(v: unknown): CandidateCategory | null {
+  const s = String(v ?? '').trim().toUpperCase();
+  return (CANDIDATE_CATEGORIES as readonly string[]).includes(s) ? (s as CandidateCategory) : null;
+}
 const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
 
 export interface CollabServiceDeps {
@@ -184,7 +191,8 @@ export class CollabService implements CollabApi {
     return this.deps.collab.addCandidate(view.record.id, ctx.userId, {
       title, provider, providerId, clientKey, place_id: provider === 'google' ? providerId ?? placeId : placeId,
       lat: input.lat ?? null, lng: input.lng ?? null,
-      addr: trimTo(input.addr, 200), note: trimTo(input.note, 300), url: trimTo(input.url, 500)
+      addr: trimTo(input.addr, 200), note: trimTo(input.note, 300), url: trimTo(input.url, 500),
+      category: normalizeCandidateCategory(input.category)
     });
   }
 
@@ -215,7 +223,16 @@ export class CollabService implements CollabApi {
     if (action === 'SCHEDULE') { await this.deps.collab.setCandidateStatus(c.id, 'SCHEDULED', trimTo(value, 40), ctx.userId); return true; }
     if (action === 'UNSCHEDULE' || action === 'REOPEN') { await this.deps.collab.setCandidateStatus(c.id, 'PROPOSED', null, ctx.userId); return true; }
     if (action === 'REJECT') { await this.deps.collab.setCandidateStatus(c.id, 'REJECTED', null, ctx.userId); return true; }
-    throw new ApiError('VALIDATION_ERROR', { message: 'action은 REMOVE · SCHEDULE · UNSCHEDULE · REJECT · REOPEN 중 하나입니다.' });
+    if (action === 'CATEGORY') {
+      // 빈 값은 '아직 고르지 않음'으로 되돌린다. 모르는 값은 조용히 삼키지 않고 거절한다 —
+      // 담을 때와 달리 여기서는 분류가 요청의 전부라, 떨어뜨리면 아무 일도 안 한 것이 된다.
+      const raw = (value ?? '').trim();
+      const category = raw === '' ? null : normalizeCandidateCategory(raw);
+      if (raw !== '' && category === null) throw new ApiError('VALIDATION_ERROR', { message: '모르는 분류입니다.' });
+      await this.deps.collab.setCandidateCategory(c.id, category);
+      return true;
+    }
+    throw new ApiError('VALIDATION_ERROR', { message: 'action은 REMOVE · SCHEDULE · UNSCHEDULE · REJECT · REOPEN · CATEGORY 중 하나입니다.' });
   }
 
   // ── 코멘트 ──
