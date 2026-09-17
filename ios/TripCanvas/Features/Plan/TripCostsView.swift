@@ -63,12 +63,15 @@ struct TripCostsView: View {
                         }.buttonStyle(.plain)
                     }
                 }
-                Section {
-                    ForEach(payRows(response), id: \.0) { row in
-                        HStack { Text(row.0); Spacer(); Text(money(row.1)).monospacedDigit() }
+                // 예약이나 결제를 하나라도 골랐을 때만 절을 짓는다 — 전부 미구분이면 합계를 한 번 더 말하는 것뿐이다
+                if !payRows(response).isEmpty {
+                    Section {
+                        ForEach(payRows(response), id: \.0) { row in
+                            HStack { Text(row.0); Spacer(); Text(money(row.1)).monospacedDigit() }
+                        }
+                    } header: { Text("예약·결제") } footer: {
+                        Text("예약해 두고 아직 내지 않은 돈과 이미 낸 돈을 나눠 봅니다. 상태를 고르지 않은 비용은 미구분으로 남습니다.")
                     }
-                } header: { Text("예약·결제") } footer: {
-                    Text("예약해 두고 아직 내지 않은 돈과 이미 낸 돈을 나눠 봅니다. 상태를 고르지 않은 비용은 미구분으로 남습니다.")
                 }
                 Section("카테고리별 비용") {
                     ForEach(response.categories) { category in
@@ -121,11 +124,13 @@ struct TripCostsView: View {
 
     private func money(_ value: Double) -> String { TimeFormat.money(value, currency: "KRW") }
 
-    /// 값이 있는 상태만, 표시 순서대로. 전부 0이면 줄을 짓지 않는다.
+    /// 예약이나 결제가 하나라도 있을 때만 줄을 짓는다. 그때는 미구분도 함께 보여 셋을 더하면 전체와 맞게 한다.
+    /// 전부 미구분이면 빈 배열 — 합계를 한 번 더 말하는 줄은 정보가 아니다.
     private func payRows(_ response: TripCostsResponse) -> [(String, Double)] {
-        [CostPayState.reserved, .paid, .none].compactMap { state in
-            let amount = response.payTotals[state.rawValue] ?? 0
-            return amount > 0 ? (state.label, amount) : nil
+        let amount = { (s: CostPayState) in response.payTotals[s.rawValue] ?? 0 }
+        guard amount(.reserved) > 0 || amount(.paid) > 0 else { return [] }
+        return [CostPayState.reserved, .paid, .none].compactMap { state in
+            amount(state) > 0 ? (state.label, amount(state)) : nil
         }
     }
 

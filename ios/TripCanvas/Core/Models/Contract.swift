@@ -805,10 +805,12 @@ struct DayPlanCost: Codable, Hashable, Sendable {
     var payTotals: [String: Double]? = nil
     var details: DayCostDetails? = nil
 
-    /// 값이 있는 상태만, 표시 순서대로. 없으면 빈 배열이라 화면이 줄을 짓지 않는다.
+    /// 예약·결제 중 값이 있는 것만, 표시 순서대로. 둘 다 없으면 빈 배열이라 화면이 줄을 짓지 않는다.
+    /// ⚠️ 미구분은 여기 넣지 않는다 — 아무것도 고르지 않았을 때 "미구분 = 합계"라고 찍으면 같은 숫자를
+    /// 한 번 더 말할 뿐 정보가 없다(2026-09-17 빌드 38에서 그렇게 보였다). 웹과 같은 규칙이다.
     var paySplit: [(state: CostPayState, amount: Double)] {
         guard let payTotals else { return [] }
-        return [CostPayState.reserved, .paid, .none]
+        return [CostPayState.reserved, .paid]
             .compactMap { state in
                 let amount = payTotals[state.rawValue] ?? 0
                 return amount > 0 ? (state, amount) : nil
