@@ -999,6 +999,25 @@ function loadFx(){
   }).catch(()=>{});   // 실패 시 폴백/캐시 유지
 }
 function dayCost(day){ return dayEnteredCost(day,fxRates); }
+/**
+ * 그 날의 결제 상태별 하루치 — [['예약',금액],['결제',금액]]. 값이 있는 것만, 표시 순서대로.
+ * 예약(trip.bookings)에서 나온 하루치는 언제나 '예약'이다. 고르지 않은 비용(미구분)은 빼고 돌려준다 —
+ * 미구분을 결제로 치면 이미 쓴 돈이 부풀고, 예약으로 치면 남은 지출이 부풀어 둘 다 거짓말이 된다.
+ * @param {any} day @param {number} di @param {string} iso @returns {[string,number][]}
+ */
+function dayPaySplit(day,di,iso){
+  /** @type {Record<string,number>} */ const sum={RESERVED:0,PAID:0};
+  const add=(/**@type{any}*/item,/**@type{number}*/krw)=>{
+    const st=costPayStateOf(item); if(st==='RESERVED'||st==='PAID') sum[st]+=krw;
+  };
+  (day.spots||[]).forEach((/**@type{any}*/sp)=>{ const v=costAmountOf(sp,'cost'); if(v!==null) add(sp,toKRW(v,sp.cur)); });
+  (day.costItems||[]).forEach((/**@type{any}*/it)=>{ const v=costAmountOf(it,'amount'); if(v!==null) add(it,toKRW(v,it.cur)); });
+  if(iso) sum.RESERVED+=dayBookingCost(iso);   // 예약의 하루치는 정의상 예약이다
+  /** @type {[string,number][]} */ const out=[];
+  if(sum.RESERVED>0) out.push(['🧾 예약',sum.RESERVED]);
+  if(sum.PAID>0) out.push(['💰 결제',sum.PAID]);
+  return out;
+}
 // 그 날짜에 배분된 예약비(숙박·렌터카·항공 하루치) — 원화 환산 합계
 function dayBookingCost(iso){
   // 일정 장소가 이미 값을 들고 있는 예약(연결된 숙박)은 뺀다 — 안 그러면 숙박비가 두 번 잡힌다
@@ -1677,7 +1696,11 @@ function renderSidebar(){
             .filter(p=>p[1]>0);
           const tot=parts.reduce((a,p)=>a+p[1],0); if(!tot) return '';
           const detail=parts.length>1?` <span style="opacity:.55">(${parts.map(p=>`${p[0]} ₩${p[1].toLocaleString()}`).join(' + ')})</span>`:'';
-          return `<div class="dist" title="${escAttr('여러 날 걸친 예약(숙박·렌터카·항공)은 날수로 나눈 하루치로 넣습니다')}">💳 하루 비용 약 ₩${tot.toLocaleString()}${detail}</div>`;
+          // 합계 하나로는 "얼마나 남았지"를 알 수 없다 — 예약해 둔 돈과 이미 낸 돈을 나눠 덧붙인다.
+          // 고르지 않은 것(미구분)은 어느 쪽으로도 세지 않으므로 줄에 쓰지 않는다.
+          const pay=dayPaySplit(day,di,iso);
+          const paidLine=pay.length? `<div class="dist payLine" title="${escAttr('비용마다 정한 결제 상태예요. 고르지 않은 비용은 어느 쪽에도 들어가지 않아요')}">${pay.map(p=>`${p[0]} ₩${p[1].toLocaleString()}`).join(' · ')}</div>`:'';
+          return `<div class="dist" title="${escAttr('여러 날 걸친 예약(숙박·렌터카·항공)은 날수로 나눈 하루치로 넣습니다')}">💳 하루 비용 약 ₩${tot.toLocaleString()}${detail}</div>${paidLine}`;
         })()}
         ${carry?`<div class="spot carry" style="--c:#7a86ad" title="전날 숙소 — 오늘 첫 일정으로 자동 이월 (탭하면 지도에서 보기 · 장소 편집의 🏠 숙소 체크로 관리)"><div class="spotMain"><span class="spotTime eta">🏠</span><button type="button" class="spotIdentity nm" onclick="focusLatLng(${+carry.lat},${+carry.lng})" title="${escAttr(carry.name)}" aria-label="${escAttr(carry.name)} 지도에서 보기"><span class="spotName">${esc(carry.name)}</span></button><span class="spotMenuSpacer" aria-hidden="true"></span></div><div class="spotMeta"><span class="spotMetaItem opt">전날 숙소</span></div></div>`:''}
         ${carEv.filter(e=>e.kind==='pickup').map(carEventRowHtml).join('')}

@@ -772,6 +772,20 @@ struct DayPlanCostPart: Codable, Hashable, Sendable {
     let amount: Double
 }
 
+/// 예약해 둔 돈인가 이미 낸 돈인가. 분류(무엇에 쓴 돈)와 다른 축이다 —
+/// 같은 '숙박'도 예약만 해 둔 것과 결제한 것이 있다. 고르지 않았으면 `none`이고,
+/// 그것을 결제나 예약 어느 쪽으로도 단정하지 않는다(단정하면 남은 지출이 거짓말이 된다).
+enum CostPayState: String, Codable, Hashable, Sendable, CaseIterable {
+    case reserved = "RESERVED", paid = "PAID", none = "NONE"
+    var label: String {
+        switch self {
+        case .reserved: "예약"
+        case .paid: "결제"
+        case .none: "미구분"
+        }
+    }
+}
+
 struct DayPlanCarriedStay: Codable, Hashable, Sendable {
     let name: String
     let location: GeoPoint?
@@ -786,7 +800,20 @@ struct DayPlanBack: Codable, Hashable, Sendable {
 struct DayPlanCost: Codable, Hashable, Sendable {
     let total: Double
     let parts: [DayPlanCostPart]
+    /// 결제 상태별 원화 합계. 셋을 더하면 `total`과 같다.
+    /// 옛 서버 응답·캐시에는 없을 수 있어 선택이다.
+    var payTotals: [String: Double]? = nil
     var details: DayCostDetails? = nil
+
+    /// 값이 있는 상태만, 표시 순서대로. 없으면 빈 배열이라 화면이 줄을 짓지 않는다.
+    var paySplit: [(state: CostPayState, amount: Double)] {
+        guard let payTotals else { return [] }
+        return [CostPayState.reserved, .paid, .none]
+            .compactMap { state in
+                let amount = payTotals[state.rawValue] ?? 0
+                return amount > 0 ? (state, amount) : nil
+            }
+    }
 }
 
 struct DayPlanTotals: Codable, Hashable, Sendable {
@@ -972,6 +999,9 @@ struct DayCostLine: Codable, Hashable, Sendable, Identifiable {
     let people: Int
     let totalKRW: Double?
     let state: String
+    let payState: CostPayState
+    /// 영수증·품목 사진의 **참조**(사진 보관함 식별자). 원본 이미지는 문서에 넣지 않는다.
+    let photos: [String]
     var id: String { "\(source):\(key)" }
 }
 
@@ -992,6 +1022,8 @@ struct TripCostsResponse: Codable, Sendable {
     let days: [TripCostDay]
     let categories: [TripCostCategory]
     let unallocated: [TripCostLine]
+    /// 여행 전체의 결제 상태별 원화 합계 — 예약해 둔 돈과 이미 낸 돈을 따로 본다.
+    let payTotals: [String: Double]
     let unknownCount: Int
     let transportUnpriced: Bool
     let hasForeignCurrency: Bool
@@ -1024,6 +1056,8 @@ struct TripCostLine: Codable, Sendable, Identifiable {
     let people: Int
     let totalKRW: Double?
     let state: String
+    let payState: CostPayState
+    let photos: [String]
     let dayIndex: Int?
     var id: String { "\(dayIndex.map(String.init) ?? "undated"):\(source):\(key)" }
 }

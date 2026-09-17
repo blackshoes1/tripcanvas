@@ -124,6 +124,11 @@
             "amount": 50000
           }
         ],
+        "payTotals": {
+          "RESERVED": 50000,
+          "PAID": 0,
+          "NONE": 0
+        },
         "details": {
           "items": [
             {
@@ -135,6 +140,8 @@
               "currency": "KRW",
               "basis": "ENTERED",
               "people": 1,
+              "payState": "NONE",
+              "photos": [],
               "totalKRW": null,
               "state": "UNKNOWN"
             },
@@ -147,6 +154,8 @@
               "currency": "KRW",
               "basis": "ENTERED",
               "people": 1,
+              "payState": "NONE",
+              "photos": [],
               "totalKRW": null,
               "state": "BOOKING"
             },
@@ -159,6 +168,8 @@
               "currency": "KRW",
               "basis": "ENTERED",
               "people": 1,
+              "payState": "RESERVED",
+              "photos": [],
               "totalKRW": 50000,
               "state": "KNOWN"
             }

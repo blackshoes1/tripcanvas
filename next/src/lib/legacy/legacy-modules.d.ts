@@ -115,7 +115,7 @@ declare module '@legacy/lib.js' {
     dayEnteredCost(day: unknown, rates: Record<string, number>): number;
     parseCostAmount(text: string, currency?: string): number | null;
     hasManualTransportCost(day: unknown): boolean;
-    tripCostSummary(trip: unknown, days: unknown[], rates: Record<string, number>): Pick<import('@/features/trip-state/domain/contract').TripCostsResponse, 'totalKRW' | 'averagePerDayKRW' | 'categories' | 'unallocated' | 'unknownCount' | 'transportUnpriced' | 'hasForeignCurrency'>;
+    tripCostSummary(trip: unknown, days: unknown[], rates: Record<string, number>): Pick<import('@/features/trip-state/domain/contract').TripCostsResponse, 'totalKRW' | 'averagePerDayKRW' | 'categories' | 'unallocated' | 'payTotals' | 'unknownCount' | 'transportUnpriced' | 'hasForeignCurrency'>;
     dayCostSummary(trip: unknown, di: number, input: { date: string; rates: Record<string, number>; taxi: number | null; transportUnpriced: boolean }): import('@/features/trip/domain/costTypes').DayCostSummary;
     parseHM(t: string | undefined): number;
     hm(min: number): string;

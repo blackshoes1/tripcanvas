@@ -51,12 +51,24 @@ struct TripCostsView: View {
                                     Image(systemName: "chevron.right").font(.caption)
                                 }
                                 if !day.title.isEmpty { Text(day.title).font(.caption).foregroundStyle(.secondary) }
+                                // 그날 얼마를 이미 냈고 얼마가 예약으로 남아 있는지 — 합계 하나로는 안 보인다
+                                if !day.cost.paySplit.isEmpty {
+                                    Text(day.cost.paySplit.map { "\($0.state.label) \(money($0.amount))" }.joined(separator: " · "))
+                                        .font(.caption).foregroundStyle(.secondary)
+                                }
                                 if let count = day.cost.details?.unknownCount, count > 0 {
                                     Text("미정·일부 금액 \(count)개").font(.caption).foregroundStyle(.orange)
                                 }
                             }
                         }.buttonStyle(.plain)
                     }
+                }
+                Section {
+                    ForEach(payRows(response), id: \.0) { row in
+                        HStack { Text(row.0); Spacer(); Text(money(row.1)).monospacedDigit() }
+                    }
+                } header: { Text("예약·결제") } footer: {
+                    Text("예약해 두고 아직 내지 않은 돈과 이미 낸 돈을 나눠 봅니다. 상태를 고르지 않은 비용은 미구분으로 남습니다.")
                 }
                 Section("카테고리별 비용") {
                     ForEach(response.categories) { category in
@@ -108,6 +120,14 @@ struct TripCostsView: View {
     }
 
     private func money(_ value: Double) -> String { TimeFormat.money(value, currency: "KRW") }
+
+    /// 값이 있는 상태만, 표시 순서대로. 전부 0이면 줄을 짓지 않는다.
+    private func payRows(_ response: TripCostsResponse) -> [(String, Double)] {
+        [CostPayState.reserved, .paid, .none].compactMap { state in
+            let amount = response.payTotals[state.rawValue] ?? 0
+            return amount > 0 ? (state.label, amount) : nil
+        }
+    }
 
     private func costRow(_ item: TripCostLine) -> some View {
         VStack(alignment: .leading, spacing: Space.xs) {

@@ -3056,3 +3056,35 @@ test('통합: 여행 기간은 1일 밑으로도, 저장 한도 위로도 가지
           document.getElementById('tripDays').value='500'; document.getElementById('tripSave').onclick()`);
   assert.equal(w.eval(`trip().days.length`), 90, '저장 한도까지만');
 });
+
+// ── 하루 비용의 예약·결제 구분 ──
+
+test('통합: 일자 카드가 예약과 결제를 나눠 보여 준다', { skip: noJsdom }, () => {
+  const w = boot();
+  withTrip(w, `[{title:'D1',drive:'',note:'',mode:'walk',spots:[
+    {name:'입장료',city:'A',desc:'',lat:1,lng:1,cost:12000,payState:'PAID'},
+    {name:'기념품',city:'A',desc:'',lat:1,lng:1,cost:5000}
+  ],costItems:[{id:'tr1',title:'기차표',kind:'TRANSIT',amount:30000,payState:'RESERVED'}]}]`);
+  w.eval(`render()`);
+  const line = w.document.querySelector('.payLine');
+  assert.ok(line, '분리 줄이 그려진다');
+  assert.ok(line.textContent.includes('예약') && line.textContent.includes('30,000'), '예약 금액');
+  assert.ok(line.textContent.includes('결제') && line.textContent.includes('12,000'), '결제 금액');
+  assert.equal(line.textContent.includes('5,000'), false, '고르지 않은 비용은 어느 쪽에도 넣지 않는다');
+});
+
+test('통합: 결제 상태를 아무도 고르지 않았으면 분리 줄을 그리지 않는다', { skip: noJsdom }, () => {
+  const w = boot();
+  withTrip(w, `[{title:'D1',drive:'',note:'',mode:'walk',spots:[{name:'카페',city:'A',desc:'',lat:1,lng:1,cost:5000}]}]`);
+  w.eval(`render()`);
+  assert.equal(w.document.querySelector('.payLine'), null, '말할 것이 없으면 줄을 만들지 않는다');
+});
+
+test('통합: 예약(숙박)의 하루치는 예약으로 센다', { skip: noJsdom }, () => {
+  const w = boot();
+  withTrip(w, `[{title:'D1',drive:'',note:'',mode:'walk',spots:[]},{title:'D2',drive:'',note:'',mode:'walk',spots:[]},{title:'D3',drive:'',note:'',mode:'walk',spots:[]}]`);
+  w.eval(`trip().bookings=[{id:'h1',type:'hotel',title:'호텔',price:200000,cur:'KRW',start:'2026-08-01',end:'2026-08-03'}]; render();`);
+  const line = w.document.querySelector('.payLine');
+  assert.ok(line && line.textContent.includes('예약'), '예약에서 나온 하루치는 예약이다');
+  assert.ok(line.textContent.includes('100,000'), '2박이라 하루치는 10만원');
+});

@@ -84,7 +84,7 @@ With J          ← 제품 (앱 이름 · 웹 타이틀 · PWA · 메일 제목 
 
 - `index.html` — 마크업 (모달·헤더·재생 HUD 등)
 - `app.js` — 앱 로직 전체 (DOM·지도·네트워크)
-- `lib.js` — 순수 로직 (파서·거리·시각·앵커·타임라인·정규화 · **분리 구간** `splitSegments`/`whoKey`). **유닛 테스트 + `tsc` 타입 검사 대상**
+- `lib.js` — 순수 로직 (파서·거리·시각·앵커·타임라인·정규화 · **분리 구간** `splitSegments`/`whoKey` · **결제 상태** `costPayStateOf`/`payStateTotals` · **여행 준비 메모** `TRIP_NOTE_CATEGORIES`/`normalizeTripNote`). **유닛 테스트 + `tsc` 타입 검사 대상**
 - `price.js` — 예약 가격 추적 순수 계산: 실질 절약액·오퍼 조건 매칭(EXACT/EQUIVALENT/SIMILAR)·확정/잠재 절약 판단·호텔 identity 점수 · 렌터카 조건 매칭(carMatchQuality — 차급·변속기·보험·주행거리가 다르면 확정 절약 금지). 예약(`trip.bookings`)은 여행 데이터로 동기화·공유되고, 가격 관측 기록은 기기 로컬 + 로그인 시 **`/api/v1/trips/:id/prices`**(여행과 같은 저장소·같은 권한. 2026-09-04 전환 전에는 Supabase `hotel_price_snapshots` 직접 경로였다). 시세는 `api/hotel-offers.js` 프록시(Metasearch 키 서버 전용)로만 조회 — 키 없으면 미연결 상태를 그대로 표시(가짜 가격 금지). **유닛 테스트 + `tsc` 대상**
 - `adaptive.js` — **Adaptive Travel OS 도메인**(순수): 현재 여행 상태(`buildTripState`) · 고정/유동 분류(`commitmentOf`) · 빈 시간 탐지(`findFreeWindows`) · 다음 행동 후보와 순위(`buildCandidates`/`rankNextActions`) · 일정 재구성(`generateReplan`) · 제안(`buildSuggestions`) · 자연어 해석(`parseIntent`) · 출발 안내(`departureAdvice`) · 빈칸 채우기와 하루 flow(`fillGaps`/`planDayFlow`). DOM·네트워크·현재시각을 모르고 전부 인자로 받는다. **유닛 테스트 + `tsc` 대상**
 - `intake.js` — **유입 계층**(순수): 공유 분류(`classifyShare`) · 날짜/통화 정규화 · 예약 후보 파싱(`parseBookingCandidate`) · 중복(`findDuplicateBooking`) · 여행 매칭(`matchTripForBooking`) · 기록 연결(`associateMemory`) · **붙여넣은 일정 글 읽기**(`parseItinerary`). **저장은 하지 않는다** — 확인한 것만 저장된다. ⚠️ **사람들은 우리 형식으로 다시 쓰지 않는다** — ChatGPT·Claude가 뱉은 그대로 붙여넣으므로 `stripDecor`(마크다운 `**`·이모지) · `expandTables`(마크다운 표 — 모르면 **그 날이 통째로 사라진다**) · `koTime`(`오후 3시`) · `splitNameDesc`(`점심: 카와카미안` → 이름은 오른쪽)를 먼저 지난다. 이름에 꾸밈이 남으면 지오코딩이 실패해 전부 '위치 지정'이 된다(2026-09-08). **유닛 테스트 + `tsc` 대상**
@@ -145,6 +145,14 @@ localStorage: `tripcanvas_v1`(여행) · `tripcanvas_legs_v4`(구간 캐시, 수
 - ⚠️ **`defaultStayMin`과 `suggestStayMin`을 섞지 말 것**(adaptive). 앞은 *내가 계획한 체류*(0 = 안 정함)이고, 뒤는 *제안할 활동의 예상 소요*(60)다. 제안 소요를 0으로 두면 **어떤 빈 시간에도 무한히 들어간다** — 계획 체류가 0인 장소를 제안할 때도 `suggestStayMin`을 쓴다.
 - ⚠️ 입력에서 `parseInt(v)||60` 같은 식을 쓰지 말 것 — **0이 falsy라 0을 넣어도 60이 된다.** 0은 유효한 값이다("들렀다 바로 이동").
 - 화면은 '정하지 않음'과 '0분'을 **둘 다 남긴다**. 계산은 같지만 "아직 안 정했다"와 "바로 간다"는 다른 말이다.
+
+**분류와 결제 상태는 다른 축이다.** 분류(`kind`)는 *무엇에 쓴 돈인가*, 결제 상태(`payState`)는 *냈는가*다 — 같은 '숙박'도 예약만 해 둔 것과 이미 결제한 것이 있다.
+
+- 값은 `RESERVED`(예약) · `PAID`(결제) 둘뿐이고, 고르지 않으면 **저장하지 않는다**. 계산에서는 `NONE`(미구분)으로 센다.
+- ⚠️ **미구분을 어느 쪽으로도 단정하지 않는다.** 결제로 치면 '이미 쓴 돈'이 부풀고, 예약으로 치면 '남은 지출'이 부풀어 둘 다 거짓말이 된다. 그래서 화면도 값이 있는 상태만 말한다.
+- 예약(`trip.bookings`)에서 파생된 하루치는 **언제나 예약**이다(`costPayStateOf(item,'BOOKING')`).
+- 상태별 합계는 `payStateTotals`(lib) 하나가 만든다 — 하루(`dayCostSummary().payTotals`)와 여행 전체(`tripCostSummary().payTotals`)가 같은 규칙을 쓴다. **셋을 더하면 합계와 같아야 한다**(금액 미정과 예약이 대신 내는 장소는 더하지 않는다).
+- 비용 항목의 **영수증·품목 사진**은 `photos`에 **참조만**(사진 보관함 식별자) 싣는다. 원본 이미지를 문서에 넣지 않는다 — 문서는 저장할 때마다 통째로 오가므로 동기화가 무거워지고 공유 링크가 터진다. 그래서 그 사진은 **담은 기기에서만** 보인다(다른 기기에서는 그 문자열이 아무것도 가리키지 않는다). 최대 10장.
 
 **비용은 '하루치'와 '총액'을 구분한다.** 장소 비용(`spot.cost`)·택시비는 그날 쓰는 돈이지만, 예약(숙박·렌터카·항공)은 여러 날에 걸친 총액이다.
 
@@ -236,10 +244,18 @@ localStorage: `tripcanvas_v1`(여행) · `tripcanvas_legs_v4`(구간 캐시, 수
 - 초대 링크는 `#join=<token>` 하나다. 미리보기(`invite_preview`, anon 가능)는 이름·기간·역할까지만 주고, 본문은 `accept_trip_invite`로 멤버가 된 뒤 RLS 아래에서 내려온다. 공유받은 여행의 "삭제"는 `leave_trip`이다.
 - 실시간은 `trip_activity` 이벤트로 온다(아래). `pullTrip`은 여전히 폴백이다 — 탭 복귀·패널 열기에 최신본을 당기고, 로컬 편집이 있으면 기존 충돌 카드로 넘긴다(조용히 덮어쓰지 않는다).
 
+**여행 준비 메모는 일정이 아니다.** 비자·입국 준비·교통 이용법·특산품처럼 **날짜에 붙지 않는** 것들은 `trip.notes`에 산다(분류 `cat` 9가지 · `TRIP_NOTE_CATEGORIES`).
+
+- **여행 문서에 넣는다** — 일행이 같이 보고 같이 고쳐야 하므로 기기 로컬(`tripcanvas_cfg`)도, 개인 소유인 여행 기록(`trip_memories`)도 아니다.
+- 일자 카드에 끼우지 않는다: 시간을 차지하지 않는 것을 타임라인에 넣으면 동선이 거짓말을 한다.
+- 확인한 메모(`done`)는 지우지 않고 가라앉힌다 — 무엇을 이미 챙겼는지가 목록에 남아야 한다. 기본값은 저장하지 않는다.
+
 **후보 장소(가고 싶은 곳)는 아직 일정이 아니다.** 여행 문서가 아니라 `trip_candidates`·`candidate_reactions`에 산다 — 넷이 동시에 하트를 눌러도 리비전 CAS가 서로를 걷어차지 않고, **보기 권한도 의견은 낼 수 있어야** 하고, 한 사람 한 표를 DB(`unique`)가 보장해야 하기 때문이다.
 
 - 한 줄 규칙: **보기 권한은 의견만 낸다 — 여행에 내용을 만들지는 않는다.** 반응(MUST/OK/PASS)은 활성 멤버 전원, 후보 추가·일정 반영은 EDITOR 이상. 후보를 **빼는** 기준은 역할이 아니라 '누가 냈는가'다(제안자 또는 소유자).
 - 두 테이블 모두 **읽기 정책만** 있고 쓰기 정책은 없다 — 변경은 전부 RPC(security definer)를 지난다. `add_trip_candidate` · `list_trip_candidates` · `react_to_candidate`(멱등 upsert, `null`이면 거두기) · `manage_trip_candidate`.
+- 분류(`category` · `CANDIDATE_CATEGORIES`)는 **표시와 거르기를 위한 것이지 결정이 아니다** — 순위를 바꾸지도, 묶음 규칙을 건드리지도 않는다. '아직 고르지 않음'(null)과 '기타'(ETC)는 다른 상태다. 담을 때 모르는 값이 오면 담기를 실패시키지 않고 고르지 않음으로 떨어뜨리고, 분류만 바꾸는 요청에서는 거절한다(떨어뜨리면 아무 일도 안 한 것이 된다).
+- ⚠️ RPC 인자를 더할 때 **기본값이 있어도 `create or replace`는 교체가 아니라 중복 정의(overload)** 다 — 옛 시그니처를 먼저 `drop` 하지 않으면 기존 호출이 `function is not unique`로 죽는다(2026-09-17 `add_trip_candidate`).
 - ⚠️ **인기순 자동 반영은 없다**(§12·§79). `sortCandidates`의 관심 순은 **표시일 뿐 결정이 아니고**, 일정에 넣는 것은 언제나 사람이 누른다. 넣을 때도 최적 위치를 추측하지 않고 고른 날 맨 뒤에 붙인다.
 - ⚠️ `candidateMood`의 `LOVED`("다들 좋아해요")는 **전원이 의견을 냈고 아무도 PASS하지 않았을 때만**이다 — 둘이 좋다고 넷의 마음을 말하지 않는다. 보드는 결정 못 한 것을 맨 위에 둔다(순위가 아니라 *어디에 한마디가 필요한지*).
 - ⚠️ `scheduled_ref`는 장소 id가 아니라 **'2'(2일차) 같은 위치 표시**다 — `normalizeTrip`이 모르는 필드를 떨어뜨려 장소에 안정적인 id가 없다. 그래서 "후보로 되돌리기"는 후보 표시만 되돌리고 일정의 장소는 그대로 둔다.

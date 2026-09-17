@@ -32,6 +32,18 @@ struct CostEntry: Hashable, Sendable, Identifiable {
         get { raw["costPartial"]?.boolValue ?? false }
         set { raw.setOrRemove("costPartial", newValue ? .bool(true) : nil) }
     }
+    /// 예약해 둔 돈인가 이미 낸 돈인가. 고르지 않으면 문서에 남기지 않는다 —
+    /// 기본값을 저장하면 '고르지 않음'과 '미구분으로 골랐음'을 구별할 수 없다.
+    var payState: CostPayState {
+        get { CostPayState(rawValue: raw["payState"]?.stringValue ?? "") ?? .none }
+        set { raw.setOrRemove("payState", newValue == .none ? nil : .string(newValue.rawValue)) }
+    }
+    /// 영수증·품목 사진의 **참조**(사진 보관함 식별자)만 담는다. 원본 이미지는 여행 문서에 넣지 않는다 —
+    /// 문서는 저장할 때마다 통째로 오가므로 사진을 실으면 동기화가 무거워지고 공유 링크가 터진다.
+    var photos: [String] {
+        get { (raw["photos"]?.arrayValue ?? []).compactMap { $0.stringValue } }
+        set { raw.setOrRemove("photos", newValue.isEmpty ? nil : .array(newValue.map { .string($0) })) }
+    }
 
     init(raw: [String: JSONValue] = [:]) { self.raw = raw }
 
@@ -46,7 +58,7 @@ struct CostEntry: Hashable, Sendable, Identifiable {
         var spot = original
         spot.cost = amount
         spot.setField("costKind", kind == "AUTO" ? nil : .string(kind))
-        for key in ["cur", "costBasis", "costPeople", "costPartial"] { spot.setField(key, raw[key]) }
+        for key in ["cur", "costBasis", "costPeople", "costPartial", "payState", "photos"] { spot.setField(key, raw[key]) }
         return spot
     }
 }

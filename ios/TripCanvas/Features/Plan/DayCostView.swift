@@ -13,6 +13,12 @@ struct DayCostSummaryView: View {
             } else {
                 Text("비용 합계 미확인").font(.subheadline)
             }
+            // 합계 하나로는 "얼마나 남았지"를 알 수 없다 — 예약해 둔 돈과 이미 낸 돈을 따로 보여 준다
+            if let cost, !cost.paySplit.isEmpty {
+                Text(cost.paySplit.map { "\($0.state.label) \(TimeFormat.money($0.amount, currency: "KRW"))" }
+                    .joined(separator: " · "))
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             if let budget = day.budget, let amount = budget.amount {
                 Text("하루 예산 \(TimeFormat.money(amount, currency: budget.currency.rawValue)) · \(budget.basis.label)\(budget.basis != .entered ? " · \(budget.people)명" : "")")
                     .font(.caption)
@@ -172,6 +178,20 @@ struct DayCostView: View {
                 Text("합계 반영 약 \(TimeFormat.money(Double(converted), currency: "KRW"))")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            // 무엇에 쓴 돈인지(분류)와 냈는지(상태)는 다른 질문이다 — 상태는 고른 것만 말한다
+            if entry.payState != .none || !entry.photos.isEmpty {
+                HStack(spacing: Space.xs) {
+                    if entry.payState != .none {
+                        Text(entry.payState.label)
+                            .font(.caption2).padding(.horizontal, 6).padding(.vertical, 2)
+                            .background(Ink.accent.opacity(0.12), in: Capsule())
+                    }
+                    if !entry.photos.isEmpty {
+                        Label("\(entry.photos.count)", systemImage: "photo")
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
+                }
+            }
         }
     }
 }
@@ -240,6 +260,20 @@ private struct CostEntryEditor: View {
                     if !target.isBudget { Toggle("일부 금액만 확인했어요", isOn: $entry.isPartial) }
                 } footer: {
                     Text("\(target.isBudget ? "비워 두면 예산 미설정, 0은 예산 0원입니다." : "비워 두면 미정, 0은 확인한 무료입니다.") 1인 금액을 선택한 경우에만 적용 인원을 곱합니다. 원·엔은 정수, 달러·유로·위안은 소수 둘째 자리까지 입력해 주세요.")
+                }
+                if !target.isBudget {
+                    Section {
+                        Picker("결제 상태", selection: $entry.payState) {
+                            ForEach(CostPayState.allCases, id: \.self) { Text($0.label).tag($0) }
+                        }
+                    } footer: {
+                        Text("예약해 두고 아직 내지 않은 돈과 이미 낸 돈을 따로 봅니다. 고르지 않으면 어느 쪽으로도 세지 않아요.")
+                    }
+                    Section {
+                        CostPhotosField(refs: $entry.photos)
+                    } header: { Text("영수증·품목 사진") } footer: {
+                        Text("무엇에 썼는지 기억하려고 붙입니다. 사진 자체는 올리지 않고 이 기기 사진 보관함의 위치만 기억해요 — 일행에게는 보이지 않습니다.")
+                    }
                 }
                 if failed { Section { Text("비용을 저장하지 못했어요. 입력 내용은 유지되어 있어요.").foregroundStyle(.orange) } }
                 if target.isExtra {

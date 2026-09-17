@@ -245,6 +245,8 @@
   .candCard{border:1px solid var(--border);border-radius:11px;padding:10px 11px;background:var(--surface)}
   .candCard.scheduled{opacity:.72;border-style:dashed}
   /* 확인한 준비 메모 — 지우지 않고 가라앉힌다(무엇을 이미 챙겼는지가 목록에 남아야 한다) */
+  /* 예약·결제 분리 줄 — 하루 비용 바로 아래, 한 칸 들여 보조 정보임을 드러낸다 */
+  .dist.payLine{opacity:.78;padding-left:14px}
   .candCard.noteDone{opacity:.62}
   .candCard.noteDone .candHead b{text-decoration:line-through}
   .candHead{display:flex;align-items:flex-start;gap:8px}
