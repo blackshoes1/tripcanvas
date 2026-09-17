@@ -62,6 +62,22 @@ describe('healthReport', () => {
     expect(custom.components.backup.status).toBe('degraded');
   });
 
+  // 배포 순서를 틀리면(새 api가 먼저, migrate가 나중) ops_backup_runs가 아직 없다.
+  // 그때 조회가 던지는데, 그것이 503이 되면 저장이 멀쩡한데도 외부 감시가 장애를 울린다.
+  it('백업 기록 조회가 실패해도 error일 뿐 503이 아니다 — 표가 아직 없는 배포 순간이 있다', async () => {
+    const r = await healthReport({
+      databaseConfigured: true,
+      checkDatabase: ok,
+      lastBackupAt: async () => { throw new Error('relation "ops_backup_runs" does not exist'); }
+    });
+    expect(r.ok).toBe(true);
+    expect(r.status).toBe('DEGRADED');
+    expect(r.database).toBe('ok');
+    expect(r.components.backup.status).toBe('error');
+    // 내부 메시지는 밖으로 내지 않는다
+    expect(JSON.stringify(r)).not.toContain('relation');
+  });
+
   it('점검(읽기 전용) 모드는 DEGRADED로 보이되 ok다 — 읽기는 살아 있다', async () => {
     const r = await healthReport({ databaseConfigured: true, checkDatabase: ok, readOnly: true });
     expect(r).toMatchObject({ ok: true, status: 'DEGRADED', readOnly: true });
