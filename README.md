@@ -52,14 +52,19 @@ J는 계획적이고 침착하게 먼저 챙기되 **대신 결정하지 않는�
 | 인증 | **자체 Auth**(better-auth) — 이메일 확인 · bearer 세션 · 비밀번호 재설정 | NAS API |
 | DB | **PostgreSQL 17** — source of truth. 스키마는 Drizzle 마이그레이션 | NAS (내부 네트워크만, 밖에서 안 보인다) |
 | 실시간 | WebSocket 사이드카 — `trip_activity` 트리거의 `pg_notify`를 LISTEN해 중계 | NAS (루프백 3001) |
-| 백업 | `deploy/backup.sh` — 매일 `pg_dump --format=custom`, 보관 일수는 `BACKUP_KEEP_DAYS` | NAS `backup` 컨테이너 |
+| 백업 | `deploy/backup.sh` — 매일 `pg_dump --format=custom`, 보관 일수는 `BACKUP_KEEP_DAYS`. 성공은 `ops_backup_runs`에 남고 `/api/health`가 최신성을 본다 | NAS `backup` 컨테이너 |
 | 공개 경로 | **Tailscale Funnel** — 도메인이 없어 Caddy가 인증서를 못 받는다. TLS는 Tailscale이 끝낸다 | — |
 | iOS | 네이티브 SwiftUI(iOS 17+) + 위젯 · Live Activity · 공유 확장 · Watch — **같은 API** | 앱 |
 | Supabase | **이관 자산 · 롤백 대상** — 아래 참고 | — |
 
 ⚠️ **가용성이 집 NAS에 걸린다.** NAS가 꺼지거나 Tailscale이 끊기면 저장이 안 된다(로컬 편집은 보존되고, 다시 붙으면 리비전 CAS로 올라간다).
 tailnet 밖에서 그 사실을 알 수 있는 곳이 Vercel뿐이라 `api/health-watch.js`가 밖에서 NAS를 찔러 본다 —
-저장 경로가 죽으면 503, 실시간만 죽으면 폴백이 있으니 200 DEGRADED다.
+저장 경로가 죽으면 503 UNAVAILABLE, 실시간·백업·점검 모드만 어긋나면 폴백이 있으니 200 DEGRADED다.
+
+> **관리형 인프라 전환 — 준비됨, 실행 전 (2026-09-17).** 위 단일 장애점을 없애기 위해 API·PostgreSQL을 관리형으로 옮기고 NAS를
+> 오프사이트 백업으로 내리는 작업의 코드·스크립트·runbook이 들어왔다. **프로덕션은 아직 NAS다** — 전환은 별도 승인으로 사람이 순서대로 한다.
+> 설계 [`docs/managed-infrastructure.md`](docs/managed-infrastructure.md) · 데이터 이전 [`docs/managed-db-migration.md`](docs/managed-db-migration.md) ·
+> 당일 체크리스트 [`docs/production-cutover.md`](docs/production-cutover.md) · 롤백·DR [`docs/disaster-recovery.md`](docs/disaster-recovery.md).
 
 ### 왜 이렇게 생겼나
 
@@ -217,8 +222,10 @@ Vercel 함수가 tailnet 안의 DB에 닿을 수 없어서 API를 집 NAS로 옮
 │   ├── TripCanvasShared/                  App Group 공유 상태
 │   └── TripCanvasTests/                   XCTest + 파리티 픽스처(today.json · live-effects.json)
 ├── deploy/                              NAS docker compose(postgres · migrate · api · realtime · backup) · backup.sh · .env.example · Caddy(안 쓰는 override)
+│   ├── docker-compose.backup-only.yml     전환 뒤 NAS의 역할 — 관리형 DB의 오프사이트 pg_dump만
+│   └── managed/                           관리형 런타임 배포 예시(Fly) · 환경변수 이름 목록 — 앱 코드가 아니라 한 provider의 설정
 ├── supabase/migrations/                 Supabase 시절 스키마 — RLS·RPC의 역사이자 이관 원본
-├── scripts/                             bump-version · check-version-sync · check-secrets · verify-all.sh · pg-local.sh · deployment-plan · rehearse-restore · testflight-*
+├── scripts/                             bump-version · check-version-sync · check-secrets · verify-all.sh · pg-local.sh · deployment-plan · rehearse-restore(-managed) · restore-to-target · verify-db-migration · testflight-*
 ├── test/                                유닛·통합·API 테스트 (node --test) + RLS 통합(test/rls/)
 ├── e2e/ · e2e-next/                     Playwright — 정적 웹 시나리오 · Next 웹 API 연결 흐름
 ├── docs/                                운영·설계 문서 (아래 문서 지도)
@@ -243,7 +250,8 @@ Vercel 함수가 tailnet 안의 DB에 닿을 수 없어서 API를 집 NAS로 옮
 | 계정·기기 | `me` · `auth-config` · `devices` | 프로필과 실시간 허용 여부 · 어느 Auth를 쓰는지 · 푸시 토큰 |
 
 `/api/auth/*`는 better-auth가 만든다(`sign-in/email` · `sign-up/email` · `get-session` · `request-password-reset` · `sign-out`). 새 비밀번호를 정하는 화면은 웹(`#reset=`)에만 있다.
-`/api/health`는 살아 있는지만 답한다.
+`/api/health`는 `HEALTHY / DEGRADED / UNAVAILABLE`과 구성요소(api · database · realtime · backup)·점검 모드를 답한다 — 503은 DB가 죽었을 때뿐이다.
+`TC_READ_ONLY=1`이면 `/api/v1/*`·`/api/auth/*`의 쓰기가 503 `MAINTENANCE`로 답한다(전환 직전 write freeze). 읽기는 그대로다.
 
 ## 문서 지도
 
@@ -258,6 +266,8 @@ Vercel 함수가 tailnet 안의 DB에 닿을 수 없어서 API를 집 NAS로 옮
 | [`docs/nas-deployment.md`](docs/nas-deployment.md) | NAS 운영 — compose · Funnel · 환경변수 · 처음 띄우기 · 롤백 |
 | [`docs/nas-release.md`](docs/nas-release.md) | 반복 릴리스 절차 — 대상 판정(`deployment:plan`) · 이미지 셋 빌드 · 복구 확인 |
 | [`docs/backup-restore.md`](docs/backup-restore.md) | 백업과 복구. **복구해 본 백업만 백업이다** |
+| [`docs/managed-infrastructure.md`](docs/managed-infrastructure.md) | **관리형 인프라 전환 설계** — 현재 SPOF · 조사 결과 · 목표 구조 · provider 선택 · 환경변수 계약 |
+| [`docs/managed-db-migration.md`](docs/managed-db-migration.md) · [`docs/production-cutover.md`](docs/production-cutover.md) · [`docs/disaster-recovery.md`](docs/disaster-recovery.md) | 데이터 이전(복원·전수 대조) · 당일 체크리스트(승인 후) · 롤백 6가지와 RPO/RTO |
 | [`docs/deployment-workflow.md`](docs/deployment-workflow.md) · [`docs/ci.md`](docs/ci.md) | 브랜치 → PR → 게이트 → merge 흐름 · 필수 게이트와 실패 원인 분류 |
 | [`docs/security.md`](docs/security.md) · [`docs/data-validation.md`](docs/data-validation.md) | 키 관리와 보안 기준 · 유입 데이터 한도와 schema migration |
 | [`docs/collaboration.md`](docs/collaboration.md) | 함께하기 1~6단계 — 멤버십·초대 / 후보·반응 / 코멘트·활동·실시간 / 취향·합의 / 결정·제안 / 분리 시간 |
@@ -322,6 +332,8 @@ npm run test:e2e                # Playwright — core-flows · pwa · accessibil
 npm run lint && npm run check:types && npm run security:scan && npm run check:version
 npm run test:rls                # 로컬 PostgreSQL이 있을 때만 (scripts/pg-local.sh)
 npm run test:e2e:next           # Next 웹의 API 연결 흐름
+npm run rehearse:restore        # 합성 데이터로 pg_dump → pg_restore → 마이그레이션 → 전수 대조 (로컬 PostgreSQL 필요)
+SOURCE_DATABASE_URL=… TARGET_DATABASE_URL=… scripts/verify-db-migration.sh   # 두 PostgreSQL이 같은가 — PASS/FAIL/SKIP
 ```
 
 - 순수 모듈(`lib` · `price` · `adaptive` · `intake` · `collab` · `api` · `auth` · `sync` · `routing`)은 유닛 테스트와 `tsc`(JSDoc 타입) 대상이다. 새 순수 로직은 여기에 넣고 `test/`에서 테스트한다.

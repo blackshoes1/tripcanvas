@@ -21,6 +21,14 @@ flowchart TD
   API --> Providers[지도·경로 외부 API]
 ```
 
+## 관리형 인프라 전환 (준비됨 · 실행 전, 2026-09-17)
+
+위 구성에서 API·실시간·PostgreSQL·백업이 **NAS 한 대**에 있다. 그것을 관리형 컨테이너 런타임 + 관리형 PostgreSQL로 옮기고 NAS를
+오프사이트 백업(`deploy/docker-compose.backup-only.yml`)으로 내리는 설계와 도구가 들어왔다 — [`managed-infrastructure.md`](managed-infrastructure.md).
+앱 코드는 호스팅 위치를 모른다: 바뀌는 것은 환경변수(`DATABASE_URL`·`REALTIME_DATABASE_URL`·`API_BASE_URL`·`REALTIME_URL`…)와
+클라이언트의 기본 주소뿐이다. 전환 절차는 [`production-cutover.md`](production-cutover.md), 되돌리기는 [`disaster-recovery.md`](disaster-recovery.md).
+**이 문서의 구성도는 아직 NAS가 프로덕션이라는 사실을 그린다.**
+
 ## 구성요소와 장애 경계
 
 | 구성요소 | 책임·상태 | 배포·설정 | 장애 시 영향 / 소스 |
@@ -31,7 +39,7 @@ flowchart TD
 | API | 인증·검증·도메인 결과·권한·여행 저장 조립 | NAS `api` 이미지 | 로그인·공유 저장·서버 판단 중단. `next/src/app/api/v1/route-deps.ts` |
 | PostgreSQL | JSONB 여행+revision, 멤버, 자체 인증 세션, 이력, 가격, 구간 캐시 | NAS 볼륨 / `migrate` | API와 실시간 모두 영향. `next/src/server/infrastructure/database/schema.ts` |
 | 실시간 | 커밋된 활동을 갱신 신호로 전달. 문서 본문은 API 재조회 | NAS `realtime` 이미지 / 공개 WS 주소 | 갱신 신호 지연. API 재조회 경로는 유지. `next/src/server/realtime/`, `app.js`의 `startLive`, iOS `RealtimeClient.swift` |
-| 백업 | 성공한 custom 덤프 보관, 실패 후 5분 재시도 | NAS `backup` / 외부 복제는 NAS 별도 설정 | 컨테이너 Up만으로 최근 백업·외부 복제를 보장하지 않음. `deploy/backup.sh` |
+| 백업 | 성공한 custom 덤프 보관, 실패 후 5분 재시도. 성공은 `ops_backup_runs`에 기록 | NAS `backup` / 외부 복제는 NAS 별도 설정 | 컨테이너 Up만으로 최근 백업·외부 복제를 보장하지 않음 — `/api/health`의 `backup`이 26시간 안의 성공 기록을 본다. `deploy/backup.sh` |
 | Vercel 함수 | 지도·가격 프록시와 NAS 외부 경로 점검 | 웹과 함께 배포 | 지도·가격 일부 기능 또는 외부 점검 영향. `api/`, `vercel.json` |
 
 ## 요청과 저장

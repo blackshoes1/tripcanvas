@@ -65,6 +65,15 @@ CDN 라이브러리는 정확한 버전과 SRI(Subresource Integrity, 내려받�
 - 서버는 전환기 동안 **Supabase 토큰과 자체 Auth 세션을 모두** 받는다(`compositeVerifier`). 하나가 죽어도 다음이 본다.
 - ⚠️ 실시간 사이드카는 API와 **같은 `AUTH_SECRET`**을 써야 한다. 다르면 아무도 실시간에 붙지 못한다.
 
+## 관리형 인프라로 옮길 때 (준비됨, `docs/managed-infrastructure.md`)
+
+- **비밀은 provider의 시크릿 저장소에만.** `DATABASE_URL`·`AUTH_SECRET`·provider 토큰·메일·지도 서버 키·백업 주소는 저장소·워크플로 로그·채팅에 나오지 않는다. `.github/workflows/managed-staging.yml`은 시크릿 유무만 확인하고 값을 출력하지 않는다. `check-secrets.js`가 그대로 문지기다.
+- **DB는 공개 인터넷에 무제한 노출하지 않는다** — provider의 IP/네트워크 제한에 런타임과 NAS(백업)의 egress만. 런타임 egress IP가 고정이 아니면 그 사실을 적고 TLS + 긴 비밀번호로 버틴다.
+- **TLS 필수** — 연결 문자열 `sslmode=require`. 요즘 `pg`가 verify-full로 읽어 체인에 걸리면 `uselibpqcompat=true`를 붙이되, 그것이 "체인 검증을 끈다"는 뜻임을 안다.
+- **계정 분리** — 마이그레이션/복원(소유자, `MIGRATE_DATABASE_URL`)과 앱(`DATABASE_URL`)과 백업(읽기, `BACKUP_SOURCE_URL`)을 가를 수 있으면 가른다. provider가 하나만 주면 그대로 쓰고 문서에 적는다.
+- `/api/health`·`/api/health-watch`는 상태 단어·시각·시간 수만 낸다. 상세 문장·호스트·연결 문자열은 없다(테스트가 `password`·`token` 문자열 부재를 확인한다).
+- 점검 모드(`TC_READ_ONLY`)는 CORS를 느슨하게 만들지 않는다 — 허용된 출처에만 헤더를 준다.
+
 ## 네트워크 경계 (NAS)
 
 - PostgreSQL은 `internal: true` 도커 네트워크에만 있다 — 호스트에도, 인터넷에도 나오지 않는다.
