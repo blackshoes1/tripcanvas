@@ -87,6 +87,12 @@ test('저장 실패: 서버 5xx는 잠시 후 다시 시도한다고 말한다',
   assert.match(S.saveFailText({status:502,apiCode:'UPSTREAM_ERROR',message:'x'}),/잠시 후/);
 });
 
+test('저장 실패: 점검 중(503 MAINTENANCE)은 점검이라고 말하고 자동 재시도를 약속한다 — 전환 직전 write freeze',()=>{
+  const text=S.saveFailText({status:503,apiCode:'MAINTENANCE',message:'점검 중입니다'});
+  assert.match(text,/점검 중/);
+  assert.match(text,/편집은 그대로/,'로컬 편집이 살아 있다는 사실은 늘 함께 말한다');
+});
+
 test('저장 실패: 400은 서버가 준 이유를 그대로 보여 준다',()=>{
   const text=S.saveFailText({status:400,apiCode:'VALIDATION_ERROR',message:'문자열이 허용 길이를 초과했습니다'});
   assert.match(text,/문자열이 허용 길이를 초과했습니다/,'원인을 삼키면 고칠 수가 없다');

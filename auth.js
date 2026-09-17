@@ -150,7 +150,11 @@
     if (!token) { setSession(null); return null; }
     try {
       const res = await call('/api/auth/get-session', { headers: { authorization: 'Bearer ' + token } });
-      const body = res.ok ? await readBody(res) : null;
+      // 죽은 토큰(401·403)만 지운다. 5xx·429·점검 중은 **서버 사정**이다 — 그걸로 로그아웃시키면
+      // 인프라 장애·전환 때마다 사용자가 다시 로그인하게 된다(편집은 남지만 동기화가 멈춘다).
+      if (res.status === 401 || res.status === 403) { writeToken(null); setSession(null); return null; }
+      if (!res.ok) return _session;
+      const body = await readBody(res);
       const u = body && body.user;
       if (!u || !u.id) { writeToken(null); setSession(null); return null; }
       setSession({ token, user: { id: String(u.id), email: String(u.email || '') } });
