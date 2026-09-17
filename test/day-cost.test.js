@@ -209,3 +209,84 @@ test('비용 사진은 참조만 싣고 개수·길이를 제한한다 — 원�
   assert.deepEqual(summary(trip).details.items.find(i => i.key === 'c2').photos, ['ok'],
     '계산 결과가 사진 참조를 그대로 실어 화면이 다시 읽지 않게 한다');
 });
+
+// ── 준비한 비용 / 가서 쓰는 비용 (2026-09-17) ──────────────────────────────────────
+
+test('예약은 결제했다고 표시한 것만 결제이고, 하루치·잔액·가계부 줄이 같은 상태를 말한다', () => {
+  const trip = L.normalizeTrip({ days: [{ spots: [] }, { spots: [] }, { spots: [] }], start: '2026-10-01', bookings: [
+    { id: 'stay', type: 'hotel', title: '호텔', price: 90000, start: '2026-10-01', end: '2026-10-04' },
+    { id: 'fly', type: 'flight', title: '항공', price: 200000, payState: 'PAID' },
+    { id: 'car', type: 'car', title: '렌터카', price: 60000, start: '2026-10-01', end: '2026-10-02', payState: 'DONE' }
+  ] });
+  assert.equal(trip.bookings[1].payState, 'PAID', '아는 값은 살아남는다');
+  assert.equal(trip.bookings[2].payState, undefined, '모르는 값은 남기지 않는다 — 예약으로 센다');
+  const days = trip.days.map((_, index) => ({ index, cost: summary(trip, index) }));
+  const share = days[0].cost.details.items.find(i => i.source === 'BOOKING' && i.key === 'stay');
+  assert.equal(share.payState, 'RESERVED', '현장 결제 호텔의 하루치는 예약');
+  assert.equal(days[0].cost.details.items.find(i => i.key === 'car').payState, 'RESERVED');
+  const result = L.tripCostSummary(trip, days, rates);
+  assert.equal(result.unallocated.find(i => i.key === 'fly').payState, 'PAID', '결제한 항공의 잔액 줄은 결제');
+  assert.deepEqual(result.payTotals, { RESERVED: 150000, PAID: 200000, NONE: 0 });
+  assert.deepEqual(result.prep.items.map(i => [i.key, i.payState, i.totalKRW]),
+    [['stay', 'RESERVED', 90000], ['fly', 'PAID', 200000], ['car', 'RESERVED', 60000]], '가계부는 예약을 전액 한 줄로');
+  assert.deepEqual(result.prep.payTotals, { RESERVED: 150000, PAID: 200000, NONE: 0 });
+});
+
+test('여행 단위 준비 비용(trip.costItems)은 하루 항목과 같은 규칙으로 정규화되고 어느 날에도 속하지 않는다', () => {
+  const trip = L.normalizeTrip({ days: [{ spots: [{ name: '점심', cat: 'food', cost: 15000, payState: 'PAID' }] }], costItems: [
+    { id: 'ins', title: '여행자보험', kind: 'OTHER', amount: 30000, payState: 'PAID', paidOn: '2026-09-10' },
+    { id: 'sim', title: '유심', kind: 'BOGUS', amount: 12.5, cur: 'USD', paidOn: '어제' },
+    { id: 'bad id', title: '버림', amount: 1 },
+    { title: 'id 없음', amount: 1 }
+  ] });
+  assert.deepEqual(trip.costItems.map(i => i.id), ['ins', 'sim'], '불량 항목은 버린다');
+  assert.equal(trip.costItems[1].kind, 'OTHER', '모르는 분류는 기타');
+  assert.equal(trip.costItems[0].paidOn, '2026-09-10');
+  assert.equal(trip.costItems[1].paidOn, undefined, '날짜 모양이 아니면 버린다');
+  const twice = L.normalizeTrip(JSON.parse(JSON.stringify(trip)));
+  assert.deepEqual(twice.costItems, trip.costItems, '왕복에서 그대로다');
+  assert.equal(L.normalizeTrip({ days: [{}], costItems: [] }).costItems, undefined, '비면 필드째 생략');
+
+  const day = summary(trip);
+  assert.equal(day.total, 15000, '여행 단위 항목은 하루 합계에 들어가지 않는다');
+  const result = L.tripCostSummary(trip, [{ index: 0, cost: day }], rates);
+  const usd = Math.round(12.5 * rates.USD);
+  assert.equal(result.totalKRW, 15000 + 30000 + usd);
+  assert.equal(result.categories.find(c => c.kind === 'OTHER').totalKRW, 30000 + usd, '분류별에도 들어간다');
+  const lines = result.prep.items;
+  assert.deepEqual(lines.map(i => [i.source, i.key, i.dayIndex]), [['TRIP', 'ins', null], ['TRIP', 'sim', null]]);
+  assert.equal(result.prep.totalKRW, 30000 + usd);
+  assert.deepEqual(result.prep.payTotals, { RESERVED: 0, PAID: 30000, NONE: usd });
+  assert.equal(result.hasForeignCurrency, true);
+});
+
+test('준비한 비용과 가서 쓰는 비용을 더하면 전체와 같고, 현지 지출에는 예약 하루치가 없다', () => {
+  const trip = L.normalizeTrip({ start: '2026-10-01', days: [
+    { spots: [{ name: '입장료', cost: 12000, payState: 'PAID' }], costItems: [{ id: 'bus', kind: 'TRANSIT', amount: 3000 }] },
+    { spots: [{ name: '저녁', cost: 40000 }] }
+  ], bookings: [
+    { id: 'stay', type: 'hotel', title: '호텔', price: 100000, start: '2026-10-01', end: '2026-10-02', payState: 'PAID' },
+    { id: 'fly', type: 'flight', title: '항공', price: 300000, payState: 'PAID' }
+  ], costItems: [{ id: 'ins', title: '보험', kind: 'OTHER', amount: 20000, payState: 'PAID' }] });
+  const days = trip.days.map((_, index) => ({ index, cost: summary(trip, index, { taxi: index === 1 ? 7000 : null }) }));
+  assert.equal(days[0].cost.total, 12000 + 3000 + 100000, '하루 합계에는 숙박 하루치가 있다');
+  assert.equal(days[0].cost.onSiteKRW, 12000 + 3000, '현지 지출에는 없다');
+  assert.equal(days[1].cost.onSiteKRW, 40000 + 7000, '자동 교통비 추정은 현지 지출이다');
+  const result = L.tripCostSummary(trip, days, rates);
+  assert.equal(result.prep.totalKRW, 100000 + 300000 + 20000);
+  assert.equal(result.onSite.totalKRW, 15000 + 47000);
+  assert.equal(result.prep.totalKRW + result.onSite.totalKRW, result.totalKRW, '둘을 더하면 전체');
+  assert.deepEqual(result.onSite.payTotals, { RESERVED: 0, PAID: 12000, NONE: 3000 + 47000 });
+  assert.deepEqual(result.prep.payTotals, { RESERVED: 0, PAID: 420000, NONE: 0 });
+  // 결제 상태별 합계도 여전히 전체와 맞는다
+  const pt = result.payTotals;
+  assert.equal(pt.RESERVED + pt.PAID + pt.NONE, result.totalKRW);
+});
+
+test('금액을 넣지 않은 예약은 가계부에서 미정으로 남고 합계를 흔들지 않는다', () => {
+  const trip = L.normalizeTrip({ days: [{ spots: [] }], bookings: [{ id: 'later', type: 'hotel', title: '아직', price: 0 }] });
+  const result = L.tripCostSummary(trip, [{ index: 0, cost: summary(trip) }], rates);
+  assert.deepEqual(result.prep.items.map(i => [i.key, i.amount, i.state, i.totalKRW]), [['later', null, 'UNKNOWN', null]]);
+  assert.equal(result.prep.totalKRW, 0);
+  assert.equal(result.totalKRW, 0);
+});

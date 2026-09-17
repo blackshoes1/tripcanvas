@@ -118,6 +118,7 @@
       "overloaded": false,
       "cost": {
         "total": 50000,
+        "onSiteKRW": 0,
         "parts": [
           {
             "label": "예약",

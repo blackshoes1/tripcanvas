@@ -50,6 +50,8 @@ struct GoogleMapContainer: UIViewRepresentable {
     var selectedPinID: String? = nil
     var onPinSelected: ((String) -> Void)? = nil
     var onAreaChanged: ((PlaceSearchArea) -> Void)? = nil
+    /// 숨겨진 동안 뷰를 감춘다(`isHidden`) — 그리지 않지만 버리지도 않아 다시 보일 때 타일이 그대로다.
+    var isVisible = true
 
     func makeCoordinator() -> Coordinator { Coordinator(onPick: onPick) }
 
@@ -63,6 +65,7 @@ struct GoogleMapContainer: UIViewRepresentable {
         let mapView = GMSMapView(options: options)
         mapView.delegate = context.coordinator
         mapView.settings.compassButton = true
+        mapView.isHidden = !isVisible
         context.coordinator.onPinSelected = onPinSelected
         context.coordinator.onAreaChanged = onAreaChanged
         context.coordinator.render(pins: pins, routes: routes, focus: focus, on: mapView, animated: false,
@@ -71,6 +74,7 @@ struct GoogleMapContainer: UIViewRepresentable {
     }
 
     func updateUIView(_ mapView: GMSMapView, context: Context) {
+        mapView.isHidden = !isVisible
         context.coordinator.onPick = onPick
         context.coordinator.onPinSelected = onPinSelected
         context.coordinator.onAreaChanged = onAreaChanged

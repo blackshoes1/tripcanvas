@@ -131,10 +131,15 @@ struct BookingEditorView: View {
                         }
                         Toggle("가격 추적", isOn: $draft.track)
                     }
+                    // 잡아 둔 돈인가 이미 낸 돈인가 — 가계부의 '이미 낸 돈 / 아직 낼 돈'이 여기서 갈린다.
+                    Picker("결제 상태", selection: $draft.payState) {
+                        Text("예약만 함").tag(CostPayState.reserved)
+                        Text("결제함").tag(CostPayState.paid)
+                    }
                 } header: {
                     Text("가격")
                 } footer: {
-                    Text("켜두면 시세를 계속 확인해 절약 기회를 알려줘요. 자동으로 다시 예약하지는 않습니다.")
+                    Text("결제함으로 두면 비용에서 '이미 낸 돈'으로, 예약만 함이면 '아직 낼 돈'으로 셉니다. 켜둔 가격 추적은 시세를 계속 확인해 절약 기회를 알려줘요. 자동으로 다시 예약하지는 않습니다.")
                 }
 
                 if draft.type == .hotel { hotelSection }

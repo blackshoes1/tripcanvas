@@ -13,7 +13,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js" integrity="sha384-+pWnyi8LtZx+cgXfD2arWgUX7pHIaEL215cEPPk9WrsegNlgvDL9DNjaqsceQq6o" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js" integrity="sha384-BSxuMLxX+FCbTdYec3TbXlnMGEEM2QXTFdtDaveen71o+jswm2J36+xFqp8k4VHM" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.min.js" integrity="sha384-l8ah+VgaWtk1mvOe9VC+OirC6qHFF4yH7l7mKRidV9MSti3E9F463bMp6ZVN4kuC" crossorigin="anonymous"></script>
-<link rel="stylesheet" href="style.css?v=tc-v202">
+<link rel="stylesheet" href="style.css?v=tc-v203">
 <!-- Travelpayouts 사이트 소유 인증 (파트너 가입 검증용 — DiscoverCars API 신청에 필요) -->
 <script nowprocket data-noptimize="1" data-cfasync="false" data-wpfc-render="false" seraph-accel-crit="1" data-no-defer="1" data-cmp-ab="2">
   (function () {
@@ -344,6 +344,17 @@
   <div id="bookingSummary"></div>
   <div id="bookingListBody"></div>
   <div class="hint" id="pxSourceLine"></div>
+  <h3 style="margin:14px 0 4px">예약 외 준비 비용</h3>
+  <div class="hint">여행자보험·유심·미리 산 입장권처럼 가기 전에 낸 돈. 날짜별 비용에는 들어가지 않고 전체 비용에만 잡혀요.</div>
+  <div id="prepCostList"></div>
+  <div class="row" id="prepCostForm" style="flex-wrap:wrap;gap:6px;align-items:flex-end">
+    <div style="flex:2;min-width:120px"><label>항목</label><input type="text" id="prepTitle" placeholder="예: 여행자보험" style="width:100%"></div>
+    <div style="flex:1;min-width:90px"><label>금액</label><input type="text" id="prepAmount" inputmode="decimal" placeholder="0" style="width:100%"></div>
+    <select id="prepCur" class="compactSelect"><option value="KRW">₩</option><option value="USD">$</option><option value="EUR">€</option><option value="JPY">¥</option><option value="CNY">元</option></select>
+    <select id="prepKind" class="compactSelect"><option value="OTHER">기타</option><option value="TICKET">입장권</option><option value="TRANSIT">대중교통</option><option value="TRANSPORT">교통</option><option value="SHOPPING">쇼핑</option><option value="FOOD">식비</option></select>
+    <select id="prepPayState" class="compactSelect"><option value="PAID">결제함</option><option value="RESERVED">예약만</option></select>
+    <button class="btn" id="prepAdd">＋ 추가</button>
+  </div>
   <div class="row">
     <button class="btn" id="bookingAdd" style="margin-right:auto">＋ 예약 추가</button>
     <button class="btn primary" id="bookingListClose">닫기</button>
@@ -363,6 +374,7 @@
   <div class="fieldRow">
     <input type="text" id="bkPrice" inputmode="numeric" placeholder="0">
     <select id="bkCur" class="compactSelect"><option value="KRW">₩ 원</option><option value="USD">$ 달러</option><option value="EUR">€ 유로</option><option value="JPY">¥ 엔</option><option value="CNY">元 위안</option></select>
+    <select id="bkPayState" class="compactSelect" title="결제함이면 비용에서 '이미 낸 돈', 예약만 함이면 '아직 낼 돈'으로 셉니다"><option value="">예약만 함</option><option value="PAID">결제함</option></select>
   </div>
   <div style="display:flex;gap:6px">
     <div style="flex:1"><label>시작일 (체크인·픽업·출발)</label><input type="date" id="bkStart" style="width:100%"></div>
@@ -593,15 +605,15 @@
   <div id="placeDetailsContent" aria-live="polite"></div>
   <footer id="placeDetailsActions"></footer>
 </dialog>
-<script src="lib.js?v=tc-v202"></script>
-<script src="sync.js?v=tc-v202"></script>
-<script src="routing.js?v=tc-v202"></script>
-<script src="price.js?v=tc-v202"></script>
-<script src="adaptive.js?v=tc-v202"></script>
-<script src="intake.js?v=tc-v202"></script>
-<script src="collab.js?v=tc-v202"></script>
-<script src="api.js?v=tc-v202"></script>
-<script src="auth.js?v=tc-v202"></script>
-<script src="app.js?v=tc-v202"></script>
+<script src="lib.js?v=tc-v203"></script>
+<script src="sync.js?v=tc-v203"></script>
+<script src="routing.js?v=tc-v203"></script>
+<script src="price.js?v=tc-v203"></script>
+<script src="adaptive.js?v=tc-v203"></script>
+<script src="intake.js?v=tc-v203"></script>
+<script src="collab.js?v=tc-v203"></script>
+<script src="api.js?v=tc-v203"></script>
+<script src="auth.js?v=tc-v203"></script>
+<script src="app.js?v=tc-v203"></script>
 </body>
 </html>

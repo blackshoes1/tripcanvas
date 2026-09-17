@@ -13,6 +13,11 @@ struct DayCostSummaryView: View {
             } else {
                 Text("비용 합계 미확인").font(.subheadline)
             }
+            // 가기 전에 낸 돈의 하루치(예약)와 가서 쓰는 돈은 다른 장부다 — 합계에 섞여 있어도 따로 말한다
+            if let cost, let onSite = cost.onSiteKRW, onSite != cost.total {
+                Text("가서 쓰는 돈 \(TimeFormat.money(onSite, currency: "KRW")) · 예약 하루치 \(TimeFormat.money(cost.total - onSite, currency: "KRW"))")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             // 합계 하나로는 "얼마나 남았지"를 알 수 없다 — 예약해 둔 돈과 이미 낸 돈을 따로 보여 준다
             if let cost, !cost.paySplit.isEmpty {
                 Text(cost.paySplit.map { "\($0.state.label) \(TimeFormat.money($0.amount, currency: "KRW"))" }
@@ -52,6 +57,8 @@ struct DayCostView: View {
     let onRefresh: (() async -> Void)?
     @State private var day: TripDay
     @State private var editing: CostEditTarget?
+    /// 현지에서 방금 쓴 돈 — 금액부터 치는 짧은 길(`QuickSpendEditor`).
+    @State private var quickAdd = false
     @Environment(\.dismiss) private var dismiss
 
     init(day: TripDay, cost: DayPlanCost?, canEdit: Bool, onRefresh: (() async -> Void)? = nil, onSave: @escaping (TripDay) async -> Bool) {
@@ -69,6 +76,10 @@ struct DayCostView: View {
                     DayCostSummaryView(day: day, cost: cost)
                     if cost == nil, let onRefresh { Button("합계 다시 확인") { Task { await onRefresh() } } }
                     if canEdit {
+                        // 정산은 금액부터다 — 분류·통화·기준을 다 묻는 폼은 "오늘 얼마 썼지"를 훑어 적는 손을 멈추게 한다.
+                        Button { quickAdd = true } label: {
+                            Label("쓴 돈 바로 적기", systemImage: "plus.circle.fill").frame(minHeight: 44)
+                        }
                         Button(day.budget == nil ? "하루 예산 설정" : "하루 예산 수정") {
                             var entry = day.budget ?? CostEntry()
                             if day.budget == nil { entry.basis = .total }
@@ -135,6 +146,15 @@ struct DayCostView: View {
             .navigationTitle("하루 비용")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("닫기") { dismiss() } } }
+            .sheet(isPresented: $quickAdd) {
+                QuickSpendEditor(dayLabel: day.title.isEmpty ? "하루 비용" : day.title) { entry in
+                    var updated = day
+                    updated.costItems = updated.costItems + [entry]
+                    guard await onSave(updated) else { return false }
+                    day = updated
+                    return true
+                }
+            }
             .sheet(item: $editing) { target in
                 CostEntryEditor(target: target) { entry in
                     var updated = day
@@ -149,6 +169,9 @@ struct DayCostView: View {
                         var entries = updated.costItems.filter { $0.id != id }
                         if let entry { entries.append(entry) }
                         updated.costItems = entries
+                    case .prep:
+                        // 여행 단위 준비 비용은 비용 화면(TripCostsView)의 몫이다 — 하루 비용 시트는 열지 않는다.
+                        return false
                     }
                     guard await onSave(updated) else { return false }
                     day = updated
@@ -196,16 +219,22 @@ struct DayCostView: View {
     }
 }
 
-private struct CostEditTarget: Identifiable {
-    enum Kind { case budget, spot(Int), extra(String) }
+/// 비용 편집기가 고치는 대상. `prep`은 여행 단위 준비 비용(`TripDocument.costItems`) — 하루 항목과 같은
+/// 편집기를 쓰되 낸 날짜를 더 묻는다(가계부 정렬용).
+struct CostEditTarget: Identifiable {
+    enum Kind { case budget, spot(Int), extra(String), prep(String) }
     let id = UUID()
     let kind: Kind
     let entry: CostEntry
     var isBudget: Bool { if case .budget = kind { true } else { false } }
-    var isExtra: Bool { if case .extra = kind { true } else { false } }
+    /// 이름이 있어야 하고 지울 수 있는 항목 — 하루 추가 비용과 여행 준비 비용.
+    var isExtra: Bool {
+        switch kind { case .extra, .prep: true; default: false }
+    }
+    var isPrep: Bool { if case .prep = kind { true } else { false } }
 }
 
-private struct CostEntryEditor: View {
+struct CostEntryEditor: View {
     let target: CostEditTarget
     let onSave: (CostEntry?) async -> Bool
     @State private var entry: CostEntry
@@ -248,6 +277,18 @@ private struct CostEntryEditor: View {
                         }
                     }
                 }
+                if target.isPrep {
+                    Section {
+                        Toggle("낸 날짜 적기", isOn: Binding(
+                            get: { entry.paidOn != nil },
+                            set: { on in entry.paidOn = on ? ISODateText.text(from: Date()) : nil }))
+                        if entry.paidOn != nil {
+                            DatePicker("낸 날짜", selection: Binding(
+                                get: { entry.paidOn.flatMap { ISODateText.date(from: $0) } ?? Date() },
+                                set: { entry.paidOn = ISODateText.text(from: $0) }), displayedComponents: .date)
+                        }
+                    } footer: { Text("여행 날짜와 무관해요 — 출발 두 달 전에 낸 보험료도 적습니다. 가계부는 이 날짜 순으로 보여요.") }
+                }
                 Section {
                     TextField(target.isBudget ? "예산 미설정" : "비용 미정", text: $amount).keyboardType(.decimalPad)
                     Picker("통화", selection: $entry.currency) {
@@ -282,7 +323,7 @@ private struct CostEntryEditor: View {
             }
             .paperGround()
             .tint(Ink.accent)
-            .navigationTitle(target.isBudget ? "하루 예산" : "비용 입력")
+            .navigationTitle(target.isBudget ? "하루 예산" : target.isPrep ? "준비한 비용" : "비용 입력")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

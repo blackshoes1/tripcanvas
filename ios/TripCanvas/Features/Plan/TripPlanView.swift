@@ -9,12 +9,18 @@ enum MapScope: Hashable { case discovery, day, trip }
 
 struct TripPlanView: View {
     let trip: TripSummary
+    /// **여행이 들고 있는** 모델(`TripScreenModels`). 이 화면은 `지금` 탭으로 가면 죽지만 모델은 남는다 —
+    /// 돌아왔을 때 문서·고른 날·받아 둔 계산이 그대로라 로딩이 없다.
+    let model: TripPlanViewModel
+    /// 지도 탭의 '장소 찾기' 모델. 같은 이유로 여행이 들고 있다.
+    let discovery: MapDiscoveryModel
     /// 목록이냐 지도냐. **탭 바가 정한다**(`TripHomeView`) — 이 화면 안에 세그먼트를 또 깔지 않는다.
     /// 화면 안에서 지도를 끄는 곳이 하나 있다(여러 장소 옮기기). 그때는 이 바인딩이 탭도 함께 되돌린다.
     @Binding var showsMap: Bool
 
     @Environment(AppEnvironment.self) private var env
-    @State private var model: TripPlanViewModel?
+    /// 지도를 한 번이라도 열었는가. 열기 전에는 만들지 않고, 연 뒤에는 숨기기만 한다(`content`).
+    @State private var mapMounted = false
     @State private var editor: SpotEditorTarget?
     @State private var viewingSpot: SpotEditorTarget?
     @State private var showsSearch = false
@@ -42,30 +48,24 @@ struct TripPlanView: View {
 
     var body: some View {
         Group {
-            if let model {
-                content(model)
-            } else {
-                ProgressView()
-            }
+            content(model)
         }
         // 제목(여행 이름)은 `TripHomeView`가 정한다.
         .toolbar {
-            if let model {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        Button("여행 전체 개요") { showsOverview = true }
-                        if model.canEdit {
-                            Button("여행·하루 설정") { showsSettings = true }
-                            Button(choosingPlaces ? "장소 선택 마치기" : "여러 장소 옮기기") {
-                                choosingPlaces.toggle(); chosenPlaces = []; showsMap = false
-                            }
-                            if model.canUndo { Button("마지막 변경 되돌리기") { Task { await model.undoLastChange() } } }
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button("여행 전체 개요") { showsOverview = true }
+                    if model.canEdit {
+                        Button("여행·하루 설정") { showsSettings = true }
+                        Button(choosingPlaces ? "장소 선택 마치기" : "여러 장소 옮기기") {
+                            choosingPlaces.toggle(); chosenPlaces = []; showsMap = false
                         }
-                    } label: { Image(systemName: "ellipsis.circle") }
-                    .accessibilityLabel("일정 메뉴")
-                }
+                        if model.canUndo { Button("마지막 변경 되돌리기") { Task { await model.undoLastChange() } } }
+                    }
+                } label: { Image(systemName: "ellipsis.circle") }
+                .accessibilityLabel("일정 메뉴")
             }
-            if let model, model.canEdit, model.day != nil {
+            if model.canEdit, model.day != nil {
                 // EditButton()은 앱에 한국어 번들이 없어 'Edit'으로 나왔다 — 문구를 직접 준다.
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(isEditing ? "완료" : "편집") {
@@ -85,27 +85,24 @@ struct TripPlanView: View {
             }
         }
         .task {
-            if model == nil {
-                model = TripPlanViewModel(tripId: trip.id, service: env.service, memberSource: env.service,
-                                          initialDay: max(0, trip.todayIndex))
-            }
-            await model?.load()
+            // 탭 진입 — 문서가 있고 방금 받은 것이면 아무것도 받지 않는다(탭 전환은 앱 복귀가 아니다).
+            await model.loadIfStale()
         }
+        // 지도를 처음 켠 순간부터 만들어 둔다. 그 뒤로는 숨기기만 한다.
+        .onChange(of: showsMap, initial: true) { _, on in if on { mapMounted = true } }
         .sheet(isPresented: $showsSearch, onDismiss: {
             if let spot = searchedSpot { editor = .createFromMap(spot); searchedSpot = nil }
         }) {
-            if let model {
-                // 근처 우선의 기준은 그날 마지막 좌표 — 웹이 앵커로 검색하는 것과 같다.
-                PlaceSearchView(near: model.day?.pins.last?.point) { hit in
-                    searchedSpot = hit.makeSpot()
-                }
+            // 근처 우선의 기준은 그날 마지막 좌표 — 웹이 앵커로 검색하는 것과 같다.
+            PlaceSearchView(near: model.day?.pins.last?.point) { hit in
+                searchedSpot = hit.makeSpot()
             }
         }
         .sheet(item: $viewingSpot) { target in
-            SpotInformationView(spot: target.spot, contextLabel: "\(trip.name) · Day \((model?.selectedDay ?? 0) + 1)")
+            SpotInformationView(spot: target.spot, contextLabel: "\(trip.name) · Day \(model.selectedDay + 1)")
         }
         .sheet(item: $editor) { target in
-            if let model {
+            Group {
                 SpotEditorView(
                     target: target,
                     dayCount: model.dayCount,
@@ -128,21 +125,19 @@ struct TripPlanView: View {
             }
         }
         .sheet(isPresented: $showsOverview) {
-            if let model {
-                NavigationStack { TripOverviewView(model: model) { index in
-                    model.selectedDay = index; showsOverview = false; showsMap = false
-                } }
-            }
+            NavigationStack { TripOverviewView(model: model) { index in
+                model.selectedDay = index; showsOverview = false; showsMap = false
+            } }
         }
         .sheet(isPresented: $showsSettings) {
-            if let model, let document = model.document {
+            if let document = model.document {
                 PlanSettingsView(document: document, revision: model.revision, selectedDay: model.selectedDay) { draft, revision in
                     await model.savePreparedDocument(draft, expectedRevision: revision, message: "여행 설정을 저장했어요") ? nil : model.saveFailureMessage
                 }
             }
         }
         .sheet(item: $moveTarget) { target in
-            if let model {
+            Group {
                 PlanMoveSheet(tripId: trip.id, document: target.document, revision: target.revision,
                               sourceDay: target.day, indexes: target.indexes, source: env.service) { draft, revision in
                     let saved = await model.savePreparedDocument(draft, expectedRevision: revision, message: "선택한 장소를 옮겼어요")
@@ -152,7 +147,7 @@ struct TripPlanView: View {
             }
         }
         .sheet(isPresented: $showsCosts) {
-            if let model, let document = model.document, document.hasDay(costDay) {
+            if let document = model.document, document.hasDay(costDay) {
                 DayCostView(day: document.days[costDay], cost: model.overviewPlan(costDay)?.day.totals.cost, canEdit: model.canEdit,
                             onRefresh: { await model.load() }) { edited in
                     guard var draft = model.document, draft.hasDay(costDay), model.revision == costRevision else { return false }
@@ -200,13 +195,22 @@ struct TripPlanView: View {
                     }.padding(.horizontal, Space.l).frame(minHeight: 44)
                 }
                 Divider()
-                if showsMap {
-                    dayMap(model)
-                } else {
-                    // 나가는 목록과 들어오는 목록이 높이를 나눠 갖지 않게 같은 영역에 겹친다.
-                    ZStack { spotList(model) }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .clipped()
+                ZStack {
+                    // 지도는 한 번 만들면 **숨기기만 한다** — 일정↔지도를 오갈 때마다 엔진을 새로 띄우고
+                    // 타일을 다시 받지 않게(2026-09-17). 처음 열기 전에는 만들지 않는다: 목록만 쓰는 사람에게
+                    // 지도 SDK 값을 물리지 않는다. 숨긴 동안은 엔진이 쉰다(`MapEngineView.isVisible`).
+                    if mapMounted {
+                        dayMap(model)
+                            .opacity(showsMap ? 1 : 0)
+                            .allowsHitTesting(showsMap)
+                            .accessibilityHidden(!showsMap)
+                    }
+                    if !showsMap {
+                        // 나가는 목록과 들어오는 목록이 높이를 나눠 갖지 않게 같은 영역에 겹친다.
+                        ZStack { spotList(model) }
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .clipped()
+                    }
                 }
             }
             .overlay(alignment: .top) {
@@ -503,12 +507,14 @@ struct TripPlanView: View {
             .padding(.vertical, Space.xs)
 
             if mapScope == .discovery, let document = model.document {
-                MapDiscoveryView(trip: trip, document: document, onReturnFromBoard: { await model.load() }, onSelectItinerary: { day, spot in
+                MapDiscoveryView(trip: trip, document: document, model: discovery, isVisible: showsMap,
+                                 onReturnFromBoard: { await model.load() }, onSelectItinerary: { day, spot in
                     model.selectedDay = day; selectedMapSpot = spot; mapScope = .day
                 })
             } else if mapScope == .trip { tripMap(model) } else { singleDayMap(model) }
         }
-        .task(id: "\(mapScope)-\(model.revision)") { if mapScope == .trip { await model.loadTripRoutes() } }
+        // 숨겨진 동안은 전체 동선을 받지 않는다 — 보고 있지 않은 지도를 위해 서버를 부르지 않는다.
+        .task(id: "\(mapScope)-\(model.revision)-\(showsMap)") { if mapScope == .trip, showsMap { await model.loadTripRoutes() } }
     }
 
     /// 여행 전체 — 날마다 색이 다르다(웹의 일자 색 순서와 같다).
@@ -522,7 +528,8 @@ struct TripPlanView: View {
             } else {
                 MapEngineView(
                     pins: days.flatMap(\.pins),
-                    routes: days.flatMap { $0.mapRoutes(colorIndex: $0.index) })
+                    routes: days.flatMap { $0.mapRoutes(colorIndex: $0.index) },
+                    isVisible: showsMap)
                     .ignoresSafeArea(edges: .bottom)
                     .overlay(alignment: .topLeading) {
                         if let note = routeNote(days.flatMap { $0.mapRoutes(colorIndex: $0.index) }) {
@@ -551,7 +558,8 @@ struct TripPlanView: View {
                                   focus: day.spots.indices.contains(selectedMapSpot ?? -1) ? day.spots[selectedMapSpot ?? 0].point : day.pins.first?.point,
                                   preservesCamera: true,
                                   selectedPinID: day.pins.first(where: { $0.order - 1 == selectedMapSpot })?.id,
-                                  onPinSelected: { id in selectedMapSpot = day.pins.first(where: { $0.id == id }).map { $0.order - 1 } })
+                                  onPinSelected: { id in selectedMapSpot = day.pins.first(where: { $0.id == id }).map { $0.order - 1 } },
+                                  isVisible: showsMap)
                         .frame(minHeight: 180, maxHeight: .infinity)
                     if let note = routeNote(model.planDay?.mapRoutes ?? []) {
                         Text(note).font(.caption).foregroundStyle(.secondary)

@@ -87,6 +87,13 @@ struct TripBooking: Hashable, Sendable, Identifiable {
 
     var currencyCode: String { (currency ?? .krw).rawValue }
 
+    /// 결제했는가. 예약은 본디 잡아 둔 돈이라 **결제함(PAID)만 저장한다** — 없으면 예약이다(`costPayStateOf`).
+    /// 항공은 대개 결제한 돈이고 현장 결제 호텔은 예약한 돈이다 — 예약마다 다르니 예약마다 둔다.
+    var payState: CostPayState {
+        get { raw["payState"]?.stringValue == CostPayState.paid.rawValue ? .paid : .reserved }
+        set { raw.setOrRemove("payState", newValue == .paid ? .string(CostPayState.paid.rawValue) : nil) }
+    }
+
     /// 시작일 `YYYY-MM-DD` — 체크인·픽업·출발.
     var start: String? {
         get { raw["start"]?.stringValue }

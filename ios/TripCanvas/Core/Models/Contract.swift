@@ -799,6 +799,9 @@ struct DayPlanBack: Codable, Hashable, Sendable {
 
 struct DayPlanCost: Codable, Hashable, Sendable {
     let total: Double
+    /// 가서 쓰는 돈(장소·추가 비용·교통)만. 예약 하루치는 가기 전에 낸 돈의 배분이라 뺀다.
+    /// 옛 서버 응답·캐시에는 없을 수 있어 선택이다 — 없으면 화면이 그 사실을 말한다.
+    var onSiteKRW: Double? = nil
     let parts: [DayPlanCostPart]
     /// 결제 상태별 원화 합계. 셋을 더하면 `total`과 같다.
     /// 옛 서버 응답·캐시에는 없을 수 있어 선택이다.
@@ -1026,12 +1029,37 @@ struct TripCostsResponse: Codable, Sendable {
     let unallocated: [TripCostLine]
     /// 여행 전체의 결제 상태별 원화 합계 — 예약해 둔 돈과 이미 낸 돈을 따로 본다.
     let payTotals: [String: Double]
+    /// 준비한 비용 — 예약(전액 한 줄씩)과 여행 단위 항목. 어느 날에도 속하지 않는다.
+    /// ⚠️ NAS API가 옛 버전이면 없다 — 그때 화면은 문서에서 목록을 짓고 합계만 "아직"이라고 말한다.
+    var prep: TripCostPrep? = nil
+    /// 가서 쓰는 비용 — 날짜별 장소·추가 비용·교통의 합. 준비한 비용과 더하면 전체와 같다.
+    var onSite: TripCostGroup? = nil
     let unknownCount: Int
     let transportUnpriced: Bool
     let hasForeignCurrency: Bool
     let fxRates: [String: Double]
     let fxSource: String
     let fxAsOf: String?
+}
+/// 비용 한 묶음의 합계 — 원화 총액과 결제 상태별 합계. 셋을 더하면 총액과 같다.
+struct TripCostGroup: Codable, Hashable, Sendable {
+    let totalKRW: Double
+    let payTotals: [String: Double]
+
+    /// 예약·결제 중 값이 있는 것만(미구분은 홀로 찍지 않는다 — `DayPlanCost.paySplit`과 같은 규칙).
+    var paySplit: [(state: CostPayState, amount: Double)] {
+        [CostPayState.reserved, .paid].compactMap { state in
+            let amount = payTotals[state.rawValue] ?? 0
+            return amount > 0 ? (state, amount) : nil
+        }
+    }
+    func amount(_ state: CostPayState) -> Double { payTotals[state.rawValue] ?? 0 }
+}
+struct TripCostPrep: Codable, Sendable {
+    let totalKRW: Double
+    let payTotals: [String: Double]
+    let items: [TripCostLine]
+    var group: TripCostGroup { TripCostGroup(totalKRW: totalKRW, payTotals: payTotals) }
 }
 struct TripCostDay: Codable, Sendable, Identifiable {
     let index: Int

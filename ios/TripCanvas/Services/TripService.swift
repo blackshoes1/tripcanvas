@@ -11,6 +11,8 @@ protocol TripDataSource {
     func trips() async throws -> TripService.Fetched<[TripSummary]>
     func today(tripId: String, dayIndex: Int?) async throws -> TripService.Fetched<TodayResponse>
     func dayPlan(tripId: String, dayIndex: Int) async throws -> TripService.Fetched<DayPlanResponse>
+    /// 디스크에 남아 있는 지난번 오늘 화면. **네트워크를 쓰지 않는다** — 화면을 먼저 채우는 용도다.
+    func cachedToday(tripId: String) async -> TodayResponse?
     func bookings(tripId: String) async throws -> TripService.Fetched<[BookingSummary]>
     func setActivity(tripId: String, activityId: String, action: TripService.ActivityAction, expectedRevision: Int, expectedName: String?) async throws -> MutationResponse
     func decideSuggestion(tripId: String, suggestionId: String, decision: TripService.SuggestionDecision, expectedRevision: Int) async throws -> MutationResponse
@@ -24,6 +26,11 @@ protocol TripDataSource {
     func deleteTrip(tripId: String, expectedRevision: Int) async throws
     /// 공유받은 여행에서 나간다. 여행 자체는 남는다.
     func leaveTrip(tripId: String) async throws
+}
+
+extension TripDataSource {
+    /// 캐시를 모르는 구현(테스트 가짜)은 "지난번 것이 없다"고 답한다.
+    func cachedToday(tripId: String) async -> TodayResponse? { nil }
 }
 
 @MainActor
@@ -79,6 +86,11 @@ final class TripService: TripDataSource {
             guard let cached = await cache.load(TodayResponse.self, key: key) else { throw error }
             return Fetched(value: cached.value, cachedAt: cached.savedAt)
         }
+    }
+
+    /// 지난번 오늘 화면 — 네트워크 없이 즉시. 쓸지 말지는 부르는 쪽이 정한다(리비전이 같을 때만 쓴다).
+    func cachedToday(tripId: String) async -> TodayResponse? {
+        await cache.load(TodayResponse.self, key: TripCache.todayKey(tripId: tripId, dayIndex: nil))?.value
     }
 
     /// 일정 화면이 쓰는 하루치. 계산은 전부 서버가 한다 — 앱은 그린다.

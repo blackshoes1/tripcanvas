@@ -18,8 +18,16 @@ final class TodayViewModelTests: XCTestCase {
         var lastActivityCall: (id: String, action: TripService.ActivityAction, revision: Int)?
         var lastSuggestionCall: (id: String, decision: TripService.SuggestionDecision)?
         var cachedAt: Date?
+        /// 디스크에 남아 있던 지난번 오늘 화면. 테스트가 직접 넣어 준다.
+        var cachedToday: TodayResponse?
+        private(set) var cachedTodayReads = 0
 
         init(todayResponse: TodayResponse) { self.todayResponse = todayResponse }
+
+        func cachedToday(tripId: String) async -> TodayResponse? {
+            cachedTodayReads += 1
+            return cachedToday
+        }
 
         func trips() async throws -> TripService.Fetched<[TripSummary]> {
             TripService.Fetched(value: [todayResponse.trip], cachedAt: cachedAt)
@@ -76,6 +84,65 @@ final class TodayViewModelTests: XCTestCase {
     }
 
     // MARK: 테스트
+
+    /// 탭을 오갈 때마다 서버를 다시 묻지 않는다 — 방금 받은 것이면 그대로다(2026-09-17 "탭마다 로딩" 보고).
+    func testEnteringTheTabAgainDoesNotAskTheServerWhileFresh() async throws {
+        let today = try fixture()
+        let stub = StubDataSource(todayResponse: today)
+        let model = makeModel(stub, from: today)
+        let first = await model.loadIfStale()
+        XCTAssertTrue(first, "처음에는 받는다")
+        let second = await model.loadIfStale()
+        XCTAssertFalse(second, "방금 받았으면 묻지 않는다")
+        let third = await model.loadIfStale()
+        XCTAssertFalse(third, "몇 번을 들어와도 같다")
+        XCTAssertEqual(stub.todayCallCount, 1)
+        let later = await model.loadIfStale(now: Date().addingTimeInterval(120))
+        XCTAssertTrue(later, "오래됐으면 뒤에서 새로 받는다")
+        XCTAssertEqual(stub.todayCallCount, 2)
+        XCTAssertNotNil(model.today, "새로 받는 동안에도 내용은 비지 않는다")
+    }
+
+    /// 오프라인 캐시로 그린 화면은 신선한 것이 아니다 — 다음 진입에서 다시 시도한다.
+    func testOfflineContentIsNeverConsideredFresh() async throws {
+        let today = try fixture()
+        let stub = StubDataSource(todayResponse: today)
+        stub.cachedAt = Date().addingTimeInterval(-600)
+        let model = makeModel(stub, from: today)
+        _ = await model.loadIfStale()
+        XCTAssertTrue(model.isOffline)
+        let again = await model.loadIfStale()
+        XCTAssertTrue(again, "캐시로 그린 것은 다시 묻는다")
+        XCTAssertEqual(stub.todayCallCount, 2)
+    }
+
+    /// 서버를 기다리는 동안 지난번 화면을 먼저 보여 준다 — 단, 문서가 그때 그대로일 때만.
+    func testCachedTodayIsShownBeforeTheServerAnswersWhenTheRevisionMatches() async throws {
+        let today = try fixture()
+        let stub = StubDataSource(todayResponse: today)
+        stub.cachedToday = today
+        stub.todayError = APIError.server(status: 500, message: "잠깐 고장")
+        let model = makeModel(stub, from: today)
+        await model.load()
+        XCTAssertNotNil(model.today, "서버가 실패해도 지난번 화면은 남는다")
+        XCTAssertFalse(model.isOffline, "캐시 선표시는 오프라인이 아니다 — 그 표시를 붙이지 않는다")
+        XCTAssertNotNil(model.loadErrorMessage, "새로 받지 못한 사실은 말한다")
+        XCTAssertEqual(stub.cachedTodayReads, 1)
+    }
+
+    func testStaleCachedTodayIsNotShownWhenTheDocumentChanged() async throws {
+        let today = try fixture()
+        let stub = StubDataSource(todayResponse: today)
+        stub.cachedToday = today
+        stub.todayError = APIError.server(status: 500, message: "잠깐 고장")
+        let newer = TripSummary(id: today.trip.id, name: today.trip.name, start: today.trip.start, dayCount: today.trip.dayCount,
+                                revision: today.trip.revision + 1, updatedAt: today.trip.updatedAt, timeZone: today.trip.timeZone,
+                                cities: today.trip.cities, todayIndex: today.trip.todayIndex, daysUntilStart: today.trip.daysUntilStart,
+                                role: today.trip.role, memberCount: today.trip.memberCount)
+        let model = TodayViewModel(trip: newer, service: stub)
+        await model.load()
+        XCTAssertNil(model.today, "편집한 뒤의 옛 화면을 잠깐이라도 보여 주지 않는다")
+    }
 
     func testLoadPopulatesTodayAndStatus() async throws {
         let today = try fixture()

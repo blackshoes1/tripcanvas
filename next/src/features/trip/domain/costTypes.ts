@@ -3,7 +3,8 @@ export type CostPayState = 'RESERVED' | 'PAID' | 'NONE';
 
 export interface CostDetails {
   items: {
-    source: 'SPOT' | 'EXTRA' | 'BOOKING' | 'TRANSPORT';
+    /** TRIP은 여행 단위 준비 비용(`trip.costItems`) — 어느 날에도 속하지 않는다. */
+    source: 'SPOT' | 'EXTRA' | 'BOOKING' | 'TRANSPORT' | 'TRIP';
     key: string;
     title: string;
     kind: string;
@@ -37,6 +38,8 @@ export interface CostDetails {
 
 export interface DayCostSummary {
   total: number;
+  /** 가서 쓰는 돈(장소·추가 비용·교통)만. 예약 하루치는 가기 전에 낸 돈의 배분이라 뺀다. 옛 서버에는 없다. */
+  onSiteKRW?: number;
   parts: { label: string; amount: number }[];
   /** 결제 상태별 원화 합계. 셋을 더하면 total과 같다. */
   payTotals?: Record<CostPayState, number>;

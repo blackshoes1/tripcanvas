@@ -48,6 +48,8 @@ final class MapDiscoveryModel {
     private(set) var searchedArea: PlaceSearchArea?
     private(set) var errorMessage: String?
     private(set) var candidatesLoaded = false
+    /// 후보 목록을 마지막으로 받은 시각 — 지도를 다시 열었을 때 또 받을지의 기준.
+    private(set) var candidatesLoadedAt: Date?
     private var generation = 0
     private var savedHits: [PlaceHit] = []
     private var uncertainHit: PlaceHit?
@@ -74,6 +76,13 @@ final class MapDiscoveryModel {
         isSearching = false
     }
 
+    /// 지도를 열 때 부른다. 방금 받은 목록이 있으면 다시 받지 않는다 — 일정↔지도를 오갈 때마다
+    /// 후보를 다시 받으면 그때마다 담기 버튼이 잠겼다(2026-09-17). 담기·되돌리기는 `loadCandidates`를 직접 부른다.
+    func loadCandidatesIfStale(maxAge: TimeInterval = 60, now: Date = Date()) async {
+        if candidatesLoaded, let candidatesLoadedAt, now.timeIntervalSince(candidatesLoadedAt) < maxAge { return }
+        await loadCandidates()
+    }
+
     func loadCandidates() async {
         candidateRead += 1
         let request = candidateRead
@@ -82,6 +91,7 @@ final class MapDiscoveryModel {
             guard request == candidateRead else { return }
             candidates = received
             candidatesLoaded = true
+            candidatesLoadedAt = Date()
             errorMessage = nil
         } catch {
             guard request == candidateRead else { return }

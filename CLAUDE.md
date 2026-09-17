@@ -156,6 +156,8 @@ localStorage: `tripcanvas_v1`(여행) · `tripcanvas_legs_v4`(구간 캐시, 수
 
 **비용은 '하루치'와 '총액'을 구분한다.** 장소 비용(`spot.cost`)·택시비는 그날 쓰는 돈이지만, 예약(숙박·렌터카·항공)은 여러 날에 걸친 총액이다.
 
+- **가기 전에 낸 돈과 가서 쓰는 돈은 다른 장부다**(2026-09-17). `tripCostSummary()`가 둘로도 나눈다 — `prep`(준비한 비용 = 예약 **전액** 한 줄씩 + 여행 단위 항목 `trip.costItems`) · `onSite`(가서 쓰는 비용 = 날짜별 장소·추가 비용·교통, `dayCostSummary().onSiteKRW`의 합). **둘을 더하면 `totalKRW`와 같다.** `trip.costItems`는 하루 `day.costItems`와 같은 모양·같은 정규화(`normalizeCostItems`)이고 어느 날에도 속하지 않는다(보험·유심·미리 산 입장권). 앱 비용 화면은 이 둘을 세그먼트로 나누고, 정산은 **금액부터 치는** 빠른 입력(`QuickSpendEditor` — 낸 돈이라 결제로 둔다)이 먼저다.
+- **예약의 결제 상태는 예약마다 다르다.** `booking.payState`는 `PAID`만 저장하고 없으면 예약이다(`costPayStateOf(b,'BOOKING')`) — 항공은 대개 낸 돈, 현장 결제 호텔은 잡아 둔 돈이라 한쪽으로 단정하면 가계부의 '이미 낸 돈 / 아직 낼 돈'이 거짓말이 된다. 하루치(`bookingShareOn`)·잔액·가계부 줄이 전부 이 값을 따른다.
 - **일자 카드 하루 비용** = 장소 + 택시 + `bookingShareOn(bookings, iso)` (lib)로 날수를 나눈 예약 하루치. **숙박과 렌터카만 나눈다** — 숙박은 `[체크인, 체크아웃)`(체크아웃 날엔 숙박비 없음), 렌터카는 `[픽업, 반납]` 양끝 포함. **항공은 나누지 않는다**(한 번 낸 돈이지 하루치가 있는 돈이 아니다 — 왕복을 출발일~귀국일로 잡으면 비행기를 안 타는 날에도 매일 들어갔다, 2026-09-17 수정). 나머지는 앞날부터 1원씩 얹어 하루치의 합이 총액과 정확히 맞는다.
 - **필터바 전체 비용** = `tripCostBreakdown()` (app) — 장소 + 택시 + 예약 **전액**. 예약 기간이 일정 밖으로 나가면 하루 합계보다 크다(전체가 실제 총액).
 
@@ -208,6 +210,14 @@ localStorage: `tripcanvas_v1`(여행) · `tripcanvas_legs_v4`(구간 캐시, 수
   - ⚠️ 키(`GOOGLE_ROUTES_API_KEY`·`KAKAO_REST_API_KEY`)가 없으면 라우터가 `null`이라 예전과 완전히 같다. 잠깐인 실패(프록시 429·업스트림 5xx)는 캐시에 남기지 않는다 — 혼잡이 한 시간짜리 "직선이에요"로 굳으면 안 된다.
 - 제안 거절은 `suggestion_feedback` 테이블(RLS)에 날짜와 함께 남는다 — 기기가 바뀌어도 같은 제안이 그날 다시 올라오지 않는다. ⚠️ 레거시 웹은 아직 localStorage를 쓴다(양쪽이 아직 공유되지 않음).
 - `next`의 `swiftParity.test.ts`가 **실제 Today 응답 ↔ `ios/.../Contract.swift`** 를 맞춰 보고 `ios/TripCanvasTests/Fixtures/today.json`을 다시 만든다. 계약을 바꾸면 여기가 먼저 깨진다.
+
+**앱의 탭 전환은 앱 복귀가 아니다.** (2026-09-17 "탭을 누를 때마다 로딩" 보고)
+
+- 여행 화면의 모델(`TodayViewModel`·`TripPlanViewModel`·`MapDiscoveryModel`)은 **탭이 아니라 여행이 들고 있다**(`TripHomeView`의 `TripScreenModels`). 탭 화면은 받기만 한다 — 화면이 `@State`로 모델을 만들면 탭을 바꿀 때 뷰와 함께 죽어 돌아올 때마다 서버를 다시 묻는다.
+- 탭 진입은 `loadIfStale()`이다: 내용이 있고 방금 받은 것(60초)이면 요청이 0, 오래됐으면 **뒤에서** 새로 받는다(내용이 있으니 로딩 화면으로 바뀌지 않는다). 앱 복귀(`scenePhase`)·당겨서 새로고침은 여전히 `load()`다.
+- `지금`은 디스크에 남은 지난번 응답을 **먼저 그린다**(`cachedToday`) — 단, 목록이 아는 revision과 같을 때만이고, 그때 '오프라인' 표시는 붙이지 않는다.
+- 지도는 한 번 만들면 **숨기기만 한다**(`TripPlanView.mapMounted` + `MapEngineView.isVisible`). 숨긴 동안 카카오는 `pauseEngine`, 구글은 `isHidden` — 버리지 않으니 다시 보일 때 인증·타일을 되풀이하지 않는다. 처음 열기 전에는 만들지 않는다.
+- 탭 바는 **언제나 화면 맨 아래다** — 내용 위에 겹쳐 두고 키보드 안전 영역을 무시한다(`TripHomeView.tabBarHeight`만큼 내용이 위에서 끝난다).
 
 **계산이 늦게 오는 화면은 반쯤 지어 보이지 않는다.** (앱의 일정 화면 — 2026-09-07에 "화면이 튄다"로 드러났다)
 

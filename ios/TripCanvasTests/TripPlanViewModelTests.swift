@@ -19,6 +19,21 @@ final class TripPlanViewModelTests: XCTestCase {
         ])
     }
 
+    /// 탭을 오갈 때마다 문서를 다시 받지 않는다 — 방금 받은 것이면 그대로다(2026-09-17 "탭마다 로딩" 보고).
+    func testEnteringTheTabAgainDoesNotReloadAFreshDocument() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(), revision: 7, role: .owner))
+        var reads = 0
+        service.documentHandler = { reads += 1; return service.snapshot }
+        let model = TripPlanViewModel(tripId: "t1", service: service)
+        await model.loadIfStale()
+        await model.loadIfStale()
+        XCTAssertEqual(reads, 1, "방금 받았으면 다시 묻지 않는다")
+        XCTAssertEqual(service.dayPlanCalls.count, 1, "하루치도 다시 받지 않는다")
+        await model.loadIfStale(now: Date().addingTimeInterval(120))
+        XCTAssertEqual(reads, 2, "오래됐으면 새로 받는다")
+        XCTAssertFalse(model.isLoading, "문서가 있으므로 화면은 로딩으로 바뀌지 않는다")
+    }
+
     func testLoadsDocumentAndRole() async {
         let service = FakeDocumentService(snapshot: .init(document: document(), revision: 7, role: .viewer))
         let model = TripPlanViewModel(tripId: "t1", service: service)

@@ -1,5 +1,14 @@
 import SwiftUI
 
+/// 비용은 **두 장부**다 — 가기 전에 낸 돈과 가서 쓰는 돈은 적는 순간이 다르다(2026-09-17).
+///
+/// - **준비한 비용**(가계부): 여행 단위 목록. 예약(항공·숙박·렌터카)이 전액 한 줄씩, 그리고 예약이 아닌
+///   사전 지출(보험·유심·미리 산 입장권 — `trip.costItems`)이 결제한 순서로 쌓인다. 위에는 '이미 낸 돈 / 아직 낼 돈' 둘뿐이다.
+/// - **가서 쓰는 비용**(정산): 하루 단위. 그날 쓴 돈 합계와 날짜별 줄이 있고, 적는 것은 **금액부터** 친다(`QuickSpendEditor`).
+///
+/// 합계·환산·나누기는 전부 서버가 한다(`/costs`의 `prep`·`onSite`) — 앱은 그리고, 문서를 고쳐 저장할 뿐이다.
+/// ⚠️ 옛 API(NAS를 아직 안 올렸을 때)는 `prep`·`onSite`를 주지 않는다. 그때 목록은 문서에서 짓고
+/// 합계 자리에는 **그 사실을 쓴다** — 조용히 감추면 아무 오류 없이 기능만 사라진 것처럼 보인다.
 struct TripCostsView: View {
     let trip: TripSummary
     @Environment(AppEnvironment.self) private var env
@@ -8,93 +17,55 @@ struct TripCostsView: View {
     @State private var loading = false
     @State private var saving = false
     @State private var error: String?
+    @State private var ledger: CostLedger
     @State private var editingDay: TripCostDay?
+    /// 편집기를 연 순간의 revision. 그 사이 다른 기기가 바꿨으면 저장하지 않는다.
     @State private var editingRevision = 0
+    @State private var prepEditor: CostEditTarget?
+    @State private var bookingEditor: BookingEditorTarget?
+    @State private var quickSpend: QuickSpendTarget?
+
+    init(trip: TripSummary) {
+        self.trip = trip
+        // 여행 중이면 오늘 쓴 돈부터, 아니면 가계부부터 — 그때 적을 것이 그것이다.
+        _ledger = State(initialValue: trip.isLive ? .onSite : .prep)
+    }
+
+    /// 두 장부.
+    enum CostLedger: String, CaseIterable, Hashable {
+        case prep, onSite
+        var label: String { self == .prep ? "준비한 비용" : "가서 쓰는 비용" }
+    }
+
+    struct QuickSpendTarget: Identifiable {
+        let day: Int
+        var id: Int { day }
+    }
+
+    private var canEdit: Bool { snapshot?.canEdit == true }
+    private var todayIndex: Int? { trip.todayIndex >= 0 ? trip.todayIndex : nil }
 
     var body: some View {
-        List {
-            if loading && response == nil { ProgressView("비용을 확인하는 중…") }
-            if let error {
-                Section {
-                    Text(error).foregroundStyle(.orange)
-                    Button("다시 불러오기") { Task { await load() } }.disabled(loading || saving)
-                }
+        VStack(spacing: 0) {
+            Picker("장부", selection: $ledger) {
+                ForEach(CostLedger.allCases, id: \.self) { Text($0.label).tag($0) }
             }
-            if let response {
-                Section {
-                    VStack(alignment: .leading, spacing: Space.s) {
-                        Text("여행 전체 예상 비용").font(.subheadline)
-                        Text(money(response.totalKRW)).font(.title.bold())
-                        if let average = response.averagePerDayKRW {
-                            Text("하루 평균 \(money(average)) · \(response.days.count)일 기준").font(.subheadline)
-                        }
-                        Text("입력된 금액과 교통비 추정 기준 · 최종 결제 금액이 아닙니다").font(.caption).foregroundStyle(.secondary)
-                        if response.unknownCount > 0 {
-                            Text("미정·일부 금액 \(response.unknownCount)개 · 비용이 더 늘어날 수 있어요").font(.caption).foregroundStyle(.orange)
-                        }
-                        if response.transportUnpriced {
-                            Text("아직 계산되지 않은 교통비는 포함되지 않았어요").font(.caption).foregroundStyle(.secondary)
-                        }
-                    }
-                }
-                Section("날짜별 비용") {
-                    if response.days.isEmpty { Text("여행 날짜를 추가하면 하루 비용을 볼 수 있어요").foregroundStyle(.secondary) }
-                    ForEach(response.days) { day in
-                        Button {
-                            editingRevision = response.revision; editingDay = day
-                        } label: {
-                            VStack(alignment: .leading, spacing: Space.xs) {
-                                HStack {
-                                    Text("Day \(day.index + 1) · \(day.date.isEmpty ? "날짜 미정" : day.date)")
-                                    Spacer()
-                                    Text(money(day.cost.total)).monospacedDigit()
-                                    Image(systemName: "chevron.right").font(.caption)
-                                }
-                                if !day.title.isEmpty { Text(day.title).font(.caption).foregroundStyle(.secondary) }
-                                // 그날 얼마를 이미 냈고 얼마가 예약으로 남아 있는지 — 합계 하나로는 안 보인다
-                                if !day.cost.paySplit.isEmpty {
-                                    Text(day.cost.paySplit.map { "\($0.state.label) \(money($0.amount))" }.joined(separator: " · "))
-                                        .font(.caption).foregroundStyle(.secondary)
-                                }
-                                if let count = day.cost.details?.unknownCount, count > 0 {
-                                    Text("미정·일부 금액 \(count)개").font(.caption).foregroundStyle(.orange)
-                                }
-                            }
-                        }.buttonStyle(.plain)
-                    }
-                }
-                // 예약이나 결제를 하나라도 골랐을 때만 절을 짓는다 — 전부 미구분이면 합계를 한 번 더 말하는 것뿐이다
-                if !payRows(response).isEmpty {
+            .pickerStyle(.segmented)
+            .padding(.horizontal, Space.l)
+            .padding(.vertical, Space.s)
+            List {
+                if loading && response == nil && snapshot == nil { ProgressView("비용을 확인하는 중…") }
+                if let error {
                     Section {
-                        ForEach(payRows(response), id: \.0) { row in
-                            HStack { Text(row.0); Spacer(); Text(money(row.1)).monospacedDigit() }
-                        }
-                    } header: { Text("예약·결제") } footer: {
-                        Text("예약해 두고 아직 내지 않은 돈과 이미 낸 돈을 나눠 봅니다. 상태를 고르지 않은 비용은 미구분으로 남습니다.")
+                        Text(error).foregroundStyle(.orange)
+                        Button("다시 불러오기") { Task { await load() } }.disabled(loading || saving)
                     }
                 }
-                Section("카테고리별 비용") {
-                    ForEach(response.categories) { category in
-                        DisclosureGroup {
-                            if category.items.isEmpty { Text("입력된 비용이 없어요").font(.caption).foregroundStyle(.secondary) }
-                            ForEach(category.items) { item in costRow(item) }
-                        } label: {
-                            HStack {
-                                Text(CostCategory(rawValue: category.kind)?.label ?? "기타")
-                                Spacer()
-                                Text(money(category.totalKRW)).monospacedDigit()
-                            }
-                        }
-                    }
+                switch ledger {
+                case .prep: prepSections
+                case .onSite: onSiteSections
                 }
-                if !response.unallocated.isEmpty {
-                    Section {
-                        ForEach(response.unallocated) { item in costRow(item) }
-                    } header: { Text("날짜에 배분되지 않은 예약 비용") } footer: {
-                        Text("항공처럼 날짜로 나누지 않는 예약과, 날짜가 없거나 여행 기간 밖인 예약 금액입니다. 전체·카테고리 합계에는 포함되며, 날짜별 합계에는 포함되지 않아요. 예약 메뉴에서 날짜와 금액을 수정할 수 있어요.")
-                    }
-                }
-                if response.hasForeignCurrency {
+                if let response, response.hasForeignCurrency {
                     Section("원화 환산 기준") {
                         Text("기본 참고 환율 · 실시간 시세 아님 · 시세 기준일 없음").font(.caption)
                         ForEach(response.fxRates.keys.filter { $0 != "KRW" }.sorted(), id: \.self) { currency in
@@ -120,63 +91,334 @@ struct TripCostsView: View {
                 }
             }
         }
+        .sheet(item: $quickSpend) { target in
+            if let snapshot, snapshot.document.hasDay(target.day) {
+                QuickSpendEditor(dayLabel: dayLabel(target.day)) { entry in
+                    var day = snapshot.document.days[target.day]
+                    day.costItems = day.costItems + [entry]
+                    return await save(day, index: target.day)
+                }
+            }
+        }
+        .sheet(item: $prepEditor) { target in
+            CostEntryEditor(target: target) { entry in
+                guard case .prep(let id) = target.kind else { return false }
+                return await saveDocument(expected: editingRevision) { draft in
+                    var items = draft.costItems.filter { $0.id != id }
+                    if let entry { items.append(entry) }
+                    draft.costItems = items
+                }
+            }
+        }
+        .sheet(item: $bookingEditor) { target in
+            if let snapshot {
+                BookingEditorView(
+                    target: target,
+                    document: snapshot.document,
+                    onSave: { booking, links in
+                        if let problem = booking.validate() { return problem.message }
+                        let saved = await saveDocument(expected: editingRevision) { $0.upsertBooking(booking, links: links) }
+                        return saved ? nil : (error ?? "예약을 저장하지 못했어요.")
+                    },
+                    onDelete: { id in
+                        let saved = await saveDocument(expected: editingRevision) { $0.removeBooking(id: id) }
+                        return saved ? nil : (error ?? "예약을 빼지 못했어요.")
+                    })
+            }
+        }
+    }
+
+    // MARK: 준비한 비용 — 가계부
+
+    @ViewBuilder
+    private var prepSections: some View {
+        Section {
+            if let prep = response?.prep {
+                VStack(alignment: .leading, spacing: Space.xs) {
+                    Text("준비한 비용").font(.subheadline)
+                    Text(money(prep.totalKRW)).font(.title.bold())
+                    // 가계부가 답할 것은 둘뿐이다 — 냈는가, 아직인가.
+                    HStack(spacing: Space.m) {
+                        Label("이미 낸 돈 \(money(prep.group.amount(.paid)))", systemImage: "checkmark.circle")
+                        Label("아직 낼 돈 \(money(prep.group.amount(.reserved)))", systemImage: "clock")
+                    }
+                    .font(.caption).foregroundStyle(.secondary)
+                    if prep.group.amount(.none) > 0 {
+                        Text("결제 상태를 고르지 않은 \(money(prep.group.amount(.none)))은 어느 쪽으로도 세지 않았어요")
+                            .font(.caption).foregroundStyle(.orange)
+                    }
+                }
+            } else if response != nil {
+                Label("합계는 API를 새 버전으로 올린 뒤 보여요. 목록과 입력은 지금도 됩니다.", systemImage: "server.rack")
+                    .font(.caption).foregroundStyle(.orange)
+            }
+        } footer: {
+            Text("가기 전에 낸 돈 — 예약(항공·숙박·렌터카)과 예약이 아닌 사전 지출. 항공은 날짜로 나누지 않고, 숙박·렌터카는 날짜별 비용에도 하루치로 보여요.")
+        }
+        Section {
+            if let document = snapshot?.document {
+                let bookings = document.bookings
+                if bookings.isEmpty { Text("예약을 적으면 여기에 모여요").foregroundStyle(.secondary) }
+                ForEach(bookings, id: \.id) { booking in bookingRow(booking) }
+            }
+            if canEdit, let snapshot {
+                Button { editingRevision = snapshot.revision; bookingEditor = .create } label: {
+                    Label("예약 추가", systemImage: "plus")
+                }
+            }
+        } header: { Text("예약") } footer: {
+            Text("줄을 밀어 결제함·예약만 함을 바꿀 수 있어요. 결제한 항공은 이미 낸 돈, 현장 결제 호텔은 아직 낼 돈입니다.")
+        }
+        Section {
+            if let document = snapshot?.document {
+                ForEach(document.costItems) { item in
+                    Button {
+                        editingRevision = snapshot?.revision ?? 0
+                        prepEditor = CostEditTarget(kind: .prep(item.id), entry: item)
+                    } label: { prepItemRow(item) }
+                    .buttonStyle(.plain).disabled(!canEdit)
+                }
+            }
+            if canEdit, let snapshot {
+                Button {
+                    // 새 항목은 결제로 시작한다 — 가계부에 적는 것은 대개 이미 낸 돈이다. 편집기에서 바꿀 수 있다.
+                    let entry = CostEntry(raw: ["id": .string(UUID().uuidString), "costBasis": .string(CostBasis.total.rawValue),
+                                                "payState": .string(CostPayState.paid.rawValue)])
+                    editingRevision = snapshot.revision
+                    prepEditor = CostEditTarget(kind: .prep(entry.id), entry: entry)
+                } label: { Label("항목 추가", systemImage: "plus") }
+            }
+        } header: { Text("예약 외 준비 비용") } footer: {
+            Text("여행자보험·유심·미리 산 입장권처럼 예약 화면에 없는 사전 지출. 날짜별 비용에는 들어가지 않아요.")
+        }
+    }
+
+    private func bookingRow(_ booking: TripBooking) -> some View {
+        let line = response?.prep?.items.first { $0.source == "BOOKING" && $0.key == booking.id }
+        let period = [booking.start, booking.end].compactMap { $0 }.map { TimeFormat.dayChipLabel($0) ?? $0 }.joined(separator: " ~ ")
+        return Button {
+            guard let snapshot else { return }
+            editingRevision = snapshot.revision
+            bookingEditor = .edit(booking)
+        } label: {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: Space.xs) {
+                    Label(booking.title.isEmpty ? "예약" : booking.title, systemImage: booking.type.symbol)
+                    Text([booking.type.label, period, booking.provider].filter { !$0.isEmpty }.joined(separator: " · "))
+                        .font(.caption).foregroundStyle(.secondary)
+                    HStack(spacing: Space.xs) {
+                        payChip(booking.payState)
+                        if booking.currencyCode != "KRW", let krw = line?.totalKRW {
+                            Text("약 \(money(krw))").font(.caption2).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                Spacer(minLength: Space.s)
+                Text(booking.price > 0 ? TimeFormat.money(booking.price, currency: booking.currencyCode) : "금액 미정")
+                    .monospacedDigit()
+                    .foregroundStyle(booking.price > 0 ? Ink.ink : Ink.soft)
+            }
+            .padding(.vertical, Space.xs)
+        }
+        .buttonStyle(.plain)
+        .disabled(!canEdit)
+        .swipeActions(edge: .leading, allowsFullSwipe: true) {
+            if canEdit {
+                let paid = booking.payState == .paid
+                Button {
+                    Task { await setPayState(booking, paid ? .reserved : .paid) }
+                } label: {
+                    Label(paid ? "예약만 함" : "결제함", systemImage: paid ? "clock" : "checkmark.circle")
+                }
+                .tint(paid ? .orange : .green)
+            }
+        }
+        .accessibilityHint(canEdit ? "탭하면 예약을 고칩니다. 오른쪽으로 밀면 결제 상태를 바꿉니다." : "")
+    }
+
+    private func prepItemRow(_ item: CostEntry) -> some View {
+        let line = response?.prep?.items.first { $0.source == "TRIP" && $0.key == item.id }
+        return HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: Space.xs) {
+                Text(item.title.isEmpty ? "비용" : item.title)
+                Text([CostCategory(rawValue: item.kind)?.label ?? "기타", item.paidOn.flatMap(TimeFormat.dayChipLabel).map { "\($0) 냄" } ?? ""]
+                    .filter { !$0.isEmpty }.joined(separator: " · "))
+                    .font(.caption).foregroundStyle(.secondary)
+                HStack(spacing: Space.xs) {
+                    if item.payState != .none { payChip(item.payState) }
+                    if item.currency != .krw, let krw = line?.totalKRW {
+                        Text("약 \(money(krw))").font(.caption2).foregroundStyle(.secondary)
+                    }
+                    if !item.photos.isEmpty {
+                        Label("\(item.photos.count)", systemImage: "photo").font(.caption2).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            Spacer(minLength: Space.s)
+            if let amount = item.amount {
+                Text(TimeFormat.money(amount, currency: item.currency.rawValue)).monospacedDigit()
+            } else {
+                Text("금액 미정").foregroundStyle(Ink.soft)
+            }
+        }
+        .padding(.vertical, Space.xs)
+    }
+
+    private func payChip(_ state: CostPayState) -> some View {
+        Text(state == .paid ? "결제함" : state == .reserved ? "예약만 함" : "미구분")
+            .font(.caption2)
+            .padding(.horizontal, 6).padding(.vertical, 2)
+            .background((state == .paid ? Color.green : state == .reserved ? Color.orange : Ink.soft).opacity(0.14), in: Capsule())
+    }
+
+    // MARK: 가서 쓰는 비용 — 정산
+
+    @ViewBuilder
+    private var onSiteSections: some View {
+        Section {
+            if let response, let onSite = response.onSite {
+                VStack(alignment: .leading, spacing: Space.xs) {
+                    Text("가서 쓰는 비용").font(.subheadline)
+                    Text(money(onSite.totalKRW)).font(.title.bold())
+                    if !response.days.isEmpty {
+                        Text("하루 평균 \(money((onSite.totalKRW / Double(response.days.count)).rounded())) · \(response.days.count)일 기준")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    if !onSite.paySplit.isEmpty {
+                        Text(onSite.paySplit.map { "\($0.state.label) \(money($0.amount))" }.joined(separator: " · "))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    if response.transportUnpriced {
+                        Text("아직 계산되지 않은 교통비는 포함되지 않았어요").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            } else if response != nil {
+                Label("합계는 API를 새 버전으로 올린 뒤 보여요. 날짜별 입력은 지금도 됩니다.", systemImage: "server.rack")
+                    .font(.caption).foregroundStyle(.orange)
+            }
+            if canEdit, let today = todayIndex {
+                Button { quickSpend = QuickSpendTarget(day: today) } label: {
+                    Label("오늘 쓴 돈 적기", systemImage: "plus.circle.fill")
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        } footer: {
+            Text("장소 비용·추가 비용·교통비만 셉니다. 예약 하루치는 준비한 비용에 있어요.")
+        }
+        Section("날짜별") {
+            if let response {
+                if response.days.isEmpty { Text("여행 날짜를 추가하면 하루 비용을 볼 수 있어요").foregroundStyle(.secondary) }
+                ForEach(response.days) { day in dayRow(day, revision: response.revision) }
+            } else if let snapshot, error == nil {
+                // 합계가 아직 없어도 날짜는 문서가 안다 — 입력까지 막지 않는다.
+                ForEach(Array(snapshot.document.days.indices), id: \.self) { index in
+                    HStack {
+                        Text("Day \(index + 1)")
+                        Spacer()
+                        if canEdit {
+                            Button { quickSpend = QuickSpendTarget(day: index) } label: {
+                                Image(systemName: "plus.circle").frame(width: 44, height: 44)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Day \(index + 1)에 쓴 돈 적기")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func dayRow(_ day: TripCostDay, revision: Int) -> some View {
+        HStack(spacing: Space.s) {
+            Button {
+                editingRevision = revision; editingDay = day
+            } label: {
+                VStack(alignment: .leading, spacing: Space.xs) {
+                    HStack(spacing: Space.s) {
+                        Text("Day \(day.index + 1) · \(day.date.isEmpty ? "날짜 미정" : (TimeFormat.dayChipLabel(day.date) ?? day.date))")
+                        if day.index == todayIndex {
+                            Text("오늘").font(.caption2.weight(.bold))
+                                .padding(.horizontal, 5).padding(.vertical, 1)
+                                .background(Ink.accent, in: Capsule()).foregroundStyle(.white)
+                        }
+                        Spacer()
+                        Text(money(day.cost.onSiteKRW ?? day.cost.total)).monospacedDigit()
+                        Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary)
+                    }
+                    if !day.title.isEmpty { Text(day.title).font(.caption).foregroundStyle(.secondary) }
+                    if day.cost.onSiteKRW == nil {
+                        Text("예약 하루치 포함 · API 갱신 전").font(.caption2).foregroundStyle(.orange)
+                    }
+                    if let count = day.cost.details?.unknownCount, count > 0 {
+                        Text("미정·일부 금액 \(count)개").font(.caption).foregroundStyle(.orange)
+                    }
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            if canEdit {
+                Button { quickSpend = QuickSpendTarget(day: day.index) } label: {
+                    Image(systemName: "plus.circle").frame(width: 44, height: 44)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Day \(day.index + 1)에 쓴 돈 적기")
+            }
+        }
+    }
+
+    private func dayLabel(_ index: Int) -> String {
+        let date = response?.days.first { $0.index == index }?.date ?? ""
+        let title = snapshot?.document.days[index].title ?? ""
+        return ["Day \(index + 1)", TimeFormat.dayChipLabel(date) ?? "", title].filter { !$0.isEmpty }.joined(separator: " · ")
     }
 
     private func money(_ value: Double) -> String { TimeFormat.money(value, currency: "KRW") }
 
-    /// 예약이나 결제가 하나라도 있을 때만 줄을 짓는다. 그때는 미구분도 함께 보여 셋을 더하면 전체와 맞게 한다.
-    /// 전부 미구분이면 빈 배열 — 합계를 한 번 더 말하는 줄은 정보가 아니다.
-    private func payRows(_ response: TripCostsResponse) -> [(String, Double)] {
-        let amount = { (s: CostPayState) in response.payTotals[s.rawValue] ?? 0 }
-        guard amount(.reserved) > 0 || amount(.paid) > 0 else { return [] }
-        return [CostPayState.reserved, .paid, .none].compactMap { state in
-            amount(state) > 0 ? (state.label, amount(state)) : nil
-        }
-    }
+    // MARK: 읽기·쓰기
 
-    private func costRow(_ item: TripCostLine) -> some View {
-        VStack(alignment: .leading, spacing: Space.xs) {
-            Text(item.title)
-            if let amount = item.amount {
-                Text("\(TimeFormat.money(amount, currency: item.currency))\(item.basis == .perPerson ? " × \(item.people)명" : "")")
-                if item.currency != "KRW", let total = item.totalKRW { Text("원화 환산 약 \(money(total))").font(.caption) }
-            } else { Text("비용 미정").foregroundStyle(.secondary) }
-            if item.state == "PARTIAL" { Text("일부 금액만 확인").font(.caption).foregroundStyle(.orange) }
-            Text(item.dayIndex.map { "Day \($0 + 1)" } ?? "날짜 미배분").font(.caption).foregroundStyle(.secondary)
-            if item.source == "TRANSPORT" { Text("자동 교통비 추정").font(.caption).foregroundStyle(.secondary) }
-        }.padding(.vertical, Space.xs)
-    }
-
+    /// 문서와 계산을 따로 받는다 — 계산이 실패해도 문서로 목록은 짓는다(입력을 막지 않는다).
     private func load() async {
         guard !loading, !saving else { return }
         loading = true
         defer { loading = false }
         do {
-            async let costs = env.service.tripCosts(tripId: trip.id)
-            async let document = env.service.document(tripId: trip.id)
-            let (received, fresh) = try await (costs, document)
+            let fresh = try await env.service.document(tripId: trip.id)
             try Task.checkCancellation()
-            guard received.revision == fresh.revision else {
+            snapshot = fresh; error = nil
+        } catch {
+            guard !Task.isCancelled else { return }
+            self.error = "비용을 불러오지 못했어요. 연결을 확인하고 다시 시도해 주세요."
+            return
+        }
+        do {
+            let received = try await env.service.tripCosts(tripId: trip.id)
+            try Task.checkCancellation()
+            guard received.revision == snapshot?.revision else {
                 response = nil
                 error = "여행 내용이 변경됐어요. 다시 불러와 주세요."; return
             }
-            response = received; snapshot = fresh; error = nil
+            response = received
         } catch {
             guard !Task.isCancelled else { return }
             response = nil
-            self.error = "비용을 불러오지 못했어요. 연결을 확인하고 다시 시도해 주세요."
+            self.error = "합계를 계산하지 못했어요. 목록과 입력은 그대로 됩니다."
         }
     }
 
-    private func save(_ day: TripDay, index: Int) async -> Bool {
-        guard !saving, !loading, let snapshot, snapshot.canEdit,
-              snapshot.revision == editingRevision, snapshot.document.hasDay(index) else { return false }
+    /// 문서를 고쳐 저장한다. 편집기를 연 뒤 다른 기기가 바꿨으면(`expected`) 저장하지 않는다 — 조용히 덮어쓰지 않는다.
+    @discardableResult
+    private func saveDocument(expected: Int? = nil, _ change: (inout TripDocument) -> Void) async -> Bool {
+        guard !saving, !loading, let snapshot, snapshot.canEdit else { return false }
+        if let expected, expected != snapshot.revision {
+            error = "여행 내용이 그새 바뀌었어요. 다시 불러온 뒤 고쳐 주세요."
+            return false
+        }
         saving = true
         var draft = snapshot.document
-        var days = draft.days
-        days[index] = day; draft.days = days
+        change(&draft)
         do {
-            let saved = try await env.service.saveDocument(tripId: trip.id, document: draft, expectedRevision: editingRevision)
+            let saved = try await env.service.saveDocument(tripId: trip.id, document: draft, expectedRevision: snapshot.revision)
             self.snapshot = saved; editingRevision = saved.revision
             response = nil; saving = false
             await load()
@@ -185,6 +427,25 @@ struct TripCostsView: View {
             saving = false
             self.error = "비용 저장에 실패했어요. 다른 기기의 변경이 있다면 닫은 뒤 다시 불러와 주세요."
             return false
+        }
+    }
+
+    private func save(_ day: TripDay, index: Int) async -> Bool {
+        guard let snapshot, snapshot.document.hasDay(index) else { return false }
+        return await saveDocument(expected: editingRevision) { draft in
+            var days = draft.days
+            days[index] = day; draft.days = days
+        }
+    }
+
+    private func setPayState(_ booking: TripBooking, _ state: CostPayState) async {
+        guard let snapshot else { return }
+        editingRevision = snapshot.revision
+        await saveDocument(expected: editingRevision) { draft in
+            var all = draft.bookings
+            guard let index = all.firstIndex(where: { $0.id == booking.id }) else { return }
+            all[index].payState = state
+            draft.bookings = all
         }
     }
 }
