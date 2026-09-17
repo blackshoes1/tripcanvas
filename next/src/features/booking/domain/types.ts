@@ -29,7 +29,7 @@ export interface BookingBase {
   cur?: CurrencyCode;
   /** 시작일 YYYY-MM-DD (숙박=체크인, 렌터카/항공=이용 시작) */
   start?: string;
-  /** 종료일 YYYY-MM-DD (숙박=체크아웃 — 비용 배분은 [start, end) / 렌터카·항공은 양끝 포함) */
+  /** 종료일 YYYY-MM-DD (숙박=체크아웃 — 비용 배분은 [start, end) / 렌터카는 양끝 포함 / 항공은 날짜로 나누지 않는다) */
   end?: string;
   /** 무료 취소 기한 (이 날짜까지 취소 수수료 0) */
   freeCancelUntil?: string;

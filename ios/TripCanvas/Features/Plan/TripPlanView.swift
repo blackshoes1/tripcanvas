@@ -9,6 +9,9 @@ enum MapScope: Hashable { case discovery, day, trip }
 
 struct TripPlanView: View {
     let trip: TripSummary
+    /// 목록이냐 지도냐. **탭 바가 정한다**(`TripHomeView`) — 이 화면 안에 세그먼트를 또 깔지 않는다.
+    /// 화면 안에서 지도를 끄는 곳이 하나 있다(여러 장소 옮기기). 그때는 이 바인딩이 탭도 함께 되돌린다.
+    @Binding var showsMap: Bool
 
     @Environment(AppEnvironment.self) private var env
     @State private var model: TripPlanViewModel?
@@ -26,7 +29,6 @@ struct TripPlanView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.editMode) private var editMode
     private var isEditing: Bool { editMode?.wrappedValue.isEditing == true }
-    @State private var showsMap = false
     @State private var showsOverview = false
     @State private var showsSettings = false
     @State private var showsCosts = false
@@ -64,7 +66,12 @@ struct TripPlanView: View {
                 }
             }
             if let model, model.canEdit, model.day != nil {
-                ToolbarItem(placement: .topBarTrailing) { EditButton() }
+                // EditButton()은 앱에 한국어 번들이 없어 'Edit'으로 나왔다 — 문구를 직접 준다.
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(isEditing ? "완료" : "편집") {
+                        withAnimation { editMode?.wrappedValue = isEditing ? .inactive : .active }
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     // 검색이 먼저다 — 좌표가 있어야 동선·ETA·지도에 들어간다. 직접 입력은 그다음.
                     Menu {
@@ -192,13 +199,6 @@ struct TripPlanView: View {
                         Button("날짜·위치 옮기기") { prepareMove(chosenPlaces, model: model) }.disabled(chosenPlaces.isEmpty)
                     }.padding(.horizontal, Space.l).frame(minHeight: 44)
                 }
-                Picker("보기", selection: $showsMap) {
-                    Text("목록").tag(false)
-                    Text("지도").tag(true)
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal, Space.l)
-                .padding(.bottom, Space.s)
                 Divider()
                 if showsMap {
                     dayMap(model)
@@ -679,11 +679,12 @@ struct TripPlanView: View {
             .font(.caption)
             .foregroundStyle(.secondary)
 
-            // 자정을 넘긴다 — 넘긴다고 막지는 않는다. 그렇게 되어 있다고 말할 뿐이다.
+            // 늦게 끝나는 것 자체는 문제가 아니다 — 그렇게 되어 있다고 말할 뿐이라 경고색을 쓰지 않는다.
+            // ⚠️ 예전에는 주황이었는데, 오후 4시에 끝나는 날에도 붉게 떠서 무엇이 잘못됐는지 되묻게 했다.
             if let end = totals.endMinutes {
                 Label("이대로면 \(TimeFormat.clockAcrossMidnight(end))에 끝나요", systemImage: "moon.zzz")
                     .font(.caption)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(Ink.soft)
             }
         }
         .textCase(nil)
