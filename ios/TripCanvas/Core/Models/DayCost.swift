@@ -44,6 +44,11 @@ struct CostEntry: Hashable, Sendable, Identifiable {
         get { (raw["photos"]?.arrayValue ?? []).compactMap { $0.stringValue } }
         set { raw.setOrRemove("photos", newValue.isEmpty ? nil : .array(newValue.map { .string($0) })) }
     }
+    /// 낸 날짜 `YYYY-MM-DD` — 가계부 정렬용. 여행 날짜와 무관하다(출발 두 달 전에 낸 보험료).
+    var paidOn: String? {
+        get { raw["paidOn"]?.stringValue }
+        set { raw.setOrRemove("paidOn", newValue.flatMap { $0.isEmpty ? nil : .string($0) }) }
+    }
 
     init(raw: [String: JSONValue] = [:]) { self.raw = raw }
 
@@ -60,6 +65,15 @@ struct CostEntry: Hashable, Sendable, Identifiable {
         spot.setField("costKind", kind == "AUTO" ? nil : .string(kind))
         for key in ["cur", "costBasis", "costPeople", "costPartial", "payState", "photos"] { spot.setField(key, raw[key]) }
         return spot
+    }
+}
+
+extension TripDocument {
+    /// **준비한 비용** — 예약이 아닌 사전 지출(여행자보험·유심·미리 산 입장권). 하루 항목과 같은 모양이고
+    /// 어느 날에도 속하지 않는다. 비면 키를 지운다(웹 `normalizeTrip`과 같다).
+    var costItems: [CostEntry] {
+        get { (raw["costItems"]?.arrayValue ?? []).compactMap { $0.objectValue.map(CostEntry.init(raw:)) } }
+        set { setField("costItems", newValue.isEmpty ? nil : .array(newValue.map { .object($0.raw) })) }
     }
 }
 
