@@ -1,0 +1,36 @@
+# Fly.io — With J 실시간 사이드카 (next/Dockerfile의 realtime 타깃). 예시다.
+#   fly deploy . --config deploy/managed/fly.realtime.toml --app <app> --remote-only --build-arg TC_REVISION=<sha>
+# WebSocket 경로는 /ws 고정(서버가 다른 경로를 거절한다). 공개 주소 wss://<app>.fly.dev/ws 를 API의 REALTIME_URL에 넣는다.
+app = "withj-realtime-staging"
+primary_region = "nrt"
+
+[build]
+  dockerfile = "next/Dockerfile"
+  build-target = "realtime"
+
+[env]
+  REALTIME_PORT = "3001"
+  NODE_ENV = "production"
+
+[http_service]
+  internal_port = 3001
+  force_https = true
+  # LISTEN 연결을 계속 들고 있어야 한다 — 잠들면 알림이 영영 안 온다. 복제본을 늘려도 된다(각자 LISTEN한다)
+  auto_stop_machines = "off"
+  auto_start_machines = false
+  min_machines_running = 1
+  [http_service.concurrency]
+    type = "connections"
+    soft_limit = 500
+    hard_limit = 1000
+
+[[http_service.checks]]
+  interval = "30s"
+  timeout = "5s"
+  grace_period = "20s"
+  method = "GET"
+  path = "/health"          # LISTEN이 붙어 있지 않으면 503 — 조용한 고장을 헬스로 드러낸다
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

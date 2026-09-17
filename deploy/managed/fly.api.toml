@@ -1,0 +1,44 @@
+# Fly.io — With J API (next/Dockerfile의 runtime 타깃). 예시다: 앱 이름·리전은 콘솔에서 만든 값으로.
+#   fly deploy . --config deploy/managed/fly.api.toml --app <app> --remote-only --build-arg TC_REVISION=<sha>
+# 비밀(DATABASE_URL·AUTH_SECRET·SMTP_*·지도 키)은 여기 쓰지 않는다 — `fly secrets set`.
+app = "withj-api-staging"
+primary_region = "nrt"
+
+[build]
+  dockerfile = "next/Dockerfile"
+  build-target = "runtime"
+
+[env]
+  PORT = "3000"
+  HOSTNAME = "0.0.0.0"
+  NODE_ENV = "production"
+  NEXT_TELEMETRY_DISABLED = "1"
+  # 비밀이 아닌 설정. 나머지 이름은 env.managed.example
+  BACKUP_MAX_AGE_HOURS = "26"
+  TC_MIGRATION_TRIP = "NEW_BACKEND"
+  TC_MIGRATION_COLLAB = "NEW_BACKEND"
+  TC_MIGRATION_ADAPTIVE = "NEW_BACKEND"
+  TC_MIGRATION_PRICING = "NEW_BACKEND"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  # 응답을 보낸 뒤 배경에서 구간 캐시를 채운다(legFiller). 머신이 잠들면 그 작업이 끊기므로 잠재우지 않는다
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 200
+    hard_limit = 250
+
+[[http_service.checks]]
+  interval = "30s"
+  timeout = "5s"
+  grace_period = "20s"
+  method = "GET"
+  path = "/api/health"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
