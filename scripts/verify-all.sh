@@ -53,6 +53,13 @@ if want web; then
     skip "RLS(실제 PostgreSQL)" "로컬 PostgreSQL 바이너리 없음"
   fi
 
+  # 복구해 본 백업만 백업이다(docs/backup-restore.md) — 실제 pg_dump/pg_restore/마이그레이션/전수 대조를 합성 데이터로 밟는다
+  if scripts/pg-local.sh env >/dev/null 2>&1; then
+    step "복구 리허설(합성·실제 PostgreSQL)" npm run rehearse:restore
+  else
+    skip "복구 리허설(합성·실제 PostgreSQL)" "로컬 PostgreSQL 바이너리 없음"
+  fi
+
   step "의존성 감사(high)"    npm audit --audit-level=high
   step "E2E(Playwright)"      npm run test:e2e
 fi

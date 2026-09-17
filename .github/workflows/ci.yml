@@ -36,6 +36,9 @@ jobs:
           eval "$(scripts/pg-local.sh env)"
           npm run test:rls 2>&1 | tee rls.log
           grep -q "# skipped 0" rls.log
+      # 복구해 본 백업만 백업이다 — 실제 pg_dump → pg_restore → 마이그레이션 → 전수 대조(합성 데이터). verify-all.sh와 같은 단계
+      - name: Restore rehearsal on real PostgreSQL
+        run: npm run rehearse:restore
       # ⚠️ 취약점이 아니라 **레지스트리가 흔들려서** 실패하는 일이 있다(2026-09-06 run #…):
       #    `audit endpoint returned an error` · 400 `Invalid package tree`.
       #    npm이 이 엔드포인트를 은퇴시키는 중이라 앞으로도 난다.

@@ -21,21 +21,7 @@ unset PGSERVICE PGSERVICEFILE PGOPTIONS PGPASSWORD DATABASE_URL
 source_url="postgresql://postgres@localhost/tc_source?host=$TC_PGDIR&port=$TC_PGPORT"
 target_url="postgresql://postgres@localhost/tc_restored?host=$TC_PGDIR&port=$TC_PGPORT"
 DATABASE_URL="$source_url" npm --prefix next run db:migrate >"$TC_PGDIR/migrate.log" 2>&1 || { cat "$TC_PGDIR/migrate.log"; exit 1; }
-"$TC_PSQL" -X -v ON_ERROR_STOP=1 -d tc_source >/dev/null <<'SQL'
-INSERT INTO users(id,email) VALUES
- ('00000000-0000-4000-8000-000000000001','owner@example.invalid'),
- ('00000000-0000-4000-8000-000000000002','viewer@example.invalid');
-INSERT INTO trips(id,user_id,client_id,data,revision) VALUES
- ('00000000-0000-4000-8000-000000000010','00000000-0000-4000-8000-000000000001','restoretest',
-  '{"id":"restoretest","name":"복구 리허설","days":[{"spots":[]}],"futureField":{"keep":true}}',7);
-INSERT INTO trips(user_id,client_id,data,revision,deleted_at) VALUES
- ('00000000-0000-4000-8000-000000000001','deletedtest','{"id":"deletedtest","days":[]}',3,now());
-INSERT INTO trip_members(trip_id,user_id,role) VALUES
- ('00000000-0000-4000-8000-000000000010','00000000-0000-4000-8000-000000000001','OWNER'),
- ('00000000-0000-4000-8000-000000000010','00000000-0000-4000-8000-000000000002','VIEWER');
-INSERT INTO trip_snapshots(user_id,client_id,name,data,source_revision) VALUES
- ('00000000-0000-4000-8000-000000000001','restoretest','복구 리허설','{"futureField":{"keep":true}}',7);
-SQL
+"$TC_PSQL" -X -v ON_ERROR_STOP=1 -d tc_source -f scripts/rehearse-seed.sql >/dev/null
 # 표 전체(인증·마이그레이션 이력 포함)의 행 수·내용과 시퀀스를 비교한다. 개인정보는 출력하지 않는다.
 cat >"$TC_PGDIR/fingerprint.sql" <<'SQL'
 SELECT format('SELECT %L || ''|'' || count(*) || ''|'' || coalesce(md5(string_agg(to_jsonb(t)::text, '''' ORDER BY to_jsonb(t)::text)), ''empty'') FROM %I.%I t;',
