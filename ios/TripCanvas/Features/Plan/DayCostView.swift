@@ -169,6 +169,9 @@ struct DayCostView: View {
                         var entries = updated.costItems.filter { $0.id != id }
                         if let entry { entries.append(entry) }
                         updated.costItems = entries
+                    case .prep:
+                        // 여행 단위 준비 비용은 비용 화면(TripCostsView)의 몫이다 — 하루 비용 시트는 열지 않는다.
+                        return false
                     }
                     guard await onSave(updated) else { return false }
                     day = updated
