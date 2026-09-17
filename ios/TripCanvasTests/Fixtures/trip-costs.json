@@ -8,6 +8,7 @@
       "date": "2026-09-01",
       "cost": {
         "total": 50000,
+        "onSiteKRW": 0,
         "parts": [
           {
             "label": "예약",
@@ -87,6 +88,7 @@
       "date": "2026-09-02",
       "cost": {
         "total": 50000,
+        "onSiteKRW": 0,
         "parts": [
           {
             "label": "예약",
@@ -272,6 +274,39 @@
     "RESERVED": 100000,
     "PAID": 0,
     "NONE": 0
+  },
+  "prep": {
+    "totalKRW": 100000,
+    "payTotals": {
+      "RESERVED": 100000,
+      "PAID": 0,
+      "NONE": 0
+    },
+    "items": [
+      {
+        "source": "BOOKING",
+        "key": "bk1",
+        "title": "호텔",
+        "kind": "hotel",
+        "amount": 100000,
+        "currency": "KRW",
+        "basis": "ENTERED",
+        "people": 1,
+        "payState": "RESERVED",
+        "photos": [],
+        "totalKRW": 100000,
+        "state": "KNOWN",
+        "dayIndex": null
+      }
+    ]
+  },
+  "onSite": {
+    "totalKRW": 0,
+    "payTotals": {
+      "RESERVED": 0,
+      "PAID": 0,
+      "NONE": 0
+    }
   },
   "unknownCount": 2,
   "transportUnpriced": true,

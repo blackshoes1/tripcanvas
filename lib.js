@@ -514,12 +514,13 @@
    * 비행기를 타지 않는 날에도 매일 항공비가 들어갔다(2026-09-17까지 그랬다). 전체 비용에만 전액으로 잡힌다.
    * 나머지는 앞날부터 1원씩 얹어 하루치의 합이 예약 총액과 정확히 맞는다(반올림 누수 방지).
    * 금액은 예약 통화 그대로 — 원화 환산은 호출부(toKRW)가 한다.
+   * 하루치에는 예약의 결제 상태(`payState`)도 실린다 — 결제한 항공·숙박은 '이미 낸 돈', 현장 결제 호텔은 '예약'이다.
    * @param {any[]} bookings @param {string} iso
-   * @returns {{id:string, type:string, title:string, amount:number, cur:string, days:number}[]}
+   * @returns {{id:string, type:string, title:string, amount:number, cur:string, days:number, payState:string}[]}
    */
   function bookingShareOn(bookings, iso){
     const d=_dayNum(iso);
-    /** @type {{id:string, type:string, title:string, amount:number, cur:string, days:number}[]} */
+    /** @type {{id:string, type:string, title:string, amount:number, cur:string, days:number, payState:string}[]} */
     const out=[];
     if(d===null || !Array.isArray(bookings)) return out;
     bookings.forEach((/**@type{any}*/b)=>{
@@ -534,7 +535,7 @@
       const scale=(b.cur==='USD'||b.cur==='EUR'||b.cur==='CNY')?100:1;
       const units=Math.round(price*scale), base=Math.floor(units/n), rem=units-base*n;
       out.push({id:_str(b.id), type:_str(b.type)||'hotel', title:_str(b.title),
-        amount:(base+(idx<rem?1:0))/scale, cur:_str(b.cur)||'KRW', days:n});
+        amount:(base+(idx<rem?1:0))/scale, cur:_str(b.cur)||'KRW', days:n, payState:costPayStateOf(b,'BOOKING')});
     });
     return out;
   }
@@ -600,7 +601,8 @@
    * 하루 비용 상세의 단일 계산. 외부 조회·환율 시세를 만들지 않고 받은 값만 합친다.
    * @param {any} trip @param {number} di
    * @param {{date:string,rates:Record<string,number>,taxi:number|null,transportUnpriced:boolean}} input
-   * @returns {{total:number,parts:{label:string,amount:number}[],payTotals:Record<string,number>,details:{items:any[],budget:any,unknownCount:number,transportUnpriced:boolean,undatedBookings:number,hasForeignCurrency:boolean,fxRates:Record<string,number>,fxSource:string,fxAsOf:string|null}}}
+   * `onSiteKRW`는 **가서 쓰는 돈**(장소·추가 비용·교통)만이다 — 예약 하루치는 가기 전에 낸 돈의 배분이라 뺀다.
+   * @returns {{total:number,onSiteKRW:number,parts:{label:string,amount:number}[],payTotals:Record<string,number>,details:{items:any[],budget:any,unknownCount:number,transportUnpriced:boolean,undatedBookings:number,hasForeignCurrency:boolean,fxRates:Record<string,number>,fxSource:string,fxAsOf:string|null}}}
    */
   function dayCostSummary(trip,di,input){
     const day=trip.days[di], rates=input.rates;
@@ -620,12 +622,13 @@
     }
     (day.spots||[]).forEach((/**@type{any}*/s,/**@type{number}*/index)=>add(s,'cost',{source:'SPOT',key:String(index),title:s.name||'장소',kind:costCategoryOf(s)}));
     (day.costItems||[]).forEach((/**@type{any}*/s)=>add(s,'amount',{source:'EXTRA',key:s.id,title:s.title||'비용',kind:s.kind||'OTHER'}));
-    for(const share of shares) add({amount:share.amount,cur:share.cur},'amount',{source:'BOOKING',key:share.id,title:share.title,kind:share.type});
+    for(const share of shares) add({amount:share.amount,cur:share.cur,payState:share.payState},'amount',{source:'BOOKING',key:share.id,title:share.title,kind:share.type});
     const manualTransport=hasManualTransportCost(day);
     if(!manualTransport&&input.taxi!==null&&input.taxi>0) add({amount:input.taxi,cur:'KRW'},'amount',{source:'TRANSPORT',key:'taxi',title:'자동 교통비 추정',kind:'TRANSPORT'});
     const parts=[{label:'장소',amount:0},{label:'추가 비용',amount:0},{label:'택시',amount:0},{label:'예약',amount:0}];
     for(const item of items) parts[item.source==='SPOT'?0:item.source==='EXTRA'?1:item.source==='TRANSPORT'?2:3].amount+=item.totalKRW||0;
     const total=parts.reduce((sum,p)=>sum+p.amount,0);
+    const onSiteKRW=items.filter(i=>i.source!=='BOOKING').reduce((sum,i)=>sum+(i.totalKRW||0),0);
     const payTotals=payStateTotals(items);
     const rawBudget=day.budget;
     const budget=rawBudget&&typeof rawBudget.amount==='number'?{
@@ -633,7 +636,7 @@
       totalKRW:Math.round((costAmountOf(rawBudget,'amount')||0)*(rates[rawBudget.cur||'KRW']||1)),differenceKRW:0
     }:null;
     if(budget) budget.differenceKRW=budget.totalKRW-total;
-    return {total,parts:parts.filter(p=>p.amount>0),payTotals,details:{items,budget,
+    return {total,onSiteKRW,parts:parts.filter(p=>p.amount>0),payTotals,details:{items,budget,
       unknownCount:items.filter(i=>i.state==='UNKNOWN'||i.state==='PARTIAL').length,
       transportUnpriced:!manualTransport&&input.transportUnpriced,
       undatedBookings:bookings.filter((/**@type{any}*/b)=>b.price>0&&(!b.start||!b.end)).length,
@@ -645,11 +648,13 @@
   // 분류(무엇에 쓴 돈인가)와 결제 상태(냈는가)는 다른 축이다 — 같은 '숙박'도 예약만 해 둔 것과 결제한 것이 있다.
   const COST_PAY_STATES=['RESERVED','PAID'];
   const _PHOTOS_MAX=10, _PHOTO_REF_MAX=200;
-  /** 결제 상태. 예약에서 파생된 하루치는 언제나 예약이고, 고르지 않은 것은 미구분(NONE)으로 남는다 —
+  /** 결제 상태. 예약(`trip.bookings`)은 **결제했다고 표시한 것만 결제**이고 나머지는 예약이다 — 예약은 본디
+   * 잡아 둔 돈이라 미구분이 없다(항공은 대개 결제한 돈, 현장 결제 호텔은 예약한 돈 — 예약마다 다르다, 2026-09-17).
+   * 그 밖의 항목은 고르지 않은 것을 미구분(NONE)으로 남긴다 —
    * 미구분을 결제로 치면 '이미 쓴 돈'이 부풀고, 예약으로 치면 남은 지출이 부풀어 둘 다 거짓말이 된다.
    * @param {any} item @param {string=} source @returns {string} */
   function costPayStateOf(item,source){
-    if(source==='BOOKING') return 'RESERVED';
+    if(source==='BOOKING') return (item&&item.payState==='PAID')? 'PAID' : 'RESERVED';
     return (item&&COST_PAY_STATES.includes(item.payState))? item.payState : 'NONE';
   }
   /** 사용자가 고른 비용 분류가 우선이며, 장소명으로 금액 성격을 추측하지 않는다.
@@ -675,22 +680,48 @@
   }
 
   /** 하루 계산 결과를 합치고 날짜에 배분되지 않은 예약 잔액도 보존한다.
+   *
+   * 비용은 **두 묶음**으로도 나눈다(2026-09-17) — 가기 전에 낸 돈과 가서 쓰는 돈은 적는 순간이 다르다:
+   * - `prep`(준비한 비용) = 예약(`trip.bookings`, **전액** 한 줄씩) + 여행 단위 항목(`trip.costItems` — 보험·유심·미리 산 입장권).
+   *   어느 날에도 속하지 않는다. 예약의 원화 합계는 하루치 배분과 잔액을 더한 것이라 총액과 1원까지 맞는다.
+   * - `onSite`(가서 쓰는 비용) = 날짜별 장소·추가 비용·교통(`dayCostSummary().onSiteKRW`의 합).
+   * 둘을 더하면 `totalKRW`와 같다.
    * @param {any} trip @param {any[]} days @param {Record<string,number>} rates
-   * @returns {{totalKRW:number,averagePerDayKRW:number|null,categories:any[],unallocated:any[],payTotals:Record<string,number>,unknownCount:number,transportUnpriced:boolean,hasForeignCurrency:boolean}} */
+   * @returns {{totalKRW:number,averagePerDayKRW:number|null,categories:any[],unallocated:any[],payTotals:Record<string,number>,prep:{totalKRW:number,payTotals:Record<string,number>,items:any[]},onSite:{totalKRW:number,payTotals:Record<string,number>},unknownCount:number,transportUnpriced:boolean,hasForeignCurrency:boolean}} */
   function tripCostSummary(trip,days,rates){
     /** @type {any[]} */ const unallocated=[];
+    /** @type {any[]} */ const prepItems=[];
     const bookings=budgetBookings(trip.bookings||[],trip.days||[]);
     for(const booking of bookings){
       const allocated=days.flatMap(d=>d.cost.details.items).filter(i=>i.source==='BOOKING'&&i.key===booking.id);
       const price=costAmountOf({...booking,costBasis:'ENTERED'},'price');
       const remaining=price===null?null:moneyAmount(Math.max(0,price-allocated.reduce((sum,i)=>sum+(i.amount||0),0)),booking.cur);
+      const allocatedKRW=allocated.reduce((sum,i)=>sum+(i.totalKRW||0),0);
+      const remainingKRW=remaining===null?null:Math.round(remaining*(rates[booking.cur||'KRW']||1));
+      // 가계부 한 줄 — 예약은 전액이 한 번에 나간 돈이다(하루치로 쪼갠 것은 날짜별 화면의 몫). 금액을 안 넣었으면 미정
+      const known=price!==null&&price>0;
+      prepItems.push({source:'BOOKING',key:booking.id,title:booking.title||'예약',kind:booking.type,
+        amount:known?price:null,currency:booking.cur||'KRW',basis:'ENTERED',people:1,payState:costPayStateOf(booking,'BOOKING'),photos:[],
+        totalKRW:known?allocatedKRW+(remainingKRW||0):null,state:known?'KNOWN':'UNKNOWN',dayIndex:null});
       if(remaining===0&&allocated.length) continue;
       unallocated.push({source:'BOOKING',key:booking.id,title:booking.title||'예약',kind:booking.type,
         amount:remaining,currency:booking.cur||'KRW',basis:'ENTERED',people:1,payState:costPayStateOf(booking,'BOOKING'),photos:[],
-        totalKRW:remaining===null?null:Math.round(remaining*(rates[booking.cur||'KRW']||1)),
+        totalKRW:remainingKRW,
         state:remaining===null?'UNKNOWN':remaining===0?'FREE':'KNOWN',dayIndex:null});
     }
-    const items=[...days.flatMap(d=>d.cost.details.items.map((/** @type {any} */ i)=>({...i,dayIndex:d.index}))),...unallocated];
+    // 여행 단위 항목 — 날짜가 없는 준비 비용. 하루 추가 비용과 같은 모양·같은 규칙이다
+    /** @type {any[]} */ const tripItems=[];
+    for(const item of (Array.isArray(trip.costItems)?trip.costItems:[])){
+      if(!item||typeof item!=='object') continue;
+      const amount=costAmountOf(item,'amount'), cur=item.cur||'KRW';
+      tripItems.push({source:'TRIP',key:_str(item.id),title:item.title||'비용',kind:COST_CATEGORIES.includes(item.kind)?item.kind:'OTHER',
+        amount:typeof item.amount==='number'?item.amount:null,currency:cur,basis:item.costBasis||'ENTERED',people:item.costPeople||1,
+        payState:costPayStateOf(item,'TRIP'),photos:Array.isArray(item.photos)?item.photos.slice(0,_PHOTOS_MAX):[],
+        totalKRW:amount===null?null:Math.round(amount*(rates[cur]||1)),
+        state:amount===null?'UNKNOWN':item.costPartial?'PARTIAL':amount===0?'FREE':'KNOWN',dayIndex:null});
+    }
+    prepItems.push(...tripItems);
+    const items=[...days.flatMap(d=>d.cost.details.items.map((/** @type {any} */ i)=>({...i,dayIndex:d.index}))),...unallocated,...tripItems];
     /** @param {any} item @returns {string} */
     function category(item){
       /** @type {Record<string,string>} */ const bookingKinds={hotel:'STAY',car:'RENT',flight:'FLIGHT'};
@@ -702,8 +733,11 @@
         unknownCount:lines.filter(i=>i.state==='UNKNOWN'||i.state==='PARTIAL').length};
     });
     const totalKRW=categories.reduce((sum,c)=>sum+c.totalKRW,0);
+    const onSiteItems=days.flatMap(d=>d.cost.details.items.filter((/** @type {any} */ i)=>i.source!=='BOOKING'));
+    const prep={totalKRW:prepItems.reduce((sum,i)=>sum+(i.totalKRW||0),0),payTotals:payStateTotals(prepItems),items:prepItems};
+    const onSite={totalKRW:onSiteItems.reduce((sum,i)=>sum+(i.totalKRW||0),0),payTotals:payStateTotals(onSiteItems)};
     return {totalKRW,averagePerDayKRW:days.length?Math.round(totalKRW/days.length):null,categories,unallocated,
-      payTotals:payStateTotals(items),
+      payTotals:payStateTotals(items),prep,onSite,
       unknownCount:categories.reduce((sum,c)=>sum+c.unknownCount,0),
       transportUnpriced:days.some(d=>d.cost.details.transportUnpriced),
       hasForeignCurrency:items.some(i=>i.currency!=='KRW'&&i.amount!==null)};
@@ -1020,6 +1054,7 @@
       if(b.driverAge!=null){ if(_fin(b.driverAge)) b.driverAge=Math.min(99,Math.max(18,Math.round(+b.driverAge))); else delete b.driverAge; }
     }
     b.track=b.track!==false;   // 기본 추적 on
+    if(b.payState!=null&&!COST_PAY_STATES.includes(b.payState)) delete b.payState;   // 결제함(PAID)만 뜻이 있다 — 없으면 예약
     return b;
   }
   /** @param {any} d @returns {any} */
@@ -1033,13 +1068,7 @@
         d.budget=Object.assign({},d.budget); normalizeCostFields(d.budget,'amount');
       } else delete d.budget;
     }
-    if(d.costItems!=null){
-      d.costItems=(Array.isArray(d.costItems)?d.costItems:[]).filter((/**@type{any}*/i)=>i&&typeof i==='object'&&!Array.isArray(i)&&typeof i.id==='string'&&_ID_RE.test(i.id)).slice(0,100).map((/**@type{any}*/i)=>{
-        const item=Object.assign({},i); item.title=_str(item.title); normalizeCostFields(item,'amount');
-        if(!COST_CATEGORIES.includes(item.kind)) item.kind='OTHER';
-        return item;
-      });
-    }
+    if(d.costItems!=null) d.costItems=normalizeCostItems(d.costItems);
     if(_hm(d.startAt)===undefined) delete d.startAt;                        // parseHM이 없으면 09:00 기본
     if(d.startPolicy!=null && d.startPolicy!=='none') delete d.startPolicy;  // 알 수 없는 정책 → 기본(previous)
     if(d.timeZone!=null && !validTimeZone(d.timeZone)) delete d.timeZone;
@@ -1050,6 +1079,15 @@
     }
     return d;
   }
+  /** 비용 항목 목록(하루 `day.costItems` · 여행 `trip.costItems`) — 불량 항목은 버리고 100개까지. 같은 규칙을 두 곳이 쓴다.
+   * @param {any} list @returns {any[]} */
+  function normalizeCostItems(list){
+    return (Array.isArray(list)?list:[]).filter((/**@type{any}*/i)=>i&&typeof i==='object'&&!Array.isArray(i)&&typeof i.id==='string'&&_ID_RE.test(i.id)).slice(0,100).map((/**@type{any}*/i)=>{
+      const item=Object.assign({},i); item.title=_str(item.title); normalizeCostFields(item,'amount');
+      if(!COST_CATEGORIES.includes(item.kind)) item.kind='OTHER';
+      return item;
+    });
+  }
   /** 새 비용 필드만 정규화하며 알 수 없는 필드는 그대로 남긴다. @param {any} item @param {string} field */
   function normalizeCostFields(item,field){
     if(item[field]!=null){ if(_fin(item[field])) item[field]=Math.min(TC_LIMITS.cost,Math.max(0,moneyAmount(+item[field],item.cur))); else delete item[field]; }
@@ -1059,6 +1097,8 @@
     if(item.costPartial!==true) delete item.costPartial;
     // 결제 상태 — '예약해 둔 돈'과 '이미 낸 돈'은 다른 질문이다. 모르는 값은 미구분으로 떨어뜨린다
     if(item.payState!=null&&!COST_PAY_STATES.includes(item.payState)) delete item.payState;
+    // 낸 날짜(가계부 정렬용) — 날짜 모양이 아니면 버린다
+    if(item.paidOn!=null&&!/^\d{4}-\d{2}-\d{2}$/.test(_str(item.paidOn))) delete item.paidOn;
     // 영수증·품목 사진은 **참조만** 싣는다(원본 이미지는 문서에 넣지 않는다 — 동기화 본문이 부풀고 공유 링크가 터진다)
     if(item.photos!=null){
       const photos=(Array.isArray(item.photos)?item.photos:[])
@@ -1107,6 +1147,10 @@
     if(t.bookings!=null){   // 예약(가격 추적) 목록 — 불량 항목은 버리고, 비면 필드 생략(공유 링크 크기 절약)
       t.bookings=Array.isArray(t.bookings)? t.bookings.map(normalizeBooking).filter(Boolean):[];
       if(!t.bookings.length) delete t.bookings;
+    }
+    if(t.costItems!=null){  // 준비한 비용(예약이 아닌 사전 지출 — 보험·유심·미리 산 입장권). 하루 항목과 같은 규칙
+      t.costItems=normalizeCostItems(t.costItems);
+      if(!t.costItems.length) delete t.costItems;
     }
     t.schemaVersion = TC_SCHEMA;
     return t;

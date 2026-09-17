@@ -37,6 +37,8 @@ export interface BookingBase {
   cancelFee?: number;
   /** 환불 가능 여부 — 조건 매칭 기준. undefined=모름 */
   refundable?: boolean;
+  /** 결제 상태 — PAID(결제함)만 뜻이 있다. 없으면 예약(잡아 둔 돈). 하루치·가계부·잔액이 모두 이 값을 따른다 */
+  payState?: 'RESERVED' | 'PAID';
   /** 가격 추적 on/off (기본 on) */
   track: boolean;
   /** 재예약으로 실제 절약한 누적액 (확정/잠재와 절대 섞지 않는다 — §31) */
