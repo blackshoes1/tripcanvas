@@ -12,6 +12,11 @@ struct CostEntry: Hashable, Sendable, Identifiable {
         get { raw["kind"]?.stringValue ?? "OTHER" }
         set { raw["kind"] = .string(newValue) }
     }
+    var isLodging: Bool { kind == "STAY" || (kind == "AUTO" && (raw["stay"]?.boolValue == true || raw["cat"]?.stringValue == "stay")) }
+    var nights: Int {
+        get { min(60, max(1, raw["nights"]?.intValue ?? 1)) }
+        set { raw["nights"] = .number(min(60, max(1, newValue))) }
+    }
     var amount: Double? {
         get { raw["amount"]?.doubleValue }
         set { raw.setOrRemove("amount", newValue.map(JSONValue.number)) }
@@ -46,7 +51,7 @@ struct CostEntry: Hashable, Sendable, Identifiable {
         var spot = original
         spot.cost = amount
         spot.setField("costKind", kind == "AUTO" ? nil : .string(kind))
-        for key in ["cur", "costBasis", "costPeople", "costPartial"] { spot.setField(key, raw[key]) }
+        for key in ["cur", "costBasis", "costPeople", "costPartial", "nights"] { spot.setField(key, raw[key]) }
         return spot
     }
 }

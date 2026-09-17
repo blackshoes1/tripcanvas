@@ -961,6 +961,12 @@ struct DayCostDetails: Codable, Hashable, Sendable {
     let fxAsOf: String?
 }
 
+struct LodgingCostAllocation: Codable, Hashable, Sendable {
+    let nights: Int
+    let totalAmount: Double
+    let nightNumber: Int?
+}
+
 struct DayCostLine: Codable, Hashable, Sendable, Identifiable {
     let source: String
     let key: String
@@ -972,6 +978,7 @@ struct DayCostLine: Codable, Hashable, Sendable, Identifiable {
     let people: Int
     let totalKRW: Double?
     let state: String
+    var lodging: LodgingCostAllocation? = nil
     var id: String { "\(source):\(key)" }
 }
 
@@ -1025,5 +1032,6 @@ struct TripCostLine: Codable, Sendable, Identifiable {
     let totalKRW: Double?
     let state: String
     let dayIndex: Int?
+    var lodging: LodgingCostAllocation? = nil
     var id: String { "\(dayIndex.map(String.init) ?? "undated"):\(source):\(key)" }
 }

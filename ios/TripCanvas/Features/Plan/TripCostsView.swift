@@ -75,8 +75,8 @@ struct TripCostsView: View {
                 if !response.unallocated.isEmpty {
                     Section {
                         ForEach(response.unallocated) { item in costRow(item) }
-                    } header: { Text("날짜에 배분되지 않은 예약 비용") } footer: {
-                        Text("날짜가 없거나 여행 기간 밖에 해당하는 예약 금액입니다. 전체·카테고리 합계에는 포함되며, 날짜별 합계에는 포함되지 않아요. 예약 메뉴에서 날짜와 금액을 수정할 수 있어요.")
+                    } header: { Text("날짜에 배분되지 않은 비용") } footer: {
+                        Text("날짜가 없거나 여행 기간 밖에 해당하는 숙박·예약 금액입니다. 전체·카테고리 합계에는 포함되며, 날짜별 합계에는 포함되지 않아요. 숙박을 입력한 날의 비용 화면 또는 예약 메뉴에서 기간과 금액을 수정할 수 있어요.")
                     }
                 }
                 if response.hasForeignCurrency {
@@ -116,6 +116,7 @@ struct TripCostsView: View {
                 Text("\(TimeFormat.money(amount, currency: item.currency))\(item.basis == .perPerson ? " × \(item.people)명" : "")")
                 if item.currency != "KRW", let total = item.totalKRW { Text("원화 환산 약 \(money(total))").font(.caption) }
             } else { Text("비용 미정").foregroundStyle(.secondary) }
+            if let lodging = item.lodging { LodgingCostNote(allocation: lodging, currency: item.currency) }
             if item.state == "PARTIAL" { Text("일부 금액만 확인").font(.caption).foregroundStyle(.orange) }
             Text(item.dayIndex.map { "Day \($0 + 1)" } ?? "날짜 미배분").font(.caption).foregroundStyle(.secondary)
             if item.source == "TRANSPORT" { Text("자동 교통비 추정").font(.caption).foregroundStyle(.secondary) }

@@ -43,7 +43,7 @@ export interface Spot {
   nights?: number;
   /** 체류 시간(분) */
   stayMin?: number;
-  /** 그날 쓰는 비용 (하루치 — 예약 총액과 구분) */
+  /** 장소 비용. 숙박은 연박 전체 총액이며 숙박일수로 배분한다. */
   cost?: number;
   cur?: CurrencyCode;
   costBasis?: 'ENTERED' | 'TOTAL' | 'PER_PERSON';
@@ -90,7 +90,7 @@ export interface Day {
   mode: TransportMode;
   spots: Spot[];
   budget?: DayExpense;
-  costItems?: (DayExpense & { id: string; title: string; kind: 'FOOD' | 'TICKET' | 'TRANSPORT' | 'STAY' | 'OTHER' | 'FLIGHT' | 'RENT' | 'TRANSIT' | 'SHOPPING' })[];
+  costItems?: (DayExpense & { nights?: number; id: string; title: string; kind: 'FOOD' | 'TICKET' | 'TRANSPORT' | 'STAY' | 'OTHER' | 'FLIGHT' | 'RENT' | 'TRANSIT' | 'SHOPPING' })[];
   /** 출발 시각 HH:MM (기본 09:00) */
   startAt?: string;
   /** 'none'이면 전날 이월 없음 (공항 이동일·야간열차) */

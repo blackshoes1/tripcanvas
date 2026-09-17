@@ -165,7 +165,7 @@ struct SpotEditorView: View {
                         }
                     }
                     HStack {
-                        TextField("비용 미정 (무료는 0)", text: $costText)
+                        TextField(CostEntry(spot: draft).isLodging ? "숙박 총액 (무료는 0)" : "비용 미정 (무료는 0)", text: $costText)
                             .keyboardType(.decimalPad)
                         Picker("통화", selection: $draft.currency) {
                             Text("KRW").tag(Currency?.none)
@@ -176,6 +176,10 @@ struct SpotEditorView: View {
                         .labelsHidden()
                     }
                     }
+                }
+
+                if CostEntry(spot: draft).isLodging {
+                    Section { Text("숙박 비용은 전체 총액으로 입력하세요. 설정한 숙박일수만큼 각 날에 나누어 반영됩니다.").font(.caption).foregroundStyle(.secondary) }
                 }
 
                 AdmissionEditorSection(spot: $draft)
