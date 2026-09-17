@@ -1,10 +1,20 @@
 import SwiftUI
 
-/// 여행 하나를 여는 화면. `지금`과 `일정`은 **형제다** — 하나가 다른 하나의 하위 화면이 아니다.
+/// 여행 하나를 여는 화면. `지금`·`일정`·`지도`·`더보기`는 **형제다** — 하나가 다른 하나의 하위 화면이 아니다.
 ///
 /// 예전에는 여행을 열면 언제나 `지금`이 뜨고 `일정`은 그 안의 툴바 버튼이었다. 그런데 출발 전에
 /// 여는 여행은 대부분 "계획을 마저 짜려고" 여는 것이고, 그때 `지금`은 할 말이 없다(여행 기간 밖이다).
 /// 그래서 무엇을 먼저 보일지는 **여행이 지금 진행 중인지**로 정한다.
+///
+/// ⚠️ **화면 아래 탭 바로 옮겼다**(2026-09-17). 예전에는 "계층 중간의 탭바는 뒤로가기를 흐린다"는
+/// 이유로 위쪽에 세그먼트를 깔았는데, 그렇게 쌓인 것이 다섯 층이었다 — 지금/일정 · 일자 칩 ·
+/// 바로가기 네 칸 · 하루 요약 · 목록/지도. 첫 일정이 화면 아래 3분의 1에서야 시작했다.
+/// 세그먼트 둘을 탭으로 내리고 바로가기 넷을 `더보기` 안으로 넣으니 위쪽이 두 층으로 줄었다.
+/// 뒤로가기는 여전히 내비게이션 바에 있고, 탭 바는 그 아래 별개 층이라 섞이지 않는다.
+///
+/// ⚠️ `일정`과 `지도`는 **같은 화면의 두 모드다** — `TripPlanView` 하나가 문서·고른 날짜·편집기를
+/// 들고 있으므로 탭마다 새로 만들면 두 번 불러오고 고른 날이 갈린다. 그래서 `TabView`가 아니라
+/// 직접 그린 탭 바를 쓰고, 두 탭이 `switch`의 **같은 갈래**에 있어 뷰 정체성이 유지된다.
 struct TripHomeView: View {
     let trip: TripSummary
     /// 알림·딥링크가 목적지를 정해서 들어온 경우. nil이면 아래 규칙이 정한다.
@@ -21,29 +31,19 @@ struct TripHomeView: View {
             set: { tab = $0 })
 
         VStack(spacing: 0) {
-            // 목록에서 밀려 들어온 화면이라 탭바를 새로 깔지 않는다 — 계층 중간의 탭바는 뒤로가기를 흐린다.
-            // 제목 자리도 쓰지 않는다: 거기엔 여행 이름이 있어야 한다(여행이 여러 개다).
-            Picker("보기", selection: selection) {
-                ForEach(TripHomeTab.allCases, id: \.self) { Text($0.label).tag($0) }
-            }
-            .pickerStyle(.segmented)
-            .padding(.horizontal, Space.l)
-            .padding(.vertical, Space.s)
-
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: Space.xs) {
-                ForEach(TripPanel.allCases) { item in
-                    Button { panel = item } label: {
-                        Label(item.label, systemImage: item.symbol)
-                            .font(.subheadline).frame(maxWidth: .infinity, minHeight: 44)
-                    }
-                }
-            }
-            .padding(.horizontal, Space.l)
-
+            // 제목 자리는 쓰지 않는다: 거기엔 여행 이름이 있어야 한다(여행이 여러 개다).
             switch selection.wrappedValue {
-            case .today: TodayView(trip: trip)
-            case .plan: TripPlanView(trip: trip)
+            case .today:
+                TodayView(trip: trip)
+            case .plan, .map:
+                // 한 갈래다 — 뷰 정체성이 유지돼 탭을 오가도 문서를 다시 불러오지 않는다.
+                TripPlanView(trip: trip, showsMap: Binding(
+                    get: { selection.wrappedValue == .map },
+                    set: { selection.wrappedValue = $0 ? .map : .plan }))
+            case .more:
+                moreList
             }
+            tabBar(selection)
         }
         .sheet(item: $panel) { item in
             NavigationStack {
@@ -64,17 +64,88 @@ struct TripHomeView: View {
         .navigationTitle(trip.name)
         .navigationBarTitleDisplayMode(.inline)
     }
+
+    /// 여행 안에서만 쓰는 탭 바. 시스템 `TabView`를 쓰지 않는 이유는 위 주석에 있다.
+    /// 상태를 색으로만 구분하지 않는다 — 고른 탭은 색과 굵기가 함께 바뀐다(§47).
+    private func tabBar(_ selection: Binding<TripHomeTab>) -> some View {
+        HStack(spacing: 0) {
+            ForEach(TripHomeTab.allCases, id: \.self) { item in
+                tabButton(item, selection: selection)
+            }
+        }
+        .padding(.top, Space.xs)
+        .background(.bar)
+        .overlay(alignment: .top) { Divider() }
+    }
+
+    private func tabButton(_ item: TripHomeTab, selection: Binding<TripHomeTab>) -> some View {
+        let on = selection.wrappedValue == item
+        return Button {
+            selection.wrappedValue = item
+        } label: {
+            VStack(spacing: 2) {
+                Image(systemName: item.symbol)
+                    .font(.system(size: 20, weight: on ? .semibold : .regular))
+                Text(item.label)
+                    .font(.caption2)
+                    .fontWeight(on ? .semibold : .regular)
+            }
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .foregroundStyle(on ? Ink.accent : Ink.soft)
+            .contentShape(Rectangle())
+        }
+        .accessibilityLabel(item.label)
+        .accessibilityAddTraits(on ? [.isSelected] : [])
+    }
+
+    /// 매일 쓰는 것이 아니라 가끔 들어가는 곳들. 예전에는 늘 한 줄 반을 차지했다.
+    /// 목록이라 이름 아래 한 줄을 더 쓸 수 있어, 눌러 보기 전에 무엇이 들었는지 말할 수 있다.
+    private var moreList: some View {
+        List {
+            Section("이 여행") {
+                ForEach(TripPanel.allCases) { item in
+                    Button { panel = item } label: {
+                        Label {
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(item.label).foregroundStyle(Ink.ink)
+                                Text(item.hint).font(.caption).foregroundStyle(Ink.soft)
+                            }
+                        } icon: {
+                            Image(systemName: item.symbol).foregroundStyle(Ink.accent)
+                        }
+                        .frame(minHeight: 44)
+                    }
+                }
+            }
+        }
+        .listStyle(.insetGrouped)
+        .paperGround()
+        .frame(maxHeight: .infinity)
+    }
 }
 
 /// 여행 하나 안에서 나란히 있는 두 화면.
 enum TripHomeTab: String, CaseIterable, Hashable, Sendable {
     case today
     case plan
+    case map
+    case more
 
     var label: String {
         switch self {
         case .today: return "지금"
         case .plan: return "일정"
+        case .map: return "지도"
+        case .more: return "더보기"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .today: return "clock"
+        case .plan: return "calendar"
+        case .map: return "map"
+        case .more: return "ellipsis"
         }
     }
 
@@ -112,6 +183,16 @@ enum TripPanel: String, CaseIterable, Identifiable {
         case .bookings: "ticket"
         case .collab: "person.2"
         case .candidates: "mappin.and.ellipse"
+        }
+    }
+    /// 눌러 보기 전에 무엇이 있는 곳인지 한 줄로. 개수는 싣지 않는다 —
+    /// 여기서 세려면 네 곳을 미리 불러와야 하고, 그건 이 화면이 할 일이 아니다.
+    var hint: String {
+        switch self {
+        case .costs: "날짜별 · 분류별 · 예약과 결제"
+        case .bookings: "항공 · 숙박 · 렌터카"
+        case .collab: "멤버 초대와 권한"
+        case .candidates: "아직 일정이 아닌 곳"
         }
     }
 }
