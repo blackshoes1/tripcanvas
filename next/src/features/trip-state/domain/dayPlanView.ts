@@ -1,3 +1,4 @@
+import { FALLBACK_FX, type FxSnapshot } from '@/features/currency/domain/fx';
 // 일자 계획을 계약 모양으로(§엔진은 하나다).
 //
 // **판정은 여기서 하지 않는다.** 앵커·타임라인·숙소 복귀·렌터카 파생·비용 배분은 전부
@@ -98,6 +99,7 @@ export interface DayPlanInput {
   legCache?: LegCache;
   /** 아직 조회되지 않은 구간 수 — 화면이 잠시 뒤 한 번 더 받아 볼지 정한다. 모르면 0 */
   legsPending?: number;
+  fx?: FxSnapshot;
 }
 
 /**
@@ -114,7 +116,7 @@ export function buildDayPlanView(input: DayPlanInput): DayPlanResponse | null {
 
   const day: Day = days[di];
   const spots = day.spots ?? [];
-  const dayView = buildDayView(trip, cache, di);
+  const dayView = buildDayView(trip, cache, di, (input.fx ?? FALLBACK_FX).rates);
   const timeline = dayTimelineOf(trip, cache, di);
   const dayMode = dayModeOf(day);
 
@@ -202,7 +204,7 @@ export function buildDayPlanView(input: DayPlanInput): DayPlanResponse | null {
       endMinutes,
       // 자정을 넘기면 과밀이다 — 웹의 '⚠️ 일정 과밀'과 같은 기준.
       overloaded: endMinutes != null && endMinutes > 24 * 60,
-      cost: dayCostOf(dayView.cost)
+      cost: dayCostOf(dayView.cost, input.fx ?? FALLBACK_FX)
     }
   };
 
@@ -259,8 +261,7 @@ function splitsOf(day: Day): DayPlanSplit[] {
  * `buildDayView`가 이미 이 계산을 들고 있어 값만 꺼내 쓴다. 규칙을 두 곳에 두지 않는다.
  * (라벨까지 함께 만들지만 그 비용은 무시할 만하고, 계산을 복제하는 쪽이 훨씬 비싸다)
  */
-function dayCostOf(cost: DayPlanDay['totals']['cost']): DayPlanDay['totals']['cost'] {
-  // 서버에는 브라우저 환율 캐시가 없다. 기본 참고 환율임을 실제 응답에서 명시한다.
-  if (cost.details) cost.details.fxSource = 'FALLBACK';
+function dayCostOf(cost: DayPlanDay['totals']['cost'], fx: FxSnapshot): DayPlanDay['totals']['cost'] {
+  if (cost.details) { cost.details.fxSource = fx.source; cost.details.fxAsOf = fx.asOf; }
   return cost;
 }

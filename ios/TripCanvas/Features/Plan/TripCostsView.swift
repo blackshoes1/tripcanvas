@@ -81,7 +81,7 @@ struct TripCostsView: View {
                 }
                 if response.hasForeignCurrency {
                     Section("원화 환산 기준") {
-                        Text("기본 참고 환율 · 실시간 시세 아님 · 시세 기준일 없음").font(.caption)
+                        FxRateNote(source: response.fxSource, asOf: response.fxAsOf)
                         ForEach(response.fxRates.keys.filter { $0 != "KRW" }.sorted(), id: \.self) { currency in
                             Text("1 \(currency) ≈ \(MoneyInput.text(amount: response.fxRates[currency]))원").font(.caption)
                         }

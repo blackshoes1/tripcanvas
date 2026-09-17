@@ -48,3 +48,11 @@ export function ratesFromApi(json: unknown): Record<CurrencyCode, number> | null
   if ([KRW, EUR, JPY, CNY].some(n => !isFinite(n))) return null;
   return { KRW: 1, USD: KRW, EUR: KRW / EUR, JPY: KRW / JPY, CNY: KRW / CNY };
 }
+
+/** 한 응답의 모든 합계는 같은 환율 스냅샷을 사용한다. */
+export interface FxSnapshot {
+  rates: Record<string, number>;
+  source: 'LATEST' | 'STALE' | 'FALLBACK';
+  asOf: string | null;
+}
+export const FALLBACK_FX: FxSnapshot = { rates: { ...FX_FALLBACK }, source: 'FALLBACK', asOf: null };
