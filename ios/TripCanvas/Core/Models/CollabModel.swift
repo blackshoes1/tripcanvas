@@ -455,7 +455,8 @@ enum CollabModel {
         let ok = reactions.filter { Reaction(loose: $0.reaction) == .ok }.count
         let pass = reactions.filter { Reaction(loose: $0.reaction) == .pass }.count
         return CandidateView(
-            id: candidate.id, title: candidate.title, placeId: candidate.placeId, lat: candidate.lat, lng: candidate.lng,
+            id: candidate.id, title: candidate.title, placeId: candidate.placeId, provider: candidate.provider,
+            providerId: candidate.providerId, category: candidate.category, lat: candidate.lat, lng: candidate.lng,
             addr: candidate.addr, note: candidate.note, url: candidate.url, status: candidate.status,
             scheduledRef: candidate.scheduledRef, proposedByLabel: candidate.proposedByLabel, mine: candidate.mine,
             myReaction: reaction?.rawValue, mustCount: must, okCount: ok, passCount: pass, reactions: reactions,

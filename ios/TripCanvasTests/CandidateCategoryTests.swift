@@ -29,6 +29,17 @@ final class CandidateCategoryTests: XCTestCase {
         XCTAssertEqual(CandidateCategoryFilter.only(.activity).label, "체험·액티비티")
     }
 
+    /// 서버 후보 응답의 `category`를 읽고, 키가 없는 옛 응답도 그대로 디코딩된다(2026-09-18 CI가 잡은 누락).
+    func testCandidateViewDecodesCategoryAndToleratesItsAbsence() throws {
+        let base = #"{"id":7,"title":"카사 바트요","place_id":null,"lat":null,"lng":null,"addr":null,"note":null,"url":null,"status":"OPEN","scheduled_ref":null,"proposed_by_label":"영희","mine":false,"my_reaction":null,"must_count":0,"ok_count":0,"pass_count":0,"reactions":[],"comment_count":0,"created_at":"2026-09-18T00:00:00Z""#
+        let withCategory = try JSONDecoder().decode(CandidateView.self, from: Data((base + #","category":"CAFE"}"#).utf8))
+        XCTAssertEqual(withCategory.category, "CAFE")
+        XCTAssertEqual(CandidateCategory.of(withCategory.category), .cafe)
+        let without = try JSONDecoder().decode(CandidateView.self, from: Data((base + "}").utf8))
+        XCTAssertNil(without.category, "옛 서버 응답(키 없음)은 '아직 고르지 않음'이다")
+        XCTAssertEqual(CollabModel.applyingReaction(.must, to: withCategory).category, "CAFE", "반응을 눌러도 분류가 사라지지 않는다")
+    }
+
     func testLooseDateParsingAcceptsEightDigitsOnly() {
         XCTAssertEqual(ISODateText.parseLoose("20261025"), "2026-10-25")
         XCTAssertEqual(ISODateText.parseLoose("2026-10-25"), "2026-10-25")
