@@ -774,11 +774,13 @@ extension CollabModel {
 
     static func liveEffects(kind: String, mine: Bool) -> LiveEffects {
         let known = activityKinds.contains(kind)
-        let candidates = kind.hasPrefix("CANDIDATE_") || kind == "REACTION" || kind == "COMMENT_ADDED" || kind == "SCHEDULE_CHANGED" || kind == "BOOKING_ADDED"
+        let candidateKind = kind.hasPrefix("CANDIDATE_") || kind == "REACTION" || kind == "COMMENT_ADDED"
         let members = kind.hasPrefix("MEMBER_")
         let doc = kind == "SCHEDULE_CHANGED" || kind == "BOOKING_ADDED"
         return LiveEffects(
-            candidates: candidates,
+            // 후보·반응·코멘트는 **내 것이면 이미 내 화면이다**(담기·반응·한마디 뒤에 각자 다시 읽거나 낙관 반영했다) —
+            // 에코로 또 읽지 않는다(2026-09-18). 문서 변경은 내 것이어도 다시 읽는다: 후보의 날짜 표시는 서버가 바꾼다.
+            candidates: (candidateKind && !mine) || doc,
             members: members,
             pull: doc && !mine,
             activity: known,

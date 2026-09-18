@@ -80,11 +80,12 @@ struct TripHomeView: View {
         .sheet(item: $panel) { item in
             NavigationStack {
                 Group {
+                    // 시트를 닫았다 열어도 방금 받은 것은 다시 받지 않는다 — 모델이 여행 화면에 산다(2026-09-18).
                     switch item {
-                    case .costs: TripCostsView(trip: trip)
-                    case .bookings: BookingListView(trip: trip)
-                    case .collab: CollabView(trip: trip)
-                    case .candidates: CandidateBoardView(trip: trip)
+                    case .costs: TripCostsView(trip: trip, memory: models.costs)
+                    case .bookings: BookingListView(trip: trip, shared: models.bookings)
+                    case .collab: CollabView(trip: trip, shared: models.collab)
+                    case .candidates: CandidateBoardView(trip: trip, shared: models.candidateBoard)
                     }
                 }
                 .toolbar {
@@ -178,12 +179,21 @@ final class TripScreenModels {
     let plan: TripPlanViewModel
     /// 지도 탭의 '장소 찾기' — 담은 후보 목록을 들고 있다. 지도를 열 때마다 다시 받지 않는다.
     let discovery: MapDiscoveryModel
+    /// 더보기의 시트 넷(비용·예약·함께하기·가고 싶은 곳)도 여행이 든다(2026-09-18) — 닫았다 열 때마다
+    /// 처음부터 다시 받지 않고 `loadIfStale`(60초)로 간다. 만드는 것은 공짜다 — 열기 전에는 서버를 묻지 않는다.
+    let costs = TripCostsMemory()
+    let bookings: BookingListViewModel
+    let collab: CollabViewModel
+    let candidateBoard: CandidateBoardViewModel
 
     init(trip: TripSummary, env: AppEnvironment) {
         today = TodayViewModel(trip: trip, service: env.service)
         plan = TripPlanViewModel(tripId: trip.id, service: env.service, memberSource: env.service,
                                  initialDay: max(0, trip.todayIndex))
         discovery = MapDiscoveryModel(trip: trip, searcher: env.places, source: env.service)
+        bookings = BookingListViewModel(tripId: trip.id, service: env.service)
+        collab = CollabViewModel(trip: trip, service: env.service, webBaseURL: AppConfig.webBaseURL)
+        candidateBoard = CandidateBoardViewModel(trip: trip, service: env.service, documents: env.service)
     }
 }
 

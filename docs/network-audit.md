@@ -1,7 +1,7 @@
 # 네트워크 호출 감사 (2026-09-18)
 
-읽기 전용 감사다. 아래는 전부 코드에서 확인한 사실이고, 추정은 "추정"이라고 적었다. 서버 영속성·DB 변경은 다루지 않는다.
-**아직 고친 것은 없다** — 무엇을 줄일 수 있는지의 목록이다. 고칠 때 이 문서의 표를 갱신한다.
+아래 §1~§3은 **감사 시점(고치기 전)**의 사실이다 — 무엇이 얼마나 나갔는지의 기록으로 남긴다. 추정은 "추정"이라고 적었다.
+서버 영속성·DB 변경은 다루지 않는다. **§4가 무엇을 어떻게 고쳤는지**다(같은 날 적용). 서버 코드는 바꾸지 않았다 — 전부 클라이언트다.
 
 ## 1. iOS — 화면·이벤트별 호출
 
@@ -59,28 +59,37 @@
 - `pullPriceSnapshots`: 로그인 후 호텔 예약이 있는 여행 수만큼 팬아웃(`app.js:2816-2830`).
 - 렌더마다 불리는 것들(`ensureLiveChannel`·`ensureMembers`·`loadPxHealth`)은 가드 덕에 네트워크를 타지 않는다.
 
-## 4. 권고 (순위)
+## 4. 적용 결과 (2026-09-18 · 권고 14건 전부)
 
-### 지금 바로 안전
+원칙은 셋이다. **방금 받은 것은 다시 받지 않는다**(Today·Plan·Map과 같은 60초 규칙을 시트에도) · **내 것은 이미 내 화면이다**(내 반응·담기·한마디의 에코는 읽지 않는다 — 문서 변경은 예외) · **바뀐 것만 다시 읽는다**(변경 뒤 전부를 읽지 않는다).
+판정 규칙의 소스는 여전히 `collab.js`(`liveEffects`)이고 iOS는 복사본 + `live-effects.json` 파리티다. 서버 응답의 내용을 믿는 곳은 없다 — 무엇을 다시 읽을지만 바뀌었다.
 
-| # | 변경 | 절감 | 위험 | 위치 |
-|---|---|---|---|---|
-| 1 | 비용 저장 후 문서 재조회 제거(PUT 응답 스냅샷 사용, `/costs`만 재조회) | 편집 1회당 GET 1건 | 없음 | `TripCostsView.swift` `saveDocument` |
-| 2 | 예약 편집기 진입 시 하루치 조회 제거(문서 전용 경로) | 편집기 1회당 GET 2건 | 없음 | `BookingListView.swift:181-188`, `TripPlanViewModel.load()`의 `loadPlan` 분리 |
-| 3 | 시트 4곳에 `loadIfStale(60)` | 재오픈 1회당 각 2·1·3·4건 | 최대 60초 지연(Today/Plan/Map과 같은 규칙) | `TripCostsView:85`, `BookingListView:135`, `CandidateBoardView:52`, `CollabView:62` |
-| 4 | 실시간 **내 에코**는 재조회하지 않기(`guard !event.mine`) | 반응·코멘트 1회당 3건 | 없음(낙관 반영 완료) | `CandidateBoardViewModel.swift:130-137` |
-| 5 | `PlacePhotoService`에 메모리 LRU(placeId→PlacePhoto) | 같은 장소 재열람 1회당 Google 3건 | 없음(메모리만 — 디스크·문서 저장 금지 규칙 유지) | `PlacePhotoService.swift:22-33` |
-| 6 | `PlanPreviewSection` 0.3~0.5초 디바운스 | 피커를 훑는 동안 POST 수 건 → 1건 | 미리보기가 반박자 늦음 | `PlanPreviewSection.swift:38` |
-| 7 | scenePhase `.active`를 `loadIfStale`로(또는 백그라운드 체류가 maxAge를 넘겼을 때만 `load`) | 짧은 앱 전환마다 2건 | 다른 기기 변경을 최대 60초 늦게 봄 | `TodayView.swift:141-143` |
-| 8 | 웹 `pullTrip`이 `GET /api/v1/trips/:id`를 쓰도록(iOS `document()`와 같은 라우트). `sync.list`는 로그인 병합 전용으로 | 탭 복귀·실시간마다 전 여행 문서 전문 → 1건 | 응답 모양 변환(`revision`/`deletedAt` 계약 유지). CAS 경로는 그대로 | `app.js:4817-4845`, `api.js`에 `sync.get(tripId)` |
+### 지금 바로 안전 (1–8)
 
-### 설계 결정이 필요
-
-| # | 변경 | 절감 | 논점 |
+| # | 변경 | 전 → 후 | 어디 |
 |---|---|---|---|
-| 9 | 일자 이동 시 `days/:i` 재조회에 짧은 TTL 또는 직전 응답의 `legsPending==0`이면 생략 | 7일 훑기 6건 → 0~1건 | 테스트가 현재 동작을 의도로 못박음(`TripPlanViewModelTests.swift:636-638`) |
-| 10 | 후보 배치 흐름 축약(새 VM의 `board.load()` 제거, `schedule()` 뒤 중복 재조회 제거, `onReturnFromBoard`는 문서만) | 13~15건 → 5~6건 | `schedule()`이 자기 `candidates`에 의존 → 시드 주입 API 필요 |
-| 11 | `CandidateBoardViewModel.load()`의 3건 분리(members 최초 1회, group-proposal은 목록이 바뀐 뒤에만) | 변경 1회당 2건 | 인원수·제안 신선도 정책 |
-| 12 | `CollabViewModel.perform` 뒤 바뀐 것만 재조회 | 변경 1회당 3건 | 활동 로그 갱신 시점 |
-| 13 | 웹 `flushLive`의 코멘트 재조회를 실제 `COMMENT_ADDED`가 온 후보로 한정 | 열린 카드 수만큼 | 이벤트에 후보 id가 실려 오는지 확인 |
-| 14 | `liveEffects`에서 `REACTION`이 목록 전체 재조회를 유발하지 않게(집계만 패치) | 파티 규모에 비례 | **`collab.js`가 규칙의 소스**, iOS는 복사본 + parity 테스트 → 웹을 먼저 고치고 iOS를 맞춘다 |
+| 1 | 비용 저장 뒤 문서를 다시 받지 않는다 — PUT 응답이 최신 문서다. `/costs`만 다시 받는다 | 편집 1회 PUT+GET+GET → PUT+GET | `TripCostsView.saveDocument` → `loadCosts()` |
+| 2 | 예약 편집기는 문서만 연다 — `TripPlanViewModel(loadsPlans: false)`가 하루치·앞뒤 미리 받기를 끈다 | 편집기 1회 3건 → 1건 | `BookingListView.openEditor`, `TripPlanViewModel.loadsPlans` |
+| 3 | 시트 넷(비용·예약·함께하기·가고 싶은 곳)의 모델을 **여행 화면이 든다**(`TripScreenModels`). 열 때는 `loadIfStale(60)` | 재오픈 1회 2·1·3·4건 → 0 (60초 안) | `TripHomeView` · `TripCostsMemory` · `BookingListViewModel.loadIfStale` · `CollabViewModel.loadIfStale` · `CandidateBoardViewModel.loadIfStale`. 뷰는 `shared:`로 받고, 없으면(지도에서 여는 보드) 예전처럼 제 것을 만든다 |
+| 4 | 내 반응·담기·한마디의 에코는 읽지 않는다 — **규칙 자체**를 바꿨다(`liveEffects`: `candidates = (후보 종류 && !mine) \|\| 문서 변경`). 웹·iOS 같이 | 내 반응 1회 3건(iOS) · 최대 5종(웹) → 0 | `collab.js` → 픽스처 → `CollabModel.liveEffects` |
+| 5 | 장소 사진 메모리 LRU(40곳). '사진 없음'도 기억, 실패는 기억 안 함. 디스크·문서에는 여전히 안 남긴다 | 같은 장소 재열람 Google 3건 → 0 | `PlacePhotoService.remembered/remember` |
+| 6 | 일정 미리보기 0.4초 디바운스 — `.task(id:)`가 취소되는 성질을 쓴다 | 피커 훑는 동안 n건 → 1건 | `PlanPreviewSection` |
+| 7 | 앱 복귀는 `loadIfStale` — 여행 모드 갱신(`travel-state`)은 켜져 있으면 그대로(위치·시각이 바뀌었다) | 짧은 앱 전환 2건 → 0 (여행 중 1건) | `TodayView.onChange(scenePhase)` |
+| 8 | 웹 `pullTrip`이 `GET /api/v1/trips/:id` 한 건(`TC_API.sync.get`). 404면 그때만 `sync.list`로 tombstone을 본다(삭제는 목록에만 남는다 — 예전 '삭제됨' 충돌 카드 유지) | 탭 복귀·실시간마다 전 여행 문서 전문 → 1건 | `api.js sync.get` · `app.js pullTrip` |
+
+### 설계 결정 (9–14) — 이렇게 정했다
+
+| # | 결정 | 전 → 후 | 어디 |
+|---|---|---|---|
+| 9 | 일자 이동 시 **이 세션에서 서버로부터 받은** 같은 문서(revision)의 하루치이고 `legsPending == 0`이면 다시 묻지 않는다. 디스크 캐시·오프라인 사본은 해당 없음(한 번은 서버가 확인한다). 채울 구간이 남은 날은 옮기면 받는다. 문서가 바뀌면 `apply`가 전부 버린다 | 7일 훑기 6건 → 0~1건 | `TripPlanViewModel.fetchedDays`. 테스트 `testMovingBetweenFetchedDaysDoesNotAskAgain`·`testMovingToADayWithPendingLegsStillAsks` |
+| 10 | 지도의 배치 흐름: 보드를 **지도가 아는 후보로 시작**(`seed:`)하고 끝의 재조회를 끈다(`reloadAfter: false`). `onReturnFromBoard`(부모 일정 `load()`)는 그대로 — 문서가 바뀌었으니 하루치는 받아야 한다 | 13~15건 → 6건(+앞뒤 미리 받기 2) | `MapDiscoveryView` · `CandidateBoardViewModel(seed:)`·`schedule(reloadAfter:)` |
+| 11 | 보드 `load()`: 인원은 **처음 한 번**과 `MEMBER_*` 이벤트 때만, 그룹 제안은 **목록이 바뀌었을 때만**(`before != candidates`) 다시 묻는다. 거절한 제안은 그대로 다시 올리지 않는다 | 변경 1회 3건 → 1건 | `CandidateBoardViewModel.load/loadMembers/handle` |
+| 12 | 함께하기 `perform(refresh:)`: 역할·내보내기·이름은 멤버+활동, 초대 취소는 초대만(활동에 안 남는다). 취향 저장은 전부터 취향만 다시 읽었다 | 변경 1회 4건 → 1~2건 | `CollabViewModel.reload(CollabRefresh)` |
+| 13 | 웹 `flushLive`의 한마디 재조회는 **`COMMENT_ADDED`가 실제로 온 후보만**(`liveCommentTargets`). 이벤트에 후보 id가 없으면(자체 실시간은 `{type,tripId,id,kind,mine}` 신호뿐이다) 열린 카드 전부 — 모르면 맞는 쪽으로 | 반응 하나에 열린 카드 수만큼 → 0 | `collab.js liveCommentTargets` · `app.js flushLive` |
+| 14 | `REACTION`은 **내 것이면** 목록 재조회를 부르지 않는다(4번과 같은 규칙). 남의 반응은 여전히 목록을 다시 읽는다 — 집계를 payload로 패치하지 않는다(§41 "payload는 신호"). 파티 규모에 비례하는 부분은 400ms 디바운스가 그대로 묶는다 | 내 반응 에코 3건 → 0 | `collab.js liveEffects` · `liveEffectsParity.test.ts` · `RealtimeTests` |
+
+### 바꾸지 않은 것(알고 둔다)
+
+- 같은 계정을 **두 기기**에서 쓰면 한쪽의 반응·담기가 다른 쪽 보드에 실시간으로 안 들어온다(에코로 보여 거른다) — 문서 변경(`pull`)이 이미 그렇듯 시트를 다시 열거나 당겨서 새로고침으로 받는다.
+- 자체 실시간 payload에 후보 id를 싣지 않았다(서버 변경·NAS 재배포가 필요하고, 13번이 그것 없이도 대부분을 줄인다). 실으면 `liveCommentTargets`가 그대로 그 후보만 고른다.
+- `sync.list`(전체 목록)는 로그인 병합과 404 뒤 tombstone 확인에만 남는다.

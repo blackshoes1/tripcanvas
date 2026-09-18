@@ -6,10 +6,13 @@ import SwiftUI
 /// 가리키는 것이다. 반응은 한 번의 탭이고, 일정에 넣는 것은 언제나 사람이 누른다(§12·§79).
 struct CandidateBoardView: View {
     let trip: TripSummary
+    /// 여행 화면(`TripScreenModels`)이 들고 있는 모델. 있으면 시트를 닫았다 열어도 목록이 남는다(2026-09-18).
+    var shared: CandidateBoardViewModel? = nil
 
     @Environment(AppEnvironment.self) private var env
     @Environment(\.scenePhase) private var scenePhase
-    @State private var model: CandidateBoardViewModel?
+    @State private var owned: CandidateBoardViewModel?
+    private var model: CandidateBoardViewModel? { shared ?? owned }
     @State private var titleDraft = ""
     @State private var noteDraft = ""
     /// 담을 때 고르는 분류 — 표시·거르기용이지 결정이 아니다. 안 고르면 '고르지 않음'으로 담긴다.
@@ -52,8 +55,8 @@ struct CandidateBoardView: View {
         }
         .onDisappear { env.realtime.disconnect() }
         .task {
-            if model == nil { model = CandidateBoardViewModel(trip: trip, service: env.service, documents: env.service) }
-            await model?.load()
+            if shared == nil, owned == nil { owned = CandidateBoardViewModel(trip: trip, service: env.service, documents: env.service) }
+            await model?.loadIfStale()
             if let model { startLive(model) }
         }
         .sheet(item: $scheduling) { candidate in

@@ -8,10 +8,13 @@ struct CollabView: View {
     let trip: TripSummary
     /// 나갔을 때 목록으로 돌아가기 위해 — 이 여행은 더 이상 내 것이 아니다.
     var onLeft: (() -> Void)?
+    /// 여행 화면(`TripScreenModels`)이 들고 있는 모델. 있으면 시트를 닫았다 열어도 멤버·취향·활동이 남는다(2026-09-18).
+    var shared: CollabViewModel? = nil
 
     @Environment(AppEnvironment.self) private var env
     @Environment(\.dismiss) private var dismiss
-    @State private var model: CollabViewModel?
+    @State private var owned: CollabViewModel?
+    private var model: CollabViewModel? { shared ?? owned }
     @State private var nameDraft = ""
     @State private var prefsDraft = TripPrefs()
     @State private var prefsLoaded = false
@@ -60,8 +63,8 @@ struct CollabView: View {
         }
         .refreshable { await model?.load() }
         .task {
-            if model == nil { model = CollabViewModel(trip: trip, service: env.service, webBaseURL: AppConfig.webBaseURL) }
-            await model?.load()
+            if shared == nil, owned == nil { owned = CollabViewModel(trip: trip, service: env.service, webBaseURL: AppConfig.webBaseURL) }
+            await model?.loadIfStale()
             syncDrafts()
         }
         .onChange(of: model?.preferences) { _, _ in syncDrafts() }

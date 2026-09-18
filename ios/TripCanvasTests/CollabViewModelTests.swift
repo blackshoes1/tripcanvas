@@ -584,6 +584,10 @@ final class FakeCollabService: CollabSource {
     var acceptResult = InviteAccept(ok: true, reason: "OK", clientId: "t1", tripName: "바르셀로나", role: .editor, alreadyMember: false)
 
     private(set) var inviteListCalls = 0
+    private(set) var memberListCalls = 0
+    private(set) var prefListCalls = 0
+    private(set) var activityCalls = 0
+    private(set) var candidateListCalls = 0
     private(set) var createdInviteRoles: [MemberRole] = []
     private(set) var didLeave = false
     private(set) var savedPrefs: [[String: JSONValue]] = []
@@ -596,7 +600,7 @@ final class FakeCollabService: CollabSource {
 
     private func check() throws { if let failure { throw failure } }
 
-    func members(tripId: String) async throws -> [MemberView] { try check(); return membersList }
+    func members(tripId: String) async throws -> [MemberView] { memberListCalls += 1; try check(); return membersList }
     func manageMember(tripId: String, memberId: Int, action: String, value: String?) async throws { try check() }
     func leave(tripId: String) async throws { try check(); didLeave = true }
 
@@ -617,6 +621,7 @@ final class FakeCollabService: CollabSource {
     }
 
     func candidates(tripId: String) async throws -> [CandidateView] {
+        candidateListCalls += 1
         if let candidateReads { return try await candidateReads() }
         try check(); return candidateList
     }
@@ -657,7 +662,7 @@ final class FakeCollabService: CollabSource {
     func addComment(tripId: String, candidateId: Int, body: String) async throws { try check() }
     func deleteComment(tripId: String, commentId: Int) async throws { try check() }
 
-    func activity(tripId: String, limit: Int) async throws -> [ActivityView] { try check(); return activityRows }
+    func activity(tripId: String, limit: Int) async throws -> [ActivityView] { activityCalls += 1; try check(); return activityRows }
     /// 판정은 서버가 한다 — 앱 테스트는 "받은 것을 그대로 쓰는가"만 본다.
     var proposalResult: GroupProposalView?
     var failProposal = false
@@ -675,7 +680,7 @@ final class FakeCollabService: CollabSource {
         return GroupProposalView(summary: plan.summary, picks: open, impact: plan.impact,
                                  options: plan.options, groupNotes: plan.groupNotes)
     }
-    func preferences(tripId: String) async throws -> [PreferenceView] { try check(); return prefRows }
+    func preferences(tripId: String) async throws -> [PreferenceView] { prefListCalls += 1; try check(); return prefRows }
     /// 서버는 정규화한 결과를 돌려준다 — 여기서는 '서버가 이긴다'를 보이려 일부러 다른 값을 돌려준다.
     func savePreferences(tripId: String, prefs: [String: JSONValue]) async throws -> [String: JSONValue] {
         try check()
@@ -723,4 +728,100 @@ private final class FakeDocumentStore: TripDocumentSource {
     func tripRoutes(tripId: String) async throws -> TripRoutesResponse { throw APIError.offline }
     func cachedDayPlan(tripId: String, dayIndex: Int) async -> DayPlanResponse? { nil }
 
+}
+
+// MARK: - 다시 읽는 것을 고른다 (2026-09-18 네트워크 감사)
+//
+// 변경마다 전부를 다시 읽었다 — 이름 하나에 4건, 반응 하나에 3건, 후보 하나 넣는 데 13~15건.
+// 여기서 지키는 것: 바뀐 것만 다시 읽는다 / 방금 받은 것은 다시 받지 않는다 / 아는 후보로 시작하면 목록을 읽지 않는다.
+
+extension CollabViewModelTests {
+
+    func testRenameReloadsOnlyMembersAndActivity() async {
+        let service = FakeCollabService()
+        service.membersList = [.init(id: 2, userId: "u2", role: .owner, status: "ACTIVE", displayName: "나", joinedAt: nil, me: true)]
+        let model = CollabViewModel(trip: trip(), service: service, webBaseURL: URL(string: "https://example.test/")!)
+        await model.load()
+        let members = service.memberListCalls, prefs = service.prefListCalls, activity = service.activityCalls, invites = service.inviteListCalls
+
+        await model.rename("근영")
+
+        XCTAssertEqual(service.memberListCalls, members + 1)
+        XCTAssertEqual(service.activityCalls, activity + 1)
+        XCTAssertEqual(service.prefListCalls, prefs, "취향은 바뀌지 않았다")
+        XCTAssertEqual(service.inviteListCalls, invites, "초대도 바뀌지 않았다")
+    }
+
+    /// 초대 취소는 활동 기록에 남지 않는다 — 초대 목록만 다시 읽는다.
+    func testRevokingAnInviteReloadsOnlyInvites() async {
+        let service = FakeCollabService()
+        service.membersList = [.init(id: 2, userId: "u2", role: .owner, status: "ACTIVE", displayName: "나", joinedAt: nil, me: true)]
+        let model = CollabViewModel(trip: trip(), service: service, webBaseURL: URL(string: "https://example.test/")!)
+        await model.load()
+        let members = service.memberListCalls, activity = service.activityCalls, invites = service.inviteListCalls
+
+        await model.revokeInvite(id: 1)
+
+        XCTAssertEqual(service.inviteListCalls, invites + 1)
+        XCTAssertEqual(service.memberListCalls, members)
+        XCTAssertEqual(service.activityCalls, activity)
+    }
+
+    /// 시트를 닫았다 바로 열면 다시 받지 않는다 — Today·Plan과 같은 60초 규칙.
+    func testReopeningTheSheetSoonDoesNotReload() async {
+        let service = FakeCollabService()
+        service.membersList = [.init(id: 2, userId: "u2", role: .owner, status: "ACTIVE", displayName: "나", joinedAt: nil, me: true)]
+        let model = CollabViewModel(trip: trip(), service: service, webBaseURL: URL(string: "https://example.test/")!)
+        await model.loadIfStale()
+        await model.loadIfStale()
+        XCTAssertEqual(service.memberListCalls, 1, "방금 받았으면 다시 묻지 않는다")
+        await model.loadIfStale(now: Date().addingTimeInterval(120))
+        XCTAssertEqual(service.memberListCalls, 2, "오래됐으면 새로 받는다")
+
+        let board = CandidateBoardViewModel(trip: trip(), service: service, documents: FakeDocumentStore())
+        await board.loadIfStale()
+        await board.loadIfStale()
+        XCTAssertEqual(service.candidateListCalls, 1)
+        await board.loadIfStale(now: Date().addingTimeInterval(120))
+        XCTAssertEqual(service.candidateListCalls, 2)
+    }
+
+    /// 지도의 배치 흐름 — 이미 아는 후보로 시작하면 목록·인원·제안을 읽지 않고 넣는다.
+    func testSeededBoardSchedulesWithoutReadingTheList() async {
+        let service = FakeCollabService()
+        let documents = FakeDocumentStore()
+        let model = CandidateBoardViewModel(trip: trip(), service: service, documents: documents, seed: [candidate()])
+
+        let saved = await model.schedule(candidateId: 1, dayIndex: 1, reloadAfter: false)
+
+        XCTAssertTrue(saved)
+        XCTAssertEqual(service.candidateListCalls, 0, "목록을 읽지 않는다")
+        XCTAssertEqual(service.proposalReads, 0)
+        XCTAssertEqual(service.memberListCalls, 0)
+        XCTAssertEqual(documents.saves.count, 1)
+        XCTAssertEqual(service.candidateActions.last?.action, "SCHEDULE")
+    }
+
+    /// 목록이 그대로면 제안도 그대로다 — 다시 묻지 않는다. 인원은 처음 한 번과 멤버 이벤트 때만.
+    func testUnchangedListDoesNotAskForProposalOrMembersAgain() async {
+        let service = FakeCollabService()
+        service.candidateList = [candidate()]
+        service.membersList = [
+            .init(id: 1, userId: "u1", role: .owner, status: "ACTIVE", displayName: "영희", joinedAt: nil, me: false),
+            .init(id: 2, userId: "u2", role: .editor, status: "ACTIVE", displayName: "나", joinedAt: nil, me: true)
+        ]
+        service.proposalResult = proposal([(1, 1, "카사 바트요")])
+        let model = CandidateBoardViewModel(trip: trip(), service: service, documents: FakeDocumentStore())
+        await model.load()
+        await model.load()
+
+        XCTAssertEqual(service.candidateListCalls, 2)
+        XCTAssertEqual(service.proposalReads, 1, "목록이 그대로면 제안을 다시 묻지 않는다")
+        XCTAssertEqual(service.memberListCalls, 1, "인원은 처음 한 번")
+        XCTAssertEqual(model.memberCount, 2)
+
+        await model.handle(RealtimeActivity(tripId: "t1", id: 5, kind: "MEMBER_JOINED", mine: false))
+        XCTAssertEqual(service.memberListCalls, 2, "멤버 이벤트가 오면 그때 다시 읽는다")
+        XCTAssertEqual(service.candidateListCalls, 2, "멤버 이벤트는 후보 목록을 건드리지 않는다")
+    }
 }

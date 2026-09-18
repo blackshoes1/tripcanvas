@@ -2134,7 +2134,7 @@ test('통합: 다른 멤버의 최신본 당겨오기 — 로컬이 깨끗하면
   const remote = { id: '__it__', name: 'T (영희 편집)', start: '2026-08-01', days: [{ title: '', drive: '', note: '', spots: [] }] };
   w.sb = {};
   w.SYNC_LIST = async () => ({ data: [{ client_id: '__it__', data: remote, revision: 5, deleted_at: null, updated_at: '' }], error: null });
-  w.eval(`sb=window.sb; TC_API.sync.list=window.SYNC_LIST; user={id:'u2'}; tripRoles={__it__:{role:'EDITOR',count:2,owner:false}};
+  w.eval(`sb=window.sb; TC_API.sync.list=window.SYNC_LIST; user={id:'u2'}; tripRoles={__it__:{role:'EDITOR',count:2,owner:false}}; TC_API.sync.get=async(id)=>{const r=await TC_API.sync.list(); return {data:((r&&r.data)||[]).find(x=>x&&x.client_id===id)||null,error:r?r.error:null};};
     syncMeta.__it__={revision:4,status:'clean',op:'',hash:TC_SYNC.hashTrip(trip())};`);
   assert.equal(await w.eval(`pullTrip('__it__',{force:true})`), true);
   assert.equal(w.eval(`trip().name`), 'T (영희 편집)');
@@ -2161,7 +2161,7 @@ test('통합: 일행의 변경을 당기기 전에 내 편집부터 올린다 �
   w.sb = {};
   w.SYNC_SAVE = async (id, t) => { order.push('save'); remote.name = t.name; return { applied: true, conflict: false, revision: 6, data: null, deleted_at: null }; };
   w.SYNC_LIST = async () => { order.push('list'); return { data: [{ client_id: '__it__', data: remote, revision: 6, deleted_at: null, updated_at: '' }], error: null }; };
-  w.eval(`sb=window.sb; user={id:'u1'}; TC_API.sync.save=window.SYNC_SAVE; TC_API.sync.list=window.SYNC_LIST;
+  w.eval(`sb=window.sb; user={id:'u1'}; TC_API.sync.save=window.SYNC_SAVE; TC_API.sync.list=window.SYNC_LIST; TC_API.sync.get=async(id)=>{const r=await TC_API.sync.list(); return {data:((r&&r.data)||[]).find(x=>x&&x.client_id===id)||null,error:r?r.error:null};};
     TC_API.rpc=async()=>({data:[],error:null});
     tripRoles={__it__:{role:'EDITOR',count:2,owner:false}};
     syncMeta.__it__={revision:5,status:'clean',op:'',hash:TC_SYNC.hashTrip(trip())};
@@ -2181,7 +2181,7 @@ test('통합: 서버가 거절한 진짜 충돌은 그대로 물어본다', { sk
   w.sb = {};
   w.SYNC_SAVE = async () => ({ applied: false, conflict: true, revision: 9, data: { id: '__it__', name: 'T (영희 편집)', days: [{ spots: [] }] }, deleted_at: null });
   w.eval(`sb=window.sb; user={id:'u1'}; TC_API.sync.save=window.SYNC_SAVE;
-    TC_API.sync.list=async()=>({data:[],error:null}); TC_API.rpc=async()=>({data:[],error:null});
+    TC_API.sync.list=async()=>({data:[],error:null}); TC_API.rpc=async()=>({data:[],error:null}); TC_API.sync.get=async(id)=>{const r=await TC_API.sync.list(); return {data:((r&&r.data)||[]).find(x=>x&&x.client_id===id)||null,error:r?r.error:null};};
     tripRoles={__it__:{role:'EDITOR',count:2,owner:false}};
     syncMeta.__it__={revision:5,status:'clean',op:'',hash:'stale-hash'};`);
   w.eval(`onLiveEvent('__it__',{kind:'SCHEDULE_CHANGED',actor_id:'u2'})`);
@@ -2208,7 +2208,7 @@ test('통합: 일행의 일정 변경은 토스트가 아니라 조용한 줄과
     ? [{ id: 9, kind: 'SCHEDULE_CHANGED', actor_label: '영희', mine: false, subject: {}, created_at: '2026-09-06T10:00:00Z' },
        { id: 8, kind: 'SCHEDULE_CHANGED', actor_label: '영희', mine: false, subject: {}, created_at: '2026-09-06T09:59:40Z' }]
     : [], error: null });
-  w.eval(`sb=window.sb; user={id:'u1'}; TC_API.sync.list=window.SYNC_LIST; TC_API.rpc=window.RPC;
+  w.eval(`sb=window.sb; user={id:'u1'}; TC_API.sync.list=window.SYNC_LIST; TC_API.rpc=window.RPC; TC_API.sync.get=async(id)=>{const r=await TC_API.sync.list(); return {data:((r&&r.data)||[]).find(x=>x&&x.client_id===id)||null,error:r?r.error:null};};
     tripRoles={__it__:{role:'EDITOR',count:2,owner:false}};
     // 앱은 유입 5개 지점 모두에서 normalizeTrip을 지난다 — 여기서도 같은 모양으로 둔다
     (()=>{ const i=store.trips.findIndex(t=>t.id==='__it__'); store.trips[i]=normalizeTrip(store.trips[i]); })();

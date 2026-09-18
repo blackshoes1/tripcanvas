@@ -35,7 +35,12 @@ struct PlanPreviewSection: View {
         } header: { Text("변경 영향 · 아직 저장 전") } footer: {
             Text("예약·입장 시각은 그대로 유지합니다. 추정 경로는 실제 이동과 다를 수 있어요. 날짜를 옮기면 실제 예약일과 맞는지 확인해 주세요.")
         }
-        .task(id: document) { await refresh() }
+        .task(id: document) {
+            // 피커를 훑는 동안 요청을 묶는다(2026-09-18) — id가 바뀌면 이 task가 취소되므로 잠깐 기다렸다 살아 있는 것만 나간다.
+            try? await Task.sleep(for: .milliseconds(400))
+            guard !Task.isCancelled else { return }
+            await refresh()
+        }
     }
 
     private func comparison(_ title: String, response: DayPlanResponse) -> some View {

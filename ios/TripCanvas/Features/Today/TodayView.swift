@@ -139,7 +139,9 @@ struct TodayView: View {
             if await model.loadIfStale() { await refreshTravelMode(reason: .foreground) }
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { Task { await refreshToday(reason: .foreground) } }
+            // 앱 복귀 — 방금 받은 것이면 오늘을 다시 묻지 않는다(2026-09-18, 짧은 앱 전환마다 2건이 나갔다).
+            // 여행 모드는 위치·시각이 바뀌었으니 그대로 갱신한다(`refreshTravelMode`는 켜져 있을 때만 나간다).
+            if phase == .active { Task { await model.loadIfStale(); await refreshTravelMode(reason: .foreground) } }
         }
         .onChange(of: model.revision) { old, new in
             if old != new { Task { await refreshTravelMode(reason: .userAction) } }

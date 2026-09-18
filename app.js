@@ -4845,9 +4845,14 @@ async function pullTrip(id,opts){
   const now=Date.now(); if(!(opts&&opts.force)&&_pullAt[id]&&now-_pullAt[id]<30000) return false;
   _pullAt[id]=now;
   try{
-    const {data:rows,error}=await TC_API.sync.list();
-    if(error) throw error;
-    const row=(rows||[]).find(r=>r&&r.client_id===id); if(!row) return false;
+    // 여행 한 건만 받는다(2026-09-18) — 전에는 탭 복귀·실시간마다 전체 여행 문서 전문을 받았다.
+    const got=await TC_API.sync.get(id);
+    if(got.error) throw got.error;
+    let row=got.data;
+    if(!row){   // 404 — 지워졌거나 권한이 없다. 삭제(tombstone)는 목록에만 남으므로 그때만 전체 목록을 본다
+      const all=await TC_API.sync.list(); if(all.error) throw all.error;
+      row=(all.data||[]).find(r=>r&&r.client_id===id); if(!row) return false;
+    }
     const entry=syncEntry(id), local=store.trips.find(t=>t.id===id), remoteRev=Number(row.revision)||1;
     if(!local||entry.revision===remoteRev) return false;   // 같은 판이면 할 일이 없다
     if(entry.status==='conflict'||entry.status==='syncing') return false;
@@ -5356,7 +5361,8 @@ async function flushLive(tripId){
     if(any('members')) await refreshTripRoles();
     if(any('pull')){ await pushLocalFirst(tripId); await pullTrip(tripId,{force:true}); }
     const boardOpen=document.getElementById('candModalBg').classList.contains('show')&&candTripId===tripId;
-    if(any('candidates')&&boardOpen){ candOpen.forEach(k=>loadComments(Number(k))); await renderCandidates(); }
+    // 한마디는 코멘트가 실제로 붙은 후보만 다시 읽는다 — 반응 하나에 열린 카드 전부를 다시 읽지 않는다(2026-09-18)
+    if(any('candidates')&&boardOpen){ TC_COLLAB.liveCommentTargets(batch,candOpen).forEach(k=>loadComments(Number(k))); await renderCandidates(); }
     const membersOpen=document.getElementById('membersModalBg').classList.contains('show')&&membersTripId===tripId;
     if(membersOpen){ if(any('members')) await renderMembers(); else await renderActivity(); }
     if(any('notify')||any('pull')){   // 문장은 이름표가 있는 RPC 행으로 만든다 — payload에는 이름이 없다
