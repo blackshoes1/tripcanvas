@@ -939,3 +939,47 @@ describe('GET /costs — 여행 전체 비용의 인증·범위', () => {
     expect(JSON.stringify(row)).toBe(before);
   });
 });
+
+describe('환율 — 서버가 받은 것을 응답에 싣는다(2026-09-18)', () => {
+  const snapshot = { rates: { KRW: 1, USD: 1400, EUR: 1550, JPY: 9.3, CNY: 199 }, source: 'API' as const, asOf: '2026-09-18' };
+  const withFx = () => createHandlers({
+    gatewayFor: (token) => (token === TOKEN ? gatewayOf(store) : null), now: () => NOW,
+    fx: { read: async () => snapshot }
+  });
+
+  it('전체 비용은 받은 환율로 환산하고 출처·기준일을 하루치 상세에도 같이 싣는다', async () => {
+    const res = await withFx().tripCosts(new Request('https://x/costs', auth()), 'trip-1');
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.fxSource).toBe('API');
+    expect(body.fxAsOf).toBe('2026-09-18');
+    expect(body.fxRates.USD).toBe(1400);
+    expect(body.days[0].cost.details.fxSource).toBe('API');
+    expect(body.days[0].cost.details.fxAsOf).toBe('2026-09-18');
+    expect(body.days[0].cost.details.fxRates.USD).toBe(1400);
+  });
+
+  it('하루치도 같은 환율을 쓴다', async () => {
+    const res = await withFx().dayPlan(new Request('https://x/api/v1/trips/trip-1/days/0', auth()), 'trip-1', 0);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.day.totals.cost.details.fxSource).toBe('API');
+    expect(body.day.totals.cost.details.fxAsOf).toBe('2026-09-18');
+    expect(body.day.totals.cost.details.fxRates.USD).toBe(1400);
+  });
+
+  it('환율 서비스가 던져도 비용은 나온다 — 근사값이라고 말할 뿐이다', async () => {
+    const broken = createHandlers({
+      gatewayFor: (token) => (token === TOKEN ? gatewayOf(store) : null), now: () => NOW,
+      fx: { read: async () => { throw new Error('upstream'); } }
+    });
+    const body = await (await broken.tripCosts(new Request('https://x/costs', auth()), 'trip-1')).json();
+    expect(body.fxSource).toBe('FALLBACK');
+    expect(body.fxAsOf).toBeNull();
+  });
+
+  it('주입하지 않으면 지금까지처럼 근사값이다', async () => {
+    const body = await (await api.tripCosts(new Request('https://x/costs', auth()), 'trip-1')).json();
+    expect(body.fxSource).toBe('FALLBACK');
+  });
+});

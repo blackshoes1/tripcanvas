@@ -130,7 +130,7 @@ struct DayCostView: View {
                     }
                     if details.hasForeignCurrency {
                         Section("원화 환산 기준") {
-                            Text(details.fxSource == "FALLBACK" ? "기본 참고 환율 · 실시간 시세 아님 · 시세 기준일 없음" : "\(details.fxAsOf ?? "기준일 미제공") 환율")
+                            Text(TripCostsView.fxNote(source: details.fxSource, asOf: details.fxAsOf))
                                 .font(.caption)
                             ForEach(details.fxRates.keys.filter { $0 != "KRW" }.sorted(), id: \.self) { currency in
                                 Text("1 \(currency) ≈ \(MoneyInput.text(amount: details.fxRates[currency]))원").font(.caption)

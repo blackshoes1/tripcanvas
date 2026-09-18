@@ -16,6 +16,22 @@ export interface FxCache {
 }
 
 /**
+ * 응답에 싣는 환율 한 벌 — 값과 **출처·기준일**을 함께 든다.
+ * 앱은 이걸 보고 "9월 18일 환율"이라고 말하거나 "실시간 아님"이라고 말한다. 출처 없이 값만 보내면
+ * 화면이 근사값을 시세처럼 보여 주게 된다(2026-09-18 "환율이 현재와 동떨어졌다" 보고).
+ * - `API`: open.er-api.com에서 받은 값. `asOf`는 받은 날(UTC). 그날 못 받았으면 **저장된 최근 날**일 수 있다.
+ * - `FALLBACK`: 받은 적이 없어 코드에 박힌 근사값. `asOf`는 null.
+ */
+export interface FxSnapshot {
+  rates: Record<string, number>;
+  source: 'API' | 'FALLBACK';
+  asOf: string | null;
+}
+
+export const FX_FALLBACK_SNAPSHOT: Readonly<FxSnapshot> =
+  Object.freeze({ rates: { ...FX_FALLBACK }, source: 'FALLBACK' as const, asOf: null });
+
+/**
  * 캐시는 기본값 **위에 덮어쓴다** — 통째로 갈아끼우면, 나중에 통화가 추가됐을 때
  * 옛 캐시에 없는 통화가 undefined가 되어 환산이 1:1로 깨진다(레거시가 같은 이유로 이렇게 한다).
  */

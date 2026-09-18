@@ -92,6 +92,13 @@
       "when": 1789647027915,
       "tag": "0012_candidate_category",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1789697210244,
+      "tag": "0013_fx_rates",
+      "breakpoints": true
     }
   ]
 }
