@@ -1298,10 +1298,9 @@ extension TripPlanViewModelTests {
         await model.load()
         try? await Task.sleep(for: .milliseconds(120))   // 옆 날이 미리 받아진다
 
-        model.step(.next)
-        await model.loadPlan()
+        model.step(.next)          // 옮기는 것은 `selectedDay`가 스스로 `loadPlan(reuseFetched: true)`를 건다
+        try? await Task.sleep(for: .milliseconds(120))
         model.step(.previous)
-        await model.loadPlan()
         try? await Task.sleep(for: .milliseconds(120))
 
         XCTAssertEqual(service.dayPlanCalls.filter { $0 == 0 }.count, 1, "돌아와도 다시 받지 않는다")
@@ -1320,7 +1319,7 @@ extension TripPlanViewModelTests {
         let before = service.dayPlanCalls.filter { $0 == 1 }.count
 
         model.step(.next)
-        await model.loadPlan()
+        await waitForRefresh { service.dayPlanCalls.filter { $0 == 1 }.count > before }
 
         XCTAssertGreaterThan(service.dayPlanCalls.filter { $0 == 1 }.count, before, "채울 구간이 있으면 옮길 때 다시 받는다")
     }

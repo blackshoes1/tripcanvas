@@ -46,7 +46,7 @@ final class TripPlanViewModel {
     var selectedDay = 0 {
         didSet {
             if let document, selectedDay >= document.days.count { selectedDay = max(0, document.days.count - 1) }
-            if selectedDay != oldValue { Task { await loadPlan() } }
+            if selectedDay != oldValue { Task { await loadPlan(reuseFetched: true) } }
         }
     }
 
@@ -205,7 +205,9 @@ final class TripPlanViewModel {
     /// 서버 계산을 받아온다. **실패해도 조용하다** — 일정 편집은 문서만으로 되고,
     /// 계산이 없으면 화면이 시각·구간을 감출 뿐이다. 여기서 오류 배너를 띄우면
     /// 편집이 멀쩡한데 무언가 고장 난 것처럼 보인다.
-    func loadPlan() async {
+    /// - Parameter reuseFetched: **날을 옮길 때**만 참이다 — 이번 문서의 계산을 이 세션에서 이미 서버로부터 받았고 채울 구간도
+    ///   없으면 다시 묻지 않는다(2026-09-18). `load()`·당겨서 새로고침·저장 뒤의 호출은 언제나 다시 받는다.
+    func loadPlan(reuseFetched: Bool = false) async {
         guard loadsPlans else { return }
         guard dayCount > 0 else { plansByDay = [:]; cachedAtByDay = [:]; return }
         let day = selectedDay
@@ -215,8 +217,8 @@ final class TripPlanViewModel {
         }
         await showCachedPlan(for: day)
         guard revision == askedRevision else { return }
-        // 이번 문서의 계산을 이 세션에서 이미 서버로부터 받았고 채울 구간도 없으면 같은 답을 다시 받지 않는다(2026-09-18).
-        if let known = plansByDay[day], fetchedDays.contains(day), known.trip.revision == askedRevision, known.legsPending == 0 {
+        // 날을 옮길 때 — 이번 문서의 계산을 이 세션에서 이미 서버로부터 받았고 채울 구간도 없으면 같은 답을 다시 받지 않는다(2026-09-18).
+        if reuseFetched, let known = plansByDay[day], fetchedDays.contains(day), known.trip.revision == askedRevision, known.legsPending == 0 {
             attemptedDays.insert(day)
             prefetchNeighbours(of: day)
             return
