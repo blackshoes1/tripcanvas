@@ -11,6 +11,7 @@
 // 이동시간은 **서버 구간 캐시**(`leg_cache`)에 있는 것만 실측이다. 없는 구간은 직선거리 추정이고,
 // 구간마다 `source`로, 화면 전체로는 `travelTimeSource`로 그 사실을 실어 보낸다 —
 // 하나라도 추정이면 맨 위는 추정이라고 말한다(전부 도로일 때만 ROUTED).
+import { FX_FALLBACK_SNAPSHOT, type FxSnapshot } from '@/features/currency/domain/fx';
 import legacyLib from '@legacy/lib.js';
 
 import {
@@ -98,6 +99,8 @@ export interface DayPlanInput {
   legCache?: LegCache;
   /** 아직 조회되지 않은 구간 수 — 화면이 잠시 뒤 한 번 더 받아 볼지 정한다. 모르면 0 */
   legsPending?: number;
+  /** 서버가 받은 환율(`serverFx`). 없으면 근사값이고 응답이 그렇게 말한다 */
+  fx?: FxSnapshot;
 }
 
 /**
@@ -114,7 +117,8 @@ export function buildDayPlanView(input: DayPlanInput): DayPlanResponse | null {
 
   const day: Day = days[di];
   const spots = day.spots ?? [];
-  const dayView = buildDayView(trip, cache, di);
+  const fx = input.fx ?? FX_FALLBACK_SNAPSHOT;
+  const dayView = buildDayView(trip, cache, di, fx.rates);
   const timeline = dayTimelineOf(trip, cache, di);
   const dayMode = dayModeOf(day);
 
@@ -202,7 +206,7 @@ export function buildDayPlanView(input: DayPlanInput): DayPlanResponse | null {
       endMinutes,
       // 자정을 넘기면 과밀이다 — 웹의 '⚠️ 일정 과밀'과 같은 기준.
       overloaded: endMinutes != null && endMinutes > 24 * 60,
-      cost: dayCostOf(dayView.cost)
+      cost: dayCostOf(dayView.cost, fx)
     }
   };
 
@@ -259,8 +263,8 @@ function splitsOf(day: Day): DayPlanSplit[] {
  * `buildDayView`가 이미 이 계산을 들고 있어 값만 꺼내 쓴다. 규칙을 두 곳에 두지 않는다.
  * (라벨까지 함께 만들지만 그 비용은 무시할 만하고, 계산을 복제하는 쪽이 훨씬 비싸다)
  */
-function dayCostOf(cost: DayPlanDay['totals']['cost']): DayPlanDay['totals']['cost'] {
-  // 서버에는 브라우저 환율 캐시가 없다. 기본 참고 환율임을 실제 응답에서 명시한다.
-  if (cost.details) cost.details.fxSource = 'FALLBACK';
+function dayCostOf(cost: DayPlanDay['totals']['cost'], fx: FxSnapshot): DayPlanDay['totals']['cost'] {
+  // 어떤 환율로 환산했는지 실제 응답이 말한다 — 받은 것이면 출처 API와 기준일, 아니면 근사값(FALLBACK).
+  if (cost.details) { cost.details.fxSource = fx.source; cost.details.fxAsOf = fx.asOf; }
   return cost;
 }

@@ -372,3 +372,15 @@ export const opsBackupRuns = pgTable('ops_backup_runs', {
 }, (t) => [
   index('ops_backup_runs_finished_idx').on(t.finishedAt)
 ]);
+
+/**
+ * 서버 환율 — 하루에 한 행. 앱의 원화 환산은 서버가 계산하는데, 2026-09-18까지 서버는 환율을 받지 않고
+ * 코드에 박힌 근사값(USD 1380원…)만 썼다. 이제 하루 한 번 받아 여기 두고, 오늘 못 받으면 최근 행을 쓴다.
+ * 값은 '통화 1단위 = ? 원'(웹 `tripcanvas_fx`와 같은 모양). 출처·주소는 넣지 않는다 — 어디서 받는지는 코드가 안다.
+ */
+export const fxRates = pgTable('fx_rates', {
+  /** 받은 날 YYYY-MM-DD (UTC) */
+  day: text('day').primaryKey(),
+  rates: jsonb('rates').$type<Record<string, number>>().notNull(),
+  fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow()
+});

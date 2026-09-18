@@ -67,7 +67,8 @@ struct TripCostsView: View {
                 }
                 if let response, response.hasForeignCurrency {
                     Section("원화 환산 기준") {
-                        Text("기본 참고 환율 · 실시간 시세 아님 · 시세 기준일 없음").font(.caption)
+                        // 서버가 무엇으로 환산했는지 그대로 말한다 — 받은 날짜가 있으면 그 날, 없으면 근사값이라고.
+                        Text(Self.fxNote(source: response.fxSource, asOf: response.fxAsOf)).font(.caption)
                         ForEach(response.fxRates.keys.filter { $0 != "KRW" }.sorted(), id: \.self) { currency in
                             Text("1 \(currency) ≈ \(MoneyInput.text(amount: response.fxRates[currency]))원").font(.caption)
                         }
@@ -374,6 +375,13 @@ struct TripCostsView: View {
     }
 
     private func money(_ value: Double) -> String { TimeFormat.money(value, currency: "KRW") }
+
+    /// 환산 기준 한 줄. 서버가 시세를 받았으면 그 날짜(하루 한 번 갱신)를, 못 받았으면 근사값임을 말한다.
+    /// ⚠️ 받은 날이 오늘이 아닐 수 있다 — 상류가 죽은 날은 마지막으로 받은 날을 쓴다. 그래서 날짜를 숨기지 않는다.
+    static func fxNote(source: String, asOf: String?) -> String {
+        guard source == "API", let asOf, !asOf.isEmpty else { return "기본 참고 환율 · 실시간 시세 아님 · 시세 기준일 없음" }
+        return "\(TimeFormat.dayChipLabel(asOf) ?? asOf) 환율 · 하루 한 번 갱신"
+    }
 
     // MARK: 읽기·쓰기
 

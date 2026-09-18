@@ -34,6 +34,7 @@ import {
   PgDeviceRepository, PgMemoryRepository, PgNotificationLogRepository, PgSuggestionFeedbackRepository
 } from '@/server/infrastructure/database/pgAdaptiveRepositories';
 import { PgCollabRepository } from '@/server/infrastructure/database/pgCollabRepository';
+import { PgFxRateRepository } from '@/server/infrastructure/database/pgFxRateRepository';
 import { PgLegCacheRepository } from '@/server/infrastructure/database/pgLegCacheRepository';
 import { PgMembershipRepository } from '@/server/infrastructure/database/pgMembershipRepository';
 import { PgPriceObservationRepository } from '@/server/infrastructure/database/pgPriceObservationRepository';
@@ -46,6 +47,7 @@ import {
 } from '@/server/infrastructure/supabase/legacyTripRepository';
 import { DualReadMembershipRepository, DualReadTripRepository } from '@/server/repositories/dualRead';
 import { createLegFiller, legRequestsFor, toLegCache } from '@/server/routing/legFiller';
+import { createServerFx, type FxSupport } from '@/server/currency/serverFx';
 
 /**
  * 전체 동선을 한 번에 채울 최대 구간 수. 하루치 상한(12)보다 크지만 무한은 아니다 —
@@ -291,4 +293,14 @@ function legSupport(): LegSupport | undefined {
   };
 }
 
-export const handlers = createHandlers({ gatewayFor, legs: legSupport() });
+/**
+ * 서버 환율 — 하루 한 번 받는다(웹 `loadFx`와 같은 출처·같은 UTC 날짜). DB가 있으면 그날 것을 남겨
+ * 다시 떠도 또 받지 않고, 오늘 못 받으면 최근 날의 실제 시세를 쓴다. DB가 없으면 메모리뿐이다.
+ * 어느 쪽이든 응답의 `fxSource`·`fxAsOf`가 무엇을 썼는지 말한다 — 근사값을 시세처럼 보이지 않게.
+ */
+function fxSupport(): FxSupport {
+  const db = getDb();
+  return createServerFx({ repo: db ? new PgFxRateRepository(db) : null, log: (m) => console.warn(`[tripcanvas-api] ${m}`) });
+}
+
+export const handlers = createHandlers({ gatewayFor, legs: legSupport(), fx: fxSupport() });
