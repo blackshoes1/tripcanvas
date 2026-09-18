@@ -587,12 +587,65 @@
     const people=item.costBasis==='PER_PERSON'&&Number.isInteger(item.costPeople)&&item.costPeople>0?item.costPeople:1;
     return moneyAmount(amount*(item.costBasis==='PER_PERSON'?people:1),item.cur);
   }
-  /** 장소와 수동 항목의 합계. 예약·자동 교통비는 별도로 더한다.
+  /** 장소와 수동 항목의 합계(**전액**). 예약·자동 교통비는 별도로 더한다.
+   * 여행 전체 합계가 쓴다 — 연박 숙소도 전액이다(하루치는 `dayEnteredCostOn`).
    * @param {any} day @param {Record<string,number>} rates @returns {number} */
   function dayEnteredCost(day,rates){
     return [...(day.spots||[]).map((/**@type{any}*/s)=>({item:s,field:'cost'})),
       ...(day.costItems||[]).map((/**@type{any}*/s)=>({item:s,field:'amount'}))]
       .reduce((sum,x)=>sum+Math.round((costAmountOf(x.item,x.field)||0)*(rates[x.item.cur||'KRW']||1)),0);
+  }
+  /**
+   * 금액을 숙박일 수로 나눈다 — 예약 하루치(`bookingShareOn`)와 같은 규칙: 통화의 최소 단위로 나눠 앞날부터
+   * 1단위씩 얹어 하루치의 합이 총액과 정확히 맞는다(반올림 누수 방지).
+   * @param {number} amount @param {number} nights @param {string=} cur @returns {number[]}
+   */
+  function splitAcrossNights(amount, nights, cur){
+    const n=Math.max(1,Math.round(+nights||1));
+    const scale=(cur==='USD'||cur==='EUR'||cur==='CNY')?100:1;
+    const units=Math.round(amount*scale), base=Math.floor(units/n), rem=units-base*n;
+    return Array.from({length:n},(_,i)=>(base+(i<rem?1:0))/scale);
+  }
+  /**
+   * **숙소(장소)의 비용은 숙박일 수로 나눠 날마다 하루치로 잡는다**(2026-09-18). 2박 숙소에 적은 비용은
+   * 체크인 날에 전액이 아니라 체크인 날과 다음 날에 반씩이다 — 예약(`bookingShareOn`)과 같은 뜻이다.
+   * `own`은 di일 장소 자신의 몫(장소 인덱스 → 금액), `carried`는 앞선 날에 체크인한 숙소가 이 날로 이월한 몫.
+   * 숙소가 아니거나(`stay`) 1박이거나 금액을 모르면 나누지 않는다. 연박이 일정 밖으로 나가면 그 몫은 어느
+   * 날에도 없다(전체 비용은 전액이라 예약과 같은 차이가 생긴다).
+   * @param {any[]} days @param {number} di
+   * @returns {{own:Record<number,number>, carried:{fromDay:number,index:number,spot:any,amount:number,cur:string,night:number,nights:number}[]}}
+   */
+  function stayCostShares(days, di){
+    /** @type {Record<number,number>} */ const own={};
+    /** @type {{fromDay:number,index:number,spot:any,amount:number,cur:string,night:number,nights:number}[]} */ const carried=[];
+    if(!Array.isArray(days)||!Number.isInteger(di)||di<0) return {own,carried};
+    for(let j=Math.max(0,di-60); j<=di; j++){
+      const spots=(days[j]&&Array.isArray(days[j].spots))?days[j].spots:[];
+      spots.forEach((/**@type{any}*/s,/**@type{number}*/index)=>{
+        if(!s||!s.stay) return;
+        const n=stayNights(s); if(n<2) return;
+        const night=di-j; if(night>=n) return;
+        const amount=costAmountOf(s,'cost'); if(amount===null) return;
+        const share=splitAcrossNights(amount,n,s.cur)[night];
+        if(j===di) own[index]=share;
+        else carried.push({fromDay:j,index,spot:s,amount:share,cur:s.cur||'KRW',night,nights:n});
+      });
+    }
+    return {own,carried};
+  }
+  /** 그 날에 잡히는 장소·수동 항목의 원화 합계 — 연박 숙소는 **하루치만**(자기 몫 + 앞선 날에서 이월된 몫).
+   * 일자 카드가 쓴다. 여행 전체 합계는 `dayEnteredCost`(전액)다.
+   * @param {any[]} days @param {number} di @param {Record<string,number>} rates @returns {number} */
+  function dayEnteredCostOn(days, di, rates){
+    const day=(Array.isArray(days)&&days[di])||{}, shares=stayCostShares(days,di);
+    const krw=(/**@type{number|null}*/v,/**@type{string|undefined}*/cur)=>v===null?0:Math.round(v*(rates[cur||'KRW']||1));
+    let sum=0;
+    (day.spots||[]).forEach((/**@type{any}*/s,/**@type{number}*/i)=>{
+      sum+=krw(Object.prototype.hasOwnProperty.call(shares.own,i)? shares.own[i] : costAmountOf(s,'cost'), s.cur);
+    });
+    (day.costItems||[]).forEach((/**@type{any}*/it)=>{ sum+=krw(costAmountOf(it,'amount'), it.cur); });
+    shares.carried.forEach(c=>{ sum+=krw(c.amount,c.cur); });
+    return sum;
   }
   /** 수동 교통비는 하루 교통비 전체를 대신한다 — 자동 추정과 이중 합산하지 않는다.
    * @param {any} day @returns {boolean} */
@@ -624,13 +677,22 @@
         totalKRW:amount===null?null:Math.round(amount*(rates[cur]||1)),
         state:bookingCovered?'BOOKING':amount===null?'UNKNOWN':item.costPartial?'PARTIAL':amount===0?'FREE':'KNOWN'});
     }
-    (day.spots||[]).forEach((/**@type{any}*/s,/**@type{number}*/index)=>add(s,'cost',{source:'SPOT',key:String(index),title:s.name||'장소',kind:costCategoryOf(s)}));
+    // 연박 숙소는 그날 하루치만 — 나머지 밤의 몫은 그 날들에 STAY 줄로 이월된다(stayCostShares)
+    const stays=stayCostShares(trip.days,di);
+    (day.spots||[]).forEach((/**@type{any}*/s,/**@type{number}*/index)=>{
+      const own=Object.prototype.hasOwnProperty.call(stays.own,index);
+      // 하루치는 이미 인원을 곱한 금액이라 기준을 ENTERED로 둔다 — 안 그러면 add()가 인원을 한 번 더 곱한다
+      const item=own? {...s,cost:stays.own[index],costBasis:'ENTERED'} : s;
+      add(item,'cost',{source:'SPOT',key:String(index),title:own? `${s.name||'숙소'} (1/${stayNights(s)}박)` : (s.name||'장소'),kind:costCategoryOf(s)});
+    });
+    for(const c of stays.carried) add({amount:c.amount,cur:c.cur,payState:c.spot.payState,paidOn:c.spot.paidOn},'amount',
+      {source:'STAY',key:`${c.fromDay}.${c.index}`,title:`${c.spot.name||'숙소'} (${c.night+1}/${c.nights}박)`,kind:'STAY'});
     (day.costItems||[]).forEach((/**@type{any}*/s)=>add(s,'amount',{source:'EXTRA',key:s.id,title:s.title||'비용',kind:s.kind||'OTHER'}));
     for(const share of shares) add({amount:share.amount,cur:share.cur,payState:share.payState,paidOn:share.paidOn},'amount',{source:'BOOKING',key:share.id,title:share.title,kind:share.type});
     const manualTransport=hasManualTransportCost(day);
     if(!manualTransport&&input.taxi!==null&&input.taxi>0) add({amount:input.taxi,cur:'KRW'},'amount',{source:'TRANSPORT',key:'taxi',title:'자동 교통비 추정',kind:'TRANSPORT'});
     const parts=[{label:'장소',amount:0},{label:'추가 비용',amount:0},{label:'택시',amount:0},{label:'예약',amount:0}];
-    for(const item of items) parts[item.source==='SPOT'?0:item.source==='EXTRA'?1:item.source==='TRANSPORT'?2:3].amount+=item.totalKRW||0;
+    for(const item of items) parts[(item.source==='SPOT'||item.source==='STAY')?0:item.source==='EXTRA'?1:item.source==='TRANSPORT'?2:3].amount+=item.totalKRW||0;
     const total=parts.reduce((sum,p)=>sum+p.amount,0);
     const onSiteKRW=items.filter(i=>i.source!=='BOOKING').reduce((sum,i)=>sum+(i.totalKRW||0),0);
     const payTotals=payStateTotals(items);
@@ -1387,7 +1449,7 @@
     };
   }
 
-  const TC={SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,cityFromKoreanAddr,placeName,cityFromGoogle,normHours,classifySearchErr,isKoreanSearch,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,normHM,sortDayByTime,inKorea,simplifyName,parseDirect,parseMoney,normalizeDraftDays,extractJson,extMapLink,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,computeTimeline,whoKey,splitSegments,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,budgetBookings,moneyAmount,parseCostAmount,costAmountOf,dayEnteredCost,hasManualTransportCost,dayCostSummary,COST_CATEGORIES,costCategoryOf,COST_PAY_STATES,costPayStateOf,payStateTotals,TRIP_NOTE_CATEGORIES,normalizeTripNote,tripCostSummary,localMode,sampleTrip,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
+  const TC={SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,cityFromKoreanAddr,placeName,cityFromGoogle,normHours,classifySearchErr,isKoreanSearch,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,normHM,sortDayByTime,inKorea,simplifyName,parseDirect,parseMoney,normalizeDraftDays,extractJson,extMapLink,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,computeTimeline,whoKey,splitSegments,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,budgetBookings,moneyAmount,parseCostAmount,costAmountOf,dayEnteredCost,splitAcrossNights,stayCostShares,dayEnteredCostOn,hasManualTransportCost,dayCostSummary,COST_CATEGORIES,costCategoryOf,COST_PAY_STATES,costPayStateOf,payStateTotals,TRIP_NOTE_CATEGORIES,normalizeTripNote,tripCostSummary,localMode,sampleTrip,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
   if(typeof module!=='undefined' && module.exports){ module.exports=TC; }   // Node (테스트)
   else { const r=/**@type {any}*/(root); for(const k in TC) r[k]=/**@type {any}*/(TC)[k]; }   // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);

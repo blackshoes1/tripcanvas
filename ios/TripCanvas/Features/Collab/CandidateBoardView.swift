@@ -6,12 +6,17 @@ import SwiftUI
 /// 가리키는 것이다. 반응은 한 번의 탭이고, 일정에 넣는 것은 언제나 사람이 누른다(§12·§79).
 struct CandidateBoardView: View {
     let trip: TripSummary
+    /// 여행 화면(`TripScreenModels`)이 들고 있는 모델. 있으면 시트를 닫았다 열어도 목록이 남는다(2026-09-18).
+    var shared: CandidateBoardViewModel? = nil
 
     @Environment(AppEnvironment.self) private var env
     @Environment(\.scenePhase) private var scenePhase
-    @State private var model: CandidateBoardViewModel?
+    @State private var owned: CandidateBoardViewModel?
+    private var model: CandidateBoardViewModel? { shared ?? owned }
     @State private var titleDraft = ""
     @State private var noteDraft = ""
+    /// 담을 때 고르는 분류 — 표시·거르기용이지 결정이 아니다. 안 고르면 '고르지 않음'으로 담긴다.
+    @State private var categoryDraft: CandidateCategory?
     @State private var expanded: Set<Int> = []
     @State private var commentDrafts: [Int: String] = [:]
     @State private var scheduling: CandidateView?
@@ -50,8 +55,8 @@ struct CandidateBoardView: View {
         }
         .onDisappear { env.realtime.disconnect() }
         .task {
-            if model == nil { model = CandidateBoardViewModel(trip: trip, service: env.service, documents: env.service) }
-            await model?.load()
+            if shared == nil, owned == nil { owned = CandidateBoardViewModel(trip: trip, service: env.service, documents: env.service) }
+            await model?.loadIfStale()
             if let model { startLive(model) }
         }
         .sheet(item: $scheduling) { candidate in
@@ -109,6 +114,13 @@ struct CandidateBoardView: View {
                 Section {
                     TextField("가고 싶은 곳 (예: 사그라다 파밀리아)", text: $titleDraft)
                     TextField("한 줄 메모 (선택) — 예: 야경이 좋대", text: $noteDraft)
+                    Picker("분류", selection: $categoryDraft) {
+                        Text("고르지 않음").tag(CandidateCategory?.none)
+                        ForEach(CandidateCategory.allCases, id: \.self) { category in
+                            Label(category.label, systemImage: category.symbol).tag(CandidateCategory?.some(category))
+                        }
+                    }
+                    .pickerStyle(.menu)
 
                     Button { showsSearch = true } label: {
                         Label("지도에서 찾기", systemImage: "map")
@@ -145,8 +157,9 @@ struct CandidateBoardView: View {
                                                lat: place?.point.lat, lng: place?.point.lng,
                                                placeId: place?.placeId,
                                                addr: (place?.address).flatMap { $0.isEmpty ? nil : $0 },
-                                               provider: place?.provider, providerId: place?.providerId) {
-                                titleDraft = ""; noteDraft = ""; pickedPlace = nil
+                                               provider: place?.provider, providerId: place?.providerId,
+                                               category: categoryDraft) {
+                                titleDraft = ""; noteDraft = ""; pickedPlace = nil; categoryDraft = nil
                             }
                         }
                     } label: {
@@ -176,6 +189,18 @@ struct CandidateBoardView: View {
                         Text("관심 순").tag(true)
                     }
                     .pickerStyle(.segmented)
+                    // 분류로 거르기 — 묶음·정렬은 그 안에서 그대로다.
+                    Picker("분류", selection: Binding(get: { model.categoryFilter }, set: { model.categoryFilter = $0 })) {
+                        Text("전체 분류").tag(CandidateCategoryFilter.all)
+                        Text("분류 없음").tag(CandidateCategoryFilter.none)
+                        ForEach(CandidateCategory.allCases, id: \.self) { category in
+                            Label(category.label, systemImage: category.symbol).tag(CandidateCategoryFilter.only(category))
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    if model.visibleCandidates.isEmpty {
+                        Text("이 분류로 담긴 곳이 없어요").font(.caption).foregroundStyle(Ink.soft)
+                    }
                 }
                 if let plan = model.proposal, model.canSchedule {
                     Section { GroupProposalCard(plan: plan, isBusy: model.isWorking,
@@ -237,7 +262,8 @@ struct CandidateBoardView: View {
                         onReject: { Task { await model.reject(candidateId: candidate.id) } },
                         onReopen: { Task { await model.reopen(candidateId: candidate.id) } },
                         onUnschedule: { Task { await model.unschedule(candidateId: candidate.id) } },
-                        onRemove: { removing = candidate })
+                        onRemove: { removing = candidate },
+                        onSetCategory: { category in Task { await model.setCategory(candidateId: candidate.id, category: category) } })
                 }
             }
         }
@@ -261,13 +287,37 @@ struct CandidateCard: View {
     let onReopen: () -> Void
     let onUnschedule: () -> Void
     let onRemove: () -> Void
+    /// 분류 바꾸기(제안할 수 있는 사람만). nil이면 '고르지 않음'으로.
+    var onSetCategory: (CandidateCategory?) -> Void = { _ in }
+
+    private var category: CandidateCategory? { CandidateCategory.of(candidate.category) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.s) {
             HStack(alignment: .top, spacing: Space.s) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(candidate.title.isEmpty ? "이름 없는 곳" : candidate.title).font(.body.weight(.semibold))
-                    Text(meta).font(.caption).foregroundStyle(.secondary)
+                    HStack(spacing: Space.xs) {
+                        // 분류는 표시다 — 제안할 수 있는 사람은 여기서 바꾼다. 순위·묶음은 건드리지 않는다.
+                        if CollabModel.canPropose(role) {
+                            Menu {
+                                Button("고르지 않음") { onSetCategory(nil) }
+                                ForEach(CandidateCategory.allCases, id: \.self) { option in
+                                    Button { onSetCategory(option) } label: { Label(option.label, systemImage: option.symbol) }
+                                }
+                            } label: {
+                                Label(category?.label ?? "분류", systemImage: category?.symbol ?? "tag")
+                                    .font(.caption2)
+                                    .padding(.horizontal, 6).padding(.vertical, 2)
+                                    .background(Ink.sunken, in: Capsule())
+                                    .foregroundStyle(category == nil ? Ink.faint : Ink.ink)
+                            }
+                            .accessibilityLabel("\(candidate.title) 분류 \(category?.label ?? "없음") — 바꾸기")
+                        } else if let category {
+                            Label(category.label, systemImage: category.symbol).font(.caption2).foregroundStyle(Ink.soft)
+                        }
+                        Text(meta).font(.caption).foregroundStyle(.secondary)
+                    }
                 }
                 Spacer(minLength: Space.s)
                 StatusChip(text: badgeText, symbol: badgeSymbol, tint: badgeTint)

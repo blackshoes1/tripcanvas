@@ -12,6 +12,8 @@ import SwiftUI
 /// 합계 자리에는 **그 사실을 쓴다** — 조용히 감추면 아무 오류 없이 기능만 사라진 것처럼 보인다.
 struct TripCostsView: View {
     let trip: TripSummary
+    /// 여행 화면(`TripScreenModels`)이 들고 있는 기억. 있으면 시트를 닫았다 열어도 방금 받은 것을 다시 받지 않는다(2026-09-18).
+    let memory: TripCostsMemory?
     @Environment(AppEnvironment.self) private var env
     @State private var response: TripCostsResponse?
     @State private var snapshot: TripDocumentSnapshot?
@@ -27,8 +29,9 @@ struct TripCostsView: View {
     @State private var paidOnEditor: PaymentRow?
     @State private var quickSpend: QuickSpendTarget?
 
-    init(trip: TripSummary) {
+    init(trip: TripSummary, memory: TripCostsMemory? = nil) {
         self.trip = trip
+        self.memory = memory
         // 여행 중이면 오늘 쓴 돈부터, 아니면 가계부부터 — 그때 적을 것이 그것이다.
         _ledger = State(initialValue: trip.isLive ? .onSite : .prep)
     }
@@ -82,7 +85,7 @@ struct TripCostsView: View {
         .tint(Ink.accent)
         .navigationTitle("비용")
         .navigationBarTitleDisplayMode(.inline)
-        .task { await load() }
+        .task { await loadIfStale() }
         .refreshable { await load() }
         .sheet(item: $editingDay) { day in
             if let snapshot, snapshot.document.hasDay(day.index) {
@@ -386,6 +389,15 @@ struct TripCostsView: View {
 
     // MARK: 읽기·쓰기
 
+    /// 시트를 열 때 — 방금 받은 것이 기억에 있으면 그대로 쓴다(Today·Plan과 같은 60초 규칙).
+    private func loadIfStale() async {
+        if let memory, memory.isFresh(), let remembered = memory.snapshot {
+            snapshot = remembered; response = memory.response; error = nil
+            return
+        }
+        await load()
+    }
+
     /// 문서와 계산을 따로 받는다 — 계산이 실패해도 문서로 목록은 짓는다(입력을 막지 않는다).
     private func load() async {
         guard !loading, !saving else { return }
@@ -400,6 +412,11 @@ struct TripCostsView: View {
             self.error = "비용을 불러오지 못했어요. 연결을 확인하고 다시 시도해 주세요."
             return
         }
+        await loadCosts()
+    }
+
+    /// 계산만 다시 받는다 — 저장 응답이 이미 최신 문서라 문서를 또 받지 않는다(2026-09-18, 편집 한 번에 GET이 둘 나갔다).
+    private func loadCosts() async {
         do {
             let received = try await env.service.tripCosts(tripId: trip.id)
             try Task.checkCancellation()
@@ -408,6 +425,7 @@ struct TripCostsView: View {
                 error = "여행 내용이 변경됐어요. 다시 불러와 주세요."; return
             }
             response = received
+            memory?.remember(snapshot: snapshot, response: received)
         } catch {
             guard !Task.isCancelled else { return }
             response = nil
@@ -430,7 +448,7 @@ struct TripCostsView: View {
             let saved = try await env.service.saveDocument(tripId: trip.id, document: draft, expectedRevision: snapshot.revision)
             self.snapshot = saved; editingRevision = saved.revision
             response = nil; saving = false
-            await load()
+            await loadCosts()   // 문서는 저장 응답이 최신이다 — 계산만 다시 받는다
             return true
         } catch {
             saving = false
@@ -533,5 +551,28 @@ struct PaidOnSheet: View {
         saving = true
         defer { saving = false }
         if await onSave(iso) { dismiss() } else { failed = true }
+    }
+}
+
+/// 비용 시트의 기억 — 닫았다 다시 열 때 방금 받은 것을 다시 받지 않기 위해 여행 화면(`TripScreenModels`)이 든다(2026-09-18).
+/// 문서와 계산이 **같은 revision으로 함께** 받아졌을 때만 남긴다.
+@MainActor
+final class TripCostsMemory {
+    private(set) var snapshot: TripDocumentSnapshot?
+    private(set) var response: TripCostsResponse?
+    private(set) var loadedAt: Date?
+
+    init() {}
+
+    func remember(snapshot: TripDocumentSnapshot?, response: TripCostsResponse) {
+        guard let snapshot, snapshot.revision == response.revision else { return }
+        self.snapshot = snapshot
+        self.response = response
+        loadedAt = Date()
+    }
+
+    func isFresh(maxAge: TimeInterval = 60, now: Date = Date()) -> Bool {
+        guard snapshot != nil, response != nil, let loadedAt else { return false }
+        return now.timeIntervalSince(loadedAt) < maxAge
     }
 }

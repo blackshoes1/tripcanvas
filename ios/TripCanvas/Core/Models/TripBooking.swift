@@ -517,6 +517,19 @@ enum ISODateText {
         return formatter
     }()
 
+    /// 손으로 친 날짜를 `YYYY-MM-DD`로. `20261025`·`2026-10-25`·`2026.10.25`·`2026/10/25`를 받고, 없는 날(2월 30일)은 nil.
+    /// 8자리가 아니면 nil — 연도를 추측하지 않는다(`1025`가 올해인지 내년인지 앱이 정하지 않는다).
+    static func parseLoose(_ text: String) -> String? {
+        let digits = text.filter(\.isNumber)
+        guard digits.count == 8 else { return nil }
+        let iso = "\(digits.prefix(4))-\(digits.dropFirst(4).prefix(2))-\(digits.suffix(2))"
+        // `isValid`는 모양만 본다(자릿수·구분자). 없는 날은 달력을 지나 되돌아온 문자열이 다른 것으로 잡는다 —
+        // 2월 30일은 formatter가 거절하거나(비관용) 3월 2일로 밀리거나(관용) 둘 중 하나라 왕복이 어긋난다.
+        // ⚠️ 인자 이름이 `text`라 `text(from:)`는 문자열을 부르는 꼴이 된다 — 타입으로 부른다.
+        guard isValid(iso), let date = formatter.date(from: iso), ISODateText.text(from: date) == iso else { return nil }
+        return iso
+    }
+
     static func isValid(_ text: String) -> Bool {
         let scalars = Array(text.unicodeScalars)
         guard scalars.count == 10 else { return false }

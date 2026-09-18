@@ -346,9 +346,11 @@ test('relativeTime: 방금 · N분 전 · N시간 전 · N일 전 · 그 뒤엔 
 test('liveEffects: 이벤트 종류가 무엇을 다시 읽을지 정한다 — payload를 믿지 않는다(§41)', () => {
   const e = (kind, mine) => C.liveEffects({ kind, mine });
   assert.deepEqual(e('CANDIDATE_PROPOSED', false), { candidates: true, members: false, pull: false, activity: true, notify: true });
-  assert.deepEqual(e('CANDIDATE_PROPOSED', true), { candidates: true, members: false, pull: false, activity: true, notify: false }, '내가 한 일은 알리지 않는다');
+  assert.deepEqual(e('CANDIDATE_PROPOSED', true), { candidates: false, members: false, pull: false, activity: true, notify: false }, '내가 한 일은 알리지 않고, 담은 뒤 이미 읽었으니 에코로 또 읽지 않는다');
   assert.deepEqual(e('REACTION', false), { candidates: true, members: false, pull: false, activity: true, notify: false }, '반응은 조용히(§51)');
+  assert.deepEqual(e('REACTION', true), { candidates: false, members: false, pull: false, activity: true, notify: false }, '내 반응은 이미 낙관 반영됐다 — 에코로 다시 읽지 않는다(2026-09-18)');
   assert.deepEqual(e('COMMENT_ADDED', false), { candidates: true, members: false, pull: false, activity: true, notify: false });
+  assert.equal(e('COMMENT_ADDED', true).candidates, false, '내 한마디는 남길 때 읽었다');
   assert.deepEqual(e('MEMBER_JOINED', false), { candidates: false, members: true, pull: false, activity: true, notify: true });
   assert.deepEqual(e('MEMBER_LEFT', false), { candidates: false, members: true, pull: false, activity: true, notify: false });
   assert.deepEqual(e('SCHEDULE_CHANGED', false), { candidates: true, members: false, pull: true, activity: true, notify: false });
@@ -356,6 +358,17 @@ test('liveEffects: 이벤트 종류가 무엇을 다시 읽을지 정한다 — 
   assert.deepEqual(e('BOOKING_ADDED', false).pull, true);
   assert.deepEqual(e('???', false), { candidates: false, members: false, pull: false, activity: false, notify: false });
   assert.deepEqual(C.liveEffects(null).activity, false);
+});
+
+test('liveCommentTargets: 한마디는 코멘트가 붙은 후보만 다시 읽는다 — 반응·담기는 열린 카드를 건드리지 않는다', () => {
+  const open = new Set(['1', '2']);
+  assert.deepEqual(C.liveCommentTargets([{ kind: 'REACTION', mine: false }], open), [], '반응만 왔으면 아무 카드도 다시 읽지 않는다');
+  assert.deepEqual(C.liveCommentTargets([{ kind: 'COMMENT_ADDED', mine: false, subject: { candidate_id: 2 } }], open), ['2'], '그 후보만');
+  assert.deepEqual(C.liveCommentTargets([{ kind: 'COMMENT_ADDED', mine: false, subject: { candidate_id: 9 } }], open), [], '열려 있지 않은 카드는 읽을 것이 없다');
+  assert.deepEqual(C.liveCommentTargets([{ kind: 'COMMENT_ADDED', mine: false }], open), ['1', '2'], '후보 id가 없는 신호(자체 실시간)면 열린 카드 전부 — 모르면 맞는 쪽으로');
+  assert.deepEqual(C.liveCommentTargets([{ kind: 'COMMENT_ADDED', mine: true, subject: { candidate_id: 1 } }], open), [], '내 한마디는 남길 때 이미 읽었다');
+  assert.deepEqual(C.liveCommentTargets(null, null), []);
+  assert.deepEqual(C.liveCommentTargets([null, { kind: 'COMMENT_ADDED', mine: false, subject: { candidate_id: 1 } }], [1, 2]), ['1'], '숫자 id도 문자열로 맞춘다');
 });
 
 test('tripRoleMap: Supabase 실시간을 쓸 때만 오는 내부 id를 문자열로 든다', () => {

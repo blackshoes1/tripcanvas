@@ -384,6 +384,21 @@ test('동기화 삭제 — 주최자가 아니면 권한 오류를 던진다', a
   await assert.rejects(() => TC_API.sync.tombstone('trip1', 3), (e) => TC_COLLAB.isForbiddenError(e));
 });
 
+test('동기화 단건 — 탭 복귀·실시간은 여행 하나만 받고, 없으면(404) 오류가 아니라 빈 값이다', async () => {
+  const f = setup(() => ({ body: { schemaVersion: 1, trip: { id: 'trip1', name: 'T', revision: 3, updatedAt: '2026-09-02T00:00:00Z', role: 'EDITOR' }, document: TRIP } }));
+  assert.deepEqual(await TC_API.sync.get('trip1'), { data: { client_id: 'trip1', data: TRIP, revision: 3, deleted_at: null, updated_at: '2026-09-02T00:00:00Z' }, error: null });
+  assert.equal(f.calls[0].url, 'https://api.test/api/v1/trips/trip1');
+  assert.equal(f.calls[0].method, 'GET');
+
+  setup(() => ({ status: 404, body: { code: 'NOT_FOUND' } }));
+  assert.deepEqual(await TC_API.sync.get('trip1'), { data: null, error: null }, '지워졌거나 권한이 없다 — 삭제 여부는 목록이 말한다');
+
+  setup(() => ({ status: 500, body: { code: 'INTERNAL_ERROR', message: '서버 오류' } }));
+  const failed = await TC_API.sync.get('trip1');
+  assert.equal(failed.data, null);
+  assert.equal(failed.error.apiCode, 'INTERNAL_ERROR', '다른 오류는 그대로 오류다');
+});
+
 test('동기화 목록 — 삭제된 여행까지 예전 행 모양으로 준다(로그인 병합이 그 모양을 읽는다)', async () => {
   const f = setup(() => ({ body: { trips: [
     { id: 'trip1', document: TRIP, revision: 3, deletedAt: null, updatedAt: '2026-09-02T00:00:00Z' },

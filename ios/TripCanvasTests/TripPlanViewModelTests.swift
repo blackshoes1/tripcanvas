@@ -1283,3 +1283,57 @@ extension TripPlanViewModelTests {
         XCTAssertFalse(model.canUndo, "복구된 문서를 다시 뒤집지 않는다")
     }
 }
+
+// MARK: - 같은 문서의 채운 하루치는 다시 묻지 않는다 (2026-09-18)
+//
+// 날을 오갈 때마다 같은 답을 받았다(7일을 훑으면 6건). 이번 문서의 계산을 서버에서 이미 받았고
+// 채울 구간도 없으면 묻지 않는다 — 문서가 바뀌면 `apply`가 전부 버리므로 옛것을 볼 일은 없다.
+
+extension TripPlanViewModelTests {
+
+    func testMovingBetweenFetchedDaysDoesNotAskAgain() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(days: 3), revision: 7, role: .owner))
+        service.dayPlanResponse = plan(days: 3, legsPending: 0)
+        let model = TripPlanViewModel(tripId: "t1", service: service, legRetryDelay: 0.01)
+        await model.load()
+        try? await Task.sleep(for: .milliseconds(120))   // 옆 날이 미리 받아진다
+
+        model.step(.next)          // 옮기는 것은 `selectedDay`가 스스로 `loadPlan(reuseFetched: true)`를 건다
+        try? await Task.sleep(for: .milliseconds(120))
+        model.step(.previous)
+        try? await Task.sleep(for: .milliseconds(120))
+
+        XCTAssertEqual(service.dayPlanCalls.filter { $0 == 0 }.count, 1, "돌아와도 다시 받지 않는다")
+        XCTAssertEqual(service.dayPlanCalls.filter { $0 == 1 }.count, 1, "미리 받은 날로 옮겨도 다시 받지 않는다")
+        XCTAssertTrue(model.planAttempted(for: 0))
+        XCTAssertNotNil(model.plan)
+    }
+
+    /// 채울 구간이 남은 날은 다르다 — 옮기면 다시 받아 도로를 채운다.
+    func testMovingToADayWithPendingLegsStillAsks() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(days: 3), revision: 7, role: .owner))
+        service.dayPlanResponse = plan(days: 3, legsPending: 2)
+        let model = TripPlanViewModel(tripId: "t1", service: service, legRetryDelay: 5)   // 재조회 타이머는 안 돌게
+        await model.load()
+        try? await Task.sleep(for: .milliseconds(120))
+        let before = service.dayPlanCalls.filter { $0 == 1 }.count
+
+        model.step(.next)
+        await waitForRefresh { service.dayPlanCalls.filter { $0 == 1 }.count > before }
+
+        XCTAssertGreaterThan(service.dayPlanCalls.filter { $0 == 1 }.count, before, "채울 구간이 있으면 옮길 때 다시 받는다")
+    }
+
+    /// 문서만 필요한 곳(예약 편집)은 하루치 계산을 받지 않는다 — 편집기 하나 여는 데 하루치 2건이 나갔다.
+    func testDocumentOnlyModeSkipsDayPlans() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(days: 3), revision: 7, role: .owner))
+        service.dayPlanResponse = plan(days: 3)
+        let model = TripPlanViewModel(tripId: "t1", service: service, legRetryDelay: 0.01, loadsPlans: false)
+        await model.load()
+        try? await Task.sleep(for: .milliseconds(80))
+
+        XCTAssertNotNil(model.document)
+        XCTAssertTrue(service.dayPlanCalls.isEmpty, "하루치도, 앞뒤 미리 받기도 없다")
+        XCTAssertNil(model.plan)
+    }
+}

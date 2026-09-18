@@ -115,10 +115,11 @@ struct DayCostView: View {
                 }
                 if let details = cost?.details {
                     Section("예약·자동 계산") {
-                        ForEach(details.items.filter { $0.source == "BOOKING" || $0.source == "TRANSPORT" }) { item in
+                        // STAY는 앞선 날에 체크인한 연박 숙소의 이 날 몫 — 고치려면 그 장소(체크인 날)에서.
+                        ForEach(details.items.filter { $0.source == "BOOKING" || $0.source == "TRANSPORT" || $0.source == "STAY" }) { item in
                             VStack(alignment: .leading, spacing: Space.xs) {
                                 Text(item.title)
-                                Text("\(TimeFormat.money(item.amount ?? 0, currency: item.currency)) · \(item.source == "BOOKING" ? "예약의 하루 배분액" : "이동 경로 추정")")
+                                Text("\(TimeFormat.money(item.amount ?? 0, currency: item.currency)) · \(item.source == "BOOKING" ? "예약의 하루 배분액" : item.source == "STAY" ? "연박 숙소의 하루치 · 체크인 날 장소에서 고쳐요" : "이동 경로 추정")")
                                     .font(.caption).foregroundStyle(.secondary)
                             }
                         }
@@ -197,7 +198,11 @@ struct DayCostView: View {
                 Text(line?.state == "BOOKING" ? "연결된 예약 금액에 포함" : "비용 미정")
                     .font(.subheadline).foregroundStyle(.secondary)
             }
-            if entry.currency != .krw, let converted = line?.totalKRW {
+            // 연박 숙소는 적은 금액 전액이 아니라 하루치만 이 날 합계에 들어간다 — 그 사실을 여기서 말한다.
+            if let share = line?.amount, let full = entry.amount, share != full, line?.source == "SPOT" {
+                Text("연박 숙소 · 이 날 하루치 \(TimeFormat.money(share, currency: entry.currency.rawValue)) 반영")
+                    .font(.caption).foregroundStyle(Ink.soft)
+            } else if entry.currency != .krw, let converted = line?.totalKRW {
                 Text("합계 반영 약 \(TimeFormat.money(Double(converted), currency: "KRW"))")
                     .font(.caption).foregroundStyle(.secondary)
             }

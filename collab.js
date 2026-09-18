@@ -497,8 +497,27 @@
     const cand=/^CANDIDATE_|^REACTION$|^COMMENT_ADDED$/.test(kind);
     const mem=/^MEMBER_/.test(kind);
     const doc=kind==='SCHEDULE_CHANGED'||kind==='BOOKING_ADDED';
-    return {candidates:cand||doc, members:mem, pull:doc&&!mine, activity:known,
+    // 후보·반응·코멘트는 **내 것이면 이미 내 화면이다**(담기·반응·한마디 뒤에 각자 다시 읽거나 낙관 반영했다) —
+    // 에코로 또 읽지 않는다(2026-09-18, 반응 한 번에 3건이 나갔다). 문서 변경은 내 것이어도 다시 읽는다:
+    // 후보의 날짜 표시는 서버가 문서를 보고 바꾸므로 내 화면이 모른다.
+    return {candidates:(cand&&!mine)||doc, members:mem, pull:doc&&!mine, activity:known,
             notify:!mine&&(kind==='CANDIDATE_PROPOSED'||kind==='MEMBER_JOINED')};
+  }
+
+  /**
+   * 실시간 묶음에서 **한마디를 다시 읽을 후보**(열린 카드 중). 코멘트가 실제로 붙은 후보만이다 — 반응·담기 때문에
+   * 열린 카드의 한마디를 전부 다시 읽지 않는다. 이벤트에 후보 id가 없으면(자체 실시간은 신호뿐이라 `subject`가 없다)
+   * 열린 카드 전부다 — 모르면 덜 읽는 쪽이 아니라 맞는 쪽을 고른다. 내 코멘트는 남길 때 이미 읽었다.
+   * @param {Array<{kind?:string,mine?:boolean,subject?:any}|null>|null} batch @param {Iterable<string|number>|null} openIds
+   * @returns {string[]}
+   */
+  function liveCommentTargets(batch, openIds){
+    const open=Array.from(openIds||[]).map(String);
+    const events=(batch||[]).filter(e=>!!e&&e.kind==='COMMENT_ADDED'&&!e.mine);
+    if(!events.length||!open.length) return [];
+    const ids=events.map(e=>{ const s=e&&e.subject; const id=s&&s.candidate_id; return id==null?'':String(id); });
+    if(ids.some(id=>!id)) return open;
+    return open.filter(k=>ids.indexOf(k)>=0);
   }
 
   // ── 여행 취향 · 그룹 컨텍스트 · 합의 (4단계) ─────────────────────────────
@@ -885,7 +904,7 @@
     isForbiddenError, forbiddenText,
     normReaction, reactionLabel, reactionIcon, canPropose, canReact, canScheduleCandidate, canRemoveCandidate,
     tallyReactions, candidateMood, moodText, groupCandidates, reactionSummary, candidateAttribution, sortCandidates,
-    canComment, canDeleteComment, objParticle, activityText, condenseActivity, relativeTime, liveEffects,
+    canComment, canDeleteComment, objParticle, activityText, condenseActivity, relativeTime, liveEffects, liveCommentTargets,
     normPrefs, prefsText, groupContext, groupContextText, consensusOf, consensusText, candidateVerdict,
     candidateConflict, conflictOptions, distanceKm, buildGroupProposal,
     canAssignWho, memberLabelMap, whoLabels, whoText, includesMe, reactorIds, buildSplitPlan, reunionText,

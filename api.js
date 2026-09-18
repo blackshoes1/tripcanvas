@@ -213,6 +213,20 @@
   }
 
   const sync = {
+    /**
+     * 여행 **한 건** — 탭 복귀·실시간이 최신본을 당길 때(2026-09-18, 전에는 전체 목록을 받았다). `list`와 같은 행 모양이다.
+     * 없으면(404 — 지워졌거나 권한이 없다) `{data:null,error:null}`: 삭제(tombstone)는 목록에만 남으므로 호출부가 그때만 `list`를 본다.
+     * @param {string} tripId
+     */
+    get: async (tripId) => {
+      const r = await request('GET', '/api/v1/trips/' + seg(tripId));
+      if (r.error) return r.error.apiCode === 'NOT_FOUND' ? { data: null, error: null } : r;
+      const t = (r.data && r.data.trip) || {};
+      return { data: {
+        client_id: String(t.id || tripId), data: r.data.document == null ? null : r.data.document,
+        revision: Number(t.revision) || 1, deleted_at: null, updated_at: t.updatedAt == null ? null : t.updatedAt
+      }, error: null };
+    },
     /** 로그인 병합용 전체 조회 — 삭제(tombstone)된 여행까지, 예전 trips select와 같은 행 모양으로 */
     list: async () => {
       const r = await request('GET', '/api/v1/sync/trips');

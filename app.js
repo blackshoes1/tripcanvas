@@ -998,7 +998,9 @@ function loadFx(){
     }
   }).catch(()=>{});   // 실패 시 폴백/캐시 유지
 }
-function dayCost(day){ return dayEnteredCost(day,fxRates); }
+function dayCost(day){ return dayEnteredCost(day,fxRates); }   // 전액 — 여행 전체 합계용
+/** 일자 카드의 장소·추가 비용 — 연박 숙소는 하루치만(자기 몫 + 앞선 날에서 이월된 몫, stayCostShares). @param {number} di @returns {number} */
+function dayCostOn(di){ return dayEnteredCostOn(trip().days,di,fxRates); }
 /**
  * 그 날의 결제 상태별 하루치 — [['결제 예정',금액],['결제 완료',금액]]. 값이 있는 것만, 표시 순서대로.
  * 예약(trip.bookings)의 하루치는 예약마다의 상태를 따르고, 결제일이 있으면 오늘이 정한다. 고르지 않은 비용(미구분)은 빼고 돌려준다 —
@@ -1011,7 +1013,13 @@ function dayPaySplit(day,di,iso){
   const add=(/**@type{any}*/item,/**@type{number}*/krw,/**@type{string=}*/source)=>{
     const st=costPayStateOf(item,source,today); if(st==='RESERVED'||st==='PAID') sum[st]+=krw;
   };
-  (day.spots||[]).forEach((/**@type{any}*/sp)=>{ const v=costAmountOf(sp,'cost'); if(v!==null) add(sp,toKRW(v,sp.cur)); });
+  // 연박 숙소는 하루치로 — 이월된 밤의 몫은 체크인 날 장소의 결제 상태를 따른다
+  const stays=stayCostShares(trip().days,di);
+  (day.spots||[]).forEach((/**@type{any}*/sp,/**@type{number}*/i)=>{
+    const v=Object.prototype.hasOwnProperty.call(stays.own,i)? stays.own[i] : costAmountOf(sp,'cost');
+    if(v!==null) add(sp,toKRW(v,sp.cur));
+  });
+  stays.carried.forEach(c=>add(c.spot,toKRW(c.amount,c.cur)));
   (day.costItems||[]).forEach((/**@type{any}*/it)=>{ const v=costAmountOf(it,'amount'); if(v!==null) add(it,toKRW(v,it.cur)); });
   // 예약의 하루치는 예약마다의 결제 상태를 따른다 — 결제한 항공·숙박은 이미 낸 돈, 현장 결제 호텔은 예약(2026-09-17)
   if(iso) bookingShareOn(budgetBookings(tripBookings(), trip().days), iso, today).forEach(x=>{ sum[x.payState==='PAID'?'PAID':'RESERVED']+=toKRW(x.amount,x.cur); });
@@ -1701,7 +1709,7 @@ function renderSidebar(){
           return dayDistance(day,ctx.back)>0?`<div class="dist">📏 하루 동선 약 ${dayDistance(day,ctx.back).toFixed(1)}km <span style="opacity:.55">(직선)</span></div>`:'';})()}
         ${(()=>{const e=dayEndMin(day, ctx.anchor, ctx.backLeg); return (e!=null&&e>22*60)?`<div class="overload" title="시작시각+체류+이동 기준 예상 종료">⚠️ 일정 과밀 — 예상 종료 ${hm(e)}${e>=24*60?' (익일)':''}</div>`:'';})()}
         ${(()=>{
-          const parts=[['장소·추가 비용',dayCost(day)],['택시',dayTaxiCost(day,di)],['예약',iso?dayBookingCost(iso):0]]
+          const parts=[['장소·추가 비용',dayCostOn(di)],['택시',dayTaxiCost(day,di)],['예약',iso?dayBookingCost(iso):0]]
             .filter(p=>p[1]>0);
           const tot=parts.reduce((a,p)=>a+p[1],0); if(!tot) return '';
           const detail=parts.length>1?` <span style="opacity:.55">(${parts.map(p=>`${p[0]} ₩${p[1].toLocaleString()}`).join(' + ')})</span>`:'';
@@ -1709,7 +1717,7 @@ function renderSidebar(){
           // 고르지 않은 것(미구분)은 어느 쪽으로도 세지 않으므로 줄에 쓰지 않는다.
           const pay=dayPaySplit(day,di,iso);
           const paidLine=pay.length? `<div class="dist payLine" title="${escAttr('비용마다 정한 결제 상태예요. 고르지 않은 비용은 어느 쪽에도 들어가지 않아요')}">${pay.map(p=>`${p[0]} ₩${p[1].toLocaleString()}`).join(' · ')}</div>`:'';
-          return `<div class="dist" title="${escAttr('여러 날 걸친 예약(숙박·렌터카·항공)은 날수로 나눈 하루치로 넣습니다')}">💳 하루 비용 약 ₩${tot.toLocaleString()}${detail}</div>${paidLine}`;
+          return `<div class="dist" title="${escAttr('여러 날 걸친 예약(숙박·렌터카)과 연박 숙소는 날수로 나눈 하루치로 넣습니다')}">💳 하루 비용 약 ₩${tot.toLocaleString()}${detail}</div>${paidLine}`;
         })()}
         ${carry?`<div class="spot carry" style="--c:#7a86ad" title="전날 숙소 — 오늘 첫 일정으로 자동 이월 (탭하면 지도에서 보기 · 장소 편집의 🏠 숙소 체크로 관리)"><div class="spotMain"><span class="spotTime eta">🏠</span><button type="button" class="spotIdentity nm" onclick="focusLatLng(${+carry.lat},${+carry.lng})" title="${escAttr(carry.name)}" aria-label="${escAttr(carry.name)} 지도에서 보기"><span class="spotName">${esc(carry.name)}</span></button><span class="spotMenuSpacer" aria-hidden="true"></span></div><div class="spotMeta"><span class="spotMetaItem opt">전날 숙소</span></div></div>`:''}
         ${carEv.filter(e=>e.kind==='pickup').map(carEventRowHtml).join('')}
@@ -2306,6 +2314,7 @@ document.getElementById('tripEditBtn').onclick=()=>{
   document.getElementById('tripName').value=trip().name;
   document.getElementById('tripStart').value=trip().start||'';
   document.getElementById('tripDays').value=String(trip().days.length);
+  syncTripEndFromDays();
   syncTripRangeLabel();
   document.getElementById('tripTimeZone').value=trip().timeZone||'';
   document.getElementById('tripModalBg').classList.add('show');
@@ -2357,8 +2366,25 @@ function syncTripRangeLabel(){
   const fmt=(/**@type{Date}*/d)=>`${d.getMonth()+1}/${d.getDate()}`;
   label.textContent = n<=1? `${fmt(base)} 하루` : `${fmt(base)} → ${fmt(end)} · ${n}일`;
 }
-document.getElementById('tripDays').oninput=syncTripRangeLabel;
-document.getElementById('tripStart').oninput=syncTripRangeLabel;
+/** 시작일 + 일수 → 종료일. 시작일이 없으면 종료일 칸을 비운다(날짜 없는 여행은 일수로만 정한다) */
+function syncTripEndFromDays(){
+  const start=document.getElementById('tripStart').value, n=tripDaysInput();
+  const end=document.getElementById('tripEnd');
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(start)){ end.value=''; return; }
+  const base=new Date(start+'T00:00:00'); base.setDate(base.getDate()+n-1);
+  end.value=toISO(base);
+}
+/** 종료일 → 일수. 시작일보다 앞이면 시작일 하루로 잡고, 90일(저장 한도)을 넘으면 그만큼만 */
+function syncTripDaysFromEnd(){
+  const start=document.getElementById('tripStart').value, end=document.getElementById('tripEnd').value;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(start)||!/^\d{4}-\d{2}-\d{2}$/.test(end)) return;
+  const n=Math.round((new Date(end+'T00:00:00')-new Date(start+'T00:00:00'))/86400000)+1;
+  document.getElementById('tripDays').value=String(Math.min(90,Math.max(1,n)));
+  syncTripEndFromDays();   // 가둔 값(1~90)을 종료일에도 되돌려 준다
+}
+document.getElementById('tripDays').oninput=()=>{ syncTripEndFromDays(); syncTripRangeLabel(); };
+document.getElementById('tripStart').oninput=()=>{ syncTripEndFromDays(); syncTripRangeLabel(); };
+document.getElementById('tripEnd').onchange=()=>{ syncTripDaysFromEnd(); syncTripRangeLabel(); };
 
 // ───────────────── 여행 준비 메모 ─────────────────
 // 날짜에 붙지 않는 준비 내용(비자·입국 준비·교통 이용법·특산품…). **여행 문서에 산다** —
@@ -4819,9 +4845,14 @@ async function pullTrip(id,opts){
   const now=Date.now(); if(!(opts&&opts.force)&&_pullAt[id]&&now-_pullAt[id]<30000) return false;
   _pullAt[id]=now;
   try{
-    const {data:rows,error}=await TC_API.sync.list();
-    if(error) throw error;
-    const row=(rows||[]).find(r=>r&&r.client_id===id); if(!row) return false;
+    // 여행 한 건만 받는다(2026-09-18) — 전에는 탭 복귀·실시간마다 전체 여행 문서 전문을 받았다.
+    const got=await TC_API.sync.get(id);
+    if(got.error) throw got.error;
+    let row=got.data;
+    if(!row){   // 404 — 지워졌거나 권한이 없다. 삭제(tombstone)는 목록에만 남으므로 그때만 전체 목록을 본다
+      const all=await TC_API.sync.list(); if(all.error) throw all.error;
+      row=(all.data||[]).find(r=>r&&r.client_id===id); if(!row) return false;
+    }
     const entry=syncEntry(id), local=store.trips.find(t=>t.id===id), remoteRev=Number(row.revision)||1;
     if(!local||entry.revision===remoteRev) return false;   // 같은 판이면 할 일이 없다
     if(entry.status==='conflict'||entry.status==='syncing') return false;
@@ -5330,7 +5361,8 @@ async function flushLive(tripId){
     if(any('members')) await refreshTripRoles();
     if(any('pull')){ await pushLocalFirst(tripId); await pullTrip(tripId,{force:true}); }
     const boardOpen=document.getElementById('candModalBg').classList.contains('show')&&candTripId===tripId;
-    if(any('candidates')&&boardOpen){ candOpen.forEach(k=>loadComments(Number(k))); await renderCandidates(); }
+    // 한마디는 코멘트가 실제로 붙은 후보만 다시 읽는다 — 반응 하나에 열린 카드 전부를 다시 읽지 않는다(2026-09-18)
+    if(any('candidates')&&boardOpen){ TC_COLLAB.liveCommentTargets(batch,candOpen).forEach(k=>loadComments(Number(k))); await renderCandidates(); }
     const membersOpen=document.getElementById('membersModalBg').classList.contains('show')&&membersTripId===tripId;
     if(membersOpen){ if(any('members')) await renderMembers(); else await renderActivity(); }
     if(any('notify')||any('pull')){   // 문장은 이름표가 있는 RPC 행으로 만든다 — payload에는 이름이 없다

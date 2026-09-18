@@ -12,12 +12,22 @@ final class BookingListViewModel {
     private(set) var errorMessage: String?
     private(set) var cachedAt: Date?
 
+    /// 서버에서 마지막으로 받은 시각 — 시트를 다시 열 때 또 받을지의 기준.
+    private(set) var loadedAt: Date?
+
     private let service: TripDataSource
     private let tripId: String
 
     init(tripId: String, service: TripDataSource) {
         self.tripId = tripId
         self.service = service
+    }
+
+    /// 시트를 열 때 부른다 — 방금 받은 목록이 있으면 그대로다(Today·Plan과 같은 60초 규칙, 2026-09-18).
+    /// 저장·삭제·당겨서 새로고침은 여전히 `load()`다.
+    func loadIfStale(maxAge: TimeInterval = 60, now: Date = Date()) async {
+        if errorMessage == nil, cachedAt == nil, let loadedAt, now.timeIntervalSince(loadedAt) < maxAge { return }
+        await load()
     }
 
     func load() async {
@@ -27,6 +37,7 @@ final class BookingListViewModel {
             let fetched = try await service.bookings(tripId: tripId)
             bookings = fetched.value
             cachedAt = fetched.cachedAt
+            if fetched.cachedAt == nil { loadedAt = Date() }
             errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription
@@ -40,8 +51,11 @@ final class BookingListViewModel {
 /// 올리고, 실패하면 되돌리고, 충돌이면 묻는다. 저장한 뒤에는 요약을 다시 읽어 가격 상태를 그대로 보여준다.
 struct BookingListView: View {
     let trip: TripSummary
+    /// 여행 화면(`TripScreenModels`)이 들고 있는 모델. 있으면 시트를 닫았다 열어도 목록이 남는다(2026-09-18).
+    var shared: BookingListViewModel? = nil
     @Environment(AppEnvironment.self) private var env
-    @State private var model: BookingListViewModel?
+    @State private var owned: BookingListViewModel?
+    private var model: BookingListViewModel? { shared ?? owned }
     /// 편집할 때만 문서를 연다 — 보기만 하는 사람은 요약 하나로 끝난다.
     @State private var plan: TripPlanViewModel?
     @State private var editor: BookingEditorTarget?
@@ -75,7 +89,7 @@ struct BookingListView: View {
                             symbol: "ticket",
                             title: "등록된 예약이 없어요",
                             message: trip.canEdit
-                                ? "오른쪽 위 ＋로 숙박·렌터카·항공 예약을 추가합니다. 가격 추적을 켜 두면 절약 기회를 알려줘요."
+                                ? "오른쪽 위 ＋로 항공·숙박·렌트 예약을 추가합니다. 가격 추적을 켜 두면 절약 기회를 알려줘요. 보험·유심 같은 예약 외 결제는 비용 화면의 예약 결제 금액에 모여요."
                                 : "주최자나 편집자가 예약을 추가하면 여기에 나타납니다.")
                     }
                     ForEach(model.bookings) { booking in
@@ -127,21 +141,22 @@ struct BookingListView: View {
                         if isPreparing { ProgressView() } else { Image(systemName: "plus") }
                     }
                     .disabled(isPreparing)
-                    .accessibilityLabel("예약 추가")
+                    .accessibilityLabel("결제 항목 추가")
                 }
             }
         }
         .refreshable { await model?.load() }
         .task {
-            if model == nil { model = BookingListViewModel(tripId: trip.id, service: env.service) }
-            await model?.load()
+            if shared == nil, owned == nil { owned = BookingListViewModel(tripId: trip.id, service: env.service) }
+            await model?.loadIfStale()
         }
         .sheet(item: $editor) { target in
             if let plan, let document = plan.document {
+                // 비용 화면과 같은 편집기·같은 9분류(2026-09-18). 예약이 아닌 분류(보험·유심…)는 여행 단위 비용으로 저장되고
+                // 비용 화면의 '예약 결제 금액'에 보인다 — 이 목록은 예약(가격 추적)만 보여 준다.
                 BookingEditorView(
                     target: target,
                     document: document,
-                    bookingOnly: true,
                     onSave: { booking, links in
                         let saved = await plan.saveBooking(booking, links: links)
                         if saved { await model?.load() }
@@ -151,6 +166,12 @@ struct BookingListView: View {
                         let saved = await plan.removeBooking(id: id)
                         if saved { await model?.load() }
                         return saved ? nil : plan.saveFailureMessage
+                    },
+                    onSaveItem: { entry in
+                        await plan.saveCostItem(entry) ? nil : plan.saveFailureMessage
+                    },
+                    onDeleteItem: { id in
+                        await plan.removeCostItem(id: id) ? nil : plan.saveFailureMessage
                     })
             }
         }
@@ -181,7 +202,8 @@ struct BookingListView: View {
     private func openEditor(bookingId: String?) async {
         isPreparing = true
         defer { isPreparing = false }
-        let plan = self.plan ?? TripPlanViewModel(tripId: trip.id, service: env.service)
+        // 편집기에는 문서만 있으면 된다 — 하루치 계산(`days/:i`·앞뒤 미리 받기)은 받지 않는다(2026-09-18).
+        let plan = self.plan ?? TripPlanViewModel(tripId: trip.id, service: env.service, loadsPlans: false)
         self.plan = plan
         await plan.load()
         guard let document = plan.document else { return }   // 오류는 배너가 말한다

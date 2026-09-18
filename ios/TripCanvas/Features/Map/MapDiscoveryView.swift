@@ -38,9 +38,11 @@ struct MapDiscoveryView: View {
         }
         .sheet(item: $scheduling) { candidate in
             CandidatePlacementSheet(trip: trip, candidate: candidate, source: env.service) { day, position, revision in
-                let board = CandidateBoardViewModel(trip: trip, service: env.service, documents: env.service)
-                await board.load()
-                let saved = await board.schedule(candidateId: candidate.id, dayIndex: day, position: position, expectedRevision: revision)
+                // 보드는 지도가 이미 아는 후보로 시작한다 — 넣으려는 후보 하나 때문에 목록·인원·제안 3건을 읽지 않고,
+                // 끝의 재조회도 끈다(아래 `loadCandidates`가 제 목록을 읽는다). 13~15건이 6건이 됐다(2026-09-18).
+                let board = CandidateBoardViewModel(trip: trip, service: env.service, documents: env.service, seed: model.candidates)
+                if board.candidates.isEmpty { await board.load() }
+                let saved = await board.schedule(candidateId: candidate.id, dayIndex: day, position: position, expectedRevision: revision, reloadAfter: false)
                 await model.loadCandidates()
                 // 일정 저장만 성공하고 후보 표시가 실패해도 부모 일정은 새로 읽는다.
                 await onReturnFromBoard()

@@ -46,7 +46,7 @@ final class TripPlanViewModel {
     var selectedDay = 0 {
         didSet {
             if let document, selectedDay >= document.days.count { selectedDay = max(0, document.days.count - 1) }
-            if selectedDay != oldValue { Task { await loadPlan() } }
+            if selectedDay != oldValue { Task { await loadPlan(reuseFetched: true) } }
         }
     }
 
@@ -64,12 +64,13 @@ final class TripPlanViewModel {
     ///     계산이 온 뒤에 옮기면 1일차를 보여 줬다가 오늘로 튄다.
     ///   - legRetryDelay: 경로가 채워지기를 기다리는 시간. 테스트는 짧게 준다.
     init(tripId: String, service: TripDocumentSource, memberSource: MemberListing? = nil, candidateSource: CollabSource? = nil,
-         initialDay: Int = 0, legRetryDelay: TimeInterval = 3) {
+         initialDay: Int = 0, legRetryDelay: TimeInterval = 3, loadsPlans: Bool = true) {
         self.tripId = tripId
         self.service = service
         self.memberSource = memberSource
         self.candidateSource = candidateSource ?? (service as? CollabSource)
         self.legRetryDelay = legRetryDelay
+        self.loadsPlans = loadsPlans
         self.selectedDay = max(0, initialDay)
     }
 
@@ -109,8 +110,13 @@ final class TripPlanViewModel {
 
     /// 경로가 채워지기를 기다렸다 한 번 더 받은 날들. **날마다 한 번뿐이다.**
     private var retriedLegs: Set<Int> = []
+    /// 이 세션에서 **서버로부터** 받은 날들(디스크 캐시·오프라인 사본은 빼고). 같은 문서의 채운 하루치는 날을 오가도
+    /// 다시 묻지 않는다(2026-09-18) — 문서가 바뀌면 `apply`가 전부 버리므로 옛것을 볼 일은 없다.
+    private var fetchedDays: Set<Int> = []
     /// 채우기에 주는 시간. 구간 몇 개면 대개 이 안에 끝난다.
     private let legRetryDelay: TimeInterval
+    /// 하루치 계산을 받는가. 예약 편집처럼 **문서만** 필요한 곳은 끈다(2026-09-18) — 편집기 하나 여는 데 하루치 2건이 나갔다.
+    private let loadsPlans: Bool
 
     var day: TripDay? {
         guard let document, document.hasDay(selectedDay) else { return nil }
@@ -199,7 +205,10 @@ final class TripPlanViewModel {
     /// 서버 계산을 받아온다. **실패해도 조용하다** — 일정 편집은 문서만으로 되고,
     /// 계산이 없으면 화면이 시각·구간을 감출 뿐이다. 여기서 오류 배너를 띄우면
     /// 편집이 멀쩡한데 무언가 고장 난 것처럼 보인다.
-    func loadPlan() async {
+    /// - Parameter reuseFetched: **날을 옮길 때**만 참이다 — 이번 문서의 계산을 이 세션에서 이미 서버로부터 받았고 채울 구간도
+    ///   없으면 다시 묻지 않는다(2026-09-18). `load()`·당겨서 새로고침·저장 뒤의 호출은 언제나 다시 받는다.
+    func loadPlan(reuseFetched: Bool = false) async {
+        guard loadsPlans else { return }
         guard dayCount > 0 else { plansByDay = [:]; cachedAtByDay = [:]; return }
         let day = selectedDay
         let askedRevision = revision
@@ -208,12 +217,19 @@ final class TripPlanViewModel {
         }
         await showCachedPlan(for: day)
         guard revision == askedRevision else { return }
+        // 날을 옮길 때 — 이번 문서의 계산을 이 세션에서 이미 서버로부터 받았고 채울 구간도 없으면 같은 답을 다시 받지 않는다(2026-09-18).
+        if reuseFetched, let known = plansByDay[day], fetchedDays.contains(day), known.trip.revision == askedRevision, known.legsPending == 0 {
+            attemptedDays.insert(day)
+            prefetchNeighbours(of: day)
+            return
+        }
         do {
             let fetched = try await service.dayPlan(tripId: tripId, dayIndex: day)
             guard day == selectedDay, revision == askedRevision,
                   fetched.value.trip.revision == askedRevision else { return }
             plansByDay[day] = fetched.value
             cachedAtByDay[day] = fetched.cachedAt
+            if fetched.cachedAt == nil { fetchedDays.insert(day) }
             attemptedDays.insert(day)
             await loadMembers()
             guard revision == askedRevision else { return }
@@ -256,6 +272,7 @@ final class TripPlanViewModel {
         guard plansByDay[day] == nil else { return }      // 그 사이 그 날을 열었으면 그쪽이 이긴다
         plansByDay[day] = fetched.value
         cachedAtByDay[day] = fetched.cachedAt
+        if fetched.cachedAt == nil { fetchedDays.insert(day) }
         attemptedDays.insert(day)      // 넘어가는 순간 목록이 기다리지 않고 지어진다
     }
 
@@ -298,6 +315,7 @@ final class TripPlanViewModel {
               fetched.value.trip.revision == askedRevision else { return }
         plansByDay[day] = fetched.value
         cachedAtByDay[day] = fetched.cachedAt
+        if fetched.cachedAt == nil { fetchedDays.insert(day) }
     }
 
     /// 여행 전체 동선을 받는다. **한 번만** 받고, 못 채운 구간이 있으면 한 번만 다시 받는다.
@@ -491,6 +509,22 @@ final class TripPlanViewModel {
         return await edit("예약을 뺐어요") { $0.removeBooking(id: id) }
     }
 
+    /// 예약이 아닌 결제 항목(보험·유심·입장권…) — 여행 단위 비용(`trip.costItems`). 고친 항목은 제자리에, 새 항목은 뒤에.
+    @discardableResult
+    func saveCostItem(_ entry: CostEntry) async -> Bool {
+        let isNew = document?.costItems.contains { $0.id == entry.id } != true
+        return await edit(isNew ? "결제 항목을 저장했어요 — 비용 화면의 예약 결제 금액에 있어요" : "결제 항목을 고쳤어요") { draft in
+            var items = draft.costItems
+            if let index = items.firstIndex(where: { $0.id == entry.id }) { items[index] = entry } else { items.append(entry) }
+            draft.costItems = items
+        }
+    }
+
+    @discardableResult
+    func removeCostItem(id: String) async -> Bool {
+        return await edit("결제 항목을 지웠어요") { draft in draft.costItems = draft.costItems.filter { $0.id != id } }
+    }
+
     /// 고치고 → 화면에 먼저 반영하고 → 저장한다. 실패하면 **서버가 아는 상태로 되돌린다** —
     /// 저장되지 않은 것이 저장된 것처럼 남아 있으면 다음 편집이 그 위에 쌓인다.
     @discardableResult
@@ -548,6 +582,7 @@ final class TripPlanViewModel {
             cachedAtByDay = [:]
             attemptedDays = []
             retriedLegs = []
+            fetchedDays = []
             // 전체 지도도 같은 문서로 계산된 경로만 쓴다. 이전 요청은 새 조회의 로딩 상태를 끄지 못한다.
             tripRoutes = nil
             retriedTripRoutes = false
