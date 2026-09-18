@@ -13,7 +13,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js" integrity="sha384-+pWnyi8LtZx+cgXfD2arWgUX7pHIaEL215cEPPk9WrsegNlgvDL9DNjaqsceQq6o" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js" integrity="sha384-BSxuMLxX+FCbTdYec3TbXlnMGEEM2QXTFdtDaveen71o+jswm2J36+xFqp8k4VHM" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.min.js" integrity="sha384-l8ah+VgaWtk1mvOe9VC+OirC6qHFF4yH7l7mKRidV9MSti3E9F463bMp6ZVN4kuC" crossorigin="anonymous"></script>
-<link rel="stylesheet" href="style.css?v=tc-v204">
+<link rel="stylesheet" href="style.css?v=tc-v205">
 <!-- Travelpayouts 사이트 소유 인증 (파트너 가입 검증용 — DiscoverCars API 신청에 필요) -->
 <script nowprocket data-noptimize="1" data-cfasync="false" data-wpfc-render="false" seraph-accel-crit="1" data-no-defer="1" data-cmp-ab="2">
   (function () {
@@ -322,10 +322,13 @@
   <h2>여행 설정</h2>
   <div class="hint" id="tripRoleHint" style="display:none"></div>
   <label>여행 이름</label><input type="text" id="tripName">
-  <label>시작일 (Day 1)</label><input type="date" id="tripStart">
+  <div style="display:flex;gap:6px">
+    <div style="flex:1"><label>시작일 (Day 1)</label><input type="date" id="tripStart" style="width:100%"></div>
+    <div style="flex:1"><label>종료일</label><input type="date" id="tripEnd" style="width:100%"></div>
+  </div>
   <label>기간 (일수)</label>
   <div class="fieldRow"><input type="number" id="tripDays" min="1" max="90" step="1" inputmode="numeric" class="compactSelect"><span class="hint" id="tripRange" style="margin:0;align-self:center"></span></div>
-  <div class="hint">늘리면 빈 일자가 뒤에 붙고, 줄이면 뒤에서부터 지웁니다. 장소가 있는 일자를 지울 때는 한 번 더 묻습니다.</div>
+  <div class="hint">종료일을 고르거나 일수를 적으면 서로 맞춰집니다. 늘리면 빈 일자가 뒤에 붙고, 줄이면 뒤에서부터 지웁니다. 장소가 있는 일자를 지울 때는 한 번 더 묻습니다.</div>
   <label>여행 기본 시간대</label><input type="text" id="tripTimeZone" list="timezoneList" placeholder="예: Asia/Tokyo">
   <div class="hint">IANA 형식으로 입력합니다. 일자별 시간대가 있으면 그 값이 우선합니다.</div>
   <label>🕘 버전 기록 (10분 간격 자동 저장, 최근 15개)</label>
@@ -602,15 +605,15 @@
   <div id="placeDetailsContent" aria-live="polite"></div>
   <footer id="placeDetailsActions"></footer>
 </dialog>
-<script src="lib.js?v=tc-v204"></script>
-<script src="sync.js?v=tc-v204"></script>
-<script src="routing.js?v=tc-v204"></script>
-<script src="price.js?v=tc-v204"></script>
-<script src="adaptive.js?v=tc-v204"></script>
-<script src="intake.js?v=tc-v204"></script>
-<script src="collab.js?v=tc-v204"></script>
-<script src="api.js?v=tc-v204"></script>
-<script src="auth.js?v=tc-v204"></script>
-<script src="app.js?v=tc-v204"></script>
+<script src="lib.js?v=tc-v205"></script>
+<script src="sync.js?v=tc-v205"></script>
+<script src="routing.js?v=tc-v205"></script>
+<script src="price.js?v=tc-v205"></script>
+<script src="adaptive.js?v=tc-v205"></script>
+<script src="intake.js?v=tc-v205"></script>
+<script src="collab.js?v=tc-v205"></script>
+<script src="api.js?v=tc-v205"></script>
+<script src="auth.js?v=tc-v205"></script>
+<script src="app.js?v=tc-v205"></script>
 </body>
 </html>

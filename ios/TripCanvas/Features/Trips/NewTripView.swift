@@ -55,15 +55,18 @@ struct NewTripView: View {
                 }
 
                 Section("언제 가세요?") {
-                    DatePicker("시작일", selection: $form.start, displayedComponents: .date)
-                    Stepper(value: $form.dayCount, in: 1...NewTripDraft.maxDays) {
-                        HStack {
-                            Text("기간")
-                            Spacer()
-                            Text("\(form.dayCount)일").foregroundStyle(.secondary)
-                        }
-                    }
-                    LabeledContent("일정", value: rangeText)
+                    // 시작일·종료일 — 숫자로 쳐도 되고 달력을 눌러도 된다. 기간은 둘에서 나온다.
+                    DateEntryField(title: "시작일", text: Binding(
+                        get: { ISODateText.text(from: form.start) },
+                        set: { iso in if let date = ISODateText.date(from: iso) { form.start = date } }))
+                    DateEntryField(title: "종료일", text: Binding(
+                        get: { ISODateText.text(from: endDate) },
+                        set: { iso in
+                            guard let date = ISODateText.date(from: iso) else { return }
+                            let days = (ISODateText.calendar.dateComponents([.day], from: form.start, to: date).day ?? 0) + 1
+                            form.dayCount = min(NewTripDraft.maxDays, max(1, days))
+                        }), fallback: { endDate })
+                    LabeledContent("기간", value: "\(form.dayCount)일 · \(rangeText)")
                 }
 
                 Section {
@@ -101,9 +104,13 @@ struct NewTripView: View {
 
     private var draft: NewTripDraft { form.draft }
 
+    private var endDate: Date {
+        ISODateText.calendar.date(byAdding: .day, value: max(0, form.dayCount - 1), to: form.start) ?? form.start
+    }
+
     /// "7월 21일 → 7월 24일" — 며칠인지 숫자로만 말하지 않는다. 끝나는 날이 보여야 정할 수 있다.
     private var rangeText: String {
-        let end = ISODateText.calendar.date(byAdding: .day, value: max(0, form.dayCount - 1), to: form.start) ?? form.start
+        let end = endDate
         let format = Date.FormatStyle.dateTime.month(.defaultDigits).day()
         return form.dayCount <= 1 ? form.start.formatted(format) : "\(form.start.formatted(format)) → \(end.formatted(format))"
     }

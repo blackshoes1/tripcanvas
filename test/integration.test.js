@@ -571,6 +571,54 @@ test('통합: 예약이 아닌 결제 항목은 같은 편집기로 여행 단�
   w.close();
 });
 
+test('통합: 연박 숙소의 비용은 일자 카드에서 하루치로 나뉘고 전체 비용에는 전액이다', { skip: noJsdom }, () => {
+  const w = boot();
+  withTrip(w, `[{title:'D1',drive:'',note:'',mode:'walk',spots:[{name:'호텔',city:'A',desc:'',lat:1,lng:1,stay:true,nights:3,cost:90000,payState:'PAID'},{name:'점심',city:'A',desc:'',lat:1,lng:1,cost:12000}]},
+    {title:'D2',drive:'',note:'',mode:'walk',spots:[{name:'카페',city:'A',desc:'',lat:1,lng:1,cost:5000}]},
+    {title:'D3',drive:'',note:'',mode:'walk',spots:[]},
+    {title:'D4',drive:'',note:'',mode:'walk',spots:[]}]`);
+  w.eval('render()');
+  const dayCosts = () => [...w.document.querySelectorAll('.dayCard')].map(c => {
+    const el = [...c.querySelectorAll('.dist')].find(x => x.textContent.includes('하루 비용'));
+    return el ? +el.textContent.replace(/\s+/g, '').match(/하루비용약₩([\d,]+)/)[1].replace(/,/g, '') : 0;
+  });
+  assert.deepEqual(dayCosts(), [30000 + 12000, 30000 + 5000, 30000, 0], '3박은 세 날에 3만씩');
+  assert.equal(w.eval('dayCostOn(0)'), 42000);
+  assert.equal(w.eval('dayCost(trip().days[0])'), 102000, '전액은 그대로 — 전체 비용용');
+  assert.equal(w.eval('tripCostBreakdown().spots'), 90000 + 12000 + 5000, '전체 비용은 전액');
+  // 결제 상태별 하루치도 하루치를 따른다 — 이월된 밤은 체크인 날 장소의 상태
+  assert.deepEqual(w.eval(`JSON.stringify(dayPaySplit(trip().days[2],2,isoDateOf(2)))`), JSON.stringify([['💰 결제 완료', 30000]]));
+  w.close();
+});
+
+test('통합: 여행 설정의 종료일과 일수는 서로 맞춰지고, 저장하면 그 일수가 된다', { skip: noJsdom }, () => {
+  const w = boot();
+  withTrip(w, `[{title:'D1',drive:'',note:'',mode:'walk',spots:[]},{title:'D2',drive:'',note:'',mode:'walk',spots:[]}]`);
+  w.eval(`document.getElementById('tripEditBtn').onclick()`);
+  const get = (id) => w.document.getElementById(id).value;
+  assert.equal(get('tripStart'), '2026-08-01');
+  assert.equal(get('tripEnd'), '2026-08-02', '이틀이면 종료일은 다음 날');
+  // 종료일을 고르면 일수가 따라온다
+  w.document.getElementById('tripEnd').value = '2026-08-05';
+  w.document.getElementById('tripEnd').onchange();
+  assert.equal(get('tripDays'), '5');
+  assert.match(w.document.getElementById('tripRange').textContent, /8\/1 → 8\/5 · 5일/);
+  // 일수를 적으면 종료일이 따라온다
+  w.document.getElementById('tripDays').value = '3';
+  w.document.getElementById('tripDays').oninput();
+  assert.equal(get('tripEnd'), '2026-08-03');
+  // 시작일보다 앞선 종료일은 하루로 가둔다
+  w.document.getElementById('tripEnd').value = '2026-07-20';
+  w.document.getElementById('tripEnd').onchange();
+  assert.equal(get('tripDays'), '1');
+  assert.equal(get('tripEnd'), '2026-08-01');
+  w.document.getElementById('tripEnd').value = '2026-08-04';
+  w.document.getElementById('tripEnd').onchange();
+  w.document.getElementById('tripSave').onclick();
+  assert.equal(w.eval('trip().days.length'), 4, '저장하면 종료일까지의 일수');
+  w.close();
+});
+
 test('통합: 결제일을 정하면 날짜가 상태를 정한다 — 지났으면 결제함, 아직이면 예약', { skip: noJsdom }, () => {
   const w = boot();
   withTrip(w, `[{mode:'car',startAt:'09:00',spots:[{name:'H',lat:37.5,lng:127,city:'S',stay:true}]}]`);

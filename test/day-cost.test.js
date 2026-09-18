@@ -357,3 +357,48 @@ test('예약의 결제일과 사진 참조는 비용 항목과 같은 규칙으�
   const result = L.tripCostSummary(trip, [{ index: 0, cost: summary(trip) }], rates);
   assert.deepEqual(result.prep.items.find(i => i.key === 'a').photos, ['r1', 'r2'], '가계부 줄이 사진 참조를 싣는다');
 });
+
+// ── 숙소(장소) 비용은 숙박일 수로 나눈다 (2026-09-18) ────────────────────────────────────
+
+test('연박 숙소의 비용은 체크인 날부터 nights일에 하루치로 나뉘고 합은 총액과 같다', () => {
+  const trip = L.normalizeTrip({ start: '2026-10-01', days: [
+    { spots: [{ name: '호텔', cat: 'stay', stay: true, nights: 3, cost: 100000 }, { name: '점심', cat: 'food', cost: 12000 }] },
+    { spots: [{ name: '카페', cat: 'cafe', cost: 5000 }] },
+    { spots: [] },
+    { spots: [{ name: '다음 호텔', stay: true, nights: 2, cost: 90, cur: 'EUR' }] },
+    { spots: [] }
+  ] });
+  const days = trip.days.map((_, index) => ({ index, cost: summary(trip, index) }));
+  const items = (i) => days[i].cost.details.items.map(x => [x.source, x.key, x.title, x.amount]);
+  assert.deepEqual(items(0), [['SPOT', '0', '호텔 (1/3박)', 33334], ['SPOT', '1', '점심', 12000]], '체크인 날은 첫 밤 몫 — 나머지 원이 앞날에 붙는다');
+  assert.deepEqual(items(1), [['SPOT', '0', '카페', 5000], ['STAY', '0.0', '호텔 (2/3박)', 33333]], '다음 날은 이월 몫이 STAY 줄로');
+  assert.deepEqual(items(2), [['STAY', '0.0', '호텔 (3/3박)', 33333]]);
+  assert.equal(days[0].cost.total + days[1].cost.total + days[2].cost.total, 100000 + 12000 + 5000, '세 날의 합이 총액');
+  assert.deepEqual(days[0].cost.parts, [{ label: '장소', amount: 33334 + 12000 }], '이월 몫도 장소 묶음이다');
+  assert.equal(days[1].cost.onSiteKRW, 5000 + 33333, '이월 숙박은 가서 쓰는 돈이다');
+  // 외화는 소수 둘째 자리까지 나눈다
+  assert.deepEqual(items(3), [['SPOT', '0', '다음 호텔 (1/2박)', 45]]);
+  assert.deepEqual(items(4), [['STAY', '3.0', '다음 호텔 (2/2박)', 45]]);
+  // 일자 카드의 하루치 합계(dayEnteredCostOn)와 전체(dayEnteredCost)는 다른 질문에 답한다
+  assert.equal(L.dayEnteredCostOn(trip.days, 0, rates), 33334 + 12000);
+  assert.equal(L.dayEnteredCostOn(trip.days, 2, rates), 33333);
+  assert.equal(L.dayEnteredCost(trip.days[0], rates), 112000, '전체 합계는 전액');
+  const result = L.tripCostSummary(trip, days, rates);
+  assert.equal(result.categories.find(c => c.kind === 'STAY').totalKRW, 100000 + Math.round(45 * rates.EUR) * 2, '분류별에는 하루치들이 모여 총액이 된다');
+});
+
+test('1박이거나 숙소가 아니거나 금액이 없으면 나누지 않고, 인원 기준 금액은 한 번만 곱한다', () => {
+  const trip = L.normalizeTrip({ days: [
+    { spots: [{ name: '1박', stay: true, cost: 50000 }, { name: '연박이지만 숙소 아님', nights: 3, cost: 9000 }, { name: '금액 미정', stay: true, nights: 2 },
+              { name: '2인 2박', stay: true, nights: 2, cost: 10000, costBasis: 'PER_PERSON', costPeople: 2 }] },
+    { spots: [] }
+  ] });
+  const d0 = summary(trip, 0), d1 = summary(trip, 1);
+  assert.deepEqual(d0.details.items.map(x => [x.title, x.amount, x.state]),
+    [['1박', 50000, 'KNOWN'], ['연박이지만 숙소 아님', 9000, 'KNOWN'], ['금액 미정', null, 'UNKNOWN'], ['2인 2박 (1/2박)', 10000, 'KNOWN']]);
+  assert.deepEqual(d1.details.items.map(x => [x.source, x.title, x.amount]), [['STAY', '2인 2박 (2/2박)', 10000]], '2인 × 1만 = 2만을 반씩');
+  assert.equal(d0.total + d1.total, 50000 + 9000 + 20000);
+  assert.deepEqual(L.splitAcrossNights(100, 3, 'KRW'), [34, 33, 33]);
+  assert.deepEqual(L.splitAcrossNights(10, 3, 'USD'), [3.34, 3.33, 3.33]);
+  assert.deepEqual(L.stayCostShares(trip.days, 5), { own: {}, carried: [] }, '연박 범위를 지나면 아무것도 없다');
+});

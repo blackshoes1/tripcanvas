@@ -75,7 +75,7 @@ struct BookingListView: View {
                             symbol: "ticket",
                             title: "등록된 예약이 없어요",
                             message: trip.canEdit
-                                ? "오른쪽 위 ＋로 숙박·렌터카·항공 예약을 추가합니다. 가격 추적을 켜 두면 절약 기회를 알려줘요."
+                                ? "오른쪽 위 ＋로 항공·숙박·렌트 예약을 추가합니다. 가격 추적을 켜 두면 절약 기회를 알려줘요. 보험·유심 같은 예약 외 결제는 비용 화면의 예약 결제 금액에 모여요."
                                 : "주최자나 편집자가 예약을 추가하면 여기에 나타납니다.")
                     }
                     ForEach(model.bookings) { booking in
@@ -127,7 +127,7 @@ struct BookingListView: View {
                         if isPreparing { ProgressView() } else { Image(systemName: "plus") }
                     }
                     .disabled(isPreparing)
-                    .accessibilityLabel("예약 추가")
+                    .accessibilityLabel("결제 항목 추가")
                 }
             }
         }
@@ -138,10 +138,11 @@ struct BookingListView: View {
         }
         .sheet(item: $editor) { target in
             if let plan, let document = plan.document {
+                // 비용 화면과 같은 편집기·같은 9분류(2026-09-18). 예약이 아닌 분류(보험·유심…)는 여행 단위 비용으로 저장되고
+                // 비용 화면의 '예약 결제 금액'에 보인다 — 이 목록은 예약(가격 추적)만 보여 준다.
                 BookingEditorView(
                     target: target,
                     document: document,
-                    bookingOnly: true,
                     onSave: { booking, links in
                         let saved = await plan.saveBooking(booking, links: links)
                         if saved { await model?.load() }
@@ -151,6 +152,12 @@ struct BookingListView: View {
                         let saved = await plan.removeBooking(id: id)
                         if saved { await model?.load() }
                         return saved ? nil : plan.saveFailureMessage
+                    },
+                    onSaveItem: { entry in
+                        await plan.saveCostItem(entry) ? nil : plan.saveFailureMessage
+                    },
+                    onDeleteItem: { id in
+                        await plan.removeCostItem(id: id) ? nil : plan.saveFailureMessage
                     })
             }
         }

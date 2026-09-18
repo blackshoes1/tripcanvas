@@ -46,6 +46,12 @@ struct PlanSettingsView: View {
     @State private var name: String
     @State private var start: String
     @State private var count: Int
+    /// 종료일 — 시작일과 일수에서 파생되고, 고르면 일수가 따라온다. 시작일이 없으면 nil이다(그때는 일수로만 정한다).
+    private var end: String? {
+        guard let base = ISODateText.date(from: start), !start.isEmpty,
+              let date = ISODateText.calendar.date(byAdding: .day, value: max(0, count - 1), to: base) else { return nil }
+        return ISODateText.text(from: date)
+    }
     @State private var day: TripDay
     @State private var saving = EditorSaveState()
     @State private var confirmedDates = false
@@ -78,10 +84,22 @@ struct PlanSettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("여행") {
+                Section {
                     TextField("여행 이름", text: $name)
-                    TextField("시작일 YYYY-MM-DD", text: $start).textInputAutocapitalization(.never).autocorrectionDisabled()
-                    Stepper("\(count)일 여행", value: $count, in: 1...60)
+                    // 시작일·종료일 — 숫자로 쳐도 되고 달력을 눌러도 된다. 일수는 그 둘에서 나온다.
+                    DateEntryField(title: "시작일", text: Binding(get: { start.isEmpty ? nil : start }, set: { start = $0 ?? "" }))
+                    if start.isEmpty {
+                        Stepper("\(count)일 여행", value: $count, in: 1...60)
+                    } else {
+                        DateEntryField(title: "종료일", text: Binding(get: { end }, set: { iso in
+                            guard let iso, let base = ISODateText.date(from: start), let date = ISODateText.date(from: iso) else { return }
+                            let days = (ISODateText.calendar.dateComponents([.day], from: base, to: date).day ?? 0) + 1
+                            count = min(60, max(1, days))
+                        }), fallback: { ISODateText.date(from: end) ?? Date() })
+                        LabeledContent("기간", value: "\(count)일")
+                    }
+                } header: { Text("여행") } footer: {
+                    Text(start.isEmpty ? "시작일을 정하면 종료일을 고를 수 있어요." : "종료일을 시작일보다 앞으로 두면 하루짜리가 되고, 최대 60일이에요.")
                 }
                 Section("Day \(selectedDay + 1) 하루 설정") {
                     TextField("하루 제목·지역", text: $day.title)

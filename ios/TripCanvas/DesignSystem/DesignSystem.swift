@@ -295,6 +295,55 @@ struct EmptyStateView: View {
     }
 }
 
+/// 날짜 한 칸 — **숫자로 쳐도 되고 달력을 눌러도 된다**(2026-09-18). 값은 `YYYY-MM-DD` 문자열 하나다.
+/// 글자 칸은 자릿수를 다 치면(8자리) 정규화하고, 달력(compact DatePicker)은 누르면 시스템 달력이 뜬다.
+/// 잘못 친 날짜는 지우지 않는다 — 칸 아래에 그렇다고만 말한다(다시 치게).
+struct DateEntryField: View {
+    let title: String
+    @Binding var text: String?
+    /// 달력을 처음 열 때의 기준 — 보통 시작일이나 오늘.
+    var fallback: () -> Date = { Date() }
+    @State private var typed = ""
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: Space.s) {
+                Text(title)
+                Spacer(minLength: Space.s)
+                TextField("YYYY-MM-DD", text: $typed)
+                    .keyboardType(.numbersAndPunctuation)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .multilineTextAlignment(.trailing)
+                    .focused($focused)
+                    .frame(maxWidth: 132)
+                    .accessibilityLabel("\(title) 직접 입력")
+                DatePicker("", selection: dateBinding, displayedComponents: .date)
+                    .labelsHidden()
+                    .datePickerStyle(.compact)
+                    .accessibilityLabel("\(title) 달력")
+            }
+            if !typed.isEmpty, ISODateText.parseLoose(typed) == nil {
+                Text("2026-10-25처럼 여덟 자리로 적어 주세요").font(.caption2).foregroundStyle(Ink.warning)
+            }
+        }
+        .onAppear { typed = text ?? "" }
+        .onChange(of: text) { _, value in if !focused { typed = value ?? "" } }
+        .onChange(of: typed) { _, value in
+            if let iso = ISODateText.parseLoose(value) { if iso != text { text = iso } }
+            else if value.isEmpty { text = nil }
+        }
+        .onChange(of: focused) { _, on in if !on { typed = text ?? "" } }   // 칸을 나가면 정규화된 모양으로
+    }
+
+    private var dateBinding: Binding<Date> {
+        Binding(
+            get: { ISODateText.date(from: text) ?? fallback() },
+            set: { text = ISODateText.text(from: $0) })
+    }
+}
+
 /// 지도가 뜨기 전 자리. 빈 화면에 스피너만 두지 않는다 — 무엇을 기다리는지 말한다(§34).
 /// 지도 뷰 **뒤**에 깔아 두면 SDK가 첫 프레임을 그리기 전까지 이것이 보이고, 그 뒤로는 지도가 덮는다.
 struct MapLoadingPlaceholder: View {

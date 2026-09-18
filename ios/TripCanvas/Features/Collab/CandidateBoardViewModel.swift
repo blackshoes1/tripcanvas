@@ -22,6 +22,8 @@ final class CandidateBoardViewModel {
     private var proposalDismissed = false
     private(set) var memberCount: Int
     var sortByInterest = false
+    /// 분류로 거르기 — 표시일 뿐이다. nil이면 전부, `.none`은 '아직 고르지 않음'만.
+    var categoryFilter: CandidateCategoryFilter = .all
 
     let trip: TripSummary
     private let service: CollabSource
@@ -41,7 +43,12 @@ final class CandidateBoardViewModel {
 
     /// 묶음이 정렬보다 먼저다 — "관심 순"은 묶음 안에서만 점수 순.
     var groups: CandidateGroups {
-        CollabModel.grouped(CollabModel.sorted(candidates, byInterest: sortByInterest, memberCount: memberCount), memberCount: memberCount)
+        CollabModel.grouped(CollabModel.sorted(visibleCandidates, byInterest: sortByInterest, memberCount: memberCount), memberCount: memberCount)
+    }
+
+    /// 거른 뒤의 후보 — 묶음·정렬은 그 다음이다(분류는 순위를 바꾸지 않는다).
+    var visibleCandidates: [CandidateView] {
+        candidates.filter { categoryFilter.matches(CandidateCategory.of($0.category)) }
     }
 
     func load() async {
@@ -141,13 +148,21 @@ final class CandidateBoardViewModel {
 
     // MARK: 후보
 
-    func add(title: String, note: String, lat: Double? = nil, lng: Double? = nil, placeId: String? = nil, addr: String? = nil, provider: String? = nil, providerId: String? = nil) async -> Bool {
+    func add(title: String, note: String, lat: Double? = nil, lng: Double? = nil, placeId: String? = nil, addr: String? = nil, provider: String? = nil, providerId: String? = nil, category: CandidateCategory? = nil) async -> Bool {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, canPropose else { return false }
         let cleanNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
         return await perform("후보로 담았어요") {
             _ = try await self.service.addCandidate(tripId: self.trip.id, title: String(trimmed.prefix(120)), note: cleanNote.isEmpty ? nil : String(cleanNote.prefix(300)),
-                                                    lat: lat, lng: lng, placeId: placeId, addr: addr, provider: provider, providerId: providerId)
+                                                    lat: lat, lng: lng, placeId: placeId, addr: addr, provider: provider, providerId: providerId,
+                                                    category: category?.rawValue)
+        }
+    }
+
+    /// 분류만 바꾼다(빈 값이면 '고르지 않음'으로). 순위·묶음은 그대로다.
+    func setCategory(candidateId: Int, category: CandidateCategory?) async {
+        await perform(category.map { "\($0.label)(으)로 표시했어요" } ?? "분류를 지웠어요") {
+            try await self.service.manageCandidate(tripId: self.trip.id, candidateId: candidateId, action: "CATEGORY", value: category?.rawValue)
         }
     }
 
@@ -313,5 +328,28 @@ final class CandidateBoardViewModel {
             return apiError.errorDescription ?? "요청을 처리하지 못했어요."
         }
         return error.localizedDescription
+    }
+}
+
+/// 보드의 분류 거르기 — 전부 / 고르지 않음만 / 특정 분류.
+enum CandidateCategoryFilter: Hashable, Sendable {
+    case all
+    case none
+    case only(CandidateCategory)
+
+    var label: String {
+        switch self {
+        case .all: "전체 분류"
+        case .none: "분류 없음"
+        case .only(let category): category.label
+        }
+    }
+
+    func matches(_ category: CandidateCategory?) -> Bool {
+        switch self {
+        case .all: true
+        case .none: category == nil
+        case .only(let wanted): category == wanted
+        }
     }
 }

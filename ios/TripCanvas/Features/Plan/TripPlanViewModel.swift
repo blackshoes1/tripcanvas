@@ -491,6 +491,22 @@ final class TripPlanViewModel {
         return await edit("예약을 뺐어요") { $0.removeBooking(id: id) }
     }
 
+    /// 예약이 아닌 결제 항목(보험·유심·입장권…) — 여행 단위 비용(`trip.costItems`). 고친 항목은 제자리에, 새 항목은 뒤에.
+    @discardableResult
+    func saveCostItem(_ entry: CostEntry) async -> Bool {
+        let isNew = document?.costItems.contains { $0.id == entry.id } != true
+        return await edit(isNew ? "결제 항목을 저장했어요 — 비용 화면의 예약 결제 금액에 있어요" : "결제 항목을 고쳤어요") { draft in
+            var items = draft.costItems
+            if let index = items.firstIndex(where: { $0.id == entry.id }) { items[index] = entry } else { items.append(entry) }
+            draft.costItems = items
+        }
+    }
+
+    @discardableResult
+    func removeCostItem(id: String) async -> Bool {
+        return await edit("결제 항목을 지웠어요") { draft in draft.costItems = draft.costItems.filter { $0.id != id } }
+    }
+
     /// 고치고 → 화면에 먼저 반영하고 → 저장한다. 실패하면 **서버가 아는 상태로 되돌린다** —
     /// 저장되지 않은 것이 저장된 것처럼 남아 있으면 다음 편집이 그 위에 쌓인다.
     @discardableResult

@@ -3,8 +3,9 @@ export type CostPayState = 'RESERVED' | 'PAID' | 'NONE';
 
 export interface CostDetails {
   items: {
-    /** TRIP은 여행 단위 준비 비용(`trip.costItems`) — 어느 날에도 속하지 않는다. */
-    source: 'SPOT' | 'EXTRA' | 'BOOKING' | 'TRANSPORT' | 'TRIP';
+    /** TRIP은 여행 단위 준비 비용(`trip.costItems`) — 어느 날에도 속하지 않는다.
+     *  STAY는 앞선 날에 체크인한 연박 숙소(장소)가 이 날로 이월한 하루치(`stayCostShares`) — 그 장소는 체크인 날에서 고친다. */
+    source: 'SPOT' | 'EXTRA' | 'BOOKING' | 'TRANSPORT' | 'TRIP' | 'STAY';
     key: string;
     title: string;
     kind: string;
