@@ -106,7 +106,7 @@ declare module '@legacy/lib.js' {
     sampleTrip(): unknown;
     normalizeBooking(b: unknown): unknown | null;
     carReturnPoint(b: unknown): { place: string; code: string };
-    bookingShareOn(bookings: unknown[], iso: string): { id: string; type: string; title: string; amount: number; cur?: string; days: number; payState: string }[];
+    bookingShareOn(bookings: unknown[], iso: string, today?: string): { id: string; type: string; title: string; amount: number; cur?: string; days: number; payState: string; paidOn: string | null }[];
     /**
      * 예산에 넣을 예약만 — 일정 장소가 이미 그 금액을 들고 있으면(연결된 숙박에 비용 입력) 뺀다.
      * 기준은 일정 카드에 입력한 금액이고, 장소에 비용이 없을 때만 예약 금액을 쓴다.
@@ -115,8 +115,8 @@ declare module '@legacy/lib.js' {
     dayEnteredCost(day: unknown, rates: Record<string, number>): number;
     parseCostAmount(text: string, currency?: string): number | null;
     hasManualTransportCost(day: unknown): boolean;
-    tripCostSummary(trip: unknown, days: unknown[], rates: Record<string, number>): Pick<import('@/features/trip-state/domain/contract').TripCostsResponse, 'totalKRW' | 'averagePerDayKRW' | 'categories' | 'unallocated' | 'payTotals' | 'prep' | 'onSite' | 'unknownCount' | 'transportUnpriced' | 'hasForeignCurrency'>;
-    dayCostSummary(trip: unknown, di: number, input: { date: string; rates: Record<string, number>; taxi: number | null; transportUnpriced: boolean }): import('@/features/trip/domain/costTypes').DayCostSummary;
+    tripCostSummary(trip: unknown, days: unknown[], rates: Record<string, number>, today?: string): Pick<import('@/features/trip-state/domain/contract').TripCostsResponse, 'totalKRW' | 'averagePerDayKRW' | 'categories' | 'unallocated' | 'payTotals' | 'prep' | 'onSite' | 'unknownCount' | 'transportUnpriced' | 'hasForeignCurrency'>;
+    dayCostSummary(trip: unknown, di: number, input: { date: string; rates: Record<string, number>; taxi: number | null; transportUnpriced: boolean; today?: string }): import('@/features/trip/domain/costTypes').DayCostSummary;
     parseHM(t: string | undefined): number;
     hm(min: number): string;
     /** 사람이 친 시각 입력 → HH:MM (범위 밖·빈 값이면 '') */

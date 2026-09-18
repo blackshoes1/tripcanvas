@@ -196,12 +196,13 @@ function dayDistanceOf(day: Day, back: Spot | null): number {
 function tripBookings(trip: Trip): Booking[] {
   return trip.bookings ?? [];
 }
-export function dayCostPartsOf(trip: Trip, legCache: LegCache, di: number, fx: FxRates): DayView['cost'] {
+/** `today`(YYYY-MM-DD)는 결제일이 있는 항목의 상태를 정하는 오늘이다 — 서버는 여행 시간대의 오늘(`resolveClock`)을 넘긴다. */
+export function dayCostPartsOf(trip: Trip, legCache: LegCache, di: number, fx: FxRates, today?: string): DayView['cost'] {
   const day = trip.days[di];
   const dm = dayModeOf(day);
   const road = dm === 'car' || dm === 'taxi';
   const rt = road ? dayRouteOf(legCache, day, dayReturnStay(trip.days as unknown[], di) as Spot | null) : null;
-  return dayCostSummary(trip, di, { date: isoDateOf(trip, di), rates: fx,
+  return dayCostSummary(trip, di, { date: isoDateOf(trip, di), rates: fx, today,
     taxi: rt?.taxi ?? null,
     transportUnpriced: day.spots.filter(hasCoord).length > 1 && dm !== 'walk' && dm !== 'bike' && (!road || !rt?.taxi) });
 }
@@ -328,7 +329,7 @@ function spotViewOf(
 }
 
 // ── 일자 뷰 ──
-export function buildDayView(trip: Trip, legCache: LegCache, di: number, fx: FxRates = fxRates()): DayView {
+export function buildDayView(trip: Trip, legCache: LegCache, di: number, fx: FxRates = fxRates(), today?: string): DayView {
   const day = trip.days[di];
   const days = trip.days as unknown[];
   const iso = isoDateOf(trip, di);
@@ -392,6 +393,6 @@ export function buildDayView(trip: Trip, legCache: LegCache, di: number, fx: FxR
     carReturns: carEv.filter(e => e.kind === 'return').map(carEventRowOf),
     back: bl ? { name: bl.to.name, modeIcon: MODE_ICON[bl.mode], leg: legViewOf(legCache, bl.from, bl.to, bl.mode) } : null,
     routeLabel, overloadLabel,
-    cost: dayCostPartsOf(trip, legCache, di, fx)
+    cost: dayCostPartsOf(trip, legCache, di, fx, today)
   };
 }

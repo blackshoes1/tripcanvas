@@ -242,6 +242,20 @@ final class TripBookingTests: XCTestCase {
         XCTAssertEqual(booking.validate(), .returnBeforePickup)
     }
 
+    func testPaidOnAndPhotosFollowTheNormalizer() {
+        var booking = TripBooking(type: .flight, id: "bkPay1")
+        booking.paidOn = "2026-10-01"
+        booking.photos = ["ref1", "ref2"]
+        XCTAssertEqual(booking.raw["paidOn"], .string("2026-10-01"))
+        XCTAssertEqual(booking.photos, ["ref1", "ref2"])
+        booking.paidOn = "내일"                          // 날짜 모양이 아니면 저장하지 않는다(normalizeBooking과 같다)
+        XCTAssertNil(booking.raw["paidOn"])
+        booking.photos = []
+        XCTAssertNil(booking.raw["photos"])              // 비면 키를 지운다
+        booking.payState = .reserved
+        XCTAssertNil(booking.raw["payState"])            // 결제 예정은 기본값이라 쓰지 않는다
+    }
+
     func testDateTextRoundTrip() {
         XCTAssertTrue(ISODateText.isValid("2026-10-01"))
         XCTAssertFalse(ISODateText.isValid("2026-1-01"))

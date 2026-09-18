@@ -11,6 +11,8 @@ final class DayCostTests: XCTestCase {
         XCTAssertEqual(costs.categories.reduce(0) { $0 + $1.totalKRW }, costs.totalKRW)
         XCTAssertEqual(costs.fxSource, "FALLBACK")
         XCTAssertTrue(costs.categories.flatMap(\.items).contains { $0.source == "BOOKING" })
+        // 결제일은 모든 줄에 실린다(없으면 null) — 화면이 문서를 다시 읽지 않게. 옛 응답(키 없음)도 nil로 읽힌다.
+        XCTAssertTrue(costs.categories.flatMap(\.items).allSatisfy { $0.paidOn == nil })
     }
 
     func testManualCostCategoryPreservesSpotAndCanReturnToAutomatic() {

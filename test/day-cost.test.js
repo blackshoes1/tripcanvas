@@ -290,3 +290,70 @@ test('금액을 넣지 않은 예약은 가계부에서 미정으로 남고 합�
   assert.equal(result.prep.totalKRW, 0);
   assert.equal(result.totalKRW, 0);
 });
+
+// ── 결제일이 상태를 정한다 (2026-09-18) ────────────────────────────────────────────
+
+test('결제일이 있으면 날짜가 상태를 정한다 — 오늘이거나 지났으면 결제, 아직이면 예약', () => {
+  const trip = L.normalizeTrip({ start: '2026-10-01', days: [
+    { spots: [{ name: '입장권', cat: 'sight', cost: 12000, paidOn: '2026-10-05', payState: 'PAID' }],
+      costItems: [{ id: 'bus', kind: 'TRANSIT', amount: 3000, paidOn: '2026-09-01' }] }
+  ], bookings: [
+    { id: 'stay', type: 'hotel', title: '현장 결제 호텔', price: 100000, start: '2026-10-01', end: '2026-10-02', paidOn: '2026-10-01' },
+    { id: 'fly', type: 'flight', title: '항공', price: 300000, paidOn: '2026-08-20' },
+    { id: 'car', type: 'car', title: '렌터카', price: 60000, start: '2026-10-01', end: '2026-10-01', payState: 'PAID', paidOn: '2026-12-31' }
+  ], costItems: [{ id: 'ins', title: '보험', kind: 'OTHER', amount: 20000, payState: 'RESERVED', paidOn: '2026-09-18' }] });
+  assert.equal(trip.bookings[0].paidOn, '2026-10-01', '예약의 결제일이 정규화에서 살아남는다');
+
+  // 오늘 = 2026-09-18: 항공(8/20)·보험(9/18)·버스(9/1)는 낸 돈, 호텔(10/1)·입장권(10/5)·렌터카(12/31)는 아직
+  const today = '2026-09-18';
+  const day = summary(trip, 0, { today });
+  const byKey = Object.fromEntries(day.details.items.map(i => [i.key, i.payState]));
+  assert.equal(byKey['0'], 'RESERVED', '손으로 결제라고 해도 결제일이 아직이면 예약이다 — 날짜가 이긴다');
+  assert.equal(byKey.bus, 'PAID');
+  assert.equal(byKey.stay, 'RESERVED', '하루치도 같은 규칙');
+  assert.equal(byKey.car, 'RESERVED', '결제함 표시보다 결제일(12/31)이 먼저다');
+  const result = L.tripCostSummary(trip, [{ index: 0, cost: day }], rates, today);
+  assert.deepEqual(result.prep.items.map(i => [i.key, i.payState, i.paidOn]),
+    [['stay', 'RESERVED', '2026-10-01'], ['fly', 'PAID', '2026-08-20'], ['car', 'RESERVED', '2026-12-31'], ['ins', 'PAID', '2026-09-18']],
+    '가계부 줄이 결제일을 싣고 같은 오늘로 상태를 말한다');
+  assert.equal(result.unallocated.find(i => i.key === 'fly').payState, 'PAID');
+
+  // 오늘 = 2026-10-05: 호텔·입장권은 결제함이 됐고 렌터카는 여전히 아직
+  const later = summary(trip, 0, { today: '2026-10-05' });
+  const laterByKey = Object.fromEntries(later.details.items.map(i => [i.key, i.payState]));
+  assert.equal(laterByKey['0'], 'PAID', '결제일 당일부터 결제함');
+  assert.equal(laterByKey.stay, 'PAID');
+  assert.equal(laterByKey.car, 'RESERVED');
+  const laterResult = L.tripCostSummary(trip, [{ index: 0, cost: later }], rates, '2026-10-05');
+  assert.equal(laterResult.prep.items.find(i => i.key === 'stay').payState, 'PAID', '예약 한 줄과 하루치가 같은 상태');
+  assert.deepEqual(laterResult.prep.payTotals, { RESERVED: 60000, PAID: 100000 + 300000 + 20000, NONE: 0 });
+});
+
+test('오늘을 모르면 결제일을 판정하지 않고 손으로 고른 상태로 돌아간다', () => {
+  assert.equal(L.costPayStateOf({ paidOn: '2026-01-01', payState: 'RESERVED' }, 'TRIP'), 'RESERVED');
+  assert.equal(L.costPayStateOf({ paidOn: '2026-01-01' }, 'BOOKING'), 'RESERVED', '예약은 표시 없으면 예약');
+  assert.equal(L.costPayStateOf({ paidOn: '2026-01-01', payState: 'PAID' }, 'BOOKING'), 'PAID');
+  assert.equal(L.costPayStateOf({ paidOn: '2026-01-01' }, 'EXTRA'), 'NONE', '그 밖의 항목은 미구분');
+  assert.equal(L.costPayStateOf({ paidOn: '2026-01-01' }, 'EXTRA', '2026-01-01'), 'PAID');
+  assert.equal(L.costPayStateOf({ paidOn: '2026-01-02' }, 'EXTRA', '2026-01-01'), 'RESERVED');
+  assert.equal(L.costPayStateOf({ paidOn: '언젠가', payState: 'PAID' }, 'EXTRA', '2026-01-01'), 'PAID', '날짜 모양이 아니면 없는 것');
+  assert.equal(L.costPayStateOf({ payState: 'PAID' }, 'EXTRA', '2026-01-01'), 'PAID', '결제일이 없으면 손으로 고른 상태');
+  // 하루치 항목은 결제일을 싣는다(없으면 null) — 화면이 문서를 다시 읽지 않게
+  const day = summary({ days: [{ spots: [{ name: 'a', cost: 100, paidOn: '2026-10-01' }, { name: 'b', cost: 100 }] }] });
+  assert.deepEqual(day.details.items.map(i => i.paidOn), ['2026-10-01', null]);
+});
+
+test('예약의 결제일과 사진 참조는 비용 항목과 같은 규칙으로 정규화된다', () => {
+  const trip = L.normalizeTrip({ days: [{}], bookings: [
+    { id: 'a', type: 'hotel', title: '호텔', price: 1, paidOn: '2026-10-01', photos: ['r1', '', 3, 'x'.repeat(201), 'r2'] },
+    { id: 'b', type: 'flight', title: '항공', price: 1, paidOn: '내일', photos: [] }
+  ] });
+  assert.equal(trip.bookings[0].paidOn, '2026-10-01');
+  assert.deepEqual(trip.bookings[0].photos, ['r1', 'r2'], '빈 값·숫자·긴 참조는 버린다');
+  assert.equal(trip.bookings[1].paidOn, undefined, '날짜 모양이 아니면 버린다');
+  assert.equal(trip.bookings[1].photos, undefined, '빈 목록은 필드째 생략');
+  const twice = L.normalizeTrip(JSON.parse(JSON.stringify(trip)));
+  assert.deepEqual(twice.bookings, trip.bookings, '왕복에서 그대로다');
+  const result = L.tripCostSummary(trip, [{ index: 0, cost: summary(trip) }], rates);
+  assert.deepEqual(result.prep.items.find(i => i.key === 'a').photos, ['r1', 'r2'], '가계부 줄이 사진 참조를 싣는다');
+});

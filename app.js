@@ -1000,22 +1000,24 @@ function loadFx(){
 }
 function dayCost(day){ return dayEnteredCost(day,fxRates); }
 /**
- * 그 날의 결제 상태별 하루치 — [['예약',금액],['결제',금액]]. 값이 있는 것만, 표시 순서대로.
- * 예약(trip.bookings)에서 나온 하루치는 언제나 '예약'이다. 고르지 않은 비용(미구분)은 빼고 돌려준다 —
+ * 그 날의 결제 상태별 하루치 — [['결제 예정',금액],['결제 완료',금액]]. 값이 있는 것만, 표시 순서대로.
+ * 예약(trip.bookings)의 하루치는 예약마다의 상태를 따르고, 결제일이 있으면 오늘이 정한다. 고르지 않은 비용(미구분)은 빼고 돌려준다 —
  * 미구분을 결제로 치면 이미 쓴 돈이 부풀고, 예약으로 치면 남은 지출이 부풀어 둘 다 거짓말이 된다.
  * @param {any} day @param {number} di @param {string} iso @returns {[string,number][]}
  */
 function dayPaySplit(day,di,iso){
   /** @type {Record<string,number>} */ const sum={RESERVED:0,PAID:0};
-  const add=(/**@type{any}*/item,/**@type{number}*/krw)=>{
-    const st=costPayStateOf(item); if(st==='RESERVED'||st==='PAID') sum[st]+=krw;
+  const today=todayISO();   // 결제일이 있는 항목은 오늘이 상태를 정한다(costPayStateOf) — 웹은 기기 날짜
+  const add=(/**@type{any}*/item,/**@type{number}*/krw,/**@type{string=}*/source)=>{
+    const st=costPayStateOf(item,source,today); if(st==='RESERVED'||st==='PAID') sum[st]+=krw;
   };
   (day.spots||[]).forEach((/**@type{any}*/sp)=>{ const v=costAmountOf(sp,'cost'); if(v!==null) add(sp,toKRW(v,sp.cur)); });
   (day.costItems||[]).forEach((/**@type{any}*/it)=>{ const v=costAmountOf(it,'amount'); if(v!==null) add(it,toKRW(v,it.cur)); });
-  if(iso) sum.RESERVED+=dayBookingCost(iso);   // 예약의 하루치는 정의상 예약이다
+  // 예약의 하루치는 예약마다의 결제 상태를 따른다 — 결제한 항공·숙박은 이미 낸 돈, 현장 결제 호텔은 예약(2026-09-17)
+  if(iso) bookingShareOn(budgetBookings(tripBookings(), trip().days), iso, today).forEach(x=>{ sum[x.payState==='PAID'?'PAID':'RESERVED']+=toKRW(x.amount,x.cur); });
   /** @type {[string,number][]} */ const out=[];
-  if(sum.RESERVED>0) out.push(['🧾 예약',sum.RESERVED]);
-  if(sum.PAID>0) out.push(['💰 결제',sum.PAID]);
+  if(sum.RESERVED>0) out.push(['🧾 결제 예정',sum.RESERVED]);
+  if(sum.PAID>0) out.push(['💰 결제 완료',sum.PAID]);
   return out;
 }
 // 그 날짜에 배분된 예약비(숙박·렌터카·항공 하루치) — 원화 환산 합계
@@ -1529,11 +1531,16 @@ function renderFilter(){
   // 여행 전체 비용 — 항상 보이게, 탭하면 내역. 예약은 전액이라 '하루 비용'(날수로 나눈 몫)과 기준이 다르다
   const cb=tripCostBreakdown();
   if(cb.total>0){
-    const rows=[['장소',cb.spots],['택시(자차·택시 일자)',cb.taxi],['숙박',cb.hotel],['렌터카',cb.car],['항공',cb.flight],['준비 비용(예약 외)',cb.prep]].filter(r=>r[1]>0);
+    // 두 장부(앱의 비용 화면과 같은 이름) — 예약 결제 금액(가기 전에 내는 돈) / 현지 결제 금액(가서 쓰는 돈). 더하면 전체와 같다
+    const groups=[
+      ['예약 결제 금액', cb.hotel+cb.car+cb.flight+cb.prep, [['숙박',cb.hotel],['렌터카',cb.car],['항공',cb.flight],['예약 외(보험·유심 등)',cb.prep]]],
+      ['현지 결제 금액', cb.spots+cb.taxi, [['장소',cb.spots],['택시(자차·택시 일자)',cb.taxi]]]
+    ].filter(g=>g[1]>0);
     const cost=document.createElement('details'); cost.className='viewMenu costMenu';
-    cost.innerHTML=`<summary title="${escAttr('장소 비용 + 자차·택시 일자의 택시비 + 예약 총액 — 탭하면 내역')}">💳 ₩${fmtMoney(cb.total)}⌄</summary><div class="viewMenuPanel">
+    cost.innerHTML=`<summary title="${escAttr('예약 결제 금액(예약 총액·예약 외) + 현지 결제 금액(장소·택시) — 탭하면 내역')}">💳 ₩${fmtMoney(cb.total)}⌄</summary><div class="viewMenuPanel">
       <div class="viewMenuLabel">전체 예상 비용</div>
-      ${rows.map(r=>`<div class="costRow"><span>${esc(r[0])}</span><b>₩${fmtMoney(r[1])}</b></div>`).join('')}
+      ${groups.map(g=>`<div class="costRow costGroup"><span>${esc(g[0])}</span><b>₩${fmtMoney(g[1])}</b></div>`+
+        g[2].filter(r=>r[1]>0).map(r=>`<div class="costRow costSub"><span>${esc(r[0])}</span><b>₩${fmtMoney(r[1])}</b></div>`).join('')).join('')}
       <div class="costRow costTotal"><span>합계</span><b>₩${fmtMoney(cb.total)}</b></div>
       <div class="hint">예약은 총액 기준이에요 — 일자 카드의 '하루 비용'은 이걸 날수로 나눈 하루치입니다.</div></div>`;
     bar.appendChild(cost);
@@ -2541,6 +2548,14 @@ document.getElementById('tripListNew').onclick=()=>{
 // 가짜/모의 가격은 production에서 쓰지 않는다 — 소스 미연결이면 그 상태를 그대로 보여준다.
 const PRICE_KEY='tripcanvas_prices_v1';
 const BK_TYPE={hotel:{icon:'🏨',name:'숙박'},car:{icon:'🚗',name:'렌터카'},flight:{icon:'✈️',name:'항공'}};
+// 결제 항목의 분류(무엇에 쓴 돈인가) — 하루 비용·앱과 같은 9가지·같은 이름. 항공·숙박·렌트는 예약(trip.bookings)이고
+// 나머지는 여행 단위 비용(trip.costItems)이다. 한 편집기가 둘을 다루고, 분류가 어느 쪽에 저장할지를 정한다.
+const COST_KIND={FLIGHT:{icon:'✈️',name:'항공'},STAY:{icon:'🏨',name:'숙박'},RENT:{icon:'🚗',name:'렌트'},TRANSIT:{icon:'🚆',name:'대중교통'},
+  FOOD:{icon:'🍽️',name:'식비'},SHOPPING:{icon:'🛍️',name:'쇼핑'},TICKET:{icon:'🎟️',name:'입장권·관람권'},TRANSPORT:{icon:'🚕',name:'택시·기타 교통'},OTHER:{icon:'📦',name:'기타'}};
+const BK_KIND_TYPE={FLIGHT:'flight',STAY:'hotel',RENT:'car'};   // 분류 → 예약 종류 (없으면 예약이 아니다)
+const BK_TYPE_KIND={flight:'FLIGHT',hotel:'STAY',car:'RENT'};   // 예약 종류 → 분류
+// 상태 문구는 앱(`CostPayState.label`)과 같다 — '예약만 함'·'결제함'은 모호해서 버렸다(2026-09-18). 미구분은 말하지 않는다(어느 쪽으로도 단정하지 않으므로)
+const PAY_STATE_LABEL={RESERVED:'결제 예정',PAID:'결제 완료',NONE:''};
 // 오류 분류(§35) → 사용자 안내문. 상세 원문은 콘솔·서버 로그에만.
 const PX_ERR_MSG={
   AUTH_REQUIRED:'가격 소스가 아직 연결되지 않았어요 — 서버에 메타서치 API 키 설정이 필요합니다',
@@ -2839,45 +2854,40 @@ function renderBookingList(){
       ${s.potential>0?`<div class="pxPotRow"><span>조건 확인 필요</span><b>최대 ₩${fmtMoney(s.potential)}</b></div>`:''}
       ${s.actual>0?`<div class="pxActualRow"><span>With J로 실제 절약</span><b>₩${fmtMoney(s.actual)}</b></div>`:''}
     </div>`:'';
-  document.getElementById('bookingListBody').innerHTML = bookings.length? bookings.map(b=>{
-    const period=[b.start,b.end].filter(Boolean).map(esc).join(' ~ ');
-    const sub=[period, b.provider?esc(b.provider):'', costLabel(b.price,b.cur), b.payState==='PAID'?'결제함':'예약만 함'].filter(Boolean).join(' · ');
-    return `<div class="tripRow pxRow" onclick="openBookingModal('${escAttr(b.id)}')" title="탭해서 상세·판매처 비교·가격 기록 보기">
-      <span class="tn">${BK_TYPE[b.type]?BK_TYPE[b.type].icon:'🏨'} ${esc(b.title)}<span class="opt">${sub}</span></span>
-      ${bookingBadgeHtml(b)}
+  const rows=paymentRows(), split=prepPaySplit();
+  const paidLine=(split.PAID>0||split.RESERVED>0)? `<div class="hint" style="margin:0 0 4px">${[split.PAID>0?`결제 완료 ₩${fmtMoney(split.PAID)}`:'', split.RESERVED>0?`결제 예정 ₩${fmtMoney(split.RESERVED)}`:''].filter(Boolean).join(' · ')}</div>`:'';
+  document.getElementById('bookingListBody').innerHTML = paidLine + (rows.length? rows.map(r=>{
+    const b=r.booking, period=b?[b.start,b.end].filter(Boolean).map(esc).join(' ~ '):'';
+    const sub=[period, b&&b.provider?esc(b.provider):'', COST_KIND[r.kind].name, costLabel(r.amount,r.cur), PAY_STATE_LABEL[r.payState], r.paidOn?`결제일 ${esc(r.paidOn)}`:''].filter(Boolean).join(' · ');
+    return `<div class="tripRow pxRow" onclick="openBookingModal('${escAttr(r.id)}')" title="${b?'탭해서 상세·판매처 비교·가격 기록 보기':'탭해서 편집'}">
+      <span class="tn">${COST_KIND[r.kind].icon} ${esc(r.title)}<span class="opt">${sub}</span></span>
+      ${b?bookingBadgeHtml(b):''}
     </div>`;
-  }).join('') : `<div class="hint" style="padding:14px 4px">아직 등록한 예약이 없어요. 예약한 숙소의 가격을 등록해 두면 출발 전까지 계속 확인해서 더 좋은 조건이 생기면 알려드릴게요.</div>`;
+  }).join('') : `<div class="hint" style="padding:14px 4px">아직 등록한 항목이 없어요. 예약한 숙소의 가격을 등록해 두면 출발 전까지 계속 확인해서 더 좋은 조건이 생기면 알려드릴게요.</div>`);
+  document.getElementById('bookingAdd').style.display=readOnly()?'none':'';
   loadPxHealth().then(h=>{ try{ const el=document.getElementById('pxSourceLine'); if(el) el.innerHTML=pxSourceLineHtml(h); }catch(e){} });   // catch: 문서가 이미 닫힌 뒤 도착한 응답
-  renderPrepCosts();
 }
-// 예약 외 준비 비용(trip.costItems) — 가계부의 나머지 반. 하루 추가 비용과 같은 모양이라 같은 정규화를 지난다
-function renderPrepCosts(){
-  const items=trip().costItems||[], box=document.getElementById('prepCostList');
-  const KIND={OTHER:'기타',TICKET:'입장권',TRANSIT:'대중교통',TRANSPORT:'교통',SHOPPING:'쇼핑',FOOD:'식비',FLIGHT:'항공',STAY:'숙박',RENT:'렌트'};
-  box.innerHTML = items.length? items.map(it=>`<div class="tripRow"><span class="tn">${esc(it.title||'비용')}<span class="opt">${[KIND[it.kind]||'기타', costLabel(it.amount,it.cur), it.payState==='PAID'?'결제함':it.payState==='RESERVED'?'예약만 함':'', it.paidOn?esc(it.paidOn):''].filter(Boolean).join(' · ')}</span></span>
-      <button class="btn" data-prep-del="${escAttr(it.id)}" title="삭제">✕</button></div>`).join('') : '';
-  box.querySelectorAll('[data-prep-del]').forEach(btn=>btn.onclick=()=>{
-    if(!guardEdit()) return;
-    const id=btn.dataset.prepDel;
-    commit(()=>{ trip().costItems=(trip().costItems||[]).filter(x=>x.id!==id); if(!trip().costItems.length) delete trip().costItems; });
-    renderPrepCosts();
-  });
-  document.getElementById('prepCostForm').style.display=readOnly()?'none':'';
+/**
+ * 예약 결제 금액의 한 목록 — 예약(trip.bookings)과 여행 단위 비용(trip.costItems)을 같은 모양으로.
+ * 결제일이 최근인 것부터, 결제일이 없는 것은 그 뒤에 등록 순. 상태는 오늘(기기 날짜)이 정한다(costPayStateOf).
+ * @returns {{id:string,kind:string,title:string,amount:number|null,cur:string|undefined,paidOn:string,payState:string,booking:any}[]}
+ */
+function paymentRows(){
+  const today=todayISO();
+  const rows=tripBookings().map(b=>({id:b.id, kind:BK_TYPE_KIND[b.type]||'STAY', title:b.title||'예약', amount:b.price>0?b.price:null, cur:b.cur,
+      paidOn:b.paidOn||'', payState:costPayStateOf(b,'BOOKING',today), booking:b}))
+    .concat((trip().costItems||[]).map(it=>({id:it.id, kind:COST_KIND[it.kind]?it.kind:'OTHER', title:it.title||'비용', amount:costAmountOf(it,'amount'), cur:it.cur,
+      paidOn:it.paidOn||'', payState:costPayStateOf(it,'TRIP',today), booking:null})));
+  return rows.sort((a,b)=> (a.paidOn&&b.paidOn)? (a.paidOn<b.paidOn?1:a.paidOn>b.paidOn?-1:0) : a.paidOn? -1 : b.paidOn? 1 : 0);
 }
-document.getElementById('prepAdd').onclick=()=>{
-  if(!guardEdit()) return;
-  const title=document.getElementById('prepTitle').value.trim();
-  const cur=document.getElementById('prepCur').value;
-  const amount=parseCostAmount(document.getElementById('prepAmount').value, cur);
-  if(!title){ toast('항목 이름을 입력하세요','#e63946'); return; }
-  if(amount===null){ toast('금액을 확인해 주세요 — 원·엔은 정수, 달러·유로·위안은 소수 둘째 자리까지','#e63946'); return; }
-  const item={id:uid(), title, kind:document.getElementById('prepKind').value, amount, costBasis:'TOTAL', payState:document.getElementById('prepPayState').value};
-  if(cur!=='KRW') item.cur=cur;
-  commit(()=>{ (trip().costItems=trip().costItems||[]).push(item); });
-  document.getElementById('prepTitle').value=''; document.getElementById('prepAmount').value='';
-  renderPrepCosts();
-  toast('준비 비용 저장됨');
-};
+/** 예약 결제 금액의 결제 상태별 원화 합계 — 필터바 전체 비용과 같은 예약(budgetBookings)만 센다 @returns {Record<string,number>} */
+function prepPaySplit(){
+  const today=todayISO(); /** @type {Record<string,number>} */ const sum={RESERVED:0,PAID:0,NONE:0};
+  budgetBookings(tripBookings(), trip().days).forEach(b=>{ sum[costPayStateOf(b,'BOOKING',today)]+=toKRW(+b.price||0,b.cur); });
+  (trip().costItems||[]).forEach(it=>{ const v=costAmountOf(it,'amount'); if(v!==null) sum[costPayStateOf(it,'TRIP',today)]+=toKRW(v,it.cur); });
+  return sum;
+}
+function costItemOf(id){ return (trip().costItems||[]).find(x=>x.id===id)||null; }
 function openBookingList(){
   renderBookingList();
   document.getElementById('bookingListBg').classList.add('show');
@@ -2907,7 +2917,7 @@ function recordCarManualPrice(id, price){
 window.startHotelTracking=(di,si)=>{
   const s=trip().days[di]&&trip().days[di].spots[si]; if(!s) return;
   openBookingModal(null);
-  document.getElementById('bkType').value='hotel'; toggleBkFields();
+  document.getElementById('bkType').value='STAY'; toggleBkFields();
   document.getElementById('bkTitle').value=s.name||'';
   const idx=bkStayOptions().findIndex(o=>o.s===s);
   if(idx>=0) document.getElementById('bkSpot').value=String(idx);
@@ -2922,6 +2932,7 @@ window.startHotelTracking=(di,si)=>{
 
 // ── 예약 추가/상세·편집 모달 ──
 let editingBooking=null;   // 예약 id | null(추가)
+let editingCostItem=null;  // 여행 단위 비용(trip.costItems) id | null — 같은 편집기가 예약이 아닌 결제 항목도 연다
 // 일정에서 🏠 숙소로 등록된 장소들 — 호텔 예약을 일정 카드와 연결하는 선택지
 function bkStayOptions(){
   const out=[];
@@ -2949,30 +2960,48 @@ function fillBkSpotSelect(b){
   document.getElementById('bkSpot').innerHTML='<option value="">— 연결 안 함 —</option>'+
     opts.map((o,i)=>`<option value="${i}" ${i===cur?'selected':''}>Day ${o.di+1} · ${esc(o.s.name)}</option>`).join('');
 }
+function bkTypeOf(){ return BK_KIND_TYPE[document.getElementById('bkType').value]||null; }   // 예약 종류 — 예약이 아니면 null
 function toggleBkFields(){
-  const type=document.getElementById('bkType').value, hotel=type==='hotel';
+  const type=bkTypeOf(), booking=!!type, hotel=type==='hotel';
   document.getElementById('bkSpotWrap').style.display = hotel?'block':'none';
   document.getElementById('bkHotelFields').style.display = hotel?'block':'none';
   document.getElementById('bkCarFields').style.display = type==='car'?'block':'none';
+  // 예약이 아닌 결제 항목(보험·유심·입장권…)에는 예약처·기간·취소 조건·링크·추적이 없다
+  ['bkProviderWrap','bkPeriodWrap','bkBookingExtra','bkStatus'].forEach(id=>{ document.getElementById(id).style.display = booking?'':'none'; });
   document.getElementById('bkProviderLabel').textContent = type==='flight'?'항공사 또는 예약처':'예약처';
-  document.getElementById('bkTitleLabel').textContent = {hotel:'숙소 이름 * (예약처 표기와 같게 — 검색 정확도)',car:'렌터카 (차종·업체) *',flight:'항공편 (구간·편명) *'}[type]||'예약 이름 *';
+  document.getElementById('bkTitleLabel').textContent = {hotel:'숙소 이름 * (예약처 표기와 같게 — 검색 정확도)',car:'렌터카 (차종·업체) *',flight:'항공편 (구간·편명) *'}[type||'']||'항목 이름 *';
+  document.getElementById('bkPriceLabel').textContent = booking?'예약 가격 *':'금액 *';
   document.getElementById('bkFreeUntilWrap').style.display = document.getElementById('bkFreeCancel').checked?'block':'none';
+  // 결제 상태 — 예약은 미구분이 없다(잡아 둔 돈). 결제일이 있으면 날짜가 상태를 정하므로 고르는 칸을 감춘다
+  const ps=document.getElementById('bkPayState'), none=ps.querySelector('option[value="NONE"]');
+  none.hidden=booking; if(booking&&ps.value==='NONE') ps.value='RESERVED';
+  const paidOn=document.getElementById('bkPaidOn').value;
+  ps.style.display=paidOn?'none':'';
+  document.getElementById('bkPayHint').textContent = paidOn
+    ? (paidOn<=todayISO()? `결제일(${paidOn})이 지나 결제 완료로 셉니다` : `결제 예정일(${paidOn})이 아직이라 결제 예정으로 셉니다 — 그날부터 결제 완료가 돼요`)
+    : '결제일을 정하면 그 날부터 결제 완료로 셉니다. 정하지 않으면 여기서 고른 상태를 써요.';
 }
 window.openBookingModal=(id)=>{
   if(!guardEdit()) return;
-  const b=id? bookingOf(id):null;
-  if(id&&!b) return;
-  editingBooking=b?b.id:null;
-  document.getElementById('bkModalTitle').textContent=b?'예약 상세·편집':'예약 추가';
-  document.getElementById('bkDelBtn').style.display=b?'block':'none';
-  document.getElementById('bkType').value=b?b.type:'hotel';
+  const b=id? bookingOf(id):null, item=(id&&!b)? costItemOf(id):null;
+  if(id&&!b&&!item) return;
+  editingBooking=b?b.id:null; editingCostItem=item?item.id:null;
+  document.getElementById('bkModalTitle').textContent=b?'예약 상세·편집':item?'결제 항목 편집':'결제 항목 추가';
+  document.getElementById('bkDelBtn').style.display=(b||item)?'block':'none';
+  const sel=document.getElementById('bkType');
+  sel.value=b?(BK_TYPE_KIND[b.type]||'STAY'):item?(COST_KIND[item.kind]?item.kind:'OTHER'):'STAY';
+  // 이미 저장된 항목은 자기 쪽 안에서만 분류를 바꾼다 — 예약을 식비로 바꾸면 기간·조건·가격 기록이 갈 곳이 없다
+  [...sel.options].forEach(o=>{ o.disabled = b? !BK_KIND_TYPE[o.value] : item? !!BK_KIND_TYPE[o.value] : false; });
   fillBkSpotSelect(b);
   fillBkCarSpotSelects(b);
-  document.getElementById('bkTitle').value=b?b.title:'';
+  document.getElementById('bkTitle').value=b?b.title:item?(item.title||''):'';
   document.getElementById('bkProvider').value=(b&&b.provider)||'';
-  document.getElementById('bkPrice').value=b?fmtMoney(b.price):'';
-  document.getElementById('bkCur').value=(b&&b.cur)||'KRW';
-  document.getElementById('bkPayState').value=(b&&b.payState==='PAID')?'PAID':'';
+  const amount=b? b.price : item? costAmountOf(item,'amount') : null;
+  const curV=(b&&b.cur)||(item&&item.cur)||'KRW';
+  document.getElementById('bkPrice').value=(amount!==null&&amount>0)? fmtMoney(amount,curV) : '';
+  document.getElementById('bkCur').value=curV;
+  document.getElementById('bkPayState').value=b? (b.payState==='PAID'?'PAID':'RESERVED') : item? (item.payState==='PAID'||item.payState==='RESERVED'? item.payState:'NONE') : 'NONE';
+  document.getElementById('bkPaidOn').value=(b&&b.paidOn)||(item&&item.paidOn)||'';
   document.getElementById('bkStart').value=(b&&b.start)||'';
   document.getElementById('bkEnd').value=(b&&b.end)||'';
   document.getElementById('bkAdults').value=(b&&b.adults)||2;
@@ -3117,6 +3146,8 @@ function renderBookingStatusBox(b){
 }
 document.getElementById('bkType').onchange=toggleBkFields;
 document.getElementById('bkFreeCancel').onchange=toggleBkFields;
+document.getElementById('bkPaidOn').oninput=toggleBkFields;
+document.getElementById('bkPaidOn').onchange=toggleBkFields;
 // 숙소 연결 선택 → 새 예약이면 이름·기간·인원·통화 프리필 (기존 예약의 연결 변경은 값 유지)
 document.getElementById('bkSpot').onchange=()=>{
   if(editingBooking) return;
@@ -3136,12 +3167,38 @@ document.getElementById('bkSpot').onchange=()=>{
   const d=this.value.replace(/[^\d]/g,''); this.value=d?(+d).toLocaleString('en-US'):'';
 }));
 document.getElementById('bkCancel').onclick=()=>document.getElementById('bookingModalBg').classList.remove('show');
-document.getElementById('bkSave').onclick=()=>{
+// 예약이 아닌 결제 항목(보험·유심·입장권…) — 여행 단위 비용(trip.costItems)에 저장한다. 하루 추가 비용과 같은 모양
+function saveCostItem(kind){
   const title=document.getElementById('bkTitle').value.trim();
-  const price=parseInt(document.getElementById('bkPrice').value.replace(/[^\d]/g,''));
+  const cur=document.getElementById('bkCur').value;
+  const amount=parseCostAmount(document.getElementById('bkPrice').value, cur);
+  if(!title){ toast('항목 이름을 입력하세요','#e63946'); return; }
+  if(amount===null){ toast('금액을 확인해 주세요 — 원·엔은 정수, 달러·유로·위안은 소수 둘째 자리까지','#e63946'); return; }
+  const paidOn=document.getElementById('bkPaidOn').value, ps=document.getElementById('bkPayState').value;
+  const isNew=!editingCostItem;
+  commit(()=>{
+    const list=trip().costItems=trip().costItems||[];
+    const item=isNew? {id:uid()} : list.find(x=>x.id===editingCostItem);
+    if(!item) return;
+    item.title=title; item.kind=kind; item.amount=amount; item.costBasis='TOTAL';
+    if(cur!=='KRW') item.cur=cur; else delete item.cur;
+    // 결제일이 있으면 날짜가 상태를 정한다 — 손으로 고른 상태는 두지 않는다(두 답이 갈리면 어느 쪽도 못 믿는다)
+    if(paidOn){ item.paidOn=paidOn; delete item.payState; }
+    else { delete item.paidOn; if(ps==='PAID'||ps==='RESERVED') item.payState=ps; else delete item.payState; }
+    if(isNew) list.push(item);
+  });
+  document.getElementById('bookingModalBg').classList.remove('show');
+  if(document.getElementById('bookingListBg').classList.contains('show')) renderBookingList();
+  toast(isNew?'결제 항목 저장됨':'결제 항목 수정됨');
+}
+document.getElementById('bkSave').onclick=()=>{
+  const type=bkTypeOf();
+  if(!type){ saveCostItem(document.getElementById('bkType').value); return; }
+  const title=document.getElementById('bkTitle').value.trim();
+  const curV=document.getElementById('bkCur').value;
+  const price=parseCostAmount(document.getElementById('bkPrice').value, curV);
   if(!title){ toast('예약 이름을 입력하세요','#e63946'); return; }
-  if(isNaN(price)||price<=0){ toast('예약 가격을 입력하세요','#e63946'); return; }
-  const type=document.getElementById('bkType').value;
+  if(price===null||price<=0){ toast('예약 가격을 입력하세요 — 원·엔은 정수, 달러·유로·위안은 소수 둘째 자리까지','#e63946'); return; }
   const sv=document.getElementById('bkStart').value, ev=document.getElementById('bkEnd').value;
   if(type==='hotel'&&document.getElementById('bkTrack').checked&&(!sv||!ev)){ toast('가격 추적에는 체크인·체크아웃 날짜가 필요해요','#e63946'); return; }
   if(sv&&ev){
@@ -3161,7 +3218,7 @@ document.getElementById('bkSave').onclick=()=>{
   const b=isNew? {id:uid(), createdAt:new Date().toISOString()} : bookingOf(editingBooking);
   if(!b) return;
   const fee=parseInt(document.getElementById('bkFee').value.replace(/[^\d]/g,''));
-  const curV=document.getElementById('bkCur').value;
+  const paidOn=document.getElementById('bkPaidOn').value;
   const identityChanged = b.start!==(sv||undefined)||b.end!==(ev||undefined)||b.title!==title;
   commit(()=>{
     b.type=type;
@@ -3170,7 +3227,9 @@ document.getElementById('bkSave').onclick=()=>{
     b.url=document.getElementById('bkUrl').value.trim();
     b.price=price;
     if(curV&&curV!=='KRW') b.cur=curV; else delete b.cur;   // KRW는 기본값이라 생략 (스팟 cur와 동일 규칙)
-    if(document.getElementById('bkPayState').value==='PAID') b.payState='PAID'; else delete b.payState;   // 결제함만 저장 — 없으면 예약(costPayStateOf)
+    // 결제일이 있으면 날짜가 상태를 정한다(costPayStateOf) — 손으로 고른 상태는 두지 않는다. 없으면 결제함만 저장(없으면 예약)
+    if(paidOn){ b.paidOn=paidOn; delete b.payState; }
+    else { delete b.paidOn; if(document.getElementById('bkPayState').value==='PAID') b.payState='PAID'; else delete b.payState; }
     if(sv) b.start=sv; else delete b.start;
     if(ev) b.end=ev; else delete b.end;
     if(type==='hotel'){
@@ -3225,6 +3284,15 @@ document.getElementById('bkSave').onclick=()=>{
   });
 };
 document.getElementById('bkDelBtn').onclick=()=>{
+  if(editingCostItem){
+    const item=costItemOf(editingCostItem); if(!item) return;
+    const snap=snapshot();
+    commit(()=>{ trip().costItems=(trip().costItems||[]).filter(x=>x.id!==item.id); if(!trip().costItems.length) delete trip().costItems; });
+    document.getElementById('bookingModalBg').classList.remove('show');
+    if(document.getElementById('bookingListBg').classList.contains('show')) renderBookingList();
+    toast('결제 항목 삭제됨','#8892b0',{fn:()=>undoWith(snap)});
+    return;
+  }
   const b=bookingOf(editingBooking); if(!b) return;
   if(!confirm(`"${b.title}" 예약 추적을 삭제할까요? (실제 예약이 취소되지는 않아요)`)) return;
   const snap=snapshot();

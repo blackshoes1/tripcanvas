@@ -142,6 +142,7 @@
               "basis": "ENTERED",
               "people": 1,
               "payState": "NONE",
+              "paidOn": null,
               "photos": [],
               "totalKRW": null,
               "state": "UNKNOWN"
@@ -156,6 +157,7 @@
               "basis": "ENTERED",
               "people": 1,
               "payState": "NONE",
+              "paidOn": null,
               "photos": [],
               "totalKRW": null,
               "state": "BOOKING"
@@ -170,6 +172,7 @@
               "basis": "ENTERED",
               "people": 1,
               "payState": "RESERVED",
+              "paidOn": null,
               "photos": [],
               "totalKRW": 50000,
               "state": "KNOWN"

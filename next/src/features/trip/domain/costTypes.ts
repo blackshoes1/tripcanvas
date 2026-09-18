@@ -14,8 +14,11 @@ export interface CostDetails {
     people: number;
     totalKRW: number | null;
     state: 'UNKNOWN' | 'PARTIAL' | 'FREE' | 'KNOWN' | 'BOOKING';
-    /** 예약해 둔 돈인가 이미 낸 돈인가. 고르지 않았으면 NONE — 어느 쪽으로도 단정하지 않는다. */
+    /** 예약해 둔 돈인가 이미 낸 돈인가. 고르지 않았으면 NONE — 어느 쪽으로도 단정하지 않는다.
+     *  결제일(`paidOn`)이 있으면 서버의 오늘(여행 시간대)이 정한 값이다 — 손으로 고른 표시가 아니다. */
     payState: CostPayState;
+    /** 결제(예정)일 `YYYY-MM-DD`. 없으면 null. 있으면 이 날부터 결제함이다 — 화면은 이 날짜를 보이고 상태는 `payState`를 쓴다. */
+    paidOn: string | null;
     /** 영수증·품목 사진의 **참조**(기기 사진 식별자). 원본 이미지는 문서에 넣지 않는다. */
     photos: string[];
   }[];

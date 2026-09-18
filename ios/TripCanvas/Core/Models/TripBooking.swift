@@ -94,6 +94,20 @@ struct TripBooking: Hashable, Sendable, Identifiable {
         set { raw.setOrRemove("payState", newValue == .paid ? .string(CostPayState.paid.rawValue) : nil) }
     }
 
+    /// 결제(예정)일 `YYYY-MM-DD`. **있으면 날짜가 상태를 정한다**(`costPayStateOf`, 2026-09-18) — 오늘이거나 지났으면
+    /// 결제함, 아직이면 예약이다. 그때 `payState`는 보지 않으므로 편집기는 결제일을 두면 `payState`를 지운다.
+    /// 날짜 모양이 아니면 저장하지 않는다(`normalizeBooking`이 버리는 것과 같다).
+    var paidOn: String? {
+        get { raw["paidOn"]?.stringValue }
+        set { raw.setOrRemove("paidOn", newValue.flatMap { ISODateText.isValid($0) ? .string($0) : nil }) }
+    }
+
+    /// 영수증 사진의 **참조**만(비용 항목 `CostEntry.photos`와 같은 규칙). 원본 이미지는 문서에 넣지 않는다.
+    var photos: [String] {
+        get { (raw["photos"]?.arrayValue ?? []).compactMap { $0.stringValue } }
+        set { raw.setOrRemove("photos", newValue.isEmpty ? nil : .array(newValue.map { .string($0) })) }
+    }
+
     /// 시작일 `YYYY-MM-DD` — 체크인·픽업·출발.
     var start: String? {
         get { raw["start"]?.stringValue }
@@ -263,12 +277,13 @@ struct TripBooking: Hashable, Sendable, Identifiable {
 }
 
 enum BookingDraftError: Equatable, Sendable {
-    case titleRequired, priceRequired, invalidAmount, trackNeedsDates, returnBeforePickup, sameDayNeedsTimes, checkoutNotAfterCheckin
+    case titleRequired, itemTitleRequired, priceRequired, invalidAmount, trackNeedsDates, returnBeforePickup, sameDayNeedsTimes, checkoutNotAfterCheckin
 
     /// 웹 toast와 같은 문장.
     var message: String {
         switch self {
         case .titleRequired: "예약 이름을 입력하세요"
+        case .itemTitleRequired: "항목 이름을 입력하세요"
         case .priceRequired: "예약 가격을 입력하세요"
         case .invalidAmount: "금액을 확인해 주세요. 원·엔은 정수로, 다른 통화는 소수 둘째 자리까지 입력할 수 있어요."
         case .trackNeedsDates: "가격 추적에는 체크인·체크아웃 날짜가 필요해요"

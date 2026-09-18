@@ -101,6 +101,8 @@ export interface DayPlanInput {
   legsPending?: number;
   /** 서버가 받은 환율(`serverFx`). 없으면 근사값이고 응답이 그렇게 말한다 */
   fx?: FxSnapshot;
+  /** 여행 시간대의 오늘(`resolveClock`) — 결제일이 있는 비용 항목의 상태를 정한다. 없으면 손으로 고른 상태만 본다 */
+  todayISO?: string;
 }
 
 /**
@@ -118,7 +120,7 @@ export function buildDayPlanView(input: DayPlanInput): DayPlanResponse | null {
   const day: Day = days[di];
   const spots = day.spots ?? [];
   const fx = input.fx ?? FX_FALLBACK_SNAPSHOT;
-  const dayView = buildDayView(trip, cache, di, fx.rates);
+  const dayView = buildDayView(trip, cache, di, fx.rates, input.todayISO);
   const timeline = dayTimelineOf(trip, cache, di);
   const dayMode = dayModeOf(day);
 
