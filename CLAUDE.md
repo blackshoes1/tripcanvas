@@ -43,19 +43,21 @@ npm run verify:all
 - [ ] **`next/src/app/api/**`·`next/src/server/**`·`next/src/features/**`을 바꿨으면 NAS에 따로 배포한다.** `main` 머지는 **Vercel 정적 웹만** 내보낸다 — API는 NAS 이미지라 다시 빌드하지 않으면 옛 코드가 그대로 돈다:
 
 ```bash
-git archive --format=tar HEAD | gzip > /tmp/tc-main.tgz
-scp -O /tmp/tc-main.tgz nas:~/ && ssh nas 'cd ~/tripcanvas && tar -xzf ~/tc-main.tgz && rm ~/tc-main.tgz'
-ssh nas 'cd ~/tripcanvas && sudo /usr/local/bin/docker compose -f deploy/docker-compose.yml build api && sudo /usr/local/bin/docker compose -f deploy/docker-compose.yml up -d api'
-curl -s -o /dev/null -w "%{http_code}\n" https://bokbok9.tail8b977f.ts.net/api/v1/trips   # 401이면 산다
+scripts/nas-deploy.sh              # tailnet 안의 맥, 저장소 폴더에서. origin/main을 fetch → 아카이브 → NAS build → up → 확인
+scripts/nas-deploy.sh --migrate    # 마이그레이션을 추가했을 때 — migrate도 다시 빌드해 한 번 돌리고 종료 코드 0을 본다
 ```
 
-  ⚠️ **마이그레이션을 추가했으면 `migrate`도 다시 빌드한다.** `migrate`는 별도 이미지라 `build api`만 하면
+  스크립트는 **fetch가 실패하면 멈추고**, 담은 커밋을 `TC_REVISION`으로 이미지 라벨·환경변수에 박은 뒤,
+  떠 있는 컨테이너의 라벨과 `GET /api/health`의 `revision`이 그 커밋인지까지 확인하고 끝난다.
+  ⚠️ **2026-09-19 새벽 배포는 build가 성공했는데 내용이 #239였다** — 맥의 `origin/main`이 전날 것이라
+  `git archive origin/main`이 옛 코드를 담았고, 로그는 전부 초록이었다. 손으로 할 때 `git archive HEAD`도 같은 함정이다.
+  어떤 코드가 도는지는 **컨테이너 시작 시각이 아니라** `curl -s https://bokbok9.tail8b977f.ts.net/api/health`의 `revision`으로 본다.
+  ⚠️ **마이그레이션을 추가했으면 `--migrate`.** `migrate`는 별도 이미지라 `api`만 빌드하면
   옛 이미지가 돌고 **"migrations applied successfully"라고 찍으면서 새 테이블을 만들지 않는다**
-  (2026-09-06 `leg_cache`가 그랬다 — 로그는 초록인데 테이블이 없었다):
+  (2026-09-06 `leg_cache`가 그랬다 — 로그는 초록인데 테이블이 없었다). 끝나면 눈으로 확인한다:
 
 ```bash
-ssh nas 'cd ~/tripcanvas && sudo /usr/local/bin/docker compose -f deploy/docker-compose.yml build migrate && sudo /usr/local/bin/docker compose -f deploy/docker-compose.yml up -d migrate'
-ssh nas "sudo /usr/local/bin/docker exec tripcanvas-postgres-1 psql -U tripcanvas -d tripcanvas -c '\\d <새 테이블>'"   # 눈으로 확인한다
+ssh nas "sudo /usr/local/bin/docker exec tripcanvas-postgres-1 psql -U tripcanvas -d tripcanvas -c '\\d <새 테이블>'"
 ```
 
   ⚠️ **새 라우트는 배포 전까지 404다.** 앱·웹이 그걸 "값이 없음"으로 조용히 넘기게 설계돼 있으면

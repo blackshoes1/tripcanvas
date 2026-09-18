@@ -15,7 +15,8 @@ export async function GET() {
     checkRealtime: env.realtimeHealthUrl ? () => probeRealtimeHealth(env.realtimeHealthUrl!) : null,
     lastBackupAt: env.databaseUrl && env.backupMaxAgeHours ? lastSuccessfulBackupAt : null,
     backupMaxAgeHours: env.backupMaxAgeHours ?? undefined,
-    readOnly: env.readOnly
+    readOnly: env.readOnly,
+    revision: process.env.TC_REVISION   // 이미지 빌드 때 박힌 커밋 SHA — 배포 스크립트가 이 값으로 '새 코드가 도는지'를 확인한다
   });
   return Response.json(report, { status: report.ok ? 200 : 503, headers: { 'cache-control': 'no-store' } });
 }

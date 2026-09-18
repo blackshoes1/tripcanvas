@@ -184,7 +184,24 @@ curl -m 20 --resolve "bokbok9.tail8b977f.ts.net:443:$IP" https://bokbok9.tail8b9
 
 ### 파일 배포
 
-git이 없으므로 맥에서 보낸다:
+**평소에는 `scripts/nas-deploy.sh` 하나다**(2026-09-19). 맥의 저장소 폴더에서 돌리면 `origin/main`을 fetch하고,
+그 커밋을 아카이브해 NAS에 풀고, 커밋 SHA를 `TC_REVISION`으로 넣어 빌드한 뒤, 떠 있는 컨테이너의 이미지 라벨과
+`GET /api/health`의 `revision`이 같은 커밋인지 확인하고 끝난다. 마이그레이션을 추가했으면 `--migrate`, 사이드카를
+바꿨으면 `--realtime`. 하나라도 어긋나면 0이 아닌 코드로 멈춘다.
+
+왜 생겼나: 2026-09-19 새벽 배포는 `docker build`가 성공했고 컨테이너도 새로 떴는데 **내용이 #239였다.**
+`git fetch`가 돌지 않아 맥의 `origin/main`이 전날 것이었고 `git archive origin/main`은 그걸 그대로 담았다.
+로그는 전부 초록이라 "재빌드했는데도 옛 규칙"의 원인을 찾는 데 몇 시간이 들었다. 컨테이너 안을
+`grep -rl stayCostShares /app/next/.next/server`로 뒤진 결과가 빈 줄로 나온 것이 유일한 단서였다.
+그래서 이제는 **컨테이너 시작 시각이 아니라 `revision`으로 확인한다.**
+
+```bash
+curl -s https://bokbok9.tail8b977f.ts.net/api/health | sed -n 's/.*"revision":"\([^"]*\)".*/\1/p'   # 도는 커밋
+ssh nas 'sudo /usr/local/bin/docker inspect -f "{{index .Config.Labels \"org.opencontainers.image.revision\"}}" tripcanvas-api-1'
+```
+
+손으로 할 때(스크립트가 안 될 때)는 아래 순서인데, `git archive`는 **fetch가 성공한 뒤의 `origin/main`**을 담아야 하고
+`HEAD`를 담으면 맥의 체크아웃이 옛 것일 때 같은 함정에 빠진다. git이 없으므로 맥에서 보낸다:
 
 ```bash
 scp -O deploy/docker-compose.yml deploy/docker-compose.staging.yml deploy/docker-compose.caddy.yml \

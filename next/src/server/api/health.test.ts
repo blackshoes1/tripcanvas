@@ -22,6 +22,15 @@ describe('healthReport', () => {
     expect(r.components.backup.status).toBe('unconfigured');
   });
 
+  it('revision은 빌드 때 박힌 커밋이고, 없으면 unknown이라고 말한다 — 배포 스크립트가 새 코드가 도는지 이걸로 본다', async () => {
+    const built = await healthReport({ databaseConfigured: false, checkDatabase: ok, revision: '72d882f0000000000000000000000000deadbeef' });
+    expect(built.revision).toBe('72d882f0000000000000000000000000deadbeef');
+    const unknown = await healthReport({ databaseConfigured: false, checkDatabase: ok });
+    expect(unknown.revision).toBe('unknown');
+    const blank = await healthReport({ databaseConfigured: false, checkDatabase: ok, revision: '  ' });
+    expect(blank.revision).toBe('unknown');
+  });
+
   it('DB 조회가 실패하면 UNAVAILABLE — 내부 메시지는 밖으로 내지 않는다', async () => {
     const r = await healthReport({ databaseConfigured: true, checkDatabase: async () => { throw new Error('password authentication failed for user "tc"'); } });
     expect(r.ok).toBe(false);
