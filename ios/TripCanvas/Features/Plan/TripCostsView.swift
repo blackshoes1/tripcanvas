@@ -59,7 +59,7 @@ struct TripCostsView: View {
                 if loading && response == nil && snapshot == nil { ProgressView("비용을 확인하는 중…") }
                 if let error {
                     Section {
-                        Text(error).foregroundStyle(.orange)
+                        Text(error).foregroundStyle(Ink.warning)
                         Button("다시 불러오기") { Task { await load() } }.disabled(loading || saving)
                     }
                 }
@@ -163,12 +163,12 @@ struct TripCostsView: View {
                     .font(.caption).foregroundStyle(.secondary)
                     if prep.group.amount(.none) > 0 {
                         Text("결제 상태를 고르지 않은 \(money(prep.group.amount(.none)))은 어느 쪽으로도 세지 않았어요")
-                            .font(.caption).foregroundStyle(.orange)
+                            .font(.caption).foregroundStyle(Ink.warning)
                     }
                 }
             } else if response != nil {
                 Label("합계는 API를 새 버전으로 올린 뒤 보여요. 목록과 입력은 지금도 됩니다.", systemImage: "server.rack")
-                    .font(.caption).foregroundStyle(.orange)
+                    .font(.caption).foregroundStyle(Ink.warning)
             }
         } footer: {
             Text("가기 전에 내는 돈 — 항공·숙박·렌트 예약과 보험·유심·미리 산 입장권. 결제일을 정해 두면 그 날부터 결제 완료로 셉니다. 항공은 날짜로 나누지 않고, 숙박·렌터카는 날짜별 비용에도 하루치로 보여요.")
@@ -244,7 +244,7 @@ struct TripCostsView: View {
                     } label: {
                         Label(paid ? CostPayState.reserved.label : CostPayState.paid.label, systemImage: paid ? "clock" : "checkmark.circle")
                     }
-                    .tint(paid ? .orange : .green)
+                    .tint(paid ? Ink.warning : Ink.positive)
                 }
             }
         }
@@ -255,7 +255,7 @@ struct TripCostsView: View {
         Text(state.label)
             .font(.caption2)
             .padding(.horizontal, 6).padding(.vertical, 2)
-            .background((state == .paid ? Color.green : state == .reserved ? Color.orange : Ink.soft).opacity(0.14), in: Capsule())
+            .background((state == .paid ? Ink.positive : state == .reserved ? Ink.warning : Ink.soft).opacity(0.14), in: Capsule())
     }
 
     // MARK: 가서 쓰는 비용 — 정산
@@ -281,7 +281,7 @@ struct TripCostsView: View {
                 }
             } else if response != nil {
                 Label("합계는 API를 새 버전으로 올린 뒤 보여요. 날짜별 입력은 지금도 됩니다.", systemImage: "server.rack")
-                    .font(.caption).foregroundStyle(.orange)
+                    .font(.caption).foregroundStyle(Ink.warning)
             }
             if canEdit, let today = todayIndex {
                 Button { quickSpend = QuickSpendTarget(day: today) } label: {
@@ -335,10 +335,10 @@ struct TripCostsView: View {
                     }
                     if !day.title.isEmpty { Text(day.title).font(.caption).foregroundStyle(.secondary) }
                     if day.cost.onSiteKRW == nil {
-                        Text("예약 하루치 포함 · API 갱신 전").font(.caption2).foregroundStyle(.orange)
+                        Text("예약 하루치 포함 · API 갱신 전").font(.caption2).foregroundStyle(Ink.warning)
                     }
                     if let count = day.cost.details?.unknownCount, count > 0 {
-                        Text("미정·일부 금액 \(count)개").font(.caption).foregroundStyle(.orange)
+                        Text("미정·일부 금액 \(count)개").font(.caption).foregroundStyle(Ink.warning)
                     }
                 }
                 .contentShape(Rectangle())
@@ -512,7 +512,7 @@ struct PaidOnSheet: View {
                         Button("결제일 지우기", role: .destructive) { Task { await save(nil) } }.disabled(saving)
                     } footer: { Text("지우면 결제 상태를 다시 손으로 고릅니다.") }
                 }
-                if failed { Section { Text("저장하지 못했어요. 다시 시도해 주세요.").foregroundStyle(.orange) } }
+                if failed { Section { Text("저장하지 못했어요. 다시 시도해 주세요.").foregroundStyle(Ink.warning) } }
             }
             .paperGround()
             .tint(Ink.accent)

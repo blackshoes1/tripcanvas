@@ -223,6 +223,15 @@ localStorage: `tripcanvas_v1`(여행) · `tripcanvas_legs_v4`(구간 캐시, 수
 - 지도는 한 번 만들면 **숨기기만 한다**(`TripPlanView.mapMounted` + `MapEngineView.isVisible`). 숨긴 동안 카카오는 `pauseEngine`, 구글은 `isHidden` — 버리지 않으니 다시 보일 때 인증·타일을 되풀이하지 않는다. 처음 열기 전에는 만들지 않는다.
 - 탭 바는 **언제나 화면 맨 아래다** — 내용 위에 겹쳐 두고 키보드 안전 영역을 무시한다(`TripHomeView.tabBarHeight`만큼 내용이 위에서 끝난다).
 
+**앱 화면은 정보 위계가 먼저다 — 더 많이가 아니라 지금 필요한 것부터.** (2026-09-18 모바일 UI 정리)
+
+- **지금 = 실행, 일정 = 계획.** `지금`의 다음 일정 카드는 출발·도착·이동·머무름을 **알약(`LegPill`)** 으로만 말하고(`NextActionCard.facts` — 없는 것은 말하지 않는다), 여행 전에는 D-day와 예약 정보로 간다. `일정`은 Day별 목록과 편집이다.
+- **일정 상단은 세 줄이다** — 하루 제목(`headline`) · `이동 2시간 27분 · 예상 ₩456,665`(`TripPlanView.summaryLine`) · `이대로면 15:56에 끝나요`. 총 이동거리·머무는 시간 미정·예약할 곳·하루 예산·비용 미정·교통비 안내는 **'오늘 요약 보기'를 눌렀을 때만**(`dayDetails`). 기본 화면에서는 첫 장소가 요약보다 위에 있어야 한다. Day 칩은 고른 날만 요일·제목까지 말하고 나머지는 `Day 2 / 10/26`뿐이다(`TimeFormat.dayChipShort`).
+- **이모지와 벡터 아이콘을 한 화면에 섞지 않는다.** 장소 유형은 `SpotCategory.symbol`(SF Symbols), 이동은 `TravelMode.symbol`, 숙소 이월·복귀는 `house.fill`, 고정 시각은 `pin.fill`. `SpotCategory.icon`(이모지)은 웹·공유 문장과 같은 **글자**용으로만 남는다. 이동 정보는 장소보다 가벼운 알약(`LegPill`)이다 — 장소 이름이 언제나 가장 먼저 읽힌다.
+- **색은 뜻이다** — `Ink.accent`(누를 것·고른 것) · `Ink.warning`(시간 경고·미정·확인할 것) · `Ink.danger`(오류·삭제·초과·취소) · `Ink.positive`(완료) · `Ink.info`(상대가 정한 것). 화면이 `.orange`·`.red`·`.green`·`.blue`를 직접 부르지 않는다. 늦게 끝나는 것은 경고가 아니다 — 자정을 넘길 때(`overloaded`)만 주의색.
+- **지도의 범위(이 날 | 전체)와 검색은 다른 일이다** — 같은 세그먼트에 넣지 않는다(`mapScope` + `mapSearching`). 지도가 뜨기 전에는 스피너만 두지 않고 `MapLoadingPlaceholder`가 무엇을 기다리는지 말한다(실패는 `EmptyStateView`가 따로).
+- 더보기는 설정 앱의 한 줄(아이콘·이름·설명·꺾쇠)이고 행 전체가 눌린다. 큰 카드로 감싸지 않는다.
+
 **계산이 늦게 오는 화면은 반쯤 지어 보이지 않는다.** (앱의 일정 화면 — 2026-09-07에 "화면이 튄다"로 드러났다)
 
 앱의 일자 화면은 **둘로** 그려진다: 문서(즉시)와 서버 계산(`dayPlan`, 늦게). 계산에 딸린 것이 많다 —

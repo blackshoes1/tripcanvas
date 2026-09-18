@@ -226,8 +226,16 @@ struct TodayView: View {
                 .multilineTextAlignment(.center)
 
             // 막아 두는 것이 아니라 기본이 D-day라는 뜻이다 — 눌러서 볼 수 있다.
-            SecondaryActionButton(title: "여행 보기", systemImage: "eye") {
-                model.showsPlanPreview = true
+            // 여행 전의 '지금'은 준비다 — 예약 정보로 바로 간다(항공·숙박·렌터카).
+            HStack(spacing: Space.s) {
+                SecondaryActionButton(title: "여행 보기", systemImage: "eye") {
+                    model.showsPlanPreview = true
+                }
+                NavigationLink { BookingListView(trip: trip) } label: {
+                    Label("예약 정보", systemImage: "ticket").frame(minHeight: 44)
+                }
+                .buttonStyle(.bordered)
+                .tint(Ink.ink)
             }
             .padding(.top, Space.s)
             Spacer(minLength: Space.xl)
@@ -318,29 +326,29 @@ struct NextActionCard: View {
                 Text(next.title).font(.title2.weight(.bold))
             }
 
-            HStack(spacing: Space.m) {
-                if let travel = next.travelMinutes, travel > 0 {
-                    Label(TimeFormat.duration(travel) + (isEstimate ? " (예상)" : ""), systemImage: "arrow.triangle.turn.up.right.circle")
-                }
-                if let start = next.startMinutes {
-                    Label(TimeFormat.clock(start), systemImage: "clock")
-                }
-                if let stay = next.stayMinutes, stay > 0 {
-                    Label(TimeFormat.duration(stay), systemImage: "hourglass")
+            // 실행에 필요한 사실만 — 출발 · 도착 · 이동 · 머무름. 두 알씩 줄을 바꿔 좁은 화면에서도 넘치지 않는다.
+            let facts = NextActionCard.facts(next, isEstimate: isEstimate)
+            if !facts.isEmpty {
+                VStack(alignment: .leading, spacing: Space.xs) {
+                    ForEach(Array(stride(from: 0, to: facts.count, by: 2)), id: \.self) { start in
+                        HStack(spacing: Space.xs) {
+                            ForEach(facts[start..<min(start + 2, facts.count)], id: \.self) { fact in
+                                LegPill(symbol: fact.symbol, text: fact.text)
+                            }
+                        }
+                    }
                 }
             }
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
 
             if let departure = next.departure {
                 // 명령하지 않는다 — 서버가 만든 문장을 그대로 쓴다(§38).
                 Text(departure.text)
                     .font(.body.weight(.semibold))
-                    .foregroundStyle(departure.level == .late ? Color.red : .primary)
+                    .foregroundStyle(departure.level == .late ? Ink.danger : Ink.ink)
             }
 
             if activity.isFixedCommitment {
-                StatusChip(text: "예약된 일정", symbol: "lock.fill", tint: .blue)
+                StatusChip(text: "예약된 일정", symbol: "lock.fill", tint: Ink.info)
             }
 
             VStack(spacing: Space.s) {
@@ -380,6 +388,32 @@ extension NextActionCard {
     static func prioritizesCompletion(_ status: TravelStatus) -> Bool {
         status == .arrived || status == .inProgress || status == .completed
     }
+
+    struct Fact: Hashable {
+        let symbol: String
+        let text: String
+    }
+
+    /// 카드에 보일 사실들 — 출발(서버가 정한 시각) → 도착 예정 → 이동 → 머무름. 없는 것은 말하지 않는다.
+    /// 도착 예정이 없을 때만 시작 시각을 대신 말한다(둘 다 두면 같은 시각이 두 번 보인다).
+    static func facts(_ next: NextAction, isEstimate: Bool) -> [Fact] {
+        var out: [Fact] = []
+        if let departure = next.departure {
+            out.append(Fact(symbol: "figure.walk.departure", text: "출발 \(TimeFormat.clock(departure.leaveMinutes))"))
+        }
+        if let eta = next.etaMinutes {
+            out.append(Fact(symbol: "mappin.and.ellipse", text: "도착 \(TimeFormat.clock(eta))"))
+        } else if let start = next.startMinutes {
+            out.append(Fact(symbol: "clock", text: TimeFormat.clock(start)))
+        }
+        if let travel = next.travelMinutes, travel > 0 {
+            out.append(Fact(symbol: "arrow.triangle.turn.up.right.circle", text: "이동 \(TimeFormat.duration(travel))\(isEstimate ? " 예상" : "")"))
+        }
+        if let stay = next.stayMinutes, stay > 0 {
+            out.append(Fact(symbol: "hourglass", text: "\(TimeFormat.duration(stay)) 머무름"))
+        }
+        return out
+    }
 }
 
 struct ActivityRow: View {
@@ -404,10 +438,10 @@ struct ActivityRow: View {
                 HStack(spacing: Space.s) {
                     Text(activity.name).font(.body.weight(.semibold))
                     if activity.isFixedCommitment {
-                        StatusChip(text: "예약됨", symbol: "lock.fill", tint: .blue)
+                        StatusChip(text: "예약됨", symbol: "lock.fill", tint: Ink.info)
                     }
                     if activity.mustVisit {
-                        StatusChip(text: "꼭 가기", symbol: "star.fill", tint: .orange)
+                        StatusChip(text: "꼭 가기", symbol: "star.fill", tint: Ink.warning)
                     }
                 }
                 if !activity.desc.isEmpty {
@@ -430,8 +464,8 @@ struct ActivityRow: View {
         // 한 번의 터치로 처리되게 — 메뉴 안으로 숨기지 않는다(§17).
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             if canEdit {
-                Button(action: onSkip) { Label("건너뛰기", systemImage: "arrow.uturn.forward") }.tint(.orange)
-                Button(action: onComplete) { Label("다녀옴", systemImage: "checkmark") }.tint(.green)
+                Button(action: onSkip) { Label("건너뛰기", systemImage: "arrow.uturn.forward") }.tint(Ink.warning)
+                Button(action: onComplete) { Label("다녀옴", systemImage: "checkmark") }.tint(Ink.positive)
             }
         }
         .contextMenu {
@@ -462,7 +496,7 @@ struct FinishedRow: View {
     var body: some View {
         HStack(spacing: Space.m) {
             Image(systemName: activity.status == .completed ? "checkmark.circle.fill" : "arrow.uturn.forward.circle")
-                .foregroundStyle(activity.status == .completed ? Color.green : .secondary)
+                .foregroundStyle(activity.status == .completed ? Ink.positive : Ink.soft)
             Text(activity.name)
                 .strikethrough(activity.status == .completed)
                 .foregroundStyle(.secondary)
@@ -499,7 +533,7 @@ struct TodayMapCard: View {
                         if let location = activity.location {
                             Marker(activity.name, systemImage: activity.type.symbol,
                                    coordinate: CLLocationCoordinate2D(latitude: location.lat, longitude: location.lng))
-                                .tint(activity.id == next?.activityId ? .red : .blue)
+                                .tint(activity.id == next?.activityId ? Ink.accent : Ink.info)
                         }
                     }
                     UserAnnotation()

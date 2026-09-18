@@ -45,6 +45,19 @@ enum Ink {
     }
 }
 
+/// **뜻이 있는 색** — 강조(`accent`)는 누를 것·고른 것이고, 아래는 상태다. 화면이 `.orange`·`.red`를 직접 부르면
+/// 기능마다 다른 색이 생긴다(2026-09-18 정리). 색만으로 말하지 않는다 — 문구·기호가 늘 함께 간다(§47).
+extension Ink {
+    /// 주의 — 시간 관련 경고 · 비용 미정 · 확인이 필요한 것
+    static let warning = adaptive(light: 0xB8650F, dark: 0xF0A050)
+    /// 오류 · 삭제 · 예산 초과 · 취소
+    static let danger = adaptive(light: 0xB4342A, dark: 0xEF7A6A)
+    /// 완료 · 결제 완료
+    static let positive = adaptive(light: 0x3E7A4C, dark: 0x8FC79B)
+    /// 정보 — 상대가 정한 것(예약된 일정)
+    static let info = adaptive(light: 0x2E5C6E, dark: 0x7FA9BC)
+}
+
 private extension UIColor {
     convenience init(rgb: UInt32) {
         self.init(red: CGFloat((rgb >> 16) & 0xFF) / 255, green: CGFloat((rgb >> 8) & 0xFF) / 255,
@@ -174,6 +187,13 @@ enum TimeFormat {
         return "\(month)/\(day) (\(weekday))"
     }
 
+    /// 고르지 않은 날의 칩 "10/26" — 요일은 고른 날에서만 말한다(정보량을 줄인다). 날짜가 없으면 nil.
+    static func dayChipShort(_ iso: String) -> String? {
+        let parts = iso.split(separator: "-")
+        guard parts.count == 3, Int(parts[0]) != nil, let month = Int(parts[1]), let day = Int(parts[2]) else { return nil }
+        return "\(month)/\(day)"
+    }
+
     /// "10:32에 받아온 정보예요" 같은 오프라인 표기용.
     static func shortTime(_ date: Date) -> String {
         let formatter = DateFormatter()
@@ -272,6 +292,43 @@ struct EmptyStateView: View {
         }
         .padding(Space.xl)
         .frame(maxWidth: .infinity)
+    }
+}
+
+/// 지도가 뜨기 전 자리. 빈 화면에 스피너만 두지 않는다 — 무엇을 기다리는지 말한다(§34).
+/// 지도 뷰 **뒤**에 깔아 두면 SDK가 첫 프레임을 그리기 전까지 이것이 보이고, 그 뒤로는 지도가 덮는다.
+struct MapLoadingPlaceholder: View {
+    var message = "지도를 불러오는 중이에요"
+
+    var body: some View {
+        ZStack {
+            Ink.sunken
+            VStack(spacing: Space.s) {
+                ProgressView()
+                Text(message).font(.caption).foregroundStyle(Ink.soft)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(message)
+    }
+}
+
+/// 이동 정보 한 알 — `택시 · 26분 · 19.7km`. 장소 이름보다 가볍게, 카드가 아니라 알약으로.
+/// ⚠️ 글은 문장 하나다 — 조각 Text를 늘어놓으면 접근성 글자 크기에서 `12.4k` / `m`처럼 단어가 잘린다.
+struct LegPill: View {
+    let symbol: String
+    let text: String
+
+    var body: some View {
+        HStack(spacing: Space.xs) {
+            Image(systemName: symbol)
+            Text(text)
+        }
+        .font(.caption2)
+        .foregroundStyle(Ink.soft)
+        .padding(.horizontal, Space.s)
+        .padding(.vertical, 3)
+        .background(Ink.sunken, in: Capsule())
     }
 }
 
