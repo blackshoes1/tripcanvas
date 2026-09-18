@@ -118,7 +118,7 @@ struct CandidateBoardView: View {
                     // 고른 자리는 여기까지만 와 있다 — 담기를 눌러야 일행에게 간다(§37).
                     if let place = pickedPlace {
                         HStack(alignment: .top, spacing: Space.s) {
-                            Text(place.category?.icon ?? "📍")
+                            Image(systemName: place.category?.symbol ?? "mappin").foregroundStyle(Ink.soft).frame(width: 22)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(place.name).font(.subheadline.weight(.medium))
                                 if !place.address.isEmpty {

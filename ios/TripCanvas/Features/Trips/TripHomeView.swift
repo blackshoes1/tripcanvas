@@ -138,17 +138,27 @@ struct TripHomeView: View {
         List {
             Section("이 여행") {
                 ForEach(TripPanel.allCases) { item in
+                    // 설정 앱의 한 줄처럼 — 아이콘·이름·한 줄 설명·꺾쇠. 행 전체가 눌린다.
                     Button { panel = item } label: {
-                        Label {
+                        HStack(spacing: Space.m) {
+                            Image(systemName: item.symbol)
+                                .foregroundStyle(Ink.accent)
+                                .frame(width: 24)
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(item.label).foregroundStyle(Ink.ink)
                                 Text(item.hint).font(.caption).foregroundStyle(Ink.soft)
                             }
-                        } icon: {
-                            Image(systemName: item.symbol).foregroundStyle(Ink.accent)
+                            Spacer(minLength: Space.s)
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(Ink.faint)
                         }
                         .frame(minHeight: 44)
+                        .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityAddTraits(.isButton)
                 }
             }
         }

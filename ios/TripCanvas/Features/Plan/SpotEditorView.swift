@@ -108,7 +108,7 @@ struct SpotEditorView: View {
                     Picker("종류", selection: $draft.category) {
                         Text("미지정").tag(SpotCategory?.none)
                         ForEach(SpotCategory.allCases, id: \.self) { category in
-                            Text("\(category.icon) \(category.label)").tag(SpotCategory?.some(category))
+                            Label(category.label, systemImage: category.symbol).tag(SpotCategory?.some(category))
                         }
                     }
                 }

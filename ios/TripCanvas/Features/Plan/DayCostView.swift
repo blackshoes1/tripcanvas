@@ -34,7 +34,7 @@ struct DayCostSummaryView: View {
                 if let budget = details.budget {
                     let difference = budget.differenceKRW
                     Text("입력된 금액 기준 \(TimeFormat.money(Double(abs(difference)), currency: "KRW")) \(difference < 0 ? "초과" : "여유")")
-                        .font(.caption).foregroundStyle(difference < 0 ? Color.orange : .secondary)
+                        .font(.caption).foregroundStyle(difference < 0 ? Ink.warning : .secondary)
                 }
                 if details.unknownCount > 0 {
                     Text("비용 미정 \(details.unknownCount)개 · 최종 비용은 더 늘어날 수 있어요")
@@ -323,7 +323,7 @@ struct CostEntryEditor: View {
                         Text("무엇에 썼는지 기억하려고 붙입니다. 사진 자체는 올리지 않고 이 기기 사진 보관함의 위치만 기억해요 — 일행에게는 보이지 않습니다.")
                     }
                 }
-                if failed { Section { Text("비용을 저장하지 못했어요. 입력 내용은 유지되어 있어요.").foregroundStyle(.orange) } }
+                if failed { Section { Text("비용을 저장하지 못했어요. 입력 내용은 유지되어 있어요.").foregroundStyle(Ink.warning) } }
                 if target.isExtra {
                     Section { Button("항목 삭제", role: .destructive) { Task { await save(nil) } }.disabled(saving) }
                 }

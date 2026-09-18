@@ -369,6 +369,21 @@ enum SpotCategory: String, CaseIterable, Sendable {
         case .nature: "🌿"
         }
     }
+
+    /// 앱 화면의 아이콘(SF Symbols). `icon`(이모지)은 웹·공유 문장과 같은 글자용이고, 화면은 이것을 쓴다 —
+    /// 이모지와 벡터 아이콘을 한 화면에 섞지 않는다(2026-09-18).
+    var symbol: String {
+        switch self {
+        case .stay: "bed.double.fill"
+        case .food: "fork.knife"
+        case .cafe: "cup.and.saucer.fill"
+        case .sight: "building.columns.fill"
+        case .activity: "figure.run"
+        case .shop: "bag.fill"
+        case .transport: "tram.fill"
+        case .nature: "leaf.fill"
+        }
+    }
 }
 
 /// `lib.js`의 `_STATUS`. 자동으로 완료를 판정하지 않는다 — 사용자가 누른다.

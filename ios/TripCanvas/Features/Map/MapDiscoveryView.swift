@@ -113,8 +113,13 @@ struct MapDiscoveryView: View {
                 }
             }
             HStack {
-                Text("☆ 가고 싶은 곳 · 숫자 일정 · 📍 검색")
-                    .font(.caption2).foregroundStyle(.secondary)
+                HStack(spacing: Space.s) {
+                    Label("가고 싶은 곳", systemImage: "star")
+                    Label("일정", systemImage: "number")
+                    Label("검색", systemImage: "mappin")
+                }
+                .font(.caption2).foregroundStyle(Ink.soft)
+                .accessibilityElement(children: .combine)
                 Spacer(minLength: Space.xs)
                 Button {
                     Task { await model.search() }

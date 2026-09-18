@@ -38,6 +38,8 @@ struct MapEngineView: View {
         }
         // 엔진이 바뀌면 뷰를 새로 만든다 — 같은 자리에 다른 SDK를 끼워 넣지 않는다.
         .id(usesKakao ? "kakao" : "google")
+        // SDK가 첫 프레임을 그리기 전에는 빈 흰 면이 아니라 이 자리가 보인다. 그 뒤로는 지도가 덮는다.
+        .background(MapLoadingPlaceholder())
     }
 }
 
