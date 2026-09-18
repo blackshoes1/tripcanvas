@@ -281,6 +281,13 @@ struct TripCostsView: View {
                     if response.transportUnpriced {
                         Text("아직 계산되지 않은 교통비는 포함되지 않았어요").font(.caption).foregroundStyle(.secondary)
                     }
+                    // 날짜별 줄은 웹 일자 카드와 같은 '그날 비용'이다 — 예약 하루치(숙박은 밤마다·렌터카는 빌린 날마다)를 더한다.
+                    // 위 합계는 가서 쓰는 돈만이라 둘이 다르다는 것을 여기서 말한다(2026-09-18 "웹은 나오는데 앱만 안 나온다").
+                    let share = Self.bookingShareTotal(response)
+                    if share > 0 {
+                        Text("날짜별 줄은 예약 하루치 \(money(share))를 더한 그날 비용이에요 · 날짜별 합계 \(money(onSite.totalKRW + share))")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                 }
             } else if response != nil {
                 Label("합계는 API를 새 버전으로 올린 뒤 보여요. 날짜별 입력은 지금도 됩니다.", systemImage: "server.rack")
@@ -294,7 +301,7 @@ struct TripCostsView: View {
                 .buttonStyle(.borderedProminent)
             }
         } footer: {
-            Text("장소 비용·추가 비용·교통비만 셉니다. 예약 하루치는 예약 결제 금액에 있어요.")
+            Text("합계는 장소 비용·추가 비용·교통비만 셉니다. 날짜별 줄에는 숙박·렌터카 예약의 그날 몫도 더해 보여요(웹 일자 카드와 같아요). 예약 전액은 예약 결제 금액에 있어요.")
         }
         Section("날짜별") {
             if let response {
@@ -333,12 +340,14 @@ struct TripCostsView: View {
                                 .background(Ink.accent, in: Capsule()).foregroundStyle(.white)
                         }
                         Spacer()
-                        Text(money(day.cost.onSiteKRW ?? day.cost.total)).monospacedDigit()
+                        // 웹 일자 카드의 "하루 비용"과 같은 값 — 장소·추가 비용·교통 + 예약 하루치.
+                        Text(money(day.cost.total)).monospacedDigit()
                         Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary)
                     }
                     if !day.title.isEmpty { Text(day.title).font(.caption).foregroundStyle(.secondary) }
-                    if day.cost.onSiteKRW == nil {
-                        Text("예약 하루치 포함 · API 갱신 전").font(.caption2).foregroundStyle(Ink.warning)
+                    if let onSite = day.cost.onSiteKRW, day.cost.total - onSite > 0 {
+                        Text("현지 \(money(onSite)) · 예약 하루치 \(money(day.cost.total - onSite))")
+                            .font(.caption2).foregroundStyle(.secondary)
                     }
                     if let count = day.cost.details?.unknownCount, count > 0 {
                         Text("미정·일부 금액 \(count)개").font(.caption).foregroundStyle(Ink.warning)
@@ -364,6 +373,14 @@ struct TripCostsView: View {
     }
 
     private func money(_ value: Double) -> String { TimeFormat.money(value, currency: "KRW") }
+
+    /// 날짜별 줄에 더해진 예약 하루치의 합 — 그날 비용(`total`)에서 가서 쓰는 돈(`onSiteKRW`)을 뺀 것. 옛 API(`onSiteKRW` 없음)는 0.
+    static func bookingShareTotal(_ response: TripCostsResponse) -> Double {
+        response.days.reduce(0) { sum, day in
+            guard let onSite = day.cost.onSiteKRW else { return sum }
+            return sum + max(0, day.cost.total - onSite)
+        }
+    }
 
     /// 환율 한 줄 — **원 단위로 반올림**하고, 엔은 100엔 기준으로 말한다("100 JPY ≈ 931원"). 소수점 환율은 시세표의 말이지
     /// 여행자의 말이 아니다. 자릿수 구분은 로케일과 무관하게 쉼표다(테스트가 문자열을 본다).
