@@ -30,6 +30,8 @@ export interface DayDoc {
 }
 export interface TripDoc {
   id?: string; name?: string; start?: string; timeZone?: string; days?: DayDoc[]; bookings?: unknown[];
+  /** 여행 단위 결제 항목(`trip.costItems`) — 어느 날에도 속하지 않는다 */
+  costItems?: unknown[];
 }
 
 /** 웹(app.js MODE_SPEED)과 같은 값 — 두 쪽이 다른 속도를 쓰면 같은 일정이 다른 시각으로 보인다. */

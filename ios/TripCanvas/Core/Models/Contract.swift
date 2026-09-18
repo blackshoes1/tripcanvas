@@ -779,8 +779,8 @@ enum CostPayState: String, Codable, Hashable, Sendable, CaseIterable {
     case reserved = "RESERVED", paid = "PAID", none = "NONE"
     var label: String {
         switch self {
-        case .reserved: "예약"
-        case .paid: "결제"
+        case .reserved: "결제 예정"
+        case .paid: "결제 완료"
         case .none: "미구분"
         }
     }
@@ -1004,7 +1004,10 @@ struct DayCostLine: Codable, Hashable, Sendable, Identifiable {
     let people: Int
     let totalKRW: Double?
     let state: String
+    /// 결제일(`paidOn`)이 있으면 서버가 여행 시간대의 오늘로 정한 값이다 — 손으로 고른 표시가 아니다.
     let payState: CostPayState
+    /// 결제(예정)일 `YYYY-MM-DD`. 있으면 이 날부터 결제함이다. 없으면 nil.
+    let paidOn: String?
     /// 영수증·품목 사진의 **참조**(사진 보관함 식별자). 원본 이미지는 문서에 넣지 않는다.
     let photos: [String]
     var id: String { "\(source):\(key)" }
@@ -1087,6 +1090,8 @@ struct TripCostLine: Codable, Sendable, Identifiable {
     let totalKRW: Double?
     let state: String
     let payState: CostPayState
+    /// 결제(예정)일 `YYYY-MM-DD` — 목록 정렬과 표시용. 상태는 `payState`가 말한다.
+    let paidOn: String?
     let photos: [String]
     let dayIndex: Int?
     var id: String { "\(dayIndex.map(String.init) ?? "undated"):\(source):\(key)" }

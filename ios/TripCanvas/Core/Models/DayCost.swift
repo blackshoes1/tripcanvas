@@ -126,4 +126,50 @@ enum CostCategory: String, CaseIterable {
         case .other: "기타"
         }
     }
+
+    /// 목록·편집기의 아이콘. 예약 종류(`TripBookingType.symbol`)와 같은 그림을 쓴다.
+    var symbol: String {
+        switch self {
+        case .flight: "airplane"
+        case .stay: "bed.double.fill"
+        case .rent: "car.fill"
+        case .transit: "tram.fill"
+        case .food: "fork.knife"
+        case .shopping: "bag.fill"
+        case .ticket: "ticket.fill"
+        case .transport: "car.side.fill"
+        case .other: "shippingbox.fill"
+        }
+    }
+
+    /// 항공·숙박·렌트는 **예약**(`trip.bookings`)이다 — 기간·조건·가격 추적이 붙는다. 나머지는 여행 단위 비용(`trip.costItems`).
+    var bookingType: TripBookingType? {
+        switch self {
+        case .flight: .flight
+        case .stay: .hotel
+        case .rent: .car
+        default: nil
+        }
+    }
+
+    init(bookingType: TripBookingType) {
+        switch bookingType {
+        case .flight: self = .flight
+        case .hotel: self = .stay
+        case .car: self = .rent
+        }
+    }
+
+    static let bookingKinds: [CostCategory] = [.flight, .stay, .rent]
+    static let itemKinds: [CostCategory] = allCases.filter { $0.bookingType == nil }
+}
+
+extension CostPayState {
+    /// **결제일이 있으면 날짜가 정한다**(`lib.js costPayStateOf`와 같은 규칙, 2026-09-18) — 오늘이거나 지났으면 결제,
+    /// 아직이면 예약. 없으면 손으로 고른 값. 서버 응답(`payState`)이 있으면 그것이 먼저다(여행 시간대의 오늘로 계산했다) —
+    /// 이 함수는 응답이 없을 때(옛 API·오프라인) 기기 날짜로 같은 답을 내려는 것이다.
+    static func resolved(paidOn: String?, manual: CostPayState, today: String) -> CostPayState {
+        guard let paidOn, ISODateText.isValid(paidOn), ISODateText.isValid(today) else { return manual }
+        return paidOn <= today ? .paid : .reserved
+    }
 }

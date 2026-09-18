@@ -329,11 +329,13 @@ export function createHandlers(deps: HandlerDeps) {
     try { row = await gateway.getTrip(tripId); } catch { return fail('UPSTREAM_ERROR'); }
     if (!row || row.deleted_at) return fail('TRIP_NOT_FOUND');
     const stamp = now().toISOString().slice(0, 10);
+    // 결제일이 상태를 정하므로 Today와 같은 시계(여행 시간대의 오늘)를 쓴다 — 기기 날짜와 어긋나면 같은 항목이 두 답을 낸다.
+    const clock = resolveClock(row.data, dayIndex, new URL(request.url), now());
     const [legs, fx] = await Promise.all([legCacheFor(row.data, dayIndex), fxFor()]);
     const body = buildDayPlanView({
       trip: row.data, di: dayIndex,
       summary: summarizeTrip(row, stamp), generatedAt: now().toISOString(),
-      legCache: legs.cache, legsPending: legs.pending, fx
+      legCache: legs.cache, legsPending: legs.pending, fx, todayISO: clock.todayISO
     });
     // 없는 날을 지어내지 않는다 — 여행은 있는데 그 일자가 없으면 404다.
     if (!body) return fail('DAY_NOT_FOUND');
@@ -381,7 +383,8 @@ export function createHandlers(deps: HandlerDeps) {
     if (deps.legs) {
       try { legs = await deps.legs.readTrip(row.data, LEG_WAIT_MS); } catch { /* 추정으로 나간다 */ }
     }
-    const body = buildTripCosts(row.data, legs.cache, row.revision, await fxFor());
+    const clock = resolveClock(row.data, null, new URL(request.url), now());
+    const body = buildTripCosts(row.data, legs.cache, row.revision, await fxFor(), clock.todayISO);
     deps.legs?.fillTripLater(row.data);
     return ok(body);
   }
@@ -424,10 +427,11 @@ export function createHandlers(deps: HandlerDeps) {
     const [beforeCache, afterCache, fx] = await Promise.all([readCache(row.data), readCache(draft), fxFor()]);
     const generatedAt = now().toISOString();
     const stamp = generatedAt.slice(0, 10);
+    const todayISO = resolveClock(row.data, dayIndex, new URL(request.url), now()).todayISO;
     const before = buildDayPlanView({ trip: row.data, di: dayIndex, summary: summarizeTrip(row, stamp), generatedAt,
-      legCache: beforeCache, legsPending: 0, fx });
+      legCache: beforeCache, legsPending: 0, fx, todayISO });
     const after = buildDayPlanView({ trip: draft, di: dayIndex, summary: summarizeTrip({ ...row, data: draft }, stamp), generatedAt,
-      legCache: afterCache, legsPending: 0, fx });
+      legCache: afterCache, legsPending: 0, fx, todayISO });
     if (!before || !after) return fail('DAY_NOT_FOUND');
     const response: PlanPreviewResponse = { before, after };
     return ok(response);

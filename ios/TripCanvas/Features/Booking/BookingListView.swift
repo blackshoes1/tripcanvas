@@ -141,6 +141,7 @@ struct BookingListView: View {
                 BookingEditorView(
                     target: target,
                     document: document,
+                    bookingOnly: true,
                     onSave: { booking, links in
                         let saved = await plan.saveBooking(booking, links: links)
                         if saved { await model?.load() }

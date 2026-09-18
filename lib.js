@@ -515,12 +515,13 @@
    * 나머지는 앞날부터 1원씩 얹어 하루치의 합이 예약 총액과 정확히 맞는다(반올림 누수 방지).
    * 금액은 예약 통화 그대로 — 원화 환산은 호출부(toKRW)가 한다.
    * 하루치에는 예약의 결제 상태(`payState`)도 실린다 — 결제한 항공·숙박은 '이미 낸 돈', 현장 결제 호텔은 '예약'이다.
-   * @param {any[]} bookings @param {string} iso
-   * @returns {{id:string, type:string, title:string, amount:number, cur:string, days:number, payState:string}[]}
+   * 결제일이 있는 예약은 오늘(`today`)이 상태를 정한다(`costPayStateOf`).
+   * @param {any[]} bookings @param {string} iso @param {string=} today
+   * @returns {{id:string, type:string, title:string, amount:number, cur:string, days:number, payState:string, paidOn:string|null}[]}
    */
-  function bookingShareOn(bookings, iso){
+  function bookingShareOn(bookings, iso, today){
     const d=_dayNum(iso);
-    /** @type {{id:string, type:string, title:string, amount:number, cur:string, days:number, payState:string}[]} */
+    /** @type {{id:string, type:string, title:string, amount:number, cur:string, days:number, payState:string, paidOn:string|null}[]} */
     const out=[];
     if(d===null || !Array.isArray(bookings)) return out;
     bookings.forEach((/**@type{any}*/b)=>{
@@ -535,7 +536,8 @@
       const scale=(b.cur==='USD'||b.cur==='EUR'||b.cur==='CNY')?100:1;
       const units=Math.round(price*scale), base=Math.floor(units/n), rem=units-base*n;
       out.push({id:_str(b.id), type:_str(b.type)||'hotel', title:_str(b.title),
-        amount:(base+(idx<rem?1:0))/scale, cur:_str(b.cur)||'KRW', days:n, payState:costPayStateOf(b,'BOOKING')});
+        amount:(base+(idx<rem?1:0))/scale, cur:_str(b.cur)||'KRW', days:n, payState:costPayStateOf(b,'BOOKING',today),
+        paidOn:_ISO_DATE_RE.test(_str(b.paidOn))?_str(b.paidOn):null});
     });
     return out;
   }
@@ -600,14 +602,15 @@
   /**
    * 하루 비용 상세의 단일 계산. 외부 조회·환율 시세를 만들지 않고 받은 값만 합친다.
    * @param {any} trip @param {number} di
-   * @param {{date:string,rates:Record<string,number>,taxi:number|null,transportUnpriced:boolean}} input
+   * @param {{date:string,rates:Record<string,number>,taxi:number|null,transportUnpriced:boolean,today?:string}} input
+   * `today`는 결제일이 있는 항목의 상태를 정하는 오늘(YYYY-MM-DD)이다 — 안 넘기면 손으로 고른 상태만 본다.
    * `onSiteKRW`는 **가서 쓰는 돈**(장소·추가 비용·교통)만이다 — 예약 하루치는 가기 전에 낸 돈의 배분이라 뺀다.
    * @returns {{total:number,onSiteKRW:number,parts:{label:string,amount:number}[],payTotals:Record<string,number>,details:{items:any[],budget:any,unknownCount:number,transportUnpriced:boolean,undatedBookings:number,hasForeignCurrency:boolean,fxRates:Record<string,number>,fxSource:string,fxAsOf:string|null}}}
    */
   function dayCostSummary(trip,di,input){
-    const day=trip.days[di], rates=input.rates;
+    const day=trip.days[di], rates=input.rates, today=input.today;
     const bookings=budgetBookings(trip.bookings||[],trip.days);
-    const shares=bookingShareOn(bookings,input.date);
+    const shares=bookingShareOn(bookings,input.date,today);
     const covered=new Set(shares.map(s=>s.id));
     /** @type {any[]} */ const items=[];
     /** @param {any} item @param {string} field @param {any} identity */
@@ -615,14 +618,15 @@
       const amount=costAmountOf(item,field), cur=item.cur||'KRW';
       const bookingCovered=identity.source==='SPOT'&&amount===null&&covered.has(item.bookingId);
       items.push({...identity,amount:typeof item[field]==='number'?item[field]:null,currency:cur,
-        basis:item.costBasis||'ENTERED',people:item.costPeople||1,payState:costPayStateOf(item,identity.source),
+        basis:item.costBasis||'ENTERED',people:item.costPeople||1,payState:costPayStateOf(item,identity.source,today),
+        paidOn:_ISO_DATE_RE.test(_str(item.paidOn))?item.paidOn:null,
         photos:Array.isArray(item.photos)?item.photos.slice(0,_PHOTOS_MAX):[],
         totalKRW:amount===null?null:Math.round(amount*(rates[cur]||1)),
         state:bookingCovered?'BOOKING':amount===null?'UNKNOWN':item.costPartial?'PARTIAL':amount===0?'FREE':'KNOWN'});
     }
     (day.spots||[]).forEach((/**@type{any}*/s,/**@type{number}*/index)=>add(s,'cost',{source:'SPOT',key:String(index),title:s.name||'장소',kind:costCategoryOf(s)}));
     (day.costItems||[]).forEach((/**@type{any}*/s)=>add(s,'amount',{source:'EXTRA',key:s.id,title:s.title||'비용',kind:s.kind||'OTHER'}));
-    for(const share of shares) add({amount:share.amount,cur:share.cur,payState:share.payState},'amount',{source:'BOOKING',key:share.id,title:share.title,kind:share.type});
+    for(const share of shares) add({amount:share.amount,cur:share.cur,payState:share.payState,paidOn:share.paidOn},'amount',{source:'BOOKING',key:share.id,title:share.title,kind:share.type});
     const manualTransport=hasManualTransportCost(day);
     if(!manualTransport&&input.taxi!==null&&input.taxi>0) add({amount:input.taxi,cur:'KRW'},'amount',{source:'TRANSPORT',key:'taxi',title:'자동 교통비 추정',kind:'TRANSPORT'});
     const parts=[{label:'장소',amount:0},{label:'추가 비용',amount:0},{label:'택시',amount:0},{label:'예약',amount:0}];
@@ -648,12 +652,22 @@
   // 분류(무엇에 쓴 돈인가)와 결제 상태(냈는가)는 다른 축이다 — 같은 '숙박'도 예약만 해 둔 것과 결제한 것이 있다.
   const COST_PAY_STATES=['RESERVED','PAID'];
   const _PHOTOS_MAX=10, _PHOTO_REF_MAX=200;
-  /** 결제 상태. 예약(`trip.bookings`)은 **결제했다고 표시한 것만 결제**이고 나머지는 예약이다 — 예약은 본디
+  const _ISO_DATE_RE=/^\d{4}-\d{2}-\d{2}$/;
+  /** 결제 상태.
+   *
+   * **결제일(`paidOn`)이 있으면 날짜가 상태를 정한다**(2026-09-18) — 결제일은 '결제 예정일'이다. 그 날이 오늘이거나
+   * 지났으면 결제함, 아직이면 예약이다. 손으로 고른 `payState`는 그때 보지 않는다(두 답이 갈리면 어느 쪽도 못 믿는다).
+   * 오늘(`today`)을 모르면(호출부가 안 넘김) 날짜를 판정할 수 없으므로 아래 규칙으로 돌아간다.
+   *
+   * 결제일이 없으면: 예약(`trip.bookings`)은 **결제했다고 표시한 것만 결제**이고 나머지는 예약이다 — 예약은 본디
    * 잡아 둔 돈이라 미구분이 없다(항공은 대개 결제한 돈, 현장 결제 호텔은 예약한 돈 — 예약마다 다르다, 2026-09-17).
    * 그 밖의 항목은 고르지 않은 것을 미구분(NONE)으로 남긴다 —
    * 미구분을 결제로 치면 '이미 쓴 돈'이 부풀고, 예약으로 치면 남은 지출이 부풀어 둘 다 거짓말이 된다.
-   * @param {any} item @param {string=} source @returns {string} */
-  function costPayStateOf(item,source){
+   * @param {any} item @param {string=} source @param {string=} today 오늘(YYYY-MM-DD) — 서버는 여행 시간대의 오늘, 웹은 기기 날짜
+   * @returns {string} */
+  function costPayStateOf(item,source,today){
+    const t=_str(today);
+    if(item&&_ISO_DATE_RE.test(_str(item.paidOn))&&_ISO_DATE_RE.test(t)) return _str(item.paidOn)<=t? 'PAID' : 'RESERVED';
     if(source==='BOOKING') return (item&&item.payState==='PAID')? 'PAID' : 'RESERVED';
     return (item&&COST_PAY_STATES.includes(item.payState))? item.payState : 'NONE';
   }
@@ -686,9 +700,11 @@
    *   어느 날에도 속하지 않는다. 예약의 원화 합계는 하루치 배분과 잔액을 더한 것이라 총액과 1원까지 맞는다.
    * - `onSite`(가서 쓰는 비용) = 날짜별 장소·추가 비용·교통(`dayCostSummary().onSiteKRW`의 합).
    * 둘을 더하면 `totalKRW`와 같다.
-   * @param {any} trip @param {any[]} days @param {Record<string,number>} rates
+   * `today`(YYYY-MM-DD)는 결제일이 있는 항목의 상태를 정한다 — 하루치(`dayCostSummary`)와 **같은 오늘**을 넘겨야
+   * 예약 한 줄과 그 하루치가 다른 상태를 말하지 않는다.
+   * @param {any} trip @param {any[]} days @param {Record<string,number>} rates @param {string=} today
    * @returns {{totalKRW:number,averagePerDayKRW:number|null,categories:any[],unallocated:any[],payTotals:Record<string,number>,prep:{totalKRW:number,payTotals:Record<string,number>,items:any[]},onSite:{totalKRW:number,payTotals:Record<string,number>},unknownCount:number,transportUnpriced:boolean,hasForeignCurrency:boolean}} */
-  function tripCostSummary(trip,days,rates){
+  function tripCostSummary(trip,days,rates,today){
     /** @type {any[]} */ const unallocated=[];
     /** @type {any[]} */ const prepItems=[];
     const bookings=budgetBookings(trip.bookings||[],trip.days||[]);
@@ -700,12 +716,14 @@
       const remainingKRW=remaining===null?null:Math.round(remaining*(rates[booking.cur||'KRW']||1));
       // 가계부 한 줄 — 예약은 전액이 한 번에 나간 돈이다(하루치로 쪼갠 것은 날짜별 화면의 몫). 금액을 안 넣었으면 미정
       const known=price!==null&&price>0;
+      const bookingPayState=costPayStateOf(booking,'BOOKING',today), bookingPaidOn=_ISO_DATE_RE.test(_str(booking.paidOn))?_str(booking.paidOn):null;
+      const bookingPhotos=Array.isArray(booking.photos)?booking.photos.slice(0,_PHOTOS_MAX):[];
       prepItems.push({source:'BOOKING',key:booking.id,title:booking.title||'예약',kind:booking.type,
-        amount:known?price:null,currency:booking.cur||'KRW',basis:'ENTERED',people:1,payState:costPayStateOf(booking,'BOOKING'),photos:[],
+        amount:known?price:null,currency:booking.cur||'KRW',basis:'ENTERED',people:1,payState:bookingPayState,paidOn:bookingPaidOn,photos:bookingPhotos,
         totalKRW:known?allocatedKRW+(remainingKRW||0):null,state:known?'KNOWN':'UNKNOWN',dayIndex:null});
       if(remaining===0&&allocated.length) continue;
       unallocated.push({source:'BOOKING',key:booking.id,title:booking.title||'예약',kind:booking.type,
-        amount:remaining,currency:booking.cur||'KRW',basis:'ENTERED',people:1,payState:costPayStateOf(booking,'BOOKING'),photos:[],
+        amount:remaining,currency:booking.cur||'KRW',basis:'ENTERED',people:1,payState:bookingPayState,paidOn:bookingPaidOn,photos:bookingPhotos,
         totalKRW:remainingKRW,
         state:remaining===null?'UNKNOWN':remaining===0?'FREE':'KNOWN',dayIndex:null});
     }
@@ -716,7 +734,8 @@
       const amount=costAmountOf(item,'amount'), cur=item.cur||'KRW';
       tripItems.push({source:'TRIP',key:_str(item.id),title:item.title||'비용',kind:COST_CATEGORIES.includes(item.kind)?item.kind:'OTHER',
         amount:typeof item.amount==='number'?item.amount:null,currency:cur,basis:item.costBasis||'ENTERED',people:item.costPeople||1,
-        payState:costPayStateOf(item,'TRIP'),photos:Array.isArray(item.photos)?item.photos.slice(0,_PHOTOS_MAX):[],
+        payState:costPayStateOf(item,'TRIP',today),paidOn:_ISO_DATE_RE.test(_str(item.paidOn))?item.paidOn:null,
+        photos:Array.isArray(item.photos)?item.photos.slice(0,_PHOTOS_MAX):[],
         totalKRW:amount===null?null:Math.round(amount*(rates[cur]||1)),
         state:amount===null?'UNKNOWN':item.costPartial?'PARTIAL':amount===0?'FREE':'KNOWN',dayIndex:null});
     }
@@ -1055,6 +1074,8 @@
     }
     b.track=b.track!==false;   // 기본 추적 on
     if(b.payState!=null&&!COST_PAY_STATES.includes(b.payState)) delete b.payState;   // 결제함(PAID)만 뜻이 있다 — 없으면 예약
+    if(!iso(b.paidOn)) delete b.paidOn;                                            // 결제(예정)일 — 있으면 날짜가 상태를 정한다(costPayStateOf)
+    normalizePhotoRefs(b);                                                         // 영수증 사진 참조 — 비용 항목과 같은 규칙
     return b;
   }
   /** @param {any} d @returns {any} */
@@ -1099,7 +1120,11 @@
     if(item.payState!=null&&!COST_PAY_STATES.includes(item.payState)) delete item.payState;
     // 낸 날짜(가계부 정렬용) — 날짜 모양이 아니면 버린다
     if(item.paidOn!=null&&!/^\d{4}-\d{2}-\d{2}$/.test(_str(item.paidOn))) delete item.paidOn;
-    // 영수증·품목 사진은 **참조만** 싣는다(원본 이미지는 문서에 넣지 않는다 — 동기화 본문이 부풀고 공유 링크가 터진다)
+    normalizePhotoRefs(item);
+  }
+  /** 영수증·품목 사진은 **참조만** 싣는다(원본 이미지는 문서에 넣지 않는다 — 동기화 본문이 부풀고 공유 링크가 터진다).
+   * 비용 항목과 예약이 같은 규칙을 쓴다. @param {any} item */
+  function normalizePhotoRefs(item){
     if(item.photos!=null){
       const photos=(Array.isArray(item.photos)?item.photos:[])
         .filter((/**@type{any}*/r)=>typeof r==='string'&&r.trim()!==''&&r.length<=_PHOTO_REF_MAX)

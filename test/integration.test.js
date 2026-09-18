@@ -498,7 +498,7 @@ test('통합: 체크아웃이 체크인보다 앞서면 저장을 막는다(잘�
   withTrip(w, `[{mode:'car',startAt:'09:00',spots:[{name:'H',lat:37.5,lng:127,city:'S',stay:true}]}]`);
   w.eval('openBookingModal(null)');
   const set = (id, v) => { w.document.getElementById(id).value = v; };
-  set('bkType', 'hotel'); set('bkTitle', 'H'); set('bkPrice', '500000');
+  set('bkType', 'STAY'); set('bkTitle', 'H'); set('bkPrice', '500000');
   set('bkStart', '2099-11-05'); set('bkEnd', '2099-11-02');   // 역순
   w.document.getElementById('bkSave').click();
   assert.equal(w.eval('(trip().bookings||[]).length'), 0, '역순 날짜는 저장되지 않는다');
@@ -518,28 +518,84 @@ test('통합: 예약의 결제 상태는 결제함만 저장되고 예약 목록
   withTrip(w, `[{mode:'car',startAt:'09:00',spots:[{name:'H',lat:37.5,lng:127,city:'S',stay:true}]}]`);
   w.eval('openBookingModal(null)');
   const set = (id, v) => { w.document.getElementById(id).value = v; };
-  set('bkType', 'flight'); set('bkTitle', '항공'); set('bkPrice', '300000'); set('bkPayState', 'PAID');
+  set('bkType', 'FLIGHT'); set('bkTitle', '항공'); set('bkPrice', '300000'); set('bkPayState', 'PAID');
   w.document.getElementById('bkSave').click();
   assert.equal(w.eval('trip().bookings[0].payState'), 'PAID', '결제함은 저장된다');
   w.eval('openBookingList()');
-  assert.ok(w.document.getElementById('bookingListBody').textContent.includes('결제함'), '목록이 상태를 말한다');
+  assert.ok(w.document.getElementById('bookingListBody').textContent.includes('결제 완료'), '목록이 상태를 말한다');
   w.eval(`openBookingModal(trip().bookings[0].id)`);
   assert.equal(w.document.getElementById('bkPayState').value, 'PAID', '다시 열면 그대로다');
-  set('bkPayState', '');
+  assert.ok(w.document.querySelector('#bkType option[value="FOOD"]').disabled, '저장된 예약은 예약 아닌 분류로 못 옮긴다');
+  assert.ok(!w.document.querySelector('#bkType option[value="STAY"]').disabled);
+  set('bkPayState', 'RESERVED');
   w.document.getElementById('bkSave').click();
-  assert.equal(w.eval('trip().bookings[0].payState'), undefined, '예약만 함은 저장하지 않는다 — 없으면 예약이다');
-  // 예약 외 준비 비용 — 폼으로 추가하고 지운다
-  set('prepTitle', '여행자보험'); set('prepAmount', '30,000'); set('prepKind', 'OTHER'); set('prepPayState', 'PAID');
-  w.document.getElementById('prepAdd').click();
+  assert.equal(w.eval('trip().bookings[0].payState'), undefined, '예약은 저장하지 않는다 — 없으면 예약이다');
+  w.close();
+});
+
+test('통합: 예약이 아닌 결제 항목은 같은 편집기로 여행 단위 비용(trip.costItems)에 저장되고 한 목록에 나온다', { skip: noJsdom }, () => {
+  const w = boot();
+  withTrip(w, `[{mode:'car',startAt:'09:00',spots:[{name:'H',lat:37.5,lng:127,city:'S',stay:true}]}]`);
+  const set = (id, v) => { w.document.getElementById(id).value = v; };
+  w.eval('openBookingList()');
+  w.document.getElementById('bookingAdd').click();
+  assert.equal(w.document.getElementById('bkModalTitle').textContent, '결제 항목 추가');
+  assert.equal(w.document.querySelectorAll('#bkType option').length, 9, '분류는 하루 비용·앱과 같은 9가지');
+  set('bkType', 'OTHER'); w.eval('toggleBkFields()');
+  assert.equal(w.document.getElementById('bkPeriodWrap').style.display, 'none', '예약이 아니면 기간이 없다');
+  assert.equal(w.document.getElementById('bkBookingExtra').style.display, 'none', '취소 조건·추적도 없다');
+  assert.equal(w.document.getElementById('bkTitleLabel').textContent, '항목 이름 *');
+  set('bkTitle', '여행자보험'); set('bkPrice', '30,000'); set('bkPayState', 'PAID');
+  w.document.getElementById('bkSave').click();
   assert.deepEqual(w.eval('JSON.stringify(trip().costItems.map(i=>[i.title,i.amount,i.kind,i.payState,i.costBasis]))'),
     JSON.stringify([['여행자보험', 30000, 'OTHER', 'PAID', 'TOTAL']]));
+  assert.equal(w.eval('(trip().bookings||[]).length'), 0, '예약으로는 저장되지 않는다');
   assert.equal(w.eval('tripCostBreakdown().prep'), 30000);
-  assert.ok(w.document.getElementById('prepCostList').textContent.includes('여행자보험'));
-  set('prepTitle', '유심'); set('prepAmount', '12.345');
-  w.document.getElementById('prepAdd').click();
-  assert.equal(w.eval('trip().costItems.length'), 1, '원화 소수는 거절한다');
-  w.document.querySelector('[data-prep-del]').click();
+  assert.ok(w.document.getElementById('bookingListBody').textContent.includes('여행자보험'), '예약과 한 목록');
+  // 원화 소수는 거절한다
+  w.document.getElementById('bookingAdd').click();
+  set('bkType', 'OTHER'); set('bkTitle', '유심'); set('bkPrice', '12.345');
+  w.document.getElementById('bkSave').click();
+  assert.equal(w.eval('trip().costItems.length'), 1);
+  // 편집 — 예약 분류로는 못 옮기고, 같은 항목을 고친다
+  w.eval(`openBookingModal(trip().costItems[0].id)`);
+  assert.equal(w.document.getElementById('bkModalTitle').textContent, '결제 항목 편집');
+  assert.ok(w.document.querySelector('#bkType option[value="STAY"]').disabled, '저장된 비용은 예약 분류로 못 옮긴다');
+  assert.equal(w.document.getElementById('bkPayState').value, 'PAID');
+  set('bkType', 'TICKET'); set('bkPrice', '35,000');
+  w.document.getElementById('bkSave').click();
+  assert.deepEqual(w.eval('JSON.stringify(trip().costItems.map(i=>[i.kind,i.amount]))'), JSON.stringify([['TICKET', 35000]]));
+  // 삭제 — 같은 버튼
+  w.eval(`window.confirm=()=>true; openBookingModal(trip().costItems[0].id); document.getElementById('bkDelBtn').click();`);
   assert.equal(w.eval('trip().costItems'), undefined, '비면 필드째 사라진다');
+  w.close();
+});
+
+test('통합: 결제일을 정하면 날짜가 상태를 정한다 — 지났으면 결제함, 아직이면 예약', { skip: noJsdom }, () => {
+  const w = boot();
+  withTrip(w, `[{mode:'car',startAt:'09:00',spots:[{name:'H',lat:37.5,lng:127,city:'S',stay:true}]}]`);
+  const set = (id, v) => { w.document.getElementById(id).value = v; };
+  w.eval('openBookingModal(null)');
+  set('bkType', 'FLIGHT'); set('bkTitle', '항공'); set('bkPrice', '300000'); set('bkPayState', 'PAID'); set('bkPaidOn', '2999-01-01');
+  w.eval('toggleBkFields()');
+  assert.equal(w.document.getElementById('bkPayState').style.display, 'none', '결제일이 있으면 상태를 고르지 않는다');
+  assert.match(w.document.getElementById('bkPayHint').textContent, /결제 예정으로 셉니다/);
+  w.document.getElementById('bkSave').click();
+  assert.equal(w.eval('trip().bookings[0].paidOn'), '2999-01-01');
+  assert.equal(w.eval('trip().bookings[0].payState'), undefined, '결제일이 있으면 손으로 고른 상태는 두지 않는다');
+  w.eval('openBookingList()');
+  const body = () => w.document.getElementById('bookingListBody').textContent;
+  assert.ok(body().includes('결제 예정') && body().includes('결제일 2999-01-01') && !body().includes('결제 완료'), '아직이면 결제 예정');
+  w.eval(`openBookingModal(trip().bookings[0].id)`);
+  set('bkPaidOn', '2000-01-01'); w.eval('toggleBkFields()');
+  assert.match(w.document.getElementById('bkPayHint').textContent, /결제 완료로 셉니다/);
+  w.document.getElementById('bkSave').click();
+  assert.ok(body().includes('결제 완료'), '지났으면 결제 완료');
+  // 하루 결제 상태별 합계도 같은 오늘을 쓴다 — 숙박 하루치가 결제일에 따라 갈린다
+  w.eval(`trip().bookings.push({id:'st',type:'hotel',title:'호텔',price:100000,start:trip().start,end:isoDateOf(1),paidOn:'2999-01-01'}); render();`);
+  assert.deepEqual(w.eval(`JSON.stringify(dayPaySplit(trip().days[0],0,trip().start))`), JSON.stringify([['🧾 결제 예정', 100000]]));
+  w.eval(`trip().bookings[1].paidOn='2000-01-01'; render();`);
+  assert.deepEqual(w.eval(`JSON.stringify(dayPaySplit(trip().days[0],0,trip().start))`), JSON.stringify([['💰 결제 완료', 100000]]));
   w.close();
 });
 
@@ -551,7 +607,7 @@ test('통합: 렌터카 예약 — 조건 저장·시장 검색·매칭·절약 
   // 1) 모달에서 렌터카 조건 저장 (bkCarFields)
   w.eval('openBookingModal(null)');
   const set=(id,v)=>{ w.document.getElementById(id).value=v; };
-  set('bkType','car'); w.eval('toggleBkFields()');
+  set('bkType','RENT'); w.eval('toggleBkFields()');
   assert.equal(w.document.getElementById('bkCarFields').style.display, 'block', '렌터카 필드 노출');
   assert.equal(w.document.getElementById('bkHotelFields').style.display, 'none');
   set('bkTitle','RecordGo Compact'); set('bkPrice','320'); set('bkCur','EUR');
@@ -1373,7 +1429,7 @@ test('통합: 당일 대여를 예약 화면에서 저장할 수 있다 (체크�
   withTrip(w, `[{title:'D1',drive:'',note:'',mode:'car',spots:[{name:'공항',city:'P',desc:'',lat:39.55,lng:2.73}]}]`);
   const set=(id,v)=>{ w.document.getElementById(id).value=v; };
   const save=(fields)=>{
-    w.eval('openBookingModal(null)'); set('bkType','car'); w.eval('toggleBkFields()');
+    w.eval('openBookingModal(null)'); set('bkType','RENT'); w.eval('toggleBkFields()');
     set('bkTitle','경차'); set('bkPrice','80000');
     Object.keys(fields).forEach(k=>set(k,fields[k]));
     w.document.getElementById('bkSave').click();
@@ -1390,7 +1446,7 @@ test('통합: 당일 대여를 예약 화면에서 저장할 수 있다 (체크�
   assert.equal(save({bkStart:'2026-08-03',bkEnd:'2026-08-01'}), 1, '반납일이 앞서면 거부');
 
   // 숙박은 지금까지처럼 같은 날을 막는다
-  w.eval('openBookingModal(null)'); set('bkType','hotel'); w.eval('toggleBkFields()');
+  w.eval('openBookingModal(null)'); set('bkType','STAY'); w.eval('toggleBkFields()');
   set('bkTitle','H'); set('bkPrice','100000'); set('bkStart','2026-08-01'); set('bkEnd','2026-08-01');
   w.document.getElementById('bkSave').click();
   assert.equal(w.eval(`trip().bookings.length`), 1, '숙박 당일 체크아웃은 여전히 거부');
@@ -1435,7 +1491,9 @@ test('통합: 하루 비용에 예약 하루치가 들어가고, 하루 합계�
   assert.equal(withPrep.prep, 30000 + w.eval(`toKRW(10,'USD')`));
   assert.equal(withPrep.total, 1239000 + withPrep.prep, '준비 비용은 전체에만');
   assert.equal(w.eval(`dayCost(trip().days[0])`), 18000, '하루 비용은 그대로');
-  assert.ok(w.eval(`document.querySelector('.costMenu .viewMenuPanel').textContent`).includes('준비 비용(예약 외)'), '내역에 줄이 생긴다');
+  const panel = w.eval(`document.querySelector('.costMenu .viewMenuPanel').textContent`);
+  assert.ok(panel.includes('예약 외'), '내역에 줄이 생긴다');
+  assert.ok(panel.includes('예약 결제 금액') && panel.includes('현지 결제 금액'), '두 장부로 묶인다 — 앱의 비용 화면과 같은 이름');
   w.eval(`delete trip().costItems; render();`);   // 아래 단정은 준비 비용 없는 기준
   assert.match(w.document.querySelector('.costMenu summary').textContent, /₩1,239,000/);
   assert.match(w.document.querySelector('.costMenu').textContent, /렌터카/);
@@ -3110,8 +3168,8 @@ test('통합: 일자 카드가 예약과 결제를 나눠 보여 준다', { skip
   w.eval(`render()`);
   const line = w.document.querySelector('.payLine');
   assert.ok(line, '분리 줄이 그려진다');
-  assert.ok(line.textContent.includes('예약') && line.textContent.includes('30,000'), '예약 금액');
-  assert.ok(line.textContent.includes('결제') && line.textContent.includes('12,000'), '결제 금액');
+  assert.ok(line.textContent.includes('결제 예정') && line.textContent.includes('30,000'), '결제 예정 금액');
+  assert.ok(line.textContent.includes('결제 완료') && line.textContent.includes('12,000'), '결제 완료 금액');
   assert.equal(line.textContent.includes('5,000'), false, '고르지 않은 비용은 어느 쪽에도 넣지 않는다');
 });
 
@@ -3127,6 +3185,6 @@ test('통합: 예약(숙박)의 하루치는 예약으로 센다', { skip: noJsd
   withTrip(w, `[{title:'D1',drive:'',note:'',mode:'walk',spots:[]},{title:'D2',drive:'',note:'',mode:'walk',spots:[]},{title:'D3',drive:'',note:'',mode:'walk',spots:[]}]`);
   w.eval(`trip().bookings=[{id:'h1',type:'hotel',title:'호텔',price:200000,cur:'KRW',start:'2026-08-01',end:'2026-08-03'}]; render();`);
   const line = w.document.querySelector('.payLine');
-  assert.ok(line && line.textContent.includes('예약'), '예약에서 나온 하루치는 예약이다');
+  assert.ok(line && line.textContent.includes('결제 예정'), '예약에서 나온 하루치는 결제 예정이다(결제 표시가 없으면)');
   assert.ok(line.textContent.includes('100,000'), '2박이라 하루치는 10만원');
 });

@@ -242,7 +242,7 @@ enum TripPanel: String, CaseIterable, Identifiable {
     /// 여기서 세려면 네 곳을 미리 불러와야 하고, 그건 이 화면이 할 일이 아니다.
     var hint: String {
         switch self {
-        case .costs: "준비한 비용 · 가서 쓰는 비용"
+        case .costs: "예약 결제 금액 · 현지 결제 금액"
         case .bookings: "항공 · 숙박 · 렌터카"
         case .collab: "멤버 초대와 권한"
         case .candidates: "아직 일정이 아닌 곳"
