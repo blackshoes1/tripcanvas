@@ -523,7 +523,10 @@ enum ISODateText {
         let digits = text.filter(\.isNumber)
         guard digits.count == 8 else { return nil }
         let iso = "\(digits.prefix(4))-\(digits.dropFirst(4).prefix(2))-\(digits.suffix(2))"
-        return isValid(iso) ? iso : nil
+        // `isValid`는 모양만 본다(자릿수·구분자). 없는 날은 달력을 지나 되돌아온 문자열이 다른 것으로 잡는다 —
+        // 2월 30일은 formatter가 거절하거나(비관용) 3월 2일로 밀리거나(관용) 둘 중 하나라 왕복이 어긋난다.
+        guard isValid(iso), let date = formatter.date(from: iso), text(from: date) == iso else { return nil }
+        return iso
     }
 
     static func isValid(_ text: String) -> Bool {
