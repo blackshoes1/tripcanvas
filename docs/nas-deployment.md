@@ -180,6 +180,7 @@ curl -m 20 --resolve "bokbok9.tail8b977f.ts.net:443:$IP" https://bokbok9.tail8b9
 | **`visudo`가 없다** | 문법 검사를 건너뛰게 된다. 파일을 쓴 뒤 `sudo -n /usr/local/bin/docker version`으로 실제 동작을 확인한다 |
 | **SFTP가 막혀 있다** | 그냥 `scp`는 `Connection closed`로 끊긴다. **`scp -O`**(레거시 프로토콜)를 쓴다 |
 | **macOS의 `rsync`는 openrsync다** | `-e` 처리가 달라 ssh 인증이 깨진다. 파일 몇 개면 `scp -O`가 낫다 |
+| **`deploy/.env`가 이미지의 ENV를 이긴다** | compose의 `env_file:`이 파일을 통째로 넣는다. `TC_REVISION` 같은 **이미지가 주인인 값을 여기 두면 안 된다** — 배포 스크립트가 지운다 |
 | **볼륨이 둘이다** | DB는 `/volume1/@docker/volumes/...`, 홈은 `/volume2`다. **백업은 반드시 다른 볼륨에** 둔다(§60) |
 
 ### 배포 — main 머지가 곧 배포다 (2026-09-19)
@@ -216,12 +217,20 @@ ssh nas '~/tripcanvas/scripts/nas-deploy.sh --status'
 ```
 기록된 현재 SHA : 6549b93…        ← deploy/.deploy-state
 기록된 직전 SHA : e767f29…        ← 롤백 대상
-도는 revision   : 6549b93…        ← GET /api/health (진짜로 도는 코드)
+도는 revision   : 6549b93…        ← GET /api/health (도는 프로세스가 말하는 값)
+컨테이너 이미지 : 6549b93…        ← 도는 컨테이너 이미지의 OCI 라벨 (코드 자체)
 상태            : HEALTHY / DB ok
 production 태그 : 6549b93…        ← GitHub이 배포하라고 정한 커밋
 ```
 
-세 SHA가 같으면 정상이다. **`production 태그`와 `도는 revision`이 30분 넘게 다르면** 파이프라인이 멈춘 것이다 —
+네 SHA가 같으면 정상이다.
+
+⚠️ **`도는 revision`과 `컨테이너 이미지`가 따로 있는 이유**(2026-09-19): 앞은 환경변수(`TC_REVISION`)를
+거쳐 나오고 뒤는 이미지에 박힌 라벨이라 환경변수를 거치지 않는다. compose의 `env_file: deploy/.env`가
+파일을 통째로 컨테이너에 넣으면서 **이미지의 `ENV`를 덮어쓰기** 때문에, `.env`에 `TC_REVISION` 한 줄이
+남아 있으면 새 이미지를 제대로 띄우고도 `/api/health`는 옛 커밋을 말한다. 실제로 그 일이 일어났다 —
+맥에서 빌드하던 옛 방식이 남긴 줄이었다. 지금은 `nas-deploy.sh`가 배포할 때마다 그 줄을 **지우고**,
+둘이 갈리면 배포를 실패시킨다(`test/nas-deploy.test.js`). **`production 태그`와 `도는 revision`이 30분 넘게 다르면** 파이프라인이 멈춘 것이다 —
 `deploy/deploy.log`를 본다. 밖에서 한 줄로 볼 때는:
 
 ```bash

@@ -75,14 +75,34 @@ EOF
 }
 
 # ── `deploy/.env`의 TC_IMAGE_TAG 한 줄만 갈아 끼운다(나머지 비밀은 건드리지 않는다) ──
-set_image_tag() {
+# ⚠️ **이미지가 주인인 값은 .env에 있으면 안 된다.** compose의 `env_file: .env`는 파일을 통째로
+#    컨테이너 환경에 넣는데, 그게 이미지에 박힌 ENV를 **덮어쓴다.** 2026-09-19: 맥에서 빌드하던
+#    옛 방식이 남긴 `TC_REVISION` 한 줄 때문에, 새 이미지를 제대로 받아 띄우고도 /api/health는
+#    옛 커밋을 말했다 — "어느 코드가 도는가"를 보증하려던 장치가 통째로 무력해졌다.
+ENV_IMAGE_OWNED="TC_REVISION"
+
+# .env를 이번 배포에 맞춘다: TC_IMAGE_TAG는 이 SHA로, 이미지가 주인인 값은 **지운다**.
+# 나머지 줄(비밀 포함)은 손대지 않는다 — 이 파일의 진실은 NAS에 있다.
+prepare_env() {
   [ -f "$ENV_FILE" ] || die "$ENV_FILE 이 없다 — deploy/.env.example을 복사해 값을 채운다"
+  local key
+  for key in $ENV_IMAGE_OWNED; do
+    if grep -q "^$key=" "$ENV_FILE" 2>/dev/null; then
+      log "! deploy/.env의 $key 줄을 지운다 — 이미지가 주인인 값이라 여기 있으면 이미지의 값을 덮어쓴다"
+    fi
+  done
   local tmp; tmp=$(mktemp); umask 077
-  awk -v tag="$1" '
-    /^TC_IMAGE_TAG=/ { print "TC_IMAGE_TAG=" tag; found=1; next }
+  awk -v tag="$1" -v owned="$ENV_IMAGE_OWNED" '
+    BEGIN { n = split(owned, a, " "); for (i = 1; i <= n; i++) drop[a[i]] = 1 }
+    /^TC_IMAGE_TAG=/ { print "TC_IMAGE_TAG=" tag; found = 1; next }
+    { split($0, kv, "="); if (kv[1] in drop) next }
     { print }
     END { if (!found) print "TC_IMAGE_TAG=" tag }
   ' "$ENV_FILE" > "$tmp" && cat "$tmp" > "$ENV_FILE" && rm -f "$tmp"
+  for key in $ENV_IMAGE_OWNED; do
+    grep -q "^$key=" "$ENV_FILE" 2>/dev/null && die "deploy/.env에서 $key 를 지우지 못했다 — 손으로 지운 뒤 다시"
+  done
+  return 0
 }
 
 # ── 그 커밋의 compose·backup.sh를 받아 둔다: 이미지와 **같은 커밋**의 설정으로 띄우기 위해 ──
@@ -126,12 +146,37 @@ wait_healthy() {
   return 1
 }
 
+# ── 도는 컨테이너가 **어느 이미지**로 떴는지: 환경변수를 거치지 않는 두 번째 증인 ──
+# /api/health의 revision 하나만 보면 .env가 그 값을 덮어썼을 때 거짓을 참으로 읽는다(2026-09-19).
+container_image_revision() {
+  local cid img
+  cid=$(compose ps -q "$1" 2>/dev/null | head -1) || return 1
+  [ -n "$cid" ] || return 1
+  img=$($DOCKER inspect -f '{{.Image}}' "$cid" 2>/dev/null) || return 1
+  [ -n "$img" ] || return 1
+  $DOCKER inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$img" 2>/dev/null
+}
+
 # ── revision 검증: GitHub·이미지·실제 컨테이너가 같은 커밋인지 ──
 # 이게 없으면 "이미지는 새것인데 옛 컨테이너가 돈다"를 못 잡는다.
 verify_revision() {
-  local want="$1" got_api got_rt rt_body
+  local want="$1" got_api got_rt rt_body img_rev
+  # ① 이미지에 박힌 라벨 — 컨테이너에 들어 있는 **코드 자체**
+  img_rev=$(container_image_revision api 2>/dev/null || true)
+  if [ -z "$img_rev" ]; then
+    log "! 컨테이너 이미지의 revision 라벨을 읽지 못했다 — /api/health만으로 판정한다"
+  elif [ "$img_rev" != "$want" ]; then
+    log "✗ 도는 api 컨테이너가 다른 커밋의 이미지다: 기대 ${want:0:7}, 실제 ${img_rev:0:7}"; return 1
+  fi
+  # ② 도는 프로세스가 말하는 것 — 정말 새 이미지로 다시 떴는지
   got_api=$(json_str "$HEALTH_BODY" revision)
-  [ "$got_api" = "$want" ] || { log "✗ api revision 불일치: 기대 ${want:0:7}, 실제 ${got_api:-없음}"; return 1; }
+  if [ "$got_api" != "$want" ]; then
+    log "✗ api revision 불일치: 기대 ${want:0:7}, 실제 ${got_api:-없음}"
+    if [ "$img_rev" = "$want" ]; then
+      log "  (이미지는 맞다 — deploy/.env에 TC_REVISION 같은 줄이 남아 이미지의 값을 덮어쓰고 있다)"
+    fi
+    return 1
+  fi
   # 실시간은 LISTEN이 끊겨 있으면 503이지만 본문은 준다 — 상태는 경고, **커밋 불일치는 실패**다
   rt_body=$(curl -sS --max-time 5 "$RT_HEALTH" 2>/dev/null || true)
   got_rt=$(json_str "$rt_body" revision)
@@ -158,7 +203,7 @@ bring_up() {
       log "✗ 그 커밋의 compose를 받지 못했다"; return 1
     fi
   fi
-  set_image_tag "$sha"
+  prepare_env "$sha"
   log "  이미지 pull"
   local pull_log; pull_log=$(mktemp)
   if ! compose pull api migrate realtime >"$pull_log" 2>&1; then
@@ -189,6 +234,7 @@ print_status() {
   echo "기록된 현재 SHA : ${CURRENT_SHA:-없음}"
   echo "기록된 직전 SHA : ${PREVIOUS_SHA:-없음}"
   echo "도는 revision   : $(json_str "$body" revision)"
+  echo "컨테이너 이미지 : $(container_image_revision api 2>/dev/null || echo '확인 실패')"
   echo "상태            : $(json_str "$body" status) / DB $(json_str "$body" database)"
   local tag; tag=$(remote_target || true)
   echo "production 태그 : ${tag:-확인 실패}"
