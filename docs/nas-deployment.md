@@ -181,6 +181,7 @@ curl -m 20 --resolve "bokbok9.tail8b977f.ts.net:443:$IP" https://bokbok9.tail8b9
 | **SFTP가 막혀 있다** | 그냥 `scp`는 `Connection closed`로 끊긴다. **`scp -O`**(레거시 프로토콜)를 쓴다 |
 | **macOS의 `rsync`는 openrsync다** | `-e` 처리가 달라 ssh 인증이 깨진다. 파일 몇 개면 `scp -O`가 낫다 |
 | **`deploy/.env`가 이미지의 ENV를 이긴다** | compose의 `env_file:`이 파일을 통째로 넣는다. `TC_REVISION` 같은 **이미지가 주인인 값을 여기 두면 안 된다** — 배포 스크립트가 지운다 |
+| **`crontab`이 없다** | Synology는 사용자 crontab을 주지 않는다. 주기 실행은 **DSM 작업 스케줄러**로만 건다 |
 | **볼륨이 둘이다** | DB는 `/volume1/@docker/volumes/...`, 홈은 `/volume2`다. **백업은 반드시 다른 볼륨에** 둔다(§60) |
 
 ### 배포 — main 머지가 곧 배포다 (2026-09-19)
@@ -284,15 +285,29 @@ ssh nas 'mkdir -p ~/tripcanvas/scripts \
 # 3) 첫 배포를 손으로 한 번 — 여기서 .env의 TC_IMAGE_TAG가 채워진다
 ssh nas '~/tripcanvas/scripts/nas-deploy.sh'
 
-# 4) 5분마다 — DSM에서는 **작업 스케줄러**가 가장 확실하다:
-#    제어판 → 작업 스케줄러 → 생성 → 예약된 작업 → 사용자 정의 스크립트
-#      사용자: root · 반복: 5분마다 · 명령: /bin/bash /var/services/homes/<계정>/tripcanvas/scripts/nas-deploy.sh
-#
-#    셸의 crontab으로 넣을 때는 **중괄호로 묶어야 한다** — 세미콜론으로 나열하면
-#    앞 명령의 출력이 파이프에 들어가지 않아 **기존 cron 항목이 통째로 지워진다**:
-ssh nas '{ crontab -l 2>/dev/null | grep -v nas-deploy.sh; echo "*/5 * * * * /bin/bash $HOME/tripcanvas/scripts/nas-deploy.sh >/dev/null 2>&1"; } | crontab -'
-ssh nas 'crontab -l'   # 기존 항목이 남아 있는지 눈으로 확인한다
+# 4) 5분마다 — **DSM 작업 스케줄러**로 건다. 셸에는 방법이 없다:
+#    이 NAS에는 `crontab` 명령이 아예 없다(`sh: crontab: command not found`).
+#    Synology는 사용자 crontab을 주지 않고 스케줄은 DSM이 관리한다.
 ```
+
+```
+제어판 → 작업 스케줄러 → 생성 → 예약된 작업 → 사용자 정의 스크립트
+
+일반   이름  : TripCanvas 배포
+       사용자: root                  ← TC_DOCKER의 sudo가 비밀번호를 묻지 않게 된다
+       활성화 ✓
+
+일정   매일 실행 · 00:00 ~ 23:55 · 빈도 5분마다   ← 5분이 없으면 10·15분도 괜찮다
+
+작업   사용자 정의 스크립트:
+       /bin/bash /var/services/homes/<계정>/tripcanvas/scripts/nas-deploy.sh
+
+       실행 세부 정보 이메일은 **끈다**(5분마다 온다). 오류 알림만 켠다.
+```
+
+스케줄러는 PATH가 짧은 채로 돌린다 — 스크립트가 `docker`를 전체 경로(`/usr/local/bin/docker`)로
+부르는 이유가 여기 있다. 등록 뒤 **[실행]** 으로 한 번 손수 돌려 보고 `deploy/deploy.log`를 확인한다
+(바뀐 게 없으면 즉시 끝나 로그에 줄이 안 붙는 것이 정상이다 — `--force`로 확인한다).
 
 ⚠️ **배포 스크립트 자신은 자동으로 갱신되지 않는다.** 돌고 있는 스크립트를 스스로 갈아 끼우면
 실행 중인 파일이 바뀌어 위험하다. 저장소에서 바뀌면 로그에 한 줄 남기고 `deploy/nas-deploy.sh.new`로
