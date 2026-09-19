@@ -9,6 +9,9 @@ struct MapEngineView: View {
     /// 그날의 동선. ⚠️ 조회된 구간은 도로를 따르고 나머지는 직선이다 — 화면이 그 사실을 함께 말해야 한다.
     var routes: [MapRoute] = []
     var focus: GeoPoint? = nil
+    /// 고른 장소가 없을 때 카메라가 맞출 사각형. nil이면 그린 것 전부(핀+선). '이 날' 지도가 장면(`MapScenes`)
+    /// 하나만 보일 때 준다 — 핀·선은 그대로 다 그리고 **카메라만** 거기로 간다.
+    var frame: MapBounds? = nil
     var regionHint: Bool = true
     var onPick: ((MapPick) -> Void)? = nil
     var preservesCamera = false
@@ -27,11 +30,11 @@ struct MapEngineView: View {
     var body: some View {
         Group {
             if usesKakao {
-                KakaoMapContainer(pins: pins, routes: routes, focus: focus, onPick: onPick,
+                KakaoMapContainer(pins: pins, routes: routes, focus: focus, frame: frame, onPick: onPick,
                                   preservesCamera: preservesCamera, selectedPinID: selectedPinID,
                                   onPinSelected: onPinSelected, onAreaChanged: onAreaChanged, isVisible: isVisible)
             } else {
-                GoogleMapContainer(pins: pins, routes: routes, focus: focus, onPick: onPick,
+                GoogleMapContainer(pins: pins, routes: routes, focus: focus, frame: frame, onPick: onPick,
                                    preservesCamera: preservesCamera, selectedPinID: selectedPinID,
                                    onPinSelected: onPinSelected, onAreaChanged: onAreaChanged, isVisible: isVisible)
             }

@@ -52,6 +52,8 @@ struct TripPlanView: View {
     @State private var selectedMapSpot: Int?
     /// 그 선택이 **어느 날**의 것인가. 날을 옮기면 옛 번호가 새 날의 장소를 가리키지 않게 — 같은 날일 때만 선택이다.
     @State private var selectedMapSpotDay: Int?
+    /// '이 날' 지도가 보이는 장면(`MapScenes`). 기본은 주 장면이고 칩으로 바꾼다. 날을 옮기면 되돌아간다.
+    @State private var sceneChoice: SceneChoice = .main
 
     var body: some View {
         Group {
@@ -582,15 +584,22 @@ struct TripPlanView: View {
     private func singleDayMap(_ model: TripPlanViewModel) -> some View {
         if let day = model.day {
             let selection = mapSelection(on: model.selectedDay)
+            // 도시를 건너는 날은 장면으로 나눈다 — 기본 카메라는 주 장면, 전체는 칩으로. 도시 안 하루는 장면이 하나다.
+            let scenes = MapScenes.split(day.sceneSpots)
+            let routes = model.planDay?.mapRoutes ?? []
             VStack(spacing: 0) {
                 if !day.pins.isEmpty {
-                    // 고른 장소가 있을 때만 거기로 간다. 없으면 `focus`를 비워 엔진이 **그날 동선 전체**(핀+선)를 맞춘다 —
-                    // 첫 장소를 넣으면 거기에 줌인해 나머지 동선이 화면 밖이다(2026-09-19 전 모습).
-                    MapEngineView(pins: day.pins, routes: model.planDay?.mapRoutes ?? [],
+                    if scenes.count >= 2 {
+                        sceneChips(scenes, transfers: sceneTransfers(scenes, plan: model.planDay), main: MapScenes.mainScene(in: scenes))
+                    }
+                    // 고른 장소가 있을 때만 거기로 간다. 없으면 `focus`를 비워 엔진이 `frame`(고른 장면) 또는
+                    // **그날 동선 전체**(핀+선)를 맞춘다 — 첫 장소를 넣으면 거기에 줌인해 나머지 동선이 화면 밖이다(2026-09-19 전 모습).
+                    MapEngineView(pins: day.pins, routes: routes,
                                   focus: selection.flatMap { day.spots.indices.contains($0) ? day.spots[$0].point : nil },
+                                  frame: sceneFrame(scenes, routes: routes),
                                   preservesCamera: false,
                                   selectedPinID: day.pins.first(where: { $0.order - 1 == selection })?.id,
-                                  onPinSelected: { id in selectMapSpot(day.pins.first(where: { $0.id == id }).map { $0.order - 1 }, day: model.selectedDay) },
+                                  onPinSelected: { id in chooseMapSpot(day.pins.first(where: { $0.id == id }).map { $0.order - 1 }, day: model.selectedDay, scenes: scenes) },
                                   isVisible: showsMap)
                         .frame(minHeight: 180, maxHeight: .infinity)
                     if let note = routeNote(model.planDay?.mapRoutes ?? []) {
@@ -606,8 +615,8 @@ struct TripPlanView: View {
                         ForEach(Array(day.spots.enumerated()), id: \.offset) { index, spot in
                             HStack {
                                 Button {
-                                    // 고른 줄을 다시 누르면 고름을 푼다 — 지도가 다시 그날 전체를 보인다.
-                                    selectMapSpot(selection == index ? nil : index, day: model.selectedDay)
+                                    // 고른 줄을 다시 누르면 고름을 푼다 — 지도가 다시 그 장면(또는 그날 전체)을 보인다.
+                                    chooseMapSpot(selection == index ? nil : index, day: model.selectedDay, scenes: scenes)
                                 } label: {
                                     VStack(alignment: .leading) {
                                         Text("\(index + 1). \(spot.name)")
@@ -633,7 +642,7 @@ struct TripPlanView: View {
                     .onChange(of: selectedMapSpot) { _, index in if let index { proxy.scrollTo(index, anchor: .center) } }
                 }
             }
-            .onChange(of: model.selectedDay) { _, _ in selectMapSpot(nil, day: nil) }
+            .onChange(of: model.selectedDay) { _, _ in selectMapSpot(nil, day: nil); sceneChoice = .main }
         }
     }
 
@@ -645,6 +654,71 @@ struct TripPlanView: View {
     private func selectMapSpot(_ index: Int?, day: Int?) {
         selectedMapSpot = index
         selectedMapSpotDay = index == nil ? nil : day
+    }
+
+    /// 장소를 고르면 그 장소의 장면도 고른 것으로 둔다 — 고름을 풀었을 때 전체가 아니라 그 장면으로 돌아가게.
+    private func chooseMapSpot(_ index: Int?, day: Int, scenes: [MapScene]) {
+        selectMapSpot(index, day: day)
+        if let index, let scene = scenes.first(where: { $0.spotIndexes.contains(index) }) { sceneChoice = .scene(scene.id) }
+    }
+
+    /// 고른 장면의 사각형. 장면이 하나뿐이거나 '전체'면 nil — 엔진이 그린 것 전부를 맞춘다.
+    /// 마지막 장면에는 숙소 복귀 선(핀이 아니라 선으로만 있다)도 넣는다.
+    private func sceneFrame(_ scenes: [MapScene], routes: [MapRoute]) -> MapBounds? {
+        guard scenes.count >= 2, let index = chosenScene(in: scenes) else { return nil }
+        var points = scenes[index].points
+        if index == scenes.count - 1 { points += routes.filter(\.synthetic).flatMap(\.points) }
+        return MapBounds.covering(points: points)
+    }
+
+    private func chosenScene(in scenes: [MapScene]) -> Int? {
+        switch sceneChoice {
+        case .all: return nil
+        case .main: return MapScenes.mainScene(in: scenes)
+        case .scene(let id): return scenes.indices.contains(id) ? id : MapScenes.mainScene(in: scenes)
+        }
+    }
+
+    /// 장면 사이 이동 — 서버가 도착 장소의 구간을 계산해 뒀으면 그 수단·시간·거리, 없으면 직선 거리("약").
+    private func sceneTransfers(_ scenes: [MapScene], plan: DayPlanDay?) -> [MapTransfer] {
+        MapScenes.transfers(between: scenes) { arriving in
+            guard let leg = plan?.spots.first(where: { $0.index == arriving })?.incomingLeg else { return nil }
+            return (mode: TravelMode(rawValue: leg.mode), minutes: leg.minutes, distanceKm: leg.distanceKm)
+        }
+    }
+
+    /// `마드리드 1` · `기차 2시간 30분 · 390km` · `세비야 5` · `전체`. 장면 칩을 누르면 카메라가 거기로, 전체는 그날 다.
+    private func sceneChips(_ scenes: [MapScene], transfers: [MapTransfer], main: Int?) -> some View {
+        let chosen = chosenScene(in: scenes)
+        return ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: Space.xs) {
+                ForEach(scenes) { scene in
+                    sceneChip("\(scene.label) \(scene.count)", on: chosen == scene.id,
+                              label: "\(scene.label) 장소 \(scene.count)곳 보기") { sceneChoice = .scene(scene.id) }
+                    if let transfer = transfers.first(where: { $0.id == scene.id }) {
+                        LegPill(symbol: transfer.mode?.symbol ?? "arrow.right", text: MapScenes.text(for: transfer))
+                    }
+                }
+                sceneChip("전체", on: chosen == nil, label: "그날 동선 전체 보기") { sceneChoice = .all }
+            }
+            .padding(.horizontal, Space.m)
+            .padding(.vertical, Space.xs)
+        }
+    }
+
+    private func sceneChip(_ text: String, on: Bool, label: String, action: @escaping () -> Void) -> some View {
+        Button { withAnimation(motion) { action() } } label: {
+            Text(text)
+                .font(.caption.weight(on ? .semibold : .regular))
+                .padding(.horizontal, Space.s)
+                .padding(.vertical, 5)
+                .background(on ? Ink.accent : Ink.sunken, in: Capsule())
+                .foregroundStyle(on ? .white : Ink.soft)
+                .frame(minHeight: 32)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(on ? .isSelected : [])
     }
 
     private func dayHeader(_ model: TripPlanViewModel, day: TripDay) -> some View {
@@ -1064,4 +1138,11 @@ struct SpotRow: View {
         case .planned: Ink.soft
         }
     }
+}
+
+/// '이 날' 지도가 보이는 장면 — 기본은 주 장면(장소가 가장 많은 묶음), 칩으로 특정 장면이나 전체를 고른다.
+private enum SceneChoice: Equatable {
+    case main
+    case scene(Int)
+    case all
 }
