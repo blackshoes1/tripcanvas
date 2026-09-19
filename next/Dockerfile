@@ -19,9 +19,20 @@ WORKDIR /repo/next
 ENV TC_STANDALONE=1 NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
-# ── migrate: 스키마 적용 전용(일회성 서비스). 앱 이미지에 drizzle-kit을 싣지 않는다 ──
-FROM build AS migrate
+# ── tools: migrate·realtime **공용** 이미지 ──
+# 둘은 같은 이미지에서 **명령만 다르게** 돈다(`deploy/docker-compose.yml`의 `command`).
+# 한 태그가 곧 한 커밋이라 "api는 새 코드, migrate는 옛 코드"가 구조적으로 생기지 않는다(§배포).
+# 앱(runtime) 이미지에는 drizzle-kit을 싣지 않는다 — 여기에만 있다.
+FROM build AS tools
+ARG TC_REVISION=unknown
+ENV TC_REVISION=$TC_REVISION
 WORKDIR /repo/next
+# 독립 실행 도구(실시간 사이드카·이관 CLI)는 Next 번들과 따로 컴파일된다
+RUN npm run tools:build
+
+# ── migrate: 스키마 적용 전용(일회성). 운영은 tools 이미지에 command만 바꿔 띄우고,
+#    이 타깃은 로컬·Fly.io가 **타깃 이름으로** 빌드할 때의 진입점이다 ──
+FROM tools AS migrate
 CMD ["npx", "drizzle-kit", "migrate"]
 
 # ── runtime: 최소 이미지 ──
@@ -41,10 +52,9 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 CMD wget -qO- http://127.0.0.1:3000/api/health || exit 1
 CMD ["node", "next/server.js"]
 
-# ── realtime: WebSocket 사이드카(§42). Next와 별도 프로세스다 — Route Handler는 업그레이드를 다루지 않는다 ──
-FROM build AS realtime
-WORKDIR /repo/next
-RUN npm run tools:build
+# ── realtime: WebSocket 사이드카(§42). Next와 별도 프로세스다 — Route Handler는 업그레이드를 다루지 않는다.
+#    운영은 tools 이미지 + command로 띄운다(위와 같은 이유). 이 타깃은 로컬·Fly.io용이다 ──
+FROM tools AS realtime
 ENV REALTIME_PORT=3001
 EXPOSE 3001
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 CMD wget -qO- http://127.0.0.1:3001/health || exit 1

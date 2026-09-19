@@ -1,8 +1,8 @@
 name: CI
 on:
   pull_request:
-  push:
-    branches: [main]
+  # main 푸시의 게이트는 release.yml이 이 워크플로를 **불러서** 돌린다(두 번 돌지 않게 push 트리거는 없다).
+  workflow_call:
 jobs:
   quality:
     name: Quality
@@ -22,6 +22,9 @@ jobs:
         run: npm run lint
       - name: Secret pattern check
         run: npm run security:scan
+      # main 머지가 운영 DB에 자동 적용된다 — 파괴적 마이그레이션은 여기서 멈춘다(docs/migration-policy.md)
+      - name: Migration backward compatibility
+        run: npm run check:migrations
       - name: Type check (lib + sync + routing)
         run: npm run check:types
       - name: Unit tests
@@ -105,3 +108,33 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Core flows + PWA
         run: npm run test:e2e
+
+  # 운영 이미지가 빌드되는지 **머지 전에** 본다 — Dockerfile이 깨지면 자동 배포가 통째로 멈춘다.
+  # 푸시하지 않는다(release.yml만 GHCR에 올린다). release가 불렀을 때는 건너뛴다 — 거기서 진짜로 빌드한다.
+  images:
+    name: Docker image build
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: api 이미지(runtime)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: next/Dockerfile
+          target: runtime
+          push: false
+          build-args: TC_REVISION=${{ github.sha }}
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,scope=api,mode=max
+      - name: tools 이미지(migrate · realtime 공용)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: next/Dockerfile
+          target: tools
+          push: false
+          build-args: TC_REVISION=${{ github.sha }}
+          cache-from: type=gha,scope=tools
+          cache-to: type=gha,scope=tools,mode=max

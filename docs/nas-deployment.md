@@ -182,48 +182,115 @@ curl -m 20 --resolve "bokbok9.tail8b977f.ts.net:443:$IP" https://bokbok9.tail8b9
 | **macOS의 `rsync`는 openrsync다** | `-e` 처리가 달라 ssh 인증이 깨진다. 파일 몇 개면 `scp -O`가 낫다 |
 | **볼륨이 둘이다** | DB는 `/volume1/@docker/volumes/...`, 홈은 `/volume2`다. **백업은 반드시 다른 볼륨에** 둔다(§60) |
 
-### 파일 배포
+### 배포 — main 머지가 곧 배포다 (2026-09-19)
 
-**평소에는 `scripts/nas-deploy.sh` 하나다**(2026-09-19). 맥의 저장소 폴더에서 돌리면 `origin/main`을 fetch하고,
-그 커밋을 아카이브해 NAS에 풀고, 커밋 SHA를 `TC_REVISION`으로 넣어 빌드한 뒤, 떠 있는 컨테이너의 이미지 라벨과
-`GET /api/health`의 `revision`이 같은 커밋인지 확인하고 끝난다. 마이그레이션을 추가했으면 `--migrate`, 사이드카를
-바꿨으면 `--realtime`. 하나라도 어긋나면 0이 아닌 코드로 멈춘다.
+**사람이 하는 정상 배포 작업은 PR을 `main`에 머지하는 것뿐이다.** 그 뒤는 자동이다.
 
-왜 생겼나: 2026-09-19 새벽 배포는 `docker build`가 성공했고 컨테이너도 새로 떴는데 **내용이 #239였다.**
+```
+PR merge → main
+   → GitHub Actions(.github/workflows/release.yml)
+       게이트(기존 CI) → GHCR에 이미지 push → `production` 태그를 그 커밋으로 이동
+   → NAS cron(5분) → scripts/nas-deploy.sh
+       production 태그 확인 → 바뀌었으면 그 커밋의 compose·이미지 pull
+       → migrate → api·realtime 교체 → 헬스체크 → revision 확인 → 기록
+```
+
+이 사슬의 요점은 **이름이 커밋 SHA 하나로 꿰어져 있다**는 것이다.
+
+```
+Git 커밋 = 이미지 태그 = migrate·api·realtime = TC_REVISION = 배포 기록
+```
+
+**NAS는 더 이상 빌드하지 않는다.** 이미지를 만드는 곳은 GitHub 하나뿐이다.
+
+왜 이렇게 바뀌었나: 2026-09-19 새벽 배포는 `docker build`가 성공했고 컨테이너도 새로 떴는데 **내용이 #239였다.**
 `git fetch`가 돌지 않아 맥의 `origin/main`이 전날 것이었고 `git archive origin/main`은 그걸 그대로 담았다.
-로그는 전부 초록이라 "재빌드했는데도 옛 규칙"의 원인을 찾는 데 몇 시간이 들었다. 컨테이너 안을
-`grep -rl stayCostShares /app/next/.next/server`로 뒤진 결과가 빈 줄로 나온 것이 유일한 단서였다.
-그래서 이제는 **컨테이너 시작 시각이 아니라 `revision`으로 확인한다.**
+로그는 전부 초록이라 원인을 찾는 데 몇 시간이 들었다. 소스를 사람이 날라서 거기서 빌드하는 한 같은 사고가 또 난다.
+
+#### 지금 무엇이 도는지
 
 ```bash
-curl -s https://bokbok9.tail8b977f.ts.net/api/health | sed -n 's/.*"revision":"\([^"]*\)".*/\1/p'   # 도는 커밋
-ssh nas 'sudo /usr/local/bin/docker inspect -f "{{index .Config.Labels \"org.opencontainers.image.revision\"}}" tripcanvas-api-1'
+ssh nas '~/tripcanvas/scripts/nas-deploy.sh --status'
 ```
 
-손으로 할 때(스크립트가 안 될 때)는 아래 순서인데, `git archive`는 **fetch가 성공한 뒤의 `origin/main`**을 담아야 하고
-`HEAD`를 담으면 맥의 체크아웃이 옛 것일 때 같은 함정에 빠진다. git이 없으므로 맥에서 보낸다:
+```
+기록된 현재 SHA : 6549b93…        ← deploy/.deploy-state
+기록된 직전 SHA : e767f29…        ← 롤백 대상
+도는 revision   : 6549b93…        ← GET /api/health (진짜로 도는 코드)
+상태            : HEALTHY / DB ok
+production 태그 : 6549b93…        ← GitHub이 배포하라고 정한 커밋
+```
+
+세 SHA가 같으면 정상이다. **`production 태그`와 `도는 revision`이 30분 넘게 다르면** 파이프라인이 멈춘 것이다 —
+`deploy/deploy.log`를 본다. 밖에서 한 줄로 볼 때는:
 
 ```bash
-scp -O deploy/docker-compose.yml deploy/docker-compose.staging.yml deploy/docker-compose.caddy.yml \
-    nas:~/tripcanvas/deploy/
-# API 코드를 바꿨으면 해당 소스도 보내고 다시 빌드한다
-sudo docker compose -f deploy/docker-compose.yml build api
-sudo docker compose -f deploy/docker-compose.yml up -d api
+curl -s https://bokbok9.tail8b977f.ts.net/api/health | sed -n 's/.*"revision":"\([^"]*\)".*/\1/p'
 ```
 
-⚠️ **`migrate`는 별도 이미지다.** 마이그레이션을 추가했는데 `build api`만 하면 옛 `migrate` 이미지가 돌고,
-`[✓] migrations applied successfully!`라고 찍으면서 **새 테이블을 만들지 않는다.** 로그가 초록이라 더 안 보인다
-(2026-09-06 `leg_cache`가 그랬다). 스키마를 바꿨으면 반드시:
+#### 배포 기록
+
+`deploy/deploy.log`에 한 줄씩 쌓인다 — 시작·이전/대상 SHA·pull·migrate·컨테이너 교체·헬스체크·revision·성공/실패·롤백.
+비밀은 찍지 않는다.
 
 ```bash
-sudo docker compose -f deploy/docker-compose.yml build migrate
-sudo docker compose -f deploy/docker-compose.yml up -d migrate
-sudo docker exec tripcanvas-postgres-1 psql -U tripcanvas -d tripcanvas -c '\d <새 테이블>'   # 눈으로 확인
+ssh nas 'tail -40 ~/tripcanvas/deploy/deploy.log'
 ```
 
+#### 롤백 — 특정 커밋으로 되돌리기
+
+배포가 실패하면 스크립트가 **직전 SHA로 스스로 되돌린다.** 손으로 할 때는:
+
+```bash
+ssh nas '~/tripcanvas/scripts/nas-deploy.sh --sha <되돌릴-커밋-40자리-SHA>'
+```
+
+⚠️ **이미지만 되돌아간다. 스키마는 앞선 채로 남는다.** 그래서 마이그레이션은 항상 하위호환이어야 하고,
+CI가 그걸 검사한다 — `docs/migration-policy.md`. 되돌린 상태를 유지하려면 자동 배포를 함께 세운다(아래).
+
+#### 자동 배포 일시 중지
+
+```bash
+ssh nas 'touch ~/tripcanvas/deploy/.deploy-disabled'   # 정지 (deploy/.env의 DEPLOY_DISABLED=1도 같다)
+ssh nas 'rm ~/tripcanvas/deploy/.deploy-disabled'      # 재개
+```
+
+#### NAS 최초 1회 설정
+
+```bash
+# 1) GHCR 로그인 — 이 저장소는 공개라 공개 패키지면 필요 없다.
+#    비공개로 바꿀 때만, read:packages **만** 가진 토큰으로. NAS에 쓰기·저장소 권한을 주지 않는다.
+# ssh nas 'echo <READ_PACKAGES_TOKEN> | sudo /usr/local/bin/docker login ghcr.io -u <github-id> --password-stdin'
+
+# 2) 배포 스크립트 자리 잡기(저장소 폴더가 이미 있으면 파일 하나면 된다)
+ssh nas 'mkdir -p ~/tripcanvas/scripts'
+scp scripts/nas-deploy.sh nas:~/tripcanvas/scripts/nas-deploy.sh
+ssh nas 'chmod +x ~/tripcanvas/scripts/nas-deploy.sh'
+
+# 3) 첫 배포를 손으로 한 번 — 여기서 .env의 TC_IMAGE_TAG가 채워진다
+ssh nas '~/tripcanvas/scripts/nas-deploy.sh'
+
+# 4) 5분마다 (DSM: 제어판 → 작업 스케줄러 → 예약된 작업 → 사용자 정의 스크립트, root)
+#    셸에서 넣을 때:
+ssh nas 'crontab -l 2>/dev/null | grep -v nas-deploy.sh; echo "*/5 * * * * /bin/bash $HOME/tripcanvas/scripts/nas-deploy.sh >/dev/null 2>&1" | crontab -'
+```
+
+⚠️ `sudo`가 비밀번호를 묻지 않아야 cron이 돈다. 묻는다면 `TC_DOCKER=/usr/local/bin/docker`로 두고
+docker 그룹에 넣거나, 스케줄러를 root로 돌린다.
+
+#### 비상 — 레지스트리가 죽었을 때만
+
+정상 경로는 언제나 GHCR pull이다. GHCR·인터넷이 죽어 손으로 빌드해야 하면:
+
+```bash
+ssh nas 'cd ~/tripcanvas && TC_IMAGE_TAG=$(cat deploy/.deploy-state | sed -n "s/^CURRENT_SHA=//p") \
+  sudo /usr/local/bin/docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.build.yml build'
+```
+
+base의 `image:`가 그대로 태그로 붙어 운영이 기대하는 바로 그 태그가 된다. 다음 자동 배포가 GHCR 이미지로 되돌린다.
+
+⚠️ **`deploy/.env`는 NAS 것이 진실이다.** 저장소에 없고, 배포가 건드리는 줄은 `TC_IMAGE_TAG` 하나뿐이다.
 `~/.ssh/config`에 별칭을 두면 편하다(`Host nas` / `HostName bokbok9.tail8b977f.ts.net` / `User <계정>`).
-
-⚠️ **`deploy/.env`는 보내지 않는다.** 비밀이 들어 있고 NAS 것이 진실이다.
 
 ## 환경변수
 
