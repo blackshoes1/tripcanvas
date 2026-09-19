@@ -41,9 +41,11 @@ final class MapBoundsTests: XCTestCase {
         let bounds = MapBounds(south: 37.55, west: 126.95, north: 37.60, east: 127.05)
         XCTAssertEqual(bounds.zoomLevel(fitting: phone), 12)
         // 줌 12에서 경도 0.10도는 256·2^12·(0.10/360) ≈ 291pt — 여백 48pt를 뺀 294pt 안이다.
-        XCTAssertLessThanOrEqual(256 * pow(2, 12) * (0.10 / 360), 390 - 96)
+        let usable: Double = 390 - 96
+        let widthAtZoom12 = 256.0 * Double(1 << 12) * (0.10 / 360)
+        XCTAssertLessThanOrEqual(widthAtZoom12, usable)
         // 한 단계 더 당기면(13) 582pt라 잘린다 — 그래서 12가 '들어가는 가장 가까운 줌'이다.
-        XCTAssertGreaterThan(256 * pow(2, 13) * (0.10 / 360), 390 - 96)
+        XCTAssertGreaterThan(widthAtZoom12 * 2, usable)
     }
 
     /// 넓을수록 낮다 — 제주 한 바퀴(0.3×0.5도)는 9, 스페인 종단(3×8.7도)은 하한 6.
