@@ -43,19 +43,21 @@ npm run verify:all
 - [ ] **`next/src/app/api/**`·`next/src/server/**`·`next/src/features/**`을 바꿨으면 NAS에 따로 배포한다.** `main` 머지는 **Vercel 정적 웹만** 내보낸다 — API는 NAS 이미지라 다시 빌드하지 않으면 옛 코드가 그대로 돈다:
 
 ```bash
-git archive --format=tar HEAD | gzip > /tmp/tc-main.tgz
-scp -O /tmp/tc-main.tgz nas:~/ && ssh nas 'cd ~/tripcanvas && tar -xzf ~/tc-main.tgz && rm ~/tc-main.tgz'
-ssh nas 'cd ~/tripcanvas && sudo /usr/local/bin/docker compose -f deploy/docker-compose.yml build api && sudo /usr/local/bin/docker compose -f deploy/docker-compose.yml up -d api'
-curl -s -o /dev/null -w "%{http_code}\n" https://bokbok9.tail8b977f.ts.net/api/v1/trips   # 401이면 산다
+scripts/nas-deploy.sh              # tailnet 안의 맥, 저장소 폴더에서. origin/main을 fetch → 아카이브 → NAS build → up → 확인
+scripts/nas-deploy.sh --migrate    # 마이그레이션을 추가했을 때 — migrate도 다시 빌드해 한 번 돌리고 종료 코드 0을 본다
 ```
 
-  ⚠️ **마이그레이션을 추가했으면 `migrate`도 다시 빌드한다.** `migrate`는 별도 이미지라 `build api`만 하면
+  스크립트는 **fetch가 실패하면 멈추고**, 담은 커밋을 `TC_REVISION`으로 이미지 라벨·환경변수에 박은 뒤,
+  떠 있는 컨테이너의 라벨과 `GET /api/health`의 `revision`이 그 커밋인지까지 확인하고 끝난다.
+  ⚠️ **2026-09-19 새벽 배포는 build가 성공했는데 내용이 #239였다** — 맥의 `origin/main`이 전날 것이라
+  `git archive origin/main`이 옛 코드를 담았고, 로그는 전부 초록이었다. 손으로 할 때 `git archive HEAD`도 같은 함정이다.
+  어떤 코드가 도는지는 **컨테이너 시작 시각이 아니라** `curl -s https://bokbok9.tail8b977f.ts.net/api/health`의 `revision`으로 본다.
+  ⚠️ **마이그레이션을 추가했으면 `--migrate`.** `migrate`는 별도 이미지라 `api`만 빌드하면
   옛 이미지가 돌고 **"migrations applied successfully"라고 찍으면서 새 테이블을 만들지 않는다**
-  (2026-09-06 `leg_cache`가 그랬다 — 로그는 초록인데 테이블이 없었다):
+  (2026-09-06 `leg_cache`가 그랬다 — 로그는 초록인데 테이블이 없었다). 끝나면 눈으로 확인한다:
 
 ```bash
-ssh nas 'cd ~/tripcanvas && sudo /usr/local/bin/docker compose -f deploy/docker-compose.yml build migrate && sudo /usr/local/bin/docker compose -f deploy/docker-compose.yml up -d migrate'
-ssh nas "sudo /usr/local/bin/docker exec tripcanvas-postgres-1 psql -U tripcanvas -d tripcanvas -c '\\d <새 테이블>'"   # 눈으로 확인한다
+ssh nas "sudo /usr/local/bin/docker exec tripcanvas-postgres-1 psql -U tripcanvas -d tripcanvas -c '\\d <새 테이블>'"
 ```
 
   ⚠️ **새 라우트는 배포 전까지 404다.** 앱·웹이 그걸 "값이 없음"으로 조용히 넘기게 설계돼 있으면
@@ -231,6 +233,7 @@ localStorage: `tripcanvas_v1`(여행) · `tripcanvas_legs_v4`(구간 캐시, 수
 - **이모지와 벡터 아이콘을 한 화면에 섞지 않는다.** 장소 유형은 `SpotCategory.symbol`(SF Symbols), 이동은 `TravelMode.symbol`, 숙소 이월·복귀는 `house.fill`, 고정 시각은 `pin.fill`. `SpotCategory.icon`(이모지)은 웹·공유 문장과 같은 **글자**용으로만 남는다. 이동 정보는 장소보다 가벼운 알약(`LegPill`)이다 — 장소 이름이 언제나 가장 먼저 읽힌다.
 - **색은 뜻이다** — `Ink.accent`(누를 것·고른 것) · `Ink.warning`(시간 경고·미정·확인할 것) · `Ink.danger`(오류·삭제·초과·취소) · `Ink.positive`(완료) · `Ink.info`(상대가 정한 것). 화면이 `.orange`·`.red`·`.green`·`.blue`를 직접 부르지 않는다. 늦게 끝나는 것은 경고가 아니다 — 자정을 넘길 때(`overloaded`)만 주의색.
 - **지도의 범위(이 날 | 전체)와 검색은 다른 일이다** — 같은 세그먼트에 넣지 않는다(`mapScope` + `mapSearching`). 지도가 뜨기 전에는 스피너만 두지 않고 `MapLoadingPlaceholder`가 무엇을 기다리는지 말한다(실패는 `EmptyStateView`가 따로).
+- **'이 날' 지도는 열 때 그날 동선이 통째로 보인다**(2026-09-19). 카메라 규칙은 하나다 — 고른 장소가 있으면 거기로(줌 15·16), 없으면 **핀과 선의 점을 전부 담는 사각형**(`MapBounds.covering(pins:routes:)`)을 맞춘다. 사각형에 선의 점도 넣는 이유는 숙소 복귀(`back`)가 핀이 아니라 선으로만 있어서다. 구글은 bounds fit, 카카오는 bounds fit이 없어 중심 + `MapBounds.zoomLevel(fitting:)`(웹 메르카토르, 256pt 타일)로 간다. 맞추는 때는 **핀이 바뀌었을 때·동선이 처음 도착했을 때·고름을 풀었을 때**뿐이고, 도로가 채워져 선이 바뀔 때는 움직이지 않는다(보고 있는 지도를 흔들지 않는다). ⚠️ `focus`에 첫 장소를 넣지 않는다 — 그러면 첫 장소에 줌인해 나머지 동선이 화면 밖이다(그게 2026-09-19 전 모습). ⚠️ 구글은 뷰가 0×0일 때 fit하면 줌을 못 정한다 — `pendingFit`으로 미뤄 첫 idle에 맞춘다.
 - 더보기는 설정 앱의 한 줄(아이콘·이름·설명·꺾쇠)이고 행 전체가 눌린다. 큰 카드로 감싸지 않는다.
 - **날짜는 숫자로 쳐도 되고 달력을 눌러도 된다**(`DateEntryField` — `ISODateText.parseLoose`가 `20261025`·`2026.10.25`를 받고 8자리가 아니면 연도를 추측하지 않는다). 여행 기간은 **시작일–종료일**로 정하고 일수는 파생이다(iOS 여행·하루 설정·새 여행, 웹 여행 설정의 `#tripEnd` — 일수 칸과 서로 맞춰진다). 시작일이 없는 여행만 일수로 정한다.
 - 가고 싶은 곳의 분류(`CandidateCategory` = `collab.js` 목록·순서)는 iOS에서도 담을 때 고르고, 보드에서 거르고(`CandidateCategoryFilter` — '분류 없음'과 '기타'는 다르다), 카드에서 바꾼다(`manageCandidate CATEGORY`). 분류를 모르는 소스 구현은 분류 없이 담는다(프로토콜 기본 구현).

@@ -16,6 +16,8 @@ export interface HealthReport {
   api: 'ok';
   database: 'ok' | 'unconfigured' | 'error';
   readOnly: boolean;
+  /** 이미지 빌드 때 박힌 커밋 SHA(`TC_REVISION`). 없으면 'unknown' — 배포 스크립트가 이 값으로 새 코드가 도는지 확인한다 */
+  revision: string;
   components: {
     api: HealthComponent;
     database: HealthComponent;
@@ -35,6 +37,8 @@ export interface HealthDeps {
   /** 백업이 이 시간 안에 있어야 정상(기본 26시간 — 하루 한 번 + 여유) */
   backupMaxAgeHours?: number;
   readOnly?: boolean;
+  /** `TC_REVISION` — 빈 값이면 'unknown'으로 답한다 */
+  revision?: string;
   now?: () => Date;
 }
 
@@ -94,6 +98,7 @@ export async function healthReport(deps: HealthDeps): Promise<HealthReport> {
     api: 'ok',
     database: database.status === 'ok' ? 'ok' : database.status === 'unconfigured' ? 'unconfigured' : 'error',
     readOnly,
+    revision: deps.revision?.trim() || 'unknown',
     components,
     checkedAt
   };

@@ -28,6 +28,8 @@ CMD ["npx", "drizzle-kit", "migrate"]
 FROM node:22-alpine AS runtime
 ARG TC_REVISION=unknown
 LABEL org.opencontainers.image.revision=$TC_REVISION
+# 라벨은 docker inspect로, 환경변수는 GET /api/health의 revision으로 본다 — 어떤 코드가 도는지 밖에서 알 수 있게(scripts/nas-deploy.sh)
+ENV TC_REVISION=$TC_REVISION
 WORKDIR /app
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 HOSTNAME=0.0.0.0
 RUN addgroup -S tc && adduser -S tc -G tc
