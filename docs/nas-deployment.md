@@ -270,9 +270,14 @@ ssh nas 'chmod +x ~/tripcanvas/scripts/nas-deploy.sh'
 # 3) 첫 배포를 손으로 한 번 — 여기서 .env의 TC_IMAGE_TAG가 채워진다
 ssh nas '~/tripcanvas/scripts/nas-deploy.sh'
 
-# 4) 5분마다 (DSM: 제어판 → 작업 스케줄러 → 예약된 작업 → 사용자 정의 스크립트, root)
-#    셸에서 넣을 때:
-ssh nas 'crontab -l 2>/dev/null | grep -v nas-deploy.sh; echo "*/5 * * * * /bin/bash $HOME/tripcanvas/scripts/nas-deploy.sh >/dev/null 2>&1" | crontab -'
+# 4) 5분마다 — DSM에서는 **작업 스케줄러**가 가장 확실하다:
+#    제어판 → 작업 스케줄러 → 생성 → 예약된 작업 → 사용자 정의 스크립트
+#      사용자: root · 반복: 5분마다 · 명령: /bin/bash /var/services/homes/<계정>/tripcanvas/scripts/nas-deploy.sh
+#
+#    셸의 crontab으로 넣을 때는 **중괄호로 묶어야 한다** — 세미콜론으로 나열하면
+#    앞 명령의 출력이 파이프에 들어가지 않아 **기존 cron 항목이 통째로 지워진다**:
+ssh nas '{ crontab -l 2>/dev/null | grep -v nas-deploy.sh; echo "*/5 * * * * /bin/bash $HOME/tripcanvas/scripts/nas-deploy.sh >/dev/null 2>&1"; } | crontab -'
+ssh nas 'crontab -l'   # 기존 항목이 남아 있는지 눈으로 확인한다
 ```
 
 ⚠️ `sudo`가 비밀번호를 묻지 않아야 cron이 돈다. 묻는다면 `TC_DOCKER=/usr/local/bin/docker`로 두고
