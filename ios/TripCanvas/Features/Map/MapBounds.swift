@@ -18,7 +18,11 @@ struct MapBounds: Equatable {
 
     /// 핀과 동선을 전부 담는 사각형. 담을 점이 하나도 없으면 nil — 카메라를 움직일 근거가 없다.
     static func covering(pins: [MapPin], routes: [MapRoute] = []) -> MapBounds? {
-        let points = pins.map(\.point) + routes.flatMap(\.points)
+        covering(points: pins.map(\.point) + routes.flatMap(\.points))
+    }
+
+    /// 점들을 전부 담는 사각형. 장면(`MapScenes`)처럼 핀이 아닌 점 묶음을 맞출 때 쓴다.
+    static func covering(points: [GeoPoint]) -> MapBounds? {
         guard let first = points.first else { return nil }
         return points.dropFirst().reduce(MapBounds(point: first)) { $0.including($1) }
     }

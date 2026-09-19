@@ -45,6 +45,8 @@ struct GoogleMapContainer: UIViewRepresentable {
     let pins: [MapPin]
     var routes: [MapRoute] = []
     let focus: GeoPoint?
+    /// 고른 장소가 없을 때 맞출 사각형(장면). nil이면 그린 것 전부.
+    var frame: MapBounds? = nil
     let onPick: ((MapPick) -> Void)?
     var preservesCamera = false
     var selectedPinID: String? = nil
@@ -68,7 +70,7 @@ struct GoogleMapContainer: UIViewRepresentable {
         mapView.isHidden = !isVisible
         context.coordinator.onPinSelected = onPinSelected
         context.coordinator.onAreaChanged = onAreaChanged
-        context.coordinator.render(pins: pins, routes: routes, focus: focus, on: mapView, animated: false,
+        context.coordinator.render(pins: pins, routes: routes, focus: focus, frame: frame, on: mapView, animated: false,
                                    preservesCamera: preservesCamera, selectedPinID: selectedPinID)
         return mapView
     }
@@ -78,7 +80,7 @@ struct GoogleMapContainer: UIViewRepresentable {
         context.coordinator.onPick = onPick
         context.coordinator.onPinSelected = onPinSelected
         context.coordinator.onAreaChanged = onAreaChanged
-        context.coordinator.render(pins: pins, routes: routes, focus: focus, on: mapView, animated: true,
+        context.coordinator.render(pins: pins, routes: routes, focus: focus, frame: frame, on: mapView, animated: true,
                                    preservesCamera: preservesCamera, selectedPinID: selectedPinID)
     }
 
@@ -89,6 +91,7 @@ struct GoogleMapContainer: UIViewRepresentable {
         private var renderedSelection: String?
         private var rendered: [MapPin] = []
         private var renderedFocus: GeoPoint?
+        private var renderedFrame: MapBounds?
         private var markers: [GMSMarker] = []
         private var pickMarker: GMSMarker?
         private var renderedRoutes: [MapRoute] = []
@@ -98,8 +101,8 @@ struct GoogleMapContainer: UIViewRepresentable {
 
         init(onPick: ((MapPick) -> Void)?) { self.onPick = onPick }
 
-        func render(pins: [MapPin], routes: [MapRoute], focus: GeoPoint?, on mapView: GMSMapView, animated: Bool,
-                    preservesCamera: Bool = false, selectedPinID: String? = nil) {
+        func render(pins: [MapPin], routes: [MapRoute], focus: GeoPoint?, frame: MapBounds? = nil, on mapView: GMSMapView,
+                    animated: Bool, preservesCamera: Bool = false, selectedPinID: String? = nil) {
             // 동선이 **처음** 도착하는 순간(핀은 그대로)에는 한 번 더 맞춘다 — 숙소 복귀처럼 핀 밖으로 나가는
             // 선이 그때 생긴다. 그 뒤 도로가 채워져 선이 바뀔 때는 움직이지 않는다(보고 있는 지도를 흔들지 않는다).
             // ⚠️ 아래에서 renderedRoutes를 덮어쓰기 전에 판정한다.
@@ -143,13 +146,17 @@ struct GoogleMapContainer: UIViewRepresentable {
             // 카메라 — 고른 장소가 있으면 거기로, 없으면 **그린 것 전부**가 보이게(그날 동선 통째로).
             // 고른 장소가 있는 동안은 동선이 바뀌어도 거기 머문다. 고름을 풀면 다시 전부를 보인다.
             let focusCleared = focus == nil && renderedFocus != nil
+            let frameChanged = frame != renderedFrame
+            renderedFrame = frame
             if let focus, focus != renderedFocus {
                 renderedFocus = focus
                 let update = GMSCameraUpdate.setTarget(CLLocationCoordinate2D(latitude: focus.lat, longitude: focus.lng), zoom: 15)
                 if animated { mapView.animate(with: update) } else { mapView.moveCamera(update) }
-            } else if focus == nil, !preservesCamera, pinsChanged || routesArrived || focusCleared {
+            } else if focus == nil, !preservesCamera, pinsChanged || routesArrived || focusCleared || frameChanged {
                 renderedFocus = nil
-                fit(pins: pins, routes: routes, on: mapView, animated: animated)
+                // 장면(frame)이 있으면 거기만, 없으면 그린 것 전부.
+                if let frame { fit(bounds: frame, on: mapView, animated: animated) }
+                else { fit(pins: pins, routes: routes, on: mapView, animated: animated) }
             }
         }
 
