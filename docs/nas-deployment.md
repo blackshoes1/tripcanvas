@@ -262,10 +262,15 @@ ssh nas 'rm ~/tripcanvas/deploy/.deploy-disabled'      # 재개
 #    비공개로 바꿀 때만, read:packages **만** 가진 토큰으로. NAS에 쓰기·저장소 권한을 주지 않는다.
 # ssh nas 'echo <READ_PACKAGES_TOKEN> | sudo /usr/local/bin/docker login ghcr.io -u <github-id> --password-stdin'
 
-# 2) 배포 스크립트 자리 잡기(저장소 폴더가 이미 있으면 파일 하나면 된다)
-ssh nas 'mkdir -p ~/tripcanvas/scripts'
-scp scripts/nas-deploy.sh nas:~/tripcanvas/scripts/nas-deploy.sh
-ssh nas 'chmod +x ~/tripcanvas/scripts/nas-deploy.sh'
+# 2) 배포 스크립트 자리 잡기 — **NAS가 직접 받는다.** 저장소가 공개라 인증이 필요 없고,
+#    배포 스크립트 자신도 compose 파일을 같은 경로로 받으므로 이 길이 살아 있어야 한다.
+ssh nas 'mkdir -p ~/tripcanvas/scripts \
+  && curl -fsSL https://raw.githubusercontent.com/blackshoes1/tripcanvas/main/scripts/nas-deploy.sh \
+       -o ~/tripcanvas/scripts/nas-deploy.sh \
+  && chmod +x ~/tripcanvas/scripts/nas-deploy.sh \
+  && head -1 ~/tripcanvas/scripts/nas-deploy.sh'
+#    ⚠️ 맥에서 보내려면 **`scp -O`**다 — 이 NAS는 SFTP가 막혀 있어 그냥 `scp`는 `Connection closed`로 끊긴다:
+#    scp -O scripts/nas-deploy.sh nas:~/tripcanvas/scripts/nas-deploy.sh
 
 # 3) 첫 배포를 손으로 한 번 — 여기서 .env의 TC_IMAGE_TAG가 채워진다
 ssh nas '~/tripcanvas/scripts/nas-deploy.sh'
@@ -278,6 +283,15 @@ ssh nas '~/tripcanvas/scripts/nas-deploy.sh'
 #    앞 명령의 출력이 파이프에 들어가지 않아 **기존 cron 항목이 통째로 지워진다**:
 ssh nas '{ crontab -l 2>/dev/null | grep -v nas-deploy.sh; echo "*/5 * * * * /bin/bash $HOME/tripcanvas/scripts/nas-deploy.sh >/dev/null 2>&1"; } | crontab -'
 ssh nas 'crontab -l'   # 기존 항목이 남아 있는지 눈으로 확인한다
+```
+
+⚠️ **배포 스크립트 자신은 자동으로 갱신되지 않는다.** 돌고 있는 스크립트를 스스로 갈아 끼우면
+실행 중인 파일이 바뀌어 위험하다. 저장소에서 바뀌면 로그에 한 줄 남기고 `deploy/nas-deploy.sh.new`로
+받아 두므로, 확인한 뒤 손으로 바꾼다:
+
+```bash
+ssh nas 'diff ~/tripcanvas/deploy/nas-deploy.sh.new ~/tripcanvas/scripts/nas-deploy.sh'
+ssh nas 'cp ~/tripcanvas/deploy/nas-deploy.sh.new ~/tripcanvas/scripts/nas-deploy.sh && chmod +x ~/tripcanvas/scripts/nas-deploy.sh'
 ```
 
 ⚠️ `sudo`가 비밀번호를 묻지 않아야 cron이 돈다. 묻는다면 `TC_DOCKER=/usr/local/bin/docker`로 두고
