@@ -93,11 +93,17 @@ struct GoogleMapContainer: UIViewRepresentable {
         private var pickMarker: GMSMarker?
         private var renderedRoutes: [MapRoute] = []
         private var polylines: [GMSPolyline] = []
+        /// 뷰가 아직 0×0일 때 요청된 맞춤 — SDK가 줌을 못 정하므로 첫 idle(레이아웃 뒤)까지 미룬다.
+        private var pendingFit: MapBounds?
 
         init(onPick: ((MapPick) -> Void)?) { self.onPick = onPick }
 
         func render(pins: [MapPin], routes: [MapRoute], focus: GeoPoint?, on mapView: GMSMapView, animated: Bool,
                     preservesCamera: Bool = false, selectedPinID: String? = nil) {
+            // 동선이 **처음** 도착하는 순간(핀은 그대로)에는 한 번 더 맞춘다 — 숙소 복귀처럼 핀 밖으로 나가는
+            // 선이 그때 생긴다. 그 뒤 도로가 채워져 선이 바뀔 때는 움직이지 않는다(보고 있는 지도를 흔들지 않는다).
+            // ⚠️ 아래에서 renderedRoutes를 덮어쓰기 전에 판정한다.
+            let routesArrived = renderedRoutes.isEmpty && !routes.isEmpty && !rendered.isEmpty && pins == rendered
             if routes != renderedRoutes {
                 polylines.forEach { $0.map = nil }
                 polylines = routes.compactMap { route in
@@ -115,8 +121,8 @@ struct GoogleMapContainer: UIViewRepresentable {
                 }
                 renderedRoutes = routes
             }
-            if pins != rendered || renderedSelection != selectedPinID {
-                let pinsChanged = pins != rendered
+            let pinsChanged = pins != rendered
+            if pinsChanged || renderedSelection != selectedPinID {
                 markers.forEach { $0.map = nil }
                 markers = pins.map { pin in
                     let marker = GMSMarker(position: CLLocationCoordinate2D(latitude: pin.point.lat, longitude: pin.point.lng))
@@ -129,16 +135,30 @@ struct GoogleMapContainer: UIViewRepresentable {
                 }
                 rendered = pins
                 renderedSelection = selectedPinID
-                if pinsChanged && !preservesCamera { fit(pins: pins, on: mapView, animated: animated) }
             }
+            if let pending = pendingFit, mapView.bounds.width > 0, mapView.bounds.height > 0 {
+                pendingFit = nil
+                fit(bounds: pending, on: mapView, animated: false)
+            }
+            // 카메라 — 고른 장소가 있으면 거기로, 없으면 **그린 것 전부**가 보이게(그날 동선 통째로).
+            // 고른 장소가 있는 동안은 동선이 바뀌어도 거기 머문다. 고름을 풀면 다시 전부를 보인다.
+            let focusCleared = focus == nil && renderedFocus != nil
             if let focus, focus != renderedFocus {
                 renderedFocus = focus
                 let update = GMSCameraUpdate.setTarget(CLLocationCoordinate2D(latitude: focus.lat, longitude: focus.lng), zoom: 15)
                 if animated { mapView.animate(with: update) } else { mapView.moveCamera(update) }
+            } else if focus == nil, !preservesCamera, pinsChanged || routesArrived || focusCleared {
+                renderedFocus = nil
+                fit(pins: pins, routes: routes, on: mapView, animated: animated)
             }
         }
 
         func mapView(_ mapView: GMSMapView, idleAt position: GMSCameraPosition) {
+            // 첫 프레임 전에 미뤄 둔 맞춤은 레이아웃이 끝난 첫 idle에 한다.
+            if let pending = pendingFit, mapView.bounds.width > 0, mapView.bounds.height > 0 {
+                pendingFit = nil
+                fit(bounds: pending, on: mapView, animated: false)
+            }
             let region = mapView.projection.visibleRegion()
             let corners = [region.nearLeft, region.nearRight, region.farLeft, region.farRight]
             let area = PlaceSearchArea(south: corners.map(\.latitude).min()!, west: corners.map(\.longitude).min()!,
@@ -152,18 +172,25 @@ struct GoogleMapContainer: UIViewRepresentable {
             return true
         }
 
-        private func fit(pins: [MapPin], on mapView: GMSMapView, animated: Bool) {
-            guard let first = pins.first else { return }
-            if pins.count == 1 {
-                let update = GMSCameraUpdate.setTarget(CLLocationCoordinate2D(latitude: first.point.lat, longitude: first.point.lng), zoom: 14)
-                if animated { mapView.animate(with: update) } else { mapView.moveCamera(update) }
-                return
+        /// 그린 것 전부가 보이게 — 핀과 동선의 점을 담는 사각형(`MapBounds`)을 맞춘다. 웹의 `fit(pts, 48)`과 같다.
+        private func fit(pins: [MapPin], routes: [MapRoute], on mapView: GMSMapView, animated: Bool) {
+            guard let bounds = MapBounds.covering(pins: pins, routes: routes) else { return }
+            fit(bounds: bounds, on: mapView, animated: animated)
+        }
+
+        /// ⚠️ 뷰가 아직 0×0이면(첫 프레임 전) SDK가 줌을 정하지 못한다 — 미뤄 두었다가 첫 idle에 맞춘다.
+        private func fit(bounds: MapBounds, on mapView: GMSMapView, animated: Bool) {
+            guard mapView.bounds.width > 0, mapView.bounds.height > 0 else { pendingFit = bounds; return }
+            pendingFit = nil
+            let update: GMSCameraUpdate
+            if bounds.isPoint {
+                update = GMSCameraUpdate.setTarget(CLLocationCoordinate2D(latitude: bounds.center.lat, longitude: bounds.center.lng),
+                                                   zoom: Float(MapBounds.pointZoom))
+            } else {
+                let box = GMSCoordinateBounds(coordinate: CLLocationCoordinate2D(latitude: bounds.south, longitude: bounds.west),
+                                              coordinate: CLLocationCoordinate2D(latitude: bounds.north, longitude: bounds.east))
+                update = GMSCameraUpdate.fit(box, withPadding: 48)
             }
-            var bounds = GMSCoordinateBounds()
-            for pin in pins {
-                bounds = bounds.includingCoordinate(CLLocationCoordinate2D(latitude: pin.point.lat, longitude: pin.point.lng))
-            }
-            let update = GMSCameraUpdate.fit(bounds, withPadding: 48)
             if animated { mapView.animate(with: update) } else { mapView.moveCamera(update) }
         }
 

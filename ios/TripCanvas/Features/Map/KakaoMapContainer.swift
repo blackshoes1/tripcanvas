@@ -51,6 +51,8 @@ struct KakaoMapContainer: UIViewRepresentable {
         private static let pickStyleId = "pickPin"
         private static let routeLayerId = "dayRoute"
         private static let routeStyleId = "dayRouteStyle"
+        /// 전체를 맞출 때 쓰는 줌 범위 — 7은 나라 하나가 보이는 정도, 16은 거리 하나.
+        private static let zoomRange = 7...16
 
         var onPick: ((MapPick) -> Void)?
         var preservesCamera = false
@@ -107,7 +109,10 @@ struct KakaoMapContainer: UIViewRepresentable {
 
         func update(pins: [MapPin], routes: [MapRoute], focus: GeoPoint?, selectedPinID: String? = nil) {
             let changed = pins != self.pins || routes != self.routes || focus != self.focus || selectedPinID != self.selectedPinID
-            if focus != self.focus || (!preservesCamera && pins != self.pins) { shouldMoveCamera = true }
+            // 동선이 **처음** 도착하는 순간(핀은 그대로)에도 맞춘다 — 숙소 복귀처럼 핀 밖으로 나가는 선이 그때 생긴다.
+            // 그 뒤 도로가 채워져 선이 바뀔 때는 움직이지 않는다.
+            let routesArrived = self.routes.isEmpty && !routes.isEmpty && !pins.isEmpty && pins == self.pins
+            if focus != self.focus || (!preservesCamera && (pins != self.pins || routesArrived)) { shouldMoveCamera = true }
             self.pins = pins
             self.routes = routes
             self.focus = focus
@@ -119,10 +124,13 @@ struct KakaoMapContainer: UIViewRepresentable {
         // MARK: MapControllerDelegate
 
         func addViews() {
-            let start = focus ?? pins.first?.point ?? GeoPoint(lat: 37.5665, lng: 126.9780)
+            // 첫 프레임부터 그린 것 전부가 보이는 자리에서 시작한다(render()가 뒤에 정확히 맞춘다).
+            let bounds = MapBounds.covering(pins: pins, routes: routes)
+            let start = focus ?? bounds?.center ?? GeoPoint(lat: 37.5665, lng: 126.9780)
+            let level = focus != nil ? 16 : bounds?.zoomLevel(fitting: container?.bounds.size ?? .zero, range: Self.zoomRange) ?? 15
             let info = MapviewInfo(
                 viewName: Self.viewName, viewInfoName: "map",
-                defaultPosition: MapPoint(longitude: start.lng, latitude: start.lat), defaultLevel: 15)
+                defaultPosition: MapPoint(longitude: start.lng, latitude: start.lat), defaultLevel: level)
             controller?.addView(info)
         }
 
@@ -214,17 +222,12 @@ struct KakaoMapContainer: UIViewRepresentable {
             shouldMoveCamera = false
             if let focus {
                 map.moveCamera(CameraUpdate.make(target: MapPoint(longitude: focus.lng, latitude: focus.lat), zoomLevel: 16, mapView: map))
-            } else if let first = pins.first {
-                if pins.count == 1 {
-                    map.moveCamera(CameraUpdate.make(target: MapPoint(longitude: first.point.lng, latitude: first.point.lat), zoomLevel: 15, mapView: map))
-                } else {
-                    // 전부 보이게 — 중심과 퍼진 정도로 레벨을 정한다(넓을수록 낮은 레벨).
-                    let lats = pins.map(\.point.lat), lngs = pins.map(\.point.lng)
-                    let center = MapPoint(longitude: (lngs.min()! + lngs.max()!) / 2, latitude: (lats.min()! + lats.max()!) / 2)
-                    let span = max(lats.max()! - lats.min()!, lngs.max()! - lngs.min()!)
-                    let level: Int = span > 1.5 ? 7 : span > 0.5 ? 9 : span > 0.15 ? 11 : span > 0.05 ? 13 : 14
-                    map.moveCamera(CameraUpdate.make(target: center, zoomLevel: level, mapView: map))
-                }
+            } else if let bounds = MapBounds.covering(pins: pins, routes: routes) {
+                // 그린 것 전부가 보이게(그날 동선 통째로) — 카카오에는 bounds fit이 없어 중심과 줌으로 간다.
+                // 줌은 뷰 크기 안에 사각형이 들어가는 가장 가까운 값이다(`MapBounds.zoomLevel`).
+                let level = bounds.zoomLevel(fitting: map.viewRect.size, range: Self.zoomRange)
+                map.moveCamera(CameraUpdate.make(target: MapPoint(longitude: bounds.center.lng, latitude: bounds.center.lat),
+                                                 zoomLevel: level, mapView: map))
             }
         }
 

@@ -50,6 +50,8 @@ struct TripPlanView: View {
     @State private var choosingPlaces = false
     @State private var chosenPlaces: Set<Int> = []
     @State private var selectedMapSpot: Int?
+    /// 그 선택이 **어느 날**의 것인가. 날을 옮기면 옛 번호가 새 날의 장소를 가리키지 않게 — 같은 날일 때만 선택이다.
+    @State private var selectedMapSpotDay: Int?
 
     var body: some View {
         Group {
@@ -533,7 +535,7 @@ struct TripPlanView: View {
             if mapSearching, let document = model.document {
                 MapDiscoveryView(trip: trip, document: document, model: discovery, isVisible: showsMap,
                                  onReturnFromBoard: { await model.load() }, onSelectItinerary: { day, spot in
-                    model.selectedDay = day; selectedMapSpot = spot; mapSearching = false; mapScope = .day
+                    model.selectedDay = day; selectMapSpot(spot, day: day); mapSearching = false; mapScope = .day
                 })
             } else if mapScope == .trip { tripMap(model) } else { singleDayMap(model) }
         }
@@ -579,13 +581,16 @@ struct TripPlanView: View {
     @ViewBuilder
     private func singleDayMap(_ model: TripPlanViewModel) -> some View {
         if let day = model.day {
+            let selection = mapSelection(on: model.selectedDay)
             VStack(spacing: 0) {
                 if !day.pins.isEmpty {
+                    // 고른 장소가 있을 때만 거기로 간다. 없으면 `focus`를 비워 엔진이 **그날 동선 전체**(핀+선)를 맞춘다 —
+                    // 첫 장소를 넣으면 거기에 줌인해 나머지 동선이 화면 밖이다(2026-09-19 전 모습).
                     MapEngineView(pins: day.pins, routes: model.planDay?.mapRoutes ?? [],
-                                  focus: day.spots.indices.contains(selectedMapSpot ?? -1) ? day.spots[selectedMapSpot ?? 0].point : day.pins.first?.point,
-                                  preservesCamera: true,
-                                  selectedPinID: day.pins.first(where: { $0.order - 1 == selectedMapSpot })?.id,
-                                  onPinSelected: { id in selectedMapSpot = day.pins.first(where: { $0.id == id }).map { $0.order - 1 } },
+                                  focus: selection.flatMap { day.spots.indices.contains($0) ? day.spots[$0].point : nil },
+                                  preservesCamera: false,
+                                  selectedPinID: day.pins.first(where: { $0.order - 1 == selection })?.id,
+                                  onPinSelected: { id in selectMapSpot(day.pins.first(where: { $0.id == id }).map { $0.order - 1 }, day: model.selectedDay) },
                                   isVisible: showsMap)
                         .frame(minHeight: 180, maxHeight: .infinity)
                     if let note = routeNote(model.planDay?.mapRoutes ?? []) {
@@ -601,7 +606,8 @@ struct TripPlanView: View {
                         ForEach(Array(day.spots.enumerated()), id: \.offset) { index, spot in
                             HStack {
                                 Button {
-                                    selectedMapSpot = index
+                                    // 고른 줄을 다시 누르면 고름을 푼다 — 지도가 다시 그날 전체를 보인다.
+                                    selectMapSpot(selection == index ? nil : index, day: model.selectedDay)
                                 } label: {
                                     VStack(alignment: .leading) {
                                         Text("\(index + 1). \(spot.name)")
@@ -620,15 +626,25 @@ struct TripPlanView: View {
                                     .accessibilityLabel("\(spot.name) 일정 작업")
                                 }
                             }
-                            .listRowBackground(selectedMapSpot == index ? Color.accentColor.opacity(0.12) : Ink.raised)
+                            .listRowBackground(selection == index ? Color.accentColor.opacity(0.12) : Ink.raised)
                             .id(index)
                         }
                     }.listStyle(.plain).frame(maxHeight: 240)
                     .onChange(of: selectedMapSpot) { _, index in if let index { proxy.scrollTo(index, anchor: .center) } }
                 }
             }
-            .onChange(of: model.selectedDay) { _, _ in selectedMapSpot = nil }
+            .onChange(of: model.selectedDay) { _, _ in selectMapSpot(nil, day: nil) }
         }
+    }
+
+    /// 지도에서 고른 장소 — `day`의 것일 때만. 날을 옮긴 직후 옛 번호가 새 날의 장소를 가리키지 않게 한다.
+    private func mapSelection(on day: Int) -> Int? {
+        selectedMapSpotDay == day ? selectedMapSpot : nil
+    }
+
+    private func selectMapSpot(_ index: Int?, day: Int?) {
+        selectedMapSpot = index
+        selectedMapSpotDay = index == nil ? nil : day
     }
 
     private func dayHeader(_ model: TripPlanViewModel, day: TripDay) -> some View {
