@@ -40,33 +40,29 @@ npm run verify:all
   ⚠️ **SKIP은 통과가 아니다** — 무엇을 못 돌렸는지 PR에 밝힌다.
 
 - [ ] **필수 체크가 빨간 상태로 merge하지 않는다.** 빨간 이유가 코드가 아니라 러너·과금이면 그 사실과 대신 무엇으로 검증했는지를 PR에 남긴다 — `docs/ci.md`
-- [ ] **`next/src/app/api/**`·`next/src/server/**`·`next/src/features/**`을 바꿨으면 NAS에 따로 배포한다.** `main` 머지는 **Vercel 정적 웹만** 내보낸다 — API는 NAS 이미지라 다시 빌드하지 않으면 옛 코드가 그대로 돈다:
+- [ ] **API 배포는 이제 자동이다**(2026-09-19). `main` 머지가 곧 운영 API 배포다 — 사람이 할 일이 없다:
 
-```bash
-scripts/nas-deploy.sh              # tailnet 안의 맥, 저장소 폴더에서. origin/main을 fetch → 아카이브 → NAS build → up → 확인
-scripts/nas-deploy.sh --migrate    # 마이그레이션을 추가했을 때 — migrate도 다시 빌드해 한 번 돌리고 종료 코드 0을 본다
+```
+PR merge → main → Actions(release.yml): 게이트 → GHCR :<커밋 SHA> → production 태그
+                → NAS cron(5분): pull → migrate → api·realtime → 헬스체크 → revision 확인
 ```
 
-  스크립트는 **fetch가 실패하면 멈추고**, 담은 커밋을 `TC_REVISION`으로 이미지 라벨·환경변수에 박은 뒤,
-  떠 있는 컨테이너의 라벨과 `GET /api/health`의 `revision`이 그 커밋인지까지 확인하고 끝난다.
-  ⚠️ **2026-09-19 새벽 배포는 build가 성공했는데 내용이 #239였다** — 맥의 `origin/main`이 전날 것이라
-  `git archive origin/main`이 옛 코드를 담았고, 로그는 전부 초록이었다. 손으로 할 때 `git archive HEAD`도 같은 함정이다.
-  어떤 코드가 도는지는 **컨테이너 시작 시각이 아니라** `curl -s https://bokbok9.tail8b977f.ts.net/api/health`의 `revision`으로 본다.
-  ⚠️ **마이그레이션을 추가했으면 `--migrate`.** `migrate`는 별도 이미지라 `api`만 빌드하면
-  옛 이미지가 돌고 **"migrations applied successfully"라고 찍으면서 새 테이블을 만들지 않는다**
-  (2026-09-06 `leg_cache`가 그랬다 — 로그는 초록인데 테이블이 없었다). 끝나면 눈으로 확인한다:
+  **NAS는 더 이상 빌드하지 않는다.** 이미지는 GitHub에서만 만들어지고 이름이 커밋 SHA라
+  `Git 커밋 = 이미지 = migrate·api·realtime = TC_REVISION = 배포 기록`이 하나로 꿰어져 있다.
+  ⚠️ **2026-09-19 새벽 사고가 이 구조를 만들었다** — 맥의 `origin/main`이 전날 것이라 빌드는 성공했는데
+  내용이 옛 커밋이었고 로그는 전부 초록이었다. 소스를 사람이 날라 거기서 빌드하는 한 같은 사고가 또 난다.
+  확인·롤백·정지는 전부 한 스크립트다 — `docs/nas-deployment.md`:
 
 ```bash
-ssh nas "sudo /usr/local/bin/docker exec tripcanvas-postgres-1 psql -U tripcanvas -d tripcanvas -c '\\d <새 테이블>'"
+ssh nas '~/tripcanvas/scripts/nas-deploy.sh --status'              # 도는 커밋 · production 태그 · 상태
+ssh nas '~/tripcanvas/scripts/nas-deploy.sh --sha <40자리 SHA>'    # 특정 커밋으로 롤백
+ssh nas 'touch ~/tripcanvas/deploy/.deploy-disabled'               # 자동 배포 정지
 ```
 
-  ⚠️ **새 라우트는 배포 전까지 404다.** 앱·웹이 그걸 "값이 없음"으로 조용히 넘기게 설계돼 있으면
-  아무 오류 없이 화면에서 그 기능만 사라진다 — 2026-09-06에 일자 스트립 날짜가 그래서 안 보였다.
-  ⚠️ `deploy/.env`는 추적되지 않으므로 이 아카이브에 없다. NAS 것이 그대로 남는다.
-  ⚠️ **`.env`를 고쳤으면 `--force-recreate api`까지 해야 적용된다** — 환경변수는 컨테이너가 뜰 때 한 번만 읽힌다.
-  파일이 아니라 **컨테이너 시작 시각**으로 확인한다(`docker inspect -f '{{.State.StartedAt}}'`) — `docs/nas-deployment.md`
-  ⚠️ 지도 키는 **서버용과 앱용이 다르다**: iOS 키(번들 제한)를 서버에 넣으면 403 `Requests from this iOS client application <empty> are blocked`
-
+- [ ] **마이그레이션은 하위호환이어야 한다** — 머지가 운영 DB에 자동 적용되고, **이미지 롤백은 스키마를 되돌리지 않는다.**
+  쓰던 컬럼 삭제·개명·`SET NOT NULL`·타입 변경은 `npm run check:migrations`(게이트)가 PR에서 막는다.
+  나눠서 한다: expand → deploy → backfill → contract — `docs/migration-policy.md`.
+  정말 파괴적 변경을 해야 하면 자동 배포를 세우고 백업을 새로 뜬 뒤 손으로 본다(같은 문서).
 - [ ] 푸시 후 폰에서 실제 동작 확인 — ☰ 메뉴 하단의 **버전 표시**로 새 버전이 적용됐는지 먼저 볼 것 (캐시된 옛 버전이면 그 글자를 탭해 갱신)
 
 ## 브랜드 — With J / From J

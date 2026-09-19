@@ -1,0 +1,31 @@
+# 비상용·로컬용 **빌드** override. 정상 운영은 GHCR 이미지를 받아 띄운다(docker-compose.yml) —
+# NAS에서 소스를 빌드하면 "어느 소스였는지"가 다시 모호해진다(2026-09-19 사고).
+#
+# 레지스트리가 죽었거나 인터넷이 끊겼을 때만:
+#
+#   TC_IMAGE_TAG=$(git rev-parse HEAD) \
+#   docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.build.yml build
+#   TC_IMAGE_TAG=$(git rev-parse HEAD) \
+#   docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.build.yml up -d
+#
+# base의 `image:`가 그대로 태그로 붙으므로, 빌드한 것이 운영이 기대하는 바로 그 태그가 된다.
+# ⚠️ 이렇게 만든 이미지는 GHCR에 없다 — 다음 자동 배포가 GHCR 이미지로 되돌린다.
+services:
+  migrate:
+    build: &app_build
+      context: ..
+      dockerfile: next/Dockerfile
+      target: tools
+      args:
+        TC_REVISION: ${TC_IMAGE_TAG:-unknown}
+
+  realtime:
+    build: *app_build
+
+  api:
+    build:
+      context: ..
+      dockerfile: next/Dockerfile
+      target: runtime
+      args:
+        TC_REVISION: ${TC_IMAGE_TAG:-unknown}

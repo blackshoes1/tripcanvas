@@ -41,6 +41,7 @@ if want web; then
   step "버전 동기(sw.js ↔ index.html)" npm run check:version
   step "lint"                 npm run lint
   step "시크릿 스캔"          npm run security:scan
+  step "마이그레이션 하위호환"  npm run check:migrations
   step "타입 검사(tsc)"       npm run check:types
   step "유닛 테스트"          npm run test:unit
   step "통합 테스트"          npm run test:integration

@@ -1,0 +1,138 @@
+# main 머지 = 운영 API 배포 (2026-09-19)
+#
+#   PR merge → main → [게이트: CI] → [이미지: GHCR :<커밋 SHA>] → [승격: production 태그]
+#                                                                        ↓
+#                                        NAS cron(5분) → pull → migrate → api/realtime → 헬스체크
+#
+# 왜 이렇게 하나: 예전에는 맥에서 소스를 묶어 NAS에 보내 거기서 빌드했다. 2026-09-19 새벽에
+# 맥의 `origin/main`이 전날 것이라 **빌드는 성공했는데 내용이 옛 커밋**이었고, 로그는 전부 초록이었다.
+# 이제 이미지를 만드는 곳이 하나(GitHub)고 이름이 커밋 SHA라 "어느 코드인지"가 태그에 박혀 있다.
+#
+# ⚠️ GitHub이 NAS에 들어가지 않는다 — 집 네트워크 열쇠를 여기 두지 않으려고 **NAS가 당겨 간다**.
+# ⚠️ `production` 태그는 이미지를 **다 올린 뒤에만** 움직인다. NAS는 그 태그가 가리키는 커밋만 배포하므로
+#    이미지가 없는 커밋을 배포하려다 실패하는 일이 없다.
+name: Release
+
+on:
+  push:
+    branches: [main]
+    # 앱·문서만 바뀐 머지는 운영 API를 건드리지 않는다 — 쓸데없이 컨테이너를 재시작하지 않게.
+    # ⚠️ **빼는 목록**이라 새 엔진 파일(루트의 lib.js·adaptive.js 같은)이 생겨도 자동으로 포함된다.
+    #    포함 목록으로 적으면 하나 빠뜨렸을 때 옛 코드가 조용히 남는다.
+    paths-ignore:
+      - 'ios/**'
+      - 'docs/**'
+      - '**.md'
+      - '.github/workflows/ios*.yml'
+  # 재배포·재시도용. 이미지를 다시 만들고 production 태그를 이 커밋으로 맞춘다.
+  workflow_dispatch:
+
+# 머지가 겹쳐도 production 태그가 뒤섞이지 않게 **줄 세운다**(취소하지 않는다 —
+# 취소하면 이미지는 올라갔는데 태그는 안 옮겨진 상태가 남는다).
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  # 게이트는 기존 CI 그대로다 — 여기서 규칙을 따로 만들지 않는다(두 벌이 되면 갈린다).
+  gate:
+    name: Gate
+    uses: ./.github/workflows/ci.yml
+
+  images:
+    name: Images
+    needs: gate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # api — 최소 런타임(standalone). drizzle-kit이 들어 있지 않다.
+      - name: api 이미지
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: next/Dockerfile
+          target: runtime
+          push: true
+          provenance: false
+          build-args: TC_REVISION=${{ github.sha }}
+          tags: |
+            ghcr.io/${{ github.repository }}/api:${{ github.sha }}
+            ghcr.io/${{ github.repository }}/api:main
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,scope=api,mode=max
+
+      # tools — migrate와 realtime이 **같이** 쓴다(명령만 다르다). 한 커밋 = 한 태그.
+      - name: tools 이미지(migrate · realtime)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: next/Dockerfile
+          target: tools
+          push: true
+          provenance: false
+          build-args: TC_REVISION=${{ github.sha }}
+          tags: |
+            ghcr.io/${{ github.repository }}/tools:${{ github.sha }}
+            ghcr.io/${{ github.repository }}/tools:main
+          cache-from: type=gha,scope=tools
+          cache-to: type=gha,scope=tools,mode=max
+
+  # NAS가 보는 단 하나의 진실: `production` 태그가 가리키는 커밋.
+  # mutable한 :main 태그를 보고 판단하지 않는다 — 태그는 커밋 SHA로 풀려야 한다.
+  promote:
+    name: Promote
+    needs: images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: production 태그를 이 커밋으로
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          api="https://api.github.com/repos/$REPO/git"
+          # 토큰은 헤더 파일로만 넘긴다 — 명령줄에 두면 프로세스 목록·로그에 남는다
+          hdr=$(mktemp); printf 'authorization: Bearer %s\n' "$GH_TOKEN" > "$hdr"
+          trap 'rm -f "$hdr"' EXIT
+          code=$(curl -sS -o /tmp/promote.json -w '%{http_code}' -X PATCH \
+            -H @"$hdr" -H 'accept: application/vnd.github+json' \
+            "$api/refs/tags/production" -d "{\"sha\":\"$SHA\",\"force\":true}")
+          if [ "$code" = "422" ] || [ "$code" = "404" ]; then
+            echo "production 태그가 없다 — 처음 만든다"
+            code=$(curl -sS -o /tmp/promote.json -w '%{http_code}' -X POST \
+              -H @"$hdr" -H 'accept: application/vnd.github+json' \
+              "$api/refs" -d "{\"ref\":\"refs/tags/production\",\"sha\":\"$SHA\"}")
+          fi
+          [ "$code" = "200" ] || [ "$code" = "201" ] || {
+            echo "production 태그를 옮기지 못했다(HTTP $code)"; cat /tmp/promote.json; exit 1; }
+          echo "production → $SHA"
+
+      - name: 요약
+        env:
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          {
+            echo "### 운영으로 승격됐다"
+            echo ""
+            echo '```'
+            echo "커밋      $SHA"
+            echo "api      ghcr.io/$REPO/api:$SHA"
+            echo "tools    ghcr.io/$REPO/tools:$SHA"
+            echo '```'
+            echo ""
+            echo "NAS가 5분 안에 받아 간다. 확인: \`curl -s https://bokbok9.tail8b977f.ts.net/api/health\`의 \`revision\`"
+          } >> "$GITHUB_STEP_SUMMARY"
