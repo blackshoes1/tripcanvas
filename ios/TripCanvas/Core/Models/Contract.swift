@@ -777,11 +777,15 @@ struct DayPlanCostPart: Codable, Hashable, Sendable {
 /// 그것을 결제나 예약 어느 쪽으로도 단정하지 않는다(단정하면 남은 지출이 거짓말이 된다).
 enum CostPayState: String, Codable, Hashable, Sendable, CaseIterable {
     case reserved = "RESERVED", paid = "PAID", none = "NONE"
+    /// 사람에게 부르는 이름. 웹 `PAY_STATE_LABEL`과 **글자까지 같다**.
+    /// ⚠️ 이름이 있다고 아무 데나 찍는다는 뜻은 아니다 — 고르지 않은 것을 **줄·요약에 적을지**는
+    /// 쓰는 쪽이 판단한다(`paySplit`은 아예 담지 않고, 행은 `!= .none`으로 감춘다).
+    /// 2026-09-20 전에는 여기만 '미구분'이고 고르는 칸은 '고르지 않음'이라 같은 값에 두 이름이었다.
     var label: String {
         switch self {
         case .reserved: "결제 예정"
         case .paid: "결제 완료"
-        case .none: "미구분"
+        case .none: "고르지 않음"
         }
     }
 }

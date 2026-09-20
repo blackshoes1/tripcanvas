@@ -32,8 +32,9 @@ struct CostEntry: Hashable, Sendable, Identifiable {
         get { raw["costPartial"]?.boolValue ?? false }
         set { raw.setOrRemove("costPartial", newValue ? .bool(true) : nil) }
     }
-    /// 예약해 둔 돈인가 이미 낸 돈인가. 고르지 않으면 문서에 남기지 않는다 —
-    /// 기본값을 저장하면 '고르지 않음'과 '미구분으로 골랐음'을 구별할 수 없다.
+    /// 예약해 둔 돈인가 이미 낸 돈인가. 고르지 않으면 문서에 **키 자체를 남기지 않는다** —
+    /// `NONE`을 적어 두면 '아직 안 골랐다'와 '골랐는데 그 값이다'가 같은 모양이 되고,
+    /// 공유 링크도 기본값만큼 무거워진다.
     var payState: CostPayState {
         get { CostPayState(rawValue: raw["payState"]?.stringValue ?? "") ?? .none }
         set { raw.setOrRemove("payState", newValue == .none ? nil : .string(newValue.rawValue)) }
