@@ -156,7 +156,8 @@ struct TripListView: View {
             .navigationDestination(for: TripSummary.self) { trip in
                 TripHomeView(trip: trip, requested: requestedTab, panel: $requestedPanel, env: env)
             }
-            .navigationTitle("내 여행")
+            .navigationTitle("With J")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     // 메뉴가 아니라 버튼 하나다 — 두 길은 시트를 열면 나란히 보인다.
@@ -350,6 +351,14 @@ struct TripListView: View {
             }
         } else {
             List {
+                VStack(alignment: .leading, spacing: Space.m) {
+                    Text("TRAVEL JOURNAL").metaLabel()
+                    Text("나의 여행").font(Typeface.editorial(.largeTitle)).foregroundStyle(Ink.ink)
+                    Rectangle().fill(Ink.hairline).frame(height: 1)
+                }
+                .padding(.vertical, Space.l)
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
                 if let cachedAt = model.cachedAt {
                     OfflineNotice(savedAt: cachedAt)
                 }
@@ -360,9 +369,15 @@ struct TripListView: View {
                     .listRowSeparator(.hidden)
                 }
                 ForEach(model.ordered) { trip in
-                    NavigationLink(value: trip) {
-                        TripRow(trip: trip)
+                    VStack(alignment: .leading, spacing: Space.m) {
+                        TripCoverView(city: trip.cities.first(where: { !$0.isEmpty && $0 != "기타" }) ?? "") { path.append(trip) }
+                        NavigationLink(value: trip) {
+                            TripRow(trip: trip)
+                        }
                     }
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 0, leading: Space.xl, bottom: Space.xl, trailing: Space.l))
                     // ⚠️ 되돌릴 수 없는 동작이라 미는 것만으로는 사라지지 않는다 — 한 번 더 묻는다.
                     .swipeActions(edge: .trailing) {
                         Button(role: .destructive) { pendingRemoval = trip } label: {
@@ -372,7 +387,7 @@ struct TripListView: View {
                     }
                 }
             }
-            .listStyle(.insetGrouped)
+            .listStyle(.plain)
             .paperGround()
             .refreshable { await model.load() }
         }
@@ -383,11 +398,11 @@ struct TripRow: View {
     let trip: TripSummary
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Space.xs) {
+        VStack(alignment: .leading, spacing: Space.m) {
             HStack(spacing: Space.s) {
-                Text(trip.name).font(.headline)
+                Text(trip.name).font(Typeface.editorial(.title2)).foregroundStyle(Ink.ink)
                 if trip.isLive {
-                    StatusChip(text: "Day \(trip.todayIndex + 1)", symbol: "location.fill", tint: .blue)
+                    StatusChip(text: "Day \(trip.todayIndex + 1)", symbol: "location.fill", tint: Ink.accent)
                 }
                 if trip.isShared {
                     // 함께 보는 여행인지 목록에서 바로 안다 — 편집 권한은 여행 안에서 말한다.
@@ -398,7 +413,7 @@ struct TripRow: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
-        .padding(.vertical, Space.xs)
+        .padding(.vertical, Space.s)
         .accessibilityElement(children: .combine)
     }
 

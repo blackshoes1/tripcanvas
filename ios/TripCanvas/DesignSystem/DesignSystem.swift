@@ -14,33 +14,26 @@ enum Radius {
     static let chip: CGFloat = 999
 }
 
-/// 종이빛 바탕과 주홍 강조.
-///
-/// claude.ai/design의 `Mobile trip planning app`에서 가져온 시각 언어다 — 따뜻한 종이 바탕에
-/// 잉크빛 글자, 토리이의 붉은색을 강조로 쓴다. **색은 여기 한 곳에만 있다** — 화면이 직접
-/// 시스템 색을 부르면 이 팔레트를 우회하게 된다.
-///
-/// ⚠️ **어두운 모드 값은 디자인에 없어서 여기서 정했다** — 종이와 잉크를 맞바꾸고 강조는
-/// 어두운 바탕에서 읽히도록 한 단계 밝혔다. 원안과 다르므로 바꿀 일이 생기면 여기만 고친다.
+/// 따뜻한 종이 바탕·잉크·올리브 강조. 밝은 모드와 어두운 모드를 함께 정의한다.
 enum Ink {
     /// 화면 바탕 — 종이
-    static let paper = adaptive(light: 0xF4F1EA, dark: 0x16130F)
+    static let paper = adaptive(light: 0xF7F5EF, dark: 0x16130F)
     /// 바탕 위에 뜬 것 — 카드·행
     static let raised = adaptive(light: 0xFFFFFF, dark: 0x221E19)
     /// 바탕보다 가라앉은 것 — 구분된 영역
     static let sunken = adaptive(light: 0xEDE7DA, dark: 0x100E0B)
     /// 본문 글자
-    static let ink = adaptive(light: 0x16130F, dark: 0xF4F1EA)
+    static let ink = adaptive(light: 0x16130F, dark: 0xF7F5EF)
     /// 덜 중요한 글자
     static let soft = adaptive(light: 0x6E655A, dark: 0xB5AB98)
     /// 라벨·메타 — 가장 흐리다
-    static let faint = adaptive(light: 0x9A8F7E, dark: 0x8A8073)
+    static let faint = adaptive(light: 0x766F62, dark: 0x8A8073)
     /// 강조 — 누를 것, 지금 봐야 할 것.
     /// ⚠️ 에셋 카탈로그의 `AccentColor`와 **같은 값이어야 한다** — 그래야 화면 여기저기의
     /// `Color.accentColor`와 기본 컨트롤 색이 이 팔레트와 갈리지 않는다.
     static let accent = Color.accentColor
     /// 카드 테두리 — 그림자 대신 머리카락 선
-    static let hairline = adaptive(light: 0x16130F, dark: 0xF4F1EA).opacity(0.08)
+    static let hairline = adaptive(light: 0x16130F, dark: 0xF7F5EF).opacity(0.08)
 
     private static func adaptive(light: UInt32, dark: UInt32) -> Color {
         Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(rgb: dark) : UIColor(rgb: light) })
@@ -67,18 +60,19 @@ private extension UIColor {
     }
 }
 
-/// 글자에 **역할**을 준다: 재는 것은 모노, 누르는 것은 시스템 폰트.
-///
-/// ⚠️ **세리프 층은 아직 없다.** 원안(claude.ai/design)은 날짜·장소명을 Instrument Serif로
-/// 두지만, **iOS에 한글 글리프가 있는 서체는 Apple SD Gothic Neo 하나뿐이고 그건 고딕이다**
-/// (시뮬레이터에서 86개 중 1개를 확인). 세리프를 지정하면 한글은 고딕으로 떨어지고 라틴 문자만
-/// 세리프로 남아 한 문장 안에서 서체가 갈린다. 한글 명조를 번들에 넣기 전에는 쓰지 않는다.
-///
-/// ⚠️ **폰트 파일을 번들에 넣지 않는다.** 시스템 모노(SF Mono)를 쓰면 앱이 무거워지지 않고
-/// **Dynamic Type이 그대로 산다** — 글자 크기를 키운 사람에게 고정 크기 폰트는 접근성 문제다.
+/// 제목은 번들 나눔명조, 조작·본문은 시스템 글꼴. 모두 Dynamic Type을 따른다.
 enum Typeface {
-    /// 날짜·장소명처럼 **읽는** 자리. 지금은 크기·굵기로만 무게를 준다(위 주석 참고).
-    static func editorial(_ style: Font.TextStyle) -> Font { .system(style).weight(.semibold) }
+    static func editorial(_ style: Font.TextStyle) -> Font {
+        let size: CGFloat
+        switch style {
+        case .largeTitle: size = 34
+        case .title: size = 28
+        case .title2: size = 24
+        case .title3: size = 20
+        default: size = 17
+        }
+        return .custom("NanumMyeongjo", size: size, relativeTo: style)
+    }
     /// `OCT 12 · 6 DAYS` 같은 메타 라벨. 대문자·자간은 `.metaLabel()`이 함께 준다.
     static func meta(_ style: Font.TextStyle = .caption2) -> Font {
         .system(style, design: .monospaced).weight(.medium)

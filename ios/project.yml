@@ -51,6 +51,8 @@ targets:
     info:
       path: TripCanvas/Info.plist
       properties:
+        UIAppFonts:
+          - NanumMyeongjo-Regular.ttf
         CFBundleDisplayName: With J
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
