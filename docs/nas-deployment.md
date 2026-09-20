@@ -232,7 +232,12 @@ production 태그 : 6549b93…        ← GitHub이 배포하라고 정한 커�
 남아 있으면 새 이미지를 제대로 띄우고도 `/api/health`는 옛 커밋을 말한다. 실제로 그 일이 일어났다 —
 맥에서 빌드하던 옛 방식이 남긴 줄이었다. 지금은 `nas-deploy.sh`가 배포할 때마다 그 줄을 **지우고**,
 둘이 갈리면 배포를 실패시킨다(`test/nas-deploy.test.js`). **`production 태그`와 `도는 revision`이 30분 넘게 다르면** 파이프라인이 멈춘 것이다 —
-`deploy/deploy.log`를 본다. 밖에서 한 줄로 볼 때는:
+`deploy/deploy.log`를 본다. **밖에서는 자동으로 감시한다**(2026-09-20) — `api/health-watch.js`(Vercel, tailnet 밖)가 `production` 태그와
+도는 `revision`을 대조해, 태그가 가리키는 커밋이 30분 넘게 묵었는데도 다른 것이 돌고 있으면 **DEGRADED**로
+답한다(`degradedReasons: ["deploy"]`). 저장은 멀쩡하므로 503이 아니다 — 새벽에 깨우지 않는다.
+끄려면 `TC_WATCH_REPO=`(빈 값), 기준 시간은 `TC_WATCH_DEPLOY_MAX_AGE_MIN`.
+
+밖에서 한 줄로 볼 때는:
 
 ```bash
 curl -s https://bokbok9.tail8b977f.ts.net/api/health | sed -n 's/.*"revision":"\([^"]*\)".*/\1/p'
@@ -309,14 +314,24 @@ ssh nas '~/tripcanvas/scripts/nas-deploy.sh'
 부르는 이유가 여기 있다. 등록 뒤 **[실행]** 으로 한 번 손수 돌려 보고 `deploy/deploy.log`를 확인한다
 (바뀐 게 없으면 즉시 끝나 로그에 줄이 안 붙는 것이 정상이다 — `--force`로 확인한다).
 
-⚠️ **배포 스크립트 자신은 자동으로 갱신되지 않는다.** 돌고 있는 스크립트를 스스로 갈아 끼우면
-실행 중인 파일이 바뀌어 위험하다. 저장소에서 바뀌면 로그에 한 줄 남기고 `deploy/nas-deploy.sh.new`로
-받아 두므로, 확인한 뒤 손으로 바꾼다:
+### 배포 스크립트는 스스로를 갱신한다 (2026-09-20)
 
-```bash
-ssh nas 'diff ~/tripcanvas/deploy/nas-deploy.sh.new ~/tripcanvas/scripts/nas-deploy.sh'
-ssh nas 'cp ~/tripcanvas/deploy/nas-deploy.sh.new ~/tripcanvas/scripts/nas-deploy.sh && chmod +x ~/tripcanvas/scripts/nas-deploy.sh'
-```
+배포할 것이 있을 때마다 그 커밋의 `scripts/nas-deploy.sh`를 받아, 지금 것과 다르면 **갈아 끼우고 새 스크립트로
+다시 시작한다.** 사람이 할 일은 없다.
+
+⚠️ 예전에는 `deploy/nas-deploy.sh.new`로 받아 두고 사람이 복사하기를 기다렸다. 그 한 단계를 잊어
+**옛 스크립트가 5분마다 돌며 같은 실패를 되풀이하는** 일이 실제로 났다. 그래서 자동으로 바꾼다.
+
+안전장치 넷:
+
+- **그 자리에서 덮어쓰지 않는다.** bash는 스크립트를 조금씩 읽어 가며 실행해서, 내용이 발밑에서 바뀌면
+  엉뚱한 줄을 실행한다. 같은 디렉터리에 받아 **rename**으로 바꾼다 — 옛 inode는 그대로라 지금 프로세스는
+  끝까지 옛 내용을 읽는다.
+- **문법을 먼저 검사한다**(`bash -n`). 깨진 스크립트로는 바꾸지 않고 지금 것으로 계속한다.
+- **한 번만 한다**(`TC_SELF_UPDATED`). 두 커밋이 서로를 가리켜도 무한히 다시 시작하지 않는다.
+- **바뀐 게 없는 주기에는 받지도 않는다.** 5분마다 도는 경로는 여전히 GitHub 요청 하나(`production` 태그)뿐이다.
+
+못 바꿨을 때(권한 등)만 예전처럼 `deploy/nas-deploy.sh.new`에 받아 두고 로그로 알린다.
 
 ⚠️ `sudo`가 비밀번호를 묻지 않아야 cron이 돈다. 묻는다면 `TC_DOCKER=/usr/local/bin/docker`로 두고
 docker 그룹에 넣거나, 스케줄러를 root로 돌린다.

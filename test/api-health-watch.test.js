@@ -20,9 +20,19 @@ function handlerWith(plan) {
       if (!plan.health) throw new Error('unreachable');
       return { status: plan.health.status, json: async () => plan.health.body };
     }
+    // 배포 정체 감시가 묻는 GitHub — plan.github이 없으면 못 닿은 것으로 둔다
+    if (url.startsWith('https://api.github.com/')) {
+      github.push(url);
+      if (!plan.github) throw new Error('unreachable');
+      if (url.includes('/ref/tags/production')) {
+        return { status: 200, json: async () => ({ object: { sha: plan.github.sha } }) };
+      }
+      return { status: 200, json: async () => ({ committer: { date: plan.github.committedAt } }) };
+    }
     if (!plan.auth) throw new Error('unreachable');
     return { status: plan.auth.status, json: async () => ({}) };
   };
+  const github = [];
   const requested = [];
   // https.request를 가짜로 — upgrade/response/error 중 하나를 즉시 발생시킨다
   const https = {
@@ -43,6 +53,7 @@ function handlerWith(plan) {
   };
   const handler = createHandler({ env: { TC_WATCH_BASE: 'https://nas.test', ...(plan.env || {}) }, fetchImpl, https });
   handler.requested = requested;
+  handler.github = github;
   return handler;
 }
 
@@ -166,4 +177,87 @@ test('판정: 저장 실패는 503, 실시간·백업·점검은 200', () => {
   assert.equal(_private.verdict({ ...up, health: { ok: false } }).httpStatus, 503);
   // 저장이 죽었으면 실시간 degraded는 말하지 않는다 — 큰 것부터 말한다
   assert.equal(_private.verdict({ ...up, health: { ok: false }, realtime: { ok: false } }).degraded, false);
+});
+
+// ── 배포 정체 감시(2026-09-20) ──
+// NAS 스케줄러가 조용히 죽으면 옛 코드가 계속 돈다. 안에서 보면 전부 초록이라 아무도 모른다 —
+// 그래서 밖에서 `production` 태그와 도는 revision을 대조한다. 저장은 멀쩡하므로 503이 아니라 DEGRADED다.
+const RUNNING = 'eeea35427de2855d2a863e14e31d786aa5f16467';
+const NEWER = 'abc1234def5678901234567890abcdef12345678';
+const withRevision = (revision) => ({ ...HEALTHY_BODY, revision });
+const ago = (min) => new Date(Date.now() - min * 60000).toISOString();
+
+test('감시: 태그와 도는 revision이 같으면 배포는 정상이다', async () => {
+  const out = await invoke(handlerWith({
+    ...OK, health: { status: 200, body: withRevision(RUNNING) },
+    github: { sha: RUNNING, committedAt: ago(120) }
+  }));
+  assert.equal(out.status, 200);
+  assert.equal(out.json.status, 'HEALTHY');
+  assert.equal(out.json.checks.deploy.ok, true);
+  assert.equal(out.json.checks.deploy.stale, false);
+});
+
+test('감시: 오래 어긋나 있으면 DEGRADED — 배포가 선 것이다. 저장은 멀쩡하니 503은 아니다', async () => {
+  const out = await invoke(handlerWith({
+    ...OK, health: { status: 200, body: withRevision(RUNNING) },
+    github: { sha: NEWER, committedAt: ago(90) }
+  }));
+  assert.equal(out.status, 200, '배포 정체로 새벽에 깨우지 않는다');
+  assert.equal(out.json.status, 'DEGRADED');
+  assert.deepEqual(out.json.degradedReasons, ['deploy']);
+  assert.equal(out.json.checks.deploy.stale, true);
+  assert.equal(out.json.checks.deploy.expected, NEWER.slice(0, 7));
+  assert.equal(out.json.checks.deploy.running, RUNNING.slice(0, 7));
+  assert.ok(out.json.checks.deploy.ageMin >= 89, '얼마나 오래됐는지 함께 말한다');
+});
+
+test('감시: 방금 머지한 직후는 정체가 아니다 — NAS가 받아 갈 시간을 준다', async () => {
+  const out = await invoke(handlerWith({
+    ...OK, health: { status: 200, body: withRevision(RUNNING) },
+    github: { sha: NEWER, committedAt: ago(3) }
+  }));
+  assert.equal(out.json.status, 'HEALTHY');
+  assert.equal(out.json.checks.deploy.stale, false);
+  assert.deepEqual(out.json.degradedReasons, []);
+});
+
+test('감시: GitHub에 못 닿으면 정체라고 말하지 않는다 — 거짓 경보를 내지 않는다', async () => {
+  const out = await invoke(handlerWith({
+    ...OK, health: { status: 200, body: withRevision(RUNNING) }
+  }));
+  assert.equal(out.json.status, 'HEALTHY');
+  assert.equal(out.json.checks.deploy.unknown, true);
+  assert.deepEqual(out.json.degradedReasons, []);
+});
+
+test('감시: TC_WATCH_REPO를 비우면 배포를 아예 묻지 않는다', async () => {
+  const handler = handlerWith({
+    ...OK, health: { status: 200, body: withRevision(RUNNING) },
+    github: { sha: NEWER, committedAt: ago(999) },
+    env: { TC_WATCH_REPO: '' }
+  });
+  const out = await invoke(handler);
+  assert.equal(out.json.status, 'HEALTHY');
+  assert.equal(out.json.checks.deploy, null);
+  assert.deepEqual(handler.github, [], 'GitHub에 한 번도 묻지 않는다');
+});
+
+test('감시: /api/health가 revision을 안 주면 묻지 않는다 — 옛 이미지와도 섞여 돈다', async () => {
+  const handler = handlerWith({ ...OK, github: { sha: NEWER, committedAt: ago(999) } });
+  const out = await invoke(handler);
+  assert.equal(out.json.status, 'HEALTHY');
+  assert.equal(out.json.checks.deploy, null);
+  assert.deepEqual(handler.github, []);
+});
+
+test('감시: 저장이 죽었으면 배포 정체는 말하지 않는다 — 큰 것부터 말한다', async () => {
+  const out = await invoke(handlerWith({
+    ...OK, health: { status: 200, body: { ...withRevision(RUNNING), database: 'error' } },
+    github: { sha: NEWER, committedAt: ago(999) }
+  }));
+  assert.equal(out.status, 503);
+  assert.equal(out.json.status, 'UNAVAILABLE');
+  assert.equal(out.json.degraded, false);
+  assert.deepEqual(out.json.degradedReasons, []);
 });
