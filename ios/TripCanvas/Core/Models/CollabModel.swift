@@ -199,6 +199,33 @@ enum CollabModel {
     static func canRemoveCandidate(_ role: MemberRole, mine: Bool) -> Bool { mine || role == .owner }
     static func canDeleteComment(_ role: MemberRole, mine: Bool) -> Bool { mine || role == .owner }
 
+    // MARK: 권한 거절 문구 — 서버가 말한 이유가 가장 구체적이다
+    //
+    // ⚠️ `collab.js`의 `forbiddenText`/`isHumanMessage` **복사본**이다.
+    // 규칙을 바꿔야 하면 `collab.js`를 먼저 고치고, `forbidden-text.json` 픽스처가 여기를 깨뜨린다.
+
+    /// 서버가 **사람에게 쓴 문장**인가. 우리 API의 오류 메시지는 전부 한국어 문장이고,
+    /// 레거시 경로가 주던 것은 기계용 토큰(`TRIP_FORBIDDEN`)이거나 원시 Postgres 영문이다.
+    /// 판정 범위는 웹의 `[가-힣]`과 같다(U+AC00…U+D7A3).
+    static func isHumanMessage(_ message: String) -> Bool {
+        message.unicodeScalars.contains { $0.value >= 0xAC00 && $0.value <= 0xD7A3 }
+    }
+
+    /// 권한 오류를 사용자 문장으로. **서버가 말한 이유가 먼저다** — 그걸 버리고 역할로 짐작하면
+    /// 사용자는 "권한이 없어요" 하나만 보게 되고 무엇을 하면 되는지가 사라진다.
+    ///
+    /// 웹에 있는 hint 갈래는 여기 없다 — `APIError.forbidden`은 message 하나뿐이고,
+    /// hint는 레거시 Supabase 경로의 것이라 앱이 닿지 않는다.
+    static func forbiddenText(_ message: String?, role: MemberRole?) -> String {
+        let msg = (message ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if msg.contains("OWNER_CANNOT_LEAVE") {
+            return "주최자는 여행을 나갈 수 없어요 — 여행을 삭제하거나 다른 사람에게 넘겨 주세요"
+        }
+        if isHumanMessage(msg) { return msg }
+        if role == .viewer { return "보기 권한이라 저장할 수 없어요 — 주최자에게 편집 권한을 요청하세요" }
+        return "이 여행을 바꿀 권한이 없어요"
+    }
+
     static func roleLabel(_ role: MemberRole) -> String {
         switch role {
         case .owner: "주최자"

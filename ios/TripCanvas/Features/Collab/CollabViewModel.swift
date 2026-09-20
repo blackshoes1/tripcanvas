@@ -123,7 +123,8 @@ final class CollabViewModel {
             toast = "초대 링크를 만들었어요 — 일행에게 보내 주세요"
             invites = ((try? await service.invites(tripId: trip.id)) ?? []).filter(\.active)
         } catch {
-            errorMessage = isForbidden(error) ? "초대 링크는 주최자만 만들 수 있어요" : message(for: error)
+            // 서버가 "초대 링크는 주최자만 만들 수 있습니다"라고 더 정확히 말한다 — 덮어쓰지 않는다.
+            errorMessage = message(for: error)
         }
     }
 
@@ -163,18 +164,9 @@ final class CollabViewModel {
         }
     }
 
-    private func isForbidden(_ error: Error) -> Bool {
-        guard let apiError = error as? APIError, case .forbidden = apiError else { return false }
-        return true
-    }
-
     private func message(for error: Error) -> String {
         if let apiError = error as? APIError {
-            if case .forbidden(let text) = apiError {
-                // 서버 hint를 우선하고, 없으면 역할에 맞는 문장 — 웹 forbiddenText와 같다.
-                if text.contains("OWNER_CANNOT_LEAVE") { return "주최자는 여행을 나갈 수 없어요 — 여행을 삭제하거나 다른 사람에게 넘겨 주세요" }
-                return text.isEmpty ? "이 여행을 바꿀 권한이 없어요" : text
-            }
+            if case .forbidden(let text) = apiError { return CollabModel.forbiddenText(text, role: role) }
             return apiError.errorDescription ?? "요청을 처리하지 못했어요."
         }
         return error.localizedDescription
