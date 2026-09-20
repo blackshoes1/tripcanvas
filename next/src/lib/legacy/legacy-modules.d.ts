@@ -149,6 +149,14 @@ declare module '@legacy/lib.js' {
     }>;
     /** 참여자 집합의 키. 비어 있으면 '*'(= 모든 여행자) */
     whoKey(spot: unknown): string;
+    /** 그 장소에 머무는 시간(분). **정하지 않았으면 머무르지 않는다(0분)** — 이 판정은 lib.js 하나뿐이다 */
+    stayMinutesOf(spot: unknown): number;
+    /** 활동이 시작되는 시각(분). 예약이 도착보다 뒤면 기다리고, 지각이면 예약 시각을 쓰지 않는다 */
+    activityStartMinute(spot: unknown, eta: number): number;
+    /** 하루가 끝나는 시각(분) = 활동 시작 + 체류 + 숙소 복귀. 이동시간은 호출부가 구해서 넣는다 */
+    dayEndMinutes(lastSpot: unknown, lastEta: number, backMinutes?: number | null): number;
+    /** 다음 구간이 출발하는 시각(분) = 직전 장소 도착 + 예약 대기 + 체류 */
+    departMinuteAfter(prevSpot: unknown, prevState: { eta: number; wait?: number } | null | undefined): number;
     computeTimeline(
       day: unknown,
       opts: { legMin: (a: unknown, b: unknown, context: { depart: number }) => number; startAnchor?: unknown }

@@ -1009,8 +1009,7 @@ function dayTimeline(day, startAnchor, di){
 function dayEtas(day, startAnchor, di){ return dayTimeline(day,startAnchor,di).map(x=>x.eta); }
 function legDepartMinute(day,timeline,spotIndex){
   if(spotIndex<=0) return parseHM(day.startAt);
-  const prev=day.spots[spotIndex-1], state=timeline[spotIndex-1];
-  return state.eta+(state.wait||0)+(prev.stayMin!=null?+prev.stayMin:0);
+  return departMinuteAfter(day.spots[spotIndex-1], timeline[spotIndex-1]);
 }
 // sortDayByTime은 lib.js가 단일 소스
 // 하루 장소 비용 합계
@@ -1102,11 +1101,10 @@ function tripCost(){ return tripCostBreakdown().total; }
 // 일정 예상 종료 시각(분) — 마지막 장소 (예약 대기 반영한) 활동 시작 + 체류
 function dayEndMin(day, startAnchor, bl){
   if(!day.spots.length) return null;
-  const etas=dayEtas(day, startAnchor), last=day.spots.length-1, s=day.spots[last];
-  const base = s.bookAt ? Math.max(etas[last], parseHM(s.bookAt)) : etas[last];
-  const end = base + (s.stayMin!=null? +s.stayMin : 0);
-  // 숙소로 돌아가는 시간까지 넣어야 '하루가 몇 시에 끝나는지'가 맞는다
-  return bl ? end + legMinutes(bl.from, bl.to, bl.mode, bl.when, bl.timeZone) : end;
+  const etas=dayEtas(day, startAnchor), last=day.spots.length-1;
+  // 합산 규칙은 lib.js 하나다 — 여기서는 **이동시간만** 구해서 넘긴다(시간대·출발시각은 이 쪽 몫).
+  return dayEndMinutes(day.spots[last], etas[last],
+                       bl ? legMinutes(bl.from, bl.to, bl.mode, bl.when, bl.timeZone) : null);
 }
 // 하루 전체 실도로 합계 (모든 구간이 캐시됐을 때만)
 function dayRoute(day, bl){

@@ -1226,3 +1226,49 @@ test('normalizeTrip — must와 opt가 함께 오면 지키는 쪽만 남긴다'
   assert.equal('opt' in c, false, 'false는 저장하지 않는다');
   assert.equal('must' in c, false);
 });
+
+// ── 하루가 언제 끝나는가 — 웹·서버가 함께 쓰는 순수 계산 ──────────────────────
+// ⚠️ 이 규칙이 여러 곳에 손으로 적혀 있어 한 곳(`next` 경로 조회)만 옛 값(60분)으로 남아 있었다.
+//    여기서 값을 고정해 다시 흘러가지 않게 한다.
+
+test('체류 — 정하지 않았으면 머무르지 않는다(0분), 0분으로 정한 것과 계산이 같다', () => {
+  assert.equal(L.stayMinutesOf({}), 0, '안 정했다');
+  assert.equal(L.stayMinutesOf({stayMin:0}), 0, '0분으로 정했다');
+  assert.equal(L.stayMinutesOf({stayMin:45}), 45);
+  assert.equal(L.stayMinutesOf({stayMin:'45'}), 45, '문자열도 수로 읽는다');
+  assert.equal(L.stayMinutesOf(null), 0);
+  assert.equal(L.stayMinutesOf(undefined), 0);
+});
+
+test('활동 시작 — 예약이 도착보다 뒤면 기다리고, 이미 늦었으면 예약 시각을 쓰지 않는다', () => {
+  assert.equal(L.activityStartMinute({bookAt:'19:00'}, 18*60), 19*60, '한 시간 기다린다');
+  assert.equal(L.activityStartMinute({bookAt:'19:00'}, 19*60+30), 19*60+30, '지각 — 이미 늦은 것을 당겨 적지 않는다');
+  assert.equal(L.activityStartMinute({}, 13*60), 13*60, '예약이 없으면 도착이 곧 시작이다');
+});
+
+test('하루 종료 — 활동 시작 + 체류 + 숙소 복귀', () => {
+  const spot={bookAt:'19:00', stayMin:90};
+  assert.equal(L.dayEndMinutes(spot, 18*60, null), 19*60+90, '복귀가 없으면 더하지 않는다');
+  assert.equal(L.dayEndMinutes(spot, 18*60, 25), 19*60+90+25, '복귀 이동을 더한다');
+  assert.equal(L.dayEndMinutes(spot, 18*60, 0), 19*60+90, '복귀가 0분이어도 더한 결과는 같다');
+  // 마지막 날에는 복귀가 붙지 않는다 — 호출부가 null을 넘긴다
+  assert.equal(L.dayEndMinutes({stayMin:null}, 15*60, null), 15*60, '체류 미정이면 도착이 곧 종료다');
+});
+
+test('다음 구간 출발 — 직전 장소 도착 + 예약 대기 + 체류', () => {
+  assert.equal(L.departMinuteAfter({stayMin:30}, {eta:10*60, wait:0}), 10*60+30);
+  assert.equal(L.departMinuteAfter({stayMin:30}, {eta:10*60, wait:15}), 10*60+45, '예약까지 기다린 시간도 더한다');
+  assert.equal(L.departMinuteAfter({}, {eta:10*60}), 10*60, '체류 미정 — 바로 떠난다');
+  assert.equal(L.departMinuteAfter({stayMin:0}, {eta:10*60}), 10*60, '0분과 미정은 같은 계산이다');
+});
+
+test('타임라인도 같은 계산을 쓴다 — 예약 대기와 체류가 다음 도착에 그대로 반영된다', () => {
+  const day={startAt:'09:00', spots:[
+    {name:'A', lat:1, lng:1, bookAt:'10:00', stayMin:30},
+    {name:'B', lat:1, lng:1}
+  ]};
+  const tl=L.computeTimeline(day, {legMin:()=>0});
+  assert.equal(tl[0].eta, 9*60, '도착은 9시');
+  assert.equal(tl[0].wait, 60, '예약 10시까지 기다린다');
+  assert.equal(tl[1].eta, 10*60+30, '10시 + 체류 30분 = 다음 장소 도착');
+});
