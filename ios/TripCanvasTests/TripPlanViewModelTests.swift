@@ -1246,6 +1246,32 @@ extension TripPlanViewModelTests {
         XCTAssertNil(model.errorMessage)
     }
 
+    /// **실행취소는 내가 한 것만 되돌린다.** 일행이 먼저 바꾼 뒤에도 되돌리기가 살아 있으면
+    /// 한 번의 ↩️로 그 변경이 사라지고, 그 문서가 **새 revision 위에** 올라가 서버 CAS도 막지 못한다.
+    /// 웹은 2026-09-20까지 이게 뚫려 있었다(`adoptRemote`로 막았다) — 여기가 그 규칙의 앱 쪽 자물쇠다.
+    func testAnotherDevicesChangeTakesAwayTheUndo() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(), revision: 7, role: .owner))
+        let model = TripPlanViewModel(tripId: "t1", service: service)
+        await model.load()
+        await model.addSpot(TripSpot(name: "우메다"))
+        XCTAssertTrue(model.canUndo, "내 변경은 되돌릴 수 있다")
+
+        // 일행이 먼저 바꿔 둔 문서가 도착한다
+        var theirs = document()
+        theirs.name = "오사카 (영희 편집)"
+        service.snapshot = .init(document: theirs, revision: 20, role: .owner)
+        await model.load()
+
+        XCTAssertEqual(model.revision, 20)
+        XCTAssertEqual(model.document?.name, "오사카 (영희 편집)")
+        XCTAssertFalse(model.canUndo, "남의 변경 이전으로 돌아갈 길을 남기지 않는다")
+
+        let savesBefore = service.saves.count
+        await model.undoLastChange()
+        XCTAssertEqual(service.saves.count, savesBefore, "되돌릴 것이 없으면 저장도 나가지 않는다")
+        XCTAssertEqual(model.document?.name, "오사카 (영희 편집)", "일행의 변경은 그대로다")
+    }
+
     func testUndoDoesNotMarkCandidatesWhenTheDocumentRestoreFails() async {
         let service = FakeDocumentService(snapshot: .init(document: documentWithLinkedCandidates(), revision: 7, role: .owner))
         let candidates = FakeCollabService()

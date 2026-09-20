@@ -144,6 +144,20 @@ function save(){
   updateSaveState();
 }
 function updateUndoBtn(){ const b=document.getElementById('undoBtn'); if(b) b.disabled=!histStack.length; }
+/**
+ * 일행·다른 기기의 변경을 로컬에 들일 때 감싼다 — 그동안 히스토리를 쌓지 않고, 들인 뒤에는 비운다.
+ *
+ * **실행취소는 내가 한 것만 되돌린다.** 남의 변경 이전 스냅샷을 남겨 두면 ↩️ 한 번에 그 변경이
+ * 통째로 사라지는데, 그때 로컬은 이미 **새 revision**을 들고 있어 서버 CAS도 막지 못한다 —
+ * 되돌린 옛 문서가 그대로 올라가 일행의 작업이 없어진다(2026-09-20 재현).
+ * iOS는 `undoRevision == revision`으로 같은 것을 막는다(`TripPlanViewModel.canUndo`).
+ * @param {()=>void} apply 원격본을 store에 반영하는 동작
+ */
+function adoptRemote(apply){
+  histLock=true;
+  try{ apply(); } finally { histLock=false; }
+  histStack.length=0; histLast=JSON.stringify(store); updateUndoBtn();
+}
 function undo(){
   if(readOnly()) return;
   if(!histStack.length){ toast('되돌릴 작업이 없습니다','#4f4740'); return; }
@@ -4659,7 +4673,7 @@ function replaceWithRemote(c){
   if(!store.trips.length) store.trips=[{id:uid(),name:'새 여행',start:'',days:[{title:'',drive:'',note:'',spots:[]}]}];
   if(!store.trips.find(t=>t.id===store.activeId)) store.activeId=store.trips[0].id;
   if(c.local) syncMeta[c.local.id]={revision:c.revision,status:c.deleted_at?'tombstoned':'clean',op:'',hash:remote?TC_SYNC.hashTrip(remote):''};
-  persistSyncMeta(); suppressCloudOnce=true; activeDay=0; render(); return true;
+  persistSyncMeta(); adoptRemote(()=>{ suppressCloudOnce=true; activeDay=0; render(); }); return true;
 }
 document.getElementById('syncUseCloud').onclick=()=>{ if(!replaceWithRemote(currentSyncConflict)) return; currentSyncConflict=null; showNextSyncConflict(); };
 document.getElementById('syncUseDevice').onclick=()=>{ const c=currentSyncConflict; currentSyncConflict=null; document.getElementById('syncConflictBg').classList.remove('show'); if(c&&c.local) syncTripCloud(c.local,{force:true}); showNextSyncConflict(); };
@@ -4692,7 +4706,7 @@ async function syncOnLogin(){
       if(!trips.find(t=>t.id===store.activeId)) store.activeId=trips[0].id;
     }
     localStorage.setItem(LS_KEY, JSON.stringify(store));
-    activeDay=0; render(); fitAll();
+    adoptRemote(()=>{ activeDay=0; render(); }); fitAll();
     pullPriceSnapshots();   // cron·다른 기기가 남긴 가격 관측 기록을 로컬과 병합
     for(const c of merged.conflicts) enqueueSyncConflict(c);
     for(const action of merged.actions) if(action.trip.id!=='spain2026') await syncTripCloud(action.trip,{force:action.force});
@@ -4946,7 +4960,7 @@ async function pullTrip(id,opts){
     // 바뀐 날에 표시를 남긴다. 토스트는 띄우지 않는다 — 변경은 이미 화면에 그려지고,
     // 일행이 편집을 이어가면 저장마다 같은 문장이 반복돼 잔소리가 된다.
     for(const di of changedDayIndexes(local,checked.value)) remoteChangedDays.add(di);
-    suppressCloudOnce=true; render();
+    adoptRemote(()=>{ suppressCloudOnce=true; render(); });
     return true;
   }catch(e){ reportOperationalError('collab.pull',e); return false; }
 }
