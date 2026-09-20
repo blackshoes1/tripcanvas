@@ -176,6 +176,26 @@ describe('buildDayPlanView', () => {
     for (const m of minutes) expect(Number.isInteger(m), `정수가 아닌 분: ${m}`).toBe(true);
   });
 
+  // ⚠️ 위 테스트는 **정수를 먹여서** 정수가 나오는지만 본다. 정규화를 지나지 않은 문서가
+  //    서버에 들어오면 소수가 그대로 나갈 수 있고, 그때 Swift의 `Int` 디코딩이 응답 전체를
+  //    실패시켜 일정 화면이 통째로 빈다 — 앱 빌드까지 아무도 모른다. 그래서 소수를 직접 먹인다.
+  it("정규화를 안 지난 소수가 들어와도 '분'은 정수로 나간다", () => {
+    const t = trip([day([
+      airport(),
+      spot('식당', 33.49, 126.53, { stayMin: 90.4 } as Partial<Spot>),
+      spot('전망대', 33.48, 126.52, { stayMin: 45.6 } as Partial<Spot>)
+    ]), day([])]);
+    const v = build(t, 0)!;
+
+    const stays = v.day.spots
+      .map((s) => s.stayMinutes)
+      .filter((n): n is number => typeof n === 'number');
+
+    expect(stays.length).toBe(2);
+    for (const m of stays) expect(Number.isInteger(m), `정수가 아닌 체류 분: ${m}`).toBe(true);
+    expect(stays).toEqual([90, 46]);
+  });
+
   // 함께 움직이지 않는 시간(§25~§27). 가르는 규칙은 lib의 splitSegments 하나다 —
   // 타임라인도 같은 함수로 가르므로 여기서 따로 가르면 그림과 시각이 어긋난다.
   it('분리가 없으면 splits는 비어 있다 — 하루가 예전과 완전히 같다', () => {
