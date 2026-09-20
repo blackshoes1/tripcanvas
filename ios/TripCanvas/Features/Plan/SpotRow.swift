@@ -10,10 +10,14 @@ struct SpotRow: View {
     /// 함께 다니지 않는 구간에 속할 때만. 규칙은 서버가 정하고 여기서는 그리기만 한다.
     var split: SplitInfo?
 
-    /// 시간 칸 폭. `📌 25:10 (익일)`이 한 줄에 들어가야 하고, 글자 크기 설정을 따라 커진다.
-    @ScaledMetric(relativeTo: .caption) private var timeColumnWidth: CGFloat = 92
+    /// 시간 칸 폭. 승인 시안의 왼쪽 시각 열이다 — `07:20`이 기준이고 글자 크기 설정을 따라 커진다.
+    /// ⚠️ 고정 시각의 📌와 `(익일)`은 여기 그대로 남는다. 좁혔다고 **뜻을 버리지 않는다** —
+    ///    모자라면 `minimumScaleFactor`가 줄인다.
+    @ScaledMetric(relativeTo: .caption) private var timeColumnWidth: CGFloat = 64
     /// 📌 자리. 고정 폭이라 아이콘 유무와 상관없이 시간이 같은 x에서 시작한다.
     @ScaledMetric(relativeTo: .caption) private var pinSlotWidth: CGFloat = 16
+    /// 카테고리 아이콘 열. 이름이 줄마다 같은 x에서 시작하도록 고정 폭이다.
+    @ScaledMetric(relativeTo: .body) private var categoryIconWidth: CGFloat = 24
     @Environment(\.dynamicTypeSize) private var typeSize
 
     /// 시간 칸 아래에 붙는 줄들(구간·참여자·합류)의 들여쓰기.
@@ -82,13 +86,14 @@ struct SpotRow: View {
     /// 아이콘·이름·시각·메모. 배치(옆/위)만 바깥에서 달라지고 내용은 하나다.
     private var mainContent: some View {
         HStack(alignment: .top, spacing: Space.m) {
-            VStack(spacing: Space.s) {
-                Circle().fill(Ink.accent).frame(width: 7, height: 7)
-                Rectangle().fill(Ink.hairline).frame(width: 1)
-            }
-            .frame(width: 12)
-            .padding(.top, 7)
-            .accessibilityHidden(true)
+            // 장소 유형 — 시안의 두 번째 열. 번호 원형 타임라인 대신 **무엇인지**를 보인다.
+            // ⚠️ 분류를 모르는 장소도 **자리는 잡는다** — 아니면 이름이 줄마다 다른 x에서 시작한다.
+            Image(systemName: spot.category?.symbol ?? "mappin")
+                .font(.system(size: 17))
+                .foregroundStyle(spot.category == nil ? Ink.faint : Ink.ink)
+                .frame(width: categoryIconWidth, alignment: .center)
+                .padding(.top, 1)
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: Space.xs) {
                 HStack(spacing: Space.s) {
                     Text(spot.name.isEmpty ? "이름 없는 장소" : spot.name)
@@ -184,15 +189,21 @@ struct SpotRow: View {
     /// 이동은 장소보다 가볍게 — 얇은 선과 텍스트로 연결한다. 장소 이름이 언제나 가장 높은 우선순위다.
     private func legLine(_ leg: DayPlanLeg) -> some View {
         let mode = TravelMode(rawValue: leg.mode) ?? dayMode
-        return HStack(spacing: Space.s) {
-            Image(systemName: mode.symbol).frame(width: 12)
+        return HStack(alignment: .center, spacing: Space.s) {
+            // 두 장소를 잇는 선. 이동은 장소보다 가벼워야 하므로 선도 가늘다.
+            Rectangle().fill(Ink.hairline)
+                .frame(width: 1)
+                .frame(maxHeight: .infinity)
+                .frame(width: categoryIconWidth)
+                .accessibilityHidden(true)
             Text("\(mode.label) \(TimeFormat.duration(leg.minutes)) · \(distanceText(leg.distanceKm))")
                 .fixedSize(horizontal: false, vertical: true)
-            Rectangle().fill(Ink.hairline).frame(height: 1).accessibilityHidden(true)
+            Spacer(minLength: 0)
         }
+        .frame(minHeight: 26)
         .font(.caption)
         .foregroundStyle(Ink.soft)
-        .padding(.vertical, Space.s)
+        .padding(.vertical, 2)
         .padding(.leading, secondaryIndent)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(mode.label)로 \(TimeFormat.duration(leg.minutes)), \(distanceText(leg.distanceKm))")

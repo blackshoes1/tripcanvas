@@ -28,9 +28,10 @@ enum Ink {
     static let soft = adaptive(light: 0x6E655A, dark: 0xB5AB98)
     /// 라벨·메타 — 가장 흐리다
     static let faint = adaptive(light: 0x766F62, dark: 0x8A8073)
-    /// 강조 — 누를 것, 지금 봐야 할 것.
+    /// 강조 — 누를 것, 지금 봐야 할 것. **올리브**(2026-09-20 승인 시안).
     /// ⚠️ 에셋 카탈로그의 `AccentColor`와 **같은 값이어야 한다** — 그래야 화면 여기저기의
     /// `Color.accentColor`와 기본 컨트롤 색이 이 팔레트와 갈리지 않는다.
+    /// ⚠️ **웹은 아직 주홍(`--primary`)이다** — 이번 변경은 iOS 범위라 웹은 따로 맞춘다.
     static let accent = Color.accentColor
     /// 카드 테두리 — 그림자 대신 머리카락 선
     static let hairline = adaptive(light: 0x16130F, dark: 0xF7F5EF).opacity(0.08)
@@ -171,6 +172,20 @@ enum TimeFormat {
     /// 일자 칩의 "10/2 (금)". 서버가 준 `YYYY-MM-DD`를 **그대로 읽기만** 한다 —
     /// 날짜를 여기서 만들지 않는다(어느 날인지는 서버가 정한다).
     /// 날짜가 없는 여행(`""`)이면 nil이라 칩에서 그 줄이 빠진다.
+    /// 날짜 칩 아랫줄 `10.25 일`. **고른 날과 안 고른 날이 같은 모양이다** —
+    /// 달라지면 칩 높이가 오가며 스트립이 흔들린다(승인 시안).
+    static func dayChipDate(_ iso: String) -> String? {
+        let parts = iso.split(separator: "-")
+        guard parts.count == 3, let year = Int(parts[0]), let month = Int(parts[1]), let day = Int(parts[2]) else {
+            return nil
+        }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .gmt
+        guard let date = calendar.date(from: DateComponents(year: year, month: month, day: day)) else { return nil }
+        let weekday = ["일", "월", "화", "수", "목", "금", "토"][calendar.component(.weekday, from: date) - 1]
+        return String(format: "%d.%02d %@", month, day, weekday)
+    }
+
     static func dayChipLabel(_ iso: String) -> String? {
         let parts = iso.split(separator: "-")
         guard parts.count == 3, let year = Int(parts[0]), let month = Int(parts[1]), let day = Int(parts[2]) else {
