@@ -371,11 +371,13 @@ struct TripListView: View {
                     .listRowSeparator(.hidden)
                 }
                 ForEach(model.ordered) { trip in
+                    // 제목이 먼저다 — 목록을 훑는 사람은 사진이 아니라 이름으로 제 여행을 찾는다.
+                    // 표지 사진과 '표지 바꾸기'는 한 덩어리로 제목 아래에 온다(고치는 대상 바로 곁).
                     VStack(alignment: .leading, spacing: Space.m) {
-                        TripCoverView(trip: trip, api: env.service.api, refresh: coverRefresh) { path.append(trip) }
                         NavigationLink(value: trip) {
                             TripRow(trip: trip)
                         }
+                        TripCoverView(trip: trip, api: env.service.api, refresh: coverRefresh) { path.append(trip) }
                     }
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
