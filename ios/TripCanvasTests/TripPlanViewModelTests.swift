@@ -912,6 +912,40 @@ extension TripPlanViewModelTests {
 // MARK: - 저장 뒤 계산 다시 받기
 
 extension TripPlanViewModelTests {
+    /// 선조회는 보지도 않는 날을 미리 받아 둔다. 그 답이 **편집 뒤에 도착하면 버린다** —
+    /// 옛 문서로 계산된 시각을 넣어 두면 그 날로 넘어가는 순간 틀린 숫자가 먼저 보인다.
+    func testAPrefetchThatArrivesAfterAnEditIsNotKept() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(days: 3), revision: 7, role: .owner))
+        service.dayPlanResponse = plan(days: 3, selected: 0)
+        let model = TripPlanViewModel(tripId: "t1", service: service, legRetryDelay: 60)
+
+        var serverRevision = 7
+        var releasePrefetch: CheckedContinuation<DayPlanResponse, Error>?
+        service.dayPlanHandler = { index in
+            if index == 1 { return try await withCheckedThrowingContinuation { releasePrefetch = $0 } }
+            return self.plan(days: 3, selected: index, revision: serverRevision)
+        }
+
+        await model.load()
+        await waitForRefresh { releasePrefetch != nil }         // 다음 날을 미리 받는 중
+
+        serverRevision = 8
+        await model.addSpot(TripSpot(name: "우메다"))
+        await waitForRefresh { model.revision == 8 }
+
+        releasePrefetch?.resume(returning: plan(days: 3, selected: 1, revision: 7))
+        await settle()
+
+        XCTAssertNil(model.overviewPlan(1), "옛 문서로 계산된 선조회 결과는 남기지 않는다")
+        XCTAssertFalse(model.planAttempted(for: 1), "받아 둔 것이 없으므로 그 날은 아직 시도 전이다")
+    }
+
+    /// 조건을 기다리지 않고 **떠 있는 작업이 끝날 틈만** 준다. 없는 것을 확인하는 단언에 쓴다 —
+    /// `waitForRefresh`는 끝에 단언하므로 '끝까지 생기지 않아야 하는 것'에는 맞지 않는다.
+    private func settle() async {
+        for _ in 0..<20 { try? await Task.sleep(for: .milliseconds(5)) }
+    }
+
     private func waitForRefresh(_ condition: () -> Bool,
                                 file: StaticString = #filePath, line: UInt = #line) async {
         for _ in 0..<100 {
