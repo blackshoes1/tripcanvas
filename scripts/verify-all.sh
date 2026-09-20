@@ -35,6 +35,24 @@ skip() { SKIPPED=1; RESULTS+=("SKIP  $1 — $2"); printf '\n\033[2m▶ %s (건�
 
 want() { [ "$SCOPE" = all ] || [ "$SCOPE" = "$1" ]; }
 
+# ── 파리티 픽스처가 커밋된 것과 같은지 ──
+# ⚠️ `swiftParity.test.ts`는 픽스처를 **읽지 않고 덮어쓴다.** 그래서 계약을 바꾸고 픽스처를
+#    커밋하지 않으면, CI 러너가 제 손으로 다시 써서 초록이 된다. 커밋해야 `ios/**` 경로가 걸려
+#    iOS 워크플로가 돌고 Swift가 검사된다 — 안 그러면 Swift는 **검사되지 않은 채로 남는다.**
+#    2026-09-19 새벽 사고(빌드 성공·로그 초록·내용은 옛 커밋)와 같은 종류라 게이트로 막는다.
+PARITY_FIXTURES=ios/TripCanvasTests/Fixtures
+check_parity_fixtures() {
+  local dirty
+  dirty=$(git status --porcelain -- "$PARITY_FIXTURES" 2>/dev/null || true)
+  if [ -n "$dirty" ]; then
+    echo "파리티 픽스처가 방금 다시 쓰여 커밋된 것과 달라졌다 — 계약이 바뀌었다는 뜻이다." >&2
+    echo "커밋해야 ios/** 경로가 걸려 iOS 워크플로가 돌고 Swift가 검사된다:" >&2
+    echo "$dirty" >&2
+    return 1
+  fi
+  return 0
+}
+
 # ── 루트: Quality ─────────────────────────────────────────────────────────────
 if want web; then
   step "구문 검사"            npm run check:syntax
@@ -73,6 +91,7 @@ if want next; then
     step "next: lint"         npm --prefix next run lint
     step "next: 타입 검사"    npm --prefix next run check:types
     step "next: 테스트"       npm --prefix next test
+    step "next: 파리티 픽스처 커밋 확인" check_parity_fixtures
     step "next: build"        npm --prefix next run build
     step "next: tools:build"  npm --prefix next run tools:build
     step "next: API 연결 E2E" npm run test:e2e:next

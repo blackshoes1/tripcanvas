@@ -159,7 +159,9 @@ export function buildDayPlanView(input: DayPlanInput): DayPlanResponse | null {
       bookedAtMinutes: minutesOf(spot.bookAt),
       bookingLateMinutes: booking?.warn ? Math.round(entry.eta - parseHM(booking.at)) : null,
       waitMinutes: Math.max(0, Math.round(entry.wait ?? 0)),
-      stayMinutes: spot.stayMin != null ? Number(spot.stayMin) : null,
+      // ⚠️ 여기도 반올림한다 — 같은 함수의 다른 분 필드와 달리 빠져 있었다. 정규화를 지나지 않은
+      //    문서가 소수를 싣고 오면 Swift의 `Int` 디코딩이 응답 전체를 실패시켜 일정 화면이 통째로 빈다.
+      stayMinutes: spot.stayMin != null ? Math.round(Number(spot.stayMin)) : null,
       status: String((spot as { status?: unknown }).status ?? 'PLANNED'),
       participants: participantsOf(spot),
       reunion: (spot as { reunion?: unknown }).reunion === true,

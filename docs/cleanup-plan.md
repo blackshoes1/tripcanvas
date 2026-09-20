@@ -1,0 +1,131 @@
+# 기능·UI 정리 계획 (2026-09-20)
+
+웹·iOS·서버를 **읽기 전용으로 전수 조사**한 결과와, 거기서 나온 할 일을 네 갈래로 정리한 것이다.
+조사는 다섯 갈래로 나눠 동시에 돌렸다 — 웹 UI 인벤토리 · iOS UI 인벤토리 · 웹↔iOS 기능 대조 ·
+복제 규칙 드리프트 · 죽은 코드. 표에 적힌 것은 **전부 파일:줄로 확인한 것**이고, 확인하지 못한 것은
+"못 찾음"으로 따로 적었다.
+
+⚠️ 이 문서는 **작업 목록이지 사양서가 아니다.** 항목을 할 때 그 자리의 코드를 다시 읽고,
+여기 적힌 줄 번호가 밀렸는지 먼저 확인한다.
+
+> **진행 상태** — B1~B5는 2026-09-20에 끝났다(다섯 건 전부 고치기 전에 깨지는 것부터 재현했다).
+> 같은 날 배포 스크립트 자기 갱신과 배포 정체 감시도 함께 넣었다. 다음은 **M1 결정**이다.
+
+## 0. 이건 정리가 아니라 버그다 — 먼저 한다
+
+| 번호 | 무엇 | 어디 | 사용자에게 |
+|---|---|---|---|
+| **B1** | 게이트가 파리티 픽스처를 **덮어쓰고 검사하지 않는다** | `scripts/verify-all.sh` · `.github/workflows/ci.yml` | 계약을 바꾸고 픽스처를 커밋 안 하면 CI가 제 손으로 초록을 만든다 |
+| **B2** | `ensureMembers`만 옛 Supabase를 본다 | `app.js` `ensureMembers()` | 협업 데이터는 NAS인데 멤버 목록만 옛 DB 조회 → 일행 이름표가 뭉개진다 |
+| **B3** | 웹이 '체류 미정'을 **0으로 굳힌다** | `app.js` 장소 모달 프리필·저장 · `index.html` `#spotStayMin` | 붙여넣기로 들어온 장소를 웹에서 열었다 저장만 해도 미정이 0분이 된다 → 앱의 "머무는 시간 미정 N곳"에서 사라진다 |
+| **B4** | `stayMinutes`만 반올림이 없다 | `next/src/features/trip-state/domain/dayPlanView.ts` | 소수가 한 번 들어오면 앱 일정 화면 디코딩이 통째로 실패한다(잠복) |
+| **B5** | 여행 모드 비용 색이 **다크 값 하드코딩** | `app.js` `renderTravel` | 라이트 테마에서 그 글자만 다크 팔레트 색으로 보인다 |
+
+### B1이 왜 제일 큰가
+
+`swiftParity.test.ts`는 픽스처를 **읽지 않고 쓴다**(`writeFileSync`). 그리고 게이트 어디에도
+`git diff --exit-code`가 없다. 그래서:
+
+```
+계약 변경 → next 테스트 실행 → 픽스처가 바뀜 → 커밋 안 함
+          → CI 러너가 제 손으로 다시 씀 → 초록
+          → ios/** 경로가 안 걸려 iOS 워크플로가 안 돎 → Swift는 검사되지 않음
+```
+
+**장치 전체가 "사람이 픽스처 diff를 알아보고 커밋한다"에 걸려 있다.**
+2026-09-19 새벽 사고(빌드 성공·로그 초록·내용은 옛 커밋)와 같은 종류다.
+
+## 1. 맞출 것 — 양쪽이 어긋난 것
+
+| 번호 | 무엇 | 결정이 필요한가 |
+|---|---|---|
+| **M1** | **`must`/`opt`가 반쪽씩 갈렸다.** 웹은 `opt`만 편집(`index.html` `#spotOpt`), iOS는 `must`만 편집(`SpotEditorView` "꼭 가기"). 웹에 `must`를 읽거나 쓰는 코드는 **0건**. 그런데 `adaptive.js`는 **둘 다** 읽어 점수(+18)와 재구성 보호를 바꾼다 | **예** — 한 축으로 합칠지, 양쪽에 둘 다 노출할지 |
+| **M2** | **SPLIT(자유시간으로 분리)** — `collab.js`의 `conflictOptions`가 SPLIT에 `action:null`을 주는데(주석: "다음 단계라 안내만"), 웹이 그걸 **우회해** `key==='SPLIT'` 분기로 실제 동작을 만들었다. iOS는 규칙을 그대로 따라 버튼이 없다 | **예** — 고칠 자리는 iOS가 아니라 `collab.js` 먼저다 |
+| **M3** | 권한 거절 문구 — 웹 `forbiddenText`는 4갈래, iOS는 2갈래 + 서버 원문. VIEWER 안내("주최자에게 편집 권한을 요청하세요")와 "이 기기 사본은 남아 있습니다"를 앱이 못 준다 | 아니오 |
+| **M4** | `미구분`(`Contract.swift` `CostPayState.label`) vs `고르지 않음`(`BookingEditorView` · 웹) — **앱 안에서도 두 말** | 아니오, 한 단어 고르면 끝 |
+| **M5** | 여행 기간 최대 **90일(웹 `#tripDays`) vs 60일(iOS `PlanSettingsView`)** | 예 — 어느 쪽으로 |
+| **M6** | 실행취소 **30단계(웹) vs 1단계(iOS)** | 예 |
+| **M7** | 함께하기 실시간 — 앱은 **후보 보드만** 붙어 있고 멤버·초대·활동은 당겨서 새로고침뿐 | 예 |
+| **M8** | 앱에 없는 것 중 여행 *중*에 아쉬운 것: `spot.bookUrl`(디코딩만 하고 화면에 없다) · `day.flight` · 자연어 입력(`parseIntent`) · `spot.who` 편집(표시만 됨) | 예 — 어디까지 |
+| **M9** | 웹에 없는 것: 명소 예약요건(`AdmissionView`) · 영수증 사진 첨부(정규화만 있고 UI 없음) | 예 — 어디까지 |
+| **M10** | 파리티 사각지대 — `import-preview.json`은 **매번 새로 쓰는데 아무도 읽지 않는다**. 유입·동선 계약(`ItineraryParse*`·`TripRoutes*`·`PlanPreview*`·`Memory*`)은 커버리지 **0**. `ShareQueue.makeId` 파리티는 소스 문자열 grep이지 같은 입력에 같은 키가 나오는지 안 본다 | 아니오 |
+
+### 갈라지지 않은 것 (확인됨 — 앞으로 깨질 자리)
+
+- 계약 **60개 인터페이스 전수 대조: 필드명 불일치 0 · 옵셔널 역전 0 · Int↔Double 오배치 0**
+- `collab.js` ↔ `CollabModel.swift`의 판정(합의 점수식·묶음·정렬·활동 문구·역할·취향) 전부 일치
+- 분류 목록 9계열(`COST_CATEGORIES`·`CANDIDATE_CATEGORIES`·`SPOT_CATS`·통화·상태) 순서·이름 일치, DB CHECK 제약까지
+- `today` 주입 — 서버·웹 빠진 곳 없음
+- 체류 0분 계산처 4곳(`computeTimeline`·`dayEndMin`/`legDepartMinute`·`dayView.ts`·`adaptive.js`) 전부 일치
+
+## 2. 덜어낼 것
+
+전부 참조 0을 확인한 것이다. **테스트 전용**으로 표시된 것은 공개 API 대칭일 수 있어 사람이 판단한다.
+
+- `calcSuggestionImpact()` — `adaptive.js`, export 목록에만 있고 호출부·테스트·iOS 전부 0건
+- `tripCost()` — `app.js`, `tripCostBreakdown().total` 한 줄 래퍼. CLAUDE.md도 후자를 지목한다
+- 죽은 CSS — `.citychip`·`.citychip.active` · `.inviteRow.dead` · `.candMood.loved` · `.candMood.mixed` · `.tools` 6개 셀렉터
+- 죽은 셀렉터 — `.arrowBtn`(`initAccessibility`가 찾는데 HTML·CSS 어디에도 없다)
+- 죽은 id 6개 — `activitySection`·`bkTypeHint`·`candHint`·`membersHint`·`pasteHelpRow`·`pvRaw` (요소는 정상, `id`만 무의미)
+- `spain2026` 샘플 여행 id 하드코딩 4곳 이상
+- stale 주석 — "가격 관측 기록(sb.from)이 그쪽에 있다"(`sb.from` 호출 0건)
+- 테스트 전용 — `reactionLabel`(collab.js) · `carryStayFor`(app.js)
+
+**TODO/FIXME 0건 · 주석 처리된 코드 0건 · 안 쓰는 npm 의존성 0건.** 이 축은 이미 깨끗하다.
+
+## 3. 옮길 것 — 재배치
+
+- **공유가 두 가지인데 이름으로 구분이 안 된다** — `🔗 읽기 전용 링크`(LZString 스냅샷, 죽은 사본)와
+  `👥 멤버·편집 초대`(실시간 협업). 둘 다 "링크로 공유"로 읽힌다
+- **"여행 선택"(헤더)이 "여행 목록"(☰) 모달을 연다** — 같은 동작, 다른 이름, 두 자리
+- **묻혀 있는 기능** — `여행 준비 메모`·`가고 싶은 곳`은 ☰ 안에만 있고 존재를 암시하는 게 없다.
+  `🧭 동선 최적화`는 좌표 3곳 이상일 때만 조건부로 나타난다
+- **데스크톱에 하루 고르는 컨트롤 두 벌** — 필터바 칩 + 지도 범례
+- **비용 숫자가 세 군데서 다르다** — 일자 카드 / 필터바 전체 비용 / 예약 결제 금액.
+  예약 하루치 분배 여부가 달라서 원래 다른 건데 화면이 그 이유를 말하지 않는다
+- **iOS: 같은 화면이 진입 경로마다 다른 모델을 쓴다** — `가고 싶은 곳` 3곳, 예약 목록 3곳.
+  `shared`가 없으면 자체 모델을 만들어 같은 목록이 최대 3벌 로드된다.
+  "탭 전환은 앱 복귀가 아니다"(§17) 규칙이 시트·push 진입에는 안 걸려 있다
+
+## 4. 다듬을 것
+
+- **iOS 색 토큰 우회 48건** vs `Ink.*` 108건 — 3개 중 1개가 토큰을 안 지난다.
+  `.orange`/`.red`/`.green`/`.blue`/`Color.accentColor`/`.systemOrange`.
+  묶음별: Plan 13 · Collab 9 · Trips 5 · Map 5 · Booking 5 · Suggestions 4 · TravelMode 3 · Today 1 · Replan 1
+- **웹 리터럴 hex 76곳** — `:root`에 토큰이 있는데 절반만 지켜진다. `#fee2e2`만 3곳에 따로 박혔다
+- **칩 9벌 · 카드 9벌** — `border-radius`가 6·7·8·9·11·12·14·999px로 제각각
+- **`.btn.sm`이 없다** — 작은 버튼을 인라인 스타일로 10곳에서 각자 만든다
+- **iOS 이모지 ↔ SF Symbols 혼용** — `CollabModel.roleIcon`(👑✏️👀👤) · `Reaction.icon`(❤️👍👋)이
+  SF Symbol과 같은 화면에 섞인다. 반면 `SpotRow`는 규칙대로 심볼만 쓴다
+- **`.candMood.quiet`는 CSS가 아예 없다** — 코드는 붙이는데 규칙이 없어 기본 스타일로 떨어진다
+- 문서 정정
+  - `ios/README.md`가 "아직 없다"고 적은 셋(실시간 구독 · 지도에서 바로 후보 담기 · 그룹 제안 카드)이
+    **전부 구현돼 있다.** 실제로 없는 건 분리 일정 *생성*뿐이다
+  - CLAUDE.md 경로 — 실제는 `next/src/features/trip-state/domain/contract.ts`
+  - CLAUDE.md localStorage 목록 누락 — `tripcanvas_onboarded_v1`·`tripcanvas_theme_v1`·
+    `tripcanvas_sync_v2`·`tripcanvas_firststep_v1`
+  - CLAUDE.md 화면 문구 매핑과 실제 라벨이 다르다 — Replan→"일정 조정 제안", TripPulse는 그 이름의 머리글이 없다
+  - CLAUDE.md의 "웹 `PAY_STATE_LABEL` = iOS `CostPayState.label`"은 사실이 아니다(M4)
+
+## 순서
+
+```
+1주차   B1 → B2 → B3 → B4 → B5          버그. 작고 독립적이다. 웹 1명이 순서대로
+2주차   M1 결정 → M2(collab.js 먼저) → M3·M4·M5    공통 로직이라 한 명이
+3주차   2번(덜어내기) + 4번(토큰화)      여기서 iOS 병렬이 값을 한다
+4주차   3번(재배치)                      화면 구조라 사람 결정이 많다
+```
+
+**병렬로 나눌 수 있는 이음매**
+
+```
+웹    app.js 한 파일에 로직 전체    → 한 명이 순서대로. 병렬 불가
+iOS   Features 10묶음              → Plan·Map·Collab 등 2~3명 병렬 가능
+공통  lib.js·collab.js·contract.ts → 반드시 먼저, 한 명이. 갈라지면 양쪽이 다 틀린다
+```
+
+## 못 찾은 것 (없다는 뜻이 아니다)
+
+- iOS의 빈칸 채우기·하루 flow 다중 슬롯 미리보기(오전/점심/오후/저녁) — 관련 코드를 못 찾았다
+- iOS 온보딩(첫 화면) 존재 여부 — grep으로 못 찾았고 진입점 전체를 열어 보지는 않았다
+- 서버가 초대 실패 응답에 `reason:'OK'`를 싣는 경로 — 못 찾았다(그래서 `joinReasonText` 문제는 잠복이다)

@@ -79,6 +79,21 @@ jobs:
         run: npm run check:types
       - name: Domain parity tests
         run: npm test
+
+      # ⚠️ 파리티 테스트는 픽스처를 **읽지 않고 덮어쓴다.** 커밋 안 된 계약 변경이 있으면 러너가 제 손으로
+      #    다시 써서 초록이 되고, `ios/**` 경로가 안 걸려 iOS 워크플로도 돌지 않는다 — Swift는 검사되지
+      #    않은 채 남는다. 그래서 "다시 쓴 결과가 커밋된 것과 같은가"를 여기서 본다.
+      - name: Parity fixtures are committed
+        working-directory: .
+        run: |
+          dirty=$(git status --porcelain -- ios/TripCanvasTests/Fixtures)
+          if [ -n "$dirty" ]; then
+            echo "::error::파리티 픽스처가 테스트로 다시 쓰여 커밋된 것과 다르다 — 계약 변경분을 커밋해야 iOS가 검사된다"
+            echo "$dirty"
+            git --no-pager diff -- ios/TripCanvasTests/Fixtures
+            exit 1
+          fi
+          echo "파리티 픽스처가 커밋된 것과 같다"
       - name: Build
         run: npm run build
       # 독립 실행 도구(실시간 사이드카 · 이관 CLI)는 Next 번들과 따로 컴파일된다 — 여기서 안 돌리면 조용히 깨진 채로 남는다
