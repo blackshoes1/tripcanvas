@@ -26,6 +26,8 @@ struct CandidateBoardView: View {
     @State private var showsSearch = false
     /// 지도에서 고른 자리. **아직 아무에게도 안 갔다** — 확인을 눌러야 후보가 된다(§37).
     @State private var pickedPlace: PlaceHit?
+    /// 이 화면의 실시간 구독 이름. 여행 화면(`"trip"`)과 달라야 서로를 덮어쓰지 않는다.
+    private static let liveKey = "candidates"
 
     var body: some View {
         Group {
@@ -51,11 +53,12 @@ struct CandidateBoardView: View {
         .onChange(of: scenePhase) { _, phase in
             switch phase {
             case .active: if let model { startLive(model) }
-            case .background, .inactive: env.realtime.disconnect()
+            case .background, .inactive: break   // 소켓은 여행 화면이 관리한다 — 여기서 끊으면 다른 탭의 구독까지 죽는다
             @unknown default: break
             }
         }
-        .onDisappear { env.realtime.disconnect() }
+        // 보드만 뗀다. 여행 화면의 구독은 그대로 둔다 — 시트를 닫았다고 일정이 실시간을 잃으면 안 된다.
+        .onDisappear { env.realtime.disconnect(key: Self.liveKey) }
         .task {
             if shared == nil, owned == nil { owned = CandidateBoardViewModel(trip: trip, service: env.service, documents: env.service) }
             await model?.loadIfStale()
@@ -93,7 +96,7 @@ struct CandidateBoardView: View {
 
     /// 실시간을 붙인다. **못 붙어도 앱은 그대로** — 상태만 바뀌고 폴백(당겨서 새로고침)으로 간다.
     private func startLive(_ model: CandidateBoardViewModel) {
-        env.realtime.connect(tripId: trip.id) { event in
+        env.realtime.connect(tripId: trip.id, key: Self.liveKey) { event in
             Task { await model.handle(event) }
         }
     }

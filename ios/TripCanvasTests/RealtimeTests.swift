@@ -179,3 +179,116 @@ private final class FakeRealtimeDocuments: TripDocumentSource, @unchecked Sendab
     func cachedDayPlan(tripId: String, dayIndex: Int) async -> DayPlanResponse? { nil }
 
 }
+
+/// 여행 화면의 실시간 분배(M7). 2026-09-20 전에는 '가고 싶은 곳' 보드가 열려 있을 때만 소켓에 붙어서,
+/// `지금`·`일정` 탭에서는 일행이 일정을 고쳐도 화면에 아무 일도 일어나지 않았다.
+@MainActor
+final class TripLiveRefreshTests: XCTestCase {
+    private func decide(_ kind: String, mine: Bool = false,
+                        plan: Bool = true, today: Bool = true, collab: Bool = true) -> TripLiveRefresh {
+        TripLiveRefresh.decide(kind: kind, mine: mine, hasPlan: plan, hasToday: today, hasCollab: collab)
+    }
+
+    func testScheduleChangeRefreshesThePlanAndToday() {
+        XCTAssertEqual(decide("SCHEDULE_CHANGED"), TripLiveRefresh(plan: true, today: true, members: false, activity: true))
+        XCTAssertEqual(decide("BOOKING_ADDED"), TripLiveRefresh(plan: true, today: true, members: false, activity: true))
+    }
+
+    /// **내 편집의 에코로는 일정을 다시 읽지 않는다** — 내가 이 기기에서 바꿨으니 화면은 이미 그렇다
+    /// (`liveEffects`의 `pull`이 `doc && !mine`이다). 활동 기록은 내 것도 목록에 남으므로 켜진다.
+    func testMyOwnScheduleChangeDoesNotRefetchThePlan() {
+        XCTAssertEqual(decide("SCHEDULE_CHANGED", mine: true),
+                       TripLiveRefresh(plan: false, today: false, members: false, activity: true))
+    }
+
+    func testMemberAndActivityEventsRefreshTheCollabScreen() {
+        XCTAssertEqual(decide("MEMBER_JOINED"), TripLiveRefresh(plan: false, today: false, members: true, activity: true))
+        // 활동 기록은 아는 종류면 전부 남는다 — 함께하기 화면의 목록이 그걸 보여 준다.
+        // ⚠️ 멤버는 켜지 않는다: 인원이 안 바뀐 일로 4건을 부르지 않는다(#34가 없앤 그 문제다).
+        XCTAssertEqual(decide("COMMENT_ADDED"), TripLiveRefresh(plan: false, today: false, members: false, activity: true))
+    }
+
+    /// 후보 목록은 여기서 읽지 않는다 — 보드 화면이 제 구독으로 받는다. 둘 다 읽으면 같은 목록을 두 번 받는다.
+    func testCandidateEventsAreLeftToTheBoard() {
+        let refresh = decide("CANDIDATE_PROPOSED")
+        XCTAssertFalse(refresh.plan)
+        XCTAssertFalse(refresh.today)
+    }
+
+    /// 닫힌 화면은 채우지 않는다 — 열 때 `loadIfStale`이 챙긴다(`docs/network-audit.md`).
+    func testScreensWithoutContentAreNotFetched() {
+        XCTAssertEqual(decide("SCHEDULE_CHANGED", plan: false, today: false, collab: false), TripLiveRefresh())
+        XCTAssertEqual(decide("MEMBER_JOINED", collab: false), TripLiveRefresh())
+        XCTAssertEqual(decide("SCHEDULE_CHANGED", today: false, collab: false),
+                       TripLiveRefresh(plan: true, today: false, members: false, activity: false))
+    }
+
+    func testUnknownKindDoesNothing() {
+        XCTAssertEqual(decide("WHAT_IS_THIS"), TripLiveRefresh())
+    }
+}
+
+/// 소켓 하나를 화면 여럿이 나눠 쓴다. 전에는 핸들러가 하나뿐이라 두 번째 화면의 것이 **조용히 버려졌다.**
+@MainActor
+final class RealtimeSubscriberTests: XCTestCase {
+    private func client() -> RealtimeClient {
+        // 주소가 없으면 붙지 않는다 — 분배 규칙만 보므로 소켓은 필요 없다.
+        RealtimeClient(tokens: NoTokens(), urlFor: { nil })
+    }
+    private let event = RealtimeActivity(tripId: "t1", id: 1, kind: "SCHEDULE_CHANGED", mine: false)
+
+    func testEverySubscriberGetsTheEvent() {
+        let live = client()
+        var trip = 0, board = 0
+        live.connect(tripId: "t1", key: "trip") { _ in trip += 1 }
+        live.connect(tripId: "t1", key: "candidates") { _ in board += 1 }
+
+        live.emit(event)
+
+        XCTAssertEqual(trip, 1, "여행 화면이 받는다")
+        XCTAssertEqual(board, 1, "보드도 같은 이벤트를 받는다 — 나중에 붙었다고 버려지지 않는다")
+    }
+
+    func testLeavingOneScreenKeepsTheOthersSubscribed() {
+        let live = client()
+        var trip = 0, board = 0
+        live.connect(tripId: "t1", key: "trip") { _ in trip += 1 }
+        live.connect(tripId: "t1", key: "candidates") { _ in board += 1 }
+
+        live.disconnect(key: "candidates")   // 보드 시트를 닫았다
+        live.emit(event)
+
+        XCTAssertEqual(board, 0, "떠난 화면은 더 받지 않는다")
+        XCTAssertEqual(trip, 1, "시트를 닫았다고 여행 화면의 실시간이 끊기면 안 된다")
+    }
+
+    func testTheSameScreenReconnectingReplacesItsHandler() {
+        let live = client()
+        var first = 0, second = 0
+        live.connect(tripId: "t1", key: "trip") { _ in first += 1 }
+        live.connect(tripId: "t1", key: "trip") { _ in second += 1 }
+
+        live.emit(event)
+
+        XCTAssertEqual(first, 0)
+        XCTAssertEqual(second, 1, "같은 키로 다시 붙으면 최신 핸들러 하나만 남는다")
+    }
+
+    func testLastSubscriberLeavingClosesTheSocket() {
+        let live = client()
+        var got = 0
+        live.connect(tripId: "t1", key: "trip") { _ in got += 1 }
+        live.disconnect(key: "trip")
+
+        live.emit(event)
+
+        XCTAssertEqual(got, 0, "떠난 뒤에는 받지 않는다")
+        XCTAssertEqual(live.state, .off, "아무도 안 들으면 소켓도 닫는다")
+    }
+}
+
+@MainActor
+private final class NoTokens: TokenProviding {
+    func accessToken() async throws -> String { "live-test-token" }
+    func refreshToken() async throws -> String { "live-test-token" }
+}

@@ -24,7 +24,14 @@ enum RealtimeState: Equatable, Sendable {
 protocol RealtimeConnecting: AnyObject {
     var state: RealtimeState { get }
     /// 이 여행 하나를 구독한다. 다른 여행으로 바꾸면 이전 것은 끊는다.
-    func connect(tripId: String, onEvent: @escaping @MainActor (RealtimeActivity) -> Void)
+    ///
+    /// 소켓은 하나지만 **듣는 화면은 여럿이다**(여행 전체 · 가고 싶은 곳 보드). `key`가 그 화면을 가리키고,
+    /// 같은 키로 다시 부르면 핸들러를 갈아 끼운다. 2026-09-20 전에는 핸들러가 하나뿐이라, 이미 붙은
+    /// 여행에 두 번째 화면이 붙으면 그 화면의 핸들러가 **조용히 버려졌다.**
+    func connect(tripId: String, key: String, onEvent: @escaping @MainActor (RealtimeActivity) -> Void)
+    /// 화면 하나가 떠난다. 남은 구독자가 있으면 소켓은 그대로 둔다 — 시트를 닫았다고 여행 전체가 끊기면 안 된다.
+    func disconnect(key: String)
+    /// 전부 뗀다(백그라운드 · 여행을 떠날 때).
     func disconnect()
 }
 
@@ -48,7 +55,8 @@ final class RealtimeClient: RealtimeConnecting {
 
     private var task: URLSessionWebSocketTask?
     private var tripId: String?
-    private var onEvent: (@MainActor (RealtimeActivity) -> Void)?
+    /// 듣는 화면들. 하나의 소켓을 나눠 쓴다 — 키는 화면이 스스로 정한다.
+    private var handlers: [String: @MainActor (RealtimeActivity) -> Void] = [:]
     private var attempts = 0
     private var retry: Task<Void, Never>?
     private var pump: Task<Void, Never>?
@@ -67,15 +75,28 @@ final class RealtimeClient: RealtimeConnecting {
         self.urlFor = urlFor
     }
 
-    func connect(tripId: String, onEvent: @escaping @MainActor (RealtimeActivity) -> Void) {
+    func connect(tripId: String, key: String, onEvent: @escaping @MainActor (RealtimeActivity) -> Void) {
         // 보고 있는 여행 하나만 구독한다 — 여행을 바꾸면 이전 것을 끊고 새로 연다.
-        if self.tripId == tripId, task != nil { return }
-        disconnect()
+        if self.tripId != tripId { disconnect() }
         self.tripId = tripId
-        self.onEvent = onEvent
+        handlers[key] = onEvent
+        // 이미 붙어 있거나 붙는 중(재시도 대기 포함)이면 핸들러만 더한다.
+        // 소켓을 다시 열면 이미 듣던 화면이 끊기고, pump가 둘이 되면 같은 이벤트를 두 번 받는다.
+        guard task == nil, pump == nil, retry == nil else { return }
         stopped = false
         attempts = 0
         open()
+    }
+
+    /// 받은 이벤트를 듣는 화면들에 나눈다. 소켓 없이 분배 규칙만 보려고 따로 두었다.
+    func emit(_ activity: RealtimeActivity) {
+        for handler in handlers.values { handler(activity) }
+    }
+
+    /// 화면 하나가 떠난다. **남은 구독자가 있으면 소켓은 그대로다.**
+    func disconnect(key: String) {
+        guard handlers.removeValue(forKey: key) != nil else { return }
+        if handlers.isEmpty { disconnect() }
     }
 
     func disconnect() {
@@ -85,7 +106,7 @@ final class RealtimeClient: RealtimeConnecting {
         task?.cancel(with: .goingAway, reason: nil)
         task = nil
         tripId = nil
-        onEvent = nil
+        handlers.removeAll()
         state = .off
     }
 
@@ -131,7 +152,7 @@ final class RealtimeClient: RealtimeConnecting {
             case "ACTIVITY":
                 guard let id = msg["id"] as? Int, let kind = msg["kind"] as? String,
                       let eventTrip = msg["tripId"] as? String else { continue }
-                onEvent?(RealtimeActivity(tripId: eventTrip, id: id, kind: kind, mine: (msg["mine"] as? Bool) ?? false))
+                emit(RealtimeActivity(tripId: eventTrip, id: id, kind: kind, mine: (msg["mine"] as? Bool) ?? false))
             default:
                 continue
             }
