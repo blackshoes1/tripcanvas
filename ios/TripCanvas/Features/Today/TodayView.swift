@@ -129,7 +129,7 @@ struct TodayView: View {
                 .padding(Space.l)
                 }
         }
-        .background(Color(.systemGroupedBackground))
+        // ⚠️ 여기에 배경을 두지 않는다 — 먼저 붙은 배경이 위에 깔려 `paperGround()`의 종이를 덮는다.
         // 제목(여행 이름)은 `TripHomeView`가 정한다 — 두 형제 화면이 같은 제목을 써야 한다.
         .paperGround()
         .refreshable { await refreshToday(reason: .manual) }
@@ -512,7 +512,8 @@ struct FinishedRow: View {
         }
         .padding(.horizontal, Space.l)
         .padding(.vertical, Space.m)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: Radius.card))
+        .background(Ink.raised, in: RoundedRectangle(cornerRadius: Radius.card))
+        .overlay(RoundedRectangle(cornerRadius: Radius.card).strokeBorder(Ink.hairline))
         .accessibilityElement(children: .combine)
     }
 }

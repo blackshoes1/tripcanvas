@@ -129,7 +129,7 @@ struct BookingListView: View {
             }
             .padding(Space.l)
         }
-        .background(Color(.systemGroupedBackground))
+        .background(Ink.paper)
         .navigationTitle("예약")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
