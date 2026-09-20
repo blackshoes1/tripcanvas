@@ -31,7 +31,8 @@ enum Ink {
     /// 강조 — 누를 것, 지금 봐야 할 것. **올리브**(2026-09-20 승인 시안).
     /// ⚠️ 에셋 카탈로그의 `AccentColor`와 **같은 값이어야 한다** — 그래야 화면 여기저기의
     /// `Color.accentColor`와 기본 컨트롤 색이 이 팔레트와 갈리지 않는다.
-    /// ⚠️ **웹은 아직 주홍(`--primary`)이다** — 이번 변경은 iOS 범위라 웹은 따로 맞춘다.
+    /// ⚠️ 웹도 같은 값이다(`style.css`의 `--primary`) — 한쪽만 바꾸면 기기마다 다른 색으로
+    ///    '누를 것'을 말하게 된다.
     static let accent = Color.accentColor
     /// 카드 테두리 — 그림자 대신 머리카락 선
     static let hairline = adaptive(light: 0x16130F, dark: 0xF7F5EF).opacity(0.08)
