@@ -1,0 +1,353 @@
+// API 라우트가 함께 쓰는 장비 — 타입 · 요청 읽기 · 응답 모양 · 인증 · 여행 조회 · 저장(CAS).
+//
+// ⚠️ **여기 있는 규칙을 라우트가 다시 만들지 않는다.** 예전에는 인증·조회 다섯 줄이 핸들러마다
+// 그대로 적혀 있었고(19곳), 같은 규칙을 열아홉 번 적으면 한 곳만 고쳐지는 날이 온다.
+import type {
+  ApiError, ApiErrorCode, BookingCandidate, BookingListResponse, DeviceRegistration,
+  ImportCommitResponse, ImportPreviewResponse, MemoryCreateResponse, MemoryEvent, MemoryListResponse,
+  MutationResponse, NotificationPlanItem, PlanPreviewResponse, TodayResponse, TravelStateResponse, TripListResponse
+} from '../domain/contract';
+import { CONTRACT_SCHEMA_VERSION } from '../domain/contract';
+import type { PriceObservation } from '../domain/bookingsView';
+import type { MemoryRow, SharedInputPayload } from '../domain/intakeView';
+import type { TodayInput, TripDoc } from '../domain/todayView';
+import { FX_FALLBACK_SNAPSHOT, type FxSnapshot } from '@/features/currency/domain/fx';
+import type { FxSupport } from '@/server/currency/serverFx';
+import { computeToday, resolveDayIndex, summarizeTrip } from '../domain/todayView';
+import type { LegCache } from '@/features/itinerary/domain/types';
+import collab from '@legacy/collab.js';
+import lib from '@legacy/lib.js';
+
+export interface TripRow {
+  client_id: string;
+  data: TripDoc;
+  revision: number;
+  updated_at: string;
+  deleted_at: string | null;
+  /** 함께하기 — 호출자의 역할·활성 멤버 수 (my_trip_roles). 없으면 혼자 쓰는 여행 */
+  role?: string | null;
+  member_count?: number | null;
+}
+
+export interface Gateway {
+  listTrips(): Promise<TripRow[]>;
+  getTrip(tripId: string): Promise<TripRow | null>;
+  /** sync_trip RPC (revision CAS). conflict면 applied=false + 현재 revision. forbidden이면 권한 없음(42501) — 재시도해도 같다 */
+  saveTrip(tripId: string, data: TripDoc, expectedRevision: number): Promise<{ applied: boolean; conflict: boolean; revision: number; data: TripDoc | null; forbidden?: boolean }>;
+  /** 그 여행·그 날 이미 거절한 제안 키 */
+  listDismissed(tripId: string, dayISO: string): Promise<string[]>;
+  recordFeedback(tripId: string, dayISO: string, key: string, action: string): Promise<void>;
+  /** 가격 관측 (hotel_price_snapshots). 없으면 빈 배열 — 가짜 가격을 만들지 않는다 */
+  listPriceObservations(tripId: string): Promise<PriceObservation[]>;
+  /** 관측 한 건 추가 (append-only). 판정은 price.js가 하고 여기는 남기기만 한다 */
+  savePriceObservation(tripId: string, obs: Omit<PriceObservation, 'observed_at'> & { ptoken?: string | null }): Promise<void>;
+  /** 이미 보낸 알림 키 — 같은 상황을 두 번 알리지 않기 위해(§46) */
+  listSentNotificationKeys(tripId: string, dayISO: string): Promise<string[]>;
+  recordNotifications(tripId: string, dayISO: string, items: { kind: string; dedupeKey: string; stateVersion: string }[]): Promise<void>;
+  saveDevice(registration: DeviceRegistration): Promise<void>;
+  listMemories(tripId: string, dayIndex: number | null): Promise<MemoryRow[]>;
+  /** clientKey가 이미 있으면 새로 만들지 않고 그것을 돌려준다(오프라인 재시도 대비) */
+  saveMemory(tripId: string, row: Omit<MemoryRow, "id">): Promise<{ row: MemoryRow; created: boolean }>;
+  removeDevice(deviceId: string): Promise<void>;
+}
+
+/**
+ * 서버 구간 캐시. **없어도 된다** — 없으면 이동시간이 지금처럼 직선거리 추정이다.
+ *
+ * ⚠️ 응답을 경로 조회에 묶지 않는다: 읽기(`read`)는 이미 조회된 것만 보고, 없는 구간은
+ * 응답을 보낸 **뒤** `fillLater`가 채운다. 그래서 그 날을 처음 열면 추정이고 다음부터 도로다.
+ */
+export interface LegSupport {
+  /**
+   * 이미 조회된 구간(`cache`)과, 아직 조회되지 않은 구간 수(`pending`).
+   * `pending`은 **곧 채워질 것만** 센다 — 실패로 기록된 구간은 곧 바뀌지 않으므로 빼고 센다.
+   *
+   * `waitMs`를 주면 못 채운 구간이 있을 때 **그만큼만 기다렸다** 돌려준다.
+   * 캐시가 이미 다 있으면 기다리지 않는다(두 번째 열람부터는 대기 0).
+   */
+  read(trip: TripDoc, dayIndex: number, waitMs?: number): Promise<{ cache: LegCache; pending: number }>;
+  /**
+   * 여행 **전체**의 구간. 전체 동선을 보겠다고 한 순간에만 부른다 —
+   * 열어 보지도 않을 날까지 미리 조회하면 그게 곧 청구서다.
+   */
+  readTrip(trip: TripDoc, waitMs?: number): Promise<{ cache: LegCache; pending: number }>;
+  /** 기다리지 않는다 — 배경에서 채우고 실패는 로그로 삼킨다 */
+  fillLater(trip: TripDoc, dayIndex: number): void;
+  /** 여행 전체를 배경에서 채운다(전체 동선을 연 뒤 남은 것) */
+  fillTripLater(trip: TripDoc): void;
+}
+
+/**
+ * 하루치를 주기 전에 경로를 기다리는 상한.
+ *
+ * 측정(2026-09-07, NAS): 구글 6구간 병렬 277ms · 카카오 1건 ~300ms. 대개 이 안에 끝난다.
+ * ⚠️ 상한을 늘리면 업스트림이 느린 날 화면이 그만큼 늦어진다 — 못 채운 것은 `legsPending`으로
+ * 알리고 클라이언트가 한 번 더 받는 길이 이미 있다.
+ */
+export const LEG_WAIT_MS = 800;
+
+export interface HandlerDeps {
+  /** 토큰으로 사용자 컨텍스트를 만든다. 인증 실패는 null */
+  gatewayFor(token: string): Promise<Gateway | null> | Gateway | null;
+  now?: () => Date;
+  legs?: LegSupport;
+  /** 서버 환율(하루 한 번 받는다). 없으면 근사값이고 응답의 `fxSource`가 그렇게 말한다 */
+  fx?: FxSupport;
+}
+
+const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' };
+const STATUS: Record<ApiErrorCode, number> = {
+  UNAUTHORIZED: 401, TRIP_NOT_FOUND: 404, ACTIVITY_NOT_FOUND: 404, DAY_NOT_FOUND: 404,
+  SUGGESTION_STALE: 409, REVISION_CONFLICT: 409, BAD_REQUEST: 400, UPSTREAM_ERROR: 502, FORBIDDEN: 403
+};
+const MESSAGES: Record<ApiErrorCode, string> = {
+  UNAUTHORIZED: '로그인이 필요합니다.',
+  TRIP_NOT_FOUND: '그 여행을 찾을 수 없습니다.',
+  ACTIVITY_NOT_FOUND: '그 일정을 찾을 수 없습니다 — 목록을 새로 불러와 주세요.',
+  DAY_NOT_FOUND: '그 일자가 없습니다 — 일정을 새로 불러와 주세요.',
+  SUGGESTION_STALE: '상황이 바뀌어 그 제안은 더 이상 맞지 않습니다 — 새 제안을 확인해 주세요.',
+  REVISION_CONFLICT: '다른 기기에서 먼저 바뀌었습니다 — 최신 일정을 불러온 뒤 다시 시도해 주세요.',
+  BAD_REQUEST: '요청 형식이 올바르지 않습니다.',
+  UPSTREAM_ERROR: '데이터를 가져오지 못했습니다.',
+  FORBIDDEN: '이 여행을 바꿀 권한이 없습니다 — 주최자에게 편집 권한을 요청해 주세요.'
+};
+
+export function ok(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
+}
+export function fail(code: ApiErrorCode, extra?: Partial<ApiError>): Response {
+  const body: ApiError = { error: code, message: extra?.message ?? MESSAGES[code], ...(extra?.revision != null ? { revision: extra.revision } : {}) };
+  return ok(body, STATUS[code]);
+}
+/** Authorization: Bearer <supabase access token> */
+export function bearerToken(request: Request): string | null {
+  const raw = request.headers.get('authorization') ?? '';
+  const m = /^Bearer\s+(.+)$/i.exec(raw.trim());
+  return m ? m[1].trim() : null;
+}
+
+/** 여행지 현지 기준 날짜·분. 클라이언트가 명시하면 그 값이 이긴다(기기가 현지 시각을 안다). */
+export function resolveClock(
+  trip: TripDoc, dayIndexHint: number | null, url: URL, now: Date
+): { todayISO: string; nowMinutes: number } {
+  const qDate = url.searchParams.get('date');
+  const qNow = url.searchParams.get('now');
+  const zone = trip.days?.[dayIndexHint ?? 0]?.timeZone || trip.timeZone || '';
+  let todayISO = '';
+  let nowMinutes = 9 * 60;
+  try {
+    const fmt = new Intl.DateTimeFormat('en-CA', {
+      timeZone: zone || 'UTC', year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
+    });
+    const parts: Record<string, string> = {};
+    fmt.formatToParts(now).forEach((p) => { if (p.type !== 'literal') parts[p.type] = p.value; });
+    todayISO = `${parts.year}-${parts.month}-${parts.day}`;
+    nowMinutes = Number(parts.hour) * 60 + Number(parts.minute);
+  } catch {
+    todayISO = now.toISOString().slice(0, 10);
+    nowMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
+  }
+  if (qDate && /^\d{4}-\d{2}-\d{2}$/.test(qDate)) todayISO = qDate;
+  if (qNow) {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(qNow);
+    if (m) nowMinutes = Math.min(1439, Math.max(0, Number(m[1]) * 60 + Number(m[2])));
+  }
+  return { todayISO, nowMinutes };
+}
+
+/** 위치는 쿼리로만 받는다. 저장하지 않고 이번 계산에만 쓴다(§55). */
+export function readLocation(url: URL): { point: { lat: number; lng: number } | null; updatedAt: string | null } {
+  const lat = Number(url.searchParams.get('lat'));
+  const lng = Number(url.searchParams.get('lng'));
+  const valid = Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180
+    && url.searchParams.has('lat') && url.searchParams.has('lng');
+  return {
+    point: valid ? { lat, lng } : null,
+    updatedAt: url.searchParams.get('locUpdatedAt')
+  };
+}
+
+export function readMinutes(raw: string | null): number | null {
+  if (!raw) return null;
+  const m = /^(\d{1,2}):(\d{2})$/.exec(raw);
+  if (m) return Math.min(1439, Math.max(0, Number(m[1]) * 60 + Number(m[2])));
+  const n = Number(raw);
+  return Number.isFinite(n) ? Math.round(n) : null;
+}
+
+/** 범주별 on/off만 통과시킨다 — 임의 키가 그대로 들어가지 않게. */
+export function sanitizePreferences(raw: unknown): Record<string, boolean> {
+  const allowed = ['departure', 'booking', 'replan', 'price', 'suggestion'];
+  const out: Record<string, boolean> = {};
+  if (raw && typeof raw === 'object') {
+    for (const key of allowed) {
+      const value = (raw as Record<string, unknown>)[key];
+      if (typeof value === 'boolean') out[key] = value;
+    }
+  }
+  return out;
+}
+
+/** 예약 id는 uid() 형식(영숫자·-·_)이어야 normalizeBooking을 통과한다. 겹치지 않게 만든다. */
+export function makeBookingId(trip: TripDoc): string {
+  const used = new Set(((trip.bookings ?? []) as { id?: unknown }[]).map((b) => String(b?.id ?? '')));
+  for (let n = 1; n < 1000; n++) {
+    const id = `imp${n}`;
+    if (!used.has(id)) return id;
+  }
+  return `imp${Date.now().toString(36)}`;
+}
+
+export function readPoint(raw: unknown): { lat: number; lng: number } | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const p = raw as { lat?: unknown; lng?: unknown };
+  const lat = Number(p.lat);
+  const lng = Number(p.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+  return { lat, lng };
+}
+
+export function readDayIndex(url: URL): number | undefined {
+  const raw = url.searchParams.get('day');
+  if (raw == null || raw === '') return undefined;
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 0 ? n : undefined;
+}
+
+/** 여행 크기 제한에 작은 요청 봉투만 더한다. JSON 파싱 전에 스트림 크기를 제한한다. */
+export async function readPlanPreviewBody(request: Request): Promise<Record<string, unknown> | null> {
+  const limit = lib.TC_LIMITS.jsonBytes + 1024;
+  if (Number(request.headers.get('content-length')) > limit || !request.body) return null;
+  const reader = request.body.getReader();
+  const decoder = new TextDecoder();
+  let size = 0;
+  let text = '';
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > limit) { await reader.cancel(); return null; }
+      text += decoder.decode(value, { stream: true });
+    }
+    text += decoder.decode();
+    const body: unknown = JSON.parse(text);
+    return body != null && typeof body === 'object' && !Array.isArray(body) ? body as Record<string, unknown> : null;
+  } catch { return null; }
+  finally { reader.releaseLock(); }
+}
+
+/** 모든 라우트가 함께 쓰는 장비 한 벌. **인증·조회·CAS·오류 응답은 여기 하나뿐이다.** */
+export interface HandlerKit {
+  deps: HandlerDeps;
+  now: () => Date;
+  auth: (request: Request) => Promise<Gateway | Response>;
+  loadTrip: (gateway: Gateway, tripId: string) => Promise<TripRow | Response>;
+  withTrip: (
+    request: Request, tripId: string,
+    run: (ctx: { gateway: Gateway; row: TripRow }) => Promise<Response>
+  ) => Promise<Response>;
+  todayFor: (gateway: Gateway, row: TripRow, url: URL, extra?: Partial<TodayInput>) => Promise<TodayResponse>;
+  fxFor: () => Promise<FxSnapshot>;
+  legCacheFor: (trip: TripDoc, dayIndex: number) => Promise<{ cache: LegCache; pending: number }>;
+  readBody: (request: Request) => Promise<Record<string, unknown>>;
+  persist: (
+    gateway: Gateway, row: TripRow, next: TripDoc, url: URL, applied: boolean, alreadyApplied: boolean
+  ) => Promise<Response>;
+}
+
+/** 장비를 조립한다. 라우트 모듈은 이걸 받아 쓰기만 한다 — 규칙을 다시 만들지 않는다. */
+export function createKit(deps: HandlerDeps): HandlerKit {
+  const now = deps.now ?? (() => new Date());
+
+  async function auth(request: Request): Promise<Gateway | Response> {
+    const token = bearerToken(request);
+    if (!token) return fail('UNAUTHORIZED');
+    const gateway = await deps.gatewayFor(token);
+    return gateway ?? fail('UNAUTHORIZED');
+  }
+
+  /** 그 여행을 읽는다. 못 읽으면 위쪽 오류, 없거나 지워졌으면 404. **판정은 여기 하나뿐이다.** */
+  async function loadTrip(gateway: Gateway, tripId: string): Promise<TripRow | Response> {
+    let row: TripRow | null;
+    try { row = await gateway.getTrip(tripId); } catch { return fail('UPSTREAM_ERROR'); }
+    if (!row || row.deleted_at) return fail('TRIP_NOT_FOUND');
+    return row;
+  }
+
+  /**
+   * 여행 하나를 다루는 요청의 **공통 전문**. 토큰을 확인하고, 그 여행을 읽고, 없으면 404다.
+   *
+   * ⚠️ 예전에는 이 다섯 줄이 핸들러마다 그대로 적혀 있었다(19곳). 같은 규칙을 열아홉 번 적으면
+   * 한 곳만 고쳐지는 날이 온다 — 인증·권한·오류 응답 규칙은 **여기 하나뿐이다.**
+   * 권한(EDITOR인지)은 쓰기 경로가 `persist`에서 따로 본다 — 읽기는 RLS가 이미 걸렀다.
+   */
+  async function withTrip(
+    request: Request, tripId: string,
+    run: (ctx: { gateway: Gateway; row: TripRow }) => Promise<Response>
+  ): Promise<Response> {
+    const gateway = await auth(request);
+    if (gateway instanceof Response) return gateway;
+    const row = await loadTrip(gateway, tripId);
+    if (row instanceof Response) return row;
+    return run({ gateway, row });
+  }
+
+  async function todayFor(gateway: Gateway, row: TripRow, url: URL, extra?: Partial<TodayInput>): Promise<TodayResponse> {
+    const dayIndex = readDayIndex(url);
+    const clock = resolveClock(row.data, dayIndex ?? null, url, now());
+    const dismissed = await gateway.listDismissed(row.client_id, clock.todayISO).catch((): string[] => []);
+    const legs = await legCacheFor(row.data, resolveDayIndex(row.data, clock.todayISO, dayIndex));
+    return computeToday({
+      tripId: row.client_id, trip: row.data, revision: row.revision, updatedAt: row.updated_at,
+      role: row.role, memberCount: row.member_count,
+      todayISO: clock.todayISO, nowMinutes: clock.nowMinutes, dayIndex, dismissed, legCache: legs.cache,
+      generatedAt: now().toISOString(), ...extra
+    }).response;
+  }
+
+  /** 오늘 환율. 못 받으면 근사값 — 환율 하나 때문에 비용·일자 화면이 실패하지 않는다 */
+  async function fxFor(): Promise<FxSnapshot> {
+    if (!deps.fx) return FX_FALLBACK_SNAPSHOT;
+    try { return await deps.fx.read(); } catch { return FX_FALLBACK_SNAPSHOT; }
+  }
+
+  /** 이미 조회된 구간만. 캐시가 없거나 읽다 실패하면 빈 캐시 — 화면은 추정으로 나가고 멈추지 않는다 */
+  async function legCacheFor(trip: TripDoc, dayIndex: number): Promise<{ cache: LegCache; pending: number }> {
+    if (!deps.legs) return { cache: {}, pending: 0 };
+    try { return await deps.legs.read(trip, dayIndex, LEG_WAIT_MS); } catch { return { cache: {}, pending: 0 }; }
+  }
+
+  async function readBody(request: Request): Promise<Record<string, unknown>> {
+    try { return (await request.json()) as Record<string, unknown>; } catch { return {}; }
+  }
+
+  /** 저장 후 최신 Today를 함께 돌려준다 — 여행 중에는 왕복 횟수가 곧 체감 속도다. */
+  async function persist(
+    gateway: Gateway, row: TripRow, next: TripDoc, url: URL, applied: boolean, alreadyApplied: boolean
+  ): Promise<Response> {
+    if (!applied) {
+      const body: MutationResponse = {
+        schemaVersion: CONTRACT_SCHEMA_VERSION, applied: false, alreadyApplied,
+        revision: row.revision, today: await todayFor(gateway, row, url)
+      };
+      return ok(body);
+    }
+    // 보기 권한은 서버(RLS)가 어차피 거절한다 — 헛된 RPC 없이 바로 알린다
+    if (row.role != null && !collab.canEdit(row.role)) return fail('FORBIDDEN');
+    let saved;
+    try { saved = await gateway.saveTrip(row.client_id, next, row.revision); } catch { return fail('UPSTREAM_ERROR'); }
+    if (saved.forbidden) return fail('FORBIDDEN');
+    if (!saved.applied) return fail('REVISION_CONFLICT', { revision: saved.revision });
+    const savedRow: TripRow = { ...row, data: saved.data ?? next, revision: saved.revision, updated_at: new Date().toISOString() };
+    const body: MutationResponse = {
+      schemaVersion: CONTRACT_SCHEMA_VERSION, applied: true, alreadyApplied: false,
+      revision: saved.revision, today: await todayFor(gateway, savedRow, url)
+    };
+    return ok(body);
+  }
+
+  return { deps, now, auth, loadTrip, withTrip, todayFor, fxFor, legCacheFor, readBody, persist };
+}
