@@ -1,7 +1,7 @@
-  :root{--primary:#c6482b;--primary-dark:#a93a20;--ink:#16130f;--muted:#4f4740;--subtle:#6b6256;--border:#e3dccc;--surface:#fff;--surface-2:#f4f1ea;--header:#f4f1ea;--focus:#2e5c6e;--shadow:0 10px 28px rgba(22,19,15,.10);--city-1:#c6482b;--city-2:#b8650f;--city-3:#3e7a4c;--city-4:#2e5c6e;--city-5:#7b5ea7;--hover-bg:#ede7da;--selected-bg:#fdf3ef;--selected-hover-bg:#f8e6df;--selected-border:#c6482b;--selected-accent:#a93a20;--drag-bg:#ede7da;--meta-eta:#4f4740;--meta-eta-fixed:#2e5c6e;--meta-cost:#4f4740;--meta-link:#a93a20;--meta-warning:#8e4e0b;--meta-danger:#a52c22;--meta-soft:#6b6256;--meta-good:#2f5e3b;--mono:ui-monospace,SFMono-Regular,'SF Mono',Menlo,monospace}
+  :root{--primary:#46702e;--primary-dark:#375a25;--ink:#16130f;--muted:#4f4740;--subtle:#6b6256;--border:#e3dccc;--surface:#fff;--surface-2:#f4f1ea;--header:#f4f1ea;--focus:#2e5c6e;--shadow:0 10px 28px rgba(22,19,15,.10);--city-1:#c6482b;--city-2:#b8650f;--city-3:#3e7a4c;--city-4:#2e5c6e;--city-5:#7b5ea7;--hover-bg:#ede7da;--selected-bg:#eef3e9;--selected-hover-bg:#e1ebd8;--selected-border:#46702e;--selected-accent:#375a25;--drag-bg:#ede7da;--meta-eta:#4f4740;--meta-eta-fixed:#2e5c6e;--meta-cost:#4f4740;--meta-link:#a93a20;--meta-warning:#8e4e0b;--meta-danger:#a52c22;--meta-soft:#6b6256;--meta-good:#2f5e3b;--mono:ui-monospace,SFMono-Regular,'SF Mono',Menlo,monospace}
   *{margin:0;padding:0;box-sizing:border-box}
   body{font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;height:100dvh;display:flex;flex-direction:column;background:var(--surface-2);color:var(--ink);font-size:14px}
-  body.theme-dark{--primary:#e0674a;--primary-dark:#ef8163;--ink:#f4f1ea;--muted:#d5ccbb;--subtle:#b5ab98;--border:#332d25;--surface:#221e19;--surface-2:#16130f;--header:#16130f;--shadow:0 10px 28px rgba(0,0,0,.45);--city-1:#e0674a;--city-2:#e0a050;--city-3:#7fc08c;--city-4:#7fa9bc;--city-5:#b79ae0;--hover-bg:#2b2620;--selected-bg:#2e211c;--selected-hover-bg:#3a2822;--selected-border:#e0674a;--selected-accent:#f0937a;--drag-bg:#2b2620;--meta-eta:#d5ccbb;--meta-eta-fixed:#7fa9bc;--meta-cost:#d5ccbb;--meta-link:#f0937a;--meta-warning:#f0a050;--meta-danger:#ef7a6a;--meta-soft:#b5ab98;--meta-good:#8fc79b}
+  body.theme-dark{--primary:#9cc97a;--primary-dark:#b4d998;--ink:#f4f1ea;--muted:#d5ccbb;--subtle:#b5ab98;--border:#332d25;--surface:#221e19;--surface-2:#16130f;--header:#16130f;--shadow:0 10px 28px rgba(0,0,0,.45);--city-1:#e0674a;--city-2:#e0a050;--city-3:#7fc08c;--city-4:#7fa9bc;--city-5:#b79ae0;--hover-bg:#2b2620;--selected-bg:#232b1d;--selected-hover-bg:#2e3826;--selected-border:#9cc97a;--selected-accent:#b4d998;--drag-bg:#2b2620;--meta-eta:#d5ccbb;--meta-eta-fixed:#7fa9bc;--meta-cost:#d5ccbb;--meta-link:#f0937a;--meta-warning:#f0a050;--meta-danger:#ef7a6a;--meta-soft:#b5ab98;--meta-good:#8fc79b}
   :focus-visible{outline:3px solid color-mix(in srgb,var(--focus) 70%,transparent);outline-offset:2px}
   .srOnly{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
   button{font-family:inherit;cursor:pointer}
@@ -384,15 +384,15 @@ body.playing #playHud{
   padding:10px 14px;border-radius:14px;backdrop-filter:blur(8px);box-shadow:0 8px 26px rgba(0,0,0,.45);font-size:13px}
 #playLeg{font-weight:700;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:17px}
 #playBar{height:8px;background:rgba(255,255,255,.16);border-radius:4px;overflow:hidden;cursor:pointer;touch-action:none}
-#playBarFill{height:100%;width:0%;background:#e0674a;border-radius:4px;transition:width .1s linear;pointer-events:none}
+#playBarFill{height:100%;width:0%;background:#9cc97a;border-radius:4px;transition:width .1s linear;pointer-events:none}
 #playCtl{display:flex;align-items:center;gap:6px}
 #playCtl>button{background:#332d25;color:#f4f1ea;border:0;border-radius:8px;padding:5px 11px;font-size:14px;font-weight:700;cursor:pointer;line-height:1}
-#playPause{background:#c6482b;color:#fff}
+#playPause{background:#46702e;color:#fff}
 #playSegInfo{font-size:11.5px;color:#b5ab98;min-width:44px}
 .playSpacer{flex:1}
 #playSpeeds{display:flex;gap:5px}
 #playSpeeds button{background:#332d25;color:#d5ccbb;border:0;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer}
-#playSpeeds button.on{background:#c6482b;color:#fff}
+#playSpeeds button.on{background:#46702e;color:#fff}
 #playDayCard.show{display:block;position:fixed;left:50%;top:74px;transform:translateX(-50%);z-index:1200;
   background:rgba(16,22,42,.92);color:#fff;font-weight:800;font-size:18px;padding:8px 20px;border-radius:12px;
   box-shadow:0 6px 20px rgba(0,0,0,.5);pointer-events:none;animation:playDayCardIn .3s ease}

@@ -18,6 +18,7 @@ window.addEventListener('unhandledrejection',e=>reportOperationalError('promise.
 // 지도 도로색(노랑·주황)과 겹치지 않게 대비 강한 색을 앞(자주 쓰는 초반 일자)에 배치.
 // 겹치기 쉬운 코랄·라임·노랑은 뒤로. 경로선·핀·도시색·범례 모두 이 순서를 공유.
 const PALETTE = ['#c6482b','#2e5c6e','#3e7a4c','#7b5ea7','#b4506a','#2f7d7d','#8d6e63','#b8650f','#5c7a2f','#a9852b'];   // 주홍·청록·초록·보라·자주·청록회색·브라운·호박·올리브·황토 (종이 바탕 기준)
+// ⚠️ 강조색(올리브)과 **다른 축이다** — 여기는 '며칠째인지' 구분하는 범주 색이라 브랜드를 따라가지 않는다.
 // UI 장식 아이콘 — 이모지 대신 선 아이콘 한 벌.
 // ⚠️ **장소 카테고리·이동수단·날씨 이모지는 여기 없다.** 그건 장식이 아니라 웹·공유 문장·iOS가
 // 함께 쓰는 *글자* 어휘라 그대로 둔다(CLAUDE.md 브랜드 절). 여기 있는 것은 버튼·배지처럼
@@ -4457,7 +4458,7 @@ function renderTravel(di, clock){
     div.innerHTML=`<div class="n"><span class="eta">${hm(etas[si])}</span>${si+1}. ${catPrefix(s)}${esc(s.name)}${s.opt?' <span style="font-size:11px;color:#b5ab98">(선택)</span>':''}</div>`+
       (tmeta.length?`<div class="d" style="color:var(--meta-cost)">${tmeta.join(' · ')}</div>`:'')+
       `<div class="d">${esc(s.desc).replace(/\n/g,'<br>')}</div>`+
-      ((bu=>bu?`<a href="${escAttr(bu)}" target="_blank" rel="noopener" style="background:#c6482b;margin-right:6px">🎫 예약 열기</a>`:'')(safeUrl(s.bookUrl)))+
+      ((bu=>bu?`<a href="${escAttr(bu)}" target="_blank" rel="noopener" style="background:#46702e;margin-right:6px">🎫 예약 열기</a>`:'')(safeUrl(s.bookUrl)))+
       (hasLoc(s)
         ? ((el=>`<a href="${escAttr(el.href)}" target="_blank" rel="noopener">🧭 ${el.label}</a>`)(extMapLink(s)))
         : `<span style="font-size:12px;color:#e0a050">📍 위치 미지정</span>`);
