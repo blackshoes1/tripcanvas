@@ -11,12 +11,12 @@
 //   node scripts/sync-agents.js           # AGENTS.md를 다시 만든다
 //   node scripts/sync-agents.js --check   # 최신인지 검사만 한다 (게이트)
 
-const fs = require('fs');
-const path = require('path');
+// ⚠️ 경로는 **저장소 루트 기준 상대 경로**다 — `check-version-sync.js`와 같은 관례이고,
+//    `npm run`이 언제나 루트에서 돈다. `__dirname`은 이 저장소의 eslint 전역 목록에 없다.
+const fs = require('node:fs');
 
-const root = path.join(__dirname, '..');
-const SOURCE = path.join(root, 'CLAUDE.md');
-const TARGET = path.join(root, 'AGENTS.md');
+const SOURCE = 'CLAUDE.md';
+const TARGET = 'AGENTS.md';
 
 /** 사람이 이 파일을 고치려다 잃지 않도록, 생성물이라는 사실을 맨 위에 둔다. */
 const BANNER = [
