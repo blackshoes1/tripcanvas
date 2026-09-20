@@ -7,6 +7,20 @@ import Foundation
 ///
 /// **기본값은 저장하지 않는다.** 웹이 그렇게 한다(공유 링크 크기·§normalizeSpot) — 앱이 기본값을
 /// 굳이 써 넣으면 같은 일정이 웹과 다른 바이트가 되어 쓸데없는 충돌·diff를 만든다.
+/// 여행 문서의 크기 한계 — `lib.js`의 `TC_LIMITS` 복사본.
+///
+/// 여기가 원본이 아니다. 서버가 생성·수정 양쪽에서 `validateTripPayload`를 지나므로
+/// **한계를 정하는 곳은 `lib.js` 하나**고, 앱은 그 값을 미리 알아 못 저장할 것을 입력 단계에서 막는다.
+/// 숫자가 갈리면 `next`의 `tripLimitsParity.test.ts`가 깨진다.
+enum TripLimits {
+    /// 여행 기간 상한. 일자 카드가 날짜 수에 정비례해 그려지므로(가상 스크롤 없음) 성능 예산이기도 하다.
+    static let maxDays = 90
+
+    /// 이미 이보다 긴 문서를 **편집하는 것**까지 막지는 않는다 — 이름만 고치려는 사람이
+    /// 이유도 모른 채 저장 버튼이 꺼진 화면을 보게 된다. 늘리는 것만 막는다.
+    static func maxDays(editing dayCount: Int) -> Int { Swift.max(maxDays, dayCount) }
+}
+
 struct TripDocument: Hashable, Sendable {
     private(set) var raw: [String: JSONValue]
 

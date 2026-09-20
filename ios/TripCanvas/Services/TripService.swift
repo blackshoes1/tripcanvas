@@ -282,8 +282,8 @@ struct NewTripDraft: Sendable, Equatable {
     var dayCount: Int = 3
     var city: String? = nil
 
-    /// 앱에서 한 번에 만들 수 있는 최대 일수. 더 긴 여행은 만든 뒤 웹에서 늘린다.
-    static let maxDays = 30
+    /// 만들 수 있는 최대 일수 — 웹·서버와 같은 한계다(`TripLimits.maxDays`).
+    static let maxDays = TripLimits.maxDays
 
     var isValid: Bool {
         !name.trimmingCharacters(in: .whitespaces).isEmpty

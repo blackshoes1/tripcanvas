@@ -180,3 +180,48 @@ final class PlanEditingTests: XCTestCase {
         XCTAssertFalse(model.canUndo)
     }
 }
+
+/// 여행 기간 상한 — 웹·서버와 같은 숫자여야 하고, 이미 더 긴 문서의 편집을 막아서는 안 된다.
+@MainActor
+final class TripPeriodLimitTests: XCTestCase {
+    private func document(dayCount: Int, start: String = "2026-10-01") -> TripDocument {
+        TripDocument(raw: ["name": .string("장기 여행"), "start": .string(start),
+                           "days": .array((0..<dayCount).map { _ in .object(["spots": .array([])]) })])
+    }
+
+    func testPeriodCapIsNinetyEverywhereInTheApp() {
+        // lib.js의 TC_LIMITS.days와 같은 숫자다. next의 tripLimitsParity가 둘을 대조한다.
+        XCTAssertEqual(TripLimits.maxDays, 90)
+        XCTAssertEqual(NewTripDraft.maxDays, TripLimits.maxDays,
+                       "새 여행과 여행 설정이 서로 다른 상한을 쓰면 앱으로 만든 여행을 앱에서 못 늘린다")
+    }
+
+    func testNewTripAcceptsTheCapAndRejectsOneMore() {
+        let at = NewTripDraft(name: "산티아고 순례", start: "2026-10-01", dayCount: TripLimits.maxDays, city: nil)
+        let over = NewTripDraft(name: "산티아고 순례", start: "2026-10-01", dayCount: TripLimits.maxDays + 1, city: nil)
+        XCTAssertTrue(at.isValid)
+        XCTAssertFalse(over.isValid, "서버가 거부할 기간을 만들게 두면 저장에서야 실패한다")
+    }
+
+    func testPeriodChangeAcceptsTheCapAndRejectsOneMore() {
+        let doc = document(dayCount: 3)
+        XCTAssertNotNil(PlanCalendarChange.draft(doc, start: doc.start, count: TripLimits.maxDays))
+        XCTAssertNil(PlanCalendarChange.draft(doc, start: doc.start, count: TripLimits.maxDays + 1))
+    }
+
+    /// 상한보다 긴 문서(레거시 경로로 들어온 것)를 열었을 때 — 기간을 건드리지 않는 편집은 저장돼야 한다.
+    /// 이걸 막으면 화면에는 꺼진 저장 버튼만 남고 이유가 어디에도 없다(`datesChanged`가 거짓이라
+    /// 이유를 말하는 '날짜 변경 미리보기' 섹션이 뜨지도 않는다).
+    func testDocumentLongerThanTheCapCanStillBeEdited() throws {
+        let long = document(dayCount: TripLimits.maxDays + 30)
+
+        let sameLength = try XCTUnwrap(PlanCalendarChange.draft(long, start: long.start, count: long.days.count),
+                                       "기간을 그대로 둔 편집까지 막으면 이름도 못 고친다")
+        XCTAssertEqual(sameLength.days.count, long.days.count)
+
+        XCTAssertNotNil(PlanCalendarChange.draft(long, start: long.start, count: TripLimits.maxDays),
+                        "줄이는 것은 언제나 되어야 한다")
+        XCTAssertNil(PlanCalendarChange.draft(long, start: long.start, count: long.days.count + 1),
+                     "이미 상한을 넘은 문서라도 더 늘리지는 못한다")
+    }
+}
