@@ -48,12 +48,14 @@
           {
             "user_id": "u3",
             "name": "현우",
-            "reaction": "OK"
+            "reaction": "OK",
+            "me": false
           },
           {
             "user_id": "u2",
             "name": "지민",
-            "reaction": "PASS"
+            "reaction": "PASS",
+            "me": false
           }
         ],
         "comment_count": 0,
@@ -172,7 +174,8 @@
           },
           {
             "name": "지민",
-            "reaction": "PASS"
+            "reaction": "PASS",
+            "me": false
           }
         ],
         "comment_count": 0,
@@ -242,7 +245,8 @@
           {
             "user_id": "u3",
             "name": "현우",
-            "reaction": "OK"
+            "reaction": "OK",
+            "me": false
           }
         ],
         "comment_count": 0,
@@ -282,7 +286,8 @@
           {
             "user_id": "u2",
             "name": "지민",
-            "reaction": "PASS"
+            "reaction": "PASS",
+            "me": false
           }
         ],
         "comment_count": 0,

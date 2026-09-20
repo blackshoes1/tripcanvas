@@ -20,7 +20,9 @@ const members = [
   { user_id: 'u3', display_name: '현우', me: false }
 ];
 
-type Rx = { user_id?: string; name: string; reaction: string; me?: boolean };
+// ⚠️ `me`는 **언제나** 실린다 — 서버 `list_trip_candidates`가 `r.user_id=auth.uid()`를 그대로 넣는다.
+// 픽스처에서 빠뜨리면 앱의 `ReactionEntry`(비옵셔널 `me`) 디코딩이 깨진다.
+type Rx = { user_id?: string; name: string; reaction: string; me: boolean };
 
 function candidate(over: Record<string, unknown>, reactions: Rx[]) {
   const count = (r: string) => reactions.filter((x) => x.reaction === r).length;
@@ -54,8 +56,8 @@ const cases = [
     memberCount: 3,
     candidate: candidate({ lat: 41.38, lng: 2.12, addr: '바르셀로나', note: '경기 보고 싶어' }, [
       { user_id: 'me', name: '나야', reaction: 'MUST', me: true },
-      { user_id: 'u3', name: '현우', reaction: 'OK' },
-      { user_id: 'u2', name: '지민', reaction: 'PASS' }
+      { user_id: 'u3', name: '현우', reaction: 'OK', me: false },
+      { user_id: 'u2', name: '지민', reaction: 'PASS', me: false }
     ])
   },
   {
@@ -63,7 +65,7 @@ const cases = [
     memberCount: 3,
     candidate: candidate({}, [
       { name: '나야', reaction: 'MUST', me: true },
-      { name: '지민', reaction: 'PASS' }
+      { name: '지민', reaction: 'PASS', me: false }
     ])
   },
   {
@@ -71,7 +73,7 @@ const cases = [
     memberCount: 3,
     candidate: candidate({}, [
       { user_id: 'me', name: '나야', reaction: 'MUST', me: true },
-      { user_id: 'u3', name: '현우', reaction: 'OK' }
+      { user_id: 'u3', name: '현우', reaction: 'OK', me: false }
     ])
   },
   {
@@ -79,7 +81,7 @@ const cases = [
     memberCount: 2,
     candidate: candidate({ title: '   이름 앞뒤 공백   ' }, [
       { user_id: 'me', name: '나야', reaction: 'MUST', me: true },
-      { user_id: 'u2', name: '지민', reaction: 'PASS' }
+      { user_id: 'u2', name: '지민', reaction: 'PASS', me: false }
     ])
   }
 ];
@@ -116,6 +118,11 @@ describe('갈린 후보의 분리 — collab.js가 단일 출처', () => {
     expect(splittable.spots[2].reunion).toBe(true);
     // 이름표에 이메일이 섞이지 않는다(§69)
     expect(JSON.stringify(rows)).not.toMatch(/@/);
+    // ⚠️ 앱의 `ReactionEntry`는 `me`가 비옵셔널이다 — 하나라도 빠지면 픽스처 전체 디코딩이 깨지고
+    //    그 사고는 iOS CI까지 아무도 모른다(2026-09-20). 서버도 늘 싣는 값이라 여기서 지킨다.
+    for (const row of rows) {
+      for (const rx of row.candidate.reactions) expect(typeof rx.me).toBe('boolean');
+    }
 
     const dir = path.join(__dirname, '../../../../../ios/TripCanvasTests/Fixtures');
     mkdirSync(dir, { recursive: true });
