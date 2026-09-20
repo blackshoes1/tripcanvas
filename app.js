@@ -2549,11 +2549,23 @@ function renderTripList(){
     const act=t.id===store.activeId;
     const shared=!!user&&!!tripRoles[t.id]&&!tripRoles[t.id].owner;
     return `<div class="tripRow${act?' active':''}">
+      <img class="tripCover" data-cover-trip="${escAttr(t.id)}" alt="${escAttr(t.name||'여행')} 표지" hidden>
       <span class="tn" onclick="switchTrip('${escAttr(t.id)}')" title="이 여행으로 전환">${act?'▶ ':''}${esc(t.name||'(이름 없음)')} ${roleBadgeHtml(t.id)}
         <span class="opt">${t.start?esc(t.start)+' · ':''}${days}일 · ${spots}곳</span></span>
       <button class="iconb" onclick="event.stopPropagation();removeTrip('${escAttr(t.id)}')" title="${shared?'이 여행에서 나가기':'이 여행 삭제'}" style="color:#ff8fa3">${shared?'🚪':'🗑'}</button>
     </div>`;
   }).join('');
+  // 사진은 여행 문서와 분리된 인증 API에서만 읽는다. 로그아웃·목록 교체 후의 응답은 버린다.
+  const coverUserId=user?.id;
+  if(coverUserId && window.TC_API?.covers){
+    box.querySelectorAll('img[data-cover-trip]').forEach(img=>{
+      window.TC_API.covers.get(img.dataset.coverTrip).then(({data,error})=>{
+        const image=data?.imageBase64;
+        if(error || !img.isConnected || user?.id!==coverUserId || typeof image!=='string' || image.length>333336 || !/^[A-Za-z0-9+/]+={0,2}$/.test(image)) return;
+        img.src='data:image/jpeg;base64,'+image; img.hidden=false;
+      }).catch(()=>{}); // 표지 조회 실패는 여행 열기를 막지 않는다.
+    });
+  }
 }
 window.switchTrip=(id)=>{
   if(id===store.activeId){ document.getElementById('tripListBg').classList.remove('show'); return; }
@@ -4423,6 +4435,7 @@ TC_AUTH.onChange(next=>{
   // 오래 열어둔 탭이 몇 시간 뒤 제 로컬본을 다시 올려 다른 기기의 최신 편집을 덮어썼다.
   const switched = (next&&next.id) !== (user&&user.id);
   user = next;
+  if(switched) document.querySelectorAll('img[data-cover-trip]').forEach(img=>{ img.removeAttribute('src'); img.hidden=true; });
   if(!user) tripRoles={};   // 로그아웃하면 서버 역할은 의미가 없다 — 로컬 사본은 소유자로 다룬다
   updateAuthUI();
   if(user && switched) syncOnLogin().then(completePendingJoin);

@@ -2,6 +2,8 @@
 // 여행 전환·생성·편집 — 레거시 헤더의 여행 선택 + 여행 모달과 같은 역할.
 import { useState } from 'react';
 
+import { SharedTripCover } from './SharedTripCover';
+
 import { SnapshotList } from '@/features/cloud/components/SnapshotList';
 import type { Trip } from '../domain/types';
 import { updateTripMeta, type TripEditError } from '../domain/tripEditor';
@@ -54,6 +56,7 @@ export function TripBar({
 
   return (
     <div className="itTripBar">
+      <SharedTripCover key={`${activeTrip.id}:${!!signedIn}`} tripId={activeTrip.id} name={activeTrip.name} signedIn={!!signedIn} />
       {trips.length > 1 ? (
         <select className="itTripSel" value={activeTrip.id} aria-label="여행 선택"
           onChange={e => onSwitch(e.target.value)}>

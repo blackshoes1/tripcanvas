@@ -354,7 +354,12 @@
     };
   }
 
-  const API = { configure, rpc, snapshots, prices, me, sync, realtime: { connect: connectRealtime }, DEFAULT_BASE };
+  const covers = {
+    /** @param {string} tripId */
+    get: (tripId) => request('GET', '/api/v1/trips/' + seg(tripId) + '/cover')
+  };
+
+  const API = { configure, rpc, snapshots, prices, covers, me, sync, realtime: { connect: connectRealtime }, DEFAULT_BASE };
   if (typeof module !== 'undefined' && module.exports) { module.exports = API; }   // Node (테스트)
   global.TC_API = API;
 })(/** @type {any} */ (typeof globalThis !== 'undefined' ? globalThis : this));

@@ -97,3 +97,63 @@ extension TripCoverTests {
         XCTAssertEqual(TripCoverService.articleTitle("알 수 없는 도시"), "알 수 없는 도시")
     }
 }
+
+@MainActor
+private final class CoverTokens: TokenProviding {
+    func accessToken() async throws -> String { "cover-test-token" }
+    func refreshToken() async throws -> String { "cover-test-token" }
+}
+
+private final class CoverAPIProtocol: URLProtocol, @unchecked Sendable {
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        XCTAssertEqual(request.url?.path, "/api/v1/trips/test/cover")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer cover-test-token")
+        let data: Data
+        var status = 200
+        if request.httpMethod == "GET" {
+            data = Data(#"{"revision":3,"imageBase64":null}"#.utf8)
+        } else {
+            // URLSession은 업로드 데이터를 스트림으로 바꿀 수 있다.
+            var body = request.httpBody ?? Data()
+            if let stream = request.httpBodyStream {
+                stream.open(); defer { stream.close() }
+                var buffer = [UInt8](repeating: 0, count: 1024)
+                while stream.hasBytesAvailable {
+                    let count = stream.read(&buffer, maxLength: buffer.count)
+                    if count <= 0 { break }
+                    body.append(contentsOf: buffer.prefix(count))
+                }
+            }
+            let json = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any]
+            XCTAssertEqual(json?["expectedRevision"] as? Int, 3)
+            XCTAssertTrue(json?["imageBase64"] is NSNull)
+            status = 409
+            data = Data(#"{"error":"STALE_VERSION","message":"표지가 바뀌었어요"}"#.utf8)
+        }
+        client?.urlProtocol(self, didReceive: HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: ["Cache-Control": "no-store"])!, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: data)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+    override func stopLoading() {}
+}
+
+extension TripCoverTests {
+    func testCoverAPIUsesAuthenticationAndDoesNotTreatConflictAsSaved() async throws {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [CoverAPIProtocol.self]
+        let session = URLSession(configuration: config)
+        defer { session.invalidateAndCancel() }
+        let api = APIClient(baseURL: URL(string: "https://test.invalid")!, tokens: CoverTokens(), session: session)
+        let cover: TripCoverResponse = try await api.get("api/v1/trips/test/cover")
+        XCTAssertEqual(cover.revision, 3)
+        XCTAssertNil(cover.image)
+        do {
+            let _: TripCoverResponse = try await api.put("api/v1/trips/test/cover", body: ["expectedRevision": cover.revision, "imageBase64": NSNull()])
+            XCTFail("충돌을 저장 성공으로 처리하면 안 된다")
+        } catch {
+            XCTAssertEqual(error as? APIError, .revisionConflict(message: "표지가 바뀌었어요", revision: nil))
+        }
+    }
+}

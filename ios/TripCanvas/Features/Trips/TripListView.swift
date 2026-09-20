@@ -129,6 +129,7 @@ struct TripListView: View {
     @State private var showsPastePrompt = false
     @State private var joinError: String?
     /// 지우기·나가기를 확인받는 중인 여행. 무엇이 사라지는지 말한 뒤에만 실행한다.
+    @State private var coverRefresh = UUID()
     @State private var pendingRemoval: TripSummary?
     /// 밀어 넣은 여행. 딥링크가 목록을 거치지 않고 바로 열 수 있게 경로를 들고 있는다.
     @State private var path: [TripSummary] = []
@@ -370,7 +371,7 @@ struct TripListView: View {
                 }
                 ForEach(model.ordered) { trip in
                     VStack(alignment: .leading, spacing: Space.m) {
-                        TripCoverView(city: trip.cities.first(where: { !$0.isEmpty && $0 != "기타" }) ?? "") { path.append(trip) }
+                        TripCoverView(trip: trip, api: env.service.api, refresh: coverRefresh) { path.append(trip) }
                         NavigationLink(value: trip) {
                             TripRow(trip: trip)
                         }
@@ -389,7 +390,7 @@ struct TripListView: View {
             }
             .listStyle(.plain)
             .paperGround()
-            .refreshable { await model.load() }
+            .refreshable { await model.load(); coverRefresh = UUID() }
         }
     }
 }
