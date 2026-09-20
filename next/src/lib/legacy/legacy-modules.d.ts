@@ -443,7 +443,10 @@ declare module '@legacy/collab.js' {
     joinReasonText(reason: string | null | undefined): string;
     inviteRangeText(start: string | null | undefined, dayCount: number | null | undefined): string;
     isForbiddenError(err: unknown): boolean;
+    /** 서버가 말한 이유가 먼저다 — 없을 때만 역할로 짐작한다 */
     forbiddenText(err: unknown, role: Role | null | undefined): string;
+    /** 서버가 사람에게 쓴 문장인가(한글 포함) — 기계 토큰·원시 Postgres 영문과 구분 */
+    isHumanMessage(message: string): boolean;
     readonly ACTIVITY_KINDS: readonly string[];
     /** 실시간 이벤트 하나가 **무엇을 다시 읽게 하는가**. payload를 화면 상태로 쓰지 않기 위한 단일 규칙(§41) */
     liveEffects(event: { kind?: string; mine?: boolean } | null | undefined): {
