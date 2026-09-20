@@ -1966,7 +1966,8 @@ window.openSpotModal=(di,si)=>{
   toggleNights();
   document.getElementById('spotAt').value=s.at||'';
   document.getElementById('spotLegMode').value=s.legMode||'';   // 이 지점으로 오는 구간 수단(빈값=일정 기본)
-  document.getElementById('spotStayMin').value=(s.stayMin!=null? s.stayMin : 0);
+  // '정하지 않음'은 빈 칸으로 둔다 — 0으로 프리필하면 이름만 고쳐 저장해도 미정이 0분으로 굳는다
+  document.getElementById('spotStayMin').value=(s.stayMin!=null? s.stayMin : '');
   document.getElementById('spotCost').value=(s.cost!=null? fmtMoney(s.cost,s.cur) : '');
   document.getElementById('spotCur').value=s.cur||'KRW';
   updateCostHint();
@@ -2062,7 +2063,11 @@ document.getElementById('spotSave').onclick=()=>{
     at:normHM(document.getElementById('spotAt').value)||undefined,
     legMode:(document.getElementById('spotLegMode').value||undefined),   // 구간별 수단(빈값이면 일정 기본)
     // ⚠️ `parseInt(v)||60`으로 쓰면 **0을 넣어도 60이 된다**(0이 falsy). 0은 유효한 값이다.
-    stayMin:(()=>{ const n=parseInt(document.getElementById('spotStayMin').value); return isNaN(n)?0:Math.max(0,n); })(),
+    // ⚠️ 그리고 **빈 칸을 0으로 굳히지 않는다.** '정하지 않음'과 '0분(들렀다 바로 이동)'은 계산은 같아도
+    //    다른 말이고, 0으로 굳히면 앱의 "머무는 시간 미정 N곳" 안내에서 그 장소가 조용히 사라진다.
+    stayMin:(()=>{ const raw=String(document.getElementById('spotStayMin').value||'').trim();
+      if(!raw) return undefined;                                   // 빈 칸 = 정하지 않음
+      const n=parseInt(raw); return isNaN(n)? undefined : Math.max(0,n); })(),
     cost:costV,
     cur:(curV&&curV!=='KRW'?curV:undefined),   // KRW는 기본값이라 저장 생략(하위호환)
     bookAt:normHM(document.getElementById('spotBookAt').value)||'',
@@ -4371,7 +4376,7 @@ function renderTravel(di, clock){
     if(s.bookAt) tmeta.push(`🎫 예약 ${esc(s.bookAt)}`);
     if(s.cost) tmeta.push(`💳 ${costLabel(s.cost,s.cur)}`);
     div.innerHTML=`<div class="n"><span class="eta">${hm(etas[si])}</span>${si+1}. ${catPrefix(s)}${esc(s.name)}${s.opt?' <span style="font-size:11px;color:#8892b0">(선택)</span>':''}</div>`+
-      (tmeta.length?`<div class="d" style="color:#c9b6e8">${tmeta.join(' · ')}</div>`:'')+
+      (tmeta.length?`<div class="d" style="color:var(--meta-cost)">${tmeta.join(' · ')}</div>`:'')+
       `<div class="d">${esc(s.desc).replace(/\n/g,'<br>')}</div>`+
       ((bu=>bu?`<a href="${escAttr(bu)}" target="_blank" rel="noopener" style="background:#7c5cff;margin-right:6px">🎫 예약 열기</a>`:'')(safeUrl(s.bookUrl)))+
       (hasLoc(s)
@@ -4403,7 +4408,9 @@ const API_BASE = (typeof window!=='undefined' && window.__TC_API_BASE) ||
   (/^(localhost|127\.0\.0\.1)$/.test(location.hostname) ? 'http://localhost:3000' : TC_API.DEFAULT_BASE);
 /** API·실시간이 함께 쓰는 토큰. Supabase JWT든 자체 Auth 세션이든 auth.js가 같은 모양으로 준다 */
 async function apiToken(){ return TC_AUTH.getToken(); }
-// Supabase 클라이언트는 아직 남는다 — 가격 관측 기록(sb.from)이 그쪽에 있다. 로그인은 더 이상 여기서 하지 않는다.
+// Supabase 클라이언트는 **자체 Auth를 감쌀 때만** 남는다(아래 TC_AUTH.configure의 supabase).
+// 데이터는 전부 TC_API(NAS)를 지난다 — 가격 관측 기록도 /api/v1/trips/:id/prices로 옮겼고
+// app.js에 sb.rpc·sb.from 호출은 하나도 없다(통합 테스트가 이걸 지킨다).
 if(window.supabase) sb = window.supabase.createClient(SUPA_URL, SUPA_KEY);
 TC_API.configure({baseUrl:API_BASE, getToken:apiToken});
 TC_AUTH.configure({baseUrl:API_BASE, supabase:sb,
@@ -4785,14 +4792,16 @@ function updateCollabUI(){
  * 이름표가 꼭 필요한 곳(장소 모달·후보 보드)이 직접 await 한다.
  */
 async function ensureMembers(id, info){
-  if(!user || viewMode || !id || !sb || !info || info.count<=1){
+  if(!user || viewMode || !id || !info || info.count<=1){
     if(!id || !user) { tripMembers=[]; membersFor=''; }
     return;
   }
   if(membersFor===id) return;
   membersFor=id;
   try{
-    const {data,error}=await sb.rpc('list_trip_members',{p_client_id:id});
+    // ⚠️ 협업 데이터는 NAS PostgreSQL이다 — 여기만 옛 Supabase(`sb.rpc`)를 보고 있어
+    //    이름표가 빈 목록으로 뭉개졌다. 같은 RPC를 부르는 openMembers와 같은 길로 맞춘다.
+    const {data,error}=await TC_API.rpc('list_trip_members',{p_client_id:id});
     if(error) throw error;
     tripMembers=(data||[]).filter(m=>m&&m.status!=='REMOVED');
   }catch(e){ membersFor=''; }

@@ -3236,3 +3236,45 @@ test('통합: 예약(숙박)의 하루치는 예약으로 센다', { skip: noJsd
   assert.ok(line && line.textContent.includes('결제 예정'), '예약에서 나온 하루치는 결제 예정이다(결제 표시가 없으면)');
   assert.ok(line.textContent.includes('100,000'), '2박이라 하루치는 10만원');
 });
+
+// B2 — 협업·여행 데이터는 전부 TC_API(NAS)를 지난다. 2026-09-20에 `ensureMembers`만 옛 Supabase
+// (`sb.rpc('list_trip_members')`)를 보고 있어 일행 이름표가 빈 목록으로 뭉개졌다.
+// `sb`는 자체 Auth를 감싸는 `TC_AUTH.configure({supabase:sb})`에만 남는다 — 데이터는 여기로 안 온다.
+test('통합: 웹이 옛 Supabase 데이터 경로로 돌아가지 않는다', () => {
+  const src = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
+  const hits = src.match(/\bsb\s*\.\s*(rpc|from)\s*\(/g) || [];
+  assert.deepEqual(hits, [], 'app.js에 sb.rpc/sb.from이 남아 있다 — 데이터는 TC_API를 지나야 한다');
+});
+
+// B3 — '정하지 않음'과 '0분'은 계산은 같아도 다른 말이라 둘 다 남긴다(CLAUDE.md).
+// 웹 모달이 null을 0으로 프리필하고 빈 칸을 0으로 저장해서, 붙여넣기로 들어온 장소를 열었다
+// 저장만 해도 미정이 0분으로 굳었다 — 그러면 앱의 "머무는 시간 미정 N곳" 안내에서 사라진다.
+test('통합: 장소 모달이 \'체류 미정\'을 0분으로 굳히지 않는다', { skip: noJsdom }, async () => {
+  const w = boot();
+  const fill = (name) => w.eval(`openSpotModal(0,-1);
+    document.getElementById('spotName').value='${name}';
+    document.getElementById('spotLat').value='40.41'; document.getElementById('spotLng').value='-3.69';`);
+
+  // ① 체류 칸을 비운 채 저장 → 미정으로 남는다(0으로 굳지 않는다)
+  fill('프라도 미술관');
+  assert.equal(w.document.getElementById('spotStayMin').value, '', '새 장소의 체류 칸은 비어 있다');
+  w.eval(`document.getElementById('spotSave').onclick();`);
+  const si = w.eval(`trip().days[0].spots.length-1`);
+  const saved = JSON.parse(w.eval(`JSON.stringify(trip().days[0].spots[${si}])`));
+  assert.equal(saved.stayMin, undefined, '빈 칸은 0이 아니라 정하지 않음이다');
+
+  // ② 그 장소를 다시 열면 칸이 비어 있고, 이름만 고쳐 저장해도 미정 그대로다
+  w.eval(`openSpotModal(0,${si});`);
+  assert.equal(w.document.getElementById('spotStayMin').value, '', '미정은 빈 칸으로 연다 — 0을 채우지 않는다');
+  w.eval(`document.getElementById('spotName').value='프라도'; document.getElementById('spotSave').onclick();`);
+  const again = JSON.parse(w.eval(`JSON.stringify(trip().days[0].spots[${si}])`));
+  assert.equal(again.name, '프라도', '이름은 바뀌었다');
+  assert.equal(again.stayMin, undefined, '이름만 고쳐 저장해도 미정이 0분으로 굳지 않는다');
+
+  // ③ 0을 직접 넣으면 0으로 저장된다 — '들렀다 바로 이동'은 유효한 값이다
+  w.eval(`openSpotModal(0,${si}); document.getElementById('spotStayMin').value='0';
+    document.getElementById('spotSave').onclick();`);
+  const zero = JSON.parse(w.eval(`JSON.stringify(trip().days[0].spots[${si}])`));
+  assert.equal(zero.stayMin, 0, '0은 유효한 값이다(들렀다 바로 이동) — 미정과 구별된다');
+  w.close();
+});
