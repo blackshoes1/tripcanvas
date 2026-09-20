@@ -14,7 +14,7 @@ final class UiPolishTests: XCTestCase {
         let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "day-plan", withExtension: "json"))
         let plan = try JSONDecoder().decode(DayPlanResponse.self, from: Data(contentsOf: url))
         let totals = plan.day.totals
-        let line = TripPlanView.summaryLine(totals)
+        let line = PlanSpotList.summaryLine(totals)
         if totals.travelMinutes > 0 {
             XCTAssertEqual(line?.contains("이동 \(TimeFormat.duration(totals.travelMinutes))"), true)
         }
