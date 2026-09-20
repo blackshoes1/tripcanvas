@@ -3462,6 +3462,67 @@ test('통합: 여행 기간 입력 칸의 max가 저장 한도와 같다', { ski
   assert.equal(w.document.getElementById('tripDays').getAttribute('max'), String(max));
 });
 
+// ── 실행취소는 내가 한 것만 되돌린다 (M6) ────────────────────────────────
+// 일행의 변경이 도착하면(pullTrip·충돌 카드·로그인 병합) 그 이전 스냅샷은 위험해진다.
+// 한 번의 ↩️로 남의 변경이 통째로 사라지고, 그 상태가 **새 revision 위에** 올라가
+// 서버 CAS도 막지 못한다. iOS는 `undoRevision == revision`으로 같은 것을 막는다.
+function collabBoot(w, remoteRef, saves) {
+  w.sb = {}; w.REMOTE = () => remoteRef.doc; w.SAVES = saves;
+  w.eval(`store={trips:[{id:'__it__',name:'T',start:'2026-08-01',days:[{title:'내 날',drive:'',note:'',spots:[]}]}],activeId:'__it__'};
+    activeDay=0; histStack=[]; histLast=JSON.stringify(store);
+    sb=window.sb; user={id:'u2'}; tripRoles={__it__:{role:'EDITOR',count:2,owner:false}};
+    TC_API.sync.get=async(id)=>({data:{client_id:id,data:window.REMOTE(),revision:5,deleted_at:null,updated_at:''},error:null});
+    TC_API.sync.save=async(id,doc,rev)=>{ window.SAVES.push({rev,day0:doc.days[0].title}); return {applied:true,conflict:false,revision:(rev||0)+1,data:doc,deleted_at:null}; };
+    syncMeta.__it__={revision:4,status:'clean',op:'',hash:TC_SYNC.hashTrip(trip())};`);
+}
+
+test('통합: 일행의 변경이 도착하면 실행취소로 그것을 지울 수 없다', { skip: noJsdom }, async () => {
+  const w = boot();
+  const remote = { doc: { id: '__it__', name: 'T', start: '2026-08-01', days: [{ title: '영희가 바꾼 날', drive: '', note: '', spots: [] }] } };
+  const saves = [];
+  collabBoot(w, remote, saves);
+
+  w.eval(`trip().name='내가 바꾼 이름'; save(); syncMeta.__it__.hash=TC_SYNC.hashTrip(trip());`);
+  assert.equal(w.eval(`histStack.length`), 1, '내 편집은 되돌릴 수 있다');
+
+  assert.equal(await w.eval(`pullTrip('__it__',{force:true})`), true);
+  assert.equal(w.eval(`trip().days[0].title`), '영희가 바꾼 날');
+  assert.equal(w.eval(`histStack.length`), 0, '남의 변경은 되돌릴 거리가 아니다 — 쌓지도 남기지도 않는다');
+  assert.equal(w.document.getElementById('undoBtn').disabled, true);
+
+  saves.length = 0;
+  w.eval(`undo(); syncStaleTrips();`);
+  await new Promise(r => setTimeout(r, 20));
+  assert.equal(w.eval(`trip().days[0].title`), '영희가 바꾼 날', '↩️를 눌러도 일행의 변경은 그대로다');
+  assert.deepEqual(saves, [], '되돌린 옛 문서를 새 revision 위에 올리지 않는다');
+  w.close();
+});
+
+test('통합: 충돌 카드에서 클라우드본을 택해도 실행취소로 되돌아가지 않는다', { skip: noJsdom }, () => {
+  const w = boot();
+  const remote = { doc: { id: '__it__', name: 'T', start: '2026-08-01', days: [{ title: '클라우드 날', drive: '', note: '', spots: [] }] } };
+  collabBoot(w, remote, []);
+  w.eval(`trip().name='내 이름'; save();`);
+  assert.equal(w.eval(`histStack.length`), 1);
+
+  w.eval(`replaceWithRemote({local:trip(),remote:window.REMOTE(),revision:5,deleted_at:null})`);
+  assert.equal(w.eval(`trip().days[0].title`), '클라우드 날');
+  assert.equal(w.eval(`histStack.length`), 0, '내가 고른 클라우드본을 ↩️ 한 번으로 잃지 않는다');
+  w.close();
+});
+
+test('통합: 혼자 쓰는 여행의 다단계 실행취소는 그대로다', { skip: noJsdom }, () => {
+  const w = boot();
+  w.eval(`store={trips:[{id:'__solo__',name:'혼자',start:'2026-08-01',days:[{title:'0',drive:'',note:'',spots:[]}]}],activeId:'__solo__'};
+    activeDay=0; histStack=[]; histLast=JSON.stringify(store);`);
+  for (let i = 1; i <= 5; i++) w.eval(`trip().days[0].title='${i}'; save();`);
+  assert.equal(w.eval(`histStack.length`), 5);
+  w.eval(`undo(); undo();`);
+  assert.equal(w.eval(`trip().days[0].title`), '3', '두 번 되돌리면 두 단계 전이다');
+  assert.equal(w.eval(`histStack.length`), 3);
+  w.close();
+});
+
 // ── 표시와 저장의 경계 ──────────────────────────────────────────────────────
 // ⚠️ 이 테스트들이 보는 것은 "화면을 다시 그렸다"가 아니라 **"기기에 남았다"**이다.
 // `render()`가 `save()`를 품고 있던 동안에는 이 사실이 어디에도 고정돼 있지 않았다 —
