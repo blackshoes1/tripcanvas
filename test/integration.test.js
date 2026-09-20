@@ -3522,3 +3522,53 @@ test('통합: 혼자 쓰는 여행의 다단계 실행취소는 그대로다', {
   assert.equal(w.eval(`histStack.length`), 3);
   w.close();
 });
+
+// ── 표시와 저장의 경계 ──────────────────────────────────────────────────────
+// ⚠️ 이 테스트들이 보는 것은 "화면을 다시 그렸다"가 아니라 **"기기에 남았다"**이다.
+// `render()`가 `save()`를 품고 있던 동안에는 이 사실이 어디에도 고정돼 있지 않았다 —
+// 데이터를 바꾸고 `render()`만 부르는 경로가 여럿 있었고, 그 경로들이 저장되는 이유는
+// 오직 render의 마지막 줄이었다. 경계를 옮겨도 이 단언들은 그대로여야 한다.
+
+test('통합: commit으로 바꾼 것은 기기에 남는다', { skip: noJsdom }, () => {
+  const w = boot();
+  withTrip(w, `[{title:'',drive:'',note:'',spots:[]}]`);
+  w.eval(`commit(()=>{ trip().name='바뀐 이름'; });`);
+  const saved = JSON.parse(w.localStorage.getItem('tripcanvas_v1'));
+  assert.equal(saved.trips.find(t => t.id === '__it__').name, '바뀐 이름');
+  w.close();
+});
+
+test('통합: 일행의 최신본을 당겨 받으면 기기에도 남는다', { skip: noJsdom }, async () => {
+  const w = boot();
+  withTrip(w, `[{title:'',drive:'',note:'',spots:[]}]`);
+  const remote = { id: '__it__', name: 'T (영희 편집)', start: '2026-08-01', days: [{ title: '', drive: '', note: '', spots: [] }] };
+  w.sb = {};
+  w.SYNC_LIST = async () => ({ data: [{ client_id: '__it__', data: remote, revision: 5, deleted_at: null, updated_at: '' }], error: null });
+  w.eval(`sb=window.sb; TC_API.sync.list=window.SYNC_LIST; user={id:'u2'}; tripRoles={__it__:{role:'EDITOR',count:2,owner:false}};
+    TC_API.sync.get=async(id)=>{const r=await TC_API.sync.list(); return {data:((r&&r.data)||[]).find(x=>x&&x.client_id===id)||null,error:r?r.error:null};};
+    syncMeta.__it__={revision:4,status:'clean',op:'',hash:TC_SYNC.hashTrip(trip())};`);
+  assert.equal(await w.eval(`pullTrip('__it__',{force:true})`), true);
+
+  const saved = JSON.parse(w.localStorage.getItem('tripcanvas_v1'));
+  assert.equal(saved.trips.find(t => t.id === '__it__').name, 'T (영희 편집)',
+    '메모리만 바뀌면 새로고침에서 사라진다');
+  w.close();
+});
+
+test('통합: 충돌에서 원격을 택하거나 복사본을 남기면 둘 다 기기에 남는다', { skip: noJsdom }, () => {
+  const w = boot();
+  withTrip(w, `[{title:'',drive:'',note:'',spots:[]}]`);
+  const remote = { id: '__it__', name: '원격본', start: '2026-08-01', days: [{ title: '', drive: '', note: '', spots: [] }] };
+  w.REMOTE = remote;
+  // 원격 채택 — 로컬을 원격으로 갈아끼운다
+  w.eval(`replaceWithRemote({kind:'changed-both',local:trip(),remote:window.REMOTE,revision:9,deleted_at:null});`);
+  let saved = JSON.parse(w.localStorage.getItem('tripcanvas_v1'));
+  assert.equal(saved.trips.find(t => t.id === '__it__').name, '원격본');
+
+  // 복사본 유지 — 원격을 받고 내 것을 새 여행으로 남긴다
+  w.eval(`withoutId=null; currentSyncConflict={kind:'changed-both',local:{id:'__it__',name:'내 것',start:'2026-08-01',days:[{title:'',drive:'',note:'',spots:[]}]},remote:window.REMOTE,revision:9,deleted_at:null};`);
+  w.document.getElementById('syncKeepCopy').click();
+  saved = JSON.parse(w.localStorage.getItem('tripcanvas_v1'));
+  assert.ok(saved.trips.some(t => /충돌 복사본/.test(t.name)), '복사본도 기기에 남는다');
+  w.close();
+});

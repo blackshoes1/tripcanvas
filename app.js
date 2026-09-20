@@ -263,11 +263,14 @@ function toast(msg, color, action){
 // 파괴적 동작 되돌리기용 스냅샷
 function snapshot(){ return JSON.parse(JSON.stringify(store)); }
 // 상태 변경 진입점: 뮤테이션(fn) 적용 → 재렌더(내부에서 변경분만 저장) → 선택적 지도 포커싱(opts.fit).
-// render()가 save()를 품고 save()는 변경분만 기록하므로 여기서 별도 저장 호출은 불필요하다.
-// 규칙: 스토어를 바꾸면 commit(), 뷰(activeDay 등)만 바꾸면 render().
+// 규칙: **스토어를 바꾸면 commit(), 뷰(activeDay 등)만 바꾸면 render().**
+// ⚠️ `render()`는 저장하지 않는다 — 그리기만 한다. 예전에는 마지막 줄에서 save()를 불렀는데,
+//    그래서 이름표 하나 갱신하려고 render()를 부르면 클라우드 동기화까지 돌았다(`ensureMembers`의 주의).
+//    commit()을 거치지 않고 스토어를 바꾸는 곳(원격 당겨오기·충돌 해결)은 **직접 save()를 부른다.**
 function commit(fn, opts){
   if(typeof fn==='function') fn();
-  render();
+  save();      // 데이터가 바뀌었다 — 저장은 여기서 한다
+  render();    // 화면은 그 결과를 보일 뿐이다
   if(opts && opts.fit) opts.fit();
 }
 function undoWith(snap){ commit(()=>{ store=snap; reconcileUndoDeletes(); activeDay=0; }, {fit:fitAll}); }
@@ -1023,8 +1026,7 @@ function dayTimeline(day, startAnchor, di){
 function dayEtas(day, startAnchor, di){ return dayTimeline(day,startAnchor,di).map(x=>x.eta); }
 function legDepartMinute(day,timeline,spotIndex){
   if(spotIndex<=0) return parseHM(day.startAt);
-  const prev=day.spots[spotIndex-1], state=timeline[spotIndex-1];
-  return state.eta+(state.wait||0)+(prev.stayMin!=null?+prev.stayMin:0);
+  return departMinuteAfter(day.spots[spotIndex-1], timeline[spotIndex-1]);
 }
 // sortDayByTime은 lib.js가 단일 소스
 // 하루 장소 비용 합계
@@ -1116,11 +1118,10 @@ function tripCost(){ return tripCostBreakdown().total; }
 // 일정 예상 종료 시각(분) — 마지막 장소 (예약 대기 반영한) 활동 시작 + 체류
 function dayEndMin(day, startAnchor, bl){
   if(!day.spots.length) return null;
-  const etas=dayEtas(day, startAnchor), last=day.spots.length-1, s=day.spots[last];
-  const base = s.bookAt ? Math.max(etas[last], parseHM(s.bookAt)) : etas[last];
-  const end = base + (s.stayMin!=null? +s.stayMin : 0);
-  // 숙소로 돌아가는 시간까지 넣어야 '하루가 몇 시에 끝나는지'가 맞는다
-  return bl ? end + legMinutes(bl.from, bl.to, bl.mode, bl.when, bl.timeZone) : end;
+  const etas=dayEtas(day, startAnchor), last=day.spots.length-1;
+  // 합산 규칙은 lib.js 하나다 — 여기서는 **이동시간만** 구해서 넘긴다(시간대·출발시각은 이 쪽 몫).
+  return dayEndMinutes(day.spots[last], etas[last],
+                       bl ? legMinutes(bl.from, bl.to, bl.mode, bl.when, bl.timeZone) : null);
 }
 // 하루 전체 실도로 합계 (모든 구간이 캐시됐을 때만)
 function dayRoute(day, bl){
@@ -1272,7 +1273,6 @@ function render(){
   const picker=document.getElementById('tripPickerName');
   if(picker) picker.textContent=(viewMode?'':((t.sample||t.id==='spain2026')?'샘플 · ':''))+(t.name||'여행 선택');
   updateCollabUI();
-  save();
 }
 // pts([[lat,lng],…])에 맞춰 프레이밍. maxZoom(구글 기준)은 정착 후 보정
 function fitTo(pts,pad,maxZoom){
@@ -4673,14 +4673,14 @@ function replaceWithRemote(c){
   if(!store.trips.length) store.trips=[{id:uid(),name:'새 여행',start:'',days:[{title:'',drive:'',note:'',spots:[]}]}];
   if(!store.trips.find(t=>t.id===store.activeId)) store.activeId=store.trips[0].id;
   if(c.local) syncMeta[c.local.id]={revision:c.revision,status:c.deleted_at?'tombstoned':'clean',op:'',hash:remote?TC_SYNC.hashTrip(remote):''};
-  persistSyncMeta(); adoptRemote(()=>{ suppressCloudOnce=true; activeDay=0; render(); }); return true;
+  persistSyncMeta(); adoptRemote(()=>{ suppressCloudOnce=true; activeDay=0; save(); render(); }); return true;
 }
 document.getElementById('syncUseCloud').onclick=()=>{ if(!replaceWithRemote(currentSyncConflict)) return; currentSyncConflict=null; showNextSyncConflict(); };
 document.getElementById('syncUseDevice').onclick=()=>{ const c=currentSyncConflict; currentSyncConflict=null; document.getElementById('syncConflictBg').classList.remove('show'); if(c&&c.local) syncTripCloud(c.local,{force:true}); showNextSyncConflict(); };
 document.getElementById('syncKeepCopy').onclick=()=>{
   const c=currentSyncConflict; if(!c||!c.local) return;
   const copy=JSON.parse(JSON.stringify(c.local)); copy.id=uid(); copy.name=(copy.name||'여행')+' (충돌 복사본)';
-  if(!replaceWithRemote(c)) return; store.trips.push(copy); store.activeId=copy.id; suppressCloudOnce=true; render(); syncTripCloud(copy);
+  if(!replaceWithRemote(c)) return; store.trips.push(copy); store.activeId=copy.id; suppressCloudOnce=true; save(); render(); syncTripCloud(copy);
   currentSyncConflict=null; showNextSyncConflict();
 };
 
@@ -4960,7 +4960,7 @@ async function pullTrip(id,opts){
     // 바뀐 날에 표시를 남긴다. 토스트는 띄우지 않는다 — 변경은 이미 화면에 그려지고,
     // 일행이 편집을 이어가면 저장마다 같은 문장이 반복돼 잔소리가 된다.
     for(const di of changedDayIndexes(local,checked.value)) remoteChangedDays.add(di);
-    adoptRemote(()=>{ suppressCloudOnce=true; render(); });
+    adoptRemote(()=>{ suppressCloudOnce=true; save(); render(); });
     return true;
   }catch(e){ reportOperationalError('collab.pull',e); return false; }
 }

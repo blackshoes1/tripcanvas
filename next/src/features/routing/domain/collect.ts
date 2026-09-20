@@ -11,7 +11,7 @@ import {
 import type { LegCache } from '@/features/itinerary/domain/types';
 import type { Spot, TransportMode, Trip } from '@/features/trip/domain/types';
 
-const { dayReturnStay, dayStartAnchor, legKey, parseHM, zonedMinutesToISOString } = legacyLib;
+const { dayEndMinutes, dayReturnStay, dayStartAnchor, departMinuteAfter, legKey, parseHM, zonedMinutesToISOString } = legacyLib;
 
 export interface LegRequest {
   /** 캐시 키 — transit+미래 출발시각이면 base@tz@when */
@@ -52,12 +52,10 @@ export function collectLegRequests(trip: Trip, legCache: LegCache, nowMs: number
     const tl = dayTimelineOf(trip, legCache, di);
     const anchor = dayStartAnchor(trip.days as unknown[], di) as Spot | null;
 
-    // 구간별 출발 분 — app.js legDepartMinute: 첫 장소는 시작시각, 그 외엔 직전 장소 도착+대기+체류
-    const departMin = (si: number): number => {
-      if (si <= 0) return parseHM(day.startAt);
-      const prev = day.spots[si - 1], state = tl[si - 1];
-      return state.eta + (state.wait || 0) + (prev.stayMin != null ? +prev.stayMin : 60);
-    };
+    // 구간별 출발 분 — 첫 장소는 시작시각, 그 외엔 직전 장소 도착+대기+체류.
+    // 합산 규칙은 lib.js 하나다(웹 `legDepartMinute`와 같은 함수를 쓴다).
+    const departMin = (si: number): number =>
+      si <= 0 ? parseHM(day.startAt) : departMinuteAfter(day.spots[si - 1], tl[si - 1]);
 
     let prev = hasCoord(anchor) ? anchor : null;
     day.spots.forEach((s, si) => {
@@ -75,9 +73,9 @@ export function collectLegRequests(trip: Trip, legCache: LegCache, nowMs: number
     if (bl) {
       let when: string | null = null;
       if (bl.mode === 'transit' && iso && day.spots.length) {
-        const last = day.spots.length - 1, s = day.spots[last];
-        const base = s.bookAt ? Math.max(tl[last].eta, parseHM(s.bookAt)) : tl[last].eta;
-        when = planDepartISO(iso, base + (s.stayMin != null ? +s.stayMin : 60), timeZone, nowMs);
+        const last = day.spots.length - 1;
+        // 복귀 출발 시각 = 그날 마지막 활동이 끝나는 시각(복귀 이동은 빼고 — 순환 방지)
+        when = planDepartISO(iso, dayEndMinutes(day.spots[last], tl[last].eta, null), timeZone, nowMs);
       }
       add(bl.from, bl.to, bl.mode, when, timeZone);
     }
