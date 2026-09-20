@@ -527,6 +527,9 @@ body.playing #playHud{
 .travelDepart.now{color:var(--meta-eta)}
 .travelDepart.late{color:var(--meta-danger)}
   /* 함께 움직이지 않는 시간(§25~§27) — 참여자·나란한 가지·합류 */
+  /* 우선순위 3단 — 꼭 가기는 눈에 띄고, 선택은 가라앉는다. 토큰으로만 쓴다(리터럴 hex 금지) */
+  .spotMetaItem.must{color:var(--meta-warning);font-weight:600}
+  .spotMetaItem.opt{color:var(--meta-soft)}
   .spotMetaItem.whoChip{color:var(--meta-link);font-weight:600}
   .spotMetaItem.reunionChip{color:var(--meta-good);font-weight:600}
   /* 나란히 일어나는 줄은 왼쪽 띠로 묶어 보인다. .spotList의 자식 구조는 건드리지 않는다 —

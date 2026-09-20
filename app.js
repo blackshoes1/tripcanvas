@@ -1616,7 +1616,8 @@ function renderSidebar(){
         const label=(cat&&cat.id==='stay')? nights : `🏠 숙소${nights?` · ${nights}`:''}`;
         if(label) meta.push(`<span class="spotMetaItem stayMeta">${label}</span>`);
       }
-      if(s.opt) meta.push(`<span class="spotMetaItem opt">선택 코스</span>`);
+      const _prio=spotPriorityOf(s);
+      if(_prio!=='NORMAL') meta.push(`<span class="spotMetaItem ${_prio==='MUST'?'must':'opt'}">${esc(spotPriorityLabel(_prio))}</span>`);
       if(!hasLoc(s)) meta.push(`<button type="button" class="spotMetaItem noloc" onclick="event.stopPropagation();openSpotModal(${di},${si})">📍 위치 지정</button>`);
       if(s.cost){
         const cu=CUR[s.cur], nk=cu&&s.cur!=='KRW';
@@ -1960,7 +1961,7 @@ window.openSpotModal=(di,si)=>{
   _namePrefill = '';           // 기존 이름은 사용자 값 → 자동 채움이 안 덮게(빈 값일 때만 채움)
   document.getElementById('spotDesc').value=s.desc||'';
   document.getElementById('spotCat').value=s.cat||'';
-  document.getElementById('spotOpt').checked=!!s.opt;
+  document.getElementById('spotPriority').value=spotPriorityOf(s);   // must/opt 두 플래그를 한 값으로
   document.getElementById('spotStay').checked=!!s.stay;
   document.getElementById('spotNights').value=stayNights(s);
   toggleNights();
@@ -1973,7 +1974,7 @@ window.openSpotModal=(di,si)=>{
   updateCostHint();
   document.getElementById('spotBookAt').value=s.bookAt||'';
   document.getElementById('spotBookUrl').value=s.bookUrl||'';
-  document.getElementById('spotAdvanced').open=!isNew&&!!(s.legMode||s.cost||s.bookAt||s.bookUrl||s.opt||s.stay);
+  document.getElementById('spotAdvanced').open=!isNew&&!!(s.legMode||s.cost||s.bookAt||s.bookUrl||spotPriorityOf(s)!=='NORMAL'||s.stay);
   document.getElementById('spotLat').value=s.lat; document.getElementById('spotLng').value=s.lng;
   document.getElementById('spotPlaceId').value=s.placeId||'';
   document.getElementById('spotKakaoId').value=s.kakaoId||'';
@@ -2056,7 +2057,7 @@ document.getElementById('spotSave').onclick=()=>{
   const costV=parseCostAmount(costText,curV);
   if(costText.trim()&&costV===null){toast('비용을 확인하세요 — 원·엔은 정수, 외화는 소수 둘째 자리까지 입력할 수 있어요','#e63946');return;}
   const s={name,city:document.getElementById('spotCity').value.trim()||'기타',desc:document.getElementById('spotDesc').value.trim(),
-    opt:document.getElementById('spotOpt').checked,stay:document.getElementById('spotStay').checked,
+    stay:document.getElementById('spotStay').checked,
     // 연박 수는 숙소일 때만 저장, 1박이면 생략(기본값 — 하위호환)
     nights:(document.getElementById('spotStay').checked && stayNights({nights:document.getElementById('spotNights').value})>1)
       ? stayNights({nights:document.getElementById('spotNights').value}) : undefined,
@@ -2078,6 +2079,7 @@ document.getElementById('spotSave').onclick=()=>{
     who:pickedWho(),                                                     // 비었으면 모두(§26)
     hours:_pickedHours||undefined,lat,lng};
   const targetDay=parseInt(document.getElementById('spotDay').value);
+  applySpotPriority(s, document.getElementById('spotPriority').value);   // 기본값(보통)은 저장하지 않는다
   const isEdit=editing.si>=0;
   // 예약·렌터카 연결은 이 모달에서 만들지도 지우지도 않는다(예약 편집기 소관) → 편집 시 그대로 물려준다.
   // 새 객체로 갈아끼우느라 떨어뜨리면, 메모만 고쳐도 픽업이 연결에서 풀려 독립 행으로 되돌아간다.
