@@ -2023,7 +2023,7 @@ test('통합: 보기 권한(VIEWER) 여행에서는 편집 진입점이 막히�
   assert.equal(w.document.body.classList.contains('roleViewer'), true, '편집 도구를 감추는 body 클래스');
   assert.equal(w.document.getElementById('roleBar').style.display, 'flex', '보기 권한 안내 바');
   assert.equal(w.document.getElementById('membersBtn').hidden, false);
-  assert.equal(w.document.getElementById('membersBtn').textContent, '👥 3');
+  assert.equal(w.document.getElementById('membersCount').textContent, '3');
   // 편집 진입점: 모달이 열리지 않는다
   w.eval(`openSpotModal(0,-1)`);
   assert.equal(w.document.getElementById('spotModalBg').classList.contains('show'), false);
@@ -2316,7 +2316,7 @@ test('통합: 후보 보드 — 보기 권한은 담는 칸이 없고 반응은 
   // 일정에 넣기·후보에서 빼기는 보기 권한에 없다 — 남는 것은 한마디(코멘트)뿐이다(의견이라 보기 권한도 남긴다)
   const actions = [...campNou.querySelectorAll('.candActions button')].map(b => b.textContent);
   assert.equal(actions.some(t => /일정에 넣기|후보에서 빼기|되돌리기/.test(t)), false);
-  assert.equal(actions.filter(t => t.startsWith('💬')).length, 1);
+  assert.equal(campNou.querySelectorAll('.candActions button.candComment').length, 1);
   w.close();
 });
 
@@ -2511,8 +2511,8 @@ test('통합: 후보 한마디 — 펼치면 불러오고, 남기면 수가 오�
     return { data: null, error: null }; } };
   w.eval(`sb=window.sb; TC_API.rpc=window.sb.rpc; drawCandidates();`);
   const card = () => w.document.querySelector('#candList .candCard');
-  const cbtn = () => [...card().querySelectorAll('.candActions button')].find(b => b.textContent.startsWith('💬'));
-  assert.equal(cbtn().textContent, '💬 2');
+  const cbtn = () => card().querySelector('.candActions button.candComment .cCount');
+  assert.equal(cbtn().textContent, '2');
   assert.equal(card().querySelector('.candComments'), null, '접혀 있으면 불러오지 않는다');
   cbtn().click(); await tick(); await tick();
   assert.deepEqual(rpc[0], ['list_candidate_comments', { p_candidate_id: 1 }]);
@@ -2531,7 +2531,7 @@ test('통합: 후보 한마디 — 펼치면 불러오고, 남기면 수가 오�
   card().querySelector('.commentForm').dispatchEvent(new w.Event('submit', { cancelable: true }));
   await tick(); await tick(); await tick();
   assert.deepEqual(rpc.find(r => r[0] === 'add_candidate_comment')[1], { p_candidate_id: 1, p_body: '저녁 예약이랑 가까움' });
-  assert.equal(cbtn().textContent, '💬 3');
+  assert.equal(cbtn().textContent, '3');
   assert.equal(card().querySelectorAll('.commentRow').length, 3);
   assert.equal(inp().value, '', '남긴 뒤 입력칸은 비운다');
   // 빈 말은 보내지 않는다
@@ -2543,7 +2543,7 @@ test('통합: 후보 한마디 — 펼치면 불러오고, 남기면 수가 오�
   card().querySelectorAll('.commentRow')[1].querySelector('.cx').click();
   await tick(); await tick(); await tick();
   assert.deepEqual(rpc.find(r => r[0] === 'delete_candidate_comment')[1], { p_comment_id: 2 });
-  assert.equal(cbtn().textContent, '💬 2');
+  assert.equal(cbtn().textContent, '2');
   w.close();
 });
 
@@ -2927,7 +2927,7 @@ test('통합: 참여자를 고르지 않으면 모두이고, 편집해도 분리
 
   const chips = [...w.document.querySelectorAll('#spotWho .whoChipBtn')];
   assert.equal(w.document.getElementById('spotWhoSection').style.display, 'block', '함께하는 여행에서만 보인다');
-  assert.deepEqual(chips.map(c => c.textContent), ['👥 모두', '나', '영희']);
+  assert.deepEqual(chips.map(c => c.textContent), ['모두', '나', '영희']);
   assert.ok(chips[1].classList.contains('active'), '지금 참여자가 켜져 있다');
 
   // 메모만 고쳐 저장해도 묶음이 유지된다

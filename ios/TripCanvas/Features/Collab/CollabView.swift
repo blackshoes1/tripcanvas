@@ -126,8 +126,8 @@ struct CollabView: View {
                             Picker("권한", selection: Binding(
                                 get: { member.role },
                                 set: { role in Task { await model.setRole(memberId: member.id, role: role) } })) {
-                                Text("✏️ 편집").tag(MemberRole.editor)
-                                Text("👀 보기").tag(MemberRole.viewer)
+                                Text("편집").tag(MemberRole.editor)
+                                Text("보기").tag(MemberRole.viewer)
                             }
                             Button("내보내기", role: .destructive) { removing = member }
                         } label: {
@@ -167,8 +167,8 @@ struct CollabView: View {
     private func inviteSection(_ model: CollabViewModel) -> some View {
         Section {
             Picker("초대 권한", selection: $inviteRole) {
-                Text("✏️ 편집자로").tag(MemberRole.editor)
-                Text("👀 보기만").tag(MemberRole.viewer)
+                Text("편집자로").tag(MemberRole.editor)
+                Text("보기만").tag(MemberRole.viewer)
             }
             Button {
                 Task { await model.createInvite(role: inviteRole) }

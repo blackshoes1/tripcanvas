@@ -368,7 +368,7 @@ struct LegPill: View {
             Image(systemName: symbol)
             Text(text)
         }
-        .font(.caption2)
+        .font(.caption2.monospacedDigit())
         .foregroundStyle(Ink.soft)
         .padding(.horizontal, Space.s)
         .padding(.vertical, 3)
