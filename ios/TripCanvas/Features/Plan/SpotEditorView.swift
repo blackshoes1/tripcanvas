@@ -181,7 +181,12 @@ struct SpotEditorView: View {
                 AdmissionEditorSection(spot: $draft)
 
                 Section {
-                    Toggle("꼭 가기", isOn: $draft.isMust)
+                    // 우선순위는 한 컨트롤이다 — 예전에는 '꼭 가기' 토글뿐이라 웹의 '선택'을 앱에서 볼 수 없었다.
+                    Picker("우선순위", selection: $draft.priority) {
+                        ForEach(SpotPriority.allCases, id: \.self) { level in
+                            Text(level.label).tag(level)
+                        }
+                    }
                     Picker("상태", selection: $draft.status) {
                         ForEach(SpotStatus.allCases, id: \.self) { status in
                             Text(status.label).tag(status)

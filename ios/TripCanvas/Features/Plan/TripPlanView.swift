@@ -997,7 +997,12 @@ struct SpotRow: View {
                     Text(spot.name.isEmpty ? "이름 없는 장소" : spot.name)
                         .font(.body.weight(.semibold))
                         .strikethrough(spot.status == .skipped || spot.status == .cancelled)
-                    if spot.isMust { Image(systemName: "star.fill").font(.caption2).foregroundStyle(Ink.warning) }
+                    if let symbol = spot.priority.symbol {
+                        Image(systemName: symbol)
+                            .font(.caption2)
+                            .foregroundStyle(spot.priority == .must ? Ink.warning : Ink.soft)
+                            .accessibilityLabel(spot.priority.label)
+                    }
                 }
                 // 상대가 정한 약속은 가장 세게 말한다 — 내가 옮길 수 없는 시각이다.
                 if let booked = bookedText { bookedChip(booked) }

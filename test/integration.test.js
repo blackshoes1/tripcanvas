@@ -3278,3 +3278,43 @@ test('통합: 장소 모달이 \'체류 미정\'을 0분으로 굳히지 않는�
   assert.equal(zero.stayMin, 0, '0은 유효한 값이다(들렀다 바로 이동) — 미정과 구별된다');
   w.close();
 });
+
+// M1 — 우선순위가 반쪽씩 갈려 있었다. 웹은 `opt`만, iOS는 `must`만 편집할 수 있었는데
+// adaptive는 둘 다 읽어(재구성 보호·제거 순서) 화면에 없는 이유로 추천이 갈렸다.
+// 이제 웹도 3단 한 컨트롤로 고르고, 저장은 예전 그대로 두 플래그다.
+test('통합: 장소 모달의 3단 우선순위가 must/opt로 저장되고 다시 읽힌다', { skip: noJsdom }, async () => {
+  const w = boot();
+  const open = (name) => w.eval(`openSpotModal(0,-1);
+    document.getElementById('spotName').value='${name}';
+    document.getElementById('spotLat').value='40.41'; document.getElementById('spotLng').value='-3.69';`);
+  const spotAt = (si) => JSON.parse(w.eval(`JSON.stringify(trip().days[0].spots[${si}])`));
+
+  // ① 기본은 '보통' — 아무 플래그도 저장하지 않는다
+  open('프라도');
+  assert.equal(w.document.getElementById('spotPriority').value, 'NORMAL', '새 장소의 기본은 보통');
+  w.eval(`document.getElementById('spotSave').onclick();`);
+  const si = w.eval(`trip().days[0].spots.length-1`);
+  assert.equal('must' in spotAt(si), false, '기본값은 저장하지 않는다 — 공유 링크 크기');
+  assert.equal('opt' in spotAt(si), false);
+
+  // ② 꼭 가기 → must 하나만
+  w.eval(`openSpotModal(0,${si}); document.getElementById('spotPriority').value='MUST';
+    document.getElementById('spotSave').onclick();`);
+  assert.equal(spotAt(si).must, true);
+  assert.equal('opt' in spotAt(si), false);
+  w.eval(`openSpotModal(0,${si})`);
+  assert.equal(w.document.getElementById('spotPriority').value, 'MUST', '다시 열면 그대로 읽힌다');
+
+  // ③ 선택으로 바꾸면 앞의 플래그가 남지 않는다
+  w.eval(`openSpotModal(0,${si}); document.getElementById('spotPriority').value='OPT';
+    document.getElementById('spotSave').onclick();`);
+  assert.equal(spotAt(si).opt, true);
+  assert.equal('must' in spotAt(si), false, '바꾸면 must가 남지 않는다 — 둘은 함께 켜질 수 없다');
+
+  // ④ 보통으로 되돌리면 둘 다 사라진다
+  w.eval(`openSpotModal(0,${si}); document.getElementById('spotPriority').value='NORMAL';
+    document.getElementById('spotSave').onclick();`);
+  assert.equal('must' in spotAt(si), false);
+  assert.equal('opt' in spotAt(si), false);
+  w.close();
+});
