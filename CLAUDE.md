@@ -216,6 +216,7 @@ localStorage: `tripcanvas_v1`(여행) · `tripcanvas_legs_v4`(구간 캐시, 수
   - ⚠️ 키(`GOOGLE_ROUTES_API_KEY`·`KAKAO_REST_API_KEY`)가 없으면 라우터가 `null`이라 예전과 완전히 같다. 잠깐인 실패(프록시 429·업스트림 5xx)는 캐시에 남기지 않는다 — 혼잡이 한 시간짜리 "직선이에요"로 굳으면 안 된다.
 - 제안 거절은 `suggestion_feedback` 테이블(RLS)에 날짜와 함께 남는다 — 기기가 바뀌어도 같은 제안이 그날 다시 올라오지 않는다. ⚠️ 레거시 웹은 아직 localStorage를 쓴다(양쪽이 아직 공유되지 않음).
 - `next`의 `swiftParity.test.ts`가 **실제 Today 응답 ↔ `ios/.../Contract.swift`** 를 맞춰 보고 `ios/TripCanvasTests/Fixtures/today.json`을 다시 만든다. 계약을 바꾸면 여기가 먼저 깨진다.
+  ⚠️ 계약 구조체에 **저장 프로퍼티를 더하면 XCTest의 memberwise init 호출부가 전부 깨진다**(기본값이 없다). 파리티 테스트는 그걸 안 잡는다 — 필드가 Swift에 *있는지*만 보지 호출부는 모른다. 더하기 전에 `grep 'DayPlanDay('`로 호출부를 세어 함께 고친다. ⚠️ 한 번에 다 보이지도 않는다 — Swift 배치 컴파일은 먼저 깨진 배치에서 멈춰, 2026-09-20 `flight` 추가 때 CI 로그에 `MapRouteTests` 한 곳만 떴지만 실제로는 넷이었다.
 
 **앱의 탭 전환은 앱 복귀가 아니다.** (2026-09-17 "탭을 누를 때마다 로딩" 보고)
 

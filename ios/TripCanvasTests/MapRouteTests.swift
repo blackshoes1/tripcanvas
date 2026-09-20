@@ -22,6 +22,7 @@ final class MapRouteTests: XCTestCase {
         DayPlanDay(index: index, date: "2026-10-01", title: "", note: "", mode: "car", startMinutes: 540,
                    timeZone: "Asia/Seoul", carriedStay: nil, spots: spots, carPickups: [], carReturns: [],
                    back: back, spotsWithoutLocation: spots.filter { $0.location == nil }.count, splits: [],
+                   flight: nil,
                    totals: .init(distanceKm: 0, travelMinutes: 0, endMinutes: nil, overloaded: false,
                                  cost: .init(total: 0, parts: [])))
     }
