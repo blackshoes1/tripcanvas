@@ -88,22 +88,59 @@ guard day == selectedDay, revision == askedRevision,
 
 ---
 
-## 3단계 — iOS 일정 화면 분리
+## 3단계 — iOS 일정 화면 분리 ✅ 완료
 
-**범위** — `TripPlanView.swift`(1169줄)에서 일정 목록·날짜 선택·지도·장소 행을 독립적인 화면
-구성 요소로 나눈다.
+### 무엇이 문제였나
 
-**경계** — 상태 소유자는 1단계에서 정한 그대로다. **화면을 나누면서 같은 상태를 복제하지 않는다** —
-구성 요소가 자기 `@State`로 고른 날이나 로딩을 들면 1단계가 무의미해진다. 디자인·접근성·스와이프·
-편집 동작은 바꾸지 않는다.
+`TripPlanView`가 894줄에 `@State` 22개였다. 날짜 선택·목록·지도·시트가 한 타입 안에 섞여 있어
+**어떤 값을 누가 언제 바꾸는지**가 한눈에 보이지 않았다. 지도에서만 쓰는 값(`mapScope`·
+`selectedMapSpot`·`selectedMapSpotDay`·`sceneChoice`)도 시트 상태와 같은 자리에 있었다.
 
-**의존성** — 1단계 필수(상태 소유자가 정해져 있어야 화면이 받아 쓰기만 한다).
+### 어떻게 나눴나
 
-**검증 기준** — 탭 전환이 앱 복귀가 아님(`loadIfStale`), 지도는 한 번 만들면 숨기기만 함,
-탭 바는 언제나 화면 맨 아래, 계산이 늦게 오는 동안 목록을 반쯤 지어 보이지 않음. 기존 XCTest 전부 +
-스냅샷 없이 확인 가능한 것은 테스트로, 나머지는 시뮬레이터에서 눈으로.
+| 파일 | 소유하는 상태 | 줄 수 |
+|---|---|---|
+| `TripPlanView` | 시트·모달(`editor` `viewingSpot` `showsSearch` `showsCosts` …) · `mapMounted` · `goingForward` · `choosingPlaces`/`chosenPlaces` | 894 → **308** |
+| `PlanSpotList` (신규) | `summaryExpanded` · `daySwipeIntent` · `isSwipingDay` | 362 |
+| `PlanMapSection` (신규) | `mapScope` · `selectedMapSpot` · `selectedMapSpotDay` · `sceneChoice` | 258 |
+| `PlanDayPicker` (신규) | 없음 — 받은 값만 그린다 | 89 |
+| `SpotRow` (파일 분리) | 없음 | 252 |
 
----
+부모의 `@State`는 22 → **16개**로 줄었고, 나간 7개는 전부 **쓰는 곳이 하나뿐인** 값이다.
+남은 16개는 시트·모달처럼 부모만 열 수 있는 것과, 툴바와 목록이 함께 쓰는 것뿐이다.
+
+### 상태를 복제하지 않기 위해 쓴 장치
+
+**`PlanActions`** — 조각이 부모에게 부탁하는 일 한 벌(`editSpot` `viewSpot` `addAfter`
+`moveSpots` `selectDay` `openCosts`). 조각은 시트 상태를 **보지도 쓰지도 않는다.**
+같은 시트가 두 곳에서 열리는 일이 구조적으로 불가능해진다.
+
+- `goingForward`는 칩과 스와이프 **둘 다** 바꾸므로 부모가 소유하고, 목록은 읽기만 한다
+  (`let`). 쓰기는 `actions.selectDay(day, forward)` 하나를 지난다.
+- `choosingPlaces`/`chosenPlaces`는 툴바(부모)와 목록이 함께 쓰므로 `@Binding`이다.
+- `motion`·`reduceMotion`은 상태가 아니라 **환경 읽기**라 각자 읽어도 값이 갈리지 않는다.
+
+### 보존한 동작
+
+목록 탭 기본 · 날짜 스와이프와 세로 스크롤과 장소 탭의 구분(`PlanDaySwipeIntent`) ·
+편집 모드에서만 삭제(`onDelete`에 nil) · 드래그 인덱스가 어긋나지 않도록 이월/렌터카 줄을
+`ForEach` 밖에 두기 · 지도는 한 번 만들면 숨기기만 하기 · 계산 전에는 목록을 짓지 않기 ·
+접근성 라벨과 44pt 터치 영역 · 디자인 토큰.
+
+### 검증
+
+- iOS XCTest **406건 통과 / 0 실패**, 빌드·Release 빌드 통과.
+- 회귀 테스트를 **더하지 않았다** — 동작이 바뀐 곳이 없고, 뷰 구조 변경은 기존 406건이
+  잡지 못하는 영역이다(아래 한계 참고).
+- `TripPlanView.summaryLine` → `PlanSpotList.summaryLine`으로 옮기며 `UiPolishTests`의
+  참조 한 줄을 함께 고쳤다.
+
+### ⚠️ 이 단계가 확인하지 못한 것
+
+**화면에 실제로 그려지는 모습은 확인하지 못했다.** 일정 화면에 닿으려면 로그인이 필요한데,
+사용자 계정으로 앱을 띄우는 것은 이 저장소의 규칙이 금지한다(데모 오염). 빌드와 유닛
+테스트까지가 이번에 할 수 있는 검증이다. 레이아웃·전환 애니메이션·스와이프 감각은
+**기기나 시뮬레이터에서 사람이 한 번 봐야 한다.**
 
 ## 4단계 — 웹 표시와 저장 경계 정리
 
