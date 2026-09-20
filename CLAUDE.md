@@ -256,6 +256,8 @@ localStorage: `tripcanvas_v1`(여행) · `tripcanvas_legs_v4`(구간 캐시, 수
 - 판단은 전부 `adaptive.js`(순수)에 있고 `app.js`는 배선·표시만 한다. 시각·이동시간·영업요일은 **인자로 주입**한다 → 같은 상태면 항상 같은 추천(렌더마다 순서가 바뀌면 안 됨).
 - `adaptState(di)`(app)는 `dayContext(di)`의 `anchor`·`timeline`을 **그대로** 넘긴다. 추천이 출발 기준점을 따로 추론하면 화면과 다른 숫자를 말하게 된다.
 - 일정 성격: `bookAt`(상대가 정한 약속)·항공·기차 = **FIXED(침범 금지)** · `at`(내가 정한 시각)·숙소·렌터카 = SEMI_FIXED · 나머지 = FLEXIBLE. 재구성은 **고정 보호 → 완료 유지 → `must` 보호 → 낮은 우선순위(`opt`)부터 제거** 순서를 지킨다.
+- **장소 우선순위는 화면에서 3단 한 컨트롤이고, 저장은 `must`/`opt` 두 플래그다**(2026-09-20). 고르는 곳은 웹 `#spotPriority`·iOS `SpotPriority` Picker 하나뿐이고, 읽고 쓰는 규칙은 `lib.js`의 `SPOT_PRIORITIES`·`spotPriorityOf`·`applySpotPriority` 한 곳에 있다(iOS는 `Spot.priority`가 같은 규칙을 복제한다 — 순서·문구를 XCTest가 대조한다). 기본값('보통')은 저장하지 않고 **둘이 함께 켜지지 않는다**(둘 다 온 문서는 `normalizeSpot`이 `must`만 남긴다 — 지우는 쪽보다 지키는 쪽이 덜 잃는다).
+  ⚠️ 저장 표현을 바꾸지 않는 이유: 엔진의 재구성과 계약(`TripActivity.mustVisit`/`optional`)이 그 두 플래그를 읽는다. 2026-09-20 전에는 **웹이 `opt`만, iOS가 `must`만** 편집할 수 있어, 화면에 없는 이유로 양쪽 추천이 갈렸다.
 - 실행 상태는 `spot.status`(`COMPLETED`/`SKIPPED`/`CANCELLED`, 기본 PLANNED는 저장 안 함). **자동 완료 판정은 하지 않는다** — 사용자가 누른다.
 - 제안은 한 번에 3(+1)개까지. 불가능한 후보(시간 초과·영업 종료·완료·건너뜀)는 **아예 제외**하고, 넣을 게 없으면 억지로 만들지 말고 쉬는 선택지를 남긴다. 점수는 내부값이고 UI에는 `reasons` 문장만 쓴다.
 - 거절(`SKIPPED`)은 `tripcanvas_suggest_v1`에 **그날 날짜와 함께** 저장돼 같은 날 반복되지 않는다. 추천 결과 자체는 여행 데이터에 저장하지 않는다 — 수락한 것만 일정에 반영된다.
