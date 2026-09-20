@@ -131,32 +131,53 @@ struct CandidateGroups: Sendable {
 }
 
 /// §23 갈린 후보 — MUST와 PASS가 같이 있을 때만. 자동 제거는 없다.
+///
+/// ⚠️ `collab.js`의 `candidateConflict`/`conflictOptions` **복사본**이다 — 규칙을 바꿀 때 `collab.js`를 먼저 고친다.
+/// 이름(`must`·`ok`·`pass`)은 문장용이고, `goers`·`others`는 실제로 나눌 때 쓰는 id다.
 struct CandidateConflict: Equatable, Sendable {
     let title: String
     let must: [String], ok: [String], pass: [String]
+    /// 가고 싶은 쪽(MUST 다음 OK)과 나머지(PASS)의 user_id. 비어 있으면 나눌 수 없다.
+    var goers: [String] = [], others: [String] = []
 
     struct Option: Equatable, Sendable {
         enum Key: Sendable { case together, split, skip }
         let key: Key
         let title: String
         let text: String
-        /// 서버 액션. 분리(SPLIT)는 다음 단계라 없다(안내만).
+        /// 그대로 실행되는 동작. SCHEDULE·REJECT는 서버 액션이고, SPLIT은 문서를 바꾸는 동작이다(§25~§27).
+        /// 나눌 수 없는 후보에서는 nil — 만들 수 없는 것을 권하지 않는다.
         let action: String?
     }
+
+    /// 양쪽에 사람이 있어야 나눌 수 있다.
+    var isSplittable: Bool { !goers.isEmpty && !others.isEmpty }
 
     /// §24 세 선택지.
     var options: [Option] {
         let mustNames = must.joined(separator: ", "), passNames = pass.joined(separator: ", ")
+        let sides = "\(mustNames.isEmpty ? "원하는 분" : mustNames)은(는) \(title)"
+        let rest = passNames.isEmpty ? "다른 분" : passNames
         return [
             Option(key: .together, title: "다 같이 방문",
                    text: passNames.isEmpty ? "다 같이 들러요" : "\(passNames)도 함께 — 짧게 들르는 걸로", action: "SCHEDULE"),
             Option(key: .split, title: "자유시간으로 분리",
-                   text: "\(mustNames.isEmpty ? "원하는 분" : mustNames)은(는) \(title) · \(passNames.isEmpty ? "다른 분" : passNames)은(는) 다른 곳 — 분리 일정은 다음 단계에서",
-                   action: nil),
+                   text: isSplittable
+                     ? "\(sides) · \(rest)은(는) 자유시간 — 끝나면 다시 만나요"
+                     : "\(sides) · \(rest)은(는) 다른 곳 — 의견을 다시 불러오면 나눌 수 있어요",
+                   action: isSplittable ? "SPLIT" : nil),
             Option(key: .skip, title: "이번 일정에서는 제외",
                    text: "후보에는 남겨 두고 이번엔 빼요 — 언제든 되돌릴 수 있어요", action: "REJECT")
         ]
     }
+}
+
+/// §24의 "자유시간으로 분리"를 실제 일정으로. **미리보기다** — 넣기 전에는 저장되지 않는다.
+/// `collab.js`의 `buildSplitPlan` 복사본.
+struct SplitPlan: Equatable, Sendable {
+    let goers: [String], others: [String]
+    let spots: [TripSpot]
+    let text: String
 }
 
 enum CollabModel {
@@ -444,13 +465,71 @@ enum CollabModel {
                 .map { $0.me ? "나" : ($0.name.trimmingCharacters(in: .whitespaces).isEmpty ? "멤버" : $0.name) }
         }
         let title = candidate.title.trimmingCharacters(in: .whitespaces)
-        return CandidateConflict(title: title.isEmpty ? "후보" : title, must: names(.must), ok: names(.ok), pass: names(.pass))
+        return CandidateConflict(title: title.isEmpty ? "후보" : title,
+                                 must: names(.must), ok: names(.ok), pass: names(.pass),
+                                 goers: reactorIds(candidate, .must) + reactorIds(candidate, .ok),
+                                 others: reactorIds(candidate, .pass))
+    }
+
+    /// 그 반응을 남긴 사람들의 user_id — 이름이 아니라 id로 가른다(동명이인). id가 없는 행은 뺀다.
+    static func reactorIds(_ candidate: CandidateView, _ reaction: Reaction) -> [String] {
+        var seen = Set<String>(), out: [String] = []
+        for entry in candidate.reactions where Reaction(loose: entry.reaction) == reaction {
+            guard let id = entry.userId, !id.isEmpty, seen.insert(id).inserted else { continue }
+            out.append(id)
+        }
+        return out
+    }
+
+    /// 가고 싶은 사람은 그 후보로, 나머지는 자유시간으로 간다. 자유시간에는 장소를 정해 주지 않는다 —
+    /// 무엇을 할지는 그 사람들이 정할 일이지 앱이 고를 일이 아니다(§23).
+    /// 합류(§27)는 장소를 모르므로 표시만 만들고, 시각은 타임라인이 정한다.
+    ///
+    /// - Parameter splitId: 묶음 키. 호출부가 정해 넘긴다 — 같은 입력이면 같은 답이어야 한다.
+    static func buildSplitPlan(_ candidate: CandidateView, members: [MemberView],
+                               splitId: String, stayMinutes: Int = 120) -> SplitPlan? {
+        let goers = reactorIds(candidate, .must) + reactorIds(candidate, .ok)
+        let others = reactorIds(candidate, .pass)
+        // 한쪽이 비면 갈릴 것이 없다 — 다 같이 가거나, 아무도 안 가거나다.
+        guard !goers.isEmpty, !others.isEmpty else { return nil }
+        let stay = max(0, stayMinutes)
+        let trimmed = candidate.title.trimmingCharacters(in: .whitespaces)
+        let title = trimmed.isEmpty ? "후보" : trimmed
+
+        var going = TripSpot(name: title, city: (candidate.addr ?? "").trimmingCharacters(in: .whitespaces))
+        going.desc = candidate.note ?? ""
+        if let lat = candidate.lat, let lng = candidate.lng { going.point = GeoPoint(lat: lat, lng: lng) } else { going.point = nil }
+        going.stayMinutes = stay
+        going.setField("split", .string(splitId))
+        going.setField("who", .array(goers.map { .string($0) }))
+
+        var free = TripSpot(name: "자유시간", city: "")
+        free.desc = "가고 싶은 곳을 각자 정해요"
+        free.point = nil
+        free.stayMinutes = stay
+        free.setField("split", .string(splitId))
+        free.setField("who", .array(others.map { .string($0) }))
+
+        var reunion = TripSpot(name: "다시 만나기", city: "")
+        reunion.point = nil
+        reunion.stayMinutes = 0
+        reunion.setField("reunion", .bool(true))   // 합류는 묶음 밖 — 다 모인 뒤다(split 없음)
+
+        let a = whoLabels(goers, members: members).joined(separator: ", ")
+        let b = whoLabels(others, members: members).joined(separator: ", ")
+        return SplitPlan(goers: goers, others: others, spots: [going, free, reunion],
+                         text: "\(a)은(는) \(title), \(b)은(는) 자유시간 — 끝나면 다시 만나요")
     }
 
     /// 탭 즉시 화면이 바뀌고 서버가 거절하면 되돌린다 — 집계와 `reactions`를 서버 응답과 같은 모양으로 유지한다.
-    static func applyingReaction(_ reaction: Reaction?, to candidate: CandidateView) -> CandidateView {
+    ///
+    /// ⚠️ `myId`까지 실어야 한다 — 분리(§25)는 이름이 아니라 user_id로 가르므로, id가 빠지면
+    /// 방금 내가 누른 의견만 어느 쪽에도 없는 상태가 된다(내가 만든 충돌인데 내가 빠진다).
+    static func applyingReaction(_ reaction: Reaction?, to candidate: CandidateView, myId: String? = nil) -> CandidateView {
         var reactions = candidate.reactions.filter { !$0.me }
-        if let reaction { reactions.append(CandidateView.ReactionEntry(name: "나", reaction: reaction.rawValue, me: true)) }
+        if let reaction {
+            reactions.append(CandidateView.ReactionEntry(name: "나", reaction: reaction.rawValue, me: true, userId: myId))
+        }
         let must = reactions.filter { Reaction(loose: $0.reaction) == .must }.count
         let ok = reactions.filter { Reaction(loose: $0.reaction) == .ok }.count
         let pass = reactions.filter { Reaction(loose: $0.reaction) == .pass }.count

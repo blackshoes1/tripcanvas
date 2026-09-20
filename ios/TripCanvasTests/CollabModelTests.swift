@@ -8,9 +8,10 @@ final class CollabModelTests: XCTestCase {
                            status: String = "PROPOSED", mine: Bool = false, myReaction: String? = nil,
                            createdAt: String = "2026-09-01T00:00:00.000Z") -> CandidateView {
         var reactions: [CandidateView.ReactionEntry] = []
-        for i in 0..<must { reactions.append(.init(name: "M\(i)", reaction: "MUST", me: false)) }
-        for i in 0..<ok { reactions.append(.init(name: "O\(i)", reaction: "OK", me: false)) }
-        for i in 0..<pass { reactions.append(.init(name: "P\(i)", reaction: "PASS", me: false)) }
+        // 서버는 반응마다 user_id를 함께 준다 — 분리(§25)가 이름이 아니라 id로 가르기 때문이다.
+        for i in 0..<must { reactions.append(.init(name: "M\(i)", reaction: "MUST", me: false, userId: "m\(i)")) }
+        for i in 0..<ok { reactions.append(.init(name: "O\(i)", reaction: "OK", me: false, userId: "o\(i)")) }
+        for i in 0..<pass { reactions.append(.init(name: "P\(i)", reaction: "PASS", me: false, userId: "p\(i)")) }
         return CandidateView(
             id: id, title: "카사 바트요", placeId: nil, lat: nil, lng: nil, addr: nil, note: nil, url: nil,
             status: status, scheduledRef: nil, proposedByLabel: "영희", mine: mine, myReaction: myReaction,
@@ -205,8 +206,74 @@ final class CollabModelTests: XCTestCase {
         let options = conflict?.options ?? []
         XCTAssertEqual(options.map(\.key), [.together, .split, .skip])
         XCTAssertEqual(options[0].action, "SCHEDULE")
-        XCTAssertNil(options[1].action, "분리 일정은 다음 단계 — 안내만")
+        XCTAssertEqual(options[1].action, "SPLIT", "셋 다 실제 동작이다 — 분리만 안내로 남지 않는다")
         XCTAssertEqual(options[2].action, "REJECT")
+        XCTAssertFalse(options[1].text.contains("다음 단계"))
+        XCTAssertEqual(conflict?.goers, ["m0", "m1", "o0"], "가고 싶은 쪽은 MUST 다음 OK")
+        XCTAssertEqual(conflict?.others, ["p0"])
+    }
+
+    /// id가 없으면 누가 어느 쪽인지 모른다 — 만들 수 없는 것을 권하지 않는다.
+    func testConflictWithoutReactorIdsOffersNoSplit() {
+        let nameOnly = CandidateView(
+            id: 1, title: "캄프 누", placeId: nil, lat: nil, lng: nil, addr: nil, note: nil, url: nil,
+            status: "PROPOSED", scheduledRef: nil, proposedByLabel: "영희", mine: false, myReaction: nil,
+            mustCount: 1, okCount: 0, passCount: 1,
+            reactions: [.init(name: "민수", reaction: "MUST", me: false),
+                        .init(name: "영희", reaction: "PASS", me: false)],
+            commentCount: 0, createdAt: "2026-09-01T00:00:00.000Z")
+        let conflict = CollabModel.conflict(nameOnly, memberCount: 2)
+        XCTAssertNotNil(conflict, "이름으로는 여전히 갈린 것이 보인다")
+        XCTAssertEqual(conflict?.isSplittable, false)
+        XCTAssertNil(conflict?.options[1].action)
+        XCTAssertNil(CollabModel.buildSplitPlan(nameOnly, members: [], splitId: "sp1"))
+    }
+
+    // MARK: 분리 — 미리보기다. 넣기 전에는 저장되지 않는다
+
+    func testSplitPlanSplitsByIdAndAddsFreeTimeAndReunion() {
+        let members = [
+            MemberView(id: 1, userId: "m0", role: .owner, status: "ACTIVE", displayName: "민수", joinedAt: nil, me: true),
+            MemberView(id: 2, userId: "o0", role: .editor, status: "ACTIVE", displayName: "현우", joinedAt: nil, me: false),
+            MemberView(id: 3, userId: "p0", role: .editor, status: "ACTIVE", displayName: "지민", joinedAt: nil, me: false)
+        ]
+        guard let plan = CollabModel.buildSplitPlan(candidate(must: 1, ok: 1, pass: 1),
+                                                   members: members, splitId: "sp1") else {
+            XCTFail("양쪽에 사람이 있으면 계획이 나와야 한다"); return
+        }
+        XCTAssertEqual(plan.goers, ["m0", "o0"], "MUST 다음에 OK")
+        XCTAssertEqual(plan.others, ["p0"])
+        XCTAssertEqual(plan.spots.map(\.name), ["카사 바트요", "자유시간", "다시 만나기"])
+        XCTAssertEqual(plan.spots[0].raw["who"]?.arrayValue?.compactMap(\.stringValue), ["m0", "o0"])
+        XCTAssertEqual(plan.spots[1].raw["who"]?.arrayValue?.compactMap(\.stringValue), ["p0"])
+        XCTAssertEqual(plan.spots[0].raw["split"]?.stringValue, "sp1")
+        XCTAssertEqual(plan.spots[1].raw["split"]?.stringValue, "sp1", "같은 묶음이라 나란히 일어난다")
+        XCTAssertNil(plan.spots[2].raw["split"], "합류는 묶음 밖 — 다 모인 뒤다")
+        XCTAssertEqual(plan.spots[2].raw["reunion"]?.boolValue, true)
+        XCTAssertNil(plan.spots[1].point, "자유시간에는 장소를 정해 주지 않는다")
+        XCTAssertTrue(plan.text.contains("민수"))
+        XCTAssertTrue(plan.text.contains("지민"))
+    }
+
+    func testSplitPlanNeedsBothSides() {
+        XCTAssertNil(CollabModel.buildSplitPlan(candidate(must: 2, ok: 1), members: [], splitId: "sp1"),
+                     "반대가 없으면 다 같이 간다")
+        XCTAssertNil(CollabModel.buildSplitPlan(candidate(pass: 2), members: [], splitId: "sp1"),
+                     "가고 싶은 사람이 없으면 아무도 안 간다")
+    }
+
+    /// 같은 묶음 키를 주면 같은 답이다 — 미리보기와 저장본이 갈리지 않는다.
+    func testSplitPlanIsDeterministicForTheSameSplitId() {
+        let c = candidate(must: 1, pass: 1)
+        XCTAssertEqual(CollabModel.buildSplitPlan(c, members: [], splitId: "fixed")?.spots,
+                       CollabModel.buildSplitPlan(c, members: [], splitId: "fixed")?.spots)
+    }
+
+    /// 묶음 키는 웹 `uid()` 형식(`[A-Za-z0-9_-]{1,40}`)이어야 `normalizeSpot`을 지난다.
+    func testSplitIdPassesTheWebIdRule() {
+        let id = CandidateBoardViewModel.newSplitId()
+        XCTAssertTrue(id.hasPrefix("sp"))
+        XCTAssertTrue(TripBooking.isValidId(id), id)
     }
 
     // MARK: 낙관적 반응 — 되돌릴 수 있어야 한다
@@ -437,6 +504,105 @@ final class WhoTextParityTests: XCTestCase {
         let fixture = try load()
         for c in fixture.cases {
             XCTAssertFalse(c.text.contains("@"), c.name)
+        }
+    }
+}
+
+/// 갈린 후보의 **세 선택지와 분리 계획**이 `collab.js`와 같은 답을 내는지.
+///
+/// 픽스처는 `next`의 `splitPlanParity.test.ts`가 `collab.js`로 만든다.
+/// 규칙을 바꾸면 그 테스트가 파일을 새로 쓰고 여기가 깨진다 — 그게 목적이다.
+/// 장소 세 줄의 **키까지** 맞춘다: 웹과 앱이 같은 문서를 쓰므로 키가 하나만 달라도
+/// 한쪽이 만든 분리를 다른 쪽이 못 읽는다.
+final class SplitPlanParityTests: XCTestCase {
+    private struct Fixture: Decodable {
+        struct Member: Decodable { let user_id: String; let display_name: String?; let me: Bool }
+        struct Conflict: Decodable {
+            let title: String
+            let must: [String], ok: [String], pass: [String]
+            let goers: [String], others: [String]
+        }
+        struct Option: Decodable { let key: String; let title: String; let text: String; let action: String? }
+        struct Plan: Decodable {
+            let goers: [String], others: [String]
+            let spots: [[String: JSONValue]]
+            let text: String
+        }
+        struct Case: Decodable {
+            let name: String
+            let memberCount: Int
+            let candidate: CandidateView
+            let conflict: Conflict?
+            let options: [Option]
+            let plan: Plan?
+        }
+        let splitId: String
+        let members: [Member]
+        let cases: [Case]
+    }
+
+    private func load() throws -> Fixture {
+        let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "split-plan", withExtension: "json"),
+                                "split-plan.json 픽스처를 테스트 번들에 포함시켜야 합니다")
+        return try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: url))
+    }
+
+    /// 웹의 key 문자열과 맞춘다 — 순서뿐 아니라 어느 칸이 무엇인지도 같아야 한다.
+    private func keyName(_ key: CandidateConflict.Option.Key) -> String {
+        switch key {
+        case .together: "TOGETHER"
+        case .split: "SPLIT"
+        case .skip: "SKIP"
+        }
+    }
+
+    func testMatchesTheJavaScriptRule() throws {
+        let fixture = try load()
+        let members = fixture.members.map {
+            MemberView(id: 0, userId: $0.user_id, role: .editor, status: "ACTIVE",
+                       displayName: $0.display_name, joinedAt: nil, me: $0.me)
+        }
+        XCTAssertGreaterThan(fixture.cases.count, 0)
+        for c in fixture.cases {
+            let conflict = CollabModel.conflict(c.candidate, memberCount: c.memberCount)
+            if let expected = c.conflict {
+                XCTAssertEqual(conflict?.title, expected.title, c.name)
+                XCTAssertEqual(conflict?.must, expected.must, c.name)
+                XCTAssertEqual(conflict?.ok, expected.ok, c.name)
+                XCTAssertEqual(conflict?.pass, expected.pass, c.name)
+                XCTAssertEqual(conflict?.goers, expected.goers, c.name)
+                XCTAssertEqual(conflict?.others, expected.others, c.name)
+            } else {
+                XCTAssertNil(conflict, c.name)
+            }
+
+            let options = conflict?.options ?? []
+            XCTAssertEqual(options.count, c.options.count, c.name)
+            for (option, expected) in zip(options, c.options) {
+                XCTAssertEqual(keyName(option.key), expected.key, c.name)
+                XCTAssertEqual(option.title, expected.title, c.name)
+                XCTAssertEqual(option.text, expected.text, c.name)
+                XCTAssertEqual(option.action, expected.action, c.name)
+            }
+
+            let plan = CollabModel.buildSplitPlan(c.candidate, members: members, splitId: fixture.splitId)
+            if let expected = c.plan {
+                XCTAssertEqual(plan?.goers, expected.goers, c.name)
+                XCTAssertEqual(plan?.others, expected.others, c.name)
+                XCTAssertEqual(plan?.text, expected.text, c.name)
+                XCTAssertEqual(plan?.spots.map(\.raw), expected.spots, c.name)
+            } else {
+                XCTAssertNil(plan, c.name)
+            }
+        }
+    }
+
+    /// 이름표에 계정 이메일이 나오면 안 된다(§69).
+    func testTextsNeverLeakEmails() throws {
+        let fixture = try load()
+        for c in fixture.cases {
+            for option in c.options { XCTAssertFalse(option.text.contains("@"), c.name) }
+            if let plan = c.plan { XCTAssertFalse(plan.text.contains("@"), c.name) }
         }
     }
 }

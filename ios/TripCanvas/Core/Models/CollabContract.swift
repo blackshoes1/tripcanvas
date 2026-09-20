@@ -88,6 +88,14 @@ struct CandidateView: Codable, Hashable, Sendable, Identifiable {
         let name: String
         let reaction: String
         let me: Bool
+        /// 서버가 함께 주는 반응자 id. 분리(§25)는 **이름이 아니라 이 id로** 가른다 — 동명이인이 섞이지 않게.
+        /// 없을 수 있다(옛 응답, 그리고 서버가 답하기 전의 내 낙관적 표).
+        var userId: String? = nil
+
+        enum CodingKeys: String, CodingKey {
+            case name, reaction, me
+            case userId = "user_id"
+        }
     }
 
     let id: Int

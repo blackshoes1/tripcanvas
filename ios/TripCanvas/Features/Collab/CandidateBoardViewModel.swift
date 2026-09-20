@@ -21,6 +21,8 @@ final class CandidateBoardViewModel {
     /// 이 세션에서 "나중에"를 누른 제안은 다시 올리지 않는다 — 거절한 제안을 반복하지 않는다(§79).
     private var proposalDismissed = false
     private(set) var memberCount: Int
+    /// 멤버 행. 인원과 **같은 응답**이라 새 요청이 아니다 — 분리(§25)의 이름표와 내 id가 여기서 나온다.
+    private(set) var members: [MemberView] = []
     /// 인원을 서버에서 읽었는가 — 처음 한 번과 멤버 이벤트 때만 읽는다(2026-09-18, 전에는 목록을 읽을 때마다 3건이었다).
     private var membersLoaded = false
     /// 목록을 서버에서 마지막으로 받은 시각 — 시트를 다시 열 때 또 받을지의 기준.
@@ -85,10 +87,14 @@ final class CandidateBoardViewModel {
 
     /// 못 읽으면 요약이 말한 값으로 간다 — 조용하다.
     private func loadMembers() async {
-        guard let members = try? await service.members(tripId: trip.id), !members.isEmpty else { return }
-        memberCount = members.count
+        guard let rows = try? await service.members(tripId: trip.id), !rows.isEmpty else { return }
+        members = rows
+        memberCount = rows.count
         membersLoaded = true
     }
+
+    /// 내 user_id — 서버가 `me`로 표시해 준 멤버 행에서 가져온다(인증 id를 따로 추측하지 않는다).
+    var myUserId: String? { members.first(where: { $0.me })?.userId }
 
     /// "나중에" — 이 세션에서는 다시 올리지 않는다. 서버에 남기지 않는다(제안은 저장되지 않는다).
     func dismissProposal() {
@@ -198,7 +204,7 @@ final class CandidateBoardViewModel {
         guard let index = candidates.firstIndex(where: { $0.id == candidateId }) else { return }
         let before = candidates[index]
         let next: Reaction? = Reaction(loose: before.myReaction) == reaction ? nil : reaction
-        candidates[index] = CollabModel.applyingReaction(next, to: before)
+        candidates[index] = CollabModel.applyingReaction(next, to: before, myId: myUserId)
         do {
             try await service.react(tripId: trip.id, candidateId: candidateId, reaction: next)
         } catch {
@@ -269,6 +275,52 @@ final class CandidateBoardViewModel {
         if reloadAfter { await load() }
         if let marking { errorMessage = marking }
         return marking == nil
+    }
+
+    /// §24의 "자유시간으로 분리" → §25~§27. 가고 싶은 사람은 그 후보로, 나머지는 자유시간으로 가고 끝나면 합류한다.
+    /// 세 줄을 고른 날 **맨 뒤**에 붙인다 — 후보를 넣을 때와 같은 규칙이라 위치를 추측하지 않는다(§12).
+    /// 만들어 주는 것은 자리와 참여자까지고, 자유시간에 무엇을 할지는 그 사람들이 정한다(§23).
+    ///
+    /// `schedule`과 같은 순서다: **문서 저장이 먼저**고 후보 표시가 그다음이며, 표시가 실패해도
+    /// 일정에는 들어갔다고 정직하게 말한다.
+    @discardableResult
+    func split(candidateId: Int, dayIndex: Int, splitId: String = CandidateBoardViewModel.newSplitId()) async -> Bool {
+        guard canSchedule, !isWorking, let candidate = candidates.first(where: { $0.id == candidateId }) else { return false }
+        guard let plan = CollabModel.buildSplitPlan(candidate, members: members, splitId: splitId) else {
+            errorMessage = "갈릴 사람이 없어요 — 다 같이 가거나, 이번엔 빼는 쪽이에요"
+            return false
+        }
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            let snapshot = try await documents.document(tripId: trip.id)
+            guard snapshot.canEdit else { errorMessage = "이 일정을 바꿀 권한이 없어요."; return false }
+            var document = snapshot.document
+            guard document.hasDay(dayIndex) else { errorMessage = "그 날짜는 일정에 없어요"; return false }
+            for spot in plan.spots { document.insertSpot(spot, dayIndex: dayIndex) }
+            _ = try await documents.saveDocument(tripId: trip.id, document: document, expectedRevision: snapshot.revision)
+        } catch {
+            errorMessage = message(for: error)
+            return false
+        }
+        var marking: String?
+        do {
+            try await service.manageCandidate(tripId: trip.id, candidateId: candidateId, action: "SCHEDULE", value: String(dayIndex + 1))
+            toast = "같은 시간에 나란히 넣었어요 — 끝나면 합류합니다"
+        } catch {
+            marking = "일정에는 넣었지만 후보 표시를 바꾸지 못했어요 — \(message(for: error))"
+        }
+        await load()
+        if let marking { errorMessage = marking }
+        return marking == nil
+    }
+
+    /// 분리 묶음 키. 웹 `uid()`와 같은 형식(`_ID_RE` = `[A-Za-z0-9_-]{1,40}`)이라 정규화를 지난다.
+    nonisolated static func newSplitId(now: Date = Date()) -> String {
+        let stamp = String(Int(now.timeIntervalSince1970 * 1000), radix: 36)
+        let alphabet = Array("0123456789abcdefghijklmnopqrstuvwxyz")
+        let random = String((0..<6).map { _ in alphabet[Int.random(in: 0..<alphabet.count)] })
+        return "sp\(stamp)\(random)"
     }
 
     private func candidateLocation(_ candidateId: Int, in document: TripDocument) -> (day: Int, index: Int)? {
