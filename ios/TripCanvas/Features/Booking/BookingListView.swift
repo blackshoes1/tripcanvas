@@ -303,7 +303,7 @@ struct BookingCard: View {
                 }
             }
 
-            if let raw = booking.url, let url = URL(string: raw), url.scheme?.hasPrefix("http") == true {
+            if let url = SafeURL.web(booking.url) {
                 Link(destination: url) {
                     Label("예약 페이지 열기", systemImage: "safari").font(.subheadline)
                 }

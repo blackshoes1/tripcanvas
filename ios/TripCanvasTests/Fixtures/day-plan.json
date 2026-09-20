@@ -110,6 +110,13 @@
       }
     },
     "spotsWithoutLocation": 0,
+    "flight": {
+      "code": "IB3100",
+      "dep": "MAD",
+      "arr": "SVQ",
+      "depMinutes": 485,
+      "arrMinutes": 540
+    },
     "splits": [],
     "totals": {
       "distanceKm": 2.2,

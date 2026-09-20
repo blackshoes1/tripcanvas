@@ -25,7 +25,7 @@ import type { TripDoc } from './todayView';
 
 import { CONTRACT_SCHEMA_VERSION } from './contract';
 import type {
-  DayPlanCarEvent, DayPlanDay, DayPlanLeg, DayPlanResponse, DayPlanSpot, DayPlanSplit, DayPlanStripEntry,
+  DayPlanCarEvent, DayPlanDay, DayPlanFlight, DayPlanLeg, DayPlanResponse, DayPlanSpot, DayPlanSplit, DayPlanStripEntry,
   TripSummary
 } from './contract';
 
@@ -103,6 +103,25 @@ export interface DayPlanInput {
   fx?: FxSnapshot;
   /** 여행 시간대의 오늘(`resolveClock`) — 결제일이 있는 비용 항목의 상태를 정한다. 없으면 손으로 고른 상태만 본다 */
   todayISO?: string;
+}
+
+/**
+ * 그날의 항공편을 계약 모양으로. `normalizeDay`가 이미 형태를 보장하므로 여기서는 옮기기만 한다.
+ *
+ * 하나도 안 적혀 있으면 null이다 — 빈 칸만 든 객체를 보내면 화면이 빈 줄을 그리게 된다.
+ */
+function flightOf(day: Day): DayPlanFlight | null {
+  const raw = day.flight;
+  if (!raw || typeof raw !== 'object') return null;
+  const code = String(raw.code ?? '').trim();
+  const dep = String(raw.dep ?? '').trim();
+  const arr = String(raw.arr ?? '').trim();
+  const depAt = typeof raw.depAt === 'string' ? raw.depAt : '';
+  const arrAt = typeof raw.arrAt === 'string' ? raw.arrAt : '';
+  const depMinutes = depAt ? parseHM(depAt) : null;
+  const arrMinutes = arrAt ? parseHM(arrAt) : null;
+  if (!code && !dep && !arr && depMinutes == null && arrMinutes == null) return null;
+  return { code, dep, arr, depMinutes, arrMinutes };
 }
 
 /**
@@ -203,6 +222,7 @@ export function buildDayPlanView(input: DayPlanInput): DayPlanResponse | null {
     carReturns: cars.returns,
     back,
     spotsWithoutLocation: spots.filter((s) => !hasCoord(s)).length,
+    flight: flightOf(day),
     splits: splitsOf(day),
     totals: {
       distanceKm: km(distanceKm),

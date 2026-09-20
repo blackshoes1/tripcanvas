@@ -303,3 +303,30 @@ describe('buildDayPlanView — 구간 캐시', () => {
     expect(v.day.totals.travelMinutes).toBe(100);
   });
 });
+
+describe('buildDayPlanView — 항공편', () => {
+  it('값만 싣고 문장은 만들지 않는다 — 시각은 자정 기준 분이다', () => {
+    const t = trip([day([airport()], { flight: { code: 'KE703', dep: 'ICN', arr: 'NRT', depAt: '09:10', arrAt: '11:45' } } as Partial<Day>)]);
+    expect(build(t, 0)?.day.flight).toEqual({ code: 'KE703', dep: 'ICN', arr: 'NRT', depMinutes: 550, arrMinutes: 705 });
+  });
+
+  it('적지 않은 시각은 null이고, 적은 것만 싣는다', () => {
+    const t = trip([day([airport()], { flight: { code: 'KE703', dep: '', arr: '', depAt: '', arrAt: '' } } as Partial<Day>)]);
+    expect(build(t, 0)?.day.flight).toEqual({ code: 'KE703', dep: '', arr: '', depMinutes: null, arrMinutes: null });
+  });
+
+  it('항공편이 없는 날은 null이다 — 빈 칸만 든 객체를 보내지 않는다', () => {
+    expect(build(trip([day([airport()])]), 0)?.day.flight).toBeNull();
+    const empty = trip([day([airport()], { flight: { code: '', dep: '', arr: '' } } as Partial<Day>)]);
+    expect(build(empty, 0)?.day.flight).toBeNull();
+  });
+
+  /// 좌표가 없으므로 동선·ETA에 끼어들면 안 된다 — 렌터카 픽업·반납과 같은 규칙이다.
+  it('동선과 이동시간에 끼어들지 않는다', () => {
+    const plain = build(trip([day([airport(), seongsan()])]), 0);
+    const withFlight = build(trip([day([airport(), seongsan()], { flight: { code: 'KE703', dep: 'ICN', arr: 'CJU', depAt: '09:10' } } as Partial<Day>)]), 0);
+    expect(withFlight?.day.totals.distanceKm).toBe(plain?.day.totals.distanceKm);
+    expect(withFlight?.day.totals.travelMinutes).toBe(plain?.day.totals.travelMinutes);
+    expect(withFlight?.day.spots.map((s) => s.name)).toEqual(plain?.day.spots.map((s) => s.name));
+  });
+});

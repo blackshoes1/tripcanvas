@@ -378,6 +378,17 @@ struct NextActionCard: View {
                             .disabled(isBusy)
                     }
                 }
+                // 예약해 둔 곳이면 그 예약을 여기서 연다 — 공항·식당 앞에서 앱을 나갔다 찾지 않게.
+                // 서버가 이미 보내던 값인데(`ActivitySummary.bookUrl`) 그리는 곳이 없었다(2026-09-20).
+                if let booking = SafeURL.web(activity.bookUrl) {
+                    Link(destination: booking) {
+                        Label("예약 열기", systemImage: "safari")
+                            .font(.subheadline)
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Ink.accent)
+                }
             }
         }
         .card()

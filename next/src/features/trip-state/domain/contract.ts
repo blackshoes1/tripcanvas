@@ -674,6 +674,20 @@ export interface DayPlanCarEvent {
 
 export interface DayPlanCostPart { label: string; amount: number }
 
+/** 그날의 항공편. 전부 사용자가 적은 값이고 비어 있을 수 있다 — 없는 것은 화면이 말하지 않는다. */
+export interface DayPlanFlight {
+  /** 편명(예: `KE703`). */
+  code: string;
+  /** 출발 공항. 자유 텍스트라 코드일 수도 이름일 수도 있다. */
+  dep: string;
+  /** 도착 공항. */
+  arr: string;
+  /** 출발 시각(자정 기준 분). 안 적었으면 null. */
+  depMinutes: number | null;
+  /** 도착 시각(자정 기준 분). 안 적었으면 null. */
+  arrMinutes: number | null;
+}
+
 export interface DayPlanDay {
   index: number;
   date: string;                    // YYYY-MM-DD ('' = 시작일 미지정)
@@ -692,6 +706,15 @@ export interface DayPlanDay {
   back: { name: string; location: GeoPoint | null; leg: DayPlanLeg } | null;
   /** 좌표가 없어 동선·지도에서 빠지는 장소 수. 화면이 그 사실을 말할 수 있게. */
   spotsWithoutLocation: number;
+  /**
+   * 그날의 항공편(`day.flight`). 공항 이동일에 편명·공항·시각을 화면이 말할 수 있게 한다. 없으면 null.
+   *
+   * ⚠️ **라벨이 아니라 값을 싣는다** — 웹은 `✈️ KE703 · NRT 09:10 → ICN 11:45` 같은 완성된 문장을
+   * 들고 있지만(`flightHtml`) 그걸 보내면 앱이 표기를 정할 수 없다.
+   * ⚠️ 시각은 계약의 다른 시각들과 같이 **자정 기준 분**이다 — 앱에 `HH:MM` 포맷터를 하나 더 만들지 않는다.
+   * 좌표가 없어 동선·ETA·지도에는 들어가지 않는다(렌터카 픽업·반납과 같은 이유).
+   */
+  flight: DayPlanFlight | null;
   /** 함께 움직이지 않는 구간들. 없으면 빈 배열이고, 그때 하루는 예전과 완전히 같다. */
   splits: DayPlanSplit[];
   totals: {
