@@ -1173,3 +1173,56 @@ test('normalizeTrip — 메모 개수 상한을 넘기지 않는다', () => {
   const trip = L.normalizeTrip({ name: 'x', start: '2026-10-01', days: [{ spots: [] }], notes: many });
   assert.equal(trip.notes.length, 200);
 });
+
+// ── 장소 우선순위 3단 (2026-09-20) ──
+// 화면은 한 컨트롤이지만 저장은 예전 그대로 must/opt 두 플래그다 — adaptive의 재구성과
+// 계약(mustVisit/optional)이 그 둘을 읽으므로 내부 표현을 바꾸지 않는다.
+test('우선순위 — must/opt 두 플래그를 한 값으로 읽는다', () => {
+  assert.equal(L.spotPriorityOf({ must: true }), 'MUST');
+  assert.equal(L.spotPriorityOf({ opt: true }), 'OPT');
+  assert.equal(L.spotPriorityOf({}), 'NORMAL');
+  assert.equal(L.spotPriorityOf(null), 'NORMAL', '없는 장소도 기본값이다');
+  assert.equal(L.spotPriorityOf({ must: true, opt: true }), 'MUST', '둘 다 있으면 지키는 쪽이 이긴다');
+});
+
+test('우선순위 — 기본값은 저장하지 않고, 둘이 함께 켜지지 않는다', () => {
+  const must = L.applySpotPriority({ name: 'a' }, 'MUST');
+  assert.equal(must.must, true);
+  assert.equal('opt' in must, false);
+
+  const opt = L.applySpotPriority(must, 'OPT');
+  assert.equal(opt.opt, true);
+  assert.equal('must' in opt, false, '바꾸면 앞의 플래그가 남지 않는다');
+
+  const normal = L.applySpotPriority(opt, 'NORMAL');
+  assert.equal('must' in normal, false);
+  assert.equal('opt' in normal, false, '보통은 기본값이라 저장하지 않는다 — 공유 링크 크기');
+
+  assert.equal(L.spotPriorityOf(L.applySpotPriority({}, '모르는값')), 'NORMAL', '모르는 값은 보통으로 둔다');
+  assert.equal(L.applySpotPriority(null, 'MUST'), null, '장소가 없으면 아무 일도 하지 않는다');
+});
+
+test('우선순위 — 라벨은 목록에서만 나온다', () => {
+  assert.equal(L.spotPriorityLabel('MUST'), '꼭 가기');
+  assert.equal(L.spotPriorityLabel('opt'), '선택', '대소문자를 가리지 않는다');
+  assert.equal(L.spotPriorityLabel('없는값'), '');
+  assert.equal(L.SPOT_PRIORITIES.map((p) => p.id).join(','), 'MUST,NORMAL,OPT');
+});
+
+test('normalizeTrip — must와 opt가 함께 오면 지키는 쪽만 남긴다', () => {
+  const trip = L.normalizeTrip({
+    name: 'x', start: '2026-10-01',
+    days: [{ spots: [
+      { name: '알함브라', lat: 37.17, lng: -3.58, must: true, opt: true },
+      { name: '레티로', lat: 40.41, lng: -3.68, opt: true },
+      { name: '프라도', lat: 40.41, lng: -3.69, opt: false, must: false }
+    ] }]
+  });
+  const [a, b, c] = trip.days[0].spots;
+  assert.equal(L.spotPriorityOf(a), 'MUST');
+  assert.equal('opt' in a, false, '둘 다 켜진 채로 남지 않는다');
+  assert.equal(L.spotPriorityOf(b), 'OPT');
+  assert.equal(L.spotPriorityOf(c), 'NORMAL');
+  assert.equal('opt' in c, false, 'false는 저장하지 않는다');
+  assert.equal('must' in c, false);
+});

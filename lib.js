@@ -1077,6 +1077,10 @@
     if(s.status!=null && _STATUS.indexOf(s.status)<0) delete s.status;
     if(s.status==='PLANNED') delete s.status;
     if(s.must!=null){ if(s.must) s.must=true; else delete s.must; }
+    if(s.opt!=null){ if(s.opt) s.opt=true; else delete s.opt; }
+    // 둘은 3단 우선순위의 내부 표현이라 **함께 켜질 수 없다.** 가져온 JSON이 둘 다 들고 오면
+    // 지키는 쪽(must)을 남긴다 — 재구성이 지워 버리는 것보다 남기는 쪽이 덜 잃는다.
+    if(s.must && s.opt) delete s.opt;
     // 참여자(§26): 없거나 비면 **모든 여행자**다 — 기본값을 저장하지 않는다(공유 링크 크기).
     // 중복·불량 id는 버리고, 상한을 넘으면 자른다. 순서는 안정적으로 둔다(렌더마다 이름 순서가 바뀌지 않게).
     if(s.who!=null){
@@ -1326,6 +1330,47 @@
 
   // ───────────────── 장소 카테고리 ─────────────────
   // 목록 순서 = 편집 모달 선택지 순서. id는 저장값이므로 바꾸면 기존 데이터가 '미지정'이 된다.
+  // ── 장소 우선순위 3단 (2026-09-20) ──
+  // 화면은 한 컨트롤로 고르지만 **저장은 예전 그대로** `must`/`opt` 두 플래그다 —
+  // `adaptive.js`의 재구성이 그 둘을 읽어 "고정 보호 → 완료 유지 → must 보호 → opt부터 제거"를 하고,
+  // 계약(`TripActivity.mustVisit`/`optional`)도 그 둘을 싣는다. 여기를 바꾸면 엔진 규칙이 흔들린다.
+  //
+  // ⚠️ 2026-09-20 전에는 **웹이 `opt`만, iOS가 `must`만** 편집할 수 있었다. 한쪽에서 정한 우선순위를
+  //    다른 쪽에서는 보지도 바꾸지도 못했는데 엔진은 둘 다 읽어, 화면에 없는 이유로 추천이 갈렸다.
+  const SPOT_PRIORITIES=Object.freeze([
+    {id:'MUST',   label:'꼭 가기', hint:'일정을 다시 맞출 때 마지막까지 지킨다'},
+    {id:'NORMAL', label:'보통',   hint:'기본값 — 저장하지 않는다'},
+    {id:'OPT',    label:'선택',   hint:'시간이 모자라면 가장 먼저 빠진다'}
+  ]);
+
+  /** 장소의 우선순위. `must`와 `opt` 두 플래그를 한 값으로 읽는다. @param {any} spot @returns {'MUST'|'NORMAL'|'OPT'} */
+  function spotPriorityOf(spot){
+    if(spot && spot.must) return 'MUST';
+    if(spot && spot.opt) return 'OPT';
+    return 'NORMAL';
+  }
+
+  /**
+   * 우선순위를 장소에 쓴다. 기본값(보통)은 저장하지 않고, 둘이 함께 켜지지 않게 한다.
+   * 모르는 값이 오면 '보통'으로 둔다 — 담기를 실패시키지 않는다.
+   * @param {any} spot @param {string|null|undefined} level @returns {any} 같은 객체
+   */
+  function applySpotPriority(spot, level){
+    if(!spot || typeof spot!=='object') return spot;
+    const id=String(level||'').toUpperCase();
+    delete spot.must; delete spot.opt;
+    if(id==='MUST') spot.must=true;
+    else if(id==='OPT') spot.opt=true;
+    return spot;
+  }
+
+  /** 우선순위 라벨(화면 문구). 모르는 값이면 빈 문자열. @param {string|null|undefined} id @returns {string} */
+  function spotPriorityLabel(id){
+    const key=String(id||'').toUpperCase();
+    const found=SPOT_PRIORITIES.find(p=>p.id===key);
+    return found? found.label : '';
+  }
+
   const SPOT_CATS=[
     {id:'stay',      icon:'🏠', name:'숙소'},
     {id:'food',      icon:'🍽', name:'식당'},
@@ -1449,7 +1494,7 @@
     };
   }
 
-  const TC={SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,cityFromKoreanAddr,placeName,cityFromGoogle,normHours,classifySearchErr,isKoreanSearch,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,normHM,sortDayByTime,inKorea,simplifyName,parseDirect,parseMoney,normalizeDraftDays,extractJson,extMapLink,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,computeTimeline,whoKey,splitSegments,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,budgetBookings,moneyAmount,parseCostAmount,costAmountOf,dayEnteredCost,splitAcrossNights,stayCostShares,dayEnteredCostOn,hasManualTransportCost,dayCostSummary,COST_CATEGORIES,costCategoryOf,COST_PAY_STATES,costPayStateOf,payStateTotals,TRIP_NOTE_CATEGORIES,normalizeTripNote,tripCostSummary,localMode,sampleTrip,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
+  const TC={SPOT_PRIORITIES,spotPriorityOf,applySpotPriority,spotPriorityLabel,SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,cityFromKoreanAddr,placeName,cityFromGoogle,normHours,classifySearchErr,isKoreanSearch,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,normHM,sortDayByTime,inKorea,simplifyName,parseDirect,parseMoney,normalizeDraftDays,extractJson,extMapLink,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,computeTimeline,whoKey,splitSegments,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,budgetBookings,moneyAmount,parseCostAmount,costAmountOf,dayEnteredCost,splitAcrossNights,stayCostShares,dayEnteredCostOn,hasManualTransportCost,dayCostSummary,COST_CATEGORIES,costCategoryOf,COST_PAY_STATES,costPayStateOf,payStateTotals,TRIP_NOTE_CATEGORIES,normalizeTripNote,tripCostSummary,localMode,sampleTrip,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
   if(typeof module!=='undefined' && module.exports){ module.exports=TC; }   // Node (테스트)
   else { const r=/**@type {any}*/(root); for(const k in TC) r[k]=/**@type {any}*/(TC)[k]; }   // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);
