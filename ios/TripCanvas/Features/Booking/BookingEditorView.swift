@@ -213,7 +213,7 @@ struct BookingEditorView: View {
                         Picker("결제 상태", selection: $payState) {
                             Text(CostPayState.reserved.label).tag(CostPayState.reserved)
                             Text(CostPayState.paid.label).tag(CostPayState.paid)
-                            if !isBookingKind { Text("고르지 않음").tag(CostPayState.none) }
+                            if !isBookingKind { Text(CostPayState.none.label).tag(CostPayState.none) }
                         }
                     }
                 } header: {

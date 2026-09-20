@@ -43,3 +43,31 @@ final class PaymentLedgerTests: XCTestCase {
         XCTAssertEqual(TripCostsView.fxLine(currency: "EUR", rate: 1550), "1 EUR ≈ 1,550원")
     }
 }
+
+/// 결제 상태의 이름이 웹 `PAY_STATE_LABEL`과 **글자까지 같은지**.
+///
+/// 2026-09-20 전에는 같은 `NONE` 값이 요약에서는 '미구분', 고르는 칸에서는 '고르지 않음'이라
+/// 앱 안에서도 두 말이었다. 이름은 하나고, **말할지 말지**는 쓰는 쪽이 정한다.
+final class CostPayStateLabelTests: XCTestCase {
+    func testLabelsMatchTheWeb() {
+        XCTAssertEqual(CostPayState.reserved.label, "결제 예정")
+        XCTAssertEqual(CostPayState.paid.label, "결제 완료")
+        XCTAssertEqual(CostPayState.none.label, "고르지 않음")
+    }
+
+    /// 세 상태 모두 이름이 있어야 고르는 칸에 쓸 수 있다 — 빈 이름으로 숨기기를 대신하지 않는다.
+    func testEveryStateHasAName() {
+        for state in CostPayState.allCases {
+            XCTAssertFalse(state.label.isEmpty, state.rawValue)
+        }
+    }
+
+    /// 고르지 않은 것은 **요약에 담지 않는다** — 이름이 생겼다고 찍히지는 않는다.
+    /// 서버가 `payTotals`에 NONE을 실어 보내도 `paySplit`은 예약·결제만 낸다.
+    func testUnsetStateIsNotCountedInASplit() {
+        let cost = DayPlanCost(total: 7000, parts: [],
+                               payTotals: ["PAID": 3000, "RESERVED": 0, "NONE": 4000])
+        XCTAssertEqual(cost.paySplit.map(\.state), [.paid], "값이 0인 예약도, 미구분도 줄을 만들지 않는다")
+        XCTAssertFalse(cost.paySplit.contains { $0.state == .none })
+    }
+}

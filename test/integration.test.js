@@ -2378,6 +2378,32 @@ test('통합: 후보를 일정에 넣으면 고른 날의 맨 뒤에 붙고 후�
   w.close();
 });
 
+test('통합: 결제 상태 이름은 한 곳에서 나온다 — 고르는 칸과 상수가 갈리지 않는다', { skip: noJsdom }, async () => {
+  const w = boot();
+  const label = JSON.parse(w.eval('JSON.stringify(PAY_STATE_LABEL)'));
+  assert.deepEqual(label, { RESERVED: '결제 예정', PAID: '결제 완료', NONE: '고르지 않음' },
+    '세 상태 모두 이름이 있다 — 고르는 칸이 이름 없는 값을 보일 수는 없다');
+
+  // 고르는 칸(#bkPayState)의 글자가 상수와 같아야 한다 — 마크업이 따로 흘러가면 앱과 두 말이 된다
+  const options = [...w.document.getElementById('bkPayState').options]
+    .map(o => [o.value, o.textContent.trim()]);
+  assert.deepEqual(options, [['NONE', label.NONE], ['RESERVED', label.RESERVED], ['PAID', label.PAID]]);
+  w.close();
+});
+
+test('통합: 고르지 않은 상태는 줄에 적지 않는다 — 어느 쪽으로도 단정하지 않으므로', { skip: noJsdom }, async () => {
+  const w = boot();
+  w.eval(`store.trips=[{id:'t1',name:'스페인',days:[{spots:[]}],bookings:[
+    {id:'bk1',type:'flight',title:'항공',price:300000,cur:'KRW',payState:'PAID'},
+    {id:'bk2',type:'hotel',title:'호텔',price:200000,cur:'KRW'}
+  ]}]; store.activeId='t1'; renderBookingList();`);
+  const rows = [...w.document.querySelectorAll('#bookingListBody .tripRow')].map(r => r.textContent);
+  const flight = rows.find(t => t.includes('항공')), hotel = rows.find(t => t.includes('호텔'));
+  assert.match(flight, /결제 완료/, '고른 상태는 말한다');
+  assert.doesNotMatch(hotel, /고르지 않음|미구분/, '안 고른 상태는 줄에 쓰지 않는다');
+  w.close();
+});
+
 test('통합: 권한 거절은 서버가 말한 이유를 그대로 전한다 — 화면이 일반 문장으로 뭉개지 않는다', { skip: noJsdom }, async () => {
   const w = boot();
   w.eval(`user={id:'u1'}; store.trips=[{id:'t1',name:'스페인',days:[{spots:[]}]}]; store.activeId='t1';

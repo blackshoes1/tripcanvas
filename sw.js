@@ -1,5 +1,5 @@
 // Trip Canvas Service Worker
-const VER = 'tc-v213';
+const VER = 'tc-v214';
 const SHELL_CACHE = VER + '-shell';
 
 const SHELL = [

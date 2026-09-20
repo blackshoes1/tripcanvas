@@ -2644,8 +2644,14 @@ const COST_KIND={FLIGHT:{icon:'✈️',name:'항공'},STAY:{icon:'🏨',name:'�
   FOOD:{icon:'🍽️',name:'식비'},SHOPPING:{icon:'🛍️',name:'쇼핑'},TICKET:{icon:'🎟️',name:'입장권·관람권'},TRANSPORT:{icon:'🚕',name:'택시·기타 교통'},OTHER:{icon:'📦',name:'기타'}};
 const BK_KIND_TYPE={FLIGHT:'flight',STAY:'hotel',RENT:'car'};   // 분류 → 예약 종류 (없으면 예약이 아니다)
 const BK_TYPE_KIND={flight:'FLIGHT',hotel:'STAY',car:'RENT'};   // 예약 종류 → 분류
-// 상태 문구는 앱(`CostPayState.label`)과 같다 — '예약만 함'·'결제함'은 모호해서 버렸다(2026-09-18). 미구분은 말하지 않는다(어느 쪽으로도 단정하지 않으므로)
-const PAY_STATE_LABEL={RESERVED:'결제 예정',PAID:'결제 완료',NONE:''};
+// 상태 문구는 앱(`CostPayState.label`)과 **글자까지 같다** — '예약만 함'·'결제함'은 모호해서 버렸다(2026-09-18).
+// ⚠️ 이름과 '말할지 말지'는 다른 질문이다(2026-09-20). 세 상태 모두 이름이 있어야 **고르는 칸**에 쓸 수 있고,
+//    고르지 않은 것을 **줄에 적지 않는 것**은 쓰는 쪽이 판단한다(`payStateNote`). 예전에는 NONE의 이름을
+//    빈 문자열로 둬서 숨기기를 대신했는데, 그 탓에 고르는 칸이 제 글자를 따로 들고 앱과 두 말이 됐다.
+const PAY_STATE_LABEL={RESERVED:'결제 예정',PAID:'결제 완료',NONE:'고르지 않음'};
+/** 줄에 적을 상태 문구 — 고르지 않았으면 아무 말도 하지 않는다(어느 쪽으로도 단정하지 않으므로).
+ * @param {string|null|undefined} state @returns {string} */
+function payStateNote(state){ return (state && state!=='NONE') ? (PAY_STATE_LABEL[state]||'') : ''; }
 // 오류 분류(§35) → 사용자 안내문. 상세 원문은 콘솔·서버 로그에만.
 const PX_ERR_MSG={
   AUTH_REQUIRED:'가격 소스가 아직 연결되지 않았어요 — 서버에 메타서치 API 키 설정이 필요합니다',
@@ -2948,7 +2954,7 @@ function renderBookingList(){
   const paidLine=(split.PAID>0||split.RESERVED>0)? `<div class="hint" style="margin:0 0 4px">${[split.PAID>0?`결제 완료 ₩${fmtMoney(split.PAID)}`:'', split.RESERVED>0?`결제 예정 ₩${fmtMoney(split.RESERVED)}`:''].filter(Boolean).join(' · ')}</div>`:'';
   document.getElementById('bookingListBody').innerHTML = paidLine + (rows.length? rows.map(r=>{
     const b=r.booking, period=b?[b.start,b.end].filter(Boolean).map(esc).join(' ~ '):'';
-    const sub=[period, b&&b.provider?esc(b.provider):'', COST_KIND[r.kind].name, costLabel(r.amount,r.cur), PAY_STATE_LABEL[r.payState], r.paidOn?`결제일 ${esc(r.paidOn)}`:''].filter(Boolean).join(' · ');
+    const sub=[period, b&&b.provider?esc(b.provider):'', COST_KIND[r.kind].name, costLabel(r.amount,r.cur), payStateNote(r.payState), r.paidOn?`결제일 ${esc(r.paidOn)}`:''].filter(Boolean).join(' · ');
     return `<div class="tripRow pxRow" onclick="openBookingModal('${escAttr(r.id)}')" title="${b?'탭해서 상세·판매처 비교·가격 기록 보기':'탭해서 편집'}">
       <span class="tn">${COST_KIND[r.kind].icon} ${esc(r.title)}<span class="opt">${sub}</span></span>
       ${b?bookingBadgeHtml(b):''}
