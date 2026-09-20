@@ -12,3 +12,12 @@
 사진 API: https://www.mediawiki.org/wiki/Extension:PageImages 및 https://www.mediawiki.org/wiki/Extension:CommonsMetadata
 
 서버·DB·배포 설정은 이 디자인 변경에 포함하지 않는다. 사용자 표지 사진의 저장 범위는 별도 선택을 반영한다.
+
+## 검증·남은 연결
+
+- 최신 main의 장소 우선순위 변경(#251)을 포함한 상태: iOS XCTest 390개 통과, Release 시뮬레이터 빌드 통과.
+- 전체 `npm run verify:all` 실행: 웹 E2E·Next 테스트/빌드·API E2E·복구 리허설·iOS 검사 통과. 루트 NAS 스크립트 테스트가 macOS `/bin/bash`의 빈 배열(`ORIG_ARGS[@]`) 처리로 실패했다. 이 PR에서는 배포 스크립트를 수정하지 않았다.
+- RLS는 기존 임시 DB 디렉터리의 시작 실패로 전체 게이트에서 실패했다. 별도 `/tmp/tc-editorial-pg` 클러스터에서 재실행해 2개 통과·skip 0을 확인하고 종료했다.
+- 대표 사진은 실제 교토시 응답과 Commons 출처/저작자/라이선스까지 확인했다. 사진 조회·동음이의어 제외·URL 제한·서체 등록·사진 축소는 XCTest로 검증한다.
+- `TripCoverEditor`는 사진 선택·미리보기·1200px 이하/250KB 이하 JPEG 변환·저장 콜백을 준비한 컴포넌트다. **아직 앱 진입점과 저장소에 연결하지 않았다.** 사용자에게 웹·다른 기기·일행 공유인지 이 기기 전용인지 질문한 상태이며, 답변 후 저장소와 연결한다. 완성된 업로드 기능으로 간주하지 않는다.
+- 실제 화면의 시각 검수와 TestFlight 배포는 미실시. 전체 게이트 실패와 위 저장 연결을 해결하기 전에는 merge하지 않는다.
