@@ -1,0 +1,377 @@
+{
+  "splitId": "sp1",
+  "members": [
+    {
+      "user_id": "me",
+      "display_name": "나야",
+      "me": true
+    },
+    {
+      "user_id": "u2",
+      "display_name": "지민",
+      "me": false
+    },
+    {
+      "user_id": "u3",
+      "display_name": "현우",
+      "me": false
+    }
+  ],
+  "cases": [
+    {
+      "name": "갈렸고 누가 어느 쪽인지 안다 — 나눌 수 있다",
+      "memberCount": 3,
+      "candidate": {
+        "id": 1,
+        "title": "캄프 누",
+        "place_id": null,
+        "lat": 41.38,
+        "lng": 2.12,
+        "addr": "바르셀로나",
+        "note": "경기 보고 싶어",
+        "url": null,
+        "status": "PROPOSED",
+        "scheduled_ref": null,
+        "proposed_by_label": "나야",
+        "mine": true,
+        "my_reaction": "MUST",
+        "must_count": 1,
+        "ok_count": 1,
+        "pass_count": 1,
+        "reactions": [
+          {
+            "user_id": "me",
+            "name": "나야",
+            "reaction": "MUST",
+            "me": true
+          },
+          {
+            "user_id": "u3",
+            "name": "현우",
+            "reaction": "OK",
+            "me": false
+          },
+          {
+            "user_id": "u2",
+            "name": "지민",
+            "reaction": "PASS",
+            "me": false
+          }
+        ],
+        "comment_count": 0,
+        "created_at": "2026-09-01T00:00:00.000Z"
+      },
+      "conflict": {
+        "title": "캄프 누",
+        "must": [
+          "나"
+        ],
+        "ok": [
+          "현우"
+        ],
+        "pass": [
+          "지민"
+        ],
+        "goers": [
+          "me",
+          "u3"
+        ],
+        "others": [
+          "u2"
+        ]
+      },
+      "options": [
+        {
+          "key": "TOGETHER",
+          "title": "다 같이 방문",
+          "text": "지민도 함께 — 짧게 들르는 걸로",
+          "action": "SCHEDULE"
+        },
+        {
+          "key": "SPLIT",
+          "title": "자유시간으로 분리",
+          "text": "나은(는) 캄프 누 · 지민은(는) 자유시간 — 끝나면 다시 만나요",
+          "action": "SPLIT"
+        },
+        {
+          "key": "SKIP",
+          "title": "이번 일정에서는 제외",
+          "text": "후보에는 남겨 두고 이번엔 빼요 — 언제든 되돌릴 수 있어요",
+          "action": "REJECT"
+        }
+      ],
+      "plan": {
+        "goers": [
+          "me",
+          "u3"
+        ],
+        "others": [
+          "u2"
+        ],
+        "spots": [
+          {
+            "name": "캄프 누",
+            "city": "바르셀로나",
+            "desc": "경기 보고 싶어",
+            "lat": 41.38,
+            "lng": 2.12,
+            "stayMin": 120,
+            "split": "sp1",
+            "who": [
+              "me",
+              "u3"
+            ]
+          },
+          {
+            "name": "자유시간",
+            "city": "",
+            "desc": "가고 싶은 곳을 각자 정해요",
+            "lat": null,
+            "lng": null,
+            "stayMin": 120,
+            "split": "sp1",
+            "who": [
+              "u2"
+            ]
+          },
+          {
+            "name": "다시 만나기",
+            "city": "",
+            "lat": null,
+            "lng": null,
+            "stayMin": 0,
+            "reunion": true
+          }
+        ],
+        "text": "나, 현우은(는) 캄프 누, 지민은(는) 자유시간 — 끝나면 다시 만나요"
+      }
+    },
+    {
+      "name": "갈렸지만 id가 없는 옛 응답 — 이름은 있어도 가를 수 없다",
+      "memberCount": 3,
+      "candidate": {
+        "id": 1,
+        "title": "캄프 누",
+        "place_id": null,
+        "lat": null,
+        "lng": null,
+        "addr": null,
+        "note": null,
+        "url": null,
+        "status": "PROPOSED",
+        "scheduled_ref": null,
+        "proposed_by_label": "나야",
+        "mine": true,
+        "my_reaction": "MUST",
+        "must_count": 1,
+        "ok_count": 0,
+        "pass_count": 1,
+        "reactions": [
+          {
+            "name": "나야",
+            "reaction": "MUST",
+            "me": true
+          },
+          {
+            "name": "지민",
+            "reaction": "PASS",
+            "me": false
+          }
+        ],
+        "comment_count": 0,
+        "created_at": "2026-09-01T00:00:00.000Z"
+      },
+      "conflict": {
+        "title": "캄프 누",
+        "must": [
+          "나"
+        ],
+        "ok": [],
+        "pass": [
+          "지민"
+        ],
+        "goers": [],
+        "others": []
+      },
+      "options": [
+        {
+          "key": "TOGETHER",
+          "title": "다 같이 방문",
+          "text": "지민도 함께 — 짧게 들르는 걸로",
+          "action": "SCHEDULE"
+        },
+        {
+          "key": "SPLIT",
+          "title": "자유시간으로 분리",
+          "text": "나은(는) 캄프 누 · 지민은(는) 다른 곳 — 의견을 다시 불러오면 나눌 수 있어요",
+          "action": null
+        },
+        {
+          "key": "SKIP",
+          "title": "이번 일정에서는 제외",
+          "text": "후보에는 남겨 두고 이번엔 빼요 — 언제든 되돌릴 수 있어요",
+          "action": "REJECT"
+        }
+      ],
+      "plan": null
+    },
+    {
+      "name": "반대가 없으면 충돌이 아니다 — 선택지도 계획도 없다",
+      "memberCount": 3,
+      "candidate": {
+        "id": 1,
+        "title": "캄프 누",
+        "place_id": null,
+        "lat": null,
+        "lng": null,
+        "addr": null,
+        "note": null,
+        "url": null,
+        "status": "PROPOSED",
+        "scheduled_ref": null,
+        "proposed_by_label": "나야",
+        "mine": true,
+        "my_reaction": "MUST",
+        "must_count": 1,
+        "ok_count": 1,
+        "pass_count": 0,
+        "reactions": [
+          {
+            "user_id": "me",
+            "name": "나야",
+            "reaction": "MUST",
+            "me": true
+          },
+          {
+            "user_id": "u3",
+            "name": "현우",
+            "reaction": "OK",
+            "me": false
+          }
+        ],
+        "comment_count": 0,
+        "created_at": "2026-09-01T00:00:00.000Z"
+      },
+      "conflict": null,
+      "options": [],
+      "plan": null
+    },
+    {
+      "name": "좌표도 주소도 없는 후보 — 위치 없는 장소로 들어간다",
+      "memberCount": 2,
+      "candidate": {
+        "id": 1,
+        "title": "   이름 앞뒤 공백   ",
+        "place_id": null,
+        "lat": null,
+        "lng": null,
+        "addr": null,
+        "note": null,
+        "url": null,
+        "status": "PROPOSED",
+        "scheduled_ref": null,
+        "proposed_by_label": "나야",
+        "mine": true,
+        "my_reaction": "MUST",
+        "must_count": 1,
+        "ok_count": 0,
+        "pass_count": 1,
+        "reactions": [
+          {
+            "user_id": "me",
+            "name": "나야",
+            "reaction": "MUST",
+            "me": true
+          },
+          {
+            "user_id": "u2",
+            "name": "지민",
+            "reaction": "PASS",
+            "me": false
+          }
+        ],
+        "comment_count": 0,
+        "created_at": "2026-09-01T00:00:00.000Z"
+      },
+      "conflict": {
+        "title": "이름 앞뒤 공백",
+        "must": [
+          "나"
+        ],
+        "ok": [],
+        "pass": [
+          "지민"
+        ],
+        "goers": [
+          "me"
+        ],
+        "others": [
+          "u2"
+        ]
+      },
+      "options": [
+        {
+          "key": "TOGETHER",
+          "title": "다 같이 방문",
+          "text": "지민도 함께 — 짧게 들르는 걸로",
+          "action": "SCHEDULE"
+        },
+        {
+          "key": "SPLIT",
+          "title": "자유시간으로 분리",
+          "text": "나은(는) 이름 앞뒤 공백 · 지민은(는) 자유시간 — 끝나면 다시 만나요",
+          "action": "SPLIT"
+        },
+        {
+          "key": "SKIP",
+          "title": "이번 일정에서는 제외",
+          "text": "후보에는 남겨 두고 이번엔 빼요 — 언제든 되돌릴 수 있어요",
+          "action": "REJECT"
+        }
+      ],
+      "plan": {
+        "goers": [
+          "me"
+        ],
+        "others": [
+          "u2"
+        ],
+        "spots": [
+          {
+            "name": "이름 앞뒤 공백",
+            "city": "",
+            "desc": "",
+            "lat": null,
+            "lng": null,
+            "stayMin": 120,
+            "split": "sp1",
+            "who": [
+              "me"
+            ]
+          },
+          {
+            "name": "자유시간",
+            "city": "",
+            "desc": "가고 싶은 곳을 각자 정해요",
+            "lat": null,
+            "lng": null,
+            "stayMin": 120,
+            "split": "sp1",
+            "who": [
+              "u2"
+            ]
+          },
+          {
+            "name": "다시 만나기",
+            "city": "",
+            "lat": null,
+            "lng": null,
+            "stayMin": 0,
+            "reunion": true
+          }
+        ],
+        "text": "나은(는) 이름 앞뒤 공백, 지민은(는) 자유시간 — 끝나면 다시 만나요"
+      }
+    }
+  ]
+}

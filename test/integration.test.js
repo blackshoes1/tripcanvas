@@ -2378,6 +2378,70 @@ test('통합: 후보를 일정에 넣으면 고른 날의 맨 뒤에 붙고 후�
   w.close();
 });
 
+test('통합: 갈린 후보의 "자유시간으로 분리"는 버튼이 서고 그 날 맨 뒤에 세 줄로 들어간다 (§24→§25~§27)', { skip: noJsdom }, async () => {
+  const w = boot();
+  const rpc = [];
+  const U1 = '11111111-1111-4111-8111-111111111111';
+  const U2 = '22222222-2222-4222-8222-222222222222';
+  w.eval(`user={id:'u1'}; store.trips=[{id:'t1',name:'스페인',start:'2026-10-25',days:[{title:'',spots:[{name:'기존'}]},{title:'',spots:[]}]}];
+    store.activeId='t1'; activeDay=0; syncMeta={t1:{revision:3,status:'clean'}};
+    tripRoles={t1:{role:'EDITOR',count:2,owner:false}}; candTripId='t1';
+    tripMembers=[{user_id:'${U1}',display_name:'민수',me:true,status:'ACTIVE'},
+                 {user_id:'${U2}',display_name:'지민',me:false,status:'ACTIVE'}];
+    candRows=[{id:9,title:'캄프 누',status:'PROPOSED',must_count:1,ok_count:0,pass_count:1,
+      my_reaction:'MUST',proposed_by_label:'나',mine:true,created_at:'2026-01-01',
+      reactions:[{user_id:'${U1}',name:'나',reaction:'MUST',me:true},
+                 {user_id:'${U2}',name:'지민',reaction:'PASS',me:false}]}];`);
+  w.sb = { rpc: async (name, args) => { rpc.push([name, args]); return { data: name === 'list_trip_candidates' ? [] : true, error: null }; } };
+  w.eval(`sb=window.sb; TC_API.rpc=window.sb.rpc; drawCandidates();`);
+
+  // 세 선택지가 전부 실제 동작이라 버튼이 셋이다 — 분리만 안내로 남지 않는다
+  const opts = [...w.document.querySelectorAll('#candList .candOption')];
+  assert.deepEqual(opts.map(o => o.dataset.option), ['TOGETHER', 'SPLIT', 'SKIP']);
+  const splitRow = opts[1];
+  assert.doesNotMatch(splitRow.textContent, /다음 단계/, '분리는 이제 안내가 아니다');
+  const splitBtn = splitRow.querySelector('button');
+  assert.ok(splitBtn, '분리에도 버튼이 선다');
+
+  w.prompt = () => '2';
+  await w.eval(`splitCandidate(candRows[0])`);
+  const spots = JSON.parse(w.eval(`JSON.stringify(store.trips[0].days[1].spots)`));
+  assert.deepEqual(spots.map(s => s.name), ['캄프 누', '자유시간', '다시 만나기'], '고른 날 맨 뒤에 세 줄');
+  assert.deepEqual(spots[0].who, [U1], '가고 싶은 사람');
+  assert.deepEqual(spots[1].who, [U2], '나머지는 자유시간');
+  assert.equal(spots[0].split, spots[1].split, '같은 묶음이라 나란히 일어난다');
+  assert.equal(spots[2].reunion, true);
+  assert.equal('split' in spots[2], false, '합류는 묶음 밖 — 다 모인 뒤다');
+  assert.deepEqual(JSON.parse(w.eval(`JSON.stringify(store.trips[0].days[0].spots.map(s=>s.name))`)), ['기존'], '다른 날은 그대로');
+  assert.deepEqual(rpc.find(r => r[0] === 'manage_trip_candidate')[1],
+    { p_candidate_id: 9, p_action: 'SCHEDULE', p_value: '2' });
+  w.close();
+});
+
+test('통합: 방금 누른 내 의견에도 id가 실린다 — 내가 만든 충돌에서 내가 빠지지 않는다', { skip: noJsdom }, async () => {
+  const w = boot();
+  const U1 = '11111111-1111-4111-8111-111111111111';
+  const U2 = '22222222-2222-4222-8222-222222222222';
+  w.eval(`user={id:'u1'}; store.trips=[{id:'t1',name:'스페인',days:[{spots:[]}]}]; store.activeId='t1';
+    syncMeta={t1:{revision:3,status:'clean'}}; tripRoles={t1:{role:'EDITOR',count:2,owner:false}}; candTripId='t1';
+    tripMembers=[{user_id:'${U1}',display_name:'민수',me:true,status:'ACTIVE'},
+                 {user_id:'${U2}',display_name:'지민',me:false,status:'ACTIVE'}];
+    candRows=[{id:1,title:'캄프 누',status:'PROPOSED',must_count:0,ok_count:0,pass_count:1,
+      my_reaction:null,proposed_by_label:'지민',mine:false,created_at:'2026-01-01',
+      reactions:[{user_id:'${U2}',name:'지민',reaction:'PASS',me:false}]}];`);
+  w.sb = { rpc: async () => ({ data: true, error: null }) };
+  w.eval(`sb=window.sb; TC_API.rpc=window.sb.rpc; drawCandidates();`);
+
+  await w.eval(`reactCandidate(1,'MUST')`);
+  assert.equal(w.eval(`candRows[0].reactions.find(x=>x.me).user_id`), U1, '내 표에 id가 붙는다');
+  // 그래서 서버를 다시 읽기 전에도 분리가 가능한 충돌로 보인다
+  const plan = JSON.parse(w.eval(`JSON.stringify(TC_COLLAB.buildSplitPlan(candRows[0], tripMembers))`));
+  assert.deepEqual(plan.goers, [U1]);
+  assert.deepEqual(plan.others, [U2]);
+  assert.equal(w.eval(`TC_COLLAB.conflictOptions(TC_COLLAB.candidateConflict(candRows[0],2))[1].action`), 'SPLIT');
+  w.close();
+});
+
 test('통합: 후보 한마디 — 펼치면 불러오고, 남기면 수가 오르고, 보기 권한은 제 것만 지우고, 다시 그려도 쓰던 글이 남는다', { skip: noJsdom }, async () => {
   const w = boot();
   const rpc = [];

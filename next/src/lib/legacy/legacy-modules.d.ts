@@ -468,7 +468,33 @@ declare module '@legacy/collab.js' {
       candidates: unknown[] | null | undefined, days: unknown[] | null | undefined,
       memberCount: number | null | undefined, ctx?: GroupCtx | null, max?: number
     ): { headline: string; picks: ProposalPick[] } | null;
+    /** §23 갈린 후보. 이름은 문장용, goers·others는 나눌 때 쓰는 id다 */
+    candidateConflict(candidate: unknown, memberCount?: number | null): CandidateConflict | null;
+    /** §24 세 선택지. 셋 다 실제 동작이고, 나눌 수 없으면 SPLIT의 action만 null이다 */
+    conflictOptions(conflict: CandidateConflict | null | undefined): ConflictOption[];
+    /** 그 반응을 남긴 사람들의 user_id — 이름이 아니라 id로 가른다(동명이인) */
+    reactorIds(candidate: unknown, reaction: 'MUST' | 'OK' | 'PASS'): string[];
+    /** §24의 "자유시간으로 분리"를 실제 일정으로. 저장하지 않는 **미리보기**다 */
+    buildSplitPlan(
+      candidate: unknown, members: unknown[] | null | undefined,
+      opts?: { stayMin?: number; splitId?: string } | null
+    ): SplitPlan | null;
+    /** 합류 안내 한 줄. 장소를 모르면 아는 척하지 않는다 */
+    reunionText(spot: unknown, when?: string): string;
   };
+  interface CandidateConflict {
+    title: string; must: string[]; ok: string[]; pass: string[];
+    goers: string[]; others: string[];
+  }
+  interface ConflictOption {
+    key: 'TOGETHER' | 'SPLIT' | 'SKIP'; title: string; text: string;
+    action: 'SCHEDULE' | 'REJECT' | 'SPLIT' | null;
+  }
+  interface SplitPlan {
+    goers: string[]; others: string[];
+    spots: Record<string, unknown>[];
+    text: string;
+  }
   interface GroupCtx {
     members: number; answered: number;
     pace: { value: string; count: number } | null; paceSplit: boolean;

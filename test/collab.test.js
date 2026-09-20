@@ -492,19 +492,30 @@ const rx = (name, reaction, me) => ({ name, reaction, me: !!me });
 test('candidateConflict(§23): MUST와 PASS가 같이 있을 때만, 누가 그런지 이름으로 — 자동 제거는 없다', () => {
   const c = C.candidateConflict({ title: 'Camp Nou', must_count: 1, ok_count: 1, pass_count: 1,
     reactions: [rx('민수', 'MUST'), rx('나', 'OK', true), rx('영희', 'PASS')] }, 3);
-  assert.deepEqual(c, { title: 'Camp Nou', must: ['민수'], ok: ['나'], pass: ['영희'] });
+  assert.deepEqual(c, { title: 'Camp Nou', must: ['민수'], ok: ['나'], pass: ['영희'], goers: [], others: [] },
+    'id 없는 옛 응답이면 누가 어느 쪽인지 모른다 — 이름은 있어도 가를 수는 없다');
   assert.equal(C.candidateConflict({ must_count: 2, ok_count: 1, pass_count: 0, reactions: [rx('a', 'MUST'), rx('b', 'MUST'), rx('c', 'OK')] }, 3), null, '반대가 없으면 충돌이 아니다');
   assert.equal(C.candidateConflict({ must_count: 0, pass_count: 2, reactions: [rx('a', 'PASS'), rx('b', 'PASS')] }, 3), null, 'MUST 없는 PASS는 MIXED지 충돌이 아니다');
   assert.equal(C.candidateConflict(null), null);
 });
 
-test('conflictOptions(§24): 함께 / 분리(다음 단계 안내) / 제외 — 제외는 지우기가 아니라 상태다', () => {
-  const opts = C.conflictOptions({ title: 'Camp Nou', must: ['민수', '철수'], ok: [], pass: ['영희'] });
-  assert.deepEqual(opts.map(o => [o.key, o.action]), [['TOGETHER', 'SCHEDULE'], ['SPLIT', null], ['SKIP', 'REJECT']]);
+test('conflictOptions(§24): 함께 / 분리 / 제외 — 셋 다 실제 동작이고 제외는 지우기가 아니라 상태다', () => {
+  const opts = C.conflictOptions({ title: 'Camp Nou', must: ['민수', '철수'], ok: [], pass: ['영희'],
+    goers: [M1, M3], others: [M2] });
+  assert.deepEqual(opts.map(o => [o.key, o.action]), [['TOGETHER', 'SCHEDULE'], ['SPLIT', 'SPLIT'], ['SKIP', 'REJECT']]);
   assert.equal(opts[0].text, '영희도 함께 — 짧게 들르는 걸로');
-  assert.match(opts[1].text, /민수, 철수은\(는\) Camp Nou · 영희은\(는\) 다른 곳/);
+  assert.match(opts[1].text, /민수, 철수은\(는\) Camp Nou · 영희은\(는\) 자유시간/);
+  assert.doesNotMatch(opts[1].text, /다음 단계/, '분리는 이제 안내가 아니라 실제 일정이다');
   assert.match(opts[2].text, /되돌릴 수 있어요/);
   assert.deepEqual(C.conflictOptions(null), []);
+});
+
+test('conflictOptions: 누가 어느 쪽인지 모르면 분리 버튼을 주지 않는다 — 만들 수 없는 것을 권하지 않는다', () => {
+  const opts = C.conflictOptions({ title: 'Camp Nou', must: ['민수'], ok: [], pass: ['영희'], goers: [], others: [] });
+  assert.equal(opts[1].action, null);
+  assert.match(opts[1].text, /다시 불러오면/);
+  // goers·others를 아예 안 준 옛 호출도 같은 자리에 선다(만들 수 없으니 안내만).
+  assert.equal(C.conflictOptions({ title: 'X', must: ['a'], ok: [], pass: ['b'] })[1].action, null);
 });
 
 test('distanceKm: 하버사인 — 서울↔부산 약 325km', () => {

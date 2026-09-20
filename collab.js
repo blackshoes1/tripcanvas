@@ -696,28 +696,45 @@
 
   /**
    * §23 충돌 탐지 — MUST와 PASS가 같이 있을 때만. 자동 제거는 없다.
+   *
+   * 이름(`must`·`ok`·`pass`)은 **문장용**이고, `goers`·`others`는 **실제로 나눌 때 쓰는 id**다.
+   * 동명이인이 섞이지 않게 가르는 것도, 분리가 가능한지 판정하는 것도 id 쪽이다 — 이름만 있고
+   * id가 없는 옛 응답에서는 나눌 수 없으므로 `conflictOptions`가 분리 버튼을 주지 않는다.
+   *
    * @param {any} cand @param {number} [memberCount]
-   * @returns {{title:string,must:string[],ok:string[],pass:string[]}|null}
+   * @returns {{title:string,must:string[],ok:string[],pass:string[],goers:string[],others:string[]}|null}
    */
   function candidateConflict(cand, memberCount){
     if(!cand) return null;
     if(consensusOf(cand, memberCount).status!=='CONFLICT') return null;
-    return {title:String(cand.title||'').trim()||'후보', must:namesBy(cand,'MUST'), ok:namesBy(cand,'OK'), pass:namesBy(cand,'PASS')};
+    return {title:String(cand.title||'').trim()||'후보',
+      must:namesBy(cand,'MUST'), ok:namesBy(cand,'OK'), pass:namesBy(cand,'PASS'),
+      goers:reactorIds(cand,'MUST').concat(reactorIds(cand,'OK')), others:reactorIds(cand,'PASS')};
   }
 
   /**
-   * §24 세 선택지. action은 서버 액션(SCHEDULE·REJECT) — 분리(SPLIT)는 다음 단계라 action이 없다(안내만).
-   * @param {{title:string,must:string[],pass:string[]}|null} conflict
-   * @returns {Array<{key:'TOGETHER'|'SPLIT'|'SKIP',title:string,text:string,action:'SCHEDULE'|'REJECT'|null}>}
+   * §24 세 선택지. action은 그대로 실행되는 동작이다 — SCHEDULE·REJECT는 서버 액션이고,
+   * SPLIT은 **문서를 바꾸는 동작**이라 클라이언트가 `buildSplitPlan`으로 만들어 일정에 넣는다(§25~§27).
+   *
+   * 분리는 양쪽에 **사람이 있어야** 가능하다. `goers`·`others`가 비면(반응에 user_id가 없는 옛 응답)
+   * 선택지는 남기되 버튼을 주지 않는다 — 만들 수 없는 것을 권하지 않는다.
+   *
+   * @param {{title:string,must:string[],pass:string[],goers?:string[],others?:string[]}|null} conflict
+   * @returns {Array<{key:'TOGETHER'|'SPLIT'|'SKIP',title:string,text:string,action:'SCHEDULE'|'REJECT'|'SPLIT'|null}>}
    */
   function conflictOptions(conflict){
     if(!conflict) return [];
     const who=(/** @type {string[]} */a)=>a.length? a.join(', ') : '';
     const must=who(conflict.must), pass=who(conflict.pass);
+    const splittable=!!(conflict.goers && conflict.goers.length && conflict.others && conflict.others.length);
+    const sides=`${must||'원하는 분'}은(는) ${conflict.title}`;
     return [
       {key:'TOGETHER', title:'다 같이 방문', text: pass? `${pass}도 함께 — 짧게 들르는 걸로` : '다 같이 들러요', action:'SCHEDULE'},
       {key:'SPLIT', title:'자유시간으로 분리',
-       text: `${must||'원하는 분'}은(는) ${conflict.title} · ${pass||'다른 분'}은(는) 다른 곳 — 분리 일정은 다음 단계에서`, action:null},
+       text: splittable
+         ? `${sides} · ${pass||'다른 분'}은(는) 자유시간 — 끝나면 다시 만나요`
+         : `${sides} · ${pass||'다른 분'}은(는) 다른 곳 — 의견을 다시 불러오면 나눌 수 있어요`,
+       action: splittable? 'SPLIT' : null},
       {key:'SKIP', title:'이번 일정에서는 제외', text:'후보에는 남겨 두고 이번엔 빼요 — 언제든 되돌릴 수 있어요', action:'REJECT'}
     ];
   }

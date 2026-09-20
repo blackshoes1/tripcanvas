@@ -20,6 +20,8 @@ struct CandidateBoardView: View {
     @State private var expanded: Set<Int> = []
     @State private var commentDrafts: [Int: String] = [:]
     @State private var scheduling: CandidateView?
+    /// 분리 미리보기. 묶음 키를 **열 때 한 번** 정해 들고 있어야 미리보기와 저장본이 같은 것을 가리킨다.
+    @State private var splitting: SplitTarget?
     @State private var removing: CandidateView?
     @State private var showsSearch = false
     /// 지도에서 고른 자리. **아직 아무에게도 안 갔다** — 확인을 눌러야 후보가 된다(§37).
@@ -63,6 +65,14 @@ struct CandidateBoardView: View {
             if let model {
                 CandidatePlacementSheet(trip: trip, candidate: candidate, source: env.service) { dayIndex, position, revision in
                     await model.schedule(candidateId: candidate.id, dayIndex: dayIndex, position: position, expectedRevision: revision)
+                        ? nil : model.errorMessage ?? "일정에 넣지 못했어요."
+                }
+            }
+        }
+        .sheet(item: $splitting) { target in
+            if let model {
+                CandidateSplitSheet(trip: trip, candidate: target.candidate, plan: target.plan, source: env.service) { dayIndex in
+                    await model.split(candidateId: target.candidate.id, dayIndex: dayIndex, splitId: target.splitId)
                         ? nil : model.errorMessage ?? "일정에 넣지 못했어요."
                 }
             }
@@ -259,6 +269,11 @@ struct CandidateBoardView: View {
                         },
                         onDeleteComment: { commentId in Task { await model.deleteComment(candidateId: candidate.id, commentId: commentId) } },
                         onSchedule: { scheduling = candidate },
+                        onSplit: {
+                            let splitId = CandidateBoardViewModel.newSplitId()
+                            guard let plan = CollabModel.buildSplitPlan(candidate, members: model.members, splitId: splitId) else { return }
+                            splitting = SplitTarget(candidate: candidate, plan: plan, splitId: splitId)
+                        },
                         onReject: { Task { await model.reject(candidateId: candidate.id) } },
                         onReopen: { Task { await model.reopen(candidateId: candidate.id) } },
                         onUnschedule: { Task { await model.unschedule(candidateId: candidate.id) } },
@@ -268,6 +283,15 @@ struct CandidateBoardView: View {
             }
         }
     }
+}
+
+/// 열어 둔 분리 미리보기 — 후보와, 그 후보로 만든 계획과, 묶음 키를 함께 든다.
+/// 시트가 열려 있는 동안 키가 바뀌면 보여 준 것과 저장한 것이 달라지므로 여기서 한 번만 정한다.
+struct SplitTarget: Identifiable {
+    let candidate: CandidateView
+    let plan: SplitPlan
+    let splitId: String
+    var id: Int { candidate.id }
 }
 
 /// 후보 하나 — 무엇을 / 누가 냈는지 / 일행은 뭐라 하는지 / 내가 뭐라 할지.
@@ -283,6 +307,8 @@ struct CandidateCard: View {
     let onSendComment: () -> Void
     let onDeleteComment: (Int) -> Void
     let onSchedule: () -> Void
+    /// 자유시간으로 분리(§24 → §25~§27). 나눌 수 없는 후보에는 action이 없어 버튼도 서지 않는다.
+    let onSplit: () -> Void
     let onReject: () -> Void
     let onReopen: () -> Void
     let onUnschedule: () -> Void
@@ -367,7 +393,11 @@ struct CandidateCard: View {
                             Spacer(minLength: Space.s)
                             if let action = option.action, CollabModel.canScheduleCandidate(role) {
                                 Button("이렇게 할게요") {
-                                    if action == "SCHEDULE" { onSchedule() } else { onReject() }
+                                    switch action {
+                                    case "SCHEDULE": onSchedule()
+                                    case "SPLIT": onSplit()
+                                    default: onReject()
+                                    }
                                 }
                                     .font(.caption2)
                                     .buttonStyle(.bordered)

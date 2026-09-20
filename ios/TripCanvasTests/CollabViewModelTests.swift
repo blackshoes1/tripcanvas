@@ -179,6 +179,74 @@ final class CollabViewModelTests: XCTestCase {
         XCTAssertEqual(service.candidateActions.last?.value, "2", "표시는 1부터 센 날짜")
     }
 
+    /// 자유시간으로 분리 — 세 줄이 고른 날 **맨 뒤**에 나란히 붙고, 그 뒤에 후보를 표시한다.
+    func testSplitAppendsThreeSpotsToTheChosenDay() async {
+        let service = FakeCollabService()
+        service.membersList = [
+            .init(id: 1, userId: "u1", role: .owner, status: "ACTIVE", displayName: "나", joinedAt: nil, me: true),
+            .init(id: 2, userId: "u2", role: .editor, status: "ACTIVE", displayName: "지민", joinedAt: nil, me: false)
+        ]
+        service.candidateList = [candidate(reactions: [
+            .init(name: "나", reaction: "MUST", me: true, userId: "u1"),
+            .init(name: "지민", reaction: "PASS", me: false, userId: "u2")
+        ])]
+        let documents = FakeDocumentStore()
+        let model = CandidateBoardViewModel(trip: trip(), service: service, documents: documents)
+        await model.load()
+
+        let ok = await model.split(candidateId: 1, dayIndex: 1, splitId: "sp1")
+
+        XCTAssertTrue(ok)
+        XCTAssertEqual(documents.saves.count, 1)
+        XCTAssertEqual(documents.saves.first?.expectedRevision, 7, "CAS로 저장한다")
+        let day = documents.saves.first?.document.days[1]
+        XCTAssertEqual(day?.spots.map(\.name), ["기존 장소", "카사 바트요", "자유시간", "다시 만나기"], "맨 뒤에 세 줄")
+        XCTAssertEqual(day?.spots[1].raw["who"]?.arrayValue?.compactMap(\.stringValue), ["u1"])
+        XCTAssertEqual(day?.spots[2].raw["who"]?.arrayValue?.compactMap(\.stringValue), ["u2"])
+        XCTAssertEqual(day?.spots[1].raw["split"]?.stringValue, "sp1")
+        XCTAssertEqual(day?.spots[2].raw["split"]?.stringValue, "sp1")
+        XCTAssertNil(day?.spots[3].raw["split"], "합류는 묶음 밖이다")
+        XCTAssertEqual(service.candidateActions.last?.action, "SCHEDULE")
+        XCTAssertEqual(service.candidateActions.last?.value, "2", "표시는 1부터 센 날짜")
+    }
+
+    /// 한쪽이 비면 갈릴 것이 없다 — 문서를 건드리지 않고 그렇게 말한다.
+    func testSplitRefusesWhenOneSideIsEmpty() async {
+        let service = FakeCollabService()
+        service.candidateList = [candidate(reactions: [.init(name: "나", reaction: "MUST", me: true, userId: "u1")])]
+        let documents = FakeDocumentStore()
+        let model = CandidateBoardViewModel(trip: trip(), service: service, documents: documents)
+        await model.load()
+
+        let ok = await model.split(candidateId: 1, dayIndex: 0, splitId: "sp1")
+
+        XCTAssertFalse(ok)
+        XCTAssertTrue(documents.saves.isEmpty, "만들 수 없으면 저장도 하지 않는다")
+        XCTAssertNotNil(model.errorMessage)
+    }
+
+    /// 방금 누른 내 의견에도 id가 실려야 한다 — 내가 만든 충돌에서 내가 빠지지 않는다.
+    func testOptimisticReactionCarriesMyUserId() async {
+        let service = FakeCollabService()
+        service.membersList = [
+            .init(id: 1, userId: "u1", role: .owner, status: "ACTIVE", displayName: "나", joinedAt: nil, me: true),
+            .init(id: 2, userId: "u2", role: .editor, status: "ACTIVE", displayName: "지민", joinedAt: nil, me: false)
+        ]
+        service.candidateList = [candidate(reactions: [.init(name: "지민", reaction: "PASS", me: false, userId: "u2")])]
+        let model = CandidateBoardViewModel(trip: trip(), service: service, documents: FakeDocumentStore())
+        await model.load()
+
+        await model.react(candidateId: 1, reaction: .must)
+
+        let mine = model.candidates.first?.reactions.first(where: { $0.me })
+        XCTAssertEqual(mine?.userId, "u1")
+        // 그래서 서버를 다시 읽기 전에도 나눌 수 있는 충돌로 보인다
+        let conflict = CollabModel.conflict(model.candidates[0], memberCount: 2)
+        XCTAssertEqual(conflict?.goers, ["u1"])
+        XCTAssertEqual(conflict?.others, ["u2"])
+        XCTAssertEqual(conflict?.options[1].action, "SPLIT")
+    }
+
     /// 표시가 실패해도 일정에는 들어가 있다고 정직하게 말한다.
     func testScheduleTellsTheTruthWhenMarkingFails() async {
         let service = FakeCollabService()

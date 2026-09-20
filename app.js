@@ -5175,13 +5175,13 @@ function candidateCard(c,role,members){
       const t=document.createElement('span'); t.className='ot'; t.textContent=o.title;
       const x=document.createElement('span'); x.className='ox'; x.textContent=o.text;
       row.appendChild(t); row.appendChild(x);
-      // 분리(§25~§27)는 이제 안내가 아니라 실제 일정이 된다 — 반응에 user_id가 실려 누가 어느 쪽인지 정확히 갈린다.
-      const splittable = o.key==='SPLIT' && TC_COLLAB.buildSplitPlan(c, tripMembers);
-      if((o.action||splittable)&&TC_COLLAB.canScheduleCandidate(role)){
+      // 셋 다 실제 동작이다(§24) — 분리도 `collab.js`가 action으로 말해 준다. 나눌 수 없는 후보에는
+      // action이 없어 버튼이 서지 않는다: 어느 쪽 선택지도 여기서 따로 판정하지 않는다.
+      if(o.action&&TC_COLLAB.canScheduleCandidate(role)){
         const b=document.createElement('button'); b.type='button'; b.className='btn'; b.textContent='이렇게 할게요';
         b.setAttribute('aria-label',`${c.title||'후보'} — ${o.title}`);
         b.onclick=()=>{
-          if(o.key==='SPLIT') splitCandidate(c);
+          if(o.action==='SPLIT') splitCandidate(c);
           else if(o.action==='SCHEDULE') scheduleCandidate(c);
           else manageCandidate(c.id,'REJECT');
         };
@@ -5441,8 +5441,20 @@ function applyLocalReaction(row,reaction){
   if(next) row[key(next)]=(Number(row[key(next)])||0)+1;
   row.my_reaction=next;
   const list=(Array.isArray(row.reactions)?row.reactions:[]).filter(x=>x&&!x.me);
-  if(next) list.push({name:'나',reaction:next,me:true});
+  if(next){
+    // ⚠️ id까지 실어야 한다 — 분리(§25)는 이름이 아니라 user_id로 가르므로, id가 빠지면
+    //    방금 내가 누른 의견만 어느 쪽에도 없는 상태가 된다(내가 만든 충돌인데 내가 빠진다).
+    /** @type {any} */ const mine={name:'나',reaction:next,me:true};
+    const uid=myUid(); if(uid) mine.user_id=uid;
+    list.push(mine);
+  }
   row.reactions=list;
+}
+
+/** 내 user_id — 서버가 `me`로 표시해 준 멤버 행에서 가져온다(인증 id를 따로 추측하지 않는다). @returns {string} */
+function myUid(){
+  const m=tripMembers.find(x=>x&&x.me&&typeof x.user_id==='string');
+  return m? m.user_id : '';
 }
 
 /** @param {number|string} candId @param {string} action @param {string=} value */
