@@ -263,6 +263,32 @@ export function createHandlers(deps: HandlerDeps) {
     return gateway ?? fail('UNAUTHORIZED');
   }
 
+  /** 그 여행을 읽는다. 못 읽으면 위쪽 오류, 없거나 지워졌으면 404. **판정은 여기 하나뿐이다.** */
+  async function loadTrip(gateway: Gateway, tripId: string): Promise<TripRow | Response> {
+    let row: TripRow | null;
+    try { row = await gateway.getTrip(tripId); } catch { return fail('UPSTREAM_ERROR'); }
+    if (!row || row.deleted_at) return fail('TRIP_NOT_FOUND');
+    return row;
+  }
+
+  /**
+   * 여행 하나를 다루는 요청의 **공통 전문**. 토큰을 확인하고, 그 여행을 읽고, 없으면 404다.
+   *
+   * ⚠️ 예전에는 이 다섯 줄이 핸들러마다 그대로 적혀 있었다(19곳). 같은 규칙을 열아홉 번 적으면
+   * 한 곳만 고쳐지는 날이 온다 — 인증·권한·오류 응답 규칙은 **여기 하나뿐이다.**
+   * 권한(EDITOR인지)은 쓰기 경로가 `persist`에서 따로 본다 — 읽기는 RLS가 이미 걸렀다.
+   */
+  async function withTrip(
+    request: Request, tripId: string,
+    run: (ctx: { gateway: Gateway; row: TripRow }) => Promise<Response>
+  ): Promise<Response> {
+    const gateway = await auth(request);
+    if (gateway instanceof Response) return gateway;
+    const row = await loadTrip(gateway, tripId);
+    if (row instanceof Response) return row;
+    return run({ gateway, row });
+  }
+
   async function todayFor(gateway: Gateway, row: TripRow, url: URL, extra?: Partial<TodayInput>): Promise<TodayResponse> {
     const dayIndex = readDayIndex(url);
     const clock = resolveClock(row.data, dayIndex ?? null, url, now());
@@ -304,16 +330,13 @@ export function createHandlers(deps: HandlerDeps) {
 
   /** GET /api/v1/trips/:tripId/today */
   async function today(request: Request, tripId: string): Promise<Response> {
-    const gateway = await auth(request);
-    if (gateway instanceof Response) return gateway;
-    let row: TripRow | null;
-    try { row = await gateway.getTrip(tripId); } catch { return fail('UPSTREAM_ERROR'); }
-    if (!row || row.deleted_at) return fail('TRIP_NOT_FOUND');
-    const url = new URL(request.url);
-    const response = await todayFor(gateway, row, url);
-    // "지금" 화면도 그 날의 구간을 쓴다 — 여기서도 못 채운 것을 응답 뒤에 채운다.
-    deps.legs?.fillLater(row.data, response.day.index);
-    return ok(response);
+    return withTrip(request, tripId, async ({ gateway, row }) => {
+      const url = new URL(request.url);
+      const response = await todayFor(gateway, row, url);
+      // "지금" 화면도 그 날의 구간을 쓴다 — 여기서도 못 채운 것을 응답 뒤에 채운다.
+      deps.legs?.fillLater(row.data, response.day.index);
+      return ok(response);
+    });
   }
 
   /**
@@ -323,25 +346,22 @@ export function createHandlers(deps: HandlerDeps) {
    * `buildDayPlanView`(그 안은 `dayView.ts` → `lib.js`)가 하고 여기서는 권한과 모양만 본다.
    */
   async function dayPlan(request: Request, tripId: string, dayIndex: number): Promise<Response> {
-    const gateway = await auth(request);
-    if (gateway instanceof Response) return gateway;
-    let row: TripRow | null;
-    try { row = await gateway.getTrip(tripId); } catch { return fail('UPSTREAM_ERROR'); }
-    if (!row || row.deleted_at) return fail('TRIP_NOT_FOUND');
-    const stamp = now().toISOString().slice(0, 10);
-    // 결제일이 상태를 정하므로 Today와 같은 시계(여행 시간대의 오늘)를 쓴다 — 기기 날짜와 어긋나면 같은 항목이 두 답을 낸다.
-    const clock = resolveClock(row.data, dayIndex, new URL(request.url), now());
-    const [legs, fx] = await Promise.all([legCacheFor(row.data, dayIndex), fxFor()]);
-    const body = buildDayPlanView({
-      trip: row.data, di: dayIndex,
-      summary: summarizeTrip(row, stamp), generatedAt: now().toISOString(),
-      legCache: legs.cache, legsPending: legs.pending, fx, todayISO: clock.todayISO
+    return withTrip(request, tripId, async ({ gateway, row }) => {
+      const stamp = now().toISOString().slice(0, 10);
+      // 결제일이 상태를 정하므로 Today와 같은 시계(여행 시간대의 오늘)를 쓴다 — 기기 날짜와 어긋나면 같은 항목이 두 답을 낸다.
+      const clock = resolveClock(row.data, dayIndex, new URL(request.url), now());
+      const [legs, fx] = await Promise.all([legCacheFor(row.data, dayIndex), fxFor()]);
+      const body = buildDayPlanView({
+        trip: row.data, di: dayIndex,
+        summary: summarizeTrip(row, stamp), generatedAt: now().toISOString(),
+        legCache: legs.cache, legsPending: legs.pending, fx, todayISO: clock.todayISO
+      });
+      // 없는 날을 지어내지 않는다 — 여행은 있는데 그 일자가 없으면 404다.
+      if (!body) return fail('DAY_NOT_FOUND');
+      // 못 채운 구간은 응답을 보낸 뒤에 채운다. 기다리면 그만큼 화면이 늦는다.
+      deps.legs?.fillLater(row.data, dayIndex);
+      return ok(body);
     });
-    // 없는 날을 지어내지 않는다 — 여행은 있는데 그 일자가 없으면 404다.
-    if (!body) return fail('DAY_NOT_FOUND');
-    // 못 채운 구간은 응답을 보낸 뒤에 채운다. 기다리면 그만큼 화면이 늦는다.
-    deps.legs?.fillLater(row.data, dayIndex);
-    return ok(body);
   }
 
   /**
@@ -351,90 +371,78 @@ export function createHandlers(deps: HandlerDeps) {
    * (14일 여행을 하루씩 받으면 왕복이 14번이다). 그리는 데 필요한 것만 담는다.
    */
   async function tripRoutes(request: Request, tripId: string): Promise<Response> {
-    const gateway = await auth(request);
-    if (gateway instanceof Response) return gateway;
-    let row: TripRow | null;
-    try { row = await gateway.getTrip(tripId); } catch { return fail('UPSTREAM_ERROR'); }
-    if (!row || row.deleted_at) return fail('TRIP_NOT_FOUND');
+    return withTrip(request, tripId, async ({ gateway, row }) => {
 
-    // 전체를 보겠다고 한 순간이므로 여기서는 여행 전부를 채운다(상한까지만 기다린다).
-    let legs = { cache: {} as LegCache, pending: 0 };
-    if (deps.legs) {
-      try { legs = await deps.legs.readTrip(row.data, LEG_WAIT_MS); } catch { /* 추정으로 나간다 */ }
-    }
-    const stamp = now().toISOString().slice(0, 10);
-    const body = buildTripRoutes({
-      trip: row.data, summary: summarizeTrip(row, stamp), generatedAt: now().toISOString(),
-      legCache: legs.cache, legsPending: legs.pending
+      // 전체를 보겠다고 한 순간이므로 여기서는 여행 전부를 채운다(상한까지만 기다린다).
+      let legs = { cache: {} as LegCache, pending: 0 };
+      if (deps.legs) {
+        try { legs = await deps.legs.readTrip(row.data, LEG_WAIT_MS); } catch { /* 추정으로 나간다 */ }
+      }
+      const stamp = now().toISOString().slice(0, 10);
+      const body = buildTripRoutes({
+        trip: row.data, summary: summarizeTrip(row, stamp), generatedAt: now().toISOString(),
+        legCache: legs.cache, legsPending: legs.pending
+      });
+      deps.legs?.fillTripLater(row.data);
+      return ok(body);
     });
-    deps.legs?.fillTripLater(row.data);
-    return ok(body);
   }
 
   async function tripCosts(request: Request, tripId: string): Promise<Response> {
-    const gateway = await auth(request);
-    if (gateway instanceof Response) return gateway;
-    let row: TripRow | null;
-    try { row = await gateway.getTrip(tripId); } catch { return fail('UPSTREAM_ERROR'); }
-    if (!row || row.deleted_at) return fail('TRIP_NOT_FOUND');
+    return withTrip(request, tripId, async ({ gateway, row }) => {
 
-    // 전체를 보겠다고 한 순간이므로 여기서는 여행 전부를 채운다(상한까지만 기다린다).
-    let legs = { cache: {} as LegCache, pending: 0 };
-    if (deps.legs) {
-      try { legs = await deps.legs.readTrip(row.data, LEG_WAIT_MS); } catch { /* 추정으로 나간다 */ }
-    }
-    const clock = resolveClock(row.data, null, new URL(request.url), now());
-    const body = buildTripCosts(row.data, legs.cache, row.revision, await fxFor(), clock.todayISO);
-    deps.legs?.fillTripLater(row.data);
-    return ok(body);
+      // 전체를 보겠다고 한 순간이므로 여기서는 여행 전부를 채운다(상한까지만 기다린다).
+      let legs = { cache: {} as LegCache, pending: 0 };
+      if (deps.legs) {
+        try { legs = await deps.legs.readTrip(row.data, LEG_WAIT_MS); } catch { /* 추정으로 나간다 */ }
+      }
+      const clock = resolveClock(row.data, null, new URL(request.url), now());
+      const body = buildTripCosts(row.data, legs.cache, row.revision, await fxFor(), clock.todayISO);
+      deps.legs?.fillTripLater(row.data);
+      return ok(body);
+    });
   }
 
   /** POST /api/v1/trips/:tripId/replan-preview — 미리보기만. 아무것도 저장하지 않는다. */
   async function replanPreview(request: Request, tripId: string): Promise<Response> {
-    const gateway = await auth(request);
-    if (gateway instanceof Response) return gateway;
-    let row: TripRow | null;
-    try { row = await gateway.getTrip(tripId); } catch { return fail('UPSTREAM_ERROR'); }
-    if (!row || row.deleted_at) return fail('TRIP_NOT_FOUND');
-    const response = await todayFor(gateway, row, new URL(request.url));
-    return ok({ schemaVersion: CONTRACT_SCHEMA_VERSION, replan: response.replan, today: response });
+    return withTrip(request, tripId, async ({ gateway, row }) => {
+      const response = await todayFor(gateway, row, new URL(request.url));
+      return ok({ schemaVersion: CONTRACT_SCHEMA_VERSION, replan: response.replan, today: response });
+    });
   }
 
   /** POST /trips/:tripId/plan-preview — 사용자가 만든 초안과 저장된 하루를 비교한다. 저장·경로 조회는 하지 않는다. */
   async function planPreview(request: Request, tripId: string): Promise<Response> {
-    const gateway = await auth(request);
-    if (gateway instanceof Response) return gateway;
-    let row: TripRow | null;
-    try { row = await gateway.getTrip(tripId); } catch { return fail('UPSTREAM_ERROR'); }
-    if (!row || row.deleted_at) return fail('TRIP_NOT_FOUND');
-    if (row.role != null && !collab.canEdit(row.role)) return fail('FORBIDDEN');
+    return withTrip(request, tripId, async ({ gateway, row }) => {
+      if (row.role != null && !collab.canEdit(row.role)) return fail('FORBIDDEN');
 
-    const body = await readPlanPreviewBody(request);
-    if (!body || typeof body.revision !== 'number' || !Number.isSafeInteger(body.revision) || body.revision < 0
-      || typeof body.dayIndex !== 'number' || !Number.isSafeInteger(body.dayIndex) || body.dayIndex < 0) return fail('BAD_REQUEST');
-    if (body.revision !== row.revision) return fail('REVISION_CONFLICT', { revision: row.revision });
-    const normalized = lib.validateTripPayload(body.document);
-    if (!normalized.ok) return fail('BAD_REQUEST', { message: normalized.error });
-    const draft = normalized.value as TripDoc;
-    draft.id = row.client_id;
-    const dayIndex = body.dayIndex;
-    if (!row.data.days?.[dayIndex] || !draft.days?.[dayIndex]) return fail('DAY_NOT_FOUND');
+      const body = await readPlanPreviewBody(request);
+      if (!body || typeof body.revision !== 'number' || !Number.isSafeInteger(body.revision) || body.revision < 0
+        || typeof body.dayIndex !== 'number' || !Number.isSafeInteger(body.dayIndex) || body.dayIndex < 0) return fail('BAD_REQUEST');
+      if (body.revision !== row.revision) return fail('REVISION_CONFLICT', { revision: row.revision });
+      const normalized = lib.validateTripPayload(body.document);
+      if (!normalized.ok) return fail('BAD_REQUEST', { message: normalized.error });
+      const draft = normalized.value as TripDoc;
+      draft.id = row.client_id;
+      const dayIndex = body.dayIndex;
+      if (!row.data.days?.[dayIndex] || !draft.days?.[dayIndex]) return fail('DAY_NOT_FOUND');
 
-    // 미리보기는 저장 전 초안이다. wait=0으로 캐시만 읽고 fillLater도 부르지 않는다.
-    const readCache = async (trip: TripDoc): Promise<LegCache> => {
-      try { return (await deps.legs?.read(trip, dayIndex, 0))?.cache ?? {}; } catch { return {}; }
-    };
-    const [beforeCache, afterCache, fx] = await Promise.all([readCache(row.data), readCache(draft), fxFor()]);
-    const generatedAt = now().toISOString();
-    const stamp = generatedAt.slice(0, 10);
-    const todayISO = resolveClock(row.data, dayIndex, new URL(request.url), now()).todayISO;
-    const before = buildDayPlanView({ trip: row.data, di: dayIndex, summary: summarizeTrip(row, stamp), generatedAt,
-      legCache: beforeCache, legsPending: 0, fx, todayISO });
-    const after = buildDayPlanView({ trip: draft, di: dayIndex, summary: summarizeTrip({ ...row, data: draft }, stamp), generatedAt,
-      legCache: afterCache, legsPending: 0, fx, todayISO });
-    if (!before || !after) return fail('DAY_NOT_FOUND');
-    const response: PlanPreviewResponse = { before, after };
-    return ok(response);
+      // 미리보기는 저장 전 초안이다. wait=0으로 캐시만 읽고 fillLater도 부르지 않는다.
+      const readCache = async (trip: TripDoc): Promise<LegCache> => {
+        try { return (await deps.legs?.read(trip, dayIndex, 0))?.cache ?? {}; } catch { return {}; }
+      };
+      const [beforeCache, afterCache, fx] = await Promise.all([readCache(row.data), readCache(draft), fxFor()]);
+      const generatedAt = now().toISOString();
+      const stamp = generatedAt.slice(0, 10);
+      const todayISO = resolveClock(row.data, dayIndex, new URL(request.url), now()).todayISO;
+      const before = buildDayPlanView({ trip: row.data, di: dayIndex, summary: summarizeTrip(row, stamp), generatedAt,
+        legCache: beforeCache, legsPending: 0, fx, todayISO });
+      const after = buildDayPlanView({ trip: draft, di: dayIndex, summary: summarizeTrip({ ...row, data: draft }, stamp), generatedAt,
+        legCache: afterCache, legsPending: 0, fx, todayISO });
+      if (!before || !after) return fail('DAY_NOT_FOUND');
+      const response: PlanPreviewResponse = { before, after };
+      return ok(response);
+    });
   }
 
   async function readBody(request: Request): Promise<Record<string, unknown>> {
@@ -473,9 +481,8 @@ export function createHandlers(deps: HandlerDeps) {
     const status: SettableStatus | null =
       action === 'complete' ? 'COMPLETED' : action === 'skip' ? 'SKIPPED' : action === 'reset' ? 'PLANNED' : null;
     if (!status) return fail('BAD_REQUEST');
-    let row: TripRow | null;
-    try { row = await gateway.getTrip(tripId); } catch { return fail('UPSTREAM_ERROR'); }
-    if (!row || row.deleted_at) return fail('TRIP_NOT_FOUND');
+    const row = await loadTrip(gateway, tripId);
+    if (row instanceof Response) return row;
 
     const body = await readBody(request);
     const expected = body.expectedRevision;
@@ -496,9 +503,8 @@ export function createHandlers(deps: HandlerDeps) {
     const gateway = await auth(request);
     if (gateway instanceof Response) return gateway;
     if (action !== 'accept' && action !== 'skip') return fail('BAD_REQUEST');
-    let row: TripRow | null;
-    try { row = await gateway.getTrip(tripId); } catch { return fail('UPSTREAM_ERROR'); }
-    if (!row || row.deleted_at) return fail('TRIP_NOT_FOUND');
+    const row = await loadTrip(gateway, tripId);
+    if (row instanceof Response) return row;
 
     const body = await readBody(request);
     const suggestionId = typeof body.suggestionId === 'string' ? body.suggestionId : '';
@@ -538,20 +544,17 @@ export function createHandlers(deps: HandlerDeps) {
 
   /** GET /api/v1/trips/:tripId/bookings — 여행 당일에 필요한 것만: 시간·장소·상태·번호·링크 */
   async function bookings(request: Request, tripId: string): Promise<Response> {
-    const gateway = await auth(request);
-    if (gateway instanceof Response) return gateway;
-    let row: TripRow | null;
-    try { row = await gateway.getTrip(tripId); } catch { return fail('UPSTREAM_ERROR'); }
-    if (!row || row.deleted_at) return fail('TRIP_NOT_FOUND');
-    const url = new URL(request.url);
-    const clock = resolveClock(row.data, readDayIndex(url) ?? null, url, now());
-    // 가격 관측이 없어도 예약 목록 자체는 보여야 한다 — 가격은 없으면 없는 대로.
-    const observations = await gateway.listPriceObservations(tripId).catch((): PriceObservation[] => []);
-    const body: BookingListResponse = {
-      schemaVersion: CONTRACT_SCHEMA_VERSION,
-      bookings: buildBookings(row.data, observations, clock.todayISO)
-    };
-    return ok(body);
+    return withTrip(request, tripId, async ({ gateway, row }) => {
+      const url = new URL(request.url);
+      const clock = resolveClock(row.data, readDayIndex(url) ?? null, url, now());
+      // 가격 관측이 없어도 예약 목록 자체는 보여야 한다 — 가격은 없으면 없는 대로.
+      const observations = await gateway.listPriceObservations(tripId).catch((): PriceObservation[] => []);
+      const body: BookingListResponse = {
+        schemaVersion: CONTRACT_SCHEMA_VERSION,
+        bookings: buildBookings(row.data, observations, clock.todayISO)
+      };
+      return ok(body);
+    });
   }
 
   /**
@@ -563,39 +566,36 @@ export function createHandlers(deps: HandlerDeps) {
    * markSent=1이면 돌려준 알림을 '보낸 것'으로 기록해 다음 호출에서 빠진다.
    */
   async function travelState(request: Request, tripId: string): Promise<Response> {
-    const gateway = await auth(request);
-    if (gateway instanceof Response) return gateway;
-    let row: TripRow | null;
-    try { row = await gateway.getTrip(tripId); } catch { return fail('UPSTREAM_ERROR'); }
-    if (!row || row.deleted_at) return fail('TRIP_NOT_FOUND');
+    return withTrip(request, tripId, async ({ gateway, row }) => {
 
-    const url = new URL(request.url);
-    const dayIndex = readDayIndex(url);
-    const clock = resolveClock(row.data, dayIndex ?? null, url, now());
-    const [dismissed, sentKeys] = await Promise.all([
-      gateway.listDismissed(tripId, clock.todayISO).catch((): string[] => []),
-      gateway.listSentNotificationKeys(tripId, clock.todayISO).catch((): string[] => [])
-    ]);
+      const url = new URL(request.url);
+      const dayIndex = readDayIndex(url);
+      const clock = resolveClock(row.data, dayIndex ?? null, url, now());
+      const [dismissed, sentKeys] = await Promise.all([
+        gateway.listDismissed(tripId, clock.todayISO).catch((): string[] => []),
+        gateway.listSentNotificationKeys(tripId, clock.todayISO).catch((): string[] => [])
+      ]);
 
-    const location = readLocation(url);
-    const response = buildTravelState({
-      tripId, trip: row.data, revision: row.revision, updatedAt: row.updated_at,
-      todayISO: clock.todayISO, nowMinutes: clock.nowMinutes, dayIndex, dismissed,
-      generatedAt: now().toISOString(),
-      currentLocation: location.point,
-      locationUpdatedAt: location.updatedAt,
-      travelMode: url.searchParams.get('travelMode') === '1',
-      suppressUntilMinutes: readMinutes(url.searchParams.get('suppressUntil')),
-      sentNotificationKeys: sentKeys
+      const location = readLocation(url);
+      const response = buildTravelState({
+        tripId, trip: row.data, revision: row.revision, updatedAt: row.updated_at,
+        todayISO: clock.todayISO, nowMinutes: clock.nowMinutes, dayIndex, dismissed,
+        generatedAt: now().toISOString(),
+        currentLocation: location.point,
+        locationUpdatedAt: location.updatedAt,
+        travelMode: url.searchParams.get('travelMode') === '1',
+        suppressUntilMinutes: readMinutes(url.searchParams.get('suppressUntil')),
+        sentNotificationKeys: sentKeys
+      });
+
+      if (url.searchParams.get('markSent') === '1' && response.notifications.length) {
+        await gateway.recordNotifications(tripId, clock.todayISO,
+          response.notifications.map((n: NotificationPlanItem) => ({
+            kind: n.kind, dedupeKey: n.dedupeKey, stateVersion: response.stateVersion
+          }))).catch(() => undefined);
+      }
+      return ok(response satisfies TravelStateResponse);
     });
-
-    if (url.searchParams.get('markSent') === '1' && response.notifications.length) {
-      await gateway.recordNotifications(tripId, clock.todayISO,
-        response.notifications.map((n: NotificationPlanItem) => ({
-          kind: n.kind, dedupeKey: n.dedupeKey, stateVersion: response.stateVersion
-        }))).catch(() => undefined);
-    }
-    return ok(response satisfies TravelStateResponse);
   }
 
   /** POST /api/v1/devices — 기기 등록. 로그아웃·알림 끄기는 DELETE로(§45). */
@@ -666,9 +666,8 @@ export function createHandlers(deps: HandlerDeps) {
     const body = await readBody(request);
     const candidate = body.candidate as BookingCandidate | undefined;
     if (!candidate || typeof candidate !== 'object') return fail('BAD_REQUEST');
-    let row: TripRow | null;
-    try { row = await gateway.getTrip(tripId); } catch { return fail('UPSTREAM_ERROR'); }
-    if (!row || row.deleted_at) return fail('TRIP_NOT_FOUND');
+    const row = await loadTrip(gateway, tripId);
+    if (row instanceof Response) return row;
     const expected = body.expectedRevision;
     if (typeof expected === 'number' && expected !== row.revision) return fail('REVISION_CONFLICT', { revision: row.revision });
 
@@ -693,23 +692,20 @@ export function createHandlers(deps: HandlerDeps) {
 
   /** GET /api/v1/trips/:tripId/memories?day=N */
   async function memories(request: Request, tripId: string): Promise<Response> {
-    const gateway = await auth(request);
-    if (gateway instanceof Response) return gateway;
-    let row: TripRow | null;
-    try { row = await gateway.getTrip(tripId); } catch { return fail('UPSTREAM_ERROR'); }
-    if (!row || row.deleted_at) return fail('TRIP_NOT_FOUND');
-    const url = new URL(request.url);
-    const dayIndex = readDayIndex(url) ?? null;
-    let rows: MemoryRow[];
-    try { rows = await gateway.listMemories(tripId, dayIndex); } catch { return fail('UPSTREAM_ERROR'); }
-    const events: MemoryEvent[] = rows.map(toMemoryEvent);
-    const today = await todayFor(gateway, row, url);
-    const body: MemoryListResponse = {
-      schemaVersion: CONTRACT_SCHEMA_VERSION,
-      events,
-      timeline: buildMemoryTimeline(events, today.activities.map((a) => ({ id: a.id, name: a.name, startMinutes: a.startMinutes })))
-    };
-    return ok(body);
+    return withTrip(request, tripId, async ({ gateway, row }) => {
+      const url = new URL(request.url);
+      const dayIndex = readDayIndex(url) ?? null;
+      let rows: MemoryRow[];
+      try { rows = await gateway.listMemories(tripId, dayIndex); } catch { return fail('UPSTREAM_ERROR'); }
+      const events: MemoryEvent[] = rows.map(toMemoryEvent);
+      const today = await todayFor(gateway, row, url);
+      const body: MemoryListResponse = {
+        schemaVersion: CONTRACT_SCHEMA_VERSION,
+        events,
+        timeline: buildMemoryTimeline(events, today.activities.map((a) => ({ id: a.id, name: a.name, startMinutes: a.startMinutes })))
+      };
+      return ok(body);
+    });
   }
 
   /**
@@ -722,9 +718,8 @@ export function createHandlers(deps: HandlerDeps) {
     const body = await readBody(request);
     const type = String(body.type ?? '');
     if (['PHOTO', 'NOTE', 'VISIT', 'MOMENT'].indexOf(type) < 0) return fail('BAD_REQUEST');
-    let row: TripRow | null;
-    try { row = await gateway.getTrip(tripId); } catch { return fail('UPSTREAM_ERROR'); }
-    if (!row || row.deleted_at) return fail('TRIP_NOT_FOUND');
+    const row = await loadTrip(gateway, tripId);
+    if (row instanceof Response) return row;
 
     const url = new URL(request.url);
     const today = await todayFor(gateway, row, url);
@@ -772,14 +767,11 @@ export function createHandlers(deps: HandlerDeps) {
    * 기기 로컬 기록과 합치는 것은 클라이언트가 한다(웹은 예전부터 그랬다).
    */
   async function prices(request: Request, tripId: string): Promise<Response> {
-    const gateway = await auth(request);
-    if (gateway instanceof Response) return gateway;
-    let row: TripRow | null;
-    try { row = await gateway.getTrip(tripId); } catch { return fail('UPSTREAM_ERROR'); }
-    if (!row || row.deleted_at) return fail('TRIP_NOT_FOUND');
-    let observations: PriceObservation[];
-    try { observations = await gateway.listPriceObservations(tripId); } catch { return fail('UPSTREAM_ERROR'); }
-    return ok({ schemaVersion: CONTRACT_SCHEMA_VERSION, observations });
+    return withTrip(request, tripId, async ({ gateway, row }) => {
+      let observations: PriceObservation[];
+      try { observations = await gateway.listPriceObservations(tripId); } catch { return fail('UPSTREAM_ERROR'); }
+      return ok({ schemaVersion: CONTRACT_SCHEMA_VERSION, observations });
+    });
   }
 
   /**
@@ -793,9 +785,8 @@ export function createHandlers(deps: HandlerDeps) {
     const bookingId = typeof body.bookingId === 'string' ? body.bookingId.trim() : '';
     const price = typeof body.price === 'number' && Number.isFinite(body.price) ? body.price : null;
     if (!bookingId || price == null) return fail('BAD_REQUEST');
-    let row: TripRow | null;
-    try { row = await gateway.getTrip(tripId); } catch { return fail('UPSTREAM_ERROR'); }
-    if (!row || row.deleted_at) return fail('TRIP_NOT_FOUND');
+    const row = await loadTrip(gateway, tripId);
+    if (row instanceof Response) return row;
     const str = (v: unknown, max: number): string | null => (typeof v === 'string' && v ? v.slice(0, max) : null);
     try {
       await gateway.savePriceObservation(tripId, {

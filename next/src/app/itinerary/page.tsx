@@ -78,13 +78,26 @@ export default function ItineraryPage() {
   const [pasting, setPasting] = useState(false);
   /** 로그인 창 — 첫 방문 소개에서도 열 수 있어야 해서 여기서 들고 있는다 */
   const [signInOpen, setSignInOpen] = useState(false);
+  /**
+   * 보던 여행(또는 그 내용)이 통째로 바뀌었다 — **화면이 가리키던 자리를 놓는다.**
+   *
+   * ⚠️ 고른 장소·펼친 일자·편집 중인 것은 전부 *그 여행의 좌표*다. 여행이 갈리면 같은 번호가
+   * 다른 장소를 가리키므로 남겨 두면 엉뚱한 곳을 고치게 된다. 어디까지 놓는지는 호출부마다
+   * 달라서 인자로 받는다 — 한 줄로 합치면 열려 있던 편집기가 말없이 닫힌다.
+   */
+  const resetView = useCallback((also?: { dayEditor?: boolean; spotEditors?: boolean }) => {
+    setActiveDay(0); setSel(null); setDidEntry(false);
+    if (also?.dayEditor) setEditingDay(null);
+    if (also?.spotEditors) { setEditing(null); setAdding(null); }
+  }, []);
+
   // 클라우드 동기화 — 로그인하면 이 기기 밖에도 저장된다 (읽기전용 보기에서는 쓰지 않는다)
   const cloud = useCloudSync(trips, activeTrip?.id ?? null, replaceTrips, setNotice);
   const readOnly = shared.kind === 'view' || !cloud.canEdit;
   // 되돌리면 선택·펼친 일자가 사라진 장소를 가리킬 수 있다 (레거시도 activeDay를 0으로 되돌린다)
   const onboarding = useOnboarding(trips, !readOnly);
   const undoable = useUndo(!readOnly, setNotice, () => {
-    setActiveDay(0); setSel(null); setDidEntry(false); setEditingDay(null); setEditing(null); setAdding(null);
+    resetView({ dayEditor: true, spotEditors: true });
   });
   /** 이미지로 찍는 중인 카드 — 화면 밖에 그려 두고 캡처한다 */
   const [card, setCard] = useState<CardModel | null>(null);
@@ -116,7 +129,7 @@ export default function ItineraryPage() {
   const createTrip = () => {
     const t = newTrip('새 여행', todayISO(), newTripId());
     if (!addTrip(t)) { setNotice(SAVE_FAILED); return; }
-    setActiveDay(0); setSel(null); setDidEntry(false);
+    resetView();
     setNotice('새 여행을 만들었어요 — 여행 정보에서 이름·날짜를 정해주세요');
   };
   /**
@@ -126,7 +139,7 @@ export default function ItineraryPage() {
   const browseSample = () => {
     if (trips.some(t => t.id === SAMPLE_TRIP_ID)) { onSwitchTrip(SAMPLE_TRIP_ID); return; }
     if (!addTrip(legacyLib.sampleTrip() as Trip)) { setNotice(SAVE_FAILED); return; }
-    setActiveDay(0); setSel(null); setDidEntry(false);
+    resetView();
     setNotice('샘플 여행이에요 — 마음껏 고쳐 보고, 필요 없으면 지워도 됩니다');
   };
   const deleteActiveTrip = () => {
@@ -136,21 +149,21 @@ export default function ItineraryPage() {
     if (!removeTrip(activeTrip.id)) { setNotice('여행이 하나뿐이라 지울 수 없어요'); return; }
     // 클라우드에도 지웠다고 알린다 — 안 하면 다음 로그인 병합이 이 여행을 되살린다
     cloud.deleteFromCloud(doomed.id, doomed);
-    setActiveDay(0); setSel(null); setDidEntry(false);
+    resetView();
     setNotice('여행 삭제됨');
   };
   /** 붙여넣기 초안 적용 — 새 여행이면 넣고, 기존 여행이면 갈아끼운다 */
   const applyPasted = (t: Trip, target: DraftTarget, noLoc: number): boolean => {
     const ok = target === 'new' ? addTrip(t) : updateActiveTrip(() => t);
     if (!ok) return false;
-    setActiveDay(0); setSel(null); setDidEntry(false); setEditingDay(null);
+    resetView({ dayEditor: true });
     setNotice(`초안 생성 완료${noLoc ? ` · ${noLoc}곳은 위치 미지정 (카드에서 ✏️로 지정)` : ''}`);
     return true;
   };
 
   const onSwitchTrip = (id: string) => {
     if (!switchTrip(id)) { setNotice(SAVE_FAILED); return; }
-    setActiveDay(0); setSel(null); setDidEntry(false); setNotice(null);
+    resetView(); setNotice(null);
   };
 
   const appendDay = () => {
@@ -426,7 +439,7 @@ export default function ItineraryPage() {
             onRestore={readOnly ? undefined : t => {
               // 되돌린 여행은 지금 여행을 대체한다 (id가 같으므로 제자리 교체)
               setNotice(updateActiveTrip(() => t) ? '그 시점으로 되돌렸어요' : SAVE_FAILED);
-              setActiveDay(0); setSel(null); setDidEntry(false); setEditingDay(null);
+              resetView({ dayEditor: true });
             }}
           />
           <AuthBar
@@ -436,7 +449,7 @@ export default function ItineraryPage() {
           />
           <TripFileBar
             trip={activeTrip} newId={newTripId} onNotice={setNotice}
-            onImport={t => { const ok = addTrip(t); if (ok) { setActiveDay(0); setSel(null); setDidEntry(false); } return ok; }}
+            onImport={t => { const ok = addTrip(t); if (ok) resetView(); return ok; }}
             onPaste={readOnly ? undefined : () => setPasting(true)}
             onImage={() => {
               setNotice('이미지 만드는 중…');
