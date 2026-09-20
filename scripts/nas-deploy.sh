@@ -40,6 +40,7 @@ RAW="https://raw.githubusercontent.com/$REPO"
 API="https://api.github.com/repos/$REPO"
 
 TARGET_SHA=""; FORCE=0; STATUS_ONLY=0
+ORIG_ARGS=("$@")          # 자기 갱신 뒤 같은 인자로 다시 시작하기 위해 보관한다
 while [ $# -gt 0 ]; do
   case "$1" in
     --sha) TARGET_SHA="${2:-}"; shift 2 ;;
@@ -120,14 +121,46 @@ fetch_release_files() {
   cat "$tmp/docker-compose.yml" > "$COMPOSE_FILE"
   cat "$tmp/backup.sh" > "$DEPLOY_DIR/backup.sh"; chmod +x "$DEPLOY_DIR/backup.sh"
   rm -rf "$tmp"
-  # 배포 스크립트 자신이 바뀌었으면 알려만 준다 — 돌고 있는 스크립트를 스스로 갈아 끼우지 않는다
-  local self; self=$(mktemp)
-  if curl -fsSL --max-time 30 "$RAW/$sha/scripts/nas-deploy.sh" -o "$self" 2>/dev/null \
-     && ! cmp -s "$self" "${BASH_SOURCE[0]}"; then
-    cat "$self" > "$DEPLOY_DIR/nas-deploy.sh.new"
-    log "! 배포 스크립트가 바뀌었다 — 확인 후 교체: cp $DEPLOY_DIR/nas-deploy.sh.new ${BASH_SOURCE[0]}"
+}
+
+# ── 배포 스크립트 자신을 그 커밋의 것으로 맞춘다(2026-09-20) ──
+# 예전에는 바뀐 것을 `deploy/nas-deploy.sh.new`로 받아 두고 사람이 손으로 복사하기를 기다렸다.
+# 그 한 단계를 잊으면 **옛 스크립트가 5분마다 돌며 매번 같은 실패를 되풀이한다** — 실제로 그렇게 됐다.
+#
+# ⚠️ 돌고 있는 파일을 그 자리에서 덮어쓰지 않는다. bash는 스크립트를 조금씩 읽어 가며 실행해서,
+#    내용이 발밑에서 바뀌면 엉뚱한 줄을 실행한다. 그래서 **같은 디렉터리**에 받아 문법을 검사한 뒤
+#    rename으로 바꾼다 — 옛 inode는 그대로라 지금 프로세스는 끝까지 옛 내용을 읽는다.
+# ⚠️ 새 프로세스가 같은 잠금을 다시 잡아야 하므로 exec 전에 풀어 준다.
+# ⚠️ TC_SELF_UPDATED로 한 번만 한다. 안 그러면 두 커밋이 서로를 가리킬 때 무한히 다시 시작한다.
+release_lock() {
+  case "${LOCK_MODE:-}" in
+    flock) exec 9>&- ;;
+    dir)   trap - EXIT; rmdir "$LOCK_FILE.d" 2>/dev/null || true ;;
+  esac
+}
+
+self_update() {
+  local sha="$1" self tmp
+  self="${BASH_SOURCE[0]}"
+  [ -n "${TC_SELF_UPDATED:-}" ] && return 0            # 이미 갈아 끼우고 다시 온 차례다
+  tmp=$(mktemp "$(dirname "$self")/.nas-deploy.XXXXXX" 2>/dev/null) || return 0
+  if ! curl -fsSL --max-time 30 "$RAW/$sha/scripts/nas-deploy.sh" -o "$tmp" 2>/dev/null; then
+    rm -f "$tmp"; return 0                             # 못 받았으면 지금 것으로 계속한다
   fi
-  rm -f "$self"
+  if cmp -s "$tmp" "$self"; then rm -f "$tmp"; return 0; fi
+  if ! bash -n "$tmp" 2>/dev/null; then
+    log "! 받은 배포 스크립트에 문법 오류가 있다 — 갈아 끼우지 않고 지금 것으로 계속한다"
+    rm -f "$tmp"; return 0
+  fi
+  chmod +x "$tmp" 2>/dev/null || true
+  if ! mv -f "$tmp" "$self" 2>/dev/null; then          # 같은 디렉터리라 rename 하나로 끝난다
+    cat "$tmp" > "$DEPLOY_DIR/nas-deploy.sh.new" 2>/dev/null || true
+    log "! 배포 스크립트를 바꾸지 못했다(권한?) — 확인 후 교체: cp $DEPLOY_DIR/nas-deploy.sh.new $self"
+    rm -f "$tmp"; return 0
+  fi
+  log "  배포 스크립트를 ${sha:0:7}의 것으로 갈아 끼웠다 — 새 스크립트로 다시 시작한다"
+  release_lock
+  TC_SELF_UPDATED=1 exec "$self" "${ORIG_ARGS[@]}"
 }
 
 # ── 헬스체크: 컨테이너가 running인지가 아니라 **HTTP로 답하는지**를 본다 ──
@@ -259,6 +292,7 @@ if [ "$STATUS_ONLY" = 1 ]; then print_status; exit 0; fi
 if command -v flock >/dev/null 2>&1; then
   exec 9>"$LOCK_FILE"
   flock -n 9 || { echo "이미 배포가 돌고 있다 — 이번 차례는 건너뛴다"; exit 0; }
+  LOCK_MODE=flock
 else
   # flock이 없는 환경 대비. 30분 넘게 남아 있는 잠금은 죽은 것으로 본다.
   if ! mkdir "$LOCK_FILE.d" 2>/dev/null; then
@@ -269,6 +303,7 @@ else
     fi
   fi
   trap 'rmdir "$LOCK_FILE.d" 2>/dev/null || true' EXIT
+  LOCK_MODE=dir
 fi
 
 # 자동 배포 일시 중지 — 장애 대응·파괴적 마이그레이션 직전에 쓴다
@@ -290,6 +325,10 @@ esac
 
 # 바뀐 게 없으면 **아무것도 하지 않고** 빠르게 끝난다(5분마다 도는 경로다)
 if [ "$TARGET_SHA" = "$CURRENT_SHA" ] && [ "$FORCE" != 1 ]; then exit 0; fi
+
+# 배포할 게 있을 때만 스크립트를 맞춘다 — 바뀐 게 없는 5분 주기에는 요청을 늘리지 않는다.
+# 여기서 갈아 끼우면 이 호출은 돌아오지 않는다(새 스크립트가 이어서 배포한다).
+self_update "$TARGET_SHA"
 
 log "── 배포 시작: ${CURRENT_SHA:0:7}${CURRENT_SHA:+ → }${TARGET_SHA:0:7}"
 if bring_up "$TARGET_SHA"; then
