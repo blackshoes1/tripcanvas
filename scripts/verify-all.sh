@@ -57,6 +57,7 @@ check_parity_fixtures() {
 if want web; then
   step "구문 검사"            npm run check:syntax
   step "버전 동기(sw.js ↔ index.html)" npm run check:version
+  step "지침 동기(CLAUDE.md → AGENTS.md)" npm run check:agents
   step "lint"                 npm run lint
   step "시크릿 스캔"          npm run security:scan
   step "마이그레이션 하위호환"  npm run check:migrations

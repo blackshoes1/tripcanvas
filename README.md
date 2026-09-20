@@ -196,7 +196,7 @@ Vercel 함수가 tailnet 안쪽 DB에 접근할 수 없어서 API를 집 NAS로 
   | Travel Mode | 여행 중 |
 
 배선 실수가 자주 나는 곳(`anchor`와 `carry`, `defaultStayMin`과 `suggestStayMin`, `parseInt(v)||60` 같은 함정)은 [`CLAUDE.md`](CLAUDE.md)에 따로 적어 뒀다.
-코드를 고치기 전에는 그 문서를 먼저 보는 게 좋다. `AGENTS.md`도 같은 내용을 담고 있다.
+코드를 고치기 전에는 그 문서를 먼저 보는 게 좋다. `AGENTS.md`는 **`CLAUDE.md`에서 생성된 사본**이라 내용이 같다 — 고칠 곳은 `CLAUDE.md`다.
 
 ## 저장소 구조
 
@@ -258,7 +258,8 @@ Vercel 함수가 tailnet 안쪽 DB에 접근할 수 없어서 API를 집 NAS로 
 
 | 문서 | 무엇 |
 |---|---|
-| [`CLAUDE.md`](CLAUDE.md) · [`AGENTS.md`](AGENTS.md) | 작업 가이드 — 핵심 개념과 배선 함정. **작업 전에 먼저 확인** |
+| [`CLAUDE.md`](CLAUDE.md) | 작업 가이드 — 핵심 개념과 배선 함정. **작업 전에 먼저 확인** |
+| [`AGENTS.md`](AGENTS.md) | 위 파일에서 생성된 사본(`npm run sync:agents`). 고칠 곳은 `CLAUDE.md`이고 게이트가 둘이 같은지 본다 |
 | [`docs/architecture.md`](docs/architecture.md) | 시스템 구성도 · 모듈 의존성 · 장애 경계 |
 | [`docs/backend-architecture.md`](docs/backend-architecture.md) | 독립 Backend의 계층 규칙과 최종 모양 |
 | [`docs/system-architecture-review.md`](docs/system-architecture-review.md) | 2026-09-08 구조 검토 — 이관 분기(LEGACY/DUAL_READ/NEW_BACKEND)의 실제 의미와 종료 기준 |
