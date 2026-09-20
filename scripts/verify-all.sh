@@ -84,14 +84,20 @@ fi
 # ── iOS ──────────────────────────────────────────────────────────────────────
 if want ios; then
   if [ "$(uname)" = Darwin ] && command -v xcodebuild >/dev/null 2>&1 && command -v xcodegen >/dev/null 2>&1; then
-    SIM=$(xcrun simctl list devices available | awk -F' \\(' '/^ +iPhone/ { sub(/^ +/, "", $1); print $1; exit }')
-    if [ -z "$SIM" ]; then
+    # ⚠️ 이름이 아니라 **UDID**로 고른다. `-destination`에 이름만 주면 xcodebuild가 그 이름을
+    # **최신 런타임에서** 찾는데, 여기서 고른 이름은 `simctl`이 먼저 뱉은 런타임의 것이다.
+    # 런타임이 둘 이상인 기계에서는 둘이 어긋나 `Unable to find a device matching…`으로 죽는다
+    # (CI 러너는 런타임이 하나라 드러나지 않는다).
+    SIM_LINE=$(xcrun simctl list devices available | awk '/^ +iPhone/ { print; exit }')
+    SIM_ID=$(printf '%s\n' "$SIM_LINE" | grep -oE '[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}')
+    SIM=$(printf '%s\n' "$SIM_LINE" | sed -E 's/^[[:space:]]*//; s/[[:space:]]*\(.*//')
+    if [ -z "$SIM_ID" ]; then
       skip "iOS" "사용 가능한 iPhone 시뮬레이터 없음"
     else
-      echo "사용할 시뮬레이터: $SIM"
+      echo "사용할 시뮬레이터: $SIM ($SIM_ID)"
       NOSIGN=(CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=)
       step "iOS: XcodeGen"    bash -c 'cd ios && xcodegen generate'
-      step "iOS: 빌드 + XCTest" bash -c "cd ios && xcodebuild test -project TripCanvas.xcodeproj -scheme TripCanvas -destination 'platform=iOS Simulator,name=$SIM' ${NOSIGN[*]}"
+      step "iOS: 빌드 + XCTest" bash -c "cd ios && xcodebuild test -project TripCanvas.xcodeproj -scheme TripCanvas -destination 'id=$SIM_ID' ${NOSIGN[*]}"
       step "iOS: Release 빌드" bash -c "cd ios && xcodebuild build -project TripCanvas.xcodeproj -scheme TripCanvas -destination 'generic/platform=iOS Simulator' -configuration Release ${NOSIGN[*]}"
       step "iOS: 무료 스펙 생성" bash -c 'cd ios && xcodegen generate --spec project-free.yml'
     fi
