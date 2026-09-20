@@ -210,7 +210,8 @@ localStorage: `tripcanvas_v1`(여행) · `tripcanvas_legs_v4`(구간 캐시, 수
 
 - `/api/v1` 라우트는 `@legacy/adaptive.js`를 **그대로 import** 한다(`next/tsconfig.json`의 `@legacy/*` → 저장소 루트). 새 규칙이 필요하면 `adaptive.js`에 넣는다 — `todayView.ts`에 넣으면 웹과 어긋난다.
 - 역할 분리: **단순 조회(Trip·Day·Spot)는 Supabase 직접**, **도메인 판단(Today·Suggestion·Replan)은 서버 API**.
-- 쓰기는 전부 `sync_trip` RPC(revision CAS)를 지난다. 같은 요청을 두 번 받아도 결과가 같고(`alreadyApplied`), 다른 기기가 먼저 바꿨으면 409로 알린다 — 조용히 덮어쓰지 않는다.
+- 쓰기는 전부 **revision CAS**를 지난다. 같은 요청을 두 번 받아도 결과가 같고(`alreadyApplied`), 다른 기기가 먼저 바꿨으면 409로 알린다 — 조용히 덮어쓰지 않는다.
+  ⚠️ **경로에 따라 그 CAS를 내는 곳이 다르다**: 레거시 Supabase는 `sync_trip` RPC, 운영 NAS는 `TripService` → `PgTripRepository`의 트랜잭션이 같은 규칙(CAS·tombstone·소유한 쪽 우선)을 낸다. 아래에 `sync_trip`이라고 적힌 규칙은 **레거시 경로의 이름**이고, 판정 자체는 양쪽이 같다.
 - 이동시간은 **서버 구간 캐시**(`leg_cache`)에 있는 구간만 실제 도로다. 나머지는 직선거리 추정이고, 구간마다 `source`·화면 전체로는 `travelTimeSource`로 그 사실을 실어 보낸다(**하나라도 추정이면 맨 위는 추정**). 클라이언트는 그때 "예상"이라고 표기한다.
   - ⚠️ **응답을 경로 조회에 묶지 않는다.** 하루치는 이미 조회된 것만 싣고 즉시 나가고, 없는 구간은 응답을 보낸 뒤 `legFiller`가 채운다 — 그 날을 처음 열면 추정이고 다음부터 도로다. 판정은 복제하지 않는다: 서버도 웹 `routing.js`를 그대로 쓰고, 국내는 `/api/kakao-directions` 요청을 가로채 **같은 프록시 코드**를 안에서 돌린다.
   - ⚠️ 키(`GOOGLE_ROUTES_API_KEY`·`KAKAO_REST_API_KEY`)가 없으면 라우터가 `null`이라 예전과 완전히 같다. 잠깐인 실패(프록시 429·업스트림 5xx)는 캐시에 남기지 않는다 — 혼잡이 한 시간짜리 "직선이에요"로 굳으면 안 된다.
@@ -273,7 +274,9 @@ localStorage: `tripcanvas_v1`(여행) · `tripcanvas_legs_v4`(구간 캐시, 수
 - ⚠️ 활동의 시작은 도착 예정(`eta`)이 아니라 `depart`다. 19시 예약을 13시에 "진행 중"으로 보면 그 대기시간이 빈 시간에서 통째로 사라진다.
 - UI는 여행 모드(`#travel`) 안의 `#travelSuggest`. 카드 버튼은 inline onclick 없이 `createElement`+`onclick`으로 만든다(장소명 이스케이프 사고 방지).
 
-**함께하기(협업)는 DB가 결정한다 — 화면은 감출 뿐이다.** (`docs/collaboration.md`)
+**함께하기(협업)는 서버가 결정한다 — 화면은 감출 뿐이다.** (`docs/collaboration.md` · `docs/backend-architecture.md`)
+
+⚠️ **강제하는 주체가 경로마다 다르다.** 레거시 Supabase는 RLS·RPC가, 운영 NAS는 `CollabService`·`TripAuthorizationService`와 Repository가 막는다(새 DB에는 RLS가 없다). 아래 RLS·RPC 세부는 **레거시 경로의 규칙**이고, 서버를 고칠 때는 NAS API 권한 테스트도 함께 본다. 화면 쪽 판정(`readOnly()`·`guardEdit()`)은 양쪽에서 같다.
 
 - 여행은 여전히 `trips` 한 행이고 `trips.user_id`가 소유자다. `trip_members`가 EDITOR/VIEWER를 더하고, `trip_invites`는 **토큰 해시만** 저장한다(원문은 만든 순간 한 번만 돌려준다).
 - RLS: 읽기는 소유자 OR 활성 멤버 · 쓰기는 소유자 OR EDITOR · 삭제·초대·역할 변경은 소유자만. 정책은 전부 `tc_trip_role()`(security definer) 하나만 부른다 — 정책끼리 서로 참조하면 재귀다. ⚠️ `tc_trips_lock_owner` 트리거가 `user_id` 변경을 막는다 — 정책만으로는 편집자의 소유권 탈취를 못 막는다.
