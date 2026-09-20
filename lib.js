@@ -323,6 +323,66 @@
     return loc.filter((/**@type{any}*/s)=>s.stay).pop() || loc[loc.length-1] || null;
   }
 
+  // ── 하루가 언제 끝나는가 — 웹·서버가 함께 쓰는 순수 계산 ────────────────────────
+  //
+  // ⚠️ **여기서 이동시간을 조회하지 않는다.** 도착 예정과 숙소 복귀 이동은 호출부가 구해서 넣는다 —
+  // 웹은 브라우저 구간 캐시를, 서버는 자기 캐시를 본다. 여기서 조회하면 규칙이 두 벌이 된다.
+  // 출발 날짜·시각·시간대 처리도 호출부의 몫이다.
+
+  /**
+   * 그 장소에 머무는 시간(분). **정하지 않았으면 머무르지 않는다(0분).**
+   *
+   * ⚠️ 2026-09-06 이전에는 1시간을 먹었다. 이 규칙이 여러 곳에 손으로 적혀 있어 한 곳만 옛 값으로
+   * 남는 사고가 났으므로(`next` 경로 조회가 60분을 쓰고 있었다) **판정은 여기 하나뿐이다.**
+   * ⚠️ `stayMin`이 0인 것과 정하지 않은 것은 계산 결과가 같아도 **다른 상태**다 — 화면은 둘을 구분해 말한다.
+   * ⚠️ 제안이 예상하는 소요(`adaptive.js`의 `suggestStayMin`)는 이것과 다른 값이다. 섞지 말 것.
+   * @param {{stayMin?: number|string|null}|null|undefined} spot
+   * @returns {number}
+   */
+  function stayMinutesOf(spot){
+    return (spot && spot.stayMin!=null) ? +spot.stayMin : 0;
+  }
+
+  /**
+   * 그 장소의 **활동이 시작되는 시각**(분). 예약·입장 시각이 도착보다 뒤면 그때까지 기다린다.
+   * 도착이 더 늦으면(지각) 예약 시각을 쓰지 않는다 — 이미 늦은 것을 당겨 적지 않는다.
+   * @param {{bookAt?: string|null}|null|undefined} spot
+   * @param {number} eta 그 장소의 도착 예정(분)
+   * @returns {number}
+   */
+  function activityStartMinute(spot, eta){
+    return (spot && spot.bookAt) ? Math.max(eta, parseHM(spot.bookAt)) : eta;
+  }
+
+  /**
+   * 하루가 몇 시에 끝나는가(분). 마지막 장소의 **활동 시작 + 체류**에 숙소 복귀 이동을 더한다.
+   *
+   * 숙소 복귀까지 넣어야 '하루가 몇 시에 끝나는지'가 맞는다 — 복귀는 데이터에 없는 합성 구간이라
+   * 호출부가 있을 때만 분을 넘긴다(마지막 날에는 복귀가 붙지 않는다).
+   * @param {{bookAt?: string|null, stayMin?: number|string|null}|null|undefined} lastSpot 그 날 마지막 장소
+   * @param {number} lastEta 그 장소의 도착 예정(분)
+   * @param {number|null} [backMinutes] 숙소 복귀 이동(분). 없으면 더하지 않는다
+   * @returns {number}
+   */
+  function dayEndMinutes(lastSpot, lastEta, backMinutes){
+    const end = activityStartMinute(lastSpot, lastEta) + stayMinutesOf(lastSpot);
+    return backMinutes!=null ? end + backMinutes : end;
+  }
+
+  /**
+   * 다음 구간이 **출발하는 시각**(분). 직전 장소의 도착 + 예약 대기 + 체류.
+   * 대중교통 경로를 물을 때의 출발 시각이 이 값이다 — 웹과 서버가 같은 시각을 물어야
+   * 같은 경로를 받는다.
+   * @param {{stayMin?: number|string|null}|null|undefined} prevSpot 직전 장소
+   * @param {{eta:number, wait?:number}|null|undefined} prevState 직전 장소의 타임라인 상태
+   * @returns {number}
+   */
+  function departMinuteAfter(prevSpot, prevState){
+    const eta = prevState ? prevState.eta : 0;
+    const wait = (prevState && prevState.wait) || 0;
+    return eta + wait + stayMinutesOf(prevSpot);
+  }
+
   /**
    * 일자 타임라인(도착 예상시각). startAnchor가 주어지면 그 위치에서 출발해 첫 번째 '유효(좌표 있는)' 장소까지
    * 이동시간을 먼저 더한다(예: 전날 숙소→오늘 첫 장소). 좌표 없는 장소는 이동 구간 계산에서 제외한다.
@@ -350,11 +410,11 @@
       const natural=c;
       let eta=natural, conflict=false;
       if(s.at){ eta=parseHM(s.at); conflict = eta < natural-0.5; }   // 고정 시각인데 이동상 도착이 더 늦으면 충돌
-      const depart = s.bookAt ? Math.max(eta, parseHM(s.bookAt)) : eta;
+      const depart = activityStartMinute(s, eta);
       return {
         // natural=이동상 자연 도착(고정 전), wait=예약 시각까지 기다리는 시간 → UI가 이유를 설명할 수 있게
         state:{eta, fixed:!!s.at, conflict, natural, wait:Math.max(0, depart-eta)},
-        clock: depart + (s.stayMin!=null? +s.stayMin : 0),   // 안 정했으면 머무르지 않는다(2026-09-06)
+        clock: depart + stayMinutesOf(s),   // 안 정했으면 머무르지 않는다(2026-09-06)
         prev: hasCoord(s)? s : from
       };
     }
@@ -1494,7 +1554,7 @@
     };
   }
 
-  const TC={SPOT_PRIORITIES,spotPriorityOf,applySpotPriority,spotPriorityLabel,SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,cityFromKoreanAddr,placeName,cityFromGoogle,normHours,classifySearchErr,isKoreanSearch,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,normHM,sortDayByTime,inKorea,simplifyName,parseDirect,parseMoney,normalizeDraftDays,extractJson,extMapLink,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,computeTimeline,whoKey,splitSegments,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,budgetBookings,moneyAmount,parseCostAmount,costAmountOf,dayEnteredCost,splitAcrossNights,stayCostShares,dayEnteredCostOn,hasManualTransportCost,dayCostSummary,COST_CATEGORIES,costCategoryOf,COST_PAY_STATES,costPayStateOf,payStateTotals,TRIP_NOTE_CATEGORIES,normalizeTripNote,tripCostSummary,localMode,sampleTrip,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
+  const TC={SPOT_PRIORITIES,spotPriorityOf,applySpotPriority,spotPriorityLabel,SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,cityFromKoreanAddr,placeName,cityFromGoogle,normHours,classifySearchErr,isKoreanSearch,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,normHM,sortDayByTime,inKorea,simplifyName,parseDirect,parseMoney,normalizeDraftDays,extractJson,extMapLink,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,stayMinutesOf,activityStartMinute,dayEndMinutes,departMinuteAfter,computeTimeline,whoKey,splitSegments,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,budgetBookings,moneyAmount,parseCostAmount,costAmountOf,dayEnteredCost,splitAcrossNights,stayCostShares,dayEnteredCostOn,hasManualTransportCost,dayCostSummary,COST_CATEGORIES,costCategoryOf,COST_PAY_STATES,costPayStateOf,payStateTotals,TRIP_NOTE_CATEGORIES,normalizeTripNote,tripCostSummary,localMode,sampleTrip,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
   if(typeof module!=='undefined' && module.exports){ module.exports=TC; }   // Node (테스트)
   else { const r=/**@type {any}*/(root); for(const k in TC) r[k]=/**@type {any}*/(TC)[k]; }   // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);

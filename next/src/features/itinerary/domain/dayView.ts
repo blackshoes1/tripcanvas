@@ -13,7 +13,7 @@ import type {
 
 const {
   dayCostSummary, dayEnteredCost, hasManualTransportCost, budgetBookings, carEventsOn, carSpotLinks, computeTimeline, dayReturnStay, dayStartAnchor,
-  haversine, hm, isOpenAt, legKey, localMode, parseHM, spotCatOf, stayNights, toISO
+  dayEndMinutes, haversine, hm, isOpenAt, legKey, localMode, parseHM, spotCatOf, stayNights, toISO
 } = legacyLib;
 
 // ── 수단 상수 (app.js와 동일 값 — Phase 6에서 단일 소스로 합칠 표시·추정용 글루) ──
@@ -159,11 +159,10 @@ export function dayEndMinOf(trip: Trip, legCache: LegCache, di: number): number 
   if (!day.spots.length) return null;
   const tl = dayTimelineOf(trip, legCache, di);
   const last = day.spots.length - 1;
-  const s = day.spots[last];
-  const base = s.bookAt ? Math.max(tl[last].eta, parseHM(s.bookAt)) : tl[last].eta;
-  const end = base + (s.stayMin != null ? +s.stayMin : 0);   // 안 정했으면 머무르지 않는다
   const bl = backLegOf(day, dayReturnStay(trip.days as unknown[], di) as Spot | null);
-  return bl ? end + legMinutes(legCache, bl.from, bl.to, bl.mode) : end;
+  // 합산 규칙은 lib.js 하나다 — 여기서는 **이동시간만** 구해서 넘긴다(구간 캐시 조회는 이 쪽 몫).
+  return dayEndMinutes(day.spots[last], tl[last].eta,
+                       bl ? legMinutes(legCache, bl.from, bl.to, bl.mode) : null);
 }
 
 // ── 하루 동선 합계 ──

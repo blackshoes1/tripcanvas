@@ -40,8 +40,9 @@ describe('collectLegRequests', () => {
   it('대중교통 미래 출발은 시각별 키(base@tz@when), 과거·시간대 없음은 base 키', () => {
     const seoulDay = day([airport(), seongsan()], { mode: 'transit', startAt: '10:00', timeZone: 'Asia/Seoul' });
     const future = collectLegRequests(trip([seoulDay]), {}, NOW);
-    // si=1로 들어가는 구간의 출발 = 첫 장소 도착(시작시각 10:00) + 기본 체류 60분 = 11:00
-    const expectWhen = zonedMinutesToISOString('2100-01-01', parseHM('10:00') + 60, 'Asia/Seoul');
+    // si=1로 들어가는 구간의 출발 = 첫 장소 도착(시작시각 10:00) + 체류.
+    // ⚠️ 체류를 **정하지 않았으면 머무르지 않는다(0분)** — 웹 `legDepartMinute`와 같은 규칙이다.
+    const expectWhen = zonedMinutesToISOString('2100-01-01', parseHM('10:00'), 'Asia/Seoul');
     expect(future[0].when).toBe(expectWhen);
     expect(future[0].key).toBe(`${future[0].base}@Asia/Seoul@${expectWhen}`);
 
@@ -55,8 +56,20 @@ describe('collectLegRequests', () => {
     const a = airport(), b = seongsan();
     const cached = { [legKey(ll(a), ll(b), 'transit')]: { sec: 3600, m: 40000 } };
     const [req] = collectLegRequests(t, cached, NOW);
-    // 첫 구간(도착 장소=b) 출발은 a의 체류가 아니라 시작시각 — si=1이므로 a 도착(09:00)+체류 60분
-    expect(req.when).toBe(zonedMinutesToISOString('2100-01-01', 10 * 60, 'Asia/Seoul'));
+    // 첫 구간(도착 장소=b) 출발은 a 도착(시작시각 09:00) + 체류 0분(안 정했다)
+    expect(req.when).toBe(zonedMinutesToISOString('2100-01-01', 9 * 60, 'Asia/Seoul'));
+  });
+
+  it('체류를 정한 만큼만 늦게 출발한다 — 미설정과 0분은 같은 시각이다', () => {
+    const when = (stayMin?: number) => {
+      const first = { ...airport(), ...(stayMin != null ? { stayMin } : {}) };
+      const t = trip([day([first, seongsan()], { mode: 'transit', startAt: '09:00', timeZone: 'Asia/Seoul' })]);
+      return collectLegRequests(t, {}, NOW)[0].when;
+    };
+    const nine = zonedMinutesToISOString('2100-01-01', 9 * 60, 'Asia/Seoul');
+    expect(when(undefined)).toBe(nine);                                                  // 안 정했다 → 머무르지 않는다
+    expect(when(0)).toBe(nine);                                                          // 0분으로 정했다 → 같은 계산
+    expect(when(30)).toBe(zonedMinutesToISOString('2100-01-01', 9 * 60 + 30, 'Asia/Seoul'));
   });
 
   it('같은 구간은 한 번만 (중복 키 제거)', () => {
