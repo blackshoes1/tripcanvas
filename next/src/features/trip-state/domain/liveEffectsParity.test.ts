@@ -25,6 +25,9 @@ describe('liveEffects 파리티', () => {
     // 둘 다 같이 틀린 채로 통과할 수 있다.
     const of = (kind: string, mine = false) => cases.find((c) => c.kind === kind && c.mine === mine)!.effects;
     expect(of('REACTION').candidates, '반응은 후보 보드를 다시 읽는다').toBe(true);
+    expect(of('REACTION', true).candidates, '내 반응은 이미 낙관 반영됐다 — 에코로 또 읽지 않는다(2026-09-18)').toBe(false);
+    expect(of('CANDIDATE_PROPOSED', true).candidates, '내가 담은 것은 담은 뒤 이미 읽었다').toBe(false);
+    expect(of('SCHEDULE_CHANGED', true).candidates, '문서 변경은 내 것이어도 후보 날짜 표시를 다시 읽는다').toBe(true);
     expect(of('MEMBER_JOINED').members).toBe(true);
     expect(of('MEMBER_JOINED').notify, '새 멤버는 알린다').toBe(true);
     expect(of('SCHEDULE_CHANGED').pull, '남의 저장은 문서를 당긴다').toBe(true);

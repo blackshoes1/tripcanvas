@@ -41,6 +41,7 @@ if want web; then
   step "버전 동기(sw.js ↔ index.html)" npm run check:version
   step "lint"                 npm run lint
   step "시크릿 스캔"          npm run security:scan
+  step "마이그레이션 하위호환"  npm run check:migrations
   step "타입 검사(tsc)"       npm run check:types
   step "유닛 테스트"          npm run test:unit
   step "통합 테스트"          npm run test:integration
@@ -51,6 +52,15 @@ if want web; then
     step "RLS(실제 PostgreSQL)"  bash -o pipefail -c 'scripts/pg-local.sh start && eval "$(scripts/pg-local.sh env)" && log=$(mktemp) && { npm run test:rls 2>&1 | tee "$log"; } && grep -q "# skipped 0" "$log"; result=$?; rm -f "${log:-}"; exit "$result"'
   else
     skip "RLS(실제 PostgreSQL)" "로컬 PostgreSQL 바이너리 없음"
+  fi
+
+  # 복구해 본 백업만 백업이다(docs/backup-restore.md) — 실제 pg_dump/pg_restore/마이그레이션/전수 대조를 합성 데이터로 밟는다
+  if ! scripts/pg-local.sh env >/dev/null 2>&1; then
+    skip "복구 리허설(합성·실제 PostgreSQL)" "로컬 PostgreSQL 바이너리 없음"
+  elif [ ! -d next/node_modules ]; then
+    skip "복구 리허설(합성·실제 PostgreSQL)" "next/node_modules 없음(drizzle-kit) — npm --prefix next ci"
+  else
+    step "복구 리허설(합성·실제 PostgreSQL)" npm run rehearse:restore
   fi
 
   step "의존성 감사(high)"    npm audit --audit-level=high

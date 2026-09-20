@@ -27,6 +27,15 @@ export async function checkDatabase(): Promise<void> {
   await d.execute(sql`select 1`);
 }
 
+/** 마지막으로 **성공한** 백업의 완료 시각(ops_backup_runs). 기록이 없으면 null — /api/health가 최신성을 판정한다 */
+export async function lastSuccessfulBackupAt(): Promise<Date | null> {
+  const d = getDb();
+  if (!d) throw new Error('DATABASE_URL 없음');
+  const { rows } = (await d.execute(sql`select max(finished_at) as t from ops_backup_runs where ok`)) as { rows: { t: Date | string | null }[] };
+  const t = rows[0]?.t;
+  return t ? new Date(t) : null;
+}
+
 export async function closeDatabase(): Promise<void> {
   await pool?.end();
   pool = null;

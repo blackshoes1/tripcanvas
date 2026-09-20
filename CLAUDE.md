@@ -22,6 +22,7 @@
 - 원격 `main` 푸시 시 **Vercel 자동 배포** (프로젝트 `tripcanvas`, 프로덕션 `tripcanvas-ai.vercel.app`).
 - ⚠️ **API는 이제 NAS다**(2026-09-04 전환). 웹이 부르는 주소는 `https://bokbok9.tail8b977f.ts.net`(Tailscale Funnel이 HTTPS를 붙인다)이고 데이터는 NAS PostgreSQL이다. Vercel에는 정적 웹만 남았고, `tripcanvas-api` 프로젝트는 **롤백 대상**으로 남겨 두었다(여전히 Supabase를 본다). 전환 스위치는 `api.js`·`auth.js`의 `DEFAULT_BASE` 두 줄이다 — `docs/nas-deployment.md`.
 - ⚠️ 그래서 **가용성이 집 NAS에 걸린다.** NAS가 꺼지거나 Tailscale이 끊기면 저장이 안 된다(로컬 편집은 보존된다). iOS(`TCApiBaseURL`)도 같은 주소로 옮겼다.
+- **관리형 인프라 전환은 준비만 됐다(2026-09-17)** — 코드·스크립트·runbook은 `docs/managed-infrastructure.md` · `managed-db-migration.md` · `production-cutover.md` · `disaster-recovery.md`. **프로덕션 cutover·API 주소 변경·NAS 종료·프로덕션 마이그레이션은 별도 승인 없이 하지 않는다.** 앱 코드는 호스팅 위치를 모른다 — `DATABASE_URL`·`REALTIME_DATABASE_URL`(LISTEN 전용 직접 연결)·`MIGRATE_DATABASE_URL`·`API_BASE_URL`·`REALTIME_URL`·`REALTIME_HEALTH_URL`·`BACKUP_MAX_AGE_HOURS`·`TC_READ_ONLY`(점검·읽기 전용 모드 — 쓰기가 503 `MAINTENANCE`)가 전부다. 두 PostgreSQL이 같은지는 `scripts/verify-db-migration.sh`(PASS/FAIL/SKIP — SKIP은 통과가 아니다), 복원은 `scripts/restore-to-target.sh`(비어 있는 대상에만).
 - 커밋 author 이메일은 반드시 **GitHub 계정과 매칭되는 유효한 주소**여야 한다 (`blackshoes85@gmail.com`).
   `.local` 등 로컬 호스트 기반 자동 이메일이면 Vercel이 배포를 거부한다.
 
@@ -39,31 +40,29 @@ npm run verify:all
   ⚠️ **SKIP은 통과가 아니다** — 무엇을 못 돌렸는지 PR에 밝힌다.
 
 - [ ] **필수 체크가 빨간 상태로 merge하지 않는다.** 빨간 이유가 코드가 아니라 러너·과금이면 그 사실과 대신 무엇으로 검증했는지를 PR에 남긴다 — `docs/ci.md`
-- [ ] **`next/src/app/api/**`·`next/src/server/**`·`next/src/features/**`을 바꿨으면 NAS에 따로 배포한다.** `main` 머지는 **Vercel 정적 웹만** 내보낸다 — API는 NAS 이미지라 다시 빌드하지 않으면 옛 코드가 그대로 돈다:
+- [ ] **API 배포는 이제 자동이다**(2026-09-19). `main` 머지가 곧 운영 API 배포다 — 사람이 할 일이 없다:
 
-```bash
-git archive --format=tar HEAD | gzip > /tmp/tc-main.tgz
-scp -O /tmp/tc-main.tgz nas:~/ && ssh nas 'cd ~/tripcanvas && tar -xzf ~/tc-main.tgz && rm ~/tc-main.tgz'
-ssh nas 'cd ~/tripcanvas && sudo /usr/local/bin/docker compose -f deploy/docker-compose.yml build api && sudo /usr/local/bin/docker compose -f deploy/docker-compose.yml up -d api'
-curl -s -o /dev/null -w "%{http_code}\n" https://bokbok9.tail8b977f.ts.net/api/v1/trips   # 401이면 산다
+```
+PR merge → main → Actions(release.yml): 게이트 → GHCR :<커밋 SHA> → production 태그
+                → NAS cron(5분): pull → migrate → api·realtime → 헬스체크 → revision 확인
 ```
 
-  ⚠️ **마이그레이션을 추가했으면 `migrate`도 다시 빌드한다.** `migrate`는 별도 이미지라 `build api`만 하면
-  옛 이미지가 돌고 **"migrations applied successfully"라고 찍으면서 새 테이블을 만들지 않는다**
-  (2026-09-06 `leg_cache`가 그랬다 — 로그는 초록인데 테이블이 없었다):
+  **NAS는 더 이상 빌드하지 않는다.** 이미지는 GitHub에서만 만들어지고 이름이 커밋 SHA라
+  `Git 커밋 = 이미지 = migrate·api·realtime = TC_REVISION = 배포 기록`이 하나로 꿰어져 있다.
+  ⚠️ **2026-09-19 새벽 사고가 이 구조를 만들었다** — 맥의 `origin/main`이 전날 것이라 빌드는 성공했는데
+  내용이 옛 커밋이었고 로그는 전부 초록이었다. 소스를 사람이 날라 거기서 빌드하는 한 같은 사고가 또 난다.
+  확인·롤백·정지는 전부 한 스크립트다 — `docs/nas-deployment.md`:
 
 ```bash
-ssh nas 'cd ~/tripcanvas && sudo /usr/local/bin/docker compose -f deploy/docker-compose.yml build migrate && sudo /usr/local/bin/docker compose -f deploy/docker-compose.yml up -d migrate'
-ssh nas "sudo /usr/local/bin/docker exec tripcanvas-postgres-1 psql -U tripcanvas -d tripcanvas -c '\\d <새 테이블>'"   # 눈으로 확인한다
+ssh nas '~/tripcanvas/scripts/nas-deploy.sh --status'              # 도는 커밋 · production 태그 · 상태
+ssh nas '~/tripcanvas/scripts/nas-deploy.sh --sha <40자리 SHA>'    # 특정 커밋으로 롤백
+ssh nas 'touch ~/tripcanvas/deploy/.deploy-disabled'               # 자동 배포 정지
 ```
 
-  ⚠️ **새 라우트는 배포 전까지 404다.** 앱·웹이 그걸 "값이 없음"으로 조용히 넘기게 설계돼 있으면
-  아무 오류 없이 화면에서 그 기능만 사라진다 — 2026-09-06에 일자 스트립 날짜가 그래서 안 보였다.
-  ⚠️ `deploy/.env`는 추적되지 않으므로 이 아카이브에 없다. NAS 것이 그대로 남는다.
-  ⚠️ **`.env`를 고쳤으면 `--force-recreate api`까지 해야 적용된다** — 환경변수는 컨테이너가 뜰 때 한 번만 읽힌다.
-  파일이 아니라 **컨테이너 시작 시각**으로 확인한다(`docker inspect -f '{{.State.StartedAt}}'`) — `docs/nas-deployment.md`
-  ⚠️ 지도 키는 **서버용과 앱용이 다르다**: iOS 키(번들 제한)를 서버에 넣으면 403 `Requests from this iOS client application <empty> are blocked`
-
+- [ ] **마이그레이션은 하위호환이어야 한다** — 머지가 운영 DB에 자동 적용되고, **이미지 롤백은 스키마를 되돌리지 않는다.**
+  쓰던 컬럼 삭제·개명·`SET NOT NULL`·타입 변경은 `npm run check:migrations`(게이트)가 PR에서 막는다.
+  나눠서 한다: expand → deploy → backfill → contract — `docs/migration-policy.md`.
+  정말 파괴적 변경을 해야 하면 자동 배포를 세우고 백업을 새로 뜬 뒤 손으로 본다(같은 문서).
 - [ ] 푸시 후 폰에서 실제 동작 확인 — ☰ 메뉴 하단의 **버전 표시**로 새 버전이 적용됐는지 먼저 볼 것 (캐시된 옛 버전이면 그 글자를 탭해 갱신)
 
 ## 브랜드 — With J / From J
@@ -83,7 +82,7 @@ With J          ← 제품 (앱 이름 · 웹 타이틀 · PWA · 메일 제목 
 
 - `index.html` — 마크업 (모달·헤더·재생 HUD 등)
 - `app.js` — 앱 로직 전체 (DOM·지도·네트워크)
-- `lib.js` — 순수 로직 (파서·거리·시각·앵커·타임라인·정규화 · **분리 구간** `splitSegments`/`whoKey`). **유닛 테스트 + `tsc` 타입 검사 대상**
+- `lib.js` — 순수 로직 (파서·거리·시각·앵커·타임라인·정규화 · **분리 구간** `splitSegments`/`whoKey` · **결제 상태** `costPayStateOf`/`payStateTotals` · **여행 준비 메모** `TRIP_NOTE_CATEGORIES`/`normalizeTripNote`). **유닛 테스트 + `tsc` 타입 검사 대상**
 - `price.js` — 예약 가격 추적 순수 계산: 실질 절약액·오퍼 조건 매칭(EXACT/EQUIVALENT/SIMILAR)·확정/잠재 절약 판단·호텔 identity 점수 · 렌터카 조건 매칭(carMatchQuality — 차급·변속기·보험·주행거리가 다르면 확정 절약 금지). 예약(`trip.bookings`)은 여행 데이터로 동기화·공유되고, 가격 관측 기록은 기기 로컬 + 로그인 시 **`/api/v1/trips/:id/prices`**(여행과 같은 저장소·같은 권한. 2026-09-04 전환 전에는 Supabase `hotel_price_snapshots` 직접 경로였다). 시세는 `api/hotel-offers.js` 프록시(Metasearch 키 서버 전용)로만 조회 — 키 없으면 미연결 상태를 그대로 표시(가짜 가격 금지). **유닛 테스트 + `tsc` 대상**
 - `adaptive.js` — **Adaptive Travel OS 도메인**(순수): 현재 여행 상태(`buildTripState`) · 고정/유동 분류(`commitmentOf`) · 빈 시간 탐지(`findFreeWindows`) · 다음 행동 후보와 순위(`buildCandidates`/`rankNextActions`) · 일정 재구성(`generateReplan`) · 제안(`buildSuggestions`) · 자연어 해석(`parseIntent`) · 출발 안내(`departureAdvice`) · 빈칸 채우기와 하루 flow(`fillGaps`/`planDayFlow`). DOM·네트워크·현재시각을 모르고 전부 인자로 받는다. **유닛 테스트 + `tsc` 대상**
 - `intake.js` — **유입 계층**(순수): 공유 분류(`classifyShare`) · 날짜/통화 정규화 · 예약 후보 파싱(`parseBookingCandidate`) · 중복(`findDuplicateBooking`) · 여행 매칭(`matchTripForBooking`) · 기록 연결(`associateMemory`) · **붙여넣은 일정 글 읽기**(`parseItinerary`). **저장은 하지 않는다** — 확인한 것만 저장된다. ⚠️ **사람들은 우리 형식으로 다시 쓰지 않는다** — ChatGPT·Claude가 뱉은 그대로 붙여넣으므로 `stripDecor`(마크다운 `**`·이모지) · `expandTables`(마크다운 표 — 모르면 **그 날이 통째로 사라진다**) · `koTime`(`오후 3시`) · `splitNameDesc`(`점심: 카와카미안` → 이름은 오른쪽)를 먼저 지난다. 이름에 꾸밈이 남으면 지오코딩이 실패해 전부 '위치 지정'이 된다(2026-09-08). **유닛 테스트 + `tsc` 대상**
@@ -100,7 +99,7 @@ With J          ← 제품 (앱 이름 · 웹 타이틀 · PWA · 메일 제목 
 - `ios/` — **네이티브 iOS 앱(SwiftUI)** + `TripCanvasWidgets`(위젯·Live Activity 확장) + `TripCanvasShared`(App Group 공유 상태). 웹은 여행을 *계획*하고, iOS는 여행을 *실행*한다. **로그인은 웹과 같은 자체 Auth**(`/api/auth/*`, bearer 세션 · Keychain `withj.auth.session.v1`)다 — Supabase GoTrue 직접 호출은 없앴다(2026-09-05). refresh 그랜트가 없어 401은 `get-session`으로 확인하고, 예전 Supabase 세션은 **변환하지 않고 지운 뒤 한 번 다시 묻는다**. 판단 로직을 Swift로 복제하지 않는다 — `/api/v1`이 준 결과를 그리기만 한다. 계획 화면도 **네이티브로 옮겼다**(일정 편집 `Features/Plan` · 지도·검색 `Features/Map` · 예약 편집 `Features/Booking` · 함께하기 `Features/Collab`). 예약은 문서의 `trip.bookings`라 장소와 같은 CAS 저장 경로를 쓰고, 검증은 웹 `bkSave`와 같은 규칙이다(`TripBooking.swift`). 함께하기는 `/api/v1`의 멤버·초대·후보·코멘트·활동·취향 라우트를 그대로 쓰고 판정은 `CollabModel.swift`(`collab.js`의 복사본 — 규칙을 바꿀 때 `collab.js`를 먼저 고친다)에 모여 있다. 후보를 일정에 넣을 때는 문서 저장이 먼저고 후보 표시가 그다음이며, 표시가 실패해도 일정에는 들어갔다고 말한다. 초대 링크는 웹 주소로 만든다(받는 사람에게 앱이 없을 수 있다). 실시간은 웹과 **같은 사이드카·같은 규약**에 붙는다(`RealtimeClient` — AUTH는 첫 프레임, 토큰을 URL에 싣지 않는다). payload는 신호일 뿐이고 무엇을 다시 읽을지는 `CollabModel.liveEffects`(`collab.js` 복사본, `live-effects.json` 픽스처로 파리티 검사)가 정한다. 붙을지는 서버가 정하고(`/api/v1/me`), 못 붙으면 조용히 당겨서 새로고침으로 간다. 백그라운드에서는 끊는다. 지도는 웹과 같은 듀얼 엔진(국내 카카오맵 SDK · 해외 Google Maps SDK — 처음 들어온 외부 의존성, SPM)이고 키는 **번들 ID로 제한된 네이티브 키**(`TCGoogleMapsKey`·`TCKakaoNativeKey`)다. 국내 검색은 카카오 REST 키를 앱에 못 넣어 서버 `GET /api/v1/places/search`를 지나고, 해외 검색은 iOS 키로 Places API(New)에 직접 묻는다(`ios/README.md` 표). 여행 문서는 아는 필드만 담은 구조체로 디코딩하지 않고 **원문 트리(`JSONValue`)로 들고 아는 필드만 덮어 쓴다** — 그러지 않으면 웹이 쓰는 `who`·`split`·`hours` 같은 필드가 앱 저장 한 번에 사라진다. 저장은 `PUT /api/v1/trips/:id`(revision CAS)이고 실패하면 화면을 되돌린다. 빌드·XCTest는 CI가 시뮬레이터로 본다(`.github/workflows/ios.yml`, `ios/` 변경 시에만 — macOS 러너는 10배 과금). **staging API로도 확인됐다**(2026-09-04 — `TCApiBaseURL`을 터널로 돌려 로그인·여행 목록·오늘 화면). 서명·실기기·푸시·위젯 실제 표시는 여전히 기기에서만 확인된다 (`ios/README.md` · `docs/ios-device-setup.md`)
 - `next/src/server/` — **독립 Backend**(Supabase 이관 중, `docs/backend-architecture.md` · `docs/supabase-migration.md`): `auth/`(Supabase JWT 직접 검증 → `RequestContext`) · `api/`(오류 계약 · Trip 라우트) · `application/`(TripService · TripAuthorizationService — RLS 대체) · `repositories/`(인터페이스 · dual read · memory) · `auth/`에 **자체 Auth**(better-auth — `/api/auth/*`, 이메일 확인·세션·재설정. `users.auth_user_id`로 도메인 사용자와 잇고 **확인된 이메일로만** 연결한다) · `infrastructure/mail/`(SMTP 어댑터·쿨다운) · `infrastructure/database/`(Drizzle 스키마 · 마이그레이션 · PostgreSQL Repository, 테스트는 PGlite) · `infrastructure/supabase/`(레거시 경로) · `migration/`(Supabase → 새 DB 데이터 이관·검증. `npm run migrate:import`, 절차는 `docs/backup-restore.md`) · `realtime/`(**WebSocket 사이드카** — `trip_activity` 트리거의 `pg_notify`를 LISTEN해 중계한다. 별도 프로세스: `npm run tools:build && npm run realtime`. 페이로드는 신호뿐이고 내용은 API로 다시 읽는다. ⚠️ CommonJS로 컴파일되므로 ESM 전용인 better-auth를 import하지 않는다 — 자체 Auth 세션은 `auth/sessionTokenVerifier.ts`가 **DB로** 판정한다(서명까지 확인해 API와 같은 기준). API와 **같은 `AUTH_SECRET`**을 써야 하고, 다르면 아무도 실시간에 못 붙는다). Route Handler에 비즈니스 로직을 두지 않는다. 이관 레지스트리 `TC_MIGRATION_<DOMAIN>`(기본 LEGACY, `DATABASE_URL` 없으면 강제 LEGACY)이 요청마다 저장소를 고른다. `deploy/`는 **운영 compose 하나로 뜬다**(`docker compose -f deploy/docker-compose.yml up -d` — 루프백 publish가 안에 있다). override 둘은 선택이고 용도가 다르다: `docker-compose.staging.yml`은 DB에 직접 붙을 때(postgres 15432), `docker-compose.caddy.yml`은 도메인+Caddy 경로(오늘의 ingress는 Tailscale Funnel이라 안 쓴다). **2026-09-05 실제 NAS에서 검증됐다** — `docs/nas-deployment.md`
 - `next/src/features/trip-state/` — 웹·iOS 공통 API 계층. `contract.ts`(단일 출처 계약) · `todayView.ts`(엔진 결과를 계약 모양으로) · `dayPlanView.ts`(**일정 화면이 쓰는 하루치** — `dayView.ts`의 계산을 계약 모양으로. ⚠️ **라벨이 아니라 값을 싣는다**: 웹 `DayView`는 `"📏 하루 동선 약 12.4km"` 같은 완성된 문장을 들고 있는데 그걸 보내면 앱이 표기를 정할 수 없다. ⚠️ 타임라인의 '분'은 소수라 **정수로 반올림해서** 보낸다 — 안 그러면 Swift가 `Int` 디코딩에서 죽고 그 사고는 앱 빌드까지 아무도 모른다) · `mutations.ts`(문서 변경 순수 함수) · `handlers.ts`(주입 가능한 라우트 핸들러) · `supabaseGateway.ts`(RLS 아래 읽기·쓰기)
-- `scripts/` — `bump-version.js` · `check-version-sync.js` · `check-secrets.js` · `verify-all.sh`(릴리스 게이트를 로컬에서 통째로 — `docs/ci.md`)
+- `scripts/` — `bump-version.js` · `check-version-sync.js` · `check-secrets.js` · `verify-all.sh`(릴리스 게이트를 로컬에서 통째로 — `docs/ci.md`) · `rehearse-restore.sh`(합성 데이터로 dump→restore→migrate→대조, 게이트에 들어 있다) · `restore-to-target.sh` · `rehearse-restore-managed.sh` · `verify-db-migration.sh`(두 PostgreSQL 전수 대조)
 - `.githooks/pre-push` — `main` 직접 푸시 차단. **클론마다 `git config core.hooksPath .githooks` 한 번.** 2026-09-06부터 GitHub branch protection이 서버에서도 막으므로(공개 전환) 훅은 유일한 방어가 아니라 **빠른 방어**다 — 서버까지 갔다가 거절당하기 전에 막아 준다(`docs/deployment-workflow.md`)
 - `test/` — 순수·통합·API 테스트 (`pure` · `integration` · `adaptive` · `intake` · `collab` · `price` · `routing` · `sync` · `api-*` · `migration` · `rls.integration`(로컬 PostgreSQL이 있을 때만 — `scripts/pg-local.sh`))
 - `e2e/` — Playwright 시나리오 (`core-flows` · `pwa` · `accessibility` · `ux-wireframe` · `collab`)
@@ -145,10 +144,25 @@ localStorage: `tripcanvas_v1`(여행) · `tripcanvas_legs_v4`(구간 캐시, 수
 - ⚠️ 입력에서 `parseInt(v)||60` 같은 식을 쓰지 말 것 — **0이 falsy라 0을 넣어도 60이 된다.** 0은 유효한 값이다("들렀다 바로 이동").
 - 화면은 '정하지 않음'과 '0분'을 **둘 다 남긴다**. 계산은 같지만 "아직 안 정했다"와 "바로 간다"는 다른 말이다.
 
+**분류와 결제 상태는 다른 축이다.** 분류(`kind`)는 *무엇에 쓴 돈인가*, 결제 상태(`payState`)는 *냈는가*다 — 같은 '숙박'도 예약만 해 둔 것과 이미 결제한 것이 있다.
+
+- 값은 `RESERVED`(예약) · `PAID`(결제) 둘뿐이고, 고르지 않으면 **저장하지 않는다**. 계산에서는 `NONE`(미구분)으로 센다.
+- ⚠️ **미구분을 어느 쪽으로도 단정하지 않는다.** 결제로 치면 '이미 쓴 돈'이 부풀고, 예약으로 치면 '남은 지출'이 부풀어 둘 다 거짓말이 된다. 그래서 화면도 값이 있는 상태만 말한다.
+- 예약(`trip.bookings`)에서 파생된 하루치는 **언제나 예약**이다(`costPayStateOf(item,'BOOKING')`).
+- 상태별 합계는 `payStateTotals`(lib) 하나가 만든다 — 하루(`dayCostSummary().payTotals`)와 여행 전체(`tripCostSummary().payTotals`)가 같은 규칙을 쓴다. **셋을 더하면 합계와 같아야 한다**(금액 미정과 예약이 대신 내는 장소는 더하지 않는다).
+- 비용 항목의 **영수증·품목 사진**은 `photos`에 **참조만**(사진 보관함 식별자) 싣는다. 원본 이미지를 문서에 넣지 않는다 — 문서는 저장할 때마다 통째로 오가므로 동기화가 무거워지고 공유 링크가 터진다. 그래서 그 사진은 **담은 기기에서만** 보인다(다른 기기에서는 그 문자열이 아무것도 가리키지 않는다). 최대 10장.
+
 **비용은 '하루치'와 '총액'을 구분한다.** 장소 비용(`spot.cost`)·택시비는 그날 쓰는 돈이지만, 예약(숙박·렌터카·항공)은 여러 날에 걸친 총액이다.
 
-- **일자 카드 하루 비용** = 장소 + 택시 + `bookingShareOn(bookings, iso)` (lib)로 날수를 나눈 예약 하루치. 숙박은 `[체크인, 체크아웃)`(체크아웃 날엔 숙박비 없음), 렌터카·항공은 `[시작, 종료]` 양끝 포함. 나머지는 앞날부터 1원씩 얹어 하루치의 합이 총액과 정확히 맞는다.
+- **가기 전에 낸 돈과 가서 쓰는 돈은 다른 장부다**(2026-09-17). `tripCostSummary()`가 둘로도 나눈다 — `prep`(준비한 비용 = 예약 **전액** 한 줄씩 + 여행 단위 항목 `trip.costItems`) · `onSite`(가서 쓰는 비용 = 날짜별 장소·추가 비용·교통, `dayCostSummary().onSiteKRW`의 합). **둘을 더하면 `totalKRW`와 같다.** `trip.costItems`는 하루 `day.costItems`와 같은 모양·같은 정규화(`normalizeCostItems`)이고 어느 날에도 속하지 않는다(보험·유심·미리 산 입장권). 앱 비용 화면은 이 둘을 세그먼트로 나누고, 정산은 **금액부터 치는** 빠른 입력(`QuickSpendEditor` — 낸 돈이라 결제로 둔다)이 먼저다.
+- **예약의 결제 상태는 예약마다 다르다.** `booking.payState`는 `PAID`만 저장하고 없으면 예약이다(`costPayStateOf(b,'BOOKING')`) — 항공은 대개 낸 돈, 현장 결제 호텔은 잡아 둔 돈이라 한쪽으로 단정하면 가계부의 '이미 낸 돈 / 아직 낼 돈'이 거짓말이 된다. 하루치(`bookingShareOn`)·잔액·가계부 줄이 전부 이 값을 따른다.
+- **결제일(`paidOn`)이 있으면 날짜가 상태를 정한다**(2026-09-18). 결제일은 '결제 예정일'이다 — 오늘이거나 지났으면 `PAID`, 아직이면 `RESERVED`이고 그때 손으로 고른 `payState`는 보지 않는다(`costPayStateOf(item, source, today)`). 예약·여행 단위 비용·하루 항목 전부 같은 규칙이다. **오늘은 호출부가 넘긴다** — 서버는 Today와 같은 시계(`resolveClock`의 `todayISO`, 여행 시간대·`?date=`로 덮어쓸 수 있다)를 `dayCostPartsOf`·`buildTripCosts`·`buildDayPlanView`에 넣고, 웹은 기기 날짜(`todayISO()`)다. `today`를 안 넘기면 결제일을 판정하지 않고 손으로 고른 상태로 돌아간다. 편집기(웹 `bkSave`/`saveCostItem` · iOS `BookingEditorView`)는 결제일을 두면 `payState`를 **지운다** — 두 답이 갈리면 어느 쪽도 못 믿는다. 응답의 모든 비용 줄에 `paidOn`(없으면 null)이 실린다.
+- **예약 결제 항목은 한 편집기·한 목록이다**(2026-09-18). 분류는 하루 비용과 같은 9가지(`COST_CATEGORIES` = iOS `CostCategory`, 같은 순서·같은 이름)이고 셀렉트박스다. **항공·숙박·렌트는 예약**(`trip.bookings`, 웹 `BK_KIND_TYPE`·iOS `CostCategory.bookingType`)이라 기간·조건·링크·가격 추적이 붙고, 나머지는 여행 단위 비용(`trip.costItems`)이다 — 분류가 어디에 저장할지를 정한다. 이미 저장된 항목은 자기 쪽 안에서만 분류를 바꾼다(예약을 식비로 바꾸면 기간·조건·가격 기록이 갈 곳이 없다). 목록(웹 `paymentRows` · iOS `PaymentRow.rows`)은 결제일 최근 순, 결제일 없는 것은 뒤에 등록 순이고 '추가'는 목록 **위**다. 예약도 `photos`(참조만)를 가진다.
+- **상태 문구는 '결제 완료 / 결제 예정 / 미구분'이다**(웹 `PAY_STATE_LABEL` = iOS `CostPayState.label`). '예약만 함'·'결제함'은 모호해서 버렸다. 두 장부의 이름은 **예약 결제 금액**(prep) / **현지 결제 금액**(onSite)이고 웹 필터바 전체 비용 내역도 이 둘로 묶는다. 환율 표기는 **원 단위 반올림**이고 엔은 100엔 기준이다("100 JPY ≈ 931원", iOS `TripCostsView.fxLine`).
+- **연박 숙소(장소)의 비용도 숙박일 수로 나눈다**(2026-09-18). `stay`이고 `nights`가 2 이상인 장소의 `cost`는 체크인 날부터 `nights`일에 걸쳐 하루치로 잡힌다(`stayCostShares` — 예약 하루치와 같은 나누기 규칙, 통화 최소 단위로 앞날부터 1단위씩). 체크인 날 줄은 `SPOT`(제목 `(1/N박)`), 다음 날들은 **`STAY` 줄**(키 `체크인일.장소인덱스`, 제목 `(k/N박)`)로 이월되고 '장소' 묶음·가서 쓰는 돈에 든다. 고치려면 체크인 날 장소에서 고친다. 1박·숙소 아님·금액 미정은 나누지 않는다. 일자 카드는 하루치(`dayEnteredCostOn`·웹 `dayCostOn`), 여행 전체 합계는 전액(`dayEnteredCost`)이다 — 연박이 일정 밖으로 나가면 예약과 같은 차이가 난다.
+- **일자 카드 하루 비용** = 장소 + 택시 + `bookingShareOn(bookings, iso)` (lib)로 날수를 나눈 예약 하루치. **앱 비용 화면의 날짜별 줄도 같은 값**(`cost.total`, 2026-09-18 — 전에는 가서 쓰는 돈만 보여 "웹은 나오는데 앱만 안 나온다"가 됐다)이고, 줄 아래에 `현지 ₩A · 예약 하루치 ₩B`로 가른다. 위의 현지 결제 금액 합계는 여전히 가서 쓰는 돈만이라 날짜별 합계와 다르며, 그 차이를 머리글이 말한다. **숙박과 렌터카만 나눈다** — 숙박은 `[체크인, 체크아웃)`(체크아웃 날엔 숙박비 없음), 렌터카는 `[픽업, 반납]` 양끝 포함. **항공은 나누지 않는다**(한 번 낸 돈이지 하루치가 있는 돈이 아니다 — 왕복을 출발일~귀국일로 잡으면 비행기를 안 타는 날에도 매일 들어갔다, 2026-09-17 수정). 나머지는 앞날부터 1원씩 얹어 하루치의 합이 총액과 정확히 맞는다.
 - **필터바 전체 비용** = `tripCostBreakdown()` (app) — 장소 + 택시 + 예약 **전액**. 예약 기간이 일정 밖으로 나가면 하루 합계보다 크다(전체가 실제 총액).
+- **환율은 두 곳이 각자 하루 한 번 받는다** — 같은 출처(open.er-api.com USD 기준)·같은 UTC 날짜라 값이 같다. 웹은 기기 `localStorage`(`tripcanvas_fx`, `loadFx`), 앱이 쓰는 API는 **서버**(`server/currency/serverFx.ts` → `fx_rates` 테이블, 마이그레이션 0013)다. 2026-09-18까지 서버는 환율을 받은 적이 없어 앱은 코드에 박힌 근사값(USD 1380원)만 썼다. 응답은 `fxSource`(`API`·`FALLBACK`)와 `fxAsOf`를 실어 앱이 "9월 18일 환율"이라고 말한다 — 오늘 못 받으면 **저장된 최근 날**을 그 날짜와 함께 쓰고, 받은 적이 없을 때만 근사값이다. 근사값을 시세처럼 보이지 않는다.
 
 ⚠️ 모바일 필터바는 `overflow-x:auto` **스크롤 컨테이너**다 — 안에 뜬 드롭다운 패널이 잘린다(44px 높이에 갇혀 거의 안 보였다). `.viewMenu .viewMenuPanel`을 `position:fixed`로 빼내 해결했다 — `top:auto`라 정적 위치(칩 바로 아래)는 그대로다. 필터바에 드롭다운을 새로 추가하면 같은 함정에 빠진다.
 
@@ -200,6 +214,28 @@ localStorage: `tripcanvas_v1`(여행) · `tripcanvas_legs_v4`(구간 캐시, 수
 - 제안 거절은 `suggestion_feedback` 테이블(RLS)에 날짜와 함께 남는다 — 기기가 바뀌어도 같은 제안이 그날 다시 올라오지 않는다. ⚠️ 레거시 웹은 아직 localStorage를 쓴다(양쪽이 아직 공유되지 않음).
 - `next`의 `swiftParity.test.ts`가 **실제 Today 응답 ↔ `ios/.../Contract.swift`** 를 맞춰 보고 `ios/TripCanvasTests/Fixtures/today.json`을 다시 만든다. 계약을 바꾸면 여기가 먼저 깨진다.
 
+**앱의 탭 전환은 앱 복귀가 아니다.** (2026-09-17 "탭을 누를 때마다 로딩" 보고)
+
+- 여행 화면의 모델(`TodayViewModel`·`TripPlanViewModel`·`MapDiscoveryModel`)은 **탭이 아니라 여행이 들고 있다**(`TripHomeView`의 `TripScreenModels`). 탭 화면은 받기만 한다 — 화면이 `@State`로 모델을 만들면 탭을 바꿀 때 뷰와 함께 죽어 돌아올 때마다 서버를 다시 묻는다.
+- 탭 진입은 `loadIfStale()`이다: 내용이 있고 방금 받은 것(60초)이면 요청이 0, 오래됐으면 **뒤에서** 새로 받는다(내용이 있으니 로딩 화면으로 바뀌지 않는다). 앱 복귀(`scenePhase`)·당겨서 새로고침은 여전히 `load()`다.
+- `지금`은 디스크에 남은 지난번 응답을 **먼저 그린다**(`cachedToday`) — 단, 목록이 아는 revision과 같을 때만이고, 그때 '오프라인' 표시는 붙이지 않는다.
+- 지도는 한 번 만들면 **숨기기만 한다**(`TripPlanView.mapMounted` + `MapEngineView.isVisible`). 숨긴 동안 카카오는 `pauseEngine`, 구글은 `isHidden` — 버리지 않으니 다시 보일 때 인증·타일을 되풀이하지 않는다. 처음 열기 전에는 만들지 않는다.
+- 탭 바는 **언제나 화면 맨 아래다** — 내용 위에 겹쳐 두고 키보드 안전 영역을 무시한다(`TripHomeView.tabBarHeight`만큼 내용이 위에서 끝난다).
+
+**앱 화면은 정보 위계가 먼저다 — 더 많이가 아니라 지금 필요한 것부터.** (2026-09-18 모바일 UI 정리)
+
+- **지금 = 실행, 일정 = 계획.** `지금`의 다음 일정 카드는 출발·도착·이동·머무름을 **알약(`LegPill`)** 으로만 말하고(`NextActionCard.facts` — 없는 것은 말하지 않는다), 여행 전에는 D-day와 예약 정보로 간다. `일정`은 Day별 목록과 편집이다.
+- **일정 상단은 세 줄이다** — 하루 제목(`headline`) · `이동 2시간 27분 · 예상 ₩456,665`(`TripPlanView.summaryLine`) · `이대로면 15:56에 끝나요`. 총 이동거리·머무는 시간 미정·예약할 곳·하루 예산·비용 미정·교통비 안내는 **'오늘 요약 보기'를 눌렀을 때만**(`dayDetails`). 기본 화면에서는 첫 장소가 요약보다 위에 있어야 한다. Day 칩은 고른 날만 요일·제목까지 말하고 나머지는 `Day 2 / 10/26`뿐이다(`TimeFormat.dayChipShort`).
+- **이모지와 벡터 아이콘을 한 화면에 섞지 않는다.** 장소 유형은 `SpotCategory.symbol`(SF Symbols), 이동은 `TravelMode.symbol`, 숙소 이월·복귀는 `house.fill`, 고정 시각은 `pin.fill`. `SpotCategory.icon`(이모지)은 웹·공유 문장과 같은 **글자**용으로만 남는다. 이동 정보는 장소보다 가벼운 알약(`LegPill`)이다 — 장소 이름이 언제나 가장 먼저 읽힌다.
+- **색은 뜻이다** — `Ink.accent`(누를 것·고른 것) · `Ink.warning`(시간 경고·미정·확인할 것) · `Ink.danger`(오류·삭제·초과·취소) · `Ink.positive`(완료) · `Ink.info`(상대가 정한 것). 화면이 `.orange`·`.red`·`.green`·`.blue`를 직접 부르지 않는다. 늦게 끝나는 것은 경고가 아니다 — 자정을 넘길 때(`overloaded`)만 주의색.
+- **지도의 범위(이 날 | 전체)와 검색은 다른 일이다** — 같은 세그먼트에 넣지 않는다(`mapScope` + `mapSearching`). 지도가 뜨기 전에는 스피너만 두지 않고 `MapLoadingPlaceholder`가 무엇을 기다리는지 말한다(실패는 `EmptyStateView`가 따로).
+- **'이 날' 지도는 열 때 그날 동선이 통째로 보인다**(2026-09-19). 카메라 규칙은 하나다 — 고른 장소가 있으면 거기로(줌 15·16), 없으면 **핀과 선의 점을 전부 담는 사각형**(`MapBounds.covering(pins:routes:)`)을 맞춘다. 사각형에 선의 점도 넣는 이유는 숙소 복귀(`back`)가 핀이 아니라 선으로만 있어서다. 구글은 bounds fit, 카카오는 bounds fit이 없어 중심 + `MapBounds.zoomLevel(fitting:)`(웹 메르카토르, 256pt 타일)로 간다. 맞추는 때는 **핀이 바뀌었을 때·동선이 처음 도착했을 때·고름을 풀었을 때**뿐이고, 도로가 채워져 선이 바뀔 때는 움직이지 않는다(보고 있는 지도를 흔들지 않는다). ⚠️ `focus`에 첫 장소를 넣지 않는다 — 그러면 첫 장소에 줌인해 나머지 동선이 화면 밖이다(그게 2026-09-19 전 모습). ⚠️ 구글은 뷰가 0×0일 때 fit하면 줌을 못 정한다 — `pendingFit`으로 미뤄 첫 idle에 맞춘다.
+- **도시를 건너는 날은 장면으로 나눈다**(`MapScenes`, 2026-09-19). 마드리드 → 세비야 같은 날을 통째로 담으면 사각형이 나라 절반이 돼 도시 안 동선이 점 하나로 뭉친다. 연속한 두 장소가 **25km 이상** 벌어지면 거기서 끊고(`MapScenes.split`), 기본 카메라는 **주 장면**(장소가 가장 많은 묶음, 같으면 뒤쪽 = 잠드는 곳)이다. 지도 위 칩 한 줄(`마드리드 1 · 기차 2시간 30분 · 390km · 세비야 5 · 전체`)로 장면을 바꾸고 전체도 본다 — J가 대신 정하지 않는다. 엔진에는 `frame`(맞출 사각형)만 넘긴다: 핀·선은 그대로 다 그리고 **카메라만** 거기로 간다. 장면 사이 이동은 서버 구간이 있으면 수단·시간·거리, 없으면 직선 거리에 "약"이다. 장소를 고르면 그 장소의 장면이 고른 장면이 되어 고름을 풀면 전체가 아니라 거기로 돌아간다. 장면이 하나인 날은 칩이 없고 예전과 같다.
+- 더보기는 설정 앱의 한 줄(아이콘·이름·설명·꺾쇠)이고 행 전체가 눌린다. 큰 카드로 감싸지 않는다.
+- **날짜는 숫자로 쳐도 되고 달력을 눌러도 된다**(`DateEntryField` — `ISODateText.parseLoose`가 `20261025`·`2026.10.25`를 받고 8자리가 아니면 연도를 추측하지 않는다). 여행 기간은 **시작일–종료일**로 정하고 일수는 파생이다(iOS 여행·하루 설정·새 여행, 웹 여행 설정의 `#tripEnd` — 일수 칸과 서로 맞춰진다). 시작일이 없는 여행만 일수로 정한다.
+- 가고 싶은 곳의 분류(`CandidateCategory` = `collab.js` 목록·순서)는 iOS에서도 담을 때 고르고, 보드에서 거르고(`CandidateCategoryFilter` — '분류 없음'과 '기타'는 다르다), 카드에서 바꾼다(`manageCandidate CATEGORY`). 분류를 모르는 소스 구현은 분류 없이 담는다(프로토콜 기본 구현).
+- 예약 화면(`BookingListView`)의 편집기도 비용 화면과 같은 9분류 편집기다 — 예약이 아닌 분류는 `TripPlanViewModel.saveCostItem`으로 `trip.costItems`에 가고, 그 목록은 비용 화면의 예약 결제 금액에 보인다(예약 화면은 가격 추적 예약만 나열한다).
+
 **계산이 늦게 오는 화면은 반쯤 지어 보이지 않는다.** (앱의 일정 화면 — 2026-09-07에 "화면이 튄다"로 드러났다)
 
 앱의 일자 화면은 **둘로** 그려진다: 문서(즉시)와 서버 계산(`dayPlan`, 늦게). 계산에 딸린 것이 많다 —
@@ -235,10 +271,18 @@ localStorage: `tripcanvas_v1`(여행) · `tripcanvas_legs_v4`(구간 캐시, 수
 - 초대 링크는 `#join=<token>` 하나다. 미리보기(`invite_preview`, anon 가능)는 이름·기간·역할까지만 주고, 본문은 `accept_trip_invite`로 멤버가 된 뒤 RLS 아래에서 내려온다. 공유받은 여행의 "삭제"는 `leave_trip`이다.
 - 실시간은 `trip_activity` 이벤트로 온다(아래). `pullTrip`은 여전히 폴백이다 — 탭 복귀·패널 열기에 최신본을 당기고, 로컬 편집이 있으면 기존 충돌 카드로 넘긴다(조용히 덮어쓰지 않는다).
 
+**여행 준비 메모는 일정이 아니다.** 비자·입국 준비·교통 이용법·특산품처럼 **날짜에 붙지 않는** 것들은 `trip.notes`에 산다(분류 `cat` 9가지 · `TRIP_NOTE_CATEGORIES`).
+
+- **여행 문서에 넣는다** — 일행이 같이 보고 같이 고쳐야 하므로 기기 로컬(`tripcanvas_cfg`)도, 개인 소유인 여행 기록(`trip_memories`)도 아니다.
+- 일자 카드에 끼우지 않는다: 시간을 차지하지 않는 것을 타임라인에 넣으면 동선이 거짓말을 한다.
+- 확인한 메모(`done`)는 지우지 않고 가라앉힌다 — 무엇을 이미 챙겼는지가 목록에 남아야 한다. 기본값은 저장하지 않는다.
+
 **후보 장소(가고 싶은 곳)는 아직 일정이 아니다.** 여행 문서가 아니라 `trip_candidates`·`candidate_reactions`에 산다 — 넷이 동시에 하트를 눌러도 리비전 CAS가 서로를 걷어차지 않고, **보기 권한도 의견은 낼 수 있어야** 하고, 한 사람 한 표를 DB(`unique`)가 보장해야 하기 때문이다.
 
 - 한 줄 규칙: **보기 권한은 의견만 낸다 — 여행에 내용을 만들지는 않는다.** 반응(MUST/OK/PASS)은 활성 멤버 전원, 후보 추가·일정 반영은 EDITOR 이상. 후보를 **빼는** 기준은 역할이 아니라 '누가 냈는가'다(제안자 또는 소유자).
 - 두 테이블 모두 **읽기 정책만** 있고 쓰기 정책은 없다 — 변경은 전부 RPC(security definer)를 지난다. `add_trip_candidate` · `list_trip_candidates` · `react_to_candidate`(멱등 upsert, `null`이면 거두기) · `manage_trip_candidate`.
+- 분류(`category` · `CANDIDATE_CATEGORIES`)는 **표시와 거르기를 위한 것이지 결정이 아니다** — 순위를 바꾸지도, 묶음 규칙을 건드리지도 않는다. '아직 고르지 않음'(null)과 '기타'(ETC)는 다른 상태다. 담을 때 모르는 값이 오면 담기를 실패시키지 않고 고르지 않음으로 떨어뜨리고, 분류만 바꾸는 요청에서는 거절한다(떨어뜨리면 아무 일도 안 한 것이 된다).
+- ⚠️ RPC 인자를 더할 때 **기본값이 있어도 `create or replace`는 교체가 아니라 중복 정의(overload)** 다 — 옛 시그니처를 먼저 `drop` 하지 않으면 기존 호출이 `function is not unique`로 죽는다(2026-09-17 `add_trip_candidate`).
 - ⚠️ **인기순 자동 반영은 없다**(§12·§79). `sortCandidates`의 관심 순은 **표시일 뿐 결정이 아니고**, 일정에 넣는 것은 언제나 사람이 누른다. 넣을 때도 최적 위치를 추측하지 않고 고른 날 맨 뒤에 붙인다.
 - ⚠️ `candidateMood`의 `LOVED`("다들 좋아해요")는 **전원이 의견을 냈고 아무도 PASS하지 않았을 때만**이다 — 둘이 좋다고 넷의 마음을 말하지 않는다. 보드는 결정 못 한 것을 맨 위에 둔다(순위가 아니라 *어디에 한마디가 필요한지*).
 - ⚠️ `scheduled_ref`는 장소 id가 아니라 **'2'(2일차) 같은 위치 표시**다 — `normalizeTrip`이 모르는 필드를 떨어뜨려 장소에 안정적인 id가 없다. 그래서 "후보로 되돌리기"는 후보 표시만 되돌리고 일정의 장소는 그대로 둔다.
@@ -278,6 +322,7 @@ localStorage: `tripcanvas_v1`(여행) · `tripcanvas_legs_v4`(구간 캐시, 수
 - ⚠️ 나란한 가지를 `.spotList` 안에서 **열로 쪼개지 않는다.** 드래그 인덱스가 자식 순서로 계산돼서(`onSpotDrop`의 `oldIndex`) 다른 요소를 끼우면 순서가 어긋난다. 줄은 1:1로 두고 CSS(`.spot.inSplit`)와 메타 칩으로 묶어 보인다.
 - 장소 모달은 분리 묶음을 **만들지도 지우지도 않는다** — 예약 연결과 같은 이유로 편집 시 그대로 물려준다.
 - 분리를 만드는 곳은 갈린 후보의 "자유시간으로 분리" 하나다(`buildSplitPlan`). 가고 싶은 사람은 그 후보로, 나머지는 **자유시간**으로 간다 — 무엇을 할지는 앱이 고르지 않는다(§23). 반응에 `user_id`가 실려 있어야 동명이인이 섞이지 않는다(마이그레이션 `202609020006`).
+- **네트워크는 적게 — 세 원칙**(2026-09-18, `docs/network-audit.md`). ① **방금 받은 것은 다시 받지 않는다**: 시트 넷(비용·예약·함께하기·가고 싶은 곳)의 모델도 `TripScreenModels`가 들고 열 때는 `loadIfStale(60)`, 앱 복귀도 `loadIfStale`, 같은 문서의 채운 하루치(`legsPending==0`, 이 세션에서 서버가 준 것)는 날을 오가도 다시 묻지 않는다(`fetchedDays`). ② **내 것은 이미 내 화면이다**: `liveEffects`의 `candidates`는 `(후보·반응·코멘트 && !mine) || 문서 변경` — 내 반응·담기·한마디의 에코로 목록을 다시 읽지 않는다(문서 변경은 내 것이어도 읽는다 — 후보 날짜 표시는 서버가 바꾼다). 규칙은 `collab.js`가 소스, iOS는 복사본+픽스처. ③ **바뀐 것만 다시 읽는다**: 함께하기는 `perform(refresh:)`(역할·이름은 멤버+활동, 초대 취소는 초대만), 보드는 인원을 처음 한 번·`MEMBER_*` 때만, 제안은 목록이 바뀌었을 때만, 비용 저장 뒤에는 `/costs`만(PUT 응답이 최신 문서다), 예약 편집기는 문서만(`TripPlanViewModel(loadsPlans:false)`), 웹 한마디 재조회는 `COMMENT_ADDED`가 온 후보만(`liveCommentTargets`). 웹 `pullTrip`은 여행 한 건(`TC_API.sync.get`)이고 `sync.list`는 로그인 병합과 404 뒤 tombstone 확인뿐이다. ⚠️ payload로 집계를 패치하지 않는다 — 무엇을 다시 읽을지만 고른다.
 - ⚠️ `ensureMembers`(app)는 목록을 받아도 **다시 그리지 않는다.** `render()`는 순수한 다시 그리기가 아니라 클라우드 동기화까지 건드린다 — 이름표 하나 때문에 저장이 돌면 안 된다. 필요한 곳이 직접 `await` 한다.
 
 **유입 데이터는 반드시 정규화한다.** 가져오기·공유 링크(`#v=`/`#t=`)·클라우드·로컬 로드 **5개 지점 모두** `normalizeTrip()`(lib)을 통과시킨다. 좌표·시각·통화·수단·`startPolicy`를 검증하고 알 수 없는 값은 기본값으로 폴백해 렌더 크래시를 막는다(`schemaVersion` 스탬프).

@@ -75,6 +75,9 @@ export class LegacySupabaseCollabService implements CollabApi {
     return this.rpcList('list_trip_candidates', { p_client_id: clientId });
   }
   addCandidate(_ctx: RequestContext, clientId: string, input: CandidateInput): Promise<number> {
+    if (input.provider != null || input.providerId != null || input.clientKey != null) {
+      return Promise.reject(new ApiError('UPSTREAM_ERROR', { message: '이 서버는 지도 장소 담기를 아직 지원하지 않습니다.' }));
+    }
     return this.rpc<number | string>('add_trip_candidate', {
       p_client_id: clientId, p_title: input.title, p_place_id: input.place_id ?? null, p_lat: input.lat ?? null, p_lng: input.lng ?? null,
       p_addr: input.addr ?? null, p_note: input.note ?? null, p_url: input.url ?? null

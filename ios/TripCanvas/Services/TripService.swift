@@ -11,6 +11,8 @@ protocol TripDataSource {
     func trips() async throws -> TripService.Fetched<[TripSummary]>
     func today(tripId: String, dayIndex: Int?) async throws -> TripService.Fetched<TodayResponse>
     func dayPlan(tripId: String, dayIndex: Int) async throws -> TripService.Fetched<DayPlanResponse>
+    /// 디스크에 남아 있는 지난번 오늘 화면. **네트워크를 쓰지 않는다** — 화면을 먼저 채우는 용도다.
+    func cachedToday(tripId: String) async -> TodayResponse?
     func bookings(tripId: String) async throws -> TripService.Fetched<[BookingSummary]>
     func setActivity(tripId: String, activityId: String, action: TripService.ActivityAction, expectedRevision: Int, expectedName: String?) async throws -> MutationResponse
     func decideSuggestion(tripId: String, suggestionId: String, decision: TripService.SuggestionDecision, expectedRevision: Int) async throws -> MutationResponse
@@ -24,6 +26,11 @@ protocol TripDataSource {
     func deleteTrip(tripId: String, expectedRevision: Int) async throws
     /// 공유받은 여행에서 나간다. 여행 자체는 남는다.
     func leaveTrip(tripId: String) async throws
+}
+
+extension TripDataSource {
+    /// 캐시를 모르는 구현(테스트 가짜)은 "지난번 것이 없다"고 답한다.
+    func cachedToday(tripId: String) async -> TodayResponse? { nil }
 }
 
 @MainActor
@@ -79,6 +86,11 @@ final class TripService: TripDataSource {
             guard let cached = await cache.load(TodayResponse.self, key: key) else { throw error }
             return Fetched(value: cached.value, cachedAt: cached.savedAt)
         }
+    }
+
+    /// 지난번 오늘 화면 — 네트워크 없이 즉시. 쓸지 말지는 부르는 쪽이 정한다(리비전이 같을 때만 쓴다).
+    func cachedToday(tripId: String) async -> TodayResponse? {
+        await cache.load(TodayResponse.self, key: TripCache.todayKey(tripId: tripId, dayIndex: nil))?.value
     }
 
     /// 일정 화면이 쓰는 하루치. 계산은 전부 서버가 한다 — 앱은 그린다.
@@ -246,6 +258,18 @@ protocol TripDocumentSource {
     func cachedDayPlan(tripId: String, dayIndex: Int) async -> DayPlanResponse?
     /// 여행 **전체**의 동선. 전체 지도를 볼 때만 부른다 — 열지도 않을 날까지 미리 받지 않는다.
     func tripRoutes(tripId: String) async throws -> TripRoutesResponse
+    func planPreview(tripId: String, document: TripDocument, dayIndex: Int, revision: Int) async throws -> PlanChangePreview
+}
+
+struct PlanChangePreview: Codable, Hashable, Sendable {
+    let before: DayPlanResponse
+    let after: DayPlanResponse
+}
+
+extension TripDocumentSource {
+    func planPreview(tripId: String, document: TripDocument, dayIndex: Int, revision: Int) async throws -> PlanChangePreview {
+        throw APIError.notFound("변경 미리보기를 아직 사용할 수 없어요.")
+    }
 }
 
 /// 새 여행에 필요한 최소한 — **어디로·언제·며칠**. 그 이상은 만든 뒤에 고치면 되는 것들이다.
@@ -298,8 +322,17 @@ extension TripService: TripDocumentSource {
     }
 
     /// 여행 전체 동선. 그리는 데 필요한 것만 온다(시각·비용은 일자 화면의 몫).
+    func tripCosts(tripId: String) async throws -> TripCostsResponse {
+        try await api.get("/api/v1/trips/\(tripId)/costs")
+    }
+
     func tripRoutes(tripId: String) async throws -> TripRoutesResponse {
         try await api.get("/api/v1/trips/\(tripId)/routes")
+    }
+
+    func planPreview(tripId: String, document: TripDocument, dayIndex: Int, revision: Int) async throws -> PlanChangePreview {
+        let body: [String: JSONValue] = ["document": .object(document.raw), "dayIndex": .number(dayIndex), "revision": .number(revision)]
+        return try await api.post("/api/v1/trips/\(tripId)/plan-preview", jsonBody: try JSONValue.data(from: body))
     }
 
     /// revision CAS 저장. 다른 기기가 먼저 바꿨으면 `APIError.revisionConflict`가 나온다 —

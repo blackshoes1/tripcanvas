@@ -58,9 +58,24 @@ struct TripBooking: Hashable, Sendable, Identifiable {
         set { raw.setOrRemove("url", newValue.flatMap { $0.isEmpty ? nil : .string($0) }) }
     }
 
+    /// 가져온 예약번호의 예전 키도 읽고, 편집할 때는 하나의 키로 저장한다.
+    var confirmation: String? {
+        get {
+            ["confirmation", "confirmationNumber", "code"]
+                .compactMap { raw[$0]?.stringValue }
+                .first { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        }
+        set {
+            let value = newValue?.trimmingCharacters(in: .whitespacesAndNewlines)
+            raw.setOrRemove("confirmation", value.flatMap { $0.isEmpty ? nil : .string($0) })
+            raw.removeValue(forKey: "confirmationNumber")
+            raw.removeValue(forKey: "code")
+        }
+    }
+
     /// 총액. 예약은 여러 날에 걸친 총액이다 — 하루치는 `bookingShareOn`이 나눈다.
-    var price: Int {
-        get { raw["price"]?.intValue ?? 0 }
+    var price: Double {
+        get { raw["price"]?.doubleValue ?? 0 }
         set { raw["price"] = .number(max(0, newValue)) }
     }
 
@@ -71,6 +86,27 @@ struct TripBooking: Hashable, Sendable, Identifiable {
     }
 
     var currencyCode: String { (currency ?? .krw).rawValue }
+
+    /// 결제했는가. 예약은 본디 잡아 둔 돈이라 **결제함(PAID)만 저장한다** — 없으면 예약이다(`costPayStateOf`).
+    /// 항공은 대개 결제한 돈이고 현장 결제 호텔은 예약한 돈이다 — 예약마다 다르니 예약마다 둔다.
+    var payState: CostPayState {
+        get { raw["payState"]?.stringValue == CostPayState.paid.rawValue ? .paid : .reserved }
+        set { raw.setOrRemove("payState", newValue == .paid ? .string(CostPayState.paid.rawValue) : nil) }
+    }
+
+    /// 결제(예정)일 `YYYY-MM-DD`. **있으면 날짜가 상태를 정한다**(`costPayStateOf`, 2026-09-18) — 오늘이거나 지났으면
+    /// 결제함, 아직이면 예약이다. 그때 `payState`는 보지 않으므로 편집기는 결제일을 두면 `payState`를 지운다.
+    /// 날짜 모양이 아니면 저장하지 않는다(`normalizeBooking`이 버리는 것과 같다).
+    var paidOn: String? {
+        get { raw["paidOn"]?.stringValue }
+        set { raw.setOrRemove("paidOn", newValue.flatMap { ISODateText.isValid($0) ? .string($0) : nil }) }
+    }
+
+    /// 영수증 사진의 **참조**만(비용 항목 `CostEntry.photos`와 같은 규칙). 원본 이미지는 문서에 넣지 않는다.
+    var photos: [String] {
+        get { (raw["photos"]?.arrayValue ?? []).compactMap { $0.stringValue } }
+        set { raw.setOrRemove("photos", newValue.isEmpty ? nil : .array(newValue.map { .string($0) })) }
+    }
 
     /// 시작일 `YYYY-MM-DD` — 체크인·픽업·출발.
     var start: String? {
@@ -103,8 +139,8 @@ struct TripBooking: Hashable, Sendable, Identifiable {
         set { raw.setOrRemove("freeCancelUntil", newValue.flatMap { ISODateText.isValid($0) ? .string($0) : nil }) }
     }
 
-    var cancelFee: Int? {
-        get { raw["cancelFee"]?.intValue }
+    var cancelFee: Double? {
+        get { raw["cancelFee"]?.doubleValue }
         set { raw.setOrRemove("cancelFee", newValue.flatMap { $0 > 0 ? .number($0) : nil }) }
     }
 
@@ -241,13 +277,15 @@ struct TripBooking: Hashable, Sendable, Identifiable {
 }
 
 enum BookingDraftError: Equatable, Sendable {
-    case titleRequired, priceRequired, trackNeedsDates, returnBeforePickup, sameDayNeedsTimes, checkoutNotAfterCheckin
+    case titleRequired, itemTitleRequired, priceRequired, invalidAmount, trackNeedsDates, returnBeforePickup, sameDayNeedsTimes, checkoutNotAfterCheckin
 
     /// 웹 toast와 같은 문장.
     var message: String {
         switch self {
         case .titleRequired: "예약 이름을 입력하세요"
+        case .itemTitleRequired: "항목 이름을 입력하세요"
         case .priceRequired: "예약 가격을 입력하세요"
+        case .invalidAmount: "금액을 확인해 주세요. 원·엔은 정수로, 다른 통화는 소수 둘째 자리까지 입력할 수 있어요."
         case .trackNeedsDates: "가격 추적에는 체크인·체크아웃 날짜가 필요해요"
         case .returnBeforePickup: "반납일이 픽업일보다 앞설 수 없어요"
         case .sameDayNeedsTimes: "당일 대여는 픽업 시각과 그보다 늦은 반납 시각이 필요해요"
@@ -478,6 +516,19 @@ enum ISODateText {
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter
     }()
+
+    /// 손으로 친 날짜를 `YYYY-MM-DD`로. `20261025`·`2026-10-25`·`2026.10.25`·`2026/10/25`를 받고, 없는 날(2월 30일)은 nil.
+    /// 8자리가 아니면 nil — 연도를 추측하지 않는다(`1025`가 올해인지 내년인지 앱이 정하지 않는다).
+    static func parseLoose(_ text: String) -> String? {
+        let digits = text.filter(\.isNumber)
+        guard digits.count == 8 else { return nil }
+        let iso = "\(digits.prefix(4))-\(digits.dropFirst(4).prefix(2))-\(digits.suffix(2))"
+        // `isValid`는 모양만 본다(자릿수·구분자). 없는 날은 달력을 지나 되돌아온 문자열이 다른 것으로 잡는다 —
+        // 2월 30일은 formatter가 거절하거나(비관용) 3월 2일로 밀리거나(관용) 둘 중 하나라 왕복이 어긋난다.
+        // ⚠️ 인자 이름이 `text`라 `text(from:)`는 문자열을 부르는 꼴이 된다 — 타입으로 부른다.
+        guard isValid(iso), let date = formatter.date(from: iso), ISODateText.text(from: date) == iso else { return nil }
+        return iso
+    }
 
     static func isValid(_ text: String) -> Bool {
         let scalars = Array(text.unicodeScalars)

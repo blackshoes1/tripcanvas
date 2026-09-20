@@ -1,5 +1,6 @@
 import SwiftUI
 import Observation
+import UIKit
 
 /// 예약은 읽기 중심으로 시작한다(§45). 여행 당일 필요한 것만 빠르게: 시간·장소·상태·번호·링크.
 /// 자동 재예약은 하지 않는다(§44) — 더 싼 조건이 보이면 알려주고 판단은 사용자에게 맡긴다.
@@ -11,12 +12,22 @@ final class BookingListViewModel {
     private(set) var errorMessage: String?
     private(set) var cachedAt: Date?
 
+    /// 서버에서 마지막으로 받은 시각 — 시트를 다시 열 때 또 받을지의 기준.
+    private(set) var loadedAt: Date?
+
     private let service: TripDataSource
     private let tripId: String
 
     init(tripId: String, service: TripDataSource) {
         self.tripId = tripId
         self.service = service
+    }
+
+    /// 시트를 열 때 부른다 — 방금 받은 목록이 있으면 그대로다(Today·Plan과 같은 60초 규칙, 2026-09-18).
+    /// 저장·삭제·당겨서 새로고침은 여전히 `load()`다.
+    func loadIfStale(maxAge: TimeInterval = 60, now: Date = Date()) async {
+        if errorMessage == nil, cachedAt == nil, let loadedAt, now.timeIntervalSince(loadedAt) < maxAge { return }
+        await load()
     }
 
     func load() async {
@@ -26,6 +37,7 @@ final class BookingListViewModel {
             let fetched = try await service.bookings(tripId: tripId)
             bookings = fetched.value
             cachedAt = fetched.cachedAt
+            if fetched.cachedAt == nil { loadedAt = Date() }
             errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription
@@ -39,8 +51,11 @@ final class BookingListViewModel {
 /// 올리고, 실패하면 되돌리고, 충돌이면 묻는다. 저장한 뒤에는 요약을 다시 읽어 가격 상태를 그대로 보여준다.
 struct BookingListView: View {
     let trip: TripSummary
+    /// 여행 화면(`TripScreenModels`)이 들고 있는 모델. 있으면 시트를 닫았다 열어도 목록이 남는다(2026-09-18).
+    var shared: BookingListViewModel? = nil
     @Environment(AppEnvironment.self) private var env
-    @State private var model: BookingListViewModel?
+    @State private var owned: BookingListViewModel?
+    private var model: BookingListViewModel? { shared ?? owned }
     /// 편집할 때만 문서를 연다 — 보기만 하는 사람은 요약 하나로 끝난다.
     @State private var plan: TripPlanViewModel?
     @State private var editor: BookingEditorTarget?
@@ -54,9 +69,14 @@ struct BookingListView: View {
                         Label("오프라인 · 마지막 동기화 \(TimeFormat.shortTime(cachedAt))", systemImage: "wifi.slash")
                             .font(.caption).foregroundStyle(.secondary)
                     }
-                    if let error = model.errorMessage, model.bookings.isEmpty {
+                    if let error = model.errorMessage {
                         InlineErrorBanner(message: "예약을 불러오지 못했어요", detail: error) {
                             Task { await model.load() }
+                        }
+                    }
+                    if let plan, plan.conflict != nil {
+                        InlineErrorBanner(message: "다른 기기에서 예약이 바뀌었어요", detail: "방금 변경은 저장되지 않았어요. 최신 예약을 확인해 주세요.") {
+                            Task { await plan.reloadFromServer(); await model.load() }
                         }
                     }
                     if let plan, let error = plan.errorMessage {
@@ -64,23 +84,43 @@ struct BookingListView: View {
                             Task { await plan.load() }
                         }
                     }
-                    if model.bookings.isEmpty && !model.isLoading {
+                    if model.bookings.isEmpty && !model.isLoading && model.errorMessage == nil {
                         EmptyStateView(
                             symbol: "ticket",
                             title: "등록된 예약이 없어요",
                             message: trip.canEdit
-                                ? "오른쪽 위 ＋로 숙박·렌터카·항공 예약을 추가합니다. 가격 추적을 켜 두면 절약 기회를 알려줘요."
+                                ? "오른쪽 위 ＋로 항공·숙박·렌트 예약을 추가합니다. 가격 추적을 켜 두면 절약 기회를 알려줘요. 보험·유심 같은 예약 외 결제는 비용 화면의 예약 결제 금액에 모여요."
                                 : "주최자나 편집자가 예약을 추가하면 여기에 나타납니다.")
                     }
                     ForEach(model.bookings) { booking in
-                        BookingCard(booking: booking, editable: trip.canEdit)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                guard trip.canEdit else { return }
-                                Task { await openEditor(bookingId: booking.id) }
+                        NavigationLink {
+                            if let current = model.bookings.first(where: { $0.id == booking.id }) {
+                                BookingDetailView(booking: current, canEdit: trip.canEdit, isPreparing: isPreparing) {
+                                    Task { await openEditor(bookingId: booking.id) }
+                                }
+                            } else {
+                                EmptyStateView(symbol: "ticket", title: "이 예약은 목록에서 빠졌어요", message: "최신 예약은 예약 목록에서 확인해 주세요.")
                             }
-                            .accessibilityAddTraits(trip.canEdit ? [.isButton] : [])
-                            .accessibilityHint(trip.canEdit ? "예약을 고칩니다" : "")
+                        } label: {
+                            VStack(alignment: .leading, spacing: Space.s) {
+                                HStack {
+                                    Text(booking.title).font(.headline)
+                                    Spacer()
+                                    Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary)
+                                }
+                                if let start = booking.start {
+                                    Label([start, booking.startTime].compactMap { $0 }.joined(separator: " · "), systemImage: "calendar")
+                                        .font(.subheadline).foregroundStyle(.secondary)
+                                }
+                                if let place = booking.place, !place.isEmpty {
+                                    Text(place).font(.subheadline).foregroundStyle(.secondary)
+                                }
+                                Text(booking.confirmation == nil ? "예약 정보 보기" : "예약번호와 상세 보기")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                            .card()
+                        }
+                        .buttonStyle(.plain)
                     }
                     if model.isLoading && model.bookings.isEmpty {
                         ProgressView().frame(maxWidth: .infinity, minHeight: 160)
@@ -101,30 +141,37 @@ struct BookingListView: View {
                         if isPreparing { ProgressView() } else { Image(systemName: "plus") }
                     }
                     .disabled(isPreparing)
-                    .accessibilityLabel("예약 추가")
+                    .accessibilityLabel("결제 항목 추가")
                 }
             }
         }
         .refreshable { await model?.load() }
         .task {
-            if model == nil { model = BookingListViewModel(tripId: trip.id, service: env.service) }
-            await model?.load()
+            if shared == nil, owned == nil { owned = BookingListViewModel(tripId: trip.id, service: env.service) }
+            await model?.loadIfStale()
         }
         .sheet(item: $editor) { target in
             if let plan, let document = plan.document {
+                // 비용 화면과 같은 편집기·같은 9분류(2026-09-18). 예약이 아닌 분류(보험·유심…)는 여행 단위 비용으로 저장되고
+                // 비용 화면의 '예약 결제 금액'에 보인다 — 이 목록은 예약(가격 추적)만 보여 준다.
                 BookingEditorView(
                     target: target,
                     document: document,
                     onSave: { booking, links in
-                        Task {
-                            if await plan.saveBooking(booking, links: links) { await model?.load() }
-                        }
+                        let saved = await plan.saveBooking(booking, links: links)
+                        if saved { await model?.load() }
+                        return saved ? nil : plan.saveFailureMessage
                     },
                     onDelete: { id in
-                        Task {
-                            await plan.removeBooking(id: id)
-                            await model?.load()
-                        }
+                        let saved = await plan.removeBooking(id: id)
+                        if saved { await model?.load() }
+                        return saved ? nil : plan.saveFailureMessage
+                    },
+                    onSaveItem: { entry in
+                        await plan.saveCostItem(entry) ? nil : plan.saveFailureMessage
+                    },
+                    onDeleteItem: { id in
+                        await plan.removeCostItem(id: id) ? nil : plan.saveFailureMessage
                     })
             }
         }
@@ -155,7 +202,8 @@ struct BookingListView: View {
     private func openEditor(bookingId: String?) async {
         isPreparing = true
         defer { isPreparing = false }
-        let plan = self.plan ?? TripPlanViewModel(tripId: trip.id, service: env.service)
+        // 편집기에는 문서만 있으면 된다 — 하루치 계산(`days/:i`·앞뒤 미리 받기)은 받지 않는다(2026-09-18).
+        let plan = self.plan ?? TripPlanViewModel(tripId: trip.id, service: env.service, loadsPlans: false)
         self.plan = plan
         await plan.load()
         guard let document = plan.document else { return }   // 오류는 배너가 말한다
@@ -173,9 +221,35 @@ struct BookingListView: View {
     }
 }
 
+/// 현장에서 먼저 확인하고, 고치기는 명시적으로 선택한다.
+struct BookingDetailView: View {
+    let booking: BookingSummary
+    let canEdit: Bool
+    let isPreparing: Bool
+    let onEdit: () -> Void
+
+    var body: some View {
+        ScrollView {
+            BookingCard(booking: booking).padding(Space.l)
+        }
+        .background(Color(.systemGroupedBackground))
+        .navigationTitle("예약 정보")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if canEdit {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(isPreparing ? "불러오는 중…" : "편집", action: onEdit)
+                        .disabled(isPreparing)
+                }
+            }
+        }
+    }
+}
+
 struct BookingCard: View {
     let booking: BookingSummary
     var editable = false
+    @State private var copiedConfirmation = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.s) {
@@ -197,6 +271,20 @@ struct BookingCard: View {
             if let place = booking.place, !place.isEmpty {
                 Label(place, systemImage: "mappin.and.ellipse").font(.subheadline).foregroundStyle(.secondary)
             }
+            if let confirmation = booking.confirmation, !confirmation.isEmpty {
+                VStack(alignment: .leading, spacing: Space.xs) {
+                    Text("예약번호").font(.caption).foregroundStyle(.secondary)
+                    Text(confirmation).font(.title3.monospaced()).textSelection(.enabled)
+                    Button {
+                        UIPasteboard.general.string = confirmation
+                        copiedConfirmation = true
+                    } label: {
+                        Label(copiedConfirmation ? "예약번호를 복사했어요" : "예약번호 복사", systemImage: copiedConfirmation ? "checkmark" : "doc.on.doc")
+                            .frame(minHeight: 44)
+                    }
+                }
+            }
+
             HStack(spacing: Space.m) {
                 Text(TimeFormat.money(booking.price, currency: booking.currency)).font(.subheadline.weight(.semibold))
                 if let refundable = booking.refundable {
@@ -204,12 +292,6 @@ struct BookingCard: View {
                 }
             }
 
-            if let confirmation = booking.confirmation {
-                // 길게 눌러 복사 — 현장에서 번호를 불러야 할 때 가장 빠른 동작이다.
-                Text("예약번호 \(confirmation)")
-                    .font(.caption.monospaced())
-                    .textSelection(.enabled)
-            }
 
             if let status = booking.priceStatus {
                 VStack(alignment: .leading, spacing: 2) {
@@ -243,9 +325,9 @@ struct BookingCard: View {
 
     private var period: String? {
         switch (booking.start, booking.end) {
-        case let (start?, end?): "\(start) → \(end)"
-        case let (start?, nil): start
-        case let (nil, end?): end
+        case let (start?, end?): "\([start, booking.startTime].compactMap { $0 }.joined(separator: " ")) → \([end, booking.endTime].compactMap { $0 }.joined(separator: " "))"
+        case let (start?, nil): [start, booking.startTime].compactMap { $0 }.joined(separator: " ")
+        case let (nil, end?): [end, booking.endTime].compactMap { $0 }.joined(separator: " ")
         default: nil
         }
     }

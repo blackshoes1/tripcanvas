@@ -200,11 +200,16 @@ export const tripCandidates = pgTable('trip_candidates', {
   tripId: uuid('trip_id').notNull().references(() => trips.id, { onDelete: 'cascade' }),
   title: text('title').notNull(),
   placeId: text('place_id'),
+  provider: text('provider'),
+  providerId: text('provider_id'),
+  clientKey: uuid('client_key'),
   lat: doublePrecision('lat'),
   lng: doublePrecision('lng'),
   addr: text('addr'),
   note: text('note'),
   url: text('url'),
+  // 표시·거르기를 위한 분류. null(아직 고르지 않음)과 'ETC'(기타)는 다른 상태다.
+  category: text('category'),
   proposedBy: uuid('proposed_by').notNull().references(() => users.id, { onDelete: 'cascade' }),
   status: text('status').notNull().default('PROPOSED'),
   // '2'(2일차) 같은 위치 표시 — 장소에는 안정적인 id가 없다
@@ -213,8 +218,16 @@ export const tripCandidates = pgTable('trip_candidates', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 }, (t) => [
   index('trip_candidates_trip_idx').on(t.tripId, t.createdAt),
+  uniqueIndex('trip_candidates_provider_uidx').on(t.tripId, t.provider, t.providerId),
+  uniqueIndex('trip_candidates_client_key_uidx').on(t.tripId, t.clientKey),
+  check('trip_candidates_provider_check', sql`(${t.provider} is null and ${t.providerId} is null) or
+    (${t.provider} is not null and ${t.provider} in ('kakao','google') and
+      (${t.providerId} is null or (${t.provider} = 'kakao' and ${t.providerId} ~ '^[0-9]{1,20}$') or
+        (${t.provider} = 'google' and ${t.providerId} ~ '^[A-Za-z0-9_-]{5,200}$')))`),
+  check('trip_candidates_kakao_id_check', sql`${t.provider} is distinct from 'kakao' or ${t.placeId} is null`),
   check('trip_candidates_title_check', sql`btrim(${t.title}) <> ''`),
-  check('trip_candidates_status_check', sql`${t.status} in ('PROPOSED','ACCEPTED','REJECTED','SCHEDULED')`)
+  check('trip_candidates_status_check', sql`${t.status} in ('PROPOSED','ACCEPTED','REJECTED','SCHEDULED')`),
+  check('trip_candidates_category_check', sql`${t.category} is null or ${t.category} in ('RESTAURANT','CAFE','DESSERT','SIGHT','LANDMARK','NATURE','SHOPPING','ACTIVITY','STAY','ETC')`)
 ]);
 
 export const candidateReactions = pgTable('candidate_reactions', {
@@ -340,5 +353,34 @@ export const legCache = pgTable('leg_cache', {
   /** 조회했는데 못 찾음(도로 스냅까지). 재시도 간격을 두려고 남긴다 */
   fail: boolean('fail').notNull().default(false),
   provider: text('provider').notNull(),
+  fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow()
+});
+
+/**
+ * 백업 성공 기록(운영 관측용). `deploy/backup.sh`가 덤프를 완성한 뒤 한 행 남기고, `/api/health`가 마지막 성공 시각으로
+ * 백업 최신성을 판정한다 — 컨테이너가 Up이라는 사실은 백업이 있다는 뜻이 아니었다(2026-09-05, docs/backup-restore.md).
+ * 경로·주소·비밀은 넣지 않는다: 어디로 갔는지는 `destination` 한 단어(nas·offsite)뿐이다.
+ */
+export const opsBackupRuns = pgTable('ops_backup_runs', {
+  id: bigint('id', { mode: 'number' }).primaryKey().generatedByDefaultAsIdentity(),
+  startedAt: timestamp('started_at', { withTimezone: true }).notNull(),
+  finishedAt: timestamp('finished_at', { withTimezone: true }).notNull().defaultNow(),
+  ok: boolean('ok').notNull(),
+  bytes: bigint('bytes', { mode: 'number' }),
+  destination: text('destination').notNull(),
+  note: text('note')
+}, (t) => [
+  index('ops_backup_runs_finished_idx').on(t.finishedAt)
+]);
+
+/**
+ * 서버 환율 — 하루에 한 행. 앱의 원화 환산은 서버가 계산하는데, 2026-09-18까지 서버는 환율을 받지 않고
+ * 코드에 박힌 근사값(USD 1380원…)만 썼다. 이제 하루 한 번 받아 여기 두고, 오늘 못 받으면 최근 행을 쓴다.
+ * 값은 '통화 1단위 = ? 원'(웹 `tripcanvas_fx`와 같은 모양). 출처·주소는 넣지 않는다 — 어디서 받는지는 코드가 안다.
+ */
+export const fxRates = pgTable('fx_rates', {
+  /** 받은 날 YYYY-MM-DD (UTC) */
+  day: text('day').primaryKey(),
+  rates: jsonb('rates').$type<Record<string, number>>().notNull(),
   fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow()
 });

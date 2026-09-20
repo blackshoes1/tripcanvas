@@ -67,14 +67,17 @@ test('데스크톱에서는 내역이 총액 칩 바로 아래에 붙는다',asy
   expect(Math.abs(gap.rightAligned),'칩 오른쪽 끝에 정렬').toBeLessThanOrEqual(1);
 });
 
-test('일자 카드 하루 비용에 예약 하루치가 들어간다',async({page})=>{
+test('일자 카드 하루 비용에 숙박·렌터카 하루치는 들어가고 항공은 들어가지 않는다',async({page})=>{
   await page.setViewportSize({width:1280,height:800});
   await page.goto('/');
   await page.evaluate(SEED);
   const costs=page.locator('.dayCard .dist', {hasText:'하루 비용'});
-  await expect(costs.nth(1)).toContainText('₩632,000');          // 장소 12,000 + 예약 620,000
-  await expect(costs.nth(1)).toContainText('예약 ₩620,000');
+  await expect(costs.nth(1)).toContainText('₩452,000');          // 장소 12,000 + 예약 440,000 (숙박 300,000 + 렌터카 140,000)
+  await expect(costs.nth(1)).toContainText('예약 ₩440,000');
+  await expect(costs.nth(1)).not.toContainText('180,000');       // 항공은 한 번 낸 돈 — 어느 날의 하루치도 아니다
   await expect(costs.nth(3)).toContainText('₩140,000');          // 체크아웃 날 — 렌터카만
+  // 항공은 전체 비용에만 전액으로 남는다 — 하루 합계에서 뺀 만큼 전체에서 새지 않는다
+  await expect(page.locator('.costMenu > summary')).toContainText('₩1,239,000');
 });
 
 test('보기 설정 패널도 모바일 필터바에 잘리지 않는다',async({page})=>{

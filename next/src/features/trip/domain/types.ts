@@ -3,6 +3,7 @@
 // 필드 의미의 단일 출처는 lib.js normalizeTrip/normalizeDay/normalizeSpot.
 
 import type { Booking } from '@/features/booking/domain/types';
+import type { SpotAdmission } from './admission';
 
 /** 이동수단 — 일자 기본(day.mode) + 구간별 재정의(spot.legMode) */
 export type TransportMode = 'car' | 'taxi' | 'transit' | 'train' | 'walk' | 'bike' | 'flight';
@@ -34,6 +35,10 @@ export interface Spot {
   at?: string;
   /** 예약·입장 시각 HH:MM — 상대가 정한 약속 (일찍 오면 대기, 늦으면 ⚠️) */
   bookAt?: string;
+  /** 사용자가 확인한 명소 예약 정보. 시각·숙박 연결과 독립적으로 보존한다. */
+  admission?: SpotAdmission;
+  /** 날짜 미정 후보와의 연결. 장소 편집·날짜 이동에도 보존한다. */
+  candidateId?: number;
   /** 숙소 연박 수 (1–60) */
   nights?: number;
   /** 체류 시간(분) */
@@ -41,6 +46,9 @@ export interface Spot {
   /** 그날 쓰는 비용 (하루치 — 예약 총액과 구분) */
   cost?: number;
   cur?: CurrencyCode;
+  costBasis?: 'ENTERED' | 'TOTAL' | 'PER_PERSON';
+  costPeople?: number;
+  costPartial?: boolean;
   /** 구간별 이동수단 재정의 — 없으면 일자 기본 */
   legMode?: TransportMode;
   bookUrl?: string;
@@ -81,12 +89,22 @@ export interface Day {
   note: string;
   mode: TransportMode;
   spots: Spot[];
+  budget?: DayExpense;
+  costItems?: (DayExpense & { id: string; title: string; kind: 'FOOD' | 'TICKET' | 'TRANSPORT' | 'STAY' | 'OTHER' | 'FLIGHT' | 'RENT' | 'TRANSIT' | 'SHOPPING' })[];
   /** 출발 시각 HH:MM (기본 09:00) */
   startAt?: string;
   /** 'none'이면 전날 이월 없음 (공항 이동일·야간열차) */
   startPolicy?: 'none';
   timeZone?: string;
   flight?: DayFlight;
+}
+
+export interface DayExpense {
+  amount?: number;
+  cur?: CurrencyCode;
+  costBasis?: 'ENTERED' | 'TOTAL' | 'PER_PERSON';
+  costPeople?: number;
+  costPartial?: boolean;
 }
 
 export interface Trip {
@@ -99,5 +117,7 @@ export interface Trip {
   colorBy?: 'city' | 'day';
   /** 예약(가격 추적) — 비면 필드 자체가 생략된다 */
   bookings?: Booking[];
+  /** 준비한 비용 — 예약이 아닌 사전 지출(보험·유심·미리 산 입장권). 하루 항목과 같은 모양이다. */
+  costItems?: Day['costItems'];
   schemaVersion?: number;
 }

@@ -51,6 +51,11 @@ describe('formFromSpot / spotFromForm — 값 왕복', () => {
 
   it('비용은 쉼표를 허용하고, 비우면 키를 지운다', () => {
     expect(edit(spot('A'), { cost: '12,000' }).cost).toBe(12000);
+    expect(edit(spot('A', { costBasis: 'PER_PERSON', costPeople: 2, costPartial: true }), { cost: '12.55', cur: 'EUR' }))
+      .toMatchObject({ cost: 12.55, costBasis: 'PER_PERSON', costPeople: 2, costPartial: true });
+    expect(edit(spot('A'), { cost: '0' }).cost).toBe(0);
+    expect(edit(spot('담은 장소', { candidateId: 123 }), { desc: '메모만 변경' }))
+      .toMatchObject({ candidateId: 123, desc: '메모만 변경' });
     expect('cost' in edit(spot('A', { cost: 5000 }), { cost: '' })).toBe(false);
     expect(edit(spot('A'), { cost: '9000', cur: 'USD' }).cur).toBe('USD');
   });

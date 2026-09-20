@@ -4,7 +4,7 @@ import Observation
 /// TripCanvas Auth 세션. **웹(`auth.js`)과 같은 서버·같은 계약**이라 웹에서 만든 계정이 그대로 들어온다.
 ///
 /// bearer 토큰 하나가 전부다 — 교차 출처라 쿠키를 쓰지 않고, refresh 그랜트도 없다(better-auth 세션).
-/// 만료는 서버가 안다: `/api/auth/get-session`이 답하지 않으면 그 세션은 끝난 것이다.
+/// 만료는 서버가 안다: 명시적으로 세션이 없다고 답할 때만 지운다. 연결 실패는 만료가 아니다.
 struct AuthSession: Codable, Sendable, Equatable {
     let token: String
     let userId: String
@@ -37,6 +37,10 @@ struct AuthError: Error, LocalizedError, Equatable {
         let raw = [body?["message"], body?["error"], body?["code"]]
             .compactMap { $0 as? String }
             .joined(separator: " ")
+        if let code = body?["code"] as? String,
+           ["MISSING_OR_NULL_ORIGIN", "INVALID_ORIGIN"].contains(code) {
+            return AuthError(code: .unknown, message: "로그인 요청을 처리하지 못했어요. 앱을 업데이트한 뒤 다시 시도해 주세요.")
+        }
         if status == 429 {
             return AuthError(code: .rateLimited, message: "너무 여러 번 시도했어요 — 잠시 뒤에 다시 해주세요.")
         }
@@ -83,7 +87,7 @@ struct TripCanvasAuthClient: AuthClient {
     }
 
     func signIn(email: String, password: String) async throws -> AuthSession {
-        let (status, body, headers) = try await call(
+        let (status, body, headers, _) = try await call(
             "/api/auth/sign-in/email", body: ["email": email, "password": password])
         guard (200..<300).contains(status) else { throw AuthError.from(status: status, body: body) }
         // bearer 플러그인이 세션 토큰을 헤더로 준다 — 쿠키를 쓰지 않는다
@@ -97,16 +101,23 @@ struct TripCanvasAuthClient: AuthClient {
     func signUp(email: String, password: String) async throws -> SignUpResult {
         // 이름은 받지 않는다 — 여행에 보이는 이름은 여행별로 정한다(§69)
         let name = email.split(separator: "@").first.map(String.init) ?? email
-        let (status, body, _) = try await call(
+        let (status, body, _, _) = try await call(
             "/api/auth/sign-up/email", body: ["email": email, "password": password, "name": name])
         guard (200..<300).contains(status) else { throw AuthError.from(status: status, body: body) }
         return SignUpResult(verificationSent: true)
     }
 
     func session(token: String) async throws -> AuthSession? {
-        let (status, body, _) = try await call("/api/auth/get-session", method: "GET", token: token)
-        guard (200..<300).contains(status) else { return nil }
-        guard let user = body?["user"] as? [String: Any], let id = user["id"] as? String else { return nil }
+        let (status, body, _, isNull) = try await call("/api/auth/get-session", method: "GET", token: token)
+        if status == 401 { return nil }
+        if status == 429 { throw AuthError.from(status: status, body: body) }
+        guard (200..<300).contains(status) else {
+            throw AuthError(code: .unknown, message: "로그인 상태를 확인하지 못했어요. 잠시 뒤 다시 시도해 주세요.")
+        }
+        if isNull { return nil }
+        guard let user = body?["user"] as? [String: Any], let id = user["id"] as? String, !id.isEmpty else {
+            throw AuthError(code: .unknown, message: "로그인 확인 응답을 읽지 못했어요. 잠시 뒤 다시 시도해 주세요.")
+        }
         return AuthSession(token: token, userId: id, email: (user["email"] as? String) ?? "")
     }
 
@@ -123,8 +134,10 @@ struct TripCanvasAuthClient: AuthClient {
     /// 네트워크 실패만 던진다. 상태 코드 판정은 부르는 쪽이 한다 — 경로마다 뜻이 다르다.
     private func call(
         _ path: String, method: String = "POST", body: [String: Any]? = nil, token: String? = nil
-    ) async throws -> (status: Int, body: [String: Any]?, headers: [String: String]) {
+    ) async throws -> (status: Int, body: [String: Any]?, headers: [String: String], isNull: Bool) {
         var request = URLRequest(url: baseURL.appendingPathComponent(path))
+        // Bearer 인증에는 URLSession에 남은 쿠키를 섞지 않는다(쿠키는 서버의 Origin 검사를 유발한다).
+        request.httpShouldHandleCookies = false
         request.httpMethod = method
         request.timeoutInterval = 15
         if let token { request.setValue("Bearer " + token, forHTTPHeaderField: "authorization") }
@@ -146,7 +159,8 @@ struct TripCanvasAuthClient: AuthClient {
         for (key, value) in http.allHeaderFields {
             if let k = key as? String, let v = value as? String { headers[k.lowercased()] = v }
         }
-        return (http.statusCode, try? JSONSerialization.jsonObject(with: data) as? [String: Any], headers)
+        let object = try? JSONSerialization.jsonObject(with: data, options: .fragmentsAllowed)
+        return (http.statusCode, object as? [String: Any], headers, object is NSNull)
     }
 }
 
@@ -264,8 +278,9 @@ final class AuthStore {
             persist(alive)
             return alive
         } catch {
-            signOut()
-            throw AuthError.notSignedIn
+            if (error as? AuthError)?.code == .notSignedIn { signOut() }
+            // 429·서버 오류·통신 장애는 토큰 만료를 확인한 응답이 아니다.
+            throw error
         }
     }
 

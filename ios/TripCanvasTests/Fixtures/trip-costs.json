@@ -1,0 +1,333 @@
+{
+  "schemaVersion": 1,
+  "revision": 2,
+  "days": [
+    {
+      "index": 0,
+      "title": "첫날",
+      "date": "2026-09-01",
+      "cost": {
+        "total": 50000,
+        "onSiteKRW": 0,
+        "parts": [
+          {
+            "label": "예약",
+            "amount": 50000
+          }
+        ],
+        "payTotals": {
+          "RESERVED": 50000,
+          "PAID": 0,
+          "NONE": 0
+        },
+        "details": {
+          "items": [
+            {
+              "source": "SPOT",
+              "key": "0",
+              "title": "숙소",
+              "kind": "STAY",
+              "amount": null,
+              "currency": "KRW",
+              "basis": "ENTERED",
+              "people": 1,
+              "payState": "NONE",
+              "paidOn": null,
+              "photos": [],
+              "totalKRW": null,
+              "state": "UNKNOWN"
+            },
+            {
+              "source": "SPOT",
+              "key": "1",
+              "title": "저녁 예약",
+              "kind": "OTHER",
+              "amount": null,
+              "currency": "KRW",
+              "basis": "ENTERED",
+              "people": 1,
+              "payState": "NONE",
+              "paidOn": null,
+              "photos": [],
+              "totalKRW": null,
+              "state": "BOOKING"
+            },
+            {
+              "source": "BOOKING",
+              "key": "bk1",
+              "title": "호텔",
+              "kind": "hotel",
+              "amount": 50000,
+              "currency": "KRW",
+              "basis": "ENTERED",
+              "people": 1,
+              "payState": "RESERVED",
+              "paidOn": null,
+              "photos": [],
+              "totalKRW": 50000,
+              "state": "KNOWN"
+            }
+          ],
+          "budget": null,
+          "unknownCount": 1,
+          "transportUnpriced": true,
+          "undatedBookings": 0,
+          "hasForeignCurrency": false,
+          "fxRates": {
+            "KRW": 1,
+            "USD": 1380,
+            "EUR": 1500,
+            "JPY": 9.1,
+            "CNY": 192
+          },
+          "fxSource": "FALLBACK",
+          "fxAsOf": null
+        }
+      }
+    },
+    {
+      "index": 1,
+      "title": "이튿날",
+      "date": "2026-09-02",
+      "cost": {
+        "total": 50000,
+        "onSiteKRW": 0,
+        "parts": [
+          {
+            "label": "예약",
+            "amount": 50000
+          }
+        ],
+        "payTotals": {
+          "RESERVED": 50000,
+          "PAID": 0,
+          "NONE": 0
+        },
+        "details": {
+          "items": [
+            {
+              "source": "SPOT",
+              "key": "0",
+              "title": "공원",
+              "kind": "OTHER",
+              "amount": null,
+              "currency": "KRW",
+              "basis": "ENTERED",
+              "people": 1,
+              "payState": "NONE",
+              "paidOn": null,
+              "photos": [],
+              "totalKRW": null,
+              "state": "UNKNOWN"
+            },
+            {
+              "source": "BOOKING",
+              "key": "bk1",
+              "title": "호텔",
+              "kind": "hotel",
+              "amount": 50000,
+              "currency": "KRW",
+              "basis": "ENTERED",
+              "people": 1,
+              "payState": "RESERVED",
+              "paidOn": null,
+              "photos": [],
+              "totalKRW": 50000,
+              "state": "KNOWN"
+            }
+          ],
+          "budget": null,
+          "unknownCount": 1,
+          "transportUnpriced": false,
+          "undatedBookings": 0,
+          "hasForeignCurrency": false,
+          "fxRates": {
+            "KRW": 1,
+            "USD": 1380,
+            "EUR": 1500,
+            "JPY": 9.1,
+            "CNY": 192
+          },
+          "fxSource": "FALLBACK",
+          "fxAsOf": null
+        }
+      }
+    }
+  ],
+  "totalKRW": 100000,
+  "averagePerDayKRW": 50000,
+  "categories": [
+    {
+      "kind": "FLIGHT",
+      "totalKRW": 0,
+      "items": [],
+      "unknownCount": 0
+    },
+    {
+      "kind": "STAY",
+      "totalKRW": 100000,
+      "items": [
+        {
+          "source": "SPOT",
+          "key": "0",
+          "title": "숙소",
+          "kind": "STAY",
+          "amount": null,
+          "currency": "KRW",
+          "basis": "ENTERED",
+          "people": 1,
+          "payState": "NONE",
+          "paidOn": null,
+          "photos": [],
+          "totalKRW": null,
+          "state": "UNKNOWN",
+          "dayIndex": 0
+        },
+        {
+          "source": "BOOKING",
+          "key": "bk1",
+          "title": "호텔",
+          "kind": "hotel",
+          "amount": 50000,
+          "currency": "KRW",
+          "basis": "ENTERED",
+          "people": 1,
+          "payState": "RESERVED",
+          "paidOn": null,
+          "photos": [],
+          "totalKRW": 50000,
+          "state": "KNOWN",
+          "dayIndex": 0
+        },
+        {
+          "source": "BOOKING",
+          "key": "bk1",
+          "title": "호텔",
+          "kind": "hotel",
+          "amount": 50000,
+          "currency": "KRW",
+          "basis": "ENTERED",
+          "people": 1,
+          "payState": "RESERVED",
+          "paidOn": null,
+          "photos": [],
+          "totalKRW": 50000,
+          "state": "KNOWN",
+          "dayIndex": 1
+        }
+      ],
+      "unknownCount": 1
+    },
+    {
+      "kind": "RENT",
+      "totalKRW": 0,
+      "items": [],
+      "unknownCount": 0
+    },
+    {
+      "kind": "TRANSIT",
+      "totalKRW": 0,
+      "items": [],
+      "unknownCount": 0
+    },
+    {
+      "kind": "FOOD",
+      "totalKRW": 0,
+      "items": [],
+      "unknownCount": 0
+    },
+    {
+      "kind": "SHOPPING",
+      "totalKRW": 0,
+      "items": [],
+      "unknownCount": 0
+    },
+    {
+      "kind": "TICKET",
+      "totalKRW": 0,
+      "items": [],
+      "unknownCount": 0
+    },
+    {
+      "kind": "TRANSPORT",
+      "totalKRW": 0,
+      "items": [],
+      "unknownCount": 0
+    },
+    {
+      "kind": "OTHER",
+      "totalKRW": 0,
+      "items": [
+        {
+          "source": "SPOT",
+          "key": "0",
+          "title": "공원",
+          "kind": "OTHER",
+          "amount": null,
+          "currency": "KRW",
+          "basis": "ENTERED",
+          "people": 1,
+          "payState": "NONE",
+          "paidOn": null,
+          "photos": [],
+          "totalKRW": null,
+          "state": "UNKNOWN",
+          "dayIndex": 1
+        }
+      ],
+      "unknownCount": 1
+    }
+  ],
+  "unallocated": [],
+  "payTotals": {
+    "RESERVED": 100000,
+    "PAID": 0,
+    "NONE": 0
+  },
+  "prep": {
+    "totalKRW": 100000,
+    "payTotals": {
+      "RESERVED": 100000,
+      "PAID": 0,
+      "NONE": 0
+    },
+    "items": [
+      {
+        "source": "BOOKING",
+        "key": "bk1",
+        "title": "호텔",
+        "kind": "hotel",
+        "amount": 100000,
+        "currency": "KRW",
+        "basis": "ENTERED",
+        "people": 1,
+        "payState": "RESERVED",
+        "paidOn": null,
+        "photos": [],
+        "totalKRW": 100000,
+        "state": "KNOWN",
+        "dayIndex": null
+      }
+    ]
+  },
+  "onSite": {
+    "totalKRW": 0,
+    "payTotals": {
+      "RESERVED": 0,
+      "PAID": 0,
+      "NONE": 0
+    }
+  },
+  "unknownCount": 2,
+  "transportUnpriced": true,
+  "hasForeignCurrency": false,
+  "fxRates": {
+    "KRW": 1,
+    "USD": 1380,
+    "EUR": 1500,
+    "JPY": 9.1,
+    "CNY": 192
+  },
+  "fxSource": "FALLBACK",
+  "fxAsOf": null
+}

@@ -1,0 +1,2 @@
+ALTER TABLE "trip_candidates" ADD COLUMN "category" text;--> statement-breakpoint
+ALTER TABLE "trip_candidates" ADD CONSTRAINT "trip_candidates_category_check" CHECK ("trip_candidates"."category" is null or "trip_candidates"."category" in ('RESTAURANT','CAFE','DESSERT','SIGHT','LANDMARK','NATURE','SHOPPING','ACTIVITY','STAY','ETC'));

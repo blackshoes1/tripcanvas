@@ -21,17 +21,25 @@ final class CandidateBoardViewModel {
     /// 이 세션에서 "나중에"를 누른 제안은 다시 올리지 않는다 — 거절한 제안을 반복하지 않는다(§79).
     private var proposalDismissed = false
     private(set) var memberCount: Int
+    /// 인원을 서버에서 읽었는가 — 처음 한 번과 멤버 이벤트 때만 읽는다(2026-09-18, 전에는 목록을 읽을 때마다 3건이었다).
+    private var membersLoaded = false
+    /// 목록을 서버에서 마지막으로 받은 시각 — 시트를 다시 열 때 또 받을지의 기준.
+    private(set) var loadedAt: Date?
     var sortByInterest = false
+    /// 분류로 거르기 — 표시일 뿐이다. nil이면 전부, `.none`은 '아직 고르지 않음'만.
+    var categoryFilter: CandidateCategoryFilter = .all
 
     let trip: TripSummary
     private let service: CollabSource
     private let documents: TripDocumentSource
 
-    init(trip: TripSummary, service: CollabSource, documents: TripDocumentSource) {
+    /// - Parameter seed: 이미 아는 후보 목록(지도가 들고 있던 것). 넣으려는 후보 하나 때문에 목록을 다시 받지 않는다.
+    init(trip: TripSummary, service: CollabSource, documents: TripDocumentSource, seed: [CandidateView] = []) {
         self.trip = trip
         self.service = service
         self.documents = documents
         self.memberCount = max(1, trip.memberCount ?? 1)
+        self.candidates = seed
     }
 
     var role: MemberRole { trip.role ?? .owner }
@@ -41,22 +49,45 @@ final class CandidateBoardViewModel {
 
     /// 묶음이 정렬보다 먼저다 — "관심 순"은 묶음 안에서만 점수 순.
     var groups: CandidateGroups {
-        CollabModel.grouped(CollabModel.sorted(candidates, byInterest: sortByInterest, memberCount: memberCount), memberCount: memberCount)
+        CollabModel.grouped(CollabModel.sorted(visibleCandidates, byInterest: sortByInterest, memberCount: memberCount), memberCount: memberCount)
+    }
+
+    /// 거른 뒤의 후보 — 묶음·정렬은 그 다음이다(분류는 순위를 바꾸지 않는다).
+    var visibleCandidates: [CandidateView] {
+        candidates.filter { categoryFilter.matches(CandidateCategory.of($0.category)) }
+    }
+
+    /// 시트를 열 때 부른다 — 방금 받은 목록이 있으면 그대로다(Today·Plan과 같은 60초 규칙, 2026-09-18).
+    /// 변경·실시간·당겨서 새로고침은 여전히 `load()`다.
+    func loadIfStale(maxAge: TimeInterval = 60, now: Date = Date()) async {
+        if errorMessage == nil, let loadedAt, now.timeIntervalSince(loadedAt) < maxAge { return }
+        await load()
     }
 
     func load() async {
         if candidates.isEmpty { isLoading = true }
         defer { isLoading = false }
+        let before = candidates
         do {
             candidates = try await service.candidates(tripId: trip.id)
-            // 몇 명이 아직 말하지 않았는지 알려면 인원이 필요하다. 못 읽으면 요약이 말한 값으로 간다.
-            if let members = try? await service.members(tripId: trip.id), !members.isEmpty { memberCount = members.count }
+            loadedAt = Date()
+            // 몇 명이 아직 말하지 않았는지 알려면 인원이 필요하다 — 처음 한 번만. 멤버가 바뀌면 그 이벤트(`handle`)가 다시 읽는다.
+            if !membersLoaded { await loadMembers() }
             errorMessage = nil
         } catch {
             errorMessage = message(for: error)
         }
-        // 제안은 곁들이다 — 못 읽어도 보드는 그대로 뜬다(오류로 만들지 않는다).
-        if !proposalDismissed { proposal = try? await service.groupProposal(tripId: trip.id) }
+        // 제안은 곁들이다 — 못 읽어도 보드는 그대로 뜬다(오류로 만들지 않는다). 목록이 그대로면 제안도 그대로다 — 다시 묻지 않는다.
+        if !proposalDismissed, proposal == nil || before != candidates {
+            proposal = try? await service.groupProposal(tripId: trip.id)
+        }
+    }
+
+    /// 못 읽으면 요약이 말한 값으로 간다 — 조용하다.
+    private func loadMembers() async {
+        guard let members = try? await service.members(tripId: trip.id), !members.isEmpty else { return }
+        memberCount = members.count
+        membersLoaded = true
     }
 
     /// "나중에" — 이 세션에서는 다시 올리지 않는다. 서버에 남기지 않는다(제안은 저장되지 않는다).
@@ -68,22 +99,37 @@ final class CandidateBoardViewModel {
     /// 제안을 그대로 받아들인다. **문서 저장이 먼저**고 후보 표시가 그다음이다 — `schedule`과 같은 순서다.
     /// 여러 곳을 한 번에 넣으므로 문서는 **한 번만** 저장한다(CAS 충돌을 스스로 만들지 않기 위해).
     func acceptProposal() async {
-        guard canSchedule, let plan = proposal, !plan.picks.isEmpty else { return }
+        guard canSchedule, !isWorking, let plan = proposal, !plan.picks.isEmpty else { return }
         isWorking = true
         defer { isWorking = false }
 
-        var placed: [GroupProposalPick] = []
+        var placed: [(candidateId: Int, dayIndex: Int)] = []
+        var addedCount = 0
         do {
             let snapshot = try await documents.document(tripId: trip.id)
+            guard snapshot.canEdit else { errorMessage = "이 일정을 바꿀 권한이 없어요."; return }
             var document = snapshot.document
             for pick in plan.picks {
-                guard document.hasDay(pick.dayIndex),
+                guard !placed.contains(where: { $0.candidateId == pick.candidateId }),
                       let candidate = candidates.first(where: { $0.id == pick.candidateId }) else { continue }
+                // 문서 저장 뒤 응답이나 후보 표시만 실패했을 수 있다. 실제 위치의 표시만 복구한다.
+                if let location = candidateLocation(pick.candidateId, in: document) {
+                    placed.append((pick.candidateId, location.day))
+                    continue
+                }
+                guard candidate.status != "SCHEDULED" else {
+                    errorMessage = "이미 일정에 넣은 후보지만 연결된 장소를 찾지 못했어요. 일정에서 위치를 먼저 확인해 주세요."
+                    return
+                }
+                guard document.hasDay(pick.dayIndex), candidate.status == "PROPOSED" else { continue }
                 document.insertSpot(CandidateBoardViewModel.spot(from: candidate), dayIndex: pick.dayIndex)
-                placed.append(pick)
+                placed.append((pick.candidateId, pick.dayIndex))
+                addedCount += 1
             }
             guard !placed.isEmpty else { errorMessage = "넣을 수 있는 곳이 없어요 — 목록을 새로 읽어볼게요"; await load(); return }
-            _ = try await documents.saveDocument(tripId: trip.id, document: document, expectedRevision: snapshot.revision)
+            if document != snapshot.document {
+                _ = try await documents.saveDocument(tripId: trip.id, document: document, expectedRevision: snapshot.revision)
+            }
         } catch {
             errorMessage = message(for: error)
             return
@@ -98,9 +144,11 @@ final class CandidateBoardViewModel {
             } catch { failed += 1 }
         }
         let notice = failed > 0
-            ? "일정에는 \(placed.count)곳을 넣었지만 후보 표시 \(failed)건을 바꾸지 못했어요"
+            ? "일정에는 \(placed.count)곳이 있지만 후보 표시 \(failed)건을 바꾸지 못했어요"
             : nil
-        if notice == nil { toast = "\(placed.count)곳을 일정에 넣었어요" }
+        if notice == nil {
+            toast = addedCount == placed.count ? "\(placed.count)곳을 일정에 넣었어요" : "일정에 있는 \(placed.count)곳의 후보 표시를 맞췄어요"
+        }
         proposal = nil
         await load()
         if let notice { errorMessage = notice }
@@ -115,6 +163,9 @@ final class CandidateBoardViewModel {
         let effects = CollabModel.liveEffects(kind: event.kind, mine: event.mine)
         // 알림은 적게(§51) — 남이 후보를 담았을 때와 새 멤버뿐이다.
         if effects.notify, event.kind == "CANDIDATE_PROPOSED" { toast = "일행이 가고 싶은 곳을 담았어요" }
+        // 인원이 바뀌면 "몇 명이 아직 말하지 않았는지"가 바뀐다 — 그때만 멤버를 다시 읽는다.
+        if effects.members { await loadMembers() }
+        // 내 반응·담기·한마디의 에코는 `liveEffects`가 이미 거른다(내 화면은 이미 그렇다).
         guard effects.candidates else { return }
         await load()
     }
@@ -124,13 +175,21 @@ final class CandidateBoardViewModel {
 
     // MARK: 후보
 
-    func add(title: String, note: String, lat: Double? = nil, lng: Double? = nil, placeId: String? = nil, addr: String? = nil) async -> Bool {
+    func add(title: String, note: String, lat: Double? = nil, lng: Double? = nil, placeId: String? = nil, addr: String? = nil, provider: String? = nil, providerId: String? = nil, category: CandidateCategory? = nil) async -> Bool {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, canPropose else { return false }
         let cleanNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
         return await perform("후보로 담았어요") {
             _ = try await self.service.addCandidate(tripId: self.trip.id, title: String(trimmed.prefix(120)), note: cleanNote.isEmpty ? nil : String(cleanNote.prefix(300)),
-                                                    lat: lat, lng: lng, placeId: placeId, addr: addr)
+                                                    lat: lat, lng: lng, placeId: placeId, addr: addr, provider: provider, providerId: providerId,
+                                                    category: category?.rawValue)
+        }
+    }
+
+    /// 분류만 바꾼다(빈 값이면 '고르지 않음'으로). 순위·묶음은 그대로다.
+    func setCategory(candidateId: Int, category: CandidateCategory?) async {
+        await perform(category.map { "\($0.label)(으)로 표시했어요" } ?? "분류를 지웠어요") {
+            try await self.service.manageCandidate(tripId: self.trip.id, candidateId: candidateId, action: "CATEGORY", value: category?.rawValue)
         }
     }
 
@@ -161,26 +220,43 @@ final class CandidateBoardViewModel {
         await perform("후보로 되돌렸어요") { try await self.service.manageCandidate(tripId: self.trip.id, candidateId: candidateId, action: "REOPEN", value: nil) }
     }
 
-    /// 후보 표시만 되돌린다 — 일정에 넣은 장소는 그대로 남는다(장소에 안정적인 id가 없다).
+    /// 후보 표시만 되돌린다 — 일정에 넣은 장소는 그대로 남고, 다시 배치할 때 연결된 장소를 옮긴다.
     func unschedule(candidateId: Int) async {
         await perform("후보로 되돌렸어요") { try await self.service.manageCandidate(tripId: self.trip.id, candidateId: candidateId, action: "UNSCHEDULE", value: nil) }
     }
 
-    /// 일정에 넣기 — 고른 날 **맨 뒤**에 붙인다(최적 위치를 추측하지 않는다). 문서는 최신본을 읽어 CAS로 저장하고,
+    /// 일정에 넣기 — 고른 위치에 넣거나 이미 연결된 장소를 옮긴다. 문서는 최신본을 읽어 CAS로 저장하고,
     /// 들어간 뒤에 후보를 SCHEDULED로 표시한다. 표시가 실패해도 일정에는 들어가 있다고 정직하게 말한다.
-    func schedule(candidateId: Int, dayIndex: Int) async {
-        guard canSchedule, let candidate = candidates.first(where: { $0.id == candidateId }) else { return }
+    /// - Parameter reloadAfter: 끝에 목록을 다시 읽는가. 지도의 배치 흐름은 제 목록을 따로 읽으므로 끈다(2026-09-18).
+    @discardableResult
+    func schedule(candidateId: Int, dayIndex: Int, position: Int? = nil, expectedRevision: Int? = nil, reloadAfter: Bool = true) async -> Bool {
+        guard canSchedule, !isWorking, let candidate = candidates.first(where: { $0.id == candidateId }) else { return false }
         isWorking = true
         defer { isWorking = false }
         do {
             let snapshot = try await documents.document(tripId: trip.id)
+            guard snapshot.canEdit else { errorMessage = "이 일정을 바꿀 권한이 없어요."; return false }
             var document = snapshot.document
-            guard document.hasDay(dayIndex) else { errorMessage = "그 날짜는 일정에 없어요"; return }
-            document.insertSpot(CandidateBoardViewModel.spot(from: candidate), dayIndex: dayIndex)
-            _ = try await documents.saveDocument(tripId: trip.id, document: document, expectedRevision: snapshot.revision)
+            guard document.hasDay(dayIndex) else { errorMessage = "그 날짜는 일정에 없어요"; return false }
+            if let expectedRevision, expectedRevision != snapshot.revision {
+                errorMessage = "미리보기를 연 뒤 일정이 바뀌었어요. 닫고 다시 위치를 골라 주세요."
+                return false
+            }
+            if let location = candidateLocation(candidateId, in: document) {
+                document.moveSpots(fromDay: location.day, indexes: IndexSet(integer: location.index),
+                                   toDay: dayIndex, position: position ?? document.days[dayIndex].spots.count)
+            } else if candidate.status == "SCHEDULED" {
+                errorMessage = "이미 일정에 넣은 후보지만 연결된 장소를 찾지 못했어요. 일정에서 위치를 먼저 확인해 주세요."
+                return false
+            } else {
+                document.insertSpot(CandidateBoardViewModel.spot(from: candidate), dayIndex: dayIndex, after: position.map { $0 - 1 })
+            }
+            if document != snapshot.document {
+                _ = try await documents.saveDocument(tripId: trip.id, document: document, expectedRevision: snapshot.revision)
+            }
         } catch {
             errorMessage = message(for: error)
-            return
+            return false
         }
         var marking: String?
         do {
@@ -190,8 +266,18 @@ final class CandidateBoardViewModel {
             marking = "일정에는 넣었지만 후보 표시를 바꾸지 못했어요 — \(message(for: error))"
         }
         // 목록을 다시 읽으면 errorMessage가 지워진다 — 반쪽 성공은 그 뒤에 다시 말한다.
-        await load()
+        if reloadAfter { await load() }
         if let marking { errorMessage = marking }
+        return marking == nil
+    }
+
+    private func candidateLocation(_ candidateId: Int, in document: TripDocument) -> (day: Int, index: Int)? {
+        for (day, value) in document.days.enumerated() {
+            if let index = value.spots.firstIndex(where: { $0.raw["candidateId"]?.doubleValue == Double(candidateId) }) {
+                return (day, index)
+            }
+        }
+        return nil
     }
 
     /// 웹 `appendCandidateSpot`과 같은 모양 — 좌표가 없으면 위치 없는 장소다.
@@ -199,8 +285,11 @@ final class CandidateBoardViewModel {
     nonisolated static func spot(from candidate: CandidateView) -> TripSpot {
         var spot = TripSpot(name: candidate.title, city: "기타")
         spot.desc = candidate.note ?? ""
+        if let address = candidate.addr { spot.setField("addr", .string(address)) }
         if let lat = candidate.lat, let lng = candidate.lng { spot.point = GeoPoint(lat: lat, lng: lng) } else { spot.point = nil }
         if let placeId = candidate.placeId { spot.placeId = placeId }
+        if candidate.provider == "kakao", let providerId = candidate.providerId { spot.kakaoId = providerId }
+        spot.setField("candidateId", .number(Double(candidate.id)))
         return spot
     }
 
@@ -267,5 +356,28 @@ final class CandidateBoardViewModel {
             return apiError.errorDescription ?? "요청을 처리하지 못했어요."
         }
         return error.localizedDescription
+    }
+}
+
+/// 보드의 분류 거르기 — 전부 / 고르지 않음만 / 특정 분류.
+enum CandidateCategoryFilter: Hashable, Sendable {
+    case all
+    case none
+    case only(CandidateCategory)
+
+    var label: String {
+        switch self {
+        case .all: "전체 분류"
+        case .none: "분류 없음"
+        case .only(let category): category.label
+        }
+    }
+
+    func matches(_ category: CandidateCategory?) -> Bool {
+        switch self {
+        case .all: true
+        case .none: category == nil
+        case .only(let wanted): category == wanted
+        }
     }
 }

@@ -918,3 +918,108 @@ describe('GET /api/v1/trips/:tripId/routes — 여행 전체 동선', () => {
     expect((await handlers.tripRoutes(new Request('https://x/y', auth()), 'nope')).status).toBe(404);
   });
 });
+
+describe('GET /costs — 여행 전체 비용의 인증·범위', () => {
+  it('로그인하지 않았거나 볼 수 없는 여행은 비용도 반환하지 않는다', async () => {
+    expect((await api.tripCosts(new Request('https://x/costs'), 'trip-1')).status).toBe(401);
+    expect((await api.tripCosts(new Request('https://x/costs', auth()), 'missing')).status).toBe(404);
+  });
+  it('읽기 전용 멤버도 같은 revision의 일별·분류별 비용을 읽고 저장하지 않는다', async () => {
+    const row = store.rows.get('trip-1')!;
+    row.role = 'VIEWER';
+    const before = JSON.stringify(row);
+    const response = await api.tripCosts(new Request('https://x/costs', auth()), 'trip-1');
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.revision).toBe(3);
+    expect(body.days).toHaveLength(2);
+    expect(body.categories.map((c: { kind: string }) => c.kind)).toEqual(['FLIGHT', 'STAY', 'RENT', 'TRANSIT', 'FOOD', 'SHOPPING', 'TICKET', 'TRANSPORT', 'OTHER']);
+    expect(body.fxSource).toBe('FALLBACK');
+    expect(body.totalKRW).toBe(body.categories.reduce((sum: number, c: { totalKRW: number }) => sum + c.totalKRW, 0));
+    expect(JSON.stringify(row)).toBe(before);
+  });
+});
+
+describe('환율 — 서버가 받은 것을 응답에 싣는다(2026-09-18)', () => {
+  const snapshot = { rates: { KRW: 1, USD: 1400, EUR: 1550, JPY: 9.3, CNY: 199 }, source: 'API' as const, asOf: '2026-09-18' };
+  const withFx = () => createHandlers({
+    gatewayFor: (token) => (token === TOKEN ? gatewayOf(store) : null), now: () => NOW,
+    fx: { read: async () => snapshot }
+  });
+
+  it('전체 비용은 받은 환율로 환산하고 출처·기준일을 하루치 상세에도 같이 싣는다', async () => {
+    const res = await withFx().tripCosts(new Request('https://x/costs', auth()), 'trip-1');
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.fxSource).toBe('API');
+    expect(body.fxAsOf).toBe('2026-09-18');
+    expect(body.fxRates.USD).toBe(1400);
+    expect(body.days[0].cost.details.fxSource).toBe('API');
+    expect(body.days[0].cost.details.fxAsOf).toBe('2026-09-18');
+    expect(body.days[0].cost.details.fxRates.USD).toBe(1400);
+  });
+
+  it('하루치도 같은 환율을 쓴다', async () => {
+    const res = await withFx().dayPlan(new Request('https://x/api/v1/trips/trip-1/days/0', auth()), 'trip-1', 0);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.day.totals.cost.details.fxSource).toBe('API');
+    expect(body.day.totals.cost.details.fxAsOf).toBe('2026-09-18');
+    expect(body.day.totals.cost.details.fxRates.USD).toBe(1400);
+  });
+
+  it('환율 서비스가 던져도 비용은 나온다 — 근사값이라고 말할 뿐이다', async () => {
+    const broken = createHandlers({
+      gatewayFor: (token) => (token === TOKEN ? gatewayOf(store) : null), now: () => NOW,
+      fx: { read: async () => { throw new Error('upstream'); } }
+    });
+    const body = await (await broken.tripCosts(new Request('https://x/costs', auth()), 'trip-1')).json();
+    expect(body.fxSource).toBe('FALLBACK');
+    expect(body.fxAsOf).toBeNull();
+  });
+
+  it('주입하지 않으면 지금까지처럼 근사값이다', async () => {
+    const body = await (await api.tripCosts(new Request('https://x/costs', auth()), 'trip-1')).json();
+    expect(body.fxSource).toBe('FALLBACK');
+  });
+});
+
+describe('결제일이 상태를 정한다 — 서버의 오늘은 Today와 같은 시계(2026-09-18)', () => {
+  const withBookings = (bookings: unknown[], costItems: unknown[] = []) => {
+    const row = store.rows.get('trip-1')!;
+    store.rows.set('trip-1', { ...row, data: { ...row.data, bookings, costItems } });
+  };
+  const lines = (body: { prep: { items: { key: string; payState: string; paidOn: string | null }[] } }) =>
+    Object.fromEntries(body.prep.items.map((i) => [i.key, [i.payState, i.paidOn]]));
+
+  it('결제일이 오늘(여행 시간대)이거나 지났으면 결제함, 아직이면 예약이다 — 손으로 고른 표시보다 먼저', async () => {
+    // NOW = 2026-09-01 13:00 Asia/Seoul → 오늘은 2026-09-01
+    withBookings([
+      { id: 'htl', type: 'hotel', title: '호텔', price: 200000, start: '2026-09-01', end: '2026-09-02', paidOn: '2026-09-01' },
+      { id: 'fly', type: 'flight', title: '항공', price: 300000, payState: 'PAID', paidOn: '2026-09-15' },
+      { id: 'car', type: 'car', title: '렌터카', price: 90000, start: '2026-09-01', end: '2026-09-01', payState: 'PAID' }
+    ], [{ id: 'ins', title: '보험', kind: 'OTHER', amount: 20000, paidOn: '2026-08-20' }]);
+    const body = await (await api.tripCosts(new Request('https://x/costs', auth()), 'trip-1')).json();
+    expect(lines(body)).toEqual({
+      htl: ['PAID', '2026-09-01'],        // 결제일 당일부터 결제함
+      fly: ['RESERVED', '2026-09-15'],    // 결제함이라고 표시했어도 결제일이 아직이면 예약
+      car: ['PAID', null],                // 결제일이 없으면 손으로 고른 표시
+      ins: ['PAID', '2026-08-20']
+    });
+    // 하루치도 같은 오늘로 같은 답을 낸다
+    const day0 = body.days[0].cost.details.items.find((i: { key: string }) => i.key === 'htl');
+    expect(day0.payState).toBe('PAID');
+    expect(day0.paidOn).toBe('2026-09-01');
+  });
+
+  it('클라이언트가 date를 명시하면 그 날이 오늘이다(기기가 현지 날짜를 안다) — 하루치도 같이 따라간다', async () => {
+    withBookings([{ id: 'htl', type: 'hotel', title: '호텔', price: 200000, start: '2026-09-01', end: '2026-09-02', paidOn: '2026-09-01' }]);
+    const before = await (await api.tripCosts(new Request('https://x/costs?date=2026-08-31', auth()), 'trip-1')).json();
+    expect(lines(before).htl).toEqual(['RESERVED', '2026-09-01']);
+    const plan = await (await api.dayPlan(new Request('https://x/api/v1/trips/trip-1/days/0?date=2026-08-31', auth()), 'trip-1', 0)).json();
+    const share = plan.day.totals.cost.details.items.find((i: { key: string }) => i.key === 'htl');
+    expect(share.payState).toBe('RESERVED');
+    const after = await (await api.dayPlan(new Request('https://x/api/v1/trips/trip-1/days/0?date=2026-09-02', auth()), 'trip-1', 0)).json();
+    expect(after.day.totals.cost.details.items.find((i: { key: string }) => i.key === 'htl').payState).toBe('PAID');
+  });
+});

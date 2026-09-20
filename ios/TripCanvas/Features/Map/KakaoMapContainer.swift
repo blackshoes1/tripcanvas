@@ -7,56 +7,82 @@ import UIKit
 /// 엔진 생명주기가 UIKit 뷰 컨트롤러에 맞춰져 있어(prepare → addViews → activate, 화면을 벗어나면 pause)
 /// 그 순서를 여기서 그대로 지킨다. 순서가 어긋나면 오류 없이 **검은 지도**만 남는다.
 ///
-/// ⚠️ 카카오 SDK는 POI 탭 신원을 주지 않는다(웹과 같은 제약). 여기서 오는 pick은 좌표뿐이다.
+/// 검색 결과로 추가한 핀은 ID로 선택하고, 일반 지형 선택은 좌표만 전달한다.
 struct KakaoMapContainer: UIViewRepresentable {
     let pins: [MapPin]
     var routes: [MapRoute] = []
     let focus: GeoPoint?
+    /// 고른 장소가 없을 때 맞출 사각형(장면). nil이면 그린 것 전부.
+    var frame: MapBounds? = nil
     let onPick: ((MapPick) -> Void)?
+    var preservesCamera = false
+    var selectedPinID: String? = nil
+    var onPinSelected: ((String) -> Void)? = nil
+    var onAreaChanged: ((PlaceSearchArea) -> Void)? = nil
+    /// 숨겨진 동안 엔진을 쉬게 한다(pause). 버리지 않으므로 다시 보일 때 인증·타일을 되풀이하지 않는다.
+    var isVisible = true
 
-    func makeCoordinator() -> Coordinator { Coordinator(pins: pins, routes: routes, focus: focus, onPick: onPick) }
+    func makeCoordinator() -> Coordinator { Coordinator(pins: pins, routes: routes, focus: focus, frame: frame, onPick: onPick) }
 
     func makeUIView(context: Context) -> KMViewContainer {
         let container = KMViewContainer(frame: CGRect(x: 0, y: 0, width: 320, height: 320))
+        context.coordinator.preservesCamera = preservesCamera
+        context.coordinator.onPinSelected = onPinSelected
+        context.coordinator.onAreaChanged = onAreaChanged
         context.coordinator.attach(container)
+        context.coordinator.setVisible(isVisible)
         return container
     }
 
     func updateUIView(_ container: KMViewContainer, context: Context) {
         context.coordinator.onPick = onPick
-        context.coordinator.update(pins: pins, routes: routes, focus: focus)
+        context.coordinator.preservesCamera = preservesCamera
+        context.coordinator.onPinSelected = onPinSelected
+        context.coordinator.onAreaChanged = onAreaChanged
+        context.coordinator.update(pins: pins, routes: routes, focus: focus, frame: frame, selectedPinID: selectedPinID)
+        context.coordinator.setVisible(isVisible)
     }
 
     static func dismantleUIView(_ container: KMViewContainer, coordinator: Coordinator) {
         coordinator.detach()
     }
 
-    final class Coordinator: NSObject, MapControllerDelegate {
+    final class Coordinator: NSObject, MapControllerDelegate, KakaoMapEventDelegate {
         private static let viewName = "mapview"
         private static let layerId = "spots"
-        private static let styleId = "spotPin"
         private static let pickStyleId = "pickPin"
         private static let routeLayerId = "dayRoute"
         private static let routeStyleId = "dayRouteStyle"
+        /// 전체를 맞출 때 쓰는 줌 범위 — 7은 나라 하나가 보이는 정도, 16은 거리 하나.
+        private static let zoomRange = 7...16
 
         var onPick: ((MapPick) -> Void)?
+        var preservesCamera = false
+        var onPinSelected: ((String) -> Void)?
+        var onAreaChanged: ((PlaceSearchArea) -> Void)?
+        private var selectedPinID: String?
+        private var shouldMoveCamera = true
         private var pins: [MapPin]
         private var focus: GeoPoint?
+        private var frame: MapBounds?
         private var routes: [MapRoute] = []
         private var controller: KMController?
+        private weak var container: KMViewContainer?
         private var ready = false
         private var pendingRender = true
-        private var tapHandler: DisposableEventHandler?
+        private var registeredPinStyles: Set<String> = []
         private var pickPoi: Poi?
 
-        init(pins: [MapPin], routes: [MapRoute], focus: GeoPoint?, onPick: ((MapPick) -> Void)?) {
+        init(pins: [MapPin], routes: [MapRoute], focus: GeoPoint?, frame: MapBounds? = nil, onPick: ((MapPick) -> Void)?) {
             self.pins = pins
             self.routes = routes
             self.focus = focus
+            self.frame = frame
             self.onPick = onPick
         }
 
         func attach(_ container: KMViewContainer) {
+            self.container = container
             let controller = KMController(viewContainer: container)
             controller.delegate = self
             self.controller = controller
@@ -65,19 +91,38 @@ struct KakaoMapContainer: UIViewRepresentable {
         }
 
         func detach() {
-            tapHandler?.dispose()
-            tapHandler = nil
+            mapView?.eventDelegate = nil
             controller?.pauseEngine()
             controller?.resetEngine()
             controller = nil
+            container = nil
             ready = false
+            paused = false
+            registeredPinStyles = []
         }
 
-        func update(pins: [MapPin], routes: [MapRoute], focus: GeoPoint?) {
-            let changed = pins != self.pins || routes != self.routes || focus != self.focus
+        /// 보이지 않는 동안은 엔진을 멈춘다 — 화면 뒤에서 그리는 것은 배터리다. 다시 보이면 이어서 그린다.
+        /// ⚠️ 상태가 바뀔 때만 부른다: 이미 도는 엔진에 activate를 또 걸거나, 쉬는 엔진을 또 pause 하지 않는다.
+        private var paused = false
+        func setVisible(_ visible: Bool) {
+            container?.isHidden = !visible
+            guard let controller else { return }
+            if visible, paused { controller.activateEngine(); paused = false }
+            else if !visible, !paused { controller.pauseEngine(); paused = true }
+        }
+
+        func update(pins: [MapPin], routes: [MapRoute], focus: GeoPoint?, frame: MapBounds? = nil, selectedPinID: String? = nil) {
+            let changed = pins != self.pins || routes != self.routes || focus != self.focus || frame != self.frame
+                || selectedPinID != self.selectedPinID
+            // 동선이 **처음** 도착하는 순간(핀은 그대로)에도 맞춘다 — 숙소 복귀처럼 핀 밖으로 나가는 선이 그때 생긴다.
+            // 그 뒤 도로가 채워져 선이 바뀔 때는 움직이지 않는다.
+            let routesArrived = self.routes.isEmpty && !routes.isEmpty && !pins.isEmpty && pins == self.pins
+            if focus != self.focus || (!preservesCamera && (pins != self.pins || routesArrived || frame != self.frame)) { shouldMoveCamera = true }
             self.pins = pins
             self.routes = routes
             self.focus = focus
+            self.frame = frame
+            self.selectedPinID = selectedPinID
             guard changed else { return }
             if ready { render() } else { pendingRender = true }
         }
@@ -85,24 +130,26 @@ struct KakaoMapContainer: UIViewRepresentable {
         // MARK: MapControllerDelegate
 
         func addViews() {
-            let start = focus ?? pins.first?.point ?? GeoPoint(lat: 37.5665, lng: 126.9780)
+            // 첫 프레임부터 그린 것 전부가 보이는 자리에서 시작한다(render()가 뒤에 정확히 맞춘다).
+            let bounds = frame ?? MapBounds.covering(pins: pins, routes: routes)
+            let start = focus ?? bounds?.center ?? GeoPoint(lat: 37.5665, lng: 126.9780)
+            let level = focus != nil ? 16 : bounds?.zoomLevel(fitting: container?.bounds.size ?? .zero, range: Self.zoomRange) ?? 15
             let info = MapviewInfo(
                 viewName: Self.viewName, viewInfoName: "map",
-                defaultPosition: MapPoint(longitude: start.lng, latitude: start.lat), defaultLevel: 15)
+                defaultPosition: MapPoint(longitude: start.lng, latitude: start.lat), defaultLevel: level)
             controller?.addView(info)
         }
 
         func addViewSucceeded(_ viewName: String, viewInfoName: String) {
             guard let map = mapView else { return }
+            // 인증 중 먼저 끝난 레이아웃을 반영한다. 이후 크기 변경은 containerDidResized가 처리한다.
+            if let container { map.viewRect = container.bounds }
             let manager = map.getLabelManager()
             _ = manager.addLabelLayer(option: LabelLayerOptions(
                 layerID: Self.layerId, competitionType: .none, competitionUnit: .poi, orderType: .rank, zOrder: 0))
-            if let symbol = UIImage(systemName: "mappin.circle.fill") {
-                let icon = PoiIconStyle(symbol: symbol, anchorPoint: CGPoint(x: 0.5, y: 0.5))
-                manager.addPoiStyle(PoiStyle(styleID: Self.styleId, styles: [PerLevelPoiStyle(iconStyle: icon, level: 0)]))
-                let pickIcon = PoiIconStyle(symbol: symbol.withTintColor(.systemOrange, renderingMode: .alwaysOriginal), anchorPoint: CGPoint(x: 0.5, y: 0.5))
-                manager.addPoiStyle(PoiStyle(styleID: Self.pickStyleId, styles: [PerLevelPoiStyle(iconStyle: pickIcon, level: 0)]))
-            }
+            let selectedPoint = MapPin(id: "selected-point", title: "선택한 위치", point: GeoPoint(lat: 0, lng: 0), order: 0, kind: .searchResult)
+            let pickIcon = PoiIconStyle(symbol: MapPinImage.make(pin: selectedPoint, selected: true), anchorPoint: CGPoint(x: 0.5, y: 0.5))
+            manager.addPoiStyle(PoiStyle(styleID: Self.pickStyleId, styles: [PerLevelPoiStyle(iconStyle: pickIcon, level: 0)]))
             // 동선 스타일 — 카카오는 **미리 등록한 목록에서 번호로** 고른다.
             // 짝수는 보통 선, 홀수는 자동 합성(숙소 복귀). 앞의 두 개는 기본색(하루만 볼 때),
             // 그 뒤로 일자 색 10개가 같은 규칙으로 이어진다.
@@ -117,7 +164,7 @@ struct KakaoMapContainer: UIViewRepresentable {
             routeManager.addRouteStyleSet(RouteStyleSet(styleID: Self.routeStyleId, styles: styles))
             _ = routeManager.addRouteLayer(layerID: Self.routeLayerId, zOrder: 0)
 
-            tapHandler = map.addMapTappedEventHandler(target: self, handler: Coordinator.mapTapped)
+            map.eventDelegate = self
             ready = true
             if pendingRender { render() }
         }
@@ -163,31 +210,35 @@ struct KakaoMapContainer: UIViewRepresentable {
             drawRoutes(on: map)
             layer.clearAllItems()
             for pin in pins {
-                let options = PoiOptions(styleID: Self.styleId, poiID: pin.id)
+                let selected = pin.id == selectedPinID
+                let style = "pin-\(pin.kind.rawValue)-\(pin.kind == .itinerary ? pin.order : 0)-\(selected)"
+                if registeredPinStyles.insert(style).inserted {
+                    let image = MapPinImage.make(pin: pin, selected: selected)
+                    let icon = PoiIconStyle(symbol: image, anchorPoint: CGPoint(x: 0.5, y: 0.5))
+                    map.getLabelManager().addPoiStyle(PoiStyle(styleID: style, styles: [PerLevelPoiStyle(iconStyle: icon, level: 0)]))
+                }
+                let options = PoiOptions(styleID: style, poiID: pin.id)
                 options.rank = pin.order
+                options.clickable = true
                 if let poi = layer.addPoi(option: options, at: MapPoint(longitude: pin.point.lng, latitude: pin.point.lat)) {
                     poi.show()
                 }
             }
+            guard shouldMoveCamera else { return }
+            shouldMoveCamera = false
             if let focus {
                 map.moveCamera(CameraUpdate.make(target: MapPoint(longitude: focus.lng, latitude: focus.lat), zoomLevel: 16, mapView: map))
-            } else if let first = pins.first {
-                if pins.count == 1 {
-                    map.moveCamera(CameraUpdate.make(target: MapPoint(longitude: first.point.lng, latitude: first.point.lat), zoomLevel: 15, mapView: map))
-                } else {
-                    // 전부 보이게 — 중심과 퍼진 정도로 레벨을 정한다(넓을수록 낮은 레벨).
-                    let lats = pins.map(\.point.lat), lngs = pins.map(\.point.lng)
-                    let center = MapPoint(longitude: (lngs.min()! + lngs.max()!) / 2, latitude: (lats.min()! + lats.max()!) / 2)
-                    let span = max(lats.max()! - lats.min()!, lngs.max()! - lngs.min()!)
-                    let level: Int = span > 1.5 ? 7 : span > 0.5 ? 9 : span > 0.15 ? 11 : span > 0.05 ? 13 : 14
-                    map.moveCamera(CameraUpdate.make(target: center, zoomLevel: level, mapView: map))
-                }
+            } else if let bounds = frame ?? MapBounds.covering(pins: pins, routes: routes) {
+                // 장면(frame)이 있으면 거기만, 없으면 그린 것 전부 — 카카오에는 bounds fit이 없어 중심과 줌으로 간다.
+                // 줌은 뷰 크기 안에 사각형이 들어가는 가장 가까운 값이다(`MapBounds.zoomLevel`).
+                let level = bounds.zoomLevel(fitting: map.viewRect.size, range: Self.zoomRange)
+                map.moveCamera(CameraUpdate.make(target: MapPoint(longitude: bounds.center.lng, latitude: bounds.center.lat),
+                                                 zoomLevel: level, mapView: map))
             }
         }
 
-        private func mapTapped(_ param: ViewInteractionEventParam) {
-            guard let onPick, let map = param.view as? KakaoMap else { return }
-            let position = map.getPosition(param.point)
+        func terrainDidTapped(kakaoMap map: KakaoMap, position: MapPoint) {
+            guard let onPick else { return }
             let point = GeoPoint(lat: position.wgsCoord.latitude, lng: position.wgsCoord.longitude)
             if let layer = map.getLabelManager().getLabelLayer(layerID: Self.layerId) {
                 pickPoi?.hide()
@@ -197,6 +248,21 @@ struct KakaoMapContainer: UIViewRepresentable {
                 }
             }
             onPick(MapPick(point: point, name: nil, placeId: nil))
+        }
+
+        func poiDidTapped(kakaoMap: KakaoMap, layerID: String, poiID: String, position: MapPoint) {
+            guard layerID == Self.layerId, pins.contains(where: { $0.id == poiID }) else { return }
+            onPinSelected?(poiID)
+        }
+
+        func cameraDidStopped(kakaoMap map: KakaoMap, by: MoveBy) {
+            let rect = map.viewRect
+            let corners = [CGPoint(x: rect.minX, y: rect.minY), CGPoint(x: rect.maxX, y: rect.minY),
+                           CGPoint(x: rect.minX, y: rect.maxY), CGPoint(x: rect.maxX, y: rect.maxY)]
+                .map { map.getPosition($0).wgsCoord }
+            let area = PlaceSearchArea(south: corners.map(\.latitude).min()!, west: corners.map(\.longitude).min()!,
+                                       north: corners.map(\.latitude).max()!, east: corners.map(\.longitude).max()!)
+            if area.isValid { onAreaChanged?(area) }
         }
     }
 }

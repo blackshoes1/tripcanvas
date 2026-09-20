@@ -75,6 +75,8 @@ struct TripDay: Hashable, Sendable {
         get { (raw["spots"]?.arrayValue ?? []).map { TripSpot(raw: $0.objectValue ?? [:]) } }
         set { raw["spots"] = .array(newValue.map { .object($0.raw) }) }
     }
+
+    mutating func setField(_ key: String, _ value: JSONValue?) { raw.setOrRemove(key, value) }
 }
 
 /// 장소 하나. 좌표가 없을 수 있다 — 이름만 적어 둔 장소도 일정에 남는다.
@@ -134,10 +136,12 @@ struct TripSpot: Hashable, Sendable {
         set { raw.setOrRemove("stayMin", newValue.map { .number(max(0, $0)) }) }
     }
 
-    var cost: Int? {
-        get { raw["cost"]?.intValue }
+    var cost: Double? {
+        get { raw["cost"]?.doubleValue }
         set { raw.setOrRemove("cost", newValue.map { .number(max(0, $0)) }) }
     }
+
+    mutating func setField(_ key: String, _ value: JSONValue?) { raw.setOrRemove(key, value) }
 
     var currency: Currency? {
         get { Currency(rawValue: raw["cur"]?.stringValue ?? "") }
@@ -159,6 +163,11 @@ struct TripSpot: Hashable, Sendable {
     var placeId: String? {
         get { raw["placeId"]?.stringValue }
         set { raw.setOrRemove("placeId", newValue.flatMap { $0.isEmpty ? nil : .string($0) }) }
+    }
+
+    var kakaoId: String? {
+        get { raw["kakaoId"]?.stringValue }
+        set { raw["kakaoId"] = newValue.map(JSONValue.string) }
     }
 
     /// 숙소 연박 수.
@@ -274,6 +283,20 @@ extension TripDocument {
         insertSpot(spot, dayIndex: targetDay)
     }
 
+    /// 고른 장소들의 원래 순서와 예약 필드를 그대로 보존해 특정 자리에 옮긴다.
+    mutating func moveSpots(fromDay: Int, indexes: IndexSet, toDay: Int, position: Int) {
+        guard hasDay(fromDay), hasDay(toDay) else { return }
+        if fromDay == toDay {
+            moveSpots(dayIndex: fromDay, from: indexes, to: position)
+            return
+        }
+        let spots = days[fromDay].spots
+        let picked = indexes.sorted().compactMap { spots.indices.contains($0) ? spots[$0] : nil }
+        guard !picked.isEmpty else { return }
+        for index in indexes.sorted(by: >) { removeSpot(dayIndex: fromDay, at: index) }
+        for (offset, spot) in picked.enumerated() { insertSpot(spot, dayIndex: toDay, after: position + offset - 1) }
+    }
+
     private mutating func replaceDay(_ index: Int, with day: TripDay) {
         var all = days
         all[index] = day
@@ -344,6 +367,21 @@ enum SpotCategory: String, CaseIterable, Sendable {
         case .shop: "🛍"
         case .transport: "🚉"
         case .nature: "🌿"
+        }
+    }
+
+    /// 앱 화면의 아이콘(SF Symbols). `icon`(이모지)은 웹·공유 문장과 같은 글자용이고, 화면은 이것을 쓴다 —
+    /// 이모지와 벡터 아이콘을 한 화면에 섞지 않는다(2026-09-18).
+    var symbol: String {
+        switch self {
+        case .stay: "bed.double.fill"
+        case .food: "fork.knife"
+        case .cafe: "cup.and.saucer.fill"
+        case .sight: "building.columns.fill"
+        case .activity: "figure.run"
+        case .shop: "bag.fill"
+        case .transport: "tram.fill"
+        case .nature: "leaf.fill"
         }
     }
 }

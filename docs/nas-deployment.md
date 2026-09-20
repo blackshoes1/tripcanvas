@@ -6,6 +6,10 @@
 > `https://bokbok9.tail8b977f.ts.net` 이고, 데이터는 NAS PostgreSQL이다. Vercel에는 정적 웹만 남았다.
 > Vercel의 `tripcanvas-api` 프로젝트는 지우지 않았다 — **롤백 대상**이다(아래 "롤백").
 
+> **NAS의 다음 역할 (준비됨, 2026-09-17)**: API·PostgreSQL을 관리형으로 옮기면 NAS는 **오프사이트 백업 목적지**가 된다 —
+> `deploy/docker-compose.backup-only.yml`이 관리형 DB의 `pg_dump`를 이 디스크로 당겨 온다. 이 문서의 나머지는 그때까지의(그리고 롤백 대상으로 남는) 운영 스택이다.
+> 설계와 순서: `docs/managed-infrastructure.md` · `docs/production-cutover.md`.
+
 ## 공개 주소는 Tailscale Funnel이다 — 도메인이 없다
 
 Vercel 함수는 tailnet 안의 PostgreSQL에 닿을 수 없다. 그래서 API를 NAS에서 돌리는데, 도메인이 없어 Caddy가 인증서를 못 받는다.
@@ -133,9 +137,11 @@ NAS의 `/api/health`·`/api/v1/trips`(401)·`/ws`(업그레이드)를 **바깥�
 
 | 응답 | 뜻 | 알림 |
 |---|---|---|
-| `200 UP` | 전부 정상 | — |
-| `200 DEGRADED` | 실시간만 죽음 — 폴백(당겨서 새로고침)이 있어 기능은 산다 | 울리지 않는다 |
-| **`503 DOWN`** | **저장 경로가 죽었다 — 사용자가 여행을 저장할 수 없다** | 울린다 |
+| `200 HEALTHY` | 전부 정상 | — |
+| `200 DEGRADED` | 실시간·백업·점검 모드처럼 폴백이 있는 것만 어긋남(`degradedReasons`에 무엇인지) — 기능은 산다 | 울리지 않는다 |
+| **`503 UNAVAILABLE`** | **저장 경로가 죽었다 — 사용자가 여행을 저장할 수 없다** | 울린다 |
+
+감시 대상은 Vercel 환경변수로 옮긴다: `TC_WATCH_BASE`(API) · `TC_WATCH_REALTIME_BASE`(실시간이 다른 호스트일 때) · `TC_WATCH_WS_PATH`. 관리형 전환 때 이 셋만 바꾼다.
 
 > 실시간 하나로 새벽에 깨우지 않는다. 저장과 실시간의 무게가 다르다.
 
@@ -174,33 +180,145 @@ curl -m 20 --resolve "bokbok9.tail8b977f.ts.net:443:$IP" https://bokbok9.tail8b9
 | **`visudo`가 없다** | 문법 검사를 건너뛰게 된다. 파일을 쓴 뒤 `sudo -n /usr/local/bin/docker version`으로 실제 동작을 확인한다 |
 | **SFTP가 막혀 있다** | 그냥 `scp`는 `Connection closed`로 끊긴다. **`scp -O`**(레거시 프로토콜)를 쓴다 |
 | **macOS의 `rsync`는 openrsync다** | `-e` 처리가 달라 ssh 인증이 깨진다. 파일 몇 개면 `scp -O`가 낫다 |
+| **`deploy/.env`가 이미지의 ENV를 이긴다** | compose의 `env_file:`이 파일을 통째로 넣는다. `TC_REVISION` 같은 **이미지가 주인인 값을 여기 두면 안 된다** — 배포 스크립트가 지운다 |
 | **볼륨이 둘이다** | DB는 `/volume1/@docker/volumes/...`, 홈은 `/volume2`다. **백업은 반드시 다른 볼륨에** 둔다(§60) |
 
-### 파일 배포
+### 배포 — main 머지가 곧 배포다 (2026-09-19)
 
-git이 없으므로 맥에서 보낸다:
+**사람이 하는 정상 배포 작업은 PR을 `main`에 머지하는 것뿐이다.** 그 뒤는 자동이다.
 
-```bash
-scp -O deploy/docker-compose.yml deploy/docker-compose.staging.yml deploy/docker-compose.caddy.yml \
-    nas:~/tripcanvas/deploy/
-# API 코드를 바꿨으면 해당 소스도 보내고 다시 빌드한다
-sudo docker compose -f deploy/docker-compose.yml build api
-sudo docker compose -f deploy/docker-compose.yml up -d api
+```
+PR merge → main
+   → GitHub Actions(.github/workflows/release.yml)
+       게이트(기존 CI) → GHCR에 이미지 push → `production` 태그를 그 커밋으로 이동
+   → NAS cron(5분) → scripts/nas-deploy.sh
+       production 태그 확인 → 바뀌었으면 그 커밋의 compose·이미지 pull
+       → migrate → api·realtime 교체 → 헬스체크 → revision 확인 → 기록
 ```
 
-⚠️ **`migrate`는 별도 이미지다.** 마이그레이션을 추가했는데 `build api`만 하면 옛 `migrate` 이미지가 돌고,
-`[✓] migrations applied successfully!`라고 찍으면서 **새 테이블을 만들지 않는다.** 로그가 초록이라 더 안 보인다
-(2026-09-06 `leg_cache`가 그랬다). 스키마를 바꿨으면 반드시:
+이 사슬의 요점은 **이름이 커밋 SHA 하나로 꿰어져 있다**는 것이다.
 
-```bash
-sudo docker compose -f deploy/docker-compose.yml build migrate
-sudo docker compose -f deploy/docker-compose.yml up -d migrate
-sudo docker exec tripcanvas-postgres-1 psql -U tripcanvas -d tripcanvas -c '\d <새 테이블>'   # 눈으로 확인
+```
+Git 커밋 = 이미지 태그 = migrate·api·realtime = TC_REVISION = 배포 기록
 ```
 
+**NAS는 더 이상 빌드하지 않는다.** 이미지를 만드는 곳은 GitHub 하나뿐이다.
+
+왜 이렇게 바뀌었나: 2026-09-19 새벽 배포는 `docker build`가 성공했고 컨테이너도 새로 떴는데 **내용이 #239였다.**
+`git fetch`가 돌지 않아 맥의 `origin/main`이 전날 것이었고 `git archive origin/main`은 그걸 그대로 담았다.
+로그는 전부 초록이라 원인을 찾는 데 몇 시간이 들었다. 소스를 사람이 날라서 거기서 빌드하는 한 같은 사고가 또 난다.
+
+#### 지금 무엇이 도는지
+
+```bash
+ssh nas '~/tripcanvas/scripts/nas-deploy.sh --status'
+```
+
+```
+기록된 현재 SHA : 6549b93…        ← deploy/.deploy-state
+기록된 직전 SHA : e767f29…        ← 롤백 대상
+도는 revision   : 6549b93…        ← GET /api/health (도는 프로세스가 말하는 값)
+컨테이너 이미지 : 6549b93…        ← 도는 컨테이너 이미지의 OCI 라벨 (코드 자체)
+상태            : HEALTHY / DB ok
+production 태그 : 6549b93…        ← GitHub이 배포하라고 정한 커밋
+```
+
+네 SHA가 같으면 정상이다.
+
+⚠️ **`도는 revision`과 `컨테이너 이미지`가 따로 있는 이유**(2026-09-19): 앞은 환경변수(`TC_REVISION`)를
+거쳐 나오고 뒤는 이미지에 박힌 라벨이라 환경변수를 거치지 않는다. compose의 `env_file: deploy/.env`가
+파일을 통째로 컨테이너에 넣으면서 **이미지의 `ENV`를 덮어쓰기** 때문에, `.env`에 `TC_REVISION` 한 줄이
+남아 있으면 새 이미지를 제대로 띄우고도 `/api/health`는 옛 커밋을 말한다. 실제로 그 일이 일어났다 —
+맥에서 빌드하던 옛 방식이 남긴 줄이었다. 지금은 `nas-deploy.sh`가 배포할 때마다 그 줄을 **지우고**,
+둘이 갈리면 배포를 실패시킨다(`test/nas-deploy.test.js`). **`production 태그`와 `도는 revision`이 30분 넘게 다르면** 파이프라인이 멈춘 것이다 —
+`deploy/deploy.log`를 본다. 밖에서 한 줄로 볼 때는:
+
+```bash
+curl -s https://bokbok9.tail8b977f.ts.net/api/health | sed -n 's/.*"revision":"\([^"]*\)".*/\1/p'
+```
+
+#### 배포 기록
+
+`deploy/deploy.log`에 한 줄씩 쌓인다 — 시작·이전/대상 SHA·pull·migrate·컨테이너 교체·헬스체크·revision·성공/실패·롤백.
+비밀은 찍지 않는다.
+
+```bash
+ssh nas 'tail -40 ~/tripcanvas/deploy/deploy.log'
+```
+
+#### 롤백 — 특정 커밋으로 되돌리기
+
+배포가 실패하면 스크립트가 **직전 SHA로 스스로 되돌린다.** 손으로 할 때는:
+
+```bash
+ssh nas '~/tripcanvas/scripts/nas-deploy.sh --sha <되돌릴-커밋-40자리-SHA>'
+```
+
+⚠️ **이미지만 되돌아간다. 스키마는 앞선 채로 남는다.** 그래서 마이그레이션은 항상 하위호환이어야 하고,
+CI가 그걸 검사한다 — `docs/migration-policy.md`. 되돌린 상태를 유지하려면 자동 배포를 함께 세운다(아래).
+
+#### 자동 배포 일시 중지
+
+```bash
+ssh nas 'touch ~/tripcanvas/deploy/.deploy-disabled'   # 정지 (deploy/.env의 DEPLOY_DISABLED=1도 같다)
+ssh nas 'rm ~/tripcanvas/deploy/.deploy-disabled'      # 재개
+```
+
+#### NAS 최초 1회 설정
+
+```bash
+# 1) GHCR 로그인 — 이 저장소는 공개라 공개 패키지면 필요 없다.
+#    비공개로 바꿀 때만, read:packages **만** 가진 토큰으로. NAS에 쓰기·저장소 권한을 주지 않는다.
+# ssh nas 'echo <READ_PACKAGES_TOKEN> | sudo /usr/local/bin/docker login ghcr.io -u <github-id> --password-stdin'
+
+# 2) 배포 스크립트 자리 잡기 — **NAS가 직접 받는다.** 저장소가 공개라 인증이 필요 없고,
+#    배포 스크립트 자신도 compose 파일을 같은 경로로 받으므로 이 길이 살아 있어야 한다.
+ssh nas 'mkdir -p ~/tripcanvas/scripts \
+  && curl -fsSL https://raw.githubusercontent.com/blackshoes1/tripcanvas/main/scripts/nas-deploy.sh \
+       -o ~/tripcanvas/scripts/nas-deploy.sh \
+  && chmod +x ~/tripcanvas/scripts/nas-deploy.sh \
+  && head -1 ~/tripcanvas/scripts/nas-deploy.sh'
+#    ⚠️ 맥에서 보내려면 **`scp -O`**다 — 이 NAS는 SFTP가 막혀 있어 그냥 `scp`는 `Connection closed`로 끊긴다:
+#    scp -O scripts/nas-deploy.sh nas:~/tripcanvas/scripts/nas-deploy.sh
+
+# 3) 첫 배포를 손으로 한 번 — 여기서 .env의 TC_IMAGE_TAG가 채워진다
+ssh nas '~/tripcanvas/scripts/nas-deploy.sh'
+
+# 4) 5분마다 — DSM에서는 **작업 스케줄러**가 가장 확실하다:
+#    제어판 → 작업 스케줄러 → 생성 → 예약된 작업 → 사용자 정의 스크립트
+#      사용자: root · 반복: 5분마다 · 명령: /bin/bash /var/services/homes/<계정>/tripcanvas/scripts/nas-deploy.sh
+#
+#    셸의 crontab으로 넣을 때는 **중괄호로 묶어야 한다** — 세미콜론으로 나열하면
+#    앞 명령의 출력이 파이프에 들어가지 않아 **기존 cron 항목이 통째로 지워진다**:
+ssh nas '{ crontab -l 2>/dev/null | grep -v nas-deploy.sh; echo "*/5 * * * * /bin/bash $HOME/tripcanvas/scripts/nas-deploy.sh >/dev/null 2>&1"; } | crontab -'
+ssh nas 'crontab -l'   # 기존 항목이 남아 있는지 눈으로 확인한다
+```
+
+⚠️ **배포 스크립트 자신은 자동으로 갱신되지 않는다.** 돌고 있는 스크립트를 스스로 갈아 끼우면
+실행 중인 파일이 바뀌어 위험하다. 저장소에서 바뀌면 로그에 한 줄 남기고 `deploy/nas-deploy.sh.new`로
+받아 두므로, 확인한 뒤 손으로 바꾼다:
+
+```bash
+ssh nas 'diff ~/tripcanvas/deploy/nas-deploy.sh.new ~/tripcanvas/scripts/nas-deploy.sh'
+ssh nas 'cp ~/tripcanvas/deploy/nas-deploy.sh.new ~/tripcanvas/scripts/nas-deploy.sh && chmod +x ~/tripcanvas/scripts/nas-deploy.sh'
+```
+
+⚠️ `sudo`가 비밀번호를 묻지 않아야 cron이 돈다. 묻는다면 `TC_DOCKER=/usr/local/bin/docker`로 두고
+docker 그룹에 넣거나, 스케줄러를 root로 돌린다.
+
+#### 비상 — 레지스트리가 죽었을 때만
+
+정상 경로는 언제나 GHCR pull이다. GHCR·인터넷이 죽어 손으로 빌드해야 하면:
+
+```bash
+ssh nas 'cd ~/tripcanvas && TC_IMAGE_TAG=$(cat deploy/.deploy-state | sed -n "s/^CURRENT_SHA=//p") \
+  sudo /usr/local/bin/docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.build.yml build'
+```
+
+base의 `image:`가 그대로 태그로 붙어 운영이 기대하는 바로 그 태그가 된다. 다음 자동 배포가 GHCR 이미지로 되돌린다.
+
+⚠️ **`deploy/.env`는 NAS 것이 진실이다.** 저장소에 없고, 배포가 건드리는 줄은 `TC_IMAGE_TAG` 하나뿐이다.
 `~/.ssh/config`에 별칭을 두면 편하다(`Host nas` / `HostName bokbok9.tail8b977f.ts.net` / `User <계정>`).
-
-⚠️ **`deploy/.env`는 보내지 않는다.** 비밀이 들어 있고 NAS 것이 진실이다.
 
 ## 환경변수
 
@@ -217,6 +335,8 @@ sudo docker exec tripcanvas-postgres-1 psql -U tripcanvas -d tripcanvas -c '\d <
 | `KAKAO_REST_API_KEY` | 국내 경로(카카오내비)·국내 장소 검색. Vercel에 있는 것과 **같은 키**를 복사해 넣는다 |
 | `GOOGLE_ROUTES_API_KEY` | 해외 경로(Google Routes)용 **서버 전용** 키. 웹 키(리퍼러 제한)·iOS 키(번들 제한)는 서버에서 거절된다 |
 | `BACKUP_DIR` · `BACKUP_KEEP_DAYS` | 덤프 위치 · 보관 일수. ⚠️ **DB와 다른 볼륨**이어야 한다 — DB는 `/volume1`에 있으므로 `/volume2/...`를 쓴다(§60) |
+| `BACKUP_MAX_AGE_HOURS` | `/api/health`가 `ops_backup_runs`의 마지막 성공을 이 시간과 비교한다(기본 26). 넘으면 DEGRADED |
+| `TC_READ_ONLY` | 점검(읽기 전용) 모드. **전환 직전 write freeze에만** `1`. 쓰기 라우트가 503 `MAINTENANCE` — `docs/production-cutover.md` |
 
 ### ⚠️ `.env`를 고쳤으면 **반드시 다시 띄운다**
 

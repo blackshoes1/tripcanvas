@@ -16,11 +16,17 @@ final class TripPlanViewModel {
     private(set) var revision = 0
     private(set) var role: MemberRole = .owner
     private(set) var isLoading = false
+    /// 문서를 서버에서 마지막으로 받은 시각 — 탭에 다시 들어왔을 때 또 받을지의 기준.
+    private(set) var loadedAt: Date?
     private(set) var isSaving = false
     private(set) var errorMessage: String?
     /// 다른 기기가 먼저 바꿨다. 화면은 이걸 보고 물어본다 — 자동으로 어느 쪽도 고르지 않는다.
     private(set) var conflict: String?
     private(set) var toast: String?
+    private var undoDocument: TripDocument?
+    private var undoRevision: Int?
+    private var loadGeneration = 0
+    var canUndo: Bool { undoDocument != nil && undoRevision == revision && canEdit && !isSaving }
 
     /// 서버가 계산한 그 날의 흐름과 일자 스트립. 문서와 따로 온다 — 문서는 원문, 이건 계산이다.
     /// nil이면 아직 못 받았거나 실패한 것이다. **없어도 일정 편집은 그대로 된다.**
@@ -40,7 +46,7 @@ final class TripPlanViewModel {
     var selectedDay = 0 {
         didSet {
             if let document, selectedDay >= document.days.count { selectedDay = max(0, document.days.count - 1) }
-            if selectedDay != oldValue { Task { await loadPlan() } }
+            if selectedDay != oldValue { Task { await loadPlan(reuseFetched: true) } }
         }
     }
 
@@ -50,18 +56,21 @@ final class TripPlanViewModel {
     let tripId: String
     private let service: TripDocumentSource
     private let memberSource: MemberListing?
+    private let candidateSource: CollabSource?
     /// 여행 중일 때 '오늘'로 한 번만 옮긴다.
 
     /// - Parameters:
     ///   - initialDay: 처음 볼 날. **여행 목록이 이미 아는 값**(`TripSummary.todayIndex`)을 받는다 —
     ///     계산이 온 뒤에 옮기면 1일차를 보여 줬다가 오늘로 튄다.
     ///   - legRetryDelay: 경로가 채워지기를 기다리는 시간. 테스트는 짧게 준다.
-    init(tripId: String, service: TripDocumentSource, memberSource: MemberListing? = nil,
-         initialDay: Int = 0, legRetryDelay: TimeInterval = 3) {
+    init(tripId: String, service: TripDocumentSource, memberSource: MemberListing? = nil, candidateSource: CollabSource? = nil,
+         initialDay: Int = 0, legRetryDelay: TimeInterval = 3, loadsPlans: Bool = true) {
         self.tripId = tripId
         self.service = service
         self.memberSource = memberSource
+        self.candidateSource = candidateSource ?? (service as? CollabSource)
         self.legRetryDelay = legRetryDelay
+        self.loadsPlans = loadsPlans
         self.selectedDay = max(0, initialDay)
     }
 
@@ -85,6 +94,7 @@ final class TripPlanViewModel {
     /// 여행 전체 동선. **전체 지도를 볼 때만** 받는다 — 열지도 않을 날까지 미리 받지 않는다.
     private(set) var tripRoutes: TripRoutesResponse?
     private(set) var isLoadingTripRoutes = false
+    private var tripRoutesGeneration = 0
     /// 전체 동선도 한 번만 다시 받는다(하루치와 같은 규칙).
     private var retriedTripRoutes = false
 
@@ -100,8 +110,13 @@ final class TripPlanViewModel {
 
     /// 경로가 채워지기를 기다렸다 한 번 더 받은 날들. **날마다 한 번뿐이다.**
     private var retriedLegs: Set<Int> = []
+    /// 이 세션에서 **서버로부터** 받은 날들(디스크 캐시·오프라인 사본은 빼고). 같은 문서의 채운 하루치는 날을 오가도
+    /// 다시 묻지 않는다(2026-09-18) — 문서가 바뀌면 `apply`가 전부 버리므로 옛것을 볼 일은 없다.
+    private var fetchedDays: Set<Int> = []
     /// 채우기에 주는 시간. 구간 몇 개면 대개 이 안에 끝난다.
     private let legRetryDelay: TimeInterval
+    /// 하루치 계산을 받는가. 예약 편집처럼 **문서만** 필요한 곳은 끈다(2026-09-18) — 편집기 하나 여는 데 하루치 2건이 나갔다.
+    private let loadsPlans: Bool
 
     var day: TripDay? {
         guard let document, document.hasDay(selectedDay) else { return nil }
@@ -110,13 +125,70 @@ final class TripPlanViewModel {
 
     var dayCount: Int { document?.days.count ?? 0 }
 
+    func overviewPlan(_ day: Int) -> DayPlanResponse? { plansByDay[day] }
+
+    func loadOverview() async {
+        let requestedRevision = revision
+        for index in 0..<dayCount {
+            guard !Task.isCancelled, revision == requestedRevision else { return }
+            if plansByDay[index] != nil { continue }
+            do {
+                let result = try await service.dayPlan(tripId: tripId, dayIndex: index)
+                guard revision == requestedRevision, result.value.trip.revision == revision else { continue }
+                plansByDay[index] = result.value
+                cachedAtByDay[index] = result.cachedAt
+            } catch { /* 개요에 계산 미확인으로 남기고 나머지 날은 계속 읽는다. */ }
+        }
+    }
+
+    @discardableResult
+    func savePreparedDocument(_ draft: TripDocument, expectedRevision: Int, message: String) async -> Bool {
+        guard revision == expectedRevision else {
+            errorMessage = "미리보기를 연 뒤 일정이 바뀌었어요. 닫고 최신 일정에서 다시 선택해 주세요."
+            return false
+        }
+        return await edit(message) { $0 = draft }
+    }
+
+    func undoLastChange() async {
+        guard canUndo, let previous = undoDocument else { return }
+        let currentIDs = Set(document?.days.flatMap(\.spots).compactMap { $0.raw["candidateId"]?.intValue } ?? [])
+        if await edit("변경을 되돌렸어요", { $0 = previous }) {
+            undoDocument = nil; undoRevision = nil
+            if let candidateSource {
+                for (dayIndex, day) in previous.days.enumerated() {
+                    for spot in day.spots {
+                        guard let id = spot.raw["candidateId"]?.intValue, !currentIDs.contains(id) else { continue }
+                        do { try await candidateSource.manageCandidate(tripId: tripId, candidateId: id, action: "SCHEDULE", value: String(dayIndex + 1)) }
+                        catch { errorMessage = "일정은 되돌렸지만 가고 싶은 곳의 날짜 표시를 복구하지 못했어요. 후보 보드에서 해당 장소를 다시 확인해 주세요." }
+                    }
+                }
+            }
+        }
+    }
+
+    /// 탭에 들어올 때 부른다. 문서가 있고 방금 받은 것이면 아무것도 하지 않는다 — 탭을 오갈 때마다
+    /// 문서·하루치를 다시 받으면 그때마다 로딩이 뜨고 고른 날이 튄다(2026-09-17). 오래됐으면 `load()`인데,
+    /// 문서가 이미 있으므로 화면은 로딩으로 바뀌지 않고 바뀐 것만 갈아끼워진다.
+    func loadIfStale(maxAge: TimeInterval = 60, now: Date = Date()) async {
+        if document != nil, let loadedAt, now.timeIntervalSince(loadedAt) < maxAge { return }
+        await load()
+    }
+
     func load() async {
+        loadGeneration += 1
+        let request = loadGeneration
+        let requestedRevision = revision
         if document == nil { isLoading = true }
-        defer { isLoading = false }
+        defer { if request == loadGeneration { isLoading = false } }
         do {
-            apply(try await service.document(tripId: tripId))
+            let snapshot = try await service.document(tripId: tripId)
+            guard request == loadGeneration, requestedRevision == revision, !isSaving else { return }
+            apply(snapshot)
+            loadedAt = Date()
             errorMessage = nil
         } catch {
+            guard request == loadGeneration, requestedRevision == revision, !isSaving else { return }
             errorMessage = message(for: error)
         }
         await loadPlan()
@@ -133,23 +205,40 @@ final class TripPlanViewModel {
     /// 서버 계산을 받아온다. **실패해도 조용하다** — 일정 편집은 문서만으로 되고,
     /// 계산이 없으면 화면이 시각·구간을 감출 뿐이다. 여기서 오류 배너를 띄우면
     /// 편집이 멀쩡한데 무언가 고장 난 것처럼 보인다.
-    func loadPlan() async {
+    /// - Parameter reuseFetched: **날을 옮길 때**만 참이다 — 이번 문서의 계산을 이 세션에서 이미 서버로부터 받았고 채울 구간도
+    ///   없으면 다시 묻지 않는다(2026-09-18). `load()`·당겨서 새로고침·저장 뒤의 호출은 언제나 다시 받는다.
+    func loadPlan(reuseFetched: Bool = false) async {
+        guard loadsPlans else { return }
         guard dayCount > 0 else { plansByDay = [:]; cachedAtByDay = [:]; return }
         let day = selectedDay
+        let askedRevision = revision
+        defer {
+            if revision == askedRevision { attemptedDays.insert(day) }
+        }
         await showCachedPlan(for: day)
+        guard revision == askedRevision else { return }
+        // 날을 옮길 때 — 이번 문서의 계산을 이 세션에서 이미 서버로부터 받았고 채울 구간도 없으면 같은 답을 다시 받지 않는다(2026-09-18).
+        if reuseFetched, let known = plansByDay[day], fetchedDays.contains(day), known.trip.revision == askedRevision, known.legsPending == 0 {
+            attemptedDays.insert(day)
+            prefetchNeighbours(of: day)
+            return
+        }
         do {
             let fetched = try await service.dayPlan(tripId: tripId, dayIndex: day)
-            guard day == selectedDay else { return }   // 그 사이 다른 날로 옮겼으면 버린다
+            guard day == selectedDay, revision == askedRevision,
+                  fetched.value.trip.revision == askedRevision else { return }
             plansByDay[day] = fetched.value
             cachedAtByDay[day] = fetched.cachedAt
+            if fetched.cachedAt == nil { fetchedDays.insert(day) }
             attemptedDays.insert(day)
             await loadMembers()
+            guard revision == askedRevision else { return }
             // ⚠️ **기다리지 않는다.** 여기서 await 하면 `load()`가 3초 동안 안 끝나고,
             // 그동안 화면은 로딩 상태로 멈춘다 — 채우기를 기다리는 것과 화면을 세우는 것은 다른 일이다.
             scheduleLegRetry(day: day, pending: fetched.value.legsPending)
             prefetchNeighbours(of: day)
         } catch {
-            attemptedDays.insert(day)
+            guard revision == askedRevision else { return }
             // 못 받았다고 **이미 보여 준 계산을 지우지 않는다** — 화면이 비면서 또 튄다.
             // 다만 그 계산이 지금 보는 날의 것이고 문서가 그대로일 때만 남긴다:
             // 편집한 뒤의 옛 시각을 계속 보여 주면 틀린 숫자를 말하는 것이다.
@@ -183,6 +272,7 @@ final class TripPlanViewModel {
         guard plansByDay[day] == nil else { return }      // 그 사이 그 날을 열었으면 그쪽이 이긴다
         plansByDay[day] = fetched.value
         cachedAtByDay[day] = fetched.cachedAt
+        if fetched.cachedAt == nil { fetchedDays.insert(day) }
         attemptedDays.insert(day)      // 넘어가는 순간 목록이 기다리지 않고 지어진다
     }
 
@@ -213,32 +303,44 @@ final class TripPlanViewModel {
     private func scheduleLegRetry(day: Int, pending: Int) {
         guard pending > 0, !retriedLegs.contains(day) else { return }
         retriedLegs.insert(day)
-        Task { [weak self] in await self?.refetchWhenLegsArrive(day: day) }
+        let askedRevision = revision
+        Task { [weak self] in await self?.refetchWhenLegsArrive(day: day, revision: askedRevision) }
     }
 
-    private func refetchWhenLegsArrive(day: Int) async {
+    private func refetchWhenLegsArrive(day: Int, revision askedRevision: Int) async {
         try? await Task.sleep(for: .seconds(legRetryDelay))
-        guard day == selectedDay else { return }        // 그 사이 다른 날로 옮겼으면 버린다
+        guard day == selectedDay, revision == askedRevision else { return }
         guard let fetched = try? await service.dayPlan(tripId: tripId, dayIndex: day) else { return }
-        guard day == selectedDay else { return }        // 늦게 온 답이 화면을 되돌리지 않게
+        guard day == selectedDay, revision == askedRevision,
+              fetched.value.trip.revision == askedRevision else { return }
         plansByDay[day] = fetched.value
         cachedAtByDay[day] = fetched.cachedAt
+        if fetched.cachedAt == nil { fetchedDays.insert(day) }
     }
 
     /// 여행 전체 동선을 받는다. **한 번만** 받고, 못 채운 구간이 있으면 한 번만 다시 받는다.
     /// ⚠️ 실패해도 조용하다 — 전체 지도가 안 뜰 뿐 일자 지도와 편집은 그대로다.
     func loadTripRoutes() async {
         guard tripRoutes == nil, !isLoadingTripRoutes else { return }
+        tripRoutesGeneration += 1
+        let request = tripRoutesGeneration
+        let requestedRevision = revision
         isLoadingTripRoutes = true
-        defer { isLoadingTripRoutes = false }
+        defer { if request == tripRoutesGeneration { isLoadingTripRoutes = false } }
         guard let received = try? await service.tripRoutes(tripId: tripId) else { return }
+        guard request == tripRoutesGeneration, revision == requestedRevision,
+              received.trip.revision == requestedRevision else { return }
         tripRoutes = received
         guard received.legsPending > 0, !retriedTripRoutes else { return }
         retriedTripRoutes = true
         Task { [weak self] in
             guard let self else { return }
             try? await Task.sleep(for: .seconds(self.legRetryDelay))
-            if let again = try? await self.service.tripRoutes(tripId: self.tripId) { self.tripRoutes = again }
+            guard !Task.isCancelled, self.tripRoutesGeneration == request, self.revision == requestedRevision else { return }
+            guard let again = try? await self.service.tripRoutes(tripId: self.tripId),
+                  self.tripRoutesGeneration == request, self.revision == requestedRevision,
+                  again.trip.revision == requestedRevision else { return }
+            self.tripRoutes = again
         }
     }
 
@@ -331,25 +433,36 @@ final class TripPlanViewModel {
     // MARK: 편집 — 전부 "문서를 고치고 저장한다" 한 갈래로 지나간다
 
     /// 편집 화면이 만든 장소를 그대로 넣는다. 이름만 있는 장소도 일정에 남는다(좌표는 나중에).
-    func addSpot(_ spot: TripSpot, after index: Int? = nil) async {
-        guard !spot.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        await edit("장소를 추가했어요") { $0.insertSpot(spot, dayIndex: self.selectedDay, after: index) }
+    @discardableResult
+    func addSpot(_ spot: TripSpot, after index: Int? = nil) async -> Bool {
+        guard !spot.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        return await edit("장소를 추가했어요") { $0.insertSpot(spot, dayIndex: self.selectedDay, after: index) }
     }
 
-    func updateSpot(at index: Int, with spot: TripSpot) async {
-        await edit(nil) { $0.updateSpot(dayIndex: self.selectedDay, at: index, with: spot) }
+    @discardableResult
+    func updateSpot(at index: Int, with spot: TripSpot) async -> Bool {
+        return await edit(nil) { $0.updateSpot(dayIndex: self.selectedDay, at: index, with: spot) }
     }
 
-    func removeSpot(at index: Int) async {
-        await edit("장소를 뺐어요") { $0.removeSpot(dayIndex: self.selectedDay, at: index) }
+    @discardableResult
+    func removeSpot(at index: Int) async -> Bool {
+        return await edit("장소를 뺐어요") { $0.removeSpot(dayIndex: self.selectedDay, at: index) }
     }
 
     func moveSpots(from source: IndexSet, to destination: Int) async {
         await edit(nil) { $0.moveSpots(dayIndex: self.selectedDay, from: source, to: destination) }
     }
 
-    func moveSpot(at index: Int, toDay targetDay: Int) async {
-        await edit("Day \(targetDay + 1)로 옮겼어요") { $0.moveSpot(from: (day: self.selectedDay, index: index), toDay: targetDay) }
+    @discardableResult
+    func moveSpot(at index: Int, toDay targetDay: Int, with spot: TripSpot? = nil) async -> Bool {
+        if let spot, spot.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            errorMessage = "장소 이름을 입력해 주세요."
+            return false
+        }
+        return await edit("Day \(targetDay + 1)로 옮겼어요") { document in
+            if let spot { document.updateSpot(dayIndex: self.selectedDay, at: index, with: spot) }
+            document.moveSpot(from: (day: self.selectedDay, index: index), toDay: targetDay)
+        }
     }
 
     func setDayMode(_ mode: TravelMode) async {
@@ -379,7 +492,7 @@ final class TripPlanViewModel {
     var bookings: [TripBooking] { document?.bookings ?? [] }
 
     /// 예약을 넣거나 고친다. 검증(웹 `bkSave`와 같은 규칙)을 지나지 못하면 저장하지 않고 이유를 말한다.
-    /// 돌려주는 값은 저장 요청이 나갔는지다 — 화면은 이걸 보고 닫을지 정한다.
+    /// 돌려주는 값은 저장에 성공했는지다 — 화면은 이걸 보고 닫을지 정한다.
     @discardableResult
     func saveBooking(_ booking: TripBooking, links: BookingLinks = .empty) async -> Bool {
         if let problem = booking.validate() {
@@ -387,30 +500,57 @@ final class TripPlanViewModel {
             return false
         }
         let isNew = document?.booking(id: booking.id) == nil
-        await edit(isNew ? "예약을 추가했어요" : "예약을 저장했어요") { $0.upsertBooking(booking, links: links) }
-        return true
+        return await edit(isNew ? "예약을 추가했어요" : "예약을 저장했어요") { $0.upsertBooking(booking, links: links) }
     }
 
     /// 예약 추적을 뺀다. 실제 예약이 취소되지는 않는다 — 화면이 그렇게 말한 뒤에 부른다.
-    func removeBooking(id: String) async {
-        await edit("예약을 뺐어요") { $0.removeBooking(id: id) }
+    @discardableResult
+    func removeBooking(id: String) async -> Bool {
+        return await edit("예약을 뺐어요") { $0.removeBooking(id: id) }
+    }
+
+    /// 예약이 아닌 결제 항목(보험·유심·입장권…) — 여행 단위 비용(`trip.costItems`). 고친 항목은 제자리에, 새 항목은 뒤에.
+    @discardableResult
+    func saveCostItem(_ entry: CostEntry) async -> Bool {
+        let isNew = document?.costItems.contains { $0.id == entry.id } != true
+        return await edit(isNew ? "결제 항목을 저장했어요 — 비용 화면의 예약 결제 금액에 있어요" : "결제 항목을 고쳤어요") { draft in
+            var items = draft.costItems
+            if let index = items.firstIndex(where: { $0.id == entry.id }) { items[index] = entry } else { items.append(entry) }
+            draft.costItems = items
+        }
+    }
+
+    @discardableResult
+    func removeCostItem(id: String) async -> Bool {
+        return await edit("결제 항목을 지웠어요") { draft in draft.costItems = draft.costItems.filter { $0.id != id } }
     }
 
     /// 고치고 → 화면에 먼저 반영하고 → 저장한다. 실패하면 **서버가 아는 상태로 되돌린다** —
     /// 저장되지 않은 것이 저장된 것처럼 남아 있으면 다음 편집이 그 위에 쌓인다.
-    private func edit(_ successToast: String?, _ change: (inout TripDocument) -> Void) async {
-        guard canEdit, let current = document else { return }
+    @discardableResult
+    private func edit(_ successToast: String?, _ change: (inout TripDocument) -> Void) async -> Bool {
+        guard !isSaving else { return false }
+        guard canEdit, let current = document else {
+            errorMessage = "이 일정을 바꿀 수 없어요. 권한과 연결 상태를 확인해 주세요."
+            return false
+        }
+        guard conflict == nil else { return false }
         var edited = current
         change(&edited)
-        guard edited != current else { return }
+        guard edited != current else { return true }
 
         document = edited
         isSaving = true
         defer { isSaving = false }
         do {
             apply(try await service.saveDocument(tripId: tripId, document: edited, expectedRevision: revision))
+            undoDocument = current
+            undoRevision = revision
             errorMessage = nil
             toast = successToast
+            // 저장 완료를 계산 대기에 묶지 않고, 현재 일자의 로딩도 다시 끝나게 한다.
+            Task { [weak self] in await self?.loadPlan() }
+            return true
         } catch let error as APIError {
             document = current
             if case .revisionConflict(let message, _) = error {
@@ -422,14 +562,32 @@ final class TripPlanViewModel {
             document = current
             errorMessage = message(for: error)
         }
+        return false
+    }
+
+    /// 편집 시트는 이 문구를 보여주며 사용자의 초안을 계속 보존한다.
+    var saveFailureMessage: String {
+        if conflict != nil {
+            return "다른 기기에서 먼저 바뀌었어요. 입력은 여기에 남아 있어요. 입력을 복사한 뒤 닫고 최신 일정을 확인해 주세요."
+        }
+        return errorMessage ?? "아직 저장하지 못했어요. 잠시 후 다시 시도해 주세요."
     }
 
     private func apply(_ snapshot: TripDocumentSnapshot) {
+        guard snapshot.revision >= revision else { return }
         // 문서가 바뀌면 기억해 둔 계산은 전부 옛것이다 — 옛 시각을 보여 주느니 다시 받는다.
         if snapshot.revision != revision {
+            if !isSaving { undoDocument = nil; undoRevision = nil }
             plansByDay = [:]
             cachedAtByDay = [:]
             attemptedDays = []
+            retriedLegs = []
+            fetchedDays = []
+            // 전체 지도도 같은 문서로 계산된 경로만 쓴다. 이전 요청은 새 조회의 로딩 상태를 끄지 못한다.
+            tripRoutes = nil
+            retriedTripRoutes = false
+            tripRoutesGeneration += 1
+            isLoadingTripRoutes = false
         }
         document = snapshot.document
         revision = snapshot.revision

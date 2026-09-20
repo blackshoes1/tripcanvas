@@ -259,6 +259,18 @@
   /** @param {unknown} role @param {{mine?:boolean}|null} cand @returns {boolean} */
   function canRemoveCandidate(role, cand){ return !!(cand && cand.mine) || normRole(role)==='OWNER'; }
 
+  // 가고 싶은 곳의 분류 — **표시와 거르기를 위한 것이지 결정이 아니다.**
+  // 후보가 늘면 "뭐 먹지"와 "어디 가지"가 한 목록에 섞여 고르기 어려워진다. 그래서 나눌 뿐,
+  // 분류가 순위를 바꾸거나 일정에 자동으로 넣지 않는다(§12·§79 — 인기순 자동 반영이 없는 것과 같은 이유).
+  // 값만 정하고 화면 이름은 웹·앱이 각자 붙인다. 서버(CHECK 제약)와 같은 목록이어야 한다.
+  // '아직 고르지 않음'(null)은 '기타'(ETC)와 다르다 — 고르지 않은 것을 기타로 단정하지 않는다.
+  const CANDIDATE_CATEGORIES=['RESTAURANT','CAFE','DESSERT','SIGHT','LANDMARK','NATURE','SHOPPING','ACTIVITY','STAY','ETC'];
+  /** 아는 분류면 그대로, 모르면 null(고르지 않음). 소문자로 와도 받는다. @param {any} v @returns {string|null} */
+  function candidateCategoryOf(v){
+    const t=String(v==null?'':v).trim().toUpperCase();
+    return CANDIDATE_CATEGORIES.indexOf(t)>=0? t : null;
+  }
+
   /**
    * 반응 집계. 서버가 이미 세어 주지만(must_count 등) 화면이 낙관적으로 바꾼 뒤에도 같은 답이 나와야 해서
    * 여기서 한 번 더 순수하게 센다.
@@ -485,8 +497,27 @@
     const cand=/^CANDIDATE_|^REACTION$|^COMMENT_ADDED$/.test(kind);
     const mem=/^MEMBER_/.test(kind);
     const doc=kind==='SCHEDULE_CHANGED'||kind==='BOOKING_ADDED';
-    return {candidates:cand, members:mem, pull:doc&&!mine, activity:known,
+    // 후보·반응·코멘트는 **내 것이면 이미 내 화면이다**(담기·반응·한마디 뒤에 각자 다시 읽거나 낙관 반영했다) —
+    // 에코로 또 읽지 않는다(2026-09-18, 반응 한 번에 3건이 나갔다). 문서 변경은 내 것이어도 다시 읽는다:
+    // 후보의 날짜 표시는 서버가 문서를 보고 바꾸므로 내 화면이 모른다.
+    return {candidates:(cand&&!mine)||doc, members:mem, pull:doc&&!mine, activity:known,
             notify:!mine&&(kind==='CANDIDATE_PROPOSED'||kind==='MEMBER_JOINED')};
+  }
+
+  /**
+   * 실시간 묶음에서 **한마디를 다시 읽을 후보**(열린 카드 중). 코멘트가 실제로 붙은 후보만이다 — 반응·담기 때문에
+   * 열린 카드의 한마디를 전부 다시 읽지 않는다. 이벤트에 후보 id가 없으면(자체 실시간은 신호뿐이라 `subject`가 없다)
+   * 열린 카드 전부다 — 모르면 덜 읽는 쪽이 아니라 맞는 쪽을 고른다. 내 코멘트는 남길 때 이미 읽었다.
+   * @param {Array<{kind?:string,mine?:boolean,subject?:any}|null>|null} batch @param {Iterable<string|number>|null} openIds
+   * @returns {string[]}
+   */
+  function liveCommentTargets(batch, openIds){
+    const open=Array.from(openIds||[]).map(String);
+    const events=(batch||[]).filter(e=>!!e&&e.kind==='COMMENT_ADDED'&&!e.mine);
+    if(!events.length||!open.length) return [];
+    const ids=events.map(e=>{ const s=e&&e.subject; const id=s&&s.candidate_id; return id==null?'':String(id); });
+    if(ids.some(id=>!id)) return open;
+    return open.filter(k=>ids.indexOf(k)>=0);
   }
 
   // ── 여행 취향 · 그룹 컨텍스트 · 합의 (4단계) ─────────────────────────────
@@ -708,7 +739,7 @@
    * 넣는 위치는 그 날 **맨 뒤**다(최적 위치를 추측하지 않는다 — 재배치는 기존 드래그·재구성이 한다).
    * 같은 입력이면 같은 답이다. 점수는 정렬에만 쓰고 문장에는 없다.
    * @param {any[]|null} candidates
-   * @param {Array<{spots?:Array<{name?:string,lat?:number|null,lng?:number|null}|null>}|null>|null} days
+   * @param {Array<{spots?:Array<{name?:string,lat?:number|null,lng?:number|null,candidateId?:number}|null>}|null>|null} days
    * @param {number} [memberCount] @param {{walking?:string|null}|null} [ctx] @param {number} [max]
    * @returns {{headline:string,picks:Array<{candidate:any,di:number,km:number|null,reasons:string[]}>}|null}
    */
@@ -716,7 +747,8 @@
     const limit=(Number(max)>0)? Number(max) : 3;
     const dayList=(Array.isArray(days)?days:[]).map((d,i)=>({di:i, spots:((d&&Array.isArray(d.spots))?d.spots:[]).filter(Boolean)}));
     if(!dayList.length) return null;
-    const eligible=(Array.isArray(candidates)?candidates:[]).filter(c=>c && String(c.status||'PROPOSED')==='PROPOSED')
+    const placed=new Set(dayList.flatMap(d=>d.spots.map(s=>s&&s.candidateId)).filter(id=>typeof id==='number'&&Number.isSafeInteger(id)&&id>0));
+    const eligible=(Array.isArray(candidates)?candidates:[]).filter(c=>c && String(c.status||'PROPOSED')==='PROPOSED'&&!placed.has(c.id))
       .map(c=>({c, k:consensusOf(c, memberCount)}))
       .filter(x=>x.k.voted>=2 && (x.k.status==='STRONG_MATCH'||x.k.status==='GOOD_MATCH'))
       .sort((a,b)=>(b.k.score-a.k.score)||(b.k.strongSupportCount-a.k.strongSupportCount)||candKey(b.c).localeCompare(candKey(a.c)));
@@ -872,10 +904,11 @@
     isForbiddenError, forbiddenText,
     normReaction, reactionLabel, reactionIcon, canPropose, canReact, canScheduleCandidate, canRemoveCandidate,
     tallyReactions, candidateMood, moodText, groupCandidates, reactionSummary, candidateAttribution, sortCandidates,
-    canComment, canDeleteComment, objParticle, activityText, condenseActivity, relativeTime, liveEffects,
+    canComment, canDeleteComment, objParticle, activityText, condenseActivity, relativeTime, liveEffects, liveCommentTargets,
     normPrefs, prefsText, groupContext, groupContextText, consensusOf, consensusText, candidateVerdict,
     candidateConflict, conflictOptions, distanceKm, buildGroupProposal,
-    canAssignWho, memberLabelMap, whoLabels, whoText, includesMe, reactorIds, buildSplitPlan, reunionText};
+    canAssignWho, memberLabelMap, whoLabels, whoText, includesMe, reactorIds, buildSplitPlan, reunionText,
+    CANDIDATE_CATEGORIES, candidateCategoryOf};
   if(typeof module!=='undefined' && module.exports) module.exports=API;   // Node (테스트)
   else /** @type {any} */(root).TC_COLLAB=API;                            // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);

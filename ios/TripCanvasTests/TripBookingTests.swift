@@ -242,6 +242,20 @@ final class TripBookingTests: XCTestCase {
         XCTAssertEqual(booking.validate(), .returnBeforePickup)
     }
 
+    func testPaidOnAndPhotosFollowTheNormalizer() {
+        var booking = TripBooking(type: .flight, id: "bkPay1")
+        booking.paidOn = "2026-10-01"
+        booking.photos = ["ref1", "ref2"]
+        XCTAssertEqual(booking.raw["paidOn"], .string("2026-10-01"))
+        XCTAssertEqual(booking.photos, ["ref1", "ref2"])
+        booking.paidOn = "내일"                          // 날짜 모양이 아니면 저장하지 않는다(normalizeBooking과 같다)
+        XCTAssertNil(booking.raw["paidOn"])
+        booking.photos = []
+        XCTAssertNil(booking.raw["photos"])              // 비면 키를 지운다
+        booking.payState = .reserved
+        XCTAssertNil(booking.raw["payState"])            // 결제 예정은 기본값이라 쓰지 않는다
+    }
+
     func testDateTextRoundTrip() {
         XCTAssertTrue(ISODateText.isValid("2026-10-01"))
         XCTAssertFalse(ISODateText.isValid("2026-1-01"))
@@ -265,4 +279,31 @@ final class TripBookingTests: XCTestCase {
         XCTAssertFalse(ClockText.isValid(""))
         XCTAssertEqual(ClockText.minutes("10:30"), 630)
     }
+    func testConfirmationCanBeEditedAndClearedWithoutRestoringLegacyValues() throws {
+        var trip = try load()
+        var booking = TripBooking(raw: ["id": .string("bkOld1"), "confirmationNumber": .string("OLD123"),
+                                        "code": .string("OLDER"), "providerField": .string("keep")])
+        XCTAssertEqual(booking.confirmation, "OLD123")
+        booking.confirmation = "  NEW456  "
+        trip.upsertBooking(booking, links: .empty)
+        let saved = try XCTUnwrap(trip.booking(id: booking.id))
+        XCTAssertEqual(saved.confirmation, "NEW456")
+        XCTAssertEqual(saved.raw["providerField"]?.stringValue, "keep")
+        booking.confirmation = "  "
+        XCTAssertNil(booking.confirmation)
+        XCTAssertNil(booking.raw["confirmationNumber"])
+        XCTAssertNil(booking.raw["code"])
+    }
+
+    func testForeignBookingAmountAndFeeKeepCentsOnDocumentRoundTrip() throws {
+        var trip = try load()
+        var booking = try XCTUnwrap(trip.booking(id: "bkOld1"))
+        booking.price = 123.45
+        booking.cancelFee = 10.25
+        trip.upsertBooking(booking, links: trip.links(forBooking: booking.id))
+        let saved = try XCTUnwrap(TripDocument(raw: encoded(trip)).booking(id: booking.id))
+        XCTAssertEqual(saved.price, 123.45)
+        XCTAssertEqual(saved.cancelFee, 10.25)
+    }
+
 }

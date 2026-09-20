@@ -42,6 +42,14 @@ ls -la "$(grep '^BACKUP_DIR=' deploy/.env | cut -d= -f2-)"     # 덤프가 실�
 
 entrypoint도 `… && sleep 86400 || sleep 300`이라 **실패하면 5분 뒤 다시 시도한다** — 일시적 실패로 하루를 통째로 건너뛰지 않는다.
 
+## 성공 기록 — `/api/health`가 본다 (2026-09-17)
+
+`backup.sh`는 덤프를 완성한 뒤 `ops_backup_runs`(마이그레이션 0011)에 한 행 남긴다(시각·크기·목적지 이름 `nas`. 경로·주소는 없다).
+`/api/health`의 `components.backup`이 마지막 성공이 `BACKUP_MAX_AGE_HOURS`(기본 26) 안인지 판정해 넘으면 DEGRADED다 — 컨테이너 Up만 보고 안심하던 구멍(위)을 API 쪽에서도 막는다.
+기록 실패는 백업 실패가 아니다(덤프는 이미 완성됐다) — stderr에 남기고 0으로 끝난다. `BACKUP_RECORD=0`이면 기록하지 않는다 — **전환 당일 마지막 덤프**처럼 덤프 뒤에 원본이 한 글자도 바뀌면 안 될 때(`docs/managed-db-migration.md`).
+
+`BACKUP_SOURCE_URL`이 있으면 원격 DB를 뜬다 — 관리형으로 옮긴 뒤 NAS가 오프사이트 사본을 당겨 오는 길이다(`deploy/docker-compose.backup-only.yml`).
+
 ## 복구와 리허설
 
 운영 복구는 [NAS 릴리스의 복귀 절차](nas-release.md)를 따른다. **운영 compose의 DB에 `--clean`으로 바로 복원하지 않는다.** 새 DB에 먼저 복원하고 무결성과 앱을 확인한 뒤 승인받아 전환한다. 복원은 `pg_restore --single-transaction --exit-on-error --no-owner --no-privileges`로 오류 시 중단한다. [PostgreSQL 17 pg_restore](https://www.postgresql.org/docs/17/app-pgrestore.html)
@@ -58,6 +66,13 @@ PostgreSQL 17 바이너리가 필요하다(`TC_PGBIN`으로 경로 지정 가능
 최신 migration → 합성 사용자·활성/삭제 여행·멤버·버전 이력 생성 → 실제 `deploy/backup.sh` → 빈 DB에 custom 덤프 복원 → migration 재적용 → public·drizzle 표 전체의 행 수·내용 해시·시퀀스 비교 순서다. 새 필드 보존도 여행 문서 해시에 포함된다. 오류가 나면 실패로 종료한다.
 
 2026-09-08 Mac 로컬 PostgreSQL 17에서 이 경로를 검증했다. 운영 데이터·인증 API·오프사이트 복제·운영 규모는 이 결과에 포함되지 않는다. 기록된 소요 시간은 합성 데이터의 도구 실행 시간이며 운영 RTO가 아니다.
+**2026-09-17부터 이 리허설은 게이트다** — `scripts/verify-all.sh web`과 CI Quality 잡이 RLS 다음에 `npm run rehearse:restore`를 돌린다(PostgreSQL 바이너리가 없으면 SKIP, 통과가 아니다).
+
+### 다른 PostgreSQL로 복원하기 — `restore-to-target.sh` · `verify:db`
+
+관리형 DB로 옮기거나 복구할 때는 `scripts/restore-to-target.sh <dump>`가 **비어 있는** 대상(`TARGET_DATABASE_URL`)에 복원하고 마이그레이션을 코드와 맞춘 뒤,
+`SOURCE_DATABASE_URL`이 있으면 `npm --prefix next run verify:db`로 전수 대조한다(표·컬럼·행·내용·jsonb·revision·시각·집계·제약·인덱스·시퀀스·journal, PASS/FAIL/SKIP).
+합성 데이터로 같은 경로를 끝까지 밟는 것이 `scripts/rehearse-restore-managed.sh`다. 절차와 판정 기준은 `docs/managed-db-migration.md`.
 
 ### 운영 백업 리허설에서 추가로 할 일
 

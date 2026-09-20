@@ -11,7 +11,8 @@ function deploymentTargets(paths) {
         /^(lib|adaptive|intake|collab|price|routing|sync)\.js$/.test(path) ||
         path === '.dockerignore' || path === 'deploy/docker-compose.yml') targets.add('nas-images');
     if (path.startsWith('next/src/server/infrastructure/database/migrations/') || path === 'next/drizzle.config.ts') targets.add('nas-schema');
-    if (path.startsWith('deploy/')) targets.add('nas-config');
+    if (path.startsWith('deploy/managed/') || path === '.github/workflows/managed-staging.yml') targets.add('managed-config');
+    else if (path.startsWith('deploy/')) targets.add('nas-config');
     if (path.startsWith('ios/')) targets.add('ios');
     if (path.startsWith('supabase/migrations/')) targets.add('legacy-schema');
   }
@@ -29,9 +30,10 @@ function main() {
   console.log('커밋된 변경만 비교. 운영 배포 여부와 미커밋 파일은 별도로 확인한다.');
   const descriptions = {
     vercel: 'Vercel 웹/함수 — 웹 자산이면 버전 갱신. NAS API 호환 확인 후 merge.',
-    'nas-images': 'NAS — migrate·api·realtime 이미지를 같은 커밋으로 빌드. migrate 성공 후 전체 compose up.',
+    'nas-images': 'API 이미지 — main 머지 시 자동 배포(release.yml → GHCR → NAS). 사람이 할 일은 없다. 확인: nas-deploy.sh --status',
     'nas-schema': 'NAS 스키마 — 백업·복구 확인, 구버전 호환 검토, 새 migrate 이미지로 적용.',
     'nas-config': 'NAS 구성 — 설정 변경 검토. backup 포함 전체 compose 상태 확인. .env는 별도 유지.',
+    'managed-config': '관리형 런타임 구성(deploy/managed) — staging에 먼저 배포해 /api/health·로그인·저장을 확인. 시크릿은 provider 콘솔에.',
     ios: 'iOS — 계약·시뮬레이터·실기기 검증 후 별도 배포.',
     'legacy-schema': 'Supabase 레거시 스키마 — NAS 마이그레이션과 별개. 아직 사용하는 경로인지 먼저 확인.'
   };

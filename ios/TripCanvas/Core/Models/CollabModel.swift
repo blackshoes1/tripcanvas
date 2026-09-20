@@ -35,6 +35,49 @@ enum Reaction: String, CaseIterable, Sendable {
 }
 
 /// 후보가 지금 어떤 상태인지 — 점수가 아니라 **다음에 무엇을 하면 되는지**(§57·§58).
+/// 가고 싶은 곳의 분류 — `collab.js`의 `CANDIDATE_CATEGORIES`(서버 CHECK와 같은 목록·같은 순서). **표시와 거르기를 위한 것이지
+/// 결정이 아니다** — 순위를 바꾸지도, 묶음 규칙을 건드리지도 않는다. '아직 고르지 않음'(nil)과 '기타'(ETC)는 다른 상태다.
+enum CandidateCategory: String, CaseIterable, Sendable {
+    case restaurant = "RESTAURANT", cafe = "CAFE", dessert = "DESSERT", sight = "SIGHT", landmark = "LANDMARK"
+    case nature = "NATURE", shopping = "SHOPPING", activity = "ACTIVITY", stay = "STAY", etc = "ETC"
+
+    var label: String {
+        switch self {
+        case .restaurant: "레스토랑"
+        case .cafe: "카페"
+        case .dessert: "디저트"
+        case .sight: "관광지"
+        case .landmark: "명소"
+        case .nature: "자연"
+        case .shopping: "쇼핑"
+        case .activity: "체험·액티비티"
+        case .stay: "숙소"
+        case .etc: "기타"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .restaurant: "fork.knife"
+        case .cafe: "cup.and.saucer.fill"
+        case .dessert: "birthday.cake.fill"
+        case .sight: "building.columns.fill"
+        case .landmark: "camera.fill"
+        case .nature: "leaf.fill"
+        case .shopping: "bag.fill"
+        case .activity: "ticket.fill"
+        case .stay: "bed.double.fill"
+        case .etc: "mappin"
+        }
+    }
+
+    /// 서버·웹이 준 값을 읽는다(`candidateCategoryOf`와 같다) — 모르는 값은 '고르지 않음'이다. 담기를 실패시키지 않는다.
+    static func of(_ raw: String?) -> CandidateCategory? {
+        guard let raw else { return nil }
+        return CandidateCategory(rawValue: raw.trimmingCharacters(in: .whitespacesAndNewlines).uppercased())
+    }
+}
+
 enum CandidateMood: Sendable {
     case none, quiet, split, cool, loved
 
@@ -412,7 +455,8 @@ enum CollabModel {
         let ok = reactions.filter { Reaction(loose: $0.reaction) == .ok }.count
         let pass = reactions.filter { Reaction(loose: $0.reaction) == .pass }.count
         return CandidateView(
-            id: candidate.id, title: candidate.title, placeId: candidate.placeId, lat: candidate.lat, lng: candidate.lng,
+            id: candidate.id, title: candidate.title, placeId: candidate.placeId, provider: candidate.provider,
+            providerId: candidate.providerId, category: candidate.category, lat: candidate.lat, lng: candidate.lng,
             addr: candidate.addr, note: candidate.note, url: candidate.url, status: candidate.status,
             scheduledRef: candidate.scheduledRef, proposedByLabel: candidate.proposedByLabel, mine: candidate.mine,
             myReaction: reaction?.rawValue, mustCount: must, okCount: ok, passCount: pass, reactions: reactions,
@@ -730,11 +774,13 @@ extension CollabModel {
 
     static func liveEffects(kind: String, mine: Bool) -> LiveEffects {
         let known = activityKinds.contains(kind)
-        let candidates = kind.hasPrefix("CANDIDATE_") || kind == "REACTION" || kind == "COMMENT_ADDED"
+        let candidateKind = kind.hasPrefix("CANDIDATE_") || kind == "REACTION" || kind == "COMMENT_ADDED"
         let members = kind.hasPrefix("MEMBER_")
         let doc = kind == "SCHEDULE_CHANGED" || kind == "BOOKING_ADDED"
         return LiveEffects(
-            candidates: candidates,
+            // 후보·반응·코멘트는 **내 것이면 이미 내 화면이다**(담기·반응·한마디 뒤에 각자 다시 읽거나 낙관 반영했다) —
+            // 에코로 또 읽지 않는다(2026-09-18). 문서 변경은 내 것이어도 다시 읽는다: 후보의 날짜 표시는 서버가 바꾼다.
+            candidates: (candidateKind && !mine) || doc,
             members: members,
             pull: doc && !mine,
             activity: known,
@@ -743,4 +789,3 @@ extension CollabModel {
         )
     }
 }
-

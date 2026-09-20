@@ -47,6 +47,19 @@ enum Ink {
     }
 }
 
+/// **뜻이 있는 색** — 강조(`accent`)는 누를 것·고른 것이고, 아래는 상태다. 화면이 `.orange`·`.red`를 직접 부르면
+/// 기능마다 다른 색이 생긴다(2026-09-18 정리). 색만으로 말하지 않는다 — 문구·기호가 늘 함께 간다(§47).
+extension Ink {
+    /// 주의 — 시간 관련 경고 · 비용 미정 · 확인이 필요한 것
+    static let warning = adaptive(light: 0xB8650F, dark: 0xF0A050)
+    /// 오류 · 삭제 · 예산 초과 · 취소
+    static let danger = adaptive(light: 0xB4342A, dark: 0xEF7A6A)
+    /// 완료 · 결제 완료
+    static let positive = adaptive(light: 0x3E7A4C, dark: 0x8FC79B)
+    /// 정보 — 상대가 정한 것(예약된 일정)
+    static let info = adaptive(light: 0x2E5C6E, dark: 0x7FA9BC)
+}
+
 private extension UIColor {
     convenience init(rgb: UInt32) {
         self.init(red: CGFloat((rgb >> 16) & 0xFF) / 255, green: CGFloat((rgb >> 8) & 0xFF) / 255,
@@ -95,7 +108,7 @@ enum StatusPalette {
         case .delayed: Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(rgb: 0xEF7A6A) : UIColor(rgb: 0xB4342A) })
         case .inProgress, .arrived: Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(rgb: 0x7FA9BC) : UIColor(rgb: 0x2E5C6E) })
         case .completed: Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(rgb: 0x8FA894) : UIColor(rgb: 0x4A5D4E) })
-        case .noPlan, .upcoming, .unknown: Ink.faint
+        case .noPlan, .upcoming, .unknown: Ink.soft
         }
     }
 
@@ -155,7 +168,7 @@ enum TimeFormat {
     static func money(_ amount: Double, currency: String) -> String {
         let formatter = NumberFormatter()
         formatter.numberStyle = .decimal
-        formatter.maximumFractionDigits = 0
+        formatter.maximumFractionDigits = ["USD", "EUR", "CNY"].contains(currency) ? 2 : 0
         let number = formatter.string(from: NSNumber(value: amount)) ?? "\(Int(amount))"
         let symbol = ["KRW": "₩", "USD": "$", "EUR": "€", "JPY": "¥", "CNY": "元"][currency]
         return symbol.map { "\($0)\(number)" } ?? "\(number) \(currency)"
@@ -174,6 +187,13 @@ enum TimeFormat {
         guard let date = calendar.date(from: DateComponents(year: year, month: month, day: day)) else { return nil }
         let weekday = ["일", "월", "화", "수", "목", "금", "토"][calendar.component(.weekday, from: date) - 1]
         return "\(month)/\(day) (\(weekday))"
+    }
+
+    /// 고르지 않은 날의 칩 "10/26" — 요일은 고른 날에서만 말한다(정보량을 줄인다). 날짜가 없으면 nil.
+    static func dayChipShort(_ iso: String) -> String? {
+        let parts = iso.split(separator: "-")
+        guard parts.count == 3, Int(parts[0]) != nil, let month = Int(parts[1]), let day = Int(parts[2]) else { return nil }
+        return "\(month)/\(day)"
     }
 
     /// "10:32에 받아온 정보예요" 같은 오프라인 표기용.
@@ -201,7 +221,7 @@ extension View {
 struct StatusChip: View {
     let text: String
     let symbol: String
-    var tint: Color = Ink.faint
+    var tint: Color = Ink.soft
 
     var body: some View {
         Label(text, systemImage: symbol)
@@ -273,6 +293,92 @@ struct EmptyStateView: View {
         }
         .padding(Space.xl)
         .frame(maxWidth: .infinity)
+    }
+}
+
+/// 날짜 한 칸 — **숫자로 쳐도 되고 달력을 눌러도 된다**(2026-09-18). 값은 `YYYY-MM-DD` 문자열 하나다.
+/// 글자 칸은 자릿수를 다 치면(8자리) 정규화하고, 달력(compact DatePicker)은 누르면 시스템 달력이 뜬다.
+/// 잘못 친 날짜는 지우지 않는다 — 칸 아래에 그렇다고만 말한다(다시 치게).
+struct DateEntryField: View {
+    let title: String
+    @Binding var text: String?
+    /// 달력을 처음 열 때의 기준 — 보통 시작일이나 오늘.
+    var fallback: () -> Date = { Date() }
+    @State private var typed = ""
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: Space.s) {
+                Text(title)
+                Spacer(minLength: Space.s)
+                TextField("YYYY-MM-DD", text: $typed)
+                    .keyboardType(.numbersAndPunctuation)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .multilineTextAlignment(.trailing)
+                    .focused($focused)
+                    .frame(maxWidth: 132)
+                    .accessibilityLabel("\(title) 직접 입력")
+                DatePicker("", selection: dateBinding, displayedComponents: .date)
+                    .labelsHidden()
+                    .datePickerStyle(.compact)
+                    .accessibilityLabel("\(title) 달력")
+            }
+            if !typed.isEmpty, ISODateText.parseLoose(typed) == nil {
+                Text("2026-10-25처럼 여덟 자리로 적어 주세요").font(.caption2).foregroundStyle(Ink.warning)
+            }
+        }
+        .onAppear { typed = text ?? "" }
+        .onChange(of: text) { _, value in if !focused { typed = value ?? "" } }
+        .onChange(of: typed) { _, value in
+            if let iso = ISODateText.parseLoose(value) { if iso != text { text = iso } }
+            else if value.isEmpty { text = nil }
+        }
+        .onChange(of: focused) { _, on in if !on { typed = text ?? "" } }   // 칸을 나가면 정규화된 모양으로
+    }
+
+    private var dateBinding: Binding<Date> {
+        Binding(
+            get: { ISODateText.date(from: text) ?? fallback() },
+            set: { text = ISODateText.text(from: $0) })
+    }
+}
+
+/// 지도가 뜨기 전 자리. 빈 화면에 스피너만 두지 않는다 — 무엇을 기다리는지 말한다(§34).
+/// 지도 뷰 **뒤**에 깔아 두면 SDK가 첫 프레임을 그리기 전까지 이것이 보이고, 그 뒤로는 지도가 덮는다.
+struct MapLoadingPlaceholder: View {
+    var message = "지도를 불러오는 중이에요"
+
+    var body: some View {
+        ZStack {
+            Ink.sunken
+            VStack(spacing: Space.s) {
+                ProgressView()
+                Text(message).font(.caption).foregroundStyle(Ink.soft)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(message)
+    }
+}
+
+/// 이동 정보 한 알 — `택시 · 26분 · 19.7km`. 장소 이름보다 가볍게, 카드가 아니라 알약으로.
+/// ⚠️ 글은 문장 하나다 — 조각 Text를 늘어놓으면 접근성 글자 크기에서 `12.4k` / `m`처럼 단어가 잘린다.
+struct LegPill: View {
+    let symbol: String
+    let text: String
+
+    var body: some View {
+        HStack(spacing: Space.xs) {
+            Image(systemName: symbol)
+            Text(text)
+        }
+        .font(.caption2)
+        .foregroundStyle(Ink.soft)
+        .padding(.horizontal, Space.s)
+        .padding(.vertical, 3)
+        .background(Ink.sunken, in: Capsule())
     }
 }
 

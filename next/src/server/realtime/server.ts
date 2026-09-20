@@ -31,7 +31,9 @@ export function createRealtimeServer(opts: RealtimeServerOptions) {
       // LISTEN이 붙어 있지 않으면 실시간이 죽은 것이다 — 조용히 살아 있지 않게 상태를 그대로 알린다
       const listening = opts.listener.status() === 'LISTENING';
       res.writeHead(listening ? 200 : 503, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
-      res.end(JSON.stringify({ ok: listening, listener: opts.listener.status(), ...opts.hub.stats() }));
+      // 어떤 커밋이 도는지 — 배포 스크립트가 api와 **같은 SHA**인지 여기서 확인한다(scripts/nas-deploy.sh).
+      const revision = process.env.TC_REVISION || 'unknown';
+      res.end(JSON.stringify({ ok: listening, listener: opts.listener.status(), revision, ...opts.hub.stats() }));
       return;
     }
     res.writeHead(404, { 'content-type': 'application/json; charset=utf-8' });

@@ -4,44 +4,88 @@ import SwiftUI
 ///
 /// 웹의 일자 카드를 그대로 옮기지 않았다. 아이폰에서는 하루를 골라 그 날의 장소만 목록으로 보고,
 /// 순서는 끌어서, 빼는 것은 스와이프로 한다. 바꾸는 즉시 저장된다(저장 버튼이 없다).
-/// 지도 보기 범위. 전체는 **누른 순간에만** 받는다 — 열지도 않을 날까지 미리 받지 않는다.
+/// 지도 보기 범위(이 날 | 전체). 전체는 **누른 순간에만** 받는다 — 열지도 않을 날까지 미리 받지 않는다.
+/// 장소 검색은 범위가 아니라 **다른 일**이라 따로 켠다(`mapSearching`) — 같은 세그먼트에 넣지 않는다(2026-09-18).
 enum MapScope: Hashable { case day, trip }
 
 struct TripPlanView: View {
     let trip: TripSummary
+    /// **여행이 들고 있는** 모델(`TripScreenModels`). 이 화면은 `지금` 탭으로 가면 죽지만 모델은 남는다 —
+    /// 돌아왔을 때 문서·고른 날·받아 둔 계산이 그대로라 로딩이 없다.
+    let model: TripPlanViewModel
+    /// 지도 탭의 '장소 찾기' 모델. 같은 이유로 여행이 들고 있다.
+    let discovery: MapDiscoveryModel
+    /// 목록이냐 지도냐. **탭 바가 정한다**(`TripHomeView`) — 이 화면 안에 세그먼트를 또 깔지 않는다.
+    /// 화면 안에서 지도를 끄는 곳이 하나 있다(여러 장소 옮기기). 그때는 이 바인딩이 탭도 함께 되돌린다.
+    @Binding var showsMap: Bool
 
     @Environment(AppEnvironment.self) private var env
-    @State private var model: TripPlanViewModel?
+    /// 지도를 한 번이라도 열었는가. 열기 전에는 만들지 않고, 연 뒤에는 숨기기만 한다(`content`).
+    @State private var mapMounted = false
     @State private var editor: SpotEditorTarget?
+    @State private var viewingSpot: SpotEditorTarget?
     @State private var showsSearch = false
+    @State private var searchedSpot: TripSpot?
     /// 지도를 하루만 볼지 여행 전체로 볼지.
     @State private var mapScope: MapScope = .day
-    /// 손가락을 따라 살짝 밀리는 양. 끌고 있는 동안만 값이 있다.
-    @State private var dragX: CGFloat = 0
+    /// 장소 검색(지도에서 담기)을 열어 두었는가. 범위와 별개다.
+    @State private var mapSearching = false
+    /// 상단 요약을 펼쳤는가. 기본은 접힘 — 기본 화면에서는 일정이 요약보다 중요하다.
+    @State private var summaryExpanded = false
+    /// 종료 콜백까지 방향을 보존한다. GestureState만 쓰면 onEnded 전에 초기화될 수 있다.
+    @State private var daySwipeIntent = PlanDaySwipeIntent()
+    @GestureState private var isSwipingDay = false
     /// 다음 날로 가는 중인가 — 들어오고 나가는 방향을 정한다.
     @State private var goingForward = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.editMode) private var editMode
     private var isEditing: Bool { editMode?.wrappedValue.isEditing == true }
-    @State private var showsMap = false
+    @State private var showsOverview = false
+    @State private var showsSettings = false
+    @State private var showsCosts = false
+    @State private var costDay = 0
+    @State private var costRevision = 0
+    @State private var insertionAfter: Int?
+    @State private var moveTarget: PlanMoveTarget?
+    @State private var choosingPlaces = false
+    @State private var chosenPlaces: Set<Int> = []
+    @State private var selectedMapSpot: Int?
+    /// 그 선택이 **어느 날**의 것인가. 날을 옮기면 옛 번호가 새 날의 장소를 가리키지 않게 — 같은 날일 때만 선택이다.
+    @State private var selectedMapSpotDay: Int?
+    /// '이 날' 지도가 보이는 장면(`MapScenes`). 기본은 주 장면이고 칩으로 바꾼다. 날을 옮기면 되돌아간다.
+    @State private var sceneChoice: SceneChoice = .main
 
     var body: some View {
         Group {
-            if let model {
-                content(model)
-            } else {
-                ProgressView()
-            }
+            content(model)
         }
         // 제목(여행 이름)은 `TripHomeView`가 정한다.
         .toolbar {
-            if let model, model.canEdit, model.day != nil {
-                ToolbarItem(placement: .topBarTrailing) { EditButton() }
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button("여행 전체 개요") { showsOverview = true }
+                    if model.canEdit {
+                        Button("여행·하루 설정") { showsSettings = true }
+                        Button(choosingPlaces ? "장소 선택 마치기" : "여러 장소 옮기기") {
+                            choosingPlaces.toggle(); chosenPlaces = []; showsMap = false
+                        }
+                        if model.canUndo { Button("마지막 변경 되돌리기") { Task { await model.undoLastChange() } } }
+                    }
+                } label: { Image(systemName: "ellipsis.circle") }
+                .accessibilityLabel("일정 메뉴")
+            }
+            if model.canEdit, model.day != nil {
+                // EditButton()은 앱에 한국어 번들이 없어 'Edit'으로 나왔다 — 문구를 직접 준다.
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(isEditing ? "완료" : "편집") {
+                        withAnimation { editMode?.wrappedValue = isEditing ? .inactive : .active }
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     // 검색이 먼저다 — 좌표가 있어야 동선·ETA·지도에 들어간다. 직접 입력은 그다음.
                     Menu {
-                        Button { showsSearch = true } label: { Label("검색해서 담기", systemImage: "magnifyingglass") }
-                        Button { editor = .create } label: { Label("직접 입력", systemImage: "square.and.pencil") }
+                        Button { insertionAfter = nil; showsSearch = true } label: { Label("검색해서 담기", systemImage: "magnifyingglass") }
+                        Button { insertionAfter = nil; editor = .create } label: { Label("직접 입력", systemImage: "square.and.pencil") }
                     } label: {
                         Image(systemName: "plus")
                     }
@@ -50,37 +94,87 @@ struct TripPlanView: View {
             }
         }
         .task {
-            if model == nil {
-                model = TripPlanViewModel(tripId: trip.id, service: env.service, memberSource: env.service,
-                                          initialDay: max(0, trip.todayIndex))
-            }
-            await model?.load()
+            // 탭 진입 — 문서가 있고 방금 받은 것이면 아무것도 받지 않는다(탭 전환은 앱 복귀가 아니다).
+            await model.loadIfStale()
         }
-        .sheet(isPresented: $showsSearch) {
-            if let model {
-                // 근처 우선의 기준은 그날 마지막 좌표 — 웹이 앵커로 검색하는 것과 같다.
-                PlaceSearchView(near: model.day?.pins.last?.point) { hit in
-                    let spot = hit.makeSpot()
-                    Task { await model.addSpot(spot) }
-                }
+        // 지도를 처음 켠 순간부터 만들어 둔다. 그 뒤로는 숨기기만 한다.
+        .onChange(of: showsMap, initial: true) { _, on in if on { mapMounted = true } }
+        .sheet(isPresented: $showsSearch, onDismiss: {
+            if let spot = searchedSpot { editor = .createFromMap(spot); searchedSpot = nil }
+        }) {
+            // 근처 우선의 기준은 그날 마지막 좌표 — 웹이 앵커로 검색하는 것과 같다.
+            PlaceSearchView(near: model.day?.pins.last?.point) { hit in
+                searchedSpot = hit.makeSpot()
             }
+        }
+        .sheet(item: $viewingSpot) { target in
+            SpotInformationView(spot: target.spot, contextLabel: "\(trip.name) · Day \(model.selectedDay + 1)")
         }
         .sheet(item: $editor) { target in
-            if let model {
+            Group {
                 SpotEditorView(
                     target: target,
                     dayCount: model.dayCount,
                     currentDay: model.selectedDay,
+                    contextLabel: "\(trip.name) · Day \(model.selectedDay + 1) · \(model.strip.first(where: { $0.index == model.selectedDay })?.date ?? trip.start)",
                     onSave: { spot in
-                        Task {
-                            switch target {
-                            case .create, .createFromMap: await model.addSpot(spot)
-                            case .edit(let index, _): await model.updateSpot(at: index, with: spot)
-                            }
+                        let saved: Bool
+                        switch target {
+                        case .create, .createFromMap: saved = await model.addSpot(spot, after: insertionAfter)
+                        case .edit(let index, _): saved = await model.updateSpot(at: index, with: spot)
                         }
+                        return saved ? nil : model.saveFailureMessage
                     },
-                    onDelete: { index in Task { await model.removeSpot(at: index) } },
-                    onMoveToDay: { index, day in Task { await model.moveSpot(at: index, toDay: day) } })
+                    onDelete: { index in
+                        await model.removeSpot(at: index) ? nil : model.saveFailureMessage
+                    },
+                    onMoveToDay: { index, day, spot in
+                        await model.moveSpot(at: index, toDay: day, with: spot) ? nil : model.saveFailureMessage
+                    })
+            }
+        }
+        .sheet(isPresented: $showsOverview) {
+            NavigationStack { TripOverviewView(model: model) { index in
+                model.selectedDay = index; showsOverview = false; showsMap = false
+            } }
+        }
+        .sheet(isPresented: $showsSettings) {
+            if let document = model.document {
+                PlanSettingsView(document: document, revision: model.revision, selectedDay: model.selectedDay) { draft, revision in
+                    await model.savePreparedDocument(draft, expectedRevision: revision, message: "여행 설정을 저장했어요") ? nil : model.saveFailureMessage
+                }
+            }
+        }
+        .sheet(item: $moveTarget) { target in
+            Group {
+                PlanMoveSheet(tripId: trip.id, document: target.document, revision: target.revision,
+                              sourceDay: target.day, indexes: target.indexes, source: env.service) { draft, revision in
+                    let saved = await model.savePreparedDocument(draft, expectedRevision: revision, message: "선택한 장소를 옮겼어요")
+                    if saved { chosenPlaces = []; choosingPlaces = false }
+                    return saved ? nil : model.saveFailureMessage
+                }
+            }
+        }
+        .sheet(isPresented: $showsCosts) {
+            if let document = model.document, document.hasDay(costDay) {
+                DayCostView(day: document.days[costDay], cost: model.overviewPlan(costDay)?.day.totals.cost, canEdit: model.canEdit,
+                            onRefresh: { await model.load() }) { edited in
+                    guard var draft = model.document, draft.hasDay(costDay), model.revision == costRevision else { return false }
+                    var days = draft.days
+                    // 비용 시트 밖에서 편집한 장소 필드는 건드리지 않는다.
+                    days[costDay].setField("budget", edited.raw["budget"])
+                    days[costDay].setField("costItems", edited.raw["costItems"])
+                    var spots = days[costDay].spots
+                    for index in spots.indices where edited.spots.indices.contains(index) {
+                        for key in ["cost", "cur", "costBasis", "costPeople", "costPartial", "costKind"] {
+                            spots[index].setField(key, edited.spots[index].raw[key])
+                        }
+                    }
+                    days[costDay].spots = spots; draft.days = days
+                    let saved = await model.savePreparedDocument(draft, expectedRevision: costRevision, message: "하루 비용을 저장했어요")
+                    if saved { costRevision = model.revision }
+                    return saved
+                }
             }
         }
     }
@@ -101,19 +195,31 @@ struct TripPlanView: View {
             }
         } else {
             VStack(spacing: 0) {
-                dayPicker(model)
-                Picker("보기", selection: $showsMap) {
-                    Text("목록").tag(false)
-                    Text("지도").tag(true)
+                if !showsMap || !mapSearching { dayPicker(model) }
+                if choosingPlaces {
+                    HStack {
+                        Text("\(chosenPlaces.count)곳 선택")
+                        Spacer()
+                        Button("날짜·위치 옮기기") { prepareMove(chosenPlaces, model: model) }.disabled(chosenPlaces.isEmpty)
+                    }.padding(.horizontal, Space.l).frame(minHeight: 44)
                 }
-                .pickerStyle(.segmented)
-                .padding(.horizontal, Space.l)
-                .padding(.bottom, Space.s)
                 Divider()
-                if showsMap {
-                    dayMap(model)
-                } else {
-                    spotList(model)
+                ZStack {
+                    // 지도는 한 번 만들면 **숨기기만 한다** — 일정↔지도를 오갈 때마다 엔진을 새로 띄우고
+                    // 타일을 다시 받지 않게(2026-09-17). 처음 열기 전에는 만들지 않는다: 목록만 쓰는 사람에게
+                    // 지도 SDK 값을 물리지 않는다. 숨긴 동안은 엔진이 쉰다(`MapEngineView.isVisible`).
+                    if mapMounted {
+                        dayMap(model)
+                            .opacity(showsMap ? 1 : 0)
+                            .allowsHitTesting(showsMap)
+                            .accessibilityHidden(!showsMap)
+                    }
+                    if !showsMap {
+                        // 나가는 목록과 들어오는 목록이 높이를 나눠 갖지 않게 같은 영역에 겹친다.
+                        ZStack { spotList(model) }
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .clipped()
+                    }
                 }
             }
             .overlay(alignment: .top) {
@@ -137,15 +243,15 @@ struct TripPlanView: View {
             // 충돌은 자동으로 어느 쪽도 고르지 않는다 — 무엇이 사라지는지 말하고 사용자가 고른다(§91).
             .alert("다른 기기에서 먼저 바뀌었어요", isPresented: conflictBinding(model)) {
                 Button("최신 불러오기") { Task { await model.reloadFromServer() } }
-                Button("그대로 두기", role: .cancel) { model.dismissConflict() }
+                Button("이전 일정 유지", role: .cancel) { model.dismissConflict() }
             } message: {
-                Text("최신 일정을 불러오면 방금 바꾼 것은 사라집니다. 방금 바꾼 것은 아직 저장되지 않았어요.")
+                Text("방금 변경은 저장되지 않아 이전 일정으로 돌아왔어요. 최신 일정을 불러와 확인해 주세요.")
             }
         }
     }
 
     private func conflictBinding(_ model: TripPlanViewModel) -> Binding<Bool> {
-        Binding(get: { model.conflict != nil }, set: { if !$0 { model.dismissConflict() } })
+        Binding(get: { model.conflict != nil && editor == nil }, set: { if !$0 { model.dismissConflict() } })
     }
 
     /// 며칠짜리든 한 줄에 담기지 않는다 — 가로 스크롤 칩으로 고른다.
@@ -155,7 +261,7 @@ struct TripPlanView: View {
     private func dayPicker(_ model: TripPlanViewModel) -> some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: Space.s) {
+                HStack(alignment: .top, spacing: Space.s) {
                     ForEach(model.strip) { entry in
                         dayChip(entry, model: model)
                             .id(entry.index)
@@ -188,25 +294,28 @@ struct TripPlanView: View {
                             .font(.caption2.weight(.bold))
                             .padding(.horizontal, 5)
                             .padding(.vertical, 1)
-                            .background(Color.accentColor, in: Capsule())
+                            .background(Ink.accent, in: Capsule())
                             .foregroundStyle(.white)
                     }
                 }
-                if let date = TimeFormat.dayChipLabel(entry.date) {
-                    Text(date).font(.caption2).foregroundStyle(selected ? Color.accentColor : .secondary)
+                // 고른 날만 요일·제목까지 말한다. 나머지는 번호와 날짜뿐 — 칩이 카드가 되지 않게(2026-09-18).
+                if let date = selected ? TimeFormat.dayChipLabel(entry.date) : TimeFormat.dayChipShort(entry.date) {
+                    Text(date).font(.caption2).foregroundStyle(selected ? Ink.accent : Ink.soft)
                 }
-                Text(entry.title.isEmpty ? subtitle(for: entry) : entry.title)
-                    .font(.caption2)
-                    .lineLimit(1)
-                    .foregroundStyle(.secondary)
+                if selected {
+                    Text(entry.title.isEmpty ? subtitle(for: entry) : entry.title)
+                        .font(.caption2)
+                        .lineLimit(1)
+                        .foregroundStyle(Ink.soft)
+                }
             }
             .padding(.horizontal, Space.m)
             .padding(.vertical, Space.s)
-            .frame(minWidth: 72)
-            .background(selected ? Ink.accent.opacity(0.16) : Ink.raised,
+            .frame(minWidth: 64)
+            .background(selected ? Ink.accent.opacity(0.14) : Ink.sunken,
                         in: RoundedRectangle(cornerRadius: Radius.card))
             .overlay(RoundedRectangle(cornerRadius: Radius.card)
-                .stroke(isToday ? Ink.accent : Ink.hairline, lineWidth: selected ? 0 : 1))
+                .stroke(isToday ? Ink.accent : .clear, lineWidth: selected ? 0 : 1))
             .foregroundStyle(selected ? Ink.accent : Ink.ink)
         }
         .buttonStyle(.plain)
@@ -232,16 +341,7 @@ struct TripPlanView: View {
     @ViewBuilder
     private func spotList(_ model: TripPlanViewModel) -> some View {
         if let day = model.day {
-            // ⚠️ 계산이 오기 전의 목록에는 🏠 이월 숙소·렌터카·구간 줄·숙소 복귀·하루 합계가 없다.
-            //    그 상태를 먼저 그렸다가 계산이 들어오면 줄이 통째로 밀린다 — 첫 시도가 끝날 때까지 기다린다.
-            //    (지난 계산이 있으면 즉시 지나간다 — 기다림은 처음 여는 날에만 있다)
-            if model.plan == nil && !model.planAttempted(for: model.selectedDay) && !day.spots.isEmpty {
-                VStack(spacing: Space.s) {
-                    ProgressView()
-                    Text("도착 시각을 계산하는 중…").font(.caption).foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
+            // 저장된 문서는 계속 보인다. 계산 응답을 기다리며 목록 전체를 교체하지 않는다.
             List {
                 Section {
                     if day.spots.isEmpty { emptyDay(model) }
@@ -251,14 +351,24 @@ struct TripPlanView: View {
                     if let carry = model.planDay?.carriedStay { carryRow(carry) }
                     ForEach(model.planDay?.carPickups ?? [], id: \.bookingId) { carEventRow($0) }
                     ForEach(Array(day.spots.enumerated()), id: \.offset) { index, spot in
-                        Button {
-                            guard model.canEdit else { return }
-                            editor = .edit(index: index, spot: spot)
-                        } label: {
+                        HStack {
+                            if choosingPlaces {
+                                Image(systemName: chosenPlaces.contains(index) ? "checkmark.circle.fill" : "circle")
+                            }
                             SpotRow(spot: spot, dayMode: day.mode, plan: model.planSpot(at: index),
-                                    split: splitInfo(model, at: index))
+                                split: splitInfo(model, at: index))
                         }
-                        .buttonStyle(.plain)
+                            // 12pt 이상 움직인 터치는 탭을 취소한다. 짧게 끌다 놓아도 편집을 열지 않는다.
+                            .overlay(PlanSpotTapSurface { editSpot(index, spot: spot, model: model) })
+                            .accessibilityElement(children: .combine)
+                            .accessibilityAddTraits(.isButton)
+                            .accessibilityAction { editSpot(index, spot: spot, model: model) }
+                            .contextMenu {
+                                if model.canEdit {
+                                    Button("여기에 추가 · 이 장소 뒤") { insertionAfter = index; showsSearch = true }
+                                    Button("날짜·위치 옮기기") { prepareMove([index], model: model) }
+                                }
+                            }
                     }
                     // ⚠️ **편집 모드에서만** 지운다. `onDelete`는 편집 모드의 ⊖와 **스와이프 삭제를
                     //    둘 다** 켜는데, 가로 스와이프는 날짜 이동이 쓴다 — 행 위에서는 삭제가 먼저 먹어
@@ -277,10 +387,32 @@ struct TripPlanView: View {
                     ForEach(model.planDay?.carReturns ?? [], id: \.bookingId) { carEventRow($0) }
                     if let back = model.planDay?.back { backRow(back) }
                 } header: {
+                    // 기본 화면은 제목·이동·비용·종료 시각까지다. 나머지(거리·미정·예산·안내)는 '오늘 요약 보기' 안에 —
+                    // 일정이 요약보다 중요하고, 첫 화면에 첫 장소가 보여야 한다(2026-09-18).
                     VStack(alignment: .leading, spacing: Space.xs) {
                         dayHeader(model, day: day)
+                        if model.plan == nil && !model.planAttempted(for: model.selectedDay) {
+                            ProgressView("이동·도착 시각을 계산하는 중").font(.caption)
+                        }
                         if let totals = model.planDay?.totals { daySummary(totals) }
+                        Button {
+                            withAnimation(motion) { summaryExpanded.toggle() }
+                        } label: {
+                            HStack(spacing: Space.xs) {
+                                Text(summaryExpanded ? "요약 접기" : "오늘 요약 보기")
+                                Image(systemName: "chevron.right")
+                                    .rotationEffect(.degrees(summaryExpanded ? 90 : 0))
+                            }
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Ink.accent)
+                            .frame(minHeight: 32)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(summaryExpanded ? [.isSelected] : [])
+                        if summaryExpanded { dayDetails(model, day: day) }
                     }
+                    .textCase(nil)
                 } footer: {
                     VStack(alignment: .leading, spacing: Space.xs) {
                         if !model.canEdit {
@@ -311,43 +443,47 @@ struct TripPlanView: View {
             // 날이 바뀌면 **새 화면**이다 — 그래야 밀려 나가고 들어오는 것이 보인다.
             .id(model.selectedDay)
             .transition(daySlide)
-            // 끄는 동안 손가락을 조금 따라간다(감쇠) — 넘어갈지 말지를 손으로 알 수 있게.
-            .offset(x: dragX)
-            .simultaneousGesture(daySwipe(model))
+            // 가로 의도로 확정한 동안만 세로 이동을 멈춘다. 편집 모드의 재정렬은 그대로다.
+            .scrollDisabled(!isEditing && daySwipeIntent.axis == .horizontal)
+            .simultaneousGesture(daySwipe(model), including: isEditing ? .subviews : .all)
+            .onChange(of: isSwipingDay) { _, active in
+                // 시스템이 취소한 드래그도 방향 잠금을 남기지 않는다.
+                if !active { daySwipeIntent = PlanDaySwipeIntent() }
             }
         } else {
             EmptyStateView(symbol: "calendar", title: "일자가 없어요", message: "웹에서 일자를 먼저 만들어 주세요.")
         }
     }
 
-    /// 목록을 가로로 밀어 앞뒤 날로. 위아래 스크롤과 다투지 않게 **가로가 확실할 때만** 움직인다.
-    ///
-    /// ⚠️ 세로가 조금이라도 우세하면 무시한다 — 스크롤하다 손가락이 비스듬해질 때마다
-    /// 날이 바뀌면 목록을 읽을 수가 없다.
+    private func editSpot(_ index: Int, spot: TripSpot, model: TripPlanViewModel) {
+        guard model.canEdit else { viewingSpot = .edit(index: index, spot: spot); return }
+        if choosingPlaces {
+            if chosenPlaces.contains(index) { chosenPlaces.remove(index) } else { chosenPlaces.insert(index) }
+            return
+        }
+        editor = .edit(index: index, spot: spot)
+    }
+
+    private func prepareMove(_ indexes: Set<Int>, model: TripPlanViewModel) {
+        guard let document = model.document else { return }
+        moveTarget = PlanMoveTarget(document: document, revision: model.revision, day: model.selectedDay, indexes: IndexSet(indexes))
+    }
+
+    /// 세로로 읽기 시작한 손은 나중에 비스듬해져도 날짜를 바꾸지 않는다.
     private func daySwipe(_ model: TripPlanViewModel) -> some Gesture {
-        DragGesture(minimumDistance: 24)
+        DragGesture(minimumDistance: 12, coordinateSpace: .global)
+            .updating($isSwipingDay) { _, active, _ in active = true }
             .onChanged { value in
-                let dx = value.translation.width
-                // 세로가 우세하면 따라가지 않는다 — 스크롤 중에 화면이 흔들리면 읽을 수가 없다.
-                guard abs(dx) > abs(value.translation.height) * 1.5 else {
-                    // 세로로 바뀌었으면 되돌린다 — 값을 그냥 0으로 떨구면 손 밑에서 툭 끊긴다.
-                    if dragX != 0 { withAnimation(.easeOut(duration: 0.12)) { dragX = 0 } }
-                    return
-                }
-                // 끝 날에서는 더 뻑뻑하게(0.12) — 더 갈 데가 없다는 것이 손에 느껴진다.
-                let atEdge = (dx < 0 && model.selectedDay >= model.dayCount - 1)
-                    || (dx > 0 && model.selectedDay <= 0)
-                dragX = dx * (atEdge ? 0.12 : 0.35)
+                guard !isEditing else { return }
+                daySwipeIntent.update(value.translation)
             }
             .onEnded { value in
-                let dx = value.translation.width
-                let dy = value.translation.height
-                let moved = abs(dx) > 60 && abs(dx) > abs(dy) * 1.5
-                goingForward = dx < 0
-                withAnimation(motion) {
-                    dragX = 0
-                    if moved { model.step(dx < 0 ? .next : .previous) }
-                }
+                defer { daySwipeIntent = PlanDaySwipeIntent() }
+                guard let target = daySwipeIntent.destination(
+                    translation: value.translation, selectedDay: model.selectedDay,
+                    dayCount: model.dayCount, isEditing: isEditing) else { return }
+                goingForward = target > model.selectedDay
+                withAnimation(motion) { model.selectedDay = target }
             }
     }
 
@@ -376,18 +512,39 @@ struct TripPlanView: View {
     @ViewBuilder
     private func dayMap(_ model: TripPlanViewModel) -> some View {
         VStack(spacing: 0) {
-            // 하루만 볼지, 여행 전체를 볼지. 전체는 **누른 순간에만** 받는다(열지도 않을 날을 미리 받지 않는다).
-            Picker("보기", selection: $mapScope) {
-                Text("이 날").tag(MapScope.day)
-                Text("전체").tag(MapScope.trip)
+            // 범위(이 날 | 전체)와 검색은 다른 일이다 — 같은 세그먼트에 넣지 않는다.
+            // 전체는 **누른 순간에만** 받는다(열지도 않을 날을 미리 받지 않는다).
+            HStack(spacing: Space.s) {
+                Picker("보기 범위", selection: $mapScope) {
+                    Text("이 날").tag(MapScope.day)
+                    Text("전체").tag(MapScope.trip)
+                }
+                .pickerStyle(.segmented)
+                .disabled(mapSearching)
+                Button {
+                    withAnimation(motion) { mapSearching.toggle() }
+                } label: {
+                    Label(mapSearching ? "검색 닫기" : "장소 검색", systemImage: mapSearching ? "xmark.circle.fill" : "magnifyingglass")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(minHeight: 44)
+                }
+                .tint(Ink.accent)
+                .accessibilityLabel(mapSearching ? "장소 검색 닫기" : "장소 검색 열기")
             }
-            .pickerStyle(.segmented)
             .padding(.horizontal, Space.m)
             .padding(.vertical, Space.xs)
 
-            if mapScope == .trip { tripMap(model) } else { singleDayMap(model) }
+            if mapSearching, let document = model.document {
+                MapDiscoveryView(trip: trip, document: document, model: discovery, isVisible: showsMap,
+                                 onReturnFromBoard: { await model.load() }, onSelectItinerary: { day, spot in
+                    model.selectedDay = day; selectMapSpot(spot, day: day); mapSearching = false; mapScope = .day
+                })
+            } else if mapScope == .trip { tripMap(model) } else { singleDayMap(model) }
         }
-        .task(id: mapScope) { if mapScope == .trip { await model.loadTripRoutes() } }
+        // 숨겨진 동안은 전체 동선을 받지 않는다 — 보고 있지 않은 지도를 위해 서버를 부르지 않는다.
+        .task(id: "\(mapScope)-\(model.revision)-\(showsMap)-\(mapSearching)") {
+            if mapScope == .trip, showsMap, !mapSearching { await model.loadTripRoutes() }
+        }
     }
 
     /// 여행 전체 — 날마다 색이 다르다(웹의 일자 색 순서와 같다).
@@ -401,7 +558,8 @@ struct TripPlanView: View {
             } else {
                 MapEngineView(
                     pins: days.flatMap(\.pins),
-                    routes: days.flatMap { $0.mapRoutes(colorIndex: $0.index) })
+                    routes: days.flatMap { $0.mapRoutes(colorIndex: $0.index) },
+                    isVisible: showsMap)
                     .ignoresSafeArea(edges: .bottom)
                     .overlay(alignment: .topLeading) {
                         if let note = routeNote(days.flatMap { $0.mapRoutes(colorIndex: $0.index) }) {
@@ -414,7 +572,8 @@ struct TripPlanView: View {
                     }
             }
         } else if model.isLoadingTripRoutes {
-            ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            // 스피너만 두지 않는다 — 무엇을 기다리는지 말한다. 실패는 아래 빈 화면이 따로 말한다.
+            MapLoadingPlaceholder(message: "전체 동선을 불러오는 중이에요")
         } else {
             EmptyStateView(symbol: "map", title: "전체 동선을 불러오지 못했어요",
                            message: "잠시 후 다시 시도해 주세요. 이 날 보기는 그대로 됩니다.")
@@ -424,48 +583,151 @@ struct TripPlanView: View {
     @ViewBuilder
     private func singleDayMap(_ model: TripPlanViewModel) -> some View {
         if let day = model.day {
-            let pins = day.pins
-            if pins.isEmpty {
-                EmptyStateView(
-                    symbol: "map",
-                    title: "지도에 놓을 장소가 없어요",
-                    message: "검색해서 담으면 좌표가 함께 들어와 여기에 보입니다.")
-            } else {
-                // 동선은 서버가 준 것이다 — 조회된 구간은 도로를 따르고, 계산을 못 받았으면 핀만 나온다.
-                let routes = model.planDay?.mapRoutes ?? []
-                MapEngineView(pins: pins, routes: routes, onPick: model.canEdit ? { picked in
-                    editor = .createFromMap(SpotEditorTarget.spotFromMap(picked, fallbackCity: day.spots.first?.city))
-                } : nil)
-                    .ignoresSafeArea(edges: .bottom)
-                    .overlay(alignment: .topLeading) {
-                        // ⚠️ 직선을 도로처럼 보이게 두면 거짓말이 된다. 전부 도로면 굳이 말하지 않는다.
-                        if let note = routeNote(routes) {
-                            Label(note, systemImage: "line.diagonal")
-                                .font(.caption)
-                                .padding(.horizontal, Space.m)
-                                .padding(.vertical, Space.xs + 2)
-                                .background(.thinMaterial, in: Capsule())
-                                .padding(Space.m)
-                        }
+            let selection = mapSelection(on: model.selectedDay)
+            // 도시를 건너는 날은 장면으로 나눈다 — 기본 카메라는 주 장면, 전체는 칩으로. 도시 안 하루는 장면이 하나다.
+            let scenes = MapScenes.split(day.sceneSpots)
+            let routes = model.planDay?.mapRoutes ?? []
+            VStack(spacing: 0) {
+                if !day.pins.isEmpty {
+                    if scenes.count >= 2 {
+                        sceneChips(scenes, transfers: sceneTransfers(scenes, plan: model.planDay), main: MapScenes.mainScene(in: scenes))
                     }
-                    .overlay(alignment: .topTrailing) {
-                        let missing = day.spots.count - pins.count
-                        if missing > 0 {
-                            Text("위치 없는 장소 \(missing)곳은 지도에 없어요")
-                                .font(.caption)
-                                .padding(.horizontal, Space.m)
-                                .padding(.vertical, Space.xs + 2)
-                                .background(.thinMaterial, in: Capsule())
-                                .padding(Space.m)
-                        }
+                    // 고른 장소가 있을 때만 거기로 간다. 없으면 `focus`를 비워 엔진이 `frame`(고른 장면) 또는
+                    // **그날 동선 전체**(핀+선)를 맞춘다 — 첫 장소를 넣으면 거기에 줌인해 나머지 동선이 화면 밖이다(2026-09-19 전 모습).
+                    MapEngineView(pins: day.pins, routes: routes,
+                                  focus: selection.flatMap { day.spots.indices.contains($0) ? day.spots[$0].point : nil },
+                                  frame: sceneFrame(scenes, routes: routes),
+                                  preservesCamera: false,
+                                  selectedPinID: day.pins.first(where: { $0.order - 1 == selection })?.id,
+                                  onPinSelected: { id in chooseMapSpot(day.pins.first(where: { $0.id == id }).map { $0.order - 1 }, day: model.selectedDay, scenes: scenes) },
+                                  isVisible: showsMap)
+                        .frame(minHeight: 180, maxHeight: .infinity)
+                    if let note = routeNote(model.planDay?.mapRoutes ?? []) {
+                        Text(note).font(.caption).foregroundStyle(.secondary)
                     }
+                } else {
+                    Button { withAnimation(motion) { mapSearching = true } } label: {
+                        Label("지도에서 장소 찾기", systemImage: "magnifyingglass").frame(minHeight: 60)
+                    }
+                }
+                ScrollViewReader { proxy in
+                    List {
+                        ForEach(Array(day.spots.enumerated()), id: \.offset) { index, spot in
+                            HStack {
+                                Button {
+                                    // 고른 줄을 다시 누르면 고름을 푼다 — 지도가 다시 그 장면(또는 그날 전체)을 보인다.
+                                    chooseMapSpot(selection == index ? nil : index, day: model.selectedDay, scenes: scenes)
+                                } label: {
+                                    VStack(alignment: .leading) {
+                                        Text("\(index + 1). \(spot.name)")
+                                        if spot.point == nil { Text("위치 미정").font(.caption).foregroundStyle(.secondary) }
+                                    }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                                }.buttonStyle(.plain)
+                                Button { viewingSpot = .edit(index: index, spot: spot) } label: {
+                                    Image(systemName: "info.circle").frame(width: 44, height: 44)
+                                }.accessibilityLabel("\(spot.name) 장소·예약 정보")
+                                if model.canEdit {
+                                    Menu {
+                                        Button("편집") { editor = .edit(index: index, spot: spot) }
+                                        Button("이 장소 뒤에 추가") { insertionAfter = index; showsSearch = true }
+                                        Button("날짜·위치 옮기기") { prepareMove([index], model: model) }
+                                    } label: { Image(systemName: "ellipsis").frame(width: 44, height: 44) }
+                                    .accessibilityLabel("\(spot.name) 일정 작업")
+                                }
+                            }
+                            .listRowBackground(selection == index ? Color.accentColor.opacity(0.12) : Ink.raised)
+                            .id(index)
+                        }
+                    }.listStyle(.plain).frame(maxHeight: 240)
+                    .onChange(of: selectedMapSpot) { _, index in if let index { proxy.scrollTo(index, anchor: .center) } }
+                }
             }
+            .onChange(of: model.selectedDay) { _, _ in selectMapSpot(nil, day: nil); sceneChoice = .main }
         }
+    }
+
+    /// 지도에서 고른 장소 — `day`의 것일 때만. 날을 옮긴 직후 옛 번호가 새 날의 장소를 가리키지 않게 한다.
+    private func mapSelection(on day: Int) -> Int? {
+        selectedMapSpotDay == day ? selectedMapSpot : nil
+    }
+
+    private func selectMapSpot(_ index: Int?, day: Int?) {
+        selectedMapSpot = index
+        selectedMapSpotDay = index == nil ? nil : day
+    }
+
+    /// 장소를 고르면 그 장소의 장면도 고른 것으로 둔다 — 고름을 풀었을 때 전체가 아니라 그 장면으로 돌아가게.
+    private func chooseMapSpot(_ index: Int?, day: Int, scenes: [MapScene]) {
+        selectMapSpot(index, day: day)
+        if let index, let scene = scenes.first(where: { $0.spotIndexes.contains(index) }) { sceneChoice = .scene(scene.id) }
+    }
+
+    /// 고른 장면의 사각형. 장면이 하나뿐이거나 '전체'면 nil — 엔진이 그린 것 전부를 맞춘다.
+    /// 마지막 장면에는 숙소 복귀 선(핀이 아니라 선으로만 있다)도 넣는다.
+    private func sceneFrame(_ scenes: [MapScene], routes: [MapRoute]) -> MapBounds? {
+        guard scenes.count >= 2, let index = chosenScene(in: scenes) else { return nil }
+        var points = scenes[index].points
+        if index == scenes.count - 1 { points += routes.filter(\.synthetic).flatMap(\.points) }
+        return MapBounds.covering(points: points)
+    }
+
+    private func chosenScene(in scenes: [MapScene]) -> Int? {
+        switch sceneChoice {
+        case .all: return nil
+        case .main: return MapScenes.mainScene(in: scenes)
+        case .scene(let id): return scenes.indices.contains(id) ? id : MapScenes.mainScene(in: scenes)
+        }
+    }
+
+    /// 장면 사이 이동 — 서버가 도착 장소의 구간을 계산해 뒀으면 그 수단·시간·거리, 없으면 직선 거리("약").
+    private func sceneTransfers(_ scenes: [MapScene], plan: DayPlanDay?) -> [MapTransfer] {
+        MapScenes.transfers(between: scenes) { arriving in
+            guard let leg = plan?.spots.first(where: { $0.index == arriving })?.incomingLeg else { return nil }
+            return (mode: TravelMode(rawValue: leg.mode), minutes: leg.minutes, distanceKm: leg.distanceKm)
+        }
+    }
+
+    /// `마드리드 1` · `기차 2시간 30분 · 390km` · `세비야 5` · `전체`. 장면 칩을 누르면 카메라가 거기로, 전체는 그날 다.
+    private func sceneChips(_ scenes: [MapScene], transfers: [MapTransfer], main: Int?) -> some View {
+        let chosen = chosenScene(in: scenes)
+        return ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: Space.xs) {
+                ForEach(scenes) { scene in
+                    sceneChip("\(scene.label) \(scene.count)", on: chosen == scene.id,
+                              label: "\(scene.label) 장소 \(scene.count)곳 보기") { sceneChoice = .scene(scene.id) }
+                    if let transfer = transfers.first(where: { $0.id == scene.id }) {
+                        LegPill(symbol: transfer.mode?.symbol ?? "arrow.right", text: MapScenes.text(for: transfer))
+                    }
+                }
+                sceneChip("전체", on: chosen == nil, label: "그날 동선 전체 보기") { sceneChoice = .all }
+            }
+            .padding(.horizontal, Space.m)
+            .padding(.vertical, Space.xs)
+        }
+    }
+
+    private func sceneChip(_ text: String, on: Bool, label: String, action: @escaping () -> Void) -> some View {
+        Button { withAnimation(motion) { action() } } label: {
+            Text(text)
+                .font(.caption.weight(on ? .semibold : .regular))
+                .padding(.horizontal, Space.s)
+                .padding(.vertical, 5)
+                .background(on ? Ink.accent : Ink.sunken, in: Capsule())
+                .foregroundStyle(on ? .white : Ink.soft)
+                .frame(minHeight: 32)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(on ? .isSelected : [])
     }
 
     private func dayHeader(_ model: TripPlanViewModel, day: TripDay) -> some View {
         HStack(spacing: Space.s) {
+            // 위계: 하루 제목(headline) > 장소 이름(body·semibold) > 정보(caption) > 이동(caption2 알약).
             Text(day.title.isEmpty ? "Day \(model.selectedDay + 1)" : day.title)
+                .font(.headline)
+                .foregroundStyle(Ink.ink)
+                .lineLimit(1)
             Spacer()
             if model.isSaving { ProgressView().controlSize(.mini) }
             if model.canEdit {
@@ -530,32 +792,63 @@ struct TripPlanView: View {
         .padding(.vertical, Space.xs)
     }
 
-    /// 하루의 무게 — 얼마나 움직이고 얼마나 쓰는가. 값은 전부 서버가 계산한 것이다.
+    /// 하루의 무게 — 한 줄(`이동 2시간 27분 · 예상 ₩456,665`)과 종료 시각. 값은 전부 서버가 계산한 것이다.
+    /// 거리·미정·예산 같은 나머지는 `dayDetails`(접힘) 안에 있다.
     @ViewBuilder
     private func daySummary(_ totals: DayPlanTotals) -> some View {
-        VStack(alignment: .leading, spacing: Space.xs) {
-            HStack(spacing: Space.m) {
-                if totals.distanceKm > 0 {
-                    Label(String(format: "%.1fkm", totals.distanceKm), systemImage: "ruler")
-                }
-                if totals.travelMinutes > 0 {
-                    Label(TimeFormat.duration(totals.travelMinutes), systemImage: "arrow.triangle.turn.up.right.diamond")
-                }
-                if totals.cost.total > 0 {
-                    Label(TimeFormat.money(Double(totals.cost.total), currency: "KRW"), systemImage: "wonsign.circle")
-                }
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-
-            // 자정을 넘긴다 — 넘긴다고 막지는 않는다. 그렇게 되어 있다고 말할 뿐이다.
-            if totals.overloaded, let end = totals.endMinutes {
-                Label("이대로면 \(TimeFormat.clockAcrossMidnight(end))에 끝나요", systemImage: "moon.zzz")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-            }
+        if let line = Self.summaryLine(totals) {
+            Text(line).font(.caption).foregroundStyle(Ink.soft)
         }
-        .textCase(nil)
+        // 늦게 끝나는 것 자체는 문제가 아니다 — 그렇게 되어 있다고 말할 뿐이라 경고색을 쓰지 않는다.
+        // ⚠️ 예전에는 주황이었는데, 오후 4시에 끝나는 날에도 붉게 떠서 무엇이 잘못됐는지 되묻게 했다.
+        //    자정을 넘길 때(과밀)만 주의색이다 — 그건 정말 확인할 일이다.
+        if let end = totals.endMinutes {
+            Label("이대로면 \(TimeFormat.clockAcrossMidnight(end))에 끝나요", systemImage: "moon.zzz")
+                .font(.caption)
+                .foregroundStyle(totals.overloaded ? Ink.warning : Ink.soft)
+        }
+    }
+
+    /// `이동 2시간 27분 · 예상 ₩456,665`. 둘 다 없으면 nil — 빈 줄을 만들지 않는다. 외화가 섞이면 '약'을 붙인다.
+    static func summaryLine(_ totals: DayPlanTotals) -> String? {
+        var parts: [String] = []
+        if totals.travelMinutes > 0 { parts.append("이동 \(TimeFormat.duration(totals.travelMinutes))") }
+        if totals.cost.total > 0 {
+            let approx = totals.cost.details?.hasForeignCurrency == true ? "약 " : ""
+            parts.append("예상 \(approx)\(TimeFormat.money(Double(totals.cost.total), currency: "KRW"))")
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    /// 접어 둔 요약 — 총 이동거리 · 머무는 시간 미정 · 예약할 곳 · 하루 예산과 비용 안내. 펼쳤을 때만 보인다.
+    @ViewBuilder
+    private func dayDetails(_ model: TripPlanViewModel, day: TripDay) -> some View {
+        VStack(alignment: .leading, spacing: Space.xs) {
+            if let totals = model.planDay?.totals, totals.distanceKm > 0 {
+                Label(String(format: "총 이동거리 %.1fkm", totals.distanceKm), systemImage: "ruler")
+                    .font(.caption).foregroundStyle(Ink.soft)
+            }
+            let unknown = day.spots.filter { $0.stayMinutes == nil }.count
+            if unknown > 0 {
+                Label("머무는 시간 미정 \(unknown)곳 · 현재 0분으로 계산", systemImage: "hourglass")
+                    .font(.caption).foregroundStyle(Ink.warning)
+            }
+            let needing = day.spots.enumerated().filter { $0.element.needsReservation }
+            if !needing.isEmpty {
+                Menu("예약할 곳 \(needing.count)곳") {
+                    ForEach(needing, id: \.offset) { index, spot in
+                        Button(spot.name) { editSpot(index, spot: spot, model: model) }
+                    }
+                }
+                .font(.caption.weight(.semibold))
+            }
+            Button {
+                costDay = model.selectedDay; costRevision = model.revision; showsCosts = true
+            } label: { DayCostSummaryView(day: day, cost: model.planDay?.totals.cost) }
+            .buttonStyle(.plain)
+            .accessibilityHint("하루 예산과 비용 내역 열기")
+        }
+        .padding(.top, Space.xs)
     }
 
     /// 🏠 전날 숙소에서 이어지는 날. **표시일 뿐**이고 이 항목은 그날 일정이 아니다.
@@ -566,16 +859,16 @@ struct TripPlanView: View {
                 Text("전날 숙소에서 출발").font(.caption2).foregroundStyle(.secondary)
             }
         } icon: {
-            Text("🏠")
+            Image(systemName: "house.fill").foregroundStyle(Ink.soft)
         }
-        .listRowBackground(Ink.sunken)
+        .listRowBackground(Ink.raised.opacity(0.6))
     }
 
     /// 자동으로 이어 붙인 숙소 복귀. 일정에 저장된 장소가 아니라는 것을 밝힌다.
     /// ⚠️ 일정의 마지막 날에는 서버가 이걸 주지 않는다 — 떠나는 날이다.
     private func backRow(_ back: DayPlanBack) -> some View {
         HStack(alignment: .top, spacing: Space.m) {
-            Text("🏠").font(.title3)
+            Image(systemName: "house.fill").font(.body).foregroundStyle(Ink.soft).frame(width: 22)
             VStack(alignment: .leading, spacing: 1) {
                 Text(back.name).font(.subheadline)
                 let mode = TravelMode(rawValue: back.leg.mode)
@@ -583,14 +876,14 @@ struct TripPlanView: View {
                     .font(.caption2).foregroundStyle(.secondary)
             }
         }
-        .listRowBackground(Ink.sunken)
+        .listRowBackground(Ink.raised.opacity(0.6))
     }
 
     /// 렌터카 픽업·반납. ⚠️ **좌표가 없어 동선·ETA·지도에 들어가지 않는다** — 표시만 한다.
     /// 그래서 시각을 ETA 칸이 아니라 메타 줄에 둔다(그날 계산된 도착 순서에 속하지 않는다).
     private func carEventRow(_ event: DayPlanCarEvent) -> some View {
         HStack(alignment: .top, spacing: Space.m) {
-            Image(systemName: "car.fill").font(.subheadline).foregroundStyle(.secondary)
+            Image(systemName: "car.fill").font(.body).foregroundStyle(Ink.soft).frame(width: 22)
             VStack(alignment: .leading, spacing: 1) {
                 Text(event.place.isEmpty ? (event.kind == .pickup ? "렌터카 픽업" : "렌터카 반납") : event.place)
                     .font(.subheadline)
@@ -599,8 +892,16 @@ struct TripPlanView: View {
                     .font(.caption2).foregroundStyle(.secondary)
             }
         }
-        .listRowBackground(Ink.sunken)
+        .listRowBackground(Ink.raised.opacity(0.6))
     }
+}
+
+private struct PlanMoveTarget: Identifiable {
+    let id = UUID()
+    let document: TripDocument
+    let revision: Int
+    let day: Int
+    let indexes: IndexSet
 }
 
 /// 목록의 한 줄. 시각·상태·이동수단처럼 "그 장소가 언제 어떤 상태인지"만 보인다.
@@ -641,6 +942,11 @@ struct SpotRow: View {
             if let leg = plan?.incomingLeg { legLine(leg) }
             // 누가 가는지는 **가지가 시작될 때 한 번만** 말한다.
             if let split, split.isBranchStart { branchHeader(split) }
+            if !spot.admission.raw.isEmpty || spot.category == .sight {
+                Label(spot.admission.isBooked ? "예약 완료 · \(spot.admission.requirement.label)" : spot.admission.requirement.label,
+                      systemImage: spot.admission.isBooked ? "checkmark.seal" : "ticket")
+                    .font(.caption).foregroundStyle(spot.needsReservation ? Ink.warning : Ink.soft)
+            }
 
             // ⚠️ 접근성 글자 크기에서는 **옆에 두지 않는다.** 시간 칸이 화면의 절반을 먹어
             //    이름이 글자 단위로 갈린다. 그때는 시간을 이름 위로 올린다.
@@ -680,23 +986,28 @@ struct SpotRow: View {
     /// 아이콘·이름·시각·메모. 배치(옆/위)만 바깥에서 달라지고 내용은 하나다.
     private var mainContent: some View {
         HStack(alignment: .top, spacing: Space.m) {
-            Text(spot.category?.icon ?? "📍").font(.title3)
+            // 장소 유형은 앱 아이콘(SF Symbols)으로 — 이모지와 섞지 않는다. 이름이 언제나 가장 먼저 읽힌다.
+            Image(systemName: spot.category?.symbol ?? "mappin")
+                .font(.body)
+                .foregroundStyle(Ink.soft)
+                .frame(width: 22, alignment: .center)
+                .padding(.top, 2)
             VStack(alignment: .leading, spacing: Space.xs) {
                 HStack(spacing: Space.s) {
                     Text(spot.name.isEmpty ? "이름 없는 장소" : spot.name)
                         .font(.body.weight(.semibold))
                         .strikethrough(spot.status == .skipped || spot.status == .cancelled)
-                    if spot.isMust { Image(systemName: "star.fill").font(.caption2).foregroundStyle(.orange) }
+                    if spot.isMust { Image(systemName: "star.fill").font(.caption2).foregroundStyle(Ink.warning) }
                 }
                 // 상대가 정한 약속은 가장 세게 말한다 — 내가 옮길 수 없는 시각이다.
                 if let booked = bookedText { bookedChip(booked) }
                 if !meta.isEmpty {
-                    Text(meta).font(.caption).foregroundStyle(.secondary)
+                    Text(meta).font(.caption).foregroundStyle(Ink.soft)
                 }
                 if spot.point == nil {
                     Label("위치 없음 · 동선에서 빠져요", systemImage: "mappin.slash")
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Ink.warning)
                 }
             }
             Spacer(minLength: 0)
@@ -730,10 +1041,12 @@ struct SpotRow: View {
         if let plan {
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 2) {
-                    // 📌 자리는 **있든 없든 같다** — 아니면 고정된 줄의 시간만 오른쪽으로 밀린다.
-                    Text(plan.fixed ? "📌" : "")
+                    // 핀 자리는 **있든 없든 같다** — 아니면 고정된 줄의 시간만 오른쪽으로 밀린다.
+                    Image(systemName: "pin.fill")
                         .font(.caption2)
+                        .opacity(plan.fixed ? 1 : 0)
                         .frame(width: pinSlotWidth, alignment: .leading)
+                        .accessibilityHidden(true)
                     Text(TimeFormat.clockAcrossMidnight(plan.etaMinutes))
                         .font(.caption.weight(plan.fixed ? .bold : .regular))
                         .monospacedDigit()
@@ -746,7 +1059,7 @@ struct SpotRow: View {
                     Image(systemName: "exclamationmark.triangle.fill").font(.caption2)
                 }
             }
-            .foregroundStyle(plan.conflict ? Color.orange : (plan.fixed ? .primary : .secondary))
+            .foregroundStyle(plan.conflict ? Ink.warning : (plan.fixed ? Ink.ink : Ink.soft))
             .frame(width: typeSize.isAccessibilitySize ? nil : timeColumnWidth, alignment: .leading)
             .accessibilityLabel(timeAccessibility(plan))
         } else {
@@ -766,17 +1079,10 @@ struct SpotRow: View {
         return text
     }
 
+    /// 이동은 장소보다 가볍게 — 작은 알약(`LegPill`) 하나. 장소 이름이 언제나 가장 높은 우선순위다.
     private func legLine(_ leg: DayPlanLeg) -> some View {
         let mode = TravelMode(rawValue: leg.mode) ?? dayMode
-        // ⚠️ 조각 Text를 HStack에 늘어놓으면 접근성 글자 크기에서 각 조각이 따로 줄바꿈돼
-        //    `12.4k` / `m` 처럼 단어가 잘린다. 문장 하나로 두면 단어 단위로 접힌다.
-        return HStack(alignment: .firstTextBaseline, spacing: 4) {
-            Image(systemName: "arrow.turn.down.right")
-            Image(systemName: mode.symbol)
-            Text("\(TimeFormat.duration(leg.minutes)) · \(distanceText(leg.distanceKm))")
-        }
-        .font(.caption2)
-        .foregroundStyle(.secondary)
+        return LegPill(symbol: mode.symbol, text: "\(TimeFormat.duration(leg.minutes)) · \(distanceText(leg.distanceKm))")
         .padding(.leading, secondaryIndent)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(mode.label)로 \(TimeFormat.duration(leg.minutes)), \(distanceText(leg.distanceKm))")
@@ -799,7 +1105,7 @@ struct SpotRow: View {
             Text("예약 \(text)").font(.caption.weight(.semibold))
             if late { Text("· 도착이 늦어요").font(.caption2) }
         }
-        .foregroundStyle(late ? Color.orange : Color.accentColor)
+        .foregroundStyle(late ? Ink.warning : Ink.accent)
     }
 
     /// 남는 것 — 머무는 시간 · 대기 · 구간 수단 재정의 · 도시.
@@ -827,9 +1133,16 @@ struct SpotRow: View {
 
     private var statusTint: Color {
         switch spot.status {
-        case .completed: .green
-        case .skipped, .cancelled: .secondary
-        case .planned: .secondary
+        case .completed: Ink.positive
+        case .skipped, .cancelled: Ink.soft
+        case .planned: Ink.soft
         }
     }
+}
+
+/// '이 날' 지도가 보이는 장면 — 기본은 주 장면(장소가 가장 많은 묶음), 칩으로 특정 장면이나 전체를 고른다.
+private enum SceneChoice: Equatable {
+    case main
+    case scene(Int)
+    case all
 }

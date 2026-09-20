@@ -723,6 +723,7 @@ struct DayPlanSpot: Codable, Hashable, Sendable {
     let conflict: Bool
     /// 상대가 정한 약속(`bookAt`) — 예약·입장.
     let bookedAtMinutes: Int?
+    var bookingLateMinutes: Int? = nil
     /// 약속까지 기다리는 시간. 일찍 도착하면 0보다 크다.
     let waitMinutes: Int
     let stayMinutes: Int?
@@ -768,7 +769,21 @@ struct DayPlanCarEvent: Codable, Hashable, Sendable {
 
 struct DayPlanCostPart: Codable, Hashable, Sendable {
     let label: String
-    let amount: Int
+    let amount: Double
+}
+
+/// 예약해 둔 돈인가 이미 낸 돈인가. 분류(무엇에 쓴 돈)와 다른 축이다 —
+/// 같은 '숙박'도 예약만 해 둔 것과 결제한 것이 있다. 고르지 않았으면 `none`이고,
+/// 그것을 결제나 예약 어느 쪽으로도 단정하지 않는다(단정하면 남은 지출이 거짓말이 된다).
+enum CostPayState: String, Codable, Hashable, Sendable, CaseIterable {
+    case reserved = "RESERVED", paid = "PAID", none = "NONE"
+    var label: String {
+        switch self {
+        case .reserved: "결제 예정"
+        case .paid: "결제 완료"
+        case .none: "미구분"
+        }
+    }
 }
 
 struct DayPlanCarriedStay: Codable, Hashable, Sendable {
@@ -783,8 +798,27 @@ struct DayPlanBack: Codable, Hashable, Sendable {
 }
 
 struct DayPlanCost: Codable, Hashable, Sendable {
-    let total: Int
+    let total: Double
+    /// 가서 쓰는 돈(장소·추가 비용·교통)만. 예약 하루치는 가기 전에 낸 돈의 배분이라 뺀다.
+    /// 옛 서버 응답·캐시에는 없을 수 있어 선택이다 — 없으면 화면이 그 사실을 말한다.
+    var onSiteKRW: Double? = nil
     let parts: [DayPlanCostPart]
+    /// 결제 상태별 원화 합계. 셋을 더하면 `total`과 같다.
+    /// 옛 서버 응답·캐시에는 없을 수 있어 선택이다.
+    var payTotals: [String: Double]? = nil
+    var details: DayCostDetails? = nil
+
+    /// 예약·결제 중 값이 있는 것만, 표시 순서대로. 둘 다 없으면 빈 배열이라 화면이 줄을 짓지 않는다.
+    /// ⚠️ 미구분은 여기 넣지 않는다 — 아무것도 고르지 않았을 때 "미구분 = 합계"라고 찍으면 같은 숫자를
+    /// 한 번 더 말할 뿐 정보가 없다(2026-09-17 빌드 38에서 그렇게 보였다). 웹과 같은 규칙이다.
+    var paySplit: [(state: CostPayState, amount: Double)] {
+        guard let payTotals else { return [] }
+        return [CostPayState.reserved, .paid]
+            .compactMap { state in
+                let amount = payTotals[state.rawValue] ?? 0
+                return amount > 0 ? (state, amount) : nil
+            }
+    }
 }
 
 struct DayPlanTotals: Codable, Hashable, Sendable {
@@ -932,4 +966,133 @@ struct TripRoutesResponse: Codable, Hashable, Sendable {
     let legsPending: Int
     let trip: TripSummary
     let days: [TripRouteDay]
+}
+
+// 하루 비용 계약은 위젯·공유 확장도 읽는 이 파일 안에 둔다.
+enum CostBasis: String, Codable, CaseIterable, Sendable {
+    case entered = "ENTERED", total = "TOTAL", perPerson = "PER_PERSON"
+
+    var label: String {
+        switch self {
+        case .entered: "입력 금액 그대로 · 인원 기준 미정"
+        case .total: "일행 전체 금액"
+        case .perPerson: "1인 금액"
+        }
+    }
+}
+
+struct DayCostDetails: Codable, Hashable, Sendable {
+    let items: [DayCostLine]
+    let budget: DayCostBudget?
+    let unknownCount: Int
+    let transportUnpriced: Bool
+    let undatedBookings: Int
+    let hasForeignCurrency: Bool
+    let fxRates: [String: Double]
+    let fxSource: String
+    let fxAsOf: String?
+}
+
+struct DayCostLine: Codable, Hashable, Sendable, Identifiable {
+    let source: String
+    let key: String
+    let title: String
+    let kind: String
+    let amount: Double?
+    let currency: String
+    let basis: CostBasis
+    let people: Int
+    let totalKRW: Double?
+    let state: String
+    /// 결제일(`paidOn`)이 있으면 서버가 여행 시간대의 오늘로 정한 값이다 — 손으로 고른 표시가 아니다.
+    let payState: CostPayState
+    /// 결제(예정)일 `YYYY-MM-DD`. 있으면 이 날부터 결제함이다. 없으면 nil.
+    let paidOn: String?
+    /// 영수증·품목 사진의 **참조**(사진 보관함 식별자). 원본 이미지는 문서에 넣지 않는다.
+    let photos: [String]
+    var id: String { "\(source):\(key)" }
+}
+
+struct DayCostBudget: Codable, Hashable, Sendable {
+    let amount: Double
+    let currency: String
+    let basis: CostBasis
+    let people: Int
+    let totalKRW: Double
+    let differenceKRW: Double
+}
+
+struct TripCostsResponse: Codable, Sendable {
+    let schemaVersion: Int
+    let revision: Int
+    let totalKRW: Double
+    let averagePerDayKRW: Double?
+    let days: [TripCostDay]
+    let categories: [TripCostCategory]
+    let unallocated: [TripCostLine]
+    /// 여행 전체의 결제 상태별 원화 합계 — 예약해 둔 돈과 이미 낸 돈을 따로 본다.
+    let payTotals: [String: Double]
+    /// 준비한 비용 — 예약(전액 한 줄씩)과 여행 단위 항목. 어느 날에도 속하지 않는다.
+    /// ⚠️ NAS API가 옛 버전이면 없다 — 그때 화면은 문서에서 목록을 짓고 합계만 "아직"이라고 말한다.
+    var prep: TripCostPrep? = nil
+    /// 가서 쓰는 비용 — 날짜별 장소·추가 비용·교통의 합. 준비한 비용과 더하면 전체와 같다.
+    var onSite: TripCostGroup? = nil
+    let unknownCount: Int
+    let transportUnpriced: Bool
+    let hasForeignCurrency: Bool
+    let fxRates: [String: Double]
+    let fxSource: String
+    let fxAsOf: String?
+}
+/// 비용 한 묶음의 합계 — 원화 총액과 결제 상태별 합계. 셋을 더하면 총액과 같다.
+struct TripCostGroup: Codable, Hashable, Sendable {
+    let totalKRW: Double
+    let payTotals: [String: Double]
+
+    /// 예약·결제 중 값이 있는 것만(미구분은 홀로 찍지 않는다 — `DayPlanCost.paySplit`과 같은 규칙).
+    var paySplit: [(state: CostPayState, amount: Double)] {
+        [CostPayState.reserved, .paid].compactMap { state in
+            let amount = payTotals[state.rawValue] ?? 0
+            return amount > 0 ? (state, amount) : nil
+        }
+    }
+    func amount(_ state: CostPayState) -> Double { payTotals[state.rawValue] ?? 0 }
+}
+struct TripCostPrep: Codable, Sendable {
+    let totalKRW: Double
+    let payTotals: [String: Double]
+    let items: [TripCostLine]
+    var group: TripCostGroup { TripCostGroup(totalKRW: totalKRW, payTotals: payTotals) }
+}
+struct TripCostDay: Codable, Sendable, Identifiable {
+    let index: Int
+    let title: String
+    let date: String
+    let cost: DayPlanCost
+    var id: Int { index }
+}
+struct TripCostCategory: Codable, Sendable, Identifiable {
+    let kind: String
+    let totalKRW: Double
+    let unknownCount: Int
+    let items: [TripCostLine]
+    var id: String { kind }
+}
+struct TripCostLine: Codable, Sendable, Identifiable {
+    let source: String
+    let key: String
+    let title: String
+    let kind: String
+    let amount: Double?
+    let currency: String
+    let basis: CostBasis
+    let people: Int
+    let totalKRW: Double?
+    let state: String
+    let payState: CostPayState
+    /// 결제(예정)일 `YYYY-MM-DD` — 목록 정렬과 표시용. 상태는 `payState`가 말한다.
+    let paidOn: String?
+    let photos: [String]
+    let dayIndex: Int?
+    var id: String { "\(dayIndex.map(String.init) ?? "undated"):\(source):\(key)" }
 }

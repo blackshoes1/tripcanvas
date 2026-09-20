@@ -178,6 +178,7 @@ export interface CollabRepository {
   setReaction(candidateId: number, userId: string, reaction: string | null): Promise<void>;
   /** SCHEDULED로 바뀌면 CANDIDATE_SCHEDULED, REJECTED로 바뀌면 CANDIDATE_REJECTED 기록 */
   setCandidateStatus(candidateId: number, status: string, scheduledRef: string | null, actorId: string): Promise<void>;
+  setCandidateCategory(candidateId: number, category: string | null): Promise<void>;
   removeCandidate(candidateId: number): Promise<void>;
 
   listComments(candidateId: number, viewerId: string): Promise<CommentView[]>;
@@ -257,4 +258,20 @@ export interface LegCacheRepository {
   getMany(keys: string[]): Promise<LegCacheRow[]>;
   /** 조회 결과를 넣는다. 같은 키면 덮어쓴다(재조회) */
   put(row: Omit<LegCacheRow, 'fetchedAt'>): Promise<void>;
+}
+
+/** 하루치 환율 — 그날 받은 '통화 1단위 = ? 원'. 웹 localStorage 캐시(`tripcanvas_fx`)와 같은 모양이다 */
+export interface FxRateRow {
+  /** 받은 날 YYYY-MM-DD (UTC) */
+  day: string;
+  rates: Record<string, number>;
+  fetchedAt: Date;
+}
+
+/** 서버 환율 저장소 — 프로세스가 다시 떠도, 오늘 못 받아도 마지막으로 받은 실제 시세를 잃지 않기 위해서다 */
+export interface FxRateRepository {
+  /** 가장 최근에 받은 날의 환율. 한 번도 못 받았으면 null */
+  latest(): Promise<FxRateRow | null>;
+  /** 그날 것을 넣는다. 같은 날이면 덮어쓴다 */
+  put(row: Omit<FxRateRow, 'fetchedAt'>): Promise<void>;
 }

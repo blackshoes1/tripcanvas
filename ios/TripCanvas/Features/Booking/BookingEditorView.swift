@@ -1,14 +1,18 @@
 import SwiftUI
 
 /// 편집 화면이 무엇을 하러 열렸는지. 새로 만들기와 고치기가 같은 화면을 쓴다.
+/// 예약(`trip.bookings`)과 예약이 아닌 결제 항목(`trip.costItems`)도 **같은 화면**이다(2026-09-18) — 사용자에게는 둘 다
+/// '가기 전에 내는 돈'이고, 분류(항공·숙박·렌트인가)가 어디에 저장할지를 정한다.
 enum BookingEditorTarget: Identifiable {
     case create
     case edit(TripBooking)
+    case editItem(CostEntry)
 
     var id: String {
         switch self {
         case .create: "create"
         case .edit(let booking): "edit-\(booking.id)"
+        case .editItem(let item): "item-\(item.id)"
         }
     }
 
@@ -16,9 +20,21 @@ enum BookingEditorTarget: Identifiable {
         if case .edit(let booking) = self { return booking }
         return nil
     }
+
+    var item: CostEntry? {
+        if case .editItem(let item) = self { return item }
+        return nil
+    }
 }
 
-/// 예약 하나를 만들거나 고친다 — 웹의 예약 모달과 같은 항목, 같은 검증.
+/// 결제 항목 하나를 만들거나 고친다 — 웹의 결제 항목 모달과 같은 항목, 같은 검증.
+///
+/// 분류는 하루 비용과 같은 9가지다(`CostCategory`). **항공·숙박·렌트는 예약**이라 기간·조건·링크·가격 추적이 붙고,
+/// 나머지(보험·유심·입장권…)는 이름·금액·결제·사진만 있다. 이미 저장된 항목은 자기 쪽 안에서만 분류를 바꾼다 —
+/// 예약을 식비로 바꾸면 기간·조건·가격 기록이 갈 곳이 없다.
+///
+/// 결제는 **결제일이 먼저다**: 정해 두면 그 날이 오늘이거나 지났을 때 결제함, 아직이면 예약으로 센다(`costPayStateOf`).
+/// 그때 손으로 고른 상태는 저장하지 않는다(두 답이 갈리면 어느 쪽도 못 믿는다).
 ///
 /// 예약은 여러 날에 걸친 **총액**이다(장소 비용은 그날 쓰는 돈). 숙박은 일정의 숙소와, 렌터카는 픽업·반납
 /// 장소와 이을 수 있다 — 픽업·반납 장소는 자유 텍스트라 좌표가 없어서, 연결해야 도착 순서에 맞게 놓인다.
@@ -26,10 +42,15 @@ enum BookingEditorTarget: Identifiable {
 struct BookingEditorView: View {
     let target: BookingEditorTarget
     let document: TripDocument
-    let onSave: (TripBooking, BookingLinks) -> Void
-    let onDelete: (String) -> Void
+    /// 예약만 다루는 화면(예약 목록·가격 추적)에서는 예약 분류(항공·숙박·렌트)만 고른다.
+    let bookingOnly: Bool
+    let onSave: (TripBooking, BookingLinks) async -> String?
+    let onDelete: (String) async -> String?
+    let onSaveItem: (CostEntry) async -> String?
+    let onDeleteItem: (String) async -> String?
 
     @Environment(\.dismiss) private var dismiss
+    @State private var kind: CostCategory
     @State private var draft: TripBooking
     @State private var links: BookingLinks
     @State private var priceText: String
@@ -40,92 +61,191 @@ struct BookingEditorView: View {
     @State private var pickupCode: String
     @State private var returnPlace: String
     @State private var returnCode: String
+    @State private var currency: Currency
+    /// 결제(예정)일. 있으면 날짜가 상태를 정한다 — 그때 `payState`는 저장하지 않는다.
+    @State private var paidOn: String?
+    @State private var payState: CostPayState
+    @State private var photos: [String]
     @State private var problem: BookingDraftError?
     @State private var showsDeleteConfirm = false
+    @State private var saving = EditorSaveState()
+    @State private var showsDiscardConfirm = false
+    @State private var initialDraft: TripBooking?
+    @State private var initialLinks: BookingLinks?
+    @State private var initialTexts: [String]?
+    private var textInputs: [String] {
+        [priceText, feeText, urlText, roomNameText, pickupPlace, pickupCode, returnPlace, returnCode,
+         kind.rawValue, currency.rawValue, paidOn ?? "", payState.rawValue, photos.joined(separator: ",")]
+    }
+    private var isDirty: Bool {
+        guard let initialDraft, let initialLinks, let initialTexts else { return false }
+        return draft != initialDraft || links != initialLinks || textInputs != initialTexts
+    }
 
-    private var isNew: Bool { target.booking == nil }
+    private var isNew: Bool { target.booking == nil && target.item == nil }
+    /// 항공·숙박·렌트인가 — 예약으로 저장되고 예약의 항목(기간·조건·링크·추적)이 보인다.
+    private var isBookingKind: Bool { kind.bookingType != nil }
+    /// 고를 수 있는 분류. 저장된 항목은 자기 쪽 안에서만.
+    private var availableKinds: [CostCategory] {
+        if bookingOnly || target.booking != nil { return CostCategory.bookingKinds }
+        if target.item != nil { return CostCategory.itemKinds }
+        return CostCategory.allCases
+    }
 
     init(target: BookingEditorTarget,
          document: TripDocument,
-         onSave: @escaping (TripBooking, BookingLinks) -> Void,
-         onDelete: @escaping (String) -> Void) {
+         bookingOnly: Bool = false,
+         onSave: @escaping (TripBooking, BookingLinks) async -> String?,
+         onDelete: @escaping (String) async -> String?,
+         onSaveItem: @escaping (CostEntry) async -> String? = { _ in nil },
+         onDeleteItem: @escaping (String) async -> String? = { _ in nil }) {
         self.target = target
         self.document = document
+        self.bookingOnly = bookingOnly
         self.onSave = onSave
         self.onDelete = onDelete
+        self.onSaveItem = onSaveItem
+        self.onDeleteItem = onDeleteItem
         let booking = target.booking ?? TripBooking()
-        _draft = State(initialValue: booking)
+        let item = target.item
+        _kind = State(initialValue: target.booking.map { CostCategory(bookingType: $0.type) }
+            ?? item.flatMap { CostCategory(rawValue: $0.kind) } ?? (item != nil ? .other : .stay))
+        var draft = booking
+        if let item { draft.title = item.title }
+        _draft = State(initialValue: draft)
         _links = State(initialValue: target.booking.map { document.links(forBooking: $0.id) } ?? .empty)
-        _priceText = State(initialValue: booking.price > 0 ? String(booking.price) : "")
-        _feeText = State(initialValue: booking.cancelFee.map(String.init) ?? "")
+        let amount: Double? = item != nil ? item?.amount : (booking.price > 0 ? booking.price : nil)
+        _priceText = State(initialValue: amount.map { MoneyInput.text(amount: $0) } ?? "")
+        _feeText = State(initialValue: MoneyInput.text(amount: booking.cancelFee))
         _urlText = State(initialValue: booking.url ?? "")
         _roomNameText = State(initialValue: booking.roomName ?? "")
         _pickupPlace = State(initialValue: booking.carPickup ?? "")
         _pickupCode = State(initialValue: booking.carPickupCode ?? "")
         _returnPlace = State(initialValue: booking.carReturn ?? "")
         _returnCode = State(initialValue: booking.carReturnCode ?? "")
+        _currency = State(initialValue: item?.currency ?? booking.currency ?? .krw)
+        _paidOn = State(initialValue: item?.paidOn ?? booking.paidOn)
+        _payState = State(initialValue: item?.payState ?? booking.payState)
+        _photos = State(initialValue: item?.photos ?? booking.photos)
     }
 
     var body: some View {
         NavigationStack {
             Form {
-                Section("예약") {
-                    Picker("종류", selection: $draft.type) {
-                        ForEach(TripBookingType.allCases, id: \.self) { type in
-                            Label(type.label, systemImage: type.symbol).tag(type)
+                if let error = saving.error {
+                    Section {
+                        Text(error).foregroundStyle(.red)
+                        ShareLink("입력 복사·공유", item: "\(draft.title)\n\(draft.provider)\n\(priceText) \(currency.rawValue)\n\(draft.start ?? "미정") ~ \(draft.end ?? "미정")\n\(urlText)")
+                    }
+                }
+                Section {
+                    Picker("분류", selection: $kind) {
+                        ForEach(availableKinds, id: \.self) { kind in
+                            Label(kind.label, systemImage: kind.symbol).tag(kind)
                         }
                     }
-                    .pickerStyle(.segmented)
+                    .pickerStyle(.menu)
                     TextField(titlePlaceholder, text: $draft.title)
-                    TextField("예약처 (예: Booking.com)", text: $draft.provider)
+                    if isBookingKind {
+                        TextField("예약처 (예: Booking.com)", text: $draft.provider)
+                        TextField("예약번호", text: Binding(
+                            get: { draft.confirmation ?? "" },
+                            set: { draft.confirmation = $0 }))
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                    }
+                } header: {
+                    Text(isBookingKind ? "예약" : "항목")
+                } footer: {
+                    if !bookingOnly && isNew {
+                        Text("항공·숙박·렌트는 예약으로 저장돼 기간·조건·가격 추적이 붙어요. 나머지는 가기 전에 낸 비용으로만 남아요.")
+                    }
+                }
+
+                if isBookingKind {
+                    Section("기간") {
+                        DateField(title: draft.type.startLabel, text: $draft.start) { Date() }
+                        DateField(title: draft.type.endLabel, text: $draft.end) {
+                            ISODateText.date(from: draft.start).flatMap { ISODateText.calendar.date(byAdding: .day, value: 1, to: $0) } ?? Date()
+                        }
+                    }
+
+                    Section("링크") {
+                        TextField("예약 페이지 https://…", text: $urlText)
+                            .keyboardType(.URL)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                    }
                 }
 
                 Section {
                     HStack {
-                        TextField("총액", text: $priceText)
-                            .keyboardType(.numberPad)
-                        Picker("통화", selection: currencyBinding) {
+                        TextField(isBookingKind ? "총액" : "금액", text: $priceText)
+                            .keyboardType(.decimalPad)
+                        Picker("통화", selection: $currency) {
                             ForEach(Currency.allCases, id: \.self) { currency in
                                 Text(currency.rawValue).tag(currency)
                             }
                         }
                         .labelsHidden()
                     }
-                    Toggle("가격 추적", isOn: $draft.track)
+                    if isBookingKind { Toggle("가격 추적", isOn: $draft.track) }
                 } header: {
-                    Text("가격")
+                    Text("금액")
                 } footer: {
-                    Text("켜두면 시세를 계속 확인해 절약 기회를 알려줘요. 자동으로 다시 예약하지는 않습니다.")
-                }
-
-                Section("기간") {
-                    DateField(title: draft.type.startLabel, text: $draft.start) { Date() }
-                    DateField(title: draft.type.endLabel, text: $draft.end) {
-                        ISODateText.date(from: draft.start).flatMap { ISODateText.calendar.date(byAdding: .day, value: 1, to: $0) } ?? Date()
+                    if isBookingKind {
+                        Text("켜둔 가격 추적은 시세를 계속 확인해 절약 기회를 알려줘요. 자동으로 다시 예약하지는 않습니다.")
+                    } else {
+                        Text("원·엔은 정수, 달러·유로·위안은 소수 둘째 자리까지 입력해 주세요.")
                     }
                 }
 
-                if draft.type == .hotel { hotelSection }
-                if draft.type == .car { carSection }
+                // 결제일이 먼저다 — 있으면 날짜가 상태를 정하므로 고르는 칸을 감춘다(웹과 같다).
+                Section {
+                    Toggle("결제일 정하기", isOn: Binding(
+                        get: { paidOn != nil },
+                        set: { on in paidOn = on ? (paidOn ?? ISODateText.text(from: Date())) : nil }))
+                    if paidOn != nil {
+                        DatePicker("결제일", selection: Binding(
+                            get: { paidOn.flatMap { ISODateText.date(from: $0) } ?? Date() },
+                            set: { paidOn = ISODateText.text(from: $0) }), displayedComponents: .date)
+                    } else {
+                        Picker("결제 상태", selection: $payState) {
+                            Text(CostPayState.reserved.label).tag(CostPayState.reserved)
+                            Text(CostPayState.paid.label).tag(CostPayState.paid)
+                            if !isBookingKind { Text("고르지 않음").tag(CostPayState.none) }
+                        }
+                    }
+                } header: {
+                    Text("결제")
+                } footer: {
+                    Text(payFooter)
+                }
+
+                if kind == .stay { hotelSection }
+                if kind == .rent { carSection }
+
+                if isBookingKind {
+                    Section {
+                        DisclosureGroup("취소 조건") {
+                            Toggle("무료 취소 가능", isOn: $draft.refundable)
+                            if draft.refundable {
+                                DateField(title: "무료 취소 기한", text: $draft.freeCancelUntil) { Date() }
+                            }
+                            TextField("취소 수수료", text: $feeText)
+                                .keyboardType(.decimalPad)
+                        }
+                    } header: {
+                        Text("취소 조건")
+                    } footer: {
+                        Text("절약액은 취소 수수료를 뺀 실질 금액으로 계산합니다.")
+                    }
+                }
 
                 Section {
-                    Toggle("무료 취소 가능", isOn: $draft.refundable)
-                    if draft.refundable {
-                        DateField(title: "무료 취소 기한", text: $draft.freeCancelUntil) { Date() }
-                    }
-                    TextField("취소 수수료", text: $feeText)
-                        .keyboardType(.numberPad)
-                } header: {
-                    Text("취소 조건")
-                } footer: {
-                    Text("절약액은 취소 수수료를 뺀 실질 금액으로 계산합니다.")
-                }
-
-                Section("링크") {
-                    TextField("예약 페이지 https://…", text: $urlText)
-                        .keyboardType(.URL)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
+                    CostPhotosField(refs: $photos)
+                } header: { Text("영수증·품목 사진") } footer: {
+                    Text("무엇에 썼는지 기억하려고 붙입니다. 사진 자체는 올리지 않고 이 기기 사진 보관함의 위치만 기억해요 — 일행에게는 보이지 않습니다.")
                 }
 
                 if target.booking != nil {
@@ -135,29 +255,50 @@ struct BookingEditorView: View {
                         Text("추적만 그만둡니다. 실제 예약은 취소되지 않아요.")
                     }
                 }
+                if target.item != nil {
+                    Section {
+                        Button("이 항목 지우기", role: .destructive) { showsDeleteConfirm = true }
+                    }
+                }
             }
-            .navigationTitle(isNew ? "예약 추가" : "예약")
+            .disabled(saving.isWorking)
+            .onAppear {
+                if initialDraft == nil { initialDraft = draft; initialLinks = links; initialTexts = textInputs }
+            }
+            .interactiveDismissDisabled(isDirty || saving.isWorking)
+            .confirmationDialog("입력한 내용을 버릴까요?", isPresented: $showsDiscardConfirm, titleVisibility: .visible) {
+                Button("내용 버리기", role: .destructive) { dismiss() }
+                Button("계속 편집", role: .cancel) { }
+            }
+            .navigationTitle(isNew ? (bookingOnly ? "예약 추가" : "결제 항목 추가") : (isBookingKind ? "예약" : "결제 항목"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) { Button("취소") { dismiss() } }
+                ToolbarItem(placement: .topBarLeading) { Button("취소") { if isDirty { showsDiscardConfirm = true } else { dismiss() } }.disabled(saving.isWorking) }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("완료") { save() }
-                        .disabled(draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    Button(saving.isWorking ? "저장 중…" : "완료") { Task { await save() } }
+                        .disabled(saving.isWorking || draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
             .onChange(of: links.stay) { _, ref in prefill(from: ref) }
+            .onChange(of: kind) { _, kind in
+                // 예약 분류로 오면 예약 종류가 따라오고, 예약에는 미구분이 없다(잡아 둔 돈).
+                if let type = kind.bookingType { draft.type = type; if payState == .none { payState = .reserved } }
+            }
             .alert("저장할 수 없어요", isPresented: problemBinding, presenting: problem) { _ in
                 Button("확인") { problem = nil }
             } message: { problem in
                 Text(problem.message)
             }
-            .confirmationDialog("이 예약 추적을 뺄까요?", isPresented: $showsDeleteConfirm, titleVisibility: .visible) {
-                Button("빼기", role: .destructive) {
-                    if let booking = target.booking { onDelete(booking.id) }
-                    dismiss()
+            .confirmationDialog(target.item != nil ? "이 항목을 지울까요?" : "이 예약 추적을 뺄까요?", isPresented: $showsDeleteConfirm, titleVisibility: .visible) {
+                Button(target.item != nil ? "지우기" : "빼기", role: .destructive) {
+                    if let booking = target.booking {
+                        Task { if await saving.perform({ await onDelete(booking.id) }) { dismiss() } }
+                    } else if let item = target.item {
+                        Task { if await saving.perform({ await onDeleteItem(item.id) }) { dismiss() } }
+                    }
                 }
             } message: {
-                Text("실제 예약이 취소되지는 않아요.")
+                if target.item == nil { Text("실제 예약이 취소되지는 않아요.") }
             }
         }
     }
@@ -166,20 +307,22 @@ struct BookingEditorView: View {
 
     private var hotelSection: some View {
         Section {
-            Picker("일정의 숙소와 연결", selection: $links.stay) {
-                Text("연결 안 함").tag(SpotRef?.none)
-                ForEach(document.stayRefs, id: \.self) { ref in
-                    Text(spotLabel(ref)).tag(SpotRef?.some(ref))
+            DisclosureGroup("숙박 세부 정보") {
+                Picker("일정의 숙소와 연결", selection: $links.stay) {
+                    Text("연결 안 함").tag(SpotRef?.none)
+                    ForEach(document.stayRefs, id: \.self) { ref in
+                        Text(spotLabel(ref)).tag(SpotRef?.some(ref))
+                    }
                 }
-            }
-            .pickerStyle(.navigationLink)
-            Stepper("투숙 인원 \(draft.adults ?? 2)명", value: adultsBinding, in: 1...8)
-            Stepper("객실 \(draft.rooms ?? 1)개", value: roomsBinding, in: 1...4)
-            TextField("객실명 (예: Deluxe Double)", text: $roomNameText)
-            Picker("조식", selection: $draft.breakfast) {
-                Text("모름").tag(Bool?.none)
-                Text("조식 포함").tag(Bool?.some(true))
-                Text("조식 없음").tag(Bool?.some(false))
+                .pickerStyle(.navigationLink)
+                Stepper("투숙 인원 \(draft.adults ?? 2)명", value: adultsBinding, in: 1...8)
+                Stepper("객실 \(draft.rooms ?? 1)개", value: roomsBinding, in: 1...4)
+                TextField("객실명 (예: Deluxe Double)", text: $roomNameText)
+                Picker("조식", selection: $draft.breakfast) {
+                    Text("모름").tag(Bool?.none)
+                    Text("조식 포함").tag(Bool?.some(true))
+                    Text("조식 없음").tag(Bool?.some(false))
+                }
             }
         } header: {
             Text("숙박")
@@ -194,50 +337,52 @@ struct BookingEditorView: View {
 
     private var carSection: some View {
         Section {
-            HStack {
-                TextField("픽업 장소", text: $pickupPlace)
-                TextField("PMI", text: $pickupCode)
-                    .frame(width: 64)
-                    .textInputAutocapitalization(.characters)
-                    .autocorrectionDisabled()
-            }
-            HStack {
-                TextField("반납 장소 (비우면 픽업과 동일)", text: $returnPlace)
-                TextField("공항", text: $returnCode)
-                    .frame(width: 64)
-                    .textInputAutocapitalization(.characters)
-                    .autocorrectionDisabled()
-            }
-            ClockField(title: "픽업 시각", text: $draft.carPickupTime)
-            ClockField(title: "반납 시각", text: $draft.carReturnTime)
-            Picker("차급", selection: carClassBinding) {
-                Text("모름").tag("")
-                ForEach(carClassOptions) { option in
-                    Text(option.label).tag(option.id)
+            DisclosureGroup("렌터카 세부 정보") {
+                HStack {
+                    TextField("픽업 장소", text: $pickupPlace)
+                    TextField("PMI", text: $pickupCode)
+                        .frame(width: 64)
+                        .textInputAutocapitalization(.characters)
+                        .autocorrectionDisabled()
                 }
+                HStack {
+                    TextField("반납 장소 (비우면 픽업과 동일)", text: $returnPlace)
+                    TextField("공항", text: $returnCode)
+                        .frame(width: 64)
+                        .textInputAutocapitalization(.characters)
+                        .autocorrectionDisabled()
+                }
+                ClockField(title: "픽업 시각", text: $draft.carPickupTime)
+                ClockField(title: "반납 시각", text: $draft.carReturnTime)
+                Picker("차급", selection: carClassBinding) {
+                    Text("모름").tag("")
+                    ForEach(carClassOptions) { option in
+                        Text(option.label).tag(option.id)
+                    }
+                }
+                Picker("변속기", selection: $draft.transmission) {
+                    Text("모름").tag(CarTransmission?.none)
+                    ForEach(CarTransmission.allCases, id: \.self) { Text($0.label).tag(CarTransmission?.some($0)) }
+                }
+                Picker("주행거리", selection: $draft.mileage) {
+                    Text("모름").tag(CarMileage?.none)
+                    ForEach(CarMileage.allCases, id: \.self) { Text($0.label).tag(CarMileage?.some($0)) }
+                }
+                Picker("보험", selection: $draft.insurance) {
+                    Text("모름").tag(CarInsurance?.none)
+                    ForEach(CarInsurance.allCases, id: \.self) { Text($0.label).tag(CarInsurance?.some($0)) }
+                }
+                Picker("픽업을 일정의 장소와 연결", selection: $links.carPickup) {
+                    Text("연결 안 함").tag(SpotRef?.none)
+                    ForEach(document.spotRefs, id: \.self) { ref in Text(spotLabel(ref)).tag(SpotRef?.some(ref)) }
+                }
+                .pickerStyle(.navigationLink)
+                Picker("반납을 일정의 장소와 연결", selection: $links.carReturn) {
+                    Text("연결 안 함").tag(SpotRef?.none)
+                    ForEach(document.spotRefs, id: \.self) { ref in Text(spotLabel(ref)).tag(SpotRef?.some(ref)) }
+                }
+                .pickerStyle(.navigationLink)
             }
-            Picker("변속기", selection: $draft.transmission) {
-                Text("모름").tag(CarTransmission?.none)
-                ForEach(CarTransmission.allCases, id: \.self) { Text($0.label).tag(CarTransmission?.some($0)) }
-            }
-            Picker("주행거리", selection: $draft.mileage) {
-                Text("모름").tag(CarMileage?.none)
-                ForEach(CarMileage.allCases, id: \.self) { Text($0.label).tag(CarMileage?.some($0)) }
-            }
-            Picker("보험", selection: $draft.insurance) {
-                Text("모름").tag(CarInsurance?.none)
-                ForEach(CarInsurance.allCases, id: \.self) { Text($0.label).tag(CarInsurance?.some($0)) }
-            }
-            Picker("픽업을 일정의 장소와 연결", selection: $links.carPickup) {
-                Text("연결 안 함").tag(SpotRef?.none)
-                ForEach(document.spotRefs, id: \.self) { ref in Text(spotLabel(ref)).tag(SpotRef?.some(ref)) }
-            }
-            .pickerStyle(.navigationLink)
-            Picker("반납을 일정의 장소와 연결", selection: $links.carReturn) {
-                Text("연결 안 함").tag(SpotRef?.none)
-                ForEach(document.spotRefs, id: \.self) { ref in Text(spotLabel(ref)).tag(SpotRef?.some(ref)) }
-            }
-            .pickerStyle(.navigationLink)
         } header: {
             Text("렌터카")
         } footer: {
@@ -246,10 +391,6 @@ struct BookingEditorView: View {
     }
 
     // MARK: 바인딩
-
-    private var currencyBinding: Binding<Currency> {
-        Binding(get: { draft.currency ?? .krw }, set: { draft.currency = $0 })
-    }
 
     private var adultsBinding: Binding<Int> {
         Binding(get: { draft.adults ?? 2 }, set: { draft.adults = $0 })
@@ -277,11 +418,21 @@ struct BookingEditorView: View {
     }
 
     private var titlePlaceholder: String {
-        switch draft.type {
-        case .hotel: "예약 이름 (예: Cap Rocat)"
-        case .car: "예약 이름 (예: Hertz Palma)"
+        switch kind {
+        case .stay: "예약 이름 (예: Cap Rocat)"
+        case .rent: "예약 이름 (예: Hertz Palma)"
         case .flight: "예약 이름 (예: KE001 ICN→PMI)"
+        default: "항목 이름 (예: 여행자보험)"
         }
+    }
+
+    /// 결제일이 상태를 정한다는 것을 그 자리에서 말한다 — 기기 날짜 기준의 미리보기. 저장 뒤 화면은 서버(여행 시간대)가 정한 값이다.
+    private var payFooter: String {
+        guard let paidOn else { return "결제일을 정하면 그 날부터 결제 완료로 셉니다. 정하지 않으면 여기서 고른 상태를 써요." }
+        let label = TimeFormat.dayChipLabel(paidOn) ?? paidOn
+        return paidOn <= ISODateText.text(from: Date())
+            ? "결제일(\(label))이 지나 결제 완료로 셉니다."
+            : "결제 예정일(\(label))이 아직이라 결제 예정으로 셉니다 — 그날부터 결제 완료가 돼요."
     }
 
     private func spotLabel(_ ref: SpotRef) -> String {
@@ -300,17 +451,50 @@ struct BookingEditorView: View {
                 draft.end = ISODateText.text(from: end)
             }
         }
-        if let currency = spot.currency { draft.currency = currency }
-        if priceText.isEmpty, let cost = spot.cost, cost > 0 { priceText = String(cost) }
+        if let currency = spot.currency { self.currency = currency }
+        if priceText.isEmpty, let cost = spot.cost, cost > 0 { priceText = MoneyInput.text(amount: cost) }
     }
 
-    private func save() {
+    private func save() async {
+        let title = draft.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedPrice = priceText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let price = MoneyInput.amount(from: priceText, currency: currency)
+        if !trimmedPrice.isEmpty && price == nil { problem = .invalidAmount; return }
+        if isBookingKind { await saveBooking(title: title, price: price) } else { await saveItem(title: title, amount: price) }
+    }
+
+    /// 예약이 아닌 결제 항목 — 여행 단위 비용(`trip.costItems`)에. 웹 `saveCostItem`과 같은 모양(TOTAL·KRW 생략).
+    private func saveItem(title: String, amount: Double?) async {
+        if title.isEmpty { problem = .itemTitleRequired; return }
+        var entry = target.item ?? CostEntry(raw: ["id": .string(UUID().uuidString)])
+        entry.title = title
+        entry.kind = kind.rawValue
+        entry.amount = amount
+        if target.item == nil { entry.basis = .total }
+        entry.raw.setOrRemove("cur", currency == .krw ? nil : .string(currency.rawValue))
+        entry.paidOn = paidOn
+        entry.payState = paidOn != nil ? .none : payState   // 결제일이 있으면 날짜가 정한다 — 손으로 고른 상태는 두지 않는다
+        entry.photos = photos
+        if await saving.perform({ await onSaveItem(entry) }) { dismiss() }
+    }
+
+    private func saveBooking(title: String, price: Double?) async {
         var booking = draft
-        booking.title = booking.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        booking.type = kind.bookingType ?? draft.type
+        booking.title = title
         booking.provider = booking.provider.trimmingCharacters(in: .whitespacesAndNewlines)
-        booking.price = SpotEditorView.cost(from: priceText) ?? 0
+        let fee = MoneyInput.amount(from: feeText, currency: currency)
+        if !feeText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && fee == nil {
+            problem = .invalidAmount
+            return
+        }
+        booking.price = price ?? 0
+        booking.currency = currency
         booking.url = urlText.trimmingCharacters(in: .whitespacesAndNewlines)
-        booking.cancelFee = SpotEditorView.cost(from: feeText)
+        booking.cancelFee = fee
+        booking.paidOn = paidOn
+        booking.payState = paidOn != nil ? .reserved : payState   // 결제일이 있으면 날짜가 정한다 — `.reserved`는 키를 지운다
+        booking.photos = photos
         if !booking.refundable { booking.freeCancelUntil = nil }
         if booking.type == .hotel {
             // 웹 폼의 기본값(성인 2·객실 1)과 같다 — 시세 비교에 조건이 있어야 한다.
@@ -331,8 +515,7 @@ struct BookingEditorView: View {
         var links = links
         if booking.type != .hotel { links.stay = nil }
         if booking.type != .car { links.carPickup = nil; links.carReturn = nil }
-        onSave(booking, links)
-        dismiss()
+        if await saving.perform({ await onSave(booking, links) }) { dismiss() }
     }
 }
 

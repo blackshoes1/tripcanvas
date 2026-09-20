@@ -9,6 +9,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
+import legacyLib from '@legacy/lib.js';
 
 import { computeToday } from './todayView';
 import type { TripDoc } from './todayView';
@@ -186,6 +187,29 @@ describe('iOS Contract.swift가 실제 응답을 전부 담는다', () => {
     expect(today.schemaVersion).toBe(1);
     expect(plan!.schemaVersion).toBe(1);
   });
+
+  it('유효한 큰 비용 합계도 Int64 범위에 자르지 않고 실제 Swift 디코딩 픽스처로 보낸다', () => {
+    const checked = legacyLib.validateTripPayload({
+      id: 'extreme-cost', name: '합성 비용 경계값', start: '2026-09-01',
+      days: [{ budget: { amount: 0, cur: 'KRW' }, spots: Array.from({ length: 64 }, (_, i) => ({
+        name: `합성 장소 ${i + 1}`, cost: 1e12, cur: 'EUR', costBasis: 'PER_PERSON', costPeople: 100
+      })) }]
+    });
+    expect(checked.ok).toBe(true);
+    if (!checked.ok) throw new Error('유효한 비용 입력이 거절되었습니다');
+    const plan = buildDayPlanView({ trip: checked.value as TripDoc, di: 0,
+      summary: today.trip, generatedAt: '2026-09-01T04:00:00Z' });
+    const cost = plan!.day.totals.cost;
+    expect(cost.total).toBe(9.6e18);
+    expect(cost.total).toBeGreaterThan(2 ** 63);
+    expect(cost.parts[0].amount).toBe(cost.total);
+    expect(cost.details?.budget?.differenceKRW).toBe(-cost.total);
+    expect(cost.details?.items[0].totalKRW).toBe(1.5e17);
+    expect(cost.details?.fxSource).toBe('FALLBACK');
+    const dir = path.join(__dirname, '../../../../../ios/TripCanvasTests/Fixtures');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(path.join(dir, 'day-cost-extreme.json'), JSON.stringify(cost, null, 2) + String.fromCharCode(10));
+  });
 });
 
 const travel = buildTravelState({
@@ -283,4 +307,15 @@ describe('유입·기록 계약도 Swift가 전부 담는다', () => {
     writeFileSync(path.join(dir, 'import-preview.json'), JSON.stringify(preview, null, 2) + String.fromCharCode(10));
     expect(preview.schemaVersion).toBe(1);
   });
+});
+
+it('여행 전체 비용 계약과 Swift 필드 및 실제 디코딩 fixture가 일치한다', async () => {
+  const { buildTripCosts } = await import('./tripCostsView');
+  const response = buildTripCosts(trip, {}, 2);
+  expect(new Set(Object.keys(response))).toEqual(swiftProperties('TripCostsResponse'));
+  expect(new Set(Object.keys(response.days[0]))).toEqual(swiftProperties('TripCostDay'));
+  expect(new Set(Object.keys(response.categories[0]))).toEqual(swiftProperties('TripCostCategory'));
+  const item = response.categories.flatMap(c => c.items)[0];
+  expect(new Set(Object.keys(item))).toEqual(swiftProperties('TripCostLine'));
+  writeFileSync(path.join(__dirname, '../../../../../ios/TripCanvasTests/Fixtures/trip-costs.json'), JSON.stringify(response, null, 2) + '\n');
 });

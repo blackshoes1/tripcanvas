@@ -18,6 +18,10 @@ protocol CollabSource {
 
     func candidates(tripId: String) async throws -> [CandidateView]
     func addCandidate(tripId: String, title: String, note: String?, lat: Double?, lng: Double?, placeId: String?, addr: String?) async throws -> Int
+    func addCandidate(tripId: String, title: String, note: String?, lat: Double?, lng: Double?, placeId: String?, addr: String?, provider: String?, providerId: String?) async throws -> Int
+    func addCandidate(tripId: String, title: String, note: String?, lat: Double?, lng: Double?, placeId: String?, addr: String?, provider: String?, providerId: String?, clientKey: String) async throws -> Int
+    /// 분류까지 함께. 프로토콜 요구라 실제 서비스는 동적으로 불리고, 테스트 목은 아래 기본 구현(분류를 버린다)으로 충분하다.
+    func addCandidate(tripId: String, title: String, note: String?, lat: Double?, lng: Double?, placeId: String?, addr: String?, provider: String?, providerId: String?, category: String?) async throws -> Int
     func react(tripId: String, candidateId: Int, reaction: Reaction?) async throws
     func manageCandidate(tripId: String, candidateId: Int, action: String, value: String?) async throws
 
@@ -32,6 +36,15 @@ protocol CollabSource {
     func realtimeChoice() async throws -> RealtimeChoice
     func preferences(tripId: String) async throws -> [PreferenceView]
     func savePreferences(tripId: String, prefs: [String: JSONValue]) async throws -> [String: JSONValue]
+}
+
+extension CollabSource {
+    func addCandidate(tripId: String, title: String, note: String?, lat: Double?, lng: Double?, placeId: String?, addr: String?, provider: String?, providerId: String?, clientKey: String) async throws -> Int {
+        try await addCandidate(tripId: tripId, title: title, note: note, lat: lat, lng: lng, placeId: placeId, addr: addr, provider: provider, providerId: providerId)
+    }
+    func addCandidate(tripId: String, title: String, note: String?, lat: Double?, lng: Double?, placeId: String?, addr: String?, provider: String?, providerId: String?) async throws -> Int {
+        try await addCandidate(tripId: tripId, title: title, note: note, lat: lat, lng: lng, placeId: placeId, addr: addr)
+    }
 }
 
 extension TripService: CollabSource {
@@ -98,9 +111,31 @@ extension TripService: CollabSource {
     }
 
     func addCandidate(tripId: String, title: String, note: String?, lat: Double?, lng: Double?, placeId: String?, addr: String?) async throws -> Int {
+        try await addCandidate(tripId: tripId, title: title, note: note, lat: lat, lng: lng,
+                               placeId: placeId, addr: addr, provider: nil, providerId: nil)
+    }
+
+    func addCandidate(tripId: String, title: String, note: String?, lat: Double?, lng: Double?, placeId: String?, addr: String?, provider: String?, providerId: String?) async throws -> Int {
+        try await addCandidate(tripId: tripId, title: title, note: note, lat: lat, lng: lng, placeId: placeId, addr: addr,
+                               provider: provider, providerId: providerId, clientKey: UUID().uuidString)
+    }
+
+    func addCandidate(tripId: String, title: String, note: String?, lat: Double?, lng: Double?, placeId: String?, addr: String?, provider: String?, providerId: String?, clientKey: String) async throws -> Int {
+        try await addCandidate(tripId: tripId, title: title, note: note, lat: lat, lng: lng, placeId: placeId, addr: addr,
+                               provider: provider, providerId: providerId, clientKey: clientKey, category: nil)
+    }
+
+    func addCandidate(tripId: String, title: String, note: String?, lat: Double?, lng: Double?, placeId: String?, addr: String?, provider: String?, providerId: String?, category: String?) async throws -> Int {
+        try await addCandidate(tripId: tripId, title: title, note: note, lat: lat, lng: lng, placeId: placeId, addr: addr,
+                               provider: provider, providerId: providerId, clientKey: UUID().uuidString, category: category)
+    }
+
+    private func addCandidate(tripId: String, title: String, note: String?, lat: Double?, lng: Double?, placeId: String?, addr: String?, provider: String?, providerId: String?, clientKey: String, category: String?) async throws -> Int {
         let body: [String: Any] = [
             "title": title, "note": orNull(note), "lat": orNull(lat), "lng": orNull(lng),
-            "place_id": orNull(placeId), "addr": orNull(addr), "url": NSNull()
+            "place_id": orNull(placeId), "addr": orNull(addr), "url": NSNull(),
+            "provider": orNull(provider), "providerId": orNull(providerId), "clientKey": clientKey,
+            "category": orNull(category)
         ]
         let response: CreatedIdResponse = try await api.post("\(tripPath(tripId))/candidates", body: body)
         return response.id
@@ -146,5 +181,12 @@ extension TripService: CollabSource {
         let response: PrefsSavedResponse = try await api.put(
             "\(tripPath(tripId))/preferences", jsonBody: try JSONValue.data(from: ["prefs": .object(prefs)]))
         return response.prefs
+    }
+}
+
+extension CollabSource {
+    /// 분류를 모르는 구현(테스트 목·옛 서비스)은 분류 없이 담는다 — 담기 자체를 실패시키지 않는다.
+    func addCandidate(tripId: String, title: String, note: String?, lat: Double?, lng: Double?, placeId: String?, addr: String?, provider: String?, providerId: String?, category: String?) async throws -> Int {
+        try await addCandidate(tripId: tripId, title: title, note: note, lat: lat, lng: lng, placeId: placeId, addr: addr, provider: provider, providerId: providerId)
     }
 }

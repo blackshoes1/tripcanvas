@@ -81,7 +81,7 @@
       "kind": "CANDIDATE_PROPOSED",
       "mine": true,
       "effects": {
-        "candidates": true,
+        "candidates": false,
         "members": false,
         "pull": false,
         "activity": true,
@@ -103,7 +103,7 @@
       "kind": "CANDIDATE_SCHEDULED",
       "mine": true,
       "effects": {
-        "candidates": true,
+        "candidates": false,
         "members": false,
         "pull": false,
         "activity": true,
@@ -125,7 +125,7 @@
       "kind": "CANDIDATE_REJECTED",
       "mine": true,
       "effects": {
-        "candidates": true,
+        "candidates": false,
         "members": false,
         "pull": false,
         "activity": true,
@@ -147,7 +147,7 @@
       "kind": "REACTION",
       "mine": true,
       "effects": {
-        "candidates": true,
+        "candidates": false,
         "members": false,
         "pull": false,
         "activity": true,
@@ -169,6 +169,28 @@
       "kind": "COMMENT_ADDED",
       "mine": true,
       "effects": {
+        "candidates": false,
+        "members": false,
+        "pull": false,
+        "activity": true,
+        "notify": false
+      }
+    },
+    {
+      "kind": "SCHEDULE_CHANGED",
+      "mine": false,
+      "effects": {
+        "candidates": true,
+        "members": false,
+        "pull": true,
+        "activity": true,
+        "notify": false
+      }
+    },
+    {
+      "kind": "SCHEDULE_CHANGED",
+      "mine": true,
+      "effects": {
         "candidates": true,
         "members": false,
         "pull": false,
@@ -177,32 +199,10 @@
       }
     },
     {
-      "kind": "SCHEDULE_CHANGED",
-      "mine": false,
-      "effects": {
-        "candidates": false,
-        "members": false,
-        "pull": true,
-        "activity": true,
-        "notify": false
-      }
-    },
-    {
-      "kind": "SCHEDULE_CHANGED",
-      "mine": true,
-      "effects": {
-        "candidates": false,
-        "members": false,
-        "pull": false,
-        "activity": true,
-        "notify": false
-      }
-    },
-    {
       "kind": "BOOKING_ADDED",
       "mine": false,
       "effects": {
-        "candidates": false,
+        "candidates": true,
         "members": false,
         "pull": true,
         "activity": true,
@@ -213,7 +213,7 @@
       "kind": "BOOKING_ADDED",
       "mine": true,
       "effects": {
-        "candidates": false,
+        "candidates": true,
         "members": false,
         "pull": false,
         "activity": true,

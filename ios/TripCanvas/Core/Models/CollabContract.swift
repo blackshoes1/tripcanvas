@@ -93,6 +93,10 @@ struct CandidateView: Codable, Hashable, Sendable, Identifiable {
     let id: Int
     let title: String
     let placeId: String?
+    var provider: String? = nil
+    var providerId: String? = nil
+    /// 분류(`CANDIDATE_CATEGORIES`) — 없으면 '아직 고르지 않음'. 옛 서버 응답에 키가 없어도 디코딩은 된다.
+    var category: String? = nil
     let lat: Double?
     let lng: Double?
     let addr: String?
@@ -111,7 +115,8 @@ struct CandidateView: Codable, Hashable, Sendable, Identifiable {
     let createdAt: String
 
     enum CodingKeys: String, CodingKey {
-        case id, title, lat, lng, addr, note, url, status, mine, reactions
+        case id, title, lat, lng, addr, note, url, status, mine, reactions, provider, category
+        case providerId = "provider_id"
         case placeId = "place_id", scheduledRef = "scheduled_ref", proposedByLabel = "proposed_by_label"
         case myReaction = "my_reaction", mustCount = "must_count", okCount = "ok_count", passCount = "pass_count"
         case commentCount = "comment_count", createdAt = "created_at"
@@ -194,4 +199,3 @@ struct RealtimeChoice: Codable, Sendable {
 struct MeResponse: Codable, Sendable {
     let realtime: RealtimeChoice
 }
-

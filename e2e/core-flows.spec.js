@@ -115,6 +115,8 @@ test('장소를 탭해 선택하면 새 장소가 그 바로 뒤에 들어간다
 
   // 2번 장소를 탭해 선택 → 버튼이 그 자리에서 어디에 넣을지 밝힌다(재렌더를 기다리지 않는다)
   await page.locator('.spotList .spot').nth(1).locator('.spotIdentity').click();
+  await expect(page.locator('#placeDetailsTitle')).toHaveText('북촌한옥마을');
+  await page.locator('#placeDetailsClose').click();
   await expect(addBtn).toHaveText('＋ 2번 뒤에 장소 추가');
 
   const add=async(name)=>{

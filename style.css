@@ -73,6 +73,8 @@
   .costRow{display:flex;justify-content:space-between;gap:12px;font-size:11.5px;padding:2px 0;color:var(--meta-soft)}
   .costRow b{color:var(--ink)}
   .costRow.costTotal{border-top:1px solid var(--border);margin-top:3px;padding-top:4px;font-weight:700}
+  .costRow.costGroup{font-weight:600;color:var(--ink);margin-top:3px}
+  .costRow.costSub{padding-left:10px}
   /* 그 장소에서 차를 받고/돌려준다 — 장소 행에 붙는 칩 */
   .spot .carbkChip{color:var(--meta-soft);background:transparent;border:1px solid currentColor;border-radius:6px;padding:1px 5px;font-size:10.5px;cursor:pointer;white-space:nowrap}
   .ghostStay{display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;
@@ -244,6 +246,11 @@
   .candGroup{font-size:11.5px;font-weight:700;color:var(--subtle);letter-spacing:.02em;margin:6px 0 -2px}
   .candCard{border:1px solid var(--border);border-radius:11px;padding:10px 11px;background:var(--surface)}
   .candCard.scheduled{opacity:.72;border-style:dashed}
+  /* 확인한 준비 메모 — 지우지 않고 가라앉힌다(무엇을 이미 챙겼는지가 목록에 남아야 한다) */
+  /* 예약·결제 분리 줄 — 하루 비용 바로 아래, 한 칸 들여 보조 정보임을 드러낸다 */
+  .dist.payLine{opacity:.78;padding-left:14px}
+  .candCard.noteDone{opacity:.62}
+  .candCard.noteDone .candHead b{text-decoration:line-through}
   .candHead{display:flex;align-items:flex-start;gap:8px}
   .candName{flex:1;min-width:0;font-weight:700;font-size:13.5px;overflow-wrap:anywhere}
   .candMeta{color:var(--subtle);font-size:11.5px;margin-top:3px}
@@ -532,3 +539,28 @@ body.playing #playHud{
   .whoChips .whoChipBtn{border:1px solid var(--border);border-radius:14px;padding:6px 11px;font-size:12px;background:var(--surface);color:var(--muted);min-height:34px}
   .whoChips .whoChipBtn.active{background:#fee2e2;border-color:var(--primary);color:var(--primary-dark);font-weight:700}
   body.theme-dark .whoChips .whoChipBtn.active{background:color-mix(in srgb,var(--primary) 26%,transparent);color:#ffd9d9}
+
+/* 장소 조회는 여행 편집과 분리된 top-layer 패널이다. */
+#placeDetails{color:var(--ink);background:var(--surface);border:1px solid var(--border);border-radius:20px;width:min(520px,calc(100vw - 32px));max-height:90dvh;padding:0;margin:auto 24px auto auto;box-shadow:var(--shadow);overflow:auto}
+#placeDetails::backdrop{background:rgba(17,24,39,.38)}
+#placeDetails .placeHeader{display:flex;gap:16px;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:1;justify-content:space-between;align-items:flex-start;padding:18px;background:var(--surface)}
+#placeDetails h2{font-size:23px;line-height:1.4;margin:0;overflow-wrap:anywhere}
+#placeDetailsContent{padding:0 20px 20px;line-height:1.7;overflow-wrap:anywhere}
+#placeDetailsContent ul{padding-left:20px}#placeDetailsProvider{margin:4px 0 0}#placeDetailsContent p{margin:12px 0}#placeDetailsContent a{color:var(--primary-dark);text-decoration:underline}
+#placeDetailsContent figure{margin:16px 0}#placeDetailsContent img{width:100%;max-height:210px;object-fit:cover;border-radius:12px}#placeDetailsContent figcaption{font-size:12px;color:var(--muted)}
+#placeDetailsContent .placeReview{border-top:1px solid var(--border);padding:12px 0}#placeDetailsContent .placeReview img{width:28px;height:28px;vertical-align:middle;margin-right:8px;border-radius:50%}
+#placeDetailsActions{position:sticky;bottom:0;padding:14px 20px;background:var(--surface);border-top:1px solid var(--border);display:flex;flex-wrap:wrap;gap:8px}
+#placeDetails .btn{min-height:44px}#placeDetailsContent .placeSource{font-size:13px;color:var(--muted);border-top:1px solid var(--border);padding-top:12px}
+#searchRes .placeSearchResult{display:block;width:100%;text-align:left;white-space:normal;background:var(--surface);color:var(--ink);border:0;border-bottom:1px solid var(--border);padding:12px;min-height:44px;cursor:pointer}
+@media(max-width:700px){#placeDetails{width:100%;max-width:100%;max-height:88dvh;margin:auto 0 0;border-radius:20px 20px 0 0}#placeDetailsActions{padding-bottom:calc(14px + env(safe-area-inset-bottom))}}
+
+/* 여행 상태는 토스트가 사라진 뒤에도 확인할 수 있다. */
+#saveStateBar{display:flex;align-items:center;gap:8px;padding:3px 14px;background:var(--surface);color:var(--muted);font-size:12px;min-height:28px;border-bottom:1px solid var(--border)}
+#saveStateAction{min-height:44px;padding:4px 10px;margin-left:auto}
+#saveStateAction[hidden],.mapEmpty[hidden]{display:none}
+#saveStateBar[data-state="error"],#saveStateBar[data-state="conflict"]{color:var(--meta-danger)}
+.menuGroupLabel{font-size:12px;color:var(--muted);font-weight:700;padding:10px 10px 2px;border-top:1px solid var(--border)}
+.menuGroupLabel:first-child{border-top:0;padding-top:2px}
+.mapEmpty{position:absolute;inset:0 0 0 360px;z-index:10;display:grid;place-items:center;padding:24px;background:var(--surface-2);text-align:center}
+.mapEmpty>div{max-width:380px}.mapEmpty h2{font-size:22px;margin-bottom:12px}.mapEmpty p{color:var(--muted);line-height:1.7;margin-bottom:20px}.mapEmpty .btn{min-height:44px}
+@media(max-width:700px){.mapEmpty{inset:0;place-items:start center;padding:10dvh 16px 16px}.mapEmpty h2{font-size:18px}.mapEmpty p{font-size:13px;margin-bottom:12px}#saveStateBar{padding-inline:12px}}

@@ -588,7 +588,7 @@ test('normalizeBooking / normalizeTrip.bookings — 예약(가격 추적) 유입
   // 정상: 기본값 채움 (type 기본 hotel, track 기본 on)
   const ok=L.normalizeBooking({id:'bk1', title:' Cap Rocat ', price:1350000.4, cur:'EUR', start:'2026-10-30', end:'2026-11-01', freeCancelUntil:'2026-10-20', cancelFee:100000});
   assert.equal(ok.type,'hotel'); assert.equal(ok.title,'Cap Rocat');
-  assert.equal(ok.price,1350000); assert.equal(ok.cur,'EUR'); assert.equal(ok.track,true);
+  assert.equal(ok.price,1350000.4); assert.equal(ok.cur,'EUR'); assert.equal(ok.track,true); // 외화 소수 보존
   assert.equal(ok.cancelFee,100000); assert.equal(ok.freeCancelUntil,'2026-10-20');
   // track:false는 유지
   assert.equal(L.normalizeBooking({id:'bk2', track:false}).track, false);
@@ -948,6 +948,20 @@ test('bookingShareOn — 여러 날 걸친 예약을 날수로 나눈 하루치'
   assert.deepEqual(L.bookingShareOn([hotel],'2026-09-04'), [], '체크아웃 날은 숙박비 없음');
 });
 
+test('bookingShareOn — 항공은 날짜로 나누지 않는다 (한 번 낸 돈이지 하루치가 아니다)', () => {
+  const flight = { id: 'f', type: 'flight', title: '왕복', price: 900000, start: '2026-09-01', end: '2026-09-05' };
+  for (const iso of ['2026-09-01', '2026-09-03', '2026-09-05']) {
+    assert.deepEqual(L.bookingShareOn([flight], iso), [], iso + '에 항공 하루치가 붙지 않는다');
+  }
+  // 숙박·렌터카는 그대로 나뉜다 — 항공을 뺐다고 다른 예약이 달라지면 안 된다
+  const car = { id: 'c', type: 'car', price: 300000, start: '2026-09-01', end: '2026-09-03' };
+  const hotel = { id: 'h', type: 'hotel', price: 200000, start: '2026-09-01', end: '2026-09-03' };
+  const shares = L.bookingShareOn([flight, car, hotel], '2026-09-02');
+  assert.deepEqual(shares.map(x => x.id).sort(), ['c', 'h']);
+  assert.equal(shares.find(x => x.id === 'c').amount, 100000, '렌터카 3일');
+  assert.equal(shares.find(x => x.id === 'h').amount, 100000, '숙박 2박');
+});
+
 test('bookingShareOn — 하루치의 합이 예약 총액과 정확히 맞는다 (반올림 누수 없음)', () => {
   const b = {id:'x', type:'car', title:'C', price:100000, start:'2026-09-01', end:'2026-09-03'};   // 3일, 안 나눠떨어짐
   const days = ['2026-09-01','2026-09-02','2026-09-03'];
@@ -1123,4 +1137,39 @@ test('splitSegments — 같은 키가 떨어져 있으면 각각 별개 묶음�
   const segs=L.splitSegments(day);
   assert.equal(segs.length, 3);
   assert.deepEqual(segs.map(x=>x.split), ['s1', null, 's1']);
+});
+
+// ── 여행 준비 메모 (비자·입국·교통·특산품…) ──
+// 일행이 같이 보는 것이라 여행 문서에 산다 → 정규화를 지나야 동기화·공유에서 살아남는다.
+
+test('normalizeTripNote — 빈 메모는 남기지 않고 모르는 분류는 기타로', () => {
+  assert.equal(L.normalizeTripNote({ id: 'n1', title: '', body: '   ' }), null, '제목·본문이 다 비면 버린다');
+  assert.equal(L.normalizeTripNote({ id: '나쁜 id', title: '비자' }), null, 'id 형식이 아니면 버린다');
+  assert.equal(L.normalizeTripNote(null), null);
+  assert.equal(L.normalizeTripNote({ id: 'n2', cat: 'NOPE', title: '입국신고서' }).cat, 'ETC');
+  assert.equal(L.normalizeTripNote({ id: 'n3', cat: 'VISA', title: '비자' }).cat, 'VISA');
+  assert.equal(L.normalizeTripNote({ id: 'n4', title: '메모', body: 'x' }).done, undefined, '기본값은 저장하지 않는다');
+  assert.equal(L.normalizeTripNote({ id: 'n5', title: '메모', done: true }).done, true);
+  assert.equal(L.normalizeTripNote({ id: 'n6', title: 'ㄱ'.repeat(300) }).title.length, 120, '제목 길이를 자른다');
+});
+
+test('normalizeTrip — 여행 메모는 왕복에서 보존되고 비면 필드가 사라진다', () => {
+  const trip = L.normalizeTrip({ name: '도쿄', start: '2026-10-01', days: [{ spots: [] }],
+    notes: [{ id: 'n1', cat: 'VISA', title: '비자', body: '90일 무비자', done: true },
+      { id: 'n2', cat: 'TRANSPORT', title: '스이카', body: '공항에서 충전' },
+      { id: 'n3', title: '', body: '' }] });
+  assert.equal(trip.notes.length, 2, '빈 메모만 빠진다');
+  assert.deepEqual(trip.notes.map(n => n.cat), ['VISA', 'TRANSPORT']);
+  assert.equal(trip.notes[0].done, true);
+  assert.equal(trip.notes[0].body, '90일 무비자');
+  const again = L.normalizeTrip(JSON.parse(JSON.stringify(trip)));
+  assert.deepEqual(again.notes, trip.notes, '두 번 지나도 같다');
+  assert.equal(L.normalizeTrip({ name: 'x', start: '2026-10-01', days: [{ spots: [] }], notes: [] }).notes, undefined,
+    '비면 필드째 생략한다 — 공유 링크 크기');
+});
+
+test('normalizeTrip — 메모 개수 상한을 넘기지 않는다', () => {
+  const many = Array.from({ length: 260 }, (_, i) => ({ id: 'n' + i, cat: 'ETC', title: '메모 ' + i }));
+  const trip = L.normalizeTrip({ name: 'x', start: '2026-10-01', days: [{ spots: [] }], notes: many });
+  assert.equal(trip.notes.length, 200);
 });

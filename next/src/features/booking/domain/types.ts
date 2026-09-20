@@ -29,7 +29,7 @@ export interface BookingBase {
   cur?: CurrencyCode;
   /** 시작일 YYYY-MM-DD (숙박=체크인, 렌터카/항공=이용 시작) */
   start?: string;
-  /** 종료일 YYYY-MM-DD (숙박=체크아웃 — 비용 배분은 [start, end) / 렌터카·항공은 양끝 포함) */
+  /** 종료일 YYYY-MM-DD (숙박=체크아웃 — 비용 배분은 [start, end) / 렌터카는 양끝 포함 / 항공은 날짜로 나누지 않는다) */
   end?: string;
   /** 무료 취소 기한 (이 날짜까지 취소 수수료 0) */
   freeCancelUntil?: string;
@@ -37,6 +37,8 @@ export interface BookingBase {
   cancelFee?: number;
   /** 환불 가능 여부 — 조건 매칭 기준. undefined=모름 */
   refundable?: boolean;
+  /** 결제 상태 — PAID(결제함)만 뜻이 있다. 없으면 예약(잡아 둔 돈). 하루치·가계부·잔액이 모두 이 값을 따른다 */
+  payState?: 'RESERVED' | 'PAID';
   /** 가격 추적 on/off (기본 on) */
   track: boolean;
   /** 재예약으로 실제 절약한 누적액 (확정/잠재와 절대 섞지 않는다 — §31) */

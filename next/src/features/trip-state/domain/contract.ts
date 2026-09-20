@@ -625,6 +625,8 @@ export interface DayPlanSpot {
   conflict: boolean;
   /** 상대가 정한 약속(`bookAt`) — 예약·입장. */
   bookedAtMinutes: number | null;
+  /** 기존 웹의 예약 지연 경고일 때 예상 지각 분(반올림). 경고 없음·예약 미정이면 null. */
+  bookingLateMinutes?: number | null;
   /** 약속까지 기다리는 시간. 일찍 도착하면 0보다 크다. */
   waitMinutes: number;
   stayMinutes: number | null;
@@ -699,7 +701,7 @@ export interface DayPlanDay {
     endMinutes: number | null;
     /** 종료가 자정을 넘는다 — 일정 과밀. */
     overloaded: boolean;
-    cost: { total: number; parts: DayPlanCostPart[] };
+    cost: import('@/features/trip/domain/costTypes').DayCostSummary;
   };
 }
 
@@ -734,6 +736,12 @@ export interface DayPlanResponse {
   /** 일자 스트립 — 여행 전체의 날 목록. 어느 날을 보든 같이 온다(왕복을 늘리지 않는다). */
   days: DayPlanStripEntry[];
   day: DayPlanDay;
+}
+
+/** 저장하지 않은 일정 초안 비교. 두 응답의 revision은 검증한 동일 서버 버전이다. */
+export interface PlanPreviewResponse {
+  before: DayPlanResponse;
+  after: DayPlanResponse;
 }
 
 // ── 붙여넣은 일정 읽기 ────────────────────────────────────────────────
@@ -834,4 +842,32 @@ export interface TripRoutesResponse {
   legsPending: number;
   trip: TripSummary;
   days: TripRouteDay[];
+}
+
+/** 여행 전체 비용. 계산과 분류는 lib.js가 담당하며 앱은 값을 표시한다. */
+export interface TripCostsResponse {
+  schemaVersion: number;
+  revision: number;
+  totalKRW: number;
+  averagePerDayKRW: number | null;
+  days: { index: number; title: string; date: string; cost: import('@/features/trip/domain/costTypes').DayCostSummary }[];
+  categories: { kind: string; totalKRW: number; unknownCount: number; items: TripCostLine[] }[];
+  unallocated: TripCostLine[];
+  /** 여행 전체의 결제 상태별 원화 합계 — 예약해 둔 돈과 이미 낸 돈을 따로 본다. */
+  payTotals: Record<import('@/features/trip/domain/costTypes').CostPayState, number>;
+  /** 준비한 비용 — 예약(전액 한 줄씩)과 여행 단위 항목(`trip.costItems`). 어느 날에도 속하지 않는다. */
+  prep: TripCostGroup & { items: TripCostLine[] };
+  /** 가서 쓰는 비용 — 날짜별 장소·추가 비용·교통의 합. `prep.totalKRW + onSite.totalKRW === totalKRW`. */
+  onSite: TripCostGroup;
+  unknownCount: number;
+  transportUnpriced: boolean;
+  hasForeignCurrency: boolean;
+  fxRates: Record<string, number>;
+  fxSource: string;
+  fxAsOf: string | null;
+}
+export type TripCostLine = import('@/features/trip/domain/costTypes').CostDetails['items'][number] & { dayIndex: number | null };
+export interface TripCostGroup {
+  totalKRW: number;
+  payTotals: Record<import('@/features/trip/domain/costTypes').CostPayState, number>;
 }

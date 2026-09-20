@@ -9,7 +9,7 @@
 import type {
   ApiError, ApiErrorCode, BookingCandidate, BookingListResponse, DeviceRegistration,
   ImportCommitResponse, ImportPreviewResponse, MemoryCreateResponse, MemoryEvent, MemoryListResponse,
-  MutationResponse, NotificationPlanItem, TodayResponse, TravelStateResponse, TripListResponse
+  MutationResponse, NotificationPlanItem, PlanPreviewResponse, TodayResponse, TravelStateResponse, TripListResponse
 } from '../domain/contract';
 import { CONTRACT_SCHEMA_VERSION } from '../domain/contract';
 import type { PriceObservation } from '../domain/bookingsView';
@@ -23,10 +23,14 @@ import type { SettableStatus } from '../domain/mutations';
 import { applyActivityStatus, applySuggestion } from '../domain/mutations';
 import type { TodayInput, TripDoc } from '../domain/todayView';
 import { buildDayPlanView } from '../domain/dayPlanView';
+import { buildTripCosts } from '../domain/tripCostsView';
+import { FX_FALLBACK_SNAPSHOT, type FxSnapshot } from '@/features/currency/domain/fx';
+import type { FxSupport } from '@/server/currency/serverFx';
 import { buildTripRoutes } from '../domain/tripRoutesView';
 import { computeToday, resolveDayIndex, summarizeTrip } from '../domain/todayView';
 import type { LegCache } from '@/features/itinerary/domain/types';
 import collab from '@legacy/collab.js';
+import lib from '@legacy/lib.js';
 
 export interface TripRow {
   client_id: string;
@@ -101,6 +105,8 @@ export interface HandlerDeps {
   gatewayFor(token: string): Promise<Gateway | null> | Gateway | null;
   now?: () => Date;
   legs?: LegSupport;
+  /** 서버 환율(하루 한 번 받는다). 없으면 근사값이고 응답의 `fxSource`가 그렇게 말한다 */
+  fx?: FxSupport;
 }
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' };
@@ -224,6 +230,29 @@ function readDayIndex(url: URL): number | undefined {
   return Number.isInteger(n) && n >= 0 ? n : undefined;
 }
 
+/** 여행 크기 제한에 작은 요청 봉투만 더한다. JSON 파싱 전에 스트림 크기를 제한한다. */
+async function readPlanPreviewBody(request: Request): Promise<Record<string, unknown> | null> {
+  const limit = lib.TC_LIMITS.jsonBytes + 1024;
+  if (Number(request.headers.get('content-length')) > limit || !request.body) return null;
+  const reader = request.body.getReader();
+  const decoder = new TextDecoder();
+  let size = 0;
+  let text = '';
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > limit) { await reader.cancel(); return null; }
+      text += decoder.decode(value, { stream: true });
+    }
+    text += decoder.decode();
+    const body: unknown = JSON.parse(text);
+    return body != null && typeof body === 'object' && !Array.isArray(body) ? body as Record<string, unknown> : null;
+  } catch { return null; }
+  finally { reader.releaseLock(); }
+}
+
 export function createHandlers(deps: HandlerDeps) {
   const now = deps.now ?? (() => new Date());
 
@@ -245,6 +274,12 @@ export function createHandlers(deps: HandlerDeps) {
       todayISO: clock.todayISO, nowMinutes: clock.nowMinutes, dayIndex, dismissed, legCache: legs.cache,
       generatedAt: now().toISOString(), ...extra
     }).response;
+  }
+
+  /** 오늘 환율. 못 받으면 근사값 — 환율 하나 때문에 비용·일자 화면이 실패하지 않는다 */
+  async function fxFor(): Promise<FxSnapshot> {
+    if (!deps.fx) return FX_FALLBACK_SNAPSHOT;
+    try { return await deps.fx.read(); } catch { return FX_FALLBACK_SNAPSHOT; }
   }
 
   /** 이미 조회된 구간만. 캐시가 없거나 읽다 실패하면 빈 캐시 — 화면은 추정으로 나가고 멈추지 않는다 */
@@ -294,11 +329,13 @@ export function createHandlers(deps: HandlerDeps) {
     try { row = await gateway.getTrip(tripId); } catch { return fail('UPSTREAM_ERROR'); }
     if (!row || row.deleted_at) return fail('TRIP_NOT_FOUND');
     const stamp = now().toISOString().slice(0, 10);
-    const legs = await legCacheFor(row.data, dayIndex);
+    // 결제일이 상태를 정하므로 Today와 같은 시계(여행 시간대의 오늘)를 쓴다 — 기기 날짜와 어긋나면 같은 항목이 두 답을 낸다.
+    const clock = resolveClock(row.data, dayIndex, new URL(request.url), now());
+    const [legs, fx] = await Promise.all([legCacheFor(row.data, dayIndex), fxFor()]);
     const body = buildDayPlanView({
       trip: row.data, di: dayIndex,
       summary: summarizeTrip(row, stamp), generatedAt: now().toISOString(),
-      legCache: legs.cache, legsPending: legs.pending
+      legCache: legs.cache, legsPending: legs.pending, fx, todayISO: clock.todayISO
     });
     // 없는 날을 지어내지 않는다 — 여행은 있는데 그 일자가 없으면 404다.
     if (!body) return fail('DAY_NOT_FOUND');
@@ -334,6 +371,24 @@ export function createHandlers(deps: HandlerDeps) {
     return ok(body);
   }
 
+  async function tripCosts(request: Request, tripId: string): Promise<Response> {
+    const gateway = await auth(request);
+    if (gateway instanceof Response) return gateway;
+    let row: TripRow | null;
+    try { row = await gateway.getTrip(tripId); } catch { return fail('UPSTREAM_ERROR'); }
+    if (!row || row.deleted_at) return fail('TRIP_NOT_FOUND');
+
+    // 전체를 보겠다고 한 순간이므로 여기서는 여행 전부를 채운다(상한까지만 기다린다).
+    let legs = { cache: {} as LegCache, pending: 0 };
+    if (deps.legs) {
+      try { legs = await deps.legs.readTrip(row.data, LEG_WAIT_MS); } catch { /* 추정으로 나간다 */ }
+    }
+    const clock = resolveClock(row.data, null, new URL(request.url), now());
+    const body = buildTripCosts(row.data, legs.cache, row.revision, await fxFor(), clock.todayISO);
+    deps.legs?.fillTripLater(row.data);
+    return ok(body);
+  }
+
   /** POST /api/v1/trips/:tripId/replan-preview — 미리보기만. 아무것도 저장하지 않는다. */
   async function replanPreview(request: Request, tripId: string): Promise<Response> {
     const gateway = await auth(request);
@@ -343,6 +398,43 @@ export function createHandlers(deps: HandlerDeps) {
     if (!row || row.deleted_at) return fail('TRIP_NOT_FOUND');
     const response = await todayFor(gateway, row, new URL(request.url));
     return ok({ schemaVersion: CONTRACT_SCHEMA_VERSION, replan: response.replan, today: response });
+  }
+
+  /** POST /trips/:tripId/plan-preview — 사용자가 만든 초안과 저장된 하루를 비교한다. 저장·경로 조회는 하지 않는다. */
+  async function planPreview(request: Request, tripId: string): Promise<Response> {
+    const gateway = await auth(request);
+    if (gateway instanceof Response) return gateway;
+    let row: TripRow | null;
+    try { row = await gateway.getTrip(tripId); } catch { return fail('UPSTREAM_ERROR'); }
+    if (!row || row.deleted_at) return fail('TRIP_NOT_FOUND');
+    if (row.role != null && !collab.canEdit(row.role)) return fail('FORBIDDEN');
+
+    const body = await readPlanPreviewBody(request);
+    if (!body || typeof body.revision !== 'number' || !Number.isSafeInteger(body.revision) || body.revision < 0
+      || typeof body.dayIndex !== 'number' || !Number.isSafeInteger(body.dayIndex) || body.dayIndex < 0) return fail('BAD_REQUEST');
+    if (body.revision !== row.revision) return fail('REVISION_CONFLICT', { revision: row.revision });
+    const normalized = lib.validateTripPayload(body.document);
+    if (!normalized.ok) return fail('BAD_REQUEST', { message: normalized.error });
+    const draft = normalized.value as TripDoc;
+    draft.id = row.client_id;
+    const dayIndex = body.dayIndex;
+    if (!row.data.days?.[dayIndex] || !draft.days?.[dayIndex]) return fail('DAY_NOT_FOUND');
+
+    // 미리보기는 저장 전 초안이다. wait=0으로 캐시만 읽고 fillLater도 부르지 않는다.
+    const readCache = async (trip: TripDoc): Promise<LegCache> => {
+      try { return (await deps.legs?.read(trip, dayIndex, 0))?.cache ?? {}; } catch { return {}; }
+    };
+    const [beforeCache, afterCache, fx] = await Promise.all([readCache(row.data), readCache(draft), fxFor()]);
+    const generatedAt = now().toISOString();
+    const stamp = generatedAt.slice(0, 10);
+    const todayISO = resolveClock(row.data, dayIndex, new URL(request.url), now()).todayISO;
+    const before = buildDayPlanView({ trip: row.data, di: dayIndex, summary: summarizeTrip(row, stamp), generatedAt,
+      legCache: beforeCache, legsPending: 0, fx, todayISO });
+    const after = buildDayPlanView({ trip: draft, di: dayIndex, summary: summarizeTrip({ ...row, data: draft }, stamp), generatedAt,
+      legCache: afterCache, legsPending: 0, fx, todayISO });
+    if (!before || !after) return fail('DAY_NOT_FOUND');
+    const response: PlanPreviewResponse = { before, after };
+    return ok(response);
   }
 
   async function readBody(request: Request): Promise<Record<string, unknown>> {
@@ -722,7 +814,7 @@ export function createHandlers(deps: HandlerDeps) {
   }
 
   return {
-    trips, today, dayPlan, tripRoutes, bookings, travelState, replanPreview, activityAction, suggestionAction,
+    trips, today, dayPlan, tripRoutes, tripCosts, bookings, travelState, replanPreview, planPreview, activityAction, suggestionAction,
     registerDevice, unregisterDevice, importPreview, importCommit, memories, createMemory,
     prices, createPrice
   };

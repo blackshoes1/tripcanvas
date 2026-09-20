@@ -8,11 +8,11 @@ import type { Booking, CarBooking } from '@/features/booking/domain/types';
 import type { Day, Spot, TransportMode, Trip } from '@/features/trip/domain/types';
 import { costLabel, currencySymbol, fmtMoney, type FxRates, fxRates, toKRW } from '@/lib/currency/format';
 import type {
-  CachedLeg, CarChipView, CarEventRowView, DayCostPart, DayView, LegCache, LegView, SpotView, TripCostView
+  CachedLeg, CarChipView, CarEventRowView, DayView, LegCache, LegView, SpotView, TripCostView
 } from './types';
 
 const {
-  bookingShareOn, budgetBookings, carEventsOn, carSpotLinks, computeTimeline, dayReturnStay, dayStartAnchor,
+  dayCostSummary, dayEnteredCost, hasManualTransportCost, budgetBookings, carEventsOn, carSpotLinks, computeTimeline, dayReturnStay, dayStartAnchor,
   haversine, hm, isOpenAt, legKey, localMode, parseHM, spotCatOf, stayNights, toISO
 } = legacyLib;
 
@@ -196,37 +196,24 @@ function dayDistanceOf(day: Day, back: Spot | null): number {
 function tripBookings(trip: Trip): Booking[] {
   return trip.bookings ?? [];
 }
-function daySpotCost(day: Day, fx: FxRates): number {
-  return day.spots.reduce((a, s) => a + (s.cost ? toKRW(s.cost, s.cur, fx) : 0), 0);
-}
-function dayBookingCost(trip: Trip, iso: string, fx: FxRates): number {
-  if (!iso) return 0;
-  // 일정 장소가 이미 값을 들고 있는 예약(연결된 숙박)은 뺀다 — 안 그러면 숙박비가 두 번 잡힌다
-  return bookingShareOn(budgetBookings(tripBookings(trip), trip.days), iso)
-    .reduce((a, x) => a + toKRW(x.amount, x.cur, fx), 0);
-}
-function dayCostPartsOf(
-  trip: Trip, legCache: LegCache, di: number, fx: FxRates
-): { total: number; parts: DayCostPart[] } {
+/** `today`(YYYY-MM-DD)는 결제일이 있는 항목의 상태를 정하는 오늘이다 — 서버는 여행 시간대의 오늘(`resolveClock`)을 넘긴다. */
+export function dayCostPartsOf(trip: Trip, legCache: LegCache, di: number, fx: FxRates, today?: string): DayView['cost'] {
   const day = trip.days[di];
   const dm = dayModeOf(day);
   const road = dm === 'car' || dm === 'taxi';
   const rt = road ? dayRouteOf(legCache, day, dayReturnStay(trip.days as unknown[], di) as Spot | null) : null;
-  const parts = ([
-    { label: '장소', amount: daySpotCost(day, fx) },
-    { label: '택시', amount: rt?.taxi ?? 0 },
-    { label: '예약', amount: dayBookingCost(trip, isoDateOf(trip, di), fx) }
-  ] as DayCostPart[]).filter(p => p.amount > 0);
-  return { total: parts.reduce((a, p) => a + p.amount, 0), parts };
+  return dayCostSummary(trip, di, { date: isoDateOf(trip, di), rates: fx, today,
+    taxi: rt?.taxi ?? null,
+    transportUnpriced: day.spots.filter(hasCoord).length > 1 && dm !== 'walk' && dm !== 'bike' && (!road || !rt?.taxi) });
 }
 
 /** 필터바 '전체 비용'과 같은 규칙 — 장소 + (자차·택시일) 택시 + 예약 전액 */
 export function tripCostBreakdownOf(trip: Trip, legCache: LegCache, fx: FxRates = fxRates()): TripCostView {
   const out: TripCostView = { spots: 0, taxi: 0, hotel: 0, car: 0, flight: 0, total: 0 };
   trip.days.forEach((d, i) => {
-    out.spots += daySpotCost(d, fx);
+    out.spots += dayEnteredCost(d, fx);
     const dm = dayModeOf(d);
-    if (dm === 'car' || dm === 'taxi')
+    if ((dm === 'car' || dm === 'taxi') && !hasManualTransportCost(d))
       out.taxi += dayRouteOf(legCache, d, dayReturnStay(trip.days as unknown[], i) as Spot | null)?.taxi ?? 0;
   });
   budgetBookings(tripBookings(trip), trip.days).forEach(b => {
@@ -266,7 +253,7 @@ function spotCostView(s: Spot, fx: FxRates): SpotView['cost'] {
   const sym = currencySymbol(s.cur);
   const nonKrw = !!sym && s.cur !== 'KRW';
   return {
-    label: nonKrw ? `💳 ${sym}${fmtMoney(s.cost)}` : `💳 ₩${fmtMoney(s.cost)}`,
+    label: nonKrw ? `💳 ${sym}${fmtMoney(s.cost, s.cur)}` : `💳 ₩${fmtMoney(s.cost)}`,
     converted: nonKrw ? `약 ₩${fmtMoney(toKRW(s.cost, s.cur, fx))}` : null,
     title: nonKrw ? costLabel(s.cost, s.cur, fx) : null
   };
@@ -342,7 +329,7 @@ function spotViewOf(
 }
 
 // ── 일자 뷰 ──
-export function buildDayView(trip: Trip, legCache: LegCache, di: number, fx: FxRates = fxRates()): DayView {
+export function buildDayView(trip: Trip, legCache: LegCache, di: number, fx: FxRates = fxRates(), today?: string): DayView {
   const day = trip.days[di];
   const days = trip.days as unknown[];
   const iso = isoDateOf(trip, di);
@@ -406,6 +393,6 @@ export function buildDayView(trip: Trip, legCache: LegCache, di: number, fx: FxR
     carReturns: carEv.filter(e => e.kind === 'return').map(carEventRowOf),
     back: bl ? { name: bl.to.name, modeIcon: MODE_ICON[bl.mode], leg: legViewOf(legCache, bl.from, bl.to, bl.mode) } : null,
     routeLabel, overloadLabel,
-    cost: dayCostPartsOf(trip, legCache, di, fx)
+    cost: dayCostPartsOf(trip, legCache, di, fx, today)
   };
 }

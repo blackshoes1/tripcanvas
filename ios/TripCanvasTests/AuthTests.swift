@@ -64,6 +64,15 @@ final class AuthErrorMappingTests: XCTestCase {
         XCTAssertEqual(AuthError.from(status: 401, body: nil).code, .invalidCredentials)
     }
 
+    func testOriginRejectionIsNotAWrongPassword() {
+        for code in ["MISSING_OR_NULL_ORIGIN", "INVALID_ORIGIN"] {
+            let error = AuthError.from(status: 403, body: ["code": code])
+            XCTAssertEqual(error.code, .unknown)
+            XCTAssertFalse(error.message.contains("비밀번호"))
+            XCTAssertFalse(error.message.contains(code))
+        }
+    }
+
     func testAlreadyRegistered() {
         XCTAssertEqual(AuthError.from(status: 400, body: ["message": "User already exists"]).code, .emailTaken)
     }
@@ -220,5 +229,91 @@ final class AuthStoreTests: XCTestCase {
         await auth.restore()
 
         XCTAssertFalse(auth.isSignedIn)
+    }
+}
+
+/// 실제 AuthClient의 HTTP 응답 해석까지 지나되, 네트워크·실제 계정은 쓰지 않는다.
+private final class SessionResponseProtocol: URLProtocol, @unchecked Sendable {
+    static let signOutFinished = Notification.Name("AuthSessionRecoveryTests.signOutFinished")
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        guard let url = request.url, let host = url.host else { return }
+        if host == "offline.test" {
+            client?.urlProtocol(self, didFailWithError: URLError(.notConnectedToInternet))
+            return
+        }
+        let status = Int(host.split(separator: ".")[0]) ?? 200
+        let body: String
+        switch host {
+        case "expired.test": body = "null"
+        case "malformed.test": body = "<html>upstream unavailable</html>"
+        case "missing-user.test": body = "{}"
+        default: body = #"{"user":{"id":"u1","email":"j@example.com"}}"#
+        }
+        let response = HTTPURLResponse(url: url, statusCode: status, httpVersion: "HTTP/1.1", headerFields: [:])!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data(body.utf8))
+        client?.urlProtocolDidFinishLoading(self)
+        if url.path.hasSuffix("/sign-out") {
+            NotificationCenter.default.post(name: Self.signOutFinished, object: host)
+        }
+    }
+    override func stopLoading() {}
+}
+
+@MainActor
+final class AuthSessionRecoveryTests: XCTestCase {
+    private func withAuth(_ host: String, check: (AuthStore, FakeSessionStore) async -> Void) async {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [SessionResponseProtocol.self]
+        let session = URLSession(configuration: config)
+        defer { session.finishTasksAndInvalidate() }
+        // 명시적 만료는 비동기 로그아웃도 시작한다. 요청이 시작되기 전에 통신 연결을 닫지 않는다.
+        let signOut: XCTNSNotificationExpectation?
+        if host == "expired.test" || host == "401.test" {
+            let finished = XCTNSNotificationExpectation(name: SessionResponseProtocol.signOutFinished)
+            finished.handler = { ($0.object as? String) == host }
+            signOut = finished
+        } else { signOut = nil }
+        let client = TripCanvasAuthClient(baseURL: URL(string: "https://\(host)")!, session: session)
+        let store = FakeSessionStore(stored: AuthSession(token: "test-token", userId: "u1", email: "j@example.com"))
+        await check(AuthStore(client: client, store: store), store)
+        if let signOut { await fulfillment(of: [signOut], timeout: 3) }
+    }
+
+    func testRestoreRetainsTheSessionForServerRateLimitAndMalformedResponses() async {
+        for host in ["503.test", "502.test", "429.test", "404.test", "malformed.test", "missing-user.test", "offline.test"] {
+            await withAuth(host) { auth, store in
+                await auth.restore()
+                XCTAssertTrue(auth.isSignedIn, host)
+                XCTAssertEqual(store.stored?.token, "test-token", host)
+            }
+        }
+    }
+
+    func testForcedVerificationRetainsTheSessionWhenVerificationIsUnavailable() async {
+        for host in ["offline.test", "503.test", "429.test", "malformed.test"] {
+            await withAuth(host) { auth, store in
+                do {
+                    _ = try await auth.forceRefresh()
+                    XCTFail("실패한 세션 확인을 성공으로 보고하지 않는다")
+                } catch {
+                    XCTAssertNotEqual((error as? AuthError)?.code, .notSignedIn, host)
+                }
+                XCTAssertTrue(auth.isSignedIn, host)
+                XCTAssertNotNil(store.stored, host)
+            }
+        }
+    }
+
+    func testExplicitNullOrUnauthorizedStillClearsTheExpiredSession() async {
+        for host in ["expired.test", "401.test"] {
+            await withAuth(host) { auth, store in
+                await auth.restore()
+                XCTAssertFalse(auth.isSignedIn, host)
+                XCTAssertNil(store.stored, host)
+            }
+        }
     }
 }

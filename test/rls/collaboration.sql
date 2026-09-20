@@ -435,6 +435,31 @@ select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000
 insert into t_out select 'dec.a.reject', public.manage_trip_candidate((select id from t_cand),'REJECT')::text;
 select public.manage_trip_candidate((select id from t_cand),'REOPEN');
 
+-- ── 가고 싶은 곳의 분류(7단계) ──
+-- 분류는 표시·거르기를 위한 것이지 결정이 아니다. 고르지 않음(null)과 기타(ETC)는 다른 상태다.
+select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000a"}',false);
+create temp table t_cat1 as select public.add_trip_candidate('trip1','츄로스 가게',null,null,null,null,null,null,'dessert') as id;
+grant select on t_cat1 to public;
+insert into t_out select 'cat.add.lowercase', coalesce(category,'-') from public.list_trip_candidates('trip1') where id=(select id from t_cat1);
+-- 모르는 분류 때문에 담기가 실패하지는 않는다 — 고르지 않음으로 떨어진다
+create temp table t_cat2 as select public.add_trip_candidate('trip1','어딘가',null,null,null,null,null,null,'NOPE') as id;
+grant select on t_cat2 to public;
+insert into t_out select 'cat.add.unknown', coalesce(category,'-') from public.list_trip_candidates('trip1') where id=(select id from t_cat2);
+create temp table t_cat3 as select public.add_trip_candidate('trip1','분류 없이 담기',null,null,null,null,null,null) as id;
+grant select on t_cat3 to public;
+insert into t_out select 'cat.add.omitted', coalesce(category,'-') from public.list_trip_candidates('trip1') where id=(select id from t_cat3);
+-- 담은 뒤에도 고칠 수 있고, 빈 값이면 고르지 않음으로 되돌아간다
+insert into t_out select 'cat.set', public.manage_trip_candidate((select id from t_cat1),'CATEGORY','CAFE')::text;
+insert into t_out select 'cat.set.read', coalesce(category,'-') from public.list_trip_candidates('trip1') where id=(select id from t_cat1);
+insert into t_out select 'cat.clear', public.manage_trip_candidate((select id from t_cat1),'CATEGORY','')::text;
+insert into t_out select 'cat.clear.read', coalesce(category,'-') from public.list_trip_candidates('trip1') where id=(select id from t_cat1);
+do $$ begin perform public.manage_trip_candidate((select id from t_cat1),'CATEGORY','NOPE'); insert into t_out values('cat.invalid','ok');
+  exception when others then insert into t_out values('cat.invalid',sqlstate); end $$;
+-- 보기 권한(C)은 분류를 바꾸지 못한다 — 여행 내용이지 의견이 아니다
+select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000c"}',false);
+do $$ begin perform public.manage_trip_candidate((select id from t_cat1),'CATEGORY','CAFE'); insert into t_out values('cat.viewer','ok');
+  exception when others then insert into t_out values('cat.viewer',sqlstate); end $$;
+
 -- ── 스냅샷·기존 소유자 흐름은 그대로 ──
 select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000a"}',false);
 insert into public.trip_snapshots(user_id,client_id,name,data,source_revision) values('00000000-0000-0000-0000-00000000000a','trip1','스페인','{}'::jsonb,2);

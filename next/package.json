@@ -16,6 +16,7 @@
     "realtime": "node dist-tools/server/realtime/main.js",
     "tools:build": "tsc -p tsconfig.tools.json",
     "migrate:import": "node dist-tools/server/migration/main.js",
+    "verify:db": "node dist-tools/server/migration/verifyDbMain.js",
     "mail:test": "node dist-tools/server/infrastructure/mail/main.js"
   },
   "dependencies": {

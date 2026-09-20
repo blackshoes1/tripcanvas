@@ -43,7 +43,7 @@ struct PlaceSearchView: View {
                             dismiss()
                         } label: {
                             HStack(alignment: .top, spacing: Space.m) {
-                                Text(hit.category?.icon ?? "📍").font(.title3)
+                                Image(systemName: hit.category?.symbol ?? "mappin").font(.body).foregroundStyle(Ink.soft).frame(width: 22)
                                 VStack(alignment: .leading, spacing: Space.xs) {
                                     Text(hit.name).font(.body.weight(.semibold))
                                     if !hit.address.isEmpty {
