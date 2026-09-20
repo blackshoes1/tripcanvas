@@ -152,11 +152,34 @@ test('isForbiddenError: 42501·403·TRIP_FORBIDDEN 메시지를 권한 오류로
   assert.equal(C.isForbiddenError(null), false);
 });
 
-test('forbiddenText: 서버 hint를 우선하고, 보기 권한이면 편집 권한 요청을 안내한다', () => {
+test('forbiddenText(레거시 Supabase): 코드·hint로 이유를 읽는다 — 그 경로는 문장을 주지 않는다', () => {
   assert.match(C.forbiddenText({ message: 'OWNER_CANNOT_LEAVE' }, 'OWNER'), /주최자는 여행을 나갈 수 없어요/);
   assert.match(C.forbiddenText({ message: 'TRIP_FORBIDDEN', hint: '이 여행에서 나갔거나 내보내졌다' }, 'EDITOR'), /나갔거나 내보내졌어요/);
   assert.match(C.forbiddenText({ message: 'TRIP_FORBIDDEN' }, 'VIEWER'), /편집 권한을 요청/);
   assert.match(C.forbiddenText({}, 'EDITOR'), /권한이 없어요/);
+  // 원시 Postgres 문장은 사용자에게 보이지 않는다 — 사람에게 쓴 말이 아니다
+  assert.match(C.forbiddenText({ message: 'permission denied for table trips' }, 'EDITOR'), /권한이 없어요/);
+});
+
+// ⚠️ 지금 서버(NAS API)는 코드를 올리지 않고 **한국어 문장**을 message에 담아 보내며,
+//    api.js의 toError가 hint를 버린다. 그래서 서버가 말한 이유를 여기서 버리면 사용자는
+//    "이 여행을 바꿀 권한이 없어요" 하나만 보게 된다 — 무엇을 하면 되는지가 사라진다.
+test('forbiddenText: 서버가 사람에게 쓴 문장을 보냈으면 그대로 전한다 — 일반 문장으로 뭉개지 않는다', () => {
+  const api = (/** @type {string} */message) => ({ code: '42501', apiCode: 'FORBIDDEN', status: 403, message });
+
+  assert.equal(C.forbiddenText(api('주최자는 나갈 수 없습니다 — 여행을 삭제하거나 다른 사람에게 넘겨 주세요.'), 'OWNER'),
+    '주최자는 나갈 수 없습니다 — 여행을 삭제하거나 다른 사람에게 넘겨 주세요.');
+  assert.equal(C.forbiddenText(api('이 여행에서 나갔거나 내보내졌습니다.'), 'EDITOR'),
+    '이 여행에서 나갔거나 내보내졌습니다.');
+  assert.equal(C.forbiddenText(api('초대 링크는 주최자만 만들 수 있습니다.'), 'EDITOR'),
+    '초대 링크는 주최자만 만들 수 있습니다.');
+  assert.equal(C.forbiddenText(api('코멘트는 쓴 사람과 주최자만 지울 수 있습니다.'), 'EDITOR'),
+    '코멘트는 쓴 사람과 주최자만 지울 수 있습니다.');
+  // 보기 권한이어도 서버가 더 구체적으로 말했으면 그쪽이 이긴다
+  assert.equal(C.forbiddenText(api('보기 권한으로는 후보를 추가할 수 없습니다.'), 'VIEWER'),
+    '보기 권한으로는 후보를 추가할 수 없습니다.');
+  // 서버가 아무 말도 없을 때만 역할로 짐작한다
+  assert.match(C.forbiddenText(api(''), 'VIEWER'), /편집 권한을 요청/);
 });
 
 // ── 후보 장소와 반응 (2단계) ──

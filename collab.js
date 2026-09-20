@@ -201,15 +201,33 @@
   }
 
   /**
-   * 권한 오류를 사용자 문장으로. 서버 hint(왜 막았는지)를 우선한다.
+   * 서버가 **사람에게 쓴 문장**인가. 우리 API의 오류 메시지는 전부 한국어 문장이고,
+   * 레거시 경로가 주던 것은 기계용 토큰(`TRIP_FORBIDDEN`)이거나 원시 Postgres 영문
+   * (`permission denied for table trips`)이다. 한글이 있으면 사람에게 쓴 말로 본다.
+   * @param {string} msg @returns {boolean}
+   */
+  function isHumanMessage(msg){ return /[가-힣]/.test(msg); }
+
+  /**
+   * 권한 오류를 사용자 문장으로. **서버가 말한 이유가 가장 구체적이라 그것이 먼저다.**
+   *
+   * 지금 서버(NAS API)는 왜 막았는지를 한국어 문장으로 보낸다("초대 링크는 주최자만 만들 수
+   * 있습니다" 같은 열다섯 가지). 그걸 버리고 역할로 짐작하면 사용자는 "권한이 없어요" 하나만
+   * 보게 되고 **무엇을 하면 되는지가 사라진다**(주최자에게 "여행을 넘겨 주세요"라고 말해 줄
+   * 기회도 함께).
+   *
+   * 앞의 두 갈래는 **레거시 Supabase 경로**용이다 — 거기서는 RPC가 코드를 올리고 이유를 hint에
+   * 담았는데, `api.js`의 `toError`는 hint를 싣지 않으므로 오늘의 서버에서는 닿지 않는다.
+   *
    * @param {unknown} err
    * @param {Role|null|undefined} role
    */
   function forbiddenText(err, role){
     const e=/** @type {{hint?:unknown,message?:unknown}} */(err||{});
-    const msg=String(e.message||'');
+    const msg=String(e.message||'').trim();
     if(/OWNER_CANNOT_LEAVE/.test(msg)) return '주최자는 여행을 나갈 수 없어요 — 여행을 삭제하거나 다른 사람에게 넘겨 주세요';
     if(/LEFT|REMOVED|나갔거나/.test(String(e.hint||''))) return '이 여행에 대한 권한이 없어요 — 나갔거나 내보내졌어요. 이 기기의 사본은 그대로 남아 있습니다';
+    if(isHumanMessage(msg)) return msg;
     if(normRole(role)==='VIEWER') return '보기 권한이라 저장할 수 없어요 — 주최자에게 편집 권한을 요청하세요';
     return '이 여행을 바꿀 권한이 없어요';
   }
@@ -918,7 +936,7 @@
     normRole, canEdit, canManage, canLeave, canDelete, roleLabel, roleIcon, roleOf, tripRoleMap,
     memberName, displayNameFromEmail, memberSummary,
     buildInviteLink, parseJoinHash, inviteVerdict, joinReasonText, inviteRangeText,
-    isForbiddenError, forbiddenText,
+    isForbiddenError, forbiddenText, isHumanMessage,
     normReaction, reactionLabel, reactionIcon, canPropose, canReact, canScheduleCandidate, canRemoveCandidate,
     tallyReactions, candidateMood, moodText, groupCandidates, reactionSummary, candidateAttribution, sortCandidates,
     canComment, canDeleteComment, objParticle, activityText, condenseActivity, relativeTime, liveEffects, liveCommentTargets,

@@ -271,6 +271,9 @@ localStorage: `tripcanvas_v1`(여행) · `tripcanvas_legs_v4`(구간 캐시, 수
 - 여행은 여전히 `trips` 한 행이고 `trips.user_id`가 소유자다. `trip_members`가 EDITOR/VIEWER를 더하고, `trip_invites`는 **토큰 해시만** 저장한다(원문은 만든 순간 한 번만 돌려준다).
 - RLS: 읽기는 소유자 OR 활성 멤버 · 쓰기는 소유자 OR EDITOR · 삭제·초대·역할 변경은 소유자만. 정책은 전부 `tc_trip_role()`(security definer) 하나만 부른다 — 정책끼리 서로 참조하면 재귀다. ⚠️ `tc_trips_lock_owner` 트리거가 `user_id` 변경을 막는다 — 정책만으로는 편집자의 소유권 탈취를 못 막는다.
 - `sync_trip`/`tombstone_trip`은 멤버를 인식한다. VIEWER 쓰기·멤버의 삭제·나간 사람의 저장은 **42501**(hint에 이유). 클라이언트는 42501을 `forbidden`으로 멈추고 **재시도 루프에 넣지 않는다**(`isForbiddenError`).
+- **거절 문구는 서버가 말한 이유가 먼저다**(2026-09-20, `forbiddenText`). 지금 서버는 왜 막았는지를 한국어 문장으로 보내므로(`errors.ts`의 기본값 + 각 서비스의 message) 그걸 그대로 전하고, **문장이 없을 때만** 역할로 짐작한다. 웹·iOS가 같은 규칙을 쓰고 `forbidden-text.json` 픽스처가 대조한다 — 화면마다 제 문장을 두지 않는다(로컬 사전 판정인 웹 `guardEdit`·iOS `canEdit` 가드도 이걸 지난다).
+  ⚠️ 사람에게 쓴 문장인지는 **한글이 있는가**로 가른다(`isHumanMessage`) — 레거시 경로는 기계 토큰(`TRIP_FORBIDDEN`)이나 원시 Postgres 영문(`permission denied for table trips`)을 주는데 그건 사용자에게 보이면 안 된다.
+  ⚠️ `hint` 갈래는 **레거시 Supabase 전용**이다 — `api.js`의 `toError`가 hint를 싣지 않아 오늘의 서버에서는 닿지 않는다. 2026-09-20 전에는 그 죽은 갈래 때문에 "주최자는 나갈 수 없습니다 — 여행을 삭제하거나 넘겨 주세요" 같은 구체적 안내가 전부 "이 여행을 바꿀 권한이 없어요"로 뭉개졌다.
 - 웹: `readOnly()`/`guardEdit()`가 `#v=` 읽기전용과 VIEWER를 한 곳에서 판단한다 — **편집 진입점을 새로 만들면 반드시 이걸 거친다.** 로그아웃·로컬 전용 여행은 항상 소유자(`roleOf`)라 혼자 쓰는 여행은 예전 그대로다.
 - 초대 링크는 `#join=<token>` 하나다. 미리보기(`invite_preview`, anon 가능)는 이름·기간·역할까지만 주고, 본문은 `accept_trip_invite`로 멤버가 된 뒤 RLS 아래에서 내려온다. 공유받은 여행의 "삭제"는 `leave_trip`이다.
 - 실시간은 `trip_activity` 이벤트로 온다(아래). `pullTrip`은 여전히 폴백이다 — 탭 복귀·패널 열기에 최신본을 당기고, 로컬 편집이 있으면 기존 충돌 카드로 넘긴다(조용히 덮어쓰지 않는다).

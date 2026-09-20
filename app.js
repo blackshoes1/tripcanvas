@@ -59,7 +59,8 @@ function myRole(id){ return TC_COLLAB.roleOf(tripRoles, id||(store&&store.active
 function readOnly(){ return !!viewMode || !TC_COLLAB.canEdit(myRole()); }
 function guardEdit(){
   if(viewMode){ toast('읽기전용 보기입니다 — "내 여행으로 저장" 후 편집하세요','#8892b0'); return false; }
-  if(!TC_COLLAB.canEdit(myRole())){ toast('보기 권한이라 편집할 수 없어요 — 주최자에게 편집 권한을 요청하세요','#8892b0'); return false; }
+  // 서버에 묻기 전의 로컬 판정도 같은 규칙을 쓴다 — 같은 상황에 두 문장을 두지 않는다.
+  if(!TC_COLLAB.canEdit(myRole())){ toast(TC_COLLAB.forbiddenText(null, myRole()),'#8892b0'); return false; }
   return true;
 }
 
@@ -5006,7 +5007,7 @@ document.getElementById('inviteCreate').onclick=async()=>{
     try{ await navigator.clipboard.writeText(link); toast('초대 링크를 복사했어요 — 일행에게 보내 주세요'); }
     catch(_){ toast('초대 링크를 만들었어요 — 복사해서 보내 주세요'); }
     renderInvites();
-  }catch(e){ reportOperationalError('collab.invite',e); toast(TC_COLLAB.isForbiddenError(e)?'초대 링크는 주최자만 만들 수 있어요':'초대 링크를 만들지 못했어요 — 잠시 후 다시 시도해 주세요','#e63946'); }
+  }catch(e){ reportOperationalError('collab.invite',e); toast(TC_COLLAB.isForbiddenError(e)?TC_COLLAB.forbiddenText(e,myRole(membersTripId)):'초대 링크를 만들지 못했어요 — 잠시 후 다시 시도해 주세요','#e63946'); }
   finally{ btn.disabled=false; }
 };
 document.getElementById('inviteCopy').onclick=()=>{

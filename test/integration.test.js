@@ -2378,6 +2378,29 @@ test('통합: 후보를 일정에 넣으면 고른 날의 맨 뒤에 붙고 후�
   w.close();
 });
 
+test('통합: 권한 거절은 서버가 말한 이유를 그대로 전한다 — 화면이 일반 문장으로 뭉개지 않는다', { skip: noJsdom }, async () => {
+  const w = boot();
+  w.eval(`user={id:'u1'}; store.trips=[{id:'t1',name:'스페인',days:[{spots:[]}]}]; store.activeId='t1';
+    syncMeta={t1:{revision:3,status:'clean'}}; tripRoles={t1:{role:'EDITOR',count:2,owner:false}}; candTripId='t1';
+    candRows=[{id:1,title:'캄프 누',status:'PROPOSED',must_count:0,ok_count:0,pass_count:0,
+      my_reaction:null,proposed_by_label:'지민',mine:false,created_at:'2026-01-01',reactions:[]}];`);
+  // 서버(NAS API)는 왜 막았는지를 한국어 문장으로 보낸다 — api.js의 toError는 hint를 싣지 않는다.
+  w.sb = { rpc: async () => ({ data: null, error: { code: '42501', apiCode: 'FORBIDDEN', status: 403,
+    message: '보기 권한으로는 후보를 추가할 수 없습니다.' } }) };
+  w.eval(`sb=window.sb; TC_API.rpc=window.sb.rpc; drawCandidates();`);
+
+  await w.eval(`reactCandidate(1,'MUST')`);
+  assert.equal(w.document.getElementById('toast').textContent, '보기 권한으로는 후보를 추가할 수 없습니다.',
+    '서버 문장이 그대로 보인다');
+
+  // 서버에 묻기 전의 로컬 판정도 같은 규칙을 쓴다 — 같은 상황에 두 문장을 두지 않는다
+  w.eval(`tripRoles={t1:{role:'VIEWER',count:2,owner:false}}`);
+  assert.equal(w.eval(`guardEdit()`), false);
+  assert.equal(w.document.getElementById('toast').textContent,
+    w.eval(`TC_COLLAB.forbiddenText(null,'VIEWER')`));
+  w.close();
+});
+
 test('통합: 갈린 후보의 "자유시간으로 분리"는 버튼이 서고 그 날 맨 뒤에 세 줄로 들어간다 (§24→§25~§27)', { skip: noJsdom }, async () => {
   const w = boot();
   const rpc = [];

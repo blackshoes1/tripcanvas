@@ -113,7 +113,7 @@ final class CandidateBoardViewModel {
         var addedCount = 0
         do {
             let snapshot = try await documents.document(tripId: trip.id)
-            guard snapshot.canEdit else { errorMessage = "이 일정을 바꿀 권한이 없어요."; return }
+            guard snapshot.canEdit else { errorMessage = CollabModel.forbiddenText(nil, role: snapshot.role); return }
             var document = snapshot.document
             for pick in plan.picks {
                 guard !placed.contains(where: { $0.candidateId == pick.candidateId }),
@@ -241,7 +241,7 @@ final class CandidateBoardViewModel {
         defer { isWorking = false }
         do {
             let snapshot = try await documents.document(tripId: trip.id)
-            guard snapshot.canEdit else { errorMessage = "이 일정을 바꿀 권한이 없어요."; return false }
+            guard snapshot.canEdit else { errorMessage = CollabModel.forbiddenText(nil, role: snapshot.role); return false }
             var document = snapshot.document
             guard document.hasDay(dayIndex) else { errorMessage = "그 날짜는 일정에 없어요"; return false }
             if let expectedRevision, expectedRevision != snapshot.revision {
@@ -294,7 +294,7 @@ final class CandidateBoardViewModel {
         defer { isWorking = false }
         do {
             let snapshot = try await documents.document(tripId: trip.id)
-            guard snapshot.canEdit else { errorMessage = "이 일정을 바꿀 권한이 없어요."; return false }
+            guard snapshot.canEdit else { errorMessage = CollabModel.forbiddenText(nil, role: snapshot.role); return false }
             var document = snapshot.document
             guard document.hasDay(dayIndex) else { errorMessage = "그 날짜는 일정에 없어요"; return false }
             for spot in plan.spots { document.insertSpot(spot, dayIndex: dayIndex) }
@@ -401,10 +401,7 @@ final class CandidateBoardViewModel {
 
     private func message(for error: Error) -> String {
         if let apiError = error as? APIError {
-            if case .forbidden(let text) = apiError {
-                if role == .viewer { return "보기 권한이라 할 수 없어요 — 주최자에게 편집 권한을 요청하세요" }
-                return text.isEmpty ? "이 여행을 바꿀 권한이 없어요" : text
-            }
+            if case .forbidden(let text) = apiError { return CollabModel.forbiddenText(text, role: role) }
             return apiError.errorDescription ?? "요청을 처리하지 못했어요."
         }
         return error.localizedDescription

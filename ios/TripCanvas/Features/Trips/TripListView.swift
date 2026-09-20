@@ -82,10 +82,11 @@ final class TripListViewModel {
         switch api {
         case .revisionConflict:
             return "다른 기기에서 먼저 바뀌었어요 — 목록을 새로 불러왔습니다. 다시 시도해 주세요."
-        case .forbidden:
-            return CollabModel.canDelete(trip.role ?? .owner)
-                ? "이 여행을 지울 권한이 없어요."
-                : "이 여행에서 나갈 수 없어요 — 주최자는 나가는 대신 삭제합니다."
+        // ⚠️ 예전에는 삼항이 뒤집혀 있었다 — `canDelete`가 참이면 **내가 주최자**인데 "지울 권한이
+        //    없어요"라고 했고, 거짓(주최자가 아님)일 때 주최자용 안내를 했다. 이제 서버가 말한
+        //    이유를 그대로 쓴다(공통 규칙 — `collab.js`의 forbiddenText).
+        case .forbidden(let text):
+            return CollabModel.forbiddenText(text, role: trip.role)
         default:
             return api.errorDescription ?? "처리하지 못했어요."
         }

@@ -606,3 +606,62 @@ final class SplitPlanParityTests: XCTestCase {
         }
     }
 }
+
+/// 권한 거절 문구가 `collab.js`와 같은 답을 내는지.
+///
+/// 픽스처는 `next`의 `forbiddenTextParity.test.ts`가 `collab.js`로 만든다.
+/// 요점 하나: **서버가 말한 이유를 화면이 뭉개지 않는다.** 서버는 왜 막았는지를 문장으로
+/// 보내는데 역할로 짐작해 덮어쓰면 "권한이 없어요" 하나만 남고 무엇을 하면 되는지가 사라진다.
+final class ForbiddenTextParityTests: XCTestCase {
+    private struct Fixture: Decodable {
+        struct Case: Decodable { let name: String; let message: String; let role: String; let text: String }
+        let cases: [Case]
+    }
+
+    private func load() throws -> Fixture {
+        let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "forbidden-text", withExtension: "json"),
+                                "forbidden-text.json 픽스처를 테스트 번들에 포함시켜야 합니다")
+        return try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: url))
+    }
+
+    private func role(_ raw: String) -> MemberRole {
+        switch raw {
+        case "OWNER": .owner
+        case "EDITOR": .editor
+        case "VIEWER": .viewer
+        default: .unknown
+        }
+    }
+
+    func testMatchesTheJavaScriptRule() throws {
+        let fixture = try load()
+        XCTAssertGreaterThan(fixture.cases.count, 0)
+        for c in fixture.cases {
+            XCTAssertEqual(CollabModel.forbiddenText(c.message, role: role(c.role)), c.text, c.name)
+        }
+    }
+
+    /// 내부 토큰이 화면 문장에 새지 않는다 — 사람에게 쓴 말만 보인다.
+    func testNeverLeaksInternalTokens() throws {
+        for c in try load().cases {
+            XCTAssertFalse(c.text.contains("FORBIDDEN"), c.name)
+            XCTAssertFalse(c.text.contains("permission denied"), c.name)
+        }
+    }
+
+    /// 문장이 없으면 역할로 짐작하고, nil도 빈 문장과 같다(서버에 묻기 전의 로컬 판정).
+    func testFallsBackToTheRoleWhenThereIsNoSentence() {
+        XCTAssertEqual(CollabModel.forbiddenText(nil, role: .viewer),
+                       "보기 권한이라 저장할 수 없어요 — 주최자에게 편집 권한을 요청하세요")
+        XCTAssertEqual(CollabModel.forbiddenText(nil, role: .editor), "이 여행을 바꿀 권한이 없어요")
+        XCTAssertEqual(CollabModel.forbiddenText("   ", role: .owner), "이 여행을 바꿀 권한이 없어요")
+    }
+
+    /// 한글이 있으면 사람에게 쓴 말이다 — 웹의 `[가-힣]`과 같은 범위.
+    func testHumanMessageMatchesTheWebRange() {
+        XCTAssertTrue(CollabModel.isHumanMessage("초대 링크는 주최자만 만들 수 있습니다."))
+        XCTAssertFalse(CollabModel.isHumanMessage("TRIP_FORBIDDEN"))
+        XCTAssertFalse(CollabModel.isHumanMessage("permission denied for table trips"))
+        XCTAssertFalse(CollabModel.isHumanMessage(""))
+    }
+}
