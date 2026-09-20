@@ -24,6 +24,8 @@ struct PlanActions {
     var selectDay: (Int, Bool) -> Void
     /// 그 날의 비용 화면을 연다. revision을 함께 넘겨 **연 뒤 문서가 바뀌면** 화면이 알 수 있게 한다.
     var openCosts: (_ day: Int, _ revision: Int) -> Void
+    /// 검색을 거치지 않고 **직접 입력**으로 장소를 만든다. 이름만 있는 장소도 일정에 남는다.
+    var createSpot: () -> Void
 }
 
 struct TripPlanView: View {
@@ -71,6 +73,14 @@ struct TripPlanView: View {
                 Menu {
                     Button("여행 전체 개요") { showsOverview = true }
                     if model.canEdit {
+                        // 시안의 툴바는 ⋯ 하나다 — 빼 온 진입점을 여기 모은다(기능을 잃지 않는다).
+                        Button { insertionAfter = nil; showsSearch = true } label: { Label("검색해서 담기", systemImage: "magnifyingglass") }
+                        Button { insertionAfter = nil; editor = .create } label: { Label("직접 입력", systemImage: "square.and.pencil") }
+                        if model.day != nil {
+                            Button(isEditing ? "순서 편집 마치기" : "순서 편집") {
+                                withAnimation { editMode?.wrappedValue = isEditing ? .inactive : .active }
+                            }
+                        }
                         Button("여행·하루 설정") { showsSettings = true }
                         Button(choosingPlaces ? "장소 선택 마치기" : "여러 장소 옮기기") {
                             choosingPlaces.toggle(); chosenPlaces = []; showsMap = false
@@ -79,24 +89,6 @@ struct TripPlanView: View {
                     }
                 } label: { Image(systemName: "ellipsis.circle") }
                 .accessibilityLabel("일정 메뉴")
-            }
-            if model.canEdit, model.day != nil {
-                // EditButton()은 앱에 한국어 번들이 없어 'Edit'으로 나왔다 — 문구를 직접 준다.
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button(isEditing ? "완료" : "편집") {
-                        withAnimation { editMode?.wrappedValue = isEditing ? .inactive : .active }
-                    }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    // 검색이 먼저다 — 좌표가 있어야 동선·ETA·지도에 들어간다. 직접 입력은 그다음.
-                    Menu {
-                        Button { insertionAfter = nil; showsSearch = true } label: { Label("검색해서 담기", systemImage: "magnifyingglass") }
-                        Button { insertionAfter = nil; editor = .create } label: { Label("직접 입력", systemImage: "square.and.pencil") }
-                    } label: {
-                        Image(systemName: "plus")
-                    }
-                    .accessibilityLabel("장소 추가")
-                }
             }
         }
         .task {
@@ -193,7 +185,8 @@ struct TripPlanView: View {
             addAfter: { index in insertionAfter = index; showsSearch = true },
             moveSpots: { indexes in prepareMove(indexes, model: model) },
             selectDay: { day, forward in goingForward = forward; model.selectedDay = day },
-            openCosts: { day, revision in costDay = day; costRevision = revision; showsCosts = true })
+            openCosts: { day, revision in costDay = day; costRevision = revision; showsCosts = true },
+            createSpot: { insertionAfter = nil; editor = .create })
     }
 
     @ViewBuilder

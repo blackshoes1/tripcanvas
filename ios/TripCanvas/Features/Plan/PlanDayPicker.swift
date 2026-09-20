@@ -41,9 +41,9 @@ struct PlanDayPicker: View {
         return Button {
             withAnimation(motion) { onSelect(entry.index, entry.index > selectedDay) }
         } label: {
-            VStack(spacing: 2) {
+            VStack(spacing: 3) {
                 HStack(spacing: 4) {
-                    Text("Day \(entry.index + 1)").font(.subheadline.weight(.semibold))
+                    Text("\(entry.index + 1)일차").font(.subheadline.weight(selected ? .semibold : .regular))
                     // 오늘은 번호보다 이 표시로 찾는다.
                     if isToday {
                         Text("오늘")
@@ -55,7 +55,8 @@ struct PlanDayPicker: View {
                     }
                 }
                 // 날짜는 탭에, 하루 제목은 목록 머리에 한 번만 표시한다.
-                if let date = selected ? TimeFormat.dayChipLabel(entry.date) : TimeFormat.dayChipShort(entry.date) {
+                // ⚠️ 고른 날과 안 고른 날이 **같은 모양**이다 — 달라지면 칩 높이가 오가며 스트립이 흔들린다.
+                if let date = TimeFormat.dayChipDate(entry.date) {
                     Text(date).font(.caption2).foregroundStyle(selected ? Ink.accent : Ink.soft)
                 }
             }
@@ -63,7 +64,7 @@ struct PlanDayPicker: View {
             .padding(.vertical, Space.s)
             .frame(minWidth: 64, minHeight: 56, alignment: .top)
             .overlay(alignment: .bottom) {
-                Rectangle().fill(selected ? Ink.accent : Ink.hairline).frame(height: selected ? 2 : 1)
+                Rectangle().fill(selected ? Ink.accent : Ink.hairline).frame(height: selected ? 2.5 : 1)
             }
             .foregroundStyle(selected ? Ink.accent : Ink.ink)
         }

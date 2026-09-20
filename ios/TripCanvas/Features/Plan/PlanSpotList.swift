@@ -82,13 +82,17 @@ struct PlanSpotList: View {
                     ForEach(model.planDay?.carReturns ?? [], id: \.bookingId) { carEventRow($0) }
                     if let back = model.planDay?.back { backRow(back) }
                     if model.canEdit && !day.spots.isEmpty && !isEditing {
-                        Button { actions.addAfter(nil) } label: {
+                        // 왼쪽 정렬 텍스트 동작(시안). 검색이 먼저다 — 좌표가 있어야 동선·ETA·지도에 들어간다.
+                        Menu {
+                            Button { actions.addAfter(nil) } label: { Label("검색해서 담기", systemImage: "magnifyingglass") }
+                            Button { actions.createSpot() } label: { Label("직접 입력", systemImage: "square.and.pencil") }
+                        } label: {
                             Label("장소 추가", systemImage: "plus")
-                                .frame(maxWidth: .infinity, minHeight: 48)
-                                .overlay(Rectangle().stroke(Ink.hairline, lineWidth: 1))
+                                .font(.body.weight(.semibold))
+                                .foregroundStyle(Ink.accent)
+                                .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+                                .contentShape(Rectangle())
                         }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(Ink.accent)
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
                     }
@@ -101,6 +105,7 @@ struct PlanSpotList: View {
                             ProgressView("이동·도착 시각을 계산하는 중").font(.caption)
                         }
                         if let totals = model.planDay?.totals { daySummary(totals) }
+                        costRow(day)
                         Button {
                             withAnimation(motion) { summaryExpanded.toggle() }
                         } label: {
@@ -117,6 +122,8 @@ struct PlanSpotList: View {
                         .buttonStyle(.plain)
                         .accessibilityAddTraits(summaryExpanded ? [.isSelected] : [])
                         if summaryExpanded { dayDetails(day) }
+                        Divider().padding(.top, Space.xs)
+                        spotsSectionHeader(day)
                     }
                     .textCase(nil)
                 } footer: {
@@ -186,34 +193,25 @@ struct PlanSpotList: View {
             removal: .move(edge: goingForward ? .leading : .trailing).combined(with: .opacity))
     }
 
+    /// 하루 제목 — `마드리드 도착 · 1박`. 승인 시안의 첫 줄이다.
+    /// ⚠️ 이동수단 바꾸기는 **접힌 요약 안으로** 옮겼다(시안 헤더에는 제목만 있다). 기능은 그대로다.
     private func dayHeader(_ day: TripDay) -> some View {
-        HStack(spacing: Space.s) {
-            // 하루 제목은 명조, 장소와 조작은 읽기 쉬운 시스템 글꼴로 구분한다.
-            Text(day.title.isEmpty ? "Day \(model.selectedDay + 1)" : day.title)
-                .font(Typeface.editorial(.title2))
+        HStack(alignment: .firstTextBaseline, spacing: Space.s) {
+            Text(dayTitleText(day))
+                .font(.title2.weight(.bold))
                 .foregroundStyle(Ink.ink)
                 .fixedSize(horizontal: false, vertical: true)
-            Spacer()
+            Spacer(minLength: Space.s)
             if model.isSaving { ProgressView().controlSize(.mini) }
-            if model.canEdit {
-                Menu {
-                    // 그날의 기본 이동수단. 구간마다 다르면 장소 편집에서 따로 정한다.
-                    Picker("이동수단", selection: Binding(
-                        get: { day.mode },
-                        set: { mode in Task { await model.setDayMode(mode) } })) {
-                        ForEach(TravelMode.allCases, id: \.self) { mode in
-                            Label(mode.label, systemImage: mode.symbol).tag(mode)
-                        }
-                    }
-                } label: {
-                    Label(day.mode.label, systemImage: day.mode.symbol)
-                        .font(.caption.weight(.semibold))
-                }
-            } else {
-                Label(day.mode.label, systemImage: day.mode.symbol).font(.caption)
-            }
         }
         .textCase(nil)
+    }
+
+    /// `마드리드 도착 · 1박`. **숙박은 문서에 있을 때만** 붙인다 — 없는 밤을 지어내지 않는다.
+    private func dayTitleText(_ day: TripDay) -> String {
+        let base = day.title.isEmpty ? "\(model.selectedDay + 1)일차" : day.title
+        let nights = day.spots.compactMap { $0.isStay ? $0.nights : nil }.max() ?? 0
+        return nights > 0 ? "\(base) · \(nights)박" : base
     }
 
     /// 그 장소가 분리 구간에 속하는지와, 거기에 누가 있는지.
@@ -261,34 +259,100 @@ struct PlanSpotList: View {
     /// 거리·미정·예산 같은 나머지는 `dayDetails`(접힘) 안에 있다.
     @ViewBuilder
     private func daySummary(_ totals: DayPlanTotals) -> some View {
-        if let line = Self.summaryLine(totals) {
-            Text(line).font(.caption).foregroundStyle(Ink.soft)
-        }
-        // 늦게 끝나는 것 자체는 문제가 아니다 — 그렇게 되어 있다고 말할 뿐이라 경고색을 쓰지 않는다.
-        // ⚠️ 예전에는 주황이었는데, 오후 4시에 끝나는 날에도 붉게 떠서 무엇이 잘못됐는지 되묻게 했다.
-        //    자정을 넘길 때(과밀)만 주의색이다 — 그건 정말 확인할 일이다.
-        if let end = totals.endMinutes {
-            Label("이대로면 \(TimeFormat.clockAcrossMidnight(end))에 끝나요", systemImage: "moon.zzz")
-                .font(.caption)
-                .foregroundStyle(totals.overloaded ? Ink.warning : Ink.soft)
+        HStack(spacing: Space.xs) {
+            if let line = Self.summaryLine(totals) {
+                Text(line)
+                    .font(.subheadline)
+                    // 늦게 끝나는 것 자체는 문제가 아니다 — 자정을 넘길 때(과밀)만 주의색이다.
+                    .foregroundStyle(totals.overloaded ? Ink.warning : Ink.soft)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
-    /// `이동 2시간 27분 · 예상 ₩456,665`. 둘 다 없으면 nil — 빈 줄을 만들지 않는다. 외화가 섞이면 '약'을 붙인다.
+    /// `이동 2시간 27분 · 종료 15:56`. 둘 다 없으면 nil — 빈 줄을 만들지 않는다.
+    ///
+    /// ⚠️ **비용은 여기 없다.** 승인 시안에서 비용은 오른쪽에 금액이 서는 제 줄로 빠졌다(`costRow`).
+    /// ⚠️ 거리는 접힌 요약에만 있다 — 첫 화면에 첫 장소가 보여야 한다.
     static func summaryLine(_ totals: DayPlanTotals) -> String? {
         var parts: [String] = []
         if totals.travelMinutes > 0 { parts.append("이동 \(TimeFormat.duration(totals.travelMinutes))") }
-        if totals.cost.total > 0 {
-            let approx = totals.cost.details?.hasForeignCurrency == true ? "약 " : ""
-            parts.append("예상 \(approx)\(TimeFormat.money(Double(totals.cost.total), currency: "KRW"))")
-        }
+        if let end = totals.endMinutes { parts.append("종료 \(TimeFormat.clockAcrossMidnight(end))") }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    /// `오늘 예상 비용        ₩458,380 ›` — 눌러서 그 날의 비용 화면으로.
+    ///
+    /// ⚠️ **계산 전·실패·금액 미정을 확정값처럼 말하지 않는다.** 금액이 없으면 `₩0`으로 꾸미지 않고
+    /// '아직 없음'이라고 말한다 — 0원인 하루와 모르는 하루는 다른 상태다.
+    @ViewBuilder
+    private func costRow(_ day: TripDay) -> some View {
+        let cost = model.planDay?.totals.cost
+        Button {
+            actions.openCosts(model.selectedDay, model.revision)
+        } label: {
+            HStack(spacing: Space.s) {
+                Text("오늘 예상 비용").font(.subheadline).foregroundStyle(Ink.ink)
+                Spacer(minLength: Space.s)
+                if let cost, cost.total > 0 {
+                    Text(TimeFormat.money(cost.total, currency: "KRW"))
+                        .font(.subheadline.weight(.semibold))
+                        .monospacedDigit()
+                        .foregroundStyle(Ink.ink)
+                } else if model.plan == nil && !model.planAttempted(for: model.selectedDay) {
+                    Text("계산 중").font(.subheadline).foregroundStyle(Ink.soft)
+                } else {
+                    Text("아직 없음").font(.subheadline).foregroundStyle(Ink.soft)
+                }
+                Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(Ink.faint)
+            }
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("하루 예산과 비용 내역 열기")
+    }
+
+    /// `방문 일정` · `순서 편집`. **편집 상태는 화면의 것 하나뿐이다** — 여기서 새로 만들지 않고
+    /// 툴바와 같은 `editMode`를 토글한다.
+    private func spotsSectionHeader(_ day: TripDay) -> some View {
+        HStack(spacing: Space.s) {
+            Text("방문 일정").font(.headline).foregroundStyle(Ink.ink)
+            Spacer(minLength: Space.s)
+            if model.canEdit, !day.spots.isEmpty {
+                Button {
+                    withAnimation { editMode?.wrappedValue = isEditing ? .inactive : .active }
+                } label: {
+                    Text(isEditing ? "완료" : "순서 편집")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Ink.accent)
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .textCase(nil)
     }
 
     /// 접어 둔 요약 — 총 이동거리 · 머무는 시간 미정 · 예약할 곳 · 하루 예산과 비용 안내. 펼쳤을 때만 보인다.
     @ViewBuilder
     private func dayDetails(_ day: TripDay) -> some View {
         VStack(alignment: .leading, spacing: Space.xs) {
+            // 하루 기본 이동수단 — 시안 헤더에서 뺐으므로 **여기가 그 진입점이다.**
+            if model.canEdit {
+                Picker(selection: Binding(get: { day.mode }, set: { mode in Task { await model.setDayMode(mode) } })) {
+                    ForEach(TravelMode.allCases, id: \.self) { mode in
+                        Label(mode.label, systemImage: mode.symbol).tag(mode)
+                    }
+                } label: {
+                    Label("하루 기본 이동수단", systemImage: day.mode.symbol)
+                }
+                .pickerStyle(.menu)
+                .font(.caption)
+            } else {
+                Label(day.mode.label, systemImage: day.mode.symbol).font(.caption).foregroundStyle(Ink.soft)
+            }
             if let totals = model.planDay?.totals, totals.distanceKm > 0 {
                 Label(String(format: "총 이동거리 %.1fkm", totals.distanceKm), systemImage: "ruler")
                     .font(.caption).foregroundStyle(Ink.soft)

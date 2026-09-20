@@ -10,7 +10,9 @@ final class UiPolishTests: XCTestCase {
         XCTAssertNil(TimeFormat.dayChipShort("언젠가"))
     }
 
-    func testSummaryLineSaysTravelAndCostOnly() throws {
+    /// 요약 한 줄은 **이동과 종료 시각**만 말한다(2026-09-20 승인 시안).
+    /// 비용은 오른쪽에 금액이 서는 제 줄로 빠졌고, 거리는 접힌 요약에만 있다.
+    func testSummaryLineSaysTravelAndEndOnly() throws {
         let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "day-plan", withExtension: "json"))
         let plan = try JSONDecoder().decode(DayPlanResponse.self, from: Data(contentsOf: url))
         let totals = plan.day.totals
@@ -18,13 +20,23 @@ final class UiPolishTests: XCTestCase {
         if totals.travelMinutes > 0 {
             XCTAssertEqual(line?.contains("이동 \(TimeFormat.duration(totals.travelMinutes))"), true)
         }
-        if totals.cost.total > 0 {
-            XCTAssertEqual(line?.contains("예상 "), true)
+        if let end = totals.endMinutes {
+            XCTAssertEqual(line?.contains("종료 \(TimeFormat.clockAcrossMidnight(end))"), true)
         }
-        if totals.travelMinutes == 0 && totals.cost.total == 0 {
+        if totals.travelMinutes == 0 && totals.endMinutes == nil {
             XCTAssertNil(line, "말할 것이 없으면 빈 줄을 만들지 않는다")
         }
         XCTAssertEqual(line?.contains("km"), false, "거리는 접힌 요약에만 있다")
+        XCTAssertEqual(line?.contains("₩"), false, "비용은 제 줄로 빠졌다")
+        XCTAssertEqual(line?.contains("예상 "), false, "비용 표현이 요약 줄에 남지 않는다")
+    }
+
+    /// 날짜 칩 아랫줄은 고른 날·안 고른 날이 **같은 모양**이다 — 달라지면 칩 높이가 오가며 스트립이 흔들린다.
+    func testDayChipDateIsTheSameShapeForEveryDay() {
+        XCTAssertEqual(TimeFormat.dayChipDate("2026-10-25"), "10.25 일")
+        XCTAssertEqual(TimeFormat.dayChipDate("2026-10-26"), "10.26 월")
+        XCTAssertNil(TimeFormat.dayChipDate(""), "날짜 없는 여행이면 줄이 빠진다")
+        XCTAssertNil(TimeFormat.dayChipDate("언젠가"))
     }
 
     func testNextActionFactsFollowExecutionOrder() {
