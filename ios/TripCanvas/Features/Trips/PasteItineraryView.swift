@@ -184,7 +184,7 @@ struct PasteItineraryView: View {
     /// 무엇이 일어났는지 줄마다 말한다 — 찾았으면 찾은 이름을, 못 찾았으면 못 찾았다고.
     private func statusText(_ row: Row) -> String {
         if !row.include { return row.item.reasons.first ?? "메모로 남겨요" }
-        if let found = row.found { return "📍 \(found.name)\(found.city.isEmpty ? "" : " · \(found.city)")" }
+        if let found = row.found { return "\(found.name)\(found.city.isEmpty ? "" : " · \(found.city)")" }
         return row.searched ? "위치를 못 찾았어요 — 담고 나서 지정할 수 있어요" : "위치 찾는 중…"
     }
 

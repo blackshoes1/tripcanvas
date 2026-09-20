@@ -159,8 +159,8 @@ test('후보 한마디: 펼치면 불러오고, 남기면 바로 목록에 붙�
       return {data:true,error:null}; };
   });
   await clickMore(page,'#candMenuBtn');
-  const cbtn=page.locator('.candActions button',{hasText:'💬'});
-  await expect(cbtn).toHaveText('💬 1');
+  const cbtn=page.locator('.candActions button.candComment .cCount');
+  await expect(cbtn).toHaveText('1');
   await expect(page.locator('.candComments')).toHaveCount(0);
   await cbtn.click();
   await expect(page.locator('.commentRow')).toHaveCount(1);
@@ -168,7 +168,7 @@ test('후보 한마디: 펼치면 불러오고, 남기면 바로 목록에 붙�
   await page.locator('.commentForm input').fill('저녁 예약이랑 가까움');
   await page.locator('.commentForm input').press('Enter');
   await expect(page.locator('.commentRow')).toHaveCount(2);
-  await expect(cbtn).toHaveText('💬 2');
+  await expect(cbtn).toHaveText('2');
   expect(await page.evaluate(()=>window.__sent.find(x=>x[0]==='add_candidate_comment')[1])).toEqual({p_candidate_id:1,p_body:'저녁 예약이랑 가까움'});
 });
 
