@@ -207,6 +207,7 @@
   /* 일행이 바꿨다는 조용한 알림 — 토스트처럼 화면을 덮지 않고, 같은 사람이 계속 바꾸면 문장만 갈린다 */
   #livePresence{background:#2e5c6e;color:#e4eef1;padding:5px 12px;font-size:12.5px;display:flex;align-items:center;gap:8px;
     border-bottom:1px solid #24505f;animation:presenceIn .18s ease-out}
+  #livePresence[hidden]{display:none}
   #livePresence::before{content:'';width:6px;height:6px;border-radius:50%;background:#9cc4d2;flex:0 0 auto}
   @keyframes presenceIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
   /* 안 보고 있는 날에 변경이 있었다는 표시 — 읽으면 사라진다 */
