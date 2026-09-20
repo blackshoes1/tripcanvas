@@ -3315,7 +3315,7 @@ test('통합: 여행 기간은 1일 밑으로도, 저장 한도 위로도 가지
   assert.equal(w.eval(`trip().days.length`), 1, '0일짜리 여행은 없다');
   w.eval(`document.getElementById('tripEditBtn').onclick();
           document.getElementById('tripDays').value='500'; document.getElementById('tripSave').onclick()`);
-  assert.equal(w.eval(`trip().days.length`), 90, '저장 한도까지만');
+  assert.equal(w.eval(`trip().days.length`), w.eval('TC_LIMITS.days'), '저장 한도까지만');
 });
 
 // ── 하루 비용의 예약·결제 구분 ──
@@ -3449,4 +3449,15 @@ test('여행 표지: 인증 조회 결과를 표시하고 계정이 바뀐 뒤 �
     await new Promise(resolve=>setTimeout(resolve,0));
     assert.equal(next.hidden,true);
     assert.equal(next.getAttribute('src'),null);
+});
+
+// ── 여행 기간 상한 (M5) ──────────────────────────────────────────────
+// 한계를 정하는 곳은 lib.js의 TC_LIMITS 하나다(검증 자체는 pure.test.js가 본다).
+// 마크업은 JS를 못 읽으므로 여기서 둘이 같은 숫자인지 대조한다 — 갈리면 입력 칸은
+// 받아 주는데 저장이 거부되거나, 반대로 칸이 저장 가능한 기간을 막는다.
+test('통합: 여행 기간 입력 칸의 max가 저장 한도와 같다', { skip: noJsdom }, () => {
+  const w = boot();
+  const max = w.eval('TC_LIMITS.days');
+  assert.equal(max, 90, '상한은 90일 — 늘리려면 일자 카드 가상 스크롤이 먼저다');
+  assert.equal(w.document.getElementById('tripDays').getAttribute('max'), String(max));
 });

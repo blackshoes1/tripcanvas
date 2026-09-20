@@ -3,7 +3,9 @@ import SwiftUI
 /// 날짜가 바뀌어도 기존 일정과 외부 예약의 절대 날짜를 보존한다.
 enum PlanCalendarChange {
     static func draft(_ original: TripDocument, start: String, count: Int) -> TripDocument? {
-        guard count >= 1 && count <= 60 else { return nil }
+        // 이미 한계보다 긴 문서(레거시 경로로 들어온 것)는 **편집을 막지 않는다** — 막으면
+        // 이름만 고치려는 사람에게도 저장이 꺼진 채 이유가 화면에 없다. 늘리는 것만 막는다.
+        guard count >= 1 && count <= TripLimits.maxDays(editing: original.days.count) else { return nil }
         if !start.isEmpty {
             guard let date = ISODateText.date(from: start), ISODateText.text(from: date) == start else { return nil }
         }
@@ -64,6 +66,9 @@ struct PlanSettingsView: View {
         _day = State(initialValue: document.hasDay(selectedDay) ? document.days[selectedDay] : TripDay())
     }
 
+    /// 이 화면에서 고를 수 있는 최대 일수. 원문이 이미 한계보다 길면 그 길이까지 허용한다(줄이는 건 되어야 한다).
+    private var maxDays: Int { TripLimits.maxDays(editing: original.days.count) }
+
     private var draft: TripDocument? {
         var document = original
         document.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -89,17 +94,17 @@ struct PlanSettingsView: View {
                     // 시작일·종료일 — 숫자로 쳐도 되고 달력을 눌러도 된다. 일수는 그 둘에서 나온다.
                     DateEntryField(title: "시작일", text: Binding(get: { start.isEmpty ? nil : start }, set: { start = $0 ?? "" }))
                     if start.isEmpty {
-                        Stepper("\(count)일 여행", value: $count, in: 1...60)
+                        Stepper("\(count)일 여행", value: $count, in: 1...maxDays)
                     } else {
                         DateEntryField(title: "종료일", text: Binding(get: { end }, set: { iso in
                             guard let iso, let base = ISODateText.date(from: start), let date = ISODateText.date(from: iso) else { return }
                             let days = (ISODateText.calendar.dateComponents([.day], from: base, to: date).day ?? 0) + 1
-                            count = min(60, max(1, days))
+                            count = min(maxDays, max(1, days))
                         }), fallback: { ISODateText.date(from: end) ?? Date() })
                         LabeledContent("기간", value: "\(count)일")
                     }
                 } header: { Text("여행") } footer: {
-                    Text(start.isEmpty ? "시작일을 정하면 종료일을 고를 수 있어요." : "종료일을 시작일보다 앞으로 두면 하루짜리가 되고, 최대 60일이에요.")
+                    Text(start.isEmpty ? "시작일을 정하면 종료일을 고를 수 있어요." : "종료일을 시작일보다 앞으로 두면 하루짜리가 되고, 최대 \(maxDays)일이에요.")
                 }
                 Section("Day \(selectedDay + 1) 하루 설정") {
                     TextField("하루 제목·지역", text: $day.title)

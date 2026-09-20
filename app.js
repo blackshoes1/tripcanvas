@@ -2393,10 +2393,10 @@ document.getElementById('tripSave').onclick=()=>{
   else if(changed<0) toast(`${-changed}일 줄였어요`,'#4f4740',{fn:()=>undoWith(snap)});
   else toast('저장됨');
 };
-/** 여행 설정의 일수 입력 — 1~90(저장 한도)으로 가둔다. @returns {number} */
+/** 여행 설정의 일수 입력 — 1~`TC_LIMITS.days`(저장 한도)로 가둔다. @returns {number} */
 function tripDaysInput(){
   const n=parseInt(document.getElementById('tripDays').value,10);
-  return Math.min(90,Math.max(1,isNaN(n)?trip().days.length:n));
+  return Math.min(TC_LIMITS.days,Math.max(1,isNaN(n)?trip().days.length:n));
 }
 /**
  * 여행 기간을 n일로 맞춘다. 늘리면 빈 일자를 뒤에 붙이고, 줄이면 뒤에서부터 덜어낸다.
@@ -2426,13 +2426,13 @@ function syncTripEndFromDays(){
   const base=new Date(start+'T00:00:00'); base.setDate(base.getDate()+n-1);
   end.value=toISO(base);
 }
-/** 종료일 → 일수. 시작일보다 앞이면 시작일 하루로 잡고, 90일(저장 한도)을 넘으면 그만큼만 */
+/** 종료일 → 일수. 시작일보다 앞이면 시작일 하루로 잡고, 저장 한도(`TC_LIMITS.days`)를 넘으면 그만큼만 */
 function syncTripDaysFromEnd(){
   const start=document.getElementById('tripStart').value, end=document.getElementById('tripEnd').value;
   if(!/^\d{4}-\d{2}-\d{2}$/.test(start)||!/^\d{4}-\d{2}-\d{2}$/.test(end)) return;
   const n=Math.round((new Date(end+'T00:00:00')-new Date(start+'T00:00:00'))/86400000)+1;
-  document.getElementById('tripDays').value=String(Math.min(90,Math.max(1,n)));
-  syncTripEndFromDays();   // 가둔 값(1~90)을 종료일에도 되돌려 준다
+  document.getElementById('tripDays').value=String(Math.min(TC_LIMITS.days,Math.max(1,n)));
+  syncTripEndFromDays();   // 가둔 값을 종료일에도 되돌려 준다
 }
 document.getElementById('tripDays').oninput=()=>{ syncTripEndFromDays(); syncTripRangeLabel(); };
 document.getElementById('tripStart').oninput=()=>{ syncTripEndFromDays(); syncTripRangeLabel(); };
