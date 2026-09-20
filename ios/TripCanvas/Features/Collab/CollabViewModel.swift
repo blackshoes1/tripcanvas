@@ -78,6 +78,16 @@ final class CollabViewModel {
         if parts == .all { loadedAt = Date() }
     }
 
+    /// 실시간으로 받은 변화를 반영한다. **바뀐 것만 다시 읽는다** — 활동 기록만 온 것이면 활동만이다.
+    /// `load()`는 4건이라 소켓이 올 때마다 부르면 #34가 없앤 "이름 하나 바꿔도 4건"이 되살아난다.
+    func applyLive(members: Bool, activity: Bool) async {
+        var parts: CollabRefresh = []
+        if members { parts.insert(.members) }
+        if activity { parts.insert(.activity) }
+        guard !parts.isEmpty else { return }
+        await reload(parts)
+    }
+
     func clearToast() { toast = nil }
     func dismissError() { errorMessage = nil }
 

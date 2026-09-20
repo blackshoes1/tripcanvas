@@ -35,6 +35,10 @@ struct TripHomeView: View {
     /// 세 화면의 모델. **여행을 보는 동안** 살아 있고, 탭을 오가도 죽지 않는다.
     @State private var models: TripScreenModels
     @State private var tab: TripHomeTab?
+    @Environment(AppEnvironment.self) private var env
+    @Environment(\.scenePhase) private var scenePhase
+    /// 이 화면의 실시간 구독 이름. 보드(`"candidates"`)와 달라야 서로를 덮어쓰지 않는다.
+    private static let liveKey = "trip"
 
     /// 탭 바의 높이. 내용이 이만큼 위에서 끝나야 마지막 줄이 바에 가리지 않는다 — 재지 않고 정한다.
     static let tabBarHeight: CGFloat = 50
@@ -94,8 +98,27 @@ struct TripHomeView: View {
             }
         }
         .onChange(of: requested) { _, value in tab = value }
+        // 여행을 보는 동안 실시간에 붙어 있는다 — 일행이 일정을 고치면 `지금`·`일정`이 그 자리에서 바뀐다.
+        // 전에는 '가고 싶은 곳' 보드가 열렸을 때만 붙어서, 다른 탭에서는 아무 일도 일어나지 않았다(2026-09-20).
+        .task(id: trip.id) { startLive() }
+        // 앱이 뒤로 가면 소켓을 붙들지 않는다(§34) — 돌아올 때 다시 붙고 그때 최신을 읽는다.
+        .onChange(of: scenePhase) { _, phase in
+            switch phase {
+            case .active: startLive()
+            case .background, .inactive: env.realtime.disconnect()
+            @unknown default: break
+            }
+        }
+        .onDisappear { env.realtime.disconnect(key: Self.liveKey) }
         .navigationTitle(trip.name)
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    /// 실시간을 붙인다. **못 붙어도 앱은 그대로** — 상태만 바뀌고 폴백(당겨서 새로고침)으로 간다.
+    private func startLive() {
+        env.realtime.connect(tripId: trip.id, key: Self.liveKey) { event in
+            Task { await models.handle(event) }
+        }
     }
 
     /// 여행 안에서만 쓰는 탭 바. 시스템 `TabView`를 쓰지 않는 이유는 위 주석에 있다.
@@ -185,6 +208,7 @@ final class TripScreenModels {
     let bookings: BookingListViewModel
     let collab: CollabViewModel
     let candidateBoard: CandidateBoardViewModel
+    private let tripId: String
 
     init(trip: TripSummary, env: AppEnvironment) {
         today = TodayViewModel(trip: trip, service: env.service)
@@ -194,6 +218,48 @@ final class TripScreenModels {
         bookings = BookingListViewModel(tripId: trip.id, service: env.service)
         collab = CollabViewModel(trip: trip, service: env.service, webBaseURL: AppConfig.webBaseURL)
         candidateBoard = CandidateBoardViewModel(trip: trip, service: env.service, documents: env.service)
+        self.tripId = trip.id
+    }
+
+    /// 실시간 이벤트 하나를 화면들에 나눈다. 무엇을 읽을지는 `TripLiveRefresh`가 정하고 여기서는 그대로 따른다.
+    func handle(_ event: RealtimeActivity) async {
+        guard event.tripId == tripId else { return }
+        let refresh = TripLiveRefresh.decide(kind: event.kind, mine: event.mine,
+                                             hasPlan: plan.document != nil,
+                                             hasToday: today.today != nil,
+                                             hasCollab: collab.loadedAt != nil)
+        if refresh.plan { await plan.load() }
+        if refresh.today { await today.load() }
+        await collab.applyLive(members: refresh.members, activity: refresh.activity)
+    }
+}
+
+/// 실시간 이벤트 하나가 **여행 화면에서** 무엇을 다시 읽게 하는가. 순수 판정 — 네트워크도 모델도 모른다.
+///
+/// **payload를 화면 상태로 쓰지 않는다**(§41): `liveEffects`(`collab.js`와 같은 규칙)가 무엇을 다시 읽을지만
+/// 정하고 내용은 API로 다시 읽는다.
+///
+/// ⚠️ **이미 내용을 든 화면만 다시 읽는다.** 닫힌 시트를 미리 채워 두지 않는다 — 열 때 `loadIfStale`이
+/// 챙기므로, 안 보는 화면 때문에 소켓이 올 때마다 네트워크를 쓰면 "방금 받은 것은 다시 받지 않는다"가
+/// 무너진다(`docs/network-audit.md`).
+///
+/// ⚠️ **후보 보드는 여기 없다** — 보드 화면이 제 구독(`key: "candidates"`)으로 직접 받는다.
+/// 여기서도 읽으면 보드가 열려 있을 때 같은 목록을 두 번 받는다.
+struct TripLiveRefresh: Equatable, Sendable {
+    var plan = false
+    var today = false
+    /// 함께하기의 **멤버 목록**. 인원·역할·이름이 바뀌었을 때만이다.
+    var members = false
+    /// 함께하기의 **활동 기록**. 아는 종류면 전부 남으므로 자주 켜지지만, 시트가 닫혀 있으면 읽지 않는다.
+    var activity = false
+
+    /// `has…`는 "그 화면이 이미 내용을 들고 있는가"다.
+    static func decide(kind: String, mine: Bool, hasPlan: Bool, hasToday: Bool, hasCollab: Bool) -> TripLiveRefresh {
+        let effects = CollabModel.liveEffects(kind: kind, mine: mine)
+        return TripLiveRefresh(plan: effects.pull && hasPlan,
+                               today: effects.pull && hasToday,
+                               members: effects.members && hasCollab,
+                               activity: effects.activity && hasCollab)
     }
 }
 
