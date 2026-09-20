@@ -58,12 +58,12 @@ final class TripDocumentTests: XCTestCase {
         XCTAssertEqual(airport.category, .transport)
         XCTAssertEqual(airport.point?.lat, 34.4342)
         XCTAssertEqual(airport.status, .planned)
-        XCTAssertFalse(airport.isMust)
+        XCTAssertEqual(airport.priority, .normal)
 
         // 좌표가 null인 장소는 '위치 없음'이지 (0,0)이 아니다 — 여기서 틀리면 동선이 오염된다.
         XCTAssertNil(first.spots[1].point)
         XCTAssertEqual(first.spots[1].arriveAt, "18:00")
-        XCTAssertTrue(first.spots[1].isMust)
+        XCTAssertEqual(first.spots[1].priority, .must)
 
         XCTAssertFalse(trip.days[1].carriesPreviousAnchor)   // startPolicy: none
     }
@@ -95,22 +95,57 @@ final class TripDocumentTests: XCTestCase {
     func testDefaultsAreNotWritten() throws {
         var spot = TripSpot(name: "새 장소")
         spot.status = .planned
-        spot.isMust = false
+        spot.priority = .normal
         spot.stayMinutes = nil
         XCTAssertNil(spot.raw["status"])
         XCTAssertNil(spot.raw["must"])
+        XCTAssertNil(spot.raw["opt"])
         XCTAssertNil(spot.raw["stayMin"])
 
         spot.status = .completed
-        spot.isMust = true
+        spot.priority = .must
         XCTAssertEqual(spot.raw["status"]?.stringValue, "COMPLETED")
         XCTAssertEqual(spot.raw["must"]?.boolValue, true)
 
         // 되돌리면 키가 다시 없어진다 — false·PLANNED를 남겨 두지 않는다.
         spot.status = .planned
-        spot.isMust = false
+        spot.priority = .normal
         XCTAssertNil(spot.raw["status"])
         XCTAssertNil(spot.raw["must"])
+    }
+
+    // MARK: 우선순위 3단
+
+    /// 저장은 `must`/`opt` 두 플래그다(웹 `lib.js`의 `applySpotPriority`와 같은 규칙).
+    /// 둘이 함께 켜질 수 없고, 기본값('보통')은 저장하지 않는다.
+    func testPriorityWritesOneFlagAtMost() throws {
+        var spot = TripSpot(name: "알함브라")
+        XCTAssertEqual(spot.priority, .normal, "기본은 보통")
+
+        spot.priority = .must
+        XCTAssertEqual(spot.raw["must"]?.boolValue, true)
+        XCTAssertNil(spot.raw["opt"])
+
+        spot.priority = .optional
+        XCTAssertEqual(spot.raw["opt"]?.boolValue, true)
+        XCTAssertNil(spot.raw["must"], "바꾸면 앞의 플래그가 남지 않는다")
+
+        spot.priority = .normal
+        XCTAssertNil(spot.raw["must"])
+        XCTAssertNil(spot.raw["opt"], "보통은 기본값이라 저장하지 않는다")
+    }
+
+    /// 옛 문서나 손으로 만든 JSON이 둘 다 들고 오면 지키는 쪽(must)으로 읽는다 — 웹과 같다.
+    func testPriorityPrefersMustWhenBothFlagsPresent() throws {
+        // raw는 private(set)이라 밖에서 못 쓴다 — 원문 트리를 그대로 주는 초기화로 만든다.
+        let spot = TripSpot(raw: ["name": .string("이상한 장소"), "must": .bool(true), "opt": .bool(true)])
+        XCTAssertEqual(spot.priority, .must)
+    }
+
+    /// 순서·문구가 웹 `SPOT_PRIORITIES`와 같아야 한다 — 갈리면 같은 장소가 다른 말로 보인다.
+    func testPriorityLabelsMatchWeb() throws {
+        XCTAssertEqual(SpotPriority.allCases.map(\.rawValue), ["MUST", "NORMAL", "OPT"])
+        XCTAssertEqual(SpotPriority.allCases.map(\.label), ["꼭 가기", "보통", "선택"])
     }
 
     func testClearingCoordinatesWritesNullNotZero() throws {

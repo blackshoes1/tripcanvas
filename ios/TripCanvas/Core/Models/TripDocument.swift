@@ -182,11 +182,22 @@ struct TripSpot: Hashable, Sendable {
         set { raw.setOrRemove("status", newValue == .planned ? nil : .string(newValue.rawValue)) }
     }
 
-    /// 꼭 가야 하는 곳. 일정 재구성이 마지막까지 지킨다. false는 저장하지 않는다.
-    var isMust: Bool {
-        get { raw["must"]?.boolValue ?? false }
-        set { raw.setOrRemove("must", newValue ? .bool(true) : nil) }
+    /// 우선순위 3단. **저장은 `must`/`opt` 두 플래그**이고(웹 `lib.js`의 `spotPriorityOf`와 같은 규칙),
+    /// 기본값(보통)은 저장하지 않는다. 둘이 함께 켜질 수 없다 — 쓸 때 앞의 것을 지운다.
+    /// ⚠️ 2026-09-20 전에는 앱이 `must`만, 웹이 `opt`만 편집할 수 있었다. 엔진은 둘 다 읽어
+    ///    재구성에서 must를 지키고 opt부터 빼므로, 화면에 없는 이유로 양쪽 추천이 갈렸다.
+    var priority: SpotPriority {
+        get {
+            if raw["must"]?.boolValue == true { return .must }
+            if raw["opt"]?.boolValue == true { return .optional }
+            return .normal
+        }
+        set {
+            raw.setOrRemove("must", newValue == .must ? .bool(true) : nil)
+            raw.setOrRemove("opt", newValue == .optional ? .bool(true) : nil)
+        }
     }
+
 
     /// 숙소. 그날의 종료 기준점(`dayAnchor`)이 되고, 숙박 예약과 연결할 수 있는 장소다.
     /// 종류(`cat: stay`)와는 별개의 표시다 — 웹의 `spotStay` 체크박스와 같다. false는 저장하지 않는다.
@@ -387,6 +398,29 @@ enum SpotCategory: String, CaseIterable, Sendable {
 }
 
 /// `lib.js`의 `_STATUS`. 자동으로 완료를 판정하지 않는다 — 사용자가 누른다.
+/// 장소 우선순위 3단 — 웹 `lib.js`의 `SPOT_PRIORITIES`와 같은 순서·같은 문구다.
+/// 저장은 `must`/`opt` 두 플래그이고 '보통'은 저장하지 않는다(`Spot.priority`).
+enum SpotPriority: String, CaseIterable, Sendable {
+    case must = "MUST", normal = "NORMAL", optional = "OPT"
+
+    var label: String {
+        switch self {
+        case .must: "꼭 가기"
+        case .normal: "보통"
+        case .optional: "선택"
+        }
+    }
+
+    /// 목록에서 한 글자로 말할 때. 보통은 아무것도 말하지 않는다.
+    var symbol: String? {
+        switch self {
+        case .must: "star.fill"
+        case .normal: nil
+        case .optional: "circle.dashed"
+        }
+    }
+}
+
 enum SpotStatus: String, CaseIterable, Sendable {
     case planned = "PLANNED", completed = "COMPLETED", skipped = "SKIPPED", cancelled = "CANCELLED"
 
