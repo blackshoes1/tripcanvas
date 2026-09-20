@@ -160,7 +160,12 @@ self_update() {
   fi
   log "  배포 스크립트를 ${sha:0:7}의 것으로 갈아 끼웠다 — 새 스크립트로 다시 시작한다"
   release_lock
-  TC_SELF_UPDATED=1 exec "$self" "${ORIG_ARGS[@]}"
+  # Bash 3.2의 nounset은 빈 배열 확장도 오류로 처리한다.
+  if [ "${#ORIG_ARGS[@]}" -eq 0 ]; then
+    TC_SELF_UPDATED=1 exec "$self"
+  else
+    TC_SELF_UPDATED=1 exec "$self" "${ORIG_ARGS[@]}"
+  fi
 }
 
 # ── 헬스체크: 컨테이너가 running인지가 아니라 **HTTP로 답하는지**를 본다 ──

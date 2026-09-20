@@ -44,6 +44,17 @@ export const trips = pgTable('trips', {
   check('trips_revision_check', sql`${t.revision} > 0`)
 ]);
 
+/** 표지는 여행 문서·공유 링크와 분리한다. 삭제도 revision을 남겨 오래된 저장을 막는다. */
+export const tripCovers = pgTable('trip_covers', {
+  tripId: uuid('trip_id').primaryKey().references(() => trips.id, { onDelete: 'cascade' }),
+  imageBase64: text('image_base64'),
+  revision: integer('revision').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, (t) => [
+  check('trip_covers_revision_check', sql`${t.revision} > 0`),
+  check('trip_covers_size_check', sql`${t.imageBase64} is null or octet_length(${t.imageBase64}) <= 333336`)
+]);
+
 /**
  * 여행 버전 이력 — 저장 전에 떠 두는 사본. 운영 스키마 그대로다.
  * 사람마다 제 행을 본다(운영 RLS가 소유자 행만 보여줬다) — 여행당 최근 15개만 남긴다.

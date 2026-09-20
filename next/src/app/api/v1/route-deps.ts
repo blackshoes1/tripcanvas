@@ -16,6 +16,9 @@ import { createMeRoutes } from '@/server/api/meRoutes';
 import { createItineraryRoutes } from '@/server/api/itineraryRoutes';
 import { createPlaceRoutes } from '@/server/api/placeRoutes';
 import { createSnapshotRoutes } from '@/server/api/snapshotRoutes';
+import { createCoverRoutes } from '@/server/api/coverRoutes';
+import { CoverService } from '@/server/application/trip/coverService';
+import { PgCoverRepository } from '@/server/infrastructure/database/pgCoverRepository';
 import { createTripRoutes } from '@/server/api/tripRoutes';
 import { TripAuthorizationService } from '@/server/application/authorization/tripAuthorization';
 import { CollabService } from '@/server/application/collaboration/collabService';
@@ -95,6 +98,15 @@ export async function tripServiceFor(ctx: RequestContext, token: string): Promis
   }
   return new TripService({ ...repos, authz: new TripAuthorizationService(repos.members) });
 }
+
+export const coverRoutes = createCoverRoutes({
+  verifier,
+  serviceFor: async (ctx, token) => {
+    const db = getDb();
+    if (!db || env.registry.TRIP !== 'NEW_BACKEND') throw new ApiError('MAINTENANCE', { message: '표지 저장 기능을 준비 중입니다.' });
+    return new CoverService(await tripServiceFor(ctx, token), new PgCoverRepository(db));
+  }
+});
 
 export const tripRoutes = createTripRoutes({ verifier, serviceFor: tripServiceFor });
 

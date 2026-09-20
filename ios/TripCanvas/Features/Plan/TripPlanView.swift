@@ -295,27 +295,20 @@ struct TripPlanView: View {
                             .padding(.horizontal, 5)
                             .padding(.vertical, 1)
                             .background(Ink.accent, in: Capsule())
-                            .foregroundStyle(.white)
+                            .foregroundStyle(Ink.paper)
                     }
                 }
-                // 고른 날만 요일·제목까지 말한다. 나머지는 번호와 날짜뿐 — 칩이 카드가 되지 않게(2026-09-18).
+                // 날짜는 탭에, 하루 제목은 목록 머리에 한 번만 표시한다.
                 if let date = selected ? TimeFormat.dayChipLabel(entry.date) : TimeFormat.dayChipShort(entry.date) {
                     Text(date).font(.caption2).foregroundStyle(selected ? Ink.accent : Ink.soft)
-                }
-                if selected {
-                    Text(entry.title.isEmpty ? subtitle(for: entry) : entry.title)
-                        .font(.caption2)
-                        .lineLimit(1)
-                        .foregroundStyle(Ink.soft)
                 }
             }
             .padding(.horizontal, Space.m)
             .padding(.vertical, Space.s)
-            .frame(minWidth: 64)
-            .background(selected ? Ink.accent.opacity(0.14) : Ink.sunken,
-                        in: RoundedRectangle(cornerRadius: Radius.card))
-            .overlay(RoundedRectangle(cornerRadius: Radius.card)
-                .stroke(isToday ? Ink.accent : .clear, lineWidth: selected ? 0 : 1))
+            .frame(minWidth: 64, minHeight: 56, alignment: .top)
+            .overlay(alignment: .bottom) {
+                Rectangle().fill(selected ? Ink.accent : Ink.hairline).frame(height: selected ? 2 : 1)
+            }
             .foregroundStyle(selected ? Ink.accent : Ink.ink)
         }
         .buttonStyle(.plain)
@@ -358,6 +351,8 @@ struct TripPlanView: View {
                             SpotRow(spot: spot, dayMode: day.mode, plan: model.planSpot(at: index),
                                 split: splitInfo(model, at: index))
                         }
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
                             // 12pt 이상 움직인 터치는 탭을 취소한다. 짧게 끌다 놓아도 편집을 열지 않는다.
                             .overlay(PlanSpotTapSurface { editSpot(index, spot: spot, model: model) })
                             .accessibilityElement(children: .combine)
@@ -386,6 +381,17 @@ struct TripPlanView: View {
                     // 반납은 장소 뒤, 숙소 복귀 앞 — 웹 일자 카드와 같은 순서다.
                     ForEach(model.planDay?.carReturns ?? [], id: \.bookingId) { carEventRow($0) }
                     if let back = model.planDay?.back { backRow(back) }
+                    if model.canEdit && !day.spots.isEmpty && !isEditing {
+                        Button { showsSearch = true } label: {
+                            Label("장소 추가", systemImage: "plus")
+                                .frame(maxWidth: .infinity, minHeight: 48)
+                                .overlay(Rectangle().stroke(Ink.hairline, lineWidth: 1))
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(Ink.accent)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                    }
                 } header: {
                     // 기본 화면은 제목·이동·비용·종료 시각까지다. 나머지(거리·미정·예산·안내)는 '오늘 요약 보기' 안에 —
                     // 일정이 요약보다 중요하고, 첫 화면에 첫 장소가 보여야 한다(2026-09-18).
@@ -437,7 +443,7 @@ struct TripPlanView: View {
                     }
                 }
             }
-            .listStyle(.insetGrouped)
+            .listStyle(.plain)
             .paperGround()
             .refreshable { await model.load() }
             // 날이 바뀌면 **새 화면**이다 — 그래야 밀려 나가고 들어오는 것이 보인다.
@@ -723,11 +729,11 @@ struct TripPlanView: View {
 
     private func dayHeader(_ model: TripPlanViewModel, day: TripDay) -> some View {
         HStack(spacing: Space.s) {
-            // 위계: 하루 제목(headline) > 장소 이름(body·semibold) > 정보(caption) > 이동(caption2 알약).
+            // 하루 제목은 명조, 장소와 조작은 읽기 쉬운 시스템 글꼴로 구분한다.
             Text(day.title.isEmpty ? "Day \(model.selectedDay + 1)" : day.title)
-                .font(.headline)
+                .font(Typeface.editorial(.title2))
                 .foregroundStyle(Ink.ink)
-                .lineLimit(1)
+                .fixedSize(horizontal: false, vertical: true)
             Spacer()
             if model.isSaving { ProgressView().controlSize(.mini) }
             if model.canEdit {
@@ -979,19 +985,20 @@ struct SpotRow: View {
                     .frame(width: 2)
             }
         }
-        .padding(.vertical, Space.xs)
+        .padding(.vertical, Space.m)
         .contentShape(Rectangle())
     }
 
     /// 아이콘·이름·시각·메모. 배치(옆/위)만 바깥에서 달라지고 내용은 하나다.
     private var mainContent: some View {
         HStack(alignment: .top, spacing: Space.m) {
-            // 장소 유형은 앱 아이콘(SF Symbols)으로 — 이모지와 섞지 않는다. 이름이 언제나 가장 먼저 읽힌다.
-            Image(systemName: spot.category?.symbol ?? "mappin")
-                .font(.body)
-                .foregroundStyle(Ink.soft)
-                .frame(width: 22, alignment: .center)
-                .padding(.top, 2)
+            VStack(spacing: Space.s) {
+                Circle().fill(Ink.accent).frame(width: 7, height: 7)
+                Rectangle().fill(Ink.hairline).frame(width: 1)
+            }
+            .frame(width: 12)
+            .padding(.top, 7)
+            .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: Space.xs) {
                 HStack(spacing: Space.s) {
                     Text(spot.name.isEmpty ? "이름 없는 장소" : spot.name)
@@ -1084,10 +1091,18 @@ struct SpotRow: View {
         return text
     }
 
-    /// 이동은 장소보다 가볍게 — 작은 알약(`LegPill`) 하나. 장소 이름이 언제나 가장 높은 우선순위다.
+    /// 이동은 장소보다 가볍게 — 얇은 선과 텍스트로 연결한다. 장소 이름이 언제나 가장 높은 우선순위다.
     private func legLine(_ leg: DayPlanLeg) -> some View {
         let mode = TravelMode(rawValue: leg.mode) ?? dayMode
-        return LegPill(symbol: mode.symbol, text: "\(TimeFormat.duration(leg.minutes)) · \(distanceText(leg.distanceKm))")
+        return HStack(spacing: Space.s) {
+            Image(systemName: mode.symbol).frame(width: 12)
+            Text("\(mode.label) \(TimeFormat.duration(leg.minutes)) · \(distanceText(leg.distanceKm))")
+                .fixedSize(horizontal: false, vertical: true)
+            Rectangle().fill(Ink.hairline).frame(height: 1).accessibilityHidden(true)
+        }
+        .font(.caption)
+        .foregroundStyle(Ink.soft)
+        .padding(.vertical, Space.s)
         .padding(.leading, secondaryIndent)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(mode.label)로 \(TimeFormat.duration(leg.minutes)), \(distanceText(leg.distanceKm))")
@@ -1117,6 +1132,7 @@ struct SpotRow: View {
     /// 시각(예약·도착)은 위에서 따로 말하므로 여기 섞지 않는다.
     private var meta: String {
         var parts: [String] = []
+        if let category = spot.category { parts.append(category.label) }
         if let stay = stayMinutes, stay > 0 { parts.append("\(stay)분 머무름") }
         if let wait = plan?.waitMinutes, wait > 0 { parts.append("대기 \(TimeFormat.duration(wait))") }
         if plan == nil, let arrive = spot.arriveAt { parts.append("도착 \(arrive)") }

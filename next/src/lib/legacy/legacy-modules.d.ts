@@ -38,6 +38,9 @@ declare module '@legacy/api.js' {
       save(id: string, document: unknown, revision: number | null, force?: boolean): Promise<CasRow>;
       tombstone(id: string, revision: number | null): Promise<CasRow>;
     };
+    covers: {
+      get(id: string): Promise<Result<{ revision: number; imageBase64: string | null }>>;
+    };
     snapshots: {
       create(id: string, name: string): Promise<Result<unknown>>;
       list(id: string): Promise<Result<Array<{ id: number; created_at: string }>>>;

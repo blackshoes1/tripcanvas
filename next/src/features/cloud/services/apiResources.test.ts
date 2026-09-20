@@ -37,3 +37,13 @@ it('price history uses trip-scoped API authorization and keeps matching booking 
   expect(merged?.hotel1.obs[0]).toMatchObject({ price: 90000, cur: 'KRW' });
   expect(merged?.other).toBeUndefined();
 });
+
+it('shared cover is fetched with the trip token and returns the same saved JPEG', async () => {
+  api.configure({ baseUrl: 'http://api.test', getToken: async () => 'token' });
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
+    expect(url).toBe('http://api.test/api/v1/trips/trip1/cover');
+    expect(init.headers).toMatchObject({ authorization: 'Bearer token' });
+    return Response.json({ revision: 2, imageBase64: '/9j/2Q==' });
+  }));
+  expect(await api.covers.get('trip1')).toMatchObject({ data: { revision: 2, imageBase64: '/9j/2Q==' }, error: null });
+});

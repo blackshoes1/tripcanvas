@@ -1,7 +1,7 @@
 const { test, expect } = require('@playwright/test');
 const { normalizeTrip } = require('../lib');
 
-async function prepare(page, { historyError = false, role = 'OWNER' } = {}) {
+async function prepare(page, { historyError = false, role = 'OWNER', coverPhoto = null } = {}) {
   let document = normalizeTrip({ id: 'nexttest', name: 'API 여행', start: '2026-09-08', days: [{ spots: [] }], future: { keep: true } });
   let revision = 1;
   const writes = [];
@@ -18,6 +18,7 @@ async function prepare(page, { historyError = false, role = 'OWNER' } = {}) {
     if (url.pathname.startsWith('/api/v1/')) {
       expect(request.headers().authorization).toBe('Bearer synthetic-session');
       if (url.pathname === '/api/v1/me') return json({ trips: [{ id: document.id, role }] });
+      if (url.pathname.endsWith('/cover')) return json({ revision: 1, imageBase64: coverPhoto });
       if (url.pathname.endsWith('/prices')) return json({ observations: [] });
       if (url.pathname === '/api/v1/sync/trips') return json({ trips: [{ id: document.id, document, revision, deletedAt: null, updatedAt: '2026-09-08T00:00:00Z' }] });
       if (url.pathname.endsWith('/snapshots')) {
@@ -96,5 +97,19 @@ test('booking edits are saved through the API without returning to itinerary', a
   await page.getByRole('button', { name: '저장', exact: true }).click();
   await expect.poll(() => state.writes.length).toBe(1);
   expect(state.document().bookings[0].title).toBe('테스트 숙소');
+  expect(state.errors).toEqual([]);
+});
+
+
+test('saved trip cover is visible to a viewer after login and reload', async ({ page }) => {
+  const sharp = require('../next/node_modules/sharp');
+  const jpeg = (await sharp({ create: { width: 8, height: 8, channels: 3, background: '#778855' } }).jpeg().toBuffer()).toString('base64');
+  const state = await prepare(page, { role: 'VIEWER', coverPhoto: jpeg });
+  await login(page);
+  const cover = page.getByRole('img', { name: 'API 여행 표지' });
+  await expect(cover).toBeVisible();
+  await expect.poll(() => cover.evaluate(img => img.naturalWidth)).toBe(8);
+  await page.reload();
+  await expect(cover).toBeVisible();
   expect(state.errors).toEqual([]);
 });

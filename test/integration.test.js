@@ -3382,3 +3382,22 @@ test('통합: 장소 모달의 3단 우선순위가 must/opt로 저장되고 다
   assert.equal('opt' in spotAt(si), false);
   w.close();
 });
+
+test('여행 표지: 인증 조회 결과를 표시하고 계정이 바뀐 뒤 도착한 사진은 버린다', { skip: noJsdom }, async () => {
+  const w=boot();
+    withTrip(w, '[{spots:[]}]');
+    w.eval(`user={id:'cover-user'}; TC_API.covers.get=async()=>({data:{revision:1,imageBase64:'/9j/2Q=='},error:null}); renderTripList();`);
+    await new Promise(resolve=>setTimeout(resolve,0));
+    const first=w.document.querySelector('img[data-cover-trip]');
+    assert.equal(first.hidden,false);
+    assert.equal(first.src,'data:image/jpeg;base64,/9j/2Q==');
+    let finish;
+    w.TC_API.covers.get=()=>new Promise(resolve=>{finish=resolve;});
+    w.eval('renderTripList()');
+    const next=w.document.querySelector('img[data-cover-trip]');
+    w.eval(`user={id:'different-user'}`);
+    finish({data:{revision:1,imageBase64:'/9j/2Q=='},error:null});
+    await new Promise(resolve=>setTimeout(resolve,0));
+    assert.equal(next.hidden,true);
+    assert.equal(next.getAttribute('src'),null);
+});
