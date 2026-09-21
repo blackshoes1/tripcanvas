@@ -39,7 +39,7 @@
     "delayMinutes": 240,
     "travelMinutesToday": 2,
     "planningMode": "ASSISTED",
-    "energyLevel": "NORMAL",
+    "energyLevel": "LOW",
     "completedActivityIds": [],
     "remainingActivityIds": [
       "d0s0",
@@ -132,28 +132,28 @@
       "acceptable": false
     },
     {
-      "id": "parity|2026-09-01|EAT|점심 시간이 비어 있어요",
-      "type": "NEXT_ACTIVITY",
-      "title": "점심 시간이 비어 있어요",
-      "description": "13:00부터 비어 있어요",
+      "id": "parity|2026-09-01|REST|조금 더 쉬기",
+      "type": "REST",
+      "title": "조금 더 쉬기",
+      "description": "지금 쉬어도 남은 일정에는 여유가 있어요",
       "reasons": [
-        "점심 시간대에 일정이 비어 있습니다",
-        "이 시간에 식사를 넣으면 남은 일정이 밀리지 않습니다"
+        "지금은 체력을 아끼는 편이 낫습니다",
+        "저녁 예약 19:00까지 360분 남았습니다"
       ],
       "impact": {
-        "timeChangeMinutes": 60,
+        "timeChangeMinutes": 90,
         "addedActivities": [],
         "removedActivities": []
       },
       "action": {
-        "kind": "EAT",
+        "kind": "REST",
         "activityId": null,
         "fromDay": null,
         "bookingId": null,
         "dropActivityIds": [],
         "startMinutes": 780
       },
-      "acceptable": false
+      "acceptable": true
     }
   ],
   "remainingActivities": [
@@ -312,5 +312,18 @@
     "startAtISO": "2026-09-01T10:00:00Z",
     "travelMinutes": 2,
     "status": "UPCOMING"
+  },
+  "intent": {
+    "text": "오늘 좀 피곤해서 많이 걷기 싫어",
+    "understood": true,
+    "reasons": [
+      "쉬고 싶다고 하셨어요",
+      "많이 걷지 않는 쪽으로 볼게요"
+    ],
+    "energyLevel": "LOW",
+    "maxTravelMinutes": 20,
+    "walkAverse": true,
+    "mealFocus": false,
+    "wantRest": false
   }
 }

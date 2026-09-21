@@ -145,7 +145,7 @@ private final class FakeTrips: TripDataSource {
     }
 
     // 이 테스트가 쓰지 않는 나머지
-    func today(tripId: String, dayIndex: Int?) async throws -> TripService.Fetched<TodayResponse> {
+    func today(tripId: String, dayIndex: Int?, intent: String?, energy: EnergyLevel?) async throws -> TripService.Fetched<TodayResponse> {
         throw APIError.notFound("안 씀")
     }
     func dayPlan(tripId: String, dayIndex: Int) async throws -> TripService.Fetched<DayPlanResponse> {

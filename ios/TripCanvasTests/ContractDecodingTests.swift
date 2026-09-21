@@ -144,6 +144,43 @@ final class DayPlanDecodingTests: XCTestCase {
     }
 }
 
+/// 자연어 요청의 에코(M8 ③). **해석은 서버가 한다** — 앱은 값을 디코딩하고 문장을 그릴 뿐이다.
+final class IntentEchoDecodingTests: XCTestCase {
+    private func loadToday() throws -> TodayResponse {
+        let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "today", withExtension: "json"),
+                                "today.json 픽스처를 테스트 번들에 포함시켜야 합니다")
+        return try JSONDecoder().decode(TodayResponse.self, from: Data(contentsOf: url))
+    }
+
+    func testDecodesWhatTheServerUnderstood() throws {
+        let echo = try XCTUnwrap(loadToday().intent, "파리티 요청에 문장이 있다")
+        XCTAssertEqual(echo.text, "오늘 좀 피곤해서 많이 걷기 싫어")
+        XCTAssertTrue(echo.understood)
+        XCTAssertEqual(echo.energyLevel, .low)
+        XCTAssertEqual(echo.maxTravelMinutes, 20)
+        XCTAssertTrue(echo.walkAverse)
+        XCTAssertFalse(echo.mealFocus)
+        XCTAssertEqual(echo.echoLine, "이렇게 이해했어요 — 쉬고 싶다고 하셨어요 · 많이 걷지 않는 쪽으로 볼게요")
+    }
+
+    /// 못 알아들었으면 **그렇게 말한다** — 알아들은 척하고 아무 제안이나 내놓지 않는다.
+    func testSaysSoWhenItDidNotUnderstand() {
+        let echo = IntentEcho(text: "asdfgh", understood: false, reasons: [], energyLevel: .normal,
+                              maxTravelMinutes: nil, walkAverse: false, mealFocus: false, wantRest: false)
+        XCTAssertEqual(echo.echoLine, "그 문장은 아직 못 알아들었어요 — 아래 컨디션으로 알려 주세요")
+    }
+
+    /// ⚠️ 옛 서버는 이 키를 보내지 않는다 — 옵셔널이 아니면 앱이 오늘 화면을 통째로 못 읽는다.
+    func testOlderServersWithoutTheKeyStillDecode() throws {
+        var raw = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf:
+            XCTUnwrap(Bundle(for: Self.self).url(forResource: "today", withExtension: "json")))) as? [String: Any])
+        raw.removeValue(forKey: "intent")
+        let data = try JSONSerialization.data(withJSONObject: raw)
+        let decoded = try JSONDecoder().decode(TodayResponse.self, from: data)
+        XCTAssertNil(decoded.intent)
+    }
+}
+
 /// 밖에서 들어온 주소를 여는 규칙(M8). 웹 `safeUrl()`과 같다 — `http`·`https`만 연다.
 final class SafeURLTests: XCTestCase {
     func testOpensOnlyWebLinks() {

@@ -40,6 +40,16 @@ final class TodayViewModel {
     /// 수락/완료 직후의 짧은 확인 문구. 명령형이 아니라 결과를 알려주는 톤으로.
     private(set) var toast: String?
 
+    // MARK: 자연어 요청 — 해석은 서버(`adaptive.js`)가 한다(§엔진은 하나다)
+
+    /// 지금 적용 중인 문장. **기기에만 있고 저장되지 않는다** — 요청마다 실어 보낼 뿐이다.
+    /// 웹도 같다(`adaptIntent`는 기기 로컬이다).
+    private(set) var intentText = ""
+    /// 화면에서 고른 컨디션. 문장이 컨디션을 말하면 서버가 그쪽을 쓴다.
+    private(set) var energy: EnergyLevel = .normal
+    /// 서버가 무엇으로 이해했는지. 문장을 보내지 않았으면 nil이다.
+    var intentEcho: IntentEcho? { today?.intent }
+
     private let service: TripDataSource
 
     init(trip: TripSummary, service: TripDataSource) {
@@ -82,12 +92,16 @@ final class TodayViewModel {
         // 지난번 화면을 **먼저** 그린다 — 서버를 기다리는 동안 빈 스피너 대신 마지막으로 본 오늘이 보인다.
         // ⚠️ 문서가 그때 그대로일 때만(목록이 아는 revision과 같을 때) — 편집한 뒤의 옛 일정을 잠깐이라도
         //    보여 주면 틀린 것을 말하는 것이다. 시각은 서버 답이 오면 갈아끼워진다.
-        if today == nil, let cached = await service.cachedToday(tripId: trip.id), cached.trip.revision == trip.revision {
+        // ⚠️ 문장을 적용 중이면 지난 화면을 먼저 그리지 않는다 — 그 캐시는 문장 없이 받은 것이라
+        //    "이렇게 이해했어요"가 붙지 않은 옛 제안이 잠깐 보인다.
+        if today == nil, intentText.isEmpty,
+           let cached = await service.cachedToday(tripId: trip.id), cached.trip.revision == trip.revision {
             guard generation == contentGeneration else { return }
             today = cached
         }
         do {
-            let fetched = try await service.today(tripId: trip.id, dayIndex: nil)
+            let fetched = try await service.today(tripId: trip.id, dayIndex: nil,
+                                                   intent: intentText, energy: energy)
             guard generation == contentGeneration, today == nil || fetched.value.trip.revision >= revision else { return }
             today = fetched.value
             cachedAt = fetched.cachedAt
@@ -98,6 +112,36 @@ final class TodayViewModel {
             guard generation == contentGeneration else { return }
             loadErrorMessage = error.localizedDescription
         }
+    }
+
+    /// 문장을 적용한다. **해석하지 않는다** — 서버에 실어 보내고 돌아온 에코를 그릴 뿐이다.
+    /// 같은 문장을 다시 보내면 아무 일도 하지 않는다(키보드를 내릴 때마다 왕복하지 않게).
+    func applyIntent(_ text: String) async {
+        let said = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard said != intentText else { return }
+        intentText = said
+        await reloadForIntent()
+    }
+
+    /// 컨디션 버튼. 문장이 컨디션을 말하면 서버가 그쪽을 쓰므로 여기서 겨루지 않는다.
+    func setEnergy(_ level: EnergyLevel) async {
+        guard level != energy else { return }
+        energy = level
+        await reloadForIntent()
+    }
+
+    /// 문장을 걷는다 — 컨디션은 그대로 둔다(따로 고른 것이라 함께 지우면 놀란다).
+    func clearIntent() async {
+        guard !intentText.isEmpty else { return }
+        intentText = ""
+        await reloadForIntent()
+    }
+
+    /// 옵션이 바뀌었으니 **바로** 다시 받는다(`loadIfStale`의 60초를 지나지 않는다 —
+    /// 방금 말한 것이 반영되지 않으면 말을 안 들은 것으로 보인다).
+    private func reloadForIntent() async {
+        loadedAt = nil
+        await load()
     }
 
     // MARK: 일정 실행 상태 — 한 번의 터치로 끝난다(§17)
@@ -186,7 +230,8 @@ final class TodayViewModel {
         isRetrying = true
         defer { isRetrying = false }
         do {
-            let fetched = try await service.today(tripId: trip.id, dayIndex: nil)
+            let fetched = try await service.today(tripId: trip.id, dayIndex: nil,
+                                                   intent: intentText, energy: energy)
             guard fetched.cachedAt == nil else { throw APIError.offline }
             guard fetched.value.trip.revision >= revision else { throw APIError.stale("최신 일정을 확인하지 못했어요. 다시 확인해 주세요.") }
             contentGeneration += 1

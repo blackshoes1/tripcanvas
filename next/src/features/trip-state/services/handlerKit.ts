@@ -3,7 +3,7 @@
 // ⚠️ **여기 있는 규칙을 라우트가 다시 만들지 않는다.** 예전에는 인증·조회 다섯 줄이 핸들러마다
 // 그대로 적혀 있었고(19곳), 같은 규칙을 열아홉 번 적으면 한 곳만 고쳐지는 날이 온다.
 import type {
-  ApiError, ApiErrorCode, BookingCandidate, BookingListResponse, DeviceRegistration,
+  ApiError, ApiErrorCode, BookingCandidate, BookingListResponse, DeviceRegistration, EnergyLevel,
   ImportCommitResponse, ImportPreviewResponse, MemoryCreateResponse, MemoryEvent, MemoryListResponse,
   MutationResponse, NotificationPlanItem, PlanPreviewResponse, TodayResponse, TravelStateResponse, TripListResponse
 } from '../domain/contract';
@@ -209,6 +209,24 @@ export function readPoint(raw: unknown): { lat: number; lng: number } | null {
   return { lat, lng };
 }
 
+/**
+ * 자연어 요청과 화면이 고른 컨디션. 둘 다 **저장하지 않고** 이번 계산에만 쓴다(위치와 같은 규칙).
+ *
+ * ⚠️ 문장은 길이를 잘라서 받는다 — 규칙 파서가 보는 것은 앞부분이고, 사람이 쓴 문장이
+ *    로그·응답에 통째로 실려 커지는 것을 막는다.
+ */
+export function readIntent(url: URL): { intent: string | null; energyLevel: EnergyLevel } {
+  const raw = (url.searchParams.get('intent') ?? '').trim();
+  const energy = (url.searchParams.get('energy') ?? '').toUpperCase();
+  return {
+    intent: raw ? raw.slice(0, INTENT_MAX_CHARS) : null,
+    energyLevel: energy === 'LOW' || energy === 'HIGH' ? energy : 'NORMAL'
+  };
+}
+
+/** 자연어 요청 길이 상한. 규칙 파서가 보는 것은 앞부분이고, 긴 글은 요청이 아니라 붙여넣기다. */
+export const INTENT_MAX_CHARS = 200;
+
 export function readDayIndex(url: URL): number | undefined {
   const raw = url.searchParams.get('day');
   if (raw == null || raw === '') return undefined;
@@ -300,10 +318,13 @@ export function createKit(deps: HandlerDeps): HandlerKit {
     const clock = resolveClock(row.data, dayIndex ?? null, url, now());
     const dismissed = await gateway.listDismissed(row.client_id, clock.todayISO).catch((): string[] => []);
     const legs = await legCacheFor(row.data, resolveDayIndex(row.data, clock.todayISO, dayIndex));
+    // 자연어 요청·컨디션은 쿼리로만 온다 — 해석은 `computeToday` 안의 엔진이 한다(여기서 판정하지 않는다).
+    const said = readIntent(url);
     return computeToday({
       tripId: row.client_id, trip: row.data, revision: row.revision, updatedAt: row.updated_at,
       role: row.role, memberCount: row.member_count,
       todayISO: clock.todayISO, nowMinutes: clock.nowMinutes, dayIndex, dismissed, legCache: legs.cache,
+      intent: said.intent, energyLevel: said.energyLevel,
       generatedAt: now().toISOString(), ...extra
     }).response;
   }

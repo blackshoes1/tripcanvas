@@ -9,7 +9,8 @@ import Foundation
 @MainActor
 protocol TripDataSource {
     func trips() async throws -> TripService.Fetched<[TripSummary]>
-    func today(tripId: String, dayIndex: Int?) async throws -> TripService.Fetched<TodayResponse>
+    /// `intent`·`energy`는 이번 계산에만 쓰는 옵션이다 — 서버가 해석하고 아무것도 저장하지 않는다.
+    func today(tripId: String, dayIndex: Int?, intent: String?, energy: EnergyLevel?) async throws -> TripService.Fetched<TodayResponse>
     func dayPlan(tripId: String, dayIndex: Int) async throws -> TripService.Fetched<DayPlanResponse>
     /// 디스크에 남아 있는 지난번 오늘 화면. **네트워크를 쓰지 않는다** — 화면을 먼저 채우는 용도다.
     func cachedToday(tripId: String) async -> TodayResponse?
@@ -74,13 +75,26 @@ final class TripService: TripDataSource {
         }
     }
 
-    func today(tripId: String, dayIndex: Int? = nil) async throws -> Fetched<TodayResponse> {
+    /// 오늘 화면. `intent`(자연어 요청)와 `energy`(컨디션)는 **보내기만 하고 저장되지 않는다** —
+    /// 해석은 서버의 엔진(`adaptive.js`)이 하고 앱은 결과를 그린다.
+    ///
+    /// ⚠️ 문장을 보낸 응답은 **디스크에 담지 않는다.** 그 캐시는 다음에 화면을 열 때 먼저 그려지는데,
+    ///    한 번 한 요청("배고파")이 다음 날 아침에 되살아나면 안 된다.
+    /// ⚠️ 이 문장을 `travel-state`에는 싣지 않는다 — 컨디션이 `stateVersion`에 들어가 있어
+    ///    타이핑마다 잠금화면·위젯이 다시 그려진다.
+    func today(tripId: String, dayIndex: Int? = nil,
+               intent: String? = nil, energy: EnergyLevel? = nil) async throws -> Fetched<TodayResponse> {
         var query: [URLQueryItem] = []
         if let dayIndex { query.append(URLQueryItem(name: "day", value: String(dayIndex))) }
+        let said = (intent ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if !said.isEmpty { query.append(URLQueryItem(name: "intent", value: said)) }
+        if let energy, energy != .normal, energy != .unknown {
+            query.append(URLQueryItem(name: "energy", value: energy.rawValue))
+        }
         let key = TripCache.todayKey(tripId: tripId, dayIndex: dayIndex)
         do {
             let response: TodayResponse = try await api.get("/api/v1/trips/\(tripId)/today", query: query)
-            await cache.save(response, key: key)
+            if said.isEmpty { await cache.save(response, key: key) }
             return Fetched(value: response, cachedAt: nil)
         } catch let error as APIError where error.isOffline {
             guard let cached = await cache.load(TodayResponse.self, key: key) else { throw error }

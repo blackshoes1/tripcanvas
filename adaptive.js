@@ -610,6 +610,30 @@
     return {energyLevel, prefs, reasons, understood:reasons.length>0};
   }
 
+  /** 화면이 고른 컨디션. 모르는 값은 보통으로 — 계약 밖의 문자열이 점수 계산에 들어가지 않게. @param {unknown} v @returns {EnergyLevel} */
+  function normEnergy(v){ const s=String(v==null?'':v).toUpperCase(); return (s==='LOW'||s==='HIGH')?/** @type {any} */(s):'NORMAL'; }
+
+  /**
+   * 문장과 **이미 고른 컨디션**을 합쳐 이번 추천에 쓸 옵션을 정한다.
+   *
+   * 규칙 둘 — 웹(`applyIntent`)과 서버(`/api/v1/.../today`)가 같은 답을 내야 한다:
+   * - **컨디션은 문장이 말했을 때만 덮어쓴다.** 안 말했으면 버튼으로 고른 값이 남는다
+   *   ("가까운 데만" 한 마디에 컨디션이 보통으로 돌아가면 안 된다).
+   * - **조건은 문장이 통째로 정한다.** 앞 문장의 조건은 남지 않는다 —
+   *   "많이 걷기 싫어" 뒤에 "밥 먹자"라고 하면 지금 원하는 건 밥이지 걷기 제한이 아니다.
+   *
+   * @param {string} text  사람이 쓴 문장. 비어 있으면 해석하지 않고 고른 컨디션만 돌려준다
+   * @param {{energyLevel?:unknown}=} base  화면이 이미 고른 값
+   * @returns {{energyLevel:EnergyLevel, prefs:any, reasons:string[], understood:boolean}}
+   */
+  function resolveIntent(text, base){
+    const picked=normEnergy((base||{}).energyLevel);
+    const t=String(text==null?'':text).trim();
+    if(!t) return {energyLevel:picked, prefs:{}, reasons:[], understood:false};
+    const r=parseIntent(t);
+    return {energyLevel:r.energyLevel||picked, prefs:r.prefs, reasons:r.reasons, understood:r.understood};
+  }
+
   // ── 9. 출발 안내 ─────────────────────────────────────────────────
   /**
    * "10:40쯤 출발하면 좋습니다" / "지금 출발하면 약 28분 여유" / "지금 출발해도 12분 늦습니다".
@@ -919,7 +943,7 @@
     if(state.nextFixed) candidates.push(state.nextFixed.startMin);
     return Math.round(Math.min.apply(null, candidates));
   }
-  const API={ADAPT_CFG, MEAL_WINDOWS, DAY_SEGMENTS, SAFETY_BUFFER, NOTIFICATION_KINDS, safetyBufferFor, departurePlan, tripPulse, stateVersion, notificationPlan, pendingNotifications, suggestionExpiryMin, parseIntent, departureAdvice, fillGaps, planDayFlow, segmentLabel, currentDayIndex, daysUntilStart, weekdayOf, commitmentOf, priorityOf, statusOf, planningModeHint,
+  const API={ADAPT_CFG, MEAL_WINDOWS, DAY_SEGMENTS, SAFETY_BUFFER, NOTIFICATION_KINDS, safetyBufferFor, departurePlan, tripPulse, stateVersion, notificationPlan, pendingNotifications, suggestionExpiryMin, parseIntent, resolveIntent, departureAdvice, fillGaps, planDayFlow, segmentLabel, currentDayIndex, daysUntilStart, weekdayOf, commitmentOf, priorityOf, statusOf, planningModeHint,
     buildTripState, findFreeWindows, mealOverlap, buildCandidates, rankNextActions, simulate, generateReplan,
     calcSuggestionImpact, suggestionKey, buildSuggestions, feedbackEntry, travelMinutes};
   if(typeof module!=='undefined' && module.exports) module.exports=API;   // Node (테스트)

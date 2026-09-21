@@ -314,7 +314,8 @@
       "startAtISO": "2026-09-01T10:00:00Z",
       "travelMinutes": 2,
       "status": "READY_TO_LEAVE"
-    }
+    },
+    "intent": null
   },
   "pulse": {
     "code": "ON_TRACK",
