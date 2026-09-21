@@ -114,6 +114,38 @@ final class TripDocumentTests: XCTestCase {
         XCTAssertNil(spot.raw["must"])
     }
 
+    // MARK: 참여자(누가 가나요)
+
+    /// `who`는 비어 있으면 '모두'이고 기본값이라 저장하지 않는다(§26).
+    func testParticipantsDefaultIsEveryoneAndIsNotWritten() throws {
+        var spot = TripSpot(name: "카와카미안")
+        XCTAssertEqual(spot.participants, [], "고르지 않은 것이 기본이고 그게 모두다")
+        XCTAssertNil(spot.raw["who"])
+
+        spot.participants = ["u1", "u2"]
+        XCTAssertEqual(spot.raw["who"]?.arrayValue?.compactMap(\.stringValue), ["u1", "u2"])
+
+        // 되돌리면 키가 다시 없어진다 — 빈 배열을 남겨 두지 않는다.
+        spot.participants = []
+        XCTAssertNil(spot.raw["who"])
+    }
+
+    /// 참여자를 고쳐도 **분리 묶음은 그대로다** — `raw`를 통째로 들고 아는 필드만 덮어 쓴다.
+    /// ⚠️ 이게 깨지면 메모 한 줄 고치는 저장에 일행의 나란한 일정이 통째로 풀린다.
+    func testEditingParticipantsKeepsTheSplitGroup() throws {
+        var trip = try load()
+        var spot = trip.days[0].spots[0]
+        XCTAssertEqual(spot.participants, ["u1", "u2"], "픽스처의 첫 장소는 분리 안에 있다")
+
+        spot.participants = ["u1"]
+        trip.updateSpot(dayIndex: 0, at: 0, with: spot)
+
+        let edited = try XCTUnwrap(encoded(trip)["days"]?.arrayValue?[0]["spots"]?.arrayValue?[0].objectValue)
+        XCTAssertEqual(edited["who"]?.arrayValue?.compactMap(\.stringValue), ["u1"])
+        XCTAssertEqual(edited["split"]?.stringValue, "a", "묶음 키는 이 편집기가 만들지도 지우지도 않는다")
+        XCTAssertEqual(edited["reunion"]?.boolValue, true, "합류 표시도 그대로 물려받는다")
+    }
+
     // MARK: 우선순위 3단
 
     /// 저장은 `must`/`opt` 두 플래그다(웹 `lib.js`의 `applySpotPriority`와 같은 규칙).

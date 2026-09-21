@@ -52,6 +52,10 @@ struct SpotEditorView: View {
     let dayCount: Int
     let currentDay: Int
     let contextLabel: String?
+    /// 이름표를 만들 멤버들. 혼자 쓰는 여행에서는 비어 있고, 그때 '누가 가나요'는 아예 뜨지 않는다.
+    let members: [MemberView]
+    /// 참여자를 고를 수 있는지 판정할 내 역할(`canAssignWho`). 보기 권한은 고르지 못한다.
+    let role: MemberRole
     let onSave: (TripSpot) async -> String?
     let onDelete: (Int) async -> String?
     let onMoveToDay: (Int, Int, TripSpot) async -> String?
@@ -71,6 +75,8 @@ struct SpotEditorView: View {
          dayCount: Int,
          currentDay: Int,
          contextLabel: String? = nil,
+         members: [MemberView] = [],
+         role: MemberRole = .owner,
          onSave: @escaping (TripSpot) async -> String?,
          onDelete: @escaping (Int) async -> String?,
          onMoveToDay: @escaping (Int, Int, TripSpot) async -> String?) {
@@ -78,11 +84,56 @@ struct SpotEditorView: View {
         self.dayCount = dayCount
         self.currentDay = currentDay
         self.contextLabel = contextLabel
+        self.members = members
+        self.role = role
         self.onSave = onSave
         self.onDelete = onDelete
         self.onMoveToDay = onMoveToDay
         _draft = State(initialValue: target.spot)
         _costText = State(initialValue: MoneyInput.text(amount: target.spot.cost))
+    }
+
+    /// 고를 사람이 둘 이상이고 내가 일정을 바꿀 수 있을 때만 묻는다 — 웹 `drawWhoChips`와 같은 조건이다.
+    /// 혼자 쓰는 여행에서는 아예 뜨지 않는다(고를 사람이 없다).
+    private var showsParticipants: Bool {
+        assignableMembers.count > 1 && CollabModel.canAssignWho(role)
+    }
+
+    private var assignableMembers: [MemberView] {
+        members.filter { !$0.userId.isEmpty }
+    }
+
+    /// "누가 가나요" — 아무도 고르지 않은 것이 기본이고 그게 '모두'다(§26).
+    ///
+    /// ⚠️ **전원을 고르면 '모두'로 되돌린다**(웹과 같은 규칙) — 같은 뜻을 두 가지 모양으로 저장하면
+    ///    `whoKey`가 다르게 갈라 같은 일정이 분리된 것처럼 보인다.
+    private var participantsSection: some View {
+        Section {
+            // 칩이 줄을 넘어가게 — 이름이 길면 넷도 한 줄에 안 들어간다(`FlowLayout`은 취향 칩과 같은 것).
+            FlowLayout(spacing: Space.s) {
+                ParticipantChip(label: "모두", isOn: draft.participants.isEmpty) {
+                    draft.participants = []
+                }
+                ForEach(assignableMembers) { member in
+                    ParticipantChip(label: member.me ? "나" : CollabModel.memberName(member),
+                                    isOn: draft.participants.contains(member.userId)) {
+                        toggleParticipant(member.userId)
+                    }
+                }
+            }
+            .padding(.vertical, Space.xs)
+        } header: {
+            Text("누가 가나요")
+        } footer: {
+            Text("고르지 않으면 **모두**예요. 몇 명만 고르면 같은 시간에 다른 일정을 둘 수 있어요.")
+        }
+    }
+
+    /// 켜고 끄는 규칙은 `collab.js`의 `pickWho` 하나다 — 화면이 따로 판정하지 않는다.
+    private func toggleParticipant(_ userId: String) {
+        draft.participants = CollabModel.pickWho(draft.participants,
+                                                 toggling: userId,
+                                                 all: assignableMembers.map(\.userId))
     }
 
     var body: some View {
@@ -204,6 +255,8 @@ struct SpotEditorView: View {
                         Text("숙소는 그날의 마지막 기준점이 됩니다. 숙박 예약은 예약 화면에서 이 숙소와 연결합니다.")
                     }
                 }
+
+                if showsParticipants { participantsSection }
 
                 Section("메모") {
                     TextField("메모", text: $draft.desc, axis: .vertical)
@@ -369,5 +422,25 @@ enum ClockText {
         guard isValid(text) else { return 0 }
         let split = Self.parts(text)
         return split.hour * 60 + split.minute
+    }
+}
+
+/// 참여자 칩 하나. 고른 것은 `Ink.accent`다 — 색은 뜻이고, 여기서는 '고른 것'이다.
+struct ParticipantChip: View {
+    let label: String
+    let isOn: Bool
+    let toggle: () -> Void
+
+    var body: some View {
+        Button(action: toggle) {
+            Text(label)
+                .font(.subheadline.weight(isOn ? .semibold : .regular))
+                .padding(.horizontal, Space.m)
+                .padding(.vertical, Space.xs + 2)
+                .background(isOn ? Ink.accent.opacity(0.18) : Color(.tertiarySystemFill), in: Capsule())
+                .foregroundStyle(isOn ? Ink.accent : .primary)
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isOn ? [.isSelected] : [])
     }
 }

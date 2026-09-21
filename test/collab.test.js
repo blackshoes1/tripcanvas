@@ -640,6 +640,29 @@ test('참여자 지정은 편집 권한이다 — 의견이 아니라 일정 변
   assert.equal(C.canAssignWho('VIEWER'), false);
 });
 
+test('pickWho — 전원을 고르면 모두로 되돌아간다', () => {
+  const all=[M1,M2,M3];
+  // 전원을 고른 것과 아무도 안 고른 것은 같은 뜻인데(§26), 다른 모양으로 저장하면
+  // whoKey가 'u1,u2,u3'와 '*'로 갈려 갈라지지 않은 하루가 분리된 것처럼 보인다.
+  assert.deepEqual(C.pickWho([M1,M2], M3, all), []);
+  assert.deepEqual(C.pickWho([], M2, all), [M2]);
+  assert.deepEqual(C.pickWho([M2], M2, all), [], '다시 누르면 모두로 돌아간다');
+});
+
+test('pickWho — 고른 순서가 아니라 멤버 순서로 담는다', () => {
+  const all=[M1,M2,M3];
+  // 같은 선택이 늘 같은 배열이라야 웹에서 고른 것과 앱에서 고른 것이 같은 문서가 된다.
+  assert.deepEqual(C.pickWho([M3], M1, all), [M1,M3]);
+  assert.deepEqual(C.pickWho([M1], M3, all), [M1,M3]);
+});
+
+test('pickWho — 모르는 id는 떨어진다', () => {
+  // 이름표도 못 붙는 사람(나간 멤버)을 참여자로 남기지 않는다.
+  assert.deepEqual(C.pickWho(['ghost'], M1, [M1,M2,M3]), [M1]);
+  assert.deepEqual(C.pickWho(null, M1, [M1,M2,M3]), [M1], '값이 없어도 죽지 않는다');
+  assert.deepEqual(C.pickWho([M1], M1, null), [], '고를 사람 목록이 없으면 모두다');
+});
+
 test('reactorIds — 이름이 아니라 id로 가른다 (동명이인)', () => {
   const cand={reactions:[
     {user_id:M1, name:'민수', reaction:'MUST', me:true},

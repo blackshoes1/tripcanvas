@@ -188,14 +188,14 @@ final class TripPlanViewModelTests: XCTestCase {
     // 스트립은 "며칠째"만이 아니라 **언제, 어떤 날**인지 말해야 한다. 날짜는 서버가 준 것을 쓴다.
 
     private func plan(days: Int = 2, todayIndex: Int = -1, selected: Int = 0, spotsInFirstDay: Int = 1,
-                      legsPending: Int = 0, revision: Int = 7) -> DayPlanResponse {
+                      legsPending: Int = 0, revision: Int = 7, memberCount: Int? = nil) -> DayPlanResponse {
         let strip = (0..<days).map { i in
             DayPlanStripEntry(index: i, date: "2026-10-0\(i + 1)", title: "Day \(i + 1)",
                               spotCount: i == 0 ? spotsInFirstDay : 0)
         }
         let summary = TripSummary(id: "t1", name: "오사카", start: "2026-10-01", dayCount: days, revision: revision,
                                   updatedAt: "", timeZone: "Asia/Seoul", cities: [],
-                                  todayIndex: todayIndex, daysUntilStart: nil, role: nil, memberCount: nil)
+                                  todayIndex: todayIndex, daysUntilStart: nil, role: nil, memberCount: memberCount)
         let day = DayPlanDay(index: selected, date: strip[selected].date, title: "", note: "", mode: "car",
                              startMinutes: 540, timeZone: "Asia/Seoul", carriedStay: nil, spots: [],
                              carPickups: [], carReturns: [], back: nil, spotsWithoutLocation: 0, splits: [], flight: nil,
@@ -266,8 +266,8 @@ final class TripPlanViewModelTests: XCTestCase {
     // **없는 장소의 도착 시각**을 보여 주게 된다 — 그래서 어긋나면 조용히 감춘다.
 
     private func planWithSpots(_ count: Int, day dayIndex: Int = 0, revision: Int = 7,
-                               names: [String] = []) -> DayPlanResponse {
-        var base = plan(days: 2, selected: dayIndex, revision: revision)
+                               names: [String] = [], memberCount: Int? = nil) -> DayPlanResponse {
+        var base = plan(days: 2, selected: dayIndex, revision: revision, memberCount: memberCount)
         let spots = (0..<count).map { i in
             DayPlanSpot(index: i, name: names.indices.contains(i) ? names[i] : "장소 \(i)",
                         city: "오사카", category: nil, location: nil,
@@ -425,6 +425,22 @@ final class TripPlanViewModelTests: XCTestCase {
 
         XCTAssertFalse(model.hasSplits)
         XCTAssertEqual(members.calls, 0)
+    }
+
+    /// 일행이 있으면 **분리가 없어도** 멤버를 받는다 — 그래야 '누가 가나요'가 떠 첫 분리를 만들 수 있다.
+    /// ⚠️ 예전에는 `hasSplits`만 봤다. 분리가 없으면 멤버가 없고, 멤버가 없으면 고를 칸이 없어
+    ///    분리가 영영 생기지 않는 닭과 달걀이었다.
+    func testFetchesMembersForASharedTripWithoutSplits() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(), revision: 7, role: .owner))
+        service.dayPlanResponse = planWithSpots(1, memberCount: 3)     // 분리는 없고 일행은 있다
+        let source = FakeMembers([MemberView(id: 1, userId: "u1", role: .owner, status: "ACTIVE",
+                                             displayName: "나야", joinedAt: nil, me: true)])
+        let model = TripPlanViewModel(tripId: "t1", service: service, memberSource: source)
+        await model.load()
+
+        XCTAssertFalse(model.hasSplits)
+        XCTAssertEqual(source.calls, 1)
+        XCTAssertEqual(model.members.count, 1)
     }
 
     func testClockTextRoundTrip() {

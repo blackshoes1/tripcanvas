@@ -191,6 +191,23 @@ enum CollabModel {
     /// ⚠️ 둘을 하나로 합치면 남의 여행을 지우거나, 내 여행에서 조용히 나가진다.
     static func canDelete(_ role: MemberRole) -> Bool { role == .owner }
     static func canPropose(_ role: MemberRole) -> Bool { canEdit(role) }
+    /// 참여자 지정은 일정을 바꾸는 일이다 — 의견이 아니라 편집 권한(§12).
+    /// ⚠️ `collab.js`의 `canAssignWho` 복사본이다. `who-text.json` 픽스처가 대조한다.
+    static func canAssignWho(_ role: MemberRole) -> Bool { canEdit(role) }
+
+    /// 참여자 칩 하나를 켜고 끈 뒤의 `spot.who`.
+    ///
+    /// ⚠️ `collab.js`의 `pickWho` **복사본**이다 — `who-text.json` 픽스처가 대조한다.
+    /// ⚠️ **전원을 고르면 비운다**: '모두'와 뜻이 같은데(§26) 둘을 다른 모양으로 저장하면
+    ///    `whoKey`가 `"u1,u2,u3"`와 `"*"`로 갈려, 아무도 갈라지지 않은 하루가 분리된 것처럼 보인다.
+    /// ⚠️ 고른 순서가 아니라 **멤버 순서**로 담는다 — 웹에서 고른 것과 앱에서 고른 것이 같은 배열이라야
+    ///    같은 문서가 된다. 모르는 id(나간 사람)는 떨어진다.
+    static func pickWho(_ who: [String], toggling userId: String, all ids: [String]) -> [String] {
+        var next = Set(who)
+        if next.contains(userId) { next.remove(userId) } else { next.insert(userId) }
+        let picked = ids.filter(next.contains)
+        return picked.count == ids.count ? [] : picked
+    }
     /// 반응·코멘트는 활성 멤버라면 누구나 — 의견을 내는 것은 일정을 바꾸는 것이 아니다.
     static func canReact(_ role: MemberRole) -> Bool { role != .unknown }
     static func canComment(_ role: MemberRole) -> Bool { role != .unknown }

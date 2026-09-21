@@ -213,6 +213,18 @@ struct TripSpot: Hashable, Sendable {
     }
 
 
+    /// 이 장소에 가는 사람들(user_id). **비어 있으면 모든 여행자다**(§26) — 기본값이라 저장하지 않는다.
+    ///
+    /// ⚠️ 이 값이 **어느 가지에 속하는지를 정한다** — 분리 묶음(`split`) 안에서는 참여자가 같은 장소들이
+    ///    한 가지이고, 가르는 규칙은 `lib.js`의 `whoKey`/`splitSegments` 하나다. 그래서 여기를 고치면
+    ///    그 장소가 옆 가지로 옮겨 가거나 새 가지를 만든다 — **묶음 자체(`split`)는 건드리지 않는다.**
+    ///    "장소 모달은 분리 묶음을 만들지도 지우지도 않는다"는 그 `split` 키에 대한 규칙이고,
+    ///    `raw`를 통째로 들고 아는 필드만 덮어 쓰므로 `split`·`reunion`은 저절로 남는다.
+    var participants: [String] {
+        get { raw["who"]?.arrayValue?.compactMap(\.stringValue) ?? [] }
+        set { raw.setOrRemove("who", newValue.isEmpty ? nil : .array(newValue.map { .string($0) })) }
+    }
+
     /// 숙소. 그날의 종료 기준점(`dayAnchor`)이 되고, 숙박 예약과 연결할 수 있는 장소다.
     /// 종류(`cat: stay`)와는 별개의 표시다 — 웹의 `spotStay` 체크박스와 같다. false는 저장하지 않는다.
     var isStay: Bool {

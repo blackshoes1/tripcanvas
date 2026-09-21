@@ -823,6 +823,28 @@
   function canAssignWho(role){ return canEdit(role); }
 
   /**
+   * 참여자 칩 하나를 켜고 끈 뒤의 `spot.who`.
+   *
+   * ⚠️ **전원을 고르면 비운다** — '모두'와 뜻이 같은데(§26) 둘을 다른 모양으로 저장하면
+   * `whoKey`가 다르게 갈라, 아무도 갈라지지 않은 하루가 분리된 것처럼 보인다.
+   * ⚠️ 고른 **순서가 아니라 멤버 순서**로 담는다 — 같은 선택이 늘 같은 배열이라야
+   * 저장본이 흔들리지 않고, 웹에서 고른 것과 앱에서 고른 것이 같은 문서가 된다.
+   * 모르는 id(나간 사람)는 떨어진다 — 이름표도 못 붙는 사람을 참여자로 남기지 않는다.
+   *
+   * @param {string[]|null|undefined} who   지금 골라진 참여자
+   * @param {string} userId                 방금 누른 사람
+   * @param {string[]} allIds               고를 수 있는 사람 전체(멤버 순서)
+   * @returns {string[]}                    비어 있으면 '모두'
+   */
+  function pickWho(who, userId, allIds){
+    const ids = Array.isArray(allIds) ? allIds : [];
+    const next = new Set(Array.isArray(who) ? who : []);
+    if(next.has(userId)) next.delete(userId); else next.add(userId);
+    const picked = ids.filter(id => next.has(id));
+    return picked.length === ids.length ? [] : picked;
+  }
+
+  /**
    * user_id → 이름표. 이름표는 서버(`tc_member_label`)가 만든 것을 그대로 쓴다 — 이메일은 여행에 나오지 않는다(§69).
    * @param {Array<{user_id?:string,display_name?:string|null,me?:boolean}>|null} members
    * @returns {Map<string,{name:string,me:boolean}>}
@@ -942,7 +964,7 @@
     canComment, canDeleteComment, objParticle, activityText, condenseActivity, relativeTime, liveEffects, liveCommentTargets,
     normPrefs, prefsText, groupContext, groupContextText, consensusOf, consensusText, candidateVerdict,
     candidateConflict, conflictOptions, distanceKm, buildGroupProposal,
-    canAssignWho, memberLabelMap, whoLabels, whoText, includesMe, reactorIds, buildSplitPlan, reunionText,
+    canAssignWho, pickWho, memberLabelMap, whoLabels, whoText, includesMe, reactorIds, buildSplitPlan, reunionText,
     CANDIDATE_CATEGORIES, candidateCategoryOf};
   if(typeof module!=='undefined' && module.exports) module.exports=API;   // Node (테스트)
   else /** @type {any} */(root).TC_COLLAB=API;                            // 브라우저 전역
