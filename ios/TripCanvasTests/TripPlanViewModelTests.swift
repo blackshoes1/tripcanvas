@@ -198,7 +198,7 @@ final class TripPlanViewModelTests: XCTestCase {
                                   todayIndex: todayIndex, daysUntilStart: nil, role: nil, memberCount: nil)
         let day = DayPlanDay(index: selected, date: strip[selected].date, title: "", note: "", mode: "car",
                              startMinutes: 540, timeZone: "Asia/Seoul", carriedStay: nil, spots: [],
-                             carPickups: [], carReturns: [], back: nil, spotsWithoutLocation: 0, splits: [],
+                             carPickups: [], carReturns: [], back: nil, spotsWithoutLocation: 0, splits: [], flight: nil,
                              totals: .init(distanceKm: 0, travelMinutes: 0, endMinutes: nil, overloaded: false,
                                            cost: .init(total: 0, parts: [])))
         return DayPlanResponse(schemaVersion: 1, generatedAt: "", travelTimeSource: .straightLineEstimate,
@@ -282,7 +282,7 @@ final class TripPlanViewModelTests: XCTestCase {
             day: DayPlanDay(index: dayIndex, date: base.day.date, title: "", note: "", mode: "car",
                             startMinutes: 540, timeZone: "Asia/Seoul", carriedStay: nil, spots: spots,
                             carPickups: [], carReturns: [], back: nil, spotsWithoutLocation: 0, splits: [],
-                            totals: base.day.totals))
+                            flight: nil, totals: base.day.totals))
         return base
     }
 
@@ -366,7 +366,7 @@ final class TripPlanViewModelTests: XCTestCase {
             day: DayPlanDay(index: 0, date: base.day.date, title: "", note: "", mode: "car",
                             startMinutes: 540, timeZone: "Asia/Seoul", carriedStay: nil, spots: base.day.spots,
                             carPickups: [], carReturns: [], back: nil, spotsWithoutLocation: 0,
-                            splits: [split], totals: base.day.totals))
+                            splits: [split], flight: nil, totals: base.day.totals))
         return base
     }
 

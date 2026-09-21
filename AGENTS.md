@@ -221,6 +221,7 @@ localStorage: `tripcanvas_v1`(여행) · `tripcanvas_legs_v4`(구간 캐시, 수
   - ⚠️ 키(`GOOGLE_ROUTES_API_KEY`·`KAKAO_REST_API_KEY`)가 없으면 라우터가 `null`이라 예전과 완전히 같다. 잠깐인 실패(프록시 429·업스트림 5xx)는 캐시에 남기지 않는다 — 혼잡이 한 시간짜리 "직선이에요"로 굳으면 안 된다.
 - 제안 거절은 `suggestion_feedback` 테이블(RLS)에 날짜와 함께 남는다 — 기기가 바뀌어도 같은 제안이 그날 다시 올라오지 않는다. ⚠️ 레거시 웹은 아직 localStorage를 쓴다(양쪽이 아직 공유되지 않음).
 - `next`의 `swiftParity.test.ts`가 **실제 Today 응답 ↔ `ios/.../Contract.swift`** 를 맞춰 보고 `ios/TripCanvasTests/Fixtures/today.json`을 다시 만든다. 계약을 바꾸면 여기가 먼저 깨진다.
+  ⚠️ 계약 구조체에 **저장 프로퍼티를 더하면 XCTest의 memberwise init 호출부가 전부 깨진다**(기본값이 없다). 파리티 테스트는 그걸 안 잡는다 — 필드가 Swift에 *있는지*만 보지 호출부는 모른다. 더하기 전에 `grep 'DayPlanDay('`로 호출부를 세어 함께 고친다. ⚠️ 한 번에 다 보이지도 않는다 — Swift 배치 컴파일은 먼저 깨진 배치에서 멈춰, 2026-09-20 `flight` 추가 때 CI 로그에 `MapRouteTests` 한 곳만 떴지만 실제로는 넷이었다.
 
 **앱의 탭 전환은 앱 복귀가 아니다.** (2026-09-17 "탭을 누를 때마다 로딩" 보고)
 
@@ -245,6 +246,8 @@ localStorage: `tripcanvas_v1`(여행) · `tripcanvas_legs_v4`(구간 캐시, 수
   ⚠️ **90은 성능 예산이지 임의의 숫자가 아니다** — 일자 카드는 가상 스크롤이 없어 날짜마다 DOM 약 170개와 `Sortable` 하나를 만들고, `commit()`이 편집마다 `render()`를 부른다. 올리려면 일자 목록 가상화가 먼저다.
   ⚠️ **이미 상한보다 긴 문서의 편집을 막지 않는다**(`TripLimits.maxDays(editing:)`) — 늘리는 것만 막는다. 2026-09-20 전에는 앱 상한이 60이라 웹에서 만든 61일 이상 여행을 열면 `PlanCalendarChange.draft`가 `nil`이라 **이름만 고치려 해도 저장이 꺼졌고**, 기간을 건드리지 않았으니 `datesChanged`가 거짓이라 이유를 말하는 섹션조차 뜨지 않았다.
 - 가고 싶은 곳의 분류(`CandidateCategory` = `collab.js` 목록·순서)는 iOS에서도 담을 때 고르고, 보드에서 거르고(`CandidateCategoryFilter` — '분류 없음'과 '기타'는 다르다), 카드에서 바꾼다(`manageCandidate CATEGORY`). 분류를 모르는 소스 구현은 분류 없이 담는다(프로토콜 기본 구현).
+- **예약해 둔 곳은 그 자리에서 연다**(2026-09-20). `지금`의 다음 일정 카드에 `예약 열기`가 붙는다 — 서버가 `ActivitySummary.bookUrl`을 이미 보내고 있었는데 그리는 곳이 없었다. 밖에서 들어온 주소라 **여는 쪽도 다시 본다**: `SafeURL.web`(웹 `safeUrl()`과 같은 규칙 — `http`·`https`만, 호스트 필수)을 지나며, 예약 화면의 링크도 같은 함수를 쓴다. ⚠️ `scheme.hasPrefix("http")`로 보면 `httpfoo:`까지 통과한다.
+- **항공편은 하루의 표시 항목이다**(2026-09-20). `day.flight`가 계약(`DayPlanDay.flight`)에 실려 앱의 일자 목록 맨 앞에 한 줄로 뜬다(`IB3100 · MAD 08:05 → SVQ 09:00`). ⚠️ **라벨이 아니라 값을 싣는다** — 웹 `flightHtml`의 완성된 문장을 보내지 않고 조각을 보내 앱이 `DayPlanFlight.line`으로 잇는다. ⚠️ 시각은 계약의 다른 시각들과 같이 **자정 기준 분**이다(앱에 `HH:MM` 포맷터를 하나 더 만들지 않는다). ⚠️ **좌표가 없어 동선·ETA·지도에는 들어가지 않는다** — 렌터카 픽업·반납과 같은 이유이고, 그래서 `ForEach` 밖에 둔다(드래그 인덱스). ⚠️ 그 `line`은 **`Contract.swift`가 아니라 앱 타겟에** 둔다(`PlanSpotList.swift`의 `extension DayPlanFlight`) — 계약 파일은 위젯·공유·워치 확장도 **함께 컴파일하는데 그쪽에는 `DesignSystem.swift`(`TimeFormat`)가 없다.** 계약 파일은 데이터만 안다.
 - 예약 화면(`BookingListView`)의 편집기도 비용 화면과 같은 9분류 편집기다 — 예약이 아닌 분류는 `TripPlanViewModel.saveCostItem`으로 `trip.costItems`에 가고, 그 목록은 비용 화면의 예약 결제 금액에 보인다(예약 화면은 가격 추적 예약만 나열한다).
 
 **계산이 늦게 오는 화면은 반쯤 지어 보이지 않는다.** (앱의 일정 화면 — 2026-09-07에 "화면이 튄다"로 드러났다)

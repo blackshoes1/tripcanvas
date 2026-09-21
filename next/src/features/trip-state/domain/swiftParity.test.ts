@@ -48,7 +48,9 @@ const trip: TripDoc = {
   id: 'parity', name: '정합성', start: '2026-09-01', timeZone: 'Asia/Seoul',
   days: [
     {
-      title: '첫날', mode: 'car', startAt: '09:00', spots: [
+      title: '첫날', mode: 'car', startAt: '09:00',
+      flight: { code: 'IB3100', dep: 'MAD', arr: 'SVQ', depAt: '08:05', arrAt: '09:00' },
+      spots: [
         { name: '숙소', city: '마드리드', stay: true, stayMin: 0, lat: 40.40, lng: -3.70 },
         { name: '저녁 예약', city: '마드리드', bookAt: '19:00', stayMin: 90, lat: 40.41, lng: -3.70, bookUrl: 'https://example.com', bookingId: 'bk1' }
       ]
@@ -102,6 +104,9 @@ describe('iOS Contract.swift가 실제 응답을 전부 담는다', () => {
     expectCovered('DayPlanResponse', plan as unknown as Record<string, unknown>);
     expectCovered('DayPlanDay', plan!.day as unknown as Record<string, unknown>);
     expectCovered('DayPlanTotals', plan!.day.totals as unknown as Record<string, unknown>);
+    // 중첩 구조체는 `expectCovered`가 따라 들어가지 않는다 — 항공편은 따로 맞춰 본다.
+    expect(plan!.day.flight, '파리티 여행에 항공편이 있어야 계약을 맞춰 볼 수 있다').toBeTruthy();
+    expectCovered('DayPlanFlight', plan!.day.flight as unknown as Record<string, unknown>);
     expectCovered('DayPlanCost', plan!.day.totals.cost as unknown as Record<string, unknown>);
     expect(plan!.day.spots.length).toBeGreaterThan(0);
     expectCovered('DayPlanSpot', plan!.day.spots[0] as unknown as Record<string, unknown>);

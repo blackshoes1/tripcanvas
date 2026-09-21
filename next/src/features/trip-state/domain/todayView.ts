@@ -27,6 +27,8 @@ export interface SpotDoc {
 }
 export interface DayDoc {
   title?: string; mode?: string; startAt?: string; startPolicy?: string; timeZone?: string; spots?: SpotDoc[];
+  /** 그날의 항공편. 표시 전용이라 Today 계약에는 없고 하루치(`DayPlanDay.flight`)에만 실린다. */
+  flight?: { code?: string; dep?: string; arr?: string; depAt?: string; arrAt?: string };
 }
 export interface TripDoc {
   id?: string; name?: string; start?: string; timeZone?: string; days?: DayDoc[]; bookings?: unknown[];

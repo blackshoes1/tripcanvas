@@ -41,6 +41,7 @@ struct PlanSpotList: View {
                     // 🏠 전날 숙소 이월 · 렌터카 픽업은 장소 목록 **앞**에 온다.
                     // ⚠️ ForEach 밖에 둔다 — 드래그 인덱스는 ForEach의 컬렉션 기준이라
                     //    이 줄들이 그 안에 섞이면 순서가 어긋난다.
+                    if let flight = model.planDay?.flight, !flight.line.isEmpty { flightRow(flight) }
                     if let carry = model.planDay?.carriedStay { carryRow(carry) }
                     ForEach(model.planDay?.carPickups ?? [], id: \.bookingId) { carEventRow($0) }
                     ForEach(Array(day.spots.enumerated()), id: \.offset) { index, spot in
@@ -380,6 +381,25 @@ struct PlanSpotList: View {
         .padding(.top, Space.xs)
     }
 
+    /// 그날의 항공편. 공항 이동일에 편명·공항·시각을 말한다.
+    ///
+    /// ⚠️ 렌터카 픽업·반납과 같은 자리에 있는 이유가 같다 — **좌표가 없어 동선·ETA에 들어가지 않는다.**
+    ///    시각도 ETA 칸이 아니라 이 줄 안에 있다: 그날 계산된 도착 순서에 속하지 않는다.
+    /// ⚠️ `ForEach` 밖에 둔다 — 드래그 인덱스가 어긋난다(위 주석과 같은 이유).
+    private func flightRow(_ flight: DayPlanFlight) -> some View {
+        Label {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(flight.line).font(.subheadline)
+                Text("항공편").font(.caption2).foregroundStyle(.secondary)
+            }
+        } icon: {
+            Image(systemName: "airplane").foregroundStyle(Ink.info)
+        }
+        .listRowBackground(Ink.raised.opacity(0.6))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("항공편 \(flight.line)")
+    }
+
     /// 🏠 전날 숙소에서 이어지는 날. **표시일 뿐**이고 이 항목은 그날 일정이 아니다.
     private func carryRow(_ carry: DayPlanCarriedStay) -> some View {
         Label {
@@ -422,5 +442,18 @@ struct PlanSpotList: View {
             }
         }
         .listRowBackground(Ink.raised.opacity(0.6))
+    }
+}
+
+/// 항공편 한 줄 표기. **계약(`Contract.swift`)이 아니라 여기 있다** — 그 파일은 위젯·공유·워치 확장도
+/// 함께 컴파일하는데 그쪽에는 `TimeFormat`이 없다. 값은 계약이, 표기는 화면이 안다.
+extension DayPlanFlight {
+    /// 웹 `flightHtml`과 같은 짜임(`편명 · 출발 시각 → 도착 시각`). 없는 조각은 빼고 잇는다.
+    /// 아무 조각도 없으면 빈 문자열이고, 그때 화면은 줄을 그리지 않는다.
+    var line: String {
+        let from = [dep, depMinutes.map(TimeFormat.clock)].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " ")
+        let to = [arr, arrMinutes.map(TimeFormat.clock)].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " ")
+        let route = [from, to].filter { !$0.isEmpty }.joined(separator: " → ")
+        return [code, route].filter { !$0.isEmpty }.joined(separator: " · ")
     }
 }

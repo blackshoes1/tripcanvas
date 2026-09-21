@@ -98,6 +98,26 @@ final class DayPlanDecodingTests: XCTestCase {
         XCTAssertEqual(plan.trip.name, "정합성")
     }
 
+    /// 항공편은 실제 응답에서 디코딩되고, 한 줄 표기는 웹 `flightHtml`과 같은 짜임이다.
+    func testDecodesTheDayFlight() throws {
+        let flight = try XCTUnwrap(loadFixture().day.flight, "픽스처의 첫날에는 항공편이 있다")
+        XCTAssertEqual(flight.code, "IB3100")
+        XCTAssertEqual(flight.dep, "MAD")
+        XCTAssertEqual(flight.arr, "SVQ")
+        XCTAssertEqual(flight.depMinutes, 8 * 60 + 5)
+        XCTAssertEqual(flight.arrMinutes, 9 * 60)
+        XCTAssertEqual(flight.line, "IB3100 · MAD 08:05 → SVQ 09:00")
+    }
+
+    /// 없는 조각은 말하지 않는다 — 빈 칸을 지어내면 `MAD  → ` 같은 줄이 나온다.
+    func testFlightLineLeavesOutWhatIsNotWritten() {
+        XCTAssertEqual(DayPlanFlight(code: "KE703", dep: "", arr: "", depMinutes: nil, arrMinutes: nil).line, "KE703")
+        XCTAssertEqual(DayPlanFlight(code: "", dep: "ICN", arr: "NRT", depMinutes: nil, arrMinutes: nil).line, "ICN → NRT")
+        XCTAssertEqual(DayPlanFlight(code: "", dep: "", arr: "", depMinutes: 550, arrMinutes: nil).line, "09:10")
+        // 아무것도 없으면 빈 문자열이고, 그때 화면은 줄을 그리지 않는다.
+        XCTAssertEqual(DayPlanFlight(code: "", dep: "", arr: "", depMinutes: nil, arrMinutes: nil).line, "")
+    }
+
     /// 조회되지 않은 구간이 섞여 있으면 추정이다 — 화면이 "예상"이라고 말할 수 있어야 한다.
     func testSaysWhenTravelTimeIsAnEstimate() throws {
         let plan = try loadFixture()
@@ -121,5 +141,33 @@ final class DayPlanDecodingTests: XCTestCase {
         let raw = try String(contentsOf: url, encoding: .utf8)
         XCTAssertFalse(raw.contains("📏"), "완성된 문장이 계약에 들어오면 앱이 표기를 정할 수 없다")
         XCTAssertFalse(raw.contains("하루 동선"))
+    }
+}
+
+/// 밖에서 들어온 주소를 여는 규칙(M8). 웹 `safeUrl()`과 같다 — `http`·`https`만 연다.
+final class SafeURLTests: XCTestCase {
+    func testOpensOnlyWebLinks() {
+        XCTAssertEqual(SafeURL.web("https://example.com/booking")?.absoluteString, "https://example.com/booking")
+        XCTAssertEqual(SafeURL.web("  http://example.com  ")?.absoluteString, "http://example.com")
+    }
+
+    /// 스킴 하나 잘못 열면 그건 우리가 연 것이 된다.
+    func testRefusesEverythingElse() {
+        for raw in ["javascript:alert(1)", "file:///etc/passwd", "tripcanvas://trip/1", "data:text/html,<b>x", "", "   "] {
+            XCTAssertNil(SafeURL.web(raw), "\(raw)는 열지 않는다")
+        }
+        XCTAssertNil(SafeURL.web(nil))
+    }
+
+    /// ⚠️ `scheme.hasPrefix("http")`로 봤으면 통과했을 것들.
+    func testDoesNotFallForSchemesThatMerelyStartWithHttp() {
+        XCTAssertNil(SafeURL.web("httpfoo://example.com"))
+        XCTAssertNil(SafeURL.web("https-evil://example.com"))
+    }
+
+    /// 호스트가 없으면 열 곳이 없다.
+    func testRefusesLinksWithoutAHost() {
+        XCTAssertNil(SafeURL.web("https://"))
+        XCTAssertNil(SafeURL.web("http:///path"))
     }
 }

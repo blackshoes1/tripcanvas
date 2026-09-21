@@ -856,7 +856,27 @@ struct DayPlanDay: Codable, Hashable, Sendable {
     let spotsWithoutLocation: Int
     /// 함께 움직이지 않는 구간들. 비어 있으면 하루가 예전과 완전히 같다.
     let splits: [DayPlanSplit]
+    /// 그날의 항공편. 공항 이동일에만 있다 — 없으면 화면도 말하지 않는다.
+    let flight: DayPlanFlight?
     let totals: DayPlanTotals
+}
+
+/// 그날의 항공편. 전부 사용자가 적은 값이라 비어 있을 수 있다.
+///
+/// ⚠️ 좌표가 없어 동선·ETA·지도에는 들어가지 않는다(렌터카 픽업·반납과 같은 이유) — **표시 전용**이다.
+/// ⚠️ 한 줄 표기(`line`)는 여기가 아니라 앱 타겟에 있다 — 이 파일은 위젯·공유·워치 확장도 함께 컴파일하는데
+///    그쪽에는 `DesignSystem.swift`(`TimeFormat`)가 없다. **이 파일은 데이터만 안다.**
+struct DayPlanFlight: Codable, Hashable, Sendable {
+    /// 편명(예: `KE703`).
+    let code: String
+    /// 출발 공항. 자유 텍스트라 코드일 수도 이름일 수도 있다.
+    let dep: String
+    /// 도착 공항.
+    let arr: String
+    /// 출발 시각(자정 기준 분). 안 적었으면 nil.
+    let depMinutes: Int?
+    /// 도착 시각(자정 기준 분). 안 적었으면 nil.
+    let arrMinutes: Int?
 }
 
 /// 일자 스트립 한 칸. 화면이 "며칠째"만이 아니라 **언제, 어떤 날**인지 말할 수 있게 한다.
