@@ -24,6 +24,19 @@ const cases = [
   { name: '섞임', who: ['ghost', 'me', 'u1', 'u3'] }
 ];
 
+/** 참여자를 **고를 수 있는** 역할. 의견이 아니라 편집이다(§12) — 보기 권한은 못 고른다. */
+const roles = ['OWNER', 'EDITOR', 'VIEWER'];
+
+/** 칩 하나를 켜고 끄는 규칙(`pickWho`). 멤버는 위의 `members` 순서(u1 · me · u3)다. */
+const pickCases = [
+  { name: '아무도 없을 때 하나 고르기', who: [] as string[], toggle: 'me' },
+  { name: '고른 것을 다시 누르면 모두', who: ['me'], toggle: 'me' },
+  { name: '전원을 고르면 모두', who: ['u1', 'me'], toggle: 'u3' },
+  { name: '고른 순서가 아니라 멤버 순서로 담는다', who: ['u3'], toggle: 'u1' },
+  { name: '나간 사람의 id는 떨어진다', who: ['ghost'], toggle: 'u1' },
+  { name: '전원에서 하나를 빼면 나머지가 남는다', who: [], toggle: 'u1' }
+];
+
 describe('참여자 이름표 — collab.js가 단일 출처', () => {
   it('iOS 픽스처를 실제 규칙으로 갱신한다', () => {
     const rows = cases.map((c) => ({
@@ -33,6 +46,20 @@ describe('참여자 이름표 — collab.js가 단일 출처', () => {
       labels: collab.whoLabels(c.who, members),
       includesMe: collab.includesMe({ who: c.who }, 'me')
     }));
+    const assign = Object.fromEntries(roles.map((r) => [r, collab.canAssignWho(r)]));
+    const allIds = members.map((m) => m.user_id);
+    const picks = pickCases.map((c) => ({
+      name: c.name,
+      who: c.who,
+      toggle: c.toggle,
+      allIds,
+      next: collab.pickWho(c.who, c.toggle, allIds)
+    }));
+
+    // 참여자 지정은 편집이다 — 보기 권한은 의견만 낸다(§12).
+    expect(assign).toEqual({ OWNER: true, EDITOR: true, VIEWER: false });
+    // 전원을 고르면 '모두'로 되돌아간다 — 그러지 않으면 whoKey가 갈라 하루가 분리된 것처럼 보인다.
+    expect(picks.find((p) => p.name === '전원을 고르면 모두')?.next).toEqual([]);
 
     // 비어 있으면 '모두'다 — 기본이 함께 다니는 것이라 저장되지도 않는다(§26)
     expect(rows[0].text).toBe('모두');
@@ -45,6 +72,7 @@ describe('참여자 이름표 — collab.js가 단일 출처', () => {
     const dir = path.join(__dirname, '../../../../../ios/TripCanvasTests/Fixtures');
     mkdirSync(dir, { recursive: true });
     writeFileSync(path.join(dir, 'who-text.json'),
-                  JSON.stringify({ members, cases: rows }, null, 2) + String.fromCharCode(10));
+                  JSON.stringify({ members, cases: rows, canAssignWho: assign, picks }, null, 2)
+                    + String.fromCharCode(10));
   });
 });

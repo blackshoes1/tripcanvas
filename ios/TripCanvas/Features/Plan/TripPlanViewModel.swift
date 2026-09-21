@@ -124,11 +124,17 @@ final class TripPlanViewModel: DayPlanContext {
     func dismissConflict() { store.dismissConflict() }
     func clearToast() { store.clearToast() }
 
-    /// 이름표용 멤버. **분리가 있는 날에만, 한 번만** 부른다 —
-    /// 혼자 다니는 여행에는 분리가 없어 이름표가 필요 없다.
+    /// 이름표와 '누가 가나요'에 쓸 멤버. **일행이 있는 여행에서만, 한 번만** 부른다 —
+    /// 혼자 쓰는 여행에는 고를 사람도 이름표를 붙일 분리도 없다.
     /// **실패해도 조용하다**: 이름 대신 인원만 말할 뿐 일정은 그대로 보인다.
+    ///
+    /// ⚠️ 예전에는 `hasSplits`만 봤다. 그러면 이름표는 맞지만 **첫 분리를 만들 수가 없다** —
+    ///    분리가 없는 날에는 멤버가 비어 있어 장소 편집기의 '누가 가나요'가 뜨지 않고,
+    ///    그게 안 뜨니 분리도 영영 생기지 않는다. 그래서 `isShared`(인원 2명 이상)도 함께 본다.
+    ///    혼자 쓰는 여행의 요청 수는 그대로 0이다.
     private func loadMembers() async {
-        guard members.isEmpty, hasSplits, let memberSource else { return }
+        guard members.isEmpty, let memberSource else { return }
+        guard hasSplits || (plan?.trip.isShared ?? false) else { return }
         members = (try? await memberSource.members(tripId: tripId)) ?? []
     }
 

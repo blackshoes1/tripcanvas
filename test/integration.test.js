@@ -2948,6 +2948,37 @@ test('통합: 참여자를 고르지 않으면 모두이고, 편집해도 분리
   w.close();
 });
 
+test('통합: 전원을 고르면 모두로 저장되고, 나간 사람의 id는 이름만 고쳐도 사라지지 않는다', { skip: noJsdom }, async () => {
+  const w = boot();
+  w.eval(`user={id:'u1'}; tripRoles={__it__:{role:'EDITOR',count:2,owner:false,serverId:''}};
+    syncMeta={__it__:{revision:3,status:'clean'}};
+    tripMembers=[{user_id:'${SU1}',display_name:'민수',me:true},{user_id:'${SU2}',display_name:'영희',me:false}];`);
+  w.sb = { rpc: async () => ({ data: [], error: null }),
+    from: () => ({ upsert: async () => ({ data: null, error: null }), select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) }) };
+  w.eval(`sb=window.sb; TC_API.rpc=window.sb.rpc;`);
+  withTrip(w, JSON.stringify([{ title: '첫날', spots: [
+    { name: '캄프 누', city: 'BCN', lat: 41.38, lng: 2.12, stayMin: 120, who: [SU1] },
+    { name: '사그라다', city: 'BCN', lat: 41.40, lng: 2.17, stayMin: 60, who: ['left-the-trip'] }
+  ] }]));
+
+  // 전원을 고르면 '모두'와 같은 뜻이다 — 두 모양으로 저장하면 whoKey가 갈려 갈라지지 않은 하루가 분리돼 보인다
+  w.eval(`render(); openSpotModal(0,0)`);
+  const chips = [...w.document.querySelectorAll('#spotWho .whoChipBtn[data-uid]')];
+  chips[1].click();                                   // 나 + 영희 = 전원
+  w.document.getElementById('spotSave').click();
+  let s0 = JSON.parse(w.eval(`JSON.stringify(trip().days[0].spots[0])`));
+  assert.equal('who' in s0, false, '전원을 고르면 모두로 되돌아간다');
+
+  // 칩이 없는 id(나간 사람)는 손대지 않은 저장에서 살아남는다 — 이름만 고쳤는데 참여자가 바뀌면 안 된다
+  w.eval(`openSpotModal(0,1)`);
+  w.document.getElementById('spotName').value = '사그라다 파밀리아';
+  w.document.getElementById('spotSave').click();
+  const s1 = JSON.parse(w.eval(`JSON.stringify(trip().days[0].spots[1])`));
+  assert.equal(s1.name, '사그라다 파밀리아');
+  assert.deepEqual(s1.who, ['left-the-trip'], '칩에서 다시 읽으면 조용히 사라진다');
+  w.close();
+});
+
 // ── 붙여넣기: 확인 전에는 아무것도 저장되지 않는다 ──
 //
 // 이것이 이 화면의 계약이다(§밖에서 들어온 것은 확인 없이 저장하지 않는다).

@@ -2054,17 +2054,26 @@ window.openSpotModal=(di,si)=>{
 };
 
 /**
+ * 지금 골라진 참여자. **칩에서 다시 읽지 않고 여기 둔다** — 칩이 없는 id(나간 사람)까지
+ * 그대로 들고 있어야 이름만 고친 저장에 참여자가 바뀌지 않는다.
+ * @type {string[]}
+ */
+let _pickedWho=[];
+/**
  * "누가 가나요" 칩. 혼자 쓰는 여행에서는 아예 보이지 않는다 — 고를 사람이 없다.
- * 아무도 고르지 않은 것이 기본이고 그게 '모두'다(§26) — 전원을 고른 것과 같은 뜻이라 저장할 때 비운다.
+ * 아무도 고르지 않은 것이 기본이고 그게 '모두'다(§26).
+ * 켜고 끄는 규칙은 `collab.js`의 `pickWho` 하나다(iOS가 같은 것을 복제한다).
  */
 function drawWhoChips(who){
   const wrap=document.getElementById('spotWho'), section=document.getElementById('spotWhoSection');
   if(!wrap||!section) return;
   const members=tripMembers.filter(m=>m&&m.user_id);
+  _pickedWho=Array.isArray(who)? who.slice() : [];
   section.style.display = (members.length>1 && TC_COLLAB.canAssignWho(myRole())) ? 'block' : 'none';
   wrap.innerHTML='';
   if(members.length<=1) return;
-  const picked=new Set(Array.isArray(who)?who:[]);
+  const ids=members.map(m=>m.user_id);
+  const picked=new Set(_pickedWho);
   const all=document.createElement('button');
   all.type='button'; all.className='chip whoChipBtn'+(picked.size?'':' active');
   all.textContent='모두';
@@ -2075,21 +2084,12 @@ function drawWhoChips(who){
     b.type='button'; b.className='chip whoChipBtn'+(picked.has(m.user_id)?' active':'');
     b.dataset.uid=m.user_id;
     b.textContent=(m.me?'나':TC_COLLAB.memberName(m));
-    b.onclick=()=>{
-      const next=new Set(picked);
-      if(next.has(m.user_id)) next.delete(m.user_id); else next.add(m.user_id);
-      // 전원을 고르면 '모두'와 같은 뜻이다 — 같은 것을 두 가지로 저장하지 않는다
-      drawWhoChips(next.size===members.length ? [] : [...next]);
-    };
+    b.onclick=()=>drawWhoChips(TC_COLLAB.pickWho(_pickedWho, m.user_id, ids));
     wrap.appendChild(b);
   }
 }
 /** 지금 골라진 참여자. 아무도 없으면 undefined(=모두) — 기본값은 저장하지 않는다 */
-function pickedWho(){
-  const wrap=document.getElementById('spotWho'); if(!wrap) return undefined;
-  const ids=[...wrap.querySelectorAll('.whoChipBtn.active[data-uid]')].map(b=>b.dataset.uid);
-  return ids.length? ids : undefined;
-}
+function pickedWho(){ return _pickedWho.length? _pickedWho.slice() : undefined; }
 document.getElementById('spotCancel').onclick=()=>document.getElementById('spotModalBg').classList.remove('show');
 document.getElementById('spotAdvanced').addEventListener('toggle',e=>{
   const badge=document.querySelector('#spotModalBg .stepBadge'); if(badge) badge.textContent=e.target.open?'상세 설정':'기본 정보';

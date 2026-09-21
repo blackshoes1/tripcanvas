@@ -472,6 +472,10 @@ declare module '@legacy/collab.js' {
       status: string | null; voted: number; members: number;
     };
     /** 반대 없고 두 명 이상이 말한 후보를 어느 날에 넣을지. 저장하지 않는 **미리보기**다(§79) */
+    /** 참여자 지정은 편집 권한이다 — 의견이 아니라 일정 변경(§12) */
+    canAssignWho(role: unknown): boolean;
+    /** 참여자 칩 하나를 켜고 끈 뒤의 `spot.who`. 전원을 고르면 비운다(='모두') */
+    pickWho(who: string[] | null | undefined, userId: string, allIds: string[] | null | undefined): string[];
     /** 참여자 이름표 — 나는 늘 '나'로 부르고 맨 앞에 둔다. 모르는 id는 '멤버' */
     whoLabels(who: string[] | null | undefined, members: unknown[] | null): string[];
     /** '모두' 또는 '나 · 지민'. who가 비어 있으면 모든 여행자다(§26) */

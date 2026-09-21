@@ -475,8 +475,19 @@ final class WhoTextParityTests: XCTestCase {
             let labels: [String]
             let includesMe: Bool
         }
+        struct Pick: Decodable {
+            let name: String
+            let who: [String]
+            let toggle: String
+            let allIds: [String]
+            let next: [String]
+        }
         let members: [Member]
         let cases: [Case]
+        /// 역할별 참여자 지정 권한. `collab.js`의 `canAssignWho`가 만든다.
+        let canAssignWho: [String: Bool]
+        /// 칩 하나를 켜고 끈 결과. `collab.js`의 `pickWho`가 만든다.
+        let picks: [Pick]
     }
 
     private func load() throws -> Fixture {
@@ -496,6 +507,30 @@ final class WhoTextParityTests: XCTestCase {
             XCTAssertEqual(CollabModel.whoText(c.who, members: members), c.text, c.name)
             XCTAssertEqual(CollabModel.whoLabels(c.who, members: members), c.labels, c.name)
             XCTAssertEqual(CollabModel.includesMe(c.who, myId: "me"), c.includesMe, c.name)
+        }
+    }
+
+    /// 참여자를 **고를 수 있는 역할**도 `collab.js`가 정한다 — 보기 권한은 의견만 낸다(§12).
+    /// 갈리면 앱에서만 보기 권한자에게 '누가 가나요'가 떠, 저장할 수 없는 편집을 시키게 된다.
+    func testAssignPermissionMatchesTheJavaScriptRule() throws {
+        let fixture = try load()
+        let roles: [String: MemberRole] = ["OWNER": .owner, "EDITOR": .editor, "VIEWER": .viewer]
+        XCTAssertEqual(Set(fixture.canAssignWho.keys), Set(roles.keys), "픽스처가 역할을 다 담아야 한다")
+        for (name, expected) in fixture.canAssignWho {
+            let role = try XCTUnwrap(roles[name], name)
+            XCTAssertEqual(CollabModel.canAssignWho(role), expected, name)
+        }
+    }
+
+    /// 칩을 켜고 끄는 규칙도 `collab.js`가 단일 출처다.
+    /// ⚠️ 여기가 갈리면 **같은 선택이 다른 문서가 된다** — 특히 전원을 고른 것을 비우지 않으면
+    ///    `whoKey`가 `"u1,u2,u3"`와 `"*"`로 갈려, 갈라지지 않은 하루가 분리된 것처럼 보인다.
+    func testTogglingMatchesTheJavaScriptRule() throws {
+        let fixture = try load()
+        XCTAssertGreaterThan(fixture.picks.count, 0)
+        for pick in fixture.picks {
+            XCTAssertEqual(CollabModel.pickWho(pick.who, toggling: pick.toggle, all: pick.allIds),
+                           pick.next, pick.name)
         }
     }
 

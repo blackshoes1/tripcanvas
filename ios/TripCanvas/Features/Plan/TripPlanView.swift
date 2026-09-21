@@ -115,6 +115,8 @@ struct TripPlanView: View {
                     dayCount: model.dayCount,
                     currentDay: model.selectedDay,
                     contextLabel: "\(trip.name) · Day \(model.selectedDay + 1) · \(model.strip.first(where: { $0.index == model.selectedDay })?.date ?? trip.start)",
+                    members: model.members,
+                    role: model.role,
                     onSave: { spot in
                         let saved: Bool
                         switch target {
