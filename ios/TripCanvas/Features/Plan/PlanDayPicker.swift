@@ -12,7 +12,6 @@ struct PlanDayPicker: View {
     let selectedDay: Int
     /// 여행 기간 밖이면 nil. 서버가 정한다.
     let todayIndex: Int?
-    let motion: Animation
     /// 고른 날과 **넘어가는 방향**(뒤쪽 날이면 true) — 목록 전환이 이 방향을 쓴다.
     let onSelect: (_ index: Int, _ goingForward: Bool) -> Void
 
@@ -39,7 +38,9 @@ struct PlanDayPicker: View {
         let selected = entry.index == selectedDay
         let isToday = entry.index == todayIndex
         return Button {
-            withAnimation(motion) { onSelect(entry.index, entry.index > selectedDay) }
+            // 넘어가는 애니메이션은 **받는 쪽**(`PlanActions.selectDay`)이 건다 — 여기서 또 감싸면
+            // 스와이프와 규칙이 갈린다.
+            onSelect(entry.index, entry.index > selectedDay)
         } label: {
             VStack(spacing: 3) {
                 HStack(spacing: 4) {

@@ -186,7 +186,12 @@ struct TripPlanView: View {
             viewSpot: { index, spot in viewingSpot = .edit(index: index, spot: spot) },
             addAfter: { index in insertionAfter = index; showsSearch = true },
             moveSpots: { indexes in prepareMove(indexes, model: model) },
-            selectDay: { day, forward in goingForward = forward; model.selectedDay = day },
+            // ⚠️ 애니메이션을 **여기서** 건다. 날을 바꾸는 곳이 둘(날짜 칩·좌우 스와이프)이라
+            //    각자 감싸면 한쪽만 밀리고 다른 쪽은 즉시 교체된다 — 실제로 그랬다(2026-09-21).
+            selectDay: { day, forward in
+                goingForward = forward
+                withAnimation(motion) { model.selectedDay = day }
+            },
             openCosts: { day, revision in costDay = day; costRevision = revision; showsCosts = true },
             createSpot: { insertionAfter = nil; editor = .create })
     }
@@ -209,7 +214,7 @@ struct TripPlanView: View {
             VStack(spacing: 0) {
                 if !showsMap || !mapSearching {
                     PlanDayPicker(strip: model.strip, selectedDay: model.selectedDay,
-                                  todayIndex: model.todayIndex, motion: motion, onSelect: actions.selectDay)
+                                  todayIndex: model.todayIndex, onSelect: actions.selectDay)
                 }
                 if choosingPlaces {
                     HStack {
