@@ -215,7 +215,7 @@ struct TripPlanView: View {
                 // 오류도 화면의 높이를 차지해야 한다. overlay로 띄우면 날짜 탭과
                 // 일정 제목을 덮고, 반투명 배경 아래의 글자까지 겹쳐 보인다.
                 if let error = model.errorMessage {
-                    InlineErrorBanner(message: "저장하지 못했어요", detail: error) {
+                    InlineErrorBanner(message: "저장하지 못했어요", detail: error, tint: Ink.danger, compact: true) {
                         Task { await model.load() }
                     }
                     .fixedSize(horizontal: false, vertical: true)
@@ -233,7 +233,7 @@ struct TripPlanView: View {
                         Button("날짜·위치 옮기기") { prepareMove(chosenPlaces, model: model) }.disabled(chosenPlaces.isEmpty)
                     }.padding(.horizontal, Space.l).frame(minHeight: 44)
                 }
-                Divider()
+                if showsMap { Divider() }
                 ZStack {
                     // 지도는 한 번 만들면 **숨기기만 한다** — 일정↔지도를 오갈 때마다 엔진을 새로 띄우고
                     // 타일을 다시 받지 않게(2026-09-17). 처음 열기 전에는 만들지 않는다: 목록만 쓰는 사람에게
@@ -256,6 +256,7 @@ struct TripPlanView: View {
                     }
                 }
             }
+            .background(Ink.paper)
             .overlay(alignment: .bottom) {
                 if let toast = model.toast {
                     ToastView(text: toast)

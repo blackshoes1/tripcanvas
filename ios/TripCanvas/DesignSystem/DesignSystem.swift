@@ -396,23 +396,53 @@ struct LegPill: View {
 struct InlineErrorBanner: View {
     let message: String
     var detail: String?
+    var tint: Color = Ink.accent
+    var compact: Bool = false
     let retry: () -> Void
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Space.s) {
-            Label(message, systemImage: "exclamationmark.circle")
-                .font(.subheadline.weight(.semibold))
-            if let detail {
-                Text(detail).font(.caption).foregroundStyle(Ink.soft)
+        Group {
+            if compact && !typeSize.isAccessibilitySize {
+                HStack(alignment: .center, spacing: Space.m) {
+                    messageContent.frame(maxWidth: .infinity, alignment: .leading)
+                    retryButton.fixedSize()
+                }
+            } else {
+                VStack(alignment: .leading, spacing: Space.s) {
+                    messageContent
+                    retryButton
+                }
             }
-            Button("다시 시도", action: retry)
-                .font(.caption.weight(.semibold))
-                .tint(Ink.accent)
         }
         .padding(Space.m)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Ink.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: Radius.card))
-        .overlay(RoundedRectangle(cornerRadius: Radius.card).strokeBorder(Ink.accent.opacity(0.22)))
+        .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: Radius.card))
+        .overlay(RoundedRectangle(cornerRadius: Radius.card).strokeBorder(tint.opacity(0.22)))
+    }
+
+    private var messageContent: some View {
+        VStack(alignment: .leading, spacing: Space.s) {
+            Label(message, systemImage: "exclamationmark.circle")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(tint)
+            if let detail {
+                Text(detail).font(.caption).foregroundStyle(Ink.soft)
+            }
+        }
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    @ViewBuilder
+    private var retryButton: some View {
+        let button = Button("다시 시도", action: retry)
+            .font(.caption.weight(.semibold))
+            .tint(tint)
+        if compact {
+            button.frame(minHeight: 44).buttonStyle(.bordered)
+        } else {
+            button
+        }
     }
 }
 

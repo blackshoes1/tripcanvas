@@ -23,9 +23,12 @@ struct PlanDayPicker: View {
                         chip(entry).id(entry.index)
                     }
                 }
-                .padding(.horizontal, Space.l)
-                .padding(.vertical, Space.s)
+                .padding(Space.xs)
             }
+            .background(Ink.raised, in: RoundedRectangle(cornerRadius: Radius.card))
+            .overlay(RoundedRectangle(cornerRadius: Radius.card).strokeBorder(Ink.hairline))
+            .padding(.horizontal, Space.l)
+            .padding(.vertical, Space.s)
             // 14일짜리 일정에서 고른 날이 화면 밖에 있으면 안 된다 — 여행 중이면 오늘로 옮겨진 뒤다.
             .onChange(of: selectedDay) { _, day in
                 withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(day, anchor: .center) }
@@ -64,9 +67,8 @@ struct PlanDayPicker: View {
             .padding(.horizontal, Space.m)
             .padding(.vertical, Space.s)
             .frame(minWidth: 64, minHeight: 56, alignment: .top)
-            .overlay(alignment: .bottom) {
-                Rectangle().fill(selected ? Ink.accent : Ink.hairline).frame(height: selected ? 2.5 : 1)
-            }
+            .background(selected ? Ink.accent.opacity(0.14) : Color.clear,
+                        in: RoundedRectangle(cornerRadius: Radius.card - Space.xs))
             .foregroundStyle(selected ? Ink.accent : Ink.ink)
         }
         .buttonStyle(.plain)

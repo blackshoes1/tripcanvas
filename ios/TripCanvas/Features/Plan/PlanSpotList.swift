@@ -37,6 +37,16 @@ struct PlanSpotList: View {
             // 저장된 문서는 계속 보인다. 계산 응답을 기다리며 목록 전체를 교체하지 않는다.
             List {
                 Section {
+                    summaryCard(day)
+                        .listRowBackground(Ink.accent.opacity(0.06))
+                        .listRowSeparator(.hidden)
+                }
+                Section {
+                    // 헤더도 일반 행이다. 스크롤 중 장소 위로 고정되어 겹치지 않는다.
+                    spotsSectionHeader(day)
+                        .listRowSeparator(.visible, edges: .bottom)
+                        .deleteDisabled(true)
+                        .moveDisabled(true)
                     if day.spots.isEmpty { emptyDay }
                     // 🏠 전날 숙소 이월 · 렌터카 픽업은 장소 목록 **앞**에 온다.
                     // ⚠️ ForEach 밖에 둔다 — 드래그 인덱스는 ForEach의 컬렉션 기준이라
@@ -52,7 +62,7 @@ struct PlanSpotList: View {
                             SpotRow(spot: spot, dayMode: day.mode, plan: model.planSpot(at: index),
                                 split: splitInfo(at: index))
                         }
-                            .listRowBackground(Color.clear)
+                            .listRowBackground(Ink.raised)
                             .listRowSeparator(.hidden)
                             // 12pt 이상 움직인 터치는 탭을 취소한다. 짧게 끌다 놓아도 편집을 열지 않는다.
                             .overlay(PlanSpotTapSurface { actions.editSpot(index, spot) })
@@ -81,7 +91,6 @@ struct PlanSpotList: View {
                     .moveDisabled(!model.canEdit)
                     // 반납은 장소 뒤, 숙소 복귀 앞 — 웹 일자 카드와 같은 순서다.
                     ForEach(model.planDay?.carReturns ?? [], id: \.bookingId) { carEventRow($0) }
-                    if let back = model.planDay?.back { backRow(back) }
                     if model.canEdit && !day.spots.isEmpty && !isEditing {
                         // 왼쪽 정렬 텍스트 동작(시안). 검색이 먼저다 — 좌표가 있어야 동선·ETA·지도에 들어간다.
                         Menu {
@@ -91,42 +100,12 @@ struct PlanSpotList: View {
                             Label("장소 추가", systemImage: "plus")
                                 .font(.body.weight(.semibold))
                                 .foregroundStyle(Ink.accent)
-                                .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+                                .frame(maxWidth: .infinity, minHeight: 48, alignment: .center)
                                 .contentShape(Rectangle())
                         }
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
+                        .listRowBackground(Ink.raised)
+                        .listRowSeparator(.visible, edges: .top)
                     }
-                } header: {
-                    // 기본 화면은 제목·이동·비용·종료 시각까지다. 나머지(거리·미정·예산·안내)는 '오늘 요약 보기' 안에 —
-                    // 일정이 요약보다 중요하고, 첫 화면에 첫 장소가 보여야 한다(2026-09-18).
-                    VStack(alignment: .leading, spacing: Space.xs) {
-                        dayHeader(day)
-                        if model.plan == nil && !model.planAttempted(for: model.selectedDay) {
-                            ProgressView("이동·도착 시각을 계산하는 중").font(.caption)
-                        }
-                        if let totals = model.planDay?.totals { daySummary(totals) }
-                        costRow(day)
-                        Button {
-                            withAnimation(motion) { summaryExpanded.toggle() }
-                        } label: {
-                            HStack(spacing: Space.xs) {
-                                Text(summaryExpanded ? "요약 접기" : "오늘 요약 보기")
-                                Image(systemName: "chevron.right")
-                                    .rotationEffect(.degrees(summaryExpanded ? 90 : 0))
-                            }
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(Ink.accent)
-                            .frame(minHeight: 32)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityAddTraits(summaryExpanded ? [.isSelected] : [])
-                        if summaryExpanded { dayDetails(day) }
-                        Divider().padding(.top, Space.xs)
-                        spotsSectionHeader(day)
-                    }
-                    .textCase(nil)
                 } footer: {
                     if !model.canEdit {
                         Text("보기 권한이라 일정을 바꿀 수 없어요. 주최자에게 요청하세요.")
@@ -144,8 +123,18 @@ struct PlanSpotList: View {
                               systemImage: "clock.badge.exclamationmark")
                     }
                 }
+                .listRowBackground(Ink.raised)
+                if let back = model.planDay?.back {
+                    Section {
+                        backRow(back)
+                            .listRowSeparator(.hidden)
+                    }
+                }
             }
-            .listStyle(.plain)
+            .listStyle(.insetGrouped)
+            .listSectionSpacing(Space.l)
+            .contentMargins(.horizontal, Space.l, for: .scrollContent)
+            .contentMargins(.top, Space.s, for: .scrollContent)
             .paperGround()
             .refreshable { await model.load() }
             // 날이 바뀌면 **새 화면**이다 — 그래야 밀려 나가고 들어오는 것이 보인다.
@@ -161,6 +150,40 @@ struct PlanSpotList: View {
         } else {
             EmptyStateView(symbol: "calendar", title: "일자가 없어요", message: "웹에서 일자를 먼저 만들어 주세요.")
         }
+    }
+
+    /// 요약은 스크롤되는 독립 카드다. 방문 일정과 같은 고정 헤더에 넣지 않는다.
+    private func summaryCard(_ day: TripDay) -> some View {
+        VStack(alignment: .leading, spacing: Space.s) {
+            Text("하루 요약")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Ink.accent)
+                .accessibilityAddTraits(.isHeader)
+            dayHeader(day)
+            if model.plan == nil && !model.planAttempted(for: model.selectedDay) {
+                ProgressView("이동·도착 시각을 계산하는 중").font(.caption)
+            }
+            if let totals = model.planDay?.totals { daySummary(totals) }
+            Divider()
+            costRow(day)
+            Button {
+                withAnimation(motion) { summaryExpanded.toggle() }
+            } label: {
+                HStack(spacing: Space.xs) {
+                    Text(summaryExpanded ? "요약 접기" : "상세 요약 보기")
+                    Image(systemName: "chevron.right")
+                        .rotationEffect(.degrees(summaryExpanded ? 90 : 0))
+                }
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Ink.accent)
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(summaryExpanded ? [.isSelected] : [])
+            if summaryExpanded { dayDetails(day) }
+        }
+        .padding(.vertical, Space.s)
     }
 
     /// 세로로 읽기 시작한 손은 나중에 비스듬해져도 날짜를 바꾸지 않는다.
@@ -254,14 +277,26 @@ struct PlanSpotList: View {
     /// 거리·미정·예산 같은 나머지는 `dayDetails`(접힘) 안에 있다.
     @ViewBuilder
     private func daySummary(_ totals: DayPlanTotals) -> some View {
-        HStack(spacing: Space.xs) {
-            if let line = Self.summaryLine(totals) {
-                Text(line)
-                    .font(.subheadline)
-                    // 늦게 끝나는 것 자체는 문제가 아니다 — 자정을 넘길 때(과밀)만 주의색이다.
-                    .foregroundStyle(totals.overloaded ? Ink.warning : Ink.soft)
-                    .fixedSize(horizontal: false, vertical: true)
+        if Self.summaryLine(totals) != nil {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: Space.l) { summaryStats(totals) }
+                    .fixedSize(horizontal: true, vertical: true)
+                VStack(alignment: .leading, spacing: Space.s) { summaryStats(totals) }
             }
+            .font(.subheadline)
+            .foregroundStyle(totals.overloaded ? Ink.warning : Ink.soft)
+        }
+    }
+
+    @ViewBuilder
+    private func summaryStats(_ totals: DayPlanTotals) -> some View {
+        if totals.travelMinutes > 0 {
+            Label("이동 \(TimeFormat.duration(totals.travelMinutes))", systemImage: "clock")
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        if let end = totals.endMinutes {
+            Label("종료 \(TimeFormat.clockAcrossMidnight(end))", systemImage: "flag")
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -313,6 +348,7 @@ struct PlanSpotList: View {
     private func spotsSectionHeader(_ day: TripDay) -> some View {
         HStack(spacing: Space.s) {
             Text("방문 일정").font(.headline).foregroundStyle(Ink.ink)
+                .accessibilityAddTraits(.isHeader)
             Spacer(minLength: Space.s)
             if model.canEdit, !day.spots.isEmpty {
                 Button {
@@ -410,31 +446,43 @@ struct PlanSpotList: View {
     /// 자동으로 이어 붙인 숙소 복귀. 일정에 저장된 장소가 아니라는 것을 밝힌다.
     /// ⚠️ 일정의 마지막 날에는 서버가 이걸 주지 않는다 — 떠나는 날이다.
     private func backRow(_ back: DayPlanBack) -> some View {
-        HStack(alignment: .top, spacing: Space.m) {
-            Image(systemName: "house.fill").font(.body).foregroundStyle(Ink.soft).frame(width: 22)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(back.name).font(.subheadline)
-                let mode = TravelMode(rawValue: back.leg.mode)
-                Text("숙소 복귀 · 자동 · \(mode?.label ?? "") \(TimeFormat.duration(back.leg.minutes))")
-                    .font(.caption2).foregroundStyle(.secondary)
-                if model.canEdit {
-                    Picker("복귀 이동수단", selection: Binding<TravelMode?>(
-                        get: { model.day?.returnMode },
-                        set: { mode in
-                            let dayIndex = model.selectedDay
-                            Task { await model.setReturnMode(mode, dayIndex: dayIndex) }
-                        })) {
-                        Text("그날 기본 수단 따르기").tag(TravelMode?.none)
-                        ForEach(TravelMode.allCases, id: \.self) { mode in
-                            Label(mode.label, systemImage: mode.symbol).tag(TravelMode?.some(mode))
-                        }
+        VStack(alignment: .leading, spacing: Space.m) {
+            HStack(spacing: Space.s) {
+                Label("숙소 복귀", systemImage: "house.fill")
+                    .font(.headline)
+                    .accessibilityAddTraits(.isHeader)
+                Text("자동")
+                    .font(.caption2.weight(.semibold))
+                    .padding(.horizontal, Space.s)
+                    .padding(.vertical, Space.xs)
+                    .background(Ink.accent.opacity(0.12), in: Capsule())
+                    .foregroundStyle(Ink.accent)
+            }
+            Text(back.name).font(.subheadline)
+                .fixedSize(horizontal: false, vertical: true)
+            let mode = TravelMode(rawValue: back.leg.mode)
+            Text("\(mode?.label ?? "") \(TimeFormat.duration(back.leg.minutes))")
+                .font(.caption).foregroundStyle(Ink.soft)
+            if model.canEdit {
+                Divider()
+                Picker("복귀 이동수단", selection: Binding<TravelMode?>(
+                    get: { model.day?.returnMode },
+                    set: { mode in
+                        let dayIndex = model.selectedDay
+                        Task { await model.setReturnMode(mode, dayIndex: dayIndex) }
+                    })) {
+                    Text("그날 기본 수단 따르기").tag(TravelMode?.none)
+                    ForEach(TravelMode.allCases, id: \.self) { mode in
+                        Label(mode.label, systemImage: mode.symbol).tag(TravelMode?.some(mode))
                     }
-                    .pickerStyle(.menu)
-                    .disabled(model.isSaving)
                 }
+                .pickerStyle(.menu)
+                .tint(Ink.accent)
+                .disabled(model.isSaving)
             }
         }
-        .listRowBackground(Ink.raised.opacity(0.6))
+        .padding(.vertical, Space.s)
+        .listRowBackground(Ink.sunken.opacity(0.55))
     }
 
     /// 렌터카 픽업·반납. ⚠️ **좌표가 없어 동선·ETA·지도에 들어가지 않는다** — 표시만 한다.
