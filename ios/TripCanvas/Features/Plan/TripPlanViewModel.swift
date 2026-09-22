@@ -299,6 +299,15 @@ final class TripPlanViewModel: DayPlanContext {
         }
     }
 
+    func setReturnMode(_ mode: TravelMode?, dayIndex: Int) async {
+        await store.edit("숙소 복귀 이동수단을 저장했어요") { document in
+            guard document.hasDay(dayIndex) else { return }
+            var days = document.days
+            days[dayIndex].returnMode = mode
+            document.days = days
+        }
+    }
+
     func setDayTitle(_ title: String) async {
         await store.edit(nil) { document in
             guard document.hasDay(self.selectedDay) else { return }

@@ -136,6 +136,7 @@ declare module '@legacy/lib.js' {
     inKorea(p: { lat: number; lng: number } | null | undefined): boolean;
     stayNights(s: unknown): number;
     localMode(mode: unknown): string;
+    returnModeOf(day: unknown): string;
     isOpenAt(periods: unknown, weekday: number, min: number): boolean | null;
     dayAnchor(day: unknown): unknown;
     dayStartAnchor(days: unknown[], di: number): unknown;

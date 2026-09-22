@@ -1328,7 +1328,7 @@ function carEventRowHtml(e){
 function backLegOf(day, di, back){
   const loc=day.spots.filter(hasLoc);
   if(!back || !loc.length) return null;
-  const from=loc[loc.length-1], mode=localMode(dayModeOf(day)), timeZone=dayTimeZone(day);
+  const from=loc[loc.length-1], mode=returnModeOf(day), timeZone=dayTimeZone(day);
   const when = mode==='transit'
     ? planDepartISO(di>=0?isoDateOf(di):'', dayEndMin(day, startAnchorFor(di)), timeZone)
     : null;

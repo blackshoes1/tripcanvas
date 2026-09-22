@@ -698,6 +698,19 @@ test('normalizeSpot — 알 수 없는 카테고리는 버리고 유효한 값�
   assert.equal('cat' in t.days[0].spots[2], false);
 });
 
+test('숙소 복귀 수단은 별도 선택을 우선하고 미지정은 기존 기본값을 유지한다', () => {
+  assert.equal(L.returnModeOf({mode:'flight'}), 'car');
+  assert.equal(L.returnModeOf({mode:'walk'}), 'walk');
+  for(const mode of ['car','taxi','transit','walk','bike','train','flight']) {
+    const trip=L.normalizeTrip({days:[{mode:'car',returnMode:mode,spots:[]}]});
+    assert.equal(trip.days[0].returnMode, mode);
+    assert.equal(L.returnModeOf(trip.days[0]), mode);
+  }
+  const trip=L.normalizeTrip({days:[{mode:'walk',returnMode:'invalid',spots:[]}]});
+  assert.equal(trip.days[0].returnMode, undefined);
+  assert.equal(L.returnModeOf(trip.days[0]), 'walk');
+});
+
 test('dayReturnStay — 그날 숙소로 동선을 닫되, 이미 닫혔거나 숙소가 없으면 안 붙인다', () => {
   const P = (lat) => ({lat, lng:1});
   const tail = {title:'',spots:[Object.assign({name:'다음날'},P(7))]};   // 마지막 날에는 복귀가 없다 — 아래 별도 테스트

@@ -48,6 +48,43 @@ final class TripCoverTests: XCTestCase {
         XCTAssertNotNil(Bundle.main.url(forResource: "NanumMyeongjo-Regular", withExtension: "ttf"))
         XCTAssertNotNil(UIFont(name: "NanumMyeongjo", size: 24))
     }
+
+    func testCropAlwaysMatchesCoverAspectAndStaysInsidePhoto() {
+        for size in [CGSize(width: 900, height: 1800), CGSize(width: 1800, height: 900)] {
+            for zoom in [CGFloat(1), 2, 4] {
+                for position in [CGPoint(x: -1, y: -1), CGPoint(x: 0.5, y: 0.5), CGPoint(x: 2, y: 2)] {
+                    let crop = TripCoverImage.cropRect(size: size, zoom: zoom, position: position)
+                    XCTAssertEqual(crop.width / crop.height, TripCoverImage.aspectRatio, accuracy: 0.0001)
+                    XCTAssertGreaterThanOrEqual(crop.minX, 0)
+                    XCTAssertGreaterThanOrEqual(crop.minY, 0)
+                    XCTAssertLessThanOrEqual(crop.maxX, size.width + 0.0001)
+                    XCTAssertLessThanOrEqual(crop.maxY, size.height + 0.0001)
+                }
+            }
+        }
+    }
+
+    func testSavedCropUsesSelectedRegionAndFitsUploadLimit() throws {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 2000, height: 1000), format: format).image { context in
+            UIColor.red.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 1000, height: 1000))
+            UIColor.blue.setFill()
+            context.fill(CGRect(x: 1000, y: 0, width: 1000, height: 1000))
+        }
+        let left = try XCTUnwrap(TripCoverImage.jpeg(from: image, zoom: 2, position: CGPoint(x: 0, y: 0.5)))
+        let right = try XCTUnwrap(TripCoverImage.jpeg(from: image, zoom: 2, position: CGPoint(x: 1, y: 0.5)))
+        XCTAssertNotEqual(left, right, "위치 조정이 저장 이미지에도 반영되어야 한다")
+        for data in [left, right] {
+            XCTAssertLessThanOrEqual(data.count, 250_000)
+            let saved = try XCTUnwrap(UIImage(data: data))
+            XCTAssertEqual(saved.size.width / saved.size.height, TripCoverImage.aspectRatio, accuracy: 0.0001)
+            let source = try XCTUnwrap(CGImageSourceCreateWithData(data as CFData, nil))
+            let properties = try XCTUnwrap(CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any])
+            XCTAssertNil(properties[kCGImagePropertyGPSDictionary as String])
+        }
+    }
 }
 
 private final class CoverResponseProtocol: URLProtocol, @unchecked Sendable {

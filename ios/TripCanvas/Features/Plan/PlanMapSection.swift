@@ -31,6 +31,8 @@ struct PlanMapSection: View {
     /// 그 선택이 **어느 날**의 것인가. 날을 옮기면 옛 번호가 새 날의 장소를 가리키지 않게 — 같은 날일 때만 선택이다.
     @State private var selectedMapSpotDay: Int?
     @State private var sceneChoice: SceneChoice = .main
+    @State private var reorderMode: EditMode = .inactive
+    @State private var isReordering = false
 
     /// 그날의 동선. 좌표 없는 장소는 여기 안 나온다 — 목록의 '위치 없음'이 그 사실을 말한다.
     var body: some View {
@@ -112,7 +114,7 @@ struct PlanMapSection: View {
             let selection = mapSelection(on: model.selectedDay)
             // 도시를 건너는 날은 장면으로 나눈다 — 기본 카메라는 주 장면, 전체는 칩으로. 도시 안 하루는 장면이 하나다.
             let scenes = MapScenes.split(day.sceneSpots)
-            let routes = model.planDay?.mapRoutes ?? []
+            let routes = model.isSaving ? [] : (model.planDay?.mapRoutes ?? [])
             VStack(spacing: 0) {
                 if !day.pins.isEmpty {
                     if scenes.count >= 2 {
@@ -128,13 +130,28 @@ struct PlanMapSection: View {
                                   onPinSelected: { id in chooseMapSpot(day.pins.first(where: { $0.id == id }).map { $0.order - 1 }, day: model.selectedDay, scenes: scenes) },
                                   isVisible: showsMap)
                         .frame(minHeight: 180, maxHeight: .infinity)
-                    if let note = Self.routeNote(model.planDay?.mapRoutes ?? []) {
+                    if let note = Self.routeNote(routes) {
                         Text(note).font(.caption).foregroundStyle(.secondary)
                     }
                 } else {
                     Button { withAnimation(motion) { mapSearching = true } } label: {
                         Label("지도에서 장소 찾기", systemImage: "magnifyingglass").frame(minHeight: 60)
                     }
+                }
+                if model.canEdit, day.spots.count > 1 {
+                    HStack {
+                        Text("방문 순서").font(.subheadline.weight(.semibold))
+                        Spacer()
+                        if isReordering { ProgressView().controlSize(.small) }
+                        Button(reorderMode.isEditing ? "순서 편집 마치기" : "순서 편집") {
+                            withAnimation(motion) {
+                                reorderMode = reorderMode.isEditing ? .inactive : .active
+                            }
+                        }
+                        .disabled(model.isSaving || isReordering)
+                    }
+                    .padding(.horizontal, Space.m)
+                    .frame(minHeight: 44)
                 }
                 ScrollViewReader { proxy in
                     List {
@@ -164,11 +181,34 @@ struct PlanMapSection: View {
                             .listRowBackground(selection == index ? Color.accentColor.opacity(0.12) : Ink.raised)
                             .id(index)
                         }
+                        .onMove { source, destination in
+                            guard model.canEdit, !model.isSaving, !isReordering else { return }
+                            let dayIndex = model.selectedDay
+                            isReordering = true
+                            selectMapSpot(nil, day: nil)
+                            sceneChoice = .main
+                            Task {
+                                defer { isReordering = false }
+                                guard model.selectedDay == dayIndex else { return }
+                                await model.moveSpots(from: source, to: destination)
+                            }
+                        }
+                        .moveDisabled(!model.canEdit || model.isSaving || isReordering)
                     }.listStyle(.plain).frame(maxHeight: 240)
+                    .environment(\.editMode, $reorderMode)
+                    .disabled(model.isSaving || isReordering)
                     .onChange(of: selectedMapSpot) { _, index in if let index { proxy.scrollTo(index, anchor: .center) } }
                 }
             }
-            .onChange(of: model.selectedDay) { _, _ in selectMapSpot(nil, day: nil); sceneChoice = .main }
+            .onChange(of: model.selectedDay) { _, _ in
+                selectMapSpot(nil, day: nil)
+                sceneChoice = .main
+                reorderMode = .inactive
+            }
+            .onChange(of: day.spots) { _, _ in
+                selectMapSpot(nil, day: nil)
+                sceneChoice = .main
+            }
         }
     }
 

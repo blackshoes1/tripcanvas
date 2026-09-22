@@ -417,6 +417,21 @@ struct PlanSpotList: View {
                 let mode = TravelMode(rawValue: back.leg.mode)
                 Text("숙소 복귀 · 자동 · \(mode?.label ?? "") \(TimeFormat.duration(back.leg.minutes))")
                     .font(.caption2).foregroundStyle(.secondary)
+                if model.canEdit {
+                    Picker("복귀 이동수단", selection: Binding<TravelMode?>(
+                        get: { model.day?.returnMode },
+                        set: { mode in
+                            let dayIndex = model.selectedDay
+                            Task { await model.setReturnMode(mode, dayIndex: dayIndex) }
+                        })) {
+                        Text("그날 기본 수단 따르기").tag(TravelMode?.none)
+                        ForEach(TravelMode.allCases, id: \.self) { mode in
+                            Label(mode.label, systemImage: mode.symbol).tag(TravelMode?.some(mode))
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .disabled(model.isSaving)
+                }
             }
         }
         .listRowBackground(Ink.raised.opacity(0.6))

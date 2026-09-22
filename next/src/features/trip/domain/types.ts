@@ -95,6 +95,8 @@ export interface Day {
   startAt?: string;
   /** 'none'이면 전날 이월 없음 (공항 이동일·야간열차) */
   startPolicy?: 'none';
+  /** 자동 숙소 복귀 구간의 수단. 없으면 그날 기본 수단을 근거리 보정한다. */
+  returnMode?: TransportMode;
   timeZone?: string;
   flight?: DayFlight;
 }

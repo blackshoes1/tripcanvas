@@ -85,6 +85,12 @@ struct TripDay: Hashable, Sendable {
         set { raw.setOrRemove("startPolicy", newValue ? nil : .string("none")) }
     }
 
+    /// 자동 숙소 복귀에만 적용. nil이면 서버가 그날 기본 수단으로 계산한다.
+    var returnMode: TravelMode? {
+        get { raw["returnMode"]?.stringValue.flatMap(TravelMode.init(rawValue:)) }
+        set { raw.setOrRemove("returnMode", newValue.map { .string($0.rawValue) }) }
+    }
+
     var spots: [TripSpot] {
         get { (raw["spots"]?.arrayValue ?? []).map { TripSpot(raw: $0.objectValue ?? [:]) } }
         set { raw["spots"] = .array(newValue.map { .object($0.raw) }) }
