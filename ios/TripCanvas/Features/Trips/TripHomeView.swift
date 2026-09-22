@@ -81,6 +81,10 @@ struct TripHomeView: View {
                 // 키보드가 올라와도 바는 제자리다 — 시스템 탭 바처럼 키보드 아래에 있다.
                 .ignoresSafeArea(.keyboard, edges: .bottom)
         }
+        // 여행 하나가 드는 모델을 아래 전체에 내려보낸다(2026-09-21). 시트·push로 들어간 화면이
+        // `shared`를 못 받아 **자체 모델을 새로 만들던** 자리가 넷 있었다 — 같은 목록을 최대 3벌 받았다.
+        // §탭 전환은 앱 복귀가 아니다 — 그 규칙이 탭에만 걸려 있고 시트·push에는 안 걸려 있었다.
+        .environment(models)
         .sheet(item: $panel) { item in
             NavigationStack {
                 Group {
@@ -197,6 +201,7 @@ struct TripHomeView: View {
 /// 만드는 것은 값싸다 — 여기서는 아무것도 받지 않는다. 각 화면이 나타날 때 `loadIfStale`로
 /// "없으면 받고, 오래됐으면 뒤에서 새로 받고, 방금 받았으면 그대로" 판단한다.
 @MainActor
+@Observable
 final class TripScreenModels {
     let today: TodayViewModel
     let plan: TripPlanViewModel

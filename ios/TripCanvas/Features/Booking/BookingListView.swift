@@ -55,7 +55,9 @@ struct BookingListView: View {
     var shared: BookingListViewModel? = nil
     @Environment(AppEnvironment.self) private var env
     @State private var owned: BookingListViewModel?
-    private var model: BookingListViewModel? { shared ?? owned }
+    /// 여행 화면이 드는 모델. `지금`에서 시트·push로 들어온 자리가 여기서 같은 것을 집는다.
+    @Environment(TripScreenModels.self) private var screenModels: TripScreenModels?
+    private var model: BookingListViewModel? { shared ?? screenModels?.bookings ?? owned }
     /// 편집할 때만 문서를 연다 — 보기만 하는 사람은 요약 하나로 끝난다.
     @State private var plan: TripPlanViewModel?
     @State private var editor: BookingEditorTarget?
@@ -147,7 +149,7 @@ struct BookingListView: View {
         }
         .refreshable { await model?.load() }
         .task {
-            if shared == nil, owned == nil { owned = BookingListViewModel(tripId: trip.id, service: env.service) }
+            if model == nil { owned = BookingListViewModel(tripId: trip.id, service: env.service) }
             await model?.loadIfStale()
         }
         .sheet(item: $editor) { target in
