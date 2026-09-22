@@ -1342,3 +1342,17 @@ test('여행 정규화가 장소의 예약 정보를 지난다 — 불량 값은
   assert.equal(spots[1].admission, undefined, '사용자가 확인한 값이 아니면 통째로 떨어진다');
   assert.equal(spots[1].name, '프라도', '장소 자체는 남는다');
 });
+
+// ── 샘플 여행 판정 ────────────────────────────────────────────────────────────
+// 리터럴을 여기저기 적으면 한 곳이 빠져 데모가 계정에 올라가거나 진짜 여행이 안 올라간다.
+
+test('샘플 여행은 한 규칙으로 가른다 — id와 sample 표시 둘 다 본다', () => {
+  assert.equal(L.SAMPLE_TRIP_ID, 'spain2026');
+  assert.equal(L.sampleTrip().id, L.SAMPLE_TRIP_ID, '샘플은 그 id로 만들어진다');
+  assert.equal(L.isSampleTrip(L.sampleTrip()), true);
+  assert.equal(L.isSampleTrip({ id: 'spain2026' }), true, 'id만 있어도 샘플이다(옛 저장본)');
+  assert.equal(L.isSampleTrip({ id: 'mine', sample: true }), true, '표시만 있어도 샘플이다');
+  assert.equal(L.isSampleTrip({ id: 'mine' }), false);
+  assert.equal(L.isSampleTrip(null), false);
+  assert.equal(L.isSampleTrip({ id: 'mine', sample: 'yes' }), false, '참이 아닌 값은 표시가 아니다');
+});

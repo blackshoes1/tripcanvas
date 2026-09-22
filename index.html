@@ -13,7 +13,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js" integrity="sha384-+pWnyi8LtZx+cgXfD2arWgUX7pHIaEL215cEPPk9WrsegNlgvDL9DNjaqsceQq6o" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js" integrity="sha384-BSxuMLxX+FCbTdYec3TbXlnMGEEM2QXTFdtDaveen71o+jswm2J36+xFqp8k4VHM" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.min.js" integrity="sha384-l8ah+VgaWtk1mvOe9VC+OirC6qHFF4yH7l7mKRidV9MSti3E9F463bMp6ZVN4kuC" crossorigin="anonymous"></script>
-<link rel="stylesheet" href="style.css?v=tc-v222">
+<link rel="stylesheet" href="style.css?v=tc-v223">
 <!-- Travelpayouts 사이트 소유 인증 (파트너 가입 검증용 — DiscoverCars API 신청에 필요) -->
 <script nowprocket data-noptimize="1" data-cfasync="false" data-wpfc-render="false" seraph-accel-crit="1" data-no-defer="1" data-cmp-ab="2">
   (function () {
@@ -203,7 +203,7 @@
 <!-- 함께하기 — 멤버 · 초대 · 나가기 (접근 제어는 DB의 RLS·RPC가 결정한다. 여기는 그 결과를 보여줄 뿐) -->
 <div class="modalBg" id="membersModalBg"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="membersTitle">
   <div class="modalTitleRow"><div><p class="eyebrow">TOGETHER</p><h2 id="membersTitle">함께하기</h2></div><span class="stepBadge" id="membersRoleBadge"></span></div>
-  <p class="hint" id="membersHint">같은 여행을 여러 명이 함께 봅니다. 편집자는 일정을 바꿀 수 있고, 보기 권한은 볼 수만 있어요.</p>
+  <p class="hint">같은 여행을 여러 명이 함께 봅니다. 편집자는 일정을 바꿀 수 있고, 보기 권한은 볼 수만 있어요.</p>
   <div class="memberSection">
     <div class="memberSectionHead"><b>멤버</b><button class="btn" id="membersRefresh" style="font-size:11px;padding:3px 9px;min-height:28px" title="다른 멤버가 바꾼 최신 일정과 멤버 목록을 불러와요">↻ 새로고침</button></div>
     <div id="membersList" class="memberList"></div>
@@ -237,7 +237,7 @@
     <div class="hint">링크를 아는 사람은 누구나 참여할 수 있어요 · 7일 뒤 만료 · 아래에서 언제든 취소할 수 있어요</div>
     <div id="inviteList" class="memberList"></div>
   </div>
-  <div class="memberSection" id="activitySection">
+  <div class="memberSection">
     <div class="memberSectionHead"><b>최근 활동</b><span class="hint" id="liveState" title="다른 멤버의 변경이 실시간으로 들어오는지"></span></div>
     <div id="activityList" class="activityList"></div>
   </div>
@@ -272,7 +272,7 @@
 <!-- 후보 보드 — 아직 일정이 아닌 '가고 싶은 곳'. 인기가 많다고 자동으로 일정에 들어가지 않는다(§12·§79) -->
 <div class="modalBg" id="candModalBg"><div class="modal wide" role="dialog" aria-modal="true" aria-labelledby="candTitle">
   <div class="modalTitleRow"><div><p class="eyebrow">CANDIDATES</p><h2 id="candTitle">가고 싶은 곳</h2></div><span class="stepBadge" id="candRoleBadge"></span></div>
-  <p class="hint" id="candHint">일정에 넣기 전에 일행과 먼저 골라 봐요. 반응은 서로 보이고, 일정에 넣는 건 언제나 직접 누를 때만 일어나요.</p>
+  <p class="hint">일정에 넣기 전에 일행과 먼저 골라 봐요. 반응은 서로 보이고, 일정에 넣는 건 언제나 직접 누를 때만 일어나요.</p>
   <div class="memberSection" id="candAddSection">
     <div class="fieldRow">
       <input type="text" id="candTitleInput" maxlength="120" placeholder="가고 싶은 곳 (예: 사그라다 파밀리아)" aria-label="후보 이름">
@@ -372,7 +372,7 @@
 <div class="modalBg" id="bookingModalBg"><div class="modal">
   <h2 id="bkModalTitle">결제 항목 추가</h2>
   <label>분류</label>
-  <select id="bkType"><option value="FLIGHT">✈️ 항공</option><option value="STAY">🏨 숙박</option><option value="RENT">🚗 렌트</option><option value="TRANSIT">🚆 대중교통</option><option value="FOOD">🍽️ 식비</option><option value="SHOPPING">🛍️ 쇼핑</option><option value="TICKET">🎟️ 입장권·관람권</option><option value="TRANSPORT">🚕 택시·기타 교통</option><option value="OTHER">📦 기타</option></select>
+  <select id="bkType" aria-describedby="bkTypeHint"><option value="FLIGHT">✈️ 항공</option><option value="STAY">🏨 숙박</option><option value="RENT">🚗 렌트</option><option value="TRANSIT">🚆 대중교통</option><option value="FOOD">🍽️ 식비</option><option value="SHOPPING">🛍️ 쇼핑</option><option value="TICKET">🎟️ 입장권·관람권</option><option value="TRANSPORT">🚕 택시·기타 교통</option><option value="OTHER">📦 기타</option></select>
   <div class="hint" id="bkTypeHint">항공·숙박·렌트는 예약으로 저장돼 기간·조건·가격 추적이 붙어요. 나머지는 가기 전에 낸 비용으로만 남아요.</div>
   <div id="bkSpotWrap"><label>일정의 숙소와 연결 (선택)</label><select id="bkSpot"></select>
     <div class="hint">연결하면 일정 카드의 숙소 항목에 가격 상태가 표시됩니다. 🏠 숙소로 등록한 장소만 목록에 나와요.</div></div>
@@ -460,7 +460,7 @@
     <span class="hint" style="margin:0">토글로 AI 파싱 켜기/끄기</span>
   </div>
   <div class="hint" id="pasteModeHint" style="margin-bottom:6px"></div>
-  <div class="row" id="pasteHelpRow" style="margin:0 0 6px;justify-content:flex-start">
+  <div class="row" style="margin:0 0 6px;justify-content:flex-start">
     <button class="btn" id="aiPromptCopy" style="font-size:11px;padding:3px 10px">🤖 AI에게 시킬 프롬프트 복사</button>
   </div>
   <textarea id="pasteText" style="width:100%;min-height:180px"></textarea>
@@ -517,7 +517,7 @@
   </div>
   <p class="hint" id="pvStartWarn" style="margin:2px 0 6px"></p>
   <div id="pvList" class="pvList"></div>
-  <details id="pvRaw" style="margin-top:8px"><summary>붙여넣은 원문 보기</summary><pre id="pvRawText" class="pvRawText"></pre></details>
+  <details style="margin-top:8px"><summary>붙여넣은 원문 보기</summary><pre id="pvRawText" class="pvRawText"></pre></details>
   <div class="row">
     <button class="btn" id="pvCancel">취소</button>
     <button class="btn primary" id="pvRun">담은 것으로 만들기</button>
@@ -621,15 +621,15 @@
   <div id="placeDetailsContent" aria-live="polite"></div>
   <footer id="placeDetailsActions"></footer>
 </dialog>
-<script src="lib.js?v=tc-v222"></script>
-<script src="sync.js?v=tc-v222"></script>
-<script src="routing.js?v=tc-v222"></script>
-<script src="price.js?v=tc-v222"></script>
-<script src="adaptive.js?v=tc-v222"></script>
-<script src="intake.js?v=tc-v222"></script>
-<script src="collab.js?v=tc-v222"></script>
-<script src="api.js?v=tc-v222"></script>
-<script src="auth.js?v=tc-v222"></script>
-<script src="app.js?v=tc-v222"></script>
+<script src="lib.js?v=tc-v223"></script>
+<script src="sync.js?v=tc-v223"></script>
+<script src="routing.js?v=tc-v223"></script>
+<script src="price.js?v=tc-v223"></script>
+<script src="adaptive.js?v=tc-v223"></script>
+<script src="intake.js?v=tc-v223"></script>
+<script src="collab.js?v=tc-v223"></script>
+<script src="api.js?v=tc-v223"></script>
+<script src="auth.js?v=tc-v223"></script>
+<script src="app.js?v=tc-v223"></script>
 </body>
 </html>
