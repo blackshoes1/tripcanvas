@@ -42,4 +42,36 @@ final class MapPickTests: XCTestCase {
         XCTAssertEqual(target.spot.name, "어떤 곳")
         XCTAssertNil(target.index, "새 장소이므로 고칠 대상이 없다")
     }
+
+    func testSearchReplacementChangesPlaceButKeepsItineraryFields() {
+        var original = TripSpot(name: "예전 장소", city: "서울")
+        original.point = GeoPoint(lat: 37.5, lng: 127.0)
+        original.stayMinutes = 0
+        original.arriveAt = "14:00"
+        original.desc = "예약 메모"
+        original.placeId = "old-place"
+        original.kakaoId = "old-kakao"
+        original.setField("hours", .array([.string("old")]))
+        original.setField("bookingId", .string("booking-1"))
+        original.setField("custom", .string("keep"))
+
+        let hit = PlaceHit(id: "new", name: "새 장소", city: "부산", address: "새 주소",
+                           point: GeoPoint(lat: 35.1, lng: 129.0), category: .food,
+                           placeId: "new-place", provider: "google", providerId: "new-place")
+        let replaced = SpotEditorView.replacing(original, with: hit)
+
+        XCTAssertEqual(replaced.name, "새 장소")
+        XCTAssertEqual(replaced.city, "부산")
+        XCTAssertEqual(replaced.point?.lng, 129.0)
+        XCTAssertEqual(replaced.category, .food)
+        XCTAssertEqual(replaced.placeId, "new-place")
+        XCTAssertNil(replaced.kakaoId)
+        XCTAssertEqual(replaced.raw["addr"]?.stringValue, "새 주소")
+        XCTAssertNil(replaced.raw["hours"])
+        XCTAssertEqual(replaced.stayMinutes, 0)
+        XCTAssertEqual(replaced.arriveAt, "14:00")
+        XCTAssertEqual(replaced.desc, "예약 메모")
+        XCTAssertEqual(replaced.raw["bookingId"]?.stringValue, "booking-1")
+        XCTAssertEqual(replaced.raw["custom"]?.stringValue, "keep")
+    }
 }
