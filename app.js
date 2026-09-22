@@ -1271,7 +1271,7 @@ function render(){
       });
     }
   }
-  renderSidebar(); renderFilter(); renderLegend();
+  renderSidebar(); renderFilter(); renderLegend(); renderMenuBadges();
   document.getElementById('tripSel').innerHTML = viewMode
     ? `<option selected>${esc(viewMode.name)}</option>`
     : store.trips.map(x=>`<option value="${escAttr(x.id)}" ${x.id===store.activeId?'selected':''}>${esc(x.name)}</option>`).join('');
@@ -1559,16 +1559,28 @@ function playTrip(){
   updatePlayPauseBtn();
   enterPhase(false);                                   // 첫 구간부터 fit+타일 대기 후 출발
 }
+/**
+ * 보는 범위를 바꾼다(전체=0 · N일차=N). **필터바 칩과 지도 범례가 같이 쓴다**(2026-09-21).
+ *
+ * 재생 중이면 멈추고 **새 범위로 다시 시작**하고, 아니면 그 영역으로 지도를 맞춘다.
+ * ⚠️ 2026-09-21 전에는 범례가 이 규칙을 지나지 않고 `activeDay`를 직접 바꿔, 재생 처리가 통째로
+ * 빠져 있었다(재생 중에는 범례가 `display:none`이라 드러나지 않았을 뿐이다).
+ * @param {number} ad @param {()=>void} fitFn
+ */
+function setDayScope(ad, fitFn){
+  const wasPlaying = !!play;
+  if(wasPlaying) stopPlay();
+  activeDay=ad; render();
+  if(wasPlaying) playTrip();                          // 새 범위(일자/전체)로 재생 재시작
+  else fitFn();
+}
+/** 그 날의 좌표 있는 장소가 다 보이게 — 두 컨트롤이 같은 프레이밍을 쓴다. @param {number} di */
+function fitDay(di){
+  fitTo(trip().days[di].spots.filter(hasLoc).map(s=>[s.lat,s.lng]),64,15);
+}
 function renderFilter(){
   const bar = document.getElementById('filterbar'); bar.innerHTML='';
-  // 범위 전환: 재생 중이면 새 범위로 재생 재시작(현재 재생을 멈추고 새 일정으로), 아니면 해당 영역으로 프레이밍
-  const setScope=(ad, fitFn)=>{
-    const wasPlaying = !!play;
-    if(wasPlaying) stopPlay();
-    activeDay=ad; render();
-    if(wasPlaying) playTrip();                          // 새 범위(일자/전체)로 재생 재시작
-    else fitFn();
-  };
+  const setScope=setDayScope;
   const all = document.createElement('button'); all.className='chip'+(activeDay?'':' active'); all.textContent='전체';
   all.onclick=()=>setScope(0, fitAll); bar.appendChild(all);
   const today=new Date(); today.setHours(0,0,0,0);
@@ -1576,14 +1588,14 @@ function renderFilter(){
   const todayDi=start?Math.floor((today-start)/86400000):-1;
   const todayBtn=document.createElement('button'); todayBtn.className='chip'+(activeDay===todayDi+1?' active':''); todayBtn.textContent='오늘';
   if(todayDi<0||todayDi>=trip().days.length){ todayBtn.disabled=true; todayBtn.title='여행 기간이 아닙니다'; }
-  else todayBtn.onclick=()=>setScope(todayDi+1,()=>fitTo(trip().days[todayDi].spots.filter(hasLoc).map(s=>[s.lat,s.lng]),64,15));
+  else todayBtn.onclick=()=>setScope(todayDi+1,()=>fitDay(todayDi));
   bar.appendChild(todayBtn);
   trip().days.forEach((d,i)=>{
     const b=document.createElement('button'); b.className='chip'+(activeDay===i+1?' active':''); b.title=d.title;
     b.innerHTML = colorByMode()==='day'
       ? `<span class="dot" style="background:${dayColor(i)};width:7px;height:7px;margin-right:4px"></span>D${i+1}`
       : 'D'+(i+1);
-    b.onclick=()=>setScope(i+1, ()=>fitTo(d.spots.filter(hasLoc).map(s=>[s.lat,s.lng]),64,15));
+    b.onclick=()=>setScope(i+1, ()=>fitDay(i));
     bar.appendChild(b);
   });
   // 예약 절약 기회 — 발견되면 필터바에서 항상 보이게 (탭 → 예약 추적). 확정과 잠재를 구분한다.
@@ -1627,6 +1639,33 @@ function renderFilter(){
     bar.appendChild(cost);
   }
 }
+// 후보 보드의 전역 — **`renderMenuBadges`보다 위에 있어야 한다.** `render()`가 로드 직후에 불리는데
+// 선언이 아래에 있으면 TDZ로 스크립트가 통째로 죽는다(실시간 전역을 위에 두는 것과 같은 이유).
+let candTripId=null, candRows=[], candBusy=false;
+/**
+ * ☰ 안에만 있는 것들이 **있다는 사실**을 바깥에서 알린다(2026-09-21).
+ * 준비 메모와 가고 싶은 곳은 메뉴를 열기 전에는 존재를 암시하는 것이 없었다.
+ *
+ * ⚠️ **개수를 알려고 서버를 묻지 않는다**(§네트워크는 적게). 메모는 여행 문서에 있어 언제나 알고,
+ * 후보는 이번 세션에서 그 여행의 보드를 받아 본 적이 있을 때만 센다 — 아니면 말하지 않는다.
+ * ⚠️ 챙긴 메모(`done`)는 세지 않는다. 배지는 '아직 볼 것이 남았다'는 뜻이다.
+ */
+function renderMenuBadges(){
+  const notes=tripNotes().filter(n=>n&&!n.done).length;
+  const cands=(candTripId===trip().id)? candRows.length : 0;
+  const put=(/**@type {string}*/id, /**@type {number}*/n)=>{
+    const el=document.getElementById(id); if(!el) return;
+    el.textContent=String(n); el.hidden=!n;
+  };
+  put('noteCount', notes); put('candCount', cands);
+  const badge=document.getElementById('menuBadge');
+  if(badge) badge.hidden=!(notes||cands);
+  const more=document.getElementById('moreBtn');
+  if(more){
+    const parts=[notes?`준비 메모 ${notes}`:'', cands?`가고 싶은 곳 ${cands}`:''].filter(Boolean);
+    more.setAttribute('aria-label', parts.length? `메뉴 · ${parts.join(' · ')}` : '메뉴');
+  }
+}
 function renderLegend(){
   let body;
   if(colorByMode()==='day'){
@@ -1639,8 +1678,7 @@ function renderLegend(){
   }
   document.getElementById('legend').innerHTML=body+'<br><span style="color:var(--meta-warning)">- - -</span> 일자 간 이동';
   document.querySelectorAll('#legend .legDay').forEach(el=>{
-    el.onclick=()=>{ const i=+el.dataset.di; activeDay=i+1; render();
-      fitTo(trip().days[i].spots.filter(hasLoc).map(s=>[s.lat,s.lng]),64,15); };
+    el.onclick=()=>{ const i=+el.dataset.di; setDayScope(i+1, ()=>fitDay(i)); };
   });
 }
 function renderSidebar(){
@@ -2714,10 +2752,16 @@ window.switchTrip=(id)=>{
   document.getElementById('tripListBg').classList.remove('show');
 };
 window.removeTrip=(id)=>{ if(deleteTrip(id)) renderTripList(); };   // 목록은 열어둔 채 계속 정리 가능
-document.getElementById('tripListBtn').onclick=()=>{
+/**
+ * 여행 목록(전환·삭제)을 연다. **진입점은 헤더의 여행 피커 하나다**(2026-09-21) —
+ * 전에는 ☰ 안에도 '여행 목록' 버튼이 있었고 그게 피커의 클릭을 그대로 위임받아,
+ * 같은 모달을 여는 자리가 둘이고 이름이 달랐다. 피커는 데스크톱·모바일 모두 항상 보이고
+ * 현재 여행 이름까지 말하므로 메뉴 쪽이 더할 것이 없었다.
+ */
+function openTripList(){
   if(viewMode){ toast('읽기전용 보기입니다 — "내 여행으로 저장" 후 이용하세요','#4f4740'); return; }
   renderTripList(); document.getElementById('tripListBg').classList.add('show');
-};
+}
 document.getElementById('tripListClose').onclick=()=>document.getElementById('tripListBg').classList.remove('show');
 document.getElementById('tripListNew').onclick=()=>{
   document.getElementById('tripListBg').classList.remove('show');
@@ -3047,7 +3091,10 @@ function renderBookingList(){
     </div>`:'';
   const rows=paymentRows(), split=prepPaySplit();
   const paidLine=(split.PAID>0||split.RESERVED>0)? `<div class="hint" style="margin:0 0 4px">${[split.PAID>0?`결제 완료 ₩${fmtMoney(split.PAID)}`:'', split.RESERVED>0?`결제 예정 ₩${fmtMoney(split.RESERVED)}`:''].filter(Boolean).join(' · ')}</div>`:'';
-  document.getElementById('bookingListBody').innerHTML = paidLine + (rows.length? rows.map(r=>{
+  // 같은 여행의 비용이 화면마다 다른 숫자인 이유는 기준이 다르기 때문이다 — 필터바·일자 카드는
+  // 이미 그 기준을 말하는데 이 목록만 말하지 않았다. 세 곳이 다 같은 말을 해야 숫자를 믿을 수 있다.
+  const basisLine=`<div class="hint" style="margin:0 0 8px">여기 금액은 <b>예약 전액</b>이에요 — 일자 카드의 '하루 비용'은 이걸 날수로 나눈 하루치입니다.</div>`;
+  document.getElementById('bookingListBody').innerHTML = paidLine + (rows.length? basisLine:'') + (rows.length? rows.map(r=>{
     const b=r.booking, period=b?[b.start,b.end].filter(Boolean).map(esc).join(' ~ '):'';
     const sub=[period, b&&b.provider?esc(b.provider):'', COST_KIND[r.kind].name, costLabel(r.amount,r.cur), payStateNote(r.payState), r.paidOn?`결제일 ${esc(r.paidOn)}`:'', r.photos?`📎 사진 ${r.photos}장`:''].filter(Boolean).join(' · ');
     return `<div class="tripRow pxRow" onclick="openBookingModal('${escAttr(r.id)}')" title="${b?'탭해서 상세·판매처 비교·가격 기록 보기':'탭해서 편집'}">
@@ -3601,7 +3648,12 @@ document.getElementById('shareBtn').onclick=()=>{
   const data=LZString.compressToEncodedURIComponent(JSON.stringify(trip()));
   const url=location.origin+location.pathname+'#v='+data;   // 읽기전용 보기 링크
   if(url.length>8000){ toast('여행이 너무 커서 링크로 공유할 수 없습니다. "내보내기"로 파일을 전달하세요','#b4342a'); return; }
-  navigator.clipboard.writeText(url).then(()=>toast('읽기전용 공유 링크가 복사되었습니다 (받는 쪽에서 "내 여행으로 저장" 가능)'))
+  // ⚠️ 이 링크는 LZString 스냅샷이라 **만든 순간의 사본**이다 — 이후 수정은 반영되지 않는다.
+  // 두 공유(읽기 전용 링크 / 멤버·편집 초대)의 차이가 바로 이것이라, 복사한 자리에서 말하고
+  // 같이 고치려는 사람에게는 그쪽 길을 바로 열어 준다(2026-09-21).
+  const copied=()=>toast('지금 이 순간의 사본으로 링크를 복사했어요 — 이후 수정은 반영되지 않아요',
+                         '#3e7a4c', {label:'같이 고치려면', fn:()=>document.getElementById('membersMenuBtn').click()});
+  navigator.clipboard.writeText(url).then(copied)
     .catch(()=>prompt('이 링크를 복사하세요',url));
 };
 function decodeSharedTrip(encoded){
@@ -5193,7 +5245,6 @@ document.getElementById('membersLeave').onclick=()=>{
 // ── 후보 보드 ────────────────────────────────────────────────────────────────
 // 아직 일정이 아닌 '가고 싶은 곳'. 판정(집계·묶음·권한)은 전부 collab.js에 있고 여기는 배선·표시만 한다.
 // 후보와 반응은 여행 문서가 아니라 제 테이블에 산다 — 넷이 동시에 하트를 눌러도 리비전 CAS가 서로를 걷어차지 않는다.
-let candTripId=null, candRows=[], candBusy=false;
 // 펼친 카드의 코멘트·쓰다 만 글 — 카드는 매번 다시 그려지므로(실시간 갱신 포함) 상태를 따로 든다
 let candOpen=new Set(), candComments={}, candDraft={};
 
@@ -5229,6 +5280,7 @@ async function renderCandidates(){
     if(error) throw error;
     candRows=(data||[]).filter(Boolean);
     drawCandidates();
+    renderMenuBadges();   // ⚠️ render()가 아니다 — 그건 순수한 다시 그리기가 아니라 동기화까지 건드린다
   }catch(e){
     reportOperationalError('collab.candidates',e);
     box.innerHTML=`<div class="hint">${esc(TC_COLLAB.isForbiddenError(e)?TC_COLLAB.forbiddenText(e,role):'후보를 불러오지 못했어요 — 잠시 후 다시 시도해 주세요')}</div>`;
@@ -5906,7 +5958,7 @@ document.getElementById('joinAccept').onclick=async()=>{
   finally{ btn.disabled=false; }
 };
 
-document.getElementById('tripPickerBtn').onclick=()=>document.getElementById('tripListBtn').click();
+document.getElementById('tripPickerBtn').onclick=openTripList;
 let onboardingReturnFocus=null;
 const onboardingInert=new Map();
 function showOnboarding(){

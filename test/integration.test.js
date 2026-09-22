@@ -3782,3 +3782,71 @@ test('통합: 샘플 여행 판정은 lib 하나를 지난다 — app.js에 id �
   assert.equal(source.includes('spain2026'), false, 'app.js에 샘플 id 리터럴이 남아 있다 — lib 상수를 쓴다');
   w.close();
 });
+
+// ── 3장: 옮길 것 ──────────────────────────────────────────────────────────────
+
+test('통합: 여행 목록 진입점은 헤더 피커 하나다', { skip: noJsdom }, () => {
+  const w = boot();
+  assert.equal(w.document.getElementById('tripListBtn'), null, '☰의 중복 항목이 없다');
+  assert.equal(w.eval('typeof openTripList'), 'function', '여는 규칙은 함수 하나다');
+  w.document.getElementById('tripPickerBtn').click();
+  assert.ok(w.document.getElementById('tripListBg').classList.contains('show'), '피커가 목록을 연다');
+  w.close();
+});
+
+test('통합: ☰ 안에만 있는 것은 있다는 표시를 바깥에 낸다', { skip: noJsdom }, () => {
+  const w = boot();
+  withTrip(w, JSON.stringify([{ title: '첫날', spots: [] }]));
+  w.eval('render()');
+  // 아무것도 없으면 아무 말도 하지 않는다
+  assert.equal(w.document.getElementById('menuBadge').hidden, true);
+  assert.equal(w.document.getElementById('noteCount').hidden, true);
+  assert.equal(w.document.getElementById('moreBtn').getAttribute('aria-label'), '메뉴');
+
+  // 챙긴 메모(done)는 세지 않는다 — 배지는 '아직 볼 것이 남았다'는 뜻이다
+  w.eval(`trip().notes=[{id:'n1',cat:'VISA',title:'비자',body:'',done:true},
+                        {id:'n2',cat:'ENTRY',title:'입국 신고',body:''}]; render();`);
+  assert.equal(w.document.getElementById('noteCount').textContent, '1');
+  assert.equal(w.document.getElementById('menuBadge').hidden, false);
+  assert.match(w.document.getElementById('moreBtn').getAttribute('aria-label'), /준비 메모 1/);
+
+  // 후보는 이번 세션에서 그 여행의 보드를 받아 본 적이 있을 때만 센다 — 세려고 서버를 묻지 않는다
+  assert.equal(w.document.getElementById('candCount').hidden, true, '받아 본 적이 없으면 말하지 않는다');
+  w.eval(`candTripId=trip().id; candRows=[{id:1},{id:2},{id:3}]; renderMenuBadges();`);
+  assert.equal(w.document.getElementById('candCount').textContent, '3');
+  assert.match(w.document.getElementById('moreBtn').getAttribute('aria-label'), /가고 싶은 곳 3/);
+  w.close();
+});
+
+test('통합: 하루 범위는 필터바와 범례가 같은 규칙을 지난다', { skip: noJsdom }, () => {
+  const w = boot();
+  withTrip(w, JSON.stringify([
+    { title: '첫날', spots: [{ name: '광장', city: 'MAD', lat: 40.41, lng: -3.70 }] },
+    { title: '이튿날', spots: [{ name: '공원', city: 'MAD', lat: 40.43, lng: -3.70 }] }
+  ]));
+  w.eval('render()');
+  assert.equal(w.eval('typeof setDayScope'), 'function', '규칙이 한 곳에 있다');
+
+  // 범례에서 고른 날이 필터바 칩과 같은 상태를 만든다
+  const legDay = w.document.querySelector('#legend .legDay[data-di="1"]');
+  assert.ok(legDay, '범례에 일자 줄이 있다');
+  legDay.click();
+  assert.equal(w.eval('activeDay'), 2, '범례가 activeDay를 옮긴다');
+  const chips = [...w.document.querySelectorAll('#filterbar .chip')];
+  assert.ok(chips.find((c) => c.textContent.includes('D2')).classList.contains('active'),
+            '필터바 칩도 같은 날이 켜진다 — 두 컨트롤이 한 상태를 본다');
+  w.close();
+});
+
+test('통합: 세 비용 화면이 각자 무슨 기준인지 말한다', { skip: noJsdom }, () => {
+  const w = boot();
+  w.eval(`store.trips.push({id:'__it__',name:'T',start:'2026-08-01',days:[{title:'첫날',spots:[]}],
+    bookings:[{id:'bk1',type:'hotel',title:'호텔',price:400000,start:'2026-08-01',end:'2026-08-03'}]});
+    store.activeId='__it__'; activeDay=0; render(); renderBookingList();`);
+  // 예약 결제 금액 목록 — 전액이라는 것
+  assert.match(w.document.getElementById('bookingListBody').textContent, /예약 전액/);
+  // 필터바 전체 비용 — 총액 기준이라는 것(이미 있던 설명)
+  assert.match(w.document.getElementById('filterbar').textContent + w.document.body.innerHTML,
+               /총액 기준/);
+  w.close();
+});
