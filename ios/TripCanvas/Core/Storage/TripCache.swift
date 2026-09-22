@@ -52,4 +52,6 @@ actor TripCache {
     static func dayPlanKey(tripId: String, dayIndex: Int) -> String { "day-plan-\(tripId)-d\(dayIndex)" }
     static let tripsKey = "trips"
     static func bookingsKey(tripId: String) -> String { "bookings-\(tripId)" }
+    /// 여행 표지. 원본은 서버(`trip_covers`)이고 여기 것은 **먼저 그리기용 사본**이다.
+    static func coverKey(tripId: String) -> String { "cover-\(tripId)" }
 }
