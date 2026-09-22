@@ -248,7 +248,7 @@ struct CollabView: View {
                 Text("싫어요").tag(Bool?.some(false))
             }
             TopicChips(title: "관심", topics: CollabModel.topics, selected: prefsDraft.interests, tint: .accentColor) { prefsDraft.toggleInterest($0) }
-            TopicChips(title: "별로", topics: CollabModel.topics, selected: prefsDraft.dislikes, tint: .orange) { prefsDraft.toggleDislike($0) }
+            TopicChips(title: "별로", topics: CollabModel.topics, selected: prefsDraft.dislikes, tint: Ink.warning) { prefsDraft.toggleDislike($0) }
             TextField("한 줄 (예: 신혼여행이라 여유롭게)", text: $prefsDraft.note)
             Button {
                 Task { await model.savePrefs(prefsDraft) }

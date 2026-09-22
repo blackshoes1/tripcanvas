@@ -90,12 +90,12 @@ struct TripOverviewView: View {
                     }
                     if totals.overloaded {
                         Label("일정이 자정을 넘어요", systemImage: "moon")
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(Ink.warning)
                     }
                     let conflicts = plan.day.spots.filter(\.conflict).count
                     if conflicts > 0 {
                         Label("정한 시각에 도착하기 어려운 곳 \(conflicts)곳", systemImage: "exclamationmark.triangle")
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(Ink.warning)
                     }
                     if plan.day.spotsWithoutLocation > 0 {
                         Text("위치 미정 \(plan.day.spotsWithoutLocation)곳은 동선에 포함되지 않아요")

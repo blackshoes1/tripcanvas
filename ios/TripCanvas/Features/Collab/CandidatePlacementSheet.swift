@@ -27,7 +27,7 @@ struct CandidatePlacementSheet: View {
                         }
                         PlanPreviewSection(tripId: trip.id, document: draft(snapshot), revision: snapshot.revision,
                                            days: [day], source: source)
-                        if let error { Text(error).foregroundStyle(.red) }
+                        if let error { Text(error).foregroundStyle(Ink.danger) }
                     }
                 } else if let error {
                     ContentUnavailableView { Label("일정을 확인하지 못했어요", systemImage: "icloud.slash") }

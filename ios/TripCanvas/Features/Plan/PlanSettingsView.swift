@@ -128,14 +128,14 @@ struct PlanSettingsView: View {
                             Toggle("일정과 예약 날짜를 확인했어요", isOn: $confirmedDates)
                         } else {
                             Text("입력한 기간으로는 기존 일정을 보존할 수 없어요. 여행 기간을 늘리거나, 제외되는 날의 장소·설정을 먼저 옮기고 정리해 주세요.")
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(Ink.warning)
                         }
                         ForEach(original.bookings, id: \.id) { booking in
                             Text("예약: \(booking.title) · 날짜 변경 없음").font(.caption)
                         }
                     }
                 }
-                if let error = saving.error { Text(error).foregroundStyle(.red) }
+                if let error = saving.error { Text(error).foregroundStyle(Ink.danger) }
             }
             .paperGround()
             .tint(Ink.accent)

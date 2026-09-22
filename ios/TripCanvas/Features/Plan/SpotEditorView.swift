@@ -149,7 +149,7 @@ struct SpotEditorView: View {
                 }
                 if let error = saving.error {
                     Section {
-                        Text(error).foregroundStyle(.red)
+                        Text(error).foregroundStyle(Ink.danger)
                         ShareLink("입력 복사·공유", item: "\(draft.name)\n\(draft.city)\n도착: \(draft.arriveAt ?? "미정") · 예약: \(draft.bookedAt ?? "미정")\n비용: \(costText)\n\(draft.desc)")
                     }
                 }

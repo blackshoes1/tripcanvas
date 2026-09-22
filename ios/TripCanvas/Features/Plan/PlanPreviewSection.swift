@@ -51,10 +51,10 @@ struct PlanPreviewSection: View {
             if response.travelTimeSource != .routed { Text("이동시간에 추정 포함").font(.caption2).foregroundStyle(.secondary) }
             ForEach(day.spots.filter { $0.bookedAtMinutes != nil }, id: \.index) { spot in
                 Text("\(spot.name): 예상 도착 \(TimeFormat.clockAcrossMidnight(spot.etaMinutes)) · 예약 \(TimeFormat.clockAcrossMidnight(spot.bookedAtMinutes ?? 0))\(spot.conflict ? " · 시간 확인 필요" : "")")
-                    .font(.caption2).foregroundStyle(spot.conflict ? Color.orange : .secondary)
+                    .font(.caption2).foregroundStyle(spot.conflict ? Ink.warning : .secondary)
                 if let late = spot.bookingLateMinutes, late > 0 {
                     Text("예약보다 \(TimeFormat.duration(late)) 늦게 도착할 수 있어요")
-                        .font(.caption2).foregroundStyle(.orange)
+                        .font(.caption2).foregroundStyle(Ink.warning)
                 }
             }
         }

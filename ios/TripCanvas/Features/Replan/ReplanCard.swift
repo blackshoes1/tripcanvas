@@ -12,7 +12,7 @@ struct ReplanCard: View {
         VStack(alignment: .leading, spacing: Space.m) {
             Label("일정 조정 제안", systemImage: "arrow.triangle.branch")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.orange)
+                .foregroundStyle(Ink.warning)
 
             Text(headline).font(.headline)
 
