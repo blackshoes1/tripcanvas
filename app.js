@@ -3,7 +3,7 @@ const LS_KEY = 'tripcanvas_v1';
 const ONBOARD_KEY='tripcanvas_onboarded_v1';
 const THEME_KEY='tripcanvas_theme_v1';
 let firstVisit=false;
-try{ const raw=localStorage.getItem(LS_KEY),saved=raw&&JSON.parse(raw); firstVisit=!localStorage.getItem(ONBOARD_KEY)&&(!saved||!Array.isArray(saved.trips)||saved.trips.every(t=>t.id==='spain2026')); }catch(_){ firstVisit=true; }
+try{ const raw=localStorage.getItem(LS_KEY),saved=raw&&JSON.parse(raw); firstVisit=!localStorage.getItem(ONBOARD_KEY)&&(!saved||!Array.isArray(saved.trips)||saved.trips.every(isSampleTrip)); }catch(_){ firstVisit=true; }
 const OPS_KEY = 'tripcanvas_ops_v1';
 // 오류 본문·URL·여행 내용은 기록하지 않고, 운영 진단에 필요한 범주와 상태 코드만 세션에 보관한다.
 function reportOperationalError(scope,error,context){
@@ -118,7 +118,7 @@ function load(){
     if(raw.length<=TC_LIMITS.storeBytes) try{ localStorage.setItem('tripcanvas_rejected_backup_v1',raw); }catch(_){}
   }
   if(!store || !store.trips || !store.trips.length){
-    store = {trips:[sampleTrip()], activeId:'spain2026'};
+    const sample=sampleTrip(); store = {trips:[sample], activeId:sample.id};
     save();
   }
 }
@@ -1115,7 +1115,6 @@ function tripCostBreakdown(){
   out.total=out.spots+out.taxi+out.hotel+out.car+out.flight+out.prep;
   return out;
 }
-function tripCost(){ return tripCostBreakdown().total; }
 // 일정 예상 종료 시각(분) — 마지막 장소 (예약 대기 반영한) 활동 시작 + 체류
 function dayEndMin(day, startAnchor, bl){
   if(!day.spots.length) return null;
@@ -1277,7 +1276,7 @@ function render(){
     ? `<option selected>${esc(viewMode.name)}</option>`
     : store.trips.map(x=>`<option value="${escAttr(x.id)}" ${x.id===store.activeId?'selected':''}>${esc(x.name)}</option>`).join('');
   const picker=document.getElementById('tripPickerName');
-  if(picker) picker.textContent=(viewMode?'':((t.sample||t.id==='spain2026')?'샘플 · ':''))+(t.name||'여행 선택');
+  if(picker) picker.textContent=(viewMode?'':(isSampleTrip(t)?'샘플 · ':''))+(t.name||'여행 선택');
   updateCollabUI();
 }
 // pts([[lat,lng],…])에 맞춰 프레이밍. maxZoom(구글 기준)은 정착 후 보정
@@ -1340,13 +1339,22 @@ function backLegOf(day, di, back){
   return {from, to:back, mode, when, timeZone, key:legRequestKey(from,back,mode,when,timeZone)};
 }
 // 시각적 🏠 '전날 숙소' 이월 항목용 — 시작 앵커가 숙소(stay)일 때만.
-function carryStayFor(di){ const a=startAnchorFor(di); return (a&&a.stay)?a:null; }
+/**
+ * 이월받은 기준점 중 화면에 🏠 '전날 숙소'로 찍는 것. **`anchor`와 다르다** — 이월받은 것이
+ * 숙소일 때만 표시하고 아니면 아무것도 적지 않는다(§anchor와 carry를 혼동하지 말 것).
+ *
+ * ⚠️ 규칙은 여기 하나다. 2026-09-21 전에는 `carryStayFor`와 `dayContext`가 같은 식을 따로 들고 있었다.
+ * @param {any} anchor @returns {any}
+ */
+function carryOf(anchor){ return (anchor&&anchor.stay)?anchor:null; }
+/** 일자 번호로 바로 묻는 자리(테스트·단건 조회). `dayContext`는 이미 들고 있는 anchor로 `carryOf`를 쓴다. */
+function carryStayFor(di){ return carryOf(startAnchorFor(di)); }
 // 일자 컨텍스트(한 번에 계산) — 사이드바·여행모드·이미지·재생이 공유해 anchor/carry 혼동 방지.
 // ETA·종료·이미지·여행모드 타임라인은 anchor(전날 숙소 또는 마지막 장소, 정책 반영)를 쓰고,
 // 화면의 🏠 '전날 숙소' 항목 표시에만 carry(숙소일 때만)를 쓴다.
 function dayContext(di){
   const day=trip().days[di], anchor=startAnchorFor(di), back=dayReturnStay(trip().days,di);
-  return { day, anchor, carry:(anchor&&anchor.stay)?anchor:null, back, backLeg:backLegOf(day,di,back),
+  return { day, anchor, carry:carryOf(anchor), back, backLeg:backLegOf(day,di,back),
            timeline:dayTimeline(day,anchor,di), mode:dayModeOf(day), timeZone:dayTimeZone(day) };
 }
 function animPath(){
@@ -4636,7 +4644,7 @@ function syncStaleTrips(){
 }
 async function syncTripCloud(t,opts){
   if(!sb||!user||!t) return;
-  if(t.id==='spain2026'&&!(syncMeta[t.id]&&syncMeta[t.id].revision)) return;
+  if(isSampleTrip(t)&&!(syncMeta[t.id]&&syncMeta[t.id].revision)) return;
   const entry=syncEntry(t.id), force=!!(opts&&opts.force);
   if(entry.status==='conflict'&&!force) return;
   if(!TC_COLLAB.canEdit(myRole(t.id))) return;      // 보기 권한은 올리지 않는다 — 서버도 42501로 거절한다
@@ -4783,7 +4791,7 @@ async function syncOnLogin(){
     // 삭제(tombstone)된 여행까지 받는다 — 다른 기기가 지운 것을 병합해야 한다
     const {data:rows,error}=await TC_API.sync.list();
     if(error) throw error;
-    const local=store.trips.filter(t=>t.id!=='spain2026'||(rows||[]).some(r=>r.client_id===t.id));
+    const local=store.trips.filter(t=>!isSampleTrip(t)||(rows||[]).some(r=>r.client_id===t.id));
     const merged=TC_SYNC.mergeForLogin(local,rows||[],syncMeta);
     syncMeta=merged.meta; persistSyncMeta();
     const checked=merged.trips.map(t=>validateTripPayload(t));
@@ -4802,7 +4810,7 @@ async function syncOnLogin(){
     adoptRemote(()=>{ activeDay=0; render(); }); fitAll();
     pullPriceSnapshots();   // cron·다른 기기가 남긴 가격 관측 기록을 로컬과 병합
     for(const c of merged.conflicts) enqueueSyncConflict(c);
-    for(const action of merged.actions) if(action.trip.id!=='spain2026') await syncTripCloud(action.trip,{force:action.force});
+    for(const action of merged.actions) if(!isSampleTrip(action.trip)) await syncTripCloud(action.trip,{force:action.force});
     await flushPendingSync();
     toast(merged.conflicts.length?`동기화 충돌 ${merged.conflicts.length}건 — 버전을 선택해 주세요`:`클라우드 동기화 완료 · 여행 ${trips.length}개`,merged.conflicts.length?'#b8650f':undefined);
   }catch(e){ reportOperationalError('cloud.login-sync',e); toast('클라우드 동기화 실패 — 로컬로 계속 사용','#b4342a'); }
@@ -5952,7 +5960,7 @@ function updateSaveState(){
   let state='local', message='이 기기에 저장됨', callback=null, actionText='다시 시도';
   if(readOnly()){ state='readonly'; message='읽기 전용으로 보는 중'; }
   else if(lsDirty){ state='error'; message='기기 저장 실패 · 화면을 닫기 전에 다시 저장해 주세요'; callback=()=>save(); }
-  else if(user && sb && !(t.id==='spain2026' && !entry?.revision)){
+  else if(user && sb && !(isSampleTrip(t) && !entry?.revision)){
     if(entry?.status==='conflict'){
       state='conflict'; message='다른 기기와 변경이 겹쳤어요 · 내 입력은 기기에 남아 있어요';
       actionText='변경 확인'; callback=()=>{ if(currentSyncConflict) document.getElementById('syncConflictBg').classList.add('show'); else if(syncConflicts.length) showNextSyncConflict(); else syncOnLogin(); };
@@ -5978,7 +5986,7 @@ function initAccessibility(){
   function enhance(root){
     const nodes=[];
     if(root.nodeType===1) nodes.push(root);
-    if(root.querySelectorAll) nodes.push(...root.querySelectorAll('.modalBg,[onclick],button[title],.iconb,.legModeBtn,.arrowBtn'));
+    if(root.querySelectorAll) nodes.push(...root.querySelectorAll('.modalBg,[onclick],button[title],.iconb,.legModeBtn'));
     nodes.forEach(el=>{
       if(el.classList&&el.classList.contains('modalBg')){
         const modal=el.querySelector('.modal'); if(!modal) return;

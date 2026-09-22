@@ -501,14 +501,6 @@
       impact:{timeChangeMinutes:r.endMin-base.endMin, removedActivities:drop.map((/**@type{TripItem}*/it)=>it.name), addedActivities:[]}
     };
   }
-  /** 제안이 일정에 주는 영향. @param {any} before @param {any} after @returns {SuggestionImpact} */
-  function calcSuggestionImpact(before, after){
-    return {
-      timeChangeMinutes:Math.round(num(after&&after.endMin,0)-num(before&&before.endMin,0)),
-      travelTimeChangeMinutes:Math.round(num(after&&after.travelMin,0)-num(before&&before.travelMin,0)),
-      removedActivities:(after&&after.removed)||[], addedActivities:(after&&after.added)||[]
-    };
-  }
 
   // ── 7. 제안 (모든 기능이 공유하는 형태) ──────────────────────────
   /** 같은 제안을 하루 안에서 다시 만들지 않기 위한 안정 키. @param {string} type @param {string} what @param {any} state @returns {string} */
@@ -945,7 +937,7 @@
   }
   const API={ADAPT_CFG, MEAL_WINDOWS, DAY_SEGMENTS, SAFETY_BUFFER, NOTIFICATION_KINDS, safetyBufferFor, departurePlan, tripPulse, stateVersion, notificationPlan, pendingNotifications, suggestionExpiryMin, parseIntent, resolveIntent, departureAdvice, fillGaps, planDayFlow, segmentLabel, currentDayIndex, daysUntilStart, weekdayOf, commitmentOf, priorityOf, statusOf, planningModeHint,
     buildTripState, findFreeWindows, mealOverlap, buildCandidates, rankNextActions, simulate, generateReplan,
-    calcSuggestionImpact, suggestionKey, buildSuggestions, feedbackEntry, travelMinutes};
+    suggestionKey, buildSuggestions, feedbackEntry, travelMinutes};
   if(typeof module!=='undefined' && module.exports) module.exports=API;   // Node (테스트)
   else /** @type {any} */(root).TC_ADAPT=API;                             // 브라우저 전역 (lib/price와 동일 패턴)
 })(typeof window!=='undefined'?window:globalThis);

@@ -70,20 +70,41 @@
 - `today` 주입 — 서버·웹 빠진 곳 없음
 - 체류 0분 계산처 4곳(`computeTimeline`·`dayEndMin`/`legDepartMinute`·`dayView.ts`·`adaptive.js`) 전부 일치
 
-## 2. 덜어낼 것
+## 2. 덜어낼 것 ✅ (2026-09-21 완료)
 
-전부 참조 0을 확인한 것이다. **테스트 전용**으로 표시된 것은 공개 API 대칭일 수 있어 사람이 판단한다.
+조사 때 "전부 참조 0을 확인했다"고 적었는데, **다시 세어 보니 넷이 틀렸다.** 지운 것과 지우지 않은
+것을 이유와 함께 남긴다 — 다음에 같은 항목을 보고 또 지우려 들지 않도록.
 
-- `calcSuggestionImpact()` — `adaptive.js`, export 목록에만 있고 호출부·테스트·iOS 전부 0건
-- `tripCost()` — `app.js`, `tripCostBreakdown().total` 한 줄 래퍼. CLAUDE.md도 후자를 지목한다
-- 죽은 CSS — `.citychip`·`.citychip.active` · `.inviteRow.dead` · `.candMood.loved` · `.candMood.mixed` · `.tools` 6개 셀렉터
-- 죽은 셀렉터 — `.arrowBtn`(`initAccessibility`가 찾는데 HTML·CSS 어디에도 없다)
-- 죽은 id 6개 — `activitySection`·`bkTypeHint`·`candHint`·`membersHint`·`pasteHelpRow`·`pvRaw` (요소는 정상, `id`만 무의미)
-- `spain2026` 샘플 여행 id 하드코딩 4곳 이상
-- stale 주석 — "가격 관측 기록(sb.from)이 그쪽에 있다"(`sb.from` 호출 0건)
-- 테스트 전용 — `reactionLabel`(collab.js) · `carryStayFor`(app.js)
+### 지웠다
 
-**TODO/FIXME 0건 · 주석 처리된 코드 0건 · 안 쓰는 npm 의존성 0건.** 이 축은 이미 깨끗하다.
+- `calcSuggestionImpact()` — `adaptive.js`. export 목록에만 있고 호출부·테스트·iOS 전부 0건 ✅
+- `tripCost()` — `app.js`, `tripCostBreakdown().total` 한 줄 래퍼. 호출부 0건 ✅
+- 죽은 CSS — `.citychip.active`(도시 칩은 `.chip`을 쓴다) · `.inviteRow.dead`(초대 목록은 `active`만
+  그린다) · `.candMood.loved`(라이트·다크 2곳 — 배지 tone은 `good`이지 `loved`가 아니다) ·
+  **`.tools` 규칙 6개**(계획은 1개로 셌다 — 장소·일자 버튼은 `.iconb`와 `.actionMenu`다)
+- 죽은 셀렉터 — `.arrowBtn`(`initAccessibility`가 찾는데 어디에도 없다) ✅
+- 죽은 id **5개** — `activitySection`·`candHint`·`membersHint`·`pasteHelpRow`·`pvRaw`
+- `spain2026` 리터럴 — 계획은 "4곳 이상", 실제로 `app.js`에 **7곳**. `lib.js`의 `SAMPLE_TRIP_ID`·
+  `isSampleTrip` 하나로 모았다(`next`에는 이미 같은 상수가 있었다). 한 곳이라도 빠지면 데모가
+  계정에 올라가거나 진짜 여행이 안 올라간다
+
+### 지우지 않았다 — 진단이 틀렸다
+
+- **`.candMood.mixed`는 살아 있다.** `candidateVerdict`가 합의 상태 `MIXED`("의견이 조금 갈려요")에
+  이 tone을 준다. 지웠으면 그 배지만 색이 빠졌을 것이다
+- **stale 주석이 아니다.** 계획은 "가격 관측 기록(`sb.from`)이 그쪽에 있다"는 낡은 설명으로 읽었지만,
+  실제 주석은 그 반대를 말한다 — "가격 관측 기록도 `/api/v1/trips/:id/prices`로 옮겼고 `app.js`에
+  `sb.rpc`·`sb.from` 호출은 하나도 없다(통합 테스트가 이걸 지킨다)". **지켜야 할 불변식의 서술**이다
+- **`carryStayFor`는 '테스트 전용'이 아니었다.** `dayContext`가 같은 식(`(anchor&&anchor.stay)?…`)을
+  **인라인으로 복제**하고 있었다. anchor/carry 혼동은 CLAUDE.md가 경고하는 자리라, 지우는 대신
+  규칙을 `carryOf(anchor)` 하나로 모으고 둘 다 그걸 부르게 했다(앵커를 두 번 걷지 않도록 인자로 받는다)
+- **`reactionLabel`은 남겼다.** `'의견 없음'`을 이름 붙이는 **유일한 자리**이고, 실제로 쓰이는
+  `reactionIcon`의 짝이다. 지우면 다음에 그 문구가 필요한 화면이 제 문장을 따로 만든다(M3·M4에서
+  겪은 것)
+- **`bkTypeHint`는 지우는 대신 살렸다.** 바로 위 셀렉트를 설명하는 글인데 아무도 가리키지 않아
+  `aria-describedby`로 이었다(`#spotTimeHelp`·`#spotAdmHelp`와 같은 방식)
+
+**TODO/FIXME 0건 · 주석 처리된 코드 0건 · 안 쓰는 npm 의존성 0건.** 이 축은 이미 깨끗했다.
 
 ## 3. 옮길 것 — 재배치
 

@@ -3744,3 +3744,41 @@ test('통합: 영수증 사진은 웹에서 개수만 말하고, 웹에서 고�
   assert.equal(w.document.getElementById('bkPhotos').style.display, 'none');
   w.close();
 });
+
+// ── 덜어내고 한 곳으로 모은 것 ────────────────────────────────────────────────
+
+test('통합: carry 규칙은 한 곳이다 — dayContext와 carryStayFor가 같은 답을 낸다', { skip: noJsdom }, () => {
+  const w = boot();
+  withTrip(w, JSON.stringify([
+    { title: '첫날', spots: [
+      { name: '광장', city: 'MAD', lat: 40.41, lng: -3.70 },
+      { name: '호텔', city: 'MAD', lat: 40.42, lng: -3.70, stay: true }
+    ] },
+    { title: '이튿날', spots: [{ name: '공원', city: 'MAD', lat: 40.43, lng: -3.70 }] },
+    { title: '사흘째', startPolicy: 'none', spots: [{ name: '공항', city: 'MAD', lat: 40.47, lng: -3.56 }] }
+  ]));
+  for (const di of [0, 1, 2]) {
+    assert.deepEqual(w.eval(`JSON.stringify(dayContext(${di}).carry)`),
+                     w.eval(`JSON.stringify(carryStayFor(${di}))`), `Day ${di + 1}`);
+  }
+  // 둘째 날만 🏠가 붙는다 — 첫날은 이월받을 것이 없고, 셋째 날은 startPolicy:'none'이다
+  assert.equal(w.eval('carryStayFor(0)'), null);
+  assert.equal(w.eval('dayContext(1).carry.name'), '호텔');
+  assert.equal(w.eval('dayContext(2).carry'), null);
+  // ⚠️ anchor는 carry가 아니다 — 셋째 날은 이월이 없지만 둘째 날은 숙소가 아닌 마지막 장소를 앵커로 쓴다
+  assert.equal(w.eval('dayContext(2).anchor'), null);
+  w.close();
+});
+
+test('통합: 샘플 여행 판정은 lib 하나를 지난다 — app.js에 id 리터럴이 없다', { skip: noJsdom }, () => {
+  const w = boot();
+  assert.equal(w.eval('typeof isSampleTrip'), 'function', 'lib의 판정이 전역에 있다');
+  assert.equal(w.eval(`isSampleTrip({id:SAMPLE_TRIP_ID})`), true);
+  // 첫 방문에 심는 여행은 그 판정을 통과해야 클라우드에 올라가지 않는다
+  assert.equal(w.eval('isSampleTrip(store.trips[0])'), true, '부팅 시 심은 것이 샘플이다');
+  assert.equal(w.eval('store.activeId'), w.eval('store.trips[0].id'));
+
+  const source = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'app.js'), 'utf8');
+  assert.equal(source.includes('spain2026'), false, 'app.js에 샘플 id 리터럴이 남아 있다 — lib 상수를 쓴다');
+  w.close();
+});
