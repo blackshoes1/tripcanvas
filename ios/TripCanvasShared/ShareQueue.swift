@@ -35,20 +35,38 @@ struct SharedTravelInput: Codable, Hashable, Sendable, Identifiable {
         self.lastError = lastError
     }
 
-    /// 서버의 shareIdempotencyKey와 **같은 규칙**이어야 한다(intake.js).
+    /// JS `String.prototype.trim()`이 벗기는 것과 **같은 집합**.
+    ///
+    /// ⚠️ Foundation의 `.whitespacesAndNewlines`로는 안 된다 — U+FEFF(BOM)를 **남기고**
+    /// U+0085(NEL)를 **벗겨** JS와 갈린다. 윈도우에서 복사한 글은 BOM으로 시작하는 일이 흔하다.
+    private static let jsWhitespace: CharacterSet = {
+        var set = CharacterSet(charactersIn: "\u{0009}\u{000A}\u{000B}\u{000C}\u{000D}\u{0020}")
+        set.insert(charactersIn: "\u{00A0}\u{1680}\u{2028}\u{2029}\u{202F}\u{205F}\u{3000}\u{FEFF}")
+        set.insert(charactersIn: Unicode.Scalar(0x2000)!...Unicode.Scalar(0x200A)!)
+        return set
+    }()
+
+    /// 서버의 `shareIdempotencyKey`와 **같은 규칙**이어야 한다(`intake.js`).
     /// 여기서 다르게 만들면 같은 공유가 두 번 처리된다.
+    ///
+    /// ⚠️ 세는 단위는 처음부터 끝까지 **UTF-16 코드 단위**다 — JS의 `charCodeAt`과 `slice(0,500)`이
+    /// 그렇게 센다. 2026-09-21 전에는 본문을 `prefix(500)`(**문자** = grapheme 묶음)으로 잘라,
+    /// 이모지가 섞인 500자 넘는 글에서 앱과 서버가 **다른 키**를 만들었다. 붙여넣는 일정 글에는
+    /// 이모지가 흔하다(§`stripDecor`). 잘린 자리가 서로게이트 쌍 가운데여도 JS와 같아야 하므로
+    /// 문자열로 되돌리지 않고 코드 단위를 그대로 해시한다(되돌리면 U+FFFD로 바뀐다).
     static func makeId(url: String?, title: String?, text: String?) -> String {
-        let raw = [
-            (url ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
-            (title ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
-            String((text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).prefix(500))
-        ].joined(separator: "|")
+        func trimmed(_ value: String?) -> String {
+            (value ?? "").trimmingCharacters(in: jsWhitespace)
+        }
+        var units: [UInt16] = []
+        units.append(contentsOf: trimmed(url).utf16)
+        units.append(contentsOf: "|".utf16)
+        units.append(contentsOf: trimmed(title).utf16)
+        units.append(contentsOf: "|".utf16)
+        units.append(contentsOf: trimmed(text).utf16.prefix(500))
         var hash: UInt32 = 5381
-        for scalar in raw.unicodeScalars {
-            // JS는 charCodeAt(UTF-16 단위)로 센다 — 같은 값을 만들려면 UTF-16으로 순회해야 한다.
-            for unit in String(scalar).utf16 {
-                hash = ((hash &* 33) ^ UInt32(unit)) & 0xFFFF_FFFF
-            }
+        for unit in units {
+            hash = ((hash &* 33) ^ UInt32(unit)) & 0xFFFF_FFFF
         }
         return "sh" + String(hash, radix: 36)
     }
