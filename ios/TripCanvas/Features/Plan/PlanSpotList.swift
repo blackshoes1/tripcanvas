@@ -128,26 +128,20 @@ struct PlanSpotList: View {
                     }
                     .textCase(nil)
                 } footer: {
-                    VStack(alignment: .leading, spacing: Space.xs) {
-                        if !model.canEdit {
-                            Text("보기 권한이라 일정을 바꿀 수 없어요. 주최자에게 요청하세요.")
-                        }
-                        // 나란한 가지를 열로 쪼개지 않는다(드래그 인덱스가 어긋난다) —
-                        // 대신 줄마다 표시를 붙이고, 하루 단위로 한 번 설명한다.
-                        if model.hasSplits {
-                            Text("이 날은 일부 시간을 따로 보내요 — 표시된 구간은 함께 다니지 않습니다.")
-                        }
-                        // 추정을 실측처럼 말하지 않는다. 구간마다 붙이면 잔소리가 되므로 하루에 한 번만.
-                        if model.plan != nil, model.travelTimeIsEstimate, !day.spots.isEmpty {
-                            Text("이동 시간은 직선거리 기준 예상이에요.")
-                        }
-                        // 계산이 없는 상태와 정상인 상태가 화면에서 구분되지 않으면,
-                        // 서버가 아직 준비 안 된 것을 아무도 모른다(2026-09-06에 그랬다).
-                        // 시도해 보고 못 받았을 때만 말한다 — 기다리는 중에 실패했다고 하지 않는다.
-                        if model.plan == nil, model.planAttempted(for: model.selectedDay), !day.spots.isEmpty {
-                            Label("예상 도착 시각을 불러오지 못했어요 — 일정 편집은 그대로 됩니다.",
-                                  systemImage: "clock.badge.exclamationmark")
-                        }
+                    if !model.canEdit {
+                        Text("보기 권한이라 일정을 바꿀 수 없어요. 주최자에게 요청하세요.")
+                    }
+                    // 나란한 가지를 열로 쪼개지 않는다(드래그 인덱스가 어긋난다) —
+                    // 대신 줄마다 표시를 붙이고, 하루 단위로 한 번 설명한다.
+                    if model.hasSplits {
+                        Text("이 날은 일부 시간을 따로 보내요 — 표시된 구간은 함께 다니지 않습니다.")
+                    }
+                    // 계산이 없는 상태와 정상인 상태가 화면에서 구분되지 않으면,
+                    // 서버가 아직 준비 안 된 것을 아무도 모른다(2026-09-06에 그랬다).
+                    // 시도해 보고 못 받았을 때만 말한다 — 기다리는 중에 실패했다고 하지 않는다.
+                    if model.plan == nil, model.planAttempted(for: model.selectedDay), !day.spots.isEmpty {
+                        Label("예상 도착 시각을 불러오지 못했어요 — 일정 편집은 그대로 됩니다.",
+                              systemImage: "clock.badge.exclamationmark")
                     }
                 }
             }
@@ -423,6 +417,21 @@ struct PlanSpotList: View {
                 let mode = TravelMode(rawValue: back.leg.mode)
                 Text("숙소 복귀 · 자동 · \(mode?.label ?? "") \(TimeFormat.duration(back.leg.minutes))")
                     .font(.caption2).foregroundStyle(.secondary)
+                if model.canEdit {
+                    Picker("복귀 이동수단", selection: Binding<TravelMode?>(
+                        get: { model.day?.returnMode },
+                        set: { mode in
+                            let dayIndex = model.selectedDay
+                            Task { await model.setReturnMode(mode, dayIndex: dayIndex) }
+                        })) {
+                        Text("그날 기본 수단 따르기").tag(TravelMode?.none)
+                        ForEach(TravelMode.allCases, id: \.self) { mode in
+                            Label(mode.label, systemImage: mode.symbol).tag(TravelMode?.some(mode))
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .disabled(model.isSaving)
+                }
             }
         }
         .listRowBackground(Ink.raised.opacity(0.6))

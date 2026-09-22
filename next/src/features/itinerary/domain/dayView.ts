@@ -13,7 +13,7 @@ import type {
 
 const {
   dayCostSummary, dayEnteredCost, hasManualTransportCost, budgetBookings, carEventsOn, carSpotLinks, computeTimeline, dayReturnStay, dayStartAnchor,
-  dayEndMinutes, haversine, hm, isOpenAt, legKey, localMode, parseHM, spotCatOf, stayNights, toISO
+  dayEndMinutes, haversine, hm, isOpenAt, legKey, returnModeOf, parseHM, spotCatOf, stayNights, toISO
 } = legacyLib;
 
 // ── 수단 상수 (app.js와 동일 값 — Phase 6에서 단일 소스로 합칠 표시·추정용 글루) ──
@@ -119,7 +119,7 @@ export function dayTimelineOf(trip: Trip, legCache: LegCache, di: number): Timel
   });
 }
 
-/** 숙소 복귀 자동 구간 — 합성 구간이라 '일자 기본 수단'을 근거리 보정(localMode)해 쓴다 */
+/** 숙소 복귀 자동 구간 — 복귀 전용 수단을 우선하고 없으면 일자 기본을 근거리 보정한다 */
 /**
  * 그 날의 구간 전부 — **순서대로, 거르지 않고**.
  *
@@ -150,7 +150,7 @@ export function dayLegs(trip: Trip, di: number): { key: string; from: LocatedSpo
 export function backLegOf(day: Day, back: Spot | null): { from: LocatedSpot; to: LocatedSpot; mode: TransportMode } | null {
   const loc = day.spots.filter(hasCoord);
   if (!back || !hasCoord(back) || !loc.length) return null;
-  return { from: loc[loc.length - 1], to: back, mode: localMode(dayModeOf(day)) as TransportMode };
+  return { from: loc[loc.length - 1], to: back, mode: returnModeOf(day) as TransportMode };
 }
 
 /** 일정 예상 종료(분) — 마지막 장소의 (예약 대기 반영) 활동 시작 + 체류 + 숙소 복귀 이동 */

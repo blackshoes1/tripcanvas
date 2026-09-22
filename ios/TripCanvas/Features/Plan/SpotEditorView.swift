@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// 편집 화면이 무엇을 하러 열렸는지. 새로 만들기와 고치기가 같은 화면을 쓴다.
 enum SpotEditorTarget: Identifiable {
@@ -64,6 +65,7 @@ struct SpotEditorView: View {
     @State private var draft: TripSpot
     @State private var costText: String
     @State private var showsDeleteConfirm = false
+    @State private var showsPlaceSearch = false
     @State private var showsMapPicker = false
     @State private var saving = EditorSaveState()
     @State private var showsDiscardConfirm = false
@@ -154,6 +156,12 @@ struct SpotEditorView: View {
                     }
                 }
                 Section("장소") {
+                    Button {
+                        showsPlaceSearch = true
+                    } label: {
+                        Label(target.index == nil ? "장소 검색해서 입력" : "장소 검색해서 바꾸기",
+                              systemImage: "magnifyingglass")
+                    }
                     TextField("이름", text: $draft.name)
                     TextField("도시", text: $draft.city)
                     Picker("종류", selection: $draft.category) {
@@ -282,6 +290,8 @@ struct SpotEditorView: View {
                     }
                 }
             }
+            .background(SpotEditorKeyboardDismissal())
+            .scrollDismissesKeyboard(.interactively)
             .disabled(saving.isWorking)
             .interactiveDismissDisabled(isDirty || saving.isWorking)
             .confirmationDialog("입력한 내용을 버릴까요?", isPresented: $showsDiscardConfirm, titleVisibility: .visible) {
@@ -297,6 +307,11 @@ struct SpotEditorView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(saving.isWorking ? "저장 중…" : "완료") { Task { await save(using: onSave) } }
                         .disabled(saving.isWorking || draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+            .sheet(isPresented: $showsPlaceSearch) {
+                PlaceSearchView(near: draft.point) { hit in
+                    draft = Self.replacing(draft, with: hit)
                 }
             }
             .sheet(isPresented: $showsMapPicker) {
@@ -317,6 +332,21 @@ struct SpotEditorView: View {
                 }
             }
         }
+    }
+
+    /// 검색 결과로 장소 자체를 바꾸되, 일정에 이미 입력한 시간·비용·메모·예약 연결은 보존한다.
+    static func replacing(_ original: TripSpot, with hit: PlaceHit) -> TripSpot {
+        var next = original
+        if !hit.name.isEmpty { next.name = hit.name }
+        if !hit.city.isEmpty { next.city = hit.city }
+        next.point = hit.point
+        next.category = hit.category ?? next.category
+        next.setField("addr", hit.address.isEmpty ? nil : .string(hit.address))
+        next.placeId = hit.placeId
+        next.kakaoId = hit.provider == "kakao" ? hit.providerId : nil
+        // 영업시간은 기존 장소의 값이므로 새 장소에 잘못 이어 붙이지 않는다.
+        next.setField("hours", nil)
+        return next
     }
 
     private var nightsBinding: Binding<Int> {
@@ -356,6 +386,53 @@ struct SpotEditorView: View {
         let digits = text.filter(\.isNumber)
         guard !digits.isEmpty, let value = Int(digits) else { return nil }
         return value >= 0 ? value : nil
+    }
+}
+
+/// 입력칸 안의 커서 이동과 버튼 동작을 가로채지 않고, 폼 바깥 입력 포커스만 해제한다.
+private struct SpotEditorKeyboardDismissal: UIViewRepresentable {
+    func makeUIView(context: Context) -> DismissalView { DismissalView() }
+    func updateUIView(_ uiView: DismissalView, context: Context) {}
+    static func dismantleUIView(_ uiView: DismissalView, coordinator: ()) { uiView.detach() }
+
+    final class DismissalView: UIView, UIGestureRecognizerDelegate {
+        private weak var attachedWindow: UIWindow?
+        private lazy var tap: UITapGestureRecognizer = {
+            let gesture = UITapGestureRecognizer(target: self, action: #selector(closeKeyboard))
+            gesture.cancelsTouchesInView = false
+            gesture.delegate = self
+            return gesture
+        }()
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            detach()
+            attachedWindow = window
+            window?.addGestureRecognizer(tap)
+        }
+
+        func detach() {
+            attachedWindow?.removeGestureRecognizer(tap)
+            attachedWindow = nil
+        }
+
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+            guard bounds.contains(touch.location(in: self)) else { return false }
+            var touchedView = touch.view
+            while let view = touchedView {
+                // 다른 입력칸을 누를 때는 새 입력 포커스를 그대로 둔다.
+                if view is UITextField || view is UITextView { return false }
+                touchedView = view.superview
+            }
+            return true
+        }
+
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                               shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+            true
+        }
+
+        @objc private func closeKeyboard() { attachedWindow?.endEditing(true) }
     }
 }
 

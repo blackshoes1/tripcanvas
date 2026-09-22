@@ -27,7 +27,7 @@ struct TripCoverView: View {
         VStack(alignment: .leading, spacing: Space.xs) {
             Button(action: onOpen) {
                 Color.clear
-                    .aspectRatio(1.55, contentMode: .fit)
+                    .aspectRatio(TripCoverImage.aspectRatio, contentMode: .fit)
                     .overlay {
                         if let image = saved?.image ?? cover?.image {
                             Image(uiImage: image).resizable().scaledToFill()
@@ -76,7 +76,7 @@ struct TripCoverView: View {
         .sheet(isPresented: $showsEditor, onDismiss: { Task { await load() } }) {
             // 편집 중에는 최초에 읽은 revision을 유지한다. 충돌 시 자동 덮어쓰지 않는다.
             if let saved {
-                TripCoverEditor(title: trip.name, storageDescription: "이 여행을 함께 보는 일행과 다른 기기에도 같은 표지가 보여요.") { data in
+                TripCoverEditor(title: trip.name, storageDescription: "이 여행을 함께 보는 일행과 다른 기기에도 같은 표지가 보여요.", initialImage: saved.image) { data in
                     let updated: TripCoverResponse = try await api.put(endpoint, body: [
                         "expectedRevision": saved.revision,
                         "imageBase64": data.map { $0.base64EncodedString() as Any } ?? NSNull()

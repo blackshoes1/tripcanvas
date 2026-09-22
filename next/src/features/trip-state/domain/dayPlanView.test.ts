@@ -37,6 +37,18 @@ const build = (t: Trip, di: number, legCache?: LegCache) =>
   buildDayPlanView({ trip: t, di, summary, generatedAt: '2026-09-06T00:00:00Z', legCache });
 
 describe('buildDayPlanView', () => {
+  it('복귀 전용 수단은 복귀 구간과 하루 합계에만 반영한다', () => {
+    const base = trip([day([hotel(), seongsan()]), day([])]);
+    const before = build(base, 0)!;
+    const walking = build(trip([day([hotel(), seongsan()], {returnMode: 'walk'}), day([])]), 0)!;
+    expect(walking.day.back!.leg.mode).toBe('walk');
+    expect(walking.day.spots[1].incomingLeg).toEqual(before.day.spots[1].incomingLeg);
+    expect(walking.day.back!.leg.minutes).toBeGreaterThan(before.day.back!.leg.minutes);
+    expect(walking.day.totals.travelMinutes).toBeGreaterThan(before.day.totals.travelMinutes);
+    expect(walking.day.totals.endMinutes!).toBeGreaterThan(before.day.totals.endMinutes!);
+    expect(build(trip([day([hotel(), seongsan()], {returnMode: 'walk'})]), 0)!.day.back).toBeNull();
+  });
+
   it('없는 일자는 null이다 — 지어내지 않는다', () => {
     const t = trip([day([airport()])]);
     expect(build(t, 1)).toBeNull();

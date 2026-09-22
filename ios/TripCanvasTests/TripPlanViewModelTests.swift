@@ -120,6 +120,40 @@ final class TripPlanViewModelTests: XCTestCase {
         XCTAssertTrue(service.saves.isEmpty)
     }
 
+    func testReturnModeSavesOnlyTheRequestedDayAndCanRestoreDefault() async {
+        let original = document()
+        let service = FakeDocumentService(snapshot: .init(document: original, revision: 7, role: .owner))
+        let model = TripPlanViewModel(tripId: "t1", service: service, loadsPlans: false)
+        await model.load()
+        await model.setReturnMode(.taxi, dayIndex: 0)
+        XCTAssertEqual(model.document?.days[0].returnMode, .taxi)
+        XCTAssertEqual(model.document?.days[0].mode, original.days[0].mode)
+        XCTAssertEqual(model.document?.days[0].spots, original.days[0].spots)
+        XCTAssertEqual(model.document?.days[1], original.days[1])
+        XCTAssertEqual(service.saves.first?.expectedRevision, 7)
+        await model.setReturnMode(nil, dayIndex: 0)
+        XCTAssertNil(model.document?.days[0].raw["returnMode"])
+    }
+
+    func testReturnModeSaveFailureRestoresOriginalValue() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(), revision: 7, role: .owner))
+        let model = TripPlanViewModel(tripId: "t1", service: service, loadsPlans: false)
+        await model.load()
+        service.failure = .offline
+        await model.setReturnMode(.walk, dayIndex: 0)
+        XCTAssertNil(model.day?.returnMode)
+        XCTAssertNotNil(model.errorMessage)
+    }
+
+    func testViewerCannotChangeReturnMode() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(), revision: 7, role: .viewer))
+        let model = TripPlanViewModel(tripId: "t1", service: service, loadsPlans: false)
+        await model.load()
+        await model.setReturnMode(.walk, dayIndex: 0)
+        XCTAssertTrue(service.saves.isEmpty)
+        XCTAssertNil(model.day?.returnMode)
+    }
+
     // MARK: 예약 — 장소와 같은 길
 
     func testBookingSavesThroughTheSameDocumentPath() async {

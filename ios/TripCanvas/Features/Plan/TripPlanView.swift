@@ -212,6 +212,16 @@ struct TripPlanView: View {
             }
         } else {
             VStack(spacing: 0) {
+                // 오류도 화면의 높이를 차지해야 한다. overlay로 띄우면 날짜 탭과
+                // 일정 제목을 덮고, 반투명 배경 아래의 글자까지 겹쳐 보인다.
+                if let error = model.errorMessage {
+                    InlineErrorBanner(message: "저장하지 못했어요", detail: error) {
+                        Task { await model.load() }
+                    }
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(Space.l)
+                    .background(Ink.paper)
+                }
                 if !showsMap || !mapSearching {
                     PlanDayPicker(strip: model.strip, selectedDay: model.selectedDay,
                                   todayIndex: model.todayIndex, onSelect: actions.selectDay)
@@ -244,14 +254,6 @@ struct TripPlanView: View {
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                             .clipped()
                     }
-                }
-            }
-            .overlay(alignment: .top) {
-                if let error = model.errorMessage {
-                    InlineErrorBanner(message: "저장하지 못했어요", detail: error) {
-                        Task { await model.load() }
-                    }
-                    .padding(Space.l)
                 }
             }
             .overlay(alignment: .bottom) {
