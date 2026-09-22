@@ -37,7 +37,7 @@ struct SpotRow: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Space.xs) {
+        VStack(alignment: .leading, spacing: Space.s) {
             // 이 장소로 '들어오는' 구간. 장소 사이가 비어 있으면 "여기서 저기까지 얼마나"를 알 수 없다.
             if let leg = plan?.incomingLeg { legLine(leg) }
             // 누가 가는지는 **가지가 시작될 때 한 번만** 말한다.
@@ -190,10 +190,9 @@ struct SpotRow: View {
     private func legLine(_ leg: DayPlanLeg) -> some View {
         let mode = TravelMode(rawValue: leg.mode) ?? dayMode
         return HStack(alignment: .center, spacing: Space.s) {
-            // 두 장소를 잇는 선. 이동은 장소보다 가벼워야 하므로 선도 가늘다.
-            Rectangle().fill(Ink.hairline)
-                .frame(width: 1)
-                .frame(maxHeight: .infinity)
+            // List의 높이 재측정에서 행이 과도하게 늘어나지 않도록 무한 높이를
+            // 제안하는 선 대신 수단 아이콘과 옅은 배경으로 구분한다.
+            Image(systemName: mode.symbol)
                 .frame(width: categoryIconWidth)
                 .accessibilityHidden(true)
             Text("\(mode.label) \(TimeFormat.duration(leg.minutes)) · \(distanceText(leg.distanceKm))")
@@ -203,7 +202,9 @@ struct SpotRow: View {
         .frame(minHeight: 26)
         .font(.caption)
         .foregroundStyle(Ink.soft)
-        .padding(.vertical, 2)
+        .padding(.horizontal, Space.s)
+        .padding(.vertical, Space.xs)
+        .background(Ink.sunken.opacity(0.45), in: RoundedRectangle(cornerRadius: Space.s))
         .padding(.leading, secondaryIndent)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(mode.label)로 \(TimeFormat.duration(leg.minutes)), \(distanceText(leg.distanceKm))")
