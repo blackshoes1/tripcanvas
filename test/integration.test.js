@@ -3850,3 +3850,12 @@ test('통합: 세 비용 화면이 각자 무슨 기준인지 말한다', { skip
                /총액 기준/);
   w.close();
 });
+
+test('통합: 작은 버튼을 인라인 style로 만들지 않는다', { skip: noJsdom }, () => {
+  const fs = require('node:fs'), path = require('node:path');
+  for (const f of ['app.js', 'index.html']) {
+    const src = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+    assert.equal(/font-size:11px;padding:2px/.test(src), false,
+                 `${f}에 작은 버튼 인라인 스타일이 남아 있다 — .btn.sm을 쓴다`);
+  }
+});

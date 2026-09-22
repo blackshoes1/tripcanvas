@@ -32,7 +32,7 @@ struct PlanMoveSheet: View {
                 }
                 PlanPreviewSection(tripId: tripId, document: draft, revision: revision,
                                    days: Array(Set([sourceDay, day])), source: source)
-                if let error = saving.error { Text(error).foregroundStyle(.red) }
+                if let error = saving.error { Text(error).foregroundStyle(Ink.danger) }
             }
             .paperGround()
             .tint(Ink.accent)

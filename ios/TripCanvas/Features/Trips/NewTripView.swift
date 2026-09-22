@@ -79,7 +79,7 @@ struct NewTripView: View {
                 }
 
                 if let errorMessage {
-                    Section { Text(errorMessage).foregroundStyle(.red).font(.footnote) }
+                    Section { Text(errorMessage).foregroundStyle(Ink.danger).font(.footnote) }
                 }
             }
             .paperGround()

@@ -48,7 +48,7 @@ struct SuggestionCard: View {
             }
 
             if let saving = suggestion.impact.costChange, saving < 0 {
-                StatusChip(text: "\(TimeFormat.money(-saving, currency: "KRW")) 절약 가능", symbol: "tag.fill", tint: .green)
+                StatusChip(text: "\(TimeFormat.money(-saving, currency: "KRW")) 절약 가능", symbol: "tag.fill", tint: Ink.positive)
             }
 
             HStack(spacing: Space.s) {
@@ -75,9 +75,9 @@ struct SuggestionCard: View {
     private var kicker: (text: String, symbol: String, tint: Color) {
         switch suggestion.type {
         case .rest: ("쉬어도 괜찮아요", "cup.and.saucer", .secondary)
-        case .priceSaving: ("예약 다시 보기", "tag", .green)
-        case .replan: ("일정 조정", "arrow.triangle.branch", .orange)
-        case .nextActivity, .unknown: ("지금 한 곳 더 들를 수 있어요", "sparkles", .blue)
+        case .priceSaving: ("예약 다시 보기", "tag", Ink.positive)
+        case .replan: ("일정 조정", "arrow.triangle.branch", Ink.warning)
+        case .nextActivity, .unknown: ("지금 한 곳 더 들를 수 있어요", "sparkles", Ink.info)
         }
     }
 }

@@ -231,7 +231,7 @@ struct TodayView: View {
             Text("D-\(days)")
                 .font(.system(size: 56, weight: .bold, design: .rounded))
                 .monospacedDigit()
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(Ink.accent)
             if let label = TimeFormat.dayChipLabel(startDate) {
                 Text("\(label) 출발").font(.headline).foregroundStyle(.secondary)
             }

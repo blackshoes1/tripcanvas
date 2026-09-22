@@ -116,7 +116,7 @@ struct PasteItineraryView: View {
                 Text("아직 일정이 없다면 이걸 복사해 ChatGPT·Claude에 붙여넣고, 받은 답을 그대로 위에 넣으세요.")
             }
             if let errorMessage {
-                Section { Text(errorMessage).foregroundStyle(.red).font(.footnote) }
+                Section { Text(errorMessage).foregroundStyle(Ink.danger).font(.footnote) }
             }
         }
     }
@@ -146,7 +146,7 @@ struct PasteItineraryView: View {
             }
 
             if let errorMessage {
-                Section { Text(errorMessage).foregroundStyle(.red).font(.footnote) }
+                Section { Text(errorMessage).foregroundStyle(Ink.danger).font(.footnote) }
             }
         }
     }
@@ -162,7 +162,7 @@ struct PasteItineraryView: View {
                 if row.wrappedValue.include { Task { await locate(row.wrappedValue.id) } }
             } label: {
                 Image(systemName: row.wrappedValue.include ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(row.wrappedValue.include ? Color.accentColor : .secondary)
+                    .foregroundStyle(row.wrappedValue.include ? Ink.accent : .secondary)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("\(row.wrappedValue.item.name) 담기")

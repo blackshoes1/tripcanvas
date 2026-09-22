@@ -89,7 +89,7 @@ struct SignInView: View {
             if let error = env.auth.lastError {
                 Text(error)
                     .font(.footnote)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(Ink.danger)
                     .multilineTextAlignment(.center)
             }
 

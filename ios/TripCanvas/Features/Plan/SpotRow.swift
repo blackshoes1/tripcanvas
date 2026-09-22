@@ -65,7 +65,7 @@ struct SpotRow: View {
             if plan?.reunion == true {
                 Label("여기서 다시 만나요", systemImage: "point.topleft.down.to.point.bottomright.curvepath")
                     .font(.caption2)
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(Ink.accent)
                     .padding(.leading, secondaryIndent)
             }
         }
@@ -75,7 +75,7 @@ struct SpotRow: View {
         .overlay(alignment: .leading) {
             if split != nil {
                 Rectangle()
-                    .fill(Color.accentColor.opacity(0.35))
+                    .fill(Ink.accent.opacity(0.35))
                     .frame(width: 2)
             }
         }
@@ -133,7 +133,7 @@ struct SpotRow: View {
                 Text("· 나는 안 가요").font(.caption2)
             }
         }
-        .foregroundStyle(split.includesMe ? Color.accentColor : .secondary)
+        .foregroundStyle(split.includesMe ? Ink.accent : .secondary)
         .padding(.leading, secondaryIndent)
     }
 

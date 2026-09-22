@@ -371,10 +371,10 @@ struct PriceChip: View {
 
     private var tint: Color {
         switch status.state {
-        case .savingAvailable: .green
-        case .cheaperUnverified: .orange
-        case .goodPrice: .blue
-        case .error: .red
+        case .savingAvailable: Ink.positive
+        case .cheaperUnverified: Ink.warning
+        case .goodPrice: Ink.info
+        case .error: Ink.danger
         case .watching, .untracked, .unknown: .secondary
         }
     }

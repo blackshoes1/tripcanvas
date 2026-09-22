@@ -134,7 +134,7 @@ struct BookingEditorView: View {
             Form {
                 if let error = saving.error {
                     Section {
-                        Text(error).foregroundStyle(.red)
+                        Text(error).foregroundStyle(Ink.danger)
                         ShareLink("입력 복사·공유", item: "\(draft.title)\n\(draft.provider)\n\(priceText) \(currency.rawValue)\n\(draft.start ?? "미정") ~ \(draft.end ?? "미정")\n\(urlText)")
                     }
                 }

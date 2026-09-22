@@ -3324,7 +3324,7 @@ function renderBookingStatusBox(b){
   // 매칭 후보 — 낮은 신뢰도는 자동 확정하지 않고 사용자가 고른다 (§22)
   const cand=(rec.err&&rec.err.code==='UNMATCHED'&&rec.candidates&&rec.candidates.length)?
     `<label>호텔 자동 매칭이 확실하지 않아요 — 맞는 호텔을 선택해주세요</label><div class="pxHist">`+rec.candidates.map((c,i)=>
-      `<div><span>${esc(c.name)}</span><button type="button" class="btn pxPick" data-i="${i}" style="font-size:11px;padding:2px 8px">이 호텔이에요</button></div>`).join('')+`</div>` : '';
+      `<div><span>${esc(c.name)}</span><button type="button" class="btn sm pxPick" data-i="${i}">이 호텔이에요</button></div>`).join('')+`</div>` : '';
   // 판매처별 가격 비교 — 신뢰도(✓ 동일 조건 / 조건 확인 필요)를 반드시 구분 표시 (§16·21)
   const qLabel=o=>{ const q=o.quality||TC_PRICE.matchQuality(b,o);
     if(q==='EXACT'||q==='EQUIVALENT')
@@ -4763,7 +4763,7 @@ async function loadSnapList(){
     const d=new Date(r.created_at);
     const row=document.createElement('div'); row.className='snapRow';
     row.innerHTML=`<span>${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}</span>`;
-    const btn=document.createElement('button'); btn.className='btn'; btn.textContent='복원'; btn.style.cssText='font-size:11px;padding:2px 10px';
+    const btn=document.createElement('button'); btn.className='btn sm'; btn.textContent='복원';
     btn.onclick=async()=>{
       if(!confirm('이 시점으로 복원할까요? (현재 상태는 ↩️ 실행취소로 되돌릴 수 있습니다)'))return;
       const {data:full,error:fe}=await TC_API.snapshots.load(store.activeId,r.id);
@@ -5204,7 +5204,7 @@ async function renderInvites(){
       const exp=new Date(i.expires_at);
       l.textContent=`${TC_COLLAB.roleIcon(i.role)} ${TC_COLLAB.roleLabel(i.role)} 초대 링크 · ${exp.getMonth()+1}/${exp.getDate()}까지${i.use_count?` · ${i.use_count}명 참여`:''}`;
       row.appendChild(l);
-      const rv=document.createElement('button'); rv.className='btn'; rv.style.cssText='font-size:11px;padding:2px 9px;min-height:26px'; rv.textContent='취소';
+      const rv=document.createElement('button'); rv.className='btn sm'; rv.textContent='취소';
       rv.onclick=async()=>{
         try{ const {error:e2}=await TC_API.rpc('revoke_trip_invite',{p_invite_id:i.id},membersTripId); if(e2) throw e2; toast('초대 링크를 취소했어요'); renderInvites(); }
         catch(e){ reportOperationalError('collab.revoke',e); toast('취소하지 못했어요','#b4342a'); }

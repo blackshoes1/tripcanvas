@@ -145,7 +145,7 @@ struct MapDiscoveryView: View {
         } label: {
             Text(title).font(.subheadline)
                 .padding(.horizontal, Space.m).frame(minHeight: 44)
-                .background(model.category == category ? Color.accentColor.opacity(0.15) : Ink.sunken, in: Capsule())
+                .background(model.category == category ? Ink.accent.opacity(0.15) : Ink.sunken, in: Capsule())
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(model.category == category ? .isSelected : [])
@@ -169,7 +169,7 @@ struct MapDiscoveryView: View {
                     LazyVStack(alignment: .leading, spacing: Space.s) {
                         if let hit = model.selected { placeCard(hit, model: model).id("selected") }
                         if let message = model.errorMessage {
-                            Text(message).font(.caption).foregroundStyle(.orange)
+                            Text(message).font(.caption).foregroundStyle(Ink.warning)
                             HStack {
                                 Button("다시 검색") { Task { await model.search() } }
                                 Button("담은 장소 다시 확인") { Task { await model.loadCandidates() } }
@@ -350,7 +350,7 @@ private struct DiscoveryRegionSheet: View {
                         HStack { Text("지역 찾기"); if working { ProgressView() } }
                     }.disabled(query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || working)
                 } footer: { Text("해외를 선택하면 한국어로 검색해도 해외 장소를 찾아요.") }
-                if let error { Text(error).foregroundStyle(.orange) }
+                if let error { Text(error).foregroundStyle(Ink.warning) }
                 ForEach(hits) { hit in
                     Button { onPick(hit); dismiss() } label: {
                         VStack(alignment: .leading) {
