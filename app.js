@@ -1149,6 +1149,11 @@ function catPrefix(s){ const c=spotCatOf(s); return c? c.icon+' ' : ''; }
   sel.innerHTML='<option value="">미지정 (이름으로 자동 추측)</option>'
     + SPOT_CATS.map(c=>`<option value="${c.id}">${c.icon} ${c.name}</option>`).join('');
 })();
+// 명소 예약요건 선택지도 lib.js의 ADMISSION_REQUIREMENTS 하나만 보고 만든다 —
+// 이름이 마크업으로 흘러가면 앱(iOS `AdmissionRequirement.label`)과 두 말이 된다.
+(function(){ const sel=document.getElementById('spotAdmReq'); if(!sel) return;
+  sel.innerHTML=ADMISSION_REQUIREMENTS.map(r=>`<option value="${r.id}">${esc(r.label)}</option>`).join('');
+})();
 // 마커 하나 추가 (엔진 공용) — markers에 {spot, open} 인터페이스로 저장. 숙소는 🏠 핀
 function addPin(s,di,si,c){
   const cat=spotCatOf(s);
@@ -1695,6 +1700,20 @@ function renderSidebar(){
         if(w>0) meta.push(`<span class="spotMetaItem book" title="${escAttr(`도착 예상 ${hm(etas[si])} → 예약 ${s.bookAt}까지 대기. 다음 장소 도착 예상에 이 대기가 반영됩니다`)}">⏳ ${w}분 대기</span>`);
       }
       { const bu=safeUrl(s.bookUrl); if(bu) meta.push(`<a class="spotMetaItem book" href="${escAttr(bu)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="예약 링크 열기">${ic('link')} 예약 링크</a>`); }
+      // 명소 예약요건 — 필수인데 아직 안 했으면 주의색(iOS `needsReservation`과 같은 규칙).
+      // ⚠️ 아무 말도 없는 장소에는 붙이지 않는다: 모든 명소에 '확인 필요'가 붙으면 정작 필수인 곳이 묻힌다.
+      { const a=(s.admission&&typeof s.admission==='object')?s.admission:null;
+        const req=admissionOf(s), booked=!!(a&&a.personalStatus==='BOOKED');
+        if(booked||req!=='UNKNOWN'){
+          const label=admissionLabel(req);
+          const text=booked? (req==='UNKNOWN'?'예약 완료':`예약 완료 · ${label}`) : label;
+          const tip=needsAdmissionBooking(s)? '예약이 필요한 곳이에요 — 아직 예약 완료로 표시하지 않았어요'
+            : (a&&a.note? a.note : '명소 예약·입장 준비 — 장소 편집에서 바꿀 수 있어요');
+          meta.push(`<span class="spotMetaItem adm${needsAdmissionBooking(s)?' admNeed':''}" title="${escAttr(tip)}">${ic('ticket')} ${esc(text)}</span>`);
+        }
+        const official=a? safeUrl(a.officialURL) : '';
+        if(official) meta.push(`<a class="spotMetaItem adm" href="${escAttr(official)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="공식 예약 페이지 열기 — 열어도 예약 완료로 바뀌지 않아요">${ic('link')} 공식 예약</a>`);
+      }
       // 이 장소에서 차를 받거나 돌려준다 — 예약과 연결해 두면 도착 순서와 어긋나지 않게 여기 붙는다
       [['carPickupId','렌터카 픽업','carPickupTime'],['carReturnId','렌터카 반납','carReturnTime']].forEach(([f,label,tf])=>{
         const bk=s[f]? bookingOf(s[f]) : null; if(!bk||bk.type!=='car') return;
@@ -1978,6 +1997,8 @@ window.copySpot=(di,si)=>{
   const spots=trip().days[di].spots, source=spots[si]; if(!source)return;
   const copy=JSON.parse(JSON.stringify(source)); copy.name=`${source.name} 복사본`;
   delete copy.carPickupId; delete copy.carReturnId;   // 차를 받는 곳은 한 곳 — 복사본까지 픽업 지점이 되면 안 된다
+  // 예약 요건은 그 장소의 성질이라 따라가지만, '내 예약 완료'는 이 방문의 사실이다 — 복사본까지 예약됐다고 말하지 않는다
+  if(copy.admission&&typeof copy.admission==='object') delete copy.admission.personalStatus;
   commit(()=>spots.splice(si+1,0,copy)); toast('장소를 복사했습니다');
 };
 window.deleteSpot=(di,si)=>{
@@ -2034,7 +2055,8 @@ window.openSpotModal=(di,si)=>{
   updateCostHint();
   document.getElementById('spotBookAt').value=s.bookAt||'';
   document.getElementById('spotBookUrl').value=s.bookUrl||'';
-  document.getElementById('spotAdvanced').open=!isNew&&!!(s.legMode||s.cost||s.bookAt||s.bookUrl||spotPriorityOf(s)!=='NORMAL'||s.stay);
+  drawAdmission(s.admission);
+  document.getElementById('spotAdvanced').open=!isNew&&!!(s.legMode||s.cost||s.bookAt||s.bookUrl||s.admission||spotPriorityOf(s)!=='NORMAL'||s.stay);
   document.getElementById('spotLat').value=s.lat; document.getElementById('spotLng').value=s.lng;
   document.getElementById('spotPlaceId').value=s.placeId||'';
   document.getElementById('spotKakaoId').value=s.kakaoId||'';
@@ -2090,6 +2112,53 @@ function drawWhoChips(who){
 }
 /** 지금 골라진 참여자. 아무도 없으면 undefined(=모두) — 기본값은 저장하지 않는다 */
 function pickedWho(){ return _pickedWho.length? _pickedWho.slice() : undefined; }
+
+/** 사용자가 '지금 확인했어요'를 누른 시각. 저장할 때만 문서로 간다 @type {string|null} */
+let _pickedCheckedAt=null;
+/**
+ * 명소 예약·입장 준비 칸을 채운다. **확인 시각은 여기서 만들지 않는다** — 사람이 누를 때만 찍힌다.
+ * 요건은 '확인 필요'가 기본이고, 그 상태로만 두면 저장하지 않는다(기본값은 문서에 남기지 않는다).
+ */
+function drawAdmission(admission){
+  const a=(admission&&typeof admission==='object')?admission:{};
+  _pickedCheckedAt=(typeof a.checkedAt==='string')?a.checkedAt:null;
+  document.getElementById('spotAdmReq').value=admissionOf({admission:a});
+  document.getElementById('spotAdmBooked').checked=a.personalStatus==='BOOKED';
+  document.getElementById('spotAdmPeople').value=(a.people!=null? a.people : '');
+  document.getElementById('spotAdmUrl').value=a.officialURL||'';
+  document.getElementById('spotAdmNote').value=a.note||'';
+  drawAdmissionChecked();
+}
+function drawAdmissionChecked(){
+  const el=document.getElementById('spotAdmChecked');
+  el.textContent=_pickedCheckedAt? `직접 확인 · ${_pickedCheckedAt.slice(0,16).replace('T',' ')}` : '';
+}
+/**
+ * 지금 입력된 예약·입장 준비. 아무 말도 하지 않았으면 undefined — 빈 껍데기를 문서에 남기지 않는다.
+ * ⚠️ 예약 완료를 끄면 `personalStatus`를 아예 빼 둔다(없음과 `NOT_BOOKED`는 같은 뜻이고 기본값은 저장하지 않는다).
+ * @returns {any}
+ */
+function pickedAdmission(){
+  const req=document.getElementById('spotAdmReq').value;
+  const url=document.getElementById('spotAdmUrl').value.trim();
+  const note=document.getElementById('spotAdmNote').value.trim();
+  const peopleText=String(document.getElementById('spotAdmPeople').value||'').trim();
+  const out=/**@type {Record<string,any>}*/({source:'USER',
+    requirement:ADMISSION_REQUIREMENTS.some(r=>r.id===req)?req:'UNKNOWN'});
+  if(document.getElementById('spotAdmBooked').checked) out.personalStatus='BOOKED';
+  if(url) out.officialURL=url;
+  if(note) out.note=note;
+  if(peopleText){ const n=parseInt(peopleText,10); if(!isNaN(n)) out.people=n; }
+  if(_pickedCheckedAt) out.checkedAt=_pickedCheckedAt;
+  const said=out.requirement!=='UNKNOWN'||out.personalStatus||out.officialURL||out.note||out.people!=null||out.checkedAt;
+  return said? out : undefined;
+}
+// 확인 시각은 사람이 확인한 때만 찍는다 — 저장·조회로 자동 생성하지 않는다(그러면 아무것도 뜻하지 않는다)
+document.getElementById('spotAdmConfirm').onclick=()=>{
+  _pickedCheckedAt=new Date().toISOString().replace(/\.\d{3}Z$/,'Z');
+  drawAdmissionChecked();
+  toast('공식 정보를 확인한 시각을 적어 뒀어요 — 예약 완료와는 다릅니다');
+};
 document.getElementById('spotCancel').onclick=()=>document.getElementById('spotModalBg').classList.remove('show');
 document.getElementById('spotAdvanced').addEventListener('toggle',e=>{
   const badge=document.querySelector('#spotModalBg .stepBadge'); if(badge) badge.textContent=e.target.open?'상세 설정':'기본 정보';
@@ -2116,6 +2185,9 @@ document.getElementById('spotSave').onclick=()=>{
   const costText=document.getElementById('spotCost').value;
   const costV=parseCostAmount(costText,curV);
   if(costText.trim()&&costV===null){toast('비용을 확인하세요 — 원·엔은 정수, 외화는 소수 둘째 자리까지 입력할 수 있어요','#b4342a');return;}
+  // 예약·입장 준비는 서버(`validateTripPayload`)가 거절할 값을 저장 전에 같은 문장으로 말한다
+  const admission=pickedAdmission();
+  if(admission){ const admErr=admissionError(admission); if(admErr){ toast(admErr,'#b4342a'); return; } }
   const s={name,city:document.getElementById('spotCity').value.trim()||'기타',desc:document.getElementById('spotDesc').value.trim(),
     stay:document.getElementById('spotStay').checked,
     // 연박 수는 숙소일 때만 저장, 1박이면 생략(기본값 — 하위호환)
@@ -2137,6 +2209,7 @@ document.getElementById('spotSave').onclick=()=>{
     kakaoId:(document.getElementById('spotKakaoId').value||undefined),   // 국내 장소 신원 — 지도 링크가 바로 길찾기로 열린다
     cat:(document.getElementById('spotCat').value||undefined),           // 미지정이면 이름 추론에 맡긴다
     who:pickedWho(),                                                     // 비었으면 모두(§26)
+    admission,                                                           // 명소 예약요건 — 아무 말도 없으면 undefined
     hours:_pickedHours||undefined,lat,lng};
   const targetDay=parseInt(document.getElementById('spotDay').value);
   applySpotPriority(s, document.getElementById('spotPriority').value);   // 기본값(보통)은 저장하지 않는다
@@ -2147,7 +2220,6 @@ document.getElementById('spotSave').onclick=()=>{
     const prev=trip().days[editing.di].spots[editing.si]||{};
     if(prev.bookingId) s.bookingId=prev.bookingId;
     for(const key of ['costBasis','costPeople','costPartial']) if(prev[key]!=null) s[key]=prev[key];
-    if(prev.admission) s.admission=prev.admission;
     if(prev.candidateId!=null) s.candidateId=prev.candidateId;
     if(prev.carPickupId) s.carPickupId=prev.carPickupId;
     if(prev.carReturnId) s.carReturnId=prev.carReturnId;
@@ -2969,7 +3041,7 @@ function renderBookingList(){
   const paidLine=(split.PAID>0||split.RESERVED>0)? `<div class="hint" style="margin:0 0 4px">${[split.PAID>0?`결제 완료 ₩${fmtMoney(split.PAID)}`:'', split.RESERVED>0?`결제 예정 ₩${fmtMoney(split.RESERVED)}`:''].filter(Boolean).join(' · ')}</div>`:'';
   document.getElementById('bookingListBody').innerHTML = paidLine + (rows.length? rows.map(r=>{
     const b=r.booking, period=b?[b.start,b.end].filter(Boolean).map(esc).join(' ~ '):'';
-    const sub=[period, b&&b.provider?esc(b.provider):'', COST_KIND[r.kind].name, costLabel(r.amount,r.cur), payStateNote(r.payState), r.paidOn?`결제일 ${esc(r.paidOn)}`:''].filter(Boolean).join(' · ');
+    const sub=[period, b&&b.provider?esc(b.provider):'', COST_KIND[r.kind].name, costLabel(r.amount,r.cur), payStateNote(r.payState), r.paidOn?`결제일 ${esc(r.paidOn)}`:'', r.photos?`📎 사진 ${r.photos}장`:''].filter(Boolean).join(' · ');
     return `<div class="tripRow pxRow" onclick="openBookingModal('${escAttr(r.id)}')" title="${b?'탭해서 상세·판매처 비교·가격 기록 보기':'탭해서 편집'}">
       <span class="tn">${COST_KIND[r.kind].icon} ${esc(r.title)}<span class="opt">${sub}</span></span>
       ${b?bookingBadgeHtml(b):''}
@@ -2981,16 +3053,31 @@ function renderBookingList(){
 /**
  * 예약 결제 금액의 한 목록 — 예약(trip.bookings)과 여행 단위 비용(trip.costItems)을 같은 모양으로.
  * 결제일이 최근인 것부터, 결제일이 없는 것은 그 뒤에 등록 순. 상태는 오늘(기기 날짜)이 정한다(costPayStateOf).
- * @returns {{id:string,kind:string,title:string,amount:number|null,cur:string|undefined,paidOn:string,payState:string,booking:any}[]}
+ * @returns {{id:string,kind:string,title:string,amount:number|null,cur:string|undefined,paidOn:string,payState:string,photos:number,booking:any}[]}
  */
 function paymentRows(){
   const today=todayISO();
   const rows=tripBookings().map(b=>({id:b.id, kind:BK_TYPE_KIND[b.type]||'STAY', title:b.title||'예약', amount:b.price>0?b.price:null, cur:b.cur,
-      paidOn:b.paidOn||'', payState:costPayStateOf(b,'BOOKING',today), booking:b}))
+      paidOn:b.paidOn||'', payState:costPayStateOf(b,'BOOKING',today), photos:photoCount(b), booking:b}))
     .concat((trip().costItems||[]).map(it=>({id:it.id, kind:COST_KIND[it.kind]?it.kind:'OTHER', title:it.title||'비용', amount:costAmountOf(it,'amount'), cur:it.cur,
-      paidOn:it.paidOn||'', payState:costPayStateOf(it,'TRIP',today), booking:null})));
+      paidOn:it.paidOn||'', payState:costPayStateOf(it,'TRIP',today), photos:photoCount(it), booking:null})));
   return rows.sort((a,b)=> (a.paidOn&&b.paidOn)? (a.paidOn<b.paidOn?1:a.paidOn>b.paidOn?-1:0) : a.paidOn? -1 : b.paidOn? 1 : 0);
 }
+/**
+ * 영수증·품목 사진이 **몇 장 붙어 있는지**. 웹은 개수까지만 말한다.
+ *
+ * ⚠️ **웹에 사진 붙이기·보기를 만들 수 없다.** 문서에 실리는 것은 원본이 아니라 iOS 사진 보관함의
+ * 식별자(local identifier)뿐이라(§비용 항목의 영수증·품목 사진) 브라우저는 그 문자열로 아무것도 열지 못한다.
+ * 원본을 문서에 넣는 것은 금지다 — 저장할 때마다 통째로 오가므로 동기화가 무거워지고 공유 링크가 터진다.
+ * 그래서 웹이 할 수 있는 정직한 일은 **있다는 사실을 말하는 것** 하나다. 없다고 말하면 폰에서 붙인 사람이
+ * 사라진 줄 안다.
+ * @param {any} item 예약 또는 비용 항목 @returns {number}
+ */
+function photoCount(item){
+  return (item&&Array.isArray(item.photos))? item.photos.length : 0;
+}
+/** 사진이 있을 때만 한 줄. 어느 기기에서 붙였는지는 문서가 모르므로 단정하지 않는다 @param {number} n @returns {string} */
+function photoNote(n){ return n>0? `영수증·품목 사진 ${n}장 — 붙인 기기에서만 볼 수 있어요` : ''; }
 /** 예약 결제 금액의 결제 상태별 원화 합계 — 필터바 전체 비용과 같은 예약(budgetBookings)만 센다 @returns {Record<string,number>} */
 function prepPaySplit(){
   const today=todayISO(); /** @type {Record<string,number>} */ const sum={RESERVED:0,PAID:0,NONE:0};
@@ -3136,6 +3223,9 @@ window.openBookingModal=(id)=>{
   document.getElementById('bkTrack').checked=b?b.track!==false:true;
   toggleBkFields();
   renderBookingStatusBox(b);
+  // 사진은 여기서 붙이지도 떼지도 못한다 — 문서에는 보관함 식별자만 있고 브라우저는 그것을 열 수 없다
+  { const note=photoNote(photoCount(b||item)), el=document.getElementById('bkPhotos');
+    el.textContent=note? `📎 ${note}` : ''; el.style.display=note?'block':'none'; }
   document.getElementById('bookingModalBg').classList.add('show');
 };
 // 현재가·판매처 비교·매칭 후보·가격 기록 — 편집 중인 기존 예약에만 표시

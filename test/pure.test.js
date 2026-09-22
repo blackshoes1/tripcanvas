@@ -1272,3 +1272,73 @@ test('타임라인도 같은 계산을 쓴다 — 예약 대기와 체류가 다
   assert.equal(tl[0].wait, 60, '예약 10시까지 기다린다');
   assert.equal(tl[1].eta, 10*60+30, '10시 + 체류 30분 = 다음 장소 도착');
 });
+
+// ── 명소 예약요건 (spot.admission) ────────────────────────────────────────────
+// 요건은 *명소의 조건*이고 personalStatus는 *내가 예약했는가*다. 웹·앱이 같은 규칙을 쓴다.
+
+test('예약 요건 — 약속 시각·숙소 예약으로 추론하지 않는다', () => {
+  assert.equal(L.admissionOf({}), 'UNKNOWN', '없으면 확인 필요');
+  assert.equal(L.admissionOf({bookAt:'12:07', bookingId:'hotel-1'}), 'UNKNOWN',
+               '예약·입장 시각과 숙소 예약은 명소의 예약 요건이 아니다');
+  assert.equal(L.admissionOf({admission:{source:'USER', requirement:'몰라요'}}), 'UNKNOWN', '모르는 값도 확인 필요');
+  assert.equal(L.admissionOf({admission:{source:'USER', requirement:'REQUIRED'}}), 'REQUIRED');
+  assert.equal(L.needsAdmissionBooking({admission:{source:'USER', requirement:'REQUIRED'}}), true);
+  assert.equal(L.needsAdmissionBooking({admission:{source:'USER', requirement:'REQUIRED', personalStatus:'BOOKED'}}), false);
+  assert.equal(L.needsAdmissionBooking({admission:{source:'USER', requirement:'RECOMMENDED'}}), false,
+               '권장은 아직 안 했어도 경고가 아니다');
+  assert.equal(L.needsAdmissionBooking({bookAt:'12:07'}), false);
+});
+
+test('예약 요건 이름 — iOS AdmissionRequirement.label과 글자까지 같다', () => {
+  assert.deepEqual(L.ADMISSION_REQUIREMENTS.map(r => [r.id, r.label]), [
+    ['REQUIRED', '예약 필수'],
+    ['RECOMMENDED', '예약 권장'],
+    ['NOT_REQUIRED', '예약 없이 입장 가능'],
+    ['UNKNOWN', '예약 요건 확인 필요']
+  ]);
+  assert.equal(L.admissionLabel('REQUIRED'), '예약 필수');
+  assert.equal(L.admissionLabel('없는값'), '', '모르는 값은 아무것도 적지 않는다');
+});
+
+test('예약 정보 정규화 — 확인하지 않은 것을 예약 완료·무료로 굳히지 않는다', () => {
+  assert.equal(L.normalizeAdmission(null), null);
+  assert.equal(L.normalizeAdmission({requirement:'REQUIRED'}), null, 'source가 USER가 아니면 버린다');
+  assert.equal(L.normalizeAdmission({source:'GOOGLE', requirement:'REQUIRED'}), null, '외부가 말한 것은 담지 않는다');
+  assert.deepEqual(L.normalizeAdmission({source:'USER'}), {source:'USER', requirement:'UNKNOWN'});
+  assert.deepEqual(L.normalizeAdmission({source:'USER', requirement:'REQUIRED', personalStatus:'예약함'}),
+                   {source:'USER', requirement:'REQUIRED'}, '모르는 예약 상태는 떨어뜨린다 — 완료로 굳히지 않는다');
+  // http·자격증명이 붙은 주소는 링크가 되지 않는다(앱 SpotAdmission.safeURL과 같은 기준)
+  assert.deepEqual(L.normalizeAdmission({source:'USER', officialURL:'http://example.test'}),
+                   {source:'USER', requirement:'UNKNOWN'});
+  assert.deepEqual(L.normalizeAdmission({source:'USER', officialURL:'javascript:alert(1)'}),
+                   {source:'USER', requirement:'UNKNOWN'});
+  assert.deepEqual(L.normalizeAdmission({source:'USER', officialURL:'  https://example.test/tickets  '}),
+                   {source:'USER', requirement:'UNKNOWN', officialURL:'https://example.test/tickets'});
+  // 확인 시각은 사람이 확인한 때만 — 형식이 아니면 버리고 지금 시각으로 채우지 않는다
+  assert.deepEqual(L.normalizeAdmission({source:'USER', checkedAt:'2026-09-21'}),
+                   {source:'USER', requirement:'UNKNOWN'});
+  assert.deepEqual(L.normalizeAdmission({source:'USER', checkedAt:'2026-09-21T10:00:00Z'}),
+                   {source:'USER', requirement:'UNKNOWN', checkedAt:'2026-09-21T10:00:00Z'});
+  assert.equal(L.normalizeAdmission({source:'USER', people:0}).people, undefined, '0명은 예약이 아니다');
+  assert.equal(L.normalizeAdmission({source:'USER', people:2}).people, 2);
+  assert.equal(L.normalizeAdmission({source:'USER', note:'  '}).note, undefined);
+});
+
+test('예약 정보 검증 — 서버가 거절할 값은 저장 전에 이름을 말한다', () => {
+  assert.equal(L.admissionError({source:'USER', requirement:'REQUIRED'}), null);
+  assert.equal(L.admissionError({source:'USER', requirement:'몰라요'}), '예약 요건이 올바르지 않습니다');
+  assert.equal(L.admissionError({source:'USER', officialURL:'http://example.test'}), '공식 페이지는 https URL이어야 합니다');
+  assert.equal(L.admissionError({source:'USER', people:0}), '예약 인원은 1~100명이어야 합니다');
+  assert.equal(L.admissionError({source:'USER', note:'x'.repeat(1001)}), '예약 메모는 1000자까지 입력할 수 있습니다');
+});
+
+test('여행 정규화가 장소의 예약 정보를 지난다 — 불량 값은 장소를 버리지 않고 떨어진다', () => {
+  const trip = L.normalizeTrip({name:'스페인', days:[{spots:[
+    {name:'알함브라', lat:37.17, lng:-3.59, admission:{source:'USER', requirement:'REQUIRED', officialURL:'http://x.test'}},
+    {name:'프라도', lat:40.41, lng:-3.69, admission:{source:'GOOGLE', requirement:'REQUIRED'}}
+  ]}]});
+  const spots = trip.days[0].spots;
+  assert.deepEqual(spots[0].admission, {source:'USER', requirement:'REQUIRED'}, '나쁜 링크만 떨어진다');
+  assert.equal(spots[1].admission, undefined, '사용자가 확인한 값이 아니면 통째로 떨어진다');
+  assert.equal(spots[1].name, '프라도', '장소 자체는 남는다');
+});

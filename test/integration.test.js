@@ -3603,3 +3603,144 @@ test('통합: 충돌에서 원격을 택하거나 복사본을 남기면 둘 다
   assert.ok(saved.trips.some(t => /충돌 복사본/.test(t.name)), '복사본도 기기에 남는다');
   w.close();
 });
+
+// ── 명소 예약요건 — 웹에서 보고 고칠 수 있다 ──────────────────────────────────
+//
+// 2026-09-21 이전에는 `lib.js`가 정규화만 하고 웹에는 화면이 없었다. 앱에서 '예약 필수'로
+//표시해 둔 명소가 웹에서는 아무 데도 나타나지 않았고, 정작 공식 예약 페이지를 뒤지는 곳은
+// 데스크톱이다.
+
+test('통합: 예약 요건 선택지는 lib의 이름 하나에서 나온다 — 마크업이 따로 흘러가지 않는다', { skip: noJsdom }, () => {
+  const w = boot();
+  const names = JSON.parse(w.eval('JSON.stringify(ADMISSION_REQUIREMENTS)'));
+  const options = [...w.document.getElementById('spotAdmReq').options].map((o) => [o.value, o.textContent.trim()]);
+  assert.deepEqual(options, names.map((r) => [r.id, r.label]));
+  // 앱(iOS `AdmissionRequirement.label`)과 글자까지 같아야 한다 — 같은 값을 두 말로 부르지 않는다
+  assert.deepEqual(options[0], ['REQUIRED', '예약 필수']);
+  assert.deepEqual(options[3], ['UNKNOWN', '예약 요건 확인 필요']);
+  w.close();
+});
+
+test('통합: 예약요건을 편집해 저장하고 다시 열어도 그대로다 — 기본값은 남기지 않는다', { skip: noJsdom }, () => {
+  const w = boot();
+  withTrip(w, JSON.stringify([{ title: '첫날', spots: [
+    { name: '알함브라', city: '그라나다', lat: 37.17, lng: -3.59, stayMin: 120 }
+  ] }]));
+  w.eval(`render(); openSpotModal(0,0)`);
+
+  // 아무 말도 하지 않은 장소는 빈 껍데기를 남기지 않는다
+  w.document.getElementById('spotSave').click();
+  assert.equal('admission' in JSON.parse(w.eval(`JSON.stringify(trip().days[0].spots[0])`)), false);
+
+  w.eval(`openSpotModal(0,0)`);
+  w.document.getElementById('spotAdmReq').value = 'REQUIRED';
+  w.document.getElementById('spotAdmPeople').value = '2';
+  w.document.getElementById('spotAdmUrl').value = 'https://tickets.alhambra.test/ko';
+  w.document.getElementById('spotAdmNote').value = '성인 2 · 나스르 궁전 입장 시각 지정';
+  w.document.getElementById('spotSave').click();
+
+  const saved = JSON.parse(w.eval(`JSON.stringify(trip().days[0].spots[0].admission)`));
+  assert.deepEqual(saved, { source: 'USER', requirement: 'REQUIRED', officialURL: 'https://tickets.alhambra.test/ko',
+    note: '성인 2 · 나스르 궁전 입장 시각 지정', people: 2 });
+  assert.equal('personalStatus' in saved, false, '예약 완료를 누르지 않았으면 적지 않는다');
+  assert.equal('checkedAt' in saved, false, '저장은 확인이 아니다 — 시각을 지어내지 않는다');
+
+  // 다시 열면 칸이 그대로 채워진다
+  w.eval(`openSpotModal(0,0)`);
+  assert.equal(w.document.getElementById('spotAdmReq').value, 'REQUIRED');
+  assert.equal(w.document.getElementById('spotAdmPeople').value, '2');
+  assert.equal(w.document.getElementById('spotAdmUrl').value, 'https://tickets.alhambra.test/ko');
+  assert.equal(w.document.getElementById('spotAdmBooked').checked, false);
+  w.close();
+});
+
+test('통합: 서버가 거절할 값은 저장 전에 같은 문장으로 막는다', { skip: noJsdom }, () => {
+  const w = boot();
+  withTrip(w, JSON.stringify([{ title: '첫날', spots: [
+    { name: '알함브라', city: '그라나다', lat: 37.17, lng: -3.59 }
+  ] }]));
+  w.eval(`render(); openSpotModal(0,0)`);
+  w.document.getElementById('spotAdmUrl').value = 'http://tickets.alhambra.test';   // https가 아니다
+  w.document.getElementById('spotSave').click();
+  assert.equal('admission' in JSON.parse(w.eval(`JSON.stringify(trip().days[0].spots[0])`)), false, '저장되지 않는다');
+  assert.ok(w.document.getElementById('spotModalBg').classList.contains('show'), '모달이 열린 채 남아 고칠 수 있다');
+  // 문구는 lib의 것 그대로다 — 화면이 제 문장을 따로 두면 서버와 두 말이 된다
+  assert.equal(w.eval(`admissionError({source:'USER',officialURL:'http://x.test'})`), '공식 페이지는 https URL이어야 합니다');
+  w.close();
+});
+
+test('통합: 일자 카드는 예약이 필요한 곳만 눈에 띄게 말한다', { skip: noJsdom }, () => {
+  const w = boot();
+  withTrip(w, JSON.stringify([{ title: '첫날', spots: [
+    { name: '알함브라', city: '그라나다', lat: 37.17, lng: -3.59,
+      admission: { source: 'USER', requirement: 'REQUIRED', officialURL: 'https://tickets.alhambra.test' } },
+    { name: '프라도', city: '마드리드', lat: 40.41, lng: -3.69,
+      admission: { source: 'USER', requirement: 'REQUIRED', personalStatus: 'BOOKED' } },
+    { name: '레티로 공원', city: '마드리드', lat: 40.41, lng: -3.68 }
+  ] }]));
+  w.eval(`render()`);
+  const spots = [...w.document.querySelectorAll('#sidebar .spot')];
+  const chip = (i) => spots[i].querySelector('.spotMetaItem.adm');
+  assert.ok(chip(0).classList.contains('admNeed'), '예약 필수인데 아직 안 했으면 주의색');
+  assert.match(chip(0).textContent, /예약 필수/);
+  assert.equal(chip(1).classList.contains('admNeed'), false, '예약을 마쳤으면 경고가 아니다');
+  assert.match(chip(1).textContent, /예약 완료/);
+  assert.equal(chip(2), null, '아무 말도 없는 장소에는 붙이지 않는다');
+
+  // 공식 예약 페이지는 https만 링크가 된다(safeUrl) — 열어도 예약 완료로 바뀌지 않는다
+  const link = spots[0].querySelector('a.spotMetaItem.adm');
+  assert.equal(link.getAttribute('href'), 'https://tickets.alhambra.test');
+  assert.equal(link.getAttribute('rel'), 'noopener');
+  w.close();
+});
+
+test('통합: 장소를 복사해도 내 예약 완료는 따라가지 않는다', { skip: noJsdom }, () => {
+  const w = boot();
+  withTrip(w, JSON.stringify([{ title: '첫날', spots: [
+    { name: '알함브라', city: '그라나다', lat: 37.17, lng: -3.59,
+      admission: { source: 'USER', requirement: 'REQUIRED', personalStatus: 'BOOKED', officialURL: 'https://tickets.alhambra.test' } }
+  ] }]));
+  w.eval(`render(); copySpot(0,0)`);
+  const copy = JSON.parse(w.eval(`JSON.stringify(trip().days[0].spots[1].admission)`));
+  assert.equal(copy.requirement, 'REQUIRED', '예약 요건은 그 장소의 성질이라 따라간다');
+  assert.equal(copy.officialURL, 'https://tickets.alhambra.test');
+  assert.equal('personalStatus' in copy, false, '예약 완료는 이 방문의 사실이다 — 복사본까지 예약된 것으로 말하지 않는다');
+  w.close();
+});
+
+// ── 영수증 사진 — 웹은 있다는 사실만 말한다 ──────────────────────────────────
+//
+// ⚠️ 웹에 붙이기·보기를 만들 수 없다. 문서에 실리는 것은 원본이 아니라 iOS 사진 보관함의
+// 식별자뿐이라 브라우저는 그 문자열로 아무것도 열지 못하고, 원본을 문서에 넣는 것은 금지다
+// (저장할 때마다 통째로 오가므로 동기화가 무거워지고 공유 링크가 터진다).
+// 그래서 웹이 할 수 있는 정직한 일은 개수를 말하는 것과, **조용히 버리지 않는 것**이다.
+
+test('통합: 영수증 사진은 웹에서 개수만 말하고, 웹에서 고쳐도 사라지지 않는다', { skip: noJsdom }, () => {
+  const w = boot();
+  w.eval(`store.trips.push({id:'__it__',name:'T',start:'2026-08-01',days:[{title:'첫날',spots:[]}],
+    bookings:[{id:'bk1',type:'hotel',title:'Cap Rocat',price:400000,start:'2026-08-01',end:'2026-08-03',
+               photos:['ph-1','ph-2']}],
+    costItems:[{id:'ci1',kind:'OTHER',title:'유심',amount:20000}]});
+    store.activeId='__it__'; activeDay=0; renderBookingList();`);
+
+  const rows = [...w.document.querySelectorAll('#bookingListBody .tripRow')].map((r) => r.textContent);
+  assert.ok(rows.some((t) => t.includes('사진 2장')), '붙여 둔 사진이 있다는 것은 말한다');
+  assert.equal(rows.some((t) => t.includes('사진 0장')), false, '없는 것은 말하지 않는다');
+
+  w.eval(`openBookingModal('bk1')`);
+  const note = w.document.getElementById('bkPhotos');
+  assert.equal(note.style.display, 'block');
+  assert.match(note.textContent, /붙인 기기에서만/, '왜 안 보이는지까지 말한다 — 사라진 줄 알면 다시 붙인다');
+
+  // 웹에서 이름만 고쳐 저장해도 참조는 그대로다(사진을 떼는 화면이 없으니 떼어져서도 안 된다)
+  w.document.getElementById('bkTitle').value = 'Cap Rocat 디럭스';
+  w.document.getElementById('bkSave').click();
+  const saved = JSON.parse(w.eval(`JSON.stringify(trip().bookings[0])`));
+  assert.equal(saved.title, 'Cap Rocat 디럭스');
+  assert.deepEqual(saved.photos, ['ph-1', 'ph-2']);
+
+  // 사진이 없는 항목에는 아무 줄도 없다
+  w.eval(`openBookingModal('ci1')`);
+  assert.equal(w.document.getElementById('bkPhotos').style.display, 'none');
+  w.close();
+});

@@ -84,7 +84,7 @@ With J          ← 제품 (앱 이름 · 웹 타이틀 · PWA · 메일 제목 
 
 - `index.html` — 마크업 (모달·헤더·재생 HUD 등)
 - `app.js` — 앱 로직 전체 (DOM·지도·네트워크)
-- `lib.js` — 순수 로직 (파서·거리·시각·앵커·타임라인·정규화 · **분리 구간** `splitSegments`/`whoKey` · **결제 상태** `costPayStateOf`/`payStateTotals` · **여행 준비 메모** `TRIP_NOTE_CATEGORIES`/`normalizeTripNote`). **유닛 테스트 + `tsc` 타입 검사 대상**
+- `lib.js` — 순수 로직 (파서·거리·시각·앵커·타임라인·정규화 · **분리 구간** `splitSegments`/`whoKey` · **결제 상태** `costPayStateOf`/`payStateTotals` · **여행 준비 메모** `TRIP_NOTE_CATEGORIES`/`normalizeTripNote` · **명소 예약요건** `ADMISSION_REQUIREMENTS`/`admissionOf`/`needsAdmissionBooking`/`normalizeAdmission`). **유닛 테스트 + `tsc` 타입 검사 대상**
 - `price.js` — 예약 가격 추적 순수 계산: 실질 절약액·오퍼 조건 매칭(EXACT/EQUIVALENT/SIMILAR)·확정/잠재 절약 판단·호텔 identity 점수 · 렌터카 조건 매칭(carMatchQuality — 차급·변속기·보험·주행거리가 다르면 확정 절약 금지). 예약(`trip.bookings`)은 여행 데이터로 동기화·공유되고, 가격 관측 기록은 기기 로컬 + 로그인 시 **`/api/v1/trips/:id/prices`**(여행과 같은 저장소·같은 권한. 2026-09-04 전환 전에는 Supabase `hotel_price_snapshots` 직접 경로였다). 시세는 `api/hotel-offers.js` 프록시(Metasearch 키 서버 전용)로만 조회 — 키 없으면 미연결 상태를 그대로 표시(가짜 가격 금지). **유닛 테스트 + `tsc` 대상**
 - `adaptive.js` — **Adaptive Travel OS 도메인**(순수): 현재 여행 상태(`buildTripState`) · 고정/유동 분류(`commitmentOf`) · 빈 시간 탐지(`findFreeWindows`) · 다음 행동 후보와 순위(`buildCandidates`/`rankNextActions`) · 일정 재구성(`generateReplan`) · 제안(`buildSuggestions`) · 자연어 해석(`parseIntent`) · 출발 안내(`departureAdvice`) · 빈칸 채우기와 하루 flow(`fillGaps`/`planDayFlow`). DOM·네트워크·현재시각을 모르고 전부 인자로 받는다. **유닛 테스트 + `tsc` 대상**
 - `intake.js` — **유입 계층**(순수): 공유 분류(`classifyShare`) · 날짜/통화 정규화 · 예약 후보 파싱(`parseBookingCandidate`) · 중복(`findDuplicateBooking`) · 여행 매칭(`matchTripForBooking`) · 기록 연결(`associateMemory`) · **붙여넣은 일정 글 읽기**(`parseItinerary`). **저장은 하지 않는다** — 확인한 것만 저장된다. ⚠️ **사람들은 우리 형식으로 다시 쓰지 않는다** — ChatGPT·Claude가 뱉은 그대로 붙여넣으므로 `stripDecor`(마크다운 `**`·이모지) · `expandTables`(마크다운 표 — 모르면 **그 날이 통째로 사라진다**) · `koTime`(`오후 3시`) · `splitNameDesc`(`점심: 카와카미안` → 이름은 오른쪽)를 먼저 지난다. 이름에 꾸밈이 남으면 지오코딩이 실패해 전부 '위치 지정'이 된다(2026-09-08). **유닛 테스트 + `tsc` 대상**
@@ -153,6 +153,7 @@ localStorage: `tripcanvas_v1`(여행) · `tripcanvas_legs_v4`(구간 캐시, 수
 - 예약(`trip.bookings`)에서 파생된 하루치는 **언제나 예약**이다(`costPayStateOf(item,'BOOKING')`).
 - 상태별 합계는 `payStateTotals`(lib) 하나가 만든다 — 하루(`dayCostSummary().payTotals`)와 여행 전체(`tripCostSummary().payTotals`)가 같은 규칙을 쓴다. **셋을 더하면 합계와 같아야 한다**(금액 미정과 예약이 대신 내는 장소는 더하지 않는다).
 - 비용 항목의 **영수증·품목 사진**은 `photos`에 **참조만**(사진 보관함 식별자) 싣는다. 원본 이미지를 문서에 넣지 않는다 — 문서는 저장할 때마다 통째로 오가므로 동기화가 무거워지고 공유 링크가 터진다. 그래서 그 사진은 **담은 기기에서만** 보인다(다른 기기에서는 그 문자열이 아무것도 가리키지 않는다). 최대 10장.
+  ⚠️ **웹에는 붙이기·보기가 없고 있을 수 없다**(2026-09-21). 브라우저는 보관함 식별자로 아무것도 열지 못하고, 그렇다고 원본을 문서에 넣을 수는 없다(위의 이유). 그래서 웹은 **몇 장 붙어 있는지만** 말하고(`photoCount`·`photoNote` — 목록 줄과 편집기 한 줄) 저장에서 떨어뜨리지 않는다. 없다고 말하면 폰에서 붙인 사람이 사라진 줄 알고 다시 붙인다. 진짜 업로드는 별도 저장소가 필요한 다른 설계다.
 
 **비용은 '하루치'와 '총액'을 구분한다.** 장소 비용(`spot.cost`)·택시비는 그날 쓰는 돈이지만, 예약(숙박·렌터카·항공)은 여러 날에 걸친 총액이다.
 
@@ -172,6 +173,15 @@ localStorage: `tripcanvas_v1`(여행) · `tripcanvas_legs_v4`(구간 캐시, 수
 **새 장소는 '선택한 장소 바로 뒤'에 들어간다.** 삽입 위치는 모달을 **열 때** `editing.after`에 확정한다(`selectedSpot`이 그 일자에 있을 때만). 저장 시 일자를 바꿨거나 선택이 없으면 맨 뒤. 선택 위치는 카드 강조 말고는 눈에 안 보이므로 `＋ N번 뒤에 장소 추가`로 밝히고, 선택은 `render()` 없이 바뀌므로 라벨 갱신을 `applySpotSelection()`에 묶는다.
 
 **시간 3종을 구분한다.** 도착 **예상**(자동 계산) / `at` 도착 **고정**(내가 정한 계획) / `bookAt` **예약·입장 시각**(상대가 정한 약속 — 일찍 도착하면 그 시각까지 대기로 계산, 늦으면 ⚠️).
+
+**명소 예약요건은 '그 장소의 조건'이고 예약 완료는 '내가 한 일'이다.**(`spot.admission` — 웹 장소 모달의 *명소 예약·입장 준비* · iOS `AdmissionEditorSection`, 2026-09-21에 웹에 들어왔다)
+
+- 요건은 넷이고(`ADMISSION_REQUIREMENTS` — 예약 필수 · 예약 권장 · 예약 없이 입장 가능 · 예약 요건 확인 필요) **이름은 `lib.js`가 원본, iOS `AdmissionRequirement.label`이 복사본이다**(글자까지 같다 — 결제 상태와 같은 이유). 웹 셀렉트박스도 그 상수로 만든다.
+- ⚠️ `bookAt`(상대가 정한 약속 시각)·`bookingId`(숙소 예약)로 **추론하지 않는다.** '예약이 필요한데 아직 안 했다'는 판정은 `needsAdmissionBooking`(lib) 하나 = iOS `TripSpot.needsReservation`이고, 일자 카드는 그때만 주의색이다. '확인 필요'뿐인 장소에는 아무것도 붙이지 않는다 — 모든 명소에 칩이 붙으면 정작 필수인 곳이 묻힌다.
+- **사람이 확인한 것만 담는다** — `source:'USER'`가 아니면 `normalizeAdmission`이 통째로 버린다(외부가 말한 것을 여행에 들이지 않는다). `checkedAt`은 '지금 확인했어요'를 눌렀을 때만 찍고 저장·조회로 만들어내지 않는다. **링크를 열거나 시각을 적어도 예약 완료로 바뀌지 않는다.**
+- `officialURL`은 **https만**(lib `admissionURL` = iOS `SpotAdmission.safeURL`). 웹은 저장 전에 `admissionError`의 문장을 **그대로** 보여 준다 — 서버(`validateTripPayload`)가 같은 함수로 거절하므로 화면이 제 문장을 따로 두면 두 말이 된다.
+- 장소 복사는 요건·링크는 물려주고 **`personalStatus`는 뗀다** — 예약은 이 방문의 사실이다(렌터카 픽업 연결과 같은 이유).
+- ⚠️ 자동 조회(`GET /api/v1/places/details`)는 **아직 아무 데도 연결돼 있지 않다** — `placeAdmissionDetails`가 언제나 `NOT_CONNECTED`를 돌려준다. 그래서 웹에는 그 버튼을 두지 않았다(앱에는 있다). 없는 정보를 '무료·예약 불필요'로 옮기지 않는다.
 
 **밖에서 들어온 것은 확인 없이 저장하지 않는다.** 공유·붙여넣기·사진은 전부 같은 길을 지난다:
 
