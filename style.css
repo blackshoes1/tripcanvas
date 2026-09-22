@@ -536,12 +536,20 @@ body.playing #playHud{
   .spotMetaItem.must{color:var(--meta-warning);font-weight:600}
   .spotMetaItem.opt{color:var(--meta-soft)}
   .spotMetaItem.whoChip{color:var(--meta-link);font-weight:600}
+  /* 명소 예약요건 — 필수인데 아직 안 한 것만 눈에 띈다. 나머지는 사실을 적어 둔 메모다 */
+  .spotMetaItem.adm{color:var(--meta-soft)}
+  .spotMetaItem.admNeed{color:var(--meta-warning);font-weight:600}
   .spotMetaItem.reunionChip{color:var(--meta-good);font-weight:600}
   /* 나란히 일어나는 줄은 왼쪽 띠로 묶어 보인다. .spotList의 자식 구조는 건드리지 않는다 —
      드래그 인덱스가 자식 순서로 계산돼서 여기에 다른 요소를 끼우면 순서가 어긋난다. */
   .spot.inSplit{border-left:3px solid color-mix(in srgb,var(--meta-link) 55%,transparent);padding-left:11px;background:color-mix(in srgb,var(--meta-link) 6%,transparent);border-radius:0 8px 8px 0}
   .spot.inSplit + .spot.inSplit{margin-top:-4px}
   .spot.isReunion{border-left:3px solid color-mix(in srgb,var(--meta-good) 55%,transparent);padding-left:11px}
+  /* 장소 모달의 명소 예약·입장 준비 */
+  .admissionBox{display:flex;flex-direction:column;gap:6px}
+  .admissionRow{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+  .admissionRow>select{flex:1 1 180px;min-width:0}
+  .admissionRow #spotAdmPeople{width:72px}
   /* 장소 모달의 "누가 가나요" */
   .whoChips{display:flex;flex-wrap:wrap;gap:5px;padding:2px 0}
   .whoChips .whoChipBtn{border:1px solid var(--border);border-radius:14px;padding:6px 11px;font-size:12px;background:var(--surface);color:var(--muted);min-height:34px}

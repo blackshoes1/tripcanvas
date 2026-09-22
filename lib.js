@@ -969,7 +969,38 @@
   /** @param {any} x @returns {boolean} */
   function _fin(x){ const n=+x; return typeof n==='number' && isFinite(n); }
 
-  const _ADMISSION_REQUIREMENTS=['REQUIRED','RECOMMENDED','NOT_REQUIRED','UNKNOWN'];
+  /**
+   * 명소의 예약 요건. **이름은 iOS `AdmissionRequirement.label`과 글자까지 같다** — 결제 상태와 같은 이유로,
+   * 같은 값을 웹과 앱이 다른 말로 부르면 같은 장소가 화면마다 달라 보인다.
+   * ⚠️ 이건 *명소의 조건*이고 `personalStatus`는 *내가 예약했는가*다 — 둘을 섞지 않는다.
+   */
+  const ADMISSION_REQUIREMENTS=Object.freeze([
+    {id:'REQUIRED',     label:'예약 필수'},
+    {id:'RECOMMENDED',  label:'예약 권장'},
+    {id:'NOT_REQUIRED', label:'예약 없이 입장 가능'},
+    {id:'UNKNOWN',      label:'예약 요건 확인 필요'}
+  ]);
+  const _ADMISSION_REQUIREMENTS=ADMISSION_REQUIREMENTS.map(r=>r.id);
+  /** 예약 요건 이름. 모르는 값이면 빈 문자열(화면이 아무것도 적지 않는다). @param {any} id @returns {string} */
+  function admissionLabel(id){
+    const found=ADMISSION_REQUIREMENTS.find(r=>r.id===id);
+    return found?found.label:'';
+  }
+  /** 장소의 예약 요건 — 없거나 모르는 값이면 '확인 필요'다. @param {any} spot @returns {string} */
+  function admissionOf(spot){
+    const value=spot&&spot.admission;
+    const id=(value&&typeof value==='object')?_str(value.requirement):'';
+    return _ADMISSION_REQUIREMENTS.includes(id)?id:'UNKNOWN';
+  }
+  /**
+   * 예약이 필수인데 아직 안 했다 (iOS `TripSpot.needsReservation`과 같은 규칙).
+   * ⚠️ `bookAt`(상대가 정한 약속 시각)·`bookingId`(숙소 예약)로 추론하지 않는다 — 다른 질문이다.
+   * @param {any} spot @returns {boolean}
+   */
+  function needsAdmissionBooking(spot){
+    const value=spot&&spot.admission;
+    return admissionOf(spot)==='REQUIRED' && !(value&&typeof value==='object'&&value.personalStatus==='BOOKED');
+  }
   /** 사용자 확인 시각만 검증한다. 현재 시각으로 채우지 않는다. @param {any} value @returns {boolean} */
   function admissionCheckedAt(value){
     if(typeof value!=='string') return false;
@@ -1554,7 +1585,7 @@
     };
   }
 
-  const TC={SPOT_PRIORITIES,spotPriorityOf,applySpotPriority,spotPriorityLabel,SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,cityFromKoreanAddr,placeName,cityFromGoogle,normHours,classifySearchErr,isKoreanSearch,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,normHM,sortDayByTime,inKorea,simplifyName,parseDirect,parseMoney,normalizeDraftDays,extractJson,extMapLink,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,stayMinutesOf,activityStartMinute,dayEndMinutes,departMinuteAfter,computeTimeline,whoKey,splitSegments,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,budgetBookings,moneyAmount,parseCostAmount,costAmountOf,dayEnteredCost,splitAcrossNights,stayCostShares,dayEnteredCostOn,hasManualTransportCost,dayCostSummary,COST_CATEGORIES,costCategoryOf,COST_PAY_STATES,costPayStateOf,payStateTotals,TRIP_NOTE_CATEGORIES,normalizeTripNote,tripCostSummary,localMode,sampleTrip,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
+  const TC={SPOT_PRIORITIES,spotPriorityOf,applySpotPriority,spotPriorityLabel,SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,cityFromKoreanAddr,placeName,cityFromGoogle,normHours,classifySearchErr,isKoreanSearch,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,normHM,sortDayByTime,inKorea,simplifyName,parseDirect,parseMoney,normalizeDraftDays,extractJson,extMapLink,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,stayMinutesOf,activityStartMinute,dayEndMinutes,departMinuteAfter,computeTimeline,whoKey,splitSegments,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,budgetBookings,moneyAmount,parseCostAmount,costAmountOf,dayEnteredCost,splitAcrossNights,stayCostShares,dayEnteredCostOn,hasManualTransportCost,dayCostSummary,ADMISSION_REQUIREMENTS,admissionLabel,admissionOf,needsAdmissionBooking,normalizeAdmission,admissionError,COST_CATEGORIES,costCategoryOf,COST_PAY_STATES,costPayStateOf,payStateTotals,TRIP_NOTE_CATEGORIES,normalizeTripNote,tripCostSummary,localMode,sampleTrip,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
   if(typeof module!=='undefined' && module.exports){ module.exports=TC; }   // Node (테스트)
   else { const r=/**@type {any}*/(root); for(const k in TC) r[k]=/**@type {any}*/(TC)[k]; }   // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);
