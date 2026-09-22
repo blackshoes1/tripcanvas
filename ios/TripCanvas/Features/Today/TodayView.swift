@@ -10,6 +10,9 @@ struct TodayView: View {
     @Environment(AppEnvironment.self) private var env
     @Environment(\.scenePhase) private var scenePhase
     @State private var showsTravelSetup = false
+    /// 입력 중인 문장. 모델이 든 것(`intentText`)은 **적용된** 문장이라 따로 둔다 —
+    /// 타이핑마다 서버를 부르지 않고, 보낸 뒤에도 고치던 글이 사라지지 않는다.
+    @State private var intentDraft = ""
 
     var body: some View {
         ScrollView {
@@ -75,6 +78,16 @@ struct TodayView: View {
                                        isBusy: !model.pending.isEmpty || model.isRetrying,
                                        onApply: { Task { await model.accept(replan) } },
                                        onKeep: { Task { await model.dismiss(replan) } })
+                        }
+
+                        if model.canEdit {
+                            IntentField(text: $intentDraft,
+                                        echo: model.intentEcho,
+                                        energy: model.energy,
+                                        isBusy: model.isLoading,
+                                        onSubmit: { Task { await model.applyIntent(intentDraft) } },
+                                        onClear: { intentDraft = ""; Task { await model.clearIntent() } },
+                                        onEnergy: { level in Task { await model.setEnergy(level) } })
                         }
 
                         if model.canEdit && !model.otherSuggestions.isEmpty {
@@ -568,5 +581,80 @@ enum MapLauncher {
         let item = MKMapItem(placemark: placemark)
         item.name = name
         item.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDefault])
+    }
+}
+
+/// "오늘 어떻게 할까요" — 자연어 한 줄과 컨디션.
+///
+/// ⚠️ **여기서 해석하지 않는다.** 문장은 서버로 가고(`adaptive.js`의 `parseIntent`), 돌아온
+///    `IntentEcho`를 그대로 그린다 — 규칙을 Swift로 옮기면 웹과 답이 갈린다(§엔진은 하나다).
+/// ⚠️ 못 알아들었으면 **그렇게 말한다.** 알아들은 척하고 아무 제안이나 내놓지 않는다.
+struct IntentField: View {
+    @Binding var text: String
+    let echo: IntentEcho?
+    let energy: EnergyLevel
+    let isBusy: Bool
+    let onSubmit: () -> Void
+    let onClear: () -> Void
+    let onEnergy: (EnergyLevel) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Space.s) {
+            SectionHeader(title: "오늘은 어떻게 할까요")
+            HStack(spacing: Space.s) {
+                TextField("예: 좀 피곤해서 많이 걷기 싫어", text: $text, axis: .vertical)
+                    .lineLimit(1...3)
+                    .textFieldStyle(.plain)
+                    .submitLabel(.done)
+                    .onSubmit(onSubmit)
+                if !text.isEmpty {
+                    Button("적용", action: onSubmit)
+                        .font(.subheadline.weight(.semibold))
+                        .disabled(isBusy)
+                }
+            }
+            .padding(Space.m)
+            .background(Ink.raised, in: RoundedRectangle(cornerRadius: Radius.card))
+
+            if let echo, !echo.text.isEmpty {
+                HStack(alignment: .top, spacing: Space.xs) {
+                    Image(systemName: echo.understood ? "text.bubble" : "questionmark.circle")
+                    Text(echo.echoLine).font(.caption)
+                    Spacer(minLength: 0)
+                    Button("지우기", action: onClear).font(.caption).disabled(isBusy)
+                }
+                // 못 알아들은 것은 오류가 아니라 '확인할 것'이다 — 빨강을 쓰지 않는다(§색은 뜻이다).
+                .foregroundStyle(echo.understood ? Ink.accent : Ink.warning)
+            }
+
+            // 문장으로 말하지 않아도 되는 길 — 웹의 컨디션 버튼과 같다.
+            HStack(spacing: Space.s) {
+                ForEach(EnergyPick.allCases, id: \.self) { pick in
+                    PickChip(label: pick.label, isOn: energy == pick.level) { onEnergy(pick.level) }
+                }
+            }
+            .disabled(isBusy)
+        }
+    }
+}
+
+/// 컨디션 세 갈래. 계약의 `EnergyLevel`에서 `unknown`을 뺀 것 — 고르는 칸에는 모르는 값이 없다.
+enum EnergyPick: CaseIterable {
+    case low, normal, high
+
+    var level: EnergyLevel {
+        switch self {
+        case .low: .low
+        case .normal: .normal
+        case .high: .high
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .low: "지쳤어요"
+        case .normal: "보통"
+        case .high: "쌩쌩해요"
+        }
     }
 }

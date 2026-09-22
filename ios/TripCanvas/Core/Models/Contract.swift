@@ -311,6 +311,33 @@ struct TodayResponse: Codable, Hashable, Sendable {
     let fixedCommitments: [FixedCommitmentSummary]
     let replan: ReplanPreview
     let activityState: TravelActivityState
+    /// 자연어 요청을 무엇으로 이해했는지. 문장을 보내지 않았으면 nil이다.
+    /// ⚠️ 옛 서버는 이 키를 보내지 않으므로 **옵셔널이어야 한다** — 아니면 앱이 통째로 디코딩에 실패한다.
+    let intent: IntentEcho?
+}
+
+/// "이렇게 이해했어요" — 서버가 `adaptive.js`로 해석한 결과.
+///
+/// ⚠️ **해석은 앱이 하지 않는다.** 규칙(`parseIntent`)을 Swift로 복제하면 웹과 답이 갈린다(§엔진은 하나다).
+///    앱은 문장을 보내고 이 결과를 그리기만 한다.
+/// ⚠️ `understood`가 false면 **못 알아들었다고 말한다** — 알아들은 척하지 않는다.
+struct IntentEcho: Codable, Hashable, Sendable {
+    let text: String
+    let understood: Bool
+    /// 무엇으로 이해했는지 사람 문장. 화면은 이것만 쓴다.
+    let reasons: [String]
+    let energyLevel: EnergyLevel
+    /// 이동 시간 상한(분). 문장이 좁히지 않았으면 nil — '안 정함'과 0은 다르다.
+    let maxTravelMinutes: Int?
+    let walkAverse: Bool
+    let mealFocus: Bool
+    let wantRest: Bool
+
+    /// 화면에 쓸 한 줄. 웹 `renderIntentEcho`와 같은 문구 규칙이다.
+    var echoLine: String {
+        understood ? "이렇게 이해했어요 — " + reasons.joined(separator: " · ")
+                   : "그 문장은 아직 못 알아들었어요 — 아래 컨디션으로 알려 주세요"
+    }
 }
 
 struct TripListResponse: Codable, Sendable {

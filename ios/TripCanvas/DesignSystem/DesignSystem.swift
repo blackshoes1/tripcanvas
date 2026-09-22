@@ -415,3 +415,25 @@ struct InlineErrorBanner: View {
         .overlay(RoundedRectangle(cornerRadius: Radius.card).strokeBorder(Ink.accent.opacity(0.22)))
     }
 }
+
+/// 켜고 끄는 칩 하나. 고른 것은 `Ink.accent`다 — 색은 뜻이고 여기서는 '고른 것'이다(§색은 뜻이다).
+///
+/// 참여자('누가 가나요')와 컨디션이 같은 것을 쓴다 — 같은 뜻의 컨트롤이 화면마다 다르게 보이지 않게.
+struct PickChip: View {
+    let label: String
+    let isOn: Bool
+    let toggle: () -> Void
+
+    var body: some View {
+        Button(action: toggle) {
+            Text(label)
+                .font(.subheadline.weight(isOn ? .semibold : .regular))
+                .padding(.horizontal, Space.m)
+                .padding(.vertical, Space.xs + 2)
+                .background(isOn ? Ink.accent.opacity(0.18) : Color(.tertiarySystemFill), in: Capsule())
+                .foregroundStyle(isOn ? Ink.accent : .primary)
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isOn ? [.isSelected] : [])
+    }
+}

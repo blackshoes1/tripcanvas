@@ -111,12 +111,12 @@ struct SpotEditorView: View {
         Section {
             // 칩이 줄을 넘어가게 — 이름이 길면 넷도 한 줄에 안 들어간다(`FlowLayout`은 취향 칩과 같은 것).
             FlowLayout(spacing: Space.s) {
-                ParticipantChip(label: "모두", isOn: draft.participants.isEmpty) {
+                PickChip(label: "모두", isOn: draft.participants.isEmpty) {
                     draft.participants = []
                 }
                 ForEach(assignableMembers) { member in
-                    ParticipantChip(label: member.me ? "나" : CollabModel.memberName(member),
-                                    isOn: draft.participants.contains(member.userId)) {
+                    PickChip(label: member.me ? "나" : CollabModel.memberName(member),
+                             isOn: draft.participants.contains(member.userId)) {
                         toggleParticipant(member.userId)
                     }
                 }
@@ -422,25 +422,5 @@ enum ClockText {
         guard isValid(text) else { return 0 }
         let split = Self.parts(text)
         return split.hour * 60 + split.minute
-    }
-}
-
-/// 참여자 칩 하나. 고른 것은 `Ink.accent`다 — 색은 뜻이고, 여기서는 '고른 것'이다.
-struct ParticipantChip: View {
-    let label: String
-    let isOn: Bool
-    let toggle: () -> Void
-
-    var body: some View {
-        Button(action: toggle) {
-            Text(label)
-                .font(.subheadline.weight(isOn ? .semibold : .regular))
-                .padding(.horizontal, Space.m)
-                .padding(.vertical, Space.xs + 2)
-                .background(isOn ? Ink.accent.opacity(0.18) : Color(.tertiarySystemFill), in: Capsule())
-                .foregroundStyle(isOn ? Ink.accent : .primary)
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(isOn ? [.isSelected] : [])
     }
 }

@@ -4222,8 +4222,10 @@ function replanPreview(di){
 // 자연어 요청 — "오늘 좀 피곤해서 많이 걷기 싫어"를 추천 옵션으로 바꾼다.
 // 해석은 규칙 기반(adaptive.js)이고, 일정 충돌·운영시간·이동시간 판단은 그대로 deterministic 로직이 한다.
 function applyIntent(text, di){
-  const r=TC_ADAPT.parseIntent(text);
-  if(r.energyLevel) adaptEnergy=r.energyLevel;
+  // 합치는 규칙은 `adaptive.js`의 `resolveIntent` 하나다 — 서버(`/api/v1/.../today`)가 같은 것을 쓴다.
+  // 컨디션은 문장이 말했을 때만 덮어쓰고, 조건은 문장이 통째로 정한다.
+  const r=TC_ADAPT.resolveIntent(text, {energyLevel:adaptEnergy});
+  adaptEnergy=r.energyLevel;
   adaptPrefs=r.prefs; adaptIntent=String(text||''); adaptIntentWhy=r.reasons;
   saveSuggest();
   trackAdapt('intent_parsed',{understood:r.understood});

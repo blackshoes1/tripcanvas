@@ -32,12 +32,18 @@ final class TodayViewModelTests: XCTestCase {
         func trips() async throws -> TripService.Fetched<[TripSummary]> {
             TripService.Fetched(value: [todayResponse.trip], cachedAt: cachedAt)
         }
-        func today(tripId: String, dayIndex: Int?) async throws -> TripService.Fetched<TodayResponse> {
+        func today(tripId: String, dayIndex: Int?, intent: String?, energy: EnergyLevel?) async throws -> TripService.Fetched<TodayResponse> {
             todayCallCount += 1
+            lastIntent = intent
+            lastEnergy = energy
             if let todayError { throw todayError }
             if let todayHandler { return try await todayHandler() }
             return TripService.Fetched(value: todayResponse, cachedAt: cachedAt)
         }
+        /// 마지막 요청이 무엇을 실어 보냈는지 — 앱이 해석하지 않고 **그대로 보내는지** 본다.
+        private(set) var lastIntent: String?
+        private(set) var lastEnergy: EnergyLevel?
+
         func bookings(tripId: String) async throws -> TripService.Fetched<[BookingSummary]> {
             TripService.Fetched(value: [], cachedAt: nil)
         }
@@ -367,6 +373,75 @@ final class TodayViewModelTests: XCTestCase {
         XCTAssertFalse(NextActionCard.prioritizesCompletion(.traveling))
         XCTAssertTrue(NextActionCard.prioritizesCompletion(.arrived))
         XCTAssertTrue(NextActionCard.prioritizesCompletion(.inProgress))
+    }
+
+
+    // MARK: 자연어 요청 — 앱은 해석하지 않고 보내기만 한다
+
+    /// 문장은 **그대로** 서버로 간다. 앱이 규칙을 복제하면 웹과 답이 갈린다(§엔진은 하나다).
+    func testSendsTheSentenceAsIsWithoutParsingIt() async throws {
+        let stub = StubDataSource(todayResponse: try fixture())
+        let model = makeModel(stub, from: stub.todayResponse)
+        await model.load()
+
+        await model.applyIntent("  오늘 좀 피곤해서 많이 걷기 싫어  ")
+        XCTAssertEqual(stub.lastIntent, "오늘 좀 피곤해서 많이 걷기 싫어", "앞뒤 공백만 걷고 손대지 않는다")
+        XCTAssertEqual(model.intentText, "오늘 좀 피곤해서 많이 걷기 싫어")
+    }
+
+    /// 같은 문장을 다시 보내지 않는다 — 키보드를 내릴 때마다 왕복하면 여행 중에 그대로 배터리다.
+    func testDoesNotResendTheSameSentence() async throws {
+        let stub = StubDataSource(todayResponse: try fixture())
+        let model = makeModel(stub, from: stub.todayResponse)
+        await model.load()
+        let before = stub.todayCallCount
+
+        await model.applyIntent("배고파")
+        XCTAssertEqual(stub.todayCallCount, before + 1)
+        await model.applyIntent("배고파")
+        XCTAssertEqual(stub.todayCallCount, before + 1, "같은 문장은 다시 보내지 않는다")
+    }
+
+    /// 컨디션은 문장과 따로 고른다 — 문장을 지워도 컨디션은 남는다.
+    func testClearingTheSentenceKeepsTheEnergyPick() async throws {
+        let stub = StubDataSource(todayResponse: try fixture())
+        let model = makeModel(stub, from: stub.todayResponse)
+        await model.load()
+
+        await model.setEnergy(.low)
+        await model.applyIntent("가까운 데만")
+        XCTAssertEqual(stub.lastEnergy, .low)
+
+        await model.clearIntent()
+        XCTAssertEqual(model.intentText, "")
+        XCTAssertNil(stub.lastIntent.flatMap { $0.isEmpty ? nil : $0 }, "문장은 더 보내지 않는다")
+        XCTAssertEqual(model.energy, .low, "컨디션은 따로 고른 것이라 함께 지우지 않는다")
+    }
+
+    /// 방금 말한 것이 반영되지 않으면 말을 안 들은 것으로 보인다 — `loadIfStale`의 60초를 지나지 않는다.
+    func testAppliesImmediatelyInsteadOfWaitingForTheStaleWindow() async throws {
+        let stub = StubDataSource(todayResponse: try fixture())
+        let model = makeModel(stub, from: stub.todayResponse)
+        await model.load()
+        let afterLoad = stub.todayCallCount
+
+        // 방금 받았으므로 평소라면 요청이 0이다
+        _ = await model.loadIfStale()
+        XCTAssertEqual(stub.todayCallCount, afterLoad, "방금 받은 것은 다시 받지 않는다")
+        // 그래도 문장은 바로 반영된다
+        await model.applyIntent("너무 피곤해")
+        XCTAssertEqual(stub.todayCallCount, afterLoad + 1)
+    }
+
+    /// 문장을 적용 중일 때는 디스크 캐시를 먼저 그리지 않는다 —
+    /// 그 캐시는 문장 없이 받은 것이라 "이렇게 이해했어요"가 없는 옛 제안이 잠깐 보인다.
+    func testDoesNotShowTheDiskCacheWhileASentenceIsApplied() async throws {
+        let stub = StubDataSource(todayResponse: try fixture())
+        stub.cachedToday = stub.todayResponse
+        let model = makeModel(stub, from: stub.todayResponse)
+
+        await model.applyIntent("배고파")
+        XCTAssertEqual(stub.cachedTodayReads, 0, "문장이 있으면 지난 화면을 먼저 그리지 않는다")
     }
 
 }

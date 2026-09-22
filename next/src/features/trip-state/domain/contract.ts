@@ -212,6 +212,39 @@ export interface TodayResponse {
   fixedCommitments: FixedCommitmentSummary[];
   replan: ReplanPreview;
   activityState: TravelActivityState;
+  /**
+   * 자연어 요청을 **무엇으로 이해했는지**. 문장을 보내지 않았으면 null이다.
+   *
+   * ⚠️ 해석은 서버가 `adaptive.js`의 `parseIntent`로 한다 — 앱이 규칙을 복제하면 두 답이 갈린다(§엔진은 하나다).
+   * ⚠️ 저장하지 않는다. 문장은 요청마다 오고 서버는 이번 계산에만 쓴다(위치와 같은 규칙).
+   */
+  intent: IntentEcho | null;
+}
+
+/**
+ * "이렇게 이해했어요" — 사람에게 되돌려 보여줄 해석 결과.
+ *
+ * ⚠️ **못 알아들었으면 그렇게 말한다.** `understood`가 false면 화면은 알아들은 척하지 않고
+ *    컨디션 버튼으로 안내한다(웹 `renderIntentEcho`와 같은 문구 규칙).
+ * ⚠️ 점수·규칙 이름은 싣지 않는다 — 화면에 쓰는 것은 `reasons` 문장뿐이다.
+ */
+export interface IntentEcho {
+  /** 사람이 쓴 문장 그대로. */
+  text: string;
+  /** 규칙이 하나라도 걸렸는가. */
+  understood: boolean;
+  /** 무엇으로 이해했는지 사람 문장("많이 걷지 않는 쪽으로 볼게요"). */
+  reasons: string[];
+  /** 이번 추천에 쓴 컨디션. 문장이 말하지 않았으면 요청이 고른 값이다. */
+  energyLevel: EnergyLevel;
+  /** 이동 시간 상한(분). 문장이 좁히지 않았으면 null — '안 정함'과 0을 섞지 않는다. */
+  maxTravelMinutes: number | null;
+  /** 많이 걷고 싶지 않다. */
+  walkAverse: boolean;
+  /** 식사를 먼저 챙긴다. */
+  mealFocus: boolean;
+  /** 숙소로 돌아가는 쪽을 먼저 본다. */
+  wantRest: boolean;
 }
 
 /** 가격 추적 상태 — 웹의 배지와 같은 판정(price.js). 확정 절약과 '조건 확인 필요'를 섞지 않는다. */

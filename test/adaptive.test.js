@@ -679,3 +679,48 @@ test('daysUntilStart: 시작 전에만 값이 있고, currentDayIndex와 같은 
   assert.equal(A.daysUntilStart(tripOf([{ title: '', mode: 'walk', spots: [] }], { start: '' }), '2026-09-19'), null);
   assert.equal(A.daysUntilStart(null, '2026-09-19'), null);
 });
+
+// ── resolveIntent — 문장과 '이미 고른 컨디션'을 합치는 규칙 ──
+//
+// 웹(applyIntent)과 서버(/api/v1/.../today)가 이 함수를 같이 쓴다. 갈리면 같은 문장에
+// 웹과 앱의 추천이 달라진다.
+
+test('resolveIntent: 컨디션은 문장이 말했을 때만 덮어쓴다', () => {
+  // "가까운 데만"에는 컨디션이 없다 — 버튼으로 고른 값이 남아야 한다
+  assert.equal(A.resolveIntent('가까운 데만', { energyLevel: 'HIGH' }).energyLevel, 'HIGH');
+  // 문장이 말하면 그쪽이 이긴다
+  assert.equal(A.resolveIntent('너무 피곤해', { energyLevel: 'HIGH' }).energyLevel, 'LOW');
+  assert.equal(A.resolveIntent('오늘 쌩쌩해', { energyLevel: 'LOW' }).energyLevel, 'HIGH');
+});
+
+test('resolveIntent: 조건은 문장이 통째로 정한다', () => {
+  // 앞 문장의 조건이 남으면 "밥 먹자"에 걷기 제한이 따라붙는다
+  const walk = A.resolveIntent('많이 걷기 싫어', {});
+  assert.equal(walk.prefs.walkAverse, true);
+  const meal = A.resolveIntent('배고파', {});
+  assert.equal(meal.prefs.walkAverse, undefined, '앞 문장의 조건이 남지 않는다');
+  assert.equal(meal.prefs.mealFocus, true);
+});
+
+test('resolveIntent: 빈 문장은 해석하지 않고 고른 컨디션만 남긴다', () => {
+  const r = A.resolveIntent('', { energyLevel: 'LOW' });
+  assert.equal(r.energyLevel, 'LOW');
+  assert.deepEqual(r.prefs, {});
+  assert.equal(r.understood, false, '아무 말도 안 했으면 알아들은 것이 아니다');
+  assert.equal(A.resolveIntent(null, {}).energyLevel, 'NORMAL');
+  assert.equal(A.resolveIntent('   ', {}).understood, false);
+});
+
+test('resolveIntent: 못 알아들은 문장은 알아들은 척하지 않는다', () => {
+  const r = A.resolveIntent('asdfgh 뭐라고 쓴 건지', { energyLevel: 'HIGH' });
+  assert.equal(r.understood, false);
+  assert.deepEqual(r.reasons, []);
+  assert.equal(r.energyLevel, 'HIGH', '못 알아들었다고 고른 값을 버리지 않는다');
+});
+
+test('resolveIntent: 계약 밖의 컨디션은 보통으로 떨어진다', () => {
+  // 쿼리로 아무 문자열이나 올 수 있다 — 그게 점수 계산에 들어가면 안 된다
+  assert.equal(A.resolveIntent('가까운 데만', { energyLevel: '왜이런값' }).energyLevel, 'NORMAL');
+  assert.equal(A.resolveIntent('가까운 데만', {}).energyLevel, 'NORMAL');
+  assert.equal(A.resolveIntent('가까운 데만', { energyLevel: 'low' }).energyLevel, 'LOW', '대소문자는 봐준다');
+});

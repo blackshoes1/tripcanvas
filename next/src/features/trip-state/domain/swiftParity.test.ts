@@ -60,9 +60,11 @@ const trip: TripDoc = {
   bookings: [{ id: 'bk1', type: 'hotel', title: '호텔', provider: 'Booking', price: 100000, cur: 'KRW', start: '2026-09-01', end: '2026-09-03' }]
 };
 
+// 자연어 요청을 함께 보낸다 — 그래야 `intent` 에코가 응답에 실려 파리티가 그 구조체까지 본다.
 const today = computeToday({
   tripId: 'parity', trip, revision: 2, updatedAt: '2026-08-31T00:00:00Z',
-  todayISO: '2026-09-01', nowMinutes: 13 * 60, generatedAt: '2026-09-01T04:00:00Z'
+  todayISO: '2026-09-01', nowMinutes: 13 * 60, generatedAt: '2026-09-01T04:00:00Z',
+  intent: '오늘 좀 피곤해서 많이 걷기 싫어'
 }).response;
 
 /** JSON 객체의 키가 Swift 프로퍼티에 전부 있는지 (Swift에만 있는 여분은 허용 — 옵셔널일 수 있다) */
@@ -90,6 +92,9 @@ describe('iOS Contract.swift가 실제 응답을 전부 담는다', () => {
     expect(today.suggestions.length).toBeGreaterThan(0);
     expectCovered('TripSuggestion', today.suggestions[0] as unknown as Record<string, unknown>);
     expectCovered('SuggestionAction', today.suggestions[0].action as unknown as Record<string, unknown>);
+    // 중첩 구조체는 `expectCovered`가 따라 들어가지 않는다 — 해석 에코는 따로 맞춰 본다.
+    expect(today.intent, '파리티 요청에 문장이 있어야 에코를 맞춰 볼 수 있다').toBeTruthy();
+    expectCovered('IntentEcho', today.intent as unknown as Record<string, unknown>);
   });
 
   /**

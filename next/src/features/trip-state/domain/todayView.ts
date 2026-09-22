@@ -14,7 +14,7 @@ import type { TransportMode } from '@/features/trip/domain/types';
 
 import type {
   ActivitySummary, CommitmentType, DaySummary, EnergyLevel, Flexibility, GeoPoint,
-  FixedCommitmentSummary, NextAction, PlanningMode, ReplanPreview, SuggestionActionKind,
+  FixedCommitmentSummary, IntentEcho, NextAction, PlanningMode, ReplanPreview, SuggestionActionKind,
   TodayResponse, TravelActivityState, TravelStatus, TripStateSummary, TripSuggestion, TripSummary
 } from './contract';
 import { CONTRACT_SCHEMA_VERSION } from './contract';
@@ -89,6 +89,14 @@ export interface TodayInput {
   dayIndex?: number;
   energyLevel?: EnergyLevel;
   prefs?: Record<string, unknown>;
+  /**
+   * 사람이 쓴 자연어 요청("오늘 좀 피곤해서 많이 걷기 싫어").
+   *
+   * 해석은 `adapt.resolveIntent`가 하고 그 결과가 `energyLevel`·`prefs`를 **덮어쓴다** —
+   * 컨디션은 문장이 말했을 때만, 조건은 문장이 통째로. 웹 `applyIntent`와 같은 규칙이다.
+   * ⚠️ 저장하지 않는다 — 이번 계산에만 쓴다.
+   */
+  intent?: string | null;
   /** 기기가 알려준 현재 위치. 저장하지 않고 이번 계산에만 쓴다 */
   currentLocation?: { lat: number; lng: number } | null;
   /** 그날 이미 거절한 제안 키 */
@@ -199,9 +207,13 @@ export function computeToday(input: TodayInput): TodayComputation {
   });
   const legMin = (a: unknown, b: unknown) => legMinutesOf(a, b, dayModeOf(day));
 
+  // 자연어 요청은 **여기서 한 번만** 해석한다 — 엔진(`adaptive.js`)이 단일 출처고 앱은 결과만 그린다.
+  const said = String(input.intent ?? '').trim();
+  const resolved = adapt.resolveIntent(said, { energyLevel: input.energyLevel ?? 'NORMAL' });
+  const prefs = said ? resolved.prefs : (input.prefs ?? {});
   const state = adapt.buildTripState(trip, {
     dayIndex, todayISO: input.todayISO, nowMin: input.nowMinutes, timeline,
-    startAnchor: anchor, legMin, energyLevel: input.energyLevel ?? 'NORMAL', prefs: input.prefs ?? {},
+    startAnchor: anchor, legMin, energyLevel: resolved.energyLevel, prefs,
     currentLocation: input.currentLocation ?? undefined
   });
   const built = adapt.buildSuggestions(trip, state, { legMin, dismissed: input.dismissed ?? [] });
@@ -368,7 +380,8 @@ export function computeToday(input: TodayInput): TodayComputation {
     activities,
     fixedCommitments,
     replan,
-    activityState
+    activityState,
+    intent: said ? intentEcho(said, resolved) : null
   };
   return {
     response,
@@ -377,6 +390,28 @@ export function computeToday(input: TodayInput): TodayComputation {
     replan: replanRaw,
     windowAfterId: built.window?.afterId ?? null,
     rawSuggestions: built.suggestions.map((s) => ({ id: s.id, type: s.type, title: s.title, action: s.action as unknown as Record<string, unknown> }))
+  };
+}
+
+/**
+ * 해석 결과를 계약 모양으로. **값만 싣고 문장은 `reasons`뿐이다** — 규칙 이름·점수는 나가지 않는다.
+ *
+ * ⚠️ `prefs`를 통째로 보내지 않고 아는 키만 눕힌다: 엔진이 내부 키를 늘려도 계약이 따라 흔들리지 않고,
+ *    앱은 `[String: Any]`를 디코딩할 수 없다.
+ */
+function intentEcho(text: string, r: { energyLevel: EnergyLevel; prefs: Record<string, unknown>; reasons: string[]; understood: boolean }): IntentEcho {
+  const prefs = r.prefs ?? {};
+  const max = Number(prefs.maxTravelMin);
+  return {
+    text,
+    understood: r.understood,
+    reasons: r.reasons,
+    energyLevel: r.energyLevel,
+    // 안 정한 것과 0을 섞지 않는다 — 0분은 "어디에도 못 간다"는 뜻이지 "상한 없음"이 아니다.
+    maxTravelMinutes: Number.isFinite(max) ? Math.round(max) : null,
+    walkAverse: prefs.walkAverse === true,
+    mealFocus: prefs.mealFocus === true,
+    wantRest: prefs.wantRest === true
   };
 }
 

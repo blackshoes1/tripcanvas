@@ -388,6 +388,8 @@ declare module '@legacy/adaptive.js' {
     buildSuggestions(trip: unknown, state: TripState, opts?: Record<string, unknown>):
       { suggestions: TripSuggestion[]; windows: FreeWindow[]; replan: ReplanResult; ranked: NextActionCandidate[]; window: FreeWindow | null; empty: boolean };
     parseIntent(text: string): { energyLevel: EnergyLevel | null; prefs: Record<string, unknown>; reasons: string[]; understood: boolean };
+    /** 문장 + 이미 고른 컨디션 → 이번 추천에 쓸 옵션. 컨디션은 문장이 말했을 때만 덮어쓰고, 조건은 문장이 통째로 정한다 */
+    resolveIntent(text: string, base?: { energyLevel?: unknown }): { energyLevel: EnergyLevel; prefs: Record<string, unknown>; reasons: string[]; understood: boolean };
     departureAdvice(state: TripState, item: TripItem | null, travelMin: number):
       { leaveMin: number; slackMin: number; level: 'EARLY' | 'NOW' | 'LATE'; text: string } | null;
     fillGaps(trip: unknown, state: TripState, opts?: Record<string, unknown>):
