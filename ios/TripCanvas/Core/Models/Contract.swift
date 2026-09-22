@@ -979,6 +979,9 @@ struct ItineraryDraft: Codable, Hashable, Sendable {
 }
 
 struct ItineraryParseResponse: Codable, Sendable {
+    /// 다른 응답 14개와 같이 계약 판을 싣는다. 2026-09-21 전에는 여기만 빠져 있었다 —
+    /// 서버는 늘 보내고 있었는데 파리티가 중첩을 따라가지 않아 아무도 몰랐다.
+    let schemaVersion: Int
     let draft: ItineraryDraft
 }
 

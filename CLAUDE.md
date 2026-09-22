@@ -196,7 +196,8 @@ localStorage: `tripcanvas_v1`(여행) · `tripcanvas_legs_v4`(구간 캐시, 수
 - 어느 여행인지 **단정하지 않는다**. 점수와 이유를 붙인 후보를 주고 고르게 한다.
 - 기록(사진·메모)은 시각 → 위치 순으로 일정을 짚어 준다. 못 짚으면 날짜에만 붙인다 — 억지로 고르지 않는다. **클라이언트가 보낸 activityId를 믿지 않고 서버가 다시 짚는다.**
 - 사진 **원본은 서버로 올리지 않는다**. PhotosPicker 식별자(`assetRefs`)만 남긴다.
-- 공유 키(`shareIdempotencyKey`)는 앱(`ShareQueue.makeId`)과 서버가 **같은 알고리즘**이어야 한다 — 다르면 같은 공유가 두 번 처리된다. `swiftParity.test.ts`가 이걸 검사한다.
+- 공유 키(`shareIdempotencyKey`)는 앱(`ShareQueue.makeId`)과 서버가 **같은 값**을 내야 한다 — 다르면 같은 공유가 두 번 처리된다. `shareKeyParity.test.ts`가 실제 키를 픽스처(`share-key.json`)로 떨어뜨리고 `ShareKeyParityTests`가 대조한다.
+  ⚠️ **세는 단위는 처음부터 끝까지 UTF-16 코드 단위다**(JS의 `charCodeAt`·`slice(0,500)`). Swift에서 `prefix(500)`은 **문자**(grapheme 묶음)를 세므로 이모지가 섞인 긴 글에서 갈린다 — 붙여넣는 일정 글에 이모지는 흔하다. 앞뒤 공백도 `.whitespacesAndNewlines`가 아니라 **JS `trim()`과 같은 집합**을 쓴다(U+FEFF를 벗기고 U+0085는 두다). 2026-09-21 전에는 둘 다 갈려 있었고, 파리티가 *소스 문자열 grep*이라 아무도 몰랐다.
 
 **알림은 적게 보내는 것이 목표다.** 이 앱은 일정 알람 앱이 아니라 여행 흐름 판단 앱이다.
 
@@ -226,7 +227,10 @@ localStorage: `tripcanvas_v1`(여행) · `tripcanvas_legs_v4`(구간 캐시, 수
   - ⚠️ **응답을 경로 조회에 묶지 않는다.** 하루치는 이미 조회된 것만 싣고 즉시 나가고, 없는 구간은 응답을 보낸 뒤 `legFiller`가 채운다 — 그 날을 처음 열면 추정이고 다음부터 도로다. 판정은 복제하지 않는다: 서버도 웹 `routing.js`를 그대로 쓰고, 국내는 `/api/kakao-directions` 요청을 가로채 **같은 프록시 코드**를 안에서 돌린다.
   - ⚠️ 키(`GOOGLE_ROUTES_API_KEY`·`KAKAO_REST_API_KEY`)가 없으면 라우터가 `null`이라 예전과 완전히 같다. 잠깐인 실패(프록시 429·업스트림 5xx)는 캐시에 남기지 않는다 — 혼잡이 한 시간짜리 "직선이에요"로 굳으면 안 된다.
 - 제안 거절은 `suggestion_feedback` 테이블(RLS)에 날짜와 함께 남는다 — 기기가 바뀌어도 같은 제안이 그날 다시 올라오지 않는다. ⚠️ 레거시 웹은 아직 localStorage를 쓴다(양쪽이 아직 공유되지 않음).
-- `next`의 `swiftParity.test.ts`가 **실제 Today 응답 ↔ `ios/.../Contract.swift`** 를 맞춰 보고 `ios/TripCanvasTests/Fixtures/today.json`을 다시 만든다. 계약을 바꾸면 여기가 먼저 깨진다.
+- `next`의 `swiftParity.test.ts`가 **실제 응답 ↔ `ios/.../Contract.swift`** 를 맞춰 보고 픽스처를 다시 만든다. 계약을 바꾸면 여기가 먼저 깨진다.
+  - **`expectCovered`는 중첩 구조체까지 따라 들어간다**(2026-09-21). Swift가 선언한 *타입*을 보고 내려가므로 표본에 값만 있으면 저절로 덮인다. 그 전에는 한 겹만 봐서 호출을 손으로 더해야 했고, **75개 중 32개가 아무도 안 보는 채**였다.
+  - 파일 끝의 **계약 점호**가 `Contract.swift`의 모든 struct가 순회에 닿았는지 센다. 새 계약을 넣고 순회에 안 넣으면 거기서 걸린다. 면제는 이유와 함께 목록에 적는다(지금은 `APIErrorBody` 하나 — 오류 봉투는 `errors.ts` 소관이라 방향을 뒤집어 본다).
+  - **픽스처는 읽히라고 있다** — `fixtureLiveness.test.ts`가 `Fixtures/`의 모든 파일을 Swift 테스트가 실제로 여는지 점호한다. 2026-09-21에 세어 보니 열한 개 중 셋이 쓰기만 하고 아무도 안 읽었고, 그중 하나(`day-cost-extreme.json`)는 **합계가 Int64 범위를 넘는지** 보려고 만든 파일이었다. ⚠️ 이 점호는 `next`에 둔다 — `ios/**`가 안 바뀌면 iOS 워크플로가 돌지 않는다(macOS 러너 10배 과금).
   ⚠️ 계약 구조체에 **저장 프로퍼티를 더하면 XCTest의 memberwise init 호출부가 전부 깨진다**(기본값이 없다). 파리티 테스트는 그걸 안 잡는다 — 필드가 Swift에 *있는지*만 보지 호출부는 모른다. 더하기 전에 `grep 'DayPlanDay('`로 호출부를 세어 함께 고친다. ⚠️ 한 번에 다 보이지도 않는다 — Swift 배치 컴파일은 먼저 깨진 배치에서 멈춰, 2026-09-20 `flight` 추가 때 CI 로그에 `MapRouteTests` 한 곳만 떴지만 실제로는 넷이었다.
 
 **앱의 탭 전환은 앱 복귀가 아니다.** (2026-09-17 "탭을 누를 때마다 로딩" 보고)

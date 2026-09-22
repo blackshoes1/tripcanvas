@@ -1,0 +1,81 @@
+{
+  "cases": [
+    {
+      "name": "평범한 예약 공유",
+      "url": "https://www.booking.com/hotel/es/cap-rocat.html",
+      "title": "Cap Rocat | Booking.com",
+      "text": "예약 번호: ABC12345",
+      "key": "sh1l9fa4i"
+    },
+    {
+      "name": "아무것도 없는 공유",
+      "url": null,
+      "title": null,
+      "text": null,
+      "key": "sh3hmrp"
+    },
+    {
+      "name": "주소만",
+      "url": "https://example.test/a",
+      "title": null,
+      "text": null,
+      "key": "sh1h8j8mi"
+    },
+    {
+      "name": "앞뒤 공백과 줄바꿈은 벗긴다",
+      "url": "  https://example.test/a\n",
+      "title": "\t제목 ",
+      "text": "\r\n본문\n\n",
+      "key": "sh1wc8mpr"
+    },
+    {
+      "name": "BOM으로 시작하는 제목 — JS는 벗긴다",
+      "url": null,
+      "title": "﻿ Cap Rocat",
+      "text": "x",
+      "key": "sh1jq1aas"
+    },
+    {
+      "name": "NEL(U+0085)은 JS가 벗기지 않는다",
+      "url": null,
+      "title": "제목",
+      "text": "x",
+      "key": "shq838vh"
+    },
+    {
+      "name": "줄 구분자(U+2028)는 벗긴다",
+      "url": null,
+      "title": " 제목 ",
+      "text": "x",
+      "key": "shdpjhyg"
+    },
+    {
+      "name": "이모지가 섞인 500자 넘는 글 — UTF-16 단위로 자른다",
+      "url": null,
+      "title": null,
+      "text": "🌍 마드리드 → 세비야 · 🌍 마드리드 → 세비야 · 🌍 마드리드 → 세비야 · 🌍 마드리드 → 세비야 · 🌍 마드리드 → 세비야 · 🌍 마드리드 → 세비야 · 🌍 마드리드 → 세비야 · 🌍 마드리드 → 세비야 · 🌍 마드리드 → 세비야 · 🌍 마드리드 → 세비야 · 🌍 마드리드 → 세비야 · 🌍 마드리드 → 세비야 · 🌍 마드리드 → 세비야 · 🌍 마드리드 → 세비야 · 🌍 마드리드 → 세비야 · 🌍 마드리드 → 세비야 · 🌍 마드리드 → 세비야 · 🌍 마드리드 → 세비야 · 🌍 마드리드 → 세비야 · 🌍 마드리드 → 세비야 · 🌍 마드리드 → 세비야 · 🌍 마드리드 → 세비야 · 🌍 마드리드 → 세비야 · 🌍 마드리드 → 세비야 · 🌍 마드리드 → 세비야 · 🌍 마드리드 → 세비야 · 🌍 마드리드 → 세비야 · 🌍 마드리드 → 세비야 · 🌍 마드리드 → 세비야 · 🌍 마드리드 → 세비야 · 🌍 마드리드 → 세비야 · 🌍 마드리드 → 세비야 · 🌍 마드리드 → 세비야 · 🌍 마드리드 → 세비야 · 🌍 마드리드 → 세비야 · 🌍 마드리드 → 세비야 · 🌍 마드리드 → 세비야 · 🌍 마드리드 → 세비야 · 🌍 마드리드 → 세비야 · 🌍 마드리드 → 세비야 ·",
+      "key": "shv3lrn0"
+    },
+    {
+      "name": "자르는 자리가 서로게이트 쌍 가운데",
+      "url": null,
+      "title": null,
+      "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa😀 뒤에 더 있는 글",
+      "key": "sh1l7iwt5"
+    },
+    {
+      "name": "한글만",
+      "url": null,
+      "title": "세비야 대성당",
+      "text": "입장 09:00",
+      "key": "sh1unkqfy"
+    },
+    {
+      "name": "구분자(|)가 내용에 들어 있어도 자리가 밀리지 않는다",
+      "url": "a|b",
+      "title": "c|d",
+      "text": "e|f",
+      "key": "sh90t272"
+    }
+  ]
+}
