@@ -208,3 +208,54 @@ final class SafeURLTests: XCTestCase {
         XCTAssertNil(SafeURL.web("http:///path"))
     }
 }
+
+/// 쓰기만 하고 아무도 읽지 않던 픽스처들(2026-09-21).
+///
+/// `swiftParity.test.ts`가 매번 세 파일을 새로 썼는데 Swift 테스트는 한 번도 열어 보지 않았다.
+/// 픽스처의 쓸모는 "**앱이 실제 응답을 디코딩하는가**"를 보는 것인데, 아무도 디코딩하지 않으면
+/// 그냥 커밋에 들어가는 JSON일 뿐이다 — 계약이 갈라져도 초록이다.
+final class UnreadFixtureDecodingTests: XCTestCase {
+
+    private func data(_ name: String) throws -> Data {
+        let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: name, withExtension: "json"),
+                                "\(name).json 픽스처를 테스트 번들에 포함시켜야 합니다")
+        return try Data(contentsOf: url)
+    }
+
+    /// 유입 미리보기 — 밖에서 들어온 것을 **확인 전에는 저장하지 않는다**는 화면의 입력이다.
+    func testDecodesImportPreview() throws {
+        let preview = try JSONDecoder().decode(ImportPreviewResponse.self, from: data("import-preview"))
+        XCTAssertEqual(preview.schemaVersion, 1)
+        XCTAssertTrue(preview.idempotencyKey.hasPrefix("sh"))
+        let candidate = try XCTUnwrap(preview.candidate, "픽스처의 공유는 예약 후보가 나온다")
+        XCTAssertEqual(candidate.type, .hotel)
+        XCTAssertEqual(candidate.confirmationNumber, "ABC12345")
+        // 저장은 별도 요청이다 — 미리보기에 '저장됨' 같은 것이 실려 오지 않는다
+        XCTAssertFalse(preview.tripMatches.isEmpty)
+    }
+
+    /// 여행 전체 비용 — 준비한 비용과 가서 쓰는 비용을 더하면 전체와 같다.
+    func testDecodesTripCosts() throws {
+        let costs = try JSONDecoder().decode(TripCostsResponse.self, from: data("trip-costs"))
+        XCTAssertEqual(costs.schemaVersion, 1)
+        XCTAssertFalse(costs.days.isEmpty)
+        let prep = try XCTUnwrap(costs.prep, "예약 결제 금액이 실려 온다")
+        let onSite = try XCTUnwrap(costs.onSite, "현지 결제 금액이 실려 온다")
+        XCTAssertEqual(prep.totalKRW + onSite.totalKRW, costs.totalKRW, accuracy: 0.5,
+                       "두 장부를 더하면 전체와 같아야 한다")
+    }
+
+    /// ⚠️ 이 픽스처의 존재 이유가 바로 이것이다 — 합계가 **Int64 범위를 넘는다.**
+    /// `Double`이 아니라 `Int`로 받으면 여기서 디코딩이 통째로 실패한다. 그런데 2026-09-21까지
+    /// 아무도 이 파일을 열지 않아, 그 사고는 앱 빌드까지 아무도 몰랐을 것이다.
+    func testDecodesCostsBeyondInt64() throws {
+        let cost = try JSONDecoder().decode(DayPlanCost.self, from: data("day-cost-extreme"))
+        XCTAssertGreaterThan(cost.total, 9.2e18, "Int64.max보다 큰 값이다")
+        XCTAssertEqual(cost.parts.first?.amount, cost.total)
+        let details = try XCTUnwrap(cost.details)
+        let budget = try XCTUnwrap(details.budget, "예산 0원과의 차이가 실려 온다")
+        XCTAssertEqual(budget.differenceKRW, -cost.total, accuracy: 1)
+        XCTAssertEqual(details.fxSource, "FALLBACK")
+        XCTAssertFalse(details.items.isEmpty)
+    }
+}

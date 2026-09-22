@@ -84,7 +84,7 @@ With J          ← 제품 (앱 이름 · 웹 타이틀 · PWA · 메일 제목 
 
 - `index.html` — 마크업 (모달·헤더·재생 HUD 등)
 - `app.js` — 앱 로직 전체 (DOM·지도·네트워크)
-- `lib.js` — 순수 로직 (파서·거리·시각·앵커·타임라인·정규화 · **분리 구간** `splitSegments`/`whoKey` · **결제 상태** `costPayStateOf`/`payStateTotals` · **여행 준비 메모** `TRIP_NOTE_CATEGORIES`/`normalizeTripNote`). **유닛 테스트 + `tsc` 타입 검사 대상**
+- `lib.js` — 순수 로직 (파서·거리·시각·앵커·타임라인·정규화 · **분리 구간** `splitSegments`/`whoKey` · **결제 상태** `costPayStateOf`/`payStateTotals` · **여행 준비 메모** `TRIP_NOTE_CATEGORIES`/`normalizeTripNote` · **명소 예약요건** `ADMISSION_REQUIREMENTS`/`admissionOf`/`needsAdmissionBooking`/`normalizeAdmission` · **샘플 여행 판정** `SAMPLE_TRIP_ID`/`isSampleTrip`). **유닛 테스트 + `tsc` 타입 검사 대상**
 - `price.js` — 예약 가격 추적 순수 계산: 실질 절약액·오퍼 조건 매칭(EXACT/EQUIVALENT/SIMILAR)·확정/잠재 절약 판단·호텔 identity 점수 · 렌터카 조건 매칭(carMatchQuality — 차급·변속기·보험·주행거리가 다르면 확정 절약 금지). 예약(`trip.bookings`)은 여행 데이터로 동기화·공유되고, 가격 관측 기록은 기기 로컬 + 로그인 시 **`/api/v1/trips/:id/prices`**(여행과 같은 저장소·같은 권한. 2026-09-04 전환 전에는 Supabase `hotel_price_snapshots` 직접 경로였다). 시세는 `api/hotel-offers.js` 프록시(Metasearch 키 서버 전용)로만 조회 — 키 없으면 미연결 상태를 그대로 표시(가짜 가격 금지). **유닛 테스트 + `tsc` 대상**
 - `adaptive.js` — **Adaptive Travel OS 도메인**(순수): 현재 여행 상태(`buildTripState`) · 고정/유동 분류(`commitmentOf`) · 빈 시간 탐지(`findFreeWindows`) · 다음 행동 후보와 순위(`buildCandidates`/`rankNextActions`) · 일정 재구성(`generateReplan`) · 제안(`buildSuggestions`) · 자연어 해석(`parseIntent`) · 출발 안내(`departureAdvice`) · 빈칸 채우기와 하루 flow(`fillGaps`/`planDayFlow`). DOM·네트워크·현재시각을 모르고 전부 인자로 받는다. **유닛 테스트 + `tsc` 대상**
 - `intake.js` — **유입 계층**(순수): 공유 분류(`classifyShare`) · 날짜/통화 정규화 · 예약 후보 파싱(`parseBookingCandidate`) · 중복(`findDuplicateBooking`) · 여행 매칭(`matchTripForBooking`) · 기록 연결(`associateMemory`) · **붙여넣은 일정 글 읽기**(`parseItinerary`). **저장은 하지 않는다** — 확인한 것만 저장된다. ⚠️ **사람들은 우리 형식으로 다시 쓰지 않는다** — ChatGPT·Claude가 뱉은 그대로 붙여넣으므로 `stripDecor`(마크다운 `**`·이모지) · `expandTables`(마크다운 표 — 모르면 **그 날이 통째로 사라진다**) · `koTime`(`오후 3시`) · `splitNameDesc`(`점심: 카와카미안` → 이름은 오른쪽)를 먼저 지난다. 이름에 꾸밈이 남으면 지오코딩이 실패해 전부 '위치 지정'이 된다(2026-09-08). **유닛 테스트 + `tsc` 대상**
@@ -123,6 +123,7 @@ localStorage: `tripcanvas_v1`(여행) · `tripcanvas_legs_v4`(구간 캐시, 수
 - `dayStartAnchor(days, di)` (lib) — di일이 **이월받는 출발점**. 숙소 연박(`nights`) 범위를 먼저 보고, 없으면 직전 유효 일자의 `dayAnchor`. `startPolicy:'none'`이면 이월 없음(공항 이동일·야간열차)
 - `dayContext(di)` (app) — `{day, anchor, carry, timeline, mode}`를 한 번에 반환. **사이드바·여행 모드·이미지 내보내기는 이걸 쓴다**
 - ⚠️ `anchor`와 `carry`를 혼동하지 말 것: **ETA·종료시각 계산은 `anchor`**(숙소가 아니어도 전날 마지막 장소 반영), **화면의 🏠 "전날 숙소" 항목 표시만 `carry`**(숙소일 때만)
+  규칙은 `carryOf(anchor)`(app) 하나다 — `dayContext`는 이미 들고 있는 anchor로 부르고, 일자 번호로 묻는 `carryStayFor(di)`가 그 위에 있다. 2026-09-21 전에는 둘이 같은 식을 따로 들고 있었다.
 - `dayReturnStay(days, di)` (lib) — 하루 끝의 🏠 숙소 복귀. 데이터에 없는 **합성 구간**이라 거리·시간·택시비에만 얹힌다. ⚠️ **일정의 마지막 날에는 붙이지 않는다** — 그날은 돌아가는 날이 아니라 떠나는 날이라, 체크아웃하고 공항으로 간 뒤에 호텔 복귀가 따라붙으면 있지도 않은 이동이 하루 합계에 들어간다. 그래서 복귀를 보는 테스트 픽스처에는 **뒷날을 하나 붙여야** 한다(안 그러면 그 날이 마지막 날이라 null이다).
 
 **렌터카 픽업·반납은 일정에 '표시만' 한다.** 픽업·반납 장소는 자유 텍스트라 **좌표가 없다** → 동선·ETA·앵커·지도에는 넣지 않는다. 표시 경로가 둘이다:
@@ -153,6 +154,7 @@ localStorage: `tripcanvas_v1`(여행) · `tripcanvas_legs_v4`(구간 캐시, 수
 - 예약(`trip.bookings`)에서 파생된 하루치는 **언제나 예약**이다(`costPayStateOf(item,'BOOKING')`).
 - 상태별 합계는 `payStateTotals`(lib) 하나가 만든다 — 하루(`dayCostSummary().payTotals`)와 여행 전체(`tripCostSummary().payTotals`)가 같은 규칙을 쓴다. **셋을 더하면 합계와 같아야 한다**(금액 미정과 예약이 대신 내는 장소는 더하지 않는다).
 - 비용 항목의 **영수증·품목 사진**은 `photos`에 **참조만**(사진 보관함 식별자) 싣는다. 원본 이미지를 문서에 넣지 않는다 — 문서는 저장할 때마다 통째로 오가므로 동기화가 무거워지고 공유 링크가 터진다. 그래서 그 사진은 **담은 기기에서만** 보인다(다른 기기에서는 그 문자열이 아무것도 가리키지 않는다). 최대 10장.
+  ⚠️ **웹에는 붙이기·보기가 없고 있을 수 없다**(2026-09-21). 브라우저는 보관함 식별자로 아무것도 열지 못하고, 그렇다고 원본을 문서에 넣을 수는 없다(위의 이유). 그래서 웹은 **몇 장 붙어 있는지만** 말하고(`photoCount`·`photoNote` — 목록 줄과 편집기 한 줄) 저장에서 떨어뜨리지 않는다. 없다고 말하면 폰에서 붙인 사람이 사라진 줄 알고 다시 붙인다. 진짜 업로드는 별도 저장소가 필요한 다른 설계다.
 
 **비용은 '하루치'와 '총액'을 구분한다.** 장소 비용(`spot.cost`)·택시비는 그날 쓰는 돈이지만, 예약(숙박·렌터카·항공)은 여러 날에 걸친 총액이다.
 
@@ -169,9 +171,24 @@ localStorage: `tripcanvas_v1`(여행) · `tripcanvas_legs_v4`(구간 캐시, 수
 
 ⚠️ 모바일 필터바는 `overflow-x:auto` **스크롤 컨테이너**다 — 안에 뜬 드롭다운 패널이 잘린다(44px 높이에 갇혀 거의 안 보였다). `.viewMenu .viewMenuPanel`을 `position:fixed`로 빼내 해결했다 — `top:auto`라 정적 위치(칩 바로 아래)는 그대로다. 필터바에 드롭다운을 새로 추가하면 같은 함정에 빠진다.
 
+**같은 곳을 여는 자리는 하나다.** 여행 목록(전환·삭제)은 헤더의 여행 피커 하나로 연다(`openTripList`) — 피커는 데스크톱·모바일 모두 항상 보이고 현재 여행 이름까지 말한다. 2026-09-21 전에는 ☰에도 '여행 목록'이 있었고 피커가 그 버튼의 클릭을 위임해, 같은 모달의 자리가 둘이고 이름이 달랐다.
+
+**보는 범위(전체 / N일차)를 바꾸는 규칙도 하나다** — `setDayScope(ad, fitFn)`. 필터바 칩과 지도 범례가 **같이 쓴다.** 재생 중이면 멈추고 새 범위로 다시 시작한다. ⚠️ 전에는 범례가 이 규칙을 지나지 않고 `activeDay`를 직접 바꿔 재생 처리가 빠져 있었다.
+
+**☰ 안에만 있는 것은 있다는 표시를 바깥에 낸다.** 준비 메모·가고 싶은 곳은 메뉴를 열기 전에는 존재를 알 길이 없었다 — `renderMenuBadges`가 ☰ 버튼에 점, 항목에 개수를 붙인다. ⚠️ **개수를 알려고 서버를 묻지 않는다**: 메모는 여행 문서에 있어 언제나 알고, 후보는 이번 세션에서 그 보드를 받아 본 적이 있을 때만 센다. 챙긴 메모(`done`)는 세지 않는다.
+
 **새 장소는 '선택한 장소 바로 뒤'에 들어간다.** 삽입 위치는 모달을 **열 때** `editing.after`에 확정한다(`selectedSpot`이 그 일자에 있을 때만). 저장 시 일자를 바꿨거나 선택이 없으면 맨 뒤. 선택 위치는 카드 강조 말고는 눈에 안 보이므로 `＋ N번 뒤에 장소 추가`로 밝히고, 선택은 `render()` 없이 바뀌므로 라벨 갱신을 `applySpotSelection()`에 묶는다.
 
 **시간 3종을 구분한다.** 도착 **예상**(자동 계산) / `at` 도착 **고정**(내가 정한 계획) / `bookAt` **예약·입장 시각**(상대가 정한 약속 — 일찍 도착하면 그 시각까지 대기로 계산, 늦으면 ⚠️).
+
+**명소 예약요건은 '그 장소의 조건'이고 예약 완료는 '내가 한 일'이다.**(`spot.admission` — 웹 장소 모달의 *명소 예약·입장 준비* · iOS `AdmissionEditorSection`, 2026-09-21에 웹에 들어왔다)
+
+- 요건은 넷이고(`ADMISSION_REQUIREMENTS` — 예약 필수 · 예약 권장 · 예약 없이 입장 가능 · 예약 요건 확인 필요) **이름은 `lib.js`가 원본, iOS `AdmissionRequirement.label`이 복사본이다**(글자까지 같다 — 결제 상태와 같은 이유). 웹 셀렉트박스도 그 상수로 만든다.
+- ⚠️ `bookAt`(상대가 정한 약속 시각)·`bookingId`(숙소 예약)로 **추론하지 않는다.** '예약이 필요한데 아직 안 했다'는 판정은 `needsAdmissionBooking`(lib) 하나 = iOS `TripSpot.needsReservation`이고, 일자 카드는 그때만 주의색이다. '확인 필요'뿐인 장소에는 아무것도 붙이지 않는다 — 모든 명소에 칩이 붙으면 정작 필수인 곳이 묻힌다.
+- **사람이 확인한 것만 담는다** — `source:'USER'`가 아니면 `normalizeAdmission`이 통째로 버린다(외부가 말한 것을 여행에 들이지 않는다). `checkedAt`은 '지금 확인했어요'를 눌렀을 때만 찍고 저장·조회로 만들어내지 않는다. **링크를 열거나 시각을 적어도 예약 완료로 바뀌지 않는다.**
+- `officialURL`은 **https만**(lib `admissionURL` = iOS `SpotAdmission.safeURL`). 웹은 저장 전에 `admissionError`의 문장을 **그대로** 보여 준다 — 서버(`validateTripPayload`)가 같은 함수로 거절하므로 화면이 제 문장을 따로 두면 두 말이 된다.
+- 장소 복사는 요건·링크는 물려주고 **`personalStatus`는 뗀다** — 예약은 이 방문의 사실이다(렌터카 픽업 연결과 같은 이유).
+- ⚠️ 자동 조회(`GET /api/v1/places/details`)는 **아직 아무 데도 연결돼 있지 않다** — `placeAdmissionDetails`가 언제나 `NOT_CONNECTED`를 돌려준다. 그래서 웹에는 그 버튼을 두지 않았다(앱에는 있다). 없는 정보를 '무료·예약 불필요'로 옮기지 않는다.
 
 **밖에서 들어온 것은 확인 없이 저장하지 않는다.** 공유·붙여넣기·사진은 전부 같은 길을 지난다:
 
@@ -186,7 +203,8 @@ localStorage: `tripcanvas_v1`(여행) · `tripcanvas_legs_v4`(구간 캐시, 수
 - 어느 여행인지 **단정하지 않는다**. 점수와 이유를 붙인 후보를 주고 고르게 한다.
 - 기록(사진·메모)은 시각 → 위치 순으로 일정을 짚어 준다. 못 짚으면 날짜에만 붙인다 — 억지로 고르지 않는다. **클라이언트가 보낸 activityId를 믿지 않고 서버가 다시 짚는다.**
 - 사진 **원본은 서버로 올리지 않는다**. PhotosPicker 식별자(`assetRefs`)만 남긴다.
-- 공유 키(`shareIdempotencyKey`)는 앱(`ShareQueue.makeId`)과 서버가 **같은 알고리즘**이어야 한다 — 다르면 같은 공유가 두 번 처리된다. `swiftParity.test.ts`가 이걸 검사한다.
+- 공유 키(`shareIdempotencyKey`)는 앱(`ShareQueue.makeId`)과 서버가 **같은 값**을 내야 한다 — 다르면 같은 공유가 두 번 처리된다. `shareKeyParity.test.ts`가 실제 키를 픽스처(`share-key.json`)로 떨어뜨리고 `ShareKeyParityTests`가 대조한다.
+  ⚠️ **세는 단위는 처음부터 끝까지 UTF-16 코드 단위다**(JS의 `charCodeAt`·`slice(0,500)`). Swift에서 `prefix(500)`은 **문자**(grapheme 묶음)를 세므로 이모지가 섞인 긴 글에서 갈린다 — 붙여넣는 일정 글에 이모지는 흔하다. 앞뒤 공백도 `.whitespacesAndNewlines`가 아니라 **JS `trim()`과 같은 집합**을 쓴다(U+FEFF를 벗기고 U+0085는 두다). 2026-09-21 전에는 둘 다 갈려 있었고, 파리티가 *소스 문자열 grep*이라 아무도 몰랐다.
 
 **알림은 적게 보내는 것이 목표다.** 이 앱은 일정 알람 앱이 아니라 여행 흐름 판단 앱이다.
 
@@ -216,12 +234,16 @@ localStorage: `tripcanvas_v1`(여행) · `tripcanvas_legs_v4`(구간 캐시, 수
   - ⚠️ **응답을 경로 조회에 묶지 않는다.** 하루치는 이미 조회된 것만 싣고 즉시 나가고, 없는 구간은 응답을 보낸 뒤 `legFiller`가 채운다 — 그 날을 처음 열면 추정이고 다음부터 도로다. 판정은 복제하지 않는다: 서버도 웹 `routing.js`를 그대로 쓰고, 국내는 `/api/kakao-directions` 요청을 가로채 **같은 프록시 코드**를 안에서 돌린다.
   - ⚠️ 키(`GOOGLE_ROUTES_API_KEY`·`KAKAO_REST_API_KEY`)가 없으면 라우터가 `null`이라 예전과 완전히 같다. 잠깐인 실패(프록시 429·업스트림 5xx)는 캐시에 남기지 않는다 — 혼잡이 한 시간짜리 "직선이에요"로 굳으면 안 된다.
 - 제안 거절은 `suggestion_feedback` 테이블(RLS)에 날짜와 함께 남는다 — 기기가 바뀌어도 같은 제안이 그날 다시 올라오지 않는다. ⚠️ 레거시 웹은 아직 localStorage를 쓴다(양쪽이 아직 공유되지 않음).
-- `next`의 `swiftParity.test.ts`가 **실제 Today 응답 ↔ `ios/.../Contract.swift`** 를 맞춰 보고 `ios/TripCanvasTests/Fixtures/today.json`을 다시 만든다. 계약을 바꾸면 여기가 먼저 깨진다.
+- `next`의 `swiftParity.test.ts`가 **실제 응답 ↔ `ios/.../Contract.swift`** 를 맞춰 보고 픽스처를 다시 만든다. 계약을 바꾸면 여기가 먼저 깨진다.
+  - **`expectCovered`는 중첩 구조체까지 따라 들어간다**(2026-09-21). Swift가 선언한 *타입*을 보고 내려가므로 표본에 값만 있으면 저절로 덮인다. 그 전에는 한 겹만 봐서 호출을 손으로 더해야 했고, **75개 중 32개가 아무도 안 보는 채**였다.
+  - 파일 끝의 **계약 점호**가 `Contract.swift`의 모든 struct가 순회에 닿았는지 센다. 새 계약을 넣고 순회에 안 넣으면 거기서 걸린다. 면제는 이유와 함께 목록에 적는다(지금은 `APIErrorBody` 하나 — 오류 봉투는 `errors.ts` 소관이라 방향을 뒤집어 본다).
+  - **픽스처는 읽히라고 있다** — `fixtureLiveness.test.ts`가 `Fixtures/`의 모든 파일을 Swift 테스트가 실제로 여는지 점호한다. 2026-09-21에 세어 보니 열한 개 중 셋이 쓰기만 하고 아무도 안 읽었고, 그중 하나(`day-cost-extreme.json`)는 **합계가 Int64 범위를 넘는지** 보려고 만든 파일이었다. ⚠️ 이 점호는 `next`에 둔다 — `ios/**`가 안 바뀌면 iOS 워크플로가 돌지 않는다(macOS 러너 10배 과금).
   ⚠️ 계약 구조체에 **저장 프로퍼티를 더하면 XCTest의 memberwise init 호출부가 전부 깨진다**(기본값이 없다). 파리티 테스트는 그걸 안 잡는다 — 필드가 Swift에 *있는지*만 보지 호출부는 모른다. 더하기 전에 `grep 'DayPlanDay('`로 호출부를 세어 함께 고친다. ⚠️ 한 번에 다 보이지도 않는다 — Swift 배치 컴파일은 먼저 깨진 배치에서 멈춰, 2026-09-20 `flight` 추가 때 CI 로그에 `MapRouteTests` 한 곳만 떴지만 실제로는 넷이었다.
 
 **앱의 탭 전환은 앱 복귀가 아니다.** (2026-09-17 "탭을 누를 때마다 로딩" 보고)
 
 - 여행 화면의 모델(`TodayViewModel`·`TripPlanViewModel`·`MapDiscoveryModel`)은 **탭이 아니라 여행이 들고 있다**(`TripHomeView`의 `TripScreenModels`). 탭 화면은 받기만 한다 — 화면이 `@State`로 모델을 만들면 탭을 바꿀 때 뷰와 함께 죽어 돌아올 때마다 서버를 다시 묻는다.
+  ⚠️ **탭만이 아니라 시트·push로 들어간 화면도 같은 모델을 쓴다**(2026-09-21). `TripHomeView`가 `.environment(models)`로 내려보내고 `CandidateBoardView`·`BookingListView`가 `shared ?? screenModels?.x ?? owned`로 집는다. 전에는 `shared`를 **명시적으로 받은 곳만** 공유라, 일정의 링크·지도의 시트·`지금`의 예약 링크 넷이 자체 모델을 만들어 **같은 목록을 최대 3벌** 받았다. 여행 화면 밖에서 열리면 environment가 없어 예전처럼 자체 모델로 떨어진다.
 - 탭 진입은 `loadIfStale()`이다: 내용이 있고 방금 받은 것(60초)이면 요청이 0, 오래됐으면 **뒤에서** 새로 받는다(내용이 있으니 로딩 화면으로 바뀌지 않는다). 앱 복귀(`scenePhase`)·당겨서 새로고침은 여전히 `load()`다.
 - `지금`은 디스크에 남은 지난번 응답을 **먼저 그린다**(`cachedToday`) — 단, 목록이 아는 revision과 같을 때만이고, 그때 '오프라인' 표시는 붙이지 않는다.
 - 지도는 한 번 만들면 **숨기기만 한다**(`TripPlanView.mapMounted` + `MapEngineView.isVisible`). 숨긴 동안 카카오는 `pauseEngine`, 구글은 `isHidden` — 버리지 않으니 다시 보일 때 인증·타일을 되풀이하지 않는다. 처음 열기 전에는 만들지 않는다.
@@ -291,6 +313,7 @@ localStorage: `tripcanvas_v1`(여행) · `tripcanvas_legs_v4`(구간 캐시, 수
   ⚠️ 사람에게 쓴 문장인지는 **한글이 있는가**로 가른다(`isHumanMessage`) — 레거시 경로는 기계 토큰(`TRIP_FORBIDDEN`)이나 원시 Postgres 영문(`permission denied for table trips`)을 주는데 그건 사용자에게 보이면 안 된다.
   ⚠️ `hint` 갈래는 **레거시 Supabase 전용**이다 — `api.js`의 `toError`가 hint를 싣지 않아 오늘의 서버에서는 닿지 않는다. 2026-09-20 전에는 그 죽은 갈래 때문에 "주최자는 나갈 수 없습니다 — 여행을 삭제하거나 넘겨 주세요" 같은 구체적 안내가 전부 "이 여행을 바꿀 권한이 없어요"로 뭉개졌다.
 - 웹: `readOnly()`/`guardEdit()`가 `#v=` 읽기전용과 VIEWER를 한 곳에서 판단한다 — **편집 진입점을 새로 만들면 반드시 이걸 거친다.** 로그아웃·로컬 전용 여행은 항상 소유자(`roleOf`)라 혼자 쓰는 여행은 예전 그대로다.
+- ⚠️ **공유가 둘인데 성질이 다르다**: `읽기 전용 링크`는 LZString 스냅샷이라 **만든 순간의 사본**이고 이후 수정이 반영되지 않는다. `멤버·편집 초대`만 같이 고치는 길이다. 복사한 자리의 toast가 그 사실을 말하고 초대로 바로 넘어갈 수 있게 한다(2026-09-21).
 - 초대 링크는 `#join=<token>` 하나다. 미리보기(`invite_preview`, anon 가능)는 이름·기간·역할까지만 주고, 본문은 `accept_trip_invite`로 멤버가 된 뒤 RLS 아래에서 내려온다. 공유받은 여행의 "삭제"는 `leave_trip`이다.
 - 실시간은 `trip_activity` 이벤트로 온다(아래). `pullTrip`은 여전히 폴백이다 — 탭 복귀·패널 열기에 최신본을 당기고, 로컬 편집이 있으면 기존 충돌 카드로 넘긴다(조용히 덮어쓰지 않는다).
 

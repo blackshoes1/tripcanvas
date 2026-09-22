@@ -11,8 +11,11 @@ struct CandidateBoardView: View {
 
     @Environment(AppEnvironment.self) private var env
     @Environment(\.scenePhase) private var scenePhase
+    /// 여행 화면이 드는 모델. `shared`를 못 받고 들어온 자리(일정의 링크·지도의 시트)가 여기서 같은 것을 집는다.
+    /// 여행 화면 밖에서 열리면 nil이고, 그때만 자체 모델을 만든다.
+    @Environment(TripScreenModels.self) private var screenModels: TripScreenModels?
     @State private var owned: CandidateBoardViewModel?
-    private var model: CandidateBoardViewModel? { shared ?? owned }
+    private var model: CandidateBoardViewModel? { shared ?? screenModels?.candidateBoard ?? owned }
     @State private var titleDraft = ""
     @State private var noteDraft = ""
     /// 담을 때 고르는 분류 — 표시·거르기용이지 결정이 아니다. 안 고르면 '고르지 않음'으로 담긴다.
@@ -60,7 +63,7 @@ struct CandidateBoardView: View {
         // 보드만 뗀다. 여행 화면의 구독은 그대로 둔다 — 시트를 닫았다고 일정이 실시간을 잃으면 안 된다.
         .onDisappear { env.realtime.disconnect(key: Self.liveKey) }
         .task {
-            if shared == nil, owned == nil { owned = CandidateBoardViewModel(trip: trip, service: env.service, documents: env.service) }
+            if model == nil { owned = CandidateBoardViewModel(trip: trip, service: env.service, documents: env.service) }
             await model?.loadIfStale()
             if let model { startLive(model) }
         }

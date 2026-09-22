@@ -22,13 +22,15 @@
   #hdrMenu{display:none;position:absolute;top:calc(100% + 4px);right:8px;flex-direction:column;gap:5px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:8px;min-width:202px;box-shadow:var(--shadow);z-index:2200;max-height:calc(100dvh - 64px);overflow-y:auto;overscroll-behavior:contain}
   #hdrMenu.open{display:flex}#hdrMenu .btn{display:flex;align-items:center;width:100%;padding:9px 11px;border-radius:9px}#hdrMenu #verLabel{color:var(--subtle);border-color:var(--border)}
   #pasteMenuBtn{display:none}
-  #moreBtn{display:inline-flex;align-items:center;justify-content:center}
+  #moreBtn{display:inline-flex;align-items:center;justify-content:center;position:relative}
+  /* ☰ 안에만 있는 것(준비 메모·가고 싶은 곳)이 있다는 표시. 무엇인지는 열면 항목이 말한다 */
+  .menuBadge{position:absolute;top:5px;right:5px;width:7px;height:7px;border-radius:50%;background:var(--primary);box-shadow:0 0 0 2px var(--header)}
+  .menuCount{margin-left:auto;font-size:11px;font-variant-numeric:tabular-nums;color:var(--muted);background:var(--surface-2);border-radius:999px;padding:1px 7px}
   #filterbar{background:var(--header);padding:4px 14px 10px;display:flex;gap:5px;flex-wrap:wrap;align-items:center;z-index:1001;border-bottom:1px solid var(--border)}
   .chip{border:1px solid transparent;border-radius:999px;padding:6px 13px;font-size:12.5px;background:transparent;color:var(--muted);min-height:34px}
   .chip:hover{background:var(--hover-bg)}
   .chip.active{background:var(--selected-bg);border-color:var(--primary);color:var(--primary-dark);font-weight:700}
   .viewMenu{position:relative;margin-left:auto}.viewMenu>summary{list-style:none;cursor:pointer;font-size:12px;color:var(--muted);padding:6px 9px;border-radius:8px}.viewMenu>summary::-webkit-details-marker{display:none}.viewMenu[open]>summary{background:var(--surface-2)}.viewMenuPanel{position:absolute;right:0;top:calc(100% + 6px);width:210px;background:var(--surface);border:1px solid var(--border);box-shadow:var(--shadow);border-radius:12px;padding:8px;display:grid;gap:5px;z-index:1300}.viewMenuPanel .chip{text-align:left;border-radius:8px}.viewMenuLabel{font-size:10px;color:var(--subtle);padding:5px 8px 1px}.cityFocus{display:flex;gap:5px;flex-wrap:wrap;padding:2px 6px 7px}.cityFocus .chip{border:1px solid var(--border)}
-  .citychip.active{background:var(--c);color:#fff}
   #main{flex:1;display:flex;overflow:hidden;position:relative}
   #sidebar{width:360px;min-width:360px;background:var(--surface-2);overflow-y:auto;padding:10px;border-right:1px solid var(--border)}
   #map,#kmap{flex:1}
@@ -45,7 +47,6 @@
   .dayTitle{min-width:0;line-height:1.35;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;padding:8px 0}
   .dayHeadMeta{display:flex;align-items:center;flex-wrap:wrap;gap:2px 7px;min-width:0;padding:0 44px 1px 14px}
   .dayHead .date{color:var(--subtle);font-weight:400;font-size:11.5px;min-width:0;overflow-wrap:anywhere;font-family:var(--mono);font-variant-numeric:tabular-nums}
-  .dayHead .tools{display:flex;gap:4px}
   .iconb{background:none;border:none;color:var(--muted);font-size:13px;padding:8px;border-radius:7px;min-width:36px;min-height:36px}
   .iconb:hover{color:var(--ink);background:var(--surface-2)}
   .dayBody{padding:2px 12px 9px}
@@ -84,8 +85,6 @@
     background:var(--surface,#fff);border:2px dashed var(--c,var(--subtle));font-size:11px;line-height:1;opacity:.85;pointer-events:none}
   .spot .opt{color:var(--meta-soft);font-size:11px}
   .spot .noloc{color:var(--meta-warning);background:transparent;font-size:10.5px;border:1px solid currentColor;border-radius:6px;padding:1px 5px;cursor:pointer;white-space:nowrap}
-  .spot .tools{display:flex;gap:2px;opacity:.5;transition:opacity .15s}
-  .spot:hover .tools{opacity:1}
   .spot{cursor:grab}
   .actionMenu{position:relative;width:44px;min-width:44px;justify-self:end}.actionMenu>summary{list-style:none;cursor:pointer;color:var(--muted);font-size:20px;line-height:1;width:44px;height:44px;display:grid;place-items:center;border-radius:8px}.actionMenu>summary::-webkit-details-marker{display:none}.actionMenu>summary:hover,.actionMenu[open]>summary{background:var(--surface-2)}.actionMenuPanel{position:absolute;right:0;top:42px;z-index:30;min-width:120px;max-width:calc(100vw - 24px);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:5px;box-shadow:var(--shadow);display:grid}.actionMenuPanel .iconb{width:100%;display:flex;align-items:center;gap:8px;white-space:nowrap;font-size:12px}
   .spot.carry{cursor:default;opacity:.72}   /* 전날 숙소 가상 이월 항목 — 드래그/편집 불가, 흐리게. 이름 탭하면 지도 포커스 */
@@ -93,7 +92,6 @@
   .dragHandle{color:var(--subtle);font-size:12px;cursor:grab;padding:0 3px;user-select:none}
   .sortable-ghost{opacity:.35}
   .sortable-chosen{background:var(--drag-bg)}
-  .sortable-drag .tools{opacity:0}
   .spotList{min-height:8px}
   .spotList:empty{min-height:26px;border:1px dashed var(--border);border-radius:7px;margin-bottom:4px}
   .addSpot{font-size:11.5px;color:var(--meta-link);background:none;border:1px dashed var(--border);border-radius:7px;padding:3px 10px;margin-top:5px}
@@ -215,12 +213,12 @@
     border-radius:50%;background:#9cc4d2;vertical-align:middle}
   /* 읽기전용 보기 */
   #roBar{background:#7c5c15;color:#fff;padding:6px 12px;font-size:12.5px;display:flex;align-items:center;gap:10px;z-index:1001}
-  .readonly .tools,.readonly .addSpot,.readonly #addDayBtn,.readonly .noloc,.readonly .dragHandle,
+  .readonly .addSpot,.readonly #addDayBtn,.readonly .noloc,.readonly .dragHandle,
   .readonly #newTripBtn,.readonly #tripEditBtn,.readonly #pasteBtn,.readonly #importBtn,.readonly #authBtn,.readonly #undoBtn{display:none!important}
   #undoBtn:disabled{opacity:.35;cursor:default}
   .readonly .spot,.readonly .dayHead{cursor:default}
   /* 함께하기 — 보기 권한(VIEWER)으로 보는 여행: 편집 도구만 감춘다. 로그인·새 여행·설정(나가기)은 그대로 쓴다 */
-  .roleViewer .tools,.roleViewer .addSpot,.roleViewer #addDayBtn,.roleViewer .noloc,.roleViewer .dragHandle,
+  .roleViewer .addSpot,.roleViewer #addDayBtn,.roleViewer .noloc,.roleViewer .dragHandle,
   .roleViewer #undoBtn,.roleViewer #pasteBtn,.roleViewer #pasteMenuBtn,.roleViewer #bookingAdd{display:none!important}
   .roleViewer .spot,.roleViewer .dayHead{cursor:default}
   .roleViewer .modeBtn{pointer-events:none}
@@ -239,7 +237,7 @@
   body.theme-dark .roleBadge.owner{background:#3a2f14;color:#f0c97f}body.theme-dark .roleBadge.editor{background:#1e3038;color:#9cc4d2}
   .inviteResult{display:flex;gap:6px;margin-top:6px}.inviteResult input{flex:1;font-size:12px}
   .inviteRow{display:flex;align-items:center;gap:8px;padding:6px 9px;border:1px dashed var(--border);border-radius:9px;font-size:12px;color:var(--muted)}
-  .inviteRow .il{flex:1}.inviteRow.dead{opacity:.55}
+  .inviteRow .il{flex:1}
   .joinCard{border:1px solid var(--border);border-radius:12px;padding:14px;background:var(--surface-2);margin:6px 0 4px}
   .joinTripName{font-size:18px;font-weight:800;color:var(--ink)}
   .joinTripMeta{color:var(--muted);font-size:13px;margin-top:4px}
@@ -260,8 +258,8 @@
   .candMeta{color:var(--subtle);font-size:11.5px;margin-top:3px}
   .candNote{color:var(--muted);font-size:12px;margin-top:4px;overflow-wrap:anywhere}
   .candMood{font-size:11px;padding:2px 8px;border-radius:999px;background:var(--surface-2);color:var(--muted);white-space:nowrap}
-  .candMood.loved{background:#dcebdf;color:#2f5e3b}.candMood.split{background:#f6ead3;color:#8e4e0b}
-  body.theme-dark .candMood.loved{background:#1b2e20;color:#8fc79b}body.theme-dark .candMood.split{background:#3a2f14;color:#f0c97f}
+  .candMood.split{background:#f6ead3;color:#8e4e0b}
+  body.theme-dark .candMood.split{background:#3a2f14;color:#f0c97f}
   .candReact{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
   .candReact button{border:1px solid var(--border);background:var(--surface-2);border-radius:999px;padding:4px 10px;font-size:12px;min-height:30px;color:var(--ink)}
   .candReact button[aria-pressed="true"]{border-color:#2e5c6e;background:#dce7eb;color:#24505f;font-weight:700}
@@ -536,12 +534,20 @@ body.playing #playHud{
   .spotMetaItem.must{color:var(--meta-warning);font-weight:600}
   .spotMetaItem.opt{color:var(--meta-soft)}
   .spotMetaItem.whoChip{color:var(--meta-link);font-weight:600}
+  /* 명소 예약요건 — 필수인데 아직 안 한 것만 눈에 띈다. 나머지는 사실을 적어 둔 메모다 */
+  .spotMetaItem.adm{color:var(--meta-soft)}
+  .spotMetaItem.admNeed{color:var(--meta-warning);font-weight:600}
   .spotMetaItem.reunionChip{color:var(--meta-good);font-weight:600}
   /* 나란히 일어나는 줄은 왼쪽 띠로 묶어 보인다. .spotList의 자식 구조는 건드리지 않는다 —
      드래그 인덱스가 자식 순서로 계산돼서 여기에 다른 요소를 끼우면 순서가 어긋난다. */
   .spot.inSplit{border-left:3px solid color-mix(in srgb,var(--meta-link) 55%,transparent);padding-left:11px;background:color-mix(in srgb,var(--meta-link) 6%,transparent);border-radius:0 8px 8px 0}
   .spot.inSplit + .spot.inSplit{margin-top:-4px}
   .spot.isReunion{border-left:3px solid color-mix(in srgb,var(--meta-good) 55%,transparent);padding-left:11px}
+  /* 장소 모달의 명소 예약·입장 준비 */
+  .admissionBox{display:flex;flex-direction:column;gap:6px}
+  .admissionRow{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+  .admissionRow>select{flex:1 1 180px;min-width:0}
+  .admissionRow #spotAdmPeople{width:72px}
   /* 장소 모달의 "누가 가나요" */
   .whoChips{display:flex;flex-wrap:wrap;gap:5px;padding:2px 0}
   .whoChips .whoChipBtn{border:1px solid var(--border);border-radius:14px;padding:6px 11px;font-size:12px;background:var(--surface);color:var(--muted);min-height:34px}

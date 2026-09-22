@@ -3,7 +3,7 @@ const LS_KEY = 'tripcanvas_v1';
 const ONBOARD_KEY='tripcanvas_onboarded_v1';
 const THEME_KEY='tripcanvas_theme_v1';
 let firstVisit=false;
-try{ const raw=localStorage.getItem(LS_KEY),saved=raw&&JSON.parse(raw); firstVisit=!localStorage.getItem(ONBOARD_KEY)&&(!saved||!Array.isArray(saved.trips)||saved.trips.every(t=>t.id==='spain2026')); }catch(_){ firstVisit=true; }
+try{ const raw=localStorage.getItem(LS_KEY),saved=raw&&JSON.parse(raw); firstVisit=!localStorage.getItem(ONBOARD_KEY)&&(!saved||!Array.isArray(saved.trips)||saved.trips.every(isSampleTrip)); }catch(_){ firstVisit=true; }
 const OPS_KEY = 'tripcanvas_ops_v1';
 // 오류 본문·URL·여행 내용은 기록하지 않고, 운영 진단에 필요한 범주와 상태 코드만 세션에 보관한다.
 function reportOperationalError(scope,error,context){
@@ -118,7 +118,7 @@ function load(){
     if(raw.length<=TC_LIMITS.storeBytes) try{ localStorage.setItem('tripcanvas_rejected_backup_v1',raw); }catch(_){}
   }
   if(!store || !store.trips || !store.trips.length){
-    store = {trips:[sampleTrip()], activeId:'spain2026'};
+    const sample=sampleTrip(); store = {trips:[sample], activeId:sample.id};
     save();
   }
 }
@@ -1115,7 +1115,6 @@ function tripCostBreakdown(){
   out.total=out.spots+out.taxi+out.hotel+out.car+out.flight+out.prep;
   return out;
 }
-function tripCost(){ return tripCostBreakdown().total; }
 // 일정 예상 종료 시각(분) — 마지막 장소 (예약 대기 반영한) 활동 시작 + 체류
 function dayEndMin(day, startAnchor, bl){
   if(!day.spots.length) return null;
@@ -1148,6 +1147,11 @@ function catPrefix(s){ const c=spotCatOf(s); return c? c.icon+' ' : ''; }
 (function(){ const sel=document.getElementById('spotCat'); if(!sel) return;
   sel.innerHTML='<option value="">미지정 (이름으로 자동 추측)</option>'
     + SPOT_CATS.map(c=>`<option value="${c.id}">${c.icon} ${c.name}</option>`).join('');
+})();
+// 명소 예약요건 선택지도 lib.js의 ADMISSION_REQUIREMENTS 하나만 보고 만든다 —
+// 이름이 마크업으로 흘러가면 앱(iOS `AdmissionRequirement.label`)과 두 말이 된다.
+(function(){ const sel=document.getElementById('spotAdmReq'); if(!sel) return;
+  sel.innerHTML=ADMISSION_REQUIREMENTS.map(r=>`<option value="${r.id}">${esc(r.label)}</option>`).join('');
 })();
 // 마커 하나 추가 (엔진 공용) — markers에 {spot, open} 인터페이스로 저장. 숙소는 🏠 핀
 function addPin(s,di,si,c){
@@ -1267,12 +1271,12 @@ function render(){
       });
     }
   }
-  renderSidebar(); renderFilter(); renderLegend();
+  renderSidebar(); renderFilter(); renderLegend(); renderMenuBadges();
   document.getElementById('tripSel').innerHTML = viewMode
     ? `<option selected>${esc(viewMode.name)}</option>`
     : store.trips.map(x=>`<option value="${escAttr(x.id)}" ${x.id===store.activeId?'selected':''}>${esc(x.name)}</option>`).join('');
   const picker=document.getElementById('tripPickerName');
-  if(picker) picker.textContent=(viewMode?'':((t.sample||t.id==='spain2026')?'샘플 · ':''))+(t.name||'여행 선택');
+  if(picker) picker.textContent=(viewMode?'':(isSampleTrip(t)?'샘플 · ':''))+(t.name||'여행 선택');
   updateCollabUI();
 }
 // pts([[lat,lng],…])에 맞춰 프레이밍. maxZoom(구글 기준)은 정착 후 보정
@@ -1335,13 +1339,22 @@ function backLegOf(day, di, back){
   return {from, to:back, mode, when, timeZone, key:legRequestKey(from,back,mode,when,timeZone)};
 }
 // 시각적 🏠 '전날 숙소' 이월 항목용 — 시작 앵커가 숙소(stay)일 때만.
-function carryStayFor(di){ const a=startAnchorFor(di); return (a&&a.stay)?a:null; }
+/**
+ * 이월받은 기준점 중 화면에 🏠 '전날 숙소'로 찍는 것. **`anchor`와 다르다** — 이월받은 것이
+ * 숙소일 때만 표시하고 아니면 아무것도 적지 않는다(§anchor와 carry를 혼동하지 말 것).
+ *
+ * ⚠️ 규칙은 여기 하나다. 2026-09-21 전에는 `carryStayFor`와 `dayContext`가 같은 식을 따로 들고 있었다.
+ * @param {any} anchor @returns {any}
+ */
+function carryOf(anchor){ return (anchor&&anchor.stay)?anchor:null; }
+/** 일자 번호로 바로 묻는 자리(테스트·단건 조회). `dayContext`는 이미 들고 있는 anchor로 `carryOf`를 쓴다. */
+function carryStayFor(di){ return carryOf(startAnchorFor(di)); }
 // 일자 컨텍스트(한 번에 계산) — 사이드바·여행모드·이미지·재생이 공유해 anchor/carry 혼동 방지.
 // ETA·종료·이미지·여행모드 타임라인은 anchor(전날 숙소 또는 마지막 장소, 정책 반영)를 쓰고,
 // 화면의 🏠 '전날 숙소' 항목 표시에만 carry(숙소일 때만)를 쓴다.
 function dayContext(di){
   const day=trip().days[di], anchor=startAnchorFor(di), back=dayReturnStay(trip().days,di);
-  return { day, anchor, carry:(anchor&&anchor.stay)?anchor:null, back, backLeg:backLegOf(day,di,back),
+  return { day, anchor, carry:carryOf(anchor), back, backLeg:backLegOf(day,di,back),
            timeline:dayTimeline(day,anchor,di), mode:dayModeOf(day), timeZone:dayTimeZone(day) };
 }
 function animPath(){
@@ -1546,16 +1559,28 @@ function playTrip(){
   updatePlayPauseBtn();
   enterPhase(false);                                   // 첫 구간부터 fit+타일 대기 후 출발
 }
+/**
+ * 보는 범위를 바꾼다(전체=0 · N일차=N). **필터바 칩과 지도 범례가 같이 쓴다**(2026-09-21).
+ *
+ * 재생 중이면 멈추고 **새 범위로 다시 시작**하고, 아니면 그 영역으로 지도를 맞춘다.
+ * ⚠️ 2026-09-21 전에는 범례가 이 규칙을 지나지 않고 `activeDay`를 직접 바꿔, 재생 처리가 통째로
+ * 빠져 있었다(재생 중에는 범례가 `display:none`이라 드러나지 않았을 뿐이다).
+ * @param {number} ad @param {()=>void} fitFn
+ */
+function setDayScope(ad, fitFn){
+  const wasPlaying = !!play;
+  if(wasPlaying) stopPlay();
+  activeDay=ad; render();
+  if(wasPlaying) playTrip();                          // 새 범위(일자/전체)로 재생 재시작
+  else fitFn();
+}
+/** 그 날의 좌표 있는 장소가 다 보이게 — 두 컨트롤이 같은 프레이밍을 쓴다. @param {number} di */
+function fitDay(di){
+  fitTo(trip().days[di].spots.filter(hasLoc).map(s=>[s.lat,s.lng]),64,15);
+}
 function renderFilter(){
   const bar = document.getElementById('filterbar'); bar.innerHTML='';
-  // 범위 전환: 재생 중이면 새 범위로 재생 재시작(현재 재생을 멈추고 새 일정으로), 아니면 해당 영역으로 프레이밍
-  const setScope=(ad, fitFn)=>{
-    const wasPlaying = !!play;
-    if(wasPlaying) stopPlay();
-    activeDay=ad; render();
-    if(wasPlaying) playTrip();                          // 새 범위(일자/전체)로 재생 재시작
-    else fitFn();
-  };
+  const setScope=setDayScope;
   const all = document.createElement('button'); all.className='chip'+(activeDay?'':' active'); all.textContent='전체';
   all.onclick=()=>setScope(0, fitAll); bar.appendChild(all);
   const today=new Date(); today.setHours(0,0,0,0);
@@ -1563,14 +1588,14 @@ function renderFilter(){
   const todayDi=start?Math.floor((today-start)/86400000):-1;
   const todayBtn=document.createElement('button'); todayBtn.className='chip'+(activeDay===todayDi+1?' active':''); todayBtn.textContent='오늘';
   if(todayDi<0||todayDi>=trip().days.length){ todayBtn.disabled=true; todayBtn.title='여행 기간이 아닙니다'; }
-  else todayBtn.onclick=()=>setScope(todayDi+1,()=>fitTo(trip().days[todayDi].spots.filter(hasLoc).map(s=>[s.lat,s.lng]),64,15));
+  else todayBtn.onclick=()=>setScope(todayDi+1,()=>fitDay(todayDi));
   bar.appendChild(todayBtn);
   trip().days.forEach((d,i)=>{
     const b=document.createElement('button'); b.className='chip'+(activeDay===i+1?' active':''); b.title=d.title;
     b.innerHTML = colorByMode()==='day'
       ? `<span class="dot" style="background:${dayColor(i)};width:7px;height:7px;margin-right:4px"></span>D${i+1}`
       : 'D'+(i+1);
-    b.onclick=()=>setScope(i+1, ()=>fitTo(d.spots.filter(hasLoc).map(s=>[s.lat,s.lng]),64,15));
+    b.onclick=()=>setScope(i+1, ()=>fitDay(i));
     bar.appendChild(b);
   });
   // 예약 절약 기회 — 발견되면 필터바에서 항상 보이게 (탭 → 예약 추적). 확정과 잠재를 구분한다.
@@ -1614,6 +1639,33 @@ function renderFilter(){
     bar.appendChild(cost);
   }
 }
+// 후보 보드의 전역 — **`renderMenuBadges`보다 위에 있어야 한다.** `render()`가 로드 직후에 불리는데
+// 선언이 아래에 있으면 TDZ로 스크립트가 통째로 죽는다(실시간 전역을 위에 두는 것과 같은 이유).
+let candTripId=null, candRows=[], candBusy=false;
+/**
+ * ☰ 안에만 있는 것들이 **있다는 사실**을 바깥에서 알린다(2026-09-21).
+ * 준비 메모와 가고 싶은 곳은 메뉴를 열기 전에는 존재를 암시하는 것이 없었다.
+ *
+ * ⚠️ **개수를 알려고 서버를 묻지 않는다**(§네트워크는 적게). 메모는 여행 문서에 있어 언제나 알고,
+ * 후보는 이번 세션에서 그 여행의 보드를 받아 본 적이 있을 때만 센다 — 아니면 말하지 않는다.
+ * ⚠️ 챙긴 메모(`done`)는 세지 않는다. 배지는 '아직 볼 것이 남았다'는 뜻이다.
+ */
+function renderMenuBadges(){
+  const notes=tripNotes().filter(n=>n&&!n.done).length;
+  const cands=(candTripId===trip().id)? candRows.length : 0;
+  const put=(/**@type {string}*/id, /**@type {number}*/n)=>{
+    const el=document.getElementById(id); if(!el) return;
+    el.textContent=String(n); el.hidden=!n;
+  };
+  put('noteCount', notes); put('candCount', cands);
+  const badge=document.getElementById('menuBadge');
+  if(badge) badge.hidden=!(notes||cands);
+  const more=document.getElementById('moreBtn');
+  if(more){
+    const parts=[notes?`준비 메모 ${notes}`:'', cands?`가고 싶은 곳 ${cands}`:''].filter(Boolean);
+    more.setAttribute('aria-label', parts.length? `메뉴 · ${parts.join(' · ')}` : '메뉴');
+  }
+}
 function renderLegend(){
   let body;
   if(colorByMode()==='day'){
@@ -1626,8 +1678,7 @@ function renderLegend(){
   }
   document.getElementById('legend').innerHTML=body+'<br><span style="color:var(--meta-warning)">- - -</span> 일자 간 이동';
   document.querySelectorAll('#legend .legDay').forEach(el=>{
-    el.onclick=()=>{ const i=+el.dataset.di; activeDay=i+1; render();
-      fitTo(trip().days[i].spots.filter(hasLoc).map(s=>[s.lat,s.lng]),64,15); };
+    el.onclick=()=>{ const i=+el.dataset.di; setDayScope(i+1, ()=>fitDay(i)); };
   });
 }
 function renderSidebar(){
@@ -1695,6 +1746,20 @@ function renderSidebar(){
         if(w>0) meta.push(`<span class="spotMetaItem book" title="${escAttr(`도착 예상 ${hm(etas[si])} → 예약 ${s.bookAt}까지 대기. 다음 장소 도착 예상에 이 대기가 반영됩니다`)}">⏳ ${w}분 대기</span>`);
       }
       { const bu=safeUrl(s.bookUrl); if(bu) meta.push(`<a class="spotMetaItem book" href="${escAttr(bu)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="예약 링크 열기">${ic('link')} 예약 링크</a>`); }
+      // 명소 예약요건 — 필수인데 아직 안 했으면 주의색(iOS `needsReservation`과 같은 규칙).
+      // ⚠️ 아무 말도 없는 장소에는 붙이지 않는다: 모든 명소에 '확인 필요'가 붙으면 정작 필수인 곳이 묻힌다.
+      { const a=(s.admission&&typeof s.admission==='object')?s.admission:null;
+        const req=admissionOf(s), booked=!!(a&&a.personalStatus==='BOOKED');
+        if(booked||req!=='UNKNOWN'){
+          const label=admissionLabel(req);
+          const text=booked? (req==='UNKNOWN'?'예약 완료':`예약 완료 · ${label}`) : label;
+          const tip=needsAdmissionBooking(s)? '예약이 필요한 곳이에요 — 아직 예약 완료로 표시하지 않았어요'
+            : (a&&a.note? a.note : '명소 예약·입장 준비 — 장소 편집에서 바꿀 수 있어요');
+          meta.push(`<span class="spotMetaItem adm${needsAdmissionBooking(s)?' admNeed':''}" title="${escAttr(tip)}">${ic('ticket')} ${esc(text)}</span>`);
+        }
+        const official=a? safeUrl(a.officialURL) : '';
+        if(official) meta.push(`<a class="spotMetaItem adm" href="${escAttr(official)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="공식 예약 페이지 열기 — 열어도 예약 완료로 바뀌지 않아요">${ic('link')} 공식 예약</a>`);
+      }
       // 이 장소에서 차를 받거나 돌려준다 — 예약과 연결해 두면 도착 순서와 어긋나지 않게 여기 붙는다
       [['carPickupId','렌터카 픽업','carPickupTime'],['carReturnId','렌터카 반납','carReturnTime']].forEach(([f,label,tf])=>{
         const bk=s[f]? bookingOf(s[f]) : null; if(!bk||bk.type!=='car') return;
@@ -1978,6 +2043,8 @@ window.copySpot=(di,si)=>{
   const spots=trip().days[di].spots, source=spots[si]; if(!source)return;
   const copy=JSON.parse(JSON.stringify(source)); copy.name=`${source.name} 복사본`;
   delete copy.carPickupId; delete copy.carReturnId;   // 차를 받는 곳은 한 곳 — 복사본까지 픽업 지점이 되면 안 된다
+  // 예약 요건은 그 장소의 성질이라 따라가지만, '내 예약 완료'는 이 방문의 사실이다 — 복사본까지 예약됐다고 말하지 않는다
+  if(copy.admission&&typeof copy.admission==='object') delete copy.admission.personalStatus;
   commit(()=>spots.splice(si+1,0,copy)); toast('장소를 복사했습니다');
 };
 window.deleteSpot=(di,si)=>{
@@ -2034,7 +2101,8 @@ window.openSpotModal=(di,si)=>{
   updateCostHint();
   document.getElementById('spotBookAt').value=s.bookAt||'';
   document.getElementById('spotBookUrl').value=s.bookUrl||'';
-  document.getElementById('spotAdvanced').open=!isNew&&!!(s.legMode||s.cost||s.bookAt||s.bookUrl||spotPriorityOf(s)!=='NORMAL'||s.stay);
+  drawAdmission(s.admission);
+  document.getElementById('spotAdvanced').open=!isNew&&!!(s.legMode||s.cost||s.bookAt||s.bookUrl||s.admission||spotPriorityOf(s)!=='NORMAL'||s.stay);
   document.getElementById('spotLat').value=s.lat; document.getElementById('spotLng').value=s.lng;
   document.getElementById('spotPlaceId').value=s.placeId||'';
   document.getElementById('spotKakaoId').value=s.kakaoId||'';
@@ -2090,6 +2158,53 @@ function drawWhoChips(who){
 }
 /** 지금 골라진 참여자. 아무도 없으면 undefined(=모두) — 기본값은 저장하지 않는다 */
 function pickedWho(){ return _pickedWho.length? _pickedWho.slice() : undefined; }
+
+/** 사용자가 '지금 확인했어요'를 누른 시각. 저장할 때만 문서로 간다 @type {string|null} */
+let _pickedCheckedAt=null;
+/**
+ * 명소 예약·입장 준비 칸을 채운다. **확인 시각은 여기서 만들지 않는다** — 사람이 누를 때만 찍힌다.
+ * 요건은 '확인 필요'가 기본이고, 그 상태로만 두면 저장하지 않는다(기본값은 문서에 남기지 않는다).
+ */
+function drawAdmission(admission){
+  const a=(admission&&typeof admission==='object')?admission:{};
+  _pickedCheckedAt=(typeof a.checkedAt==='string')?a.checkedAt:null;
+  document.getElementById('spotAdmReq').value=admissionOf({admission:a});
+  document.getElementById('spotAdmBooked').checked=a.personalStatus==='BOOKED';
+  document.getElementById('spotAdmPeople').value=(a.people!=null? a.people : '');
+  document.getElementById('spotAdmUrl').value=a.officialURL||'';
+  document.getElementById('spotAdmNote').value=a.note||'';
+  drawAdmissionChecked();
+}
+function drawAdmissionChecked(){
+  const el=document.getElementById('spotAdmChecked');
+  el.textContent=_pickedCheckedAt? `직접 확인 · ${_pickedCheckedAt.slice(0,16).replace('T',' ')}` : '';
+}
+/**
+ * 지금 입력된 예약·입장 준비. 아무 말도 하지 않았으면 undefined — 빈 껍데기를 문서에 남기지 않는다.
+ * ⚠️ 예약 완료를 끄면 `personalStatus`를 아예 빼 둔다(없음과 `NOT_BOOKED`는 같은 뜻이고 기본값은 저장하지 않는다).
+ * @returns {any}
+ */
+function pickedAdmission(){
+  const req=document.getElementById('spotAdmReq').value;
+  const url=document.getElementById('spotAdmUrl').value.trim();
+  const note=document.getElementById('spotAdmNote').value.trim();
+  const peopleText=String(document.getElementById('spotAdmPeople').value||'').trim();
+  const out=/**@type {Record<string,any>}*/({source:'USER',
+    requirement:ADMISSION_REQUIREMENTS.some(r=>r.id===req)?req:'UNKNOWN'});
+  if(document.getElementById('spotAdmBooked').checked) out.personalStatus='BOOKED';
+  if(url) out.officialURL=url;
+  if(note) out.note=note;
+  if(peopleText){ const n=parseInt(peopleText,10); if(!isNaN(n)) out.people=n; }
+  if(_pickedCheckedAt) out.checkedAt=_pickedCheckedAt;
+  const said=out.requirement!=='UNKNOWN'||out.personalStatus||out.officialURL||out.note||out.people!=null||out.checkedAt;
+  return said? out : undefined;
+}
+// 확인 시각은 사람이 확인한 때만 찍는다 — 저장·조회로 자동 생성하지 않는다(그러면 아무것도 뜻하지 않는다)
+document.getElementById('spotAdmConfirm').onclick=()=>{
+  _pickedCheckedAt=new Date().toISOString().replace(/\.\d{3}Z$/,'Z');
+  drawAdmissionChecked();
+  toast('공식 정보를 확인한 시각을 적어 뒀어요 — 예약 완료와는 다릅니다');
+};
 document.getElementById('spotCancel').onclick=()=>document.getElementById('spotModalBg').classList.remove('show');
 document.getElementById('spotAdvanced').addEventListener('toggle',e=>{
   const badge=document.querySelector('#spotModalBg .stepBadge'); if(badge) badge.textContent=e.target.open?'상세 설정':'기본 정보';
@@ -2116,6 +2231,9 @@ document.getElementById('spotSave').onclick=()=>{
   const costText=document.getElementById('spotCost').value;
   const costV=parseCostAmount(costText,curV);
   if(costText.trim()&&costV===null){toast('비용을 확인하세요 — 원·엔은 정수, 외화는 소수 둘째 자리까지 입력할 수 있어요','#b4342a');return;}
+  // 예약·입장 준비는 서버(`validateTripPayload`)가 거절할 값을 저장 전에 같은 문장으로 말한다
+  const admission=pickedAdmission();
+  if(admission){ const admErr=admissionError(admission); if(admErr){ toast(admErr,'#b4342a'); return; } }
   const s={name,city:document.getElementById('spotCity').value.trim()||'기타',desc:document.getElementById('spotDesc').value.trim(),
     stay:document.getElementById('spotStay').checked,
     // 연박 수는 숙소일 때만 저장, 1박이면 생략(기본값 — 하위호환)
@@ -2137,6 +2255,7 @@ document.getElementById('spotSave').onclick=()=>{
     kakaoId:(document.getElementById('spotKakaoId').value||undefined),   // 국내 장소 신원 — 지도 링크가 바로 길찾기로 열린다
     cat:(document.getElementById('spotCat').value||undefined),           // 미지정이면 이름 추론에 맡긴다
     who:pickedWho(),                                                     // 비었으면 모두(§26)
+    admission,                                                           // 명소 예약요건 — 아무 말도 없으면 undefined
     hours:_pickedHours||undefined,lat,lng};
   const targetDay=parseInt(document.getElementById('spotDay').value);
   applySpotPriority(s, document.getElementById('spotPriority').value);   // 기본값(보통)은 저장하지 않는다
@@ -2147,7 +2266,6 @@ document.getElementById('spotSave').onclick=()=>{
     const prev=trip().days[editing.di].spots[editing.si]||{};
     if(prev.bookingId) s.bookingId=prev.bookingId;
     for(const key of ['costBasis','costPeople','costPartial']) if(prev[key]!=null) s[key]=prev[key];
-    if(prev.admission) s.admission=prev.admission;
     if(prev.candidateId!=null) s.candidateId=prev.candidateId;
     if(prev.carPickupId) s.carPickupId=prev.carPickupId;
     if(prev.carReturnId) s.carReturnId=prev.carReturnId;
@@ -2634,10 +2752,16 @@ window.switchTrip=(id)=>{
   document.getElementById('tripListBg').classList.remove('show');
 };
 window.removeTrip=(id)=>{ if(deleteTrip(id)) renderTripList(); };   // 목록은 열어둔 채 계속 정리 가능
-document.getElementById('tripListBtn').onclick=()=>{
+/**
+ * 여행 목록(전환·삭제)을 연다. **진입점은 헤더의 여행 피커 하나다**(2026-09-21) —
+ * 전에는 ☰ 안에도 '여행 목록' 버튼이 있었고 그게 피커의 클릭을 그대로 위임받아,
+ * 같은 모달을 여는 자리가 둘이고 이름이 달랐다. 피커는 데스크톱·모바일 모두 항상 보이고
+ * 현재 여행 이름까지 말하므로 메뉴 쪽이 더할 것이 없었다.
+ */
+function openTripList(){
   if(viewMode){ toast('읽기전용 보기입니다 — "내 여행으로 저장" 후 이용하세요','#4f4740'); return; }
   renderTripList(); document.getElementById('tripListBg').classList.add('show');
-};
+}
 document.getElementById('tripListClose').onclick=()=>document.getElementById('tripListBg').classList.remove('show');
 document.getElementById('tripListNew').onclick=()=>{
   document.getElementById('tripListBg').classList.remove('show');
@@ -2967,9 +3091,12 @@ function renderBookingList(){
     </div>`:'';
   const rows=paymentRows(), split=prepPaySplit();
   const paidLine=(split.PAID>0||split.RESERVED>0)? `<div class="hint" style="margin:0 0 4px">${[split.PAID>0?`결제 완료 ₩${fmtMoney(split.PAID)}`:'', split.RESERVED>0?`결제 예정 ₩${fmtMoney(split.RESERVED)}`:''].filter(Boolean).join(' · ')}</div>`:'';
-  document.getElementById('bookingListBody').innerHTML = paidLine + (rows.length? rows.map(r=>{
+  // 같은 여행의 비용이 화면마다 다른 숫자인 이유는 기준이 다르기 때문이다 — 필터바·일자 카드는
+  // 이미 그 기준을 말하는데 이 목록만 말하지 않았다. 세 곳이 다 같은 말을 해야 숫자를 믿을 수 있다.
+  const basisLine=`<div class="hint" style="margin:0 0 8px">여기 금액은 <b>예약 전액</b>이에요 — 일자 카드의 '하루 비용'은 이걸 날수로 나눈 하루치입니다.</div>`;
+  document.getElementById('bookingListBody').innerHTML = paidLine + (rows.length? basisLine:'') + (rows.length? rows.map(r=>{
     const b=r.booking, period=b?[b.start,b.end].filter(Boolean).map(esc).join(' ~ '):'';
-    const sub=[period, b&&b.provider?esc(b.provider):'', COST_KIND[r.kind].name, costLabel(r.amount,r.cur), payStateNote(r.payState), r.paidOn?`결제일 ${esc(r.paidOn)}`:''].filter(Boolean).join(' · ');
+    const sub=[period, b&&b.provider?esc(b.provider):'', COST_KIND[r.kind].name, costLabel(r.amount,r.cur), payStateNote(r.payState), r.paidOn?`결제일 ${esc(r.paidOn)}`:'', r.photos?`📎 사진 ${r.photos}장`:''].filter(Boolean).join(' · ');
     return `<div class="tripRow pxRow" onclick="openBookingModal('${escAttr(r.id)}')" title="${b?'탭해서 상세·판매처 비교·가격 기록 보기':'탭해서 편집'}">
       <span class="tn">${COST_KIND[r.kind].icon} ${esc(r.title)}<span class="opt">${sub}</span></span>
       ${b?bookingBadgeHtml(b):''}
@@ -2981,16 +3108,31 @@ function renderBookingList(){
 /**
  * 예약 결제 금액의 한 목록 — 예약(trip.bookings)과 여행 단위 비용(trip.costItems)을 같은 모양으로.
  * 결제일이 최근인 것부터, 결제일이 없는 것은 그 뒤에 등록 순. 상태는 오늘(기기 날짜)이 정한다(costPayStateOf).
- * @returns {{id:string,kind:string,title:string,amount:number|null,cur:string|undefined,paidOn:string,payState:string,booking:any}[]}
+ * @returns {{id:string,kind:string,title:string,amount:number|null,cur:string|undefined,paidOn:string,payState:string,photos:number,booking:any}[]}
  */
 function paymentRows(){
   const today=todayISO();
   const rows=tripBookings().map(b=>({id:b.id, kind:BK_TYPE_KIND[b.type]||'STAY', title:b.title||'예약', amount:b.price>0?b.price:null, cur:b.cur,
-      paidOn:b.paidOn||'', payState:costPayStateOf(b,'BOOKING',today), booking:b}))
+      paidOn:b.paidOn||'', payState:costPayStateOf(b,'BOOKING',today), photos:photoCount(b), booking:b}))
     .concat((trip().costItems||[]).map(it=>({id:it.id, kind:COST_KIND[it.kind]?it.kind:'OTHER', title:it.title||'비용', amount:costAmountOf(it,'amount'), cur:it.cur,
-      paidOn:it.paidOn||'', payState:costPayStateOf(it,'TRIP',today), booking:null})));
+      paidOn:it.paidOn||'', payState:costPayStateOf(it,'TRIP',today), photos:photoCount(it), booking:null})));
   return rows.sort((a,b)=> (a.paidOn&&b.paidOn)? (a.paidOn<b.paidOn?1:a.paidOn>b.paidOn?-1:0) : a.paidOn? -1 : b.paidOn? 1 : 0);
 }
+/**
+ * 영수증·품목 사진이 **몇 장 붙어 있는지**. 웹은 개수까지만 말한다.
+ *
+ * ⚠️ **웹에 사진 붙이기·보기를 만들 수 없다.** 문서에 실리는 것은 원본이 아니라 iOS 사진 보관함의
+ * 식별자(local identifier)뿐이라(§비용 항목의 영수증·품목 사진) 브라우저는 그 문자열로 아무것도 열지 못한다.
+ * 원본을 문서에 넣는 것은 금지다 — 저장할 때마다 통째로 오가므로 동기화가 무거워지고 공유 링크가 터진다.
+ * 그래서 웹이 할 수 있는 정직한 일은 **있다는 사실을 말하는 것** 하나다. 없다고 말하면 폰에서 붙인 사람이
+ * 사라진 줄 안다.
+ * @param {any} item 예약 또는 비용 항목 @returns {number}
+ */
+function photoCount(item){
+  return (item&&Array.isArray(item.photos))? item.photos.length : 0;
+}
+/** 사진이 있을 때만 한 줄. 어느 기기에서 붙였는지는 문서가 모르므로 단정하지 않는다 @param {number} n @returns {string} */
+function photoNote(n){ return n>0? `영수증·품목 사진 ${n}장 — 붙인 기기에서만 볼 수 있어요` : ''; }
 /** 예약 결제 금액의 결제 상태별 원화 합계 — 필터바 전체 비용과 같은 예약(budgetBookings)만 센다 @returns {Record<string,number>} */
 function prepPaySplit(){
   const today=todayISO(); /** @type {Record<string,number>} */ const sum={RESERVED:0,PAID:0,NONE:0};
@@ -3136,6 +3278,9 @@ window.openBookingModal=(id)=>{
   document.getElementById('bkTrack').checked=b?b.track!==false:true;
   toggleBkFields();
   renderBookingStatusBox(b);
+  // 사진은 여기서 붙이지도 떼지도 못한다 — 문서에는 보관함 식별자만 있고 브라우저는 그것을 열 수 없다
+  { const note=photoNote(photoCount(b||item)), el=document.getElementById('bkPhotos');
+    el.textContent=note? `📎 ${note}` : ''; el.style.display=note?'block':'none'; }
   document.getElementById('bookingModalBg').classList.add('show');
 };
 // 현재가·판매처 비교·매칭 후보·가격 기록 — 편집 중인 기존 예약에만 표시
@@ -3503,7 +3648,12 @@ document.getElementById('shareBtn').onclick=()=>{
   const data=LZString.compressToEncodedURIComponent(JSON.stringify(trip()));
   const url=location.origin+location.pathname+'#v='+data;   // 읽기전용 보기 링크
   if(url.length>8000){ toast('여행이 너무 커서 링크로 공유할 수 없습니다. "내보내기"로 파일을 전달하세요','#b4342a'); return; }
-  navigator.clipboard.writeText(url).then(()=>toast('읽기전용 공유 링크가 복사되었습니다 (받는 쪽에서 "내 여행으로 저장" 가능)'))
+  // ⚠️ 이 링크는 LZString 스냅샷이라 **만든 순간의 사본**이다 — 이후 수정은 반영되지 않는다.
+  // 두 공유(읽기 전용 링크 / 멤버·편집 초대)의 차이가 바로 이것이라, 복사한 자리에서 말하고
+  // 같이 고치려는 사람에게는 그쪽 길을 바로 열어 준다(2026-09-21).
+  const copied=()=>toast('지금 이 순간의 사본으로 링크를 복사했어요 — 이후 수정은 반영되지 않아요',
+                         '#3e7a4c', {label:'같이 고치려면', fn:()=>document.getElementById('membersMenuBtn').click()});
+  navigator.clipboard.writeText(url).then(copied)
     .catch(()=>prompt('이 링크를 복사하세요',url));
 };
 function decodeSharedTrip(encoded){
@@ -4546,7 +4696,7 @@ function syncStaleTrips(){
 }
 async function syncTripCloud(t,opts){
   if(!sb||!user||!t) return;
-  if(t.id==='spain2026'&&!(syncMeta[t.id]&&syncMeta[t.id].revision)) return;
+  if(isSampleTrip(t)&&!(syncMeta[t.id]&&syncMeta[t.id].revision)) return;
   const entry=syncEntry(t.id), force=!!(opts&&opts.force);
   if(entry.status==='conflict'&&!force) return;
   if(!TC_COLLAB.canEdit(myRole(t.id))) return;      // 보기 권한은 올리지 않는다 — 서버도 42501로 거절한다
@@ -4693,7 +4843,7 @@ async function syncOnLogin(){
     // 삭제(tombstone)된 여행까지 받는다 — 다른 기기가 지운 것을 병합해야 한다
     const {data:rows,error}=await TC_API.sync.list();
     if(error) throw error;
-    const local=store.trips.filter(t=>t.id!=='spain2026'||(rows||[]).some(r=>r.client_id===t.id));
+    const local=store.trips.filter(t=>!isSampleTrip(t)||(rows||[]).some(r=>r.client_id===t.id));
     const merged=TC_SYNC.mergeForLogin(local,rows||[],syncMeta);
     syncMeta=merged.meta; persistSyncMeta();
     const checked=merged.trips.map(t=>validateTripPayload(t));
@@ -4712,7 +4862,7 @@ async function syncOnLogin(){
     adoptRemote(()=>{ activeDay=0; render(); }); fitAll();
     pullPriceSnapshots();   // cron·다른 기기가 남긴 가격 관측 기록을 로컬과 병합
     for(const c of merged.conflicts) enqueueSyncConflict(c);
-    for(const action of merged.actions) if(action.trip.id!=='spain2026') await syncTripCloud(action.trip,{force:action.force});
+    for(const action of merged.actions) if(!isSampleTrip(action.trip)) await syncTripCloud(action.trip,{force:action.force});
     await flushPendingSync();
     toast(merged.conflicts.length?`동기화 충돌 ${merged.conflicts.length}건 — 버전을 선택해 주세요`:`클라우드 동기화 완료 · 여행 ${trips.length}개`,merged.conflicts.length?'#b8650f':undefined);
   }catch(e){ reportOperationalError('cloud.login-sync',e); toast('클라우드 동기화 실패 — 로컬로 계속 사용','#b4342a'); }
@@ -5095,7 +5245,6 @@ document.getElementById('membersLeave').onclick=()=>{
 // ── 후보 보드 ────────────────────────────────────────────────────────────────
 // 아직 일정이 아닌 '가고 싶은 곳'. 판정(집계·묶음·권한)은 전부 collab.js에 있고 여기는 배선·표시만 한다.
 // 후보와 반응은 여행 문서가 아니라 제 테이블에 산다 — 넷이 동시에 하트를 눌러도 리비전 CAS가 서로를 걷어차지 않는다.
-let candTripId=null, candRows=[], candBusy=false;
 // 펼친 카드의 코멘트·쓰다 만 글 — 카드는 매번 다시 그려지므로(실시간 갱신 포함) 상태를 따로 든다
 let candOpen=new Set(), candComments={}, candDraft={};
 
@@ -5131,6 +5280,7 @@ async function renderCandidates(){
     if(error) throw error;
     candRows=(data||[]).filter(Boolean);
     drawCandidates();
+    renderMenuBadges();   // ⚠️ render()가 아니다 — 그건 순수한 다시 그리기가 아니라 동기화까지 건드린다
   }catch(e){
     reportOperationalError('collab.candidates',e);
     box.innerHTML=`<div class="hint">${esc(TC_COLLAB.isForbiddenError(e)?TC_COLLAB.forbiddenText(e,role):'후보를 불러오지 못했어요 — 잠시 후 다시 시도해 주세요')}</div>`;
@@ -5808,7 +5958,7 @@ document.getElementById('joinAccept').onclick=async()=>{
   finally{ btn.disabled=false; }
 };
 
-document.getElementById('tripPickerBtn').onclick=()=>document.getElementById('tripListBtn').click();
+document.getElementById('tripPickerBtn').onclick=openTripList;
 let onboardingReturnFocus=null;
 const onboardingInert=new Map();
 function showOnboarding(){
@@ -5862,7 +6012,7 @@ function updateSaveState(){
   let state='local', message='이 기기에 저장됨', callback=null, actionText='다시 시도';
   if(readOnly()){ state='readonly'; message='읽기 전용으로 보는 중'; }
   else if(lsDirty){ state='error'; message='기기 저장 실패 · 화면을 닫기 전에 다시 저장해 주세요'; callback=()=>save(); }
-  else if(user && sb && !(t.id==='spain2026' && !entry?.revision)){
+  else if(user && sb && !(isSampleTrip(t) && !entry?.revision)){
     if(entry?.status==='conflict'){
       state='conflict'; message='다른 기기와 변경이 겹쳤어요 · 내 입력은 기기에 남아 있어요';
       actionText='변경 확인'; callback=()=>{ if(currentSyncConflict) document.getElementById('syncConflictBg').classList.add('show'); else if(syncConflicts.length) showNextSyncConflict(); else syncOnLogin(); };
@@ -5888,7 +6038,7 @@ function initAccessibility(){
   function enhance(root){
     const nodes=[];
     if(root.nodeType===1) nodes.push(root);
-    if(root.querySelectorAll) nodes.push(...root.querySelectorAll('.modalBg,[onclick],button[title],.iconb,.legModeBtn,.arrowBtn'));
+    if(root.querySelectorAll) nodes.push(...root.querySelectorAll('.modalBg,[onclick],button[title],.iconb,.legModeBtn'));
     nodes.forEach(el=>{
       if(el.classList&&el.classList.contains('modalBg')){
         const modal=el.querySelector('.modal'); if(!modal) return;
