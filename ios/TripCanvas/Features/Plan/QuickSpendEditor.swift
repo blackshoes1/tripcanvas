@@ -74,7 +74,7 @@ struct QuickSpendEditor: View {
                 } header: { Text("영수증 사진") } footer: {
                     Text("사진 자체는 올리지 않고 이 기기 사진 보관함의 위치만 기억해요.")
                 }
-                if failed { Section { Text("저장하지 못했어요. 입력 내용은 유지되어 있어요.").foregroundStyle(.orange) } }
+                if failed { Section { Text("저장하지 못했어요. 입력 내용은 유지되어 있어요.").foregroundStyle(Ink.warning) } }
             }
             .paperGround()
             .tint(Ink.accent)

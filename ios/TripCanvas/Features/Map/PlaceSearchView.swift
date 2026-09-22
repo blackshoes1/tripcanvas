@@ -26,7 +26,7 @@ struct PlaceSearchView: View {
                     Section {
                         Label(errorMessage, systemImage: "exclamationmark.circle")
                             .font(.subheadline)
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(Ink.warning)
                     }
                 }
                 if searched && hits.isEmpty && errorMessage == nil && !isSearching {

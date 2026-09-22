@@ -141,9 +141,9 @@ struct TripPulseBar: View {
     }
     private var tint: Color {
         switch pulse.code {
-        case .delayed, .needsAttention: .orange
-        case .freeTime: .blue
-        case .dayComplete, .onTrack, .ahead: .green
+        case .delayed, .needsAttention: Ink.warning
+        case .freeTime: Ink.info
+        case .dayComplete, .onTrack, .ahead: Ink.positive
         case .resting, .noPlan, .unknown: .secondary
         }
     }

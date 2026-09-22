@@ -77,7 +77,7 @@ struct PlaceAdmissionLookup: View {
                     .font(.caption).foregroundStyle(.secondary)
                 if let link = response.sourceURL.flatMap(SpotAdmission.safeURL) { Link("출처 확인", destination: link).frame(minHeight: 44) }
             }
-            if let error { Text(error).font(.caption).foregroundStyle(.orange) }
+            if let error { Text(error).font(.caption).foregroundStyle(Ink.warning) }
             if let provider, let providerID {
                 Button {
                     working = true

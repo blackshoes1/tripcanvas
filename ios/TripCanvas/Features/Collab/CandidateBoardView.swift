@@ -368,8 +368,8 @@ struct CandidateCard: View {
                                 .font(.caption.weight(on ? .semibold : .regular))
                                 .padding(.horizontal, Space.m)
                                 .padding(.vertical, Space.xs + 2)
-                                .background(on ? Color.accentColor.opacity(0.18) : Color(.tertiarySystemFill), in: Capsule())
-                                .foregroundStyle(on ? Color.accentColor : .primary)
+                                .background(on ? Ink.accent.opacity(0.18) : Color(.tertiarySystemFill), in: Capsule())
+                                .foregroundStyle(on ? Ink.accent : .primary)
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("\(candidate.title) — \(reaction.label)")
@@ -415,7 +415,7 @@ struct CandidateCard: View {
                 }
                 .padding(Space.s)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.orange.opacity(0.10), in: RoundedRectangle(cornerRadius: Radius.card))
+                .background(Ink.warning.opacity(0.10), in: RoundedRectangle(cornerRadius: Radius.card))
             }
 
             HStack(spacing: Space.s) {
@@ -517,9 +517,14 @@ struct CandidateCard: View {
     private var badgeTint: Color {
         if candidate.status == "SCHEDULED" || candidate.status == "REJECTED" { return .secondary }
         switch CollabModel.verdict(candidate, memberCount: memberCount).tone {
-        case .good: return .green
-        case .split: return .orange
-        case .mixed: return .yellow
+        // 웹의 `.candMood` 규칙과 **같은 색을 말한다**(§색은 뜻이다). `.yellow`는 토큰에 없고,
+        // 같은 상태를 플랫폼마다 다른 색으로 말하면 한 여행이 기기마다 달라 보인다.
+        // ⚠️ split(CONFLICT, '의견이 갈려 있어요')과 mixed(MIXED, '조금 갈려요')의 **색 세기가
+        //    뒤바뀐 것으로 보인다** — 더 약한 쪽이 더 센 색이다. 웹을 그대로 옮겼을 뿐이고,
+        //    바로잡으려면 양쪽을 같이 바꿔야 한다(보이는 것이 바뀌므로 사람이 정한다).
+        case .good: return Ink.positive
+        case .split: return Ink.warning
+        case .mixed: return Ink.danger
         case .quiet: return .secondary
         }
     }
@@ -540,8 +545,8 @@ struct GroupProposalCard: View {
             Text("From J")
                 .font(.caption2.weight(.semibold))
                 .padding(.horizontal, Space.s).padding(.vertical, 2)
-                .background(Color.accentColor.opacity(0.15), in: Capsule())
-                .foregroundStyle(Color.accentColor)
+                .background(Ink.accent.opacity(0.15), in: Capsule())
+                .foregroundStyle(Ink.accent)
 
             Text(plan.summary).font(.headline)
 

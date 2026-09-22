@@ -178,7 +178,7 @@ struct PlanMapSection: View {
                                     .accessibilityLabel("\(spot.name) 일정 작업")
                                 }
                             }
-                            .listRowBackground(selection == index ? Color.accentColor.opacity(0.12) : Ink.raised)
+                            .listRowBackground(selection == index ? Ink.accent.opacity(0.12) : Ink.raised)
                             .id(index)
                         }
                         .onMove { source, destination in

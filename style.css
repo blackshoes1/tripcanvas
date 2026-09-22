@@ -1,7 +1,7 @@
-  :root{--primary:#46702e;--primary-dark:#375a25;--ink:#16130f;--muted:#4f4740;--subtle:#6b6256;--border:#e3dccc;--surface:#fff;--surface-2:#f4f1ea;--header:#f4f1ea;--focus:#2e5c6e;--shadow:0 10px 28px rgba(22,19,15,.10);--city-1:#c6482b;--city-2:#b8650f;--city-3:#3e7a4c;--city-4:#2e5c6e;--city-5:#7b5ea7;--hover-bg:#ede7da;--selected-bg:#eef3e9;--selected-hover-bg:#e1ebd8;--selected-border:#46702e;--selected-accent:#375a25;--drag-bg:#ede7da;--meta-eta:#4f4740;--meta-eta-fixed:#2e5c6e;--meta-cost:#4f4740;--meta-link:#a93a20;--meta-warning:#8e4e0b;--meta-danger:#a52c22;--meta-soft:#6b6256;--meta-good:#2f5e3b;--mono:ui-monospace,SFMono-Regular,'SF Mono',Menlo,monospace}
+  :root{--primary:#46702e;--primary-dark:#375a25;--ink:#16130f;--muted:#4f4740;--subtle:#6b6256;--border:#e3dccc;--surface:#fff;--surface-2:#f4f1ea;--header:#f4f1ea;--focus:#2e5c6e;--shadow:0 10px 28px rgba(22,19,15,.10);--city-1:#c6482b;--city-2:#b8650f;--city-3:#3e7a4c;--city-4:#2e5c6e;--city-5:#7b5ea7;--hover-bg:#ede7da;--selected-bg:#eef3e9;--selected-hover-bg:#e1ebd8;--selected-border:#46702e;--selected-accent:#375a25;--drag-bg:#ede7da;--meta-eta:#4f4740;--meta-eta-fixed:#2e5c6e;--meta-cost:#4f4740;--meta-link:#a93a20;--meta-warning:#8e4e0b;--meta-danger:#a52c22;--meta-soft:#6b6256;--meta-good:#2f5e3b;--badge-good-bg:#dcebdf;--badge-good-fg:#2f5e3b;--badge-warn-bg:#f6ead3;--badge-warn-fg:#8e4e0b;--badge-danger-bg:#f6e0dc;--badge-danger-fg:#a52c22;--mono:ui-monospace,SFMono-Regular,'SF Mono',Menlo,monospace}
   *{margin:0;padding:0;box-sizing:border-box}
   body{font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;height:100dvh;display:flex;flex-direction:column;background:var(--surface-2);color:var(--ink);font-size:14px}
-  body.theme-dark{--primary:#9cc97a;--primary-dark:#b4d998;--ink:#f4f1ea;--muted:#d5ccbb;--subtle:#b5ab98;--border:#332d25;--surface:#221e19;--surface-2:#16130f;--header:#16130f;--shadow:0 10px 28px rgba(0,0,0,.45);--city-1:#e0674a;--city-2:#e0a050;--city-3:#7fc08c;--city-4:#7fa9bc;--city-5:#b79ae0;--hover-bg:#2b2620;--selected-bg:#232b1d;--selected-hover-bg:#2e3826;--selected-border:#9cc97a;--selected-accent:#b4d998;--drag-bg:#2b2620;--meta-eta:#d5ccbb;--meta-eta-fixed:#7fa9bc;--meta-cost:#d5ccbb;--meta-link:#f0937a;--meta-warning:#f0a050;--meta-danger:#ef7a6a;--meta-soft:#b5ab98;--meta-good:#8fc79b}
+  body.theme-dark{--primary:#9cc97a;--primary-dark:#b4d998;--ink:#f4f1ea;--muted:#d5ccbb;--subtle:#b5ab98;--border:#332d25;--surface:#221e19;--surface-2:#16130f;--header:#16130f;--shadow:0 10px 28px rgba(0,0,0,.45);--city-1:#e0674a;--city-2:#e0a050;--city-3:#7fc08c;--city-4:#7fa9bc;--city-5:#b79ae0;--hover-bg:#2b2620;--selected-bg:#232b1d;--selected-hover-bg:#2e3826;--selected-border:#9cc97a;--selected-accent:#b4d998;--drag-bg:#2b2620;--meta-eta:#d5ccbb;--meta-eta-fixed:#7fa9bc;--meta-cost:#d5ccbb;--meta-link:#f0937a;--meta-warning:#f0a050;--meta-danger:#ef7a6a;--meta-soft:#b5ab98;--meta-good:#8fc79b;--badge-good-bg:#1b2e20;--badge-good-fg:#8fc79b;--badge-warn-bg:#3a2f14;--badge-warn-fg:#f0c97f;--badge-danger-bg:#3a2320;--badge-danger-fg:#ef9d8f}
   :focus-visible{outline:3px solid color-mix(in srgb,var(--focus) 70%,transparent);outline-offset:2px}
   .srOnly{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
   button{font-family:inherit;cursor:pointer}
@@ -14,6 +14,9 @@
   .btn{border:1px solid var(--border);border-radius:10px;padding:9px 14px;font-size:13px;background:var(--surface);color:var(--ink);transition:.15s;min-height:40px}
   .btn:hover{background:var(--hover-bg);border-color:var(--subtle)}
   .btn.primary{background:var(--primary);border-color:var(--primary);color:#fff;font-weight:700}
+  /* 줄 안에 끼는 작은 버튼. 인라인 style로 각자 만들던 것을 한 이름으로 모았다(2026-09-21).
+     ⚠️ 손가락이 닿아야 하므로 `min-height`는 44px 아래로 내리되 26px 밑으로는 두지 않는다. */
+  .btn.sm{font-size:11px;padding:2px 9px;min-height:26px;border-radius:8px}
   .btn.primary:hover{background:var(--primary-dark)}
   .btn.ghost{background:transparent;border:1px solid var(--border)}
   .tripPicker{border:0;background:transparent;color:var(--ink);font-weight:800;font-size:14px;display:flex;align-items:center;gap:7px;padding:8px;border-radius:8px}
@@ -258,8 +261,9 @@
   .candMeta{color:var(--subtle);font-size:11.5px;margin-top:3px}
   .candNote{color:var(--muted);font-size:12px;margin-top:4px;overflow-wrap:anywhere}
   .candMood{font-size:11px;padding:2px 8px;border-radius:999px;background:var(--surface-2);color:var(--muted);white-space:nowrap}
-  .candMood.split{background:#f6ead3;color:#8e4e0b}
-  body.theme-dark .candMood.split{background:#3a2f14;color:#f0c97f}
+  /* ⚠️ `.candMood.quiet`는 규칙이 **없는 것이 맞다** — 위의 기본(`--surface-2`/`--muted`)이 곧
+     '아직 조용하다'는 뜻이라 따로 칠할 것이 없다. 빠진 줄로 보고 더하지 말 것. */
+  .candMood.split{background:var(--badge-warn-bg);color:var(--badge-warn-fg)}
   .candReact{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
   .candReact button{border:1px solid var(--border);background:var(--surface-2);border-radius:999px;padding:4px 10px;font-size:12px;min-height:30px;color:var(--ink)}
   .candReact button[aria-pressed="true"]{border-color:#2e5c6e;background:#dce7eb;color:#24505f;font-weight:700}
@@ -310,8 +314,8 @@
   .prefChips button[aria-pressed="true"]{border-color:#2e5c6e;background:#dce7eb;color:#24505f;font-weight:700}
   body.theme-dark .prefChips button[aria-pressed="true"]{background:#1e3038;color:#9cc4d2}
   .prefOthers{display:grid;gap:2px;margin-top:6px}
-  .candMood.good{background:#dcebdf;color:#2f5e3b}.candMood.mixed{background:#f6e0dc;color:#a52c22}
-  body.theme-dark .candMood.good{background:#1b2e20;color:#8fc79b}body.theme-dark .candMood.mixed{background:#3a2320;color:#ef9d8f}
+  .candMood.good{background:var(--badge-good-bg);color:var(--badge-good-fg)}
+  .candMood.mixed{background:var(--badge-danger-bg);color:var(--badge-danger-fg)}
   @media (max-width:760px){
     #main{display:block;min-height:0}
     #map,#kmap{position:absolute;inset:0;width:100%;height:100%}
