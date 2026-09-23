@@ -1,6 +1,7 @@
 'use client';
 // 로그인 · 동기화 상태 표시
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { cloudAuth, initializeCloud } from '../services/tripCanvasClient';
 
 import type { CloudUser } from '../hooks/useCloudAuth';
 
@@ -20,6 +21,18 @@ export function AuthBar({ user, available, statusLabel, onSignIn, onSignOut, ope
   const [pass, setPass] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [providers, setProviders] = useState<string[]>([]);
+  useEffect(() => {
+    let active = true;
+    void initializeCloud().then(() => {
+      if (!active) return;
+      setProviders(cloudAuth.socialProviders());
+      const message = cloudAuth.socialError();
+      if (message) { setError(message); onOpenChange(true); }
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [onOpenChange]);
 
   if (!available) return null;
 
@@ -55,6 +68,14 @@ export function AuthBar({ user, available, statusLabel, onSignIn, onSignOut, ope
           <div className="itEditor" role="dialog" aria-modal="true" aria-label="로그인">
             <h2>로그인</h2>
             <p className="hint">로그인하면 여행이 내 계정에 저장돼 다른 기기에서도 이어서 볼 수 있어요.</p>
+            {providers.length > 0 && <div className="itEditBtns" aria-label="소셜 로그인" style={{ flexWrap: 'wrap' }}>
+              {providers.map(provider => <button key={provider} type="button" disabled={busy} onClick={() => {
+                setBusy(true); setError(null);
+                void cloudAuth.startSocial(provider).catch((cause: unknown) => {
+                  setError(cause instanceof Error ? cause.message : '로그인하지 못했어요.'); setBusy(false);
+                });
+              }}>{cloudAuth.socialLabel(provider)}로 계속하기</button>)}
+            </div>}
             <label>이메일
               <input type="email" value={email} autoComplete="username" autoFocus
                 onChange={e => setEmail(e.target.value)} />

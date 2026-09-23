@@ -98,6 +98,25 @@ struct TripCanvasAuthClient: AuthClient {
         return AuthSession(token: token, userId: id, email: (user["email"] as? String) ?? email)
     }
 
+    /// Google SDK가 발급한 ID token만 서버에 전송한다. 사용자 ID나 이메일을 신뢰하지 않는다.
+    func signInGoogle(idToken: String, nonce: String) async throws -> AuthSession {
+        let (status, body, headers, _) = try await call("/api/auth/sign-in/social", body: [
+            "provider": "google", "idToken": ["token": idToken, "nonce": nonce]
+        ])
+        guard (200..<300).contains(status) else {
+            if status == 429 || body?["code"] as? String == "EMAIL_NOT_VERIFIED" {
+                throw AuthError.from(status: status, body: body)
+            }
+            throw AuthError(code: .unknown, message: "Google 로그인을 확인하지 못했어요. 다시 시도해 주세요.")
+        }
+        // 응답 본문의 token은 서명되지 않은 토큰이다. 기존 API가 쓰는 서명된 헤더만 받는다.
+        guard let token = headers["set-auth-token"], !token.isEmpty,
+              let user = body?["user"] as? [String: Any], let id = user["id"] as? String, !id.isEmpty else {
+            throw AuthError.notSignedIn
+        }
+        return AuthSession(token: token, userId: id, email: user["email"] as? String ?? "")
+    }
+
     func signUp(email: String, password: String) async throws -> SignUpResult {
         // 이름은 받지 않는다 — 여행에 보이는 이름은 여행별로 정한다(§69)
         let name = email.split(separator: "@").first.map(String.init) ?? email
@@ -220,6 +239,14 @@ final class AuthStore {
     var email: String? { session?.email }
 
     func dismissNotice() { notice = nil }
+
+    /// 교환권 응답을 바로 믿어 저장하지 않고 기존 세션 검증 경로로 확인한다.
+    func completeSocialSignIn(token: String) async {
+        await work {
+            guard let session = try await self.client.session(token: token) else { throw AuthError.notSignedIn }
+            self.persist(session)
+        }
+    }
 
     func signIn(email: String, password: String) async {
         await work {

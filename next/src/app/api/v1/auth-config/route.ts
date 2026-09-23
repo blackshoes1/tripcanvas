@@ -2,12 +2,15 @@
 // 비밀은 싣지 않는다: 제공자 이름과, 예전 계정이 비밀번호를 새로 정해야 하는지뿐이다.
 import { resolveAuthProvider } from '@/server/api/authConfig';
 import { newAuthEnabled } from '../route-deps';
+import { getEnv } from '@/server/config/env';
+import { enabledSocialProviders } from '@/server/auth/socialProviders';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  return Response.json(resolveAuthProvider(newAuthEnabled), {
+  return Response.json({ ...resolveAuthProvider(newAuthEnabled),
+    socialProviders: newAuthEnabled ? enabledSocialProviders(getEnv().socialProviders) : [] }, {
     // 전환 시점에 옛 답이 남아 있으면 로그인이 통째로 막힌다 — 캐시하지 않는다
     headers: { 'cache-control': 'no-store' }
   });
