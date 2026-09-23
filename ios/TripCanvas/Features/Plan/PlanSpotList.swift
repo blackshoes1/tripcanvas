@@ -163,7 +163,7 @@ struct PlanSpotList: View {
             if model.plan == nil && !model.planAttempted(for: model.selectedDay) {
                 ProgressView("이동·도착 시각을 계산하는 중").font(.caption)
             }
-            if let totals = model.planDay?.totals { daySummary(totals) }
+            if let totals = model.planDay?.totals { Self.daySummary(totals) }
             Divider()
             costRow(day)
             Button {
@@ -276,27 +276,16 @@ struct PlanSpotList: View {
     /// 하루의 무게 — 한 줄(`이동 2시간 27분 · 예상 ₩456,665`)과 종료 시각. 값은 전부 서버가 계산한 것이다.
     /// 거리·미정·예산 같은 나머지는 `dayDetails`(접힘) 안에 있다.
     @ViewBuilder
-    private func daySummary(_ totals: DayPlanTotals) -> some View {
-        if Self.summaryLine(totals) != nil {
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: Space.l) { summaryStats(totals) }
-                    .fixedSize(horizontal: true, vertical: true)
-                VStack(alignment: .leading, spacing: Space.s) { summaryStats(totals) }
-            }
-            .font(.subheadline)
-            .foregroundStyle(totals.overloaded ? Ink.warning : Ink.soft)
-        }
-    }
-
-    @ViewBuilder
-    private func summaryStats(_ totals: DayPlanTotals) -> some View {
-        if totals.travelMinutes > 0 {
-            Label("이동 \(TimeFormat.duration(totals.travelMinutes))", systemImage: "clock")
+    static func daySummary(_ totals: DayPlanTotals) -> some View {
+        if let line = summaryLine(totals) {
+            // 요약의 핵심은 시간 문구다. 자동 Label 스타일·배치 후보에 맡기지 않고
+            // 좁은 카드와 큰 글씨에서도 텍스트 높이를 확보한다.
+            Text(line)
+                .font(.subheadline)
+                .foregroundStyle(totals.overloaded ? Ink.warning : Ink.soft)
+                .lineLimit(nil)
                 .fixedSize(horizontal: false, vertical: true)
-        }
-        if let end = totals.endMinutes {
-            Label("종료 \(TimeFormat.clockAcrossMidnight(end))", systemImage: "flag")
-                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
