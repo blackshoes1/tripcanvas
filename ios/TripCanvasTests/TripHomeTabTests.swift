@@ -40,7 +40,7 @@ final class TripHomeTabTests: XCTestCase {
     }
 
     func testLabelsUseProductWordsNotInternalOnes() {
-        XCTAssertEqual(TripHomeTab.today.label, "지금")
+        XCTAssertEqual(TripHomeTab.today.label, "여행")
         XCTAssertEqual(TripHomeTab.plan.label, "일정")
     }
 }
