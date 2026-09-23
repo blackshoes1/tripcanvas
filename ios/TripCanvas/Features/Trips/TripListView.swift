@@ -377,7 +377,7 @@ struct TripListView: View {
                         NavigationLink(value: trip) {
                             TripRow(trip: trip)
                         }
-                        TripCoverView(trip: trip, api: env.service.api, refresh: coverRefresh) { path.append(trip) }
+                        TripCoverView(trip: trip, api: env.service.api, cache: env.service.cache, refresh: coverRefresh) { path.append(trip) }
                     }
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)

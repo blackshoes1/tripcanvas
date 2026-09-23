@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct TripCoverResponse: Decodable {
+struct TripCoverResponse: Codable, Equatable {
     let revision: Int
     let imageBase64: String?
     var image: UIImage? {
@@ -11,6 +11,8 @@ struct TripCoverResponse: Decodable {
 struct TripCoverView: View {
     let trip: TripSummary
     let api: APIClient
+    /// 마지막으로 본 표지를 파일로 남겨 둔다 — 서버가 답하기 전과 **답하지 못할 때** 자리가 비지 않게.
+    let cache: TripCache
     let refresh: UUID
     var onOpen: () -> Void
     @State private var cover: TripCoverService.Cover?
@@ -82,9 +84,21 @@ struct TripCoverView: View {
                         "imageBase64": data.map { $0.base64EncodedString() as Any } ?? NSNull()
                     ])
                     self.saved = updated
+                    await cache.save(updated, key: TripCache.coverKey(tripId: trip.id))
                 }
             }
         }
+    }
+
+    /// 표지를 못 받았을 때 **무엇을 보여줄지**.
+    ///
+    /// ⚠️ 못 받았다고 보여 주던 표지를 지우지 않는다 — NAS가 잠깐 꺼져도 여행 목록이 비어 보이지 않게.
+    /// 표지는 계산이 아니라 사진이라 한 판 낡아도 틀린 말을 하지 않는다(도착 시각과 다른 점이다).
+    /// ⚠️ 그래도 `failed`는 세운다: 들고 있는 `revision`이 낡아 그대로 편집하면 충돌한다.
+    /// 그래서 화면은 '표지 바꾸기' 대신 '다시 불러오기'를 보인다.
+    static func resolve(fetched: TripCoverResponse?, shown: TripCoverResponse?) -> (cover: TripCoverResponse?, failed: Bool) {
+        if let fetched { return (fetched, false) }
+        return (shown, true)
     }
 
     @MainActor
@@ -92,14 +106,18 @@ struct TripCoverView: View {
         guard !showsEditor else { return }
         let attempt = UUID()
         loadID = attempt
-        do {
-            let result: TripCoverResponse = try await api.get(endpoint)
+        let key = TripCache.coverKey(tripId: trip.id)
+        // 지난번 표지를 **먼저** 그린다. 이미 보여 주고 있는 것이 있으면 건드리지 않는다(깜빡임).
+        if saved == nil, let cached = await cache.load(TripCoverResponse.self, key: key) {
             guard !Task.isCancelled, !showsEditor, loadID == attempt else { return }
-            saved = result; loadFailed = false
-        } catch {
-            guard !Task.isCancelled, !showsEditor, loadID == attempt else { return }
-            saved = nil; loadFailed = true
+            saved = cached.value
         }
+        let fetched: TripCoverResponse? = try? await api.get(endpoint)
+        guard !Task.isCancelled, !showsEditor, loadID == attempt else { return }
+        let outcome = Self.resolve(fetched: fetched, shown: saved)
+        saved = outcome.cover
+        loadFailed = outcome.failed
+        if let fetched { await cache.save(fetched, key: key) }
         if saved?.imageBase64 == nil {
             let result = await TripCoverService.shared.representative(city: city)
             guard !Task.isCancelled, loadID == attempt else { return }

@@ -193,4 +193,54 @@ extension TripCoverTests {
             XCTAssertEqual(error as? APIError, .revisionConflict(message: "표지가 바뀌었어요", revision: nil))
         }
     }
+
+    // ── 표지 디스크 캐시 ─────────────────────────────────────────────────────
+    // 원본은 서버다. 기기 사본은 **먼저 그리기**와 **못 받았을 때 버티기**를 위한 것이다.
+
+    /// 서버가 답하면 그 값이 이긴다.
+    func testServerAnswerWins() {
+        let fresh = TripCoverResponse(revision: 7, imageBase64: "new")
+        let stale = TripCoverResponse(revision: 3, imageBase64: "old")
+        let outcome = TripCoverView.resolve(fetched: fresh, shown: stale)
+        XCTAssertEqual(outcome.cover, fresh)
+        XCTAssertFalse(outcome.failed)
+    }
+
+    /// ⚠️ 못 받았다고 **보여 주던 표지를 지우지 않는다** — NAS가 잠깐 꺼져도 목록이 비어 보이지 않게.
+    /// 그래도 `failed`는 선다: 들고 있는 revision이 낡아 그대로 편집하면 충돌하므로
+    /// 화면이 '표지 바꾸기' 대신 '다시 불러오기'를 보여야 한다.
+    func testAFailedReadKeepsWhatIsAlreadyShown() {
+        let cached = TripCoverResponse(revision: 3, imageBase64: "old")
+        let outcome = TripCoverView.resolve(fetched: nil, shown: cached)
+        XCTAssertEqual(outcome.cover, cached, "사진은 한 판 낡아도 틀린 말을 하지 않는다")
+        XCTAssertTrue(outcome.failed, "편집은 막아야 한다 — revision이 낡았다")
+    }
+
+    /// 보여 줄 것이 아무것도 없으면 비어 있는 그대로 둔다(없는 표지를 지어내지 않는다).
+    func testNothingToShowStaysEmpty() {
+        let outcome = TripCoverView.resolve(fetched: nil, shown: nil)
+        XCTAssertNil(outcome.cover)
+        XCTAssertTrue(outcome.failed)
+    }
+
+    /// 표지를 지운 것도 서버의 답이다 — 캐시된 옛 사진으로 되돌아가지 않는다.
+    func testRemovedCoverIsNotResurrectedFromCache() {
+        let removed = TripCoverResponse(revision: 8, imageBase64: nil)
+        let outcome = TripCoverView.resolve(fetched: removed, shown: TripCoverResponse(revision: 7, imageBase64: "old"))
+        XCTAssertEqual(outcome.cover, removed)
+        XCTAssertNil(outcome.cover?.imageBase64)
+    }
+
+    /// 캐시는 파일로 오간다 — 앱을 껐다 켜도 남는다.
+    func testCoverSurvivesARoundTripThroughTheCache() async throws {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString)
+        let cache = TripCache(directory: dir)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let key = TripCache.coverKey(tripId: "t1")
+        await cache.save(TripCoverResponse(revision: 4, imageBase64: "abc"), key: key)
+        let loaded = await cache.load(TripCoverResponse.self, key: key)
+        XCTAssertEqual(loaded?.value, TripCoverResponse(revision: 4, imageBase64: "abc"))
+        let other = await cache.load(TripCoverResponse.self, key: TripCache.coverKey(tripId: "다른-여행"))
+        XCTAssertNil(other, "여행마다 따로 남는다")
+    }
 }
