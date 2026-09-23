@@ -7,6 +7,8 @@ struct TodayView: View {
     /// **여행이 들고 있는** 모델(`TripScreenModels`). 이 화면은 탭을 바꾸면 죽지만 모델은 남는다 —
     /// 그래서 돌아왔을 때 서버를 기다리지 않고 마지막 내용이 그대로 보인다.
     let model: TodayViewModel
+    let onOpenPlan: () -> Void
+    @State private var coverRefresh = UUID()
     @Environment(AppEnvironment.self) private var env
     @Environment(\.scenePhase) private var scenePhase
     @State private var showsTravelSetup = false
@@ -18,10 +20,18 @@ struct TodayView: View {
         ScrollView {
                 // 아직 시작하지 않은 여행에서는 '지금'이 할 말이 없다 — 며칠 남았는지부터 말한다.
                 // '여행 보기'를 눌렀는지는 모델이 기억한다 — 탭을 오갔다고 D-day로 되돌아가지 않는다.
-                if let days = model.daysUntilStart, !model.showsPlanPreview {
-                    countdown(days: days, startDate: trip.start)
+                if let days = countdownDays, !model.showsPlanPreview {
+                    countdown(days: days)
                 } else {
                 VStack(alignment: .leading, spacing: Space.l) {
+                    if countdownDays != nil, model.showsPlanPreview {
+                        Button { model.showsPlanPreview = false } label: {
+                            Label("여행 준비로 돌아가기", systemImage: "chevron.left")
+                                .font(.subheadline).frame(minHeight: 44)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(Ink.accent)
+                    }
                     header(model)
                     if model.isOffline, let cachedAt = model.cachedAt {
                         Label("오프라인 상태예요 · 마지막 동기화 \(TimeFormat.shortTime(cachedAt))", systemImage: "wifi.slash")
@@ -178,6 +188,7 @@ struct TodayView: View {
 
     private func refreshToday(reason: TravelModeController.RefreshReason) async {
         await model.load()
+        coverRefresh = UUID()
         await refreshTravelMode(reason: reason)
     }
 
@@ -223,42 +234,34 @@ struct TodayView: View {
         }
     }
 
-    @ViewBuilder
-    /// 출발까지 며칠 남았는지. 숫자는 서버가 센다 — 앱이 세면 여행지의 오늘과 어긋난다.
-    private func countdown(days: Int, startDate: String) -> some View {
-        VStack(spacing: Space.m) {
-            Spacer(minLength: Space.xl)
-            Text("D-\(days)")
-                .font(.system(size: 56, weight: .bold, design: .rounded))
-                .monospacedDigit()
-                .foregroundStyle(Ink.accent)
-            if let label = TimeFormat.dayChipLabel(startDate) {
-                Text("\(label) 출발").font(.headline).foregroundStyle(.secondary)
-            }
-            Text("아직 여행 전이에요. 일정 탭에서 계획을 다듬어 두세요.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+    // 첫 응답 전에도 목록에서 받은 서버 요약으로 출발 안내를 보여 준다.
+    private var countdownDays: Int? {
+        model.daysUntilStart ?? (model.today == nil && trip.isUpcoming ? trip.daysUntilStart : nil)
+    }
 
-            // 막아 두는 것이 아니라 기본이 D-day라는 뜻이다 — 눌러서 볼 수 있다.
-            // 여행 전의 '지금'은 준비다 — 예약 정보로 바로 간다(항공·숙박·렌터카).
-            HStack(spacing: Space.s) {
-                SecondaryActionButton(title: "여행 보기", systemImage: "eye") {
-                    model.showsPlanPreview = true
-                }
-                NavigationLink { BookingListView(trip: trip) } label: {
-                    Label("예약 정보", systemImage: "ticket").frame(minHeight: 44)
-                }
-                .buttonStyle(.bordered)
-                .tint(Ink.ink)
+    private func countdown(days: Int) -> some View {
+        let summary = model.today?.trip ?? trip
+        return VStack(spacing: Space.m) {
+            VStack(spacing: -Space.l) {
+                TripCoverView(trip: summary, api: env.service.api, cache: env.service.cache,
+                              refresh: coverRefresh, isHero: true, onOpen: {})
+                TripDepartureCard(trip: summary, days: days, onOpenPlan: onOpenPlan)
             }
-            .padding(.top, Space.s)
-            Spacer(minLength: Space.xl)
+            if model.isOffline, let cachedAt = model.cachedAt {
+                OfflineNotice(savedAt: cachedAt)
+            }
+            if let error = model.loadErrorMessage {
+                InlineErrorBanner(message: "여행 정보를 새로 불러오지 못했어요", detail: error) {
+                    Task { await model.load() }
+                }
+            }
+            Button("여행 중 화면 미리보기") { model.showsPlanPreview = true }
+                .font(.footnote)
+                .foregroundStyle(Ink.soft)
+                .buttonStyle(.plain)
+                .frame(minHeight: 44)
         }
-        .frame(maxWidth: .infinity)
         .padding(Space.l)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("출발까지 \(days)일 남았어요")
     }
 
     private func header(_ model: TodayViewModel) -> some View {

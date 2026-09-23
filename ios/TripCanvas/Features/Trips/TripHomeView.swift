@@ -63,7 +63,7 @@ struct TripHomeView: View {
             Group {
                 switch selection.wrappedValue {
                 case .today:
-                    TodayView(trip: trip, model: models.today)
+                    TodayView(trip: trip, model: models.today, onOpenPlan: { selection.wrappedValue = .plan })
                 case .plan, .map:
                     // 한 갈래다 — 뷰 정체성이 유지돼 탭을 오가도 고른 날·편집기가 그대로다.
                     TripPlanView(trip: trip, model: models.plan, discovery: models.discovery, showsMap: Binding(
@@ -156,6 +156,7 @@ struct TripHomeView: View {
             .foregroundStyle(on ? Ink.accent : Ink.soft)
             .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
         .accessibilityLabel(item.label)
         .accessibilityAddTraits(on ? [.isSelected] : [])
     }
@@ -277,7 +278,7 @@ enum TripHomeTab: String, CaseIterable, Hashable, Sendable {
 
     var label: String {
         switch self {
-        case .today: return "지금"
+        case .today: return "여행"
         case .plan: return "일정"
         case .map: return "지도"
         case .more: return "더보기"

@@ -14,7 +14,9 @@ struct TripCoverView: View {
     /// 마지막으로 본 표지를 파일로 남겨 둔다 — 서버가 답하기 전과 **답하지 못할 때** 자리가 비지 않게.
     let cache: TripCache
     let refresh: UUID
+    var isHero = false
     var onOpen: () -> Void
+    static let changed = Notification.Name("withj.tripCoverChanged")
     @State private var cover: TripCoverService.Cover?
     @State private var saved: TripCoverResponse?
     @State private var showsEditor = false
@@ -27,53 +29,72 @@ struct TripCoverView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.xs) {
-            Button(action: onOpen) {
-                Color.clear
-                    .aspectRatio(TripCoverImage.aspectRatio, contentMode: .fit)
-                    .overlay {
-                        if let image = saved?.image ?? cover?.image {
-                            Image(uiImage: image).resizable().scaledToFill()
-                        } else {
-                            Rectangle().fill(Ink.sunken)
-                                .overlay {
-                                    VStack(spacing: Space.s) {
-                                        Image(systemName: "globe.asia.australia").font(.largeTitle)
-                                        Text(city.isEmpty ? "새로운 여행" : city).font(Typeface.editorial(.title3))
-                                    }.foregroundStyle(Ink.soft)
-                                }
+            if isHero {
+                photo
+                    .overlay(alignment: .topTrailing) {
+                        if trip.canEdit {
+                            Button {
+                                if loadFailed { Task { await load() } }
+                                else { showsEditor = true }
+                            } label: {
+                                Image(systemName: loadFailed ? "arrow.clockwise" : "camera")
+                                    .font(.body.weight(.medium))
+                                    .frame(width: 44, height: 44)
+                                    .background(Ink.raised, in: Circle())
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(Ink.ink)
+                            .disabled(saved == nil && !loadFailed)
+                            .accessibilityLabel(loadFailed ? "표지 다시 불러오기" : "여행 사진 변경")
+                            .padding(Space.m)
                         }
                     }
-                    .clipped()
-                    .clipShape(RoundedRectangle(cornerRadius: 3))
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("\(trip.name) 여행 열기")
-            if saved?.imageBase64 == nil, let cover {
-                Link(destination: cover.source) {
-                    Text("사진: \(cover.author) · \(cover.license) · 일부 잘림")
-                        .font(.caption2).foregroundStyle(Ink.soft)
-                }.buttonStyle(.plain)
-            }
-            if trip.canEdit {
-                HStack {
-                    Spacer()
-                    if loadFailed {
-                        Button("표지 다시 불러오기") { Task { await load() } }
-                            .accessibilityHint("표지를 불러온 뒤 사진을 바꿀 수 있습니다")
-                    } else {
-                        Button { showsEditor = true } label: { Label("표지 바꾸기", systemImage: "photo") }
-                            .disabled(saved == nil)
+                    .overlay(alignment: .bottomLeading) {
+                        if saved?.imageBase64 == nil, let cover {
+                            attribution(cover)
+                                .padding(Space.s)
+                                .background(Ink.raised.opacity(0.95), in: RoundedRectangle(cornerRadius: 6))
+                                .padding(.horizontal, Space.m)
+                                .padding(.bottom, Space.xl)
+                        }
                     }
+            } else {
+                Button(action: onOpen) { photo }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(trip.name) 여행 열기")
+                if saved?.imageBase64 == nil, let cover { attribution(cover) }
+                if trip.canEdit {
+                    HStack {
+                        Spacer()
+                        if loadFailed {
+                            Button("표지 다시 불러오기") { Task { await load() } }
+                                .accessibilityHint("표지를 불러온 뒤 사진을 바꿀 수 있습니다")
+                        } else {
+                            Button { showsEditor = true } label: { Label("표지 바꾸기", systemImage: "photo") }
+                                .disabled(saved == nil)
+                        }
+                    }
+                    .font(.caption)
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Ink.accent)
+                    .frame(minHeight: 44)
                 }
-                .font(.caption)
-                .buttonStyle(.plain)
-                .foregroundStyle(Ink.accent)
-                .frame(minHeight: 44)
             }
         }
         .task(id: refresh) { await load() }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { Task { await load() } }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Self.changed)) { notification in
+            guard notification.object as? String == trip.id,
+                  let updated = notification.userInfo?["cover"] as? TripCoverResponse else { return }
+            // 같은 서버 저장 응답을 공유한다. 목록으로 돌아갈 때 옛 사진이 다시 보이지 않게 한다.
+            loadID = UUID()
+            saved = updated
+            loadFailed = false
+            if updated.imageBase64 == nil, cover == nil {
+                Task { cover = await TripCoverService.shared.representative(city: city) }
+            }
         }
         .sheet(isPresented: $showsEditor, onDismiss: { Task { await load() } }) {
             // 편집 중에는 최초에 읽은 revision을 유지한다. 충돌 시 자동 덮어쓰지 않는다.
@@ -85,9 +106,39 @@ struct TripCoverView: View {
                     ])
                     self.saved = updated
                     await cache.save(updated, key: TripCache.coverKey(tripId: trip.id))
+                    NotificationCenter.default.post(name: Self.changed, object: trip.id, userInfo: ["cover": updated])
                 }
             }
         }
+    }
+
+    private var photo: some View {
+        Color.clear
+            .aspectRatio(TripCoverImage.aspectRatio, contentMode: .fit)
+            .overlay {
+                if let image = saved?.image ?? cover?.image {
+                    Image(uiImage: image).resizable().scaledToFill()
+                } else {
+                    Rectangle().fill(Ink.sunken)
+                        .overlay {
+                            VStack(spacing: Space.s) {
+                                Image(systemName: "globe.asia.australia").font(.largeTitle)
+                                Text(city.isEmpty ? "새로운 여행" : city)
+                                    .font(isHero ? .title3 : Typeface.editorial(.title3))
+                            }.foregroundStyle(Ink.soft)
+                        }
+                }
+            }
+            .clipped()
+            .clipShape(RoundedRectangle(cornerRadius: isHero ? 18 : 3))
+            .accessibilityLabel("\(trip.name) 대표 사진")
+    }
+
+    private func attribution(_ cover: TripCoverService.Cover) -> some View {
+        Link(destination: cover.source) {
+            Text("사진: \(cover.author) · \(cover.license) · 일부 잘림")
+                .font(.caption2).foregroundStyle(Ink.soft)
+        }.buttonStyle(.plain)
     }
 
     /// 표지를 못 받았을 때 **무엇을 보여줄지**.
