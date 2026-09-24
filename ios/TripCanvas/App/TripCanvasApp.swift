@@ -90,8 +90,8 @@ struct SignInView: View {
                     .foregroundStyle(Ink.ink)
                     .padding(.bottom, 48)
                     .opacity(introVisible || reduceMotion ? 1 : 0)
-                    .offset(y: introVisible || reduceMotion ? 0 : 10)
-                    .animation(reduceMotion ? nil : .easeOut(duration: 0.36), value: introVisible)
+                    .offset(y: introVisible || reduceMotion ? 0 : 14)
+                    .animation(reduceMotion ? nil : .easeOut(duration: 0.7).delay(0.08), value: introVisible)
 
                     if showsEmailForm {
                         emailForm
@@ -114,7 +114,13 @@ struct SignInView: View {
             .scrollDismissesKeyboard(.interactively)
         }
         .background(Ink.paper.ignoresSafeArea())
-        .onAppear { introVisible = true }
+        .task {
+            guard !introVisible else { return }
+            if reduceMotion { introVisible = true; return }
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled else { return }
+            introVisible = true
+        }
         .task { await social.loadProviders() }
         .onDisappear { social.cancel() }
         .onChange(of: mode) { _, _ in env.auth.dismissNotice() }
@@ -122,19 +128,20 @@ struct SignInView: View {
 
     private var methodPicker: some View {
         VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 0) {
-                Text("다시 만나 반가워요")
-                    .font(.title.weight(.semibold))
-                    .foregroundStyle(Ink.ink)
-                Text("여행 일정을 이어서 확인하세요.")
-                    .font(.subheadline)
-                    .foregroundStyle(Ink.soft)
-                    .padding(.top, Space.s)
-            }
-            .padding(.bottom, 48)
-            .opacity(introVisible || reduceMotion ? 1 : 0)
-            .offset(y: introVisible || reduceMotion ? 0 : 10)
-            .animation(reduceMotion ? nil : .easeOut(duration: 0.36).delay(0.08), value: introVisible)
+            Text("다시 만나 반가워요")
+                .font(.title.weight(.semibold))
+                .foregroundStyle(Ink.ink)
+                .opacity(introVisible || reduceMotion ? 1 : 0)
+                .offset(y: introVisible || reduceMotion ? 0 : 22)
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.82).delay(0.48), value: introVisible)
+            Text("여행 일정을 이어서 확인하세요.")
+                .font(.subheadline)
+                .foregroundStyle(Ink.soft)
+                .padding(.top, Space.s)
+                .padding(.bottom, 48)
+                .opacity(introVisible || reduceMotion ? 1 : 0)
+                .offset(y: introVisible || reduceMotion ? 0 : 14)
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.72).delay(1.12), value: introVisible)
 
             VStack(spacing: Space.m) {
                 providerButton(.google)
