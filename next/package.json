@@ -10,7 +10,7 @@
     "start": "next start",
     "lint": "eslint src",
     "check:types": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "vitest run --maxWorkers=1",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "realtime": "node dist-tools/server/realtime/main.js",

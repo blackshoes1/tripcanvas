@@ -30,6 +30,13 @@
   let _sb = null;
   /** @type {'SUPABASE'|'TRIPCANVAS'} */
   let _provider = 'SUPABASE';
+  /** @type {string[]} */
+  let _socialProviders = [];
+  /** @type {string|null} */
+  let _socialError = null;
+  const SOCIAL_KEY = 'withj.oauth.pending.v1';
+  /** @type {Record<string,string>} */
+  const SOCIAL_LABELS = { google: 'Google', apple: 'Apple', naver: '네이버', kakao: '카카오' };
   /** @type {{token:string|null, user:{id:string,email:string}}|null} */
   let _session = null;
   /** @type {((user:{id:string,email:string}|null)=>void)[]} */
@@ -115,6 +122,8 @@
       if (!res.ok) return _provider;
       const body = await readBody(res);
       const p = body && body.provider;
+      _socialProviders = p === 'TRIPCANVAS' && Array.isArray(body.socialProviders)
+        ? body.socialProviders.filter(/** @param {unknown} p */ p => typeof p === 'string' && Object.prototype.hasOwnProperty.call(SOCIAL_LABELS, p)) : [];
       if ((p === 'TRIPCANVAS' || p === 'SUPABASE') && p !== _provider) use(p);
     } catch (_) { /* 오늘의 동작을 유지한다 */ }
     return _provider;
@@ -167,9 +176,56 @@
 
   /** 로그인 상태를 복구한다. 앱이 뜰 때 한 번 */
   async function restore() {
-    if (_provider === 'TRIPCANVAS') return restoreTripCanvas();
+    if (_provider === 'TRIPCANVAS') { await completeSocial(); return restoreTripCanvas(); }
     // Supabase는 SDK가 제 저장소에서 복구하고 onAuthStateChange로 알려 준다
     return _session;
+  }
+
+  function socialProviders() { return _socialProviders.slice(); }
+  function socialError() { return _socialError; }
+  /** @param {string} provider */
+  function socialLabel(provider) { return SOCIAL_LABELS[provider] || provider; }
+  /** @param {Uint8Array} bytes */
+  function base64url(bytes) {
+    return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+  /** @param {string} provider */
+  async function startSocial(provider) {
+    if (!_socialProviders.includes(provider)) throw new Error('아직 연결되지 않은 로그인 방식입니다.');
+    const verifier = base64url(global.crypto.getRandomValues(new Uint8Array(32)));
+    const challenge = base64url(new Uint8Array(await global.crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier))));
+    // 탭 안에만 보관한다. 다른 탭이나 가로챈 앱은 돌아온 교환권을 사용할 수 없다.
+    global.sessionStorage.setItem(SOCIAL_KEY, JSON.stringify({ verifier, challenge, created: Date.now(),
+      returnPath: global.location.pathname + global.location.search + global.location.hash }));
+    const url = new URL(_base + '/api/auth/social/start');
+    url.search = new URLSearchParams({ provider, client: 'web', challenge, webOrigin: global.location.origin }).toString();
+    global.location.assign(url.toString());
+  }
+  async function completeSocial() {
+    if (!global.location || !global.location.hash) return;
+    const params = new URLSearchParams(global.location.hash.slice(1));
+    if (!params.has('social_ticket') && !params.has('social_error')) return;
+    // 교환권을 브라우저 기록에서 먼저 지운다. 네트워크 실패 시 처음부터 다시 시작한다.
+    global.history.replaceState(null, '', global.location.pathname + global.location.search);
+    _socialError = null;
+    try {
+      const pending = JSON.parse(global.sessionStorage.getItem(SOCIAL_KEY) || 'null');
+      global.sessionStorage.removeItem(SOCIAL_KEY);
+      if (!pending || Date.now() - pending.created > 600000 || pending.challenge !== params.get('social_state'))
+        throw new Error('로그인 요청이 만료됐어요. 처음부터 다시 시도해 주세요.');
+      if (params.has('social_error')) throw new Error(params.get('social_error') === 'EMAIL_NOT_VERIFIED'
+        ? '확인 메일을 보냈어요. 메일의 링크를 누른 뒤 같은 방식으로 다시 로그인해 주세요.'
+        : '소셜 로그인을 완료하지 못했어요. 이메일 제공에 동의했는지 확인하고 다시 시도해 주세요.');
+      const response = await call('/api/auth/social/exchange', { method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ ticket: params.get('social_ticket'), verifier: pending.verifier }) });
+      const result = await readBody(response);
+      if (!response.ok || !result || !result.token || !result.user || !result.user.id) throw new Error('로그인을 완료하지 못했어요. 다시 시도해 주세요.');
+      writeToken(result.token);
+      setSession({ token: result.token, user: result.user });
+      if (typeof pending.returnPath === 'string' && pending.returnPath.startsWith('/') && !pending.returnPath.startsWith('//'))
+        global.history.replaceState(null, '', pending.returnPath);
+    } catch (error) { _socialError = error instanceof Error ? error.message : '로그인하지 못했어요.'; }
   }
 
   /**
@@ -313,6 +369,7 @@
 
   const AUTH = {
     configure, resolveProvider, provider, use, attachSupabase, restore,
+    socialProviders, socialLabel, socialError, startSocial, completeSocial,
     signIn, signUp, signOut, requestPasswordReset, resendVerification, resetPassword, getToken, user, onChange,
     DEFAULT_BASE, TOKEN_KEY
   };

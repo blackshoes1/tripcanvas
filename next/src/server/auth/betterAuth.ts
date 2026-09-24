@@ -9,6 +9,8 @@
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { bearer } from 'better-auth/plugins/bearer';
+import { oneTimeToken } from 'better-auth/plugins/one-time-token';
+import type { SocialProviders } from './socialProviders';
 
 import type { Db } from '../infrastructure/database/db';
 import type { MailService } from '../infrastructure/mail/types';
@@ -29,6 +31,7 @@ export interface BetterAuthOptions {
    * 확인·재설정 링크가 빈 페이지로 떨어진다(2026-09-04에 실제로 그랬다: `.../?error=INVALID_TOKEN`).
    */
   webBaseURL: string;
+  socialProviders?: SocialProviders;
 }
 
 /**
@@ -55,7 +58,7 @@ export function createBetterAuth(opts: BetterAuthOptions) {
     secret: opts.secret,
     baseURL: opts.baseURL,
     basePath: '/api/auth',
-    ...(opts.trustedOrigins?.length ? { trustedOrigins: opts.trustedOrigins } : {}),
+    trustedOrigins: [...(opts.trustedOrigins ?? []), ...(opts.socialProviders?.apple ? ['https://appleid.apple.com'] : [])],
     database: drizzleAdapter(opts.db, {
       provider: 'pg',
       schema: {
@@ -68,7 +71,8 @@ export function createBetterAuth(opts: BetterAuthOptions) {
     }),
     user: { modelName: 'auth_user' },
     session: { modelName: 'auth_session' },
-    account: { modelName: 'auth_account' },
+    account: { modelName: 'auth_account', accountLinking: { enabled: true, trustedProviders: [], requireLocalEmailVerified: true } },
+    socialProviders: opts.socialProviders ?? {},
     verification: { modelName: 'auth_verification' },
     emailAndPassword: {
       enabled: true,
@@ -79,11 +83,12 @@ export function createBetterAuth(opts: BetterAuthOptions) {
     },
     emailVerification: {
       sendOnSignUp: true,
+      sendOnSignIn: true,
       autoSignInAfterVerification: false,
       sendVerificationEmail: async ({ user, url }) => { await opts.mail.sendVerificationEmail(user.email, withWebCallback(url, opts.webBaseURL)); }
     },
     // iOS는 쿠키를 쓰지 않는다 — Authorization: Bearer <session token>으로 같은 세션을 쓴다(§70)
-    plugins: [bearer()],
+    plugins: [bearer(), oneTimeToken({ expiresIn: 1, storeToken: 'hashed', disableClientRequest: true })],
     rateLimit: { enabled: true, storage: 'database', modelName: 'auth_rate_limit' }
   });
 }

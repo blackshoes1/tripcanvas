@@ -4662,7 +4662,7 @@ TC_AUTH.onChange(next=>{
 // ⚠️ 어느 Auth로 로그인할지는 **서버가 정한다**(/api/v1/auth-config). 여기서 고르면, 서버에 자체 Auth가
 // 꺼져 있는데 웹만 그쪽으로 로그인하려다 아무 데도 못 들어간다. 답이 없으면 오늘 그대로(Supabase)다.
 TC_AUTH.resolveProvider().then(p=>{
-  if(p==='TRIPCANVAS') return TC_AUTH.restore();
+  if(p==='TRIPCANVAS') return TC_AUTH.restore().then(()=>{if(TC_AUTH.socialError())toast(TC_AUTH.socialError());});
   TC_AUTH.attachSupabase();   // SDK가 제 저장소에서 세션을 복구하고 onChange로 알려 준다
 });
 function updateAuthUI(){
@@ -4870,6 +4870,18 @@ async function syncOnLogin(){
 // 로그인 모달 (이메일 + 비밀번호)
 document.getElementById('authBtn').onclick=()=>{
   if(user){ if(confirm(`${user.email} — 로그아웃할까?`)){ TC_AUTH.signOut(); toast('로그아웃됨','#4f4740'); } return; }
+  const social=document.getElementById('authSocial');
+  social.replaceChildren();
+  for(const provider of TC_AUTH.socialProviders()){
+    const button=document.createElement('button');
+    button.className='btn'; button.type='button';
+    button.textContent=TC_AUTH.socialLabel(provider)+'로 계속하기';
+    button.onclick=async()=>{
+      button.disabled=true;
+      try{await TC_AUTH.startSocial(provider);}catch(error){toast(error.message||'로그인하지 못했어요.');button.disabled=false;}
+    };
+    social.appendChild(button);
+  }
   document.getElementById('authEmail').value='';
   document.getElementById('authPass').value='';
   // 재설정 안내는 필요해질 때만 — 처음부터 보이면 뭘 잘못한 것처럼 읽힌다

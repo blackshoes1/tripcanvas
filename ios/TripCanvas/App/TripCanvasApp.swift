@@ -1,3 +1,5 @@
+import GoogleSignIn
+import GoogleSignInSwift
 import GoogleMaps
 import KakaoMapsSDK
 import SwiftUI
@@ -16,6 +18,7 @@ struct TripCanvasApp: App {
         WindowGroup {
             RootView()
                 .environment(environment)
+                .onOpenURL { url in _ = GIDSignIn.sharedInstance.handle(url) }
         }
     }
 }
@@ -48,6 +51,7 @@ struct SignInView: View {
     @State private var mode: Mode = .signIn
     @State private var email = ""
     @State private var password = ""
+    @State private var social = SocialSignIn()
 
     /// 가입은 오타 하나로 못 받는 메일이 되므로 최소한의 모양은 여기서 거른다.
     private var canSubmit: Bool {
@@ -55,13 +59,47 @@ struct SignInView: View {
     }
 
     var body: some View {
+        ScrollView {
         VStack(spacing: Space.l) {
-            Spacer()
+            Spacer(minLength: Space.xl)
             VStack(spacing: Space.s) {
                 Text("With J").font(.largeTitle.weight(.bold))
                 Text("웹에서 만든 여행이 여기서 이어집니다.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+            }
+
+            if !social.providers.isEmpty {
+                VStack(spacing: Space.s) {
+                    ForEach(social.providers) { provider in
+                        if provider == .google {
+                            GoogleSignInButton(scheme: .light, style: .wide) {
+                                Task { await social.signIn(provider, auth: env.auth) }
+                            }
+                            .frame(height: 48)
+                            .disabled(social.isWorking || env.auth.isWorking)
+                        } else {
+                            Button {
+                                Task { await social.signIn(provider, auth: env.auth) }
+                            } label: {
+                                HStack {
+                                    if provider == .apple { Image(systemName: "apple.logo") }
+                                    Text(provider.title)
+                                }
+                                .font(.body.weight(.semibold))
+                                .frame(maxWidth: .infinity, minHeight: 48)
+                                .foregroundStyle(provider == .apple ? Color.white : Ink.ink)
+                                .background(provider == .apple ? Color.black : Ink.raised, in: RoundedRectangle(cornerRadius: 12))
+                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Ink.hairline))
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(social.isWorking || env.auth.isWorking)
+                        }
+                    }
+                    if social.isWorking { ProgressView("로그인 확인 중") }
+                    if let error = social.error { Text(error).font(.footnote).foregroundStyle(Ink.danger) }
+                }
+                Divider()
             }
 
             Picker("", selection: $mode) {
@@ -102,7 +140,7 @@ struct SignInView: View {
                     }
                 }
             }
-            .disabled(!canSubmit)
+            .disabled(!canSubmit || social.isWorking)
 
             if mode == .signIn {
                 // 새 비밀번호를 정하는 화면은 웹에만 있다 — 메일 링크가 웹으로 간다.
@@ -111,7 +149,7 @@ struct SignInView: View {
                     Task { await env.auth.requestPasswordReset(email: mail) }
                 }
                 .font(.footnote)
-                .disabled(!email.contains("@") || env.auth.isWorking)
+                .disabled(!email.contains("@") || env.auth.isWorking || social.isWorking)
             }
 
             Text("웹 With J와 같은 계정을 사용합니다.")
@@ -120,6 +158,9 @@ struct SignInView: View {
             Spacer()
         }
         .padding(Space.xl)
+        }
+        .task { await social.loadProviders() }
+        .onDisappear { social.cancel() }
         .onChange(of: mode) { _, _ in env.auth.dismissNotice() }
     }
 }

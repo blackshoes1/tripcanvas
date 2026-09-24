@@ -34,6 +34,9 @@ settings:
 # 지도 SDK — 처음 들어온 외부 의존성이다. 둘 다 바이너리 xcframework라 빌드가 아니라 링크만 한다.
 #   구글: iOS 16+, 해외 지도 · 카카오: 국내 지도(POI 탭 신원을 주지 않는 제약은 웹과 같다)
 packages:
+  GoogleSignIn:
+    url: https://github.com/google/GoogleSignIn-iOS
+    from: "9.0.0"
   GoogleMaps:
     url: https://github.com/googlemaps/ios-maps-sdk
     from: "11.1.0"
@@ -73,11 +76,21 @@ targets:
         NSPhotoLibraryUsageDescription: 비용에 붙여 둔 영수증·품목 사진을 보여드리기 위해 사용합니다. 사진은 이 기기에만 있고 어디에도 올리지 않습니다.
         # 운영 API는 NAS다(2026-09-04 전환) — Tailscale Funnel이 ts.net 이름에 HTTPS를 붙인다.
         # 로컬 서버로 붙일 때만 이 값을 바꾼다(그때는 http라 NSAppTransportSecurity 예외가 필요하다).
+        GIDClientID: "457039812975-oj50jeo2dm4k27shc8rpi8bpojd4ml8s.apps.googleusercontent.com"
+        GIDServerClientID: "457039812975-jijh2qrbb4q8qc6k0n9efcj3drt4q5kp.apps.googleusercontent.com"
+        CFBundleURLTypes:
+          - CFBundleURLSchemes:
+              - tripcanvas
+              - com.googleusercontent.apps.457039812975-oj50jeo2dm4k27shc8rpi8bpojd4ml8s
         TCApiBaseURL: "https://bokbok9.tail8b977f.ts.net"
         # 지도 SDK 네이티브 키 — 번들 ID 제한(com.fromj.trip). 무료 스펙에서 번들 ID를 바꿨다면 콘솔의 제한에 그 값도 넣는다.
         TCGoogleMapsKey: "AIzaSyC5b_lS9bW-qGFnL9KQ0Kn8SBr0a0VodIg"
         TCKakaoNativeKey: "d0e278002f9da70a5a7268e442537de9"
     dependencies:
+      - package: GoogleSignIn
+        product: GoogleSignIn
+      - package: GoogleSignIn
+        product: GoogleSignInSwift
       - target: TripCanvasWidgets
       - target: TripCanvasShare
       - target: TripCanvasWatch

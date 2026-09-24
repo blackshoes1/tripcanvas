@@ -2,6 +2,7 @@
 import { readAllowedOrigins } from '../api/cors';
 import { isReadOnly } from '../api/maintenance';
 import { readRegistry, type MigrationRegistry } from './migrationRegistry';
+import { readSocialProviders, type SocialProviders } from '../auth/socialProviders';
 
 export interface SmtpConfig {
   host: string;
@@ -46,6 +47,7 @@ export interface ServerEnv {
   googleRoutesKey: string;
   /** 자체 Auth를 켤 수 있는가 — 비밀과 DB가 둘 다 있어야 한다 */
   newAuthEnabled: boolean;
+  socialProviders: SocialProviders;
   registry: MigrationRegistry;
 }
 
@@ -100,6 +102,7 @@ export function parseEnv(env: Record<string, string | undefined>, warn?: (m: str
     googleRoutesKey: (env.GOOGLE_ROUTES_API_KEY ?? '').trim(),
     smtp: readSmtp(env),
     newAuthEnabled: !!authSecret && !!databaseUrl,
+    socialProviders: readSocialProviders(env),
     registry: readRegistry(env, warn)
   };
 }

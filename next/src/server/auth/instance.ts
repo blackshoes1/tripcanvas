@@ -38,7 +38,8 @@ export function getNewAuth(): NewAuth | null {
     log: (m) => console.log(`[tripcanvas-api] ${m}`)
   });
   const auth = createBetterAuth({
-    db, mail, secret: env.authSecret, baseURL: env.apiBaseUrl, trustedOrigins: env.trustedOrigins, webBaseURL: env.webBaseUrl
+    db, mail, secret: env.authSecret, baseURL: env.apiBaseUrl, trustedOrigins: env.trustedOrigins,
+    webBaseURL: env.webBaseUrl, socialProviders: env.socialProviders
   });
   cached = { auth, verifier: createBetterAuthVerifier(auth, new PgAuthIdentityRepository(db)) };
   return cached;

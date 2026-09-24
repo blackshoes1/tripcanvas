@@ -9,6 +9,10 @@ declare module '@legacy/auth.js' {
     configure(options: { baseUrl: string; storage: Storage | null }): void;
     resolveProvider(): Promise<'SUPABASE' | 'TRIPCANVAS'>;
     restore(): Promise<unknown>;
+    socialProviders(): string[];
+    socialLabel(provider: string): string;
+    socialError(): string | null;
+    startSocial(provider: string): Promise<void>;
     onChange(listener: (user: User | null) => void): void;
     user(): User | null;
     getToken(): Promise<string | null>;
