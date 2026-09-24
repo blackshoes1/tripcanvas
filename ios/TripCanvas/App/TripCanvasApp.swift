@@ -53,7 +53,7 @@ struct SignInView: View {
     @State private var password = ""
     @State private var social = SocialSignIn()
     @State private var showsEmailForm = false
-    @State private var introVisible = false
+    @State private var introStep = 0
     @FocusState private var focusedField: Field?
 
     private enum Field { case email, password }
@@ -89,9 +89,8 @@ struct SignInView: View {
                     }
                     .foregroundStyle(Ink.ink)
                     .padding(.bottom, 48)
-                    .opacity(introVisible || reduceMotion ? 1 : 0)
-                    .offset(y: introVisible || reduceMotion ? 0 : 14)
-                    .animation(reduceMotion ? nil : .easeOut(duration: 0.7).delay(0.08), value: introVisible)
+                    .opacity(introStep >= 1 || reduceMotion ? 1 : 0)
+                    .offset(y: introStep >= 1 || reduceMotion ? 0 : 14)
 
                     if showsEmailForm {
                         emailForm
@@ -103,6 +102,10 @@ struct SignInView: View {
 
                     accountSwitch
                         .padding(.top, 32)
+                        .opacity(introStep >= 6 || reduceMotion ? 1 : 0)
+                        .offset(y: introStep >= 6 || reduceMotion ? 0 : 10)
+                        .allowsHitTesting(introStep >= 6 || reduceMotion)
+                        .accessibilityHidden(introStep < 6 && !reduceMotion)
 
                     Spacer(minLength: 24)
                 }
@@ -115,11 +118,13 @@ struct SignInView: View {
         }
         .background(Ink.paper.ignoresSafeArea())
         .task {
-            guard !introVisible else { return }
-            if reduceMotion { introVisible = true; return }
-            try? await Task.sleep(for: .milliseconds(250))
-            guard !Task.isCancelled else { return }
-            introVisible = true
+            guard introStep == 0 else { return }
+            if reduceMotion { introStep = 6; return }
+            for (step, pause) in [(1, 120), (2, 330), (3, 330), (4, 380), (5, 360), (6, 330)] {
+                try? await Task.sleep(for: .milliseconds(pause))
+                guard !Task.isCancelled else { return }
+                withAnimation(.easeOut(duration: 0.38)) { introStep = step }
+            }
         }
         .task { await social.loadProviders() }
         .onDisappear { social.cancel() }
@@ -131,17 +136,15 @@ struct SignInView: View {
             Text("다시 만나 반가워요")
                 .font(.title.weight(.semibold))
                 .foregroundStyle(Ink.ink)
-                .opacity(introVisible || reduceMotion ? 1 : 0)
-                .offset(y: introVisible || reduceMotion ? 0 : 22)
-                .animation(reduceMotion ? nil : .easeOut(duration: 0.82).delay(0.48), value: introVisible)
+                .opacity(introStep >= 2 || reduceMotion ? 1 : 0)
+                .offset(y: introStep >= 2 || reduceMotion ? 0 : 22)
             Text("여행 일정을 이어서 확인하세요.")
                 .font(.subheadline)
                 .foregroundStyle(Ink.soft)
                 .padding(.top, Space.s)
                 .padding(.bottom, 48)
-                .opacity(introVisible || reduceMotion ? 1 : 0)
-                .offset(y: introVisible || reduceMotion ? 0 : 14)
-                .animation(reduceMotion ? nil : .easeOut(duration: 0.72).delay(1.12), value: introVisible)
+                .opacity(introStep >= 3 || reduceMotion ? 1 : 0)
+                .offset(y: introStep >= 3 || reduceMotion ? 0 : 14)
 
             VStack(spacing: Space.m) {
                 providerButton(.google)
@@ -161,6 +164,10 @@ struct SignInView: View {
                 }
                 .buttonStyle(SignInButtonStyle())
                 .disabled(social.isWorking || env.auth.isWorking)
+                .opacity(introStep >= 5 || reduceMotion ? 1 : 0)
+                .offset(y: introStep >= 5 || reduceMotion ? 0 : 14)
+                .allowsHitTesting(introStep >= 5 || reduceMotion)
+                .accessibilityHidden(introStep < 5 && !reduceMotion)
             }
 
             if social.isWorking { ProgressView("로그인 확인 중").padding(.top, Space.l) }
@@ -201,6 +208,10 @@ struct SignInView: View {
         .buttonStyle(SignInButtonStyle())
         .accessibilityLabel(provider.title)
         .disabled(social.isWorking || env.auth.isWorking)
+        .opacity(introStep >= 4 || reduceMotion ? 1 : 0)
+        .offset(y: introStep >= 4 || reduceMotion ? 0 : 14)
+        .allowsHitTesting(introStep >= 4 || reduceMotion)
+        .accessibilityHidden(introStep < 4 && !reduceMotion)
     }
 
     private var emailForm: some View {
