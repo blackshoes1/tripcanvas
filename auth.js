@@ -22,6 +22,7 @@
   const TOKEN_KEY = 'tripcanvas_auth_v1';
 
   let _base = DEFAULT_BASE;
+  let _socialStartBase = DEFAULT_BASE;
   /** @type {typeof fetch|null} */
   let _fetch = null;
   /** @type {Storage|null} */
@@ -43,11 +44,12 @@
   const _listeners = [];
 
   /**
-   * @param {{baseUrl?:string, fetchImpl?:typeof fetch, storage?:Storage|null, supabase?:any}} options
+   * @param {{baseUrl?:string, socialStartBaseUrl?:string, fetchImpl?:typeof fetch, storage?:Storage|null, supabase?:any}} options
    */
   function configure(options) {
     const o = options || {};
     if (o.baseUrl) _base = String(o.baseUrl).replace(/\/+$/, '');
+    _socialStartBase = o.socialStartBaseUrl ? String(o.socialStartBaseUrl).replace(/\/+$/, '') : _base;
     if (o.fetchImpl) _fetch = o.fetchImpl;
     if ('storage' in o) _storage = o.storage || null;
     if ('supabase' in o) _sb = o.supabase || null;
@@ -57,7 +59,8 @@
   async function call(path, init) {
     const f = _fetch || (typeof fetch === 'function' ? fetch : null);
     if (!f) throw new Error('fetch 없음');
-    return f(_base + path, init);
+    // 같은 출처 프록시에서도 NAS 인증은 bearer만 사용한다. 웹 쿠키를 전달하거나 저장하지 않는다.
+    return f(_base + path, { ...init, credentials: 'omit' });
   }
 
   function readToken() {
@@ -197,7 +200,8 @@
     // 탭 안에만 보관한다. 다른 탭이나 가로챈 앱은 돌아온 교환권을 사용할 수 없다.
     global.sessionStorage.setItem(SOCIAL_KEY, JSON.stringify({ verifier, challenge, created: Date.now(),
       returnPath: global.location.pathname + global.location.search + global.location.hash }));
-    const url = new URL(_base + '/api/auth/social/start');
+    // OAuth 시작과 콜백은 같은 NAS 출처여야 state 쿠키를 검증할 수 있다.
+    const url = new URL(_socialStartBase + '/api/auth/social/start');
     url.search = new URLSearchParams({ provider, client: 'web', challenge, webOrigin: global.location.origin }).toString();
     global.location.assign(url.toString());
   }

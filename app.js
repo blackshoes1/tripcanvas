@@ -4637,7 +4637,8 @@ const SUPA_KEY='sb_publishable_2C-n1YFvE9Cw9B7L7B6Trw_XO3Val5q';
 // 함께하기·버전 이력·여행 동기화·실시간은 TripCanvas API를 지난다(PR12). 로그인은 auth.js가 감싼다(PR11).
 // 서버가 LEGACY 레지스트리면 API가 다시 Supabase를 부르므로, 데이터는 그대로 있고 앞단만 바뀐 것이다.
 const API_BASE = (typeof window!=='undefined' && window.__TC_API_BASE) ||
-  (/^(localhost|127\.0\.0\.1)$/.test(location.hostname) ? 'http://localhost:3000' : TC_API.DEFAULT_BASE);
+  (/^(localhost|127\.0\.0\.1)$/.test(location.hostname) ? 'http://localhost:3000' :
+    location.hostname === 'tripcanvas-ai.vercel.app' ? location.origin + '/nas' : TC_API.DEFAULT_BASE);
 /** API·실시간이 함께 쓰는 토큰. Supabase JWT든 자체 Auth 세션이든 auth.js가 같은 모양으로 준다 */
 async function apiToken(){ return TC_AUTH.getToken(); }
 // Supabase 클라이언트는 **자체 Auth를 감쌀 때만** 남는다(아래 TC_AUTH.configure의 supabase).
@@ -4645,7 +4646,8 @@ async function apiToken(){ return TC_AUTH.getToken(); }
 // app.js에 sb.rpc·sb.from 호출은 하나도 없다(통합 테스트가 이걸 지킨다).
 if(window.supabase) sb = window.supabase.createClient(SUPA_URL, SUPA_KEY);
 TC_API.configure({baseUrl:API_BASE, getToken:apiToken});
-TC_AUTH.configure({baseUrl:API_BASE, supabase:sb,
+TC_AUTH.configure({baseUrl:API_BASE,
+  socialStartBaseUrl:API_BASE.endsWith('/nas') ? TC_AUTH.DEFAULT_BASE : API_BASE, supabase:sb,
   storage:(typeof localStorage!=='undefined' ? localStorage : null)});
 // 로그인 상태가 바뀌는 자리는 **하나다** — 어느 Auth를 쓰든 여기로 온다.
 TC_AUTH.onChange(next=>{

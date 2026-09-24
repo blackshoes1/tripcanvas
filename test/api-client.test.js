@@ -13,7 +13,7 @@ const TC_COLLAB = require('../collab.js');
 function fakeFetch(handler) {
   const calls = [];
   const impl = async (url, init) => {
-    calls.push({ url: String(url), method: (init && init.method) || 'GET', headers: (init && init.headers) || {}, body: init && init.body ? JSON.parse(init.body) : undefined });
+    calls.push({ url: String(url), method: (init && init.method) || 'GET', credentials: init && init.credentials, headers: (init && init.headers) || {}, body: init && init.body ? JSON.parse(init.body) : undefined });
     const result = handler(String(url), init) || {};
     return {
       ok: (result.status || 200) < 400,
@@ -41,6 +41,7 @@ test('RPC 이름을 HTTP 호출로 옮기고 토큰을 싣는다', async () => {
   assert.equal(f.calls[0].method, 'GET');
   assert.equal(f.calls[0].url, 'https://api.test/api/v1/trips/trip1/members');
   assert.equal(f.calls[0].headers.authorization, 'Bearer tok-1');
+  assert.equal(f.calls[0].credentials, 'omit');
 });
 
 test('여행 안의 대상(멤버·후보·코멘트)은 여행 id를 함께 받아 경로를 만든다', async () => {
