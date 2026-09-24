@@ -53,6 +53,7 @@ struct SignInView: View {
     @State private var password = ""
     @State private var social = SocialSignIn()
     @State private var showsEmailForm = false
+    @State private var introStep = 0
     @FocusState private var focusedField: Field?
 
     private enum Field { case email, password }
@@ -88,6 +89,8 @@ struct SignInView: View {
                     }
                     .foregroundStyle(Ink.ink)
                     .padding(.bottom, 48)
+                    .opacity(introStep >= 1 || reduceMotion ? 1 : 0)
+                    .offset(y: introStep >= 1 || reduceMotion ? 0 : 14)
 
                     if showsEmailForm {
                         emailForm
@@ -99,6 +102,10 @@ struct SignInView: View {
 
                     accountSwitch
                         .padding(.top, 32)
+                        .opacity(introStep >= 6 || reduceMotion ? 1 : 0)
+                        .offset(y: introStep >= 6 || reduceMotion ? 0 : 10)
+                        .allowsHitTesting(introStep >= 6 || reduceMotion)
+                        .accessibilityHidden(introStep < 6 && !reduceMotion)
 
                     Spacer(minLength: 24)
                 }
@@ -110,6 +117,15 @@ struct SignInView: View {
             .scrollDismissesKeyboard(.interactively)
         }
         .background(Ink.paper.ignoresSafeArea())
+        .task {
+            guard introStep == 0 else { return }
+            if reduceMotion { introStep = 6; return }
+            for (step, pause) in [(1, 120), (2, 330), (3, 330), (4, 380), (5, 360), (6, 330)] {
+                try? await Task.sleep(for: .milliseconds(pause))
+                guard !Task.isCancelled else { return }
+                withAnimation(.easeOut(duration: 0.38)) { introStep = step }
+            }
+        }
         .task { await social.loadProviders() }
         .onDisappear { social.cancel() }
         .onChange(of: mode) { _, _ in env.auth.dismissNotice() }
@@ -120,42 +136,20 @@ struct SignInView: View {
             Text("다시 만나 반가워요")
                 .font(.title.weight(.semibold))
                 .foregroundStyle(Ink.ink)
+                .opacity(introStep >= 2 || reduceMotion ? 1 : 0)
+                .offset(y: introStep >= 2 || reduceMotion ? 0 : 22)
             Text("여행 일정을 이어서 확인하세요.")
                 .font(.subheadline)
                 .foregroundStyle(Ink.soft)
                 .padding(.top, Space.s)
                 .padding(.bottom, 48)
+                .opacity(introStep >= 3 || reduceMotion ? 1 : 0)
+                .offset(y: introStep >= 3 || reduceMotion ? 0 : 14)
 
             VStack(spacing: Space.m) {
-                ForEach(social.providers) { provider in
-                    Button {
-                        Task { await social.signIn(provider, auth: env.auth) }
-                    } label: {
-                        HStack(spacing: Space.m) {
-                            if provider == .google {
-                                Image("GoogleG")
-                                    .resizable()
-                                    .frame(width: 18, height: 18)
-                                    .accessibilityHidden(true)
-                            } else if provider == .apple {
-                                Image(systemName: "apple.logo")
-                                    .frame(width: 18)
-                                    .accessibilityHidden(true)
-                            }
-                            Text(provider.title)
-                                .font(.subheadline.weight(.semibold))
-                            if provider == .google || provider == .apple {
-                                Color.clear.frame(width: 18, height: 18)
-                            }
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 54)
-                        .foregroundStyle(Ink.ink)
-                        .background(Ink.raised, in: RoundedRectangle(cornerRadius: 12))
-                        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Ink.hairline))
-                    }
-                    .buttonStyle(SignInButtonStyle())
-                    .accessibilityLabel(provider.title)
-                    .disabled(social.isWorking || env.auth.isWorking)
+                providerButton(.google)
+                ForEach(social.providers.filter { $0 != .google }) { provider in
+                    providerButton(provider)
                 }
 
                 Button {
@@ -170,6 +164,10 @@ struct SignInView: View {
                 }
                 .buttonStyle(SignInButtonStyle())
                 .disabled(social.isWorking || env.auth.isWorking)
+                .opacity(introStep >= 5 || reduceMotion ? 1 : 0)
+                .offset(y: introStep >= 5 || reduceMotion ? 0 : 14)
+                .allowsHitTesting(introStep >= 5 || reduceMotion)
+                .accessibilityHidden(introStep < 5 && !reduceMotion)
             }
 
             if social.isWorking { ProgressView("로그인 확인 중").padding(.top, Space.l) }
@@ -179,6 +177,41 @@ struct SignInView: View {
             }
 
         }
+    }
+
+    private func providerButton(_ provider: SocialSignIn.Provider) -> some View {
+        Button {
+            Task { await social.signIn(provider, auth: env.auth) }
+        } label: {
+            HStack(spacing: Space.m) {
+                if provider == .google {
+                    Image("GoogleG")
+                        .resizable()
+                        .frame(width: 18, height: 18)
+                        .accessibilityHidden(true)
+                } else if provider == .apple {
+                    Image(systemName: "apple.logo")
+                        .frame(width: 18)
+                        .accessibilityHidden(true)
+                }
+                Text(provider.title)
+                    .font(.subheadline.weight(.semibold))
+                if provider == .google || provider == .apple {
+                    Color.clear.frame(width: 18, height: 18)
+                }
+            }
+            .frame(maxWidth: .infinity, minHeight: 54)
+            .foregroundStyle(Ink.ink)
+            .background(Ink.raised, in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Ink.hairline))
+        }
+        .buttonStyle(SignInButtonStyle())
+        .accessibilityLabel(provider.title)
+        .disabled(social.isWorking || env.auth.isWorking)
+        .opacity(introStep >= 4 || reduceMotion ? 1 : 0)
+        .offset(y: introStep >= 4 || reduceMotion ? 0 : 14)
+        .allowsHitTesting(introStep >= 4 || reduceMotion)
+        .accessibilityHidden(introStep < 4 && !reduceMotion)
     }
 
     private var emailForm: some View {

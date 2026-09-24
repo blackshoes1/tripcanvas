@@ -40,9 +40,14 @@ final class SocialSignIn: NSObject, ASWebAuthenticationPresentationContextProvid
     }
 
     func signIn(_ provider: Provider, auth: AuthStore) async {
-        guard !isWorking, !auth.isWorking, providers.contains(provider) else { return }
+        guard !isWorking, !auth.isWorking else { return }
         isWorking = true; error = nil
         defer { isWorking = false; browser = nil }
+        if !providers.contains(provider) { await loadProviders() }
+        guard providers.contains(provider) else {
+            error = "지금은 이 로그인 방법을 사용할 수 없어요. 잠시 후 다시 시도해 주세요."
+            return
+        }
         do {
             var bytes = [UInt8](repeating: 0, count: 32)
             guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else { throw AuthError.network }
