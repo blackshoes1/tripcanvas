@@ -66,6 +66,12 @@
       "permanent": false
     }
   ],
+  "rewrites": [
+    {
+      "source": "/nas/api/:path*",
+      "destination": "https://bokbok9.tail8b977f.ts.net/api/:path*"
+    }
+  ],
   "functions": {
     "api/kakao-directions.js": {
       "maxDuration": 10

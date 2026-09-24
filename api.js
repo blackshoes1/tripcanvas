@@ -72,6 +72,7 @@
       if (body !== undefined) headers['content-type'] = 'application/json';
       response = await doFetch(_base + path, {
         method: method,
+        credentials: 'omit',
         headers: headers,
         body: body === undefined ? undefined : JSON.stringify(body)
       });

@@ -52,3 +52,18 @@ test('foreign callback state fails without exchanging or saving a session', asyn
   assert.ok(auth.socialError());
   assert.equal(location.hash, '');
 });
+
+test('proxied web exchanges through the web origin but starts OAuth at the NAS origin', async () => {
+  const { auth, context, calls, location } = browser();
+  auth.configure({ baseUrl: 'https://web.test/nas', socialStartBaseUrl: 'https://nas.test' });
+  await auth.resolveProvider();
+  assert.equal(calls[0].url, 'https://web.test/nas/api/v1/auth-config');
+  assert.equal(calls[0].init.credentials, 'omit');
+  await auth.startSocial('google');
+  assert.equal(new URL(location.assigned).origin, 'https://nas.test');
+  const pending = JSON.parse(context.sessionStorage.getItem('withj.oauth.pending.v1'));
+  location.hash = '#social_ticket=encrypted-ticket&social_state=' + pending.challenge;
+  await auth.completeSocial();
+  assert.equal(calls.at(-1).url, 'https://web.test/nas/api/auth/social/exchange');
+  assert.equal(calls.at(-1).init.credentials, 'omit');
+});
