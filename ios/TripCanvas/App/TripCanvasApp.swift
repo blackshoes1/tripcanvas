@@ -1,5 +1,4 @@
 import GoogleSignIn
-import GoogleSignInSwift
 import GoogleMaps
 import KakaoMapsSDK
 import SwiftUI
@@ -52,6 +51,9 @@ struct SignInView: View {
     @State private var email = ""
     @State private var password = ""
     @State private var social = SocialSignIn()
+    @FocusState private var focusedField: Field?
+
+    private enum Field { case email, password }
 
     /// 가입은 오타 하나로 못 받는 메일이 되므로 최소한의 모양은 여기서 거른다.
     private var canSubmit: Bool {
@@ -60,107 +62,192 @@ struct SignInView: View {
 
     var body: some View {
         ScrollView {
-        VStack(spacing: Space.l) {
-            Spacer(minLength: Space.xl)
-            VStack(spacing: Space.s) {
-                Text("With J").font(.largeTitle.weight(.bold))
-                Text("웹에서 만든 여행이 여기서 이어집니다.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
+            VStack(alignment: .leading, spacing: 0) {
+                Text("WITH J")
+                    .font(Typeface.meta(.caption))
+                    .tracking(2.5)
+                    .foregroundStyle(Ink.accent)
+                    .padding(.bottom, Space.xl)
 
-            if !social.providers.isEmpty {
-                VStack(spacing: Space.s) {
-                    ForEach(social.providers) { provider in
-                        if provider == .google {
-                            GoogleSignInButton(scheme: .light, style: .wide) {
-                                Task { await social.signIn(provider, auth: env.auth) }
-                            }
-                            .frame(height: 48)
-                            .disabled(social.isWorking || env.auth.isWorking)
-                        } else {
+                Text(mode == .signIn ? "여행을 이어가요" : "여행을 시작해요")
+                    .font(Typeface.editorial(.largeTitle))
+                    .foregroundStyle(Ink.ink)
+                    .padding(.bottom, Space.s)
+                Text("웹에서 만든 일정과 저장한 장소를\n여기서 그대로 만나보세요.")
+                    .font(.subheadline)
+                    .foregroundStyle(Ink.soft)
+                    .lineSpacing(4)
+                    .padding(.bottom, 36)
+
+                if !social.providers.isEmpty {
+                    VStack(spacing: Space.m) {
+                        ForEach(social.providers) { provider in
                             Button {
                                 Task { await social.signIn(provider, auth: env.auth) }
                             } label: {
-                                HStack {
-                                    if provider == .apple { Image(systemName: "apple.logo") }
+                                HStack(spacing: Space.m) {
+                                    if provider == .google {
+                                        Image("GoogleG")
+                                            .resizable()
+                                            .frame(width: 18, height: 18)
+                                            .accessibilityHidden(true)
+                                    } else if provider == .apple {
+                                        Image(systemName: "apple.logo")
+                                            .frame(width: 18)
+                                            .accessibilityHidden(true)
+                                    }
                                     Text(provider.title)
+                                        .font(.system(size: 15, weight: .semibold))
+                                    if provider == .google || provider == .apple {
+                                        Color.clear.frame(width: 18, height: 18)
+                                    }
                                 }
-                                .font(.body.weight(.semibold))
-                                .frame(maxWidth: .infinity, minHeight: 48)
-                                .foregroundStyle(provider == .apple ? Color.white : Ink.ink)
-                                .background(provider == .apple ? Color.black : Ink.raised, in: RoundedRectangle(cornerRadius: 12))
-                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Ink.hairline))
+                                .frame(maxWidth: .infinity, minHeight: 54)
+                                .foregroundStyle(provider == .google ? Color(red: 0.12, green: 0.12, blue: 0.12) : Ink.ink)
+                                .background(provider == .google ? Color.white : Ink.raised,
+                                            in: RoundedRectangle(cornerRadius: 14))
                             }
                             .buttonStyle(.plain)
+                            .accessibilityLabel(provider.title)
                             .disabled(social.isWorking || env.auth.isWorking)
+                            .opacity(social.isWorking || env.auth.isWorking ? 0.55 : 1)
+                        }
+                        if social.isWorking { ProgressView("로그인 확인 중") }
+                        if let error = social.error {
+                            Text(error).font(.footnote).foregroundStyle(Ink.danger)
+                                .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
-                    if social.isWorking { ProgressView("로그인 확인 중") }
-                    if let error = social.error { Text(error).font(.footnote).foregroundStyle(Ink.danger) }
+                    .padding(.bottom, Space.xl)
+
+                    HStack(spacing: Space.m) {
+                        Rectangle().fill(Ink.hairline).frame(height: 1)
+                        Text("또는 이메일로")
+                            .font(.caption)
+                            .foregroundStyle(Ink.soft)
+                            .fixedSize()
+                        Rectangle().fill(Ink.hairline).frame(height: 1)
+                    }
+                    .padding(.bottom, Space.xl)
                 }
-                Divider()
-            }
 
-            Picker("", selection: $mode) {
-                ForEach(Mode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-            }
-            .pickerStyle(.segmented)
-
-            VStack(spacing: Space.m) {
-                TextField("이메일", text: $email)
-                    .textContentType(.emailAddress)
-                    .keyboardType(.emailAddress)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                SecureField(mode == .signUp ? "비밀번호 (8자 이상)" : "비밀번호", text: $password)
-                    .textContentType(mode == .signUp ? .newPassword : .password)
-            }
-            .textFieldStyle(.roundedBorder)
-
-            if let notice = env.auth.notice {
-                Text(notice)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            }
-            if let error = env.auth.lastError {
-                Text(error)
-                    .font(.footnote)
-                    .foregroundStyle(Ink.danger)
-                    .multilineTextAlignment(.center)
-            }
-
-            PrimaryActionButton(title: mode.rawValue, isBusy: env.auth.isWorking) {
-                let (mail, pass) = (email, password)
-                Task {
-                    switch mode {
-                    case .signIn: await env.auth.signIn(email: mail, password: pass)
-                    case .signUp: await env.auth.signUp(email: mail, password: pass)
+                VStack(alignment: .leading, spacing: Space.l) {
+                    VStack(alignment: .leading, spacing: Space.s) {
+                        Text("이메일").font(.subheadline.weight(.medium)).foregroundStyle(Ink.ink)
+                        TextField("", text: $email,
+                                  prompt: Text("이메일 주소").foregroundColor(Ink.faint))
+                            .textContentType(.emailAddress)
+                            .keyboardType(.emailAddress)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .submitLabel(.next)
+                            .focused($focusedField, equals: .email)
+                            .onSubmit { focusedField = .password }
+                            .signInField()
+                    }
+                    VStack(alignment: .leading, spacing: Space.s) {
+                        HStack {
+                            Text("비밀번호").font(.subheadline.weight(.medium)).foregroundStyle(Ink.ink)
+                            Spacer()
+                            if mode == .signIn {
+                                Button("비밀번호 재설정") {
+                                    if email.contains("@") {
+                                        Task { await env.auth.requestPasswordReset(email: email) }
+                                    } else {
+                                        focusedField = .email
+                                    }
+                                }
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(Ink.accent)
+                                .disabled(env.auth.isWorking || social.isWorking)
+                            }
+                        }
+                        SecureField("", text: $password,
+                                    prompt: Text(mode == .signUp ? "8자 이상 입력" : "비밀번호 입력")
+                                        .foregroundColor(Ink.faint))
+                            .textContentType(mode == .signUp ? .newPassword : .password)
+                            .submitLabel(.go)
+                            .focused($focusedField, equals: .password)
+                            .onSubmit { if canSubmit { submit() } }
+                            .signInField()
                     }
                 }
-            }
-            .disabled(!canSubmit || social.isWorking)
 
-            if mode == .signIn {
-                // 새 비밀번호를 정하는 화면은 웹에만 있다 — 메일 링크가 웹으로 간다.
-                Button("비밀번호를 잊었어요") {
-                    let mail = email
-                    Task { await env.auth.requestPasswordReset(email: mail) }
+                if let notice = env.auth.notice {
+                    Text(notice).font(.footnote).foregroundStyle(Ink.soft)
+                        .padding(.top, Space.l)
                 }
-                .font(.footnote)
-                .disabled(!email.contains("@") || env.auth.isWorking || social.isWorking)
-            }
+                if let error = env.auth.lastError {
+                    Text(error).font(.footnote).foregroundStyle(Ink.danger)
+                        .padding(.top, Space.l)
+                }
 
-            Text("웹 With J와 같은 계정을 사용합니다.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Spacer()
+                Button(action: submit) {
+                    HStack(spacing: Space.s) {
+                        if env.auth.isWorking { ProgressView().tint(Ink.paper) }
+                        Text(mode == .signIn ? "이메일로 로그인" : "계정 만들기")
+                    }
+                    .font(.body.weight(.semibold))
+                    .frame(maxWidth: .infinity, minHeight: 54)
+                    .foregroundStyle(canSubmit ? Ink.paper : Ink.soft)
+                    .background(canSubmit ? Ink.accent : Ink.sunken,
+                                in: RoundedRectangle(cornerRadius: 14))
+                }
+                .buttonStyle(.plain)
+                .disabled(!canSubmit || env.auth.isWorking || social.isWorking)
+                .padding(.top, Space.xl)
+
+                HStack(spacing: Space.xs) {
+                    Text(mode == .signIn ? "아직 계정이 없나요?" : "이미 계정이 있나요?")
+                        .foregroundStyle(Ink.soft)
+                    Button(mode == .signIn ? "가입하기" : "로그인") {
+                        mode = mode == .signIn ? .signUp : .signIn
+                        password = ""
+                        focusedField = nil
+                    }
+                    .fontWeight(.semibold)
+                    .foregroundStyle(Ink.accent)
+                }
+                .font(.subheadline)
+                .frame(maxWidth: .infinity)
+                .padding(.top, Space.xl)
+
+                Text("웹과 앱에서 같은 계정을 사용해요.")
+                    .font(.caption)
+                    .foregroundStyle(Ink.faint)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 40)
+            }
+            .frame(maxWidth: 460)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, Space.xl)
+            .padding(.top, 52)
+            .padding(.bottom, 40)
         }
-        .padding(Space.xl)
-        }
+        .scrollDismissesKeyboard(.interactively)
+        .background(Ink.paper.ignoresSafeArea())
         .task { await social.loadProviders() }
         .onDisappear { social.cancel() }
         .onChange(of: mode) { _, _ in env.auth.dismissNotice() }
+    }
+
+    private func submit() {
+        let (mail, pass) = (email, password)
+        Task {
+            switch mode {
+            case .signIn: await env.auth.signIn(email: mail, password: pass)
+            case .signUp: await env.auth.signUp(email: mail, password: pass)
+            }
+        }
+    }
+}
+
+private extension View {
+    func signInField() -> some View {
+        padding(.horizontal, Space.l)
+            .frame(height: 54)
+            .background(Ink.raised, in: RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Ink.hairline))
+            .foregroundStyle(Ink.ink)
     }
 }
