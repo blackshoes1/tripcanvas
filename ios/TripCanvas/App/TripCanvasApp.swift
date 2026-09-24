@@ -88,7 +88,7 @@ struct SignInView: View {
                             .font(.title3.weight(.semibold))
                     }
                     .foregroundStyle(Ink.ink)
-                    .padding(.bottom, 48)
+                    .padding(.bottom, 24)
                     .opacity(introStep >= 1 || reduceMotion ? 1 : 0)
                     .offset(y: introStep >= 1 || reduceMotion ? 0 : 14)
 
@@ -96,16 +96,19 @@ struct SignInView: View {
                         emailForm
                             .transition(reduceMotion ? .identity : .opacity.combined(with: .offset(x: 16)))
                     } else {
+                        JourneyIntroMark(routeVisible: introStep >= 2 || reduceMotion,
+                                         destinationVisible: introStep >= 3 || reduceMotion)
+                            .padding(.bottom, 20)
                         methodPicker
                             .transition(reduceMotion ? .identity : .opacity.combined(with: .offset(x: -16)))
                     }
 
                     accountSwitch
                         .padding(.top, 32)
-                        .opacity(introStep >= 6 || reduceMotion ? 1 : 0)
-                        .offset(y: introStep >= 6 || reduceMotion ? 0 : 10)
-                        .allowsHitTesting(introStep >= 6 || reduceMotion)
-                        .accessibilityHidden(introStep < 6 && !reduceMotion)
+                        .opacity(introStep >= 7 || reduceMotion ? 1 : 0)
+                        .offset(y: introStep >= 7 || reduceMotion ? 0 : 10)
+                        .allowsHitTesting(introStep >= 7 || reduceMotion)
+                        .accessibilityHidden(introStep < 7 && !reduceMotion)
 
                     Spacer(minLength: 24)
                 }
@@ -119,8 +122,8 @@ struct SignInView: View {
         .background(Ink.paper.ignoresSafeArea())
         .task {
             guard introStep == 0 else { return }
-            if reduceMotion { introStep = 6; return }
-            for (step, pause) in [(1, 120), (2, 330), (3, 330), (4, 380), (5, 360), (6, 330)] {
+            if reduceMotion { introStep = 7; return }
+            for (step, pause) in [(1, 80), (2, 180), (3, 540), (4, 200), (5, 250), (6, 270), (7, 220)] {
                 try? await Task.sleep(for: .milliseconds(pause))
                 guard !Task.isCancelled else { return }
                 withAnimation(.easeOut(duration: 0.38)) { introStep = step }
@@ -136,15 +139,15 @@ struct SignInView: View {
             Text("다시 만나 반가워요")
                 .font(.title.weight(.semibold))
                 .foregroundStyle(Ink.ink)
-                .opacity(introStep >= 2 || reduceMotion ? 1 : 0)
-                .offset(y: introStep >= 2 || reduceMotion ? 0 : 22)
+                .opacity(introStep >= 3 || reduceMotion ? 1 : 0)
+                .offset(y: introStep >= 3 || reduceMotion ? 0 : 22)
             Text("여행 일정을 이어서 확인하세요.")
                 .font(.subheadline)
                 .foregroundStyle(Ink.soft)
                 .padding(.top, Space.s)
                 .padding(.bottom, 48)
-                .opacity(introStep >= 3 || reduceMotion ? 1 : 0)
-                .offset(y: introStep >= 3 || reduceMotion ? 0 : 14)
+                .opacity(introStep >= 4 || reduceMotion ? 1 : 0)
+                .offset(y: introStep >= 4 || reduceMotion ? 0 : 14)
 
             VStack(spacing: Space.m) {
                 providerButton(.google)
@@ -164,10 +167,10 @@ struct SignInView: View {
                 }
                 .buttonStyle(SignInButtonStyle())
                 .disabled(social.isWorking || env.auth.isWorking)
-                .opacity(introStep >= 5 || reduceMotion ? 1 : 0)
-                .offset(y: introStep >= 5 || reduceMotion ? 0 : 14)
-                .allowsHitTesting(introStep >= 5 || reduceMotion)
-                .accessibilityHidden(introStep < 5 && !reduceMotion)
+                .opacity(introStep >= 6 || reduceMotion ? 1 : 0)
+                .offset(y: introStep >= 6 || reduceMotion ? 0 : 14)
+                .allowsHitTesting(introStep >= 6 || reduceMotion)
+                .accessibilityHidden(introStep < 6 && !reduceMotion)
             }
 
             if social.isWorking { ProgressView("로그인 확인 중").padding(.top, Space.l) }
@@ -208,10 +211,10 @@ struct SignInView: View {
         .buttonStyle(SignInButtonStyle())
         .accessibilityLabel(provider.title)
         .disabled(social.isWorking || env.auth.isWorking)
-        .opacity(introStep >= 4 || reduceMotion ? 1 : 0)
-        .offset(y: introStep >= 4 || reduceMotion ? 0 : 14)
-        .allowsHitTesting(introStep >= 4 || reduceMotion)
-        .accessibilityHidden(introStep < 4 && !reduceMotion)
+        .opacity(introStep >= 5 || reduceMotion ? 1 : 0)
+        .offset(y: introStep >= 5 || reduceMotion ? 0 : 14)
+        .allowsHitTesting(introStep >= 5 || reduceMotion)
+        .accessibilityHidden(introStep < 5 && !reduceMotion)
     }
 
     private var emailForm: some View {
@@ -324,6 +327,58 @@ struct SignInView: View {
     private func setEmailForm(_ visible: Bool) {
         withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.22)) {
             showsEmailForm = visible
+        }
+    }
+}
+
+/// 여행의 경로가 J에 닿는 짧은 브랜드 장면. 로그인 선택지는 처음부터 제자리를 차지한다.
+private struct JourneyIntroMark: View {
+    let routeVisible: Bool
+    let destinationVisible: Bool
+
+    var body: some View {
+        GeometryReader { geometry in
+            let destination = CGPoint(x: geometry.size.width - 36, y: 34)
+            ZStack(alignment: .topLeading) {
+                JourneyRoute()
+                    .stroke(Ink.soft.opacity(0.22), style: StrokeStyle(lineWidth: 1, dash: [3, 6]))
+                JourneyRoute()
+                    .trim(from: 0, to: routeVisible ? 1 : 0)
+                    .stroke(Ink.accent, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                    .animation(.easeInOut(duration: 0.62), value: routeVisible)
+
+                Circle()
+                    .fill(Ink.paper)
+                    .frame(width: 14, height: 14)
+                    .overlay(Circle().strokeBorder(Ink.accent, lineWidth: 2.5))
+                    .position(x: 15, y: 100)
+
+                ZStack {
+                    Circle().strokeBorder(Ink.accent.opacity(0.18), lineWidth: 1)
+                        .frame(width: 64, height: 64)
+                    Circle().fill(Ink.accent).frame(width: 48, height: 48)
+                    Text("J")
+                        .font(Typeface.editorial(.title3).weight(.bold))
+                        .foregroundStyle(Ink.paper)
+                }
+                .position(destination)
+                .scaleEffect(destinationVisible ? 1 : 0.7)
+                .opacity(destinationVisible ? 1 : 0)
+                .animation(.spring(response: 0.42, dampingFraction: 0.68), value: destinationVisible)
+            }
+        }
+        .frame(height: 124)
+        .accessibilityHidden(true)
+    }
+}
+
+private struct JourneyRoute: SwiftUI.Shape {
+    func path(in rect: CGRect) -> Path {
+        Path { path in
+            path.move(to: CGPoint(x: 15, y: 100))
+            path.addCurve(to: CGPoint(x: rect.width - 36, y: 34),
+                          control1: CGPoint(x: rect.width * 0.34, y: 112),
+                          control2: CGPoint(x: rect.width * 0.58, y: 24))
         }
     }
 }
