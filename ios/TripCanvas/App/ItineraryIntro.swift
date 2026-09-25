@@ -70,7 +70,8 @@ struct ItineraryIntroScene: View {
         let tilt: Double
     }
 
-    /// 특정 도시가 아니라 어느 여행에나 있는 장소 종류. 기호는 장소 분류(`CandidateCategory`)와 같은 벌이다.
+    /// 특정 도시가 아니라 어느 여행에나 있는 장소 종류. 앞의 셋은 장소 분류(`CandidateCategory`)와 같은 기호이고,
+    /// 노을은 분류에 없어(분류의 '명소'는 카메라다) 시안대로 해 지는 모양을 쓴다.
     static let stops: [Stop] = [
         Stop(time: "09:30", name: "미술관", symbol: "building.columns.fill", scatter: CGSize(width: 68, height: -88), tilt: -6),
         Stop(time: "12:00", name: "현지 시장", symbol: "fork.knife", scatter: CGSize(width: -102, height: -44), tilt: 5),
@@ -87,6 +88,9 @@ struct ItineraryIntroScene: View {
     private let nodeColumn: CGFloat = 22
 
     private var rowHeight: CGFloat { compact ? baseRowHeight * 0.82 : baseRowHeight }
+
+    /// 그림자는 테마와 무관하게 검정이다 — `Ink.ink`는 다크에서 밝은 색이라 그림자 대신 빛번짐이 된다.
+    private static let shade = Color.black
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -112,7 +116,7 @@ struct ItineraryIntroScene: View {
             RoundedRectangle(cornerRadius: 16)
                 .fill(Ink.raised)
                 .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Ink.hairline))
-                .shadow(color: Ink.ink.opacity(0.08), radius: 16, y: 10)
+                .shadow(color: Self.shade.opacity(0.08), radius: 16, y: 10)
                 .opacity(frame.card)
                 .offset(y: 10 * (1 - frame.card))
         }
@@ -159,7 +163,7 @@ struct ItineraryIntroScene: View {
         .padding(.vertical, 7)
         .background(Ink.raised, in: Capsule())
         .overlay(Capsule().strokeBorder(Ink.hairline).opacity(1 - chip.settled))
-        .shadow(color: Ink.ink.opacity(0.16 * away), radius: 8 * away, y: 6 * away)
+        .shadow(color: Self.shade.opacity(0.16 * away), radius: 8 * away, y: 6 * away)
         // 제자리 기준으로 어긋나 있다가 돌아온다 — 글자 크기가 바뀌어도 도착점은 레이아웃이 정한다.
         .rotationEffect(.degrees(stop.tilt * away))
         .offset(x: stop.scatter.width * away, y: stop.scatter.height * away)
