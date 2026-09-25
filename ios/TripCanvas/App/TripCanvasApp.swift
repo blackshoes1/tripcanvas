@@ -53,7 +53,10 @@ struct SignInView: View {
     @State private var password = ""
     @State private var social = SocialSignIn()
     @State private var showsEmailForm = false
-    @State private var introStep = 0
+    /// 브랜드 장면이 시작된 때. 이메일 화면에 갔다 돌아와도 다시 재생하지 않는다.
+    @State private var introStart: Date?
+    @State private var introDone = false
+    @Environment(\.dynamicTypeSize) private var typeSize
     @FocusState private var focusedField: Field?
 
     private enum Field { case email, password }
@@ -88,24 +91,18 @@ struct SignInView: View {
                             .font(.title3.weight(.semibold))
                     }
                     .foregroundStyle(Ink.ink)
-                    .padding(.bottom, 48)
-                    .opacity(introStep >= 1 || reduceMotion ? 1 : 0)
-                    .offset(y: introStep >= 1 || reduceMotion ? 0 : 14)
+                    .padding(.bottom, compact(geometry) ? Space.l : 28)
 
                     if showsEmailForm {
                         emailForm
                             .transition(reduceMotion ? .identity : .opacity.combined(with: .offset(x: 16)))
                     } else {
-                        methodPicker
+                        methodPicker(compact: compact(geometry))
                             .transition(reduceMotion ? .identity : .opacity.combined(with: .offset(x: -16)))
                     }
 
                     accountSwitch
-                        .padding(.top, 32)
-                        .opacity(introStep >= 6 || reduceMotion ? 1 : 0)
-                        .offset(y: introStep >= 6 || reduceMotion ? 0 : 10)
-                        .allowsHitTesting(introStep >= 6 || reduceMotion)
-                        .accessibilityHidden(introStep < 6 && !reduceMotion)
+                        .padding(.top, compact(geometry) ? Space.l : 28)
 
                     Spacer(minLength: 24)
                 }
@@ -118,33 +115,56 @@ struct SignInView: View {
         }
         .background(Ink.paper.ignoresSafeArea())
         .task {
-            guard introStep == 0 else { return }
-            if reduceMotion { introStep = 6; return }
-            for (step, pause) in [(1, 120), (2, 330), (3, 330), (4, 380), (5, 360), (6, 330)] {
-                try? await Task.sleep(for: .milliseconds(pause))
-                guard !Task.isCancelled else { return }
-                withAnimation(.easeOut(duration: 0.38)) { introStep = step }
-            }
+            guard introStart == nil, !introDone else { return }
+            if reduceMotion { introDone = true; return }
+            // 앱이 열리는 전환(약 0.4초)이 끝난 뒤에 시작한다 — 곧바로 시작하면 흩어진 장면이
+            // 전환에 가려, 이미 모여 있는 카드부터 보인다(시뮬레이터 녹화로 확인).
+            try? await Task.sleep(for: .milliseconds(400))
+            introStart = .now
+            // 끝나면 타임라인을 멈춘다 — 멈춘 장면을 매 프레임 다시 그리지 않게.
+            try? await Task.sleep(for: .seconds(ItineraryIntroTimeline.duration + 0.1))
+            introDone = true
         }
         .task { await social.loadProviders() }
         .onDisappear { social.cancel() }
         .onChange(of: mode) { _, _ in env.auth.dismissNotice() }
     }
 
-    private var methodPicker: some View {
+    /// 작은 화면(SE)에서는 장면을 줄여 로그인 버튼이 첫 화면 안에 남게 한다.
+    private func compact(_ geometry: GeometryProxy) -> Bool { geometry.size.height < 720 }
+
+    /// 장면의 지금 모양. 움직임 줄이기이거나 이미 끝났으면 마지막 모양이다.
+    private func introFrame(at date: Date) -> ItineraryIntroTimeline.Frame {
+        if reduceMotion || introDone { return ItineraryIntroTimeline.final }
+        guard let introStart else { return ItineraryIntroTimeline.frame(at: 0) }
+        return ItineraryIntroTimeline.frame(at: date.timeIntervalSince(introStart))
+    }
+
+    private func methodPicker(compact: Bool) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("다시 만나 반가워요")
-                .font(.title.weight(.semibold))
-                .foregroundStyle(Ink.ink)
-                .opacity(introStep >= 2 || reduceMotion ? 1 : 0)
-                .offset(y: introStep >= 2 || reduceMotion ? 0 : 22)
-            Text("여행 일정을 이어서 확인하세요.")
-                .font(.subheadline)
-                .foregroundStyle(Ink.soft)
-                .padding(.top, Space.s)
-                .padding(.bottom, 48)
-                .opacity(introStep >= 3 || reduceMotion ? 1 : 0)
-                .offset(y: introStep >= 3 || reduceMotion ? 0 : 14)
+            TimelineView(.animation(paused: introDone || reduceMotion)) { context in
+                let frame = introFrame(at: context.date)
+                VStack(alignment: .leading, spacing: 0) {
+                    // 큰 글자에서는 장면을 빼고 말과 버튼만 남긴다 — 장식이 버튼을 화면 밖으로 밀면 안 된다.
+                    if !typeSize.isAccessibilitySize {
+                        ItineraryIntroScene(frame: frame, compact: compact)
+                            .padding(.bottom, compact ? Space.l : 28)
+                    }
+                    Text("가고 싶은 곳이\n하루가 되기까지")
+                        .font(Typeface.editorial(.title))
+                        .foregroundStyle(Ink.ink)
+                        .lineSpacing(4)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityAddTraits(.isHeader)
+                        .introReveal(frame.headline)
+                    Text("계획할 때도, 여행 중에도 곁에서.")
+                        .font(.subheadline)
+                        .foregroundStyle(Ink.soft)
+                        .padding(.top, Space.s)
+                        .introReveal(frame.subline)
+                }
+            }
+            .padding(.bottom, compact ? Space.l : 32)
 
             VStack(spacing: Space.m) {
                 providerButton(.google)
@@ -164,10 +184,6 @@ struct SignInView: View {
                 }
                 .buttonStyle(SignInButtonStyle())
                 .disabled(social.isWorking || env.auth.isWorking)
-                .opacity(introStep >= 5 || reduceMotion ? 1 : 0)
-                .offset(y: introStep >= 5 || reduceMotion ? 0 : 14)
-                .allowsHitTesting(introStep >= 5 || reduceMotion)
-                .accessibilityHidden(introStep < 5 && !reduceMotion)
             }
 
             if social.isWorking { ProgressView("로그인 확인 중").padding(.top, Space.l) }
@@ -208,10 +224,6 @@ struct SignInView: View {
         .buttonStyle(SignInButtonStyle())
         .accessibilityLabel(provider.title)
         .disabled(social.isWorking || env.auth.isWorking)
-        .opacity(introStep >= 4 || reduceMotion ? 1 : 0)
-        .offset(y: introStep >= 4 || reduceMotion ? 0 : 14)
-        .allowsHitTesting(introStep >= 4 || reduceMotion)
-        .accessibilityHidden(introStep < 4 && !reduceMotion)
     }
 
     private var emailForm: some View {
@@ -340,6 +352,11 @@ private struct SignInButtonStyle: ButtonStyle {
 }
 
 private extension View {
+    /// 장면의 문구가 떠오르는 모양 — 아래에서 8pt 올라오며 나타난다.
+    func introReveal(_ progress: Double) -> some View {
+        opacity(progress).offset(y: 8 * (1 - progress))
+    }
+
     func signInField() -> some View {
         padding(.horizontal, Space.l)
             .frame(height: 54)
