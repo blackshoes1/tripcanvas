@@ -100,6 +100,8 @@ struct SignInView: View {
                         JourneyIntroMark(progress: routeProgress,
                                          destinationVisible: introStep >= 3 || reduceMotion)
                             .padding(.bottom, 24)
+                            .opacity(introStep >= 1 || reduceMotion ? 1 : 0)
+                            .offset(y: introStep >= 1 || reduceMotion ? 0 : 10)
                         methodPicker
                             .transition(reduceMotion ? .identity : .opacity.combined(with: .offset(x: -16)))
                     }
@@ -145,7 +147,7 @@ struct SignInView: View {
     private var methodPicker: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("다시 만나 반가워요")
-                .font(.title.weight(.semibold))
+                .font(Typeface.editorial(.title2).weight(.bold))
                 .foregroundStyle(Ink.ink)
                 .opacity(introStep >= 3 || reduceMotion ? 1 : 0)
                 .offset(y: introStep >= 3 || reduceMotion ? 0 : 22)
@@ -348,6 +350,24 @@ private struct JourneyIntroMark: View {
         GeometryReader { geometry in
             let destination = JourneyRoute.point(at: 1, width: geometry.size.width)
             ZStack(alignment: .topLeading) {
+                Circle()
+                    .stroke(Ink.accent.opacity(0.07), lineWidth: 1)
+                    .frame(width: 210, height: 210)
+                    .position(x: geometry.size.width * 0.48, y: 96)
+                Circle()
+                    .stroke(Ink.accent.opacity(0.07), lineWidth: 1)
+                    .frame(width: 154, height: 154)
+                    .position(x: geometry.size.width * 0.48, y: 96)
+
+                HStack {
+                    Text("WITH J  /  JOURNEY NOTE")
+                    Spacer()
+                    Text("01")
+                }
+                .metaLabel()
+                .padding(.horizontal, 20)
+                .padding(.top, 17)
+
                 JourneyRoute()
                     .stroke(Ink.soft.opacity(0.20), style: StrokeStyle(lineWidth: 1, dash: [2, 6]))
                 JourneyRoute(progress: progress)
@@ -359,10 +379,10 @@ private struct JourneyIntroMark: View {
                     .overlay(Circle().strokeBorder(Ink.accent, lineWidth: 2))
                     .position(JourneyRoute.point(at: 0, width: geometry.size.width))
 
-                Circle()
-                    .fill(Ink.paper)
-                    .frame(width: 13, height: 13)
-                    .overlay(Circle().fill(Ink.accent).frame(width: 7, height: 7))
+                Image(systemName: "paperplane.fill")
+                    .font(.system(size: 17, weight: .medium))
+                    .foregroundStyle(Ink.accent)
+                    .frame(width: 24, height: 24)
                     .modifier(JourneyTravelEffect(progress: progress, width: geometry.size.width))
                     .opacity(progress > 0 && !destinationVisible ? 1 : 0)
 
@@ -370,20 +390,36 @@ private struct JourneyIntroMark: View {
                 JourneyWaypoint(progress: progress, fraction: 0.72, width: geometry.size.width)
 
                 ZStack {
-                    Circle().strokeBorder(Ink.accent.opacity(0.24), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 12)
+                        .strokeBorder(Ink.accent.opacity(0.24), lineWidth: 1)
                         .frame(width: 56, height: 56)
-                    Circle().fill(Ink.accent).frame(width: 42, height: 42)
+                    RoundedRectangle(cornerRadius: 9)
+                        .fill(Ink.accent)
+                        .frame(width: 44, height: 44)
                     Text("J")
                         .font(Typeface.editorial(.title3).weight(.bold))
                         .foregroundStyle(Ink.paper)
                 }
+                .rotationEffect(.degrees(-7))
                 .position(destination)
                 .scaleEffect(destinationVisible ? 1 : 0.78)
                 .opacity(destinationVisible ? 1 : 0)
+                .shadow(color: Ink.accent.opacity(0.14), radius: 7, y: 4)
                 .animation(.spring(response: 0.42, dampingFraction: 0.82), value: destinationVisible)
+
+                Text("계획부터 여행까지")
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(Ink.soft)
+                    .padding(.leading, 20)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                    .padding(.bottom, 16)
             }
         }
-        .frame(height: 108)
+        .frame(height: 170)
+        .background(Ink.raised, in: RoundedRectangle(cornerRadius: 20))
+        .clipShape(RoundedRectangle(cornerRadius: 20))
+        .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(Ink.hairline))
+        .shadow(color: Ink.ink.opacity(0.06), radius: 16, y: 7)
         .accessibilityHidden(true)
     }
 }
@@ -397,8 +433,8 @@ private struct JourneyRoute: SwiftUI.Shape {
     }
 
     private static func points(width: CGFloat) -> (CGPoint, CGPoint, CGPoint, CGPoint) {
-        (CGPoint(x: 12, y: 86), CGPoint(x: width * 0.27, y: 103),
-         CGPoint(x: width * 0.59, y: 12), CGPoint(x: width - 30, y: 30))
+        (CGPoint(x: 28, y: 115), CGPoint(x: width * 0.27, y: 132),
+         CGPoint(x: width * 0.59, y: 42), CGPoint(x: width - 48, y: 77))
     }
 
     private static func between(_ first: CGPoint, _ second: CGPoint, _ fraction: CGFloat) -> CGPoint {
