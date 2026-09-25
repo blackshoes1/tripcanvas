@@ -137,16 +137,16 @@ export function dayTimelineOf(trip: Trip, legCache: LegCache, di: number): Timel
  * ⚠️ **그리기(지도)와 조회(구간 캐시)가 이 하나를 같이 쓴다.** 각자 걸으면
  * 조회한 구간과 그린 구간이 어긋나 "선은 도로인데 이 구간만 직선"이 된다.
  */
-export function dayLegs(trip: Trip, di: number, legCache: LegCache = {}): { key: string; from: LocatedSpot; to: LocatedSpot; mode: TransportMode }[] {
+export function dayLegs(trip: Trip, di: number, legCache: LegCache = {}): { key: string; from: LocatedSpot; to: LocatedSpot; mode: TransportMode; returning?: boolean }[] {
   const days = trip.days ?? [];
   const day = days[di];
   if (!day) return [];
-  const out: { key: string; from: LocatedSpot; to: LocatedSpot; mode: TransportMode }[] = [];
-  const add = (from: LocatedSpot, to: LocatedSpot, mode: TransportMode) =>
-    out.push({ key: legKey(from, to, mode), from, to, mode });
+  const out: { key: string; from: LocatedSpot; to: LocatedSpot; mode: TransportMode; returning?: boolean }[] = [];
+  const add = (from: LocatedSpot, to: LocatedSpot, mode: TransportMode, returning?: boolean) =>
+    out.push({ key: legKey(from, to, mode), from, to, mode, ...(returning ? { returning: true } : {}) });
 
   const journey = dayJourneyOf(trip, legCache, di);
-  for (const leg of journey.legs) add(leg.from, leg.to, leg.returning ? returnModeOf(day) as TransportMode : legModeOf(day, leg.to));
+  for (const leg of journey.legs) add(leg.from, leg.to, leg.returning ? returnModeOf(day) as TransportMode : legModeOf(day, leg.to), leg.returning);
   return out;
 }
 

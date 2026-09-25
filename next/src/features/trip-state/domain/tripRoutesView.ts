@@ -15,7 +15,7 @@ import type { TripDoc } from './todayView';
 const { legKey } = legacyLib;
 
 /** 일자 지도와 전체 지도가 같은 경로·출처를 받는다. */
-export function tripRouteLegOf(cache: LegCache, leg: { from: LocatedSpot; to: LocatedSpot; mode: string }): TripRouteLeg {
+export function tripRouteLegOf(cache: LegCache, leg: { from: LocatedSpot; to: LocatedSpot; mode: string; returning?: boolean }): TripRouteLeg {
   const entry = cache[legKey(leg.from, leg.to, leg.mode)];
   const isRouted = !!(entry && entry.sec && !entry.est);
   return {
@@ -23,7 +23,8 @@ export function tripRouteLegOf(cache: LegCache, leg: { from: LocatedSpot; to: Lo
     to: { lat: leg.to.lat, lng: leg.to.lng },
     mode: leg.mode,
     path: isRouted ? entry.path ?? null : null,
-    source: isRouted ? 'ROUTED' : 'STRAIGHT_LINE_ESTIMATE'
+    source: isRouted ? 'ROUTED' : 'STRAIGHT_LINE_ESTIMATE',
+    ...(leg.returning ? { returning: true } : {})
   };
 }
 

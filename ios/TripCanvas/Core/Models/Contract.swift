@@ -1001,6 +1001,8 @@ struct ItineraryParseResponse: Codable, Sendable {
 // ⚠️ 그리는 데 필요한 것만 온다 — 시각·비용·예약은 일자 화면의 몫이다.
 
 struct TripRouteLeg: Codable, Hashable, Sendable {
+    /// 자동 숙소 복귀는 일반 이동과 구분해 그린다. 이전 서버/캐시는 nil이다.
+    var returning: Bool? = nil
     let from: GeoPoint
     let to: GeoPoint
     let mode: String

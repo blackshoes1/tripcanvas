@@ -877,6 +877,8 @@ export interface ItineraryParseResponse {
 // ⚠️ 여기에는 **그리는 데 필요한 것만** 담는다. 시각·비용·예약은 일자 화면(`DayPlan`)의 몫이다.
 
 export interface TripRouteLeg {
+  /** 일정에 직접 넣지 않은 숙소 복귀 구간 */
+  returning?: boolean;
   from: GeoPoint;
   to: GeoPoint;
   mode: string;

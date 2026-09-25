@@ -48,6 +48,28 @@ final class MapRouteTests: XCTestCase {
         XCTAssertNil(legacy.routes)
     }
 
+    func testEveryAutomaticReturnIsDrawnSeparatelyAndFaintly() throws {
+        let a = GeoPoint(lat: 33.5, lng: 126.5)
+        let b = GeoPoint(lat: 33.6, lng: 126.6)
+        let c = GeoPoint(lat: 33.7, lng: 126.7)
+        let hotel = GeoPoint(lat: 33.8, lng: 126.8)
+        let legs = [(a, b, false), (b, hotel, true), (a, c, false), (c, hotel, true)].map {
+            TripRouteLeg(returning: $0.2 ? true : nil, from: $0.0, to: $0.1,
+                         mode: "car", path: nil, source: .straightLineEstimate)
+        }
+        var d = day([])
+        d.routes = legs
+        let decoded = try JSONDecoder().decode(DayPlanDay.self, from: JSONEncoder().encode(d))
+        XCTAssertEqual(decoded.mapRoutes.map(\.points), [[a, b], [b, hotel], [a, c], [c, hotel]])
+        XCTAssertEqual(decoded.mapRoutes.map(\.synthetic), [false, true, false, true])
+        XCTAssertEqual(Set(decoded.mapRoutes.map(\.id)).count, 4)
+        let entire = TripRouteDay(index: 0, date: "2026-10-01", title: "", spots: [], legs: legs)
+        XCTAssertEqual(entire.mapRoutes(colorIndex: 2).map(\.synthetic), [false, true, false, true])
+        XCTAssertTrue(entire.mapRoutes(colorIndex: 2).allSatisfy { $0.colorIndex == 2 })
+        let legacy = try JSONDecoder().decode(TripRouteLeg.self, from: Data(#"{"from":{"lat":1,"lng":2},"to":{"lat":3,"lng":4},"mode":"car","path":null,"source":"STRAIGHT_LINE_ESTIMATE"}"#.utf8))
+        XCTAssertNil(legacy.returning)
+    }
+
     func testParallelBranchesNeverCreateConnectionsBetweenBranches() {
         let a = GeoPoint(lat: 33.5, lng: 126.5)
         let b = GeoPoint(lat: 33.6, lng: 126.6)

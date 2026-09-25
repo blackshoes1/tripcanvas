@@ -58,7 +58,7 @@ extension DayPlanDay {
         var builder = MapRouteBuilder(id: "day-\(index)")
         if let routes {
             for leg in routes {
-                builder.append(from: leg.from, to: leg.to, path: Polyline.decode(leg.path))
+                builder.append(from: leg.from, to: leg.to, path: Polyline.decode(leg.path), synthetic: leg.returning == true)
             }
             return builder.finish()
         }
@@ -100,7 +100,7 @@ extension TripRouteDay {
     func mapRoutes(colorIndex: Int) -> [MapRoute] {
         var builder = MapRouteBuilder(id: "trip-day-\(index)", colorIndex: colorIndex)
         for leg in legs {
-            builder.append(from: leg.from, to: leg.to, path: Polyline.decode(leg.path))
+            builder.append(from: leg.from, to: leg.to, path: Polyline.decode(leg.path), synthetic: leg.returning == true)
         }
         return builder.finish()
     }
@@ -126,7 +126,13 @@ private struct MapRouteBuilder {
 
     init(id: String, colorIndex: Int = 0) { self.id = id; self.colorIndex = colorIndex }
 
-    mutating func append(from: GeoPoint, to: GeoPoint, path: [GeoPoint]) {
+    mutating func append(from: GeoPoint, to: GeoPoint, path: [GeoPoint], synthetic: Bool = false) {
+        if synthetic {
+            flush()
+            routes.append(MapRoute(id: "\(id)-return-\(routes.count)", points: path.count >= 2 ? path : [from, to],
+                                   synthetic: true, routed: path.count >= 2, colorIndex: colorIndex))
+            return
+        }
         if let last, last != from { flush() }
         if points.isEmpty { points.append(from) }
         if path.count >= 2 { points.append(contentsOf: path) }

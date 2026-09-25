@@ -100,6 +100,7 @@ describe('분리 일정의 하루 합계와 경로', () => {
     expect(plan.day.totals.endMinutes).toBe(700);
     expect(plan.day.back?.leg.from).toEqual({ lat: b.lat, lng: b.lng });
     expect(plan.day.routes).toHaveLength(4);
+    expect(plan.day.routes.filter(leg => leg.returning)).toHaveLength(2);
     const scene = buildMapScene(trip, cache, 1);
     expect(scene.lines).toHaveLength(4);
     expect(scene.lines.filter(l => l.dashed)).toHaveLength(2);

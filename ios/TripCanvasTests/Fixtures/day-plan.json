@@ -122,7 +122,8 @@
         },
         "mode": "car",
         "path": null,
-        "source": "STRAIGHT_LINE_ESTIMATE"
+        "source": "STRAIGHT_LINE_ESTIMATE",
+        "returning": true
       }
     ],
     "carPickups": [],
