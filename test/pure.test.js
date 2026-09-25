@@ -1369,3 +1369,25 @@ test('샘플 여행은 한 규칙으로 가른다 — id와 sample 표시 둘 �
   assert.equal(L.isSampleTrip(null), false);
   assert.equal(L.isSampleTrip({ id: 'mine', sample: 'yes' }), false, '참이 아닌 값은 표시가 아니다');
 });
+
+test('tripSummaryCities — 스크린샷의 도시 별칭 통합과 해변·항구 제외', () => {
+  const names = ['Madrid', 'Sevilla', 'Seville', '세비야', 'Palma', 'Estellencs', '팔마',
+    'Cala Blava', 'Sant Antoni de Portmany', 'Cala Santanyí', 'Santanyí', 'Sóller',
+    'Port de Sóller', 'Sa Calobra', 'Córdoba', '코르도바', '마드리드'];
+  const days = names.map(city => ({ spots: [{ city }] }));
+  const before = JSON.stringify(days);
+  assert.deepEqual(L.tripSummaryCities(days), [
+    '마드리드', '세비야', '팔마', '에스텔렌츠', '산트 안토니 데 포르트마니', '산타니', '소예르', '코르도바'
+  ]);
+  assert.equal(JSON.stringify(days), before);
+});
+
+test('tripSummaryCities — 공백·대소문자·악센트 중복, 미지정, 알려지지 않은 도시 보존', () => {
+  assert.deepEqual(L.tripSummaryCities([{}, { spots: [
+    {}, { city: ' ' }, { city: '기타' }, { city: '  MADRID ' }, { city: '마드리드' },
+    { city: 'So\u0301ller' }, { city: 'soller' }, { city: '소예르' },
+    { city: 'Porto' }, { city: 'porto' }, { city: 'Cala Millor' },
+    { city: '  New   Town  ' }, { city: 'new town' }
+  ] }]), ['마드리드', '소예르', 'Porto', 'Cala Millor', 'New Town']);
+  assert.deepEqual(L.tripSummaryCities([]), []);
+});

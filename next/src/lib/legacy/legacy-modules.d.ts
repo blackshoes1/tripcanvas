@@ -183,6 +183,7 @@ declare module '@legacy/lib.js' {
     placeName(p: unknown): string;
     /** 구글 addressComponents → 도시명 */
     cityFromGoogle(comps: unknown): string;
+    tripSummaryCities(days: { spots?: { city?: string }[] }[]): string[];
     /** 구글 regularOpeningHours → {d,o,c}[] (상시영업 d:-1) */
     normHours(oh: unknown): { d: number; o: number; c: number }[] | null;
     /** 검색 실패 원인 분류 */
