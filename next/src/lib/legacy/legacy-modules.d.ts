@@ -183,6 +183,10 @@ declare module '@legacy/lib.js' {
     placeName(p: unknown): string;
     /** 구글 addressComponents → 도시명 */
     cityFromGoogle(comps: unknown): string;
+    costAmountOf(item: Record<string, unknown>, field?: string): number | null;
+    normalizeAdmission(value: unknown): { personalStatus?: string; note?: string } | null;
+    additionalReservations(trip: { bookings?: unknown[]; days?: unknown[]; costItems?: unknown[] }):
+      { source: 'SPOT' | 'DAY_COST' | 'TRIP_COST'; dayIndex: number | null; spotIndex: number | null; item: Record<string, unknown> }[];
     tripSummaryCities(days: { spots?: { city?: string }[] }[]): string[];
     /** 구글 regularOpeningHours → {d,o,c}[] (상시영업 d:-1) */
     normHours(oh: unknown): { d: number; o: number; c: number }[] | null;

@@ -4,6 +4,7 @@
 // (사용자 본인 행, RLS)뿐이라 기기 로컬 기록과 합쳐진 웹의 상태보다 관측 수가 적을 수 있다 —
 // 그래서 관측 시각(observedAt)을 함께 보내 클라이언트가 '언제 확인한 값인지'를 그대로 말하게 한다.
 import price from '@legacy/price.js';
+import lib from '@legacy/lib.js';
 
 import type { BookingSummary, PriceState, PriceStatus } from './contract';
 import type { TripDoc } from './todayView';
@@ -82,7 +83,7 @@ export function buildBookings(trip: TripDoc, observations: PriceObservation[], t
     byBooking.set(o.booking_id, list);
   });
   const raw = (trip.bookings ?? []) as Record<string, unknown>[];
-  return raw
+  const bookings: BookingSummary[] = raw
     .filter((b) => b && typeof b === 'object' && typeof b.id === 'string')
     .map((b) => {
       const type = TYPES.has(String(b.type)) ? String(b.type) as BookingSummary['type'] : 'hotel';
@@ -106,6 +107,35 @@ export function buildBookings(trip: TripDoc, observations: PriceObservation[], t
         endTime: typeof b.carReturnTime === 'string' ? b.carReturnTime : null,
         priceStatus: statusOf(b, byBooking.get(String(b.id)) ?? [], today)
       };
-    })
-    .sort((a, b) => (a.start ?? '9999').localeCompare(b.start ?? '9999') || a.title.localeCompare(b.title));
+    });
+  const additional: BookingSummary[] = lib.additionalReservations(trip).map(({ source, dayIndex, spotIndex, item }) => {
+    const admission = lib.normalizeAdmission(item.admission);
+    const kind = source === 'SPOT' ? item.costKind : item.kind;
+    const type = item.cat === 'food' || kind === 'FOOD' ? 'restaurant'
+      : kind === 'TRANSIT' ? 'transit'
+      : kind === 'TICKET' ? 'activity' : 'other';
+    const amount = lib.costAmountOf(item, source === 'SPOT' ? 'cost' : 'amount');
+    const priceKnown = amount !== null;
+    const date = dayIndex == null || !trip.start ? null : new Date(`${trip.start}T00:00:00Z`);
+    if (date) date.setUTCDate(date.getUTCDate() + dayIndex!);
+    const text = (value: unknown) => typeof value === 'string' && value.trim() ? value.trim() : null;
+    return {
+      id: `reservation:${source}:${dayIndex ?? 'trip'}:${spotIndex ?? item.id}`,
+      source, dayIndex, type,
+      title: text(source === 'SPOT' ? item.name : item.title) ?? '예약',
+      provider: '', url: text(item.bookUrl),
+      price: amount ?? 0,
+      priceKnown, currency: text(item.cur) ?? 'KRW',
+      start: date && Number.isFinite(date.getTime()) ? date.toISOString().slice(0, 10) : null,
+      end: null, startTime: text(item.bookAt), endTime: null,
+      refundable: null, freeCancelUntil: null,
+      confirmation: text(item.confirmation) ?? text(item.confirmationNumber) ?? text(item.code),
+      place: text(item.city), note: [text(item.desc), text(item.note), text(admission?.note)].filter(Boolean).join('\n') || null, priceStatus: null
+    };
+  });
+  return [...bookings, ...additional].sort((a, b) =>
+    (a.start ?? '9999').localeCompare(b.start ?? '9999')
+    || (!a.start && !b.start ? (a.dayIndex ?? Number.MAX_SAFE_INTEGER) - (b.dayIndex ?? Number.MAX_SAFE_INTEGER) : 0)
+    || (a.startTime ?? '99:99').localeCompare(b.startTime ?? '99:99')
+    || a.title.localeCompare(b.title));
 }
