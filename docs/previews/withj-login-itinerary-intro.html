@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=390">
+<title>With J 로그인 인트로</title>
+<style>
+  @font-face { font-family: "NanumMyeongjo"; src: url("../../ios/TripCanvas/Resources/Fonts/NanumMyeongjo-Regular.ttf"); }
+  :root {
+    --bg: #f9f7f2; --paper: #ffffff; --ink: #1d1f1a; --soft: #767a70; --faint: #b7bdb0;
+    --line: #46702e; --btn: #3f633e; --border: #e3e4dc; --rule: #dedfd4; --gold: #cbb77d;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { background: var(--bg); }
+  body { width: 390px; height: 844px; position: relative; overflow: hidden;
+         font-family: -apple-system, "Apple SD Gothic Neo", sans-serif; color: var(--ink); }
+  .status { position: absolute; top: 0; left: 0; right: 0; height: 54px; z-index: 5; }
+  .time { position: absolute; left: 31px; top: 19px; font-weight: 600; font-size: 17px; letter-spacing: -.2px; }
+  .island { position: absolute; left: 139px; top: 11px; width: 112px; height: 33px; border-radius: 17px; background: #000; }
+  .header { position: absolute; left: 28px; right: 28px; top: 106px; height: 48px; border-bottom: 1px solid var(--rule); }
+  .brand { font-weight: 700; font-size: 19px; letter-spacing: -.3px; }
+
+  /* 일정 카드 */
+  .card { position: absolute; left: 40px; top: 186px; width: 310px; height: 282px; border-radius: 16px;
+          background: var(--paper); border: 1px solid var(--border);
+          box-shadow: 0 1px 2px rgba(40,44,30,.04), 0 12px 32px -18px rgba(40,44,30,.25); }
+  .cardHead { position: absolute; left: 22px; top: 20px; right: 22px; }
+  .meta { font: 500 10.5px/1 ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: 1.2px; color: var(--faint); }
+  .city { margin-top: 7px; font-family: "NanumMyeongjo", serif; font-size: 21px; letter-spacing: -.4px; }
+
+  .chip { position: absolute; left: 0; top: 0; height: 34px; padding: 0 13px 0 11px; border-radius: 17px;
+          display: flex; align-items: center; gap: 7px; white-space: nowrap;
+          font-size: 14.5px; letter-spacing: -.2px; background: var(--paper); border: 1px solid var(--border);
+          will-change: transform; z-index: 3; }
+  .chip svg { flex: none; }
+  .when { position: absolute; left: 40px; width: 44px; font: 500 12px/34px ui-monospace, "SF Mono", Menlo, monospace;
+          color: var(--soft); z-index: 3; }
+  svg.overlay { position: absolute; left: 0; top: 0; z-index: 4; pointer-events: none; }
+
+  .copy { position: absolute; left: 28px; right: 28px; top: 500px; }
+  h1 { font-family: "NanumMyeongjo", serif; font-weight: 400; font-size: 31px; line-height: 1.34; letter-spacing: -.6px; }
+  .sub { margin-top: 12px; font-size: 14px; color: var(--soft); }
+  .btn { position: absolute; left: 26px; right: 26px; height: 52px; border-radius: 12px;
+         display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 15px; font-weight: 600; }
+  .google { top: 660px; background: #fff; border: 1px solid #d9ddd4; color: var(--ink); }
+  .email { top: 723px; background: var(--btn); color: #fff; }
+  .signup { position: absolute; left: 0; right: 0; top: 802px; text-align: center; font-size: 13px; color: var(--soft); }
+  .signup b { color: #4f6f4d; font-weight: 700; }
+  .home { position: absolute; left: 141px; top: 830px; width: 108px; height: 5px; border-radius: 3px; background: #111; }
+</style>
+</head>
+<body>
+  <div class="status"><div class="time">9:41</div><div class="island"></div>
+    <svg width="80" height="14" style="position:absolute;right:26px;top:22px" viewBox="0 0 80 14">
+      <g fill="#111"><rect x="0" y="9" width="3" height="4" rx="1"/><rect x="5" y="6" width="3" height="7" rx="1"/><rect x="10" y="3" width="3" height="10" rx="1"/><rect x="15" y="0" width="3" height="13" rx="1"/></g>
+      <path d="M31 5.5a9 9 0 0 1 12 0M33.5 8.3a5 5 0 0 1 7 0" stroke="#111" stroke-width="1.8" fill="none" stroke-linecap="round"/><circle cx="37" cy="11.2" r="1.4" fill="#111"/>
+      <rect x="52" y="1" width="23" height="12" rx="3.5" fill="none" stroke="#111" stroke-opacity=".4"/><rect x="54" y="3" width="19" height="8" rx="2" fill="#111"/><rect x="76.5" y="5" width="1.8" height="4" rx=".9" fill="#111" fill-opacity=".4"/>
+    </svg>
+  </div>
+
+  <div class="header"><div class="brand">With J</div></div>
+
+  <!-- 흩어진 '가고 싶은 곳'이 하루의 순서로 자리를 잡고, J가 그 하루에 서명한다. -->
+  <div class="card" id="card">
+    <div class="cardHead" id="cardHead"><div class="meta">DAY 1 · OCT 25</div><div class="city">여행 첫날</div></div>
+  </div>
+  <div id="stage"></div>
+  <svg class="overlay" width="390" height="500" viewBox="0 0 390 500">
+    <line id="spine" x1="0" y1="0" x2="0" y2="0" stroke="var(--line)" stroke-width="2" stroke-linecap="round"/>
+    <g id="nodes"></g>
+    <path id="dash" d="M286 436 H300" fill="none" stroke="#3f633e" stroke-width="1.8" stroke-linecap="round"/>
+    <path id="cap" d="M318 403 C326 401 336 400 346 401" fill="none" stroke="#3f633e" stroke-width="2.2" stroke-linecap="round"/>
+    <path id="sign" d="M336 401 C336 418 335 434 331 446 C327 457 318 460 313 455 C309 451 310 445 314 442"
+          fill="none" stroke="#3f633e" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>
+
+  <div class="copy">
+    <h1 id="h1">가고 싶은 곳이<br>하루가 되기까지</h1>
+    <p class="sub" id="sub">계획할 때도, 여행 중에도 곁에서.</p>
+  </div>
+
+  <div class="btn google">
+    <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.6 5.4 2.7 13.3l7.9 6.1C12.5 13.6 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.7 6c4.5-4.2 6.9-10.3 6.9-17.7z"/><path fill="#FBBC05" d="M10.6 28.6c-.5-1.4-.8-3-.8-4.6s.3-3.2.8-4.6l-7.9-6.1C1 16.6 0 20.2 0 24s1 7.4 2.7 10.7l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.7-6c-2.2 1.5-5 2.3-8.2 2.3-6.2 0-11.5-4.1-13.4-9.8l-7.9 6.1C6.6 42.6 14.6 48 24 48z"/></svg>
+    Google로 계속하기
+  </div>
+  <div class="btn email">
+    <svg width="18" height="14" viewBox="0 0 18 14" fill="none" stroke="#fff" stroke-width="1.5"><rect x=".75" y=".75" width="16.5" height="12.5" rx="2"/><path d="M1.5 1.8 9 7.6l7.5-5.8"/></svg>
+    이메일로 계속하기
+  </div>
+  <div class="signup">계정이 없으신가요? <b>가입하기</b></div>
+  <div class="home"></div>
+
+<script>
+// 모든 모양은 시각 t(초)의 함수다 — 녹화는 t를 직접 넣고, 그냥 열면 반복 재생한다.
+const ICON = {
+  landmark: '<path d="M2 13h12M3.5 13V7M6.5 13V7M9.5 13V7M12.5 13V7M1.5 6 8 2.5 14.5 6Z" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linejoin="round"/>',
+  food: '<path d="M4 1.5v5a2 2 0 0 0 2 2M6 1.5v13M8 1.5v5a2 2 0 0 1-2 2M11.5 14.5v-13c1.7.8 2.5 2.8 2.5 5.5h-2.5" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
+  park: '<path d="M8 14.5V9M8 9 4.5 11M8 10.5l3-1.8M8 1.5a4.5 4.5 0 0 0-4.5 4.5A3 3 0 0 0 6 9h4a3 3 0 0 0 2.5-3A4.5 4.5 0 0 0 8 1.5Z" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linejoin="round"/>',
+  sunset: '<path d="M1.5 12.5h13M4.2 12.5a3.8 3.8 0 0 1 7.6 0M8 3v2.2M3.2 5.6l1.4 1.4M12.8 5.6l-1.4 1.4" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linecap="round"/>',
+  sea: '<path d="M1.5 6c1.1 0 1.6-1 2.7-1s1.6 1 2.7 1 1.6-1 2.7-1 1.6 1 2.7 1 1.6-1 1.7-1M1.5 10c1.1 0 1.6-1 2.7-1s1.6 1 2.7 1 1.6-1 2.7-1 1.6 1 2.7 1 1.6-1 1.7-1" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linecap="round"/>',
+};
+// 흩어진 자리(각도 포함) → 일정의 줄. 순서는 '가고 싶은 곳'이 아니라 하루의 순서다.
+const places = [
+  { name: '미술관',     icon: 'landmark', when: '09:30', from: [196, 180, -6] },
+  { name: '현지 시장',   icon: 'food',     when: '12:00', from: [26, 268, 5] },
+  { name: '공원 산책',   icon: 'park',     when: '15:00', from: [246, 322, 7] },
+  { name: '노을 명소',   icon: 'sunset',   when: '18:30', from: [58, 424, -4] },
+];
+const ROW0 = 268, GAP = 44, NAME_X = 128, SPINE_X = 112;
+const stage = document.getElementById('stage');
+const NS = 'http://www.w3.org/2000/svg';
+const nodesG = document.getElementById('nodes');
+places.forEach((p, i) => {
+  const c = document.createElement('div'); c.className = 'chip';
+  c.innerHTML = `<svg width="15" height="15" viewBox="0 0 16 16" style="color:var(--line)">${ICON[p.icon]}</svg>${p.name}`;
+  stage.appendChild(c); p.el = c;
+  const w = document.createElement('div'); w.className = 'when'; w.textContent = p.when;
+  w.style.top = (ROW0 + i * GAP) + 'px'; w.style.left = '58px'; stage.appendChild(w); p.whenEl = w;
+  const n = document.createElementNS(NS, 'circle'); n.setAttribute('cx', SPINE_X); n.setAttribute('cy', ROW0 + i * GAP + 17);
+  n.setAttribute('r', 4); n.setAttribute('stroke-width', 1.6); nodesG.appendChild(n); p.node = n;
+});
+const spine = document.getElementById('spine');
+spine.setAttribute('x1', SPINE_X); spine.setAttribute('x2', SPINE_X);
+const sign = document.getElementById('sign'), SL = sign.getTotalLength();
+const cap = document.getElementById('cap'), CL = cap.getTotalLength();
+cap.style.strokeDasharray = CL;
+const dash = document.getElementById('dash'), DL = dash.getTotalLength();
+sign.style.strokeDasharray = SL; dash.style.strokeDasharray = DL;
+
+const clamp = (x) => Math.max(0, Math.min(1, x));
+const seg = (t, a, b) => clamp((t - a) / (b - a));
+const ease = (x) => x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+const out = (x) => 1 - Math.pow(1 - x, 3);
+const lerp = (a, b, k) => a + (b - a) * k;
+
+function render(t) {
+  // 0–0.35s 떠 있는 칩이 나타난다, 0.2–0.5s 카드가 깔린다
+  const card = out(seg(t, 0.45, 0.85));
+  document.getElementById('card').style.opacity = card;
+  document.getElementById('card').style.transform = `translateY(${10 * (1 - card)}px)`;
+  const head = out(seg(t, 1.2, 1.55));
+  document.getElementById('cardHead').style.opacity = head;
+  // 0.55–1.55s 칩이 하루의 순서로 내려앉는다(차례로), 앉으면 테두리가 풀리고 시각이 보인다
+  places.forEach((p, i) => {
+    const appear = out(seg(t, 0.05 + i * 0.07, 0.4 + i * 0.07));
+    const k = ease(seg(t, 0.6 + i * 0.12, 1.3 + i * 0.1));
+    const x = lerp(p.from[0], NAME_X, k), y = lerp(p.from[1], ROW0 + i * GAP, k), r = lerp(p.from[2], 0, k);
+    p.el.style.transform = `translate(${x}px, ${y}px) rotate(${r}deg)`;
+    p.el.style.opacity = appear;
+    const settled = seg(t, 1.1 + i * 0.1, 1.4 + i * 0.1);
+    p.el.style.borderColor = `rgba(227,228,220,${1 - settled})`;
+    p.el.style.boxShadow = `0 ${6 * (1 - k)}px ${16 * (1 - k)}px -8px rgba(40,44,30,${.35 * (1 - k)})`;
+    p.whenEl.style.opacity = out(settled);
+  });
+  // 1.35–2.05s 경로가 위에서 아래로 줄을 잇고, 지나간 자리에 점이 찍힌다
+  const d = ease(seg(t, 1.35, 2.05));
+  const y0 = ROW0 + 17, y1 = ROW0 + 3 * GAP + 17;
+  spine.setAttribute('y1', y0); spine.setAttribute('y2', lerp(y0, y1, d));
+  spine.style.opacity = d > 0 ? 1 : 0;
+  places.forEach((p, i) => {
+    const at = i / 3, on = d >= at - 0.001 && t >= 1.35;
+    p.node.setAttribute('fill', on ? 'var(--line)' : 'transparent');
+    p.node.setAttribute('stroke', on ? 'var(--line)' : 'transparent');
+  });
+  // 2.1–2.85s J가 서명한다
+  dash.style.strokeDashoffset = DL * (1 - ease(seg(t, 2.1, 2.24)));
+  cap.style.strokeDashoffset = CL * (1 - ease(seg(t, 2.26, 2.42)));
+  sign.style.strokeDashoffset = SL * (1 - ease(seg(t, 2.44, 2.95)));
+  // 2.0–2.6s 헤드라인, 2.3–2.9s 보조 문장
+  [['h1', 2.0, 2.6], ['sub', 2.3, 2.9]].forEach(([id, a, b]) => {
+    const k = out(seg(t, a, b));
+    const el = document.getElementById(id);
+    el.style.opacity = k; el.style.transform = `translateY(${8 * (1 - k)}px)`;
+  });
+}
+window.render = render;
+window.DURATION = 4.4;
+
+if (!location.search.includes('capture')) {
+  const start = performance.now();
+  const loop = (now) => { render(((now - start) / 1000) % window.DURATION); requestAnimationFrame(loop); };
+  requestAnimationFrame(loop);
+} else render(0);
+</script>
+</body>
+</html>
