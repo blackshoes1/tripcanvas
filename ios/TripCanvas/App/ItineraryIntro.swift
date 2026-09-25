@@ -2,11 +2,11 @@ import SwiftUI
 
 /// 로그인 화면의 브랜드 장면 — 흩어진 '가고 싶은 곳'이 하루의 순서로 자리를 잡고, J가 그 하루에 서명한다.
 ///
-/// 모양은 시각 t(초)의 **순수 함수**다. 승인된 시안(2026-09-25, `withj-brand-scene-v5`)과 같은 시각·같은 곡선을
+/// 모양은 시각 t(초)의 **순수 함수**다. 승인된 시안(2026-09-25, `withj-brand-scene-v7`)과 같은 시각·같은 곡선을
 /// 그대로 옮겼다 — 화면은 이 값을 그리기만 한다. 움직임 줄이기에서는 `final`을 곧바로 쓴다.
 enum ItineraryIntroTimeline {
-    /// 마지막 획(서명)이 끝나는 때. 그 뒤로는 멈춰 있다 — 로그인 화면은 반복 재생하지 않는다.
-    static let duration: TimeInterval = 2.95
+    /// 마지막 버튼까지 나타나는 때. 그 뒤로는 멈춰 있다 — 로그인 화면은 반복 재생하지 않는다.
+    static let duration: TimeInterval = 3.6
     static let stopCount = 4
 
     struct Chip: Equatable {
@@ -24,39 +24,42 @@ enum ItineraryIntroTimeline {
         var spine: Double
         /// 경로가 지나가 점이 찍힌 줄의 수
         var reachedStops: Int
-        var dash: Double
+        var signature: Double
         var cap: Double
-        var stem: Double
         var headline: Double
         var subline: Double
+        var google: Double
+        var email: Double
+        var signup: Double
     }
 
     static func frame(at t: TimeInterval) -> Frame {
         let chips = (0..<stopCount).map { i -> Chip in
-            let d = Double(i)
-            return Chip(appear: out(seg(t, 0.05 + d * 0.07, 0.4 + d * 0.07)),
-                        travel: ease(seg(t, 0.6 + d * 0.12, 1.3 + d * 0.1)),
-                        settled: out(seg(t, 1.1 + d * 0.1, 1.4 + d * 0.1)))
+            let start = 0.48 + Double(i) * 0.11
+            let travel = ease(seg(t, start, start + 0.84))
+            // 같은 칩이 제자리에 닿을 때 테두리도 함께 풀린다.
+            return Chip(appear: 1, travel: travel, settled: ease(seg(travel, 0.67, 1)))
         }
-        let spine = ease(seg(t, 1.35, 2.05))
-        let reached = t < 1.35 ? 0 : (0..<stopCount).filter { spine >= Double($0) / Double(stopCount - 1) - 0.001 }.count
-        return Frame(card: out(seg(t, 0.45, 0.85)),
-                     head: out(seg(t, 1.2, 1.55)),
+        let spine = ease(seg(t, 1.18, 1.99))
+        let reached = t < 1.18 ? 0 : (0..<stopCount).filter { spine >= Double($0) / Double(stopCount - 1) - 0.001 }.count
+        return Frame(card: 1,
+                     head: ease(seg(t, 0.8, 1.2)),
                      chips: chips,
                      spine: spine,
                      reachedStops: reached,
-                     dash: ease(seg(t, 2.1, 2.24)),
-                     cap: ease(seg(t, 2.26, 2.42)),
-                     stem: ease(seg(t, 2.44, 2.95)),
-                     headline: out(seg(t, 2.0, 2.6)),
-                     subline: out(seg(t, 2.3, 2.9)))
+                     signature: ease(seg(t, 2.01, 2.8)),
+                     cap: ease(seg(t, 2.76, 2.94)),
+                     headline: ease(seg(t, 1.85, 2.28)),
+                     subline: ease(seg(t, 2.2, 2.55)),
+                     google: ease(seg(t, 3.04, 3.36)),
+                     email: ease(seg(t, 3.18, 3.5)),
+                     signup: ease(seg(t, 3.34, 3.58)))
     }
 
     static let final = frame(at: duration)
 
     private static func seg(_ t: Double, _ a: Double, _ b: Double) -> Double { min(max((t - a) / (b - a), 0), 1) }
-    private static func ease(_ x: Double) -> Double { x < 0.5 ? 4 * x * x * x : 1 - pow(-2 * x + 2, 3) / 2 }
-    private static func out(_ x: Double) -> Double { 1 - pow(1 - x, 3) }
+    private static func ease(_ x: Double) -> Double { x * x * x * (x * (x * 6 - 15) + 10) }
 }
 
 /// 일정 카드. 장식이라 VoiceOver에서는 숨긴다 — 같은 말은 아래 헤드라인이 한다.
@@ -81,7 +84,7 @@ struct ItineraryIntroScene: View {
 
     let frame: ItineraryIntroTimeline.Frame
     var compact = false
-    @ScaledMetric(relativeTo: .subheadline) private var baseRowHeight: CGFloat = 40
+    @ScaledMetric(relativeTo: .subheadline) private var baseRowHeight: CGFloat = 44
     @ScaledMetric(relativeTo: .caption) private var timeWidth: CGFloat = 46
     /// 기호마다 폭이 달라 이름의 첫 글자가 줄마다 어긋나지 않게 칸을 고정한다.
     @ScaledMetric(relativeTo: .caption) private var iconWidth: CGFloat = 16
@@ -106,11 +109,12 @@ struct ItineraryIntroScene: View {
                     row(stop, chip: frame.chips[index], reached: index < frame.reachedStops)
                 }
             }
-            .background(alignment: .topLeading) { spine }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(alignment: .topLeading) { route }
         }
         .padding(.horizontal, 22)
         .padding(.top, compact ? 16 : 20)
-        .padding(.bottom, compact ? 14 : 18)
+        .padding(.bottom, compact ? 30 : 34)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
             RoundedRectangle(cornerRadius: 16)
@@ -119,12 +123,6 @@ struct ItineraryIntroScene: View {
                 .shadow(color: Self.shade.opacity(0.08), radius: 16, y: 10)
                 .opacity(frame.card)
                 .offset(y: 10 * (1 - frame.card))
-        }
-        .overlay(alignment: .bottomTrailing) {
-            JSignature(dash: frame.dash, cap: frame.cap, stem: frame.stem)
-                .frame(width: 62, height: 64)
-                .padding(.trailing, 16)
-                .padding(.bottom, compact ? 8 : 12)
         }
         .accessibilityHidden(true)
     }
@@ -161,7 +159,7 @@ struct ItineraryIntroScene: View {
         }
         .padding(.horizontal, 11)
         .padding(.vertical, 7)
-        .background(Ink.raised, in: Capsule())
+        .background(Ink.raised.opacity(1 - chip.settled), in: Capsule())
         .overlay(Capsule().strokeBorder(Ink.hairline).opacity(1 - chip.settled))
         .shadow(color: Self.shade.opacity(0.16 * away), radius: 8 * away, y: 6 * away)
         // 제자리 기준으로 어긋나 있다가 돌아온다 — 글자 크기가 바뀌어도 도착점은 레이아웃이 정한다.
@@ -170,55 +168,43 @@ struct ItineraryIntroScene: View {
         .opacity(chip.appear)
     }
 
-    /// 첫 줄의 점에서 마지막 줄의 점까지 내려가는 경로.
-    private var spine: some View {
-        let x = timeWidth + nodeColumn / 2
-        return Path { path in
-            path.move(to: CGPoint(x: x, y: rowHeight / 2))
-            path.addLine(to: CGPoint(x: x, y: rowHeight * (CGFloat(Self.stops.count) - 0.5)))
-        }
-        .trim(from: 0, to: frame.spine)
-        .stroke(Ink.accent, style: StrokeStyle(lineWidth: 2, lineCap: .round))
-    }
-}
+    /// 일정의 세로 동선이 카드 아래를 따라 J로 이어진다. 같은 좌표에서 시작해 획이 끊기지 않는다.
+    private var route: some View {
+        GeometryReader { geometry in
+            let x = timeWidth + nodeColumn / 2
+            let lastY = rowHeight * (CGFloat(Self.stops.count) - 0.5)
+            let endX = geometry.size.width - 18
+            ZStack {
+                Path { path in
+                    path.move(to: CGPoint(x: x, y: rowHeight / 2))
+                    path.addLine(to: CGPoint(x: x, y: lastY))
+                }
+                .trim(from: 0, to: frame.spine)
+                .stroke(Ink.accent, style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
 
-/// 카드 모서리의 "—J" 서명. 짧은 줄 → J의 머리획 → 줄기와 갈고리 순으로 쓴다.
-private struct JSignature: View {
-    let dash: Double
-    let cap: Double
-    let stem: Double
+                Path { path in
+                    path.move(to: CGPoint(x: x, y: lastY))
+                    path.addLine(to: CGPoint(x: x, y: lastY + 10))
+                    path.addCurve(to: CGPoint(x: x + 23, y: lastY + 30),
+                                  control1: CGPoint(x: x, y: lastY + 23),
+                                  control2: CGPoint(x: x + 7, y: lastY + 30))
+                    path.addLine(to: CGPoint(x: endX - 50, y: lastY + 30))
+                    path.addCurve(to: CGPoint(x: endX, y: lastY + 7),
+                                  control1: CGPoint(x: endX - 25, y: lastY + 47),
+                                  control2: CGPoint(x: endX, y: lastY + 31))
+                    path.addLine(to: CGPoint(x: endX, y: lastY - 19))
+                }
+                .trim(from: 0, to: frame.signature)
+                .stroke(Ink.accent, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
 
-    var body: some View {
-        ZStack {
-            stroke(part(.dash), dash, width: 1.8)
-            stroke(part(.cap), cap, width: 2.2)
-            stroke(part(.stem), stem, width: 2.4)
-        }
-    }
-
-    private enum Part { case dash, cap, stem }
-
-    /// 62×64 칸 기준 좌표(시안의 SVG 경로를 그대로 옮겼다).
-    private func part(_ part: Part) -> Path {
-        Path { p in
-            switch part {
-            case .dash:
-                p.move(to: CGPoint(x: 0, y: 38))
-                p.addLine(to: CGPoint(x: 14, y: 38))
-            case .cap:
-                p.move(to: CGPoint(x: 32, y: 5))
-                p.addCurve(to: CGPoint(x: 60, y: 3), control1: CGPoint(x: 40, y: 3), control2: CGPoint(x: 50, y: 2))
-            case .stem:
-                p.move(to: CGPoint(x: 50, y: 3))
-                p.addCurve(to: CGPoint(x: 45, y: 48), control1: CGPoint(x: 50, y: 20), control2: CGPoint(x: 49, y: 36))
-                p.addCurve(to: CGPoint(x: 27, y: 57), control1: CGPoint(x: 41, y: 60), control2: CGPoint(x: 32, y: 62))
-                p.addCurve(to: CGPoint(x: 28, y: 44), control1: CGPoint(x: 23, y: 53), control2: CGPoint(x: 24, y: 47))
+                Path { path in
+                    path.move(to: CGPoint(x: endX - 16, y: lastY - 18))
+                    path.addQuadCurve(to: CGPoint(x: endX + 16, y: lastY - 19),
+                                      control: CGPoint(x: endX, y: lastY - 22))
+                }
+                .trim(from: 0, to: frame.cap)
+                .stroke(Ink.accent, style: StrokeStyle(lineWidth: 1.7, lineCap: .round))
             }
         }
-    }
-
-    private func stroke(_ path: Path, _ progress: Double, width: CGFloat) -> some View {
-        path.trim(from: 0, to: progress)
-            .stroke(Ink.accent, style: StrokeStyle(lineWidth: width, lineCap: .round, lineJoin: .round))
     }
 }
