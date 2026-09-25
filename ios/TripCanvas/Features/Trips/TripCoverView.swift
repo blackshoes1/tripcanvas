@@ -13,6 +13,7 @@ struct TripCoverView: View {
     let api: APIClient
     /// 마지막으로 본 표지를 파일로 남겨 둔다 — 서버가 답하기 전과 **답하지 못할 때** 자리가 비지 않게.
     let cache: TripCache
+    var cacheScope: TripCache.Scope? = nil
     let refresh: UUID
     var isHero = false
     var onOpen: () -> Void
@@ -105,7 +106,7 @@ struct TripCoverView: View {
                         "imageBase64": data.map { $0.base64EncodedString() as Any } ?? NSNull()
                     ])
                     self.saved = updated
-                    await cache.save(updated, key: TripCache.coverKey(tripId: trip.id))
+                    await cache.save(updated, key: TripCache.coverKey(tripId: trip.id), scope: cacheScope)
                     NotificationCenter.default.post(name: Self.changed, object: trip.id, userInfo: ["cover": updated])
                 }
             }
@@ -159,7 +160,7 @@ struct TripCoverView: View {
         loadID = attempt
         let key = TripCache.coverKey(tripId: trip.id)
         // 지난번 표지를 **먼저** 그린다. 이미 보여 주고 있는 것이 있으면 건드리지 않는다(깜빡임).
-        if saved == nil, let cached = await cache.load(TripCoverResponse.self, key: key) {
+        if saved == nil, let cached = await cache.load(TripCoverResponse.self, key: key, scope: cacheScope) {
             guard !Task.isCancelled, !showsEditor, loadID == attempt else { return }
             saved = cached.value
         }
@@ -168,7 +169,7 @@ struct TripCoverView: View {
         let outcome = Self.resolve(fetched: fetched, shown: saved)
         saved = outcome.cover
         loadFailed = outcome.failed
-        if let fetched { await cache.save(fetched, key: key) }
+        if let fetched { await cache.save(fetched, key: key, scope: cacheScope) }
         if saved?.imageBase64 == nil {
             let result = await TripCoverService.shared.representative(city: city)
             guard !Task.isCancelled, loadID == attempt else { return }

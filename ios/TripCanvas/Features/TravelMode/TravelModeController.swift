@@ -17,6 +17,7 @@ final class TravelModeController {
     private(set) var travelState: TravelStateResponse?
     private(set) var lastError: String?
     private(set) var isRefreshing = false
+    private var accountGeneration = 0
 
     private let service: TravelStateSource
     private let location: LocationProvider
@@ -32,6 +33,17 @@ final class TravelModeController {
         self.push = push
         self.liveActivity = liveActivity
         self.snapshot = SharedStore.loadTravelMode()?.value ?? TravelModeSnapshot()
+    }
+
+    func resetForAccountChange() {
+        accountGeneration += 1
+        snapshot = TravelModeSnapshot()
+        travelState = nil
+        lastError = nil
+        isRefreshing = false
+        SharedStore.clear()
+        WidgetRefresher.reload()
+        Task { await liveActivity.end() }
     }
 
     var isActive: Bool { snapshot.isActive }
@@ -84,7 +96,8 @@ final class TravelModeController {
     func refresh(tripId: String, reason: RefreshReason) async {
         guard !isRefreshing else { return }
         isRefreshing = true
-        defer { isRefreshing = false }
+        let generation = accountGeneration
+        defer { if generation == accountGeneration { isRefreshing = false } }
 
         // 위치는 Travel Mode가 켜져 있고 권한이 있을 때만, 그때그때 한 번씩만 묻는다(§5).
         var point: GeoPoint?
@@ -93,7 +106,8 @@ final class TravelModeController {
         }
 
         do {
-            let response = try await service.travelState(
+            guard generation == accountGeneration else { return }
+            let fetched = try await service.travelState(
                 tripId: tripId,
                 location: point,
                 locationUpdatedAt: point == nil ? nil : ISO8601DateFormatter.tripCanvas.string(from: Date()),
@@ -101,29 +115,36 @@ final class TravelModeController {
                 suppressUntil: suppressUntilMinutes(),
                 markSent: isActive          // 켜져 있을 때만 '보낸 것'으로 기록한다
             )
-            apply(response)
-            lastError = nil
+            guard generation == accountGeneration else { return }
+            apply(fetched.value, cachedAt: fetched.cachedAt)
+            lastError = fetched.cachedAt == nil ? nil : "지금은 연결이 없어 저장된 일정 기준으로 안내하고 있어요."
         } catch let error as APIError where error.isOffline {
+            guard generation == accountGeneration else { return }
             // 오프라인이어도 잠금화면을 비우지 않는다(§59) — 마지막 상태를 그대로 둔다.
             lastError = "지금은 연결이 없어 저장된 일정 기준으로 안내하고 있어요."
         } catch {
+            guard generation == accountGeneration else { return }
             lastError = error.localizedDescription
         }
     }
 
-    private func apply(_ response: TravelStateResponse) {
+    private func apply(_ response: TravelStateResponse, cachedAt: Date?) {
         travelState = response
 
         // 위젯은 앱 데이터를 복제하지 않는다 — 압축본만 넘긴다(§28).
-        SharedStore.saveWidgetSnapshot(response.widget)
-        SharedStore.saveActivityState(response.liveActivity)
+        SharedStore.saveWidgetSnapshot(response.widget, savedAt: cachedAt ?? Date())
+        SharedStore.saveActivityState(response.liveActivity, savedAt: cachedAt ?? Date())
 
         // 상태 지문이 그대로면 아무것도 다시 그리지 않는다. 이것이 배터리 정책의 핵심이다.
         let changed = snapshot.lastStateVersion != response.stateVersion
         snapshot.lastStateVersion = response.stateVersion
 
-        if isActive {
-            Task { await liveActivity.sync(response, changed: changed) }
+        if isActive, cachedAt == nil {
+            let generation = accountGeneration
+            Task {
+                guard generation == accountGeneration else { return }
+                await liveActivity.sync(response, changed: changed)
+            }
             scheduleDeviceNotifications(response)
         }
         WidgetRefresher.reload()
@@ -162,7 +183,7 @@ final class TravelModeController {
 @MainActor
 protocol TravelStateSource {
     func travelState(tripId: String, location: GeoPoint?, locationUpdatedAt: String?,
-                     travelMode: Bool, suppressUntil: String?, markSent: Bool) async throws -> TravelStateResponse
+                     travelMode: Bool, suppressUntil: String?, markSent: Bool) async throws -> TripService.Fetched<TravelStateResponse>
 }
 
 @MainActor

@@ -92,6 +92,7 @@ struct TripCostsView: View {
                 DayCostView(day: snapshot.document.days[day.index],
                             cost: response?.days.first(where: { $0.index == day.index })?.cost,
                             canEdit: snapshot.canEdit,
+                            draftKey: EditorDraftKey(accountID: env.auth.session?.userId, tripID: trip.id, editor: "spend-\(day.index)"),
                             onRefresh: { await load() }) { edited in
                     await save(edited, index: day.index)
                 }
@@ -99,9 +100,9 @@ struct TripCostsView: View {
         }
         .sheet(item: $quickSpend) { target in
             if let snapshot, snapshot.document.hasDay(target.day) {
-                QuickSpendEditor(dayLabel: dayLabel(target.day)) { entry in
+                QuickSpendEditor(dayLabel: dayLabel(target.day), draftKey: EditorDraftKey(accountID: env.auth.session?.userId, tripID: trip.id, editor: "spend-\(target.day)")) { entry in
                     var day = snapshot.document.days[target.day]
-                    day.costItems = day.costItems + [entry]
+                    day.costItems = day.costItems.filter { $0.id != entry.id } + [entry]
                     return await save(day, index: target.day)
                 }
             }

@@ -5,13 +5,14 @@ import { cloudAuth, initializeCloud } from '../services/tripCanvasClient';
 
 import type { CloudUser } from '../hooks/useCloudAuth';
 
-export function AuthBar({ user, available, statusLabel, onSignIn, onSignOut, open, onOpenChange }: {
+export function AuthBar({ user, available, statusLabel, onSignIn, onSignOut, onRetry, open, onOpenChange }: {
   user: CloudUser | null;
   available: boolean;
   /** 활성 여행의 동기화 상태 한 줄 */
   statusLabel: string;
   onSignIn: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
   onSignOut: () => void;
+  onRetry?: () => Promise<void>;
   /** 로그인 창 열림 — 첫 방문 소개의 '로그인'에서도 바로 열 수 있게 바깥이 들고 있는다 */
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -20,6 +21,7 @@ export function AuthBar({ user, available, statusLabel, onSignIn, onSignOut, ope
   const [email, setEmail] = useState('');
   const [pass, setPass] = useState('');
   const [busy, setBusy] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [providers, setProviders] = useState<string[]>([]);
@@ -52,6 +54,10 @@ export function AuthBar({ user, available, statusLabel, onSignIn, onSignOut, ope
   return (
     <div className="itCloudBar">
       <span className="itCloudStatus">{statusLabel}</span>
+      {user && onRetry && <button type="button" disabled={retrying} onClick={() => {
+        setRetrying(true);
+        void onRetry().finally(() => setRetrying(false));
+      }}>{retrying ? '저장 중…' : '다시 저장'}</button>}
       {user ? (
         <button type="button" onClick={onSignOut} title={`${user.email} — 로그아웃`}>
           👤 {user.email.split('@')[0]}

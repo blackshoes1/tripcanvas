@@ -1,7 +1,7 @@
 // 협업 use case — PGlite(진짜 PostgreSQL) 위에서. 기대값은 test/rls/collaboration.sql과 같은 결론이다:
 // 초대 전엔 아무것도 안 보임 · 토큰은 한 번만 · 수락은 멱등 · 보기 권한은 의견만 · 후보 빼기는 제안자/주최자 · 결정은 상태 ·
 // 활동 기록은 의미 있는 것만(소유자 참여·자동 MUST·거두기·빼기·REOPEN·혼자 쓰는 여행의 저장은 없음).
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '../../api/errors';
 import type { RequestContext } from '../../auth/types';
@@ -42,6 +42,50 @@ beforeEach(async () => {
 });
 
 describe('초대와 참여', () => {
+  it('마지막 한 자리를 동시에 수락해도 한 명만 들어온다', async () => {
+    const inv = await service.createInvite(A, 'trip1', 'VIEWER', 24, 1);
+    const results = await Promise.all([service.acceptInvite(B, inv.token, 'B'), service.acceptInvite(C, inv.token, 'C')]);
+    expect(results.filter((r) => r.ok)).toHaveLength(1);
+    expect(results.filter((r) => r.reason === 'EXHAUSTED')).toHaveLength(1);
+    expect((await service.listInvites(A, 'trip1'))[0].use_count).toBe(1);
+    expect(await service.listMembers(A, 'trip1')).toHaveLength(2);
+    expect(await kinds(A)).toEqual(['MEMBER_JOINED']);
+  });
+
+  it('같은 사용자의 동시 수락도 한 번만 참여하고 한 번만 센다', async () => {
+    const inv = await service.createInvite(A, 'trip1', 'VIEWER', 24, null);
+    const results = await Promise.all([service.acceptInvite(B, inv.token, 'B'), service.acceptInvite(B, inv.token, 'B')]);
+    expect(results.every((r) => r.ok)).toBe(true);
+    expect(results.filter((r) => r.already_member)).toHaveLength(1);
+    expect((await service.listInvites(A, 'trip1'))[0].use_count).toBe(1);
+    expect(await kinds(A)).toEqual(['MEMBER_JOINED']);
+  });
+
+  it('서로 다른 링크로 동시에 참여해도 한 멤버와 한 활동만 남는다', async () => {
+    const first = await service.createInvite(A, 'trip1', 'VIEWER', 24, 1);
+    const second = await service.createInvite(A, 'trip1', 'EDITOR', 24, 1);
+    const results = await Promise.all([service.acceptInvite(B, first.token, 'B'), service.acceptInvite(B, second.token, 'B')]);
+    expect(results.every((r) => r.ok)).toBe(true);
+    expect(results.filter((r) => r.already_member)).toHaveLength(1);
+    expect((await service.listInvites(A, 'trip1')).reduce((n, inv) => n + inv.use_count, 0)).toBe(1);
+    expect(await service.listMembers(A, 'trip1')).toHaveLength(2);
+    expect(await kinds(A)).toEqual(['MEMBER_JOINED']);
+  });
+
+  it('수락 저장 직전에 취소된 링크는 참여시키지 않는다', async () => {
+    const inv = await service.createInvite(A, 'trip1', 'VIEWER', 24, 1);
+    const repo = new PgCollabRepository(db.db);
+    const accept = repo.acceptInvite.bind(repo);
+    vi.spyOn(repo, 'acceptInvite').mockImplementation(async (input) => {
+      await service.revokeInvite(A, 'trip1', inv.id);
+      return accept(input);
+    });
+    const racing = new CollabService({ trips, collab: repo });
+    expect((await racing.acceptInvite(B, inv.token, 'B')).reason).toBe('REVOKED');
+    expect(await service.listMembers(A, 'trip1')).toHaveLength(1);
+    expect((await service.listInvites(A, 'trip1'))[0].use_count).toBe(0);
+  });
+
   it('초대 전에는 B가 아무것도 못 본다 — 멤버·초대·후보·활동 전부 NOT_FOUND', async () => {
     expect(await code(service.listMembers(B, 'trip1'))).toBe('NOT_FOUND');
     expect(await code(service.listInvites(B, 'trip1'))).toBe('NOT_FOUND');

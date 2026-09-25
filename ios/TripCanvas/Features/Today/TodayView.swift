@@ -243,7 +243,7 @@ struct TodayView: View {
         let summary = model.today?.trip ?? trip
         return VStack(spacing: Space.m) {
             VStack(spacing: -Space.l) {
-                TripCoverView(trip: summary, api: env.service.api, cache: env.service.cache,
+                TripCoverView(trip: summary, api: env.service.api, cache: env.service.cache, cacheScope: env.service.cacheScope,
                               refresh: coverRefresh, isHero: true, onOpen: {})
                 TripDepartureCard(trip: summary, days: days, onOpenPlan: onOpenPlan)
             }

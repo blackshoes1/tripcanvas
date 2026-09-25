@@ -42,7 +42,7 @@ struct TripPlanView: View {
     @Environment(AppEnvironment.self) private var env
     /// 지도를 한 번이라도 열었는가. 열기 전에는 만들지 않고, 연 뒤에는 숨기기만 한다(`content`).
     @State private var mapMounted = false
-    @State private var editor: SpotEditorTarget?
+    @State private var editor: SpotEditorSession?
     @State private var viewingSpot: SpotEditorTarget?
     @State private var showsSearch = false
     @State private var searchedSpot: TripSpot?
@@ -75,7 +75,7 @@ struct TripPlanView: View {
                     if model.canEdit {
                         // 시안의 툴바는 ⋯ 하나다 — 빼 온 진입점을 여기 모은다(기능을 잃지 않는다).
                         Button { insertionAfter = nil; showsSearch = true } label: { Label("검색해서 담기", systemImage: "magnifyingglass") }
-                        Button { insertionAfter = nil; editor = .create } label: { Label("직접 입력", systemImage: "square.and.pencil") }
+                        Button { insertionAfter = nil; editor = makeEditor(.create) } label: { Label("직접 입력", systemImage: "square.and.pencil") }
                         if model.day != nil {
                             Button(isEditing ? "순서 편집 마치기" : "순서 편집") {
                                 withAnimation { editMode?.wrappedValue = isEditing ? .inactive : .active }
@@ -98,7 +98,7 @@ struct TripPlanView: View {
         // 지도를 처음 켠 순간부터 만들어 둔다. 그 뒤로는 숨기기만 한다.
         .onChange(of: showsMap, initial: true) { _, on in if on { mapMounted = true } }
         .sheet(isPresented: $showsSearch, onDismiss: {
-            if let spot = searchedSpot { editor = .createFromMap(spot); searchedSpot = nil }
+            if let spot = searchedSpot { editor = makeEditor(.createFromMap(spot)); searchedSpot = nil }
         }) {
             // 근처 우선의 기준은 그날 마지막 좌표 — 웹이 앵커로 검색하는 것과 같다.
             PlaceSearchView(near: model.day?.pins.last?.point) { hit in
@@ -108,28 +108,30 @@ struct TripPlanView: View {
         .sheet(item: $viewingSpot) { target in
             SpotInformationView(spot: target.spot, contextLabel: "\(trip.name) · Day \(model.selectedDay + 1)")
         }
-        .sheet(item: $editor) { target in
+        .sheet(item: $editor) { session in
+            let target = session.target
             Group {
                 SpotEditorView(
                     target: target,
                     dayCount: model.dayCount,
-                    currentDay: model.selectedDay,
-                    contextLabel: "\(trip.name) · Day \(model.selectedDay + 1) · \(model.strip.first(where: { $0.index == model.selectedDay })?.date ?? trip.start)",
+                    currentDay: session.day,
+                    contextLabel: "\(trip.name) · Day \(session.day + 1) · \(model.strip.first(where: { $0.index == session.day })?.date ?? trip.start)",
                     members: model.members,
                     role: model.role,
+                    draftKey: EditorDraftKey(accountID: env.auth.session?.userId, tripID: trip.id, editor: "spot-\(session.day)-\(target.index.map(String.init) ?? "new")"),
                     onSave: { spot in
                         let saved: Bool
                         switch target {
-                        case .create, .createFromMap: saved = await model.addSpot(spot, after: insertionAfter)
-                        case .edit(let index, _): saved = await model.updateSpot(at: index, with: spot)
+                        case .create, .createFromMap: saved = await model.addSpot(spot, after: insertionAfter, dayIndex: session.day, expectedRevision: session.revision)
+                        case .edit(let index, _): saved = await model.updateSpot(at: index, with: spot, dayIndex: session.day, expectedRevision: session.revision)
                         }
                         return saved ? nil : model.saveFailureMessage
                     },
                     onDelete: { index in
-                        await model.removeSpot(at: index) ? nil : model.saveFailureMessage
+                        await model.removeSpot(at: index, dayIndex: session.day, expectedRevision: session.revision) ? nil : model.saveFailureMessage
                     },
                     onMoveToDay: { index, day, spot in
-                        await model.moveSpot(at: index, toDay: day, with: spot) ? nil : model.saveFailureMessage
+                        await model.moveSpot(at: index, toDay: day, with: spot, dayIndex: session.day, expectedRevision: session.revision) ? nil : model.saveFailureMessage
                     })
             }
         }
@@ -158,6 +160,7 @@ struct TripPlanView: View {
         .sheet(isPresented: $showsCosts) {
             if let document = model.document, document.hasDay(costDay) {
                 DayCostView(day: document.days[costDay], cost: model.overviewPlan(costDay)?.day.totals.cost, canEdit: model.canEdit,
+                            draftKey: EditorDraftKey(accountID: env.auth.session?.userId, tripID: trip.id, editor: "spend-\(costDay)"),
                             onRefresh: { await model.load() }) { edited in
                     guard var draft = model.document, draft.hasDay(costDay), model.revision == costRevision else { return false }
                     var days = draft.days
@@ -193,7 +196,7 @@ struct TripPlanView: View {
                 withAnimation(motion) { model.selectedDay = day }
             },
             openCosts: { day, revision in costDay = day; costRevision = revision; showsCosts = true },
-            createSpot: { insertionAfter = nil; editor = .create })
+            createSpot: { insertionAfter = nil; editor = makeEditor(.create) })
     }
 
     @ViewBuilder
@@ -212,6 +215,12 @@ struct TripPlanView: View {
             }
         } else {
             VStack(spacing: 0) {
+                if let savedAt = model.documentCachedAt {
+                    OfflineNotice(savedAt: savedAt)
+                        .padding(.horizontal, Space.l)
+                    Text("저장된 일정이에요. 연결되면 다시 불러와 편집할 수 있어요.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 // 오류도 화면의 높이를 차지해야 한다. overlay로 띄우면 날짜 탭과
                 // 일정 제목을 덮고, 반투명 배경 아래의 글자까지 겹쳐 보인다.
                 if let error = model.errorMessage {
@@ -281,13 +290,17 @@ struct TripPlanView: View {
         Binding(get: { model.conflict != nil && editor == nil }, set: { if !$0 { model.dismissConflict() } })
     }
 
+    private func makeEditor(_ target: SpotEditorTarget) -> SpotEditorSession {
+        SpotEditorSession(target: target, day: model.selectedDay, revision: model.revision)
+    }
+
     private func editSpot(_ index: Int, spot: TripSpot, model: TripPlanViewModel) {
         guard model.canEdit else { viewingSpot = .edit(index: index, spot: spot); return }
         if choosingPlaces {
             if chosenPlaces.contains(index) { chosenPlaces.remove(index) } else { chosenPlaces.insert(index) }
             return
         }
-        editor = .edit(index: index, spot: spot)
+        editor = makeEditor(.edit(index: index, spot: spot))
     }
 
     private func prepareMove(_ indexes: Set<Int>, model: TripPlanViewModel) {
@@ -308,4 +321,11 @@ private struct PlanMoveTarget: Identifiable {
     let revision: Int
     let day: Int
     let indexes: IndexSet
+}
+
+private struct SpotEditorSession: Identifiable {
+    let id = UUID()
+    let target: SpotEditorTarget
+    let day: Int
+    let revision: Int
 }

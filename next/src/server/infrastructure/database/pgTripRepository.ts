@@ -45,12 +45,12 @@ export class PgTripRepository implements TripRepository {
   constructor(private readonly db: Db) {}
 
   /** 호출자가 볼 수 있는 행 + 역할 + 활성 인원. 소유한 쪽이 먼저 오도록 정렬돼 있다 */
-  private visibleQuery(userId: string) {
+  private visibleQuery(userId: string, clientId?: string) {
     const roleExpr = sql<string>`case when ${trips.userId} = ${userId} then 'OWNER' else ${tripMembers.role} end`;
     const countExpr = sql<number>`(select count(*)::int from ${tripMembers} m where m.trip_id = ${trips.id} and m.status = 'ACTIVE')`;
     return this.db.select({ row: trips, role: roleExpr, memberCount: countExpr }).from(trips)
       .leftJoin(tripMembers, and(eq(tripMembers.tripId, trips.id), eq(tripMembers.userId, userId), eq(tripMembers.status, 'ACTIVE')))
-      .where(or(eq(trips.userId, userId), sql`${tripMembers.id} is not null`));
+      .where(and(or(eq(trips.userId, userId), sql`${tripMembers.id} is not null`), clientId == null ? undefined : eq(trips.clientId, clientId)));
   }
 
   private toView(r: { row: Row; role: string; memberCount: number }): TripView {
@@ -85,9 +85,8 @@ export class PgTripRepository implements TripRepository {
   }
 
   async findVisible(userId: string, clientId: string): Promise<TripView | null> {
-    const rows = await this.visibleQuery(userId)
-      .orderBy(desc(sql`${trips.userId} = ${userId}`), trips.id);
-    const r = rows.find((x) => x.row.clientId === clientId);
+    const [r] = await this.visibleQuery(userId, clientId)
+      .orderBy(desc(sql`${trips.userId} = ${userId}`), trips.id).limit(1);
     return r ? this.toView(r) : null;
   }
 

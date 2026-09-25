@@ -135,23 +135,8 @@ export class CollabService implements CollabApi {
   }
 
   async acceptInvite(ctx: RequestContext, token: string, displayName: string | null): Promise<InviteAccept> {
-    const fail = (reason: InviteAccept['reason']): InviteAccept => ({ ok: false, reason, client_id: null, trip_name: null, role: null, already_member: false });
-    const name = trimTo(displayName, 40);
-    const inv = await this.deps.collab.findInviteByHash(sha256(token ?? ''));
-    if (!inv) return fail('INVALID');
-    if (inv.trip.deletedAt) return fail('TRIP_DELETED');
-    const done = (role: string, already: boolean): InviteAccept => ({ ok: true, reason: 'OK', client_id: inv.trip.clientId, trip_name: inv.trip.name, role, already_member: already });
-    if (inv.trip.ownerId === ctx.userId) return done('OWNER', true);   // 소유자가 제 링크를 열었다
-    const mem = await this.deps.collab.findMembership(inv.tripId, ctx.userId);
-    if (mem?.status === 'ACTIVE') return done(mem.role, true);
-    // 링크의 유효성은 새 참여에만 따진다
-    if (inv.revokedAt) return fail('REVOKED');
-    if (new Date(inv.expiresAt).getTime() <= Date.now()) return fail('EXPIRED');
-    if (inv.maxUses != null && inv.useCount >= inv.maxUses) return fail('EXHAUSTED');
-    // 내보낸 사람은 그 전에 만든 링크로는 못 돌아온다(§70)
-    if (mem?.status === 'REMOVED' && mem.updatedAt >= inv.createdAt) return fail('REMOVED');
-    await this.deps.collab.acceptInvite({ inviteId: inv.id, tripId: inv.tripId, userId: ctx.userId, role: inv.role, displayName: name, invitedBy: inv.createdBy });
-    return done(inv.role, false);
+    // 유효성을 미리 읽으면 마지막 자리·취소와 경합한다. 판정과 저장은 잠근 행을 보는 같은 트랜잭션에서 한다.
+    return this.deps.collab.acceptInvite({ tokenHash: sha256(token ?? ''), userId: ctx.userId, displayName: trimTo(displayName, 40) });
   }
 
   // ── 후보 ──

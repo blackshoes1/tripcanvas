@@ -162,6 +162,10 @@ declare module '@legacy/lib.js' {
     dayEndMinutes(lastSpot: unknown, lastEta: number, backMinutes?: number | null): number;
     /** 다음 구간이 출발하는 시각(분) = 직전 장소 도착 + 예약 대기 + 체류 */
     departMinuteAfter(prevSpot: unknown, prevState: { eta: number; wait?: number } | null | undefined): number;
+    computeDayJourney(
+      day: unknown, opts: { legMin: (a: unknown, b: unknown, context?: { depart: number; returning?: boolean }) => number; startAnchor?: unknown; endAnchor?: unknown }
+    ): { timeline: { eta: number; fixed: boolean; conflict: boolean; natural: number; wait: number }[];
+      legs: { from: unknown; to: unknown; spotIndex: number; depart: number; returning?: boolean }[]; endMinutes: number; lastLocation: unknown };
     computeTimeline(
       day: unknown,
       opts: { legMin: (a: unknown, b: unknown, context: { depart: number }) => number; startAnchor?: unknown }

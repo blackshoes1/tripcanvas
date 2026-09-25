@@ -197,7 +197,7 @@ export function computeToday(input: TodayInput): TodayComputation {
     const to = { lat: Number(b.lat), lng: Number(b.lng) };
     const entry = cache[lib.legKey(from, to, mode)];
     const hit = !!(entry && entry.sec);
-    if (count) { seen.total += 1; if (hit) seen.routed += 1; }
+    if (count) { seen.total += 1; if (hit && !entry.est) seen.routed += 1; }
     // 캐시가 있으면 웹과 **같은 함수**로 분을 낸다(자차 2km 미만은 도보 대안까지 같은 규칙).
     return hit ? cachedLegMinutes(cache, from, to, mode as TransportMode) : estimateLegMinutes(a, b, mode);
   };
@@ -246,7 +246,7 @@ export function computeToday(input: TodayInput): TodayComputation {
 
   const next = state.nextItem;
   const travelMinutes = next
-    ? Math.round(estimateLegMinutes(state.currentLocation, next.location, legModeOf(day, next.spot)))
+    ? Math.round(legMinutesOf(state.currentLocation, next.location, legModeOf(day, next.spot), true))
     : null;
   const advice = next ? adapt.departureAdvice(state, next, travelMinutes ?? 0) : null;
   const status = travelStatusOf(state, next, advice);

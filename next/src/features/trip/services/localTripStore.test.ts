@@ -20,7 +20,7 @@ Object.defineProperty(globalThis, 'window', {
 });
 
 const {
-  addTrip, getTripStoreSnapshot, removeTrip, saveTrip, undoLastChange
+  addTrip, getTripStoreSnapshot, removeTrip, replaceTrips, saveTrip, undoLastChange
 } = await import('./localTripStore');
 const REJECTED_KEY = 'tripcanvas_rejected_backup_v1';
 const { recordWrite, getUndoDepth, resetUndoForTest } = await import('./undoStore');
@@ -37,6 +37,17 @@ beforeEach(() => {
 });
 
 describe('undoLastChange', () => {
+  it('원격본을 채택하면 과거 로컬 undo를 비우고 이후 내 편집만 되돌린다', () => {
+    saveTrip(named('내 편집', 't1'));
+    expect(replaceTrips([named('일행의 최신 편집', 't1')])).toBe(true);
+    expect(undoLastChange()).toBe('empty');
+    expect(getUndoDepth()).toBe(0);
+    saveTrip(named('원격본 위에 내 편집', 't1'));
+    expect(undoLastChange()).toBe('ok');
+    expect(nameOf('t1')).toBe('일행의 최신 편집');
+    expect(undoLastChange()).toBe('empty');
+  });
+
   it('첫 저장 뒤엔 되돌릴 게 없다', () => {
     expect(getUndoDepth()).toBe(0);
     expect(undoLastChange()).toBe('empty');

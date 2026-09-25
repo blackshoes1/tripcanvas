@@ -15,13 +15,14 @@ import { FX_FALLBACK_SNAPSHOT, type FxSnapshot } from '@/features/currency/domai
 import legacyLib from '@legacy/lib.js';
 
 import {
-  backLegOf, buildDayView, dayEndMinOf, dayModeOf, dayTimelineOf, hasCoord, isoDateOf, type LocatedSpot,
+  backLegOf, buildDayView, dayEndMinOf, dayModeOf, dayJourneyOf, hasCoord, isoDateOf, type LocatedSpot,
   legMinutes, legModeOf
 } from '@/features/itinerary/domain/dayView';
 import type { LegCache } from '@/features/itinerary/domain/types';
 import type { Day, Spot, TransportMode, Trip } from '@/features/trip/domain/types';
 
 import type { TripDoc } from './todayView';
+import { tripRouteLegOf } from './tripRoutesView';
 
 import { CONTRACT_SCHEMA_VERSION } from './contract';
 import type {
@@ -30,7 +31,7 @@ import type {
 } from './contract';
 
 const {
-  carEventsOn, carSpotLinks, dayReturnStay, dayStartAnchor, haversine, legKey, parseHM, spotCatOf, splitSegments
+  carEventsOn, carSpotLinks, dayReturnStay, dayStartAnchor, haversine, legKey, parseHM, returnModeOf, spotCatOf, splitSegments
 } = legacyLib;
 
 /** 캐시가 비어 있으면 lib이 직선거리 추정으로 떨어진다 — 키가 없을 때의 오늘 동작이 그대로다. */
@@ -48,11 +49,13 @@ function pointOf(spot: Spot | null | undefined): { lat: number; lng: number } | 
 function legOf(cache: LegCache, from: LocatedSpot, to: LocatedSpot, mode: TransportMode): DayPlanLeg {
   // 조회된 구간이면 도로 거리·실제 경로를 그대로 쓴다. 실패로 남은 행(`fail`)은 조회된 것이 아니다.
   const cached = cache[legKey(from, to, mode)];
-  const routed = !!(cached && cached.sec);
+  const measured = !!(cached && cached.sec);
+  const routed = measured && !cached.est;
   return {
+    from: { lat: from.lat, lng: from.lng },
     mode,
     minutes: Math.round(legMinutes(cache, from, to, mode)),
-    distanceKm: routed && cached.m != null ? km(cached.m / 1000) : km(haversine(from, to)),
+    distanceKm: measured && cached.m != null ? km(cached.m / 1000) : km(haversine(from, to)),
     path: routed ? cached.path ?? null : null,
     source: routed ? 'ROUTED' : 'STRAIGHT_LINE_ESTIMATE'
   };
@@ -140,7 +143,8 @@ export function buildDayPlanView(input: DayPlanInput): DayPlanResponse | null {
   const spots = day.spots ?? [];
   const fx = input.fx ?? FX_FALLBACK_SNAPSHOT;
   const dayView = buildDayView(trip, cache, di, fx.rates, input.todayISO);
-  const timeline = dayTimelineOf(trip, cache, di);
+  const journey = dayJourneyOf(trip, cache, di);
+  const timeline = journey.timeline;
   const dayMode = dayModeOf(day);
 
   // ⚠️ anchor와 carry는 다르다: ETA는 anchor(숙소가 아니어도 전날 마지막 장소)에서 출발하고,
@@ -148,22 +152,19 @@ export function buildDayPlanView(input: DayPlanInput): DayPlanResponse | null {
   const anchor = dayStartAnchor(days as unknown[], di) as Spot | null;
   const carry = anchor && (anchor as { stay?: boolean }).stay ? anchor : null;
 
-  let incoming: LocatedSpot | null = hasCoord(anchor) ? anchor : null;
-  let travelMinutes = 0;
-  let distanceKm = 0;
-  const legs: DayPlanLeg[] = [];
+  const incomingBySpot = new Map(journey.legs.map(leg => [leg.spotIndex, leg.from]));
+  const legs = journey.legs.map(leg => legOf(cache, leg.from, leg.to, leg.returning ? returnModeOf(day) as TransportMode : legModeOf(day, leg.to)));
+  const travelMinutes = legs.reduce((sum, leg) => sum + leg.minutes, 0);
+  const distanceKm = legs.reduce((sum, leg) => sum + leg.distanceKm, 0);
 
   const planSpots: DayPlanSpot[] = spots.map((spot, si) => {
     const entry = timeline[si] ?? { eta: 0, fixed: false, conflict: false, wait: 0 };
+    const incoming = incomingBySpot.get(si);
     let leg: DayPlanLeg | null = null;
     if (hasCoord(spot) && incoming) {
       const mode = legModeOf(day, spot);
       leg = legOf(cache, incoming, spot, mode);
-      travelMinutes += leg.minutes;
-      distanceKm += leg.distanceKm;
-      legs.push(leg);
     }
-    if (hasCoord(spot)) incoming = spot;
     const booking = dayView.spots[si].book;
 
     return {
@@ -191,13 +192,10 @@ export function buildDayPlanView(input: DayPlanInput): DayPlanResponse | null {
   // 숙소 복귀는 합성 구간이다 — 데이터에 없고 표시·계산에만 얹힌다.
   // ⚠️ 마지막 날에는 붙지 않는다(dayReturnStay가 그렇게 정한다 — 떠나는 날이라서).
   const backSpot = dayReturnStay(days as unknown[], di) as Spot | null;
-  const backLeg = backLegOf(day, backSpot);
+  const backLeg = backLegOf(day, backSpot, journey);
   let back: DayPlanDay['back'] = null;
   if (backLeg) {
     const leg = legOf(cache, backLeg.from, backLeg.to, backLeg.mode);
-    travelMinutes += leg.minutes;
-    distanceKm += leg.distanceKm;
-    legs.push(leg);
     back = { name: String(backLeg.to.name ?? ''), location: pointOf(backLeg.to), leg };
   }
 
@@ -218,6 +216,9 @@ export function buildDayPlanView(input: DayPlanInput): DayPlanResponse | null {
     timeZone: String(day.timeZone ?? trip.timeZone ?? ''),
     carriedStay: carry ? { name: String(carry.name ?? ''), location: pointOf(carry) } : null,
     spots: planSpots,
+    routes: journey.legs.map(leg => tripRouteLegOf(cache, {
+      ...leg, mode: leg.returning ? returnModeOf(day) : legModeOf(day, leg.to)
+    })),
     carPickups: cars.pickups,
     carReturns: cars.returns,
     back,

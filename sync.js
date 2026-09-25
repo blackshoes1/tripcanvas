@@ -69,6 +69,10 @@
       }
     }
     for(const [id,row] of remote){
+      // 오프라인에서 지운 여행은 로컬 목록에 없다. 다시 내려받아 clean으로 만들면
+      // 뒤의 삭제 재시도가 사라진다. 원래 revision도 유지해 그 사이의 원격 편집을 보호한다.
+      const pending=meta[id];
+      if(!row.deleted_at && pending && ['delete-pending','delete-error'].includes(pending.status)) continue;
       const revision=Number(row.revision)||1;
       meta[id]={revision,status:row.deleted_at?'tombstoned':'clean',op:'',hash:row.data?hashTrip(row.data):''};
       if(!row.deleted_at && row.data) trips.push(row.data);

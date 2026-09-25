@@ -635,6 +635,8 @@ export interface ApiError {
 
 /** 한 장소로 '들어오는' 구간. */
 export interface DayPlanLeg {
+  /** 분리 일정에서도 실제 출발점을 쓴다 — 배열의 직전 장소라고 추론하지 않는다. */
+  from: GeoPoint;
   mode: string;                    // car·taxi·transit·train·walk·bike·flight
   minutes: number;
   /** ROUTED면 도로 거리, 아니면 직선 거리다 */
@@ -738,6 +740,8 @@ export interface DayPlanDay {
   /** 🏠 전날 숙소 이월 — **숙소일 때만.** ETA 계산의 기준점(anchor)과 다를 수 있다. */
   carriedStay: { name: string; location: GeoPoint | null } | null;
   spots: DayPlanSpot[];
+  /** 이월·분리·합류·숙소 복귀를 모두 포함한 지도 구간. incomingLeg와 back은 행별 대표 구간이다. */
+  routes: TripRouteLeg[];
   carPickups: DayPlanCarEvent[];
   carReturns: DayPlanCarEvent[];
   /** 숙소 복귀 자동 구간. ⚠️ **일정의 마지막 날에는 없다**(떠나는 날이다). */
@@ -873,6 +877,8 @@ export interface ItineraryParseResponse {
 // ⚠️ 여기에는 **그리는 데 필요한 것만** 담는다. 시각·비용·예약은 일자 화면(`DayPlan`)의 몫이다.
 
 export interface TripRouteLeg {
+  /** 일정에 직접 넣지 않은 숙소 복귀 구간 */
+  returning?: boolean;
   from: GeoPoint;
   to: GeoPoint;
   mode: string;

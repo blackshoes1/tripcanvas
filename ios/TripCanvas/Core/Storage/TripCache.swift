@@ -10,11 +10,18 @@ struct CachedPayload<T: Codable>: Codable {
 }
 
 actor TripCache {
+    struct Scope: Equatable, Sendable {
+        let accountID: String?
+        let generation: Int
+    }
+    private var activeScope: Scope?
+
     private let directory: URL
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
-    init(directory: URL? = nil) {
+    init(directory: URL? = nil, scope: Scope? = nil) {
+        activeScope = scope
         let base = directory ?? FileManager.default
             .urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("TripCanvas", isDirectory: true)
@@ -24,20 +31,41 @@ actor TripCache {
         decoder.dateDecodingStrategy = .iso8601
     }
 
-    private func url(for key: String) -> URL {
+    /// 모든 요청은 시작할 때의 계정 세대를 들고 온다. 이전 계정 응답은 다시 활성화할 수 없다.
+    func activate(_ scope: Scope?) {
+        guard let scope, scope.generation > (activeScope?.generation ?? -1) else { return }
+        if let previous = activeScope, previous.accountID != nil {
+            try? FileManager.default.removeItem(at: accountDirectory(previous))
+        }
+        activeScope = scope
+    }
+
+    private func accountDirectory(_ scope: Scope?) -> URL {
+        guard let id = scope?.accountID else { return directory }
+        let encoded = id.utf8.map { String(format: "%02x", $0) }.joined()
+        return directory.appendingPathComponent("account-" + encoded, isDirectory: true)
+    }
+
+    private func accepts(_ scope: Scope?) -> Bool {
+        scope == activeScope && (scope == nil || scope?.accountID != nil)
+    }
+
+    private func url(for key: String, scope: Scope?) -> URL {
         // 여행 id는 uid() 형식(영숫자·-·_)이지만 방어적으로 파일명을 정리한다.
         let safe = key.replacingOccurrences(of: "[^A-Za-z0-9_.-]", with: "_", options: .regularExpression)
-        return directory.appendingPathComponent("\(safe).json")
+        return accountDirectory(scope).appendingPathComponent("\(safe).json")
     }
 
-    func save<T: Codable>(_ value: T, key: String) {
-        let payload = CachedPayload(value: value, savedAt: Date())
+    func save<T: Codable>(_ value: T, key: String, scope: Scope? = nil, savedAt: Date = Date()) {
+        guard accepts(scope) else { return }
+        try? FileManager.default.createDirectory(at: accountDirectory(scope), withIntermediateDirectories: true)
+        let payload = CachedPayload(value: value, savedAt: savedAt)
         guard let data = try? encoder.encode(payload) else { return }
-        try? data.write(to: url(for: key), options: .atomic)
+        try? data.write(to: url(for: key, scope: scope), options: .atomic)
     }
 
-    func load<T: Codable>(_ type: T.Type, key: String) -> CachedPayload<T>? {
-        guard let data = try? Data(contentsOf: url(for: key)) else { return nil }
+    func load<T: Codable>(_ type: T.Type, key: String, scope: Scope? = nil) -> CachedPayload<T>? {
+        guard accepts(scope), let data = try? Data(contentsOf: url(for: key, scope: scope)) else { return nil }
         return try? decoder.decode(CachedPayload<T>.self, from: data)
     }
 
@@ -50,6 +78,7 @@ actor TripCache {
         dayIndex.map { "today-\(tripId)-d\($0)" } ?? "today-\(tripId)"
     }
     static func dayPlanKey(tripId: String, dayIndex: Int) -> String { "day-plan-\(tripId)-d\(dayIndex)" }
+    static func documentKey(tripId: String) -> String { "document-\(tripId)" }
     static let tripsKey = "trips"
     static func bookingsKey(tripId: String) -> String { "bookings-\(tripId)" }
     /// 여행 표지. 원본은 서버(`trip_covers`)이고 여기 것은 **먼저 그리기용 사본**이다.

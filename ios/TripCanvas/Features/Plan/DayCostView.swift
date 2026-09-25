@@ -55,18 +55,20 @@ struct DayCostView: View {
     let canEdit: Bool
     let onSave: (TripDay) async -> Bool
     let onRefresh: (() async -> Void)?
+    let draftKey: EditorDraftKey?
     @State private var day: TripDay
     @State private var editing: CostEditTarget?
     /// 현지에서 방금 쓴 돈 — 금액부터 치는 짧은 길(`QuickSpendEditor`).
     @State private var quickAdd = false
     @Environment(\.dismiss) private var dismiss
 
-    init(day: TripDay, cost: DayPlanCost?, canEdit: Bool, onRefresh: (() async -> Void)? = nil, onSave: @escaping (TripDay) async -> Bool) {
+    init(day: TripDay, cost: DayPlanCost?, canEdit: Bool, draftKey: EditorDraftKey? = nil, onRefresh: (() async -> Void)? = nil, onSave: @escaping (TripDay) async -> Bool) {
         _day = State(initialValue: day)
         self.cost = cost
         self.canEdit = canEdit
         self.onSave = onSave
         self.onRefresh = onRefresh
+        self.draftKey = draftKey
     }
 
     var body: some View {
@@ -148,9 +150,9 @@ struct DayCostView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("닫기") { dismiss() } } }
             .sheet(isPresented: $quickAdd) {
-                QuickSpendEditor(dayLabel: day.title.isEmpty ? "하루 비용" : day.title) { entry in
+                QuickSpendEditor(dayLabel: day.title.isEmpty ? "하루 비용" : day.title, draftKey: draftKey) { entry in
                     var updated = day
-                    updated.costItems = updated.costItems + [entry]
+                    updated.costItems = updated.costItems.filter { $0.id != entry.id } + [entry]
                     guard await onSave(updated) else { return false }
                     day = updated
                     return true

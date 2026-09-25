@@ -137,7 +137,7 @@ export interface PriceObservationRepository {
 // 활동 기록(trip_activity)은 Supabase에서 트리거가 쓰던 것을 **같은 트랜잭션에서 Repository가** 쓴다 — 어떤 경로로 바뀌든 같은 기록.
 
 import type {
-  ActivityView, CandidateInput, CandidateView, CommentView, InviteView, MemberView, PreferenceView
+  ActivityView, CandidateInput, CandidateView, CommentView, InviteAccept, InviteView, MemberView, PreferenceView
 } from '../application/collaboration/types';
 
 export interface MemberRow {
@@ -167,8 +167,8 @@ export interface CollabRepository {
   /** 소유자 확인은 서비스가 했다. 두 번 취소해도 첫 취소 시각 유지. 없으면 false */
   revokeInvite(inviteId: number, tripId: string): Promise<boolean>;
   findInviteByHash(tokenHash: string): Promise<InviteRow | null>;
-  /** 멤버 upsert(ACTIVE) + use_count + MEMBER_JOINED — 한 트랜잭션 */
-  acceptInvite(input: { inviteId: number; tripId: string; userId: string; role: string; displayName: string | null; invitedBy: string }): Promise<void>;
+  /** 잠근 초대·여행·멤버로 유효성을 판정하고 참여 + use_count + MEMBER_JOINED를 원자적으로 저장한다 */
+  acceptInvite(input: { tokenHash: string; userId: string; displayName: string | null }): Promise<InviteAccept>;
 
   listCandidates(tripId: string, viewerId: string): Promise<CandidateView[]>;
   findCandidate(candidateId: number): Promise<CandidateRow | null>;
@@ -214,7 +214,7 @@ export interface AuthIdentityRepository {
   findUnlinkedByEmail(email: string): Promise<string | null>;
   /** 이어 붙인다. 그 사이 다른 계정이 먼저 이어졌으면 false */
   link(userId: string, authUserId: string): Promise<boolean>;
-  /** 새 도메인 사용자(새 uuid)를 만들고 이어 붙인다 */
+  /** 새 도메인 사용자(새 uuid)를 만들고 이어 붙인다. 같은 Auth 계정의 동시 요청은 기존 ID를 반환한다 */
   createLinked(email: string, authUserId: string): Promise<string>;
 }
 

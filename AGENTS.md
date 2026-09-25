@@ -89,7 +89,7 @@ With J          ← 제품 (앱 이름 · 웹 타이틀 · PWA · 메일 제목 
 
 - `index.html` — 마크업 (모달·헤더·재생 HUD 등)
 - `app.js` — 앱 로직 전체 (DOM·지도·네트워크)
-- `lib.js` — 순수 로직 (파서·거리·시각·앵커·타임라인·정규화 · **분리 구간** `splitSegments`/`whoKey` · **결제 상태** `costPayStateOf`/`payStateTotals` · **여행 준비 메모** `TRIP_NOTE_CATEGORIES`/`normalizeTripNote` · **명소 예약요건** `ADMISSION_REQUIREMENTS`/`admissionOf`/`needsAdmissionBooking`/`normalizeAdmission` · **샘플 여행 판정** `SAMPLE_TRIP_ID`/`isSampleTrip`). **유닛 테스트 + `tsc` 타입 검사 대상**
+- `lib.js` — 순수 로직 (파서·거리·시각·앵커·타임라인·정규화 · **분리 구간** `splitSegments`/`whoKey` · **하루 이동과 종료** `computeDayJourney` · **결제 상태** `costPayStateOf`/`payStateTotals` · **여행 준비 메모** `TRIP_NOTE_CATEGORIES`/`normalizeTripNote` · **명소 예약요건** `ADMISSION_REQUIREMENTS`/`admissionOf`/`needsAdmissionBooking`/`normalizeAdmission` · **샘플 여행 판정** `SAMPLE_TRIP_ID`/`isSampleTrip`). **유닛 테스트 + `tsc` 타입 검사 대상**
 - `price.js` — 예약 가격 추적 순수 계산: 실질 절약액·오퍼 조건 매칭(EXACT/EQUIVALENT/SIMILAR)·확정/잠재 절약 판단·호텔 identity 점수 · 렌터카 조건 매칭(carMatchQuality — 차급·변속기·보험·주행거리가 다르면 확정 절약 금지). 예약(`trip.bookings`)은 여행 데이터로 동기화·공유되고, 가격 관측 기록은 기기 로컬 + 로그인 시 **`/api/v1/trips/:id/prices`**(여행과 같은 저장소·같은 권한. 2026-09-04 전환 전에는 Supabase `hotel_price_snapshots` 직접 경로였다). 시세는 `api/hotel-offers.js` 프록시(Metasearch 키 서버 전용)로만 조회 — 키 없으면 미연결 상태를 그대로 표시(가짜 가격 금지). **유닛 테스트 + `tsc` 대상**
 - `adaptive.js` — **Adaptive Travel OS 도메인**(순수): 현재 여행 상태(`buildTripState`) · 고정/유동 분류(`commitmentOf`) · 빈 시간 탐지(`findFreeWindows`) · 다음 행동 후보와 순위(`buildCandidates`/`rankNextActions`) · 일정 재구성(`generateReplan`) · 제안(`buildSuggestions`) · 자연어 해석(`parseIntent`) · 출발 안내(`departureAdvice`) · 빈칸 채우기와 하루 flow(`fillGaps`/`planDayFlow`). DOM·네트워크·현재시각을 모르고 전부 인자로 받는다. **유닛 테스트 + `tsc` 대상**
 - `intake.js` — **유입 계층**(순수): 공유 분류(`classifyShare`) · 날짜/통화 정규화 · 예약 후보 파싱(`parseBookingCandidate`) · 중복(`findDuplicateBooking`) · 여행 매칭(`matchTripForBooking`) · 기록 연결(`associateMemory`) · **붙여넣은 일정 글 읽기**(`parseItinerary`). **저장은 하지 않는다** — 확인한 것만 저장된다. ⚠️ **사람들은 우리 형식으로 다시 쓰지 않는다** — ChatGPT·Claude가 뱉은 그대로 붙여넣으므로 `stripDecor`(마크다운 `**`·이모지) · `expandTables`(마크다운 표 — 모르면 **그 날이 통째로 사라진다**) · `koTime`(`오후 3시`) · `splitNameDesc`(`점심: 카와카미안` → 이름은 오른쪽)를 먼저 지난다. 이름에 꾸밈이 남으면 지오코딩이 실패해 전부 '위치 지정'이 된다(2026-09-08). **유닛 테스트 + `tsc` 대상**
@@ -393,7 +393,7 @@ localStorage(실제 키 **15개** — 2026-09-21에 여섯을 채웠다): `tripc
   ⚠️ 앱은 **일행이 있으면 분리가 없어도 멤버를 받는다**(`isShared`). 예전에는 `hasSplits`만 봐서, 분리가 없으면 멤버가 없고 멤버가 없으면 고를 칸이 없어 **첫 분리를 만들 수 없는** 닭과 달걀이었다. 혼자 쓰는 여행의 요청 수는 그대로 0이다.
 - `spot.split`(묶음 키) — 같은 키가 **이어지는 구간**이 한 묶음이고, 그 안에서 **참여자가 같은 장소들이 한 가지**다(`whoKey`).
 - `spot.reunion` — 갈라졌던 사람들이 다시 만나는 지점. 표시일 뿐이고 시각은 타임라인이 정한다.
-- ⚠️ `computeTimeline`이 유일한 계산처다: 한 묶음의 가지는 **전부 같은 출발점에서** 시작하고(나란히 일어나므로 서로를 밀지 않는다), 묶음 다음은 **가장 늦게 끝나는 가지**를 따른다(다 모여야 합류한다). 분리가 없으면 예전과 **완전히 같다** — 테스트가 그것부터 확인한다.
+- ⚠️ `computeDayJourney`가 타임라인·실제 이동 구간·종료 시각을 함께 만든다(`computeTimeline`은 그 타임라인만 반환한다). 한 묶음의 가지는 **같은 출발점에서** 시작하고, 합류 시각은 **합류 장소에 가장 늦게 도착하는 가지**가 정한다. 숙소 복귀도 `endAnchor`를 합류점으로 넣어 계산한다. 지도·경로 조회는 장소 배열을 다시 잇지 않고 반환된 `legs`를 쓴다. 좌표 없는 메모가 사이에 있어도 다른 가지를 버리지 않는다.
 - ⚠️ `splitSegments`(lib)를 화면과 타임라인이 **같이** 쓴다. 화면이 따로 가르면 그림과 시각이 어긋난다.
 - ⚠️ 나란한 가지를 `.spotList` 안에서 **열로 쪼개지 않는다.** 드래그 인덱스가 자식 순서로 계산돼서(`onSpotDrop`의 `oldIndex`) 다른 요소를 끼우면 순서가 어긋난다. 줄은 1:1로 두고 CSS(`.spot.inSplit`)와 메타 칩으로 묶어 보인다.
 - 장소 모달은 분리 묶음을 **만들지도 지우지도 않는다** — 예약 연결과 같은 이유로 편집 시 그대로 물려준다.
@@ -405,6 +405,14 @@ localStorage(실제 키 **15개** — 2026-09-21에 여섯을 채웠다): `tripc
 - ⚠️ `ensureMembers`(app)는 목록을 받아도 **다시 그리지 않는다.** `render()`는 순수한 다시 그리기가 아니라 클라우드 동기화까지 건드린다 — 이름표 하나 때문에 저장이 돌면 안 된다. 필요한 곳이 직접 `await` 한다.
 
 **유입 데이터는 반드시 정규화한다.** 가져오기·공유 링크(`#v=`/`#t=`)·클라우드·로컬 로드 **5개 지점 모두** `normalizeTrip()`(lib)을 통과시킨다. 좌표·시각·통화·수단·`startPolicy`를 검증하고 알 수 없는 값은 기본값으로 폴백해 렌더 크래시를 막는다(`schemaVersion` 스탬프).
+
+## 저장·계정 경계와 오프라인 보존
+
+- 웹 업로드는 전송한 문서의 스냅샷·해시·계정 세대를 고정한다. 대기 중 편집은 응답 revision으로 이어 올리고, 대기 중 삭제는 생성/수정 응답을 받은 뒤 보낸다. 로그인 병합도 응답 시점의 로컬 편집과 삭제 의도를 보존한다.
+- Next에서 원격 문서를 채택하면 이전 undo를 비운다. 일시 저장 실패는 15·30·60초에 최대 세 번 재시도하고, **다시 저장**으로 수동 재시도할 수 있다. 계정 전환 뒤 늦은 응답·예약된 재시도는 이전 계정에만 속한다.
+- iOS 캐시는 계정별이고 요청 시작 시 계정 세대를 보존한다. 로그아웃·계정 변경은 캐시·위젯·여행 모드 상태도 정리한다. 오프라인 응답은 원래 저장 시각을 유지하고 새 알림을 발송하지 않는다.
+- 온라인에서 받은 여행 원문은 오프라인 읽기용으로 보관한다. 오프라인 문서는 편집할 수 없고 다시 연결해 최신 revision을 받은 뒤 편집한다. 장소 편집기의 기준 revision·일자는 열 때 고정하므로 원격 삽입·삭제·정렬 후 다른 장소를 덮지 않는다.
+- iOS 장소·쓴 돈 입력은 계정·여행·대상별 기기 초안으로 남는다. 복원/버리기를 직접 고르고 자동 전송하지 않는다. 원래 장소가 바뀐 초안은 입력 내용을 확인할 수 있지만 새 장소 위에 자동 적용하지 않는다.
 
 ## 테스트
 
