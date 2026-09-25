@@ -85,12 +85,44 @@
         "participants": [],
         "reunion": false,
         "incomingLeg": {
+          "from": {
+            "lat": 40.4,
+            "lng": -3.7
+          },
           "mode": "car",
           "minutes": 2,
           "distanceKm": 1.1,
           "path": null,
           "source": "STRAIGHT_LINE_ESTIMATE"
         }
+      }
+    ],
+    "routes": [
+      {
+        "from": {
+          "lat": 40.4,
+          "lng": -3.7
+        },
+        "to": {
+          "lat": 40.41,
+          "lng": -3.7
+        },
+        "mode": "car",
+        "path": null,
+        "source": "STRAIGHT_LINE_ESTIMATE"
+      },
+      {
+        "from": {
+          "lat": 40.41,
+          "lng": -3.7
+        },
+        "to": {
+          "lat": 40.4,
+          "lng": -3.7
+        },
+        "mode": "car",
+        "path": null,
+        "source": "STRAIGHT_LINE_ESTIMATE"
       }
     ],
     "carPickups": [],
@@ -102,6 +134,10 @@
         "lng": -3.7
       },
       "leg": {
+        "from": {
+          "lat": 40.41,
+          "lng": -3.7
+        },
         "mode": "car",
         "minutes": 2,
         "distanceKm": 1.1,
