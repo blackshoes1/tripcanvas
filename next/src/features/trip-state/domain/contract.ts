@@ -264,7 +264,12 @@ export interface PriceStatus {
 
 export interface BookingSummary {
   id: string;
-  type: 'hotel' | 'car' | 'flight';
+  type: 'hotel' | 'car' | 'flight' | 'transit' | 'restaurant' | 'activity' | 'other';
+  /** 없으면 기존 예약 문서. 파생 예약은 원래 일정·비용 화면에서 편집한다. */
+  source?: 'SPOT' | 'DAY_COST' | 'TRIP_COST';
+  dayIndex?: number | null;
+  note?: string | null;
+  priceKnown?: boolean;
   title: string;
   provider: string;
   url: string | null;

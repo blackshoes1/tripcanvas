@@ -396,8 +396,16 @@ describe('GET /bookings — 여행 당일에 필요한 것만 빠르게(§45)', 
   };
 
   it('예약이 없으면 빈 목록이다 (없는 예약을 지어내지 않는다)', async () => {
+    const row = store.rows.get('trip-1')!;
+    store.rows.set('trip-1', { ...row, data: { ...row.data, days: [] } });
     const body = (await (await list()).json()) as BookingListResponse;
     expect(body.bookings).toEqual([]);
+  });
+
+  it('일정에 기록한 예약도 전용 예약 없이 반환한다', async () => {
+    const body = (await (await list()).json()) as BookingListResponse;
+    expect(body.bookings).toHaveLength(1);
+    expect(body.bookings[0]).toMatchObject({ title: '저녁 예약', source: 'SPOT', startTime: '19:00', priceKnown: false });
   });
 
   it('호텔·렌터카를 시작일 순으로 주고, 관측이 없으면 가격 상태는 null이다', async () => {
@@ -406,10 +414,10 @@ describe('GET /bookings — 여행 당일에 필요한 것만 빠르게(§45)', 
       { id: 'htl1', type: 'hotel', title: '호텔', provider: 'Booking', price: 1420000, cur: 'KRW', start: '2026-09-01', end: '2026-09-04', refundable: true }
     ]);
     const body = (await (await list()).json()) as BookingListResponse;
-    expect(body.bookings.map((b) => b.id)).toEqual(['htl1', 'car1']);
-    expect(body.bookings[0]).toMatchObject({ type: 'hotel', title: '호텔', price: 1420000, refundable: true });
-    expect(body.bookings[0].priceStatus).toBeNull();      // 첫 확인 전 — 가짜 상태를 만들지 않는다
-    expect(body.bookings[0].confirmation).toBeNull();     // 웹에 입력 UI가 없다
+    expect(body.bookings.map((b) => b.id)).toEqual(['reservation:SPOT:0:1', 'htl1', 'car1']);
+    expect(body.bookings.find(b => b.id === 'htl1')!).toMatchObject({ type: 'hotel', title: '호텔', price: 1420000, refundable: true });
+    expect(body.bookings.find(b => b.id === 'htl1')!.priceStatus).toBeNull();      // 첫 확인 전 — 가짜 상태를 만들지 않는다
+    expect(body.bookings.find(b => b.id === 'htl1')!.confirmation).toBeNull();     // 웹에 입력 UI가 없다
   });
 
   it('관측이 있으면 웹과 같은 판정으로 절약 가능 여부를 알려준다', async () => {
@@ -420,7 +428,7 @@ describe('GET /bookings — 여행 당일에 필요한 것만 빠르게(§45)', 
       observed_at: '2026-08-30T21:00:00Z'
     }];
     const body = (await (await list()).json()) as BookingListResponse;
-    const status = body.bookings[0].priceStatus!;
+    const status = body.bookings.find(b => b.id === 'htl1')!.priceStatus!;
     expect(status.state).toBe('SAVING_AVAILABLE');
     expect(status.savingAmount).toBe(128000);
     expect(status.seller).toBe('Agoda');
@@ -431,7 +439,7 @@ describe('GET /bookings — 여행 당일에 필요한 것만 빠르게(§45)', 
   it('추적을 꺼 둔 예약은 그렇다고 말한다', async () => {
     withBookings([{ id: 'htl1', type: 'hotel', title: '호텔', price: 100000, cur: 'KRW', track: false }]);
     const body = (await (await list()).json()) as BookingListResponse;
-    expect(body.bookings[0].priceStatus?.state).toBe('UNTRACKED');
+    expect(body.bookings.find(b => b.id === 'htl1')!.priceStatus?.state).toBe('UNTRACKED');
   });
 
   it('가격 조회가 실패해도 예약 목록 자체는 보인다', async () => {
@@ -442,7 +450,7 @@ describe('GET /bookings — 여행 당일에 필요한 것만 빠르게(§45)', 
     });
     const res = await broken.bookings(new Request('http://localhost/api/v1/trips/trip-1/bookings', auth()), 'trip-1');
     expect(res.status).toBe(200);
-    expect(((await res.json()) as BookingListResponse).bookings).toHaveLength(1);
+    expect(((await res.json()) as BookingListResponse).bookings).toHaveLength(2);
   });
 });
 

@@ -1391,3 +1391,40 @@ test('tripSummaryCities — 공백·대소문자·악센트 중복, 미지정, �
   ] }]), ['마드리드', '소예르', 'Porto', 'Cala Millor', 'New Town']);
   assert.deepEqual(L.tripSummaryCities([]), []);
 });
+
+test('additionalReservations — 일정 예약·예약 비용을 모두 모으고 원본을 보존한다', () => {
+  const trip = { bookings: [{ id: 'hotel' }, { id: 'car' }], days: [{ spots: [
+    { name: '기차', bookAt: '10:00' }, { name: '식당', bookUrl: 'https://example.com' },
+    { name: '입장권', payState: 'RESERVED' }, { name: '산책', at: '12:00' },
+    { name: '결제한 식사', payState: 'PAID' }, { name: '호텔', bookingId: 'hotel', bookAt: '15:00' },
+    { name: '픽업', carPickupId: 'car', bookAt: '13:00' },
+    { name: '삭제된 예약 연결', bookingId: 'missing', bookAt: '14:00' }
+  ], costItems: [{ id: 'day', title: '공연', payState: 'RESERVED' }] }],
+    costItems: [{ id: 'trip', title: '기차표', payState: 'RESERVED' }, { id: 'paid', payState: 'PAID' }] };
+  const before = JSON.stringify(trip);
+  const result = L.additionalReservations(trip);
+  assert.deepEqual(result.map(r => r.item.name || r.item.title), ['기차', '식당', '입장권', '삭제된 예약 연결', '공연', '기차표']);
+  assert.deepEqual(result.map(r => r.source), ['SPOT', 'SPOT', 'SPOT', 'SPOT', 'DAY_COST', 'TRIP_COST']);
+  assert.equal(JSON.stringify(trip), before);
+  assert.deepEqual(L.additionalReservations({ days: [{ spots: [{ bookAt: ' ', bookUrl: '' }] }] }), []);
+  assert.deepEqual(L.additionalReservations({}), []);
+});
+
+test('additionalReservations — 예약번호만 있는 예약과 결제한 예약도 유지한다', () => {
+  const rows = L.additionalReservations({ days: [{ spots: [
+    { name: '식당', confirmation: 'ABC', payState: 'PAID' },
+    { name: '기차', confirmationNumber: 'DEF' },
+    { name: '투어', code: 'GHI' },
+    { name: '빈 번호', confirmation: ' ' }
+  ] }] });
+  assert.deepEqual(rows.map(r => r.item.name), ['식당', '기차', '투어']);
+});
+
+test('additionalReservations — 명소의 예약 완료·미예약 표시를 우선한다', () => {
+  const rows = L.additionalReservations({ days: [{ spots: [
+    { name: '예약 완료', admission: { source: 'USER', personalStatus: 'BOOKED' } },
+    { name: '예약 예정', bookAt: '10:00', bookUrl: 'https://example.com', admission: { source: 'USER', personalStatus: 'NOT_BOOKED' } },
+    { name: '예약 필수만 확인', admission: { source: 'USER', requirement: 'REQUIRED' } }
+  ] }] });
+  assert.deepEqual(rows.map(r => r.item.name), ['예약 완료']);
+});

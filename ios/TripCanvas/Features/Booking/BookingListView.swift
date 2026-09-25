@@ -91,13 +91,13 @@ struct BookingListView: View {
                             symbol: "ticket",
                             title: "등록된 예약이 없어요",
                             message: trip.canEdit
-                                ? "오른쪽 위 ＋로 항공·숙박·렌트 예약을 추가합니다. 가격 추적을 켜 두면 절약 기회를 알려줘요. 보험·유심 같은 예약 외 결제는 비용 화면의 예약 결제 금액에 모여요."
+                                ? "항공·숙박·렌터카와 일정에서 예약 완료로 표시하거나 예약 시각·번호·링크를 넣은 장소를 모아 보여드려요. 비용에서 예약으로 표시한 항목도 함께 보여요."
                                 : "주최자나 편집자가 예약을 추가하면 여기에 나타납니다.")
                     }
                     ForEach(model.bookings) { booking in
                         NavigationLink {
                             if let current = model.bookings.first(where: { $0.id == booking.id }) {
-                                BookingDetailView(booking: current, canEdit: trip.canEdit, isPreparing: isPreparing) {
+                                BookingDetailView(booking: current, canEdit: trip.canEdit && current.source == nil, isPreparing: isPreparing) {
                                     Task { await openEditor(bookingId: booking.id) }
                                 }
                             } else {
@@ -155,7 +155,7 @@ struct BookingListView: View {
         .sheet(item: $editor) { target in
             if let plan, let document = plan.document {
                 // 비용 화면과 같은 편집기·같은 9분류(2026-09-18). 예약이 아닌 분류(보험·유심…)는 여행 단위 비용으로 저장되고
-                // 비용 화면의 '예약 결제 금액'에 보인다 — 이 목록은 예약(가격 추적)만 보여 준다.
+                // 비용 화면에 보이며 예약으로 표시하면 이 목록에도 나타난다.
                 BookingEditorView(
                     target: target,
                     document: document,
@@ -170,10 +170,14 @@ struct BookingListView: View {
                         return saved ? nil : plan.saveFailureMessage
                     },
                     onSaveItem: { entry in
-                        await plan.saveCostItem(entry) ? nil : plan.saveFailureMessage
+                        let saved = await plan.saveCostItem(entry)
+                        if saved { await model?.load() }
+                        return saved ? nil : plan.saveFailureMessage
                     },
                     onDeleteItem: { id in
-                        await plan.removeCostItem(id: id) ? nil : plan.saveFailureMessage
+                        let saved = await plan.removeCostItem(id: id)
+                        if saved { await model?.load() }
+                        return saved ? nil : plan.saveFailureMessage
                     })
             }
         }
@@ -288,7 +292,8 @@ struct BookingCard: View {
             }
 
             HStack(spacing: Space.m) {
-                Text(TimeFormat.money(booking.price, currency: booking.currency)).font(.subheadline.weight(.semibold))
+                Text(booking.priceKnown == false ? "금액 미정" : TimeFormat.money(booking.price, currency: booking.currency))
+                    .font(.subheadline.weight(.semibold))
                 if let refundable = booking.refundable {
                     Text(refundable ? "환불 가능" : "환불 불가").font(.caption).foregroundStyle(.secondary)
                 }
@@ -305,6 +310,15 @@ struct BookingCard: View {
                 }
             }
 
+            if let note = booking.note, !note.isEmpty {
+                Text(note).font(.subheadline).textSelection(.enabled)
+            }
+            if let source = booking.source {
+                let location = booking.dayIndex.map { "일정 \($0 + 1)일차" } ?? "비용"
+                Text(source == "SPOT" ? "\(location)에 등록한 예약이에요. 일정에서 수정할 수 있어요."
+                     : "예약으로 표시한 비용이에요. \(location)에서 수정할 수 있어요.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             if let url = SafeURL.web(booking.url) {
                 Link(destination: url) {
                     Label("예약 페이지 열기", systemImage: "safari").font(.subheadline)
@@ -321,7 +335,9 @@ struct BookingCard: View {
         case .hotel: "bed.double.fill"
         case .car: "car.fill"
         case .flight: "airplane"
-        case .unknown: "ticket"
+        case .transit: "tram.fill"
+        case .restaurant: "fork.knife"
+        case .activity, .other, .unknown: "ticket"
         }
     }
 
