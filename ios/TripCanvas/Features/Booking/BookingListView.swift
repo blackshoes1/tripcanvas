@@ -97,7 +97,7 @@ struct BookingListView: View {
                     ForEach(model.bookings) { booking in
                         NavigationLink {
                             if let current = model.bookings.first(where: { $0.id == booking.id }) {
-                                BookingDetailView(booking: current, canEdit: trip.canEdit && current.source == nil, isPreparing: isPreparing) {
+                                BookingDetailView(booking: current, canEdit: trip.canEdit && current.source == nil && model.cachedAt == nil, isPreparing: isPreparing) {
                                     Task { await openEditor(bookingId: booking.id) }
                                 }
                             } else {
@@ -135,7 +135,7 @@ struct BookingListView: View {
         .navigationTitle("예약")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if trip.canEdit {
+            if trip.canEdit && model?.cachedAt == nil {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         Task { await openEditor(bookingId: nil) }

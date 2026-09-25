@@ -51,6 +51,19 @@ function withTrip(w, daysJson, activeDay = 0) {
   w.eval(`store.trips.push({id:'__it__',name:'T',start:'2026-08-01',days:${daysJson}}); store.activeId='__it__'; activeDay=${activeDay};`);
 }
 
+function withSplitJourney(w){
+  withTrip(w, JSON.stringify([
+    {spots:[{name:'출발점',lat:41,lng:2}]},
+    {mode:'transit',timeZone:'Europe/Madrid',startAt:'09:00',spots:[
+      {name:'A',lat:41.01,lng:2,split:'s1',who:['a'],stayMin:60},
+      {name:'B',lat:41,lng:2.02,split:'s1',who:['b'],stayMin:5},
+      {name:'합류',lat:41.02,lng:2.02,reunion:true}
+    ]}
+  ]));
+  w.eval(`trip().start='2030-08-01';legMinutes=()=>10; window.routeRequests=[];
+    requestLeg=(from,to,mode,when)=>{window.routeRequests.push({from:from.name,to:to.name,mode,when});return {sec:600,m:10000,est:true};};`);
+}
+
 test('통합 부트: index.html+lib+app 무크래시 로드', { skip: noJsdom }, () => {
   const w = boot();
   ['dayContext', 'startAnchorFor', 'carryStayFor', 'desiredEngine', 'legModeOf', 'normalizeTrip', 'animPath', 'dayEtas']
@@ -67,6 +80,70 @@ test('통합: 동기화 실패 상태를 보존하고 명시적 재시도로 회
   assert.equal(w.eval(`syncMeta.retry1.status`),'clean');
   assert.equal(w.eval(`syncMeta.retry1.revision`),2);
   w.close();
+});
+
+test('통합: 저장 응답 대기 중 편집은 전송본으로 오인하지 않고 최신 revision으로 이어 올린다', { skip: noJsdom }, async () => {
+  const w=boot();
+  try{
+    w.eval(`user={id:'u1'}; sb={}; store={activeId:'save-race',trips:[{id:'save-race',name:'전송본',days:[{spots:[]}]}]};
+      syncMeta={}; window.sent=[];
+      TC_API.sync.save=(id,t,revision)=>{ window.sent.push({name:t.name,revision});
+        if(window.sent.length===1) return new Promise(resolve=>{window.finishSave=resolve;});
+        return Promise.resolve({applied:true,revision:2}); };
+      cloudSnapshot=()=>{};`);
+    const saving=w.eval('syncTripCloud(trip())');
+    w.eval(`trip().name='대기 중 편집'; syncTripCloud(trip());`);
+    assert.equal(w.sent.length,1,'같은 여행은 앞선 저장 응답 뒤에 올린다');
+    w.finishSave({applied:true,revision:1});
+    await saving;
+    await new Promise(r=>w.setTimeout(r,30));
+    assert.deepEqual(JSON.parse(JSON.stringify(w.sent)),[{name:'전송본',revision:null},{name:'대기 중 편집',revision:1}]);
+    assert.equal(w.eval(`syncMeta['save-race'].hash===TC_SYNC.hashTrip(trip())`),true);
+  }finally{w.close();}
+});
+
+test('통합: 최초 업로드 중 삭제하면 생성된 revision을 받은 뒤 삭제한다', { skip: noJsdom }, async () => {
+  const w=boot();
+  try{
+    w.eval(`user={id:'u1'}; sb={}; store={activeId:'delete-race',trips:[{id:'delete-race',name:'T',days:[{spots:[]}]}]};
+      syncMeta={}; window.removals=[];
+      TC_API.sync.save=()=>new Promise(resolve=>{window.finishSave=resolve;});
+      TC_API.sync.tombstone=async(id,revision)=>{window.removals.push(revision); return {applied:true,revision:2};};
+      cloudSnapshot=()=>{};`);
+    const saving=w.eval('syncTripCloud(trip())');
+    w.eval(`const deleted=trip(); store.trips=[{id:'another',name:'Other',days:[{spots:[]}]}]; store.activeId='another'; cloudDelete(deleted.id,deleted);`);
+    assert.equal(w.removals.length,0);
+    w.finishSave({applied:true,revision:1});
+    await saving;
+    assert.deepEqual(Array.from(w.removals),[1]);
+    assert.equal(w.eval(`syncMeta['delete-race'].status`),'tombstoned');
+  }finally{w.close();}
+});
+
+test('통합: 계정이 바뀐 뒤 도착한 저장 응답은 새 동기화 메타에 반영하지 않는다', { skip: noJsdom }, async () => {
+  const w=boot();
+  try{
+    w.eval(`user={id:'u1'}; sb={}; syncMeta={};
+      TC_API.sync.save=()=>new Promise(resolve=>{window.finishSave=resolve;});`);
+    const saving=w.eval(`syncTripCloud({id:'account-race',name:'A',days:[{spots:[]}]})`);
+    w.eval(`user={id:'u2'};`);
+    w.finishSave({applied:true,revision:12});
+    await saving;
+    assert.notEqual(w.eval(`syncMeta['account-race'].revision`),12);
+  }finally{w.close();}
+});
+
+test('통합: 계정이 바뀐 뒤 도착한 삭제 응답도 새 메타를 변경하지 않는다', { skip: noJsdom }, async () => {
+  const w=boot();
+  try{
+    w.eval(`user={id:'u1'}; sb={}; syncMeta={}; TC_SYNC.beginDelete(syncMeta,'account-delete','delete1');
+      TC_API.sync.tombstone=()=>new Promise(resolve=>{window.finishDelete=resolve;});`);
+    const deleting=w.eval(`performCloudDelete('account-delete','delete1')`);
+    w.eval(`user={id:'u2'};`);
+    w.finishDelete({applied:true,revision:12});
+    await deleting;
+    assert.notEqual(w.eval(`syncMeta['account-delete'].revision`),12);
+  }finally{w.close();}
 });
 
 test('통합: 충돌 UI는 클라우드·기기·복사본 세 선택지를 제공한다', { skip: noJsdom }, () => {
@@ -128,6 +205,98 @@ test('통합: startPolicy none → 앵커·이월·재생 연결 모두 사라�
   assert.equal(w.eval('carryStayFor(1)'), null, 'none → carry 없음');
   assert.equal(w.eval('hm(dayContext(1).timeline[0].eta)'), '09:00', 'none → 이월 이동 미반영');
   assert.equal(w.eval('animPath().some(p=>p.di===1)'), false, 'none → 재생에 Day2 이월 구간 없음(단일 장소)');
+});
+
+test('통합: 분리 일정의 모든 가지·합류 구간을 각 출발시각으로 실제 조회한다', { skip: noJsdom },()=>{
+  const w=boot();
+  try{
+    withSplitJourney(w);
+    w.eval('renderSidebar()');
+    const expected=JSON.parse(w.eval(`JSON.stringify(dayContext(1).legs.map(l=>({from:l.from.name,to:l.to.name,mode:'transit',when:planDepartISO(isoDateOf(1),l.depart,'Europe/Madrid')})))`));
+    const requested=JSON.parse(JSON.stringify(w.routeRequests));
+    expected.forEach(leg=>assert.ok(requested.some(r=>JSON.stringify(r)===JSON.stringify(leg)),JSON.stringify(leg)));
+    assert.ok(requested.every(r=>expected.some(l=>l.from===r.from&&l.to===r.to)),'가지 사이의 가짜 이동은 조회하지 않는다');
+  }finally{w.close();}
+});
+
+test('통합: 여행 모드의 다음·목록도 비숙소 앵커와 분리 가지의 실제 구간을 쓴다', { skip: noJsdom },()=>{
+  const w=boot();
+  try{
+    withSplitJourney(w);
+    w.eval(`renderEnergy=()=>{};renderSuggestions=()=>{};renderDayFlow=()=>{};_adapt=null;
+      renderTravel(1,{todayISO:'2030-01-01',nowMin:0});`);
+    const expected=JSON.parse(w.eval(`JSON.stringify(dayContext(1).legs.map(l=>({from:l.from.name,to:l.to.name,mode:'transit',when:planDepartISO(isoDateOf(1),l.depart,'Europe/Madrid')})))`));
+    const requested=JSON.parse(JSON.stringify(w.routeRequests));
+    expected.forEach(leg=>assert.ok(requested.some(r=>JSON.stringify(r)===JSON.stringify(leg)),JSON.stringify(leg)));
+    assert.ok(requested.every(r=>expected.some(l=>l.from===r.from&&l.to===r.to)),'현재 배열 다음 행으로 임의의 경로를 만들지 않는다');
+    assert.equal(w.document.querySelectorAll('#travelList .tLeg').length,4);
+  }finally{w.close();}
+});
+
+test('통합: 전체 지도는 전날 앵커에서 갈라지는 두 출발 구간을 모두 그린다', { skip: noJsdom },()=>{
+  const w=boot();
+  try{
+    withSplitJourney(w);
+    w.eval(`window.drawn=[];ME=()=>({ready:()=>true});setEngine=()=>{};desiredEngine=()=>'google';
+      clearOverlays=()=>{};addPin=()=>{};addLegChip=()=>{};addGhostStay=()=>{};
+      addLine=(pts,color,opacity,dashed)=>window.drawn.push({pts,dashed});
+      for(const l of dayContext(1).legs) legCache[l.key]={sec:600,m:10000,est:true};render();`);
+    const carries=JSON.parse(JSON.stringify(w.drawn)).filter(l=>l.dashed);
+    assert.equal(carries.length,2);
+    assert.deepEqual(carries.map(l=>l.pts[0]),[{lat:41,lng:2},{lat:41,lng:2}]);
+    assert.deepEqual(carries.map(l=>l.pts.at(-1)),[{lat:41.01,lng:2},{lat:41,lng:2.02}]);
+  }finally{w.close();}
+});
+
+test('통합: 재생은 가지를 바꿀 때 가짜 이동 거리를 더하거나 보간하지 않는다', { skip: noJsdom },()=>{
+  const w=boot();
+  try{
+    withSplitJourney(w);
+    w.eval(`activeDay=2;window.moved=[];HTMLElement.prototype.animate=()=>({});
+      ME=()=>({ready:()=>true,relayout:()=>{},fit:()=>{},waitTiles:()=>new Promise(()=>{}),
+        moveMarker:()=>({move:(lat,lng)=>window.moved.push({lat,lng}),remove:()=>{}})});
+      playTrip();
+      const testLegs=dayContext(1).legs;
+      const testDistances=testLegs.map(l=>haversine(l.from,l.to));
+      play.seekPreview((testDistances[0]+testDistances[1]/2)/testDistances.reduce((a,b)=>a+b,0));`);
+    const point=w.moved.at(-1);
+    assert.ok(Math.abs(point.lat-41)<1e-7);
+    assert.ok(Math.abs(point.lng-2.01)<1e-7,'두번째 가지 출발점→B의 중간에 있어야 한다');
+    w.eval('stopPlay()');
+  }finally{w.close();}
+});
+
+test('통합: 마지막 분리의 모든 숙소 복귀를 조회·지도·여행 모드·하루 합계에 한 번씩 반영한다', { skip: noJsdom },()=>{
+  const w=boot();
+  try{
+    withSplitJourney(w);
+    w.eval(`Object.assign(trip().days[0].spots[0],{stay:true,nights:3});
+      trip().days[1].spots.pop();trip().days[1].returnMode='taxi';trip().days.push({spots:[]});
+      legMinutes=(from,to)=>to.stay?(from.name==='A'?20:90):10;
+      for(const leg of dayContext(1).legs) legCache[leg.key]={sec:legMinutes(leg.from,leg.to)*60,m:10000,taxi:leg.returning?100:0,est:true};
+      renderSidebar();`);
+    const result=JSON.parse(w.eval(`JSON.stringify((()=>{const ctx=dayContext(1),day=ctx.day;return {
+      returns:ctx.backLegs.map(l=>({from:l.from.name,to:l.to.name,mode:l.mode})), representative:ctx.backLeg.from.name,
+      route:dayRoute(day),end:dayEndMin(day,ctx.anchor,ctx.backLeg),distance:dayDistance(day),
+      expectedDistance:2*(haversine(ctx.anchor,day.spots[0])+haversine(ctx.anchor,day.spots[1]))
+    };})())`));
+    assert.deepEqual(result.returns,[{from:'A',to:'출발점',mode:'taxi'},{from:'B',to:'출발점',mode:'taxi'}]);
+    assert.equal(result.representative,'B','체류가 긴 가지가 아니라 실제 복귀 도착이 늦은 가지가 대표다');
+    assert.deepEqual(result.route,{sec:7800,m:40000,taxi:200},'이월 출발·두 복귀를 중복 없이 합산');
+    assert.equal(result.end,645);
+    assert.ok(Math.abs(result.distance-result.expectedDistance)<1e-7);
+    for(const leg of result.returns) assert.ok(w.routeRequests.some(r=>r.from===leg.from&&r.to===leg.to&&r.mode===leg.mode));
+    w.eval(`activeDay=2;window.drawn=[];ME=()=>({ready:()=>true});setEngine=()=>{};desiredEngine=()=>'google';
+      clearOverlays=()=>{};addPin=()=>{};addLegChip=()=>{};addGhostStay=()=>{};
+      addLine=(pts,color,opacity,dashed)=>window.drawn.push({pts,dashed});render();
+      renderEnergy=()=>{};renderSuggestions=()=>{};renderDayFlow=()=>{};_adapt=null;
+      renderTravel(1,{todayISO:'2030-01-01',nowMin:0});`);
+    assert.equal(w.drawn.filter(l=>l.dashed).length,2,'숙소로 향하는 두 복귀선');
+    assert.equal(w.document.querySelectorAll('#travelList .tLeg').length,4,'출발 두 구간과 복귀 두 구간');
+    const playback=JSON.parse(w.eval(`JSON.stringify(animPath().filter(p=>p.breakBefore).map(p=>({from:p.from,to:p.to,mode:p.mode})))`));
+    assert.equal(playback.length,4);
+    assert.deepEqual(playback.filter(p=>p.to==='출발점'),result.returns);
+  }finally{w.close();}
 });
 
 test('통합: 혼합 여행 엔진이 보는 범위 따라 전환 (국내일=카카오 / 해외일=구글 / 전체=구글)', { skip: noJsdom }, () => {

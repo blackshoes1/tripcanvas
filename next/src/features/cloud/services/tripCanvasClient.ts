@@ -7,6 +7,8 @@ export type CloudUser = { id: string; email: string };
 let configured = false;
 let ready: Promise<void> | null = null;
 const listeners = new Set<(user: CloudUser | null) => void>();
+let accountId: string | null = null;
+let sessionVersion = 0;
 
 function configure() {
   if (configured || typeof window === 'undefined') return;
@@ -16,7 +18,10 @@ function configure() {
   try { storage = window.localStorage; } catch { /* 로컬 저장이 제한된 환경 */ }
   auth.configure({ baseUrl, storage });
   api.configure({ baseUrl, getToken: auth.getToken });
-  auth.onChange(user => { for (const listener of listeners) listener(user); });
+  auth.onChange(user => {
+    if (accountId !== (user?.id ?? null)) { accountId = user?.id ?? null; sessionVersion++; }
+    for (const listener of listeners) listener(user);
+  });
   configured = true;
 }
 
@@ -42,4 +47,6 @@ export function subscribeCloudUser(listener: (user: CloudUser | null) => void): 
 }
 
 export function hasCloudSession(): boolean { return typeof window !== 'undefined' && auth.user() !== null; }
+/** 로그아웃 후 같은 계정으로 돌아와도 이전 비동기 응답은 버린다. */
+export function cloudSessionVersion(): number { return sessionVersion; }
 export { api as cloudApi, auth as cloudAuth };

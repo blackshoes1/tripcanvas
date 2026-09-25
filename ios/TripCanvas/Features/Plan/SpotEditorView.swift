@@ -57,6 +57,7 @@ struct SpotEditorView: View {
     let members: [MemberView]
     /// 참여자를 고를 수 있는지 판정할 내 역할(`canAssignWho`). 보기 권한은 고르지 못한다.
     let role: MemberRole
+    let draftKey: EditorDraftKey?
     let onSave: (TripSpot) async -> String?
     let onDelete: (Int) async -> String?
     let onMoveToDay: (Int, Int, TripSpot) async -> String?
@@ -69,6 +70,9 @@ struct SpotEditorView: View {
     @State private var showsMapPicker = false
     @State private var saving = EditorSaveState()
     @State private var showsDiscardConfirm = false
+    @State private var recovery: SpotInputDraft?
+    @State private var checkedRecovery = false
+    @State private var showsPreviousInput = false
     private var isDirty: Bool {
         draft != target.spot || costText != MoneyInput.text(amount: target.spot.cost)
     }
@@ -79,6 +83,7 @@ struct SpotEditorView: View {
          contextLabel: String? = nil,
          members: [MemberView] = [],
          role: MemberRole = .owner,
+         draftKey: EditorDraftKey? = nil,
          onSave: @escaping (TripSpot) async -> String?,
          onDelete: @escaping (Int) async -> String?,
          onMoveToDay: @escaping (Int, Int, TripSpot) async -> String?) {
@@ -88,6 +93,7 @@ struct SpotEditorView: View {
         self.contextLabel = contextLabel
         self.members = members
         self.role = role
+        self.draftKey = draftKey
         self.onSave = onSave
         self.onDelete = onDelete
         self.onMoveToDay = onMoveToDay
@@ -141,6 +147,24 @@ struct SpotEditorView: View {
     var body: some View {
         NavigationStack {
             Form {
+                if let recovery {
+                    Section("저장하지 않은 입력이 있어요") {
+                        if recovery.canRestore(over: target.spot) {
+                            Button("이어서 입력") {
+                                self.recovery = nil
+                                draft = TripSpot(raw: recovery.edited)
+                                costText = recovery.costText
+                            }
+                        } else {
+                            Text("일정이 바뀌어 그대로 복원할 수 없어요. 이전 입력을 확인해 주세요.")
+                            Button("이전 입력 보기") { showsPreviousInput = true }
+                        }
+                        Button("초안 버리기", role: .destructive) {
+                            self.recovery = nil
+                            EditorDraftStore.shared.remove(draftKey)
+                        }
+                    }
+                }
                 if !target.spot.name.isEmpty {
                     Section {
                         PlacePhotoView(placeId: target.spot.placeId, kakaoId: target.spot.kakaoId, name: target.spot.name)
@@ -295,8 +319,21 @@ struct SpotEditorView: View {
             .disabled(saving.isWorking)
             .interactiveDismissDisabled(isDirty || saving.isWorking)
             .confirmationDialog("입력한 내용을 버릴까요?", isPresented: $showsDiscardConfirm, titleVisibility: .visible) {
-                Button("내용 버리기", role: .destructive) { dismiss() }
+                Button("내용 버리기", role: .destructive) { EditorDraftStore.shared.remove(draftKey); dismiss() }
                 Button("계속 편집", role: .cancel) { }
+            }
+            .onAppear {
+                guard !checkedRecovery else { return }
+                recovery = EditorDraftStore.shared.load(SpotInputDraft.self, key: draftKey)
+                checkedRecovery = true
+            }
+            .onChange(of: draft) { _, _ in preserveInput() }
+            .onChange(of: costText) { _, _ in preserveInput() }
+            .sheet(isPresented: $showsPreviousInput) {
+                if let recovery {
+                    SpotInformationView(spot: TripSpot(raw: recovery.edited), contextLabel: "저장하지 않은 입력")
+                        .textSelection(.enabled)
+                }
             }
             .paperGround()
             .tint(Ink.accent)
@@ -327,11 +364,18 @@ struct SpotEditorView: View {
             .confirmationDialog("이 장소를 일정에서 뺄까요?", isPresented: $showsDeleteConfirm, titleVisibility: .visible) {
                 Button("빼기", role: .destructive) {
                     if let index = target.index {
-                        Task { if await saving.perform({ await onDelete(index) }) { dismiss() } }
+                        Task { if await saving.perform({ await onDelete(index) }) { EditorDraftStore.shared.remove(draftKey); dismiss() } }
                     }
                 }
             }
         }
+    }
+
+    private func preserveInput() {
+        guard checkedRecovery, recovery == nil else { return }
+        if isDirty {
+            EditorDraftStore.shared.save(SpotInputDraft(original: target.spot.raw, edited: draft.raw, costText: costText), key: draftKey)
+        } else { EditorDraftStore.shared.remove(draftKey) }
     }
 
     /// 검색 결과로 장소 자체를 바꾸되, 일정에 이미 입력한 시간·비용·메모·예약 연결은 보존한다.
@@ -367,7 +411,7 @@ struct SpotEditorView: View {
             _ = await saving.perform { error }
             return
         }
-        if await saving.perform({ await action(preparedSpot) }) { dismiss() }
+        if await saving.perform({ await action(preparedSpot) }) { EditorDraftStore.shared.remove(draftKey); dismiss() }
     }
 
     static func validationError(for draft: TripSpot, costText: String) -> String? {

@@ -3,12 +3,12 @@
 // 읽기 뷰 — 경로를 새로 조회하지 않으므로 미캐시 구간은 레거시의 '조회 중' 상태와 동일하게 선을 긋지 않는다.
 import legacyLib from '@legacy/lib.js';
 
-import { MODE_ICON, backLegOf, fmtDur, hasCoord, legModeOf } from '@/features/itinerary/domain/dayView';
+import { MODE_ICON, dayJourneyOf, fmtDur, hasCoord, legModeOf } from '@/features/itinerary/domain/dayView';
 import type { LegCache } from '@/features/itinerary/domain/types';
-import type { Spot, Trip } from '@/features/trip/domain/types';
+import type { Spot, TransportMode, Trip } from '@/features/trip/domain/types';
 import type { FitTarget, MapEngine, MapScene, SceneChip, SceneGhost, SceneLine, ScenePin } from './types';
 
-const { dayReturnStay, dayStartAnchor, decodePolyline, inKorea, legKey, spotCatOf } = legacyLib;
+const { decodePolyline, inKorea, legKey, returnModeOf, spotCatOf } = legacyLib;
 
 // ── 색상 (app.js와 동일 값·규칙 — Phase 6에서 단일 소스로 합칠 표시 글루) ──
 export const PALETTE =
@@ -71,20 +71,26 @@ export function buildMapScene(trip: Trip, legCache: LegCache, activeDay: number)
       });
     });
 
-    // 일자 내 동선 — 실경로 우선. 미캐시(조회 중)엔 그리지 않고, 실패 구간만 직선으로.
-    // 경로선 색은 색 모드와 무관하게 항상 일자 색 (핀·카드만 도시별/일자별 따름).
+    // 조회·타임라인과 같은 경로 집합: 분리된 가지끼리는 연결하지 않는다.
     const locSpots = day.spots.filter(hasCoord);
     const lc = dayColor(di), lop = activeDay ? 0.9 : 0.7;
-    for (let i = 1; i < locSpots.length; i++) {
-      const A = locSpots[i - 1], B = locSpots[i], lm = legModeOf(day, B);
+    for (const leg of dayJourneyOf(trip, legCache, di).legs) {
+      const A = leg.from, B = leg.to;
+      const returning = !!leg.returning;
+      const carried = !returning && !day.spots.includes(A);
+      if (carried && activeDay) continue; // 일자 간 점선은 전체 보기에서만
+      if (returning && !locSpots.includes(B) && !ghosts.some(g => g.lat === B.lat && g.lng === B.lng && g.color === lc))
+        ghosts.push({ lat: B.lat, lng: B.lng, color: lc, title: B.name });
+      const lm = returning ? returnModeOf(day) as TransportMode : legModeOf(day, B);
       const cch = legCache[legKey(A, B, lm)];
       if (!cch) continue;
       const path = cch.sec && cch.path ? decodePolyline(cch.path) : null;
       lines.push({
         pts: path ?? [{ lat: A.lat, lng: A.lng }, { lat: B.lat, lng: B.lng }],
-        color: lc, opacity: lop, dashed: false
+        color: lc, opacity: returning ? lop * 0.85 : carried ? 0.8 : lop,
+        dashed: returning || carried
       });
-      if (activeDay && cch.sec) {   // 일자 보기에선 경로 중간에 소요시간 칩
+      if (activeDay && !returning && cch.sec) {
         const mid = path ? path[Math.floor(path.length / 2)]
           : { lat: (A.lat + B.lat) / 2, lng: (A.lng + B.lng) / 2 };
         const dist = cch.m ?? 0;
@@ -96,38 +102,7 @@ export function buildMapScene(trip: Trip, legCache: LegCache, activeDay: number)
         });
       }
     }
-
-    // 숙소 복귀 — 자동 합성 구간이라 점선. 연박처럼 그날 목록에 없는 숙소면 옅은 🏠 표식.
-    const bl = backLegOf(day, dayReturnStay(trip.days as unknown[], di) as Spot | null);
-    if (bl) {
-      const bch = legCache[legKey(bl.from, bl.to, bl.mode)];
-      if (bch) {
-        const bpath = bch.sec && bch.path ? decodePolyline(bch.path) : null;
-        lines.push({
-          pts: bpath ?? [{ lat: bl.from.lat, lng: bl.from.lng }, { lat: bl.to.lat, lng: bl.to.lng }],
-          color: lc, opacity: lop * 0.85, dashed: true
-        });
-      }
-      if (locSpots.indexOf(bl.to) < 0) ghosts.push({ lat: bl.to.lat, lng: bl.to.lng, color: lc, title: bl.to.name });
-    }
   });
-
-  // 일자 간 연결 (전체 보기) — 점선, 도착 일자 색. 이월 시작점은 dayStartAnchor(정책 반영).
-  if (!activeDay) {
-    trip.days.forEach((day, di) => {
-      const loc = day.spots.filter(hasCoord);
-      if (!loc.length) return;
-      const from = dayStartAnchor(trip.days as unknown[], di) as Spot | null;
-      if (!hasCoord(from)) return;
-      const cch = legCache[legKey(from, loc[0], legModeOf(day, loc[0]))];
-      if (!cch) return;
-      const path = cch.sec && cch.path ? decodePolyline(cch.path) : null;
-      lines.push({
-        pts: path ?? [{ lat: from.lat, lng: from.lng }, { lat: loc[0].lat, lng: loc[0].lng }],
-        color: dayColor(di), opacity: 0.8, dashed: true
-      });
-    });
-  }
 
   return { engine: desiredEngineOf(trip, activeDay), pins, lines, ghosts, chips };
 }

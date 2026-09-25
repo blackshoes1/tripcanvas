@@ -5,7 +5,7 @@
 import legacyLib from '@legacy/lib.js';
 
 import type { Trip } from '@/features/trip/domain/types';
-import { dropUndoTop, readUndo, recordWrite } from './undoStore';
+import { clearUndo, dropUndoTop, readUndo, recordWrite } from './undoStore';
 
 const LS_KEY = 'tripcanvas_v1';
 /** 검증에 걸린 원문을 덮어쓰기 전에 남겨 두는 자리 — 레거시 load()와 같은 키 */
@@ -133,7 +133,9 @@ export function replaceTrips(trips: Trip[], activeId?: string): boolean {
   }
   const wanted = activeId ?? getTripStoreSnapshot()?.activeId ?? '';
   const active = normalized.some(t => t.id === wanted) ? wanted : normalized[0].id;
-  return writeStore({ trips: normalized, activeId: active });
+  const saved = writeStore({ trips: normalized, activeId: active }, false);
+  if (saved) clearUndo();
+  return saved;
 }
 
 /** 한 여행만 정규화해 되쓴다 — 다른 여행·필드는 건드리지 않는다 */

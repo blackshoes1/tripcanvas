@@ -12,8 +12,8 @@ import type {
 } from './types';
 
 const {
-  dayCostSummary, dayEnteredCost, hasManualTransportCost, budgetBookings, carEventsOn, carSpotLinks, computeTimeline, dayReturnStay, dayStartAnchor,
-  dayEndMinutes, haversine, hm, isOpenAt, legKey, returnModeOf, parseHM, spotCatOf, stayNights, toISO
+  dayCostSummary, dayEnteredCost, hasManualTransportCost, budgetBookings, carEventsOn, carSpotLinks, computeDayJourney, dayReturnStay, dayStartAnchor,
+  haversine, hm, isOpenAt, legKey, returnModeOf, parseHM, spotCatOf, stayNights, toISO
 } = legacyLib;
 
 // ── 수단 상수 (app.js와 동일 값 — Phase 6에서 단일 소스로 합칠 표시·추정용 글루) ──
@@ -111,23 +111,33 @@ function startAnchorOf(trip: Trip, di: number): Spot | null {
   return dayStartAnchor(trip.days as unknown[], di) as Spot | null;
 }
 
-export function dayTimelineOf(trip: Trip, legCache: LegCache, di: number): TimelineEntry[] {
-  const day = trip.days[di];
-  return computeTimeline(day, {
-    legMin: (a, b) => legMinutes(legCache, a as LatLng, b as LatLng, legModeOf(day, b as Spot)),
-    startAnchor: startAnchorOf(trip, di)
-  });
+export interface DayJourneyLeg { from: LocatedSpot; to: LocatedSpot; spotIndex: number; depart: number; returning?: boolean }
+export interface DayJourney { timeline: TimelineEntry[]; legs: DayJourneyLeg[]; endMinutes: number; lastLocation: LocatedSpot | null }
+
+function journeyOf(day: Day, legCache: LegCache, startAnchor?: Spot | null, endAnchor?: Spot | null): DayJourney {
+  return computeDayJourney(day, {
+    legMin: (a, b, context) => legMinutes(legCache, a as LatLng, b as LatLng,
+      context?.returning ? returnModeOf(day) as TransportMode : legModeOf(day, b as Spot)),
+    startAnchor, endAnchor
+  }) as DayJourney;
 }
 
-/** 숙소 복귀 자동 구간 — 복귀 전용 수단을 우선하고 없으면 일자 기본을 근거리 보정한다 */
+export function dayJourneyOf(trip: Trip, legCache: LegCache, di: number) {
+  return journeyOf(trip.days[di], legCache, startAnchorOf(trip, di), dayReturnStay(trip.days as unknown[], di) as Spot | null);
+}
+
+export function dayTimelineOf(trip: Trip, legCache: LegCache, di: number): TimelineEntry[] {
+  return dayJourneyOf(trip, legCache, di).timeline;
+}
+
 /**
  * 그 날의 구간 전부 — **순서대로, 거르지 않고**.
  *
- * 이월 앵커 → 첫 장소, 연속 쌍(좌표 없는 장소는 건너뜀), 마지막 → 숙소 복귀.
+ * 이월 앵커·분리와 합류·모든 가지의 숙소 복귀. 캐시는 시각과 대표 구간만 바꾸고 구간 집합은 바꾸지 않는다.
  * ⚠️ **그리기(지도)와 조회(구간 캐시)가 이 하나를 같이 쓴다.** 각자 걸으면
  * 조회한 구간과 그린 구간이 어긋나 "선은 도로인데 이 구간만 직선"이 된다.
  */
-export function dayLegs(trip: Trip, di: number): { key: string; from: LocatedSpot; to: LocatedSpot; mode: TransportMode }[] {
+export function dayLegs(trip: Trip, di: number, legCache: LegCache = {}): { key: string; from: LocatedSpot; to: LocatedSpot; mode: TransportMode }[] {
   const days = trip.days ?? [];
   const day = days[di];
   if (!day) return [];
@@ -135,41 +145,27 @@ export function dayLegs(trip: Trip, di: number): { key: string; from: LocatedSpo
   const add = (from: LocatedSpot, to: LocatedSpot, mode: TransportMode) =>
     out.push({ key: legKey(from, to, mode), from, to, mode });
 
-  const anchor = dayStartAnchor(days as unknown[], di) as Spot | null;
-  let prev: LocatedSpot | null = hasCoord(anchor) ? anchor : null;
-  for (const spot of day.spots ?? []) {
-    if (!hasCoord(spot)) continue;
-    if (prev) add(prev, spot, legModeOf(day, spot));
-    prev = spot;
-  }
-  const back = backLegOf(day, dayReturnStay(days as unknown[], di) as Spot | null);
-  if (back) add(back.from, back.to, back.mode);
+  const journey = dayJourneyOf(trip, legCache, di);
+  for (const leg of journey.legs) add(leg.from, leg.to, leg.returning ? returnModeOf(day) as TransportMode : legModeOf(day, leg.to));
   return out;
 }
 
-export function backLegOf(day: Day, back: Spot | null): { from: LocatedSpot; to: LocatedSpot; mode: TransportMode } | null {
-  const loc = day.spots.filter(hasCoord);
-  if (!back || !hasCoord(back) || !loc.length) return null;
-  return { from: loc[loc.length - 1], to: back, mode: returnModeOf(day) as TransportMode };
+export function backLegOf(day: Day, back: Spot | null, journey = journeyOf(day, {}, undefined, back)): { from: LocatedSpot; to: LocatedSpot; mode: TransportMode } | null {
+  const leg = journey.legs.filter(l => l.returning).at(-1);
+  return leg ? { from: leg.from, to: leg.to, mode: returnModeOf(day) as TransportMode } : null;
 }
 
 /** 일정 예상 종료(분) — 마지막 장소의 (예약 대기 반영) 활동 시작 + 체류 + 숙소 복귀 이동 */
 export function dayEndMinOf(trip: Trip, legCache: LegCache, di: number): number | null {
   const day = trip.days[di];
   if (!day.spots.length) return null;
-  const tl = dayTimelineOf(trip, legCache, di);
-  const last = day.spots.length - 1;
-  const bl = backLegOf(day, dayReturnStay(trip.days as unknown[], di) as Spot | null);
-  // 합산 규칙은 lib.js 하나다 — 여기서는 **이동시간만** 구해서 넘긴다(구간 캐시 조회는 이 쪽 몫).
-  return dayEndMinutes(day.spots[last], tl[last].eta,
-                       bl ? legMinutes(legCache, bl.from, bl.to, bl.mode) : null);
+  return dayJourneyOf(trip, legCache, di).endMinutes;
 }
 
 // ── 하루 동선 합계 ──
 /** 모든 구간(숙소 복귀 포함)이 캐시됐을 때만 실도로 합계 — 부분 합계로 오해하지 않게 */
-function dayRouteOf(legCache: LegCache, day: Day, back: Spot | null): { sec: number; m: number; taxi: number } | null {
-  const loc = day.spots.filter(hasCoord);
-  if (loc.length < 2) return null;
+function dayRouteOf(legCache: LegCache, day: Day, journey: DayJourney): { sec: number; m: number; taxi: number } | null {
+  if (!journey.legs.length) return null;
   let sec = 0, m = 0, taxi = 0;
   const add = (a: LatLng, b: LatLng, mode: TransportMode): boolean => {
     const c = cachedLeg(legCache, a, b, mode);
@@ -177,18 +173,12 @@ function dayRouteOf(legCache: LegCache, day: Day, back: Spot | null): { sec: num
     sec += c.sec; m += c.m ?? 0; taxi += c.taxi ?? 0;
     return true;
   };
-  for (let i = 1; i < loc.length; i++) if (!add(loc[i - 1], loc[i], legModeOf(day, loc[i]))) return null;
-  const bl = backLegOf(day, back);
-  if (bl && !add(bl.from, bl.to, bl.mode)) return null;
+  for (const leg of journey.legs) if (!add(leg.from, leg.to, leg.returning ? returnModeOf(day) as TransportMode : legModeOf(day, leg.to))) return null;
   return { sec, m, taxi };
 }
 /** 직선거리 합(km) — 실도로 합계가 안 될 때의 동선 감각용 */
-function dayDistanceOf(day: Day, back: Spot | null): number {
-  const loc = day.spots.filter(hasCoord);
-  let sum = 0;
-  for (let i = 1; i < loc.length; i++) sum += haversine(loc[i - 1], loc[i]);
-  if (hasCoord(back) && loc.length) sum += haversine(loc[loc.length - 1], back);
-  return sum;
+function dayDistanceOf(journey: DayJourney): number {
+  return journey.legs.reduce((total, leg) => total + haversine(leg.from, leg.to), 0);
 }
 
 // ── 비용 ──
@@ -200,7 +190,7 @@ export function dayCostPartsOf(trip: Trip, legCache: LegCache, di: number, fx: F
   const day = trip.days[di];
   const dm = dayModeOf(day);
   const road = dm === 'car' || dm === 'taxi';
-  const rt = road ? dayRouteOf(legCache, day, dayReturnStay(trip.days as unknown[], di) as Spot | null) : null;
+  const rt = road ? dayRouteOf(legCache, day, dayJourneyOf(trip, legCache, di)) : null;
   return dayCostSummary(trip, di, { date: isoDateOf(trip, di), rates: fx, today,
     taxi: rt?.taxi ?? null,
     transportUnpriced: day.spots.filter(hasCoord).length > 1 && dm !== 'walk' && dm !== 'bike' && (!road || !rt?.taxi) });
@@ -213,7 +203,7 @@ export function tripCostBreakdownOf(trip: Trip, legCache: LegCache, fx: FxRates 
     out.spots += dayEnteredCost(d, fx);
     const dm = dayModeOf(d);
     if ((dm === 'car' || dm === 'taxi') && !hasManualTransportCost(d))
-      out.taxi += dayRouteOf(legCache, d, dayReturnStay(trip.days as unknown[], i) as Spot | null)?.taxi ?? 0;
+      out.taxi += dayRouteOf(legCache, d, dayJourneyOf(trip, legCache, i))?.taxi ?? 0;
   });
   budgetBookings(tripBookings(trip), trip.days).forEach(b => {
     const k = b.type === 'car' || b.type === 'flight' ? b.type : 'hotel';
@@ -334,21 +324,19 @@ export function buildDayView(trip: Trip, legCache: LegCache, di: number, fx: FxR
   const iso = isoDateOf(trip, di);
   const anchor = startAnchorOf(trip, di);
   const carry = anchor && anchor.stay ? anchor : null;          // 🏠 표시는 숙소일 때만 — ETA는 anchor
-  const tl = dayTimelineOf(trip, legCache, di);
+  const journey = dayJourneyOf(trip, legCache, di);
+  const tl = journey.timeline;
   const dm = dayModeOf(day);
   const back = dayReturnStay(days, di) as Spot | null;
-  const bl = backLegOf(day, back);
+  const bl = backLegOf(day, back, journey);
 
   // 렌터카: 장소와 연결된 건 그 행의 칩으로, 나머지만 날짜 파생 독립 행으로
   const links = carSpotLinks(days);
   const carEv = iso ? carEventsOn(tripBookings(trip), iso).filter(e => !links[e.kind][e.id]) : [];
 
-  let incoming: LocatedSpot | null = hasCoord(anchor) ? anchor : null;
-  const spots = day.spots.map((s, si) => {
-    const v = spotViewOf(trip, legCache, day, iso, s, si, tl, incoming, fx);
-    if (hasCoord(s)) incoming = s;
-    return v;
-  });
+  const incoming = new Map(journey.legs.map(leg => [leg.spotIndex, leg.from]));
+  const spots = day.spots.map((s, si) =>
+    spotViewOf(trip, legCache, day, iso, s, si, tl, incoming.get(si) ?? null, fx));
 
   // 일자 간 자동 이동 안내 — 숙소 이월이면 🏠 항목이 대신하고, 아니면 텍스트 한 줄
   let interDayLabel: string | null = null;
@@ -361,8 +349,8 @@ export function buildDayView(trip: Trip, legCache: LegCache, di: number, fx: FxR
       : `이전 일정에서 직선 ${haversine(anchor, first).toFixed(1)}km`;
   }
 
-  const rt = dayRouteOf(legCache, day, back);
-  const straightKm = dayDistanceOf(day, back);
+  const rt = dayRouteOf(legCache, day, journey);
+  const straightKm = dayDistanceOf(journey);
   const routeLabel = rt
     ? `📏 하루 동선 약 ${(rt.m / 1000).toFixed(1)}km · ${MODE_ICON[dm]}${fmtDur(rt.sec)}` +
       `${(dm === 'car' || dm === 'taxi') && rt.taxi ? ` · 🚕약 ${rt.taxi.toLocaleString('en-US')}원` : ''}` +

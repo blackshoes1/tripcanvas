@@ -55,29 +55,24 @@ extension DayPlanDay {
     /// ⚠️ 숙소 복귀는 자동으로 이어 붙인 구간이라 **따로** 그린다(옅게). 마지막 날에는 서버가 주지 않는다.
     /// ⚠️ 렌터카 픽업·반납은 좌표가 없어 여기 들어오지 않는다.
     var mapRoutes: [MapRoute] {
-        var points: [GeoPoint] = []
-        var allRouted = true
+        var builder = MapRouteBuilder(id: "day-\(index)")
+        if let routes {
+            for leg in routes {
+                builder.append(from: leg.from, to: leg.to, path: Polyline.decode(leg.path))
+            }
+            return builder.finish()
+        }
         var previous: GeoPoint?
-
         for spot in spots {
             guard let point = spot.location else { continue }
-            defer { previous = point }
-            guard previous != nil else { points.append(point); continue }
-            // 조회된 경로는 출발점 근처에서 시작해 도착점에서 끝난다 — 그대로 이어 붙이면 선이 이어진다.
             let path = Polyline.decode(spot.incomingLeg?.path)
-            if path.count >= 2 {
-                points.append(contentsOf: path)
-            } else {
-                points.append(point)
-                allRouted = false
-            }
+            let from = spot.incomingLeg?.from ?? (splits.isEmpty ? previous : path.first)
+            if let from { builder.append(from: from, to: point, path: path) }
+            previous = point
         }
-
-        var out: [MapRoute] = []
-        if points.count >= 2 {
-            out.append(MapRoute(id: "day-\(index)", points: points, synthetic: false, routed: allRouted))
-        }
-        if let back, let destination = back.location, let last = spots.compactMap(\.location).last {
+        var out = builder.finish()
+        if let back, let destination = back.location,
+           let last = back.leg.from ?? (splits.isEmpty ? previous : Polyline.decode(back.leg.path).first) {
             let path = Polyline.decode(back.leg.path)
             let routed = path.count >= 2
             out.append(MapRoute(id: "day-\(index)-back", points: routed ? path : [last, destination],
@@ -103,21 +98,11 @@ extension TripRouteDay {
     /// 그 날의 동선. 구간에 조회된 경로가 있으면 도로를 따르고, 없으면 두 점을 곧게 잇는다.
     /// ⚠️ 일자 지도(`DayPlanDay.mapRoutes`)와 **같은 규칙**이다.
     func mapRoutes(colorIndex: Int) -> [MapRoute] {
-        var points: [GeoPoint] = []
-        var allRouted = true
-        for (offset, leg) in legs.enumerated() {
-            if offset == 0 { points.append(leg.from) }
-            let decoded = Polyline.decode(leg.path)
-            if decoded.count >= 2 {
-                points.append(contentsOf: decoded)
-            } else {
-                points.append(leg.to)
-                allRouted = false
-            }
+        var builder = MapRouteBuilder(id: "trip-day-\(index)", colorIndex: colorIndex)
+        for leg in legs {
+            builder.append(from: leg.from, to: leg.to, path: Polyline.decode(leg.path))
         }
-        guard points.count >= 2 else { return [] }
-        return [MapRoute(id: "trip-day-\(index)", points: points, synthetic: false,
-                         routed: allRouted, colorIndex: colorIndex)]
+        return builder.finish()
     }
 
     /// 핀. 번호는 **그 날 안에서** 매긴다 — 여행 전체에 1..N을 매기면 14일차가 60번이 된다.
@@ -128,4 +113,36 @@ extension TripRouteDay {
                    point: spot.location, order: index + 1)
         }
     }
+}
+
+/// 구간의 출발점이 앞 구간의 도착점과 다르면 선도 끊는다. 서로 다른 가지를 이어 그리지 않는다.
+private struct MapRouteBuilder {
+    let id: String
+    var colorIndex: Int = 0
+    private var routes: [MapRoute] = []
+    private var points: [GeoPoint] = []
+    private var last: GeoPoint?
+    private var routed = true
+
+    init(id: String, colorIndex: Int = 0) { self.id = id; self.colorIndex = colorIndex }
+
+    mutating func append(from: GeoPoint, to: GeoPoint, path: [GeoPoint]) {
+        if let last, last != from { flush() }
+        if points.isEmpty { points.append(from) }
+        if path.count >= 2 { points.append(contentsOf: path) }
+        else { points.append(to); routed = false }
+        last = to
+    }
+
+    private mutating func flush() {
+        if points.count >= 2 {
+            routes.append(MapRoute(id: routes.isEmpty ? id : "\(id)-\(routes.count)", points: points,
+                                   synthetic: false, routed: routed, colorIndex: colorIndex))
+        }
+        points = []
+        routed = true
+        last = nil
+    }
+
+    mutating func finish() -> [MapRoute] { flush(); return routes }
 }

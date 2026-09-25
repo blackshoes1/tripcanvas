@@ -77,4 +77,20 @@ describe('collectLegRequests', () => {
     const reqs = collectLegRequests(t, {}, NOW);
     expect(reqs.filter(r => r.base === legKey(ll(airport()), ll(seongsan()), 'car'))).toHaveLength(1);
   });
+
+  it('분리 후 합류·복귀 요청은 각 가지의 실제 출발시각과 복귀 수단을 사용한다', () => {
+    const h = hotel();
+    const a = { ...airport(), split: 's1', who: ['a'], stayMin: 60 };
+    const b = { ...seongsan(), split: 's1', who: ['b'], stayMin: 30 };
+    const t = trip([day([h, a, b], { mode: 'walk', returnMode: 'transit', startAt: '09:00', timeZone: 'Asia/Seoul' }), day([])]);
+    const cache = {
+      [legKey(ll(h), ll(a), 'walk')]: { sec: 600, m: 5000 },
+      [legKey(ll(h), ll(b), 'walk')]: { sec: 600, m: 5000 }
+    };
+    const returns = collectLegRequests(t, cache, NOW).filter(r => r.mode === 'transit');
+    expect(returns).toHaveLength(2);
+    const requestFrom = (s: Spot) => returns.find(r => r.a.lat === s.lat && r.a.lng === s.lng)!;
+    expect(requestFrom(a).when).toBe(zonedMinutesToISOString('2100-01-01', 610, 'Asia/Seoul'));
+    expect(requestFrom(b).when).toBe(zonedMinutesToISOString('2100-01-01', 580, 'Asia/Seoul'));
+  });
 });

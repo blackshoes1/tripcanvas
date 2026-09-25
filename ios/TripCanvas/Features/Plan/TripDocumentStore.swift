@@ -22,6 +22,7 @@ final class TripDocumentStore {
     private(set) var isLoading = false
     /// 문서를 서버에서 마지막으로 받은 시각 — 탭에 다시 들어왔을 때 또 받을지의 기준.
     private(set) var loadedAt: Date?
+    private(set) var cachedAt: Date?
     private(set) var isSaving = false
     private(set) var errorMessage: String?
     /// 다른 기기가 먼저 바꿨다. 화면은 이걸 보고 물어본다 — 자동으로 어느 쪽도 고르지 않는다.
@@ -51,7 +52,7 @@ final class TripDocumentStore {
         self.service = service
     }
 
-    var canEdit: Bool { role.canEdit }
+    var canEdit: Bool { role.canEdit && cachedAt == nil }
     var canUndo: Bool { undoDocument != nil && undoRevision == revision && canEdit && !isSaving }
     var dayCount: Int { document?.days.count ?? 0 }
 
@@ -78,7 +79,7 @@ final class TripDocumentStore {
             let snapshot = try await service.document(tripId: tripId)
             guard request == loadGeneration, requestedRevision == revision, !isSaving else { return false }
             apply(snapshot)
-            loadedAt = Date()
+            loadedAt = snapshot.cachedAt == nil ? Date() : nil
             errorMessage = nil
         } catch {
             guard request == loadGeneration, requestedRevision == revision, !isSaving else { return false }
@@ -101,8 +102,12 @@ final class TripDocumentStore {
     /// 고치고 → 화면에 먼저 반영하고 → 저장한다. 실패하면 **서버가 아는 상태로 되돌린다** —
     /// 저장되지 않은 것이 저장된 것처럼 남아 있으면 다음 편집이 그 위에 쌓인다.
     @discardableResult
-    func edit(_ successToast: String?, _ change: (inout TripDocument) -> Void) async -> Bool {
+    func edit(_ successToast: String?, expectedRevision: Int? = nil, _ change: (inout TripDocument) -> Void) async -> Bool {
         guard !isSaving else { return false }
+        if let expectedRevision, expectedRevision != revision {
+            errorMessage = "편집하는 동안 일정이 바뀌었어요. 입력은 남아 있어요. 닫고 최신 일정에서 다시 선택해 주세요."
+            return false
+        }
         guard canEdit, let current = document else {
             errorMessage = "이 일정을 바꿀 수 없어요. 권한과 연결 상태를 확인해 주세요."
             return false
@@ -187,6 +192,7 @@ final class TripDocumentStore {
         document = snapshot.document
         revision = snapshot.revision
         role = snapshot.role
+        cachedAt = snapshot.cachedAt
         onApplied?(revisionChanged)
     }
 

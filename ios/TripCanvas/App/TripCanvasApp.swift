@@ -29,6 +29,7 @@ struct RootView: View {
     var body: some View {
         if env.auth.isSignedIn {
             TripListView()
+                .id(env.auth.session?.userId)
                 // 들고 있던 토큰이 아직 사는지 서버에 한 번 묻는다. 죽었으면 로그인 화면으로 돌아간다.
                 // 네트워크가 안 되면 세션을 버리지 않는다 — 오프라인에서 로그아웃당하지 않게.
                 .task { await env.auth.restore() }

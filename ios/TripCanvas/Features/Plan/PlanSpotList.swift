@@ -107,7 +107,9 @@ struct PlanSpotList: View {
                         .listRowSeparator(.visible, edges: .top)
                     }
                 } footer: {
-                    if !model.canEdit {
+                    if model.documentCachedAt != nil {
+                        Text("연결되면 최신 일정을 불러와 편집할 수 있어요.")
+                    } else if !model.canEdit {
                         Text("보기 권한이라 일정을 바꿀 수 없어요. 주최자에게 요청하세요.")
                     }
                     // 나란한 가지를 열로 쪼개지 않는다(드래그 인덱스가 어긋난다) —
@@ -119,7 +121,7 @@ struct PlanSpotList: View {
                     // 서버가 아직 준비 안 된 것을 아무도 모른다(2026-09-06에 그랬다).
                     // 시도해 보고 못 받았을 때만 말한다 — 기다리는 중에 실패했다고 하지 않는다.
                     if model.plan == nil, model.planAttempted(for: model.selectedDay), !day.spots.isEmpty {
-                        Label("예상 도착 시각을 불러오지 못했어요 — 일정 편집은 그대로 됩니다.",
+                        Label(model.documentCachedAt != nil ? "저장된 장소와 메모를 보고 있어요. 이동·도착 시각은 연결되면 확인할 수 있어요." : "예상 도착 시각을 불러오지 못했어요 — 일정 편집은 그대로 됩니다.",
                               systemImage: "clock.badge.exclamationmark")
                     }
                 }

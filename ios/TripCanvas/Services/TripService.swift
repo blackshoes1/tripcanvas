@@ -39,10 +39,25 @@ final class TripService: TripDataSource {
     // extension(TravelStateSource)에서도 쓰므로 private이 아니다.
     let api: APIClient
     let cache: TripCache
+    private(set) var cacheScope: TripCache.Scope?
 
-    init(api: APIClient, cache: TripCache) {
+    init(api: APIClient, cache: TripCache, cacheScope: TripCache.Scope? = nil) {
         self.api = api
         self.cache = cache
+        self.cacheScope = cacheScope
+    }
+
+    func useAccount(_ accountID: String?) {
+        let scope = TripCache.Scope(accountID: accountID, generation: (cacheScope?.generation ?? 0) + 1)
+        cacheScope = scope
+        realtimeURL = nil
+        Task { await cache.activate(scope) }
+    }
+
+    private func requestScope() async -> TripCache.Scope? {
+        let scope = cacheScope
+        await cache.activate(scope)
+        return scope
     }
 
     /// 실시간 주소는 잘 바뀌지 않는다 — 한 번 물어보고 들고 있는다.
@@ -50,7 +65,9 @@ final class TripService: TripDataSource {
     private var realtimeURL: URL??
     func cachedRealtimeURL() async -> URL? {
         if let cached = realtimeURL { return cached }
+        let scope = cacheScope
         let resolved = (try? await realtimeChoice())?.socketURL
+        guard scope == cacheScope else { return nil }
         realtimeURL = .some(resolved)
         return resolved
     }
@@ -65,12 +82,13 @@ final class TripService: TripDataSource {
     // MARK: 조회
 
     func trips() async throws -> Fetched<[TripSummary]> {
+        let scope = await requestScope()
         do {
             let response: TripListResponse = try await api.get("/api/v1/trips")
-            await cache.save(response.trips, key: TripCache.tripsKey)
+            await cache.save(response.trips, key: TripCache.tripsKey, scope: scope)
             return Fetched(value: response.trips, cachedAt: nil)
         } catch let error as APIError where error.isOffline {
-            guard let cached = await cache.load([TripSummary].self, key: TripCache.tripsKey) else { throw error }
+            guard let cached = await cache.load([TripSummary].self, key: TripCache.tripsKey, scope: scope) else { throw error }
             return Fetched(value: cached.value, cachedAt: cached.savedAt)
         }
     }
@@ -84,6 +102,7 @@ final class TripService: TripDataSource {
     ///    타이핑마다 잠금화면·위젯이 다시 그려진다.
     func today(tripId: String, dayIndex: Int? = nil,
                intent: String? = nil, energy: EnergyLevel? = nil) async throws -> Fetched<TodayResponse> {
+        let scope = await requestScope()
         var query: [URLQueryItem] = []
         if let dayIndex { query.append(URLQueryItem(name: "day", value: String(dayIndex))) }
         let said = (intent ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -94,29 +113,31 @@ final class TripService: TripDataSource {
         let key = TripCache.todayKey(tripId: tripId, dayIndex: dayIndex)
         do {
             let response: TodayResponse = try await api.get("/api/v1/trips/\(tripId)/today", query: query)
-            if said.isEmpty { await cache.save(response, key: key) }
+            if said.isEmpty { await cache.save(response, key: key, scope: scope) }
             return Fetched(value: response, cachedAt: nil)
         } catch let error as APIError where error.isOffline {
-            guard let cached = await cache.load(TodayResponse.self, key: key) else { throw error }
+            guard let cached = await cache.load(TodayResponse.self, key: key, scope: scope) else { throw error }
             return Fetched(value: cached.value, cachedAt: cached.savedAt)
         }
     }
 
     /// 지난번 오늘 화면 — 네트워크 없이 즉시. 쓸지 말지는 부르는 쪽이 정한다(리비전이 같을 때만 쓴다).
     func cachedToday(tripId: String) async -> TodayResponse? {
-        await cache.load(TodayResponse.self, key: TripCache.todayKey(tripId: tripId, dayIndex: nil))?.value
+        let scope = await requestScope()
+        return await cache.load(TodayResponse.self, key: TripCache.todayKey(tripId: tripId, dayIndex: nil), scope: scope)?.value
     }
 
     /// 일정 화면이 쓰는 하루치. 계산은 전부 서버가 한다 — 앱은 그린다.
     /// 오프라인이면 마지막으로 받은 것을 언제 받았는지와 함께 돌려준다(§29).
     func dayPlan(tripId: String, dayIndex: Int) async throws -> Fetched<DayPlanResponse> {
+        let scope = await requestScope()
         let key = TripCache.dayPlanKey(tripId: tripId, dayIndex: dayIndex)
         do {
             let response: DayPlanResponse = try await api.get("/api/v1/trips/\(tripId)/days/\(dayIndex)")
-            await cache.save(response, key: key)
+            await cache.save(response, key: key, scope: scope)
             return Fetched(value: response, cachedAt: nil)
         } catch let error as APIError where error.isOffline {
-            guard let cached = await cache.load(DayPlanResponse.self, key: key) else { throw error }
+            guard let cached = await cache.load(DayPlanResponse.self, key: key, scope: scope) else { throw error }
             return Fetched(value: cached.value, cachedAt: cached.savedAt)
         }
     }
@@ -168,13 +189,14 @@ final class TripService: TripDataSource {
     }
 
     func bookings(tripId: String) async throws -> Fetched<[BookingSummary]> {
+        let scope = await requestScope()
         let key = TripCache.bookingsKey(tripId: tripId)
         do {
             let response: BookingListResponse = try await api.get("/api/v1/trips/\(tripId)/bookings")
-            await cache.save(response.bookings, key: key)
+            await cache.save(response.bookings, key: key, scope: scope)
             return Fetched(value: response.bookings, cachedAt: nil)
         } catch let error as APIError where error.isOffline {
-            guard let cached = await cache.load([BookingSummary].self, key: key) else { throw error }
+            guard let cached = await cache.load([BookingSummary].self, key: key, scope: scope) else { throw error }
             return Fetched(value: cached.value, cachedAt: cached.savedAt)
         }
     }
@@ -184,21 +206,23 @@ final class TripService: TripDataSource {
     enum ActivityAction: String { case complete, skip, reset }
 
     func setActivity(tripId: String, activityId: String, action: ActivityAction, expectedRevision: Int, expectedName: String?) async throws -> MutationResponse {
+        let scope = await requestScope()
         var body: [String: Any] = ["expectedRevision": expectedRevision]
         if let expectedName { body["expectedName"] = expectedName }
         let response: MutationResponse = try await api.post(
             "/api/v1/trips/\(tripId)/activities/\(activityId)/\(action.rawValue)", body: body)
-        await cache.save(response.today, key: TripCache.todayKey(tripId: tripId, dayIndex: nil))
+        await cache.save(response.today, key: TripCache.todayKey(tripId: tripId, dayIndex: nil), scope: scope)
         return response
     }
 
     enum SuggestionDecision: String { case accept, skip }
 
     func decideSuggestion(tripId: String, suggestionId: String, decision: SuggestionDecision, expectedRevision: Int) async throws -> MutationResponse {
+        let scope = await requestScope()
         let response: MutationResponse = try await api.post(
             "/api/v1/trips/\(tripId)/suggestions/\(decision.rawValue)",
             body: ["suggestionId": suggestionId, "expectedRevision": expectedRevision])
-        await cache.save(response.today, key: TripCache.todayKey(tripId: tripId, dayIndex: nil))
+        await cache.save(response.today, key: TripCache.todayKey(tripId: tripId, dayIndex: nil), scope: scope)
         return response
     }
 
@@ -214,7 +238,8 @@ final class TripService: TripDataSource {
 // 여행 중에는 이 하나만 부른다(§57). 여러 endpoint를 연달아 부르는 것이 곧 배터리다.
 extension TripService: TravelStateSource {
     func travelState(tripId: String, location: GeoPoint?, locationUpdatedAt: String?,
-                     travelMode: Bool, suppressUntil: String?, markSent: Bool) async throws -> TravelStateResponse {
+                     travelMode: Bool, suppressUntil: String?, markSent: Bool) async throws -> Fetched<TravelStateResponse> {
+        let scope = await requestScope()
         var query: [URLQueryItem] = []
         if let location {
             // 위치는 이번 계산에만 쓰인다 — 서버가 저장하지 않는다(§55).
@@ -229,12 +254,12 @@ extension TripService: TravelStateSource {
         let key = "travel-state-\(tripId)"
         do {
             let response: TravelStateResponse = try await api.get("/api/v1/trips/\(tripId)/travel-state", query: query)
-            await cache.save(response, key: key)
-            return response
+            await cache.save(response, key: key, scope: scope)
+            return Fetched(value: response, cachedAt: nil)
         } catch let error as APIError where error.isOffline {
             // 오프라인이어도 잠금화면·위젯이 비지 않게 마지막 상태를 돌려준다(§58·§59).
-            guard let cached = await cache.load(TravelStateResponse.self, key: key) else { throw error }
-            return cached.value
+            guard let cached = await cache.load(TravelStateResponse.self, key: key, scope: scope) else { throw error }
+            return Fetched(value: cached.value, cachedAt: cached.savedAt)
         }
     }
 
@@ -311,28 +336,40 @@ struct TripDocumentSnapshot: Sendable {
     let document: TripDocument
     let revision: Int
     let role: MemberRole
+    var cachedAt: Date? = nil
 
-    var canEdit: Bool { role.canEdit }
+    var canEdit: Bool { role.canEdit && cachedAt == nil }
 }
 
 extension TripService: MemberListing {}
 
 extension TripService: TripDocumentSource {
-    /// 여행 문서 전체 + revision + 내 역할.
-    ///
-    /// 캐시로 떨어지지 않는다 — 편집은 최신 revision을 알아야 하고, 오래된 문서 위에서 고치면
-    /// 저장할 때 전부 충돌로 돌아온다. 오프라인이면 그냥 오프라인이라고 말한다.
+    /// 원문도 보관하되 오프라인 사본은 저장 시각을 표시하고 편집을 막는다.
     func document(tripId: String) async throws -> TripDocumentSnapshot {
-        let response: TripDetailResponse = try await api.get("/api/v1/trips/\(tripId)")
-        return TripDocumentSnapshot(
-            document: TripDocument(raw: response.document),
-            revision: response.trip.revision,
-            role: response.trip.role ?? .owner)
+        let scope = await requestScope()
+        let key = TripCache.documentKey(tripId: tripId)
+        do {
+            let response: TripDetailResponse = try await api.get("/api/v1/trips/\(tripId)")
+            await cache.save(response, key: key, scope: scope)
+            // 예약 화면을 미리 열지 않아도 서버 요약을 보관한다. 문서 표시는 이 요청을 기다리지 않는다.
+            Task { [weak self] in
+                guard let self, self.cacheScope == scope else { return }
+                _ = try? await self.bookings(tripId: tripId)
+            }
+            return TripDocumentSnapshot(document: TripDocument(raw: response.document),
+                                        revision: response.trip.revision, role: response.trip.role ?? .owner)
+        } catch let error as APIError where error.isOffline {
+            guard let cached = await cache.load(TripDetailResponse.self, key: key, scope: scope) else { throw error }
+            return TripDocumentSnapshot(document: TripDocument(raw: cached.value.document),
+                                        revision: cached.value.trip.revision, role: cached.value.trip.role ?? .owner,
+                                        cachedAt: cached.savedAt)
+        }
     }
 
     /// 지난번 계산 — 네트워크 없이 즉시. 쓸지 말지는 부르는 쪽이 정한다(리비전이 같을 때만 쓴다).
     func cachedDayPlan(tripId: String, dayIndex: Int) async -> DayPlanResponse? {
-        await cache.load(DayPlanResponse.self, key: TripCache.dayPlanKey(tripId: tripId, dayIndex: dayIndex))?.value
+        let scope = await requestScope()
+        return await cache.load(DayPlanResponse.self, key: TripCache.dayPlanKey(tripId: tripId, dayIndex: dayIndex), scope: scope)?.value
     }
 
     /// 여행 전체 동선. 그리는 데 필요한 것만 온다(시각·비용은 일자 화면의 몫).
@@ -353,12 +390,14 @@ extension TripService: TripDocumentSource {
     /// 화면은 그때 최신을 다시 읽어 사용자에게 물어야 한다. 조용히 덮어쓰지 않는다(§91).
     @discardableResult
     func saveDocument(tripId: String, document: TripDocument, expectedRevision: Int) async throws -> TripDocumentSnapshot {
+        let scope = await requestScope()
         let body: [String: JSONValue] = [
             "trip": .object(document.raw),
             "expectedRevision": .number(expectedRevision)
         ]
         let response: TripDetailResponse = try await api.put(
             "/api/v1/trips/\(tripId)", jsonBody: try JSONValue.data(from: body))
+        await cache.save(response, key: TripCache.documentKey(tripId: tripId), scope: scope)
         return TripDocumentSnapshot(
             document: TripDocument(raw: response.document),
             revision: response.trip.revision,

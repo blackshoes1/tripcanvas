@@ -393,7 +393,19 @@
    * @returns {{eta:number, fixed:boolean, conflict:boolean}[]}
    */
   function computeTimeline(day, opts){
+    return computeDayJourney(day, opts).timeline;
+  }
+
+  /**
+   * 타임라인이 실제로 지난 구간과 마지막 상태. 분리 일정도 지도·종료 합계가 같은 가지를 따른다.
+   * @param {{startAt?: string, spots?: any[]}} day
+   * endAnchor가 있으면 모든 가지가 그곳에 돌아오는 구간도 만든다. returning 구간에는 예약·체류를 다시 적용하지 않는다.
+   * @param {{legMin:(a:any,b:any,context?:{depart:number,returning?:boolean})=>number, startAnchor?: any,endAnchor?:any}} opts
+   * @returns {{timeline:any[],legs:{from:any,to:any,spotIndex:number,depart:number,returning?:boolean}[],endMinutes:number,lastLocation:any}}
+   */
+  function computeDayJourney(day, opts){
     const legMin=opts.legMin;
+    /** @type {{from:any,to:any,spotIndex:number,depart:number,returning?:boolean}[]} */ const legs=[];
     /** @type {any[]} */ const spots=((day&&day.spots)||[]);
     let clock=parseHM(day&&day.startAt);
     /** @type {any} */
@@ -402,29 +414,52 @@
     /**
      * 장소 하나를 (시계, 직전 위치) 상태에서 계산하고 다음 상태를 함께 돌려준다.
      * 순차 구간과 분리 구간이 **같은 규칙**을 쓰게 하려고 한 곳에 모았다.
-     * @param {any} s @param {number} at @param {any} from
+     * @param {any} s @param {number} at @param {any} from @param {number} spotIndex @param {boolean} returning
      */
-    function step(s, at, from){
+    function step(s, at, from, spotIndex, returning=false){
       let c=at;
-      if(hasCoord(s) && from) c+=legMin(from,s,{depart:c});
+      if(hasCoord(s) && from && (!returning || +from.lat!==+s.lat || +from.lng!==+s.lng)){
+        legs.push({from,to:s,spotIndex,depart:c,...(returning?{returning:true}:{})});
+        c+=legMin(from,s,{depart:c,...(returning?{returning:true}:{})});
+      }
       const natural=c;
       let eta=natural, conflict=false;
-      if(s.at){ eta=parseHM(s.at); conflict = eta < natural-0.5; }   // 고정 시각인데 이동상 도착이 더 늦으면 충돌
-      const depart = activityStartMinute(s, eta);
+      if(!returning && s.at){ eta=parseHM(s.at); conflict = eta < natural-0.5; }   // 고정 시각인데 이동상 도착이 더 늦으면 충돌
+      const depart = returning ? eta : activityStartMinute(s, eta);
       return {
         // natural=이동상 자연 도착(고정 전), wait=예약 시각까지 기다리는 시간 → UI가 이유를 설명할 수 있게
-        state:{eta, fixed:!!s.at, conflict, natural, wait:Math.max(0, depart-eta)},
-        clock: depart + stayMinutesOf(s),   // 안 정했으면 머무르지 않는다(2026-09-06)
+        state:{eta, fixed:!returning&&!!s.at, conflict, natural, wait:Math.max(0, depart-eta)},
+        clock: depart + (returning ? 0 : stayMinutesOf(s)),   // 안 정했으면 머무르지 않는다(2026-09-06)
         prev: hasCoord(s)? s : from
       };
     }
 
+    /** 각 가지의 도착을 계산하고 가장 늦은 구간을 대표(마지막)로 둔다.
+     * @param {any} s @param {{clock:number,prev:any}[]} origins @param {number} spotIndex @param {boolean} returning */
+    function arrive(s, origins, spotIndex, returning=false){
+      const firstLeg=legs.length;
+      const arrivals=origins.map(b=>step(s,b.clock,b.prev,spotIndex,returning));
+      let latest=0;
+      for(let j=1;j<arrivals.length;j++) if(arrivals[j].state.natural>arrivals[latest].state.natural) latest=j;
+      const selected=legs.findIndex((leg,j)=>j>=firstLeg && leg.from===origins[latest].prev);
+      if(selected>=0) legs.push(legs.splice(selected,1)[0]);
+      return {current:arrivals[latest],branches:arrivals.map(r=>({clock:r.clock,prev:r.prev}))};
+    }
+
     /** @type {any[]} */ const out=new Array(spots.length);
+    /** @type {{clock:number,prev:any}[]|null} */ let joining=null;
     let i=0;
     while(i<spots.length){
       const key=spots[i] && spots[i].split;
       if(!key){                                   // 평소의 하루 — 분리가 없으면 예전과 완전히 같다
-        const r=step(spots[i], clock, prev);
+        let r;
+        if(joining){
+          // 합류점까지 각 가지가 이동한다. 끝난 시각뿐 아니라 합류점에 도착하는 시각을 비교한다.
+          const arrival=arrive(spots[i],joining,i);
+          r=arrival.current;
+          // 좌표 없는 메모는 합류 위치가 아니다. 각 가지의 위치·시각을 다음 실제 장소까지 보존한다.
+          joining=hasCoord(spots[i])?null:arrival.branches;
+        }else r=step(spots[i], clock, prev, i);
         out[i]=r.state; clock=r.clock; prev=r.prev; i++;
         continue;
       }
@@ -436,7 +471,7 @@
       for(let j=i;j<end;j++){
         const bk=whoKey(spots[j]);
         const b=branches.get(bk) || {clock:entryClock, prev:entryPrev};
-        const r=step(spots[j], b.clock, b.prev);
+        const r=step(spots[j], b.clock, b.prev, j);
         out[j]=r.state;
         branches.set(bk, {clock:r.clock, prev:r.prev});
       }
@@ -444,9 +479,14 @@
       /** @type {{clock:number,prev:any}|null} */ let latest=null;
       for(const b of branches.values()) if(!latest || b.clock>latest.clock) latest=b;
       if(latest){ clock=latest.clock; prev=latest.prev; }
+      joining=Array.from(branches.values());
       i=end;
     }
-    return out;
+    if(spots.length && hasCoord(opts.endAnchor)){
+      const arrival=arrive(opts.endAnchor,joining||[{clock,prev}],-1,true).current;
+      clock=arrival.clock; prev=arrival.prev;
+    }
+    return {timeline:out,legs,endMinutes:clock,lastLocation:prev};
   }
 
   /**
@@ -563,7 +603,7 @@
     const carried = dayStartAnchor(days, di);
     const stay = own || ((carried && carried.stay) ? carried : null);
     if(!stay) return null;
-    if(loc[loc.length-1] === stay) return null;   // 이미 숙소로 끝남
+    if(loc[loc.length-1] === stay && !stay.split) return null;   // 분리 가지 하나만 숙소에 있어도 나머지는 돌아와야 한다
     return stay;
   }
 
@@ -1674,7 +1714,7 @@
     };
   }
 
-  const TC={additionalReservations,tripSummaryCities,returnModeOf,SPOT_PRIORITIES,spotPriorityOf,applySpotPriority,spotPriorityLabel,SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,cityFromKoreanAddr,placeName,cityFromGoogle,normHours,classifySearchErr,isKoreanSearch,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,normHM,sortDayByTime,inKorea,simplifyName,parseDirect,parseMoney,normalizeDraftDays,extractJson,extMapLink,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,stayMinutesOf,activityStartMinute,dayEndMinutes,departMinuteAfter,computeTimeline,whoKey,splitSegments,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,budgetBookings,moneyAmount,parseCostAmount,costAmountOf,dayEnteredCost,splitAcrossNights,stayCostShares,dayEnteredCostOn,hasManualTransportCost,dayCostSummary,ADMISSION_REQUIREMENTS,admissionLabel,admissionOf,needsAdmissionBooking,normalizeAdmission,admissionError,COST_CATEGORIES,costCategoryOf,COST_PAY_STATES,costPayStateOf,payStateTotals,TRIP_NOTE_CATEGORIES,normalizeTripNote,tripCostSummary,localMode,SAMPLE_TRIP_ID,isSampleTrip,sampleTrip,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
+  const TC={additionalReservations,tripSummaryCities,returnModeOf,SPOT_PRIORITIES,spotPriorityOf,applySpotPriority,spotPriorityLabel,SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,cityFromKoreanAddr,placeName,cityFromGoogle,normHours,classifySearchErr,isKoreanSearch,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,normHM,sortDayByTime,inKorea,simplifyName,parseDirect,parseMoney,normalizeDraftDays,extractJson,extMapLink,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,stayMinutesOf,activityStartMinute,dayEndMinutes,departMinuteAfter,computeTimeline,computeDayJourney,whoKey,splitSegments,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,budgetBookings,moneyAmount,parseCostAmount,costAmountOf,dayEnteredCost,splitAcrossNights,stayCostShares,dayEnteredCostOn,hasManualTransportCost,dayCostSummary,ADMISSION_REQUIREMENTS,admissionLabel,admissionOf,needsAdmissionBooking,normalizeAdmission,admissionError,COST_CATEGORIES,costCategoryOf,COST_PAY_STATES,costPayStateOf,payStateTotals,TRIP_NOTE_CATEGORIES,normalizeTripNote,tripCostSummary,localMode,SAMPLE_TRIP_ID,isSampleTrip,sampleTrip,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
   if(typeof module!=='undefined' && module.exports){ module.exports=TC; }   // Node (테스트)
   else { const r=/**@type {any}*/(root); for(const k in TC) r[k]=/**@type {any}*/(TC)[k]; }   // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);

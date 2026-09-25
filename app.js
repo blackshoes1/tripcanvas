@@ -73,6 +73,8 @@ let syncMeta=TC_SYNC.loadMeta(localStorage.getItem(SYNC_META_KEY),legacySynced);
 let suppressCloudOnce=false;
 let syncInFlight=0;      // 진행 중인 업로드 수 — 이 사이엔 syncMeta를 통째로 갈아끼우지 않는다
 let syncMetaStale=false; // 업로드 중이라 미뤄둔 syncMeta 갱신이 있는지
+let syncAccountEpoch=0;
+const syncUploads=new Set(); // 같은 계정·여행의 업로드는 하나씩 — 후속 편집은 응답 뒤에 보낸다
 function persistSyncMeta(){ try{ localStorage.setItem(SYNC_META_KEY,JSON.stringify(syncMeta)); }catch(e){} updateSaveState(); }
 function syncEntry(id){ return syncMeta[id]||(syncMeta[id]={revision:null,status:'new',op:'',hash:''}); }
 // ── 함께하기: 역할 캐시 ──
@@ -847,10 +849,7 @@ function dayColor(di){ return PALETTE[di%PALETTE.length]; }
 function spotColor(s,di,cityMap){ return colorByMode()==='day' ? dayColor(di) : ((cityMap||cityColors())[s.city]||'#888'); }
 // 직선거리(하버사인, km) — 실제 도로거리는 아니지만 동선 감각용
 function dayDistance(day, back){
-  const loc=day.spots.filter(hasLoc); let sum=0;
-  for(let i=1;i<loc.length;i++) sum+=haversine(loc[i-1],loc[i]);
-  if(back&&loc.length) sum+=haversine(loc[loc.length-1],back);   // 숙소 복귀
-  return sum;
+  return dayJourney(day,undefined,undefined,back).legs.reduce((total,leg)=>total+haversine(leg.from,leg.to),0);
 }
 
 // ── 구간 소요시간 (자동차) — 국내 카카오내비 · 해외 Google Routes, localStorage 캐시 ──
@@ -1017,13 +1016,21 @@ function legMinutes(a,b,mode,when,timeZone){
 // 일자 타임라인: 시작시각(startAt, 기본 09:00)부터 체류(stayMin, **안 정했으면 0분**)+이동 누적.
 // 순수 계산은 lib.js computeTimeline. startAnchor(전날 숙소 등)가 있으면 첫 유효 장소까지 이동시간을 먼저 더한다.
 function dayTimeZone(day){ return (day&&day.timeZone)||trip().timeZone||''; }
-function dayTimeline(day, startAnchor, di){
+function dayJourney(day, startAnchor, di, endAnchor){
   const index=di!=null?di:trip().days.indexOf(day), iso=index>=0?isoDateOf(index):'', timeZone=dayTimeZone(day);
-  return computeTimeline(day,{legMin:(a,b,context)=>{
-    const mode=legModeOf(day,b), when=mode==='transit'?planDepartISO(iso,context.depart,timeZone):null;
+  if(startAnchor===undefined&&index>=0) startAnchor=startAnchorFor(index);
+  if(endAnchor===undefined&&index>=0) endAnchor=dayReturnStay(trip().days,index);
+  return computeDayJourney(day,{legMin:(a,b,context)=>{
+    const mode=context.returning?returnModeOf(day):legModeOf(day,b), when=mode==='transit'?planDepartISO(iso,context.depart,timeZone):null;
     return legMinutes(a,b,mode,when,timeZone);
-  },startAnchor});
+  },startAnchor,endAnchor});
 }
+function journeyLegRoute(day,di,leg){
+  const mode=leg.returning?returnModeOf(day):legModeOf(day,leg.to), timeZone=dayTimeZone(day);
+  const when=mode==='transit'?planDepartISO(di>=0?isoDateOf(di):'',leg.depart,timeZone):null;
+  return {...leg,mode,timeZone,when,key:legRequestKey(leg.from,leg.to,mode,when,timeZone)};
+}
+function dayTimeline(day, startAnchor, di){ return dayJourney(day,startAnchor,di).timeline; }
 function dayEtas(day, startAnchor, di){ return dayTimeline(day,startAnchor,di).map(x=>x.eta); }
 function legDepartMinute(day,timeline,spotIndex){
   if(spotIndex<=0) return parseHM(day.startAt);
@@ -1118,23 +1125,15 @@ function tripCostBreakdown(){
 // 일정 예상 종료 시각(분) — 마지막 장소 (예약 대기 반영한) 활동 시작 + 체류
 function dayEndMin(day, startAnchor, bl){
   if(!day.spots.length) return null;
-  const etas=dayEtas(day, startAnchor), last=day.spots.length-1;
-  // 합산 규칙은 lib.js 하나다 — 여기서는 **이동시간만** 구해서 넘긴다(시간대·출발시각은 이 쪽 몫).
-  return dayEndMinutes(day.spots[last], etas[last],
-                       bl ? legMinutes(bl.from, bl.to, bl.mode, bl.when, bl.timeZone) : null);
+  return dayJourney(day,startAnchor,undefined,bl?bl.to:null).endMinutes;
 }
 // 하루 전체 실도로 합계 (모든 구간이 캐시됐을 때만)
 function dayRoute(day, bl){
-  const loc=day.spots.filter(hasLoc);
-  if(loc.length<2) return null;
+  const journey=dayJourney(day,undefined,undefined,bl?bl.to:undefined), di=trip().days.indexOf(day);
+  if(!journey.legs.length) return null;
   let sec=0,m=0,taxi=0;
-  for(let i=1;i<loc.length;i++){
-    const c=legCache[legKey(loc[i-1],loc[i],legModeOf(day,loc[i]))];
-    if(!c||!c.sec) return null;
-    sec+=c.sec; m+=c.m; taxi+=(c.taxi||0);
-  }
-  if(bl){   // 숙소 복귀 구간 — 아직 조회 중이면 하루 합계를 내지 않는다(부분 합계로 오해 방지)
-    const c=legCache[bl.key];
+  for(const leg of journey.legs){
+    const route=journeyLegRoute(day,di,leg), c=legCache[route.key];
     if(!c||!c.sec) return null;
     sec+=c.sec; m+=c.m; taxi+=(c.taxi||0);
   }
@@ -1194,16 +1193,11 @@ function overlaySig(t,colors){
     if(activeDay && di+1!==activeDay) return;
     p.push(dayModeOf(day));
     day.spots.forEach((s,si)=>{ if(hasLoc(s)) p.push(si,s.lat,s.lng,s.stay?1:0,s.opt?1:0,(s.cat||''),(s.legMode||''),spotColor(s,di,colors),esc(s.name),esc(s.desc||'')); });
-    const loc=day.spots.filter(hasLoc);
-    for(let i=1;i<loc.length;i++){ const c=legCache[legKey(loc[i-1],loc[i],legModeOf(day,loc[i]))]; p.push(c? (c.sec?(c.path?'p':'s'):'f') : 'n'); }
-    const bl=backLegOf(day,di,dayReturnStay(t.days,di));   // 숙소 복귀 — 경로가 도착하면 다시 그려야 한다
-    if(bl){ const c=legCache[bl.key]; p.push('B', c? (c.sec?(c.path?'p':'s'):'f') : 'n'); }
+    for(const leg of dayJourney(day,startAnchorFor(di),di).legs){
+      const route=journeyLegRoute(day,di,leg), key=route.key, c=legCache[key];
+      p.push(key,c? (c.sec?(c.path?'p':'s'):'f') : 'n');
+    }
   });
-  if(!activeDay){
-    t.days.forEach((day,di)=>{ const loc=day.spots.filter(hasLoc); if(!loc.length)return;
-      const from=startAnchorFor(di);
-      if(from){ const c=legCache[legKey(from,loc[0],legModeOf(day,loc[0]))]; p.push('I', c? (c.sec?(c.path?'p':'s'):'f') : 'n'); } });
-  }
   return p.join('|');
 }
 function render(){
@@ -1230,9 +1224,11 @@ function render(){
       // 결과가 나온 뒤에도 경로가 없는 구간(실패)만 직선으로 채움 → 직선→실경로 깜빡임 제거
       const locSpots = day.spots.filter(hasLoc);
       const lc=dayColor(di), lop=activeDay?0.9:0.7;   // 경로선은 색 모드와 무관하게 항상 일자 색 (핀·카드는 도시별/일자별 따름). 전체 보기도 또렷하게(0.7)
-      for(let i=1;i<locSpots.length;i++){
-        const A=locSpots[i-1], B=locSpots[i], lm=legModeOf(day,B);   // 구간별 수단(도착 장소 기준)
-        const cch=legCache[legKey(A,B,lm)];
+      const ctx=dayContext(di);
+      for(const leg of ctx.legs){
+        if(leg.returning || !day.spots.includes(leg.from)) continue;
+        const A=leg.from, B=leg.to, lm=leg.mode;
+        const cch=legCache[leg.key];
         if(!cch) continue;   // 조회 중 — 선 없이 대기 (완료 시 디바운스 재렌더로 채워짐)
         const path=(cch.sec&&cch.path)?decodePts(cch.path):null;
         addLine(path||[{lat:+A.lat,lng:+A.lng},{lat:+B.lat,lng:+B.lng}], lc, lop, false);
@@ -1244,28 +1240,25 @@ function render(){
         }
       }
       // 숙소 복귀 — 자동으로 이어 붙인 구간이라 점선으로 구분한다
-      const bl=backLegOf(day,di,dayReturnStay(t.days,di));
-      if(bl){
+      for(const bl of ctx.backLegs){
         const bch=legCache[bl.key];
         if(bch){
           const bpath=(bch.sec&&bch.path)?decodePts(bch.path):null;
           addLine(bpath||[{lat:+bl.from.lat,lng:+bl.from.lng},{lat:+bl.to.lat,lng:+bl.to.lng}], lc, lop*.85, true);
         }
         // 연박처럼 그날 목록엔 없는 숙소면 선 끝이 빈 곳이 되지 않게 옅은 🏠를 둔다
-        if(locSpots.indexOf(bl.to)<0) addGhostStay(bl.to, lc);
       }
+      if(ctx.backLeg&&locSpots.indexOf(ctx.backLeg.to)<0) addGhostStay(ctx.backLeg.to, lc);
     });
     // 일자 간 연결 (전체 보기) — 점선. 색은 도착 일자 색(나머지 선과 동일 체계). 조회 중엔 미표시
     if(!activeDay){
       t.days.forEach((day,di)=>{
-        const loc = day.spots.filter(hasLoc);
-        if(!loc.length) return;
-        const from=startAnchorFor(di);   // 정책 반영 이월 시작점 (none이면 null → 연결선 없음)
-        if(from){
-          const cch=legCache[legKey(from,loc[0],legModeOf(day,loc[0]))];
+        const ctx=dayContext(di);
+        for(const leg of ctx.legs.filter(l=>!l.returning&&l.from===ctx.anchor)){
+          const cch=legCache[leg.key];
           if(cch){
             const path=(cch.sec&&cch.path)?decodePts(cch.path):null;
-            addLine(path||[{lat:+from.lat,lng:+from.lng},{lat:+loc[0].lat,lng:+loc[0].lng}], dayColor(di), .8, true);
+            addLine(path||[{lat:+leg.from.lat,lng:+leg.from.lng},{lat:+leg.to.lat,lng:+leg.to.lng}], dayColor(di), .8, true);
           }
         }
       });
@@ -1328,15 +1321,11 @@ function carEventRowHtml(e){
 }
 // 숙소 복귀 구간 서술자 — 데이터에 없는 합성 구간이라 '일자 기본 수단'으로 본다.
 // (도착 장소의 legMode는 '그 장소로 오는' 구간용이라 복귀에 빌려 쓰면 틀린다)
-// 출발시각은 복귀를 뺀 그날 종료시각 = dayEndMin(day, anchor) — 여기서만 back 없이 불러 순환을 막는다.
+// 여러 가지가 숙소에 복귀하면 엔진이 가장 늦게 도착한 구간을 마지막에 둔다.
 function backLegOf(day, di, back){
-  const loc=day.spots.filter(hasLoc);
-  if(!back || !loc.length) return null;
-  const from=loc[loc.length-1], mode=returnModeOf(day), timeZone=dayTimeZone(day);
-  const when = mode==='transit'
-    ? planDepartISO(di>=0?isoDateOf(di):'', dayEndMin(day, startAnchorFor(di)), timeZone)
-    : null;
-  return {from, to:back, mode, when, timeZone, key:legRequestKey(from,back,mode,when,timeZone)};
+  if(!back) return null;
+  const leg=dayJourney(day,startAnchorFor(di),di,back).legs.filter(l=>l.returning).at(-1);
+  return leg?journeyLegRoute(day,di,leg):null;
 }
 // 시각적 🏠 '전날 숙소' 이월 항목용 — 시작 앵커가 숙소(stay)일 때만.
 /**
@@ -1354,8 +1343,10 @@ function carryStayFor(di){ return carryOf(startAnchorFor(di)); }
 // 화면의 🏠 '전날 숙소' 항목 표시에만 carry(숙소일 때만)를 쓴다.
 function dayContext(di){
   const day=trip().days[di], anchor=startAnchorFor(di), back=dayReturnStay(trip().days,di);
-  return { day, anchor, carry:carryOf(anchor), back, backLeg:backLegOf(day,di,back),
-           timeline:dayTimeline(day,anchor,di), mode:dayModeOf(day), timeZone:dayTimeZone(day) };
+  const journey=dayJourney(day,anchor,di);
+  const legs=journey.legs.map(l=>journeyLegRoute(day,di,l)), backLegs=legs.filter(l=>l.returning);
+  return { day, anchor, carry:carryOf(anchor), back, backLeg:backLegs.at(-1)||null, backLegs,
+           timeline:journey.timeline, legs, mode:dayModeOf(day), timeZone:dayTimeZone(day) };
 }
 function animPath(){
   const flat=[]; const days=trip().days;
@@ -1363,9 +1354,9 @@ function animPath(){
   const range = activeDay ? [activeDay-1] : days.map((_,i)=>i);
   range.forEach((di)=>{
     const day=days[di]; const loc=day.spots.filter(hasLoc); if(!loc.length) return;
-    const pushSeg=(A,B)=>{
-      const dm=legModeOf(day,B);                       // 구간별 수단(도착 장소 기준)
-      const c=legCache[legKey(A,B,dm)];
+    const pushSeg=leg=>{
+      const A=leg.from,B=leg.to,dm=leg.mode;
+      const c=legCache[leg.key];
       const pts=(c&&c.sec&&c.path)?decodePts(c.path):[{lat:+A.lat,lng:+A.lng},{lat:+B.lat,lng:+B.lng}];
       // 도시 간이면 줌아웃, 도시 내면 줌인. 이름만으론 오판(인근 산·명소가 지자체명이 다름) → 거리도 함께 본다.
       // 이름이 다르면서 충분히 멀 때(15km↑)만 도시 간. 이름이 없으면 거리(25km)로. → 인근 명소 줌아웃/정지 남발 방지.
@@ -1374,11 +1365,9 @@ function animPath(){
       const zoom = inter? PLAY_ZOOM_OUT : PLAY_ZOOM_IN;
       // 각 점에 구간 메타(from/to/mode/소요/일자)를 실어 재생 HUD(현재 구간·날짜 카드)에서 사용.
       const from=A.name||'출발', to=B.name||'도착', sec=(c&&c.sec)?c.sec:null;
-      pts.forEach(p=>flat.push({lat:+p.lat,lng:+p.lng,mode:dm,zoom,di,from,to,sec}));
+      pts.forEach((p,i)=>flat.push({lat:+p.lat,lng:+p.lng,mode:dm,zoom,di,from,to,sec,breakBefore:i===0}));
     };
-    const anchor=startAnchorFor(di);               // 정책 반영 이월 시작점 (none이면 null, 빈날 건너뜀)
-    if(anchor) pushSeg(anchor,loc[0]);             // 이월 숙소/이전 위치 → 오늘 첫 장소
-    for(let i=1;i<loc.length;i++) pushSeg(loc[i-1],loc[i]);
+    for(const leg of dayContext(di).legs) pushSeg(leg);
   });
   return flat;
 }
@@ -1467,8 +1456,9 @@ function playTrip(){
   // 줌가중(2^zoom)이 아니라 '구간별 소요시간'으로 잡는다 — 안 그러면 도로 점이 많은 도시간
   // 구간이 일자별 재생에서 과도하게 느려진다(점 수 기반 dur + 낮은 픽셀가중의 불일치).
   const gcum=[0];                                   // 실거리 누적(위치 보간용)
-  for(let i=1;i<flat.length;i++) gcum[i]=gcum[i-1]+haversine(flat[i-1],flat[i]);
-  const gtotal=gcum[gcum.length-1]||1;
+  for(let i=1;i<flat.length;i++) gcum[i]=gcum[i-1]+(flat[i].breakBefore?0:haversine(flat[i-1],flat[i]));
+  const gtotal=gcum[gcum.length-1];
+  if(!gtotal){ toast('재생할 이동 구간이 없어요','#4f4740'); return; }
   document.body.classList.add('playing');           // 사이드바 접어 지도를 크게
   ME().relayout();                                   // 시작 카메라는 아래 enterPhase(첫 구간 fit)가 잡음
   const el=document.createElement('div'); el.style.cssText='will-change:transform';
@@ -1482,14 +1472,18 @@ function playTrip(){
   // 진입 시 구간 전체를 한 화면에 담고 타일 로딩을 끝낸 뒤, 이동 중엔 카메라를 전혀 안 움직임
   // → 새 타일 로딩이 발생하지 않아(자동차는 오버레이라 타일 무관) 네트워크와 무관하게 매끄럽게 미끄러짐.
   const bounds=[];
-  for(let i=1;i<flat.length;i++){ const zi=flat[i].zoom||PLAY_ZOOM_IN, zp=flat[i-1].zoom||PLAY_ZOOM_IN; if(zi!==zp) bounds.push({dist:gcum[i], zoom:zi}); }
+  for(let i=1;i<flat.length;i++){
+    const zi=flat[i].zoom||PLAY_ZOOM_IN, zp=flat[i-1].zoom||PLAY_ZOOM_IN;
+    if(zi!==zp || (flat[i].breakBefore&&haversine(flat[i-1],flat[i])>1e-6)) bounds.push({dist:gcum[i],zoom:zi,index:i});
+  }
   const cuts=[0]; bounds.forEach(b=>cuts.push(b.dist)); cuts.push(gtotal);
   const phases=[];
   for(let k=0;k<cuts.length-1;k++){
     const a=cuts[k], b=cuts[k+1]; if(b-a<1e-6) continue;
     const zoom = k===0? (flat[0].zoom||PLAY_ZOOM_IN) : bounds[k-1].zoom;   // 구간 내 줌 상한(도시=13, 도시간=9)
     let mnLa=90,mxLa=-90,mnLn=180,mxLn=-180; const pts=[];
-    for(let i=0;i<flat.length;i++){ if(gcum[i]>=a-1e-6 && gcum[i]<=b+1e-6){ const p=flat[i]; pts.push([p.lat,p.lng]);
+    const fromIndex=k===0?0:bounds[k-1].index, toIndex=k<bounds.length?bounds[k].index-1:flat.length-1;
+    for(let i=fromIndex;i<=toIndex;i++){ if(gcum[i]>=a-1e-6 && gcum[i]<=b+1e-6){ const p=flat[i]; pts.push([p.lat,p.lng]);
       mnLa=Math.min(mnLa,p.lat); mxLa=Math.max(mxLa,p.lat); mnLn=Math.min(mnLn,p.lng); mxLn=Math.max(mxLn,p.lng); } }
     if(!pts.length){ pts.push([flat[0].lat,flat[0].lng]); mnLa=mxLa=flat[0].lat; mnLn=mxLn=flat[0].lng; }
     // 화면 대각(구간이 화면을 채우는 정도) 대비 실제 경로 길이 → 직선이면 ~1, 굽이질수록↑.
@@ -1500,7 +1494,7 @@ function playTrip(){
   }
   let d=0, lastTs=null, seg=0, pIdx=0, elapsed=0, paused=false;   // elapsed=현재 구간 경과(ms)
   const applyPos=()=>{                                  // d로부터 마커 위치·방향만 갱신(카메라는 고정)
-    while(seg<flat.length-2 && gcum[seg+1]<d) seg++;
+    while(seg<flat.length-2 && gcum[seg+1]<=d) seg++;
     while(seg>0 && gcum[seg]>d) seg--;                  // 탐색으로 뒤로 이동 시 보정
     const A=flat[seg], B=flat[seg+1], segLen=(gcum[seg+1]-gcum[seg])||1, f=(d-gcum[seg])/segLen;
     animMarker.move(A.lat+(B.lat-A.lat)*f, A.lng+(B.lng-A.lng)*f);
@@ -1548,7 +1542,7 @@ function playTrip(){
   };
   // 구간(leg) 시작 누적거리 — 이전/다음 구간 이동·구간 수 표시
   const legStarts=[0];
-  for(let i=1;i<flat.length;i++){ if(flat[i].from!==flat[i-1].from || flat[i].to!==flat[i-1].to) legStarts.push(gcum[i]); }
+  for(let i=1;i<flat.length;i++){ if(flat[i].breakBefore) legStarts.push(gcum[i]); }
   const pause=()=>{ if(paused) return; paused=true; if(animRAF){cancelAnimationFrame(animRAF);animRAF=null;} lastTs=null; updatePlayBtn(); updatePlayPauseBtn(); };
   const resume=()=>{ if(!paused) return; paused=false; lastTs=null; if(!animWaiting) animRAF=requestAnimationFrame(step); updatePlayBtn(); updatePlayPauseBtn(); };
   const seekPreview=(frac)=>{ d=Math.max(0,Math.min(1,frac))*gtotal; applyPos(); updatePlayProgress(d/gtotal); updatePlaySegInfo(); };
@@ -1696,25 +1690,28 @@ function renderSidebar(){
     card.style.setProperty('--c',headC);
     // 전날 숙소(🏠 등록)가 있으면 오늘 첫 일정으로 '가상 이월' — prevLoc를 숙소로 시드해 첫 장소에 이동거리 표시
     const ctx=dayContext(di), carry=ctx.carry;   // anchor=ETA용(숙소/전날 마지막), carry=🏠 표시용(숙소만)
-    let spotsHtml='', prevLoc=carry;
+    let spotsHtml='';
+    const incomingBySpot=new Map(ctx.legs.map(leg=>[leg.spotIndex,leg]));
+    // 합류·숙소 복귀는 같은 목적지에 여러 가지가 닿는다. 대표 한 줄만 보여도 조회는 전부 한다.
+    const routes=new Map(ctx.legs.map(leg=>[leg,requestLeg(leg.from,leg.to,leg.mode,leg.when,leg.timeZone)]));
     const tl=ctx.timeline, etas=tl.map(x=>x.eta), dm=ctx.mode, iso=isoDateOf(di), timeZone=ctx.timeZone;   // ETA는 anchor 기준 — 비숙소 전날 마지막 장소도 반영
     // 렌터카 픽업·반납 (표시 전용 — 동선·ETA와 무관). 일정의 장소와 연결된 건 그 장소 행에 붙으므로 독립 행에서 뺀다
     const carLinks=carSpotLinks(trip().days);
     const carEv=carEventsOn(tripBookings(), iso).filter(e=>!carLinks[e.kind][e.id]);
     day.spots.forEach((s,si)=>{
       const dotC = hasLoc(s)?spotColor(s,di,colors):'#857b6e';
+      const inLeg=incomingBySpot.get(si), prevLoc=inLeg?inLeg.from:null;
       const incoming=prevLoc, inMode=legModeOf(day,s);   // 이 지점으로 '들어오는' 구간(수단) — 아래 ETA 안내에 사용
       // 구간: 캐시된 경로가 있으면 그걸, 아니면 직선거리 + 백그라운드 조회
       let legHtml='';
       if(hasLoc(s)&&prevLoc){
-        const lm=legModeOf(day,s), depart=legDepartMinute(day,tl,si), when=lm==='transit'?planDepartISO(iso,depart,timeZone):null;
-        const lid=legRequestKey(prevLoc,s,lm,when,timeZone), lc=requestLeg(prevLoc,s,lm,when,timeZone);   // 구간별 출발시각·시간대
+        const lm=legModeOf(day,s), depart=inLeg.depart, when=lm==='transit'?planDepartISO(iso,depart,timeZone):null;
+        const lid=legRequestKey(prevLoc,s,lm,when,timeZone), lc=routes.get(inLeg);
         const failed=!lc && legCache[lid] && legCache[lid].fail;   // 인근 도로 스냅까지 실패
         legHtml = legModeBtn(day,di,si,lm) + (lc
           ? `<span class="leg" data-leg="${lid}" title="${legTitle(lc)}">${legLabel(lc)}</span>`
           : `<span class="leg${failed?' legfail':''}" data-leg="${lid}"${failed?' title="경로를 찾을 수 없어 직선거리로 표시 — 인근 도로 탐색(최대 2.4km)까지 실패했습니다. 장소 편집에서 검색으로 위치를 다시 잡아 보세요"':''}>↳${haversine(prevLoc,s).toFixed(1)}km${failed?' ⚠️':''}</span>`);
       }
-      if(hasLoc(s)) prevLoc=s;
       // 예약 시각이 도착 예상시각(ETA)보다 이르면 경고 (예약 놓칠 위험)
       const bookMin=s.bookAt?parseHM(s.bookAt):null;
       const bookWarn=(bookMin!=null && etas[si]-bookMin>5);   // ETA가 예약보다 5분 이상 늦음
@@ -1822,14 +1819,14 @@ function renderSidebar(){
         ${day.drive?`<div class="drive">${esc(day.drive)}</div>`:''}
         ${flightHtml(day)}
         ${(()=>{   // 일자 간 자동 이동시간: 이월 시작점 → 오늘 첫 장소 (숙소 이월 시엔 🏠 항목+구간거리로 대체, none이면 미표시)
-          const first=day.spots.find(hasLoc), from=startAnchorFor(di);
-          if(carry||!from||!first) return '';
-          const fi=day.spots.indexOf(first), im=legModeOf(day,first), depart=legDepartMinute(day,tl,fi), when=im==='transit'?planDepartISO(iso,depart,timeZone):null;
-          const iid=legRequestKey(from,first,im,when,timeZone), ic=requestLeg(from,first,im,when,timeZone);
-          const ibtn=legModeBtn(day,di,day.spots.indexOf(first),im);   // 이 구간(도시 간 이동인 경우가 많음)만 수단 변경
+          if(carry||!ctx.anchor) return '';
+          return ctx.legs.filter(l=>!l.returning&&l.from===ctx.anchor).map(leg=>{
+          const from=leg.from,first=leg.to,im=leg.mode,iid=leg.key,ic=routes.get(leg);
+          const ibtn=legModeBtn(day,di,leg.spotIndex,im);
           return ic
             ? `<div class="drive" style="color:var(--meta-soft)" title="이전 일자 기준점 · ${legTitle(ic)}">${ibtn}<span data-ileg="${iid}">이전 일정에서 ${(ic.m/1000).toFixed(1)}km · ${fmtDur(ic.sec)}</span></div>`
             : `<div class="drive" style="color:var(--meta-soft)">${ibtn}<span data-ileg="${iid}">이전 일정에서 직선 ${haversine(from,first).toFixed(1)}km</span></div>`;
+          }).join('');
         })()}
         ${(()=>{const rt=dayRoute(day,ctx.backLeg); if(rt) return `<div class="dist">${ic('ruler')} 하루 동선 약 ${(rt.m/1000).toFixed(1)}km · ${MODE_ICON[dm]}${fmtDur(rt.sec)}${((dm==='car'||dm==='taxi')&&rt.taxi)?` · 🚕약 ${rt.taxi.toLocaleString()}원`:''} <span style="opacity:.55">(${dm==='flight'?'직선':'도로 기준'})</span></div>`;
           return dayDistance(day,ctx.back)>0?`<div class="dist">${ic('ruler')} 하루 동선 약 ${dayDistance(day,ctx.back).toFixed(1)}km <span style="opacity:.55">(직선)</span></div>`:'';})()}
@@ -4551,9 +4548,11 @@ function renderTravel(di, clock){
   renderEnergy(di); renderSuggestions(di,when); renderDayFlow(di);   // 장소가 없는 날에도 "지금 뭐 하지"에는 답해야 한다
   if(!d.spots.length){ currentBox.innerHTML='<div class="travelKicker">현재 장소</div><div class="travelPlace">자유 일정</div>'; nextBox.hidden=true; list.innerHTML='<div class="hint" style="padding:20px 4px">등록된 장소가 없습니다 — 이동일이거나 자유 일정입니다.</div>'; return; }
   // 전날 숙소 이월: Day 2+에서 전날 숙소가 있으면 상단에 가상 항목으로 표시(오늘 데이터엔 복제 안 함).
-  // 타임라인·첫 장소 구간이 숙소에서 출발하도록 prevLoc/etas를 숙소로 시드 (사이드바·재생과 동일 기준).
+  // 실제 이동은 비숙소 앵커·분리 가지까지 dayContext가 정한다. carry는 숙소 표시만 맡는다.
   const ctx=dayContext(di), carry=ctx.carry, tl=ctx.timeline, iso=isoDateOf(di);
-  const etas=tl.map(x=>x.eta), dm=ctx.mode;   // ETA는 anchor 기준(사이드바·이미지와 동일)
+  const etas=tl.map(x=>x.eta);
+  const routes=new Map(ctx.legs.map(leg=>[leg,requestLeg(leg.from,leg.to,leg.mode,leg.when,leg.timeZone)]));
+  const incomingBySpot=new Map(ctx.legs.map(leg=>[leg.spotIndex,leg]));
   const today=iso===when.todayISO, nowMin=when.nowMin;
   let currentIndex=0;
   if(today){ for(let i=0;i<etas.length;i++) if(etas[i]<=nowMin) currentIndex=i; }
@@ -4574,15 +4573,14 @@ function renderTravel(di, clock){
   }
   const next=d.spots[nextIdx]; nextBox.hidden=false;
   if(next){
-    const mode=legModeOf(d,next),route=(hasLoc(current)&&hasLoc(next))?requestLeg(current,next,mode,mode==='transit'?planDepartISO(iso,legDepartMinute(d,tl,nextIdx),ctx.timeZone):null,ctx.timeZone):null;
-    const travelMin=route? route.sec/60 : ((hasLoc(current)&&hasLoc(next))? legMinutes(current,next,mode,null,ctx.timeZone) : 0);
+    const inLeg=incomingBySpot.get(nextIdx),mode=legModeOf(d,next),route=inLeg?routes.get(inLeg):null;
+    const travelMin=route?route.sec/60:(inLeg?legMinutes(inLeg.from,inLeg.to,mode,inLeg.when,ctx.timeZone):0);
     const adv=(_adapt&&_adapt.state)? TC_ADAPT.departureAdvice(_adapt.state, _adapt.state.items[nextIdx], travelMin) : null;
     nextBox.innerHTML=`<div><div class="travelKicker">다음 장소</div><strong>${esc(next.name)}</strong><div class="travelFacts">${route?`${MODE_ICON[mode]} ${fmtDur(route.sec)} 후`:'이동 정보 계산 중'} · ${hm(etas[nextIdx])} 도착 예상</div>${adv?`<div class="travelDepart ${adv.level.toLowerCase()}">${esc(adv.text)}</div>`:''}</div><span aria-hidden="true">→</span>`;
   }else if(ctx.backLeg){
-    const bl=ctx.backLeg, r=requestLeg(bl.from,bl.to,bl.mode,bl.when,bl.timeZone);
+    const bl=ctx.backLeg, r=routes.get(bl);
     nextBox.innerHTML=`<div><div class="travelKicker">다음 장소</div><strong>🏠 ${esc(bl.to.name)}</strong><div class="travelFacts">숙소 복귀 · ${r?`${MODE_ICON[bl.mode]} ${fmtDur(r.sec)} 후`:'이동 정보 계산 중'}</div></div><span aria-hidden="true">→</span>`;
   }else nextBox.innerHTML='<div><div class="travelKicker">다음 장소</div><strong>오늘 일정 완료</strong></div><span aria-hidden="true">✓</span>';
-  let prevLoc=carry;
   if(carry){
     const el=extMapLink(carry);
     const cd=document.createElement('div'); cd.className='tSpot carry'; cd.style.setProperty('--c','#7a86ad');
@@ -4591,18 +4589,16 @@ function renderTravel(di, clock){
     list.appendChild(cd);
   }
   d.spots.forEach((s,si)=>{
-    // 구간 이동 정보 (이전 장소 → 이 장소)
-    if(hasLoc(s)&&prevLoc){
-      const mode=legModeOf(d,s), when=mode==='transit'?planDepartISO(iso,legDepartMinute(d,tl,si),ctx.timeZone):null;
-      const c=requestLeg(prevLoc,s,mode,when,ctx.timeZone);   // 구간별 출발시각·시간대
+    const incoming=ctx.legs.filter(l=>l.spotIndex===si);
+    for(const leg of incoming){
+      const mode=leg.mode,c=routes.get(leg);
       const lg=document.createElement('div'); lg.className='tLeg';
-      lg.textContent = c
-        ? ((dm==='car'&&c.m<2000)? `🚶 ${Math.max(1,Math.round(c.m/75))}분 · ${(c.m/1000).toFixed(1)}km`
-                   : `${MODE_ICON[dm]} ${fmtDur(c.sec)} · ${(c.m/1000).toFixed(1)}km${((dm==='car'||dm==='taxi')&&c.taxi)?` · 🚕약 ${c.taxi.toLocaleString()}원`:''}`)
-        : `↘ 직선 ${haversine(prevLoc,s).toFixed(1)}km`;
+      lg.textContent = (incoming.length>1?`${leg.from.name||'출발점'}에서 · `:'')+(c
+        ? ((mode==='car'&&c.m<2000)? `🚶 ${Math.max(1,Math.round(c.m/75))}분 · ${(c.m/1000).toFixed(1)}km`
+                   : `${MODE_ICON[mode]} ${fmtDur(c.sec)} · ${(c.m/1000).toFixed(1)}km${((mode==='car'||mode==='taxi')&&c.taxi)?` · 🚕약 ${c.taxi.toLocaleString()}원`:''}`)
+        : `↘ 직선 ${haversine(leg.from,s).toFixed(1)}km`);
       list.appendChild(lg);
     }
-    if(hasLoc(s)) prevLoc=s;
     const div=document.createElement('div'); div.className='tSpot'+(s.status==='COMPLETED'?' done':(s.status==='SKIPPED'?' skipped':'')); div.style.setProperty('--c',spotColor(s,di,colors));
     const tmeta=[];
     if(s.bookAt) tmeta.push(`🎫 예약 ${esc(s.bookAt)}`);
@@ -4619,10 +4615,12 @@ function renderTravel(di, clock){
   });
   // 하루의 끝 — 숙소로 돌아가는 구간 (사이드바·지도와 같은 기준)
   if(ctx.backLeg){
-    const bl=ctx.backLeg, c=requestLeg(bl.from,bl.to,bl.mode,bl.when,bl.timeZone);
-    const lg=document.createElement('div'); lg.className='tLeg';
-    lg.textContent = c? `${MODE_ICON[bl.mode]} ${fmtDur(c.sec)} · ${(c.m/1000).toFixed(1)}km` : `↘ 직선 ${haversine(bl.from,bl.to).toFixed(1)}km`;
-    list.appendChild(lg);
+    for(const leg of ctx.backLegs){
+      const c=routes.get(leg),lg=document.createElement('div'); lg.className='tLeg';
+      lg.textContent=(ctx.backLegs.length>1?`${leg.from.name||'출발점'}에서 · `:'')+(c?`${MODE_ICON[leg.mode]} ${fmtDur(c.sec)} · ${(c.m/1000).toFixed(1)}km`:`↘ 직선 ${haversine(leg.from,leg.to).toFixed(1)}km`);
+      list.appendChild(lg);
+    }
+    const bl=ctx.backLeg;
     const el=extMapLink(bl.to);
     const bd=document.createElement('div'); bd.className='tSpot carry'; bd.style.setProperty('--c','#7a86ad');
     bd.innerHTML=`<div class="n"><span class="eta">🏠</span> ${esc(bl.to.name)} <span style="font-size:11px;color:#b5ab98">숙소 복귀 · 자동</span></div>`+
@@ -4654,6 +4652,12 @@ TC_AUTH.onChange(next=>{
   // 로그인 병합은 "계정이 바뀐 순간"에만 돈다. 토큰 자동 갱신(TOKEN_REFRESHED)에도 병합을 돌리면
   // 오래 열어둔 탭이 몇 시간 뒤 제 로컬본을 다시 올려 다른 기기의 최신 편집을 덮어썼다.
   const switched = (next&&next.id) !== (user&&user.id);
+  if(switched){
+    syncAccountEpoch++;
+    clearTimeout(cloudRetryT); clearTimeout(syncTimer);
+    syncConflicts=[]; currentSyncConflict=null;
+    document.getElementById('syncConflictBg').classList.remove('show');
+  }
   user = next;
   if(switched) document.querySelectorAll('img[data-cover-trip]').forEach(img=>{ img.removeAttribute('src'); img.hidden=true; });
   if(!user) tripRoles={};   // 로그아웃하면 서버 역할은 의미가 없다 — 로컬 사본은 소유자로 다룬다
@@ -4703,10 +4707,24 @@ async function syncTripCloud(t,opts){
   if(entry.status==='conflict'&&!force) return;
   if(!TC_COLLAB.canEdit(myRole(t.id))) return;      // 보기 권한은 올리지 않는다 — 서버도 42501로 거절한다
   if(entry.status==='forbidden'&&!force) return;    // 권한 오류는 재시도해도 같다. 역할이 바뀌면 refreshTripRoles가 다시 dirty로 돌린다
+  const account=user.id, epoch=syncAccountEpoch, key=epoch+':'+t.id;
+  if(syncUploads.has(key)) return;
+  const sent=JSON.parse(JSON.stringify(t)), sentHash=TC_SYNC.hashTrip(sent);
+  const current=()=>user&&user.id===account&&syncAccountEpoch===epoch&&syncMeta[t.id]===entry;
+  let resync=false;
+  syncUploads.add(key);
   entry.status='syncing'; persistSyncMeta();
   syncInFlight++;
   try{
-    const row=await TC_API.sync.save(t.id,t,entry.revision,force);
+    const row=await TC_API.sync.save(t.id,sent,entry.revision,force);
+    if(!current()){
+      const pending=syncMeta[t.id];
+      if(user&&user.id===account&&syncAccountEpoch===epoch&&pending&&['delete-pending','delete-error'].includes(pending.status)
+          &&pending.revision===entry.revision&&row&&!row.conflict){
+        pending.revision=Number(row.revision)||1; persistSyncMeta();
+      }
+      return;
+    }
     if(!row) throw new Error('empty sync response');
     if(row.conflict){
       // entry.revision(로컬이 파생된 base)은 그대로 둔다 — 서버 revision을 stamp하면 미해결 충돌이
@@ -4715,9 +4733,12 @@ async function syncTripCloud(t,opts){
       enqueueSyncConflict({kind:row.deleted_at?'remote-deleted':'changed-both',local:t,remote:row.data||null,revision:Number(row.revision)||entry.revision,deleted_at:row.deleted_at||null});
       return;
     }
-    entry.revision=Number(row.revision)||1; entry.status='clean'; entry.op=''; entry.hash=TC_SYNC.hashTrip(t); persistSyncMeta();
-    cloudSnapshot(t,entry.revision);
+    const latest=store.trips.find(x=>x.id===t.id);
+    resync=!!latest&&TC_SYNC.hashTrip(latest)!==sentHash;
+    entry.revision=Number(row.revision)||1; entry.status=resync?'dirty':'clean'; entry.op=''; entry.hash=sentHash; persistSyncMeta();
+    cloudSnapshot(sent,entry.revision);
   }catch(e){
+    if(!current()) return;
     if(TC_COLLAB.isForbiddenError(e)){
       entry.status='forbidden'; persistSyncMeta();
       reportOperationalError('cloud.forbidden',e);
@@ -4730,7 +4751,14 @@ async function syncTripCloud(t,opts){
     cloudRetryT=setTimeout(syncStaleTrips,15000);   // 여러 여행이 함께 실패해도 재시도에서 빠지지 않게 밀린 것 전부
     // 원인을 감추지 않는다 — 서버가 준 문장을 그대로 보여 준다(§저장 실패는 스스로 설명해야 한다)
     toast(TC_SYNC.saveFailText(e),'#b4342a',{label:'재시도',fn:()=>syncTripCloud(t)});
-  }finally{ syncInFlight--; if(!syncInFlight&&syncMetaStale) refreshSyncMetaFromStorage(); }
+  }finally{
+    syncUploads.delete(key);
+    syncInFlight--; if(!syncInFlight&&syncMetaStale) refreshSyncMetaFromStorage();
+    const pending=syncMeta[t.id];
+    if(user&&user.id===account&&syncAccountEpoch===epoch&&pending&&['delete-pending','delete-error'].includes(pending.status)){
+      await performCloudDelete(t.id,pending.op);
+    }else if(resync&&current()) cloudSyncActive(0);
+  }
 }
 async function flushPendingSync(){
   if(!sb||!user) return;
@@ -4785,9 +4813,13 @@ function cloudDelete(clientId,deletedTrip){
   if(sb&&user) performCloudDelete(clientId,op,deletedTrip);
 }
 async function performCloudDelete(clientId,op,deletedTrip){
+  if(!sb||!user||syncUploads.has(syncAccountEpoch+':'+clientId)) return;
+  const account=user.id, epoch=syncAccountEpoch;
+  const current=()=>user&&user.id===account&&syncAccountEpoch===epoch;
   const entry=syncEntry(clientId);
   try{
     const row=await TC_API.sync.tombstone(clientId,entry.revision);
+    if(!current()) return;
     if(row&&row.conflict){
       entry.status='conflict'; persistSyncMeta();   // base revision 유지 (위 syncTripCloud와 같은 이유)
       enqueueSyncConflict({kind:row.deleted_at?'remote-deleted':'changed-both',local:deletedTrip||null,remote:row.data||null,revision:Number(row.revision)||entry.revision,deleted_at:row.deleted_at||null});
@@ -4796,6 +4828,7 @@ async function performCloudDelete(clientId,op,deletedTrip){
     const result=TC_SYNC.finishDelete(syncMeta,clientId,op,Number(row&&row.revision)||entry.revision||1); persistSyncMeta();
     if(result.resync){ const restored=store.trips.find(t=>t.id===clientId); if(restored) syncTripCloud(restored); }
   }catch(e){
+    if(!current()||syncMeta[clientId]!==entry) return;
     if(TC_COLLAB.isForbiddenError(e)){ reportOperationalError('cloud.delete.forbidden',e); delete syncMeta[clientId]; persistSyncMeta(); toast('여행 삭제는 주최자만 할 수 있어요 — 이 기기에서만 지워졌고, 다음 로그인 때 다시 내려옵니다','#b8650f'); return; }
     reportOperationalError('cloud.delete',e); entry.status='delete-error'; entry.op=op; persistSyncMeta(); toast('삭제 동기화 실패 — 재시도가 필요합니다','#b4342a',{label:'재시도',fn:()=>performCloudDelete(clientId,op,deletedTrip)}); }
 }
@@ -4841,21 +4874,25 @@ document.getElementById('syncKeepCopy').onclick=()=>{
 
 // 로그인 직후: 서버 revision과 로컬이 읽은 revision을 비교해 안전한 변경만 자동 병합한다.
 async function syncOnLogin(){
+  const account=user&&user.id, epoch=syncAccountEpoch;
+  const current=()=>user&&user.id===account&&syncAccountEpoch===epoch;
   try{
     // 삭제(tombstone)된 여행까지 받는다 — 다른 기기가 지운 것을 병합해야 한다
     const {data:rows,error}=await TC_API.sync.list();
+    if(!current()) return;
     if(error) throw error;
+    await refreshTripRoles();
+    if(!current()) return;
     const local=store.trips.filter(t=>!isSampleTrip(t)||(rows||[]).some(r=>r.client_id===t.id));
     const merged=TC_SYNC.mergeForLogin(local,rows||[],syncMeta);
-    syncMeta=merged.meta; persistSyncMeta();
     const checked=merged.trips.map(t=>validateTripPayload(t));
     if(checked.some(result=>!result.ok)) throw new Error('invalid cloud payload');
     const trips=checked.map(result=>result.ok&&result.value);
+    syncMeta=merged.meta;
     // 지문은 정규화된 로컬본 기준으로 맞춘다 — 원문 지문과 달라 같은 내용을 revision만 올리는 헛업로드를 막고,
     // 다른 멤버의 최신본을 당길 때(pullTrip) '로컬에 미반영 편집이 있는가'를 정확히 판단하게 한다.
     trips.forEach(t=>{ const e=syncMeta[t.id]; if(e&&e.status==='clean') e.hash=TC_SYNC.hashTrip(t); });
     persistSyncMeta();
-    await refreshTripRoles();
     if(trips.length){
       store.trips=trips;
       if(!trips.find(t=>t.id===store.activeId)) store.activeId=trips[0].id;
@@ -4864,10 +4901,15 @@ async function syncOnLogin(){
     adoptRemote(()=>{ activeDay=0; render(); }); fitAll();
     pullPriceSnapshots();   // cron·다른 기기가 남긴 가격 관측 기록을 로컬과 병합
     for(const c of merged.conflicts) enqueueSyncConflict(c);
-    for(const action of merged.actions) if(!isSampleTrip(action.trip)) await syncTripCloud(action.trip,{force:action.force});
+    for(const action of merged.actions){
+      if(!current()) return;
+      const latest=store.trips.find(t=>t.id===action.trip.id);
+      if(latest&&!isSampleTrip(latest)) await syncTripCloud(latest,{force:action.force});
+    }
+    if(!current()) return;
     await flushPendingSync();
     toast(merged.conflicts.length?`동기화 충돌 ${merged.conflicts.length}건 — 버전을 선택해 주세요`:`클라우드 동기화 완료 · 여행 ${trips.length}개`,merged.conflicts.length?'#b8650f':undefined);
-  }catch(e){ reportOperationalError('cloud.login-sync',e); toast('클라우드 동기화 실패 — 로컬로 계속 사용','#b4342a'); }
+  }catch(e){ if(current()){ reportOperationalError('cloud.login-sync',e); toast('클라우드 동기화 실패 — 로컬로 계속 사용','#b4342a'); } }
 }
 // 로그인 모달 (이메일 + 비밀번호)
 document.getElementById('authBtn').onclick=()=>{

@@ -17,6 +17,7 @@ enum SharedStore {
 
     private static let widgetKey = "widget.snapshot.v1"
     private static let activityKey = "liveactivity.state.v1"
+    private static let accountKey = "account.owner.v1"
     private static let travelModeKey = "travelmode.state.v1"
 
     private static var defaults: UserDefaults? { UserDefaults(suiteName: appGroupId) }
@@ -42,8 +43,8 @@ enum SharedStore {
         }
     }
 
-    private static func write<T: Codable>(_ value: T, key: String) {
-        guard let data = try? encoder.encode(Stamped(value: value, savedAt: Date())) else { return }
+    private static func write<T: Codable>(_ value: T, key: String, savedAt: Date = Date()) {
+        guard let data = try? encoder.encode(Stamped(value: value, savedAt: savedAt)) else { return }
         defaults?.set(data, forKey: key)
     }
     private static func read<T: Codable>(_ type: T.Type, key: String) -> Stamped<T>? {
@@ -51,14 +52,19 @@ enum SharedStore {
         return try? decoder.decode(Stamped<T>.self, from: data)
     }
 
-    static func saveWidgetSnapshot(_ snapshot: WidgetSnapshot) { write(snapshot, key: widgetKey) }
+    static func saveWidgetSnapshot(_ snapshot: WidgetSnapshot, savedAt: Date = Date()) { write(snapshot, key: widgetKey, savedAt: savedAt) }
     static func loadWidgetSnapshot() -> Stamped<WidgetSnapshot>? { read(WidgetSnapshot.self, key: widgetKey) }
 
-    static func saveActivityState(_ state: LiveActivityState) { write(state, key: activityKey) }
+    static func saveActivityState(_ state: LiveActivityState, savedAt: Date = Date()) { write(state, key: activityKey, savedAt: savedAt) }
     static func loadActivityState() -> Stamped<LiveActivityState>? { read(LiveActivityState.self, key: activityKey) }
 
     static func saveTravelMode(_ state: TravelModeSnapshot) { write(state, key: travelModeKey) }
     static func loadTravelMode() -> Stamped<TravelModeSnapshot>? { read(TravelModeSnapshot.self, key: travelModeKey) }
+
+    static func prepare(accountID: String?) {
+        if accountID == nil || defaults?.string(forKey: accountKey) != accountID { clear() }
+        defaults?.set(accountID, forKey: accountKey)
+    }
 
     static func clear() {
         [widgetKey, activityKey, travelModeKey].forEach { defaults?.removeObject(forKey: $0) }

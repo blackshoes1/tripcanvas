@@ -24,12 +24,12 @@ function fakeSocket() {
 }
 
 /** 멤버십: u-a는 trip1의 멤버, u-b는 아니다 */
-const canRead = async (userId: string, tripId: string) => userId === 'u-a' && tripId === 'trip1';
+const readableTripId = async (userId: string, clientId: string) => userId === 'u-a' && clientId === 'trip1' ? 'row-1' : null;
 
 function setup(opts: { now?: () => number } = {}) {
   let now = 1_000_000;
   const hub = createRealtimeHub({
-    verifier, canRead, authTimeoutMs: 5_000, heartbeatMs: 30_000,
+    verifier, readableTripId, authTimeoutMs: 5_000, heartbeatMs: 30_000,
     now: opts.now ?? (() => now)
   });
   return { hub, advance: (ms: number) => { now += ms; } };
@@ -90,6 +90,104 @@ describe('인증', () => {
 });
 
 describe('구독과 권한', () => {
+  it('clientId가 같아도 다른 여행 행의 방송은 전달하지 않는다', async () => {
+    const permission = async (_userId: string, clientId: string) => clientId === 'trip1' ? 'my-row' : null;
+    const hub = createRealtimeHub({ verifier, readableTripId: permission, authTimeoutMs: 5_000, heartbeatMs: 30_000, now: () => 1_000_000 });
+    const s = fakeSocket();
+    const conn = hub.connect(s.socket);
+    await conn.receive(JSON.stringify({ type: 'AUTH', token: 'tok-a' }));
+    await conn.receive(JSON.stringify({ type: 'SUBSCRIBE', tripId: 'trip1' }));
+    await hub.publish({ ...evt('BOOKING_ADDED', 'u-z'), tripId: 'my-row' });
+    await hub.publish({ ...evt('BOOKING_ADDED', 'u-z', 2), tripId: 'other-row' });
+    await hub.publish({ ...evt('BOOKING_ADDED', 'u-z', 3), tripId: 'my-row' });
+    expect(s.sent.filter((m) => m.type === 'ACTIVITY').map((m) => m.id)).toEqual([1, 3]);
+    expect(hub.stats().subscriptions).toBe(1);
+  });
+
+  it('구독 뒤 내보내진 사람에게 이후 활동을 보내지 않고 구독을 거둔다', async () => {
+    let allowed = true;
+    const hub = createRealtimeHub({ verifier, readableTripId: async () => allowed ? 'row-1' : null, authTimeoutMs: 5_000, heartbeatMs: 30_000, now: () => 1_000_000 });
+    const s = fakeSocket();
+    const conn = hub.connect(s.socket);
+    await conn.receive(JSON.stringify({ type: 'AUTH', token: 'tok-a' }));
+    await conn.receive(JSON.stringify({ type: 'SUBSCRIBE', tripId: 'trip1' }));
+    allowed = false;
+    await hub.publish(evt('MEMBER_REMOVED', 'u-z'));
+    await hub.publish(evt('BOOKING_ADDED', 'u-z', 2));
+    expect(s.sent.filter((m) => m.type === 'ACTIVITY')).toEqual([]);
+    expect(hub.stats().subscriptions).toBe(0);
+  });
+
+  it('다른 사용자로 다시 인증하면 이전 사용자의 구독을 거둔다', async () => {
+    const { hub } = setup();
+    const s = fakeSocket();
+    const conn = hub.connect(s.socket);
+    await conn.receive(JSON.stringify({ type: 'AUTH', token: 'tok-a' }));
+    await conn.receive(JSON.stringify({ type: 'SUBSCRIBE', tripId: 'trip1' }));
+    await conn.receive(JSON.stringify({ type: 'AUTH', token: 'tok-b' }));
+    expect(hub.stats().subscriptions).toBe(0);
+    await hub.publish(evt('BOOKING_ADDED', 'u-z'));
+    expect(s.sent.filter((m) => m.type === 'ACTIVITY')).toEqual([]);
+  });
+
+  it('이전 AUTH의 답이 늦게 와도 최근 인증 사용자를 덮어쓰지 않는다', async () => {
+    let finishFirst!: (ctx: RequestContext) => void;
+    const verify = vi.fn().mockImplementationOnce(() => new Promise((resolve) => { finishFirst = resolve; }))
+      .mockResolvedValueOnce(ctxOf('u-b'));
+    const hub = createRealtimeHub({ verifier: { verify }, readableTripId, authTimeoutMs: 5_000, heartbeatMs: 30_000, now: () => 1_000_000 });
+    const s = fakeSocket();
+    const conn = hub.connect(s.socket);
+    const first = conn.receive(JSON.stringify({ type: 'AUTH', token: 'tok-a' }));
+    await conn.receive(JSON.stringify({ type: 'AUTH', token: 'tok-b' }));
+    finishFirst(ctxOf('u-a'));
+    await first;
+    expect(hub.connectionsFor('u-a')).toHaveLength(0);
+    expect(hub.connectionsFor('u-b')).toHaveLength(1);
+    expect(s.types()).toEqual(['READY']);
+  });
+
+  it('권한 조회가 진행되는 동안 다시 인증해도 이전 구독이 뒤늦게 살아나지 않는다', async () => {
+    let resolveAccess!: (recordId: string | null) => void;
+    const hub = createRealtimeHub({ verifier, readableTripId: () => new Promise((resolve) => { resolveAccess = resolve; }),
+      authTimeoutMs: 5_000, heartbeatMs: 30_000, now: () => 1_000_000 });
+    const s = fakeSocket();
+    const conn = hub.connect(s.socket);
+    await conn.receive(JSON.stringify({ type: 'AUTH', token: 'tok-a' }));
+    const pending = conn.receive(JSON.stringify({ type: 'SUBSCRIBE', tripId: 'trip1' }));
+    await conn.receive(JSON.stringify({ type: 'AUTH', token: 'tok-b' }));
+    resolveAccess('row-1');
+    await pending;
+    expect(hub.stats().subscriptions).toBe(0);
+    expect(s.types()).toEqual(['READY', 'READY']);
+  });
+
+  it('방송의 권한 조회 도중 재인증되면 이전 사용자의 신호를 보내지 않는다', async () => {
+    let resolveAccess!: (recordId: string | null) => void;
+    const permission = vi.fn().mockResolvedValueOnce('row-1').mockImplementationOnce(() => new Promise((resolve) => { resolveAccess = resolve; }));
+    const hub = createRealtimeHub({ verifier, readableTripId: permission, authTimeoutMs: 5_000, heartbeatMs: 30_000, now: () => 1_000_000 });
+    const s = fakeSocket();
+    const conn = hub.connect(s.socket);
+    await conn.receive(JSON.stringify({ type: 'AUTH', token: 'tok-a' }));
+    await conn.receive(JSON.stringify({ type: 'SUBSCRIBE', tripId: 'trip1' }));
+    const pending = hub.publish(evt('BOOKING_ADDED', 'u-z'));
+    await conn.receive(JSON.stringify({ type: 'AUTH', token: 'tok-b' }));
+    resolveAccess('row-1');
+    await pending;
+    expect(s.sent.filter((m) => m.type === 'ACTIVITY')).toEqual([]);
+  });
+
+  it('방송 때 DB 권한을 확인하지 못하면 신호를 보내지 않는다', async () => {
+    const permission = vi.fn().mockResolvedValueOnce('row-1').mockRejectedValueOnce(new Error('db down'));
+    const hub = createRealtimeHub({ verifier, readableTripId: permission, authTimeoutMs: 5_000, heartbeatMs: 30_000, now: () => 1_000_000, log: vi.fn() });
+    const s = fakeSocket();
+    const conn = hub.connect(s.socket);
+    await conn.receive(JSON.stringify({ type: 'AUTH', token: 'tok-a' }));
+    await conn.receive(JSON.stringify({ type: 'SUBSCRIBE', tripId: 'trip1' }));
+    await hub.publish(evt('BOOKING_ADDED', 'u-z'));
+    expect(s.sent.filter((m) => m.type === 'ACTIVITY')).toEqual([]);
+    expect(hub.stats().subscriptions).toBe(0);
+  });
+
   it('멤버가 아닌 여행은 구독되지 않는다 — 방송도 오지 않는다', async () => {
     const { hub } = setup();
     const s = fakeSocket();
@@ -97,7 +195,7 @@ describe('구독과 권한', () => {
     await conn.receive(JSON.stringify({ type: 'AUTH', token: 'tok-b' }));
     await conn.receive(JSON.stringify({ type: 'SUBSCRIBE', tripId: 'trip1' }));
     expect(s.sent[1]).toEqual({ type: 'ERROR', code: 'FORBIDDEN', tripId: 'trip1' });
-    hub.publish(evt('REACTION', 'u-a'));
+    await hub.publish(evt('REACTION', 'u-a'));
     expect(s.types()).toEqual(['READY', 'ERROR']);
   });
 
@@ -110,10 +208,10 @@ describe('구독과 권한', () => {
       await conn.receive(JSON.stringify({ type: 'SUBSCRIBE', tripId: 'trip1' }));
     }
     await hub.connect(other.socket).receive(JSON.stringify({ type: 'AUTH', token: 'tok-b' }));   // 구독 안 함
-    hub.publish(evt('CANDIDATE_PROPOSED', 'u-a', 7));
+    await hub.publish(evt('CANDIDATE_PROPOSED', 'u-a', 7));
     expect(a1.sent[2]).toEqual({ type: 'ACTIVITY', tripId: 'trip1', id: 7, kind: 'CANDIDATE_PROPOSED', mine: true });
     expect(a2.sent[2]).toMatchObject({ id: 7, mine: true });
-    hub.publish(evt('REACTION', 'u-z', 8));
+    await hub.publish(evt('REACTION', 'u-z', 8));
     expect(a1.sent[3]).toMatchObject({ id: 8, mine: false });
     expect(other.types()).toEqual(['READY']);
     expect(hub.stats()).toMatchObject({ connections: 3, subscriptions: 2 });
@@ -126,12 +224,12 @@ describe('구독과 권한', () => {
     await conn.receive(JSON.stringify({ type: 'AUTH', token: 'tok-a' }));
     await conn.receive(JSON.stringify({ type: 'SUBSCRIBE', tripId: 'trip1' }));
     await conn.receive(JSON.stringify({ type: 'UNSUBSCRIBE', tripId: 'trip1' }));
-    hub.publish(evt('REACTION', 'u-z'));
+    await hub.publish(evt('REACTION', 'u-z'));
     expect(s.types()).toEqual(['READY', 'SUBSCRIBED', 'UNSUBSCRIBED']);
 
     await conn.receive(JSON.stringify({ type: 'SUBSCRIBE', tripId: 'trip1' }));
     conn.disconnected();
-    hub.publish(evt('REACTION', 'u-z'));
+    await hub.publish(evt('REACTION', 'u-z'));
     expect(s.types()).toEqual(['READY', 'SUBSCRIBED', 'UNSUBSCRIBED', 'SUBSCRIBED']);
     expect(hub.stats()).toEqual({ connections: 0, subscriptions: 0 });
   });
@@ -145,7 +243,7 @@ describe('구독과 권한', () => {
       await conn.receive(JSON.stringify({ type: 'AUTH', token: 'tok-a' }));
       await conn.receive(JSON.stringify({ type: 'SUBSCRIBE', tripId: 'trip1' }));
     }
-    hub.publish(evt('REACTION', 'u-z'));
+    await hub.publish(evt('REACTION', 'u-z'));
     expect(good.sent.at(-1)).toMatchObject({ type: 'ACTIVITY' });
     expect(hub.stats().connections).toBe(1);   // 터진 쪽은 정리된다
   });
@@ -191,7 +289,7 @@ describe('수명', () => {
 describe('멤버십 확인 실패', () => {
   it('DB가 안 되면 구독을 열어 주지 않는다(닫힌 쪽으로)', async () => {
     const hub = createRealtimeHub({
-      verifier, canRead: async () => { throw new Error('db down'); },
+      verifier, readableTripId: async () => { throw new Error('db down'); },
       authTimeoutMs: 5_000, heartbeatMs: 30_000, now: () => 1_000_000, log: vi.fn()
     });
     const s = fakeSocket();

@@ -739,6 +739,8 @@ struct DayPlanLeg: Codable, Hashable, Sendable {
     let path: String?
     /// 실측 경로인지 추정인지. 구간마다 다를 수 있다(하나는 도로, 하나는 직선) — 화면이 "예상"이라 말해야 한다.
     let source: TravelTimeSource
+    /// 구간 출발점. 구버전 서버에서는 생략되지만, 분리 구간은 서버가 정한 출발점을 따른다.
+    var from: GeoPoint? = nil
 }
 
 struct DayPlanSpot: Codable, Hashable, Sendable {
@@ -869,6 +871,8 @@ struct DayPlanTotals: Codable, Hashable, Sendable {
 }
 
 struct DayPlanDay: Codable, Hashable, Sendable {
+    /// 모든 가지의 합류·숙소 복귀까지 포함한 서버 경로. 이전 서버/캐시는 nil이다.
+    var routes: [TripRouteLeg]? = nil
     let index: Int
     /// YYYY-MM-DD ('' = 시작일 미지정)
     let date: String

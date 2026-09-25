@@ -1098,6 +1098,21 @@ test('computeTimeline — 나란한 가지는 서로의 시간을 밀지 않는�
   assert.equal(tl[3].eta, 720, '합류는 가장 늦게 끝나는 가지를 기다린다');
 });
 
+test('분리 합류 — 먼저 끝나도 합류점까지 더 오래 걸리는 가지를 기다린다', () => {
+  const day={startAt:'09:00',spots:[
+    {name:'출발',lat:0,lng:0},
+    {name:'A',lat:1,lng:1,stayMin:120,split:'s1',who:[U1]},
+    {name:'B',lat:2,lng:2,stayMin:30,split:'s1',who:[U2]},
+    {name:'합류',lat:3,lng:3}
+  ]};
+  const journey=L.computeDayJourney(day,{legMin:(a,b)=>b.name==='합류'?(a.name==='A'?5:120):30});
+  assert.equal(journey.timeline[3].eta,720); // A 11:35, B 12:00에 합류한다
+  assert.equal(journey.endMinutes,720);
+  assert.deepEqual(journey.legs.map(leg=>[leg.from.name,leg.to.name]),[
+    ['출발','A'],['출발','B'],['A','합류'],['B','합류']
+  ]);
+});
+
 test('computeTimeline — 한 가지에 장소가 여럿이면 그 안에서는 순서대로 이어진다', () => {
   const day={ startAt:'09:00', spots:[
     { name:'경기장', lat:1, lng:1, stayMin:60, split:'s1', who:[U1] },

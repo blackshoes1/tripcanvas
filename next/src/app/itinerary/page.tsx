@@ -394,6 +394,7 @@ export default function ItineraryPage() {
         <AuthBar
           user={cloud.user} available={cloud.available} statusLabel={cloud.statusLabel}
           onSignIn={cloud.signIn} onSignOut={() => { void cloud.signOut(); }}
+          onRetry={cloud.retry}
           open={signInOpen} onOpenChange={setSignInOpen}
         />
         {(shareNotice || notice) && <div className="hint" role="status">{shareNotice ?? notice}</div>}
@@ -445,6 +446,7 @@ export default function ItineraryPage() {
           <AuthBar
             user={cloud.user} available={cloud.available} statusLabel={cloud.statusLabel}
             onSignIn={cloud.signIn} onSignOut={() => { void cloud.signOut(); setNotice('로그아웃됐어요'); }}
+            onRetry={cloud.retry}
             open={signInOpen} onOpenChange={setSignInOpen}
           />
           <TripFileBar

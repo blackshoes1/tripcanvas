@@ -6,19 +6,20 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { pullPriceSnapshots } from '@/features/pricing/services/priceCloud';
 import { getPriceStoreSnapshot, replacePriceStore } from '@/features/pricing/services/localPriceStore';
 import { newTrip, newTripId } from '@/features/trip/domain/tripEditor';
+import { getTripStoreSnapshot } from '@/features/trip/services/localTripStore';
 import type { Trip } from '@/features/trip/domain/types';
 import { todayISO } from '@/lib/date/today';
 import { resolveConflict, type Conflict } from '../domain/conflictResolve';
-import { staleTrips, syncLabel } from '../domain/syncDecisions';
+import { isSettled, staleTrips, syncLabel } from '../domain/syncDecisions';
 import {
-  cloudDelete, flushPendingSync, reconcileUndoDeletes, syncOnLogin, syncStaleTrips,
+  cancelSyncRetries, cloudDelete, retryPendingSync, syncOnLogin, syncStaleTrips,
   syncTripCloud, type SyncHooks
 } from '../services/cloudSync';
 import {
   getSyncMeta, persistSyncMeta, refreshSyncMetaFromStorage, statusOf, subscribeSyncMeta
 } from '../services/syncMetaStore';
 import { useCloudAuth, type CloudUser } from './useCloudAuth';
-import { cloudApi } from '../services/tripCanvasClient';
+import { cloudApi, cloudSessionVersion } from '../services/tripCanvasClient';
 
 /** 편집이 멈춘 뒤 이만큼 기다렸다 올린다 (레거시 cloudSyncActive와 같은 800ms) */
 const UPLOAD_DEBOUNCE = 800;
@@ -47,17 +48,21 @@ export function useCloudSync(
   const hooks = useMemo<SyncHooks>(() => ({
     onConflict: c => setConflicts(prev => [...prev, c]),
     onNotice: msg => noticeRef.current(msg),
-    applyTrips: next => replaceRef.current(next)
+    applyTrips: next => replaceRef.current(next),
+    getTrips: () => getTripStoreSnapshot()?.trips ?? []
   }), []);
 
   const onAccountSwitch = useCallback((_user: CloudUser) => {
+    cancelSyncRetries();
+    setConflicts([]);
+    const version = cloudSessionVersion();
     void (async () => {
-      await syncOnLogin(tripsRef.current, hooks);
-      await reconcileUndoDeletes(tripsRef.current, hooks);
+      await syncOnLogin(hooks);
+      if (version !== cloudSessionVersion()) return;
       // 서버 cron·다른 기기가 남긴 가격 관측을 합친다 (실패해도 동기화는 유효)
       try {
-        const merged = await pullPriceSnapshots(tripsRef.current, getPriceStoreSnapshot());
-        if (merged) replacePriceStore(merged);
+        const merged = await pullPriceSnapshots(hooks.getTrips(), getPriceStoreSnapshot());
+        if (merged && version === cloudSessionVersion()) replacePriceStore(merged);
       } catch (e) {
         console.warn('price.cloud-pull 실패:', e instanceof Error ? e.message : e);
       }
@@ -65,6 +70,8 @@ export function useCloudSync(
   }, [hooks]);
 
   const auth = useCloudAuth(onAccountSwitch);
+  useEffect(() => () => cancelSyncRetries(), []);
+  const retry = useCallback(() => retryPendingSync(hooks), [hooks]);
 
   // 다른 탭이 바꾼 메타를 받아들인다 (안 하면 이 탭이 옛 revision으로 올려 헛충돌을 만든다)
   useEffect(() => {
@@ -80,22 +87,17 @@ export function useCloudSync(
     if (!auth.user) return;
     const pending = staleTrips(trips, getSyncMeta());
     if (!pending.length) return;
-    const id = window.setTimeout(() => { void syncStaleTrips(tripsRef.current, hooks); }, UPLOAD_DEBOUNCE);
+    const id = window.setTimeout(() => { void syncStaleTrips(hooks.getTrips(), hooks); }, UPLOAD_DEBOUNCE);
     return () => window.clearTimeout(id);
   }, [trips, auth.user, hooks]);
 
   // 온라인으로 돌아오면 밀린 삭제를 밀어내고 밀린 업로드를 마저 올린다
   useEffect(() => {
     if (!auth.user) return;
-    const onOnline = () => {
-      void (async () => {
-        await flushPendingSync(hooks);
-        await syncStaleTrips(tripsRef.current, hooks);
-      })();
-    };
+    const onOnline = () => { void retry(); };
     window.addEventListener('online', onOnline);
     return () => window.removeEventListener('online', onOnline);
-  }, [auth.user, hooks]);
+  }, [auth.user, retry]);
 
   /** 여행 삭제를 클라우드에도 반영한다 — 안 하면 다음 로그인 병합이 그 여행을 되살린다 */
   const deleteFromCloud = useCallback((id: string, deleted: Trip | null) => {
@@ -113,13 +115,13 @@ export function useCloudSync(
     );
     if (res.error) { noticeRef.current(res.error); return; }
 
-    if (Object.keys(res.metaPatch).length) {
-      Object.assign(getSyncMeta(), res.metaPatch);
-      persistSyncMeta();
-    }
     if (res.trips !== tripsRef.current && !replaceRef.current(res.trips, res.activeId ?? undefined)) {
       noticeRef.current('저장에 실패했어요 — 저장 공간을 확인해주세요');
       return;
+    }
+    if (Object.keys(res.metaPatch).length) {
+      Object.assign(getSyncMeta(), res.metaPatch);
+      persistSyncMeta();
     }
     setConflicts(prev => prev.slice(1));
     for (const u of res.uploads) void syncTripCloud(u.trip, hooks, { force: u.force });
@@ -132,7 +134,18 @@ export function useCloudSync(
     useCallback(() => (activeTripId ? statusOf(activeTripId) : undefined), [activeTripId]),
     () => undefined
   );
-  const statusLabel = syncLabel(activeStatus, !!auth.user);
+  const pendingCount = useSyncExternalStore(
+    subscribeSyncMeta,
+    () => Object.values(getSyncMeta()).filter(e => !isSettled(e)).length,
+    () => 0
+  );
+  const statusLabel = syncLabel(activeStatus, !!auth.user)
+    + (auth.user && pendingCount ? ` · 클라우드 반영 대기 ${pendingCount}개` : '');
+  const canRetry = useSyncExternalStore(
+    subscribeSyncMeta,
+    () => Object.values(getSyncMeta()).some(e => e.status === 'error' || e.status === 'delete-error'),
+    () => false
+  );
   const remote = activeTripId ? !!getSyncMeta()[activeTripId]?.revision : false;
   useEffect(() => {
     const user = auth.user;
@@ -158,6 +171,7 @@ export function useCloudSync(
     canEdit: role === 'OWNER' || role === 'EDITOR',
     canDelete: role === 'OWNER',
     statusLabel,
+    retry: auth.user && canRetry ? retry : undefined,
     conflict: conflicts[0] ?? null,
     remainingConflicts: Math.max(0, conflicts.length - 1),
     resolve,

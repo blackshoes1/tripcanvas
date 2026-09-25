@@ -59,7 +59,9 @@ final class AppEnvironment {
         // 로그인도 API와 같은 서버다(`/api/auth/*`) — 웹 `auth.js`와 같은 계약을 쓴다.
         let authStore = auth ?? AuthStore(client: TripCanvasAuthClient(baseURL: AppConfig.apiBaseURL))
         let apiClient = APIClient(baseURL: AppConfig.apiBaseURL, tokens: AuthTokenProvider(store: authStore))
-        let tripService = service ?? TripService(api: apiClient, cache: TripCache())
+        let scope = TripCache.Scope(accountID: authStore.session?.userId, generation: 0)
+        let tripService = service ?? TripService(api: apiClient, cache: TripCache(scope: scope), cacheScope: scope)
+        SharedStore.prepare(accountID: authStore.session?.userId)
         let locationProvider = LocationProvider()
         let liveActivityController = LiveActivityController()
         let pushService = PushService { token in
@@ -82,6 +84,16 @@ final class AppEnvironment {
         self.travelMode = TravelModeController(
             service: tripService, location: locationProvider,
             push: pushService, liveActivity: liveActivityController)
+        authStore.onAccountChanged = { [weak self] accountID in
+            guard let self else { return }
+            self.service.useAccount(accountID)
+            SharedStore.prepare(accountID: accountID)
+            self.travelMode.resetForAccountChange()
+            self.push.resetForAccountChange()
+            self.realtime.disconnect()
+            self.router.clear()
+            DeviceIdentity.reset()
+        }
     }
 }
 
@@ -97,7 +109,11 @@ enum DeviceIdentity {
         return created
     }()
 
-    static func reset() { store.clear() }
+    static func reset() {
+        store.clear()
+        current = UUID().uuidString
+        store.write(Wrapper(id: current))
+    }
 }
 
 extension AppConfig {

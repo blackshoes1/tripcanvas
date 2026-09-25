@@ -4,7 +4,7 @@
 // 같은 걸음을 써야 "일자 지도에는 도로인데 전체 지도에서는 직선"이 생기지 않는다.
 import legacyLib from '@legacy/lib.js';
 
-import { dayLegs, hasCoord, isoDateOf } from '@/features/itinerary/domain/dayView';
+import { dayLegs, hasCoord, isoDateOf, type LocatedSpot } from '@/features/itinerary/domain/dayView';
 import type { LegCache } from '@/features/itinerary/domain/types';
 import type { Trip } from '@/features/trip/domain/types';
 
@@ -13,6 +13,19 @@ import type { TripRouteDay, TripRouteLeg, TripRoutesResponse, TripSummary } from
 import type { TripDoc } from './todayView';
 
 const { legKey } = legacyLib;
+
+/** 일자 지도와 전체 지도가 같은 경로·출처를 받는다. */
+export function tripRouteLegOf(cache: LegCache, leg: { from: LocatedSpot; to: LocatedSpot; mode: string }): TripRouteLeg {
+  const entry = cache[legKey(leg.from, leg.to, leg.mode)];
+  const isRouted = !!(entry && entry.sec && !entry.est);
+  return {
+    from: { lat: leg.from.lat, lng: leg.from.lng },
+    to: { lat: leg.to.lat, lng: leg.to.lng },
+    mode: leg.mode,
+    path: isRouted ? entry.path ?? null : null,
+    source: isRouted ? 'ROUTED' : 'STRAIGHT_LINE_ESTIMATE'
+  };
+}
 
 export interface TripRoutesInput {
   trip: TripDoc;
@@ -31,18 +44,11 @@ export function buildTripRoutes(input: TripRoutesInput): TripRoutesResponse {
   let total = 0;
 
   (trip.days ?? []).forEach((day, index) => {
-    const legs: TripRouteLeg[] = dayLegs(trip, index).map((leg) => {
-      const entry = cache[legKey(leg.from, leg.to, leg.mode)];
-      const isRouted = !!(entry && entry.sec);
+    const legs: TripRouteLeg[] = dayLegs(trip, index, cache).map((leg) => {
+      const route = tripRouteLegOf(cache, leg);
       total += 1;
-      if (isRouted) routed += 1;
-      return {
-        from: { lat: leg.from.lat, lng: leg.from.lng },
-        to: { lat: leg.to.lat, lng: leg.to.lng },
-        mode: leg.mode,
-        path: isRouted ? entry.path ?? null : null,
-        source: isRouted ? 'ROUTED' : 'STRAIGHT_LINE_ESTIMATE'
-      };
+      if (route.source === 'ROUTED') routed += 1;
+      return route;
     });
 
     days.push({

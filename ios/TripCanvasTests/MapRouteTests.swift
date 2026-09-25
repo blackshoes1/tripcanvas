@@ -9,25 +9,62 @@ import XCTest
 /// 그릴 것이 없으면 빈 배열이다.
 final class MapRouteTests: XCTestCase {
 
-    private func spot(_ name: String, _ lat: Double?, _ lng: Double?, path: String? = nil) -> DayPlanSpot {
+    private func spot(_ name: String, _ lat: Double?, _ lng: Double?, path: String? = nil, from: GeoPoint? = nil) -> DayPlanSpot {
         DayPlanSpot(index: 0, name: name, city: "제주", category: nil,
                     location: lat.flatMap { la in lng.map { GeoPoint(lat: la, lng: $0) } },
                     etaMinutes: 540, fixed: false, conflict: false, bookedAtMinutes: nil,
                     waitMinutes: 0, stayMinutes: nil, status: "PLANNED",
                     participants: [], reunion: false,
-                    incomingLeg: path.map { DayPlanLeg(mode: "car", minutes: 10, distanceKm: 3, path: $0, source: .routed) })
+                    incomingLeg: path != nil || from != nil ? DayPlanLeg(mode: "car", minutes: 10, distanceKm: 3, path: path, source: .routed, from: from) : nil)
     }
 
-    private func day(_ spots: [DayPlanSpot], back: DayPlanBack? = nil, index: Int = 0) -> DayPlanDay {
+    private func day(_ spots: [DayPlanSpot], back: DayPlanBack? = nil, index: Int = 0, splits: [DayPlanSplit] = []) -> DayPlanDay {
         DayPlanDay(index: index, date: "2026-10-01", title: "", note: "", mode: "car", startMinutes: 540,
                    timeZone: "Asia/Seoul", carriedStay: nil, spots: spots, carPickups: [], carReturns: [],
-                   back: back, spotsWithoutLocation: spots.filter { $0.location == nil }.count, splits: [],
+                   back: back, spotsWithoutLocation: spots.filter { $0.location == nil }.count, splits: splits,
                    flight: nil,
                    totals: .init(distanceKm: 0, travelMinutes: 0, endMinutes: nil, overloaded: false,
                                  cost: .init(total: 0, parts: [])))
     }
 
     private let leg = DayPlanLeg(mode: "car", minutes: 10, distanceKm: 3, path: nil, source: .straightLineEstimate)
+
+    func testExplicitRoutesIncludeEveryBranchReunionAndReturnWithoutJoiningBranches() throws {
+        let a = GeoPoint(lat: 33.5, lng: 126.5)
+        let b = GeoPoint(lat: 33.6, lng: 126.6)
+        let c = GeoPoint(lat: 33.7, lng: 126.7)
+        let reunion = GeoPoint(lat: 33.8, lng: 126.8)
+        let hotel = GeoPoint(lat: 33.9, lng: 126.9)
+        var d = day([spot("출발", a.lat, a.lng), spot("가지 A", b.lat, b.lng, from: a),
+                     spot("가지 B", c.lat, c.lng, from: a), spot("합류", reunion.lat, reunion.lng, from: b)])
+        d.routes = [(a, b), (a, c), (b, reunion), (c, reunion), (reunion, hotel)].map {
+            TripRouteLeg(from: $0.0, to: $0.1, mode: "car", path: nil, source: .straightLineEstimate)
+        }
+        let decoded = try JSONDecoder().decode(DayPlanDay.self, from: JSONEncoder().encode(d))
+        XCTAssertEqual(decoded.mapRoutes.map(\.points), [[a, b], [a, c], [b, reunion], [c, reunion, hotel]])
+        var old = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(d)) as? [String: Any])
+        old.removeValue(forKey: "routes")
+        let legacy = try JSONDecoder().decode(DayPlanDay.self, from: JSONSerialization.data(withJSONObject: old))
+        XCTAssertNil(legacy.routes)
+    }
+
+    func testParallelBranchesNeverCreateConnectionsBetweenBranches() {
+        let a = GeoPoint(lat: 33.5, lng: 126.5)
+        let b = GeoPoint(lat: 33.6, lng: 126.6)
+        let c = GeoPoint(lat: 33.7, lng: 126.7)
+        let reunion = GeoPoint(lat: 33.8, lng: 126.8)
+        let split = DayPlanSplit(key: "split", from: 1, to: 3, branches: [
+            .init(participants: ["a"], spotIndexes: [1]), .init(participants: ["b"], spotIndexes: [2])])
+        let d = day([spot("출발", a.lat, a.lng), spot("가지 A", b.lat, b.lng, from: a),
+                     spot("가지 B", c.lat, c.lng, from: a), spot("합류", reunion.lat, reunion.lng, from: b)], splits: [split])
+        XCTAssertEqual(d.mapRoutes.map(\.points), [[a, b], [a, c], [b, reunion]])
+
+        let entire = TripRouteDay(index: 0, date: "2026-10-01", title: "", spots: [], legs: [
+            .init(from: a, to: b, mode: "walk", path: nil, source: .straightLineEstimate),
+            .init(from: a, to: c, mode: "walk", path: nil, source: .straightLineEstimate),
+            .init(from: b, to: reunion, mode: "walk", path: nil, source: .straightLineEstimate)])
+        XCTAssertEqual(entire.mapRoutes(colorIndex: 2).map(\.points), [[a, b], [a, c], [b, reunion]])
+    }
 
     func testConnectsLocatedSpotsInOrder() {
         let d = day([spot("공항", 33.51, 126.49), spot("호텔", 33.50, 126.53), spot("성산", 33.46, 126.94)])

@@ -70,6 +70,7 @@ final class TripPlanViewModel: DayPlanContext {
     var role: MemberRole { store.role }
     var isLoading: Bool { store.isLoading }
     var loadedAt: Date? { store.loadedAt }
+    var documentCachedAt: Date? { store.cachedAt }
     var isSaving: Bool { store.isSaving }
     var errorMessage: String? { store.errorMessage }
     var conflict: String? { store.conflict }
@@ -257,19 +258,19 @@ final class TripPlanViewModel: DayPlanContext {
 
     /// 편집 화면이 만든 장소를 그대로 넣는다. 이름만 있는 장소도 일정에 남는다(좌표는 나중에).
     @discardableResult
-    func addSpot(_ spot: TripSpot, after index: Int? = nil) async -> Bool {
+    func addSpot(_ spot: TripSpot, after index: Int? = nil, dayIndex: Int? = nil, expectedRevision: Int? = nil) async -> Bool {
         guard !spot.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
-        return await store.edit("장소를 추가했어요") { $0.insertSpot(spot, dayIndex: self.selectedDay, after: index) }
+        return await store.edit("장소를 추가했어요", expectedRevision: expectedRevision) { $0.insertSpot(spot, dayIndex: dayIndex ?? self.selectedDay, after: index) }
     }
 
     @discardableResult
-    func updateSpot(at index: Int, with spot: TripSpot) async -> Bool {
-        return await store.edit(nil) { $0.updateSpot(dayIndex: self.selectedDay, at: index, with: spot) }
+    func updateSpot(at index: Int, with spot: TripSpot, dayIndex: Int? = nil, expectedRevision: Int? = nil) async -> Bool {
+        return await store.edit(nil, expectedRevision: expectedRevision) { $0.updateSpot(dayIndex: dayIndex ?? self.selectedDay, at: index, with: spot) }
     }
 
     @discardableResult
-    func removeSpot(at index: Int) async -> Bool {
-        return await store.edit("장소를 뺐어요") { $0.removeSpot(dayIndex: self.selectedDay, at: index) }
+    func removeSpot(at index: Int, dayIndex: Int? = nil, expectedRevision: Int? = nil) async -> Bool {
+        return await store.edit("장소를 뺐어요", expectedRevision: expectedRevision) { $0.removeSpot(dayIndex: dayIndex ?? self.selectedDay, at: index) }
     }
 
     func moveSpots(from source: IndexSet, to destination: Int) async {
@@ -277,14 +278,15 @@ final class TripPlanViewModel: DayPlanContext {
     }
 
     @discardableResult
-    func moveSpot(at index: Int, toDay targetDay: Int, with spot: TripSpot? = nil) async -> Bool {
+    func moveSpot(at index: Int, toDay targetDay: Int, with spot: TripSpot? = nil, dayIndex: Int? = nil, expectedRevision: Int? = nil) async -> Bool {
         if let spot, spot.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             store.report("장소 이름을 입력해 주세요.")
             return false
         }
-        return await store.edit("Day \(targetDay + 1)로 옮겼어요") { document in
-            if let spot { document.updateSpot(dayIndex: self.selectedDay, at: index, with: spot) }
-            document.moveSpot(from: (day: self.selectedDay, index: index), toDay: targetDay)
+        return await store.edit("Day \(targetDay + 1)로 옮겼어요", expectedRevision: expectedRevision) { document in
+            let sourceDay = dayIndex ?? self.selectedDay
+            if let spot { document.updateSpot(dayIndex: sourceDay, at: index, with: spot) }
+            document.moveSpot(from: (day: sourceDay, index: index), toDay: targetDay)
         }
     }
 
