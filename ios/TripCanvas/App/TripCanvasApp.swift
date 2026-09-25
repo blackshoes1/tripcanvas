@@ -69,54 +69,58 @@ struct SignInView: View {
     var body: some View {
         GeometryReader { geometry in
             ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    Spacer(minLength: 24)
+                TimelineView(.animation(paused: introDone || bypassesIntro)) { context in
+                    let frame = introFrame(at: context.date)
+                    VStack(alignment: .leading, spacing: 0) {
+                        Spacer(minLength: 24)
 
-                    HStack(spacing: Space.l) {
-                        if showsEmailForm {
-                            Button {
-                                setEmailForm(false)
-                                mode = .signIn
-                                password = ""
-                                focusedField = nil
-                                env.auth.dismissNotice()
-                            } label: {
-                                Image(systemName: "chevron.left")
-                                    .font(.body.weight(.semibold))
-                                    .frame(width: 24, height: 44)
+                        HStack(spacing: Space.l) {
+                            if showsEmailForm {
+                                Button {
+                                    setEmailForm(false)
+                                    mode = .signIn
+                                    password = ""
+                                    focusedField = nil
+                                    env.auth.dismissNotice()
+                                } label: {
+                                    Image(systemName: "chevron.left")
+                                        .font(.body.weight(.semibold))
+                                        .frame(width: 24, height: 44)
+                                }
+                                .accessibilityLabel("로그인 방법으로 돌아가기")
                             }
-                            .accessibilityLabel("로그인 방법으로 돌아가기")
+                            Text("With J")
+                                .font(.title3.weight(.semibold))
                         }
-                        Text("With J")
-                            .font(.title3.weight(.semibold))
+                        .foregroundStyle(Ink.ink)
+                        .padding(.bottom, compact(geometry) ? Space.l : 28)
+
+                        if showsEmailForm {
+                            emailForm
+                                .transition(reduceMotion ? .identity : .opacity.combined(with: .offset(x: 16)))
+                        } else {
+                            methodPicker(compact: compact(geometry), frame: frame)
+                                .transition(reduceMotion ? .identity : .opacity.combined(with: .offset(x: -16)))
+                        }
+
+                        accountSwitch
+                            .introControlReveal(showsEmailForm ? 1 : frame.signup)
+                            .padding(.top, compact(geometry) ? Space.l : 28)
+
+                        Spacer(minLength: 24)
                     }
-                    .foregroundStyle(Ink.ink)
-                    .padding(.bottom, compact(geometry) ? Space.l : 28)
-
-                    if showsEmailForm {
-                        emailForm
-                            .transition(reduceMotion ? .identity : .opacity.combined(with: .offset(x: 16)))
-                    } else {
-                        methodPicker(compact: compact(geometry))
-                            .transition(reduceMotion ? .identity : .opacity.combined(with: .offset(x: -16)))
-                    }
-
-                    accountSwitch
-                        .padding(.top, compact(geometry) ? Space.l : 28)
-
-                    Spacer(minLength: 24)
+                    .frame(maxWidth: 440)
+                    .frame(maxWidth: .infinity, minHeight: geometry.size.height - Space.xl * 2)
+                    .padding(.horizontal, Space.xl)
+                    .padding(.vertical, Space.xl)
                 }
-                .frame(maxWidth: 440)
-                .frame(maxWidth: .infinity, minHeight: geometry.size.height - Space.xl * 2)
-                .padding(.horizontal, Space.xl)
-                .padding(.vertical, Space.xl)
             }
             .scrollDismissesKeyboard(.interactively)
         }
         .background(Ink.paper.ignoresSafeArea())
         .task {
             guard introStart == nil, !introDone else { return }
-            if reduceMotion { introDone = true; return }
+            if bypassesIntro { introDone = true; return }
             // 앱이 열리는 전환(약 0.4초)이 끝난 뒤에 시작한다 — 곧바로 시작하면 흩어진 장면이
             // 전환에 가려, 이미 모여 있는 카드부터 보인다(시뮬레이터 녹화로 확인).
             try? await Task.sleep(for: .milliseconds(400))
@@ -133,43 +137,45 @@ struct SignInView: View {
     /// 작은 화면(SE)에서는 장면을 줄여 로그인 버튼이 첫 화면 안에 남게 한다.
     private func compact(_ geometry: GeometryProxy) -> Bool { geometry.size.height < 720 }
 
+    private var bypassesIntro: Bool { reduceMotion || typeSize.isAccessibilitySize }
+
     /// 장면의 지금 모양. 움직임 줄이기이거나 이미 끝났으면 마지막 모양이다.
     private func introFrame(at date: Date) -> ItineraryIntroTimeline.Frame {
-        if reduceMotion || introDone { return ItineraryIntroTimeline.final }
+        if bypassesIntro || introDone { return ItineraryIntroTimeline.final }
         guard let introStart else { return ItineraryIntroTimeline.frame(at: 0) }
         return ItineraryIntroTimeline.frame(at: date.timeIntervalSince(introStart))
     }
 
-    private func methodPicker(compact: Bool) -> some View {
+    private func methodPicker(compact: Bool, frame: ItineraryIntroTimeline.Frame) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            TimelineView(.animation(paused: introDone || reduceMotion)) { context in
-                let frame = introFrame(at: context.date)
-                VStack(alignment: .leading, spacing: 0) {
-                    // 큰 글자에서는 장면을 빼고 말과 버튼만 남긴다 — 장식이 버튼을 화면 밖으로 밀면 안 된다.
-                    if !typeSize.isAccessibilitySize {
-                        ItineraryIntroScene(frame: frame, compact: compact)
-                            .padding(.bottom, compact ? Space.l : 28)
-                    }
-                    Text("가고 싶은 곳이\n하루가 되기까지")
-                        .font(Typeface.editorial(.title))
-                        .foregroundStyle(Ink.ink)
-                        .lineSpacing(4)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityAddTraits(.isHeader)
-                        .introReveal(frame.headline)
-                    Text("계획할 때도, 여행 중에도 곁에서.")
-                        .font(.subheadline)
-                        .foregroundStyle(Ink.soft)
-                        .padding(.top, Space.s)
-                        .introReveal(frame.subline)
+            VStack(alignment: .leading, spacing: 0) {
+                // 큰 글자에서는 장면을 빼고 말과 버튼만 남긴다 — 장식이 버튼을 화면 밖으로 밀면 안 된다.
+                if !typeSize.isAccessibilitySize {
+                    ItineraryIntroScene(frame: frame, compact: compact)
+                        .padding(.horizontal, Space.m)
+                        .padding(.bottom, compact ? Space.l : 28)
                 }
+                Text("가고 싶은 곳이\n하루가 되기까지")
+                    .font(Typeface.editorial(.title))
+                    .foregroundStyle(Ink.ink)
+                    .lineSpacing(4)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityAddTraits(.isHeader)
+                    .introReveal(frame.headline)
+                Text("계획할 때도, 여행 중에도 곁에서.")
+                    .font(.subheadline)
+                    .foregroundStyle(Ink.soft)
+                    .padding(.top, Space.s)
+                    .introReveal(frame.subline)
             }
             .padding(.bottom, compact ? Space.l : 32)
 
             VStack(spacing: Space.m) {
                 providerButton(.google)
+                    .introControlReveal(frame.google)
                 ForEach(social.providers.filter { $0 != .google }) { provider in
                     providerButton(provider)
+                        .introControlReveal(frame.google)
                 }
 
                 Button {
@@ -184,6 +190,7 @@ struct SignInView: View {
                 }
                 .buttonStyle(SignInButtonStyle())
                 .disabled(social.isWorking || env.auth.isWorking)
+                .introControlReveal(frame.email)
             }
 
             if social.isWorking { ProgressView("로그인 확인 중").padding(.top, Space.l) }
@@ -355,6 +362,14 @@ private extension View {
     /// 장면의 문구가 떠오르는 모양 — 아래에서 8pt 올라오며 나타난다.
     func introReveal(_ progress: Double) -> some View {
         opacity(progress).offset(y: 8 * (1 - progress))
+    }
+
+    /// 투명한 버튼이 눌리거나 VoiceOver에 먼저 노출되지 않게 표시 시점과 조작 시점을 함께 묶는다.
+    func introControlReveal(_ progress: Double) -> some View {
+        introReveal(progress)
+            .disabled(progress < 1)
+            .allowsHitTesting(progress >= 1)
+            .accessibilityHidden(progress < 1)
     }
 
     func signInField() -> some View {

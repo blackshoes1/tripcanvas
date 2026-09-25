@@ -5,14 +5,14 @@ import XCTest
 final class ItineraryIntroTests: XCTestCase {
     private typealias Timeline = ItineraryIntroTimeline
 
-    func testStartsEmpty() {
+    func testStartsWithScatteredPlacesAndHiddenActions() {
         let start = Timeline.frame(at: 0)
-        XCTAssertEqual(start.card, 0)
+        XCTAssertEqual(start.card, 1)
         XCTAssertEqual(start.head, 0)
-        XCTAssertTrue(start.chips.allSatisfy { $0.appear == 0 && $0.travel == 0 && $0.settled == 0 })
+        XCTAssertTrue(start.chips.allSatisfy { $0.appear == 1 && $0.travel == 0 && $0.settled == 0 })
         XCTAssertEqual(start.spine, 0)
         XCTAssertEqual(start.reachedStops, 0)
-        XCTAssertEqual([start.dash, start.cap, start.stem, start.headline, start.subline], [0, 0, 0, 0, 0])
+        XCTAssertEqual([start.signature, start.cap, start.headline, start.subline, start.google, start.email, start.signup], [0, 0, 0, 0, 0, 0, 0])
     }
 
     /// 움직임 줄이기에서 곧바로 쓰는 모양이 **다 그려진 장면**이어야 한다 — 반쯤 그린 카드가 남으면 안 된다.
@@ -24,7 +24,7 @@ final class ItineraryIntroTests: XCTestCase {
         XCTAssertTrue(end.chips.allSatisfy { $0.appear == 1 && $0.travel == 1 && $0.settled == 1 })
         XCTAssertEqual(end.spine, 1)
         XCTAssertEqual(end.reachedStops, Timeline.stopCount)
-        XCTAssertEqual([end.dash, end.cap, end.stem, end.headline, end.subline], [1, 1, 1, 1, 1])
+        XCTAssertEqual([end.signature, end.cap, end.headline, end.subline, end.google, end.email, end.signup], [1, 1, 1, 1, 1, 1, 1])
         XCTAssertEqual(Timeline.frame(at: 60), end, "끝난 뒤에는 멈춰 있다 — 반복하지 않는다")
     }
 
@@ -35,7 +35,8 @@ final class ItineraryIntroTests: XCTestCase {
             let now = Timeline.frame(at: Double(step) / 120)
             let pairs: [(Double, Double)] = [
                 (previous.card, now.card), (previous.head, now.head), (previous.spine, now.spine),
-                (previous.dash, now.dash), (previous.cap, now.cap), (previous.stem, now.stem),
+                (previous.signature, now.signature), (previous.cap, now.cap),
+                (previous.google, now.google), (previous.email, now.email), (previous.signup, now.signup),
                 (previous.headline, now.headline), (previous.subline, now.subline),
             ] + zip(previous.chips, now.chips).flatMap { [($0.appear, $1.appear), ($0.travel, $1.travel), ($0.settled, $1.settled)] }
             for (before, after) in pairs {
@@ -59,18 +60,22 @@ final class ItineraryIntroTests: XCTestCase {
         XCTAssertEqual(travels, travels.sorted(), "위에서부터 차례로 내려앉는다")
         let lastSettled = try XCTUnwrap(doneMoment { $0.chips.last!.travel })
         let spineDone = try XCTUnwrap(doneMoment { $0.spine })
-        let signing = try XCTUnwrap(firstMoment { $0.dash })
-        XCTAssertLessThanOrEqual(lastSettled, try XCTUnwrap(firstMoment { $0.spine }) + 0.4, "경로는 줄이 거의 자리 잡은 뒤에 긋는다")
+        let signing = try XCTUnwrap(firstMoment { $0.signature })
+        XCTAssertLessThanOrEqual(lastSettled, try XCTUnwrap(firstMoment { $0.spine }) + 0.5, "경로는 줄이 거의 자리 잡은 뒤에 긋는다")
         XCTAssertLessThan(spineDone, signing, "서명은 하루가 이어진 다음이다")
-        XCTAssertLessThan(try XCTUnwrap(doneMoment { $0.dash }), try XCTUnwrap(firstMoment { $0.cap }))
-        XCTAssertLessThan(try XCTUnwrap(doneMoment { $0.cap }), try XCTUnwrap(firstMoment { $0.stem }))
+        let google = try XCTUnwrap(firstMoment { $0.google })
+        XCTAssertLessThan(try XCTUnwrap(doneMoment { $0.signature }), google)
+        XCTAssertLessThan(try XCTUnwrap(doneMoment { $0.cap }), google)
+        XCTAssertLessThan(try XCTUnwrap(doneMoment { $0.subline }), google)
+        XCTAssertLessThan(google, try XCTUnwrap(firstMoment { $0.email }))
+        XCTAssertLessThan(try XCTUnwrap(firstMoment { $0.email }), try XCTUnwrap(firstMoment { $0.signup }))
     }
 
     /// 점은 경로가 **지나간 줄**에만 찍힌다.
     func testStopsLightUpAsTheRoutePasses() {
-        XCTAssertEqual(Timeline.frame(at: 1.34).reachedStops, 0, "경로가 시작하기 전")
-        XCTAssertEqual(Timeline.frame(at: 1.35).reachedStops, 1, "첫 줄은 경로의 출발점")
-        for t in stride(from: 1.35, through: 2.1, by: 0.01) {
+        XCTAssertEqual(Timeline.frame(at: 1.17).reachedStops, 0, "경로가 시작하기 전")
+        XCTAssertEqual(Timeline.frame(at: 1.18).reachedStops, 1, "첫 줄은 경로의 출발점")
+        for t in stride(from: 1.18, through: 2.1, by: 0.01) {
             let frame = Timeline.frame(at: t)
             let covered = Int((frame.spine * Double(Timeline.stopCount - 1) + 0.003).rounded(.down)) + 1
             XCTAssertEqual(frame.reachedStops, min(covered, Timeline.stopCount), "t=\(t)")
