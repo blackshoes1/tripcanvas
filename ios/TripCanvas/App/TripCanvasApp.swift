@@ -54,6 +54,7 @@ struct SignInView: View {
     @State private var social = SocialSignIn()
     @State private var showsEmailForm = false
     @State private var introStep = 0
+    @State private var routeProgress: CGFloat = 0
     @FocusState private var focusedField: Field?
 
     private enum Field { case email, password }
@@ -67,7 +68,7 @@ struct SignInView: View {
         GeometryReader { geometry in
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    Spacer(minLength: 24)
+                    Color.clear.frame(height: 24)
 
                     HStack(spacing: Space.l) {
                         if showsEmailForm {
@@ -96,9 +97,9 @@ struct SignInView: View {
                         emailForm
                             .transition(reduceMotion ? .identity : .opacity.combined(with: .offset(x: 16)))
                     } else {
-                        JourneyIntroMark(routeVisible: introStep >= 2 || reduceMotion,
+                        JourneyIntroMark(progress: routeProgress,
                                          destinationVisible: introStep >= 3 || reduceMotion)
-                            .padding(.bottom, 20)
+                            .padding(.bottom, 24)
                         methodPicker
                             .transition(reduceMotion ? .identity : .opacity.combined(with: .offset(x: -16)))
                     }
@@ -122,11 +123,18 @@ struct SignInView: View {
         .background(Ink.paper.ignoresSafeArea())
         .task {
             guard introStep == 0 else { return }
-            if reduceMotion { introStep = 7; return }
-            for (step, pause) in [(1, 80), (2, 180), (3, 540), (4, 200), (5, 250), (6, 270), (7, 220)] {
+            if reduceMotion {
+                routeProgress = 1
+                introStep = 7
+                return
+            }
+            for (step, pause) in [(1, 80), (2, 180), (3, 820), (4, 160), (5, 190), (6, 230), (7, 230)] {
                 try? await Task.sleep(for: .milliseconds(pause))
                 guard !Task.isCancelled else { return }
-                withAnimation(.easeOut(duration: 0.38)) { introStep = step }
+                withAnimation(step == 2 ? .easeInOut(duration: 0.76) : .easeOut(duration: 0.34)) {
+                    if step == 2 { routeProgress = 1 }
+                    introStep = step
+                }
             }
         }
         .task { await social.loadProviders() }
@@ -333,53 +341,132 @@ struct SignInView: View {
 
 /// 여행의 경로가 J에 닿는 짧은 브랜드 장면. 로그인 선택지는 처음부터 제자리를 차지한다.
 private struct JourneyIntroMark: View {
-    let routeVisible: Bool
+    let progress: CGFloat
     let destinationVisible: Bool
 
     var body: some View {
         GeometryReader { geometry in
-            let destination = CGPoint(x: geometry.size.width - 36, y: 34)
+            let destination = JourneyRoute.point(at: 1, width: geometry.size.width)
             ZStack(alignment: .topLeading) {
                 JourneyRoute()
-                    .stroke(Ink.soft.opacity(0.22), style: StrokeStyle(lineWidth: 1, dash: [3, 6]))
-                JourneyRoute()
-                    .trim(from: 0, to: routeVisible ? 1 : 0)
-                    .stroke(Ink.accent, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
-                    .animation(.easeInOut(duration: 0.62), value: routeVisible)
+                    .stroke(Ink.soft.opacity(0.20), style: StrokeStyle(lineWidth: 1, dash: [2, 6]))
+                JourneyRoute(progress: progress)
+                    .stroke(Ink.accent, style: StrokeStyle(lineWidth: 2, lineCap: .round))
 
                 Circle()
                     .fill(Ink.paper)
-                    .frame(width: 14, height: 14)
-                    .overlay(Circle().strokeBorder(Ink.accent, lineWidth: 2.5))
-                    .position(x: 15, y: 100)
+                    .frame(width: 11, height: 11)
+                    .overlay(Circle().strokeBorder(Ink.accent, lineWidth: 2))
+                    .position(JourneyRoute.point(at: 0, width: geometry.size.width))
+
+                Circle()
+                    .fill(Ink.paper)
+                    .frame(width: 13, height: 13)
+                    .overlay(Circle().fill(Ink.accent).frame(width: 7, height: 7))
+                    .modifier(JourneyTravelEffect(progress: progress, width: geometry.size.width))
+                    .opacity(progress > 0 && !destinationVisible ? 1 : 0)
+
+                JourneyWaypoint(progress: progress, fraction: 0.37, width: geometry.size.width)
+                JourneyWaypoint(progress: progress, fraction: 0.72, width: geometry.size.width)
 
                 ZStack {
-                    Circle().strokeBorder(Ink.accent.opacity(0.18), lineWidth: 1)
-                        .frame(width: 64, height: 64)
-                    Circle().fill(Ink.accent).frame(width: 48, height: 48)
+                    Circle().strokeBorder(Ink.accent.opacity(0.24), lineWidth: 1)
+                        .frame(width: 56, height: 56)
+                    Circle().fill(Ink.accent).frame(width: 42, height: 42)
                     Text("J")
                         .font(Typeface.editorial(.title3).weight(.bold))
                         .foregroundStyle(Ink.paper)
                 }
                 .position(destination)
-                .scaleEffect(destinationVisible ? 1 : 0.7)
+                .scaleEffect(destinationVisible ? 1 : 0.78)
                 .opacity(destinationVisible ? 1 : 0)
-                .animation(.spring(response: 0.42, dampingFraction: 0.68), value: destinationVisible)
+                .animation(.spring(response: 0.42, dampingFraction: 0.82), value: destinationVisible)
             }
         }
-        .frame(height: 124)
+        .frame(height: 108)
         .accessibilityHidden(true)
     }
 }
 
 private struct JourneyRoute: SwiftUI.Shape {
+    var progress: CGFloat = 1
+
+    var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    private static func points(width: CGFloat) -> (CGPoint, CGPoint, CGPoint, CGPoint) {
+        (CGPoint(x: 12, y: 86), CGPoint(x: width * 0.27, y: 103),
+         CGPoint(x: width * 0.59, y: 12), CGPoint(x: width - 30, y: 30))
+    }
+
+    private static func between(_ first: CGPoint, _ second: CGPoint, _ fraction: CGFloat) -> CGPoint {
+        CGPoint(x: first.x + (second.x - first.x) * fraction,
+                y: first.y + (second.y - first.y) * fraction)
+    }
+
+    static func point(at progress: CGFloat, width: CGFloat) -> CGPoint {
+        let t = min(max(progress, 0), 1)
+        let u = 1 - t
+        let (start, first, second, end) = points(width: width)
+        return CGPoint(
+            x: u * u * u * start.x + 3 * u * u * t * first.x + 3 * u * t * t * second.x + t * t * t * end.x,
+            y: u * u * u * start.y + 3 * u * u * t * first.y + 3 * u * t * t * second.y + t * t * t * end.y
+        )
+    }
+
     func path(in rect: CGRect) -> Path {
-        Path { path in
-            path.move(to: CGPoint(x: 15, y: 100))
-            path.addCurve(to: CGPoint(x: rect.width - 36, y: 34),
-                          control1: CGPoint(x: rect.width * 0.34, y: 112),
-                          control2: CGPoint(x: rect.width * 0.58, y: 24))
+        let t = min(max(progress, 0), 1)
+        let (start, first, second, end) = Self.points(width: rect.width)
+        let firstEdge = Self.between(start, first, t)
+        let middleEdge = Self.between(first, second, t)
+        let lastEdge = Self.between(second, end, t)
+        let firstControl = Self.between(firstEdge, middleEdge, t)
+        let secondControl = Self.between(middleEdge, lastEdge, t)
+        let tip = Self.between(firstControl, secondControl, t)
+        return Path { path in
+            path.move(to: start)
+            path.addCurve(to: tip, control1: firstEdge, control2: firstControl)
         }
+    }
+}
+
+private struct JourneyWaypoint: View, Animatable {
+    var progress: CGFloat
+    let fraction: CGFloat
+    let width: CGFloat
+
+    var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    var body: some View {
+        let reveal = min(max((progress - fraction) * 12, 0), 1)
+        Circle()
+            .fill(Ink.paper)
+            .frame(width: 9, height: 9)
+            .overlay(Circle().strokeBorder(Ink.accent, lineWidth: 1.5))
+            .position(JourneyRoute.point(at: fraction, width: width))
+            .scaleEffect(reveal)
+            .opacity(reveal)
+    }
+}
+
+private struct JourneyTravelEffect: GeometryEffect {
+    var progress: CGFloat
+    let width: CGFloat
+
+    var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    func effectValue(size: CGSize) -> ProjectionTransform {
+        let point = JourneyRoute.point(at: progress, width: width)
+        return ProjectionTransform(CGAffineTransform(translationX: point.x - size.width / 2,
+                                                     y: point.y - size.height / 2))
     }
 }
 
