@@ -3,6 +3,7 @@ import SwiftUI
 struct TripCoverResponse: Codable, Equatable {
     let revision: Int
     let imageBase64: String?
+    var placePhoto: TripCoverPlace? = nil
     var image: UIImage? {
         imageBase64.flatMap { Data(base64Encoded: $0) }.flatMap { UIImage(data: $0) }
     }
@@ -18,6 +19,8 @@ struct TripCoverView: View {
     var isHero = false
     var onOpen: () -> Void
     static let changed = Notification.Name("withj.tripCoverChanged")
+    @Environment(AppEnvironment.self) private var env
+    @State private var placePhoto: PlacePhoto?
     @State private var cover: TripCoverService.Cover?
     @State private var saved: TripCoverResponse?
     @State private var showsEditor = false
@@ -51,7 +54,7 @@ struct TripCoverView: View {
                         }
                     }
                     .overlay(alignment: .bottomLeading) {
-                        if saved?.imageBase64 == nil, let cover {
+                        if saved?.imageBase64 == nil, saved?.placePhoto == nil, let cover {
                             attribution(cover)
                                 .padding(Space.s)
                                 .background(Ink.raised.opacity(0.95), in: RoundedRectangle(cornerRadius: 6))
@@ -59,11 +62,20 @@ struct TripCoverView: View {
                                 .padding(.bottom, Space.xl)
                         }
                     }
+                    .overlay(alignment: .bottomLeading) {
+                        if let placePhoto {
+                            TripCoverPhotoCredit(photo: placePhoto)
+                                .padding(Space.s)
+                                .background(Ink.raised.opacity(0.95), in: RoundedRectangle(cornerRadius: 6))
+                                .padding(.horizontal, Space.m).padding(.bottom, Space.xl)
+                        }
+                    }
             } else {
                 Button(action: onOpen) { photo }
                     .buttonStyle(.plain)
                     .accessibilityLabel("\(trip.name) 여행 열기")
-                if saved?.imageBase64 == nil, let cover { attribution(cover) }
+                if saved?.imageBase64 == nil, saved?.placePhoto == nil, let cover { attribution(cover) }
+                if let placePhoto { TripCoverPhotoCredit(photo: placePhoto) }
                 if trip.canEdit {
                     HStack {
                         Spacer()
@@ -82,6 +94,13 @@ struct TripCoverView: View {
                 }
             }
         }
+        .task(id: saved?.placePhoto) {
+            placePhoto = nil
+            guard let selected = saved?.placePhoto else { return }
+            let result = try? await env.placePhotos.photo(placeId: selected.placeId)
+            guard !Task.isCancelled, saved?.placePhoto == selected else { return }
+            placePhoto = result
+        }
         .task(id: refresh) { await load() }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { Task { await load() } }
@@ -93,18 +112,19 @@ struct TripCoverView: View {
             loadID = UUID()
             saved = updated
             loadFailed = false
-            if updated.imageBase64 == nil, cover == nil {
-                Task { cover = await TripCoverService.shared.representative(city: city) }
-            }
         }
         .sheet(isPresented: $showsEditor, onDismiss: { Task { await load() } }) {
             // 편집 중에는 최초에 읽은 revision을 유지한다. 충돌 시 자동 덮어쓰지 않는다.
             if let saved {
-                TripCoverEditor(title: trip.name, storageDescription: "이 여행을 함께 보는 일행과 다른 기기에도 같은 표지가 보여요.", initialImage: saved.image) { data in
-                    let updated: TripCoverResponse = try await api.put(endpoint, body: [
-                        "expectedRevision": saved.revision,
-                        "imageBase64": data.map { $0.base64EncodedString() as Any } ?? NSNull()
-                    ])
+                TripCoverEditor(title: trip.name, tripId: trip.id, storageDescription: "이 여행을 함께 보는 일행과 다른 기기에도 같은 표지가 보여요.", initialImage: saved.image, initialPlace: saved.placePhoto, initialPlacePhoto: placePhoto) { data, place in
+                    var body: [String: Any] = ["expectedRevision": saved.revision]
+                    if let place {
+                        // 이전 API는 필수 imageBase64가 없는 요청을 거절한다. 표지를 지우는 요청으로 오인하지 않게 한다.
+                        body["placePhoto"] = place.body
+                    } else {
+                        body["imageBase64"] = data.map { $0.base64EncodedString() as Any } ?? NSNull()
+                    }
+                    let updated: TripCoverResponse = try await api.put(endpoint, body: body)
                     self.saved = updated
                     await cache.save(updated, key: TripCache.coverKey(tripId: trip.id), scope: cacheScope)
                     NotificationCenter.default.post(name: Self.changed, object: trip.id, userInfo: ["cover": updated])
@@ -117,7 +137,9 @@ struct TripCoverView: View {
         Color.clear
             .aspectRatio(TripCoverImage.aspectRatio, contentMode: .fit)
             .overlay {
-                if let image = saved?.image ?? cover?.image {
+                if let selected = saved?.placePhoto, let placePhoto {
+                    TripCoverCrop(image: placePhoto.image, zoom: selected.zoom, position: CGPoint(x: selected.x, y: selected.y))
+                } else if let image = saved?.image ?? (saved?.placePhoto == nil ? cover?.image : nil) {
                     Image(uiImage: image).resizable().scaledToFill()
                 } else {
                     Rectangle().fill(Ink.sunken)
@@ -170,7 +192,7 @@ struct TripCoverView: View {
         saved = outcome.cover
         loadFailed = outcome.failed
         if let fetched { await cache.save(fetched, key: key, scope: cacheScope) }
-        if saved?.imageBase64 == nil {
+        if saved?.imageBase64 == nil, saved?.placePhoto == nil {
             let result = await TripCoverService.shared.representative(city: city)
             guard !Task.isCancelled, loadID == attempt else { return }
             cover = result

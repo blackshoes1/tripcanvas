@@ -1,0 +1,1 @@
+ALTER TABLE "trip_covers" ADD COLUMN "place_photo" jsonb;

@@ -71,10 +71,19 @@ enum TripCoverImage {
 
 struct TripCoverEditor: View {
     let title: String
+    let tripId: String
     let storageDescription: String
     var initialImage: UIImage? = nil
-    let save: (Data?) async throws -> Void
+    var initialPlace: TripCoverPlace? = nil
+    var initialPlacePhoto: PlacePhoto? = nil
+    let save: (Data?, TripCoverPlace?) async throws -> Void
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppEnvironment.self) private var env
+    @State private var place: TripCoverPlace?
+    @State private var placePhoto: PlacePhoto?
+    @State private var showsPlaces = false
+    @State private var showsPosition = false
+    @State private var initialized = false
     @State private var selection: PhotosPickerItem?
     @State private var image: UIImage?
     @State private var zoom: CGFloat = 1
@@ -86,42 +95,106 @@ struct TripCoverEditor: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
-                    Text(title).font(Typeface.editorial(.title2))
-                    Text(storageDescription).font(.caption).foregroundStyle(Ink.soft)
-                }
-                Section {
-                    if let image {
-                        cropPreview(image)
-                        Text("테두리 안이 표지에 표시돼요. 사진을 끌어 위치를 맞추고 확대해 주세요.")
-                            .font(.caption).foregroundStyle(Ink.soft)
-                        Slider(value: $zoom, in: 1...4) { Text("사진 확대") }
-                            .disabled(saving)
-                        DisclosureGroup("위치 미세 조정") {
-                            Slider(value: $position.x, in: 0...1) { Text("가로 위치") }
-                            Slider(value: $position.y, in: 0...1) { Text("세로 위치") }
-                        }.disabled(saving)
-                        Button("구도 초기화") {
-                            zoom = 1; position = CGPoint(x: 0.5, y: 0.5)
-                        }.disabled(saving)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    if image == nil {
+                        Text(storageDescription)
+                            .font(.subheadline).foregroundStyle(Ink.soft)
+                            .frame(maxWidth: .infinity).multilineTextAlignment(.center)
+                        VStack(alignment: .leading, spacing: Space.l) {
+                            Text(title).font(Typeface.editorial(.largeTitle))
+                            Divider()
+                            Text("이 여행의 표지 사진을 골라 주세요.").foregroundStyle(Ink.soft)
+                        }.padding(24).frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Ink.raised, in: RoundedRectangle(cornerRadius: 26))
                     }
-                    PhotosPicker(selection: $selection, matching: .images) {
-                        Label("내 사진에서 선택", systemImage: "photo.on.rectangle")
-                    }
-                    .disabled(loading || saving)
-                    if loading { ProgressView("사진을 준비하는 중") }
-                    if let error { Text(error).foregroundStyle(Ink.danger) }
-                    Button("이 구도로 표지 저장") { saveCrop() }
-                        .disabled(image == nil || loading || saving)
-                }
-                Section {
-                    Button("여행지 대표 사진으로 되돌리기") { persist(nil) }
+                    VStack(alignment: .leading, spacing: 20) {
+                        if let image {
+                            cropPreview(image).clipShape(RoundedRectangle(cornerRadius: 12))
+                            Text("사진을 움직여 표지에 보일 영역을 맞춰주세요.")
+                                .font(.caption).foregroundStyle(Ink.soft)
+                            if let placePhoto { TripCoverPhotoCredit(photo: placePhoto) }
+                            VStack(alignment: .leading, spacing: Space.s) {
+                                Text("확대/축소").font(.subheadline).foregroundStyle(Ink.soft)
+                                HStack {
+                                    Image(systemName: "minus.magnifyingglass")
+                                    Slider(value: $zoom, in: 1...4) { Text("사진 확대") }
+                                    Image(systemName: "plus.magnifyingglass")
+                                }.foregroundStyle(Ink.soft)
+                            }
+                            HStack(spacing: Space.m) {
+                                Button { showsPosition.toggle() } label: {
+                                    Label("위치 미세 조정", systemImage: "arrow.up.and.down.and.arrow.left.and.right")
+                                        .frame(maxWidth: .infinity, minHeight: 52)
+                                        .background(Ink.paper, in: RoundedRectangle(cornerRadius: 16))
+                                }.accessibilityValue(showsPosition ? "펼침" : "접힘")
+                                Button { resetCrop() } label: {
+                                    Label("구도 초기화", systemImage: "arrow.counterclockwise")
+                                        .frame(maxWidth: .infinity, minHeight: 52)
+                                        .background(Ink.paper, in: RoundedRectangle(cornerRadius: 16))
+                                }
+                            }.font(.subheadline).buttonStyle(.plain).foregroundStyle(Ink.accent)
+                            if showsPosition {
+                                VStack(alignment: .leading) {
+                                    Text("가로 위치").font(.caption).foregroundStyle(Ink.soft)
+                                    Slider(value: $position.x, in: 0...1) { Text("가로 위치") }
+                                    Text("세로 위치").font(.caption).foregroundStyle(Ink.soft)
+                                    Slider(value: $position.y, in: 0...1) { Text("세로 위치") }
+                                }
+                            }
+                            Divider()
+                        } else {
+                            VStack(alignment: .leading, spacing: Space.s) {
+                                Text("여행 표지 사진").font(.title3.weight(.semibold)).foregroundStyle(Ink.accent)
+                                Text("사진을 선택하거나, 일정에 등록한 장소의 대표 사진을 사용할 수 있어요.")
+                                    .font(.subheadline).foregroundStyle(Ink.soft)
+                            }
+                        }
+                        PhotosPicker(selection: $selection, matching: .images) {
+                            if image == nil {
+                                VStack(spacing: Space.l) {
+                                    Image(systemName: "photo.on.rectangle").font(.system(size: 36))
+                                    Text("사진에서 선택").font(.title3.weight(.semibold))
+                                    HStack(spacing: Space.s) {
+                                        Text("앨범에서 원하는 사진을 선택해요.")
+                                        Image(systemName: "chevron.right")
+                                    }.font(.subheadline).foregroundStyle(Ink.soft)
+                                }.frame(maxWidth: .infinity).padding(.vertical, 30)
+                                    .background(Ink.accent.opacity(0.05), in: RoundedRectangle(cornerRadius: 22))
+                            } else {
+                                sourceRow("다른 사진 선택", subtitle: "앨범에서 다른 사진을 선택할 수 있어요.", icon: "photo.on.rectangle")
+                            }
+                        }.buttonStyle(.plain).foregroundStyle(Ink.accent)
+                        Button { showsPlaces = true } label: {
+                            sourceRow(image == nil ? "일정의 대표 사진 사용" : "일정의 대표 사진으로 변경",
+                                      subtitle: "일정에 등록한 장소의 사진을 직접 골라요.", icon: "mappin.and.ellipse")
+                        }.buttonStyle(.plain)
+                        if loading { ProgressView("사진을 준비하는 중") }
+                        if let error { Text(error).font(.subheadline).foregroundStyle(Ink.danger) }
+                        if image != nil {
+                            Button { saveCrop() } label: {
+                                HStack {
+                                    if saving { ProgressView().tint(.white) }
+                                    else { Image(systemName: "checkmark") }
+                                    Text("이 구도로 저장")
+                                }.font(.body.weight(.semibold))
+                                    .frame(maxWidth: .infinity, minHeight: 56)
+                                    .foregroundStyle(.white)
+                                    .background(Ink.accent, in: Capsule())
+                            }.buttonStyle(.plain)
+                        }
+                    }.padding(20).background(Ink.raised, in: RoundedRectangle(cornerRadius: 26))
                         .disabled(loading || saving)
-                }
+                    if initialImage != nil || initialPlace != nil {
+                        Button("기본 표지로 되돌리기") { persist(nil) }
+                            .font(.footnote).foregroundStyle(Ink.soft)
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .disabled(loading || saving)
+                    }
+                }.padding(16)
             }
-            .paperGround()
-            .navigationTitle("여행 표지")
+            .background(Ink.paper)
+            .navigationTitle(image == nil ? "여행 표지" : "여행 표지 편집")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -131,12 +204,38 @@ struct TripCoverEditor: View {
             }
             .interactiveDismissDisabled(saving)
             .onAppear {
-                if image == nil, selection == nil { image = initialImage }
+                guard !initialized else { return }
+                initialized = true
+                place = initialPlace; placePhoto = initialPlacePhoto
+                image = initialPlacePhoto?.image ?? initialImage
+                zoom = initialPlace?.zoom ?? 1
+                position = CGPoint(x: initialPlace?.x ?? 0.5, y: initialPlace?.y ?? 0.5)
+            }
+            .task {
+                guard let initialPlace, initialPlacePhoto == nil else { return }
+                loading = true
+                defer { loading = false }
+                do {
+                    guard let photo = try await env.placePhotos.photo(placeId: initialPlace.placeId) else {
+                        error = "이 장소의 사진을 더 이상 볼 수 없어요. 다른 사진을 골라 주세요."
+                        return
+                    }
+                    try Task.checkCancellation()
+                    placePhoto = photo; image = photo.image
+                } catch {
+                    guard !Task.isCancelled else { return }
+                    self.error = "표지 사진을 불러오지 못했어요. 다른 사진을 선택하거나 다시 열어 주세요."
+                }
+            }
+            .sheet(isPresented: $showsPlaces) {
+                TripCoverPlacePicker(tripId: tripId) { selected, photo in
+                    place = selected; placePhoto = photo; image = photo.image
+                    error = nil; resetCrop()
+                }
             }
             .task(id: selection) {
                 guard let selection else { return }
-                loading = true; image = nil; error = nil
-                zoom = 1; position = CGPoint(x: 0.5, y: 0.5); dragOrigin = nil
+                loading = true; error = nil
                 defer { if self.selection == selection { loading = false } }
                 do {
                     guard let data = try await selection.loadTransferable(type: Data.self),
@@ -145,12 +244,32 @@ struct TripCoverEditor: View {
                         return
                     }
                     guard !Task.isCancelled else { return }
-                    image = result
+                    image = result; place = nil; placePhoto = nil
+                    resetCrop()
                 } catch {
                     if !Task.isCancelled { self.error = "사진을 가져오지 못했어요. 다시 선택해 주세요." }
                 }
             }
         }
+    }
+
+    private func sourceRow(_ title: String, subtitle: String, icon: String) -> some View {
+        HStack(spacing: Space.m) {
+            Image(systemName: icon).font(.title2).foregroundStyle(Ink.accent)
+                .frame(width: 40, height: 40)
+                .background(Ink.accent.opacity(0.06), in: Circle())
+            VStack(alignment: .leading, spacing: Space.xs) {
+                Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(Ink.ink)
+                Text(subtitle).font(.caption).foregroundStyle(Ink.soft)
+            }
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.right").font(.caption).foregroundStyle(Ink.soft)
+        }.padding(12).frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
+            .background(Ink.paper.opacity(0.7), in: RoundedRectangle(cornerRadius: 20))
+    }
+
+    private func resetCrop() {
+        zoom = 1; position = CGPoint(x: 0.5, y: 0.5); dragOrigin = nil
     }
 
     private func cropPreview(_ image: UIImage) -> some View {
@@ -199,6 +318,11 @@ struct TripCoverEditor: View {
     }
 
     private func saveCrop() {
+        if var place {
+            place.zoom = zoom; place.x = position.x; place.y = position.y
+            persist(nil, place: place)
+            return
+        }
         guard let image,
               let data = TripCoverImage.jpeg(from: image, zoom: zoom, position: position) else {
             error = "표지 이미지를 만들지 못했어요. 다른 사진으로 다시 시도해 주세요."
@@ -207,10 +331,10 @@ struct TripCoverEditor: View {
         persist(data)
     }
 
-    private func persist(_ data: Data?) {
+    private func persist(_ data: Data?, place: TripCoverPlace? = nil) {
         saving = true; error = nil
         Task {
-            do { try await save(data); dismiss() }
+            do { try await save(data, place); dismiss() }
             catch { self.error = (error as? APIError)?.errorDescription ?? "표지를 저장하지 못했어요. 다시 시도해 주세요." }
             saving = false
         }
