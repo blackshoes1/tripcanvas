@@ -397,6 +397,8 @@ struct InlineErrorBanner: View {
     let message: String
     var detail: String?
     var tint: Color = Ink.accent
+    /// 버튼이 **실제로 하는 일**을 말한다(예: '다시 불러오기'). 기본은 '다시 시도'.
+    var actionTitle: String = "다시 시도"
     var compact: Bool = false
     let retry: () -> Void
     @Environment(\.dynamicTypeSize) private var typeSize
@@ -435,7 +437,7 @@ struct InlineErrorBanner: View {
 
     @ViewBuilder
     private var retryButton: some View {
-        let button = Button("다시 시도", action: retry)
+        let button = Button(actionTitle, action: retry)
             .font(.caption.weight(.semibold))
             .tint(tint)
         if compact {

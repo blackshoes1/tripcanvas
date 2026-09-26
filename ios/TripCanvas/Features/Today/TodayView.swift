@@ -299,13 +299,27 @@ struct SectionHeader: View {
 
 struct ToastView: View {
     let text: String
+    /// 방금 한 일을 되돌리는 것처럼 **그 자리에서** 할 수 있는 한 가지. 없으면 글자만 뜬다.
+    var actionTitle: String? = nil
+    var action: () -> Void = {}
+
     var body: some View {
-        Text(text)
-            .font(.subheadline)
-            .padding(.horizontal, Space.l)
-            .padding(.vertical, Space.m)
-            .background(.thinMaterial, in: Capsule())
-            .accessibilityAddTraits(.updatesFrequently)
+        HStack(spacing: Space.m) {
+            Text(text)
+                .font(.subheadline)
+                .fixedSize(horizontal: false, vertical: true)
+            if let actionTitle {
+                Button(actionTitle, action: action)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Ink.accent)
+                    .frame(minHeight: 44)
+            }
+        }
+        .padding(.horizontal, Space.l)
+        .padding(.vertical, actionTitle == nil ? Space.m : Space.xs)
+        .background(.thinMaterial, in: Capsule())
+        .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(.updatesFrequently)
     }
 }
 

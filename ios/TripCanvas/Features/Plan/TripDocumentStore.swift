@@ -24,7 +24,21 @@ final class TripDocumentStore {
     private(set) var loadedAt: Date?
     private(set) var cachedAt: Date?
     private(set) var isSaving = false
-    private(set) var errorMessage: String?
+    /// 문서를 **받지** 못했다 — 할 일은 다시 불러오기다.
+    private(set) var loadErrorMessage: String?
+    /// 방금 바꾼 것을 **저장하지** 못했다 — 화면은 이미 이전 일정으로 돌아왔다.
+    /// ⚠️ 둘을 한 칸에 두면 불러오기 실패에 "저장하지 못했어요"라 말하고, 저장 실패의 '다시 시도'가
+    ///    새로고침이 되어 되돌려진 변경이 조용히 사라진다(2026-09-27 UX 검토).
+    private(set) var saveErrorMessage: String?
+    /// 기존 소비자(편집 시트 등)를 위한 한 줄 — 저장 실패가 먼저다.
+    var errorMessage: String? { saveErrorMessage ?? loadErrorMessage }
+    /// 다시 저장할 수 있는 실패한 변경. 충돌은 여기 담지 않는다 — 충돌을 다시 밀면 남의 변경을 덮는다(§91).
+    /// ⚠️ 실패한 **그 문서 위에서만** 다시 저장한다 — 그 사이 문서가 바뀌면 같은 위치가 다른 장소를 가리킬 수 있다.
+    private var failedEdit: (toast: String?, revision: Int, change: (inout TripDocument) -> Void)?
+    var canRetrySave: Bool {
+        guard let failedEdit else { return false }
+        return saveErrorMessage != nil && conflict == nil && !isSaving && failedEdit.revision == revision && canEdit
+    }
     /// 다른 기기가 먼저 바꿨다. 화면은 이걸 보고 물어본다 — 자동으로 어느 쪽도 고르지 않는다.
     private(set) var conflict: String?
     private(set) var toast: String?
@@ -80,10 +94,10 @@ final class TripDocumentStore {
             guard request == loadGeneration, requestedRevision == revision, !isSaving else { return false }
             apply(snapshot)
             loadedAt = snapshot.cachedAt == nil ? Date() : nil
-            errorMessage = nil
+            loadErrorMessage = nil
         } catch {
             guard request == loadGeneration, requestedRevision == revision, !isSaving else { return false }
-            errorMessage = message(for: error)
+            loadErrorMessage = message(for: error)
         }
         return true
     }
@@ -97,19 +111,38 @@ final class TripDocumentStore {
     func dismissConflict() { conflict = nil }
     func clearToast() { toast = nil }
 
+    /// 저장 실패를 확인만 하고 닫는다. 실패한 변경은 버린다 — 화면은 이미 이전 일정이다.
+    func dismissSaveError() {
+        saveErrorMessage = nil
+        failedEdit = nil
+    }
+
+    /// 실패한 변경을 **지금 문서 위에** 다시 적용해 저장한다(새로고침이 아니다).
+    @discardableResult
+    func retryFailedSave() async -> Bool {
+        guard canRetrySave, let failedEdit else { return false }
+        return await edit(failedEdit.toast, failedEdit.change)
+    }
+
     // MARK: 편집 — 전부 "문서를 고치고 저장한다" 한 갈래로 지나간다
 
     /// 고치고 → 화면에 먼저 반영하고 → 저장한다. 실패하면 **서버가 아는 상태로 되돌린다** —
     /// 저장되지 않은 것이 저장된 것처럼 남아 있으면 다음 편집이 그 위에 쌓인다.
     @discardableResult
-    func edit(_ successToast: String?, expectedRevision: Int? = nil, _ change: (inout TripDocument) -> Void) async -> Bool {
-        guard !isSaving else { return false }
+    func edit(_ successToast: String?, expectedRevision: Int? = nil, _ change: @escaping (inout TripDocument) -> Void) async -> Bool {
+        guard !isSaving else {
+            // 앞 저장이 끝나기 전의 편집을 **말없이** 버리지 않는다 — 화면이 되돌아가는 이유를 말한다.
+            toast = "앞선 변경을 저장하는 중이에요. 잠시 뒤 다시 해 주세요."
+            return false
+        }
         if let expectedRevision, expectedRevision != revision {
-            errorMessage = "편집하는 동안 일정이 바뀌었어요. 입력은 남아 있어요. 닫고 최신 일정에서 다시 선택해 주세요."
+            saveErrorMessage = "편집하는 동안 일정이 바뀌었어요. 입력은 남아 있어요. 닫고 최신 일정에서 다시 선택해 주세요."
+            failedEdit = nil
             return false
         }
         guard canEdit, let current = document else {
-            errorMessage = "이 일정을 바꿀 수 없어요. 권한과 연결 상태를 확인해 주세요."
+            saveErrorMessage = "이 일정을 바꿀 수 없어요. 권한과 연결 상태를 확인해 주세요."
+            failedEdit = nil
             return false
         }
         guard conflict == nil else { return false }
@@ -124,7 +157,8 @@ final class TripDocumentStore {
             apply(try await service.saveDocument(tripId: tripId, document: edited, expectedRevision: revision))
             undoDocument = current
             undoRevision = revision
-            errorMessage = nil
+            saveErrorMessage = nil
+            failedEdit = nil
             toast = successToast
             // 저장 완료를 계산 대기에 묶지 않고, 현재 일자의 로딩도 다시 끝나게 한다.
             onSaved?()
@@ -133,12 +167,15 @@ final class TripDocumentStore {
             document = current
             if case .revisionConflict(let message, _) = error {
                 conflict = message
+                failedEdit = nil
             } else {
-                errorMessage = message(for: error)
+                saveErrorMessage = message(for: error)
+                failedEdit = (successToast, revision, change)
             }
         } catch {
             document = current
-            errorMessage = message(for: error)
+            saveErrorMessage = message(for: error)
+            failedEdit = (successToast, revision, change)
         }
         return false
     }
@@ -148,7 +185,8 @@ final class TripDocumentStore {
     @discardableResult
     func savePreparedDocument(_ draft: TripDocument, expectedRevision: Int, message: String) async -> Bool {
         guard revision == expectedRevision else {
-            errorMessage = "미리보기를 연 뒤 일정이 바뀌었어요. 닫고 최신 일정에서 다시 선택해 주세요."
+            saveErrorMessage = "미리보기를 연 뒤 일정이 바뀌었어요. 닫고 최신 일정에서 다시 선택해 주세요."
+            failedEdit = nil
             return false
         }
         return await edit(message) { $0 = draft }
@@ -175,7 +213,7 @@ final class TripDocumentStore {
     }
 
     /// 화면이 실패를 알린 뒤 남길 문구. 저장 자체와 무관한 실패(후보 표시 복구 등)에 쓴다.
-    func report(_ message: String) { errorMessage = message }
+    func report(_ message: String) { saveErrorMessage = message; failedEdit = nil }
 
     // MARK: 반영
 

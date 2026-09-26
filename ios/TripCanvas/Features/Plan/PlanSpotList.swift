@@ -91,21 +91,6 @@ struct PlanSpotList: View {
                     .moveDisabled(!model.canEdit)
                     // 반납은 장소 뒤, 숙소 복귀 앞 — 웹 일자 카드와 같은 순서다.
                     ForEach(model.planDay?.carReturns ?? [], id: \.bookingId) { carEventRow($0) }
-                    if model.canEdit && !day.spots.isEmpty && !isEditing {
-                        // 왼쪽 정렬 텍스트 동작(시안). 검색이 먼저다 — 좌표가 있어야 동선·ETA·지도에 들어간다.
-                        Menu {
-                            Button { actions.addAfter(nil) } label: { Label("검색해서 담기", systemImage: "magnifyingglass") }
-                            Button { actions.createSpot() } label: { Label("직접 입력", systemImage: "square.and.pencil") }
-                        } label: {
-                            Label("장소 추가", systemImage: "plus")
-                                .font(.body.weight(.semibold))
-                                .foregroundStyle(Ink.accent)
-                                .frame(maxWidth: .infinity, minHeight: 48, alignment: .center)
-                                .contentShape(Rectangle())
-                        }
-                        .listRowBackground(Ink.raised)
-                        .listRowSeparator(.visible, edges: .top)
-                    }
                 } footer: {
                     if model.documentCachedAt != nil {
                         Text("연결되면 최신 일정을 불러와 편집할 수 있어요.")
@@ -130,6 +115,23 @@ struct PlanSpotList: View {
                     Section {
                         backRow(back)
                             .listRowSeparator(.hidden)
+                    }
+                }
+                // ① 장소 추가는 **목록 맨 아래 한 곳**이다 — 빈 날에도 같은 자리에 있다(2026-09-27 시안).
+                //    누르면 방법(검색·직접 입력)을 고른다. 검색이 먼저다 — 좌표가 있어야 동선·ETA·지도에 들어간다.
+                if model.canEdit && !isEditing && !choosingPlaces {
+                    Section {
+                        Button { actions.addAfter(nil) } label: {
+                            Label("장소 추가", systemImage: "plus")
+                                .font(.body.weight(.semibold))
+                                .foregroundStyle(Ink.accent)
+                                .frame(maxWidth: .infinity, minHeight: 54)
+                                .background(Ink.accent.opacity(0.1), in: RoundedRectangle(cornerRadius: 16))
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .listRowInsets(EdgeInsets())
+                        .listRowBackground(Color.clear)
                     }
                 }
             }
@@ -272,19 +274,26 @@ struct PlanSpotList: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
             if model.canEdit {
-                // 방금 만든 여행이면 **누를 것을 화면에 둔다.** 처음 온 사람에게
-                // "오른쪽 위 ＋를 누르세요"는 한 번 더 찾게 만드는 말이다.
+                // **누를 것을 화면에 둔다** — 빈 날이면 여행이 비었든 아니든 같다.
+                // (예전 문구 "오른쪽 위 ＋"는 실제로는 ⋯ 메뉴라 없는 버튼을 가리켰다 — 2026-09-27 UX 검토)
                 if model.tripIsEmpty {
                     Text("어디부터 가볼까요?").font(.subheadline.weight(.semibold))
-                    Button { actions.addAfter(nil) } label: {
+                }
+                // 처음 만든 여행이면 이게 이 화면의 주 동작이다. 아니면 아래 '장소 추가'가 있으니 가볍게 둔다.
+                if model.tripIsEmpty {
+                    Button { actions.searchSpot() } label: {
                         Label("장소 검색해서 담기", systemImage: "magnifyingglass")
-                            .frame(maxWidth: .infinity)
+                            .frame(maxWidth: .infinity, minHeight: 44)
                     }
                     .buttonStyle(.borderedProminent)
                 } else {
-                    Text("오른쪽 위 ＋로 검색해서 담거나, 일행과 골라 둔 곳에서 가져옵니다.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    Button { actions.searchSpot() } label: {
+                        Label("장소 검색해서 담기", systemImage: "magnifyingglass")
+                            .font(.subheadline.weight(.semibold))
+                            .frame(minHeight: 44)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Ink.accent)
                 }
                 NavigationLink { CandidateBoardView(trip: trip) } label: {
                     Label("가고 싶은 곳에서 가져오기", systemImage: "mappin.and.ellipse")
