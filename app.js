@@ -1598,9 +1598,11 @@ function revealDayCard(di){
   const sb=document.getElementById('sidebar'); if(!sb) return;
   const card=sb.querySelectorAll('.dayCard')[di]; if(!card) return;
   if(sb.dataset.snap==='collapsed') setSheetSnap('half');
-  const handle=window.matchMedia('(max-width: 760px)').matches? 40 : 8;   // 모바일 시트 손잡이만큼 띄운다
+  const mq=(/** @type {string} */q)=>typeof window.matchMedia==='function'&&window.matchMedia(q).matches;
+  const handle=mq('(max-width: 760px)')? 40 : 8;   // 모바일 시트 손잡이만큼 띄운다
   const top=sb.scrollTop+card.getBoundingClientRect().top-sb.getBoundingClientRect().top-handle;
-  sb.scrollTo({top:Math.max(0,top),behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});
+  if(typeof sb.scrollTo==='function') sb.scrollTo({top:Math.max(0,top),behavior:mq('(prefers-reduced-motion: reduce)')?'auto':'smooth'});
+  else sb.scrollTop=Math.max(0,top);
 }
 /** 그 날의 좌표 있는 장소가 다 보이게 — 두 컨트롤이 같은 프레이밍을 쓴다. @param {number} di */
 function fitDay(di){
@@ -1835,8 +1837,9 @@ function renderSidebar(){
       const warns=[];
       if(showConflict) warns.push(`이동상 ${natTxt}에야 도착해요 — 고정 ${esc(s.at)}. 앞 일정을 줄이거나 이 시각을 늦추세요`);
       if(bookWarn) warns.push(`도착 예상 ${hm(etas[si])} — 예약 ${esc(s.bookAt)}보다 늦어요`);
-      if(warns.length) meta.unshift(...warns.map(w=>`<span class="spotMetaItem spotWarn" role="note">${ic('warn')} ${w}</span>`));
-      const metaHtml=meta.length?`<div class="spotMeta">${meta.join(' ')}</div>`:'';
+      // 경고는 메타 칩이 아니라 **자기 줄**이다 — 문장이라 줄바꿈이 필요하고, 메타 칩은 한 줄 규칙을 지킨다.
+      const warnHtml=warns.length?`<div class="spotWarn" role="note">${warns.map(w=>`<span>${ic('warn')} ${w}</span>`).join('')}</div>`:'';
+      const metaHtml=warnHtml+(meta.length?`<div class="spotMeta">${meta.join(' ')}</div>`:'');
       const splitCls=s.split? ' inSplit':'';
       spotsHtml+=`<div class="spot${splitCls}${s.reunion?' isReunion':''}" data-di="${di}" data-si="${si}"${s.split?` data-split="${escAttr(s.split)}"`:''} style="--c:${dotC}">
         <div class="spotMain">
@@ -6201,6 +6204,16 @@ document.addEventListener('click',e=>{
   if(!confirm('입력한 내용을 버릴까요? 저장하지 않은 변경이 사라져요.')){ e.preventDefault(); e.stopImmediatePropagation(); }
 },true);
 
+/** 툴팁(title)을 버튼의 이름으로 써도 되는가. 보이는 글자가 이름이어야 한다(음성 제어는 보이는 글자로 찾는다) —
+ *  기호뿐인 버튼(⋮·✕)이거나, 보이는 글자가 툴팁을 그대로 담고 있을 때(ⓘ 장소 정보 → '장소 정보')만 쓴다.
+ *  툴팁이 긴 설명이면('이 날 맨 뒤에 넣습니다…') 보이는 글자('＋ 장소 추가')가 이름으로 남는다(2026-09-27 UX 검토).
+ *  @param {HTMLElement} el @returns {boolean} */
+function buttonNameFromTitle(el){
+  const text=(el.textContent||'').replace(/\s+/g,' ').trim();
+  if(text.replace(/\s/g,'').length<=2) return true;
+  return text.includes(el.title.trim());
+}
+
 // ───────────────── 키보드·보조기술 접근성 ─────────────────
 function initAccessibility(){
   const returnFocus=new WeakMap();
@@ -6224,9 +6237,7 @@ function initAccessibility(){
         const title=modal.querySelector('h1,h2,h3');
         if(title){ if(!title.id) title.id=el.id+'Title'; modal.setAttribute('aria-labelledby',title.id); }
         el.setAttribute('aria-hidden',el.classList.contains('show')?'false':'true');
-      }else if(el.matches&&el.matches('button')&&el.title&&!el.getAttribute('aria-label')&&(el.textContent||'').replace(/\s/g,'').length<=2){
-        // 글자가 보이는 버튼은 **그 글자가 이름이다** — 툴팁을 이름으로 덮으면 음성 제어가 '＋ 장소 추가'로 찾지 못한다.
-        // 기호뿐인 버튼(⋮·✕·↑)만 툴팁을 이름으로 쓴다(2026-09-27 UX 검토).
+      }else if(el.matches&&el.matches('button')&&el.title&&!el.getAttribute('aria-label')&&buttonNameFromTitle(el)){
         el.setAttribute('aria-label',el.title);
       }else if(el.hasAttribute&&el.hasAttribute('onclick')&&!el.matches('button,a,input,select,textarea')){
         el.setAttribute('role','button'); if(!el.hasAttribute('tabindex')) el.tabIndex=0;
