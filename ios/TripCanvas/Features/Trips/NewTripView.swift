@@ -33,6 +33,8 @@ struct NewTripView: View {
     let onCreate: (NewTripDraft) async -> String?
 
     @Environment(\.dismiss) private var dismiss
+    @State private var startInvalid = false
+    @State private var endInvalid = false
     @State private var isSaving = false
     @State private var errorMessage: String?
 
@@ -58,14 +60,14 @@ struct NewTripView: View {
                     // 시작일·종료일 — 숫자로 쳐도 되고 달력을 눌러도 된다. 기간은 둘에서 나온다.
                     DateEntryField(title: "시작일", text: Binding(
                         get: { ISODateText.text(from: form.start) },
-                        set: { iso in if let date = ISODateText.date(from: iso) { form.start = date } }))
+                        set: { iso in if let date = ISODateText.date(from: iso) { form.start = date } }), invalid: $startInvalid)
                     DateEntryField(title: "종료일", text: Binding(
                         get: { ISODateText.text(from: endDate) },
                         set: { iso in
                             guard let date = ISODateText.date(from: iso) else { return }
                             let days = (ISODateText.calendar.dateComponents([.day], from: form.start, to: date).day ?? 0) + 1
                             form.dayCount = min(NewTripDraft.maxDays, max(1, days))
-                        }), fallback: { endDate })
+                        }), fallback: { endDate }, invalid: $endInvalid)
                     LabeledContent("기간", value: "\(form.dayCount)일 · \(rangeText)")
                 }
 
@@ -91,7 +93,7 @@ struct NewTripView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     if isSaving { ProgressView() } else {
-                        Button("만들기") { Task { await create() } }.disabled(!draft.isValid)
+                        Button("만들기") { Task { await create() } }.disabled(!draft.isValid || startInvalid || endInvalid)
                     }
                 }
             }

@@ -285,7 +285,7 @@ struct PlanSpotList: View {
                         Label("장소 검색해서 담기", systemImage: "magnifyingglass")
                             .frame(maxWidth: .infinity, minHeight: 44)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .prominentButton()
                 } else {
                     Button { actions.searchSpot() } label: {
                         Label("장소 검색해서 담기", systemImage: "magnifyingglass")

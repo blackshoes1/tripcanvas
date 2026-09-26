@@ -413,7 +413,7 @@ private struct SaveFailureBanner: View {
             HStack(spacing: Space.m) {
                 if canRetry {
                     Button("같은 변경 다시 저장", action: onRetry)
-                        .buttonStyle(.borderedProminent)
+                        .prominentButton()
                 }
                 Button("닫기", action: onDismiss)
                     .buttonStyle(.bordered)

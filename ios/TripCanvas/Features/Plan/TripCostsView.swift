@@ -299,7 +299,7 @@ struct TripCostsView: View {
                     Label("오늘 쓴 돈 적기", systemImage: "plus.circle.fill")
                         .frame(maxWidth: .infinity, minHeight: 44)
                 }
-                .buttonStyle(.borderedProminent)
+                .prominentButton()
             }
         } footer: {
             Text("합계는 장소 비용·추가 비용·교통비만 셉니다. 날짜별 줄에는 숙박·렌터카 예약의 그날 몫도 더해 보여요(웹 일자 카드와 같아요). 예약 전액은 예약 결제 금액에 있어요.")
@@ -338,7 +338,7 @@ struct TripCostsView: View {
                         if day.index == todayIndex {
                             Text("오늘").font(.caption2.weight(.bold))
                                 .padding(.horizontal, 5).padding(.vertical, 1)
-                                .background(Ink.accent, in: Capsule()).foregroundStyle(.white)
+                                .background(Ink.accent, in: Capsule()).foregroundStyle(Ink.onAccent)
                         }
                         Spacer()
                         // 웹 일자 카드의 "하루 비용"과 같은 값 — 장소·추가 비용·교통 + 예약 하루치.

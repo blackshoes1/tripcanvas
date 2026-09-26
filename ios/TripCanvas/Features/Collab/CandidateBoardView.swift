@@ -437,7 +437,7 @@ struct CandidateCard: View {
                     case "SCHEDULED":
                         Button("후보로 되돌리기", action: onUnschedule).font(.caption).buttonStyle(.bordered).controlSize(.small)
                     default:
-                        Button("일정에 넣기", action: onSchedule).font(.caption).buttonStyle(.borderedProminent).controlSize(.small)
+                        Button("일정에 넣기", action: onSchedule).font(.caption).prominentButton().controlSize(.small)
                     }
                 }
                 if CollabModel.canRemoveCandidate(role, mine: candidate.mine) {

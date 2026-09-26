@@ -898,7 +898,19 @@ function legModeBtn(day,di,si,lm){
 }
 // normHM·sortDayByTime은 lib.js가 단일 소스 (Next 편집기와 공유)
 document.addEventListener('input',e=>{const t=e.target;if(t&&t.classList&&t.classList.contains('timeIn'))t.value=t.value.replace(/[^\d:]/g,'').slice(0,5);});
-document.addEventListener('blur',e=>{const t=e.target;if(t&&t.classList&&t.classList.contains('timeIn')&&t.value.trim()!=='')t.value=normHM(t.value);},true);
+// 시각 칸: 읽을 수 있으면 HH:MM으로 맞추고, **못 읽으면 친 그대로 두고 칸에 표시한다.**
+// 예전에는 25:00을 치고 칸을 떠나면 조용히 빈칸이 되어, 약속 시각을 넣었다고 믿은 채 저장됐다(2026-09-27 UX 검토).
+document.addEventListener('input',e=>{const t=e.target;if(t&&t.classList&&t.classList.contains('timeIn'))t.removeAttribute('aria-invalid');});
+document.addEventListener('blur',e=>{const t=e.target;if(!(t&&t.classList&&t.classList.contains('timeIn')))return;
+  if(t.value.trim()===''){t.removeAttribute('aria-invalid');return;}
+  const n=normHM(t.value); if(n){t.value=n;t.removeAttribute('aria-invalid');} else t.setAttribute('aria-invalid','true');},true);
+/** 저장 전에 못 읽는 시각이 남아 있는지 — 있으면 그 칸으로 보내고 이유를 말한다(빈 값으로 저장하지 않는다). */
+function badTimeField(root){
+  for(const t of root.querySelectorAll('.timeIn')){
+    if(t.value.trim()!==''&&!normHM(t.value)){ t.setAttribute('aria-invalid','true'); t.focus(); return t; }
+  }
+  return null;
+}
 function planDepartISO(isoDate,localMinutes,timeZone){
   const minutes=typeof localMinutes==='number'?localMinutes:parseHM(localMinutes||'09:00');
   const iso=zonedMinutesToISOString(isoDate,minutes,timeZone||'');
@@ -2223,7 +2235,11 @@ document.getElementById('spotSave').onclick=()=>{
   const name=document.getElementById('spotName').value.trim();
   const lat=parseFloat(document.getElementById('spotLat').value), lng=parseFloat(document.getElementById('spotLng').value);
   if(!name){toast('이름을 입력하세요','#b4342a');return;}
-  if(isNaN(lat)||isNaN(lng)){toast('위치를 지정하세요 (검색 또는 지도 클릭)','#b4342a');return;}
+  if(badTimeField(document.getElementById('spotModalBg'))){toast('시각을 확인해 주세요 — 00:00부터 23:59까지 (예: 19:00)','#b4342a');return;}
+  // 위치 없이 이미 일정에 있는 장소(붙여넣기에서 위치를 못 찾은 곳 등)는 위치 없이도 고쳐 저장한다 —
+  // 위치를 정하기 전까지 체류 시간 하나도 못 고치면 안 된다. 새 장소는 여전히 위치를 먼저 정한다.
+  const editingPlaceless=editing&&editing.si>=0&&!hasLoc(trip().days[editing.di]?.spots[editing.si]||{});
+  if((isNaN(lat)||isNaN(lng))&&!editingPlaceless){toast('위치를 지정하세요 (검색 또는 지도 클릭)','#b4342a');return;}
   const curV=document.getElementById('spotCur').value;
   const costText=document.getElementById('spotCost').value;
   const costV=parseCostAmount(costText,curV);
@@ -2253,7 +2269,7 @@ document.getElementById('spotSave').onclick=()=>{
     cat:(document.getElementById('spotCat').value||undefined),           // 미지정이면 이름 추론에 맡긴다
     who:pickedWho(),                                                     // 비었으면 모두(§26)
     admission,                                                           // 명소 예약요건 — 아무 말도 없으면 undefined
-    hours:_pickedHours||undefined,lat,lng};
+    hours:_pickedHours||undefined,lat:isNaN(lat)?undefined:lat,lng:isNaN(lng)?undefined:lng};
   const targetDay=parseInt(document.getElementById('spotDay').value);
   applySpotPriority(s, document.getElementById('spotPriority').value);   // 기본값(보통)은 저장하지 않는다
   const isEdit=editing.si>=0;
@@ -3270,7 +3286,7 @@ window.openBookingModal=(id)=>{
   document.getElementById('bkCarIns').value=(b&&b.insurance)||'';
   document.getElementById('bkFreeCancel').checked=!!(b&&(b.refundable!==undefined? b.refundable : b.freeCancelUntil));
   document.getElementById('bkFreeUntil').value=(b&&b.freeCancelUntil)||'';
-  document.getElementById('bkFee').value=(b&&b.cancelFee)?fmtMoney(b.cancelFee):'';
+  document.getElementById('bkFee').value=(b&&b.cancelFee)?fmtMoney(b.cancelFee,b.cur):'';
   document.getElementById('bkUrl').value=(b&&b.url)||'';
   document.getElementById('bkTrack').checked=b?b.track!==false:true;
   toggleBkFields();
@@ -3414,11 +3430,25 @@ document.getElementById('bkSpot').onchange=()=>{
     if(!en.value){ const d=new Date(iso+'T00:00:00'); d.setDate(d.getDate()+stayNights(o.s)); en.value=toISO(d); }
   }
   if(o.s.cur) document.getElementById('bkCur').value=o.s.cur;
-  if(o.s.cost&&!document.getElementById('bkPrice').value) document.getElementById('bkPrice').value=fmtMoney(o.s.cost);
+  if(o.s.cost&&!document.getElementById('bkPrice').value) document.getElementById('bkPrice').value=fmtMoney(o.s.cost,o.s.cur);
 };
-['bkPrice','bkFee'].forEach(id=>document.getElementById(id).addEventListener('input',function(){
-  const d=this.value.replace(/[^\d]/g,''); this.value=d?(+d).toLocaleString('en-US'):'';
-}));
+// 금액 칸: 치는 동안에는 **고치지 않는다**(숫자·점·쉼표만 남긴다). 예전에는 치는 즉시 숫자 외를 지우고
+// 천 단위로 다시 써서 EUR 12.50이 1,250이 됐다(2026-09-27 UX 검토). 서식은 칸을 떠날 때,
+// 그 통화의 규칙(`parseCostAmount`)을 지날 때만 입힌다 — 못 지나면 친 그대로 두고 칸에 표시한다.
+['bkPrice','bkFee'].forEach(id=>{
+  const el=document.getElementById(id);
+  el.addEventListener('input',function(){ const v=this.value.replace(/[^\d.,]/g,''); if(v!==this.value) this.value=v; this.removeAttribute('aria-invalid'); });
+  el.addEventListener('blur',function(){ formatMoneyField(this); });
+});
+function formatMoneyField(el){
+  const raw=el.value.trim(); if(!raw){ el.removeAttribute('aria-invalid'); return; }
+  const cur=document.getElementById('bkCur').value;
+  const plain=raw.replace(/,/g,'');
+  const amount=/^\d+(\.\d{1,2})?$/.test(plain)? parseCostAmount(plain,cur) : null;
+  if(amount===null){ el.setAttribute('aria-invalid','true'); return; }
+  el.removeAttribute('aria-invalid'); el.value=fmtMoney(amount,cur);
+}
+document.getElementById('bkCur').addEventListener('change',()=>{ ['bkPrice','bkFee'].forEach(id=>formatMoneyField(document.getElementById(id))); });
 document.getElementById('bkCancel').onclick=()=>document.getElementById('bookingModalBg').classList.remove('show');
 // 예약이 아닌 결제 항목(보험·유심·입장권…) — 여행 단위 비용(trip.costItems)에 저장한다. 하루 추가 비용과 같은 모양
 function saveCostItem(kind){
@@ -3470,7 +3500,10 @@ document.getElementById('bkSave').onclick=()=>{
   const isNew=!editingBooking;
   const b=isNew? {id:uid(), createdAt:new Date().toISOString()} : bookingOf(editingBooking);
   if(!b) return;
-  const fee=parseInt(document.getElementById('bkFee').value.replace(/[^\d]/g,''));
+  // 취소 수수료도 예약 가격과 같은 통화 규칙으로 읽는다 — 숫자만 뽑으면 12.50이 1250이 된다.
+  const feeText=document.getElementById('bkFee').value.trim();
+  const fee=feeText? parseCostAmount(feeText, document.getElementById('bkCur').value) : null;
+  if(feeText&&fee===null){ toast('취소 수수료를 확인해 주세요 — 원·엔은 정수, 달러·유로·위안은 소수 둘째 자리까지','#b4342a'); document.getElementById('bkFee').focus(); return; }
   const paidOn=document.getElementById('bkPaidOn').value;
   const identityChanged = b.start!==(sv||undefined)||b.end!==(ev||undefined)||b.title!==title;
   commit(()=>{
@@ -4938,7 +4971,7 @@ function authCreds(){
   const email=document.getElementById('authEmail').value.trim();
   const password=document.getElementById('authPass').value;
   if(!/.+@.+\..+/.test(email)){ toast('이메일을 확인해줘','#b4342a'); return null; }
-  if((password||'').length<6){ toast('비밀번호는 6자 이상','#b4342a'); return null; }
+  if((password||'').length<8){ toast('비밀번호는 8자 이상이어야 해요','#b4342a'); return null; }
   return {email, password};
 }
 /**
@@ -5015,7 +5048,7 @@ function openResetModal(){
 document.getElementById('resetCancel').onclick=()=>{ pendingResetToken=''; document.getElementById('resetModalBg').classList.remove('show'); };
 document.getElementById('resetSubmit').onclick=async()=>{
   const pw=document.getElementById('resetPass').value;
-  if((pw||'').length<6){ toast('비밀번호는 6자 이상','#b4342a'); return; }
+  if((pw||'').length<8){ toast('비밀번호는 8자 이상이어야 해요','#b4342a'); return; }
   if(!pendingResetToken){ toast('링크가 올바르지 않아 — 재설정을 다시 요청해줘','#b4342a'); return; }
   const btn=document.getElementById('resetSubmit'); btn.disabled=true; btn.textContent='바꾸는 중…';
   const {error}=await TC_AUTH.resetPassword(pendingResetToken,pw);
@@ -6090,6 +6123,14 @@ function updateSaveState(){
 // ───────────────── 키보드·보조기술 접근성 ─────────────────
 function initAccessibility(){
   const returnFocus=new WeakMap();
+  // 열린 순서. 예약 목록 위에 결제 편집기를 열면 둘 다 열려 있다 — Esc·Tab은 **맨 위의 것**에만 간다.
+  // 예전에는 DOM에서 처음 찾은 것을 잡아 Esc 한 번에 뒤의 목록이 닫히고 포커스가 배경으로 갔다(2026-09-27 UX 검토).
+  const modalStack=[];
+  const topModal=()=>{ for(let i=modalStack.length-1;i>=0;i--){ if(modalStack[i].classList.contains('show')) return modalStack[i]; } return document.querySelector('.modalBg.show'); };
+  const syncModalInert=()=>{
+    const top=topModal();
+    document.querySelectorAll('.modalBg').forEach(m=>{ if(m.classList.contains('show')&&m!==top) m.setAttribute('inert',''); else m.removeAttribute('inert'); });
+  };
   const focusable='button:not([disabled]),[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
   function enhance(root){
     const nodes=[];
@@ -6118,6 +6159,11 @@ function initAccessibility(){
     if(change.type==='childList') change.addedNodes.forEach(enhance);
     if(change.type==='attributes'){
       const bg=change.target; enhance(bg);
+      if(bg.classList.contains('modalBg')){
+        const at=modalStack.indexOf(bg); if(at>=0) modalStack.splice(at,1);
+        if(bg.classList.contains('show')) modalStack.push(bg);
+        syncModalInert();
+      }
       if(bg.classList.contains('show')){
         if(!returnFocus.has(bg)){
           const active=document.activeElement;
@@ -6135,10 +6181,21 @@ function initAccessibility(){
     const target=e.target;
     if((e.key==='Enter'||e.key===' ')&&target.matches('[role="button"]:not(button)')){ e.preventDefault(); target.click(); return; }
     const onboarding=document.getElementById('onboarding');
-    const bg=!onboarding.hidden?onboarding:document.querySelector('.modalBg.show'); if(!bg) return;
+    // 여행 모드는 모달이 아니지만 화면 전체를 덮는다 — Tab이 가려진 뒤 화면으로 새지 않고, Esc로 닫힌다.
+    const travel=document.getElementById('travel');
+    const bg=!onboarding.hidden?onboarding:(topModal()||(travel&&travel.classList.contains('show')?travel:null));
+    if(!bg){
+      // ☰ 메뉴도 Esc로 닫는다 — 닫으면 연 버튼으로 돌아간다
+      const menu=document.getElementById('hdrMenu');
+      if(e.key==='Escape'&&menu&&menu.classList.contains('open')){ e.preventDefault(); menu.classList.remove('open'); document.getElementById('moreBtn')?.focus(); }
+      return;
+    }
     if(bg===onboarding && e.key==='Escape'){ e.preventDefault(); dismissOnboarding(); return; }
     if(e.key==='Escape'&&bg.id!=='syncConflictBg'){
-      e.preventDefault(); const close=bg.querySelector('[id$="Cancel"],[id$="Close"]'); if(close) close.click(); else bg.classList.remove('show'); return;
+      // 닫기는 버튼만 찾는다 — '무료 취소' 체크박스(bkFreeCancel)도 id가 Cancel로 끝난다
+      e.preventDefault(); const close=bg.querySelector('button[id$="Cancel"],button[id$="Close"]'); if(close) close.click(); else bg.classList.remove('show');
+      if(bg===travel) document.getElementById('travelBtn')?.focus();
+      return;
     }
     if(e.key!=='Tab') return;
     const items=Array.from(bg.querySelectorAll(focusable)).filter(el=>el.getClientRects().length && !el.closest('[hidden],[inert]')); if(!items.length){ e.preventDefault(); return; }

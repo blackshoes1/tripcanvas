@@ -127,9 +127,10 @@ test('#reset= 링크로 새 비밀번호를 정하고, 토큰은 주소창에 �
   await expect(page.locator('#resetModalBg')).toHaveClass(/show/);
   expect(await page.evaluate(()=>location.hash)).toBe('');   // 토큰을 기록에 남기지 않는다
 
-  await page.locator('#resetPass').fill('12345');
+  // 서버(better-auth)의 최소 길이와 같은 8자 — 7자는 서버까지 가지 않는다(예전 웹은 6자라 6~7자가 서버에서 엉뚱하게 막혔다)
+  await page.locator('#resetPass').fill('1234567');
   await page.locator('#resetSubmit').click();
-  await expect(page.locator('#toast')).toContainText('6자 이상');   // 짧으면 서버까지 가지 않는다
+  await expect(page.locator('#toast')).toContainText('8자 이상');
   expect(await page.evaluate(()=>window.__calls.filter(c=>c[0]==='/api/auth/reset-password').length)).toBe(0);
 
   await page.locator('#resetPass').fill('newpw123456');
