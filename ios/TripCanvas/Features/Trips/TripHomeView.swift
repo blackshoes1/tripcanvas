@@ -102,6 +102,19 @@ struct TripHomeView: View {
             }
         }
         .onChange(of: requested) { _, value in tab = value }
+        // 예약 상세의 '일정 N일차에서 수정'·'비용에서 수정' — 날짜·항목을 다시 찾게 하지 않는다(2026-09-27 UX 검토).
+        .onChange(of: models.sourceRequest) { _, request in
+            guard let request else { return }
+            models.sourceRequest = nil
+            switch request {
+            case .planDay(let day):
+                panel = nil
+                models.plan.selectedDay = day
+                tab = .plan
+            case .costs:
+                panel = .costs
+            }
+        }
         // 여행을 보는 동안 실시간에 붙어 있는다 — 일행이 일정을 고치면 `지금`·`일정`이 그 자리에서 바뀐다.
         // 전에는 '가고 싶은 곳' 보드가 열렸을 때만 붙어서, 다른 탭에서는 아무 일도 일어나지 않았다(2026-09-20).
         .task(id: trip.id) { startLive() }
@@ -215,6 +228,9 @@ final class TripScreenModels {
     let collab: CollabViewModel
     let candidateBoard: CandidateBoardViewModel
     private let tripId: String
+    /// 다른 화면(예약 상세 등)이 '원본에서 고치기'를 부탁하는 자리. 여행 화면이 받아서 시트를 닫고 그곳을 연다.
+    enum SourceRequest: Equatable { case planDay(Int), costs }
+    var sourceRequest: SourceRequest?
 
     init(trip: TripSummary, env: AppEnvironment) {
         today = TodayViewModel(trip: trip, service: env.service)

@@ -475,6 +475,9 @@ struct PickChip: View {
                 .padding(.vertical, Space.xs + 2)
                 .background(isOn ? Ink.accent.opacity(0.18) : Color(.tertiarySystemFill), in: Capsule())
                 .foregroundStyle(isOn ? Ink.accent : .primary)
+                // 겉모양은 그대로 두고 **누르는 칸만** 44pt — 칩이 줄지어 있어 옆 칩을 잘못 누르기 쉽다.
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(isOn ? [.isSelected] : [])

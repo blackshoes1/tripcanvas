@@ -5375,7 +5375,7 @@ document.getElementById('membersLeave').onclick=()=>{
 // 아직 일정이 아닌 '가고 싶은 곳'. 판정(집계·묶음·권한)은 전부 collab.js에 있고 여기는 배선·표시만 한다.
 // 후보와 반응은 여행 문서가 아니라 제 테이블에 산다 — 넷이 동시에 하트를 눌러도 리비전 CAS가 서로를 걷어차지 않는다.
 // 펼친 카드의 코멘트·쓰다 만 글 — 카드는 매번 다시 그려지므로(실시간 갱신 포함) 상태를 따로 든다
-let candOpen=new Set(), candComments={}, candDraft={};
+let candOpen=new Set(), candComments={}, candDraft={}, candCommentErr=new Set();
 
 function openCandidates(seed){
   if(typeof seed?.title!=='string') seed=null; // onclick은 MouseEvent를 전달한다.
@@ -5592,8 +5592,14 @@ function commentsPanel(c,role){
   const k=String(c.id), box=document.createElement('div'); box.className='candComments';
   const rows=candComments[k];
   const hint=(t)=>{ const h=document.createElement('div'); h.className='hint'; h.textContent=t; box.appendChild(h); };
-  if(rows==null) hint('불러오는 중…');
-  else if(!rows.length) hint('아직 한마디도 없어요. 왜 가고 싶은지, 언제가 좋을지 남겨 보세요.');
+  // 못 불러온 것과 한마디가 없는 것은 다르다 — 실패를 '없어요'로 말하면 일행의 의견이 사라진 줄 안다.
+  if(candCommentErr.has(k)){
+    const h=document.createElement('div'); h.className='hint'; h.textContent='한마디를 불러오지 못했어요. ';
+    const again=document.createElement('button'); again.type='button'; again.className='btn sm'; again.textContent='다시 불러오기';
+    again.onclick=()=>loadComments(c.id); h.appendChild(again); box.appendChild(h);
+  }
+  if(rows==null){ if(!candCommentErr.has(k)) hint('불러오는 중…'); }
+  else if(!rows.length){ if(!candCommentErr.has(k)) hint('아직 한마디도 없어요. 왜 가고 싶은지, 언제가 좋을지 남겨 보세요.'); }
   else rows.forEach(cm=>{
     const r=document.createElement('div'); r.className='commentRow';
     const n=document.createElement('span'); n.className='cn'; n.textContent=cm.mine?'나':(cm.author_label||'멤버');
@@ -5612,7 +5618,7 @@ function commentsPanel(c,role){
   inp.setAttribute('aria-label',`${c.title||'후보'}에 한마디`); inp.value=candDraft[k]||'';
   inp.oninput=()=>{ candDraft[k]=inp.value; };   // 실시간 갱신으로 다시 그려져도 쓰던 글이 남는다
   const send=document.createElement('button'); send.type='submit'; send.className='btn primary'; send.textContent='남기기';
-  send.style.cssText='font-size:11.5px;padding:3px 10px;min-height:28px';
+  send.classList.add('sm');   // 크기는 CSS가 정한다(모바일에서는 44px) — 인라인으로 각자 만들지 않는다
   form.appendChild(inp); form.appendChild(send);
   form.onsubmit=(e)=>{ e.preventDefault(); addComment(c.id,inp.value); };
   box.appendChild(form);
@@ -5624,7 +5630,11 @@ async function loadComments(candId){
     const {data,error}=await TC_API.rpc('list_candidate_comments',{p_candidate_id:candId},candTripId);
     if(error) throw error;
     candComments[k]=(data||[]).filter(Boolean);
-  }catch(e){ reportOperationalError('collab.comments',e); candComments[k]=[]; }
+    candCommentErr.delete(k);
+  }catch(e){
+    // 이미 보던 한마디는 **지우지 않는다** — 실패 표시만 덧붙인다.
+    reportOperationalError('collab.comments',e); candCommentErr.add(k);
+  }
   drawCandidates();
 }
 async function addComment(candId,body){
@@ -6160,6 +6170,26 @@ function updateSaveState(){
   action.hidden=!callback; action.textContent=actionText; action.onclick=callback;
 }
 
+// ───────────────── 편집기 초안 보호 ─────────────────
+// 고친 편집기를 취소·Esc로 닫으면 **한 번 묻는다** — 긴 입력이 오조작 한 번에 사라지지 않게(2026-09-27 UX 검토).
+// 고친 게 없으면 묻지 않고 바로 닫는다. 연 순간의 입력값을 찍어 두고 취소 때 비교한다(저장 버튼은 건드리지 않는다).
+const DRAFT_GUARDED={spotModalBg:'spotCancel',dayModalBg:'dayCancel',tripModalBg:'tripCancel',bookingModalBg:'bkCancel'};
+const draftSnapshots=new WeakMap();
+function editorSnapshot(bg){
+  return Array.from(bg.querySelectorAll('input,select,textarea')).map(el=>el.type==='checkbox'||el.type==='radio'? (el.checked?'1':'0') : el.value).join('\u0001');
+}
+new MutationObserver(changes=>changes.forEach(c=>{
+  const bg=c.target; if(!DRAFT_GUARDED[bg.id]) return;
+  if(bg.classList.contains('show')&&!draftSnapshots.has(bg)) setTimeout(()=>{ if(bg.classList.contains('show')) draftSnapshots.set(bg,editorSnapshot(bg)); },120);
+  else if(!bg.classList.contains('show')) draftSnapshots.delete(bg);
+})).observe(document.body,{subtree:true,attributes:true,attributeFilter:['class']});
+document.addEventListener('click',e=>{
+  const btn=e.target.closest&&e.target.closest('button'); if(!btn) return;
+  const bg=btn.closest('.modalBg'); if(!bg||DRAFT_GUARDED[bg.id]!==btn.id) return;
+  const before=draftSnapshots.get(bg); if(before==null||before===editorSnapshot(bg)) return;
+  if(!confirm('입력한 내용을 버릴까요? 저장하지 않은 변경이 사라져요.')){ e.preventDefault(); e.stopImmediatePropagation(); }
+},true);
+
 // ───────────────── 키보드·보조기술 접근성 ─────────────────
 function initAccessibility(){
   const returnFocus=new WeakMap();
@@ -6183,7 +6213,9 @@ function initAccessibility(){
         const title=modal.querySelector('h1,h2,h3');
         if(title){ if(!title.id) title.id=el.id+'Title'; modal.setAttribute('aria-labelledby',title.id); }
         el.setAttribute('aria-hidden',el.classList.contains('show')?'false':'true');
-      }else if(el.matches&&el.matches('button')&&el.title&&!el.getAttribute('aria-label')){
+      }else if(el.matches&&el.matches('button')&&el.title&&!el.getAttribute('aria-label')&&(el.textContent||'').replace(/\s/g,'').length<=2){
+        // 글자가 보이는 버튼은 **그 글자가 이름이다** — 툴팁을 이름으로 덮으면 음성 제어가 '＋ 장소 추가'로 찾지 못한다.
+        // 기호뿐인 버튼(⋮·✕·↑)만 툴팁을 이름으로 쓴다(2026-09-27 UX 검토).
         el.setAttribute('aria-label',el.title);
       }else if(el.hasAttribute&&el.hasAttribute('onclick')&&!el.matches('button,a,input,select,textarea')){
         el.setAttribute('role','button'); if(!el.hasAttribute('tabindex')) el.tabIndex=0;
