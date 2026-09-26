@@ -1,13 +1,16 @@
 import sharp from 'sharp';
+import { z } from 'zod';
 
 import { ApiError } from '../../api/errors';
 import type { RequestContext } from '../../auth/types';
 import type { TripService } from './tripService';
+import { PlaceCoverSchema, type PlaceCover } from './coverSchema';
+export type { PlaceCover } from './coverSchema';
 
-export interface TripCover { revision: number; imageBase64: string | null }
+export interface TripCover { revision: number; imageBase64: string | null; placePhoto?: PlaceCover | null }
 export interface CoverRepository {
   get(tripId: string): Promise<TripCover>;
-  save(tripId: string, expectedRevision: number, imageBase64: string | null): Promise<TripCover | null>;
+  save(tripId: string, expectedRevision: number, imageBase64: string | null, placePhoto?: PlaceCover | null): Promise<TripCover | null>;
 }
 
 export class CoverService {
@@ -18,11 +21,21 @@ export class CoverService {
     return this.covers.get(view.record.id);
   }
 
-  async save(ctx: RequestContext, clientId: string, expected: number, image: string | null): Promise<TripCover> {
+  async save(ctx: RequestContext, clientId: string, expected: number, image: string | null, placePhoto: PlaceCover | null = null): Promise<TripCover> {
     const view = await this.trips.get(ctx, clientId);
     if (view.role !== 'OWNER' && view.role !== 'EDITOR') throw new ApiError('FORBIDDEN');
+    if (placePhoto) {
+      if (image !== null || !PlaceCoverSchema.safeParse(placePhoto).success) throw new ApiError('VALIDATION_ERROR');
+      const document = z.object({ days: z.array(z.object({ spots: z.array(z.object({
+        placeId: z.string().nullable().optional(), kakaoId: z.string().nullable().optional()
+      }).passthrough()) })) }).safeParse(view.record.data);
+      if (!document.success || !document.data.days.some(day => day.spots.some(spot =>
+        spot.placeId === placePhoto.placeId && !spot.kakaoId))) {
+        throw new ApiError('VALIDATION_ERROR', { message: '일정에 등록된 장소의 사진을 선택해 주세요.' });
+      }
+    }
     const jpeg = image === null ? null : await normalizeCover(image);
-    const saved = await this.covers.save(view.record.id, expected, jpeg);
+    const saved = await this.covers.save(view.record.id, expected, jpeg, placePhoto);
     if (!saved) throw new ApiError('STALE_VERSION', { message: '다른 기기에서 표지가 바뀌었어요. 최신 표지를 확인한 뒤 다시 저장해 주세요.' });
     return saved;
   }

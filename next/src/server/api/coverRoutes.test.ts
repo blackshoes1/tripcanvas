@@ -75,6 +75,29 @@ describe('공유 여행 표지 — 실제 DB 및 HTTP 경계', () => {
     expect((await save('a', 3)).status).toBe(404);
   });
 
+  it('일정 장소와 구도를 공유하고 업로드·초기화로 바꿀 때 이전 선택을 지운다', async () => {
+    const trip = await trips.create(identities.a, { id: 'place-cover', days: [{ spots: [{ name: '미술관', placeId: 'ChIJmuseum' }] }] });
+    await members.add({ tripId: trip.record.id, userId: identities.c.userId, role: 'VIEWER', displayName: null, invitedBy: identities.a.userId });
+    const placePhoto = { placeId: 'ChIJmuseum', zoom: 2.5, x: 0.2, y: 0.8 };
+    const put = (token: string, revision: number, photo: unknown, jpeg: string | null = null) =>
+      routes.put(request('PUT', token, { expectedRevision: revision, ...(jpeg ? { imageBase64: jpeg } : {}), placePhoto: photo }), 'place-cover');
+    expect((await routes.put(request('PUT', 'a', { expectedRevision: 0 }), 'place-cover')).status).toBe(400);
+    expect((await put('c', 0, placePhoto)).status).toBe(403);
+    expect((await put('a', 0, { ...placePhoto, placeId: 'elsewhere' })).status).toBe(400);
+    for (const invalid of [{ zoom: 5 }, { x: -0.1 }, { y: 1.1 }, { placeId: '../other' }]) {
+      expect((await put('a', 0, { ...placePhoto, ...invalid })).status).toBe(400);
+    }
+    expect((await put('a', 0, placePhoto, image)).status).toBe(400);
+    expect(await (await put('a', 0, placePhoto)).json()).toEqual({ revision: 1, imageBase64: null, placePhoto });
+    expect(await (await read('c', 'place-cover')).json()).toEqual({ revision: 1, imageBase64: null, placePhoto });
+    expect((await put('a', 0, placePhoto)).status).toBe(409);
+    const uploaded = await (await save('a', 1, image, 'place-cover')).json();
+    expect(uploaded.imageBase64).toBeTruthy();
+    expect(uploaded.placePhoto).toBeUndefined();
+    expect((await put('a', 2, placePhoto)).status).toBe(200);
+    expect(await (await save('a', 3, null, 'place-cover')).json()).toEqual({ revision: 4, imageBase64: null });
+  });
+
   it('동시에 최초 저장하면 하나만 성공한다', async () => {
     await trips.create(identities.a, { id: 'cover-race', days: [{ spots: [] }] });
     const results = await Promise.all([save('a', 0, image, 'cover-race'), save('a', 0, image, 'cover-race')]);

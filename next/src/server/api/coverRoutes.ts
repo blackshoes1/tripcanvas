@@ -1,11 +1,13 @@
 import { z } from 'zod';
 
 import type { CoverService } from '../application/trip/coverService';
+import { PlaceCoverSchema } from '../application/trip/coverSchema';
 import { authenticate, bearerToken } from '../auth/authenticate';
 import type { RequestContext, TokenVerifier } from '../auth/types';
 import { ApiError, errorResponse, JSON_HEADERS } from './errors';
 
-const Body = z.object({ expectedRevision: z.number().int().min(0).max(2147483646), imageBase64: z.string().max(333336).nullable() });
+const Body = z.object({ expectedRevision: z.number().int().min(0).max(2147483646), imageBase64: z.string().max(333336).nullable().optional(), placePhoto: PlaceCoverSchema.nullable().optional() })
+  .refine(body => body.imageBase64 !== undefined || body.placePhoto != null);
 const MAX_BODY = 340000;
 
 /** Content-Lengthのないチャンク送信にも上限を適用する。 */
@@ -40,7 +42,7 @@ export function createCoverRoutes(deps: {
       const ctx = await authenticate(request, deps.verifier);
       const service = await deps.serviceFor(ctx, bearerToken(request) ?? '');
       const body = write ? await readBody(request) : null;
-      const cover = body ? await service.save(ctx, tripId, body.expectedRevision, body.imageBase64) : await service.get(ctx, tripId);
+      const cover = body ? await service.save(ctx, tripId, body.expectedRevision, body.imageBase64 ?? null, body.placePhoto) : await service.get(ctx, tripId);
       return new Response(JSON.stringify(cover), { headers: JSON_HEADERS });
     } catch (error) { return errorResponse(error); }
   }
