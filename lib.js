@@ -7,6 +7,21 @@
   /** 로컬 날짜 → YYYY-MM-DD (타임존 밀림 방지) @param {Date} d @returns {string} */
   function toISO(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 
+  /** 여행 중 → 예정(가까운 출발일) → 지난 여행(최근 출발일) → 날짜 미정. 원본은 보존한다.
+   * @template {{start?:string, days?:unknown[]}} T
+   * @param {T[]} trips @param {string} today @returns {T[]} */
+  function sortTripsByCountdown(trips,today){
+    const todayMs=Date.parse(today+'T00:00:00Z');
+    const ranked=trips.map(trip=>{
+      const start=trip.start||'', startMs=Date.parse(start+'T00:00:00Z');
+      const valid=/^\d{4}-\d{2}-\d{2}$/.test(start)&&Number.isFinite(startMs);
+      const offset=valid? Math.round((startMs-todayMs)/86400000):0;
+      const live=valid&&offset<=0&&offset+Math.max(1,(trip.days||[]).length)>0;
+      return {trip,group:!valid?3:live?0:offset>0?1:2,offset};
+    });
+    return ranked.sort((a,b)=>a.group-b.group||(a.group===1?a.offset-b.offset:b.offset-a.offset)).map(x=>x.trip);
+  }
+
   /** 직선거리(하버사인, km) @param {LatLng} a @param {LatLng} b @returns {number} */
   function haversine(a,b){
     const R=6371, toRad=(/**@type {number}*/x)=>x*Math.PI/180;
@@ -1714,7 +1729,7 @@
     };
   }
 
-  const TC={additionalReservations,tripSummaryCities,returnModeOf,SPOT_PRIORITIES,spotPriorityOf,applySpotPriority,spotPriorityLabel,SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,cityFromKoreanAddr,placeName,cityFromGoogle,normHours,classifySearchErr,isKoreanSearch,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,normHM,sortDayByTime,inKorea,simplifyName,parseDirect,parseMoney,normalizeDraftDays,extractJson,extMapLink,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,stayMinutesOf,activityStartMinute,dayEndMinutes,departMinuteAfter,computeTimeline,computeDayJourney,whoKey,splitSegments,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,budgetBookings,moneyAmount,parseCostAmount,costAmountOf,dayEnteredCost,splitAcrossNights,stayCostShares,dayEnteredCostOn,hasManualTransportCost,dayCostSummary,ADMISSION_REQUIREMENTS,admissionLabel,admissionOf,needsAdmissionBooking,normalizeAdmission,admissionError,COST_CATEGORIES,costCategoryOf,COST_PAY_STATES,costPayStateOf,payStateTotals,TRIP_NOTE_CATEGORIES,normalizeTripNote,tripCostSummary,localMode,SAMPLE_TRIP_ID,isSampleTrip,sampleTrip,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
+  const TC={sortTripsByCountdown,additionalReservations,tripSummaryCities,returnModeOf,SPOT_PRIORITIES,spotPriorityOf,applySpotPriority,spotPriorityLabel,SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,cityFromKoreanAddr,placeName,cityFromGoogle,normHours,classifySearchErr,isKoreanSearch,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,normHM,sortDayByTime,inKorea,simplifyName,parseDirect,parseMoney,normalizeDraftDays,extractJson,extMapLink,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,stayMinutesOf,activityStartMinute,dayEndMinutes,departMinuteAfter,computeTimeline,computeDayJourney,whoKey,splitSegments,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,budgetBookings,moneyAmount,parseCostAmount,costAmountOf,dayEnteredCost,splitAcrossNights,stayCostShares,dayEnteredCostOn,hasManualTransportCost,dayCostSummary,ADMISSION_REQUIREMENTS,admissionLabel,admissionOf,needsAdmissionBooking,normalizeAdmission,admissionError,COST_CATEGORIES,costCategoryOf,COST_PAY_STATES,costPayStateOf,payStateTotals,TRIP_NOTE_CATEGORIES,normalizeTripNote,tripCostSummary,localMode,SAMPLE_TRIP_ID,isSampleTrip,sampleTrip,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
   if(typeof module!=='undefined' && module.exports){ module.exports=TC; }   // Node (테스트)
   else { const r=/**@type {any}*/(root); for(const k in TC) r[k]=/**@type {any}*/(TC)[k]; }   // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);

@@ -1267,7 +1267,7 @@ function render(){
   renderSidebar(); renderFilter(); renderLegend(); renderMenuBadges();
   document.getElementById('tripSel').innerHTML = viewMode
     ? `<option selected>${esc(viewMode.name)}</option>`
-    : store.trips.map(x=>`<option value="${escAttr(x.id)}" ${x.id===store.activeId?'selected':''}>${esc(x.name)}</option>`).join('');
+    : sortTripsByCountdown(store.trips,todayISO()).map(x=>`<option value="${escAttr(x.id)}" ${x.id===store.activeId?'selected':''}>${esc(x.name)}</option>`).join('');
   const picker=document.getElementById('tripPickerName');
   if(picker) picker.textContent=(viewMode?'':(isSampleTrip(t)?'샘플 · ':''))+(t.name||'여행 선택');
   updateCollabUI();
@@ -2719,7 +2719,7 @@ document.getElementById('tripDelBtn').onclick=()=>{
 // 여행 목록 — 전환(이름 탭)·삭제(🗑)를 한 화면에서
 function renderTripList(){
   const box=document.getElementById('tripListBody');
-  box.innerHTML=store.trips.map(t=>{
+  box.innerHTML=sortTripsByCountdown(store.trips,todayISO()).map(t=>{
     const days=(t.days||[]).length, spots=(t.days||[]).reduce((a,d)=>a+((d.spots||[]).length),0);
     const act=t.id===store.activeId;
     const shared=!!user&&!!tripRoles[t.id]&&!tripRoles[t.id].owner;
