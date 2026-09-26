@@ -45,7 +45,7 @@
   <h1><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7l5-2 6 2 5-2v12l-5 2-6-2-5 2zM9 5v12M15 7v12"/></svg> With J</h1>
   <select id="tripSel" class="srOnly" aria-label="현재 여행 선택"></select>
   <button class="tripPicker" id="tripPickerBtn" aria-haspopup="dialog"><span id="tripPickerName">여행 선택</span>⌄</button>
-  <button class="membersPill" id="membersBtn" hidden title="함께하기 — 멤버·초대" aria-haspopup="dialog"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 19v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1M22 19v-1a4 4 0 0 0-3-3.9"/><path d="M9 4a3 3 0 1 1 0 6 3 3 0 0 1 0-6z"/></svg> <span id="membersCount">1</span></button>
+  <button class="membersPill" id="membersBtn" hidden title="같이 짜기 — 멤버·초대" aria-haspopup="dialog"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 19v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1M22 19v-1a4 4 0 0 0-3-3.9"/><path d="M9 4a3 3 0 1 1 0 6 3 3 0 0 1 0-6z"/></svg> <span id="membersCount">1</span></button>
   <span class="hdrSpacer"></span>
   <button class="btn" id="pasteBtn">▧ 일정 붙여넣기</button>
   <button class="btn primary" id="travelBtn"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><path d="M12 7.4a2.6 2.6 0 1 1 0 5.2 2.6 2.6 0 0 1 0-5.2z"/></svg> 여행 모드</button>
@@ -86,13 +86,13 @@
     <p>첫 장소를 검색해 위치를 확인하면 여기에 지도가 나타나요.</p>
     <button class="btn primary" id="mapEmptySearch">첫 장소 검색</button></div>
   </section>
-  <div id="pickBanner">지도를 클릭해 위치를 지정하세요 (ESC 취소)</div>
+  <div id="pickBanner"><span>지도를 탭해 위치를 고르세요</span> <button type="button" class="btn sm" id="pickCancel">취소</button></div>
   <div class="legend" id="legend"></div>
 </div>
 
 <!-- 장소 추가/편집 모달: 기본 정보 + 접을 수 있는 상세 설정 -->
 <div class="modalBg" id="spotModalBg"><div class="modal spotModal">
-  <div class="modalTitleRow"><div><p class="eyebrow">PLACE</p><h2 id="spotModalTitle">장소 추가</h2></div><span class="stepBadge">기본 정보</span></div>
+  <div class="modalTitleRow"><div><p class="eyebrow">장소</p><h2 id="spotModalTitle">장소 추가</h2></div><span class="stepBadge">기본 정보</span></div>
   <label for="spotSearch">장소 검색 (국내 카카오 · 해외 Google)</label>
   <div class="fieldRow">
     <input type="text" id="spotSearch" placeholder="검색 또는 장소 이름 입력">
@@ -140,7 +140,7 @@
     </div>
   </details>
   <div class="row modalActions">
-    <button class="btn" id="spotDelBtn" style="margin-right:auto;color:#ff8fa3;display:none">삭제</button>
+    <button class="btn" id="spotDelBtn" style="margin-right:auto;color:var(--meta-danger);display:none">삭제</button>
     <button class="btn" id="spotCancel">취소</button>
     <button class="btn primary" id="spotSave">저장</button>
   </div>
@@ -182,7 +182,7 @@
   <label for="dayDrive">이동 정보 (예: 🚗 128km · 1시간 45분)</label><input type="text" id="dayDrive">
   <label for="dayNote">메모</label><textarea id="dayNote"></textarea>
   <div class="row">
-    <button class="btn" id="dayDelBtn" style="margin-right:auto;color:#ff8fa3">일자 삭제</button>
+    <button class="btn" id="dayDelBtn" style="margin-right:auto;color:var(--meta-danger)">일자 삭제</button>
     <button class="btn" id="dayCancel">취소</button>
     <button class="btn primary" id="daySave">저장</button>
   </div>
@@ -201,7 +201,7 @@
 
 <!-- 함께하기 — 멤버 · 초대 · 나가기 (접근 제어는 DB의 RLS·RPC가 결정한다. 여기는 그 결과를 보여줄 뿐) -->
 <div class="modalBg" id="membersModalBg"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="membersTitle">
-  <div class="modalTitleRow"><div><p class="eyebrow">TOGETHER</p><h2 id="membersTitle">함께하기</h2></div><span class="stepBadge" id="membersRoleBadge"></span></div>
+  <div class="modalTitleRow"><div><p class="eyebrow">멤버·초대</p><h2 id="membersTitle">같이 짜기</h2></div><span class="stepBadge" id="membersRoleBadge"></span></div>
   <p class="hint">같은 여행을 여러 명이 함께 봅니다. 편집자는 일정을 바꿀 수 있고, 보기 권한은 볼 수만 있어요.</p>
   <div class="memberSection">
     <div class="memberSectionHead"><b>멤버</b><button class="btn" id="membersRefresh" style="font-size:11px;padding:3px 9px;min-height:28px" title="다른 멤버가 바꾼 최신 일정과 멤버 목록을 불러와요">↻ 새로고침</button></div>
@@ -248,9 +248,10 @@
 
 <!-- 여행 준비 메모 — 일정(날짜)에 붙지 않는 준비 내용. 여행 문서에 살아서 일행과 같이 보고 같이 고친다 -->
 <div class="modalBg" id="noteModalBg"><div class="modal wide" role="dialog" aria-modal="true" aria-labelledby="noteTitle">
-  <div class="modalTitleRow"><div><p class="eyebrow">NOTES</p><h2 id="noteTitle">여행 준비 메모</h2></div></div>
+  <div class="modalTitleRow"><div><p class="eyebrow">준비</p><h2 id="noteTitle">여행 준비 메모</h2></div></div>
   <p class="hint">비자·입국 준비·교통 이용법·특산품처럼 <b>날짜에 붙지 않는</b> 것들을 모아 둬요. 일행과 함께 보이고, 확인한 것은 체크해 둘 수 있어요.</p>
   <div class="memberSection" id="noteAddSection">
+    <div class="noteEditing" id="noteEditing" hidden><span id="noteEditingText"></span> <button type="button" class="btn sm" id="noteEditStop">수정 취소</button></div>
     <div class="fieldRow">
       <select id="noteCatInput" class="compactSelect" aria-label="메모 분류"></select>
       <input type="text" id="noteTitleInput" maxlength="120" placeholder="무엇을 준비하나요? (예: 비자 — 90일 무비자)" aria-label="메모 제목">
@@ -270,7 +271,7 @@
 
 <!-- 후보 보드 — 아직 일정이 아닌 '가고 싶은 곳'. 인기가 많다고 자동으로 일정에 들어가지 않는다(§12·§79) -->
 <div class="modalBg" id="candModalBg"><div class="modal wide" role="dialog" aria-modal="true" aria-labelledby="candTitle">
-  <div class="modalTitleRow"><div><p class="eyebrow">CANDIDATES</p><h2 id="candTitle">가고 싶은 곳</h2></div><span class="stepBadge" id="candRoleBadge"></span></div>
+  <div class="modalTitleRow"><div><p class="eyebrow">같이 짜기</p><h2 id="candTitle">가고 싶은 곳</h2></div><span class="stepBadge" id="candRoleBadge"></span></div>
   <p class="hint">일정에 넣기 전에 일행과 먼저 골라 봐요. 반응은 서로 보이고, 일정에 넣는 건 언제나 직접 누를 때만 일어나요.</p>
   <div class="memberSection" id="candAddSection">
     <div class="fieldRow">
@@ -296,7 +297,7 @@
 
 <!-- 초대 링크로 열었을 때 (#join=) — 미리보기 → (로그인) → 참여. 참여 전에는 여행 본문을 받지 않는다 -->
 <div class="modalBg" id="joinModalBg"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="joinTitle">
-  <p class="eyebrow">INVITATION</p>
+  <p class="eyebrow">초대</p>
   <h2 id="joinTitle">여행에 초대받았어요</h2>
   <div class="joinCard" id="joinCard">
     <div class="joinTripName" id="joinTripName">불러오는 중…</div>
@@ -320,7 +321,7 @@
   <label for="ntStart">언제 가세요?</label>
   <div class="ntWhen">
     <input type="date" id="ntStart">
-    <div class="ntDays"><input type="number" id="ntDays" min="1" max="30" step="1" value="3" aria-label="기간(일)"><span>일</span></div>
+    <div class="ntDays"><input type="number" id="ntDays" min="1" max="90" step="1" value="3" aria-label="기간(일)"><span>일</span></div>
   </div>
   <div class="hint" id="ntRange"></div>
   <label for="ntName">여행 이름</label>
@@ -348,7 +349,7 @@
   <label><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7v5l3.2 1.9M3.5 12a8.5 8.5 0 1 0 2.6-6.1M3.5 4.5V9h4.5"/></svg> 버전 기록 (10분 간격 자동 저장, 최근 15개)</label>
   <div id="snapList" class="searchRes"></div>
   <div class="row">
-    <button class="btn" id="tripDelBtn" style="margin-right:auto;color:#ff8fa3">여행 삭제</button>
+    <button class="btn" id="tripDelBtn" style="margin-right:auto;color:var(--meta-danger)">여행 삭제</button>
     <button class="btn" id="tripCancel">취소</button>
     <button class="btn primary" id="tripSave">저장</button>
   </div>
@@ -443,7 +444,7 @@
   <div id="bkStatus"></div>
   <div class="hint" id="bkPhotos" style="display:none"></div>
   <div class="row">
-    <button class="btn" id="bkDelBtn" style="margin-right:auto;color:#ff8fa3;display:none">삭제</button>
+    <button class="btn" id="bkDelBtn" style="margin-right:auto;color:var(--meta-danger);display:none">삭제</button>
     <button class="btn" id="bkCancel">취소</button>
     <button class="btn primary" id="bkSave">저장</button>
   </div>

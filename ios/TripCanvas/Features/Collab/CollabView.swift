@@ -16,6 +16,8 @@ struct CollabView: View {
     @State private var owned: CollabViewModel?
     private var model: CollabViewModel? { shared ?? owned }
     @State private var nameDraft = ""
+    /// 끊을지 묻는 중인 초대 링크.
+    @State private var revoking: InviteView?
     @State private var prefsDraft = TripPrefs()
     @State private var prefsLoaded = false
     @State private var inviteRole: MemberRole = .editor
@@ -52,7 +54,13 @@ struct CollabView: View {
             }
         }
         .listStyle(.insetGrouped)
-        .navigationTitle("함께하기")
+        .confirmationDialog("이 초대 링크를 끊을까요?", isPresented: Binding(get: { revoking != nil }, set: { if !$0 { revoking = nil } }),
+                            titleVisibility: .visible, presenting: revoking) { invite in
+            Button("링크 끊기", role: .destructive) { Task { await model?.revokeInvite(id: invite.id) } }
+        } message: { _ in
+            Text("이 링크로는 더 이상 참여할 수 없어요. 이미 참여한 사람은 그대로예요.")
+        }
+        .navigationTitle("같이 짜기")   // 더보기의 이름(같이 짜기)과 같게 — 들어가면 다른 이름이 열리지 않게
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if let model {
@@ -199,7 +207,8 @@ struct CollabView: View {
                         Text(inviteMeta(invite)).font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Button("취소") { Task { await model.revokeInvite(id: invite.id) } }
+                    // 끊으면 되돌릴 수 없다 — 한 번 묻는다(2026-09-27 UX 검토). 이미 참여한 사람은 그대로다.
+                    Button("링크 끊기", role: .destructive) { revoking = invite }
                         .font(.caption)
                         .buttonStyle(.bordered)
                         .controlSize(.small)
@@ -208,7 +217,7 @@ struct CollabView: View {
         } header: {
             Text("초대")
         } footer: {
-            Text("링크는 7일 동안 유효하고 웹 주소예요 — 받는 사람은 웹이나 앱 어디서든 참여할 수 있어요. 링크가 새면 취소하세요.")
+            Text("링크는 7일 동안 유효하고 웹 주소예요 — 받는 사람은 웹이나 앱 어디서든 참여할 수 있어요. 링크가 새면 끊으세요.")
         }
     }
 
@@ -217,6 +226,11 @@ struct CollabView: View {
         if let date = ISODateText.parseTimestamp(invite.expiresAt) {
             let components = ISODateText.calendar.dateComponents([.month, .day], from: date)
             parts.append("\(components.month ?? 1)/\(components.day ?? 1)까지")
+        }
+        // 링크끼리 구분되게 만든 날도 함께 — 만료일만으로는 어느 링크인지 모른다
+        if let made = ISODateText.parseTimestamp(invite.createdAt) {
+            let c = ISODateText.calendar.dateComponents([.month, .day], from: made)
+            parts.insert("\(c.month ?? 1)/\(c.day ?? 1)에 만듦", at: 0)
         }
         if invite.useCount > 0 { parts.append("\(invite.useCount)명 참여") }
         return parts.joined(separator: " · ")

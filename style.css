@@ -201,7 +201,7 @@
   .travelTop{display:flex;align-items:center;gap:10px;margin-bottom:12px}.travelTop strong{flex:1;text-align:center}.travelTop select{max-width:170px}.travelFocus,.travelNext{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:10px}.travelFocus{border-top:4px solid var(--primary)}.travelKicker,.travelSectionTitle{font-size:11px;color:var(--subtle);font-weight:700;margin-bottom:7px}.travelPlace{font-size:18px;font-weight:800;margin-bottom:7px}.travelFacts{font-size:12px;color:var(--muted);line-height:1.7}.travelActions{display:flex;gap:8px;margin-top:10px}.travelActions a{display:inline-block;text-decoration:none;background:var(--primary);color:#fff;padding:7px 12px;border-radius:8px;font-size:12px;font-weight:700}.travelActions a+a{background:var(--surface);color:var(--ink);border:1px solid var(--border)}.travelNext{display:grid;grid-template-columns:1fr auto;align-items:center}.travelNext strong{font-size:15px}.travelSectionTitle{margin:8px 2px}
   #sheetHandle{display:none}
   .tSpot a{display:inline-block;font-size:12.5px;color:#fff;background:var(--primary);border-radius:8px;padding:5px 12px;text-decoration:none}
-  #pickBanner{position:absolute;top:10px;left:50%;transform:translateX(-50%);background:#e63946;color:#fff;font-size:13px;font-weight:700;padding:7px 16px;border-radius:20px;z-index:1500;display:none}
+  #pickBanner{position:absolute;top:10px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--surface);font-size:13px;font-weight:700;padding:5px 6px 5px 16px;border-radius:22px;z-index:1500;display:none;align-items:center;gap:10px;white-space:nowrap}#pickBanner .btn{min-height:36px}
   #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#3e7a4c;color:#fff;font-size:13px;padding:8px 18px;border-radius:20px;z-index:4000;display:none;align-items:center;gap:12px;max-width:92vw}
   #toast .toastAct{background:rgba(255,255,255,.22);border:none;color:#fff;font-weight:700;font-size:12px;padding:4px 10px;border-radius:12px;white-space:nowrap}
   #toast .toastAct:hover{background:rgba(255,255,255,.35)}
@@ -296,7 +296,7 @@
   .commentRow .cn{font-weight:700;white-space:nowrap}
   .commentRow .cb{flex:1;min-width:0;overflow-wrap:anywhere;color:var(--ink)}
   .commentRow .at{color:var(--subtle);font-size:11px;white-space:nowrap}
-  .commentRow .cx{color:#ff8fa3;background:none;border:0;font-size:12px;padding:0 4px;min-height:auto;cursor:pointer}
+  .commentRow .cx{color:var(--meta-danger);background:none;border:0;font-size:12px;padding:0 4px;min-height:auto;cursor:pointer}
   .commentForm{display:flex;gap:6px;margin-top:6px}.commentForm input{flex:1;font-size:12px;min-width:0}
   /* 최근 활동 — 읽기 쉬운 문장 한 줄씩(§39) */
   .activityList{display:grid;gap:2px;max-height:240px;overflow-y:auto}
@@ -408,7 +408,7 @@ body.playing #playHud{
   .tripRow .tripCover{width:64px;height:48px;object-fit:cover;border-radius:4px}
   .tripRow.active{border-color:var(--primary);background:var(--selected-bg)}
   .tripRow .tn{flex:1;cursor:pointer;line-height:1.45}
-  .tripRow .tn:hover{color:#fff}
+  .tripRow .tn:hover{color:var(--primary-dark);text-decoration:underline}
   .tripRow .opt{display:block;color:var(--subtle);font-size:11px}
 
 /* ── 카드 상태: default / hover / selected / focus / drag ─────────────────
@@ -601,3 +601,11 @@ body.theme-dark .btn.primary,body.theme-dark .travelActions a,body.theme-dark .t
   .addSpot,.addSpotBtn{min-height:44px}
   .legModeBtn{min-width:36px;min-height:36px;opacity:.7}
 }
+/* 다크에서 '처음 화면 다시 보기'의 흰 그라데이션 위에 밝은 글자가 묻혔다(1.13:1) — 다크 전용 배경 */
+body.theme-dark .onboarding{background:linear-gradient(145deg,#221e19 0%,#16130f 70%,#2b1a17 140%)}
+body.theme-dark .brandMark{color:#16130f}
+/* 모달이 열려 있으면 토스트를 위로 — 바텀시트의 버튼 줄(취소·저장)을 덮었다. 폭은 내용만큼(두 줄로 접히지 않게) */
+body:has(.modalBg.show) #toast{bottom:auto;top:calc(env(safe-area-inset-top) + 12px)}
+#toast{width:max-content}
+.tSpot .n .eta{display:inline-block;min-width:44px;margin-right:4px;font-variant-numeric:tabular-nums}
+.noteEditing{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12.5px;font-weight:600;color:var(--meta-warning);margin-bottom:6px}.noteEditing[hidden]{display:none}

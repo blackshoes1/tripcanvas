@@ -128,11 +128,22 @@ struct PasteItineraryView: View {
             Section { CreateTripModePicker(mode: $mode).disabled(isBusy) }
             Section {
                 TextField("여행 이름", text: $form.tripName)
-                LabeledContent("시작일", value: form.start.isEmpty ? "글에 없어요" : form.start)
-                if form.draft?.startAmbiguous == true {
+                // 읽은 시작일을 **여기서 고친다** — 예전에는 읽기 전용이라 연도를 잘못 짚으면 원문부터 다시 써야 했다.
+                DateEntryField(title: "시작일", text: Binding(get: { form.start.isEmpty ? nil : form.start },
+                                                           set: { form.start = $0 ?? "" }))
+                if form.start.isEmpty {
+                    Text("글에 날짜가 없어요. 비워 두면 날짜 없이 만들어요.").font(.caption).foregroundStyle(.secondary)
+                } else if form.draft?.startAmbiguous == true {
                     Text("연도가 글에 없어서 올해로 봤어요 — 맞는지 확인해 주세요.")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.caption).foregroundStyle(Ink.warning)
                 }
+                Button {
+                    // 원문은 그대로 두고 입력 화면으로 — 한 줄 고쳐 다시 읽을 수 있게.
+                    form.draft = nil
+                } label: {
+                    Label("원문 고치기", systemImage: "arrow.uturn.backward").frame(minHeight: 44)
+                }
+                .disabled(isBusy)
             } header: {
                 Text(summaryText)
             }

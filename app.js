@@ -1067,7 +1067,7 @@ function loadFx(){
   let cachedDay=null, cached=null;
   // 캐시는 기본값 '위에 덮어쓰기'(통째 교체 X) — 통화가 추가되면 옛 캐시에 없는 통화가 undefined가 돼 환산이 1:1로 깨진다
   try{ const c=JSON.parse(localStorage.getItem(FX_KEY)); if(c&&c.rates){ cached=c.rates; fxRates=Object.assign({}, fxRates, c.rates); cachedDay=c.day; } }catch(e){}
-  const today=new Date().toISOString().slice(0,10);
+  const today=new Date().toISOString().slice(0,10);   // ⚠️ UTC 날짜 — 서버 환율과 같은 날을 가리키게(CLAUDE.md 환율 규칙)
   const complete = cached && Object.keys(CUR).every(k=>cached[k]);   // 새로 추가된 통화가 빠진 옛 캐시면 오늘치여도 다시 받는다
   if(cachedDay===today && complete) return;   // 오늘 이미 갱신됨
   fetch('https://open.er-api.com/v6/latest/USD').then(r=>r.json()).then(j=>{
@@ -2399,9 +2399,12 @@ document.getElementById('spotSearch').addEventListener('keydown',e=>{if(e.key===
 document.getElementById('pickOnMap').onclick=()=>{
   pickMode=true; updateMapEmpty();
   document.getElementById('spotModalBg').classList.remove('show');
-  document.getElementById('pickBanner').style.display='block';
+  document.getElementById('pickBanner').style.display='flex';
 };
-document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&pickMode){pickMode=false;updateMapEmpty();document.getElementById('pickBanner').style.display='none';document.getElementById('spotModalBg').classList.add('show');} });
+// 위치 고르기 그만두기 — 모달(쓰던 초안 그대로)로 돌아간다. 모바일에는 Esc가 없어 배너에 '취소' 버튼을 둔다(2026-09-27 UX 검토).
+function cancelPick(){ pickMode=false; updateMapEmpty(); document.getElementById('pickBanner').style.display='none'; document.getElementById('spotModalBg').classList.add('show'); }
+document.getElementById('pickCancel').onclick=cancelPick;
+document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&pickMode) cancelPick(); });
 
 // ───────────────── 일자 모달 ─────────────────
 let editingDay=null;
@@ -2488,7 +2491,7 @@ const NT_FALLBACK_NAME='새 여행';
 let ntNameEdited=false;
 
 function openNewTrip(){
-  const today=new Date().toISOString().slice(0,10);
+  const today=todayISO();
   document.getElementById('ntCity').value='';
   document.getElementById('ntName').value='';
   document.getElementById('ntStart').value=today;
@@ -2511,14 +2514,15 @@ function syncNewTripRange(){
 }
 function newTripDayCount(){
   const n=parseInt(document.getElementById('ntDays').value,10);
-  return Math.min(30,Math.max(1,isNaN(n)?1:n));
+  // 새 여행도 여행 설정과 같은 저장 한도(`TC_LIMITS.days`)다 — 예전에는 30일에서 말없이 잘렸다
+  return Math.min(TC_LIMITS.days,Math.max(1,isNaN(n)?1:n));
 }
 /** 빈 일자 N개짜리 여행. 나머지는 normalizeTrip이 채운다 — 웹·앱이 같은 모양을 만든다 */
 function createNewTrip(draft){
-  const n=Math.min(30,Math.max(1,Number(draft&&draft.dayCount)||1));
+  const n=Math.min(TC_LIMITS.days,Math.max(1,Number(draft&&draft.dayCount)||1));
   const days=[]; for(let i=0;i<n;i++) days.push({title:'',drive:'',note:'',spots:[]});
   const t={id:uid(),name:(draft&&draft.name)||NT_FALLBACK_NAME,
-           start:(draft&&draft.start)||new Date().toISOString().slice(0,10),days};
+           start:(draft&&draft.start)||todayISO(),days};
   commit(()=>{ store.trips.push(t); store.activeId=t.id; activeDay=0; }, {fit:fitEntry});
   return t;
 }
@@ -2649,7 +2653,9 @@ function cancelNoteEdit(){
   document.getElementById('noteTitleInput').value='';
   document.getElementById('noteBodyInput').value='';
   document.getElementById('noteAdd').textContent='＋ 메모 추가';
+  document.getElementById('noteEditing').hidden=true;
 }
+document.getElementById('noteEditStop').onclick=()=>{ cancelNoteEdit(); renderNotes(); };
 function renderNotes(){
   const box=document.getElementById('noteList'); box.textContent='';
   const all=tripNotes();
@@ -2699,7 +2705,10 @@ function startNoteEdit(id){
   document.getElementById('noteCatInput').value=note.cat;
   document.getElementById('noteTitleInput').value=note.title||'';
   document.getElementById('noteBodyInput').value=note.body||'';
-  document.getElementById('noteAdd').textContent='저장';
+  document.getElementById('noteAdd').textContent='수정 저장';
+  // 무엇을 고치는 중인지 보이게 — 안 보이면 새 메모를 쓴다고 믿고 기존 메모를 덮어쓴다(2026-09-27 UX 검토)
+  document.getElementById('noteEditingText').textContent=`「${note.title||'제목 없는 메모'}」 수정 중`;
+  document.getElementById('noteEditing').hidden=false;
   document.getElementById('noteTitleInput').focus();
 }
 function saveNote(){
@@ -2755,7 +2764,7 @@ function deleteTrip(id){
   const snap=snapshot();
   cloudDelete(id,t);   // 로그인 상태면 tombstone 기록, 오프라인이면 재시도 큐에 보존
   store.trips=store.trips.filter(x=>x.id!==id);
-  if(!store.trips.length){ store.trips=[{id:uid(),name:'새 여행',start:new Date().toISOString().slice(0,10),days:[{title:'',drive:'',note:'',spots:[]}]}]; }
+  if(!store.trips.length){ store.trips=[{id:uid(),name:'새 여행',start:todayISO(),days:[{title:'',drive:'',note:'',spots:[]}]}]; }
   if(id===store.activeId){ store.activeId=store.trips[0].id; activeDay=0; }   // 보고 있던 여행을 지운 경우만 전환
   commit(null, {fit:fitEntry});
   // undo 시 삭제된 여행이 다시 활성화되어 render→save로 클라우드에도 재업로드됨
@@ -2776,7 +2785,7 @@ function renderTripList(){
       <img class="tripCover" data-cover-trip="${escAttr(t.id)}" alt="${escAttr(t.name||'여행')} 표지" hidden>
       <span class="tn" onclick="switchTrip('${escAttr(t.id)}')" title="이 여행으로 전환">${act?'▶ ':''}${esc(t.name||'(이름 없음)')} ${roleBadgeHtml(t.id)}
         <span class="opt">${t.start?esc(t.start)+' · ':''}${days}일 · ${spots}곳</span></span>
-      <button class="iconb" onclick="event.stopPropagation();removeTrip('${escAttr(t.id)}')" title="${shared?'이 여행에서 나가기':'이 여행 삭제'}" style="color:#ff8fa3">${shared?ic('door'):ic('trash')}</button>
+      <button class="iconb" onclick="event.stopPropagation();removeTrip('${escAttr(t.id)}')" title="${shared?'이 여행에서 나가기':'이 여행 삭제'}" style="color:var(--meta-danger)">${shared?ic('door'):ic('trash')}</button>
     </div>`;
   }).join('');
   // 사진은 여행 문서와 분리된 인증 API에서만 읽는다. 로그아웃·목록 교체 후의 응답은 버린다.
@@ -4247,7 +4256,7 @@ function pvCommit(){
   }else if(target==='overwrite' && !readOnly() && trip()){
     nextTrip=Object.assign({},trip(),{days:parsed.days,name:parsed.name||trip().name,start:parsed.start||trip().start});
   }else{
-    nextTrip=Object.assign({},parsed,{id:uid(),name:parsed.name||'붙여넣은 여행',start:parsed.start||new Date().toISOString().slice(0,10)});
+    nextTrip=Object.assign({},parsed,{id:uid(),name:parsed.name||'붙여넣은 여행',start:parsed.start||todayISO()});
   }
   // 기존 여행과 결합한 최종 문서도 다시 검증해 append가 전체 한도를 넘는 경우 부분 적용을 막는다.
   const finalResult=validateTripPayload(nextTrip);
@@ -4657,7 +4666,7 @@ function renderTravel(di, clock){
   if(carry){
     const el=extMapLink(carry);
     const cd=document.createElement('div'); cd.className='tSpot carry'; cd.style.setProperty('--c','#7a86ad');
-    cd.innerHTML=`<div class="n"><span class="eta">🏠</span> ${esc(carry.name)} <span style="font-size:11px;color:#b5ab98">전날 숙소 · ${hm(parseHM(d.startAt))} 출발</span></div>`+
+    cd.innerHTML=`<div class="n"><span class="eta">🏠</span> ${esc(carry.name)} <span style="font-size:11px;color:var(--subtle)">전날 숙소 · ${hm(parseHM(d.startAt))} 출발</span></div>`+
       `<a href="${escAttr(el.href)}" target="_blank" rel="noopener">🧭 ${el.label}</a>`;
     list.appendChild(cd);
   }
@@ -4676,13 +4685,13 @@ function renderTravel(di, clock){
     const tmeta=[];
     if(s.bookAt) tmeta.push(`🎫 예약 ${esc(s.bookAt)}`);
     if(s.cost) tmeta.push(`💳 ${costLabel(s.cost,s.cur)}`);
-    div.innerHTML=`<div class="n"><span class="eta">${hm(etas[si])}</span>${si+1}. ${catPrefix(s)}${esc(s.name)}${s.opt?' <span style="font-size:11px;color:#b5ab98">(선택)</span>':''}</div>`+
+    div.innerHTML=`<div class="n"><span class="eta">${hm(etas[si])}</span> ${si+1}. ${catPrefix(s)}${esc(s.name)}${s.opt?' <span style="font-size:11px;color:var(--subtle)">(선택)</span>':''}</div>`+
       (tmeta.length?`<div class="d" style="color:var(--meta-cost)">${tmeta.join(' · ')}</div>`:'')+
       `<div class="d">${esc(s.desc).replace(/\n/g,'<br>')}</div>`+
       ((bu=>bu?`<a href="${escAttr(bu)}" target="_blank" rel="noopener" style="background:#46702e;margin-right:6px">🎫 예약 열기</a>`:'')(safeUrl(s.bookUrl)))+
       (hasLoc(s)
         ? ((el=>`<a href="${escAttr(el.href)}" target="_blank" rel="noopener">🧭 ${el.label}</a>`)(extMapLink(s)))
-        : `<span style="font-size:12px;color:#e0a050">📍 위치 미지정</span>`);
+        : `<span style="font-size:12px;color:var(--meta-warning)">📍 위치 미지정</span>`);
     div.appendChild(spotStatusRow(di,si,s));
     list.appendChild(div);
   });
@@ -4696,7 +4705,7 @@ function renderTravel(di, clock){
     const bl=ctx.backLeg;
     const el=extMapLink(bl.to);
     const bd=document.createElement('div'); bd.className='tSpot carry'; bd.style.setProperty('--c','#7a86ad');
-    bd.innerHTML=`<div class="n"><span class="eta">🏠</span> ${esc(bl.to.name)} <span style="font-size:11px;color:#b5ab98">숙소 복귀 · 자동</span></div>`+
+    bd.innerHTML=`<div class="n"><span class="eta">🏠</span> ${esc(bl.to.name)} <span style="font-size:11px;color:var(--subtle)">숙소 복귀 · 자동</span></div>`+
       `<a href="${escAttr(el.href)}" target="_blank" rel="noopener">🧭 ${el.label}</a>`;
     list.appendChild(bd);
   }
@@ -4746,8 +4755,10 @@ TC_AUTH.resolveProvider().then(p=>{
 });
 function updateAuthUI(){
   const b=document.getElementById('authBtn'); if(!b) return;
-  if(user){ b.textContent='👤 '+(user.email||'').split('@')[0]; b.title='클릭하면 로그아웃'; b.classList.add('primary'); }
-  else { b.textContent='로그인'; b.title='로그인하면 여행이 내 계정에 저장돼 어느 기기서든 열려요'; b.classList.remove('primary'); }
+  // 로그인된 상태의 버튼이 하는 일은 **로그아웃**이다 — 이름만 강조색으로 보이면 누르면 나가는 줄 모른다(2026-09-27 UX 검토).
+  if(user){ b.textContent='로그아웃 · '+(user.email||'').split('@')[0]; b.title=`${user.email||''}로 로그인됨`; b.classList.remove('primary'); }
+  else { b.textContent='로그인'; b.title='로그인하면 여행이 내 계정에 저장돼 어느 기기서든 열려요'; b.classList.add('primary'); }
+  b.setAttribute('aria-label',b.textContent);
   updateCollabUI();
   updateSaveState();
 }
@@ -5135,7 +5146,7 @@ function updateCollabUI(){
   if(pill){
     const show=!!user&&!viewMode&&!!id;
     pill.hidden=!show;
-    if(show){ { const c=pill.querySelector('#membersCount'); if(c) c.textContent=String(info?info.count:1); }; pill.title=`함께하기 · 나는 ${TC_COLLAB.roleLabel(role)}`; }
+    if(show){ { const c=pill.querySelector('#membersCount'); if(c) c.textContent=String(info?info.count:1); }; pill.title=`같이 짜기 · 나는 ${TC_COLLAB.roleLabel(role)}`; }
   }
   const viewer=!!user&&!viewMode&&role==='VIEWER';
   document.body.classList.toggle('roleViewer',viewer);
@@ -5260,7 +5271,7 @@ function openMembers(){
   if(viewMode){ toast('읽기전용 보기입니다 — "내 여행으로 저장" 후 이용하세요','#4f4740'); return; }
   if(!sb||!user){ toast('로그인하면 일행을 초대해 함께 계획할 수 있어요','#2e5c6e'); document.getElementById('authBtn').click(); return; }
   membersTripId=store.activeId;
-  document.getElementById('membersTitle').textContent=`함께하기 · ${trip().name||'여행'}`;
+  document.getElementById('membersTitle').textContent=`같이 짜기 · ${trip().name||'여행'}`;   // 메뉴 이름(같이 짜기)과 화면 이름을 맞춘다
   document.getElementById('inviteResult').hidden=true; document.getElementById('inviteLink').value='';
   document.getElementById('membersModalBg').classList.add('show');
   pullTrip(membersTripId);
@@ -6010,7 +6021,7 @@ function leaveTripUI(id,t){
     if(error) throw error;
     delete syncMeta[id]; delete tripRoles[id]; persistSyncMeta();
     store.trips=store.trips.filter(x=>x.id!==id);
-    if(!store.trips.length){ store.trips=[{id:uid(),name:'새 여행',start:new Date().toISOString().slice(0,10),days:[{title:'',drive:'',note:'',spots:[]}]}]; }
+    if(!store.trips.length){ store.trips=[{id:uid(),name:'새 여행',start:todayISO(),days:[{title:'',drive:'',note:'',spots:[]}]}]; }
     if(id===store.activeId){ store.activeId=store.trips[0].id; activeDay=0; }
     suppressCloudOnce=true; commit(null,{fit:fitEntry});
     if(document.getElementById('tripListBg').classList.contains('show')) renderTripList();
