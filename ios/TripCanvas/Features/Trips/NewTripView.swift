@@ -72,8 +72,11 @@ struct NewTripView: View {
                 }
 
                 Section {
-                    TextField(NewTripView.fallbackName, text: $form.name)
-                        .onChange(of: form.name) { _, _ in form.nameEdited = true }
+                    // '고쳤다'는 **사람이 이 칸에 칠 때만** 켠다. onChange로 보면 도시 칸이 이름을 채운 것까지
+                    // 고친 것으로 쳐서 첫 글자에서 멈췄다('Paris' → 'P 여행', 2026-09-27 UX 검토).
+                    TextField(NewTripView.fallbackName, text: Binding(
+                        get: { form.name },
+                        set: { form.name = $0; form.nameEdited = true }))
                 } header: {
                     Text("여행 이름")
                 } footer: {

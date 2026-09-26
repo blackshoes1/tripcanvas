@@ -8,7 +8,7 @@
   /* UI 장식 아이콘 — 글자 곁에 서는 선 아이콘. 색은 글자를 따라간다 */
   .ic{width:16px;height:16px;flex:none;vertical-align:-3px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
   .ic+*{margin-left:2px}
-  header{background:var(--header);padding:9px 14px;display:flex;align-items:center;gap:8px;flex-wrap:nowrap;z-index:1001;border-bottom:1px solid var(--border);position:relative}
+  header{background:var(--header);padding:9px 14px;display:flex;align-items:center;gap:8px;flex-wrap:nowrap;z-index:1200;border-bottom:1px solid var(--border);position:relative}
   header h1{font-size:16px;font-weight:800;color:var(--ink);margin-right:4px}
   select,input,textarea{font-family:inherit;background:var(--surface);color:var(--ink);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px}
   .btn{border:1px solid var(--border);border-radius:10px;padding:9px 14px;font-size:13px;background:var(--surface);color:var(--ink);transition:.15s;min-height:40px}
@@ -234,7 +234,9 @@
   .memberRow{display:flex;align-items:center;gap:8px;padding:7px 9px;border:1px solid var(--border);border-radius:9px;font-size:12.5px;background:var(--surface)}
   .memberRow .mn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .memberRow .me{color:var(--subtle);font-size:11px;margin-left:4px}
-  .memberRow select{padding:4px 6px;font-size:12px;border-radius:7px}
+  /* ⚠️ `.modal select{width:100%}`를 되돌린다 — 안 그러면 이름(.mn)이 폭 0으로 접혀 멤버 이름이 사라진다 */
+  .memberRow select{padding:4px 6px;font-size:12px;border-radius:7px;width:auto;flex:none}
+  .memberRow .mn{min-width:5em}
   .roleBadge{font-size:11px;padding:2px 8px;border-radius:999px;background:var(--surface-2);color:var(--muted);white-space:nowrap}
   .roleBadge.owner{background:#f6ead3;color:#8e4e0b}.roleBadge.editor{background:#dce7eb;color:#24505f}.roleBadge.viewer{background:var(--surface-2);color:var(--subtle)}
   body.theme-dark .roleBadge.owner{background:#3a2f14;color:#f0c97f}body.theme-dark .roleBadge.editor{background:#1e3038;color:#9cc4d2}
@@ -588,3 +590,6 @@ input[aria-invalid="true"]{border-color:var(--meta-danger)!important;box-shadow:
 /* 다크의 주 색은 밝은 연두라 흰 글자는 1.9:1로 읽히지 않는다 — 다크에서만 짙은 글자로(약 10:1).
    ⚠️ 라이트의 #fff는 그대로다: 테마 토큰으로 바꾸면 라이트·다크가 같이 흔들린다(CLAUDE.md 웹 색 규칙). */
 body.theme-dark .btn.primary,body.theme-dark .travelActions a,body.theme-dark .tSpot a,body.theme-dark .sgFrom{color:#16130f}
+.actionMenu.up .actionMenuPanel{top:auto;bottom:42px}
+.spotMetaItem.spotWarn{flex-basis:100%;color:var(--meta-danger);font-weight:600;white-space:normal}
+.spotMetaItem.stayMin.unset{opacity:.8;border:1px dashed var(--border);background:none;border-radius:6px;padding:1px 6px;font:inherit;color:var(--meta-soft);cursor:pointer;min-height:24px}

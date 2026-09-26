@@ -1579,6 +1579,28 @@ function setDayScope(ad, fitFn){
   activeDay=ad; render();
   if(wasPlaying) playTrip();                          // 새 범위(일자/전체)로 재생 재시작
   else fitFn();
+  if(ad) revealDayCard(ad-1);
+}
+// 행 ⋮ 메뉴는 아래 공간이 모자라면 **위로** 연다 — 절반 시트에서 아래로 열면 '위로'만 보이고
+// 나머지가 화면 밖에 잘렸다(2026-09-27 UX 검토). 열 때마다 잰다(시트 높이·스크롤이 매번 다르다).
+document.addEventListener('toggle',e=>{
+  const menu=e.target; if(!(menu instanceof HTMLDetailsElement)||!menu.classList.contains('actionMenu')||!menu.open) return;
+  const panel=menu.querySelector('.actionMenuPanel'); if(!panel) return;
+  menu.classList.remove('up');
+  const sb=document.getElementById('sidebar');
+  const floor=Math.min(window.innerHeight, sb&&sb.contains(menu)? sb.getBoundingClientRect().bottom : window.innerHeight);
+  const r=panel.getBoundingClientRect();
+  if(r.bottom>floor-4&&menu.getBoundingClientRect().top-r.height>8) menu.classList.add('up');
+},true);
+/** 고른 날의 카드를 일정 목록 맨 위로 — 칩을 눌렀는데 목록이 Day 1에 머물면 무엇이 바뀌었는지 모른다
+ *  (2026-09-27 UX 검토: D7을 눌러도 시트는 흐린 Day 1이었다). 접힌 모바일 시트는 절반으로 올린다. */
+function revealDayCard(di){
+  const sb=document.getElementById('sidebar'); if(!sb) return;
+  const card=sb.querySelectorAll('.dayCard')[di]; if(!card) return;
+  if(sb.dataset.snap==='collapsed') setSheetSnap('half');
+  const handle=window.matchMedia('(max-width: 760px)').matches? 40 : 8;   // 모바일 시트 손잡이만큼 띄운다
+  const top=sb.scrollTop+card.getBoundingClientRect().top-sb.getBoundingClientRect().top-handle;
+  sb.scrollTo({top:Math.max(0,top),behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});
 }
 /** 그 날의 좌표 있는 장소가 다 보이게 — 두 컨트롤이 같은 프레이밍을 쓴다. @param {number} di */
 function fitDay(di){
@@ -1738,6 +1760,10 @@ function renderSidebar(){
       }
       const _prio=spotPriorityOf(s);
       if(_prio!=='NORMAL') meta.push(`<span class="spotMetaItem ${_prio==='MUST'?'must':'opt'}">${esc(spotPriorityLabel(_prio))}</span>`);
+      // 머무는 시간 — 정하지 않으면 0분으로 계산되어 도착 시각이 1분 간격으로 붙는다. 그 사실이 행에서 보여야 한다
+      // (2026-09-27 UX 검토). '정하지 않음'과 '0분(바로 이동)'은 다른 말이라 둘 다 남긴다. 숙소는 묻지 않는다.
+      if(s.stayMin!=null) meta.push(`<span class="spotMetaItem stayMin">⏱ ${s.stayMin?`머묾 ${fmtDur(s.stayMin*60)}`:'바로 이동'}</span>`);
+      else if(!s.stay&&!readOnly()) meta.push(`<button type="button" class="spotMetaItem stayMin unset" onclick="event.stopPropagation();openSpotModal(${di},${si},'spotStayMin')" title="머무는 시간을 정하면 다음 장소의 도착 예상이 그만큼 늦어져요">⏱ 머무는 시간 미정</button>`);
       if(!hasLoc(s)) meta.push(`<button type="button" class="spotMetaItem noloc" onclick="event.stopPropagation();openSpotModal(${di},${si})">📍 위치 지정</button>`);
       if(s.cost){
         const cu=CUR[s.cur], nk=cu&&s.cur!=='KRW';
@@ -1793,7 +1819,6 @@ function renderSidebar(){
         meta.push(`<span class="spotMetaItem whoChip" title="${escAttr(`이 시간에 가는 사람: ${names}`)}">👣 ${esc(names)}</span>`);
       }
       if(s.reunion) meta.push(`<span class="spotMetaItem reunionChip" title="갈라졌던 일행이 다시 만나는 지점 — 가장 늦게 끝나는 쪽에 맞춰 시각이 계산됩니다">🤝 다시 합류</span>`);
-      const metaHtml=meta.length?`<div class="spotMeta">${meta.join(' ')}</div>`:'';
       // 시각 배지: 📌=내가 고정한 도착 / 없으면 자동 계산한 도착 예상 / ⚠️=고정 시각이 이동상 불가능
       const natMin=tl[si].natural, natTxt=(natMin>=1440? `${Math.floor(natMin/1440)}일 뒤 ${hm(natMin)}` : hm(natMin));   // 24시간 초과분은 '며칠 뒤'로
       // 기차·비행기는 거리 기반 '추정'이라 실제 시간표를 못 이긴다 → 시간표대로 넣은 고정 도착에 충돌 경고를 띄우지 않음
@@ -1806,10 +1831,16 @@ function renderSidebar(){
                 : `📌 도착 고정 ${esc(s.at)} — 이동시간상 ${natTxt}에야 도착합니다. 앞 일정을 줄이거나 이 시각을 늦추세요`)
             : `📌 도착 고정 — 직접 정한 시각. 자동 계산 대신 이 시각을 씁니다 (이 날은 시각 순서로 정렬됩니다)`)
         : `도착 예상 — 시작 시각 + 이동시간 + 머무는 시간으로 자동 계산한 추정값`;
+      // 경고의 **이유는 보이는 한 줄로** — 툴팁(title)은 모바일에서 볼 수 없고, 좁은 시간 칸에서 아이콘은 잘렸다.
+      const warns=[];
+      if(showConflict) warns.push(`이동상 ${natTxt}에야 도착해요 — 고정 ${esc(s.at)}. 앞 일정을 줄이거나 이 시각을 늦추세요`);
+      if(bookWarn) warns.push(`도착 예상 ${hm(etas[si])} — 예약 ${esc(s.bookAt)}보다 늦어요`);
+      if(warns.length) meta.unshift(...warns.map(w=>`<span class="spotMetaItem spotWarn" role="note">${ic('warn')} ${w}</span>`));
+      const metaHtml=meta.length?`<div class="spotMeta">${meta.join(' ')}</div>`:'';
       const splitCls=s.split? ' inSplit':'';
       spotsHtml+=`<div class="spot${splitCls}${s.reunion?' isReunion':''}" data-di="${di}" data-si="${si}"${s.split?` data-split="${escAttr(s.split)}"`:''} style="--c:${dotC}">
         <div class="spotMain">
-          <span class="spotTime eta${tl[si].fixed?' fixed':''}" title="${escAttr(etaTip)}">${tl[si].fixed?ic('fixed'):''}${hm(etas[si])}${showConflict?ic('warn'):''}</span>
+          <span class="spotTime eta${tl[si].fixed?' fixed':''}" title="${escAttr(etaTip)}">${tl[si].fixed?ic('fixed'):''}${hm(etas[si])}</span>
           <button type="button" class="spotIdentity nm" onclick="focusSpot(${di},${si})" title="${escAttr(s.name)}" aria-label="${escAttr(cat?`${cat.name} ${s.name}`:s.name)} 지도에서 보기"><span class="spotOrder">${si+1}.</span>${cat?`<span class="spotCat" title="${escAttr(cat.name)}" aria-hidden="true">${cat.icon}</span>`:''}<span class="spotName">${esc(s.name)}</span></button>
           <details class="actionMenu" onclick="event.stopPropagation()"><summary aria-label="${escAttr(s.name)} 작업 메뉴">⋮</summary><div class="actionMenuPanel">
           <button class="iconb mvup" onclick="moveSpot(${di},${si},-1)" title="위로">↑ <span>위로</span></button>
@@ -2081,7 +2112,7 @@ let _pickedHours = null;   // 검색 결과에서 선택한 영업시간 (저장
 // 지도 클릭·검색 지정으로 실제 도시를 덮어써도 되지만, 직접 입력한 값은 보존한다.
 let _cityPrefill = '';
 let _namePrefill = '';   // 자동 채운 이름(검색/역지오코딩) — 사용자 입력과 구분
-window.openSpotModal=(di,si)=>{
+window.openSpotModal=(di,si,focusId)=>{
   if(!guardEdit()) return;
   // 새 장소는 '선택한 장소 바로 뒤'에 넣는다 — 선택이 없거나 다른 날이면 맨 뒤(기존 동작)
   const after=(si<0 && selectedSpot && selectedSpot.di===di && trip().days[di].spots[selectedSpot.si]) ? selectedSpot.si : null;
@@ -2128,6 +2159,8 @@ window.openSpotModal=(di,si)=>{
       try{ const bg=document.getElementById('spotModalBg'); if(bg && bg.classList.contains('show')) drawWhoChips(s.who); }catch(e){}
     });
   document.getElementById('spotModalBg').classList.add('show');
+  // 행에서 특정 칸(예: '머무는 시간 미정')을 눌러 열었으면 그 칸으로 바로 — 모달의 기본 포커스 뒤에 옮긴다
+  if(focusId) setTimeout(()=>{ const el=document.getElementById(focusId); if(el){ el.focus(); el.scrollIntoView({block:'center'}); } },60);
 };
 
 /**
@@ -3580,7 +3613,7 @@ document.getElementById('bkDelBtn').onclick=()=>{
     return;
   }
   const b=bookingOf(editingBooking); if(!b) return;
-  if(!confirm(`"${b.title}" 예약 추적을 삭제할까요? (실제 예약이 취소되지는 않아요)`)) return;
+  if(!confirm(`"${b.title}" 예약을 이 여행에서 지울까요?\n예약번호·기간·금액과 일정 연결이 모든 일행에게서 사라져요. 실제 예약은 취소되지 않아요.`)) return;
   const snap=snapshot();
   commit(()=>{
     trip().bookings=tripBookings().filter(x=>x.id!==b.id);
@@ -3940,6 +3973,13 @@ function openPaste(){
   document.getElementById('apiKey').value=cfg.apiKey||'';
   document.getElementById('apiModel').value=cfg.model||'claude-sonnet-5';
   document.getElementById('pasteText').value='';
+  // 장소가 하나도 없는 여행에서 열면 기본은 **이 여행을 채우는 것**이다 — 빈 여행 안내의 '가진 일정 붙여넣기'가
+  // 여행을 하나 더 만들어, 목록에 빈 여행과 붙여넣은 여행이 따로 남았다(2026-09-27 UX 검토).
+  const sel=document.getElementById('pasteTarget'), cur=trip();
+  const empty=!!cur&&!readOnly()&&cur.days.every(d=>!d.spots.length);
+  const over=sel.querySelector('option[value="overwrite"]');
+  if(over) over.textContent=empty?'이 여행 채우기 (지금 비어 있어요)':'현재 여행 전체 덮어쓰기';
+  sel.value=empty?'overwrite':(sel.value==='overwrite'?'new':sel.value||'new');
   syncPasteMode();
   document.getElementById('pasteModalBg').classList.add('show');
 }

@@ -48,6 +48,13 @@ final class UiPolishTests: XCTestCase {
         XCTAssertEqual(facts.map(\.text), ["출발 08:40", "도착 09:06", "이동 26분 예상", "45분 머무름"])
         XCTAssertTrue(facts.allSatisfy { !$0.symbol.isEmpty })
 
+        // 계획상 도착(아침 09:02)이 약속에서 거꾸로 센 출발(18:38)보다 이르면 — 출발 + 이동으로 말한다.
+        let evening = NextAction(activityId: "a2", title: "저녁 예약", status: .upcoming, travelMinutes: 20, etaMinutes: 9 * 60 + 2,
+                                 startMinutes: 19 * 60, stayMinutes: nil,
+                                 departure: DepartureAdvice(leaveMinutes: 18 * 60 + 38, slackMinutes: 2, level: .now, text: "곧 나서요"),
+                                 location: nil, type: .restaurant, flexibility: .fixed, reasons: [])
+        XCTAssertEqual(NextActionCard.facts(evening, isEstimate: false).map(\.text).prefix(2), ["출발 18:38", "도착 18:58"])
+
         // 도착 예정이 없으면 시작 시각을 대신 말하고, 없는 것은 말하지 않는다.
         let bare = NextAction(activityId: nil, title: "휴식", status: .upcoming, travelMinutes: 0, etaMinutes: nil,
                               startMinutes: 13 * 60, stayMinutes: nil, departure: nil, location: nil,

@@ -250,9 +250,10 @@ struct BookingEditorView: View {
 
                 if target.booking != nil {
                     Section {
-                        Button("이 예약 빼기", role: .destructive) { showsDeleteConfirm = true }
+                        Button("이 예약 삭제", role: .destructive) { showsDeleteConfirm = true }
                     } footer: {
-                        Text("추적만 그만둡니다. 실제 예약은 취소되지 않아요.")
+                        // 예전 문구 "추적만 그만둡니다"는 거짓이었다 — 실제로는 예약 기록이 통째로 지워진다.
+                        Text("예약번호·기간·금액과 일정 연결이 이 여행에서 지워져요. 실제 예약은 취소되지 않아요. 가격 추적만 끄려면 위의 가격 추적을 끄세요.")
                     }
                 }
                 if target.item != nil {
@@ -289,8 +290,8 @@ struct BookingEditorView: View {
             } message: { problem in
                 Text(problem.message)
             }
-            .confirmationDialog(target.item != nil ? "이 항목을 지울까요?" : "이 예약 추적을 뺄까요?", isPresented: $showsDeleteConfirm, titleVisibility: .visible) {
-                Button(target.item != nil ? "지우기" : "빼기", role: .destructive) {
+            .confirmationDialog(target.item != nil ? "이 항목을 지울까요?" : "이 예약을 이 여행에서 지울까요?", isPresented: $showsDeleteConfirm, titleVisibility: .visible) {
+                Button("삭제", role: .destructive) {
                     if let booking = target.booking {
                         Task { if await saving.perform({ await onDelete(booking.id) }) { dismiss() } }
                     } else if let item = target.item {
@@ -298,7 +299,7 @@ struct BookingEditorView: View {
                     }
                 }
             } message: {
-                if target.item == nil { Text("실제 예약이 취소되지는 않아요.") }
+                if target.item == nil { Text("예약번호·기간·금액과 일정 연결이 모든 일행에게서 사라져요. 실제 예약은 취소되지 않아요.") }
             }
         }
     }
