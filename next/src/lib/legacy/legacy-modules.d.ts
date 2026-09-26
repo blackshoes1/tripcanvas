@@ -131,6 +131,7 @@ declare module '@legacy/lib.js' {
     /** 그 날 장소를 도착시각 순으로 제자리 정렬 — 순서가 바뀌면 true */
     sortDayByTime(day: unknown): boolean;
     toISO(d: Date): string;
+    sortTripsByCountdown<T extends { start?: string; days?: unknown[] }>(trips: T[], today: string): T[];
     haversine(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number;
     legKey(a: { lat: number; lng: number }, b: { lat: number; lng: number }, mode?: string): string;
     decodePolyline(str: string | null | undefined): { lat: number; lng: number }[];

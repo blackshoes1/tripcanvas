@@ -70,6 +70,23 @@ test('통합 부트: index.html+lib+app 무크래시 로드', { skip: noJsdom },
     .forEach((fn) => assert.equal(w.eval(`typeof ${fn}`), 'function', `${fn} 정의됨`));
 });
 
+test('통합: 여행 목록은 예정일 순으로 표시하고 선택한 여행과 저장 순서는 유지한다', { skip: noJsdom }, () => {
+  const w=boot();
+  try {
+    w.eval(`todayISO=()=> '2026-09-26';
+      store={activeId:'far',trips:[
+        {id:'past',name:'지난 여행',start:'2026-06-18',days:[{spots:[]}]},
+        {id:'far',name:'D-300',start:'2027-07-23',days:[{spots:[]}]},
+        {id:'near',name:'D-30',start:'2026-10-26',days:[{spots:[]}]}
+      ]}; renderTripList();`);
+    const rows=[...w.document.querySelectorAll('#tripListBody .tripRow')];
+    assert.deepEqual(rows.map(row=>row.querySelector('img').dataset.coverTrip),['near','far','past']);
+    assert.equal(rows[1].classList.contains('active'),true);
+    assert.equal(w.eval('store.activeId'),'far');
+    assert.equal(w.eval('store.trips.map(t=>t.id).join()'),'past,far,near');
+  } finally { w.close(); }
+});
+
 test('통합: 동기화 실패 상태를 보존하고 명시적 재시도로 회복한다', { skip: noJsdom }, async () => {
   const w=boot();
   w.eval(`user={id:'u1'}; sb={}; TC_API.sync.save=async()=>{ throw new Error('offline'); };`);

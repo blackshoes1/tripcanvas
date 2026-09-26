@@ -1443,3 +1443,13 @@ test('additionalReservations — 명소의 예약 완료·미예약 표시를 �
   ] }] });
   assert.deepEqual(rows.map(r => r.item.name), ['예약 완료']);
 });
+
+
+test('여행 목록은 진행 중·D-30·D-300·D+100·날짜 미정 순이며 저장 순서는 보존한다', () => {
+  const today='2026-09-26';
+  const make=(id,offset,count=1)=>({id,start:new Date(Date.parse(today+'T00:00:00Z')+offset*86400000).toISOString().slice(0,10),days:Array(count).fill({})});
+  const trips=[make('past',-100),make('far',300),{id:'undated',start:''},make('near',30),make('older',-200),make('live',-2,4),make('today',0),make('same',30)];
+  const original=trips.slice();
+  assert.deepEqual(L.sortTripsByCountdown(trips,today).map(t=>t.id),['today','live','near','same','far','past','older','undated']);
+  assert.deepEqual(trips,original);
+});
