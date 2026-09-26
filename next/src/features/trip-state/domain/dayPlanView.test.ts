@@ -37,6 +37,14 @@ const build = (t: Trip, di: number, legCache?: LegCache) =>
   buildDayPlanView({ trip: t, di, summary, generatedAt: '2026-09-06T00:00:00Z', legCache });
 
 describe('buildDayPlanView', () => {
+  it('숙박은 체크아웃까지 표시하고 동선 앵커의 이월과 분리한다', () => {
+    const t = trip([day([hotel({ nights: 2 })]), day([]), day([]), day([])]);
+    expect(build(t, 0)!.day.lodging[0]).toMatchObject({ state: 'CHECK_IN', night: 1, nights: 2 });
+    expect(build(t, 1)!.day.lodging[0]).toMatchObject({ state: 'STAY', night: 2, nights: 2 });
+    expect(build(t, 2)!.day.lodging[0]).toMatchObject({ state: 'CHECK_OUT', night: null });
+    expect(build(t, 3)!.day.lodging).toEqual([]);
+  });
+
   it('복귀 전용 수단은 복귀 구간과 하루 합계에만 반영한다', () => {
     const base = trip([day([hotel(), seongsan()]), day([])]);
     const before = build(base, 0)!;

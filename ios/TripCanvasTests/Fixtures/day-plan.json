@@ -43,6 +43,22 @@
     "startMinutes": 540,
     "timeZone": "Asia/Seoul",
     "carriedStay": null,
+    "lodging": [
+      {
+        "id": "booking:bk1",
+        "name": "호텔",
+        "state": "CHECK_IN",
+        "night": 1,
+        "nights": 2
+      },
+      {
+        "id": "spot:0:0",
+        "name": "숙소",
+        "state": "CHECK_IN",
+        "night": 1,
+        "nights": 1
+      }
+    ],
     "spots": [
       {
         "index": 0,

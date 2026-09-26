@@ -728,6 +728,14 @@ export interface DayPlanFlight {
   arrMinutes: number | null;
 }
 
+export interface DayPlanLodging {
+  id: string;
+  name: string;
+  state: 'CHECK_IN' | 'STAY' | 'CHECK_OUT' | 'CONFLICT';
+  night: number | null;
+  nights: number | null;
+}
+
 export interface DayPlanDay {
   index: number;
   date: string;                    // YYYY-MM-DD ('' = 시작일 미지정)
@@ -739,6 +747,7 @@ export interface DayPlanDay {
   timeZone: string;
   /** 🏠 전날 숙소 이월 — **숙소일 때만.** ETA 계산의 기준점(anchor)과 다를 수 있다. */
   carriedStay: { name: string; location: GeoPoint | null } | null;
+  lodging: DayPlanLodging[];
   spots: DayPlanSpot[];
   /** 이월·분리·합류·숙소 복귀를 모두 포함한 지도 구간. incomingLeg와 back은 행별 대표 구간이다. */
   routes: TripRouteLeg[];

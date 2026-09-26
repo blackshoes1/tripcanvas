@@ -139,6 +139,7 @@ declare module '@legacy/lib.js' {
     ringPts(p: { lat: number; lng: number }, r: number): { lat: number; lng: number }[];
     zonedMinutesToISOString(isoDate: string, minutes: number, timeZone: string): string | null;
     inKorea(p: { lat: number; lng: number } | null | undefined): boolean;
+    dayLodgings(trip: unknown, di: number): { id: string; name: string; state: 'CHECK_IN' | 'STAY' | 'CHECK_OUT' | 'CONFLICT'; night: number | null; nights: number | null }[];
     stayNights(s: unknown): number;
     localMode(mode: unknown): string;
     returnModeOf(day: unknown): string;

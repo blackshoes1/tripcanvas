@@ -561,6 +561,56 @@
    * @param {any} s @returns {number} */
   function stayNights(s){ const n=Math.round(+((s&&s.nights)||1)); return (isFinite(n)&&n>=1)? Math.min(n,60) : 1; }
   /**
+   * 날짜별 숙박 표시. 동선의 출발 앵커와 달리 체크아웃 뒤에는 숙박을 이월하지 않는다.
+   * 예약 연결은 bookingId만 믿는다. 같은 이름의 다른 예약·일행의 숙소를 합치지 않는다.
+   * @param {any} trip @param {number} di
+   * @returns {{id:string,name:string,state:'CHECK_IN'|'STAY'|'CHECK_OUT'|'CONFLICT',night:number|null,nights:number|null}[]}
+   */
+  function dayLodgings(trip, di){
+    const days=Array.isArray(trip&&trip.days)?trip.days:[];
+    if(!Number.isInteger(di)||di<0||di>=days.length) return [];
+    const dateNum=(/** @type {any} */ value)=>{
+      const n=_dayNum(value);
+      return n!==null&&new Date(n*86400000).toISOString().slice(0,10)===value?n:null;
+    };
+    const origin=dateNum(trip.start);
+    /** @type {{spot:any,index:number,key:string}[]} */ const stays=[];
+    days.forEach((/** @type {any} */ day,/** @type {number} */ index)=>{
+      (Array.isArray(day&&day.spots)?day.spots:[]).forEach((/** @type {any} */ spot,/** @type {number} */ si)=>{
+        if(spot&&spot.stay&&spot.status!=='CANCELLED'&&spot.status!=='SKIPPED') stays.push({spot,index,key:`spot:${index}:${si}`});
+      });
+    });
+    /** @type {ReturnType<typeof dayLodgings>} */ const result=[];
+    /** @param {string} id @param {string} name @param {number} start @param {number} nights @param {{start:number,nights:number}|null} alternate */
+    const add=(id,name,start,nights,alternate=null)=>{
+      const within=(/** @type {number} */ from,/** @type {number} */ count)=>di>=from&&di<=from+count;
+      if(!within(start,nights)&&!(alternate&&within(alternate.start,alternate.nights))) return;
+      const conflict=alternate!==null;
+      result.push({id,name:name||'숙소',state:conflict?'CONFLICT':di===start+nights?'CHECK_OUT':di===start?'CHECK_IN':'STAY',
+        night:conflict||di===start+nights?null:di-start+1,nights:conflict?null:nights});
+    };
+    const used=new Set();
+    for(const booking of Array.isArray(trip.bookings)?trip.bookings:[]){
+      if(!booking||booking.type!=='hotel') continue;
+      const linked=stays.filter(s=>s.spot.bookingId&&s.spot.bookingId===booking.id);
+      const first=linked[0];
+      const start=dateNum(booking.start), end=dateNum(booking.end);
+      if(start===null||end===null||end<=start||(!first&&origin===null)) continue;
+      const from=origin===null?first.index:start-origin;
+      const nights=end-start;
+      linked.forEach(s=>used.add(s.key));
+      // 미입력 기본 1박으로 예약 기간을 덮지 않는다. 명시한 기간만 비교한다.
+      const differs=first&&(first.index!==from||(first.spot.nights!=null&&stayNights(first.spot)!==nights));
+      add(`booking:${booking.id}`,first?.spot.name||booking.title,from,nights,
+        differs?{start:first.index,nights:stayNights(first.spot)}:null);
+    }
+    for(const stay of stays){
+      if(!used.has(stay.key)) add(stay.key,stay.spot.name,stay.index,stayNights(stay.spot));
+    }
+    return result.sort((a,b)=>(a.state==='CHECK_OUT'?0:1)-(b.state==='CHECK_OUT'?0:1));
+  }
+
+  /**
    * di일이 '이월받는' 출발 앵커. 정책(days[di].startPolicy)이 'none'이면 이월 없음(null).
    * 그 외에는 (1) 연박 범위가 di를 덮는 가장 가까운 숙소 → (2) 없으면 직전(빈 일자는 건너뜀)
    * 유효 일자의 dayAnchor(마지막 숙소→없으면 마지막 위치).
@@ -1729,7 +1779,7 @@
     };
   }
 
-  const TC={sortTripsByCountdown,additionalReservations,tripSummaryCities,returnModeOf,SPOT_PRIORITIES,spotPriorityOf,applySpotPriority,spotPriorityLabel,SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,cityFromKoreanAddr,placeName,cityFromGoogle,normHours,classifySearchErr,isKoreanSearch,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,normHM,sortDayByTime,inKorea,simplifyName,parseDirect,parseMoney,normalizeDraftDays,extractJson,extMapLink,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,stayMinutesOf,activityStartMinute,dayEndMinutes,departMinuteAfter,computeTimeline,computeDayJourney,whoKey,splitSegments,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,budgetBookings,moneyAmount,parseCostAmount,costAmountOf,dayEnteredCost,splitAcrossNights,stayCostShares,dayEnteredCostOn,hasManualTransportCost,dayCostSummary,ADMISSION_REQUIREMENTS,admissionLabel,admissionOf,needsAdmissionBooking,normalizeAdmission,admissionError,COST_CATEGORIES,costCategoryOf,COST_PAY_STATES,costPayStateOf,payStateTotals,TRIP_NOTE_CATEGORIES,normalizeTripNote,tripCostSummary,localMode,SAMPLE_TRIP_ID,isSampleTrip,sampleTrip,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
+  const TC={dayLodgings,sortTripsByCountdown,additionalReservations,tripSummaryCities,returnModeOf,SPOT_PRIORITIES,spotPriorityOf,applySpotPriority,spotPriorityLabel,SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,cityFromKoreanAddr,placeName,cityFromGoogle,normHours,classifySearchErr,isKoreanSearch,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,normHM,sortDayByTime,inKorea,simplifyName,parseDirect,parseMoney,normalizeDraftDays,extractJson,extMapLink,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,stayMinutesOf,activityStartMinute,dayEndMinutes,departMinuteAfter,computeTimeline,computeDayJourney,whoKey,splitSegments,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,budgetBookings,moneyAmount,parseCostAmount,costAmountOf,dayEnteredCost,splitAcrossNights,stayCostShares,dayEnteredCostOn,hasManualTransportCost,dayCostSummary,ADMISSION_REQUIREMENTS,admissionLabel,admissionOf,needsAdmissionBooking,normalizeAdmission,admissionError,COST_CATEGORIES,costCategoryOf,COST_PAY_STATES,costPayStateOf,payStateTotals,TRIP_NOTE_CATEGORIES,normalizeTripNote,tripCostSummary,localMode,SAMPLE_TRIP_ID,isSampleTrip,sampleTrip,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
   if(typeof module!=='undefined' && module.exports){ module.exports=TC; }   // Node (테스트)
   else { const r=/**@type {any}*/(root); for(const k in TC) r[k]=/**@type {any}*/(TC)[k]; }   // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);
