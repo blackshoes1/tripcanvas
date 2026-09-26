@@ -162,6 +162,7 @@ struct PlanSpotList: View {
                 .foregroundStyle(Ink.accent)
                 .accessibilityAddTraits(.isHeader)
             dayHeader(day)
+            lodgingSummary
             if model.plan == nil && !model.planAttempted(for: model.selectedDay) {
                 ProgressView("이동·도착 시각을 계산하는 중").font(.caption)
             }
@@ -213,7 +214,7 @@ struct PlanSpotList: View {
             removal: .move(edge: goingForward ? .leading : .trailing).combined(with: .opacity))
     }
 
-    /// 하루 제목 — `마드리드 도착 · 1박`. 승인 시안의 첫 줄이다.
+    /// 하루 제목. 숙박 상태는 별도 줄에서 표시한다.
     /// ⚠️ 이동수단 바꾸기는 **접힌 요약 안으로** 옮겼다(시안 헤더에는 제목만 있다). 기능은 그대로다.
     private func dayHeader(_ day: TripDay) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: Space.s) {
@@ -227,11 +228,30 @@ struct PlanSpotList: View {
         .textCase(nil)
     }
 
-    /// `마드리드 도착 · 1박`. **숙박은 문서에 있을 때만** 붙인다 — 없는 밤을 지어내지 않는다.
     private func dayTitleText(_ day: TripDay) -> String {
-        let base = day.title.isEmpty ? "\(model.selectedDay + 1)일차" : day.title
-        let nights = day.spots.compactMap { $0.isStay ? $0.nights : nil }.max() ?? 0
-        return nights > 0 ? "\(base) · \(nights)박" : base
+        day.title.isEmpty ? "\(model.selectedDay + 1)일차" : day.title
+    }
+
+    @ViewBuilder
+    private var lodgingSummary: some View {
+        if let lodging = model.planDay?.lodging {
+            if lodging.isEmpty {
+                Label("숙박 정보 없음", systemImage: "bed.double")
+                    .font(.subheadline).foregroundStyle(Ink.soft)
+            } else {
+                ForEach(lodging) { item in
+                    Label {
+                        Text("\(item.name) · \(item.detail)")
+                            .fixedSize(horizontal: false, vertical: true)
+                    } icon: {
+                        Image(systemName: item.state == "CONFLICT" ? "exclamationmark.circle" : "bed.double")
+                    }
+                    .font(.subheadline)
+                    .foregroundStyle(item.state == "CONFLICT" ? Ink.warning : Ink.soft)
+                    .accessibilityElement(children: .combine)
+                }
+            }
+        }
     }
 
     /// 그 장소가 분리 구간에 속하는지와, 거기에 누가 있는지.

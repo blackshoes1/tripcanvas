@@ -1453,3 +1453,44 @@ test('여행 목록은 진행 중·D-30·D-300·D+100·날짜 미정 순이며 �
   assert.deepEqual(L.sortTripsByCountdown(trips,today).map(t=>t.id),['today','live','near','same','far','past','older','undated']);
   assert.deepEqual(trips,original);
 });
+
+test('숙박 표시: 4박 체크인·연박·체크아웃과 빈 날을 구분한다', () => {
+  const trip={days:Array.from({length:6},(_,i)=>({spots:i===0?[{name:'호텔 A',stay:true,nights:4}]:[]}))};
+  assert.deepEqual(Array.from({length:6},(_,i)=>L.dayLodgings(trip,i).map(x=>[x.state,x.night,x.nights])),[
+    [['CHECK_IN',1,4]],[['STAY',2,4]],[['STAY',3,4]],[['STAY',4,4]],[['CHECK_OUT',null,4]],[]
+  ]);
+});
+
+test('숙박 표시: 기본 1박·좌표 없는 숙소·이동일의 두 호텔을 지원한다', () => {
+  const trip={days:[{spots:[{name:'A',stay:true}]},{spots:[{name:'B',stay:true,nights:2}]},{spots:[]},{spots:[]}]};
+  assert.deepEqual(L.dayLodgings(trip,1).map(x=>[x.name,x.state,x.nights]),[['A','CHECK_OUT',1],['B','CHECK_IN',2]]);
+  assert.deepEqual(L.dayLodgings(trip,3).map(x=>x.state),['CHECK_OUT']);
+  assert.deepEqual(L.dayLodgings(trip,-1),[]);
+});
+
+test('숙박 표시: 예약만 있어도 현지 날짜로 계산하고 체크아웃 밤을 세지 않는다', () => {
+  const trip={start:'2026-10-26',days:Array.from({length:5},()=>({spots:[]})),bookings:[
+    {id:'b1',type:'hotel',title:'호텔 A',start:'2026-10-25',end:'2026-10-29'},
+    {id:'c1',type:'car',title:'렌터카',start:'2026-10-26',end:'2026-10-30'}]};
+  assert.deepEqual(L.dayLodgings(trip,0).map(x=>[x.name,x.night,x.nights]),[['호텔 A',2,4]]);
+  assert.equal(L.dayLodgings(trip,3)[0].state,'CHECK_OUT');
+  assert.deepEqual(L.dayLodgings(trip,4),[]);
+});
+
+test('숙박 표시: 연결 예약은 한 번만 표시하며 미입력 기본값은 예약 기간을 덮지 않는다', () => {
+  const trip={start:'2026-10-26',days:[{spots:[{name:'호텔 A',stay:true,bookingId:'b1'}]},{spots:[]},{spots:[]},{spots:[]}],
+    bookings:[{id:'b1',type:'hotel',title:'예약 A',start:'2026-10-26',end:'2026-10-29'}]};
+  assert.deepEqual(L.dayLodgings(trip,1).map(x=>[x.name,x.state,x.nights]),[['호텔 A','STAY',3]]);
+  trip.days[0].spots[0].nights=2;
+  assert.deepEqual(L.dayLodgings(trip,1).map(x=>[x.state,x.nights]),[['CONFLICT',null]]);
+  trip.days[0].spots[0].nights=3;
+  trip.bookings[0].start='2026-10-27';trip.bookings[0].end='2026-10-30';
+  assert.equal(L.dayLodgings(trip,0)[0].state,'CONFLICT');
+});
+
+test('숙박 표시: 이름만 같은 미연결 숙소는 합치지 않고 취소 장소와 날짜 없는 예약은 추측하지 않는다', () => {
+  const trip={days:[{spots:[{name:'호텔',stay:true},{name:'호텔',stay:true},{name:'취소',stay:true,status:'CANCELLED'}]}],
+    bookings:[{id:'b1',type:'hotel',title:'날짜만 있는 예약',start:'2026-10-26',end:'2026-10-28'}]};
+  assert.equal(L.dayLodgings(trip,0).length,2);
+  assert.equal(new Set(L.dayLodgings(trip,0).map(x=>x.id)).size,2);
+});

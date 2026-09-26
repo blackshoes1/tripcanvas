@@ -31,7 +31,7 @@ import type {
 } from './contract';
 
 const {
-  carEventsOn, carSpotLinks, dayReturnStay, dayStartAnchor, haversine, legKey, parseHM, returnModeOf, spotCatOf, splitSegments
+  carEventsOn, carSpotLinks, dayLodgings, dayReturnStay, dayStartAnchor, haversine, legKey, parseHM, returnModeOf, spotCatOf, splitSegments
 } = legacyLib;
 
 /** 캐시가 비어 있으면 lib이 직선거리 추정으로 떨어진다 — 키가 없을 때의 오늘 동작이 그대로다. */
@@ -215,6 +215,7 @@ export function buildDayPlanView(input: DayPlanInput): DayPlanResponse | null {
     startMinutes: parseHM(day.startAt || '09:00'),
     timeZone: String(day.timeZone ?? trip.timeZone ?? ''),
     carriedStay: carry ? { name: String(carry.name ?? ''), location: pointOf(carry) } : null,
+    lodging: dayLodgings(input.trip, di),
     spots: planSpots,
     routes: journey.legs.map(leg => tripRouteLegOf(cache, {
       ...leg, mode: leg.returning ? returnModeOf(day) : legModeOf(day, leg.to)
