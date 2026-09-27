@@ -519,12 +519,11 @@ struct CandidateCard: View {
         switch CollabModel.verdict(candidate, memberCount: memberCount).tone {
         // 웹의 `.candMood` 규칙과 **같은 색을 말한다**(§색은 뜻이다). `.yellow`는 토큰에 없고,
         // 같은 상태를 플랫폼마다 다른 색으로 말하면 한 여행이 기기마다 달라 보인다.
-        // ⚠️ split(CONFLICT, '의견이 갈려 있어요')과 mixed(MIXED, '조금 갈려요')의 **색 세기가
-        //    뒤바뀐 것으로 보인다** — 더 약한 쪽이 더 센 색이다. 웹을 그대로 옮겼을 뿐이고,
-        //    바로잡으려면 양쪽을 같이 바꿔야 한다(보이는 것이 바뀌므로 사람이 정한다).
+        // 세기 순서대로다: 조금 갈림(mixed) < 갈림(split). 2026-09-27 전에는 약한 쪽이 빨강(danger)이었다 —
+        // 의견이 갈린 것은 오류가 아니므로 빨강을 쓰지 않는다. 웹(`collab.js`·`style.css`)과 같이 바꿨다.
         case .good: return Ink.positive
         case .split: return Ink.warning
-        case .mixed: return Ink.danger
+        case .mixed: return Ink.info
         case .quiet: return .secondary
         }
     }

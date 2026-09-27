@@ -29,7 +29,7 @@ struct AuthError: Error, LocalizedError, Equatable {
 
     var errorDescription: String? { message }
 
-    static let notSignedIn = AuthError(code: .notSignedIn, message: "로그인이 필요합니다.")
+    static let notSignedIn = AuthError(code: .notSignedIn, message: "로그인이 필요해요.")
     static let network = AuthError(code: .network, message: "네트워크에 연결하지 못했어요 — 잠시 뒤에 다시 해주세요.")
 
     /// 서버 응답을 코드로 옮긴다. `auth.js`의 `toError`와 같은 판정 순서다.
@@ -234,7 +234,7 @@ final class AuthStore {
         self.session = store.loadSession()
         // 로그인 방식이 바뀌었다는 것을 사용자가 알 수 있게 말한다(§8).
         if self.session == nil, store.takeLegacySession() {
-            self.notice = "로그인 방식이 변경되어 한 번만 다시 로그인해 주세요.\n저장된 여행은 그대로 유지됩니다."
+            self.notice = "로그인 방식이 변경되어 한 번만 다시 로그인해 주세요.\n저장된 여행은 그대로 유지돼요."
         }
     }
 

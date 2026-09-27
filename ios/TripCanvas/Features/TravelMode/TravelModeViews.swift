@@ -24,7 +24,7 @@ struct TravelModeInviteCard: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
             HStack(spacing: Space.s) {
-                PrimaryActionButton(title: "시작", systemImage: "play.fill", isBusy: isBusy, action: onStart)
+                PrimaryActionButton(title: "안내 켜기", systemImage: "location.fill", isBusy: isBusy, action: onStart)
                 SecondaryActionButton(title: "나중에", action: onLater)
             }
         }
@@ -86,7 +86,7 @@ struct NotificationPrimerView: View {
                 .foregroundStyle(.tint)
             Text("나설 때가 되면 알려드릴까요?")
                 .font(.title3.weight(.bold))
-            Text("예약 시간에 맞춰 “이제 출발하면 여유 있어요” 같은 안내만 보내요.\n일정마다 울리는 알람은 보내지 않습니다.")
+            Text("예약 시간에 맞춰 “이제 출발하면 여유 있어요” 같은 안내만 보내요.\n일정마다 울리는 알람은 보내지 않아요.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
             HStack(spacing: Space.s) {
@@ -116,7 +116,7 @@ struct TripPulseBar: View {
                 }
             }
             Spacer(minLength: Space.s)
-            Button(travelModeOn ? "여행 종료" : "여행 시작", action: onToggle)
+            Button(travelModeOn ? "안내 끄기" : "안내 켜기", action: onToggle)
                 .font(.caption.weight(.semibold))
                 .frame(minHeight: 44)
                 .buttonStyle(.bordered)
@@ -164,7 +164,7 @@ struct TravelModeSetupView: View {
             ScrollView {
                 switch step {
                 case .loading:
-                    ProgressView("여행 시작 준비 중").padding(Space.xl)
+                    ProgressView("여행 중 안내 준비 중").padding(Space.xl)
                 case .location:
                     LocationPrimerView(
                         onAllow: {
@@ -189,7 +189,7 @@ struct TravelModeSetupView: View {
                 }
             }
             .disabled(isWorking)
-            .navigationTitle("여행 시작")
+            .navigationTitle("여행 중 안내 켜기")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {

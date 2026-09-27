@@ -97,7 +97,7 @@ struct PasteItineraryView: View {
             } header: {
                 Text("가진 일정을 그대로 붙여넣으세요")
             } footer: {
-                Text("AI·블로그·메일에서 받은 일정도 됩니다. 마크다운·표·이모지·\"오후 3시\"까지 읽어요. 읽은 결과를 보여 드릴 테니 담을 것만 고르시면 돼요.")
+                Text("AI·블로그·메일에서 받은 일정도 돼요. 마크다운·표·이모지·\"오후 3시\"까지 읽어요. 읽은 결과를 보여 드릴 테니 담을 것만 고르시면 돼요.")
             }
             Section {
                 Button {
@@ -200,7 +200,7 @@ struct PasteItineraryView: View {
     }
 
     private func dayTitle(_ day: ItineraryDraftDay) -> String {
-        let parts = ["\(day.index + 1)일차", day.date, day.title.isEmpty ? nil : day.title]
+        let parts = ["Day \(day.index + 1)", day.date, day.title.isEmpty ? nil : day.title]
         return parts.compactMap { $0 }.joined(separator: " · ")
     }
 

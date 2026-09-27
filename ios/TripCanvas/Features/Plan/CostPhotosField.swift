@@ -16,6 +16,8 @@ struct CostPhotosField: View {
     @State private var picked: [PhotosPickerItem] = []
     @State private var thumbs: [String: UIImage] = [:]
     @State private var denied = false
+    /// 크게 보는 사진. 64pt 썸네일로는 영수증 글자를 못 읽는다.
+    @State private var viewing: PhotoRef?
 
     /// 문서 정규화(lib.js)와 같은 상한. 넘겨도 조용히 잘리지 않게 화면에서 먼저 막는다.
     private static let maxPhotos = 10
@@ -56,6 +58,9 @@ struct CostPhotosField: View {
             Task { await loadThumbnails() }
         }
         .task { await loadThumbnails() }
+        .fullScreenCover(item: $viewing) { photo in
+            PhotoViewer(ref: photo.id, placeholder: thumbs[photo.id])
+        }
     }
 
     @ViewBuilder
@@ -72,6 +77,10 @@ struct CostPhotosField: View {
             }
             .frame(width: 64, height: 64)
             .clipShape(RoundedRectangle(cornerRadius: 8))
+            .contentShape(Rectangle())
+            .onTapGesture { if thumbs[ref] != nil { viewing = PhotoRef(id: ref) } }
+            .accessibilityAddTraits(thumbs[ref] != nil ? .isButton : [])
+            .accessibilityLabel("사진 크게 보기")
 
             Button {
                 refs.removeAll { $0 == ref }
@@ -115,6 +124,53 @@ struct CostPhotosField: View {
                                  contentMode: .aspectFill, options: options) { image, _ in
                 if let image { Task { @MainActor in thumbs[asset.localIdentifier] = image } }
             }
+        }
+    }
+}
+
+private struct PhotoRef: Identifiable { let id: String }
+
+/// 한 장을 화면 가득 — 원본 해상도로 다시 받고, 두 손가락으로 키운다(영수증 글자를 읽을 수 있어야 한다).
+private struct PhotoViewer: View {
+    let ref: String
+    let placeholder: UIImage?
+    @Environment(\.dismiss) private var dismiss
+    @State private var image: UIImage?
+    @State private var scale: CGFloat = 1
+    @State private var lastScale: CGFloat = 1
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color.black.ignoresSafeArea()
+                if let shown = image ?? placeholder {
+                    Image(uiImage: shown)
+                        .resizable()
+                        .scaledToFit()
+                        .scaleEffect(scale)
+                        .gesture(MagnifyGesture()
+                            .onChanged { value in scale = min(5, max(1, lastScale * value.magnification)) }
+                            .onEnded { _ in lastScale = scale })
+                        .onTapGesture(count: 2) { scale = scale > 1 ? 1 : 2.5; lastScale = scale }
+                        .accessibilityLabel("영수증·품목 사진")
+                }
+            }
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) { Button("닫기") { dismiss() }.tint(.white) }
+            }
+            .toolbarBackground(.hidden, for: .navigationBar)
+        }
+        .task { await loadFull() }
+    }
+
+    private func loadFull() async {
+        guard let asset = PHAsset.fetchAssets(withLocalIdentifiers: [ref], options: nil).firstObject else { return }
+        let options = PHImageRequestOptions()
+        options.isNetworkAccessAllowed = true
+        options.deliveryMode = .highQualityFormat
+        PHImageManager.default().requestImage(for: asset, targetSize: PHImageManagerMaximumSize,
+                                              contentMode: .aspectFit, options: options) { result, _ in
+            if let result { Task { @MainActor in image = result } }
         }
     }
 }

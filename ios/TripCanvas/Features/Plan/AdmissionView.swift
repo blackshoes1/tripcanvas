@@ -125,7 +125,7 @@ struct AdmissionEditorSection: View {
                                      providerID: spot.kakaoId ?? spot.placeId)
             }
         } footer: {
-            Text("직접 확인한 정보만 기록해 주세요. 예약 시각을 입력하거나 링크를 열어도 예약 완료로 바뀌지 않습니다. 금액은 비용에 별도로 입력합니다.")
+            Text("직접 확인한 정보만 기록해 주세요. 예약 시각을 입력하거나 링크를 열어도 예약 완료로 바뀌지 않아요. 금액은 비용에 별도로 입력해요.")
         }
     }
 }
@@ -173,7 +173,7 @@ struct SpotInformationView: View {
                         Text("직접 확인 · \(checked)").font(.caption).foregroundStyle(.secondary)
                     }
                 } header: { Text("예약·입장 준비") } footer: {
-                    Text("여행에 기록된 정보입니다. 링크를 열어도 예약 완료로 바뀌지 않습니다.")
+                    Text("여행에 기록된 정보예요. 링크를 열어도 예약 완료로 바뀌지 않아요.")
                 }
                 Section("기록한 비용") {
                     let entry = CostEntry(spot: spot)

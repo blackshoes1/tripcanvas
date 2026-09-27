@@ -33,6 +33,11 @@ final class TodayViewModel {
     }
 
     var canEdit: Bool { (today?.trip ?? trip).canEdit }
+    /// 오늘이 여행 기간 밖이다(시작 전·끝난 뒤·시작일 없음). 서버는 그때 1일차를 보내지만
+    /// 그건 **미리보기**지 오늘이 아니다 — 다녀옴·건너뛰기·제안 수락 같은 '지금' 동작을 두지 않는다.
+    var isOutsideTrip: Bool { !(today?.trip ?? trip).isLive }
+    /// 이 화면에서 실행 동작(완료·건너뛰기·제안·일정 조정)을 보일지. 일정 편집은 `일정` 탭에서 언제나 된다.
+    var canAct: Bool { canEdit && !isOutsideTrip }
     var canRetryAction: Bool { failedAction != nil && canEdit }
     var errorMessage: String? { actionErrorMessage ?? loadErrorMessage }
     /// 지금 서버 응답을 기다리는 대상(활동 id 또는 제안 id) — 버튼만 비활성화하고 화면은 살려 둔다.

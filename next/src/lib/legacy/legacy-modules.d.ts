@@ -464,7 +464,6 @@ declare module '@legacy/collab.js' {
     roleOf(roles: Record<string, RoleRow> | null | undefined, clientId: string, signedIn: boolean): Role;
     tripRoleMap(rows: MeTripRow[] | null | undefined): Record<string, { role: Role; count: number; owner: boolean; serverId: string }>;
     memberName(m: MemberRow | null | undefined): string;
-    displayNameFromEmail(email: string | null | undefined): string;
     memberSummary(members: MemberRow[] | null | undefined): { total: number; owners: number; editors: number; viewers: number; names: string[] };
     buildInviteLink(pageUrl: string, token: string): string;
     parseJoinHash(hash: string | null | undefined): string | null;

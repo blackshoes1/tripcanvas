@@ -115,7 +115,8 @@ struct TripPlanView: View {
             }
             afterOptions = nil
         }) {
-            AddSpotOptionsSheet(onSearch: { afterOptions = .search; showsAddOptions = false },
+            AddSpotOptionsSheet(spotNames: model.day?.spots.map(\.name) ?? [], after: $insertionAfter,
+                                onSearch: { afterOptions = .search; showsAddOptions = false },
                                 onManual: { afterOptions = .manual; showsAddOptions = false })
         }
         .sheet(isPresented: $showsSearch, onDismiss: {
@@ -130,17 +131,17 @@ struct TripPlanView: View {
                 let after = insertionAfter
                 Task {
                     await model.addSpot(hit.makeSpot(), after: after, dayIndex: session.day, expectedRevision: session.revision,
-                                        toast: "‘\(hit.name)’을(를) \(session.day + 1)일차에 추가했어요")
+                                        toast: "‘\(hit.name)’을(를) Day \(session.day + 1)에 추가했어요")
                 }
             }
         }
         .sheet(item: $quickCreate) { session in
             SpotQuickCreateView(
                 prefilledName: session.name,
-                contextLabel: "\(trip.name) · \(session.day + 1)일차",
+                contextLabel: "\(trip.name) · Day \(session.day + 1)",
                 draftKey: EditorDraftKey(accountID: env.auth.session?.userId, tripID: trip.id, editor: "spot-quick-\(session.day)")) { spot in
                 await model.addSpot(spot, after: session.after, dayIndex: session.day, expectedRevision: session.revision,
-                                    toast: "‘\(spot.name)’을(를) \(session.day + 1)일차에 추가했어요") ? nil : model.saveFailureMessage
+                                    toast: "‘\(spot.name)’을(를) Day \(session.day + 1)에 추가했어요") ? nil : model.saveFailureMessage
             }
         }
         .sheet(item: $viewingSpot) { target in
@@ -284,6 +285,8 @@ struct TripPlanView: View {
                 }
                 if choosingPlaces {
                     HStack {
+                        // 빠져나가는 길이 ⋯ 메뉴 안에만 있으면 선택 모드에 갇힌다.
+                        Button("취소") { choosingPlaces = false; chosenPlaces = [] }
                         Text("\(chosenPlaces.count)곳 선택")
                         Spacer()
                         Button("날짜·위치 옮기기") { prepareMove(chosenPlaces, model: model) }.disabled(chosenPlaces.isEmpty)

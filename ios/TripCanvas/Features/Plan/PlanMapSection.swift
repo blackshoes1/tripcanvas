@@ -82,7 +82,7 @@ struct PlanMapSection: View {
             let days = routes.days.filter { !$0.spots.isEmpty }
             if days.isEmpty {
                 EmptyStateView(symbol: "map", title: "지도에 놓을 장소가 없어요",
-                               message: "장소를 담으면 여행 전체 동선이 여기에 보입니다.")
+                               message: "장소를 담으면 여행 전체 동선이 여기에 보여요.")
             } else {
                 MapEngineView(
                     pins: days.flatMap(\.pins),
@@ -90,13 +90,16 @@ struct PlanMapSection: View {
                     isVisible: showsMap)
                     .ignoresSafeArea(edges: .bottom)
                     .overlay(alignment: .topLeading) {
-                        if let note = Self.routeNote(days.flatMap { $0.mapRoutes(colorIndex: $0.index) }) {
-                            Label(note, systemImage: "line.diagonal")
-                                .font(.caption)
-                                .padding(.horizontal, Space.m).padding(.vertical, Space.xs + 2)
-                                .background(.thinMaterial, in: Capsule())
-                                .padding(Space.m)
+                        VStack(alignment: .leading, spacing: Space.xs) {
+                            if let note = Self.routeNote(days.flatMap { $0.mapRoutes(colorIndex: $0.index) }) {
+                                Label(note, systemImage: "line.diagonal")
+                                    .font(.caption)
+                                    .padding(.horizontal, Space.m).padding(.vertical, Space.xs + 2)
+                                    .background(.thinMaterial, in: Capsule())
+                            }
+                            dayLegend(days.map(\.index))
                         }
+                        .padding(Space.m)
                     }
             }
         } else if model.isLoadingTripRoutes {
@@ -104,8 +107,28 @@ struct PlanMapSection: View {
             MapLoadingPlaceholder(message: "전체 동선을 불러오는 중이에요")
         } else {
             EmptyStateView(symbol: "map", title: "전체 동선을 불러오지 못했어요",
-                           message: "잠시 후 다시 시도해 주세요. 이 날 보기는 그대로 됩니다.")
+                           message: "잠시 후 다시 시도해 주세요. 이 날 보기는 그대로 쓸 수 있어요.")
         }
+    }
+
+    /// 일자 색 범례 — 색만으로 말하지 않는다(§47). 지도를 덜 가리게 한 줄로 흘린다.
+    private func dayLegend(_ indexes: [Int]) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: Space.s) {
+                ForEach(indexes, id: \.self) { index in
+                    HStack(spacing: 4) {
+                        Circle().fill(Color(MapPalette.color(index))).frame(width: 10, height: 10)
+                        Text("Day \(index + 1)").font(.caption2.weight(.semibold))
+                    }
+                }
+            }
+            .padding(.horizontal, Space.m).padding(.vertical, Space.xs + 2)
+        }
+        .background(.thinMaterial, in: Capsule())
+        .frame(maxWidth: 320, alignment: .leading)
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("일자별 색: " + indexes.map { "Day \($0 + 1)" }.joined(separator: ", "))
     }
 
     @ViewBuilder

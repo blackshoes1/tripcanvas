@@ -18,7 +18,7 @@ enum APIError: Error, LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .unauthorized: "로그인이 필요합니다."
+        case .unauthorized: "로그인이 필요해요."
         case .notFound(let m), .stale(let m), .badRequest(let m), .forbidden(let m): m
         case .revisionConflict(let m, _): m
         case .server(_, let m): m
@@ -105,7 +105,7 @@ struct APIClient {
     private func attempt<T: Decodable>(path: String, method: String, query: [URLQueryItem], body: Data?, token: String) async throws -> T {
         var components = URLComponents(url: baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false)
         if !query.isEmpty { components?.queryItems = query }
-        guard let url = components?.url else { throw APIError.badRequest("요청 주소를 만들 수 없습니다.") }
+        guard let url = components?.url else { throw APIError.badRequest("요청 주소를 만들 수 없어요.") }
 
         var request = URLRequest(url: url)
         request.httpMethod = method
@@ -125,7 +125,7 @@ struct APIClient {
             throw APIError.offline
         }
 
-        guard let http = response as? HTTPURLResponse else { throw APIError.server(status: 0, message: "알 수 없는 응답입니다.") }
+        guard let http = response as? HTTPURLResponse else { throw APIError.server(status: 0, message: "알 수 없는 응답이에요.") }
         guard (200..<300).contains(http.statusCode) else { throw Self.mapError(status: http.statusCode, data: data) }
 
         do {

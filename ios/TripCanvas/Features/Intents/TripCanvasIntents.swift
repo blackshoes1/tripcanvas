@@ -42,7 +42,7 @@ enum IntentError: Error, CustomLocalizedStringResourceConvertible {
 /// "With J 오늘 일정" — 다음 하나와 그 뒤 두 줄까지만(§6).
 struct ShowTodayIntent: AppIntent {
     static var title: LocalizedStringResource = "오늘 일정 보기"
-    static var description = IntentDescription("오늘 남은 일정과 다음에 할 일을 알려줍니다.")
+    static var description = IntentDescription("오늘 남은 일정과 다음에 할 일을 알려줘요.")
     static var openAppWhenRun: Bool = false
 
     @MainActor
@@ -54,7 +54,7 @@ struct ShowTodayIntent: AppIntent {
         var lines: [String] = ["\(today.trip.name) · Day \(today.day.index + 1)"]
         if let next = today.nextAction {
             lines.append("다음은 \(next.title)")
-            if let start = next.startMinutes { lines.append("\(IntentSupport.clock(start))입니다") }
+            if let start = next.startMinutes { lines.append("\(IntentSupport.clock(start))이에요") }
         } else {
             lines.append(today.activities.isEmpty ? "오늘은 정해둔 일정이 없어요" : "오늘 계획한 일정은 다 마쳤어요")
         }
@@ -72,7 +72,7 @@ struct ShowTodayIntent: AppIntent {
 /// "다음 일정 뭐야?" — 무엇을, 얼마나 걸려서, 언제 나서면 되는지(§7).
 struct ShowNextActionIntent: AppIntent {
     static var title: LocalizedStringResource = "다음 일정 보기"
-    static var description = IntentDescription("다음 일정과 이동 시간, 나서기 좋은 시간을 알려줍니다.")
+    static var description = IntentDescription("다음 일정과 이동 시간, 나서기 좋은 시간을 알려줘요.")
     static var openAppWhenRun: Bool = false
 
     @MainActor
@@ -97,8 +97,8 @@ struct ShowNextActionIntent: AppIntent {
 
 /// "With J 여행 모드 시작" — 이미 켜져 있으면 다시 켜지 않는다(§8, idempotent).
 struct StartTravelModeIntent: AppIntent {
-    static var title: LocalizedStringResource = "여행 모드 시작"
-    static var description = IntentDescription("다음 일정과 이동 시간을 잠금화면에서 바로 볼 수 있게 합니다.")
+    static var title: LocalizedStringResource = "여행 중 안내 켜기"
+    static var description = IntentDescription("다음 일정과 이동 시간을 잠금화면에서 바로 볼 수 있게 해요.")
     static var openAppWhenRun: Bool = false
 
     @MainActor
@@ -106,25 +106,25 @@ struct StartTravelModeIntent: AppIntent {
         let env = IntentSupport.makeEnvironment()
         let trip = try await IntentSupport.activeTrip(env)
         if env.travelMode.isActive {
-            return .result(dialog: "여행 모드는 이미 켜져 있어요.")
+            return .result(dialog: "여행 중 안내는 이미 켜져 있어요.")
         }
         await env.travelMode.start(trip: trip)
         Analytics.track(.intentUsed, ["intent": "startTravelMode"])
-        return .result(dialog: IntentDialog(stringLiteral: "\(trip.name) 여행 모드를 시작했어요."))
+        return .result(dialog: IntentDialog(stringLiteral: "\(trip.name) 여행 중 안내를 켰어요."))
     }
 }
 
 struct StopTravelModeIntent: AppIntent {
-    static var title: LocalizedStringResource = "여행 모드 끄기"
+    static var title: LocalizedStringResource = "여행 중 안내 끄기"
     static var openAppWhenRun: Bool = false
 
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
         let env = IntentSupport.makeEnvironment()
-        guard env.travelMode.isActive else { return .result(dialog: "여행 모드는 이미 꺼져 있어요.") }
+        guard env.travelMode.isActive else { return .result(dialog: "여행 중 안내는 이미 꺼져 있어요.") }
         await env.travelMode.stop()
         Analytics.track(.intentUsed, ["intent": "stopTravelMode"])
-        return .result(dialog: "여행 모드를 껐어요.")
+        return .result(dialog: "여행 중 안내를 껐어요.")
     }
 }
 
@@ -132,7 +132,7 @@ struct StopTravelModeIntent: AppIntent {
 /// 애매하면 자동으로 고르지 않고 앱에서 확인하게 한다.
 struct CompleteCurrentActivityIntent: AppIntent {
     static var title: LocalizedStringResource = "지금 일정 완료"
-    static var description = IntentDescription("지금 하고 있는 일정을 다녀온 것으로 표시합니다.")
+    static var description = IntentDescription("지금 하고 있는 일정을 다녀온 것으로 표시해요.")
     static var openAppWhenRun: Bool = false
 
     @MainActor
@@ -188,11 +188,11 @@ struct TripCanvasShortcuts: AppShortcutsProvider {
                     phrases: ["\(.applicationName) 오늘 일정", "\(.applicationName)에서 오늘 일정 보여줘"],
                     shortTitle: "오늘 일정", systemImageName: "list.bullet")
         AppShortcut(intent: StartTravelModeIntent(),
-                    phrases: ["\(.applicationName) 여행 모드 시작", "\(.applicationName) 여행 시작"],
-                    shortTitle: "여행 모드 시작", systemImageName: "location.circle")
+                    phrases: ["\(.applicationName) 여행 중 안내 켜기", "\(.applicationName) 여행 시작"],
+                    shortTitle: "여행 중 안내 켜기", systemImageName: "location.circle")
         AppShortcut(intent: StopTravelModeIntent(),
-                    phrases: ["\(.applicationName) 여행 모드 끄기"],
-                    shortTitle: "여행 모드 끄기", systemImageName: "location.slash")
+                    phrases: ["\(.applicationName) 여행 중 안내 끄기"],
+                    shortTitle: "여행 중 안내 끄기", systemImageName: "location.slash")
         AppShortcut(intent: CompleteCurrentActivityIntent(),
                     phrases: ["\(.applicationName) 지금 일정 완료"],
                     shortTitle: "지금 일정 완료", systemImageName: "checkmark.circle")

@@ -22,11 +22,13 @@ struct TodayView: View {
                 // '여행 보기'를 눌렀는지는 모델이 기억한다 — 탭을 오갔다고 D-day로 되돌아가지 않는다.
                 if let days = countdownDays, !model.showsPlanPreview {
                     countdown(days: days)
+                } else if isFinished, !model.showsPlanPreview {
+                    finished
                 } else {
                 VStack(alignment: .leading, spacing: Space.l) {
-                    if countdownDays != nil, model.showsPlanPreview {
+                    if (countdownDays != nil || isFinished), model.showsPlanPreview {
                         Button { model.showsPlanPreview = false } label: {
-                            Label("여행 준비로 돌아가기", systemImage: "chevron.left")
+                            Label(isFinished ? "지난 여행으로 돌아가기" : "여행 준비로 돌아가기", systemImage: "chevron.left")
                                 .font(.subheadline).frame(minHeight: 44)
                         }
                         .buttonStyle(.plain)
@@ -38,7 +40,13 @@ struct TodayView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
-                    travelModeSection
+                    travelModeActiveSection
+                    if model.today != nil, model.isOutsideTrip {
+                        // 기간 밖의 1일차는 오늘이 아니다 — 보기만 하고, 바꾸는 것은 `일정`에서 한다.
+                        Label("여행 기간이 아니라서 Day 1을 미리 보여 드려요. 완료·건너뛰기는 여행 중에만 할 수 있어요.",
+                              systemImage: "eye")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                     if !model.canEdit {
                         Label("일정을 볼 수 있는 권한이에요", systemImage: "eye")
                             .font(.caption).foregroundStyle(.secondary)
@@ -68,14 +76,14 @@ struct TodayView: View {
                     if let today = model.today {
                         if let next = today.nextAction, let activity = model.activity(id: next.activityId) {
                             NextActionCard(next: next, activity: activity, isEstimate: model.travelTimeIsEstimate,
-                                           isBusy: !model.pending.isEmpty || model.isRetrying, canEdit: model.canEdit,
+                                           isBusy: !model.pending.isEmpty || model.isRetrying, canEdit: model.canAct,
                                            onComplete: { Task { await model.complete(activity) } },
                                            onSkip: { Task { await model.skip(activity) } })
                         } else if today.activities.isEmpty {
                             EmptyStateView(
                                 symbol: "sparkles",
                                 title: "오늘은 정해둔 일정이 없어요",
-                                message: model.canEdit
+                                message: model.canAct
                                     ? "아래 제안 중에서 골라 시작해도 되고, 그냥 쉬어도 괜찮아요."
                                     : "일행이 일정을 추가하면 여기서 확인할 수 있어요.")
                                 .card()
@@ -83,14 +91,17 @@ struct TodayView: View {
                             DoneForTodayCard()
                         }
 
-                        if model.canEdit, let replan = model.replanSuggestion {
+                        // '여행 중' 권유는 다음 일정 **아래**다 — 지금 할 일이 먼저 읽혀야 한다.
+                        travelModeInviteSection
+
+                        if model.canAct, let replan = model.replanSuggestion {
                             ReplanCard(suggestion: replan, preview: today.replan,
                                        isBusy: !model.pending.isEmpty || model.isRetrying,
                                        onApply: { Task { await model.accept(replan) } },
                                        onKeep: { Task { await model.dismiss(replan) } })
                         }
 
-                        if model.canEdit {
+                        if model.canAct {
                             IntentField(text: $intentDraft,
                                         echo: model.intentEcho,
                                         energy: model.energy,
@@ -100,7 +111,7 @@ struct TodayView: View {
                                         onEnergy: { level in Task { await model.setEnergy(level) } })
                         }
 
-                        if model.canEdit && !model.otherSuggestions.isEmpty {
+                        if model.canAct && !model.otherSuggestions.isEmpty {
                             SectionHeader(title: "지금 하기 좋은 것")
                             ForEach(model.otherSuggestions) { suggestion in
                                 let target = model.activity(id: suggestion.action.activityId)
@@ -118,7 +129,7 @@ struct TodayView: View {
                             VStack(spacing: Space.s) {
                                 ForEach(model.upcomingAfterNext) { activity in
                                     ActivityRow(activity: activity,
-                                                isBusy: !model.pending.isEmpty || model.isRetrying, canEdit: model.canEdit,
+                                                isBusy: !model.pending.isEmpty || model.isRetrying, canEdit: model.canAct,
                                                 onComplete: { Task { await model.complete(activity) } },
                                                 onSkip: { Task { await model.skip(activity) } })
                                 }
@@ -131,7 +142,7 @@ struct TodayView: View {
                             VStack(spacing: Space.s) {
                                 ForEach(done) { activity in
                                     FinishedRow(activity: activity,
-                                                isBusy: !model.pending.isEmpty || model.isRetrying, canEdit: model.canEdit) {
+                                                isBusy: !model.pending.isEmpty || model.isRetrying, canEdit: model.canAct) {
                                         Task { await model.undo(activity) }
                                     }
                                 }
@@ -207,7 +218,7 @@ struct TodayView: View {
     }
 
     @ViewBuilder
-    private var travelModeSection: some View {
+    private var travelModeActiveSection: some View {
         if env.travelMode.isActive, env.travelMode.snapshot.tripId == trip.id {
             if let pulse = env.travelMode.travelState?.pulse {
                 TripPulseBar(pulse: pulse, travelModeOn: true) { Task { await stopTravelMode() } }
@@ -215,7 +226,8 @@ struct TodayView: View {
                 HStack {
                     Label("여행 중", systemImage: "location.fill")
                     Spacer()
-                    Button("여행 종료") { Task { await stopTravelMode() } }.frame(minHeight: 44)
+                    // '여행 종료'는 여행 자체를 끝내는 말로 읽힌다 — 끄는 것은 안내다.
+                    Button("안내 끄기") { Task { await stopTravelMode() } }.frame(minHeight: 44)
                 }
                 .card()
             }
@@ -224,10 +236,16 @@ struct TodayView: View {
                     Task { await refreshTravelMode(reason: .manual) }
                 }
             }
-        } else if env.travelMode.shouldOfferStart(for: model.today?.trip ?? trip) {
+        }
+    }
+
+    @ViewBuilder
+    private var travelModeInviteSection: some View {
+        let active = env.travelMode.isActive && env.travelMode.snapshot.tripId == trip.id
+        if !active, !model.isOutsideTrip, env.travelMode.shouldOfferStart(for: model.today?.trip ?? trip) {
             if model.deferredTravelInvite {
                 Button { showsTravelSetup = true } label: {
-                    Label("여행 시작", systemImage: "play.fill").frame(minHeight: 44)
+                    Label("여행 중 안내 켜기", systemImage: "location").frame(minHeight: 44)
                 }
             } else {
                 TravelModeInviteCard(tripName: trip.name, isBusy: false,
@@ -235,6 +253,39 @@ struct TodayView: View {
                                      onLater: { model.deferredTravelInvite = true })
             }
         }
+    }
+
+    /// 끝난 여행 — '오늘'이 없다. 1일차를 오늘처럼 보이지 않고 다시 보기로 보낸다.
+    private var isFinished: Bool { (model.today?.trip ?? trip).isFinished }
+
+    private var finished: some View {
+        let summary = model.today?.trip ?? trip
+        return VStack(spacing: Space.m) {
+            TripCoverView(trip: summary, api: env.service.api, cache: env.service.cache, cacheScope: env.service.cacheScope,
+                          refresh: coverRefresh, isHero: true, onOpen: {})
+            VStack(alignment: .leading, spacing: Space.s) {
+                Text("여행이 끝났어요").font(.title3.weight(.bold))
+                Text("다녀온 일정과 비용은 그대로 남아 있어요. 일정에서 다시 보거나 고칠 수 있어요.")
+                    .font(.subheadline).foregroundStyle(.secondary)
+                Button(action: onOpenPlan) {
+                    Label("일정 다시 보기", systemImage: "list.bullet").frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.borderedProminent)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .card()
+            if let error = model.loadErrorMessage {
+                InlineErrorBanner(message: "여행 정보를 새로 불러오지 못했어요", detail: error) {
+                    Task { await model.load() }
+                }
+            }
+            Button("Day 1 화면 미리보기") { model.showsPlanPreview = true }
+                .font(.footnote)
+                .foregroundStyle(Ink.soft)
+                .buttonStyle(.plain)
+                .frame(minHeight: 44)
+        }
+        .padding(Space.l)
     }
 
     // 첫 응답 전에도 목록에서 받은 서버 요약으로 출발 안내를 보여 준다.
@@ -258,7 +309,7 @@ struct TodayView: View {
                     Task { await model.load() }
                 }
             }
-            Button("여행 중 화면 미리보기") { model.showsPlanPreview = true }
+            Button("Day 1 화면 미리보기") { model.showsPlanPreview = true }
                 .font(.footnote)
                 .foregroundStyle(Ink.soft)
                 .buttonStyle(.plain)
@@ -270,7 +321,7 @@ struct TodayView: View {
     private func header(_ model: TodayViewModel) -> some View {
         VStack(alignment: .leading, spacing: Space.s) {
             HStack(spacing: Space.s) {
-                Text(model.today.map { "Day \($0.day.index + 1)" } ?? "Day —")
+                Text(model.today.map { model.isOutsideTrip ? "Day \($0.day.index + 1) 미리보기" : "Day \($0.day.index + 1)" } ?? "불러오는 중")
                     .font(.subheadline.weight(.semibold))
                 if let state = model.today?.currentState, state.live {
                     Text(TimeFormat.clock(state.nowMinutes))
@@ -278,9 +329,12 @@ struct TodayView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                StatusChip(text: StatusPalette.label(for: model.status),
-                           symbol: StatusPalette.symbol(for: model.status),
-                           tint: StatusPalette.tint(for: model.status))
+                // 아직 받지 못했으면 상태를 말하지 않는다 — '일정 없음'은 받아 본 뒤에만 할 수 있는 말이다.
+                if model.today != nil, !model.isOutsideTrip {
+                    StatusChip(text: StatusPalette.label(for: model.status),
+                               symbol: StatusPalette.symbol(for: model.status),
+                               tint: StatusPalette.tint(for: model.status))
+                }
             }
             if let title = model.today?.day.title, !title.isEmpty {
                 Text(title).font(.title3.weight(.bold))
@@ -478,8 +532,54 @@ struct ActivityRow: View {
     var canEdit = true
     let onComplete: () -> Void
     let onSkip: () -> Void
+    /// 옆으로 민 거리. ⚠️ `.swipeActions`는 `List` 행에서만 동작한다 — 이 행은 `ScrollView > VStack` 안이라
+    /// 전에는 코드만 있고 밀어도 아무 일이 없었다. 그래서 제스처를 직접 둔다.
+    @State private var offset: CGFloat = 0
+    private static let revealWidth: CGFloat = 168
 
     var body: some View {
+        ZStack(alignment: .trailing) {
+            if canEdit && offset < 0 {
+                HStack(spacing: Space.s) {
+                    swipeButton("건너뛰기", symbol: "arrow.uturn.forward", tint: Ink.warning, action: onSkip)
+                    swipeButton("다녀옴", symbol: "checkmark", tint: Ink.positive, action: onComplete)
+                }
+                .padding(.trailing, Space.s)
+            }
+            row
+                .offset(x: offset)
+                .simultaneousGesture(canEdit && !isBusy ? swipe : nil)
+        }
+        .animation(.snappy(duration: 0.2), value: offset)
+    }
+
+    /// 가로로 분명히 민 것만 받는다 — 세로 스크롤을 빼앗지 않는다.
+    private var swipe: some Gesture {
+        DragGesture(minimumDistance: 24)
+            .onChanged { value in
+                guard abs(value.translation.width) > abs(value.translation.height) * 1.5 else { return }
+                let base: CGFloat = offset <= -Self.revealWidth / 2 ? -Self.revealWidth : 0
+                offset = min(0, max(-Self.revealWidth, base + value.translation.width))
+            }
+            .onEnded { _ in offset = offset < -Self.revealWidth / 3 ? -Self.revealWidth : 0 }
+    }
+
+    private func swipeButton(_ title: String, symbol: String, tint: Color, action: @escaping () -> Void) -> some View {
+        Button {
+            offset = 0
+            action()
+        } label: {
+            Label(title, systemImage: symbol)
+                .labelStyle(.titleAndIcon)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.white)
+                .frame(width: 76, height: 56)
+                .background(tint, in: RoundedRectangle(cornerRadius: Radius.card))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var row: some View {
         HStack(alignment: .top, spacing: Space.m) {
             VStack(spacing: Space.xs) {
                 Text(TimeFormat.clock(activity.startMinutes))
@@ -517,13 +617,6 @@ struct ActivityRow: View {
             }
         }
         .card()
-        // 한 번의 터치로 처리되게 — 메뉴 안으로 숨기지 않는다(§17).
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            if canEdit {
-                Button(action: onSkip) { Label("건너뛰기", systemImage: "arrow.uturn.forward") }.tint(Ink.warning)
-                Button(action: onComplete) { Label("다녀옴", systemImage: "checkmark") }.tint(Ink.positive)
-            }
-        }
         .contextMenu {
             if canEdit {
                 Button("다녀왔어요", systemImage: "checkmark", action: onComplete)

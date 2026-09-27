@@ -211,7 +211,7 @@ struct KakaoMapContainer: UIViewRepresentable {
             layer.clearAllItems()
             for pin in pins {
                 let selected = pin.id == selectedPinID
-                let style = "pin-\(pin.kind.rawValue)-\(pin.kind == .itinerary ? pin.order : 0)-\(selected)"
+                let style = "pin-\(pin.kind.rawValue)-\(pin.kind == .itinerary ? pin.order : 0)-\(pin.colorIndex)-\(selected)"
                 if registeredPinStyles.insert(style).inserted {
                     let image = MapPinImage.make(pin: pin, selected: selected)
                     let icon = PoiIconStyle(symbol: image, anchorPoint: CGPoint(x: 0.5, y: 0.5))

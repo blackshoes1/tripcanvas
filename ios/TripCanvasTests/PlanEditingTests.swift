@@ -63,6 +63,24 @@ final class PlanEditingTests: XCTestCase {
         XCTAssertEqual(changed.raw["futureTripField"], .string("keep"))
     }
 
+    /// '통째로 옮기기'는 웹 `tripSave`와 같다 — 시작일만 바뀌고 장소는 같은 Day에 남는다. 예약은 그대로다.
+    func testMovingTheWholeScheduleKeepsDaysByIndexAndLeavesBookings() throws {
+        var doc = document([[spot("첫날")], [spot("둘째 날")], []], start: "2026-10-01")
+        doc.setField("bookings", .array([.object([
+            "id": .string("hotel"), "type": .string("hotel"), "title": .string("숙소"),
+            "start": .string("2026-10-01"), "end": .string("2026-10-03")])]))
+
+        let moved = try XCTUnwrap(PlanCalendarChange.draft(doc, start: "2026-10-08", count: 3, mode: .moveSchedule))
+
+        XCTAssertEqual(moved.start, "2026-10-08")
+        XCTAssertEqual(moved.days.map { $0.spots.map(\.name) }, [["첫날"], ["둘째 날"], []])
+        XCTAssertEqual(moved.raw["bookings"], doc.raw["bookings"])
+        // 같은 입력을 '날짜 그대로'로 두면 첫날이 잘려야 하므로 저장할 수 없다 — 그래서 고르게 한다.
+        XCTAssertNil(PlanCalendarChange.draft(doc, start: "2026-10-08", count: 3, mode: .keepDates))
+        XCTAssertEqual(PlanCalendarChange.misalignedBookings(moved.bookings, start: moved.start, count: 3).map(\.id), ["hotel"])
+        XCTAssertTrue(PlanCalendarChange.misalignedBookings(doc.bookings, start: doc.start, count: 3).isEmpty)
+    }
+
     func testShorterPeriodCannotDropAPlaceOrAZeroBudget() {
         let populated = document([[], [spot("예약 장소")]])
         XCTAssertNil(PlanCalendarChange.draft(populated, start: populated.start, count: 1))

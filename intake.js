@@ -600,7 +600,8 @@
 
   /** @typedef {'PLACE'|'ACTIVITY'|'MOVE'|'STAY'} ItemKind */
   /** @typedef {{raw:string,name:string,city:string,desc:string,at:string|null,endAt:string|null,stayMin:number|null,url:string|null,cost:number|null,cur:string|null,opt:boolean,stay:boolean,lat:number|null,lng:number|null,kind:ItemKind,reasons:string[]}} DraftItem */
-  /** @typedef {{title:string,date:string|null,drive:string,note:string,items:DraftItem[]}} DraftDay */
+  /** @typedef {{written:string,actual:string}} WeekdayMismatch */
+  /** @typedef {{title:string,date:string|null,drive:string,note:string,items:DraftItem[],weekdayMismatch?:WeekdayMismatch|null}} DraftDay */
 
   /** 숙소에 관한 말 */
   const STAY_WORDS = ['체크인','체크아웃','체크 인','체크 아웃','숙소','호텔','료칸','민박','게스트하우스','짐','복귀','휴식'];
@@ -849,6 +850,22 @@
   }
 
   /**
+   * 머리글에 적힌 요일이 그 날짜의 실제 요일과 다른가 — **고치지 않는다.** 날짜와 요일 중 어느 쪽이
+   * 틀렸는지 우리는 모른다(연도를 올해로 본 탓일 수도, 글이 틀렸을 수도 있다). 둘 다 들고 사람에게 말한다.
+   * `7월 22일(목)`·`7월 22일 목요일`을 읽는다. `7월`의 '월'을 요일로 읽지 않도록 괄호 안이나 '요일' 앞만 본다.
+   * @param {string} title @param {string|null} iso @returns {WeekdayMismatch|null}
+   */
+  function weekdayMismatchOf(title, iso){
+    if(!iso) return null;
+    const s=String(title||'');
+    const m=/[(（]\s*([월화수목금토일])\s*(?:요일)?\s*[)）]/.exec(s) || /([월화수목금토일])요일/.exec(s);
+    if(!m) return null;
+    const t=Date.parse(iso+'T00:00:00Z'); if(!isFinite(t)) return null;
+    const actual='일월화수목금토'[new Date(t).getUTCDay()];
+    return m[1]===actual? null : {written:m[1], actual};
+  }
+
+  /**
    * 붙여넣은 일정 글 → 초안. **저장하지 않는다** — 미리보기에 쓸 후보를 만들 뿐이다.
    * @param {string} text
    * @param {{year?:number}=} opts 연도가 없는 글(`7월 21일`)에 쓸 연도. 없으면 올해
@@ -868,6 +885,8 @@
     const newDay=(/**@type{string}*/title)=>{
       day={title:String(title||'').trim(), date:null, drive:'', note:'', items:[]};
       day.date=dayDateOf(day.title, year);
+      const wd=weekdayMismatchOf(day.title, day.date);
+      if(wd) day.weekdayMismatch=wd;
       out.days.push(day); item=null;
       return day;
     };
@@ -957,7 +976,7 @@
     parseBookingCandidate, candidateDisposition, findDuplicateBooking, matchTripForBooking,
     candidateToBooking, shareIdempotencyKey, shareQueueNext, titleSimilarity,
     associateMemory, memoryTimeline, plannedVsActual,
-    parseItinerary, classifyItem, stripTimePrefix, pullLinks, dayHeader,
+    parseItinerary, weekdayMismatchOf, classifyItem, stripTimePrefix, pullLinks, dayHeader,
     stripDecor, koTime, splitNameDesc, expandTables};
   if(typeof module!=='undefined' && module.exports) module.exports=API;   // Node (테스트)
   else /** @type {any} */(root).TC_INTAKE=API;                            // 브라우저 전역

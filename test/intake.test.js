@@ -557,3 +557,15 @@ test('붙여넣기: 아무것도 못 읽어도 죽지 않고, 원문을 버리�
   assert.equal(r.days[0].items[0].at, null, '말이 안 되는 시각은 없는 값이다');
   assert.equal(r.days[0].items[0].raw, '어떤 곳 @25:99', '읽은 원문은 남긴다');
 });
+
+test('붙여넣기: 머리글의 요일이 날짜와 다르면 고치지 않고 둘 다 알린다', () => {
+  // 2026-07-22는 수요일이다 — 글은 (목)이라고 적었다. 연도를 잘못 봤을 수도, 글이 틀렸을 수도 있다.
+  const r = I.parseItinerary('## 7월 22일(목) — 쿠모바 연못\n- 쿠모바 연못', { year: 2026 });
+  assert.equal(r.days[0].date, '2026-07-22');
+  assert.deepEqual(r.days[0].weekdayMismatch, { written: '목', actual: '수' });
+  assert.equal(r.days[0].title.indexOf('(목)') >= 0, true, '제목은 그대로 둔다');
+  const ok = I.parseItinerary('## 7월 22일 수요일\n- 쿠모바 연못', { year: 2026 });
+  assert.equal(ok.days[0].weekdayMismatch, undefined, '맞으면 아무 표시도 없다');
+  assert.equal(I.weekdayMismatchOf('7월 22일', '2026-07-22'), null, "'7월'의 '월'을 요일로 읽지 않는다");
+  assert.equal(I.weekdayMismatchOf('(월)', null), null, '날짜를 못 읽었으면 비교하지 않는다');
+});

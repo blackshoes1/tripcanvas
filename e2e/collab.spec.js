@@ -86,7 +86,8 @@ test('로그아웃 상태: 헤더 배지는 숨고, 메뉴의 함께하기는 �
   await expect(page.locator('#roleBar')).toBeHidden();
   await clickMore(page,'#membersMenuBtn');
   await expect(page.locator('#authModalBg')).toHaveClass(/show/);
-  await expect(page.locator('#toast')).toContainText('로그인하면');
+  // 이유는 사라지는 토스트가 아니라 로그인 모달 안에 남는다
+  await expect(page.locator('#authReason')).toContainText('로그인하면');
   // 혼자 쓰는 여행은 예전처럼 전부 편집된다(§95)
   await page.locator('#authCancel').click();
   await expect(page.locator('.addSpot').first()).toBeVisible();
@@ -99,7 +100,7 @@ test('로그아웃 상태: 가고 싶은 곳도 로그인으로 안내한다 —
   await createTrip(page,'E2E 후보');
   await clickMore(page,'#candMenuBtn');
   await expect(page.locator('#authModalBg')).toHaveClass(/show/);
-  await expect(page.locator('#toast')).toContainText('로그인하면');
+  await expect(page.locator('#authReason')).toContainText('로그인하면');
   await expect(page.locator('#candModalBg')).not.toHaveClass(/show/);
   await page.locator('#authCancel').click();
   await expect(page.locator('.addSpot').first()).toBeVisible();

@@ -53,7 +53,7 @@ struct NewTripView: View {
                 } header: {
                     Text("어디로 가세요?")
                 } footer: {
-                    Text("비워 두어도 됩니다. 여행 이름을 지어 주는 데만 씁니다.")
+                    Text("비워 두어도 돼요. 여행 이름을 지어 주는 데만 써요.")
                 }
 
                 Section("언제 가세요?") {

@@ -23,14 +23,15 @@ test('상태 배지 색은 라이트·다크 양쪽에서 토큰화 전과 같�
 
   expect(await swatch(page, 'candMood split')).toEqual(['rgb(246, 234, 211)', 'rgb(142, 78, 11)']);
   expect(await swatch(page, 'candMood good')).toEqual(['rgb(220, 235, 223)', 'rgb(47, 94, 59)']);
-  expect(await swatch(page, 'candMood mixed')).toEqual(['rgb(246, 224, 220)', 'rgb(165, 44, 34)']);
+  // '의견이 조금 갈려요'는 경고보다 약한 정보색이다(2026-09-27) — 같이 짜기 상태에 빨강(위험)을 쓰지 않는다
+  expect(await swatch(page, 'candMood mixed')).toEqual(['rgb(225, 236, 239)', 'rgb(46, 92, 110)']);
   // `.quiet`은 규칙이 **없는 것이 의도다** — 기본(조용한 회색)이 곧 그 뜻이다
   expect(await swatch(page, 'candMood quiet')).toEqual(await swatch(page, 'candMood'));
 
   await page.evaluate(() => document.body.classList.add('theme-dark'));
   expect(await swatch(page, 'candMood split')).toEqual(['rgb(58, 47, 20)', 'rgb(240, 201, 127)']);
   expect(await swatch(page, 'candMood good')).toEqual(['rgb(27, 46, 32)', 'rgb(143, 199, 155)']);
-  expect(await swatch(page, 'candMood mixed')).toEqual(['rgb(58, 35, 32)', 'rgb(239, 157, 143)']);
+  expect(await swatch(page, 'candMood mixed')).toEqual(['rgb(28, 42, 48)', 'rgb(156, 196, 210)']);
 });
 
 /** 두 `rgb(...)`의 WCAG 대비. */
@@ -59,6 +60,24 @@ test('강조 버튼 글자는 양쪽 테마에서 읽힌다(4.5:1 이상)', asyn
   // 라이트의 흰 글자를 토큰(`--surface`)으로 바꾸는 실수는 여전히 막는다
   await page.evaluate(() => document.body.classList.remove('theme-dark'));
   expect((await swatch(page, 'btn primary'))[1]).toBe('rgb(255, 255, 255)');
+});
+
+test('정보색 배지(의견이 조금 갈려요)는 양쪽 테마에서 읽힌다(4.5:1 이상)', async ({ page }) => {
+  await page.goto('/');
+  for (const dark of [false, true]) {
+    await page.evaluate((d) => document.body.classList.toggle('theme-dark', d), dark);
+    const [bg, fg] = await swatch(page, 'candMood mixed');
+    expect(contrast(bg, fg), dark ? '다크' : '라이트').toBeGreaterThanOrEqual(4.5);
+  }
+});
+
+test('주소창 색(theme-color)은 예전 남색이 아니라 지금 테마의 바탕을 따른다', async ({ page }) => {
+  await page.goto('/');
+  const color = () => page.evaluate(() => document.querySelector('meta[name="theme-color"]').getAttribute('content'));
+  expect(await color()).toBe('#f4f1ea');
+  await page.evaluate(() => toggleTheme());
+  expect(await color()).toBe('#16130f');
+  await page.evaluate(() => toggleTheme());
 });
 
 test('작은 버튼은 한 이름에서 나온다 — 인라인으로 각자 만들지 않는다', async ({ page }) => {

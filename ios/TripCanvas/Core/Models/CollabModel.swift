@@ -306,12 +306,6 @@ enum CollabModel {
         return who.contains(myId)
     }
 
-    /// 이메일에서 기본 표시 이름(참여 화면의 프리필). 도메인은 버린다.
-    static func displayNameFromEmail(_ email: String?) -> String {
-        let local = (email ?? "").split(separator: "@", maxSplits: 1).first.map(String.init) ?? ""
-        return String(local.trimmingCharacters(in: .whitespaces).prefix(nameMax))
-    }
-
     // MARK: 초대 링크
 
     /// 초대 링크. 토큰만 싣는다 — 여행 id·역할·만료는 서버가 토큰으로 찾는다. 받는 사람에게 앱이 없을 수 있어 **웹 주소**다.

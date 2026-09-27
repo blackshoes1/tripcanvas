@@ -106,11 +106,12 @@ extension TripRouteDay {
     }
 
     /// 핀. 번호는 **그 날 안에서** 매긴다 — 여행 전체에 1..N을 매기면 14일차가 60번이 된다.
+    /// 색은 그 날의 경로선과 같다 — 번호만으로는 3번 핀이 며칠째 3번인지 알 수 없다.
     var pins: [MapPin] {
         spots.enumerated().map { index, spot in
             MapPin(id: "trip-\(self.index)-\(index)",
                    title: spot.name.isEmpty ? "이름 없는 장소" : spot.name,
-                   point: spot.location, order: index + 1)
+                   point: spot.location, order: index + 1, colorIndex: self.index)
         }
     }
 }

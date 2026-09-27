@@ -306,7 +306,7 @@ final class CandidateBoardViewModel {
         var marking: String?
         do {
             try await service.manageCandidate(tripId: trip.id, candidateId: candidateId, action: "SCHEDULE", value: String(dayIndex + 1))
-            toast = "같은 시간에 나란히 넣었어요 — 끝나면 합류합니다"
+            toast = "같은 시간에 나란히 넣었어요 — 끝나면 합류해요"
         } catch {
             marking = "일정에는 넣었지만 후보 표시를 바꾸지 못했어요 — \(message(for: error))"
         }

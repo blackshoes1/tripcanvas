@@ -186,7 +186,7 @@ struct SpotEditorView: View {
                         Label(target.index == nil ? "장소 검색해서 입력" : "장소 검색해서 바꾸기",
                               systemImage: "magnifyingglass")
                     }
-                    TextField("이름", text: $draft.name)
+                    TextField("장소 이름", text: $draft.name)
                     TextField("도시", text: $draft.city)
                     Picker("종류", selection: $draft.category) {
                         Text("미지정").tag(SpotCategory?.none)
@@ -201,7 +201,7 @@ struct SpotEditorView: View {
                         LabeledContent("좌표", value: String(format: "%.5f, %.5f", point.lat, point.lng))
                             .font(.subheadline)
                     } else {
-                        Label("위치 없음 — 동선·도착 예상에서 빠집니다", systemImage: "mappin.slash")
+                        Label("위치 없음 — 동선·도착 예상에서 빠져요", systemImage: "mappin.slash")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
@@ -223,12 +223,12 @@ struct SpotEditorView: View {
 
                 Section {
                     ClockField(title: "예약·입장 시각", text: $draft.bookedAt)
-                    ClockField(title: "도착 시각", text: $draft.arriveAt)
+                    ClockField(title: "내가 정한 도착 시각", text: $draft.arriveAt)
                     StayMinutesPicker(minutes: $draft.stayMinutes)
                 } header: {
                     Text("시간")
                 } footer: {
-                    Text("예약·입장 시각은 상대가 정한 약속이고, 도착 시각은 내가 정한 계획입니다. 비워 두면 앞 장소에서 계산합니다.")
+                    Text("예약·입장 시각은 상대가 정한 약속이고, 도착 시각은 내가 정한 계획이에요. 비워 두면 앞 장소에서 계산해요.")
                 }
 
                 Section("이동·비용") {
@@ -276,7 +276,7 @@ struct SpotEditorView: View {
                     Text("계획")
                 } footer: {
                     if draft.isStay {
-                        Text("숙소는 그날의 마지막 기준점이 됩니다. 숙박 예약은 예약 화면에서 이 숙소와 연결합니다.")
+                        Text("숙소는 그날의 마지막 기준점이 돼요. 숙박 예약은 예약 화면에서 이 숙소와 연결해요.")
                     }
                 }
 

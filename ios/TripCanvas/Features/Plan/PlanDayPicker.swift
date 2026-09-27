@@ -47,7 +47,7 @@ struct PlanDayPicker: View {
         } label: {
             VStack(spacing: 3) {
                 HStack(spacing: 4) {
-                    Text("\(entry.index + 1)일차").font(.subheadline.weight(selected ? .semibold : .regular))
+                    Text("Day \(entry.index + 1)").font(.subheadline.weight(selected ? .semibold : .regular))
                     // 오늘은 번호보다 이 표시로 찾는다.
                     if isToday {
                         Text("오늘")

@@ -1494,3 +1494,37 @@ test('숙박 표시: 이름만 같은 미연결 숙소는 합치지 않고 취�
   assert.equal(L.dayLodgings(trip,0).length,2);
   assert.equal(new Set(L.dayLodgings(trip,0).map(x=>x.id)).size,2);
 });
+
+test('mdLabel: 날짜 표기는 M/D (요일) 하나다', () => {
+  assert.equal(L.mdLabel('2026-07-22'), '7/22 (수)');
+  assert.equal(L.mdLabel('2026-10-25'), '10/25 (일)');
+  assert.equal(L.mdLabel(''), '', '못 읽으면 빈 문자열');
+  assert.equal(L.mdLabel('2026-7-2'), '');
+});
+
+test('tripPeriodOf: 여행 전·중·후를 가르고, 기간 밖을 1일차·마지막 날로 끼워 맞추지 않는다', () => {
+  assert.deepEqual(L.tripPeriodOf('2026-10-25', 3, '2026-10-20'), { phase: 'BEFORE', dayIndex: 0, daysUntil: 5 });
+  assert.deepEqual(L.tripPeriodOf('2026-10-25', 3, '2026-10-25'), { phase: 'DURING', dayIndex: 0, daysUntil: 0 });
+  assert.deepEqual(L.tripPeriodOf('2026-10-25', 3, '2026-10-27'), { phase: 'DURING', dayIndex: 2, daysUntil: 0 });
+  assert.deepEqual(L.tripPeriodOf('2026-10-25', 3, '2026-10-28'), { phase: 'AFTER', dayIndex: 2, daysUntil: 0 });
+  assert.equal(L.tripPeriodOf('', 3, '2026-10-28').phase, 'NONE', '날짜 없는 여행은 판정하지 않는다');
+});
+
+test('startShiftPreview: 시작일을 옮기면 일정은 따라가고 예약은 남는다 — 어긋나는 예약 수를 미리 센다', () => {
+  const trip = {
+    start: '2026-10-25', days: [{}, {}, {}],
+    bookings: [
+      { id: 'h1', start: '2026-10-25', end: '2026-10-27' },   // 일정 안 → 옮기면 어긋난다
+      { id: 'f1', start: '2026-10-27' },                      // 마지막 날 → 어긋난다
+      { id: 'x1', start: '2026-12-01' },                      // 원래 일정 밖
+      { id: 'n1' }                                            // 날짜 없음 — 세지 않는다
+    ]
+  };
+  const p = L.startShiftPreview(trip, '2026-11-01');
+  assert.deepEqual(p, { from: '2026-10-25', to: '2026-11-01', shiftDays: 7, days: 3, bookings: 3, misaligned: 2 });
+  assert.equal(L.startShiftPreview(trip, '2026-10-25'), null, '같은 날은 옮기기가 아니다');
+  assert.equal(L.startShiftPreview({ start: '', days: [{}] }, '2026-10-25'), null, '처음 날짜를 정하는 것은 옮기기가 아니다');
+  assert.equal(L.startShiftPreview(trip, ''), null);
+  assert.equal(L.startShiftPreview(trip, '2026-10-20', 5).days, 5, '같이 바꾼 일수를 쓴다');
+  assert.equal(L.startShiftPreview({ start: '2026-10-25', days: [{}] }, '2026-10-26').bookings, 0, '예약이 없으면 0');
+});
