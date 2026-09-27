@@ -336,6 +336,37 @@ final class TripPlanViewModel: DayPlanContext {
 
     // MARK: 예약 — 장소와 같은 문서라 같은 길로 저장된다
 
+    @discardableResult
+    func setNoteDone(id: String, done: Bool) async -> Bool {
+        guard document?.raw["notes"]?.arrayValue?.contains(where: { $0.objectValue?["id"]?.stringValue == id }) == true else { return false }
+        return await store.edit(done ? "확인했어요" : "다시 준비할 메모로 옮겼어요") { document in
+            var notes = document.raw["notes"]?.arrayValue ?? []
+            guard let index = notes.firstIndex(where: { $0.objectValue?["id"]?.stringValue == id }),
+                  var raw = notes[index].objectValue else { return }
+            raw["done"] = done ? .bool(true) : nil
+            notes[index] = .object(raw)
+            document.setField("notes", .array(notes))
+        }
+    }
+
+    @discardableResult
+    func addNote(title: String, body: String, category: String) async -> Bool {
+        let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let body = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard (!title.isEmpty || !body.isEmpty), title.utf16.count <= 120, body.utf16.count <= 4000,
+              TripNote.categories.contains(category) else {
+            store.report("제목은 120자, 본문은 4,000자 안에서 메모를 입력해 주세요."); return false
+        }
+        guard (document?.raw["notes"]?.arrayValue?.count ?? 0) < 200 else {
+            store.report("준비 메모는 200개까지 담을 수 있어요."); return false
+        }
+        let note: JSONValue = .object(["id": .string(UUID().uuidString), "cat": .string(category), "title": .string(title), "body": .string(body)])
+        return await store.edit("준비 메모를 추가했어요") { document in
+            var notes = document.raw["notes"]?.arrayValue ?? []
+            notes.append(note); document.setField("notes", .array(notes))
+        }
+    }
+
     var bookings: [TripBooking] { document?.bookings ?? [] }
 
     /// 예약을 넣거나 고친다. 검증(웹 `bkSave`와 같은 규칙)을 지나지 못하면 저장하지 않고 이유를 말한다.

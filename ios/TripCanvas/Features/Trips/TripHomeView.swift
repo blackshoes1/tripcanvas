@@ -95,6 +95,7 @@ struct TripHomeView: View {
                     case .collab: CollabView(trip: trip, shared: models.collab)
                     case .candidates: CandidateBoardView(trip: trip, shared: models.candidateBoard)
                     case .notes: TripNotesView(model: models.plan)
+                    case .offline: OfflineTripView(trip: trip, service: env.service, model: models.plan)
                     }
                 }
                 .toolbar {
@@ -335,7 +336,7 @@ enum TripHomeTab: String, CaseIterable, Hashable, Sendable {
 
 /// 여행 전/중에 관계없이 같은 자리에서 연다.
 enum TripPanel: String, CaseIterable, Identifiable {
-    case bookings, costs, notes, collab, candidates
+    case bookings, costs, notes, collab, candidates, offline
     var id: String { rawValue }
     var label: String {
         switch self {
@@ -344,6 +345,7 @@ enum TripPanel: String, CaseIterable, Identifiable {
         case .collab: "같이 짜기"
         case .candidates: "가고 싶은 곳"
         case .notes: "여행 준비 메모"
+        case .offline: "오프라인 준비"
         }
     }
     var symbol: String {
@@ -353,6 +355,7 @@ enum TripPanel: String, CaseIterable, Identifiable {
         case .collab: "person.2"
         case .candidates: "mappin.and.ellipse"
         case .notes: "note.text"
+        case .offline: "arrow.down.circle"
         }
     }
     /// 눌러 보기 전에 무엇이 있는 곳인지 한 줄로. 개수는 싣지 않는다 —
@@ -364,6 +367,7 @@ enum TripPanel: String, CaseIterable, Identifiable {
         case .collab: "멤버 초대와 권한"
         case .candidates: "아직 일정이 아닌 곳"
         case .notes: "비자 · 입국 준비 · 교통"
+        case .offline: "일정 · 예약 · 주소 · 메모 저장"
         }
     }
 }

@@ -6251,6 +6251,10 @@ let joinPreview=null;
 async function startJoin(token){
   if(!token) return;
   pendingJoinToken=token; joinPreview=null;
+  const appLink=document.getElementById('joinOpenApp');
+  appLink.hidden=TC_COLLAB.parseJoinHash('#join='+encodeURIComponent(token))!==token;
+  if(!appLink.hidden) appLink.href='tripcanvas://join/'+encodeURIComponent(token);
+  else appLink.removeAttribute('href');
   document.getElementById('joinModalBg').classList.add('show');
   document.getElementById('joinTripName').textContent='불러오는 중…';
   document.getElementById('joinTripMeta').textContent=''; document.getElementById('joinHint').textContent='';

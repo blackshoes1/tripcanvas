@@ -21,8 +21,12 @@ final class ShareViewController: UIViewController {
             id: SharedTravelInput.makeId(url: collected.url, title: collected.title, text: collected.text),
             sourceType: collected.sourceType,
             url: collected.url, text: collected.text, title: collected.title)
-        let added = ShareQueue.enqueue(input)
-        present(state: added ? .saved : .duplicate)
+        switch ShareQueue.receive(input) {
+        case .added: present(state: .saved)
+        case .duplicate: present(state: .duplicate)
+        case .full: present(state: .full)
+        case .unavailable: present(state: .unavailable)
+        }
     }
 
     private struct Collected {
@@ -101,7 +105,7 @@ struct ShareResultView: View {
             Text(title).font(.headline).multilineTextAlignment(.center)
             Text(message).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
             HStack(spacing: 8) {
-                if state != .empty {
+                if state != .empty && state != .unavailable {
                     Button("With J에서 확인") { done(true) }.buttonStyle(.borderedProminent)
                 }
                 Button("닫기") { done(false) }.buttonStyle(.bordered)
@@ -115,6 +119,7 @@ struct ShareResultView: View {
         case .saved: "tray.and.arrow.down.fill"
         case .duplicate: "checkmark.circle"
         case .empty: "questionmark.circle"
+        case .full, .unavailable: "exclamationmark.triangle"
         }
     }
     private var title: String {
@@ -122,6 +127,8 @@ struct ShareResultView: View {
         case .saved: "With J에 담았어요"
         case .duplicate: "이미 담아 둔 내용이에요"
         case .empty: "가져올 내용을 찾지 못했어요"
+        case .full: "받은 자료가 가득 찼어요"
+        case .unavailable: "자료를 보관하지 못했어요"
         }
     }
     private var message: String {
@@ -129,9 +136,11 @@ struct ShareResultView: View {
         case .saved: "앱을 열면 예약인지 장소인지 확인하고 한 번에 저장할 수 있어요."
         case .duplicate: "같은 내용을 이미 받아 두었어요."
         case .empty: "주소나 텍스트를 선택한 뒤 다시 공유해 주세요."
+        case .full: "앱에서 받은 자료를 먼저 확인해 주세요. 이 자료는 아직 보관하지 못했으니 정리 후 다시 공유해 주세요."
+        case .unavailable: "원래 앱의 내용을 그대로 두고 다시 공유해 주세요. 저장 공간과 앱 설치 상태를 확인해 주세요."
         }
     }
 }
 
 /// 뷰와 컨트롤러가 함께 쓰는 결과 상태.
-enum ShareResultState { case saved, duplicate, empty }
+enum ShareResultState { case saved, duplicate, empty, full, unavailable }

@@ -137,7 +137,13 @@ final class TripService: TripDataSource {
             await cache.save(response, key: key, scope: scope)
             return Fetched(value: response, cachedAt: nil)
         } catch let error as APIError where error.isOffline {
-            guard let cached = await cache.load(DayPlanResponse.self, key: key, scope: scope) else { throw error }
+            guard let cached = await cache.load(DayPlanResponse.self, key: key, scope: scope) else {
+                if let pack = await cache.load(OfflineTrip.self, key: OfflineTrip.key(tripId), scope: scope)?.value,
+                   pack.isComplete, pack.plans.indices.contains(dayIndex) {
+                    return Fetched(value: pack.plans[dayIndex], cachedAt: pack.savedAt)
+                }
+                throw error
+            }
             return Fetched(value: cached.value, cachedAt: cached.savedAt)
         }
     }
@@ -196,7 +202,12 @@ final class TripService: TripDataSource {
             await cache.save(response.bookings, key: key, scope: scope)
             return Fetched(value: response.bookings, cachedAt: nil)
         } catch let error as APIError where error.isOffline {
-            guard let cached = await cache.load([BookingSummary].self, key: key, scope: scope) else { throw error }
+            guard let cached = await cache.load([BookingSummary].self, key: key, scope: scope) else {
+                if let pack = await cache.load(OfflineTrip.self, key: OfflineTrip.key(tripId), scope: scope)?.value, pack.isComplete {
+                    return Fetched(value: pack.bookings, cachedAt: pack.savedAt)
+                }
+                throw error
+            }
             return Fetched(value: cached.value, cachedAt: cached.savedAt)
         }
     }
@@ -359,7 +370,13 @@ extension TripService: TripDocumentSource {
             return TripDocumentSnapshot(document: TripDocument(raw: response.document),
                                         revision: response.trip.revision, role: response.trip.role ?? .owner)
         } catch let error as APIError where error.isOffline {
-            guard let cached = await cache.load(TripDetailResponse.self, key: key, scope: scope) else { throw error }
+            guard let cached = await cache.load(TripDetailResponse.self, key: key, scope: scope) else {
+                if let pack = await cache.load(OfflineTrip.self, key: OfflineTrip.key(tripId), scope: scope)?.value, pack.isComplete {
+                    return TripDocumentSnapshot(document: TripDocument(raw: pack.detail.document), revision: pack.detail.trip.revision,
+                                                role: pack.detail.trip.role ?? .owner, cachedAt: pack.savedAt)
+                }
+                throw error
+            }
             return TripDocumentSnapshot(document: TripDocument(raw: cached.value.document),
                                         revision: cached.value.trip.revision, role: cached.value.trip.role ?? .owner,
                                         cachedAt: cached.savedAt)

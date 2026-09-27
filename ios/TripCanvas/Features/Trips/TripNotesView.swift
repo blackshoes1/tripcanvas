@@ -1,8 +1,7 @@
 import SwiftUI
 
 /// 여행 준비 메모(`trip.notes`) — 비자·입국 준비·교통 이용법처럼 **날짜에 붙지 않는** 것들.
-/// 웹에서 적은 것을 여행지에서 못 보면 쓸모가 반이다(2026-09-27 UX 검토). 여기서는 **읽기만** 한다 —
-/// 추가·수정은 웹의 ☰ '여행 준비 메모'다. 분류 이름·순서는 `lib.js`의 `TRIP_NOTE_CATEGORIES`와 웹 `NOTE_CAT_LABELS`를 따른다.
+/// 분류 이름·순서는 `lib.js`의 `TRIP_NOTE_CATEGORIES`와 웹 `NOTE_CAT_LABELS`를 따른다.
 struct TripNote: Identifiable, Hashable {
     let id: String
     let category: String
@@ -42,28 +41,45 @@ struct TripNote: Identifiable, Hashable {
 
 struct TripNotesView: View {
     let model: TripPlanViewModel
+    @State private var showsAdd = false
 
     private var notes: [TripNote] { TripNote.notes(in: model.document) }
 
     var body: some View {
         List {
+            if let date = model.documentCachedAt { OfflineNotice(savedAt: date) }
+            if let error = model.conflict ?? model.errorMessage {
+                Section {
+                    Text(error).foregroundStyle(.red)
+                    Button("최신 메모 불러오기") { Task { await model.reloadFromServer() } }
+                }
+            }
             if model.document == nil && model.isLoading {
                 ProgressView("메모를 불러오는 중").frame(maxWidth: .infinity, minHeight: 120)
             } else if notes.isEmpty {
                 EmptyStateView(symbol: "note.text", title: "아직 준비 메모가 없어요",
-                               message: "비자·입국 준비처럼 날짜에 붙지 않는 것은 웹의 ☰ ‘여행 준비 메모’에 적어 두면 여기서 볼 수 있어요.")
+                               message: "비자·입국 준비·짐 챙기기를 메모하고 준비가 끝나면 확인 표시를 해 보세요.")
                     .listRowBackground(Color.clear)
             } else {
                 // 같은 분류끼리 모은다 — 준비물을 훑어보려면 흩어져 있으면 안 된다(웹과 같은 순서).
                 ForEach(TripNote.categories.filter { cat in notes.contains { $0.category == cat } }, id: \.self) { cat in
-                    let rows = notes.filter { $0.category == cat }
+                    let rows = notes.filter { $0.category == cat && !$0.done } + notes.filter { $0.category == cat && $0.done }
                     Section {
                         ForEach(rows) { note in
                             VStack(alignment: .leading, spacing: Space.xs) {
-                                Label(note.title.isEmpty ? "(제목 없음)" : note.title,
-                                      systemImage: note.done ? "checkmark.circle.fill" : "circle")
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(note.done ? Ink.soft : Ink.ink)
+                                Button {
+                                    Task { await model.setNoteDone(id: note.id, done: !note.done) }
+                                } label: {
+                                    Label(note.title.isEmpty ? "(제목 없음)" : note.title,
+                                          systemImage: note.done ? "checkmark.circle.fill" : "circle")
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(note.done ? Ink.soft : Ink.ink)
+                                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(!model.canEdit || model.isSaving)
+                                .accessibilityValue(note.done ? "확인 완료" : "준비 중")
+                                .accessibilityHint(note.done ? "확인 표시를 해제해요" : "준비가 끝났다고 표시해요")
                                 if !note.body.isEmpty {
                                     Text(note.body).font(.subheadline).foregroundStyle(Ink.soft).textSelection(.enabled)
                                 }
@@ -76,7 +92,7 @@ struct TripNotesView: View {
                     }
                 }
                 Section {} footer: {
-                    Text("메모 추가·수정은 웹에서 할 수 있어요.")
+                    Text("웹에서 쓴 메모도 함께 보여요. 연결이 없을 때는 저장한 메모를 읽을 수 있어요.")
                 }
             }
         }
@@ -84,7 +100,47 @@ struct TripNotesView: View {
         .paperGround()
         .navigationTitle("여행 준비 메모")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("메모 추가", systemImage: "plus") { showsAdd = true }
+                    .disabled(!model.canEdit || model.isSaving)
+            }
+        }
+        .sheet(isPresented: $showsAdd) { AddTripNoteView(model: model) }
         .refreshable { await model.load() }
         .task { await model.loadIfStale() }
+    }
+}
+
+private struct AddTripNoteView: View {
+    let model: TripPlanViewModel
+    @State private var title = ""
+    @State private var text = ""
+    @State private var category = "ETC"
+    @Environment(\.dismiss) private var dismiss
+    var body: some View {
+        NavigationStack {
+            Form {
+                Picker("분류", selection: $category) {
+                    ForEach(TripNote.categories, id: \.self) { Text(TripNote.label($0)).tag($0) }
+                }
+                TextField("제목", text: $title)
+                TextField("짧은 메모", text: $text, axis: .vertical).lineLimit(3...8)
+                if let error = model.conflict ?? model.errorMessage {
+                    Text(error).foregroundStyle(.red)
+                    if model.conflict != nil { Button("최신 메모 불러오기") { Task { await model.reloadFromServer() } } }
+                }
+            }
+            .navigationTitle("준비 메모 추가")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("취소") { dismiss() }.disabled(model.isSaving) }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("저장") {
+                        Task { if await model.addNote(title: title, body: text, category: category) { dismiss() } }
+                    }.disabled(model.isSaving || !model.canEdit || (title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
+                }
+            }
+            .interactiveDismissDisabled(model.isSaving)
+        }
     }
 }

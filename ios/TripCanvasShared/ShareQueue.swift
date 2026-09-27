@@ -98,15 +98,29 @@ enum ShareQueue {
         defaults?.set(data, forKey: key)
     }
 
-    /// 같은 공유는 다시 넣지 않는다. 이미 처리가 끝난 것도 되살리지 않는다.
-    @discardableResult
-    static func enqueue(_ input: SharedTravelInput) -> Bool {
-        var items = load()
-        if items.contains(where: { $0.id == input.id }) { return false }
-        items.append(input)
-        save(items)
-        return true
+    enum EnqueueResult { case added, duplicate, full, unavailable }
+
+    /// 확인 전 원문은 용량 때문에 버리지 않는다. 끝난 자료만 오래된 것부터 비운다.
+    static func roomForInput(in items: [SharedTravelInput]) -> [SharedTravelInput]? {
+        var items = items
+        while items.count >= limit {
+            guard let index = items.firstIndex(where: { $0.state == .saved || $0.state == .discarded }) else { return nil }
+            items.remove(at: index)
+        }
+        return items
     }
+
+    static func receive(_ input: SharedTravelInput) -> EnqueueResult {
+        let current = load()
+        if current.contains(where: { $0.id == input.id }) { return .duplicate }
+        guard let items = roomForInput(in: current) else { return .full }
+        guard let defaults, let data = try? encoder.encode(items + [input]) else { return .unavailable }
+        defaults.set(data, forKey: key)
+        return defaults.data(forKey: key) == data ? .added : .unavailable
+    }
+
+    @discardableResult
+    static func enqueue(_ input: SharedTravelInput) -> Bool { receive(input) == .added }
 
     static func update(id: String, transform: (inout SharedTravelInput) -> Void) {
         var items = load()
@@ -121,7 +135,7 @@ enum ShareQueue {
 
     /// 아직 손대지 않았거나 실패해서 다시 시도할 것들.
     static func pending() -> [SharedTravelInput] {
-        load().filter { $0.state == .pending || $0.state == .failed || $0.state == .needsReview }
+        load().filter { $0.state != .saved && $0.state != .discarded }
     }
 
     static func clear() { defaults?.removeObject(forKey: key) }

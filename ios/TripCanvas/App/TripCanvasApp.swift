@@ -17,7 +17,9 @@ struct TripCanvasApp: App {
         WindowGroup {
             RootView()
                 .environment(environment)
-                .onOpenURL { url in _ = GIDSignIn.sharedInstance.handle(url) }
+                .onOpenURL { url in
+                    if !GIDSignIn.sharedInstance.handle(url) { environment.router.open(url: url) }
+                }
         }
     }
 }
@@ -54,6 +56,7 @@ struct SignInView: View {
     @State private var password = ""
     @State private var social = SocialSignIn()
     @State private var showsEmailForm = false
+    @State private var showsSample = false
     /// 브랜드 장면이 시작된 때. 이메일 화면에 갔다 돌아와도 다시 재생하지 않는다.
     @State private var introStart: Date?
     @State private var introDone = false
@@ -117,6 +120,9 @@ struct SignInView: View {
                 }
             }
             .scrollDismissesKeyboard(.interactively)
+        }
+        .sheet(isPresented: $showsSample) {
+            SampleTripView { mode = .signIn; setEmailForm(true) }
         }
         .background(Ink.paper.ignoresSafeArea())
         .task {
@@ -193,6 +199,10 @@ struct SignInView: View {
                 .disabled(social.isWorking || env.auth.isWorking)
                 .introControlReveal(frame.email)
             }
+
+            Button("로그인 없이 샘플 여행 둘러보기") { showsSample = true }
+                .font(.subheadline).frame(maxWidth: .infinity, minHeight: 44).padding(.top, Space.s)
+                .disabled(social.isWorking || env.auth.isWorking)
 
             if social.isWorking { ProgressView("로그인 확인 중").padding(.top, Space.l) }
             if let error = social.error {
