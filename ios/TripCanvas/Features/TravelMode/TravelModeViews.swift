@@ -1,6 +1,9 @@
 import SwiftUI
 
 /// 여행 당일에 한 번 권한다. 자동으로 켜지 않는다 — 켜는 것은 사용자의 결정이다(§8).
+///
+/// 얇은 띠 하나다(2026-09-27) — 전에는 불릿 세 줄과 버튼 두 개짜리 카드라 '다음 일정'만큼 컸다.
+/// 권유가 지금 할 일보다 크게 읽히면 안 된다. '나중에'는 닫기(✕)로 남는다 — 빠져나갈 길은 언제나 있다.
 struct TravelModeInviteCard: View {
     let tripName: String
     let isBusy: Bool
@@ -8,27 +11,43 @@ struct TravelModeInviteCard: View {
     let onLater: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Space.m) {
-            Label("오늘 여행 일정이 있어요", systemImage: "location.circle")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(Ink.soft)
+        HStack(spacing: Space.m) {
+            Image(systemName: "location.fill")
+                .foregroundStyle(Ink.accent)
+                .accessibilityHidden(true)
             // 내부 이름은 Travel Mode지만 화면에서는 "여행 중"이다(§28).
-            Text("여행 중으로 바꾸면")
-                .font(.headline)
-            VStack(alignment: .leading, spacing: Space.xs) {
-                BulletLine("다음 일정까지 이동 시간을")
-                BulletLine("나서기 좋은 시간을")
-                BulletLine("잠금화면에서 지금 상황을")
-            }
-            Text("바로 알려드릴게요.")
+            Text("여행 중 안내를 켜면 나설 때를 잠금화면에서 알려 드려요")
                 .font(.subheadline)
-                .foregroundStyle(Ink.soft)
-            HStack(spacing: Space.s) {
-                PrimaryActionButton(title: "안내 켜기", systemImage: "location.fill", isBusy: isBusy, action: onStart)
-                SecondaryActionButton(title: "나중에", expands: false, action: onLater)
+                .foregroundStyle(Ink.ink)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+            Button(action: onStart) {
+                Group {
+                    if isBusy { ProgressView().controlSize(.small) } else { Text("켜기") }
+                }
+                .font(.subheadline.weight(.semibold))
+                .padding(.horizontal, Space.l)
+                .frame(minHeight: 36)
+                .background(Ink.accent, in: Capsule())
+                .foregroundStyle(Ink.onAccent)
             }
+            .buttonStyle(.plain)
+            .frame(minHeight: 44)
+            .disabled(isBusy)
+            .accessibilityLabel("여행 중 안내 켜기")
+            Button(action: onLater) {
+                Image(systemName: "xmark")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Ink.soft)
+                    .frame(width: 32, height: 44)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("나중에")
         }
-        .card()
+        .padding(.leading, Space.l)
+        .padding(.trailing, Space.s)
+        .padding(.vertical, Space.s)
+        .background(Ink.accent.opacity(0.09), in: RoundedRectangle(cornerRadius: Radius.card))
     }
 }
 

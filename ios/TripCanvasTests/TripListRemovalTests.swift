@@ -44,6 +44,27 @@ final class TripListRemovalTests: XCTestCase {
         XCTAssertEqual(model.trips, trips)
     }
 
+    /// 목록은 여행 중(크게) · 다가오는 · 날짜 미정 · 지난 여행으로 묶이고, 묶음 안의 순서는 `ordered` 그대로다.
+    func testSectionsGroupTripsAndKeepOrder() async {
+        func summary(_ id: String, start: String, countdown: Int? = nil, today: Int = -1) -> TripSummary {
+            TripSummary(id: id, name: id, start: start, dayCount: 4, revision: 1,
+                        updatedAt: "", timeZone: "Asia/Seoul", cities: [], todayIndex: today,
+                        daysUntilStart: countdown, role: .owner, memberCount: 1)
+        }
+        let (model, _) = await loaded([
+            summary("past", start: "2026-06-18"),
+            summary("far", start: "2027-07-23", countdown: 300),
+            summary("undated", start: ""),
+            summary("near", start: "2026-10-26", countdown: 30),
+            summary("live", start: "2026-09-24", today: 2)
+        ])
+        let sections = model.sections
+        XCTAssertEqual(sections.live.map(\.id), ["live"])
+        XCTAssertEqual(sections.upcoming.map(\.id), ["near", "far"])
+        XCTAssertEqual(sections.undated.map(\.id), ["undated"])
+        XCTAssertEqual(sections.finished.map(\.id), ["past"])
+    }
+
     func testOwnerDeletesWithTheReadRevision() async {
         let (model, service) = await loaded([trip("t1", role: .owner, revision: 9)])
         await model.remove(trip("t1", role: .owner, revision: 9))

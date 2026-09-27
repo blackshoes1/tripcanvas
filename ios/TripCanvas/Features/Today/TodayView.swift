@@ -91,9 +91,6 @@ struct TodayView: View {
                             DoneForTodayCard()
                         }
 
-                        // '여행 중' 권유는 다음 일정 **아래**다 — 지금 할 일이 먼저 읽혀야 한다.
-                        travelModeInviteSection
-
                         if model.canAct, let replan = model.replanSuggestion {
                             ReplanCard(suggestion: replan, preview: today.replan,
                                        isBusy: !model.pending.isEmpty || model.isRetrying,
@@ -101,14 +98,15 @@ struct TodayView: View {
                                        onKeep: { Task { await model.dismiss(replan) } })
                         }
 
-                        if model.canAct {
-                            IntentField(text: $intentDraft,
-                                        echo: model.intentEcho,
-                                        energy: model.energy,
-                                        isBusy: model.isLoading,
-                                        onSubmit: { Task { await model.applyIntent(intentDraft) } },
-                                        onClear: { intentDraft = ""; Task { await model.clearIntent() } },
-                                        onEnergy: { level in Task { await model.setEnergy(level) } })
+                        // 하루 전체를 한 장에 — 다녀온 곳은 흐리게, 다음 일정은 표시만(할 일은 위 카드에 있다).
+                        // 2026-09-27 전에는 '남은 일정'과 '마무리한 일정'이 따로였고 줄마다 카드라 하루의 흐름이 안 보였다.
+                        if today.activities.contains(where: { $0.id != today.nextAction?.activityId }) {
+                            SectionHeader(title: "오늘 일정", actionTitle: "일정 전체", action: onOpenPlan)
+                            TodayTimelineCard(activities: today.activities, nextId: today.nextAction?.activityId,
+                                              isBusy: !model.pending.isEmpty || model.isRetrying, canEdit: model.canAct,
+                                              onComplete: { activity in Task { await model.complete(activity) } },
+                                              onSkip: { activity in Task { await model.skip(activity) } },
+                                              onUndo: { activity in Task { await model.undo(activity) } })
                         }
 
                         if model.canAct && !model.otherSuggestions.isEmpty {
@@ -124,40 +122,34 @@ struct TodayView: View {
                             }
                         }
 
-                        if !model.upcomingAfterNext.isEmpty {
-                            SectionHeader(title: "오늘 남은 일정")
-                            VStack(spacing: Space.s) {
-                                ForEach(model.upcomingAfterNext) { activity in
-                                    ActivityRow(activity: activity,
-                                                isBusy: !model.pending.isEmpty || model.isRetrying, canEdit: model.canAct,
-                                                onComplete: { Task { await model.complete(activity) } },
-                                                onSkip: { Task { await model.skip(activity) } })
-                                }
-                            }
+                        if model.canAct {
+                            IntentField(text: $intentDraft,
+                                        echo: model.intentEcho,
+                                        energy: model.energy,
+                                        isBusy: model.isLoading,
+                                        onSubmit: { Task { await model.applyIntent(intentDraft) } },
+                                        onClear: { intentDraft = ""; Task { await model.clearIntent() } },
+                                        onEnergy: { level in Task { await model.setEnergy(level) } })
                         }
 
-                        let done = today.activities.filter { $0.status.isDone }
-                        if !done.isEmpty {
-                            SectionHeader(title: "마무리한 일정")
-                            VStack(spacing: Space.s) {
-                                ForEach(done) { activity in
-                                    FinishedRow(activity: activity,
-                                                isBusy: !model.pending.isEmpty || model.isRetrying, canEdit: model.canAct) {
-                                        Task { await model.undo(activity) }
-                                    }
-                                }
-                            }
-                        }
+                        // '여행 중' 권유는 할 일들 **아래**의 얇은 띠다 — 지금 할 일보다 먼저 읽히면 안 된다.
+                        travelModeInviteSection
 
                         TodayMapCard(activities: today.activities, next: today.nextAction)
 
                         NavigationLink {
                             BookingListView(trip: trip)
                         } label: {
-                            Label("예약 정보 보기", systemImage: "ticket")
-                                .frame(maxWidth: .infinity, minHeight: 48)
+                            HStack(spacing: Space.m) {
+                                Image(systemName: "ticket").foregroundStyle(Ink.accent)
+                                Text("예약 정보 보기").foregroundStyle(Ink.ink)
+                                Spacer()
+                                Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(Ink.faint)
+                            }
+                            .frame(minHeight: 32)
+                            .card()
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(.plain)
                     } else if model.isLoading {
                         ProgressView("오늘 일정을 불러오는 중")
                             .frame(maxWidth: .infinity, minHeight: 200)
@@ -318,16 +310,13 @@ struct TodayView: View {
         .padding(Space.l)
     }
 
+    /// 머리 — 모노 메타 한 줄(몇째 날 · 날짜 · 지금 시각)과 명조 제목 하나. 제목이 화면에서 가장 먼저 읽힌다.
     private func header(_ model: TodayViewModel) -> some View {
         VStack(alignment: .leading, spacing: Space.s) {
             HStack(spacing: Space.s) {
-                Text(model.today.map { model.isOutsideTrip ? "Day \($0.day.index + 1) 미리보기" : "Day \($0.day.index + 1)" } ?? "불러오는 중")
-                    .font(.subheadline.weight(.semibold))
-                if let state = model.today?.currentState, state.live {
-                    Text(TimeFormat.clock(state.nowMinutes))
-                        .font(.subheadline.monospacedDigit())
-                        .foregroundStyle(Ink.soft)
-                }
+                Text(Self.metaLine(model.today, dayCount: (model.today?.trip ?? trip).dayCount,
+                                   preview: model.isOutsideTrip))
+                    .metaLabel()
                 Spacer()
                 // 아직 받지 못했으면 상태를 말하지 않는다 — '일정 없음'은 받아 본 뒤에만 할 수 있는 말이다.
                 if model.today != nil, !model.isOutsideTrip {
@@ -336,21 +325,49 @@ struct TodayView: View {
                                tint: StatusPalette.tint(for: model.status))
                 }
             }
-            if let title = model.today?.day.title, !title.isEmpty {
-                Text(title).font(.title3.weight(.bold))
+            if let day = model.today?.day {
+                Text(day.title.isEmpty ? "Day \(day.index + 1)" : day.title)
+                    .font(Typeface.editorial(.title))
+                    .foregroundStyle(Ink.ink)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
+
+    /// `DAY 2 / 5 · 10.26 일 · 14:00`. 날짜가 없는 여행이면 그 조각을 빼고, 시각은 여행 중일 때만 말한다.
+    static func metaLine(_ today: TodayResponse?, dayCount: Int, preview: Bool) -> String {
+        guard let today else { return "불러오는 중" }
+        var parts = ["Day \(today.day.index + 1) / \(dayCount)"]
+        if let date = TimeFormat.dayChipDate(today.day.date) { parts.append(date) }
+        if preview { parts.append("미리보기") }
+        else if today.currentState.live { parts.append(TimeFormat.clock(today.currentState.nowMinutes)) }
+        return parts.joined(separator: " · ")
+    }
 }
 
+/// 섹션 머리 — 본문과 같은 잉크의 굵은 글자. 2026-09-27 전에는 흐린 작은 글자라 섹션이 어디서 갈리는지 안 보였다.
 struct SectionHeader: View {
     let title: String
+    var actionTitle: String? = nil
+    var action: () -> Void = {}
+
     var body: some View {
-        Text(title)
-            .font(.footnote.weight(.semibold))
-            .foregroundStyle(Ink.soft)
-            .padding(.top, Space.s)
-            .accessibilityAddTraits(.isHeader)
+        HStack(alignment: .firstTextBaseline) {
+            Text(title)
+                .font(.headline)
+                .foregroundStyle(Ink.ink)
+                .accessibilityAddTraits(.isHeader)
+            Spacer()
+            if let actionTitle {
+                Button(actionTitle, action: action)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(Ink.accent)
+                    .buttonStyle(.plain)
+                    .frame(minHeight: 44)
+            }
+        }
+        .padding(.top, Space.m)
+        .padding(.horizontal, Space.xs)
     }
 }
 
@@ -404,15 +421,42 @@ struct NextActionCard: View {
     var onSkip: () -> Void = {}
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Space.m) {
-            Text("다음 일정")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(Ink.soft)
+        VStack(alignment: .leading, spacing: Space.l) {
+            VStack(alignment: .leading, spacing: Space.s) {
+                HStack(spacing: Space.s) {
+                    Circle().fill(Ink.accent).frame(width: 7, height: 7)
+                    Text("다음 일정")
+                }
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(Ink.accent)
 
-            HStack(alignment: .firstTextBaseline, spacing: Space.s) {
-                Image(systemName: next.type.symbol)
-                    .foregroundStyle(Ink.soft)
-                Text(next.title).font(.title2.weight(.bold))
+                HStack(alignment: .firstTextBaseline, spacing: Space.s) {
+                    Text(next.title)
+                        .font(Typeface.editorial(.title2))
+                        .foregroundStyle(Ink.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                    Image(systemName: next.type.symbol)
+                        .foregroundStyle(Ink.soft)
+                        .accessibilityHidden(true)
+                }
+
+                if activity.isFixedCommitment {
+                    Label(Self.fixedLine(activity), systemImage: "lock.fill")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(Ink.info)
+                }
+            }
+
+            if let departure = next.departure {
+                // 명령하지 않는다 — 서버가 만든 문장을 그대로 쓴다(§38). 이 카드에서 **가장 크게** 읽히는 줄이다.
+                Text(departure.text)
+                    .font(.headline)
+                    .foregroundStyle(departure.level == .late ? Ink.danger : Ink.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(Space.m)
+                    .background(Ink.paper, in: RoundedRectangle(cornerRadius: Radius.control))
             }
 
             // 실행에 필요한 사실만 — 출발 · 도착 · 이동 · 머무름. 두 알씩 줄을 바꿔 좁은 화면에서도 넘치지 않는다.
@@ -429,33 +473,22 @@ struct NextActionCard: View {
                 }
             }
 
-            if let departure = next.departure {
-                // 명령하지 않는다 — 서버가 만든 문장을 그대로 쓴다(§38).
-                Text(departure.text)
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(departure.level == .late ? Ink.danger : Ink.ink)
-            }
-
-            if activity.isFixedCommitment {
-                StatusChip(text: "예약된 일정", symbol: "lock.fill", tint: Ink.info)
-            }
-
+            // 꽉 찬 버튼은 하나 — 지금 가장 할 법한 일. 나머지는 그 아래 한 줄에 같은 폭으로 나란히 선다.
+            let completionFirst = NextActionCard.prioritizesCompletion(next.status) || next.location == nil
             VStack(spacing: Space.s) {
-                if !NextActionCard.prioritizesCompletion(next.status), let location = next.location {
+                if !completionFirst, let location = next.location {
                     PrimaryActionButton(title: "길찾기", systemImage: "map") {
                         MapLauncher.open(location: location, name: next.title)
                     }
+                } else if canEdit {
+                    PrimaryActionButton(title: "다녀왔어요", systemImage: "checkmark", isBusy: isBusy, action: onComplete)
                 }
-                if canEdit {
-                    if NextActionCard.prioritizesCompletion(next.status) || next.location == nil {
-                        PrimaryActionButton(title: "다녀왔어요", systemImage: "checkmark", isBusy: isBusy, action: onComplete)
-                    } else {
+                HStack(spacing: Space.s) {
+                    if canEdit && !completionFirst {
                         SecondaryActionButton(title: "다녀왔어요", systemImage: "checkmark", action: onComplete)
                             .disabled(isBusy)
                     }
-                }
-                HStack {
-                    if NextActionCard.prioritizesCompletion(next.status), let location = next.location {
+                    if completionFirst, let location = next.location {
                         SecondaryActionButton(title: "길찾기", systemImage: "map") {
                             MapLauncher.open(location: location, name: next.title)
                         }
@@ -469,8 +502,8 @@ struct NextActionCard: View {
                 // 서버가 이미 보내던 값인데(`ActivitySummary.bookUrl`) 그리는 곳이 없었다(2026-09-20).
                 if let booking = SafeURL.web(activity.bookUrl) {
                     Link(destination: booking) {
-                        Label("예약 열기", systemImage: "safari")
-                            .font(.subheadline)
+                        Label("예약 열기", systemImage: "arrow.up.right.square")
+                            .font(.subheadline.weight(.medium))
                             .frame(maxWidth: .infinity, minHeight: 44)
                     }
                     .buttonStyle(.plain)
@@ -485,6 +518,12 @@ struct NextActionCard: View {
 }
 
 extension NextActionCard {
+    /// 예약된 일정의 한 줄 — `15:02 · 예약된 일정`. 시각이 없으면 예약이라는 것만.
+    static func fixedLine(_ activity: ActivitySummary) -> String {
+        guard let at = activity.fixedAtMinutes else { return "예약된 일정" }
+        return "\(TimeFormat.clock(at)) · 예약된 일정"
+    }
+
     static func prioritizesCompletion(_ status: TravelStatus) -> Bool {
         status == .arrived || status == .inProgress || status == .completed
     }
@@ -526,8 +565,68 @@ extension NextActionCard {
     }
 }
 
+/// 오늘 하루를 한 장에 — 시각 · 표지 · 이름이 한 줄씩. 다녀온 곳은 흐리게, 다음 일정은 표시만 한다.
+/// 할 일(다녀왔어요·건너뛰기·되돌리기)은 줄의 `⋯`·길게 누르기·옆으로 밀기에 있다.
+struct TodayTimelineCard: View {
+    let activities: [ActivitySummary]
+    let nextId: String?
+    let isBusy: Bool
+    var canEdit = true
+    let onComplete: (ActivitySummary) -> Void
+    let onSkip: (ActivitySummary) -> Void
+    let onUndo: (ActivitySummary) -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ForEach(Array(activities.enumerated()), id: \.element.id) { index, activity in
+                if index > 0 {
+                    Rectangle().fill(Ink.hairline).frame(height: 1).padding(.leading, 86)
+                }
+                if activity.status.isDone {
+                    FinishedRow(activity: activity, isBusy: isBusy, canEdit: canEdit) { onUndo(activity) }
+                } else {
+                    ActivityRow(activity: activity, isNext: activity.id == nextId, isBusy: isBusy,
+                                canEdit: canEdit && activity.id != nextId,
+                                onComplete: { onComplete(activity) }, onSkip: { onSkip(activity) })
+                }
+            }
+        }
+        .background(Ink.raised)
+        .clipShape(RoundedRectangle(cornerRadius: Radius.card))
+        .overlay(RoundedRectangle(cornerRadius: Radius.card).strokeBorder(Ink.hairline))
+    }
+}
+
+/// 타임라인의 한 줄 틀 — 시각 칸과 표지 칸의 폭을 모든 줄이 같이 쓴다(세로로 줄이 맞아야 흐름이 읽힌다).
+private struct TimelineLine<Marker: View, Content: View, Trailing: View>: View {
+    let time: String
+    var timeColor: Color = Ink.ink
+    var timeWeight: Font.Weight = .regular
+    @ViewBuilder let marker: Marker
+    @ViewBuilder let content: Content
+    @ViewBuilder let trailing: Trailing
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Text(time)
+                .font(.subheadline.monospacedDigit().weight(timeWeight))
+                .foregroundStyle(timeColor)
+                .frame(width: 52, alignment: .leading)
+            marker.frame(width: 24)
+            content.padding(.leading, Space.s)
+            Spacer(minLength: Space.s)
+            trailing
+        }
+        .padding(.leading, Space.l)
+        .padding(.trailing, Space.xs)
+        .frame(minHeight: 50)
+        .background(Ink.raised)
+    }
+}
+
 struct ActivityRow: View {
     let activity: ActivitySummary
+    var isNext = false
     let isBusy: Bool
     var canEdit = true
     let onComplete: () -> Void
@@ -573,60 +672,56 @@ struct ActivityRow: View {
                 .labelStyle(.titleAndIcon)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.white)
-                .frame(width: 76, height: 56)
-                .background(tint, in: RoundedRectangle(cornerRadius: Radius.card))
+                .frame(width: 76, height: 40)
+                .background(tint, in: RoundedRectangle(cornerRadius: Radius.control))
         }
         .buttonStyle(.plain)
     }
 
     private var row: some View {
-        HStack(alignment: .top, spacing: Space.m) {
-            VStack(spacing: Space.xs) {
-                Text(TimeFormat.clock(activity.startMinutes))
-                    .font(.subheadline.monospacedDigit().weight(.semibold))
-                Image(systemName: activity.type.symbol)
-                    .font(.caption)
-                    .foregroundStyle(Ink.soft)
+        TimelineLine(time: TimeFormat.clock(activity.startMinutes),
+                     timeWeight: isNext ? .semibold : .regular) {
+            if isNext {
+                Circle().fill(Ink.accent).frame(width: 10, height: 10)
+            } else {
+                Circle().strokeBorder(Ink.faint, lineWidth: 1.5).frame(width: 10, height: 10)
             }
-            .frame(width: 52)
-
-            VStack(alignment: .leading, spacing: Space.xs) {
+        } content: {
+            VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: Space.s) {
-                    Text(activity.name).font(.body.weight(.semibold))
-                    if activity.isFixedCommitment {
-                        StatusChip(text: "예약됨", symbol: "lock.fill", tint: Ink.info)
-                    }
-                    if activity.mustVisit {
-                        StatusChip(text: "꼭 가기", symbol: "star.fill", tint: Ink.warning)
-                    }
+                    Text(activity.name)
+                        .font(.body.weight(isNext ? .semibold : .regular))
+                        .foregroundStyle(Ink.ink)
+                        .lineLimit(1)
+                    if isNext { TagChip(text: "다음", tint: Ink.accent) }
+                    if activity.isFixedCommitment { TagChip(text: "예약", tint: Ink.info) }
+                    if activity.mustVisit { TagChip(text: "꼭 가기", tint: Ink.warning) }
                 }
                 if !activity.desc.isEmpty {
-                    Text(activity.desc).font(.caption).foregroundStyle(Ink.soft).lineLimit(2)
+                    Text(activity.desc).font(.caption).foregroundStyle(Ink.soft).lineLimit(1)
                 }
             }
-            Spacer(minLength: 0)
-            if canEdit {
+        } trailing: {
+            if isBusy && canEdit {
+                ProgressView().controlSize(.small).frame(width: 44, height: 44)
+            } else if canEdit {
                 Menu {
                     Button("다녀왔어요", systemImage: "checkmark", action: onComplete)
                     Button("건너뛰기", systemImage: "arrow.uturn.forward", action: onSkip)
                 } label: {
-                    Image(systemName: "ellipsis").frame(minWidth: 44, minHeight: 44)
+                    Image(systemName: "ellipsis").foregroundStyle(Ink.soft).frame(width: 44, height: 44)
                 }
-                .disabled(isBusy)
                 .accessibilityLabel("\(activity.name) 작업")
             }
         }
-        .card()
         .contextMenu {
             if canEdit {
                 Button("다녀왔어요", systemImage: "checkmark", action: onComplete)
                 Button("건너뛰기", systemImage: "arrow.uturn.forward", action: onSkip)
             }
         }
-        .overlay(alignment: .topTrailing) {
-            if isBusy { ProgressView().controlSize(.small).padding(Space.m) }
-        }
-        .accessibilityElement(children: .contain)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(TimeFormat.clock(activity.startMinutes)) \(activity.name)\(isNext ? ", 다음 일정" : "")")
         .accessibilityActions {
             if canEdit {
                 Button("다녀왔어요", action: onComplete)
@@ -642,26 +737,34 @@ struct FinishedRow: View {
     var canEdit = true
     let onUndo: () -> Void
 
+    private var completed: Bool { activity.status == .completed }
+
     var body: some View {
-        HStack(spacing: Space.m) {
-            Image(systemName: activity.status == .completed ? "checkmark.circle.fill" : "arrow.uturn.forward.circle")
-                .foregroundStyle(activity.status == .completed ? Ink.positive : Ink.soft)
+        TimelineLine(time: TimeFormat.clock(activity.startMinutes), timeColor: Ink.faint) {
+            Image(systemName: completed ? "checkmark" : "arrow.uturn.forward")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(completed ? Ink.positive : Ink.faint)
+        } content: {
             Text(activity.name)
-                .strikethrough(activity.status == .completed)
+                .strikethrough(completed, color: Ink.faint)
                 .foregroundStyle(Ink.soft)
-            Spacer()
+                .lineLimit(1)
+        } trailing: {
             if canEdit {
-                Button("되돌리기", action: onUndo)
-                    .font(.caption)
-                    .disabled(isBusy)
-                    .frame(minWidth: 44, minHeight: 44)
+                Menu {
+                    Button("되돌리기", systemImage: "arrow.uturn.backward", action: onUndo)
+                } label: {
+                    Image(systemName: "ellipsis").foregroundStyle(Ink.faint).frame(width: 44, height: 44)
+                }
+                .disabled(isBusy)
+                .accessibilityLabel("\(activity.name) 되돌리기")
             }
         }
-        .padding(.horizontal, Space.l)
-        .padding(.vertical, Space.m)
-        .background(Ink.raised, in: RoundedRectangle(cornerRadius: Radius.card))
-        .overlay(RoundedRectangle(cornerRadius: Radius.card).strokeBorder(Ink.hairline))
         .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(activity.name), \(completed ? "다녀옴" : "건너뜀")")
+        .accessibilityActions {
+            if canEdit { Button("되돌리기", action: onUndo) }
+        }
     }
 }
 
@@ -677,7 +780,7 @@ struct TodayMapCard: View {
             EmptyView()
         } else {
             VStack(alignment: .leading, spacing: Space.s) {
-                Text("오늘의 위치").font(.footnote.weight(.semibold)).foregroundStyle(Ink.soft)
+                SectionHeader(title: "오늘의 위치")
                 Map {
                     ForEach(points) { activity in
                         if let location = activity.location {
@@ -724,8 +827,30 @@ struct IntentField: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Space.s) {
             SectionHeader(title: "오늘은 어떻게 할까요")
+
+            // 문장으로 말하지 않아도 되는 길 — 웹의 컨디션 버튼과 같다. 셋 중 하나라 한 덩어리로 묶는다.
+            HStack(spacing: Space.xs) {
+                ForEach(EnergyPick.allCases, id: \.self) { pick in
+                    let on = energy == pick.level
+                    Button { onEnergy(pick.level) } label: {
+                        Text(pick.label)
+                            .font(.subheadline.weight(on ? .semibold : .regular))
+                            .foregroundStyle(on ? Ink.ink : Ink.soft)
+                            .frame(maxWidth: .infinity, minHeight: 40)
+                            .background(on ? Ink.raised : Color.clear, in: Capsule())
+                            .shadow(color: on ? Ink.ink.opacity(0.08) : .clear, radius: 1, y: 1)
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(on ? [.isSelected] : [])
+                }
+            }
+            .padding(Space.xs)
+            .background(Ink.sunken, in: Capsule())
+            .disabled(isBusy)
+
             HStack(spacing: Space.s) {
-                TextField("예: 좀 피곤해서 많이 걷기 싫어", text: $text, axis: .vertical)
+                TextField("J에게 말하기 — 예: 많이 걷기 싫어", text: $text, axis: .vertical)
                     .lineLimit(1...3)
                     .textFieldStyle(.plain)
                     .submitLabel(.done)
@@ -733,11 +858,14 @@ struct IntentField: View {
                 if !text.isEmpty {
                     Button("적용", action: onSubmit)
                         .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Ink.accent)
                         .disabled(isBusy)
                 }
             }
-            .padding(Space.m)
-            .background(Ink.raised, in: RoundedRectangle(cornerRadius: Radius.card))
+            .padding(.horizontal, Space.l)
+            .padding(.vertical, Space.m)
+            .background(Ink.raised, in: RoundedRectangle(cornerRadius: Radius.control))
+            .overlay(RoundedRectangle(cornerRadius: Radius.control).strokeBorder(Ink.hairline))
 
             if let echo, !echo.text.isEmpty {
                 HStack(alignment: .top, spacing: Space.xs) {
@@ -749,14 +877,6 @@ struct IntentField: View {
                 // 못 알아들은 것은 오류가 아니라 '확인할 것'이다 — 빨강을 쓰지 않는다(§색은 뜻이다).
                 .foregroundStyle(echo.understood ? Ink.accent : Ink.warning)
             }
-
-            // 문장으로 말하지 않아도 되는 길 — 웹의 컨디션 버튼과 같다.
-            HStack(spacing: Space.s) {
-                ForEach(EnergyPick.allCases, id: \.self) { pick in
-                    PickChip(label: pick.label, isOn: energy == pick.level) { onEnergy(pick.level) }
-                }
-            }
-            .disabled(isBusy)
         }
     }
 }
