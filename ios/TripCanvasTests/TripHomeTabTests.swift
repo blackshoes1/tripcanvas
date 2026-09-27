@@ -96,3 +96,13 @@ private extension TripSummary {
                     todayIndex: todayIndex, daysUntilStart: nil, role: nil, memberCount: nil)
     }
 }
+
+/// 더보기의 묶음 — 칸을 새로 더하고 묶음에 안 넣으면 화면에서 조용히 사라진다.
+final class TripPanelTests: XCTestCase {
+    func testEveryPanelAppearsExactlyOnceInTheSections() {
+        let listed = TripPanel.sections.flatMap(\.panels)
+        XCTAssertEqual(listed.count, TripPanel.allCases.count, "모든 칸이 한 번씩")
+        XCTAssertEqual(Set(listed), Set(TripPanel.allCases))
+        XCTAssertFalse(TripPanel.sections.contains { $0.panels.isEmpty }, "빈 묶음은 머리만 남는다")
+    }
+}

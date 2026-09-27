@@ -132,6 +132,19 @@ struct TripHomeView: View {
         // 설정에서 이름을 바꾸면 문서가 먼저 안다 — 밀어 넣을 때 받은 요약의 이름에 머물지 않는다.
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
+        // 제목을 **직접 그린다**(명조). UIKit 외형 설정(`Typeface.applyUIKitAppearance`)만으로는 모자라다 —
+        // 화면에 MapKit `Map`이 있으면(지금의 `TodayMapCard`) SwiftUI가 제목 글꼴을 시스템 굵은 글씨로 박아
+        // 넣어, 탭을 바꿀 때마다 제목 글꼴이 달라졌다(2026-09-27 시뮬레이터에서 확인). `navigationTitle`은
+        // 뒤로가기 이름·접근성을 위해 그대로 둔다.
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Text(title)
+                    .font(Typeface.navigationTitle)
+                    .foregroundStyle(Ink.ink)
+                    .lineLimit(1)
+                    .accessibilityAddTraits(.isHeader)
+            }
+        }
     }
 
     private var title: String {
@@ -167,8 +180,10 @@ struct TripHomeView: View {
             selection.wrappedValue = item
         } label: {
             VStack(spacing: 2) {
+                // 아이콘 칸 높이를 고정한다 — `ellipsis`처럼 납작한 기호만 이름이 위로 떠 있었다.
                 Image(systemName: item.symbol)
                     .font(.system(size: 20, weight: on ? .semibold : .regular))
+                    .frame(height: 24)
                 Text(item.label)
                     .font(.caption2)
                     .fontWeight(on ? .semibold : .regular)
@@ -184,36 +199,72 @@ struct TripHomeView: View {
 
     /// 매일 쓰는 것이 아니라 가끔 들어가는 곳들. 예전에는 늘 한 줄 반을 차지했다.
     /// 목록이라 이름 아래 한 줄을 더 쓸 수 있어, 눌러 보기 전에 무엇이 들었는지 말할 수 있다.
+    ///
+    /// 2026-09-27: 여섯 곳을 쓰임(준비·함께·이 기기)으로 묶었다 — 전에는 한 묶음 여섯 줄이라 설정 앱과 구별이 안 됐다.
+    /// 여행 이름은 머리에 또 두지 않는다 — 내비게이션 제목이 이미 그 이름이다(명조).
     private var moreList: some View {
-        PaperList {
-            Section("이 여행") {
-                ForEach(TripPanel.allCases) { item in
-                    // 설정 앱의 한 줄처럼 — 아이콘·이름·한 줄 설명·꺾쇠. 행 전체가 눌린다.
-                    Button { panel = item } label: {
-                        HStack(spacing: Space.m) {
-                            Image(systemName: item.symbol)
-                                .foregroundStyle(Ink.accent)
-                                .frame(width: 24)
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(item.label).foregroundStyle(Ink.ink)
-                                Text(item.hint).font(.caption).foregroundStyle(Ink.soft)
-                            }
-                            Spacer(minLength: Space.s)
-                            Image(systemName: "chevron.right")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(Ink.faint)
-                        }
-                        .frame(minHeight: 44)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityElement(children: .combine)
-                    .accessibilityAddTraits(.isButton)
+        List {
+            ForEach(TripPanel.sections, id: \.title) { section in
+                Section {
+                    ForEach(section.panels) { item in moreRow(item) }
+                } header: {
+                    Text(section.title)
+                        .font(.headline)
+                        .foregroundStyle(Ink.ink)
+                        .textCase(nil)
                 }
             }
         }
         .listStyle(.insetGrouped)
+        .listSectionSpacing(Space.l)
+        .paperGround()
         .frame(maxHeight: .infinity)
+    }
+
+    /// 설정 앱의 한 줄처럼 — 아이콘 칸·이름·한 줄 설명·(아는 값)·꺾쇠. 행 전체가 눌린다.
+    private func moreRow(_ item: TripPanel) -> some View {
+        Button { panel = item } label: {
+            HStack(spacing: Space.m) {
+                Image(systemName: item.symbol)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Ink.accent)
+                    .frame(width: 32, height: 32)
+                    .background(Ink.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: Radius.small))
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(item.label).font(.body).foregroundStyle(Ink.ink)
+                    Text(item.hint).font(.caption).foregroundStyle(Ink.soft)
+                }
+                Spacer(minLength: Space.s)
+                if let value = moreValue(item) {
+                    Text(value).font(.subheadline).foregroundStyle(Ink.soft)
+                }
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Ink.faint)
+            }
+            .frame(minHeight: 48)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .listRowBackground(Ink.raised)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
+    }
+
+    /// 줄 끝의 값 — **이미 손에 든 것만** 말한다. 이걸 보이려고 서버를 묻지 않는다(웹 ☰ 표시와 같은 규칙):
+    /// 인원은 여행 목록이 준 요약에, 남은 준비 메모는 이미 받은 여행 문서에 있다. 모르면 비운다.
+    private func moreValue(_ item: TripPanel) -> String? {
+        switch item {
+        case .collab:
+            return trip.isShared ? "\(trip.memberCount ?? 1)명" : nil
+        case .notes:
+            guard models.plan.document != nil else { return nil }
+            let open = TripNote.notes(in: models.plan.document).filter { !$0.done }.count
+            return open > 0 ? "\(open)개 남음" : nil
+        default:
+            return nil
+        }
     }
 }
 
@@ -357,8 +408,16 @@ enum TripPanel: String, CaseIterable, Identifiable {
         case .offline: "arrow.down.circle"
         }
     }
+    /// 더보기의 묶음 — 쓰임으로 가른다. **모든 칸이 정확히 한 번** 나와야 한다(`TripPanelTests`).
+    static let sections: [(title: String, panels: [TripPanel])] = [
+        ("준비", [.bookings, .costs, .notes]),
+        ("함께", [.collab, .candidates]),
+        ("이 기기", [.offline]),
+    ]
+
     /// 눌러 보기 전에 무엇이 있는 곳인지 한 줄로. 개수는 싣지 않는다 —
     /// 여기서 세려면 네 곳을 미리 불러와야 하고, 그건 이 화면이 할 일이 아니다.
+    /// (이미 손에 든 값 — 인원·남은 메모 — 만 줄 끝에 따로 말한다: `TripHomeView.moreValue`)
     var hint: String {
         switch self {
         case .costs: "예약 결제 금액 · 현지 결제 금액"
