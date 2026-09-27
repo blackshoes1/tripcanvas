@@ -16,7 +16,7 @@ struct CandidatePlacementSheet: View {
         NavigationStack {
             Group {
                 if let snapshot {
-                    List {
+                    PaperList {
                         Section(candidate.title) {
                             DayPositionFields(document: snapshot.document, day: $day, position: $position)
                         }

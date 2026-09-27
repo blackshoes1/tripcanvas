@@ -249,7 +249,7 @@ struct TripPlanView: View {
                     symbol: "exclamationmark.icloud",
                     title: "일정을 불러오지 못했어요",
                     message: model.errorMessage ?? "잠시 뒤 다시 시도해 주세요.")
-                SecondaryActionButton(title: "다시 시도", systemImage: "arrow.clockwise") {
+                SecondaryActionButton(title: "다시 시도", systemImage: "arrow.clockwise", expands: false) {
                     Task { await model.load() }
                 }
             }
@@ -259,7 +259,7 @@ struct TripPlanView: View {
                     OfflineNotice(savedAt: savedAt)
                         .padding(.horizontal, Space.l)
                     Text("저장된 일정이에요. 연결되면 다시 불러와 편집할 수 있어요.")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.caption).foregroundStyle(Ink.soft)
                 }
                 // 오류도 화면의 높이를 차지해야 한다. overlay로 띄우면 날짜 탭과
                 // 일정 제목을 덮고, 반투명 배경 아래의 글자까지 겹쳐 보인다.
@@ -426,7 +426,7 @@ private struct SaveFailureBanner: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(Space.m)
-        .background(Ink.danger.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+        .background(Ink.danger.opacity(0.08), in: RoundedRectangle(cornerRadius: Radius.control))
     }
 }
 

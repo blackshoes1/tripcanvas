@@ -11,7 +11,7 @@ struct TravelModeInviteCard: View {
         VStack(alignment: .leading, spacing: Space.m) {
             Label("오늘 여행 일정이 있어요", systemImage: "location.circle")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Ink.soft)
             // 내부 이름은 Travel Mode지만 화면에서는 "여행 중"이다(§28).
             Text("여행 중으로 바꾸면")
                 .font(.headline)
@@ -22,10 +22,10 @@ struct TravelModeInviteCard: View {
             }
             Text("바로 알려드릴게요.")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Ink.soft)
             HStack(spacing: Space.s) {
                 PrimaryActionButton(title: "안내 켜기", systemImage: "location.fill", isBusy: isBusy, action: onStart)
-                SecondaryActionButton(title: "나중에", action: onLater)
+                SecondaryActionButton(title: "나중에", expands: false, action: onLater)
             }
         }
         .card()
@@ -37,7 +37,7 @@ private struct BulletLine: View {
     init(_ text: String) { self.text = text }
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: Space.s) {
-            Image(systemName: "circle.fill").font(.system(size: 4)).foregroundStyle(.tertiary)
+            Image(systemName: "circle.fill").font(.system(size: 4)).foregroundStyle(Ink.faint)
             Text(text).font(.subheadline)
         }
     }
@@ -63,10 +63,10 @@ struct LocationPrimerView: View {
             }
             Text("더 정확하게 알려드릴 수 있어요.\n위치는 지금 계산에만 쓰고 저장하지 않아요.")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Ink.soft)
             HStack(spacing: Space.s) {
                 PrimaryActionButton(title: "위치 사용", systemImage: "location.fill", action: onAllow)
-                SecondaryActionButton(title: "나중에", action: onSkip)
+                SecondaryActionButton(title: "나중에", expands: false, action: onSkip)
             }
         }
         .padding(Space.xl)
@@ -88,10 +88,10 @@ struct NotificationPrimerView: View {
                 .font(.title3.weight(.bold))
             Text("예약 시간에 맞춰 “이제 출발하면 여유 있어요” 같은 안내만 보내요.\n일정마다 울리는 알람은 보내지 않아요.")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Ink.soft)
             HStack(spacing: Space.s) {
                 PrimaryActionButton(title: "알림 받기", systemImage: "bell.fill", action: onAllow)
-                SecondaryActionButton(title: "나중에", action: onSkip)
+                SecondaryActionButton(title: "나중에", expands: false, action: onSkip)
             }
         }
         .padding(Space.xl)
@@ -112,7 +112,7 @@ struct TripPulseBar: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(pulse.text).font(.subheadline.weight(.semibold))
                 if !pulse.detail.isEmpty {
-                    Text(pulse.detail).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                    Text(pulse.detail).font(.caption).foregroundStyle(Ink.soft).lineLimit(2)
                 }
             }
             Spacer(minLength: Space.s)
@@ -144,7 +144,7 @@ struct TripPulseBar: View {
         case .delayed, .needsAttention: Ink.warning
         case .freeTime: Ink.info
         case .dayComplete, .onTrack, .ahead: Ink.positive
-        case .resting, .noPlan, .unknown: .secondary
+        case .resting, .noPlan, .unknown: Ink.soft
         }
     }
 }

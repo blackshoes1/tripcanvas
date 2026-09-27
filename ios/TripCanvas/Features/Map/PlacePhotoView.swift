@@ -25,7 +25,7 @@ struct PlacePhotoView: View {
                 Link(destination: photo.sourceURL) {
                     Image(uiImage: photo.image).resizable().scaledToFit()
                         .frame(maxWidth: .infinity, maxHeight: 220)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .clipShape(RoundedRectangle(cornerRadius: Radius.control))
                 }
                 .accessibilityLabel("\(name) 대표 사진 · 원본 사진 열기")
                 HStack {
@@ -39,7 +39,7 @@ struct PlacePhotoView: View {
                     if let url = PlacePhoto.safeURL(author.uri) {
                         Link(author.displayName ?? "사진 작성자", destination: url).font(.caption).frame(minHeight: 44)
                     } else if let name = author.displayName {
-                        Text(name).font(.caption).foregroundStyle(.secondary)
+                        Text(name).font(.caption).foregroundStyle(Ink.soft)
                     }
                 }
             } else if loading {
@@ -52,7 +52,7 @@ struct PlacePhotoView: View {
                 }
             } else {
                 Label(kakaoId?.isEmpty == false ? "앱에서 바로 표시할 사진 정보가 없어요" : "표시할 대표 사진이 없어요", systemImage: "photo")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.caption).foregroundStyle(Ink.soft)
                 if let kakaoId, !kakaoId.isEmpty, kakaoId.allSatisfy(\.isNumber),
                    let url = URL(string: "https://place.map.kakao.com/\(kakaoId)") {
                     Link("카카오맵에서 보기", destination: url).font(.caption).frame(minHeight: 44)

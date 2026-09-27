@@ -154,7 +154,7 @@ struct PlanMapSection: View {
                                   isVisible: showsMap)
                         .frame(minHeight: 180, maxHeight: .infinity)
                     if let note = Self.routeNote(routes) {
-                        Text(note).font(.caption).foregroundStyle(.secondary)
+                        Text(note).font(.caption).foregroundStyle(Ink.soft)
                     }
                 } else {
                     Button { withAnimation(motion) { mapSearching = true } } label: {
@@ -186,7 +186,7 @@ struct PlanMapSection: View {
                                 } label: {
                                     VStack(alignment: .leading) {
                                         Text("\(index + 1). \(spot.name)")
-                                        if spot.point == nil { Text("위치 미정").font(.caption).foregroundStyle(.secondary) }
+                                        if spot.point == nil { Text("위치 미정").font(.caption).foregroundStyle(Ink.soft) }
                                     }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                                 }.buttonStyle(.plain)
                                 Button { actions.viewSpot(index, spot) } label: {

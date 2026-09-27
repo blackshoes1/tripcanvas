@@ -34,7 +34,7 @@ struct QuickSpendEditor: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            PaperForm {
                 if let recovery {
                     Section("저장하지 않은 입력이 있어요") {
                         Button("이어서 입력") {
@@ -97,7 +97,6 @@ struct QuickSpendEditor: View {
                 }
                 if failed { Section { Text("저장하지 못했어요. 입력 내용은 유지되어 있어요.").foregroundStyle(Ink.warning) } }
             }
-            .paperGround()
             .tint(Ink.accent)
             .navigationTitle("쓴 돈 적기")
             .navigationBarTitleDisplayMode(.inline)

@@ -16,13 +16,13 @@ struct DayCostSummaryView: View {
             // 가기 전에 낸 돈의 하루치(예약)와 가서 쓰는 돈은 다른 장부다 — 합계에 섞여 있어도 따로 말한다
             if let cost, let onSite = cost.onSiteKRW, onSite != cost.total {
                 Text("현지 결제 \(TimeFormat.money(onSite, currency: "KRW")) · 예약 하루치 \(TimeFormat.money(cost.total - onSite, currency: "KRW"))")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.caption).foregroundStyle(Ink.soft)
             }
             // 합계 하나로는 "얼마나 남았지"를 알 수 없다 — 예약해 둔 돈과 이미 낸 돈을 따로 보여 준다
             if let cost, !cost.paySplit.isEmpty {
                 Text(cost.paySplit.map { "\($0.state.label) \(TimeFormat.money($0.amount, currency: "KRW"))" }
                     .joined(separator: " · "))
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.caption).foregroundStyle(Ink.soft)
             }
             if let budget = day.budget, let amount = budget.amount {
                 Text("하루 예산 \(TimeFormat.money(amount, currency: budget.currency.rawValue)) · \(budget.basis.label)\(budget.basis != .entered ? " · \(budget.people)명" : "")")
@@ -34,15 +34,15 @@ struct DayCostSummaryView: View {
                 if let budget = details.budget {
                     let difference = budget.differenceKRW
                     Text("입력된 금액 기준 \(TimeFormat.money(Double(abs(difference)), currency: "KRW")) \(difference < 0 ? "초과" : "여유")")
-                        .font(.caption).foregroundStyle(difference < 0 ? Ink.warning : .secondary)
+                        .font(.caption).foregroundStyle(difference < 0 ? Ink.warning : Ink.soft)
                 }
                 if details.unknownCount > 0 {
                     Text("비용 미정 \(details.unknownCount)개 · 최종 비용은 더 늘어날 수 있어요")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.caption).foregroundStyle(Ink.soft)
                 }
                 if details.transportUnpriced {
                     Text("아직 계산되지 않은 교통비는 합계에서 빠져 있어요")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.caption).foregroundStyle(Ink.soft)
                 }
             }
         }
@@ -73,7 +73,7 @@ struct DayCostView: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            PaperList {
                 Section {
                     DayCostSummaryView(day: day, cost: cost)
                     if cost == nil, let onRefresh { Button("합계 다시 확인") { Task { await onRefresh() } } }
@@ -122,11 +122,11 @@ struct DayCostView: View {
                             VStack(alignment: .leading, spacing: Space.xs) {
                                 Text(item.title)
                                 Text("\(TimeFormat.money(item.amount ?? 0, currency: item.currency)) · \(item.source == "BOOKING" ? "예약의 하루 배분액" : item.source == "STAY" ? "연박 숙소의 하루치 · 체크인 날 장소에서 고쳐요" : "이동 경로 추정")")
-                                    .font(.caption).foregroundStyle(.secondary)
+                                    .font(.caption).foregroundStyle(Ink.soft)
                             }
                         }
                         Text("연결된 장소에 금액을 적은 예약은 중복해서 더하지 않아요. 예약 금액과 날짜는 예약 화면에서 수정할 수 있어요.")
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(.caption).foregroundStyle(Ink.soft)
                         if details.undatedBookings > 0 {
                             Text("날짜 미정 예약 \(details.undatedBookings)건은 하루 합계에 포함되지 않았어요.").font(.caption)
                         }
@@ -144,7 +144,6 @@ struct DayCostView: View {
                     Section { Text("상세 계산을 받기 전에는 합계의 포함 범위를 확인할 수 없어요.").font(.caption) }
                 }
             }
-            .paperGround()
             .tint(Ink.accent)
             .navigationTitle("하루 비용")
             .navigationBarTitleDisplayMode(.inline)
@@ -195,10 +194,10 @@ struct DayCostView: View {
                 Text(amount == 0 && !entry.isPartial ? "무료 · 확인한 0원" : "\(TimeFormat.money(amount, currency: entry.currency.rawValue))\(entry.isPartial ? " · 일부 금액만 확인" : "")")
                     .font(.subheadline)
                 Text("\(entry.basis.label)\(entry.basis != .entered ? " · \(entry.people)명 적용" : "")")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.caption).foregroundStyle(Ink.soft)
             } else {
                 Text(line?.state == "BOOKING" ? "연결된 예약 금액에 포함" : "비용 미정")
-                    .font(.subheadline).foregroundStyle(.secondary)
+                    .font(.subheadline).foregroundStyle(Ink.soft)
             }
             // 연박 숙소는 적은 금액 전액이 아니라 하루치만 이 날 합계에 들어간다 — 그 사실을 여기서 말한다.
             if let share = line?.amount, let full = entry.amount, share != full, line?.source == "SPOT" {
@@ -206,7 +205,7 @@ struct DayCostView: View {
                     .font(.caption).foregroundStyle(Ink.soft)
             } else if entry.currency != .krw, let converted = line?.totalKRW {
                 Text("합계 반영 약 \(TimeFormat.money(Double(converted), currency: "KRW"))")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.caption).foregroundStyle(Ink.soft)
             }
             // 무엇에 쓴 돈인지(분류)와 냈는지(상태)는 다른 질문이다 — 상태는 고른 것만 말한다
             if entry.payState != .none || !entry.photos.isEmpty {
@@ -218,7 +217,7 @@ struct DayCostView: View {
                     }
                     if !entry.photos.isEmpty {
                         Label("\(entry.photos.count)", systemImage: "photo")
-                            .font(.caption2).foregroundStyle(.secondary)
+                            .font(.caption2).foregroundStyle(Ink.soft)
                     }
                 }
             }
@@ -272,7 +271,7 @@ struct CostEntryEditor: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            PaperForm {
                 if target.isExtra {
                     Section {
                         TextField("항목 이름", text: $entry.title)
@@ -339,7 +338,6 @@ struct CostEntryEditor: View {
                     Section { Button("항목 삭제", role: .destructive) { showsDeleteConfirm = true }.disabled(saving) }
                 }
             }
-            .paperGround()
             .tint(Ink.accent)
             .confirmationDialog("‘\(entry.title.isEmpty ? "이 항목" : entry.title)’ 비용을 지울까요?", isPresented: $showsDeleteConfirm, titleVisibility: .visible) {
                 Button("삭제", role: .destructive) { Task { await save(nil) } }

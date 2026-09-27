@@ -40,7 +40,7 @@ struct NewTripView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            PaperForm {
                 Section { CreateTripModePicker(mode: $mode).disabled(isSaving) }
                 Section {
                     TextField("가루이자와, 제주, 파리…", text: $form.city)
@@ -87,7 +87,6 @@ struct NewTripView: View {
                     Section { Text(errorMessage).foregroundStyle(Ink.danger).font(.footnote) }
                 }
             }
-            .paperGround()
             .navigationTitle("새 여행")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

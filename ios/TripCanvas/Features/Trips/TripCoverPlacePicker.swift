@@ -40,7 +40,7 @@ struct TripCoverPlacePicker: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            PaperList {
                 Text("일정에 등록된 장소를 고르면 대표 사진을 확인하고 구도를 조절할 수 있어요.")
                     .font(.subheadline).foregroundStyle(Ink.soft)
                 if loading { ProgressView("일정을 불러오는 중") }
@@ -69,7 +69,6 @@ struct TripCoverPlacePicker: View {
                     }.disabled(selectedID != nil)
                 }
             }
-            .paperGround()
             .navigationTitle("일정의 대표 사진")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("취소") { dismiss() } } }

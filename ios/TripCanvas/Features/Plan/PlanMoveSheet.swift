@@ -21,7 +21,7 @@ struct PlanMoveSheet: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            PaperList {
                 Section("\(indexes.count)곳 이동") {
                     DayPositionFields(document: document, day: $day, position: $position)
                 }
@@ -34,7 +34,6 @@ struct PlanMoveSheet: View {
                                    days: Array(Set([sourceDay, day])), source: source)
                 if let error = saving.error { Text(error).foregroundStyle(Ink.danger) }
             }
-            .paperGround()
             .tint(Ink.accent)
             .navigationTitle("날짜·순서 옮기기")
             .navigationBarTitleDisplayMode(.inline)

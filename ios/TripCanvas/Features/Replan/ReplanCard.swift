@@ -19,7 +19,7 @@ struct ReplanCard: View {
             if !preview.feasible {
                 Text("일정을 줄여도 예약 시간을 맞추기 어려워요 — 예약을 옮기는 편이 나을 수 있어요.")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Ink.soft)
             }
 
             VStack(alignment: .leading, spacing: Space.s) {
@@ -27,17 +27,17 @@ struct ReplanCard: View {
                 ComparisonRow(label: "제안", names: preview.after, muted: false)
             }
             .padding(Space.m)
-            .background(Color(.tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: Radius.card - 4))
+            .background(Ink.sunken, in: RoundedRectangle(cornerRadius: Radius.control))
 
             if !preview.dropNames.isEmpty {
                 Text(dropNote)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Ink.soft)
             }
 
             HStack(spacing: Space.s) {
                 PrimaryActionButton(title: "이대로 조정", systemImage: "checkmark", isBusy: isBusy, action: onApply)
-                SecondaryActionButton(title: "그대로 두기", action: onKeep)
+                SecondaryActionButton(title: "그대로 두기", expands: false, action: onKeep)
             }
         }
         .card()
@@ -68,11 +68,11 @@ private struct ComparisonRow: View {
         HStack(alignment: .top, spacing: Space.s) {
             Text(label)
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Ink.soft)
                 .frame(width: 32, alignment: .leading)
             Text(names.isEmpty ? "없음" : names.joined(separator: " → "))
                 .font(.caption)
-                .foregroundStyle(muted ? .secondary : .primary)
+                .foregroundStyle(muted ? Ink.soft : Ink.ink)
                 .strikethrough(muted)
         }
         .accessibilityElement(children: .combine)

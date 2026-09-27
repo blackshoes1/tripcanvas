@@ -185,7 +185,7 @@ struct TripHomeView: View {
     /// 매일 쓰는 것이 아니라 가끔 들어가는 곳들. 예전에는 늘 한 줄 반을 차지했다.
     /// 목록이라 이름 아래 한 줄을 더 쓸 수 있어, 눌러 보기 전에 무엇이 들었는지 말할 수 있다.
     private var moreList: some View {
-        List {
+        PaperList {
             Section("이 여행") {
                 ForEach(TripPanel.allCases) { item in
                     // 설정 앱의 한 줄처럼 — 아이콘·이름·한 줄 설명·꺾쇠. 행 전체가 눌린다.
@@ -213,7 +213,6 @@ struct TripHomeView: View {
             }
         }
         .listStyle(.insetGrouped)
-        .paperGround()
         .frame(maxHeight: .infinity)
     }
 }

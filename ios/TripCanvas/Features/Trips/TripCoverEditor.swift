@@ -106,11 +106,11 @@ struct TripCoverEditor: View {
                             Divider()
                             Text("이 여행의 표지 사진을 골라 주세요.").foregroundStyle(Ink.soft)
                         }.padding(24).frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Ink.raised, in: RoundedRectangle(cornerRadius: 26))
+                            .background(Ink.raised, in: RoundedRectangle(cornerRadius: Radius.panel))
                     }
                     VStack(alignment: .leading, spacing: 20) {
                         if let image {
-                            cropPreview(image).clipShape(RoundedRectangle(cornerRadius: 12))
+                            cropPreview(image).clipShape(RoundedRectangle(cornerRadius: Radius.control))
                             Text("사진을 움직여 표지에 보일 영역을 맞춰주세요.")
                                 .font(.caption).foregroundStyle(Ink.soft)
                             if let placePhoto { TripCoverPhotoCredit(photo: placePhoto) }
@@ -126,12 +126,12 @@ struct TripCoverEditor: View {
                                 Button { showsPosition.toggle() } label: {
                                     Label("위치 미세 조정", systemImage: "arrow.up.and.down.and.arrow.left.and.right")
                                         .frame(maxWidth: .infinity, minHeight: 52)
-                                        .background(Ink.paper, in: RoundedRectangle(cornerRadius: 16))
+                                        .background(Ink.paper, in: RoundedRectangle(cornerRadius: Radius.card))
                                 }.accessibilityValue(showsPosition ? "펼침" : "접힘")
                                 Button { resetCrop() } label: {
                                     Label("구도 초기화", systemImage: "arrow.counterclockwise")
                                         .frame(maxWidth: .infinity, minHeight: 52)
-                                        .background(Ink.paper, in: RoundedRectangle(cornerRadius: 16))
+                                        .background(Ink.paper, in: RoundedRectangle(cornerRadius: Radius.card))
                                 }
                             }.font(.subheadline).buttonStyle(.plain).foregroundStyle(Ink.accent)
                             if showsPosition {
@@ -160,7 +160,7 @@ struct TripCoverEditor: View {
                                         Image(systemName: "chevron.right")
                                     }.font(.subheadline).foregroundStyle(Ink.soft)
                                 }.frame(maxWidth: .infinity).padding(.vertical, 30)
-                                    .background(Ink.accent.opacity(0.05), in: RoundedRectangle(cornerRadius: 22))
+                                    .background(Ink.accent.opacity(0.05), in: RoundedRectangle(cornerRadius: Radius.panel))
                             } else {
                                 sourceRow("다른 사진 선택", subtitle: "앨범에서 다른 사진을 선택할 수 있어요.", icon: "photo.on.rectangle")
                             }
@@ -183,7 +183,7 @@ struct TripCoverEditor: View {
                                     .background(Ink.accent, in: Capsule())
                             }.buttonStyle(.plain)
                         }
-                    }.padding(20).background(Ink.raised, in: RoundedRectangle(cornerRadius: 26))
+                    }.padding(20).background(Ink.raised, in: RoundedRectangle(cornerRadius: Radius.panel))
                         .disabled(loading || saving)
                     if initialImage != nil || initialPlace != nil {
                         Button("기본 표지로 되돌리기") { persist(nil) }
@@ -265,7 +265,7 @@ struct TripCoverEditor: View {
             Spacer(minLength: 0)
             Image(systemName: "chevron.right").font(.caption).foregroundStyle(Ink.soft)
         }.padding(12).frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
-            .background(Ink.paper.opacity(0.7), in: RoundedRectangle(cornerRadius: 20))
+            .background(Ink.paper.opacity(0.7), in: RoundedRectangle(cornerRadius: Radius.panel))
     }
 
     private func resetCrop() {

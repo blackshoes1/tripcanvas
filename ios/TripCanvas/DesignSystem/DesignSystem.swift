@@ -9,8 +9,17 @@ enum Space {
     static let xl: CGFloat = 24
 }
 
+/// 모서리는 네 단계뿐이다. 2026-09-27 전에는 6·8·10·12·14·16·18·20·22·26이 섞여 있어
+/// 같은 화면의 카드와 버튼이 제각각 둥글었다 — 숫자를 새로 만들지 말고 여기서 고른다.
 enum Radius {
-    static let card: CGFloat = 14
+    /// 사진 썸네일·작은 배지
+    static let small: CGFloat = 8
+    /// 카드 **안의** 칸 — 안내 상자·타일·배너
+    static let control: CGFloat = 12
+    /// 카드·행
+    static let card: CGFloat = 16
+    /// 화면을 크게 차지하는 판 — 표지 편집·온보딩 미리보기
+    static let panel: CGFloat = 24
     static let chip: CGFloat = 999
 }
 
@@ -86,6 +95,30 @@ enum Typeface {
     }
 }
 
+extension Typeface {
+    /// SwiftUI가 글꼴·색을 열어 주지 않는 UIKit 컨트롤을 팔레트에 맞춘다(2026-09-27). 앱 시작 때 한 번.
+    /// - 내비게이션 제목은 명조 — 입구(온보딩·여행 목록)만 명조이고 안쪽 화면은 시스템 고딕이라
+    ///   들어가면 다른 앱처럼 보였다. 글자 크기 설정을 따른다.
+    /// - 세그먼트는 가라앉은 바탕 위에 뜬 칸 — 시스템 회색은 종이 위에서 차갑게 떴다.
+    @MainActor
+    static func applyUIKitAppearance() {
+        let segment = UISegmentedControl.appearance()
+        segment.backgroundColor = UIColor(Ink.sunken)
+        segment.selectedSegmentTintColor = UIColor(Ink.raised)
+        segment.setTitleTextAttributes([.foregroundColor: UIColor(Ink.soft)], for: .normal)
+        segment.setTitleTextAttributes([.foregroundColor: UIColor(Ink.ink)], for: .selected)
+
+        guard let base = UIFont(name: "NanumMyeongjo", size: 17) else { return }
+        let bar = UINavigationBar.appearance()
+        bar.titleTextAttributes = [
+            .font: UIFontMetrics(forTextStyle: .headline).scaledFont(for: base.withSize(19)),
+        ]
+        bar.largeTitleTextAttributes = [
+            .font: UIFontMetrics(forTextStyle: .largeTitle).scaledFont(for: base.withSize(34)),
+        ]
+    }
+}
+
 extension View {
     /// 메타 라벨 한 벌 — 모노 + 대문자 + 자간 + 흐린 색.
     func metaLabel(_ style: Font.TextStyle = .caption2) -> some View {
@@ -98,6 +131,25 @@ extension View {
     /// 종이 바탕을 깐다. List·Form은 자기 배경을 그리므로 그것부터 걷어야 한다.
     func paperGround() -> some View {
         scrollContentBackground(.hidden).background(Ink.paper)
+    }
+
+}
+
+/// 종이 바탕의 Form·List — 바탕은 `paper`, 행은 카드와 같은 `raised`다.
+/// 시스템 행은 다크에서 차가운 회색(#1C1C1E)이라 따뜻한 종이 위에서 떴다(2026-09-27).
+/// ⚠️ `listRowBackground`는 List·Form 자체에 붙이면 행에 닿지 않는다 — 안쪽 묶음(Group)에 붙여야 한다.
+/// `.plain` 목록에는 쓰지 않는다(그 행은 종이 위에 바로 놓인다).
+struct PaperForm<Content: View>: View {
+    @ViewBuilder let content: Content
+    var body: some View {
+        Form { Group { content }.listRowBackground(Ink.raised) }.paperGround()
+    }
+}
+
+struct PaperList<Content: View>: View {
+    @ViewBuilder let content: Content
+    var body: some View {
+        List { Group { content }.listRowBackground(Ink.raised) }.paperGround()
     }
 }
 
@@ -271,9 +323,16 @@ struct PrimaryActionButton: View {
     }
 }
 
+/// 보조 버튼 — 주 버튼과 **같은 높이·같은 모양**에 색만 가라앉힌다.
+/// 2026-09-27 전에는 `.bordered`의 시스템 회색이라 종이 바탕 위에서 차갑게 떴고, 글자 길이만큼만 넓어
+/// 세로로 쌓이면 폭이 제각각인 알약이 가운데 줄지어 섰다.
+///
+/// `expands`: 세로로 쌓이거나 보조끼리 나란하면 넓게(기본), **주 버튼 옆**이나 빈 화면 가운데서는
+/// 글자만큼 — 그래야 주 버튼이 여전히 먼저 읽힌다.
 struct SecondaryActionButton: View {
     let title: String
     var systemImage: String?
+    var expands: Bool = true
     let action: () -> Void
 
     var body: some View {
@@ -282,10 +341,15 @@ struct SecondaryActionButton: View {
                 if let systemImage { Image(systemName: systemImage) }
                 Text(title)
             }
-            .frame(minHeight: 44)
+            .font(.body.weight(.medium))
+            .padding(.horizontal, Space.xl)
+            .frame(maxWidth: expands ? .infinity : nil, minHeight: 48)
+            .background(Ink.sunken, in: Capsule())
+            .foregroundStyle(Ink.ink)
+            .contentShape(Capsule())
         }
-        .buttonStyle(.bordered)
-        .tint(Ink.ink)
+        .buttonStyle(.plain)
+        .fixedSize(horizontal: !expands, vertical: false)
     }
 }
 
@@ -475,8 +539,8 @@ struct PickChip: View {
                 .font(.subheadline.weight(isOn ? .semibold : .regular))
                 .padding(.horizontal, Space.m)
                 .padding(.vertical, Space.xs + 2)
-                .background(isOn ? Ink.accent.opacity(0.18) : Color(.tertiarySystemFill), in: Capsule())
-                .foregroundStyle(isOn ? Ink.accent : .primary)
+                .background(isOn ? Ink.accent.opacity(0.18) : Ink.sunken, in: Capsule())
+                .foregroundStyle(isOn ? Ink.accent : Ink.ink)
                 // 겉모양은 그대로 두고 **누르는 칸만** 44pt — 칩이 줄지어 있어 옆 칩을 잘못 누르기 쉽다.
                 .frame(minHeight: 44)
                 .contentShape(Rectangle())

@@ -178,7 +178,7 @@ struct MapDiscoveryView: View {
                         if tab == 0 {
                             if model.hits.isEmpty && !model.isSearching {
                                 Text(model.didSearch ? "이 범위에서 찾은 장소가 없어요. 지도를 옮기거나 검색어를 바꿔 보세요." : "지도를 옮긴 뒤 이 지역에서 찾아보세요.")
-                                    .font(.subheadline).foregroundStyle(.secondary)
+                                    .font(.subheadline).foregroundStyle(Ink.soft)
                             }
                             if !model.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                                 Button("‘\(model.query)’ 직접 담기 · 위치 미정") {
@@ -194,7 +194,7 @@ struct MapDiscoveryView: View {
                             }
                             if !model.hits.isEmpty {
                                 Text(MapRegion.isKorea(model.hits.first?.point) ? "장소 정보: 카카오" : "장소 정보: Google Maps")
-                                    .font(.caption2).foregroundStyle(.secondary)
+                                    .font(.caption2).foregroundStyle(Ink.soft)
                             }
                         } else {
                             NavigationLink {
@@ -207,7 +207,7 @@ struct MapDiscoveryView: View {
                             }
                             if model.undatedCandidates.isEmpty {
                                 Text("날짜를 정하지 않고 마음에 드는 곳부터 담아 보세요.")
-                                    .font(.subheadline).foregroundStyle(.secondary)
+                                    .font(.subheadline).foregroundStyle(Ink.soft)
                             }
                             ForEach(model.undatedCandidates) { candidate in
                                 if let hit = candidateHit(candidate) {
@@ -231,10 +231,10 @@ struct MapDiscoveryView: View {
                 Image(systemName: saved ? "star.fill" : "mappin.circle")
                 VStack(alignment: .leading, spacing: 3) {
                     Text(hit.name).font(.subheadline.weight(.medium))
-                    Text(hit.address.isEmpty ? hit.city : hit.address).font(.caption).foregroundStyle(.secondary)
+                    Text(hit.address.isEmpty ? hit.city : hit.address).font(.caption).foregroundStyle(Ink.soft)
                 }
                 Spacer()
-                if saved { Text("담았어요").font(.caption).foregroundStyle(.secondary) }
+                if saved { Text("담았어요").font(.caption).foregroundStyle(Ink.soft) }
             }.frame(minHeight: 44)
         }.buttonStyle(.plain)
     }
@@ -254,11 +254,11 @@ struct MapDiscoveryView: View {
                 .id(hit.id)
             if hit.name.isEmpty {
                 Text("상호는 아직 확인되지 않았어요. 이름을 입력하거나 검색해서 골라 주세요.")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.caption).foregroundStyle(Ink.soft)
                 TextField("장소 이름", text: $manualName).textFieldStyle(.roundedBorder)
             } else {
                 Text([hit.address, hit.category?.label ?? ""].filter { !$0.isEmpty }.joined(separator: " · "))
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.caption).foregroundStyle(Ink.soft)
             }
             if model.canSave {
                 if model.candidate(for: hit)?.status == "REJECTED" {
@@ -338,7 +338,7 @@ private struct DiscoveryRegionSheet: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            PaperList {
                 Section {
                     Picker("여행 지역", selection: $region) {
                         Text("국내").tag(PlaceSearchRegion.korea)
@@ -354,12 +354,11 @@ private struct DiscoveryRegionSheet: View {
                     Button { onPick(hit); dismiss() } label: {
                         VStack(alignment: .leading) {
                             Text(hit.name)
-                            Text(hit.address).font(.caption).foregroundStyle(.secondary)
+                            Text(hit.address).font(.caption).foregroundStyle(Ink.soft)
                         }.frame(minHeight: 44)
                     }
                 }
             }
-            .paperGround()
             .tint(Ink.accent)
             .navigationTitle("여행 지역 선택")
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("닫기") { dismiss() } } }

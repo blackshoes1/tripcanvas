@@ -25,7 +25,7 @@ struct PlaceSearchView: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            PaperList {
                 if let errorMessage {
                     Section {
                         Label(errorMessage, systemImage: "exclamationmark.circle")
@@ -38,7 +38,7 @@ struct PlaceSearchView: View {
                     Section {
                         Text("검색 결과가 없어요. 다른 말로 찾아보세요.")
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Ink.soft)
                         if let onManual {
                             Button {
                                 let name = trimmedQuery

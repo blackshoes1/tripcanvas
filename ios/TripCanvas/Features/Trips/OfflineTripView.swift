@@ -13,7 +13,7 @@ struct OfflineTripView: View {
 
     private var latestRevision: Int { model.document == nil ? trip.revision : model.revision }
     var body: some View {
-        List {
+        PaperList {
             Section {
                 if let pack {
                     Label(pack.detail.trip.revision == latestRevision ? "오프라인 준비 완료" : "새로운 변경이 있어요", systemImage: pack.detail.trip.revision == latestRevision ? "checkmark.circle.fill" : "arrow.triangle.2.circlepath")

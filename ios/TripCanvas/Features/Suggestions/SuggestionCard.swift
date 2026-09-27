@@ -25,7 +25,7 @@ struct SuggestionCard: View {
                 Image(systemName: kicker.symbol).foregroundStyle(kicker.tint)
                 Text(kicker.text)
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Ink.soft)
                 Spacer()
             }
 
@@ -34,18 +34,18 @@ struct SuggestionCard: View {
             if !suggestion.description.isEmpty {
                 Text(suggestion.description)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Ink.soft)
             }
 
             if !suggestion.reasons.isEmpty {
                 VStack(alignment: .leading, spacing: Space.xs) {
                     Text(suggestion.type == .rest ? "왜 지금인가요?" : "왜 이곳인가요?")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Ink.soft)
                     ForEach(Array(suggestion.reasons.prefix(3).enumerated()), id: \.offset) { _, reason in
                         Label(reason, systemImage: "circle.fill")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Ink.soft)
                             .labelStyle(BulletLabelStyle())
                     }
                 }
@@ -88,7 +88,7 @@ struct SuggestionCard: View {
 
     private var kicker: (text: String, symbol: String, tint: Color) {
         switch suggestion.type {
-        case .rest: ("쉬어도 괜찮아요", "cup.and.saucer", .secondary)
+        case .rest: ("쉬어도 괜찮아요", "cup.and.saucer", Ink.soft)
         case .priceSaving: ("예약 다시 보기", "tag", Ink.positive)
         case .replan: ("일정 조정 제안", "arrow.triangle.branch", Ink.warning)
         case .nextActivity, .unknown: ("지금 한 곳 더 들를 수 있어요", "sparkles", Ink.info)

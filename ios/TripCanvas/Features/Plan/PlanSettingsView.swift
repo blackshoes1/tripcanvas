@@ -110,7 +110,7 @@ struct PlanSettingsView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            PaperForm {
                 Section {
                     TextField("여행 이름", text: $name)
                     // 시작일·종료일 — 숫자로 쳐도 되고 달력을 눌러도 된다. 일수는 그 둘에서 나온다.
@@ -136,7 +136,7 @@ struct PlanSettingsView: View {
                         ForEach(TravelMode.allCases, id: \.self) { mode in Text(mode.label).tag(mode) }
                     }
                     Text("출발 시각을 비우면 09:00으로 계산해요. 다른 출발 장소는 이 날 맨 처음에 추가하고 전날 이어가기를 꺼 주세요.")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.caption).foregroundStyle(Ink.soft)
                 }
                 if datesChanged {
                     Section("날짜 변경 미리보기") {
@@ -174,7 +174,6 @@ struct PlanSettingsView: View {
                 }
                 if let error = saving.error { Text(error).foregroundStyle(Ink.danger) }
             }
-            .paperGround()
             .tint(Ink.accent)
             .navigationTitle("여행·하루 설정")
             .navigationBarTitleDisplayMode(.inline)

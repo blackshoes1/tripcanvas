@@ -117,9 +117,9 @@ struct ItineraryIntroScene: View {
         .padding(.bottom, compact ? 30 : 34)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
-            RoundedRectangle(cornerRadius: 16)
+            RoundedRectangle(cornerRadius: Radius.card)
                 .fill(Ink.raised)
-                .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Ink.hairline))
+                .overlay(RoundedRectangle(cornerRadius: Radius.card).strokeBorder(Ink.hairline))
                 .shadow(color: Self.shade.opacity(0.08), radius: 16, y: 10)
                 .opacity(frame.card)
                 .offset(y: 10 * (1 - frame.card))

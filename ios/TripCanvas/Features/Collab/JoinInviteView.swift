@@ -74,7 +74,7 @@ struct JoinInviteView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            PaperForm {
                 if let model {
                     Section {
                         if model.isLoading {
@@ -83,10 +83,10 @@ struct JoinInviteView: View {
                             Text(model.preview?.tripName ?? "초대").font(.title3.weight(.semibold))
                             if let preview = model.preview {
                                 let range = CollabModel.inviteRangeText(start: preview.startDate, dayCount: preview.dayCount)
-                                if !range.isEmpty { Text(range).font(.subheadline).foregroundStyle(.secondary) }
+                                if !range.isEmpty { Text(range).font(.subheadline).foregroundStyle(Ink.soft) }
                                 if let role = model.verdict.role {
                                     Text("\(CollabModel.roleIcon(role)) \(CollabModel.roleLabel(role)) 권한으로 참여")
-                                        .font(.subheadline).foregroundStyle(.secondary)
+                                        .font(.subheadline).foregroundStyle(Ink.soft)
                                 }
                             }
                         }

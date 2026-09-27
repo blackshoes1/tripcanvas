@@ -11,7 +11,7 @@ struct TripOverviewView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: Space.m) {
                 Text("날짜를 골라 일정과 동선을 확인하세요.")
-                    .font(.subheadline).foregroundStyle(.secondary)
+                    .font(.subheadline).foregroundStyle(Ink.soft)
                 if let document = model.document {
                     ForEach(Array(document.days.enumerated()), id: \.offset) { index, day in
                         Button { onPickDay(index) } label: {
@@ -59,23 +59,23 @@ struct TripOverviewView: View {
         VStack(alignment: .leading, spacing: Space.s) {
             HStack(alignment: .firstTextBaseline) {
                 Text("Day \(index + 1)").font(.headline)
-                Text(dateLabel(index, plan: plan)).font(.subheadline).foregroundStyle(.secondary)
+                Text(dateLabel(index, plan: plan)).font(.subheadline).foregroundStyle(Ink.soft)
                 Spacer(minLength: Space.s)
-                Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary)
+                Image(systemName: "chevron.right").font(.caption).foregroundStyle(Ink.soft)
             }
             if !day.title.isEmpty { Text(day.title).font(.title3.weight(.semibold)) }
             if day.spots.isEmpty {
-                Text("아직 정한 장소가 없어요").foregroundStyle(.secondary)
+                Text("아직 정한 장소가 없어요").foregroundStyle(Ink.soft)
             } else {
                 Text(day.spots.prefix(4).map(\.name).joined(separator: " → "))
                     .font(.subheadline)
                 if day.spots.count > 4 {
-                    Text("외 \(day.spots.count - 4)곳").font(.caption).foregroundStyle(.secondary)
+                    Text("외 \(day.spots.count - 4)곳").font(.caption).foregroundStyle(Ink.soft)
                 }
                 let unspecified = day.spots.filter { $0.stayMinutes == nil }.count
                 if unspecified > 0 {
                     Label("머무는 시간 미정 \(unspecified)곳", systemImage: "hourglass")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.caption).foregroundStyle(Ink.soft)
                 }
             }
             if let plan {
@@ -86,7 +86,7 @@ struct TripOverviewView: View {
                         Label("종료 예상 \(TimeFormat.clockAcrossMidnight(end))", systemImage: "clock")
                     }
                     if plan.travelTimeSource != .routed || plan.legsPending > 0 {
-                        Text("이동시간에 추정 구간이 포함돼요").foregroundStyle(.secondary)
+                        Text("이동시간에 추정 구간이 포함돼요").foregroundStyle(Ink.soft)
                     }
                     if totals.overloaded {
                         Label("일정이 자정을 넘어요", systemImage: "moon")
@@ -99,16 +99,16 @@ struct TripOverviewView: View {
                     }
                     if plan.day.spotsWithoutLocation > 0 {
                         Text("위치 미정 \(plan.day.spotsWithoutLocation)곳은 동선에 포함되지 않아요")
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Ink.soft)
                     }
                 }
                 .font(.caption)
             } else if completedRevision == model.revision && loadingID == nil {
                 Label("계산을 확인하지 못했어요 · 장소는 그대로 있어요", systemImage: "exclamationmark.circle")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.caption).foregroundStyle(Ink.soft)
             } else {
                 Label(loadingID == nil ? "아직 계산을 확인하지 않았어요" : "이동·종료 시각을 확인하는 중", systemImage: "clock")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.caption).foregroundStyle(Ink.soft)
             }
         }
         .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)

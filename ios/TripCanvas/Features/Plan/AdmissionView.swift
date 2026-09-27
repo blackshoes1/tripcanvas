@@ -72,9 +72,9 @@ struct PlaceAdmissionLookup: View {
         VStack(alignment: .leading, spacing: Space.xs) {
             if let response {
                 Text(response.status == "NOT_CONNECTED" ? "입장료·예약 요건 자동 조회가 아직 연결되지 않았어요." : response.requirement.label)
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.caption).foregroundStyle(Ink.soft)
                 Text("공식 페이지에서 확인한 뒤 직접 입력할 수 있어요. 정보가 없다고 무료인 것은 아니에요.")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.caption).foregroundStyle(Ink.soft)
                 if let link = response.sourceURL.flatMap(SpotAdmission.safeURL) { Link("출처 확인", destination: link).frame(minHeight: 44) }
             }
             if let error { Text(error).font(.caption).foregroundStyle(Ink.warning) }
@@ -95,7 +95,7 @@ struct PlaceAdmissionLookup: View {
                 }.disabled(working)
             } else {
                 Text("장소를 검색해서 연결하면 참고 정보의 연결 상태를 확인할 수 있어요.")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.caption).foregroundStyle(Ink.soft)
             }
         }
     }
@@ -119,7 +119,7 @@ struct AdmissionEditorSection: View {
                 TextField("권종·성인/어린이·적용 날짜 등", text: $spot.admission.note, axis: .vertical)
                 Button("공식 정보를 지금 확인했어요") { spot.admission.confirm(now: Date()) }.frame(minHeight: 44)
                 if let checked = spot.admission.checkedAt {
-                    Text("직접 확인 · \(checked)").font(.caption).foregroundStyle(.secondary)
+                    Text("직접 확인 · \(checked)").font(.caption).foregroundStyle(Ink.soft)
                 }
                 PlaceAdmissionLookup(provider: spot.kakaoId != nil ? "kakao" : (spot.placeId != nil ? "google" : nil),
                                      providerID: spot.kakaoId ?? spot.placeId)
@@ -138,16 +138,16 @@ struct SpotInformationView: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            PaperList {
                 Section {
                     PlacePhotoView(placeId: spot.placeId, kakaoId: spot.kakaoId, name: spot.name)
                 }
                 Section {
                     if let contextLabel, !contextLabel.isEmpty {
-                        Text(contextLabel).font(.caption).foregroundStyle(.secondary)
+                        Text(contextLabel).font(.caption).foregroundStyle(Ink.soft)
                     }
                     Text(spot.name).font(.title2.weight(.semibold))
-                    if !spot.city.isEmpty { Text(spot.city).foregroundStyle(.secondary) }
+                    if !spot.city.isEmpty { Text(spot.city).foregroundStyle(Ink.soft) }
                     if let address = spot.raw["addr"]?.stringValue, !address.isEmpty { Text(address) }
                     else { Text("주소 미정") }
                     if spot.point == nil { Label("위치 미정", systemImage: "mappin.slash").font(.caption) }
@@ -170,7 +170,7 @@ struct SpotInformationView: View {
                     }
                     if !spot.admission.note.isEmpty { Text(spot.admission.note) }
                     if let checked = spot.admission.checkedAt {
-                        Text("직접 확인 · \(checked)").font(.caption).foregroundStyle(.secondary)
+                        Text("직접 확인 · \(checked)").font(.caption).foregroundStyle(Ink.soft)
                     }
                 } header: { Text("예약·입장 준비") } footer: {
                     Text("여행에 기록된 정보예요. 링크를 열어도 예약 완료로 바뀌지 않아요.")
@@ -181,16 +181,15 @@ struct SpotInformationView: View {
                         Text("\(TimeFormat.money(amount, currency: entry.currency.rawValue)) · \(entry.currency.rawValue)")
                         if entry.isPartial { Text("일부 금액만 확인").font(.caption) }
                         else if amount == 0 { Text("확인한 무료").font(.caption) }
-                        Text(entry.basis.label).font(.caption).foregroundStyle(.secondary)
+                        Text(entry.basis.label).font(.caption).foregroundStyle(Ink.soft)
                         if entry.basis != .entered { Text("\(entry.people)명 적용").font(.caption) }
                     } else {
-                        Text("비용 미정").foregroundStyle(.secondary)
+                        Text("비용 미정").foregroundStyle(Ink.soft)
                     }
                 }
                 if !spot.desc.isEmpty { Section("메모") { Text(spot.desc) } }
             }
             .listStyle(.insetGrouped)
-            .paperGround()
             .foregroundStyle(Ink.ink)
             .tint(Ink.accent)
             .textSelection(.enabled)
@@ -206,7 +205,7 @@ struct SpotInformationView: View {
 
     private func information(_ title: String, value: String) -> some View {
         VStack(alignment: .leading, spacing: Space.xs) {
-            Text(title).font(.caption).foregroundStyle(.secondary)
+            Text(title).font(.caption).foregroundStyle(Ink.soft)
             Text(value)
         }
         .accessibilityElement(children: .combine)

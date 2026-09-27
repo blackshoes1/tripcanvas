@@ -34,7 +34,7 @@ struct CostPhotosField: View {
                 }
                 if denied {
                     Text("사진 \(refs.count)장을 붙여 뒀어요. 보관함 접근을 허용하면 여기에서 바로 볼 수 있어요.")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.caption).foregroundStyle(Ink.soft)
                 }
             }
             if refs.count < Self.maxPhotos {
@@ -42,7 +42,7 @@ struct CostPhotosField: View {
                     Label(refs.isEmpty ? "사진 붙이기" : "사진 더 붙이기", systemImage: "photo.badge.plus")
                 }
             } else {
-                Text("사진은 \(Self.maxPhotos)장까지 붙일 수 있어요.").font(.caption).foregroundStyle(.secondary)
+                Text("사진은 \(Self.maxPhotos)장까지 붙일 수 있어요.").font(.caption).foregroundStyle(Ink.soft)
             }
         }
         .onChange(of: picked) { _, items in
@@ -70,13 +70,13 @@ struct CostPhotosField: View {
                 if let image = thumbs[ref] {
                     Image(uiImage: image).resizable().scaledToFill()
                 } else {
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(Color.secondary.opacity(0.12))
-                        .overlay(Image(systemName: "photo").foregroundStyle(.secondary))
+                    RoundedRectangle(cornerRadius: Radius.small)
+                        .fill(Ink.soft.opacity(0.12))
+                        .overlay(Image(systemName: "photo").foregroundStyle(Ink.soft))
                 }
             }
             .frame(width: 64, height: 64)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .clipShape(RoundedRectangle(cornerRadius: Radius.small))
             .contentShape(Rectangle())
             .onTapGesture { if thumbs[ref] != nil { viewing = PhotoRef(id: ref) } }
             .accessibilityAddTraits(thumbs[ref] != nil ? .isButton : [])

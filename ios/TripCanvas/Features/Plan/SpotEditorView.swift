@@ -146,7 +146,7 @@ struct SpotEditorView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            PaperForm {
                 if let recovery {
                     Section("저장하지 않은 입력이 있어요") {
                         if recovery.canRestore(over: target.spot) {
@@ -203,7 +203,7 @@ struct SpotEditorView: View {
                     } else {
                         Label("위치 없음 — 동선·도착 예상에서 빠져요", systemImage: "mappin.slash")
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Ink.soft)
                     }
                     Button {
                         showsMapPicker = true

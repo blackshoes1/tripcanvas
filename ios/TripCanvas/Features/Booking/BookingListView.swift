@@ -69,7 +69,7 @@ struct BookingListView: View {
                 if let model {
                     if let cachedAt = model.cachedAt {
                         Label("오프라인 · 마지막 동기화 \(TimeFormat.shortTime(cachedAt))", systemImage: "wifi.slash")
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(.caption).foregroundStyle(Ink.soft)
                     }
                     if let error = model.errorMessage {
                         InlineErrorBanner(message: "예약을 불러오지 못했어요", detail: error) {
@@ -109,20 +109,20 @@ struct BookingListView: View {
                                     Text(booking.title).font(.headline)
                                     Spacer()
                                     if let status = booking.priceStatus { PriceChip(status: status) }
-                                    Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary)
+                                    Image(systemName: "chevron.right").font(.caption).foregroundStyle(Ink.soft)
                                 }
                                 if let start = booking.start {
                                     Label([ReadableDate.day(start), booking.startTime].compactMap { $0 }.joined(separator: " · "), systemImage: "calendar")
-                                        .font(.subheadline).foregroundStyle(.secondary)
+                                        .font(.subheadline).foregroundStyle(Ink.soft)
                                 }
                                 // 목록에서 금액을 바로 본다 — 상세를 하나씩 열어야 얼마였는지 알 수 있으면 안 된다.
                                 Text(booking.priceKnown == false ? "금액 미정" : TimeFormat.money(booking.price, currency: booking.currency))
                                     .font(.subheadline.weight(.semibold))
                                 if let place = booking.place, !place.isEmpty {
-                                    Text(place).font(.subheadline).foregroundStyle(.secondary)
+                                    Text(place).font(.subheadline).foregroundStyle(Ink.soft)
                                 }
                                 Text(booking.confirmation == nil ? "예약 정보 보기" : "예약번호와 상세 보기")
-                                    .font(.caption).foregroundStyle(.secondary)
+                                    .font(.caption).foregroundStyle(Ink.soft)
                             }
                             .card()
                         }
@@ -243,7 +243,7 @@ struct BookingDetailView: View {
         ScrollView {
             BookingCard(booking: booking).padding(Space.l)
         }
-        .background(Color(.systemGroupedBackground))
+        .background(Ink.paper)
         .navigationTitle("예약 정보")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -268,26 +268,26 @@ struct BookingCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Space.s) {
             HStack(spacing: Space.s) {
-                Image(systemName: symbol).foregroundStyle(.secondary)
+                Image(systemName: symbol).foregroundStyle(Ink.soft)
                 Text(booking.title).font(.headline)
                 Spacer()
                 if let status = booking.priceStatus {
                     PriceChip(status: status)
                 }
                 if editable {
-                    Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
+                    Image(systemName: "chevron.right").font(.caption).foregroundStyle(Ink.faint)
                 }
             }
 
             if let period {
-                Label(period, systemImage: "calendar").font(.subheadline).foregroundStyle(.secondary)
+                Label(period, systemImage: "calendar").font(.subheadline).foregroundStyle(Ink.soft)
             }
             if let place = booking.place, !place.isEmpty {
-                Label(place, systemImage: "mappin.and.ellipse").font(.subheadline).foregroundStyle(.secondary)
+                Label(place, systemImage: "mappin.and.ellipse").font(.subheadline).foregroundStyle(Ink.soft)
             }
             if let confirmation = booking.confirmation, !confirmation.isEmpty {
                 VStack(alignment: .leading, spacing: Space.xs) {
-                    Text("예약번호").font(.caption).foregroundStyle(.secondary)
+                    Text("예약번호").font(.caption).foregroundStyle(Ink.soft)
                     Text(confirmation).font(.title3.monospaced()).textSelection(.enabled)
                     Button {
                         UIPasteboard.general.string = confirmation
@@ -303,17 +303,17 @@ struct BookingCard: View {
                 Text(booking.priceKnown == false ? "금액 미정" : TimeFormat.money(booking.price, currency: booking.currency))
                     .font(.subheadline.weight(.semibold))
                 if let refundable = booking.refundable {
-                    Text(refundable ? "환불 가능" : "환불 불가").font(.caption).foregroundStyle(.secondary)
+                    Text(refundable ? "환불 가능" : "환불 불가").font(.caption).foregroundStyle(Ink.soft)
                 }
             }
 
 
             if let status = booking.priceStatus {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(status.note).font(.caption).foregroundStyle(.secondary)
+                    Text(status.note).font(.caption).foregroundStyle(Ink.soft)
                     if let observed = status.observedAt {
                         // 언제 확인한 값인지 반드시 함께 — 오래된 값을 최신처럼 보여주지 않는다.
-                        Text("확인 시각 \(ReadableDate.moment(observed))").font(.caption2).foregroundStyle(.tertiary)
+                        Text("확인 시각 \(ReadableDate.moment(observed))").font(.caption2).foregroundStyle(Ink.faint)
                     }
                 }
             }
@@ -325,7 +325,7 @@ struct BookingCard: View {
                 let location = booking.dayIndex.map { "일정 Day \($0 + 1)" } ?? "비용"
                 Text(source == "SPOT" ? "\(location)에 등록한 예약이에요."
                      : "예약으로 표시한 비용이에요.")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.caption).foregroundStyle(Ink.soft)
                 // 안내로 끝내지 않고 **그곳으로 데려간다** — 여행 화면 안에서 열렸을 때만(밖이면 안내만).
                 if let screenModels {
                     Button {
@@ -434,7 +434,7 @@ struct PriceChip: View {
         case .cheaperUnverified: Ink.warning
         case .goodPrice: Ink.info
         case .error: Ink.warning   // 시세를 못 받은 것은 오류가 아니라 확인할 일이다 — 웹과 같은 주의색
-        case .watching, .untracked, .unknown: .secondary
+        case .watching, .untracked, .unknown: Ink.soft
         }
     }
 }
