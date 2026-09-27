@@ -25,7 +25,7 @@ struct CollabView: View {
     @State private var showsLeaveConfirm = false
 
     var body: some View {
-        List {
+        PaperList {
             if let model {
                 if let error = model.errorMessage {
                     Section {
@@ -127,7 +127,7 @@ struct CollabView: View {
                 HStack(spacing: Space.s) {
                     Text(CollabModel.roleIcon(member.role))
                     Text(CollabModel.memberName(member))
-                    if member.me { Text("(나)").font(.caption).foregroundStyle(.secondary) }
+                    if member.me { Text("(나)").font(.caption).foregroundStyle(Ink.soft) }
                     Spacer()
                     if model.canManage && member.role != .owner {
                         Menu {
@@ -143,7 +143,7 @@ struct CollabView: View {
                         }
                         .accessibilityLabel("\(CollabModel.memberName(member)) 권한")
                     } else {
-                        Text(CollabModel.roleLabel(member.role)).font(.caption).foregroundStyle(.secondary)
+                        Text(CollabModel.roleLabel(member.role)).font(.caption).foregroundStyle(Ink.soft)
                     }
                 }
             }
@@ -204,7 +204,7 @@ struct CollabView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("\(CollabModel.roleIcon(invite.role)) \(CollabModel.roleLabel(invite.role)) 초대 링크")
                             .font(.subheadline)
-                        Text(inviteMeta(invite)).font(.caption).foregroundStyle(.secondary)
+                        Text(inviteMeta(invite)).font(.caption).foregroundStyle(Ink.soft)
                     }
                     Spacer()
                     // 끊으면 되돌릴 수 없다 — 한 번 묻는다(2026-09-27 UX 검토). 이미 참여한 사람은 그대로다.
@@ -274,7 +274,7 @@ struct CollabView: View {
                 let text = TripPrefs(raw: row.prefs).text
                 Text("\(row.label.trimmingCharacters(in: .whitespaces).isEmpty ? "멤버" : row.label): \(text.isEmpty ? "아직 안 남겼어요" : text)")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Ink.soft)
             }
         } header: {
             Text("여행 취향")
@@ -289,7 +289,7 @@ struct CollabView: View {
         Section {
             if model.activity.isEmpty {
                 Text("아직 기록이 없어요. 일행이 후보를 담거나 일정을 바꾸면 여기에 쌓여요.")
-                    .font(.subheadline).foregroundStyle(.secondary)
+                    .font(.subheadline).foregroundStyle(Ink.soft)
             }
             ForEach(model.activity) { row in
                 let text = CollabModel.activityText(row.event, count: row.count)
@@ -297,7 +297,7 @@ struct CollabView: View {
                     HStack(alignment: .top) {
                         Text(text).font(.subheadline)
                         Spacer()
-                        Text(CollabModel.relativeTime(row.event.createdAt)).font(.caption2).foregroundStyle(.tertiary)
+                        Text(CollabModel.relativeTime(row.event.createdAt)).font(.caption2).foregroundStyle(Ink.faint)
                     }
                 }
             }
@@ -319,7 +319,7 @@ struct TopicChips: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.s) {
-            Text(title).font(.caption).foregroundStyle(.secondary)
+            Text(title).font(.caption).foregroundStyle(Ink.soft)
             FlowLayout(spacing: Space.s) {
                 ForEach(topics, id: \.self) { topic in
                     let on = selected.contains(topic)
@@ -328,8 +328,8 @@ struct TopicChips: View {
                             .font(.caption.weight(on ? .semibold : .regular))
                             .padding(.horizontal, Space.m)
                             .padding(.vertical, Space.xs + 2)
-                            .background(on ? tint.opacity(0.18) : Color(.tertiarySystemFill), in: Capsule())
-                            .foregroundStyle(on ? tint : .primary)
+                            .background(on ? tint.opacity(0.18) : Ink.sunken, in: Capsule())
+                            .foregroundStyle(on ? tint : Ink.ink)
                     }
                     .buttonStyle(.plain)
                     .accessibilityAddTraits(on ? [.isSelected] : [])

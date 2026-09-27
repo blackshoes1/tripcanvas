@@ -144,7 +144,7 @@ struct SpotRow: View {
                 Text("· 나는 안 가요").font(.caption2)
             }
         }
-        .foregroundStyle(split.includesMe ? Ink.accent : .secondary)
+        .foregroundStyle(split.includesMe ? Ink.accent : Ink.soft)
         .padding(.leading, secondaryIndent)
     }
 

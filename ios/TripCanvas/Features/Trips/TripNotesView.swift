@@ -46,7 +46,7 @@ struct TripNotesView: View {
     private var notes: [TripNote] { TripNote.notes(in: model.document) }
 
     var body: some View {
-        List {
+        PaperList {
             if let date = model.documentCachedAt { OfflineNotice(savedAt: date) }
             if let error = model.conflict ?? model.errorMessage {
                 Section {
@@ -97,7 +97,6 @@ struct TripNotesView: View {
             }
         }
         .listStyle(.insetGrouped)
-        .paperGround()
         .navigationTitle("여행 준비 메모")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -120,7 +119,7 @@ private struct AddTripNoteView: View {
     @Environment(\.dismiss) private var dismiss
     var body: some View {
         NavigationStack {
-            Form {
+            PaperForm {
                 Picker("분류", selection: $category) {
                     ForEach(TripNote.categories, id: \.self) { Text(TripNote.label($0)).tag($0) }
                 }

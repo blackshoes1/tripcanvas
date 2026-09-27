@@ -39,7 +39,7 @@ struct TripDepartureCard: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(Space.m)
-            .background(Ink.accent.opacity(0.07), in: RoundedRectangle(cornerRadius: 12))
+            .background(Ink.accent.opacity(0.07), in: RoundedRectangle(cornerRadius: Radius.control))
 
             let layout = typeSize.isAccessibilitySize
                 ? AnyLayout(VStackLayout(spacing: Space.s))
@@ -48,18 +48,18 @@ struct TripDepartureCard: View {
                 Button(action: onOpenPlan) {
                     actionLabel("일정 보기", symbol: "calendar")
                         .foregroundStyle(Ink.onAccent)
-                        .background(Ink.accent, in: RoundedRectangle(cornerRadius: 12))
+                        .background(Ink.accent, in: RoundedRectangle(cornerRadius: Radius.control))
                 }
                 NavigationLink { BookingListView(trip: trip) } label: {
                     actionLabel("예약 정보", symbol: "ticket")
                         .foregroundStyle(Ink.ink)
-                        .background(Ink.sunken, in: RoundedRectangle(cornerRadius: 12))
+                        .background(Ink.sunken, in: RoundedRectangle(cornerRadius: Radius.control))
                 }
             }
             .buttonStyle(.plain)
         }
         .padding(Space.l)
-        .background(Ink.raised, in: RoundedRectangle(cornerRadius: 18))
+        .background(Ink.raised, in: RoundedRectangle(cornerRadius: Radius.card))
     }
 
     private func actionLabel(_ title: String, symbol: String) -> some View {

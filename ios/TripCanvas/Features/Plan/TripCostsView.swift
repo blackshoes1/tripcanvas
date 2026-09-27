@@ -58,7 +58,7 @@ struct TripCostsView: View {
             .pickerStyle(.segmented)
             .padding(.horizontal, Space.l)
             .padding(.vertical, Space.s)
-            List {
+            PaperList {
                 if loading && response == nil && snapshot == nil { ProgressView("비용을 확인하는 중…") }
                 if let error {
                     Section {
@@ -164,7 +164,7 @@ struct TripCostsView: View {
                         Label("\(CostPayState.paid.label) \(money(prep.group.amount(.paid)))", systemImage: "checkmark.circle")
                         Label("\(CostPayState.reserved.label) \(money(prep.group.amount(.reserved)))", systemImage: "clock")
                     }
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.caption).foregroundStyle(Ink.soft)
                     if prep.group.amount(.none) > 0 {
                         Text("결제 상태를 고르지 않은 \(money(prep.group.amount(.none)))은 어느 쪽으로도 세지 않았어요")
                             .font(.caption).foregroundStyle(Ink.warning)
@@ -185,7 +185,7 @@ struct TripCostsView: View {
                 }
             }
             let rows = paymentRows
-            if rows.isEmpty { Text("예약과 미리 낸 비용을 적으면 여기에 모여요").foregroundStyle(.secondary) }
+            if rows.isEmpty { Text("예약과 미리 낸 비용을 적으면 여기에 모여요").foregroundStyle(Ink.soft) }
             ForEach(rows) { row in paymentRow(row) }
         } header: { Text("결제 항목") } footer: {
             Text("줄을 오른쪽으로 밀어 결제일을 정하거나 결제 완료·결제 예정을 바꿀 수 있어요. 결제일이 있으면 날짜가 상태를 정해요.")
@@ -214,14 +214,14 @@ struct TripCostsView: View {
                 VStack(alignment: .leading, spacing: Space.xs) {
                     Label(row.title, systemImage: row.kind.symbol)
                     Text([row.kind.label, period, row.booking?.provider ?? "", paidOnLabel].filter { !$0.isEmpty }.joined(separator: " · "))
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.caption).foregroundStyle(Ink.soft)
                     HStack(spacing: Space.xs) {
                         if state != .none { payChip(state) }
                         if row.currencyCode != "KRW", let krw = line?.totalKRW {
-                            Text("약 \(money(krw))").font(.caption2).foregroundStyle(.secondary)
+                            Text("약 \(money(krw))").font(.caption2).foregroundStyle(Ink.soft)
                         }
                         if !row.photos.isEmpty {
-                            Label("\(row.photos.count)", systemImage: "photo").font(.caption2).foregroundStyle(.secondary)
+                            Label("\(row.photos.count)", systemImage: "photo").font(.caption2).foregroundStyle(Ink.soft)
                         }
                     }
                 }
@@ -273,21 +273,21 @@ struct TripCostsView: View {
                     Text(money(onSite.totalKRW)).font(.title.bold())
                     if !response.days.isEmpty {
                         Text("하루 평균 \(money((onSite.totalKRW / Double(response.days.count)).rounded())) · \(response.days.count)일 기준")
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(.caption).foregroundStyle(Ink.soft)
                     }
                     if !onSite.paySplit.isEmpty {
                         Text(onSite.paySplit.map { "\($0.state.label) \(money($0.amount))" }.joined(separator: " · "))
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(.caption).foregroundStyle(Ink.soft)
                     }
                     if response.transportUnpriced {
-                        Text("아직 계산되지 않은 교통비는 포함되지 않았어요").font(.caption).foregroundStyle(.secondary)
+                        Text("아직 계산되지 않은 교통비는 포함되지 않았어요").font(.caption).foregroundStyle(Ink.soft)
                     }
                     // 날짜별 줄은 웹 일자 카드와 같은 '그날 비용'이다 — 예약 하루치(숙박은 밤마다·렌터카는 빌린 날마다)를 더한다.
                     // 위 합계는 가서 쓰는 돈만이라 둘이 다르다는 것을 여기서 말한다(2026-09-18 "웹은 나오는데 앱만 안 나온다").
                     let share = Self.bookingShareTotal(response)
                     if share > 0 {
                         Text("날짜별 줄은 예약 하루치 \(money(share))를 더한 그날 비용이에요 · 날짜별 합계 \(money(onSite.totalKRW + share))")
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(.caption).foregroundStyle(Ink.soft)
                     }
                 }
             } else if response != nil {
@@ -306,7 +306,7 @@ struct TripCostsView: View {
         }
         Section("날짜별") {
             if let response {
-                if response.days.isEmpty { Text("여행 날짜를 추가하면 하루 비용을 볼 수 있어요").foregroundStyle(.secondary) }
+                if response.days.isEmpty { Text("여행 날짜를 추가하면 하루 비용을 볼 수 있어요").foregroundStyle(Ink.soft) }
                 ForEach(response.days) { day in dayRow(day, revision: response.revision) }
             } else if let snapshot, error == nil {
                 // 합계가 아직 없어도 날짜는 문서가 안다 — 입력까지 막지 않는다.
@@ -343,12 +343,12 @@ struct TripCostsView: View {
                         Spacer()
                         // 웹 일자 카드의 "하루 비용"과 같은 값 — 장소·추가 비용·교통 + 예약 하루치.
                         Text(money(day.cost.total)).monospacedDigit()
-                        Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary)
+                        Image(systemName: "chevron.right").font(.caption).foregroundStyle(Ink.soft)
                     }
-                    if !day.title.isEmpty { Text(day.title).font(.caption).foregroundStyle(.secondary) }
+                    if !day.title.isEmpty { Text(day.title).font(.caption).foregroundStyle(Ink.soft) }
                     if let onSite = day.cost.onSiteKRW, day.cost.total - onSite > 0 {
                         Text("현지 \(money(onSite)) · 예약 하루치 \(money(day.cost.total - onSite))")
-                            .font(.caption2).foregroundStyle(.secondary)
+                            .font(.caption2).foregroundStyle(Ink.soft)
                     }
                     if let count = day.cost.details?.unknownCount, count > 0 {
                         Text("미정·일부 금액 \(count)개").font(.caption).foregroundStyle(Ink.warning)
@@ -535,7 +535,7 @@ struct PaidOnSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            PaperForm {
                 Section {
                     DatePicker("결제일", selection: $date, displayedComponents: .date)
                 } header: { Text(row.title) } footer: {
@@ -550,7 +550,6 @@ struct PaidOnSheet: View {
                 }
                 if failed { Section { Text("저장하지 못했어요. 다시 시도해 주세요.").foregroundStyle(Ink.warning) } }
             }
-            .paperGround()
             .tint(Ink.accent)
             .navigationTitle("결제일")
             .navigationBarTitleDisplayMode(.inline)

@@ -57,7 +57,7 @@ struct TripCoverView: View {
                         if saved?.imageBase64 == nil, saved?.placePhoto == nil, let cover {
                             attribution(cover)
                                 .padding(Space.s)
-                                .background(Ink.raised.opacity(0.95), in: RoundedRectangle(cornerRadius: 6))
+                                .background(Ink.raised.opacity(0.95), in: RoundedRectangle(cornerRadius: Radius.small))
                                 .padding(.horizontal, Space.m)
                                 .padding(.bottom, Space.xl)
                         }
@@ -66,7 +66,7 @@ struct TripCoverView: View {
                         if let placePhoto {
                             TripCoverPhotoCredit(photo: placePhoto)
                                 .padding(Space.s)
-                                .background(Ink.raised.opacity(0.95), in: RoundedRectangle(cornerRadius: 6))
+                                .background(Ink.raised.opacity(0.95), in: RoundedRectangle(cornerRadius: Radius.small))
                                 .padding(.horizontal, Space.m).padding(.bottom, Space.xl)
                         }
                     }

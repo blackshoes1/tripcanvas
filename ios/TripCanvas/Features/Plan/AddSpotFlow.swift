@@ -63,7 +63,7 @@ struct AddSpotOptionsSheet: View {
                     .font(.body.weight(.semibold))
                     .foregroundStyle(Ink.ink)
                     .frame(maxWidth: .infinity, minHeight: 50)
-                    .background(Ink.sunken, in: RoundedRectangle(cornerRadius: 14))
+                    .background(Ink.sunken, in: RoundedRectangle(cornerRadius: Radius.card))
             }
             .buttonStyle(.plain)
         }
@@ -91,8 +91,8 @@ struct AddSpotOptionsSheet: View {
                 Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(Ink.faint)
             }
             .padding(Space.m)
-            .background(Ink.raised, in: RoundedRectangle(cornerRadius: 14))
-            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Ink.hairline))
+            .background(Ink.raised, in: RoundedRectangle(cornerRadius: Radius.card))
+            .overlay(RoundedRectangle(cornerRadius: Radius.card).strokeBorder(Ink.hairline))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -119,7 +119,7 @@ struct PlaceDetailView: View {
                         .font(.system(size: 44, weight: .regular))
                         .foregroundStyle(Ink.accent)
                         .frame(maxWidth: .infinity, minHeight: 180)
-                        .background(Ink.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+                        .background(Ink.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: Radius.control))
                         .accessibilityHidden(true)
                 }
                 VStack(alignment: .leading, spacing: Space.xs) {
@@ -145,7 +145,7 @@ struct PlaceDetailView: View {
                     .font(.subheadline)
                     .padding(Space.m)
                     .frame(minHeight: 48)
-                    .background(Ink.sunken.opacity(0.6), in: RoundedRectangle(cornerRadius: 12))
+                    .background(Ink.sunken.opacity(0.6), in: RoundedRectangle(cornerRadius: Radius.control))
                 }
                 .buttonStyle(.plain)
                 if hit.provider == "kakao", let id = hit.providerId, !id.isEmpty, id.allSatisfy(\.isNumber),
@@ -214,7 +214,7 @@ struct SpotQuickCreateView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            PaperForm {
                 if let contextLabel, !contextLabel.isEmpty {
                     Section { Text(contextLabel).font(.subheadline.weight(.semibold)) }
                 }
@@ -274,7 +274,6 @@ struct SpotQuickCreateView: View {
             .scrollDismissesKeyboard(.interactively)
             .disabled(saving.isWorking)
             .interactiveDismissDisabled(isDirty || saving.isWorking)
-            .paperGround()
             .tint(Ink.accent)
             .navigationTitle("장소 추가 (직접 입력)")
             .navigationBarTitleDisplayMode(.inline)
@@ -439,8 +438,8 @@ struct LocationPickerView: View {
         }
         .padding(.horizontal, Space.m)
         .frame(minHeight: 44)
-        .background(Ink.raised, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Ink.hairline))
+        .background(Ink.raised, in: RoundedRectangle(cornerRadius: Radius.control))
+        .overlay(RoundedRectangle(cornerRadius: Radius.control).strokeBorder(Ink.hairline))
         .padding(.horizontal, Space.l)
         .padding(.vertical, Space.s)
     }
@@ -562,7 +561,7 @@ struct PlaceThumbnail: View {
             .font(.title3)
             .foregroundStyle(Ink.accent)
             .frame(width: 56, height: 56)
-            .background(Ink.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+            .background(Ink.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: Radius.control))
             .accessibilityHidden(true)
     }
 }

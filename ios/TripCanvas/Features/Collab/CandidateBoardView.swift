@@ -106,7 +106,7 @@ struct CandidateBoardView: View {
 
     @ViewBuilder
     private func content(_ model: CandidateBoardViewModel) -> some View {
-        List {
+        PaperList {
             if let error = model.errorMessage {
                 InlineErrorBanner(message: "처리하지 못했어요", detail: error) {
                     model.dismissError()
@@ -122,7 +122,7 @@ struct CandidateBoardView: View {
                     Label(env.realtime.state == .connecting ? "연결 중이에요" : "당겨서 새로고침하면 최신으로 볼 수 있어요",
                           systemImage: env.realtime.state == .connecting ? "antenna.radiowaves.left.and.right" : "arrow.clockwise")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Ink.soft)
                 }
             }
 
@@ -150,16 +150,16 @@ struct CandidateBoardView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(place.name).font(.subheadline.weight(.medium))
                                 if !place.address.isEmpty {
-                                    Text(place.address).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                                    Text(place.address).font(.caption).foregroundStyle(Ink.soft).lineLimit(2)
                                 }
                                 Text("위치가 함께 담겨요 — 어느 날에 넣을지 정할 때 쓰여요")
-                                    .font(.caption2).foregroundStyle(.secondary)
+                                    .font(.caption2).foregroundStyle(Ink.soft)
                             }
                             Spacer()
                             Button {
                                 pickedPlace = nil
                             } label: {
-                                Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                                Image(systemName: "xmark.circle.fill").foregroundStyle(Ink.soft)
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel("고른 자리 지우기")
@@ -348,14 +348,14 @@ struct CandidateCard: View {
                         } else if let category {
                             Label(category.label, systemImage: category.symbol).font(.caption2).foregroundStyle(Ink.soft)
                         }
-                        Text(meta).font(.caption).foregroundStyle(.secondary)
+                        Text(meta).font(.caption).foregroundStyle(Ink.soft)
                     }
                 }
                 Spacer(minLength: Space.s)
                 StatusChip(text: badgeText, symbol: badgeSymbol, tint: badgeTint)
             }
             if let note = candidate.note, !note.isEmpty {
-                Text(note).font(.subheadline).foregroundStyle(.secondary)
+                Text(note).font(.subheadline).foregroundStyle(Ink.soft)
             }
 
             // 한 번의 탭 — 이미 고른 것을 다시 누르면 거둔다(§9).
@@ -368,8 +368,8 @@ struct CandidateCard: View {
                                 .font(.caption.weight(on ? .semibold : .regular))
                                 .padding(.horizontal, Space.m)
                                 .padding(.vertical, Space.xs + 2)
-                                .background(on ? Ink.accent.opacity(0.18) : Color(.tertiarySystemFill), in: Capsule())
-                                .foregroundStyle(on ? Ink.accent : .primary)
+                                .background(on ? Ink.accent.opacity(0.18) : Ink.sunken, in: Capsule())
+                                .foregroundStyle(on ? Ink.accent : Ink.ink)
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("\(candidate.title) — \(reaction.label)")
@@ -383,7 +383,7 @@ struct CandidateCard: View {
                 Text(candidate.reactions.map { entry in
                     "\(Reaction(loose: entry.reaction)?.icon ?? "·") \(entry.me ? "나" : (entry.name.isEmpty ? "멤버" : entry.name))"
                 }.joined(separator: "   "))
-                .font(.caption2).foregroundStyle(.secondary)
+                .font(.caption2).foregroundStyle(Ink.soft)
             }
 
             // 의견이 갈렸으면 자동으로 빼지 않고 선택지를 보인다(§23·§24).
@@ -394,7 +394,7 @@ struct CandidateCard: View {
                         HStack(alignment: .top, spacing: Space.s) {
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(option.title).font(.caption.weight(.semibold))
-                                Text(option.text).font(.caption2).foregroundStyle(.secondary)
+                                Text(option.text).font(.caption2).foregroundStyle(Ink.soft)
                             }
                             Spacer(minLength: Space.s)
                             if let action = option.action, CollabModel.canScheduleCandidate(role) {
@@ -457,7 +457,7 @@ struct CandidateCard: View {
                 ProgressView().controlSize(.small)
             } else if comments?.isEmpty == true {
                 Text("아직 한마디도 없어요. 왜 가고 싶은지, 언제가 좋을지 남겨 보세요.")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.caption).foregroundStyle(Ink.soft)
             }
             ForEach(comments ?? []) { comment in
                 HStack(alignment: .top, spacing: Space.s) {
@@ -465,7 +465,7 @@ struct CandidateCard: View {
                         .font(.caption.weight(.semibold))
                     Text(comment.body).font(.caption)
                     Spacer(minLength: Space.xs)
-                    Text(CollabModel.relativeTime(comment.createdAt)).font(.caption2).foregroundStyle(.tertiary)
+                    Text(CollabModel.relativeTime(comment.createdAt)).font(.caption2).foregroundStyle(Ink.faint)
                     if CollabModel.canDeleteComment(role, mine: comment.mine) {
                         Button {
                             onDeleteComment(comment.id)
@@ -473,7 +473,7 @@ struct CandidateCard: View {
                             Image(systemName: "xmark.circle").font(.caption2)
                         }
                         .buttonStyle(.plain)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Ink.soft)
                         .accessibilityLabel("한마디 지우기")
                     }
                 }
@@ -515,7 +515,7 @@ struct CandidateCard: View {
     }
 
     private var badgeTint: Color {
-        if candidate.status == "SCHEDULED" || candidate.status == "REJECTED" { return .secondary }
+        if candidate.status == "SCHEDULED" || candidate.status == "REJECTED" { return Ink.soft }
         switch CollabModel.verdict(candidate, memberCount: memberCount).tone {
         // 웹의 `.candMood` 규칙과 **같은 색을 말한다**(§색은 뜻이다). `.yellow`는 토큰에 없고,
         // 같은 상태를 플랫폼마다 다른 색으로 말하면 한 여행이 기기마다 달라 보인다.
@@ -524,7 +524,7 @@ struct CandidateCard: View {
         case .good: return Ink.positive
         case .split: return Ink.warning
         case .mixed: return Ink.info
-        case .quiet: return .secondary
+        case .quiet: return Ink.soft
         }
     }
 }
@@ -555,7 +555,7 @@ struct GroupProposalCard: View {
                         Text("\(pick.dayLabel) · \(pick.title)").font(.subheadline.weight(.medium))
                         // 이유는 서버가 준 문장 그대로다 — 여기서 다시 쓰지 않는다.
                         ForEach(pick.reasons, id: \.self) { reason in
-                            Text(reason).font(.caption).foregroundStyle(.secondary)
+                            Text(reason).font(.caption).foregroundStyle(Ink.soft)
                         }
                     }
                 }
@@ -564,14 +564,14 @@ struct GroupProposalCard: View {
             if !plan.groupNotes.isEmpty {
                 VStack(alignment: .leading, spacing: 2) {
                     ForEach(plan.groupNotes, id: \.self) { note in
-                        Text(note).font(.caption2).foregroundStyle(.secondary)
+                        Text(note).font(.caption2).foregroundStyle(Ink.soft)
                     }
                 }
             }
 
             HStack(spacing: Space.s) {
                 PrimaryActionButton(title: acceptLabel, isBusy: isBusy, action: onAccept)
-                SecondaryActionButton(title: dismissLabel, action: onDismiss)
+                SecondaryActionButton(title: dismissLabel, expands: false, action: onDismiss)
             }
         }
         .padding(.vertical, Space.xs)

@@ -88,7 +88,7 @@ struct PasteItineraryView: View {
     // MARK: 붙여넣기
 
     private var input: some View {
-        Form {
+        PaperForm {
             Section { CreateTripModePicker(mode: $mode).disabled(isBusy) }
             Section {
                 TextEditor(text: $form.text)
@@ -124,7 +124,7 @@ struct PasteItineraryView: View {
     // MARK: 미리보기
 
     private var preview: some View {
-        List {
+        PaperList {
             Section { CreateTripModePicker(mode: $mode).disabled(isBusy) }
             Section {
                 TextField("여행 이름", text: $form.tripName)
@@ -132,7 +132,7 @@ struct PasteItineraryView: View {
                 DateEntryField(title: "시작일", text: Binding(get: { form.start.isEmpty ? nil : form.start },
                                                            set: { form.start = $0 ?? "" }))
                 if form.start.isEmpty {
-                    Text("글에 날짜가 없어요. 비워 두면 날짜 없이 만들어요.").font(.caption).foregroundStyle(.secondary)
+                    Text("글에 날짜가 없어요. 비워 두면 날짜 없이 만들어요.").font(.caption).foregroundStyle(Ink.soft)
                 } else if form.draft?.startAmbiguous == true {
                     Text("연도가 글에 없어서 올해로 봤어요 — 맞는지 확인해 주세요.")
                         .font(.caption).foregroundStyle(Ink.warning)
@@ -173,7 +173,7 @@ struct PasteItineraryView: View {
                 if row.wrappedValue.include { Task { await locate(row.wrappedValue.id) } }
             } label: {
                 Image(systemName: row.wrappedValue.include ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(row.wrappedValue.include ? Ink.accent : .secondary)
+                    .foregroundStyle(row.wrappedValue.include ? Ink.accent : Ink.soft)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("\(row.wrappedValue.item.name) 담기")
@@ -181,11 +181,11 @@ struct PasteItineraryView: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: Space.xs) {
                     if let at = row.wrappedValue.item.at {
-                        Text(at).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                        Text(at).font(.caption.monospacedDigit()).foregroundStyle(Ink.soft)
                     }
                     Text(row.wrappedValue.item.name).font(.subheadline)
                 }
-                Text(statusText(row.wrappedValue)).font(.caption2).foregroundStyle(.secondary)
+                Text(statusText(row.wrappedValue)).font(.caption2).foregroundStyle(Ink.soft)
             }
             Spacer(minLength: 0)
         }

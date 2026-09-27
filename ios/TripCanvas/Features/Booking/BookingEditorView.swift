@@ -137,7 +137,7 @@ struct BookingEditorView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            PaperForm {
                 if let error = saving.error {
                     Section {
                         Text(error).foregroundStyle(Ink.danger)

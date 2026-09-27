@@ -23,13 +23,13 @@ struct PlanPreviewSection: View {
                         let unknown = document.days[day].spots.filter { $0.stayMinutes == nil }.count
                         if unknown > 0 {
                             Text("머무는 시간 미정 \(unknown)곳은 0분으로 계산했어요.")
-                                .font(.caption).foregroundStyle(.secondary)
+                                .font(.caption).foregroundStyle(Ink.soft)
                         }
                     }
                 }
             }
             if let error {
-                Text("시간 비교를 확인하지 못했어요. \(error)").font(.caption).foregroundStyle(.secondary)
+                Text("시간 비교를 확인하지 못했어요. \(error)").font(.caption).foregroundStyle(Ink.soft)
                 Button("비교 다시 확인") { Task { await refresh() } }
             }
         } header: { Text("변경 영향 · 아직 저장 전") } footer: {
@@ -48,10 +48,10 @@ struct PlanPreviewSection: View {
         return VStack(alignment: .leading, spacing: 2) {
             Text("\(title): 이동 \(TimeFormat.duration(day.totals.travelMinutes)) · 종료 \(day.totals.endMinutes.map(TimeFormat.clockAcrossMidnight) ?? "미정")")
                 .font(.caption)
-            if response.travelTimeSource != .routed { Text("이동시간에 추정 포함").font(.caption2).foregroundStyle(.secondary) }
+            if response.travelTimeSource != .routed { Text("이동시간에 추정 포함").font(.caption2).foregroundStyle(Ink.soft) }
             ForEach(day.spots.filter { $0.bookedAtMinutes != nil }, id: \.index) { spot in
                 Text("\(spot.name): 예상 도착 \(TimeFormat.clockAcrossMidnight(spot.etaMinutes)) · 예약 \(TimeFormat.clockAcrossMidnight(spot.bookedAtMinutes ?? 0))\(spot.conflict ? " · 시간 확인 필요" : "")")
-                    .font(.caption2).foregroundStyle(spot.conflict ? Ink.warning : .secondary)
+                    .font(.caption2).foregroundStyle(spot.conflict ? Ink.warning : Ink.soft)
                 if let late = spot.bookingLateMinutes, late > 0 {
                     Text("예약보다 \(TimeFormat.duration(late)) 늦게 도착할 수 있어요")
                         .font(.caption2).foregroundStyle(Ink.warning)

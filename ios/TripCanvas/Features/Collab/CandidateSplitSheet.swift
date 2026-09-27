@@ -24,7 +24,7 @@ struct CandidateSplitSheet: View {
         NavigationStack {
             Group {
                 if let document {
-                    List {
+                    PaperList {
                         Section {
                             Text(plan.text).font(.callout)
                             Text("자유시간에 무엇을 할지는 각자 정해요.")

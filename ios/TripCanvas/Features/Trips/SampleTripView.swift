@@ -17,7 +17,7 @@ struct SampleTripView: View {
     ]
     var body: some View {
         NavigationStack {
-            List {
+            PaperList {
                 Section {
                     Text("제주에서 보내는 이틀").font(Typeface.editorial(.title))
                     Text("샘플 여행 · 예시 일정과 예약이에요. 변경은 계정에 저장되지 않아요.").font(.footnote).foregroundStyle(Ink.soft)
@@ -68,7 +68,6 @@ struct SampleTripView: View {
                     }
                 }
             }
-            .paperGround()
             .navigationTitle("샘플 여행")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("닫기") { dismiss() } } }

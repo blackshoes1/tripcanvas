@@ -12,7 +12,7 @@ struct SharedInboxView: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            PaperList {
                 if items.isEmpty {
                     ContentUnavailableView("받은 자료가 없어요", systemImage: "tray", description: Text("다른 앱의 공유 메뉴에서 With J를 선택해 주세요. 저장할 여행과 내용을 여기서 확인해요."))
                 }
@@ -20,7 +20,7 @@ struct SharedInboxView: View {
                     Button { selected = item } label: {
                         VStack(alignment: .leading, spacing: 6) {
                             Text(item.title ?? item.url ?? "공유한 글").lineLimit(2)
-                            Text(item.text ?? item.url ?? "원문 확인").font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                            Text(item.text ?? item.url ?? "원문 확인").font(.caption).foregroundStyle(Ink.soft).lineLimit(2)
                         }.frame(minHeight: 44)
                     }
                 }
@@ -69,7 +69,7 @@ private struct SharedImportView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            PaperForm {
                 if model.saved {
                     Section {
                         Label("저장했어요", systemImage: "checkmark.circle.fill")
@@ -88,7 +88,7 @@ private struct SharedImportView: View {
                         Section("읽은 내용 확인") {
                             if let candidate = preview.candidate {
                                 Text(candidate.title ?? "이름을 확인해 주세요")
-                                ForEach(candidate.ambiguities, id: \.self) { Text($0).foregroundStyle(.secondary) }
+                                ForEach(candidate.ambiguities, id: \.self) { Text($0).foregroundStyle(Ink.soft) }
                             }
                             if let duplicate = preview.duplicate {
                                 Text("비슷한 예약 ‘\(duplicate.title)’이 있어요. 이미 담은 내용인지 확인해 주세요.")

@@ -367,7 +367,7 @@ struct TripListView: View {
         } else if model.trips.isEmpty, let error = model.errorMessage {
             VStack(spacing: Space.m) {
                 EmptyStateView(symbol: "exclamationmark.icloud", title: "여행을 불러오지 못했어요", message: error)
-                SecondaryActionButton(title: "다시 시도", systemImage: "arrow.clockwise") {
+                SecondaryActionButton(title: "다시 시도", systemImage: "arrow.clockwise", expands: false) {
                     Task { await model.load() }
                 }
             }
@@ -475,7 +475,7 @@ struct TripRow: View {
             }
             Text(subtitle)
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Ink.soft)
         }
         .padding(.vertical, Space.s)
         .accessibilityElement(children: .combine)
@@ -497,7 +497,7 @@ struct OfflineNotice: View {
     var body: some View {
         Label("오프라인 상태예요 · 마지막 동기화 \(TimeFormat.shortTime(savedAt))", systemImage: "wifi.slash")
             .font(.caption)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Ink.soft)
             .listRowSeparator(.hidden)
     }
 }

@@ -11,6 +11,9 @@ struct TripCanvasApp: App {
         // 지도 SDK는 첫 지도 화면보다 먼저 키를 받아야 한다. 여기 한 번이면 끝이다.
         GMSServices.provideAPIKey(AppConfig.googleMapsKey)
         SDKInitializer.InitSDK(appKey: AppConfig.kakaoNativeKey)
+        // ⚠️ `App.init` 안에서 바로 UIAppearance를 건드리면 에셋의 AccentColor가 전역 tint로 잡히기 전이라
+        // 앱 전체 강조색이 시스템 파랑으로 떨어진다(2026-09-27 렌더로 확인). 한 박자 뒤에 건다.
+        DispatchQueue.main.async { Typeface.applyUIKitAppearance() }
     }
 
     var body: some Scene {
@@ -193,7 +196,7 @@ struct SignInView: View {
                         .font(.subheadline.weight(.semibold))
                         .frame(maxWidth: .infinity, minHeight: 54)
                         .foregroundStyle(Ink.paper)
-                        .background(Ink.accent, in: RoundedRectangle(cornerRadius: 12))
+                        .background(Ink.accent, in: RoundedRectangle(cornerRadius: Radius.control))
                 }
                 .buttonStyle(SignInButtonStyle())
                 .disabled(social.isWorking || env.auth.isWorking)
@@ -236,8 +239,8 @@ struct SignInView: View {
             }
             .frame(maxWidth: .infinity, minHeight: 54)
             .foregroundStyle(Ink.ink)
-            .background(Ink.raised, in: RoundedRectangle(cornerRadius: 12))
-            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Ink.hairline))
+            .background(Ink.raised, in: RoundedRectangle(cornerRadius: Radius.control))
+            .overlay(RoundedRectangle(cornerRadius: Radius.control).strokeBorder(Ink.hairline))
         }
         .buttonStyle(SignInButtonStyle())
         .accessibilityLabel(provider.title)
@@ -315,7 +318,7 @@ struct SignInView: View {
                 .frame(maxWidth: .infinity, minHeight: 54)
                 .foregroundStyle(canSubmit ? Ink.paper : Ink.soft)
                 .background(canSubmit ? Ink.accent : Ink.sunken,
-                            in: RoundedRectangle(cornerRadius: 12))
+                            in: RoundedRectangle(cornerRadius: Radius.control))
             }
             .buttonStyle(SignInButtonStyle())
             .disabled(!canSubmit || env.auth.isWorking)
@@ -386,8 +389,8 @@ private extension View {
     func signInField() -> some View {
         padding(.horizontal, Space.l)
             .frame(height: 54)
-            .background(Ink.raised, in: RoundedRectangle(cornerRadius: 12))
-            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Ink.hairline))
+            .background(Ink.raised, in: RoundedRectangle(cornerRadius: Radius.control))
+            .overlay(RoundedRectangle(cornerRadius: Radius.control).strokeBorder(Ink.hairline))
             .foregroundStyle(Ink.ink)
     }
 }

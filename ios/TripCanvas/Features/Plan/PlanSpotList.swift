@@ -126,7 +126,7 @@ struct PlanSpotList: View {
                                 .font(.body.weight(.semibold))
                                 .foregroundStyle(Ink.accent)
                                 .frame(maxWidth: .infinity, minHeight: 54)
-                                .background(Ink.accent.opacity(0.1), in: RoundedRectangle(cornerRadius: 16))
+                                .background(Ink.accent.opacity(0.1), in: RoundedRectangle(cornerRadius: Radius.card))
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
@@ -272,7 +272,7 @@ struct PlanSpotList: View {
         VStack(alignment: .leading, spacing: Space.s) {
             Text(model.canEdit ? "아직 장소가 없어요." : "이 날에는 장소가 없어요.")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Ink.soft)
             if model.canEdit {
                 // **누를 것을 화면에 둔다** — 빈 날이면 여행이 비었든 아니든 같다.
                 // (예전 문구 "오른쪽 위 ＋"는 실제로는 ⋯ 메뉴라 없는 버튼을 가리켰다 — 2026-09-27 UX 검토)
@@ -440,7 +440,7 @@ struct PlanSpotList: View {
         Label {
             VStack(alignment: .leading, spacing: 1) {
                 Text(flight.line).font(.subheadline)
-                Text("항공편").font(.caption2).foregroundStyle(.secondary)
+                Text("항공편").font(.caption2).foregroundStyle(Ink.soft)
             }
         } icon: {
             Image(systemName: "airplane").foregroundStyle(Ink.info)
@@ -455,7 +455,7 @@ struct PlanSpotList: View {
         Label {
             VStack(alignment: .leading, spacing: 1) {
                 Text(carry.name).font(.subheadline)
-                Text("전날 숙소에서 출발").font(.caption2).foregroundStyle(.secondary)
+                Text("전날 숙소에서 출발").font(.caption2).foregroundStyle(Ink.soft)
             }
         } icon: {
             Image(systemName: "house.fill").foregroundStyle(Ink.soft)
@@ -515,7 +515,7 @@ struct PlanSpotList: View {
                     .font(.subheadline)
                 Text([event.kind == .pickup ? "렌터카 픽업" : "렌터카 반납",
                       event.atMinutes.map(TimeFormat.clock)].compactMap { $0 }.joined(separator: " · "))
-                    .font(.caption2).foregroundStyle(.secondary)
+                    .font(.caption2).foregroundStyle(Ink.soft)
             }
         }
         .listRowBackground(Ink.raised.opacity(0.6))

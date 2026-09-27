@@ -38,18 +38,18 @@ struct TodayView: View {
                     if model.isOffline, let cachedAt = model.cachedAt {
                         Label("오프라인 상태예요 · 마지막 동기화 \(TimeFormat.shortTime(cachedAt))", systemImage: "wifi.slash")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Ink.soft)
                     }
                     travelModeActiveSection
                     if model.today != nil, model.isOutsideTrip {
                         // 기간 밖의 1일차는 오늘이 아니다 — 보기만 하고, 바꾸는 것은 `일정`에서 한다.
                         Label("여행 기간이 아니라서 Day 1을 미리 보여 드려요. 완료·건너뛰기는 여행 중에만 할 수 있어요.",
                               systemImage: "eye")
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(.caption).foregroundStyle(Ink.soft)
                     }
                     if !model.canEdit {
                         Label("일정을 볼 수 있는 권한이에요", systemImage: "eye")
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(.caption).foregroundStyle(Ink.soft)
                     }
                     if let error = model.loadErrorMessage {
                         InlineErrorBanner(
@@ -62,7 +62,7 @@ struct TodayView: View {
                         VStack(alignment: .leading, spacing: Space.s) {
                             Label(model.actionErrorTitle ?? "변경을 확인해 주세요", systemImage: "exclamationmark.circle")
                                 .font(.subheadline.weight(.semibold))
-                            Text(error).font(.caption).foregroundStyle(.secondary)
+                            Text(error).font(.caption).foregroundStyle(Ink.soft)
                             HStack {
                                 if model.canRetryAction {
                                     Button(model.isRetrying ? "확인 중…" : "다시 저장") { Task { await model.retryAction() } }
@@ -266,7 +266,7 @@ struct TodayView: View {
             VStack(alignment: .leading, spacing: Space.s) {
                 Text("여행이 끝났어요").font(.title3.weight(.bold))
                 Text("다녀온 일정과 비용은 그대로 남아 있어요. 일정에서 다시 보거나 고칠 수 있어요.")
-                    .font(.subheadline).foregroundStyle(.secondary)
+                    .font(.subheadline).foregroundStyle(Ink.soft)
                 Button(action: onOpenPlan) {
                     Label("일정 다시 보기", systemImage: "list.bullet").frame(maxWidth: .infinity, minHeight: 44)
                 }
@@ -326,7 +326,7 @@ struct TodayView: View {
                 if let state = model.today?.currentState, state.live {
                     Text(TimeFormat.clock(state.nowMinutes))
                         .font(.subheadline.monospacedDigit())
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Ink.soft)
                 }
                 Spacer()
                 // 아직 받지 못했으면 상태를 말하지 않는다 — '일정 없음'은 받아 본 뒤에만 할 수 있는 말이다.
@@ -348,7 +348,7 @@ struct SectionHeader: View {
     var body: some View {
         Text(title)
             .font(.footnote.weight(.semibold))
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Ink.soft)
             .padding(.top, Space.s)
             .accessibilityAddTraits(.isHeader)
     }
@@ -387,7 +387,7 @@ struct DoneForTodayCard: View {
                 .font(.headline)
             Text("남은 시간은 그냥 쉬어도 좋아요.")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Ink.soft)
         }
         .card()
     }
@@ -407,11 +407,11 @@ struct NextActionCard: View {
         VStack(alignment: .leading, spacing: Space.m) {
             Text("다음 일정")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Ink.soft)
 
             HStack(alignment: .firstTextBaseline, spacing: Space.s) {
                 Image(systemName: next.type.symbol)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Ink.soft)
                 Text(next.title).font(.title2.weight(.bold))
             }
 
@@ -586,7 +586,7 @@ struct ActivityRow: View {
                     .font(.subheadline.monospacedDigit().weight(.semibold))
                 Image(systemName: activity.type.symbol)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Ink.soft)
             }
             .frame(width: 52)
 
@@ -601,7 +601,7 @@ struct ActivityRow: View {
                     }
                 }
                 if !activity.desc.isEmpty {
-                    Text(activity.desc).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                    Text(activity.desc).font(.caption).foregroundStyle(Ink.soft).lineLimit(2)
                 }
             }
             Spacer(minLength: 0)
@@ -648,7 +648,7 @@ struct FinishedRow: View {
                 .foregroundStyle(activity.status == .completed ? Ink.positive : Ink.soft)
             Text(activity.name)
                 .strikethrough(activity.status == .completed)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Ink.soft)
             Spacer()
             if canEdit {
                 Button("되돌리기", action: onUndo)
@@ -677,7 +677,7 @@ struct TodayMapCard: View {
             EmptyView()
         } else {
             VStack(alignment: .leading, spacing: Space.s) {
-                Text("오늘의 위치").font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
+                Text("오늘의 위치").font(.footnote.weight(.semibold)).foregroundStyle(Ink.soft)
                 Map {
                     ForEach(points) { activity in
                         if let location = activity.location {
