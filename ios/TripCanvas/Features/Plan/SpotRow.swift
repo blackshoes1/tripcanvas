@@ -9,25 +9,21 @@ struct SpotRow: View {
     var plan: DayPlanSpot?
     /// 함께 다니지 않는 구간에 속할 때만. 규칙은 서버가 정하고 여기서는 그리기만 한다.
     var split: SplitInfo?
+    /// 세로 선을 이 줄 위·아래로 잇는가. 하루의 첫 줄 위와 끝 줄 아래는 비운다(선이 허공에서 시작하지 않게).
+    var railTop = true
+    var railBottom = true
 
     /// 시간 칸 폭. 승인 시안의 왼쪽 시각 열이다 — `07:20`이 기준이고 글자 크기 설정을 따라 커진다.
     /// ⚠️ 고정 시각의 📌와 `(익일)`은 여기 그대로 남는다. 좁혔다고 **뜻을 버리지 않는다** —
     ///    모자라면 `minimumScaleFactor`가 줄인다.
-    @ScaledMetric(relativeTo: .caption) private var timeColumnWidth: CGFloat = 64
+    @ScaledMetric(relativeTo: .caption) private var timeColumnWidth: CGFloat = PlanRail.timeColumn
     /// 📌 자리. 고정 폭이라 아이콘 유무와 상관없이 시간이 같은 x에서 시작한다.
     @ScaledMetric(relativeTo: .caption) private var pinSlotWidth: CGFloat = 16
-    /// 카테고리 아이콘 열. 이름이 줄마다 같은 x에서 시작하도록 고정 폭이다.
-    @ScaledMetric(relativeTo: .body) private var categoryIconWidth: CGFloat = 24
+    @ScaledMetric(relativeTo: .body) private var markerSize: CGFloat = PlanRail.markerSize
     @Environment(\.dynamicTypeSize) private var typeSize
 
-    /// 시간 칸 아래에 붙는 줄들(구간·참여자·합류)의 들여쓰기.
-    /// ⚠️ 시간 칸 폭과 **같은 곳에서** 나와야 한다 — 따로 두면 폭을 바꿀 때 줄이 어긋난다.
-    private var secondaryIndent: CGFloat {
-        // 시간이 이름 위로 올라가면 옆으로 맞출 기준이 없다 — 들여쓰지 않는다.
-        typeSize.isAccessibilitySize ? 0 : SpotRow.secondaryIndent(timeColumnWidth: timeColumnWidth)
-    }
-
-    static func secondaryIndent(timeColumnWidth: CGFloat) -> CGFloat { timeColumnWidth + Space.m }
+    /// 이름 칸이 시작하는 곳 = 시간 칸 + 선 위의 표지 칸. 이 줄의 모든 부가 줄이 여기서 시작한다.
+    static func secondaryIndent(timeColumnWidth: CGFloat) -> CGFloat { timeColumnWidth + PlanRail.markerColumn }
 
     struct SplitInfo: Equatable {
         let whoText: String
@@ -48,36 +44,37 @@ struct SpotRow: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Space.s) {
+        VStack(alignment: .leading, spacing: 0) {
             // 이 장소로 '들어오는' 구간. 장소 사이가 비어 있으면 "여기서 저기까지 얼마나"를 알 수 없다.
-            if let leg = plan?.incomingLeg { legLine(leg) }
-            // 누가 가는지는 **가지가 시작될 때 한 번만** 말한다.
-            if let split, split.isBranchStart { branchHeader(split) }
-            // '확인 필요'뿐인 장소에는 아무것도 붙이지 않는다 — 모든 명소에 붙으면 정작 '예약 필수'가 묻힌다.
-            if let text = admissionText {
-                Label(text, systemImage: spot.admission.isBooked ? "checkmark.seal" : "ticket")
-                    .font(.caption).foregroundStyle(spot.needsReservation ? Ink.warning : Ink.soft)
+            // 선 위의 알약이다 — 장소 이름보다 언제나 가볍다.
+            if let leg = plan?.incomingLeg {
+                PlanRailLeg(mode: TravelMode(rawValue: leg.mode) ?? dayMode, minutes: leg.minutes,
+                            distanceKm: leg.distanceKm, rail: railTop)
             }
 
             // ⚠️ 접근성 글자 크기에서는 **옆에 두지 않는다.** 시간 칸이 화면의 절반을 먹어
-            //    이름이 글자 단위로 갈린다. 그때는 시간을 이름 위로 올린다.
+            //    이름이 글자 단위로 갈린다. 그때는 시간을 이름 위로 올리고 선은 그리지 않는다.
             if typeSize.isAccessibilitySize {
                 VStack(alignment: .leading, spacing: Space.xs) {
                     timeColumn
-                    mainContent
+                    HStack(alignment: .top, spacing: Space.s) {
+                        marker
+                        mainContent
+                    }
                 }
+                .padding(.vertical, PlanRail.rowPadding)
             } else {
-                HStack(alignment: .top, spacing: Space.m) {
-                    timeColumn
-                    mainContent
+                HStack(alignment: .top, spacing: 0) {
+                    timeColumn.padding(.top, 3)
+                    marker.frame(width: PlanRail.markerColumn)
+                    mainContent.padding(.leading, Space.s)
                 }
-            }
-            // 갈라졌던 사람들이 다시 만나는 지점. 시각은 타임라인이 정하므로 여기서 말하지 않는다.
-            if plan?.reunion == true {
-                Label("여기서 다시 만나요", systemImage: "point.topleft.down.to.point.bottomright.curvepath")
-                    .font(.caption2)
-                    .foregroundStyle(Ink.accent)
-                    .padding(.leading, secondaryIndent)
+                .padding(.vertical, PlanRail.rowPadding)
+                .background(alignment: .leading) {
+                    PlanRailLine(centerX: timeColumnWidth + PlanRail.markerColumn / 2,
+                                 top: railTop, bottom: railBottom,
+                                 split: PlanRail.rowPadding + markerSize / 2)
+                }
             }
         }
         // ⚠️ 나란한 가지를 열로 쪼개지 않는다 — 드래그 인덱스가 자식 순서로 계산돼서
@@ -90,26 +87,29 @@ struct SpotRow: View {
                     .frame(width: 2)
             }
         }
-        .padding(.vertical, Space.m)
         .contentShape(Rectangle())
     }
 
-    /// 아이콘·이름·시각·메모. 배치(옆/위)만 바깥에서 달라지고 내용은 하나다.
+    /// 선 위의 표지 — 장소 유형 기호. 상대가 정한 시각(예약)이 있는 곳은 채운 원이다.
+    /// ⚠️ 분류를 모르는 장소도 **자리는 잡는다** — 아니면 이름이 줄마다 다른 x에서 시작한다.
+    private var marker: some View {
+        let done = spot.status == .completed || spot.status == .skipped || spot.status == .cancelled
+        let style: PlanRailMarker.Style = done ? .muted : (bookedText != nil ? .fixed : .plain)
+        return PlanRailMarker(symbol: spot.category?.symbol ?? "mappin", style: style)
+    }
+
+    /// 이름·시각·메모와 그 부가 줄들. 모두 이름 칸 안에서 시작한다.
     private var mainContent: some View {
-        HStack(alignment: .top, spacing: Space.m) {
-            // 장소 유형 — 시안의 두 번째 열. 번호 원형 타임라인 대신 **무엇인지**를 보인다.
-            // ⚠️ 분류를 모르는 장소도 **자리는 잡는다** — 아니면 이름이 줄마다 다른 x에서 시작한다.
-            Image(systemName: spot.category?.symbol ?? "mappin")
-                .font(.system(size: 17))
-                .foregroundStyle(spot.category == nil ? Ink.faint : Ink.ink)
-                .frame(width: categoryIconWidth, alignment: .center)
-                .padding(.top, 1)
-                .accessibilityHidden(true)
+        HStack(alignment: .top, spacing: Space.s) {
             VStack(alignment: .leading, spacing: Space.xs) {
+                // 누가 가는지는 **가지가 시작될 때 한 번만** 말한다.
+                if let split, split.isBranchStart { branchHeader(split) }
                 HStack(spacing: Space.s) {
                     Text(spot.name.isEmpty ? "이름 없는 장소" : spot.name)
                         .font(.body.weight(.semibold))
+                        .foregroundStyle(spot.status == .planned ? Ink.ink : Ink.soft)
                         .strikethrough(spot.status == .skipped || spot.status == .cancelled)
+                        .fixedSize(horizontal: false, vertical: true)
                     if let symbol = spot.priority.symbol {
                         Image(systemName: symbol)
                             .font(.caption2)
@@ -121,11 +121,23 @@ struct SpotRow: View {
                 if let booked = bookedText { bookedChip(booked) }
                 if !meta.isEmpty {
                     Text(meta).font(.caption).foregroundStyle(Ink.soft)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 if spot.point == nil {
                     Label("위치 없음 · 동선에서 빠져요", systemImage: "mappin.slash")
                         .font(.caption2)
                         .foregroundStyle(Ink.warning)
+                }
+                // '확인 필요'뿐인 장소에는 아무것도 붙이지 않는다 — 모든 명소에 붙으면 정작 '예약 필수'가 묻힌다.
+                if let text = admissionText {
+                    Label(text, systemImage: spot.admission.isBooked ? "checkmark.seal" : "ticket")
+                        .font(.caption).foregroundStyle(spot.needsReservation ? Ink.warning : Ink.soft)
+                }
+                // 갈라졌던 사람들이 다시 만나는 지점. 시각은 타임라인이 정하므로 여기서 말하지 않는다.
+                if plan?.reunion == true {
+                    Label("여기서 다시 만나요", systemImage: "point.topleft.down.to.point.bottomright.curvepath")
+                        .font(.caption2)
+                        .foregroundStyle(Ink.accent)
                 }
             }
             Spacer(minLength: 0)
@@ -145,7 +157,6 @@ struct SpotRow: View {
             }
         }
         .foregroundStyle(split.includesMe ? Ink.accent : Ink.soft)
-        .padding(.leading, secondaryIndent)
     }
 
     /// 시각 3종 중 둘 — 📌 도착 고정(내가 정한 계획)과 예상 도착(계산).
@@ -197,34 +208,6 @@ struct SpotRow: View {
         return text
     }
 
-    /// 이동은 장소보다 가볍게 — 얇은 선과 텍스트로 연결한다. 장소 이름이 언제나 가장 높은 우선순위다.
-    private func legLine(_ leg: DayPlanLeg) -> some View {
-        let mode = TravelMode(rawValue: leg.mode) ?? dayMode
-        return HStack(alignment: .center, spacing: Space.s) {
-            // List의 높이 재측정에서 행이 과도하게 늘어나지 않도록 무한 높이를
-            // 제안하는 선 대신 수단 아이콘과 옅은 배경으로 구분한다.
-            Image(systemName: mode.symbol)
-                .frame(width: categoryIconWidth)
-                .accessibilityHidden(true)
-            Text("\(mode.label) \(TimeFormat.duration(leg.minutes)) · \(distanceText(leg.distanceKm))")
-                .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 0)
-        }
-        .frame(minHeight: 26)
-        .font(.caption)
-        .foregroundStyle(Ink.soft)
-        .padding(.horizontal, Space.s)
-        .padding(.vertical, Space.xs)
-        .background(Ink.sunken.opacity(0.45), in: RoundedRectangle(cornerRadius: Space.s))
-        .padding(.leading, secondaryIndent)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(mode.label)로 \(TimeFormat.duration(leg.minutes)), \(distanceText(leg.distanceKm))")
-    }
-
-    private func distanceText(_ km: Double) -> String {
-        km < 1 ? "\(Int((km * 1000).rounded()))m" : String(format: "%.1fkm", km)
-    }
-
     private var bookedText: String? {
         if let minutes = plan?.bookedAtMinutes { return TimeFormat.clock(minutes) }
         return spot.bookedAt      // 계산이 없으면 문서에 적힌 그대로
@@ -238,7 +221,8 @@ struct SpotRow: View {
             Text("예약 \(text)").font(.caption.weight(.semibold))
             if late { Text("· 도착이 늦어요").font(.caption2) }
         }
-        .foregroundStyle(late ? Ink.warning : Ink.accent)
+        // 상대가 정한 시각은 `info`다(색은 뜻이다) — 선 위의 채운 표지와 같은 색이다.
+        .foregroundStyle(late ? Ink.warning : Ink.info)
     }
 
     /// 남는 것 — 머무는 시간 · 대기 · 구간 수단 재정의 · 도시.
@@ -246,12 +230,12 @@ struct SpotRow: View {
     private var meta: String {
         var parts: [String] = []
         if let category = spot.category { parts.append(category.label) }
-        if let stay = stayMinutes, stay > 0 { parts.append("\(stay)분 머무름") }
+        if let stay = stayMinutes, stay > 0 { parts.append("\(TimeFormat.duration(stay)) 머무름") }
         if let wait = plan?.waitMinutes, wait > 0 { parts.append("대기 \(TimeFormat.duration(wait))") }
         if plan == nil, let arrive = spot.arriveAt { parts.append("도착 \(arrive)") }
         if let mode = spot.legMode, mode != dayMode { parts.append(mode.label) }
         if !spot.city.isEmpty && spot.city != "기타" { parts.append(spot.city) }
-        return parts.joined(separator: "  ·  ")
+        return parts.joined(separator: " · ")
     }
 
     private var stayMinutes: Int? { plan?.stayMinutes ?? spot.stayMinutes }

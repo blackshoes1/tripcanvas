@@ -560,7 +560,7 @@ private final class FakeMembers: MemberListing {
 final class SpotRowLayoutTests: XCTestCase {
     func testSecondaryLinesLineUpWithTheTimeColumn() {
         for width in [CGFloat(62), 80, 120] {
-            XCTAssertEqual(SpotRow.secondaryIndent(timeColumnWidth: width), width + Space.m,
+            XCTAssertEqual(SpotRow.secondaryIndent(timeColumnWidth: width), width + PlanRail.markerColumn,
                            "들여쓰기는 시간 칸 폭에서 나온다 — 상수를 따로 두지 않는다")
         }
     }

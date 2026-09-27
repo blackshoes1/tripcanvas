@@ -23,12 +23,10 @@ struct PlanDayPicker: View {
                         chip(entry).id(entry.index)
                     }
                 }
-                .padding(Space.xs)
+                // 칩이 각자 선다 — 칩을 또 한 장의 카드에 담으면 카드 안의 카드다(2026-09-27 시안).
+                .padding(.horizontal, Space.l)
+                .padding(.vertical, Space.s)
             }
-            .background(Ink.raised, in: RoundedRectangle(cornerRadius: Radius.card))
-            .overlay(RoundedRectangle(cornerRadius: Radius.card).strokeBorder(Ink.hairline))
-            .padding(.horizontal, Space.l)
-            .padding(.vertical, Space.s)
             // 14일짜리 일정에서 고른 날이 화면 밖에 있으면 안 된다 — 여행 중이면 오늘로 옮겨진 뒤다.
             .onChange(of: selectedDay) { _, day in
                 withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(day, anchor: .center) }
@@ -61,15 +59,16 @@ struct PlanDayPicker: View {
                 // 날짜는 탭에, 하루 제목은 목록 머리에 한 번만 표시한다.
                 // ⚠️ 고른 날과 안 고른 날이 **같은 모양**이다 — 달라지면 칩 높이가 오가며 스트립이 흔들린다.
                 if let date = TimeFormat.dayChipDate(entry.date) {
-                    Text(date).font(.caption2).foregroundStyle(selected ? Ink.accent : Ink.soft)
+                    Text(date).font(.caption2.monospacedDigit()).foregroundStyle(selected ? Ink.paper.opacity(0.8) : Ink.soft)
                 }
             }
             .padding(.horizontal, Space.m)
             .padding(.vertical, Space.s)
             .frame(minWidth: 64, minHeight: 56, alignment: .top)
-            .background(selected ? Ink.accent.opacity(0.14) : Color.clear,
-                        in: RoundedRectangle(cornerRadius: Radius.card - Space.xs))
-            .foregroundStyle(selected ? Ink.accent : Ink.ink)
+            // 고른 날은 잉크로 채운다 — 강조색은 '누를 것'이라 고른 날까지 초록이면 화면에 초록이 너무 많다.
+            .background(selected ? Ink.ink : Ink.raised, in: RoundedRectangle(cornerRadius: Radius.control))
+            .overlay(RoundedRectangle(cornerRadius: Radius.control).strokeBorder(selected ? Color.clear : Ink.hairline))
+            .foregroundStyle(selected ? Ink.paper : Ink.ink)
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)
