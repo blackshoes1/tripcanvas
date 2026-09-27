@@ -9,7 +9,7 @@ import { isoDateOf, updateDay, type DayPatch, type TripEditError } from '../doma
 
 const ERR_MSG: Record<TripEditError, string> = {
   BAD_TIMEZONE: '시간대는 Asia/Tokyo 같은 IANA 형식으로 입력해 주세요',
-  LAST_DAY: '여행에는 일자가 하나 이상 필요합니다',
+  LAST_DAY: '여행에는 일자가 하나 이상 필요해요',
   NO_SUCH_DAY: '그 일자를 찾지 못했어요'
 };
 
@@ -63,7 +63,7 @@ export function DayEditor({ trip, di, onSave, onDuplicate, onDelete, onCancel }:
               inputMode="numeric" maxLength={5} placeholder="09:00" />
           </label>
         </div>
-        <p className="hint">날짜를 바꾸면 이 날이 그 날짜가 되도록 여행 전체가 함께 움직입니다.</p>
+        <p className="hint">날짜를 바꾸면 이 날이 그 날짜가 되도록 여행 전체가 함께 움직여요.</p>
         <div className="itEditRow2">
           <label>이동수단 (이 날 기본)
             <select value={form.mode} onChange={e => set({ mode: e.target.value as TransportMode })}>

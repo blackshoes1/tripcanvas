@@ -27,16 +27,16 @@ export type FileRead = { ok: true; text: string } | { ok: false; error: string }
  */
 export function readTextFile(file: File, maxBytes: number): Promise<FileRead> {
   if (file.size > maxBytes) {
-    return Promise.resolve({ ok: false, error: `파일이 너무 큽니다 (최대 ${Math.round(maxBytes / 1024 / 1024)}MB)` });
+    return Promise.resolve({ ok: false, error: `파일이 너무 커요 (최대 ${Math.round(maxBytes / 1024 / 1024)}MB)` });
   }
   return new Promise(resolve => {
     const rd = new FileReader();
     rd.onload = () => resolve(
       typeof rd.result === 'string'
         ? { ok: true, text: rd.result }
-        : { ok: false, error: '파일을 읽지 못했습니다' }
+        : { ok: false, error: '파일을 읽지 못했어요' }
     );
-    rd.onerror = () => resolve({ ok: false, error: '파일을 읽지 못했습니다' });
+    rd.onerror = () => resolve({ ok: false, error: '파일을 읽지 못했어요' });
     rd.readAsText(file);
   });
 }

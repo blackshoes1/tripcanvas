@@ -39,7 +39,7 @@ export function TravelView({ view }: { view: View }) {
           <div className="tvKicker">현재 장소</div>
           <div className="tvPlace">자유 일정</div>
         </div>
-        <p className="hint">등록된 장소가 없습니다 — 이동일이거나 자유 일정입니다.</p>
+        <p className="hint">등록된 장소가 없어요 — 이동일이거나 자유 일정이에요.</p>
       </section>
     );
   }

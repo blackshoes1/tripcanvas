@@ -35,7 +35,7 @@ export default function BookingsPage() {
         <AuthBar user={cloud.user} available={cloud.available} statusLabel={cloud.statusLabel}
           onSignIn={cloud.signIn} onSignOut={() => { void cloud.signOut(); }} open={signInOpen} onOpenChange={setSignInOpen} />
         <p className="hint">
-          이 브라우저에 저장된 여행이 없어요. 기존 앱에서 여행을 만들면 같은 데이터를 여기서 관리할 수 있습니다.
+          이 브라우저에 저장된 여행이 없어요. 기존 앱에서 여행을 만들면 같은 데이터를 여기서 관리할 수 있어요.
         </p>
       </main>
     );

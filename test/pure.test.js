@@ -1354,10 +1354,10 @@ test('예약 정보 정규화 — 확인하지 않은 것을 예약 완료·무�
 
 test('예약 정보 검증 — 서버가 거절할 값은 저장 전에 이름을 말한다', () => {
   assert.equal(L.admissionError({source:'USER', requirement:'REQUIRED'}), null);
-  assert.equal(L.admissionError({source:'USER', requirement:'몰라요'}), '예약 요건이 올바르지 않습니다');
-  assert.equal(L.admissionError({source:'USER', officialURL:'http://example.test'}), '공식 페이지는 https URL이어야 합니다');
-  assert.equal(L.admissionError({source:'USER', people:0}), '예약 인원은 1~100명이어야 합니다');
-  assert.equal(L.admissionError({source:'USER', note:'x'.repeat(1001)}), '예약 메모는 1000자까지 입력할 수 있습니다');
+  assert.equal(L.admissionError({source:'USER', requirement:'몰라요'}), '예약 요건이 올바르지 않아요');
+  assert.equal(L.admissionError({source:'USER', officialURL:'http://example.test'}), '공식 페이지는 https URL이어야 해요');
+  assert.equal(L.admissionError({source:'USER', people:0}), '예약 인원은 1~100명이어야 해요');
+  assert.equal(L.admissionError({source:'USER', note:'x'.repeat(1001)}), '예약 메모는 1000자까지 입력할 수 있어요');
 });
 
 test('여행 정규화가 장소의 예약 정보를 지난다 — 불량 값은 장소를 버리지 않고 떨어진다', () => {

@@ -34,12 +34,12 @@ export function SnapshotList({ clientId, signedIn, onRestore }: {
   }, [clientId, signedIn]);
 
   if (!signedIn) {
-    return <p className="hint">로그인하면 자동으로 버전이 기록됩니다 (10분 간격, 최근 15개).</p>;
+    return <p className="hint">로그인하면 자동으로 버전이 기록돼요 (10분 간격, 최근 15개).</p>;
   }
   if (state.kind === 'loading') return <p className="hint">불러오는 중…</p>;
   if (state.kind === 'error') return <p role="alert">{state.message}</p>;
   if (state.kind === 'off' || !state.rows.length) {
-    return <p className="hint">저장된 버전이 없습니다 — 클라우드에 올라갈 때 10분 간격으로 기록됩니다.</p>;
+    return <p className="hint">저장된 버전이 없어요 — 클라우드에 올라갈 때 10분 간격으로 기록돼요.</p>;
   }
 
   const restore = async (id: number) => {

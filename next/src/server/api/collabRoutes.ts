@@ -31,7 +31,7 @@ const CandidateBody = z.object({
   lat: z.number().min(-90).max(90).nullable().optional(), lng: z.number().min(-180).max(180).nullable().optional(),
   addr: z.string().max(1000).nullable().optional(), note: z.string().max(2000).nullable().optional(), url: z.string().max(2000).nullable().optional(),
   category: z.string().max(40).nullable().optional()
-}).refine(value => (value.lat == null) === (value.lng == null), { message: '위도와 경도는 함께 입력해야 합니다.' });
+}).refine(value => (value.lat == null) === (value.lng == null), { message: '위도와 경도는 함께 입력해야 해요.' });
 const CandidateActionBody = z.object({ action: z.enum(['REMOVE', 'SCHEDULE', 'UNSCHEDULE', 'REJECT', 'REOPEN', 'CATEGORY']), value: z.string().max(200).nullable().optional() });
 const ReactionBody = z.object({ reaction: z.string().max(20).nullable() });
 const CommentBody = z.object({ body: z.string().max(5000) });
@@ -39,7 +39,7 @@ const PrefsBody = z.object({ prefs: z.record(z.string(), z.unknown()) });
 
 async function parseBody<T>(request: Request, schema: z.ZodType<T>): Promise<T> {
   let raw: unknown;
-  try { raw = await request.json(); } catch { throw new ApiError('VALIDATION_ERROR', { message: '본문이 JSON이 아닙니다.' }); }
+  try { raw = await request.json(); } catch { throw new ApiError('VALIDATION_ERROR', { message: '본문이 JSON이 아니에요.' }); }
   const parsed = schema.safeParse(raw);
   if (!parsed.success) {
     throw new ApiError('VALIDATION_ERROR', { details: { issues: parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })) } });
@@ -49,7 +49,7 @@ async function parseBody<T>(request: Request, schema: z.ZodType<T>): Promise<T> 
 
 function intParam(raw: string, name: string): number {
   const n = Number(raw);
-  if (!/^\d+$/.test(raw) || !Number.isSafeInteger(n)) throw new ApiError('VALIDATION_ERROR', { message: `${name}이(가) 올바르지 않습니다.` });
+  if (!/^\d+$/.test(raw) || !Number.isSafeInteger(n)) throw new ApiError('VALIDATION_ERROR', { message: `${name}이(가) 올바르지 않아요.` });
   return n;
 }
 

@@ -38,7 +38,7 @@ export function createRealtimeServer(opts: RealtimeServerOptions) {
       return;
     }
     res.writeHead(404, { 'content-type': 'application/json; charset=utf-8' });
-    res.end(JSON.stringify({ code: 'NOT_FOUND', error: 'NOT_FOUND', message: '없는 경로입니다.' }));
+    res.end(JSON.stringify({ code: 'NOT_FOUND', error: 'NOT_FOUND', message: '없는 경로예요.' }));
   });
 
   http.on('upgrade', (req, socket, head) => {

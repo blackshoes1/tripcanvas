@@ -36,7 +36,7 @@ export class SnapshotService {
   async load(ctx: RequestContext, clientId: string, id: number): Promise<TripSnapshotRecord> {
     await this.deps.trips.get(ctx, clientId);
     const snapshot = await this.deps.snapshots.find(ctx.userId, clientId, id);
-    if (!snapshot) throw new ApiError('NOT_FOUND', { message: '그 버전을 찾을 수 없습니다.' });
+    if (!snapshot) throw new ApiError('NOT_FOUND', { message: '그 버전을 찾을 수 없어요.' });
     return snapshot;
   }
 }

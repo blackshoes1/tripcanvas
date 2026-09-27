@@ -19,17 +19,17 @@ const api = (message: string) => ({ code: '42501', apiCode: 'FORBIDDEN', status:
 
 const cases: { name: string; err: unknown; role: Role }[] = [
   { name: '주최자가 나가려 함', role: 'OWNER',
-    err: api('주최자는 나갈 수 없습니다 — 여행을 삭제하거나 다른 사람에게 넘겨 주세요.') },
+    err: api('주최자는 나갈 수 없어요 — 여행을 삭제하거나 소유권을 넘겨 주세요.') },
   { name: '나갔거나 내보내진 여행', role: 'EDITOR',
-    err: api('이 여행에서 나갔거나 내보내졌습니다.') },
+    err: api('이 여행에서 나갔거나 내보내졌어요.') },
   { name: '초대 링크는 주최자만', role: 'EDITOR',
-    err: api('초대 링크는 주최자만 만들 수 있습니다.') },
+    err: api('초대 링크는 주최자만 만들 수 있어요.') },
   { name: '남의 코멘트는 못 지운다', role: 'EDITOR',
-    err: api('코멘트는 쓴 사람과 주최자만 지울 수 있습니다.') },
+    err: api('코멘트는 쓴 사람이나 주최자만 지울 수 있어요.') },
   { name: '보기 권한의 후보 추가 — 서버가 더 구체적이다', role: 'VIEWER',
-    err: api('보기 권한으로는 후보를 추가할 수 없습니다.') },
+    err: api('보기 권한으로는 후보를 추가할 수 없어요.') },
   { name: '서버 기본 FORBIDDEN 문장', role: 'VIEWER',
-    err: api('이 여행을 바꿀 권한이 없습니다 — 주최자에게 편집 권한을 요청해 주세요.') },
+    err: api('이 여행을 바꿀 권한이 없어요 — 주최자에게 편집 권한을 요청해 주세요.') },
   { name: '문장이 없을 때 보기 권한', role: 'VIEWER', err: api('') },
   { name: '문장이 없을 때 편집 권한', role: 'EDITOR', err: api('') },
   { name: '레거시 코드 — OWNER_CANNOT_LEAVE', role: 'OWNER', err: { message: 'OWNER_CANNOT_LEAVE' } },
@@ -48,8 +48,8 @@ describe('권한 거절 문구 — collab.js가 단일 출처', () => {
     }));
 
     // 서버가 말한 이유는 그대로 전해진다 — 일반 문장으로 뭉개지 않는다
-    expect(rows[0].text).toBe('주최자는 나갈 수 없습니다 — 여행을 삭제하거나 다른 사람에게 넘겨 주세요.');
-    expect(rows[2].text).toBe('초대 링크는 주최자만 만들 수 있습니다.');
+    expect(rows[0].text).toBe('주최자는 나갈 수 없어요 — 여행을 삭제하거나 소유권을 넘겨 주세요.');
+    expect(rows[2].text).toBe('초대 링크는 주최자만 만들 수 있어요.');
     // 서버가 아무 말도 없을 때만 역할로 짐작한다
     expect(rows[6].text).toMatch(/편집 권한을 요청/);
     expect(rows[7].text).toBe('이 여행을 바꿀 권한이 없어요');

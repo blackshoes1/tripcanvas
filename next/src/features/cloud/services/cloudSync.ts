@@ -317,6 +317,6 @@ export async function syncOnLogin(hooks: SyncHooks): Promise<void> {
   } catch (e) {
     if (!currentSession(version)) return;
     console.warn('cloud.login-sync 실패:', e instanceof Error ? e.message : e);
-    hooks.onNotice('클라우드 동기화 실패 — 로컬로 계속 사용합니다', 'error');
+    hooks.onNotice('클라우드 동기화 실패 — 로컬로 계속 사용해요', 'error');
   }
 }

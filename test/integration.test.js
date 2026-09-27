@@ -2325,7 +2325,7 @@ test('통합: 다음 장소에 "언제 나서면 되는지"를 함께 알려준�
   w.eval('nowMinutes=()=>19*60+30; renderTravel(0)');
   const late = w.document.querySelector('#travelNext .travelDepart');
   assert.ok(late.classList.contains('late'), '이미 늦었으면 그렇게 말한다');
-  assert.match(late.textContent, /늦습니다/);
+  assert.match(late.textContent, /늦어요/);
   w.close();
 });
 
@@ -2448,6 +2448,23 @@ test('통합: 로그인이 필요한 기능은 이유를 로그인 모달 안에
   // 취소하면 기다리던 기능도 잊는다
   w.eval(`openCandidates(); document.getElementById('authCancel').click();`);
   assert.equal(w.eval('authResume'), null);
+  w.close();
+});
+
+test('통합: 소셜 로그인으로 페이지를 떠났다 와도 기다리던 기능을 이어서 연다(이름만 탭 저장소에)', { skip: noJsdom }, () => {
+  const w = boot();
+  w.eval(`user=null; sb={}; pullTrip=async()=>{}; renderMembers=async()=>{}; TC_AUTH.socialProviders=()=>['google']; TC_AUTH.startSocial=async()=>{};`);
+  w.eval('openMembers()');
+  w.document.querySelector('#authSocial button').click();
+  assert.equal(w.sessionStorage.getItem('tripcanvas_auth_resume_v1'), 'members', '떠나기 전에 이름을 남긴다');
+  // 돌아온 페이지 — 메모리의 함수는 없다
+  w.eval(`authResume=null; document.getElementById('authModalBg').classList.remove('show'); user={id:'u1',email:'me@example.com'}; runAuthResume();`);
+  assert.equal(w.document.getElementById('membersModalBg').classList.contains('show'), true, '저장된 이름으로 같이 짜기를 연다');
+  assert.equal(w.sessionStorage.getItem('tripcanvas_auth_resume_v1'), null, '읽으면 지운다 — 다음 로그인에 다시 열리지 않는다');
+  // 모르는 이름은 아무것도 열지 않는다
+  w.sessionStorage.setItem('tripcanvas_auth_resume_v1', 'javascript:alert(1)');
+  w.eval('runAuthResume()');
+  assert.equal(w.sessionStorage.getItem('tripcanvas_auth_resume_v1'), null);
   w.close();
 });
 
@@ -4095,7 +4112,7 @@ test('통합: 서버가 거절할 값은 저장 전에 같은 문장으로 막�
   assert.equal('admission' in JSON.parse(w.eval(`JSON.stringify(trip().days[0].spots[0])`)), false, '저장되지 않는다');
   assert.ok(w.document.getElementById('spotModalBg').classList.contains('show'), '모달이 열린 채 남아 고칠 수 있다');
   // 문구는 lib의 것 그대로다 — 화면이 제 문장을 따로 두면 서버와 두 말이 된다
-  assert.equal(w.eval(`admissionError({source:'USER',officialURL:'http://x.test'})`), '공식 페이지는 https URL이어야 합니다');
+  assert.equal(w.eval(`admissionError({source:'USER',officialURL:'http://x.test'})`), '공식 페이지는 https URL이어야 해요');
   w.close();
 });
 

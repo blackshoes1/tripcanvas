@@ -377,27 +377,27 @@
       let score=50;
       if(cd.kind==='REST'||cd.kind==='WAIT'){
         score=38;
-        if(state.energyLevel==='LOW'){ score+=25; reasons.push('지금은 체력을 아끼는 편이 낫습니다'); }
-        if(state.travelMinToday>=c.heavyTravelMin){ score+=15; reasons.push('오늘 이동이 '+Math.round(state.travelMinToday/60)+'시간을 넘었습니다'); }
-        if(state.nextFixed) reasons.push(state.nextFixed.title+' '+LIB.hm(state.nextFixed.startMin)+'까지 '+Math.round(state.availableMin)+'분 남았습니다');
-        else reasons.push('남은 고정 일정이 없어 쉬어도 밀리지 않습니다');
+        if(state.energyLevel==='LOW'){ score+=25; reasons.push('지금은 체력을 아끼는 편이 나아요'); }
+        if(state.travelMinToday>=c.heavyTravelMin){ score+=15; reasons.push('오늘 이동이 '+Math.round(state.travelMinToday/60)+'시간을 넘었어요'); }
+        if(state.nextFixed) reasons.push(state.nextFixed.title+' '+LIB.hm(state.nextFixed.startMin)+'까지 '+Math.round(state.availableMin)+'분 남았어요');
+        else reasons.push('남은 고정 일정이 없어 쉬어도 밀리지 않아요');
         out.push({type:'REST', id:cd.id, targetId:null, title:cd.title, score, reasons, estimatedDuration:duration,
           estimatedTravelTime:0, arriveMin:win.startMin, endMin:win.startMin+duration, fromDay:null, si:null, spot:null});
         return;
       }
       if(cd.kind==='RETURN_TO_HOTEL'){
         score=36;
-        if(state.travelMinToday>=c.heavyTravelMin){ score+=14; reasons.push('오늘 이동이 많았습니다'); }
+        if(state.travelMinToday>=c.heavyTravelMin){ score+=14; reasons.push('오늘 이동이 많았어요'); }
         if(travel) reasons.push('숙소까지 약 '+travel+'분');
-        if(state.nextFixed && state.nextFixed.startMin-finish>=c.bufferMin) reasons.push('숙소에 들렀다 가도 '+state.nextFixed.title+' 시간에는 여유가 있습니다');
-        if(!reasons.length) reasons.push('오늘 남은 일정을 숙소에서 이어가도 됩니다');
+        if(state.nextFixed && state.nextFixed.startMin-finish>=c.bufferMin) reasons.push('숙소에 들렀다 가도 '+state.nextFixed.title+' 시간에는 여유가 있어요');
+        if(!reasons.length) reasons.push('오늘 남은 일정을 숙소에서 이어가도 돼요');
         out.push({type:'RETURN_TO_HOTEL', id:cd.id, targetId:null, title:cd.title, score, reasons, estimatedDuration:0,
           estimatedTravelTime:travel, arriveMin:arrive, endMin:arrive, fromDay:null, si:null, spot:null});
         return;
       }
       if(cd.kind==='EAT'){
         out.push({type:'EAT', id:cd.id, targetId:null, title:cd.title, score:46,
-          reasons:[(meal? meal.label : '식사')+' 시간대에 일정이 비어 있습니다', '이 시간에 식사를 넣으면 남은 일정이 밀리지 않습니다'],
+          reasons:[(meal? meal.label : '식사')+' 시간대에 일정이 비어 있어요', '이 시간에 식사를 넣으면 남은 일정이 밀리지 않아요'],
           estimatedDuration:duration, estimatedTravelTime:0, arriveMin:win.startMin, endMin:win.startMin+duration,
           fromDay:null, si:null, spot:null});
         return;
@@ -413,7 +413,7 @@
       if(weekday>=0 && cd.hours && cd.hours.length){
         if(LIB.isOpenAt(cd.hours, weekday, arrive)===false) return;                            // 도착 시점에 영업 종료
         if(duration>0 && LIB.isOpenAt(cd.hours, weekday, Math.max(arrive, finish-1))===false) return;   // 머무는 중에 문 닫음
-        reasons.push('도착 예정 시각에 문을 엽니다');
+        reasons.push('도착 예정 시각에 문을 열어요');
       }
       if(travel>0){
         score+=Math.max(0, 20-travel*0.5);
@@ -421,18 +421,18 @@
       }
       const slack=deadline-(finish+backMin);
       score+=Math.max(0, Math.min(15, 15-Math.abs(slack-c.bufferMin)/8));
-      if(cd.must){ score+=18; reasons.push('꼭 가려고 표시한 곳입니다'); }
+      if(cd.must){ score+=18; reasons.push('꼭 가려고 표시한 곳이에요'); }
       else if(cd.priority>=2) score+=6;
-      if(cd.inPlan){ score+=8; reasons.push('원래 오늘 일정에 있던 곳입니다'); }
-      else if(cd.fromDay!=null) reasons.push('Day '+(cd.fromDay+1)+' 일정에서 옮겨올 수 있습니다');
-      if(state.energyLevel==='LOW' && travel>25){ score-=12; reasons.push('다만 이동이 조금 깁니다'); }
+      if(cd.inPlan){ score+=8; reasons.push('원래 오늘 일정에 있던 곳이에요'); }
+      else if(cd.fromDay!=null) reasons.push('Day '+(cd.fromDay+1)+' 일정에서 옮겨올 수 있어요');
+      if(state.energyLevel==='LOW' && travel>25){ score-=12; reasons.push('다만 이동이 조금 길어요'); }
       if(nextFixedLoc && state.nextFixed && cd.location){
         const direct=travelMinutes(win.anchor, nextFixedLoc, o);
         const detour=Math.max(0, (travel+backMin)-direct);
         score-=Math.min(20, detour*0.4);
-        if(detour<=10) reasons.push(state.nextFixed.title+' 동선과 같은 방향입니다');
+        if(detour<=10) reasons.push(state.nextFixed.title+' 동선과 같은 방향이에요');
       }
-      if(duration) reasons.push('약 '+(duration>=60? (Math.round(duration/60*10)/10)+'시간' : duration+'분')+'이면 둘러볼 수 있습니다');
+      if(duration) reasons.push('약 '+(duration>=60? (Math.round(duration/60*10)/10)+'시간' : duration+'분')+'이면 둘러볼 수 있어요');
       out.push({type:(cd.kind==='CHECK_IN'?'CHECK_IN':'VISIT_PLACE'), id:cd.id, targetId:(cd.si!=null? String(cd.si) : null),
         title:cd.title, score:Math.round(score*100)/100, reasons, estimatedDuration:duration, estimatedTravelTime:travel,
         arriveMin:arrive, endMin:finish, fromDay:cd.fromDay, si:cd.si, spot:cd.spot});
@@ -535,9 +535,9 @@
       push({id:key, key, type:'REPLAN',
         title:replan.lateBy+'분 지연 — 이렇게 조정하면 약속에 늦지 않아요',
         description:replan.feasible
-          ? (replan.dropNames.length? replan.dropNames.join(', ')+'을(를) 빼면 고정 예약 시간을 지킬 수 있어요' : '순서를 그대로 두어도 괜찮습니다')
+          ? (replan.dropNames.length? replan.dropNames.join(', ')+'을(를) 빼면 고정 예약 시간을 지킬 수 있어요' : '순서를 그대로 두어도 괜찮아요')
           : '일정을 줄여도 고정 예약 시간을 맞추기 어려워요 — 예약 변경을 검토해 보세요',
-        reasons:['현재 '+replan.lateBy+'분 밀렸습니다', '고정 예약은 그대로 지킵니다', '완료한 일정은 유지합니다'],
+        reasons:['현재 '+replan.lateBy+'분 밀렸어요', '고정 예약은 그대로 지켜요', '완료한 일정은 유지해요'],
         impact:replan.impact, status:'NEW', action:{kind:'REPLAN', drop:replan.drop, keep:replan.keep}});
     }
     ranked.slice(0, c.maxSuggest).forEach((r)=>{
@@ -637,9 +637,9 @@
     if(!item) return null;
     const target=(item.fixedAt!=null? item.fixedAt : item.eta);
     const leaveMin=Math.round(target-Math.max(0,travelMin||0));
-    if(!state.live) return {leaveMin, slackMin:0, level:'EARLY', text:LIB.hm(leaveMin)+'쯤 출발하는 일정입니다'};
+    if(!state.live) return {leaveMin, slackMin:0, level:'EARLY', text:LIB.hm(leaveMin)+'쯤 출발하는 일정이에요'};
     const slackMin=Math.round(leaveMin-state.nowMin);
-    if(slackMin<0) return {leaveMin, slackMin, level:'LATE', text:'지금 출발해도 약 '+Math.abs(slackMin)+'분 늦습니다'};
+    if(slackMin<0) return {leaveMin, slackMin, level:'LATE', text:'지금 출발해도 약 '+Math.abs(slackMin)+'분 늦어요'};
     if(slackMin<=10) return {leaveMin, slackMin, level:'NOW', text:'지금 출발하면 약 '+slackMin+'분 여유가 있어요'};
     return {leaveMin, slackMin, level:'EARLY', text:LIB.hm(leaveMin)+'쯤 출발하면 여유 있게 도착해요 (지금부터 '+slackMin+'분 남음)'};
   }

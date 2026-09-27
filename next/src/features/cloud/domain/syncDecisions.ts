@@ -81,7 +81,7 @@ export function resurrectedIds(trips: Trip[], meta: SyncMeta): string[] {
 
 /** 화면에 보여줄 한 줄 — 상태를 사람 말로 */
 export function syncLabel(status: SyncStatus | undefined, signedIn: boolean): string {
-  if (!signedIn) return '로그인하면 이 기기 밖에도 저장됩니다';
+  if (!signedIn) return '로그인하면 이 기기 밖에도 저장돼요';
   switch (status) {
     case 'clean': return '☁️ 클라우드에 저장됨';
     case 'syncing': return '⏳ 올리는 중…';

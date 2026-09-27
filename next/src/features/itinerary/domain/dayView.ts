@@ -98,7 +98,7 @@ function legViewOf(legCache: LegCache, a: LatLng, b: LatLng, mode: TransportMode
     mode, modeIcon: MODE_ICON[mode],
     label: `↳${haversine(a, b).toFixed(1)}km${failed ? ' ⚠️' : ''}`,
     title: failed
-      ? '경로를 찾을 수 없어 직선거리로 표시 — 인근 도로 탐색(최대 2.4km)까지 실패했습니다. 장소 편집에서 위치를 다시 잡아 보세요'
+      ? '경로를 찾을 수 없어 직선거리로 표시 — 인근 도로 탐색(최대 2.4km)까지 실패했어요. 장소 편집에서 위치를 다시 잡아 보세요'
       : '경로 미조회 — 직선거리',
     cached: false, failed
   };
@@ -231,8 +231,8 @@ function carEventRowOf(e: ReturnType<typeof carEventsOn>[number]): CarEventRowVi
     kind: e.kind, bookingId: e.id, placeLabel: place,
     subLabel: [label, e.time, noPlace ? '장소 미입력' : ''].filter(Boolean).join(' · ') + ' · 예약',
     title: `${label}${e.time ? ` ${e.time}` : ''} · ${place}` +
-      `${noPlace ? ' — 예약에 픽업·반납 장소를 넣으면 여기 표시됩니다' : ''}` +
-      ' · 예약에 입력한 정보라 동선·도착 예상 계산에는 들어가지 않습니다'
+      `${noPlace ? ' — 예약에 픽업·반납 장소를 넣으면 여기 표시돼요' : ''}` +
+      ' · 예약에 입력한 정보라 동선·도착 예상 계산에는 들어가지 않아요'
   };
 }
 
@@ -264,9 +264,9 @@ function spotViewOf(
   const etaTitle = t.fixed
     ? (t.conflict
         ? (bySchedule
-            ? `📌 도착 고정 ${s.at} — ${MODE_NAME[inMode]} 시간표 기준. 앱 추정(${natTxt})보다 빠르지만 정상입니다`
-            : `📌 도착 고정 ${s.at} — 이동시간상 ${natTxt}에야 도착합니다. 앞 일정을 줄이거나 이 시각을 늦추세요`)
-        : '📌 도착 고정 — 직접 정한 시각. 자동 계산 대신 이 시각을 씁니다')
+            ? `📌 도착 고정 ${s.at} — ${MODE_NAME[inMode]} 시간표 기준. 앱 추정(${natTxt})보다 빠르지만 정상이에요`
+            : `📌 도착 고정 ${s.at} — 이동시간상 ${natTxt}에야 도착해요. 앞 일정을 줄이거나 이 시각을 늦추세요`)
+        : '📌 도착 고정 — 직접 정한 시각. 자동 계산 대신 이 시각을 써요')
     : '도착 예상 — 시작 시각 + 이동시간 + 머무는 시간으로 자동 계산한 추정값';
 
   const cat = spotCatOf(s);

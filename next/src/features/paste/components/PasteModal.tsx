@@ -85,8 +85,8 @@ export function PasteModal({ current, onApply, onClose, ids }: {
         </label>
         <p className="hint">
           {cfg.aiParse
-            ? '자연어로 자유롭게 붙여넣으면 AI가 날짜·도시·장소·좌표를 정리해줍니다.'
-            : '아래 형식으로 붙여넣으면 AI 없이 즉시 만듭니다. 좌표는 자동으로 찾습니다(국내 카카오·해외 구글).'}
+            ? '자연어로 자유롭게 붙여넣으면 AI가 날짜·도시·장소·좌표를 정리해줘요.'
+            : '아래 형식으로 붙여넣으면 AI 없이 즉시 만들어요. 좌표는 자동으로 찾아요(국내 카카오·해외 구글).'}
         </p>
 
         {cfg.aiParse ? (
@@ -103,7 +103,7 @@ export function PasteModal({ current, onApply, onClose, ids }: {
                 </select>
               </label>
             </div>
-            <p className="hint">키는 이 브라우저에만 저장되고, 요청은 Anthropic API로만 갑니다.</p>
+            <p className="hint">키는 이 브라우저에만 저장되고, 요청은 Anthropic API로만 가요.</p>
           </div>
         ) : (
           <button type="button" className="itPasteFmt" onClick={() => setText(DIRECT_PLACEHOLDER)}>

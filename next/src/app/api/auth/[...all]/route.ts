@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic';
 
 async function handle(request: Request): Promise<Response> {
   const newAuth = getNewAuth();
-  if (!newAuth) return Promise.resolve(errorResponse(new ApiError('NOT_FOUND', { message: '자체 로그인이 아직 켜져 있지 않습니다.' })));
+  if (!newAuth) return Promise.resolve(errorResponse(new ApiError('NOT_FOUND', { message: '자체 로그인이 아직 켜져 있지 않아요.' })));
   const env = getEnv();
   const options = { secret: env.authSecret!, baseURL: env.apiBaseUrl, webBaseURL: env.webBaseUrl,
     socialProviders: env.socialProviders, trustedOrigins: env.trustedOrigins };

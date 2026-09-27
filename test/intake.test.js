@@ -193,7 +193,7 @@ test('matchTripForBooking: 어느 여행인지 단정하지 않고 후보와 이
   const matches = I.matchTripForBooking(I.parseBookingCandidate(HOTEL_SHARE), TRIPS);
   assert.ok(matches.length >= 1);
   assert.equal(matches[0].tripId, 't1');
-  assert.ok(matches[0].reasons.some((r) => /겹칩니다/.test(r)));
+  assert.ok(matches[0].reasons.some((r) => /겹쳐요/.test(r)));
   assert.ok(matches[0].score > 0.5);
   assert.equal(matches.filter((m) => m.tripId === 't2').length, 0, '기간이 전혀 다른 여행은 후보가 아니다');
 });

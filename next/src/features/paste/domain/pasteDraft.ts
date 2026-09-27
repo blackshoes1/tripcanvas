@@ -34,7 +34,7 @@ export function draftFromText(text: string): DraftResult {
   try {
     return checkDraft(parseDirect(text) as { name: string; start: string; days: unknown });
   } catch {
-    return { ok: false, error: '일정을 해석하지 못했습니다 — 입력 형식을 확인해주세요' };
+    return { ok: false, error: '일정을 해석하지 못했어요 — 입력 형식을 확인해주세요' };
   }
 }
 

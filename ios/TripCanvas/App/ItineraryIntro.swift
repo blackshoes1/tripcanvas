@@ -98,7 +98,7 @@ struct ItineraryIntroScene: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: Space.xs) {
-                Text("Day 1 · Oct 25").metaLabel()
+                Text("Day 1 · 10/25").metaLabel()   // 한국어 화면에 영어 날짜를 섞지 않는다 — 일자 칩과 같은 M/D
                 Text("여행 첫날").font(Typeface.editorial(.title3)).foregroundStyle(Ink.ink)
             }
             .opacity(frame.head)
