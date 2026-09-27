@@ -232,9 +232,9 @@ enum MapPinImage {
         // ⚠️ 여기만 `Ink.*`를 쓰지 않는다 — 구글 지도 SDK가 `UIColor`를 요구하고, 지도 위 핀은
         // 타일 위에서 읽혀야 해서 시스템 색의 대비 보정을 그대로 쓴다. 화면 색과 갈리는 것이 아니라
         // **다른 매체(지도)**라 규칙이 다르다.
-        let color: UIColor = selected ? .systemOrange
+        let color: UIColor = selected ? MapPalette.selected
             : pin.kind == .candidate ? .systemGreen
-            : pin.colorIndex >= 0 ? MapPalette.color(pin.colorIndex) : .systemBlue
+            : pin.colorIndex >= 0 ? MapPalette.color(pin.colorIndex) : MapPalette.itinerary
         return UIGraphicsImageRenderer(size: CGSize(width: 36, height: 36)).image { _ in
             UIColor.white.setFill()
             UIBezierPath(ovalIn: CGRect(x: 0, y: 0, width: 36, height: 36)).fill()
