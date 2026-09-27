@@ -46,17 +46,13 @@ struct PlanMapSection: View {
                 }
                 .pickerStyle(.segmented)
                 .disabled(mapSearching)
-                Button {
+                TonalActionButton(title: mapSearching ? "닫기" : "검색",
+                                  systemImage: mapSearching ? "xmark" : "magnifyingglass") {
                     withAnimation(motion) { mapSearching.toggle() }
-                } label: {
-                    Label(mapSearching ? "검색 닫기" : "장소 검색", systemImage: mapSearching ? "xmark.circle.fill" : "magnifyingglass")
-                        .font(.subheadline.weight(.semibold))
-                        .frame(minHeight: 44)
                 }
-                .tint(Ink.accent)
                 .accessibilityLabel(mapSearching ? "장소 검색 닫기" : "장소 검색 열기")
             }
-            .padding(.horizontal, Space.m)
+            .padding(.horizontal, Space.l)
             .padding(.vertical, Space.xs)
 
             if mapSearching, let document = model.document {
@@ -92,10 +88,7 @@ struct PlanMapSection: View {
                     .overlay(alignment: .topLeading) {
                         VStack(alignment: .leading, spacing: Space.xs) {
                             if let note = Self.routeNote(days.flatMap { $0.mapRoutes(colorIndex: $0.index) }) {
-                                Label(note, systemImage: "line.diagonal")
-                                    .font(.caption)
-                                    .padding(.horizontal, Space.m).padding(.vertical, Space.xs + 2)
-                                    .background(.thinMaterial, in: Capsule())
+                                mapNote(note)
                             }
                             dayLegend(days.map(\.index))
                         }
@@ -153,75 +146,117 @@ struct PlanMapSection: View {
                                   onPinSelected: { id in chooseMapSpot(day.pins.first(where: { $0.id == id }).map { $0.order - 1 }, day: model.selectedDay, scenes: scenes) },
                                   isVisible: showsMap)
                         .frame(minHeight: 180, maxHeight: .infinity)
-                    if let note = Self.routeNote(routes) {
-                        Text(note).font(.caption).foregroundStyle(Ink.soft)
-                    }
+                        // 선이 도로인지 직선인지는 지도 **위**에서 말한다 — 전체 지도와 같은 자리·같은 모양.
+                        // ⚠️ 위쪽이다: 왼쪽 아래는 Google 로고 자리라 가리면 안 된다(약관).
+                        .overlay(alignment: .topLeading) {
+                            if let note = Self.routeNote(routes) { mapNote(note).padding(Space.m) }
+                        }
                 } else {
-                    Button { withAnimation(motion) { mapSearching = true } } label: {
-                        Label("지도에서 장소 찾기", systemImage: "magnifyingglass").frame(minHeight: 60)
+                    VStack(spacing: Space.m) {
+                        EmptyStateView(symbol: "map", title: "지도에 놓을 장소가 없어요",
+                                       message: "장소를 찾아 담으면 이 날의 동선이 지도에 그려져요.")
+                        TonalActionButton(title: "지도에서 장소 찾기", systemImage: "magnifyingglass") {
+                            withAnimation(motion) { mapSearching = true }
+                        }
                     }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-                if model.canEdit, day.spots.count > 1 {
-                    HStack {
-                        Text("방문 순서").font(.subheadline.weight(.semibold))
+                // 방문 순서 — 지도 아래 둥근 판. 줄의 번호 배지는 지도 핀과 **같은 색·같은 번호**다.
+                VStack(spacing: 0) {
+                    HStack(spacing: Space.s) {
+                        Text("방문 순서").font(.headline).foregroundStyle(Ink.ink)
+                            .accessibilityAddTraits(.isHeader)
+                        Text("\(day.spots.count)곳").font(.subheadline).foregroundStyle(Ink.soft)
                         Spacer()
                         if isReordering { ProgressView().controlSize(.small) }
-                        Button(reorderMode.isEditing ? "순서 편집 마치기" : "순서 편집") {
-                            withAnimation(motion) {
-                                reorderMode = reorderMode.isEditing ? .inactive : .active
-                            }
-                        }
-                        .disabled(model.isSaving || isReordering)
-                    }
-                    .padding(.horizontal, Space.m)
-                    .frame(minHeight: 44)
-                }
-                ScrollViewReader { proxy in
-                    List {
-                        ForEach(Array(day.spots.enumerated()), id: \.offset) { index, spot in
-                            HStack {
-                                Button {
-                                    // 고른 줄을 다시 누르면 고름을 푼다 — 지도가 다시 그 장면(또는 그날 전체)을 보인다.
-                                    chooseMapSpot(selection == index ? nil : index, day: model.selectedDay, scenes: scenes)
-                                } label: {
-                                    VStack(alignment: .leading) {
-                                        Text("\(index + 1). \(spot.name)")
-                                        if spot.point == nil { Text("위치 미정").font(.caption).foregroundStyle(Ink.soft) }
-                                    }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                                }.buttonStyle(.plain)
-                                Button { actions.viewSpot(index, spot) } label: {
-                                    Image(systemName: "info.circle").frame(width: 44, height: 44)
-                                }.accessibilityLabel("\(spot.name) 장소·예약 정보")
-                                if model.canEdit {
-                                    Menu {
-                                        Button("편집") { actions.editSpot(index, spot) }
-                                        Button("이 장소 뒤에 추가") { actions.addAfter(index) }
-                                        Button("날짜·위치 옮기기") { actions.moveSpots([index]) }
-                                    } label: { Image(systemName: "ellipsis").frame(width: 44, height: 44) }
-                                    .accessibilityLabel("\(spot.name) 일정 작업")
+                        if model.canEdit, day.spots.count > 1 {
+                            Button(reorderMode.isEditing ? "완료" : "순서 편집") {
+                                withAnimation(motion) {
+                                    reorderMode = reorderMode.isEditing ? .inactive : .active
                                 }
                             }
-                            .listRowBackground(selection == index ? Ink.accent.opacity(0.12) : Ink.raised)
-                            .id(index)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(Ink.accent)
+                            .disabled(model.isSaving || isReordering)
                         }
-                        .onMove { source, destination in
-                            guard model.canEdit, !model.isSaving, !isReordering else { return }
-                            let dayIndex = model.selectedDay
-                            isReordering = true
-                            selectMapSpot(nil, day: nil)
-                            sceneChoice = .main
-                            Task {
-                                defer { isReordering = false }
-                                guard model.selectedDay == dayIndex else { return }
-                                await model.moveSpots(from: source, to: destination)
+                    }
+                    .padding(.horizontal, Space.l)
+                    .padding(.top, Space.m)
+                    .frame(minHeight: 44)
+                    ScrollViewReader { proxy in
+                        List {
+                            ForEach(Array(day.spots.enumerated()), id: \.offset) { index, spot in
+                                HStack(spacing: Space.m) {
+                                    Button {
+                                        // 고른 줄을 다시 누르면 고름을 푼다 — 지도가 다시 그 장면(또는 그날 전체)을 보인다.
+                                        chooseMapSpot(selection == index ? nil : index, day: model.selectedDay, scenes: scenes)
+                                    } label: {
+                                        HStack(spacing: Space.m) {
+                                            orderBadge(index + 1, selected: selection == index, located: spot.point != nil)
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text(spot.name.isEmpty ? "이름 없는 장소" : spot.name)
+                                                    .font(.body.weight(.semibold))
+                                                    .foregroundStyle(Ink.ink)
+                                                    .lineLimit(1)
+                                                let meta = rowMeta(index, spot: spot)
+                                                if !meta.isEmpty {
+                                                    Text(meta).font(.caption)
+                                                        .foregroundStyle(spot.point == nil ? Ink.warning : Ink.soft)
+                                                        .lineLimit(1)
+                                                }
+                                            }
+                                            // 줄 사이 구분선은 이름에서 시작한다 — 번호 배지 밑까지 긋지 않는다.
+                                            .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] }
+                                        }
+                                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                                        .contentShape(Rectangle())
+                                    }.buttonStyle(.plain)
+                                    Button { actions.viewSpot(index, spot) } label: {
+                                        Image(systemName: "info.circle").foregroundStyle(Ink.soft).frame(width: 36, height: 44)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .accessibilityLabel("\(spot.name) 장소·예약 정보")
+                                    if model.canEdit {
+                                        Menu {
+                                            Button("편집") { actions.editSpot(index, spot) }
+                                            Button("이 장소 뒤에 추가") { actions.addAfter(index) }
+                                            Button("날짜·위치 옮기기") { actions.moveSpots([index]) }
+                                        } label: {
+                                            Image(systemName: "ellipsis").foregroundStyle(Ink.soft).frame(width: 36, height: 44)
+                                        }
+                                        .accessibilityLabel("\(spot.name) 일정 작업")
+                                    }
+                                }
+                                .listRowBackground(selection == index ? Ink.accent.opacity(0.10) : Ink.raised)
+                                .listRowSeparatorTint(Ink.hairline)
+                                .id(index)
                             }
+                            .onMove { source, destination in
+                                guard model.canEdit, !model.isSaving, !isReordering else { return }
+                                let dayIndex = model.selectedDay
+                                isReordering = true
+                                selectMapSpot(nil, day: nil)
+                                sceneChoice = .main
+                                Task {
+                                    defer { isReordering = false }
+                                    guard model.selectedDay == dayIndex else { return }
+                                    await model.moveSpots(from: source, to: destination)
+                                }
+                            }
+                            .moveDisabled(!model.canEdit || model.isSaving || isReordering)
                         }
-                        .moveDisabled(!model.canEdit || model.isSaving || isReordering)
-                    }.listStyle(.plain).frame(maxHeight: 240)
-                    .environment(\.editMode, $reorderMode)
-                    .disabled(model.isSaving || isReordering)
-                    .onChange(of: selectedMapSpot) { _, index in if let index { proxy.scrollTo(index, anchor: .center) } }
+                        .listStyle(.plain)
+                        .scrollContentBackground(.hidden)
+                        .frame(maxHeight: 240)
+                        .environment(\.editMode, $reorderMode)
+                        .disabled(model.isSaving || isReordering)
+                        .onChange(of: selectedMapSpot) { _, index in if let index { proxy.scrollTo(index, anchor: .center) } }
+                    }
                 }
+                .background(Ink.raised)
+                .clipShape(UnevenRoundedRectangle(topLeadingRadius: Radius.panel, topTrailingRadius: Radius.panel))
+                .shadow(color: Ink.ink.opacity(0.08), radius: 8, y: -2)
+                // ⚠️ 판을 지도 위로 겹치지 않는다 — 지도 왼쪽 아래의 Google 로고를 가리면 안 된다(약관).
             }
             .onChange(of: model.selectedDay) { _, _ in
                 selectMapSpot(nil, day: nil)
@@ -233,6 +268,37 @@ struct PlanMapSection: View {
                 sceneChoice = .main
             }
         }
+    }
+
+    /// 지도 핀과 같은 번호 배지 — 같은 색(`MapPalette`)·같은 번호라 목록의 줄이 지도의 어느 점인지 바로 보인다.
+    /// 위치가 없는 장소는 지도에 없으니 속이 빈 원이다.
+    private func orderBadge(_ number: Int, selected: Bool, located: Bool) -> some View {
+        let fill = Color(uiColor: selected ? MapPalette.selected : MapPalette.itinerary)
+        return Text("\(number)")
+            .font(.footnote.weight(.bold).monospacedDigit())
+            .foregroundStyle(located ? .white : Ink.soft)
+            .frame(width: 26, height: 26)
+            .background(located ? fill : Color.clear, in: Circle())
+            .overlay(Circle().strokeBorder(located ? Color.clear : Ink.faint, style: StrokeStyle(lineWidth: 1.5, dash: [3, 2])))
+            .accessibilityHidden(true)
+    }
+
+    /// `10:00 · 명소` — 서버가 계산한 도착 예상과 유형. 위치가 없으면 그 사실이 먼저다(지도에 없다).
+    private func rowMeta(_ index: Int, spot: TripSpot) -> String {
+        if spot.point == nil { return "위치 미정 · 지도에 없어요" }
+        var parts: [String] = []
+        if let eta = model.planSpot(at: index)?.etaMinutes { parts.append(TimeFormat.clockAcrossMidnight(eta)) }
+        if let category = spot.category { parts.append(category.label) }
+        return parts.joined(separator: " · ")
+    }
+
+    /// 지도 위의 짧은 안내 한 알 — 타일 위에서 읽히게 옅은 유리 바탕.
+    private func mapNote(_ text: String) -> some View {
+        Label(text, systemImage: "line.diagonal")
+            .font(.caption)
+            .foregroundStyle(Ink.ink)
+            .padding(.horizontal, Space.m).padding(.vertical, Space.xs + 2)
+            .background(.thinMaterial, in: Capsule())
     }
 
     /// 이 선이 도로인지 직선인지 한 줄로. **전부 도로면 nil** — 맞는 말은 굳이 하지 않는다.
@@ -311,7 +377,7 @@ struct PlanMapSection: View {
                 .padding(.horizontal, Space.s)
                 .padding(.vertical, 5)
                 .background(on ? Ink.accent : Ink.sunken, in: Capsule())
-                .foregroundStyle(on ? .white : Ink.soft)
+                .foregroundStyle(on ? Ink.onAccent : Ink.soft)
                 .frame(minHeight: 32)
         }
         .buttonStyle(.plain)

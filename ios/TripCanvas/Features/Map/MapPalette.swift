@@ -19,6 +19,12 @@ enum MapPalette {
         UIColor(red: 0.663, green: 0.522, blue: 0.169, alpha: 1)   // #a9852b 황토
     ]
 
+    /// 한 날의 일정 핀 — 앱의 올리브(`AccentColor` 라이트 값)다. 2026-09-27 전에는 시스템 파랑이라 올리브 경로선 위에
+    /// 파란 핀이 앉았고, 목록 번호와도 색이 달랐다. **테마와 무관하게 고정**한다 — 다크의 밝은 연두에는 흰 번호가 읽히지 않는다.
+    static let itinerary = UIColor(red: 0.275, green: 0.439, blue: 0.180, alpha: 1)   // #46702e
+    /// 고른 핀. 타일 위에서 가장 먼저 눈에 띄어야 한다.
+    static let selected = UIColor.systemOrange
+
     /// 음수면 기본색(한 날만 볼 때는 색을 나눌 이유가 없다).
     static func color(_ index: Int) -> UIColor {
         guard index >= 0 else { return .tintColor }
