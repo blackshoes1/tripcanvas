@@ -7,6 +7,21 @@
   /** 로컬 날짜 → YYYY-MM-DD (타임존 밀림 방지) @param {Date} d @returns {string} */
   function toISO(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 
+  /** 여행 중 → 예정(가까운 출발일) → 지난 여행(최근 출발일) → 날짜 미정. 원본은 보존한다.
+   * @template {{start?:string, days?:unknown[]}} T
+   * @param {T[]} trips @param {string} today @returns {T[]} */
+  function sortTripsByCountdown(trips,today){
+    const todayMs=Date.parse(today+'T00:00:00Z');
+    const ranked=trips.map(trip=>{
+      const start=trip.start||'', startMs=Date.parse(start+'T00:00:00Z');
+      const valid=/^\d{4}-\d{2}-\d{2}$/.test(start)&&Number.isFinite(startMs);
+      const offset=valid? Math.round((startMs-todayMs)/86400000):0;
+      const live=valid&&offset<=0&&offset+Math.max(1,(trip.days||[]).length)>0;
+      return {trip,group:!valid?3:live?0:offset>0?1:2,offset};
+    });
+    return ranked.sort((a,b)=>a.group-b.group||(a.group===1?a.offset-b.offset:b.offset-a.offset)).map(x=>x.trip);
+  }
+
   /** 직선거리(하버사인, km) @param {LatLng} a @param {LatLng} b @returns {number} */
   function haversine(a,b){
     const R=6371, toRad=(/**@type {number}*/x)=>x*Math.PI/180;
@@ -393,7 +408,19 @@
    * @returns {{eta:number, fixed:boolean, conflict:boolean}[]}
    */
   function computeTimeline(day, opts){
+    return computeDayJourney(day, opts).timeline;
+  }
+
+  /**
+   * 타임라인이 실제로 지난 구간과 마지막 상태. 분리 일정도 지도·종료 합계가 같은 가지를 따른다.
+   * @param {{startAt?: string, spots?: any[]}} day
+   * endAnchor가 있으면 모든 가지가 그곳에 돌아오는 구간도 만든다. returning 구간에는 예약·체류를 다시 적용하지 않는다.
+   * @param {{legMin:(a:any,b:any,context?:{depart:number,returning?:boolean})=>number, startAnchor?: any,endAnchor?:any}} opts
+   * @returns {{timeline:any[],legs:{from:any,to:any,spotIndex:number,depart:number,returning?:boolean}[],endMinutes:number,lastLocation:any}}
+   */
+  function computeDayJourney(day, opts){
     const legMin=opts.legMin;
+    /** @type {{from:any,to:any,spotIndex:number,depart:number,returning?:boolean}[]} */ const legs=[];
     /** @type {any[]} */ const spots=((day&&day.spots)||[]);
     let clock=parseHM(day&&day.startAt);
     /** @type {any} */
@@ -402,29 +429,52 @@
     /**
      * 장소 하나를 (시계, 직전 위치) 상태에서 계산하고 다음 상태를 함께 돌려준다.
      * 순차 구간과 분리 구간이 **같은 규칙**을 쓰게 하려고 한 곳에 모았다.
-     * @param {any} s @param {number} at @param {any} from
+     * @param {any} s @param {number} at @param {any} from @param {number} spotIndex @param {boolean} returning
      */
-    function step(s, at, from){
+    function step(s, at, from, spotIndex, returning=false){
       let c=at;
-      if(hasCoord(s) && from) c+=legMin(from,s,{depart:c});
+      if(hasCoord(s) && from && (!returning || +from.lat!==+s.lat || +from.lng!==+s.lng)){
+        legs.push({from,to:s,spotIndex,depart:c,...(returning?{returning:true}:{})});
+        c+=legMin(from,s,{depart:c,...(returning?{returning:true}:{})});
+      }
       const natural=c;
       let eta=natural, conflict=false;
-      if(s.at){ eta=parseHM(s.at); conflict = eta < natural-0.5; }   // 고정 시각인데 이동상 도착이 더 늦으면 충돌
-      const depart = activityStartMinute(s, eta);
+      if(!returning && s.at){ eta=parseHM(s.at); conflict = eta < natural-0.5; }   // 고정 시각인데 이동상 도착이 더 늦으면 충돌
+      const depart = returning ? eta : activityStartMinute(s, eta);
       return {
         // natural=이동상 자연 도착(고정 전), wait=예약 시각까지 기다리는 시간 → UI가 이유를 설명할 수 있게
-        state:{eta, fixed:!!s.at, conflict, natural, wait:Math.max(0, depart-eta)},
-        clock: depart + stayMinutesOf(s),   // 안 정했으면 머무르지 않는다(2026-09-06)
+        state:{eta, fixed:!returning&&!!s.at, conflict, natural, wait:Math.max(0, depart-eta)},
+        clock: depart + (returning ? 0 : stayMinutesOf(s)),   // 안 정했으면 머무르지 않는다(2026-09-06)
         prev: hasCoord(s)? s : from
       };
     }
 
+    /** 각 가지의 도착을 계산하고 가장 늦은 구간을 대표(마지막)로 둔다.
+     * @param {any} s @param {{clock:number,prev:any}[]} origins @param {number} spotIndex @param {boolean} returning */
+    function arrive(s, origins, spotIndex, returning=false){
+      const firstLeg=legs.length;
+      const arrivals=origins.map(b=>step(s,b.clock,b.prev,spotIndex,returning));
+      let latest=0;
+      for(let j=1;j<arrivals.length;j++) if(arrivals[j].state.natural>arrivals[latest].state.natural) latest=j;
+      const selected=legs.findIndex((leg,j)=>j>=firstLeg && leg.from===origins[latest].prev);
+      if(selected>=0) legs.push(legs.splice(selected,1)[0]);
+      return {current:arrivals[latest],branches:arrivals.map(r=>({clock:r.clock,prev:r.prev}))};
+    }
+
     /** @type {any[]} */ const out=new Array(spots.length);
+    /** @type {{clock:number,prev:any}[]|null} */ let joining=null;
     let i=0;
     while(i<spots.length){
       const key=spots[i] && spots[i].split;
       if(!key){                                   // 평소의 하루 — 분리가 없으면 예전과 완전히 같다
-        const r=step(spots[i], clock, prev);
+        let r;
+        if(joining){
+          // 합류점까지 각 가지가 이동한다. 끝난 시각뿐 아니라 합류점에 도착하는 시각을 비교한다.
+          const arrival=arrive(spots[i],joining,i);
+          r=arrival.current;
+          // 좌표 없는 메모는 합류 위치가 아니다. 각 가지의 위치·시각을 다음 실제 장소까지 보존한다.
+          joining=hasCoord(spots[i])?null:arrival.branches;
+        }else r=step(spots[i], clock, prev, i);
         out[i]=r.state; clock=r.clock; prev=r.prev; i++;
         continue;
       }
@@ -436,7 +486,7 @@
       for(let j=i;j<end;j++){
         const bk=whoKey(spots[j]);
         const b=branches.get(bk) || {clock:entryClock, prev:entryPrev};
-        const r=step(spots[j], b.clock, b.prev);
+        const r=step(spots[j], b.clock, b.prev, j);
         out[j]=r.state;
         branches.set(bk, {clock:r.clock, prev:r.prev});
       }
@@ -444,9 +494,14 @@
       /** @type {{clock:number,prev:any}|null} */ let latest=null;
       for(const b of branches.values()) if(!latest || b.clock>latest.clock) latest=b;
       if(latest){ clock=latest.clock; prev=latest.prev; }
+      joining=Array.from(branches.values());
       i=end;
     }
-    return out;
+    if(spots.length && hasCoord(opts.endAnchor)){
+      const arrival=arrive(opts.endAnchor,joining||[{clock,prev}],-1,true).current;
+      clock=arrival.clock; prev=arrival.prev;
+    }
+    return {timeline:out,legs,endMinutes:clock,lastLocation:prev};
   }
 
   /**
@@ -506,6 +561,56 @@
    * @param {any} s @returns {number} */
   function stayNights(s){ const n=Math.round(+((s&&s.nights)||1)); return (isFinite(n)&&n>=1)? Math.min(n,60) : 1; }
   /**
+   * 날짜별 숙박 표시. 동선의 출발 앵커와 달리 체크아웃 뒤에는 숙박을 이월하지 않는다.
+   * 예약 연결은 bookingId만 믿는다. 같은 이름의 다른 예약·일행의 숙소를 합치지 않는다.
+   * @param {any} trip @param {number} di
+   * @returns {{id:string,name:string,state:'CHECK_IN'|'STAY'|'CHECK_OUT'|'CONFLICT',night:number|null,nights:number|null}[]}
+   */
+  function dayLodgings(trip, di){
+    const days=Array.isArray(trip&&trip.days)?trip.days:[];
+    if(!Number.isInteger(di)||di<0||di>=days.length) return [];
+    const dateNum=(/** @type {any} */ value)=>{
+      const n=_dayNum(value);
+      return n!==null&&new Date(n*86400000).toISOString().slice(0,10)===value?n:null;
+    };
+    const origin=dateNum(trip.start);
+    /** @type {{spot:any,index:number,key:string}[]} */ const stays=[];
+    days.forEach((/** @type {any} */ day,/** @type {number} */ index)=>{
+      (Array.isArray(day&&day.spots)?day.spots:[]).forEach((/** @type {any} */ spot,/** @type {number} */ si)=>{
+        if(spot&&spot.stay&&spot.status!=='CANCELLED'&&spot.status!=='SKIPPED') stays.push({spot,index,key:`spot:${index}:${si}`});
+      });
+    });
+    /** @type {ReturnType<typeof dayLodgings>} */ const result=[];
+    /** @param {string} id @param {string} name @param {number} start @param {number} nights @param {{start:number,nights:number}|null} alternate */
+    const add=(id,name,start,nights,alternate=null)=>{
+      const within=(/** @type {number} */ from,/** @type {number} */ count)=>di>=from&&di<=from+count;
+      if(!within(start,nights)&&!(alternate&&within(alternate.start,alternate.nights))) return;
+      const conflict=alternate!==null;
+      result.push({id,name:name||'숙소',state:conflict?'CONFLICT':di===start+nights?'CHECK_OUT':di===start?'CHECK_IN':'STAY',
+        night:conflict||di===start+nights?null:di-start+1,nights:conflict?null:nights});
+    };
+    const used=new Set();
+    for(const booking of Array.isArray(trip.bookings)?trip.bookings:[]){
+      if(!booking||booking.type!=='hotel') continue;
+      const linked=stays.filter(s=>s.spot.bookingId&&s.spot.bookingId===booking.id);
+      const first=linked[0];
+      const start=dateNum(booking.start), end=dateNum(booking.end);
+      if(start===null||end===null||end<=start||(!first&&origin===null)) continue;
+      const from=origin===null?first.index:start-origin;
+      const nights=end-start;
+      linked.forEach(s=>used.add(s.key));
+      // 미입력 기본 1박으로 예약 기간을 덮지 않는다. 명시한 기간만 비교한다.
+      const differs=first&&(first.index!==from||(first.spot.nights!=null&&stayNights(first.spot)!==nights));
+      add(`booking:${booking.id}`,first?.spot.name||booking.title,from,nights,
+        differs?{start:first.index,nights:stayNights(first.spot)}:null);
+    }
+    for(const stay of stays){
+      if(!used.has(stay.key)) add(stay.key,stay.spot.name,stay.index,stayNights(stay.spot));
+    }
+    return result.sort((a,b)=>(a.state==='CHECK_OUT'?0:1)-(b.state==='CHECK_OUT'?0:1));
+  }
+
+  /**
    * di일이 '이월받는' 출발 앵커. 정책(days[di].startPolicy)이 'none'이면 이월 없음(null).
    * 그 외에는 (1) 연박 범위가 di를 덮는 가장 가까운 숙소 → (2) 없으면 직전(빈 일자는 건너뜀)
    * 유효 일자의 dayAnchor(마지막 숙소→없으면 마지막 위치).
@@ -563,7 +668,7 @@
     const carried = dayStartAnchor(days, di);
     const stay = own || ((carried && carried.stay) ? carried : null);
     if(!stay) return null;
-    if(loc[loc.length-1] === stay) return null;   // 이미 숙소로 끝남
+    if(loc[loc.length-1] === stay && !stay.split) return null;   // 분리 가지 하나만 숙소에 있어도 나머지는 돌아와야 한다
     return stay;
   }
 
@@ -1633,39 +1738,39 @@
       days:[
         {title:'마드리드 도착', drive:'', note:'07:00 착륙. 시차적응 겸 가벼운 일정. ⚽ 경기가 일요일이면 오늘 직관!', spots:[
           {name:'바라하스 공항 (MAD)',lat:40.4720,lng:-3.5610,city:'마드리드',desc:'07:00 도착',opt:false},
-          {name:'푸에르타 델 솔',lat:40.4169,lng:-3.7035,city:'마드리드',desc:'중심 광장. 곰 동상, 0km 표지',opt:false},
-          {name:'마요르 광장',lat:40.4155,lng:-3.7074,city:'마드리드',desc:'회랑 카페에서 저녁 추천',opt:false},
-          {name:'메트로폴리타노 (AT마드리드)',lat:40.4362,lng:-3.5995,city:'마드리드',desc:'⚽ vs 데포르티보 (10/25 주말 확정, 킥오프 시간은 4주 전 발표 — 티켓: atleticodemadrid.com)',opt:false}]},
+          {name:'푸에르타 델 솔',lat:40.4169,lng:-3.7035,city:'마드리드',desc:'중심 광장. 곰 동상, 0km 표지',stayMin:45,opt:false},
+          {name:'마요르 광장',lat:40.4155,lng:-3.7074,city:'마드리드',desc:'회랑 카페에서 저녁 추천',stayMin:60,opt:false},
+          {name:'메트로폴리타노 (AT마드리드)',lat:40.4362,lng:-3.5995,city:'마드리드',desc:'⚽ vs 데포르티보 (10/25 주말 확정, 킥오프 시간은 4주 전 발표 — 티켓: atleticodemadrid.com)',stayMin:150,opt:false}]},
         {title:'마드리드', drive:'', note:'⚽ 경기가 월요일이면 저녁 직관', spots:[
-          {name:'왕궁 (Palacio Real)',lat:40.4179,lng:-3.7143,city:'마드리드',desc:'관람 2~3시간. 온라인 사전예약 권장 (patrimonionacional.es)',opt:false},
-          {name:'프라도 미술관',lat:40.4138,lng:-3.6921,city:'마드리드',desc:'월~토 10-20 / 일 10-19. 폐관 2시간 전 무료(줄 김)',opt:false}]},
+          {name:'왕궁 (Palacio Real)',lat:40.4179,lng:-3.7143,city:'마드리드',desc:'관람 2~3시간. 온라인 사전예약 권장 (patrimonionacional.es)',stayMin:150,opt:false},
+          {name:'프라도 미술관',lat:40.4138,lng:-3.6921,city:'마드리드',desc:'월~토 10-20 / 일 10-19. 폐관 2시간 전 무료(줄 김)',stayMin:120,opt:false}]},
         {title:'마드리드', drive:'', note:'그란비아 쇼핑, 못 본 곳 보충', spots:[
-          {name:'레티로 공원',lat:40.4153,lng:-3.6845,city:'마드리드',desc:'수정궁, 호수 보트. 1~2시간',opt:true}]},
+          {name:'레티로 공원',lat:40.4153,lng:-3.6845,city:'마드리드',desc:'수정궁, 호수 보트. 1~2시간',stayMin:90,opt:true}]},
         {title:'→ 톨레도 (1박)', drive:'🚗 마드리드 → 톨레도 · 73km · 약 50분', note:'오전 렌터카 픽업 후 출발', spots:[
-          {name:'알카사르',lat:39.8581,lng:-4.0210,city:'톨레도',desc:'군사박물관. 톨레도 전경',opt:true},
-          {name:'톨레도 대성당',lat:39.8570,lng:-4.0236,city:'톨레도',desc:'스페인 가톨릭 수석 대성당. 1.5시간',opt:false},
-          {name:'미라도르 델 바예',lat:39.8534,lng:-4.0166,city:'톨레도',desc:'구시가 전체 뷰포인트. 일몰 강추 🌇 차로 5분',opt:false}]},
+          {name:'알카사르',lat:39.8581,lng:-4.0210,city:'톨레도',desc:'군사박물관. 톨레도 전경',stayMin:60,opt:true},
+          {name:'톨레도 대성당',lat:39.8570,lng:-4.0236,city:'톨레도',desc:'스페인 가톨릭 수석 대성당. 1.5시간',stayMin:90,opt:false},
+          {name:'미라도르 델 바예',lat:39.8534,lng:-4.0166,city:'톨레도',desc:'구시가 전체 뷰포인트. 일몰 강추 🌇 차로 5분',stayMin:30,opt:false}]},
         {title:'→ 세비야 (2박)', drive:'🚗 톨레도 → (코르도바) → 세비야 · 460km · 약 4시간 20분', note:'중간에 코르도바 메스키타 2시간 경유 추천', spots:[
-          {name:'메스키타 (코르도바)',lat:37.8789,lng:-4.7794,city:'코르도바',desc:'이슬람+가톨릭 융합 건축. 2시간 경유',opt:true}]},
+          {name:'메스키타 (코르도바)',lat:37.8789,lng:-4.7794,city:'코르도바',desc:'이슬람+가톨릭 융합 건축. 2시간 경유',stayMin:120,opt:true}]},
         {title:'세비야', drive:'', note:'저녁 플라멩코 공연 추천', spots:[
-          {name:'세비야 대성당 & 히랄다',lat:37.3861,lng:-5.9926,city:'세비야',desc:'세계 최대 고딕 성당. 온라인 예매 필수 (catedraldesevilla.es)',opt:false},
-          {name:'레알 알카사르',lat:37.3831,lng:-5.9903,city:'세비야',desc:'무데하르 궁전. 사전예약 권장. 2시간',opt:true},
-          {name:'스페인 광장',lat:37.3772,lng:-5.9869,city:'세비야',desc:'대표 포토스팟. 노을+플라멩코 버스킹',opt:false},
-          {name:'메트로폴 파라솔',lat:37.3931,lng:-5.9916,city:'세비야',desc:'목조 전망대. 야경 장소',opt:true}]},
+          {name:'세비야 대성당 & 히랄다',lat:37.3861,lng:-5.9926,city:'세비야',desc:'세계 최대 고딕 성당. 온라인 예매 필수 (catedraldesevilla.es)',stayMin:90,opt:false},
+          {name:'레알 알카사르',lat:37.3831,lng:-5.9903,city:'세비야',desc:'무데하르 궁전. 사전예약 권장. 2시간',stayMin:120,opt:true},
+          {name:'스페인 광장',lat:37.3772,lng:-5.9869,city:'세비야',desc:'대표 포토스팟. 노을+플라멩코 버스킹',stayMin:60,opt:false},
+          {name:'메트로폴 파라솔',lat:37.3931,lng:-5.9916,city:'세비야',desc:'목조 전망대. 야경 장소',stayMin:60,opt:true}]},
         {title:'→ 론다 (1박)', drive:'🚗 세비야 → 론다 · 128km · 약 1시간 45분', note:'절벽 마을 1박 — 야경과 아침 안개 낀 다리가 압권', spots:[
-          {name:'푸엔테 누에보',lat:36.7406,lng:-5.1655,city:'론다',desc:'98m 협곡 위의 다리. 협곡 아래 전망 포인트 추천',opt:false},
-          {name:'론다 투우장 & 알라메다',lat:36.7423,lng:-5.1671,city:'론다',desc:'가장 오래된 투우장 + 절벽 산책로',opt:true}]},
+          {name:'푸엔테 누에보',lat:36.7406,lng:-5.1655,city:'론다',desc:'98m 협곡 위의 다리. 협곡 아래 전망 포인트 추천',stayMin:60,opt:false},
+          {name:'론다 투우장 & 알라메다',lat:36.7423,lng:-5.1671,city:'론다',desc:'가장 오래된 투우장 + 절벽 산책로',stayMin:60,opt:true}]},
         {title:'→ 말라가 (2박)', drive:'🚗 론다 → 말라가 · 102km · 약 1시간 20분', note:'해안도로 경유 시 +1시간', spots:[
-          {name:'미하스 푸에블로',lat:36.5959,lng:-4.6373,city:'말라가',desc:'하얀 마을. 이동 중 경유',opt:true},
-          {name:'말라게타 해변 (코스타 델 솔)',lat:36.7194,lng:-4.4093,city:'말라가',desc:'11월 초 낮 20°C — 해변 산책+에스페토 🍤',opt:false}]},
+          {name:'미하스 푸에블로',lat:36.5959,lng:-4.6373,city:'말라가',desc:'하얀 마을. 이동 중 경유',stayMin:60,opt:true},
+          {name:'말라게타 해변 (코스타 델 솔)',lat:36.7194,lng:-4.4093,city:'말라가',desc:'11월 초 낮 20°C — 해변 산책+에스페토 🍤',stayMin:90,opt:false}]},
         {title:'말라가 · 코스타 델 솔', drive:'', note:'', spots:[
-          {name:'알카사바 & 히브랄파로',lat:36.7211,lng:-4.4158,city:'말라가',desc:'항구+해안 전망. 오전 추천',opt:false},
-          {name:'네르하 & 프리힐리아나',lat:36.7444,lng:-3.8770,city:'말라가',desc:'"유럽의 발코니" + 하얀 마을. 차로 50분',opt:true}]},
+          {name:'알카사바 & 히브랄파로',lat:36.7211,lng:-4.4158,city:'말라가',desc:'항구+해안 전망. 오전 추천',stayMin:90,opt:false},
+          {name:'네르하 & 프리힐리아나',lat:36.7444,lng:-3.8770,city:'말라가',desc:'"유럽의 발코니" + 하얀 마을. 차로 50분',stayMin:120,opt:true}]},
         {title:'→ 그라나다 (2박)', drive:'🚗 말라가 → 그라나다 · 125km · 약 1시간 30분', note:'그라나다는 음료 시키면 타파스 무료!', spots:[
-          {name:'그라나다 대성당',lat:37.1763,lng:-3.5986,city:'그라나다',desc:'이사벨 여왕 묘. 오후 시내 산책',opt:true}]},
+          {name:'그라나다 대성당',lat:37.1763,lng:-3.5986,city:'그라나다',desc:'이사벨 여왕 묘. 오후 시내 산책',stayMin:60,opt:true}]},
         {title:'그라나다 — 알함브라', drive:'', note:'예약 시간 엄수, 여권 지참', spots:[
-          {name:'알함브라 궁전',lat:37.1761,lng:-3.5881,city:'그라나다',desc:'🚨 사전예매 필수 (tickets.alhambra-patronato.es). 나스르 궁전 입장시간 지정제. 반나절',opt:false},
-          {name:'산 니콜라스 전망대',lat:37.1810,lng:-3.5927,city:'그라나다',desc:'알함브라+설산 뷰. 일몰 강추 🌇',opt:false}]},
+          {name:'알함브라 궁전',lat:37.1761,lng:-3.5881,city:'그라나다',desc:'🚨 사전예매 필수 (tickets.alhambra-patronato.es). 나스르 궁전 입장시간 지정제. 반나절',stayMin:240,opt:false},
+          {name:'산 니콜라스 전망대',lat:37.1810,lng:-3.5927,city:'그라나다',desc:'알함브라+설산 뷰. 일몰 강추 🌇',stayMin:60,opt:false}]},
         {title:'→ 마드리드 (2박)', drive:'🚗 그라나다 → 마드리드 · 420km · 약 4시간 15분', note:'오후 도착, 렌터카 반납', spots:[]},
         {title:'마드리드 자유일', drive:'', note:'산 미겔 시장, 레이나 소피아(게르니카), 쇼핑', spots:[]},
         {title:'출국', drive:'', note:'11:00 비행기 — 08:30 공항 도착 권장', spots:[
@@ -1674,7 +1779,7 @@
     };
   }
 
-  const TC={additionalReservations,tripSummaryCities,returnModeOf,SPOT_PRIORITIES,spotPriorityOf,applySpotPriority,spotPriorityLabel,SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,cityFromKoreanAddr,placeName,cityFromGoogle,normHours,classifySearchErr,isKoreanSearch,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,normHM,sortDayByTime,inKorea,simplifyName,parseDirect,parseMoney,normalizeDraftDays,extractJson,extMapLink,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,stayMinutesOf,activityStartMinute,dayEndMinutes,departMinuteAfter,computeTimeline,whoKey,splitSegments,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,budgetBookings,moneyAmount,parseCostAmount,costAmountOf,dayEnteredCost,splitAcrossNights,stayCostShares,dayEnteredCostOn,hasManualTransportCost,dayCostSummary,ADMISSION_REQUIREMENTS,admissionLabel,admissionOf,needsAdmissionBooking,normalizeAdmission,admissionError,COST_CATEGORIES,costCategoryOf,COST_PAY_STATES,costPayStateOf,payStateTotals,TRIP_NOTE_CATEGORIES,normalizeTripNote,tripCostSummary,localMode,SAMPLE_TRIP_ID,isSampleTrip,sampleTrip,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
+  const TC={dayLodgings,sortTripsByCountdown,additionalReservations,tripSummaryCities,returnModeOf,SPOT_PRIORITIES,spotPriorityOf,applySpotPriority,spotPriorityLabel,SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,cityFromKoreanAddr,placeName,cityFromGoogle,normHours,classifySearchErr,isKoreanSearch,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,normHM,sortDayByTime,inKorea,simplifyName,parseDirect,parseMoney,normalizeDraftDays,extractJson,extMapLink,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,stayMinutesOf,activityStartMinute,dayEndMinutes,departMinuteAfter,computeTimeline,computeDayJourney,whoKey,splitSegments,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,budgetBookings,moneyAmount,parseCostAmount,costAmountOf,dayEnteredCost,splitAcrossNights,stayCostShares,dayEnteredCostOn,hasManualTransportCost,dayCostSummary,ADMISSION_REQUIREMENTS,admissionLabel,admissionOf,needsAdmissionBooking,normalizeAdmission,admissionError,COST_CATEGORIES,costCategoryOf,COST_PAY_STATES,costPayStateOf,payStateTotals,TRIP_NOTE_CATEGORIES,normalizeTripNote,tripCostSummary,localMode,SAMPLE_TRIP_ID,isSampleTrip,sampleTrip,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
   if(typeof module!=='undefined' && module.exports){ module.exports=TC; }   // Node (테스트)
   else { const r=/**@type {any}*/(root); for(const k in TC) r[k]=/**@type {any}*/(TC)[k]; }   // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);

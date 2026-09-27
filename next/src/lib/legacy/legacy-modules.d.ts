@@ -131,6 +131,7 @@ declare module '@legacy/lib.js' {
     /** 그 날 장소를 도착시각 순으로 제자리 정렬 — 순서가 바뀌면 true */
     sortDayByTime(day: unknown): boolean;
     toISO(d: Date): string;
+    sortTripsByCountdown<T extends { start?: string; days?: unknown[] }>(trips: T[], today: string): T[];
     haversine(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number;
     legKey(a: { lat: number; lng: number }, b: { lat: number; lng: number }, mode?: string): string;
     decodePolyline(str: string | null | undefined): { lat: number; lng: number }[];
@@ -138,6 +139,7 @@ declare module '@legacy/lib.js' {
     ringPts(p: { lat: number; lng: number }, r: number): { lat: number; lng: number }[];
     zonedMinutesToISOString(isoDate: string, minutes: number, timeZone: string): string | null;
     inKorea(p: { lat: number; lng: number } | null | undefined): boolean;
+    dayLodgings(trip: unknown, di: number): { id: string; name: string; state: 'CHECK_IN' | 'STAY' | 'CHECK_OUT' | 'CONFLICT'; night: number | null; nights: number | null }[];
     stayNights(s: unknown): number;
     localMode(mode: unknown): string;
     returnModeOf(day: unknown): string;
@@ -162,6 +164,10 @@ declare module '@legacy/lib.js' {
     dayEndMinutes(lastSpot: unknown, lastEta: number, backMinutes?: number | null): number;
     /** 다음 구간이 출발하는 시각(분) = 직전 장소 도착 + 예약 대기 + 체류 */
     departMinuteAfter(prevSpot: unknown, prevState: { eta: number; wait?: number } | null | undefined): number;
+    computeDayJourney(
+      day: unknown, opts: { legMin: (a: unknown, b: unknown, context?: { depart: number; returning?: boolean }) => number; startAnchor?: unknown; endAnchor?: unknown }
+    ): { timeline: { eta: number; fixed: boolean; conflict: boolean; natural: number; wait: number }[];
+      legs: { from: unknown; to: unknown; spotIndex: number; depart: number; returning?: boolean }[]; endMinutes: number; lastLocation: unknown };
     computeTimeline(
       day: unknown,
       opts: { legMin: (a: unknown, b: unknown, context: { depart: number }) => number; startAnchor?: unknown }

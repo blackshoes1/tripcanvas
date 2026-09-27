@@ -23,8 +23,8 @@ export interface RealtimeConnection {
 
 export interface RealtimeHubOptions {
   verifier: TokenVerifier;
-  /** 이 사용자가 이 여행(client_id)을 볼 수 있는가 — 소유자 또는 활성 멤버 */
-  canRead(userId: string, tripId: string): Promise<boolean>;
+  /** 볼 수 있는 여행의 DB 행 ID. client_id가 다른 사용자의 여행과 겹쳐도 구독을 섞지 않는다. */
+  readableTripId(userId: string, clientId: string): Promise<string | null>;
   authTimeoutMs: number;
   heartbeatMs: number;
   now?: () => number;
@@ -36,8 +36,9 @@ export const CLOSE = { UNAUTHORIZED: 4401, TIMEOUT: 4408, EXPIRED: 4440, GOING_A
 interface Conn {
   socket: RealtimeSocket;
   ctx: RequestContext | null;
-  /** 구독한 여행(client_id) */
-  trips: Set<string>;
+  authVersion: number;
+  /** 구독한 여행의 client_id → DB 행 ID */
+  trips: Map<string, string>;
   connectedAt: number;
   /** 마지막으로 살아 있음을 확인한 시각 — PING을 보낸 뒤 PONG으로 갱신된다 */
   seenAt: number;
@@ -65,6 +66,7 @@ export function createRealtimeHub(opts: RealtimeHubOptions) {
   }
 
   async function handle(conn: Conn, raw: string): Promise<void> {
+    if (!conns.has(conn)) return;
     let msg: Record<string, unknown>;
     try {
       const parsed = JSON.parse(raw);
@@ -77,8 +79,14 @@ export function createRealtimeHub(opts: RealtimeHubOptions) {
     const type = String(msg.type ?? '');
 
     if (type === 'AUTH') {
+      // 새 인증을 기다리는 동안에도 이전 사용자의 구독은 더 이상 유효하지 않다.
+      const version = ++conn.authVersion;
+      conn.ctx = null;
+      conn.trips.clear();
       const token = typeof msg.token === 'string' ? msg.token : '';
-      const ctx = token ? await opts.verifier.verify(token) : null;
+      let ctx: RequestContext | null = null;
+      try { ctx = token ? await opts.verifier.verify(token) : null; } catch (e) { log('인증 확인 실패', e); }
+      if (!conns.has(conn) || conn.authVersion !== version) return;
       if (!ctx) {
         send(conn, { type: 'ERROR', code: 'UNAUTHORIZED' });
         drop(conn, CLOSE.UNAUTHORIZED, 'unauthorized');
@@ -108,15 +116,17 @@ export function createRealtimeHub(opts: RealtimeHubOptions) {
         send(conn, { type: 'UNSUBSCRIBED', tripId });
         return;
       }
-      let allowed = false;
+      let recordId: string | null = null;
+      const ctx = conn.ctx;
       try {
-        allowed = await opts.canRead(conn.ctx.userId, tripId);
+        recordId = await opts.readableTripId(ctx.userId, tripId);
       } catch (e) {
         // 확인할 수 없으면 열어 주지 않는다 — 닫힌 쪽으로 실패한다
         log('멤버십 확인 실패', e);
       }
-      if (!allowed) { send(conn, { type: 'ERROR', code: 'FORBIDDEN', tripId }); return; }
-      conn.trips.add(tripId);
+      if (!conns.has(conn) || conn.ctx !== ctx) return;
+      if (!recordId) { send(conn, { type: 'ERROR', code: 'FORBIDDEN', tripId }); return; }
+      conn.trips.set(tripId, recordId);
       send(conn, { type: 'SUBSCRIBED', tripId });
       return;
     }
@@ -127,7 +137,7 @@ export function createRealtimeHub(opts: RealtimeHubOptions) {
   return {
     connect(socket: RealtimeSocket): RealtimeConnection {
       const conn: Conn = {
-        socket, ctx: null, trips: new Set(), connectedAt: now(), seenAt: now(), pinged: false,
+        socket, ctx: null, authVersion: 0, trips: new Map(), connectedAt: now(), seenAt: now(), pinged: false,
         handle: { receive: async () => {}, disconnected: () => {} }
       };
       conn.handle = {
@@ -138,12 +148,22 @@ export function createRealtimeHub(opts: RealtimeHubOptions) {
       return conn.handle;
     },
 
-    /** 알림 하나를 그 여행 구독자에게. mine은 구독자마다 계산한다 */
-    publish(event: RealtimeEvent): void {
-      for (const conn of [...conns]) {
-        if (!conn.ctx || !conn.trips.has(event.clientId)) continue;
-        send(conn, messageFor(event, conn.ctx.userId) as unknown as Record<string, unknown>);
-      }
+    /** 방송 직전에 권한을 다시 본다 — 구독 후 나갔거나 내보내진 사람에게 신호도 보내지 않는다. */
+    async publish(event: RealtimeEvent): Promise<void> {
+      await Promise.all([...conns].map(async (conn) => {
+        const ctx = conn.ctx;
+        if (!ctx || conn.trips.get(event.clientId) !== event.tripId) return;
+        if (ctx.expiresAt != null && now() >= ctx.expiresAt * 1000) { drop(conn, CLOSE.EXPIRED, 'token expired'); return; }
+        let recordId: string | null = null;
+        try { recordId = await opts.readableTripId(ctx.userId, event.clientId); } catch (e) { log('멤버십 확인 실패', e); }
+        if (!conns.has(conn) || conn.ctx !== ctx || conn.trips.get(event.clientId) !== event.tripId) return;
+        if (recordId !== event.tripId) {
+          conn.trips.delete(event.clientId);
+          send(conn, { type: 'ERROR', code: 'FORBIDDEN', tripId: event.clientId });
+          return;
+        }
+        send(conn, messageFor(event, ctx.userId) as unknown as Record<string, unknown>);
+      }));
     },
 
     /** 주기적으로 부른다: 인증 지연·토큰 만료·죽은 접속 정리 */

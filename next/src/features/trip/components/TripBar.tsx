@@ -1,6 +1,7 @@
 'use client';
 // 여행 전환·생성·편집 — 레거시 헤더의 여행 선택 + 여행 모달과 같은 역할.
 import { useState } from 'react';
+import lib from '@legacy/lib.js';
 
 import { SharedTripCover } from './SharedTripCover';
 
@@ -60,7 +61,7 @@ export function TripBar({
       {trips.length > 1 ? (
         <select className="itTripSel" value={activeTrip.id} aria-label="여행 선택"
           onChange={e => onSwitch(e.target.value)}>
-          {trips.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+          {lib.sortTripsByCountdown(trips, lib.toISO(new Date())).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
         </select>
       ) : (
         <span className="itTripName">{activeTrip.name}</span>

@@ -14,7 +14,7 @@ import type {
 } from './contract';
 import { CONTRACT_SCHEMA_VERSION } from './contract';
 import type { TodayInput } from './todayView';
-import { computeToday, estimateLegMinutes } from './todayView';
+import { computeToday } from './todayView';
 
 export interface TravelStateInput extends TodayInput {
   /** 기기가 알려준 현재 위치 — 저장하지 않고 이번 계산에만 쓴다(§55). */
@@ -45,9 +45,7 @@ export function buildTravelState(input: TravelStateInput): TravelStateResponse {
   const timeZone = day.timeZone;
 
   const next = state.nextItem;
-  const travelMinutes = next
-    ? Math.round(estimateLegMinutes(state.currentLocation, next.location, day.mode))
-    : 0;
+  const travelMinutes = today.nextAction?.travelMinutes ?? 0;
   const rawDeparture = next ? adapt.departurePlan(state, next, travelMinutes) : null;
 
   const departure: DeparturePlan | null = rawDeparture

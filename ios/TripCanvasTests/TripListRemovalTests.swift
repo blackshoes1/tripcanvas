@@ -23,6 +23,27 @@ final class TripListRemovalTests: XCTestCase {
         return (model, service)
     }
 
+    func testCountdownOrderPreservesStoredOrder() async {
+        func summary(_ id: String, start: String, countdown: Int? = nil, today: Int = -1) -> TripSummary {
+            TripSummary(id: id, name: id, start: start, dayCount: 4, revision: 1,
+                        updatedAt: "", timeZone: "Asia/Seoul", cities: [], todayIndex: today,
+                        daysUntilStart: countdown, role: .owner, memberCount: 1)
+        }
+        let trips = [
+            summary("past", start: "2026-06-18"),
+            summary("far", start: "2027-07-23", countdown: 300),
+            summary("undated", start: ""),
+            summary("near", start: "2026-10-26", countdown: 30),
+            summary("older", start: "2026-03-10"),
+            summary("live", start: "2026-09-24", today: 2),
+            summary("today", start: "2026-09-26", today: 0),
+            summary("same", start: "2026-10-26", countdown: 30)
+        ]
+        let (model, _) = await loaded(trips)
+        XCTAssertEqual(model.ordered.map(\.id), ["today", "live", "near", "same", "far", "past", "older", "undated"])
+        XCTAssertEqual(model.trips, trips)
+    }
+
     func testOwnerDeletesWithTheReadRevision() async {
         let (model, service) = await loaded([trip("t1", role: .owner, revision: 9)])
         await model.remove(trip("t1", role: .owner, revision: 9))

@@ -45,6 +45,11 @@ export function dropUndoTop(): void {
 
 /** 테스트 전용 — 모듈 전역이라 테스트끼리 상태가 새지 않게 비운다 */
 export function resetUndoForTest(): void {
+  clearUndo();
+}
+
+/** 원격본을 채택하면 이전 revision의 편집을 되살리지 않는다. */
+export function clearUndo(): void {
   stack = [];
   lastWritten = null;
   emit();

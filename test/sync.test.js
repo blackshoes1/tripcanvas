@@ -108,3 +108,21 @@ test('저장 실패: 아무것도 모를 때도 문장이 성립한다',()=>{
   assert.match(S.saveFailText(null),/닿지 못했|저장 실패/);
   assert.match(S.saveFailText({status:409}),/저장 실패/);
 });
+
+for(const status of ['delete-pending','delete-error']){
+  test(`로그인 병합: ${status}인 여행은 복원하지 않고 삭제 작업과 base revision을 보존한다`,()=>{
+    const pending={revision:4,status,op:'offline-delete',hash:'old'};
+    const out=S.mergeForLogin([],[{client_id:'t1',data:trip('cloud'),revision:5,deleted_at:null}],{t1:pending});
+    assert.deepEqual(out.trips,[]);
+    assert.deepEqual(out.meta.t1,pending); // 새 revision으로 삭제하면 그 사이의 편집을 지운다
+  });
+}
+
+test('로그인 병합: 밀린 삭제가 서버에도 반영돼 있으면 tombstone으로 완료한다',()=>{
+  const out=S.mergeForLogin([],[{client_id:'t1',data:trip('cloud'),revision:5,deleted_at:'2026-09-25'}],{
+    t1:{revision:4,status:'delete-error',op:'offline-delete',hash:'old'}
+  });
+  assert.deepEqual(out.trips,[]);
+  assert.equal(out.meta.t1.status,'tombstoned');
+  assert.equal(out.meta.t1.op,'');
+});

@@ -112,11 +112,21 @@ final class TripListViewModel {
         }
     }
 
-    /// 여행 중인 것이 맨 위 — 앱을 여는 이유는 대개 지금 하는 여행이다.
+    /// 여행 중 → 가까운 예정 여행 → 최근 지난 여행 → 날짜 미정.
     var ordered: [TripSummary] {
-        trips.sorted { lhs, rhs in
-            if lhs.isLive != rhs.isLive { return lhs.isLive }
-            return lhs.updatedAt > rhs.updatedAt
+        func group(_ trip: TripSummary) -> Int {
+            if trip.isLive { return 0 }
+            if trip.isUpcoming { return 1 }
+            return trip.start.isEmpty ? 3 : 2
+        }
+        return trips.sorted { lhs, rhs in
+            let left = group(lhs), right = group(rhs)
+            if left != right { return left < right }
+            if left == 1, lhs.daysUntilStart != rhs.daysUntilStart {
+                return (lhs.daysUntilStart ?? 0) < (rhs.daysUntilStart ?? 0)
+            }
+            if lhs.start != rhs.start { return lhs.start > rhs.start }
+            return false
         }
     }
 }
@@ -343,7 +353,7 @@ struct TripListView: View {
                     Button { createStartMode = .scratch; showsCreateTrip = true } label: {
                         Label("여행 만들기", systemImage: "plus").frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .prominentButton()
                     Button { createStartMode = .paste; showsCreateTrip = true } label: {
                         Label("가진 일정 붙여넣기", systemImage: "doc.on.clipboard").frame(maxWidth: .infinity)
                     }
@@ -377,7 +387,7 @@ struct TripListView: View {
                         NavigationLink(value: trip) {
                             TripRow(trip: trip)
                         }
-                        TripCoverView(trip: trip, api: env.service.api, cache: env.service.cache, refresh: coverRefresh) { path.append(trip) }
+                        TripCoverView(trip: trip, api: env.service.api, cache: env.service.cache, cacheScope: env.service.cacheScope, refresh: coverRefresh) { path.append(trip) }
                     }
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)

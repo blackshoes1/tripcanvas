@@ -5,6 +5,10 @@ import SwiftUI
 struct SuggestionCard: View {
     let suggestion: TripSuggestion
     let isBusy: Bool
+    /// 제안이 가리키는 일정(들를 곳·숙소)이 있으면 그 자리. 수락할 수 없는 제안에도 **할 수 있는 일**을 둔다 —
+    /// 예전에는 대부분의 카드에 '이번엔 건너뛰기'만 있었다(2026-09-27 UX 검토, 웹의 지도·다녀왔어요와 같게).
+    var target: ActivitySummary? = nil
+    var onComplete: (() -> Void)? = nil
     let onAccept: () -> Void
     let onDismiss: () -> Void
 
@@ -35,7 +39,7 @@ struct SuggestionCard: View {
 
             if !suggestion.reasons.isEmpty {
                 VStack(alignment: .leading, spacing: Space.xs) {
-                    Text("왜 이곳인가요?")
+                    Text(suggestion.type == .rest ? "왜 지금인가요?" : "왜 이곳인가요?")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
                     ForEach(Array(suggestion.reasons.prefix(3).enumerated()), id: \.offset) { _, reason in
@@ -54,7 +58,17 @@ struct SuggestionCard: View {
             HStack(spacing: Space.s) {
                 if suggestion.acceptable {
                     PrimaryActionButton(title: acceptTitle, systemImage: "plus", isBusy: isBusy, action: onAccept)
+                } else if let target, let location = target.location,
+                          [.visitPlace, .checkIn, .returnToHotel].contains(suggestion.action.kind) {
+                    PrimaryActionButton(title: "길찾기", systemImage: "arrow.triangle.turn.up.right.diamond") {
+                        MapLauncher.open(location: location, name: target.name)
+                    }
                 }
+                if !suggestion.acceptable, let onComplete, [.visitPlace, .checkIn].contains(suggestion.action.kind) {
+                    SecondaryActionButton(title: "다녀왔어요", systemImage: "checkmark", action: onComplete)
+                        .disabled(isBusy)
+                }
+                // 빠져나갈 길은 언제나 있다 — J는 대신 결정하지 않는다.
                 SecondaryActionButton(title: "이번엔 건너뛰기", action: onDismiss)
             }
         }

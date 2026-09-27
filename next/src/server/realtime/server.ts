@@ -25,6 +25,7 @@ export function createRealtimeServer(opts: RealtimeServerOptions) {
   const log = opts.log ?? ((m: string, e?: unknown) => console.log(`[tripcanvas-realtime] ${m}`, e ?? ''));
   const wss = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024 });
   let sweeper: ReturnType<typeof setInterval> | null = null;
+  let dispatching: Promise<void> = Promise.resolve();
 
   const http: Server = createServer((req, res) => {
     if (req.url === '/health') {
@@ -67,10 +68,12 @@ export function createRealtimeServer(opts: RealtimeServerOptions) {
       return address && typeof address === 'object' ? address.port : opts.port;
     },
     /** LISTEN이 준 payload 한 줄 → 허브 방송 */
-    dispatch(payload: string): void {
+    dispatch(payload: string): Promise<void> {
       const event = parseNotification(payload);
-      if (!event) { log('모르는 알림 payload를 버렸다'); return; }
-      opts.hub.publish(event);
+      if (!event) { log('모르는 알림 payload를 버렸다'); return Promise.resolve(); }
+      // DB 권한 확인을 기다리는 동안 다음 알림이 먼저 나가지 않게 LISTEN 순서를 지킨다.
+      dispatching = dispatching.then(() => opts.hub.publish(event));
+      return dispatching;
     },
     async stop(): Promise<void> {
       if (sweeper) { clearInterval(sweeper); sweeper = null; }

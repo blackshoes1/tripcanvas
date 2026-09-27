@@ -45,6 +45,8 @@ struct PlanSettingsView: View {
     let selectedDay: Int
     let onSave: (TripDocument, Int) async -> String?
     @Environment(\.dismiss) private var dismiss
+    @State private var startInvalid = false
+    @State private var endInvalid = false
     @State private var name: String
     @State private var start: String
     @State private var count: Int
@@ -92,7 +94,7 @@ struct PlanSettingsView: View {
                 Section {
                     TextField("여행 이름", text: $name)
                     // 시작일·종료일 — 숫자로 쳐도 되고 달력을 눌러도 된다. 일수는 그 둘에서 나온다.
-                    DateEntryField(title: "시작일", text: Binding(get: { start.isEmpty ? nil : start }, set: { start = $0 ?? "" }))
+                    DateEntryField(title: "시작일", text: Binding(get: { start.isEmpty ? nil : start }, set: { start = $0 ?? "" }), invalid: $startInvalid)
                     if start.isEmpty {
                         Stepper("\(count)일 여행", value: $count, in: 1...maxDays)
                     } else {
@@ -100,7 +102,7 @@ struct PlanSettingsView: View {
                             guard let iso, let base = ISODateText.date(from: start), let date = ISODateText.date(from: iso) else { return }
                             let days = (ISODateText.calendar.dateComponents([.day], from: base, to: date).day ?? 0) + 1
                             count = min(maxDays, max(1, days))
-                        }), fallback: { ISODateText.date(from: end) ?? Date() })
+                        }), fallback: { ISODateText.date(from: end) ?? Date() }, invalid: $endInvalid)
                         LabeledContent("기간", value: "\(count)일")
                     }
                 } header: { Text("여행") } footer: {
@@ -147,7 +149,7 @@ struct PlanSettingsView: View {
                     Button("저장") {
                         guard let draft else { return }
                         Task { if await saving.perform({ await onSave(draft, revision) }) { dismiss() } }
-                    }.disabled(draft == nil || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || saving.isWorking || (datesChanged && !confirmedDates))
+                    }.disabled(draft == nil || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || saving.isWorking || (datesChanged && !confirmedDates) || startInvalid || endInvalid)
                 }
             }
             .onChange(of: start) { _, _ in confirmedDates = false }

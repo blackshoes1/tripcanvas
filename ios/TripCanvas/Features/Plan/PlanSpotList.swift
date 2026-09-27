@@ -91,23 +91,10 @@ struct PlanSpotList: View {
                     .moveDisabled(!model.canEdit)
                     // 반납은 장소 뒤, 숙소 복귀 앞 — 웹 일자 카드와 같은 순서다.
                     ForEach(model.planDay?.carReturns ?? [], id: \.bookingId) { carEventRow($0) }
-                    if model.canEdit && !day.spots.isEmpty && !isEditing {
-                        // 왼쪽 정렬 텍스트 동작(시안). 검색이 먼저다 — 좌표가 있어야 동선·ETA·지도에 들어간다.
-                        Menu {
-                            Button { actions.addAfter(nil) } label: { Label("검색해서 담기", systemImage: "magnifyingglass") }
-                            Button { actions.createSpot() } label: { Label("직접 입력", systemImage: "square.and.pencil") }
-                        } label: {
-                            Label("장소 추가", systemImage: "plus")
-                                .font(.body.weight(.semibold))
-                                .foregroundStyle(Ink.accent)
-                                .frame(maxWidth: .infinity, minHeight: 48, alignment: .center)
-                                .contentShape(Rectangle())
-                        }
-                        .listRowBackground(Ink.raised)
-                        .listRowSeparator(.visible, edges: .top)
-                    }
                 } footer: {
-                    if !model.canEdit {
+                    if model.documentCachedAt != nil {
+                        Text("연결되면 최신 일정을 불러와 편집할 수 있어요.")
+                    } else if !model.canEdit {
                         Text("보기 권한이라 일정을 바꿀 수 없어요. 주최자에게 요청하세요.")
                     }
                     // 나란한 가지를 열로 쪼개지 않는다(드래그 인덱스가 어긋난다) —
@@ -119,7 +106,7 @@ struct PlanSpotList: View {
                     // 서버가 아직 준비 안 된 것을 아무도 모른다(2026-09-06에 그랬다).
                     // 시도해 보고 못 받았을 때만 말한다 — 기다리는 중에 실패했다고 하지 않는다.
                     if model.plan == nil, model.planAttempted(for: model.selectedDay), !day.spots.isEmpty {
-                        Label("예상 도착 시각을 불러오지 못했어요 — 일정 편집은 그대로 됩니다.",
+                        Label(model.documentCachedAt != nil ? "저장된 장소와 메모를 보고 있어요. 이동·도착 시각은 연결되면 확인할 수 있어요." : "예상 도착 시각을 불러오지 못했어요 — 일정 편집은 그대로 됩니다.",
                               systemImage: "clock.badge.exclamationmark")
                     }
                 }
@@ -128,6 +115,23 @@ struct PlanSpotList: View {
                     Section {
                         backRow(back)
                             .listRowSeparator(.hidden)
+                    }
+                }
+                // ① 장소 추가는 **목록 맨 아래 한 곳**이다 — 빈 날에도 같은 자리에 있다(2026-09-27 시안).
+                //    누르면 방법(검색·직접 입력)을 고른다. 검색이 먼저다 — 좌표가 있어야 동선·ETA·지도에 들어간다.
+                if model.canEdit && !isEditing && !choosingPlaces {
+                    Section {
+                        Button { actions.addAfter(nil) } label: {
+                            Label("장소 추가", systemImage: "plus")
+                                .font(.body.weight(.semibold))
+                                .foregroundStyle(Ink.accent)
+                                .frame(maxWidth: .infinity, minHeight: 54)
+                                .background(Ink.accent.opacity(0.1), in: RoundedRectangle(cornerRadius: 16))
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .listRowInsets(EdgeInsets())
+                        .listRowBackground(Color.clear)
                     }
                 }
             }
@@ -160,6 +164,7 @@ struct PlanSpotList: View {
                 .foregroundStyle(Ink.accent)
                 .accessibilityAddTraits(.isHeader)
             dayHeader(day)
+            lodgingSummary
             if model.plan == nil && !model.planAttempted(for: model.selectedDay) {
                 ProgressView("이동·도착 시각을 계산하는 중").font(.caption)
             }
@@ -211,7 +216,7 @@ struct PlanSpotList: View {
             removal: .move(edge: goingForward ? .leading : .trailing).combined(with: .opacity))
     }
 
-    /// 하루 제목 — `마드리드 도착 · 1박`. 승인 시안의 첫 줄이다.
+    /// 하루 제목. 숙박 상태는 별도 줄에서 표시한다.
     /// ⚠️ 이동수단 바꾸기는 **접힌 요약 안으로** 옮겼다(시안 헤더에는 제목만 있다). 기능은 그대로다.
     private func dayHeader(_ day: TripDay) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: Space.s) {
@@ -225,11 +230,30 @@ struct PlanSpotList: View {
         .textCase(nil)
     }
 
-    /// `마드리드 도착 · 1박`. **숙박은 문서에 있을 때만** 붙인다 — 없는 밤을 지어내지 않는다.
     private func dayTitleText(_ day: TripDay) -> String {
-        let base = day.title.isEmpty ? "\(model.selectedDay + 1)일차" : day.title
-        let nights = day.spots.compactMap { $0.isStay ? $0.nights : nil }.max() ?? 0
-        return nights > 0 ? "\(base) · \(nights)박" : base
+        day.title.isEmpty ? "\(model.selectedDay + 1)일차" : day.title
+    }
+
+    @ViewBuilder
+    private var lodgingSummary: some View {
+        if let lodging = model.planDay?.lodging {
+            if lodging.isEmpty {
+                Label("숙박 정보 없음", systemImage: "bed.double")
+                    .font(.subheadline).foregroundStyle(Ink.soft)
+            } else {
+                ForEach(lodging) { item in
+                    Label {
+                        Text("\(item.name) · \(item.detail)")
+                            .fixedSize(horizontal: false, vertical: true)
+                    } icon: {
+                        Image(systemName: item.state == "CONFLICT" ? "exclamationmark.circle" : "bed.double")
+                    }
+                    .font(.subheadline)
+                    .foregroundStyle(item.state == "CONFLICT" ? Ink.warning : Ink.soft)
+                    .accessibilityElement(children: .combine)
+                }
+            }
+        }
     }
 
     /// 그 장소가 분리 구간에 속하는지와, 거기에 누가 있는지.
@@ -250,19 +274,26 @@ struct PlanSpotList: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
             if model.canEdit {
-                // 방금 만든 여행이면 **누를 것을 화면에 둔다.** 처음 온 사람에게
-                // "오른쪽 위 ＋를 누르세요"는 한 번 더 찾게 만드는 말이다.
+                // **누를 것을 화면에 둔다** — 빈 날이면 여행이 비었든 아니든 같다.
+                // (예전 문구 "오른쪽 위 ＋"는 실제로는 ⋯ 메뉴라 없는 버튼을 가리켰다 — 2026-09-27 UX 검토)
                 if model.tripIsEmpty {
                     Text("어디부터 가볼까요?").font(.subheadline.weight(.semibold))
-                    Button { actions.addAfter(nil) } label: {
+                }
+                // 처음 만든 여행이면 이게 이 화면의 주 동작이다. 아니면 아래 '장소 추가'가 있으니 가볍게 둔다.
+                if model.tripIsEmpty {
+                    Button { actions.searchSpot() } label: {
                         Label("장소 검색해서 담기", systemImage: "magnifyingglass")
-                            .frame(maxWidth: .infinity)
+                            .frame(maxWidth: .infinity, minHeight: 44)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .prominentButton()
                 } else {
-                    Text("오른쪽 위 ＋로 검색해서 담거나, 일행과 골라 둔 곳에서 가져옵니다.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    Button { actions.searchSpot() } label: {
+                        Label("장소 검색해서 담기", systemImage: "magnifyingglass")
+                            .font(.subheadline.weight(.semibold))
+                            .frame(minHeight: 44)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Ink.accent)
                 }
                 NavigationLink { CandidateBoardView(trip: trip) } label: {
                     Label("가고 싶은 곳에서 가져오기", systemImage: "mappin.and.ellipse")

@@ -130,6 +130,19 @@ describe('trips', () => {
     expect(list[0].role).toBe('OWNER');
   });
 
+  it('단건 조회는 다른 여행에 영향받지 않고 삭제된 내 사본도 공유 사본보다 먼저 돌려준다', async () => {
+    const shared = await trips.create({ ownerId: A, clientId: 'trip1', data: doc('공유받은 것') });
+    await members.add({ tripId: shared.id, userId: B, role: 'VIEWER', displayName: null, invitedBy: A });
+    const owned = await trips.create({ ownerId: B, clientId: 'trip1', data: doc('내 것') });
+    await trips.create({ ownerId: B, clientId: 'other', data: doc('다른 여행') });
+    await trips.tombstoneCas(owned.id, 1);
+    const view = await trips.findVisible(B, 'trip1');
+    expect(view?.record.id).toBe(owned.id);
+    expect(view?.record.deletedAt).not.toBeNull();
+    expect(view?.role).toBe('OWNER');
+    expect(await trips.findVisible(B, 'missing')).toBeNull();
+  });
+
   it('목록은 최근 수정 순이다', async () => {
     const t1 = await trips.create({ ownerId: A, clientId: 'old', data: doc('먼저') });
     await trips.create({ ownerId: A, clientId: 'new', data: doc('나중') });

@@ -4,6 +4,7 @@
 //   trips.id 는 운영과 같은 uuid
 // 마이그레이션 SQL은 drizzle-kit이 이 파일에서 만든다(migrations/). 손으로 SQL을 고치지 않는다(§62).
 import { sql } from 'drizzle-orm';
+import type { PlaceCover } from '../../application/trip/coverSchema';
 import {
   bigint, boolean, check, date, doublePrecision, index, integer, jsonb, numeric, pgSequence, pgTable, primaryKey, text, timestamp,
   uniqueIndex, uuid
@@ -48,6 +49,7 @@ export const trips = pgTable('trips', {
 export const tripCovers = pgTable('trip_covers', {
   tripId: uuid('trip_id').primaryKey().references(() => trips.id, { onDelete: 'cascade' }),
   imageBase64: text('image_base64'),
+  placePhoto: jsonb('place_photo').$type<PlaceCover>(),
   revision: integer('revision').notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 }, (t) => [

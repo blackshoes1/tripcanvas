@@ -1,10 +1,11 @@
-// 협업 Repository — Supabase RPC·트리거가 하던 저장·조회를 그대로 옮겼다. 인가는 CollabService가 이미 판정했다.
+// 협업 Repository — Supabase RPC·트리거가 하던 저장·조회를 그대로 옮겼다. 인가는 CollabService가 판정한다.
+// 초대 수락의 유효성만은 잠근 행으로 판정해 참여 저장과 원자적으로 처리한다.
 // 이름표는 SQL이 만든다(tc_member_label과 같은 규칙): display_name → '주최자'(OWNER) → '멤버'. 계정 이메일은 어디에도 나오지 않는다(§69).
 // 활동 기록은 각 변경과 **같은 트랜잭션**에서 쓴다 — Supabase의 트리거를 대신한다. 무엇을 안 남기는지는 각 메서드 주석에.
 import { and, desc, eq, sql } from 'drizzle-orm';
 
 import type {
-  ActivityView, CandidateInput, CandidateProvider, CandidateView, CommentView, InviteView, MemberView, PreferenceView
+  ActivityView, CandidateInput, CandidateProvider, CandidateView, CommentView, InviteAccept, InviteView, MemberView, PreferenceView
 } from '../../application/collaboration/types';
 import type {
   CandidateRow, CollabRepository, CommentRow, InviteRow, MemberRole, MemberRow, MemberStatus
@@ -147,23 +148,41 @@ export class PgCollabRepository implements CollabRepository {
     };
   }
 
-  async acceptInvite(input: { inviteId: number; tripId: string; userId: string; role: string; displayName: string | null; invitedBy: string }): Promise<void> {
-    await this.db.transaction(async (tx) => {
+  async acceptInvite(input: { tokenHash: string; userId: string; displayName: string | null }): Promise<InviteAccept> {
+    const fail = (reason: InviteAccept['reason']): InviteAccept => ({ ok: false, reason, client_id: null, trip_name: null, role: null, already_member: false });
+    return this.db.transaction(async (tx) => {
+      const [invite] = await tx.select().from(tripInvites).where(eq(tripInvites.tokenHash, input.tokenHash)).for('update');
+      if (!invite) return fail('INVALID');
+      // 서로 다른 초대 링크로 같은 사람이 처음 참여해도 직렬화한다. 삭제와 수락도 같은 여행 행으로 조율한다.
+      const [trip] = await tx.select().from(trips).where(eq(trips.id, invite.tripId)).for('no key update');
+      if (!trip || trip.deletedAt) return fail('TRIP_DELETED');
+      const name = (trip.data as { name?: unknown } | null)?.name;
+      const done = (role: string, already: boolean): InviteAccept => ({
+        ok: true, reason: 'OK', client_id: trip.clientId, trip_name: typeof name === 'string' && name ? name : '여행', role, already_member: already
+      });
+      if (trip.userId === input.userId) return done('OWNER', true);
       const [existing] = await tx.select().from(tripMembers)
-        .where(and(eq(tripMembers.tripId, input.tripId), eq(tripMembers.userId, input.userId))).for('update');
+        .where(and(eq(tripMembers.tripId, trip.id), eq(tripMembers.userId, input.userId))).for('update');
+      if (existing?.status === 'ACTIVE') return done(existing.role, true);
+      // 기존 멤버는 만료된 제 링크도 다시 열 수 있다. 새 참여만 유효성·횟수·내보냄을 검사한다.
+      if (invite.revokedAt) return fail('REVOKED');
+      if (invite.expiresAt.getTime() <= Date.now()) return fail('EXPIRED');
+      if (invite.maxUses != null && invite.useCount >= invite.maxUses) return fail('EXHAUSTED');
+      if (existing?.status === 'REMOVED' && existing.updatedAt >= invite.createdAt) return fail('REMOVED');
       if (existing) {
         await tx.update(tripMembers).set({
-          role: input.role, status: 'ACTIVE', displayName: input.displayName ?? existing.displayName,
-          invitedBy: input.invitedBy, joinedAt: sql`now()`, updatedAt: sql`now()`
+          role: invite.role, status: 'ACTIVE', displayName: input.displayName ?? existing.displayName,
+          invitedBy: invite.createdBy, joinedAt: sql`now()`, updatedAt: sql`now()`
         }).where(eq(tripMembers.id, existing.id));
       } else {
         await tx.insert(tripMembers).values({
-          tripId: input.tripId, userId: input.userId, role: input.role, status: 'ACTIVE',
-          displayName: input.displayName, invitedBy: input.invitedBy, joinedAt: sql`now()`
+          tripId: trip.id, userId: input.userId, role: invite.role, status: 'ACTIVE',
+          displayName: input.displayName, invitedBy: invite.createdBy, joinedAt: sql`now()`
         });
       }
-      await tx.update(tripInvites).set({ useCount: sql`${tripInvites.useCount} + 1` }).where(eq(tripInvites.id, input.inviteId));
-      await this.log(tx, input.tripId, input.userId, 'MEMBER_JOINED', { member_id: input.userId, role: input.role });
+      await tx.update(tripInvites).set({ useCount: sql`${tripInvites.useCount} + 1` }).where(eq(tripInvites.id, invite.id));
+      await this.log(tx, trip.id, input.userId, 'MEMBER_JOINED', { member_id: input.userId, role: invite.role });
+      return done(invite.role, false);
     });
   }
 

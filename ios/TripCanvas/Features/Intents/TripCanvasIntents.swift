@@ -79,10 +79,11 @@ struct ShowNextActionIntent: AppIntent {
     func perform() async throws -> some IntentResult & ProvidesDialog {
         let env = IntentSupport.makeEnvironment()
         let trip = try await IntentSupport.activeTrip(env)
-        let state = try await env.service.travelState(
+        let fetched = try await env.service.travelState(
             tripId: trip.id, location: nil, locationUpdatedAt: nil,
             travelMode: false, suppressUntil: nil, markSent: false)
 
+        let state = fetched.value
         guard let next = state.today.nextAction else {
             return .result(dialog: IntentDialog(stringLiteral: state.pulse.text))
         }

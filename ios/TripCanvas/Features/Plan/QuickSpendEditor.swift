@@ -9,6 +9,7 @@ import SwiftUI
 /// 자세한 기준은 나중에 하루 비용에서 같은 항목을 열어 고칠 수 있다(같은 `costItems`다).
 struct QuickSpendEditor: View {
     let dayLabel: String
+    var draftKey: EditorDraftKey? = nil
     let onSave: (CostEntry) async -> Bool
 
     @AppStorage("tc.quickSpend.currency") private var lastCurrency = Currency.krw.rawValue
@@ -19,6 +20,9 @@ struct QuickSpendEditor: View {
     @State private var photos: [String] = []
     @State private var saving = false
     @State private var failed = false
+    @State private var entryID = UUID().uuidString
+    @State private var recovery: SpendInputDraft?
+    @State private var checkedRecovery = false
     @FocusState private var amountFocused: Bool
     @Environment(\.dismiss) private var dismiss
 
@@ -31,6 +35,23 @@ struct QuickSpendEditor: View {
     var body: some View {
         NavigationStack {
             Form {
+                if let recovery {
+                    Section("저장하지 않은 입력이 있어요") {
+                        Button("이어서 입력") {
+                            self.recovery = nil
+                            entryID = recovery.id
+                            amount = recovery.amount
+                            title = recovery.title
+                            kind = CostCategory(rawValue: recovery.kind) ?? .food
+                            currency = Currency(rawValue: recovery.currency) ?? .krw
+                            photos = recovery.photos
+                        }
+                        Button("초안 버리기", role: .destructive) {
+                            self.recovery = nil
+                            EditorDraftStore.shared.remove(draftKey)
+                        }
+                    }
+                }
                 Section {
                     HStack(spacing: Space.s) {
                         TextField("얼마", text: $amount)
@@ -86,7 +107,11 @@ struct QuickSpendEditor: View {
                     Button("저장") { Task { await save() } }.disabled(!valid || saving)
                 }
             }
+            .onChange(of: inputDraft) { _, _ in preserveInput() }
             .onAppear {
+                guard !checkedRecovery else { return }
+                recovery = EditorDraftStore.shared.load(SpendInputDraft.self, key: draftKey)
+                checkedRecovery = true
                 currency = Currency(rawValue: lastCurrency) ?? .krw
                 amountFocused = true
             }
@@ -106,12 +131,24 @@ struct QuickSpendEditor: View {
         return entry
     }
 
+    private var inputDraft: SpendInputDraft {
+        SpendInputDraft(id: entryID, amount: amount, title: title, kind: kind.rawValue, currency: currency.rawValue, photos: photos)
+    }
+
+    private func preserveInput() {
+        guard checkedRecovery, recovery == nil else { return }
+        if !amount.isEmpty || !title.isEmpty || !photos.isEmpty {
+            EditorDraftStore.shared.save(inputDraft, key: draftKey)
+        } else { EditorDraftStore.shared.remove(draftKey) }
+    }
+
     private func save() async {
         guard !saving, let value = parsedAmount else { return }
         saving = true
         defer { saving = false }
         lastCurrency = currency.rawValue
-        let entry = Self.entry(amount: value, title: title, kind: kind, currency: currency, photos: photos)
-        if await onSave(entry) { dismiss() } else { failed = true }
+        var entry = Self.entry(amount: value, title: title, kind: kind, currency: currency, photos: photos)
+        entry.raw["id"] = .string(entryID)
+        if await onSave(entry) { EditorDraftStore.shared.remove(draftKey); dismiss() } else { failed = true }
     }
 }

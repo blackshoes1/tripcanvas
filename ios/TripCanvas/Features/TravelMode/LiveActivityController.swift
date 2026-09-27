@@ -58,10 +58,10 @@ final class LiveActivityController: LiveActivityControlling {
 
     func end() async {
         #if canImport(ActivityKit)
-        guard let current = activity else { return }
-        await current.end(nil, dismissalPolicy: .immediate)
+        let running = Activity<TripCanvasActivityAttributes>.activities
         activity = nil
         isRunning = false
+        for current in running { await current.end(nil, dismissalPolicy: .immediate) }
         Analytics.track(.liveActivityEnded, [:])
         #endif
     }

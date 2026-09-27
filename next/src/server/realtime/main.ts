@@ -57,9 +57,9 @@ async function main(): Promise<void> {
   const hub = createRealtimeHub({
     verifier,
     // 구독 권한 = 여행을 볼 수 있는 권한. 소유자 또는 활성 멤버(§41) — API와 같은 규칙을 같은 Repository로 판정한다
-    canRead: async (userId, tripId) => {
-      const view = await trips.findVisible(userId, tripId);
-      return !!view && !view.record.deletedAt;
+    readableTripId: async (userId, clientId) => {
+      const view = await trips.findVisible(userId, clientId);
+      return view && !view.record.deletedAt ? view.record.id : null;
     },
     authTimeoutMs: 10_000,
     heartbeatMs: 30_000

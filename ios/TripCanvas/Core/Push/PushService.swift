@@ -73,6 +73,13 @@ final class PushService: NSObject, PushScheduling {
     }
 
     func clearDeepLink() { pendingDeepLink = nil }
+
+    func resetForAccountChange() {
+        deviceToken = nil
+        pendingDeepLink = nil
+        center.removeAllPendingNotificationRequests()
+        center.removeAllDeliveredNotifications()
+    }
 }
 
 extension PushService: UNUserNotificationCenterDelegate {

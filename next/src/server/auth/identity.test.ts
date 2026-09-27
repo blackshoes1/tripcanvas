@@ -30,6 +30,21 @@ beforeEach(async () => {
 });
 
 describe('resolveDomainUser', () => {
+  it('새 계정의 첫 요청이 겹쳐도 같은 사용자로 인증된다', async () => {
+    const auth = authUser('auth-1', 'new@example.com', true);
+    const ids = await Promise.all([resolveDomainUser(identities, auth), resolveDomainUser(identities, auth)]);
+    expect(ids[0]).toBeTruthy();
+    expect(ids[1]).toBe(ids[0]);
+    const count = (await db.db.execute(`select count(*)::int as n from users`)) as { rows: { n: number }[] };
+    expect(count.rows[0].n).toBe(1);
+  });
+
+  it('기존 계정을 잇는 첫 요청이 겹쳐도 원래 사용자 ID를 보존한다', async () => {
+    await new PgUserRepository(db.db).ensure({ id: LEGACY, email: 'a@example.com' });
+    const auth = authUser('auth-1', 'a@example.com', true);
+    expect(await Promise.all([resolveDomainUser(identities, auth), resolveDomainUser(identities, auth)])).toEqual([LEGACY, LEGACY]);
+  });
+
   it('이메일이 확인되지 않았으면 잇지 않는다 — 남의 계정을 가져갈 수 없다', async () => {
     await new PgUserRepository(db.db).ensure({ id: LEGACY, email: 'a@example.com' });
     await makeAuthUser('auth-1', 'a@example.com', false);

@@ -29,6 +29,8 @@ export class PgAuthIdentityRepository implements AuthIdentityRepository {
   async createLinked(email: string, authUserId: string): Promise<string> {
     const [row] = await this.db.insert(users)
       .values({ id: sql`gen_random_uuid()`, email, authUserId, lastSeenAt: sql`now()` })
+      // 최초 API 요청이 겹치거나 다른 요청이 기존 계정을 먼저 이어도 같은 도메인 ID를 돌려준다.
+      .onConflictDoUpdate({ target: users.authUserId, set: { authUserId } })
       .returning({ id: users.id });
     return row.id;
   }

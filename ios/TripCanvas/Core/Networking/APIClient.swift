@@ -87,11 +87,18 @@ struct APIClient {
 
     /// 401이면 토큰을 한 번 갱신해 재시도한다. 그래도 401이면 로그인 화면으로 돌려보낸다.
     private func send<T: Decodable>(path: String, method: String, query: [URLQueryItem], body: Data?) async throws -> T {
+        let token = try await tokens.accessToken()
         do {
-            return try await attempt(path: path, method: method, query: query, body: body, token: try await tokens.accessToken())
+            let result: T = try await attempt(path: path, method: method, query: query, body: body, token: token)
+            guard try await tokens.accessToken() == token else { throw APIError.unauthorized }
+            return result
         } catch APIError.unauthorized {
+            // 이전 계정의 401로 새 계정 토큰을 가져와 요청을 다시 보내지 않는다.
+            guard try await tokens.accessToken() == token else { throw APIError.unauthorized }
             let refreshed = try await tokens.refreshToken()
-            return try await attempt(path: path, method: method, query: query, body: body, token: refreshed)
+            let result: T = try await attempt(path: path, method: method, query: query, body: body, token: refreshed)
+            guard try await tokens.accessToken() == refreshed else { throw APIError.unauthorized }
+            return result
         }
     }
 

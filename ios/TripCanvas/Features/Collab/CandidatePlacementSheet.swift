@@ -85,12 +85,16 @@ struct DayPositionFields: View {
                 Text(PlanDateLabel.day(document, index)).tag(index)
             }
         }
-        .onChange(of: day) { _, _ in position = 0 }
+        // 기본은 **그 날 맨 뒤**다 — 맨 처음에 넣으면 그 날의 출발이 바뀌어 하루 동선이 통째로 밀린다
+        // (2026-09-27 UX 검토). 날을 바꿔도 다시 맨 뒤로.
+        .onChange(of: day) { _, value in position = document.hasDay(value) ? document.days[value].spots.count : 0 }
+        .onAppear { if position == 0, document.hasDay(day) { position = document.days[day].spots.count } }
         if document.hasDay(day) {
+            let spots = document.days[day].spots
             Picker("넣을 위치", selection: $position) {
                 Text("맨 처음").tag(0)
-                ForEach(Array(document.days[day].spots.enumerated()), id: \.offset) { index, spot in
-                    Text("\(spot.name) 뒤").tag(index + 1)
+                ForEach(Array(spots.enumerated()), id: \.offset) { index, spot in
+                    Text(index == spots.count - 1 ? "\(spot.name) 뒤 (맨 뒤)" : "\(spot.name) 뒤").tag(index + 1)
                 }
             }
         }

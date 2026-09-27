@@ -82,7 +82,7 @@ struct MapDiscoveryView: View {
                     .overlay(alignment: .top) {
                         if focus == nil {
                             Button("여행 지역을 먼저 골라 주세요") { showsRegion = true }
-                                .buttonStyle(.borderedProminent).padding(Space.m)
+                                .prominentButton().padding(Space.m)
                         }
                     }
                     bottomPanel(model)
@@ -279,7 +279,7 @@ struct MapDiscoveryView: View {
                         Label(model.isSaved(hit) ? "담았어요" : "가고 싶은 곳에 담기", systemImage: model.isSaved(hit) ? "checkmark" : "star")
                     }.frame(maxWidth: .infinity, minHeight: 44)
                 }
-                .buttonStyle(.borderedProminent)
+                .prominentButton()
                 .disabled(model.isSaving || !model.candidatesLoaded || model.isSaved(hit)
                           || model.candidate(for: hit)?.status == "REJECTED"
                           || (hit.name.isEmpty && manualName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))

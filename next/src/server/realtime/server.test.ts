@@ -16,7 +16,7 @@ afterEach(async () => { await stop?.(); stop = null; });
 
 async function start(listenerStatus: 'LISTENING' | 'RECONNECTING' = 'LISTENING') {
   const hub = createRealtimeHub({
-    verifier, canRead: async (_u, tripId) => tripId === 'trip1', authTimeoutMs: 5_000, heartbeatMs: 30_000
+    verifier, readableTripId: async (_u, clientId) => clientId === 'trip1' ? 'row-1' : null, authTimeoutMs: 5_000, heartbeatMs: 30_000
   });
   const listener = { status: () => listenerStatus } as PgListener;
   const server = createRealtimeServer({ hub, listener, port: 0, log: vi.fn() });

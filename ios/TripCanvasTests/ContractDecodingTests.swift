@@ -259,3 +259,29 @@ final class UnreadFixtureDecodingTests: XCTestCase {
         XCTAssertFalse(details.items.isEmpty)
     }
 }
+
+extension DayPlanDecodingTests {
+    func testLodgingLabelsDistinguishArrivalNightsDepartureAndConflict() {
+        let item = { (state: String, night: Int?, nights: Int?) in
+            DayPlanLodging(id: "b1", name: "호텔 A", state: state, night: night, nights: nights)
+        }
+        XCTAssertEqual(item("CHECK_IN", 1, 4).detail, "체크인 · 총 4박")
+        XCTAssertEqual(item("STAY", 2, 4).detail, "2번째 밤 / 총 4박")
+        XCTAssertEqual(item("CHECK_OUT", nil, 4).detail, "체크아웃")
+        XCTAssertEqual(item("CONFLICT", nil, nil).detail, "예약과 일정의 숙박 기간 확인 필요")
+    }
+
+    func testLodgingDecodesAndOldServerDoesNotMeanNoAccommodation() throws {
+        let plan = try loadFixture()
+        let lodging = try XCTUnwrap(plan.day.lodging)
+        XCTAssertFalse(lodging.isEmpty)
+        XCTAssertEqual(lodging.first?.state, "CHECK_IN")
+        let encoded = try JSONEncoder().encode(plan)
+        var json = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        var day = try XCTUnwrap(json["day"] as? [String: Any])
+        day.removeValue(forKey: "lodging")
+        json["day"] = day
+        let old = try JSONDecoder().decode(DayPlanResponse.self, from: JSONSerialization.data(withJSONObject: json))
+        XCTAssertNil(old.day.lodging, "이전 API의 미지원 응답을 숙박 정보 없음으로 표시하지 않는다")
+    }
+}

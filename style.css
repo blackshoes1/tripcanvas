@@ -1,14 +1,14 @@
   :root{--primary:#46702e;--primary-dark:#375a25;--ink:#16130f;--muted:#4f4740;--subtle:#6b6256;--border:#e3dccc;--surface:#fff;--surface-2:#f4f1ea;--header:#f4f1ea;--focus:#2e5c6e;--shadow:0 10px 28px rgba(22,19,15,.10);--city-1:#c6482b;--city-2:#b8650f;--city-3:#3e7a4c;--city-4:#2e5c6e;--city-5:#7b5ea7;--hover-bg:#ede7da;--selected-bg:#eef3e9;--selected-hover-bg:#e1ebd8;--selected-border:#46702e;--selected-accent:#375a25;--drag-bg:#ede7da;--meta-eta:#4f4740;--meta-eta-fixed:#2e5c6e;--meta-cost:#4f4740;--meta-link:#a93a20;--meta-warning:#8e4e0b;--meta-danger:#a52c22;--meta-soft:#6b6256;--meta-good:#2f5e3b;--badge-good-bg:#dcebdf;--badge-good-fg:#2f5e3b;--badge-warn-bg:#f6ead3;--badge-warn-fg:#8e4e0b;--badge-danger-bg:#f6e0dc;--badge-danger-fg:#a52c22;--mono:ui-monospace,SFMono-Regular,'SF Mono',Menlo,monospace}
   *{margin:0;padding:0;box-sizing:border-box}
   body{font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;height:100dvh;display:flex;flex-direction:column;background:var(--surface-2);color:var(--ink);font-size:14px}
-  body.theme-dark{--primary:#9cc97a;--primary-dark:#b4d998;--ink:#f4f1ea;--muted:#d5ccbb;--subtle:#b5ab98;--border:#332d25;--surface:#221e19;--surface-2:#16130f;--header:#16130f;--shadow:0 10px 28px rgba(0,0,0,.45);--city-1:#e0674a;--city-2:#e0a050;--city-3:#7fc08c;--city-4:#7fa9bc;--city-5:#b79ae0;--hover-bg:#2b2620;--selected-bg:#232b1d;--selected-hover-bg:#2e3826;--selected-border:#9cc97a;--selected-accent:#b4d998;--drag-bg:#2b2620;--meta-eta:#d5ccbb;--meta-eta-fixed:#7fa9bc;--meta-cost:#d5ccbb;--meta-link:#f0937a;--meta-warning:#f0a050;--meta-danger:#ef7a6a;--meta-soft:#b5ab98;--meta-good:#8fc79b;--badge-good-bg:#1b2e20;--badge-good-fg:#8fc79b;--badge-warn-bg:#3a2f14;--badge-warn-fg:#f0c97f;--badge-danger-bg:#3a2320;--badge-danger-fg:#ef9d8f}
+  body.theme-dark{--primary:#9cc97a;--primary-dark:#b4d998;--ink:#f4f1ea;--muted:#d5ccbb;--subtle:#b5ab98;--border:#332d25;--surface:#221e19;--surface-2:#16130f;--header:#16130f;--shadow:0 10px 28px rgba(0,0,0,.45);--city-1:#e0674a;--city-2:#e0a050;--city-3:#7fc08c;--city-4:#7fa9bc;--city-5:#b79ae0;--hover-bg:#2b2620;--selected-bg:#232b1d;--selected-hover-bg:#2e3826;--selected-border:#9cc97a;--selected-accent:#b4d998;--drag-bg:#2b2620;--meta-eta:#d5ccbb;--meta-eta-fixed:#7fa9bc;--meta-cost:#d5ccbb;--meta-link:#f0937a;--meta-warning:#f0a050;--meta-danger:#ef7a6a;--meta-soft:#b5ab98;--meta-good:#8fc79b;--badge-good-bg:#1b2e20;--badge-good-fg:#8fc79b;--badge-warn-bg:#3a2f14;--badge-warn-fg:#f0c97f;--badge-danger-bg:#3a2320;--badge-danger-fg:#ef9d8f;--focus:#7fa9bc}
   :focus-visible{outline:3px solid color-mix(in srgb,var(--focus) 70%,transparent);outline-offset:2px}
   .srOnly{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
   button{font-family:inherit;cursor:pointer}
   /* UI 장식 아이콘 — 글자 곁에 서는 선 아이콘. 색은 글자를 따라간다 */
   .ic{width:16px;height:16px;flex:none;vertical-align:-3px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
   .ic+*{margin-left:2px}
-  header{background:var(--header);padding:9px 14px;display:flex;align-items:center;gap:8px;flex-wrap:nowrap;z-index:1001;border-bottom:1px solid var(--border);position:relative}
+  header{background:var(--header);padding:9px 14px;display:flex;align-items:center;gap:8px;flex-wrap:nowrap;z-index:1200;border-bottom:1px solid var(--border);position:relative}
   header h1{font-size:16px;font-weight:800;color:var(--ink);margin-right:4px}
   select,input,textarea{font-family:inherit;background:var(--surface);color:var(--ink);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px}
   .btn{border:1px solid var(--border);border-radius:10px;padding:9px 14px;font-size:13px;background:var(--surface);color:var(--ink);transition:.15s;min-height:40px}
@@ -201,7 +201,7 @@
   .travelTop{display:flex;align-items:center;gap:10px;margin-bottom:12px}.travelTop strong{flex:1;text-align:center}.travelTop select{max-width:170px}.travelFocus,.travelNext{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:10px}.travelFocus{border-top:4px solid var(--primary)}.travelKicker,.travelSectionTitle{font-size:11px;color:var(--subtle);font-weight:700;margin-bottom:7px}.travelPlace{font-size:18px;font-weight:800;margin-bottom:7px}.travelFacts{font-size:12px;color:var(--muted);line-height:1.7}.travelActions{display:flex;gap:8px;margin-top:10px}.travelActions a{display:inline-block;text-decoration:none;background:var(--primary);color:#fff;padding:7px 12px;border-radius:8px;font-size:12px;font-weight:700}.travelActions a+a{background:var(--surface);color:var(--ink);border:1px solid var(--border)}.travelNext{display:grid;grid-template-columns:1fr auto;align-items:center}.travelNext strong{font-size:15px}.travelSectionTitle{margin:8px 2px}
   #sheetHandle{display:none}
   .tSpot a{display:inline-block;font-size:12.5px;color:#fff;background:var(--primary);border-radius:8px;padding:5px 12px;text-decoration:none}
-  #pickBanner{position:absolute;top:10px;left:50%;transform:translateX(-50%);background:#e63946;color:#fff;font-size:13px;font-weight:700;padding:7px 16px;border-radius:20px;z-index:1500;display:none}
+  #pickBanner{position:absolute;top:10px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--surface);font-size:13px;font-weight:700;padding:5px 6px 5px 16px;border-radius:22px;z-index:1500;display:none;align-items:center;gap:10px;white-space:nowrap}#pickBanner .btn{min-height:36px}
   #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#3e7a4c;color:#fff;font-size:13px;padding:8px 18px;border-radius:20px;z-index:4000;display:none;align-items:center;gap:12px;max-width:92vw}
   #toast .toastAct{background:rgba(255,255,255,.22);border:none;color:#fff;font-weight:700;font-size:12px;padding:4px 10px;border-radius:12px;white-space:nowrap}
   #toast .toastAct:hover{background:rgba(255,255,255,.35)}
@@ -234,7 +234,9 @@
   .memberRow{display:flex;align-items:center;gap:8px;padding:7px 9px;border:1px solid var(--border);border-radius:9px;font-size:12.5px;background:var(--surface)}
   .memberRow .mn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .memberRow .me{color:var(--subtle);font-size:11px;margin-left:4px}
-  .memberRow select{padding:4px 6px;font-size:12px;border-radius:7px}
+  /* ⚠️ `.modal select{width:100%}`를 되돌린다 — 안 그러면 이름(.mn)이 폭 0으로 접혀 멤버 이름이 사라진다 */
+  .memberRow select{padding:4px 6px;font-size:12px;border-radius:7px;width:auto;flex:none}
+  .memberRow .mn{min-width:5em}
   .roleBadge{font-size:11px;padding:2px 8px;border-radius:999px;background:var(--surface-2);color:var(--muted);white-space:nowrap}
   .roleBadge.owner{background:#f6ead3;color:#8e4e0b}.roleBadge.editor{background:#dce7eb;color:#24505f}.roleBadge.viewer{background:var(--surface-2);color:var(--subtle)}
   body.theme-dark .roleBadge.owner{background:#3a2f14;color:#f0c97f}body.theme-dark .roleBadge.editor{background:#1e3038;color:#9cc4d2}
@@ -294,7 +296,7 @@
   .commentRow .cn{font-weight:700;white-space:nowrap}
   .commentRow .cb{flex:1;min-width:0;overflow-wrap:anywhere;color:var(--ink)}
   .commentRow .at{color:var(--subtle);font-size:11px;white-space:nowrap}
-  .commentRow .cx{color:#ff8fa3;background:none;border:0;font-size:12px;padding:0 4px;min-height:auto;cursor:pointer}
+  .commentRow .cx{color:var(--meta-danger);background:none;border:0;font-size:12px;padding:0 4px;min-height:auto;cursor:pointer}
   .commentForm{display:flex;gap:6px;margin-top:6px}.commentForm input{flex:1;font-size:12px;min-width:0}
   /* 최근 활동 — 읽기 쉬운 문장 한 줄씩(§39) */
   .activityList{display:grid;gap:2px;max-height:240px;overflow-y:auto}
@@ -406,7 +408,7 @@ body.playing #playHud{
   .tripRow .tripCover{width:64px;height:48px;object-fit:cover;border-radius:4px}
   .tripRow.active{border-color:var(--primary);background:var(--selected-bg)}
   .tripRow .tn{flex:1;cursor:pointer;line-height:1.45}
-  .tripRow .tn:hover{color:#fff}
+  .tripRow .tn:hover{color:var(--primary-dark);text-decoration:underline}
   .tripRow .opt{display:block;color:var(--subtle);font-size:11px}
 
 /* ── 카드 상태: default / hover / selected / focus / drag ─────────────────
@@ -582,3 +584,28 @@ body.playing #playHud{
 .mapEmpty{position:absolute;inset:0 0 0 360px;z-index:10;display:grid;place-items:center;padding:24px;background:var(--surface-2);text-align:center}
 .mapEmpty>div{max-width:380px}.mapEmpty h2{font-size:22px;margin-bottom:12px}.mapEmpty p{color:var(--muted);line-height:1.7;margin-bottom:20px}.mapEmpty .btn{min-height:44px}
 @media(max-width:700px){.mapEmpty{inset:0;place-items:start center;padding:10dvh 16px 16px}.mapEmpty h2{font-size:18px}.mapEmpty p{font-size:13px;margin-bottom:12px}#saveStateBar{padding-inline:12px}}
+
+/* 못 읽는 입력(시각·금액)은 지우지 않고 칸에 표시한다 — 고칠 곳이 보이게 */
+input[aria-invalid="true"]{border-color:var(--meta-danger)!important;box-shadow:0 0 0 2px color-mix(in srgb,var(--meta-danger) 25%,transparent)}
+/* 다크의 주 색은 밝은 연두라 흰 글자는 1.9:1로 읽히지 않는다 — 다크에서만 짙은 글자로(약 10:1).
+   ⚠️ 라이트의 #fff는 그대로다: 테마 토큰으로 바꾸면 라이트·다크가 같이 흔들린다(CLAUDE.md 웹 색 규칙). */
+body.theme-dark .btn.primary,body.theme-dark .travelActions a,body.theme-dark .tSpot a,body.theme-dark .sgFrom{color:#16130f}
+.actionMenu.up .actionMenuPanel{top:auto;bottom:42px}
+.spotWarn{display:grid;gap:2px;margin:0 0 2px 60px;padding-right:4px;min-width:0;color:var(--meta-danger);font-weight:600;font-size:12px;line-height:1.4;white-space:normal;overflow-wrap:anywhere}
+.spotMetaItem.stayMin.unset{opacity:.8;border:1px dashed var(--border);background:none;border-radius:6px;padding:1px 6px;font:inherit;color:var(--meta-soft);cursor:pointer;min-height:24px}
+/* 모바일에서 자주 누르는 작은 조작의 터치 영역 — 겉모양은 두고 손가락이 닿는 높이만 44px로(2026-09-27 UX 검토).
+   댓글 입력은 16px 밑이면 iOS Safari가 확대해 버려 16px로 둔다. */
+@media (max-width:760px){
+  .candReact button,.candActions .btn,.commentForm .btn{min-height:44px}
+  .commentForm input{font-size:16px;min-height:44px}
+  .addSpot,.addSpotBtn{min-height:44px}
+  .legModeBtn{min-width:36px;min-height:36px;opacity:.7}
+}
+/* 다크에서 '처음 화면 다시 보기'의 흰 그라데이션 위에 밝은 글자가 묻혔다(1.13:1) — 다크 전용 배경 */
+body.theme-dark .onboarding{background:linear-gradient(145deg,#221e19 0%,#16130f 70%,#2b1a17 140%)}
+body.theme-dark .brandMark{color:#16130f}
+/* 모달이 열려 있으면 토스트를 위로 — 바텀시트의 버튼 줄(취소·저장)을 덮었다. 폭은 내용만큼(두 줄로 접히지 않게) */
+body:has(.modalBg.show) #toast{bottom:auto;top:calc(env(safe-area-inset-top) + 12px)}
+#toast{width:max-content}
+.tSpot .n .eta{display:inline-block;min-width:44px;margin-right:4px;font-variant-numeric:tabular-nums}
+.noteEditing{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12.5px;font-weight:600;color:var(--meta-warning);margin-bottom:6px}.noteEditing[hidden]{display:none}

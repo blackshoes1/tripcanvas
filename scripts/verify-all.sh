@@ -108,7 +108,8 @@ if want ios; then
     # **최신 런타임에서** 찾는데, 여기서 고른 이름은 `simctl`이 먼저 뱉은 런타임의 것이다.
     # 런타임이 둘 이상인 기계에서는 둘이 어긋나 `Unable to find a device matching…`으로 죽는다
     # (CI 러너는 런타임이 하나라 드러나지 않는다).
-    SIM_LINE=$(xcrun simctl list devices available | awk '/^ +iPhone/ { print; exit }')
+    # 계정이 없는 전용 시뮬레이터로 검증할 때는 UDID를 명시한다.
+    SIM_LINE=$(xcrun simctl list devices available | awk -v id="${TC_IOS_SIMULATOR_ID:-}" '(id != "" && index($0, "(" id ")")) || (id == "" && /^ +iPhone/) { print; exit }')
     SIM_ID=$(printf '%s\n' "$SIM_LINE" | grep -oE '[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}')
     SIM=$(printf '%s\n' "$SIM_LINE" | sed -E 's/^[[:space:]]*//; s/[[:space:]]*\(.*//')
     if [ -z "$SIM_ID" ]; then

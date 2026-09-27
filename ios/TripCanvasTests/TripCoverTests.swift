@@ -1,3 +1,4 @@
+import SwiftUI
 import XCTest
 import UIKit
 import ImageIO
@@ -242,5 +243,74 @@ extension TripCoverTests {
         XCTAssertEqual(loaded?.value, TripCoverResponse(revision: 4, imageBase64: "abc"))
         let other = await cache.load(TripCoverResponse.self, key: TripCache.coverKey(tripId: "다른-여행"))
         XCTAssertNil(other, "여행마다 따로 남는다")
+    }
+}
+
+
+extension TripCoverTests {
+    func testItineraryCoverOptionsKeepOrderDeduplicateAndExcludeUnsupportedPlaces() {
+        let document = TripDocument(raw: ["days": .array([
+            .object(["spots": .array([
+                .object(["name": .string("미술관"), "placeId": .string("ChIJmuseum")]),
+                .object(["name": .string("사진 없음")]),
+                .object(["name": .string("카카오 장소"), "placeId": .string("123"), "kakaoId": .string("123")])
+            ])]),
+            .object(["spots": .array([
+                .object(["name": .string("미술관 재방문"), "placeId": .string("ChIJmuseum")]),
+                .object(["name": .string("공원"), "placeId": .string("ChIJpark")])
+            ])])
+        ])])
+        let options = TripCoverPlaceOption.options(in: document)
+        XCTAssertEqual(options.map(\.name), ["미술관", "공원"])
+        XCTAssertEqual(options.map(\.day), [1, 2])
+    }
+
+    func testPlaceCoverStoresOnlyIdentifierAndCompositionAndReadsOldResponses() throws {
+        let original = TripCoverResponse(revision: 3, imageBase64: nil,
+                                        placePhoto: TripCoverPlace(placeId: "ChIJmuseum", zoom: 2, x: 0.2, y: 0.8))
+        let data = try JSONEncoder().encode(original)
+        XCTAssertEqual(try JSONDecoder().decode(TripCoverResponse.self, from: data), original)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let place = try XCTUnwrap(json["placePhoto"] as? [String: Any])
+        XCTAssertEqual(Set(place.keys), ["placeId", "zoom", "x", "y"])
+        let old = try JSONDecoder().decode(TripCoverResponse.self, from: Data(#"{"revision":1,"imageBase64":null}"#.utf8))
+        XCTAssertNil(old.placePhoto)
+    }
+}
+
+
+extension TripCoverTests {
+    func testCoverEditorRendersSelectionAndCropScreens() async throws {
+        let photo = UIGraphicsImageRenderer(size: CGSize(width: 1000, height: 800)).image { context in
+            UIColor.systemTeal.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 1000, height: 800))
+            UIColor.systemYellow.setFill()
+            context.fill(CGRect(x: 200, y: 150, width: 300, height: 500))
+        }
+        for (name, image) in [("selection", nil as UIImage?), ("crop", photo)] {
+            let host = UIHostingController(rootView: TripCoverEditor(
+                title: "새 여행", tripId: "preview",
+                storageDescription: "이 여행을 함께 보는 일행과 다른 기기에도 같은 표지가 보여요.",
+                initialImage: image, save: { _, _ in }).environment(AppEnvironment()))
+            let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+            let window = UIWindow(windowScene: scene)
+            window.frame = CGRect(x: 0, y: 0, width: 393, height: 852)
+            window.overrideUserInterfaceStyle = .light
+            window.rootViewController = host
+            window.makeKeyAndVisible()
+            defer { window.isHidden = true; window.rootViewController = nil }
+            try await Task.sleep(for: .milliseconds(300))
+            host.view.layoutIfNeeded()
+            let rendered = UIGraphicsImageRenderer(bounds: host.view.bounds).image { _ in
+                XCTAssertTrue(host.view.drawHierarchy(in: host.view.bounds, afterScreenUpdates: true))
+            }
+            let attachment = XCTAttachment(image: rendered)
+            attachment.name = "cover-\(name)"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+            let pixels = try XCTUnwrap(rendered.cgImage?.dataProvider?.data) as Data
+            XCTAssertGreaterThan(Set(pixels).count, 16, "빈 화면을 성공한 렌더링으로 처리하지 않는다")
+            XCTAssertEqual(host.view.bounds.width, 393, accuracy: 1)
+        }
     }
 }

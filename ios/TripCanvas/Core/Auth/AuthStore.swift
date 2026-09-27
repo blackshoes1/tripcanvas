@@ -224,6 +224,9 @@ final class AuthStore {
     private let store: any SessionStoring
     /// 여러 요청이 동시에 401을 만나도 확인은 한 번만 돌게 한다.
     private var verifyTask: Task<AuthSession, Error>?
+    private var sessionGeneration = 0
+    /// 계정 경계의 기기 상태 정리는 환경 컨테이너가 맡는다.
+    var onAccountChanged: ((String?) -> Void)?
 
     init(client: any AuthClient, store: any SessionStoring = KeychainSessionStore()) {
         self.client = client
@@ -242,15 +245,19 @@ final class AuthStore {
 
     /// 교환권 응답을 바로 믿어 저장하지 않고 기존 세션 검증 경로로 확인한다.
     func completeSocialSignIn(token: String) async {
+        let generation = sessionGeneration
         await work {
             guard let session = try await self.client.session(token: token) else { throw AuthError.notSignedIn }
+            guard self.sessionGeneration == generation else { return }
             self.persist(session)
         }
     }
 
     func signIn(email: String, password: String) async {
+        let generation = sessionGeneration
         await work {
             let new = try await self.client.signIn(email: email, password: password)
+            guard self.sessionGeneration == generation else { return }
             self.persist(new)
         }
     }
@@ -275,9 +282,12 @@ final class AuthStore {
     func signOut() {
         let token = session?.token
         // 이 기기에서는 먼저 확실히 로그아웃한다 — 서버 호출이 실패해도 남아 있으면 안 된다.
+        sessionGeneration += 1
         session = nil
+        verifyTask?.cancel()
         verifyTask = nil
         store.removeSession()
+        onAccountChanged?(nil)
         if let token {
             Task { [client] in await client.signOut(token: token) }
         }
@@ -292,42 +302,53 @@ final class AuthStore {
     /// 살아 있으면 같은 토큰으로 한 번 더(다른 이유의 401), 죽었으면 로그아웃시켜 로그인 화면으로 보낸다.
     @discardableResult
     func forceRefresh() async throws -> AuthSession {
-        if let running = verifyTask { return try await running.value }
         guard let current = session else { throw AuthError.notSignedIn }
-        let task = Task { [client] () throws -> AuthSession in
-            guard let alive = try await client.session(token: current.token) else { throw AuthError.notSignedIn }
-            return alive
+        let generation = sessionGeneration
+        let task: Task<AuthSession, Error>
+        if let running = verifyTask { task = running }
+        else {
+            task = Task { [client] in
+                guard let alive = try await client.session(token: current.token) else { throw AuthError.notSignedIn }
+                return alive
+            }
+            verifyTask = task
         }
-        verifyTask = task
-        defer { verifyTask = nil }
+        defer { if generation == sessionGeneration { verifyTask = nil } }
         do {
             let alive = try await task.value
+            guard generation == sessionGeneration, session?.token == current.token else { throw AuthError.notSignedIn }
             persist(alive)
             return alive
         } catch {
-            if (error as? AuthError)?.code == .notSignedIn { signOut() }
-            // 429·서버 오류·통신 장애는 토큰 만료를 확인한 응답이 아니다.
+            if generation == sessionGeneration, session?.token == current.token,
+               (error as? AuthError)?.code == .notSignedIn { signOut() }
             throw error
         }
     }
 
-    /// 앱이 뜰 때 한 번. 네트워크가 안 되면 토큰을 버리지 않는다 — 오프라인에서 로그아웃당하지 않게.
+    /// 네트워크 장애는 세션을 유지하고, 이전 계정의 확인 응답은 버린다.
     func restore() async {
         guard let current = session else { return }
+        let generation = sessionGeneration
         do {
-            if let alive = try await client.session(token: current.token) {
-                persist(alive)
-            } else {
-                signOut()
-            }
+            let alive = try await client.session(token: current.token)
+            guard generation == sessionGeneration, session?.token == current.token else { return }
+            if let alive { persist(alive) } else { signOut() }
         } catch {
-            // 네트워크 문제다. 들고 있던 세션을 유지한다.
+            // 통신 실패로 로그아웃시키지 않는다.
         }
     }
 
     private func persist(_ new: AuthSession) {
+        let changedAccount = session?.userId != new.userId
+        if session?.token != new.token || changedAccount {
+            sessionGeneration += 1
+            verifyTask?.cancel()
+            verifyTask = nil
+        }
         session = new
         store.saveSession(new)
+        if changedAccount { onAccountChanged?(new.userId) }
     }
 
     private func work(_ body: @escaping () async throws -> Void) async {
