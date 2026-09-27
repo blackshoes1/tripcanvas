@@ -86,12 +86,13 @@ final class AppEnvironment {
             push: pushService, liveActivity: liveActivityController)
         authStore.onAccountChanged = { [weak self] accountID in
             guard let self else { return }
+            let previous = self.service.cacheScope?.accountID
             self.service.useAccount(accountID)
             SharedStore.prepare(accountID: accountID)
             self.travelMode.resetForAccountChange()
             self.push.resetForAccountChange()
             self.realtime.disconnect()
-            self.router.clear()
+            self.router.accountChanged(from: previous, to: accountID)
             DeviceIdentity.reset()
         }
     }

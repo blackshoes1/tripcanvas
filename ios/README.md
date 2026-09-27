@@ -254,13 +254,13 @@ Tests/        디코딩·상태 계산·ViewModel
 | App Intents | Features/Intents/TripCanvasIntents.swift | 판단을 넣지 않는다. 서비스를 부르고 짧게 답한다. "지금 일정 완료"는 대상이 하나로 정해질 때만 |
 | Action Router | Core/Routing/ActionRouter.swift | Siri·Push·위젯·Watch·공유가 **같은 딥링크 체계 하나**를 쓴다 |
 | Share Extension | TripCanvasShare/ | 파싱하지 않는다. 받은 것을 큐에 넣고 바로 닫는다 — 네트워크가 없어도 유실되지 않게 |
-| Booking Import | 서버 /api/v1/import/* | 미리보기까지만. 저장은 사용자가 확인한 뒤 별도 요청 |
+| Booking Import | Features/Inbox/ + 서버 /api/v1/import/preview | 해석 뒤 사용자가 확인하고 문서 CAS 경로로 저장 |
 | Apple Watch | TripCanvasWatch/ | 축소판이 아니다. "다음 뭐지?" 하나만. App Group 압축본만 읽는다 |
 | Trip Memory | 서버 /api/v1/trips/:id/memories | 어느 일정인지 서버가 시각·위치로 짚는다. 사진 원본은 올리지 않는다 |
 
 ## 이번 단계에서 하지 않은 것
 
-Apple Watch · Siri/App Intents · Share Extension · 서버발 APNs 발송 · Live Activity remote update ·
+Apple Watch · Siri/App Intents · 서버발 APNs 발송 · Live Activity remote update ·
 연속 위치 추적 · 백그라운드 geofencing · 완전 offline-first · 자동 예약/결제 · 실시간 항공/교통 API.
 구조상 막히지 않도록 자리는 열어 두었다: 알림 계획에 `origin: SERVER` 항목이 이미 나오고,
 `notification_log`가 중복을 막고, `TravelActivityState`는 ActivityKit이 그대로 쓰는 모양이다.
@@ -268,3 +268,13 @@ Apple Watch · Siri/App Intents · Share Extension · 서버발 APNs 발송 · L
 ### 카카오 지도 키 운영
 
 2026-09-08부터 iOS 지도는 카카오 앱 `1503441`(모바일 청첩장 배달 서비스)의 네이티브 키를 함께 사용한다. 해당 앱은 카카오맵이 활성화돼 있고 `com.fromj.trip`이 등록돼 있다. 두 서비스는 같은 지도 쿼터를 사용한다. 키 변경 시 `project.yml`, `project-free.yml`, `AppConfig.kakaoNativeKey`를 함께 갱신하고 새 앱 빌드를 배포한다.
+
+## 완결된 여행 흐름 (2026-09-27)
+
+- **받은 자료**: 여행 목록 왼쪽의 트레이 또는 `tripcanvas://inbox`에서 공유 원문을 확인한다. 서버 `/api/v1/import/preview`의 해석을 참고해 여행·분류·통화를 직접 고르고, 예약 편집기 또는 장소·준비 메모로 저장한다. 장소의 좌표는 추측하지 않는다. 예약·장소·메모의 `importKey`는 문서 정규화에서 보존하며 같은 여행의 응답 유실 재시도를 중복 저장하지 않는다. 다른 기기의 수정이 있으면 다시 확인하고 저장한다. 원문은 기기 대기열에 남는다.
+- **초대**: 웹 초대 창의 ‘설치한 iOS 앱에서 열기’는 `tripcanvas://join/<token>`으로 연다. 앱 설치를 자동 판정하거나 Universal Link를 제공하는 것은 아니다. 로그인 전의 초대·공유 목적지만 로그인 뒤까지 보존하고, 계정 변경·로그아웃에서는 지운다. 참여한 뒤 `client_id`의 여행을 연다.
+- **오프라인 준비**: 여행 → 더보기 → 오프라인 준비. 모든 일자의 계산·예약 요약·주소를 포함한 원문·준비 메모를 같은 revision으로 받은 뒤 단일 파일로 저장한다. 실패·중단 시 이전 사본을 유지한다. 준비 상태는 저장 시각과 일수·예약·메모 수를 표시한다. 지도 타일·길찾기·장소 사진은 포함하지 않는다. 사본은 읽기 전용이며 로그아웃이나 OS의 캐시 정리로 지워질 수 있다.
+- **준비 메모**: 앱에서 확인 표시를 켜고 끄거나 분류별 짧은 메모를 추가한다. 기존 CAS·실패 롤백·충돌 처리와 원문 필드 보존을 사용한다. 완료한 항목은 같은 분류의 아래로 간다.
+- **로그인 전 샘플**: 로그인 화면에서 제주 이틀의 일정·장소 상세·예시 예약·준비 메모를 둘러본다. 샘플의 확인 표시는 메모리에만 있고 계정·사용자 저장소·네트워크에 쓰지 않는다. ‘내 여행 만들기’는 로그인으로 이어진다.
+
+회귀 검증: `CompleteJourneyTests`(확인 전 미저장·응답 유실 재시도·동시 수정·권한·로그인 복귀·메모 롤백), `OfflinePreparationTests`(부분 실패·전체 저장·원본 파일만으로 오프라인 읽기·디스크 실패), 웹 `pure.test.js`의 정규화 파리티와 `collab.spec.js`의 앱 연결 링크.

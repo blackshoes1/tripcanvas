@@ -97,6 +97,7 @@ struct BookingEditorView: View {
 
     init(target: BookingEditorTarget,
          document: TripDocument,
+         seed: TripBooking? = nil,
          bookingOnly: Bool = false,
          fromReservations: Bool = false,
          onSave: @escaping (TripBooking, BookingLinks) async -> String?,
@@ -111,9 +112,9 @@ struct BookingEditorView: View {
         self.onDelete = onDelete
         self.onSaveItem = onSaveItem
         self.onDeleteItem = onDeleteItem
-        let booking = target.booking ?? TripBooking()
+        let booking = target.booking ?? seed ?? TripBooking()
         let item = target.item
-        _kind = State(initialValue: target.booking.map { CostCategory(bookingType: $0.type) }
+        _kind = State(initialValue: (target.booking ?? seed).map { CostCategory(bookingType: $0.type) }
             ?? item.flatMap { CostCategory(rawValue: $0.kind) } ?? (item != nil ? .other : .stay))
         var draft = booking
         if let item { draft.title = item.title }

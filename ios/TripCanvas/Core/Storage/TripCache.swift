@@ -56,12 +56,14 @@ actor TripCache {
         return accountDirectory(scope).appendingPathComponent("\(safe).json")
     }
 
-    func save<T: Codable>(_ value: T, key: String, scope: Scope? = nil, savedAt: Date = Date()) {
-        guard accepts(scope) else { return }
+    @discardableResult
+    func save<T: Codable>(_ value: T, key: String, scope: Scope? = nil, savedAt: Date = Date()) -> Bool {
+        guard accepts(scope) else { return false }
         try? FileManager.default.createDirectory(at: accountDirectory(scope), withIntermediateDirectories: true)
         let payload = CachedPayload(value: value, savedAt: savedAt)
-        guard let data = try? encoder.encode(payload) else { return }
-        try? data.write(to: url(for: key, scope: scope), options: .atomic)
+        guard let data = try? encoder.encode(payload) else { return false }
+        do { try data.write(to: url(for: key, scope: scope), options: .atomic); return true }
+        catch { return false }
     }
 
     func load<T: Codable>(_ type: T.Type, key: String, scope: Scope? = nil) -> CachedPayload<T>? {

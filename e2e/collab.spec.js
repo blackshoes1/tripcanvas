@@ -48,6 +48,8 @@ test('초대 링크(#join=)로 열면 여행 본문 없이 미리보기와 참�
   await expect(page.locator('#joinTripMeta')).toContainText('10/25 ~ 11/7 · 14일');
   await expect(page.locator('#joinTripMeta')).toContainText('편집 권한');
   await expect(page.locator('#joinAccept')).toHaveText('로그인하고 참여하기');
+  await expect(page.locator('#joinOpenApp')).toHaveAttribute('href','tripcanvas://join/'+TOKEN);
+  await expect(page.locator('#joinOpenApp')).toBeVisible();
   const rpc=await page.evaluate(()=>window.__rpc);
   expect(rpc[0][0]).toBe('/api/v1/invites/'+TOKEN);   // 토큰만 실려 간다 — 여행 id·역할은 URL에 없다(§5)
   expect(rpc[0][1]).toBe('GET');

@@ -1528,3 +1528,14 @@ test('startShiftPreview: 시작일을 옮기면 일정은 따라가고 예약은
   assert.equal(L.startShiftPreview(trip, '2026-10-20', 5).days, 5, '같이 바꾼 일수를 쓴다');
   assert.equal(L.startShiftPreview({ start: '2026-10-25', days: [{}] }, '2026-10-26').bookings, 0, '예약이 없으면 0');
 });
+
+test('iOS 공유 저장 키와 준비 메모의 확인 상태는 웹 정규화 뒤에도 남는다', () => {
+  const trip=L.normalizeTrip({id:'shared',name:'가져온 여행',days:[{spots:[{name:'장소',importKey:'sh-place'}]}],
+    bookings:[{id:'b1',type:'hotel',title:'숙소',price:100,currency:'USD',importKey:'sh-booking'}],
+    notes:[{id:'n1',cat:'PACKING',title:'충전기',done:true,importKey:'sh-note',webOnly:'keep'}]});
+  assert.equal(trip.days[0].spots[0].importKey,'sh-place');
+  assert.equal(trip.bookings[0].importKey,'sh-booking');
+  assert.equal(trip.notes[0].importKey,'sh-note');
+  assert.equal(trip.notes[0].done,true);
+  assert.equal(trip.notes[0].webOnly,'keep');
+});

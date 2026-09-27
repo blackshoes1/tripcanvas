@@ -150,6 +150,9 @@ struct TripListView: View {
     @State private var routeNotice: String?
     /// 목록이 아직 안 왔을 때 들어온 딥링크 — 목록을 받은 뒤 다시 시도한다(콜드 스타트).
     @State private var pendingDestination: ActionRouter.Destination?
+    /// 공유로 받은 자료는 여행 선택 전에 확인한다.
+    @State private var showsInbox = false
+    @State private var inboxKey: String?
     /// 여행 만들기 시트. 앱만 설치한 사람도 여기서 시작할 수 있어야 한다.
     @State private var showsCreateTrip = false
     /// 어느 길로 열 것인가. 빈 목록 화면의 두 버튼이 각자 자기 길로 연다.
@@ -171,6 +174,9 @@ struct TripListView: View {
             .navigationTitle("With J")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("받은 자료", systemImage: "tray") { inboxKey = nil; showsInbox = true }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     // 메뉴가 아니라 버튼 하나다 — 두 길은 시트를 열면 나란히 보인다.
                     Button {
@@ -217,7 +223,6 @@ struct TripListView: View {
             }
         }
         // 딥링크는 라우터 하나를 지난다 — 앱을 열어 둔 채로 링크를 눌러도 같은 화면이 뜬다.
-        .onOpenURL { url in env.router.open(url: url) }
         .onChange(of: env.router.destination) { _, destination in
             guard let destination else { return }
             if handle(destination) { env.router.clear() }
@@ -229,6 +234,15 @@ struct TripListView: View {
         .alert("화면 안내", isPresented: Binding(get: { routeNotice != nil }, set: { if !$0 { routeNotice = nil } })) {
             Button("확인") { routeNotice = nil }
         } message: { Text(routeNotice ?? "") }
+        .sheet(isPresented: $showsInbox) {
+            SharedInboxView(service: env.service, trips: model?.trips ?? [], focusKey: inboxKey) { id in
+                Task {
+                    await model?.load()
+                    if let trip = find(id) { open(trip, tab: nil) }
+                    else { routeNotice = "저장했어요. 여행 목록을 다시 불러와 주세요." }
+                }
+            }
+        }
         .sheet(isPresented: $showsCreateTrip) {
             CreateTripView(service: env.service, places: env.places, startMode: createStartMode) { created in
                 Task { await model?.load() }
@@ -242,8 +256,14 @@ struct TripListView: View {
             }
         }
         .sheet(item: Binding(get: { joinToken.map(JoinToken.init) }, set: { joinToken = $0?.value })) { item in
-            JoinInviteView(token: item.value) { _ in
-                Task { await model?.load() }
+            JoinInviteView(token: item.value) { result in
+                guard let id = result.clientId else { return }
+                pendingDestination = .trip(tripId: id)
+                Task {
+                    await model?.load()
+                    if let trip = find(id) { pendingDestination = nil; open(trip, tab: nil) }
+                    else { routeNotice = "참여했어요. 연결되면 이 여행을 다시 열어요. 목록을 새로고침해 주세요." }
+                }
             }
         }
         .alert("초대 링크로 참여", isPresented: $showsPastePrompt) {
@@ -323,7 +343,10 @@ struct TripListView: View {
             guard let trip = find(tripId) else { return false }
             open(trip, tab: nil)
             return true
-        case .memory, .inbox:
+        case .inbox(let key):
+            inboxKey = key; showsInbox = true
+            return true
+        case .memory:
             routeNotice = "이 링크의 기록·공유 확인 화면은 아직 지원하지 않아요. 여행 목록에서 일정을 열어 주세요."
             return true
         }

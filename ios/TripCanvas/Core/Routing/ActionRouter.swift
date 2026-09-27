@@ -26,6 +26,17 @@ final class ActionRouter {
     func open(_ destination: Destination) { self.destination = destination }
     func clear() { destination = nil }
 
+    /// 로그인 전에 들어온 공개 초대·공유 입구만 이어 간다. 다른 계정의 여행 링크는 지운다.
+    func accountChanged(from previous: String?, to next: String?) {
+        if previous == nil, next != nil {
+            switch destination {
+            case .join, .inbox: return
+            default: break
+            }
+        }
+        clear()
+    }
+
     /// 딥링크 하나로 모든 진입점을 처리한다(§40).
     /// `tripcanvas://today` · `tripcanvas://trip/{id}/today?focus=...` · `tripcanvas://inbox` 등.
     @discardableResult
