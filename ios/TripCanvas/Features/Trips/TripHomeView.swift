@@ -132,6 +132,19 @@ struct TripHomeView: View {
         // 설정에서 이름을 바꾸면 문서가 먼저 안다 — 밀어 넣을 때 받은 요약의 이름에 머물지 않는다.
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
+        // 제목을 **직접 그린다**(명조). UIKit 외형 설정(`Typeface.applyUIKitAppearance`)만으로는 모자라다 —
+        // 화면에 MapKit `Map`이 있으면(지금의 `TodayMapCard`) SwiftUI가 제목 글꼴을 시스템 굵은 글씨로 박아
+        // 넣어, 탭을 바꿀 때마다 제목 글꼴이 달라졌다(2026-09-27 시뮬레이터에서 확인). `navigationTitle`은
+        // 뒤로가기 이름·접근성을 위해 그대로 둔다.
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Text(title)
+                    .font(Typeface.navigationTitle)
+                    .foregroundStyle(Ink.ink)
+                    .lineLimit(1)
+                    .accessibilityAddTraits(.isHeader)
+            }
+        }
     }
 
     private var title: String {

@@ -55,11 +55,13 @@ struct PlanSpotList: View {
                     // ⚠️ ForEach 밖에 둔다 — 드래그 인덱스는 ForEach의 컬렉션 기준이라
                     //    이 줄들이 그 안에 섞이면 순서가 어긋난다.
                     if let flight = model.planDay?.flight, !flight.line.isEmpty {
-                        flightRow(flight, top: false, bottom: rail.afterFlight)
+                        flightRow(flight, top: false, bottom: !isEditing && rail.afterFlight)
                     }
-                    if let carry = model.planDay?.carriedStay { carryRow(carry, top: rail.beforeCarry, bottom: rail.afterCarry) }
+                    if let carry = model.planDay?.carriedStay {
+                        carryRow(carry, top: !isEditing && rail.beforeCarry, bottom: !isEditing && rail.afterCarry)
+                    }
                     ForEach(model.planDay?.carPickups ?? [], id: \.bookingId) {
-                        carEventRow($0, top: rail.beforePickups, bottom: true)
+                        carEventRow($0, top: !isEditing && rail.beforePickups, bottom: !isEditing)
                     }
                     ForEach(Array(day.spots.enumerated()), id: \.offset) { index, spot in
                         HStack {
@@ -68,8 +70,8 @@ struct PlanSpotList: View {
                             }
                             SpotRow(spot: spot, dayMode: day.mode, plan: model.planSpot(at: index),
                                     split: splitInfo(at: index),
-                                    railTop: index > 0 || rail.beforeSpots,
-                                    railBottom: index < day.spots.count - 1 || rail.afterSpots)
+                                    railTop: !isEditing && (index > 0 || rail.beforeSpots),
+                                    railBottom: !isEditing && (index < day.spots.count - 1 || rail.afterSpots))
                         }
                             .listRowBackground(Ink.raised)
                             .listRowSeparator(.hidden)
@@ -101,7 +103,7 @@ struct PlanSpotList: View {
                     .moveDisabled(!model.canEdit)
                     // 반납은 장소 뒤, 숙소 복귀 앞 — 웹 일자 카드와 같은 순서다.
                     ForEach(model.planDay?.carReturns ?? [], id: \.bookingId) {
-                        carEventRow($0, top: true, bottom: model.planDay?.back != nil)
+                        carEventRow($0, top: !isEditing, bottom: !isEditing && model.planDay?.back != nil)
                     }
                     // 숙소 복귀는 같은 줄기의 끝이다 — 따로 떨어진 카드가 아니라 선이 닿는 마지막 자리.
                     if let back = model.planDay?.back { backRow(back) }
@@ -468,11 +470,11 @@ struct PlanSpotList: View {
     private func backRow(_ back: DayPlanBack) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             PlanRailLeg(mode: TravelMode(rawValue: back.leg.mode) ?? model.day?.mode ?? .walk,
-                        minutes: back.leg.minutes, distanceKm: back.leg.distanceKm)
+                        minutes: back.leg.minutes, distanceKm: back.leg.distanceKm, rail: !isEditing)
             PlanRailEventRow(symbol: "house.fill", style: .home, title: "숙소로 돌아가기",
                              subtitle: "\(back.name) · 자동으로 이어 붙였어요",
                              time: model.planDay?.totals.endMinutes.map(TimeFormat.clockAcrossMidnight),
-                             railBottom: false) {
+                             railTop: !isEditing, railBottom: false) {
                 if model.canEdit {
                     Menu {
                         Picker("복귀 이동수단", selection: Binding<TravelMode?>(
@@ -514,6 +516,8 @@ struct PlanSpotList: View {
     }
 
     /// 선이 어디서 시작하고 끝나는지 — 하루의 첫 줄 위와 끝 줄 아래는 비운다.
+    /// ⚠️ 순서 편집 중에는 선을 그리지 않는다 — 장소 줄만 삭제 버튼만큼 오른쪽으로 밀려 선이 옆으로 꺾였다
+    ///    (2026-09-27 시뮬레이터에서 확인). 편집 중에는 순서만 보이면 된다.
     /// 순서는 목록과 같다: 항공편 → 전날 숙소 → 렌터카 픽업 → 장소들 → 렌터카 반납 → 숙소 복귀.
     private func railEdges(_ day: TripDay) -> (afterFlight: Bool, beforeCarry: Bool, afterCarry: Bool,
                                               beforePickups: Bool, beforeSpots: Bool, afterSpots: Bool) {

@@ -89,6 +89,10 @@ enum Typeface {
         }
         return .custom("NanumMyeongjo", size: size, relativeTo: style)
     }
+    /// 내비게이션 제목 — UIKit 외형(`applyUIKitAppearance`)과 **같은 크기**다. 제목을 직접 그리는 화면이 쓴다.
+    static let navigationTitle: Font = .custom("NanumMyeongjo", size: navigationTitleSize, relativeTo: .headline)
+    static let navigationTitleSize: CGFloat = 19
+
     /// `OCT 12 · 6 DAYS` 같은 메타 라벨. 대문자·자간은 `.metaLabel()`이 함께 준다.
     static func meta(_ style: Font.TextStyle = .caption2) -> Font {
         .system(style, design: .monospaced).weight(.medium)
@@ -111,7 +115,7 @@ extension Typeface {
         guard let base = UIFont(name: "NanumMyeongjo", size: 17) else { return }
         let bar = UINavigationBar.appearance()
         bar.titleTextAttributes = [
-            .font: UIFontMetrics(forTextStyle: .headline).scaledFont(for: base.withSize(19)),
+            .font: UIFontMetrics(forTextStyle: .headline).scaledFont(for: base.withSize(navigationTitleSize)),
         ]
         bar.largeTitleTextAttributes = [
             .font: UIFontMetrics(forTextStyle: .largeTitle).scaledFont(for: base.withSize(34)),
