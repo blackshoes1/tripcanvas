@@ -208,6 +208,12 @@ describe('iOS Contract.swift가 실제 응답을 전부 담는다', () => {
     expect(JSON.stringify(proposal)).not.toContain('score');
   });
 
+  it('일정 예약의 추가 필드도 Swift가 읽는다', () => {
+    const rows = buildBookings({ days: [{ spots: [{ name: '식당', bookAt: '19:00', desc: '창가 좌석' }] }] }, [], '2026-09-25');
+    expect(rows).toHaveLength(1);
+    expectCovered('BookingSummary', rows[0]);
+  });
+
   it('BookingSummary와 PriceStatus', () => {
     const bookings = buildBookings(trip, [{
       booking_id: 'bk1', seller: 'Agoda', price: 90000, currency: 'KRW', quality: 'EXACT', verified: true,

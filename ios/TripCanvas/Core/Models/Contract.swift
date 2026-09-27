@@ -118,7 +118,7 @@ enum TravelTimeSource: String, UnknownCodable, Sendable {
 }
 
 enum BookingKind: String, UnknownCodable, Sendable {
-    case hotel, car, flight, unknown
+    case hotel, car, flight, transit, restaurant, activity, other, unknown
     static var unknownCase: BookingKind { .unknown }
 }
 
@@ -366,6 +366,12 @@ struct PriceStatus: Codable, Hashable, Sendable {
 }
 
 struct BookingSummary: Codable, Identifiable, Hashable, Sendable {
+    /// 기존 서버/캐시에는 없는 추가 정보. 원래 일정·비용에서 편집한다.
+    var source: String? = nil
+    var dayIndex: Int? = nil
+    var note: String? = nil
+    var priceKnown: Bool? = nil
+
     let id: String
     let type: BookingKind
     let title: String

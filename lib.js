@@ -1384,6 +1384,76 @@
     return (s || String((p&&p.formattedAddress)||'').split(',')[0]||'').trim();
   }
 
+  /** 예약 전용 문서 외에 일정·비용에 기록한 예약. 원본은 수정하지 않는다.
+   * 예약 링크만 있거나 예약 상태만 있는 항목도 포함하지만 도착 시각·결제만으로는 추론하지 않는다.
+   * @param {{bookings?:any[],days?:any[],costItems?:any[]}} trip
+   * @returns {{source:string,dayIndex:number|null,spotIndex:number|null,item:any}[]}
+   */
+  function additionalReservations(trip){
+    const linked=new Set((trip.bookings||[]).filter(b=>b&&typeof b.id==='string').map(b=>b.id));
+    /** @type {{source:string,dayIndex:number|null,spotIndex:number|null,item:any}[]} */ const out=[];
+    const hasText=(/** @type {any} */ v)=>typeof v==='string'&&v.trim().length>0;
+    const reserved=(/** @type {any} */ item)=>{
+      if(!item) return false;
+      const admission=normalizeAdmission(item.admission);
+      if(admission&&admission.personalStatus==='NOT_BOOKED') return false;
+      return !!(admission&&admission.personalStatus==='BOOKED') ||
+        [item.bookAt,item.bookUrl,item.confirmation,item.confirmationNumber,item.code].some(hasText)||item.payState==='RESERVED';
+    };
+    const hasBooking=(/** @type {any} */ item)=>[item.bookingId,item.carPickupId,item.carReturnId].some(id=>linked.has(id));
+    (trip.days||[]).forEach((day,di)=>{
+      (day.spots||[]).forEach((/** @type {any} */ item,/** @type {number} */ si)=>{
+        if(reserved(item)&&!hasBooking(item)) out.push({source:'SPOT',dayIndex:di,spotIndex:si,item});
+      });
+      (day.costItems||[]).forEach((/** @type {any} */ item)=>{
+        if(reserved(item)&&!hasBooking(item)) out.push({source:'DAY_COST',dayIndex:di,spotIndex:null,item});
+      });
+    });
+    (trip.costItems||[]).forEach(item=>{
+      if(reserved(item)&&!hasBooking(item)) out.push({source:'TRIP_COST',dayIndex:null,spotIndex:null,item});
+    });
+    return out;
+  }
+
+  // 여행 요약 표시용. 원본 spot.city는 검색·편집에 쓰이므로 덮어쓰지 않는다.
+  // city에는 행정구역 종류가 없어 확인된 별칭/세부 지역만 정리한다. 모르는 지명은 보존한다.
+  /** @param {string} value @returns {string} */
+  function cityKey(value){
+    return value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').normalize('NFC').toLowerCase().trim().replace(/\s+/g,' ');
+  }
+  const SUMMARY_CITY_GROUPS=[
+    ['마드리드','Madrid'],
+    ['세비야','Sevilla','Seville'],
+    ['팔마','Palma','Palma de Mallorca'],
+    ['에스텔렌츠','Estellencs'],
+    ['산트 안토니 데 포르트마니','Sant Antoni de Portmany','San Antonio Abad'],
+    ['산타니','Santanyí','Santañí','산타니이'],
+    ['소예르','Sóller','소예르시'],
+    ['코르도바','Córdoba','Cordova']
+  ];
+  const SUMMARY_CITY_NAMES=new Map(SUMMARY_CITY_GROUPS.flatMap(group=>group.map(name=>[cityKey(name),group[0]])));
+  // 해변·항구·해안 취락은 도시 목록에서 제외 (도시 이름 자체의 Port/Cala는 제거하지 않는다).
+  const SUMMARY_LOCAL_AREAS=new Set([
+    'Cala Blava','칼라 블라바','Cala Santanyí','칼라 산타니','칼라 산타니이',
+    'Port de Sóller','Puerto de Sóller','포르트 데 소예르','소예르 항구',
+    'Sa Calobra','사 칼로브라','사 칼로브라 해변'
+  ].map(cityKey));
+
+  /** 도시 요약: 첫 등장 순서 유지, 표기 통일·중복 제거·알려진 세부 지역 제외.
+   * @param {{spots?:{city?:string}[]}[]} days @returns {string[]}
+   */
+  function tripSummaryCities(days){
+    const seen=new Set();
+    /** @type {string[]} */ const cities=[];
+    for(const day of days) for(const spot of day.spots||[]){
+      const raw=String(spot.city||'').trim().replace(/\s+/g,' '), key=cityKey(raw);
+      if(!key || key==='기타' || SUMMARY_LOCAL_AREAS.has(key)) continue;
+      const name=SUMMARY_CITY_NAMES.get(key)||raw, canonical=cityKey(name);
+      if(!seen.has(canonical)){ seen.add(canonical); cities.push(name); }
+    }
+    return cities;
+  }
+
   /** 구글 Place addressComponents → 도시명(locality 우선) @param {any[]=} comps @returns {string} */
   function cityFromGoogle(comps){
     if(!comps||!comps.length) return '';
@@ -1604,7 +1674,7 @@
     };
   }
 
-  const TC={returnModeOf,SPOT_PRIORITIES,spotPriorityOf,applySpotPriority,spotPriorityLabel,SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,cityFromKoreanAddr,placeName,cityFromGoogle,normHours,classifySearchErr,isKoreanSearch,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,normHM,sortDayByTime,inKorea,simplifyName,parseDirect,parseMoney,normalizeDraftDays,extractJson,extMapLink,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,stayMinutesOf,activityStartMinute,dayEndMinutes,departMinuteAfter,computeTimeline,whoKey,splitSegments,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,budgetBookings,moneyAmount,parseCostAmount,costAmountOf,dayEnteredCost,splitAcrossNights,stayCostShares,dayEnteredCostOn,hasManualTransportCost,dayCostSummary,ADMISSION_REQUIREMENTS,admissionLabel,admissionOf,needsAdmissionBooking,normalizeAdmission,admissionError,COST_CATEGORIES,costCategoryOf,COST_PAY_STATES,costPayStateOf,payStateTotals,TRIP_NOTE_CATEGORIES,normalizeTripNote,tripCostSummary,localMode,SAMPLE_TRIP_ID,isSampleTrip,sampleTrip,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
+  const TC={additionalReservations,tripSummaryCities,returnModeOf,SPOT_PRIORITIES,spotPriorityOf,applySpotPriority,spotPriorityLabel,SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,cityFromKoreanAddr,placeName,cityFromGoogle,normHours,classifySearchErr,isKoreanSearch,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,normHM,sortDayByTime,inKorea,simplifyName,parseDirect,parseMoney,normalizeDraftDays,extractJson,extMapLink,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,stayMinutesOf,activityStartMinute,dayEndMinutes,departMinuteAfter,computeTimeline,whoKey,splitSegments,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,budgetBookings,moneyAmount,parseCostAmount,costAmountOf,dayEnteredCost,splitAcrossNights,stayCostShares,dayEnteredCostOn,hasManualTransportCost,dayCostSummary,ADMISSION_REQUIREMENTS,admissionLabel,admissionOf,needsAdmissionBooking,normalizeAdmission,admissionError,COST_CATEGORIES,costCategoryOf,COST_PAY_STATES,costPayStateOf,payStateTotals,TRIP_NOTE_CATEGORIES,normalizeTripNote,tripCostSummary,localMode,SAMPLE_TRIP_ID,isSampleTrip,sampleTrip,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
   if(typeof module!=='undefined' && module.exports){ module.exports=TC; }   // Node (테스트)
   else { const r=/**@type {any}*/(root); for(const k in TC) r[k]=/**@type {any}*/(TC)[k]; }   // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);
