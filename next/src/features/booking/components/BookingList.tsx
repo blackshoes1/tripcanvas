@@ -15,7 +15,7 @@ export function BookingList({ bookings, prices, onSelect, onAdd }: {
       <SavingOpportunityCard bookings={bookings} prices={prices} />
       {bookings.length
         ? bookings.map(b => <BookingCard key={b.id} booking={b} rec={prices[b.id] ?? null} onClick={() => onSelect(b.id)} />)
-        : <p className="hint">아직 예약이 없어요 — 숙박·렌터카·항공 예약을 등록하면 가격을 추적합니다</p>}
+        : <p className="hint">아직 예약이 없어요 — 숙박·렌터카·항공 예약을 등록하면 가격을 추적해요</p>}
       {onAdd && <button type="button" className="btn addBtn" onClick={onAdd}>＋ 예약 추가</button>}
     </div>
   );

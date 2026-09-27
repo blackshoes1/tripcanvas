@@ -103,7 +103,7 @@ export const coverRoutes = createCoverRoutes({
   verifier,
   serviceFor: async (ctx, token) => {
     const db = getDb();
-    if (!db || env.registry.TRIP !== 'NEW_BACKEND') throw new ApiError('MAINTENANCE', { message: '표지 저장 기능을 준비 중입니다.' });
+    if (!db || env.registry.TRIP !== 'NEW_BACKEND') throw new ApiError('MAINTENANCE', { message: '표지 저장 기능을 준비 중이에요.' });
     return new CoverService(await tripServiceFor(ctx, token), new PgCoverRepository(db));
   }
 });
@@ -118,7 +118,7 @@ export const snapshotRoutes = createSnapshotRoutes({
   verifier,
   serviceFor: async (ctx, token) => {
     const db = getDb();
-    if (!db) throw new ApiError('NOT_FOUND', { message: '버전 이력은 아직 이 배포에서 쓸 수 없습니다.' });
+    if (!db) throw new ApiError('NOT_FOUND', { message: '버전 이력은 아직 이 배포에서 쓸 수 없어요.' });
     return new SnapshotService({ trips: await tripServiceFor(ctx, token), snapshots: new PgTripSnapshotRepository(db) });
   }
 });

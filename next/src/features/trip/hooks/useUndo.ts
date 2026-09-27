@@ -7,9 +7,9 @@ import { getUndoDepth, getUndoServerDepth, subscribeUndo } from '../services/und
 
 const MSG: Record<UndoResult, string> = {
   ok: '실행취소됨',
-  empty: '되돌릴 작업이 없습니다',
+  empty: '되돌릴 작업이 없어요',
   // 레거시 앱을 같이 열어 두는 게 병행 운영의 전제다. 되돌리면 저쪽 편집까지 흔적 없이 사라진다.
-  stale: '다른 탭에서 여행이 바뀌었어요 — 그 편집까지 사라져서 되돌리지 않았습니다',
+  stale: '다른 탭에서 여행이 바뀌었어요 — 그 편집까지 사라져서 되돌리지 않았어요',
   invalid: '그 시점의 기록이 손상돼 되돌리지 못했어요',
   failed: '저장에 실패했어요 — 저장 공간을 확인해주세요'
 };

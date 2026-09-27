@@ -140,7 +140,7 @@ export default function ItineraryPage() {
     if (trips.some(t => t.id === SAMPLE_TRIP_ID)) { onSwitchTrip(SAMPLE_TRIP_ID); return; }
     if (!addTrip(legacyLib.sampleTrip() as Trip)) { setNotice(SAVE_FAILED); return; }
     resetView();
-    setNotice('샘플 여행이에요 — 마음껏 고쳐 보고, 필요 없으면 지워도 됩니다');
+    setNotice('샘플 여행이에요 — 마음껏 고쳐 보고, 필요 없으면 지워도 돼요');
   };
   const deleteActiveTrip = () => {
     if (!activeTrip || !cloud.canDelete) return;
@@ -181,12 +181,12 @@ export default function ItineraryPage() {
   const deleteDay = (di: number) => {
     const day = activeTrip?.days[di];
     if (!day) return;
-    if (activeTrip!.days.length <= 1) { setNotice('여행에는 일자가 하나 이상 필요합니다'); return; }
-    if (day.spots.length && !window.confirm('이 일자의 장소도 함께 삭제됩니다. 계속할까요?')) return;
+    if (activeTrip!.days.length <= 1) { setNotice('여행에는 일자가 하나 이상 필요해요'); return; }
+    if (day.spots.length && !window.confirm('이 일자의 장소도 함께 삭제돼요. 계속할까요?')) return;
     let failed: string | null = null;
     const ok = updateActiveTrip(trip => {
       const r = removeDay(trip, di);
-      if (!r.ok) { failed = '여행에는 일자가 하나 이상 필요합니다'; return trip; }
+      if (!r.ok) { failed = '여행에는 일자가 하나 이상 필요해요'; return trip; }
       return r.trip;
     });
     setEditingDay(null);
@@ -216,8 +216,8 @@ export default function ItineraryPage() {
 
   // 공유 링크 처리 결과 — 읽기전용은 배너가 말하므로 여기서는 알리지 않는다
   const shareNotice =
-    shared.kind === 'error' ? `공유 링크를 열 수 없습니다 — ${shared.message}`
-      : shared.kind === 'claimed' ? `"${shared.name || '공유된 여행'}"을(를) 내 여행으로 저장했습니다`
+    shared.kind === 'error' ? `공유 링크를 열 수 없어요 — ${shared.message}`
+      : shared.kind === 'claimed' ? `"${shared.name || '공유된 여행'}"을(를) 내 여행으로 저장했어요`
         : null;
 
   const selectDay = (d: number) => { setDidEntry(true); setActiveDay(d); };
@@ -367,7 +367,7 @@ export default function ItineraryPage() {
       const shot = await captureNode(cardRef.current!, '#141b33');
       if (!alive) return;
       if (shot.ok) downloadDataUrl(shot.dataUrl, exportFilename(card.name, 'png'));
-      setNotice(shot.ok ? '이미지가 저장되었습니다' : shot.error);
+      setNotice(shot.ok ? '이미지가 저장되었어요' : shot.error);
       setCard(null);
     })();
     return () => { alive = false; };
@@ -399,7 +399,7 @@ export default function ItineraryPage() {
         />
         {(shareNotice || notice) && <div className="hint" role="status">{shareNotice ?? notice}</div>}
         <p className="hint">
-          이 브라우저에 저장된 여행이 없어요. 새로 만들거나, 기존 앱에서 만든 여행을 여기서 이어서 볼 수 있습니다.
+          이 브라우저에 저장된 여행이 없어요. 새로 만들거나, 기존 앱에서 만든 여행을 여기서 이어서 볼 수 있어요.
         </p>
         <button type="button" className="itAddDay" onClick={createTrip}>＋ 새 여행 만들기</button>
         <button type="button" className="itAddDay" onClick={() => setPasting(true)}>
@@ -426,7 +426,7 @@ export default function ItineraryPage() {
       {shared.kind === 'view' ? (
         <ReadOnlyBar
           name={shownTrip.name}
-          onClaim={() => setNotice(claim() ? '내 여행으로 저장되었습니다' : SAVE_FAILED)}
+          onClaim={() => setNotice(claim() ? '내 여행으로 저장되었어요' : SAVE_FAILED)}
           onDismiss={dismiss}
         />
       ) : activeTrip && (
@@ -462,7 +462,7 @@ export default function ItineraryPage() {
       )}
       {(shareNotice || notice) && <div className="hint" role="status">{shareNotice ?? notice}</div>}
       {cost && cost.total > 0 && (
-        <div className="itTripCost" title="예약(숙박·렌터카·항공)은 전액 — 기간이 일정 밖으로 나가면 하루 합계보다 큽니다">
+        <div className="itTripCost" title="예약(숙박·렌터카·항공)은 전액 — 기간이 일정 밖으로 나가면 하루 합계보다 커요">
           💳 전체 비용 약 ₩{fmtMoney(cost.total)}
           {costParts.length > 1 && (
             <span className="itDim"> ({costParts.map(([k, v]) => `${k} ₩${fmtMoney(v)}`).join(' + ')})</span>
@@ -522,10 +522,10 @@ export default function ItineraryPage() {
       </div>
       <p className="hint">
         {readOnly
-          ? '남이 공유한 여행을 읽기전용으로 보는 중입니다 — 지도·재생은 그대로 쓸 수 있고, 고치려면 내 여행으로 저장하세요.'
+          ? '남이 공유한 여행을 읽기전용으로 보는 중이에요 — 지도·재생은 그대로 쓸 수 있고, 고치려면 내 여행으로 저장하세요.'
           : '지도를 탭하거나 검색해서 장소를 담고, 편집·드래그 정렬·삭제까지 여기서 할 수 있어요. '
-            + '장소는 다른 일자로도 끌어 옮길 수 있고, 카드 헤더를 잡으면 일자 순서가 바뀝니다. '
-            + '여행·일자는 위의 여행 정보와 각 카드의 ✎로 고칩니다. 이동 시간·경로선은 자동으로 조회해 채웁니다 (조회 전에는 직선 추정).'}
+            + '장소는 다른 일자로도 끌어 옮길 수 있고, 카드 헤더를 잡으면 일자 순서가 바뀌어요. '
+            + '여행·일자는 위의 여행 정보와 각 카드의 ✎로 고쳐요. 이동 시간·경로선은 자동으로 조회해 채워요 (조회 전에는 직선 추정).'}
       </p>
       {play.status.playing && (
         <>

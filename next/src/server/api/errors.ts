@@ -14,17 +14,17 @@ const STATUS: Record<ErrorCode, number> = {
 };
 
 const MESSAGE: Record<ErrorCode, string> = {
-  UNAUTHORIZED: '로그인이 필요합니다.',
-  FORBIDDEN: '이 여행을 바꿀 권한이 없습니다 — 주최자에게 편집 권한을 요청해 주세요.',
-  NOT_FOUND: '그 여행을 찾을 수 없습니다.',
-  VALIDATION_ERROR: '요청 형식이 올바르지 않습니다.',
-  CONFLICT: '이미 있는 항목입니다.',
-  STALE_VERSION: '다른 기기에서 먼저 바뀌었습니다 — 최신 일정을 불러온 뒤 다시 시도해 주세요.',
-  RATE_LIMITED: '요청이 너무 잦습니다 — 잠시 뒤 다시 시도해 주세요.',
-  UPSTREAM_ERROR: '바깥 서비스가 지금 응답하지 않습니다 — 잠시 뒤 다시 시도해 주세요.',
+  UNAUTHORIZED: '로그인이 필요해요.',
+  FORBIDDEN: '이 여행을 바꿀 권한이 없어요 — 주최자에게 편집 권한을 요청해 주세요.',
+  NOT_FOUND: '그 여행을 찾을 수 없어요.',
+  VALIDATION_ERROR: '요청 형식이 올바르지 않아요.',
+  CONFLICT: '이미 있는 항목이에요.',
+  STALE_VERSION: '다른 기기에서 먼저 바뀌었어요 — 최신 일정을 불러온 뒤 다시 시도해 주세요.',
+  RATE_LIMITED: '요청이 너무 잦아요 — 잠시 뒤 다시 시도해 주세요.',
+  UPSTREAM_ERROR: '바깥 서비스가 지금 응답하지 않아요 — 잠시 뒤 다시 시도해 주세요.',
   // 쓰기만 잠깐 막는다(전환 직전 write freeze). 404·200이 아니라 503이어야 클라이언트가 재생성·덮어쓰기를 하지 않는다
-  MAINTENANCE: '점검 중입니다 — 잠시 뒤 자동으로 다시 저장합니다. 편집은 이 기기에 남아 있습니다.',
-  INTERNAL_ERROR: '서버에서 문제가 생겼습니다 — 잠시 뒤 다시 시도해 주세요.'
+  MAINTENANCE: '점검 중이에요 — 잠시 뒤 자동으로 다시 저장해요. 편집은 이 기기에 남아 있어요.',
+  INTERNAL_ERROR: '서버에서 문제가 생겼어요 — 잠시 뒤 다시 시도해 주세요.'
 };
 
 export interface ErrorBody {

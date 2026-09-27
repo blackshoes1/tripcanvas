@@ -32,7 +32,7 @@ export function TripFileBar({ trip, onImport, onNotice, newId, onPaste, onImage 
     const read = await readTextFile(file, IMPORT_MAX_BYTES);
     if (!read.ok) { onNotice(read.error); return; }
     const r = importTrip(read.text, newId());
-    if (!r.ok) { onNotice(`안전하게 읽을 수 없는 여행 파일입니다 — ${r.error}`); return; }
+    if (!r.ok) { onNotice(`안전하게 읽을 수 없는 여행 파일이에요 — ${r.error}`); return; }
     onNotice(onImport(r.trip) ? `"${r.trip.name}" 가져오기 완료` : '가져온 여행을 저장하지 못했어요');
   };
 
@@ -41,7 +41,7 @@ export function TripFileBar({ trip, onImport, onNotice, newId, onPaste, onImage 
     const base = { origin: window.location.origin, pathname: window.location.pathname };
     const r = buildShareUrl(trip, base, compressShare);
     if (!r.ok) { onNotice(r.error); return; }
-    if (await copyText(r.url)) { setManualUrl(null); onNotice('읽기전용 공유 링크가 복사되었습니다'); return; }
+    if (await copyText(r.url)) { setManualUrl(null); onNotice('읽기전용 공유 링크가 복사되었어요'); return; }
     setManualUrl(r.url);
     onNotice('클립보드를 쓸 수 없어 링크를 아래에 띄웠어요 — 직접 복사해 주세요');
   };

@@ -80,7 +80,7 @@ export function createPlanEditingHandlers(kit: HandlerKit) {
     const result = applyActivityStatus(row.data, activityId, status, expectedName);
     if (!result.ok) {
       return result.error === 'NAME_MISMATCH'
-        ? fail('SUGGESTION_STALE', { message: '그 사이 일정 순서가 바뀌었습니다 — 새로 불러온 뒤 다시 시도해 주세요.', revision: row.revision })
+        ? fail('SUGGESTION_STALE', { message: '그 사이 일정 순서가 바뀌었어요 — 새로 불러온 뒤 다시 시도해 주세요.', revision: row.revision })
         : fail('ACTIVITY_NOT_FOUND');
     }
     return persist(gateway, row, result.trip, new URL(request.url), result.applied, result.alreadyApplied);

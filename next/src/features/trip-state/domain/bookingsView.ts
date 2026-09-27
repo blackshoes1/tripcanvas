@@ -35,7 +35,7 @@ interface TrackState {
 const NOTE: Record<PriceState, string> = {
   SAVING_AVAILABLE: '같은 조건이 더 싼 곳이 있어요.',
   CHEAPER_UNVERIFIED: '더 싼 곳이 보이지만 조건이 같은지 확인이 필요해요.',
-  GOOD_PRICE: '지금까지 본 값 중 좋은 편이에요 — 유지해도 괜찮습니다.',
+  GOOD_PRICE: '지금까지 본 값 중 좋은 편이에요 — 유지해도 괜찮아요.',
   WATCHING: '가격을 계속 보고 있어요.',
   ERROR: '가격을 확인하지 못했어요.',
   UNTRACKED: '가격 추적을 꺼 두었어요.'

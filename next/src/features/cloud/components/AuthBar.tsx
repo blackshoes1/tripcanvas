@@ -43,7 +43,7 @@ export function AuthBar({ user, available, statusLabel, onSignIn, onSignOut, onR
     setError(null);
     try {
       const r = await onSignIn(email.trim(), pass);
-      if (!r.ok) { setError(r.error ?? '로그인하지 못했습니다'); return; }
+      if (!r.ok) { setError(r.error ?? '로그인하지 못했어요'); return; }
       setOpen(false);
       setEmail(''); setPass('');
     } finally {

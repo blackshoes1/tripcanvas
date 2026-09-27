@@ -4499,7 +4499,7 @@ function priceSuggestions(today){
   return out;
 }
 
-const SG_KICKER={REPLAN:'일정 조정 제안', NEXT_ACTIVITY:'지금 가장 자연스러운 다음 일정', REST:'쉬어도 괜찮아요', PRICE_SAVING:'예약 다시 보기'};
+const SG_KICKER={REPLAN:'일정 조정 제안', NEXT_ACTIVITY:'지금 한 곳 더 들를 수 있어요', REST:'쉬어도 괜찮아요', PRICE_SAVING:'예약 다시 보기'};
 // 제안 카드의 머리. **From J는 앱 이름이 아니라 J가 보내는 제안의 서명이다** — 앱은 With J고,
 // 이 서명이 붙은 것만 '제안'이다(일정 표시·오류 안내에는 붙지 않는다).
 function sgKicker(text){
@@ -4917,7 +4917,8 @@ TC_AUTH.onChange(next=>{
 // ⚠️ 어느 Auth로 로그인할지는 **서버가 정한다**(/api/v1/auth-config). 여기서 고르면, 서버에 자체 Auth가
 // 꺼져 있는데 웹만 그쪽으로 로그인하려다 아무 데도 못 들어간다. 답이 없으면 오늘 그대로(Supabase)다.
 TC_AUTH.resolveProvider().then(p=>{
-  if(p==='TRIPCANVAS') return TC_AUTH.restore().then(()=>{if(TC_AUTH.socialError())toast(TC_AUTH.socialError());});
+  // 소셜 로그인이 실패해 돌아왔으면 이어서 열 기능도 잊는다 — 다음에 우연히 로그인했을 때 엉뚱한 화면이 열리지 않게
+  if(p==='TRIPCANVAS') return TC_AUTH.restore().then(()=>{if(TC_AUTH.socialError()){clearAuthResumeKey();toast(TC_AUTH.socialError());}});
   TC_AUTH.attachSupabase();   // SDK가 제 저장소에서 세션을 복구하고 onChange로 알려 준다
 });
 function updateAuthUI(){
@@ -5166,11 +5167,18 @@ async function syncOnLogin(){
 // 로그인이 필요한 기능(같이 짜기·가고 싶은 곳)에서 열리면 **왜 로그인하는지를 모달 안에** 남기고,
 // 로그인이 끝나면 그 기능을 이어서 연다. 예전에는 2.2초 토스트로 이유를 말하고 모달을 띄워, 이유는
 // 사라지고 로그인한 뒤에는 처음부터 다시 찾아가야 했다(2026-09-27 UX 검토).
-let authResume=null;
-/** @param {{reason?:string, resume?:()=>void}=} opts */
+let authResume=null, authResumeKey='';
+// 소셜 로그인은 페이지를 떠났다 돌아온다 — 메모리의 `authResume`는 그때 사라진다. 그래서 **이름만** 탭 저장소에 남긴다
+// (sessionStorage: 탭을 닫으면 없어지고 다른 탭으로 새지 않는다). 함수가 아니라 이름이라 돌아와서 할 일은 아래 표가 정한다.
+const AUTH_RESUME_KEY='tripcanvas_auth_resume_v1';
+/** @type {Record<string, ()=>void>} */
+const AUTH_RESUME_ACTIONS={ members:()=>openMembers(), candidates:()=>openCandidates() };
+function clearAuthResumeKey(){ try{ sessionStorage.removeItem(AUTH_RESUME_KEY); }catch(_){} }
+/** @param {{reason?:string, resume?:()=>void, resumeKey?:string}=} opts */
 function openAuthModal(opts){
   const o=opts||{};
   authResume=typeof o.resume==='function'? o.resume : null;
+  authResumeKey=authResume&&o.resumeKey&&AUTH_RESUME_ACTIONS[o.resumeKey]? o.resumeKey : '';
   const reason=document.getElementById('authReason');
   if(reason){ reason.textContent=o.reason||''; reason.hidden=!o.reason; }
   const social=document.getElementById('authSocial');
@@ -5181,7 +5189,8 @@ function openAuthModal(opts){
     button.textContent=TC_AUTH.socialLabel(provider)+'로 계속하기';
     button.onclick=async()=>{
       button.disabled=true;
-      try{await TC_AUTH.startSocial(provider);}catch(error){toast(error.message||'로그인하지 못했어요.');button.disabled=false;}
+      if(authResumeKey){ try{ sessionStorage.setItem(AUTH_RESUME_KEY, authResumeKey); }catch(_){} }
+      try{await TC_AUTH.startSocial(provider);}catch(error){clearAuthResumeKey();toast(error.message||'로그인하지 못했어요.');button.disabled=false;}
     };
     social.appendChild(button);
   }
@@ -5196,14 +5205,20 @@ document.getElementById('authBtn').onclick=()=>{
   if(user){ if(confirm(`${user.email} — 로그아웃할까요?`)){ TC_AUTH.signOut(); toast('로그아웃했어요','#4f4740'); } return; }
   openAuthModal();
 };
-/** 로그인이 필요한 기능에서 연다 — 이유는 모달 안에 남고, 로그인하면 그 기능으로 돌아온다 */
-function requireLogin(reason, resume){ openAuthModal({reason, resume}); }
-/** 로그인이 끝났으면 기다리던 기능을 한 번 연다. 로그인 상태가 되기 전에는 아무것도 하지 않는다 */
+/** 로그인이 필요한 기능에서 연다 — 이유는 모달 안에 남고, 로그인하면 그 기능으로 돌아온다.
+ * `resumeKey`는 소셜 로그인처럼 페이지를 떠났다 올 때 쓸 이름(`AUTH_RESUME_ACTIONS`) */
+function requireLogin(reason, resume, resumeKey){ openAuthModal({reason, resume, resumeKey}); }
+/** 로그인이 끝났으면 기다리던 기능을 한 번 연다. 로그인 상태가 되기 전에는 아무것도 하지 않는다.
+ * 메모리에 없으면 소셜 로그인에서 돌아온 것이다 — 탭 저장소의 이름으로 찾는다(읽으면 바로 지운다) */
 function runAuthResume(){
-  if(!user||!sb||!authResume) return;
-  const fn=authResume; authResume=null; fn();
+  if(!user||!sb) return;
+  let fn=authResume;
+  if(!fn){ let key=''; try{ key=sessionStorage.getItem(AUTH_RESUME_KEY)||''; }catch(_){} fn=AUTH_RESUME_ACTIONS[key]||null; }
+  clearAuthResumeKey();
+  if(!fn) return;
+  authResume=null; authResumeKey=''; fn();
 }
-document.getElementById('authCancel').onclick=()=>{ authResume=null; document.getElementById('authModalBg').classList.remove('show'); };
+document.getElementById('authCancel').onclick=()=>{ authResume=null; authResumeKey=''; clearAuthResumeKey(); document.getElementById('authModalBg').classList.remove('show'); };
 function authCreds(){
   const email=document.getElementById('authEmail').value.trim();
   const password=document.getElementById('authPass').value;
@@ -5456,7 +5471,7 @@ document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==
 let membersTripId=null;
 function openMembers(){
   if(viewMode){ toast('읽기전용 보기예요 — "내 여행으로 저장" 후 이용하세요','#4f4740'); return; }
-  if(!sb||!user){ requireLogin('같이 짜기는 로그인이 필요해요 — 로그인하면 일행을 초대해 같은 여행을 함께 계획할 수 있어요. 로그인한 뒤 바로 이어서 열어 드릴게요.', openMembers); return; }
+  if(!sb||!user){ requireLogin('같이 짜기는 로그인이 필요해요 — 로그인하면 일행을 초대해 같은 여행을 함께 계획할 수 있어요. 로그인한 뒤 바로 이어서 열어 드릴게요.', openMembers, 'members'); return; }
   membersTripId=store.activeId;
   document.getElementById('membersTitle').textContent=`같이 짜기 · ${trip().name||'여행'}`;   // 메뉴 이름(같이 짜기)과 화면 이름을 맞춘다
   document.getElementById('inviteResult').hidden=true; document.getElementById('inviteLink').value='';
@@ -5578,7 +5593,7 @@ let candOpen=new Set(), candComments={}, candDraft={}, candCommentErr=new Set();
 function openCandidates(seed){
   if(typeof seed?.title!=='string') seed=null; // onclick은 MouseEvent를 전달한다.
   if(viewMode){ toast('읽기전용 보기예요 — "내 여행으로 저장" 후 이용하세요','#4f4740'); return; }
-  if(!sb||!user){ requireLogin('가고 싶은 곳은 로그인이 필요해요 — 로그인하면 일행과 후보를 함께 고를 수 있어요. 로그인한 뒤 바로 이어서 열어 드릴게요.', ()=>openCandidates(seed)); return; }
+  if(!sb||!user){ requireLogin('가고 싶은 곳은 로그인이 필요해요 — 로그인하면 일행과 후보를 함께 고를 수 있어요. 로그인한 뒤 바로 이어서 열어 드릴게요.', ()=>openCandidates(seed), 'candidates'); return; }
   const keepDraft=seed && candTripId===store.activeId && (document.getElementById('candTitleInput').value.trim()||document.getElementById('candNoteInput').value.trim());
   candTripId=store.activeId;
   fillCandCatSelects();

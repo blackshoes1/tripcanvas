@@ -1129,13 +1129,13 @@
   }
   /** @param {any} value @returns {string|null} */
   function admissionError(value){
-    if(!value||typeof value!=='object'||Array.isArray(value)||value.source!=='USER') return '명소 예약 정보는 사용자가 확인한 값이어야 합니다';
-    if(value.requirement!=null&&!_ADMISSION_REQUIREMENTS.includes(value.requirement)) return '예약 요건이 올바르지 않습니다';
-    if(value.personalStatus!=null&&!['NOT_BOOKED','BOOKED'].includes(value.personalStatus)) return '내 예약 상태가 올바르지 않습니다';
-    if(value.officialURL!=null&&!admissionURL(value.officialURL)) return '공식 페이지는 https URL이어야 합니다';
-    if(value.checkedAt!=null&&!admissionCheckedAt(value.checkedAt)) return '확인 시각은 ISO 형식이어야 합니다';
-    if(value.note!=null&&(typeof value.note!=='string'||value.note.length>1000)) return '예약 메모는 1000자까지 입력할 수 있습니다';
-    if(value.people!=null&&(!Number.isInteger(value.people)||value.people<1||value.people>100)) return '예약 인원은 1~100명이어야 합니다';
+    if(!value||typeof value!=='object'||Array.isArray(value)||value.source!=='USER') return '명소 예약 정보는 사용자가 확인한 값이어야 해요';
+    if(value.requirement!=null&&!_ADMISSION_REQUIREMENTS.includes(value.requirement)) return '예약 요건이 올바르지 않아요';
+    if(value.personalStatus!=null&&!['NOT_BOOKED','BOOKED'].includes(value.personalStatus)) return '내 예약 상태가 올바르지 않아요';
+    if(value.officialURL!=null&&!admissionURL(value.officialURL)) return '공식 페이지는 https URL이어야 해요';
+    if(value.checkedAt!=null&&!admissionCheckedAt(value.checkedAt)) return '확인 시각은 ISO 형식이어야 해요';
+    if(value.note!=null&&(typeof value.note!=='string'||value.note.length>1000)) return '예약 메모는 1000자까지 입력할 수 있어요';
+    if(value.people!=null&&(!Number.isInteger(value.people)||value.people<1||value.people>100)) return '예약 인원은 1~100명이어야 해요';
     return null;
   }
   /** 불량 외부 입력은 예약 완료/무료로 추론하지 않는다. @param {any} value @returns {any} */
@@ -1167,50 +1167,50 @@
     let totalSpots=0;
     /** @param {any} node @param {number} depth @returns {string|null} */
     function walk(node,depth){
-      if(depth>TC_LIMITS.depth) return '데이터 중첩이 너무 깊습니다';
-      if(typeof node==='string'&&node.length>TC_LIMITS.stringChars) return '문자열이 허용 길이를 초과했습니다';
+      if(depth>TC_LIMITS.depth) return '데이터 중첩이 너무 깊어요';
+      if(typeof node==='string'&&node.length>TC_LIMITS.stringChars) return '문자열이 허용 길이를 초과했어요';
       if(!node||typeof node!=='object') return null;
       for(const key of Object.keys(node)){
-        if(key==='__proto__'||key==='prototype'||key==='constructor') return '위험한 객체 키가 포함되어 있습니다';
-        if(key.length>TC_LIMITS.keyChars) return '객체 키가 너무 깁니다';
+        if(key==='__proto__'||key==='prototype'||key==='constructor') return '위험한 객체 키가 포함되어 있어요';
+        if(key.length>TC_LIMITS.keyChars) return '객체 키가 너무 길어요';
         const err=walk(node[key],depth+1); if(err) return err;
       }
       return null;
     }
     const generic=walk(value,0); if(generic) return generic;
-    if(!value||typeof value!=='object'||Array.isArray(value)) return '여행 객체가 아닙니다';
-    if(Number.isInteger(value.schemaVersion)&&value.schemaVersion>TC_SCHEMA) return '더 새로운 앱 버전에서 만든 여행입니다';
-    if(!Array.isArray(value.days)||!value.days.length) return '일정이 없습니다';
-    if(value.days.length>TC_LIMITS.days) return `일정은 ${TC_LIMITS.days}일까지 허용됩니다`;
+    if(!value||typeof value!=='object'||Array.isArray(value)) return '여행 객체가 아니에요';
+    if(Number.isInteger(value.schemaVersion)&&value.schemaVersion>TC_SCHEMA) return '더 새로운 앱 버전에서 만든 여행이에요';
+    if(!Array.isArray(value.days)||!value.days.length) return '일정이 없어요';
+    if(value.days.length>TC_LIMITS.days) return `일정은 ${TC_LIMITS.days}일까지 허용돼요`;
     for(const day of value.days){
-      if(!day||typeof day!=='object'||Array.isArray(day)) return '일정 형식이 올바르지 않습니다';
-      if(!Array.isArray(day.spots)) return '장소 목록 형식이 올바르지 않습니다';
-      if(day.spots.length>TC_LIMITS.spotsPerDay) return `하루 장소는 ${TC_LIMITS.spotsPerDay}곳까지 허용됩니다`;
-      if(day.costItems!=null&&(!Array.isArray(day.costItems)||day.costItems.length>100)) return '추가 비용은 하루 100개까지 허용됩니다';
+      if(!day||typeof day!=='object'||Array.isArray(day)) return '일정 형식이 올바르지 않아요';
+      if(!Array.isArray(day.spots)) return '장소 목록 형식이 올바르지 않아요';
+      if(day.spots.length>TC_LIMITS.spotsPerDay) return `하루 장소는 ${TC_LIMITS.spotsPerDay}곳까지 허용돼요`;
+      if(day.costItems!=null&&(!Array.isArray(day.costItems)||day.costItems.length>100)) return '추가 비용은 하루 100개까지 허용돼요';
       for(const item of [day.budget,...(day.costItems||[])]){
         if(item==null) continue;
-        if(typeof item!=='object'||Array.isArray(item)) return '비용 형식이 올바르지 않습니다';
-        if(item.amount!=null&&(!_fin(item.amount)||+item.amount<0||+item.amount>TC_LIMITS.cost)) return '비용 범위가 올바르지 않습니다';
-        if(item.costPeople!=null&&(!Number.isInteger(item.costPeople)||item.costPeople<1||item.costPeople>100)) return '비용 적용 인원은 1~100명이어야 합니다';
+        if(typeof item!=='object'||Array.isArray(item)) return '비용 형식이 올바르지 않아요';
+        if(item.amount!=null&&(!_fin(item.amount)||+item.amount<0||+item.amount>TC_LIMITS.cost)) return '비용 범위가 올바르지 않아요';
+        if(item.costPeople!=null&&(!Number.isInteger(item.costPeople)||item.costPeople<1||item.costPeople>100)) return '비용 적용 인원은 1~100명이어야 해요';
       }
       totalSpots+=day.spots.length;
       for(const spot of day.spots){
-        if(!spot||typeof spot!=='object'||Array.isArray(spot)) return '장소 형식이 올바르지 않습니다';
+        if(!spot||typeof spot!=='object'||Array.isArray(spot)) return '장소 형식이 올바르지 않아요';
         if(spot.admission!=null){ const error=admissionError(spot.admission); if(error) return error; }
         const hasLat=spot.lat!=null, hasLng=spot.lng!=null;
-        if(hasLat!==hasLng) return '위도와 경도는 함께 입력해야 합니다';
-        if(hasLat&&(!_fin(spot.lat)||!_fin(spot.lng)||+spot.lat < -90||+spot.lat > 90||+spot.lng < -180||+spot.lng > 180)) return '좌표 범위가 올바르지 않습니다';
-        for(const field of ['at','bookAt']) if(spot[field]!=null&&spot[field]!==''&&_hm(spot[field])===undefined) return '시각은 HH:MM 형식이어야 합니다';
-        if(spot.cost!=null&&(!_fin(spot.cost)||+spot.cost<0||+spot.cost>TC_LIMITS.cost)) return '비용 범위가 올바르지 않습니다';
-        if(spot.costPeople!=null&&(!Number.isInteger(spot.costPeople)||spot.costPeople<1||spot.costPeople>100)) return '비용 적용 인원은 1~100명이어야 합니다';
+        if(hasLat!==hasLng) return '위도와 경도는 함께 입력해야 해요';
+        if(hasLat&&(!_fin(spot.lat)||!_fin(spot.lng)||+spot.lat < -90||+spot.lat > 90||+spot.lng < -180||+spot.lng > 180)) return '좌표 범위가 올바르지 않아요';
+        for(const field of ['at','bookAt']) if(spot[field]!=null&&spot[field]!==''&&_hm(spot[field])===undefined) return '시각은 HH:MM 형식이어야 해요';
+        if(spot.cost!=null&&(!_fin(spot.cost)||+spot.cost<0||+spot.cost>TC_LIMITS.cost)) return '비용 범위가 올바르지 않아요';
+        if(spot.costPeople!=null&&(!Number.isInteger(spot.costPeople)||spot.costPeople<1||spot.costPeople>100)) return '비용 적용 인원은 1~100명이어야 해요';
         if(spot.bookUrl!=null&&spot.bookUrl!==''){
-          if(typeof spot.bookUrl!=='string') return '예약 URL 형식이 올바르지 않습니다';
-          try{ if(!/^https?:$/.test(new URL(spot.bookUrl).protocol)) return '예약 URL은 http(s)만 허용됩니다'; }
-          catch(_){ return '예약 URL 형식이 올바르지 않습니다'; }
+          if(typeof spot.bookUrl!=='string') return '예약 URL 형식이 올바르지 않아요';
+          try{ if(!/^https?:$/.test(new URL(spot.bookUrl).protocol)) return '예약 URL은 http(s)만 허용돼요'; }
+          catch(_){ return '예약 URL 형식이 올바르지 않아요'; }
         }
       }
     }
-    if(totalSpots>TC_LIMITS.totalSpots) return `전체 장소는 ${TC_LIMITS.totalSpots}곳까지 허용됩니다`;
+    if(totalSpots>TC_LIMITS.totalSpots) return `전체 장소는 ${TC_LIMITS.totalSpots}곳까지 허용돼요`;
     return null;
   }
   /**
@@ -1220,33 +1220,33 @@
    */
   function validateTripPayload(value,options){
     let serialized='';
-    try{ serialized=JSON.stringify(value); }catch(_){ return {ok:false,error:'JSON으로 표현할 수 없는 데이터입니다'}; }
-    if(!serialized) return {ok:false,error:'비어 있는 데이터입니다'};
+    try{ serialized=JSON.stringify(value); }catch(_){ return {ok:false,error:'JSON으로 표현할 수 없는 데이터예요'}; }
+    if(!serialized) return {ok:false,error:'비어 있는 데이터예요'};
     const max=(options&&options.maxBytes)||TC_LIMITS.jsonBytes;
-    if(_utf8Bytes(serialized)>max) return {ok:false,error:'여행 데이터가 허용 크기를 초과했습니다'};
+    if(_utf8Bytes(serialized)>max) return {ok:false,error:'여행 데이터가 허용 크기를 초과했어요'};
     const error=_shapeError(value); if(error) return {ok:false,error};
     const migrated=migrateTrip(value);
     const normalized=normalizeTrip(migrated);
-    return normalized?{ok:true,value:normalized}:{ok:false,error:'여행 데이터를 복구할 수 없습니다'};
+    return normalized?{ok:true,value:normalized}:{ok:false,error:'여행 데이터를 복구할 수 없어요'};
   }
   /** @param {string} text @returns {{ok:true,value:any}|{ok:false,error:string}} */
   function parseTripPayload(text){
-    if(typeof text!=='string'||_utf8Bytes(text)>TC_LIMITS.jsonBytes) return {ok:false,error:'여행 파일이 허용 크기를 초과했습니다'};
-    try{ return validateTripPayload(JSON.parse(text)); }catch(_){ return {ok:false,error:'JSON 형식이 올바르지 않습니다'}; }
+    if(typeof text!=='string'||_utf8Bytes(text)>TC_LIMITS.jsonBytes) return {ok:false,error:'여행 파일이 허용 크기를 초과했어요'};
+    try{ return validateTripPayload(JSON.parse(text)); }catch(_){ return {ok:false,error:'JSON 형식이 올바르지 않아요'}; }
   }
   /** @param {string|null} text @returns {{ok:true,value:any}|{ok:false,error:string}} */
   function parseStorePayload(text){
-    if(!text) return {ok:false,error:'저장 데이터가 없습니다'};
-    if(_utf8Bytes(text)>TC_LIMITS.storeBytes) return {ok:false,error:'저장 데이터가 허용 크기를 초과했습니다'};
+    if(!text) return {ok:false,error:'저장 데이터가 없어요'};
+    if(_utf8Bytes(text)>TC_LIMITS.storeBytes) return {ok:false,error:'저장 데이터가 허용 크기를 초과했어요'};
     try{
       const raw=JSON.parse(text);
-      if(!raw||typeof raw!=='object'||!Array.isArray(raw.trips)||!raw.trips.length||raw.trips.length>TC_LIMITS.trips) return {ok:false,error:'저장소 형식이 올바르지 않습니다'};
+      if(!raw||typeof raw!=='object'||!Array.isArray(raw.trips)||!raw.trips.length||raw.trips.length>TC_LIMITS.trips) return {ok:false,error:'저장소 형식이 올바르지 않아요'};
       const out=Object.assign({},raw), trips=[];
       for(const trip of raw.trips){ const result=validateTripPayload(trip); if(!result.ok) return result; trips.push(result.value); }
       out.trips=trips;
       if(typeof out.activeId!=='string'||!trips.some(t=>t.id===out.activeId)) out.activeId=trips[0].id;
       return {ok:true,value:out};
-    }catch(_){ return {ok:false,error:'저장 JSON 형식이 올바르지 않습니다'}; }
+    }catch(_){ return {ok:false,error:'저장 JSON 형식이 올바르지 않아요'}; }
   }
 
   /** @param {any} s @returns {any} */

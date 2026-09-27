@@ -62,12 +62,12 @@ export class TripService {
     if (existing?.record.ownerId === ctx.userId) {
       // 충돌에는 **서버의 현재 문서**를 함께 싣는다 — 클라이언트가 두 버전을 보여 주고 고르게 해야 한다
       throw new ApiError('CONFLICT', {
-        message: '같은 id의 여행이 이미 있습니다 — 수정(PUT)으로 저장해 주세요.',
+        message: '같은 id의 여행이 이미 있어요 — 수정(PUT)으로 저장해 주세요.',
         details: { revision: existing.record.revision, document: existing.record.data, deletedAt: existing.record.deletedAt }
       });
     }
     if (await this.deps.members.wasMember(ctx.userId, clientId)) {
-      throw new ApiError('FORBIDDEN', { message: '이 여행에서 나갔거나 내보내졌습니다 — 사본을 새로 만들 수 없습니다.' });
+      throw new ApiError('FORBIDDEN', { message: '이 여행에서 나갔거나 내보내졌어요 — 사본을 새로 만들 수 없어요.' });
     }
     const record = await this.deps.trips.create({ ownerId: ctx.userId, clientId, data: doc });
     return { record, role: 'OWNER', memberCount: 1 };
@@ -78,7 +78,7 @@ export class TripService {
     doc.id = clientId;
     const view = await this.deps.trips.findVisible(ctx.userId, clientId);
     if (!view) {
-      if (await this.deps.members.wasMember(ctx.userId, clientId)) throw new ApiError('FORBIDDEN', { message: '이 여행에서 나갔거나 내보내졌습니다.' });
+      if (await this.deps.members.wasMember(ctx.userId, clientId)) throw new ApiError('FORBIDDEN', { message: '이 여행에서 나갔거나 내보내졌어요.' });
       throw new ApiError('NOT_FOUND');
     }
     if (!(await this.deps.authz.canEdit(ctx.userId, view.record.id))) throw new ApiError('FORBIDDEN');
@@ -91,7 +91,7 @@ export class TripService {
     const view = await this.deps.trips.findVisible(ctx.userId, clientId);
     if (!view) throw new ApiError('NOT_FOUND');
     if (!(await this.deps.authz.canDelete(ctx.userId, view.record.id))) {
-      throw new ApiError('FORBIDDEN', { message: '여행 삭제는 주최자만 할 수 있습니다 — 공유받은 여행은 나가기로 정리해 주세요.' });
+      throw new ApiError('FORBIDDEN', { message: '여행 삭제는 주최자만 할 수 있어요 — 공유받은 여행은 나가기로 정리해 주세요.' });
     }
     if (view.record.deletedAt) return view;
     const result = await this.deps.trips.tombstoneCas(view.record.id, expectedRevision, opts);

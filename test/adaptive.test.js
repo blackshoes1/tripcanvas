@@ -367,7 +367,7 @@ test('departureAdvice: 언제 나서면 되는지 문장으로 답한다', () =>
   assert.match(now.text, /지금 출발하면 약 5분 여유/);
   const late = A.departureAdvice(at(18 * 60 + 50), at(18 * 60 + 50).items[1], 20);
   assert.equal(late.level, 'LATE');
-  assert.match(late.text, /약 10분 늦습니다/);
+  assert.match(late.text, /약 10분 늦어요/);
   assert.equal(A.departureAdvice(at(600), null, 10), null);
 });
 

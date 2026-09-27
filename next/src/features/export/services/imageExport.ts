@@ -30,13 +30,13 @@ export type CaptureResult = { ok: true; dataUrl: string } | { ok: false; error: 
 /** 노드를 PNG data URL로. scale 2는 레거시와 같다(레티나에서도 또렷하게) */
 export async function captureNode(el: HTMLElement, background: string): Promise<CaptureResult> {
   if (!(await loadHtml2Canvas())) {
-    return { ok: false, error: '이미지 모듈을 불러오지 못했습니다 — 네트워크를 확인해주세요' };
+    return { ok: false, error: '이미지 모듈을 불러오지 못했어요 — 네트워크를 확인해주세요' };
   }
   const h2c = (window as unknown as { html2canvas: H2C }).html2canvas;
   try {
     const canvas = await h2c(el, { backgroundColor: background, scale: 2 });
     return { ok: true, dataUrl: canvas.toDataURL('image/png') };
   } catch {
-    return { ok: false, error: '이미지를 만들지 못했습니다' };
+    return { ok: false, error: '이미지를 만들지 못했어요' };
   }
 }

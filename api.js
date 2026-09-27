@@ -41,7 +41,7 @@
   function toError(status, body) {
     const b = /** @type {any} */ (body && typeof body === 'object' ? body : {});
     const apiCode = String(b.code || b.error || '');
-    const message = String(b.message || `요청이 실패했습니다 (${status})`);
+    const message = String(b.message || `요청이 실패했어요 (${status})`);
     const forbidden = status === 403 || apiCode === 'FORBIDDEN';
     return {
       code: forbidden ? '42501' : apiCode,
@@ -60,9 +60,9 @@
    */
   async function request(method, path, body, anon) {
     const token = await _getToken();
-    if (!token && !anon) return { data: null, error: { code: '', apiCode: 'UNAUTHORIZED', status: 401, message: '로그인이 필요합니다.' } };
+    if (!token && !anon) return { data: null, error: { code: '', apiCode: 'UNAUTHORIZED', status: 401, message: '로그인이 필요해요.' } };
     const doFetch = _fetch || (typeof fetch === 'function' ? fetch : null);
-    if (!doFetch) return { data: null, error: { code: '', apiCode: 'INTERNAL_ERROR', status: 0, message: '이 환경에서는 네트워크를 쓸 수 없습니다.' } };
+    if (!doFetch) return { data: null, error: { code: '', apiCode: 'INTERNAL_ERROR', status: 0, message: '이 환경에서는 네트워크를 쓸 수 없어요.' } };
 
     let response;
     try {
@@ -78,7 +78,7 @@
       });
     } catch (e) {
       // 끊긴 네트워크도 호출부에는 error로 보인다 — 예외를 던지지 않는다
-      const message = (e instanceof Error && e.message) || '서버에 연결하지 못했습니다.';
+      const message = (e instanceof Error && e.message) || '서버에 연결하지 못했어요.';
       return { data: null, error: { code: '', apiCode: 'NETWORK_ERROR', status: 0, message: message } };
     }
 
@@ -205,7 +205,7 @@
   }
   /** 오류를 그대로 던진다 — 예전 rpcRow가 그랬듯이 @param {any} error */
   function raise(error) {
-    const e = new Error(error.message || '요청이 실패했습니다');
+    const e = new Error(error.message || '요청이 실패했어요');
     // 이름에 서버 코드를 남긴다 — 진단 기록(reportOperationalError)이 'Error' 하나만 남기면
     // 나중에 무엇이 실패했는지 아무도 모른다.
     Object.assign(e, error);

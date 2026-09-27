@@ -48,7 +48,7 @@ export async function parseWithAi(
       })
     });
   } catch {
-    return { ok: false, error: 'AI에 연결하지 못했습니다 — 네트워크를 확인해주세요' };
+    return { ok: false, error: 'AI에 연결하지 못했어요 — 네트워크를 확인해주세요' };
   }
   if (!res.ok) {
     // 본문에 키가 되비쳐 올 수 있어 상태 코드만 보여준다
@@ -58,6 +58,6 @@ export async function parseWithAi(
     const data = await res.json() as { content?: { text?: string }[] };
     return { ok: true, value: JSON.parse(extractJson(data.content?.[0]?.text ?? '')) };
   } catch {
-    return { ok: false, error: 'AI 응답을 읽지 못했습니다 — 다시 시도해주세요' };
+    return { ok: false, error: 'AI 응답을 읽지 못했어요 — 다시 시도해주세요' };
   }
 }

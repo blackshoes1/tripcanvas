@@ -27,11 +27,11 @@ export async function listSnapshots(clientId: string): Promise<SnapshotRow[]> {
 export type RestoreResult = { ok: true; trip: Trip } | { ok: false; error: string };
 
 export async function loadSnapshot(clientId: string, id: number): Promise<RestoreResult> {
-  if (!hasCloudSession()) return { ok: false, error: '클라우드에 연결되어 있지 않습니다' };
+  if (!hasCloudSession()) return { ok: false, error: '클라우드에 연결되어 있지 않아요' };
   const { data, error } = await cloudApi.snapshots.load(clientId, id);
-  if (error || !data) return { ok: false, error: '그 버전을 불러오지 못했습니다' };
+  if (error || !data) return { ok: false, error: '그 버전을 불러오지 못했어요' };
   const result = legacyLib.validateTripPayload(data.data);
   return result.ok
     ? { ok: true, trip: result.value as Trip }
-    : { ok: false, error: '손상된 버전이라 복원하지 않았습니다' };
+    : { ok: false, error: '손상된 버전이라 복원하지 않았어요' };
 }

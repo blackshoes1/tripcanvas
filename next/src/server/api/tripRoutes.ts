@@ -22,7 +22,7 @@ const TripWriteBody = TripBody.extend({ expectedRevision: z.number().int().min(1
 
 async function parseBody<T>(request: Request, schema: z.ZodType<T>): Promise<T> {
   let raw: unknown;
-  try { raw = await request.json(); } catch { throw new ApiError('VALIDATION_ERROR', { message: '본문이 JSON이 아닙니다.' }); }
+  try { raw = await request.json(); } catch { throw new ApiError('VALIDATION_ERROR', { message: '본문이 JSON이 아니에요.' }); }
   const parsed = schema.safeParse(raw);
   if (!parsed.success) {
     throw new ApiError('VALIDATION_ERROR', { details: { issues: parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })) } });
@@ -97,7 +97,7 @@ export function createTripRoutes(deps: TripRouteDeps) {
     remove: (request: Request, tripId: string) => withService(request, async (ctx, service) => {
       const raw = new URL(request.url).searchParams.get('expectedRevision');
       const expected = Number(raw);
-      if (!raw || !Number.isInteger(expected) || expected < 1) throw new ApiError('VALIDATION_ERROR', { message: 'expectedRevision(마지막에 읽은 revision)이 필요합니다.' });
+      if (!raw || !Number.isInteger(expected) || expected < 1) throw new ApiError('VALIDATION_ERROR', { message: 'expectedRevision(마지막에 읽은 revision)이 필요해요.' });
       const view = await service.delete(ctx, tripId, expected);
       const body: TripDeleteResponse = { schemaVersion: CONTRACT_SCHEMA_VERSION, deleted: true, revision: view.record.revision };
       return ok(body);
