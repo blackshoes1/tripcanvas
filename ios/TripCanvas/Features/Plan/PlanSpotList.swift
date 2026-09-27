@@ -37,9 +37,11 @@ struct PlanSpotList: View {
             // 저장된 문서는 계속 보인다. 계산 응답을 기다리며 목록 전체를 교체하지 않는다.
             List {
                 Section {
+                    // 하루 머리는 카드가 아니라 **종이 위의 제목**이다 — 카드 안의 카드가 되지 않게(2026-09-27 시안).
                     summaryCard(day)
-                        .listRowBackground(Ink.accent.opacity(0.06))
+                        .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 0, leading: Space.xs, bottom: 0, trailing: Space.xs))
                 }
                 Section {
                     // 헤더도 일반 행이다. 스크롤 중 장소 위로 고정되어 겹치지 않는다.
@@ -48,22 +50,30 @@ struct PlanSpotList: View {
                         .deleteDisabled(true)
                         .moveDisabled(true)
                     if day.spots.isEmpty { emptyDay }
+                    let rail = railEdges(day)
                     // 🏠 전날 숙소 이월 · 렌터카 픽업은 장소 목록 **앞**에 온다.
                     // ⚠️ ForEach 밖에 둔다 — 드래그 인덱스는 ForEach의 컬렉션 기준이라
                     //    이 줄들이 그 안에 섞이면 순서가 어긋난다.
-                    if let flight = model.planDay?.flight, !flight.line.isEmpty { flightRow(flight) }
-                    if let carry = model.planDay?.carriedStay { carryRow(carry) }
-                    ForEach(model.planDay?.carPickups ?? [], id: \.bookingId) { carEventRow($0) }
+                    if let flight = model.planDay?.flight, !flight.line.isEmpty {
+                        flightRow(flight, top: false, bottom: rail.afterFlight)
+                    }
+                    if let carry = model.planDay?.carriedStay { carryRow(carry, top: rail.beforeCarry, bottom: rail.afterCarry) }
+                    ForEach(model.planDay?.carPickups ?? [], id: \.bookingId) {
+                        carEventRow($0, top: rail.beforePickups, bottom: true)
+                    }
                     ForEach(Array(day.spots.enumerated()), id: \.offset) { index, spot in
                         HStack {
                             if choosingPlaces {
                                 Image(systemName: chosenPlaces.contains(index) ? "checkmark.circle.fill" : "circle")
                             }
                             SpotRow(spot: spot, dayMode: day.mode, plan: model.planSpot(at: index),
-                                split: splitInfo(at: index))
+                                    split: splitInfo(at: index),
+                                    railTop: index > 0 || rail.beforeSpots,
+                                    railBottom: index < day.spots.count - 1 || rail.afterSpots)
                         }
                             .listRowBackground(Ink.raised)
                             .listRowSeparator(.hidden)
+                            .listRowInsets(PlanRail.railRowInsets)
                             // 12pt 이상 움직인 터치는 탭을 취소한다. 짧게 끌다 놓아도 편집을 열지 않는다.
                             .overlay(PlanSpotTapSurface { actions.editSpot(index, spot) })
                             .accessibilityElement(children: .combine)
@@ -90,7 +100,11 @@ struct PlanSpotList: View {
                     .deleteDisabled(!model.canEdit)
                     .moveDisabled(!model.canEdit)
                     // 반납은 장소 뒤, 숙소 복귀 앞 — 웹 일자 카드와 같은 순서다.
-                    ForEach(model.planDay?.carReturns ?? [], id: \.bookingId) { carEventRow($0) }
+                    ForEach(model.planDay?.carReturns ?? [], id: \.bookingId) {
+                        carEventRow($0, top: true, bottom: model.planDay?.back != nil)
+                    }
+                    // 숙소 복귀는 같은 줄기의 끝이다 — 따로 떨어진 카드가 아니라 선이 닿는 마지막 자리.
+                    if let back = model.planDay?.back { backRow(back) }
                 } footer: {
                     if model.documentCachedAt != nil {
                         Text("연결되면 최신 일정을 불러와 편집할 수 있어요.")
@@ -111,12 +125,6 @@ struct PlanSpotList: View {
                     }
                 }
                 .listRowBackground(Ink.raised)
-                if let back = model.planDay?.back {
-                    Section {
-                        backRow(back)
-                            .listRowSeparator(.hidden)
-                    }
-                }
                 // ① 장소 추가는 **목록 맨 아래 한 곳**이다 — 빈 날에도 같은 자리에 있다(2026-09-27 시안).
                 //    누르면 방법(검색·직접 입력)을 고른다. 검색이 먼저다 — 좌표가 있어야 동선·ETA·지도에 들어간다.
                 if model.canEdit && !isEditing && !choosingPlaces {
@@ -126,7 +134,9 @@ struct PlanSpotList: View {
                                 .font(.body.weight(.semibold))
                                 .foregroundStyle(Ink.accent)
                                 .frame(maxWidth: .infinity, minHeight: 54)
-                                .background(Ink.accent.opacity(0.1), in: RoundedRectangle(cornerRadius: Radius.card))
+                                .background(Ink.accent.opacity(0.06), in: RoundedRectangle(cornerRadius: Radius.card))
+                                .overlay(RoundedRectangle(cornerRadius: Radius.card)
+                                    .strokeBorder(Ink.accent.opacity(0.4), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4])))
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
@@ -159,23 +169,17 @@ struct PlanSpotList: View {
     /// 요약은 스크롤되는 독립 카드다. 방문 일정과 같은 고정 헤더에 넣지 않는다.
     private func summaryCard(_ day: TripDay) -> some View {
         VStack(alignment: .leading, spacing: Space.s) {
-            Text("하루 요약")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(Ink.accent)
-                .accessibilityAddTraits(.isHeader)
             dayHeader(day)
-            lodgingSummary
             if model.plan == nil && !model.planAttempted(for: model.selectedDay) {
                 ProgressView("이동·도착 시각을 계산하는 중").font(.caption)
             }
             if let totals = model.planDay?.totals { Self.daySummary(totals) }
-            Divider()
             costRow(day)
             Button {
                 withAnimation(motion) { summaryExpanded.toggle() }
             } label: {
                 HStack(spacing: Space.xs) {
-                    Text(summaryExpanded ? "요약 접기" : "상세 요약 보기")
+                    Text(summaryExpanded ? "요약 접기" : "요약 보기")
                     Image(systemName: "chevron.right")
                         .rotationEffect(.degrees(summaryExpanded ? 90 : 0))
                 }
@@ -186,9 +190,13 @@ struct PlanSpotList: View {
             }
             .buttonStyle(.plain)
             .accessibilityAddTraits(summaryExpanded ? [.isSelected] : [])
-            if summaryExpanded { dayDetails(day) }
+            if summaryExpanded {
+                // 숙박 상태도 여기 — 기본 화면은 제목·이동·비용 세 줄이다(첫 장소가 요약보다 위에 보여야 한다).
+                lodgingSummary
+                dayDetails(day)
+            }
         }
-        .padding(.vertical, Space.s)
+        .padding(.vertical, Space.xs)
     }
 
     /// 세로로 읽기 시작한 손은 나중에 비스듬해져도 날짜를 바꾸지 않는다.
@@ -221,7 +229,7 @@ struct PlanSpotList: View {
     private func dayHeader(_ day: TripDay) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: Space.s) {
             Text(dayTitleText(day))
-                .font(.title2.weight(.bold))
+                .font(Typeface.editorial(.title))
                 .foregroundStyle(Ink.ink)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: Space.s)
@@ -436,89 +444,91 @@ struct PlanSpotList: View {
     /// ⚠️ 렌터카 픽업·반납과 같은 자리에 있는 이유가 같다 — **좌표가 없어 동선·ETA에 들어가지 않는다.**
     ///    시각도 ETA 칸이 아니라 이 줄 안에 있다: 그날 계산된 도착 순서에 속하지 않는다.
     /// ⚠️ `ForEach` 밖에 둔다 — 드래그 인덱스가 어긋난다(위 주석과 같은 이유).
-    private func flightRow(_ flight: DayPlanFlight) -> some View {
-        Label {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(flight.line).font(.subheadline)
-                Text("항공편").font(.caption2).foregroundStyle(Ink.soft)
-            }
-        } icon: {
-            Image(systemName: "airplane").foregroundStyle(Ink.info)
-        }
-        .listRowBackground(Ink.raised.opacity(0.6))
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("항공편 \(flight.line)")
+    private func flightRow(_ flight: DayPlanFlight, top: Bool, bottom: Bool) -> some View {
+        PlanRailEventRow(symbol: "airplane", title: flight.line, subtitle: "항공편", railTop: top, railBottom: bottom)
+            .listRowBackground(Ink.raised)
+            .listRowSeparator(.hidden)
+            .listRowInsets(PlanRail.railRowInsets)
+            .accessibilityLabel("항공편 \(flight.line)")
     }
 
     /// 🏠 전날 숙소에서 이어지는 날. **표시일 뿐**이고 이 항목은 그날 일정이 아니다.
-    private func carryRow(_ carry: DayPlanCarriedStay) -> some View {
-        Label {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(carry.name).font(.subheadline)
-                Text("전날 숙소에서 출발").font(.caption2).foregroundStyle(Ink.soft)
-            }
-        } icon: {
-            Image(systemName: "house.fill").foregroundStyle(Ink.soft)
-        }
-        .listRowBackground(Ink.raised.opacity(0.6))
+    private func carryRow(_ carry: DayPlanCarriedStay, top: Bool, bottom: Bool) -> some View {
+        PlanRailEventRow(symbol: "house.fill", style: .home, title: carry.name, subtitle: "전날 숙소에서 출발",
+                         railTop: top, railBottom: bottom)
+            .listRowBackground(Ink.raised)
+            .listRowSeparator(.hidden)
+            .listRowInsets(PlanRail.railRowInsets)
     }
 
-    /// 자동으로 이어 붙인 숙소 복귀. 일정에 저장된 장소가 아니라는 것을 밝힌다.
+    /// 자동으로 이어 붙인 숙소 복귀. 일정에 저장된 장소가 아니라는 것을 밝힌다('자동으로 이어 붙였어요').
+    /// 시각 칸에는 하루가 끝나는 시각이 선다. 복귀 수단은 줄 끝의 ⋯에서 고른다.
     /// ⚠️ 일정의 마지막 날에는 서버가 이걸 주지 않는다 — 떠나는 날이다.
+    /// ⚠️ 장소 `ForEach` **밖**이다 — 드래그 인덱스에 섞이지 않는다.
     private func backRow(_ back: DayPlanBack) -> some View {
-        VStack(alignment: .leading, spacing: Space.m) {
-            HStack(spacing: Space.s) {
-                Label("숙소 복귀", systemImage: "house.fill")
-                    .font(.headline)
-                    .accessibilityAddTraits(.isHeader)
-                Text("자동")
-                    .font(.caption2.weight(.semibold))
-                    .padding(.horizontal, Space.s)
-                    .padding(.vertical, Space.xs)
-                    .background(Ink.accent.opacity(0.12), in: Capsule())
-                    .foregroundStyle(Ink.accent)
-            }
-            Text(back.name).font(.subheadline)
-                .fixedSize(horizontal: false, vertical: true)
-            let mode = TravelMode(rawValue: back.leg.mode)
-            Text("\(mode?.label ?? "") \(TimeFormat.duration(back.leg.minutes))")
-                .font(.caption).foregroundStyle(Ink.soft)
-            if model.canEdit {
-                Divider()
-                Picker("복귀 이동수단", selection: Binding<TravelMode?>(
-                    get: { model.day?.returnMode },
-                    set: { mode in
-                        let dayIndex = model.selectedDay
-                        Task { await model.setReturnMode(mode, dayIndex: dayIndex) }
-                    })) {
-                    Text("그날 기본 수단 따르기").tag(TravelMode?.none)
-                    ForEach(TravelMode.allCases, id: \.self) { mode in
-                        Label(mode.label, systemImage: mode.symbol).tag(TravelMode?.some(mode))
+        VStack(alignment: .leading, spacing: 0) {
+            PlanRailLeg(mode: TravelMode(rawValue: back.leg.mode) ?? model.day?.mode ?? .walk,
+                        minutes: back.leg.minutes, distanceKm: back.leg.distanceKm)
+            PlanRailEventRow(symbol: "house.fill", style: .home, title: "숙소로 돌아가기",
+                             subtitle: "\(back.name) · 자동으로 이어 붙였어요",
+                             time: model.planDay?.totals.endMinutes.map(TimeFormat.clockAcrossMidnight),
+                             railBottom: false) {
+                if model.canEdit {
+                    Menu {
+                        Picker("복귀 이동수단", selection: Binding<TravelMode?>(
+                            get: { model.day?.returnMode },
+                            set: { mode in
+                                let dayIndex = model.selectedDay
+                                Task { await model.setReturnMode(mode, dayIndex: dayIndex) }
+                            })) {
+                            Text("그날 기본 수단 따르기").tag(TravelMode?.none)
+                            ForEach(TravelMode.allCases, id: \.self) { mode in
+                                Label(mode.label, systemImage: mode.symbol).tag(TravelMode?.some(mode))
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis").foregroundStyle(Ink.soft).frame(width: 44, height: 44)
                     }
+                    .disabled(model.isSaving)
+                    .accessibilityLabel("복귀 이동수단")
                 }
-                .pickerStyle(.menu)
-                .tint(Ink.accent)
-                .disabled(model.isSaving)
             }
         }
-        .padding(.vertical, Space.s)
-        .listRowBackground(Ink.sunken.opacity(0.55))
+        .listRowBackground(Ink.raised)
+        .listRowSeparator(.hidden)
+        .listRowInsets(PlanRail.railRowInsets)
+        .deleteDisabled(true)
+        .moveDisabled(true)
     }
 
     /// 렌터카 픽업·반납. ⚠️ **좌표가 없어 동선·ETA·지도에 들어가지 않는다** — 표시만 한다.
-    /// 그래서 시각을 ETA 칸이 아니라 메타 줄에 둔다(그날 계산된 도착 순서에 속하지 않는다).
-    private func carEventRow(_ event: DayPlanCarEvent) -> some View {
-        HStack(alignment: .top, spacing: Space.m) {
-            Image(systemName: "car.fill").font(.body).foregroundStyle(Ink.soft).frame(width: 22)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(event.place.isEmpty ? (event.kind == .pickup ? "렌터카 픽업" : "렌터카 반납") : event.place)
-                    .font(.subheadline)
-                Text([event.kind == .pickup ? "렌터카 픽업" : "렌터카 반납",
-                      event.atMinutes.map(TimeFormat.clock)].compactMap { $0 }.joined(separator: " · "))
-                    .font(.caption2).foregroundStyle(Ink.soft)
-            }
-        }
-        .listRowBackground(Ink.raised.opacity(0.6))
+    /// 그래서 시각을 ETA 칸이 아니라 부제목에 둔다(그날 계산된 도착 순서에 속하지 않는다).
+    private func carEventRow(_ event: DayPlanCarEvent, top: Bool, bottom: Bool) -> some View {
+        let kind = event.kind == .pickup ? "렌터카 픽업" : "렌터카 반납"
+        return PlanRailEventRow(symbol: "car.fill", title: event.place.isEmpty ? kind : event.place,
+                                subtitle: [kind, event.atMinutes.map(TimeFormat.clock)].compactMap { $0 }.joined(separator: " · "),
+                                railTop: top, railBottom: bottom)
+            .listRowBackground(Ink.raised)
+            .listRowSeparator(.hidden)
+            .listRowInsets(PlanRail.railRowInsets)
+    }
+
+    /// 선이 어디서 시작하고 끝나는지 — 하루의 첫 줄 위와 끝 줄 아래는 비운다.
+    /// 순서는 목록과 같다: 항공편 → 전날 숙소 → 렌터카 픽업 → 장소들 → 렌터카 반납 → 숙소 복귀.
+    private func railEdges(_ day: TripDay) -> (afterFlight: Bool, beforeCarry: Bool, afterCarry: Bool,
+                                              beforePickups: Bool, beforeSpots: Bool, afterSpots: Bool) {
+        let flight = (model.planDay?.flight.map { !$0.line.isEmpty }) ?? false
+        let carry = model.planDay?.carriedStay != nil
+        let pickups = !(model.planDay?.carPickups ?? []).isEmpty
+        let spots = !day.spots.isEmpty
+        let returns = !(model.planDay?.carReturns ?? []).isEmpty
+        let back = model.planDay?.back != nil
+        return (afterFlight: carry || pickups || spots || returns || back,
+                beforeCarry: flight,
+                afterCarry: pickups || spots || returns || back,
+                beforePickups: flight || carry,
+                beforeSpots: flight || carry || pickups,
+                afterSpots: returns || back)
     }
 }
 
