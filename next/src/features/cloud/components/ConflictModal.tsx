@@ -3,9 +3,9 @@
 import type { Conflict } from '../domain/conflictResolve';
 
 const WHY: Record<Conflict['kind'], string> = {
-  'changed-both': '이 기기와 다른 기기에서 모두 바뀌었습니다.',
-  'remote-deleted': '다른 기기에서 이 여행을 삭제했습니다.',
-  'remote-missing': '클라우드에서 이 여행을 찾지 못했습니다.'
+  'changed-both': '이 기기와 다른 기기에서 모두 바뀌었어요.',
+  'remote-deleted': '다른 기기에서 이 여행을 삭제했어요.',
+  'remote-missing': '클라우드에서 이 여행을 찾지 못했어요.'
 };
 
 export function ConflictModal({ conflict, remaining, onChoose }: {
@@ -24,22 +24,22 @@ export function ConflictModal({ conflict, remaining, onChoose }: {
           <b>“{name}”</b> — {WHY[conflict.kind]} 어느 버전을 남길지 골라주세요.
         </p>
         <p className="hint">
-          어느 쪽을 고르든 이 기기의 내용은 사라지지 않습니다 — “둘 다 보관”을 고르면 복사본으로 남습니다.
+          어느 쪽을 고르든 이 기기의 내용은 사라지지 않아요 — “둘 다 보관”을 고르면 복사본으로 남아요.
           {remaining > 0 && ` (남은 충돌 ${remaining}건)`}
         </p>
         <div className="itConflictBtns">
           <button type="button" onClick={() => onChoose('device')}>
             📱 이 기기 버전
-            <small>다른 기기의 변경을 덮어씁니다</small>
+            <small>다른 기기의 변경을 덮어써요</small>
           </button>
           <button type="button" onClick={() => onChoose('cloud')} disabled={!hasRemote && conflict.kind !== 'remote-deleted'}>
             ☁️ 클라우드 버전
-            <small>{conflict.deleted_at ? '이 기기에서도 삭제합니다' : '다른 기기의 내용을 받습니다'}</small>
+            <small>{conflict.deleted_at ? '이 기기에서도 삭제해요' : '다른 기기의 내용을 받아요'}</small>
           </button>
           <button type="button" className="itEditSave" onClick={() => onChoose('both')}
             disabled={!conflict.local}>
             🧬 둘 다 보관
-            <small>이 기기 버전을 복사본으로 남깁니다</small>
+            <small>이 기기 버전을 복사본으로 남겨요</small>
           </button>
         </div>
       </div>

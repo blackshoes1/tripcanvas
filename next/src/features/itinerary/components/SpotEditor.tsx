@@ -17,13 +17,13 @@ import {
 
 const ERR_MSG: Record<SpotFormError, string> = {
   NAME_REQUIRED: '장소 이름을 입력하세요',
-  LOCATION_REQUIRED: '위치를 지정하세요 — 검색 결과를 고르거나 지도를 탭하면 됩니다',
-  COST_INVALID: '비용을 확인해 주세요 — 원·엔은 정수, 달러·유로·위안은 소수 둘째 자리까지 입력합니다'
+  LOCATION_REQUIRED: '위치를 지정하세요 — 검색 결과를 고르거나 지도를 탭하면 돼요',
+  COST_INVALID: '비용을 확인해 주세요 — 원·엔은 정수, 달러·유로·위안은 소수 둘째 자리까지 입력해요'
 };
 
 // 실패 원인별 안내 — 레거시 SEARCH_ERR_MSG와 같은 문구 (상세 코드는 콘솔에만)
 const SEARCH_ERR_MSG: Record<SearchError, string> = {
-  auth: '검색 키 인증·권한 문제예요 — 관리자 확인이 필요합니다',
+  auth: '검색 키 인증·권한 문제예요 — 관리자 확인이 필요해요',
   quota: '검색 사용량 한도를 넘었어요 — 잠시 후 다시 시도해주세요',
   network: '네트워크 오류예요 — 연결을 확인하고 다시 시도해주세요',
   error: '검색에 실패했어요 — 다시 시도하거나 지도를 탭해 지정해주세요'
@@ -147,7 +147,7 @@ export function SpotEditor({ spot, di, days, isNew = false, identity = null, onS
       <div className={`itEditCoord${located ? ' ok' : ''}`}>
         {located
           ? `📍 ${draft.lat!.toFixed(4)}, ${draft.lng!.toFixed(4)}${draft.hours ? ' · 영업시간 반영됨' : ''}`
-          : '📍 위치 미지정 — 검색 결과를 고르거나 지도를 탭하면 지정됩니다'}
+          : '📍 위치 미지정 — 검색 결과를 고르거나 지도를 탭하면 지정돼요'}
       </div>
       {searchMsg && <div className="itEditSearchMsg" role="status">{searchMsg}</div>}
       {results.length > 0 && (

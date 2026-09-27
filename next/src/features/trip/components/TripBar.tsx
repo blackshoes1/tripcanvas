@@ -11,7 +11,7 @@ import { updateTripMeta, type TripEditError } from '../domain/tripEditor';
 
 const ERR_MSG: Record<TripEditError, string> = {
   BAD_TIMEZONE: '시간대는 Asia/Tokyo 같은 IANA 형식으로 입력해 주세요',
-  LAST_DAY: '여행에는 일자가 하나 이상 필요합니다',
+  LAST_DAY: '여행에는 일자가 하나 이상 필요해요',
   NO_SUCH_DAY: '그 일자를 찾지 못했어요'
 };
 
@@ -88,7 +88,7 @@ export function TripBar({
                 <input value={timeZone} onChange={e => setTimeZone(e.target.value)} placeholder="Asia/Seoul" />
               </label>
             </div>
-            <p className="hint">시작일을 바꾸면 모든 일자가 함께 움직입니다. 시간대는 대중교통 시각 계산에 쓰입니다.</p>
+            <p className="hint">시작일을 바꾸면 모든 일자가 함께 움직여요. 시간대는 대중교통 시각 계산에 쓰여요.</p>
             {onRestore && (
               <details className="itSnapDetails">
                 <summary>🕘 버전 기록</summary>

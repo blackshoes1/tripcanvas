@@ -101,15 +101,15 @@ const STATUS: Record<ApiErrorCode, number> = {
   SUGGESTION_STALE: 409, REVISION_CONFLICT: 409, BAD_REQUEST: 400, UPSTREAM_ERROR: 502, FORBIDDEN: 403
 };
 const MESSAGES: Record<ApiErrorCode, string> = {
-  UNAUTHORIZED: '로그인이 필요합니다.',
-  TRIP_NOT_FOUND: '그 여행을 찾을 수 없습니다.',
-  ACTIVITY_NOT_FOUND: '그 일정을 찾을 수 없습니다 — 목록을 새로 불러와 주세요.',
-  DAY_NOT_FOUND: '그 일자가 없습니다 — 일정을 새로 불러와 주세요.',
-  SUGGESTION_STALE: '상황이 바뀌어 그 제안은 더 이상 맞지 않습니다 — 새 제안을 확인해 주세요.',
-  REVISION_CONFLICT: '다른 기기에서 먼저 바뀌었습니다 — 최신 일정을 불러온 뒤 다시 시도해 주세요.',
-  BAD_REQUEST: '요청 형식이 올바르지 않습니다.',
-  UPSTREAM_ERROR: '데이터를 가져오지 못했습니다.',
-  FORBIDDEN: '이 여행을 바꿀 권한이 없습니다 — 주최자에게 편집 권한을 요청해 주세요.'
+  UNAUTHORIZED: '로그인이 필요해요.',
+  TRIP_NOT_FOUND: '그 여행을 찾을 수 없어요.',
+  ACTIVITY_NOT_FOUND: '그 일정을 찾을 수 없어요 — 목록을 새로 불러와 주세요.',
+  DAY_NOT_FOUND: '그 일자가 없어요 — 일정을 새로 불러와 주세요.',
+  SUGGESTION_STALE: '상황이 바뀌어 그 제안은 더 이상 맞지 않아요 — 새 제안을 확인해 주세요.',
+  REVISION_CONFLICT: '다른 기기에서 먼저 바뀌었어요 — 최신 일정을 불러온 뒤 다시 시도해 주세요.',
+  BAD_REQUEST: '요청 형식이 올바르지 않아요.',
+  UPSTREAM_ERROR: '데이터를 가져오지 못했어요.',
+  FORBIDDEN: '이 여행을 바꿀 권한이 없어요 — 주최자에게 편집 권한을 요청해 주세요.'
 };
 
 export function ok(body: unknown, status = 200): Response {

@@ -37,10 +37,10 @@ export function buildShareUrl(
 ): { ok: true; url: string } | { ok: false; error: string } {
   let data: string;
   try { data = compress(JSON.stringify(trip)); }
-  catch { return { ok: false, error: '공유 링크를 만들 수 없습니다' }; }
+  catch { return { ok: false, error: '공유 링크를 만들 수 없어요' }; }
   const url = `${base.origin}${base.pathname}#v=${data}`;
   if (url.length > SHARE_URL_MAX) {
-    return { ok: false, error: '여행이 너무 커서 링크로 공유할 수 없습니다. "내보내기"로 파일을 전달하세요' };
+    return { ok: false, error: '여행이 너무 커서 링크로 공유할 수 없어요. "내보내기"로 파일을 전달하세요' };
   }
   return { ok: true, url };
 }
@@ -51,16 +51,16 @@ export function buildShareUrl(
  */
 export function decodeSharedTrip(encoded: string, decompress: (s: string) => string | null): ShareParse {
   if (typeof encoded !== 'string' || encoded.length > TC_LIMITS.shareChars) {
-    return { ok: false, error: '공유 링크가 허용 길이를 초과했습니다' };
+    return { ok: false, error: '공유 링크가 허용 길이를 초과했어요' };
   }
   let text: string | null;
   try { text = decompress(encoded); }
-  catch { return { ok: false, error: '공유 링크를 해석할 수 없습니다' }; }
+  catch { return { ok: false, error: '공유 링크를 해석할 수 없어요' }; }
   // 풀리지 않은 것과 너무 큰 것은 다른 문제다 — 뭉뚱그리면 '크기 초과'라는 엉뚱한 이유를 보게 된다
   // (LZString은 못 푸는 입력에 예외 대신 null을 준다)
-  if (typeof text !== 'string') return { ok: false, error: '공유 링크를 해석할 수 없습니다' };
+  if (typeof text !== 'string') return { ok: false, error: '공유 링크를 해석할 수 없어요' };
   if (text.length > TC_LIMITS.jsonBytes) {
-    return { ok: false, error: '공유 데이터가 허용 크기를 초과했습니다' };
+    return { ok: false, error: '공유 데이터가 허용 크기를 초과했어요' };
   }
   const r = parseTripPayload(text) as { ok: true; value: Trip } | { ok: false; error: string };
   return r.ok ? { ok: true, trip: r.value } : r;

@@ -42,7 +42,7 @@ export function PriceTrackingStatus({ booking, rec }: { booking: Booking; rec: P
   let head: React.ReactNode;
   if (missing) head = <div className="pxState pxWatch">체크인·체크아웃 날짜를 입력하면 가격 추적을 시작해요</div>;
   else if (booking.start && booking.start < today) head = <div className="pxState pxOff">체크인이 지나 가격 추적을 마쳤어요</div>;
-  else if (!booking.track) head = <div className="pxState pxOff">가격 추적이 꺼져 있어요 — 켜면 시세를 계속 확인합니다</div>;
+  else if (!booking.track) head = <div className="pxState pxOff">가격 추적이 꺼져 있어요 — 켜면 시세를 계속 확인해요</div>;
   else if (st?.state === 'SAVING_AVAILABLE' && st.confirmed) {
     const o = st.confirmed.offer;
     const link = safeHttps(o.link);
@@ -64,15 +64,15 @@ export function PriceTrackingStatus({ booking, rec }: { booking: Booking; rec: P
     head = (
       <>
         <div className="pxState pxWarnT">🟠 {o.seller}에서 최대 {costLabel(st.potential.delta, booking.cur)} 저렴한 옵션 발견</div>
-        <div className="hint">현재 예약과 일부 조건이 다르거나 확인되지 않았어요 — 확정 절약으로 계산하지 않습니다.</div>
+        <div className="hint">현재 예약과 일부 조건이 다르거나 확인되지 않았어요 — 확정 절약으로 계산하지 않아요.</div>
       </>
     );
   } else if (st?.state === 'GOOD_PRICE') {
-    head = <><div className="pxState pxGood">🟢 좋은 가격 — 지금 예약을 유지하세요</div><div className="hint">현재 시세가 관측된 가격 중 최저 수준입니다</div></>;
+    head = <><div className="pxState pxGood">🟢 좋은 가격 — 지금 예약을 유지하세요</div><div className="hint">현재 시세가 관측된 가격 중 최저 수준이에요</div></>;
   } else if (st?.state === 'ERROR' && st.err?.code === 'AUTH_REQUIRED') {
     head = (
       <>
-        <div className="pxState pxWatch">🔌 자동 가격 소스 미연결 — 직접 가격 확인은 가능합니다</div>
+        <div className="pxState pxWatch">🔌 자동 가격 소스 미연결 — 직접 가격 확인은 가능해요</div>
         <div className="hint">가격 기록·시세 갱신은 기존 앱에서 할 수 있어요 (API 이관 전까지)</div>
       </>
     );
@@ -91,10 +91,10 @@ export function PriceTrackingStatus({ booking, rec }: { booking: Booking; rec: P
     <div className="pxStatus">
       {head}
       {booking.type === 'hotel' && !missing && booking.track && rooms > 1 && (
-        <div className="hint"><b>1객실 기준</b> 시세만 확인 가능해요 — 현재 예약은 {rooms}객실입니다. 기준이 달라 자동 절약 판단에는 쓰지 않아요</div>
+        <div className="hint"><b>1객실 기준</b> 시세만 확인 가능해요 — 현재 예약은 {rooms}객실이에요. 기준이 달라 자동 절약 판단에는 쓰지 않아요</div>
       )}
       {booking.freeCancelUntil && (
-        <div className="hint">무료 취소 {booking.freeCancelUntil}까지{today <= booking.freeCancelUntil ? '' : ' — 기한이 지나 취소 수수료가 적용됩니다'}</div>
+        <div className="hint">무료 취소 {booking.freeCancelUntil}까지{today <= booking.freeCancelUntil ? '' : ' — 기한이 지나 취소 수수료가 적용돼요'}</div>
       )}
       {offers.length > 0 && (
         <>
@@ -120,7 +120,7 @@ export function PriceTrackingStatus({ booking, rec }: { booking: Booking; rec: P
       {rec?.at && (
         <div className="hint">
           마지막 가격 확인 {fmtDT(rec.at)}
-          {ageH != null && ageH > PRICE_CFG.staleNoticeHours ? <> — <b>가격 정보가 오래되었습니다</b></> : null}
+          {ageH != null && ageH > PRICE_CFG.staleNoticeHours ? <> — <b>가격 정보가 오래되었어요</b></> : null}
           {rec.err ? ' · 최근 재확인 실패 — 마지막 성공 조회 기준으로 표시 중' : ''}
         </div>
       )}

@@ -21,7 +21,7 @@ async function readBody(request: Request): Promise<z.infer<typeof Body>> {
       const { value, done } = await reader.read();
       if (done) break;
       size += value.byteLength;
-      if (size > MAX_BODY) { await reader.cancel(); throw new ApiError('VALIDATION_ERROR', { message: '사진이 너무 큽니다.' }); }
+      if (size > MAX_BODY) { await reader.cancel(); throw new ApiError('VALIDATION_ERROR', { message: '사진이 너무 커요.' }); }
       chunks.push(value);
     }
     const parsed = Body.safeParse(JSON.parse(Buffer.concat(chunks).toString('utf8')));

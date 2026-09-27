@@ -87,12 +87,12 @@ export function createItineraryRoutes(deps: ItineraryRouteDeps) {
 
         let body: { text?: unknown; year?: unknown };
         try { body = (await request.json()) as typeof body; }
-        catch { throw new ApiError('VALIDATION_ERROR', { message: '요청 형식이 올바르지 않습니다.' }); }
+        catch { throw new ApiError('VALIDATION_ERROR', { message: '요청 형식이 올바르지 않아요.' }); }
 
         const source = text(body.text);
-        if (!source.trim()) throw new ApiError('VALIDATION_ERROR', { message: '읽을 내용이 없습니다.' });
+        if (!source.trim()) throw new ApiError('VALIDATION_ERROR', { message: '읽을 내용이 없어요.' });
         if (source.length > MAX_TEXT_LENGTH) {
-          throw new ApiError('VALIDATION_ERROR', { message: '글이 너무 깁니다 — 나눠서 붙여넣어 주세요.' });
+          throw new ApiError('VALIDATION_ERROR', { message: '글이 너무 길어요 — 나눠서 붙여넣어 주세요.' });
         }
 
         const year = Number(body.year);

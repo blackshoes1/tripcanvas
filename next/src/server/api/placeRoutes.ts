@@ -40,7 +40,7 @@ export function createPlaceRoutes(deps: PlaceRouteDeps) {
         if ((provider !== 'kakao' && provider !== 'google') || !providerId ||
           params.getAll('provider').length !== 1 || params.getAll('id').length !== 1 ||
           !(provider === 'kakao' ? /^\d{1,20}$/ : /^[A-Za-z0-9_-]{5,200}$/).test(providerId)) {
-          throw new ApiError('VALIDATION_ERROR', { message: '장소 제공자와 한 곳의 장소 ID가 필요합니다.' });
+          throw new ApiError('VALIDATION_ERROR', { message: '장소 제공자와 한 곳의 장소 ID가 필요해요.' });
         }
         const body = { schemaVersion: CONTRACT_SCHEMA_VERSION, ...placeAdmissionDetails(provider, providerId) };
         return new Response(JSON.stringify(body), { status: 200, headers: JSON_HEADERS });
@@ -55,34 +55,34 @@ export function createPlaceRoutes(deps: PlaceRouteDeps) {
         const params = new URL(request.url).searchParams;
         const query = (params.get('q') ?? '').trim();
         if (query.length > MAX_QUERY_LENGTH) {
-          throw new ApiError('VALIDATION_ERROR', { message: '검색어가 너무 깁니다.' });
+          throw new ApiError('VALIDATION_ERROR', { message: '검색어가 너무 길어요.' });
         }
         const category = params.has('category') ? readSearchCategory(params.get('category')!) : null;
         if (params.has('category') && !category) {
-          throw new ApiError('VALIDATION_ERROR', { message: '지원하지 않는 장소 분류입니다.' });
+          throw new ApiError('VALIDATION_ERROR', { message: '지원하지 않는 장소 분류예요.' });
         }
         const bounds = params.has('bounds') ? readBounds(params.get('bounds')!) : null;
         if (params.has('bounds') && !bounds) {
-          throw new ApiError('VALIDATION_ERROR', { message: '지도 범위가 올바르지 않습니다. 날짜변경선을 넘는 범위는 국내 검색에서 지원하지 않습니다.' });
+          throw new ApiError('VALIDATION_ERROR', { message: '지도 범위가 올바르지 않아요. 날짜변경선을 넘는 범위는 국내 검색에서 지원하지 않아요.' });
         }
         if (bounds && boundsTooWide(bounds)) {
           throw new ApiError('VALIDATION_ERROR', { message: '검색 범위가 너무 넓어요. 지도를 확대한 뒤 다시 찾아주세요.' });
         }
         if (!query && !(category && bounds)) {
-          throw new ApiError('VALIDATION_ERROR', { message: '검색어(q) 또는 장소 분류와 지도 범위가 필요합니다.' });
+          throw new ApiError('VALIDATION_ERROR', { message: '검색어(q) 또는 장소 분류와 지도 범위가 필요해요.' });
         }
         const near = readPoint(params.get('lat'), params.get('lng'));
         if ((params.has('lat') || params.has('lng')) && !near) {
-          throw new ApiError('VALIDATION_ERROR', { message: '검색 중심 좌표가 올바르지 않습니다.' });
+          throw new ApiError('VALIDATION_ERROR', { message: '검색 중심 좌표가 올바르지 않아요.' });
         }
         if (params.has('limit') && (!/^-?\d+$/.test(params.get('limit')!) ||
           !Number.isSafeInteger(Number(params.get('limit'))))) {
-          throw new ApiError('VALIDATION_ERROR', { message: '검색 개수는 정수여야 합니다.' });
+          throw new ApiError('VALIDATION_ERROR', { message: '검색 개수는 정수여야 해요.' });
         }
         const limit = clampLimit(params.get('limit'));
         // 키가 없으면 빈 결과를 주지 않는다 — "그런 장소가 없다"와 "검색을 못 한다"는 다른 말이다.
         if (!deps.kakaoRestKey) {
-          throw new ApiError('UPSTREAM_ERROR', { message: '장소 검색이 연결되어 있지 않습니다.' });
+          throw new ApiError('UPSTREAM_ERROR', { message: '장소 검색이 연결되어 있지 않아요.' });
         }
 
         let places: PlaceResult[];
@@ -93,7 +93,7 @@ export function createPlaceRoutes(deps: PlaceRouteDeps) {
           }, { category: category ?? undefined, bounds: bounds ?? undefined });
         } catch (e) {
           console.error('[tripcanvas-api] 장소 검색 실패:', e instanceof Error ? e.message : e);
-          throw new ApiError('UPSTREAM_ERROR', { message: '장소 검색이 지금 응답하지 않습니다.' });
+          throw new ApiError('UPSTREAM_ERROR', { message: '장소 검색이 지금 응답하지 않아요.' });
         }
 
         const body: PlaceSearchResponse = { schemaVersion: CONTRACT_SCHEMA_VERSION, provider: 'KAKAO', places };

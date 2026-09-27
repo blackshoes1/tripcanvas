@@ -39,13 +39,13 @@ export function createSnapshotRoutes(deps: SnapshotRouteDeps) {
       let raw: unknown = {};
       try { raw = await request.json(); } catch { /* 본문 없이 불러도 된다 */ }
       const parsed = CreateBody.safeParse(raw ?? {});
-      if (!parsed.success) throw new ApiError('VALIDATION_ERROR', { message: 'name은 문자열입니다.' });
+      if (!parsed.success) throw new ApiError('VALIDATION_ERROR', { message: 'name은 문자열이에요.' });
       return ok({ snapshot: await service.create(ctx, tripId, parsed.data.name ?? null) }, 201);
     }),
 
     /** GET /api/v1/trips/:tripId/snapshots/:snapshotId — 그 버전의 문서 */
     load: (request: Request, tripId: string, snapshotId: string) => withService(request, async (ctx, service) => {
-      if (!/^\d+$/.test(snapshotId)) throw new ApiError('VALIDATION_ERROR', { message: 'snapshotId가 올바르지 않습니다.' });
+      if (!/^\d+$/.test(snapshotId)) throw new ApiError('VALIDATION_ERROR', { message: 'snapshotId가 올바르지 않아요.' });
       const snapshot = await service.load(ctx, tripId, Number(snapshotId));
       return ok({ snapshot });
     })

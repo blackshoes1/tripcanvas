@@ -43,7 +43,7 @@ function takeRemote(trips: Trip[], c: Conflict): { trips: Trip[]; remote: Trip |
   let remote: Trip | null = null;
   if (c.remote) {
     const r = validateTripPayload(c.remote) as { ok: true; value: Trip } | { ok: false; error: string };
-    if (!r.ok) return { error: '클라우드 데이터가 손상되어 적용하지 않았습니다' };
+    if (!r.ok) return { error: '클라우드 데이터가 손상되어 적용하지 않았어요' };
     remote = r.value;
   }
   const id = c.local?.id ?? remote?.id ?? '';
@@ -64,7 +64,7 @@ export function resolveConflict(
 
   if (res.choice === 'device') {
     // 로컬을 그대로 두고 force로 원격을 덮는다. 메타는 업로드 결과가 정한다.
-    if (!c.local) return { ...base, error: '이 기기에 남은 버전이 없습니다' };
+    if (!c.local) return { ...base, error: '이 기기에 남은 버전이 없어요' };
     return { ...base, uploads: [{ trip: c.local, force: true }] };
   }
 

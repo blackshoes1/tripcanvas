@@ -73,7 +73,7 @@ function SpotRow({ s, dayIndex, selected, actions }: {
               </span>
               {s.book.waitMin > 0 && (
                 <span className="itMetaItem itBook"
-                  title={`도착 예상 ${s.etaText} → 예약 ${s.book.at}까지 대기. 다음 장소 도착 예상에 이 대기가 반영됩니다`}>
+                  title={`도착 예상 ${s.etaText} → 예약 ${s.book.at}까지 대기. 다음 장소 도착 예상에 이 대기가 반영돼요`}>
                   ⏳ {s.book.waitMin}분 대기
                 </span>
               )}
@@ -119,8 +119,8 @@ export function DayCard({
   const after = selectedSi != null && view.spots[selectedSi] ? selectedSi : null;
   const addLabel = after != null ? `＋ ${after + 1}번 뒤에 장소 추가` : '＋ 장소 추가';
   const addTitle = after != null
-    ? `선택한 ${after + 1}. ${view.spots[after].name} 바로 뒤에 넣습니다 — 다른 장소를 탭하면 그 뒤로 바뀝니다`
-    : '이 날 맨 뒤에 넣습니다 — 장소를 탭해 선택하면 그 바로 뒤에 넣어요';
+    ? `선택한 ${after + 1}. ${view.spots[after].name} 바로 뒤에 넣어요 — 다른 장소를 탭하면 그 뒤로 바뀌어요`
+    : '이 날 맨 뒤에 넣어요 — 장소를 탭해 선택하면 그 바로 뒤에 넣어요';
   return (
     <section className={`itDay${dim ? ' dim' : ''}`} aria-label={`Day ${view.dayNo} ${view.title}`}>
       <header
@@ -154,7 +154,7 @@ export function DayCard({
         {view.routeLabel && <div className="itDist">{view.routeLabel}</div>}
         {view.overloadLabel && <div className="itOverload">{view.overloadLabel}</div>}
         {view.cost.parts.length > 0 && (
-          <div className="itDist" title="여러 날 걸친 예약(숙박·렌터카·항공)은 날수로 나눈 하루치로 넣습니다">
+          <div className="itDist" title="여러 날 걸친 예약(숙박·렌터카·항공)은 날수로 나눈 하루치로 넣어요">
             💳 하루 비용 약 ₩{view.cost.total.toLocaleString('en-US')}
             {view.cost.parts.length > 1 && (
               <span className="itDim">
@@ -181,7 +181,7 @@ export function DayCard({
         </div>
         {view.carReturns.map(ev => <CarEventRow key={`r-${ev.bookingId}`} ev={ev} />)}
         {view.back && (
-          <div className="itSpot itCarry" title="오늘 묵는 숙소 — 동선이 닫히도록 자동으로 이어 붙였습니다">
+          <div className="itSpot itCarry" title="오늘 묵는 숙소 — 동선이 닫히도록 자동으로 이어 붙였어요">
             <div className="itLeg" title={view.back.leg.title}>
               <span className="itLegMode" aria-hidden="true">{view.back.leg.modeIcon}</span> {view.back.leg.label}
             </div>
@@ -193,7 +193,7 @@ export function DayCard({
           </div>
         )}
         {view.spots.length === 0 && view.carPickups.length === 0 && view.carReturns.length === 0 && (
-          <div className="itEmpty">등록된 장소가 없습니다 — 이동일이거나 자유 일정입니다.</div>
+          <div className="itEmpty">등록된 장소가 없어요 — 이동일이거나 자유 일정이에요.</div>
         )}
         {onAddSpot && (
           <button type="button" className="itAddSpot" title={addTitle} onClick={() => onAddSpot(after)}>

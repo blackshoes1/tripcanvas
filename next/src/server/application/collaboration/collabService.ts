@@ -59,14 +59,14 @@ export class CollabService implements CollabApi {
     if (!member || member.tripId !== view.record.id) return false;
     const owner = view.record.ownerId;
     if (action === 'RENAME') {
-      if (ctx.userId !== owner && ctx.userId !== member.userId) throw new ApiError('FORBIDDEN', { message: '이름은 본인이나 주최자만 바꿀 수 있습니다.' });
+      if (ctx.userId !== owner && ctx.userId !== member.userId) throw new ApiError('FORBIDDEN', { message: '이름은 본인이나 주최자만 바꿀 수 있어요.' });
       await this.deps.collab.renameMember(member.id, trimTo(value, 40));
       return true;
     }
-    if (ctx.userId !== owner) throw new ApiError('FORBIDDEN', { message: '역할 변경과 내보내기는 주최자만 할 수 있습니다.' });
-    if (member.role === 'OWNER') throw new ApiError('FORBIDDEN', { message: '주최자 자신의 역할은 바꾸거나 내보낼 수 없습니다.' });
+    if (ctx.userId !== owner) throw new ApiError('FORBIDDEN', { message: '역할 변경과 내보내기는 주최자만 할 수 있어요.' });
+    if (member.role === 'OWNER') throw new ApiError('FORBIDDEN', { message: '주최자 자신의 역할은 바꾸거나 내보낼 수 없어요.' });
     if (action === 'SET_ROLE') {
-      if (!value || !ROLES.includes(value)) throw new ApiError('VALIDATION_ERROR', { message: '역할은 EDITOR 또는 VIEWER입니다.' });
+      if (!value || !ROLES.includes(value)) throw new ApiError('VALIDATION_ERROR', { message: '역할은 EDITOR 또는 VIEWER예요.' });
       await this.deps.collab.setMemberRole(member.id, value as MemberRole);
       return true;
     }
@@ -74,13 +74,13 @@ export class CollabService implements CollabApi {
       if (member.status !== 'REMOVED') await this.deps.collab.setMemberStatus(member.id, 'REMOVED', ctx.userId);
       return true;
     }
-    throw new ApiError('VALIDATION_ERROR', { message: 'action은 SET_ROLE · REMOVE · RENAME 중 하나입니다.' });
+    throw new ApiError('VALIDATION_ERROR', { message: 'action은 SET_ROLE · REMOVE · RENAME 중 하나예요.' });
   }
 
   async leave(ctx: RequestContext, clientId: string): Promise<boolean> {
     const m = await this.deps.collab.findActiveMembership(ctx.userId, clientId);
     if (!m) return true;
-    if (m.ownerId === ctx.userId) throw new ApiError('FORBIDDEN', { message: '주최자는 나갈 수 없습니다 — 여행을 삭제하거나 소유권을 넘겨 주세요.' });
+    if (m.ownerId === ctx.userId) throw new ApiError('FORBIDDEN', { message: '주최자는 나갈 수 없어요 — 여행을 삭제하거나 소유권을 넘겨 주세요.' });
     await this.deps.collab.setMemberStatus(m.id, 'LEFT', ctx.userId);
     return true;
   }
@@ -88,10 +88,10 @@ export class CollabService implements CollabApi {
   // ── 초대 ──
 
   async createInvite(ctx: RequestContext, clientId: string, role: string, hours: number | null, maxUses: number | null): Promise<InviteCreated> {
-    if (!ROLES.includes(role)) throw new ApiError('VALIDATION_ERROR', { message: '초대 역할은 EDITOR 또는 VIEWER입니다.' });
-    if (maxUses != null && (!Number.isInteger(maxUses) || maxUses <= 0)) throw new ApiError('VALIDATION_ERROR', { message: 'maxUses는 1 이상의 정수입니다.' });
+    if (!ROLES.includes(role)) throw new ApiError('VALIDATION_ERROR', { message: '초대 역할은 EDITOR 또는 VIEWER예요.' });
+    if (maxUses != null && (!Number.isInteger(maxUses) || maxUses <= 0)) throw new ApiError('VALIDATION_ERROR', { message: 'maxUses는 1 이상의 정수예요.' });
     const view = await this.tripFor(ctx, clientId);
-    if (view.role !== 'OWNER') throw new ApiError('FORBIDDEN', { message: '초대 링크는 주최자만 만들 수 있습니다.' });
+    if (view.role !== 'OWNER') throw new ApiError('FORBIDDEN', { message: '초대 링크는 주최자만 만들 수 있어요.' });
     const h = Math.min(Math.max(Number.isFinite(Number(hours)) && hours != null ? Number(hours) : 168, 1), 24 * 30);
     // 192비트 난수 → URL-safe base64 32자. 저장은 sha256뿐 — DB가 새어도 링크를 재구성할 수 없다
     const token = randomBytes(24).toString('base64url');
@@ -104,13 +104,13 @@ export class CollabService implements CollabApi {
 
   async listInvites(ctx: RequestContext, clientId: string): Promise<InviteView[]> {
     const view = await this.tripFor(ctx, clientId);
-    if (view.role !== 'OWNER') throw new ApiError('FORBIDDEN', { message: '초대 목록은 주최자만 봅니다.' });
+    if (view.role !== 'OWNER') throw new ApiError('FORBIDDEN', { message: '초대 목록은 주최자만 봐요.' });
     return this.deps.collab.listInvites(view.record.id);
   }
 
   async revokeInvite(ctx: RequestContext, clientId: string, inviteId: number): Promise<boolean> {
     const view = await this.tripFor(ctx, clientId);
-    if (view.role !== 'OWNER') throw new ApiError('FORBIDDEN', { message: '초대 취소는 주최자만 할 수 있습니다.' });
+    if (view.role !== 'OWNER') throw new ApiError('FORBIDDEN', { message: '초대 취소는 주최자만 할 수 있어요.' });
     return this.deps.collab.revokeInvite(inviteId, view.record.id);
   }
 
@@ -148,30 +148,30 @@ export class CollabService implements CollabApi {
 
   async addCandidate(ctx: RequestContext, clientId: string, input: CandidateInput): Promise<number> {
     const title = trimTo(input?.title, 120);
-    if (!title) throw new ApiError('VALIDATION_ERROR', { message: '후보에는 이름이 있어야 합니다.' });
+    if (!title) throw new ApiError('VALIDATION_ERROR', { message: '후보에는 이름이 있어야 해요.' });
     const view = await this.tripFor(ctx, clientId);
-    if (!canEdit(view.role)) throw new ApiError('FORBIDDEN', { message: '보기 권한으로는 후보를 추가할 수 없습니다.' });
+    if (!canEdit(view.role)) throw new ApiError('FORBIDDEN', { message: '보기 권한으로는 후보를 추가할 수 없어요.' });
     // 누락된 좌표는 둘 다 null이다. 빈 문자열·불리언을 0으로 바꿔 실제 위치처럼 저장하지 않는다.
     const hasLocation = input.lat != null || input.lng != null;
     if (hasLocation && (typeof input.lat !== 'number' || !Number.isFinite(input.lat) || input.lat < -90 || input.lat > 90 ||
       typeof input.lng !== 'number' || !Number.isFinite(input.lng) || input.lng < -180 || input.lng > 180)) {
-      throw new ApiError('VALIDATION_ERROR', { message: '후보의 위치가 올바르지 않습니다.' });
+      throw new ApiError('VALIDATION_ERROR', { message: '후보의 위치가 올바르지 않아요.' });
     }
     const provider = input.provider ?? null;
     const providerId = input.providerId ?? null;
     if (input.clientKey != null && (typeof input.clientKey !== 'string' ||
       !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.clientKey))) {
-      throw new ApiError('VALIDATION_ERROR', { message: '담기 요청 키는 UUID여야 합니다.' });
+      throw new ApiError('VALIDATION_ERROR', { message: '담기 요청 키는 UUID여야 해요.' });
     }
     const clientKey = input.clientKey?.toLowerCase() ?? null;
     if ((provider !== null && provider !== 'kakao' && provider !== 'google') ||
       (providerId !== null && (typeof providerId !== 'string' || !provider ||
         !(provider === 'kakao' ? /^\d{1,20}$/ : /^[A-Za-z0-9_-]{5,200}$/).test(providerId)))) {
-      throw new ApiError('VALIDATION_ERROR', { message: '장소 제공자와 장소 ID가 올바르지 않습니다.' });
+      throw new ApiError('VALIDATION_ERROR', { message: '장소 제공자와 장소 ID가 올바르지 않아요.' });
     }
     const placeId = trimTo(input.place_id, 200);
     if ((provider === 'kakao' && placeId) || (provider === 'google' && providerId && placeId && placeId !== providerId)) {
-      throw new ApiError('VALIDATION_ERROR', { message: '장소 제공자별 ID가 서로 맞지 않습니다.' });
+      throw new ApiError('VALIDATION_ERROR', { message: '장소 제공자별 ID가 서로 맞지 않아요.' });
     }
     return this.deps.collab.addCandidate(view.record.id, ctx.userId, {
       title, provider, providerId, clientKey, place_id: provider === 'google' ? providerId ?? placeId : placeId,
@@ -188,9 +188,9 @@ export class CollabService implements CollabApi {
 
   async reactToCandidate(ctx: RequestContext, clientId: string, candidateId: number, reaction: string | null): Promise<boolean> {
     const view = await this.tripFor(ctx, clientId);
-    if (!(await this.candidateIn(view, candidateId))) throw new ApiError('NOT_FOUND', { message: '그 후보를 찾을 수 없습니다.' });
+    if (!(await this.candidateIn(view, candidateId))) throw new ApiError('NOT_FOUND', { message: '그 후보를 찾을 수 없어요.' });
     const r = String(reaction ?? '').trim().toUpperCase() || null;
-    if (r && !REACTIONS.includes(r)) throw new ApiError('VALIDATION_ERROR', { message: '반응은 MUST · OK · PASS 중 하나입니다.' });
+    if (r && !REACTIONS.includes(r)) throw new ApiError('VALIDATION_ERROR', { message: '반응은 MUST · OK · PASS 중 하나예요.' });
     await this.deps.collab.setReaction(candidateId, ctx.userId, r);
     return true;
   }
@@ -200,11 +200,11 @@ export class CollabService implements CollabApi {
     const c = await this.candidateIn(view, candidateId);
     if (!c) return false;
     if (action === 'REMOVE') {
-      if (ctx.userId !== c.proposedBy && ctx.userId !== view.record.ownerId) throw new ApiError('FORBIDDEN', { message: '후보는 제안한 사람이나 주최자만 지울 수 있습니다.' });
+      if (ctx.userId !== c.proposedBy && ctx.userId !== view.record.ownerId) throw new ApiError('FORBIDDEN', { message: '후보는 제안한 사람이나 주최자만 지울 수 있어요.' });
       await this.deps.collab.removeCandidate(c.id);
       return true;
     }
-    if (!canEdit(view.role)) throw new ApiError('FORBIDDEN', { message: '보기 권한으로는 후보 상태를 바꿀 수 없습니다.' });
+    if (!canEdit(view.role)) throw new ApiError('FORBIDDEN', { message: '보기 권한으로는 후보 상태를 바꿀 수 없어요.' });
     if (action === 'SCHEDULE') { await this.deps.collab.setCandidateStatus(c.id, 'SCHEDULED', trimTo(value, 40), ctx.userId); return true; }
     if (action === 'UNSCHEDULE' || action === 'REOPEN') { await this.deps.collab.setCandidateStatus(c.id, 'PROPOSED', null, ctx.userId); return true; }
     if (action === 'REJECT') { await this.deps.collab.setCandidateStatus(c.id, 'REJECTED', null, ctx.userId); return true; }
@@ -213,26 +213,26 @@ export class CollabService implements CollabApi {
       // 담을 때와 달리 여기서는 분류가 요청의 전부라, 떨어뜨리면 아무 일도 안 한 것이 된다.
       const raw = (value ?? '').trim();
       const category = raw === '' ? null : normalizeCandidateCategory(raw);
-      if (raw !== '' && category === null) throw new ApiError('VALIDATION_ERROR', { message: '모르는 분류입니다.' });
+      if (raw !== '' && category === null) throw new ApiError('VALIDATION_ERROR', { message: '모르는 분류예요.' });
       await this.deps.collab.setCandidateCategory(c.id, category);
       return true;
     }
-    throw new ApiError('VALIDATION_ERROR', { message: 'action은 REMOVE · SCHEDULE · UNSCHEDULE · REJECT · REOPEN · CATEGORY 중 하나입니다.' });
+    throw new ApiError('VALIDATION_ERROR', { message: 'action은 REMOVE · SCHEDULE · UNSCHEDULE · REJECT · REOPEN · CATEGORY 중 하나예요.' });
   }
 
   // ── 코멘트 ──
 
   async listComments(ctx: RequestContext, clientId: string, candidateId: number): Promise<CommentView[]> {
     const view = await this.tripFor(ctx, clientId);
-    if (!(await this.candidateIn(view, candidateId))) throw new ApiError('NOT_FOUND', { message: '그 후보를 찾을 수 없습니다.' });
+    if (!(await this.candidateIn(view, candidateId))) throw new ApiError('NOT_FOUND', { message: '그 후보를 찾을 수 없어요.' });
     return this.deps.collab.listComments(candidateId, ctx.userId);
   }
 
   async addComment(ctx: RequestContext, clientId: string, candidateId: number, body: string): Promise<number> {
     const text = trimTo(body, 500);
-    if (!text) throw new ApiError('VALIDATION_ERROR', { message: '빈 코멘트는 남길 수 없습니다.' });
+    if (!text) throw new ApiError('VALIDATION_ERROR', { message: '빈 코멘트는 남길 수 없어요.' });
     const view = await this.tripFor(ctx, clientId);
-    if (!(await this.candidateIn(view, candidateId))) throw new ApiError('NOT_FOUND', { message: '그 후보를 찾을 수 없습니다.' });
+    if (!(await this.candidateIn(view, candidateId))) throw new ApiError('NOT_FOUND', { message: '그 후보를 찾을 수 없어요.' });
     return this.deps.collab.addComment(view.record.id, candidateId, ctx.userId, text);
   }
 
@@ -240,7 +240,7 @@ export class CollabService implements CollabApi {
     const view = await this.tripFor(ctx, clientId);
     const cm = await this.deps.collab.findComment(commentId);
     if (!cm || cm.tripId !== view.record.id) return false;
-    if (ctx.userId !== cm.userId && ctx.userId !== view.record.ownerId) throw new ApiError('FORBIDDEN', { message: '코멘트는 쓴 사람이나 주최자만 지울 수 있습니다.' });
+    if (ctx.userId !== cm.userId && ctx.userId !== view.record.ownerId) throw new ApiError('FORBIDDEN', { message: '코멘트는 쓴 사람이나 주최자만 지울 수 있어요.' });
     return this.deps.collab.deleteComment(commentId);
   }
 
@@ -261,7 +261,7 @@ export class CollabService implements CollabApi {
     const view = await this.tripFor(ctx, clientId);
     const normalized = collab.normPrefs(prefs) as Record<string, unknown>;
     const ok = await this.deps.collab.setPreference(view.record.id, ctx.userId, normalized);
-    if (!ok) throw new ApiError('FORBIDDEN', { message: '활성 멤버만 취향을 남길 수 있습니다.' });
+    if (!ok) throw new ApiError('FORBIDDEN', { message: '활성 멤버만 취향을 남길 수 있어요.' });
     return normalized;
   }
 }

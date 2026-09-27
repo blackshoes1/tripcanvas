@@ -75,21 +75,21 @@
     const host=hostOf(i.url);
     const text=String(i.text||'')+' '+String(i.title||'');
     /** @type {string[]} */ const reasons=[];
-    if(!host && !text.trim()) return {kind:'UNKNOWN', confidence:0, reasons:['내용이 비어 있습니다']};
+    if(!host && !text.trim()) return {kind:'UNKNOWN', confidence:0, reasons:['내용이 비어 있어요']};
 
-    if(host && hasAny(host, TRANSPORT_HOSTS)){ reasons.push('교통 예약 사이트 주소입니다'); return {kind:'TRANSPORT', confidence:0.9, reasons}; }
-    if(host && hasAny(host, BOOKING_HOSTS)){ reasons.push('예약 사이트 주소입니다'); return {kind:'BOOKING', confidence:0.9, reasons}; }
-    if(host && hasAny(host, PLACE_HOSTS)){ reasons.push('지도 링크입니다'); return {kind:'PLACE', confidence:0.85, reasons}; }
+    if(host && hasAny(host, TRANSPORT_HOSTS)){ reasons.push('교통 예약 사이트 주소예요'); return {kind:'TRANSPORT', confidence:0.9, reasons}; }
+    if(host && hasAny(host, BOOKING_HOSTS)){ reasons.push('예약 사이트 주소예요'); return {kind:'BOOKING', confidence:0.9, reasons}; }
+    if(host && hasAny(host, PLACE_HOSTS)){ reasons.push('지도 링크예요'); return {kind:'PLACE', confidence:0.85, reasons}; }
 
     const hasConfirmation=RE.confirmation.test(text);
     const looksTransport=RE.flightNo.test(text)||RE.train.test(text);
-    if(hasConfirmation && looksTransport){ reasons.push('예약번호와 편명이 함께 있습니다'); return {kind:'TRANSPORT', confidence:0.8, reasons}; }
-    if(hasConfirmation){ reasons.push('예약번호로 보이는 값이 있습니다'); return {kind:'BOOKING', confidence:0.75, reasons}; }
-    if(looksTransport){ reasons.push('편명·열차 표현이 있습니다'); return {kind:'TRANSPORT', confidence:0.6, reasons}; }
-    if(RE.checkIn.test(text) && RE.checkOut.test(text)){ reasons.push('체크인·체크아웃이 함께 있습니다'); return {kind:'BOOKING', confidence:0.7, reasons}; }
-    if(RE.coords.test(String(i.url||'')+' '+text)){ reasons.push('좌표가 들어 있습니다'); return {kind:'PLACE', confidence:0.7, reasons}; }
-    if(text.trim()){ reasons.push('예약으로 볼 만한 단서가 없습니다'); return {kind:'NOTE', confidence:0.5, reasons}; }
-    return {kind:'UNKNOWN', confidence:0.2, reasons:['무엇인지 판단하지 못했습니다']};
+    if(hasConfirmation && looksTransport){ reasons.push('예약번호와 편명이 함께 있어요'); return {kind:'TRANSPORT', confidence:0.8, reasons}; }
+    if(hasConfirmation){ reasons.push('예약번호로 보이는 값이 있어요'); return {kind:'BOOKING', confidence:0.75, reasons}; }
+    if(looksTransport){ reasons.push('편명·열차 표현이 있어요'); return {kind:'TRANSPORT', confidence:0.6, reasons}; }
+    if(RE.checkIn.test(text) && RE.checkOut.test(text)){ reasons.push('체크인·체크아웃이 함께 있어요'); return {kind:'BOOKING', confidence:0.7, reasons}; }
+    if(RE.coords.test(String(i.url||'')+' '+text)){ reasons.push('좌표가 들어 있어요'); return {kind:'PLACE', confidence:0.7, reasons}; }
+    if(text.trim()){ reasons.push('예약으로 볼 만한 단서가 없어요'); return {kind:'NOTE', confidence:0.5, reasons}; }
+    return {kind:'UNKNOWN', confidence:0.2, reasons:['무엇인지 판단하지 못했어요']};
   }
 
   // ── 2. 정규화 (날짜·통화·금액) ───────────────────────────────────
@@ -238,7 +238,7 @@
     /** @type {string[]} */ const ambiguities=[];
 
     const type=/** @type {CandidateType} */(adapter? adapter.type : typeFromText(text));
-    if(adapter) reasons.push(adapter.name+' 예약으로 보입니다');
+    if(adapter) reasons.push(adapter.name+' 예약으로 보여요');
 
     // 제목: 공유 제목이 가장 믿을 만하다. 사이트 이름 꼬리는 떼어낸다.
     let title=String(i.title||'').replace(/\s*[|·—-]\s*(?:booking\.com|agoda|airbnb|expedia|hotels\.com)\s*$/i,'').trim();
@@ -249,16 +249,16 @@
 
     const conf=RE.confirmation.exec(text);
     const confirmationNumber=conf? conf[1].toUpperCase() : null;
-    if(confirmationNumber) reasons.push('예약번호를 찾았습니다');
+    if(confirmationNumber) reasons.push('예약번호를 찾았어요');
 
     // 날짜: 체크인/체크아웃 라벨이 있으면 그 줄에서, 없으면 본문에서 앞의 두 개.
     const dates=collectDates(text, {locale:o.locale, year:o.year});
     dates.ambiguous.forEach(a=>ambiguities.push(a));
     const startAt=dates.start, endAt=dates.end;
-    if(startAt) reasons.push('날짜를 찾았습니다');
+    if(startAt) reasons.push('날짜를 찾았어요');
 
     const currency=normalizeCurrency(text, {hint:o.currencyHint});
-    if(currency.ambiguous) ambiguities.push('통화 기호만으로는 어느 나라 통화인지 확실하지 않습니다');
+    if(currency.ambiguous) ambiguities.push('통화 기호만으로는 어느 나라 통화인지 확실하지 않아요');
     const amountText=/(?:총액|합계|total|amount|가격|price)[^\n]{0,40}/i.exec(text);
     const amount=normalizeAmount(amountText? amountText[0] : (currency.code? text : ''));
 
@@ -290,7 +290,7 @@
     for(const line of lines){
       const parsed=normalizeDate(line, opts);
       if(!parsed.iso) continue;
-      if(parsed.ambiguous) ambiguous.push(`"${line.trim().slice(0,40)}"의 날짜가 ${parsed.iso}인지 ${parsed.alternative}인지 확실하지 않습니다`);
+      if(parsed.ambiguous) ambiguous.push(`"${line.trim().slice(0,40)}"의 날짜가 ${parsed.iso}인지 ${parsed.alternative}인지 확실하지 않아요`);
       if(RE.checkIn.test(line) && !start){ start=parsed.iso; continue; }
       if(RE.checkOut.test(line) && !end){ end=parsed.iso; continue; }
       if(!start) start=parsed.iso;
@@ -377,12 +377,12 @@
       /** @type {string[]} */ const reasons=[];
       let score=0;
       if(candidate.confirmationNumber && sameCode(candidate.confirmationNumber, b.confirmation||b.confirmationNumber)){
-        score+=0.7; reasons.push('예약번호가 같습니다');
+        score+=0.7; reasons.push('예약번호가 같아요');
       }
-      if(candidate.sourceUrl && b.url && String(candidate.sourceUrl)===String(b.url)){ score+=0.5; reasons.push('같은 예약 페이지입니다'); }
+      if(candidate.sourceUrl && b.url && String(candidate.sourceUrl)===String(b.url)){ score+=0.5; reasons.push('같은 예약 페이지예요'); }
       const sim=titleSimilarity(candidate.title, b.title);
-      if(sim>=0.7){ score+=0.25; reasons.push('이름이 거의 같습니다'); }
-      if(candidate.startAt && b.start && dayGap(candidate.startAt, b.start)<=cfg.duplicateDays){ score+=0.25; reasons.push('날짜가 겹칩니다'); }
+      if(sim>=0.7){ score+=0.25; reasons.push('이름이 거의 같아요'); }
+      if(candidate.startAt && b.start && dayGap(candidate.startAt, b.start)<=cfg.duplicateDays){ score+=0.25; reasons.push('날짜가 겹쳐요'); }
       if(score>=0.7 && (!best||score>best.score)) best={booking:b, score:Math.min(1,Math.round(score*100)/100), reasons};
     });
     return best;
@@ -408,15 +408,15 @@
         const startMs=Date.parse(candidate.startAt+'T00:00:00Z');
         const padded=cfg.tripPadDays*86400000;
         if(isFinite(startMs) && startMs>=Date.parse(first+'T00:00:00Z')-padded && startMs<=lastMs+padded){
-          score+=0.6; reasons.push(`여행 기간(${first} ~ ${last})과 겹칩니다`);
+          score+=0.6; reasons.push(`여행 기간(${first} ~ ${last})과 겹쳐요`);
         }
       }
       const cities=new Set();
       (t.days||[]).forEach((/**@type{any}*/d)=>((d&&d.spots)||[]).forEach((/**@type{any}*/s)=>{ if(s&&s.city) cities.add(String(s.city)); }));
       const haystack=[candidate.location, candidate.title].filter(Boolean).join(' ');
-      for(const city of cities){ if(haystack && haystack.indexOf(city)>=0){ score+=0.25; reasons.push(`${city} 일정이 있습니다`); break; } }
+      for(const city of cities){ if(haystack && haystack.indexOf(city)>=0){ score+=0.25; reasons.push(`${city} 일정이 있어요`); break; } }
       if(candidate.providerId && (t.bookings||[]).some((/**@type{any}*/b)=>b&&b.provider&&titleSimilarity(b.provider, candidate.provider)>=0.8)){
-        score+=0.1; reasons.push('같은 예약처를 쓴 적이 있습니다');
+        score+=0.1; reasons.push('같은 예약처를 쓴 적이 있어요');
       }
       if(score>0) out.push({tripId:t.id, name:String(t.name||'여행'), score:Math.min(1,Math.round(score*100)/100), reasons});
     });
@@ -500,7 +500,7 @@
     const cfg=(opts&&opts.cfg)||MEMORY_CFG;
     const at=Math.round(Number(capture&&capture.atMinutes));
     const list=(activities||[]).filter(Boolean);
-    if(!list.length||!isFinite(at)) return {activityId:null, reason:'연결할 일정이 없어 날짜에만 남깁니다'};
+    if(!list.length||!isFinite(at)) return {activityId:null, reason:'연결할 일정이 없어 날짜에만 남겨요'};
 
     const startOf=(/**@type{any}*/a)=>Number(a.startMinutes!=null? a.startMinutes : a.depart);
     const endOf=(/**@type{any}*/a)=>Number(a.endMinutes!=null? a.endMinutes : a.end);
@@ -510,7 +510,7 @@
       const s=startOf(a), e=endOf(a);
       return isFinite(s)&&isFinite(e)&&at>=s-cfg.windowMin&&at<=e+cfg.windowMin;
     });
-    if(inWindow.length===1) return {activityId:idOf(inWindow[0]), reason:'그 시간에 있던 일정입니다'};
+    if(inWindow.length===1) return {activityId:idOf(inWindow[0]), reason:'그 시간에 있던 일정이에요'};
 
     const here=capture&&capture.location;
     if(inWindow.length>1 && here){
@@ -520,10 +520,10 @@
         const km=LIB.haversine({lat:+here.lat,lng:+here.lng},{lat:+a.location.lat,lng:+a.location.lng});
         if(km<bestKm){ bestKm=km; best=a; }
       });
-      if(best && bestKm<=cfg.nearKm) return {activityId:idOf(best), reason:'그 시간에 가장 가까이 있던 일정입니다'};
-      if(best) return {activityId:idOf(best), reason:'그 시간대의 일정 중 가장 가까운 곳입니다'};
+      if(best && bestKm<=cfg.nearKm) return {activityId:idOf(best), reason:'그 시간에 가장 가까이 있던 일정이에요'};
+      if(best) return {activityId:idOf(best), reason:'그 시간대의 일정 중 가장 가까운 곳이에요'};
     }
-    if(inWindow.length>1) return {activityId:idOf(inWindow[0]), reason:'그 시간대의 첫 일정입니다'};
+    if(inWindow.length>1) return {activityId:idOf(inWindow[0]), reason:'그 시간대의 첫 일정이에요'};
 
     if(here){
       let best=null, bestKm=Infinity;
@@ -532,9 +532,9 @@
         const km=LIB.haversine({lat:+here.lat,lng:+here.lng},{lat:+a.location.lat,lng:+a.location.lng});
         if(km<bestKm){ bestKm=km; best=a; }
       });
-      if(best && bestKm<=cfg.nearKm) return {activityId:idOf(best), reason:'바로 근처의 일정입니다'};
+      if(best && bestKm<=cfg.nearKm) return {activityId:idOf(best), reason:'바로 근처의 일정이에요'};
     }
-    return {activityId:null, reason:'어느 일정인지 확실하지 않아 날짜에만 남깁니다'};
+    return {activityId:null, reason:'어느 일정인지 확실하지 않아 날짜에만 남겨요'};
   }
 
   /**

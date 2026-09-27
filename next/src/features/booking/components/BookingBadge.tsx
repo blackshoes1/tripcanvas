@@ -33,7 +33,7 @@ export function BookingBadge({ booking, rec }: { booking: Booking; rec: PriceRec
   }
   if (st?.state === 'GOOD_PRICE') return <span className="pxBadge pxGood" title="현재가가 관측 최저 수준 — 지금 예약 유지 권장">🟢 좋은 가격</span>;
   if (st?.state === 'ERROR' && st.err?.code === 'AUTH_REQUIRED')
-    return <span className="pxBadge pxWatch" title="자동 가격 소스가 아직 연결되지 않았어요 — 직접 가격 확인은 가능합니다">🔌 자동 소스 미연결</span>;
+    return <span className="pxBadge pxWatch" title="자동 가격 소스가 아직 연결되지 않았어요 — 직접 가격 확인은 가능해요">🔌 자동 소스 미연결</span>;
   if (st?.state === 'ERROR') return <span className="pxBadge pxWarn" title="가격 확인 실패">⚠️ 확인 실패</span>;
   if (booking.track) return <span className="pxBadge pxWatch" title="시세를 계속 확인 중 — 아직 의미 있는 하락이 없어요">🟡 가격 추적 중</span>;
   return <span className="pxBadge pxOff">추적 꺼짐</span>;
