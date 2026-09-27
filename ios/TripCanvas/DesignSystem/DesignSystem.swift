@@ -353,6 +353,65 @@ struct SecondaryActionButton: View {
     }
 }
 
+/// 강조색을 옅게 깐 버튼 — **한 화면에 꽉 찬 주 버튼은 하나**라서, 그다음으로 권하는 일(From J의 '일정에 넣기')은
+/// 이것을 쓴다. 글자만큼 넓다.
+struct TonalActionButton: View {
+    let title: String
+    var systemImage: String?
+    var isBusy: Bool = false
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: Space.xs + 2) {
+                if isBusy { ProgressView().controlSize(.small) }
+                else if let systemImage { Image(systemName: systemImage) }
+                Text(title).lineLimit(1)
+            }
+            .font(.subheadline.weight(.semibold))
+            .padding(.horizontal, Space.l + 2)
+            .frame(minHeight: 44)
+            .background(Ink.accent.opacity(0.13), in: Capsule())
+            .foregroundStyle(Ink.accent)
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .disabled(isBusy)
+    }
+}
+
+/// 빠져나가는 길 — 배경 없는 흐린 글자. '이번엔 건너뛰기'처럼 권하지 않지만 언제나 있는 선택지.
+struct QuietActionButton: View {
+    let title: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) { Text(title).lineLimit(1) }
+            .font(.subheadline.weight(.medium))
+            .foregroundStyle(Ink.soft)
+            .padding(.horizontal, Space.m)
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+    }
+}
+
+/// 이름 옆의 아주 작은 표지 — `예약`·`다음`·`꼭 가기`. `StatusChip`은 한 줄을 차지하는 상태라 목록 줄에는 무겁다.
+struct TagChip: View {
+    let text: String
+    var tint: Color = Ink.soft
+
+    var body: some View {
+        Text(text)
+            .font(.caption2.weight(.semibold))
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2)
+            .background(tint.opacity(0.14), in: Capsule())
+            .foregroundStyle(tint)
+            .fixedSize()
+    }
+}
+
 /// 빈 화면을 그냥 두지 않는다 — 무엇을 하면 되는지 한 줄이라도 말한다(§34).
 struct EmptyStateView: View {
     let symbol: String

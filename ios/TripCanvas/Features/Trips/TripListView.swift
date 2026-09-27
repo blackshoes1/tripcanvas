@@ -129,6 +129,24 @@ final class TripListViewModel {
             return false
         }
     }
+
+    /// 목록의 묶음 — 여행 중은 크게(표지), 나머지는 촘촘한 줄로. 순서는 `ordered`를 그대로 따른다.
+    /// 날짜 미정은 지난 여행보다 **위**다 — 아직 짜고 있는 여행이 끝난 여행보다 지금 더 쓸모 있다.
+    struct Sections: Equatable {
+        var live: [TripSummary] = []
+        var upcoming: [TripSummary] = []
+        var undated: [TripSummary] = []
+        var finished: [TripSummary] = []
+    }
+
+    var sections: Sections {
+        ordered.reduce(into: Sections()) { out, trip in
+            if trip.isLive { out.live.append(trip) }
+            else if trip.isUpcoming { out.upcoming.append(trip) }
+            else if trip.start.isEmpty { out.undated.append(trip) }
+            else { out.finished.append(trip) }
+        }
+    }
 }
 
 struct TripListView: View {
@@ -168,6 +186,9 @@ struct TripListView: View {
                     ProgressView()
                 }
             }
+            // 목록이 없을 때(불러오는 중·빈 목록·오류)도 종이 위다 — 전에는 그때만 흰 바탕이었다.
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Ink.paper)
             .navigationDestination(for: TripSummary.self) { trip in
                 TripHomeView(trip: trip, requested: requestedTab, panel: $requestedPanel, env: env)
             }
@@ -379,64 +400,93 @@ struct TripListView: View {
                     title: "아직 여행이 없어요",
                     message: "첫 여행을 만들어 보세요. 웹에서 만든 여행도 여기에 나타나요.")
                 VStack(spacing: Space.s) {
-                    Button { createStartMode = .scratch; showsCreateTrip = true } label: {
-                        Label("여행 만들기", systemImage: "plus").frame(maxWidth: .infinity)
+                    PrimaryActionButton(title: "여행 만들기", systemImage: "plus") {
+                        createStartMode = .scratch; showsCreateTrip = true
                     }
-                    .prominentButton()
-                    Button { createStartMode = .paste; showsCreateTrip = true } label: {
-                        Label("가진 일정 붙여넣기", systemImage: "doc.on.clipboard").frame(maxWidth: .infinity)
+                    SecondaryActionButton(title: "가진 일정 붙여넣기", systemImage: "doc.on.clipboard") {
+                        createStartMode = .paste; showsCreateTrip = true
                     }
-                    .buttonStyle(.bordered)
                     joinInviteButton
                 }
                 .padding(.horizontal, Space.xl)
             }
         } else {
+            let sections = model.sections
             List {
-                VStack(alignment: .leading, spacing: Space.m) {
-                    Text("여행 기록").metaLabel()
+                VStack(alignment: .leading, spacing: Space.xs) {
+                    Text("Trips · \(model.trips.count)").metaLabel()
                     Text("나의 여행").font(Typeface.editorial(.largeTitle)).foregroundStyle(Ink.ink)
-                    Rectangle().fill(Ink.hairline).frame(height: 1)
-                    // 초대받은 사람은 계정 메뉴를 열어 볼 생각을 못 한다 — 목록 첫 화면에 둔다.
-                    joinInviteButton
                 }
-                .padding(.vertical, Space.l)
+                .padding(.top, Space.s)
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets(top: 0, leading: Space.xs, bottom: 0, trailing: Space.xs))
                 if let cachedAt = model.cachedAt {
                     OfflineNotice(savedAt: cachedAt)
+                        .listRowBackground(Color.clear)
                 }
                 if let error = model.errorMessage, model.cachedAt == nil {
                     InlineErrorBanner(message: "목록을 새로 불러오지 못했어요", detail: error) {
                         Task { await model.load() }
                     }
-                    .listRowSeparator(.hidden)
-                }
-                ForEach(model.ordered) { trip in
-                    // 제목이 먼저다 — 목록을 훑는 사람은 사진이 아니라 이름으로 제 여행을 찾는다.
-                    // 표지 사진과 '표지 바꾸기'는 한 덩어리로 제목 아래에 온다(고치는 대상 바로 곁).
-                    VStack(alignment: .leading, spacing: Space.m) {
-                        NavigationLink(value: trip) {
-                            TripRow(trip: trip)
-                        }
-                        TripCoverView(trip: trip, api: env.service.api, cache: env.service.cache, cacheScope: env.service.cacheScope, refresh: coverRefresh) { path.append(trip) }
-                    }
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets(top: 0, leading: Space.xl, bottom: Space.xl, trailing: Space.l))
-                    // ⚠️ 되돌릴 수 없는 동작이라 미는 것만으로는 사라지지 않는다 — 한 번 더 묻는다.
-                    .swipeActions(edge: .trailing) {
-                        Button(role: .destructive) { pendingRemoval = trip } label: {
-                            Label(TripListView.removalTitle(for: trip), systemImage: removalSymbol(for: trip))
+                }
+                // 여행 중인 여행만 표지를 크게 — 지금 들어갈 곳이 한눈에 보여야 한다.
+                // 나머지는 표지 없이 촘촘한 줄이다: 표지 사진은 출처를 함께 적어야 해서 작은 칸에 넣을 수 없고,
+                // 여행마다 표지를 받던 요청도 그만큼 줄어든다(표지는 여행 안의 첫 화면에서 본다).
+                ForEach(sections.live) { trip in
+                    Section {
+                        LiveTripCard(trip: trip, cover: TripCoverView(trip: trip, api: env.service.api, cache: env.service.cache,
+                                                                      cacheScope: env.service.cacheScope, refresh: coverRefresh,
+                                                                      isHero: true, opensOnTap: true) { path.append(trip) }) {
+                            path.append(trip)
                         }
-                        .disabled(model.busyTripId != nil)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets())
+                        .swipeActions(edge: .trailing) { removeAction(trip, model: model) }
                     }
                 }
+                tripSection("다가오는 여행", sections.upcoming, model: model)
+                tripSection("날짜를 정하지 않은 여행", sections.undated, model: model)
+                tripSection("지난 여행", sections.finished, model: model)
+                Section {
+                    joinInviteButton
+                        .frame(maxWidth: .infinity)
+                        .listRowBackground(Color.clear)
+                }
             }
-            .listStyle(.plain)
+            .listStyle(.insetGrouped)
+            .listSectionSpacing(Space.l)
             .paperGround()
             .refreshable { await model.load(); coverRefresh = UUID() }
         }
+    }
+
+    @ViewBuilder
+    private func tripSection(_ title: String, _ trips: [TripSummary], model: TripListViewModel) -> some View {
+        if !trips.isEmpty {
+            Section {
+                ForEach(trips) { trip in
+                    NavigationLink(value: trip) { TripListRow(trip: trip) }
+                        .listRowBackground(Ink.raised)
+                        .swipeActions(edge: .trailing) { removeAction(trip, model: model) }
+                }
+            } header: {
+                Text(title)
+                    .font(.headline)
+                    .foregroundStyle(Ink.ink)
+                    .textCase(nil)
+            }
+        }
+    }
+
+    private func removeAction(_ trip: TripSummary, model: TripListViewModel) -> some View {
+        Button(role: .destructive) { pendingRemoval = trip } label: {
+            Label(TripListView.removalTitle(for: trip), systemImage: removalSymbol(for: trip))
+        }
+        .disabled(model.busyTripId != nil)
     }
 }
 
@@ -453,44 +503,107 @@ extension TripListView {
     }
 }
 
-struct TripRow: View {
+/// 여행 중인 여행 — 표지 · 명조 이름 · 한 줄 요약 · '오늘 일정 보기'. 목록에서 가장 크게 읽힌다.
+struct LiveTripCard<Cover: View>: View {
     let trip: TripSummary
+    let cover: Cover
+    let onOpen: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.m) {
-            HStack(spacing: Space.s) {
-                Text(trip.name).font(Typeface.editorial(.title2)).foregroundStyle(Ink.ink)
-                if trip.isLive {
-                    StatusChip(text: "Day \(trip.todayIndex + 1)", symbol: "location.fill", tint: Ink.accent)
-                } else if trip.isUpcoming, let days = trip.daysUntilStart {
-                    // 며칠 남았는지는 서버가 센다(여행지의 오늘) — 앱이 `start`와 기기 날짜를 비교하지 않는다.
-                    StatusChip(text: "D-\(days)", symbol: "calendar")
-                } else if trip.isFinished {
-                    StatusChip(text: "지난 여행", symbol: "checkmark.circle")
+            cover
+            Button(action: onOpen) {
+                VStack(alignment: .leading, spacing: Space.s) {
+                    StatusChip(text: "여행 중 · Day \(trip.todayIndex + 1) / \(trip.dayCount)", symbol: "location.fill", tint: Ink.accent)
+                    Text(trip.name)
+                        .font(Typeface.editorial(.title))
+                        .foregroundStyle(Ink.ink)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(TripListRow.subtitle(trip))
+                        .font(.subheadline)
+                        .foregroundStyle(Ink.soft)
+                    HStack(spacing: Space.xs) {
+                        Text("오늘 일정 보기")
+                        Image(systemName: "chevron.right").font(.footnote.weight(.semibold))
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Ink.accent)
+                    .frame(minHeight: 44)
                 }
-                if trip.isShared {
-                    // 함께 보는 여행인지 목록에서 바로 안다 — 편집 권한은 여행 안에서 말한다.
-                    StatusChip(text: "\(trip.memberCount ?? 1)명", symbol: "person.2.fill")
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, Space.xs)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityElement(children: .combine)
+            .accessibilityHint("오늘 일정을 열어요")
+        }
+        .padding(.bottom, Space.s)
+    }
+}
+
+/// 여행 한 줄 — 날짜 칸 · 명조 이름 · 요약 · D-day. 표지 대신 날짜가 앞에 선다(목록은 '언제'로 훑는다).
+struct TripListRow: View {
+    let trip: TripSummary
+
+    var body: some View {
+        HStack(spacing: Space.m) {
+            dateTile
+            VStack(alignment: .leading, spacing: 3) {
+                Text(trip.name)
+                    .font(Typeface.editorial(.title3))
+                    .foregroundStyle(trip.isFinished ? Ink.soft : Ink.ink)
+                    .lineLimit(2)
+                // D-day는 이름 옆이 아니라 요약 줄 앞이다 — 이름 옆에 두면 이름이 일찍 줄바꿈된다.
+                HStack(spacing: Space.s) {
+                    if trip.isUpcoming, let days = trip.daysUntilStart {
+                        TagChip(text: "D-\(days)", tint: Ink.accent)
+                    }
+                    Text(Self.subtitle(trip))
+                        .font(.subheadline)
+                        .foregroundStyle(Ink.soft)
+                        .lineLimit(1)
                 }
             }
-            Text(subtitle)
-                .font(.subheadline)
-                .foregroundStyle(Ink.soft)
+            Spacer(minLength: 0)
         }
-        .padding(.vertical, Space.s)
+        .padding(.vertical, Space.xs)
         .accessibilityElement(children: .combine)
     }
 
-    private var subtitle: String {
+    /// 날짜 칸 — `12월` 위 `20`. 날짜가 없는 여행은 달력 기호만.
+    private var dateTile: some View {
+        VStack(spacing: 0) {
+            if let parts = Self.monthDay(trip.start) {
+                Text(parts.month).font(.caption2.weight(.semibold)).foregroundStyle(Ink.soft)
+                Text(parts.day).font(Typeface.editorial(.title3)).foregroundStyle(trip.isFinished ? Ink.soft : Ink.ink)
+            } else {
+                Image(systemName: "calendar.badge.plus").foregroundStyle(Ink.faint)
+            }
+        }
+        .frame(width: 52, height: 52)
+        .background(Ink.sunken, in: RoundedRectangle(cornerRadius: Radius.control))
+        .accessibilityHidden(true)
+    }
+
+    /// `2026-12-20` → (`12월`, `20`). 못 읽으면 nil — 날짜를 지어내지 않는다.
+    static func monthDay(_ iso: String) -> (month: String, day: String)? {
+        let parts = iso.split(separator: "-")
+        guard parts.count == 3, Int(parts[0]) != nil, let month = Int(parts[1]), let day = Int(parts[2]) else { return nil }
+        return ("\(month)월", "\(day)")
+    }
+
+    static func subtitle(_ trip: TripSummary) -> String {
         var parts: [String] = []
         if !trip.start.isEmpty { parts.append(ReadableDate.day(trip.start)) }
         parts.append("\(trip.dayCount)일")
         if !trip.cities.isEmpty { parts.append(trip.cities.prefix(3).joined(separator: " · ")) }
-        return parts.joined(separator: "  ·  ")
+        if trip.isShared { parts.append("\(trip.memberCount ?? 1)명") }
+        return parts.joined(separator: " · ")
     }
 }
 
-/// 오프라인이어도 읽기는 된다 — 대신 언제 받아온 것인지 반드시 말한다(§29).
 struct OfflineNotice: View {
     let savedAt: Date
 

@@ -17,6 +17,8 @@ struct TripCoverView: View {
     var cacheScope: TripCache.Scope? = nil
     let refresh: UUID
     var isHero = false
+    /// 큰 표지를 눌러 여행을 연다(여행 목록). 여행 안의 첫 화면에서는 이미 그 여행이라 끈다.
+    var opensOnTap = false
     var onOpen: () -> Void
     static let changed = Notification.Name("withj.tripCoverChanged")
     @Environment(AppEnvironment.self) private var env
@@ -34,7 +36,7 @@ struct TripCoverView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Space.xs) {
             if isHero {
-                photo
+                heroPhoto
                     .overlay(alignment: .topTrailing) {
                         if trip.canEdit {
                             Button {
@@ -133,6 +135,17 @@ struct TripCoverView: View {
         }
     }
 
+    @ViewBuilder
+    private var heroPhoto: some View {
+        if opensOnTap {
+            Button(action: onOpen) { photo }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(trip.name) 여행 열기")
+        } else {
+            photo
+        }
+    }
+
     private var photo: some View {
         Color.clear
             .aspectRatio(TripCoverImage.aspectRatio, contentMode: .fit)
@@ -153,7 +166,7 @@ struct TripCoverView: View {
                 }
             }
             .clipped()
-            .clipShape(RoundedRectangle(cornerRadius: isHero ? 18 : 3))
+            .clipShape(RoundedRectangle(cornerRadius: isHero ? Radius.card : Radius.small))
             .accessibilityLabel("\(trip.name) 대표 사진")
     }
 

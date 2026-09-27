@@ -29,7 +29,10 @@ struct SuggestionCard: View {
                 Spacer()
             }
 
-            Text(suggestion.title).font(.headline)
+            Text(suggestion.title)
+                .font(Typeface.editorial(.title3))
+                .foregroundStyle(Ink.ink)
+                .fixedSize(horizontal: false, vertical: true)
 
             if !suggestion.description.isEmpty {
                 Text(suggestion.description)
@@ -55,26 +58,39 @@ struct SuggestionCard: View {
                 StatusChip(text: "\(TimeFormat.money(-saving, currency: "KRW")) 절약 가능", symbol: "tag.fill", tint: Ink.positive)
             }
 
-            HStack(spacing: Space.s) {
-                if suggestion.acceptable {
-                    PrimaryActionButton(title: acceptTitle, systemImage: "plus", isBusy: isBusy, action: onAccept)
-                } else if let target, let location = target.location,
-                          [.visitPlace, .checkIn, .returnToHotel].contains(suggestion.action.kind) {
-                    PrimaryActionButton(title: "길찾기", systemImage: "arrow.triangle.turn.up.right.diamond") {
-                        MapLauncher.open(location: location, name: target.name)
-                    }
+            // 꽉 찬 버튼은 쓰지 않는다 — 화면의 주 버튼은 '다음 일정'의 것 하나다. 제안은 옅은 버튼으로 권한다.
+            // 한 줄에 안 들어가면(버튼 셋·큰 글자) 빠져나가는 길을 아랫줄로 내린다 — 글자가 두 줄로 부서지지 않게.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: Space.s) { actions; dismiss }
+                VStack(alignment: .leading, spacing: Space.xs) {
+                    HStack(spacing: Space.s) { actions }
+                    dismiss
                 }
-                if !suggestion.acceptable, let onComplete, [.visitPlace, .checkIn].contains(suggestion.action.kind) {
-                    SecondaryActionButton(title: "다녀왔어요", systemImage: "checkmark", action: onComplete)
-                        .disabled(isBusy)
-                }
-                // 빠져나갈 길은 언제나 있다 — J는 대신 결정하지 않는다.
-                SecondaryActionButton(title: "이번엔 건너뛰기", action: onDismiss)
             }
         }
         .card()
         .accessibilityElement(children: .contain)
         .accessibilityLabel("From J \(kicker.text) 제안: \(suggestion.title)")
+    }
+
+    @ViewBuilder
+    private var actions: some View {
+        if suggestion.acceptable {
+            TonalActionButton(title: acceptTitle, systemImage: "plus", isBusy: isBusy, action: onAccept)
+        } else if let target, let location = target.location,
+                  [.visitPlace, .checkIn, .returnToHotel].contains(suggestion.action.kind) {
+            TonalActionButton(title: "길찾기", systemImage: "arrow.triangle.turn.up.right.diamond") {
+                MapLauncher.open(location: location, name: target.name)
+            }
+        }
+        if !suggestion.acceptable, let onComplete, [.visitPlace, .checkIn].contains(suggestion.action.kind) {
+            TonalActionButton(title: "다녀왔어요", systemImage: "checkmark", isBusy: isBusy, action: onComplete)
+        }
+    }
+
+    /// 빠져나갈 길은 언제나 있다 — J는 대신 결정하지 않는다.
+    private var dismiss: some View {
+        QuietActionButton(title: "이번엔 건너뛰기", action: onDismiss)
     }
 
     private var acceptTitle: String {
