@@ -100,13 +100,13 @@ struct PlanSpotList: View {
                     // 나란한 가지를 열로 쪼개지 않는다(드래그 인덱스가 어긋난다) —
                     // 대신 줄마다 표시를 붙이고, 하루 단위로 한 번 설명한다.
                     if model.hasSplits {
-                        Text("이 날은 일부 시간을 따로 보내요 — 표시된 구간은 함께 다니지 않습니다.")
+                        Text("이 날은 일부 시간을 따로 보내요 — 표시된 구간은 함께 다니지 않아요.")
                     }
                     // 계산이 없는 상태와 정상인 상태가 화면에서 구분되지 않으면,
                     // 서버가 아직 준비 안 된 것을 아무도 모른다(2026-09-06에 그랬다).
                     // 시도해 보고 못 받았을 때만 말한다 — 기다리는 중에 실패했다고 하지 않는다.
                     if model.plan == nil, model.planAttempted(for: model.selectedDay), !day.spots.isEmpty {
-                        Label(model.documentCachedAt != nil ? "저장된 장소와 메모를 보고 있어요. 이동·도착 시각은 연결되면 확인할 수 있어요." : "예상 도착 시각을 불러오지 못했어요 — 일정 편집은 그대로 됩니다.",
+                        Label(model.documentCachedAt != nil ? "저장된 장소와 메모를 보고 있어요. 이동·도착 시각은 연결되면 확인할 수 있어요." : "예상 도착 시각을 불러오지 못했어요 — 일정 편집은 그대로 돼요.",
                               systemImage: "clock.badge.exclamationmark")
                     }
                 }
@@ -231,7 +231,7 @@ struct PlanSpotList: View {
     }
 
     private func dayTitleText(_ day: TripDay) -> String {
-        day.title.isEmpty ? "\(model.selectedDay + 1)일차" : day.title
+        day.title.isEmpty ? "Day \(model.selectedDay + 1)" : day.title
     }
 
     @ViewBuilder

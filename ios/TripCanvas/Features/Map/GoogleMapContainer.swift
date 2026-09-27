@@ -11,6 +11,8 @@ struct MapPin: Identifiable, Hashable {
     /// 목록 순서(1부터). 동선 위에서 몇 번째인지 보이게
     let order: Int
     var kind: Kind = .itinerary
+    /// 며칠째 핀인가 — 여행 전체를 볼 때 경로선과 같은 일자 색으로 칠한다. **음수면 기본색**(하루만 볼 때).
+    var colorIndex: Int = -1
 }
 
 /// 지도에 그릴 동선 하나. 두 SDK가 같은 입력을 받는다.
@@ -230,7 +232,9 @@ enum MapPinImage {
         // ⚠️ 여기만 `Ink.*`를 쓰지 않는다 — 구글 지도 SDK가 `UIColor`를 요구하고, 지도 위 핀은
         // 타일 위에서 읽혀야 해서 시스템 색의 대비 보정을 그대로 쓴다. 화면 색과 갈리는 것이 아니라
         // **다른 매체(지도)**라 규칙이 다르다.
-        let color: UIColor = selected ? .systemOrange : pin.kind == .candidate ? .systemGreen : .systemBlue
+        let color: UIColor = selected ? .systemOrange
+            : pin.kind == .candidate ? .systemGreen
+            : pin.colorIndex >= 0 ? MapPalette.color(pin.colorIndex) : .systemBlue
         return UIGraphicsImageRenderer(size: CGSize(width: 36, height: 36)).image { _ in
             UIColor.white.setFill()
             UIBezierPath(ovalIn: CGRect(x: 0, y: 0, width: 36, height: 36)).fill()

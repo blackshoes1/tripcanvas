@@ -79,7 +79,7 @@ struct SuggestionCard: View {
 
     private var acceptTitle: String {
         switch suggestion.action.kind {
-        case .moveToToday: "오늘 일정에 추가"
+        case .moveToToday: "오늘 일정에 넣기"
         case .rest, .returnToHotel: "그렇게 할게요"
         case .replan: "이대로 조정"
         default: "추가하기"
@@ -90,7 +90,7 @@ struct SuggestionCard: View {
         switch suggestion.type {
         case .rest: ("쉬어도 괜찮아요", "cup.and.saucer", .secondary)
         case .priceSaving: ("예약 다시 보기", "tag", Ink.positive)
-        case .replan: ("일정 조정", "arrow.triangle.branch", Ink.warning)
+        case .replan: ("일정 조정 제안", "arrow.triangle.branch", Ink.warning)
         case .nextActivity, .unknown: ("지금 한 곳 더 들를 수 있어요", "sparkles", Ink.info)
         }
     }

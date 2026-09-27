@@ -26,8 +26,9 @@ enum Ink {
     static let ink = adaptive(light: 0x16130F, dark: 0xF7F5EF)
     /// 덜 중요한 글자
     static let soft = adaptive(light: 0x6E655A, dark: 0xB5AB98)
-    /// 라벨·메타 — 가장 흐리다
-    static let faint = adaptive(light: 0x766F62, dark: 0x8A8073)
+    /// 라벨·메타 — 가장 흐리다. 그래도 **어느 바탕 위에서든 4.5:1**이다 — 2026-09-27 전 값(라이트 #766F62·다크 #8A8073)은
+    /// 가라앉은 바탕(sunken)·카드(raised) 위에서 4.0~4.3이었다. 라이트는 `soft`와 거의 같아졌고, 위계는 글자 크기가 맡는다.
+    static let faint = adaptive(light: 0x6E6659, dark: 0x968C7E)
     /// 강조 — 누를 것, 지금 봐야 할 것. **올리브**(2026-09-20 승인 시안).
     /// ⚠️ 에셋 카탈로그의 `AccentColor`와 **같은 값이어야 한다** — 그래야 화면 여기저기의
     /// `Color.accentColor`와 기본 컨트롤 색이 이 팔레트와 갈리지 않는다.
@@ -49,7 +50,8 @@ enum Ink {
 /// 기능마다 다른 색이 생긴다(2026-09-18 정리). 색만으로 말하지 않는다 — 문구·기호가 늘 함께 간다(§47).
 extension Ink {
     /// 주의 — 시간 관련 경고 · 비용 미정 · 확인이 필요한 것
-    static let warning = adaptive(light: 0xB8650F, dark: 0xF0A050)
+    /// 라이트는 종이 위 4.5:1을 넘게 한 톤 어둡다(전 값 #B8650F는 3.9:1 — 경고 문구가 가장 안 읽혔다).
+    static let warning = adaptive(light: 0x9E5508, dark: 0xF0A050)
     /// 오류 · 삭제 · 예산 초과 · 취소
     static let danger = adaptive(light: 0xB4342A, dark: 0xEF7A6A)
     /// 완료 · 결제 완료

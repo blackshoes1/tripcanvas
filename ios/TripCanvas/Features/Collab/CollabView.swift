@@ -46,7 +46,7 @@ struct CollabView: View {
                     Section {
                         Button("여행에서 나가기", role: .destructive) { showsLeaveConfirm = true }
                     } footer: {
-                        Text("나가면 이 여행이 목록에서 사라져요. 다시 들어오려면 새 초대 링크가 필요합니다.")
+                        Text("나가면 이 여행이 목록에서 사라져요. 다시 들어오려면 새 초대 링크가 필요해요.")
                     }
                 }
             } else {
@@ -96,7 +96,7 @@ struct CollabView: View {
         .confirmationDialog("\"\(trip.name)\" 여행에서 나갈까요?", isPresented: $showsLeaveConfirm, titleVisibility: .visible) {
             Button("나가기", role: .destructive) { Task { await model?.leave() } }
         } message: {
-            Text("이 여행이 내 목록에서 사라져요. 실제 일정은 남은 멤버에게 그대로 있습니다.")
+            Text("이 여행이 내 목록에서 사라져요. 실제 일정은 남은 멤버에게 그대로 있어요.")
         }
         .confirmationDialog(
             "\(removing.map(CollabModel.memberName) ?? "멤버") 님을 이 여행에서 내보낼까요?",
@@ -150,7 +150,7 @@ struct CollabView: View {
         } header: {
             Text("멤버 \(model.members.count)명")
         } footer: {
-            Text("편집자는 일정을 바꿀 수 있고, 보기 권한은 볼 수만 있어요. 의견(반응·한마디·취향)은 누구나 남깁니다.")
+            Text("편집자는 일정을 바꿀 수 있고, 보기 권한은 볼 수만 있어요. 의견(반응·한마디·취향)은 누구나 남겨요.")
         }
     }
 
@@ -166,7 +166,7 @@ struct CollabView: View {
         } header: {
             Text("이 여행에서 보일 내 이름")
         } footer: {
-            Text("계정 이메일은 일행에게 보이지 않아요. 이름을 정하지 않으면 역할로 불립니다.")
+            Text("계정 이메일은 일행에게 보이지 않아요. 이름을 정하지 않으면 역할로 불려요.")
         }
     }
 
@@ -279,7 +279,7 @@ struct CollabView: View {
         } header: {
             Text("여행 취향")
         } footer: {
-            Text("이 여행에 대한 취향이에요. 결정은 하지 않고, 어디가 맞고 어디가 갈리는지만 정리합니다.")
+            Text("이 여행에 대한 취향이에요. 결정은 하지 않고, 어디가 맞고 어디가 갈리는지만 정리해요.")
         }
     }
 
@@ -304,7 +304,7 @@ struct CollabView: View {
         } header: {
             Text("최근 활동")
         } footer: {
-            Text("실시간 연결은 아직 없어요. 당겨서 새로고침하면 최신 활동을 불러옵니다.")
+            Text("실시간 연결은 아직 없어요. 당겨서 새로고침하면 최신 활동을 불러와요.")
         }
     }
 }

@@ -287,7 +287,6 @@ struct MapDiscoveryView: View {
                     Button("날짜와 위치 골라 일정에 넣기") { scheduling = candidate }.frame(minHeight: 44)
                 }
             }
-            Text("예약 요건 확인 필요").font(.caption).foregroundStyle(.secondary)
             if let url = hit.placeURL, url.scheme == "https" { Link("장소 페이지 확인", destination: url).frame(minHeight: 44) }
             PlaceAdmissionLookup(provider: hit.provider, providerID: hit.providerId).id(hit.id)
         }
@@ -315,7 +314,7 @@ struct MapDiscoveryView: View {
     private func pins(_ model: MapDiscoveryModel) -> [MapPin] {
         var result = document.days.enumerated().flatMap { day, value in
             value.pins.map { pin in
-                MapPin(id: "day-\(day)-\(pin.id)", title: "Day \(day + 1) · \(pin.title)", point: pin.point, order: pin.order)
+                MapPin(id: "day-\(day)-\(pin.id)", title: "Day \(day + 1) · \(pin.title)", point: pin.point, order: pin.order, colorIndex: day)
             }
         }
         result += model.undatedCandidates.compactMap { candidate in

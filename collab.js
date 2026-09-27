@@ -103,15 +103,6 @@
   }
 
   /**
-   * 이메일에서 기본 표시 이름을 만든다(참여 화면의 프리필). 도메인은 버린다.
-   * @param {string|null|undefined} email
-   */
-  function displayNameFromEmail(email){
-    const local=String(email||'').split('@')[0].trim();
-    return local.slice(0, COLLAB_CFG.nameMax);
-  }
-
-  /**
    * 멤버 목록 요약 — 헤더 배지와 목록 뱃지에 쓴다.
    * @param {MemberRow[]|null|undefined} members
    * @returns {{total:number, owners:number, editors:number, viewers:number, names:string[]}}
@@ -956,7 +947,7 @@
 
   const API={ROLES, ROLE_LABEL, COLLAB_CFG, JOIN_REASON, REACTIONS, REACTION_LABEL, REACTION_ICON, MOOD_TEXT, ACTIVITY_KINDS, PREF, PACE_LABEL, WALK_LABEL, CONSENSUS_TEXT,
     normRole, canEdit, canManage, canLeave, canDelete, roleLabel, roleIcon, roleOf, tripRoleMap,
-    memberName, displayNameFromEmail, memberSummary,
+    memberName, memberSummary,
     buildInviteLink, parseJoinHash, inviteVerdict, joinReasonText, inviteRangeText,
     isForbiddenError, forbiddenText, isHumanMessage,
     normReaction, reactionLabel, reactionIcon, canPropose, canReact, canScheduleCandidate, canRemoveCandidate,

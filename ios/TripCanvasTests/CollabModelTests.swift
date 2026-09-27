@@ -53,8 +53,6 @@ final class CollabModelTests: XCTestCase {
         XCTAssertEqual(CollabModel.memberName(ownerNoName), "주최자")
         let memberNoName = MemberView(id: 3, userId: "u3", role: .viewer, status: "ACTIVE", displayName: nil, joinedAt: nil, me: false)
         XCTAssertEqual(CollabModel.memberName(memberNoName), "멤버")
-        XCTAssertEqual(CollabModel.displayNameFromEmail("blackshoes85@gmail.com"), "blackshoes85")
-        XCTAssertEqual(CollabModel.displayNameFromEmail(nil), "")
     }
 
     // MARK: 초대 링크 — 토큰만 싣는다

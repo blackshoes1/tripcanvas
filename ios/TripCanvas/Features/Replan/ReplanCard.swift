@@ -54,8 +54,8 @@ struct ReplanCard: View {
     private var dropNote: String {
         let names = preview.dropNames.joined(separator: ", ")
         return preview.movesToNextDay
-            ? "\(names)은(는) 다음 날 앞쪽으로 옮겨요. 예약된 일정은 그대로 둡니다."
-            : "\(names)은(는) '건너뜀'으로 표시돼요. 예약된 일정은 그대로 둡니다."
+            ? "\(names)은(는) 다음 날 앞쪽으로 옮겨요. 예약된 일정은 그대로 둬요."
+            : "\(names)은(는) '건너뜀'으로 표시돼요. 예약된 일정은 그대로 둬요."
     }
 }
 

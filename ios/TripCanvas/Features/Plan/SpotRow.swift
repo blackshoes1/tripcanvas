@@ -36,15 +36,26 @@ struct SpotRow: View {
         let isBranchStart: Bool
     }
 
+    private var admissionText: String? {
+        let admission = spot.admission
+        let known = admission.requirement != .unknown
+        switch (admission.isBooked, known) {
+        case (true, true): return "예약 완료 · \(admission.requirement.label)"
+        case (true, false): return "예약 완료"
+        case (false, true): return admission.requirement.label
+        case (false, false): return nil
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: Space.s) {
             // 이 장소로 '들어오는' 구간. 장소 사이가 비어 있으면 "여기서 저기까지 얼마나"를 알 수 없다.
             if let leg = plan?.incomingLeg { legLine(leg) }
             // 누가 가는지는 **가지가 시작될 때 한 번만** 말한다.
             if let split, split.isBranchStart { branchHeader(split) }
-            if !spot.admission.raw.isEmpty || spot.category == .sight {
-                Label(spot.admission.isBooked ? "예약 완료 · \(spot.admission.requirement.label)" : spot.admission.requirement.label,
-                      systemImage: spot.admission.isBooked ? "checkmark.seal" : "ticket")
+            // '확인 필요'뿐인 장소에는 아무것도 붙이지 않는다 — 모든 명소에 붙으면 정작 '예약 필수'가 묻힌다.
+            if let text = admissionText {
+                Label(text, systemImage: spot.admission.isBooked ? "checkmark.seal" : "ticket")
                     .font(.caption).foregroundStyle(spot.needsReservation ? Ink.warning : Ink.soft)
             }
 

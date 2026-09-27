@@ -165,9 +165,10 @@ test('통합: 계정이 바뀐 뒤 도착한 삭제 응답도 새 메타를 변�
 
 test('통합: 충돌 UI는 클라우드·기기·복사본 세 선택지를 제공한다', { skip: noJsdom }, () => {
   const w=boot();
-  assert.equal(w.document.getElementById('syncUseCloud').textContent,'클라우드본 사용');
-  assert.equal(w.document.getElementById('syncUseDevice').textContent,'이 기기본 사용');
-  assert.match(w.document.getElementById('syncKeepCopy').textContent,/복사본/);
+  // 내부 용어('클라우드본')가 아니라 무엇이 되는지를 말한다
+  assert.equal(w.document.getElementById('syncUseCloud').textContent,'저장된 것으로 바꾸기');
+  assert.equal(w.document.getElementById('syncUseDevice').textContent,'이 기기 것 유지');
+  assert.match(w.document.getElementById('syncKeepCopy').textContent,/사본으로 남기기/);
   w.close();
 });
 
@@ -373,6 +374,11 @@ test('통합: 긴 일정 카드는 주요 정보·메타·이동 행을 분리�
   const leg = spot.querySelector(':scope > .spotLeg');
   assert.ok(leg.querySelector('.legModeBtn'), '구간 수단 버튼 보존');
   assert.ok(leg.querySelector('.leg'), '거리·시간 구간 정보 보존');
+  // 들어오는 구간은 카드 위 — 아래에 있으면 다음 장소로 가는 구간처럼 읽힌다
+  assert.equal(spot.firstElementChild, leg, '들어오는 구간은 장소 이름보다 위에 있다');
+  assert.match(leg.textContent, /이전 장소에서/, '어디서 오는 길인지 말한다');
+  const list = card.querySelector('.spotList');
+  assert.equal(list.children.length, list.querySelectorAll(':scope > .spot').length, '.spotList 자식은 장소 행뿐이다(드래그 인덱스)');
   ['위로', '아래로', '편집', '복사', '삭제'].forEach((title) => assert.ok(spot.querySelector(`.actionMenuPanel [title="${title}"]`), `${title} 동작 보존`));
 
   const noLoc = card.querySelector('.spot[data-si="2"]');
@@ -813,7 +819,7 @@ test('통합: 결제일을 정하면 날짜가 상태를 정한다 — 지났으
   set('bkType', 'FLIGHT'); set('bkTitle', '항공'); set('bkPrice', '300000'); set('bkPayState', 'PAID'); set('bkPaidOn', '2999-01-01');
   w.eval('toggleBkFields()');
   assert.equal(w.document.getElementById('bkPayState').style.display, 'none', '결제일이 있으면 상태를 고르지 않는다');
-  assert.match(w.document.getElementById('bkPayHint').textContent, /결제 예정으로 셉니다/);
+  assert.match(w.document.getElementById('bkPayHint').textContent, /결제 예정으로 쳐요/);
   w.document.getElementById('bkSave').click();
   assert.equal(w.eval('trip().bookings[0].paidOn'), '2999-01-01');
   assert.equal(w.eval('trip().bookings[0].payState'), undefined, '결제일이 있으면 손으로 고른 상태는 두지 않는다');
@@ -822,7 +828,7 @@ test('통합: 결제일을 정하면 날짜가 상태를 정한다 — 지났으
   assert.ok(body().includes('결제 예정') && body().includes('결제일 2999-01-01') && !body().includes('결제 완료'), '아직이면 결제 예정');
   w.eval(`openBookingModal(trip().bookings[0].id)`);
   set('bkPaidOn', '2000-01-01'); w.eval('toggleBkFields()');
-  assert.match(w.document.getElementById('bkPayHint').textContent, /결제 완료로 셉니다/);
+  assert.match(w.document.getElementById('bkPayHint').textContent, /결제 완료로 쳐요/);
   w.document.getElementById('bkSave').click();
   assert.ok(body().includes('결제 완료'), '지났으면 결제 완료');
   // 하루 결제 상태별 합계도 같은 오늘을 쓴다 — 숙박 하루치가 결제일에 따라 갈린다
@@ -849,6 +855,7 @@ test('통합: 렌터카 예약 — 조건 저장·시장 검색·매칭·절약 
   set('bkCarPickup','Palma Airport'); set('bkCarPickupCode','pmi');
   set('bkCarClass','compact'); set('bkCarTrans','automatic'); set('bkCarMileage','UNLIMITED');
   w.document.getElementById('bkFreeCancel').checked=true;
+  w.document.getElementById('bkTrack').checked=true;   // 새 항목은 추적이 꺼진 채 시작한다 — 켜야 시세를 본다
   w.document.getElementById('bkSave').click();
   const b=w.eval('JSON.parse(JSON.stringify(trip().bookings[0]))');
   assert.equal(b.carPickupCode, 'PMI', '공항코드 대문자 저장');
@@ -891,7 +898,7 @@ test('통합: 렌터카 자동 소스 미연결(AUTH_REQUIRED) → 수동 관측
   await w.eval(`checkBookingPrice('car1',{force:true})`);
   w.eval(`openBookingModal('car1')`);
   const t1=w.document.getElementById('bkStatus').textContent;
-  assert.match(t1, /자동 시장 추적 미연결/, '실패가 아니라 미연결로 안내');
+  assert.match(t1, /자동 조회 미연결/, '실패가 아니라 미연결로 안내');
   assert.ok(w.document.getElementById('bkManualPrice'), '수동 가격 입력 제공');
   assert.match(w.document.getElementById('bkStatus').innerHTML, /recordrentacar\.com/, '예약 사이트 열기 링크');
 
@@ -1023,6 +1030,24 @@ test('통합: 탭한 POI의 placeId가 모달까지 전달된다', { skip: noJsd
   w.document.querySelector('#placeDetailsActions .primary').click();
   assert.equal(w.document.getElementById('spotPlaceId').value, 'PLACE_ID_123', '검색 결과와 동일하게 placeId 보존');
   assert.equal(JSON.parse(w.eval('JSON.stringify(window.__rev)')).pid, 'PLACE_ID_123', '자동채움까지 관통');
+  w.close();
+});
+
+test('통합: 매장 정보가 없는 저장 장소를 탭하면 내가 적은 메모·시각·비용이 먼저 보인다', { skip: noJsdom }, async () => {
+  const w = boot();
+  withTrip(w, `[{mode:'car',startAt:'09:00',spots:[{name:'<b>할머니 국숫집</b>',city:'도쿄',desc:'줄 서기 전 도착\\n현금만',bookAt:'12:30',cost:1200,cur:'JPY'}]}]`);
+  w.eval('openSavedPlace(0,0)');
+  await new Promise(r=>setTimeout(r,0));
+  const box = w.document.getElementById('placeDetailsContent');
+  const own = box.querySelector('.placeOwn');
+  assert.ok(own, '내 일정 칸이 있다');
+  assert.equal(box.firstElementChild, own, '매장 정보보다 먼저');
+  assert.match(own.textContent, /Day 1/);
+  assert.match(own.textContent, /예약·입장 12:30/);
+  assert.match(own.textContent, /줄 서기 전 도착/);
+  assert.ok(!box.querySelector('b'), '사용자 입력은 마크업으로 해석하지 않는다');
+  assert.ok(!/전화번호 정보 없음|주소 정보 없음/.test(box.textContent), '빈 정보 목록을 늘어놓지 않는다');
+  assert.equal(w.document.querySelector('#placeDetailsActions .primary').textContent, '일정 편집');
   w.close();
 });
 
@@ -1688,6 +1713,64 @@ test('통합: 당일 대여를 예약 화면에서 저장할 수 있다 (체크�
   w.close();
 });
 
+test('통합: 새 결제 항목은 가격 추적을 끈 채 시작하고, 켜면 날짜가 필요한 이유를 날짜 칸 곁에서 말한다', { skip: noJsdom }, async () => {
+  const w=boot();
+  withTrip(w, `[{title:'D1',drive:'',note:'',mode:'car',spots:[{name:'호텔',city:'P',desc:'',lat:39.55,lng:2.73,stay:true}]}]`);
+  const set=(id,v)=>{ w.document.getElementById(id).value=v; };
+  w.eval('openBookingModal(null)'); set('bkType','STAY'); w.eval('toggleBkFields()');
+  assert.equal(w.document.getElementById('bkTrack').checked, false, '새 항목은 추적이 꺼져 있다');
+  assert.equal(w.document.getElementById('bkPeriodHint').textContent, '');
+  // 날짜 없이도 저장된다 — 추적을 켜지 않았으니 날짜는 필수가 아니다
+  set('bkTitle','H'); set('bkPrice','100000');
+  w.document.getElementById('bkSave').click();
+  assert.equal(w.eval('trip().bookings.length'), 1, '날짜가 숨은 필수값이 아니다');
+  assert.equal(w.eval('trip().bookings[0].track'), false);
+  // 켜면 날짜 칸 곁에서 이유를 말한다
+  w.eval('openBookingModal(null)'); set('bkType','STAY'); w.eval('toggleBkFields()');
+  w.document.getElementById('bkTrack').checked=true; w.document.getElementById('bkTrack').onchange();
+  assert.match(w.document.getElementById('bkPeriodHint').textContent, /체크인·체크아웃 날짜가 필요해요/);
+  // 항공에는 추적 표시 자체가 없다
+  set('bkType','FLIGHT'); w.eval('toggleBkFields()');
+  assert.equal(w.document.getElementById('bkTrackRow').style.display, 'none');
+  // 숙소 카드의 '가격 추적 시작'은 추적하려고 연 것이라 켜져 있다
+  w.eval('startHotelTracking(0,0)');
+  assert.equal(w.document.getElementById('bkTrack').checked, true);
+  await new Promise(res=>setTimeout(res,20));
+  w.close();
+});
+
+test('통합: 예약 결제 금액 목록의 합계는 필터바의 예약 결제 금액과 같다', { skip: noJsdom }, () => {
+  const w=boot();
+  withTrip(w, `[{title:'D1',drive:'',note:'',mode:'transit',spots:[{name:'미술관',city:'M',desc:'',lat:40.41,lng:-3.69,cost:18000}]},{title:'D2',drive:'',note:'',mode:'transit',spots:[]}]`);
+  w.eval(`trip().bookings=[{id:'h1',type:'hotel',title:'Hotel',price:600000,start:'2026-08-01',end:'2026-08-02',track:false},
+    {id:'f1',type:'flight',title:'항공',price:300000,track:false}];
+    trip().costItems=[{id:'i1',title:'유심',kind:'OTHER',amount:20000,costBasis:'TOTAL'}]; render(); openBookingList();`);
+  const filterPrep = [...w.document.querySelectorAll('#filterbar .costGroup')].find((r) => /예약 결제 금액/.test(r.textContent)).querySelector('b').textContent;
+  const listTotal = w.document.querySelector('#bookingListBody .bkListTotal b').textContent;
+  assert.equal(listTotal, filterPrep);
+  assert.equal(listTotal, '₩920,000');
+  w.close();
+});
+
+test('통합: ☰ 예약은 예약번호·기간·취소 조건·링크를 한곳에서 보여 준다(일정에 적은 예약 포함)', { skip: noJsdom }, () => {
+  const w=boot();
+  withTrip(w, `[{title:'D1',drive:'',note:'',mode:'car',spots:[{name:'알함브라',city:'G',desc:'',lat:37.17,lng:-3.58,bookAt:'14:30',bookUrl:'https://tickets.example.com/a'}]},{title:'D2',drive:'',note:'',mode:'car',spots:[]}]`);
+  w.eval(`trip().bookings=[{id:'h1',type:'hotel',title:'<i>Hotel</i>',price:1,start:'2026-08-01',end:'2026-08-02',confirmation:'ABC123',
+    refundable:true,freeCancelUntil:'2026-07-25',url:'javascript:alert(1)',track:false}]; render();`);
+  w.document.getElementById('resvMenuBtn').click();
+  assert.ok(w.document.getElementById('resvListBg').classList.contains('show'));
+  const body = w.document.getElementById('resvListBody');
+  assert.match(body.textContent, /예약번호 ABC123/);
+  assert.match(body.textContent, /기간 8\/1 \(토\) ~ 8\/2 \(일\)/);
+  assert.match(body.textContent, /무료 취소 7\/25 \(토\)까지/);
+  assert.ok(!body.querySelector('i'), '예약 이름은 마크업으로 해석하지 않는다');
+  assert.ok(!body.querySelector('a[href^="javascript:"]'), 'http(s)가 아닌 링크는 내지 않는다');
+  assert.match(body.textContent, /알함브라/, '예약 문서가 없어도 일정에 적은 예약을 함께 보인다');
+  assert.match(body.textContent, /예약·입장 14:30/);
+  assert.ok(body.querySelector('a[href="https://tickets.example.com/a"]'));
+  w.close();
+});
+
 test('통합: 하루 비용에 예약 하루치가 들어가고, 하루 합계가 전체 비용과 맞는다', { skip: noJsdom }, () => {
   const w=boot();
   // 트립 start=2026-08-01 → Day1=08-01 … Day4=08-04
@@ -1888,7 +1971,7 @@ test('통합: 2객실 예약은 1실 시세로 🔴 절약을 만들지 않고, 
   assert.equal(w.eval(`priceStore.hb2.basis.rooms`), 1, '응답 basis를 기록');
   const badge=w.eval(`bookingBadgeHtml(bookingOf('hb2'))`);
   assert.ok(!badge.includes('절약 가능'), '1실 700,000 vs 2실 1,400,000은 절약이 아니다');
-  assert.ok(!badge.includes('더 저렴한 옵션'), '잠재(최대 차액)로도 단정하지 않는다');
+  assert.ok(!badge.includes('조건 확인 필요'), '잠재(최대 차액)로도 단정하지 않는다');
   w.eval(`renderBookingStatusBox(bookingOf('hb2'))`);
   assert.match(w.document.getElementById('bkStatus').textContent, /1객실 기준/, '왜 판단하지 않는지 설명');
 
@@ -1972,7 +2055,7 @@ test('통합: 거절한 제안은 같은 날 다시 올라오지 않는다', { s
   w.eval('renderTravel(0)');
   const card = cardsIn(w).filter((c) => /레티로 공원/.test(c.textContent))[0];
   assert.ok(card, '레티로 공원 제안이 있다');
-  buttonIn(card, '건너뛰기').click();
+  buttonIn(card, '이번엔 건너뛰기').click();
   assert.ok(!/레티로 공원/.test(w.document.getElementById('travelSuggest').textContent), '건너뛴 제안은 사라진다');
   w.eval('renderTravel(0)');
   assert.ok(!/레티로 공원/.test(w.document.getElementById('travelSuggest').textContent), '다시 그려도 올라오지 않는다');
@@ -2011,6 +2094,55 @@ test('통합: 여행 모드의 날짜 선택과 추천은 같은 주입 clock을
   w.close();
 });
 
+test('통합: 여행 기간 밖에서는 여행 중 화면이 그 사실을 말하고 상태를 바꾸는 버튼을 두지 않는다', { skip: noJsdom }, () => {
+  const w = boot();
+  const days = [
+    { startAt: '09:00', mode: 'car', spots: [S('프라도', 40.41, { stayMin: 120 }), S('저녁 예약', 40.42, { bookAt: '19:30', stayMin: 90 })] },
+    { spots: [S('레티로 공원', 40.415, { stayMin: 90 })] }
+  ];
+  withAdaptTrip(w, days, { today: '2026-08-27' });   // 여행 시작(9/1) 닷새 전
+  w.document.getElementById('travelBtn').click();
+  const note = w.document.getElementById('travelPeriodNote');
+  assert.equal(note.hidden, false);
+  assert.match(note.textContent, /여행 전이에요 · D-5/);
+  assert.equal(w.document.getElementById('travelDay').value, '0', '여행 전이면 1일차를 보여 준다');
+  const list = w.document.getElementById('travelList');
+  assert.ok(!buttonIn(list, '다녀왔어요') && !buttonIn(list, '건너뛰기'), '여행 전에 다녀옴을 표시하지 않는다');
+  assert.ok(!/오늘 일정에 넣기/.test(w.document.getElementById('travelSuggest').textContent), '오늘 일정에 넣기를 두지 않는다');
+  assert.equal(w.document.getElementById('travelListTitle').textContent, '이 날 일정');
+  assert.match(w.document.getElementById('travelEnergy').textContent, /이 날 컨디션/);
+  assert.ok(!/오늘/.test(w.document.getElementById('travelEnergy').textContent), "'오늘'이라고 말하지 않는다");
+  w.eval('buildDayFlow(0)');
+  assert.ok(!/이 일정으로 시작/.test(w.document.getElementById('travelPlan').textContent), '하루 제안도 미리보기로만');
+
+  const w2 = boot();
+  withAdaptTrip(w2, days, { today: '2026-09-10' });   // 끝난 뒤
+  w2.document.getElementById('travelBtn').click();
+  assert.match(w2.document.getElementById('travelPeriodNote').textContent, /지난 여행이에요/);
+  assert.equal(w2.document.getElementById('travelDay').value, '1', '지난 여행이면 마지막 날');
+  assert.ok(!/오늘 일정 완료/.test(w2.document.getElementById('travelNext').textContent));
+
+  const w3 = boot();
+  withAdaptTrip(w3, days, { today: '2026-09-01' });
+  w3.document.getElementById('travelBtn').click();
+  assert.equal(w3.document.getElementById('travelPeriodNote').hidden, true, '여행 중에는 안내가 없다');
+  assert.ok(buttonIn(w3.document.getElementById('travelList'), '다녀왔어요'));
+  w.close(); w2.close(); w3.close();
+});
+
+test('통합: 필터바 오늘 칩은 여행 기간이 아니면 눌리지 않는다(여행 중 화면과 같은 판정)', { skip: noJsdom }, () => {
+  const w = boot();
+  withAdaptTrip(w, [{ spots: [] }, { spots: [] }], { today: '2026-08-27' });
+  w.eval('render()');
+  const chip = [...w.document.querySelectorAll('#filterbar .chip')].find((b) => b.textContent === '오늘');
+  assert.equal(chip.disabled, true);
+  assert.ok(!chip.classList.contains('active'), '전체 보기일 때 오늘 칩이 켜져 보이지 않는다');
+  w.eval("todayISO=()=>'2026-09-02'; render()");
+  const chip2 = [...w.document.querySelectorAll('#filterbar .chip')].find((b) => b.textContent === '오늘');
+  assert.equal(chip2.disabled, false);
+  w.close();
+});
+
 test('통합: 다녀온 곳을 표시하면 상태가 저장되고 "다음 장소"가 그다음으로 넘어간다', { skip: noJsdom }, () => {
   const w = boot();
   withAdaptTrip(w, [{
@@ -2046,7 +2178,7 @@ test('통합: 지연이 생기면 재구성 미리보기를 보여주고, 수락
   assert.match(card.textContent, /기존/, '기존 → 제안을 먼저 보여준다');
   assert.match(card.textContent, /Dinner/, '고정 예약은 제안에도 남아 있다');
   assert.deepEqual(w.eval("trip().days[0].spots.map(s=>s.name)"), ['Museum', 'Cafe', 'Park', 'Dinner'], '미리보기 단계에서는 아직 바뀌지 않는다');
-  buttonIn(card, '이대로 변경').click();
+  buttonIn(card, '이대로 조정').click();
   const today = w.eval("trip().days[0].spots.map(s=>s.name)");
   assert.ok(today.indexOf('Dinner') >= 0, '고정 예약은 절대 빠지지 않는다');
   assert.ok(today.indexOf('Park') >= 0, 'mustVisit은 보호한다');
@@ -2277,11 +2409,45 @@ test('통합: 초대 링크(#join=)로 열면 여행 본문 없이 미리보기�
   assert.match(w.document.getElementById('joinTripMeta').textContent, /편집 권한/);
   assert.equal(w.document.getElementById('joinAccept').textContent, '로그인하고 참여하기', '로그인 전에는 먼저 로그인');
   assert.equal(w.eval(`store.trips.some(t=>t.name==='스페인 여행')`), false, '참여 전에는 여행이 내려오지 않는다');
-  // 로그인하면 버튼이 참여로 바뀌고 이름이 이메일에서 채워진다
+  // 로그인하면 버튼이 참여로 바뀐다. 이름은 이메일에서 채우지 않는다 — 이메일 앞부분이 일행에게 보이면 안 된다
   w.eval(`user={id:'u2',email:'younghee@example.com'}`);
   await w.eval(`completePendingJoin()`);
   assert.equal(w.document.getElementById('joinAccept').textContent, '여행 참여하기');
-  assert.equal(w.document.getElementById('joinName').value, 'younghee');
+  assert.equal(w.document.getElementById('joinName').value, '', '비워 두면 서버의 기본 이름으로 보인다');
+  assert.match(w.document.getElementById('joinName').placeholder, /비워 두면/);
+  w.close();
+});
+
+test('통합: 같이 짜기 화면은 초대가 긴 취향 양식보다 위에 있다(첫 화면에 보이게)', { skip: noJsdom }, () => {
+  const w = boot();
+  const inv = w.document.getElementById('inviteSection'), pref = w.document.getElementById('prefSection');
+  assert.ok(inv.compareDocumentPosition(pref) & w.Node.DOCUMENT_POSITION_FOLLOWING, '초대가 먼저');
+  const members = w.document.getElementById('membersList');
+  assert.ok(inv.compareDocumentPosition(members) & w.Node.DOCUMENT_POSITION_FOLLOWING, '멤버 목록보다도 먼저');
+  w.close();
+});
+
+test('통합: 로그인이 필요한 기능은 이유를 로그인 모달 안에 남기고, 로그인하면 그 기능을 이어서 연다', { skip: noJsdom }, () => {
+  const w = boot();
+  w.eval(`user=null; sb={}; pullTrip=async()=>{}; renderMembers=async()=>{};`);
+  w.eval('openMembers()');
+  const bg = w.document.getElementById('authModalBg');
+  assert.equal(bg.classList.contains('show'), true, '로그인 모달이 뜬다');
+  const reason = w.document.getElementById('authReason');
+  assert.equal(reason.hidden, false);
+  assert.match(reason.textContent, /같이 짜기는 로그인이 필요해요/, '이유가 모달 안에 남는다(토스트처럼 사라지지 않는다)');
+  assert.equal(w.document.getElementById('membersModalBg').classList.contains('show'), false);
+  w.eval(`user={id:'u1',email:'me@example.com'}; runAuthResume();`);
+  assert.equal(w.document.getElementById('membersModalBg').classList.contains('show'), true, '로그인하면 같이 짜기로 돌아온다');
+  w.eval('runAuthResume()');   // 두 번째 알림(로그인 버튼 + onChange)이 와도 한 번만 연다
+  assert.equal(w.eval('authResume'), null);
+
+  // 그냥 로그인 버튼으로 열면 이유가 없다
+  w.eval(`user=null; document.getElementById('authModalBg').classList.remove('show'); document.getElementById('authBtn').click();`);
+  assert.equal(w.document.getElementById('authReason').hidden, true);
+  // 취소하면 기다리던 기능도 잊는다
+  w.eval(`openCandidates(); document.getElementById('authCancel').click();`);
+  assert.equal(w.eval('authResume'), null);
   w.close();
 });
 
@@ -3298,9 +3464,23 @@ test('붙여넣기: 날짜가 순서와 어긋나면 고치지 않고 말한다'
   const heads = w.eval("JSON.stringify([...document.querySelectorAll('.pvDay')].map(e=>e.textContent))");
   const [d1, d2] = JSON.parse(heads);
   assert.ok(!d1.includes('⚠️'), '첫날은 어긋날 수 없다');
-  assert.match(d2, /글에는 \d{4}-07-23인데 순서로는 \d{4}-07-22/);
+  assert.match(d2, /글에는 7\/23 \([월화수목금토일]\)인데 순서로는 7\/22 \([월화수목금토일]\)/);
   // 말할 뿐 고치지 않는다 — 읽은 날짜는 그대로다
   assert.equal(w.eval('pv.draft.days[1].date').slice(5), '07-23');
+});
+
+test('붙여넣기: 머리글의 요일이 날짜와 다르면 미리보기 머리글 아래에 ⚠️ 한 줄로 말한다', { skip: noJsdom }, async () => {
+  const w = boot();
+  stubGeocode(w, {});
+  w.eval("TC_INTAKE.parseItinerary=((f)=>(t,o)=>f(t,Object.assign({},o,{year:2026})))(TC_INTAKE.parseItinerary);");
+  w.document.getElementById('pasteText').value = '## 7월 22일(목) 도착\n- 어떤 곳\n## 7월 23일(목) 이튿날\n- 다른 곳';
+  await w.eval('runPaste()');
+  const heads = [...w.document.querySelectorAll('.pvDay')].map(e => e.textContent);
+  assert.match(heads[0], /^Day 1 · 7\/22 \(수\)/, '일자는 Day N, 날짜는 M/D (요일)');
+  const warns = [...w.document.querySelectorAll('.pvDayWarn')].map(e => e.textContent);
+  assert.equal(warns.length, 1, '맞는 날(7/23 목)에는 붙지 않는다');
+  assert.match(warns[0], /\(목\).*수요일/);
+  assert.equal(w.eval('pv.draft.days[0].date'), '2026-07-22', '말할 뿐 날짜를 고치지 않는다');
 });
 
 test('붙여넣기: AI에게 시킬 프롬프트를 복사해 준다', { skip: noJsdom }, async () => {
@@ -3400,6 +3580,41 @@ test('다음 한 걸음: 빈 여행에만, 첫 일자에만 뜬다', { skip: noJ
   // 장소가 하나라도 담기면 사라진다
   w.eval("trip().days[0].spots.push({name:'성산일출봉',city:'제주',lat:33.4,lng:126.9}); render();");
   assert.equal(w.document.querySelectorAll('.firstStep').length, 0);
+});
+
+test('빈 여행: "어디부터 가볼까요?"는 한 번만 묻고, 위치 못 찾은 장소가 있으면 지도 쪽이 그 사실을 말한다', { skip: noJsdom }, async () => {
+  const w = boot();
+  w.eval("store.trips=[]; store.activeId=null;");
+  w.document.getElementById('newTripBtn').click();
+  w.document.getElementById('ntStart').value = '2026-07-21';
+  w.document.getElementById('ntRun').click();
+  const asks = ['sidebar', 'mapEmpty'].map((id) => w.document.getElementById(id).textContent.split('어디부터 가볼까요?').length - 1).reduce((a, b) => a + b, 0);
+  assert.equal(asks, 1, '일정 카드와 지도 빈 화면이 같은 질문을 두 번 하지 않는다');
+  assert.equal(w.document.getElementById('mapEmpty').hidden, false);
+
+  // 담았는데 위치를 못 찾았다 — 새 장소 검색이 아니라 그 장소의 위치 지정으로 간다
+  w.eval("commit(()=>{ trip().days[0].spots.push({name:'할머니 국숫집',city:'도쿄'},{name:'어느 카페',city:'도쿄'}); });");
+  assert.equal(w.document.getElementById('mapEmptyTitle').textContent, '담은 2곳의 위치를 아직 못 찾았어요');
+  const btn = w.document.getElementById('mapEmptySearch');
+  assert.equal(btn.textContent, '위치 지정하기');
+  btn.click();
+  assert.ok(w.document.getElementById('spotModalBg').classList.contains('show'));
+  assert.equal(w.document.getElementById('spotName').value, '할머니 국숫집', '위치가 없는 첫 장소를 연다');
+  assert.equal(w.document.getElementById('spotSearch').value, '할머니 국숫집', '그 이름으로 바로 검색할 수 있게 채워 둔다');
+  w.close();
+});
+
+test('샘플 여행: 샘플이라는 사실과 내 여행 만들기가 늘 보인다', { skip: noJsdom }, () => {
+  const w = boot();
+  w.eval("store={trips:[sampleTrip()],activeId:SAMPLE_TRIP_ID}; render();");
+  const bar = w.document.getElementById('sampleBar');
+  assert.equal(bar.hidden, false);
+  assert.match(bar.textContent, /샘플 여행이에요/);
+  w.document.getElementById('sampleNew').click();
+  assert.ok(w.document.getElementById('newTripBg').classList.contains('show'), '내 여행 만들기로 간다');
+  w.eval("store.trips.push({id:'mine',name:'내 여행',start:'2026-07-21',days:[{spots:[]}]}); store.activeId='mine'; render();");
+  assert.equal(bar.hidden, true, '내 여행에서는 보이지 않는다');
+  w.close();
 });
 
 test('다음 한 걸음: 닫으면 그 여행에서는 다시 뜨지 않는다', { skip: noJsdom }, async () => {
@@ -3533,6 +3748,35 @@ test('통합: 여행 기간은 1일 밑으로도, 저장 한도 위로도 가지
   w.eval(`document.getElementById('tripEditBtn').onclick();
           document.getElementById('tripDays').value='500'; document.getElementById('tripSave').onclick()`);
   assert.equal(w.eval(`trip().days.length`), w.eval('TC_LIMITS.days'), '저장 한도까지만');
+});
+
+test('통합: 시작일을 바꾸면 저장 전에 날짜 이동을 미리 보여 주고, 예약은 옮기지 않으며, 되돌릴 수 있다', { skip: noJsdom }, () => {
+  const w = boot();
+  withTrip(w, `[{title:'D1',drive:'',note:'',spots:[]},{title:'D2',drive:'',note:'',spots:[]}]`);
+  w.eval(`trip().start='2026-08-01'; trip().bookings=[{id:'h1',type:'hotel',title:'H',price:1,start:'2026-08-01',end:'2026-08-02',track:false}]; render();`);
+  w.eval(`window.__asked=null; window.confirm=(m)=>{ window.__asked=m; return false; };
+          document.getElementById('tripEditBtn').onclick(); document.getElementById('tripStart').value='2026-08-08';
+          document.getElementById('tripSave').onclick()`);
+  const asked = w.eval('window.__asked');
+  assert.match(asked, /일정 2일이 8\/1 \(토\) → 8\/8 \(토\)로 옮겨져요/, '무엇이 어디로 옮겨지는지');
+  assert.match(asked, /예약 1건은 날짜가 그대로예요/, '예약은 옮기지 않는다고 말한다');
+  assert.match(asked, /1건은 일정 날짜와 어긋나게 돼요/);
+  assert.equal(w.eval('trip().start'), '2026-08-01', '취소하면 그대로다');
+
+  w.eval(`window.confirm=()=>true; document.getElementById('tripSave').onclick()`);
+  assert.equal(w.eval('trip().start'), '2026-08-08');
+  assert.equal(w.eval('trip().bookings[0].start'), '2026-08-01', '예약은 자동으로 옮기지 않는다');
+  const undoBtn = w.document.querySelector('#toast .toastAct');
+  assert.ok(undoBtn, '되돌리기가 있다');
+  undoBtn.click();
+  assert.equal(w.eval('trip().start'), '2026-08-01', '되돌리면 원래 날짜');
+
+  // 날짜가 그대로면 묻지 않는다
+  w.eval(`window.confirm=()=>{ throw new Error('묻지 않아야 한다'); };
+          document.getElementById('tripEditBtn').onclick(); document.getElementById('tripName').value='새 이름';
+          document.getElementById('tripSave').onclick()`);
+  assert.equal(w.eval('trip().name'), '새 이름');
+  w.close();
 });
 
 // ── 하루 비용의 예약·결제 구분 ──
@@ -4019,7 +4263,7 @@ test('통합: 하루 범위는 필터바와 범례가 같은 규칙을 지난다
   legDay.click();
   assert.equal(w.eval('activeDay'), 2, '범례가 activeDay를 옮긴다');
   const chips = [...w.document.querySelectorAll('#filterbar .chip')];
-  assert.ok(chips.find((c) => c.textContent.includes('D2')).classList.contains('active'),
+  assert.ok(chips.find((c) => c.textContent.includes('Day 2')).classList.contains('active'),
             '필터바 칩도 같은 날이 켜진다 — 두 컨트롤이 한 상태를 본다');
   w.close();
 });

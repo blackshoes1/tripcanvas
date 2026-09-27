@@ -94,6 +94,7 @@ struct TripHomeView: View {
                     case .bookings: BookingListView(trip: trip, shared: models.bookings)
                     case .collab: CollabView(trip: trip, shared: models.collab)
                     case .candidates: CandidateBoardView(trip: trip, shared: models.candidateBoard)
+                    case .notes: TripNotesView(model: models.plan)
                     }
                 }
                 .toolbar {
@@ -127,8 +128,14 @@ struct TripHomeView: View {
             }
         }
         .onDisappear { env.realtime.disconnect(key: Self.liveKey) }
-        .navigationTitle(trip.name)
+        // 설정에서 이름을 바꾸면 문서가 먼저 안다 — 밀어 넣을 때 받은 요약의 이름에 머물지 않는다.
+        .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var title: String {
+        if let name = models.plan.document?.name, !name.isEmpty { return name }
+        return models.today.today?.trip.name ?? trip.name
     }
 
     /// 실시간을 붙인다. **못 붙어도 앱은 그대로** — 상태만 바뀌고 폴백(당겨서 새로고침)으로 간다.
@@ -328,7 +335,7 @@ enum TripHomeTab: String, CaseIterable, Hashable, Sendable {
 
 /// 여행 전/중에 관계없이 같은 자리에서 연다.
 enum TripPanel: String, CaseIterable, Identifiable {
-    case bookings, collab, candidates, costs
+    case bookings, costs, notes, collab, candidates
     var id: String { rawValue }
     var label: String {
         switch self {
@@ -336,6 +343,7 @@ enum TripPanel: String, CaseIterable, Identifiable {
         case .bookings: "예약"
         case .collab: "같이 짜기"
         case .candidates: "가고 싶은 곳"
+        case .notes: "여행 준비 메모"
         }
     }
     var symbol: String {
@@ -344,6 +352,7 @@ enum TripPanel: String, CaseIterable, Identifiable {
         case .bookings: "ticket"
         case .collab: "person.2"
         case .candidates: "mappin.and.ellipse"
+        case .notes: "note.text"
         }
     }
     /// 눌러 보기 전에 무엇이 있는 곳인지 한 줄로. 개수는 싣지 않는다 —
@@ -351,9 +360,10 @@ enum TripPanel: String, CaseIterable, Identifiable {
     var hint: String {
         switch self {
         case .costs: "예약 결제 금액 · 현지 결제 금액"
-        case .bookings: "항공 · 숙박 · 렌터카"
+        case .bookings: "예약번호 · 기간 · 취소 조건"
         case .collab: "멤버 초대와 권한"
         case .candidates: "아직 일정이 아닌 곳"
+        case .notes: "비자 · 입국 준비 · 교통"
         }
     }
 }

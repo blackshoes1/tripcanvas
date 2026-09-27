@@ -11,9 +11,27 @@ import SwiftUI
 
 /// ② 어떻게 담을지 고른다.
 struct AddSpotOptionsSheet: View {
+    /// 그날 장소 이름(순서대로). 둘 이상이면 넣을 자리를 여기서 고른다 —
+    /// 전에는 장소 사이에 넣는 길이 길게 누르기 메뉴뿐이라 아무도 몰랐다.
+    var spotNames: [String] = []
+    /// 이 번호의 장소 뒤에 넣는다. nil이면 맨 뒤.
+    @Binding var after: Int?
     let onSearch: () -> Void
     let onManual: () -> Void
     @Environment(\.dismiss) private var dismiss
+
+    init(spotNames: [String] = [], after: Binding<Int?> = .constant(nil),
+         onSearch: @escaping () -> Void, onManual: @escaping () -> Void) {
+        self.spotNames = spotNames
+        self._after = after
+        self.onSearch = onSearch
+        self.onManual = onManual
+    }
+
+    private var positionLabel: String {
+        guard let after, spotNames.indices.contains(after) else { return "맨 뒤" }
+        return "\(after + 1). \(spotNames[after]) 뒤"
+    }
 
     var body: some View {
         VStack(spacing: Space.m) {
@@ -21,6 +39,23 @@ struct AddSpotOptionsSheet: View {
                 .font(.headline)
                 .padding(.top, Space.l)
                 .accessibilityAddTraits(.isHeader)
+            if spotNames.count > 1 {
+                Menu {
+                    Button("맨 뒤") { after = nil }
+                    ForEach(Array(spotNames.enumerated()), id: \.offset) { index, name in
+                        Button("\(index + 1). \(name) 뒤") { after = index }
+                    }
+                } label: {
+                    HStack {
+                        Text("넣을 자리").foregroundStyle(Ink.soft)
+                        Spacer()
+                        Text(positionLabel).foregroundStyle(Ink.accent).lineLimit(1)
+                        Image(systemName: "chevron.up.chevron.down").font(.caption).foregroundStyle(Ink.accent)
+                    }
+                    .font(.subheadline)
+                    .frame(minHeight: 44)
+                }
+            }
             option(symbol: "magnifyingglass", title: "장소 검색", detail: "장소를 찾아 일정에 추가해요.", action: onSearch)
             option(symbol: "pencil", title: "직접 입력", detail: "검색되지 않는 장소를 직접 추가해요.", action: onManual)
             Button { dismiss() } label: {
@@ -36,7 +71,7 @@ struct AddSpotOptionsSheet: View {
         .padding(.bottom, Space.l)
         .frame(maxHeight: .infinity, alignment: .top)
         .background(Ink.paper)
-        .presentationDetents([.height(310)])
+        .presentationDetents([.height(spotNames.count > 1 ? 360 : 310)])
         .presentationDragIndicator(.visible)
     }
 

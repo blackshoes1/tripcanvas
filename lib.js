@@ -1716,6 +1716,58 @@
   }
 
   /**
+   * 날짜 표기는 하나다 — `M/D (요일)`. 일자 머리글·여행 목록·붙여넣기 미리보기가 같은 모양을 쓴다.
+   * UTC로 읽어 기기 시간대가 요일을 밀지 않게 한다. 못 읽으면 빈 문자열.
+   * @param {any} iso YYYY-MM-DD @returns {string}
+   */
+  function mdLabel(iso){
+    const s=_str(iso);
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(s)) return '';
+    const t=Date.parse(s+'T00:00:00Z'); if(!isFinite(t)) return '';
+    const d=new Date(t);
+    return `${d.getUTCMonth()+1}/${d.getUTCDate()} (${'일월화수목금토'[d.getUTCDay()]})`;
+  }
+
+  /**
+   * 오늘이 여행 기간의 어디인가 — **여행 전 / 여행 중 / 지난 여행 / 날짜 없음.**
+   * 필터바의 '오늘' 칩과 여행 중 화면이 같은 판정을 쓴다. 기간 밖인데 1일차·마지막 날로 끼워 맞추면
+   * 여행 전에 '다녀왔어요'를 누르게 되고, 지난 여행에 '오늘 일정에 넣기'가 뜬다(2026-09-27 UX 검토).
+   * @param {any} start 여행 시작일(YYYY-MM-DD) @param {number} dayCount 일수 @param {string} today 오늘(YYYY-MM-DD)
+   * @returns {{phase:'NONE'|'BEFORE'|'DURING'|'AFTER', dayIndex:number, daysUntil:number}}
+   *   dayIndex는 기간 안이면 오늘의 일자, 밖이면 가장 가까운 날(0 또는 마지막). daysUntil은 여행 전일 때만 양수.
+   */
+  function tripPeriodOf(start, dayCount, today){
+    const n=Math.max(1, Math.floor(+dayCount||1));
+    const a=Date.parse(_str(start)+'T00:00:00Z'), b=Date.parse(_str(today)+'T00:00:00Z');
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(_str(start)) || !isFinite(a) || !isFinite(b)) return {phase:'NONE', dayIndex:0, daysUntil:0};
+    const diff=Math.round((b-a)/86400000);
+    if(diff<0) return {phase:'BEFORE', dayIndex:0, daysUntil:-diff};
+    if(diff>=n) return {phase:'AFTER', dayIndex:n-1, daysUntil:0};
+    return {phase:'DURING', dayIndex:diff, daysUntil:0};
+  }
+
+  /**
+   * 시작일을 옮기면 무엇이 따라 움직이고 무엇이 남는가 — 저장 **전에** 보여 줄 미리보기.
+   * 웹에서 일정은 시작일을 따라 통째로 옮겨지지만 **예약(`trip.bookings`)은 제 날짜를 지킨다**(자동으로 옮기지 않는다).
+   * 그래서 지금 일정 기간 안에 있던 예약은 옮긴 뒤 일정과 어긋난다 — 그 수를 센다.
+   * 시작일이 없던 여행(처음 날짜를 정하는 것)·같은 날·지우는 것은 '옮기기'가 아니라 null이다.
+   * @param {any} trip @param {any} nextStart @param {number=} nextDays 바꿀 일수(없으면 지금 일수)
+   * @returns {{from:string,to:string,shiftDays:number,days:number,bookings:number,misaligned:number}|null}
+   */
+  function startShiftPreview(trip, nextStart, nextDays){
+    const from=_str(trip&&trip.start), to=_str(nextStart), re=/^\d{4}-\d{2}-\d{2}$/;
+    if(!re.test(from) || !re.test(to) || from===to) return null;
+    const a=Date.parse(from+'T00:00:00Z'), b=Date.parse(to+'T00:00:00Z');
+    if(!isFinite(a) || !isFinite(b)) return null;
+    const oldDays=Math.max(1,((trip&&trip.days)||[]).length);
+    const days=Math.max(1, Math.floor(+(nextDays==null? oldDays : nextDays)||oldDays));
+    const oldEnd=new Date(a+(oldDays-1)*86400000).toISOString().slice(0,10);
+    const dated=((trip&&trip.bookings)||[]).filter((/**@type{any}*/bk)=>bk && re.test(_str(bk.start)));
+    const misaligned=dated.filter((/**@type{any}*/bk)=>bk.start>=from && bk.start<=oldEnd).length;
+    return {from, to, shiftDays:Math.round((b-a)/86400000), days, bookings:dated.length, misaligned};
+  }
+
+  /**
    * 첫 방문에 심어 주는 샘플 여행의 id. **리터럴을 여기저기 적지 않는다** — 이 값과 비교하는 자리가
    * 웹에만 일곱 곳이었고(동기화 제외·병합·라벨·첫 방문 판정), 한 곳이라도 빠지면 데모가 계정에 올라가거나
    * 반대로 진짜 여행이 안 올라간다. `next`의 `SAMPLE_TRIP_ID`도 같은 값이다.
@@ -1779,7 +1831,7 @@
     };
   }
 
-  const TC={dayLodgings,sortTripsByCountdown,additionalReservations,tripSummaryCities,returnModeOf,SPOT_PRIORITIES,spotPriorityOf,applySpotPriority,spotPriorityLabel,SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,cityFromKoreanAddr,placeName,cityFromGoogle,normHours,classifySearchErr,isKoreanSearch,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,normHM,sortDayByTime,inKorea,simplifyName,parseDirect,parseMoney,normalizeDraftDays,extractJson,extMapLink,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,stayMinutesOf,activityStartMinute,dayEndMinutes,departMinuteAfter,computeTimeline,computeDayJourney,whoKey,splitSegments,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,budgetBookings,moneyAmount,parseCostAmount,costAmountOf,dayEnteredCost,splitAcrossNights,stayCostShares,dayEnteredCostOn,hasManualTransportCost,dayCostSummary,ADMISSION_REQUIREMENTS,admissionLabel,admissionOf,needsAdmissionBooking,normalizeAdmission,admissionError,COST_CATEGORIES,costCategoryOf,COST_PAY_STATES,costPayStateOf,payStateTotals,TRIP_NOTE_CATEGORIES,normalizeTripNote,tripCostSummary,localMode,SAMPLE_TRIP_ID,isSampleTrip,sampleTrip,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
+  const TC={dayLodgings,sortTripsByCountdown,additionalReservations,tripSummaryCities,returnModeOf,SPOT_PRIORITIES,spotPriorityOf,applySpotPriority,spotPriorityLabel,SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,cityFromKoreanAddr,placeName,cityFromGoogle,normHours,classifySearchErr,isKoreanSearch,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,normHM,sortDayByTime,inKorea,simplifyName,parseDirect,parseMoney,normalizeDraftDays,extractJson,extMapLink,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,stayMinutesOf,activityStartMinute,dayEndMinutes,departMinuteAfter,computeTimeline,computeDayJourney,whoKey,splitSegments,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,budgetBookings,moneyAmount,parseCostAmount,costAmountOf,dayEnteredCost,splitAcrossNights,stayCostShares,dayEnteredCostOn,hasManualTransportCost,dayCostSummary,ADMISSION_REQUIREMENTS,admissionLabel,admissionOf,needsAdmissionBooking,normalizeAdmission,admissionError,COST_CATEGORIES,costCategoryOf,COST_PAY_STATES,costPayStateOf,payStateTotals,TRIP_NOTE_CATEGORIES,normalizeTripNote,tripCostSummary,localMode,mdLabel,tripPeriodOf,startShiftPreview,SAMPLE_TRIP_ID,isSampleTrip,sampleTrip,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
   if(typeof module!=='undefined' && module.exports){ module.exports=TC; }   // Node (테스트)
   else { const r=/**@type {any}*/(root); for(const k in TC) r[k]=/**@type {any}*/(TC)[k]; }   // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);

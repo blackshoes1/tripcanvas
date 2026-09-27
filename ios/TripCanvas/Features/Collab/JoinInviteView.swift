@@ -111,7 +111,7 @@ struct JoinInviteView: View {
                         } header: {
                             Text("이 여행에서 보일 내 이름")
                         } footer: {
-                            Text("계정 이메일은 일행에게 보이지 않아요.")
+                            Text("비워 두면 '멤버'로 보여요. 계정 이메일은 일행에게 보이지 않아요.")
                         }
                     }
 
@@ -138,8 +138,8 @@ struct JoinInviteView: View {
             }
             .task {
                 if model == nil {
-                    model = JoinInviteViewModel(token: token, service: env.service,
-                                                defaultName: CollabModel.displayNameFromEmail(env.auth.email))
+                    // 이메일 앞부분을 이름으로 미리 채우지 않는다 — 그대로 두면 아래의 '이메일은 보이지 않아요'가 거짓이 된다.
+                    model = JoinInviteViewModel(token: token, service: env.service)
                 }
                 await model?.load()
             }

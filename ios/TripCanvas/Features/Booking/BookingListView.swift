@@ -92,7 +92,7 @@ struct BookingListView: View {
                             title: "등록된 예약이 없어요",
                             message: trip.canEdit
                                 ? "항공·숙박·렌터카와 일정에서 예약 완료로 표시하거나 예약 시각·번호·링크를 넣은 장소를 모아 보여드려요. 비용에서 예약으로 표시한 항목도 함께 보여요."
-                                : "주최자나 편집자가 예약을 추가하면 여기에 나타납니다.")
+                                : "주최자나 편집자가 예약을 추가하면 여기에 나타나요.")
                     }
                     ForEach(model.bookings) { booking in
                         NavigationLink {
@@ -108,12 +108,16 @@ struct BookingListView: View {
                                 HStack {
                                     Text(booking.title).font(.headline)
                                     Spacer()
+                                    if let status = booking.priceStatus { PriceChip(status: status) }
                                     Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary)
                                 }
                                 if let start = booking.start {
-                                    Label([start, booking.startTime].compactMap { $0 }.joined(separator: " · "), systemImage: "calendar")
+                                    Label([ReadableDate.day(start), booking.startTime].compactMap { $0 }.joined(separator: " · "), systemImage: "calendar")
                                         .font(.subheadline).foregroundStyle(.secondary)
                                 }
+                                // 목록에서 금액을 바로 본다 — 상세를 하나씩 열어야 얼마였는지 알 수 있으면 안 된다.
+                                Text(booking.priceKnown == false ? "금액 미정" : TimeFormat.money(booking.price, currency: booking.currency))
+                                    .font(.subheadline.weight(.semibold))
                                 if let place = booking.place, !place.isEmpty {
                                     Text(place).font(.subheadline).foregroundStyle(.secondary)
                                 }
@@ -159,6 +163,7 @@ struct BookingListView: View {
                 BookingEditorView(
                     target: target,
                     document: document,
+                    fromReservations: true,
                     onSave: { booking, links in
                         let saved = await plan.saveBooking(booking, links: links)
                         if saved { await model?.load() }
@@ -196,7 +201,7 @@ struct BookingListView: View {
             Button("최신 불러오기") { Task { await plan?.reloadFromServer(); await model?.load() } }
             Button("그대로 두기", role: .cancel) { plan?.dismissConflict() }
         } message: {
-            Text("최신 여행을 불러오면 방금 바꾼 예약은 사라집니다. 방금 바꾼 것은 아직 저장되지 않았어요.")
+            Text("최신 여행을 불러오면 방금 바꾼 예약은 사라져요. 방금 바꾼 것은 아직 저장되지 않았어요.")
         }
     }
 
@@ -308,7 +313,7 @@ struct BookingCard: View {
                     Text(status.note).font(.caption).foregroundStyle(.secondary)
                     if let observed = status.observedAt {
                         // 언제 확인한 값인지 반드시 함께 — 오래된 값을 최신처럼 보여주지 않는다.
-                        Text("확인 시각 \(observed)").font(.caption2).foregroundStyle(.tertiary)
+                        Text("확인 시각 \(ReadableDate.moment(observed))").font(.caption2).foregroundStyle(.tertiary)
                     }
                 }
             }
@@ -317,7 +322,7 @@ struct BookingCard: View {
                 Text(note).font(.subheadline).textSelection(.enabled)
             }
             if let source = booking.source {
-                let location = booking.dayIndex.map { "일정 \($0 + 1)일차" } ?? "비용"
+                let location = booking.dayIndex.map { "일정 Day \($0 + 1)" } ?? "비용"
                 Text(source == "SPOT" ? "\(location)에 등록한 예약이에요."
                      : "예약으로 표시한 비용이에요.")
                     .font(.caption).foregroundStyle(.secondary)
@@ -358,12 +363,34 @@ struct BookingCard: View {
     }
 
     private var period: String? {
-        switch (booking.start, booking.end) {
+        switch (booking.start.map(ReadableDate.day), booking.end.map(ReadableDate.day)) {
         case let (start?, end?): "\([start, booking.startTime].compactMap { $0 }.joined(separator: " ")) → \([end, booking.endTime].compactMap { $0 }.joined(separator: " "))"
         case let (start?, nil): [start, booking.startTime].compactMap { $0 }.joined(separator: " ")
         case let (nil, end?): [end, booking.endTime].compactMap { $0 }.joined(separator: " ")
         default: nil
         }
+    }
+}
+
+/// 날짜를 사람이 읽는 모양으로(예약·여행 목록·설정 미리보기). 서버는 `YYYY-MM-DD`(관측 시각은 ISO 8601)로 보낸다 —
+/// 못 읽는 값이면 받은 그대로 둔다(없는 날짜를 지어내지 않는다).
+enum ReadableDate {
+    static func day(_ iso: String) -> String {
+        TimeFormat.dayChipLabel(String(iso.prefix(10))) ?? iso
+    }
+
+    static func moment(_ iso: String) -> String {
+        let parser = ISO8601DateFormatter()
+        parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let date = parser.date(from: iso) ?? {
+            parser.formatOptions = [.withInternetDateTime]
+            return parser.date(from: iso)
+        }()
+        guard let date else { return day(iso) }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ko_KR")
+        formatter.dateFormat = "M/d (E) HH:mm"
+        return formatter.string(from: date)
     }
 }
 
@@ -383,7 +410,7 @@ struct PriceChip: View {
             return "더 싼 조건 발견"
         case .cheaperUnverified: return "조건 확인 필요"
         case .goodPrice: return "좋은 가격"
-        case .watching: return "추적 중"
+        case .watching: return "가격 추적 중"
         case .error: return "확인 실패"
         case .untracked: return "추적 꺼짐"
         case .unknown: return "상태 확인 필요"
@@ -406,7 +433,7 @@ struct PriceChip: View {
         case .savingAvailable: Ink.positive
         case .cheaperUnverified: Ink.warning
         case .goodPrice: Ink.info
-        case .error: Ink.danger
+        case .error: Ink.warning   // 시세를 못 받은 것은 오류가 아니라 확인할 일이다 — 웹과 같은 주의색
         case .watching, .untracked, .unknown: .secondary
         }
     }

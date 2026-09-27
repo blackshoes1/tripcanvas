@@ -66,12 +66,6 @@ test('memberName: 이름이 없으면 계정 정보 대신 역할로 부른다(�
   assert.equal(C.memberName({ display_name: 'a'.repeat(100) }).length, C.COLLAB_CFG.nameMax);
 });
 
-test('displayNameFromEmail: 도메인은 버린다', () => {
-  assert.equal(C.displayNameFromEmail('minsu@example.com'), 'minsu');
-  assert.equal(C.displayNameFromEmail(''), '');
-  assert.equal(C.displayNameFromEmail(null), '');
-});
-
 test('memberSummary: 활성 멤버만 세고 역할별로 나눈다', () => {
   const s = C.memberSummary([
     { role: 'OWNER', status: 'ACTIVE', display_name: '민수' },

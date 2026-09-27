@@ -15,7 +15,7 @@ struct DayCostSummaryView: View {
             }
             // 가기 전에 낸 돈의 하루치(예약)와 가서 쓰는 돈은 다른 장부다 — 합계에 섞여 있어도 따로 말한다
             if let cost, let onSite = cost.onSiteKRW, onSite != cost.total {
-                Text("가서 쓰는 돈 \(TimeFormat.money(onSite, currency: "KRW")) · 예약 하루치 \(TimeFormat.money(cost.total - onSite, currency: "KRW"))")
+                Text("현지 결제 \(TimeFormat.money(onSite, currency: "KRW")) · 예약 하루치 \(TimeFormat.money(cost.total - onSite, currency: "KRW"))")
                     .font(.caption).foregroundStyle(.secondary)
             }
             // 합계 하나로는 "얼마나 남았지"를 알 수 없다 — 예약해 둔 돈과 이미 낸 돈을 따로 보여 준다
@@ -113,7 +113,7 @@ struct DayCostView: View {
                         } label: { Label("비용 항목 추가", systemImage: "plus") }
                     }
                 } header: { Text("추가 비용") } footer: {
-                    Text("장소에 적지 않은 식사·입장료·교통·숙박비를 적습니다. 교통 항목을 만들면 그날의 자동 교통비 추정을 대신합니다.")
+                    Text("장소에 적지 않은 식사·입장료·교통·숙박비를 적어요. 교통 항목을 만들면 그날의 자동 교통비 추정을 대신해요.")
                 }
                 if let details = cost?.details {
                     Section("예약·자동 계산") {
@@ -125,7 +125,7 @@ struct DayCostView: View {
                                     .font(.caption).foregroundStyle(.secondary)
                             }
                         }
-                        Text("연결된 장소에 금액을 적은 예약은 중복해서 더하지 않습니다. 예약 금액과 날짜는 예약 화면에서 수정할 수 있어요.")
+                        Text("연결된 장소에 금액을 적은 예약은 중복해서 더하지 않아요. 예약 금액과 날짜는 예약 화면에서 수정할 수 있어요.")
                             .font(.caption).foregroundStyle(.secondary)
                         if details.undatedBookings > 0 {
                             Text("날짜 미정 예약 \(details.undatedBookings)건은 하루 합계에 포함되지 않았어요.").font(.caption)
@@ -300,8 +300,8 @@ struct CostEntryEditor: View {
                         }
                     } footer: {
                         Text(entry.paidOn != nil
-                             ? "결제일이 오늘이거나 지났으면 결제 완료, 아직이면 결제 예정으로 셉니다."
-                             : "결제일을 정하면 그 날부터 결제 완료로 셉니다. 여행 날짜와 무관해요.")
+                             ? "결제일이 오늘이거나 지났으면 결제 완료, 아직이면 결제 예정으로 봐요."
+                             : "결제일을 정하면 그 날부터 결제 완료로 봐요. 여행 날짜와 무관해요.")
                     }
                 }
                 Section {
@@ -315,7 +315,7 @@ struct CostEntryEditor: View {
                     if entry.basis != .entered { Stepper("\(entry.people)명 적용", value: $entry.people, in: 1...100) }
                     if !target.isBudget { Toggle("일부 금액만 확인했어요", isOn: $entry.isPartial) }
                 } footer: {
-                    Text("\(target.isBudget ? "비워 두면 예산 미설정, 0은 예산 0원입니다." : "비워 두면 미정, 0은 확인한 무료입니다.") 1인 금액을 선택한 경우에만 적용 인원을 곱합니다. 원·엔은 정수, 달러·유로·위안은 소수 둘째 자리까지 입력해 주세요.")
+                    Text("\(target.isBudget ? "비워 두면 예산 미설정, 0은 예산 0원이에요." : "비워 두면 미정, 0은 확인한 무료예요.") 1인 금액을 선택한 경우에만 적용 인원을 곱해요. 원·엔은 정수, 달러·유로·위안은 소수 둘째 자리까지 입력해 주세요.")
                 }
                 if !target.isBudget {
                     if entry.paidOn == nil {
@@ -324,13 +324,13 @@ struct CostEntryEditor: View {
                                 ForEach(CostPayState.allCases, id: \.self) { Text($0.label).tag($0) }
                             }
                         } footer: {
-                            Text("예약해 두고 아직 내지 않은 돈과 이미 낸 돈을 따로 봅니다. 고르지 않으면 어느 쪽으로도 세지 않아요.")
+                            Text("예약해 두고 아직 내지 않은 돈과 이미 낸 돈을 따로 봐요. 고르지 않으면 어느 쪽으로도 세지 않아요.")
                         }
                     }
                     Section {
                         CostPhotosField(refs: $entry.photos)
                     } header: { Text("영수증·품목 사진") } footer: {
-                        Text("무엇에 썼는지 기억하려고 붙입니다. 사진 자체는 올리지 않고 이 기기 사진 보관함의 위치만 기억해요 — 일행에게는 보이지 않습니다.")
+                        Text("무엇에 썼는지 기억하려고 붙여요. 사진 자체는 올리지 않고 이 기기 사진 보관함의 위치만 기억해요 — 일행에게는 보이지 않아요.")
                     }
                 }
                 if failed { Section { Text("비용을 저장하지 못했어요. 입력 내용은 유지되어 있어요.").foregroundStyle(Ink.warning) } }

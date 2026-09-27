@@ -25,6 +25,21 @@ test('장소 모달은 기본 정보와 접힌 상세 설정을 분리한다',as
   await expect(page.locator('#spotModalBg .stepBadge')).toHaveText('상세 설정');
 });
 
+test('모바일 일정 패널을 끝까지 올려도 일자 칩은 가려지지 않는다',async({context,page})=>{
+  await prepare(context); await page.setViewportSize({width:375,height:812}); await page.goto('/');
+  const sidebar=page.locator('#sidebar');
+  await page.locator('#sheetHandle').click(); await expect(sidebar).toHaveAttribute('data-snap','expanded');
+  await page.waitForTimeout(350);   // 높이 전환(.22s)이 끝난 뒤에 잰다
+  const ok=await page.evaluate(()=>{
+    const chip=[...document.querySelectorAll('#filterbar .chip')].find(c=>/^Day 1/.test(c.textContent.trim()));
+    if(!chip) return 'no-chip';
+    const r=chip.getBoundingClientRect(), hit=document.elementFromPoint(r.left+r.width/2, r.top+r.height/2);
+    const sb=document.getElementById('sidebar').getBoundingClientRect(), fb=document.getElementById('filterbar').getBoundingClientRect();
+    return (chip.contains(hit) && sb.top>=fb.bottom-1)? 'ok' : `hidden:${hit&&hit.id}|${Math.round(sb.top)}<${Math.round(fb.bottom)}`;
+  });
+  expect(ok).toBe('ok');
+});
+
 test('모바일 일정 패널은 접힘·반판·전체 3단계로 전환된다',async({context,page})=>{
   await prepare(context); await page.setViewportSize({width:390,height:844}); await page.goto('/');
   const sidebar=page.locator('#sidebar');
@@ -201,7 +216,7 @@ test('여행 모드에서 거절한 제안은 다시 올라오지 않는다',asy
   });
   await page.locator('#travelBtn').click();
   const suggest=page.locator('#travelSuggest');
-  await suggest.locator('.sgCard',{hasText:'레티로 공원'}).getByRole('button',{name:'건너뛰기'}).click();
+  await suggest.locator('.sgCard',{hasText:'레티로 공원'}).getByRole('button',{name:'이번엔 건너뛰기'}).click();
   await expect(suggest).not.toContainText('레티로 공원');
   await page.evaluate(()=>renderTravel(0));
   await expect(suggest).not.toContainText('레티로 공원');

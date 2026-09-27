@@ -89,22 +89,22 @@
     const b = /** @type {any} */ (body && typeof body === 'object' ? body : {});
     const raw = String(b.message || b.error || b.code || '');
     const code = String(b.code || '');
-    if (status === 429) return { code: 'RATE_LIMITED', message: '너무 여러 번 시도했어 — 잠시 뒤에 다시 해줘' };
+    if (status === 429) return { code: 'RATE_LIMITED', message: '너무 여러 번 시도했어요 — 잠시 뒤에 다시 해 주세요' };
     // 'verified'까지 잡는다 — 코드 없이 'Email not verified' 문장만 오면 앞의 규칙은 이걸 놓치고
     // 아래 INVALID_CREDENTIALS로 떨어뜨려, 링크만 누르면 될 사람에게 비밀번호를 다시 묻게 된다.
     if (/EMAIL_NOT_VERIFIED|verif(y|ication|ied)/i.test(code + ' ' + raw)) {
-      return { code: 'EMAIL_NOT_VERIFIED', message: '메일의 확인 링크를 먼저 눌러줘 (스팸함도 확인)' };
+      return { code: 'EMAIL_NOT_VERIFIED', message: '메일의 확인 링크를 먼저 눌러 주세요 (스팸함도 확인해 주세요)' };
     }
     if (status === 401 || status === 403 || /invalid|credential|password/i.test(code + ' ' + raw)) {
-      return { code: 'INVALID_CREDENTIALS', message: '이메일 또는 비밀번호가 맞지 않아' };
+      return { code: 'INVALID_CREDENTIALS', message: '이메일 또는 비밀번호가 맞지 않아요' };
     }
-    if (/exist|already/i.test(code + ' ' + raw)) return { code: 'EMAIL_TAKEN', message: '이미 가입된 이메일이야 — 로그인해줘' };
+    if (/exist|already/i.test(code + ' ' + raw)) return { code: 'EMAIL_TAKEN', message: '이미 가입된 이메일이에요 — 로그인해 주세요' };
     return { code: 'UNKNOWN', message: raw || '알 수 없는 오류' };
   }
 
   /** @param {unknown} err */
   function networkError(err) {
-    return { code: 'NETWORK', message: '네트워크에 연결하지 못했어 — 잠시 뒤에 다시 해줘', cause: err };
+    return { code: 'NETWORK', message: '인터넷에 연결하지 못했어요 — 잠시 뒤에 다시 해 주세요', cause: err };
   }
 
   /** @param {Response} res */
@@ -194,7 +194,7 @@
   }
   /** @param {string} provider */
   async function startSocial(provider) {
-    if (!_socialProviders.includes(provider)) throw new Error('아직 연결되지 않은 로그인 방식입니다.');
+    if (!_socialProviders.includes(provider)) throw new Error('아직 연결되지 않은 로그인 방식이에요.');
     const verifier = base64url(global.crypto.getRandomValues(new Uint8Array(32)));
     const challenge = base64url(new Uint8Array(await global.crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier))));
     // 탭 안에만 보관한다. 다른 탭이나 가로챈 앱은 돌아온 교환권을 사용할 수 없다.
@@ -238,7 +238,7 @@
    */
   async function signIn(creds) {
     if (_provider === 'SUPABASE') {
-      if (!_sb) return { data: null, error: { code: 'UNAVAILABLE', message: '온라인 상태에서 다시 시도해줘' } };
+      if (!_sb) return { data: null, error: { code: 'UNAVAILABLE', message: '온라인 상태에서 다시 시도해 주세요' } };
       const { data, error } = await _sb.auth.signInWithPassword(creds);
       return { data, error: error ? toError(error.status || 401, error) : null };
     }
@@ -251,7 +251,7 @@
       const token = res.headers.get('set-auth-token');
       const body = await readBody(res);
       const u = (body && body.user) || null;
-      if (!token || !u) return { data: null, error: { code: 'UNKNOWN', message: '세션을 받지 못했어' } };
+      if (!token || !u) return { data: null, error: { code: 'UNKNOWN', message: '로그인 정보를 받지 못했어요 — 다시 시도해 주세요' } };
       writeToken(token);
       setSession({ token, user: { id: String(u.id), email: String(u.email || creds.email) } });
       return { data: _session, error: null };
@@ -264,7 +264,7 @@
    */
   async function signUp(creds) {
     if (_provider === 'SUPABASE') {
-      if (!_sb) return { data: null, error: { code: 'UNAVAILABLE', message: '온라인 상태에서 다시 시도해줘' }, verificationSent: false };
+      if (!_sb) return { data: null, error: { code: 'UNAVAILABLE', message: '온라인 상태에서 다시 시도해 주세요' }, verificationSent: false };
       const { data, error } = await _sb.auth.signUp(creds);
       return { data, error: error ? toError(error.status || 400, error) : null, verificationSent: !!(data && !data.session) };
     }
@@ -288,7 +288,7 @@
    */
   async function requestPasswordReset(email) {
     if (_provider === 'SUPABASE') {
-      if (!_sb || !_sb.auth.resetPasswordForEmail) return { error: { code: 'UNAVAILABLE', message: '지금은 할 수 없어' } };
+      if (!_sb || !_sb.auth.resetPasswordForEmail) return { error: { code: 'UNAVAILABLE', message: '지금은 할 수 없어요' } };
       try { await _sb.auth.resetPasswordForEmail(email); } catch (_) { /* 같은 답을 준다 */ }
       return { error: null };
     }
@@ -306,7 +306,7 @@
    * @param {string} email
    */
   async function resendVerification(email) {
-    if (_provider === 'SUPABASE') return { error: { code: 'UNAVAILABLE', message: '지금은 할 수 없어' } };
+    if (_provider === 'SUPABASE') return { error: { code: 'UNAVAILABLE', message: '지금은 할 수 없어요' } };
     try {
       // callbackURL은 보내지 않는다 — 서버가 `withWebCallback`으로 **자기 값으로 덮어쓴다**.
       // 여기서 만들면 두 곳이 되고, 브라우저 밖(테스트)에서는 `location`이 없어 터진다.
@@ -322,7 +322,7 @@
    * @param {string} token @param {string} password
    */
   async function resetPassword(token, password) {
-    if (_provider === 'SUPABASE') return { error: { code: 'UNAVAILABLE', message: '지금은 할 수 없어' } };
+    if (_provider === 'SUPABASE') return { error: { code: 'UNAVAILABLE', message: '지금은 할 수 없어요' } };
     try {
       const res = await call('/api/auth/reset-password', {
         method: 'POST', headers: { 'content-type': 'application/json' },
@@ -333,7 +333,7 @@
         // 토큰 문제는 '비밀번호가 틀렸다'와 전혀 다른 상황이다 — 링크는 한 번만 쓰이고, 새로 요청하면 앞의 것이 무효가 된다.
         // 일반 매퍼는 그것을 알 수 없으므로(본문에 'invalid'만 온다) 여기서 갈라 준다.
         if (mapped.code !== 'RATE_LIMITED' && res.status >= 400 && res.status < 500) {
-          return { error: { code: 'INVALID_RESET_TOKEN', message: '링크가 만료됐거나 이미 쓴 링크야 — 재설정을 다시 요청해줘' } };
+          return { error: { code: 'INVALID_RESET_TOKEN', message: '링크가 만료됐거나 이미 쓴 링크예요 — 재설정을 다시 요청해 주세요' } };
         }
         return { error: mapped };
       }

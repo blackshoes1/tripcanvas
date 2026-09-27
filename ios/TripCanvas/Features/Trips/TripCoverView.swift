@@ -81,7 +81,7 @@ struct TripCoverView: View {
                         Spacer()
                         if loadFailed {
                             Button("표지 다시 불러오기") { Task { await load() } }
-                                .accessibilityHint("표지를 불러온 뒤 사진을 바꿀 수 있습니다")
+                                .accessibilityHint("표지를 불러온 뒤 사진을 바꿀 수 있어요")
                         } else {
                             Button { showsEditor = true } label: { Label("표지 바꾸기", systemImage: "photo") }
                                 .disabled(saved == nil)

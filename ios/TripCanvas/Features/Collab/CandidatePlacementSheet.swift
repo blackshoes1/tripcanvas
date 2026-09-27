@@ -108,7 +108,7 @@ enum PlanDateLabel {
            let date = ISODateText.calendar.date(byAdding: .day, value: index, to: first) {
             let formatter = DateFormatter()
             formatter.calendar = ISODateText.calendar; formatter.timeZone = ISODateText.calendar.timeZone
-            formatter.locale = Locale(identifier: "ko_KR"); formatter.dateFormat = "M/d(E)"
+            formatter.locale = Locale(identifier: "ko_KR"); formatter.dateFormat = "M/d (E)"
             parts.append(formatter.string(from: date))
         }
         if document.hasDay(index), !document.days[index].title.isEmpty { parts.append(document.days[index].title) }

@@ -86,7 +86,7 @@ final class PlaceSearchService: PlaceSearching {
         } catch let error as URLError where [.notConnectedToInternet, .networkConnectionLost, .timedOut].contains(error.code) {
             throw APIError.offline
         }
-        guard let http = response as? HTTPURLResponse else { throw APIError.server(status: 0, message: "알 수 없는 응답입니다.") }
+        guard let http = response as? HTTPURLResponse else { throw APIError.server(status: 0, message: "알 수 없는 응답이에요.") }
         guard (200..<300).contains(http.statusCode) else {
             // 상세는 콘솔에만 — 키·할당량 문구를 화면에 그대로 내지 않는다(웹의 classifySearchErr와 같은 태도).
             print("[TripCanvas] google places \(http.statusCode): \(String(data: data, encoding: .utf8) ?? "")")

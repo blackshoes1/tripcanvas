@@ -88,9 +88,9 @@ test('상세 실패 후 재시도하며 ID 없는 장소와 카카오 지도에�
     openPlaceDetails({name:'메모로 넣은 곳'});
   });
   await page.getByRole('button',{name:'다시 시도',exact:true}).click();
-  await expect(page.locator('#placeDetailsContent')).toContainText('자동 연결하지 않습니다');
+  await expect(page.locator('#placeDetailsContent')).toContainText('자동 연결하지 않아요');
   await page.evaluate(()=>{engine='kakao';window.google={maps:{importLibrary:()=>{throw Error('호출 금지');}}};openPlaceDetails({name:'국내 Google 결과',placeId:'g'});});
-  await expect(page.locator('#placeDetailsContent')).toContainText('자동 연결하지 않습니다');
+  await expect(page.locator('#placeDetailsContent')).toContainText('자동 연결하지 않아요');
 });
 
 test('기존 일정의 장소 정보는 편집과 분리되어 제공된다',async({context,page})=>{

@@ -44,6 +44,9 @@ struct BookingEditorView: View {
     let document: TripDocument
     /// 예약만 다루는 화면(예약 목록·가격 추적)에서는 예약 분류(항공·숙박·렌트)만 고른다.
     let bookingOnly: Bool
+    /// 예약 목록에서 열었는가. 예약이 아닌 분류는 '결제 예정'일 때만 그 목록에 남으므로(`additionalReservations`)
+    /// 저장하기 **전에** 어디에 보일지 말한다 — 전에는 저장하자마자 목록에서 사라져 잃어버린 줄 알았다.
+    let fromReservations: Bool
     let onSave: (TripBooking, BookingLinks) async -> String?
     let onDelete: (String) async -> String?
     let onSaveItem: (CostEntry) async -> String?
@@ -95,6 +98,7 @@ struct BookingEditorView: View {
     init(target: BookingEditorTarget,
          document: TripDocument,
          bookingOnly: Bool = false,
+         fromReservations: Bool = false,
          onSave: @escaping (TripBooking, BookingLinks) async -> String?,
          onDelete: @escaping (String) async -> String?,
          onSaveItem: @escaping (CostEntry) async -> String? = { _ in nil },
@@ -102,6 +106,7 @@ struct BookingEditorView: View {
         self.target = target
         self.document = document
         self.bookingOnly = bookingOnly
+        self.fromReservations = fromReservations
         self.onSave = onSave
         self.onDelete = onDelete
         self.onSaveItem = onSaveItem
@@ -158,7 +163,7 @@ struct BookingEditorView: View {
                     Text(isBookingKind ? "예약" : "항목")
                 } footer: {
                     if !bookingOnly && isNew {
-                        Text("항공·숙박·렌트는 예약으로 저장돼 기간·조건·가격 추적이 붙어요. 나머지는 가기 전에 낸 비용으로만 남아요.")
+                        Text("항공·숙박·렌트는 예약으로 저장돼 기간·조건이 붙고, 숙박·렌트는 가격 추적도 할 수 있어요. 나머지는 가기 전에 낸 비용으로 남아요.")
                     }
                 }
 
@@ -189,12 +194,13 @@ struct BookingEditorView: View {
                         }
                         .labelsHidden()
                     }
-                    if isBookingKind { Toggle("가격 추적", isOn: $draft.track) }
+                    // 항공은 시세를 확인할 곳이 아직 없다 — 없는 추적을 약속하지 않는다.
+                    if isBookingKind && kind != .flight { Toggle("가격 추적", isOn: $draft.track) }
                 } header: {
                     Text("금액")
                 } footer: {
-                    if isBookingKind {
-                        Text("켜둔 가격 추적은 시세를 계속 확인해 절약 기회를 알려줘요. 자동으로 다시 예약하지는 않습니다.")
+                    if isBookingKind && kind != .flight {
+                        Text("켜둔 가격 추적은 시세를 계속 확인해 절약 기회를 알려줘요. 자동으로 다시 예약하지는 않아요.")
                     } else {
                         Text("원·엔은 정수, 달러·유로·위안은 소수 둘째 자리까지 입력해 주세요.")
                     }
@@ -219,7 +225,13 @@ struct BookingEditorView: View {
                 } header: {
                     Text("결제")
                 } footer: {
-                    Text(payFooter)
+                    VStack(alignment: .leading, spacing: Space.xs) {
+                        Text(payFooter)
+                        if fromReservations, !isBookingKind, paidOn != nil || payState != .reserved {
+                            Text("결제 예정이 아니면 이 항목은 예약 목록이 아니라 비용 화면에 보여요.")
+                                .foregroundStyle(Ink.warning)
+                        }
+                    }
                 }
 
                 if kind == .stay { hotelSection }
@@ -238,14 +250,14 @@ struct BookingEditorView: View {
                     } header: {
                         Text("취소 조건")
                     } footer: {
-                        Text("절약액은 취소 수수료를 뺀 실질 금액으로 계산합니다.")
+                        Text("절약액은 취소 수수료를 뺀 실질 금액으로 계산해요.")
                     }
                 }
 
                 Section {
                     CostPhotosField(refs: $photos)
                 } header: { Text("영수증·품목 사진") } footer: {
-                    Text("무엇에 썼는지 기억하려고 붙입니다. 사진 자체는 올리지 않고 이 기기 사진 보관함의 위치만 기억해요 — 일행에게는 보이지 않습니다.")
+                    Text("무엇에 썼는지 기억하려고 붙여요. 사진 자체는 올리지 않고 이 기기 사진 보관함의 위치만 기억해요 — 일행에게는 보이지 않아요.")
                 }
 
                 if target.booking != nil {
@@ -329,9 +341,9 @@ struct BookingEditorView: View {
             Text("숙박")
         } footer: {
             if document.stayRefs.isEmpty {
-                Text("일정에 숙소로 표시한 장소가 없어요. 장소 편집에서 '숙소'를 켜면 여기서 이을 수 있습니다.")
+                Text("일정에 숙소로 표시한 장소가 없어요. 장소 편집에서 '숙소'를 켜면 여기서 이을 수 있어요.")
             } else {
-                Text("연결하면 그 숙소의 비용·연박과 함께 계산됩니다. 인원·객실·조식은 시세 비교의 기준이에요.")
+                Text("연결하면 그 숙소의 비용·연박과 함께 계산돼요. 인원·객실·조식은 시세 비교의 기준이에요.")
             }
         }
     }
@@ -387,7 +399,7 @@ struct BookingEditorView: View {
         } header: {
             Text("렌터카")
         } footer: {
-            Text("당일 대여는 픽업 시각과 그보다 늦은 반납 시각이 필요해요. 공항에서 받는다면 도착 장소와 연결해야 순서가 맞습니다. 차급·변속기·보험·주행거리가 다르면 확정 절약으로 보지 않아요.")
+            Text("당일 대여는 픽업 시각과 그보다 늦은 반납 시각이 필요해요. 공항에서 받는다면 도착 장소와 연결해야 순서가 맞아요. 차급·변속기·보험·주행거리가 다르면 확정 절약으로 보지 않아요.")
         }
     }
 
@@ -429,11 +441,11 @@ struct BookingEditorView: View {
 
     /// 결제일이 상태를 정한다는 것을 그 자리에서 말한다 — 기기 날짜 기준의 미리보기. 저장 뒤 화면은 서버(여행 시간대)가 정한 값이다.
     private var payFooter: String {
-        guard let paidOn else { return "결제일을 정하면 그 날부터 결제 완료로 셉니다. 정하지 않으면 여기서 고른 상태를 써요." }
+        guard let paidOn else { return "결제일을 정하면 그 날부터 결제 완료로 봐요. 정하지 않으면 여기서 고른 상태를 써요." }
         let label = TimeFormat.dayChipLabel(paidOn) ?? paidOn
         return paidOn <= ISODateText.text(from: Date())
-            ? "결제일(\(label))이 지나 결제 완료로 셉니다."
-            : "결제 예정일(\(label))이 아직이라 결제 예정으로 셉니다 — 그날부터 결제 완료가 돼요."
+            ? "결제일(\(label))이 지나 결제 완료로 봐요."
+            : "결제 예정일(\(label))이 아직이라 결제 예정으로 봐요 — 그날부터 결제 완료가 돼요."
     }
 
     private func spotLabel(_ ref: SpotRef) -> String {

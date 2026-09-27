@@ -312,7 +312,7 @@ struct TripCoverEditor: View {
                 }
                 .onEnded { _ in dragOrigin = nil })
             .accessibilityLabel("실제 표지 영역 미리보기")
-            .accessibilityHint("아래 확대와 위치 미세 조정으로 구도를 바꿀 수 있습니다")
+            .accessibilityHint("아래 확대와 위치 미세 조정으로 구도를 바꿀 수 있어요")
         }
         .aspectRatio(TripCoverImage.aspectRatio, contentMode: .fit)
     }

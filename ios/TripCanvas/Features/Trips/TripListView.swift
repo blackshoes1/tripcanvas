@@ -81,7 +81,7 @@ final class TripListViewModel {
         guard let api = error as? APIError else { return error.localizedDescription }
         switch api {
         case .revisionConflict:
-            return "다른 기기에서 먼저 바뀌었어요 — 목록을 새로 불러왔습니다. 다시 시도해 주세요."
+            return "다른 기기에서 먼저 바뀌었어요 — 목록을 새로 불러왔어요. 다시 시도해 주세요."
         // ⚠️ 예전에는 삼항이 뒤집혀 있었다 — `canDelete`가 참이면 **내가 주최자**인데 "지울 권한이
         //    없어요"라고 했고, 거짓(주최자가 아님)일 때 주최자용 안내를 했다. 이제 서버가 말한
         //    이유를 그대로 쓴다(공통 규칙 — `collab.js`의 forbiddenText).
@@ -209,7 +209,13 @@ struct TripListView: View {
             if let pending = pendingDestination, handle(pending) { pendingDestination = nil }
         }
         // 목록으로 돌아오면 딥링크가 정했던 목적지를 지운다 — 다음에 목록에서 고른 여행은 규칙이 정한다.
-        .onChange(of: path) { _, current in if current.isEmpty { requestedTab = nil; requestedPanel = nil } }
+        // 목록을 새로 받는 것도 여기서다 — 여행 안에서 이름·날짜를 바꾸고 돌아왔는데 옛 이름이 남아 있으면 안 된다.
+        .onChange(of: path) { _, current in
+            if current.isEmpty {
+                requestedTab = nil; requestedPanel = nil
+                Task { await model?.load() }
+            }
+        }
         // 딥링크는 라우터 하나를 지난다 — 앱을 열어 둔 채로 링크를 눌러도 같은 화면이 뜬다.
         .onOpenURL { url in env.router.open(url: url) }
         .onChange(of: env.router.destination) { _, destination in
@@ -248,7 +254,7 @@ struct TripListView: View {
             }
             Button("취소", role: .cancel) { pasteText = "" }
         } message: {
-            Text("받은 초대 링크를 붙여 넣으세요. 여행 이름과 권한을 먼저 확인한 뒤 참여합니다.")
+            Text("받은 초대 링크를 붙여 넣으세요. 여행 이름과 권한을 먼저 확인한 뒤 참여해요.")
         }
         // 삭제와 나가기는 문구가 다르다 — 무엇이 사라지는지가 다르기 때문이다.
         .confirmationDialog(
@@ -281,8 +287,8 @@ struct TripListView: View {
     /// **무엇이 사라지는지**를 말한다. 둘은 결과가 다르다.
     static func removalMessage(for trip: TripSummary) -> String {
         CollabModel.canDelete(trip.role ?? .owner)
-            ? "함께 보는 사람들에게서도 사라집니다. 되돌릴 수 없어요."
-            : "내 목록에서만 사라집니다. 여행 자체는 남아요."
+            ? "함께 보는 사람들에게서도 사라져요. 되돌릴 수 없어요."
+            : "내 목록에서만 사라져요. 여행 자체는 남아요."
     }
 
     private func removalSymbol(for trip: TripSummary) -> String {
@@ -348,7 +354,7 @@ struct TripListView: View {
                 EmptyStateView(
                     symbol: "suitcase",
                     title: "아직 여행이 없어요",
-                    message: "첫 여행을 만들어 보세요. 웹에서 만든 여행도 여기에 나타납니다.")
+                    message: "첫 여행을 만들어 보세요. 웹에서 만든 여행도 여기에 나타나요.")
                 VStack(spacing: Space.s) {
                     Button { createStartMode = .scratch; showsCreateTrip = true } label: {
                         Label("여행 만들기", systemImage: "plus").frame(maxWidth: .infinity)
@@ -358,15 +364,18 @@ struct TripListView: View {
                         Label("가진 일정 붙여넣기", systemImage: "doc.on.clipboard").frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.bordered)
+                    joinInviteButton
                 }
                 .padding(.horizontal, Space.xl)
             }
         } else {
             List {
                 VStack(alignment: .leading, spacing: Space.m) {
-                    Text("TRAVEL JOURNAL").metaLabel()
+                    Text("여행 기록").metaLabel()
                     Text("나의 여행").font(Typeface.editorial(.largeTitle)).foregroundStyle(Ink.ink)
                     Rectangle().fill(Ink.hairline).frame(height: 1)
+                    // 초대받은 사람은 계정 메뉴를 열어 볼 생각을 못 한다 — 목록 첫 화면에 둔다.
+                    joinInviteButton
                 }
                 .padding(.vertical, Space.l)
                 .listRowBackground(Color.clear)
@@ -408,6 +417,19 @@ struct TripListView: View {
     }
 }
 
+extension TripListView {
+    fileprivate var joinInviteButton: some View {
+        Button {
+            pasteText = UIPasteboard.general.string ?? ""
+            showsPastePrompt = true
+        } label: {
+            Label("초대 링크로 참여", systemImage: "link").font(.subheadline).frame(minHeight: 44)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(Ink.accent)
+    }
+}
+
 struct TripRow: View {
     let trip: TripSummary
 
@@ -417,6 +439,11 @@ struct TripRow: View {
                 Text(trip.name).font(Typeface.editorial(.title2)).foregroundStyle(Ink.ink)
                 if trip.isLive {
                     StatusChip(text: "Day \(trip.todayIndex + 1)", symbol: "location.fill", tint: Ink.accent)
+                } else if trip.isUpcoming, let days = trip.daysUntilStart {
+                    // 며칠 남았는지는 서버가 센다(여행지의 오늘) — 앱이 `start`와 기기 날짜를 비교하지 않는다.
+                    StatusChip(text: "D-\(days)", symbol: "calendar")
+                } else if trip.isFinished {
+                    StatusChip(text: "지난 여행", symbol: "checkmark.circle")
                 }
                 if trip.isShared {
                     // 함께 보는 여행인지 목록에서 바로 안다 — 편집 권한은 여행 안에서 말한다.
@@ -433,7 +460,7 @@ struct TripRow: View {
 
     private var subtitle: String {
         var parts: [String] = []
-        if !trip.start.isEmpty { parts.append(trip.start) }
+        if !trip.start.isEmpty { parts.append(ReadableDate.day(trip.start)) }
         parts.append("\(trip.dayCount)일")
         if !trip.cities.isEmpty { parts.append(trip.cities.prefix(3).joined(separator: " · ")) }
         return parts.joined(separator: "  ·  ")

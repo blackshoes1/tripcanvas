@@ -1,8 +1,13 @@
 import SwiftUI
 
-/// 날짜가 바뀌어도 기존 일정과 외부 예약의 절대 날짜를 보존한다.
+/// 시작일이 바뀔 때 두 가지 뜻이 있다 — 사용자가 고른다(웹은 늘 '통째로 옮기기'였다).
+/// - `keepDates`: 여행 **기간**만 바꾼다. 기존 일정은 원래 달력 날짜에 남는다(앞에 빈 날이 생기거나, 빈 날만 잘린다).
+/// - `moveSchedule`: 일정 **전체**를 새 시작일로 옮긴다. 1일차는 여전히 1일차다 — 웹 `tripSave`와 같은 문서가 된다.
+/// 어느 쪽이든 외부 예약(`trip.bookings`)의 날짜는 바꾸지 않는다. 예약은 상대와 맺은 약속이다.
 enum PlanCalendarChange {
-    static func draft(_ original: TripDocument, start: String, count: Int) -> TripDocument? {
+    enum Mode: Hashable { case keepDates, moveSchedule }
+
+    static func draft(_ original: TripDocument, start: String, count: Int, mode: Mode = .keepDates) -> TripDocument? {
         // 이미 한계보다 긴 문서(레거시 경로로 들어온 것)는 **편집을 막지 않는다** — 막으면
         // 이름만 고치려는 사람에게도 저장이 꺼진 채 이유가 화면에 없다. 늘리는 것만 막는다.
         guard count >= 1 && count <= TripLimits.maxDays(editing: original.days.count) else { return nil }
@@ -11,7 +16,7 @@ enum PlanCalendarChange {
         }
         var result = original
         var days = original.days
-        if !original.start.isEmpty && start != original.start {
+        if mode == .keepDates && !original.start.isEmpty && start != original.start {
             guard let old = ISODateText.date(from: original.start), let new = ISODateText.date(from: start),
                   let offset = ISODateText.calendar.dateComponents([.day], from: new, to: old).day else { return nil }
             if offset > 0 { days.insert(contentsOf: Array(repeating: TripDay(), count: offset), at: 0) }
@@ -28,6 +33,17 @@ enum PlanCalendarChange {
         if count > days.count { days.append(contentsOf: Array(repeating: TripDay(), count: count - days.count)) }
         result.start = start; result.days = days
         return result
+    }
+
+    /// 날짜가 있는 예약 중 새 기간 밖에 걸리는 것 — 예약은 옮기지 않으므로 일정과 어긋난다.
+    static func misalignedBookings(_ bookings: [TripBooking], start: String, count: Int) -> [TripBooking] {
+        guard let base = ISODateText.date(from: start),
+              let last = ISODateText.calendar.date(byAdding: .day, value: max(0, count - 1), to: base) else { return [] }
+        let first = ISODateText.text(from: base), end = ISODateText.text(from: last)
+        return bookings.filter { booking in
+            guard let from = booking.start?.prefix(10), !from.isEmpty else { return false }
+            return String(from) < first || String(from) > end
+        }
     }
 
     static func isEmpty(_ day: TripDay) -> Bool {
@@ -60,6 +76,8 @@ struct PlanSettingsView: View {
     @State private var saving = EditorSaveState()
     @State private var confirmedDates = false
     @State private var showsDiscardConfirm = false
+    /// 시작일을 옮길 때 일정도 함께 옮길지. 기본은 웹과 같은 '통째로 옮기기' — 두 플랫폼이 같은 문서를 만든다.
+    @State private var dateMode: PlanCalendarChange.Mode = .moveSchedule
 
     init(document: TripDocument, revision: Int, selectedDay: Int, onSave: @escaping (TripDocument, Int) async -> String?) {
         self.original = document; self.revision = revision; self.selectedDay = selectedDay; self.onSave = onSave
@@ -81,8 +99,10 @@ struct PlanSettingsView: View {
             days[selectedDay].mode = day.mode; days[selectedDay].carriesPreviousAnchor = day.carriesPreviousAnchor
             document.days = days
         }
-        return PlanCalendarChange.draft(document, start: start, count: count)
+        return PlanCalendarChange.draft(document, start: start, count: count, mode: startMoved ? dateMode : .keepDates)
     }
+    /// 이미 있던 시작일을 다른 날로 바꿨는가 — 이때만 '어떻게 옮길지'를 묻는다.
+    private var startMoved: Bool { !original.start.isEmpty && !start.isEmpty && start != original.start }
     private var isDirty: Bool {
         name != original.name || datesChanged || day != (original.hasDay(selectedDay) ? original.days[selectedDay] : TripDay())
     }
@@ -120,9 +140,24 @@ struct PlanSettingsView: View {
                 }
                 if datesChanged {
                     Section("날짜 변경 미리보기") {
-                        Text("\(original.start.isEmpty ? "시작일 미정" : original.start) · \(original.days.count)일 → \(start) · \(count)일")
-                        Text("기존 일정은 원래 달력 날짜를 유지합니다. 날짜가 있는 숙박·항공·렌터카 예약도 그대로예요.")
+                        Text("\(original.start.isEmpty ? "시작일 미정" : ReadableDate.day(original.start)) · \(original.days.count)일 → \(start.isEmpty ? "시작일 미정" : ReadableDate.day(start)) · \(count)일")
+                        if startMoved {
+                            Picker("기존 일정", selection: $dateMode) {
+                                Text("통째로 옮기기").tag(PlanCalendarChange.Mode.moveSchedule)
+                                Text("날짜 그대로").tag(PlanCalendarChange.Mode.keepDates)
+                            }
+                            .pickerStyle(.segmented)
+                        }
+                        Text(startMoved && dateMode == .moveSchedule
+                             ? "Day 1은 새 시작일부터 시작해요. 장소는 같은 Day에 그대로 있고 날짜만 옮겨져요. 예약 날짜는 바꾸지 않아요."
+                             : "기존 일정은 원래 달력 날짜에 남아요. 예약 날짜도 바꾸지 않아요.")
                             .font(.caption)
+                        let misaligned = PlanCalendarChange.misalignedBookings(original.bookings, start: start, count: count)
+                        if !misaligned.isEmpty {
+                            Label("예약 \(misaligned.count)건이 새 기간 밖이에요 — 예약처에서 날짜를 바꿨는지 확인해 주세요.",
+                                  systemImage: "exclamationmark.triangle")
+                                .font(.caption).foregroundStyle(Ink.warning)
+                        }
                         if let draft {
                             ForEach(draft.days.indices, id: \.self) { index in
                                 Text("\(PlanDateLabel.day(draft, index)): \(draft.days[index].spots.count)곳")
@@ -153,6 +188,7 @@ struct PlanSettingsView: View {
                 }
             }
             .onChange(of: start) { _, _ in confirmedDates = false }
+            .onChange(of: dateMode) { _, _ in confirmedDates = false }
             .onChange(of: count) { _, _ in confirmedDates = false }
         }
         .interactiveDismissDisabled(isDirty || saving.isWorking)

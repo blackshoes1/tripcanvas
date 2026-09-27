@@ -171,11 +171,11 @@ struct TripCostsView: View {
                     }
                 }
             } else if response != nil {
-                Label("합계는 API를 새 버전으로 올린 뒤 보여요. 목록과 입력은 지금도 됩니다.", systemImage: "server.rack")
+                Label("합계는 아직 준비 중이에요. 목록과 입력은 지금도 할 수 있어요.", systemImage: "clock")
                     .font(.caption).foregroundStyle(Ink.warning)
             }
         } footer: {
-            Text("가기 전에 내는 돈 — 항공·숙박·렌트 예약과 보험·유심·미리 산 입장권. 결제일을 정해 두면 그 날부터 결제 완료로 셉니다. 항공은 날짜로 나누지 않고, 숙박·렌터카는 날짜별 비용에도 하루치로 보여요.")
+            Text("가기 전에 내는 돈 — 항공·숙박·렌트 예약과 보험·유심·미리 산 입장권. 결제일을 정해 두면 그 날부터 결제 완료로 봐요. 항공은 날짜로 나누지 않고, 숙박·렌터카는 날짜별 비용에도 하루치로 보여요.")
         }
         Section {
             // 추가는 목록 위에 — 긴 목록의 끝까지 내려가지 않게.
@@ -188,7 +188,7 @@ struct TripCostsView: View {
             if rows.isEmpty { Text("예약과 미리 낸 비용을 적으면 여기에 모여요").foregroundStyle(.secondary) }
             ForEach(rows) { row in paymentRow(row) }
         } header: { Text("결제 항목") } footer: {
-            Text("줄을 오른쪽으로 밀어 결제일을 정하거나 결제 완료·결제 예정을 바꿀 수 있어요. 결제일이 있으면 날짜가 상태를 정합니다.")
+            Text("줄을 오른쪽으로 밀어 결제일을 정하거나 결제 완료·결제 예정을 바꿀 수 있어요. 결제일이 있으면 날짜가 상태를 정해요.")
         }
     }
 
@@ -252,7 +252,7 @@ struct TripCostsView: View {
                 }
             }
         }
-        .accessibilityHint(canEdit ? "탭하면 고칩니다. 오른쪽으로 밀면 결제일이나 결제 상태를 바꿉니다." : "")
+        .accessibilityHint(canEdit ? "탭하면 고쳐요. 오른쪽으로 밀면 결제일이나 결제 상태를 바꿔요." : "")
     }
 
     private func payChip(_ state: CostPayState) -> some View {
@@ -291,7 +291,7 @@ struct TripCostsView: View {
                     }
                 }
             } else if response != nil {
-                Label("합계는 API를 새 버전으로 올린 뒤 보여요. 날짜별 입력은 지금도 됩니다.", systemImage: "server.rack")
+                Label("합계는 아직 준비 중이에요. 날짜별 입력은 지금도 할 수 있어요.", systemImage: "clock")
                     .font(.caption).foregroundStyle(Ink.warning)
             }
             if canEdit, let today = todayIndex {
@@ -302,7 +302,7 @@ struct TripCostsView: View {
                 .prominentButton()
             }
         } footer: {
-            Text("합계는 장소 비용·추가 비용·교통비만 셉니다. 날짜별 줄에는 숙박·렌터카 예약의 그날 몫도 더해 보여요(웹 일자 카드와 같아요). 예약 전액은 예약 결제 금액에 있어요.")
+            Text("합계는 장소 비용·추가 비용·교통비만 더해요. 날짜별 줄에는 숙박·렌터카 예약의 그날 몫도 더해 보여요(웹 일자 카드와 같아요). 예약 전액은 예약 결제 금액에 있어요.")
         }
         Section("날짜별") {
             if let response {
@@ -447,7 +447,7 @@ struct TripCostsView: View {
         } catch {
             guard !Task.isCancelled else { return }
             response = nil
-            self.error = "합계를 계산하지 못했어요. 목록과 입력은 그대로 됩니다."
+            self.error = "합계를 계산하지 못했어요. 목록과 입력은 그대로 할 수 있어요."
         }
     }
 
@@ -540,13 +540,13 @@ struct PaidOnSheet: View {
                     DatePicker("결제일", selection: $date, displayedComponents: .date)
                 } header: { Text(row.title) } footer: {
                     Text(ISODateText.text(from: date) <= ISODateText.text(from: Date())
-                         ? "이 날이 지났으니 결제 완료로 셉니다."
-                         : "이 날부터 결제 완료로 셉니다 — 그 전까지는 결제 예정이에요.")
+                         ? "이 날이 지났으니 결제 완료로 봐요."
+                         : "이 날부터 결제 완료로 봐요 — 그 전까지는 결제 예정이에요.")
                 }
                 if row.paidOn != nil {
                     Section {
                         Button("결제일 지우기", role: .destructive) { Task { await save(nil) } }.disabled(saving)
-                    } footer: { Text("지우면 결제 상태를 다시 손으로 고릅니다.") }
+                    } footer: { Text("지우면 결제 상태를 다시 손으로 골라요.") }
                 }
                 if failed { Section { Text("저장하지 못했어요. 다시 시도해 주세요.").foregroundStyle(Ink.warning) } }
             }

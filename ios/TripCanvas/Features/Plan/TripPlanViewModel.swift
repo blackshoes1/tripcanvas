@@ -295,7 +295,7 @@ final class TripPlanViewModel: DayPlanContext {
             return false
         }
         let sourceDay = dayIndex ?? selectedDay
-        return await store.edit("\(targetDay + 1)일차로 옮겼어요", expectedRevision: expectedRevision) { document in
+        return await store.edit("Day \(targetDay + 1)로 옮겼어요", expectedRevision: expectedRevision) { document in
             if let spot { document.updateSpot(dayIndex: sourceDay, at: index, with: spot) }
             document.moveSpot(from: (day: sourceDay, index: index), toDay: targetDay)
         }
