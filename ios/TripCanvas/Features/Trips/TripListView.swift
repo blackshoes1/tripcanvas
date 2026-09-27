@@ -353,7 +353,7 @@ struct TripListView: View {
                     Button { createStartMode = .scratch; showsCreateTrip = true } label: {
                         Label("여행 만들기", systemImage: "plus").frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .prominentButton()
                     Button { createStartMode = .paste; showsCreateTrip = true } label: {
                         Label("가진 일정 붙여넣기", systemImage: "doc.on.clipboard").frame(maxWidth: .infinity)
                     }

@@ -16,7 +16,7 @@ struct PlanActions {
     var editSpot: (Int, TripSpot) -> Void
     /// 고치지 않고 정보만 본다.
     var viewSpot: (Int, TripSpot) -> Void
-    /// 장소를 담는다. `nil`이면 맨 뒤, 값이 있으면 그 장소 **뒤**에.
+    /// 장소를 담는다(② 방법 고르기부터). `nil`이면 맨 뒤, 값이 있으면 그 장소 **뒤**에.
     var addAfter: (Int?) -> Void
     /// 고른 장소들을 날짜·위치로 옮긴다.
     var moveSpots: (Set<Int>) -> Void
@@ -26,6 +26,8 @@ struct PlanActions {
     var openCosts: (_ day: Int, _ revision: Int) -> Void
     /// 검색을 거치지 않고 **직접 입력**으로 장소를 만든다. 이름만 있는 장소도 일정에 남는다.
     var createSpot: () -> Void
+    /// 방법 고르기를 건너뛰고 바로 ③ 검색으로 간다(빈 날의 '장소 검색해서 담기').
+    var searchSpot: () -> Void = {}
 }
 
 struct TripPlanView: View {
@@ -45,7 +47,15 @@ struct TripPlanView: View {
     @State private var editor: SpotEditorSession?
     @State private var viewingSpot: SpotEditorTarget?
     @State private var showsSearch = false
-    @State private var searchedSpot: TripSpot?
+    /// ② 방법 고르기 시트와, 그 시트가 닫힌 뒤 열 다음 화면. 시트 위에 시트를 겹치지 않는다.
+    @State private var showsAddOptions = false
+    @State private var afterOptions: AddNext?
+    /// 검색 결과에서 '직접 입력'으로 넘어갈 때의 검색어.
+    @State private var manualFromSearch: String?
+    /// ⑤ 직접 입력. 연 순간의 날·문서를 들고 있어야 저장할 때 다른 날에 들어가지 않는다.
+    @State private var quickCreate: QuickCreateSession?
+    /// 검색 시트를 연 순간의 날·문서.
+    @State private var searchSession: (day: Int, revision: Int)?
     /// 장소 검색(지도에서 담기)을 열어 두었는가. 범위와 별개다.
     @State private var mapSearching = false
     /// 다음 날로 가는 중인가 — 들어오고 나가는 방향을 정한다.
@@ -74,8 +84,8 @@ struct TripPlanView: View {
                     Button("여행 전체 개요") { showsOverview = true }
                     if model.canEdit {
                         // 시안의 툴바는 ⋯ 하나다 — 빼 온 진입점을 여기 모은다(기능을 잃지 않는다).
-                        Button { insertionAfter = nil; showsSearch = true } label: { Label("검색해서 담기", systemImage: "magnifyingglass") }
-                        Button { insertionAfter = nil; editor = makeEditor(.create) } label: { Label("직접 입력", systemImage: "square.and.pencil") }
+                        Button { insertionAfter = nil; openSearch() } label: { Label("장소 검색", systemImage: "magnifyingglass") }
+                        Button { insertionAfter = nil; openQuickCreate() } label: { Label("직접 입력", systemImage: "pencil") }
                         if model.day != nil {
                             Button(isEditing ? "순서 편집 마치기" : "순서 편집") {
                                 withAnimation { editMode?.wrappedValue = isEditing ? .inactive : .active }
@@ -97,12 +107,40 @@ struct TripPlanView: View {
         }
         // 지도를 처음 켠 순간부터 만들어 둔다. 그 뒤로는 숨기기만 한다.
         .onChange(of: showsMap, initial: true) { _, on in if on { mapMounted = true } }
+        .sheet(isPresented: $showsAddOptions, onDismiss: {
+            switch afterOptions {
+            case .search: openSearch()
+            case .manual: openQuickCreate()
+            case nil: break
+            }
+            afterOptions = nil
+        }) {
+            AddSpotOptionsSheet(onSearch: { afterOptions = .search; showsAddOptions = false },
+                                onManual: { afterOptions = .manual; showsAddOptions = false })
+        }
         .sheet(isPresented: $showsSearch, onDismiss: {
-            if let spot = searchedSpot { editor = makeEditor(.createFromMap(spot)); searchedSpot = nil }
+            if let name = manualFromSearch { manualFromSearch = nil; openQuickCreate(name: name) }
         }) {
             // 근처 우선의 기준은 그날 마지막 좌표 — 웹이 앵커로 검색하는 것과 같다.
-            PlaceSearchView(near: model.day?.pins.last?.point) { hit in
-                searchedSpot = hit.makeSpot()
+            // ④ 상세에서 '이 장소 일정에 추가'를 누르면 **바로 담긴다** — 고른 곳을 보고 누른 것이 확인이다.
+            //    고칠 것은 담은 뒤 그 장소를 눌러 고친다. 실수면 토스트의 '되돌리기'.
+            PlaceSearchView(near: model.day?.pins.last?.point, addTitle: "이 장소 일정에 추가",
+                            onManual: { name in manualFromSearch = name }) { hit in
+                let session = searchSession ?? (model.selectedDay, model.revision)
+                let after = insertionAfter
+                Task {
+                    await model.addSpot(hit.makeSpot(), after: after, dayIndex: session.day, expectedRevision: session.revision,
+                                        toast: "‘\(hit.name)’을(를) \(session.day + 1)일차에 추가했어요")
+                }
+            }
+        }
+        .sheet(item: $quickCreate) { session in
+            SpotQuickCreateView(
+                prefilledName: session.name,
+                contextLabel: "\(trip.name) · \(session.day + 1)일차",
+                draftKey: EditorDraftKey(accountID: env.auth.session?.userId, tripID: trip.id, editor: "spot-quick-\(session.day)")) { spot in
+                await model.addSpot(spot, after: session.after, dayIndex: session.day, expectedRevision: session.revision,
+                                    toast: "‘\(spot.name)’을(를) \(session.day + 1)일차에 추가했어요") ? nil : model.saveFailureMessage
             }
         }
         .sheet(item: $viewingSpot) { target in
@@ -187,7 +225,7 @@ struct TripPlanView: View {
         PlanActions(
             editSpot: { index, spot in editSpot(index, spot: spot, model: model) },
             viewSpot: { index, spot in viewingSpot = .edit(index: index, spot: spot) },
-            addAfter: { index in insertionAfter = index; showsSearch = true },
+            addAfter: { index in insertionAfter = index; showsAddOptions = true },
             moveSpots: { indexes in prepareMove(indexes, model: model) },
             // ⚠️ 애니메이션을 **여기서** 건다. 날을 바꾸는 곳이 둘(날짜 칩·좌우 스와이프)이라
             //    각자 감싸면 한쪽만 밀리고 다른 쪽은 즉시 교체된다 — 실제로 그랬다(2026-09-21).
@@ -196,7 +234,8 @@ struct TripPlanView: View {
                 withAnimation(motion) { model.selectedDay = day }
             },
             openCosts: { day, revision in costDay = day; costRevision = revision; showsCosts = true },
-            createSpot: { insertionAfter = nil; editor = makeEditor(.create) })
+            createSpot: { insertionAfter = nil; openQuickCreate() },
+            searchSpot: { insertionAfter = nil; openSearch() })
     }
 
     @ViewBuilder
@@ -223,8 +262,16 @@ struct TripPlanView: View {
                 }
                 // 오류도 화면의 높이를 차지해야 한다. overlay로 띄우면 날짜 탭과
                 // 일정 제목을 덮고, 반투명 배경 아래의 글자까지 겹쳐 보인다.
-                if let error = model.errorMessage {
-                    InlineErrorBanner(message: "저장하지 못했어요", detail: error, tint: Ink.danger, compact: true) {
+                // 저장 실패와 불러오기 실패는 **할 일이 다르다** — 문구와 버튼이 실제 동작과 같아야 한다.
+                if let error = model.saveErrorMessage {
+                    SaveFailureBanner(detail: error, canRetry: model.canRetrySave,
+                                      onRetry: { Task { await model.retryFailedSave() } },
+                                      onDismiss: { model.dismissSaveError() })
+                        .padding(Space.l)
+                        .background(Ink.paper)
+                } else if let error = model.loadErrorMessage {
+                    InlineErrorBanner(message: "일정을 새로 불러오지 못했어요", detail: error, tint: Ink.warning,
+                                      actionTitle: "다시 불러오기", compact: true) {
                         Task { await model.load() }
                     }
                     .fixedSize(horizontal: false, vertical: true)
@@ -268,12 +315,18 @@ struct TripPlanView: View {
             .background(Ink.paper)
             .overlay(alignment: .bottom) {
                 if let toast = model.toast {
-                    ToastView(text: toast)
-                        .padding(Space.l)
-                        .task {
-                            try? await Task.sleep(for: .seconds(2))
-                            model.clearToast()
-                        }
+                    // 방금 한 일을 되돌릴 수 있으면 **그 자리에서** 말한다 — ⋯ 메뉴까지 찾아가지 않게.
+                    // 되돌리기가 붙으면 누를 시간을 더 준다.
+                    let undoable = model.canUndo && toast != "변경을 되돌렸어요"
+                    ToastView(text: toast, actionTitle: undoable ? "되돌리기" : nil) {
+                        model.clearToast()
+                        Task { await model.undoLastChange() }
+                    }
+                    .padding(Space.l)
+                    .task(id: toast) {
+                        try? await Task.sleep(for: .seconds(undoable ? 5 : 2))
+                        model.clearToast()
+                    }
                 }
             }
             // 충돌은 자동으로 어느 쪽도 고르지 않는다 — 무엇이 사라지는지 말하고 사용자가 고른다(§91).
@@ -288,6 +341,15 @@ struct TripPlanView: View {
 
     private func conflictBinding(_ model: TripPlanViewModel) -> Binding<Bool> {
         Binding(get: { model.conflict != nil && editor == nil }, set: { if !$0 { model.dismissConflict() } })
+    }
+
+    private func openSearch() {
+        searchSession = (model.selectedDay, model.revision)
+        showsSearch = true
+    }
+
+    private func openQuickCreate(name: String = "") {
+        quickCreate = QuickCreateSession(name: name, day: model.selectedDay, revision: model.revision, after: insertionAfter)
     }
 
     private func makeEditor(_ target: SpotEditorTarget) -> SpotEditorSession {
@@ -321,6 +383,48 @@ private struct PlanMoveTarget: Identifiable {
     let revision: Int
     let day: Int
     let indexes: IndexSet
+}
+
+private enum AddNext { case search, manual }
+
+private struct QuickCreateSession: Identifiable {
+    let id = UUID()
+    let name: String
+    let day: Int
+    let revision: Int
+    let after: Int?
+}
+
+/// 저장하지 못했을 때. 화면은 **이미 이전 일정으로 돌아왔다** — 그 사실과, 누르면 실제로 무엇이 되는지를 말한다.
+private struct SaveFailureBanner: View {
+    let detail: String
+    let canRetry: Bool
+    let onRetry: () -> Void
+    let onDismiss: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Space.s) {
+            Label("변경이 저장되지 않아 이전 일정으로 돌아왔어요", systemImage: "exclamationmark.triangle.fill")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Ink.danger)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(detail).font(.footnote).foregroundStyle(Ink.soft)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: Space.m) {
+                if canRetry {
+                    Button("같은 변경 다시 저장", action: onRetry)
+                        .prominentButton()
+                }
+                Button("닫기", action: onDismiss)
+                    .buttonStyle(.bordered)
+            }
+            .font(.subheadline.weight(.semibold))
+            .controlSize(.regular)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(Space.m)
+        .background(Ink.danger.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+    }
 }
 
 private struct SpotEditorSession: Identifiable {

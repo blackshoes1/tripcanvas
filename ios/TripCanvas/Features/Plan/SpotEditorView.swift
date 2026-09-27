@@ -208,7 +208,7 @@ struct SpotEditorView: View {
                     Button {
                         showsMapPicker = true
                     } label: {
-                        Label(draft.point == nil ? "지도에서 자리 고르기" : "지도에서 자리 바꾸기", systemImage: "map")
+                        Label(draft.point == nil ? "위치 추가" : "위치 바꾸기", systemImage: "map")
                     }
                     if draft.point != nil {
                         Button("좌표 지우기", role: .destructive) {
@@ -224,15 +224,7 @@ struct SpotEditorView: View {
                 Section {
                     ClockField(title: "예약·입장 시각", text: $draft.bookedAt)
                     ClockField(title: "도착 시각", text: $draft.arriveAt)
-                    Picker("머무는 시간", selection: $draft.stayMinutes) {
-                        // '정하지 않음'과 '0분'은 계산에서 같다(둘 다 머무르지 않는다).
-                        // 그래도 둘을 남긴다 — "아직 안 정했다"와 "들렀다 바로 간다"는 다른 말이다.
-                        Text("정하지 않음").tag(Int?.none)
-                        ForEach([0, 15, 30, 45, 60, 90, 120, 180, 240], id: \.self) { minutes in
-                            Text(minutes == 0 ? "0분 (바로 이동)" : TimeFormat.duration(minutes))
-                                .tag(Int?.some(minutes))
-                        }
-                    }
+                    StayMinutesPicker(minutes: $draft.stayMinutes)
                 } header: {
                     Text("시간")
                 } footer: {
@@ -352,13 +344,9 @@ struct SpotEditorView: View {
                 }
             }
             .sheet(isPresented: $showsMapPicker) {
-                // 이름이 비어 있고 해외 POI를 탭했으면 그 이름을 받는다. 있는 이름을 덮지는 않는다.
-                MapPickerView(initial: draft.point, regionHint: MapRegion.isKoreanSearch(draft.name, near: nil)) { pick in
-                    draft.point = pick.point
-                    draft.placeId = pick.placeId
-                    draft.kakaoId = nil
-                    draft.setField("addr", nil)
-                    if draft.name.trimmingCharacters(in: .whitespaces).isEmpty, let name = pick.name { draft.name = name }
+                // ⑥과 같은 위치 고르기 — 이름·주소로 찾거나 지도를 탭한다. 있는 이름은 덮지 않는다(`LocationChoice.applied`).
+                LocationPickerView(initial: draft.point, query: draft.name) { choice in
+                    draft = choice.applied(to: draft)
                 }
             }
             .confirmationDialog("이 장소를 일정에서 뺄까요?", isPresented: $showsDeleteConfirm, titleVisibility: .visible) {

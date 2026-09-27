@@ -96,6 +96,14 @@ struct JoinInviteView: View {
                         let text = model.errorMessage ?? model.verdict.text
                         if !text.isEmpty { Text(text) }
                     }
+                    // 못 불러왔으면 그 자리에서 다시 — 예전에는 오류 문장만 있고 '나중에'뿐이었다(2026-09-27 UX 검토).
+                    if model.preview == nil, model.errorMessage != nil, !model.isLoading {
+                        Section {
+                            Button { Task { await model.load() } } label: {
+                                Label("다시 불러오기", systemImage: "arrow.clockwise").frame(minHeight: 44)
+                            }
+                        }
+                    }
 
                     if model.verdict.ok && !model.verdict.alreadyMember {
                         Section {

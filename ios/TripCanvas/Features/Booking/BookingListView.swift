@@ -253,6 +253,9 @@ struct BookingDetailView: View {
 }
 
 struct BookingCard: View {
+    @Environment(TripScreenModels.self) private var screenModels: TripScreenModels?
+    /// 예약 목록이 시트로 열렸든 '지금'에서 push로 열렸든 닫고 원본으로 간다.
+    @Environment(\.dismiss) private var dismiss
     let booking: BookingSummary
     var editable = false
     @State private var copiedConfirmation = false
@@ -315,9 +318,22 @@ struct BookingCard: View {
             }
             if let source = booking.source {
                 let location = booking.dayIndex.map { "일정 \($0 + 1)일차" } ?? "비용"
-                Text(source == "SPOT" ? "\(location)에 등록한 예약이에요. 일정에서 수정할 수 있어요."
-                     : "예약으로 표시한 비용이에요. \(location)에서 수정할 수 있어요.")
+                Text(source == "SPOT" ? "\(location)에 등록한 예약이에요."
+                     : "예약으로 표시한 비용이에요.")
                     .font(.caption).foregroundStyle(.secondary)
+                // 안내로 끝내지 않고 **그곳으로 데려간다** — 여행 화면 안에서 열렸을 때만(밖이면 안내만).
+                if let screenModels {
+                    Button {
+                        if source == "SPOT", let day = booking.dayIndex { screenModels.sourceRequest = .planDay(day) }
+                        else { screenModels.sourceRequest = .costs }
+                        dismiss()
+                    } label: {
+                        Label(source == "SPOT" && booking.dayIndex != nil ? "\(location)에서 수정" : "비용에서 수정",
+                              systemImage: "arrow.up.forward.square")
+                            .font(.subheadline.weight(.semibold))
+                            .frame(minHeight: 44)
+                    }
+                }
             }
             if let url = SafeURL.web(booking.url) {
                 Link(destination: url) {

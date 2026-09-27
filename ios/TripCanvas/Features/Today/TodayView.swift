@@ -103,8 +103,11 @@ struct TodayView: View {
                         if model.canEdit && !model.otherSuggestions.isEmpty {
                             SectionHeader(title: "지금 하기 좋은 것")
                             ForEach(model.otherSuggestions) { suggestion in
+                                let target = model.activity(id: suggestion.action.activityId)
                                 SuggestionCard(suggestion: suggestion,
                                                isBusy: !model.pending.isEmpty || model.isRetrying,
+                                               target: target,
+                                               onComplete: target.map { activity in { Task { await model.complete(activity) } } },
                                                onAccept: { Task { await model.accept(suggestion) } },
                                                onDismiss: { Task { await model.dismiss(suggestion) } })
                             }
@@ -299,13 +302,27 @@ struct SectionHeader: View {
 
 struct ToastView: View {
     let text: String
+    /// 방금 한 일을 되돌리는 것처럼 **그 자리에서** 할 수 있는 한 가지. 없으면 글자만 뜬다.
+    var actionTitle: String? = nil
+    var action: () -> Void = {}
+
     var body: some View {
-        Text(text)
-            .font(.subheadline)
-            .padding(.horizontal, Space.l)
-            .padding(.vertical, Space.m)
-            .background(.thinMaterial, in: Capsule())
-            .accessibilityAddTraits(.updatesFrequently)
+        HStack(spacing: Space.m) {
+            Text(text)
+                .font(.subheadline)
+                .fixedSize(horizontal: false, vertical: true)
+            if let actionTitle {
+                Button(actionTitle, action: action)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Ink.accent)
+                    .frame(minHeight: 44)
+            }
+        }
+        .padding(.horizontal, Space.l)
+        .padding(.vertical, actionTitle == nil ? Space.m : Space.xs)
+        .background(.thinMaterial, in: Capsule())
+        .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(.updatesFrequently)
     }
 }
 
@@ -425,13 +442,23 @@ extension NextActionCard {
 
     /// 카드에 보일 사실들 — 출발(서버가 정한 시각) → 도착 예정 → 이동 → 머무름. 없는 것은 말하지 않는다.
     /// 도착 예정이 없을 때만 시작 시각을 대신 말한다(둘 다 두면 같은 시각이 두 번 보인다).
+    static func arrival(_ next: NextAction) -> Int? {
+        guard let departure = next.departure else { return next.etaMinutes }
+        if let eta = next.etaMinutes, eta >= departure.leaveMinutes { return eta }
+        guard let travel = next.travelMinutes, travel >= 0 else { return nil }
+        return departure.leaveMinutes + travel
+    }
+
     static func facts(_ next: NextAction, isEstimate: Bool) -> [Fact] {
         var out: [Fact] = []
         if let departure = next.departure {
             out.append(Fact(symbol: "figure.walk.departure", text: "출발 \(TimeFormat.clock(departure.leaveMinutes))"))
         }
-        if let eta = next.etaMinutes {
-            out.append(Fact(symbol: "mappin.and.ellipse", text: "도착 \(TimeFormat.clock(eta))"))
+        // 도착은 **출발보다 앞설 수 없다.** 계획 타임라인의 도착 예상(eta)은 아침에 계산된 값이라, 약속에서
+        // 거꾸로 센 출발(leaveMinutes)과 나란히 두면 '출발 18:58 · 도착 09:02'가 됐다(2026-09-27 UX 검토).
+        // 그때는 '지금 안내대로 출발하면 도착하는 때'(출발 + 이동)를 말한다.
+        if let arrival = Self.arrival(next) {
+            out.append(Fact(symbol: "mappin.and.ellipse", text: "도착 \(TimeFormat.clock(arrival))"))
         } else if let start = next.startMinutes {
             out.append(Fact(symbol: "clock", text: TimeFormat.clock(start)))
         }

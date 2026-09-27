@@ -179,7 +179,7 @@ struct TripCoverEditor: View {
                                     Text("이 구도로 저장")
                                 }.font(.body.weight(.semibold))
                                     .frame(maxWidth: .infinity, minHeight: 56)
-                                    .foregroundStyle(.white)
+                                    .foregroundStyle(Ink.onAccent)
                                     .background(Ink.accent, in: Capsule())
                             }.buttonStyle(.plain)
                         }

@@ -109,7 +109,7 @@ struct DayCostView: View {
                     if canEdit {
                         Button {
                             let entry = CostEntry(raw: ["id": .string(UUID().uuidString), "costBasis": .string("TOTAL")])
-                            editing = CostEditTarget(kind: .extra(entry.id), entry: entry)
+                            editing = CostEditTarget(kind: .extra(entry.id), entry: entry, isNew: true)
                         } label: { Label("비용 항목 추가", systemImage: "plus") }
                     }
                 } header: { Text("추가 비용") } footer: {
@@ -233,6 +233,8 @@ struct CostEditTarget: Identifiable {
     let id = UUID()
     let kind: Kind
     let entry: CostEntry
+    /// 아직 문서에 없는 새 항목 — 지울 것이 없으니 '삭제'를 두지 않는다(취소가 그 일을 한다).
+    var isNew = false
     var isBudget: Bool { if case .budget = kind { true } else { false } }
     /// 이름이 있어야 하고 지울 수 있는 항목 — 하루 추가 비용과 여행 준비 비용.
     var isExtra: Bool {
@@ -249,6 +251,7 @@ struct CostEntryEditor: View {
     @State private var saving = false
     @State private var failed = false
     @State private var showsDiscardConfirm = false
+    @State private var showsDeleteConfirm = false
     @Environment(\.dismiss) private var dismiss
 
     init(target: CostEditTarget, onSave: @escaping (CostEntry?) async -> Bool) {
@@ -331,12 +334,16 @@ struct CostEntryEditor: View {
                     }
                 }
                 if failed { Section { Text("비용을 저장하지 못했어요. 입력 내용은 유지되어 있어요.").foregroundStyle(Ink.warning) } }
-                if target.isExtra {
-                    Section { Button("항목 삭제", role: .destructive) { Task { await save(nil) } }.disabled(saving) }
+                // 지우기는 되돌릴 수 없다 — 한 번 묻는다(2026-09-27 UX 검토). 새 항목에는 두지 않는다.
+                if target.isExtra && !target.isNew {
+                    Section { Button("항목 삭제", role: .destructive) { showsDeleteConfirm = true }.disabled(saving) }
                 }
             }
             .paperGround()
             .tint(Ink.accent)
+            .confirmationDialog("‘\(entry.title.isEmpty ? "이 항목" : entry.title)’ 비용을 지울까요?", isPresented: $showsDeleteConfirm, titleVisibility: .visible) {
+                Button("삭제", role: .destructive) { Task { await save(nil) } }
+            }
             .navigationTitle(target.isBudget ? "하루 예산" : target.isPrep ? "예약 결제 금액" : "비용 입력")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

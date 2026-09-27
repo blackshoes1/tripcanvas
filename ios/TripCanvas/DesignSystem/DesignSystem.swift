@@ -34,6 +34,9 @@ enum Ink {
     /// ⚠️ 웹도 같은 값이다(`style.css`의 `--primary`) — 한쪽만 바꾸면 기기마다 다른 색으로
     ///    '누를 것'을 말하게 된다.
     static let accent = Color.accentColor
+    /// 강조색 **위의** 글자. 라이트의 올리브 위에는 흰색, 다크의 밝은 연두 위에는 짙은 글자다 —
+    /// 다크에서 흰 글자는 1.9:1로 읽히지 않았다(2026-09-27, 웹 `.btn.primary`와 같은 규칙).
+    static let onAccent = adaptive(light: 0xFFFFFF, dark: 0x16130F)
     /// 카드 테두리 — 그림자 대신 머리카락 선
     static let hairline = adaptive(light: 0x16130F, dark: 0xF7F5EF).opacity(0.08)
 
@@ -261,7 +264,7 @@ struct PrimaryActionButton: View {
             .font(.body.weight(.semibold))
             .frame(maxWidth: .infinity, minHeight: 48)
         }
-        .buttonStyle(.borderedProminent)
+        .prominentButton()
         .disabled(isBusy)
     }
 }
@@ -314,6 +317,9 @@ struct DateEntryField: View {
     @Binding var text: String?
     /// 달력을 처음 열 때의 기준 — 보통 시작일이나 오늘.
     var fallback: () -> Date = { Date() }
+    /// 지금 칸에 **못 읽는 글자**가 들어 있는가. 저장하는 화면은 이게 참이면 저장을 막는다 —
+    /// 칸에 보이는 것과 다른(이전) 날짜가 저장되면 안 된다(2026-09-27 UX 검토).
+    var invalid: Binding<Bool>? = nil
     @State private var typed = ""
     @FocusState private var focused: Bool
 
@@ -344,8 +350,13 @@ struct DateEntryField: View {
         .onChange(of: typed) { _, value in
             if let iso = ISODateText.parseLoose(value) { if iso != text { text = iso } }
             else if value.isEmpty { text = nil }
+            invalid?.wrappedValue = !value.isEmpty && ISODateText.parseLoose(value) == nil
         }
-        .onChange(of: focused) { _, on in if !on { typed = text ?? "" } }   // 칸을 나가면 정규화된 모양으로
+        // 칸을 나가면 정규화된 모양으로 — **읽을 수 있을 때만.** 못 읽는 글자는 그대로 두고 경고도 남긴다.
+        // 예전에는 이전 날짜로 되돌려 경고가 사라지고, 사용자는 고쳤다고 믿은 채 이전 날짜가 저장됐다.
+        .onChange(of: focused) { _, on in
+            if !on, typed.isEmpty || ISODateText.parseLoose(typed) != nil { typed = text ?? "" }
+        }
     }
 
     private var dateBinding: Binding<Date> {
@@ -397,6 +408,8 @@ struct InlineErrorBanner: View {
     let message: String
     var detail: String?
     var tint: Color = Ink.accent
+    /// 버튼이 **실제로 하는 일**을 말한다(예: '다시 불러오기'). 기본은 '다시 시도'.
+    var actionTitle: String = "다시 시도"
     var compact: Bool = false
     let retry: () -> Void
     @Environment(\.dynamicTypeSize) private var typeSize
@@ -435,7 +448,7 @@ struct InlineErrorBanner: View {
 
     @ViewBuilder
     private var retryButton: some View {
-        let button = Button("다시 시도", action: retry)
+        let button = Button(actionTitle, action: retry)
             .font(.caption.weight(.semibold))
             .tint(tint)
         if compact {
@@ -462,8 +475,18 @@ struct PickChip: View {
                 .padding(.vertical, Space.xs + 2)
                 .background(isOn ? Ink.accent.opacity(0.18) : Color(.tertiarySystemFill), in: Capsule())
                 .foregroundStyle(isOn ? Ink.accent : .primary)
+                // 겉모양은 그대로 두고 **누르는 칸만** 44pt — 칩이 줄지어 있어 옆 칩을 잘못 누르기 쉽다.
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(isOn ? [.isSelected] : [])
+    }
+}
+
+extension View {
+    /// 강조 버튼 한 벌 — `.borderedProminent`의 기본 흰 글자는 다크의 밝은 강조색 위에서 읽히지 않는다.
+    func prominentButton() -> some View {
+        buttonStyle(.borderedProminent).foregroundStyle(Ink.onAccent)
     }
 }

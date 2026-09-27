@@ -73,6 +73,9 @@ final class TripPlanViewModel: DayPlanContext {
     var documentCachedAt: Date? { store.cachedAt }
     var isSaving: Bool { store.isSaving }
     var errorMessage: String? { store.errorMessage }
+    var loadErrorMessage: String? { store.loadErrorMessage }
+    var saveErrorMessage: String? { store.saveErrorMessage }
+    var canRetrySave: Bool { store.canRetrySave }
     var conflict: String? { store.conflict }
     var toast: String? { store.toast }
     var canEdit: Bool { store.canEdit }
@@ -124,6 +127,8 @@ final class TripPlanViewModel: DayPlanContext {
 
     func dismissConflict() { store.dismissConflict() }
     func clearToast() { store.clearToast() }
+    func dismissSaveError() { store.dismissSaveError() }
+    func retryFailedSave() async { await store.retryFailedSave() }
 
     /// 이름표와 '누가 가나요'에 쓸 멤버. **일행이 있는 여행에서만, 한 번만** 부른다 —
     /// 혼자 쓰는 여행에는 고를 사람도 이름표를 붙일 분리도 없다.
@@ -258,23 +263,29 @@ final class TripPlanViewModel: DayPlanContext {
 
     /// 편집 화면이 만든 장소를 그대로 넣는다. 이름만 있는 장소도 일정에 남는다(좌표는 나중에).
     @discardableResult
-    func addSpot(_ spot: TripSpot, after index: Int? = nil, dayIndex: Int? = nil, expectedRevision: Int? = nil) async -> Bool {
+    func addSpot(_ spot: TripSpot, after index: Int? = nil, dayIndex: Int? = nil, expectedRevision: Int? = nil,
+                 toast: String = "장소를 추가했어요") async -> Bool {
         guard !spot.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
-        return await store.edit("장소를 추가했어요", expectedRevision: expectedRevision) { $0.insertSpot(spot, dayIndex: dayIndex ?? self.selectedDay, after: index) }
+        // 날은 **지금** 정한다 — 저장을 다시 시도할 때 다른 날을 보고 있어도 같은 날에 들어가게.
+        let day = dayIndex ?? selectedDay
+        return await store.edit(toast, expectedRevision: expectedRevision) { $0.insertSpot(spot, dayIndex: day, after: index) }
     }
 
     @discardableResult
     func updateSpot(at index: Int, with spot: TripSpot, dayIndex: Int? = nil, expectedRevision: Int? = nil) async -> Bool {
-        return await store.edit(nil, expectedRevision: expectedRevision) { $0.updateSpot(dayIndex: dayIndex ?? self.selectedDay, at: index, with: spot) }
+        let day = dayIndex ?? selectedDay
+        return await store.edit(nil, expectedRevision: expectedRevision) { $0.updateSpot(dayIndex: day, at: index, with: spot) }
     }
 
     @discardableResult
     func removeSpot(at index: Int, dayIndex: Int? = nil, expectedRevision: Int? = nil) async -> Bool {
-        return await store.edit("장소를 뺐어요", expectedRevision: expectedRevision) { $0.removeSpot(dayIndex: dayIndex ?? self.selectedDay, at: index) }
+        let day = dayIndex ?? selectedDay
+        return await store.edit("장소를 뺐어요", expectedRevision: expectedRevision) { $0.removeSpot(dayIndex: day, at: index) }
     }
 
     func moveSpots(from source: IndexSet, to destination: Int) async {
-        await store.edit(nil) { $0.moveSpots(dayIndex: self.selectedDay, from: source, to: destination) }
+        let day = selectedDay
+        await store.edit("순서를 바꿨어요") { $0.moveSpots(dayIndex: day, from: source, to: destination) }
     }
 
     @discardableResult
@@ -283,20 +294,21 @@ final class TripPlanViewModel: DayPlanContext {
             store.report("장소 이름을 입력해 주세요.")
             return false
         }
-        return await store.edit("Day \(targetDay + 1)로 옮겼어요", expectedRevision: expectedRevision) { document in
-            let sourceDay = dayIndex ?? self.selectedDay
+        let sourceDay = dayIndex ?? selectedDay
+        return await store.edit("\(targetDay + 1)일차로 옮겼어요", expectedRevision: expectedRevision) { document in
             if let spot { document.updateSpot(dayIndex: sourceDay, at: index, with: spot) }
             document.moveSpot(from: (day: sourceDay, index: index), toDay: targetDay)
         }
     }
 
     func setDayMode(_ mode: TravelMode) async {
+        let dayIndex = selectedDay
         await store.edit(nil) { document in
-            guard document.hasDay(self.selectedDay) else { return }
-            var day = document.days[self.selectedDay]
+            guard document.hasDay(dayIndex) else { return }
+            var day = document.days[dayIndex]
             day.mode = mode
             var days = document.days
-            days[self.selectedDay] = day
+            days[dayIndex] = day
             document.days = days
         }
     }
@@ -311,12 +323,13 @@ final class TripPlanViewModel: DayPlanContext {
     }
 
     func setDayTitle(_ title: String) async {
+        let dayIndex = selectedDay
         await store.edit(nil) { document in
-            guard document.hasDay(self.selectedDay) else { return }
-            var day = document.days[self.selectedDay]
+            guard document.hasDay(dayIndex) else { return }
+            var day = document.days[dayIndex]
             day.title = title.trimmingCharacters(in: .whitespacesAndNewlines)
             var days = document.days
-            days[self.selectedDay] = day
+            days[dayIndex] = day
             document.days = days
         }
     }

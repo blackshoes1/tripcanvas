@@ -47,7 +47,7 @@ struct TripDepartureCard: View {
             layout {
                 Button(action: onOpenPlan) {
                     actionLabel("일정 보기", symbol: "calendar")
-                        .foregroundStyle(.white)
+                        .foregroundStyle(Ink.onAccent)
                         .background(Ink.accent, in: RoundedRectangle(cornerRadius: 12))
                 }
                 NavigationLink { BookingListView(trip: trip) } label: {
