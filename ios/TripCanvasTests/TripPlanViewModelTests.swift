@@ -34,6 +34,23 @@ final class TripPlanViewModelTests: XCTestCase {
         XCTAssertFalse(model.isLoading, "문서가 있으므로 화면은 로딩으로 바뀌지 않는다")
     }
 
+    func testCostScreenSavedDocumentReplacesPlanAndInvalidatesOldUndo() async {
+        let service = FakeDocumentService(snapshot: .init(document: document(), revision: 7, role: .owner))
+        let model = TripPlanViewModel(tripId: "t1", service: service, loadsPlans: false)
+        await model.load()
+        await model.addSpot(TripSpot(name: "추가 장소"))
+        XCTAssertTrue(model.canUndo)
+        var edited = service.snapshot.document
+        edited.deleteSpotCost(day: 0, index: 0, includingSource: true)
+        let saved = TripDocumentSnapshot(document: edited, revision: 9, role: .owner)
+        model.acceptSaved(saved)
+        XCTAssertEqual(model.document, edited)
+        XCTAssertEqual(model.revision, 9)
+        XCTAssertFalse(model.canUndo, "다른 편집기의 저장을 옛 undo로 되살리지 않는다")
+        model.acceptSaved(.init(document: document(), revision: 7, role: .owner))
+        XCTAssertEqual(model.document, edited, "늦게 온 이전 문서는 채택하지 않는다")
+    }
+
     func testLoadsDocumentAndRole() async {
         let service = FakeDocumentService(snapshot: .init(document: document(), revision: 7, role: .viewer))
         let model = TripPlanViewModel(tripId: "t1", service: service)

@@ -119,7 +119,7 @@ struct TripHomeView: View {
         }
         // 여행을 보는 동안 실시간에 붙어 있는다 — 일행이 일정을 고치면 `지금`·`일정`이 그 자리에서 바뀐다.
         // 전에는 '가고 싶은 곳' 보드가 열렸을 때만 붙어서, 다른 탭에서는 아무 일도 일어나지 않았다(2026-09-20).
-        .task(id: trip.id) { startLive() }
+        .task(id: trip.id) { models.connectDocumentUpdates(service: env.service); startLive() }
         // 앱이 뒤로 가면 소켓을 붙들지 않는다(§34) — 돌아올 때 다시 붙고 그때 최신을 읽는다.
         .onChange(of: scenePhase) { _, phase in
             switch phase {
@@ -299,6 +299,19 @@ final class TripScreenModels {
         collab = CollabViewModel(trip: trip, service: env.service, webBaseURL: AppConfig.webBaseURL)
         candidateBoard = CandidateBoardViewModel(trip: trip, service: env.service, documents: env.service)
         self.tripId = trip.id
+    }
+
+    /// State가 보존한 모델에서 연결한다. View 초기화 중 버려지는 모델이 콜백을 덮지 않게 한다.
+    func connectDocumentUpdates(service: TripService) {
+        service.onDocumentSaved = { [weak self] id, snapshot in
+            guard let self, id == self.tripId else { return }
+            self.costs.invalidate()
+            self.bookings.invalidate()
+            let refreshToday = self.today.today != nil || self.today.isLoading
+            self.today.invalidate(revision: snapshot.revision)
+            self.plan.acceptSaved(snapshot)
+            if refreshToday { Task { await self.today.load() } }
+        }
     }
 
     /// 실시간 이벤트 하나를 화면들에 나눈다. 무엇을 읽을지는 `TripLiveRefresh`가 정하고 여기서는 그대로 따른다.

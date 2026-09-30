@@ -200,7 +200,14 @@ struct TripPlanView: View {
             if let document = model.document, document.hasDay(costDay) {
                 DayCostView(day: document.days[costDay], cost: model.overviewPlan(costDay)?.day.totals.cost, canEdit: model.canEdit,
                             draftKey: EditorDraftKey(accountID: env.auth.session?.userId, tripID: trip.id, editor: "spend-\(costDay)"),
-                            onRefresh: { await model.load() }) { edited in
+                            onRefresh: { await model.load() },
+                            onDeleteSpot: { index, includingSource in
+                                guard var draft = model.document, model.revision == costRevision else { return nil }
+                                draft.deleteSpotCost(day: costDay, index: index, includingSource: includingSource)
+                                let saved = await model.savePreparedDocument(draft, expectedRevision: costRevision, message: "비용을 삭제했어요")
+                                if saved { costRevision = model.revision }
+                                return saved ? model.document?.days[costDay] : nil
+                            }) { edited in
                     guard var draft = model.document, draft.hasDay(costDay), model.revision == costRevision else { return false }
                     var days = draft.days
                     // 비용 시트 밖에서 편집한 장소 필드는 건드리지 않는다.
@@ -208,7 +215,7 @@ struct TripPlanView: View {
                     days[costDay].setField("costItems", edited.raw["costItems"])
                     var spots = days[costDay].spots
                     for index in spots.indices where edited.spots.indices.contains(index) {
-                        for key in ["cost", "cur", "costBasis", "costPeople", "costPartial", "costKind"] {
+                        for key in CostEntry.spotCostKeys {
                             spots[index].setField(key, edited.spots[index].raw[key])
                         }
                     }

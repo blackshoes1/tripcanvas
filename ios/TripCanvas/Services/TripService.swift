@@ -37,6 +37,7 @@ extension TripDataSource {
 @MainActor
 final class TripService: TripDataSource {
     // extension(TravelStateSource)에서도 쓰므로 private이 아니다.
+    var onDocumentSaved: ((String, TripDocumentSnapshot) -> Void)?
     let api: APIClient
     let cache: TripCache
     private(set) var cacheScope: TripCache.Scope?
@@ -415,9 +416,11 @@ extension TripService: TripDocumentSource {
         let response: TripDetailResponse = try await api.put(
             "/api/v1/trips/\(tripId)", jsonBody: try JSONValue.data(from: body))
         await cache.save(response, key: TripCache.documentKey(tripId: tripId), scope: scope)
-        return TripDocumentSnapshot(
+        let snapshot = TripDocumentSnapshot(
             document: TripDocument(raw: response.document),
             revision: response.trip.revision,
             role: response.trip.role ?? .owner)
+        if scope == cacheScope { onDocumentSaved?(tripId, snapshot) }
+        return snapshot
     }
 }

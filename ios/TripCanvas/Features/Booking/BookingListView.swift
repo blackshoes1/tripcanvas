@@ -15,6 +15,7 @@ final class BookingListViewModel {
     /// 서버에서 마지막으로 받은 시각 — 시트를 다시 열 때 또 받을지의 기준.
     private(set) var loadedAt: Date?
 
+    private var loadGeneration = 0
     private let service: TripDataSource
     private let tripId: String
 
@@ -25,21 +26,27 @@ final class BookingListViewModel {
 
     /// 시트를 열 때 부른다 — 방금 받은 목록이 있으면 그대로다(Today·Plan과 같은 60초 규칙, 2026-09-18).
     /// 저장·삭제·당겨서 새로고침은 여전히 `load()`다.
+    func invalidate() { loadedAt = nil; bookings = []; loadGeneration += 1; isLoading = false }
+
     func loadIfStale(maxAge: TimeInterval = 60, now: Date = Date()) async {
         if errorMessage == nil, cachedAt == nil, let loadedAt, now.timeIntervalSince(loadedAt) < maxAge { return }
         await load()
     }
 
     func load() async {
+        loadGeneration += 1
+        let generation = loadGeneration
         if bookings.isEmpty { isLoading = true }
-        defer { isLoading = false }
+        defer { if generation == loadGeneration { isLoading = false } }
         do {
             let fetched = try await service.bookings(tripId: tripId)
+            guard generation == loadGeneration else { return }
             bookings = fetched.value
             cachedAt = fetched.cachedAt
             if fetched.cachedAt == nil { loadedAt = Date() }
             errorMessage = nil
         } catch {
+            guard generation == loadGeneration else { return }
             errorMessage = error.localizedDescription
         }
     }

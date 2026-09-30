@@ -219,6 +219,14 @@ final class TripDocumentStore {
 
     /// 서버가 준 문서를 받아들인다. **뒤처진 것은 받지 않는다** — 늦게 온 옛 문서가 새 문서를 덮으면
     /// 방금 저장한 것이 사라진 것처럼 보인다.
+    func acceptSaved(_ snapshot: TripDocumentSnapshot) {
+        guard !isSaving else { return }
+        loadGeneration += 1
+        isLoading = false
+        apply(snapshot)
+        loadedAt = Date()
+    }
+
     private func apply(_ snapshot: TripDocumentSnapshot) {
         guard snapshot.revision >= revision else { return }
         let revisionChanged = snapshot.revision != revision

@@ -57,6 +57,12 @@ final class TripPlanViewModel: DayPlanContext {
         cache.onDayPlanLoaded = { [weak self] in await self?.loadMembers() }
     }
 
+    func acceptSaved(_ snapshot: TripDocumentSnapshot) {
+        guard !store.isSaving else { return }
+        store.acceptSaved(snapshot)
+        Task { await loadPlan() }
+    }
+
     // MARK: DayPlanContext — 캐시가 "지금"을 묻는 창구
 
     var currentRevision: Int { store.revision }

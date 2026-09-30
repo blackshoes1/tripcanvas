@@ -13,7 +13,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js" integrity="sha384-+pWnyi8LtZx+cgXfD2arWgUX7pHIaEL215cEPPk9WrsegNlgvDL9DNjaqsceQq6o" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js" integrity="sha384-BSxuMLxX+FCbTdYec3TbXlnMGEEM2QXTFdtDaveen71o+jswm2J36+xFqp8k4VHM" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.min.js" integrity="sha384-l8ah+VgaWtk1mvOe9VC+OirC6qHFF4yH7l7mKRidV9MSti3E9F463bMp6ZVN4kuC" crossorigin="anonymous"></script>
-<link rel="stylesheet" href="style.css?v=tc-v237">
+<link rel="stylesheet" href="style.css?v=tc-v238">
 <!-- Travelpayouts 사이트 소유 인증 (파트너 가입 검증용 — DiscoverCars API 신청에 필요) -->
 <script nowprocket data-noptimize="1" data-cfasync="false" data-wpfc-render="false" seraph-accel-crit="1" data-no-defer="1" data-cmp-ab="2">
   (function () {
@@ -147,6 +147,28 @@
     <button class="btn primary" id="spotSave">저장</button>
   </div>
 </div></div>
+
+<dialog id="costDeleteDialog" class="costDialog" aria-labelledby="costDeleteTitle">
+  <h2 id="costDeleteTitle">비용 삭제</h2>
+  <div id="costDeleteSourceRow" class="chkrow"><input type="checkbox" id="costDeleteSource"><label for="costDeleteSource">일정의 장소·예약도 함께 삭제</label></div>
+  <p>선택하지 않으면 비용 정보만 지워요. 함께 삭제해도 실제 예약은 취소되지 않아요.</p>
+  <div class="row modalActions"><button class="btn" id="costDeleteCancel">취소</button><button class="btn" id="costDeleteConfirm">삭제</button></div>
+</dialog>
+<dialog id="placeCostDialog" class="costDialog" aria-labelledby="placeCostTitle">
+  <h2 id="placeCostTitle">일정 장소 비용 입력</h2>
+  <label for="costPlace">일정에 저장된 장소</label><select id="costPlace"></select>
+  <p class="hint">장소를 고르면 저장된 비용을 불러와요. 수정한 내용은 일정에도 반영돼요.</p>
+  <label for="costAmount">금액</label><input id="costAmount" inputmode="decimal" placeholder="미정 (무료는 0)">
+  <label for="costCurrency">통화</label><select id="costCurrency"><option>KRW</option><option>USD</option><option>EUR</option><option>JPY</option><option>CNY</option></select>
+  <label for="costKind">분류</label><select id="costKind"><option value="AUTO">장소 분류에 따름</option><option value="FLIGHT">항공</option><option value="STAY">숙박</option><option value="RENT">렌트</option><option value="TRANSIT">대중교통</option><option value="FOOD">식비</option><option value="SHOPPING">쇼핑</option><option value="TICKET">입장권·관람권</option><option value="TRANSPORT">택시·기타 교통</option><option value="OTHER">기타</option></select>
+  <label for="costBasis">금액 기준</label><select id="costBasis"><option value="ENTERED">입력 금액 그대로</option><option value="TOTAL">전체 금액</option><option value="PER_PERSON">1인 금액</option></select>
+  <label for="costPeople">적용 인원</label><input type="number" id="costPeople" min="1" max="100">
+  <div class="chkrow"><input type="checkbox" id="costPartial"><label for="costPartial">일부 금액만 확인했어요</label></div>
+  <label for="costPaidOn">결제일</label><input type="date" id="costPaidOn">
+  <label for="costPayState">결제 상태 (결제일이 있으면 날짜로 결정)</label><select id="costPayState"><option value="NONE">고르지 않음</option><option value="RESERVED">예약</option><option value="PAID">결제</option></select>
+  <p class="hint" id="costPhotoNote"></p>
+  <div class="row modalActions"><button class="btn" id="costPlaceDelete">비용 삭제</button><button class="btn" id="costPlaceCancel">취소</button><button class="btn primary" id="costPlaceSave">저장</button></div>
+</dialog>
 
 <!-- 일자 편집 모달 -->
 <div class="modalBg" id="dayModalBg"><div class="modal">
@@ -373,7 +395,7 @@
   <h2>예약 결제 금액</h2>
   <div class="hint">가기 전에 내는 돈 — 항공·숙박·렌트 예약과 보험·유심·미리 산 입장권을 한 목록으로 봐요. 결제일을 정해 두면 그 날부터 결제 완료로 쳐요. 숙박·렌터카 예약은 시세를 계속 확인해 좋은 조건이 생기면 알려드려요 — 재예약·취소는 직접 결정하세요.</div>
   <div id="bookingSummary"></div>
-  <div class="row" style="margin:8px 0 2px"><button class="btn" id="bookingAdd">＋ 결제 항목 추가</button></div>
+  <div class="row" style="margin:8px 0 2px"><button class="btn" id="bookingAdd">＋ 결제 항목 추가</button><button class="btn" id="costPlaceOpen">일정 장소 비용 입력</button></div>
   <div id="bookingListBody"></div>
   <div class="hint" id="pxSourceLine"></div>
   <div class="row">
@@ -641,15 +663,15 @@
   <div id="placeDetailsContent" aria-live="polite"></div>
   <footer id="placeDetailsActions"></footer>
 </dialog>
-<script src="lib.js?v=tc-v237"></script>
-<script src="sync.js?v=tc-v237"></script>
-<script src="routing.js?v=tc-v237"></script>
-<script src="price.js?v=tc-v237"></script>
-<script src="adaptive.js?v=tc-v237"></script>
-<script src="intake.js?v=tc-v237"></script>
-<script src="collab.js?v=tc-v237"></script>
-<script src="api.js?v=tc-v237"></script>
-<script src="auth.js?v=tc-v237"></script>
-<script src="app.js?v=tc-v237"></script>
+<script src="lib.js?v=tc-v238"></script>
+<script src="sync.js?v=tc-v238"></script>
+<script src="routing.js?v=tc-v238"></script>
+<script src="price.js?v=tc-v238"></script>
+<script src="adaptive.js?v=tc-v238"></script>
+<script src="intake.js?v=tc-v238"></script>
+<script src="collab.js?v=tc-v238"></script>
+<script src="api.js?v=tc-v238"></script>
+<script src="auth.js?v=tc-v238"></script>
+<script src="app.js?v=tc-v238"></script>
 </body>
 </html>

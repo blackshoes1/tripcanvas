@@ -45,3 +45,10 @@ it('시각 없는 명소 예약 완료와 예약 메모도 반환한다', () => 
     title: '궁전', startTime: null, note: '오후 방문\n예약번호 ABC, 입구에서 QR 제시', priceKnown: false
   });
 });
+
+it('비용만 삭제한 예약은 예약 목록에 남고 무료가 아닌 금액 미정으로 표시한다', () => {
+  const trip = { days: [], bookings: [{ id: 'hotel', type: 'hotel', title: '호텔', price: null, track: false }] };
+  const rows = buildBookings(trip as TripDoc, [], '2026-10-01');
+  expect(rows).toHaveLength(1);
+  expect(rows[0]).toMatchObject({ id: 'hotel', title: '호텔', priceKnown: false, price: 0 });
+});

@@ -64,7 +64,15 @@ struct CostEntry: Hashable, Sendable, Identifiable {
         var spot = original
         spot.cost = amount
         spot.setField("costKind", kind == "AUTO" ? nil : .string(kind))
-        for key in ["cur", "costBasis", "costPeople", "costPartial", "payState", "photos"] { spot.setField(key, raw[key]) }
+        for key in ["cur", "costBasis", "costPeople", "costPartial", "payState", "paidOn", "photos"] { spot.setField(key, raw[key]) }
+        return spot
+    }
+
+    static let spotCostKeys = ["cost", "costKind", "cur", "costBasis", "costPeople", "costPartial", "payState", "paidOn", "photos"]
+
+    static func clearing(_ original: TripSpot) -> TripSpot {
+        var spot = original
+        for key in spotCostKeys { spot.setField(key, nil) }
         return spot
     }
 }

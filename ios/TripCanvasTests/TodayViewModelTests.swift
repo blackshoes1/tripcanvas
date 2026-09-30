@@ -89,6 +89,25 @@ final class TodayViewModelTests: XCTestCase {
         TodayViewModel(trip: today.trip, service: stub)
     }
 
+    func testCostSaveInvalidatesOlderTodayIncludingDiskFallback() async throws {
+        let old = try fixture()
+        let stub = StubDataSource(todayResponse: old)
+        let model = makeModel(stub, from: old)
+        await model.load()
+        XCTAssertNotNil(model.today)
+        model.invalidate(revision: old.trip.revision + 1)
+        stub.cachedToday = old
+        await model.load()
+        XCTAssertNil(model.today, "삭제 전의 서버 응답·디스크 캐시로 일정을 되살리지 않는다")
+        var raw = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(old)) as? [String: Any])
+        var trip = try XCTUnwrap(raw["trip"] as? [String: Any])
+        trip["revision"] = old.trip.revision + 1
+        raw["trip"] = trip
+        stub.todayResponse = try JSONDecoder().decode(TodayResponse.self, from: JSONSerialization.data(withJSONObject: raw))
+        await model.load()
+        XCTAssertEqual(model.today?.trip.revision, old.trip.revision + 1)
+    }
+
     // MARK: 테스트
 
     /// 탭을 오갈 때마다 서버를 다시 묻지 않는다 — 방금 받은 것이면 그대로다(2026-09-17 "탭마다 로딩" 보고).

@@ -758,7 +758,7 @@ test('통합: 예약이 아닌 결제 항목은 같은 편집기로 여행 단�
   w.document.getElementById('bkSave').click();
   assert.deepEqual(w.eval('JSON.stringify(trip().costItems.map(i=>[i.kind,i.amount]))'), JSON.stringify([['TICKET', 35000]]));
   // 삭제 — 같은 버튼
-  w.eval(`window.confirm=()=>true; openBookingModal(trip().costItems[0].id); document.getElementById('bkDelBtn').click();`);
+  w.eval(`window.confirm=()=>true; openBookingModal(trip().costItems[0].id); document.getElementById('bkDelBtn').click(); document.getElementById('costDeleteConfirm').click();`);
   assert.equal(w.eval('trip().costItems'), undefined, '비면 필드째 사라진다');
   w.close();
 });
@@ -1677,8 +1677,8 @@ test('통합: 예약을 지우면 일정에 남은 픽업·반납 연결도 함�
   withTrip(w, `[{title:'D1',drive:'',note:'',mode:'car',spots:[{name:'공항',city:'P',desc:'',lat:39.55,lng:2.73}]}]`);
   w.eval(`trip().bookings=[{id:'c1',type:'car',title:'차',price:1,start:'2026-08-01',end:'2026-08-01'}];
     trip().days[0].spots[0].carPickupId='c1'; activeDay=0; render();
-    window.confirm=()=>true; openBookingModal('c1'); document.getElementById('bkDelBtn').click();`);
-  assert.equal(w.eval(`trip().days[0].spots[0].carPickupId`), undefined, '끊어진 연결이 남으면 안 된다');
+    window.confirm=()=>true; openBookingModal('c1'); document.getElementById('bkDelBtn').click(); document.getElementById('costDeleteSource').checked=true; document.getElementById('costDeleteConfirm').click();`);
+  assert.equal(w.eval(`trip().days[0].spots.length`), 0, '함께 삭제한 장소가 남으면 안 된다');
   assert.equal(w.document.querySelectorAll('.carbkChip').length, 0);
   w.close();
 });
@@ -2000,16 +2000,20 @@ test('통합: 예약을 삭제하면 스팟의 예약·렌터카 연결 참조�
     trip().days[0].spots[1].carReturnId='bc';
     priceStore.bc={obs:[{price:80000,at:'2026-08-30T00:00:00Z'}],offers:[],at:null,err:null};
     window.confirm=()=>true; render();`);
-  // 렌터카 예약 삭제 → carPickupId·carReturnId 정리 + 가격 기록 제거, 호텔 연결은 유지
+  // 함께 삭제 → 연결 장소·렌터카 예약 제거, 다른 예약은 유지
   w.eval(`editingBooking='bc'`);
   w.document.getElementById('bkDelBtn').click();
+  w.document.getElementById('costDeleteSource').checked=true;
+  w.document.getElementById('costDeleteConfirm').click();
   assert.deepEqual(w.eval(`trip().bookings.map(b=>b.id)`), ['bh']);
   assert.equal(w.eval(`trip().days[0].spots.some(s=>s.carPickupId||s.carReturnId)`), false, '렌터카 참조 정리');
-  assert.equal(w.eval(`trip().days[0].spots[1].bookingId`), 'bh', '다른 예약 연결은 보존');
+  assert.equal(w.eval(`trip().days[0].spots.length`), 0, '함께 삭제한 연결 장소도 제거');
   assert.equal(w.eval(`'bc' in priceStore`), false, '가격 관측 기록도 함께 제거');
   // 호텔 예약 삭제 → bookingId 정리, bookings 키 자체 제거
   w.eval(`editingBooking='bh'`);
   w.document.getElementById('bkDelBtn').click();
+  w.document.getElementById('costDeleteSource').checked=true;
+  w.document.getElementById('costDeleteConfirm').click();
   assert.equal(w.eval(`trip().days[0].spots.some(s=>s.bookingId)`), false);
   assert.equal(w.eval(`trip().bookings`), undefined, '빈 배열 대신 키 제거(기존 규칙)');
   w.close();
@@ -4305,4 +4309,28 @@ test('통합: 작은 버튼을 인라인 style로 만들지 않는다', { skip: 
     assert.equal(/font-size:11px;padding:2px/.test(src), false,
                  `${f}에 작은 버튼 인라인 스타일이 남아 있다 — .btn.sm을 쓴다`);
   }
+});
+
+test('통합: 일정 장소 비용 입력은 기존 값을 불러오고 결제일·통화·금액을 원본에 저장한다', {skip:noJsdom}, () => {
+  const w=boot();
+  withTrip(w, `[{spots:[{name:'미술관',cost:12.5,cur:'EUR',paidOn:'2026-10-01',costBasis:'PER_PERSON',costPeople:2,photos:['receipt'],custom:'keep'}]}]`);
+  w.eval('openPlaceCost(0)');
+  const el=id=>w.document.getElementById(id);
+  assert.equal(el('costAmount').value,'12.5');
+  assert.equal(el('costCurrency').value,'EUR');
+  assert.equal(el('costPaidOn').value,'2026-10-01');
+  assert.equal(el('costBasis').value,'PER_PERSON');
+  el('costAmount').value='15.25'; el('costPaidOn').value='2026-10-02'; el('costPlaceSave').click();
+  assert.equal(w.eval('trip().days[0].spots[0].cost'),15.25);
+  assert.equal(w.eval('trip().days[0].spots[0].paidOn'),'2026-10-02');
+  assert.equal(w.eval('trip().days[0].spots[0].photos[0]'),'receipt');
+  assert.equal(w.eval('trip().days[0].spots[0].custom'),'keep');
+  w.eval('openPlaceCost(0)'); el('costPlaceDelete').click();
+  assert.equal(el('costDeleteSource').checked,false);
+  el('costDeleteConfirm').click();
+  assert.equal(w.eval('trip().days[0].spots.length'),1);
+  assert.equal(w.eval('trip().days[0].spots[0].cost'),undefined);
+  w.eval('openPlaceCost(0)'); el('costPlaceDelete').click(); el('costDeleteSource').checked=true; el('costDeleteConfirm').click();
+  assert.equal(w.eval('trip().days[0].spots.length'),0);
+  w.close();
 });

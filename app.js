@@ -190,7 +190,7 @@ let pendingExternalStore=null;
 // 입력·검색·지도 지정 중이면 화면을 뺏지 않는다 (SW 자동 새로고침과 같은 판정)
 function isBusyEditing(){
   return pickMode || searching || _importing
-    || !!document.querySelector('.modalBg.show') || document.getElementById('placeDetails')?.open || document.getElementById('travel').classList.contains('show');
+    || !!document.querySelector('.modalBg.show') || !!document.querySelector('dialog[open]') || document.getElementById('travel').classList.contains('show');
 }
 // syncMeta도 탭마다 메모리 사본이다. 안 갱신하면 이 탭이 옛 revision으로 업로드해 헛충돌을 만든다.
 function refreshSyncMetaFromStorage(){
@@ -401,7 +401,8 @@ function renderPlaceDetails(data,box,seq){
     let uri='';
     try{uri=safeUrl(photo.getURI({maxWidth:720,maxHeight:480}));}catch(e){/* 사진 실패가 기본 정보를 가리지 않는다. */}
     if(uri){
-      img.src=uri; img.alt=(data.name||'매장')+' 사진'; img.loading='lazy';
+      img.src=uri;
+      img.alt=(data.name||'매장')+' 사진'; img.loading='lazy';
       img.onerror=()=>{img.remove();}; figure.appendChild(img);
       const cap=placeText(figure,'figcaption','사진 · ');
       (photo.authorAttributions||[]).forEach(a=>{placeLink(cap,a.displayName||'작성자',a.uri)||placeText(cap,'span',a.displayName||'작성자');});
@@ -2371,7 +2372,7 @@ document.getElementById('spotSave').onclick=()=>{
   if(isEdit){
     const prev=trip().days[editing.di].spots[editing.si]||{};
     if(prev.bookingId) s.bookingId=prev.bookingId;
-    for(const key of ['costBasis','costPeople','costPartial']) if(prev[key]!=null) s[key]=prev[key];
+    for(const key of ['costKind','costBasis','costPeople','costPartial','payState','paidOn','photos']) if(prev[key]!=null) s[key]=prev[key];
     if(prev.candidateId!=null) s.candidateId=prev.candidateId;
     if(prev.carPickupId) s.carPickupId=prev.carPickupId;
     if(prev.carReturnId) s.carReturnId=prev.carReturnId;
@@ -3750,29 +3751,105 @@ document.getElementById('bkSave').onclick=()=>{
     if(document.getElementById('bookingListBg').classList.contains('show')) renderBookingList();
   });
 };
+// 선택한 원본을 고정해 둔다 — 삭제창이 열린 사이 바뀐 문서에는 적용하지 않는다.
+function confirmCostDelete(title,allowsSource,onDelete){
+  const dialog=document.getElementById('costDeleteDialog');
+  document.getElementById('costDeleteTitle').textContent=title+' 비용 삭제';
+  document.getElementById('costDeleteSource').checked=false;
+  document.getElementById('costDeleteSourceRow').hidden=!allowsSource;
+  document.getElementById('costDeleteConfirm').onclick=()=>{
+    if(!guardEdit()) return;
+    if(onDelete(document.getElementById('costDeleteSource').checked)!==false) dialog.close();
+  };
+  dialog.showModal();
+}
+document.getElementById('costDeleteCancel').onclick=()=>document.getElementById('costDeleteDialog').close();
 document.getElementById('bkDelBtn').onclick=()=>{
-  if(editingCostItem){
-    const item=costItemOf(editingCostItem); if(!item) return;
+  if(!guardEdit()) return;
+  const item=costItemOf(editingCostItem), b=bookingOf(editingBooking);
+  if(!item&&!b) return;
+  const before=JSON.stringify(trip());
+  confirmCostDelete((item||b).title,!!b,includingSource=>{
+    if(JSON.stringify(trip())!==before){ toast('여행이 변경됐어요. 최신 항목을 다시 열어 주세요.'); return false; }
     const snap=snapshot();
-    commit(()=>{ trip().costItems=(trip().costItems||[]).filter(x=>x.id!==item.id); if(!trip().costItems.length) delete trip().costItems; });
+    commit(()=>{
+      if(item){ trip().costItems=(trip().costItems||[]).filter(x=>x.id!==item.id); if(!trip().costItems.length) delete trip().costItems; }
+      else deleteBookingCost(trip(),b.id,includingSource);
+    });
+    if(b){ delete priceStore[b.id]; savePrices(); }
     document.getElementById('bookingModalBg').classList.remove('show');
     if(document.getElementById('bookingListBg').classList.contains('show')) renderBookingList();
-    toast('결제 항목을 지웠어요','#4f4740',{fn:()=>undoWith(snap)});
-    return;
-  }
-  const b=bookingOf(editingBooking); if(!b) return;
-  if(!confirm(`"${b.title}" 예약을 이 여행에서 지울까요?\n예약번호·기간·금액과 일정 연결이 모든 일행에게서 사라져요. 실제 예약은 취소되지 않아요.`)) return;
-  const snap=snapshot();
-  commit(()=>{
-    trip().bookings=tripBookings().filter(x=>x.id!==b.id);
-    if(!trip().bookings.length) delete trip().bookings;
-    trip().days.forEach(d=>d.spots.forEach(s=>{ if(s.bookingId===b.id) delete s.bookingId;
-      if(s.carPickupId===b.id) delete s.carPickupId; if(s.carReturnId===b.id) delete s.carReturnId; }));
+    toast(includingSource?'일정의 장소·예약도 지웠어요':'비용 정보를 지웠어요','#4f4740',{fn:()=>undoWith(snap)});
   });
-  delete priceStore[b.id]; savePrices();
-  document.getElementById('bookingModalBg').classList.remove('show');
-  if(document.getElementById('bookingListBg').classList.contains('show')) renderBookingList();
-  toast('예약을 지웠어요','#4f4740',{fn:()=>undoWith(snap)});
+};
+
+let costEditorSnapshot='', costEditorTrip='';
+function selectedCostSpot(){
+  const [di,si]=document.getElementById('costPlace').value.split(':').map(Number);
+  return {di,si,spot:trip().days[di]?.spots[si]};
+}
+function fillPlaceCost(){
+  const {spot}=selectedCostSpot();
+  const item=spot||{};
+  document.getElementById('costAmount').value=item.cost==null?'':String(item.cost);
+  document.getElementById('costCurrency').value=item.cur||'KRW';
+  document.getElementById('costBasis').value=item.costBasis||'ENTERED';
+  document.getElementById('costPeople').value=item.costPeople||1;
+  document.getElementById('costPartial').checked=!!item.costPartial;
+  document.getElementById('costKind').value=item.costKind||'AUTO';
+  document.getElementById('costPaidOn').value=item.paidOn||'';
+  document.getElementById('costPayState').value=item.payState||'NONE';
+  document.getElementById('costPhotoNote').textContent=photoNote(photoCount(item));
+  document.getElementById('costPlaceDelete').disabled=!spot;
+  document.getElementById('costPlaceSave').disabled=!spot;
+}
+window.openPlaceCost=(di=activeDay)=>{
+  if(!guardEdit()) return;
+  const select=document.getElementById('costPlace'); select.replaceChildren();
+  trip().days.forEach((day,d)=>day.spots.forEach((spot,i)=>{
+    const option=new Option(`Day ${d+1} · ${spot.name}`,`${d}:${i}`); select.add(option);
+  }));
+  const first=Array.from(select.options).find(o=>o.value.startsWith(di+':'));
+  if(first) select.value=first.value;
+  costEditorSnapshot=JSON.stringify(trip()); costEditorTrip=trip().id;
+  fillPlaceCost(); document.getElementById('placeCostDialog').showModal();
+};
+document.getElementById('costPlace').onchange=fillPlaceCost;
+document.getElementById('costPlaceOpen').onclick=()=>openPlaceCost();
+document.getElementById('costPlaceCancel').onclick=()=>document.getElementById('placeCostDialog').close();
+function canSavePlaceCost(){
+  if(!guardEdit()) return false;
+  if(trip().id!==costEditorTrip||JSON.stringify(trip())!==costEditorSnapshot){ toast('여행이 변경됐어요. 최신 장소를 다시 선택해 주세요.'); return false; }
+  return !!selectedCostSpot().spot;
+}
+document.getElementById('costPlaceSave').onclick=()=>{
+  if(!canSavePlaceCost()) return;
+  const {spot}=selectedCostSpot(), cur=document.getElementById('costCurrency').value;
+  const text=document.getElementById('costAmount').value.trim(), amount=parseCostAmount(text,cur);
+  if(text&&amount===null){ toast('금액을 확인해 주세요.'); return; }
+  commit(()=>{
+    spot.cost=amount; spot.cur=cur;
+    spot.costBasis=document.getElementById('costBasis').value;
+    spot.costPeople=Math.min(100,Math.max(1,+document.getElementById('costPeople').value||1));
+    spot.costPartial=document.getElementById('costPartial').checked;
+    const kind=document.getElementById('costKind').value;
+    if(kind==='AUTO') delete spot.costKind; else spot.costKind=kind;
+    const paidOn=document.getElementById('costPaidOn').value, state=document.getElementById('costPayState').value;
+    if(paidOn) spot.paidOn=paidOn; else delete spot.paidOn;
+    if(!paidOn&&state!=='NONE') spot.payState=state; else delete spot.payState;
+  });
+  document.getElementById('placeCostDialog').close(); toast('일정의 비용을 저장했어요');
+};
+document.getElementById('costPlaceDelete').onclick=()=>{
+  if(!canSavePlaceCost()) return;
+  const {di,si,spot}=selectedCostSpot();
+  confirmCostDelete(spot.name,true,includingSource=>{
+    if(!canSavePlaceCost()) return false;
+    const snap=snapshot();
+    commit(()=>deleteSpotCost(trip(),di,si,includingSource));
+    document.getElementById('placeCostDialog').close();
+    toast(includingSource?'일정의 장소도 지웠어요':'비용 정보를 지웠어요','#4f4740',{fn:()=>undoWith(snap)});
+  });
 };
 
 // ───────────────── 내보내기/가져오기/공유 ─────────────────
@@ -6500,7 +6577,7 @@ function initAccessibility(){
     }
   })).observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['class']});
   document.addEventListener('keydown',e=>{
-    if(document.getElementById('placeDetails')?.open) return; // native dialog owns Escape/focus while nested over an editor
+    if(document.querySelector('dialog[open]')) return; // native dialogs own Escape/focus while nested over an editor
     const target=e.target;
     if((e.key==='Enter'||e.key===' ')&&target.matches('[role="button"]:not(button)')){ e.preventDefault(); target.click(); return; }
     const onboarding=document.getElementById('onboarding');

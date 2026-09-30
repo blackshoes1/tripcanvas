@@ -105,3 +105,44 @@ test('보기 설정 패널도 모바일 필터바에 잘리지 않는다',async(
   await page.locator('#themeBtn').click();
   await expect(panel).toBeVisible();
 });
+
+test('비용 입력은 일정 장소의 값을 편집하고 체크한 범위만 삭제한다',async({page})=>{
+  await page.goto('/'); await page.evaluate(SEED);
+  await page.evaluate(()=>{
+    const s=trip().days[1].spots[0]; s.cost=12.5; s.cur='EUR'; s.paidOn='2026-10-01'; s.costPeople=2; s.costBasis='PER_PERSON';
+    openPlaceCost(1);
+  });
+  await expect(page.locator('#costAmount')).toHaveValue('12.5');
+  await expect(page.locator('#costCurrency')).toHaveValue('EUR');
+  await expect(page.locator('#costPaidOn')).toHaveValue('2026-10-01');
+  await page.locator('#costAmount').fill('15.25');
+  await page.locator('#costPlaceSave').click();
+  expect(await page.evaluate(()=>trip().days[1].spots[0].cost)).toBe(15.25);
+  await page.evaluate(()=>openPlaceCost(1));
+  await page.locator('#costPlaceDelete').click();
+  await expect(page.locator('#costDeleteSource')).not.toBeChecked();
+  await page.locator('#costDeleteConfirm').click();
+  expect(await page.evaluate(()=>trip().days[1].spots[0].cost)).toBeUndefined();
+  const count=await page.evaluate(()=>trip().days[1].spots.length);
+  await page.evaluate(()=>openPlaceCost(1));
+  await page.locator('#costPlaceDelete').click();
+  await page.locator('#costDeleteSource').check();
+  await page.locator('#costDeleteConfirm').click();
+  expect(await page.evaluate(()=>trip().days[1].spots.length)).toBe(count-1);
+});
+
+test('비용 입력 창의 Tab·Escape는 뒤의 목록을 조작하지 않는다',async({page})=>{
+  await page.setViewportSize({width:390,height:844});
+  await page.goto('/'); await page.evaluate(SEED);
+  await page.evaluate(()=>openBookingList());
+  await page.locator('#costPlaceOpen').click();
+  const dialog=page.getByRole('dialog',{name:'일정 장소 비용 입력'});
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press('Tab');
+  expect(await dialog.evaluate(el=>el.contains(document.activeElement))).toBe(true);
+  const box=await dialog.boundingBox();
+  expect(box.x).toBeGreaterThanOrEqual(0); expect(box.x+box.width).toBeLessThanOrEqual(390);
+  await page.keyboard.press('Escape');
+  await expect(dialog).not.toBeVisible();
+  await expect(page.locator('#bookingListBg')).toBeVisible();
+});

@@ -49,6 +49,7 @@ struct BookingEditorView: View {
     let fromReservations: Bool
     let onSave: (TripBooking, BookingLinks) async -> String?
     let onDelete: (String) async -> String?
+    let onDeleteCost: ((String, Bool) async -> String?)?
     let onSaveItem: (CostEntry) async -> String?
     let onDeleteItem: (String) async -> String?
 
@@ -100,6 +101,7 @@ struct BookingEditorView: View {
          seed: TripBooking? = nil,
          bookingOnly: Bool = false,
          fromReservations: Bool = false,
+         onDeleteCost: ((String, Bool) async -> String?)? = nil,
          onSave: @escaping (TripBooking, BookingLinks) async -> String?,
          onDelete: @escaping (String) async -> String?,
          onSaveItem: @escaping (CostEntry) async -> String? = { _ in nil },
@@ -110,6 +112,7 @@ struct BookingEditorView: View {
         self.fromReservations = fromReservations
         self.onSave = onSave
         self.onDelete = onDelete
+        self.onDeleteCost = onDeleteCost
         self.onSaveItem = onSaveItem
         self.onDeleteItem = onDeleteItem
         let booking = target.booking ?? seed ?? TripBooking()
@@ -303,7 +306,19 @@ struct BookingEditorView: View {
             } message: { problem in
                 Text(problem.message)
             }
-            .confirmationDialog(target.item != nil ? "이 항목을 지울까요?" : "이 예약을 이 여행에서 지울까요?", isPresented: $showsDeleteConfirm, titleVisibility: .visible) {
+            .sheet(isPresented: Binding(get: { showsDeleteConfirm && onDeleteCost != nil }, set: { showsDeleteConfirm = $0 })) {
+                CostDeleteSheet(title: draft.title, allowsSource: target.booking != nil) { includingSource in
+                    let saved: Bool
+                    if let booking = target.booking, let onDeleteCost {
+                        saved = await saving.perform { await onDeleteCost(booking.id, includingSource) }
+                    } else if let item = target.item {
+                        saved = await saving.perform { await onDeleteItem(item.id) }
+                    } else { return false }
+                    if saved { dismiss() }
+                    return saved
+                }
+            }
+            .confirmationDialog(target.item != nil ? "이 항목을 지울까요?" : "이 예약을 이 여행에서 지울까요?", isPresented: Binding(get: { showsDeleteConfirm && onDeleteCost == nil }, set: { showsDeleteConfirm = $0 }), titleVisibility: .visible) {
                 Button("삭제", role: .destructive) {
                     if let booking = target.booking {
                         Task { if await saving.perform({ await onDelete(booking.id) }) { dismiss() } }
