@@ -56,19 +56,21 @@ struct DayCostView: View {
     let onSave: (TripDay) async -> Bool
     let onRefresh: (() async -> Void)?
     let draftKey: EditorDraftKey?
+    let onDeleteSpot: ((Int, Bool) async -> TripDay?)?
     @State private var day: TripDay
     @State private var editing: CostEditTarget?
-    /// 현지에서 방금 쓴 돈 — 금액부터 치는 짧은 길(`QuickSpendEditor`).
+    /// 일정 장소의 비용을 고치거나 별도 지출을 입력한다.
     @State private var quickAdd = false
     @Environment(\.dismiss) private var dismiss
 
-    init(day: TripDay, cost: DayPlanCost?, canEdit: Bool, draftKey: EditorDraftKey? = nil, onRefresh: (() async -> Void)? = nil, onSave: @escaping (TripDay) async -> Bool) {
+    init(day: TripDay, cost: DayPlanCost?, canEdit: Bool, draftKey: EditorDraftKey? = nil, onRefresh: (() async -> Void)? = nil, onDeleteSpot: ((Int, Bool) async -> TripDay?)? = nil, onSave: @escaping (TripDay) async -> Bool) {
         _day = State(initialValue: day)
         self.cost = cost
         self.canEdit = canEdit
         self.onSave = onSave
         self.onRefresh = onRefresh
         self.draftKey = draftKey
+        self.onDeleteSpot = onDeleteSpot
     }
 
     var body: some View {
@@ -149,16 +151,19 @@ struct DayCostView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("닫기") { dismiss() } } }
             .sheet(isPresented: $quickAdd) {
-                QuickSpendEditor(dayLabel: day.title.isEmpty ? "하루 비용" : day.title, draftKey: draftKey) { entry in
-                    var updated = day
-                    updated.costItems = updated.costItems.filter { $0.id != entry.id } + [entry]
+                SpendEntryFlow(day: day, draftKey: draftKey) { updated in
                     guard await onSave(updated) else { return false }
                     day = updated
                     return true
                 }
             }
             .sheet(item: $editing) { target in
-                CostEntryEditor(target: target) { entry in
+                CostEntryEditor(target: target, onDelete: { includingSource in
+                    guard case .spot(let index) = target.kind, let onDeleteSpot,
+                          let updated = await onDeleteSpot(index, includingSource) else { return false }
+                    day = updated
+                    return true
+                }) { entry in
                     var updated = day
                     switch target.kind {
                     case .budget: updated.budget = entry?.amount == nil ? nil : entry
@@ -245,6 +250,7 @@ struct CostEditTarget: Identifiable {
 struct CostEntryEditor: View {
     let target: CostEditTarget
     let onSave: (CostEntry?) async -> Bool
+    let onDelete: ((Bool) async -> Bool)?
     @State private var entry: CostEntry
     @State private var amount: String
     @State private var saving = false
@@ -253,8 +259,9 @@ struct CostEntryEditor: View {
     @State private var showsDeleteConfirm = false
     @Environment(\.dismiss) private var dismiss
 
-    init(target: CostEditTarget, onSave: @escaping (CostEntry?) async -> Bool) {
+    init(target: CostEditTarget, onDelete: ((Bool) async -> Bool)? = nil, onSave: @escaping (CostEntry?) async -> Bool) {
         self.target = target
+        self.onDelete = onDelete
         self.onSave = onSave
         _entry = State(initialValue: target.entry)
         _amount = State(initialValue: MoneyInput.text(amount: target.entry.amount))
@@ -334,13 +341,22 @@ struct CostEntryEditor: View {
                 }
                 if failed { Section { Text("비용을 저장하지 못했어요. 입력 내용은 유지되어 있어요.").foregroundStyle(Ink.warning) } }
                 // 지우기는 되돌릴 수 없다 — 한 번 묻는다(2026-09-27 UX 검토). 새 항목에는 두지 않는다.
-                if target.isExtra && !target.isNew {
+                if !target.isBudget && !target.isNew {
                     Section { Button("항목 삭제", role: .destructive) { showsDeleteConfirm = true }.disabled(saving) }
                 }
             }
             .tint(Ink.accent)
-            .confirmationDialog("‘\(entry.title.isEmpty ? "이 항목" : entry.title)’ 비용을 지울까요?", isPresented: $showsDeleteConfirm, titleVisibility: .visible) {
-                Button("삭제", role: .destructive) { Task { await save(nil) } }
+            .sheet(isPresented: $showsDeleteConfirm) {
+                CostDeleteSheet(title: entry.title, allowsSource: !target.isExtra, saving: saving) { includingSource in
+                    if !target.isExtra, let onDelete {
+                        saving = true
+                        let saved = await onDelete(includingSource)
+                        saving = false
+                        if saved { dismiss() } else { failed = true }
+                        return saved
+                    }
+                    return await save(nil)
+                }
             }
             .navigationTitle(target.isBudget ? "하루 예산" : target.isPrep ? "예약 결제 금액" : "비용 입력")
             .navigationBarTitleDisplayMode(.inline)
@@ -367,10 +383,56 @@ struct CostEntryEditor: View {
         }
     }
 
-    private func save(_ value: CostEntry?) async {
-        guard !saving else { return }
+    @discardableResult
+    private func save(_ value: CostEntry?) async -> Bool {
+        guard !saving else { return false }
         saving = true
         defer { saving = false }
-        if await onSave(value) { dismiss() } else { failed = true }
+        if await onSave(value) { dismiss(); return true }
+        failed = true
+        return false
+    }
+}
+
+/// 삭제 범위를 먼저 고른다. 기본은 비용만 지우고 원본 일정은 남긴다.
+struct CostDeleteSheet: View {
+    let title: String
+    var allowsSource = true
+    var saving = false
+    let onDelete: (Bool) async -> Bool
+    @State private var includingSource = false
+    @State private var working = false
+    @State private var failed = false
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            PaperForm {
+                Section {
+                    Text(title.isEmpty ? "비용을 삭제할까요?" : title)
+                    if allowsSource {
+                        Button { includingSource.toggle() } label: {
+                            Label("일정의 장소·예약도 함께 삭제", systemImage: includingSource ? "checkmark.square.fill" : "square")
+                        }
+                        .accessibilityAddTraits(includingSource ? [.isSelected] : [])
+                        Text(includingSource ? "선택한 항목과 연결된 일정에서도 삭제해요. 실제 예약은 취소되지 않아요." : "금액·통화·결제일 등 비용 정보만 지우고 일정은 남겨요.")
+                            .font(.caption).foregroundStyle(Ink.soft)
+                    }
+                    if failed { Text("삭제하지 못했어요. 다시 시도해 주세요.").foregroundStyle(Ink.warning) }
+                    Button("삭제", role: .destructive) {
+                        Task {
+                            working = true
+                            let saved = await onDelete(includingSource)
+                            working = false
+                            if saved { dismiss() } else { failed = true }
+                        }
+                    }.disabled(working || saving)
+                }
+            }
+            .navigationTitle("비용 삭제")
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("취소") { dismiss() }.disabled(working) } }
+            .interactiveDismissDisabled(working)
+        }
+        .presentationDetents([.medium])
     }
 }

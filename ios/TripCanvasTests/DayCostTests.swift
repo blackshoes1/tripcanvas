@@ -2,6 +2,41 @@ import XCTest
 @testable import TripCanvas
 
 final class DayCostTests: XCTestCase {
+    func testSpotCostRoundTripAndClearingKeepTheSameSource() {
+        let original = TripSpot(raw: ["name": .string("미술관"), "cost": .number(12.5), "cur": .string("EUR"),
+                                     "paidOn": .string("2026-10-01"), "photos": .array([.string("receipt")]), "custom": .string("keep")])
+        var entry = CostEntry(spot: original)
+        XCTAssertEqual(entry.amount, 12.5)
+        XCTAssertEqual(entry.paidOn, "2026-10-01")
+        entry.amount = 15.25
+        entry.paidOn = "2026-10-02"
+        let updated = entry.applying(to: original)
+        XCTAssertEqual(updated.raw["paidOn"], .string("2026-10-02"))
+        XCTAssertEqual(updated.cost, 15.25)
+        let cleared = CostEntry.clearing(updated)
+        XCTAssertNil(cleared.cost)
+        XCTAssertNil(cleared.raw["paidOn"])
+        XCTAssertNil(cleared.raw["photos"])
+        XCTAssertEqual(cleared.raw["custom"], .string("keep"))
+    }
+
+    func testDeleteBookingCostHasTwoScopesAcrossDays() {
+        let original = TripDocument(raw: ["bookings": .array([.object(["id": .string("car"), "price": .number(50)])]),
+            "days": .array([
+                .object(["spots": .array([.object(["name": .string("픽업"), "carPickupId": .string("car"), "cost": .number(50)]), .object(["name": .string("관광")])])]),
+                .object(["spots": .array([.object(["name": .string("반납"), "carReturnId": .string("car")])])])])])
+        var costOnly = original
+        costOnly.deleteSpotCost(day: 0, index: 0, includingSource: false)
+        XCTAssertEqual(costOnly.days[0].spots.count, 2)
+        XCTAssertNil(costOnly.days[0].spots[0].cost)
+        XCTAssertEqual(costOnly.bookings[0].raw["price"], .null)
+        var all = original
+        all.deleteSpotCost(day: 0, index: 0, includingSource: true)
+        XCTAssertTrue(all.bookings.isEmpty)
+        XCTAssertEqual(all.days[0].spots.map(\.name), ["관광"])
+        XCTAssertTrue(all.days[1].spots.isEmpty)
+    }
+
     func testTripCostsDecodesActualServerContract() throws {
         let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "trip-costs", withExtension: "json"))
         let costs = try JSONDecoder().decode(TripCostsResponse.self, from: Data(contentsOf: url))

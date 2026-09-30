@@ -23,6 +23,7 @@ final class TodayViewModel {
     private(set) var isRetrying = false
     private var failedAction: FailedAction?
     private var contentGeneration = 0
+    private var minimumRevision = 0
 
     private struct FailedAction {
         let id: String
@@ -78,6 +79,14 @@ final class TodayViewModel {
     /// 이동시간이 추정치면 화면이 그렇게 말해야 한다 — 실제 경로 시간인 척하지 않는다.
     var travelTimeIsEstimate: Bool { today?.travelTimeSource != .routed }
 
+    func invalidate(revision: Int) {
+        minimumRevision = max(minimumRevision, revision)
+        loadedAt = nil
+        contentGeneration += 1
+        isLoading = false
+        today = nil
+    }
+
     /// 탭에 들어올 때 부른다. **탭 전환은 앱 복귀가 아니다** — 이미 보여 준 내용이 있고 방금
     /// 받은 것이면 서버를 다시 묻지 않는다(그때마다 로딩이 떴다, 2026-09-17). 오래됐으면 뒤에서
     /// 조용히 새로 받는다: 내용이 있으므로 화면은 로딩으로 바뀌지 않는다.
@@ -93,21 +102,21 @@ final class TodayViewModel {
         guard !isLoading else { return }
         isLoading = true
         let generation = contentGeneration
-        defer { isLoading = false }
+        defer { if generation == contentGeneration { isLoading = false } }
         // 지난번 화면을 **먼저** 그린다 — 서버를 기다리는 동안 빈 스피너 대신 마지막으로 본 오늘이 보인다.
         // ⚠️ 문서가 그때 그대로일 때만(목록이 아는 revision과 같을 때) — 편집한 뒤의 옛 일정을 잠깐이라도
         //    보여 주면 틀린 것을 말하는 것이다. 시각은 서버 답이 오면 갈아끼워진다.
         // ⚠️ 문장을 적용 중이면 지난 화면을 먼저 그리지 않는다 — 그 캐시는 문장 없이 받은 것이라
         //    "이렇게 이해했어요"가 붙지 않은 옛 제안이 잠깐 보인다.
         if today == nil, intentText.isEmpty,
-           let cached = await service.cachedToday(tripId: trip.id), cached.trip.revision == trip.revision {
+           let cached = await service.cachedToday(tripId: trip.id), cached.trip.revision == trip.revision, cached.trip.revision >= minimumRevision {
             guard generation == contentGeneration else { return }
             today = cached
         }
         do {
             let fetched = try await service.today(tripId: trip.id, dayIndex: nil,
                                                    intent: intentText, energy: energy)
-            guard generation == contentGeneration, today == nil || fetched.value.trip.revision >= revision else { return }
+            guard generation == contentGeneration, fetched.value.trip.revision >= minimumRevision, today == nil || fetched.value.trip.revision >= revision else { return }
             today = fetched.value
             cachedAt = fetched.cachedAt
             if fetched.cachedAt == nil { loadedAt = Date() }

@@ -402,3 +402,27 @@ test('1박이거나 숙소가 아니거나 금액이 없으면 나누지 않고,
   assert.deepEqual(L.splitAcrossNights(10, 3, 'USD'), [3.34, 3.33, 3.33]);
   assert.deepEqual(L.stayCostShares(trip.days, 5), { own: {}, carried: [] }, '연박 범위를 지나면 아무것도 없다');
 });
+
+test('비용만 삭제는 연결 예약과 장소의 비용을 지우고 일정·미정 금액을 유지한다', () => {
+  const trip = { bookings: [{id:'b',title:'호텔',price:100,cur:'EUR',paidOn:'2026-10-01',track:true}], days:[{spots:[
+    {name:'호텔',bookingId:'b',cost:100,cur:'EUR',paidOn:'2026-10-01',photos:['receipt'],lat:1,lng:2,stay:true},
+    {name:'식당',cost:20}
+  ]}] };
+  L.deleteSpotCost(trip,0,0,false);
+  assert.equal(trip.bookings[0].price,null);
+  assert.equal(trip.bookings[0].track,false);
+  assert.equal(trip.days[0].spots[0].cost,undefined);
+  assert.equal(trip.days[0].spots[0].paidOn,undefined);
+  assert.equal(trip.days[0].spots[0].photos,undefined);
+  assert.equal(trip.days[0].spots[0].bookingId,'b');
+  assert.equal(trip.days[0].spots[0].lat,1);
+  assert.equal(trip.days[0].spots[1].cost,20);
+  assert.equal(L.normalizeTrip(trip).bookings[0].price,null,'지운 비용을 무료 0으로 되살리지 않는다');
+});
+
+test('함께 삭제는 연결 예약·장소를 제거하고 다른 일정은 보존한다', () => {
+  const trip={bookings:[{id:'b',price:50},{id:'other',price:70}],days:[{spots:[{name:'픽업',carPickupId:'b'},{name:'관광'}]},{spots:[{name:'반납',carReturnId:'b'}]}]};
+  L.deleteBookingCost(trip,'b',true);
+  assert.deepEqual(trip.bookings,[{id:'other',price:70}]);
+  assert.deepEqual(trip.days,[{spots:[{name:'관광'}]},{spots:[]}]);
+});

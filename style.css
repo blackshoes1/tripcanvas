@@ -637,3 +637,10 @@ body:has(.modalBg.show) #toast{bottom:auto;top:calc(env(safe-area-inset-top) + 1
 .resvRow{border:1px solid var(--border);border-radius:10px;padding:9px 11px;display:grid;gap:3px;font-size:12.5px}
 .resvHead{display:flex;align-items:center;justify-content:space-between;gap:8px}.resvLine{color:var(--muted)}
 .resvCode{color:var(--ink);font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:.02em}.resvLink{color:var(--meta-link);font-size:12px}
+
+.costDialog { width:min(480px,calc(100vw - 32px)); max-height:85vh; overflow:auto; border:1px solid var(--border); border-radius:16px; padding:24px; margin:auto; background:var(--surface); color:var(--ink); }
+.costDialog::backdrop { background:rgb(0 0 0 / 45%); }
+.costDialog > input, .costDialog > select { width:100%; }
+
+.costDialog > label { display:block; margin:12px 0 4px; }
+.costDialog [hidden] { display:none; }

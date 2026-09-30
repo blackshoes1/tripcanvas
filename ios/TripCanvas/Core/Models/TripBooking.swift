@@ -433,6 +433,47 @@ extension TripDocument {
         unlinkBooking(id: id)
     }
 
+    mutating func deleteSpotCost(day: Int, index: Int, includingSource: Bool) {
+        guard hasDay(day), days[day].spots.indices.contains(index) else { return }
+        let spot = days[day].spots[index]
+        let ids = Set([spot.bookingId, spot.carPickupId, spot.carReturnId].compactMap { $0 })
+        if ids.isEmpty {
+            var updated = days
+            var spots = updated[day].spots
+            if includingSource { spots.remove(at: index) }
+            else { spots[index] = CostEntry.clearing(spot) }
+            updated[day].spots = spots
+            days = updated
+        } else {
+            for id in ids { deleteBookingCost(id: id, includingSource: includingSource) }
+        }
+    }
+
+    /// 같은 예약에 연결된 장소 비용도 함께 지워 이중 입력된 금액이 되살아나지 않게 한다.
+    mutating func deleteBookingCost(id: String, includingSource: Bool) {
+        var updatedDays = days
+        for di in updatedDays.indices {
+            updatedDays[di].spots = updatedDays[di].spots.compactMap { spot in
+                let linked = spot.bookingId == id || spot.carPickupId == id || spot.carReturnId == id
+                guard linked else { return spot }
+                return includingSource ? nil : CostEntry.clearing(spot)
+            }
+        }
+        days = updatedDays
+        if includingSource { removeBooking(id: id) }
+        else {
+            var all = bookings
+            if let index = all.firstIndex(where: { $0.id == id }) {
+                var raw = all[index].raw
+                for key in ["cur", "payState", "paidOn", "photos", "cancelFee"] { raw.removeValue(forKey: key) }
+                raw["price"] = .null
+                raw["track"] = .bool(false)
+                all[index] = TripBooking(raw: raw)
+            }
+            bookings = all
+        }
+    }
+
     /// 지금 이 예약이 연결된 자리들. 편집 화면이 처음 열릴 때 선택을 채운다.
     func links(forBooking id: String) -> BookingLinks {
         var links = BookingLinks()

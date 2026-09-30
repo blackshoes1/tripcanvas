@@ -93,16 +93,20 @@ struct TripCostsView: View {
                             cost: response?.days.first(where: { $0.index == day.index })?.cost,
                             canEdit: snapshot.canEdit,
                             draftKey: EditorDraftKey(accountID: env.auth.session?.userId, tripID: trip.id, editor: "spend-\(day.index)"),
-                            onRefresh: { await load() }) { edited in
+                            onRefresh: { await load() },
+                            onDeleteSpot: { index, includingSource in
+                                let saved = await saveDocument(expected: editingRevision) {
+                                    $0.deleteSpotCost(day: day.index, index: index, includingSource: includingSource)
+                                }
+                                return saved ? self.snapshot?.document.days[day.index] : nil
+                            }) { edited in
                     await save(edited, index: day.index)
                 }
             }
         }
         .sheet(item: $quickSpend) { target in
             if let snapshot, snapshot.document.hasDay(target.day) {
-                QuickSpendEditor(dayLabel: dayLabel(target.day), draftKey: EditorDraftKey(accountID: env.auth.session?.userId, tripID: trip.id, editor: "spend-\(target.day)")) { entry in
-                    var day = snapshot.document.days[target.day]
-                    day.costItems = day.costItems.filter { $0.id != entry.id } + [entry]
+                SpendEntryFlow(day: snapshot.document.days[target.day], draftKey: EditorDraftKey(accountID: env.auth.session?.userId, tripID: trip.id, editor: "spend-\(target.day)")) { day in
                     return await save(day, index: target.day)
                 }
             }
@@ -115,6 +119,10 @@ struct TripCostsView: View {
                 BookingEditorView(
                     target: target,
                     document: snapshot.document,
+                    onDeleteCost: { id, includingSource in
+                        let saved = await saveDocument(expected: editingRevision) { $0.deleteBookingCost(id: id, includingSource: includingSource) }
+                        return saved ? nil : (error ?? "비용을 삭제하지 못했어요.")
+                    },
                     onSave: { booking, links in
                         if let problem = booking.validate() { return problem.message }
                         let saved = await saveDocument(expected: editingRevision) { $0.upsertBooking(booking, links: links) }
@@ -295,7 +303,7 @@ struct TripCostsView: View {
                     .font(.caption).foregroundStyle(Ink.warning)
             }
             if canEdit, let today = todayIndex {
-                Button { quickSpend = QuickSpendTarget(day: today) } label: {
+                Button { editingRevision = snapshot?.revision ?? 0; quickSpend = QuickSpendTarget(day: today) } label: {
                     Label("오늘 쓴 돈 적기", systemImage: "plus.circle.fill")
                         .frame(maxWidth: .infinity, minHeight: 44)
                 }
@@ -315,7 +323,7 @@ struct TripCostsView: View {
                         Text("Day \(index + 1)")
                         Spacer()
                         if canEdit {
-                            Button { quickSpend = QuickSpendTarget(day: index) } label: {
+                            Button { editingRevision = snapshot.revision; quickSpend = QuickSpendTarget(day: index) } label: {
                                 Image(systemName: "plus.circle").frame(width: 44, height: 44)
                             }
                             .buttonStyle(.plain)
@@ -358,19 +366,13 @@ struct TripCostsView: View {
             }
             .buttonStyle(.plain)
             if canEdit {
-                Button { quickSpend = QuickSpendTarget(day: day.index) } label: {
+                Button { editingRevision = snapshot?.revision ?? 0; quickSpend = QuickSpendTarget(day: day.index) } label: {
                     Image(systemName: "plus.circle").frame(width: 44, height: 44)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Day \(day.index + 1)에 쓴 돈 적기")
             }
         }
-    }
-
-    private func dayLabel(_ index: Int) -> String {
-        let date = response?.days.first { $0.index == index }?.date ?? ""
-        let title = snapshot?.document.days[index].title ?? ""
-        return ["Day \(index + 1)", TimeFormat.dayChipLabel(date) ?? "", title].filter { !$0.isEmpty }.joined(separator: " · ")
     }
 
     private func money(_ value: Double) -> String { TimeFormat.money(value, currency: "KRW") }
@@ -580,6 +582,8 @@ final class TripCostsMemory {
     private(set) var loadedAt: Date?
 
     init() {}
+
+    func invalidate() { snapshot = nil; response = nil; loadedAt = nil }
 
     func remember(snapshot: TripDocumentSnapshot?, response: TripCostsResponse) {
         guard let snapshot, snapshot.revision == response.revision else { return }

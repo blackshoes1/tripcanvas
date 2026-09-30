@@ -151,3 +151,53 @@ struct QuickSpendEditor: View {
         if await onSave(entry) { EditorDraftStore.shared.remove(draftKey); dismiss() } else { failed = true }
     }
 }
+
+struct SpendEntryFlow: View {
+    let day: TripDay
+    var draftKey: EditorDraftKey? = nil
+    let onSave: (TripDay) async -> Bool
+    @State private var target: CostEditTarget?
+    @State private var standalone = false
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            PaperList {
+                Section("일정에 있는 장소") {
+                    ForEach(Array(day.spots.enumerated()), id: \.offset) { index, spot in
+                        Button(spot.name) {
+                            target = CostEditTarget(kind: .spot(index), entry: CostEntry(spot: spot), isNew: true)
+                        }
+                    }
+                    if day.spots.isEmpty { Text("이 날에는 저장한 장소가 없어요").foregroundStyle(Ink.soft) }
+                }
+                Section {
+                    Button("장소와 관계없는 추가 비용") { standalone = true }
+                }
+            }
+            .navigationTitle("어디에 쓴 비용인가요?")
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("취소") { dismiss() } } }
+            .sheet(item: $target) { target in
+                CostEntryEditor(target: target) { entry in
+                    guard case .spot(let index) = target.kind, let entry else { return false }
+                    var updated = day
+                    var spots = updated.spots
+                    spots[index] = entry.applying(to: spots[index])
+                    updated.spots = spots
+                    let saved = await onSave(updated)
+                    if saved { dismiss() }
+                    return saved
+                }
+            }
+            .sheet(isPresented: $standalone) {
+                QuickSpendEditor(dayLabel: day.title, draftKey: draftKey) { entry in
+                    var updated = day
+                    updated.costItems = updated.costItems.filter { $0.id != entry.id } + [entry]
+                    let saved = await onSave(updated)
+                    if saved { dismiss() }
+                    return saved
+                }
+            }
+        }
+    }
+}

@@ -96,6 +96,7 @@ export function buildBookings(trip: TripDoc, observations: PriceObservation[], t
         provider: String(b.provider ?? ''),
         url: typeof b.url === 'string' ? b.url : null,
         price: Number(b.price ?? 0),
+        ...(b.price === null ? { priceKnown: false } : {}),
         currency: String(b.cur ?? 'KRW'),
         start: typeof b.start === 'string' ? b.start : null,
         end: typeof b.end === 'string' ? b.end : null,
