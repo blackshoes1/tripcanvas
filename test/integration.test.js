@@ -4019,6 +4019,32 @@ test('통합: 일행의 변경이 도착하면 실행취소로 그것을 지울 
   w.close();
 });
 
+test('통합: 다른 탭이 받아 둔 일행의 변경도 실행취소로 지울 수 없다', { skip: noJsdom }, async () => {
+  const w = boot();
+  const saves = [];
+  collabBoot(w, { doc: null }, saves);
+
+  w.eval(`trip().name='내가 바꾼 이름'; save(); syncMeta.__it__.hash=TC_SYNC.hashTrip(trip());`);
+  assert.equal(w.eval(`histStack.length`), 1, '내 편집은 되돌릴 수 있다');
+
+  // 탭 B가 pullTrip으로 영희의 변경(revision 5)을 받아 localStorage에 기록했다
+  const fresh = w.eval(`(()=>{ const s=JSON.parse(JSON.stringify(store)); s.trips[0].days[0].title='영희가 바꾼 날';
+    const raw=JSON.stringify(s), kept=parseStorePayload(raw).value.trips[0];   // 탭 B는 정규화된 문서의 지문을 남긴다
+    localStorage.setItem(SYNC_META_KEY, JSON.stringify({__it__:{revision:5,status:'clean',op:'',hash:TC_SYNC.hashTrip(kept)}}));
+    return raw; })()`);
+  fireStorage(w, 'tripcanvas_v1', fresh);
+  assert.equal(w.eval(`trip().days[0].title`), '영희가 바꾼 날');
+  assert.equal(w.eval(`histStack.length`), 0, '다른 탭이 들인 것도 남의 변경이다 — 되돌릴 거리로 남기지 않는다');
+  assert.equal(w.document.getElementById('undoBtn').disabled, true);
+
+  saves.length = 0;
+  w.eval(`undo(); syncStaleTrips();`);
+  await new Promise(r => setTimeout(r, 20));
+  assert.equal(w.eval(`trip().days[0].title`), '영희가 바꾼 날', '↩️를 눌러도 일행의 변경은 그대로다');
+  assert.deepEqual(saves, [], '되돌린 옛 문서를 새 revision 위에 올리지 않는다');
+  w.close();
+});
+
 test('통합: 충돌 카드에서 클라우드본을 택해도 실행취소로 되돌아가지 않는다', { skip: noJsdom }, () => {
   const w = boot();
   const remote = { doc: { id: '__it__', name: 'T', start: '2026-08-01', days: [{ title: '클라우드 날', drive: '', note: '', spots: [] }] } };

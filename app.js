@@ -203,14 +203,19 @@ function adoptExternalStore(raw){
   try{ parsed=parseStorePayload(raw); }catch(e){ reportOperationalError('tab.sync.parse',e); return; }
   if(!parsed.ok){ reportOperationalError('tab.sync.invalid',new Error('validation')); return; }
   const day=activeDay;
-  store=parsed.value;
-  // 정규화를 거치면 raw와 문자열이 달라질 수 있으므로 정규화된 형태로 맞춘다.
-  // 이러면 뒤이은 render→save가 "변경 없음"으로 조기 반환해 되쓰기·클라우드 에코가 없다.
-  histLast=JSON.stringify(store);
-  refreshSyncMetaFromStorage();
-  const t=trip();
-  activeDay=Math.min(day, Math.max(0,(t&&t.days?t.days.length:1)-1));
-  render(); fitAll();
+  // 다른 탭이 쓴 것에는 그 탭이 pullTrip으로 들인 일행의 변경이 섞여 있을 수 있다 — 이 탭의
+  // 옛 스냅샷이 남으면 ↩️ 한 번에 그 변경이 새 revision 위로 되올라간다. 그래서 adoptRemote로 들인다.
+  adoptRemote(()=>{
+    store=parsed.value;
+    // 정규화를 거치면 raw와 문자열이 달라질 수 있으므로 정규화된 형태로 맞춘다.
+    // 이러면 뒤이은 render→save가 "변경 없음"으로 조기 반환해 되쓰기·클라우드 에코가 없다.
+    histLast=JSON.stringify(store);
+    refreshSyncMetaFromStorage();
+    const t=trip();
+    activeDay=Math.min(day, Math.max(0,(t&&t.days?t.days.length:1)-1));
+    render();
+  });
+  fitAll();
   toast('다른 탭의 변경을 불러왔어요','#2e5c6e');
 }
 window.addEventListener('storage',e=>{

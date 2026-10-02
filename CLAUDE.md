@@ -344,7 +344,7 @@ localStorage(실제 키 **15개** — 2026-09-21에 여섯을 채웠다): `tripc
 **실행취소는 내가 한 것만 되돌린다 — 남의 변경이 끼어들기 전까지만.**(2026-09-20)
 
 - 깊이는 플랫폼마다 다르고 **그건 의도다**: 웹은 30단계(`histStack` — save마다 직전 store 전체를 쌓는다), iOS는 1단계(`undoDocument`). 앱의 되돌리기는 한 번이 곧 서버 PUT이라 스택을 쌓으면 N단계 = N번 왕복이고, 중간에 실패하면 어디까지 돌아갔는지 말해 줄 수가 없다. 앱 편집은 장소 추가·이동·삭제처럼 굵어서 한 단계로 대부분 막힌다.
-- **같아야 하는 것은 깊이가 아니라 무효화 규칙이다.** 일행·다른 기기의 변경이 로컬에 들어오면 그 이전 스냅샷은 전부 버린다 — 웹은 `adoptRemote()`(`pullTrip` · 충돌 카드의 `replaceWithRemote` · 로그인 병합 `syncOnLogin` 세 곳을 감싼다), iOS는 `apply()`가 남의 revision을 보면 `undoDocument`를 비운다(`canUndo`의 `undoRevision == revision`).
+- **같아야 하는 것은 깊이가 아니라 무효화 규칙이다.** 일행·다른 기기의 변경이 로컬에 들어오면 그 이전 스냅샷은 전부 버린다 — 웹은 `adoptRemote()`(`pullTrip` · 충돌 카드의 `replaceWithRemote` · 로그인 병합 `syncOnLogin` · 다른 탭의 기록을 들이는 `adoptExternalStore` 네 곳을 감싼다 — 다른 탭이 `pullTrip`으로 받아 둔 일행의 변경도 storage 이벤트로 이 탭에 들어온다, 2026-10-02), iOS는 `apply()`가 남의 revision을 보면 `undoDocument`를 비운다(`canUndo`의 `undoRevision == revision`).
 - ⚠️ **왜 버려야 하는가**: 안 버리면 ↩️ 한 번에 일행의 변경이 통째로 사라진다. 그게 화면에서 끝나지 않는 이유는 그때 로컬이 **이미 새 revision을 들고 있어서**다 — 되돌린 옛 문서가 그 revision 위에 올라가 서버 CAS가 정상 저장으로 통과시킨다. 2026-09-20에 재현해 고쳤다(`test/integration.test.js`의 "일행의 변경이 도착하면 실행취소로 그것을 지울 수 없다"). **원격본을 store에 들이는 코드를 새로 만들면 반드시 `adoptRemote()`를 지난다.**
 - 버전 이력에서 복원하는 것(`↩️로 되돌리기 가능`)은 **내 동작**이라 히스토리에 쌓는다 — 원격 반영과 다르다.
 
