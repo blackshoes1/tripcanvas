@@ -113,6 +113,8 @@ describe('buildDayPlanView', () => {
   it('anchor와 carry를 섞지 않는다 — 🏠 표시는 숙소일 때만', () => {
     const carried = trip([day([airport(), hotel()]), day([seongsan()]), day([])]);
     expect(build(carried, 1)!.day.carriedStay?.name).toBe('제주호텔');
+    // 1박 숙소의 다음 날은 체크아웃한 날이다 — 아침 출발점(carry)은 남고 밤의 복귀(back)는 없다
+    expect(build(carried, 1)!.day.back).toBeNull();
 
     // 전날이 숙소로 끝나지 않으면 이월 표시는 없다(ETA는 그래도 그 지점에서 출발한다)
     const noStay = trip([day([airport(), seongsan()]), day([hotel()]), day([])]);
@@ -129,6 +131,16 @@ describe('buildDayPlanView', () => {
     expect(v.day.spots[1].bookingLateMinutes).toBe(expected);
     expect(v.day.spots[1].conflict).toBe(false); // at 충돌과 예약 지연은 다른 필드다.
     expect(v.day.spots[2].bookingLateMinutes).toBeNull();
+  });
+
+  // 예약 연결은 bookingId만 쓰고 nights를 채우지 않는다 — 박 수는 숙박 표시(lodging)와 같은 출처여야 한다
+  it('호텔 예약에 연결된 숙소는 예약 기간 동안 돌아간다 — lodging과 back이 같은 밤을 센다', () => {
+    const bookings = [{ id: 'b1', type: 'hotel', title: '제주호텔', price: 0, start: '2026-10-01', end: '2026-10-03' }] as unknown as Booking[];
+    const t = trip([day([airport(), hotel({ bookingId: 'b1' })]), day([seongsan()]), day([seongsan()]), day([])], { bookings });
+    expect(build(t, 1)!.day.lodging[0]).toMatchObject({ state: 'STAY', night: 2, nights: 2 });
+    expect(build(t, 1)!.day.back?.name).toBe('제주호텔');
+    expect(build(t, 2)!.day.lodging[0]).toMatchObject({ state: 'CHECK_OUT' });
+    expect(build(t, 2)!.day.back).toBeNull();
   });
 
   it('숙소 복귀는 붙지만, 일정의 마지막 날에는 없다', () => {

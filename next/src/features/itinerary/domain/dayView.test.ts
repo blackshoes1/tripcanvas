@@ -237,6 +237,19 @@ describe('하루의 끝 — 숙소 복귀·과밀 경고', () => {
     expect(buildDayView(multi, NONE, 1).back).toBeNull();
   });
 
+  // 숙소는 그날 밤도 묵을 때만 돌아간다 — 체크아웃한 날은 아침 출발점(carry)만 그 숙소다.
+  // 예약 연결은 bookingId만 쓰므로 박 수는 연결된 호텔 예약 기간에서 온다(숙박 표시와 같은 출처)
+  it('체크아웃한 날에는 복귀가 없고, 호텔 예약에 연결된 숙소는 예약 기간 동안 돌아간다', () => {
+    const oneNight = trip([day([airport(), hotel()]), day([seongsan()]), day([])]);
+    expect(buildDayView(oneNight, NONE, 1).carry?.name).toBe('제주호텔');
+    expect(buildDayView(oneNight, NONE, 1).back).toBeNull();
+
+    const bookings = [{ id: 'b1', type: 'hotel', title: '제주호텔', price: 0, start: '2026-10-01', end: '2026-10-03' }] as unknown as Booking[];
+    const linked = trip([day([airport(), hotel({ bookingId: 'b1' })]), day([seongsan()]), day([seongsan()]), day([])], { bookings });
+    expect(buildDayView(linked, NONE, 1).back?.name).toBe('제주호텔');
+    expect(buildDayView(linked, NONE, 2).back).toBeNull();
+  });
+
   it('이미 숙소로 끝나면 복귀 구간이 없다', () => {
     const t = trip([day([seongsan(), hotel()])]);
     expect(buildDayView(t, NONE, 0).back).toBeNull();

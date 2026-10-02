@@ -123,7 +123,7 @@ function journeyOf(day: Day, legCache: LegCache, startAnchor?: Spot | null, endA
 }
 
 export function dayJourneyOf(trip: Trip, legCache: LegCache, di: number) {
-  return journeyOf(trip.days[di], legCache, startAnchorOf(trip, di), dayReturnStay(trip.days as unknown[], di) as Spot | null);
+  return journeyOf(trip.days[di], legCache, startAnchorOf(trip, di), dayReturnStay(trip.days as unknown[], di, tripBookings(trip)) as Spot | null);
 }
 
 export function dayTimelineOf(trip: Trip, legCache: LegCache, di: number): TimelineEntry[] {
@@ -327,7 +327,7 @@ export function buildDayView(trip: Trip, legCache: LegCache, di: number, fx: FxR
   const journey = dayJourneyOf(trip, legCache, di);
   const tl = journey.timeline;
   const dm = dayModeOf(day);
-  const back = dayReturnStay(days, di) as Spot | null;
+  const back = dayReturnStay(days, di, tripBookings(trip)) as Spot | null;
   const bl = backLegOf(day, back, journey);
 
   // 렌터카: 장소와 연결된 건 그 행의 칩으로, 나머지만 날짜 파생 독립 행으로

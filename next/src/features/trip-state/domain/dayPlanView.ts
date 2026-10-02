@@ -191,7 +191,7 @@ export function buildDayPlanView(input: DayPlanInput): DayPlanResponse | null {
 
   // 숙소 복귀는 합성 구간이다 — 데이터에 없고 표시·계산에만 얹힌다.
   // ⚠️ 마지막 날에는 붙지 않는다(dayReturnStay가 그렇게 정한다 — 떠나는 날이라서).
-  const backSpot = dayReturnStay(days as unknown[], di) as Spot | null;
+  const backSpot = dayReturnStay(days as unknown[], di, trip.bookings ?? []) as Spot | null;
   const backLeg = backLegOf(day, backSpot, journey);
   let back: DayPlanDay['back'] = null;
   if (backLeg) {
