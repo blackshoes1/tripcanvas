@@ -895,6 +895,7 @@ function dayDistance(day, back){
 // ── 구간 소요시간 (자동차) — 국내 카카오내비 · 해외 Google Routes, localStorage 캐시 ──
 const LEG_KEY='tripcanvas_legs_v4';   // v4: 순수 코덱(SDK 비의존) — v3의 경로없음 오염 캐시 폐기
 let legCache={};
+const LEG_SESSION_AT=Date.now();   // 이 페이지를 연 때 — 그 뒤에 쓴 구간(지금 여행)은 저장 상한에 밀리지 않는다
 // 불러올 때도 정리한다 — 예전 버전이 남긴 실패 기록(fail)이 그 구간을 영원히 직선으로 묶지 않게.
 // 상한은 여기서 걸지 않는다: 지금 여행의 구간은 렌더에서 `at`이 찍힌 뒤 저장 때 걸러야 살아남는다.
 try{ legCache=TC_ROUTING.compactLegCache(JSON.parse(localStorage.getItem(LEG_KEY)),Date.now(),Infinity); }catch(e){}
@@ -915,9 +916,11 @@ function flightHtml(day){
   const bits=[f.code?esc(f.code):'', route].filter(Boolean);
   return bits.length ? `<div class="drive" style="color:var(--meta-eta-fixed)">✈️ ${bits.join(' · ')}</div>` : '';
 }
-// 저장은 정리한 사본으로(routing.js `compactLegCache`) — 실패는 빼고(세션 메모리에만), 지난 출발 시각 키는 버리고,
+// 저장은 정리한 사본으로(routing.js `compactLegCache`) — 잠깐인 실패는 빼고(세션 메모리에만), 지난 출발 시각 키는 버리고,
 // 상한을 넘으면 오래 안 쓴 것부터 버린다. 통째로 쓰면 폴리라인이 끝없이 쌓여 여행 데이터와 용량을 다툰다.
-function saveLegCache(){ try{ localStorage.setItem(LEG_KEY, JSON.stringify(TC_ROUTING.compactLegCache(legCache,Date.now()))); }catch(e){} }
+// 이 페이지에서 쓴 구간은 상한과 상관없이 남긴다 — 구간이 상한보다 많은 여행이 열 때마다 제 구간을 다시 묻지 않게.
+function saveLegCache(){ try{ localStorage.setItem(LEG_KEY, JSON.stringify(TC_ROUTING.compactLegCache(legCache,Date.now(),TC_ROUTING.LEG_CACHE_MAX,LEG_SESSION_AT))); }catch(e){} }
+const LEG_NOROUTE_TITLE='경로를 찾을 수 없어 직선거리로 표시 — 인근 도로 탐색(최대 2.4km)까지 실패했어요. 장소 편집에서 검색으로 위치를 다시 잡아 보세요';
 function fmtDur(sec){ const m=Math.round(sec/60); return m<60? `${m}분` : `${Math.floor(m/60)}시간${m%60? ' '+(m%60)+'분':''}`; }
 function legLabel(c){
   const km=(c.m/1000).toFixed(1),mode=c.mode||'car';
@@ -964,8 +967,13 @@ function planDepartISO(isoDate,localMinutes,timeZone){
 }
 
 // 라우팅 transport는 routing.js에 격리하고 UI에는 fetchLeg 호환 shim만 제공한다.
+// 응답을 지나며 '잠깐인 실패'(오프라인·429·5xx)였는지 적어 둔다 — 서버 `serverRouting`과 같은 방식이다.
+// 한 구간씩 묻는 pumpLegs가 조회 전에 내리고 뒤에 읽는다: 잠깐이면 메모리에만, 경로 없음이면 기기에 남긴다.
+let legTransient=false;
 const routingClient=TC_ROUTING.createRoutingClient({
-  fetchImpl:(url,opts)=>fetch(url,opts), googleKey:GMAPS_KEY, encodePolyline, ringPts, haversine, inKorea
+  fetchImpl:(url,opts)=>fetch(url,opts).then(r=>{ if(TC_ROUTING.transientRouteFailure(r)) legTransient=true; return r; },
+    e=>{ legTransient=true; throw e; }),
+  googleKey:GMAPS_KEY, encodePolyline, ringPts, haversine, inKorea
 });
 /** 모바일 시트가 올라갈 수 있는 가장 위 — 필터바(일자 칩)의 아래 끝. 시트가 칩을 덮지 않게 CSS 변수로 알린다 */
 function sheetTopPx(){
@@ -1037,10 +1045,10 @@ function requestLeg(a,b,mode,when,timeZone){
   const c=legCache[key], now=Date.now();
   // 경로 없이 캐시된 항목(과거 레이스 오염) 자가 치유 → 재조회. 단 est(비행기·기차 등 추정)는 원래 경로가 없음
   if(c && c.sec && !c.path && !c.est){ delete legCache[key]; }
-  // 실패는 잠깐만 기억한다 — TTL이 지나면 다시 묻는다(오프라인 한 순간·429·5xx 한 번이 영원한 직선이 되지 않게)
+  // 실패는 TTL 동안만 기억한다(잠깐인 실패 10분 · 경로 없음 하루) — 오프라인 한 순간·429·5xx 한 번이 영원한 직선이 되지 않게
   else if(c && c.fail && !TC_ROUTING.legFailActive(c,now)){ delete legCache[key]; }
   else if(c){
-    if(c.sec) c.at=now;                                 // 마지막으로 쓴 때 — 저장 상한을 넘으면 오래 안 쓴 것부터 버린다
+    c.at=now;                                           // 마지막으로 쓴 때 — 저장 상한을 넘으면 오래 안 쓴 것부터 버린다(경로 없음 기록도)
     return c.sec?c:null;                                // 시각별 key라 다른 시간대/출발시각 결과와 충돌하지 않음
   }
   if(mode==='transit'&&when){
@@ -1060,10 +1068,14 @@ async function pumpLegs(){
     const {key,base,mode,a,b,when,timeZone}=legQueue.shift();
     if(legCache[key]) continue;
     let r=null;
-    try{ r=await fetchLeg(a,b,mode,when); }catch(e){}
+    legTransient=false;
+    try{ r=await fetchLeg(a,b,mode,when); }catch(e){ legTransient=true; }
     if(r && mode==='transit' && when){ r.when=when; r.timeZone=timeZone||''; }
-    if(r) r.at=Date.now();
-    legCache[key] = r || {fail:Date.now()};             // 실패는 메모리에만 — 저장에서 빠지고 TTL 뒤 다시 묻는다
+    const at=Date.now();
+    if(r) r.at=at;
+    // 잠깐인 실패는 메모리에만(저장에서 빠지고 10분 뒤 다시 묻는다). 경로 없음은 기기에 남긴다 —
+    // 인근 도로 탐색이 구간 하나에 최대 33번이라, 열 때마다 되풀이하면 프록시 분당 상한을 혼자 다 쓴다.
+    legCache[key] = r || (legTransient? {fail:at} : {fail:at,permanent:1,at});
     if(r){
       legCache[base]=r;                                  // 지도·재생은 가장 최근 실제 경로를 사용
       saveLegCache();
@@ -1076,6 +1088,11 @@ async function pumpLegs(){
       });
       clearTimeout(legRefreshT);
       legRefreshT=setTimeout(()=>bgRender(render),450);   // 하루 합계 + 지도 경로선 갱신
+    }
+    else if(!legTransient){
+      saveLegCache();
+      clearTimeout(legRefreshT);
+      legRefreshT=setTimeout(()=>bgRender(render),450);   // ⚠️ 경로 없음 표시 — 다시 그릴 일이 없으면 다음 편집까지 안 보인다
     }
   }
   legBusy=false;
@@ -1812,10 +1829,11 @@ function renderSidebar(){
       if(hasLoc(s)&&prevLoc){
         const lm=legModeOf(day,s), depart=inLeg.depart, when=lm==='transit'?planDepartISO(iso,depart,timeZone):null;
         const lid=legRequestKey(prevLoc,s,lm,when,timeZone), lc=routes.get(inLeg);
-        const failed=!lc && legCache[lid] && legCache[lid].fail;   // 인근 도로 스냅까지 실패
+        // 경로 없음(인근 도로 스냅까지 실패)만 ⚠️ — 잠깐인 실패(오프라인·429)에 '위치를 다시 잡으라'고 하면 거짓말이다
+        const failed=!lc && legCache[lid] && legCache[lid].permanent;
         legHtml = legModeBtn(day,di,si,lm) + (lc
           ? `<span class="leg" data-leg="${lid}" title="${legTitle(lc)}">${legLabel(lc)}</span>`
-          : `<span class="leg${failed?' legfail':''}" data-leg="${lid}"${failed?' title="경로를 찾을 수 없어 직선거리로 표시 — 인근 도로 탐색(최대 2.4km)까지 실패했어요. 장소 편집에서 검색으로 위치를 다시 잡아 보세요"':''}>↳${haversine(prevLoc,s).toFixed(1)}km${failed?' ⚠️':''}</span>`);
+          : `<span class="leg${failed?' legfail':''}" data-leg="${lid}"${failed?` title="${LEG_NOROUTE_TITLE}"`:''}>↳${haversine(prevLoc,s).toFixed(1)}km${failed?' ⚠️':''}</span>`);
       }
       // 예약 시각이 도착 예상시각(ETA)보다 이르면 경고 (예약 놓칠 위험)
       const bookMin=s.bookAt?parseHM(s.bookAt):null;

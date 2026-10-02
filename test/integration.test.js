@@ -15,11 +15,13 @@ const root = path.join(__dirname, '..');
 // index.html에서 <script> 태그를 모두 제거하고, lib.js·sync.js·routing.js·app.js를 인라인으로 주입해 실행한다.
 // 외부 SDK(google/kakao/supabase/Sortable)는 미정의, 네트워크(fetch)는 거부 스텁으로 두고
 // 앱의 가드(if(window.google)…, .catch 등)가 처리하게 한다.
-/** @param {string} [url] 부팅 주소 — 해시 라우터(#verified=1 등)를 검증할 때만 준다 */
-function boot(url = 'http://localhost/') {
+/** @param {string} [url] 부팅 주소 — 해시 라우터(#verified=1 등)를 검증할 때만 준다
+ *  @param {Record<string,string>} [storage] 앱이 뜨기 전 localStorage — 같은 기기에서 다시 여는 것을 흉내 낼 때만 준다 */
+function boot(url = 'http://localhost/', storage = {}) {
   const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8').replace(/<script\b[\s\S]*?<\/script>/gi, '');
   const dom = new JSDOM(html, { url, runScripts: 'dangerously', pretendToBeVisual: true });
   const { window } = dom;
+  for (const [k, v] of Object.entries(storage)) window.localStorage.setItem(k, v);
   window.fetch = () => Promise.reject(new Error('no-net'));                          // loadFx 등 네트워크 차단(가드가 catch)
   window.HTMLDialogElement.prototype.showModal=function(){this.open=true;};
   window.HTMLDialogElement.prototype.close=function(){this.open=false;};
@@ -1499,6 +1501,7 @@ test('통합: 경로 조회 실패는 잠깐만 기억하고 기기에 남기지
     assert.equal(w.eval(`requestLeg(legA,legB,'car')`),null);
     await pump();
     assert.ok(w.eval('legCache[legK].fail'),'실패를 기억한다');
+    assert.ok(!w.eval('legCache[legK].permanent'),'오프라인은 경로 없음이 아니다 — ⚠️(위치를 다시 잡으라)를 띄우지 않는다');
     w.eval(`requestLeg(legA,legB,'car')`); await pump();
     assert.equal(w.legCalls,1,'방금 실패한 구간은 렌더마다 다시 묻지 않는다');
 
@@ -1517,6 +1520,69 @@ test('통합: 경로 조회 실패는 잠깐만 기억하고 기기에 남기지
     assert.equal(w.legCalls,2,'TTL이 지나면 다시 묻는다');
     assert.equal(w.eval('legCache[legK].sec'),420);
     assert.equal(JSON.parse(w.localStorage.getItem('tripcanvas_legs_v4'))[w.legK].sec,420,'성공한 경로는 기기에 남는다');
+  }finally{ w.eval('clearTimeout(legRefreshT)'); w.close(); }
+});
+
+// 구간 조회 큐가 빌 때까지 — 부팅 때 견본 여행의 구간이 먼저 큐에 들어가 있다
+async function legIdle(w){
+  for(let i=0;i<200&&w.eval('legBusy||legQueue.length>0');i++) await new Promise(r=>w.setTimeout(r,10));
+}
+
+test('통합: 경로 없음은 기기에 남긴다 — 다시 열어도 인근 도로 탐색을 되풀이하지 않고 ⚠️가 보인다', { skip: noJsdom }, async () => {
+  const days=`[{mode:'car',spots:[{name:'산 아래',lat:37.5,lng:127},{name:'산 정상',lat:37.51,lng:127.01}]}]`;
+  const w=boot();
+  let storage={};
+  try{
+    await legIdle(w);
+    // 카카오가 출발지 둘레 어디서도 도로를 못 찾는다(프록시가 result_code를 422로 싣는다)
+    w.eval(`window.legCalls=0; window.fetch=async(url)=>{ if(!String(url).includes('kakao-directions')) throw new TypeError('no-net');
+      window.legCalls++; return {ok:false,status:422,json:async()=>({error:'route_unavailable',code:102})}; };
+      window.legK=legKey({lat:37.5,lng:127},{lat:37.51,lng:127.01},'car');`);
+    withTrip(w, days, 1); w.eval('render()');
+    await legIdle(w);
+    assert.equal(w.legCalls,33,'처음 한 번은 둘레를 끝까지 찾는다');
+    assert.equal(w.eval('legCache[legK].permanent'),1);
+    assert.equal(JSON.parse(w.localStorage.getItem('tripcanvas_legs_v4'))[w.legK].permanent,1,'경로 없음은 기기에 남긴다');
+    // 다른 일이 없어도 ⚠️가 뜬다 — 실패만으로는 다시 그릴 일이 없어 다음 편집까지 안 보이던 자리
+    await new Promise(r=>w.setTimeout(r,600));
+    const leg=w.document.querySelector(`[data-leg="${w.legK}"]`);
+    assert.ok(leg.classList.contains('legfail')&&leg.textContent.includes('⚠️'),'경로 없음 표시');
+    assert.match(leg.title,/위치를 다시 잡아/);
+    for(let i=0;i<w.localStorage.length;i++){ const k=w.localStorage.key(i); storage[k]=w.localStorage.getItem(k); }
+  }finally{ w.eval('clearTimeout(legRefreshT)'); w.close(); }
+
+  // 같은 기기에서 다시 연다 — 렌더가 그 구간을 큐에 넣지 않고(33번을 되풀이하지 않고) 처음부터 ⚠️를 그린다
+  const w2=boot('http://localhost/', storage);
+  try{
+    w2.eval(`window.legK=legKey({lat:37.5,lng:127},{lat:37.51,lng:127.01},'car');`);
+    withTrip(w2, days, 1); w2.eval('render()');
+    assert.equal(w2.eval('legQueue.some(q=>q.key===legK)'),false,'다시 묻지 않는다');
+    assert.equal(w2.eval('legCache[legK].permanent'),1);
+    assert.ok(w2.document.querySelector(`[data-leg="${w2.legK}"]`).classList.contains('legfail'),'다시 열어도 ⚠️');
+  }finally{ w2.eval('clearTimeout(legRefreshT)'); w2.close(); }
+});
+
+test('통합: 기기 저장 상한은 이 페이지에서 쓴 구간을 지킨다 — 렌더가 다시 쓴 구간과 새로 받은 구간이 지난 세션의 것보다 먼저 남는다', { skip: noJsdom }, async () => {
+  const w=boot();
+  try{
+    await legIdle(w);
+    w.eval(`window.fetch=async(url)=>{ if(!String(url).includes('kakao-directions')) throw new TypeError('no-net');
+        return {ok:true,status:200,json:async()=>({route:{result_code:0,summary:{duration:420,distance:1800,fare:{taxi:5000}},sections:[]}})}; };
+      window.hitA={lat:37.5,lng:127}; window.hitB={lat:37.51,lng:127.01}; window.newB={lat:37.52,lng:127.02};
+      window.hitK=legKey(hitA,hitB,'car'); window.newK=legKey(hitB,newB,'car');
+      legCache={};
+      for(let i=0;i<TC_ROUTING.LEG_CACHE_MAX;i++) legCache['old'+i+'#car']={sec:60,m:500,path:'x',at:i+2};   // 지난 세션들의 구간 — 상한이 꽉 찼다
+      legCache[hitK]={sec:300,m:1200,path:'h',at:1};`);                      // 가장 오래 안 쓴 것 — 그런데 지금 여행이 다시 쓴다
+    assert.equal(w.eval('requestLeg(hitA,hitB,"car").sec'),300);
+    assert.equal(w.eval('requestLeg(hitB,newB,"car")'),null);
+    await legIdle(w);
+    const saved=JSON.parse(w.localStorage.getItem('tripcanvas_legs_v4'));
+    assert.ok(saved[w.hitK],'렌더가 쓴 구간은 오래됐어도 남는다 — at을 안 찍으면 이것부터 버려진다');
+    assert.equal(saved[w.newK].sec,420,'새로 받은 구간도 남는다 — at이 없으면 가장 먼저 버려진다');
+    assert.equal(Object.keys(saved).length,w.eval('TC_ROUTING.LEG_CACHE_MAX'),'상한은 지킨다');
+    assert.equal(saved['old0#car'],undefined,'자리를 내주는 것은 지난 세션에서 가장 오래 안 쓴 것');
+    assert.equal(saved['old1#car'],undefined);
+    assert.ok(saved['old2#car']);
   }finally{ w.eval('clearTimeout(legRefreshT)'); w.close(); }
 });
 
