@@ -33,9 +33,13 @@
 
 ## 배포와 되돌리기
 
-마이그레이션 `0010_candidate_place_provider`는 nullable provider/provider_id/client_key 컬럼, 제공자/ID 체크, 여행별 제공자 ID·요청 키 유일 인덱스를 추가한다. 기존 행은 변경하지 않는다. 아직 배포하지 않은 0010에 요청 키 변경을 합쳤으며 Drizzle snapshot과 journal도 같은 최종 스키마로 맞췄다. 앱 배포 전 NAS에 이 마이그레이션과 동일 커밋의 API를 배포해야 한다. 프로젝트의 NAS 릴리스 절차에 따라 migrate·api·realtime을 같은 커밋으로 빌드하고 전체 구성을 확인한다.
+마이그레이션 `0010_candidate_place_provider`는 nullable provider/provider_id/client_key 컬럼, 제공자/ID 체크, 여행별 제공자 ID·요청 키 유일 인덱스를 추가한다. 기존 행은 변경하지 않는다. 아직 배포하지 않은 0010에 요청 키 변경을 합쳤으며 Drizzle snapshot과 journal도 같은 최종 스키마로 맞췄다. 앱 배포 전 NAS에 이 마이그레이션과 동일 커밋의 API를 배포해야 한다.
 
 배포 순서는 [NAS 릴리스 절차](nas-release.md)를 따른다.
+
+> 아래 1~6은 0010을 내보낼 때(2026-09-19 자동 배포 이전)의 손 절차 기록이다. 지금은 2~4 — 같은 커밋의 이미지 셋 · migrate ·
+> backup을 포함한 전체 기동 · 이미지 커밋 대조 — 를 merge 뒤 `release.yml`과 NAS의 `scripts/nas-deploy.sh`가 하고,
+> NAS에서 손으로 빌드하지 않는다. 사람이 맡는 것은 1(대상·백업 확인) · 5(실제 경로 검증) · 6(웹·앱 순서)과 "API 먼저" 머지 순서다.
 
 1. 배포 대상 커밋을 확정하고 전체 검증 결과와 스킵 항목을 확인한다. 운영 백업을 먼저 확인하고 실제 DB의 마지막 migration이 0009인지 확인한다. 어떤 환경이든 이전 내용의 0010을 이미 적용했다면 파일을 덮어써 재적용하지 않고, 차이를 별도 forward migration으로 추가해야 한다.
 2. 같은 커밋으로 `migrate`, `api`, `realtime` 이미지를 빌드한다. 운영 환경 변수는 기존 운영 파일을 유지한다. 앱·정적 웹 배포는 아직 진행하지 않는다.

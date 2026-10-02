@@ -79,7 +79,7 @@ trigger → `pg_notify` → LISTEN → hub → WebSocket 흐름은 관리형에�
 
 ```
                 ┌─────────────┐
-                │ PWA / iOS   │   웹: DEFAULT_BASE 두 줄(api.js·auth.js) → 재배포
+                │ PWA / iOS   │   웹: vercel.json의 /nas/api rewrite 대상 + DEFAULT_BASE 두 줄(api.js·auth.js) → 재배포
                 └──────┬──────┘   iOS: TCApiBaseURL → 새 빌드(옛 주소는 관찰 기간 동안 살려 둔다)
                        │ HTTPS
                        ▼

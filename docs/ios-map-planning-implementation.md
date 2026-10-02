@@ -177,6 +177,6 @@ Google `reservable`이나 일반 가격 범위, 카카오 기본 장소 검색, 
 
 **이번 변경의 최종 머지·NAS 배포·TestFlight 업로드는 현재 승인 범위에 포함되지 않는다.** 구현·검증·검토 가능한 PR 준비를 먼저 완료한다. 이전 릴리스의 배포 이력을 이번 새 변경의 배포 완료나 승인으로 취급하지 않는다.
 
-새 iOS는 NAS의 새 검색/후보/미리보기 경로와 nullable 후보 식별자·요청 키 마이그레이션을 필요로 한다. API·DB 호환 확인을 앱보다 먼저 진행해야 하며 Vercel 정적 웹 배포만으로 NAS API가 바뀌지 않는다. [지도 탐색 API의 배포·롤백 설명](ios-map-planning-api.md)과 [NAS 릴리스 절차](nas-release.md)에 따라 migrate·api·realtime을 같은 대상 커밋으로 준비하고 backup을 포함한 전체 구성을 확인한다.
+새 iOS는 NAS의 새 검색/후보/미리보기 경로와 nullable 후보 식별자·요청 키 마이그레이션을 필요로 한다. API·DB 호환 확인을 앱보다 먼저 진행해야 한다. 2026-09-19부터 API·DB는 merge 뒤 자동으로 배포되므로(`release.yml` → NAS, migrate·api·realtime이 한 커밋의 이미지) [지도 탐색 API의 배포·롤백 설명](ios-map-planning-api.md)과 [NAS 릴리스 절차](nas-release.md)의 "API 먼저" 순서로, API를 먼저 merge하고 NAS에서 그 커밋이 도는지와 backup을 포함한 전체 상태를 확인한 뒤 앱을 낸다.
 
 되돌릴 때 새 DB 필드와 저장 데이터를 삭제하지 않는다. 새 앱이 이미 설치된 상황에서는 구형 API로 단순 회귀하지 않고 설치된 앱의 요청 및 외화 소수 보존을 지원하는 호환 경로를 유지해야 한다. 최종 PR에는 실제 배포 대상·순서·되돌리기 조건을 구체적으로 적는다.

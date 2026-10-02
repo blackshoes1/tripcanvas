@@ -103,6 +103,10 @@ LEGACY_DATABASE_URL='<위 pooler URI>' DATABASE_URL='postgres://tripcanvas:<NAS�
 
 가장 짧은 길은 **SSH 로컬 포워딩**이다. `app.js`는 hostname이 `localhost`면 API를 `http://localhost:3000`으로 잡고(`app.js:3467`), CORS 기본 허용 목록에 `http://localhost:8000`이 이미 들어 있다(`next/src/server/api/cors.ts`). **코드도 설정도 건드릴 것이 없다.**
 
+> ⚠️ 아래 NAS 명령은 **2026-09-04 전환 전 staging 때의 기록**이다. 지금 NAS의 `~/tripcanvas`는 운영이고, 운영 compose에는
+> `build:`가 없어(2026-09-19~) `build`는 아무것도 만들지 않으며 `up`은 `deploy/.env`의 `TC_IMAGE_TAG`(운영이 도는 커밋)를 다시 띄운다.
+> 지금 따라 하지 않는다 — 배포는 [NAS 릴리스 절차](nas-release.md), 비상 빌드는 `deploy/docker-compose.build.yml`(nas-deployment.md "비상").
+
 ```bash
 # NAS — 빌드(DS920+에서 몇 분) → api·realtime만 올린다. reverse-proxy는 뺀다: 도메인이 없어 Caddy가 인증서를 못 받는다
 cd ~/tripcanvas

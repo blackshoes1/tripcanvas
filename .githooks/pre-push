@@ -1,9 +1,11 @@
 #!/bin/sh
 # main 직접 푸시를 막는다.
 #
-# GitHub branch protection이 이 저장소에서는 쓸 수 없다(비공개 + 무료 플랜 → 403).
-# 그래서 강제할 수 있는 곳이 여기뿐이다. main 푸시는 Vercel 자동 배포와 연결돼 있어
-# **즉시 프로덕션에 나간다** — 실수 한 번의 값이 크다.
+# 2026-09-06 저장소를 공개로 바꾼 뒤로는 GitHub branch protection도 쓸 수 있다(그 전에는 비공개 + 무료
+# 플랜이라 403이었다). 서버가 막고 있으면 이 훅은 유일한 방어가 아니라 **빠른 방어**다 — 서버까지 갔다가
+# 거절당하기 전에 막는다. 서버 보호가 꺼져 있으면(2026-10-02 확인 때 꺼져 있었다) 여기가 유일한 방어다.
+# 켜져 있는지: gh api repos/blackshoes1/tripcanvas/branches/main --jq .protected   (docs/deployment-workflow.md)
+# main 푸시는 Vercel(웹)과 release.yml(NAS API) 자동 배포로 이어져 **프로덕션에 나간다** — 실수 한 번의 값이 크다.
 #
 # 켜기:  git config core.hooksPath .githooks
 # 우회:  git push --no-verify   (긴급 복구에만. 왜 그랬는지 남길 것)

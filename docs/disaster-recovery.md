@@ -27,7 +27,7 @@
 | | |
 |---|---|
 | 발동 | `/api/health-watch` 503 UNAVAILABLE 이고 provider 콘솔에서 DB는 정상. 또는 배포 직후 앱이 뜨지 않음 |
-| 명령 | ① 직전 이미지로 롤백: `fly releases --app <api>` → `fly deploy --image <직전>` (provider의 동등 명령). ② 런타임 자체가 죽었으면 **NAS 프록시 모드**: NAS `.env`의 `DATABASE_URL`을 관리형 직접 주소로, `TC_READ_ONLY` 해제, `up -d api realtime`(postgres 컨테이너는 올리지 않는다) → 웹 `DEFAULT_BASE`를 NAS 주소로 되돌려 재배포 |
+| 명령 | ① 직전 이미지로 롤백: `fly releases --app <api>` → `fly deploy --image <직전>` (provider의 동등 명령). ② 런타임 자체가 죽었으면 **NAS 프록시 모드**: NAS `.env`의 `DATABASE_URL`을 관리형 직접 주소로, `TC_READ_ONLY` 해제, `up -d api realtime`(postgres 컨테이너는 올리지 않는다) → 웹 주소 세 곳(`vercel.json`의 `/nas/api/*` rewrite 대상 · `api.js`·`auth.js`의 `DEFAULT_BASE`)을 NAS 주소로 되돌려 재배포 |
 | 기대 | ①은 1~2분. ②는 웹 재배포 포함 5분. 데이터는 그대로 관리형 primary |
 | 손실 창 | **0** — DB가 살아 있다. 장애 시간 동안의 편집은 클라이언트가 들고 있다가 올린다 |
 | 확인 | `/api/health` HEALTHY · 로그인 유지 · 저장 revision 증가 · `/api/health-watch` HEALTHY |
@@ -82,7 +82,7 @@
 | | |
 |---|---|
 | 발동 | 전환 뒤 웹 콘솔 CORS/네트워크 오류, 옛 iOS 앱 "클라우드 저장 실패", 특정 망(회사·해외 통신사)에서만 실패 |
-| 명령 | 웹: `TRUSTED_ORIGINS`(Case 4 ③) → 그래도 안 되면 `DEFAULT_BASE`를 NAS 주소로 되돌려 재배포하되 **NAS는 프록시 모드**(Case 1 ②)여야 데이터가 갈라지지 않는다. iOS 옛 앱: NAS 프록시 모드가 살아 있는 한 정상 — 내렸다면 다시 올린다. 새 앱: 새 빌드의 `TCApiBaseURL` 오타·ATS(`http`) 확인 |
+| 명령 | 웹: `TRUSTED_ORIGINS`(Case 4 ③) → 그래도 안 되면 웹 주소 세 곳(rewrite 대상 · `DEFAULT_BASE` 두 줄 — Case 1 ②)을 NAS 주소로 되돌려 재배포하되 **NAS는 프록시 모드**(Case 1 ②)여야 데이터가 갈라지지 않는다. iOS 옛 앱: NAS 프록시 모드가 살아 있는 한 정상 — 내렸다면 다시 올린다. 새 앱: 새 빌드의 `TCApiBaseURL` 오타·ATS(`http`) 확인 |
 | 기대 | 두 주소가 **같은 DB**를 보므로 어느 주소로 붙어도 데이터는 하나 |
 | 손실 창 | 0. 붙지 못한 동안의 편집은 클라이언트에 남는다 |
 | 확인 | 두 주소 모두 `/api/health` HEALTHY · 같은 계정으로 양쪽에서 같은 여행 |
@@ -95,7 +95,7 @@
 1. 관리형 API를 `TC_READ_ONLY=1`로 → 옛 API·실시간 정지와 같은 이유로 **런타임 정지**
 2. 관리형 primary를 `deploy/backup.sh`(`BACKUP_SOURCE_URL`, `BACKUP_RECORD=0`)로 덤프
 3. NAS의 postgres 볼륨은 **cutover 시점 것이라 낡았다** — 새 볼륨(또는 `drop database` 후 재생성)에 `restore-to-target.sh` → `verify:db`(원본 = 관리형, 읽기) PASS
-4. NAS `.env`의 `DATABASE_URL`을 로컬 postgres로 되돌리고 스택 전체 기동 → 웹 `DEFAULT_BASE` → 감시 `TC_WATCH_BASE` → iOS는 새 릴리스
+4. NAS `.env`의 `DATABASE_URL`을 로컬 postgres로 되돌리고 스택 전체 기동 → 웹 주소 세 곳(`vercel.json` rewrite 대상 · `DEFAULT_BASE` 두 줄) → 감시 `TC_WATCH_BASE` → iOS는 새 릴리스
 5. 손실 창 0(2단계 전에 쓰기를 막았다)
 
 이것이 "예전 주소로 바꾸면 된다"가 아닌 이유다 — **데이터가 관리형에 있고, 그것을 먼저 가져와야** 주소를 바꿀 수 있다.
