@@ -7,6 +7,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const I = require('../intake.js');
+const L = require('../lib.js');
 
 // ── 1. 무엇이 들어왔는가 ──
 
@@ -71,6 +72,29 @@ test('normalizeAmount: 천 단위·소수점을 함께 읽는다', () => {
   assert.equal(I.normalizeAmount('1 420 000원'), 1420000);
   assert.equal(I.normalizeAmount('12.50 EUR'), 12.5);
   assert.equal(I.normalizeAmount('무료'), null);
+});
+
+// 소수점 기호는 나라마다 다르다 — '1.234,56'을 1.23으로 읽으면 천 배가 틀린다(2026-10-02).
+test('normalizeAmount: 마지막 구분자의 종류와 자릿수로 소수점을 가른다', () => {
+  assert.equal(I.normalizeAmount('1.234,56 EUR'), 1234.56, '유럽식');
+  assert.equal(I.normalizeAmount('1,234.56 USD'), 1234.56, '영미식');
+  assert.equal(I.normalizeAmount('1 234,56 €'), 1234.56, '공백 천 단위 + 쉼표 소수점');
+  assert.equal(I.normalizeAmount('1.234.567 JPY'), 1234567, '같은 기호가 여러 번이면 천 단위');
+  assert.equal(I.normalizeAmount('12,50 EUR'), 12.5, '뒤가 세 자리가 아니면 소수점');
+  assert.equal(I.normalizeAmount('1.500', 'JPY'), 1500, '엔은 소수가 없다 — 천 단위');
+  assert.equal(I.normalizeAmount('1.234', 'EUR'), 1234, '유로도 소수 셋째 자리는 없다 — 천 단위');
+  assert.equal(I.normalizeAmount('0,500', 'EUR'), 0.5, '0으로 시작하면 천 단위일 수 없다');
+});
+
+test('readAmount: 통화를 모르는데 구분자 하나 뒤가 세 자리면 천 단위로 읽되 모호했다고 남긴다', () => {
+  assert.deepEqual(I.readAmount('총액 1.234'), { amount: 1234, ambiguous: true, alternative: 1.234, text: '1.234' });
+  assert.deepEqual(I.readAmount('총액 1.234', 'EUR'), { amount: 1234, ambiguous: false, alternative: null, text: '1.234' });
+  assert.deepEqual(I.readAmount('무료'), { amount: null, ambiguous: false, alternative: null, text: '' });
+  const c = I.parseBookingCandidate({ url: 'https://www.booking.com/hotel/x', title: 'Hotel X',
+    text: '예약번호: ZZ11223\n체크인 2026-10-30\n체크아웃 2026-11-01\n총액 1.234' });
+  assert.equal(c.amount, 1234);
+  assert.ok(c.ambiguities.some((a) => a.includes('1.234')), '미리보기에서 확인받는다');
+  assert.notEqual(I.candidateDisposition(c), 'AUTO');
 });
 
 // ── 3. 예약 후보 ──
@@ -156,6 +180,64 @@ test('candidateToBooking: 모르는 값을 빈칸으로 채워 넣지 않는다'
   const thin = I.candidateToBooking(I.parseBookingCandidate({ title: '메모' }), 'bk_new2');
   assert.equal('start' in thin, false, '모르는 날짜를 빈 문자열로 넣지 않는다');
   assert.equal('price' in thin, false);
+});
+
+// ── 금액을 엉뚱한 숫자·엉뚱한 통화로 저장하지 않는다 (2026-10-02) ──
+// 라벨이 없으면 본문의 첫 숫자(연도)를 금액으로 읽었고, 저장할 수 없는 통화(GBP…)는 저장하는 순간
+// 통화가 떨어져 원화 금액이 됐고, 반올림이 달러·유로의 센트를 버렸다.
+
+test('parseBookingCandidate: 라벨이 없으면 통화 바로 옆의 숫자만 금액이다 — 날짜의 연도가 금액이 되지 않는다', () => {
+  const c = I.parseBookingCandidate({ url: 'https://www.booking.com/hotel/x', title: 'Hotel X',
+    text: '예약번호: ZX12345\nCheck-in 2026-10-30\nCheck-out 2026-11-01\n2 nights · 250 EUR' });
+  assert.equal(c.currency, 'EUR');
+  assert.equal(c.amount, 250);
+  const symbolFirst = I.parseBookingCandidate({ url: 'https://www.booking.com/hotel/y', title: 'Hotel Y',
+    text: 'Check-in 30.10.2026\nCheck-out 01.11.2026\n€ 1.234,56' });
+  assert.equal(symbolFirst.amount, 1234.56, '기호 뒤의 숫자 — 유럽식 표기 그대로');
+  const nothing = I.parseBookingCandidate({ url: 'https://www.booking.com/hotel/z', title: 'Hotel Z',
+    text: 'Check-in 2026-10-30\nCheck-out 2026-11-01\nEUR 현장 결제' });
+  assert.equal(nothing.amount, null, '통화 옆에 숫자가 없으면 금액을 모른다');
+  const other = I.parseBookingCandidate({ url: 'https://www.booking.com/hotel/w', title: 'Hotel W',
+    text: 'Check-in 2026-10-30\n약 1,800,000원 상당 · 1,234 EUR' });
+  assert.equal(other.currency, 'EUR');
+  assert.equal(other.amount, 1234, '읽은 통화의 옆이어야 한다 — 다른 통화의 금액을 집지 않는다');
+});
+
+test('parseBookingCandidate: 라벨이 있어도 그 줄에서 통화 옆 숫자가 먼저다', () => {
+  const c = I.parseBookingCandidate({ url: 'https://www.booking.com/hotel/x', title: 'Hotel X',
+    text: 'Check-in 2026-10-30\nTotal (2 nights): €300' });
+  assert.equal(c.amount, 300);
+});
+
+test('candidateToBooking: 통화의 최소 단위로 반올림한다 — 센트는 살리고 엔은 정수다', () => {
+  const usd = I.parseBookingCandidate({ url: 'https://www.booking.com/hotel/x', title: 'Hotel X',
+    text: '예약번호: AB12345\n체크인 2026-10-30\n체크아웃 2026-11-01\nTotal USD 1,250.50' });
+  const b = I.candidateToBooking(usd, 'bk_usd');
+  assert.equal(b.price, 1250.5, '₩처럼 반올림해 1251이 되지 않는다');
+  assert.equal(b.cur, 'USD');
+  const jpy = I.parseBookingCandidate({ url: 'https://www.booking.com/hotel/x', title: 'Hotel X',
+    text: '체크인 2026-10-30\n체크아웃 2026-11-01\nTotal JPY 12,000' });
+  assert.equal(jpy.amount, 12000);
+  assert.deepEqual([I.candidateToBooking(jpy, 'bk_jpy').price, I.candidateToBooking(jpy, 'bk_jpy').cur], [12000, 'JPY']);
+  assert.equal(I.candidateToBooking({ title: 'x', amount: 1234.567, currency: 'EUR' }, 'bk_eur').price, 1234.57);
+});
+
+test('candidateToBooking: 저장할 수 없는 통화(GBP)는 원화 금액이 되지 않는다 — 금액은 미정, 읽은 값은 남긴다', () => {
+  const c = I.parseBookingCandidate({ url: 'https://www.booking.com/hotel/x', title: 'London Hotel',
+    text: '예약번호: GB12345\n체크인 2026-10-30\n체크아웃 2026-11-01\nTotal £1,250.50' });
+  assert.equal(c.currency, 'GBP');
+  assert.equal(c.amount, 1250.5, '읽기는 읽은 그대로');
+  assert.ok(c.ambiguities.some((a) => a.includes('GBP')), '미리보기에서 저장할 수 없는 통화라고 말한다');
+  assert.notEqual(I.candidateDisposition(c), 'AUTO');
+
+  const b = I.candidateToBooking(c, 'bk_gbp');
+  assert.equal(b.price, null, '₩1,251로 저장하지 않는다 — 금액 미정');
+  assert.equal('cur' in b, false);
+  assert.deepEqual(b.importedPrice, { amount: 1250.5, currency: 'GBP' }, '무엇이었는지는 남긴다');
+  const saved = L.normalizeBooking(b);
+  assert.equal(saved.price, null, '정규화를 지나도 미정이다');
+  assert.equal(saved.cur, undefined);
+  assert.deepEqual(saved.importedPrice, { amount: 1250.5, currency: 'GBP' });
 });
 
 // ── 4. 중복 · 여행 매칭 ──

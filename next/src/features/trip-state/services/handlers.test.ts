@@ -661,6 +661,27 @@ describe('POST /import/commit — 확인한 것만 저장하고, 다음 행동�
     expect(body.today.trip.revision).toBe(4);
   });
 
+  it('저장할 수 없는 통화(GBP)는 원화 금액으로 저장하지 않는다 — 금액은 미정, 읽은 값은 남긴다', async () => {
+    const res = await api.importPreview(new Request('http://localhost/api/v1/import/preview', auth({
+      method: 'POST',
+      body: JSON.stringify({
+        url: 'https://www.booking.com/hotel/gb/london.html',
+        title: 'London Hotel | Booking.com',
+        text: '예약 번호: GB12345\n체크인 2026-09-02\n체크아웃 2026-09-04\nTotal £1,250.50'
+      })
+    })));
+    const candidate = ((await res.json()) as ImportPreviewResponse).candidate!;
+    expect(candidate.currency).toBe('GBP');
+    expect(candidate.amount).toBe(1250.5);
+    expect(candidate.disposition).not.toBe('AUTO');   // 저장할 수 없는 통화라고 미리보기에서 말한다
+    expect((await commit({ candidate })).status).toBe(200);
+    const bookings = store.rows.get('trip-1')!.data.bookings as Record<string, unknown>[];
+    const saved = bookings[bookings.length - 1];
+    expect(saved.price).toBeNull();   // ₩1,251이 되지 않는다
+    expect(saved.cur).toBeUndefined();
+    expect(saved.importedPrice).toEqual({ amount: 1250.5, currency: 'GBP' });
+  });
+
   it('여러 번 들여와도 id가 겹치지 않는다', async () => {
     const candidate = await candidateFor();
     await commit({ candidate });

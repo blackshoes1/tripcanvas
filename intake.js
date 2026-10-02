@@ -98,6 +98,9 @@
   /** @type {Record<string,string>} */
   const CUR_SYMBOL = {'₩':'KRW','원':'KRW','$':'USD','€':'EUR','£':'GBP','¥':'JPY','元':'CNY'};
   const CUR_CODES = Object.freeze(['KRW','USD','EUR','JPY','CNY','GBP','AUD','CAD','CHF','HKD','SGD','THB','TWD','VND']);
+  // 읽을 수 있는 통화(CUR_CODES)와 금액으로 **저장할 수 있는** 통화는 다르다 — 저장 쪽은 lib.js가 정한다
+  /** @type {readonly string[]} */
+  const STORABLE_CURS = LIB.COST_CURRENCIES;
 
   /** @param {number} y @param {number} m @param {number} d @returns {string|null} */
   function isoOf(y,m,d){
@@ -167,13 +170,73 @@
     return {code:null, ambiguous:false};
   }
 
-  /** 금액 하나. 천 단위 구분·소수점을 함께 본다. @param {string} raw @returns {number|null} */
-  function normalizeAmount(raw){
-    const s=String(raw||'');
-    const m=/([\d]{1,3}(?:[,\s]\d{3})+(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)/.exec(s.replace(/[^\d.,\s]/g,' '));
-    if(!m) return null;
-    const n=+m[1].replace(/[,\s]/g,'');
-    return isFinite(n)&&n>0? n : null;
+  // 숫자 표기 하나 — 세 자리 묶음(구분자 '.'·','·공백: 1.234.567 · 1 420 000) 뒤에 소수부 하나까지가 한 덩어리다.
+  // 묶음이 세 자리가 아니면 거기서 끊는다 — '01.11.2026' 같은 날짜가 한 숫자로 붙지 않는다.
+  const AMOUNT_NUM='\\d+(?:(?:[.,]|[ \\u00a0\\u202f])\\d{3}(?!\\d))*(?:[.,]\\d+)?';
+  const AMOUNT_GAP='[ \\t\\u00a0\\u202f]?';   // 숫자와 통화 사이 — 줄을 넘지 않는다(윗줄 날짜가 아랫줄 €에 붙지 않게)
+
+  /**
+   * 금액 하나와 그 읽기가 모호했는지. 천 단위 구분과 소수점 기호를 **마지막 구분자의 종류·자릿수**로 가른다(2026-10-02) —
+   * '1.234,56'(유럽)·'1,234.56'(영미)·'1 234,56'(공백 천 단위)이 모두 1234.56이다. 전에는 '1.234,56 EUR'를 1.23으로 읽었다.
+   * - 두 기호가 다 있으면 마지막 것이 소수점이다. 같은 기호가 여러 번이면 천 단위다.
+   * - 한 번뿐이고 뒤가 세 자리가 아니면 소수점이다('12,50' · '12.5').
+   * - 한 번뿐이고 뒤가 세 자리면('1.234' · '1,234') 표기만으로는 갈리지 않는다 — 통화를 알면 천 단위다(원·엔은 소수가 없고,
+   *   다른 통화도 소수 셋째 자리는 없다). **통화를 모르면** 천 단위로 읽되 `ambiguous`로 남겨 미리보기에서 확인받는다.
+   * @param {string} raw @param {string|null=} cur 읽은 통화 코드(모르면 비운다)
+   * @returns {{amount:number|null, ambiguous:boolean, alternative:number|null, text:string}} `text`는 읽은 숫자 표기 그대로
+   */
+  function readAmount(raw, cur){
+    const m=new RegExp(AMOUNT_NUM).exec(String(raw||'').replace(/[^\d.,\s]/g,' '));
+    if(!m) return {amount:null, ambiguous:false, alternative:null, text:''};
+    const text=m[0], seps=text.replace(/[\d]/g,''), last=seps.slice(-1);
+    /** @param {string|null} dec @returns {number} */
+    const valueWith=(dec)=>{
+      const at=dec? text.lastIndexOf(dec) : -1;
+      const whole=(at<0? text : text.slice(0,at)).replace(/\D/g,''), frac=at<0? '' : text.slice(at+1);
+      return +(whole+(frac? '.'+frac : ''));
+    };
+    /** @type {string|null} */ let dec=null;
+    let ambiguous=false;
+    if(last==='.'||last===','){
+      const tail=text.slice(text.lastIndexOf(last)+1);
+      if(seps.indexOf(last==='.'?',':'.')>=0) dec=last;              // 둘 다 있으면 마지막이 소수점
+      else if(seps.split(last).length>2) dec=null;                    // 같은 기호가 여러 번 — 천 단위
+      else if(tail.length!==3 || /^0[.,]/.test(text)) dec=last;       // 뒤가 세 자리가 아니거나 0으로 시작 — 소수점
+      else if(!cur) ambiguous=true;                                    // '1,234' — 통화를 모르면 단정하지 않는다
+    }
+    const amount=valueWith(dec);
+    const ok=(/**@type{number}*/n)=>isFinite(n)&&n>0;
+    return {amount:ok(amount)? amount : null, ambiguous:ambiguous&&ok(amount), alternative:ambiguous&&ok(amount)? valueWith(last) : null, text};
+  }
+
+  /** 금액 하나. 천 단위 구분·소수점을 함께 본다(`readAmount`). @param {string} raw @param {string|null=} cur @returns {number|null} */
+  function normalizeAmount(raw, cur){ return readAmount(raw, cur).amount; }
+
+  /** 그 통화를 가리키는 기호 — $·¥는 나라가 갈려 힌트로 고른 통화(AUD 등)도 같은 기호를 쓴다. @param {string} code @returns {string[]} */
+  function currencyMarks(code){
+    const marks=Object.keys(CUR_SYMBOL).filter(s=>CUR_SYMBOL[s]===code);
+    if(/^(?:AUD|CAD|HKD|SGD|TWD)$/.test(code)) marks.push('$');
+    if(code==='CNY') marks.push('¥');
+    return marks;
+  }
+
+  /**
+   * 라벨(총액·total…)이 없는 금액 — 읽은 통화의 기호·코드 **바로 옆**의 숫자만 금액이다(2026-10-02).
+   * 본문의 첫 숫자를 집으면 'Check-in 2026-10-30 … 250 EUR'가 2026이 되고, '1,800,000원 · 1,234 EUR'는 원화 금액이 유로가 된다.
+   * 날짜·시각의 조각(앞뒤가 - / : 인 숫자)은 금액으로 보지 않는다. '원'·'元'은 숫자 뒤에만 붙는다('회원 2명'의 2를 집지 않게).
+   * @param {string} text @param {string} code @returns {string} 찾은 숫자 표기(없으면 빈 문자열)
+   */
+  function amountNearCurrency(text, code){
+    const s=String(text||''), marks=currencyMarks(code).map(x=>x.replace(/[$]/g,'\\$'));
+    const after=marks.filter(x=>x!=='원'&&x!=='元');
+    const num='('+AMOUNT_NUM+')';
+    /** @type {RegExpExecArray[]} */ const hits=[];
+    const before=new RegExp('(?:^|[^\\d.,\\-/:A-Za-z])'+num+AMOUNT_GAP+'(?:'+marks.concat(code+'(?![A-Za-z])').join('|')+')','i').exec(s);
+    if(before) hits.push(before);
+    const next=new RegExp('(?:'+after.concat('(?:^|[^A-Za-z])'+code).join('|')+')'+AMOUNT_GAP+num+'(?![\\d\\-/:]|[.,]\\d)','i').exec(s);
+    if(next) hits.push(next);
+    hits.sort((a,b)=>a.index-b.index);
+    return hits.length? hits[0][1] : '';
   }
 
   // ── 3. 제공자 어댑터 ─────────────────────────────────────────────
@@ -259,8 +322,16 @@
 
     const currency=normalizeCurrency(text, {hint:o.currencyHint});
     if(currency.ambiguous) ambiguities.push('통화 기호만으로는 어느 나라 통화인지 확실하지 않아요');
+    // 금액: 라벨이 있으면 그 줄에서(통화 옆 숫자가 먼저), 없으면 통화 바로 옆의 숫자만 — 본문의 아무 숫자(연도·예약번호)를 집지 않는다
     const amountText=/(?:총액|합계|total|amount|가격|price)[^\n]{0,40}/i.exec(text);
-    const amount=normalizeAmount(amountText? amountText[0] : (currency.code? text : ''));
+    const near=(/**@type{string}*/s)=>currency.code? amountNearCurrency(s, currency.code) : '';
+    const read=readAmount(amountText? (near(amountText[0])||amountText[0]) : near(text), currency.code);
+    const amount=read.amount;
+    if(read.ambiguous) ambiguities.push(`금액 "${read.text}"이 ${read.amount}인지 ${read.alternative}인지 확실하지 않아요`);
+    // 저장할 수 없는 통화(GBP·AUD…)는 저장하는 순간 통화가 떨어져 원화 금액이 된다 — 읽은 대로 보여 주되 확인받는다
+    if(amount!==null && currency.code && STORABLE_CURS.indexOf(currency.code)<0){
+      ambiguities.push(`${currency.code}는 아직 금액으로 저장할 수 없는 통화예요 — 읽은 금액(${read.text} ${currency.code})은 저장할 때 비워 두니 ${STORABLE_CURS.join('·')} 중 하나로 다시 적어 주세요`);
+    }
 
     /** @type {any} */
     const candidate={
@@ -439,8 +510,15 @@
     if(c.sourceUrl) b.url=c.sourceUrl;
     if(c.startAt) b.start=c.startAt;
     if(c.endAt) b.end=c.endAt;
-    if(c.amount) b.price=Math.round(c.amount);
-    if(c.currency) b.cur=c.currency;
+    const cur=c.currency? String(c.currency).toUpperCase() : null;
+    if(cur && STORABLE_CURS.indexOf(cur)<0){
+      // 저장할 수 없는 통화(GBP·AUD…) — 그대로 두면 정규화가 통화를 떨어뜨려 £1,250.50이 ₩1,251이 된다.
+      // 원화로 바꿔 넣지 않는다: 금액은 미정(null)으로 두고, 읽은 값은 무엇이었는지 남긴다(importedType과 같은 자리).
+      if(c.amount){ b.price=null; b.importedPrice={amount:+c.amount, currency:cur}; }
+    } else {
+      if(c.amount) b.price=LIB.moneyAmount(+c.amount, cur||undefined);   // 통화의 최소 단위로 — 달러·유로의 센트를 버리지 않는다
+      if(cur) b.cur=cur;
+    }
     if(c.confirmationNumber) b.confirmation=c.confirmationNumber;
     // 열차는 예약 스키마에 별도 종류가 없어 flight로 두되, 무엇이었는지는 남긴다.
     if(c.type==='TRAIN'||c.type==='RESTAURANT'||c.type==='TOUR') b.importedType=c.type;
@@ -972,7 +1050,7 @@
   }
 
   const API={INTAKE_CFG, MEMORY_CFG, SHARE_STATES, MEMORY_TYPES, PROVIDER_ADAPTERS,
-    classifyShare, normalizeDate, normalizeCurrency, normalizeAmount, providerFor,
+    classifyShare, normalizeDate, normalizeCurrency, normalizeAmount, readAmount, providerFor,
     parseBookingCandidate, candidateDisposition, findDuplicateBooking, matchTripForBooking,
     candidateToBooking, shareIdempotencyKey, shareQueueNext, titleSimilarity,
     associateMemory, memoryTimeline, plannedVsActual,
