@@ -11,6 +11,7 @@
     "lint": "eslint src",
     "check:types": "tsc --noEmit",
     "test": "vitest run --maxWorkers=1",
+    "test:pg": "node --test scripts/pg-concurrency.test.cjs",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "realtime": "node dist-tools/server/realtime/main.js",

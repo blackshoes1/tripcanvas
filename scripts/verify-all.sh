@@ -95,6 +95,11 @@ if want next; then
     step "next: 파리티 픽스처 커밋 확인" check_parity_fixtures
     step "next: build"        npm --prefix next run build
     step "next: tools:build"  npm --prefix next run tools:build
+    if ! scripts/pg-local.sh env >/dev/null 2>&1; then
+      skip "next: CAS·예산 동시성(실제 PostgreSQL)" "로컬 PostgreSQL 바이너리 없음"
+    else
+      step "next: CAS·예산 동시성(실제 PostgreSQL)" bash -c 'scripts/pg-local.sh start && eval "$(scripts/pg-local.sh env)" && npm --prefix next run test:pg'
+    fi
     # 운영 API 이미지에 실리는 것은 이쪽 런타임 의존성이다 — 루트 감사는 next/를 보지 않는다
     step "next: 의존성 감사(high)" npm --prefix next audit --omit=dev --audit-level=high
     step "next: API 연결 E2E" npm run test:e2e:next
