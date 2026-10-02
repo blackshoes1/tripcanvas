@@ -117,3 +117,21 @@ it.each([true, false])('checks provider email verification (%s) through the libr
   const replay = await auth.handler(callback);
   expect(replay.headers.get('set-auth-token')).toBeNull();
 });
+
+it('로그인 전에 닿는 교환은 큰 본문을 끝까지 읽지 않는다 — 길이 헤더가 없어도', async () => {
+  let pulled = 0;
+  const chunk = new TextEncoder().encode('x'.repeat(1024));
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (pulled >= 1000) { controller.close(); return; }
+      pulled += 1;
+      controller.enqueue(chunk);
+    }
+  });
+  const response = await exchangeSocialLogin(new Request(`${opts.baseURL}/api/auth/social/exchange`, {
+    method: 'POST', body, duplex: 'half'
+  } as RequestInit), auth, opts);
+  expect(response.status).toBe(400);
+  expect((await response.json()).code).toBe('SOCIAL_LOGIN_FAILED');
+  expect(pulled).toBeLessThan(20);
+});

@@ -3,6 +3,7 @@
 // 없으면 교환할 수 없고, 세션 토큰은 HTTPS 응답으로만 전달한다.
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { EncryptJWT, jwtDecrypt } from 'jose';
+import { readJsonBody } from '../api/jsonBody';
 import type { BetterAuthInstance } from './betterAuth';
 import { enabledSocialProviders, type SocialProvider, type SocialProviders } from './socialProviders';
 
@@ -106,11 +107,16 @@ export async function finishSocialLogin(request: Request, response: Response, au
   return new Response(null, { status: 302, headers });
 }
 
+/** 교환 본문 상한 — 봉인한 표(ticket)와 증명(verifier)뿐이라 이보다 클 일이 없다(ASCII) */
+const EXCHANGE_BODY_MAX_BYTES = 6000;
+
 export async function exchangeSocialLogin(request: Request, auth: BetterAuthInstance, opts: SocialHandoffOptions): Promise<Response> {
   try {
-    const text = await request.text();
-    if (text.length > 6000) return failure();
-    const body = JSON.parse(text);
+    // 로그인 전에 닿는 길이라 본문을 끝까지 올린 뒤에 길이를 재지 않는다 — 상한까지만 읽는다(jsonBody.ts)
+    const read = await readJsonBody(request, EXCHANGE_BODY_MAX_BYTES);
+    if (!read.ok) return failure();
+    const body = read.value as { ticket?: unknown; verifier?: unknown } | null;
+    if (!body) return failure();
     if (typeof body.ticket !== 'string' || typeof body.verifier !== 'string') return failure();
     const token = await openHandoff(body.ticket, body.verifier, opts.secret);
     const verified = await auth.api.verifyOneTimeToken({ body: { token }, asResponse: true });

@@ -1,7 +1,7 @@
 // trips Repository — sync_trip/tombstone_trip의 저장 규칙(CAS · tombstone · 소유한 쪽 우선)을 트랜잭션으로 낸다.
 // 누가 저장해도 되는가(역할)는 여기서 판정하지 않는다 — application(TripService)의 몫이다. 다만 그 판정(authorize)은
 // 저장과 같은 트랜잭션에서 다시 읽은 역할에 돌린다: 앞에서 본 역할로 쓰면 강등·내보내기와 겹친 저장이 새어 들어간다.
-import { and, desc, eq, inArray, or, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, ne, or, sql } from 'drizzle-orm';
 
 import type { CasResult, CasWriteOptions, MemberRole, TripRecord, TripRepository, TripView } from '../../repositories/types';
 import type { Db } from './db';
@@ -22,6 +22,15 @@ function toRecord(row: Row): TripRecord {
  */
 function byRecency(a: { row: Row }, b: { row: Row }): number {
   return b.row.updatedAt.getTime() - a.row.updatedAt.getTime() || Number(b.row.updatedSeq) - Number(a.row.updatedSeq);
+}
+
+/**
+ * 그 여행의 활성 인원(소유자 포함).
+ * ⚠️ 바깥 여행을 `${trips}.id`로 **이름을 붙여** 가리킨다. 조인 없는 select에서 Drizzle은 `${trips.id}`를 `"id"`로만 쓰고,
+ *    그러면 서브쿼리 안에서는 m.id(멤버 행 번호)로 읽힌다.
+ */
+function activeMemberCount() {
+  return sql<number>`(select count(*)::int from ${tripMembers} m where m.trip_id = ${trips}.id and m.status = 'ACTIVE')`;
 }
 
 /** 앱이 명시적으로 연결한 후보 ID만 쓴다. 이름·좌표·기존 scheduled_ref로 추측하지 않는다. */
@@ -58,9 +67,36 @@ export class PgTripRepository implements TripRepository {
     return { record: toRecord(r.row), role: r.role as MemberRole, memberCount: Number(r.memberCount) };
   }
 
+  /** 내가 소유한 여행 — trips의 user_id 인덱스에서 시작한다 */
+  private ownedQuery(userId: string) {
+    return this.db.select({ row: trips, role: sql<string>`'OWNER'`, memberCount: activeMemberCount() }).from(trips)
+      .where(eq(trips.userId, userId))
+      .orderBy(desc(trips.updatedAt), desc(trips.updatedSeq));
+  }
+
+  /**
+   * 내가 활성 멤버인 **남의** 여행 — trip_members_user_idx에서 시작해 여행은 기본 키로 찾는다.
+   * 소유자도 OWNER 멤버 행을 가지므로(create) 내 소유는 뺀다 — 그건 위 쿼리가 'OWNER'로 준다.
+   */
+  private sharedQuery(userId: string) {
+    return this.db.select({ row: trips, role: tripMembers.role, memberCount: activeMemberCount() }).from(tripMembers)
+      .innerJoin(trips, eq(trips.id, tripMembers.tripId))
+      .where(and(eq(tripMembers.userId, userId), eq(tripMembers.status, 'ACTIVE'), ne(trips.userId, userId)))
+      .orderBy(desc(trips.updatedAt), desc(trips.updatedSeq));
+  }
+
+  /**
+   * 목록이 볼 행 전부 — 소유한 쪽 먼저, 그 안에서 최근 수정 순.
+   * ⚠️ 한 쿼리(`소유 OR 멤버` 조인)로 묻지 않는다. 그 조건은 어느 인덱스로도 시작할 수 없어 trips를 통째로 훑었다
+   *    (2026-10-02 실행 계획 확인). 둘로 나눠 각자 인덱스로 찾고 이어 붙이면 예전 ORDER BY와 같은 순서다.
+   */
+  private async visibleRows(userId: string) {
+    const [owned, shared] = await Promise.all([this.ownedQuery(userId), this.sharedQuery(userId)]);
+    return [...owned, ...shared];
+  }
+
   async listVisible(userId: string): Promise<TripView[]> {
-    const rows = await this.visibleQuery(userId)
-      .orderBy(desc(sql`${trips.userId} = ${userId}`), desc(trips.updatedAt), desc(trips.updatedSeq));
+    const rows = await this.visibleRows(userId);
     const seen = new Set<string>();
     const kept: typeof rows = [];
     for (const r of rows) {
@@ -73,8 +109,7 @@ export class PgTripRepository implements TripRepository {
 
   /** 동기화용 — tombstone까지 포함한다(웹의 로그인 병합이 삭제를 알아야 한다) */
   async listForSync(userId: string): Promise<TripView[]> {
-    const rows = await this.visibleQuery(userId)
-      .orderBy(desc(sql`${trips.userId} = ${userId}`), desc(trips.updatedAt), desc(trips.updatedSeq));
+    const rows = await this.visibleRows(userId);
     const seen = new Set<string>();
     const out: TripView[] = [];
     for (const r of rows) {

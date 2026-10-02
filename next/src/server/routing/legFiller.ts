@@ -7,11 +7,13 @@
 //   · 같은 구간을 동시에 두 번 묻지 않는다(진행 중 표시)
 //   · 실패는 1시간, 성공은 30일 지나야 다시 묻는다 — 무한 재시도는 할당량을 먹는다
 //   · 키가 없는 provider의 구간은 아예 묻지 않는다
+//   · 하루 예산(`legBudget`)이 남은 만큼만 묻는다 — 사람마다 · 서버 전체
 import { dayLegs } from '@/features/itinerary/domain/dayView';
 import type { LegCache } from '@/features/itinerary/domain/types';
 import type { Trip } from '@/features/trip/domain/types';
 
 import type { LegCacheRepository, LegCacheRow } from '../repositories/types';
+import type { LegBudget } from './legBudget';
 import type { ServerRouter } from './serverRouting';
 
 /** 조회하지 않는 수단 — routing.js가 네트워크 없이 직선으로 추정한다(시각표가 없다) */
@@ -69,6 +71,8 @@ export function isStale(row: LegCacheRow | undefined, now: number): boolean {
 export interface LegFillerDeps {
   repo: LegCacheRepository;
   router: ServerRouter | null;
+  /** 경로 조회 하루 예산. 없으면 요청당 상한만 있다(테스트·내부) */
+  budget?: LegBudget;
   now?: () => number;
   log?: (message: string) => void;
 }
@@ -95,12 +99,31 @@ export function createLegFiller(deps: LegFillerDeps) {
    *
    * `budgetMs`를 주면 **그만큼만 기다렸다 돌아온다.** 남은 조회는 배경에서 계속 돌아
    * 캐시에 들어가므로 버려지지 않는다 — 다음 요청이 그 결과를 본다.
+   *
+   * `userId`는 조회를 일으킨 사람이다 — 하루 예산을 그 사람 몫과 서버 전체 몫에서 함께 뗀다.
+   * 예산이 모자라면 남은 만큼만 묻고, 나머지는 추정으로 남는다(다음 날 다시 채워진다).
    */
-  async function fill(requests: LegRequest[], opts?: { budgetMs?: number; max?: number }): Promise<number> {
+  async function fill(requests: LegRequest[], opts?: { budgetMs?: number; max?: number; userId?: string }): Promise<number> {
     const router = deps.router;
     if (!router) return 0;
-    const queue = await pending(requests, opts?.max);
+    // ⚠️ 고른 순간 진행 중으로 표시한다 — `one()`이 시작할 때가 아니라. 예산을 기다리는 동안과 줄에서 차례를
+    // 기다리는 동안에도 다른 채우기(같은 핸들러의 `read` 뒤 `fillLater` 등)가 같은 구간을 다시 뽑으면
+    // 예산을 두 번 떼고 같은 유료 조회를 두 번 한다. `pending()`의 await 사이에 다른 채우기가 먼저 표시했을 수
+    // 있으니 표시는 동기로 다시 걸러서 한다.
+    const queue = (await pending(requests, opts?.max)).filter((r) => !inFlight.has(r.key));
     if (!queue.length) return 0;
+    for (const r of queue) inFlight.add(r.key);
+    if (deps.budget) {
+      let granted = 0;
+      try {
+        granted = await deps.budget.take(opts?.userId, queue.length);
+      } finally {
+        // 예산을 못 받은 것은 내려놓는다 — 다음 요청이 다시 뽑을 수 있게
+        for (const r of queue.slice(Math.max(0, granted))) inFlight.delete(r.key);
+      }
+      queue.length = Math.min(queue.length, granted);
+      if (!queue.length) return 0;
+    }
 
     let filled = 0;
     const worker = async () => {
@@ -123,11 +146,10 @@ export function createLegFiller(deps: LegFillerDeps) {
     return filled;
   }
 
-  /** 한 구간. 성공하면 true */
+  /** 한 구간. 성공하면 true. 진행 중 표시는 `fill`이 이미 했고, 끝나면 여기서 내린다 */
   async function one(r: LegRequest): Promise<boolean> {
     const router = deps.router;
-    if (!router) return false;
-    inFlight.add(r.key);
+    if (!router) { inFlight.delete(r.key); return false; }
     try {
       const provider = router.providerFor(r.a, r.b);
       const outcome = await router.fetchLeg(r.a, r.b, r.mode);
@@ -155,7 +177,37 @@ export function createLegFiller(deps: LegFillerDeps) {
     return false;
   }
 
-  return { fill, pending };
+  /** 이미 뽑혀 조회 중이거나 차례를 기다리는 구간인가 — 예산을 이미 뗐으니 곧 채워진다 */
+  const isInFlight = (key: string) => inFlight.has(key);
+
+  return { fill, pending, isInFlight };
+}
+
+/**
+ * `legsPending` — **곧 채워질 것만** 센다: 조회된 것도, 실패로 굳은 것도 아니고, 우리가 조회할 수 있는 구간 중
+ * ① 이미 뽑혀 예산을 뗀 것(진행 중·대기 중) 전부 + ② 나머지는 오늘 남은 예산만큼.
+ *
+ * ⚠️ ①을 예산과 따로 세는 이유: 예산은 조회가 **시작될 때** 떼므로, 이 요청의 채우기가 마지막 예산을 썼다면
+ * 남은 예산은 0인데 그 구간들은 아직 배경에서 도는 중이다. 둘을 함께 `min`으로 깎으면 0이라고 말해
+ * 앱이 그 날을 완성으로 기억하고(`fetchedDays`) 곧 올 도로를 다시 묻지 않는다.
+ * ⚠️ ②를 깎는 이유: 소진된 날 0보다 크게 말하면 앱이 오지 않을 도로를 기다린다.
+ */
+export async function countPendingLegs(
+  requests: LegRequest[],
+  rows: LegCacheRow[],
+  deps: { router: ServerRouter | null; isInFlight: (key: string) => boolean; remaining: () => Promise<number> }
+): Promise<number> {
+  const router = deps.router;
+  if (!router) return 0;
+  const byKey = new Map(rows.map((r) => [r.key, r]));
+  const unfilled = requests.filter((r) => {
+    const row = byKey.get(r.key);
+    if (row?.sec != null || row?.fail) return false;
+    return router.canRoute(r.a, r.b);
+  });
+  const granted = unfilled.filter((r) => deps.isInFlight(r.key)).length;
+  const rest = unfilled.length - granted;
+  return granted + (rest > 0 ? Math.min(rest, Math.max(0, await deps.remaining())) : 0);
 }
 
 export type LegFiller = ReturnType<typeof createLegFiller>;

@@ -397,3 +397,16 @@ export const fxRates = pgTable('fx_rates', {
   rates: jsonb('rates').$type<Record<string, number>>().notNull(),
   fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow()
 });
+
+/**
+ * 경로 조회 예산 — 유료 경로 API(구글 Routes·카카오내비)를 하루에 몇 구간 물었는가(UTC 날짜).
+ * `scope`는 `user:<id>`(사람마다)와 `all`(서버 전체) 두 갈래다. 넘으면 조회하지 않고 추정으로 답한다(`server/routing/legBudget.ts`).
+ * 응답은 기다리지 않고 배경에서 채우므로 "몇 번 물었나"를 요청 수가 아니라 여기서 센다.
+ */
+export const legFillUsage = pgTable('leg_fill_usage', {
+  scope: text('scope').notNull(),
+  /** YYYY-MM-DD (UTC) */
+  day: text('day').notNull(),
+  count: integer('count').notNull().default(0),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, (t) => [primaryKey({ columns: [t.scope, t.day] })]);

@@ -3,6 +3,7 @@ import { readAllowedOrigins } from '../api/cors';
 import { isReadOnly } from '../api/maintenance';
 import { readRegistry, type MigrationRegistry } from './migrationRegistry';
 import { readSocialProviders, type SocialProviders } from '../auth/socialProviders';
+import { readLegFillLimits, type LegFillLimits } from '../routing/legBudget';
 
 export interface SmtpConfig {
   host: string;
@@ -45,6 +46,8 @@ export interface ServerEnv {
    * 없으면 해외 구간은 직선 추정으로 남는다 — 동작이 달라지지 않는다.
    */
   googleRoutesKey: string;
+  /** 위 두 키로 하는 유료 경로 조회의 하루 예산(사람마다 · 서버 전체). 넘으면 추정으로 답한다 */
+  legFillLimits: LegFillLimits;
   /** 자체 Auth를 켤 수 있는가 — 비밀과 DB가 둘 다 있어야 한다 */
   newAuthEnabled: boolean;
   socialProviders: SocialProviders;
@@ -100,6 +103,7 @@ export function parseEnv(env: Record<string, string | undefined>, warn?: (m: str
     // 카카오내비 프록시가 이미 쓰는 이름을 그대로 쓴다 — 같은 키다
     kakaoRestKey: (env.KAKAO_REST_API_KEY ?? '').trim(),
     googleRoutesKey: (env.GOOGLE_ROUTES_API_KEY ?? '').trim(),
+    legFillLimits: readLegFillLimits(env, notify),
     smtp: readSmtp(env),
     newAuthEnabled: !!authSecret && !!databaseUrl,
     socialProviders: readSocialProviders(env),

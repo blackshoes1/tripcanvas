@@ -5,7 +5,7 @@ import type { Trip } from '@/features/trip/domain/types';
 
 import type { LegCacheRepository, LegCacheRow } from '../repositories/types';
 import {
-  createLegFiller, FAIL_RETRY_MS, FILL_CONCURRENCY, isStale, legRequestsFor, MAX_PER_FILL, REFRESH_MS, toLegCache
+  countPendingLegs, createLegFiller, FAIL_RETRY_MS, FILL_CONCURRENCY, isStale, legRequestsFor, MAX_PER_FILL, REFRESH_MS, toLegCache
 } from './legFiller';
 import type { LegOutcome, ServerRouter } from './serverRouting';
 
@@ -264,5 +264,131 @@ describe('createLegFiller — 병렬과 상한', () => {
     const { repo } = memoryRepo();
     const filler = createLegFiller({ repo, router: router(async () => ok(60)) });
     expect(await filler.fill(many(3), { budgetMs: 500 })).toBe(3);
+  });
+});
+
+// ── 하루 예산 ──
+//
+// 요청당 상한만으로는 같은 요청을 되풀이하면 끝이 없다. 예산은 조회를 일으킨 사람 몫과 서버 전체 몫에서 함께 뗀다.
+
+describe('createLegFiller — 하루 예산', () => {
+  const many = (n: number) => Array.from({ length: n }, (_, i) => ({ key: `b${i}`, a: seoul, b: jeju, mode: 'car' }));
+  function budget(left: number) {
+    const asks: Array<{ userId: string | undefined; want: number }> = [];
+    return {
+      asks,
+      budget: {
+        async take(userId: string | undefined, want: number) { asks.push({ userId, want }); const g = Math.min(want, left); left -= g; return g; },
+        async remaining() { return left; }
+      }
+    };
+  }
+
+  it('예산이 남은 만큼만 묻고, 조회를 일으킨 사람으로 센다', async () => {
+    const { repo, puts } = memoryRepo();
+    const b = budget(3);
+    let asked = 0;
+    const filler = createLegFiller({ repo, router: router(async () => { asked += 1; return ok(60); }), budget: b.budget });
+    expect(await filler.fill(many(5), { userId: 'u1' })).toBe(3);
+    expect(asked).toBe(3);
+    expect(puts).toHaveLength(3);
+    expect(b.asks).toEqual([{ userId: 'u1', want: 5 }]);
+  });
+
+  it('예산이 없으면 아무것도 묻지 않는다 — 남은 구간은 추정으로 남고 실패로 굳지도 않는다', async () => {
+    const { repo, puts } = memoryRepo();
+    let asked = 0;
+    const filler = createLegFiller({ repo, router: router(async () => { asked += 1; return ok(60); }), budget: budget(0).budget });
+    expect(await filler.fill(many(4), { userId: 'u1' })).toBe(0);
+    expect(asked).toBe(0);
+    expect(puts).toEqual([]);
+  });
+
+  it('예산은 실제로 물을 것만 센다 — 이미 있는 구간·요청당 상한 밖의 구간은 떼지 않는다', async () => {
+    const { repo } = memoryRepo([
+      { key: 'b0', sec: 300, m: 2000, path: null, taxi: null, snapped: false, fail: false, provider: 'kakao', fetchedAt: new Date() }
+    ]);
+    const b = budget(1000);
+    const filler = createLegFiller({ repo, router: router(async () => ok(60)), budget: b.budget });
+    await filler.fill(many(MAX_PER_FILL + 10), { userId: 'u1' });
+    expect(b.asks).toEqual([{ userId: 'u1', want: MAX_PER_FILL }]);
+  });
+
+  it('라우터가 없으면(키 없음) 예산도 보지 않는다 — 예전과 같다', async () => {
+    const { repo } = memoryRepo();
+    const b = budget(10);
+    expect(await createLegFiller({ repo, router: null, budget: b.budget }).fill(many(3), { userId: 'u1' })).toBe(0);
+    expect(b.asks).toEqual([]);
+  });
+});
+
+// ── 같은 구간을 두 번 사지 않는다 ──
+//
+// 예산은 뽑을 때 떼는데, 진행 중 표시가 조회 **시작** 때 붙으면 차례를 기다리던 구간을 바로 뒤의 채우기
+// (`read` 뒤 `fillLater`)가 다시 뽑아 예산을 두 번 떼고 같은 유료 조회를 두 번 했다.
+
+describe('createLegFiller — 뽑힌 구간은 곧바로 진행 중이다', () => {
+  const many = (n: number) => Array.from({ length: n }, (_, i) => ({ key: `q${i}`, a: seoul, b: jeju, mode: 'car' }));
+
+  it('기다리다 돌아온 채우기 뒤에 곧바로 같은 구간을 채워도 구간마다 한 번만 떼고 한 번만 묻는다', async () => {
+    const { repo } = memoryRepo();
+    const wants: number[] = [];
+    const budget = { async take(_u: string | undefined, want: number) { wants.push(want); return want; }, async remaining() { return 1000; } };
+    const asked = new Map<string, number>();
+    // 장소마다 다른 좌표 객체를 줘 어느 구간을 물었는지 센다
+    const wrapped = many(FILL_CONCURRENCY * 2).map((r) => ({ ...r, a: { ...r.a } }));
+    const keyed = createLegFiller({
+      repo, budget,
+      router: router(async (a) => {
+        const key = wrapped.find((r) => r.a === a)!.key;
+        asked.set(key, (asked.get(key) ?? 0) + 1);
+        await new Promise((r) => setTimeout(r, 20));
+        return ok(60);
+      })
+    });
+    await keyed.fill(wrapped, { budgetMs: 1, max: 60 });       // 대부분은 아직 차례를 기다린다
+    await keyed.fill(wrapped, { max: 60 });                    // 같은 요청 안의 fillLater
+    await new Promise((r) => setTimeout(r, 120));
+    expect(wants).toEqual([wrapped.length]);                   // 두 번째 채우기는 뗄 것이 없다
+    expect([...asked.values()].every((n) => n === 1)).toBe(true);
+    expect(asked.size).toBe(wrapped.length);
+  });
+
+  it('예산을 못 받은 구간은 내려놓는다 — 다음 요청이 다시 뽑을 수 있다', async () => {
+    const { repo } = memoryRepo();
+    let left = 2;
+    const budget = { async take(_u: string | undefined, want: number) { const g = Math.min(want, left); left -= g; return g; }, async remaining() { return left; } };
+    const filler = createLegFiller({ repo, budget, router: router(async () => ok(60)) });
+    expect(await filler.fill(many(5))).toBe(2);
+    expect(['q2', 'q3', 'q4'].some((k) => filler.isInFlight(k))).toBe(false);
+    expect((await filler.pending(many(5))).map((r) => r.key)).toEqual(['q2', 'q3', 'q4']);
+  });
+});
+
+describe('countPendingLegs — legsPending', () => {
+  const reqs = Array.from({ length: 5 }, (_, i) => ({ key: `p${i}`, a: seoul, b: jeju, mode: 'car' }));
+  const routable = router(async () => ok(60));
+  const none = () => false;
+
+  it('남은 예산만큼만 곧 채워진다고 말한다 — 소진되면 0', async () => {
+    expect(await countPendingLegs(reqs, [], { router: routable, isInFlight: none, remaining: async () => 2 })).toBe(2);
+    expect(await countPendingLegs(reqs, [], { router: routable, isInFlight: none, remaining: async () => 0 })).toBe(0);
+    expect(await countPendingLegs(reqs, [], { router: routable, isInFlight: none, remaining: async () => 99 })).toBe(5);
+  });
+
+  it('이미 예산을 뗀 구간(진행 중)은 남은 예산이 0이어도 센다 — 곧 도착한다', async () => {
+    const busy = (k: string) => k === 'p0' || k === 'p1' || k === 'p2';
+    expect(await countPendingLegs(reqs, [], { router: routable, isInFlight: busy, remaining: async () => 0 })).toBe(3);
+    expect(await countPendingLegs(reqs, [], { router: routable, isInFlight: busy, remaining: async () => 1 })).toBe(4);
+  });
+
+  it('조회된 것·실패로 굳은 것·조회할 수 없는 것은 세지 않는다 — 라우터가 없으면 0', async () => {
+    const rows: LegCacheRow[] = [
+      { key: 'p0', sec: 60, m: 600, path: null, taxi: null, snapped: false, fail: false, provider: 'kakao', fetchedAt: new Date() },
+      { key: 'p1', sec: null, m: null, path: null, taxi: null, snapped: false, fail: true, provider: 'kakao', fetchedAt: new Date() }
+    ];
+    expect(await countPendingLegs(reqs, rows, { router: routable, isInFlight: none, remaining: async () => 99 })).toBe(3);
+    expect(await countPendingLegs(reqs, rows, { router: router(async () => ok(60), () => false), isInFlight: none, remaining: async () => 99 })).toBe(0);
+    expect(await countPendingLegs(reqs, rows, { router: null, isInFlight: none, remaining: async () => 99 })).toBe(0);
   });
 });
