@@ -39,10 +39,14 @@ case "$url" in
     cat "\${TC_TEST_SERVE_SCRIPT:-$TC_TEST_SCRIPT}" | emit ;;
   *:3000/api/health)
     # env_file이 이미지의 ENV를 덮어쓰는 실제 동작을 흉내 낸다
+    tag=$(sed -n 's/^TC_IMAGE_TAG=//p' "$TC_TEST_ENV" | tail -1)
     rev="\${TC_TEST_HEALTH_REVISION:-}"
     if [ -z "$rev" ]; then rev=$(sed -n 's/^TC_REVISION=//p' "$TC_TEST_ENV" | tail -1); fi
-    if [ -z "$rev" ]; then rev=$(sed -n 's/^TC_IMAGE_TAG=//p' "$TC_TEST_ENV" | tail -1); fi
-    printf '{"status":"ok","database":"ok","revision":"%s"}' "$rev" | emit ;;
+    if [ -z "$rev" ]; then rev="$tag"; fi
+    # 뜨기는 했는데 DB에 못 붙는 커밋 — 헬스체크가 끝까지 실패한다
+    db=ok
+    if [ -n "\${TC_TEST_UNHEALTHY_SHA:-}" ] && [ "$tag" = "$TC_TEST_UNHEALTHY_SHA" ]; then db=down; fi
+    printf '{"status":"ok","database":"%s","revision":"%s"}' "$db" "$rev" | emit ;;
   *:3001/health)
     rev=$(sed -n 's/^TC_IMAGE_TAG=//p' "$TC_TEST_ENV" | tail -1)
     printf '{"ok":true,"revision":"%s"}' "$rev" | emit ;;
@@ -58,9 +62,14 @@ if [ "$1" = "compose" ]; then
   tag=$(sed -n 's/^TC_IMAGE_TAG=//p' "$TC_TEST_ENV" | tail -1)
   case "$1" in
     ps) echo "fake-container-id" ;;
-    # 망가진 커밋: 이미지를 못 받거나(교체 전) 띄우다 죽는다(교체 뒤 — 마이그레이션 실패·부팅 실패)
+    # 망가진 커밋: 이미지를 못 받거나(교체 전) 띄우다 죽는다(교체 뒤 — 마이그레이션 실패·부팅 실패).
+    # TC_TEST_BROKEN_SHA는 공백으로 여럿, TC_TEST_BROKEN_ONCE는 첫 교체만 실패한다(일시적인 실패).
     pull) if [ -n "\${TC_TEST_PULL_FAIL_SHA:-}" ] && [ "$tag" = "$TC_TEST_PULL_FAIL_SHA" ]; then exit 1; fi ;;
-    up) if [ -n "\${TC_TEST_BROKEN_SHA:-}" ] && [ "$tag" = "$TC_TEST_BROKEN_SHA" ]; then exit 1; fi ;;
+    up)
+      if [ -n "$tag" ]; then case " \${TC_TEST_BROKEN_SHA:-} " in *" $tag "*) exit 1 ;; esac; fi
+      if [ -n "\${TC_TEST_BROKEN_ONCE:-}" ] && [ ! -f "$TC_TEST_ROOT/broken-once" ]; then
+        : > "$TC_TEST_ROOT/broken-once"; exit 1
+      fi ;;
     *) : ;;
   esac
   exit 0
@@ -171,10 +180,15 @@ test('TC_REVISION이 남아 있으면 /api/health가 옛 커밋을 말한다 —
 });
 
 test('도는 컨테이너가 다른 커밋의 이미지면 실패한다 — 환경변수를 거치지 않는 두 번째 증인', (t) => {
-  const { r, out } = runDeploy(t, { env: { TC_TEST_IMAGE_REVISION: STALE } });
+  const { r, out, stateText } = runDeploy(t, {
+    state: `CURRENT_SHA=${STALE}\nPREVIOUS_SHA=\n`,
+    env: { TC_TEST_IMAGE_REVISION: STALE },
+  });
   assert.equal(r.status, 1);
   assert.match(out, /다른 커밋의 이미지다/);
   assert.doesNotMatch(r.stdout + r.stderr, new RegExp(`✔ 배포 성공`));
+  // revision 확인도 교체 뒤의 실패다 — 적지 않으면 5분마다 같은 교체·롤백을 되풀이한다
+  assert.match(stateText, new RegExp(`^FAILED_SHA=${TARGET}$`, 'm'));
 });
 
 test('바뀐 게 없으면 아무것도 하지 않는다 — 5분마다 도는 경로다', (t) => {
@@ -266,6 +280,43 @@ test('교체 뒤에 실패한 커밋은 적어 두고 직전 SHA로 되돌린다
   assert.match(stateText, new RegExp(`^FAILED_SHA=${TARGET}$`, 'm'));
   assert.match(stateText, new RegExp(`^CURRENT_SHA=${STALE}$`, 'm'), '도는 것은 여전히 직전 SHA다');
   assert.match(out, /--force/, '다시 시도하는 법을 기록에 남긴다');
+});
+
+// 과제가 말한 바로 그 경우 — 뜨기는 했는데 헬스체크가 끝까지 실패한다(최대 180초 뒤 롤백)
+test('헬스체크가 실패한 커밋도 적어 두고 직전 SHA로 되돌린다', (t) => {
+  const { r, out, stateText } = runDeploy(t, {
+    state: stateOf({ CURRENT_SHA: STALE, PREVIOUS_SHA: '' }),
+    // 실패 쪽은 한 번 묻고 5초 쉬면 끝난다. 1초면 느린 러너에서 롤백 쪽이 한 번도 못 묻고 끝날 수 있다
+    env: { TC_TEST_UNHEALTHY_SHA: TARGET, TC_HEALTH_TIMEOUT: '3' },
+  });
+  assert.equal(r.status, 1, out);
+  assert.match(out, /헬스체크 실패/);
+  assert.match(out, /롤백 성공/);
+  assert.match(stateText, new RegExp(`^FAILED_SHA=${TARGET}$`, 'm'));
+  assert.match(stateText, new RegExp(`^CURRENT_SHA=${STALE}$`, 'm'));
+});
+
+test('지금 도는 커밋을 --force로 다시 띄우다 실패하면 적지 않는다 — 그 커밋은 방금까지 돌고 있었다', (t) => {
+  const { r, out, stateText } = runDeploy(t, {
+    args: ['--force'],
+    state: stateOf({ CURRENT_SHA: TARGET, PREVIOUS_SHA: STALE }),
+    env: { TC_TEST_BROKEN_ONCE: '1' },
+  });
+  assert.equal(r.status, 1, out);
+  assert.match(out, /롤백 성공/);
+  assert.match(stateText, new RegExp(`^CURRENT_SHA=${TARGET}$`, 'm'));
+  assert.doesNotMatch(stateText, new RegExp(`FAILED_SHA=${TARGET}`), '도는 production을 실패로 적으면 고정을 풀어도 돌아오지 못한다');
+});
+
+test('롤백까지 실패하면 적지 않는다 — 환경 탓일 수 있으니 다음 차례에 다시 해 본다', (t) => {
+  const { r, out, stateText } = runDeploy(t, {
+    state: stateOf({ CURRENT_SHA: STALE, PREVIOUS_SHA: '' }),
+    env: { TC_TEST_BROKEN_SHA: `${TARGET} ${STALE}` },
+  });
+  assert.equal(r.status, 1, out);
+  assert.match(out, /롤백도 실패했다/);
+  assert.doesNotMatch(stateText, new RegExp(`FAILED_SHA=${TARGET}`));
+  assert.match(out, /실패로 적지 않았다/, '왜 안 적었는지 말한다');
 });
 
 test('실패로 적힌 production 커밋은 자동 경로가 다시 시도하지 않는다 — 5분마다 운영을 내리지 않는다', (t) => {

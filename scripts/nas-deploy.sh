@@ -437,16 +437,17 @@ if bring_up "$TARGET_SHA"; then
   exit 0
 fi
 
-# ── 실패: 교체까지 갔으면 그 커밋을 적어 둔다 ──
+# ── 실패: 교체까지 간 커밋은 적어 둔다 — 단, 직전 SHA로 되돌리기가 **성공했을 때만** ──
 # 안 적으면 production 태그가 그대로라 5분 뒤 cron이 '교체 → 헬스체크 실패 → 롤백'을 되풀이한다 —
-# 실패 한 번이 5분마다 오는 운영 중단이 된다. 교체 전 실패(compose·이미지를 못 받음)는 운영을
-# 건드리지 않았고 대개 일시적이라 적지 않는다 — 다음 차례에 다시 해 본다.
-# 고정 배포(손 롤백)의 실패도 적지 않는다: 자동 경로가 고를 커밋이 아니고, 적으면 production의 기록을 덮는다.
-if [ "$UP_ATTEMPTED" = 1 ] && [ "$PIN" != 1 ]; then
-  FAILED_SHA="$TARGET_SHA"; FAILED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-  write_state
-  log "  ${TARGET_SHA:0:7}를 실패로 적었다 — 자동 배포는 이 커밋을 다시 시도하지 않는다(다음 production 커밋은 그대로 배포된다). 다시: $0 --force"
-fi
+# 실패 한 번이 5분마다 오는 운영 중단이 된다. 적지 않는 경우:
+# - 교체 전 실패(compose·이미지를 못 받음): 운영을 건드리지 않았고 대개 일시적이다 — 다음 차례에 다시 해 본다.
+# - 고정 배포(손 롤백)의 실패: 자동 경로가 고를 커밋이 아니고, 적으면 production의 기록을 덮는다.
+# - 지금 도는 커밋을 다시 띄운 실패(--force): "이 커밋은 못 뜬다"는 증거가 아니다. 적으면 멀쩡히 도는 커밋이
+#   실패로 남아, 나중에 고정을 풀었을 때 자동 경로가 production으로 돌아가지 못한다.
+# - 롤백까지 실패했을 때: 직전 커밋도 못 떴으면 커밋보다 환경(DB·docker·디스크) 탓일 가능성이 크다.
+#   운영은 이미 내려가 있으니 다음 차례에 다시 해 봐도 잃을 것이 없고, 환경이 돌아오면 그때 배포된다.
+RECORD_FAILURE=0
+if [ "$UP_ATTEMPTED" = 1 ] && [ "$PIN" != 1 ] && [ "$TARGET_SHA" != "$CURRENT_SHA" ]; then RECORD_FAILURE=1; fi
 
 # ── 실패 → 직전 SHA로 되돌린다 ──
 # ⚠️ 이미지만 되돌아간다. **스키마는 앞선 채로 남는다** — 그래서 마이그레이션은 항상
@@ -457,7 +458,15 @@ fi
 log "↩ 배포 실패 — ${CURRENT_SHA:0:7}로 되돌린다(스키마는 되돌아가지 않는다)"
 if bring_up "$CURRENT_SHA" rollback; then
   log "✔ 롤백 성공: ${CURRENT_SHA:0:7} — ${TARGET_SHA:0:7}는 배포되지 않았다"
+  if [ "$RECORD_FAILURE" = 1 ]; then
+    FAILED_SHA="$TARGET_SHA"; FAILED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    write_state
+    log "  ${TARGET_SHA:0:7}를 실패로 적었다 — 자동 배포는 이 커밋을 다시 시도하지 않는다(다음 production 커밋은 그대로 배포된다). 다시: $0 --force"
+  fi
 else
   log "✗✗ 롤백도 실패했다 — 운영이 내려가 있을 수 있다. 사람이 봐야 한다"
+  if [ "$RECORD_FAILURE" = 1 ]; then
+    log "  ${TARGET_SHA:0:7}는 실패로 적지 않았다 — 직전 커밋도 못 떴으니 환경 탓일 수 있다. 다음 차례에 다시 해 본다"
+  fi
 fi
 exit 1
