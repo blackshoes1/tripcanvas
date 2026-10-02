@@ -54,10 +54,12 @@ test('모바일 일정 패널은 접힘·반판·전체 3단계로 전환된다'
 test('전환 도중 핸들을 잡아도 시트가 손가락 아래에서 튀지 않는다',async({context,page})=>{
   await prepare(context); await page.setViewportSize({width:390,height:844}); await page.goto('/');
   const jump=await page.evaluate(async()=>{
-    const sb=document.getElementById('sidebar'), handle=document.getElementById('sheetHandle');
+    const sb=document.getElementById('sidebar');
     sb.dataset.snap='half'; await new Promise(r=>setTimeout(r,400));
     sb.dataset.snap='expanded';                       // 전환 시작
     await new Promise(r=>setTimeout(r,80));           // 아직 전환 중
+    // 핸들은 기다린 뒤에 찾는다 — renderSidebar가 다시 그리면 핸들을 새로 만들어, 먼저 잡아 둔 것은 떨어져 나간 요소다
+    const handle=document.getElementById('sheetHandle');
     const before=sb.getBoundingClientRect().height, r=handle.getBoundingClientRect();
     handle.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,cancelable:true,clientX:100,clientY:r.top+2,pointerId:1,isPrimary:true,pointerType:'touch'}));
     return {before,after:sb.getBoundingClientRect().height};
@@ -73,11 +75,12 @@ test('전환 도중 다시 탭해도 일정 패널 단계는 한 칸씩만 움�
     await page.evaluate(()=>{ document.getElementById('sidebar').dataset.snap='half'; });
     await page.waitForTimeout(400);
     const seq=await page.evaluate(async gap=>{
-      const sb=document.getElementById('sidebar'), handle=document.getElementById('sheetHandle');
+      const sb=document.getElementById('sidebar');
       const out=[];
       const send=(el,type,y)=>el.dispatchEvent(new PointerEvent(type,{bubbles:true,cancelable:true,clientX:100,clientY:y,pointerId:1,isPrimary:true,pointerType:'touch'}));
       for(let i=0;i<3;i++){
-        const r=handle.getBoundingClientRect(), y=r.top+r.height/2;
+        // 탭마다 다시 찾는다 — 구간 조회가 끝나 다시 그리면(경로 없음 ⚠️ 표시 포함) 핸들이 새 요소로 바뀐다
+        const handle=document.getElementById('sheetHandle'), r=handle.getBoundingClientRect(), y=r.top+r.height/2;
         send(handle,'pointerdown',y);
         send(window,'pointermove',y+2);      // 문턱(4px) 아래 = 손가락 흔들림이지 끌기가 아니다
         send(window,'pointerup',y+2);

@@ -1,22 +1,23 @@
 // Trip Canvas Service Worker
-const VER = 'tc-v244';
+const VER = 'tc-v245';
 const SHELL_CACHE = VER + '-shell';
+
+// index.html이 `?v=VER`로 부르는 파일 — **그 주소 그대로** 담는다. 오프라인 폴백(caches.match)은 쿼리까지
+// 비교하므로 `./lib.js`로 담아 두면 첫 방문 직후 오프라인에서 `lib.js?v=…`를 못 찾아 빈 화면이 된다
+// (첫 방문의 스크립트 요청은 아직 SW를 거치지 않아 network-first가 채워 주지도 않는다).
+// index.html에 스크립트·스타일을 더하면 여기에도 더한다 — test/sw.test.js가 대조한다.
+const VERSIONED = [
+  'style.css', 'lib.js', 'sync.js', 'routing.js', 'price.js', 'adaptive.js',
+  'intake.js', 'collab.js', 'api.js', 'auth.js', 'app.js'
+];
 
 const SHELL = [
   './',
   './index.html',
-  './style.css',
-  './app.js',
-  './lib.js',
-  './sync.js',
-  './routing.js',
-  './price.js',
-  './adaptive.js',
-  './intake.js',
-  './collab.js',
   './manifest.json',
   './icon-192.png',
-  './icon-512.png'
+  './icon-512.png',
+  ...VERSIONED.map(f => './' + f + '?v=' + VER)
 ];
 
 self.addEventListener('install', e => {
