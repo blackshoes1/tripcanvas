@@ -2793,6 +2793,56 @@ test('통합: 초대 링크(#join=)로 열면 여행 본문 없이 미리보기�
   w.close();
 });
 
+test('통합: 같이 짜기를 열면 미반영 문서를 먼저 저장한 뒤 당겨온다', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    withTrip(w, '[{"title":"","spots":[]}]');
+    w.eval(`user={id:'u1'}; sb={}; trip().name='미반영 편집';
+      syncMeta.__it__={revision:1,status:'dirty',hash:'',op:''};
+      tripRoles.__it__={role:'OWNER',count:2}; renderMembers=async()=>{}; cloudSnapshot=()=>{};`);
+    let finishSave, sent, pulls=0;
+    w.TC_API.sync.save=async(id,data)=>{ sent=data; return new Promise(resolve=>{ finishSave=resolve; }); };
+    w.TC_API.sync.get=async()=>{ pulls++; return {data:{revision:2,data:sent,deleted_at:null},error:null}; };
+    w.eval('openMembers()');
+    await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(sent.name,'미반영 편집');
+    assert.equal(pulls,0,'저장이 끝나기 전에는 당겨오지 않는다');
+    finishSave({applied:true,conflict:false,revision:2,data:sent});
+    await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(pulls,1);
+    assert.equal(w.eval('trip().name'),'미반영 편집');
+    assert.equal(w.eval('syncMeta.__it__.status'),'clean');
+  } finally { w.close(); }
+});
+
+test('통합: 같이 짜기 저장 실패·충돌 또는 계정 전환 뒤에는 당겨오지 않는다', { skip: noJsdom }, async () => {
+  for (const outcome of ['error','conflict','account']) {
+    const w=boot();
+    try {
+      withTrip(w, '[{"title":"","spots":[]}]');
+      w.eval(`user={id:'u1'}; sb={}; trip().name='로컬 보존';
+        syncMeta.__it__={revision:1,status:'dirty',hash:'',op:''};
+        tripRoles.__it__={role:'OWNER',count:2}; renderMembers=async()=>{}; cloudSnapshot=()=>{};`);
+      let pulls=0, finishSave;
+      w.TC_API.sync.get=async()=>{ pulls++; return {data:null,error:null}; };
+      w.TC_API.sync.save=async()=>{
+        if(outcome==='error') throw new Error('offline');
+        if(outcome==='conflict') return {conflict:true,revision:2,data:{id:'__it__',name:'다른 편집',start:'2026-08-01',days:[{spots:[]}]}};
+        return new Promise(resolve=>{ finishSave=resolve; });
+      };
+      w.eval('openMembers()');
+      await new Promise(resolve=>setImmediate(resolve));
+      if(outcome==='account') {
+        w.eval(`user={id:'u2'}; syncAccountEpoch++;`);
+        finishSave({applied:true,conflict:false,revision:2});
+        await new Promise(resolve=>setImmediate(resolve));
+      }
+      assert.equal(pulls,0,outcome);
+      assert.equal(w.eval('trip().name'),'로컬 보존',outcome);
+    } finally { w.close(); }
+  }
+});
+
 test('통합: 같이 짜기 화면은 초대가 긴 취향 양식보다 위에 있다(첫 화면에 보이게)', { skip: noJsdom }, () => {
   const w = boot();
   const inv = w.document.getElementById('inviteSection'), pref = w.document.getElementById('prefSection');

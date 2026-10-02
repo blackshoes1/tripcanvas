@@ -5663,7 +5663,13 @@ function openMembers(){
   document.getElementById('membersTitle').textContent=`같이 짜기 · ${trip().name||'여행'}`;   // 메뉴 이름(같이 짜기)과 화면 이름을 맞춘다
   document.getElementById('inviteResult').hidden=true; document.getElementById('inviteLink').value='';
   document.getElementById('membersModalBg').classList.add('show');
-  pullTrip(membersTripId);
+  const id=membersTripId, account=user.id, epoch=syncAccountEpoch;
+  pushLocalFirst(id).then(()=>{
+    if(!user||user.id!==account||syncAccountEpoch!==epoch||membersTripId!==id||store.activeId!==id) return;
+    const entry=syncMeta[id];
+    if(entry&&['error','conflict','syncing'].includes(entry.status)) return;
+    return pullTrip(id);
+  }).catch(e=>reportOperationalError('collab.members.refresh',e));
   renderMembers();
 }
 async function renderMembers(){
