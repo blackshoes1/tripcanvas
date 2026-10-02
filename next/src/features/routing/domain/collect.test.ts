@@ -24,7 +24,7 @@ const NOW = Date.UTC(2026, 0, 1);
 describe('collectLegRequests', () => {
   it('연속 쌍 + 숙소 복귀 + 이월 앵커→첫 장소, 좌표 없는 장소는 건너뛴다', () => {
     const t = trip([
-      day([airport(), spot('미정', null, null), hotel()]),
+      day([airport(), spot('미정', null, null), hotel({ nights: 2 })]),   // 2박 — 2일차 밤에도 묵는다
       day([seongsan()]),
       day([])                                  // 마지막 날에는 복귀가 없다
     ]);
@@ -35,6 +35,17 @@ describe('collectLegRequests', () => {
     expect(bases).toContain(legKey(ll(seongsan()), ll(hotel()), 'car'));     // 2일차 숙소 복귀
     expect(reqs).toHaveLength(3);
     expect(reqs.every(r => r.when === null)).toBe(true);             // 자차 — 시각 키 없음
+  });
+
+  it('체크아웃한 날에는 숙소 복귀 구간을 묻지 않는다 — 출발 기준점은 그대로다', () => {
+    const t = trip([
+      day([airport(), hotel()]),               // nights 미지정 = 1박 → 2일차는 체크아웃한 날
+      day([seongsan()]),
+      day([])
+    ]);
+    const bases = collectLegRequests(t, {}, NOW).map(r => r.base);
+    expect(bases).toContain(legKey(ll(hotel()), ll(seongsan()), 'car'));        // 아침은 숙소에서 나간다
+    expect(bases).not.toContain(legKey(ll(seongsan()), ll(hotel()), 'car'));    // 밤에는 돌아가지 않는다
   });
 
   it('대중교통 미래 출발은 시각별 키(base@tz@when), 과거·시간대 없음은 base 키', () => {

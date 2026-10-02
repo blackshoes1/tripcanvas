@@ -650,8 +650,14 @@
 
   /**
    * 그 날 마지막에 '돌아갈 숙소' — 동선을 닫기 위한 표시·계산용이며 데이터에는 쓰지 않는다.
-   * 그날 등록한 숙소 → 없으면 연박으로 그날도 묵고 있는 숙소. 이미 그 숙소로 끝나면(=동선이 닫혀 있으면) null.
+   * 그날 등록한 숙소 → 없으면 연박으로 **그날 밤도** 묵는 숙소. 이미 그 숙소로 끝나면(=동선이 닫혀 있으면) null.
    * 숙소를 못 찾으면 null — 출국일·야간열차처럼 돌아갈 곳이 없는 날엔 아무것도 덧붙이지 않는다.
+   *
+   * ⚠️ **숙박 수(`nights`)를 엄격하게 본다.** 이월된 숙소는 체크인일 k에서 `k + nights > di`일 때만 돌아간다.
+   * 체크아웃한 날(`k + nights === di`)은 아침 출발점(`dayStartAnchor`, `>=`)은 그 숙소지만 밤에는 돌아가지 않는다 —
+   * 출발점의 범위를 그대로 쓰면 떠난 숙소로 돌아가는 이동이 그날 거리·시간·택시비에 얹혔다(`dayLodgings`는 그날을
+   * CHECK_OUT으로 본다). `nights`를 안 정하면 1박(`stayNights`)이라 체크인 다음 날은 복귀가 없다.
+   * 이월 숙소는 출발점이 고른 것(가까운 날 우선)만 본다 — 그 숙소가 끝났다고 더 앞의 숙소를 되살리지 않는다.
    *
    * ⚠️ **일정의 마지막 날에는 붙이지 않는다.** 그날은 돌아가는 날이 아니라 떠나는 날이라,
    * 체크아웃하고 공항으로 간 뒤에 '🏠 호텔 복귀'가 따라붙으면 있지도 않은 이동이 생긴다
@@ -666,7 +672,15 @@
     if(!loc.length) return null;
     const own = loc.filter((/**@type{any}*/s)=>s.stay).pop();
     const carried = dayStartAnchor(days, di);
-    const stay = own || ((carried && carried.stay) ? carried : null);
+    let tonight = null;   // 이월받은 숙소가 그날 밤까지 이어질 때만 — 체크아웃한 날은 아니다
+    if(carried && carried.stay){
+      for(let k=di-1;k>=0;k--){
+        if(!((days[k]&&days[k].spots)||[]).includes(carried)) continue;
+        if(k + stayNights(carried) > di) tonight = carried;
+        break;
+      }
+    }
+    const stay = own || tonight;
     if(!stay) return null;
     if(loc[loc.length-1] === stay && !stay.split) return null;   // 분리 가지 하나만 숙소에 있어도 나머지는 돌아와야 한다
     return stay;
