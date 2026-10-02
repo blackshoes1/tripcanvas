@@ -83,4 +83,13 @@ describe('kakao-directions rate limit 키 (Vercel 밖)', () => {
     for (let i = 0; i < 31; i++) last = (await from({ 'x-forwarded-for': `f-${Math.random()}, 203.0.113.10` })).status;
     expect(last).toBe(429);
   });
+
+  // 위 둘은 '한 버킷에 쌓인다'만 본다 — 어댑터가 주소를 잃어 모두가 'ip:unknown' 하나가 돼도 통과한다.
+  // 그러면 한 사람이 31번 보내는 것으로 모든 사용자의 국내 경로 조회가 429다.
+  it('앞단 프록시가 붙인 주소가 다르면 다른 사람이다 — 한 사람이 다 써도 다른 사람은 막히지 않는다', async () => {
+    let last = 0;
+    for (let i = 0; i < 31; i++) last = (await from({ 'x-forwarded-for': 'x, 203.0.113.10' })).status;
+    expect(last).toBe(429);
+    expect((await from({ 'x-forwarded-for': 'y, 203.0.113.11' })).status).not.toBe(429);
+  });
 });
