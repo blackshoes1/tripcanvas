@@ -304,14 +304,16 @@
   /**
    * 여행지의 현지 날짜 + 자정부터 분을 IANA 시간대 기준 UTC ISO로 변환한다. DST gap(존재하지 않는 현지시각)은 null.
    * minutes가 1440을 넘으면 다음 날짜로 넘겨 자정 이후 일정도 보존한다.
+   * 소수 분은 **먼저** 반올림한다 — 날짜를 반올림 전 값으로 정하면 1439.6분이 다음 날이 아니라 그 날 00:00이 된다.
    * @param {string} isoDate @param {number} minutes @param {string} timeZone @returns {string|null}
    */
   function zonedMinutesToISOString(isoDate,minutes,timeZone){
     const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDate||'');
     if(!m||!isFinite(minutes)||!validTimeZone(timeZone)) return null;
+    minutes=Math.round(minutes);
     const base=new Date(Date.UTC(+m[1],+m[2]-1,+m[3]+Math.floor(minutes/1440)));
     if(base.getUTCFullYear()<1000) return null;
-    const minute=((Math.round(minutes)%1440)+1440)%1440;
+    const minute=((minutes%1440)+1440)%1440;
     const desired=Date.UTC(base.getUTCFullYear(),base.getUTCMonth(),base.getUTCDate(),Math.floor(minute/60),minute%60);
     let guess=desired;
     for(let i=0;i<4;i++){

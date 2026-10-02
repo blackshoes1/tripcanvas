@@ -196,6 +196,14 @@ test('IANA 시간대 — DST gap·자정 넘김·서로 다른 시간대',()=>{
   assert.equal(L.validTimeZone('Mars/Olympus'),false);
 });
 
+test('IANA 시간대 — 소수 분은 반올림한 뒤에 날짜를 정한다',()=>{
+  // 1439.6분은 반올림하면 1440분(다음 날 00:00)이다. 날짜를 반올림 전에 정하면 그 날 00:00으로 하루가 거꾸로 간다
+  assert.equal(L.zonedMinutesToISOString('2026-10-01',1439.6,'Asia/Seoul'),'2026-10-01T15:00:00Z');
+  assert.equal(L.zonedMinutesToISOString('2026-10-01',1439.4,'Asia/Seoul'),'2026-10-01T14:59:00Z');
+  assert.equal(L.zonedMinutesToISOString('2026-10-02',-0.6,'Asia/Seoul'),'2026-10-01T14:59:00Z','앞날로 넘어가는 쪽도 같다');
+  assert.equal(L.zonedMinutesToISOString('2026-10-01',600.4,'Asia/Seoul'),'2026-10-01T01:00:00Z');
+});
+
 test('normalizeTrip — IANA 시간대 보존과 기존 무시간대 호환',()=>{
   const valid=L.normalizeTrip({timeZone:'Europe/Madrid',days:[{timeZone:'Asia/Tokyo',spots:[]}]});
   assert.equal(valid.timeZone,'Europe/Madrid');
