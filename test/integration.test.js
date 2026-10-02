@@ -325,8 +325,10 @@ test('통합: 지워진 여행을 force로 올려도 삭제 충돌이면 이유�
   const w=boot();
   try{
     w.eval(`user={id:'u2'}; sb={}; syncMeta={'gone':{revision:3,status:'conflict',op:'',hash:''}};
+      store.trips=[{id:'gone',name:'공유 여행',days:[{spots:[]}]}]; store.activeId='gone';
+      tripRoles={'gone':{role:'EDITOR',owner:false,count:2}};
       TC_API.sync.save=async()=>({applied:false,conflict:true,revision:5,data:null,deleted_at:'2026-10-01T00:00:00Z'});`);
-    // 처음 카드: 평소처럼 세 선택지
+    // 이 기기에 남은 문서를 원격 삭제와 비교한다 — c.local만 있고 store에 없으면 로컬 삭제다.
     w.eval(`enqueueSyncConflict({kind:'remote-deleted',local:{id:'gone',name:'공유 여행',days:[{spots:[]}]},remote:null,revision:5,deleted_at:'2026-10-01T00:00:00Z'})`);
     assert.notEqual(w.document.getElementById('syncUseDevice').style.display,'none');
     w.document.getElementById('syncUseDevice').click();
