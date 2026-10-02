@@ -64,6 +64,23 @@ function withSplitJourney(w){
     requestLeg=(from,to,mode,when)=>{window.routeRequests.push({from:from.name,to:to.name,mode,when});return {sec:600,m:10000,est:true};};`);
 }
 
+// 페이지에 실리는 스크립트는 같은 출처에서 돈다 — localStorage의 세션 토큰(tripcanvas_auth_v1)·여행·키를 읽을 수 있다.
+// 그래서 외부 스크립트는 SRI로 내용이 고정된 CDN 라이브러리뿐이고, 스크립트를 다시 끌어오는 인라인 로더는 두지 않는다.
+test('통합: index.html은 SRI로 고정한 CDN 라이브러리와 자기 파일만 싣는다', () => {
+  const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+  const tags = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)];
+  assert.ok(tags.length > 0);
+  for (const [, attrs, body] of tags) {
+    const src = (attrs.match(/\bsrc="([^"]+)"/) || [])[1];
+    assert.ok(src, `인라인 스크립트 없음: ${attrs.trim() || body.trim().slice(0, 60)}`);
+    if (!/^https?:/i.test(src)) continue;
+    const host = new URL(src).host;
+    assert.ok(['cdnjs.cloudflare.com', 'cdn.jsdelivr.net'].includes(host), `허용 CDN만: ${host}`);
+    assert.match(attrs, /\bintegrity="sha384-[^"]+"/, `SRI 필요: ${src}`);
+  }
+  assert.doesNotMatch(html, /tp-em\.com/);
+});
+
 test('통합 부트: index.html+lib+app 무크래시 로드', { skip: noJsdom }, () => {
   const w = boot();
   ['dayContext', 'startAnchorFor', 'carryStayFor', 'desiredEngine', 'legModeOf', 'normalizeTrip', 'animPath', 'dayEtas']
