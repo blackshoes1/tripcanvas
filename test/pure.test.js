@@ -201,6 +201,8 @@ test('IANA 시간대 — 소수 분은 반올림한 뒤에 날짜를 정한다',
   assert.equal(L.zonedMinutesToISOString('2026-10-01',1439.6,'Asia/Seoul'),'2026-10-01T15:00:00Z');
   assert.equal(L.zonedMinutesToISOString('2026-10-01',1439.4,'Asia/Seoul'),'2026-10-01T14:59:00Z');
   assert.equal(L.zonedMinutesToISOString('2026-10-02',-0.6,'Asia/Seoul'),'2026-10-01T14:59:00Z','앞날로 넘어가는 쪽도 같다');
+  // -0.4분은 반올림하면 0분(그 날 00:00)이다. 날짜를 반올림 전에 정하면 앞날로 넘어간 뒤 시각만 00:00이 돼 하루가 통째로 거꾸로 갔다
+  assert.equal(L.zonedMinutesToISOString('2026-10-02',-0.4,'Asia/Seoul'),'2026-10-01T15:00:00Z');
   assert.equal(L.zonedMinutesToISOString('2026-10-01',600.4,'Asia/Seoul'),'2026-10-01T01:00:00Z');
 });
 
