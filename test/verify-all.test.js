@@ -119,3 +119,66 @@ test('missing explicit simulator does not fall back to a personal device', (t) =
   assert.match(r.stdout, /SKIP  iOS/);
   assert.doesNotMatch(r.stdout, /xcodebuild test/);
 });
+
+// ── 지침 동기(CLAUDE.md → AGENTS.md) — scripts/sync-agents.js ───────────────────
+// 셸이 필요 없는 검사라 Windows에서도 건너뛰지 않는다(nodeTest). Windows(core.autocrlf=true)는 두 파일을
+// CRLF로 체크아웃하는데, 검사가 줄바꿈까지 비교해 내용이 같아도 실패했다 — 그 소음이 진짜 어긋남을 가린다.
+const SYNC_AGENTS = join(__dirname, '../scripts/sync-agents.js');
+const CLAUDE_LF = '# 작업 가이드\n\n- 첫 규칙\n- 둘째 규칙\n';
+const crlf = (s) => s.replace(/\n/g, '\r\n');
+
+/** 임시 루트에 CLAUDE.md(와 AGENTS.md)를 두고 그 루트에서 돌린다 — 스크립트는 루트 상대 경로를 쓴다 */
+function syncAgents(t, { claude, agents }, args = []) {
+  const root = mkdtempSync(join(tmpdir(), 'tc-agents-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  writeFileSync(join(root, 'CLAUDE.md'), claude);
+  if (agents !== undefined) writeFileSync(join(root, 'AGENTS.md'), agents);
+  const r = spawnSync(process.execPath, [SYNC_AGENTS, ...args], { cwd: root, encoding: 'utf8' });
+  return { r, agents: () => readFileSync(join(root, 'AGENTS.md'), 'utf8') };
+}
+
+/** LF 체크아웃에서 생성한 AGENTS.md — 저장소에 커밋되는 모양 */
+function generatedLf(t) {
+  const { r, agents } = syncAgents(t, { claude: CLAUDE_LF });
+  assert.equal(r.status, 0, r.stderr);
+  return agents();
+}
+
+nodeTest('agents: LF 체크아웃에서 생성한 그대로면 통과한다', (t) => {
+  const { r } = syncAgents(t, { claude: CLAUDE_LF, agents: generatedLf(t) }, ['--check']);
+  assert.equal(r.status, 0, r.stderr);
+});
+
+nodeTest('agents: CRLF 체크아웃(Windows autocrlf)에서 줄바꿈만 다르면 통과한다', (t) => {
+  const { r } = syncAgents(t, { claude: crlf(CLAUDE_LF), agents: crlf(generatedLf(t)) }, ['--check']);
+  assert.equal(r.status, 0, r.stderr);
+});
+
+nodeTest('agents: CRLF여도 내용이 다르면 실패한다 — AGENTS.md를 직접 고친 경우', (t) => {
+  const edited = crlf(generatedLf(t)).replace('둘째 규칙', '직접 고친 규칙');
+  const { r } = syncAgents(t, { claude: crlf(CLAUDE_LF), agents: edited }, ['--check']);
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /AGENTS\.md가 CLAUDE\.md와 다릅니다/);
+});
+
+nodeTest('agents: 생성은 원본의 줄바꿈을 따른다 — CRLF 체크아웃에서 만들어도 줄이 섞이지 않는다', (t) => {
+  const { r, agents } = syncAgents(t, { claude: crlf(CLAUDE_LF) });
+  assert.equal(r.status, 0, r.stderr);
+  const text = agents();
+  assert.doesNotMatch(text, /(^|[^\r])\n/, 'CR 없이 LF만 있는 줄이 없다');
+  assert.equal(text.replace(/\r\n/g, '\n'), generatedLf(t));
+});
+
+// verify-all.sh에만 있으면 CI는 어긋난 AGENTS.md를 초록으로 통과시킨다
+nodeTest('agents: CI Quality 잡도 지침 동기를 검사한다', () => {
+  assert.match(ciRunBlockLine('AGENTS.md generated from CLAUDE.md'), /^npm run check:agents$/);
+});
+
+/** ci.yml에서 이름으로 스텝의 한 줄짜리 `run:`을 꺼낸다 */
+function ciRunBlockLine(name) {
+  const lines = CI.split('\n');
+  const at = lines.findIndex((l) => l.trim() === `- name: ${name}`);
+  assert.notEqual(at, -1, `ci.yml에 '${name}' 스텝이 있다`);
+  const run = lines.slice(at + 1).find((l) => /^\s+run: /.test(l));
+  return run.replace(/^\s+run: /, '').trim();
+}

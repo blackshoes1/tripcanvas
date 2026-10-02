@@ -26,6 +26,9 @@ jobs:
         run: npm run check:syntax
       - name: Service worker / asset version sync
         run: npm run check:version
+      # AGENTS.md는 CLAUDE.md의 생성물이다 — 갈라지면 어느 쪽을 읽었느냐로 따르는 절차가 달라진다(scripts/sync-agents.js)
+      - name: AGENTS.md generated from CLAUDE.md
+        run: npm run check:agents
       - name: Lint focused modules
         run: npm run lint
       - name: Secret pattern check
