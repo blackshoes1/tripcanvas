@@ -85,3 +85,59 @@ test('car-offers: health가 자격증명 등록 여부를 구분해 알린다 (�
   assert.equal(withKey.marker, true);
   assert.ok(!JSON.stringify(withKey).includes('tp_secret_value'), '키 값 자체는 절대 응답에 넣지 않는다');
 });
+
+// rate limit 키 — NAS(Funnel → Next)에서는 `x-vercel-forwarded-for`를 아무나 써 보낼 수 있다(kakao 프록시와 같은 규칙)
+async function invokeFrom(handler, { headers = {}, remoteAddress } = {}) {
+  const res = response();
+  await handler({ method: 'POST', headers, socket: { remoteAddress }, body: JSON.stringify(BODY) }, res);
+  return { status: res.statusCode, json: JSON.parse(res.body) };
+}
+
+test('car-offers: Vercel 밖에서는 전달 헤더를 바꿔도 같은 사람으로 센다', async () => {
+  _private.buckets.clear();
+  const handler = createHandler({ env: {} });
+  let last;
+  for (let i = 0; i < 11; i++) {
+    last = await invokeFrom(handler, { headers: { 'x-vercel-forwarded-for': `v-${Math.random()}`, 'x-forwarded-for': `f-${Math.random()}` }, remoteAddress: '203.0.113.7' });
+  }
+  assert.equal(last.status, 429);
+  assert.equal(last.json.error, 'RATE_LIMIT');
+});
+
+test('car-offers: Vercel 위에서는 엣지가 붙인 주소로 사람을 가른다', async () => {
+  _private.buckets.clear();
+  const handler = createHandler({ env: { VERCEL: '1' } });
+  const from = ip => ({ headers: { 'x-vercel-forwarded-for': ip }, remoteAddress: '10.0.0.1' });
+  let last;
+  for (let i = 0; i < 11; i++) last = await invokeFrom(handler, from('198.51.100.1'));
+  assert.equal(last.status, 429);
+  assert.notEqual((await invokeFrom(handler, from('198.51.100.2'))).status, 429);
+});
+
+test('car-offers: Vercel 엣지 헤더가 보이는데 VERCEL이 없으면 한 번 경고하고, 키는 여전히 소켓 주소다', async (t) => {
+  _private.buckets.clear();
+  const warned = [];
+  t.mock.method(console, 'warn', (...args) => { warned.push(args.join(' ')); });
+  const handler = createHandler({ env: {} });
+  const edge = ip => ({ headers: { 'x-vercel-id': 'icn1::abc', 'x-vercel-forwarded-for': ip }, remoteAddress: '169.254.100.6' });
+  let last;
+  for (let i = 0; i < 11; i++) last = await invokeFrom(handler, edge(`198.51.100.${i}`));
+  assert.equal(warned.length, 1, '인스턴스마다 한 번');
+  assert.match(warned[0], /VERCEL/);
+  assert.equal(last.status, 429, '헤더는 여전히 키가 아니다');
+  _private.buckets.clear();
+});
+
+test('car-offers: 창이 지난 버킷은 지우고 표는 상한을 넘지 않는다', async () => {
+  _private.buckets.clear();
+  let clock = 0;
+  const handler = createHandler({ env: {}, now: () => clock });
+  for (let i = 0; i < 20; i++) await invokeFrom(handler, { remoteAddress: `old-${i}` });
+  assert.equal(_private.buckets.size, 20);
+  clock = 60_000;
+  await invokeFrom(handler, { remoteAddress: 'new' });
+  assert.equal(_private.buckets.size, 1);
+  for (let i = 0; i <= _private.RATE_MAX_KEYS; i++) await invokeFrom(handler, { remoteAddress: `flood-${i}` });
+  assert.ok(_private.buckets.size <= _private.RATE_MAX_KEYS);
+  _private.buckets.clear();
+});

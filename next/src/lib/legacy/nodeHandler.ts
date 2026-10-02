@@ -19,6 +19,16 @@ export interface LegacyResponse {
 
 export type LegacyNodeHandler = (req: LegacyRequest, res: LegacyResponse) => void | Promise<void>;
 
+/**
+ * 앞단 프록시가 본 클라이언트 주소 — Route Handler는 소켓을 모르니 그 프록시가 붙인 X-Forwarded-For뿐이다.
+ * ⚠️ **마지막 항목**이다. 앞쪽은 클라이언트가 써 넣은 그대로 지나올 수 있고, 마지막은 바로 앞 프록시
+ *    (NAS는 Tailscale Funnel, Vercel은 엣지)가 붙인 것이다. 레거시 rate limit이 이 값을 키로 쓴다.
+ */
+function proxiedAddress(headers: Record<string, string>): string | undefined {
+  const hops = (headers['x-forwarded-for'] ?? '').split(',').map((h) => h.trim()).filter(Boolean);
+  return hops.at(-1);
+}
+
 /** fetch Request → 레거시 req 형태 (경로+쿼리 유지, 본문은 문자열 — 레거시 parseBody가 처리) */
 async function toLegacyRequest(request: Request): Promise<LegacyRequest> {
   const url = new URL(request.url);
@@ -29,7 +39,7 @@ async function toLegacyRequest(request: Request): Promise<LegacyRequest> {
     url: url.pathname + url.search,
     headers,
     body: request.method === 'GET' || request.method === 'HEAD' ? undefined : await request.text(),
-    socket: { remoteAddress: headers['x-forwarded-for']?.split(',')[0]?.trim() }
+    socket: { remoteAddress: proxiedAddress(headers) }
   };
 }
 

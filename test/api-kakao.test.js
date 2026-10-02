@@ -60,3 +60,70 @@ test('Kakao proxy는 필요한 경로 필드만 반환한다', async () => {
   assert.equal(out.json.route.summary.duration, 60);
   assert.doesNotMatch(JSON.stringify(out.json), /sensitive|secret|name/);
 });
+
+// ── rate limit 키 — 누가 보낸 요청인가 ──
+// NAS(Tailscale Funnel → Next)에서는 `x-vercel-forwarded-for`를 아무나 써 보낼 수 있다. 그 값을 키로 믿으면
+// 요청마다 값을 바꾸는 것만으로 분당 상한이 사라진다. Vercel 엣지가 덮어쓰는 Vercel 위에서만 믿는다.
+const limited = (out) => out.status === 429;
+
+test('Kakao proxy: Vercel 밖에서는 전달 헤더를 바꿔도 같은 사람으로 센다', async () => {
+  const handler = createHandler({ env: {} });
+  const spoof = () => ({ 'x-vercel-forwarded-for': `198.51.100.${Math.floor(Math.random() * 250)}`, 'x-forwarded-for': `t-${Math.random()}` });
+  const outs = [];
+  for (let i = 0; i < 31; i++) outs.push(await invoke(handler, { headers: spoof(), socket: { remoteAddress: '203.0.113.7' } }));
+  assert.equal(outs.slice(0, 30).some(limited), false);
+  assert.equal(limited(outs[30]), true, '31번째는 막힌다 — 헤더로 새 버킷을 만들 수 없다');
+});
+
+test('Kakao proxy: Vercel 위에서는 엣지가 붙인 주소로 사람을 가른다', async () => {
+  const handler = createHandler({ env: { VERCEL: '1' } });
+  const from = ip => ({ headers: { 'x-vercel-forwarded-for': ip }, socket: { remoteAddress: '10.0.0.1' } });
+  let last;
+  for (let i = 0; i < 31; i++) last = await invoke(handler, from('198.51.100.1'));
+  assert.equal(limited(last), true);
+  assert.equal(limited(await invoke(handler, from('198.51.100.2'))), false, '다른 사람은 막히지 않는다');
+});
+
+// `VERCEL`은 Vercel의 시스템 환경 변수 노출 설정에 달려 있다 — 꺼지면 Vercel 위에서도 모두가 한 버킷이 된다.
+// 키는 그대로 두고(엣지 헤더는 아무나 보낼 수 있다) 조용히 지나가지 않게 한 번 남긴다.
+test('Kakao proxy: Vercel 엣지 헤더가 보이는데 VERCEL이 없으면 한 번 경고하고, 키는 여전히 소켓 주소다', async (t) => {
+  const warned = [];
+  t.mock.method(console, 'warn', (...args) => { warned.push(args.join(' ')); });
+  const handler = createHandler({ env: {} });
+  const edge = (ip) => ({ headers: { 'x-vercel-id': 'icn1::abc', 'x-vercel-forwarded-for': ip }, socket: { remoteAddress: '169.254.100.6' } });
+  for (let i = 0; i < 31; i++) await invoke(handler, edge(`198.51.100.${i}`));
+  assert.equal(warned.length, 1, '인스턴스마다 한 번');
+  assert.match(warned[0], /VERCEL/);
+  assert.equal(limited(await invoke(handler, edge('198.51.100.200'))), true, '헤더는 여전히 키가 아니다');
+});
+
+test('Kakao proxy: 창이 지난 버킷은 지우고 표는 상한을 넘지 않는다', async () => {
+  let clock = 0;
+  const handler = createHandler({ env: {}, now: () => clock });
+  for (let i = 0; i < 50; i++) await invoke(handler, { socket: { remoteAddress: `old-${i}` } });
+  assert.equal(_private.buckets.size, 50);
+  clock = 60_000;
+  await invoke(handler, { socket: { remoteAddress: 'new' } });
+  assert.equal(_private.buckets.size, 1, '1분 지난 50개는 새 요청이 올 때 정리된다');
+
+  for (let i = 0; i <= _private.RATE_MAX_KEYS; i++) await invoke(handler, { socket: { remoteAddress: `flood-${i}` } });
+  assert.ok(_private.buckets.size <= _private.RATE_MAX_KEYS, `상한 ${_private.RATE_MAX_KEYS} 이하`);
+});
+
+test('Kakao proxy: 서버 안에서 부르는 경로 조회는 밖의 요청과 같은 버킷을 쓰지 않는다', async () => {
+  const outside = createHandler({ env: {} });
+  const inside = createHandler({ env: {}, rateKey: 'internal:server-routing' });
+  // 주소 없는 요청('unknown')과 내부 키를 흉내 낸 주소로 밖의 버킷을 다 채워도
+  for (const remoteAddress of [undefined, 'internal:server-routing']) {
+    for (let i = 0; i < 31; i++) await invoke(outside, { socket: { remoteAddress } });
+  }
+  assert.equal(limited(await invoke(outside, { socket: {} })), true);
+  assert.equal(limited(await invoke(inside, { socket: {} })), false, '안의 조회는 제 버킷을 쓴다');
+
+  // 격리되지만 상한은 있다 — rateKey가 제한을 건너뛰게 바뀌면 서버의 legFiller가 카카오 키 할당량을 끝없이 태운다.
+  // 서버 전체가 버킷 하나라 주소가 달라도 함께 센다(위에서 1번 썼다 → 31번째가 막힌다).
+  const more = [];
+  for (let i = 0; i < 30; i++) more.push(await invoke(inside, { socket: { remoteAddress: `r-${i}` } }));
+  assert.equal(more.slice(0, 29).some(limited), false);
+  assert.equal(limited(more[29]), true, '안의 조회도 분당 30번이다');
+});

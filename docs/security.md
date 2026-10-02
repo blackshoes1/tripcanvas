@@ -49,6 +49,15 @@ devtools를 열면 누구나 볼 수 있었다 — 바뀐 것은 *가능성*이 
 
 `/api/kakao-directions`는 POST와 같은 origin 요청만 받고, 1KB 이하 JSON의 위·경도를 검증한다. upstream 응답은 앱에 필요한 필드만 반환하며 8초 뒤 중단한다. 함수 인스턴스별 30회/분 완화 제한은 실수로 생긴 요청 폭주를 줄일 뿐, 여러 서버리스 인스턴스에 걸친 보안 경계가 아니다.
 
+제한 키(누가 보낸 요청인가)는 세 프록시(`kakao-directions`·`hotel-offers`·`car-offers`)가 같은 규칙이다(2026-10-02).
+`x-vercel-forwarded-for`는 **Vercel 위(`VERCEL`)에서만** 믿는다 — 엣지가 덮어쓰는 Vercel과 달리 NAS의 같은 라우트(Funnel → Next, `next/src/app/api/*`)에서는
+클라이언트가 써 보낸 그대로 지나와, 요청마다 값을 바꾸면 상한이 사라졌다. 그 밖에서는 소켓 주소이고, Next 어댑터(`nodeHandler.ts`)는
+X-Forwarded-For의 **마지막** 항목(바로 앞 프록시 — NAS는 Tailscale Funnel — 가 붙인 주소)을 거기 싣는다. 버킷 표는 창이 지난 항목을 지우고 1만 개를 넘지 않는다.
+서버 안의 경로 조회(`serverRouting.ts`)는 제 버킷(`rateKey`) 하나를 써서 밖의 요청이 그 조회를 429로 막을 수 없다.
+⚠️ 이 키는 **Vercel 프로젝트 설정에 달려 있다.** `VERCEL`은 'Automatically expose System Environment Variables'가 켜져 있을 때만 런타임에 있다(기본값 켜짐).
+꺼지면 Vercel 위에서도 소켓 주소(함수 브리지 안쪽)로 떨어져 **인스턴스마다 모두가 한 버킷**이 되고, 국내 경로 조회가 429로 쏟아져 직선 추정으로 떨어진다 — 로그는 초록이다.
+그 설정을 끄지 않는다. 꺼진 채 요청이 오면(엣지가 붙이는 `x-vercel-id`는 있는데 `VERCEL`이 없으면) 세 함수가 인스턴스마다 한 번 경고를 남긴다(키는 바꾸지 않는다 — 그 헤더도 NAS에서는 아무나 보낸다).
+
 배포 전 Vercel Firewall에서 `/api/kakao-directions`에 IP 기반 rate limit을 설정한다. 초기 권장값은 60초당 30회이며 정상 사용량을 관찰해 조정한다. 더 세밀한 사용자별 제한이 필요하면 인증 토큰과 Vercel KV 같은 공유 저장소를 함께 사용한다.
 
 ## 보안 헤더와 CSP
@@ -60,8 +69,11 @@ CDN 라이브러리는 정확한 버전과 SRI(Subresource Integrity, 내려받�
 ## 인증 세션
 
 - 자체 Auth(better-auth) 세션은 **bearer 토큰**이다 — 교차 출처라 쿠키를 쓰지 않는다. 웹은 `localStorage`의 `tripcanvas_auth_v1`, iOS는 Keychain `withj.auth.session.v1`(`kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`, 기기 전용·백업 안 됨).
+- bearer는 **서명된 토큰만** 받는다(`bearer({ requireSignature: true })`, 2026-10-02) — `set-auth-token` 헤더의 `<token>.<서명>`이다. DB(`auth_session.token`)에는 서명 없는 원문만 있으므로 DB 사본이 새도 그 값으로는 세션이 되지 않는다. 실시간 사이드카도 같은 기준이다. ⚠️ 로그인 응답 **본문의 `token`은 서명이 없다** — 클라이언트는 언제나 헤더(또는 그 값을 담은 소셜 교환 응답)를 저장한다.
 - **이메일 확인 전에는 로그인이 열리지 않는다**(`requireEmailVerification`). 남의 이메일로 가입해 그 사람의 여행을 가져가는 길을 막는다.
 - 비밀번호 재설정 요청은 **있는 이메일인지 알려주지 않는다** — 계정 존재 여부를 떠보는 데 쓰이지 않게 성공/실패를 구분하지 않는다.
+- **비밀번호를 재설정하면 그 계정의 세션이 전부 끝난다**(`revokeSessionsOnPasswordReset`, 2026-10-02) — 웹·iOS 모두 다시 로그인한다. 전에는 잃어버린 기기·훔친 토큰이 새 비밀번호와 상관없이 살아 있었다. 재설정한 웹 탭은 들고 있던 토큰도 함께 내려놓는다(`auth.js` `resetPassword`) — 남겨 두면 로그인한 것처럼 보이면서 저장마다 401이다.
+  ⚠️ **이미 열린 실시간 소켓은 예외다.** 사이드카는 AUTH 프레임에서 한 번만 세션을 확인하고, 그 뒤로는 토큰 만료 시각과 멤버십만 본다(`realtime/hub.ts`). 그래서 그 소켓은 토큰이 만료되거나 다시 붙을 때까지 신호(`ACTIVITY`의 종류·id)를 계속 받는다 — 내용은 API로 다시 읽어야 하고 거기서는 401이다. 로그아웃도 같다. 열린 소켓의 세션을 주기적으로 다시 확인하는 것은 다음 단계다.
 - 서버는 전환기 동안 **Supabase 토큰과 자체 Auth 세션을 모두** 받는다(`compositeVerifier`). 하나가 죽어도 다음이 본다.
 - ⚠️ 실시간 사이드카는 API와 **같은 `AUTH_SECRET`**을 써야 한다. 다르면 아무도 실시간에 붙지 못한다.
 

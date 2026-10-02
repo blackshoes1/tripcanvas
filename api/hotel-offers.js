@@ -13,6 +13,7 @@ const RATE_LIMIT = 10;                 // 메타서치는 호출당 비용 발�
 const MATCH_MIN = 0.55;                // 이 미만 신뢰도는 자동 확정하지 않고 후보만 반환 (§22)
 const MAX_OFFERS = 20;
 const CURS = ['KRW', 'USD', 'EUR', 'JPY', 'CNY'];
+const RATE_MAX_KEYS = 10_000;          // 표가 끝없이 자라지 않게 — 넘치면 가장 오래된 창부터 버린다
 const buckets = new Map();
 // P0-2: ProviderStatus — UNCONFIGURED | AUTH_REQUIRED | CREDENTIAL_READY | CONNECTED | ERROR.
 // CONNECTED는 '실제 구현이 있고 upstream 호출이 성공한 적이 있는' 경우에만 쓴다(키 존재만으로는 CREDENTIAL_READY).
@@ -45,15 +46,35 @@ function sameOrigin(req) {
   catch (_) { return false; }
 }
 
-function clientIp(req) {
-  return String((req.headers && (req.headers['x-vercel-forwarded-for'] || req.headers['x-forwarded-for'])) || req.socket?.remoteAddress || 'unknown')
-    .split(',')[0].trim();
+// 전달 헤더는 Vercel 위에서만 믿는다 — NAS(Funnel → Next)에서는 클라이언트가 써 보낸 그대로 지나와 상한이 사라졌다
+// (kakao-directions.js와 같은 규칙). 그 밖에서는 소켓 주소다(Next 어댑터가 앞단 프록시가 본 주소를 싣는다).
+// ⚠️ `VERCEL`은 시스템 환경 변수 노출이 켜져 있을 때만 있다 — 꺼진 채 Vercel 엣지 헤더가 보이면 한 번 남긴다(kakao-directions.js).
+let warnedNoVercelEnv = false;
+function clientIp(req, env) {
+  const headers = req.headers || {};
+  const onVercel = !!(env && env.VERCEL);
+  if (!onVercel && headers['x-vercel-id'] && !warnedNoVercelEnv) {
+    warnedNoVercelEnv = true;
+    console.warn('[hotel-offers] x-vercel-id는 있는데 VERCEL이 없다 — 시스템 환경 변수 노출이 꺼져 rate limit이 소켓 주소로 센다');
+  }
+  const forwarded = onVercel && (headers['x-vercel-forwarded-for'] || headers['x-forwarded-for']);
+  return 'ip:' + String(forwarded || req.socket?.remoteAddress || 'unknown').split(',')[0].trim();
 }
 
-function rateAllowed(req, now) {
-  const key = clientIp(req);
+// Map은 넣은 순서를 지킨다 — 창을 새로 열 때 지웠다 다시 넣으므로 앞쪽이 언제나 가장 오래된 창이다
+function sweep(now) {
+  for (const [key, bucket] of buckets) {
+    if (now - bucket.started < RATE_WINDOW_MS) break;
+    buckets.delete(key);
+  }
+  while (buckets.size >= RATE_MAX_KEYS) buckets.delete(buckets.keys().next().value);
+}
+
+function rateAllowed(key, now) {
   const current = buckets.get(key);
   if (!current || now - current.started >= RATE_WINDOW_MS) {
+    buckets.delete(key);
+    sweep(now);
     buckets.set(key, { started: now, count: 1 });
     return true;
   }
@@ -328,7 +349,7 @@ function createHandler({ fetchImpl = globalThis.fetch, env = process.env, now = 
       return send(res, 405, { error: 'method_not_allowed' });
     }
     if (!sameOrigin(req)) return send(res, 403, { error: 'origin_not_allowed' });
-    if (!rateAllowed(req, now())) return send(res, 429, { error: 'RATE_LIMIT' });
+    if (!rateAllowed(clientIp(req, env), now())) return send(res, 429, { error: 'RATE_LIMIT' });
 
     let body;
     try { body = parseBody(req); }
@@ -363,4 +384,4 @@ module.exports = createHandler();
 module.exports.createHandler = createHandler;
 module.exports.runSearch = runSearch;
 module.exports.providerHealth = providerHealth;
-module.exports._private = { validRequest, normalizeDetail, safeLink, defaultVerifiers, verifyOffers, buckets, MATCH_MIN, resetProviderMemory: () => { metasearchOkAt = null; } };
+module.exports._private = { validRequest, normalizeDetail, safeLink, defaultVerifiers, verifyOffers, buckets, RATE_MAX_KEYS, MATCH_MIN, resetProviderMemory: () => { metasearchOkAt = null; } };

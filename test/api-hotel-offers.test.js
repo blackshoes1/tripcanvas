@@ -263,3 +263,47 @@ test('무효해진 캐시 토큰(HTTP 400)은 이름으로 다시 찾아 회복�
   assert.equal(calls.length, 3, '실패한 상세 → 재검색 → 새 상세');
   assert.ok(calls[1].includes('q='), '두 번째는 이름 검색');
 });
+
+// rate limit 키 — NAS(Funnel → Next)에서는 `x-vercel-forwarded-for`를 아무나 써 보낼 수 있다(kakao 프록시와 같은 규칙)
+test('hotel-offers: Vercel 밖에서는 전달 헤더를 바꿔도 같은 사람으로 센다', async () => {
+  const handler = createHandler({ env: {} });
+  let last;
+  for (let i = 0; i < 11; i++) {
+    last = await invoke(handler, { headers: { 'x-vercel-forwarded-for': `v-${Math.random()}`, 'x-forwarded-for': `f-${Math.random()}` }, socket: { remoteAddress: '203.0.113.7' } });
+  }
+  assert.equal(last.status, 429);
+  assert.equal(last.json.error, 'RATE_LIMIT');
+});
+
+test('hotel-offers: Vercel 위에서는 엣지가 붙인 주소로 사람을 가른다', async () => {
+  const handler = createHandler({ env: { VERCEL: '1' } });
+  const from = ip => ({ headers: { 'x-vercel-forwarded-for': ip }, socket: { remoteAddress: '10.0.0.1' } });
+  let last;
+  for (let i = 0; i < 11; i++) last = await invoke(handler, from('198.51.100.1'));
+  assert.equal(last.status, 429);
+  assert.notEqual((await invoke(handler, from('198.51.100.2'))).status, 429);
+});
+
+test('hotel-offers: Vercel 엣지 헤더가 보이는데 VERCEL이 없으면 한 번 경고하고, 키는 여전히 소켓 주소다', async (t) => {
+  const warned = [];
+  t.mock.method(console, 'warn', (...args) => { warned.push(args.join(' ')); });
+  const handler = createHandler({ env: {} });
+  const edge = ip => ({ headers: { 'x-vercel-id': 'icn1::abc', 'x-vercel-forwarded-for': ip }, socket: { remoteAddress: '169.254.100.6' } });
+  let last;
+  for (let i = 0; i < 11; i++) last = await invoke(handler, edge(`198.51.100.${i}`));
+  assert.equal(warned.length, 1, '인스턴스마다 한 번');
+  assert.match(warned[0], /VERCEL/);
+  assert.equal(last.status, 429, '헤더는 여전히 키가 아니다');
+});
+
+test('hotel-offers: 창이 지난 버킷은 지우고 표는 상한을 넘지 않는다', async () => {
+  let clock = 0;
+  const handler = createHandler({ env: {}, now: () => clock });
+  for (let i = 0; i < 20; i++) await invoke(handler, { socket: { remoteAddress: `old-${i}` } });
+  assert.equal(_private.buckets.size, 20);
+  clock = 60_000;
+  await invoke(handler, { socket: { remoteAddress: 'new' } });
+  assert.equal(_private.buckets.size, 1);
+  for (let i = 0; i <= _private.RATE_MAX_KEYS; i++) await invoke(handler, { socket: { remoteAddress: `flood-${i}` } });
+  assert.ok(_private.buckets.size <= _private.RATE_MAX_KEYS);
+});

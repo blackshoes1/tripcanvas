@@ -274,3 +274,31 @@ test('새 비밀번호 — 토큰과 함께 보내고, 못 쓰는 링크는 그�
   const limited = await TC_AUTH.resetPassword('tok-1', 'newpw123456');
   assert.equal(limited.error.code, 'RATE_LIMITED');
 });
+
+// 서버는 재설정과 함께 그 계정의 세션을 전부 지운다(revokeSessionsOnPasswordReset). 로그인된 브라우저에서 링크를 열면
+// 들고 있던 토큰은 이미 죽었다 — 남겨 두면 로그인한 것처럼 보이면서 저장마다 401('로그인이 풀렸어요')이 난다.
+test('새 비밀번호를 정하면 이 기기의 세션도 내려놓는다 — 서버가 이미 지웠다', async () => {
+  const { storage, calls } = setup((url) => url.endsWith('/api/auth/get-session')
+    ? { body: { user: { id: 'u1', email: 'a@example.com' } } } : { status: 200, body: {} });
+  storage.setItem(TC_AUTH.TOKEN_KEY, 'tok-1');
+  await TC_AUTH.restore();
+  const seen = [];
+  TC_AUTH.onChange((u) => seen.push(u ? u.id : null));
+
+  const { error } = await TC_AUTH.resetPassword('reset-1', 'newpw123456');
+  assert.equal(error, null);
+  assert.equal(TC_AUTH.user(), null);
+  assert.equal(storage.getItem(TC_AUTH.TOKEN_KEY), null);
+  assert.equal(await TC_AUTH.getToken(), null);
+  assert.deepEqual(seen, [null], '로그아웃은 onChange로 알린다');
+  assert.ok(calls.some((c) => c.url.endsWith('/api/auth/sign-out')), '다른 계정의 세션이었어도 서버에서 끝낸다');
+
+  // 실패하면 아무것도 바뀌지 않았다 — 세션을 지키고 다시 해 보게 한다
+  const kept = setup((url) => url.endsWith('/api/auth/get-session')
+    ? { body: { user: { id: 'u1', email: 'a@example.com' } } } : { status: 400, body: { message: 'invalid token' } });
+  kept.storage.setItem(TC_AUTH.TOKEN_KEY, 'tok-1');
+  await TC_AUTH.restore();
+  assert.equal((await TC_AUTH.resetPassword('reset-1', 'newpw123456')).error.code, 'INVALID_RESET_TOKEN');
+  assert.equal(kept.storage.getItem(TC_AUTH.TOKEN_KEY), 'tok-1');
+  assert.equal(TC_AUTH.user().id, 'u1');
+});

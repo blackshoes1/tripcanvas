@@ -78,6 +78,9 @@ export function createBetterAuth(opts: BetterAuthOptions) {
       enabled: true,
       // 확인되지 않은 이메일로는 로그인할 수 없다 — 남의 이메일로 가입해 그 사람의 여행을 가져가는 길을 막는다
       requireEmailVerification: true,
+      // 재설정하면 그 전에 열린 세션을 모두 끝낸다 — 비밀번호를 바꾸는 이유가 대개 '누가 들어왔을지 모른다'인데,
+      // 끄면 잃어버린 기기·훔친 토큰이 새 비밀번호와 상관없이 그대로 살아 있었다(쓰는 동안은 만료도 늘어난다)
+      revokeSessionsOnPasswordReset: true,
       // ⚠️ 라이브러리가 준 url이 아니라 **웹 주소**로 보낸다 — 새 비밀번호를 받는 화면은 웹에만 있다
       sendResetPassword: async ({ user, token }) => { await opts.mail.sendPasswordReset(user.email, resetLink(token, opts.webBaseURL)); }
     },
@@ -88,7 +91,12 @@ export function createBetterAuth(opts: BetterAuthOptions) {
       sendVerificationEmail: async ({ user, url }) => { await opts.mail.sendVerificationEmail(user.email, withWebCallback(url, opts.webBaseURL)); }
     },
     // iOS는 쿠키를 쓰지 않는다 — Authorization: Bearer <session token>으로 같은 세션을 쓴다(§70)
-    plugins: [bearer(), oneTimeToken({ expiresIn: 1, storeToken: 'hashed', disableClientRequest: true })],
+    // requireSignature: `<token>.<서명>`(set-auth-token 헤더)만 받는다. 끄면 DB의 auth_session.token(서명 없는 원문)이
+    // 그대로 bearer가 되어, DB 사본(백업)이 새는 순간 모든 세션이 넘어간다. 실시간 사이드카(sessionTokenVerifier)는
+    // 이미 서명을 요구한다 — 같은 토큰을 두 곳이 다른 기준으로 받지 않는다.
+    // ⚠️ 클라이언트는 언제나 set-auth-token 헤더(웹 auth.js·iOS AuthStore)나 그 값을 담은 교환 응답(socialHandoff)을
+    //    저장한다. 응답 본문의 `token`은 서명이 없다 — 그걸 저장하는 클라이언트를 만들면 그 사람은 로그인이 안 된다.
+    plugins: [bearer({ requireSignature: true }), oneTimeToken({ expiresIn: 1, storeToken: 'hashed', disableClientRequest: true })],
     rateLimit: { enabled: true, storage: 'database', modelName: 'auth_rate_limit' }
   });
 }

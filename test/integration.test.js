@@ -64,6 +64,24 @@ function withSplitJourney(w){
     requestLeg=(from,to,mode,when)=>{window.routeRequests.push({from:from.name,to:to.name,mode,when});return {sec:600,m:10000,est:true};};`);
 }
 
+// 페이지에 실리는 스크립트는 같은 출처에서 돈다 — localStorage의 세션 토큰(tripcanvas_auth_v1)·여행·키를 읽을 수 있다.
+// 그래서 외부 스크립트는 SRI로 내용이 고정된 CDN 라이브러리뿐이고, 스크립트를 다시 끌어오는 인라인 로더는 두지 않는다.
+test('통합: index.html은 SRI로 고정한 CDN 라이브러리와 자기 파일만 싣는다', () => {
+  const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+  const tags = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)];
+  assert.ok(tags.length > 0);
+  for (const [, attrs, body] of tags) {
+    const src = (attrs.match(/\bsrc="([^"]+)"/) || [])[1];
+    assert.ok(src, `인라인 스크립트 없음: ${attrs.trim() || body.trim().slice(0, 60)}`);
+    // 자기 파일인지는 주소를 풀어서 본다 — `//host/x.js`(프로토콜 상대)는 https:가 아니어도 남의 호스트다
+    const host = new URL(src, 'https://self.invalid/').host;
+    if (host === 'self.invalid') continue;
+    assert.ok(['cdnjs.cloudflare.com', 'cdn.jsdelivr.net'].includes(host), `허용 CDN만: ${host}`);
+    assert.match(attrs, /\bintegrity="sha384-[^"]+"/, `SRI 필요: ${src}`);
+  }
+  assert.doesNotMatch(html, /tp-em\.com/);
+});
+
 test('통합 부트: index.html+lib+app 무크래시 로드', { skip: noJsdom }, () => {
   const w = boot();
   ['dayContext', 'startAnchorFor', 'carryStayFor', 'desiredEngine', 'legModeOf', 'normalizeTrip', 'animPath', 'dayEtas']
@@ -2469,6 +2487,27 @@ test('통합: 소셜 로그인으로 페이지를 떠났다 와도 기다리던 
   w.sessionStorage.setItem('tripcanvas_auth_resume_v1', 'javascript:alert(1)');
   w.eval('runAuthResume()');
   assert.equal(w.sessionStorage.getItem('tripcanvas_auth_resume_v1'), null);
+  w.close();
+});
+
+// 서버는 재설정과 함께 그 계정의 세션을 전부 지운다(revokeSessionsOnPasswordReset). 로그인된 탭에서 메일 링크를 열면
+// 들고 있던 토큰은 죽었다 — 전에는 로그인 버튼을 눌러 '로그아웃할까요?'가 떴고, 취소하면 죽은 토큰으로 로그인한 척했다.
+test('통합: 로그인된 탭에서 비밀번호를 재설정하면 로그아웃되고 로그인 모달이 열린다', { skip: noJsdom }, async () => {
+  const w = boot();
+  await new Promise(r=>setTimeout(r,0));   // 부팅의 resolveProvider(네트워크 차단 → 실패)가 끝난 뒤에 제공자를 정한다
+  const calls = [];
+  w.__fakeFetch = async (url) => { calls.push(String(url)); return { ok: true, status: 200, headers: { get: () => null }, json: async () => ({}) }; };
+  w.eval(`TC_AUTH.use('TRIPCANVAS'); TC_AUTH.configure({fetchImpl: window.__fakeFetch});
+    localStorage.setItem(TC_AUTH.TOKEN_KEY, 'tok-1'); user={id:'u1',email:'me@example.com'};
+    window.confirm=()=>{ throw new Error('묻지 않아야 한다'); };
+    pendingResetToken='reset-1'; document.getElementById('resetPass').value='newpw123456';`);
+  await w.eval(`document.getElementById('resetSubmit').onclick()`);
+  assert.ok(calls.some(u => u.endsWith('/api/auth/reset-password')));
+  assert.equal(w.eval('user'), null, '죽은 세션으로 로그인한 척하지 않는다');
+  assert.equal(w.localStorage.getItem('tripcanvas_auth_v1'), null);
+  assert.equal(w.document.getElementById('resetModalBg').classList.contains('show'), false);
+  assert.equal(w.document.getElementById('authModalBg').classList.contains('show'), true, '바로 로그인 모달이 열린다');
+  assert.equal(w.document.getElementById('authBtn').textContent, '로그인');
   w.close();
 });
 

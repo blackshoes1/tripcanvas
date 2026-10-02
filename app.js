@@ -5392,7 +5392,9 @@ document.getElementById('resetSubmit').onclick=async()=>{
   pendingResetToken='';
   document.getElementById('resetModalBg').classList.remove('show');
   toast('비밀번호를 바꿨어요 — 새 비밀번호로 로그인해 주세요');
-  document.getElementById('authBtn').click();
+  // 이 기기의 세션은 resetPassword가 이미 내려놓았다(서버가 그 계정의 세션을 전부 지운다) — 로그인 버튼을 누르면
+  // 로그인 상태에 따라 '로그아웃할까요?'가 뜨므로, 버튼을 거치지 않고 로그인 모달을 바로 연다.
+  openAuthModal();
 };
 document.getElementById('resetPass').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('resetSubmit').click();});
 document.getElementById('authPass').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('authLogin').click();});

@@ -4,6 +4,7 @@ const MAX_BODY_BYTES = 1024;
 const UPSTREAM_TIMEOUT_MS = 8000;
 const RATE_WINDOW_MS = 60_000;
 const RATE_LIMIT = 30;
+const RATE_MAX_KEYS = 10_000;          // 표가 끝없이 자라지 않게 — 넘치면 가장 오래된 창부터 버린다
 const buckets = new Map();
 
 function send(res, status, body) {
@@ -42,15 +43,38 @@ function sameOrigin(req) {
   catch (_) { return false; }
 }
 
-function clientIp(req) {
-  return String((req.headers && (req.headers['x-vercel-forwarded-for'] || req.headers['x-forwarded-for'])) || req.socket?.remoteAddress || 'unknown')
-    .split(',')[0].trim();
+// 전달 헤더는 Vercel 위에서만 믿는다 — 엣지가 덮어쓰는 Vercel과 달리 NAS(Funnel → Next)에서는 클라이언트가 써 보낸
+// 그대로 지나와, 요청마다 값을 바꾸면 상한이 사라졌다. 그 밖에서는 소켓 주소다(Next 어댑터가 앞단 프록시가 본 주소를 싣는다).
+// 'ip:'를 붙여 서버 안의 호출(rateKey)과 같은 키가 될 수 없게 한다.
+// ⚠️ `VERCEL`은 프로젝트 설정 'Automatically expose System Environment Variables'가 켜져 있을 때만 있다. 꺼지면 Vercel 위에서도
+// 소켓 주소(함수 브리지 안쪽)로 떨어져 모두가 한 버킷이 된다 — 로그가 초록인 채 429가 쏟아지지 않게, 엣지가 붙이는
+// `x-vercel-id`가 보이는데 `VERCEL`이 없으면 인스턴스마다 한 번 남긴다. 그 헤더는 NAS에서도 아무나 보낼 수 있어 키에는 쓰지 않는다.
+let warnedNoVercelEnv = false;
+function clientIp(req, env) {
+  const headers = req.headers || {};
+  const onVercel = !!(env && env.VERCEL);
+  if (!onVercel && headers['x-vercel-id'] && !warnedNoVercelEnv) {
+    warnedNoVercelEnv = true;
+    console.warn('[kakao-directions] x-vercel-id는 있는데 VERCEL이 없다 — 시스템 환경 변수 노출이 꺼져 rate limit이 소켓 주소로 센다');
+  }
+  const forwarded = onVercel && (headers['x-vercel-forwarded-for'] || headers['x-forwarded-for']);
+  return 'ip:' + String(forwarded || req.socket?.remoteAddress || 'unknown').split(',')[0].trim();
 }
 
-function rateAllowed(req, now) {
-  const key = clientIp(req);
+// Map은 넣은 순서를 지킨다 — 창을 새로 열 때 지웠다 다시 넣으므로 앞쪽이 언제나 가장 오래된 창이다
+function sweep(now) {
+  for (const [key, bucket] of buckets) {
+    if (now - bucket.started < RATE_WINDOW_MS) break;
+    buckets.delete(key);
+  }
+  while (buckets.size >= RATE_MAX_KEYS) buckets.delete(buckets.keys().next().value);
+}
+
+function rateAllowed(key, now) {
   const current = buckets.get(key);
   if (!current || now - current.started >= RATE_WINDOW_MS) {
+    buckets.delete(key);
+    sweep(now);
     buckets.set(key, { started: now, count: 1 });
     return true;
   }
@@ -77,14 +101,15 @@ function safeRoute(route) {
   };
 }
 
-function createHandler({ fetchImpl = globalThis.fetch, env = process.env, now = Date.now } = {}) {
+// rateKey: 서버 안에서 부르는 핸들러(serverRouting)의 모든 요청을 이 키 하나로 센다 — 밖의 버킷과 섞이지 않는다
+function createHandler({ fetchImpl = globalThis.fetch, env = process.env, now = Date.now, rateKey } = {}) {
   return async function handler(req, res) {
     if (req.method !== 'POST') {
       res.setHeader('Allow', 'POST');
       return send(res, 405, { error: 'method_not_allowed' });
     }
     if (!sameOrigin(req)) return send(res, 403, { error: 'origin_not_allowed' });
-    if (!rateAllowed(req, now())) return send(res, 429, { error: 'rate_limited' });
+    if (!rateAllowed(rateKey || clientIp(req, env), now())) return send(res, 429, { error: 'rate_limited' });
 
     let body;
     try { body = parseBody(req); }
@@ -129,4 +154,4 @@ function createHandler({ fetchImpl = globalThis.fetch, env = process.env, now = 
 
 module.exports = createHandler();
 module.exports.createHandler = createHandler;
-module.exports._private = { MAX_BODY_BYTES, point, safeRoute, buckets };
+module.exports._private = { MAX_BODY_BYTES, RATE_MAX_KEYS, point, safeRoute, buckets };

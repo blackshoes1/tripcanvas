@@ -281,6 +281,8 @@ declare module '@legacy/api/kakao-directions.js' {
     fetchImpl?: (url: string, init?: unknown) => Promise<unknown>;
     env?: Record<string, string | undefined>;
     now?: () => number;
+    /** 서버 안에서 부르는 핸들러의 rate limit 키 — 밖의 요청('ip:…')과 섞이지 않는다 */
+    rateKey?: string;
   }
   const handler: LegacyNodeHandler & {
     createHandler(deps?: HandlerDeps): LegacyNodeHandler;
