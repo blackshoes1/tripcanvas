@@ -253,6 +253,7 @@ test('갈린 후보: 선택지에서 "이번 일정에서는 제외"를 고르�
       {id:2,title:'구엘 공원',status:'PROPOSED',must_count:2,ok_count:1,pass_count:0,my_reaction:null,proposed_by_label:'민수',mine:false,created_at:'2026-01-02',
        reactions:[{name:'민수',reaction:'MUST',me:false},{name:'영희',reaction:'MUST',me:false},{name:'철수',reaction:'OK',me:false}]}];
     TC_API.rpc=async(name,args)=>{ window.__sent.push([name,args]);
+      if(name==='list_trip_members') return {data:window.__members||[],error:null};
       if(name==='list_trip_candidates') return {data:window.__rows,error:null};
       if(name==='manage_trip_candidate'){ const r=window.__rows.find(x=>x.id===args.p_candidate_id); if(r) r.status=args.p_action==='REJECT'?'REJECTED':'PROPOSED'; return {data:true,error:null}; }
       return {data:[],error:null}; };
@@ -283,13 +284,15 @@ test('갈린 후보를 "자유시간으로 분리"하면 같은 시간에 나란
     const id=store.activeId;
     syncMeta[id]={revision:3,status:'clean'};
     tripRoles[id]={role:'EDITOR',count:2,owner:false,serverId:''};
-    tripMembers=[{user_id:u1,display_name:'민수',me:true},{user_id:u2,display_name:'영희',me:false}];
+    window.__members=[{user_id:u1,display_name:'민수',me:true},{user_id:u2,display_name:'영희',me:false}];
+    tripMembers=window.__members;
     window.__sent=[];
     window.__rows=[{id:1,title:'캄프 누',status:'PROPOSED',lat:41.38,lng:2.12,
       must_count:1,ok_count:0,pass_count:1,my_reaction:'MUST',proposed_by_label:'민수',mine:true,created_at:'2026-01-01',
       reactions:[{user_id:u1,name:'민수',reaction:'MUST',me:true},{user_id:u2,name:'영희',reaction:'PASS',me:false}]}];
     // 웹은 함께하기를 TC_API로 지난다(Supabase RPC 직접 호출 없음) — 다른 시나리오와 같은 자리에 건다.
     TC_API.rpc=async(name,args)=>{ window.__sent.push([name,args]);
+      if(name==='list_trip_members') return {data:window.__members||[],error:null};
       if(name==='list_trip_candidates') return {data:window.__rows,error:null};
       if(name==='manage_trip_candidate'){ const r=window.__rows.find(x=>x.id===args.p_candidate_id); if(r) r.status='SCHEDULED'; return {data:true,error:null}; }
       return {data:[],error:null}; };
