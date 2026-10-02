@@ -1,7 +1,9 @@
 // 메모리 Repository — application 테스트용. PgRepository와 같은 계약(소유한 쪽 우선 · CAS · tombstone)을 지킨다.
 // 두 구현이 같은 결론을 내는지는 pgRepositories.test.ts(PGlite)와 tripService.test.ts가 각각 확인한다.
+import { isDeepStrictEqual } from 'node:util';
+
 import type {
-  CasResult, MemberRole, MemberStatus, MembershipRepository, TripRecord, TripRepository, TripView, UserRecord, UserRepository
+  CasResult, CasWriteOptions, MemberRole, MemberStatus, MembershipRepository, TripRecord, TripRepository, TripView, UserRecord, UserRepository
 } from '../types';
 
 interface MemberRow { tripId: string; userId: string; role: MemberRole; status: MemberStatus; displayName: string | null }
@@ -105,10 +107,18 @@ export class MemoryTripRepository implements TripRepository {
     return { ...rec };
   }
 
-  async updateCas(id: string, data: unknown, expectedRevision: number, opts: { force?: boolean } = {}): Promise<CasResult> {
+  async updateCas(id: string, data: unknown, expectedRevision: number, opts: CasWriteOptions = {}): Promise<CasResult> {
     const rec = this.store.trips.get(id);
     if (!rec) throw new Error(`trip ${id} not found`);
-    if (!opts.force && (rec.deletedAt || rec.revision !== expectedRevision)) return { applied: false, conflict: true, record: { ...rec } };
+    if (opts.authorize && !opts.authorize(opts.actorId ? await this.members.roleOf(opts.actorId, id) : null)) {
+      return { applied: false, conflict: false, forbidden: true, record: { ...rec } };
+    }
+    if (rec.deletedAt && !(opts.force && opts.revive)) return { applied: false, conflict: true, record: { ...rec } };
+    if (!opts.force && rec.revision !== expectedRevision) {
+      return isDeepStrictEqual(rec.data, data)
+        ? { applied: false, conflict: false, alreadyApplied: true, record: { ...rec } }
+        : { applied: false, conflict: true, record: { ...rec } };
+    }
     Object.assign(rec, { data, revision: rec.revision + 1, deletedAt: null, updatedAt: this.store.now() });
     return { applied: true, conflict: false, record: { ...rec } };
   }

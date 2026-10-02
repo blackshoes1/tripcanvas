@@ -1,8 +1,9 @@
 // trips Repository — sync_trip/tombstone_trip의 저장 규칙(CAS · tombstone · 소유한 쪽 우선)을 트랜잭션으로 낸다.
-// 누가 저장해도 되는가(역할)는 여기서 판정하지 않는다 — application(TripService)의 몫이다.
+// 누가 저장해도 되는가(역할)는 여기서 판정하지 않는다 — application(TripService)의 몫이다. 다만 그 판정(authorize)은
+// 저장과 같은 트랜잭션에서 다시 읽은 역할에 돌린다: 앞에서 본 역할로 쓰면 강등·내보내기와 겹친 저장이 새어 들어간다.
 import { and, desc, eq, inArray, or, sql } from 'drizzle-orm';
 
-import type { CasResult, MemberRole, TripRecord, TripRepository, TripView } from '../../repositories/types';
+import type { CasResult, CasWriteOptions, MemberRole, TripRecord, TripRepository, TripView } from '../../repositories/types';
 import type { Db } from './db';
 import { tripActivity, tripCandidates, tripMembers, trips } from './schema';
 
@@ -100,13 +101,23 @@ export class PgTripRepository implements TripRepository {
     });
   }
 
-  async updateCas(id: string, data: unknown, expectedRevision: number, opts: { force?: boolean; actorId?: string } = {}): Promise<CasResult> {
+  async updateCas(id: string, data: unknown, expectedRevision: number, opts: CasWriteOptions = {}): Promise<CasResult> {
     return this.db.transaction(async (tx) => {
       // 키는 바뀌지 않는다. CAS 쓰기는 직렬화하되 후보 활동 INSERT의 FK KEY SHARE와 서로 막히지 않는다.
       const [current] = await tx.select().from(trips).where(eq(trips.id, id)).for('no key update');
       if (!current) throw new Error(`trip ${id} not found`);
-      if (!opts.force && (current.deletedAt || Number(current.revision) !== expectedRevision)) {
+      if (opts.authorize && !opts.authorize(await this.roleInTx(tx, current, opts.actorId))) {
+        return { applied: false, conflict: false, forbidden: true, record: toRecord(current) };
+      }
+      if (current.deletedAt && !(opts.force && opts.revive)) {
         return { applied: false, conflict: true, record: toRecord(current) };
+      }
+      if (!opts.force && Number(current.revision) !== expectedRevision) {
+        // 응답을 못 받고 다시 보낸 저장이면 서버는 이미 그 문서다 — 충돌이 아니라 같은 결과다(jsonb 비교라 키 순서와 무관)
+        const [same] = await tx.select({ yes: sql<boolean>`${trips.data} = ${JSON.stringify(data)}::jsonb` }).from(trips).where(eq(trips.id, id));
+        return same?.yes
+          ? { applied: false, conflict: false, alreadyApplied: true, record: toRecord(current) }
+          : { applied: false, conflict: true, record: toRecord(current) };
       }
       const [row] = await tx.update(trips)
         .set({ data, revision: Number(current.revision) + 1, deletedAt: null, updatedAt: sql`now()`, updatedSeq: sql`nextval('trips_updated_seq')` })
@@ -115,6 +126,19 @@ export class PgTripRepository implements TripRepository {
       await this.logSave(tx, current, row, opts.actorId ?? null);
       return { applied: true, conflict: false, record: toRecord(row) };
     });
+  }
+
+  /**
+   * 잠근 여행에 대한 actor의 **지금** 역할(tc_trip_role과 같은 답). 멤버 행은 FOR SHARE로 잠근다 —
+   * 이미 진행 중인 강등·내보내기(UPDATE)가 있으면 그것이 끝난 뒤의 값을 읽고, 이 저장이 먼저 잠갔으면 강등이 저장 뒤로 줄을 선다.
+   */
+  private async roleInTx(tx: Db, trip: Row, actorId: string | undefined): Promise<MemberRole | null> {
+    if (!actorId) return null;
+    if (trip.userId === actorId) return 'OWNER';
+    const [m] = await tx.select({ role: tripMembers.role }).from(tripMembers)
+      .where(and(eq(tripMembers.tripId, trip.id), eq(tripMembers.userId, actorId), eq(tripMembers.status, 'ACTIVE')))
+      .limit(1).for('share');
+    return (m?.role as MemberRole | undefined) ?? null;
   }
 
   /** 문서 이동·삭제와 후보 표시는 같은 CAS 트랜잭션이다. 새 후보 배치의 상태/활동은 기존 SCHEDULE 요청에 맡긴다. */

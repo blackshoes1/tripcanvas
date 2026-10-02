@@ -98,9 +98,48 @@ describe('trips', () => {
     expect(view?.record.deletedAt).not.toBeNull();
     const write = await trips.updateCas(t.id, doc('부활?'), 2);
     expect(write.conflict).toBe(true);
-    const forced = await trips.updateCas(t.id, doc('부활'), 2, { force: true });
+    const forcedOnly = await trips.updateCas(t.id, doc('부활?'), 2, { force: true });
+    expect(forcedOnly.conflict).toBe(true);              // force만으로는 tombstone을 걷어내지 않는다
+    expect(forcedOnly.record.deletedAt).not.toBeNull();
+    const forced = await trips.updateCas(t.id, doc('부활'), 2, { force: true, revive: true });
     expect(forced.applied).toBe(true);
-    expect(forced.record.deletedAt).toBeNull();          // force 저장은 되살린다(sync_trip과 같다)
+    expect(forced.record.deletedAt).toBeNull();          // revive까지 주면 되살린다(누구에게 줄지는 TripService가 정한다)
+  });
+
+  it('CAS: revision만 다르고 문서가 이미 그대로면 쓰지 않고 alreadyApplied다 — jsonb 키 순서와 무관하다', async () => {
+    const t = await trips.create({ ownerId: A, clientId: 'trip1', data: doc('스페인') });
+    const first = await trips.updateCas(t.id, { start: '2026-10-25', days: [{ spots: [] }, { spots: [] }], name: '편집' }, 1);
+    expect(first.record.revision).toBe(2);
+    const retry = await trips.updateCas(t.id, { name: '편집', days: [{ spots: [] }, { spots: [] }], start: '2026-10-25' }, 1);
+    expect(retry).toMatchObject({ applied: false, conflict: false, alreadyApplied: true });
+    expect(retry.record.revision).toBe(2);
+    expect(retry.record.updatedAt).toBe(first.record.updatedAt);   // 한 번 더 쓰지 않았다
+    const other = await trips.updateCas(t.id, doc('다른 편집'), 1);
+    expect(other).toMatchObject({ applied: false, conflict: true });
+    await trips.tombstoneCas(t.id, 2);
+    const onTombstone = await trips.updateCas(t.id, { name: '편집', days: [{ spots: [] }, { spots: [] }], start: '2026-10-25' }, 2);
+    expect(onTombstone.conflict).toBe(true);              // 지워진 여행은 내용이 같아도 충돌이다
+  });
+
+  it('CAS: authorize는 잠근 행에 대해 지금 역할을 다시 읽는다 — 강등·내보내진 뒤의 저장은 쓰지 않고 forbidden', async () => {
+    const t = await trips.create({ ownerId: A, clientId: 'trip1', data: doc('스페인') });
+    await members.add({ tripId: t.id, userId: B, role: 'EDITOR', displayName: null, invitedBy: A });
+    const seen: (string | null)[] = [];
+    const editors = (role: string | null) => { seen.push(role); return role === 'OWNER' || role === 'EDITOR'; };
+    const ok = await trips.updateCas(t.id, doc('편집자'), 1, { actorId: B, authorize: editors });
+    expect(ok.applied).toBe(true);
+
+    await members.add({ tripId: t.id, userId: B, role: 'VIEWER', displayName: null, invitedBy: A });
+    const demoted = await trips.updateCas(t.id, doc('강등 뒤'), 2, { actorId: B, authorize: editors, force: true });
+    expect(demoted).toMatchObject({ applied: false, conflict: false, forbidden: true });
+
+    await members.add({ tripId: t.id, userId: B, role: 'EDITOR', displayName: null, invitedBy: A });
+    await members.setStatus(t.id, B, 'REMOVED');
+    const removed = await trips.updateCas(t.id, doc('내보내진 뒤'), 2, { actorId: B, authorize: editors });
+    expect(removed.forbidden).toBe(true);
+    expect(await trips.updateCas(t.id, doc('주최자'), 2, { actorId: A, authorize: editors })).toMatchObject({ applied: true });
+    expect(seen).toEqual(['EDITOR', 'VIEWER', null, 'OWNER']);
+    expect((await trips.findVisible(A, 'trip1'))?.record).toMatchObject({ revision: 3, data: doc('주최자') });
   });
 
   it('tombstone: revision이 다르면 지우지 않는다', async () => {
