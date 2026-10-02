@@ -1,6 +1,6 @@
 # NAS 배포 — TripCanvas API
 
-> 2026-09-08: 반복 릴리스는 [NAS 릴리스 절차](nas-release.md)를 따른다. 이미지 셋의 동일 커밋 빌드·스키마 적용·backup 포함 기동·기능 확인이 필요하다. 아래의 과거 실측 기록은 현재 운영 점검 결과와 구분한다.
+> **2026-09-19부터 배포는 자동이다** — `main` 머지 → `release.yml` → GHCR `:<커밋 SHA>` → `production` 태그 → NAS cron(`scripts/nas-deploy.sh`). 파이프라인은 아래 "배포 — main 머지가 곧 배포다"에, 머지 순서(새 API가 필요한 웹은 **API PR 먼저**)와 머지 뒤 확인·복귀는 [NAS 릴리스 절차](nas-release.md)에 있다. NAS에서 손으로 빌드하지 않는다. 아래의 과거 실측 기록은 현재 운영 점검 결과와 구분한다.
 
 > **2026-09-04 — 프로덕션이 여기다.** 웹(`tripcanvas-ai.vercel.app`)이 부르는 API는 NAS의
 > `https://bokbok9.tail8b977f.ts.net` 이고, 데이터는 NAS PostgreSQL이다. Vercel에는 정적 웹만 남았다.
@@ -32,12 +32,14 @@ sudo tailscale funnel status                     # "Available on the internet:" 
 
 | 서비스 | 이미지 | 역할 | 노출 |
 |---|---|---|---|
-| `reverse-proxy` | caddy:2 | HTTPS 자동 발급, `api:3000`으로 전달 | **80·443만 외부** |
-| `api` | `next/Dockerfile` (target `runtime`) | Next standalone, `/api/v1/*` · `/api/health` | 내부 3000 |
-| `realtime` | `next/Dockerfile` (target `realtime`) | WebSocket 사이드카 `/ws` — pg_notify를 듣고 중계 | 내부 3001 |
-| `migrate` | `next/Dockerfile` (target `migrate`) | `drizzle-kit migrate` 일회 실행. 성공해야 `api`가 뜬다 | — |
-| `postgres` | postgres:17 | source of truth | 내부 네트워크만(5432 비공개, §54) |
-| `backup` | postgres:17 | 매일 `pg_dump` → `BACKUP_DIR` | — |
+| `api` | GHCR `…/api:<커밋 SHA>` (`next/Dockerfile` target `runtime`) | Next standalone, `/api/v1/*` · `/api/health` | 호스트 루프백 `127.0.0.1:3000`(Funnel이 넘긴다) |
+| `realtime` | GHCR `…/tools:<커밋 SHA>` (target `tools`, 명령만 다르다) | WebSocket 사이드카 `/ws` — pg_notify를 듣고 중계 | 호스트 루프백 `127.0.0.1:3001` |
+| `migrate` | GHCR `…/tools:<커밋 SHA>` (target `tools`) | `drizzle-kit migrate` 일회 실행. 성공해야 `api`·`realtime`이 뜬다 | — |
+| `postgres` | postgres:17-alpine | source of truth | 내부 네트워크만(5432 비공개, §54) |
+| `backup` | postgres:17-alpine | 매일 `pg_dump` → `BACKUP_DIR` | — |
+
+이미지 셋은 `TC_IMAGE_TAG` 하나(커밋 SHA)를 같이 본다 — `release.yml`이 만들고 `nas-deploy.sh`가 `deploy/.env`에 채운다. 운영 compose에는 `build:`가 없다.
+`reverse-proxy`(caddy:2, 80·443)는 `docker-compose.caddy.yml`을 겹칠 때만 있다(오늘은 안 씀 — 아래).
 
 `internal` 네트워크는 `internal: true`라 인터넷과 단절돼 있다. MinIO·Redis는 필요해질 때 같은 방식으로 붙인다(§46·§47·§55).
 
@@ -173,7 +175,7 @@ curl -m 20 --resolve "bokbok9.tail8b977f.ts.net:443:$IP" https://bokbok9.tail8b9
 
 | 함정 | 실제 |
 |---|---|
-| **`~/tripcanvas`는 git 클론이 아니다** | `.git`이 없고 **NAS에 git도 깔려 있지 않다.** `git pull`로 배포할 수 없다 — 파일을 보내야 한다 |
+| **`~/tripcanvas`는 git 클론이 아니다** | `.git`이 없고 **NAS에 git도 깔려 있지 않다.** `git pull`로 배포할 수 없다 — 그래서 배포 스크립트가 그 커밋의 compose·`backup.sh`·자기 자신을 `raw.githubusercontent.com`에서 받는다(사람이 파일을 보내는 것은 최초 설정뿐이다) |
 | **비로그인 셸의 PATH가 짧다** | `/usr/bin:/bin:/usr/sbin:/sbin`뿐이라 `docker`가 안 잡힌다. `ssh nas 'docker …'`는 실패하고 **`/usr/local/bin/docker`** 전체 경로를 써야 한다 |
 | **docker 그룹이 없다** | 소켓이 `root:root`(`srw-rw----`)다. `synogroup --member docker`는 그룹 자체가 없어 성립하지 않는다 |
 | **sudo에 비밀번호가 필요하다** | `administrators` 소속이어도 그렇다. 자동화하려면 `/etc/sudoers.d/`에 NOPASSWD를 두어야 한다 (⚠️ docker 접근은 **사실상 root**다 — 범위 제한은 실수 방지용이지 권한 축소가 아니다) |
@@ -477,17 +479,19 @@ ssh nas "sudo /usr/local/bin/docker exec tripcanvas-postgres-1 psql -U tripcanva
 
 ## 처음 띄울 때
 
+처음 띄우는 것도 빌드가 아니라 **`scripts/nas-deploy.sh`** 다(위 "NAS 최초 1회 설정"). 운영 compose에는 `build:`가 없어
+`docker compose … build`는 아무것도 만들지 않고, `TC_IMAGE_TAG`가 비어 있으면 `up`은 뜨지 않는다(`:?`) — 그 값은 배포 스크립트가 채운다.
+
 ```bash
-cp deploy/.env.example deploy/.env      # 값 채우기
-docker compose -f deploy/docker-compose.yml build
-docker compose -f deploy/docker-compose.yml up -d
-docker compose -f deploy/docker-compose.yml logs migrate     # "[✓] migrations applied" 류의 성공 로그
+cp deploy/.env.example deploy/.env      # 값 채우기 (TC_IMAGE_TAG는 비워 둔다)
+scripts/nas-deploy.sh                   # production 태그의 커밋 이미지를 받아 migrate → api·realtime → 헬스체크 → revision 확인
+sudo /usr/local/bin/docker compose -f deploy/docker-compose.yml logs migrate     # "[✓] migrations applied" 류의 성공 로그
 # 공개 주소는 Funnel의 ts.net 이름이다(도메인 아님) — tailnet 밖에서 확인할 것(§7)
 curl -s https://bokbok9.tail8b977f.ts.net/api/health                        # {"ok":true,"api":"ok","database":"ok",...}
 curl -s -o /dev/null -w "%{http_code}\n" https://bokbok9.tail8b977f.ts.net/api/v1/trips   # 401 — 정상(인증 요구)
 ```
 
-확인 순서: `migrate`가 성공했는가 → `api` healthcheck가 healthy인가 → 401이 오는가 → 실제 Supabase 토큰으로 `/api/v1/trips`가 200인가 → `realtime` 헬스가 `LISTENING`인가.
+확인 순서: `migrate`가 성공했는가 → `api` healthcheck가 healthy인가 → 401이 오는가 → 실제 로그인 토큰으로 `/api/v1/trips`가 200인가 → `realtime` 헬스가 `LISTENING`인가.
 
 ⚠️ 실시간 헬스가 `RECONNECTING`이면 **503**이다. 끊긴 LISTEN은 오류를 내지 않고 이벤트만 영원히 안 오므로, 이 값을 모니터링에 넣는다.
 
@@ -507,11 +511,19 @@ NAS Backend 완성 ✓ → staging 검증 ✓ → 데이터 이관 리허설 ✓
 
 ## 롤백 (2026-09-04 전환 기준)
 
-전환 스위치는 **웹의 API 주소 두 줄**이다(`api.js`·`auth.js`의 `DEFAULT_BASE`). Vercel의 `tripcanvas-api`는 살아 있고 여전히 Supabase를 본다.
+전환 스위치는 **웹이 API를 부르는 주소 세 곳**이다. Vercel의 `tripcanvas-api`는 살아 있고 여전히 Supabase를 본다.
+
+| 어디 | 무엇이 쓰나 |
+|---|---|
+| `vercel.json`의 `/nas/api/*` rewrite 대상 | **운영 웹**(`tripcanvas-ai.vercel.app`)의 데이터 요청 — `app.js`의 `API_BASE`가 이 호스트에서는 같은 출처 `/nas`로 보내고 Vercel이 NAS로 넘긴다(2026-09-24~) |
+| `auth.js`의 `DEFAULT_BASE` | 소셜 로그인 시작 — 콜백과 같은 API 출처여야 state 쿠키를 검증한다 |
+| `api.js`의 `DEFAULT_BASE` | 그 밖의 출처(Preview 등)의 데이터 요청 |
 
 ```
-DEFAULT_BASE 를 https://tripcanvas-api.vercel.app 로 되돌리고 → main 푸시 → Vercel 재배포 (약 1분)
+세 곳을 https://tripcanvas-api.vercel.app 로 되돌리고 → PR → merge → Vercel 재배포 (약 1분)
 ```
+
+⚠️ 2026-09-24 전의 절차(`DEFAULT_BASE` 두 줄만)대로 하면 **운영 웹은 rewrite를 따라 계속 NAS를 본다** — 바뀌는 것은 소셜 로그인 시작과 Preview뿐이다.
 
 ⚠️ 되돌리는 순간 **전환 후 NAS에 쌓인 변경은 사라진다**(Supabase에 없다). 그래서 관찰 기간에는 Supabase를 읽기전용으로 만들지 않고, 되돌릴 일이 생기면 NAS 쪽 변경을 먼저 확인한다(§79·§80).
 NAS 안에서의 되돌리기(`TC_MIGRATION_*=LEGACY` + `api` 재시작)는 API가 다시 Supabase를 보게 하는 것이라 데이터를 잃지 않지만, 그때는 NAS를 거칠 이유가 없다.

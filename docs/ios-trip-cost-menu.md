@@ -14,4 +14,4 @@
 
 순수 계산 테스트, 인증/읽기 전용 API 테스트, 실제 서버 응답과 Swift 계약 정합성 및 XCTest 디코딩 fixture를 검사한다. 수정된 공통 파일은 웹에서도 쓰이므로 서비스워커 버전을 올린다.
 
-NAS에는 새 API가 먼저 필요하다. `docs/nas-release.md`에 따라 migrate·api·realtime을 같은 소스로 빌드하고 전체 서비스를 올린 뒤, 인증된 비용 조회와 일별·분류별 합계, 저장·재조회 권한을 확인한다. 이후 PR 병합과 TestFlight 배포를 진행한다. 서버 문제는 이전 릴리스로 되돌리고, 앱은 이전 TestFlight 빌드로 돌아갈 수 있다. 이번 변경에는 DB 마이그레이션이 없다.
+NAS에는 새 API가 먼저 필요하다. 2026-09-19부터 API는 merge 뒤 자동으로 배포되므로(migrate·api·realtime이 한 커밋의 이미지로 함께 뜬다) `docs/nas-release.md`의 "API 먼저" 순서를 따른다 — API 변경을 merge하고 NAS에서 그 커밋이 도는지 확인한 뒤, 인증된 비용 조회와 일별·분류별 합계, 저장·재조회 권한을 확인하고 TestFlight 배포를 진행한다. 서버 문제는 이전 커밋으로 되돌리고(`nas-deploy.sh --sha`), 앱은 이전 TestFlight 빌드로 돌아갈 수 있다. 이번 변경에는 DB 마이그레이션이 없다.

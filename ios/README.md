@@ -11,7 +11,7 @@
 > Windows에서 작성해 처음 Mac에서 열었을 때 나온 컴파일 오류(플랫폼 격리 · 프로토콜 요구사항 ·
 > 접근 수준 · 매크로 충돌 · SDK 인자 순서)는 모두 잡혔다.
 >
-> **CI가 자동으로 보는 것** (`.github/workflows/ios.yml`, `ios/` 변경 시에만 — macOS 러너는 10배 과금):
+> **CI가 자동으로 보는 것** (`.github/workflows/ios.yml`, `ios/` 변경 시에만 — macOS 러너는 비공개 저장소에서 10배 과금이다. 지금은 공개라 무료 — [docs/ci.md](../docs/ci.md)):
 > XcodeGen 생성 · 전 타깃 컴파일 · **XCTest** · Release 빌드 · 무료 스펙 생성.
 > 서명 없이 시뮬레이터로만 돌기 때문에 Apple 계정 없이 돌아간다.
 >

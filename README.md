@@ -83,7 +83,7 @@ Vercel 함수가 tailnet 안쪽 DB에 접근할 수 없어서 API를 집 NAS로 
 | 스키마 원본 | `supabase/migrations/*` | RLS·RPC의 역사이자 설계 원본. 현재 운영 스키마는 `next/src/server/infrastructure/database/migrations/` |
 | 롤백 대상 | Vercel `tripcanvas-api` 프로젝트 | 여전히 Supabase를 사용한다. NAS가 길게 죽었을 때 되돌릴 수 있도록 남겨 둔다 |
 
-전환 스위치는 `api.js`·`auth.js`의 `DEFAULT_BASE` 두 줄이다. 자세한 절차는 [`docs/nas-deployment.md`](docs/nas-deployment.md)의 "롤백" 절에 정리돼 있다.
+전환 스위치는 세 곳이다 — 운영 웹(`tripcanvas-ai.vercel.app`)은 같은 출처 `/nas/api/*`로 부르고 `vercel.json`의 rewrite가 NAS로 넘기며(2026-09-24~), 소셜 로그인 시작과 그 밖의 출처(Preview 등)는 `auth.js`·`api.js`의 `DEFAULT_BASE`를 쓴다. `DEFAULT_BASE`만 바꾸면 운영 웹은 계속 NAS를 본다. 자세한 절차는 [`docs/nas-deployment.md`](docs/nas-deployment.md)의 "롤백" 절에 정리돼 있다.
 
 ## 기능
 
@@ -265,8 +265,8 @@ Vercel 함수가 tailnet 안쪽 DB에 접근할 수 없어서 API를 집 NAS로 
 | [`docs/system-architecture-review.md`](docs/system-architecture-review.md) | 2026-09-08 구조 검토 — 이관 분기(LEGACY/DUAL_READ/NEW_BACKEND)의 실제 의미와 종료 기준 |
 | [`docs/supabase-migration.md`](docs/supabase-migration.md) · [`docs/supabase-migrations.md`](docs/supabase-migrations.md) | Supabase → 자체 Backend 이관 계획·진행 · Supabase 시절 migration 적용 절차 |
 | [`docs/staging-verification.md`](docs/staging-verification.md) | 옮겨진 데이터 위에서 앱이 그대로 도는지 — 로그인·저장·협업·롤백 |
-| [`docs/nas-deployment.md`](docs/nas-deployment.md) | NAS 운영 — compose · Funnel · 환경변수 · 처음 띄우기 · 롤백 |
-| [`docs/nas-release.md`](docs/nas-release.md) | 반복 릴리스 절차 — 대상 판정(`deployment:plan`) · 이미지 셋 빌드 · 복구 확인 |
+| [`docs/nas-deployment.md`](docs/nas-deployment.md) | NAS 운영 — compose · Funnel · 자동 배포(`release.yml` → `nas-deploy.sh`) · 환경변수 · 처음 띄우기 · 롤백 |
+| [`docs/nas-release.md`](docs/nas-release.md) | 머지 순서와 확인 — 대상 판정(`deployment:plan`) · 새 API가 필요한 웹은 API PR 먼저 · 머지 뒤 확인 · 복귀 |
 | [`docs/backup-restore.md`](docs/backup-restore.md) | 백업과 복구. **복구해 본 백업만 백업이다** |
 | [`docs/managed-infrastructure.md`](docs/managed-infrastructure.md) | **관리형 인프라 전환 설계** — 현재 SPOF · 조사 결과 · 목표 구조 · provider 선택 · 환경변수 계약 |
 | [`docs/managed-db-migration.md`](docs/managed-db-migration.md) · [`docs/production-cutover.md`](docs/production-cutover.md) · [`docs/disaster-recovery.md`](docs/disaster-recovery.md) | 데이터 이전(복원·전수 대조) · 당일 체크리스트(승인 후) · 롤백 6가지와 RPO/RTO |
@@ -350,17 +350,17 @@ npm run verify:all              # 루트 + next/ + iOS 를 통째로. 범위만:
 ```
 
 마지막에는 PASS/FAIL/**SKIP** 표가 나온다. **SKIP은 통과가 아니다.** 실행하지 못한 항목은 PR에 이유를 적는다.
-GitHub Actions도 같은 범위를 본다: `ci.yml`(Quality · Next workspace · E2E · Docker image build, Node 22) · `ios.yml`(`ios/**`가 바뀔 때만 — macOS 러너는 10배 과금) · `ios-testflight.yml`(수동 실행).
+GitHub Actions도 같은 범위를 본다: `ci.yml`(Quality · Next workspace · E2E · Docker image build, Node 22) · `ios.yml`(`ios/**`가 바뀔 때만 — 빌드가 한 번 8~9분이고, macOS 러너는 비공개 저장소에서 분당 10배 과금이다. 지금은 공개라 무료 — [`docs/ci.md`](docs/ci.md)) · `ios-testflight.yml`(수동 실행).
 러너나 과금 문제로 CI가 멈춰도 검증 기준이 사라지지 않도록 `verify-all.sh`가 워크플로를 그대로 따라가고 있다. 워크플로를 바꾸면 스크립트도 함께 맞춘다.
 
 ## 배포
 
-배포는 세 갈래로 나뉜다. **`main` merge로 자동 배포되는 것은 정적 웹뿐이다.**
+배포는 세 갈래로 나뉜다. **`main` merge 하나가 웹과 API를 함께 내보낸다** — 웹이 먼저, API는 게이트와 이미지 빌드를 지나 뒤따른다.
 
 | 대상 | 어떻게 | 언제 반영 |
 |---|---|---|
 | 웹 + Vercel 함수 | `main` merge → Vercel 자동 배포 | 즉시. 폰은 서비스 워커 버전이 올라가야 새 코드를 본다 |
-| API · 실시간 · DB 스키마 | NAS에서 이미지를 다시 빌드한다 — [`docs/nas-release.md`](docs/nas-release.md) | 사람이 올릴 때 |
+| API · 실시간 · DB 스키마 | `main` merge → `release.yml`(게이트 → GHCR `:<커밋 SHA>` → `production` 태그) → NAS cron(5분)의 `scripts/nas-deploy.sh`가 받아 migrate → api·realtime 교체 — [`docs/nas-deployment.md`](docs/nas-deployment.md) | 게이트·이미지 빌드 뒤(수십 분). 앱·문서만 바뀐 merge에는 돌지 않는다 |
 | iOS | Actions → *iOS TestFlight* → Run workflow (러너가 없으면 `scripts/testflight-upload.sh`) | TestFlight 처리 후 |
 
 어느 쪽 배포가 필요한지는 두 커밋을 넣으면 도구가 알려 준다. 이 명령이 실제 배포까지 하지는 않는다.
@@ -370,22 +370,22 @@ npm run deployment:plan -- <지금-NAS에-떠-있는-커밋> <올릴-커밋>
 ```
 
 ⚠️ **새 라우트는 NAS에 배포되기 전까지 404다.** 앱·웹이 이 상태를 "값이 없음"으로 조용히 넘기면 오류 없이 기능만 사라진 것처럼 보일 수 있다.
-새 API가 필요한 웹을 올릴 때는 API를 **먼저** 배포한다.
+웹이 API보다 먼저 나가므로 새 API가 필요한 웹은 **PR을 둘로** 나눈다 — API PR을 먼저 merge하고, NAS에서 그 커밋이 도는지(`nas-deploy.sh --status` 또는 `/api/health`의 `revision`) 확인한 뒤 웹 PR을 merge한다([`docs/nas-release.md`](docs/nas-release.md)).
 
-⚠️ 마이그레이션을 추가했다면 `api`뿐 아니라 `migrate` 이미지도 다시 빌드해야 한다. 옛 이미지는 "applied successfully"를 찍으면서 실제로는 새 테이블을 만들지 않을 수 있다.
+⚠️ 마이그레이션은 **하위호환이어야 한다.** merge가 곧 운영 DB 적용이고(migrate·api·realtime은 한 커밋의 이미지라 따로 빌드할 일은 없다) 이미지 롤백은 스키마를 되돌리지 않는다 — `npm run check:migrations`가 PR에서 막는다([`docs/migration-policy.md`](docs/migration-policy.md)).
 
 ### 릴리스 체크리스트
 
 - [ ] 웹 자산(`app.js` · `index.html` · `style.css` …)을 바꿨으면 `npm run bump:version` 실행 — `sw.js`의 `VER`과 `index.html`의 `?v=`를 같이 올린다. 그렇지 않으면 stale 캐시 때문에 변경이 안 보일 수 있다
 - [ ] `npm run verify:all` 통과. SKIP 항목은 PR에 이유를 적는다
 - [ ] **필수 체크가 빨간 상태로 merge하지 않는다.** 원인이 코드가 아니라 러너·과금 문제라면 그 사실과 대신 어떤 검증을 했는지 PR에 남기고 사람이 판단한다
-- [ ] `next/src/app/api/**` · `next/src/server/**` · `next/src/features/**`를 바꿨으면 NAS에 따로 올린다. `.env`를 바꿨다면 `--force-recreate api`까지 필요하다
+- [ ] API(`next/**` · 루트 엔진)를 바꿨으면 merge 뒤 NAS가 그 커밋을 띄웠는지 본다 — `ssh nas '~/tripcanvas/scripts/nas-deploy.sh --status'`. 새 환경변수는 merge **전에** NAS `deploy/.env`에 넣는다(배포 없이 `.env`만 바꿨다면 `--force-recreate api`)
 - [ ] 푸시 후 폰에서 실제 반영 여부를 확인한다. ☰ 메뉴 하단 버전이 새 버전인지 먼저 보고, 옛 버전이면 그 글자를 눌러 갱신한다
 
 ## 작업 규칙
 
 - **`main`에는 직접 커밋·푸시하지 않는다.** `feat/*` · `fix/*` · `chore/*` · `docs/*` · `release/*` 브랜치에서 작업하고 PR → 게이트 → merge 순서로 들어간다.
-  각 클론에서 `git config core.hooksPath .githooks`를 한 번 실행하면 `pre-push`가 `main` 직접 푸시를 로컬에서 막아 준다. 최종 방어는 서버의 branch protection이고, 훅은 그 전에 실수를 막는 용도다.
+  각 클론에서 `git config core.hooksPath .githooks`를 한 번 실행하면 `pre-push`가 `main` 직접 푸시를 로컬에서 막아 준다. 서버의 branch protection이 켜져 있으면 그것이 최종 방어이고 훅은 그 전에 실수를 막는 용도다 — 2026-10-02 확인 때는 꺼져 있어 훅이 유일한 방어였다([`docs/deployment-workflow.md`](docs/deployment-workflow.md)).
 - **여러 기기에서 작업하므로 원격 상태를 먼저 확인한다.** 세션 시작·커밋 전에 `git fetch`로 `origin/main`이 앞서 있는지 보고, 뒤처졌으면 `git pull --ff-only`로 맞춘다.
 - **커밋 제목은 명사형으로 끝낸다.** 예: `… 기능 추가` · `… 오류 수정` · `… 규칙 정리`. 본문은 서술형이어도 괜찮다.
 - PR 본문에는 무엇이 바뀌었는지, 왜 바꿨는지, 사용자와 프로덕션에 어떤 영향이 있는지, 무엇으로 검증했는지, 어떻게 되돌릴 수 있는지를 적는다. **"테스트 작성됨"과 "테스트 통과"는 구분해서 적는다.**

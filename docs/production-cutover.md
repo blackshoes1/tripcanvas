@@ -60,7 +60,7 @@ staging 런타임(api·realtime)을 staging DB에 붙인다. 배포는 GitHub Ac
 ## Phase D — 클라이언트 전환
 
 - [ ] D1 프로덕션 런타임 `/api/health` → `HEALTHY`(realtime ok). `GET /api/v1/trips` 401
-- [ ] D2 **웹**: `api.js`·`auth.js`의 `DEFAULT_BASE` 두 줄을 새 주소로 + `npm run bump:version` → PR → CI → merge(Vercel 재배포 약 1분). 폰에서 ☰ 버전 확인 → 로그인 상태 유지 → 여행 열기 → 장소 하나 저장 → revision 증가
+- [ ] D2 **웹**: 웹이 API를 부르는 세 곳을 새 주소로 — `vercel.json`의 `/nas/api/*` rewrite 대상(운영 웹의 데이터 요청이 여기를 지난다, 2026-09-24~) + `api.js`·`auth.js`의 `DEFAULT_BASE` 두 줄(Preview 등 · 소셜 로그인 시작) + `npm run bump:version` → PR → CI → merge(Vercel 재배포 약 1분). ⚠️ `DEFAULT_BASE`만 바꾸면 운영 웹은 계속 NAS를 본다. 폰에서 ☰ 버전 확인 → 로그인 상태 유지 → 여행 열기 → 장소 하나 저장 → revision 증가
 - [ ] D3 **감시**: Vercel 환경변수 `TC_WATCH_BASE`=새 API, `TC_WATCH_REALTIME_BASE`=새 실시간 → 재배포 → `/api/health-watch`가 `HEALTHY`
 - [ ] D4 **iOS**: `ios/project.yml`·`project-free.yml`의 `TCApiBaseURL` + `AppEnvironment.swift`의 fallback을 새 주소로 → 버전 올림 → *iOS TestFlight* 워크플로 → 실기기에서 로그인 유지·목록·저장 확인 → 심사 제출. **옛 앱은 계속 NAS 주소를 본다** — 아래 D5
 - [ ] D5 **옛 주소 유지(앱 전환 기간)**: NAS를 `TC_READ_ONLY` 해제 후 다시 올리되 **DB를 관리형 primary로 가리키는 프록시 모드**로 — `.env`의 `DATABASE_URL`을 관리형 주소로 바꿔 `api`만 올린다(`postgres`·`realtime` 컨테이너는 내려 둔다). 옛 앱 사용자는 NAS 주소 → 관리형 DB로 저장되어 **두 클라이언트가 같은 데이터를 본다.** NAS 장애는 이때 옛 앱에만 영향이다. 새 앱이 스토어에 나가고 옛 앱 사용이 끝나면 내린다

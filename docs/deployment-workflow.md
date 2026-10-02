@@ -8,15 +8,20 @@ feat/* · fix/* · chore/* · docs/*  →  PR  →  게이트  →  merge  →  
 
 1. 작업별 브랜치와 Draft PR을 만든다. **`main`에 직접 커밋·푸시하지 않는다.**
 2. Vercel Preview에서 외부 API·모바일·PWA를 수동 확인한다.
-3. 새 API를 요구하는 웹은 [NAS 릴리스 절차](nas-release.md)에 따라 API 호환 검증·선배포를 마친다. 게이트를 통과시킨다 — `npm run verify:all`(루트 + `next/` + iOS). CI가 살아 있으면 GitHub Actions가 같은 것을 본다.
+3. 새 API를 요구하는 웹은 PR을 둘로 나눈다 — **API PR을 먼저 merge**하고, NAS에서 그 커밋이 도는지(`nas-deploy.sh --status` 또는 `/api/health`의 `revision`) 확인한 뒤 웹 PR을 merge한다. 한 PR이면 웹이 API보다 먼저 나간다([NAS 릴리스 절차](nas-release.md)). 게이트를 통과시킨다 — `npm run verify:all`(루트 + `next/` + iOS). CI가 살아 있으면 GitHub Actions가 같은 것을 본다.
    **SKIP은 통과가 아니다** — 무엇을 못 돌렸는지 PR에 밝힌다.
 4. Draft를 Ready for review로 바꾸고 merge한다. **빨간 체크 위에서 merge하지 않는다.**
-5. `main` merge가 Vercel Production 배포를 시작한다(정적 웹만). 배포 후 메뉴 버전과 핵심 흐름을 확인한다.
-   **API·DB는 Vercel 배포로 바뀌지 않는다** — NAS에서 따로 올린다(`docs/nas-deployment.md`).
+5. `main` merge가 Vercel Production 배포(정적 웹·`api/` 함수, 약 1분)를 시작한다. 배포 후 메뉴 버전과 핵심 흐름을 확인한다.
+   **API·DB도 같은 merge로 나간다** — `release.yml`(게이트 → GHCR `:<커밋 SHA>` → `production` 태그) → NAS cron(5분)이
+   받아 migrate → api·realtime을 바꾼다. 게이트·이미지 빌드를 지나므로 웹보다 늦고, 앱·문서만 바뀐 merge에는 돌지 않는다(`docs/nas-deployment.md`).
 
 ## Branch protection — 서버가 막는다 (2026-09-06~)
 
-`main`은 GitHub branch protection으로 잠겨 있다. 이전에는 **비공개 + 무료 플랜**이라 이 기능이 403이었고
+> ⚠️ **2026-10-02 확인: 지금은 꺼져 있다.** `gh api repos/blackshoes1/tripcanvas/branches/main --jq .protected`가 `false`이고,
+> 저장소 ruleset(`trip canvas`)은 `enforcement: disabled`다. 아래 표는 켜 두기로 한 값이다 — 다시 켜기 전까지 `main` 직접
+> 푸시를 막는 것은 로컬 `pre-push` 훅뿐이다. 켰는지는 같은 명령으로 본다.
+
+`main`은 GitHub branch protection으로 잠가 두기로 했다(2026-09-06). 이전에는 **비공개 + 무료 플랜**이라 이 기능이 403이었고
 로컬 훅이 유일한 방어였는데, **저장소를 공개로 바꾸면서** 쓸 수 있게 됐다(그 결정과 대가는 `docs/ci.md`).
 
 | 규칙 | 값 |
@@ -41,8 +46,8 @@ PR이 들어가면 `release.yml`이 이미지 단계에서 멈추고 자동 배�
 
 ### 로컬 pre-push 훅 — 여전히 켠다
 
-서버가 막으니 훅은 이제 **유일한 방어가 아니라 빠른 방어**다. 서버까지 갔다가 거절당하는 대신
-푸시하기 전에 막아 준다. 클론마다 한 번 켠다:
+서버가 막고 있으면 훅은 **유일한 방어가 아니라 빠른 방어**다. 서버까지 갔다가 거절당하는 대신
+푸시하기 전에 막아 준다. 서버 보호가 꺼져 있으면(위 ⚠️) 훅이 **유일한 방어**다. 클론마다 한 번 켠다:
 
 ```bash
 git config core.hooksPath .githooks
