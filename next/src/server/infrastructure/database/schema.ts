@@ -410,4 +410,3 @@ export const legFillUsage = pgTable('leg_fill_usage', {
   count: integer('count').notNull().default(0),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 }, (t) => [primaryKey({ columns: [t.scope, t.day] })]);
-
