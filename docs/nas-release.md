@@ -96,7 +96,7 @@ iOS도 같은 순서다 — API가 돌기 전에 TestFlight로 내보내지 않�
 - **웹:** revert PR로 되돌린다. NAS API는 호환 상태로 둔다(API가 더하기만 했다면 옛 웹도 그대로 돈다).
 - **API:** 고친 커밋을 머지해 앞으로 가는 것이 기본이다. 급하면 `ssh nas '~/tripcanvas/scripts/nas-deploy.sh --sha <이전-커밋-40자리-SHA>'`
   — production 태그와 다른 커밋이라 자동 배포가 그 커밋에 **고정**되고, 푸는 것은 사람이다(`rm deploy/.deploy-disabled`,
-  nas-deployment.md "롤백"). 이미지만 돌아가고 스키마는 앞선 채로 남는다 — 그 스키마 위에서 이전 이미지가 도는지 먼저 본다.
+  nas-deployment.md "롤백 — 특정 커밋으로 되돌리기"). 이미지만 돌아가고 스키마는 앞선 채로 남는다 — 그 스키마 위에서 이전 이미지가 도는지 먼저 본다.
   비밀(`deploy/.env`)은 현재 운영 값을 유지한다.
 - **스키마:** git revert로 DB가 돌아가지 않는다. 호환 가능한 forward migration을 우선한다.
 - **데이터:** 손실·오염 시 쓰기 중단(`TC_READ_ONLY=1`) → 원본 보존 → 별도 DB에 덤프 복구 → 무결성·앱 검증 → 승인 후 전환.

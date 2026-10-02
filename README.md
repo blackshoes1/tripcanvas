@@ -83,7 +83,7 @@ Vercel 함수가 tailnet 안쪽 DB에 접근할 수 없어서 API를 집 NAS로 
 | 스키마 원본 | `supabase/migrations/*` | RLS·RPC의 역사이자 설계 원본. 현재 운영 스키마는 `next/src/server/infrastructure/database/migrations/` |
 | 롤백 대상 | Vercel `tripcanvas-api` 프로젝트 | 여전히 Supabase를 사용한다. NAS가 길게 죽었을 때 되돌릴 수 있도록 남겨 둔다 |
 
-전환 스위치는 세 곳이다 — 운영 웹(`tripcanvas-ai.vercel.app`)은 같은 출처 `/nas/api/*`로 부르고 `vercel.json`의 rewrite가 NAS로 넘기며(2026-09-24~), 소셜 로그인 시작과 그 밖의 출처(Preview 등)는 `auth.js`·`api.js`의 `DEFAULT_BASE`를 쓴다. `DEFAULT_BASE`만 바꾸면 운영 웹은 계속 NAS를 본다. 자세한 절차는 [`docs/nas-deployment.md`](docs/nas-deployment.md)의 "롤백" 절에 정리돼 있다.
+전환 스위치는 세 곳이다 — 운영 웹(`tripcanvas-ai.vercel.app`)은 같은 출처 `/nas/api/*`로 부르고 `vercel.json`의 rewrite가 NAS로 넘기며(2026-09-24~), 소셜 로그인 시작과 그 밖의 출처(Preview 등)는 `auth.js`·`api.js`의 `DEFAULT_BASE`를 쓴다. `DEFAULT_BASE`만 바꾸면 운영 웹은 계속 NAS를 본다. 자세한 절차는 [`docs/nas-deployment.md`](docs/nas-deployment.md)의 "롤백 (2026-09-04 전환 기준)" 절에 정리돼 있다.
 
 ## 기능
 

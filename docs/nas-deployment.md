@@ -4,7 +4,7 @@
 
 > **2026-09-04 — 프로덕션이 여기다.** 웹(`tripcanvas-ai.vercel.app`)이 부르는 API는 NAS의
 > `https://bokbok9.tail8b977f.ts.net` 이고, 데이터는 NAS PostgreSQL이다. Vercel에는 정적 웹만 남았다.
-> Vercel의 `tripcanvas-api` 프로젝트는 지우지 않았다 — **롤백 대상**이다(아래 "롤백").
+> Vercel의 `tripcanvas-api` 프로젝트는 지우지 않았다 — **롤백 대상**이다(아래 "롤백 (2026-09-04 전환 기준)").
 
 > **NAS의 다음 역할 (준비됨, 2026-09-17)**: API·PostgreSQL을 관리형으로 옮기면 NAS는 **오프사이트 백업 목적지**가 된다 —
 > `deploy/docker-compose.backup-only.yml`이 관리형 DB의 `pg_dump`를 이 디스크로 당겨 온다. 이 문서의 나머지는 그때까지의(그리고 롤백 대상으로 남는) 운영 스택이다.

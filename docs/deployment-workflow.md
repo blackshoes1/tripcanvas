@@ -15,7 +15,7 @@ feat/* · fix/* · chore/* · docs/*  →  PR  →  게이트  →  merge  →  
    **API·DB도 같은 merge로 나간다** — `release.yml`(게이트 → GHCR `:<커밋 SHA>` → `production` 태그) → NAS cron(5분)이
    받아 migrate → api·realtime을 바꾼다. 게이트·이미지 빌드를 지나므로 웹보다 늦고, 앱·문서만 바뀐 merge에는 돌지 않는다(`docs/nas-deployment.md`).
 
-## Branch protection — 서버가 막는다 (2026-09-06~)
+## Branch protection — 켜 두기로 한 값 (2026-09-06 결정 · 2026-10-02 확인 때 꺼짐)
 
 > ⚠️ **2026-10-02 확인: 지금은 꺼져 있다.** `gh api repos/blackshoes1/tripcanvas/branches/main --jq .protected`가 `false`이고,
 > 저장소 ruleset(`trip canvas`)은 `enforcement: disabled`다. 아래 표는 켜 두기로 한 값이다 — 다시 켜기 전까지 `main` 직접
