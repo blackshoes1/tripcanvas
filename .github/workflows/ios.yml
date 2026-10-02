@@ -2,6 +2,10 @@
 # 여기서 잡는 것은 "Mac에서 열었을 때 빌드가 되는가" 하나이고, 그게 지금까지 사람 손에만 달려 있었다.
 #
 # ⚠️ macOS 러너는 비공개 저장소에서 **분당 10배**로 과금된다 → ios/ 가 바뀔 때만 돈다.
+#    예외는 `collab.js` 하나다 — `CollabModel.swift`가 파일째 복사본이라 원본만 바뀌어도 돈다(2026-10-02).
+#    `lib.js`·`app.js`는 넣지 않는다: 웹 PR 거의 전부가 건드려 매번 macOS가 돈다. 그쪽 규칙(우선순위·결제 상태
+#    이름 등)이 앱에 닿는 길은 파리티 픽스처(ios/TripCanvasTests/Fixtures — ios/** 안)이고, ci.yml의
+#    "Parity fixtures are committed"가 다시 쓴 픽스처의 커밋을 강제하므로 규칙이 바뀌면 ios/**도 함께 바뀐다.
 # 서명은 하지 않는다 — 시뮬레이터 빌드는 서명이 필요 없어서 Apple 계정 없이도 돌아간다.
 # 그래서 여기서 확인되는 것과 확인되지 않는 것이 갈린다:
 #   확인됨   : 컴파일 · 링크 · XCTest · Release 설정 · XcodeGen 명세
@@ -9,10 +13,10 @@
 name: iOS
 on:
   pull_request:
-    paths: ['ios/**', '.github/workflows/ios.yml']
+    paths: ['ios/**', 'collab.js', '.github/workflows/ios.yml']
   push:
     branches: [main]
-    paths: ['ios/**', '.github/workflows/ios.yml']
+    paths: ['ios/**', 'collab.js', '.github/workflows/ios.yml']
 
 env:
   # 서명 없이 시뮬레이터로만 빌드한다

@@ -1,0 +1,286 @@
+{
+  "priorities": [
+    {
+      "id": "MUST",
+      "label": "꼭 가기"
+    },
+    {
+      "id": "NORMAL",
+      "label": "보통"
+    },
+    {
+      "id": "OPT",
+      "label": "선택"
+    }
+  ],
+  "reads": [
+    {
+      "name": "아무 표시 없음",
+      "spot": {
+        "name": "알함브라"
+      },
+      "priority": "NORMAL"
+    },
+    {
+      "name": "꼭 가기",
+      "spot": {
+        "name": "알함브라",
+        "must": true
+      },
+      "priority": "MUST"
+    },
+    {
+      "name": "선택",
+      "spot": {
+        "name": "알함브라",
+        "opt": true
+      },
+      "priority": "OPT"
+    },
+    {
+      "name": "둘 다 켜진 옛 문서는 지키는 쪽",
+      "spot": {
+        "name": "알함브라",
+        "must": true,
+        "opt": true
+      },
+      "priority": "MUST"
+    },
+    {
+      "name": "must가 꺼져 있고 opt만",
+      "spot": {
+        "name": "알함브라",
+        "must": false,
+        "opt": true
+      },
+      "priority": "OPT"
+    },
+    {
+      "name": "둘 다 꺼짐",
+      "spot": {
+        "name": "알함브라",
+        "must": false,
+        "opt": false
+      },
+      "priority": "NORMAL"
+    }
+  ],
+  "writes": [
+    {
+      "name": "아무 표시 없음 → MUST",
+      "before": {
+        "name": "알함브라"
+      },
+      "level": "MUST",
+      "after": {
+        "name": "알함브라",
+        "must": true
+      }
+    },
+    {
+      "name": "아무 표시 없음 → NORMAL",
+      "before": {
+        "name": "알함브라"
+      },
+      "level": "NORMAL",
+      "after": {
+        "name": "알함브라"
+      }
+    },
+    {
+      "name": "아무 표시 없음 → OPT",
+      "before": {
+        "name": "알함브라"
+      },
+      "level": "OPT",
+      "after": {
+        "name": "알함브라",
+        "opt": true
+      }
+    },
+    {
+      "name": "꼭 가기 → MUST",
+      "before": {
+        "name": "알함브라",
+        "must": true
+      },
+      "level": "MUST",
+      "after": {
+        "name": "알함브라",
+        "must": true
+      }
+    },
+    {
+      "name": "꼭 가기 → NORMAL",
+      "before": {
+        "name": "알함브라",
+        "must": true
+      },
+      "level": "NORMAL",
+      "after": {
+        "name": "알함브라"
+      }
+    },
+    {
+      "name": "꼭 가기 → OPT",
+      "before": {
+        "name": "알함브라",
+        "must": true
+      },
+      "level": "OPT",
+      "after": {
+        "name": "알함브라",
+        "opt": true
+      }
+    },
+    {
+      "name": "선택 → MUST",
+      "before": {
+        "name": "알함브라",
+        "opt": true
+      },
+      "level": "MUST",
+      "after": {
+        "name": "알함브라",
+        "must": true
+      }
+    },
+    {
+      "name": "선택 → NORMAL",
+      "before": {
+        "name": "알함브라",
+        "opt": true
+      },
+      "level": "NORMAL",
+      "after": {
+        "name": "알함브라"
+      }
+    },
+    {
+      "name": "선택 → OPT",
+      "before": {
+        "name": "알함브라",
+        "opt": true
+      },
+      "level": "OPT",
+      "after": {
+        "name": "알함브라",
+        "opt": true
+      }
+    },
+    {
+      "name": "둘 다 켜진 옛 문서는 지키는 쪽 → MUST",
+      "before": {
+        "name": "알함브라",
+        "must": true,
+        "opt": true
+      },
+      "level": "MUST",
+      "after": {
+        "name": "알함브라",
+        "must": true
+      }
+    },
+    {
+      "name": "둘 다 켜진 옛 문서는 지키는 쪽 → NORMAL",
+      "before": {
+        "name": "알함브라",
+        "must": true,
+        "opt": true
+      },
+      "level": "NORMAL",
+      "after": {
+        "name": "알함브라"
+      }
+    },
+    {
+      "name": "둘 다 켜진 옛 문서는 지키는 쪽 → OPT",
+      "before": {
+        "name": "알함브라",
+        "must": true,
+        "opt": true
+      },
+      "level": "OPT",
+      "after": {
+        "name": "알함브라",
+        "opt": true
+      }
+    },
+    {
+      "name": "must가 꺼져 있고 opt만 → MUST",
+      "before": {
+        "name": "알함브라",
+        "must": false,
+        "opt": true
+      },
+      "level": "MUST",
+      "after": {
+        "name": "알함브라",
+        "must": true
+      }
+    },
+    {
+      "name": "must가 꺼져 있고 opt만 → NORMAL",
+      "before": {
+        "name": "알함브라",
+        "must": false,
+        "opt": true
+      },
+      "level": "NORMAL",
+      "after": {
+        "name": "알함브라"
+      }
+    },
+    {
+      "name": "must가 꺼져 있고 opt만 → OPT",
+      "before": {
+        "name": "알함브라",
+        "must": false,
+        "opt": true
+      },
+      "level": "OPT",
+      "after": {
+        "name": "알함브라",
+        "opt": true
+      }
+    },
+    {
+      "name": "둘 다 꺼짐 → MUST",
+      "before": {
+        "name": "알함브라",
+        "must": false,
+        "opt": false
+      },
+      "level": "MUST",
+      "after": {
+        "name": "알함브라",
+        "must": true
+      }
+    },
+    {
+      "name": "둘 다 꺼짐 → NORMAL",
+      "before": {
+        "name": "알함브라",
+        "must": false,
+        "opt": false
+      },
+      "level": "NORMAL",
+      "after": {
+        "name": "알함브라"
+      }
+    },
+    {
+      "name": "둘 다 꺼짐 → OPT",
+      "before": {
+        "name": "알함브라",
+        "must": false,
+        "opt": false
+      },
+      "level": "OPT",
+      "after": {
+        "name": "알함브라",
+        "opt": true
+      }
+    }
+  ]
+}

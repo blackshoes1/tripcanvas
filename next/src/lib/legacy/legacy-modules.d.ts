@@ -204,6 +204,12 @@ declare module '@legacy/lib.js' {
     /** IANA 시간대 문자열인지 (Asia/Tokyo 등) */
     validTimeZone(value: unknown): boolean;
     SPOT_CATS: readonly { id: string; icon: string; name: string }[];
+    /** 장소 우선순위 3단 — 화면은 한 컨트롤, 저장은 `must`/`opt` 두 플래그다 */
+    SPOT_PRIORITIES: readonly { id: 'MUST' | 'NORMAL' | 'OPT'; label: string; hint: string }[];
+    spotPriorityOf(spot: unknown): 'MUST' | 'NORMAL' | 'OPT';
+    applySpotPriority<T>(spot: T, level: string | null | undefined): T;
+    COST_PAY_STATES: readonly string[];
+    COST_CATEGORIES: readonly string[];
     TC_LIMITS: Readonly<Record<string, number>>;
     TC_SCHEMA: number;
   };
@@ -519,6 +525,44 @@ declare module '@legacy/collab.js' {
     ): SplitPlan | null;
     /** 합류 안내 한 줄. 장소를 모르면 아는 척하지 않는다 */
     reunionText(spot: unknown, when?: string): string;
+    // ── 아래는 iOS 복사본(`CollabModel`)과 픽스처로 대조하는 규칙들(collabRulesParity.test.ts) ──
+    REACTIONS: readonly string[];
+    REACTION_LABEL: Readonly<Record<string, string>>;
+    REACTION_ICON: Readonly<Record<string, string>>;
+    MOOD_TEXT: Readonly<Record<string, string>>;
+    CONSENSUS_TEXT: Readonly<Record<string, string>>;
+    CANDIDATE_CATEGORIES: readonly string[];
+    candidateCategoryOf(value: unknown): string | null;
+    canPropose(role: unknown): boolean;
+    canReact(role: unknown): boolean;
+    canComment(role: unknown): boolean;
+    canScheduleCandidate(role: unknown): boolean;
+    canRemoveCandidate(role: unknown, candidate: { mine?: boolean } | null): boolean;
+    canDeleteComment(role: unknown, comment: { mine?: boolean } | null): boolean;
+    tallyReactions(candidate: unknown, memberCount?: number | null): {
+      must: number; ok: number; pass: number; voted: number; silent: number; members: number;
+    };
+    candidateMood(candidate: unknown, memberCount?: number | null): 'NONE' | 'SPLIT' | 'COOL' | 'LOVED' | 'QUIET';
+    moodText(mood: unknown): string;
+    /** 카드 배지 — 두 명 이상이 말했을 때만 합의 문장이고, 숫자는 없다 */
+    candidateVerdict(candidate: unknown, memberCount?: number | null): {
+      text: string; tone: 'good' | 'split' | 'mixed' | 'quiet'; status: string | null;
+    };
+    reactionSummary(candidate: unknown, memberCount?: number | null): string;
+    candidateAttribution(candidate: { mine?: boolean; proposed_by_label?: string | null } | null): string;
+    groupCandidates<T>(candidates: T[] | null, memberCount?: number | null): {
+      loved: T[]; needsOpinion: T[]; resting: T[]; scheduled: T[]; rejected: T[];
+    };
+    /** 정렬은 표시일 뿐 결정이 아니다(§12) */
+    sortCandidates<T>(candidates: T[] | null, mode?: 'recent' | 'interest', memberCount?: number | null): T[];
+    objParticle(word: unknown): string;
+    activityText(event: {
+      kind?: string; mine?: boolean; actor_label?: string | null; member_label?: string | null;
+      subject?: unknown; count?: number;
+    } | null): string;
+    condenseActivity<T>(rows: T[] | null, windowMs?: number): Array<T & { count?: number; first_at?: string }>;
+    relativeTime(iso: unknown, now?: number): string;
+    prefsText(prefs: unknown): string;
   };
   interface CandidateConflict {
     title: string; must: string[]; ok: string[]; pass: string[];

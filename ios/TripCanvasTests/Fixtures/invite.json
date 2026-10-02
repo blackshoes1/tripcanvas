@@ -1,0 +1,531 @@
+{
+  "webBase": "https://tripcanvas-ai.vercel.app/",
+  "joinTokens": [
+    {
+      "hash": "#join=abcdefghijklmnop",
+      "token": "abcdefghijklmnop"
+    },
+    {
+      "hash": "#join=abcdefghijklmno",
+      "token": null
+    },
+    {
+      "hash": "#join=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "token": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "hash": "#join=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "token": null
+    },
+    {
+      "hash": "#join=Ab3_x-Y9zQ8w7v6u",
+      "token": "Ab3_x-Y9zQ8w7v6u"
+    },
+    {
+      "hash": "#join=ABCDEFGHIJKLMNOP_-0123456789",
+      "token": "ABCDEFGHIJKLMNOP_-0123456789"
+    },
+    {
+      "hash": "#join=%41bcdefghijklmnop",
+      "token": "Abcdefghijklmnop"
+    },
+    {
+      "hash": "#join=aaaaaaaaaaaaaaaa%20",
+      "token": null
+    },
+    {
+      "hash": "#join=bad$chars%%%%%%%%%%%%",
+      "token": null
+    },
+    {
+      "hash": "#join=가나다라마바사아자차카타파하가나",
+      "token": null
+    },
+    {
+      "hash": "#join=abcdefghijklmnop.",
+      "token": null
+    },
+    {
+      "hash": "#JOIN=abcdefghijklmnop",
+      "token": null
+    },
+    {
+      "hash": "#join=",
+      "token": null
+    },
+    {
+      "hash": "#v=abcdefghijklmnop",
+      "token": null
+    },
+    {
+      "hash": "",
+      "token": null
+    }
+  ],
+  "reasons": [
+    {
+      "reason": "OK",
+      "text": "초대 링크가 올바르지 않아요. 보낸 사람에게 다시 받아 주세요"
+    },
+    {
+      "reason": "INVALID",
+      "text": "초대 링크가 올바르지 않아요. 보낸 사람에게 다시 받아 주세요"
+    },
+    {
+      "reason": "EXPIRED",
+      "text": "초대 링크가 만료됐어요. 보낸 사람에게 새 링크를 받아 주세요"
+    },
+    {
+      "reason": "REVOKED",
+      "text": "취소된 초대 링크예요. 보낸 사람에게 새 링크를 받아 주세요"
+    },
+    {
+      "reason": "EXHAUSTED",
+      "text": "이 링크는 사용 한도에 도달했어요. 보낸 사람에게 새 링크를 받아 주세요"
+    },
+    {
+      "reason": "TRIP_DELETED",
+      "text": "그 여행은 삭제됐어요"
+    },
+    {
+      "reason": "REMOVED",
+      "text": "이 여행에서 내보내진 뒤라 이 링크로는 다시 참여할 수 없어요. 새 링크를 받아 주세요"
+    },
+    {
+      "reason": "NETWORK",
+      "text": "초대 정보를 불러오지 못했어요. 잠시 후 다시 시도해 주세요"
+    },
+    {
+      "reason": "expired",
+      "text": "초대 링크가 만료됐어요. 보낸 사람에게 새 링크를 받아 주세요"
+    },
+    {
+      "reason": "ok",
+      "text": "초대 링크가 올바르지 않아요. 보낸 사람에게 다시 받아 주세요"
+    },
+    {
+      "reason": "",
+      "text": "초대 링크가 올바르지 않아요. 보낸 사람에게 다시 받아 주세요"
+    },
+    {
+      "reason": "   ",
+      "text": "초대 링크가 올바르지 않아요. 보낸 사람에게 다시 받아 주세요"
+    },
+    {
+      "reason": "SOMETHING_NEW",
+      "text": "초대 링크가 올바르지 않아요. 보낸 사람에게 다시 받아 주세요"
+    },
+    {
+      "reason": null,
+      "text": "초대 링크가 올바르지 않아요. 보낸 사람에게 다시 받아 주세요"
+    }
+  ],
+  "verdicts": [
+    {
+      "name": "못 불러왔다",
+      "preview": null,
+      "ok": false,
+      "text": "초대 정보를 불러오지 못했어요. 잠시 후 다시 시도해 주세요",
+      "alreadyMember": false,
+      "role": null
+    },
+    {
+      "name": "유효한 초대",
+      "preview": {
+        "valid": true,
+        "reason": "OK",
+        "trip_name": "바르셀로나",
+        "start_date": "2026-10-25",
+        "day_count": 14,
+        "role": "EDITOR",
+        "expires_at": "2026-10-01T00:00:00.000Z",
+        "already_member": false
+      },
+      "ok": true,
+      "text": "",
+      "alreadyMember": false,
+      "role": "EDITOR"
+    },
+    {
+      "name": "만료",
+      "preview": {
+        "valid": false,
+        "reason": "EXPIRED",
+        "trip_name": "바르셀로나",
+        "start_date": "2026-10-25",
+        "day_count": 14,
+        "role": "VIEWER",
+        "expires_at": "2026-10-01T00:00:00.000Z",
+        "already_member": false
+      },
+      "ok": false,
+      "text": "초대 링크가 만료됐어요. 보낸 사람에게 새 링크를 받아 주세요",
+      "alreadyMember": false,
+      "role": "VIEWER"
+    },
+    {
+      "name": "이유가 비었다",
+      "preview": {
+        "valid": false,
+        "reason": "",
+        "trip_name": "바르셀로나",
+        "start_date": "2026-10-25",
+        "day_count": 14,
+        "role": "EDITOR",
+        "expires_at": "2026-10-01T00:00:00.000Z",
+        "already_member": false
+      },
+      "ok": false,
+      "text": "초대 링크가 올바르지 않아요. 보낸 사람에게 다시 받아 주세요",
+      "alreadyMember": false,
+      "role": "EDITOR"
+    },
+    {
+      "name": "이유가 소문자",
+      "preview": {
+        "valid": false,
+        "reason": "removed",
+        "trip_name": "바르셀로나",
+        "start_date": "2026-10-25",
+        "day_count": 14,
+        "role": "EDITOR",
+        "expires_at": "2026-10-01T00:00:00.000Z",
+        "already_member": false
+      },
+      "ok": false,
+      "text": "이 여행에서 내보내진 뒤라 이 링크로는 다시 참여할 수 없어요. 새 링크를 받아 주세요",
+      "alreadyMember": false,
+      "role": "EDITOR"
+    },
+    {
+      "name": "모르는 이유",
+      "preview": {
+        "valid": false,
+        "reason": "SOMETHING_NEW",
+        "trip_name": "바르셀로나",
+        "start_date": "2026-10-25",
+        "day_count": 14,
+        "role": "EDITOR",
+        "expires_at": "2026-10-01T00:00:00.000Z",
+        "already_member": false
+      },
+      "ok": false,
+      "text": "초대 링크가 올바르지 않아요. 보낸 사람에게 다시 받아 주세요",
+      "alreadyMember": false,
+      "role": "EDITOR"
+    },
+    {
+      "name": "무효인데 이유가 OK — 빈 문장으로 두지 않는다",
+      "preview": {
+        "valid": false,
+        "reason": "OK",
+        "trip_name": "바르셀로나",
+        "start_date": "2026-10-25",
+        "day_count": 14,
+        "role": "EDITOR",
+        "expires_at": "2026-10-01T00:00:00.000Z",
+        "already_member": false
+      },
+      "ok": false,
+      "text": "초대 링크가 올바르지 않아요. 보낸 사람에게 다시 받아 주세요",
+      "alreadyMember": false,
+      "role": "EDITOR"
+    },
+    {
+      "name": "이미 참여 중",
+      "preview": {
+        "valid": true,
+        "reason": "OK",
+        "trip_name": "바르셀로나",
+        "start_date": "2026-10-25",
+        "day_count": 14,
+        "role": "OWNER",
+        "expires_at": "2026-10-01T00:00:00.000Z",
+        "already_member": true
+      },
+      "ok": true,
+      "text": "이미 이 여행에 참여하고 있어요",
+      "alreadyMember": true,
+      "role": "OWNER"
+    },
+    {
+      "name": "이미 참여 중이면 무효여도 들어간다",
+      "preview": {
+        "valid": false,
+        "reason": "EXPIRED",
+        "trip_name": "바르셀로나",
+        "start_date": "2026-10-25",
+        "day_count": 14,
+        "role": "EDITOR",
+        "expires_at": "2026-10-01T00:00:00.000Z",
+        "already_member": true
+      },
+      "ok": true,
+      "text": "이미 이 여행에 참여하고 있어요",
+      "alreadyMember": true,
+      "role": "EDITOR"
+    },
+    {
+      "name": "유효한데 이유가 비었다",
+      "preview": {
+        "valid": true,
+        "reason": "",
+        "trip_name": "바르셀로나",
+        "start_date": "2026-10-25",
+        "day_count": 14,
+        "role": null,
+        "expires_at": "2026-10-01T00:00:00.000Z",
+        "already_member": false
+      },
+      "ok": true,
+      "text": "",
+      "alreadyMember": false,
+      "role": null
+    },
+    {
+      "name": "모르는 역할은 역할 없음",
+      "preview": {
+        "valid": true,
+        "reason": "OK",
+        "trip_name": "바르셀로나",
+        "start_date": "2026-10-25",
+        "day_count": 14,
+        "role": "ADMIN",
+        "expires_at": "2026-10-01T00:00:00.000Z",
+        "already_member": false
+      },
+      "ok": true,
+      "text": "",
+      "alreadyMember": false,
+      "role": null
+    }
+  ],
+  "ranges": [
+    {
+      "start": "2026-10-25",
+      "dayCount": 14,
+      "text": "10/25 ~ 11/7 · 14일"
+    },
+    {
+      "start": "2026-10-25",
+      "dayCount": 1,
+      "text": "10/25 · 1일"
+    },
+    {
+      "start": "2026-10-25",
+      "dayCount": 0,
+      "text": "10/25"
+    },
+    {
+      "start": "2026-10-25",
+      "dayCount": -3,
+      "text": "10/25"
+    },
+    {
+      "start": "2026-12-30",
+      "dayCount": 5,
+      "text": "12/30 ~ 1/3 · 5일"
+    },
+    {
+      "start": "2028-02-28",
+      "dayCount": 3,
+      "text": "2/28 ~ 3/1 · 3일"
+    },
+    {
+      "start": "2026-03-27",
+      "dayCount": 4,
+      "text": "3/27 ~ 3/30 · 4일"
+    },
+    {
+      "start": "2026/10/25",
+      "dayCount": 3,
+      "text": "3일"
+    },
+    {
+      "start": "",
+      "dayCount": 2,
+      "text": "2일"
+    },
+    {
+      "start": null,
+      "dayCount": 3,
+      "text": "3일"
+    },
+    {
+      "start": null,
+      "dayCount": 0,
+      "text": ""
+    },
+    {
+      "start": null,
+      "dayCount": null,
+      "text": ""
+    },
+    {
+      "start": null,
+      "dayCount": -3,
+      "text": ""
+    }
+  ],
+  "roles": [
+    {
+      "role": "OWNER",
+      "canEdit": true,
+      "canManage": true,
+      "canLeave": false,
+      "canDelete": true,
+      "canPropose": true,
+      "canReact": true,
+      "canComment": true,
+      "canScheduleCandidate": true,
+      "canRemoveMine": true,
+      "canRemoveOthers": true,
+      "canDeleteMyComment": true,
+      "canDeleteOthersComment": true,
+      "label": "주최자",
+      "icon": "👑"
+    },
+    {
+      "role": "EDITOR",
+      "canEdit": true,
+      "canManage": false,
+      "canLeave": true,
+      "canDelete": false,
+      "canPropose": true,
+      "canReact": true,
+      "canComment": true,
+      "canScheduleCandidate": true,
+      "canRemoveMine": true,
+      "canRemoveOthers": false,
+      "canDeleteMyComment": true,
+      "canDeleteOthersComment": false,
+      "label": "편집",
+      "icon": "✏️"
+    },
+    {
+      "role": "VIEWER",
+      "canEdit": false,
+      "canManage": false,
+      "canLeave": true,
+      "canDelete": false,
+      "canPropose": false,
+      "canReact": true,
+      "canComment": true,
+      "canScheduleCandidate": false,
+      "canRemoveMine": true,
+      "canRemoveOthers": false,
+      "canDeleteMyComment": true,
+      "canDeleteOthersComment": false,
+      "label": "보기",
+      "icon": "👀"
+    },
+    {
+      "role": "",
+      "canEdit": false,
+      "canManage": false,
+      "canLeave": false,
+      "canDelete": false,
+      "canPropose": false,
+      "canReact": false,
+      "canComment": false,
+      "canScheduleCandidate": false,
+      "canRemoveMine": true,
+      "canRemoveOthers": false,
+      "canDeleteMyComment": true,
+      "canDeleteOthersComment": false,
+      "label": "멤버",
+      "icon": "👤"
+    },
+    {
+      "role": "ADMIN",
+      "canEdit": false,
+      "canManage": false,
+      "canLeave": false,
+      "canDelete": false,
+      "canPropose": false,
+      "canReact": false,
+      "canComment": false,
+      "canScheduleCandidate": false,
+      "canRemoveMine": true,
+      "canRemoveOthers": false,
+      "canDeleteMyComment": true,
+      "canDeleteOthersComment": false,
+      "label": "멤버",
+      "icon": "👤"
+    }
+  ],
+  "memberNames": [
+    {
+      "member": {
+        "id": 1,
+        "user_id": "u1",
+        "role": "EDITOR",
+        "status": "ACTIVE",
+        "display_name": "영희",
+        "joined_at": null,
+        "me": false
+      },
+      "name": "영희"
+    },
+    {
+      "member": {
+        "id": 2,
+        "user_id": "u2",
+        "role": "OWNER",
+        "status": "ACTIVE",
+        "display_name": "   ",
+        "joined_at": null,
+        "me": true
+      },
+      "name": "주최자"
+    },
+    {
+      "member": {
+        "id": 3,
+        "user_id": "u3",
+        "role": "VIEWER",
+        "status": "ACTIVE",
+        "display_name": null,
+        "joined_at": null,
+        "me": false
+      },
+      "name": "멤버"
+    },
+    {
+      "member": {
+        "id": 4,
+        "user_id": "u4",
+        "role": "EDITOR",
+        "status": "ACTIVE",
+        "display_name": "  지민  ",
+        "joined_at": null,
+        "me": false
+      },
+      "name": "지민"
+    },
+    {
+      "member": {
+        "id": 5,
+        "user_id": "u5",
+        "role": "EDITOR",
+        "status": "ACTIVE",
+        "display_name": "가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가",
+        "joined_at": null,
+        "me": false
+      },
+      "name": "가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가"
+    },
+    {
+      "member": {
+        "id": 6,
+        "user_id": "u6",
+        "role": "OWNER",
+        "status": "ACTIVE",
+        "display_name": null,
+        "joined_at": null,
+        "me": false
+      },
+      "name": "주최자"
+    }
+  ]
+}

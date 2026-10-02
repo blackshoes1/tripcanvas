@@ -3,7 +3,7 @@
 ## 필수 게이트
 
 merge 전에 통과해야 하는 것은 다음이 전부다. `.github/workflows/ci.yml`(**Quality** · **Next workspace** · **E2E**)과
-`ios.yml`(**Build + unit tests (simulator)**, `ios/` 변경 시)이 이걸 돌린다.
+`ios.yml`(**Build + unit tests (simulator)**, `ios/`·`collab.js` 변경 시)이 이걸 돌린다.
 
 | 게이트 | 워크플로 잡 | 로컬 |
 |---|---|---|

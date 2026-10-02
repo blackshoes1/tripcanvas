@@ -1,0 +1,1070 @@
+{
+  "cases": [
+    {
+      "name": "새 멤버",
+      "event": {
+        "id": 1,
+        "actor_label": "영희",
+        "mine": false,
+        "member_label": "철수",
+        "subject": {},
+        "created_at": "2026-09-01T10:00:00.000Z",
+        "kind": "MEMBER_JOINED"
+      },
+      "count": null,
+      "text": "철수님이 함께하게 됐어요"
+    },
+    {
+      "name": "내가 참여",
+      "event": {
+        "id": 1,
+        "actor_label": "영희",
+        "mine": true,
+        "member_label": "나",
+        "subject": {},
+        "created_at": "2026-09-01T10:00:00.000Z",
+        "kind": "MEMBER_JOINED"
+      },
+      "count": null,
+      "text": "내가 함께하게 됐어요"
+    },
+    {
+      "name": "이름 없는 새 멤버",
+      "event": {
+        "id": 1,
+        "actor_label": "영희",
+        "mine": false,
+        "member_label": null,
+        "subject": {},
+        "created_at": "2026-09-01T10:00:00.000Z",
+        "kind": "MEMBER_JOINED"
+      },
+      "count": null,
+      "text": "멤버님이 함께하게 됐어요"
+    },
+    {
+      "name": "멤버가 나감",
+      "event": {
+        "id": 1,
+        "actor_label": "영희",
+        "mine": false,
+        "member_label": "민수",
+        "subject": {},
+        "created_at": "2026-09-01T10:00:00.000Z",
+        "kind": "MEMBER_LEFT"
+      },
+      "count": null,
+      "text": "민수님이 여행에서 나갔어요"
+    },
+    {
+      "name": "내가 나감",
+      "event": {
+        "id": 1,
+        "actor_label": "영희",
+        "mine": true,
+        "member_label": "나",
+        "subject": {},
+        "created_at": "2026-09-01T10:00:00.000Z",
+        "kind": "MEMBER_LEFT"
+      },
+      "count": null,
+      "text": "내가 여행에서 나갔어요"
+    },
+    {
+      "name": "내보냄",
+      "event": {
+        "id": 1,
+        "actor_label": "영희",
+        "mine": false,
+        "member_label": "민수",
+        "subject": {},
+        "created_at": "2026-09-01T10:00:00.000Z",
+        "kind": "MEMBER_REMOVED"
+      },
+      "count": null,
+      "text": "영희님이 민수님을 내보냈어요"
+    },
+    {
+      "name": "내가 내보냄",
+      "event": {
+        "id": 1,
+        "actor_label": "영희",
+        "mine": true,
+        "member_label": "  ",
+        "subject": {},
+        "created_at": "2026-09-01T10:00:00.000Z",
+        "kind": "MEMBER_REMOVED"
+      },
+      "count": null,
+      "text": "내가 멤버님을 내보냈어요"
+    },
+    {
+      "name": "후보 담기 — 받침 없음",
+      "event": {
+        "id": 1,
+        "actor_label": "영희",
+        "mine": false,
+        "member_label": null,
+        "subject": {
+          "title": "카사 바트요",
+          "candidate_id": 7
+        },
+        "created_at": "2026-09-01T10:00:00.000Z",
+        "kind": "CANDIDATE_PROPOSED"
+      },
+      "count": null,
+      "text": "영희님이 카사 바트요를 후보로 담았어요"
+    },
+    {
+      "name": "후보 담기 — 받침 있음",
+      "event": {
+        "id": 1,
+        "actor_label": "영희",
+        "mine": false,
+        "member_label": null,
+        "subject": {
+          "title": "구엘 공원",
+          "candidate_id": 8
+        },
+        "created_at": "2026-09-01T10:00:00.000Z",
+        "kind": "CANDIDATE_PROPOSED"
+      },
+      "count": null,
+      "text": "영희님이 구엘 공원을 후보로 담았어요"
+    },
+    {
+      "name": "후보 담기 — 제목이 없다",
+      "event": {
+        "id": 1,
+        "actor_label": "영희",
+        "mine": false,
+        "member_label": null,
+        "subject": {
+          "candidate_id": 9
+        },
+        "created_at": "2026-09-01T10:00:00.000Z",
+        "kind": "CANDIDATE_PROPOSED"
+      },
+      "count": null,
+      "text": "영희님이 후보를 후보로 담았어요"
+    },
+    {
+      "name": "후보 담기 — 제목이 공백",
+      "event": {
+        "id": 1,
+        "actor_label": "영희",
+        "mine": false,
+        "member_label": null,
+        "subject": {
+          "title": "   ",
+          "candidate_id": 9
+        },
+        "created_at": "2026-09-01T10:00:00.000Z",
+        "kind": "CANDIDATE_PROPOSED"
+      },
+      "count": null,
+      "text": "영희님이 후보를 후보로 담았어요"
+    },
+    {
+      "name": "후보를 일정에 — 날짜 있음",
+      "event": {
+        "id": 1,
+        "actor_label": "영희",
+        "mine": false,
+        "member_label": null,
+        "subject": {
+          "title": "공원",
+          "candidate_id": 7,
+          "ref": "2"
+        },
+        "created_at": "2026-09-01T10:00:00.000Z",
+        "kind": "CANDIDATE_SCHEDULED"
+      },
+      "count": null,
+      "text": "영희님이 공원을 Day 2에 넣었어요"
+    },
+    {
+      "name": "후보를 일정에 — 날짜 없음",
+      "event": {
+        "id": 1,
+        "actor_label": "영희",
+        "mine": false,
+        "member_label": null,
+        "subject": {
+          "title": "공원",
+          "candidate_id": 7
+        },
+        "created_at": "2026-09-01T10:00:00.000Z",
+        "kind": "CANDIDATE_SCHEDULED"
+      },
+      "count": null,
+      "text": "영희님이 공원을 일정에 넣었어요"
+    },
+    {
+      "name": "후보를 일정에 — 날짜가 빈 문자열",
+      "event": {
+        "id": 1,
+        "actor_label": "영희",
+        "mine": false,
+        "member_label": null,
+        "subject": {
+          "title": "공원",
+          "candidate_id": 7,
+          "ref": ""
+        },
+        "created_at": "2026-09-01T10:00:00.000Z",
+        "kind": "CANDIDATE_SCHEDULED"
+      },
+      "count": null,
+      "text": "영희님이 공원을 일정에 넣었어요"
+    },
+    {
+      "name": "후보를 이번엔 뺌",
+      "event": {
+        "id": 1,
+        "actor_label": "영희",
+        "mine": false,
+        "member_label": null,
+        "subject": {
+          "title": "시장",
+          "candidate_id": 7
+        },
+        "created_at": "2026-09-01T10:00:00.000Z",
+        "kind": "CANDIDATE_REJECTED"
+      },
+      "count": null,
+      "text": "영희님이 시장을 이번 일정에서 뺐어요"
+    },
+    {
+      "name": "반응 MUST",
+      "event": {
+        "id": 1,
+        "actor_label": "영희",
+        "mine": false,
+        "member_label": null,
+        "subject": {
+          "title": "공원",
+          "candidate_id": 7,
+          "reaction": "MUST"
+        },
+        "created_at": "2026-09-01T10:00:00.000Z",
+        "kind": "REACTION"
+      },
+      "count": null,
+      "text": "영희님이 공원을 \"꼭 가고 싶어요\"로 골랐어요"
+    },
+    {
+      "name": "반응 OK",
+      "event": {
+        "id": 1,
+        "actor_label": "영희",
+        "mine": false,
+        "member_label": null,
+        "subject": {
+          "title": "공원",
+          "candidate_id": 7,
+          "reaction": "OK"
+        },
+        "created_at": "2026-09-01T10:00:00.000Z",
+        "kind": "REACTION"
+      },
+      "count": null,
+      "text": "영희님이 공원을 \"괜찮아요\"로 골랐어요"
+    },
+    {
+      "name": "반응 소문자 pass",
+      "event": {
+        "id": 1,
+        "actor_label": "영희",
+        "mine": false,
+        "member_label": null,
+        "subject": {
+          "title": "공원",
+          "candidate_id": 7,
+          "reaction": "pass"
+        },
+        "created_at": "2026-09-01T10:00:00.000Z",
+        "kind": "REACTION"
+      },
+      "count": null,
+      "text": "영희님이 공원을 \"이번엔 패스\"로 골랐어요"
+    },
+    {
+      "name": "모르는 반응",
+      "event": {
+        "id": 1,
+        "actor_label": "영희",
+        "mine": false,
+        "member_label": null,
+        "subject": {
+          "title": "공원",
+          "candidate_id": 7,
+          "reaction": "MAYBE"
+        },
+        "created_at": "2026-09-01T10:00:00.000Z",
+        "kind": "REACTION"
+      },
+      "count": null,
+      "text": "영희님이 공원을 골랐어요"
+    },
+    {
+      "name": "반응 없음",
+      "event": {
+        "id": 1,
+        "actor_label": "영희",
+        "mine": false,
+        "member_label": null,
+        "subject": {
+          "title": "공원",
+          "candidate_id": 7
+        },
+        "created_at": "2026-09-01T10:00:00.000Z",
+        "kind": "REACTION"
+      },
+      "count": null,
+      "text": "영희님이 공원을 골랐어요"
+    },
+    {
+      "name": "내 반응",
+      "event": {
+        "id": 1,
+        "actor_label": "영희",
+        "mine": true,
+        "member_label": null,
+        "subject": {
+          "title": "야경",
+          "candidate_id": 7,
+          "reaction": "MUST"
+        },
+        "created_at": "2026-09-01T10:00:00.000Z",
+        "kind": "REACTION"
+      },
+      "count": null,
+      "text": "내가 야경을 \"꼭 가고 싶어요\"로 골랐어요"
+    },
+    {
+      "name": "한마디",
+      "event": {
+        "id": 1,
+        "actor_label": "영희",
+        "mine": false,
+        "member_label": null,
+        "subject": {
+          "title": "공원",
+          "candidate_id": 7,
+          "excerpt": "야경 보고 싶어"
+        },
+        "created_at": "2026-09-01T10:00:00.000Z",
+        "kind": "COMMENT_ADDED"
+      },
+      "count": null,
+      "text": "영희님이 공원에 한마디: “야경 보고 싶어”"
+    },
+    {
+      "name": "한마디 — 발췌가 공백",
+      "event": {
+        "id": 1,
+        "actor_label": "영희",
+        "mine": false,
+        "member_label": null,
+        "subject": {
+          "title": "공원",
+          "candidate_id": 7,
+          "excerpt": "   "
+        },
+        "created_at": "2026-09-01T10:00:00.000Z",
+        "kind": "COMMENT_ADDED"
+      },
+      "count": null,
+      "text": "영희님이 공원에 한마디 남겼어요"
+    },
+    {
+      "name": "한마디 — 발췌 없음",
+      "event": {
+        "id": 1,
+        "actor_label": "영희",
+        "mine": false,
+        "member_label": null,
+        "subject": {
+          "title": "공원",
+          "candidate_id": 7
+        },
+        "created_at": "2026-09-01T10:00:00.000Z",
+        "kind": "COMMENT_ADDED"
+      },
+      "count": null,
+      "text": "영희님이 공원에 한마디 남겼어요"
+    },
+    {
+      "name": "일정 변경 한 번",
+      "event": {
+        "id": 1,
+        "actor_label": "영희",
+        "mine": false,
+        "member_label": null,
+        "subject": {},
+        "created_at": "2026-09-01T10:00:00.000Z",
+        "kind": "SCHEDULE_CHANGED"
+      },
+      "count": null,
+      "text": "영희님이 일정을 바꿨어요"
+    },
+    {
+      "name": "일정 변경 세 번 묶음",
+      "event": {
+        "id": 1,
+        "actor_label": "영희",
+        "mine": false,
+        "member_label": null,
+        "subject": {},
+        "created_at": "2026-09-01T10:00:00.000Z",
+        "kind": "SCHEDULE_CHANGED"
+      },
+      "count": 3,
+      "text": "영희님이 일정을 바꿨어요 (3번)"
+    },
+    {
+      "name": "일정 변경 횟수 0은 한 번",
+      "event": {
+        "id": 1,
+        "actor_label": "영희",
+        "mine": false,
+        "member_label": null,
+        "subject": {},
+        "created_at": "2026-09-01T10:00:00.000Z",
+        "kind": "SCHEDULE_CHANGED"
+      },
+      "count": 0,
+      "text": "영희님이 일정을 바꿨어요"
+    },
+    {
+      "name": "예약 여러 건",
+      "event": {
+        "id": 1,
+        "actor_label": "영희",
+        "mine": false,
+        "member_label": null,
+        "subject": {
+          "count": 2
+        },
+        "created_at": "2026-09-01T10:00:00.000Z",
+        "kind": "BOOKING_ADDED"
+      },
+      "count": null,
+      "text": "영희님이 예약 2건을 추가했어요"
+    },
+    {
+      "name": "예약 한 건",
+      "event": {
+        "id": 1,
+        "actor_label": "영희",
+        "mine": false,
+        "member_label": null,
+        "subject": {
+          "count": 1
+        },
+        "created_at": "2026-09-01T10:00:00.000Z",
+        "kind": "BOOKING_ADDED"
+      },
+      "count": null,
+      "text": "영희님이 예약을 추가했어요"
+    },
+    {
+      "name": "예약 건수 없음",
+      "event": {
+        "id": 1,
+        "actor_label": "영희",
+        "mine": false,
+        "member_label": null,
+        "subject": {},
+        "created_at": "2026-09-01T10:00:00.000Z",
+        "kind": "BOOKING_ADDED"
+      },
+      "count": null,
+      "text": "영희님이 예약을 추가했어요"
+    },
+    {
+      "name": "예약 건수 0은 한 건",
+      "event": {
+        "id": 1,
+        "actor_label": "영희",
+        "mine": false,
+        "member_label": null,
+        "subject": {
+          "count": 0
+        },
+        "created_at": "2026-09-01T10:00:00.000Z",
+        "kind": "BOOKING_ADDED"
+      },
+      "count": null,
+      "text": "영희님이 예약을 추가했어요"
+    },
+    {
+      "name": "이름표가 비면 멤버",
+      "event": {
+        "id": 1,
+        "actor_label": "",
+        "mine": false,
+        "member_label": null,
+        "subject": {},
+        "created_at": "2026-09-01T10:00:00.000Z",
+        "kind": "SCHEDULE_CHANGED"
+      },
+      "count": null,
+      "text": "멤버님이 일정을 바꿨어요"
+    },
+    {
+      "name": "이름표가 공백이면 멤버",
+      "event": {
+        "id": 1,
+        "actor_label": "   ",
+        "mine": false,
+        "member_label": null,
+        "subject": {
+          "title": "숲"
+        },
+        "created_at": "2026-09-01T10:00:00.000Z",
+        "kind": "CANDIDATE_PROPOSED"
+      },
+      "count": null,
+      "text": "멤버님이 숲을 후보로 담았어요"
+    },
+    {
+      "name": "모르는 종류는 빈 문장",
+      "event": {
+        "id": 1,
+        "actor_label": "영희",
+        "mine": false,
+        "member_label": null,
+        "subject": {},
+        "created_at": "2026-09-01T10:00:00.000Z",
+        "kind": "SOMETHING_NEW"
+      },
+      "count": null,
+      "text": ""
+    },
+    {
+      "name": "종류가 비면 빈 문장",
+      "event": {
+        "id": 1,
+        "actor_label": "영희",
+        "mine": false,
+        "member_label": null,
+        "subject": {},
+        "created_at": "2026-09-01T10:00:00.000Z",
+        "kind": ""
+      },
+      "count": null,
+      "text": ""
+    }
+  ],
+  "particles": [
+    {
+      "word": "공원",
+      "particle": "을"
+    },
+    {
+      "word": "카사 바트요",
+      "particle": "를"
+    },
+    {
+      "word": "Sagrada",
+      "particle": "를"
+    },
+    {
+      "word": "",
+      "particle": "를"
+    },
+    {
+      "word": "맛집",
+      "particle": "을"
+    },
+    {
+      "word": "바",
+      "particle": "를"
+    },
+    {
+      "word": "숲",
+      "particle": "을"
+    },
+    {
+      "word": "123",
+      "particle": "를"
+    },
+    {
+      "word": "라멘🍜",
+      "particle": "를"
+    },
+    {
+      "word": "가",
+      "particle": "를"
+    },
+    {
+      "word": "힣",
+      "particle": "을"
+    }
+  ],
+  "condense": [
+    {
+      "name": "연속 저장은 한 줄, 같은 후보 반응은 마지막 것만",
+      "rows": [
+        {
+          "id": 5,
+          "actor_label": "영희",
+          "mine": false,
+          "member_label": null,
+          "subject": {},
+          "created_at": "2026-09-01T10:05:00.000Z",
+          "kind": "SCHEDULE_CHANGED"
+        },
+        {
+          "id": 4,
+          "actor_label": "영희",
+          "mine": false,
+          "member_label": null,
+          "subject": {},
+          "created_at": "2026-09-01T10:04:00.000Z",
+          "kind": "SCHEDULE_CHANGED"
+        },
+        {
+          "id": 3,
+          "actor_label": "영희",
+          "mine": false,
+          "member_label": null,
+          "subject": {},
+          "created_at": "2026-09-01T10:03:00.000Z",
+          "kind": "SCHEDULE_CHANGED"
+        },
+        {
+          "id": 2,
+          "actor_label": "영희",
+          "mine": false,
+          "member_label": null,
+          "subject": {
+            "title": "공원",
+            "candidate_id": 7,
+            "reaction": "MUST"
+          },
+          "created_at": "2026-09-01T10:02:00.000Z",
+          "kind": "REACTION"
+        },
+        {
+          "id": 1,
+          "actor_label": "영희",
+          "mine": false,
+          "member_label": null,
+          "subject": {
+            "title": "공원",
+            "candidate_id": 7,
+            "reaction": "PASS"
+          },
+          "created_at": "2026-09-01T10:01:00.000Z",
+          "kind": "REACTION"
+        }
+      ],
+      "lines": [
+        {
+          "id": 5,
+          "count": 3,
+          "text": "영희님이 일정을 바꿨어요 (3번)"
+        },
+        {
+          "id": 2,
+          "count": 1,
+          "text": "영희님이 공원을 \"꼭 가고 싶어요\"로 골랐어요"
+        }
+      ]
+    },
+    {
+      "name": "다른 사람의 저장은 묶지 않는다",
+      "rows": [
+        {
+          "id": 2,
+          "actor_label": "영희",
+          "mine": false,
+          "member_label": null,
+          "subject": {},
+          "created_at": "2026-09-01T10:02:00.000Z",
+          "kind": "SCHEDULE_CHANGED"
+        },
+        {
+          "id": 1,
+          "actor_label": "철수",
+          "mine": false,
+          "member_label": null,
+          "subject": {},
+          "created_at": "2026-09-01T10:01:00.000Z",
+          "kind": "SCHEDULE_CHANGED"
+        }
+      ],
+      "lines": [
+        {
+          "id": 2,
+          "count": 1,
+          "text": "영희님이 일정을 바꿨어요"
+        },
+        {
+          "id": 1,
+          "count": 1,
+          "text": "철수님이 일정을 바꿨어요"
+        }
+      ]
+    },
+    {
+      "name": "같은 이름이어도 나와 남은 묶지 않는다",
+      "rows": [
+        {
+          "id": 2,
+          "actor_label": "영희",
+          "mine": true,
+          "member_label": null,
+          "subject": {},
+          "created_at": "2026-09-01T10:02:00.000Z",
+          "kind": "SCHEDULE_CHANGED"
+        },
+        {
+          "id": 1,
+          "actor_label": "영희",
+          "mine": false,
+          "member_label": null,
+          "subject": {},
+          "created_at": "2026-09-01T10:01:00.000Z",
+          "kind": "SCHEDULE_CHANGED"
+        }
+      ],
+      "lines": [
+        {
+          "id": 2,
+          "count": 1,
+          "text": "내가 일정을 바꿨어요"
+        },
+        {
+          "id": 1,
+          "count": 1,
+          "text": "영희님이 일정을 바꿨어요"
+        }
+      ]
+    },
+    {
+      "name": "창은 묶인 가장 이른 저장에서 다시 잰다 — 딱 10분은 묶고 넘으면 끊는다",
+      "rows": [
+        {
+          "id": 3,
+          "actor_label": "영희",
+          "mine": false,
+          "member_label": null,
+          "subject": {},
+          "created_at": "2026-09-01T10:20:00.000Z",
+          "kind": "SCHEDULE_CHANGED"
+        },
+        {
+          "id": 2,
+          "actor_label": "영희",
+          "mine": false,
+          "member_label": null,
+          "subject": {},
+          "created_at": "2026-09-01T10:10:00.000Z",
+          "kind": "SCHEDULE_CHANGED"
+        },
+        {
+          "id": 1,
+          "actor_label": "영희",
+          "mine": false,
+          "member_label": null,
+          "subject": {},
+          "created_at": "2026-09-01T09:59:59.000Z",
+          "kind": "SCHEDULE_CHANGED"
+        }
+      ],
+      "lines": [
+        {
+          "id": 3,
+          "count": 2,
+          "text": "영희님이 일정을 바꿨어요 (2번)"
+        },
+        {
+          "id": 1,
+          "count": 1,
+          "text": "영희님이 일정을 바꿨어요"
+        }
+      ]
+    },
+    {
+      "name": "사이에 다른 활동이 끼면 끊긴다",
+      "rows": [
+        {
+          "id": 3,
+          "actor_label": "영희",
+          "mine": false,
+          "member_label": null,
+          "subject": {},
+          "created_at": "2026-09-01T10:03:00.000Z",
+          "kind": "SCHEDULE_CHANGED"
+        },
+        {
+          "id": 2,
+          "actor_label": "영희",
+          "mine": false,
+          "member_label": null,
+          "subject": {
+            "title": "공원",
+            "candidate_id": 7,
+            "reaction": "OK"
+          },
+          "created_at": "2026-09-01T10:02:00.000Z",
+          "kind": "REACTION"
+        },
+        {
+          "id": 1,
+          "actor_label": "영희",
+          "mine": false,
+          "member_label": null,
+          "subject": {},
+          "created_at": "2026-09-01T10:01:00.000Z",
+          "kind": "SCHEDULE_CHANGED"
+        }
+      ],
+      "lines": [
+        {
+          "id": 3,
+          "count": 1,
+          "text": "영희님이 일정을 바꿨어요"
+        },
+        {
+          "id": 2,
+          "count": 1,
+          "text": "영희님이 공원을 \"괜찮아요\"로 골랐어요"
+        },
+        {
+          "id": 1,
+          "count": 1,
+          "text": "영희님이 일정을 바꿨어요"
+        }
+      ]
+    },
+    {
+      "name": "걸러진 반응은 연속을 끊지 않는다",
+      "rows": [
+        {
+          "id": 5,
+          "actor_label": "영희",
+          "mine": false,
+          "member_label": null,
+          "subject": {
+            "title": "공원",
+            "candidate_id": 7,
+            "reaction": "MUST"
+          },
+          "created_at": "2026-09-01T10:05:00.000Z",
+          "kind": "REACTION"
+        },
+        {
+          "id": 4,
+          "actor_label": "영희",
+          "mine": false,
+          "member_label": null,
+          "subject": {},
+          "created_at": "2026-09-01T10:04:00.000Z",
+          "kind": "SCHEDULE_CHANGED"
+        },
+        {
+          "id": 3,
+          "actor_label": "영희",
+          "mine": false,
+          "member_label": null,
+          "subject": {
+            "title": "공원",
+            "candidate_id": 7,
+            "reaction": "PASS"
+          },
+          "created_at": "2026-09-01T10:03:00.000Z",
+          "kind": "REACTION"
+        },
+        {
+          "id": 2,
+          "actor_label": "영희",
+          "mine": false,
+          "member_label": null,
+          "subject": {},
+          "created_at": "2026-09-01T10:02:00.000Z",
+          "kind": "SCHEDULE_CHANGED"
+        }
+      ],
+      "lines": [
+        {
+          "id": 5,
+          "count": 1,
+          "text": "영희님이 공원을 \"꼭 가고 싶어요\"로 골랐어요"
+        },
+        {
+          "id": 4,
+          "count": 2,
+          "text": "영희님이 일정을 바꿨어요 (2번)"
+        }
+      ]
+    },
+    {
+      "name": "반응은 사람마다·후보마다 따로 남는다",
+      "rows": [
+        {
+          "id": 4,
+          "actor_label": "영희",
+          "mine": false,
+          "member_label": null,
+          "subject": {
+            "title": "공원",
+            "candidate_id": 7,
+            "reaction": "MUST"
+          },
+          "created_at": "2026-09-01T10:04:00.000Z",
+          "kind": "REACTION"
+        },
+        {
+          "id": 3,
+          "actor_label": "철수",
+          "mine": false,
+          "member_label": null,
+          "subject": {
+            "title": "공원",
+            "candidate_id": 7,
+            "reaction": "OK"
+          },
+          "created_at": "2026-09-01T10:03:00.000Z",
+          "kind": "REACTION"
+        },
+        {
+          "id": 2,
+          "actor_label": "영희",
+          "mine": false,
+          "member_label": null,
+          "subject": {
+            "title": "시장",
+            "candidate_id": 8,
+            "reaction": "PASS"
+          },
+          "created_at": "2026-09-01T10:02:00.000Z",
+          "kind": "REACTION"
+        },
+        {
+          "id": 1,
+          "actor_label": "나",
+          "mine": true,
+          "member_label": null,
+          "subject": {
+            "title": "공원",
+            "candidate_id": 7,
+            "reaction": "OK"
+          },
+          "created_at": "2026-09-01T10:01:00.000Z",
+          "kind": "REACTION"
+        }
+      ],
+      "lines": [
+        {
+          "id": 4,
+          "count": 1,
+          "text": "영희님이 공원을 \"꼭 가고 싶어요\"로 골랐어요"
+        },
+        {
+          "id": 3,
+          "count": 1,
+          "text": "철수님이 공원을 \"괜찮아요\"로 골랐어요"
+        },
+        {
+          "id": 2,
+          "count": 1,
+          "text": "영희님이 시장을 \"이번엔 패스\"로 골랐어요"
+        },
+        {
+          "id": 1,
+          "count": 1,
+          "text": "내가 공원을 \"괜찮아요\"로 골랐어요"
+        }
+      ]
+    },
+    {
+      "name": "시각을 못 읽으면 묶지 않는다",
+      "rows": [
+        {
+          "id": 2,
+          "actor_label": "영희",
+          "mine": false,
+          "member_label": null,
+          "subject": {},
+          "created_at": "엉망",
+          "kind": "SCHEDULE_CHANGED"
+        },
+        {
+          "id": 1,
+          "actor_label": "영희",
+          "mine": false,
+          "member_label": null,
+          "subject": {},
+          "created_at": "2026-09-01T10:01:00.000Z",
+          "kind": "SCHEDULE_CHANGED"
+        }
+      ],
+      "lines": [
+        {
+          "id": 2,
+          "count": 1,
+          "text": "영희님이 일정을 바꿨어요"
+        },
+        {
+          "id": 1,
+          "count": 1,
+          "text": "영희님이 일정을 바꿨어요"
+        }
+      ]
+    }
+  ],
+  "relativeTimes": {
+    "now": "2026-09-01T12:00:00.000Z",
+    "cases": [
+      {
+        "iso": "2026-09-01T11:59:30.000Z",
+        "text": "방금"
+      },
+      {
+        "iso": "2026-09-01T11:59:00.000Z",
+        "text": "1분 전"
+      },
+      {
+        "iso": "2026-09-01T11:30:00.000Z",
+        "text": "30분 전"
+      },
+      {
+        "iso": "2026-09-01T11:00:00.000Z",
+        "text": "1시간 전"
+      },
+      {
+        "iso": "2026-09-01T11:00:00Z",
+        "text": "1시간 전"
+      },
+      {
+        "iso": "2026-09-01T09:00:00+00:00",
+        "text": "3시간 전"
+      },
+      {
+        "iso": "2026-08-31T12:00:00.000Z",
+        "text": "1일 전"
+      },
+      {
+        "iso": "2026-08-25T12:00:01.000Z",
+        "text": "6일 전"
+      },
+      {
+        "iso": "2026-09-01T12:05:00.000Z",
+        "text": "방금"
+      },
+      {
+        "iso": "엉망",
+        "text": ""
+      },
+      {
+        "iso": null,
+        "text": ""
+      }
+    ]
+  }
+}
