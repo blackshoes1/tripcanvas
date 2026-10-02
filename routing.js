@@ -120,7 +120,47 @@
     return {fetchLeg,kakaoRoute,googleRoute,googleTransitRoute,transitImplausible};
   }
 
-  const API={createRoutingClient};
+  // ── 구간 캐시 정책 (app.js의 legCache · localStorage `tripcanvas_legs_v4`) ──
+  /** 조회 실패를 기억하는 시간 — 지나면 다시 묻는다. 웹의 fetchLeg는 실패가 잠깐인지(오프라인·429·5xx) 영구인지
+   *  가르지 않으므로(서버는 `serverRouting`이 응답 상태로 가른다) 전부 잠깐으로 보고, 그 사이 렌더마다 다시 묻지만 않게 한다. */
+  const LEG_FAIL_TTL_MS=10*60*1000;
+  /** 기기에 남기는 구간 수 상한 — 폴리라인이 쌓여 여행 데이터(`tripcanvas_v1`)와 localStorage 용량을 다투지 않게 */
+  const LEG_CACHE_MAX=400;
+
+  /**
+   * 실패 기록이 아직 재조회를 막는가. 실패가 아니거나 TTL이 지났거나 시각이 미래(기기 시계가 바뀜)면 false.
+   * @param {any} entry @param {number} now @returns {boolean}
+   */
+  function legFailActive(entry,now){
+    if(!entry||!entry.fail) return false;
+    const age=now-Number(entry.fail);
+    return age>=0&&age<LEG_FAIL_TTL_MS;
+  }
+
+  /**
+   * 기기에 남길 구간 캐시 — 저장·불러오기 때 지난다(메모리의 캐시는 그대로 둔다).
+   * - 실패(`fail`)는 남기지 않는다. 남기면 오프라인 한 순간이 그 기기에서 영원한 직선 추정이 된다.
+   * - 출발 시각이 박힌 대중교통 키(`…@시간대@ISO`)는 그 시각이 지나면 다시 쓰이지 않으므로 버린다
+   *   (지난 출발 시각은 기본 키로 묻는다 — app.js `planDepartISO`).
+   * - 상한을 넘으면 마지막으로 쓴 때(`at`)가 오래된 것부터 버린다. `at`이 없는 예전 항목이 먼저 나간다.
+   * @param {Record<string,any>|null|undefined} cache @param {number} now @param {number} [max]
+   * @returns {Record<string,any>}
+   */
+  function compactLegCache(cache,now,max){
+    const limit=max==null?LEG_CACHE_MAX:max;
+    /** @type {[string,any][]} */
+    const kept=[];
+    for(const [key,entry] of Object.entries(cache||{})){
+      if(!entry||typeof entry!=='object'||entry.fail) continue;
+      const at=key.lastIndexOf('@');
+      if(at>=0&&!(Date.parse(key.slice(at+1))>now)) continue;
+      kept.push([key,entry]);
+    }
+    kept.sort((a,b)=>(Number(b[1].at)||0)-(Number(a[1].at)||0));
+    return Object.fromEntries(kept.slice(0,Math.max(0,limit)));
+  }
+
+  const API={createRoutingClient,legFailActive,compactLegCache,LEG_FAIL_TTL_MS,LEG_CACHE_MAX};
   if(typeof module!=='undefined'&&module.exports)module.exports=API;
   else /** @type {any} */(root).TC_ROUTING=API;
 })(typeof window!=='undefined'?window:globalThis);

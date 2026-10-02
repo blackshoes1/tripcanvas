@@ -1489,6 +1489,37 @@ test('통합: 호텔 예약에 연결된 숙소는 예약 기간 동안 하루 �
   w.close();
 });
 
+test('통합: 경로 조회 실패는 잠깐만 기억하고 기기에 남기지 않는다 — 오프라인 한 순간이 영원한 직선이 되지 않게', { skip: noJsdom }, async () => {
+  const w=boot();
+  const pump=()=>new Promise(r=>w.setTimeout(r,30));
+  try{
+    // 국내 자차 구간 — 지금은 네트워크가 없다
+    w.eval(`window.legCalls=0; window.fetch=(url)=>{ if(String(url).includes('kakao-directions')) window.legCalls++; return Promise.reject(new TypeError('offline')); };
+      window.legA={lat:37.5,lng:127}; window.legB={lat:37.51,lng:127.01}; window.legK=legKey(legA,legB,'car');`);
+    assert.equal(w.eval(`requestLeg(legA,legB,'car')`),null);
+    await pump();
+    assert.ok(w.eval('legCache[legK].fail'),'실패를 기억한다');
+    w.eval(`requestLeg(legA,legB,'car')`); await pump();
+    assert.equal(w.legCalls,1,'방금 실패한 구간은 렌더마다 다시 묻지 않는다');
+
+    // 다른 구간이 성공해 캐시가 저장돼도 실패는 기기에 남지 않는다
+    w.eval(`legCache['other#car']={sec:60,m:500,path:'x',at:Date.now()}; saveLegCache();`);
+    const saved=JSON.parse(w.localStorage.getItem('tripcanvas_legs_v4'));
+    assert.ok(saved['other#car']);
+    assert.equal(saved[w.legK],undefined,'실패는 저장하지 않는다 — 다음에 열면 다시 묻는다');
+
+    // 10분 넘게 지나고 네트워크가 돌아오면 다시 묻고, 실제 도로를 쓴다
+    w.eval(`const realNow=Date.now; Date.now=()=>realNow()+11*60*1000;
+      window.fetch=async(url)=>{ if(!String(url).includes('kakao-directions')) throw new TypeError('no-net'); window.legCalls++;
+        return {ok:true,json:async()=>({route:{result_code:0,summary:{duration:420,distance:1800,fare:{taxi:5000}},sections:[]}})}; };`);
+    assert.equal(w.eval(`requestLeg(legA,legB,'car')`),null,'조회 중에는 아직 직선이다');
+    await pump();
+    assert.equal(w.legCalls,2,'TTL이 지나면 다시 묻는다');
+    assert.equal(w.eval('legCache[legK].sec'),420);
+    assert.equal(JSON.parse(w.localStorage.getItem('tripcanvas_legs_v4'))[w.legK].sec,420,'성공한 경로는 기기에 남는다');
+  }finally{ w.eval('clearTimeout(legRefreshT)'); w.close(); }
+});
+
 // 구간 조회를 캐시로 미리 채워 네트워크(=테스트 종료 후 비동기 렌더)를 막는다
 function seedLegs(w, di){
   w.eval(`(()=>{
