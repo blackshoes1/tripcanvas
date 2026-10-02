@@ -294,7 +294,7 @@ struct TripCostsView: View {
                     // 위 합계는 가서 쓰는 돈만이라 둘이 다르다는 것을 여기서 말한다(2026-09-18 "웹은 나오는데 앱만 안 나온다").
                     let share = Self.bookingShareTotal(response)
                     if share > 0 {
-                        Text("날짜별 줄은 예약 하루치 \(money(share))를 더한 그날 비용이에요 · 날짜별 합계 \(money(onSite.totalKRW + share))")
+                        Text("날짜별 줄은 예약 하루치 \(money(share))를 더한 그날 비용이에요 · 날짜별 합계 \(money(Self.dayRowsTotal(response)))")
                             .font(.caption).foregroundStyle(Ink.soft)
                     }
                 }
@@ -383,6 +383,12 @@ struct TripCostsView: View {
             guard let onSite = day.cost.onSiteKRW else { return sum }
             return sum + max(0, day.cost.total - onSite)
         }
+    }
+
+    /// 날짜별 줄의 합 — 줄마다 말하는 그날 비용(`total`)을 그대로 더한다. 현지 결제 금액(`onSite`)에는 일정 밖으로 넘친
+    /// 연박 숙소의 몫이 들어 있어(어느 날에도 없다, 2026-10-02) 거기에 예약 하루치를 더하면 날짜별 줄의 합보다 커진다.
+    static func dayRowsTotal(_ response: TripCostsResponse) -> Double {
+        response.days.reduce(0) { sum, day in sum + day.cost.total }
     }
 
     /// 환율 한 줄 — **원 단위로 반올림**하고, 엔은 100엔 기준으로 말한다("100 JPY ≈ 931원"). 소수점 환율은 시세표의 말이지

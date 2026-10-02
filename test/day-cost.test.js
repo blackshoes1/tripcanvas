@@ -385,6 +385,67 @@ test('연박 숙소의 비용은 체크인 날부터 nights일에 하루치로 �
   assert.equal(L.dayEnteredCost(trip.days[0], rates), 112000, '전체 합계는 전액');
   const result = L.tripCostSummary(trip, days, rates);
   assert.equal(result.categories.find(c => c.kind === 'STAY').totalKRW, 100000 + Math.round(45 * rates.EUR) * 2, '분류별에는 하루치들이 모여 총액이 된다');
+  assert.deepEqual(result.unallocated, [], '일정 안에서 다 묵으면 일정 밖 몫이 없다');
+  assert.deepEqual(L.stayCostOverflow(trip.days), []);
+});
+
+// ── 연박이 일정 밖으로 넘치면 (2026-10-02) ────────────────────────────────────────────
+// 하루치는 일정 안의 날에만 잡힌다. 넘친 밤의 몫이 여행 전체 합계에서 사라지면 웹 필터바(전액)와 앱 비용 화면의
+// 총액이 갈린다 — 예약의 일정 밖 잔액처럼 한 줄로 모아 전체·가서 쓰는 돈에 넣는다.
+
+test('연박이 일정 밖으로 넘친 몫은 전체 합계와 가서 쓰는 돈에 남고, 일자 카드는 하루치 그대로다', () => {
+  const trip = L.normalizeTrip({ start: '2026-10-01', days: [
+    { spots: [{ name: '점심', cat: 'food', cost: 12000 }] },
+    { spots: [{ name: '호텔', cat: 'stay', stay: true, nights: 3, cost: 300000 }] }
+  ] });
+  const days = trip.days.map((_, index) => ({ index, cost: summary(trip, index) }));
+  assert.equal(days[1].cost.total, 100000, '일자 카드는 그날 하루치만');
+  assert.equal(L.dayEnteredCostOn(trip.days, 1, rates), 100000);
+
+  const result = L.tripCostSummary(trip, days, rates);
+  assert.equal(result.totalKRW, 12000 + 300000, '전체는 전액 — 넘친 두 밤도 사라지지 않는다');
+  const webTotal = trip.days.reduce((sum, d) => sum + L.dayEnteredCost(d, rates), 0);
+  assert.equal(result.totalKRW, webTotal, '웹 필터바(전액)와 같은 총액');
+  assert.deepEqual(result.unallocated.map(i => [i.source, i.key, i.title, i.kind, i.amount, i.totalKRW, i.dayIndex, i.state]),
+    [['STAY', '1.0', '호텔 (2–3/3박 · 일정 밖)', 'STAY', 200000, 200000, null, 'KNOWN']], '넘친 밤은 숙소마다 한 줄 — 어느 날에도 속하지 않는다');
+  assert.equal(result.categories.find(c => c.kind === 'STAY').totalKRW, 300000);
+  assert.equal(result.onSite.totalKRW, 12000 + 300000, '장소의 숙박비라 가서 쓰는 돈이다');
+  assert.equal(result.prep.totalKRW, 0);
+  assert.equal(result.prep.totalKRW + result.onSite.totalKRW, result.totalKRW, '둘을 더하면 전체');
+  const pt = result.payTotals;
+  assert.equal(pt.RESERVED + pt.PAID + pt.NONE, result.totalKRW, '상태별 합계도 전체와 맞는다');
+  const op = result.onSite.payTotals;
+  assert.equal(op.RESERVED + op.PAID + op.NONE, result.onSite.totalKRW);
+  assert.equal(result.averagePerDayKRW, Math.round((12000 + 300000) / 2));
+});
+
+test('일정 밖 몫은 외화를 최소 단위로 나누고 체크인 장소의 결제 상태를 따르며, 예약 잔액과 함께 모인다', () => {
+  const trip = L.normalizeTrip({ start: '2026-10-01', days: [
+    { spots: [{ name: '파리 호텔', stay: true, nights: 3, cost: 100, cur: 'EUR', payState: 'PAID' }] }
+  ], bookings: [{ id: 'stay', type: 'hotel', title: '다음 호텔', price: 90000, start: '2026-10-01', end: '2026-10-04' }] });
+  const days = trip.days.map((_, index) => ({ index, cost: summary(trip, index) }));
+  const result = L.tripCostSummary(trip, days, rates);
+  const overflow = result.unallocated.filter(i => i.source === 'STAY');
+  assert.deepEqual(overflow.map(i => [i.title, i.amount, i.currency, i.payState]),
+    [['파리 호텔 (2–3/3박 · 일정 밖)', 66.66, 'EUR', 'PAID']], '33.34 · 33.33 · 33.33 — 첫 밤 뒤의 몫');
+  assert.equal(overflow[0].totalKRW, Math.round(66.66 * rates.EUR));
+  assert.deepEqual(result.unallocated.filter(i => i.source === 'BOOKING').map(i => i.amount), [60000], '예약의 일정 밖 잔액은 그대로');
+  assert.equal(result.prep.totalKRW + result.onSite.totalKRW, result.totalKRW);
+  assert.equal(result.onSite.payTotals.PAID, days[0].cost.onSiteKRW + overflow[0].totalKRW, '결제 완료로 표시한 숙소는 넘친 몫도 결제 완료');
+  assert.equal(result.hasForeignCurrency, true);
+});
+
+test('넘친 밤이 하나면 그 밤만 말하고, 금액이 없거나 0이면 줄을 만들지 않는다', () => {
+  const trip = L.normalizeTrip({ days: [
+    { spots: [] },
+    { spots: [{ name: '민박', stay: true, nights: 2, cost: 50000 }, { name: '미정 숙소', stay: true, nights: 4 }, { name: '친구 집', stay: true, nights: 3, cost: 0 }] }
+  ] });
+  assert.deepEqual(L.stayCostOverflow(trip.days).map(o => [o.fromDay, o.index, o.amount, o.firstNight, o.lastNight, o.nights]),
+    [[1, 0, 25000, 1, 1, 2], [1, 2, 0, 1, 2, 3]], '금액을 모르면 넘친 몫도 모른다');
+  const days = trip.days.map((_, index) => ({ index, cost: summary(trip, index) }));
+  const result = L.tripCostSummary(trip, days, rates);
+  assert.deepEqual(result.unallocated.map(i => i.title), ['민박 (2/2박 · 일정 밖)'], '0원은 잡을 돈이 없다');
+  assert.equal(result.totalKRW, 50000);
 });
 
 test('1박이거나 숙소가 아니거나 금액이 없으면 나누지 않고, 인원 기준 금액은 한 번만 곱한다', () => {

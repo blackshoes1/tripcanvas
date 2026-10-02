@@ -1121,7 +1121,8 @@ struct TripCostsResponse: Codable, Sendable {
     /// 준비한 비용 — 예약(전액 한 줄씩)과 여행 단위 항목. 어느 날에도 속하지 않는다.
     /// ⚠️ NAS API가 옛 버전이면 없다 — 그때 화면은 문서에서 목록을 짓고 합계만 "아직"이라고 말한다.
     var prep: TripCostPrep? = nil
-    /// 가서 쓰는 비용 — 날짜별 장소·추가 비용·교통의 합. 준비한 비용과 더하면 전체와 같다.
+    /// 가서 쓰는 비용 — 날짜별 장소·추가 비용·교통의 합 + 일정 밖으로 넘친 연박 숙소의 몫(`unallocated`의 STAY 줄).
+    /// 준비한 비용과 더하면 전체와 같다. 날짜별 줄의 합은 `TripCostsView.dayRowsTotal`이 따로 더한다.
     var onSite: TripCostGroup? = nil
     let unknownCount: Int
     let transportUnpriced: Bool

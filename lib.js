@@ -783,7 +783,7 @@
    * 체크인 날에 전액이 아니라 체크인 날과 다음 날에 반씩이다 — 예약(`bookingShareOn`)과 같은 뜻이다.
    * `own`은 di일 장소 자신의 몫(장소 인덱스 → 금액), `carried`는 앞선 날에 체크인한 숙소가 이 날로 이월한 몫.
    * 숙소가 아니거나(`stay`) 1박이거나 금액을 모르면 나누지 않는다. 연박이 일정 밖으로 나가면 그 몫은 어느
-   * 날에도 없다(전체 비용은 전액이라 예약과 같은 차이가 생긴다).
+   * 날에도 없다 — 여행 전체 합계는 그 몫을 `stayCostOverflow`로 따로 모아 전액을 맞춘다(예약의 일정 밖 잔액과 같은 차이).
    * @param {any[]} days @param {number} di
    * @returns {{own:Record<number,number>, carried:{fromDay:number,index:number,spot:any,amount:number,cur:string,night:number,nights:number}[]}}
    */
@@ -804,6 +804,31 @@
       });
     }
     return {own,carried};
+  }
+  /**
+   * 일정 밖으로 넘친 연박 숙소의 몫 — 체크인 날부터 `nights`일이 일정의 마지막 날을 넘으면 그 밤들의 하루치는
+   * 어느 날에도 잡히지 않는다(`stayCostShares`는 일정 안의 날만 본다). 여행 전체 합계(`tripCostSummary`)가 이걸
+   * 숙소마다 한 줄로 모은다 — 안 그러면 넘친 밤의 돈이 전체에서 사라져 웹 필터바(전액)와 앱 총액이 갈린다(2026-10-02).
+   * 나누는 규칙은 하루치와 같다(`splitAcrossNights`) — 일정 안의 하루치와 이 몫을 더하면 장소 비용 전액이다.
+   * `firstNight`·`lastNight`는 0부터 센 밤 번호다. 금액을 모르면 넘친 몫도 모르므로 넣지 않는다.
+   * @param {any[]} days
+   * @returns {{fromDay:number,index:number,spot:any,amount:number,cur:string,firstNight:number,lastNight:number,nights:number}[]}
+   */
+  function stayCostOverflow(days){
+    /** @type {{fromDay:number,index:number,spot:any,amount:number,cur:string,firstNight:number,lastNight:number,nights:number}[]} */ const out=[];
+    if(!Array.isArray(days)) return out;
+    days.forEach((/**@type{any}*/d,/**@type{number}*/j)=>{
+      const spots=(d&&Array.isArray(d.spots))?d.spots:[];
+      spots.forEach((/**@type{any}*/s,/**@type{number}*/index)=>{
+        if(!s||!s.stay) return;
+        const n=stayNights(s); if(n<2) return;
+        const first=days.length-j; if(first>=n) return;          // 일정 안에서 다 묵는다
+        const amount=costAmountOf(s,'cost'); if(amount===null) return;
+        const rest=splitAcrossNights(amount,n,s.cur).slice(first).reduce((sum,v)=>sum+v,0);
+        out.push({fromDay:j,index,spot:s,amount:moneyAmount(rest,s.cur),cur:s.cur||'KRW',firstNight:first,lastNight:n-1,nights:n});
+      });
+    });
+    return out;
   }
   /** 그 날에 잡히는 장소·수동 항목의 원화 합계 — 연박 숙소는 **하루치만**(자기 몫 + 앞선 날에서 이월된 몫).
    * 일자 카드가 쓴다. 여행 전체 합계는 `dayEnteredCost`(전액)다.
@@ -932,7 +957,8 @@
    * 비용은 **두 묶음**으로도 나눈다(2026-09-17) — 가기 전에 낸 돈과 가서 쓰는 돈은 적는 순간이 다르다:
    * - `prep`(준비한 비용) = 예약(`trip.bookings`, **전액** 한 줄씩) + 여행 단위 항목(`trip.costItems` — 보험·유심·미리 산 입장권).
    *   어느 날에도 속하지 않는다. 예약의 원화 합계는 하루치 배분과 잔액을 더한 것이라 총액과 1원까지 맞는다.
-   * - `onSite`(가서 쓰는 비용) = 날짜별 장소·추가 비용·교통(`dayCostSummary().onSiteKRW`의 합).
+   * - `onSite`(가서 쓰는 비용) = 날짜별 장소·추가 비용·교통(`dayCostSummary().onSiteKRW`의 합) + 일정 밖으로 넘친 연박 숙소의 몫
+   *   (`stayCostOverflow` — 어느 날에도 없어 `unallocated`에 STAY 줄로 모인다).
    * 둘을 더하면 `totalKRW`와 같다.
    * `today`(YYYY-MM-DD)는 결제일이 있는 항목의 상태를 정한다 — 하루치(`dayCostSummary`)와 **같은 오늘**을 넘겨야
    * 예약 한 줄과 그 하루치가 다른 상태를 말하지 않는다.
@@ -961,6 +987,18 @@
         totalKRW:remainingKRW,
         state:remaining===null?'UNKNOWN':remaining===0?'FREE':'KNOWN',dayIndex:null});
     }
+    // 일정 밖으로 넘친 연박 숙소의 몫 — 어느 날에도 없으니 예약 잔액처럼 여기 모은다. 장소의 숙박비라 가서 쓰는 돈이고,
+    // 줄 모양은 하루치의 STAY 줄(이월 몫)과 같다 — 결제 상태도 체크인 날 장소를 따른다
+    /** @type {any[]} */ const stayOverflow=[];
+    for(const o of stayCostOverflow(trip.days||[])){
+      if(!(o.amount>0)) continue;
+      const nightsText=o.firstNight===o.lastNight? `${o.firstNight+1}` : `${o.firstNight+1}–${o.lastNight+1}`;
+      stayOverflow.push({source:'STAY',key:`${o.fromDay}.${o.index}`,title:`${o.spot.name||'숙소'} (${nightsText}/${o.nights}박 · 일정 밖)`,kind:'STAY',
+        amount:o.amount,currency:o.cur,basis:'ENTERED',people:1,payState:costPayStateOf({payState:o.spot.payState,paidOn:o.spot.paidOn},'STAY',today),
+        paidOn:_ISO_DATE_RE.test(_str(o.spot.paidOn))?o.spot.paidOn:null,photos:[],
+        totalKRW:Math.round(o.amount*(rates[o.cur]||1)),state:'KNOWN',dayIndex:null});
+    }
+    unallocated.push(...stayOverflow);
     // 여행 단위 항목 — 날짜가 없는 준비 비용. 하루 추가 비용과 같은 모양·같은 규칙이다
     /** @type {any[]} */ const tripItems=[];
     for(const item of (Array.isArray(trip.costItems)?trip.costItems:[])){
@@ -986,7 +1024,7 @@
         unknownCount:lines.filter(i=>i.state==='UNKNOWN'||i.state==='PARTIAL').length};
     });
     const totalKRW=categories.reduce((sum,c)=>sum+c.totalKRW,0);
-    const onSiteItems=days.flatMap(d=>d.cost.details.items.filter((/** @type {any} */ i)=>i.source!=='BOOKING'));
+    const onSiteItems=[...days.flatMap(d=>d.cost.details.items.filter((/** @type {any} */ i)=>i.source!=='BOOKING')),...stayOverflow];
     const prep={totalKRW:prepItems.reduce((sum,i)=>sum+(i.totalKRW||0),0),payTotals:payStateTotals(prepItems),items:prepItems};
     const onSite={totalKRW:onSiteItems.reduce((sum,i)=>sum+(i.totalKRW||0),0),payTotals:payStateTotals(onSiteItems)};
     return {totalKRW,averagePerDayKRW:days.length?Math.round(totalKRW/days.length):null,categories,unallocated,
@@ -1867,7 +1905,7 @@
     };
   }
 
-  const TC={deleteSpotCost,clearSpotCost,deleteBookingCost,dayLodgings,sortTripsByCountdown,additionalReservations,tripSummaryCities,returnModeOf,SPOT_PRIORITIES,spotPriorityOf,applySpotPriority,spotPriorityLabel,SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,cityFromKoreanAddr,placeName,cityFromGoogle,normHours,classifySearchErr,isKoreanSearch,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,normHM,sortDayByTime,inKorea,simplifyName,parseDirect,parseMoney,normalizeDraftDays,extractJson,extMapLink,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,stayMinutesOf,activityStartMinute,dayEndMinutes,departMinuteAfter,computeTimeline,computeDayJourney,whoKey,splitSegments,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,budgetBookings,moneyAmount,parseCostAmount,costAmountOf,dayEnteredCost,splitAcrossNights,stayCostShares,dayEnteredCostOn,hasManualTransportCost,dayCostSummary,ADMISSION_REQUIREMENTS,admissionLabel,admissionOf,needsAdmissionBooking,normalizeAdmission,admissionError,COST_CATEGORIES,costCategoryOf,COST_PAY_STATES,costPayStateOf,payStateTotals,TRIP_NOTE_CATEGORIES,normalizeTripNote,tripCostSummary,localMode,mdLabel,tripPeriodOf,startShiftPreview,SAMPLE_TRIP_ID,isSampleTrip,sampleTrip,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
+  const TC={deleteSpotCost,clearSpotCost,deleteBookingCost,dayLodgings,sortTripsByCountdown,additionalReservations,tripSummaryCities,returnModeOf,SPOT_PRIORITIES,spotPriorityOf,applySpotPriority,spotPriorityLabel,SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,cityFromKoreanAddr,placeName,cityFromGoogle,normHours,classifySearchErr,isKoreanSearch,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,normHM,sortDayByTime,inKorea,simplifyName,parseDirect,parseMoney,normalizeDraftDays,extractJson,extMapLink,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,stayMinutesOf,activityStartMinute,dayEndMinutes,departMinuteAfter,computeTimeline,computeDayJourney,whoKey,splitSegments,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,budgetBookings,moneyAmount,parseCostAmount,costAmountOf,dayEnteredCost,splitAcrossNights,stayCostShares,stayCostOverflow,dayEnteredCostOn,hasManualTransportCost,dayCostSummary,ADMISSION_REQUIREMENTS,admissionLabel,admissionOf,needsAdmissionBooking,normalizeAdmission,admissionError,COST_CATEGORIES,costCategoryOf,COST_PAY_STATES,costPayStateOf,payStateTotals,TRIP_NOTE_CATEGORIES,normalizeTripNote,tripCostSummary,localMode,mdLabel,tripPeriodOf,startShiftPreview,SAMPLE_TRIP_ID,isSampleTrip,sampleTrip,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
   if(typeof module!=='undefined' && module.exports){ module.exports=TC; }   // Node (테스트)
   else { const r=/**@type {any}*/(root); for(const k in TC) r[k]=/**@type {any}*/(TC)[k]; }   // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);
