@@ -266,6 +266,10 @@ ssh nas 'tail -40 ~/tripcanvas/deploy/deploy.log'
 
 - 고친 커밋을 머지하면 production 태그가 옮겨 가 **그대로 배포된다**. 성공하면 기록을 지운다.
 - 같은 커밋을 다시 해 보려면(환경을 고쳤을 때): `ssh nas '~/tripcanvas/scripts/nas-deploy.sh --force'`
+  ⚠️ **Actions에서 Release를 다시 돌려도(workflow_dispatch) NAS는 저절로 다시 시도하지 않는다** — 이미지를 다시 만들고
+  태그를 같은 SHA로 맞출 뿐이라, cron은 여전히 실패로 적힌 커밋으로 보고 건너뛴다(2026-10-02 전에는 5분 안에 다시
+  배포됐다). 이미지를 다시 만들어야 했던 경우에도 그 뒤에 `--force`가 필요하고, `deploy/.env`에 빠진 값을 채운 경우처럼
+  고친 것이 NAS 쪽이면 Release를 돌릴 필요 없이 `--force` 하나로 끝난다.
 - 교체 **전** 실패(그 커밋의 compose·이미지를 못 받음)는 적지 않는다 — 운영을 건드리지 않았고 대개 GitHub·GHCR이
   잠깐 흔들린 것이라 다음 차례에 다시 해 본다.
 - **롤백까지 실패하면** 적지 않는다 — 직전 커밋도 못 떴으면 DB·docker·디스크 같은 환경 탓일 가능성이 크다. 운영은
