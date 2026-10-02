@@ -48,8 +48,16 @@ function sameOrigin(req) {
 
 // 전달 헤더는 Vercel 위에서만 믿는다 — NAS(Funnel → Next)에서는 클라이언트가 써 보낸 그대로 지나와 상한이 사라졌다
 // (kakao-directions.js와 같은 규칙). 그 밖에서는 소켓 주소다(Next 어댑터가 앞단 프록시가 본 주소를 싣는다).
+// ⚠️ `VERCEL`은 시스템 환경 변수 노출이 켜져 있을 때만 있다 — 꺼진 채 Vercel 엣지 헤더가 보이면 한 번 남긴다(kakao-directions.js).
+let warnedNoVercelEnv = false;
 function clientIp(req, env) {
-  const forwarded = env && env.VERCEL && req.headers && (req.headers['x-vercel-forwarded-for'] || req.headers['x-forwarded-for']);
+  const headers = req.headers || {};
+  const onVercel = !!(env && env.VERCEL);
+  if (!onVercel && headers['x-vercel-id'] && !warnedNoVercelEnv) {
+    warnedNoVercelEnv = true;
+    console.warn('[hotel-offers] x-vercel-id는 있는데 VERCEL이 없다 — 시스템 환경 변수 노출이 꺼져 rate limit이 소켓 주소로 센다');
+  }
+  const forwarded = onVercel && (headers['x-vercel-forwarded-for'] || headers['x-forwarded-for']);
   return 'ip:' + String(forwarded || req.socket?.remoteAddress || 'unknown').split(',')[0].trim();
 }
 

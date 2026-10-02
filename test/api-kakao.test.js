@@ -84,6 +84,19 @@ test('Kakao proxy: Vercel 위에서는 엣지가 붙인 주소로 사람을 가�
   assert.equal(limited(await invoke(handler, from('198.51.100.2'))), false, '다른 사람은 막히지 않는다');
 });
 
+// `VERCEL`은 Vercel의 시스템 환경 변수 노출 설정에 달려 있다 — 꺼지면 Vercel 위에서도 모두가 한 버킷이 된다.
+// 키는 그대로 두고(엣지 헤더는 아무나 보낼 수 있다) 조용히 지나가지 않게 한 번 남긴다.
+test('Kakao proxy: Vercel 엣지 헤더가 보이는데 VERCEL이 없으면 한 번 경고하고, 키는 여전히 소켓 주소다', async (t) => {
+  const warned = [];
+  t.mock.method(console, 'warn', (...args) => { warned.push(args.join(' ')); });
+  const handler = createHandler({ env: {} });
+  const edge = (ip) => ({ headers: { 'x-vercel-id': 'icn1::abc', 'x-vercel-forwarded-for': ip }, socket: { remoteAddress: '169.254.100.6' } });
+  for (let i = 0; i < 31; i++) await invoke(handler, edge(`198.51.100.${i}`));
+  assert.equal(warned.length, 1, '인스턴스마다 한 번');
+  assert.match(warned[0], /VERCEL/);
+  assert.equal(limited(await invoke(handler, edge('198.51.100.200'))), true, '헤더는 여전히 키가 아니다');
+});
+
 test('Kakao proxy: 창이 지난 버킷은 지우고 표는 상한을 넘지 않는다', async () => {
   let clock = 0;
   const handler = createHandler({ env: {}, now: () => clock });

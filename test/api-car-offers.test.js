@@ -114,6 +114,20 @@ test('car-offers: Vercel 위에서는 엣지가 붙인 주소로 사람을 가�
   assert.notEqual((await invokeFrom(handler, from('198.51.100.2'))).status, 429);
 });
 
+test('car-offers: Vercel 엣지 헤더가 보이는데 VERCEL이 없으면 한 번 경고하고, 키는 여전히 소켓 주소다', async (t) => {
+  _private.buckets.clear();
+  const warned = [];
+  t.mock.method(console, 'warn', (...args) => { warned.push(args.join(' ')); });
+  const handler = createHandler({ env: {} });
+  const edge = ip => ({ headers: { 'x-vercel-id': 'icn1::abc', 'x-vercel-forwarded-for': ip }, remoteAddress: '169.254.100.6' });
+  let last;
+  for (let i = 0; i < 11; i++) last = await invokeFrom(handler, edge(`198.51.100.${i}`));
+  assert.equal(warned.length, 1, '인스턴스마다 한 번');
+  assert.match(warned[0], /VERCEL/);
+  assert.equal(last.status, 429, '헤더는 여전히 키가 아니다');
+  _private.buckets.clear();
+});
+
 test('car-offers: 창이 지난 버킷은 지우고 표는 상한을 넘지 않는다', async () => {
   _private.buckets.clear();
   let clock = 0;

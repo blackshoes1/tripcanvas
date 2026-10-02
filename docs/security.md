@@ -54,6 +54,9 @@ devtools를 열면 누구나 볼 수 있었다 — 바뀐 것은 *가능성*이 
 클라이언트가 써 보낸 그대로 지나와, 요청마다 값을 바꾸면 상한이 사라졌다. 그 밖에서는 소켓 주소이고, Next 어댑터(`nodeHandler.ts`)는
 X-Forwarded-For의 **마지막** 항목(바로 앞 프록시 — NAS는 Tailscale Funnel — 가 붙인 주소)을 거기 싣는다. 버킷 표는 창이 지난 항목을 지우고 1만 개를 넘지 않는다.
 서버 안의 경로 조회(`serverRouting.ts`)는 제 버킷(`rateKey`) 하나를 써서 밖의 요청이 그 조회를 429로 막을 수 없다.
+⚠️ 이 키는 **Vercel 프로젝트 설정에 달려 있다.** `VERCEL`은 'Automatically expose System Environment Variables'가 켜져 있을 때만 런타임에 있다(기본값 켜짐).
+꺼지면 Vercel 위에서도 소켓 주소(함수 브리지 안쪽)로 떨어져 **인스턴스마다 모두가 한 버킷**이 되고, 국내 경로 조회가 429로 쏟아져 직선 추정으로 떨어진다 — 로그는 초록이다.
+그 설정을 끄지 않는다. 꺼진 채 요청이 오면(엣지가 붙이는 `x-vercel-id`는 있는데 `VERCEL`이 없으면) 세 함수가 인스턴스마다 한 번 경고를 남긴다(키는 바꾸지 않는다 — 그 헤더도 NAS에서는 아무나 보낸다).
 
 배포 전 Vercel Firewall에서 `/api/kakao-directions`에 IP 기반 rate limit을 설정한다. 초기 권장값은 60초당 30회이며 정상 사용량을 관찰해 조정한다. 더 세밀한 사용자별 제한이 필요하면 인증 토큰과 Vercel KV 같은 공유 저장소를 함께 사용한다.
 

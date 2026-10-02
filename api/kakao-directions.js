@@ -46,8 +46,18 @@ function sameOrigin(req) {
 // 전달 헤더는 Vercel 위에서만 믿는다 — 엣지가 덮어쓰는 Vercel과 달리 NAS(Funnel → Next)에서는 클라이언트가 써 보낸
 // 그대로 지나와, 요청마다 값을 바꾸면 상한이 사라졌다. 그 밖에서는 소켓 주소다(Next 어댑터가 앞단 프록시가 본 주소를 싣는다).
 // 'ip:'를 붙여 서버 안의 호출(rateKey)과 같은 키가 될 수 없게 한다.
+// ⚠️ `VERCEL`은 프로젝트 설정 'Automatically expose System Environment Variables'가 켜져 있을 때만 있다. 꺼지면 Vercel 위에서도
+// 소켓 주소(함수 브리지 안쪽)로 떨어져 모두가 한 버킷이 된다 — 로그가 초록인 채 429가 쏟아지지 않게, 엣지가 붙이는
+// `x-vercel-id`가 보이는데 `VERCEL`이 없으면 인스턴스마다 한 번 남긴다. 그 헤더는 NAS에서도 아무나 보낼 수 있어 키에는 쓰지 않는다.
+let warnedNoVercelEnv = false;
 function clientIp(req, env) {
-  const forwarded = env && env.VERCEL && req.headers && (req.headers['x-vercel-forwarded-for'] || req.headers['x-forwarded-for']);
+  const headers = req.headers || {};
+  const onVercel = !!(env && env.VERCEL);
+  if (!onVercel && headers['x-vercel-id'] && !warnedNoVercelEnv) {
+    warnedNoVercelEnv = true;
+    console.warn('[kakao-directions] x-vercel-id는 있는데 VERCEL이 없다 — 시스템 환경 변수 노출이 꺼져 rate limit이 소켓 주소로 센다');
+  }
+  const forwarded = onVercel && (headers['x-vercel-forwarded-for'] || headers['x-forwarded-for']);
   return 'ip:' + String(forwarded || req.socket?.remoteAddress || 'unknown').split(',')[0].trim();
 }
 
