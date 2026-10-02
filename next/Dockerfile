@@ -1,6 +1,7 @@
 # tripcanvas-api — NAS(Docker Compose)용 이미지. 저장소 루트를 컨텍스트로 빌드한다(판단 엔진 adaptive.js 등이 루트에 있다):
 #   docker build -f next/Dockerfile -t tripcanvas-api .
-# ⚠️ 작성 환경에 Docker가 없어 빌드 미검증 — docs/nas-deployment.md의 확인 절차를 따를 것.
+# 빌드는 PR마다 CI가 확인한다(`ci.yml`의 Docker image build — runtime·tools 두 타깃, 푸시하지 않는다).
+# 운영 이미지는 `release.yml`만 만들어 GHCR에 올린다. 띄운 뒤의 확인은 docs/nas-deployment.md.
 
 # ── deps: next/의 의존성(devDependencies 포함 — drizzle-kit migrate에 필요) ──
 FROM node:22-alpine AS deps
@@ -29,6 +30,11 @@ ENV TC_REVISION=$TC_REVISION
 WORKDIR /repo/next
 # 독립 실행 도구(실시간 사이드카·이관 CLI)는 Next 번들과 따로 컴파일된다
 RUN npm run tools:build
+# ⚠️ root로 돌지 않는다 — 실시간 사이드카는 Funnel로 인터넷에 열려 있다(runtime 이미지의 `tc`와 같은 이유).
+#    베이스 이미지의 `node`(uid 1000, 홈 /home/node)를 쓴다. /repo는 root 소유·읽기 전용으로 남고 쓸 곳은 없다:
+#    migrate(`npx drizzle-kit migrate`)는 DB에만 쓰고 npm 로그·tsx 캐시는 홈과 /tmp로 간다, realtime은 파일을 쓰지 않는다.
+#    이 아래의 migrate·realtime 타깃도 이 사용자를 물려받는다.
+USER node
 
 # ── migrate: 스키마 적용 전용(일회성). 운영은 tools 이미지에 command만 바꿔 띄우고,
 #    이 타깃은 로컬·Fly.io가 **타깃 이름으로** 빌드할 때의 진입점이다 ──

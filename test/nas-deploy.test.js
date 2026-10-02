@@ -4,12 +4,16 @@
 // (test/backup.test.js와 같은 방식). 가짜 curl의 /api/health는 실제 구조를 흉내 낸다 —
 // compose의 `env_file: .env`가 이미지의 ENV를 덮어쓰므로, .env에 TC_REVISION이 있으면
 // 그 값이, 없으면 띄운 TC_IMAGE_TAG가 revision으로 나온다.
-const { test } = require('node:test');
+const { test: nodeTest } = require('node:test');
 const assert = require('node:assert/strict');
 const { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } = require('node:fs');
 const { tmpdir } = require('node:os');
 const { join } = require('node:path');
 const { spawnSync } = require('node:child_process');
+const { BASH, skip, shellEnv } = require('./posix-shell');
+
+// 셸을 못 찾는 Windows에서만 이유를 달고 건너뛴다 — 리눅스(CI)에서 skip은 언제나 false다
+const test = (name, fn) => nodeTest(name, { skip }, fn);
 
 const SCRIPT = join(__dirname, '../scripts/nas-deploy.sh');
 const TARGET = 'd9851955a5afe73e6b308b6ec4b327ec3938f34b';
@@ -122,11 +126,9 @@ function runDeploy(t, { envLines, args = [], state = null, disabled = null, env 
   if (disabled !== null) writeFileSync(join(deployDir, '.deploy-disabled'), disabled);
   const disabledFile = join(deployDir, '.deploy-disabled');
 
-  const r = spawnSync('/bin/bash', [script, ...args], {
+  const r = spawnSync(BASH, [script, ...args], {
     encoding: 'utf8',
-    env: {
-      ...process.env,
-      PATH: `${root}/bin:${process.env.PATH}`,
+    env: shellEnv(join(root, 'bin'), {
       TC_DEPLOY_DIR: deployDir,
       TC_DOCKER: `${root}/bin/docker`,
       TC_HEALTH_TIMEOUT: '10',
@@ -136,7 +138,7 @@ function runDeploy(t, { envLines, args = [], state = null, disabled = null, env 
       TC_TEST_SERVE_SCRIPT: serve,
       TC_TEST_TARGET_SHA: TARGET,
       ...env,
-    },
+    }),
   });
   const read = (p) => (existsSync(p) ? readFileSync(p, 'utf8') : '');
   return {
@@ -518,7 +520,7 @@ read_state() {
 }
 read_state
 echo "current=$CURRENT_SHA previous=$PREVIOUS_SHA"`;
-  const old = spawnSync('/bin/bash', ['-c', OLD_READ_STATE, 'old', join(deployDir, '.deploy-state')], { encoding: 'utf8' });
+  const old = spawnSync(BASH, ['-c', OLD_READ_STATE, 'old', join(deployDir, '.deploy-state')], { encoding: 'utf8' });
   assert.equal(old.status, 0, old.stderr);
   assert.equal(old.stdout.trim(), `current=${STALE} previous=`);
 });

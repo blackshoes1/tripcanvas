@@ -2,12 +2,14 @@
 //
 // ⚠️ 규칙을 바꾸려면 `collab.js`를 먼저 고친다. 그러면 이 테스트가 픽스처를 새로 쓰고
 // iOS 테스트가 깨진다 — 그게 목적이다(복사본은 조용히 갈라진다).
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
 import collab from '@legacy/collab.js';
+
+import { writeFixture } from './parityFiles';
 
 const members = [
   { user_id: 'u1', display_name: '지민', me: false },
@@ -71,7 +73,7 @@ describe('참여자 이름표 — collab.js가 단일 출처', () => {
 
     const dir = path.join(__dirname, '../../../../../ios/TripCanvasTests/Fixtures');
     mkdirSync(dir, { recursive: true });
-    writeFileSync(path.join(dir, 'who-text.json'),
+    writeFixture(path.join(dir, 'who-text.json'),
                   JSON.stringify({ members, cases: rows, canAssignWho: assign, picks }, null, 2)
                     + String.fromCharCode(10));
   });

@@ -1,9 +1,13 @@
-const { test } = require('node:test');
+const { test: nodeTest } = require('node:test');
 const assert = require('node:assert/strict');
 const { mkdtempSync, mkdirSync, writeFileSync, readdirSync, readFileSync, existsSync, rmSync } = require('node:fs');
 const { tmpdir } = require('node:os');
 const { join } = require('node:path');
 const { spawnSync } = require('node:child_process');
+const { SH, skip, shellEnv } = require('./posix-shell');
+
+// 셸을 못 찾는 Windows에서만 이유를 달고 건너뛴다 — 리눅스(CI)에서 skip은 언제나 false다
+const test = (name, fn) => nodeTest(name, { skip }, fn);
 
 /** 가짜 pg 도구를 깐 임시 루트에서 backup.sh를 돌린다 */
 function runBackup(t, { dumpFails = false, psqlExit = 0, sourceUrl = '', record = '1' } = {}) {
@@ -14,9 +18,9 @@ function runBackup(t, { dumpFails = false, psqlExit = 0, sourceUrl = '', record 
   writeFileSync(join(root, 'bin/pg_isready'), `#!/bin/sh\necho "$@" >> "${root}/isready.log"\nexit 0\n`, { mode: 0o755 });
   writeFileSync(join(root, 'bin/pg_dump'), `#!/bin/sh\necho "$@" >> "${root}/dump.log"\nfor arg do case "$arg" in --file=*) printf 'synthetic' > "\${arg#--file=}" ;; esac; done\nexit ${dumpFails ? 1 : 0}\n`, { mode: 0o755 });
   writeFileSync(join(root, 'bin/psql'), `#!/bin/sh\necho "$@" >> "${root}/psql.log"\nexit ${psqlExit}\n`, { mode: 0o755 });
-  const r = spawnSync('/bin/sh', [join(__dirname, '../deploy/backup.sh')], {
+  const r = spawnSync(SH, [join(__dirname, '../deploy/backup.sh')], {
     encoding: 'utf8',
-    env: { ...process.env, PATH: `${root}/bin:${process.env.PATH}`, BACKUP_DIR: join(root, 'backups'), BACKUP_SOURCE_URL: sourceUrl, BACKUP_DESTINATION: 'nas', BACKUP_RECORD: record }
+    env: shellEnv(join(root, 'bin'), { BACKUP_DIR: join(root, 'backups'), BACKUP_SOURCE_URL: sourceUrl, BACKUP_DESTINATION: 'nas', BACKUP_RECORD: record })
   });
   const log = (name) => (existsSync(join(root, name)) ? readFileSync(join(root, name), 'utf8') : '');
   return { r, files: readdirSync(join(root, 'backups')), psql: log('psql.log'), dump: log('dump.log'), isready: log('isready.log') };

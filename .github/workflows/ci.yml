@@ -18,13 +18,17 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # Node 20은 2026-04-30에 지원이 끝났다. next 잡·운영 이미지(node:22-alpine)와 같은 22로 돈다
+          node-version: 22
       - name: Install locked dependencies
         run: npm ci --no-audit --no-fund
       - name: Syntax check
         run: npm run check:syntax
       - name: Service worker / asset version sync
         run: npm run check:version
+      # AGENTS.md는 CLAUDE.md의 생성물이다 — 갈라지면 어느 쪽을 읽었느냐로 따르는 절차가 달라진다(scripts/sync-agents.js)
+      - name: AGENTS.md generated from CLAUDE.md
+        run: npm run check:agents
       - name: Lint focused modules
         run: npm run lint
       - name: Secret pattern check
@@ -135,7 +139,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - name: Install locked dependencies
         run: npm ci --no-audit --no-fund
@@ -170,6 +174,16 @@ jobs:
           file: next/Dockerfile
           target: tools
           push: false
+          load: true
+          tags: tripcanvas-tools:pr
           build-args: TC_REVISION=${{ github.sha }}
           cache-from: type=gha,scope=tools
           cache-to: type=gha,scope=tools,mode=max
+      # 실시간 사이드카는 Funnel로 인터넷에 열려 있다 — root로 돌지 않는지, 그 사용자로 migrate의 명령(`npx drizzle-kit`)이
+      # 뜨는지 본다(DB 없이 버전만). 비루트로 바꾼 뒤 NAS에서 처음 알게 되면 그때는 배포가 이미 멈춘 뒤다.
+      - name: tools 이미지가 root가 아니고 migrate 명령이 뜬다
+        run: |
+          uid=$(docker run --rm --entrypoint id tripcanvas-tools:pr -u)
+          echo "tools 이미지 uid=$uid"
+          [ "$uid" != 0 ] || { echo "::error::tools 이미지가 root로 돈다"; exit 1; }
+          docker run --rm tripcanvas-tools:pr npx drizzle-kit --version

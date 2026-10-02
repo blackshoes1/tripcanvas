@@ -25,25 +25,34 @@ jobs:
     name: Deploy to managed staging
     runs-on: ubuntu-latest
     environment: managed-staging
+    # ⚠️ 배포 토큰(FLY_API_TOKEN)은 잡 env에 두지 않는다 — 잡 env는 **서드파티 액션까지 포함해** 모든 단계에 보인다.
+    #    flyctl을 실제로 부르는 단계에만 준다. 앱 이름은 자격 증명이 아니라 잡 전체에 둔다.
     env:
-      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
       FLY_APP_API_STAGING: ${{ secrets.FLY_APP_API_STAGING }}
       FLY_APP_REALTIME_STAGING: ${{ secrets.FLY_APP_REALTIME_STAGING }}
     steps:
       - uses: actions/checkout@v4
       - name: Check secrets (값은 출력하지 않는다)
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
           missing=0
           for v in FLY_API_TOKEN FLY_APP_API_STAGING FLY_APP_REALTIME_STAGING; do
             if [ -z "${!v:-}" ]; then echo "::error::$v 시크릿이 없다 — Settings → Environments → managed-staging"; missing=1; fi
           done
           [ "$missing" -eq 0 ]
-      - uses: superfly/flyctl-actions/setup-flyctl@master
+      # 서드파티 액션은 **커밋 SHA로** 고정한다 — `@master`는 그 저장소에 들어가는 무엇이든 다음 실행에 그대로 돈다.
+      # 올릴 때는 릴리스 태그의 SHA를 확인해 주석의 버전과 함께 바꾼다(`gh api repos/superfly/flyctl-actions/git/ref/tags/<태그>`).
+      - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # 1.6
       - name: Deploy api
         if: ${{ inputs.target != 'realtime' }}
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: flyctl deploy . --config deploy/managed/fly.api.toml --app "$FLY_APP_API_STAGING" --remote-only --build-arg TC_REVISION="$GITHUB_SHA"
       - name: Deploy realtime
         if: ${{ inputs.target != 'api' }}
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: flyctl deploy . --config deploy/managed/fly.realtime.toml --app "$FLY_APP_REALTIME_STAGING" --remote-only --build-arg TC_REVISION="$GITHUB_SHA"
       - name: Smoke from outside (health · 401 · websocket upgrade)
         run: |
@@ -54,10 +63,13 @@ jobs:
           ws=$(curl -s --http1.1 -o /dev/null -w '%{http_code}' -H 'Connection: Upgrade' -H 'Upgrade: websocket' -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' "$rt/ws")
           [ "$ws" = 101 ] || echo "::warning::실시간 업그레이드가 101이 아니다($ws) — 앱은 새로고침 폴백으로 돈다. LISTEN 상태는 /api/health의 components.realtime"
       - name: Summary
+        # 입력값은 셸 코드에 끼워 넣지 않고 env로 넘긴다(ios-testflight.yml과 같은 규칙)
+        env:
+          TARGET: ${{ inputs.target }}
         run: |
           {
             echo "## Managed staging"
             echo "- commit: \`$GITHUB_SHA\`"
-            echo "- target: ${{ inputs.target }}"
+            echo "- target: $TARGET"
             echo "- 다음: 로그인 → 여행 목록 → 저장 → 충돌 → 협업 → 실시간 (docs/production-cutover.md Phase B)"
           } >> "$GITHUB_STEP_SUMMARY"

@@ -5,7 +5,7 @@
 // 프로퍼티 이름과 맞춰 본다. Swift를 컴파일하지 않고도 이름이 어긋난 것은 잡힌다.
 //
 // 이 테스트가 깨지면 둘 중 하나다: contract.ts를 고치고 Swift를 안 고쳤거나, 그 반대.
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
@@ -19,12 +19,13 @@ import { buildImportPreview, buildMemoryTimeline } from './intakeView';
 import { buildDayPlanView } from './dayPlanView';
 import { buildGroupProposalView } from './groupProposalView';
 import { buildTripRoutes } from './tripRoutesView';
+import { readSourceText, writeFixture } from './parityFiles';
 import type {
   BookingListResponse, GroupProposalResponse, ImportCommitResponse, ItineraryParseResponse,
   MemoryCreateResponse, MemoryEvent, MemoryListResponse, MutationResponse, TripListResponse
 } from './contract';
 
-const SWIFT = readFileSync(path.join(__dirname, '../../../../../ios/TripCanvas/Core/Models/Contract.swift'), 'utf8');
+const SWIFT = readSourceText(path.join(__dirname, '../../../../../ios/TripCanvas/Core/Models/Contract.swift'));
 
 /** Contract.swift에서 struct 하나의 저장 프로퍼티를 `이름 → 타입`으로 뽑는다 (계산 프로퍼티 `var x: T { ... }`는 제외). */
 function swiftPropertyTypes(structName: string): Map<string, string> {
@@ -249,9 +250,9 @@ describe('iOS Contract.swift가 실제 응답을 전부 담는다', () => {
     // generatedAt까지 고정된 결정적 값이라 diff가 생기면 계약이 바뀐 것이다.
     const dir = path.join(__dirname, '../../../../../ios/TripCanvasTests/Fixtures');
     mkdirSync(dir, { recursive: true });
-    writeFileSync(path.join(dir, 'today.json'), JSON.stringify(today, null, 2) + String.fromCharCode(10));
+    writeFixture(path.join(dir, 'today.json'), JSON.stringify(today, null, 2) + String.fromCharCode(10));
     const plan = buildDayPlanView({ trip, di: 0, summary: today.trip, generatedAt: '2026-09-01T04:00:00Z' });
-    writeFileSync(path.join(dir, 'day-plan.json'), JSON.stringify(plan, null, 2) + String.fromCharCode(10));
+    writeFixture(path.join(dir, 'day-plan.json'), JSON.stringify(plan, null, 2) + String.fromCharCode(10));
     expect(today.schemaVersion).toBe(1);
     expect(plan!.schemaVersion).toBe(1);
   });
@@ -278,7 +279,7 @@ describe('iOS Contract.swift가 실제 응답을 전부 담는다', () => {
     expectCovered('DayPlanCost', cost);
     const dir = path.join(__dirname, '../../../../../ios/TripCanvasTests/Fixtures');
     mkdirSync(dir, { recursive: true });
-    writeFileSync(path.join(dir, 'day-cost-extreme.json'), JSON.stringify(cost, null, 2) + String.fromCharCode(10));
+    writeFixture(path.join(dir, 'day-cost-extreme.json'), JSON.stringify(cost, null, 2) + String.fromCharCode(10));
   });
 });
 
@@ -323,7 +324,7 @@ describe('Travel State도 Swift가 전부 담는다', () => {
   it('iOS 테스트 픽스처(travel-state)도 실제 응답으로 갱신한다', () => {
     const dir = path.join(__dirname, '../../../../../ios/TripCanvasTests/Fixtures');
     mkdirSync(dir, { recursive: true });
-    writeFileSync(path.join(dir, 'travel-state.json'), JSON.stringify(travel, null, 2) + String.fromCharCode(10));
+    writeFixture(path.join(dir, 'travel-state.json'), JSON.stringify(travel, null, 2) + String.fromCharCode(10));
     expect(travel.stateVersion).toBe(travel.liveActivity.stateVersion);
   });
 });
@@ -371,7 +372,7 @@ describe('유입·기록 계약도 Swift가 전부 담는다', () => {
   it('iOS 테스트 픽스처(import-preview)도 실제 응답으로 갱신한다', () => {
     const dir = path.join(__dirname, '../../../../../ios/TripCanvasTests/Fixtures');
     mkdirSync(dir, { recursive: true });
-    writeFileSync(path.join(dir, 'import-preview.json'), JSON.stringify(preview, null, 2) + String.fromCharCode(10));
+    writeFixture(path.join(dir, 'import-preview.json'), JSON.stringify(preview, null, 2) + String.fromCharCode(10));
     expect(preview.schemaVersion).toBe(1);
   });
 });
@@ -386,7 +387,7 @@ it('여행 전체 비용 계약과 Swift 필드 및 실제 디코딩 fixture가 
   expect(new Set(Object.keys(item))).toEqual(swiftProperties('TripCostLine'));
   // 위 셋은 '정확히 같은 집합'을 본다. 순회에도 넣어 중첩(TripCostGroup·TripCostPrep)까지 따라간다.
   expectCovered('TripCostsResponse', response);
-  writeFileSync(path.join(__dirname, '../../../../../ios/TripCanvasTests/Fixtures/trip-costs.json'), JSON.stringify(response, null, 2) + '\n');
+  writeFixture(path.join(__dirname, '../../../../../ios/TripCanvasTests/Fixtures/trip-costs.json'), JSON.stringify(response, null, 2) + '\n');
 });
 
 // ── 나머지 계약도 전부 본다 (§파리티 사각지대) ───────────────────────────────

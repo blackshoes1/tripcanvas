@@ -26,15 +26,17 @@ const BANNER = [
   ''
 ].join('\n');
 
-function build() {
-  return BANNER + '\n' + fs.readFileSync(SOURCE, 'utf8');
-}
+// ⚠️ 줄바꿈은 비교하지 않는다. Windows(core.autocrlf=true)는 두 파일을 CRLF로 체크아웃하는데 배너는 LF라,
+//    그대로 비교하면 내용이 같아도 실패했다 — 그 소음이 진짜 어긋남(AGENTS.md를 직접 고친 것)을 가린다.
+//    저장소에 들어가는 모양은 git이 LF로 맞춘다.
+const lf = (text) => text.replace(/\r\n/g, '\n');
 
-const wanted = build();
+const source = fs.readFileSync(SOURCE, 'utf8');
+const wanted = BANNER + '\n' + lf(source);
 
 if (process.argv.includes('--check')) {
   const actual = fs.existsSync(TARGET) ? fs.readFileSync(TARGET, 'utf8') : '';
-  if (actual === wanted) {
+  if (lf(actual) === wanted) {
     console.log('AGENTS.md sync passed (CLAUDE.md 기준).');
     process.exit(0);
   }
@@ -43,5 +45,6 @@ if (process.argv.includes('--check')) {
   process.exit(1);
 }
 
-fs.writeFileSync(TARGET, wanted);
+// 쓸 때는 원본의 줄바꿈을 따른다 — CRLF 체크아웃에 LF 배너가 섞인 파일을 만들지 않게
+fs.writeFileSync(TARGET, source.includes('\r\n') ? wanted.replace(/\n/g, '\r\n') : wanted);
 console.log(`AGENTS.md written from CLAUDE.md (${wanted.split('\n').length} lines).`);
