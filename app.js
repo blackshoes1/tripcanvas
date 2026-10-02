@@ -1726,12 +1726,16 @@ function renderFilter(){
   }
   const colors=cityColors(), menu=document.createElement('details'); menu.className='viewMenu';
   const cityButtons=Object.entries(colors).map(([city,c])=>`<button class="chip cityFocusBtn" data-city="${escAttr(city)}"><span class="dot" style="background:${c}"></span>${esc(city)}</button>`).join('');
+  // 색상 기준은 여행 문서(colorBy)에 저장된다 — 편집이다. 보기 권한이 바꾸면 로컬만 달라져(올리지 않는다) 다음 당겨오기가
+  // 헛충돌을 띄우고, 거기서 '이 기기 것 유지'를 고르면 충돌에 갇혀 일행의 변경을 더 받지 못했다
+  const colorMode=readOnly()? '' : `<div class="viewMenuLabel">색상 기준</div><button class="chip" id="colorModeBtn">🎨 ${colorByMode()==='day'?'일자별':'도시별'} 색상</button>`;
   menu.innerHTML=`<summary>☷ 보기 설정⌄</summary><div class="viewMenuPanel">
-    <div class="viewMenuLabel">색상 기준</div><button class="chip" id="colorModeBtn">🎨 ${colorByMode()==='day'?'일자별':'도시별'} 색상</button>
+    ${colorMode}
     <button class="chip" id="playBtn">${play?'⏹ 재생 정지':'▶ 경로 재생'}</button><button class="chip" id="themeBtn">◐ 테마 전환</button>
     <div class="viewMenuLabel">도시 포커스</div><div class="cityFocus">${cityButtons||'<span class="hint">도시 없음</span>'}</div></div>`;
   bar.appendChild(menu);
-  menu.querySelector('#colorModeBtn').onclick=()=>commit(()=>{ trip().colorBy=colorByMode()==='day'?'city':'day'; });
+  const colorBtn=menu.querySelector('#colorModeBtn');
+  if(colorBtn) colorBtn.onclick=()=>{ if(!guardEdit()) return; commit(()=>{ trip().colorBy=colorByMode()==='day'?'city':'day'; }); };
   menu.querySelector('#playBtn').onclick=playTrip;
   menu.querySelector('#themeBtn').onclick=toggleTheme;
   menu.querySelectorAll('.cityFocusBtn').forEach(button=>button.onclick=()=>{
@@ -4013,7 +4017,7 @@ document.getElementById('roSave').onclick=()=>{
     // 초대 링크 — 여행 본문은 없다. 미리보기 → (로그인) → 수락 → 그때 RLS 아래에서 내려온다.
     pendingJoinToken=TC_COLLAB.parseJoinHash(h);
     try{ localStorage.setItem(JOIN_KEY,pendingJoinToken); }catch(_){}
-    setTimeout(()=>startJoin(pendingJoinToken),0);   // sb는 스크립트 끝에서 만들어진다 — 한 틱 뒤에
+    setTimeout(()=>startJoin(pendingJoinToken),0);   // API 주소(TC_API.configure)는 스크립트 아래쪽에서 정해진다 — 한 틱 뒤에
   }else if(h.startsWith('#reset=')){
     // 재설정 메일의 링크 — 토큰만 들고 온다. 새 비밀번호는 여기서 받아 서버가 검증한다.
     pendingResetToken=decodeURIComponent(h.slice(7));
@@ -4621,7 +4625,9 @@ function sgButton(label, primary, fn, action){
   b.textContent=label; b.onclick=fn; if(action) b.dataset.action=action; return b;
 }
 // 일정 실행 상태 변경 — 방문 판정은 자동이 아니라 사용자가 누른다
+// ⚠️ 여행 모드의 동작도 편집 진입점이다 — 보기 권한이 바꾸면 로컬만 바뀌고 올라가지 않아 다음 당겨오기가 헛충돌을 띄운다
 function setSpotStatus(di, si, status){
+  if(!guardEdit()) return;
   commit(()=>{ const sp=trip().days[di].spots[si]; if(!sp) return; if(status) sp.status=status; else delete sp.status; });
   trackAdapt(status==='COMPLETED'?'activity_completed':(status==='SKIPPED'?'activity_skipped':'activity_reset'), {di, si});
   renderTravel(di);
@@ -4629,11 +4635,12 @@ function setSpotStatus(di, si, status){
 // 여행 모드 카드의 실행 상태 조작 — 다녀왔는지/건너뛰었는지가 남은 일정 계산의 입력이 된다
 function spotStatusRow(di, si, s, outside){
   const row=document.createElement('div'); row.className='tStatus';
+  const fixed=outside||readOnly();   // 보기 권한도 상태만 본다 — 누를 수 없는 버튼은 두지 않는다
   if(s.status==='COMPLETED'||s.status==='SKIPPED'){
     const chip=document.createElement('span'); chip.className='tStatusChip';
     chip.textContent=(s.status==='COMPLETED')?'✓ 다녀옴':'건너뜀'; row.appendChild(chip);
-    if(!outside) row.appendChild(sgButton('되돌리기', false, ()=>setSpotStatus(di,si,null)));
-  }else if(!outside){   // 여행 기간 밖에서는 '다녀왔어요'를 누를 일이 없다 — 누르면 남은 일정 계산이 거짓이 된다
+    if(!fixed) row.appendChild(sgButton('되돌리기', false, ()=>setSpotStatus(di,si,null)));
+  }else if(!fixed){   // 여행 기간 밖에서는 '다녀왔어요'를 누를 일이 없다 — 누르면 남은 일정 계산이 거짓이 된다
     row.appendChild(sgButton('다녀왔어요', false, ()=>setSpotStatus(di,si,'COMPLETED')));
     row.appendChild(sgButton('건너뛰기', false, ()=>setSpotStatus(di,si,'SKIPPED')));
   }
@@ -4641,6 +4648,7 @@ function spotStatusRow(di, si, s, outside){
 }
 // 재구성 적용 — 뺀 일정은 버리지 않는다. 다음 날 앞쪽으로 옮기고, 마지막 날이면 '건너뜀'으로만 표시한다.
 function applyReplan(sug, di){
+  if(!guardEdit()) return;
   const drop=((sug.action&&sug.action.drop)||[]).map(id=>{ const m=/^d\d+s(\d+)$/.exec(String(id)); return m?+m[1]:-1; })
     .filter(i=>i>=0).sort((a,b)=>b-a);
   if(drop.length) commit(()=>{
@@ -4658,6 +4666,7 @@ function applyReplan(sug, di){
 }
 // 다른 날에 있던 유동 장소를 오늘의 빈 시간 자리로 옮긴다
 function acceptMove(sug, di, action){
+  if(!guardEdit()) return;
   const win=_adapt&&_adapt.res&&_adapt.res.window;
   commit(()=>{
     const days=trip().days, src=days[action.fromDay];
@@ -4673,22 +4682,23 @@ function acceptMove(sug, di, action){
 }
 // 제안별 주 동작. 추천은 '수락 / 건너뛰기 / 다른 추천 / 직접 수정' 중 하나로 언제든 빠져나갈 수 있어야 한다.
 function sgPrimaryButtons(sug, di){
-  const a=sug.action||{};
-  if(sug.type==='REPLAN') return [sgButton('이대로 조정', true, ()=>applyReplan(sug,di), 'ACCEPT'),
+  // 보기 권한은 제안을 볼 수만 있다 — 일정을 바꾸는 버튼(조정·넣기·다녀옴·장소 추가)은 두지 않는다
+  const a=sug.action||{}, ro=readOnly();
+  if(sug.type==='REPLAN') return ro? [] : [sgButton('이대로 조정', true, ()=>applyReplan(sug,di), 'ACCEPT'),
     sgButton('직접 수정', false, ()=>{ recordFeedback(sug,'REPLACED'); document.getElementById('travel').classList.remove('show'); }, 'EDIT')];
   if(sug.type==='PRICE_SAVING') return [sgButton('예약 보기', true, ()=>{ recordFeedback(sug,'ACCEPTED'); openBookingList(); }, 'ACCEPT')];
   if(a.kind==='REST'||a.kind==='RETURN_TO_HOTEL') return [sgButton(a.kind==='REST'?'그렇게 할게요':'숙소로 가기', true, ()=>{
     recordFeedback(sug,'ACCEPTED'); toast('알겠어요 — 남은 일정은 그대로 둬요','#3e7a4c'); renderSuggestions(di); }, 'ACCEPT')];
-  if(a.kind==='EAT') return [sgButton('식사 장소 추가', true, ()=>{
+  if(a.kind==='EAT') return ro? [] : [sgButton('식사 장소 추가', true, ()=>{
     recordFeedback(sug,'ACCEPTED'); document.getElementById('travel').classList.remove('show');
     openSpotModal(di,-1); const at=document.getElementById('spotAt'); if(at&&a.startMin!=null) at.value=hm(a.startMin); }, 'ACCEPT')];
   // 여행 기간 밖에서는 '오늘'이 이 여행의 날이 아니다 — 오늘 일정에 넣거나 다녀왔다고 표시하는 버튼을 두지 않는다
-  const outside=travelOutside();
-  if(a.fromDay!=null && a.si!=null) return outside? [] : [sgButton('오늘 일정에 넣기', true, ()=>acceptMove(sug,di,a), 'ACCEPT')];
+  const fixed=travelOutside()||ro;
+  if(a.fromDay!=null && a.si!=null) return fixed? [] : [sgButton('오늘 일정에 넣기', true, ()=>acceptMove(sug,di,a), 'ACCEPT')];
   if(a.si!=null){
     const sp=trip().days[di].spots[a.si], out=[];
     if(hasLoc(sp)) out.push(sgButton('지도에서 보기', true, ()=>{ recordFeedback(sug,'ACCEPTED'); const l=extMapLink(sp); window.open(l.href,'_blank','noopener'); renderSuggestions(di); }, 'ACCEPT'));
-    if(!outside) out.push(sgButton('다녀왔어요', !out.length, ()=>{ recordFeedback(sug,'ACCEPTED'); setSpotStatus(di,a.si,'COMPLETED'); }, 'ACCEPT'));
+    if(!fixed) out.push(sgButton('다녀왔어요', !out.length, ()=>{ recordFeedback(sug,'ACCEPTED'); setSpotStatus(di,a.si,'COMPLETED'); }, 'ACCEPT'));
     return out;
   }
   return [];
@@ -4746,6 +4756,7 @@ function buildDayFlow(di){
 }
 // 수락 — 옮기는 도중 인덱스가 밀리므로 삽입 기준을 먼저 객체 참조로 잡아둔다
 function applyDayFlow(di){
+  if(!guardEdit()) return;
   const flow=_dayFlow; if(!flow) return;
   const days=trip().days, day=days[di], plan=[];
   flow.blocks.filter(b=>b.kind==='SUGGESTED'&&b.pick&&b.pick.fromDay!=null&&b.pick.si!=null).forEach(b=>{
@@ -4793,7 +4804,7 @@ function renderDayFlow(di){
   card.appendChild(list);
   const act=document.createElement('div'); act.className='sgActions';
   const outside=travelOutside();   // 기간 밖에서는 미리보기로만 — 일정을 바꾸는 버튼은 두지 않는다
-  if(!flow.empty&&!outside) act.appendChild(sgButton('이 일정으로 시작', true, ()=>applyDayFlow(di), 'ACCEPT'));
+  if(!flow.empty&&!outside&&!readOnly()) act.appendChild(sgButton('이 일정으로 시작', true, ()=>applyDayFlow(di), 'ACCEPT'));
   act.appendChild(sgButton('다른 제안', false, ()=>{
     (flow.picks||[]).forEach(p=>{ if(_flowExclude.indexOf(p.id)<0) _flowExclude.push(p.id); });
     buildDayFlow(di);
@@ -5000,6 +5011,13 @@ async function apiToken(){ return TC_AUTH.getToken(); }
 // 데이터는 전부 TC_API(NAS)를 지난다 — 가격 관측 기록도 /api/v1/trips/:id/prices로 옮겼고
 // app.js에 sb.rpc·sb.from 호출은 하나도 없다(통합 테스트가 이걸 지킨다).
 if(window.supabase) sb = window.supabase.createClient(SUPA_URL, SUPA_KEY);
+/**
+ * 서버 데이터(동기화·함께하기·버전 이력)를 쓸 수 있는가 — **로그인 상태와 TC_API만** 본다.
+ * 예전에는 Supabase SDK(`sb`)가 있는지로 막아서, CDN이 막히면 자체 Auth 로그인은 되는데 업로드·당겨오기·
+ * 초대 미리보기가 조용히 멈추고 '같이 짜기'가 다시 로그인을 요구했다. `sb`는 레거시 실시간 채널에만 쓴다.
+ * Supabase Auth 모드에서는 로그인 자체가 SDK를 지나므로(`sb`가 없으면 `user`도 없다) 예전과 같다.
+ */
+function cloudReady(){ return !!user && typeof TC_API!=='undefined'; }
 TC_API.configure({baseUrl:API_BASE, getToken:apiToken});
 TC_AUTH.configure({baseUrl:API_BASE,
   socialStartBaseUrl:API_BASE.endsWith('/nas') ? TC_AUTH.DEFAULT_BASE : API_BASE, supabase:sb,
@@ -5049,7 +5067,7 @@ async function apiRow(name,args,tripId){
 }
 function cloudSyncActive(delay){
   if(suppressCloudOnce){ suppressCloudOnce=false; return; }
-  if(!sb||!user) return;
+  if(!cloudReady()) return;
   clearTimeout(cloudRetryT); clearTimeout(syncTimer);
   syncTimer=setTimeout(syncStaleTrips,delay!=null?delay:800);
 }
@@ -5062,7 +5080,7 @@ function syncStaleTrips(){
   }
 }
 async function syncTripCloud(t,opts){
-  if(!sb||!user||!t) return;
+  if(!cloudReady()||!t) return;
   if(isSampleTrip(t)&&!(syncMeta[t.id]&&syncMeta[t.id].revision)) return;
   const entry=syncEntry(t.id), force=!!(opts&&opts.force);
   if(entry.status==='conflict'&&!force) return;
@@ -5124,17 +5142,17 @@ async function syncTripCloud(t,opts){
   }
 }
 async function flushPendingSync(){
-  if(!sb||!user) return;
+  if(!cloudReady()) return;
   for(const [id,entry] of Object.entries(syncMeta)){
     if(entry.status==='delete-pending'||entry.status==='delete-error') await performCloudDelete(id,entry.op);
   }
 }
-window.addEventListener('online',async()=>{ if(sb&&user){ await flushPendingSync(); cloudSyncActive(0); } });
+window.addEventListener('online',async()=>{ if(cloudReady()){ await flushPendingSync(); cloudSyncActive(0); } });
 
 // 버전 히스토리: 여행별 10분에 1회 스냅샷, 최근 15개 유지
 const _snapAt={};
 async function cloudSnapshot(t,revision){
-  if(!sb||!user) return;
+  if(!cloudReady()) return;
   const now=Date.now();
   if(_snapAt[t.id]&&now-_snapAt[t.id]<10*60*1000) return;
   _snapAt[t.id]=now;
@@ -5147,7 +5165,7 @@ async function cloudSnapshot(t,revision){
 // 버전 기록 목록 (여행 설정 모달)
 async function loadSnapList(){
   const box=document.getElementById('snapList');
-  if(!sb || !user){ box.innerHTML='<div class="hint">로그인하면 자동으로 버전이 기록돼요 (10분 간격)</div>'; return; }
+  if(!cloudReady()){ box.innerHTML='<div class="hint">로그인하면 자동으로 버전이 기록돼요 (10분 간격)</div>'; return; }
   box.innerHTML='<div class="hint">불러오는 중…</div>';
   const {data,error}=await TC_API.snapshots.list(store.activeId);
   if(error||!data||!data.length){ box.innerHTML='<div class="hint">저장된 버전이 없어요 (10분 간격 자동 기록)</div>'; return; }
@@ -5156,8 +5174,11 @@ async function loadSnapList(){
     const d=new Date(r.created_at);
     const row=document.createElement('div'); row.className='snapRow';
     row.innerHTML=`<span>${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}</span>`;
+    // 복원도 편집이다 — 보기 권한에는 버튼을 두지 않고, 그려 둔 뒤 권한이 바뀐 경우는 누를 때 막는다
+    if(readOnly()){ box.appendChild(row); return; }
     const btn=document.createElement('button'); btn.className='btn sm'; btn.textContent='복원';
     btn.onclick=async()=>{
+      if(!guardEdit()) return;
       if(!confirm('이 시점으로 복원할까요? (현재 상태는 ↩️ 실행취소로 되돌릴 수 있어요)'))return;
       const {data:full,error:fe}=await TC_API.snapshots.load(store.activeId,r.id);
       const restoredResult=full&&validateTripPayload(full.data);
@@ -5173,10 +5194,10 @@ async function loadSnapList(){
 function cloudDelete(clientId,deletedTrip){
   const op=uid()+Date.now();
   TC_SYNC.beginDelete(syncMeta,clientId,op); persistSyncMeta();
-  if(sb&&user) performCloudDelete(clientId,op,deletedTrip);
+  if(cloudReady()) performCloudDelete(clientId,op,deletedTrip);
 }
 async function performCloudDelete(clientId,op,deletedTrip){
-  if(!sb||!user||syncUploads.has(syncAccountEpoch+':'+clientId)) return;
+  if(!cloudReady()||syncUploads.has(syncAccountEpoch+':'+clientId)) return;
   const account=user.id, epoch=syncAccountEpoch;
   const current=()=>user&&user.id===account&&syncAccountEpoch===epoch;
   const entry=syncEntry(clientId);
@@ -5185,7 +5206,8 @@ async function performCloudDelete(clientId,op,deletedTrip){
     if(!current()) return;
     if(row&&row.conflict){
       entry.status='conflict'; persistSyncMeta();   // base revision 유지 (위 syncTripCloud와 같은 이유)
-      enqueueSyncConflict({kind:row.deleted_at?'remote-deleted':'changed-both',local:deletedTrip||null,remote:row.data||null,revision:Number(row.revision)||entry.revision,deleted_at:row.deleted_at||null});
+      // 밀린 삭제(재시도·온라인 복귀)는 지운 여행의 사본 없이 온다(local:null) — 어느 여행인지는 id로 남긴다
+      enqueueSyncConflict({id:clientId,kind:row.deleted_at?'remote-deleted':'changed-both',local:deletedTrip||null,remote:row.data||null,revision:Number(row.revision)||entry.revision,deleted_at:row.deleted_at||null});
       return;
     }
     const result=TC_SYNC.finishDelete(syncMeta,clientId,op,Number(row&&row.revision)||entry.revision||1); persistSyncMeta();
@@ -5200,25 +5222,46 @@ function reconcileUndoDeletes(){
     const entry=syncMeta[t.id];
     if(entry&&['delete-pending','delete-error','tombstoned'].includes(entry.status)){
       TC_SYNC.undoDelete(syncMeta,t.id);
-      if(sb&&user) syncTripCloud(t);
+      if(cloudReady()) syncTripCloud(t);
     }
   }
   persistSyncMeta();
+  // 충돌을 묻는 동안 되돌리기로 여행이 돌아오면 '이 기기 것'이 삭제에서 그 여행으로 바뀐다 — 질문도 다시 그린다
+  if(currentSyncConflict) paintSyncConflict();
 }
 
 function enqueueSyncConflict(conflict){ syncConflicts.push(conflict); if(!currentSyncConflict) showNextSyncConflict(); }
+/** 충돌이 가리키는 여행. 밀린 삭제의 충돌에는 로컬 사본이 없다(local:null) — 그때는 원격본이나 남겨 둔 id로 찾는다 */
+function conflictTripId(c){ return (c.local&&c.local.id)||(c.remote&&c.remote.id)||c.id||null; }
+/**
+ * 충돌의 '이 기기 것' — **지금 store에 있는** 그 여행. 없으면 이 기기에서 지운 것이다(삭제 충돌).
+ * ⚠️ `c.local`로 가르지 않는다. 바로 지운 경우(deleteTrip→cloudDelete)는 지운 여행의 사본이 c.local로 실려 와서
+ * '이 기기 것 유지'가 그 사본을 force로 되올렸고(서버에서 되살아나고 다른 기기의 편집은 덮였다), 반대로 묻는 동안
+ * 되돌리기로 돌아온 여행은 c.local이 없어도 이 기기 것이다. 문구·사본 선택지·버튼 동작이 전부 이 기준 하나를 쓴다.
+ */
+function conflictDeviceTrip(c){ const id=conflictTripId(c); return (id&&store.trips.find(t=>t.id===id))||null; }
 function showNextSyncConflict(){
   currentSyncConflict=syncConflicts.shift()||null;
   if(!currentSyncConflict){ document.getElementById('syncConflictBg').classList.remove('show'); return; }
-  const c=currentSyncConflict, name=(c.local&&c.local.name)||(c.remote&&c.remote.name)||'여행';
-  document.getElementById('syncConflictText').textContent=c.reviveRefused
-    ?`“${name}” — 주최자가 지운 여행이라 주최자만 되살릴 수 있어요. 이 기기 것은 사본으로 남겨 주세요.`
-    :`“${name}”이 다른 기기에서도 변경됐어요. 어느 버전을 보존할지 선택하세요.`;
-  document.getElementById('syncUseDevice').style.display=c.reviveRefused?'none':'';   // .btn이 display:flex라 hidden 속성은 먹지 않는다
+  paintSyncConflict();
   document.getElementById('syncConflictBg').classList.add('show');
 }
+/** 지금 묻는 충돌을 그린다. 무엇을 보였는지(`deletedHere`)를 남겨, 누를 때 그 사이 바뀌었으면 다시 묻는다 */
+function paintSyncConflict(){
+  const c=currentSyncConflict; if(!c) return;
+  const local=conflictDeviceTrip(c), name=(local||c.local||c.remote||{}).name||'여행';
+  c.deletedHere=!local;
+  // 이 기기에서 지운 여행이면 남길 사본이 없다 — 두 선택지가 각각 무엇이 되는지(되살리기/지우기)를 말한다
+  document.getElementById('syncConflictText').textContent=c.reviveRefused
+    ? `“${name}” — 주최자가 지운 여행이라 주최자만 되살릴 수 있어요. 이 기기 것은 사본으로 남겨 주세요.`
+    : local
+      ? `“${name}”이 다른 기기에서도 변경됐어요. 어느 버전을 보존할지 선택하세요.`
+      : `이 기기에서 지운 “${name}”이 다른 기기에서 변경됐어요. 저장된 것으로 바꾸면 여행이 돌아오고, 이 기기 것을 유지하면 지워져요.`;
+  document.getElementById('syncUseDevice').style.display=c.reviveRefused?'none':'';
+  document.getElementById('syncKeepCopy').style.display=local?'':'none';
+}
 function replaceWithRemote(c){
-  const idx=store.trips.findIndex(t=>t.id===(c.local&&c.local.id));
+  const id=conflictTripId(c), idx=store.trips.findIndex(t=>t.id===id);
   const remoteResult=c.remote&&validateTripPayload(c.remote);
   const remote=remoteResult&&remoteResult.ok&&remoteResult.value;
   if(c.remote&&!remote){ reportOperationalError('cloud.conflict.invalid',new Error('validation')); toast('클라우드 데이터가 손상되어 적용하지 않았어요','#b4342a'); return false; }
@@ -5226,14 +5269,39 @@ function replaceWithRemote(c){
   if(remote&&idx<0&&!c.deleted_at) store.trips.push(remote);
   if(!store.trips.length) store.trips=[{id:uid(),name:'새 여행',start:'',days:[{title:'',drive:'',note:'',spots:[]}]}];
   if(!store.trips.find(t=>t.id===store.activeId)) store.activeId=store.trips[0].id;
-  if(c.local) syncMeta[c.local.id]={revision:c.revision,status:c.deleted_at?'tombstoned':'clean',op:'',hash:remote?TC_SYNC.hashTrip(remote):''};
+  // 사본 없는 삭제 충돌도 여기서 풀어야 한다 — 안 풀면 conflict로 남아 이후 편집이 영영 올라가지 않는다
+  if(id) syncMeta[id]={revision:c.revision,status:c.deleted_at?'tombstoned':'clean',op:'',hash:remote?TC_SYNC.hashTrip(remote):''};
   persistSyncMeta(); adoptRemote(()=>{ suppressCloudOnce=true; activeDay=0; save(); render(); }); return true;
 }
+/**
+ * 이 기기에서 지운 여행의 충돌(conflictDeviceTrip이 없다)에서 '이 기기 것 유지' — 이 기기 것은 **삭제**다.
+ * 바로 지웠든 밀린 삭제든 같다. 삭제에는 강제 덮어쓰기가 없어서,
+ * 방금 서버가 알려 준 revision을 기준으로 다시 지운다(그 사이 또 바뀌면 다시 묻는다).
+ * 그냥 두면 다음 로그인 병합이 지운 여행을 도로 내려받는다.
+ */
+function retryCloudDelete(c){
+  const id=conflictTripId(c); if(!id) return;
+  const op=uid()+Date.now();
+  syncMeta[id]={revision:c.revision||null,status:'delete-pending',op,hash:''}; persistSyncMeta();
+  performCloudDelete(id,op);
+}
 document.getElementById('syncUseCloud').onclick=()=>{ if(!replaceWithRemote(currentSyncConflict)) return; currentSyncConflict=null; showNextSyncConflict(); };
-document.getElementById('syncUseDevice').onclick=()=>{ const c=currentSyncConflict; currentSyncConflict=null; document.getElementById('syncConflictBg').classList.remove('show'); if(c&&c.local) syncTripCloud(c.local,{force:true}); showNextSyncConflict(); };
+document.getElementById('syncUseDevice').onclick=()=>{
+  const c=currentSyncConflict;
+  if(c){
+    const local=conflictDeviceTrip(c);
+    // 그린 뒤에 여행이 돌아왔거나 사라졌으면 화면이 말한 것과 반대 일이 된다 — 다시 그리고 한 번 더 묻는다
+    if(!local!==!!c.deletedHere){ paintSyncConflict(); return; }
+    currentSyncConflict=null; document.getElementById('syncConflictBg').classList.remove('show');
+    // 이 기기 것이 남아 있으면 그것을 올리고, 지웠으면 다시 지운다
+    if(local) syncTripCloud(local,{force:true}); else retryCloudDelete(c);
+  }
+  showNextSyncConflict();
+};
 document.getElementById('syncKeepCopy').onclick=()=>{
-  const c=currentSyncConflict; if(!c||!c.local) return;
-  const copy=JSON.parse(JSON.stringify(c.local)); copy.id=uid(); copy.name=(copy.name||'여행')+' (충돌 복사본)';
+  const c=currentSyncConflict; if(!c) return;
+  const local=conflictDeviceTrip(c); if(!local){ paintSyncConflict(); return; }   // 지운 여행은 남길 사본이 없다
+  const copy=JSON.parse(JSON.stringify(local)); copy.id=uid(); copy.name=(copy.name||'여행')+' (충돌 복사본)';
   if(!replaceWithRemote(c)) return; store.trips.push(copy); store.activeId=copy.id; suppressCloudOnce=true; save(); render(); syncTripCloud(copy);
   currentSyncConflict=null; showNextSyncConflict();
 };
@@ -5325,7 +5393,7 @@ function requireLogin(reason, resume, resumeKey){ openAuthModal({reason, resume,
 /** 로그인이 끝났으면 기다리던 기능을 한 번 연다. 로그인 상태가 되기 전에는 아무것도 하지 않는다.
  * 메모리에 없으면 소셜 로그인에서 돌아온 것이다 — 탭 저장소의 이름으로 찾는다(읽으면 바로 지운다) */
 function runAuthResume(){
-  if(!user||!sb) return;
+  if(!cloudReady()) return;
   let fn=authResume;
   if(!fn){ let key=''; try{ key=sessionStorage.getItem(AUTH_RESUME_KEY)||''; }catch(_){} fn=AUTH_RESUME_ACTIONS[key]||null; }
   clearAuthResumeKey();
@@ -5442,7 +5510,7 @@ updateAuthUI();
 // 접근 제어는 DB(RLS·RPC)가 결정한다. 여기서는 그 결과를 보여주고, 서버가 거절할 요청을 미리 막을 뿐이다.
 // 실시간 반영은 다음 단계다 — 지금은 탭이 다시 보일 때와 패널을 열 때 최신본을 당겨온다(pullTrip).
 async function refreshTripRoles(){
-  if(!sb||!user){ tripRoles={}; liveChoice={provider:'SUPABASE',url:null}; updateCollabUI(); return; }
+  if(!cloudReady()){ tripRoles={}; liveChoice={provider:'SUPABASE',url:null}; updateCollabUI(); return; }
   try{
     const {data,error}=await TC_API.me();
     if(error) throw error;
@@ -5533,7 +5601,7 @@ function showPresence(text){
   clearTimeout(presenceT); presenceT=setTimeout(()=>{ el.hidden=true; },6000);
 }
 async function pushLocalFirst(id){
-  if(!sb||!user||!store) return;
+  if(!cloudReady()||!store) return;
   const local=store.trips.find(t=>t.id===id); if(!local) return;
   const entry=syncMeta[id];
   if(entry&&entry.hash===TC_SYNC.hashTrip(local)) return;   // 올릴 것이 없다
@@ -5541,7 +5609,7 @@ async function pushLocalFirst(id){
   await syncTripCloud(local);
 }
 async function pullTrip(id,opts){
-  if(!sb||!user||!id) return false;
+  if(!cloudReady()||!id) return false;
   const now=Date.now(); if(!(opts&&opts.force)&&_pullAt[id]&&now-_pullAt[id]<30000) return false;
   _pullAt[id]=now;
   try{
@@ -5559,7 +5627,10 @@ async function pullTrip(id,opts){
     if(row.deleted_at){ enqueueSyncConflict({kind:'remote-deleted',local,remote:row.data||null,revision:remoteRev,deleted_at:row.deleted_at}); return true; }
     const checked=validateTripPayload(row.data);
     if(!checked.ok){ reportOperationalError('collab.pull.invalid',new Error('validation')); return false; }
-    if(entry.hash&&entry.hash!==TC_SYNC.hashTrip(local)){   // 로컬에 미반영 편집 — 사용자가 고른다
+    // 로컬에 미반영 편집 — 사용자가 고른다. 지문이 비는 상태도 실제로 생긴다(삭제 되돌리기·삭제 뒤 재동기화·권한 회복):
+    // 그때는 지문 대신 상태를 본다 — 아직 못 올린 것(dirty·error·new)을 원격본이 조용히 덮으면 안 된다.
+    const unsynced=entry.hash? entry.hash!==TC_SYNC.hashTrip(local) : ['dirty','error','new'].includes(entry.status);
+    if(unsynced){
       entry.status='conflict'; persistSyncMeta();
       enqueueSyncConflict({kind:'changed-both',local,remote:checked.value,revision:remoteRev,deleted_at:null});
       return true;
@@ -5576,7 +5647,7 @@ async function pullTrip(id,opts){
   }catch(e){ reportOperationalError('collab.pull',e); return false; }
 }
 function pullActiveIfShared(){
-  if(viewMode||!user||!sb||!store) return;
+  if(viewMode||!cloudReady()||!store) return;
   const id=store.activeId, info=tripRoles[id];
   if(!info||info.count<=1) return;   // 혼자 쓰는 여행에는 다른 멤버의 변경이 없다
   pushLocalFirst(id).then(()=>pullTrip(id));   // 실시간과 같은 순서 — 내 것부터 올리고 당긴다
@@ -5587,7 +5658,7 @@ document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==
 let membersTripId=null;
 function openMembers(){
   if(viewMode){ toast('읽기전용 보기예요 — "내 여행으로 저장" 후 이용하세요','#4f4740'); return; }
-  if(!sb||!user){ requireLogin('같이 짜기는 로그인이 필요해요 — 로그인하면 일행을 초대해 같은 여행을 함께 계획할 수 있어요. 로그인한 뒤 바로 이어서 열어 드릴게요.', openMembers, 'members'); return; }
+  if(!cloudReady()){ requireLogin('같이 짜기는 로그인이 필요해요 — 로그인하면 일행을 초대해 같은 여행을 함께 계획할 수 있어요. 로그인한 뒤 바로 이어서 열어 드릴게요.', openMembers, 'members'); return; }
   membersTripId=store.activeId;
   document.getElementById('membersTitle').textContent=`같이 짜기 · ${trip().name||'여행'}`;   // 메뉴 이름(같이 짜기)과 화면 이름을 맞춘다
   document.getElementById('inviteResult').hidden=true; document.getElementById('inviteLink').value='';
@@ -5709,7 +5780,7 @@ let candOpen=new Set(), candComments={}, candDraft={}, candCommentErr=new Set();
 function openCandidates(seed){
   if(typeof seed?.title!=='string') seed=null; // onclick은 MouseEvent를 전달한다.
   if(viewMode){ toast('읽기전용 보기예요 — "내 여행으로 저장" 후 이용하세요','#4f4740'); return; }
-  if(!sb||!user){ requireLogin('가고 싶은 곳은 로그인이 필요해요 — 로그인하면 일행과 후보를 함께 고를 수 있어요. 로그인한 뒤 바로 이어서 열어 드릴게요.', ()=>openCandidates(seed), 'candidates'); return; }
+  if(!cloudReady()){ requireLogin('가고 싶은 곳은 로그인이 필요해요 — 로그인하면 일행과 후보를 함께 고를 수 있어요. 로그인한 뒤 바로 이어서 열어 드릴게요.', ()=>openCandidates(seed), 'candidates'); return; }
   const keepDraft=seed && candTripId===store.activeId && (document.getElementById('candTitleInput').value.trim()||document.getElementById('candNoteInput').value.trim());
   candTripId=store.activeId;
   fillCandCatSelects();
@@ -5994,7 +6065,7 @@ async function deleteComment(candId,commentId){
 // ── 최근 활동 (함께하기 모달) ─────────────────────────────────────────────
 // 서버는 재료만 주고 문장은 collab.js(activityText)가 만든다(§39). 저장마다 남은 줄은 condenseActivity가 묶는다.
 async function renderActivity(){
-  const box=document.getElementById('activityList'); if(!box||!sb||!user||!membersTripId) return;
+  const box=document.getElementById('activityList'); if(!box||!cloudReady()||!membersTripId) return;
   try{
     const {data,error}=await TC_API.rpc('list_trip_activity',{p_client_id:membersTripId,p_limit:40});
     if(error) throw error;
@@ -6046,6 +6117,18 @@ function ensureLiveChannel(){
       .subscribe((status)=>{ liveOn=(status==='SUBSCRIBED'); setLiveState(liveOn); });
   }catch(e){ reportOperationalError('collab.live',e); closeLive(); liveKey=''; }
 }
+// 접속은 몇 번만 다시 붙고 멈추는데(api.js), 같은 여행이면 ensureLiveChannel이 그냥 돌아간다 — 그래서 NAS·Tailscale이
+// 잠깐 끊겼다 돌아와도 그 여행은 다른 여행으로 갔다 오기 전까지 실시간이 없었다. 탭이 다시 보이거나 네트워크가
+// 돌아오면 **스스로 포기한 것만**(`state()==='gave-up'`) 새로 붙인다. 붙어 있는 접속은 물론이고
+// - 서버가 거절한 접속(멤버에서 빠짐·세션 무효)도 그대로 둔다 — 다시 붙어도 같은 답이다. 로그아웃·여행 전환이 liveKey를 바꾸면 그때 새로 붙는다.
+// - 붙는 중인 접속도 그대로 둔다 — 휴대폰이 깨어날 때 online과 visibilitychange가 함께 와서, 둘째가 첫째가 방금 연 접속을 끊었다.
+// Supabase 채널(레거시)은 SDK가 스스로 다시 붙는다.
+function reviveLive(){
+  if(!liveKey||!liveConn||typeof liveConn.state!=='function'||liveConn.state()!=='gave-up') return;
+  liveKey=''; ensureLiveChannel();
+}
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') reviveLive(); });
+window.addEventListener('online',reviveLive);
 function setLiveState(on){
   const el=document.getElementById('liveState'); if(!el) return;
   el.innerHTML=''; const d=document.createElement('span'); d.className='liveDot'+(on?' on':'');
@@ -6060,7 +6143,7 @@ function onLiveEvent(tripId,row){
   clearTimeout(liveT); liveT=setTimeout(()=>{ flushLive(tripId); },400);   // 넷이 동시에 누르면 한 번만 다시 읽는다
 }
 async function flushLive(tripId){
-  const batch=livePending.splice(0); if(!batch.length||!sb||!user) return;
+  const batch=livePending.splice(0); if(!batch.length||!cloudReady()) return;
   if(dragActive){   // 손이 목록 위에 있다 — 끝나면 그때 한 번에 반영한다(버리지 않는다)
     livePending.unshift.apply(livePending,batch);
     clearTimeout(liveT); liveT=setTimeout(()=>{ flushLive(tripId); },600);
@@ -6259,7 +6342,7 @@ async function acceptProposal(p){
 // 이 여행에 대한 것이다(§18) — 고정 프로필이 아니다. 선택형 칩 한 번의 탭(§16). 판정(정규화·그룹 요약·합의)은 collab.js에.
 let myPrefs={}, prefRows=[];
 async function renderPrefs(){
-  const id=membersTripId, box=document.getElementById('prefGroup'); if(!box||!sb||!user||!id) return;
+  const id=membersTripId, box=document.getElementById('prefGroup'); if(!box||!cloudReady()||!id) return;
   try{
     const {data,error}=await TC_API.rpc('list_trip_preferences',{p_client_id:id});
     if(error) throw error;
@@ -6304,7 +6387,7 @@ function togglePrefTopic(k,other,v){
   myPrefs[k]=[...a];
 }
 async function savePrefs(){
-  const btn=document.getElementById('prefSave'); if(!sb||!user||!membersTripId) return;
+  const btn=document.getElementById('prefSave'); if(!cloudReady()||!membersTripId) return;
   btn.disabled=true;
   const draft=TC_COLLAB.normPrefs(Object.assign({},myPrefs,{note:document.getElementById('prefNote').value}));
   try{
@@ -6333,7 +6416,7 @@ document.getElementById('membersMenuBtn').onclick=openMembers;
 
 // 여행에서 나가기 — 주최자가 아닌 멤버. 서버에서 나간 뒤 이 기기의 사본도 지운다(더는 갱신되지 않는 사본을 남기지 않는다).
 function leaveTripUI(id,t){
-  if(!sb||!user) return false;
+  if(!cloudReady()) return false;
   if(!confirm(`"${t.name}" 여행에서 나갈까요? 이 기기의 사본도 함께 지워져요.`)) return false;
   TC_API.rpc('leave_trip',{p_client_id:id}).then(({error})=>{
     if(error) throw error;
@@ -6374,11 +6457,8 @@ async function startJoin(token){
   document.getElementById('joinModalBg').classList.add('show');
   document.getElementById('joinTripName').textContent='불러오는 중…';
   document.getElementById('joinTripMeta').textContent=''; document.getElementById('joinHint').textContent='';
-  if(!sb){
-    document.getElementById('joinTripName').textContent='초대 정보를 불러오지 못했어요';
-    document.getElementById('joinHint').textContent='온라인 상태에서 이 링크를 다시 열어 주세요';
-    updateJoinModal(); return;
-  }
+  // 미리보기는 로그인 없이 TC_API로 묻는다 — Supabase SDK가 있는지와 상관없다(CDN이 막혀도 초대는 열린다).
+  // 못 받으면(오프라인) inviteVerdict가 NETWORK 문장을 준다.
   try{ joinPreview=await apiRow('invite_preview',{p_token:token}); }
   catch(e){ reportOperationalError('collab.preview',e); joinPreview=null; }
   const v=TC_COLLAB.inviteVerdict(joinPreview);
@@ -6404,7 +6484,7 @@ function clearPendingJoin(){
 }
 // 로그인 병합이 끝난 뒤 — 참여 대기 토큰이 있으면 미리보기부터 이어 간다(버튼이 '참여하기'로 바뀐다)
 async function completePendingJoin(){
-  const token=pendingJoinToken; if(!token||!sb||!user) return;
+  const token=pendingJoinToken; if(!token||!cloudReady()) return;
   if(!document.getElementById('joinModalBg').classList.contains('show')) return startJoin(token);
   if(!joinPreview){ return startJoin(token); }
   try{ joinPreview=await apiRow('invite_preview',{p_token:token}); }catch(_){}   // 로그인 후엔 already_member가 정확해진다
@@ -6510,7 +6590,7 @@ function updateSaveState(){
   let state='local', message='이 기기에 저장됨', callback=null, actionText='다시 시도';
   if(readOnly()){ state='readonly'; message='읽기 전용으로 보는 중'; }
   else if(lsDirty){ state='error'; message='기기 저장 실패 · 화면을 닫기 전에 다시 저장해 주세요'; callback=()=>save(); }
-  else if(user && sb && !(isSampleTrip(t) && !entry?.revision)){
+  else if(cloudReady() && !(isSampleTrip(t) && !entry?.revision)){
     if(entry?.status==='conflict'){
       state='conflict'; message='다른 기기와 변경이 겹쳤어요 · 내 입력은 기기에 남아 있어요';
       actionText='변경 확인'; callback=()=>{ if(currentSyncConflict) document.getElementById('syncConflictBg').classList.add('show'); else if(syncConflicts.length) showNextSyncConflict(); else syncOnLogin(); };

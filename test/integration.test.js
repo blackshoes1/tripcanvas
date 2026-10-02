@@ -183,6 +183,135 @@ test('통합: 계정이 바뀐 뒤 도착한 삭제 응답도 새 메타를 변�
   }finally{w.close();}
 });
 
+// 밀린 삭제(재시도·온라인 복귀)는 지운 여행의 사본 없이 다시 지운다 — 그 사이 다른 기기가 고쳤으면 충돌이 local:null로 온다.
+// 전에는 어느 쪽을 골라도 syncMeta가 conflict로 남아 이후 편집이 올라가지 않았고, '이 기기 것 유지'는 아무 일도 없다가
+// 다음 로그인 병합이 지운 여행을 도로 내려받았다.
+//
+// 가짜 서버는 **상태를 든다** — tombstone·save가 revision CAS를 지나고, 로그인 병합에는 그 상태에서 만든 행을 넣는다.
+// 손으로 만든 '삭제된 행'을 넣으면 재시도가 서버에 닿았는지와 상관없이 병합이 통과한다(mergeForLogin은 지워진 원격 행을 늘 뺀다).
+function bootDeleteConflict(opts){
+  const w=boot();
+  w.eval(`user={id:'u1'}; sb={};
+    window.tomb=[]; window.saves=[];
+    // 다른 기기(B)가 rev 3 위에 고쳐 rev 5가 됐다
+    window.server={gone:{revision:5,data:{id:'gone',name:'지운 여행',start:'',days:[{title:'',drive:'',note:'',spots:[{name:'B가 넣은 곳'}]}]},deleted_at:null}};
+    TC_API.sync.tombstone=async(id,rev)=>{ window.tomb.push(rev); const row=window.server[id];
+      if(!row||row.deleted_at) return {applied:true,conflict:false,revision:rev||1,data:null,deleted_at:null};
+      if(rev!==row.revision) return {applied:false,conflict:true,revision:row.revision,data:row.data,deleted_at:null};
+      row.revision++; row.deleted_at='2026-09-01T00:00:00Z'; return {applied:true,conflict:false,revision:row.revision,data:null,deleted_at:null}; };
+    TC_API.sync.save=async(id,t,rev,force)=>{ window.saves.push({id,rev,force:!!force}); const row=window.server[id]||(window.server[id]={revision:0,data:null,deleted_at:null});
+      if(!force&&rev!==row.revision) return {applied:false,conflict:true,revision:row.revision,data:row.data,deleted_at:row.deleted_at};
+      row.revision++; row.data=JSON.parse(JSON.stringify(t)); row.deleted_at=null; return {applied:true,conflict:false,revision:row.revision,data:row.data,deleted_at:null}; };
+    window.serverRows=()=>Object.entries(window.server).map(([id,r])=>({client_id:id,data:r.deleted_at?null:r.data,revision:r.revision,deleted_at:r.deleted_at}));
+    window.loginMerge=()=>JSON.stringify(TC_SYNC.mergeForLogin(store.trips,window.serverRows(),syncMeta).trips.map(t=>t.id));
+    cloudSnapshot=()=>{};`);
+  if(opts&&opts.immediate){
+    // 바로 지운다(온라인) — deleteTrip이 지운 여행의 사본을 cloudDelete(id,t)로 넘긴다
+    w.eval(`store={activeId:'keep',trips:[{id:'keep',name:'K',days:[{spots:[]}]},
+        {id:'gone',name:'지운 여행',start:'',days:[{title:'',drive:'',note:'',spots:[]}]}]};
+      syncMeta={keep:{revision:1,status:'clean',op:'',hash:TC_SYNC.hashTrip(store.trips[0])},
+        gone:{revision:3,status:'clean',op:'',hash:TC_SYNC.hashTrip(store.trips[1])}};
+      histStack.length=0; histLast=JSON.stringify(store); window.confirm=()=>true;`);
+  }else{
+    // 밀린 삭제 — 지운 여행은 이미 store에 없고 syncMeta에 delete-pending만 남았다
+    w.eval(`store={activeId:'keep',trips:[{id:'keep',name:'K',days:[{spots:[]}]}]};
+      syncMeta={}; TC_SYNC.beginDelete(syncMeta,'gone','op1'); syncMeta.gone.revision=3;`);
+  }
+  return w;
+}
+const goneSaves = (w) => JSON.parse(JSON.stringify(w.saves)).filter(s => s.id === 'gone');
+test('통합: 사본 없는 삭제 충돌 — 저장된 것을 고르면 여행이 돌아오고 이후 편집도 올라간다', { skip: noJsdom }, async () => {
+  const w=bootDeleteConflict();
+  try{
+    await w.eval(`flushPendingSync()`);
+    assert.equal(w.eval(`syncMeta.gone.status`),'conflict');
+    assert.equal(w.document.getElementById('syncConflictBg').classList.contains('show'),true);
+    assert.match(w.document.getElementById('syncConflictText').textContent,/지운 여행/);
+    assert.equal(w.document.getElementById('syncKeepCopy').style.display,'none','남길 사본이 없으면 사본 선택지를 두지 않는다');
+    w.document.getElementById('syncUseCloud').click();
+    assert.equal(w.eval(`store.trips.some(t=>t.id==='gone')`),true,'다른 기기의 편집이 돌아온다');
+    assert.equal(w.eval(`syncMeta.gone.status`),'clean','충돌이 풀린다');
+    assert.equal(w.eval(`syncMeta.gone.revision`),5);
+    w.eval(`store.trips.find(t=>t.id==='gone').name='돌아온 뒤 편집';`);
+    await w.eval(`syncTripCloud(store.trips.find(t=>t.id==='gone'))`);
+    assert.deepEqual(goneSaves(w),[{id:'gone',rev:5,force:false}],'이후 편집이 그 revision 위로 올라간다');
+  }finally{w.close();}
+});
+
+test('통합: 사본 없는 삭제 충돌 — 이 기기 것을 고르면 방금 본 revision으로 다시 지운다', { skip: noJsdom }, async () => {
+  const w=bootDeleteConflict();
+  try{
+    await w.eval(`flushPendingSync()`);
+    w.document.getElementById('syncUseDevice').click();
+    await new Promise(r=>setTimeout(r,20));
+    assert.deepEqual(Array.from(w.tomb),[3,5],'서버가 알려 준 revision 기준으로 삭제를 다시 보낸다');
+    assert.equal(w.eval(`syncMeta.gone.status`),'tombstoned');
+    assert.equal(w.eval(`store.trips.some(t=>t.id==='gone')`),false);
+    assert.equal(w.eval(`window.server.gone.deleted_at!=null`),true,'서버에서도 지워졌다');
+    // 다음 로그인 병합이 지운 여행을 도로 내려받지 않는다 — 행은 위 서버 상태에서 만든다
+    assert.deepEqual(JSON.parse(w.eval(`loginMerge()`)),['keep']);
+  }finally{w.close();}
+});
+
+// 바로 지운 경우(온라인)는 지운 여행의 사본이 충돌에 c.local로 실려 온다. 전에는 '이 기기 것 유지'가 그 사본을
+// force로 올려 서버에서 되살렸고(B의 편집은 덮였다) syncMeta는 clean이라, 다음 로그인 병합이 지운 여행을 내려받았다.
+// 같은 버튼이 언제 지웠느냐에 따라 반대로 동작했다 — '이 기기 것'은 c.local이 아니라 store에 그 여행이 있는가로 가른다.
+test('통합: 바로 지운 여행의 충돌 — 이 기기 것을 고르면 지운 사본을 올리지 않고 다시 지운다', { skip: noJsdom }, async () => {
+  const w=bootDeleteConflict({immediate:true});
+  try{
+    assert.equal(w.eval(`deleteTrip('gone')`),true);
+    await new Promise(r=>setTimeout(r,20));
+    assert.deepEqual(Array.from(w.tomb),[3]);
+    assert.equal(w.eval(`currentSyncConflict&&currentSyncConflict.local&&currentSyncConflict.local.id`),'gone','지운 사본이 충돌에 실려 온다');
+    assert.match(w.document.getElementById('syncConflictText').textContent,/이 기기에서 지운 “지운 여행”/,'삭제라고 말한다');
+    assert.equal(w.document.getElementById('syncKeepCopy').style.display,'none','지운 여행은 사본으로 남길 것이 없다');
+    w.document.getElementById('syncUseDevice').click();
+    await new Promise(r=>setTimeout(r,20));
+    assert.deepEqual(Array.from(w.tomb),[3,5],'서버가 알려 준 revision으로 삭제를 다시 보낸다');
+    assert.deepEqual(goneSaves(w),[],'지운 사본을 올리지 않는다');
+    assert.equal(w.eval(`syncMeta.gone.status`),'tombstoned');
+    assert.equal(w.eval(`window.server.gone.data.days[0].spots[0].name`),'B가 넣은 곳','B의 편집을 덮지 않았다');
+    assert.deepEqual(JSON.parse(w.eval(`loginMerge()`)),['keep'],'다음 로그인 병합이 도로 내려받지 않는다');
+  }finally{w.close();}
+});
+
+// 묻는 동안 되돌리기(Ctrl+Z·토스트)로 여행이 돌아오면 '이 기기 것'은 더 이상 삭제가 아니다. 전에는 문구가 '지워져요'인 채로
+// 버튼은 돌아온 여행을 force로 올렸다 — 보이는 것과 하는 일이 갈렸다. 그리는 때와 누르는 때가 같은 기준을 쓴다.
+test('통합: 삭제 충돌을 묻는 동안 여행이 돌아오거나 사라지면 질문을 다시 그리고, 버튼은 보인 대로 동작한다', { skip: noJsdom }, async () => {
+  const w=bootDeleteConflict({immediate:true});
+  try{
+    w.eval(`deleteTrip('gone')`);
+    await new Promise(r=>setTimeout(r,20));
+    assert.match(w.document.getElementById('syncConflictText').textContent,/이 기기에서 지운/);
+    // 모달이 떠 있어도 Ctrl+Z는 막히지 않는다
+    w.document.body.dispatchEvent(new w.KeyboardEvent('keydown',{key:'z',ctrlKey:true,bubbles:true}));
+    assert.equal(w.eval(`store.trips.some(t=>t.id==='gone')`),true,'되돌리기로 여행이 돌아왔다');
+    assert.match(w.document.getElementById('syncConflictText').textContent,/어느 버전을 보존할지/,'질문이 바뀐다');
+    assert.equal(w.document.getElementById('syncKeepCopy').style.display,'','돌아온 여행은 사본으로 남길 수 있다');
+    w.document.getElementById('syncUseDevice').click();
+    await new Promise(r=>setTimeout(r,20));
+    assert.deepEqual(Array.from(w.tomb),[3],'지우지 않는다');
+    assert.deepEqual(goneSaves(w),[{id:'gone',rev:3,force:true}],'돌아온 여행(이 기기 것)을 올린다 — 사용자가 본 대로다');
+  }finally{w.close();}
+
+  // 그린 뒤에 store가 바뀌었는데 다시 그려지지 않았어도, 누르는 순간 보인 것과 다르면 하지 않고 다시 묻는다
+  const v=bootDeleteConflict({immediate:true});
+  try{
+    v.eval(`deleteTrip('gone')`);
+    await new Promise(r=>setTimeout(r,20));
+    v.eval(`store.trips.push(JSON.parse(JSON.stringify(currentSyncConflict.local)));`);   // 다시 그리지 않는 경로로 돌아왔다
+    v.document.getElementById('syncUseDevice').click();
+    await new Promise(r=>setTimeout(r,20));
+    assert.deepEqual(Array.from(v.tomb),[3],'지우지 않는다');
+    assert.deepEqual(goneSaves(v),[],'올리지도 않는다');
+    assert.equal(v.document.getElementById('syncConflictBg').classList.contains('show'),true,'같은 충돌을 다시 묻는다');
+    assert.match(v.document.getElementById('syncConflictText').textContent,/어느 버전을 보존할지/);
+    v.document.getElementById('syncUseDevice').click();
+    await new Promise(r=>setTimeout(r,20));
+    assert.deepEqual(goneSaves(v),[{id:'gone',rev:3,force:true}],'다시 그린 질문에 답하면 그대로 한다');
+  }finally{v.close();}
+});
+
 test('통합: 충돌 UI는 클라우드·기기·복사본 세 선택지를 제공한다', { skip: noJsdom }, () => {
   const w=boot();
   // 내부 용어('클라우드본')가 아니라 무엇이 되는지를 말한다
@@ -196,8 +325,10 @@ test('통합: 지워진 여행을 force로 올려도 삭제 충돌이면 이유�
   const w=boot();
   try{
     w.eval(`user={id:'u2'}; sb={}; syncMeta={'gone':{revision:3,status:'conflict',op:'',hash:''}};
+      store.trips=[{id:'gone',name:'공유 여행',days:[{spots:[]}]}]; store.activeId='gone';
+      tripRoles={'gone':{role:'EDITOR',owner:false,count:2}};
       TC_API.sync.save=async()=>({applied:false,conflict:true,revision:5,data:null,deleted_at:'2026-10-01T00:00:00Z'});`);
-    // 처음 카드: 평소처럼 세 선택지
+    // 이 기기에 남은 문서를 원격 삭제와 비교한다 — c.local만 있고 store에 없으면 로컬 삭제다.
     w.eval(`enqueueSyncConflict({kind:'remote-deleted',local:{id:'gone',name:'공유 여행',days:[{spots:[]}]},remote:null,revision:5,deleted_at:'2026-10-01T00:00:00Z'})`);
     assert.notEqual(w.document.getElementById('syncUseDevice').style.display,'none');
     w.document.getElementById('syncUseDevice').click();
@@ -2530,6 +2661,88 @@ test('통합: 편집자(EDITOR)·로그아웃·로컬 전용 여행은 예전과
   w.close();
 });
 
+// 여행 모드·버전 이력도 편집 진입점이다. 보기 권한이 누르면 로컬만 바뀌고(올리지는 않는다) 다음 당겨오기 때
+// 지문이 어긋나 의미 없는 충돌 모달이 떴고, 거기서 '이 기기 것 유지'를 고르면 403이었다.
+test('통합: 보기 권한은 여행 모드·버전 이력에서도 일정을 바꾸지 못하고, 바꾸는 버튼도 없다', { skip: noJsdom }, async () => {
+  const w = boot();
+  withAdaptTrip(w, [
+    { startAt: '09:00', mode: 'car', spots: [S('프라도', 40.41, { stayMin: 120 }), S('저녁 예약', 40.42, { bookAt: '19:30', stayMin: 90 })] },
+    { spots: [S('레티로 공원', 40.415, { stayMin: 90 })] }
+  ]);
+  w.eval(`user={id:'u1'}; sb={}; tripRoles={__ad__:{role:'VIEWER',count:3,owner:false}};`);
+  const before = w.eval('JSON.stringify(trip())');
+  w.document.getElementById('travelBtn').click();
+  const list = w.document.getElementById('travelList');
+  assert.ok(!buttonIn(list, '다녀왔어요') && !buttonIn(list, '건너뛰기'), '다녀옴·건너뜀을 표시하는 버튼이 없다');
+  const sgText = Array.from(w.document.querySelectorAll('#travelSuggest button')).map(b => b.textContent).join('|');
+  assert.ok(cardsIn(w).length >= 1, '제안 자체는 보인다 — 의견을 보는 것은 막지 않는다');
+  assert.ok(!/오늘 일정에 넣기|이대로 조정|직접 수정|다녀왔어요|식사 장소 추가/.test(sgText), `일정을 바꾸는 제안 버튼이 없다: ${sgText}`);
+  w.eval('buildDayFlow(0)');
+  assert.ok(!/이 일정으로 시작/.test(w.document.getElementById('travelPlan').textContent), '하루 제안은 미리보기로만');
+  assert.ok(w.eval(`_dayFlow.blocks.some(b=>b.kind==='SUGGESTED'&&b.pick&&b.pick.fromDay!=null)`), '수락하면 옮겨질 제안이 있는 상황이다');
+
+  // 이미 그려진 버튼·남은 핸들러로 직접 불러도 막힌다
+  w.eval(`setSpotStatus(0,0,'COMPLETED');
+    applyReplan({type:'REPLAN',key:'r1',action:{drop:['d0s0']}},0);
+    acceptMove({type:'NEXT_ACTIVITY',key:'m1',title:'레티로 공원'},0,{fromDay:1,si:0});
+    applyDayFlow(0);`);
+  assert.equal(w.eval('JSON.stringify(trip())'), before, '여행 문서가 그대로다');
+  assert.equal(w.eval('histStack.length'), 0, '저장도 일어나지 않았다');
+
+  // 위 장면에 없는 갈래도 직접 그려 본다 — 재구성 제안(REPLAN)과 이미 다녀온 장소의 '되돌리기'
+  const drawn = () => ({
+    replan: w.eval(`sgPrimaryButtons({type:'REPLAN',key:'r0',action:{drop:['d0s0']}},0).map(b=>b.textContent).join('|')`),
+    done: w.eval(`Array.from(spotStatusRow(0,0,{status:'COMPLETED'},false).querySelectorAll('button')).map(b=>b.textContent).join('|')`)
+  });
+  assert.deepEqual(drawn(), { replan: '', done: '' }, '보기 권한에는 조정·직접 수정·되돌리기 버튼이 없다');
+  w.eval(`tripRoles.__ad__.role='EDITOR'`);
+  assert.deepEqual(drawn(), { replan: '이대로 조정|직접 수정', done: '되돌리기' }, '편집자에게는 같은 자리에 버튼이 있다 — 위 확인이 헛돌지 않는다');
+  w.eval(`tripRoles.__ad__.role='VIEWER'`);
+
+  // 버전 이력: 목록은 보이되 복원 버튼은 없다
+  w.eval(`TC_API.snapshots.list=async()=>({data:[{id:1,created_at:'2026-09-01T10:00:00Z'}],error:null});
+    TC_API.snapshots.load=async()=>({data:{data:JSON.parse(JSON.stringify(trip()))},error:null});`);
+  await w.eval('loadSnapList()');
+  const snap = w.document.getElementById('snapList');
+  assert.equal(snap.querySelectorAll('.snapRow').length, 1);
+  assert.ok(!buttonIn(snap, '복원'), '보기 권한에는 복원 버튼이 없다');
+
+  // 편집자일 때 그려 둔 복원 버튼을, 보기 권한으로 바뀐 뒤 눌러도 바뀌지 않는다
+  w.eval(`tripRoles.__ad__.role='EDITOR'; window.confirm=()=>true;
+    TC_API.snapshots.load=async()=>({data:{data:Object.assign(JSON.parse(JSON.stringify(trip())),{name:'옛 이름'})},error:null});`);
+  await w.eval('loadSnapList()');
+  const restore = buttonIn(snap, '복원');
+  assert.ok(restore, '편집자에게는 복원 버튼이 있다');
+  w.eval(`tripRoles.__ad__.role='VIEWER'`);
+  await restore.onclick();
+  assert.equal(w.eval('trip().name'), '적응 여행', '보기 권한으로 바뀐 뒤에는 복원되지 않는다');
+  w.close();
+});
+
+// 색상 기준(colorBy)은 여행 문서에 저장된다 — 보기 권한이 바꾸면 로컬만 달라져 다음 당겨오기가 헛충돌을 띄우고,
+// 거기서 '이 기기 것 유지'를 고르면 업로드가 막혀 충돌에 갇혔다(일행의 변경을 더 받지 못한다).
+test('통합: 보기 권한은 색상 기준(여행 문서)을 바꾸지 못하고, 그 버튼도 없다', { skip: noJsdom }, () => {
+  const w = boot();
+  withTrip(w, `[{title:'',drive:'',note:'',spots:[]}]`);
+  w.eval(`user={id:'u1'}; tripRoles={__it__:{role:'VIEWER',count:3,owner:false}}; render();`);
+  assert.equal(w.document.getElementById('colorModeBtn'), null, '보기 권한에는 색상 기준 버튼이 없다');
+  assert.ok(w.document.getElementById('playBtn'), '보기 설정의 나머지(재생·테마)는 그대로다');
+  // 편집자일 때 그려 둔 버튼을, 보기 권한으로 바뀐 뒤 눌러도 바뀌지 않는다
+  w.eval(`tripRoles.__it__.role='EDITOR'; render(); histStack.length=0;`);
+  const btn = w.document.getElementById('colorModeBtn');
+  assert.ok(btn, '편집자에게는 버튼이 있다');
+  const before = w.eval('JSON.stringify(trip())');
+  w.eval(`tripRoles.__it__.role='VIEWER'`);
+  btn.click();
+  assert.equal(w.eval('JSON.stringify(trip())'), before, '여행 문서가 그대로다');
+  assert.equal(w.eval('histStack.length'), 0);
+  // 편집자는 예전처럼 바꾼다
+  w.eval(`tripRoles.__it__.role='EDITOR'`);
+  btn.click();
+  assert.equal(w.eval('trip().colorBy'), 'city');
+  w.close();
+});
+
 test('통합: 보기 권한 여행은 클라우드에 올리지 않고, 권한 오류(42501)는 재시도 없이 멈춘다', { skip: noJsdom }, async () => {
   const w = boot();
   let calls = 0;
@@ -2741,6 +2954,93 @@ test('통합: 서버가 거절한 진짜 충돌은 그대로 물어본다', { sk
   assert.equal(w.eval(`syncMeta.__it__.status`), 'conflict');
   assert.equal(w.document.getElementById('syncConflictBg').classList.contains('show'), true, 'CAS가 거절한 것은 물어볼 값어치가 있다');
   w.close();
+});
+
+// 지문(hash)이 비는 상태가 실제로 생긴다 — 삭제 되돌리기(undoDelete)·삭제 뒤 재동기화(finishDelete)·권한 회복(forbidden→dirty).
+// 그 상태에서 업로드가 실패한 뒤 편집하고 같이 짜기를 열면(openMembers는 먼저 올리지 않고 당긴다) 원격본이 조용히 덮었다.
+test('통합: 지문이 비어 있어도 아직 못 올린 편집은 당겨오기가 덮지 않고 충돌로 묻는다', { skip: noJsdom }, async () => {
+  for (const status of ['dirty', 'error', 'new']) {
+    const w = boot();
+    withTrip(w, `[{title:'',drive:'',note:'',spots:[]}]`);
+    const remote = { id: '__it__', name: 'T (영희 편집)', start: '2026-08-01', days: [{ title: '', drive: '', note: '', spots: [] }] };
+    w.REMOTE = remote;
+    w.eval(`user={id:'u1'}; sb={}; tripRoles={__it__:{role:'EDITOR',count:2,owner:false}};
+      TC_API.sync.get=async(id)=>({data:{client_id:id,data:window.REMOTE,revision:5,deleted_at:null,updated_at:''},error:null});
+      syncMeta.__it__={revision:${status === 'new' ? 'null' : '4'},status:'${status}',op:'',hash:''};
+      trip().name='못 올린 편집';`);
+    assert.equal(await w.eval(`pullTrip('__it__',{force:true})`), true);
+    assert.equal(w.eval(`trip().name`), '못 올린 편집', `${status}: 로컬 편집이 남는다`);
+    assert.equal(w.eval(`syncMeta.__it__.status`), 'conflict');
+    assert.equal(w.document.getElementById('syncConflictBg').classList.contains('show'), true);
+    w.close();
+  }
+  // 지문이 비어도 올라간 상태(clean)면 예전처럼 조용히 받는다
+  const w = boot();
+  withTrip(w, `[{title:'',drive:'',note:'',spots:[]}]`);
+  w.REMOTE = { id: '__it__', name: 'T (영희 편집)', start: '2026-08-01', days: [{ title: '', drive: '', note: '', spots: [] }] };
+  w.eval(`user={id:'u1'}; sb={}; tripRoles={__it__:{role:'EDITOR',count:2,owner:false}};
+    TC_API.sync.get=async(id)=>({data:{client_id:id,data:window.REMOTE,revision:5,deleted_at:null,updated_at:''},error:null});
+    syncMeta.__it__={revision:4,status:'clean',op:'',hash:''};`);
+  assert.equal(await w.eval(`pullTrip('__it__',{force:true})`), true);
+  assert.equal(w.eval(`trip().name`), 'T (영희 편집)');
+  assert.equal(w.document.getElementById('syncConflictBg').classList.contains('show'), false);
+  w.close();
+});
+
+// 데이터는 전부 TC_API(NAS)를 지난다. 그런데 동기화가 Supabase SDK(sb)가 있는지로 막혀 있어서, CDN이 막히면
+// 자체 Auth 로그인은 되는데 업로드·당겨오기·초대 미리보기가 조용히 멈추고 '같이 짜기'가 다시 로그인을 요구했다.
+test('통합: Supabase SDK가 없어도 로그인했으면 업로드·당겨오기·같이 짜기·초대 미리보기·실시간 반영이 돈다', { skip: noJsdom }, async () => {
+  const w = boot();
+  assert.equal(w.eval('sb'), null, '부팅에 Supabase SDK가 없다(CDN 차단과 같은 상태)');
+  withTrip(w, `[{title:'',drive:'',note:'',spots:[]}]`);
+  w.REMOTE = { id: '__it__', name: 'T (영희 편집)', start: '2026-08-01', days: [{ title: '', drive: '', note: '', spots: [] }] };
+  w.eval(`user={id:'u1',email:'me@example.com'}; tripRoles={__it__:{role:'EDITOR',count:2,owner:false}};
+    window.saves=[]; window.rpcs=[];
+    TC_API.sync.save=async(id,t,rev)=>{ window.saves.push(rev); return {applied:true,conflict:false,revision:4,data:null,deleted_at:null}; };
+    TC_API.sync.get=async(id)=>({data:{client_id:id,data:window.REMOTE,revision:5,deleted_at:null,updated_at:''},error:null});
+    TC_API.rpc=async(name,args)=>{ window.rpcs.push(name); return {data:name==='invite_preview'
+      ? {valid:true,reason:'OK',trip_name:'스페인 여행',start_date:'2026-10-25',day_count:14,role:'EDITOR',already_member:false} : [],error:null}; };
+    cloudSnapshot=()=>{};`);
+  // 업로드
+  await w.eval(`syncTripCloud(trip())`);
+  assert.equal(w.saves.length, 1, '여행을 올린다');
+  assert.equal(w.eval(`syncMeta.__it__.status`), 'clean');
+  w.eval('updateSaveState()');
+  assert.equal(w.document.getElementById('saveState').textContent, '동기화 완료', '저장 상태도 서버 기준으로 말한다');
+  // 당겨오기
+  assert.equal(await w.eval(`pullTrip('__it__',{force:true})`), true);
+  assert.equal(w.eval(`trip().name`), 'T (영희 편집)');
+  // 같이 짜기는 로그인을 다시 묻지 않는다
+  w.eval(`openMembers()`);
+  assert.equal(w.document.getElementById('authModalBg').classList.contains('show'), false, '다시 로그인을 요구하지 않는다');
+  assert.equal(w.document.getElementById('membersModalBg').classList.contains('show'), true);
+  // 초대 미리보기
+  await w.eval(`startJoin(${JSON.stringify('J'.repeat(32))})`);
+  assert.ok(w.rpcs.includes('invite_preview'));
+  assert.equal(w.document.getElementById('joinTripName').textContent, '스페인 여행');
+  // 실시간 이벤트도 버리지 않는다
+  w.eval(`pushLocalFirst=async()=>{}; pullTrip=async(id,opts)=>{ window.__pull=(window.__pull||[]); window.__pull.push(id); return true; };
+    onLiveEvent('__it__',{kind:'SCHEDULE_CHANGED',actor_id:'u2'});`);
+  await new Promise(r => setTimeout(r, 480));
+  assert.deepEqual(Array.from(w.eval('window.__pull||[]')), ['__it__']);
+  // 밀린 삭제 재시도·버전 이력도 돈다
+  w.eval(`window.tomb=[]; TC_API.sync.tombstone=async(id,rev)=>{ window.tomb.push(id); return {applied:true,conflict:false,revision:(rev||1)+1,data:null,deleted_at:null}; };
+    TC_SYNC.beginDelete(syncMeta,'old','op9'); syncMeta.old.revision=2;
+    TC_API.snapshots.list=async()=>({data:[{id:1,created_at:'2026-09-01T10:00:00Z'}],error:null});`);
+  await w.eval('flushPendingSync()');
+  assert.deepEqual(Array.from(w.tomb), ['old'], '밀린 삭제를 보낸다');
+  assert.equal(w.eval('syncMeta.old.status'), 'tombstoned');
+  await w.eval('loadSnapList()');
+  assert.equal(w.document.querySelectorAll('#snapList .snapRow').length, 1, '버전 이력을 읽는다');
+  w.close();
+});
+
+// 위 행동 테스트는 몇 곳만 sb 없이 돌린다 — 나머지 자리가 옛 조건(`!sb||!user`·`user&&sb`…)으로 돌아가도 잡히게 소스를 본다.
+// sb는 레거시 실시간 채널(ensureLiveChannel·closeLive)과 TC_AUTH.configure에만 남는다. 데이터 경로는 cloudReady()다.
+test('통합: 데이터 경로의 조건이 Supabase SDK(sb)에 다시 묶이지 않는다', () => {
+  const src = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
+  const hits = src.match(/!sb\s*\|\||\|\|\s*!sb\b|\bsb\s*&&\s*user\b|\buser\s*&&\s*sb\b/g) || [];
+  assert.deepEqual(hits, [], 'app.js에 sb를 로그인 조건으로 보는 자리가 남아 있다 — cloudReady()를 쓴다');
 });
 
 // render()가 Sortable 인스턴스를 재생성하므로, 끌고 있는 도중에 다시 그리면 목록이 손가락 아래에서 갈린다
@@ -3392,6 +3692,108 @@ test('통합: 서버가 자체 실시간을 쓰라고 하면 client_id로 구독
   w.eval(`user=null; tripRoles={}; updateCollabUI();`);
   assert.equal(opened.at(-1), 'closed');
   w.close();
+});
+
+// 실시간은 몇 번만 다시 붙고 멈춘다(api.js). 그리고 같은 여행이면 ensureLiveChannel이 그냥 돌아간다 —
+// 그래서 NAS·Tailscale이 40초쯤 끊기면 그 여행은 다른 여행으로 갔다 오기 전까지 실시간이 없었다.
+// 다시 붙이는 것은 **스스로 포기한 접속뿐**이다 — 서버가 거절한 접속(내보내짐·세션 무효)을 탭이 보일 때마다 다시 열면
+// AUTH·SUBSCRIBE·거절이 끝없이 되풀이되고, 붙는 중인 접속을 갈아 끼우면 함께 오는 online·visibilitychange가 서로를 끊는다.
+// 진짜 TC_API.realtime.connect에 가짜 소켓만 꽂는다(재시도 간격만 짧게) — 거절·포기를 흉내 내지 않고 실제로 일으킨다.
+function bootLive(){
+  const w = boot();
+  const made = [];
+  class FakeSocket {
+    constructor(url) { this.url = url; this.sent = []; this.closed = null; made.push(this); }
+    send(raw) { this.sent.push(JSON.parse(raw)); }
+    close(code) { if (this.closed) return; this.closed = code || 1000; if (this.onclose) this.onclose({ code: this.closed }); }
+    open() { if (this.onopen) this.onopen(); }
+    deliver(msg) { if (this.onmessage) this.onmessage({ data: JSON.stringify(msg) }); }
+  }
+  w.FakeSocket = FakeSocket;
+  w.eval(`user={id:'u1'}; store.trips=[{id:'t1',name:'스페인',days:[{spots:[]}]}]; store.activeId='t1';
+    syncMeta={t1:{revision:3,status:'clean'}};
+    apiToken=async()=>'tok';`);
+  w.TC_API_ME = async () => ({
+    data: { trips: [{ id: 't1', role: 'EDITOR', memberCount: 3, owner: false }],
+            realtime: { provider: 'TRIPCANVAS', url: 'wss://api.test/ws' } }, error: null
+  });
+  w.eval(`TC_API.me=window.TC_API_ME;
+    const realConnect=TC_API.realtime.connect;
+    TC_API.realtime={connect:(o)=>realConnect(Object.assign({},o,{socketImpl:window.FakeSocket,retryMs:1}))};
+    pullActiveIfShared=()=>{}; flushPendingSync=async()=>{}; cloudSyncActive=()=>{};   // 여기서 보는 것은 실시간 접속뿐이다`);
+  const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
+  const wake = async () => {   // 휴대폰이 깨어날 때처럼 둘이 함께 온다
+    w.document.dispatchEvent(new w.Event('visibilitychange'));
+    w.dispatchEvent(new w.Event('online'));
+    await tick();
+  };
+  const subscribe = async (s) => { s.open(); await tick(); s.deliver({ type: 'READY' }); s.deliver({ type: 'SUBSCRIBED', tripId: 't1' }); };
+  return { w, made, tick, wake, subscribe };
+}
+
+test('통합: 실시간이 포기한 뒤에는 탭이 다시 보이거나 네트워크가 돌아오면 다시 붙는다 — 붙어 있거나 붙는 중이면 그대로', { skip: noJsdom }, async () => {
+  const { w, made, tick, wake, subscribe } = bootLive();
+  await w.eval(`refreshTripRoles()`);
+  await tick();
+  assert.equal(made.length, 1);
+  // 붙는 중 — online과 visibilitychange가 함께 와도 방금 연 접속을 끊지 않는다
+  await wake();
+  assert.equal(made.length, 1, '붙는 중인 접속은 그대로 둔다');
+  assert.equal(made[0].closed, null);
+  await subscribe(made[0]);
+  assert.match(w.document.getElementById('liveState').textContent, /실시간/);
+  await wake();
+  assert.equal(made.length, 1, '살아 있는 접속은 그대로 둔다');
+  // 네트워크가 끊겨 재시도를 다 쓰고 멈췄다
+  made[0].close(1006);
+  for (let i = 1; i <= 5; i++) { while (made.length <= i) await tick(2); made[i].close(1006); }
+  await tick(20);
+  assert.equal(made.length, 6, '몇 번만 다시 붙고 멈춘다');
+  assert.equal(w.eval(`liveConn.state()`), 'gave-up');
+  // 탭이 다시 보이면 새로 붙는다 — 함께 온 online은 그 접속을 끊지 않는다
+  await wake();
+  assert.equal(made.length, 7, '포기한 접속은 다시 붙는다(한 번만)');
+  assert.equal(made[6].closed, null);
+  await subscribe(made[6]);
+  assert.deepEqual(made[6].sent.find(m => m.type === 'SUBSCRIBE'), { type: 'SUBSCRIBE', tripId: 't1' });
+  assert.match(w.document.getElementById('liveState').textContent, /실시간/);
+  // 볼 여행이 없으면(로그아웃) 아무것도 열지 않는다
+  w.eval(`user=null; tripRoles={}; updateCollabUI();`);
+  await wake();
+  assert.equal(made.length, 7);
+  w.close();
+});
+
+test('통합: 서버가 거절한 실시간은 탭이 다시 보이거나 네트워크가 돌아와도 다시 열지 않는다', { skip: noJsdom }, async () => {
+  // 구독 거절(멤버에서 빠짐) — 서버는 ERROR FORBIDDEN만 보내고 소켓을 닫지 않는다
+  {
+    const { w, made, tick, wake } = bootLive();
+    await w.eval(`refreshTripRoles()`);
+    await tick();
+    made[0].open(); await tick();
+    made[0].deliver({ type: 'READY' });
+    made[0].deliver({ type: 'ERROR', code: 'FORBIDDEN', tripId: 't1' });
+    assert.equal(made[0].closed, 1000, '거절당한 접속은 닫는다');
+    for (let i = 0; i < 3; i++) await wake();
+    assert.equal(made.length, 1, '거절은 다시 붙어도 같은 답이다 — 새 소켓을 만들지 않는다');
+    w.close();
+  }
+  // 인증 거절(세션 무효) — 4401로 닫힌다
+  {
+    const { w, made, tick, wake } = bootLive();
+    await w.eval(`refreshTripRoles()`);
+    await tick();
+    made[0].open(); await tick();
+    made[0].close(4401);
+    for (let i = 0; i < 3; i++) await wake();
+    assert.equal(made.length, 1, '4401도 다시 열지 않는다');
+    // 로그아웃했다 다시 들어오면(liveKey가 바뀐다) 그때 새로 붙는다
+    w.eval(`user=null; tripRoles={}; updateCollabUI(); user={id:'u1'};`);
+    await w.eval(`refreshTripRoles()`);
+    await tick();
+    assert.equal(made.length, 2, '로그인이 바뀌면 새로 붙는다');
+    w.close();
+  }
 });
 
 // ── 함께 움직이지 않는 시간 (6단계 · §25~§27) ────────────────────────────────
