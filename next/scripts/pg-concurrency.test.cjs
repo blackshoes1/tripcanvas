@@ -22,12 +22,12 @@ test('실제 PostgreSQL: CAS 권한 잠금과 경로 예산의 동시성', { tim
   await admin.query(`create database ${name}`);
   const writer = new Pool({ ...config, database: name, max: 6, application_name: 'tc-cas-writer' });
   const other = new Pool({ ...config, database: name, max: 6, application_name: 'tc-role-manager' });
+  try {
   const schema = require('../dist-tools/server/infrastructure/database/schema.js');
   const { PgTripRepository } = require('../dist-tools/server/infrastructure/database/pgTripRepository.js');
   const { PgLegFillUsageRepository } = require('../dist-tools/server/infrastructure/database/pgLegFillUsageRepository.js');
   const db = drizzle(writer, { schema });
   const otherDb = drizzle(other, { schema });
-  try {
     await migrate(db, { migrationsFolder: path.join(__dirname, '../src/server/infrastructure/database/migrations') });
     const owner = randomUUID(), editor = randomUUID();
     await writer.query('insert into users(id) values($1),($2)', [owner, editor]);
