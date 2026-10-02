@@ -62,6 +62,8 @@ PR merge → main → Actions(release.yml): 게이트 → GHCR :<커밋 SHA> →
   '교체 → 헬스체크 실패 → 롤백'이 5분마다 되풀이됐다. 새 production 커밋은 그대로 배포되고, 같은 커밋은 `--force`로 다시 한다.
   **손 롤백은 고정된다** — `--sha`가 production 태그와 다르면 띄운 뒤 `deploy/.deploy-disabled`(`PINNED_SHA`)를 남긴다.
   전에는 다음 cron이 5분 안에 production으로 되돌렸다. 멈춤은 **자동 경로만** 세우고(손 `--sha`·`--force`는 진행), 푸는 것은 사람이다.
+  ⚠️ 손으로 production에 돌아와도(`--force`·`--sha <production>`) 고정은 **풀리지 않는다** — `rm`해야 다음 머지가 배포된다.
+  그 사이 `--status`·배포 기록은 "X에 고정했지만 지금은 Y가 돈다"고 말한다.
   확인·롤백·정지는 전부 한 스크립트다 — `docs/nas-deployment.md`:
 
 ```bash

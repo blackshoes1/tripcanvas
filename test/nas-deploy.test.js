@@ -369,6 +369,36 @@ test('멈춰 있어도 손으로 준 명령은 진행하고, 멈춤은 사람이
   assert.match(out, /rm .*\.deploy-disabled/, '아직 멈춰 있다는 것을 말한다');
 });
 
+// 고정한 뒤 손으로 production에 돌아와도(--force·--sha <production>) 멈춤은 사람이 푼다 — 그런데 그때
+// "X에 고정했다"만 말하면 돌지 않는 커밋을 가리키고, 고정이 풀렸다고 믿은 사이 다음 머지들이 조용히 멈춘다.
+test('고정된 채 손으로 production을 띄우면 멈춤은 남기고, 배포 기록 끝에서 아직 멈춰 있다고 말한다', (t) => {
+  const { r, out, stateText, disabledText, deployLog } = runDeploy(t, {
+    args: ['--force'],
+    state: stateOf({ CURRENT_SHA: STALE, PREVIOUS_SHA: TARGET }),
+    disabled: `PINNED_SHA=${STALE}\n`,
+  });
+  assert.equal(r.status, 0, out);
+  assert.match(stateText, new RegExp(`^CURRENT_SHA=${TARGET}$`, 'm'));
+  assert.equal(disabledText, `PINNED_SHA=${STALE}\n`, '멈춤 파일을 스스로 지우거나 고치지 않는다');
+  const tail = deployLog.slice(deployLog.lastIndexOf('✔ 배포 성공'));
+  assert.match(tail, /멈춤은 그대로다/, '성공 뒤에 다시 말한다 — 시작할 때 한 줄로는 묻힌다');
+  assert.match(tail, new RegExp(`${STALE.slice(0, 7)}에 고정했지만 지금은 ${TARGET.slice(0, 7)}가 돈다`));
+  assert.match(tail, /rm .*\.deploy-disabled/);
+});
+
+test('고정 기록과 다른 커밋이 돌면 --status와 cron이 그 사실을 말한다 — 돌지 않는 커밋을 고정이라 하지 않는다', (t) => {
+  const pinnedElsewhere = { state: stateOf({ CURRENT_SHA: TARGET, PREVIOUS_SHA: STALE }), disabled: `PINNED_SHA=${STALE}\n` };
+  const status = runDeploy(t, { args: ['--status'], envLines: ['TC_IMAGE_TAG=' + TARGET], ...pinnedElsewhere });
+  assert.equal(status.r.status, 0, status.out);
+  assert.match(status.r.stdout, new RegExp(`자동 배포.*${STALE.slice(0, 7)}에 고정했지만 지금은 ${TARGET.slice(0, 7)}가 돈다`));
+  assert.doesNotMatch(status.r.stdout, new RegExp(`${STALE.slice(0, 7)}에 고정했다\\.`));
+
+  const cron = runDeploy(t, pinnedElsewhere);
+  assert.equal(cron.r.status, 0, cron.out);
+  assert.equal(cron.docker, '', '여전히 멈춰 있다');
+  assert.match(cron.out, /지금은 .*가 돈다/);
+});
+
 test('손 롤백이 실패해도 production의 실패 기록을 덮어쓰지 않는다', (t) => {
   const { r, out, stateText, disabledText } = runDeploy(t, {
     args: ['--sha', STALE],
