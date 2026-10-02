@@ -50,6 +50,27 @@ final class DayCostTests: XCTestCase {
         XCTAssertTrue(costs.categories.flatMap(\.items).allSatisfy { $0.paidOn == nil })
     }
 
+    /// 일정 밖으로 넘친 연박의 몫은 현지 결제 금액에만 있고 날짜별 줄에는 없다 — 예약 하루치가 없어도 그 차이를 말한다(2026-10-02).
+    /// 2일 일정: 1일차 점심 12,000 · 2일차 3박 숙소 300,000 → 머리글 312,000, 날짜별 줄 12,000 + 100,000.
+    func testDayRowsNoteExplainsStayOverflowWithoutBookingShare() throws {
+        let json = """
+        [{"source":"STAY","key":"1.0","title":"호텔 (2–3/3박 · 일정 밖)","kind":"STAY","amount":200000,"currency":"KRW","basis":"ENTERED","people":1,"payState":"NONE","paidOn":null,"photos":[],"totalKRW":200000,"state":"KNOWN","dayIndex":null},
+         {"source":"BOOKING","key":"b1","title":"렌터카 (일정 밖)","kind":"RENT","amount":50000,"currency":"KRW","basis":"ENTERED","people":1,"payState":"RESERVED","paidOn":null,"photos":[],"totalKRW":50000,"state":"KNOWN","dayIndex":null}]
+        """
+        let lines = try JSONDecoder().decode([TripCostLine].self, from: Data(json.utf8))
+        let overflow = TripCostsView.stayOverflowTotal(lines)
+        XCTAssertEqual(overflow, 200000, "날짜 없는 예약 잔액은 현지 결제가 아니라 세지 않는다")
+
+        let note = try XCTUnwrap(TripCostsView.dayRowsNote(share: 0, overflow: overflow, dayRows: 112000))
+        XCTAssertTrue(note.contains(TimeFormat.money(200000, currency: "KRW")), note)
+        XCTAssertTrue(note.contains("날짜별 합계 \(TimeFormat.money(112000, currency: "KRW"))"), note)
+        XCTAssertFalse(note.contains("예약 하루치"), "없는 차이는 말하지 않는다")
+
+        let both = try XCTUnwrap(TripCostsView.dayRowsNote(share: 50000, overflow: overflow, dayRows: 162000))
+        XCTAssertTrue(both.contains("예약 하루치") && both.contains("일정 밖"), both)
+        XCTAssertNil(TripCostsView.dayRowsNote(share: 0, overflow: 0, dayRows: 112000), "머리글과 날짜별 줄이 같은 돈이면 말하지 않는다")
+    }
+
     func testManualCostCategoryPreservesSpotAndCanReturnToAutomatic() {
         var spot = TripSpot(raw: ["name": .string("장소"), "cat": .string("food"), "custom": .string("keep")])
         var entry = CostEntry(spot: spot)

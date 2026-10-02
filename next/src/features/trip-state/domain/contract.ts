@@ -933,7 +933,10 @@ export interface TripCostsResponse {
   payTotals: Record<import('@/features/trip/domain/costTypes').CostPayState, number>;
   /** 준비한 비용 — 예약(전액 한 줄씩)과 여행 단위 항목(`trip.costItems`). 어느 날에도 속하지 않는다. */
   prep: TripCostGroup & { items: TripCostLine[] };
-  /** 가서 쓰는 비용 — 날짜별 장소·추가 비용·교통의 합. `prep.totalKRW + onSite.totalKRW === totalKRW`. */
+  /**
+   * 가서 쓰는 비용 — 날짜별 장소·추가 비용·교통의 합 + 일정 밖으로 넘친 연박 숙소의 몫(`unallocated`의 날짜 없는 STAY 줄).
+   * `prep.totalKRW + onSite.totalKRW === totalKRW`. 그래서 날짜별 `onSiteKRW`의 합과는 넘친 몫만큼 다를 수 있다.
+   */
   onSite: TripCostGroup;
   unknownCount: number;
   transportUnpriced: boolean;
