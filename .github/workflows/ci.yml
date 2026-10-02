@@ -170,6 +170,16 @@ jobs:
           file: next/Dockerfile
           target: tools
           push: false
+          load: true
+          tags: tripcanvas-tools:pr
           build-args: TC_REVISION=${{ github.sha }}
           cache-from: type=gha,scope=tools
           cache-to: type=gha,scope=tools,mode=max
+      # 실시간 사이드카는 Funnel로 인터넷에 열려 있다 — root로 돌지 않는지, 그 사용자로 migrate의 명령(`npx drizzle-kit`)이
+      # 뜨는지 본다(DB 없이 버전만). 비루트로 바꾼 뒤 NAS에서 처음 알게 되면 그때는 배포가 이미 멈춘 뒤다.
+      - name: tools 이미지가 root가 아니고 migrate 명령이 뜬다
+        run: |
+          uid=$(docker run --rm --entrypoint id tripcanvas-tools:pr -u)
+          echo "tools 이미지 uid=$uid"
+          [ "$uid" != 0 ] || { echo "::error::tools 이미지가 root로 돈다"; exit 1; }
+          docker run --rm tripcanvas-tools:pr npx drizzle-kit --version
