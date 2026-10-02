@@ -13,7 +13,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js" integrity="sha384-+pWnyi8LtZx+cgXfD2arWgUX7pHIaEL215cEPPk9WrsegNlgvDL9DNjaqsceQq6o" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js" integrity="sha384-BSxuMLxX+FCbTdYec3TbXlnMGEEM2QXTFdtDaveen71o+jswm2J36+xFqp8k4VHM" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.min.js" integrity="sha384-l8ah+VgaWtk1mvOe9VC+OirC6qHFF4yH7l7mKRidV9MSti3E9F463bMp6ZVN4kuC" crossorigin="anonymous"></script>
-<link rel="stylesheet" href="style.css?v=tc-v249">
+<link rel="stylesheet" href="style.css?v=tc-v250">
 </head>
 <body>
 <section id="onboarding" class="onboarding" hidden role="dialog" aria-modal="true" aria-labelledby="onboardingTitle">
@@ -148,6 +148,13 @@
   </div>
 </div></div>
 
+<!-- 이동수단 고르기 — 아이콘을 누를 때마다 다음 수단으로 넘어가던 순환을 바꿨다(2026-10-02 UX 검토) -->
+<dialog id="modePicker" class="costDialog" aria-labelledby="modePickerTitle">
+  <h2 id="modePickerTitle">이동수단</h2>
+  <p class="hint" id="modePickerHint"></p>
+  <div id="modePickerList" class="modePickerList" role="radiogroup" aria-labelledby="modePickerTitle"></div>
+  <div class="row modalActions"><button class="btn" id="modePickerCancel" type="button">닫기</button></div>
+</dialog>
 <dialog id="costDeleteDialog" class="costDialog" aria-labelledby="costDeleteTitle">
   <h2 id="costDeleteTitle">비용 삭제</h2>
   <div id="costDeleteSourceRow" class="chkrow"><input type="checkbox" id="costDeleteSource"><label for="costDeleteSource">일정의 장소·예약도 함께 삭제</label></div>
@@ -663,15 +670,15 @@
   <div id="placeDetailsContent" aria-live="polite"></div>
   <footer id="placeDetailsActions"></footer>
 </dialog>
-<script src="lib.js?v=tc-v249"></script>
-<script src="sync.js?v=tc-v249"></script>
-<script src="routing.js?v=tc-v249"></script>
-<script src="price.js?v=tc-v249"></script>
-<script src="adaptive.js?v=tc-v249"></script>
-<script src="intake.js?v=tc-v249"></script>
-<script src="collab.js?v=tc-v249"></script>
-<script src="api.js?v=tc-v249"></script>
-<script src="auth.js?v=tc-v249"></script>
-<script src="app.js?v=tc-v249"></script>
+<script src="lib.js?v=tc-v250"></script>
+<script src="sync.js?v=tc-v250"></script>
+<script src="routing.js?v=tc-v250"></script>
+<script src="price.js?v=tc-v250"></script>
+<script src="adaptive.js?v=tc-v250"></script>
+<script src="intake.js?v=tc-v250"></script>
+<script src="collab.js?v=tc-v250"></script>
+<script src="api.js?v=tc-v250"></script>
+<script src="auth.js?v=tc-v250"></script>
+<script src="app.js?v=tc-v250"></script>
 </body>
 </html>

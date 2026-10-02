@@ -502,7 +502,10 @@ function openPlaceDetails(s,options={}){
     closePlaceDetails();fn();
   };
   if(!readOnly()){
-    placeButton(actions,options.select?'이 장소 선택':options.existing?'일정 편집':'일정에 추가',edit(()=>{
+    if(options.add){
+      placeButton(actions,options.addLabel||'일정에 담기',edit(()=>options.add())).classList.add('primary');
+      placeButton(actions,'시간·메모 정하고 담기',edit(()=>options.select()));
+    }else placeButton(actions,options.select?'이 장소 선택':options.existing?'일정 편집':'일정에 추가',edit(()=>{
       if(options.select) options.select();
       else if(options.existing) openSpotModal(options.existing.di,options.existing.si);
       else addSpotAt(s.lat,s.lng,s.placeId,s.name?s:undefined);
@@ -944,8 +947,8 @@ function legModeBtn(day,di,si,lm){
   if(si==null||si<0)return '';
   const set=!!(day.spots[si]&&day.spots[si].legMode),dmn=dayModeOf(day);
   if(readOnly())return `<span class="legModeBtn${set?' set':''}" title="${escAttr(MODE_NAME[lm])}">${MODE_ICON[lm]}</span>`;
-  const t=set?`이 구간만 ${MODE_NAME[lm]} — 탭해서 변경 (계속 누르면 그날 기본으로 되돌아가요)`:`그날 기본 ${MODE_NAME[dmn]} — 탭하면 이 구간만 바꿔요`;
-  return `<button class="legModeBtn${set?' set':''}" onclick="event.stopPropagation();cycleLegMode(${di},${si})" title="${escAttr(t)}">${MODE_ICON[lm]}</button>`;
+  const t=set?`이 구간만 ${MODE_NAME[lm]} — 눌러서 바꾸기`:`그날 기본 ${MODE_NAME[dmn]} — 눌러서 이 구간만 바꾸기`;
+  return `<button class="legModeBtn${set?' set':''}" onclick="event.stopPropagation();openLegModePicker(${di},${si})" title="${escAttr(t)}" aria-haspopup="dialog">${MODE_ICON[lm]}</button>`;
 }
 // normHM·sortDayByTime은 lib.js가 단일 소스 (Next 편집기와 공유)
 document.addEventListener('input',e=>{const t=e.target;if(t&&t.classList&&t.classList.contains('timeIn'))t.value=t.value.replace(/[^\d:]/g,'').slice(0,5);});
@@ -990,7 +993,14 @@ function syncSheetTop(){
 function setSheetSnap(snap){
   const sb=document.getElementById('sidebar'); if(!sb) return;
   if(snap==='expanded') syncSheetTop();   // 헤더 아래 띠(샘플·읽기 전용 안내)가 늘거나 줄었을 수 있다
-  sb.style.height=''; sb.dataset.snap=snap;
+  sb.style.height=''; sb.dataset.snap=snap; syncSheetHandle();
+}
+// 손잡이 막대만으로는 누르면 무엇이 되는지 모른다(2026-10-02 UX 검토) — 다음 단계를 말로 적는다. 순서는 click의 순환과 같다.
+function syncSheetHandle(){
+  const side=document.getElementById('sidebar'), h=document.getElementById('sheetHandle'); if(!side||!h) return;
+  const next={collapsed:'일정 펼치기', half:'일정 크게 보기', expanded:'지도 크게 보기'}[side.dataset.snap||'half']||'일정 크게 보기';
+  const t=h.querySelector('.sheetHandleText'); if(t && t.textContent!==next) t.textContent=next;
+  h.setAttribute('aria-label', next);
 }
 window.addEventListener('resize',syncSheetTop);
 (function initMobileSheet(){
@@ -1757,6 +1767,13 @@ function renderFilter(){
       <div class="hint">예약은 총액 기준이에요 — 일자 카드의 '하루 비용'은 이걸 날수로 나눈 하루치예요.</div></div>`;
     bar.appendChild(cost);
   }
+  // 14일 넘는 여행은 고른 Day 칩이 가로 스크롤 밖에 있었다 — 고른 날을 칩 줄 안으로 데려온다(세로 스크롤은 건드리지 않는다)
+  const on=bar.querySelector('.chip.active');
+  if(on && activeDay){
+    const l=on.offsetLeft, r=l+on.offsetWidth;
+    if(l<bar.scrollLeft || r>bar.scrollLeft+bar.clientWidth) bar.scrollLeft=Math.max(0, l-(bar.clientWidth-on.offsetWidth)/2);
+  }
+  bar.querySelectorAll('.chip').forEach(c=>{ if(c.classList.contains('active')) c.setAttribute('aria-current','true'); });
 }
 // 후보 보드의 전역 — **`renderMenuBadges`보다 위에 있어야 한다.** `render()`가 로드 직후에 불리는데
 // 선언이 아래에 있으면 TDZ로 스크립트가 통째로 죽는다(실시간 전역을 위에 두는 것과 같은 이유).
@@ -1803,7 +1820,8 @@ function renderLegend(){
 function renderSidebar(){
   const sb=document.getElementById('sidebar'); sb.innerHTML='';
   if(!sb.dataset.snap) sb.dataset.snap='half';
-  const handle=document.createElement('button'); handle.id='sheetHandle'; handle.type='button'; handle.setAttribute('aria-label','일정 패널 높이 조절'); handle.title='위아래로 드래그해 일정 패널 높이 조절'; sb.appendChild(handle);
+  const handle=document.createElement('button'); handle.id='sheetHandle'; handle.type='button'; handle.title='누르거나 위아래로 끌어 일정 패널 높이 조절';
+  handle.appendChild(document.createElement('span')).className='sheetHandleText'; sb.appendChild(handle); syncSheetHandle();
   // 이전 Sortable 인스턴스 정리 (누수 방지)
   sortables.forEach(s=>{try{s.destroy();}catch(e){}}); sortables=[];
   const colors=cityColors();
@@ -1936,7 +1954,8 @@ function renderSidebar(){
       // ⚠️ .spot 안쪽 첫 줄이라 .spotList의 자식 수는 그대로다(드래그 인덱스가 어긋나지 않는다).
       // 어디서 오는 길인지 — 전날에서 이어지면 그 출발점을 말한다(숙소면 숙소, 아니면 전날 마지막 장소)
       const fromLabel=(inLeg&&inLeg.from===ctx.anchor)? (carry? '숙소에서' : '전날 마지막 장소에서') : '이전 장소에서';
-      const inLegHtml=legHtml?`<div class="spotLeg incoming" aria-label="${fromLabel} 오는 길"><span class="legFrom">${fromLabel}</span>${legHtml}</div>`:'';
+      // '이전 장소에서'는 거의 모든 행에 같은 말이라 화면에서는 뺀다(보조기술에는 남긴다) — 다른 출발점만 보인다
+      const inLegHtml=legHtml?`<div class="spotLeg incoming" aria-label="${fromLabel} 오는 길"><span class="legFrom${fromLabel==='이전 장소에서'?' srOnly':''}">${fromLabel}</span>${legHtml}</div>`:'';
       spotsHtml+=`<div class="spot${splitCls}${s.reunion?' isReunion':''}${legHtml?' hasInLeg':''}" data-di="${di}" data-si="${si}"${s.split?` data-split="${escAttr(s.split)}"`:''} style="--c:${dotC}">
         ${inLegHtml}<div class="spotMain">
           <span class="spotTime eta${tl[si].fixed?' fixed':''}" title="${escAttr(etaTip)}" aria-label="${escAttr(tl[si].fixed?`도착 ${hm(etas[si])} (정한 시각)`:`도착 예상 ${hm(etas[si])}`)}">${tl[si].fixed?ic('fixed'):''}${hm(etas[si])}</span>
@@ -1956,7 +1975,13 @@ function renderSidebar(){
     card.innerHTML=`<div class="dayHead">
         <div class="dayHeadMain"><div class="dayTitle" title="Day ${di+1} · ${escAttr(day.title)}"><span class="dragHandle" title="드래그로 일자 순서 변경">⠿</span> Day ${di+1} · ${esc(day.title)}</div>
         <details class="actionMenu" onclick="event.stopPropagation()"><summary aria-label="Day ${di+1} 작업 메뉴">⋮</summary><div class="actionMenuPanel"><button class="iconb" onclick="openDayModal(${di})" title="일자 편집">✎ <span>편집</span></button><button class="iconb" onclick="copyDay(${di})" title="일자 복사">⧉ <span>복사</span></button><button class="iconb danger" onclick="deleteDay(${di})" title="일자 삭제">⌫ <span>삭제</span></button></div></details></div>
-        <div class="dayHeadMeta"><span class="date" onclick="event.stopPropagation();openDayModal(${di})" title="${timeZone?'클릭해서 날짜·시간대 지정/수정':'클릭해서 날짜·시간대 지정 — 시간대를 넣으면 이 날 대중교통 시간이 정확해져요'}">${dateOf(di)||'📅 날짜 지정'} · ${timeZone?`🌐 ${esc(timeZone)}`:'🌐 시간대 미설정'}</span><button class="iconb modeBtn" onclick="event.stopPropagation();cycleMode(${di})" title="이동 수단: ${MODE_NAME[dm]} — 클릭해서 변경">${MODE_ICON[dm]}</button>${dayWeatherHtml(day,di)}</div>
+        <div class="dayHeadMeta"><span class="date" onclick="event.stopPropagation();openDayModal(${di})" title="${timeZone?'클릭해서 날짜·시간대 지정/수정':'클릭해서 날짜·시간대 지정 — 시간대를 넣으면 이 날 대중교통 시간이 정확해져요'}">${dateOf(di)||'📅 날짜 지정'}${(()=>{
+          // 시간대는 바뀌는 날에만 적는다 — 14일 내내 같은 'Europe/Madrid'·'시간대 미설정'이 반복됐다(2026-10-02 UX 검토).
+          // 정하지 않은 상태도 계산(대중교통 시각)에 영향을 주므로 없애지 않고, 첫날(또는 정해진 날 다음)에 한 번 말한다.
+          const prevTz=di>0? dayTimeZone(trip().days[di-1]) : null;
+          if(timeZone) return (di===0||timeZone!==prevTz)? ` · 🌐 ${esc(timeZone)}` : '';
+          return (di===0||prevTz)? ' · 🌐 시간대 미설정' : '';
+        })()}</span><button class="iconb modeBtn" onclick="event.stopPropagation();openDayModePicker(${di})" title="이 날 기본 이동수단: ${MODE_NAME[dm]} — 눌러서 바꾸기" aria-haspopup="dialog">${MODE_ICON[dm]}</button>${dayWeatherHtml(day,di)}</div>
       </div><div class="dayBody">
         ${day.drive?`<div class="drive driveMemo" title="직접 적은 이동 메모예요 — 아래 계산과 다를 수 있어요"><span class="memoTag">이동 메모</span>${esc(day.drive)}</div>`:''}
         ${flightHtml(day)}
@@ -2126,7 +2151,6 @@ window.focusLatLng=(lat,lng)=>{
   setTimeout(()=>{ const m=markers.find(m=>Math.abs(+m.spot.lat-lat)<1e-6 && Math.abs(+m.spot.lng-lng)<1e-6); if(m) m.open(); },400);
 };
 // 화살표 이동: 도구 항상 노출 + 옮긴 장소를 커서 아래에 고정(스크롤 보정)해 연속 클릭 가능
-// 일자 카드의 수단 아이콘 탭 → 자차→대중교통→도보→자전거 순환 (상세 설정은 일자 편집 모달)
 // 동선 최적화 — 바로 바꾸지 않고 미리보기를 먼저 연다(2026-10-02 UX 검토: 바꾼 뒤에 "예약시각 순서 확인!" 토스트로만 알렸다).
 // 순서 계획은 lib `planRouteOptimization` 하나다 — 예약·도착 고정·숙소·좌표 없는 장소·분리 묶음은 제자리에 둔다.
 // 미리보기는 같은 타임라인(dayJourney)으로 바꾸기 전후의 예약 도착을 비교해, 늦어지는 예약이 있으면 적용 전에 말한다.
@@ -2166,23 +2190,55 @@ document.getElementById('optApply').onclick=()=>{
   const pts=day.spots.filter(hasLoc).map(s=>[s.lat,s.lng]); fitTo(pts,64,15);
   toast('방문 순서를 바꿨어요','#3e7a4c',{fn:()=>undoWith(snap)});
 };
-window.cycleMode=(di)=>{
+// 이동수단은 고른다 — 아이콘을 누를 때마다 다음 수단으로 넘어가면 지금 무엇인지·무엇이 있는지 모른 채 일곱 번을 눌러야 했다.
+// '그날 기본'과 '이 구간만'은 다른 범위라 제목과 안내가 그 차이를 말한다.
+const MODE_ORDER=['car','taxi','transit','train','walk','bike','flight'];
+function openModePicker(o){
+  const dlg=document.getElementById('modePicker'), list=document.getElementById('modePickerList');
+  document.getElementById('modePickerTitle').textContent=o.title;
+  document.getElementById('modePickerHint').textContent=o.hint||'';
+  list.replaceChildren();
+  let picked=null;
+  o.options.forEach(opt=>{
+    const b=document.createElement('button'); b.type='button'; b.className='btn modeOpt'+(opt.value===o.current?' on':'');
+    b.setAttribute('role','radio'); b.setAttribute('aria-checked', opt.value===o.current?'true':'false');
+    b.textContent=opt.label;
+    b.onclick=()=>{ dlg.close(); if(opt.value!==o.current) o.onPick(opt.value); };
+    if(opt.value===o.current) picked=b;
+    list.appendChild(b);
+  });
+  document.getElementById('modePickerCancel').onclick=()=>dlg.close();
+  if(!dlg.open) dlg.showModal();
+  (picked||list.firstChild)?.focus?.();
+}
+window.openDayModePicker=(di)=>{
   if(readOnly()) return;
-  const order=['car','taxi','transit','train','walk','bike','flight'];
-  const d=trip().days[di];
-  commit(()=>{ d.mode=order[(order.indexOf(dayModeOf(d))+1)%order.length]; });
-  toast(`Day ${di+1} 기본 이동 수단: ${MODE_ICON[d.mode]} ${MODE_NAME[d.mode]} — 구간 아이콘을 누르면 그 구간만 바꿔요`);
+  const d=trip().days[di]; if(!d) return;
+  openModePicker({title:`Day ${di+1} 기본 이동수단`, hint:'이 날 모든 구간에 써요. 구간마다 따로 고른 수단은 그대로예요.',
+    current:dayModeOf(d), options:MODE_ORDER.map(m=>({value:m, label:`${MODE_ICON[m]} ${MODE_NAME[m]}`})), onPick:(m)=>setDayMode(di,m)});
 };
-// 구간 수단 순환: 일정 기본(legMode 없음) → 각 수단 → 다시 기본. 도시 간 이동처럼 '한 구간만' 다를 때.
-const LEG_MODE_ORDER=['','car','taxi','transit','train','walk','bike','flight'];
-window.cycleLegMode=(di,si)=>{
+window.setDayMode=(di,mode)=>{
+  if(readOnly()||!MODE_ICON[mode]) return;
+  const d=trip().days[di]; if(!d) return;
+  commit(()=>{ d.mode=mode; });
+  toast(`Day ${di+1} 기본 이동수단: ${MODE_ICON[mode]} ${MODE_NAME[mode]}`);
+};
+window.openLegModePicker=(di,si)=>{
   if(readOnly()) return;
   const day=trip().days[di], s=day&&day.spots&&day.spots[si]; if(!s) return;
-  const next=LEG_MODE_ORDER[(LEG_MODE_ORDER.indexOf(s.legMode||'')+1)%LEG_MODE_ORDER.length];
-  commit(()=>{ if(next) s.legMode=next; else delete s.legMode; });
   const dmn=dayModeOf(day);
-  toast(next ? `이 구간만: ${MODE_ICON[next]} ${MODE_NAME[next]}`
-             : `이 구간: 그날 기본(${MODE_ICON[dmn]} ${MODE_NAME[dmn]})으로 되돌렸어요`);
+  openModePicker({title:`${s.name||'이 장소'}까지 이동수단`, hint:'이 구간만 바꿔요. 하루 전체는 일자 머리의 수단 버튼에서 바꿔요.',
+    current:s.legMode||'',
+    options:[{value:'', label:`그날 기본 따르기 (${MODE_ICON[dmn]} ${MODE_NAME[dmn]})`}].concat(MODE_ORDER.map(m=>({value:m, label:`이 구간만 ${MODE_ICON[m]} ${MODE_NAME[m]}`}))),
+    onPick:(m)=>setLegMode(di,si,m)});
+};
+window.setLegMode=(di,si,mode)=>{
+  if(readOnly()) return;
+  const day=trip().days[di], s=day&&day.spots&&day.spots[si]; if(!s) return;
+  if(mode && !MODE_ICON[mode]) return;
+  commit(()=>{ if(mode) s.legMode=mode; else delete s.legMode; });
+  const dmn=dayModeOf(day);
+  toast(mode ? `이 구간만: ${MODE_ICON[mode]} ${MODE_NAME[mode]}` : `이 구간: 그날 기본(${MODE_ICON[dmn]} ${MODE_NAME[dmn]})을 따라요`);
 };
 window.moveSpot=(di,si,dir)=>{
   if(readOnly()) return;
@@ -2453,7 +2509,9 @@ document.getElementById('spotSave').onclick=()=>{
   if(!isEdit){ const ni=trip().days[targetDay].spots.indexOf(s); if(ni>=0) selectedSpot={di:targetDay, si:ni}; }
   document.getElementById('spotModalBg').classList.remove('show');
   commit(); if(!hadLocations) fitEntry();
-  toast(sorted?'저장했어요 · 시간순으로 정렬했어요':'저장했어요');
+  // 새 장소를 담았으면 같은 날에 이어서 담을 수 있게 — 방금 담은 장소 뒤에 붙는다(selectedSpot)
+  toast(sorted?'저장했어요 · 시간순으로 정렬했어요':(isEdit?'저장했어요':`Day ${targetDay+1}에 담았어요`), '#3e7a4c',
+    (isEdit||readOnly())? undefined : {label:'하나 더 담기', fn:()=>{ openSpotModal(targetDay,-1); document.getElementById('spotSearch').focus(); }});
 };
 document.getElementById('spotDelBtn').onclick=()=>{
   const snap=snapshot();
@@ -2502,7 +2560,14 @@ async function doSearch(){
 
         res.innerHTML='';
       };
-      d.onclick=()=>openPlaceDetails(it,{select});
+      // 새 장소면 장소 정보에서 바로 담는다 — 검색 → 결과 → 정보 → '선택' → 폼 → '저장'의 두 번 확인을 한 번으로(2026-10-02 UX 검토).
+      // 시간·메모를 먼저 정하고 싶으면 예전처럼 폼으로 돌아간다. 도시를 모르면 담기 전에 좌표로 한 번 묻는다.
+      const add=(editing&&editing.si<0)? async()=>{
+        select();
+        if(!it.city){ const c=await reverseCity(it.lat,it.lng).catch(()=>null); if(c) fillCityValue(c); }
+        document.getElementById('spotSave').onclick();
+      } : null;
+      d.onclick=()=>openPlaceDetails(it,{select, add, addLabel:`Day ${(parseInt(document.getElementById('spotDay').value)||0)+1}에 담기`});
       res.appendChild(d);
     });
   }catch(e){   // 예상 못한 예외도 원인 분류해 안내(상세는 콘솔에만)

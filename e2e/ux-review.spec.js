@@ -28,8 +28,10 @@ test('빈 여행은 이전 지도를 덮고 검색으로 확인한 첫 장소를
   await page.locator('#spotSearch').fill('도쿄역');
   await page.locator('#spotSearchBtn').click();
   await page.locator('#searchRes').getByText('도쿄역').click();
-  await page.getByRole('button',{name:'이 장소 선택',exact:true}).click();
-  await page.locator('#spotSave').click();
+  // 장소 정보에서 바로 담는다 — '선택' 뒤에 폼의 '저장'을 또 누르지 않는다
+  await page.getByRole('button',{name:'Day 1에 담기',exact:true}).click();
+  await expect(page.locator('#spotModalBg')).toBeHidden();
+  await expect(page.locator('#toast')).toContainText('Day 1에 담았어요');
   await expect(page.locator('#mapEmpty')).toBeHidden();
   await expect(page.locator('#map')).toHaveJSProperty('inert',false);
   await expect(page.locator('#sidebar')).toContainText('도쿄역');
