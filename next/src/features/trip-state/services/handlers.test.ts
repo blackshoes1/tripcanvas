@@ -672,9 +672,16 @@ describe('POST /import/commit — 확인한 것만 저장하고, 다음 행동�
     })));
     const candidate = ((await res.json()) as ImportPreviewResponse).candidate!;
     expect(candidate.currency).toBe('GBP');
-    expect(candidate.amount).toBe(1250.5);
-    expect(candidate.disposition).not.toBe('AUTO');   // 저장할 수 없는 통화라고 미리보기에서 말한다
-    expect((await commit({ candidate })).status).toBe(200);
+    // 앱은 후보 금액을 고른 통화 칸에 그대로 채운다 — 미리보기에 싣지 않는다. 읽은 값은 이유에 남는다
+    expect(candidate.amount).toBeNull();
+    expect(candidate.reasons.some((r) => r.includes('1,250.50 GBP'))).toBe(true);
+    expect(candidate.missingFields).toContain('amount');
+    expect(candidate.disposition).not.toBe('AUTO');
+    // 배포된 앱은 ambiguities가 있으면 체크인·체크아웃을 미리 채우지 않는다 — 금액 사정으로 날짜를 막지 않는다
+    expect(candidate.ambiguities).toEqual([]);
+    expect([candidate.startAt, candidate.endAt]).toEqual(['2026-09-02', '2026-09-04']);
+    // commit은 클라이언트가 보낸 후보를 받는다 — 금액이 실려 와도 원화로 저장하지 않는다
+    expect((await commit({ candidate: { ...candidate, amount: 1250.5 } })).status).toBe(200);
     const bookings = store.rows.get('trip-1')!.data.bookings as Record<string, unknown>[];
     const saved = bookings[bookings.length - 1];
     expect(saved.price).toBeNull();   // ₩1,251이 되지 않는다

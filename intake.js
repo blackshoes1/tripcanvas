@@ -336,12 +336,14 @@
     const code=currency.code;
     const read=readAmount(code? ((amountLine&&amountNearCurrency(amountLine[0], code))||amountNearCurrency(text, code))
       : (amountLine? amountLine[0] : ''), code);
-    const amount=read.amount;
-    if(read.ambiguous) ambiguities.push(`금액 "${read.text}"이 ${read.amount}인지 ${read.alternative}인지 확실하지 않아요`);
-    // 저장할 수 없는 통화(GBP·AUD…)는 저장하는 순간 통화가 떨어져 원화 금액이 된다 — 읽은 대로 보여 주되 확인받는다
-    if(amount!==null && currency.code && STORABLE_CURS.indexOf(currency.code)<0){
-      ambiguities.push(`${currency.code}는 아직 금액으로 저장할 수 없는 통화예요 — 읽은 금액(${read.text} ${currency.code})은 저장할 때 비워 두니 ${STORABLE_CURS.join('·')} 중 하나로 다시 적어 주세요`);
-    }
+    // 저장할 수 없는 통화(GBP·AUD…)의 금액은 후보에 싣지 않는다 — 앱(SharedImportModel.bookingSeed)은 후보 금액을 사용자가
+    // 고른 통화 칸에 그대로 채우므로 £1,250.50이 ₩1,250.5가 된다. 읽은 값은 이유에 남기고, 금액은 빈 칸(missingFields)이다.
+    // ⚠️ 금액 쪽 사정(이것과 표기가 모호한 금액)은 ambiguities에 넣지 않는다 — 배포된 앱은 ambiguities가 하나라도 있으면
+    //    체크인·체크아웃을 미리 채우지 않아, 금액 한 줄 때문에 날짜까지 다시 치게 된다. 둘 다 빈 칸으로 AUTO를 막는다.
+    const storable=!code || STORABLE_CURS.indexOf(code)>=0;
+    const amount=storable? read.amount : null;
+    if(read.amount!==null && !storable) reasons.push(`${code}는 아직 금액으로 저장할 수 없는 통화라 읽은 금액(${read.text} ${code})을 비워 뒀어요 — ${STORABLE_CURS.join('·')} 중 하나로 직접 적어 주세요`);
+    if(read.ambiguous) reasons.push(`금액 "${read.text}"이 ${read.amount}인지 ${read.alternative}인지 확실하지 않아요 — 통화를 확인해 주세요`);
 
     /** @type {any} */
     const candidate={
@@ -359,7 +361,8 @@
       confidence: 0
     };
     candidate.missingFields=(REQUIRED[type]||REQUIRED.OTHER).filter(f=>!candidate[f]);
-    if(amount!==null && !code) candidate.missingFields.push('currency');   // 통화를 모르는 금액 — 원화로 단정하지 않는다
+    if(amount!==null && !code) candidate.missingFields.push('currency');   // 통화를 모르는 금액 — 원화로 단정하지 않는다(표기가 모호한 금액도 여기다)
+    if(read.amount!==null && !storable) candidate.missingFields.push('amount');   // 읽었지만 담을 수 없는 금액
     candidate.confidence=scoreCandidate(candidate, !!adapter);
     return candidate;
   }
@@ -525,6 +528,7 @@
     if(cur && STORABLE_CURS.indexOf(cur)<0){
       // 저장할 수 없는 통화(GBP·AUD…) — 그대로 두면 정규화가 통화를 떨어뜨려 £1,250.50이 ₩1,251이 된다.
       // 원화로 바꿔 넣지 않는다: 금액은 미정(null)으로 두고, 읽은 값은 무엇이었는지 남긴다(importedType과 같은 자리).
+      // 미리보기(parseBookingCandidate)는 이런 금액을 싣지 않지만, commit은 클라이언트가 보낸 후보를 받으므로 여기서도 막는다.
       if(c.amount){ b.price=null; b.importedPrice={amount:+c.amount, currency:cur}; }
     } else {
       if(c.amount) b.price=LIB.moneyAmount(+c.amount, cur||undefined);   // 통화의 최소 단위로 — 달러·유로의 센트를 버리지 않는다

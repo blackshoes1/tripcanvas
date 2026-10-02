@@ -93,8 +93,10 @@ test('readAmount: 통화를 모르는데 구분자 하나 뒤가 세 자리면 �
   const c = I.parseBookingCandidate({ url: 'https://www.booking.com/hotel/x', title: 'Hotel X',
     text: '예약번호: ZZ11223\n체크인 2026-10-30\n체크아웃 2026-11-01\n총액 1.234' });
   assert.equal(c.amount, 1234);
-  assert.ok(c.ambiguities.some((a) => a.includes('1.234')), '미리보기에서 확인받는다');
+  assert.ok(c.reasons.some((a) => a.includes('1.234')), '미리보기에서 확인받는다');
+  assert.ok(c.missingFields.includes('currency'), '통화가 빈 칸이라 자동으로 넘기지 않는다');
   assert.notEqual(I.candidateDisposition(c), 'AUTO');
+  assert.deepEqual(c.ambiguities, [], '금액 사정으로 날짜 미리 채우기를 막지 않는다(앱은 ambiguities가 있으면 날짜를 비운다)');
 });
 
 // ── 3. 예약 후보 ──
@@ -270,14 +272,30 @@ test('candidateToBooking: 통화의 최소 단위로 반올림한다 — 센트�
   assert.equal(I.candidateToBooking({ title: 'x', amount: 1234.567, currency: 'EUR' }, 'bk_eur').price, 1234.57);
 });
 
-test('candidateToBooking: 저장할 수 없는 통화(GBP)는 원화 금액이 되지 않는다 — 금액은 미정, 읽은 값은 남긴다', () => {
+// 앱은 후보 금액을 사용자가 고른 통화 칸에 그대로 채우고(SharedImportModel.bookingSeed), ambiguities가 하나라도 있으면
+// 체크인·체크아웃을 비운다. 그래서 저장할 수 없는 통화의 금액은 후보에 싣지 않고, 그 사정은 ambiguities 밖에 둔다(2026-10-02 리뷰).
+test('parseBookingCandidate: 저장할 수 없는 통화(GBP)의 금액은 후보에 싣지 않는다 — 읽은 값은 이유에, 날짜는 그대로', () => {
   const c = I.parseBookingCandidate({ url: 'https://www.booking.com/hotel/x', title: 'London Hotel',
     text: '예약번호: GB12345\n체크인 2026-10-30\n체크아웃 2026-11-01\nTotal £1,250.50' });
   assert.equal(c.currency, 'GBP');
-  assert.equal(c.amount, 1250.5, '읽기는 읽은 그대로');
-  assert.ok(c.ambiguities.some((a) => a.includes('GBP')), '미리보기에서 저장할 수 없는 통화라고 말한다');
+  assert.equal(c.amount, null, '앱이 £1,250.50을 원화 칸에 채우지 않게');
+  assert.ok(c.reasons.some((a) => a.includes('1,250.50 GBP')), '읽은 값이 무엇이었는지 말한다');
+  assert.ok(c.missingFields.includes('amount'), '금액은 빈 칸');
   assert.notEqual(I.candidateDisposition(c), 'AUTO');
+  assert.deepEqual(c.ambiguities, [], '날짜 미리 채우기를 막지 않는다');
+  assert.deepEqual([c.startAt, c.endAt], ['2026-10-30', '2026-11-01']);
+  for (const text of ['Check-in 2026-10-30\nCheck-out 2026-11-01\nTotal 2,345.67 CAD', 'Check-in 2026-10-30\nCheck-out 2026-11-01\n450.000 THB']) {
+    const other = I.parseBookingCandidate({ url: 'https://www.booking.com/hotel/x', title: 'Hotel', text });
+    assert.deepEqual([other.amount, other.ambiguities], [null, []], text);
+  }
+  const b = I.candidateToBooking(c, 'bk_gbp');
+  assert.equal('price' in b, false, '미리보기가 비운 금액은 저장에도 없다');
+  assert.equal('cur' in b, false);
+});
 
+test('candidateToBooking: 저장할 수 없는 통화(GBP)는 원화 금액이 되지 않는다 — 금액은 미정, 읽은 값은 남긴다', () => {
+  // commit은 클라이언트가 보낸 후보를 받는다 — 금액이 실려 와도 원화로 저장하지 않는다
+  const c = { type: 'HOTEL', title: 'London Hotel', startAt: '2026-10-30', endAt: '2026-11-01', amount: 1250.5, currency: 'GBP' };
   const b = I.candidateToBooking(c, 'bk_gbp');
   assert.equal(b.price, null, '₩1,251로 저장하지 않는다 — 금액 미정');
   assert.equal('cur' in b, false);
