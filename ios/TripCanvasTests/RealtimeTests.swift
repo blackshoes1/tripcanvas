@@ -287,6 +287,63 @@ final class RealtimeSubscriberTests: XCTestCase {
     }
 }
 
+/// `/api/v1/me`를 한 번 못 물었다고 실시간을 접지 않는다(2026-10-02).
+/// 전에는 실패도 "실시간 없음"으로 담아, 지하철에서 한 번 타임아웃이 나면 앱을 끌 때까지 모든 여행에서 실시간이 꺼졌다.
+@MainActor
+final class RealtimeAddressTests: XCTestCase {
+    func testAFailedLookupIsNotKeptButASuccessIs() async {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [MeProtocol.self]
+        let session = URLSession(configuration: config)
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer {
+            session.invalidateAndCancel()
+            MeProtocol.online = false
+            MeProtocol.requests = 0
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let api = APIClient(baseURL: URL(string: "https://example.invalid")!, tokens: NoTokens(), session: session)
+        let service = TripService(api: api, cache: TripCache(directory: directory))
+
+        MeProtocol.online = false
+        let failed = await service.cachedRealtimeURL()
+        XCTAssertNil(failed, "못 물었으면 이번에는 실시간 없이 간다")
+
+        MeProtocol.online = true
+        let recovered = await service.cachedRealtimeURL()
+        XCTAssertEqual(recovered?.absoluteString, "wss://example.invalid/realtime",
+                       "다음에 붙을 때 다시 묻는다 — 한 번의 실패가 굳지 않는다")
+
+        let asked = MeProtocol.requests
+        MeProtocol.online = false
+        let kept = await service.cachedRealtimeURL()
+        XCTAssertEqual(kept?.absoluteString, "wss://example.invalid/realtime")
+        XCTAssertEqual(MeProtocol.requests, asked, "받은 답은 들고 있는다 — 붙을 때마다 /me를 부르지 않는다")
+    }
+}
+
+/// `/api/v1/me`를 흉내 낸다 — 꺼 두면 타임아웃, 켜면 실시간 주소를 준다.
+private final class MeProtocol: URLProtocol {
+    @MainActor static var online = false
+    @MainActor static var requests = 0
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        Task { @MainActor in
+            Self.requests += 1
+            guard Self.online else {
+                client?.urlProtocol(self, didFailWithError: URLError(.timedOut)); return
+            }
+            let body = Data(#"{"realtime":{"provider":"TRIPCANVAS","url":"wss://example.invalid/realtime"}}"#.utf8)
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: body)
+            client?.urlProtocolDidFinishLoading(self)
+        }
+    }
+    override func stopLoading() {}
+}
+
 @MainActor
 private final class NoTokens: TokenProviding {
     func accessToken() async throws -> String { "live-test-token" }

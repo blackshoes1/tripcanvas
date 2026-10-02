@@ -63,14 +63,16 @@ final class TripService: TripDataSource {
 
     /// 실시간 주소는 잘 바뀌지 않는다 — 한 번 물어보고 들고 있는다.
     /// 못 물어보면 nil이고, 그러면 실시간 없이 폴백(당겨서 새로고침)으로 간다.
+    /// ⚠️ **받은 답만 담는다.** 전에는 실패도 "실시간 없음"으로 담아, 지하철에서 한 번 타임아웃이 나면
+    ///    앱을 끌 때까지 모든 여행에서 실시간이 꺼졌다(2026-10-02). 실패는 다음에 붙을 때 다시 묻는다.
     private var realtimeURL: URL??
     func cachedRealtimeURL() async -> URL? {
         if let cached = realtimeURL { return cached }
         let scope = cacheScope
-        let resolved = (try? await realtimeChoice())?.socketURL
+        guard let choice = try? await realtimeChoice() else { return nil }
         guard scope == cacheScope else { return nil }
-        realtimeURL = .some(resolved)
-        return resolved
+        realtimeURL = .some(choice.socketURL)
+        return choice.socketURL
     }
 
     struct Fetched<T: Codable> {
