@@ -326,8 +326,9 @@
         const cm=commitmentOf(s, days[k], (trip&&trip.bookings)||[]);
         if(cm.flexibility!=='FLEXIBLE') return;
         out.push({id:'c-d'+k+'s'+si, kind:'VISIT_PLACE', title:String(s.name||''), location:locOf(s),
-          // 제안 후보의 소요는 계획된 체류가 아니다 — 모르면 '한 시간쯤 걸린다'고 본다
-          durationMin:(s.stayMin!=null? Math.max(0,num(s.stayMin,c.suggestStayMin)) : c.suggestStayMin),
+          // 제안 후보의 소요는 계획된 체류가 아니다 — 모르거나 0(=바로 이동)이면 '한 시간쯤 걸린다'고 본다.
+          // 오늘 장소와 같은 규칙이다: 소요 0은 어떤 빈 시간에도 들어간다
+          durationMin:(+s.stayMin>0? +s.stayMin : c.suggestStayMin),
           priority:priorityOf(s, cm.flexibility), must:!!s.must, hours:s.hours||null,
           fromDay:k, si, inPlan:false, spot:s});
       });

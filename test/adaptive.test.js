@@ -658,6 +658,27 @@ test('체류 기본값: 계획된 장소는 0분이지만, 제안 후보의 소�
                '오늘 장소도 마찬가지 — 계획 체류가 0이어도 제안 기준으로는 0을 쓰지 않는다');
 });
 
+// 다른 날의 후보가 '들렀다 바로 이동'(stayMin:0)이면 계획 체류는 0이지만 제안 소요는 0이 아니다.
+// 오늘 장소와 같은 규칙이어야 한다 — 0분 후보는 어떤 빈 시간에도 들어가 빈칸 채우기가 끝없이 그걸 넣는다.
+test('체류 기본값: 다른 날 후보의 체류가 0분이어도 제안 소요는 한 시간으로 본다', () => {
+  const trip = tripOf([
+    { title: '오늘', mode: 'walk', startAt: '09:00', spots: [
+      Object.assign({ name: '오늘 장소', city: 'M' }, P(40.40))
+    ] },
+    { title: '내일', mode: 'walk', startAt: '09:00', spots: [
+      Object.assign({ name: '잠깐 들를 곳', city: 'M', stayMin: 0 }, P(40.41)),
+      Object.assign({ name: '숫자 아닌 체류', city: 'M', stayMin: 'x' }, P(40.42)),
+      Object.assign({ name: '정한 체류', city: 'M', stayMin: 45 }, P(40.43))
+    ] }
+  ]);
+  const state = stateOf(trip, { todayISO: TODAY, nowMinutes: 10 * 60 });
+  const candidates = A.buildCandidates(trip, state, {});
+  const dur = (title) => candidates.find((c) => c.title === title).durationMin;
+  assert.equal(dur('잠깐 들를 곳'), 60, '계획 체류 0은 제안 소요 0이 아니다');
+  assert.equal(dur('숫자 아닌 체류'), 60);
+  assert.equal(dur('정한 체류'), 45, '정해 둔 체류는 그대로 쓴다');
+});
+
 // D-day는 '오늘 → 출발일'이고, 시작 전에만 값이 있다.
 // ⚠️ todayIndex === -1은 **시작 전과 끝난 뒤 둘 다**다 — 둘을 가르는 것이 이 값이다.
 test('daysUntilStart: 시작 전에만 값이 있고, currentDayIndex와 같은 날짜 규칙을 쓴다', () => {
