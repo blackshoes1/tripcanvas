@@ -287,6 +287,233 @@ final class RealtimeSubscriberTests: XCTestCase {
     }
 }
 
+/// 끝난 연결이 다음 연결을 막지 않고, 끊긴 연결이 깨어나 소켓을 열지 않는다(2026-10-02).
+@MainActor
+final class RealtimeRecoveryTests: XCTestCase {
+    /// 조건이 설 때까지 메인 액터를 잠깐씩 내준다 — `run`도 메인 액터에서 돈다.
+    private func settle(_ done: () -> Bool) async {
+        for _ in 0..<200 {
+            if done() { return }
+            try? await Task.sleep(nanoseconds: 1_000_000)
+        }
+    }
+
+    /// 주소를 못 받아 끝난 연결이 `pump`를 남기면 `connect`의 가드에 걸려, 백그라운드에 다녀오기 전까지
+    /// 같은 여행에 다시 붙지 않았다. 화면에 다시 들어오면 다시 묻는다.
+    func testAnEarlyExitDoesNotBlockTheNextConnect() async {
+        let asked = LiveCounter()
+        let live = RealtimeClient(tokens: NoTokens(), urlFor: { asked.value += 1; return nil })
+
+        live.connect(tripId: "t1", key: "trip") { _ in }
+        await settle { asked.value == 1 && live.state == .off }
+        XCTAssertEqual(live.state, .off, "주소가 없으면 붙지 않고 폴백으로 간다")
+
+        live.connect(tripId: "t1", key: "trip") { _ in }   // 화면에 다시 들어왔다
+        await settle { asked.value == 2 }
+        XCTAssertEqual(asked.value, 2, "끝난 연결이 다음 연결을 막으면 안 된다")
+    }
+
+    /// 주소를 묻는 사이에 끊겼으면(앱이 뒤로 감) 깨어난 뒤 **소켓을 열지 않는다** — 토큰도 꺼내지 않는다.
+    /// 전에는 await 뒤에 취소를 다시 보지 않아, 끊은 다음에 소켓을 열고 AUTH까지 보냈다.
+    func testDisconnectWhileWaitingDoesNotOpenTheSocket() async {
+        let gate = LiveGate()
+        let tokens = CountingLiveTokens()
+        let live = RealtimeClient(tokens: tokens, urlFor: {
+            gate.entered = true
+            while !gate.isOpen { await Task.yield() }
+            return URL(string: "wss://example.invalid/realtime")
+        })
+
+        live.connect(tripId: "t1", key: "trip") { _ in }
+        await settle { gate.entered }
+        live.disconnect()   // 앱이 뒤로 갔다
+        gate.isOpen = true
+        await settle { tokens.asked > 0 }
+
+        XCTAssertEqual(tokens.asked, 0, "끊긴 연결은 깨어나도 토큰을 꺼내 소켓에 싣지 않는다")
+        XCTAssertEqual(live.state, .off)
+    }
+
+    /// 같은 여행으로 끊었다가 바로 다시 붙으면(앱 전환 — `.inactive`에 끊고 `.active`에 붙는다) 여행이 같아
+    /// 옛 `run`을 막는 것은 취소와 연결 번호뿐이다. 옛 것이 깨어나 소켓을 하나 더 열면 안 된다.
+    func testReconnectingToTheSameTripWhileWaitingOpensOnlyOneSocket() async {
+        let gate = LiveGate()
+        let tokens = CountingLiveTokens()
+        let live = RealtimeClient(tokens: tokens, urlFor: {
+            gate.entered = true
+            while !gate.isOpen { await Task.yield() }
+            return URL(string: "wss://example.invalid/realtime")
+        })
+
+        live.connect(tripId: "t1", key: "trip") { _ in }
+        await settle { gate.entered }
+        live.disconnect()                                   // 앱이 잠깐 뒤로 갔다
+        live.connect(tripId: "t1", key: "trip") { _ in }   // 곧바로 돌아왔다 — 새 연결도 같은 문 앞에서 기다린다
+        gate.isOpen = true
+        await settle { tokens.asked >= 2 }
+
+        XCTAssertEqual(tokens.asked, 1, "옛 연결은 토큰을 꺼내지 않는다 — 소켓은 새 연결의 것 하나다")
+        live.disconnect()   // 새 연결의 소켓·재시도를 정리한다
+    }
+
+    /// 토큰이 없어(로그아웃) 끝난 연결도 `pump`를 남기지 않는다 — 주소가 없을 때와 같은 출구다.
+    func testAMissingTokenDoesNotBlockTheNextConnect() async {
+        let tokens = FailingLiveTokens()
+        let live = RealtimeClient(tokens: tokens, urlFor: { URL(string: "wss://example.invalid/realtime") })
+
+        live.connect(tripId: "t1", key: "trip") { _ in }
+        await settle { tokens.asked == 1 && live.state == .off }
+        XCTAssertEqual(live.state, .off, "토큰이 없으면 붙지 않는다")
+
+        live.connect(tripId: "t1", key: "trip") { _ in }   // 다시 로그인하고 화면에 들어왔다
+        await settle { tokens.asked == 2 }
+        XCTAssertEqual(tokens.asked, 2, "끝난 연결이 다음 연결을 막으면 안 된다")
+    }
+
+    /// 주소를 **못 물은 것**(타임아웃)은 "실시간을 안 쓴다"는 답과 다르다 — `.off`로 접으면 같은 화면에 있는 동안
+    /// 다시 붙지 않는다. 소켓이 끊겼을 때처럼 다시 묻되, **몇 번만** 묻는다(폴백이 있다).
+    func testAFailedAddressLookupIsRetriedAFewTimes() async {
+        let asked = LiveCounter()
+        let live = RealtimeClient(tokens: NoTokens(), retrySeconds: 0.001, urlFor: {
+            asked.value += 1
+            throw URLError(.timedOut)
+        })
+
+        live.connect(tripId: "t1", key: "trip") { _ in }
+        await settle { live.state == .unavailable }
+
+        XCTAssertEqual(asked.value, 6, "처음 한 번 + 다시 5번 — 한 번 못 물었다고 접지도, 끝없이 묻지도 않는다")
+        XCTAssertEqual(live.state, .unavailable, "그래도 안 되면 당겨서 새로고침으로 간다")
+
+        // 끝난 연결이 `pump`를 남기면 `connect`의 가드에 걸려 아무것도 묻지 않고 `.unavailable`에 머문다.
+        live.connect(tripId: "t1", key: "trip") { _ in }   // 화면에 다시 들어왔다
+        XCTAssertEqual(live.state, .connecting)
+        await settle { live.state == .unavailable }
+        XCTAssertEqual(asked.value, 12, "한도로 접힌 뒤에도 다시 들어오면 처음부터 다시 묻는다")
+    }
+
+    /// 다시 물어도 같은 실패(서버 오류·응답 모양이 어긋남)는 그 자리에서 되풀이하지 않는다 — 앱이 앞으로 올 때마다
+    /// /me를 6번씩 부르게 된다. 접되 담지는 않으니 화면에 다시 들어오면 한 번 다시 묻는다.
+    func testAServerFailureIsNotRetriedOnTheSpot() async {
+        let asked = LiveCounter()
+        let live = RealtimeClient(tokens: NoTokens(), retrySeconds: 0.001, urlFor: {
+            asked.value += 1
+            throw APIError.server(status: 200, message: "응답을 읽지 못했어요. 앱을 업데이트하면 해결될 수 있어요.")
+        })
+
+        live.connect(tripId: "t1", key: "trip") { _ in }
+        await settle { asked.value >= 2 }
+        XCTAssertEqual(asked.value, 1, "다시 물어도 같은 실패다 — 그 자리에서 되풀이하지 않는다")
+        XCTAssertEqual(live.state, .off, "실시간 없이 당겨서 새로고침으로 간다")
+
+        live.connect(tripId: "t1", key: "trip") { _ in }   // 화면에 다시 들어왔다
+        await settle { asked.value == 2 }
+        XCTAssertEqual(asked.value, 2, "실패를 담지 않았다 — 다시 들어오면 한 번 다시 묻는다")
+    }
+}
+
+@MainActor private final class LiveCounter { var value = 0 }
+@MainActor private final class LiveGate { var entered = false; var isOpen = false }
+
+@MainActor
+private final class CountingLiveTokens: TokenProviding {
+    private(set) var asked = 0
+    func accessToken() async throws -> String { asked += 1; return "live-test-token" }
+    func refreshToken() async throws -> String { "live-test-token" }
+}
+
+/// 로그아웃 상태 — 토큰을 꺼내려 할 때마다 실패한다.
+@MainActor
+private final class FailingLiveTokens: TokenProviding {
+    private(set) var asked = 0
+    func accessToken() async throws -> String { asked += 1; throw URLError(.userAuthenticationRequired) }
+    func refreshToken() async throws -> String { throw URLError(.userAuthenticationRequired) }
+}
+
+/// `/api/v1/me`를 한 번 못 물었다고 실시간을 접지 않는다(2026-10-02).
+/// 전에는 실패도 "실시간 없음"으로 담아, 지하철에서 한 번 타임아웃이 나면 앱을 끌 때까지 모든 여행에서 실시간이 꺼졌다.
+@MainActor
+final class RealtimeAddressTests: XCTestCase {
+    /// 가짜 `/me`에 붙은 서비스. 끝나면 `cleanup`으로 세션·임시 폴더·가짜의 상태를 되돌린다.
+    private func makeService() -> (service: TripService, cleanup: @MainActor () -> Void) {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [MeProtocol.self]
+        let session = URLSession(configuration: config)
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let api = APIClient(baseURL: URL(string: "https://example.invalid")!, tokens: NoTokens(), session: session)
+        return (TripService(api: api, cache: TripCache(directory: directory)), {
+            session.invalidateAndCancel()
+            MeProtocol.online = false
+            MeProtocol.requests = 0
+            MeProtocol.answer = MeProtocol.tripcanvas
+            try? FileManager.default.removeItem(at: directory)
+        })
+    }
+
+    func testAFailedLookupIsNotKeptButASuccessIs() async throws {
+        let (service, cleanup) = makeService()
+        defer { cleanup() }
+
+        MeProtocol.online = false
+        do {
+            _ = try await service.cachedRealtimeURL()
+            XCTFail("못 물었으면 던진다 — '실시간을 안 쓴다'는 답(nil)과 섞지 않는다")
+        } catch {}
+
+        MeProtocol.online = true
+        let recovered = try await service.cachedRealtimeURL()
+        XCTAssertEqual(recovered?.absoluteString, "wss://example.invalid/realtime",
+                       "다음에 붙을 때 다시 묻는다 — 한 번의 실패가 굳지 않는다")
+
+        let asked = MeProtocol.requests
+        MeProtocol.online = false
+        let kept = try await service.cachedRealtimeURL()
+        XCTAssertEqual(kept?.absoluteString, "wss://example.invalid/realtime")
+        XCTAssertEqual(MeProtocol.requests, asked, "받은 답은 들고 있는다 — 붙을 때마다 /me를 부르지 않는다")
+    }
+
+    /// "안 쓴다"(NONE)도 받은 답이다 — 담아 두지 않으면 협업이 LEGACY 경로인 서버에 화면을 열 때마다 /me를 부른다.
+    func testANoneAnswerIsKeptToo() async throws {
+        let (service, cleanup) = makeService()
+        defer { cleanup() }
+        MeProtocol.online = true
+        MeProtocol.answer = MeProtocol.noRealtime
+        let before = MeProtocol.requests
+
+        let first = try await service.cachedRealtimeURL()
+        let second = try await service.cachedRealtimeURL()
+
+        XCTAssertNil(first, "서버가 실시간을 안 쓴다고 했다")
+        XCTAssertNil(second)
+        XCTAssertEqual(MeProtocol.requests, before + 1, "'안 쓴다'는 답도 들고 있는다 — 다시 묻지 않는다")
+    }
+}
+
+/// `/api/v1/me`를 흉내 낸다 — 꺼 두면 타임아웃, 켜면 `answer`를 준다.
+private final class MeProtocol: URLProtocol {
+    static let tripcanvas = #"{"realtime":{"provider":"TRIPCANVAS","url":"wss://example.invalid/realtime"}}"#
+    static let noRealtime = #"{"realtime":{"provider":"NONE","url":null}}"#
+    @MainActor static var online = false
+    @MainActor static var requests = 0
+    @MainActor static var answer = MeProtocol.tripcanvas
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        Task { @MainActor in
+            Self.requests += 1
+            guard Self.online else {
+                client?.urlProtocol(self, didFailWithError: URLError(.timedOut)); return
+            }
+            let body = Data(Self.answer.utf8)
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: body)
+            client?.urlProtocolDidFinishLoading(self)
+        }
+    }
+    override func stopLoading() {}
+}
+
 @MainActor
 private final class NoTokens: TokenProviding {
     func accessToken() async throws -> String { "live-test-token" }

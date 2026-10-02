@@ -79,7 +79,7 @@ final class AppEnvironment {
         self.placePhotos = PlacePhotoService(key: AppConfig.googleMapsKey, bundleId: AppConfig.bundleId)
         // 주소는 한 번만 물어보고 들고 있는다 — 화면을 열 때마다 /me를 부르지 않는다.
         self.realtime = RealtimeClient(tokens: AuthTokenProvider(store: authStore)) { [weak tripService] in
-            await tripService?.cachedRealtimeURL()
+            try await tripService?.cachedRealtimeURL()
         }
         self.travelMode = TravelModeController(
             service: tripService, location: locationProvider,
