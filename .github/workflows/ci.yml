@@ -3,6 +3,13 @@ on:
   pull_request:
   # main 푸시의 게이트는 release.yml이 이 워크플로를 **불러서** 돌린다(두 번 돌지 않게 push 트리거는 없다).
   workflow_call:
+# ⚠️ shell을 적지 않은 run 스텝은 `bash -e {0}`로 돈다 — **pipefail이 꺼져 있다.** 그러면
+#    `npm audit … | tee audit.log`의 종료 코드는 tee의 0이라, 취약점이 있어도 감사가 초록이고
+#    RLS 테스트가 실패해도 다음 줄로 넘어간다(2026-10-02 리뷰에서 드러났다). `shell: bash`는
+#    `bash --noprofile --norc -eo pipefail {0}`이다. verify-all.sh는 같은 단계를 `bash -o pipefail`로 돌린다.
+defaults:
+  run:
+    shell: bash
 jobs:
   quality:
     name: Quality
