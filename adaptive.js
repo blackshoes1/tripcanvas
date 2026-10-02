@@ -573,38 +573,52 @@
   // 여기서는 외부 모델 없이도 동작하는 규칙 해석기를 둔다(모델을 붙이면 같은 형태의 결과를 주면 된다).
   // ⚠️ 낱말 하나로 조건을 만들지 않는다(2026-10-02) — '걷는 건'·'많이 걷'은 "걷는 건 괜찮아"·"많이 걷고 싶어"에도
   //    걸려 정반대로 읽었다. 걷기는 싫다·힘들다는 말이 붙어야 제한이고, '괜찮아'는 컨디션 규칙이 아니다(아래 FINE_RE).
+  //    '기운'도 같다 — 나다·넘치다가 붙어야 좋다는 말이고, 없다가 붙으면("기운이 하나도 없어") 피곤하다는 말이다.
+  // ⚠️ 말과 서술 사이에는 정도를 말하는 부사(좀·너무·하나도…)가 흔히 낀다 — 바로 붙은 꼴만 보면 "기운이 좀 없어"가 빠진다.
+  // ⚠️ 부정이 붙어야 뜻이 서는 말은 그 꼴을 **같은 규칙의 앞쪽**에 둔다 — "무리하지 말자"는 쉬자는 말인데, '무리'가 먼저
+  //    걸리면 뒤의 '말자'를 그 말의 부정으로 보고 버린다(saidPlainly는 같은 자리에서 먼저 걸린 꼴만 본다).
   const INTENT_RULES=Object.freeze([
-    Object.freeze({re:/피곤|지쳤|지침|힘들|무리|쉬고\s*싶|쉴래|쉬자|기운\s*[이도]?\s*없/, apply:{energyLevel:'LOW'}, why:'쉬고 싶다고 하셨어요'}),
-    Object.freeze({re:/걷기\s*(?:싫|힘들|별로)|걷는\s*(?:건|게|거)\s*(?:싫|힘들|별로)|안\s*걷/, apply:{walkAverse:true, maxTravelMin:20}, why:'많이 걷지 않는 쪽으로 볼게요'}),
+    Object.freeze({re:/무리\s*(?:하지|하진|하고\s*싶지)\s*(?:말|않|마)|무리\s*안\s*(?:하|해|할)|피곤|지쳤|지침|힘들|무리|쉬고\s*싶|쉴래|쉬자|기운\s*[이가도]?\s*(?:(?:하나도|전혀|별로|너무|좀|영|진짜|정말)\s*)?(?:없|안\s*나|나(?:지|질)\s*않)/, apply:{energyLevel:'LOW'}, why:'쉬고 싶다고 하셨어요'}),
+    Object.freeze({re:/(?:(?:많이|오래)\s*)?걷(?:고\s*싶지\s*않|지\s*(?:말|않(?!았)|마))|걷(?:기|는\s*(?:건|게|거))\s*[은는이가도]?\s*(?:(?:좀|너무|조금|많이|정말|진짜)\s*)?(?:싫|힘들|힘드|무리|별로)|안\s*걷/, apply:{walkAverse:true, maxTravelMin:20}, why:'많이 걷지 않는 쪽으로 볼게요'}),
     Object.freeze({re:/가까운\s*(곳|데)|멀리\s*(가기)?\s*싫|근처(에서)?/, apply:{maxTravelMin:15}, why:'가까운 곳만 볼게요'}),
-    Object.freeze({re:/쌩쌩|팔팔|기운|더\s*보고|많이\s*보고|부지런/, apply:{energyLevel:'HIGH'}, why:'컨디션이 좋다고 하셨어요'}),
+    Object.freeze({re:/쌩쌩|팔팔|기운\s*[이가도]?\s*(?:(?:좀|너무|많이|진짜|정말)\s*)?(?:나|넘|좋|펄펄|차|있|솟)|더\s*보고|많이\s*보고|부지런/, apply:{energyLevel:'HIGH'}, why:'컨디션이 좋다고 하셨어요'}),
     Object.freeze({re:/배고|밥|먹고|식사|점심|저녁\s*먹/, apply:{mealFocus:true}, why:'식사를 먼저 챙길게요'}),
     Object.freeze({re:/숙소|호텔로|들어가고\s*싶|집에/, apply:{wantRest:true}, why:'숙소로 돌아가는 쪽을 먼저 볼게요'})
   ]);
   // '괜찮다'는 그 자체로 컨디션을 말하지 않는다 — 무엇이 괜찮은지 모른다. 다만 피곤하다는 말과 같이 오면
   // ("피곤하긴 한데 괜찮아") 어느 쪽인지 단정하지 않는다.
+  // ⚠️ 다른 것이 괜찮다는 말은 컨디션이 아니다 — "가까운 데면 괜찮아"·"걷는 건 괜찮아"·"택시 타도 괜찮아"는 피곤하다는
+  //    말을 지우지 않는다. 바로 앞 어절이 조건(-면)·대상(건·게·거·것)·양보(-도)로 끝나면 그 대상에 대한 말로 본다.
   const FINE_RE=/괜찮/;
+  const FINE_OF_OTHER=/(?:면|[건게거도]|것[은이도]?)\s*$/;
   // 부정 — 규칙은 낱말을 보지만 사람은 "하나도 안 피곤해"·"배고프지 않아"라고도 말한다(2026-10-02).
   // 부정이 **그 말에 붙어 있으면** 그 말은 하지 않은 것으로 본다. 반대 뜻으로 뒤집지는 않는다("안 쌩쌩해"는 피곤하다는 말이 아니다).
   // 붙어 있다는 것은 바로 앞 어절의 '안'·'못', 또는 바로 뒤의 활용이다.
   // ⚠️ 뒤쪽은 그 말의 활용까지만 본다 — "피곤해서 안 갈래"의 '안'은 '가다'의 부정이지 '피곤'의 것이 아니다.
+  //    예외는 식사 낱말 뒤의 '먹다' 하나다("밥 먹고 싶지 않아"의 부정은 '밥'의 것이다).
+  // ⚠️ '안·못 먹었다'는 부정이 아니다 — "아직 점심 안 먹었어"는 배고프다는 말이다(과거형만. "밥 안 먹을래"는 부정이다).
   const NEG_BEFORE=/(?:^|[^가-힣])(?:안|못)\s*$/;
+  const NEG_EAT='(?:\\s*먹(?:고|을|는))?';
+  const NEG_DEGREE='(?:(?:하나도|전혀|별로|너무|좀|영)\\s*)?';
   const NEG_AFTER=new RegExp('^(?:'+[
-    '\\s?[가-힣]{0,2}?(?:지(?:는|도)?|진)\\s*(?:않|못|마|말)',           // 피곤하지 않아 · 배고프진 않은데 · 보고 싶지는 않아
-    '[가-힣]{0,2}?\\s*(?:건|게|거|것)[은이]?\\s*(?:아니(?!면)|아냐)',     // 피곤한 건 아니야 · 쉬고 싶은 게 아니라
-    '(?:\\s*생각)?\\s*[이가은는도]?\\s*없',                                // 기운이 없어 · 밥 생각 없어
-    '\\s*[은는이가도을를에]?\\s*(?:안|못)(?:\\s|[해하먹가돼되])',            // 피곤 안 해 · 밥은 안 먹어 (숙소 '안에서'는 아니다)
-    '\\s*[은는]?\\s*(?:말고|별로)'                                         // 밥 말고 · 숙소는 별로
+    NEG_EAT+'\\s?[가-힣]{0,2}?(?:지(?:는|도)?|진|질)\\s*(?:않|못|마|말)',      // 피곤하지 않아 · 배고프진 않은데 · 밥 먹고 싶지 않아
+    NEG_EAT+'\\s?[가-힣]{0,2}?\\s*(?:건|게|거|것)[은이]?\\s*(?:아니(?!면)|아냐)', // 피곤한 건 아니야 · 더 보고 싶은 건 아니야
+    NEG_EAT+'(?:\\s*생각)?\\s*[이가은는도]?\\s*'+NEG_DEGREE+'없',               // 밥 생각 없어 · 밥 먹을 생각이 별로 없어
+    '\\s*[은는이가도을를에]?\\s*(?:안|못)(?!\\s*(?:먹었|먹은|했))(?:\\s|[해하먹가돼되])', // 피곤 안 해 · 밥은 안 먹어 (숙소 '안에서'는 아니다)
+    '\\s*[은는]?\\s*(?:말고|별로)'                                             // 밥 말고 · 숙소는 별로
   ].join('|')+')');
   /**
    * 문장에 그 말이 부정 없이 한 번이라도 나오는지. "안 피곤하다고 했지만 사실 피곤해"는 피곤하다는 말이다.
-   * @param {string} t @param {RegExp} re @returns {boolean}
+   * `notAfter`가 그 말 바로 앞에 맞으면 그 자리는 세지 않는다(다른 것에 대한 말 — FINE_OF_OTHER).
+   * @param {string} t @param {RegExp} re @param {RegExp=} notAfter @returns {boolean}
    */
-  function saidPlainly(t, re){
+  function saidPlainly(t, re, notAfter){
     const g=new RegExp(re.source, 'g');
     for(let m=g.exec(t); m; m=g.exec(t)){
       if(!m[0]){ g.lastIndex++; continue; }
-      if(!NEG_BEFORE.test(t.slice(0, m.index)) && !NEG_AFTER.test(t.slice(m.index+m[0].length))) return true;
+      const before=t.slice(0, m.index);
+      if(notAfter && notAfter.test(before)) continue;
+      if(!NEG_BEFORE.test(before) && !NEG_AFTER.test(t.slice(m.index+m[0].length))) return true;
     }
     return false;
   }
@@ -623,7 +637,7 @@
     const said=t? INTENT_RULES.filter((r)=>saidPlainly(t, r.re)) : [];
     /** @type {string[]} */ const levels=[];
     said.forEach((r)=>{ const lv=/** @type {any} */(r.apply).energyLevel; if(lv && levels.indexOf(lv)<0) levels.push(lv); });
-    if(levels.indexOf('LOW')>=0 && saidPlainly(t, FINE_RE)) levels.push('FINE');
+    if(levels.indexOf('LOW')>=0 && saidPlainly(t, FINE_RE, FINE_OF_OTHER)) levels.push('FINE');
     /** @type {EnergyLevel|null} */ const energyLevel=levels.length===1? /** @type {any} */(levels[0]) : null;
     said.forEach((r)=>{
       const apply=/** @type {any} */(r.apply);
