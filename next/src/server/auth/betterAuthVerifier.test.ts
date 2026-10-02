@@ -154,4 +154,15 @@ describe('세션 검증', () => {
     expect(await verifier.verify(before)).toBeNull();
     expect(await verifier.verify(await signIn('new@example.com', 'another-long-password'))).not.toBeNull();
   });
+
+  it('서명 없는 원문 토큰(DB의 auth_session.token 그대로)으로는 들어올 수 없다 — DB 사본이 새도 세션이 되지 않는다', async () => {
+    await signUp('new@example.com');
+    await openVerificationLink();
+    const token = await signIn('new@example.com');
+    const raw = token.slice(0, token.lastIndexOf('.'));
+    expect(raw).not.toContain('.');
+
+    expect(await verifier.verify(token)).not.toBeNull();
+    expect(await verifier.verify(raw)).toBeNull();
+  });
 });

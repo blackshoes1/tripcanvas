@@ -66,6 +66,7 @@ CDN 라이브러리는 정확한 버전과 SRI(Subresource Integrity, 내려받�
 ## 인증 세션
 
 - 자체 Auth(better-auth) 세션은 **bearer 토큰**이다 — 교차 출처라 쿠키를 쓰지 않는다. 웹은 `localStorage`의 `tripcanvas_auth_v1`, iOS는 Keychain `withj.auth.session.v1`(`kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`, 기기 전용·백업 안 됨).
+- bearer는 **서명된 토큰만** 받는다(`bearer({ requireSignature: true })`, 2026-10-02) — `set-auth-token` 헤더의 `<token>.<서명>`이다. DB(`auth_session.token`)에는 서명 없는 원문만 있으므로 DB 사본이 새도 그 값으로는 세션이 되지 않는다. 실시간 사이드카도 같은 기준이다. ⚠️ 로그인 응답 **본문의 `token`은 서명이 없다** — 클라이언트는 언제나 헤더(또는 그 값을 담은 소셜 교환 응답)를 저장한다.
 - **이메일 확인 전에는 로그인이 열리지 않는다**(`requireEmailVerification`). 남의 이메일로 가입해 그 사람의 여행을 가져가는 길을 막는다.
 - 비밀번호 재설정 요청은 **있는 이메일인지 알려주지 않는다** — 계정 존재 여부를 떠보는 데 쓰이지 않게 성공/실패를 구분하지 않는다.
 - **비밀번호를 재설정하면 그 계정의 세션이 전부 끝난다**(`revokeSessionsOnPasswordReset`, 2026-10-02) — 웹·iOS 모두 다시 로그인한다. 전에는 잃어버린 기기·훔친 토큰이 새 비밀번호와 상관없이 살아 있었다.

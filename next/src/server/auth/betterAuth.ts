@@ -91,7 +91,12 @@ export function createBetterAuth(opts: BetterAuthOptions) {
       sendVerificationEmail: async ({ user, url }) => { await opts.mail.sendVerificationEmail(user.email, withWebCallback(url, opts.webBaseURL)); }
     },
     // iOS는 쿠키를 쓰지 않는다 — Authorization: Bearer <session token>으로 같은 세션을 쓴다(§70)
-    plugins: [bearer(), oneTimeToken({ expiresIn: 1, storeToken: 'hashed', disableClientRequest: true })],
+    // requireSignature: `<token>.<서명>`(set-auth-token 헤더)만 받는다. 끄면 DB의 auth_session.token(서명 없는 원문)이
+    // 그대로 bearer가 되어, DB 사본(백업)이 새는 순간 모든 세션이 넘어간다. 실시간 사이드카(sessionTokenVerifier)는
+    // 이미 서명을 요구한다 — 같은 토큰을 두 곳이 다른 기준으로 받지 않는다.
+    // ⚠️ 클라이언트는 언제나 set-auth-token 헤더(웹 auth.js·iOS AuthStore)나 그 값을 담은 교환 응답(socialHandoff)을
+    //    저장한다. 응답 본문의 `token`은 서명이 없다 — 그걸 저장하는 클라이언트를 만들면 그 사람은 로그인이 안 된다.
+    plugins: [bearer({ requireSignature: true }), oneTimeToken({ expiresIn: 1, storeToken: 'hashed', disableClientRequest: true })],
     rateLimit: { enabled: true, storage: 'database', modelName: 'auth_rate_limit' }
   });
 }
