@@ -1,9 +1,13 @@
-const { test } = require('node:test');
+const { test: nodeTest } = require('node:test');
 const assert = require('node:assert/strict');
 const { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, rmSync } = require('node:fs');
 const { tmpdir } = require('node:os');
 const { join } = require('node:path');
 const { spawnSync } = require('node:child_process');
+const { BASH, skip, shellEnv } = require('./posix-shell');
+
+// 셸을 못 찾는 Windows에서만 이유를 달고 건너뛴다 — 리눅스(CI)에서 skip은 언제나 false다
+const test = (name, fn) => nodeTest(name, { skip }, fn);
 
 function run(t, scope, { next = false, fail = false, postgres = false, simulator = null } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'tc-gate-'));
@@ -26,8 +30,8 @@ function run(t, scope, { next = false, fail = false, postgres = false, simulator
       writeFileSync(join(root, 'bin', name), script, { mode: 0o755 });
     }
   }
-  return spawnSync('/bin/bash', [join(root, 'scripts/verify-all.sh'), scope], {
-    encoding: 'utf8', env: { ...process.env, PATH: `${root}/bin:${process.env.PATH}`, TC_IOS_SIMULATOR_ID: simulator ?? '' }
+  return spawnSync(BASH, [join(root, 'scripts/verify-all.sh'), scope], {
+    encoding: 'utf8', env: shellEnv(join(root, 'bin'), { TC_IOS_SIMULATOR_ID: simulator ?? '' })
   });
 }
 
@@ -94,8 +98,8 @@ test('CI runs steps under pipefail so tee cannot swallow a failed audit', (t) =>
   writeFileSync(join(root, 'bin/npm'), '#!/bin/sh\necho "1 critical severity vulnerability"\nexit 1\n', { mode: 0o755 });
   for (const step of ['Dependency audit (high severity)', 'Dependency audit (runtime, high severity)']) {
     // `shell: bash`가 실제로 부르는 셸 그대로
-    const r = spawnSync('/bin/bash', ['--noprofile', '--norc', '-eo', 'pipefail', '-c', ciRunBlock(step)], {
-      cwd: root, encoding: 'utf8', env: { ...process.env, PATH: `${root}/bin:${process.env.PATH}` }
+    const r = spawnSync(BASH, ['--noprofile', '--norc', '-eo', 'pipefail', '-c', ciRunBlock(step)], {
+      cwd: root, encoding: 'utf8', env: shellEnv(join(root, 'bin'))
     });
     assert.equal(r.status, 1, `${step}: 취약점이면 실패한다\n${r.stdout}${r.stderr}`);
     assert.match(r.stdout, /재시도하지 않는다/);

@@ -5,12 +5,14 @@
 //
 // 특히 **장소 세 줄의 모양**까지 굳힌다. 웹과 앱이 같은 문서를 쓰므로 키가 하나만 달라도
 // 한쪽이 만든 분리를 다른 쪽이 못 읽는다.
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
 import collab from '@legacy/collab.js';
+
+import { writeFixture } from './parityFiles';
 
 const SPLIT_ID = 'sp1';
 
@@ -126,7 +128,7 @@ describe('갈린 후보의 분리 — collab.js가 단일 출처', () => {
 
     const dir = path.join(__dirname, '../../../../../ios/TripCanvasTests/Fixtures');
     mkdirSync(dir, { recursive: true });
-    writeFileSync(path.join(dir, 'split-plan.json'),
+    writeFixture(path.join(dir, 'split-plan.json'),
                   JSON.stringify({ splitId: SPLIT_ID, members, cases: rows }, null, 2) + String.fromCharCode(10));
   });
 });

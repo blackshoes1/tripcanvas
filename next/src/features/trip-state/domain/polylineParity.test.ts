@@ -3,12 +3,14 @@
 // ⚠️ 인코딩은 `lib.js`(`encodePolyline`) 하나다. 카카오 경로도 여기서 인코딩되므로
 // 구글·카카오 지도가 같은 형식을 받는다. 규칙을 바꾸려면 `lib.js`를 먼저 고친다 —
 // 그러면 이 테스트가 픽스처를 새로 쓰고 iOS 테스트가 깨진다(그게 목적이다).
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
 import lib from '@legacy/lib.js';
+
+import { writeFixture } from './parityFiles';
 
 const cases: { name: string; points: { lat: number; lng: number }[] }[] = [
   { name: '빈 경로', points: [] },
@@ -45,7 +47,7 @@ describe('폴리라인 — lib.js가 단일 출처', () => {
 
     const dir = path.join(__dirname, '../../../../../ios/TripCanvasTests/Fixtures');
     mkdirSync(dir, { recursive: true });
-    writeFileSync(path.join(dir, 'polyline.json'),
+    writeFixture(path.join(dir, 'polyline.json'),
                   JSON.stringify({ cases: rows }, null, 2) + String.fromCharCode(10));
   });
 });

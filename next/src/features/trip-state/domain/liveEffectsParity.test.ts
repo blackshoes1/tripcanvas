@@ -4,12 +4,14 @@
 // 복사본은 조용히 갈라진다. 그래서 여기서 **모든 kind × mine 조합**의 답을 JS로 만들어
 // fixture로 떨어뜨리고, Swift 테스트가 같은 파일을 읽어 맞춰 본다.
 // 규칙을 바꿀 때는 `collab.js`를 먼저 고친다 — 그러면 fixture가 바뀌고 Swift 테스트가 깨진다.
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
 import collab from '@legacy/collab.js';
+
+import { writeFixture } from './parityFiles';
 
 const FIXTURE = path.join(__dirname, '../../../../../ios/TripCanvasTests/Fixtures/live-effects.json');
 
@@ -36,6 +38,6 @@ describe('liveEffects 파리티', () => {
     expect(of('UNKNOWN_KIND').activity, '모르는 활동은 목록을 다시 읽지 않는다').toBe(false);
 
     mkdirSync(path.dirname(FIXTURE), { recursive: true });
-    writeFileSync(FIXTURE, `${JSON.stringify({ cases }, null, 2)}\n`);
+    writeFixture(FIXTURE, `${JSON.stringify({ cases }, null, 2)}\n`);
   });
 });

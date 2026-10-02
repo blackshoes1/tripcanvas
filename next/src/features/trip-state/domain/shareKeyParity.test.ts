@@ -13,12 +13,14 @@
 //     벗겼다 → JS와 반대다.
 //
 // 지금은 여기서 실제 키를 만들어 fixture로 떨어뜨리고 Swift 테스트가 같은 파일을 읽어 맞춘다.
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
 import intake from '@legacy/intake.js';
+
+import { writeFixture } from './parityFiles';
 
 const FIXTURE = path.join(__dirname, '../../../../../ios/TripCanvasTests/Fixtures/share-key.json');
 
@@ -66,6 +68,6 @@ describe('공유 키 파리티 — 같은 내용이면 같은 키', () => {
       .toBe(intake.shareIdempotencyKey({ text: `${EMOJI_LONG} 이 꼬리는 키에 들어가지 않는다` }));
 
     mkdirSync(path.dirname(FIXTURE), { recursive: true });
-    writeFileSync(FIXTURE, `${JSON.stringify({ cases: rows }, null, 2)}\n`);
+    writeFixture(FIXTURE, `${JSON.stringify({ cases: rows }, null, 2)}\n`);
   });
 });

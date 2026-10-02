@@ -5,12 +5,14 @@
 //
 // 서버가 실제로 보내는 문장(`next/src/server/api/errors.ts`의 기본값과 각 서비스의 message)을
 // 그대로 넣는다 — 화면이 그걸 뭉개지 않는지가 이 규칙의 요점이다.
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
 import collab from '@legacy/collab.js';
+
+import { writeFixture } from './parityFiles';
 
 type Role = 'OWNER' | 'EDITOR' | 'VIEWER';
 
@@ -61,7 +63,7 @@ describe('권한 거절 문구 — collab.js가 단일 출처', () => {
 
     const dir = path.join(__dirname, '../../../../../ios/TripCanvasTests/Fixtures');
     mkdirSync(dir, { recursive: true });
-    writeFileSync(path.join(dir, 'forbidden-text.json'),
+    writeFixture(path.join(dir, 'forbidden-text.json'),
                   JSON.stringify({ cases: rows }, null, 2) + String.fromCharCode(10));
   });
 });
