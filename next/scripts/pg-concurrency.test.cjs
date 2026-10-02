@@ -47,7 +47,7 @@ test('실제 PostgreSQL: CAS 권한 잠금과 경로 예산의 동시성', { tim
           // 단순 Promise.all 대신 DB가 잠금에서 실제로 기다리는 것을 확인한다.
           let blocked = false;
           for (let i = 0; i < 250; i++) {
-            const { rows } = await admin.query("select 1 from pg_stat_activity where datname=$1 and application_name='tc-cas-writer' and wait_event_type='Lock'", [name]);
+            const { rows } = await admin.query("select 1 from pg_stat_activity where datname=$1 and application_name='tc-cas-writer' and wait_event_type='Lock' and query like '%trip_members%'", [name]);
             if (rows.length) { blocked = true; break; }
             await delay(20);
           }
