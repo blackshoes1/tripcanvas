@@ -625,6 +625,43 @@ test('AI 글: 사람이 쓰는 시각도 읽는다 — 오전/오후가 없으�
   assert.ok(!it[2].reasons.some(r2 => r2.includes('오전인지 오후인지')), "'저녁 7시'는 모호하지 않다");
 });
 
+// 2026-10-02: '점심 1시'가 새벽 1시(01:00)로, '밤 12시'가 정오(12:00)로 읽혔다 — 둘 다 모호하다는 말도 없이.
+test('koTime: 점심·밤의 시각을 그 때에 맞게 읽는다', () => {
+  const at = (s) => { const r = I.koTime(s); return r && [r.at, r.ambiguous]; };
+  // 점심때의 1~5시는 오후다. 11·12시는 그대로
+  assert.deepEqual(at('점심 1시'), ['13:00', false]);
+  assert.deepEqual(at('점심 2시 30분'), ['14:30', false]);
+  assert.deepEqual(at('점심 12시'), ['12:00', false]);
+  assert.deepEqual(at('점심 11시 30분'), ['11:30', false]);
+  assert.deepEqual(at('점심 7시'), ['07:00', true], '점심이라 부를 시각이 아니면 지어내지 않고 모호하다고 한다');
+  // 밤·저녁 12시는 정오가 아니라 자정이다 — 일정의 시각은 00:00~23:59라 그 날 맨 앞이 되므로 확인받는다
+  assert.deepEqual(at('밤 12시'), ['00:00', true]);
+  assert.deepEqual(at('저녁 12시'), ['00:00', true]);
+  assert.deepEqual(at('밤 1시'), ['01:00', true], '자정을 넘긴 밤 1시는 오후 1시가 아니다');
+  // 그대로인 것들
+  assert.deepEqual(at('밤 11시'), ['23:00', false]);
+  assert.deepEqual(at('밤 9시'), ['21:00', false]);
+  assert.deepEqual(at('저녁 7시'), ['19:00', false]);
+  assert.deepEqual(at('오후 12시'), ['12:00', false]);
+  assert.deepEqual(at('새벽 12시'), ['00:00', false], '새벽 12시는 그 날이 시작하는 자정이다');
+  assert.deepEqual(at('12시'), ['12:00', false]);
+  assert.deepEqual(at('7시'), ['07:00', true]);
+});
+
+test('AI 글: 자정과 점심때 시각 — 무엇이 모호한지 그대로 말한다', () => {
+  const it = I.parseItinerary([
+    '- 점심 1시 카와카미안',
+    '- 밤 12시 숙소 도착',
+    '- 7시 스타벅스'
+  ].join('\n'), {}).days[0].items;
+  assert.deepEqual(it.map(i => i.at), ['13:00', '00:00', '07:00']);
+  assert.deepEqual(it.map(i => i.name), ['카와카미안', '숙소 도착', '스타벅스']);
+  assert.ok(!it[0].reasons.some(r2 => /모호|확실하지|오전인지/.test(r2)), "'점심 1시'는 모호하지 않다");
+  assert.ok(it[1].reasons.some(r2 => r2.includes('자정')), '자정으로 읽었다고 말한다');
+  assert.ok(!it[1].reasons.some(r2 => r2.includes('오전인지 오후인지')), "'밤 12시'는 오전·오후를 안 적은 시각이 아니다");
+  assert.ok(it[2].reasons.some(r2 => r2.includes("'7시'가 오전인지 오후인지")));
+});
+
 test('AI 글: 괄호는 안이 설명일 때만 뗀다 — 다른 이름은 남긴다', () => {
   const r = I.parseItinerary('- 이시노쿄카이 (돌의 교회)\n- 시라이토 폭포 (도보 20분, 입장료 무료)', {});
   assert.equal(r.days[0].items[0].name, '이시노쿄카이 (돌의 교회)');

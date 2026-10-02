@@ -729,20 +729,36 @@
    * `오전 9시`·`저녁 7시 30분`처럼 사람이 쓰는 시각. AI 글에는 `09:00`보다 이 꼴이 흔하다.
    * ⚠️ **오전/오후 표시가 없는 `7시`는 그대로 7시로 읽는다** — 저녁 7시일 수 있으므로
    * 지어내지 않고 `ambiguous`로 알린다(§모호하면 추측하지 않는다).
-   * @param {string} s @returns {{at:string,len:number,ambiguous:boolean}|null}
+   * 때를 말하는 낱말은 그 때에 맞게 읽는다(2026-10-02 — 전에는 '점심 1시'가 01:00, '밤 12시'가 정오였다):
+   * - `점심` 1~5시는 오후(`점심 1시` = 13:00), 11·12시는 그대로. 그 밖은 점심이라 부를 시각이 아니라 그대로 읽고 모호하다고 한다.
+   * - `밤`·`저녁` 12시는 **자정**이다. 일정의 시각은 그 날의 00:00~23:59라(`24:00`은 저장되지 않는다) 00:00으로 읽는데,
+   *   그러면 그 날 맨 앞 시각이 되므로 모호하다고 알린다. 자정을 넘긴 `밤 1~5시`도 같다(오후 1시가 아니다).
+   * `why`는 모호할 때 미리보기에 남길 문장이다.
+   * @param {string} s @returns {{at:string,len:number,ambiguous:boolean,why:string|null}|null}
    */
   function koTime(s){
     const m=/^(오전|오후|아침|점심|저녁|밤|새벽)?\s*(\d{1,2})\s*시(?:\s*(\d{1,2})\s*분)?(?:\s*경)?/.exec(String(s||''));
     if(!m) return null;
     let h=+m[2]; const mi=m[3]? +m[3] : 0;
     if(h>24||mi>59) return null;
-    const part=m[1]||'';
-    const pm=(part==='오후'||part==='저녁'||part==='밤');
-    const am=(part==='오전'||part==='아침'||part==='새벽');
-    if(pm && h<12) h+=12;
-    if(am && h===12) h=0;
+    const part=m[1]||'', said=`'${part? part+' ' : ''}${h}시'`;
+    /** @type {string|null} */ let why=null;
+    if(part==='오후'){ if(h<12) h+=12; }
+    else if(part==='점심'){
+      if(h>=1 && h<=5) h+=12;
+      else if(h!==11 && h!==12) why=`${said}가 몇 시인지 확실하지 않아 그대로 읽었어요`;
+    }
+    else if(part==='저녁'||part==='밤'){
+      if(h===12 || (part==='밤' && h<=5)){
+        if(h===12) h=0;
+        why=`${said}는 자정${h? '을 넘긴 시각' : ''}이라 ${hhmm(h,mi)}으로 읽었어요 — 일정에서는 그 날 맨 앞 시각이 되니 확인해 주세요`;
+      }
+      else if(h<12) h+=12;
+    }
+    else if(part && h===12) h=0;   // 오전·아침·새벽 12시
     if(h>23) return null;
-    return {at:hhmm(h,mi), len:m[0].length, ambiguous:!part && h<12};
+    if(!part && h<12) why=`${said}가 오전인지 오후인지 안 적혀 있어 그대로 읽었어요`;
+    return {at:hhmm(h,mi), len:m[0].length, ambiguous:!!why, why};
   }
 
   /**
@@ -856,7 +872,7 @@
   /**
    * 이름 앞에 붙은 시간 표시를 떼어낸다. `08:00~09:00｜아침 식사` → `아침 식사`
    * ⚠️ '오후'·'저녁' 같은 말은 시각으로 바꾸지 않는다 — 구분자가 뒤따를 때만 떼어낸다.
-   * @param {string} body @returns {{rest:string,at:string|null,endAt:string|null,ambiguous?:boolean}}
+   * @param {string} body @returns {{rest:string,at:string|null,endAt:string|null,ambiguous?:boolean,why?:string|null}}
    */
   function stripTimePrefix(body){
     let s=String(body||'');
@@ -879,7 +895,7 @@
         if(ko2){ end=ko2.at; rest=rest.slice(r2[0].length+ko2.len); }
       }
       rest=rest.replace(/^\s*[|:：·,]\s*/,'').trim();
-      if(rest) return {rest, at:ko.at, endAt:end, ambiguous:ko.ambiguous};
+      if(rest) return {rest, at:ko.at, endAt:end, ambiguous:ko.ambiguous, why:ko.why};
     }
     // '오전~오후|이동' — 시간대 낱말만으로 이루어진 접두사는 버리고 순서만 남긴다
     m=/^([^|]{1,14})\|\s*/.exec(s);
@@ -1038,7 +1054,7 @@
       const name=split.name;
       if(split.stay) stay=true;
       const verdict=classifyItem(name);
-      if(timed.ambiguous && timed.at) verdict.reasons=verdict.reasons.concat([`'${+timed.at.slice(0,2)}시'가 오전인지 오후인지 안 적혀 있어 그대로 읽었어요`]);
+      if(timed.ambiguous && timed.at && timed.why) verdict.reasons=verdict.reasons.concat([timed.why]);
       const stayMin=(at&&timed.endAt)? Math.max(0, LIB.parseHM(timed.endAt)-LIB.parseHM(at)) : null;
       /** @type {DraftItem} */
       const next={
