@@ -1726,12 +1726,16 @@ function renderFilter(){
   }
   const colors=cityColors(), menu=document.createElement('details'); menu.className='viewMenu';
   const cityButtons=Object.entries(colors).map(([city,c])=>`<button class="chip cityFocusBtn" data-city="${escAttr(city)}"><span class="dot" style="background:${c}"></span>${esc(city)}</button>`).join('');
+  // 색상 기준은 여행 문서(colorBy)에 저장된다 — 편집이다. 보기 권한이 바꾸면 로컬만 달라져(올리지 않는다) 다음 당겨오기가
+  // 헛충돌을 띄우고, 거기서 '이 기기 것 유지'를 고르면 충돌에 갇혀 일행의 변경을 더 받지 못했다
+  const colorMode=readOnly()? '' : `<div class="viewMenuLabel">색상 기준</div><button class="chip" id="colorModeBtn">🎨 ${colorByMode()==='day'?'일자별':'도시별'} 색상</button>`;
   menu.innerHTML=`<summary>☷ 보기 설정⌄</summary><div class="viewMenuPanel">
-    <div class="viewMenuLabel">색상 기준</div><button class="chip" id="colorModeBtn">🎨 ${colorByMode()==='day'?'일자별':'도시별'} 색상</button>
+    ${colorMode}
     <button class="chip" id="playBtn">${play?'⏹ 재생 정지':'▶ 경로 재생'}</button><button class="chip" id="themeBtn">◐ 테마 전환</button>
     <div class="viewMenuLabel">도시 포커스</div><div class="cityFocus">${cityButtons||'<span class="hint">도시 없음</span>'}</div></div>`;
   bar.appendChild(menu);
-  menu.querySelector('#colorModeBtn').onclick=()=>commit(()=>{ trip().colorBy=colorByMode()==='day'?'city':'day'; });
+  const colorBtn=menu.querySelector('#colorModeBtn');
+  if(colorBtn) colorBtn.onclick=()=>{ if(!guardEdit()) return; commit(()=>{ trip().colorBy=colorByMode()==='day'?'city':'day'; }); };
   menu.querySelector('#playBtn').onclick=playTrip;
   menu.querySelector('#themeBtn').onclick=toggleTheme;
   menu.querySelectorAll('.cityFocusBtn').forEach(button=>button.onclick=()=>{

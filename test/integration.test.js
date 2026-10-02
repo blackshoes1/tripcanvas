@@ -2707,6 +2707,30 @@ test('통합: 보기 권한은 여행 모드·버전 이력에서도 일정을 �
   w.close();
 });
 
+// 색상 기준(colorBy)은 여행 문서에 저장된다 — 보기 권한이 바꾸면 로컬만 달라져 다음 당겨오기가 헛충돌을 띄우고,
+// 거기서 '이 기기 것 유지'를 고르면 업로드가 막혀 충돌에 갇혔다(일행의 변경을 더 받지 못한다).
+test('통합: 보기 권한은 색상 기준(여행 문서)을 바꾸지 못하고, 그 버튼도 없다', { skip: noJsdom }, () => {
+  const w = boot();
+  withTrip(w, `[{title:'',drive:'',note:'',spots:[]}]`);
+  w.eval(`user={id:'u1'}; tripRoles={__it__:{role:'VIEWER',count:3,owner:false}}; render();`);
+  assert.equal(w.document.getElementById('colorModeBtn'), null, '보기 권한에는 색상 기준 버튼이 없다');
+  assert.ok(w.document.getElementById('playBtn'), '보기 설정의 나머지(재생·테마)는 그대로다');
+  // 편집자일 때 그려 둔 버튼을, 보기 권한으로 바뀐 뒤 눌러도 바뀌지 않는다
+  w.eval(`tripRoles.__it__.role='EDITOR'; render(); histStack.length=0;`);
+  const btn = w.document.getElementById('colorModeBtn');
+  assert.ok(btn, '편집자에게는 버튼이 있다');
+  const before = w.eval('JSON.stringify(trip())');
+  w.eval(`tripRoles.__it__.role='VIEWER'`);
+  btn.click();
+  assert.equal(w.eval('JSON.stringify(trip())'), before, '여행 문서가 그대로다');
+  assert.equal(w.eval('histStack.length'), 0);
+  // 편집자는 예전처럼 바꾼다
+  w.eval(`tripRoles.__it__.role='EDITOR'`);
+  btn.click();
+  assert.equal(w.eval('trip().colorBy'), 'city');
+  w.close();
+});
+
 test('통합: 보기 권한 여행은 클라우드에 올리지 않고, 권한 오류(42501)는 재시도 없이 멈춘다', { skip: noJsdom }, async () => {
   const w = boot();
   let calls = 0;
