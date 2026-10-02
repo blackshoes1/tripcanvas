@@ -73,8 +73,9 @@ test('통합: index.html은 SRI로 고정한 CDN 라이브러리와 자기 파�
   for (const [, attrs, body] of tags) {
     const src = (attrs.match(/\bsrc="([^"]+)"/) || [])[1];
     assert.ok(src, `인라인 스크립트 없음: ${attrs.trim() || body.trim().slice(0, 60)}`);
-    if (!/^https?:/i.test(src)) continue;
-    const host = new URL(src).host;
+    // 자기 파일인지는 주소를 풀어서 본다 — `//host/x.js`(프로토콜 상대)는 https:가 아니어도 남의 호스트다
+    const host = new URL(src, 'https://self.invalid/').host;
+    if (host === 'self.invalid') continue;
     assert.ok(['cdnjs.cloudflare.com', 'cdn.jsdelivr.net'].includes(host), `허용 CDN만: ${host}`);
     assert.match(attrs, /\bintegrity="sha384-[^"]+"/, `SRI 필요: ${src}`);
   }
