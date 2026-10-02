@@ -61,6 +61,19 @@ describe('anchor/carry — 이월 출발점', () => {
     const t = trip([day([stay]), day([seongsan()]), day([airport()])]);
     expect(buildDayView(t, NONE, 2).carry?.name).toBe('제주호텔');
   });
+
+  it('연박 입력 없이 예약에 연결된 숙소도 체크아웃 아침까지 ETA 출발점이다', () => {
+    const stay = hotel({ bookingId: 'hotel1' });
+    const t = trip([day([stay]), day([seongsan()]), day([seongsan()]), day([airport()]), day([seongsan()])], {
+      bookings: [{ id: 'hotel1', type: 'hotel', title: '3박 예약', price: 300000, track: false,
+        start: '2026-10-01', end: '2026-10-04' }]
+    });
+    expect(buildDayView(t, NONE, 2).carry?.name).toBe('제주호텔');
+    const checkout = buildDayView(t, NONE, 3);
+    expect(checkout.carry?.name).toBe('제주호텔');
+    expect(checkout.spots[0].etaText).toBe(hm(540 + (haversine(ll(stay), ll(airport())) / 40) * 60));
+    expect(buildDayView(t, NONE, 4).carry).toBeNull();
+  });
 });
 
 describe('구간 시간 — 캐시 우선, 없으면 속도 기반 직선 추정', () => {
