@@ -44,3 +44,15 @@ test('서비스워커 앱 셸은 오프라인 새로고침을 지원한다',asyn
   await expect(page.locator('#tripSel')).toBeVisible();
   await context.setOffline(false);await context.close();
 });
+
+test('첫 방문 직후에도 오프라인 새로고침에서 앱이 그려진다',async({browser})=>{
+  // 첫 방문의 스크립트 요청은 아직 SW를 거치지 않아 network-first가 캐시를 채워 주지 않는다 — 오프라인에서 쓸 것은
+  // 설치 때 담은 셸뿐이다. 그 셸이 index.html이 부르는 주소(?v=…)와 다르면 뼈대(#sidebar)만 뜨고 일정은 비어 있다.
+  const context=await browser.newContext({serviceWorkers:'allow'});await prepare(context);
+  const page=await context.newPage();await page.goto('/');
+  await page.evaluate(()=>navigator.serviceWorker.ready);
+  await context.setOffline(true);
+  await page.reload({waitUntil:'domcontentloaded'});
+  await expect(page.locator('.dayCard').first()).toBeVisible();   // app.js가 그리는 것 — 스크립트까지 캐시에서 왔다
+  await context.setOffline(false);await context.close();
+});
