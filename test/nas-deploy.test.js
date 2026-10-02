@@ -385,6 +385,32 @@ test('--sha로 production이 아닌 커밋을 띄우면 자동 배포를 멈추�
   assert.match(deployLog, /rm .*\.deploy-disabled/, '다시 켜는 법을 배포 기록에 남긴다');
 });
 
+// 머지가 production을 이미 옮겼는데 cron이 아직 안 돈 사이, 지금 도는 커밋을 붙들려고 --sha를 주는 경우 —
+// 띄울 것이 없다고 그냥 끝내면 고정이 남지 않아 다음 cron이 5분 안에 production으로 올린다.
+test('--sha로 이미 도는 커밋을 짚으면 다시 띄우지 않고 고정만 건다', (t) => {
+  const { r, out, docker, disabledText } = runDeploy(t, {
+    args: ['--sha', STALE],
+    state: stateOf({ CURRENT_SHA: STALE, PREVIOUS_SHA: '' }),
+  });
+  assert.equal(r.status, 0, out);
+  assert.equal(docker, '', '이미 도는 커밋이라 docker를 부르지 않는다');
+  assert.notEqual(disabledText, null, '고정이 남는다');
+  assert.match(disabledText, new RegExp(`^PINNED_SHA=${STALE}$`, 'm'));
+});
+
+test('production 태그를 못 읽으면 --sha는 production이 아닌 것으로 보고 고정한다', (t) => {
+  const { r, out, stateText, disabledText } = runDeploy(t, {
+    args: ['--sha', TARGET],
+    state: stateOf({ CURRENT_SHA: STALE, PREVIOUS_SHA: '' }),
+    env: { TC_TEST_TARGET_SHA: '' },
+  });
+  assert.equal(r.status, 0, out);
+  assert.match(stateText, new RegExp(`^CURRENT_SHA=${TARGET}$`, 'm'));
+  assert.notEqual(disabledText, null, '태그를 모르는 채로 자동 배포를 켜 두면 무엇으로 돌아갈지 모른다');
+  assert.match(disabledText, new RegExp(`^PINNED_SHA=${TARGET}$`, 'm'));
+  assert.match(out, /확인 실패/, '태그를 못 읽었다는 것을 말한다');
+});
+
 test('고정된 뒤의 cron은 production으로 되돌리지 않는다', (t) => {
   const { r, out, docker } = runDeploy(t, {
     state: stateOf({ CURRENT_SHA: STALE, PREVIOUS_SHA: TARGET }),
