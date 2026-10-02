@@ -47,13 +47,20 @@ test('missing dependencies are incomplete, not passed', (t) => {
   assert.doesNotMatch(r.stdout, /게이트 통과/);
 });
 test('all selected checks passing succeeds', (t) => {
-  const r = run(t, 'next', { next: true });
+  const r = run(t, 'next', { next: true, postgres: true });
   assert.equal(r.status, 0);
   assert.match(r.stdout, /게이트 통과/);
+  assert.match(r.stdout, /npm --prefix next run test:pg/);
+});
+test('next with dependencies but without PostgreSQL is incomplete', (t) => {
+  const r = run(t, 'next', { next: true });
+  assert.equal(r.status, 2);
+  assert.match(r.stdout, /SKIP  next: CAS·예산 동시성/);
+  assert.doesNotMatch(r.stdout, /게이트 통과/);
 });
 // 운영 API 이미지에 실리는 것은 next의 런타임 의존성이다 — 루트 감사만으로는 next·nodemailer 취약점이 안 보였다
 test('next scope audits the runtime dependencies at high severity', (t) => {
-  const r = run(t, 'next', { next: true });
+  const r = run(t, 'next', { next: true, postgres: true });
   assert.equal(r.status, 0);
   assert.match(r.stdout, /npm --prefix next audit --omit=dev --audit-level=high/);
   assert.match(r.stdout, /PASS  next: 의존성 감사\(high\)/);

@@ -1480,6 +1480,17 @@ test('통합: 다른 탭의 저장을 감지해 낡은 메모리 store를 갈아
   w.close();
 });
 
+test('통합: 다른 탭에서 기간을 줄여도 남아 있는 일자 칩은 하루 밀리지 않는다', { skip: noJsdom }, () => {
+  for(const [selected,expected] of [[0,0],[1,1],[2,2],[3,2]]){
+    const w=boot();
+    w.eval(`store.trips=[{id:'T1',name:'T',start:'',days:[{spots:[]},{spots:[]},{spots:[]}]}];store.activeId='T1';histLast=JSON.stringify(store);activeDay=${selected};render();`);
+    const fresh=JSON.stringify({trips:[{id:'T1',name:'T',start:'',days:[{spots:[]},{spots:[]}]}],activeId:'T1'});
+    fireStorage(w,'tripcanvas_v1',fresh);
+    assert.equal(w.eval('activeDay'),expected,`선택 ${selected} → ${expected}`);
+    w.close();
+  }
+});
+
 test('통합: 다른 탭의 변경을 받아들여도 되쓰기·클라우드 에코가 없다', { skip: noJsdom }, () => {
   const w=boot();
   w.eval(`store.trips=[{id:'T1',name:'옛것',start:'',days:[{title:'',drive:'',note:'',spots:[]}]}]; store.activeId='T1'; histLast=JSON.stringify(store); render();

@@ -212,7 +212,7 @@ function adoptExternalStore(raw){
     histLast=JSON.stringify(store);
     refreshSyncMetaFromStorage();
     const t=trip();
-    activeDay=Math.min(day, Math.max(0,(t&&t.days?t.days.length:1)-1));
+    activeDay=Math.min(day, t&&t.days?t.days.length:1); // 일자 칩은 1부터 센다(0=전체)
     render();
   });
   fitAll();
