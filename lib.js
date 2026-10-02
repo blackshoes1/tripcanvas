@@ -1881,9 +1881,10 @@
    */
   function spotCatOf(s){
     if(!s || typeof s!=='object') return null;
-    const explicit=spotCat(s.cat); if(explicit) return explicit;
-    if(s.stay) return spotCat('stay');
-    return spotCat(catFromName(s.name));
+    const c=spotCat(s.cat) || (s.stay? spotCat('stay') : spotCat(catFromName(s.name)));
+    // 교통은 한 분류지만 공항에 🚉(기차)를 붙이면 뜻이 어긋난다(2026-10-02 UX 검토) — 분류(id)는 그대로, 표시 기호만 바꾼다
+    if(c && c.id==='transport' && /공항|airport|\([A-Z]{3}\)/i.test(_str(s.name))) return {id:c.id, icon:'✈️', name:c.name};
+    return c;
   }
 
   /**
