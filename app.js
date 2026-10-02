@@ -289,6 +289,7 @@ const KAKAO_KEY='088123c29d265c5f9cc9ec8d356f54c8';          // 국내 지도·�
 let map=null, iw=null;        // Google 지도 / 공용 InfoWindow
 let kmap=null, kpopupOv=null; // 카카오 지도 / 커스텀 팝업 오버레이
 let engine='google';          // 현재 표시 중인 엔진
+// ⚠️ activeDay는 보고 있는 일자 칩이다 — **1부터 센다(0=전체)**. 일자 인덱스(di)로 쓸 때는 `activeDay? activeDay-1 : 0`.
 let activeDay = 0, markers = [], lines = [], ghostStays = [], pickMode = false, sortables = [];
 
 function onMapPick(lat,lng,placeId){
@@ -2684,7 +2685,7 @@ function tripDaysInput(){
 function resizeTripDays(n){
   const days=trip().days, diff=n-days.length;
   if(diff>0){ for(let i=0;i<diff;i++) days.push({title:'',drive:'',note:'',spots:[]}); }
-  else if(diff<0){ days.splice(n); if(activeDay>=days.length) activeDay=days.length-1; }
+  else if(diff<0){ days.splice(n); activeDay=Math.min(activeDay,days.length); }   // activeDay는 1부터 센다(0=전체) — 남은 날이면 그대로
   return diff;
 }
 /** 며칠인지 숫자로만 말하지 않는다 — 끝나는 날이 보여야 정할 수 있다(새 여행 모달과 같은 규칙) */
@@ -3816,7 +3817,7 @@ function fillPlaceCost(){
   document.getElementById('costPlaceDelete').disabled=!spot;
   document.getElementById('costPlaceSave').disabled=!spot;
 }
-window.openPlaceCost=(di=activeDay)=>{
+window.openPlaceCost=(di=activeDay?activeDay-1:0)=>{   // di는 0부터, activeDay는 1부터 센다(0=전체)
   if(!guardEdit()) return;
   const select=document.getElementById('costPlace'); select.replaceChildren();
   trip().days.forEach((day,d)=>day.spots.forEach((spot,i)=>{
@@ -6480,7 +6481,7 @@ document.getElementById('mapEmptySearch').onclick=()=>{
     q.focus();
     return;
   }
-  openSpotModal(Math.max(0,Math.min(activeDay,trip().days.length-1)),-1);
+  openSpotModal(Math.max(0,Math.min(activeDay-1,trip().days.length-1)),-1);   // activeDay는 1부터 센다(0=전체 → Day 1)
   document.getElementById('spotSearch').focus();
 };
 

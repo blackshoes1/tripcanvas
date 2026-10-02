@@ -3875,7 +3875,7 @@ test('통합: 여행 설정에서 기간을 늘리고 줄인다 (앞날은 그�
   assert.equal(w.eval(`trip().days[0].title`), 'D1', '앞날이 밀리지 않는다');
 
   // 지워질 날에 장소가 있으면 한 번 더 묻고, 아니라고 하면 아무 일도 없다
-  w.eval(`trip().days[2].spots.push({name:'셋째날 장소',city:'B',desc:'',lat:2,lng:2}); activeDay=2;`);
+  w.eval(`trip().days[2].spots.push({name:'셋째날 장소',city:'B',desc:'',lat:2,lng:2}); activeDay=3;`);   // activeDay는 1부터 센다 — Day 3을 보는 중
   w.eval(`window.confirm=()=>false; document.getElementById('tripEditBtn').onclick();
           document.getElementById('tripDays').value='2'; document.getElementById('tripSave').onclick()`);
   assert.equal(w.eval(`trip().days.length`), 4, '취소하면 그대로다');
@@ -3883,7 +3883,7 @@ test('통합: 여행 설정에서 기간을 늘리고 줄인다 (앞날은 그�
   w.eval(`window.confirm=()=>true; document.getElementById('tripDays').value='2'; document.getElementById('tripSave').onclick()`);
   assert.equal(w.eval(`trip().days.length`), 2);
   assert.equal(w.eval(`trip().days[0].spots.length`), 1, '남은 날의 일정은 그대로다');
-  assert.equal(w.eval(`activeDay`), 1, '보던 날이 사라지면 남은 날로 옮긴다');
+  assert.equal(w.eval(`activeDay`), 2, '보던 날이 사라지면 남은 마지막 날로 옮긴다');
 
   // 빈 날만 지울 때는 묻지 않는다 — 잃을 것이 없는데 확인을 요구하면 확인이 무뎌진다
   w.eval(`window.confirm=()=>{ throw new Error('묻지 않아야 한다'); };
@@ -4499,4 +4499,37 @@ test('통합: 일정 장소 비용 입력은 기존 값을 불러오고 결제�
   w.eval('openPlaceCost(0)'); el('costPlaceDelete').click(); el('costDeleteSource').checked=true; el('costDeleteConfirm').click();
   assert.equal(w.eval('trip().days[0].spots.length'),0);
   w.close();
+});
+
+test('통합: 보고 있는 일자(1부터 센다, 0=전체)를 일자 인덱스로 옮길 때 하루 밀리지 않는다', {skip:noJsdom}, () => {
+  const w=boot();
+  try{
+    const days=`[{spots:[{name:'A1',lat:37.5,lng:127}]},{spots:[{name:'B1',lat:37.6,lng:127.1}]},{spots:[{name:'C1',lat:37.7,lng:127.2}]}]`;
+    const el=id=>w.document.getElementById(id);
+    withTrip(w, days, 1);
+
+    // 지도 빈 화면의 '첫 장소 검색' — Day 1을 보는 중이면 Day 1에 넣는다
+    el('mapEmptySearch').click();
+    assert.equal(w.eval('editing.di'),0,'Day 1 칩에서 Day 2 장소 추가가 열리면 안 된다');
+    w.eval('activeDay=3'); el('mapEmptySearch').click();
+    assert.equal(w.eval('editing.di'),2,'마지막 날도 그 날이다');
+    w.eval('activeDay=0'); el('mapEmptySearch').click();
+    assert.equal(w.eval('editing.di'),0,'전체를 보는 중이면 Day 1');
+
+    // 장소 비용 — 보고 있는 날의 첫 장소를 고른다
+    w.eval('activeDay=1; openPlaceCost()');
+    assert.equal(el('costPlace').value,'0:0','Day 1을 보는 중이면 Day 1의 첫 장소');
+    w.eval('activeDay=3; openPlaceCost()');
+    assert.equal(el('costPlace').value,'2:0');
+    w.eval('activeDay=0; openPlaceCost()');
+    assert.equal(el('costPlace').value,'0:0','전체를 보는 중이면 Day 1의 첫 장소');
+
+    // 기간 줄이기 — 남는 날을 보고 있었다면 그 날에 머문다
+    w.eval('activeDay=2; resizeTripDays(2)');
+    assert.equal(w.eval('activeDay'),2,'마지막 날을 보는 중이어도 전날로 튀지 않는다');
+    w.eval('activeDay=2; resizeTripDays(1)');
+    assert.equal(w.eval('activeDay'),1,'사라진 날을 보고 있었다면 남은 마지막 날로');
+    w.eval(`trip().days.push({spots:[]}); activeDay=1; resizeTripDays(1)`);
+    assert.equal(w.eval('activeDay'),1,'하루짜리가 되어도 전체로 바뀌지 않는다');
+  }finally{ w.close(); }
 });
