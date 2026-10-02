@@ -4621,7 +4621,9 @@ function sgButton(label, primary, fn, action){
   b.textContent=label; b.onclick=fn; if(action) b.dataset.action=action; return b;
 }
 // 일정 실행 상태 변경 — 방문 판정은 자동이 아니라 사용자가 누른다
+// ⚠️ 여행 모드의 동작도 편집 진입점이다 — 보기 권한이 바꾸면 로컬만 바뀌고 올라가지 않아 다음 당겨오기가 헛충돌을 띄운다
 function setSpotStatus(di, si, status){
+  if(!guardEdit()) return;
   commit(()=>{ const sp=trip().days[di].spots[si]; if(!sp) return; if(status) sp.status=status; else delete sp.status; });
   trackAdapt(status==='COMPLETED'?'activity_completed':(status==='SKIPPED'?'activity_skipped':'activity_reset'), {di, si});
   renderTravel(di);
@@ -4629,11 +4631,12 @@ function setSpotStatus(di, si, status){
 // 여행 모드 카드의 실행 상태 조작 — 다녀왔는지/건너뛰었는지가 남은 일정 계산의 입력이 된다
 function spotStatusRow(di, si, s, outside){
   const row=document.createElement('div'); row.className='tStatus';
+  const fixed=outside||readOnly();   // 보기 권한도 상태만 본다 — 누를 수 없는 버튼은 두지 않는다
   if(s.status==='COMPLETED'||s.status==='SKIPPED'){
     const chip=document.createElement('span'); chip.className='tStatusChip';
     chip.textContent=(s.status==='COMPLETED')?'✓ 다녀옴':'건너뜀'; row.appendChild(chip);
-    if(!outside) row.appendChild(sgButton('되돌리기', false, ()=>setSpotStatus(di,si,null)));
-  }else if(!outside){   // 여행 기간 밖에서는 '다녀왔어요'를 누를 일이 없다 — 누르면 남은 일정 계산이 거짓이 된다
+    if(!fixed) row.appendChild(sgButton('되돌리기', false, ()=>setSpotStatus(di,si,null)));
+  }else if(!fixed){   // 여행 기간 밖에서는 '다녀왔어요'를 누를 일이 없다 — 누르면 남은 일정 계산이 거짓이 된다
     row.appendChild(sgButton('다녀왔어요', false, ()=>setSpotStatus(di,si,'COMPLETED')));
     row.appendChild(sgButton('건너뛰기', false, ()=>setSpotStatus(di,si,'SKIPPED')));
   }
@@ -4641,6 +4644,7 @@ function spotStatusRow(di, si, s, outside){
 }
 // 재구성 적용 — 뺀 일정은 버리지 않는다. 다음 날 앞쪽으로 옮기고, 마지막 날이면 '건너뜀'으로만 표시한다.
 function applyReplan(sug, di){
+  if(!guardEdit()) return;
   const drop=((sug.action&&sug.action.drop)||[]).map(id=>{ const m=/^d\d+s(\d+)$/.exec(String(id)); return m?+m[1]:-1; })
     .filter(i=>i>=0).sort((a,b)=>b-a);
   if(drop.length) commit(()=>{
@@ -4658,6 +4662,7 @@ function applyReplan(sug, di){
 }
 // 다른 날에 있던 유동 장소를 오늘의 빈 시간 자리로 옮긴다
 function acceptMove(sug, di, action){
+  if(!guardEdit()) return;
   const win=_adapt&&_adapt.res&&_adapt.res.window;
   commit(()=>{
     const days=trip().days, src=days[action.fromDay];
@@ -4673,22 +4678,23 @@ function acceptMove(sug, di, action){
 }
 // 제안별 주 동작. 추천은 '수락 / 건너뛰기 / 다른 추천 / 직접 수정' 중 하나로 언제든 빠져나갈 수 있어야 한다.
 function sgPrimaryButtons(sug, di){
-  const a=sug.action||{};
-  if(sug.type==='REPLAN') return [sgButton('이대로 조정', true, ()=>applyReplan(sug,di), 'ACCEPT'),
+  // 보기 권한은 제안을 볼 수만 있다 — 일정을 바꾸는 버튼(조정·넣기·다녀옴·장소 추가)은 두지 않는다
+  const a=sug.action||{}, ro=readOnly();
+  if(sug.type==='REPLAN') return ro? [] : [sgButton('이대로 조정', true, ()=>applyReplan(sug,di), 'ACCEPT'),
     sgButton('직접 수정', false, ()=>{ recordFeedback(sug,'REPLACED'); document.getElementById('travel').classList.remove('show'); }, 'EDIT')];
   if(sug.type==='PRICE_SAVING') return [sgButton('예약 보기', true, ()=>{ recordFeedback(sug,'ACCEPTED'); openBookingList(); }, 'ACCEPT')];
   if(a.kind==='REST'||a.kind==='RETURN_TO_HOTEL') return [sgButton(a.kind==='REST'?'그렇게 할게요':'숙소로 가기', true, ()=>{
     recordFeedback(sug,'ACCEPTED'); toast('알겠어요 — 남은 일정은 그대로 둬요','#3e7a4c'); renderSuggestions(di); }, 'ACCEPT')];
-  if(a.kind==='EAT') return [sgButton('식사 장소 추가', true, ()=>{
+  if(a.kind==='EAT') return ro? [] : [sgButton('식사 장소 추가', true, ()=>{
     recordFeedback(sug,'ACCEPTED'); document.getElementById('travel').classList.remove('show');
     openSpotModal(di,-1); const at=document.getElementById('spotAt'); if(at&&a.startMin!=null) at.value=hm(a.startMin); }, 'ACCEPT')];
   // 여행 기간 밖에서는 '오늘'이 이 여행의 날이 아니다 — 오늘 일정에 넣거나 다녀왔다고 표시하는 버튼을 두지 않는다
-  const outside=travelOutside();
-  if(a.fromDay!=null && a.si!=null) return outside? [] : [sgButton('오늘 일정에 넣기', true, ()=>acceptMove(sug,di,a), 'ACCEPT')];
+  const fixed=travelOutside()||ro;
+  if(a.fromDay!=null && a.si!=null) return fixed? [] : [sgButton('오늘 일정에 넣기', true, ()=>acceptMove(sug,di,a), 'ACCEPT')];
   if(a.si!=null){
     const sp=trip().days[di].spots[a.si], out=[];
     if(hasLoc(sp)) out.push(sgButton('지도에서 보기', true, ()=>{ recordFeedback(sug,'ACCEPTED'); const l=extMapLink(sp); window.open(l.href,'_blank','noopener'); renderSuggestions(di); }, 'ACCEPT'));
-    if(!outside) out.push(sgButton('다녀왔어요', !out.length, ()=>{ recordFeedback(sug,'ACCEPTED'); setSpotStatus(di,a.si,'COMPLETED'); }, 'ACCEPT'));
+    if(!fixed) out.push(sgButton('다녀왔어요', !out.length, ()=>{ recordFeedback(sug,'ACCEPTED'); setSpotStatus(di,a.si,'COMPLETED'); }, 'ACCEPT'));
     return out;
   }
   return [];
@@ -4746,6 +4752,7 @@ function buildDayFlow(di){
 }
 // 수락 — 옮기는 도중 인덱스가 밀리므로 삽입 기준을 먼저 객체 참조로 잡아둔다
 function applyDayFlow(di){
+  if(!guardEdit()) return;
   const flow=_dayFlow; if(!flow) return;
   const days=trip().days, day=days[di], plan=[];
   flow.blocks.filter(b=>b.kind==='SUGGESTED'&&b.pick&&b.pick.fromDay!=null&&b.pick.si!=null).forEach(b=>{
@@ -4793,7 +4800,7 @@ function renderDayFlow(di){
   card.appendChild(list);
   const act=document.createElement('div'); act.className='sgActions';
   const outside=travelOutside();   // 기간 밖에서는 미리보기로만 — 일정을 바꾸는 버튼은 두지 않는다
-  if(!flow.empty&&!outside) act.appendChild(sgButton('이 일정으로 시작', true, ()=>applyDayFlow(di), 'ACCEPT'));
+  if(!flow.empty&&!outside&&!readOnly()) act.appendChild(sgButton('이 일정으로 시작', true, ()=>applyDayFlow(di), 'ACCEPT'));
   act.appendChild(sgButton('다른 제안', false, ()=>{
     (flow.picks||[]).forEach(p=>{ if(_flowExclude.indexOf(p.id)<0) _flowExclude.push(p.id); });
     buildDayFlow(di);
@@ -5156,8 +5163,11 @@ async function loadSnapList(){
     const d=new Date(r.created_at);
     const row=document.createElement('div'); row.className='snapRow';
     row.innerHTML=`<span>${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}</span>`;
+    // 복원도 편집이다 — 보기 권한에는 버튼을 두지 않고, 그려 둔 뒤 권한이 바뀐 경우는 누를 때 막는다
+    if(readOnly()){ box.appendChild(row); return; }
     const btn=document.createElement('button'); btn.className='btn sm'; btn.textContent='복원';
     btn.onclick=async()=>{
+      if(!guardEdit()) return;
       if(!confirm('이 시점으로 복원할까요? (현재 상태는 ↩️ 실행취소로 되돌릴 수 있어요)'))return;
       const {data:full,error:fe}=await TC_API.snapshots.load(store.activeId,r.id);
       const restoredResult=full&&validateTripPayload(full.data);

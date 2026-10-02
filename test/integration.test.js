@@ -2530,6 +2530,54 @@ test('통합: 편집자(EDITOR)·로그아웃·로컬 전용 여행은 예전과
   w.close();
 });
 
+// 여행 모드·버전 이력도 편집 진입점이다. 보기 권한이 누르면 로컬만 바뀌고(올리지는 않는다) 다음 당겨오기 때
+// 지문이 어긋나 의미 없는 충돌 모달이 떴고, 거기서 '이 기기 것 유지'를 고르면 403이었다.
+test('통합: 보기 권한은 여행 모드·버전 이력에서도 일정을 바꾸지 못하고, 바꾸는 버튼도 없다', { skip: noJsdom }, async () => {
+  const w = boot();
+  withAdaptTrip(w, [
+    { startAt: '09:00', mode: 'car', spots: [S('프라도', 40.41, { stayMin: 120 }), S('저녁 예약', 40.42, { bookAt: '19:30', stayMin: 90 })] },
+    { spots: [S('레티로 공원', 40.415, { stayMin: 90 })] }
+  ]);
+  w.eval(`user={id:'u1'}; sb={}; tripRoles={__ad__:{role:'VIEWER',count:3,owner:false}};`);
+  const before = w.eval('JSON.stringify(trip())');
+  w.document.getElementById('travelBtn').click();
+  const list = w.document.getElementById('travelList');
+  assert.ok(!buttonIn(list, '다녀왔어요') && !buttonIn(list, '건너뛰기'), '다녀옴·건너뜀을 표시하는 버튼이 없다');
+  const sgText = Array.from(w.document.querySelectorAll('#travelSuggest button')).map(b => b.textContent).join('|');
+  assert.ok(cardsIn(w).length >= 1, '제안 자체는 보인다 — 의견을 보는 것은 막지 않는다');
+  assert.ok(!/오늘 일정에 넣기|이대로 조정|직접 수정|다녀왔어요|식사 장소 추가/.test(sgText), `일정을 바꾸는 제안 버튼이 없다: ${sgText}`);
+  w.eval('buildDayFlow(0)');
+  assert.ok(!/이 일정으로 시작/.test(w.document.getElementById('travelPlan').textContent), '하루 제안은 미리보기로만');
+  assert.ok(w.eval(`_dayFlow.blocks.some(b=>b.kind==='SUGGESTED'&&b.pick&&b.pick.fromDay!=null)`), '수락하면 옮겨질 제안이 있는 상황이다');
+
+  // 이미 그려진 버튼·남은 핸들러로 직접 불러도 막힌다
+  w.eval(`setSpotStatus(0,0,'COMPLETED');
+    applyReplan({type:'REPLAN',key:'r1',action:{drop:['d0s0']}},0);
+    acceptMove({type:'NEXT_ACTIVITY',key:'m1',title:'레티로 공원'},0,{fromDay:1,si:0});
+    applyDayFlow(0);`);
+  assert.equal(w.eval('JSON.stringify(trip())'), before, '여행 문서가 그대로다');
+  assert.equal(w.eval('histStack.length'), 0, '저장도 일어나지 않았다');
+
+  // 버전 이력: 목록은 보이되 복원 버튼은 없다
+  w.eval(`TC_API.snapshots.list=async()=>({data:[{id:1,created_at:'2026-09-01T10:00:00Z'}],error:null});
+    TC_API.snapshots.load=async()=>({data:{data:JSON.parse(JSON.stringify(trip()))},error:null});`);
+  await w.eval('loadSnapList()');
+  const snap = w.document.getElementById('snapList');
+  assert.equal(snap.querySelectorAll('.snapRow').length, 1);
+  assert.ok(!buttonIn(snap, '복원'), '보기 권한에는 복원 버튼이 없다');
+
+  // 편집자일 때 그려 둔 복원 버튼을, 보기 권한으로 바뀐 뒤 눌러도 바뀌지 않는다
+  w.eval(`tripRoles.__ad__.role='EDITOR'; window.confirm=()=>true;
+    TC_API.snapshots.load=async()=>({data:{data:Object.assign(JSON.parse(JSON.stringify(trip())),{name:'옛 이름'})},error:null});`);
+  await w.eval('loadSnapList()');
+  const restore = buttonIn(snap, '복원');
+  assert.ok(restore, '편집자에게는 복원 버튼이 있다');
+  w.eval(`tripRoles.__ad__.role='VIEWER'`);
+  await restore.onclick();
+  assert.equal(w.eval('trip().name'), '적응 여행', '보기 권한으로 바뀐 뒤에는 복원되지 않는다');
+  w.close();
+});
+
 test('통합: 보기 권한 여행은 클라우드에 올리지 않고, 권한 오류(42501)는 재시도 없이 멈춘다', { skip: noJsdom }, async () => {
   const w = boot();
   let calls = 0;
