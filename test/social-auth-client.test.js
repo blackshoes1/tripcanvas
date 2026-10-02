@@ -8,7 +8,7 @@ function storage() {
   const values = new Map();
   return { getItem: k => values.get(k) ?? null, setItem: (k, v) => values.set(k, v), removeItem: k => values.delete(k) };
 }
-function browser() {
+function browser(announced = ['google', 'unknown']) {
   const local = storage(); const calls = [];
   const location = { pathname: '/trips', search: '', hash: '#day=2', origin: 'https://web.test', assign(url) { this.assigned = url; } };
   const context = vm.createContext({ URL, URLSearchParams, Uint8Array, TextEncoder, crypto: webcrypto,
@@ -20,7 +20,7 @@ function browser() {
   auth.configure({ baseUrl: 'https://api.test', storage: local, fetchImpl: async (url, init) => {
     calls.push({ url, init });
     return { ok: true, json: async () => url.endsWith('auth-config')
-      ? { provider: 'TRIPCANVAS', socialProviders: ['google', 'unknown'] }
+      ? { provider: 'TRIPCANVAS', socialProviders: announced }
       : { token: 'signed-session', user: { id: 'user', email: 'test@example.com' } } };
   } });
   return { auth, context, calls, local, location };
@@ -66,4 +66,17 @@ test('proxied web exchanges through the web origin but starts OAuth at the NAS o
   await auth.completeSocial();
   assert.equal(calls.at(-1).url, 'https://web.test/nas/api/auth/social/exchange');
   assert.equal(calls.at(-1).init.credentials, 'omit');
+});
+
+// 네이버는 서버가 알리지 않는다(next/src/server/auth/socialProviders.ts). 웹은 따로 거르지 않고 알린 것만 그린다 —
+// 그래서 서버 한 곳만 바꾸면 웹 버튼도 사라지고, 다른 제공자는 그대로 남는다.
+test('web shows only the providers the server announced — no Naver button when it is not announced', async () => {
+  const { auth, calls, location } = browser(['google', 'apple', 'kakao']);
+  await auth.resolveProvider();
+  assert.deepEqual(Array.from(auth.socialProviders()), ['google', 'apple', 'kakao']);
+  await assert.rejects(auth.startSocial('naver'));
+  assert.equal(location.assigned, undefined);
+  assert.equal(calls.length, 1);
+  await auth.startSocial('kakao');
+  assert.equal(new URL(location.assigned).searchParams.get('provider'), 'kakao');
 });

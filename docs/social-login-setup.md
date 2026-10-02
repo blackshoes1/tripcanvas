@@ -2,9 +2,9 @@
 
 ## 현재 상태
 
-Google·Apple·네이버·카카오 연결 코드가 웹(정적/Next)과 iOS에 들어 있다. Google 웹·iOS 클라이언트 ID는 등록해 코드와 설정 예시에 반영했다. Google 웹용 Client Secret은 NAS 운영 `.env`에 설정·형식 확인했다(값은 문서나 저장소에 기록하지 않는다). Apple·네이버·카카오의 개발자 설정은 아직 준비가 필요하다. 실제 제공자 로그인과 스토어 심사는 미검증이며, 운영 배포도 별도다. 기존 이메일 로그인은 유지한다.
+Google·Apple·카카오 연결 코드가 웹(정적/Next)과 iOS에 들어 있다. **네이버는 숨겼다**(2026-10-02, 아래 [네이버](#네이버)). Google 웹·iOS 클라이언트 ID는 등록해 코드와 설정 예시에 반영했다. Google 웹용 Client Secret은 NAS 운영 `.env`에 설정·형식 확인했다(값은 문서나 저장소에 기록하지 않는다). Apple·카카오의 개발자 설정은 아직 준비가 필요하다. 실제 제공자 로그인과 스토어 심사는 미검증이며, 운영 배포도 별도다. 기존 이메일 로그인은 유지한다.
 
-서버에 각 제공자의 ID와 Secret이 모두 설정돼야 버튼이 나타난다. 키의 유효성까지 설정 API가 검사하는 것은 아니므로, 버튼 노출만으로 연결 완료를 판단하지 않는다.
+서버에 각 제공자의 ID와 Secret이 모두 설정돼야 버튼이 나타난다(네이버는 설정해도 나타나지 않는다). 키의 유효성까지 설정 API가 검사하는 것은 아니므로, 버튼 노출만으로 연결 완료를 판단하지 않는다.
 
 ## 공통 서버 설정
 
@@ -15,13 +15,14 @@ OAUTH_GOOGLE_CLIENT_ID=457039812975-jijh2qrbb4q8qc6k0n9efcj3drt4q5kp.apps.google
 OAUTH_GOOGLE_CLIENT_SECRET=
 OAUTH_APPLE_CLIENT_ID=
 OAUTH_APPLE_CLIENT_SECRET=
-OAUTH_NAVER_CLIENT_ID=
-OAUTH_NAVER_CLIENT_SECRET=
+# 네이버는 숨겨 두었다 — 값을 넣어도 읽지 않고 서버 로그에 경고만 남긴다
+# OAUTH_NAVER_CLIENT_ID=
+# OAUTH_NAVER_CLIENT_SECRET=
 OAUTH_KAKAO_CLIENT_ID=
 OAUTH_KAKAO_CLIENT_SECRET=
 ```
 
-기존 `AUTH_SECRET`, `DATABASE_URL`, `API_BASE_URL`, `WEB_BASE_URL`, 허용 웹 출처 설정과 메일 발송 설정을 유지한다. 네이버처럼 이메일 추가 확인이 필요한 로그인은 메일 발송이 필수다. NAS compose는 `env_file: .env`로 전달하므로 값 변경 후 API 컨테이너 재생성이 필요하다. 전체 배포는 [NAS 릴리스 절차](nas-release.md)를 따른다.
+기존 `AUTH_SECRET`, `DATABASE_URL`, `API_BASE_URL`, `WEB_BASE_URL`, 허용 웹 출처 설정과 메일 발송 설정을 유지한다. 제공자가 확인되지 않은 이메일을 주면 With J 확인 메일을 거치므로 메일 발송 설정이 필요하다. NAS compose는 `env_file: .env`로 전달하므로 값 변경 후 API 컨테이너 재생성이 필요하다. 전체 배포는 [NAS 릴리스 절차](nas-release.md)를 따른다.
 
 등록할 콜백은 **웹 프런트 주소가 아니라 API 주소**다. 현재 구성 기준:
 
@@ -29,7 +30,7 @@ OAUTH_KAKAO_CLIENT_SECRET=
 |---|---|
 | Google | `https://bokbok9.tail8b977f.ts.net/api/auth/callback/google` |
 | Apple | `https://bokbok9.tail8b977f.ts.net/api/auth/callback/apple` |
-| 네이버 | `https://bokbok9.tail8b977f.ts.net/api/auth/callback/naver` |
+| 네이버(숨김 — 다시 켤 때만) | `https://bokbok9.tail8b977f.ts.net/api/auth/callback/naver` |
 | 카카오 | `https://bokbok9.tail8b977f.ts.net/api/auth/callback/kakao` |
 
 API 도메인을 이전하면 개발자 콘솔과 서버 설정을 함께 바꾼다. `WEB_BASE_URL`은 로그인 완료 후 돌아갈 웹 주소다. 웹에서 시작한 경우 서버 허용 출처에 포함된 시작 출처로 돌아간다. 임의 주소·와일드카드를 허용하지 않는다.
@@ -62,9 +63,20 @@ Sign in with Apple 키(.p8), Key ID, Team ID로 ES256 서명 client secret JWT�
 
 ### 네이버
 
-[네이버 개발자센터](https://developers.naver.com/)에서 네이버 로그인 애플리케이션을 만들고 서비스 URL과 위 Callback URL을 등록한다. 이메일을 사용하도록 구성하고 Client ID/Secret을 서버에 넣는다. 테스트 사용자 및 공개 서비스 검수 절차를 완료한다. [연동 문서](https://better-auth.com/docs/authentication/naver).
+**숨김(2026-10-02).** 서버가 네이버를 켜지도 알리지도 않는다 — `OAUTH_NAVER_*`가 있어도 읽지 않고(`next/src/server/auth/socialProviders.ts`의 `SOCIAL_PROVIDERS`에 없다) 서버 로그에 경고만 남긴다. 그래서 `auth-config`에 실리지 않고, `/api/auth/social/start?provider=naver`는 400이며, 웹·iOS에는 버튼이 없다(두 클라이언트는 서버가 알린 제공자만 그린다).
 
-현재 인증 라이브러리의 네이버 응답에는 검증된 이메일 표시가 없어, 최초 로그인은 With J 확인 메일을 거친다. 링크를 누른 뒤 같은 네이버 계정으로 다시 로그인한다. 메일 주소만 같다는 이유로 검증되지 않은 계정을 기존 여행에 연결하지 않는다.
+왜: 인증 라이브러리(better-auth)의 네이버 매핑은 `emailVerified`를 **언제나 false**로 준다. With J는 확인된 이메일로만 계정을 잇는다(제공자 `requireEmailVerification`, `trustedProviders: []`, `finishSocialLogin`의 `emailVerified` 확인). 그 결과 이메일로 가입한 기존 사용자는 네이버로 **늘 실패**하고("account not linked"), 처음 온 사람도 확인 메일을 누른 뒤 한 번 더 로그인해야 한다. 신뢰 규칙을 풀지 않고 버튼을 숨겼다.
+
+숨기기 전에 네이버로 가입한 사람이 있었다면(운영에 네이버 키가 들어간 적이 없다면 없다): 발급된 세션은 만료까지 그대로이고, 이후에는 이메일 로그인 화면의 **비밀번호 재설정**으로 비밀번호를 정해 이메일로 들어온다(라이브러리가 비밀번호 계정을 새로 만든다). 같은 확인된 이메일의 Google 로그인으로도 이어진다.
+
+다시 켜려면:
+
+1. **확인된 이메일이라는 근거를 먼저 마련한다** — 신뢰 규칙(위 세 곳)을 풀어서 켜지 않는다. 예: 이미 로그인한 계정에서 네이버를 명시적으로 연결하는 흐름(better-auth `linkSocial`)을 만들거나, 네이버 응답이 확인 여부를 주게 되면 매핑을 그 값으로 바꾼다.
+2. `SOCIAL_PROVIDERS`에 `'naver'`를 되돌리고 `readSocialProviders`의 경고를 지운다. 숨김을 지키는 테스트(`socialHandoff.test.ts` · `config/env.test.ts` · `api/v1/auth-config/route.test.ts`)의 기대값도 함께 바꾼다.
+3. [네이버 개발자센터](https://developers.naver.com/)에서 네이버 로그인 애플리케이션을 만들고 서비스 URL과 위 Callback URL을 등록한다. 이메일을 사용하도록 구성하고 Client ID/Secret을 서버에 넣은 뒤 API를 재생성한다. 테스트 사용자 및 공개 서비스 검수 절차를 완료한다. [연동 문서](https://better-auth.com/docs/authentication/naver).
+4. 클라이언트는 고칠 것이 없다 — 웹 `auth.js`의 `SOCIAL_LABELS`와 iOS `SocialSignIn.Provider`에 네이버 이름이 남아 있어, 서버가 알리면 버튼이 다시 나온다.
+
+메일 주소만 같다는 이유로 검증되지 않은 계정을 기존 여행에 연결하지 않는다.
 
 ### 카카오
 
@@ -85,7 +97,7 @@ Google iOS 로그인은 공식 SDK가 발급한 ID token을 HTTPS로 서버에 �
 - 웹과 실기기: 신규 가입 → 로그아웃 → 재로그인 → 기존 여행 조회·저장·실시간 연결.
 - 기존 이메일 계정: 검증된 같은 이메일만 기존 계정에 연결되는지 확인.
 - 동의 취소, 이메일 미동의, 네트워크 실패, 만료, 콜백 재사용 때 로그인되지 않는지 확인.
-- 네이버 최초 이메일 확인 및 재시도, Apple 재로그인·이메일 가리기 확인.
+- 네이버 버튼이 웹·iOS 어디에도 없는지(키를 넣어 둔 서버라면 로그에 `OAUTH_NAVER_*` 경고), Apple 재로그인·이메일 가리기 확인.
 - 비활성 제공자 버튼 숨김, 기존 이메일 가입·로그인·비밀번호 재설정 유지.
 
 자동 테스트는 제공자 응답을 대체한 흐름 및 교환권 검증이다. 실제 서비스 로그인 성공을 대신하지 않는다. 배포 전 `npm run verify:all`과 제공자 실계정 확인을 완료한다. 문제 시 해당 제공자의 ID/Secret을 제거하고 API를 재생성하면 버튼이 숨겨진다. 이미 발급한 세션을 일괄 폐기하는 동작은 아니다.

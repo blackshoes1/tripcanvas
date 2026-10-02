@@ -29,6 +29,33 @@ it('enables only fully configured providers and never treats provider names as v
   expect(providers.google).toMatchObject({ requireEmailVerification: true });
 });
 
+const ALL_KEYS = {
+  OAUTH_GOOGLE_CLIENT_ID: 'g', OAUTH_GOOGLE_CLIENT_SECRET: 'gs', OAUTH_APPLE_CLIENT_ID: 'a', OAUTH_APPLE_CLIENT_SECRET: 'as',
+  OAUTH_NAVER_CLIENT_ID: 'n', OAUTH_NAVER_CLIENT_SECRET: 'ns', OAUTH_KAKAO_CLIENT_ID: 'k', OAUTH_KAKAO_CLIENT_SECRET: 'ks'
+};
+
+it('keeps Naver off even with its keys — it never reports a verified email — and says so in the log', () => {
+  const warnings: string[] = [];
+  const providers = readSocialProviders(ALL_KEYS, m => warnings.push(m));
+  expect(enabledSocialProviders(providers)).toEqual(['google', 'apple', 'kakao']);
+  expect(providers).not.toHaveProperty('naver');
+  expect(warnings.join(' ')).toMatch(/OAUTH_NAVER/);
+  const quiet: string[] = [];
+  readSocialProviders({ OAUTH_KAKAO_CLIENT_ID: 'k', OAUTH_KAKAO_CLIENT_SECRET: 'ks' }, m => quiet.push(m));
+  expect(quiet).toEqual([]);
+});
+
+it('refuses to start a Naver login while other configured providers still start', async () => {
+  const configured = { ...opts, socialProviders: readSocialProviders(ALL_KEYS) };
+  auth = createBetterAuth({ ...configured, db: db.db, mail: { async sendVerificationEmail() {}, async sendPasswordReset() {} } });
+  const start = (provider: string) => startSocialLogin(new Request(
+    `${opts.baseURL}/api/auth/social/start?provider=${provider}&client=ios&challenge=${challengeFor(verifier)}`), auth, configured);
+  expect((await start('naver')).status).toBe(400);
+  const kakao = await start('kakao');
+  expect(kakao.status).toBe(302);
+  expect(new URL(kakao.headers.get('location')!).hostname).toBe('kauth.kakao.com');
+});
+
 it('binds encrypted handoff to verifier and rejects tampering and wrong key', async () => {
   const ticket = await sealHandoff('private-one-time-token', challengeFor(verifier), opts.secret);
   expect(ticket).not.toContain('private-one-time-token');

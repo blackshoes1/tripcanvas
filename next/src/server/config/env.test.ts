@@ -38,6 +38,14 @@ describe('parseEnv — 자체 Auth(§57·§58)', () => {
     expect(warnings.join(' ')).toMatch(/AUTH_SECRET/);
   });
 
+  it('네이버 키는 읽지 않고, 넣어 둔 사람이 알 수 있게 이유를 남긴다', () => {
+    const warnings: string[] = [];
+    const e = parseEnv({ OAUTH_NAVER_CLIENT_ID: 'n', OAUTH_NAVER_CLIENT_SECRET: 'ns', OAUTH_KAKAO_CLIENT_ID: 'k', OAUTH_KAKAO_CLIENT_SECRET: 'ks' },
+      (m) => warnings.push(m));
+    expect(Object.keys(e.socialProviders)).toEqual(['kakao']);
+    expect(warnings.join(' ')).toMatch(/OAUTH_NAVER/);
+  });
+
   it('충분한 비밀과 DATABASE_URL이 있어야 새 Auth가 켜진다', () => {
     const secret = 'a'.repeat(32);
     expect(parseEnv({ AUTH_SECRET: secret }).newAuthEnabled).toBe(false);   // DB가 없으면 못 쓴다
