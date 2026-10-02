@@ -6,7 +6,7 @@
 // 그 값이, 없으면 띄운 TC_IMAGE_TAG가 revision으로 나온다.
 const { test: nodeTest } = require('node:test');
 const assert = require('node:assert/strict');
-const { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } = require('node:fs');
+const { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, statSync } = require('node:fs');
 const { tmpdir } = require('node:os');
 const { join } = require('node:path');
 const { spawnSync } = require('node:child_process');
@@ -145,6 +145,7 @@ function runDeploy(t, { envLines, args = [], state = null, disabled = null, env 
     r,
     script,
     scriptText: readFileSync(script, 'utf8'),
+    scriptMode: statSync(script).mode & 0o777,
     out: `${r.stdout}${r.stderr}`,
     envText: read(envFile),
     stateText: read(join(deployDir, '.deploy-state')),
@@ -230,11 +231,12 @@ test('--status는 도는 revision과 컨테이너 이미지를 함께 말한다'
 const MARKER = '# TC_TEST_SELF_UPDATE_MARKER';
 
 test('배포 스크립트가 바뀌면 갈아 끼우고 새 스크립트로 이어서 배포한다', (t) => {
-  const { r, out, scriptText, stateText } = runDeploy(t, {
+  const { r, out, scriptText, stateText, scriptMode } = runDeploy(t, {
     serveScript: (src) => src + `\n${MARKER}\n`
   });
   assert.equal(r.status, 0, out);
   assert.match(scriptText, new RegExp(MARKER), '받은 스크립트로 바뀌어 있다');
+  if (process.platform !== 'win32') assert.equal(scriptMode, 0o755, 'root 갱신 뒤에도 SSH 사용자가 읽고 실행할 수 있다');
   assert.match(out, /갈아 끼웠다/, '조용히 바꾸지 않고 로그에 남긴다');
   assert.equal((out.match(/갈아 끼웠다/g) || []).length, 1, '한 번만 갈아 끼운다 — 다시 시작이 반복되지 않는다');
   assert.match(stateText, new RegExp(`CURRENT_SHA=${TARGET}`), '갈아 끼운 뒤 배포가 끝까지 간다');
