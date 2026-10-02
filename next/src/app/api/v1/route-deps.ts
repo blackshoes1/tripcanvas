@@ -51,7 +51,7 @@ import {
 } from '@/server/infrastructure/supabase/legacyTripRepository';
 import { DualReadMembershipRepository, DualReadTripRepository } from '@/server/repositories/dualRead';
 import { createLegBudget } from '@/server/routing/legBudget';
-import { createLegFiller, legRequestsFor, toLegCache } from '@/server/routing/legFiller';
+import { countPendingLegs, createLegFiller, legRequestsFor, toLegCache } from '@/server/routing/legFiller';
 import { createServerFx, type FxSupport } from '@/server/currency/serverFx';
 
 /**
@@ -233,24 +233,17 @@ function legSupport(): LegSupport | undefined {
   // 유료 조회의 하루 예산 — 사람마다 · 서버 전체(LEG_FILL_USER_DAILY · LEG_FILL_TOTAL_DAILY). 넘으면 추정으로 답한다
   const budget = createLegBudget({ repo: new PgLegFillUsageRepository(db), limits: env.legFillLimits, log });
   const filler = createLegFiller({ repo, router, budget, log });
-  /** '곧 채워질 것'은 예산이 남은 만큼뿐이다 — 소진된 날 `legsPending`이 0보다 크면 앱이 오지 않을 도로를 기다린다 */
-  const withinBudget = async (count: number, userId: string | undefined) =>
-    count > 0 ? Math.min(count, await budget.remaining(userId)) : 0;
+  /** '곧 채워질 것' — 이미 예산을 뗀 구간 + 남은 예산만큼(`countPendingLegs`). 소진된 날 오지 않을 도로를 기다리게 하지 않는다 */
+  const pendingOf = (list: Parameters<typeof countPendingLegs>[0], userId: string | undefined) =>
+    (rows: Awaited<ReturnType<typeof repo.getMany>>) =>
+      countPendingLegs(list, rows, { router, isInFlight: filler.isInFlight, remaining: () => budget.remaining(userId) });
   return {
     async read(trip, dayIndex, waitMs, userId) {
       const requests = legRequestsFor(trip as unknown as Trip, dayIndex);
       if (!requests.length) return { cache: {}, pending: 0 };
       const keys = requests.map((r) => r.key);
-      /** 곧 채워질 것만 센다: 조회된 것도 아니고, 실패로 굳은 것도 아니고, 우리가 조회할 수 있고, 예산이 남은 구간 */
-      const countPending = (rows: Awaited<ReturnType<typeof repo.getMany>>) => {
-        if (!router) return Promise.resolve(0);
-        const byKey = new Map(rows.map((r) => [r.key, r]));
-        return withinBudget(requests.filter((r) => {
-          const row = byKey.get(r.key);
-          if (row?.sec != null || row?.fail) return false;
-          return router.canRoute(r.a, r.b);
-        }).length, userId);
-      };
+      /** 곧 채워질 것만 센다: 조회된 것도 아니고, 실패로 굳은 것도 아니고, 우리가 조회할 수 있고, 예산을 뗐거나 남은 구간 */
+      const countPending = pendingOf(requests, userId);
 
       let rows = await repo.getMany(keys);
       // 못 채운 구간이 있으면 **잠깐만** 기다린다 — 그 날을 처음 열어도 도로가 보이게(§측정 277ms).
@@ -272,15 +265,7 @@ function legSupport(): LegSupport | undefined {
       const list = [...unique.values()];
       if (!list.length) return { cache: {}, pending: 0 };
       const keys = list.map((r) => r.key);
-      const countPending = (rows: Awaited<ReturnType<typeof repo.getMany>>) => {
-        if (!router) return Promise.resolve(0);
-        const byKey = new Map(rows.map((r) => [r.key, r]));
-        return withinBudget(list.filter((r) => {
-          const row = byKey.get(r.key);
-          if (row?.sec != null || row?.fail) return false;
-          return router.canRoute(r.a, r.b);
-        }).length, userId);
-      };
+      const countPending = pendingOf(list, userId);
 
       let rows = await repo.getMany(keys);
       if (waitMs && await countPending(rows) > 0) {

@@ -1,4 +1,8 @@
-// 경로 조회 하루 예산 — 진짜 PostgreSQL(PGlite)에서 센다. 동시에 와도 상한을 넘지 않아야 한다.
+// 경로 조회 하루 예산 — 진짜 PostgreSQL(PGlite)에서 센다.
+//
+// ⚠️ PGlite는 트랜잭션을 하나씩 돌린다(`_runExclusiveTransaction`). 그래서 여기서는 **동시성**을 검증하지 못한다 —
+// `reserve`의 행 잠금(`for update`)을 빼도 이 파일은 통과한다. 여기서 지키는 것은 몰려온 요청의 합이 상한을
+// 넘지 않는다는 **순차 정확성**까지다. 실제 PostgreSQL 두 연결의 경합은 아직 테스트가 없다.
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { PgLegFillUsageRepository } from '../infrastructure/database/pgLegFillUsageRepository';
@@ -48,7 +52,7 @@ describe('하루 예산', () => {
     expect(await budget.remaining('u1')).toBe(1);
   });
 
-  it('동시에 와도 상한을 넘겨 내주지 않는다', async () => {
+  it('한꺼번에 몰려와도 내준 합이 상한을 넘지 않는다(순차 정확성 — PGlite는 트랜잭션을 직렬로 돈다)', async () => {
     const budget = budgetOf(1000, 50);
     const grants = await Promise.all(Array.from({ length: 12 }, (_, i) => budget.take(`u${i % 3}`, 7)));
     expect(grants.reduce((a, b) => a + b, 0)).toBe(50);
