@@ -106,7 +106,7 @@ export function parseEnv(env: Record<string, string | undefined>, warn?: (m: str
     legFillLimits: readLegFillLimits(env, notify),
     smtp: readSmtp(env),
     newAuthEnabled: !!authSecret && !!databaseUrl,
-    socialProviders: readSocialProviders(env),
+    socialProviders: readSocialProviders(env, notify),
     registry: readRegistry(env, warn)
   };
 }

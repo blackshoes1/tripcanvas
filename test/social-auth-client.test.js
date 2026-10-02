@@ -8,7 +8,7 @@ function storage() {
   const values = new Map();
   return { getItem: k => values.get(k) ?? null, setItem: (k, v) => values.set(k, v), removeItem: k => values.delete(k) };
 }
-function browser() {
+function browser(announced = ['google', 'unknown']) {
   const local = storage(); const calls = [];
   const location = { pathname: '/trips', search: '', hash: '#day=2', origin: 'https://web.test', assign(url) { this.assigned = url; } };
   const context = vm.createContext({ URL, URLSearchParams, Uint8Array, TextEncoder, crypto: webcrypto,
@@ -20,7 +20,7 @@ function browser() {
   auth.configure({ baseUrl: 'https://api.test', storage: local, fetchImpl: async (url, init) => {
     calls.push({ url, init });
     return { ok: true, json: async () => url.endsWith('auth-config')
-      ? { provider: 'TRIPCANVAS', socialProviders: ['google', 'unknown'] }
+      ? { provider: 'TRIPCANVAS', socialProviders: announced }
       : { token: 'signed-session', user: { id: 'user', email: 'test@example.com' } } };
   } });
   return { auth, context, calls, local, location };
@@ -66,4 +66,18 @@ test('proxied web exchanges through the web origin but starts OAuth at the NAS o
   await auth.completeSocial();
   assert.equal(calls.at(-1).url, 'https://web.test/nas/api/auth/social/exchange');
   assert.equal(calls.at(-1).init.credentials, 'omit');
+});
+
+// 특성 테스트: 웹은 제공자를 따로 거르지 않고 서버가 알린 것만 그리고, 알리지 않은 것은 시작하지 않는다.
+// ⚠️ 네이버 숨김을 지키는 테스트는 이게 아니다 — 픽스처가 알림 목록을 고정해 서버가 네이버를 다시 알려도 여기는 통과한다.
+// 그 가드는 서버 쪽 next/src/app/api/v1/auth-config/route.test.ts(와 socialHandoff.test.ts)다.
+test('web starts only what the server announced — an unannounced provider is refused without leaving the page', async () => {
+  const { auth, calls, location } = browser(['google', 'apple', 'kakao']);
+  await auth.resolveProvider();
+  assert.deepEqual(Array.from(auth.socialProviders()), ['google', 'apple', 'kakao']);
+  await assert.rejects(auth.startSocial('naver'));
+  assert.equal(location.assigned, undefined);
+  assert.equal(calls.length, 1);
+  await auth.startSocial('kakao');
+  assert.equal(new URL(location.assigned).searchParams.get('provider'), 'kakao');
 });
