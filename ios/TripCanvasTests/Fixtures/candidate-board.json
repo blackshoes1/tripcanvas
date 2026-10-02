@@ -1,0 +1,1595 @@
+{
+  "cases": [
+    {
+      "name": "아무도 말하지 않음",
+      "memberCount": 4,
+      "candidate": {
+        "id": 1,
+        "title": "카사 바트요",
+        "place_id": null,
+        "lat": null,
+        "lng": null,
+        "addr": null,
+        "note": null,
+        "url": null,
+        "status": "PROPOSED",
+        "scheduled_ref": null,
+        "proposed_by_label": "영희",
+        "mine": false,
+        "my_reaction": null,
+        "must_count": 0,
+        "ok_count": 0,
+        "pass_count": 0,
+        "reactions": [],
+        "comment_count": 0,
+        "created_at": "2026-09-01T00:00:00.000Z"
+      },
+      "tally": {
+        "must": 0,
+        "ok": 0,
+        "pass": 0,
+        "voted": 0,
+        "silent": 4,
+        "members": 4
+      },
+      "mood": "NONE",
+      "moodText": "아직 아무도 의견을 안 냈어요",
+      "consensus": {
+        "score": 50,
+        "strongSupportCount": 0,
+        "oppositionCount": 0,
+        "status": null,
+        "voted": 0,
+        "members": 4
+      },
+      "verdict": {
+        "text": "아직 아무도 의견을 안 냈어요",
+        "tone": "quiet"
+      },
+      "summary": "",
+      "attribution": "영희가 추가"
+    },
+    {
+      "name": "한 명의 MUST로 합의를 말하지 않는다",
+      "memberCount": 4,
+      "candidate": {
+        "id": 1,
+        "title": "카사 바트요",
+        "place_id": null,
+        "lat": null,
+        "lng": null,
+        "addr": null,
+        "note": null,
+        "url": null,
+        "status": "PROPOSED",
+        "scheduled_ref": null,
+        "proposed_by_label": "영희",
+        "mine": false,
+        "my_reaction": null,
+        "must_count": 1,
+        "ok_count": 0,
+        "pass_count": 0,
+        "reactions": [
+          {
+            "user_id": "u0",
+            "name": "멤버0",
+            "reaction": "MUST",
+            "me": false
+          }
+        ],
+        "comment_count": 0,
+        "created_at": "2026-09-01T00:00:00.000Z"
+      },
+      "tally": {
+        "must": 1,
+        "ok": 0,
+        "pass": 0,
+        "voted": 1,
+        "silent": 3,
+        "members": 4
+      },
+      "mood": "QUIET",
+      "moodText": "의견이 더 필요해요",
+      "consensus": {
+        "score": 53,
+        "strongSupportCount": 1,
+        "oppositionCount": 0,
+        "status": "GOOD_MATCH",
+        "voted": 1,
+        "members": 4
+      },
+      "verdict": {
+        "text": "의견이 더 필요해요",
+        "tone": "quiet"
+      },
+      "summary": "❤️ 1",
+      "attribution": "영희가 추가"
+    },
+    {
+      "name": "전원 MUST",
+      "memberCount": 3,
+      "candidate": {
+        "id": 1,
+        "title": "카사 바트요",
+        "place_id": null,
+        "lat": null,
+        "lng": null,
+        "addr": null,
+        "note": null,
+        "url": null,
+        "status": "PROPOSED",
+        "scheduled_ref": null,
+        "proposed_by_label": "영희",
+        "mine": false,
+        "my_reaction": null,
+        "must_count": 3,
+        "ok_count": 0,
+        "pass_count": 0,
+        "reactions": [
+          {
+            "user_id": "u0",
+            "name": "멤버0",
+            "reaction": "MUST",
+            "me": false
+          },
+          {
+            "user_id": "u1",
+            "name": "멤버1",
+            "reaction": "MUST",
+            "me": false
+          },
+          {
+            "user_id": "u2",
+            "name": "멤버2",
+            "reaction": "MUST",
+            "me": false
+          }
+        ],
+        "comment_count": 0,
+        "created_at": "2026-09-01T00:00:00.000Z"
+      },
+      "tally": {
+        "must": 3,
+        "ok": 0,
+        "pass": 0,
+        "voted": 3,
+        "silent": 0,
+        "members": 3
+      },
+      "mood": "LOVED",
+      "moodText": "다들 좋아해요",
+      "consensus": {
+        "score": 100,
+        "strongSupportCount": 3,
+        "oppositionCount": 0,
+        "status": "STRONG_MATCH",
+        "voted": 3,
+        "members": 3
+      },
+      "verdict": {
+        "text": "모두가 좋아할 가능성이 높아요",
+        "tone": "good"
+      },
+      "summary": "❤️ 3",
+      "attribution": "영희가 추가"
+    },
+    {
+      "name": "전원이 말했고 반대 없음 (MUST + OK)",
+      "memberCount": 3,
+      "candidate": {
+        "id": 1,
+        "title": "카사 바트요",
+        "place_id": null,
+        "lat": null,
+        "lng": null,
+        "addr": null,
+        "note": null,
+        "url": null,
+        "status": "PROPOSED",
+        "scheduled_ref": null,
+        "proposed_by_label": "영희",
+        "mine": false,
+        "my_reaction": null,
+        "must_count": 1,
+        "ok_count": 2,
+        "pass_count": 0,
+        "reactions": [
+          {
+            "user_id": "u0",
+            "name": "멤버0",
+            "reaction": "MUST",
+            "me": false
+          },
+          {
+            "user_id": "u1",
+            "name": "멤버1",
+            "reaction": "OK",
+            "me": false
+          },
+          {
+            "user_id": "u2",
+            "name": "멤버2",
+            "reaction": "OK",
+            "me": false
+          }
+        ],
+        "comment_count": 0,
+        "created_at": "2026-09-01T00:00:00.000Z"
+      },
+      "tally": {
+        "must": 1,
+        "ok": 2,
+        "pass": 0,
+        "voted": 3,
+        "silent": 0,
+        "members": 3
+      },
+      "mood": "LOVED",
+      "moodText": "다들 좋아해요",
+      "consensus": {
+        "score": 83,
+        "strongSupportCount": 1,
+        "oppositionCount": 0,
+        "status": "GOOD_MATCH",
+        "voted": 3,
+        "members": 3
+      },
+      "verdict": {
+        "text": "괜찮아 보여요 — 반대가 없어요",
+        "tone": "good"
+      },
+      "summary": "❤️ 1 · 👍 2",
+      "attribution": "영희가 추가"
+    },
+    {
+      "name": "§20 A — MUST2·OK1·PASS1은 갈림",
+      "memberCount": 4,
+      "candidate": {
+        "id": 1,
+        "title": "카사 바트요",
+        "place_id": null,
+        "lat": null,
+        "lng": null,
+        "addr": null,
+        "note": null,
+        "url": null,
+        "status": "PROPOSED",
+        "scheduled_ref": null,
+        "proposed_by_label": "영희",
+        "mine": false,
+        "my_reaction": null,
+        "must_count": 2,
+        "ok_count": 1,
+        "pass_count": 1,
+        "reactions": [
+          {
+            "user_id": "u0",
+            "name": "멤버0",
+            "reaction": "MUST",
+            "me": false
+          },
+          {
+            "user_id": "u1",
+            "name": "멤버1",
+            "reaction": "MUST",
+            "me": false
+          },
+          {
+            "user_id": "u2",
+            "name": "멤버2",
+            "reaction": "OK",
+            "me": false
+          },
+          {
+            "user_id": "u3",
+            "name": "멤버3",
+            "reaction": "PASS",
+            "me": false
+          }
+        ],
+        "comment_count": 0,
+        "created_at": "2026-09-01T00:00:00.000Z"
+      },
+      "tally": {
+        "must": 2,
+        "ok": 1,
+        "pass": 1,
+        "voted": 4,
+        "silent": 0,
+        "members": 4
+      },
+      "mood": "SPLIT",
+      "moodText": "의견이 갈려요",
+      "consensus": {
+        "score": 69,
+        "strongSupportCount": 2,
+        "oppositionCount": 1,
+        "status": "CONFLICT",
+        "voted": 4,
+        "members": 4
+      },
+      "verdict": {
+        "text": "의견이 갈려 있어요",
+        "tone": "split"
+      },
+      "summary": "❤️ 2 · 👍 1 · 👋 1",
+      "attribution": "영희가 추가"
+    },
+    {
+      "name": "§20 B — MUST1·OK3은 반대 없음",
+      "memberCount": 4,
+      "candidate": {
+        "id": 1,
+        "title": "카사 바트요",
+        "place_id": null,
+        "lat": null,
+        "lng": null,
+        "addr": null,
+        "note": null,
+        "url": null,
+        "status": "PROPOSED",
+        "scheduled_ref": null,
+        "proposed_by_label": "영희",
+        "mine": false,
+        "my_reaction": null,
+        "must_count": 1,
+        "ok_count": 3,
+        "pass_count": 0,
+        "reactions": [
+          {
+            "user_id": "u0",
+            "name": "멤버0",
+            "reaction": "MUST",
+            "me": false
+          },
+          {
+            "user_id": "u1",
+            "name": "멤버1",
+            "reaction": "OK",
+            "me": false
+          },
+          {
+            "user_id": "u2",
+            "name": "멤버2",
+            "reaction": "OK",
+            "me": false
+          },
+          {
+            "user_id": "u3",
+            "name": "멤버3",
+            "reaction": "OK",
+            "me": false
+          }
+        ],
+        "comment_count": 0,
+        "created_at": "2026-09-01T00:00:00.000Z"
+      },
+      "tally": {
+        "must": 1,
+        "ok": 3,
+        "pass": 0,
+        "voted": 4,
+        "silent": 0,
+        "members": 4
+      },
+      "mood": "LOVED",
+      "moodText": "다들 좋아해요",
+      "consensus": {
+        "score": 81,
+        "strongSupportCount": 1,
+        "oppositionCount": 0,
+        "status": "GOOD_MATCH",
+        "voted": 4,
+        "members": 4
+      },
+      "verdict": {
+        "text": "괜찮아 보여요 — 반대가 없어요",
+        "tone": "good"
+      },
+      "summary": "❤️ 1 · 👍 3",
+      "attribution": "영희가 추가"
+    },
+    {
+      "name": "전원 PASS",
+      "memberCount": 3,
+      "candidate": {
+        "id": 1,
+        "title": "카사 바트요",
+        "place_id": null,
+        "lat": null,
+        "lng": null,
+        "addr": null,
+        "note": null,
+        "url": null,
+        "status": "PROPOSED",
+        "scheduled_ref": null,
+        "proposed_by_label": "영희",
+        "mine": false,
+        "my_reaction": null,
+        "must_count": 0,
+        "ok_count": 0,
+        "pass_count": 3,
+        "reactions": [
+          {
+            "user_id": "u0",
+            "name": "멤버0",
+            "reaction": "PASS",
+            "me": false
+          },
+          {
+            "user_id": "u1",
+            "name": "멤버1",
+            "reaction": "PASS",
+            "me": false
+          },
+          {
+            "user_id": "u2",
+            "name": "멤버2",
+            "reaction": "PASS",
+            "me": false
+          }
+        ],
+        "comment_count": 0,
+        "created_at": "2026-09-01T00:00:00.000Z"
+      },
+      "tally": {
+        "must": 0,
+        "ok": 0,
+        "pass": 3,
+        "voted": 3,
+        "silent": 0,
+        "members": 3
+      },
+      "mood": "COOL",
+      "moodText": "아직 끌리는 사람이 없어요",
+      "consensus": {
+        "score": 0,
+        "strongSupportCount": 0,
+        "oppositionCount": 3,
+        "status": "MIXED",
+        "voted": 3,
+        "members": 3
+      },
+      "verdict": {
+        "text": "의견이 조금 갈려요",
+        "tone": "mixed"
+      },
+      "summary": "👋 3",
+      "attribution": "영희가 추가"
+    },
+    {
+      "name": "OK와 PASS — MUST 없이 반대가 있다",
+      "memberCount": 4,
+      "candidate": {
+        "id": 1,
+        "title": "카사 바트요",
+        "place_id": null,
+        "lat": null,
+        "lng": null,
+        "addr": null,
+        "note": null,
+        "url": null,
+        "status": "PROPOSED",
+        "scheduled_ref": null,
+        "proposed_by_label": "영희",
+        "mine": false,
+        "my_reaction": null,
+        "must_count": 0,
+        "ok_count": 1,
+        "pass_count": 1,
+        "reactions": [
+          {
+            "user_id": "u0",
+            "name": "멤버0",
+            "reaction": "OK",
+            "me": false
+          },
+          {
+            "user_id": "u1",
+            "name": "멤버1",
+            "reaction": "PASS",
+            "me": false
+          }
+        ],
+        "comment_count": 0,
+        "created_at": "2026-09-01T00:00:00.000Z"
+      },
+      "tally": {
+        "must": 0,
+        "ok": 1,
+        "pass": 1,
+        "voted": 2,
+        "silent": 2,
+        "members": 4
+      },
+      "mood": "COOL",
+      "moodText": "아직 끌리는 사람이 없어요",
+      "consensus": {
+        "score": 47,
+        "strongSupportCount": 0,
+        "oppositionCount": 1,
+        "status": "MIXED",
+        "voted": 2,
+        "members": 4
+      },
+      "verdict": {
+        "text": "의견이 조금 갈려요",
+        "tone": "mixed"
+      },
+      "summary": "👍 1 · 👋 1",
+      "attribution": "영희가 추가"
+    },
+    {
+      "name": "넷 중 둘만 MUST — 아직 다 말하지 않았다",
+      "memberCount": 4,
+      "candidate": {
+        "id": 1,
+        "title": "카사 바트요",
+        "place_id": null,
+        "lat": null,
+        "lng": null,
+        "addr": null,
+        "note": null,
+        "url": null,
+        "status": "PROPOSED",
+        "scheduled_ref": null,
+        "proposed_by_label": "영희",
+        "mine": false,
+        "my_reaction": null,
+        "must_count": 2,
+        "ok_count": 0,
+        "pass_count": 0,
+        "reactions": [
+          {
+            "user_id": "u0",
+            "name": "멤버0",
+            "reaction": "MUST",
+            "me": false
+          },
+          {
+            "user_id": "u1",
+            "name": "멤버1",
+            "reaction": "MUST",
+            "me": false
+          }
+        ],
+        "comment_count": 0,
+        "created_at": "2026-09-01T00:00:00.000Z"
+      },
+      "tally": {
+        "must": 2,
+        "ok": 0,
+        "pass": 0,
+        "voted": 2,
+        "silent": 2,
+        "members": 4
+      },
+      "mood": "QUIET",
+      "moodText": "의견이 더 필요해요",
+      "consensus": {
+        "score": 63,
+        "strongSupportCount": 2,
+        "oppositionCount": 0,
+        "status": "GOOD_MATCH",
+        "voted": 2,
+        "members": 4
+      },
+      "verdict": {
+        "text": "괜찮아 보여요 — 반대가 없어요",
+        "tone": "good"
+      },
+      "summary": "❤️ 2",
+      "attribution": "영희가 추가"
+    },
+    {
+      "name": "OK 한 명",
+      "memberCount": 3,
+      "candidate": {
+        "id": 1,
+        "title": "카사 바트요",
+        "place_id": null,
+        "lat": null,
+        "lng": null,
+        "addr": null,
+        "note": null,
+        "url": null,
+        "status": "PROPOSED",
+        "scheduled_ref": null,
+        "proposed_by_label": "영희",
+        "mine": false,
+        "my_reaction": null,
+        "must_count": 0,
+        "ok_count": 1,
+        "pass_count": 0,
+        "reactions": [
+          {
+            "user_id": "u0",
+            "name": "멤버0",
+            "reaction": "OK",
+            "me": false
+          }
+        ],
+        "comment_count": 0,
+        "created_at": "2026-09-01T00:00:00.000Z"
+      },
+      "tally": {
+        "must": 0,
+        "ok": 1,
+        "pass": 0,
+        "voted": 1,
+        "silent": 2,
+        "members": 3
+      },
+      "mood": "QUIET",
+      "moodText": "의견이 더 필요해요",
+      "consensus": {
+        "score": 53,
+        "strongSupportCount": 0,
+        "oppositionCount": 0,
+        "status": "GOOD_MATCH",
+        "voted": 1,
+        "members": 3
+      },
+      "verdict": {
+        "text": "의견이 더 필요해요",
+        "tone": "quiet"
+      },
+      "summary": "👍 1",
+      "attribution": "영희가 추가"
+    },
+    {
+      "name": "전원 OK — MUST가 없으면 다들 좋아한다고 하지 않는다",
+      "memberCount": 2,
+      "candidate": {
+        "id": 1,
+        "title": "카사 바트요",
+        "place_id": null,
+        "lat": null,
+        "lng": null,
+        "addr": null,
+        "note": null,
+        "url": null,
+        "status": "PROPOSED",
+        "scheduled_ref": null,
+        "proposed_by_label": "영희",
+        "mine": false,
+        "my_reaction": null,
+        "must_count": 0,
+        "ok_count": 2,
+        "pass_count": 0,
+        "reactions": [
+          {
+            "user_id": "u0",
+            "name": "멤버0",
+            "reaction": "OK",
+            "me": false
+          },
+          {
+            "user_id": "u1",
+            "name": "멤버1",
+            "reaction": "OK",
+            "me": false
+          }
+        ],
+        "comment_count": 0,
+        "created_at": "2026-09-01T00:00:00.000Z"
+      },
+      "tally": {
+        "must": 0,
+        "ok": 2,
+        "pass": 0,
+        "voted": 2,
+        "silent": 0,
+        "members": 2
+      },
+      "mood": "QUIET",
+      "moodText": "의견이 더 필요해요",
+      "consensus": {
+        "score": 75,
+        "strongSupportCount": 0,
+        "oppositionCount": 0,
+        "status": "GOOD_MATCH",
+        "voted": 2,
+        "members": 2
+      },
+      "verdict": {
+        "text": "괜찮아 보여요 — 반대가 없어요",
+        "tone": "good"
+      },
+      "summary": "👍 2",
+      "attribution": "영희가 추가"
+    },
+    {
+      "name": "둘 중 하나 MUST — 점수가 딱 .5에 걸린다",
+      "memberCount": 2,
+      "candidate": {
+        "id": 1,
+        "title": "카사 바트요",
+        "place_id": null,
+        "lat": null,
+        "lng": null,
+        "addr": null,
+        "note": null,
+        "url": null,
+        "status": "PROPOSED",
+        "scheduled_ref": null,
+        "proposed_by_label": "영희",
+        "mine": false,
+        "my_reaction": null,
+        "must_count": 1,
+        "ok_count": 0,
+        "pass_count": 0,
+        "reactions": [
+          {
+            "user_id": "u0",
+            "name": "멤버0",
+            "reaction": "MUST",
+            "me": false
+          }
+        ],
+        "comment_count": 0,
+        "created_at": "2026-09-01T00:00:00.000Z"
+      },
+      "tally": {
+        "must": 1,
+        "ok": 0,
+        "pass": 0,
+        "voted": 1,
+        "silent": 1,
+        "members": 2
+      },
+      "mood": "QUIET",
+      "moodText": "의견이 더 필요해요",
+      "consensus": {
+        "score": 63,
+        "strongSupportCount": 1,
+        "oppositionCount": 0,
+        "status": "GOOD_MATCH",
+        "voted": 1,
+        "members": 2
+      },
+      "verdict": {
+        "text": "의견이 더 필요해요",
+        "tone": "quiet"
+      },
+      "summary": "❤️ 1",
+      "attribution": "영희가 추가"
+    },
+    {
+      "name": "넷 중 둘 PASS — 점수가 딱 .5에 걸린다",
+      "memberCount": 4,
+      "candidate": {
+        "id": 1,
+        "title": "카사 바트요",
+        "place_id": null,
+        "lat": null,
+        "lng": null,
+        "addr": null,
+        "note": null,
+        "url": null,
+        "status": "PROPOSED",
+        "scheduled_ref": null,
+        "proposed_by_label": "영희",
+        "mine": false,
+        "my_reaction": null,
+        "must_count": 0,
+        "ok_count": 0,
+        "pass_count": 2,
+        "reactions": [
+          {
+            "user_id": "u0",
+            "name": "멤버0",
+            "reaction": "PASS",
+            "me": false
+          },
+          {
+            "user_id": "u1",
+            "name": "멤버1",
+            "reaction": "PASS",
+            "me": false
+          }
+        ],
+        "comment_count": 0,
+        "created_at": "2026-09-01T00:00:00.000Z"
+      },
+      "tally": {
+        "must": 0,
+        "ok": 0,
+        "pass": 2,
+        "voted": 2,
+        "silent": 2,
+        "members": 4
+      },
+      "mood": "COOL",
+      "moodText": "아직 끌리는 사람이 없어요",
+      "consensus": {
+        "score": 38,
+        "strongSupportCount": 0,
+        "oppositionCount": 2,
+        "status": "MIXED",
+        "voted": 2,
+        "members": 4
+      },
+      "verdict": {
+        "text": "의견이 조금 갈려요",
+        "tone": "mixed"
+      },
+      "summary": "👋 2",
+      "attribution": "영희가 추가"
+    },
+    {
+      "name": "반응 문자열이 느슨하다 — 소문자·공백·모르는 값",
+      "memberCount": 4,
+      "candidate": {
+        "id": 1,
+        "title": "카사 바트요",
+        "place_id": null,
+        "lat": null,
+        "lng": null,
+        "addr": null,
+        "note": null,
+        "url": null,
+        "status": "PROPOSED",
+        "scheduled_ref": null,
+        "proposed_by_label": "영희",
+        "mine": false,
+        "my_reaction": null,
+        "must_count": 0,
+        "ok_count": 0,
+        "pass_count": 0,
+        "reactions": [
+          {
+            "user_id": "u0",
+            "name": "멤버0",
+            "reaction": " must ",
+            "me": false
+          },
+          {
+            "user_id": "u1",
+            "name": "멤버1",
+            "reaction": "ok",
+            "me": false
+          },
+          {
+            "user_id": "u2",
+            "name": "멤버2",
+            "reaction": "MAYBE",
+            "me": false
+          }
+        ],
+        "comment_count": 0,
+        "created_at": "2026-09-01T00:00:00.000Z"
+      },
+      "tally": {
+        "must": 1,
+        "ok": 1,
+        "pass": 0,
+        "voted": 2,
+        "silent": 2,
+        "members": 4
+      },
+      "mood": "QUIET",
+      "moodText": "의견이 더 필요해요",
+      "consensus": {
+        "score": 59,
+        "strongSupportCount": 1,
+        "oppositionCount": 0,
+        "status": "GOOD_MATCH",
+        "voted": 2,
+        "members": 4
+      },
+      "verdict": {
+        "text": "괜찮아 보여요 — 반대가 없어요",
+        "tone": "good"
+      },
+      "summary": "❤️ 1 · 👍 1",
+      "attribution": "영희가 추가"
+    },
+    {
+      "name": "서버 집계가 낡아도 반응 배열로 다시 센다",
+      "memberCount": 3,
+      "candidate": {
+        "id": 1,
+        "title": "카사 바트요",
+        "place_id": null,
+        "lat": null,
+        "lng": null,
+        "addr": null,
+        "note": null,
+        "url": null,
+        "status": "PROPOSED",
+        "scheduled_ref": null,
+        "proposed_by_label": "영희",
+        "mine": false,
+        "my_reaction": null,
+        "must_count": 5,
+        "ok_count": 2,
+        "pass_count": 0,
+        "reactions": [
+          {
+            "user_id": "u0",
+            "name": "멤버0",
+            "reaction": "PASS",
+            "me": false
+          }
+        ],
+        "comment_count": 0,
+        "created_at": "2026-09-01T00:00:00.000Z"
+      },
+      "tally": {
+        "must": 0,
+        "ok": 0,
+        "pass": 1,
+        "voted": 1,
+        "silent": 2,
+        "members": 3
+      },
+      "mood": "COOL",
+      "moodText": "아직 끌리는 사람이 없어요",
+      "consensus": {
+        "score": 44,
+        "strongSupportCount": 0,
+        "oppositionCount": 1,
+        "status": "MIXED",
+        "voted": 1,
+        "members": 3
+      },
+      "verdict": {
+        "text": "아직 끌리는 사람이 없어요",
+        "tone": "quiet"
+      },
+      "summary": "👋 1",
+      "attribution": "영희가 추가"
+    },
+    {
+      "name": "인원보다 반응이 많다 (인원 정보가 낡음)",
+      "memberCount": 2,
+      "candidate": {
+        "id": 1,
+        "title": "카사 바트요",
+        "place_id": null,
+        "lat": null,
+        "lng": null,
+        "addr": null,
+        "note": null,
+        "url": null,
+        "status": "PROPOSED",
+        "scheduled_ref": null,
+        "proposed_by_label": "영희",
+        "mine": false,
+        "my_reaction": null,
+        "must_count": 3,
+        "ok_count": 0,
+        "pass_count": 0,
+        "reactions": [
+          {
+            "user_id": "u0",
+            "name": "멤버0",
+            "reaction": "MUST",
+            "me": false
+          },
+          {
+            "user_id": "u1",
+            "name": "멤버1",
+            "reaction": "MUST",
+            "me": false
+          },
+          {
+            "user_id": "u2",
+            "name": "멤버2",
+            "reaction": "MUST",
+            "me": false
+          }
+        ],
+        "comment_count": 0,
+        "created_at": "2026-09-01T00:00:00.000Z"
+      },
+      "tally": {
+        "must": 3,
+        "ok": 0,
+        "pass": 0,
+        "voted": 3,
+        "silent": 0,
+        "members": 3
+      },
+      "mood": "LOVED",
+      "moodText": "다들 좋아해요",
+      "consensus": {
+        "score": 100,
+        "strongSupportCount": 3,
+        "oppositionCount": 0,
+        "status": "STRONG_MATCH",
+        "voted": 3,
+        "members": 3
+      },
+      "verdict": {
+        "text": "모두가 좋아할 가능성이 높아요",
+        "tone": "good"
+      },
+      "summary": "❤️ 3",
+      "attribution": "영희가 추가"
+    },
+    {
+      "name": "인원을 모른다 (0)",
+      "memberCount": 0,
+      "candidate": {
+        "id": 1,
+        "title": "카사 바트요",
+        "place_id": null,
+        "lat": null,
+        "lng": null,
+        "addr": null,
+        "note": null,
+        "url": null,
+        "status": "PROPOSED",
+        "scheduled_ref": null,
+        "proposed_by_label": "영희",
+        "mine": false,
+        "my_reaction": null,
+        "must_count": 1,
+        "ok_count": 0,
+        "pass_count": 0,
+        "reactions": [
+          {
+            "user_id": "u0",
+            "name": "멤버0",
+            "reaction": "MUST",
+            "me": false
+          }
+        ],
+        "comment_count": 0,
+        "created_at": "2026-09-01T00:00:00.000Z"
+      },
+      "tally": {
+        "must": 1,
+        "ok": 0,
+        "pass": 0,
+        "voted": 1,
+        "silent": 0,
+        "members": 1
+      },
+      "mood": "LOVED",
+      "moodText": "다들 좋아해요",
+      "consensus": {
+        "score": 100,
+        "strongSupportCount": 1,
+        "oppositionCount": 0,
+        "status": "STRONG_MATCH",
+        "voted": 1,
+        "members": 1
+      },
+      "verdict": {
+        "text": "다들 좋아해요",
+        "tone": "good"
+      },
+      "summary": "❤️ 1",
+      "attribution": "영희가 추가"
+    },
+    {
+      "name": "내가 담은 후보",
+      "memberCount": 3,
+      "candidate": {
+        "id": 1,
+        "title": "카사 바트요",
+        "place_id": null,
+        "lat": null,
+        "lng": null,
+        "addr": null,
+        "note": null,
+        "url": null,
+        "status": "PROPOSED",
+        "scheduled_ref": null,
+        "proposed_by_label": "영희",
+        "mine": true,
+        "my_reaction": "MUST",
+        "must_count": 1,
+        "ok_count": 0,
+        "pass_count": 0,
+        "reactions": [
+          {
+            "user_id": "me",
+            "name": "나야",
+            "reaction": "MUST",
+            "me": true
+          }
+        ],
+        "comment_count": 0,
+        "created_at": "2026-09-01T00:00:00.000Z"
+      },
+      "tally": {
+        "must": 1,
+        "ok": 0,
+        "pass": 0,
+        "voted": 1,
+        "silent": 2,
+        "members": 3
+      },
+      "mood": "QUIET",
+      "moodText": "의견이 더 필요해요",
+      "consensus": {
+        "score": 56,
+        "strongSupportCount": 1,
+        "oppositionCount": 0,
+        "status": "GOOD_MATCH",
+        "voted": 1,
+        "members": 3
+      },
+      "verdict": {
+        "text": "의견이 더 필요해요",
+        "tone": "quiet"
+      },
+      "summary": "❤️ 1",
+      "attribution": "내가 추가"
+    },
+    {
+      "name": "담은 사람 이름이 비었다",
+      "memberCount": 3,
+      "candidate": {
+        "id": 1,
+        "title": "카사 바트요",
+        "place_id": null,
+        "lat": null,
+        "lng": null,
+        "addr": null,
+        "note": null,
+        "url": null,
+        "status": "PROPOSED",
+        "scheduled_ref": null,
+        "proposed_by_label": "   ",
+        "mine": false,
+        "my_reaction": null,
+        "must_count": 0,
+        "ok_count": 0,
+        "pass_count": 0,
+        "reactions": [],
+        "comment_count": 0,
+        "created_at": "2026-09-01T00:00:00.000Z"
+      },
+      "tally": {
+        "must": 0,
+        "ok": 0,
+        "pass": 0,
+        "voted": 0,
+        "silent": 3,
+        "members": 3
+      },
+      "mood": "NONE",
+      "moodText": "아직 아무도 의견을 안 냈어요",
+      "consensus": {
+        "score": 50,
+        "strongSupportCount": 0,
+        "oppositionCount": 0,
+        "status": null,
+        "voted": 0,
+        "members": 3
+      },
+      "verdict": {
+        "text": "아직 아무도 의견을 안 냈어요",
+        "tone": "quiet"
+      },
+      "summary": "",
+      "attribution": "멤버가 추가"
+    },
+    {
+      "name": "담은 사람 이름 앞뒤 공백",
+      "memberCount": 3,
+      "candidate": {
+        "id": 1,
+        "title": "카사 바트요",
+        "place_id": null,
+        "lat": null,
+        "lng": null,
+        "addr": null,
+        "note": null,
+        "url": null,
+        "status": "PROPOSED",
+        "scheduled_ref": null,
+        "proposed_by_label": "  지민  ",
+        "mine": false,
+        "my_reaction": null,
+        "must_count": 0,
+        "ok_count": 0,
+        "pass_count": 0,
+        "reactions": [],
+        "comment_count": 0,
+        "created_at": "2026-09-01T00:00:00.000Z"
+      },
+      "tally": {
+        "must": 0,
+        "ok": 0,
+        "pass": 0,
+        "voted": 0,
+        "silent": 3,
+        "members": 3
+      },
+      "mood": "NONE",
+      "moodText": "아직 아무도 의견을 안 냈어요",
+      "consensus": {
+        "score": 50,
+        "strongSupportCount": 0,
+        "oppositionCount": 0,
+        "status": null,
+        "voted": 0,
+        "members": 3
+      },
+      "verdict": {
+        "text": "아직 아무도 의견을 안 냈어요",
+        "tone": "quiet"
+      },
+      "summary": "",
+      "attribution": "지민가 추가"
+    }
+  ],
+  "board": {
+    "memberCount": 3,
+    "candidates": [
+      {
+        "id": 1,
+        "title": "카사 바트요",
+        "place_id": null,
+        "lat": null,
+        "lng": null,
+        "addr": null,
+        "note": null,
+        "url": null,
+        "status": "PROPOSED",
+        "scheduled_ref": null,
+        "proposed_by_label": "영희",
+        "mine": false,
+        "my_reaction": null,
+        "must_count": 2,
+        "ok_count": 0,
+        "pass_count": 1,
+        "reactions": [
+          {
+            "user_id": "u0",
+            "name": "멤버0",
+            "reaction": "MUST",
+            "me": false
+          },
+          {
+            "user_id": "u1",
+            "name": "멤버1",
+            "reaction": "MUST",
+            "me": false
+          },
+          {
+            "user_id": "u2",
+            "name": "멤버2",
+            "reaction": "PASS",
+            "me": false
+          }
+        ],
+        "comment_count": 0,
+        "created_at": "2026-09-01T00:00:00.000Z"
+      },
+      {
+        "id": 2,
+        "title": "카사 바트요",
+        "place_id": null,
+        "lat": null,
+        "lng": null,
+        "addr": null,
+        "note": null,
+        "url": null,
+        "status": "PROPOSED",
+        "scheduled_ref": null,
+        "proposed_by_label": "영희",
+        "mine": false,
+        "my_reaction": null,
+        "must_count": 3,
+        "ok_count": 0,
+        "pass_count": 0,
+        "reactions": [
+          {
+            "user_id": "u0",
+            "name": "멤버0",
+            "reaction": "MUST",
+            "me": false
+          },
+          {
+            "user_id": "u1",
+            "name": "멤버1",
+            "reaction": "MUST",
+            "me": false
+          },
+          {
+            "user_id": "u2",
+            "name": "멤버2",
+            "reaction": "MUST",
+            "me": false
+          }
+        ],
+        "comment_count": 0,
+        "created_at": "2026-09-02T00:00:00.000Z"
+      },
+      {
+        "id": 3,
+        "title": "카사 바트요",
+        "place_id": null,
+        "lat": null,
+        "lng": null,
+        "addr": null,
+        "note": null,
+        "url": null,
+        "status": "PROPOSED",
+        "scheduled_ref": null,
+        "proposed_by_label": "영희",
+        "mine": false,
+        "my_reaction": null,
+        "must_count": 0,
+        "ok_count": 0,
+        "pass_count": 2,
+        "reactions": [
+          {
+            "user_id": "u0",
+            "name": "멤버0",
+            "reaction": "PASS",
+            "me": false
+          },
+          {
+            "user_id": "u1",
+            "name": "멤버1",
+            "reaction": "PASS",
+            "me": false
+          }
+        ],
+        "comment_count": 0,
+        "created_at": "2026-09-03T00:00:00.000Z"
+      },
+      {
+        "id": 4,
+        "title": "카사 바트요",
+        "place_id": null,
+        "lat": null,
+        "lng": null,
+        "addr": null,
+        "note": null,
+        "url": null,
+        "status": "SCHEDULED",
+        "scheduled_ref": "2",
+        "proposed_by_label": "영희",
+        "mine": false,
+        "my_reaction": null,
+        "must_count": 1,
+        "ok_count": 0,
+        "pass_count": 0,
+        "reactions": [
+          {
+            "user_id": "u0",
+            "name": "멤버0",
+            "reaction": "MUST",
+            "me": false
+          }
+        ],
+        "comment_count": 0,
+        "created_at": "2026-09-04T00:00:00.000Z"
+      },
+      {
+        "id": 5,
+        "title": "카사 바트요",
+        "place_id": null,
+        "lat": null,
+        "lng": null,
+        "addr": null,
+        "note": null,
+        "url": null,
+        "status": "REJECTED",
+        "scheduled_ref": null,
+        "proposed_by_label": "영희",
+        "mine": false,
+        "my_reaction": null,
+        "must_count": 1,
+        "ok_count": 0,
+        "pass_count": 1,
+        "reactions": [
+          {
+            "user_id": "u0",
+            "name": "멤버0",
+            "reaction": "MUST",
+            "me": false
+          },
+          {
+            "user_id": "u1",
+            "name": "멤버1",
+            "reaction": "PASS",
+            "me": false
+          }
+        ],
+        "comment_count": 0,
+        "created_at": "2026-09-05T00:00:00.000Z"
+      },
+      {
+        "id": 6,
+        "title": "카사 바트요",
+        "place_id": null,
+        "lat": null,
+        "lng": null,
+        "addr": null,
+        "note": null,
+        "url": null,
+        "status": "PROPOSED",
+        "scheduled_ref": null,
+        "proposed_by_label": "영희",
+        "mine": false,
+        "my_reaction": null,
+        "must_count": 0,
+        "ok_count": 0,
+        "pass_count": 0,
+        "reactions": [],
+        "comment_count": 0,
+        "created_at": "2026-09-06T00:00:00.000Z"
+      },
+      {
+        "id": 7,
+        "title": "카사 바트요",
+        "place_id": null,
+        "lat": null,
+        "lng": null,
+        "addr": null,
+        "note": null,
+        "url": null,
+        "status": "PROPOSED",
+        "scheduled_ref": null,
+        "proposed_by_label": "영희",
+        "mine": false,
+        "my_reaction": null,
+        "must_count": 1,
+        "ok_count": 0,
+        "pass_count": 0,
+        "reactions": [
+          {
+            "user_id": "u0",
+            "name": "멤버0",
+            "reaction": "MUST",
+            "me": false
+          }
+        ],
+        "comment_count": 0,
+        "created_at": "2026-09-01T00:00:00.000Z"
+      },
+      {
+        "id": 10,
+        "title": "카사 바트요",
+        "place_id": null,
+        "lat": null,
+        "lng": null,
+        "addr": null,
+        "note": null,
+        "url": null,
+        "status": "PROPOSED",
+        "scheduled_ref": null,
+        "proposed_by_label": "영희",
+        "mine": false,
+        "my_reaction": null,
+        "must_count": 1,
+        "ok_count": 0,
+        "pass_count": 0,
+        "reactions": [
+          {
+            "user_id": "u0",
+            "name": "멤버0",
+            "reaction": "MUST",
+            "me": false
+          }
+        ],
+        "comment_count": 0,
+        "created_at": "2026-09-01T00:00:00.000Z"
+      }
+    ],
+    "groups": {
+      "loved": [
+        2
+      ],
+      "needsOpinion": [
+        1,
+        6,
+        7,
+        10
+      ],
+      "resting": [
+        3
+      ],
+      "scheduled": [
+        4
+      ],
+      "rejected": [
+        5
+      ]
+    },
+    "byInterest": [
+      2,
+      1,
+      4,
+      7,
+      10,
+      5,
+      6,
+      3
+    ],
+    "recent": [
+      6,
+      5,
+      4,
+      3,
+      2,
+      7,
+      10,
+      1
+    ]
+  },
+  "reactions": [
+    {
+      "id": "MUST",
+      "label": "꼭 가고 싶어요",
+      "icon": "❤️"
+    },
+    {
+      "id": "OK",
+      "label": "괜찮아요",
+      "icon": "👍"
+    },
+    {
+      "id": "PASS",
+      "label": "이번엔 패스",
+      "icon": "👋"
+    }
+  ],
+  "moods": {
+    "NONE": "아직 아무도 의견을 안 냈어요",
+    "QUIET": "의견이 더 필요해요",
+    "SPLIT": "의견이 갈려요",
+    "COOL": "아직 끌리는 사람이 없어요",
+    "LOVED": "다들 좋아해요"
+  },
+  "consensusTexts": {
+    "STRONG_MATCH": "모두가 좋아할 가능성이 높아요",
+    "GOOD_MATCH": "괜찮아 보여요 — 반대가 없어요",
+    "MIXED": "의견이 조금 갈려요",
+    "CONFLICT": "의견이 갈려 있어요"
+  },
+  "categories": {
+    "list": [
+      "RESTAURANT",
+      "CAFE",
+      "DESSERT",
+      "SIGHT",
+      "LANDMARK",
+      "NATURE",
+      "SHOPPING",
+      "ACTIVITY",
+      "STAY",
+      "ETC"
+    ],
+    "reads": [
+      {
+        "raw": "cafe",
+        "value": "CAFE"
+      },
+      {
+        "raw": " SIGHT ",
+        "value": "SIGHT"
+      },
+      {
+        "raw": "Restaurant\n",
+        "value": "RESTAURANT"
+      },
+      {
+        "raw": "etc",
+        "value": "ETC"
+      },
+      {
+        "raw": "BOGUS",
+        "value": null
+      },
+      {
+        "raw": "",
+        "value": null
+      },
+      {
+        "raw": null,
+        "value": null
+      }
+    ]
+  }
+}

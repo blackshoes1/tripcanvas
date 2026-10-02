@@ -346,10 +346,11 @@ enum CollabModel {
         let role: MemberRole?
     }
 
-    /// 서버 reason 코드 → 사람 말.
+    /// 서버 reason 코드 → 사람 말. **거절을 말할 때만** 부른다 — 그래서 모르는 코드는 물론 `OK`도
+    /// '올바르지 않다'로 말한다(`collab.js`의 `JOIN_REASON[key] || INVALID`와 같다). 빈 문장을 돌려주면
+    /// 무효인데 이유가 `OK`로 온 초대·참여 실패가 아무 말 없는 화면이 된다. `invite.json` 픽스처가 대조한다.
     static func joinReasonText(_ reason: String?) -> String {
         switch (reason ?? "").uppercased() {
-        case "OK": ""
         case "EXPIRED": "초대 링크가 만료됐어요. 보낸 사람에게 새 링크를 받아 주세요"
         case "REVOKED": "취소된 초대 링크예요. 보낸 사람에게 새 링크를 받아 주세요"
         case "EXHAUSTED": "이 링크는 사용 한도에 도달했어요. 보낸 사람에게 새 링크를 받아 주세요"
@@ -788,7 +789,11 @@ extension CollabModel {
     /// §19 그룹 컨텍스트 — 여행 전체의 결정은 하지 않는다. 어디가 맞고 어디가 갈리는지만 정리한 **문장들**(§61·§62).
     static func groupContextText(_ rows: [PreferenceView], memberCount: Int) -> [String] {
         struct Row { let name: String; let prefs: TripPrefs }
-        let list = rows.map { Row(name: $0.mine ? "나" : ($0.label.trimmingCharacters(in: .whitespaces).isEmpty ? "멤버" : $0.label), prefs: TripPrefs(raw: $0.prefs)) }
+        // 이름표는 **다듬은 것**을 부른다 — `collab.js`의 `String(r.label||'').trim()||'멤버'`와 같다(`trip-prefs.json`).
+        let list = rows.map { row -> Row in
+            let label = row.label.trimmingCharacters(in: .whitespaces)
+            return Row(name: row.mine ? "나" : (label.isEmpty ? "멤버" : label), prefs: TripPrefs(raw: row.prefs))
+        }
         let answered = list.filter { !$0.prefs.isEmpty }
         guard !answered.isEmpty else { return ["아직 아무도 취향을 남기지 않았어요. 내 취향을 남기면 일행이 참고할 수 있어요."] }
         let members = max(memberCount, list.count, 1)
