@@ -5064,7 +5064,9 @@ async function syncTripCloud(t,opts){
       // entry.revision(로컬이 파생된 base)은 그대로 둔다 — 서버 revision을 stamp하면 미해결 충돌이
       // 다음 병합에서 "안전한 업로드"로 둔갑해 원격본을 조용히 날린다.
       entry.status='conflict'; persistSyncMeta();
-      enqueueSyncConflict({kind:row.deleted_at?'remote-deleted':'changed-both',local:t,remote:row.data||null,revision:Number(row.revision)||entry.revision,deleted_at:row.deleted_at||null});
+      // '이 기기 것 유지'(force)를 했는데도 삭제 충돌이면 서버가 되살리기를 거절한 것이다 — 지운 여행은 주최자만 되살린다.
+      // 같은 카드를 이유 없이 다시 띄우면 끝없이 같은 버튼을 누르게 된다(reviveRefused가 그 버튼을 거둔다)
+      enqueueSyncConflict({kind:row.deleted_at?'remote-deleted':'changed-both',local:t,remote:row.data||null,revision:Number(row.revision)||entry.revision,deleted_at:row.deleted_at||null,reviveRefused:force&&!!row.deleted_at});
       return;
     }
     const latest=store.trips.find(x=>x.id===t.id);
@@ -5182,7 +5184,10 @@ function showNextSyncConflict(){
   currentSyncConflict=syncConflicts.shift()||null;
   if(!currentSyncConflict){ document.getElementById('syncConflictBg').classList.remove('show'); return; }
   const c=currentSyncConflict, name=(c.local&&c.local.name)||(c.remote&&c.remote.name)||'여행';
-  document.getElementById('syncConflictText').textContent=`“${name}”이 다른 기기에서도 변경됐어요. 어느 버전을 보존할지 선택하세요.`;
+  document.getElementById('syncConflictText').textContent=c.reviveRefused
+    ?`“${name}” — 주최자가 지운 여행이라 주최자만 되살릴 수 있어요. 이 기기 것은 사본으로 남겨 주세요.`
+    :`“${name}”이 다른 기기에서도 변경됐어요. 어느 버전을 보존할지 선택하세요.`;
+  document.getElementById('syncUseDevice').style.display=c.reviveRefused?'none':'';   // .btn이 display:flex라 hidden 속성은 먹지 않는다
   document.getElementById('syncConflictBg').classList.add('show');
 }
 function replaceWithRemote(c){

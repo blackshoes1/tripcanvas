@@ -26,6 +26,8 @@ export interface SyncConflict {
   remote: Trip | null;
   revision: number | null;
   deleted_at: string | null;
+  /** force로 올렸는데도 삭제 충돌 — 서버가 되살리기를 거절했다(지운 여행은 주최자만 되살린다) */
+  reviveRefused?: boolean;
 }
 
 export interface SyncHooks {
@@ -128,7 +130,8 @@ export async function syncTripCloud(
       hooks.onConflict({
         kind: row.deleted_at ? 'remote-deleted' : 'changed-both',
         local: trip, remote: (row.data as Trip) ?? null,
-        revision: Number(row.revision) || entry.revision, deleted_at: row.deleted_at
+        revision: Number(row.revision) || entry.revision, deleted_at: row.deleted_at,
+        reviveRefused: force && !!row.deleted_at
       });
       return;
     }

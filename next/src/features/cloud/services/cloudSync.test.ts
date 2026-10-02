@@ -108,7 +108,8 @@ it('an editor keeping this device cannot revive a trip the owner deleted — it 
   Object.assign(syncEntry('trip1'), { revision: 1, status: 'conflict' });
   await syncTripCloud(doc('편집자 로컬'), hooks, { force: true });
   expect(syncEntry('trip1').status).toBe('conflict');
-  expect(hooks.onConflict).toHaveBeenCalledWith(expect.objectContaining({ kind: 'remote-deleted' }));
+  // 카드가 이유를 말하고 '이 기기 버전'을 다시 내밀지 않도록 거절됐다는 표시를 싣는다
+  expect(hooks.onConflict).toHaveBeenCalledWith(expect.objectContaining({ kind: 'remote-deleted', reviveRefused: true }));
   expect((await service.listForSync(owner))[0].record.deletedAt).not.toBeNull();
 });
 
