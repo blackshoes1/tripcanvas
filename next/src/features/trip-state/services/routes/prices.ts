@@ -3,6 +3,17 @@ import { CONTRACT_SCHEMA_VERSION } from '../../domain/contract';
 import type { PriceObservation } from '../../domain/bookingsView';
 import { fail, ok, type HandlerKit } from '../handlerKit';
 
+/**
+ * 오퍼 한 건의 상한(JSON 글자 수). 웹이 싣는 오퍼는 판매처·가격·조건 같은 짧은 필드와 링크 하나다(수백 자).
+ * 넘는 것은 비교용 오퍼가 아니라 원본 응답 덩어리다 — 객체가 아닌 원소와 함께 걸러 낸다(§28: 원본을 오래 보관하지 않는다).
+ */
+export const OFFER_MAX_CHARS = 4096;
+
+function isCompactOffer(offer: unknown): boolean {
+  if (offer == null || typeof offer !== 'object' || Array.isArray(offer)) return false;
+  try { return JSON.stringify(offer).length <= OFFER_MAX_CHARS; } catch { return false; }
+}
+
 export function createPricesHandlers(kit: HandlerKit) {
   const { deps, now, auth, loadTrip, withTrip, readBody } = kit;
 
@@ -26,6 +37,7 @@ export function createPricesHandlers(kit: HandlerKit) {
     const gateway = await auth(request);
     if (gateway instanceof Response) return gateway;
     const body = await readBody(request);
+    if (body instanceof Response) return body;
     const bookingId = typeof body.bookingId === 'string' ? body.bookingId.trim() : '';
     const price = typeof body.price === 'number' && Number.isFinite(body.price) ? body.price : null;
     if (!bookingId || price == null) return fail('BAD_REQUEST');
@@ -41,7 +53,7 @@ export function createPricesHandlers(kit: HandlerKit) {
         quality: str(body.quality, 20),
         verified: body.verified === true,
         // 원본 응답을 통째로 오래 보관하지 않는다(§28) — 상위 10개까지만
-        offers: Array.isArray(body.offers) ? (body.offers as unknown[]).slice(0, 10) : null,
+        offers: Array.isArray(body.offers) ? (body.offers as unknown[]).slice(0, 10).filter(isCompactOffer) : null,
         ptoken: str(body.ptoken, 200)
       });
     } catch { return fail('UPSTREAM_ERROR'); }

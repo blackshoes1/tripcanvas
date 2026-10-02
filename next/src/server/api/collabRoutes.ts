@@ -8,6 +8,7 @@ import type { CollabApi } from '../application/collaboration/types';
 import { authenticate, bearerToken } from '../auth/authenticate';
 import type { RequestContext, TokenVerifier } from '../auth/types';
 import { ApiError, errorResponse, JSON_HEADERS } from './errors';
+import { BODY_TOO_LARGE_MESSAGE, readJsonBody } from './jsonBody';
 
 export interface CollabRouteDeps {
   verifier: TokenVerifier;
@@ -38,9 +39,10 @@ const CommentBody = z.object({ body: z.string().max(5000) });
 const PrefsBody = z.object({ prefs: z.record(z.string(), z.unknown()) });
 
 async function parseBody<T>(request: Request, schema: z.ZodType<T>): Promise<T> {
-  let raw: unknown;
-  try { raw = await request.json(); } catch { throw new ApiError('VALIDATION_ERROR', { message: '본문이 JSON이 아니에요.' }); }
-  const parsed = schema.safeParse(raw);
+  // 상한까지만 읽는다(jsonBody.ts) — 본문을 끝까지 메모리에 올린 뒤에 검증하지 않는다
+  const read = await readJsonBody(request);
+  if (!read.ok) throw new ApiError('VALIDATION_ERROR', { message: read.reason === 'TOO_LARGE' ? BODY_TOO_LARGE_MESSAGE : '본문이 JSON이 아니에요.' });
+  const parsed = schema.safeParse(read.value);
   if (!parsed.success) {
     throw new ApiError('VALIDATION_ERROR', { details: { issues: parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })) } });
   }

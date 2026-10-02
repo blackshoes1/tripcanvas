@@ -15,9 +15,13 @@ import { CONTRACT_SCHEMA_VERSION } from '@/features/trip-state/domain/contract';
 import { authenticate } from '../auth/authenticate';
 import type { TokenVerifier } from '../auth/types';
 import { ApiError, errorResponse, JSON_HEADERS } from './errors';
+import { readJsonBody } from './jsonBody';
 
 /** 웹의 붙여넣기 칸과 같은 상한 — 그보다 긴 글은 일정이 아니라 문서다 */
 const MAX_TEXT_LENGTH = 20000;
+/** 본문 상한 — 글자 상한의 최악 인코딩(`\uXXXX`, 글자당 6바이트)에 봉투(year 등)를 더한 만큼 */
+const MAX_BODY_BYTES = MAX_TEXT_LENGTH * 6 + 1024;
+const TOO_LONG_MESSAGE = '글이 너무 길어요 — 나눠서 붙여넣어 주세요.';
 const KINDS: ItineraryItemKind[] = ['PLACE', 'ACTIVITY', 'MOVE', 'STAY'];
 
 type RawItem = Record<string, unknown>;
@@ -85,14 +89,17 @@ export function createItineraryRoutes(deps: ItineraryRouteDeps) {
       try {
         await authenticate(request, deps.verifier);
 
-        let body: { text?: unknown; year?: unknown };
-        try { body = (await request.json()) as typeof body; }
-        catch { throw new ApiError('VALIDATION_ERROR', { message: '요청 형식이 올바르지 않아요.' }); }
+        // 글자 상한만큼만 읽는다 — 상한을 넘는 글을 끝까지 받은 뒤에 길다고 하지 않는다
+        const read = await readJsonBody(request, MAX_BODY_BYTES);
+        if (!read.ok) {
+          throw new ApiError('VALIDATION_ERROR', { message: read.reason === 'TOO_LARGE' ? TOO_LONG_MESSAGE : '요청 형식이 올바르지 않아요.' });
+        }
+        const body = (read.value ?? {}) as { text?: unknown; year?: unknown };
 
         const source = text(body.text);
         if (!source.trim()) throw new ApiError('VALIDATION_ERROR', { message: '읽을 내용이 없어요.' });
         if (source.length > MAX_TEXT_LENGTH) {
-          throw new ApiError('VALIDATION_ERROR', { message: '글이 너무 길어요 — 나눠서 붙여넣어 주세요.' });
+          throw new ApiError('VALIDATION_ERROR', { message: TOO_LONG_MESSAGE });
         }
 
         const year = Number(body.year);

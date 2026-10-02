@@ -13,6 +13,7 @@ import type { MemoryRow, SharedInputPayload } from '../domain/intakeView';
 import type { TodayInput, TripDoc } from '../domain/todayView';
 import { FX_FALLBACK_SNAPSHOT, type FxSnapshot } from '@/features/currency/domain/fx';
 import type { FxSupport } from '@/server/currency/serverFx';
+import { BODY_TOO_LARGE_MESSAGE, readJsonBody } from '@/server/api/jsonBody';
 import { computeToday, resolveDayIndex, summarizeTrip } from '../domain/todayView';
 import type { LegCache } from '@/features/itinerary/domain/types';
 import collab from '@legacy/collab.js';
@@ -30,6 +31,8 @@ export interface TripRow {
 }
 
 export interface Gateway {
+  /** 요청한 사람. 서버 비용(경로 조회)의 하루 예산을 사람마다 세는 데 쓴다 — 없으면 서버 전체 예산만 본다 */
+  userId?: string;
   listTrips(): Promise<TripRow[]>;
   getTrip(tripId: string): Promise<TripRow | null>;
   /**
@@ -69,17 +72,20 @@ export interface LegSupport {
    *
    * `waitMs`를 주면 못 채운 구간이 있을 때 **그만큼만 기다렸다** 돌려준다.
    * 캐시가 이미 다 있으면 기다리지 않는다(두 번째 열람부터는 대기 0).
+   *
+   * `userId`는 조회를 일으킨 사람 — 유료 경로 조회는 그 사람과 서버 전체의 **하루 예산** 안에서만 일어나고,
+   * 예산이 없으면 `pending`도 0이다(곧 채워지지 않는다). 모든 메서드가 같다.
    */
-  read(trip: TripDoc, dayIndex: number, waitMs?: number): Promise<{ cache: LegCache; pending: number }>;
+  read(trip: TripDoc, dayIndex: number, waitMs?: number, userId?: string): Promise<{ cache: LegCache; pending: number }>;
   /**
    * 여행 **전체**의 구간. 전체 동선을 보겠다고 한 순간에만 부른다 —
    * 열어 보지도 않을 날까지 미리 조회하면 그게 곧 청구서다.
    */
-  readTrip(trip: TripDoc, waitMs?: number): Promise<{ cache: LegCache; pending: number }>;
+  readTrip(trip: TripDoc, waitMs?: number, userId?: string): Promise<{ cache: LegCache; pending: number }>;
   /** 기다리지 않는다 — 배경에서 채우고 실패는 로그로 삼킨다 */
-  fillLater(trip: TripDoc, dayIndex: number): void;
+  fillLater(trip: TripDoc, dayIndex: number, userId?: string): void;
   /** 여행 전체를 배경에서 채운다(전체 동선을 연 뒤 남은 것) */
-  fillTripLater(trip: TripDoc): void;
+  fillTripLater(trip: TripDoc, userId?: string): void;
 }
 
 /**
@@ -239,27 +245,15 @@ export function readDayIndex(url: URL): number | undefined {
   return Number.isInteger(n) && n >= 0 ? n : undefined;
 }
 
+/** JSON 객체만 본문으로 받는다 — 배열·null·숫자는 본문이 아니다 */
+function asObject(value: unknown): Record<string, unknown> | null {
+  return value != null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
 /** 여행 크기 제한에 작은 요청 봉투만 더한다. JSON 파싱 전에 스트림 크기를 제한한다. */
 export async function readPlanPreviewBody(request: Request): Promise<Record<string, unknown> | null> {
-  const limit = lib.TC_LIMITS.jsonBytes + 1024;
-  if (Number(request.headers.get('content-length')) > limit || !request.body) return null;
-  const reader = request.body.getReader();
-  const decoder = new TextDecoder();
-  let size = 0;
-  let text = '';
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      size += value.byteLength;
-      if (size > limit) { await reader.cancel(); return null; }
-      text += decoder.decode(value, { stream: true });
-    }
-    text += decoder.decode();
-    const body: unknown = JSON.parse(text);
-    return body != null && typeof body === 'object' && !Array.isArray(body) ? body as Record<string, unknown> : null;
-  } catch { return null; }
-  finally { reader.releaseLock(); }
+  const read = await readJsonBody(request, lib.TC_LIMITS.jsonBytes + 1024);
+  return read.ok ? asObject(read.value) : null;
 }
 
 /** 모든 라우트가 함께 쓰는 장비 한 벌. **인증·조회·CAS·오류 응답은 여기 하나뿐이다.** */
@@ -274,8 +268,9 @@ export interface HandlerKit {
   ) => Promise<Response>;
   todayFor: (gateway: Gateway, row: TripRow, url: URL, extra?: Partial<TodayInput>) => Promise<TodayResponse>;
   fxFor: () => Promise<FxSnapshot>;
-  legCacheFor: (trip: TripDoc, dayIndex: number) => Promise<{ cache: LegCache; pending: number }>;
-  readBody: (request: Request) => Promise<Record<string, unknown>>;
+  legCacheFor: (trip: TripDoc, dayIndex: number, userId?: string) => Promise<{ cache: LegCache; pending: number }>;
+  /** 본문(JSON 객체). 너무 크면 거절 응답이다 — 받은 쪽은 `instanceof Response`면 그대로 돌려준다 */
+  readBody: (request: Request) => Promise<Record<string, unknown> | Response>;
   persist: (
     gateway: Gateway, row: TripRow, next: TripDoc, url: URL, applied: boolean, alreadyApplied: boolean
   ) => Promise<Response>;
@@ -322,7 +317,7 @@ export function createKit(deps: HandlerDeps): HandlerKit {
     const dayIndex = readDayIndex(url);
     const clock = resolveClock(row.data, dayIndex ?? null, url, now());
     const dismissed = await gateway.listDismissed(row.client_id, clock.todayISO).catch((): string[] => []);
-    const legs = await legCacheFor(row.data, resolveDayIndex(row.data, clock.todayISO, dayIndex));
+    const legs = await legCacheFor(row.data, resolveDayIndex(row.data, clock.todayISO, dayIndex), gateway.userId);
     // 자연어 요청·컨디션은 쿼리로만 온다 — 해석은 `computeToday` 안의 엔진이 한다(여기서 판정하지 않는다).
     const said = readIntent(url);
     return computeToday({
@@ -341,13 +336,20 @@ export function createKit(deps: HandlerDeps): HandlerKit {
   }
 
   /** 이미 조회된 구간만. 캐시가 없거나 읽다 실패하면 빈 캐시 — 화면은 추정으로 나가고 멈추지 않는다 */
-  async function legCacheFor(trip: TripDoc, dayIndex: number): Promise<{ cache: LegCache; pending: number }> {
+  async function legCacheFor(trip: TripDoc, dayIndex: number, userId?: string): Promise<{ cache: LegCache; pending: number }> {
     if (!deps.legs) return { cache: {}, pending: 0 };
-    try { return await deps.legs.read(trip, dayIndex, LEG_WAIT_MS); } catch { return { cache: {}, pending: 0 }; }
+    try { return await deps.legs.read(trip, dayIndex, LEG_WAIT_MS, userId); } catch { return { cache: {}, pending: 0 }; }
   }
 
-  async function readBody(request: Request): Promise<Record<string, unknown>> {
-    try { return (await request.json()) as Record<string, unknown>; } catch { return {}; }
+  /**
+   * 본문은 상한(`REQUEST_BODY_MAX_BYTES`)까지만 읽는다 — 넘으면 400 BAD_REQUEST로 거절한다.
+   * JSON이 아니거나 객체가 아니면 예전처럼 빈 본문이고, 필드가 없으니 각 라우트가 BAD_REQUEST로 답한다.
+   * ⚠️ 너무 큰 본문을 빈 본문으로 넘기지 않는다 — `expectedRevision` 없이 상태 변경이 그대로 적용된다.
+   */
+  async function readBody(request: Request): Promise<Record<string, unknown> | Response> {
+    const read = await readJsonBody(request);
+    if (!read.ok) return read.reason === 'TOO_LARGE' ? fail('BAD_REQUEST', { message: BODY_TOO_LARGE_MESSAGE }) : {};
+    return asObject(read.value) ?? {};
   }
 
   /** 저장 후 최신 Today를 함께 돌려준다 — 여행 중에는 왕복 횟수가 곧 체감 속도다. */

@@ -73,6 +73,7 @@ export function createPlanEditingHandlers(kit: HandlerKit) {
     if (row instanceof Response) return row;
 
     const body = await readBody(request);
+    if (body instanceof Response) return body;
     const expected = body.expectedRevision;
     const expectedName = typeof body.expectedName === 'string' ? body.expectedName : undefined;
 
@@ -100,6 +101,7 @@ export function createPlanEditingHandlers(kit: HandlerKit) {
     if (row instanceof Response) return row;
 
     const body = await readBody(request);
+    if (body instanceof Response) return body;
     const suggestionId = typeof body.suggestionId === 'string' ? body.suggestionId : '';
     if (!suggestionId) return fail('BAD_REQUEST');
     // 거절은 문서를 바꾸지 않으니 revision과 무관하다. 수락은 문서를 실제로 바꿀 때만 revision을 따진다(아래).

@@ -6,6 +6,7 @@ import type { SnapshotService } from '../application/trip/snapshotService';
 import { authenticate, bearerToken } from '../auth/authenticate';
 import type { RequestContext, TokenVerifier } from '../auth/types';
 import { ApiError, errorResponse, JSON_HEADERS } from './errors';
+import { BODY_TOO_LARGE_MESSAGE, readJsonBody } from './jsonBody';
 
 export interface SnapshotRouteDeps {
   verifier: TokenVerifier;
@@ -36,8 +37,9 @@ export function createSnapshotRoutes(deps: SnapshotRouteDeps) {
 
     /** POST /api/v1/trips/:tripId/snapshots — 지금 저장된 문서를 떠 둔다 { name? } */
     create: (request: Request, tripId: string) => withService(request, async (ctx, service) => {
-      let raw: unknown = {};
-      try { raw = await request.json(); } catch { /* 본문 없이 불러도 된다 */ }
+      const read = await readJsonBody(request);
+      if (!read.ok && read.reason === 'TOO_LARGE') throw new ApiError('VALIDATION_ERROR', { message: BODY_TOO_LARGE_MESSAGE });
+      const raw = read.ok ? read.value : {};   // 본문 없이 불러도 된다
       const parsed = CreateBody.safeParse(raw ?? {});
       if (!parsed.success) throw new ApiError('VALIDATION_ERROR', { message: 'name은 문자열이에요.' });
       return ok({ snapshot: await service.create(ctx, tripId, parsed.data.name ?? null) }, 201);

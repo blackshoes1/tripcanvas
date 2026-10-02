@@ -14,6 +14,17 @@ import type { TodayInput, TripDoc } from '../../domain/todayView';
 import collab from '@legacy/collab.js';
 import { fail, makeBookingId, ok, readDayIndex, readPoint, resolveClock, type HandlerKit, type TripRow } from '../handlerKit';
 
+/**
+ * 기록의 사진 참조 하나의 길이 상한. 앱은 PhotosPicker 식별자(`UUID/L0/001`, 40자 남짓)만 보낸다 — 원본이 아니다.
+ * 넘는 것은 식별자가 아니므로 문자열이 아닌 원소처럼 걸러 낸다.
+ */
+export const ASSET_REF_MAX = 256;
+/**
+ * 재시도 키(clientKey) 길이 상한. 앱은 UUID(36자)를 보낸다. (user_id, client_key) unique 인덱스의 키라
+ * 길면 인덱스 행 한도에서 저장이 실패한다. 자르면 다른 기록과 겹칠 수 있어 **거절한다.**
+ */
+export const MEMORY_CLIENT_KEY_MAX = 128;
+
 export function createIntakeHandlers(kit: HandlerKit) {
   const { deps, now, auth, loadTrip, withTrip, todayFor, readBody } = kit;
 
@@ -25,6 +36,7 @@ export function createIntakeHandlers(kit: HandlerKit) {
     const gateway = await auth(request);
     if (gateway instanceof Response) return gateway;
     const body = await readBody(request);
+    if (body instanceof Response) return body;
     const payload: SharedInputPayload = {
       url: typeof body.url === 'string' ? body.url : null,
       text: typeof body.text === 'string' ? body.text : null,
@@ -53,6 +65,7 @@ export function createIntakeHandlers(kit: HandlerKit) {
     const gateway = await auth(request);
     if (gateway instanceof Response) return gateway;
     const body = await readBody(request);
+    if (body instanceof Response) return body;
     const candidate = body.candidate as BookingCandidate | undefined;
     if (!candidate || typeof candidate !== 'object') return fail('BAD_REQUEST');
     const row = await loadTrip(gateway, tripId);
@@ -105,8 +118,11 @@ export function createIntakeHandlers(kit: HandlerKit) {
     const gateway = await auth(request);
     if (gateway instanceof Response) return gateway;
     const body = await readBody(request);
+    if (body instanceof Response) return body;
     const type = String(body.type ?? '');
     if (['PHOTO', 'NOTE', 'VISIT', 'MOMENT'].indexOf(type) < 0) return fail('BAD_REQUEST');
+    const clientKey = typeof body.clientKey === 'string' ? body.clientKey : null;
+    if (clientKey && clientKey.length > MEMORY_CLIENT_KEY_MAX) return fail('BAD_REQUEST');
     const row = await loadTrip(gateway, tripId);
     if (row instanceof Response) return row;
 
@@ -124,7 +140,7 @@ export function createIntakeHandlers(kit: HandlerKit) {
       })));
 
     const assetRefs = Array.isArray(body.assetRefs)
-      ? (body.assetRefs as unknown[]).filter((x): x is string => typeof x === 'string').slice(0, 50)
+      ? (body.assetRefs as unknown[]).filter((x): x is string => typeof x === 'string' && x.length <= ASSET_REF_MAX).slice(0, 50)
       : [];
     let result;
     try {
@@ -138,7 +154,7 @@ export function createIntakeHandlers(kit: HandlerKit) {
         lng: location?.lng ?? null,
         at_minutes: atMinutes,
         captured_at: new Date().toISOString(),
-        client_key: typeof body.clientKey === 'string' ? body.clientKey : null
+        client_key: clientKey
       });
     } catch { return fail('UPSTREAM_ERROR'); }
 
