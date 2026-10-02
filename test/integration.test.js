@@ -2690,7 +2690,8 @@ test('통합: 보기 권한(VIEWER) 여행에서는 편집 진입점이 막히�
   w.eval(`openDayModal(0)`);
   assert.equal(w.document.getElementById('dayModalBg').classList.contains('show'), false);
   const before = w.eval(`JSON.stringify(trip().days[0].spots)`);
-  w.eval(`window.confirm=()=>true; deleteSpot(0,0); copySpot(0,0); cycleMode(0);`);
+  w.eval(`window.confirm=()=>true; deleteSpot(0,0); copySpot(0,0); setDayMode(0,'walk'); setLegMode(0,0,'taxi'); openDayModePicker(0);`);
+  assert.equal(w.document.getElementById('modePicker').open, false, '보기 권한에는 수단 선택을 열지 않는다');
   assert.equal(w.eval(`JSON.stringify(trip().days[0].spots)`), before, '장소가 지워지거나 복사되지 않는다');
   assert.equal(w.eval(`trip().days[0].mode||'car'`), 'car');
   w.close();
@@ -4678,6 +4679,96 @@ test('통합: 동선 최적화 미리보기는 이 순서 때문에 늦어지는
   assert.ok(warn2, '이 순서가 예약을 늦게 만들면 적용 전에 말한다');
   assert.match(warn2.textContent, /12:00 점심 예약 — 약 \d+분 늦어요/);
   assert.equal(w.document.getElementById('optApply').textContent, '늦어도 이 순서로 바꾸기', '버튼이 그 사실을 이름에 싣는다');
+  w.close();
+});
+
+// 2026-10-02 UX 검토 — 수단 아이콘을 누를 때마다 다음 수단으로 넘어갔다(무엇이 있는지·지금 무엇인지 모른 채 순환).
+test('통합: 이동수단은 목록에서 고르고, 그날 기본과 이 구간만을 구분한다', { skip: noJsdom }, () => {
+  const w = boot();
+  withAdaptTrip(w, [{ startAt: '09:00', mode: 'car', spots: [S('A', 40.40), S('B', 40.43)] }]);
+  w.eval('render()');
+  const legBtn = w.document.querySelector('.spot[data-si="1"] .legModeBtn');
+  legBtn.click();
+  const dlg = w.document.getElementById('modePicker');
+  assert.equal(dlg.open, true, '누르면 바로 바뀌지 않고 고르는 목록이 열린다');
+  assert.equal(w.eval('trip().days[0].spots[1].legMode'), undefined, '여는 것만으로는 바뀌지 않는다');
+  const opts = Array.from(dlg.querySelectorAll('.modeOpt'));
+  assert.match(opts[0].textContent, /그날 기본 따르기 \(🚗 자차\)/);
+  assert.equal(opts[0].getAttribute('aria-checked'), 'true', '지금 값이 표시된다');
+  assert.match(w.document.getElementById('modePickerTitle').textContent, /B까지 이동수단/);
+  opts.find((b) => /대중교통/.test(b.textContent)).click();
+  assert.equal(dlg.open, false);
+  assert.equal(w.eval('trip().days[0].spots[1].legMode'), 'transit', '이 구간만 바뀐다');
+  assert.equal(w.eval("trip().days[0].mode"), 'car', '하루 기본은 그대로');
+  w.document.querySelector('.dayHeadMeta .modeBtn').click();
+  assert.match(w.document.getElementById('modePickerTitle').textContent, /Day 1 기본 이동수단/);
+  Array.from(dlg.querySelectorAll('.modeOpt')).find((b) => /도보/.test(b.textContent)).click();
+  assert.equal(w.eval("trip().days[0].mode"), 'walk');
+  assert.equal(w.eval('trip().days[0].spots[1].legMode'), 'transit', '구간마다 고른 수단은 그대로');
+  w.close();
+});
+
+// 2026-10-02 UX 검토 — 검색 → 결과 → 장소 정보 → '이 장소 선택' → 폼 → '저장'으로 같은 확인을 두 번 했다.
+test('통합: 검색 결과의 장소 정보에서 바로 그날에 담고, 이어서 하나 더 담으면 그 뒤에 붙는다', { skip: noJsdom }, async () => {
+  const w = boot();
+  withAdaptTrip(w, [{ startAt: '09:00', mode: 'car', spots: [S('첫 곳', 40.40)] }, { spots: [] }]);
+  w.eval(`render(); fetchPlaceDetails=async(s)=>({kind:'saved',name:s.name});
+    routedSearch=async(q)=>[{name:q==='a'?'광장':'미술관',city:'마드리드',lat:40.41,lng:-3.70,placeId:'p-'+q}];`);
+  const searchAndAdd = async (q) => {
+    w.document.getElementById('spotSearch').value = q;
+    await w.eval('doSearch()');
+    w.document.querySelector('.placeSearchResult').click();
+    const btn = Array.from(w.document.querySelectorAll('#placeDetailsActions button')).find((b) => b.textContent === 'Day 1에 담기');
+    assert.ok(btn, '장소 정보에 그 날에 담는 버튼이 있다');
+    assert.ok(btn.classList.contains('primary'));
+    assert.ok(Array.from(w.document.querySelectorAll('#placeDetailsActions button')).some((b) => b.textContent === '시간·메모 정하고 담기'),
+      '시간·메모를 먼저 정하는 길도 남는다');
+    btn.click();
+    await new Promise((r) => setTimeout(r, 0));
+  };
+  w.eval('openSpotModal(0,-1)');
+  await searchAndAdd('a');
+  assert.equal(w.document.getElementById('spotModalBg').classList.contains('show'), false, '폼의 저장을 또 누르지 않는다');
+  assert.deepEqual(w.eval('trip().days[0].spots.map(s=>s.name)'), ['첫 곳', '광장']);
+  assert.equal(w.eval('trip().days[0].spots[1].placeId'), 'p-a', '검색 결과의 식별자를 그대로 담는다');
+  const more = w.document.querySelector('#toast .toastAct');
+  assert.equal(more.textContent, '하나 더 담기');
+  more.click();
+  await searchAndAdd('b');
+  assert.deepEqual(w.eval('trip().days[0].spots.map(s=>s.name)'), ['첫 곳', '광장', '미술관'], '방금 담은 장소 뒤에 이어 붙는다');
+  w.close();
+});
+
+// 2026-10-02 UX 검토 — 같은 말이 행마다·날마다 반복돼 정작 다른 것이 묻혔다.
+test('통합: 반복되는 기본 정보는 바뀌는 곳에서만 말한다(시간대·이전 장소에서)', { skip: noJsdom }, () => {
+  const w = boot();
+  withAdaptTrip(w, [
+    { startAt: '09:00', spots: [S('A', 40.40), S('B', 40.43)] }, { spots: [S('C', 40.44)] },
+    { timeZone: 'Europe/Madrid', spots: [] }, { timeZone: 'Europe/Madrid', spots: [] }, { timeZone: 'Europe/Lisbon', spots: [] }]);
+  w.eval('render()');
+  const dates = Array.from(w.document.querySelectorAll('.dayHeadMeta .date')).map((d) => d.textContent);
+  assert.match(dates[0], /시간대 미설정/, '정하지 않았다는 사실은 첫날 한 번 말한다');
+  assert.ok(!/시간대/.test(dates[1]), '같은 상태가 이어지면 다시 말하지 않는다');
+  assert.match(dates[2], /Europe\/Madrid/, '바뀌는 날에 말한다');
+  assert.ok(!/Europe/.test(dates[3]));
+  assert.match(dates[4], /Europe\/Lisbon/);
+  const from = w.document.querySelector('.spot[data-si="1"] .legFrom');
+  assert.equal(from.textContent, '이전 장소에서');
+  assert.ok(from.classList.contains('srOnly'), '기본 출발점은 보조기술에만 말한다');
+  const carryFrom = w.document.querySelectorAll('.dayCard')[1].querySelector('.legFrom');
+  assert.ok(!carryFrom.classList.contains('srOnly'), '전날에서 이어지는 출발점은 보인다');
+  w.close();
+});
+
+test('통합: 일정 패널 손잡이는 누르면 무엇이 되는지 말한다', { skip: noJsdom }, () => {
+  const w = boot();
+  w.eval('render()');
+  const h = () => w.document.getElementById('sheetHandle');
+  assert.equal(h().getAttribute('aria-label'), '일정 크게 보기');
+  w.eval("setSheetSnap('expanded')");
+  assert.equal(h().querySelector('.sheetHandleText').textContent, '지도 크게 보기');
+  w.eval("setSheetSnap('collapsed')");
+  assert.equal(h().getAttribute('aria-label'), '일정 펼치기');
   w.close();
 });
 

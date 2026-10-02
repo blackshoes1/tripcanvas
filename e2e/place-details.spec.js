@@ -52,7 +52,7 @@ test('검색 상세를 닫으면 편집 입력과 포커스가 유지되고 선�
   await expect(page.locator('#spotName')).toHaveValue('작성 중인 이름');
   await expect(page.locator('.placeSearchResult')).toBeFocused();
   await page.locator('.placeSearchResult').click();
-  await page.getByRole('button',{name:'이 장소 선택',exact:true}).click();
+  await page.getByRole('button',{name:'시간·메모 정하고 담기',exact:true}).click();
   await expect(page.locator('#spotName')).toHaveValue('샘플 카페');
 });
 
