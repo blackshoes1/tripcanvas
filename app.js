@@ -1395,7 +1395,7 @@ const PLAY_TILE_TIMEOUT=3500, PLAY_SETTLE=400;   // 타일 로딩 최대 대기(
 // dayAnchor(day)·dayStartAnchor(days,di)는 lib.js(순수·테스트 대상)에 있음.
 // startAnchorFor(di): di일이 이월받는 출발 앵커(정책 반영, startPolicy==='none'이면 null).
 // 지도 일자 간 점선·재생·사이드바 거리·타임라인·여행 모드가 모두 이 한 함수를 공유한다.
-function startAnchorFor(di){ return dayStartAnchor(trip().days, di); }
+function startAnchorFor(di){ return dayStartAnchor(trip().days, di, trip().bookings); }
 // 렌터카 픽업·반납 항목 — 예약(trip.bookings)에서 파생해 그날 일정에 끼워 넣는다.
 // 픽업·반납 장소는 자유 텍스트(좌표 없음)라 동선·ETA·앵커에는 넣지 않는다 — '언제 어디서'만 알려주는 표시 항목.
 // 픽업·반납 지점 표기 — 장소와 공항코드는 한 쌍(carReturnPoint)이라 있는 것만 붙인다

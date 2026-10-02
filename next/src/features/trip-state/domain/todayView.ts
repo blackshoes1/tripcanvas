@@ -186,7 +186,7 @@ export function computeToday(input: TodayInput): TodayComputation {
   const timeZone = day.timeZone || trip.timeZone || '';
   const dayISO = isoDateOf(trip, dayIndex);
 
-  const anchor = lib.dayStartAnchor(days, dayIndex);
+  const anchor = lib.dayStartAnchor(days, dayIndex, trip.bookings);
   // 조회된 구간은 실제 도로, 아니면 추정. 그날 타임라인이 쓴 구간만 세어 응답의 출처를 정한다 —
   // 제안이 따져 보는 '가 볼 수도 있는 곳'까지 세면 하루가 전부 도로여도 추정이라고 말하게 된다.
   const cache = input.legCache ?? {};

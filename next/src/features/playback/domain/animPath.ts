@@ -63,7 +63,7 @@ export function buildAnimPath(trip: Trip, legCache: LegCache, activeDay: number)
       pts.forEach(p => flat.push({ lat: +p.lat, lng: +p.lng, mode, zoom, di, from, to, sec }));
     };
 
-    const anchor = dayStartAnchor(trip.days as unknown[], di) as LocatedSpot | null;
+    const anchor = dayStartAnchor(trip.days as unknown[], di, trip.bookings) as LocatedSpot | null;
     if (hasCoord(anchor)) pushSeg(anchor, loc[0]);   // 이월 숙소/이전 위치 → 오늘 첫 장소
     for (let i = 1; i < loc.length; i++) pushSeg(loc[i - 1], loc[i]);
   });

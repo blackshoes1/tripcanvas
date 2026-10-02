@@ -108,7 +108,7 @@ function legViewOf(legCache: LegCache, a: LatLng, b: LatLng, mode: TransportMode
 export interface TimelineEntry { eta: number; fixed: boolean; conflict: boolean; natural: number; wait: number }
 
 function startAnchorOf(trip: Trip, di: number): Spot | null {
-  return dayStartAnchor(trip.days as unknown[], di) as Spot | null;
+  return dayStartAnchor(trip.days as unknown[], di, trip.bookings) as Spot | null;
 }
 
 export interface DayJourneyLeg { from: LocatedSpot; to: LocatedSpot; spotIndex: number; depart: number; returning?: boolean }
