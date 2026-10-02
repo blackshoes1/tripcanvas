@@ -3,6 +3,9 @@
 // 그 전에는 라우트마다 `request.json()`을 그대로 불러 본문을 끝까지 메모리에 올렸다. 로그인만 하면 수백 MB를
 // 보내 API 프로세스(NAS 한 대)를 세울 수 있었다. Content-Length만 보면 청크 전송(길이 헤더 없음)이 지나가므로
 // 스트림을 읽으며 직접 세고, 넘는 순간 읽기를 멈춘다(`readPlanPreviewBody`가 하던 방식을 일반화했다).
+//
+// ⚠️ 덮는 범위는 **우리가 직접 본문을 읽는 라우트**다(/api/v1 · 소셜 로그인 교환). better-auth가 스스로 읽는
+// `/api/auth/*`와 레거시 프록시(`lib/legacy/nodeHandler.ts`)는 여기를 지나지 않는다 — 어디서나 막혔다고 읽지 말 것.
 import lib from '@legacy/lib.js';
 
 /**

@@ -20,8 +20,8 @@ import { readJsonBody } from './jsonBody';
 /** 웹의 붙여넣기 칸과 같은 상한 — 그보다 긴 글은 일정이 아니라 문서다 */
 const MAX_TEXT_LENGTH = 20000;
 /** 본문 상한 — 글자 상한의 최악 인코딩(`\uXXXX`, 글자당 6바이트)에 봉투(year 등)를 더한 만큼 */
-const MAX_BODY_BYTES = MAX_TEXT_LENGTH * 6 + 1024;
-const TOO_LONG_MESSAGE = '글이 너무 길어요 — 나눠서 붙여넣어 주세요.';
+export const MAX_BODY_BYTES = MAX_TEXT_LENGTH * 6 + 1024;
+export const TOO_LONG_MESSAGE = '글이 너무 길어요 — 나눠서 붙여넣어 주세요.';
 const KINDS: ItineraryItemKind[] = ['PLACE', 'ACTIVITY', 'MOVE', 'STAY'];
 
 type RawItem = Record<string, unknown>;
