@@ -8,13 +8,16 @@ merge 전에 통과해야 하는 것은 다음이 전부다. `.github/workflows/
 | 게이트 | 워크플로 잡 | 로컬 |
 |---|---|---|
 | 구문 · 버전 동기 · lint · 시크릿 · `tsc` · 유닛 · 통합 · RLS · **복구 리허설**(pg_dump → pg_restore → 마이그레이션 → 전수 대조) · `npm audit` | Quality | `scripts/verify-all.sh web` |
-| lint · `tsc` · vitest · `next build` · `tools:build` | Next workspace | `scripts/verify-all.sh next` |
+| lint · `tsc` · vitest · `next build` · `tools:build` · `npm audit --omit=dev`(운영 이미지에 실리는 런타임 의존성) | Next workspace | `scripts/verify-all.sh next` |
 | Playwright | E2E | `scripts/verify-all.sh web` |
 | XcodeGen · 컴파일 · XCTest · Release 빌드 · 무료 스펙 | iOS | `scripts/verify-all.sh ios` |
 
 `npm run verify:all` 은 셋을 한 번에 돌리고, 끝에 PASS/FAIL/SKIP 표를 찍는다.
 `TC_IOS_SIMULATOR_ID=<UDID> npm run verify:all`로 계정이 없는 전용 iPhone 시뮬레이터를 지정할 수 있다. 지정한 기기가 없으면 iOS는 SKIP이다.
 종료 코드는 PASS=0, FAIL=1, SKIP으로 미완료=2다. 알 수 없는 범위도 2로 종료한다. RLS 출력은 TAP으로 고정하고 파이프라인의 테스트 실패를 보존한다.
+⚠️ CI도 같은 규칙이다 — `ci.yml`은 워크플로 전체를 `shell: bash`(`-eo pipefail`)로 돌린다. shell을 적지 않은 스텝은
+`bash -e`라 `npm audit … | tee`의 종료 코드가 tee의 0이 되어, 2026-10-02 전에는 취약점이 있어도 감사가 초록이었고
+RLS 테스트가 실패해도 다음 줄로 넘어갔다(`test/verify-all.test.js`가 감사 스텝을 그 셸로 돌려 본다).
 **돌릴 수 없는 단계는 PASS가 아니라 SKIP으로 표시된다** — 로컬 PostgreSQL이 없으면 RLS와 복구 리허설이 그렇다.
 ⚠️ PostgreSQL은 root로 돌지 않는다(`initdb: cannot be run as root`) — 컨테이너 안에서 root라면 다른 사용자로 게이트를 돌린다.
 
@@ -38,7 +41,7 @@ gh run view <run-id> --log-failed # 로그가 없으면 잡이 시작되지 않�
 | 증상 | 분류 | 대응 |
 |---|---|---|
 | 잡이 몇 초 만에 끝나고 로그가 없음, ANNOTATIONS에 계정/러너 메시지 | 러너·과금 | 코드를 고치지 않는다. 원인을 풀고 재실행 |
-| `Dependency audit`이 `audit endpoint returned an error`로 실패 | npm 레지스트리 | 취약점이 아니다. 워크플로가 **그 오류일 때만** 3번까지 다시 시도한다(2026-09-06 추가) — 그래도 빨가면 재실행 |
+| `Dependency audit`(Quality·Next workspace 둘 다)이 `audit endpoint returned an error`로 실패 | npm 레지스트리 | 취약점이 아니다. 워크플로가 **그 오류일 때만** 3번까지 다시 시도한다(2026-09-06 추가) — 그래도 빨가면 재실행 |
 | 특정 스텝에서 컴파일·테스트 실패 로그 | 코드 | 최소 수정 |
 | `npm ci` 실패 | 의존성·lockfile | lockfile 동기 확인 |
 | 매번 다른 스텝에서 시간 초과 | 러너 성능·flaky | 재현부터 |

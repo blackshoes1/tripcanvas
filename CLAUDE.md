@@ -35,7 +35,7 @@
 npm run verify:all
 ```
 
-  루트(구문·버전·lint·시크릿·`tsc`·유닛·통합·RLS·audit·E2E) + `next/`(lint·`tsc`·vitest·build·tools:build) + iOS(XcodeGen·XCTest·Release)를 한 번에 돌리고 끝에 PASS/FAIL/**SKIP** 표를 찍는다.
+  루트(구문·버전·lint·시크릿·`tsc`·유닛·통합·RLS·audit·E2E) + `next/`(lint·`tsc`·vitest·build·tools:build·audit) + iOS(XcodeGen·XCTest·Release)를 한 번에 돌리고 끝에 PASS/FAIL/**SKIP** 표를 찍는다.
   범위만 돌리려면 `scripts/verify-all.sh web|next|ios`.
   ⚠️ **SKIP은 통과가 아니다** — 무엇을 못 돌렸는지 PR에 밝힌다.
 
@@ -53,12 +53,21 @@ PR merge → main → Actions(release.yml): 게이트 → GHCR :<커밋 SHA> →
   내용이 옛 커밋이었고 로그는 전부 초록이었다. 소스를 사람이 날라 거기서 빌드하는 한 같은 사고가 또 난다.
   **배포 스크립트는 스스로를 갱신한다**(2026-09-20) — 배포할 때마다 그 커밋의 것으로 갈아 끼우고 다시 시작한다
   (같은 디렉터리에 받아 `bash -n` 검사 후 rename, `TC_SELF_UPDATED`로 한 번만). 사람이 복사할 일이 없다.
+  **실패한 커밋은 다시 시도하지 않는다**(2026-10-02) — 교체까지 간 배포(migrate·부팅·헬스체크·revision)가 실패하고
+  직전 SHA로 되돌리기가 **성공하면**(=환경은 멀쩡하고 커밋이 문제다) `.deploy-state`에 `FAILED_SHA`로 적고 자동 경로는
+  그 커밋을 건너뛴다. 롤백까지 실패했거나 도는 커밋을 `--force`로 다시 띄운 실패는 적지 않는다. 전에는 production 태그가 그대로라
+  '교체 → 헬스체크 실패 → 롤백'이 5분마다 되풀이됐다. 새 production 커밋은 그대로 배포되고, 같은 커밋은 `--force`로 다시 한다.
+  **손 롤백은 고정된다** — `--sha`가 production 태그와 다르면 띄운 뒤 `deploy/.deploy-disabled`(`PINNED_SHA`)를 남긴다.
+  전에는 다음 cron이 5분 안에 production으로 되돌렸다. 멈춤은 **자동 경로만** 세우고(손 `--sha`·`--force`는 진행), 푸는 것은 사람이다.
+  ⚠️ 손으로 production에 돌아와도(`--force`·`--sha <production>`) 고정은 **풀리지 않는다** — `rm`해야 다음 머지가 배포된다.
+  그 사이 `--status`·배포 기록은 "X에 고정했지만 지금은 Y가 돈다"고 말한다.
   확인·롤백·정지는 전부 한 스크립트다 — `docs/nas-deployment.md`:
 
 ```bash
-ssh nas '~/tripcanvas/scripts/nas-deploy.sh --status'              # 도는 커밋 · production 태그 · 상태
-ssh nas '~/tripcanvas/scripts/nas-deploy.sh --sha <40자리 SHA>'    # 특정 커밋으로 롤백
-ssh nas 'touch ~/tripcanvas/deploy/.deploy-disabled'               # 자동 배포 정지
+ssh nas '~/tripcanvas/scripts/nas-deploy.sh --status'              # 도는 커밋 · production 태그 · 실패 기록 · 멈춤
+ssh nas '~/tripcanvas/scripts/nas-deploy.sh --sha <40자리 SHA>'    # 특정 커밋으로 롤백 — production과 다르면 고정
+ssh nas '~/tripcanvas/scripts/nas-deploy.sh --force'              # 실패로 적힌 production 커밋을 다시 시도
+ssh nas 'touch ~/tripcanvas/deploy/.deploy-disabled'               # 자동 배포 정지 (rm으로 재개 — 고정도 같다)
 ```
 
 - [ ] **마이그레이션은 하위호환이어야 한다** — 머지가 운영 DB에 자동 적용되고, **이미지 롤백은 스키마를 되돌리지 않는다.**

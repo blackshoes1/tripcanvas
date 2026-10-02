@@ -13,9 +13,12 @@
 #
 # 쓰기:
 #   scripts/nas-deploy.sh                 # cron이 부르는 정상 경로(바뀐 게 없으면 즉시 종료)
-#   scripts/nas-deploy.sh --sha <SHA>     # 특정 커밋으로 (롤백·비상 수동 배포)
-#   scripts/nas-deploy.sh --force         # 같은 SHA라도 다시 띄운다
+#   scripts/nas-deploy.sh --sha <SHA>     # 특정 커밋으로 (롤백·비상 수동 배포) — production이 아니면 고정한다
+#   scripts/nas-deploy.sh --force         # 같은 SHA라도, 실패로 적힌 커밋이라도 다시 띄운다
 #   scripts/nas-deploy.sh --status        # 지금 무엇이 도는지만 보고 끝
+#
+# 실패한 커밋은 적어 두고 자동으로는 다시 시도하지 않는다. 손 롤백은 deploy/.deploy-disabled로 고정한다.
+# 멈춤(.deploy-disabled·DEPLOY_DISABLED=1)은 자동 경로만 세운다 — 손 --sha·--force는 진행하고, 멈춤은 사람이 rm으로 푼다.
 #
 # 환경변수로 바꿀 수 있는 것(기본값은 이 NAS 기준):
 #   TC_DOCKER("sudo /usr/local/bin/docker") · TC_REPO · TC_DEPLOY_DIR · TC_DEPLOY_LOG
@@ -29,6 +32,7 @@ DEPLOY_DIR="${TC_DEPLOY_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../deploy" 2>/
 COMPOSE_FILE="$DEPLOY_DIR/docker-compose.yml"
 ENV_FILE="$DEPLOY_DIR/.env"
 STATE_FILE="$DEPLOY_DIR/.deploy-state"
+DISABLED_FILE="$DEPLOY_DIR/.deploy-disabled"
 ROLLBACK_DIR="$DEPLOY_DIR/.rollback"
 LOG_FILE="${TC_DEPLOY_LOG:-$DEPLOY_DIR/deploy.log}"
 LOCK_FILE="${TC_DEPLOY_LOCK:-$DEPLOY_DIR/.deploy.lock}"
@@ -40,13 +44,14 @@ RAW="https://raw.githubusercontent.com/$REPO"
 API="https://api.github.com/repos/$REPO"
 
 TARGET_SHA=""; FORCE=0; STATUS_ONLY=0
+MANUAL=0; MANUAL_SHA=0    # 사람이 준 명령인가(--sha·--force) — cron은 인자 없이 부른다
 ORIG_ARGS=("$@")          # 자기 갱신 뒤 같은 인자로 다시 시작하기 위해 보관한다
 while [ $# -gt 0 ]; do
   case "$1" in
-    --sha) TARGET_SHA="${2:-}"; shift 2 ;;
-    --force) FORCE=1; shift ;;
+    --sha) TARGET_SHA="${2:-}"; MANUAL=1; MANUAL_SHA=1; shift 2 ;;
+    --force) FORCE=1; MANUAL=1; shift ;;
     --status) STATUS_ONLY=1; shift ;;
-    -h|--help) sed -n '2,30p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,27p' "$0"; exit 0 ;;
     *) echo "모르는 인자: $1" >&2; exit 2 ;;
   esac
 done
@@ -59,20 +64,72 @@ compose() { $DOCKER compose -f "$COMPOSE_FILE" "$@"; }
 # JSON 한 칸 꺼내기 — NAS에 jq가 없을 수 있다
 json_str() { printf '%s' "${1:-}" | tr ',' '\n' | grep -o "\"$2\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" | head -1 | sed 's/.*:[[:space:]]*"//; s/"$//'; }
 
+# ── 배포 상태(deploy/.deploy-state) ──
+# ⚠️ **다른 판의 이 스크립트도 같은 파일을 읽고 쓴다**(자기 갱신이 판을 오간다). `. 파일`로 읽으므로
+#    옛 판에게 새 키(FAILED_*)는 그냥 변수로 남고, 새 판은 새 키가 없는 옛 파일을 빈 값으로 읽는다.
+#    옛 판이 다시 쓰면 FAILED_*가 사라지는데 — 그때는 그 커밋을 한 번 더 시도할 뿐이다.
 read_state() {
-  CURRENT_SHA=""; PREVIOUS_SHA=""
+  CURRENT_SHA=""; PREVIOUS_SHA=""; DEPLOYED_AT=""; FAILED_SHA=""; FAILED_AT=""
   [ -f "$STATE_FILE" ] && . "$STATE_FILE" || true
-  CURRENT_SHA="${CURRENT_SHA:-}"; PREVIOUS_SHA="${PREVIOUS_SHA:-}"
+  CURRENT_SHA="${CURRENT_SHA:-}"; PREVIOUS_SHA="${PREVIOUS_SHA:-}"; DEPLOYED_AT="${DEPLOYED_AT:-}"
+  FAILED_SHA="${FAILED_SHA:-}"; FAILED_AT="${FAILED_AT:-}"
 }
 
+# 지금 변수들을 그대로 적는다 — 성공은 CURRENT·PREVIOUS·DEPLOYED_AT을, 실패는 FAILED_*만 바꾼 뒤 부른다
 write_state() {
   umask 077
   cat > "$STATE_FILE" <<EOF
 # scripts/nas-deploy.sh가 쓴다 — 손으로 고치지 않는다
-CURRENT_SHA=$1
-PREVIOUS_SHA=$2
-DEPLOYED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+CURRENT_SHA=$CURRENT_SHA
+PREVIOUS_SHA=$PREVIOUS_SHA
+DEPLOYED_AT=$DEPLOYED_AT
+FAILED_SHA=$FAILED_SHA
+FAILED_AT=$FAILED_AT
 EOF
+}
+
+# ── 자동 배포 멈춤: deploy/.deploy-disabled 또는 DEPLOY_DISABLED=1(환경변수·deploy/.env) ──
+# 멈춰 있으면 이유와 **다시 켜는 법**을 한 줄로 찍고 0, 아니면 1.
+# 손 롤백이 남긴 파일이면 무엇에 고정했는지(PINNED_SHA)도 말한다 — 파일은 `touch`로도 만들므로 읽기만 한다.
+# ⚠️ 고정한 뒤 손으로 다른 커밋(--force·--sha <production>)을 띄워도 파일은 그대로다(멈춤은 사람이 푼다).
+#    그때 "X에 고정했다"만 말하면 돌지 않는 커밋을 가리키게 되므로, 기록된 현재 SHA(read_state)와 다르면 함께 말한다.
+disabled_reason() {
+  local flag pinned
+  flag="${DEPLOY_DISABLED:-}"
+  if [ -z "$flag" ] && [ -f "$ENV_FILE" ]; then
+    flag=$(grep -E '^DEPLOY_DISABLED=' "$ENV_FILE" 2>/dev/null | tail -1 | cut -d= -f2- || true)
+  fi
+  if [ -f "$DISABLED_FILE" ]; then
+    pinned=$(sed -n 's/^PINNED_SHA=//p' "$DISABLED_FILE" 2>/dev/null | tail -1 || true)
+    if [ -n "$pinned" ] && [ -n "${CURRENT_SHA:-}" ] && [ "$pinned" != "$CURRENT_SHA" ]; then
+      printf '자동 배포가 멈춰 있다 — 손으로 %s에 고정했지만 지금은 %s가 돈다. 다시 켜기: rm %s' \
+        "${pinned:0:7}" "${CURRENT_SHA:0:7}" "$DISABLED_FILE"
+    elif [ -n "$pinned" ]; then
+      printf '자동 배포가 멈춰 있다 — 손으로 %s에 고정했다. 다시 켜기: rm %s' "${pinned:0:7}" "$DISABLED_FILE"
+    else
+      printf '자동 배포가 멈춰 있다(deploy/.deploy-disabled). 다시 켜기: rm %s' "$DISABLED_FILE"
+    fi
+    return 0
+  fi
+  if [ "$flag" = "1" ]; then
+    printf '자동 배포가 멈춰 있다(DEPLOY_DISABLED=1). 다시 켜기: deploy/.env와 환경변수에서 그 값을 지운다'
+    return 0
+  fi
+  return 1
+}
+
+# ── 손 롤백 고정: production이 아닌 커밋을 손으로 띄웠으면 자동 배포를 멈춘다 ──
+# 안 그러면 production 태그는 그대로라 다음 cron이 5분 안에 production으로 되돌린다.
+# 멈춤 파일을 쓰는 이유: **옛 판의 스크립트도 이 파일이 있으면 자동 배포를 하지 않는다**(내용은 보지 않는다).
+pin_auto_deploy() {
+  local prod="${PROD_SHA:0:7}"
+  cat > "$DISABLED_FILE" <<EOF
+# scripts/nas-deploy.sh --sha가 만들었다: production 태그(${prod:-확인 실패})가 아닌 커밋을 손으로 띄워 자동 배포를 멈췄다.
+# 이 파일을 지우면 다음 차례에 production 태그의 커밋으로 돌아간다.
+PINNED_SHA=$1
+PINNED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+EOF
+  log "  자동 배포를 멈췄다 — ${1:0:7}에 고정(production ${prod:-확인 실패}로 되돌리지 않는다). 다시 켜기: rm $DISABLED_FILE"
 }
 
 # ── `deploy/.env`의 TC_IMAGE_TAG 한 줄만 갈아 끼운다(나머지 비밀은 건드리지 않는다) ──
@@ -254,6 +311,7 @@ bring_up() {
   # ⚠️ 여기서 migrate가 먼저 돈다(compose의 service_completed_successfully).
   #    마이그레이션이 실패하면 새 api·realtime은 **시작되지 않고** 지금 도는 것이 그대로 남는다.
   log "  migrate → api·realtime 교체"
+  UP_ATTEMPTED=1            # 여기부터의 실패는 운영을 건드린 실패다(마이그레이션·교체·부팅)
   if ! compose up -d; then
     log "✗ compose up 실패(마이그레이션 실패일 가능성이 높다) — 아래 로그 참고"
     compose logs --tail=30 migrate 2>&1 | sed 's/^/    /' | tee -a "$LOG_FILE" >&2 || true
@@ -276,6 +334,11 @@ print_status() {
   echo "상태            : $(json_str "$body" status) / DB $(json_str "$body" database)"
   local tag; tag=$(remote_target || true)
   echo "production 태그 : ${tag:-확인 실패}"
+  if [ -n "$FAILED_SHA" ]; then
+    echo "실패로 적힌 SHA : $FAILED_SHA (${FAILED_AT:-시각 모름}) — 자동 배포가 다시 시도하지 않는다. 다시: $0 --force"
+  fi
+  local why
+  if why=$(disabled_reason); then echo "자동 배포       : $why"; else echo "자동 배포       : 켜짐"; fi
 }
 
 # ── NAS가 보는 단 하나의 진실: production 태그가 가리키는 커밋 ──
@@ -311,36 +374,80 @@ else
   LOCK_MODE=dir
 fi
 
-# 자동 배포 일시 중지 — 장애 대응·파괴적 마이그레이션 직전에 쓴다
-if [ -z "${DEPLOY_DISABLED:-}" ] && [ -f "$ENV_FILE" ]; then
-  DEPLOY_DISABLED=$(grep -E '^DEPLOY_DISABLED=' "$ENV_FILE" 2>/dev/null | tail -1 | cut -d= -f2- || true)
-fi
-if [ "${DEPLOY_DISABLED:-}" = "1" ] || [ -f "$DEPLOY_DIR/.deploy-disabled" ]; then
-  echo "자동 배포가 중지돼 있다(DEPLOY_DISABLED 또는 deploy/.deploy-disabled)"; exit 0
+# 자동 배포 일시 중지 — 장애 대응·파괴적 마이그레이션 직전·손 롤백 고정에 쓴다.
+# 세우는 것은 **자동 경로(cron)뿐**이다. 손으로 준 --sha·--force는 진행한다: 멈춰 둔 채 사람이 보면서
+# 배포하는 것이 이 장치의 쓰임이고(docs/migration-policy.md), 고정된 뒤의 손 명령까지 막히면
+# 멈춤을 풀자마자 cron과 경주하게 된다. 멈춤은 사람이 푼다 — 스크립트는 지우지 않는다.
+read_state                # 멈춤 사유가 고정 커밋과 지금 도는 커밋을 견준다
+if WHY=$(disabled_reason); then
+  if [ "$MANUAL" != 1 ]; then echo "$WHY"; exit 0; fi
+  log "! $WHY — 손으로 준 명령이라 진행한다"
 fi
 
-read_state
+PROD_SHA=""
 if [ -z "$TARGET_SHA" ]; then
   TARGET_SHA=$(remote_target) || { log "✗ production 태그를 읽지 못했다(GitHub에 닿지 못함) — 다음 차례에 다시"; exit 1; }
+  PROD_SHA="$TARGET_SHA"
+else
+  PROD_SHA=$(remote_target || true)
 fi
 case "$TARGET_SHA" in
   [0-9a-f]*) [ ${#TARGET_SHA} -eq 40 ] || die "SHA 형식이 아니다: $TARGET_SHA" ;;
   *) die "SHA 형식이 아니다: $TARGET_SHA" ;;
 esac
 
+# 손 롤백: --sha가 production 태그와 다르면 띄운 뒤 고정한다(태그를 못 읽었으면 다른 것으로 본다)
+PIN=0
+if [ "$MANUAL_SHA" = 1 ] && [ "$TARGET_SHA" != "$PROD_SHA" ]; then PIN=1; fi
+
 # 바뀐 게 없으면 **아무것도 하지 않고** 빠르게 끝난다(5분마다 도는 경로다)
-if [ "$TARGET_SHA" = "$CURRENT_SHA" ] && [ "$FORCE" != 1 ]; then exit 0; fi
+if [ "$TARGET_SHA" = "$CURRENT_SHA" ] && [ "$FORCE" != 1 ]; then
+  if [ "$PIN" = 1 ]; then pin_auto_deploy "$TARGET_SHA"; fi   # 이미 도는 커밋에 고정만 건다
+  exit 0
+fi
+
+# 실패로 적힌 production 커밋은 자동으로 다시 시도하지 않는다 — 다시 하려면 사람이 --force(또는 --sha).
+# 표준출력 한 줄로 끝낸다: 실패는 그때 배포 기록에 남았고, 5분마다 같은 줄을 쌓지 않는다.
+if [ "$MANUAL" != 1 ] && [ -n "$FAILED_SHA" ] && [ "$TARGET_SHA" = "$FAILED_SHA" ]; then
+  echo "production ${TARGET_SHA:0:7}는 배포에 실패한 커밋이라(${FAILED_AT:-시각 모름}) 자동으로 다시 시도하지 않는다 — 다시: $0 --force"
+  exit 0
+fi
 
 # 배포할 게 있을 때만 스크립트를 맞춘다 — 바뀐 게 없는 5분 주기에는 요청을 늘리지 않는다.
 # 여기서 갈아 끼우면 이 호출은 돌아오지 않는다(새 스크립트가 이어서 배포한다).
-self_update "$TARGET_SHA"
+# ⚠️ 손 롤백(고정)은 갈아 끼우지 않고 **지금 스크립트로** 띄운다. 그 커밋의 옛 판은 고정을 모르고
+#    (멈춤 파일을 남기지 않는다), 멈춤 파일이 있으면 손 명령까지 막는다 — 배포 도구는 앞으로만 간다.
+if [ "$PIN" != 1 ]; then self_update "$TARGET_SHA"; fi
 
 log "── 배포 시작: ${CURRENT_SHA:0:7}${CURRENT_SHA:+ → }${TARGET_SHA:0:7}"
+UP_ATTEMPTED=0
 if bring_up "$TARGET_SHA"; then
-  write_state "$TARGET_SHA" "$CURRENT_SHA"
+  PREVIOUS_SHA="$CURRENT_SHA"; CURRENT_SHA="$TARGET_SHA"; DEPLOYED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  # 고정 배포는 production의 실패 기록을 지우지 않는다 — 고정을 풀면 그 기록이 다시 자동 경로를 지킨다
+  if [ "$PIN" != 1 ]; then FAILED_SHA=""; FAILED_AT=""; fi
+  write_state
   log "✔ 배포 성공: ${TARGET_SHA:0:7}"
+  if [ "$PIN" = 1 ]; then
+    pin_auto_deploy "$TARGET_SHA"
+  elif WHY=$(disabled_reason); then
+    # 멈춘 채 손으로 띄운 배포다. 시작할 때 한 번 말했지만 배포 기록 끝에서 다시 말한다 —
+    # production으로 돌아왔으니 고정도 풀렸다고 믿으면, 다음 머지들이 조용히 배포되지 않는다.
+    log "! 배포는 끝났지만 멈춤은 그대로다: $WHY"
+  fi
   exit 0
 fi
+
+# ── 실패: 교체까지 간 커밋은 적어 둔다 — 단, 직전 SHA로 되돌리기가 **성공했을 때만** ──
+# 안 적으면 production 태그가 그대로라 5분 뒤 cron이 '교체 → 헬스체크 실패 → 롤백'을 되풀이한다 —
+# 실패 한 번이 5분마다 오는 운영 중단이 된다. 적지 않는 경우:
+# - 교체 전 실패(compose·이미지를 못 받음): 운영을 건드리지 않았고 대개 일시적이다 — 다음 차례에 다시 해 본다.
+# - 고정 배포(손 롤백)의 실패: 자동 경로가 고를 커밋이 아니고, 적으면 production의 기록을 덮는다.
+# - 지금 도는 커밋을 다시 띄운 실패(--force): "이 커밋은 못 뜬다"는 증거가 아니다. 적으면 멀쩡히 도는 커밋이
+#   실패로 남아, 나중에 고정을 풀었을 때 자동 경로가 production으로 돌아가지 못한다.
+# - 롤백까지 실패했을 때: 직전 커밋도 못 떴으면 커밋보다 환경(DB·docker·디스크) 탓일 가능성이 크다.
+#   운영은 이미 내려가 있으니 다음 차례에 다시 해 봐도 잃을 것이 없고, 환경이 돌아오면 그때 배포된다.
+RECORD_FAILURE=0
+if [ "$UP_ATTEMPTED" = 1 ] && [ "$PIN" != 1 ] && [ "$TARGET_SHA" != "$CURRENT_SHA" ]; then RECORD_FAILURE=1; fi
 
 # ── 실패 → 직전 SHA로 되돌린다 ──
 # ⚠️ 이미지만 되돌아간다. **스키마는 앞선 채로 남는다** — 그래서 마이그레이션은 항상
@@ -351,7 +458,15 @@ fi
 log "↩ 배포 실패 — ${CURRENT_SHA:0:7}로 되돌린다(스키마는 되돌아가지 않는다)"
 if bring_up "$CURRENT_SHA" rollback; then
   log "✔ 롤백 성공: ${CURRENT_SHA:0:7} — ${TARGET_SHA:0:7}는 배포되지 않았다"
+  if [ "$RECORD_FAILURE" = 1 ]; then
+    FAILED_SHA="$TARGET_SHA"; FAILED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    write_state
+    log "  ${TARGET_SHA:0:7}를 실패로 적었다 — 자동 배포는 이 커밋을 다시 시도하지 않는다(다음 production 커밋은 그대로 배포된다). 다시: $0 --force"
+  fi
 else
   log "✗✗ 롤백도 실패했다 — 운영이 내려가 있을 수 있다. 사람이 봐야 한다"
+  if [ "$RECORD_FAILURE" = 1 ]; then
+    log "  ${TARGET_SHA:0:7}는 실패로 적지 않았다 — 직전 커밋도 못 떴으니 환경 탓일 수 있다. 다음 차례에 다시 해 본다"
+  fi
 fi
 exit 1

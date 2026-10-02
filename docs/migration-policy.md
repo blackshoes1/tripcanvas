@@ -69,10 +69,19 @@ alter table trips drop column legacy_start;
 ssh nas 'touch ~/tripcanvas/deploy/.deploy-disabled'     # 1. 자동 배포 정지
 ssh nas 'cd ~/tripcanvas && sudo /usr/local/bin/docker compose -f deploy/docker-compose.yml run --rm backup sh /backup.sh'
                                                           # 2. 직전 백업을 새로 뜬다(하루 된 것 말고)
-# 3. PR을 머지한다 — 이미지는 만들어지지만 NAS는 가만히 있는다
-ssh nas '~/tripcanvas/scripts/nas-deploy.sh'              # 4. 손으로, 보면서 배포한다
+# 3. PR을 머지하고 Release가 끝나기를 기다린다 — 이미지는 만들어지지만 NAS는 가만히 있는다.
+#    아래 `production 태그`가 머지 커밋이 되면 이미지가 다 올라간 것이다(게이트·빌드로 수십 분 걸린다)
+ssh nas '~/tripcanvas/scripts/nas-deploy.sh --status'
+ssh nas '~/tripcanvas/scripts/nas-deploy.sh --sha <머지 커밋 40자리 SHA>'
+                                                          # 4. 그 커밋을 짚어 손으로, 보면서 배포한다(멈춰 있어도 손 명령은 진행한다)
 ssh nas 'rm ~/tripcanvas/deploy/.deploy-disabled'         # 5. 자동 배포 재개
 ```
+
+⚠️ 4단계에 `--force`를 쓰지 않는다. `--force`는 **그 순간** production 태그가 가리키는 커밋을 띄운다 — 태그가 아직
+옮겨지기 전이면 지금 도는 커밋을 다시 띄우고 `✔ 배포 성공`으로 끝나, 파괴적 마이그레이션은 5단계 뒤 아무도 안 보는
+cron이 적용한다. `--sha`로 커밋을 짚으면 배포 기록 첫 줄(`배포 시작: 옛 → 머지`)이 무엇을 띄우는지 말하고, 그 이미지가
+아직 없으면 pull에서 실패한다. ⚠️ 3단계를 건너뛰고 태그가 옮겨지기 전에 5단계를 하면 cron이 **옛 production으로 되돌린다** —
+이미지만 돌아가고 스키마는 앞선 채다. 그래서 `--status`의 `production 태그`가 머지 커밋인지 보고 나서 푼다.
 
 ## 점검·읽기 전용 모드는 이것과 다르다
 

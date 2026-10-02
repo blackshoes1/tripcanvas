@@ -1,9 +1,12 @@
 // SMTP 어댑터. 실제 발송은 `npm run mail:test`로 사람이 확인하고(§21 미검증 항목), 여기서는
 // **무엇을 보내는가**를 붙든다: 메일함은 우리가 지킬 수 없는 곳이라 실린 내용이 곧 노출 범위다.
+import { createServer } from 'node:net';
+import type { AddressInfo } from 'node:net';
+
 import { describe, expect, it, vi } from 'vitest';
 
 import type { SmtpConfig } from '../../config/env';
-import { createConsoleMailService, createSmtpMailService, maskEmail } from './smtpMailService';
+import { createConsoleMailService, createSmtpMailService, createSmtpTransport, maskEmail } from './smtpMailService';
 
 const CONFIG: SmtpConfig = {
   host: 'smtp.example.com', port: 587, secure: false,
@@ -132,5 +135,88 @@ describe('발송 결과를 남긴다', () => {
     expect(maskEmail('a@b.com')).toBe('a***@b.com');
     expect(maskEmail('@b.com')).toBe('***');
     expect(maskEmail('없는주소')).toBe('***');
+  });
+});
+
+// 2026-10-02 nodemailer 9→10 메이저 갱신. 위 테스트는 transport를 가짜로 바꿔 nodemailer를 아예 부르지 않는다 —
+// 옵션 해석(host·port·secure·auth)이나 sendMail 결과 모양(accepted·rejected·response)이 바뀌면 게이트는 초록인데
+// 운영에서 확인·재설정 메일만 끊긴다. 그래서 **진짜 transport**(`createSmtpTransport`)로 같은 프로세스의 SMTP 서버에 보낸다.
+describe('진짜 nodemailer transport', () => {
+  /** 최소 SMTP 서버 — EHLO에 AUTH PLAIN만 광고하고(STARTTLS 없음) 받은 명령을 적어 둔다 */
+  async function fakeSmtp(rcptReply = '250 2.1.5 ok') {
+    const commands: string[] = [];
+    const headers: string[] = [];
+    const server = createServer((socket) => {
+      let inData = false;
+      let buffer = '';
+      socket.write('220 fake ESMTP\r\n');
+      socket.on('data', (chunk) => {
+        buffer += chunk.toString();
+        let end: number;
+        while ((end = buffer.indexOf('\r\n')) >= 0) {
+          const line = buffer.slice(0, end);
+          buffer = buffer.slice(end + 2);
+          if (inData) {
+            if (line === '.') { inData = false; socket.write('250 2.0.0 queued as FAKE1\r\n'); }
+            else headers.push(line);
+            continue;
+          }
+          commands.push(line);
+          const verb = line.slice(0, 4).toUpperCase();
+          if (verb === 'EHLO') socket.write('250-fake\r\n250 AUTH PLAIN\r\n');
+          else if (verb === 'AUTH') socket.write('235 2.7.0 ok\r\n');
+          else if (verb === 'RCPT') socket.write(`${rcptReply}\r\n`);
+          else if (verb === 'DATA') { inData = true; socket.write('354 go\r\n'); }
+          else if (verb === 'QUIT') { socket.write('221 bye\r\n'); socket.end(); }
+          else socket.write('250 ok\r\n');
+        }
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const config: SmtpConfig = {
+      host: '127.0.0.1', port: (server.address() as AddressInfo).port, secure: false,
+      user: 'mailer', password: 'secret', from: 'With J <no-reply@example.com>'
+    };
+    const close = () => new Promise<void>((resolve) => server.close(() => resolve()));
+    return { config, commands, headers, close };
+  }
+
+  it('설정대로 접속·인증해 보내고, 릴레이가 수락한 결과를 로그에 남긴다', async () => {
+    const smtp = await fakeSmtp();
+    try {
+      const logs: string[] = [];
+      const tx = createSmtpTransport(smtp.config);
+      await createSmtpMailService(smtp.config, tx, (m) => logs.push(m))
+        .sendVerificationEmail('to@example.com', 'https://api.test/v?token=t1');
+      tx.close();
+
+      // auth 옵션이 실제로 인증으로 이어진다(PLAIN = \0user\0pass)
+      const auth = smtp.commands.find((c) => c.startsWith('AUTH PLAIN '));
+      expect(auth).toBeDefined();
+      expect(Buffer.from(auth!.slice('AUTH PLAIN '.length), 'base64').toString()).toBe('\0mailer\0secret');
+      expect(smtp.commands.some((c) => c.startsWith('MAIL FROM:<no-reply@example.com>'))).toBe(true);
+      expect(smtp.commands.some((c) => c.startsWith('RCPT TO:<to@example.com>'))).toBe(true);
+      expect(smtp.headers).toContain('To: to@example.com');
+      // sendMail 결과 모양(accepted·rejected·response)을 어댑터가 그대로 읽는다
+      expect(logs).toHaveLength(1);
+      expect(logs[0]).toContain('수락 1 거절 0');
+      expect(logs[0]).toContain('250 2.0.0 queued as FAKE1');
+    } finally {
+      await smtp.close();
+    }
+  });
+
+  it('릴레이가 수신자를 거절하면 삼키지 않고 실패로 올린다', async () => {
+    const smtp = await fakeSmtp('550 5.1.1 no such user');
+    try {
+      const logs: string[] = [];
+      const tx = createSmtpTransport(smtp.config);
+      await expect(createSmtpMailService(smtp.config, tx, (m) => logs.push(m))
+        .sendPasswordReset('to@example.com', 'https://api.test/r?token=t2')).rejects.toThrow();
+      tx.close();
+      expect(logs.some((l) => l.includes('발송 실패'))).toBe(true);
+    } finally {
+      await smtp.close();
+    }
   });
 });

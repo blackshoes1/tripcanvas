@@ -95,6 +95,8 @@ if want next; then
     step "next: 파리티 픽스처 커밋 확인" check_parity_fixtures
     step "next: build"        npm --prefix next run build
     step "next: tools:build"  npm --prefix next run tools:build
+    # 운영 API 이미지에 실리는 것은 이쪽 런타임 의존성이다 — 루트 감사는 next/를 보지 않는다
+    step "next: 의존성 감사(high)" npm --prefix next audit --omit=dev --audit-level=high
     step "next: API 연결 E2E" npm run test:e2e:next
   else
     skip "next 워크스페이스" "next/node_modules 없음 — npm --prefix next ci"
