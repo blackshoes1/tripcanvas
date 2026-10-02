@@ -2839,6 +2839,37 @@ test('통합: 서버가 거절한 진짜 충돌은 그대로 물어본다', { sk
   w.close();
 });
 
+// 지문(hash)이 비는 상태가 실제로 생긴다 — 삭제 되돌리기(undoDelete)·삭제 뒤 재동기화(finishDelete)·권한 회복(forbidden→dirty).
+// 그 상태에서 업로드가 실패한 뒤 편집하고 같이 짜기를 열면(openMembers는 먼저 올리지 않고 당긴다) 원격본이 조용히 덮었다.
+test('통합: 지문이 비어 있어도 아직 못 올린 편집은 당겨오기가 덮지 않고 충돌로 묻는다', { skip: noJsdom }, async () => {
+  for (const status of ['dirty', 'error', 'new']) {
+    const w = boot();
+    withTrip(w, `[{title:'',drive:'',note:'',spots:[]}]`);
+    const remote = { id: '__it__', name: 'T (영희 편집)', start: '2026-08-01', days: [{ title: '', drive: '', note: '', spots: [] }] };
+    w.REMOTE = remote;
+    w.eval(`user={id:'u1'}; sb={}; tripRoles={__it__:{role:'EDITOR',count:2,owner:false}};
+      TC_API.sync.get=async(id)=>({data:{client_id:id,data:window.REMOTE,revision:5,deleted_at:null,updated_at:''},error:null});
+      syncMeta.__it__={revision:${status === 'new' ? 'null' : '4'},status:'${status}',op:'',hash:''};
+      trip().name='못 올린 편집';`);
+    assert.equal(await w.eval(`pullTrip('__it__',{force:true})`), true);
+    assert.equal(w.eval(`trip().name`), '못 올린 편집', `${status}: 로컬 편집이 남는다`);
+    assert.equal(w.eval(`syncMeta.__it__.status`), 'conflict');
+    assert.equal(w.document.getElementById('syncConflictBg').classList.contains('show'), true);
+    w.close();
+  }
+  // 지문이 비어도 올라간 상태(clean)면 예전처럼 조용히 받는다
+  const w = boot();
+  withTrip(w, `[{title:'',drive:'',note:'',spots:[]}]`);
+  w.REMOTE = { id: '__it__', name: 'T (영희 편집)', start: '2026-08-01', days: [{ title: '', drive: '', note: '', spots: [] }] };
+  w.eval(`user={id:'u1'}; sb={}; tripRoles={__it__:{role:'EDITOR',count:2,owner:false}};
+    TC_API.sync.get=async(id)=>({data:{client_id:id,data:window.REMOTE,revision:5,deleted_at:null,updated_at:''},error:null});
+    syncMeta.__it__={revision:4,status:'clean',op:'',hash:''};`);
+  assert.equal(await w.eval(`pullTrip('__it__',{force:true})`), true);
+  assert.equal(w.eval(`trip().name`), 'T (영희 편집)');
+  assert.equal(w.document.getElementById('syncConflictBg').classList.contains('show'), false);
+  w.close();
+});
+
 // 데이터는 전부 TC_API(NAS)를 지난다. 그런데 동기화가 Supabase SDK(sb)가 있는지로 막혀 있어서, CDN이 막히면
 // 자체 Auth 로그인은 되는데 업로드·당겨오기·초대 미리보기가 조용히 멈추고 '같이 짜기'가 다시 로그인을 요구했다.
 test('통합: Supabase SDK가 없어도 로그인했으면 업로드·당겨오기·같이 짜기·초대 미리보기·실시간 반영이 돈다', { skip: noJsdom }, async () => {

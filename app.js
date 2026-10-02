@@ -5603,7 +5603,10 @@ async function pullTrip(id,opts){
     if(row.deleted_at){ enqueueSyncConflict({kind:'remote-deleted',local,remote:row.data||null,revision:remoteRev,deleted_at:row.deleted_at}); return true; }
     const checked=validateTripPayload(row.data);
     if(!checked.ok){ reportOperationalError('collab.pull.invalid',new Error('validation')); return false; }
-    if(entry.hash&&entry.hash!==TC_SYNC.hashTrip(local)){   // 로컬에 미반영 편집 — 사용자가 고른다
+    // 로컬에 미반영 편집 — 사용자가 고른다. 지문이 비는 상태도 실제로 생긴다(삭제 되돌리기·삭제 뒤 재동기화·권한 회복):
+    // 그때는 지문 대신 상태를 본다 — 아직 못 올린 것(dirty·error·new)을 원격본이 조용히 덮으면 안 된다.
+    const unsynced=entry.hash? entry.hash!==TC_SYNC.hashTrip(local) : ['dirty','error','new'].includes(entry.status);
+    if(unsynced){
       entry.status='conflict'; persistSyncMeta();
       enqueueSyncConflict({kind:'changed-both',local,remote:checked.value,revision:remoteRev,deleted_at:null});
       return true;
