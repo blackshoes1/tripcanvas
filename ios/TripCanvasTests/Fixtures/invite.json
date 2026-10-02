@@ -46,6 +46,14 @@
       "token": null
     },
     {
+      "hash": "#join=abcdefghijklmnop&x=1",
+      "token": null
+    },
+    {
+      "hash": "#join=abcdefghijklmnop%26x%3D1",
+      "token": null
+    },
+    {
       "hash": "#JOIN=abcdefghijklmnop",
       "token": null
     },

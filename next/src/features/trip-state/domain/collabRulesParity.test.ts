@@ -248,16 +248,14 @@ const WEB_BASE = 'https://tripcanvas-ai.vercel.app/';
 const T16 = 'abcdefghijklmnop';
 /**
  * 웹은 `location.hash`를, 앱은 붙여넣은 글을 읽는다. 같은 토큰 규칙(16~128자, `[A-Za-z0-9_-]`, 퍼센트 디코딩)을
- * 지나는 입력만 여기 넣는다.
- * ⚠️ `#join=토큰&x=1`은 넣지 않는다 — 웹은 해시 전체가 초대여야 해서 거절하고(`test/collab.test.js`),
- *    앱은 붙여넣은 링크의 꼬리 파라미터를 잘라 받는다(`CollabModel.joinToken`). 입력 경로가 달라 생긴 차이라
- *    한쪽에 맞추려면 제품 판단이 먼저다.
+ * 지나는 입력을 함께 검사한다. 해시에 추가 파라미터가 있으면 웹과 앱 모두 거절한다.
  */
 const joinHashes = [
   `#join=${T16}`, '#join=abcdefghijklmno', `#join=${'a'.repeat(128)}`, `#join=${'a'.repeat(129)}`,
   '#join=Ab3_x-Y9zQ8w7v6u', '#join=ABCDEFGHIJKLMNOP_-0123456789', '#join=%41bcdefghijklmnop',
   `#join=${'a'.repeat(16)}%20`, '#join=bad$chars%%%%%%%%%%%%', '#join=가나다라마바사아자차카타파하가나',
-  `#join=${T16}.`, `#JOIN=${T16}`, '#join=', `#v=${T16}`, ''
+  `#join=${T16}.`, `#join=${T16}&x=1`, `#join=${T16}%26x%3D1`,
+  `#JOIN=${T16}`, '#join=', `#v=${T16}`, ''
 ];
 
 const reasons: (string | null)[] = [
