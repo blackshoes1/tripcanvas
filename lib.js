@@ -1785,7 +1785,7 @@
   const SPOT_PRIORITIES=Object.freeze([
     {id:'MUST',   label:'꼭 가기', hint:'일정을 다시 맞출 때 마지막까지 지킨다'},
     {id:'NORMAL', label:'보통',   hint:'기본값 — 저장하지 않는다'},
-    {id:'OPT',    label:'선택',   hint:'시간이 모자라면 가장 먼저 빠진다'}
+    {id:'OPT',    label:'여유 되면', hint:'시간이 모자라면 가장 먼저 빠진다'}
   ]);
 
   /** 장소의 우선순위. `must`와 `opt` 두 플래그를 한 값으로 읽는다. @param {any} spot @returns {'MUST'|'NORMAL'|'OPT'} */

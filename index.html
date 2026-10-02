@@ -13,7 +13,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js" integrity="sha384-+pWnyi8LtZx+cgXfD2arWgUX7pHIaEL215cEPPk9WrsegNlgvDL9DNjaqsceQq6o" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js" integrity="sha384-BSxuMLxX+FCbTdYec3TbXlnMGEEM2QXTFdtDaveen71o+jswm2J36+xFqp8k4VHM" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.min.js" integrity="sha384-l8ah+VgaWtk1mvOe9VC+OirC6qHFF4yH7l7mKRidV9MSti3E9F463bMp6ZVN4kuC" crossorigin="anonymous"></script>
-<link rel="stylesheet" href="style.css?v=tc-v251">
+<link rel="stylesheet" href="style.css?v=tc-v253">
 </head>
 <body>
 <section id="onboarding" class="onboarding" hidden role="dialog" aria-modal="true" aria-labelledby="onboardingTitle">
@@ -128,7 +128,7 @@
         </div>
         <div class="hint" id="spotAdmHelp">직접 확인한 것만 적어 주세요. 링크를 열거나 시각을 적어도 <b>예약 완료로 바뀌지 않아요.</b> 금액은 위의 예상 비용에 적어요.</div>
       </div>
-      <div class="wide optionRows"><div class="chkrow"><label for="spotPriority">우선순위</label><select id="spotPriority" title="꼭 가기는 일정을 다시 맞출 때 마지막까지 지키고, 선택은 시간이 모자라면 가장 먼저 빠져요"><option value="MUST">꼭 가기</option><option value="NORMAL" selected>보통</option><option value="OPT">선택</option></select></div><div class="chkrow"><input type="checkbox" id="spotStay"><label for="spotStay">🏠 숙소</label><span id="nightsWrap"><input type="number" id="spotNights" min="1" max="90" step="1" value="1"><label for="spotNights">박</label></span></div></div>
+      <div class="wide optionRows"><div class="chkrow"><label for="spotPriority">우선순위</label><select id="spotPriority" title="꼭 가기는 일정을 다시 맞출 때 마지막까지 지키고, 여유 되면은 시간이 모자라면 가장 먼저 빠져요"><option value="MUST">꼭 가기</option><option value="NORMAL" selected>보통</option><option value="OPT">여유 되면</option></select></div><div class="chkrow"><input type="checkbox" id="spotStay"><label for="spotStay">🏠 숙소</label><span id="nightsWrap"><input type="number" id="spotNights" min="1" max="90" step="1" value="1"><label for="spotNights">박</label></span></div></div>
       <div class="hint wide" id="nightsHint">숙박 일수 동안 다음 날 출발 기준점으로 사용해요.</div>
       <div class="wide" id="spotWhoSection" style="display:none"><label>누가 가나요</label><div class="whoChips" id="spotWho"></div><div class="hint">고르지 않으면 <b>모두</b>예요. 몇 명만 고르면 같은 시간에 다른 일정을 둘 수 있어요.</div></div>
     </div>
@@ -672,15 +672,15 @@
   <div id="placeDetailsContent" aria-live="polite"></div>
   <footer id="placeDetailsActions"></footer>
 </dialog>
-<script src="lib.js?v=tc-v251"></script>
-<script src="sync.js?v=tc-v251"></script>
-<script src="routing.js?v=tc-v251"></script>
-<script src="price.js?v=tc-v251"></script>
-<script src="adaptive.js?v=tc-v251"></script>
-<script src="intake.js?v=tc-v251"></script>
-<script src="collab.js?v=tc-v251"></script>
-<script src="api.js?v=tc-v251"></script>
-<script src="auth.js?v=tc-v251"></script>
-<script src="app.js?v=tc-v251"></script>
+<script src="lib.js?v=tc-v253"></script>
+<script src="sync.js?v=tc-v253"></script>
+<script src="routing.js?v=tc-v253"></script>
+<script src="price.js?v=tc-v253"></script>
+<script src="adaptive.js?v=tc-v253"></script>
+<script src="intake.js?v=tc-v253"></script>
+<script src="collab.js?v=tc-v253"></script>
+<script src="api.js?v=tc-v253"></script>
+<script src="auth.js?v=tc-v253"></script>
+<script src="app.js?v=tc-v253"></script>
 </body>
 </html>

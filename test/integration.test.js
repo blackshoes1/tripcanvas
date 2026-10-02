@@ -1199,7 +1199,7 @@ test('통합: 탭한 POI의 placeId가 모달까지 전달된다', { skip: noJsd
   await new Promise(r=>setTimeout(r,320));
   assert.equal(w.document.getElementById('placeDetails').open,true,'정보 패널을 먼저 연다');
   assert.equal(w.eval('trip().days[0].spots.length'),0,'조회는 저장하지 않는다');
-  w.document.querySelector('#placeDetailsActions .primary').click();
+  Array.from(w.document.querySelectorAll('#placeDetailsActions button')).find(b=>b.textContent==='시간·메모 정하고 담기').click();   // 폼으로 가는 길(주 버튼은 바로 담기)
   assert.equal(w.document.getElementById('spotPlaceId').value, 'PLACE_ID_123', '검색 결과와 동일하게 placeId 보존');
   assert.equal(JSON.parse(w.eval('JSON.stringify(window.__rev)')).pid, 'PLACE_ID_123', '자동채움까지 관통');
   w.close();
@@ -1304,7 +1304,8 @@ test('통합: 국내 지도에 POI 마커를 깔고, 그걸 누르면 그 장소
   el.dispatchEvent(new w.Event('click',{bubbles:true,cancelable:true}));
   await new Promise(r=>setTimeout(r,20));
   assert.equal(w.document.getElementById('placeDetails').open,true,'조회 패널을 먼저 연다');
-  w.document.querySelector('#placeDetailsActions .primary').click();
+  // 폼으로 가는 길에서 무엇이 채워지는지 본다(주 버튼 'Day N에 담기'는 같은 채움 뒤에 바로 저장한다)
+  Array.from(w.document.querySelectorAll('#placeDetailsActions button')).find(b=>b.textContent==='시간·메모 정하고 담기').click();
   await new Promise(r=>setTimeout(r,20));
   assert.equal(w.document.getElementById('spotName').value, '탭한 국밥집', '누른 그 장소');
   assert.equal(w.document.getElementById('spotCity').value, '서울');
@@ -1405,7 +1406,7 @@ test('통합: 국내 장소는 카카오 장소 id를 물고 저장돼 지도 �
   await new Promise(r=>setTimeout(r,20));
   w.eval(`window.__chips[0].click()`);
   assert.equal(w.document.getElementById('placeDetails').open,true);
-  w.document.querySelector('#placeDetailsActions .primary').click();
+  Array.from(w.document.querySelectorAll('#placeDetailsActions button')).find(b=>b.textContent==='시간·메모 정하고 담기').click();   // 폼으로 가는 길(주 버튼은 바로 담기)
   assert.equal(w.document.getElementById('spotKakaoId').value, '13525626', 'POI 칩이 카카오 장소 id를 모달로 넘긴다');
   w.eval(`document.getElementById('spotName').value='성산일출봉'; document.getElementById('spotCity').value='서귀포'; document.getElementById('spotSave').onclick();`);
   const saved = JSON.parse(w.eval(`JSON.stringify(trip().days[0].spots[0])`));
@@ -4799,6 +4800,38 @@ test('통합: 메뉴는 계정 → 여행 → 준비 → 같이 짜기 → 파�
   const onboarding = w.document.getElementById('onboarding').textContent + w.document.querySelector('header').textContent;
   assert.ok(!/[▧⌁]/.test(onboarding), '플랫폼마다 깨져 보이는 기호를 쓰지 않는다');
   assert.match(w.document.getElementById('onboardPaste').textContent, /받은 일정 붙여넣기/);
+  w.close();
+});
+
+test('통합: 지도에서 누른 장소도 장소 정보에서 바로 그날에 담는다', { skip: noJsdom }, async () => {
+  const w = boot();
+  withAdaptTrip(w, [{ startAt: '09:00', mode: 'car', spots: [S('첫 곳', 40.40)] }]);
+  w.eval(`render(); fetchPlaceDetails=async(s)=>({kind:'saved',name:s.name||'카페 소브리노'});
+    reverseSpot=async()=>({name:'카페 소브리노',city:'마드리드'});`);
+  w.eval(`openPlaceDetails({lat:40.415,lng:-3.70,placeId:'poi-1'})`);
+  const btns = () => Array.from(w.document.querySelectorAll('#placeDetailsActions button'));
+  const add = btns().find((b) => b.textContent === 'Day 1에 담기');
+  assert.ok(add && add.classList.contains('primary'), '지도에서 누른 장소에도 바로 담는 주 버튼이 있다');
+  assert.ok(btns().some((b) => b.textContent === '시간·메모 정하고 담기'), '폼으로 가는 길도 남는다');
+  add.click();
+  await new Promise((r) => setTimeout(r, 0)); await new Promise((r) => setTimeout(r, 0));
+  assert.equal(w.document.getElementById('spotModalBg').classList.contains('show'), false, '폼을 거치지 않는다');
+  const added = JSON.parse(w.eval('JSON.stringify(trip().days[0].spots[1]||null)'));
+  assert.equal(added && added.name, '카페 소브리노', '좌표로 찾은 이름이 채워진 뒤 저장한다');
+  assert.equal(added.placeId, 'poi-1');
+  assert.equal(added.city, '마드리드');
+  w.close();
+});
+
+test('통합: ⋮ 메뉴(details)는 버튼 역할을 덧씌우지 않고, 우선순위 낮은 장소는 "여유 되면"이라고 말한다', { skip: noJsdom }, () => {
+  const w = boot();
+  withAdaptTrip(w, [{ startAt: '09:00', spots: [S('A', 40.40), S('B', 40.41, { opt: true })] }]);
+  w.eval('render()');
+  const det = w.document.querySelector('.spot details.actionMenu');
+  assert.equal(det.getAttribute('role'), null, 'summary를 품은 details에 role=button을 씌우면 버튼 안에 버튼이 된다');
+  assert.ok(det.querySelector('summary').getAttribute('aria-label'), '여닫는 것은 이름 있는 summary다');
+  assert.match(w.document.querySelector('.spot[data-si="1"] .spotMetaItem.opt').textContent, /여유 되면/);
+  assert.equal(w.document.querySelector('#spotPriority option[value="OPT"]').textContent, '여유 되면');
   w.close();
 });
 

@@ -317,8 +317,9 @@ function addSpotAt(lat,lng,placeId,known){
   document.getElementById('spotKakaoId').value=(known&&known.kakaoId)||'';   // 국내 POI 칩은 무엇을 눌렀는지 안다
   document.getElementById('coordHint').textContent=`좌표: ${(+lat).toFixed(4)}, ${(+lng).toFixed(4)} ✓ (지도에서 지정)`;
   document.getElementById('spotName').value=''; _namePrefill='';
-  fillSpotFromCoords(lat,lng,true,placeId,known);    // 지정 지점의 장소명·도시 자동 채움
+  const filled=fillSpotFromCoords(lat,lng,true,placeId,known);    // 지정 지점의 장소명·도시 자동 채움
   setTimeout(()=>document.getElementById('spotName').focus(),50);
+  return filled;
 }
 // 지도 탭/클릭 → 그 좌표로 장소 추가.
 // 폰에는 우클릭이 없어 예전엔 추가 경로가 아예 닿지 않았다(탭은 pickMode에서만 동작).
@@ -510,10 +511,18 @@ function openPlaceDetails(s,options={}){
     if(options.add){
       placeButton(actions,options.addLabel||'일정에 담기',edit(()=>options.add())).classList.add('primary');
       placeButton(actions,'시간·메모 정하고 담기',edit(()=>options.select()));
-    }else placeButton(actions,options.select?'이 장소 선택':options.existing?'일정 편집':'일정에 추가',edit(()=>{
+    }else if(!options.select && !options.existing){
+      // 지도에서 누른 장소도 검색과 같은 한 번의 확인으로 담는다 — 폼은 시간·메모를 먼저 정하고 싶을 때만
+      const di=activeDay? activeDay-1 : 0;
+      placeButton(actions,`Day ${di+1}에 담기`,edit(async()=>{
+        await addSpotAt(s.lat,s.lng,s.placeId,s.name?s:undefined);
+        const nm=document.getElementById('spotName'); if(!nm.value.trim() && s.name) nm.value=s.name;
+        document.getElementById('spotSave').onclick();
+      })).classList.add('primary');
+      placeButton(actions,'시간·메모 정하고 담기',edit(()=>addSpotAt(s.lat,s.lng,s.placeId,s.name?s:undefined)));
+    }else placeButton(actions,options.select?'이 장소 선택':'일정 편집',edit(()=>{
       if(options.select) options.select();
-      else if(options.existing) openSpotModal(options.existing.di,options.existing.si);
-      else addSpotAt(s.lat,s.lng,s.placeId,s.name?s:undefined);
+      else openSpotModal(options.existing.di,options.existing.si);
     })).classList.add('primary');
     if(!options.select) placeButton(actions,'가고 싶은 곳에 담기',edit(()=>{
       openCandidates({title:s.name||'',note:placeSourceURL(s)});
@@ -688,12 +697,13 @@ function fillSpotFromCoords(lat,lng,forceCity,placeId,known){
   const cityAt=cityEl.value, nameAt=nameEl.value;
   const cityOK = forceCity || !cityAt.trim() || cityAt.trim()===(_cityPrefill||'').trim();
   const nameOK = !nameAt.trim() || nameAt.trim()===(_namePrefill||'').trim();
-  if(!cityOK && !nameOK) return;
+  if(!cityOK && !nameOK) return Promise.resolve();
   // known: POI를 눌러 '무엇인지 이미 아는' 경우 — 좌표로 되짚는 추측을 아예 건너뛴다
-  (known? Promise.resolve(known) : reverseSpot(lat,lng,placeId)).then(({name,city})=>{
+  // 끝나는 때를 돌려준다 — 장소 정보에서 바로 담을 때 이름·도시가 채워진 뒤에 저장한다
+  return (known? Promise.resolve(known) : reverseSpot(lat,lng,placeId)).then(({name,city})=>{
     if(city && cityOK && cityEl.value===cityAt){ cityEl.value=city; _cityPrefill=city; }
     if(name && nameOK && nameEl.value===nameAt){ nameEl.value=name; _namePrefill=name; }
-  });
+  }).catch(()=>{});
 }
 // 한국 지번주소 "시도 시군구 …" → 도시명 (광역시는 시도, 그 외는 시군구에서 시/군 제거)
 // cityFromKoreanAddr·placeName·cityFromGoogle은 lib.js가 단일 소스 (Next 검색과 공유)
@@ -4032,7 +4042,7 @@ function buildTripCard(){
     const carLine=(/**@type {any}*/e)=>`<div style="font-size:12px;margin-top:5px;color:#b5ab98">🚗 ${esc(carEventPlaceLabel(e))} <span style="font-size:10.5px">(렌터카 ${e.kind==='pickup'?'픽업':'반납'}${e.time?` ${esc(e.time)}`:''})</span></div>`;
     html+=carEv.filter(e=>e.kind==='pickup').map(carLine).join('');
     day.spots.forEach((s,si)=>{
-      html+=`<div style="font-size:12px;margin-top:5px"><span style="color:#e0a050;font-weight:700;font-size:10.5px">${hm(etas[si])}</span> ${si+1}. ${catPrefix(s)}${esc(s.name)}${s.opt?' <span style="color:#b5ab98;font-size:10.5px">(선택)</span>':''}</div>`;
+      html+=`<div style="font-size:12px;margin-top:5px"><span style="color:#e0a050;font-weight:700;font-size:10.5px">${hm(etas[si])}</span> ${si+1}. ${catPrefix(s)}${esc(s.name)}${s.opt?` <span style="color:#b5ab98;font-size:10.5px">(${esc(spotPriorityLabel('OPT'))})</span>`:''}</div>`;
     });
     html+=carEv.filter(e=>e.kind==='return').map(carLine).join('');
     const back=dayReturnStay(t.days,di,t.bookings);   // 하루의 끝 — 숙소 복귀 (화면과 같은 기준)
@@ -5085,7 +5095,7 @@ function renderTravel(di, clock){
     const tmeta=[];
     if(s.bookAt) tmeta.push(`🎫 예약 ${esc(s.bookAt)}`);
     if(s.cost) tmeta.push(`💳 ${costLabel(s.cost,s.cur)}`);
-    div.innerHTML=`<div class="n"><span class="eta">${hm(etas[si])}</span> ${si+1}. ${catPrefix(s)}${esc(s.name)}${s.opt?' <span style="font-size:11px;color:var(--subtle)">(선택)</span>':''}</div>`+
+    div.innerHTML=`<div class="n"><span class="eta">${hm(etas[si])}</span> ${si+1}. ${catPrefix(s)}${esc(s.name)}${s.opt?` <span style="font-size:11px;color:var(--subtle)">(${esc(spotPriorityLabel('OPT'))})</span>`:''}</div>`+
       (tmeta.length?`<div class="d" style="color:var(--meta-cost)">${tmeta.join(' · ')}</div>`:'')+
       `<div class="d">${esc(s.desc).replace(/\n/g,'<br>')}</div>`+
       ((bu=>bu?`<a href="${escAttr(bu)}" target="_blank" rel="noopener" style="background:#46702e;margin-right:6px">🎫 예약 열기</a>`:'')(safeUrl(s.bookUrl)))+
@@ -6788,7 +6798,9 @@ function initAccessibility(){
         el.setAttribute('aria-hidden',el.classList.contains('show')?'false':'true');
       }else if(el.matches&&el.matches('button')&&el.title&&!el.getAttribute('aria-label')&&buttonNameFromTitle(el)){
         el.setAttribute('aria-label',el.title);
-      }else if(el.hasAttribute&&el.hasAttribute('onclick')&&!el.matches('button,a,input,select,textarea')){
+      // details·summary는 이미 스스로 열고 닫히는 조작이다 — 바깥 details에 role=button을 씌우면 버튼 안에 버튼(summary)이
+      // 생겨 스크린리더가 ⋮ 메뉴를 '열림/닫힘'이 아니라 이름 없는 버튼으로 읽었다(2026-10-02 UX 검토)
+      }else if(el.hasAttribute&&el.hasAttribute('onclick')&&!el.matches('button,a,input,select,textarea,details,summary')){
         el.setAttribute('role','button'); if(!el.hasAttribute('tabindex')) el.tabIndex=0;
         if(!el.getAttribute('aria-label')&&el.title) el.setAttribute('aria-label',el.title);
       }

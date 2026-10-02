@@ -439,7 +439,7 @@ enum SpotPriority: String, CaseIterable, Sendable {
         switch self {
         case .must: "꼭 가기"
         case .normal: "보통"
-        case .optional: "선택"
+        case .optional: "여유 되면"
         }
     }
 

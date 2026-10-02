@@ -177,7 +177,7 @@ final class TripDocumentTests: XCTestCase {
     /// 순서·문구가 웹 `SPOT_PRIORITIES`와 같아야 한다 — 갈리면 같은 장소가 다른 말로 보인다.
     func testPriorityLabelsMatchWeb() throws {
         XCTAssertEqual(SpotPriority.allCases.map(\.rawValue), ["MUST", "NORMAL", "OPT"])
-        XCTAssertEqual(SpotPriority.allCases.map(\.label), ["꼭 가기", "보통", "선택"])
+        XCTAssertEqual(SpotPriority.allCases.map(\.label), ["꼭 가기", "보통", "여유 되면"])
     }
 
     func testClearingCoordinatesWritesNullNotZero() throws {

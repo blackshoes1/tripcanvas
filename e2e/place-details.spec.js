@@ -29,7 +29,7 @@ test('Google POI 조회는 저장하지 않고 리뷰는 명시적으로 요청�
   await page.getByRole('button',{name:'리뷰 보기',exact:true}).click();
   await expect(page.locator('.placeReview')).toContainText('<img src=x onerror=alert(1)>');
   expect(await page.evaluate(()=>__fields.length)).toBe(2);
-  await page.getByRole('button',{name:'일정에 추가',exact:true}).click();
+  await page.getByRole('button',{name:'시간·메모 정하고 담기',exact:true}).click();
   await expect(page.locator('#spotName')).toHaveValue('샘플 카페');
   await expect(page.locator('#spotPlaceId')).toHaveValue('cafe');
   expect(await page.evaluate(()=>trip().days[0].spots.length)).toBe(0);
