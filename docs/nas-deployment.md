@@ -222,9 +222,10 @@ ssh nas '~/tripcanvas/scripts/nas-deploy.sh --status'
 컨테이너 이미지 : 6549b93…        ← 도는 컨테이너 이미지의 OCI 라벨 (코드 자체)
 상태            : HEALTHY / DB ok
 production 태그 : 6549b93…        ← GitHub이 배포하라고 정한 커밋
+자동 배포       : 켜짐            ← 멈춰 있으면 이유와 다시 켜는 법(손 롤백 고정이면 그 커밋)
 ```
 
-네 SHA가 같으면 정상이다.
+네 SHA가 같으면 정상이다. 실패로 적힌 커밋이 있으면 `실패로 적힌 SHA` 줄이 하나 더 나온다(아래 "배포가 실패하면").
 
 ⚠️ **`도는 revision`과 `컨테이너 이미지`가 따로 있는 이유**(2026-09-19): 앞은 환경변수(`TC_REVISION`)를
 거쳐 나오고 뒤는 이미지에 박힌 라벨이라 환경변수를 거치지 않는다. compose의 `env_file: deploy/.env`가
@@ -252,16 +253,43 @@ curl -s https://bokbok9.tail8b977f.ts.net/api/health | sed -n 's/.*"revision":"\
 ssh nas 'tail -40 ~/tripcanvas/deploy/deploy.log'
 ```
 
-#### 롤백 — 특정 커밋으로 되돌리기
+#### 배포가 실패하면 — 실패한 커밋은 다시 시도하지 않는다 (2026-10-02)
 
-배포가 실패하면 스크립트가 **직전 SHA로 스스로 되돌린다.** 손으로 할 때는:
+배포가 실패하면 스크립트가 **직전 SHA로 스스로 되돌린다.** 실패가 **교체까지 간 뒤**(migrate·컨테이너 교체·
+헬스체크·revision 확인)였다면 그 커밋을 `deploy/.deploy-state`의 `FAILED_SHA`로 적는다. 자동 경로는 production
+태그가 그 커밋인 동안 **아무것도 하지 않는다** — 표준출력 한 줄만 찍고 0으로 끝난다(스케줄러 오류 메일이 5분마다
+오지 않는다. 실패 자체는 그때 `deploy.log`에 남았고 1로 끝났다).
+
+⚠️ 왜: 전에는 실패를 기억하지 않았다. production 태그가 부팅에 실패하는 커밋을 가리키는 동안
+'교체 → 최대 180초 헬스체크 실패 → 롤백'이 5분마다 되풀이됐다 — 실패 한 번이 5분마다 오는 운영 중단이었다.
+
+- 고친 커밋을 머지하면 production 태그가 옮겨 가 **그대로 배포된다**. 성공하면 기록을 지운다.
+- 같은 커밋을 다시 해 보려면(환경을 고쳤을 때): `ssh nas '~/tripcanvas/scripts/nas-deploy.sh --force'`
+- 교체 **전** 실패(그 커밋의 compose·이미지를 못 받음)는 적지 않는다 — 운영을 건드리지 않았고 대개 GitHub·GHCR이
+  잠깐 흔들린 것이라 다음 차례에 다시 해 본다.
+- 그동안 `production 태그`와 `도는 revision`이 갈려 있으므로 `health-watch`가 30분 뒤 DEGRADED로 알린다 — 의도한 신호다.
+
+#### 롤백 — 특정 커밋으로 되돌리기 (고정된다)
 
 ```bash
 ssh nas '~/tripcanvas/scripts/nas-deploy.sh --sha <되돌릴-커밋-40자리-SHA>'
 ```
 
+production 태그와 **다른** 커밋이면 띄운 뒤 자동 배포를 **고정**한다 — `deploy/.deploy-disabled`에 `PINNED_SHA`를
+적는다. 전에는 production 태그가 그대로라 다음 cron이 5분 안에 production으로 되돌렸다. 다시 켜는 법은
+배포 기록과 `--status`가 말한다:
+
+```bash
+ssh nas 'rm ~/tripcanvas/deploy/.deploy-disabled'   # 고정을 풀면 다음 차례에 production 태그의 커밋으로 돌아간다
+```
+
+- 손 롤백은 **지금 스크립트로** 띄운다 — 그 커밋의 옛 스크립트로 갈아 끼우지 않는다. 옛 판은 고정을 모르고,
+  멈춤 파일이 있으면 손 명령까지 막는다. production 태그의 커밋을 짚은 `--sha`는 고정하지 않고 평소처럼 갈아 끼운다.
+- 손 롤백이 실패하면 고정하지 않고, production의 실패 기록(`FAILED_SHA`)도 덮지 않는다.
+- 멈춤 파일을 쓰는 이유: **옛 판의 스크립트도 이 파일이 있으면 자동 배포를 하지 않는다** — 판이 오가도 고정이 지켜진다.
+
 ⚠️ **이미지만 되돌아간다. 스키마는 앞선 채로 남는다.** 그래서 마이그레이션은 항상 하위호환이어야 하고,
-CI가 그걸 검사한다 — `docs/migration-policy.md`. 되돌린 상태를 유지하려면 자동 배포를 함께 세운다(아래).
+CI가 그걸 검사한다 — `docs/migration-policy.md`.
 
 #### 자동 배포 일시 중지
 
@@ -269,6 +297,10 @@ CI가 그걸 검사한다 — `docs/migration-policy.md`. 되돌린 상태를 �
 ssh nas 'touch ~/tripcanvas/deploy/.deploy-disabled'   # 정지 (deploy/.env의 DEPLOY_DISABLED=1도 같다)
 ssh nas 'rm ~/tripcanvas/deploy/.deploy-disabled'      # 재개
 ```
+
+멈춤은 **자동 경로(인자 없는 cron 호출)만** 세운다 — 멈춰 둔 채로도 손으로 준 `--sha`·`--force`는 진행한다.
+2026-10-02 전에는 손 명령까지 막혀, 멈춘 채 보면서 배포하는 절차(`docs/migration-policy.md`)가 통하지 않았다.
+스크립트는 멈춤을 스스로 풀지 않는다 — 푸는 것은 사람이다.
 
 #### NAS 최초 1회 설정
 

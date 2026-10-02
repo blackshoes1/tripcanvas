@@ -70,7 +70,7 @@ ssh nas 'touch ~/tripcanvas/deploy/.deploy-disabled'     # 1. 자동 배포 정�
 ssh nas 'cd ~/tripcanvas && sudo /usr/local/bin/docker compose -f deploy/docker-compose.yml run --rm backup sh /backup.sh'
                                                           # 2. 직전 백업을 새로 뜬다(하루 된 것 말고)
 # 3. PR을 머지한다 — 이미지는 만들어지지만 NAS는 가만히 있는다
-ssh nas '~/tripcanvas/scripts/nas-deploy.sh'              # 4. 손으로, 보면서 배포한다
+ssh nas '~/tripcanvas/scripts/nas-deploy.sh --force'      # 4. 손으로, 보면서 배포한다(멈춰 있어도 손 명령은 진행한다)
 ssh nas 'rm ~/tripcanvas/deploy/.deploy-disabled'         # 5. 자동 배포 재개
 ```
 

@@ -55,8 +55,12 @@ const FAKE_DOCKER = `#!/bin/sh
 echo "$@" >> "$TC_TEST_ROOT/docker.log"
 if [ "$1" = "compose" ]; then
   shift; while [ "$1" = "-f" ]; do shift 2; done
+  tag=$(sed -n 's/^TC_IMAGE_TAG=//p' "$TC_TEST_ENV" | tail -1)
   case "$1" in
     ps) echo "fake-container-id" ;;
+    # 망가진 커밋: 이미지를 못 받거나(교체 전) 띄우다 죽는다(교체 뒤 — 마이그레이션 실패·부팅 실패)
+    pull) if [ -n "\${TC_TEST_PULL_FAIL_SHA:-}" ] && [ "$tag" = "$TC_TEST_PULL_FAIL_SHA" ]; then exit 1; fi ;;
+    up) if [ -n "\${TC_TEST_BROKEN_SHA:-}" ] && [ "$tag" = "$TC_TEST_BROKEN_SHA" ]; then exit 1; fi ;;
     *) : ;;
   esac
   exit 0
@@ -75,7 +79,7 @@ exit 0
 `;
 
 /** 임시 deploy 디렉터리와 가짜 docker·curl을 깔고 nas-deploy.sh를 돌린다 */
-function runDeploy(t, { envLines, args = [], state = null, env = {}, serveScript } = {}) {
+function runDeploy(t, { envLines, args = [], state = null, disabled = null, env = {}, serveScript } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'tc-nasdeploy-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const deployDir = join(root, 'deploy');
@@ -106,6 +110,8 @@ function runDeploy(t, { envLines, args = [], state = null, env = {}, serveScript
     'TC_IMAGE_TAG=',
   ]).join('\n') + '\n');
   if (state) writeFileSync(join(deployDir, '.deploy-state'), state);
+  if (disabled !== null) writeFileSync(join(deployDir, '.deploy-disabled'), disabled);
+  const disabledFile = join(deployDir, '.deploy-disabled');
 
   const r = spawnSync('/bin/bash', [script, ...args], {
     encoding: 'utf8',
@@ -133,6 +139,8 @@ function runDeploy(t, { envLines, args = [], state = null, env = {}, serveScript
     stateText: read(join(deployDir, '.deploy-state')),
     docker: read(join(root, 'docker.log')),
     curl: read(join(root, 'curl.log')),
+    deployLog: read(join(deployDir, 'deploy.log')),
+    disabledText: existsSync(disabledFile) ? readFileSync(disabledFile, 'utf8') : null,
     deployDir,
   };
 }
@@ -240,4 +248,170 @@ test('바뀐 게 없는 주기에는 스크립트를 받지도 않는다 — 5�
   const { r, curl } = runDeploy(t, { state: `CURRENT_SHA=${TARGET}\nPREVIOUS_SHA=\n` });
   assert.equal(r.status, 0);
   assert.doesNotMatch(curl, /scripts\/nas-deploy\.sh/, 'production 태그만 보고 끝낸다');
+});
+
+// ── 실패한 커밋을 기억한다(2026-10-02) ──
+// production 태그가 부팅에 실패하는 커밋을 가리키면 '교체 → 헬스체크 실패 → 롤백'이 5분마다 되풀이됐다 —
+// 실패 한 번이 5분마다 오는 운영 중단이 된다. 교체까지 간 실패는 적어 두고 자동 경로는 다시 시도하지 않는다.
+const OTHER = '5b1f3c2a9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b';
+const stateOf = (fields) => Object.entries(fields).map(([k, v]) => `${k}=${v}`).join('\n') + '\n';
+
+test('교체 뒤에 실패한 커밋은 적어 두고 직전 SHA로 되돌린다', (t) => {
+  const { r, out, stateText } = runDeploy(t, {
+    state: stateOf({ CURRENT_SHA: STALE, PREVIOUS_SHA: '' }),
+    env: { TC_TEST_BROKEN_SHA: TARGET },
+  });
+  assert.equal(r.status, 1, out);
+  assert.match(out, /롤백 성공/);
+  assert.match(stateText, new RegExp(`^FAILED_SHA=${TARGET}$`, 'm'));
+  assert.match(stateText, new RegExp(`^CURRENT_SHA=${STALE}$`, 'm'), '도는 것은 여전히 직전 SHA다');
+  assert.match(out, /--force/, '다시 시도하는 법을 기록에 남긴다');
+});
+
+test('실패로 적힌 production 커밋은 자동 경로가 다시 시도하지 않는다 — 5분마다 운영을 내리지 않는다', (t) => {
+  const { r, out, docker, curl, deployLog } = runDeploy(t, {
+    state: stateOf({ CURRENT_SHA: STALE, PREVIOUS_SHA: '', FAILED_SHA: TARGET }),
+  });
+  assert.equal(r.status, 0, '스케줄러의 오류 알림이 5분마다 오지 않는다');
+  assert.equal(docker, '', 'docker를 한 번도 부르지 않는다');
+  assert.doesNotMatch(curl, /scripts\/nas-deploy\.sh/, '스크립트를 받지도 않는다');
+  assert.match(out, /--force/, '왜 건너뛰는지와 다시 하는 법을 한 줄로 말한다');
+  assert.equal(deployLog, '', '5분마다 배포 기록에 줄이 쌓이지 않는다');
+});
+
+test('--force는 실패로 적힌 커밋도 다시 시도하고, 성공하면 기록을 지운다', (t) => {
+  const { r, out, docker, stateText } = runDeploy(t, {
+    args: ['--force'],
+    state: stateOf({ CURRENT_SHA: STALE, PREVIOUS_SHA: '', FAILED_SHA: TARGET }),
+  });
+  assert.equal(r.status, 0, out);
+  assert.match(docker, /compose .*up -d/);
+  assert.match(stateText, new RegExp(`^CURRENT_SHA=${TARGET}$`, 'm'));
+  assert.doesNotMatch(stateText, new RegExp(`FAILED_SHA=${TARGET}`));
+});
+
+test('--sha로 실패한 production 커밋을 짚으면 시도한다 — production과 같으니 고정하지 않는다', (t) => {
+  const { r, out, stateText, disabledText } = runDeploy(t, {
+    args: ['--sha', TARGET],
+    state: stateOf({ CURRENT_SHA: STALE, PREVIOUS_SHA: '', FAILED_SHA: TARGET }),
+  });
+  assert.equal(r.status, 0, out);
+  assert.match(stateText, new RegExp(`^CURRENT_SHA=${TARGET}$`, 'm'));
+  assert.doesNotMatch(stateText, new RegExp(`FAILED_SHA=${TARGET}`));
+  assert.equal(disabledText, null);
+});
+
+test('새 production 커밋이 오면 지난 실패 기록과 상관없이 배포하고 기록을 지운다', (t) => {
+  const { r, out, stateText } = runDeploy(t, {
+    state: stateOf({ CURRENT_SHA: STALE, PREVIOUS_SHA: '', FAILED_SHA: OTHER }),
+  });
+  assert.equal(r.status, 0, out);
+  assert.match(stateText, new RegExp(`^CURRENT_SHA=${TARGET}$`, 'm'));
+  assert.doesNotMatch(stateText, new RegExp(`FAILED_SHA=${OTHER}`));
+});
+
+test('교체 전에 실패하면(이미지 pull) 적지 않는다 — 운영은 그대로였고 다음 차례에 다시 해 볼 일이다', (t) => {
+  const { r, out, stateText } = runDeploy(t, {
+    state: stateOf({ CURRENT_SHA: STALE, PREVIOUS_SHA: '' }),
+    env: { TC_TEST_PULL_FAIL_SHA: TARGET },
+  });
+  assert.equal(r.status, 1, out);
+  assert.match(out, /이미지 pull 실패/);
+  assert.doesNotMatch(stateText, new RegExp(`FAILED_SHA=${TARGET}`));
+});
+
+// ── 손 롤백은 고정한다 ──
+// 예전에는 `--sha <옛 SHA>`로 되돌려도 production 태그는 그대로라 다음 cron이 5분 안에 다시 올렸다.
+test('--sha로 production이 아닌 커밋을 띄우면 자동 배포를 멈추고 다시 켜는 법을 남긴다', (t) => {
+  const { r, out, stateText, disabledText, deployLog } = runDeploy(t, {
+    args: ['--sha', STALE],
+    state: stateOf({ CURRENT_SHA: TARGET, PREVIOUS_SHA: '' }),
+  });
+  assert.equal(r.status, 0, out);
+  assert.match(stateText, new RegExp(`^CURRENT_SHA=${STALE}$`, 'm'));
+  assert.notEqual(disabledText, null, 'deploy/.deploy-disabled가 생긴다');
+  assert.match(disabledText, new RegExp(`^PINNED_SHA=${STALE}$`, 'm'));
+  assert.match(deployLog, /rm .*\.deploy-disabled/, '다시 켜는 법을 배포 기록에 남긴다');
+});
+
+test('고정된 뒤의 cron은 production으로 되돌리지 않는다', (t) => {
+  const { r, out, docker } = runDeploy(t, {
+    state: stateOf({ CURRENT_SHA: STALE, PREVIOUS_SHA: TARGET }),
+    disabled: `PINNED_SHA=${STALE}\n`,
+  });
+  assert.equal(r.status, 0);
+  assert.equal(docker, '');
+  assert.match(out, new RegExp(STALE.slice(0, 7)), '무엇에 고정돼 있는지 말한다');
+  assert.match(out, /rm .*\.deploy-disabled/, '다시 켜는 법을 말한다');
+});
+
+test('손 롤백은 그 커밋의 옛 스크립트로 갈아 끼우지 않는다 — 옛 스크립트는 고정을 모른다', (t) => {
+  const { r, out, scriptText, curl, disabledText } = runDeploy(t, {
+    args: ['--sha', STALE],
+    state: stateOf({ CURRENT_SHA: TARGET, PREVIOUS_SHA: '' }),
+    serveScript: (src) => src + `\n${MARKER}\n`,
+  });
+  assert.equal(r.status, 0, out);
+  assert.doesNotMatch(scriptText, new RegExp(MARKER));
+  assert.doesNotMatch(curl, /scripts\/nas-deploy\.sh/);
+  assert.notEqual(disabledText, null);
+});
+
+test('멈춰 있어도 손으로 준 명령은 진행하고, 멈춤은 사람이 푼다', (t) => {
+  const { r, out, docker, disabledText } = runDeploy(t, {
+    args: ['--sha', TARGET],
+    state: stateOf({ CURRENT_SHA: STALE, PREVIOUS_SHA: '' }),
+    disabled: '',
+  });
+  assert.equal(r.status, 0, out);
+  assert.match(docker, /compose .*up -d/);
+  assert.equal(disabledText, '', '멈춤 파일을 스스로 지우지 않는다');
+  assert.match(out, /rm .*\.deploy-disabled/, '아직 멈춰 있다는 것을 말한다');
+});
+
+test('손 롤백이 실패해도 production의 실패 기록을 덮어쓰지 않는다', (t) => {
+  const { r, out, stateText, disabledText } = runDeploy(t, {
+    args: ['--sha', STALE],
+    state: stateOf({ CURRENT_SHA: OTHER, PREVIOUS_SHA: '', FAILED_SHA: TARGET }),
+    env: { TC_TEST_BROKEN_SHA: STALE },
+  });
+  assert.equal(r.status, 1, out);
+  assert.match(stateText, new RegExp(`^FAILED_SHA=${TARGET}$`, 'm'), 'production을 다시 시도하지 않는다는 기억은 남는다');
+  assert.match(stateText, new RegExp(`^CURRENT_SHA=${OTHER}$`, 'm'));
+  assert.equal(disabledText, null, '띄우지 못한 커밋에 고정하지 않는다');
+});
+
+test('--status는 실패 기록과 멈춤을, 다시 하는 법과 함께 말한다', (t) => {
+  const { r, out } = runDeploy(t, {
+    args: ['--status'],
+    envLines: ['TC_IMAGE_TAG=' + STALE],
+    state: stateOf({ CURRENT_SHA: STALE, PREVIOUS_SHA: '', FAILED_SHA: TARGET }),
+    disabled: `PINNED_SHA=${STALE}\n`,
+  });
+  assert.equal(r.status, 0, out);
+  assert.match(r.stdout, new RegExp(`실패.*${TARGET.slice(0, 7)}`));
+  assert.match(r.stdout, /--force/);
+  assert.match(r.stdout, /rm .*\.deploy-disabled/);
+});
+
+// 상태 파일은 다른 판의 이 스크립트도 읽는다(자기 갱신이 판을 오간다). 옛 판은 `. 파일`로 읽으므로
+// 새 키는 그냥 변수로 남아야 하고, set -u 아래에서도 죽지 않아야 한다.
+test('새 상태 파일을 옛 판(2026-09-20)의 read_state가 그대로 읽는다', (t) => {
+  const { stateText, deployDir } = runDeploy(t, {
+    state: stateOf({ CURRENT_SHA: STALE, PREVIOUS_SHA: '' }),
+    env: { TC_TEST_BROKEN_SHA: TARGET },
+  });
+  assert.match(stateText, /^FAILED_SHA=/m);
+  const OLD_READ_STATE = `set -euo pipefail
+STATE_FILE="$1"
+read_state() {
+  CURRENT_SHA=""; PREVIOUS_SHA=""
+  [ -f "$STATE_FILE" ] && . "$STATE_FILE" || true
+  CURRENT_SHA="\${CURRENT_SHA:-}"; PREVIOUS_SHA="\${PREVIOUS_SHA:-}"
+}
+read_state
+echo "current=$CURRENT_SHA previous=$PREVIOUS_SHA"`;
+  const old = spawnSync('/bin/bash', ['-c', OLD_READ_STATE, 'old', join(deployDir, '.deploy-state')], { encoding: 'utf8' });
+  assert.equal(old.status, 0, old.stderr);
+  assert.equal(old.stdout.trim(), `current=${STALE} previous=`);
 });
