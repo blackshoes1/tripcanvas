@@ -48,8 +48,8 @@ describe('핀 — 순서 번호·색 모드·카테고리 배지', () => {
     const t = trip([day([airport(), spot('미정', null, null), seongsan()])]);
     const { pins } = buildMapScene(t, NONE, 0);
     expect(pins.map(p => p.label)).toEqual([1, 3]);   // 미정(2번)은 카드에만 남는다
-    expect(pins[0].catIcon).toBe('🚉');
-    expect(pins[0].title).toBe('🚉 교통 · 제주공항');
+    expect(pins[0].catIcon).toBe('✈️');   // 공항은 교통 분류 그대로 비행기 기호(lib spotCatOf)
+    expect(pins[0].title).toBe('✈️ 교통 · 제주공항');
   });
 
   it("기본은 일자 색, colorBy 'city'면 같은 도시가 같은 색 — 경로선은 항상 일자 색", () => {
