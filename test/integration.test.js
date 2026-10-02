@@ -3643,39 +3643,104 @@ test('통합: 서버가 자체 실시간을 쓰라고 하면 client_id로 구독
 
 // 실시간은 몇 번만 다시 붙고 멈춘다(api.js). 그리고 같은 여행이면 ensureLiveChannel이 그냥 돌아간다 —
 // 그래서 NAS·Tailscale이 40초쯤 끊기면 그 여행은 다른 여행으로 갔다 오기 전까지 실시간이 없었다.
-test('통합: 실시간이 포기한 뒤에도 탭이 다시 보이거나 네트워크가 돌아오면 다시 붙는다(붙어 있으면 그대로)', { skip: noJsdom }, async () => {
+// 다시 붙이는 것은 **스스로 포기한 접속뿐**이다 — 서버가 거절한 접속(내보내짐·세션 무효)을 탭이 보일 때마다 다시 열면
+// AUTH·SUBSCRIBE·거절이 끝없이 되풀이되고, 붙는 중인 접속을 갈아 끼우면 함께 오는 online·visibilitychange가 서로를 끊는다.
+// 진짜 TC_API.realtime.connect에 가짜 소켓만 꽂는다(재시도 간격만 짧게) — 거절·포기를 흉내 내지 않고 실제로 일으킨다.
+function bootLive(){
   const w = boot();
-  const opened = [];
-  let closed = 0;
+  const made = [];
+  class FakeSocket {
+    constructor(url) { this.url = url; this.sent = []; this.closed = null; made.push(this); }
+    send(raw) { this.sent.push(JSON.parse(raw)); }
+    close(code) { if (this.closed) return; this.closed = code || 1000; if (this.onclose) this.onclose({ code: this.closed }); }
+    open() { if (this.onopen) this.onopen(); }
+    deliver(msg) { if (this.onmessage) this.onmessage({ data: JSON.stringify(msg) }); }
+  }
+  w.FakeSocket = FakeSocket;
   w.eval(`user={id:'u1'}; store.trips=[{id:'t1',name:'스페인',days:[{spots:[]}]}]; store.activeId='t1';
-    syncMeta={t1:{revision:3,status:'clean'}};`);
+    syncMeta={t1:{revision:3,status:'clean'}};
+    apiToken=async()=>'tok';`);
   w.TC_API_ME = async () => ({
     data: { trips: [{ id: 't1', role: 'EDITOR', memberCount: 3, owner: false }],
             realtime: { provider: 'TRIPCANVAS', url: 'wss://api.test/ws' } }, error: null
   });
-  w.TC_API_CONNECT = (options) => { opened.push(options); return { close: () => { closed++; } }; };
-  w.eval(`TC_API.me=window.TC_API_ME; TC_API.realtime={connect:window.TC_API_CONNECT};
+  w.eval(`TC_API.me=window.TC_API_ME;
+    const realConnect=TC_API.realtime.connect;
+    TC_API.realtime={connect:(o)=>realConnect(Object.assign({},o,{socketImpl:window.FakeSocket,retryMs:1}))};
     pullActiveIfShared=()=>{}; flushPendingSync=async()=>{}; cloudSyncActive=()=>{};   // 여기서 보는 것은 실시간 접속뿐이다`);
+  const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
+  const wake = async () => {   // 휴대폰이 깨어날 때처럼 둘이 함께 온다
+    w.document.dispatchEvent(new w.Event('visibilitychange'));
+    w.dispatchEvent(new w.Event('online'));
+    await tick();
+  };
+  const subscribe = async (s) => { s.open(); await tick(); s.deliver({ type: 'READY' }); s.deliver({ type: 'SUBSCRIBED', tripId: 't1' }); };
+  return { w, made, tick, wake, subscribe };
+}
+
+test('통합: 실시간이 포기한 뒤에는 탭이 다시 보이거나 네트워크가 돌아오면 다시 붙는다 — 붙어 있거나 붙는 중이면 그대로', { skip: noJsdom }, async () => {
+  const { w, made, tick, wake, subscribe } = bootLive();
   await w.eval(`refreshTripRoles()`);
-  assert.equal(opened.length, 1);
-  // 접속이 재시도를 다 쓰고 멈췄다(onState(true)가 오지 않았다) — 탭이 다시 보이면 새로 붙는다
-  w.document.dispatchEvent(new w.Event('visibilitychange'));
-  assert.equal(opened.length, 2, '탭이 다시 보이면 다시 붙는다');
-  assert.equal(closed, 1, '멈춘 접속은 닫고 갈아 끼운다');
-  // 붙어 있으면 건드리지 않는다
-  opened[1].onState(true);
-  w.document.dispatchEvent(new w.Event('visibilitychange'));
-  assert.equal(opened.length, 2, '살아 있는 접속은 그대로 둔다');
-  // 네트워크가 돌아왔을 때도 같다
-  opened[1].onState(false);
-  w.dispatchEvent(new w.Event('online'));
-  assert.equal(opened.length, 3, '네트워크가 돌아오면 다시 붙는다');
-  assert.equal(opened[2].tripId, 't1');
+  await tick();
+  assert.equal(made.length, 1);
+  // 붙는 중 — online과 visibilitychange가 함께 와도 방금 연 접속을 끊지 않는다
+  await wake();
+  assert.equal(made.length, 1, '붙는 중인 접속은 그대로 둔다');
+  assert.equal(made[0].closed, null);
+  await subscribe(made[0]);
+  assert.match(w.document.getElementById('liveState').textContent, /실시간/);
+  await wake();
+  assert.equal(made.length, 1, '살아 있는 접속은 그대로 둔다');
+  // 네트워크가 끊겨 재시도를 다 쓰고 멈췄다
+  made[0].close(1006);
+  for (let i = 1; i <= 5; i++) { while (made.length <= i) await tick(2); made[i].close(1006); }
+  await tick(20);
+  assert.equal(made.length, 6, '몇 번만 다시 붙고 멈춘다');
+  assert.equal(w.eval(`liveConn.state()`), 'gave-up');
+  // 탭이 다시 보이면 새로 붙는다 — 함께 온 online은 그 접속을 끊지 않는다
+  await wake();
+  assert.equal(made.length, 7, '포기한 접속은 다시 붙는다(한 번만)');
+  assert.equal(made[6].closed, null);
+  await subscribe(made[6]);
+  assert.deepEqual(made[6].sent.find(m => m.type === 'SUBSCRIBE'), { type: 'SUBSCRIBE', tripId: 't1' });
+  assert.match(w.document.getElementById('liveState').textContent, /실시간/);
   // 볼 여행이 없으면(로그아웃) 아무것도 열지 않는다
   w.eval(`user=null; tripRoles={}; updateCollabUI();`);
-  w.dispatchEvent(new w.Event('online'));
-  assert.equal(opened.length, 3);
+  await wake();
+  assert.equal(made.length, 7);
   w.close();
+});
+
+test('통합: 서버가 거절한 실시간은 탭이 다시 보이거나 네트워크가 돌아와도 다시 열지 않는다', { skip: noJsdom }, async () => {
+  // 구독 거절(멤버에서 빠짐) — 서버는 ERROR FORBIDDEN만 보내고 소켓을 닫지 않는다
+  {
+    const { w, made, tick, wake } = bootLive();
+    await w.eval(`refreshTripRoles()`);
+    await tick();
+    made[0].open(); await tick();
+    made[0].deliver({ type: 'READY' });
+    made[0].deliver({ type: 'ERROR', code: 'FORBIDDEN', tripId: 't1' });
+    assert.equal(made[0].closed, 1000, '거절당한 접속은 닫는다');
+    for (let i = 0; i < 3; i++) await wake();
+    assert.equal(made.length, 1, '거절은 다시 붙어도 같은 답이다 — 새 소켓을 만들지 않는다');
+    w.close();
+  }
+  // 인증 거절(세션 무효) — 4401로 닫힌다
+  {
+    const { w, made, tick, wake } = bootLive();
+    await w.eval(`refreshTripRoles()`);
+    await tick();
+    made[0].open(); await tick();
+    made[0].close(4401);
+    for (let i = 0; i < 3; i++) await wake();
+    assert.equal(made.length, 1, '4401도 다시 열지 않는다');
+    // 로그아웃했다 다시 들어오면(liveKey가 바뀐다) 그때 새로 붙는다
+    w.eval(`user=null; tripRoles={}; updateCollabUI(); user={id:'u1'};`);
+    await w.eval(`refreshTripRoles()`);
+    await tick();
+    assert.equal(made.length, 2, '로그인이 바뀌면 새로 붙는다');
+    w.close();
+  }
 });
 
 // ── 함께 움직이지 않는 시간 (6단계 · §25~§27) ────────────────────────────────

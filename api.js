@@ -308,6 +308,7 @@
    * 페이로드는 신호일 뿐이라 내용은 호출측이 API로 다시 읽는다(§41·§45).
    *
    * 거절(4401·4403)은 다시 붙지 않는다 — 재시도해도 같은 답이다. 그냥 끊긴 것은 다시 붙는다.
+   * 멈춘 뒤 다시 붙일지는 호출측이 `state()`를 보고 정한다(app.js reviveLive).
    * @param {{url:string, tripId:string, getToken:()=>Promise<string|null>, onEvent:(e:any)=>void,
    *          onState:(on:boolean)=>void, socketImpl?:any, retryMs?:number}} options
    */
@@ -317,6 +318,13 @@
     /** @type {any} */ let socket = null;
     /** @type {any} */ let timer = null;
     let stopped = false, attempts = 0;
+    /**
+     * 지금 어디에 있는가. 다시 붙일 만한 것은 `gave-up`(재시도를 다 썼다·토큰이 없었다)뿐이다 —
+     * `rejected`(서버가 거절)는 다시 붙어도 같은 답이고, `connecting`(붙는 중·다음 시도를 기다리는 중)을
+     * 갈아 끼우면 방금 연 접속을 스스로 끊는다.
+     * @type {'connecting'|'live'|'gave-up'|'rejected'|'closed'}
+     */
+    let phase = 'connecting';
 
     /** @param {boolean} on */
     const setState = (on) => { try { options.onState(on); } catch (_) { /* 화면 갱신 실패는 삼킨다 */ } };
@@ -326,7 +334,7 @@
       // 구독이 열리기 전까지는 '실시간'이 아니다 — 호출측이 초기 상태를 추측하지 않게 여기서 알린다
       setState(false);
       const token = await options.getToken();
-      if (stopped || !token) { setState(false); return; }   // 로그아웃 상태면 붙지 않는다
+      if (stopped || !token) { setState(false); if (!stopped) phase = 'gave-up'; return; }   // 로그아웃 상태면 붙지 않는다
       let ws;
       try { ws = new Socket(options.url); } catch (_) { setState(false); schedule(); return; }
       socket = ws;
@@ -336,16 +344,21 @@
         try { msg = JSON.parse(String(event && event.data)); } catch (_) { return; }
         if (!msg || typeof msg !== 'object') return;
         if (msg.type === 'READY') { ws.send(JSON.stringify({ type: 'SUBSCRIBE', tripId: options.tripId })); return; }
-        if (msg.type === 'SUBSCRIBED') { attempts = 0; setState(true); return; }
+        if (msg.type === 'SUBSCRIBED') { attempts = 0; phase = 'live'; setState(true); return; }
         if (msg.type === 'PING') { ws.send(JSON.stringify({ type: 'PONG' })); return; }
-        if (msg.type === 'ERROR') { stopped = true; setState(false); return; }   // 권한·형식 문제는 재시도해도 같다
+        if (msg.type === 'ERROR') {   // 권한·형식 문제는 재시도해도 같다
+          stopped = true; phase = 'rejected'; setState(false);
+          // 구독 거절(FORBIDDEN)에는 서버가 소켓을 닫지 않는다 — 쓰지 않을 접속을 하트비트로 붙들고 있지 않게 닫는다
+          try { ws.close(1000); } catch (_) { /* 이미 닫힘 */ }
+          return;
+        }
         if (msg.type === 'ACTIVITY') { try { options.onEvent(msg); } catch (_) { /* 화면 갱신 실패는 삼킨다 */ } }
       };
       ws.onerror = () => { /* onclose가 이어서 온다 */ };
       ws.onclose = (/** @type {any} */ event) => {
         socket = null; setState(false);
         // 거절 프레임(ERROR)이 닿기 전에 닫혀도 닫힘 코드는 남는다 — 인증·권한 거절은 다시 붙어도 같은 답이다
-        if (event && REJECT_CODES.indexOf(Number(event.code)) >= 0) { stopped = true; return; }
+        if (event && REJECT_CODES.indexOf(Number(event.code)) >= 0) { stopped = true; phase = 'rejected'; return; }
         schedule();
       };
     }
@@ -355,18 +368,21 @@
       attempts += 1;
       // 흔들리는 네트워크에 매달리지 않는다 — 폴백(탭 복귀 pull)이 있으므로 몇 번만 시도한다.
       // 멈춘 뒤 다시 붙이는 것은 호출측이 탭이 다시 보일 때·네트워크가 돌아올 때 한다(app.js reviveLive)
-      if (attempts > 5) return;
+      if (attempts > 5) { phase = 'gave-up'; return; }
+      phase = 'connecting';
       timer = setTimeout(() => { timer = null; void open(); }, retryMs * Math.min(attempts, 4));
     }
 
     void open();
     return {
       close() {
-        stopped = true;
+        stopped = true; phase = 'closed';
         if (timer) { clearTimeout(timer); timer = null; }
         const current = socket; socket = null;
         if (current) { try { current.close(1000); } catch (_) { /* 이미 닫힘 */ } }
-      }
+      },
+      /** 지금 어디에 있는가(위 `phase`) */
+      state() { return phase; }
     };
   }
 

@@ -288,6 +288,63 @@ test('실시간 — 인증·권한 거절 코드(4401·4403)로 닫히면 ERROR 
   }
 });
 
+// 멈춘 뒤 다시 붙일지는 호출측(app.js reviveLive)이 state()를 보고 정한다 — 스스로 포기한 것(gave-up)만 다시 붙일 만하다.
+// 거절(rejected)은 다시 붙어도 같은 답이고, 붙는 중(connecting)을 갈아 끼우면 방금 연 접속을 스스로 끊는다.
+test('실시간 — state()는 붙는 중·붙음·포기·거절·닫힘을 가른다', async () => {
+  const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
+  // 붙는 중 → 붙음 → (끊김) 붙는 중 → … → 재시도를 다 쓰면 포기
+  {
+    const { made, FakeSocket } = fakeSocketFactory();
+    const conn = TC_API.realtime.connect({ url: 'wss://x/ws', tripId: 't', getToken: async () => 'tok', onEvent: () => {}, onState: () => {}, socketImpl: FakeSocket, retryMs: 1 });
+    assert.equal(conn.state(), 'connecting');
+    await tick();
+    made[0].open(); await tick();
+    made[0].deliver({ type: 'READY' });
+    assert.equal(conn.state(), 'connecting', '구독 전에는 아직 붙는 중이다');
+    made[0].deliver({ type: 'SUBSCRIBED', tripId: 't' });
+    assert.equal(conn.state(), 'live');
+    made[0].close(1006);
+    assert.equal(conn.state(), 'connecting', '끊기면 다음 시도를 기다린다');
+    for (let i = 1; i <= 5; i++) {
+      while (made.length <= i) await tick(2);
+      made[i].close(1006);
+    }
+    assert.equal(made.length, 6);
+    assert.equal(conn.state(), 'gave-up', '재시도를 다 쓰면 포기한다');
+    conn.close();
+    assert.equal(conn.state(), 'closed');
+  }
+  // 토큰이 없으면 붙지 않고 포기 상태로 둔다 — 나중에 다시 붙여 볼 수 있다
+  {
+    const { FakeSocket } = fakeSocketFactory();
+    const conn = TC_API.realtime.connect({ url: 'wss://x/ws', tripId: 't', getToken: async () => null, onEvent: () => {}, onState: () => {}, socketImpl: FakeSocket });
+    await tick();
+    assert.equal(conn.state(), 'gave-up');
+  }
+  // 구독 거절(ERROR)과 거절 코드(4401·4403)는 rejected — 서버가 닫지 않는 구독 거절은 이쪽이 소켓을 닫는다
+  {
+    const { made, FakeSocket } = fakeSocketFactory();
+    const conn = TC_API.realtime.connect({ url: 'wss://x/ws', tripId: 't', getToken: async () => 'tok', onEvent: () => {}, onState: () => {}, socketImpl: FakeSocket, retryMs: 1 });
+    await tick();
+    made[0].open(); await tick();
+    made[0].deliver({ type: 'READY' });
+    made[0].deliver({ type: 'ERROR', code: 'FORBIDDEN', tripId: 't' });
+    assert.equal(conn.state(), 'rejected');
+    assert.equal(made[0].closed, 1000, '쓰지 않을 접속을 붙들고 있지 않는다');
+    await tick(20);
+    assert.equal(made.length, 1);
+    assert.equal(conn.state(), 'rejected', '닫힌 뒤에도 거절로 남는다');
+  }
+  for (const code of [4401, 4403]) {
+    const { made, FakeSocket } = fakeSocketFactory();
+    const conn = TC_API.realtime.connect({ url: 'wss://x/ws', tripId: 't', getToken: async () => 'tok', onEvent: () => {}, onState: () => {}, socketImpl: FakeSocket, retryMs: 1 });
+    await tick();
+    made[0].open(); await tick();
+    made[0].close(code);
+    assert.equal(conn.state(), 'rejected', `${code}`);
+  }
+});
+
 test('실시간 — 그냥 끊기면 다시 붙는다(네트워크는 흔들린다)', async () => {
   const { made, FakeSocket } = fakeSocketFactory();
   const conn = TC_API.realtime.connect({ url: 'wss://x/ws', tripId: 't', getToken: async () => 'tok', onEvent: () => {}, onState: () => {}, socketImpl: FakeSocket, retryMs: 1 });

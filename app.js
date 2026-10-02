@@ -6115,9 +6115,12 @@ function ensureLiveChannel(){
 }
 // 접속은 몇 번만 다시 붙고 멈추는데(api.js), 같은 여행이면 ensureLiveChannel이 그냥 돌아간다 — 그래서 NAS·Tailscale이
 // 잠깐 끊겼다 돌아와도 그 여행은 다른 여행으로 갔다 오기 전까지 실시간이 없었다. 탭이 다시 보이거나 네트워크가
-// 돌아오면 **끊긴 것만** 새로 붙인다(붙어 있는 접속은 건드리지 않는다).
+// 돌아오면 **스스로 포기한 것만**(`state()==='gave-up'`) 새로 붙인다. 붙어 있는 접속은 물론이고
+// - 서버가 거절한 접속(멤버에서 빠짐·세션 무효)도 그대로 둔다 — 다시 붙어도 같은 답이다. 로그아웃·여행 전환이 liveKey를 바꾸면 그때 새로 붙는다.
+// - 붙는 중인 접속도 그대로 둔다 — 휴대폰이 깨어날 때 online과 visibilitychange가 함께 와서, 둘째가 첫째가 방금 연 접속을 끊었다.
+// Supabase 채널(레거시)은 SDK가 스스로 다시 붙는다.
 function reviveLive(){
-  if(liveOn||!liveKey) return;
+  if(!liveKey||!liveConn||typeof liveConn.state!=='function'||liveConn.state()!=='gave-up') return;
   liveKey=''; ensureLiveChannel();
 }
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') reviveLive(); });
