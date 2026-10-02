@@ -18,7 +18,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # Node 20은 2026-04-30에 지원이 끝났다. next 잡·운영 이미지(node:22-alpine)와 같은 22로 돈다
+          node-version: 22
       - name: Install locked dependencies
         run: npm ci --no-audit --no-fund
       - name: Syntax check
@@ -135,7 +136,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - name: Install locked dependencies
         run: npm ci --no-audit --no-fund

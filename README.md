@@ -350,7 +350,7 @@ npm run verify:all              # 루트 + next/ + iOS 를 통째로. 범위만:
 ```
 
 마지막에는 PASS/FAIL/**SKIP** 표가 나온다. **SKIP은 통과가 아니다.** 실행하지 못한 항목은 PR에 이유를 적는다.
-GitHub Actions도 같은 범위를 본다: `ci.yml`(Quality · Next workspace · E2E, Node 20/22) · `ios.yml`(`ios/**`가 바뀔 때만 — macOS 러너는 10배 과금) · `ios-testflight.yml`(수동 실행).
+GitHub Actions도 같은 범위를 본다: `ci.yml`(Quality · Next workspace · E2E · Docker image build, Node 22) · `ios.yml`(`ios/**`가 바뀔 때만 — macOS 러너는 10배 과금) · `ios-testflight.yml`(수동 실행).
 러너나 과금 문제로 CI가 멈춰도 검증 기준이 사라지지 않도록 `verify-all.sh`가 워크플로를 그대로 따라가고 있다. 워크플로를 바꾸면 스크립트도 함께 맞춘다.
 
 ## 배포
