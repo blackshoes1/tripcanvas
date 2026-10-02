@@ -2687,6 +2687,16 @@ test('통합: 보기 권한은 여행 모드·버전 이력에서도 일정을 �
   assert.equal(w.eval('JSON.stringify(trip())'), before, '여행 문서가 그대로다');
   assert.equal(w.eval('histStack.length'), 0, '저장도 일어나지 않았다');
 
+  // 위 장면에 없는 갈래도 직접 그려 본다 — 재구성 제안(REPLAN)과 이미 다녀온 장소의 '되돌리기'
+  const drawn = () => ({
+    replan: w.eval(`sgPrimaryButtons({type:'REPLAN',key:'r0',action:{drop:['d0s0']}},0).map(b=>b.textContent).join('|')`),
+    done: w.eval(`Array.from(spotStatusRow(0,0,{status:'COMPLETED'},false).querySelectorAll('button')).map(b=>b.textContent).join('|')`)
+  });
+  assert.deepEqual(drawn(), { replan: '', done: '' }, '보기 권한에는 조정·직접 수정·되돌리기 버튼이 없다');
+  w.eval(`tripRoles.__ad__.role='EDITOR'`);
+  assert.deepEqual(drawn(), { replan: '이대로 조정|직접 수정', done: '되돌리기' }, '편집자에게는 같은 자리에 버튼이 있다 — 위 확인이 헛돌지 않는다');
+  w.eval(`tripRoles.__ad__.role='VIEWER'`);
+
   // 버전 이력: 목록은 보이되 복원 버튼은 없다
   w.eval(`TC_API.snapshots.list=async()=>({data:[{id:1,created_at:'2026-09-01T10:00:00Z'}],error:null});
     TC_API.snapshots.load=async()=>({data:{data:JSON.parse(JSON.stringify(trip()))},error:null});`);
@@ -3011,7 +3021,24 @@ test('통합: Supabase SDK가 없어도 로그인했으면 업로드·당겨오�
     onLiveEvent('__it__',{kind:'SCHEDULE_CHANGED',actor_id:'u2'});`);
   await new Promise(r => setTimeout(r, 480));
   assert.deepEqual(Array.from(w.eval('window.__pull||[]')), ['__it__']);
+  // 밀린 삭제 재시도·버전 이력도 돈다
+  w.eval(`window.tomb=[]; TC_API.sync.tombstone=async(id,rev)=>{ window.tomb.push(id); return {applied:true,conflict:false,revision:(rev||1)+1,data:null,deleted_at:null}; };
+    TC_SYNC.beginDelete(syncMeta,'old','op9'); syncMeta.old.revision=2;
+    TC_API.snapshots.list=async()=>({data:[{id:1,created_at:'2026-09-01T10:00:00Z'}],error:null});`);
+  await w.eval('flushPendingSync()');
+  assert.deepEqual(Array.from(w.tomb), ['old'], '밀린 삭제를 보낸다');
+  assert.equal(w.eval('syncMeta.old.status'), 'tombstoned');
+  await w.eval('loadSnapList()');
+  assert.equal(w.document.querySelectorAll('#snapList .snapRow').length, 1, '버전 이력을 읽는다');
   w.close();
+});
+
+// 위 행동 테스트는 몇 곳만 sb 없이 돌린다 — 나머지 자리가 옛 조건(`!sb||!user`·`user&&sb`…)으로 돌아가도 잡히게 소스를 본다.
+// sb는 레거시 실시간 채널(ensureLiveChannel·closeLive)과 TC_AUTH.configure에만 남는다. 데이터 경로는 cloudReady()다.
+test('통합: 데이터 경로의 조건이 Supabase SDK(sb)에 다시 묶이지 않는다', () => {
+  const src = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
+  const hits = src.match(/!sb\s*\|\||\|\|\s*!sb\b|\bsb\s*&&\s*user\b|\buser\s*&&\s*sb\b/g) || [];
+  assert.deepEqual(hits, [], 'app.js에 sb를 로그인 조건으로 보는 자리가 남아 있다 — cloudReady()를 쓴다');
 });
 
 // render()가 Sortable 인스턴스를 재생성하므로, 끌고 있는 도중에 다시 그리면 목록이 손가락 아래에서 갈린다
