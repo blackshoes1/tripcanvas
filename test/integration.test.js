@@ -4337,6 +4337,38 @@ test('샘플 여행: 샘플이라는 사실과 내 여행 만들기가 늘 보�
   w.close();
 });
 
+test('샘플 여행: 이동 메모와 계산값을 가르고, 같은 이동을 두 번 적지 않으며, 저장 상태가 샘플임을 말한다', { skip: noJsdom }, () => {
+  // 2026-10-02 UX 검토: Day 5에 메모 "460km · 약 4시간 20분"과 계산 "342.3km · 3시간 25분"이 같은 모양으로 나왔고,
+  // 일자 간 이동이 머리글("이전 일정에서")과 첫 장소 행("이전 장소에서")에 두 번 나왔다.
+  const w = boot();
+  w.eval("store={trips:[sampleTrip()],activeId:SAMPLE_TRIP_ID}; activeDay=0; render();");
+  const cards = w.document.querySelectorAll('#sidebar .dayCard');
+  const day5 = cards[4];
+  const memo = day5.querySelector('.driveMemo');
+  assert.ok(memo, '사람이 적은 이동 설명은 메모로 표시한다');
+  assert.match(memo.textContent, /^이동 메모.*460km/, '메모라고 밝힌다');
+  assert.ok(!/이전 일정에서/.test(w.document.getElementById('sidebar').textContent), '머리글에 일자 간 이동을 또 적지 않는다');
+  const firstLeg = day5.querySelector('.spot[data-si="0"] .spotLeg .legFrom');
+  assert.equal(firstLeg.textContent, '숙소에서', '전날 숙소에서 오는 길이라고 말한다');
+  assert.match(w.document.getElementById('saveState').textContent, /샘플 여행 · 이 기기에만 저장돼요/);
+  assert.match(w.document.getElementById('sampleBar').textContent, /이 기기에만 남아요/, '저장 정책은 샘플 띠 한 줄이 말한다');
+  assert.ok(w.document.getElementById('saveStateBar').classList.contains('srOnlyBar'), '같은 말을 두 줄로 보이지 않는다');
+  assert.equal(w.document.querySelectorAll('.pxStart').length, 0, '예시 숙소에 가격 추적을 권하지 않는다');
+  // 마지막 날: 마드리드 숙소에서 출발해 08:30에 공항
+  const ctx = w.eval('(()=>{const c=dayContext(trip().days.length-1); return {anchor:c.anchor&&c.anchor.city, eta:c.timeline[0].eta};})()');
+  assert.equal(ctx.anchor, '마드리드');
+  assert.ok(ctx.eta <= 8 * 60 + 30);
+  w.close();
+});
+
+test('구간 표시: 자차 하루의 2km 미만 구간은 걸어서 계산한다고 말한다', { skip: noJsdom }, () => {
+  const w = boot();
+  assert.equal(w.eval("legLabel({mode:'car',m:1400,sec:300})"), '↳1.4km · 가까워 걸어서 19분');
+  assert.match(w.eval("legTitle({mode:'car',m:1400,sec:300})"), /2km 미만은 걸어서 계산/);
+  assert.equal(w.eval("legLabel({mode:'car',m:5000,sec:600})"), '↳5.0km · 10분');
+  w.close();
+});
+
 test('다음 한 걸음: 닫으면 그 여행에서는 다시 뜨지 않는다', { skip: noJsdom }, async () => {
   const w = boot();
   w.eval("store.trips=[]; store.activeId=null;");

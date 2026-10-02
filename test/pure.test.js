@@ -1704,3 +1704,26 @@ test('planRouteOptimization: 이미 최적이거나 움직일 곳이 없으면 �
   assert.deepEqual(r.order, [0, 1, 2, 3]);
   assert.equal(L.planRouteOptimization([]).changed, false);
 });
+
+test('sampleTrip — 마지막 날은 마드리드 숙소에서 출발해 계획한 08:30에 공항에 닿는다', () => {
+  // 2026-10-02 UX 검토: 숙소가 없어 마지막 날 출발점이 그라나다로 남았고 "11:00 비행기"인데 13:19에 공항에 닿았다
+  const t = L.normalizeTrip(L.sampleTrip());
+  const last = t.days.length - 1;
+  const anchor = L.dayStartAnchor(t.days, last, []);
+  assert.equal(anchor.city, '마드리드', '마지막 날 출발점은 마드리드');
+  assert.ok(anchor.stay, '출발점은 숙소');
+  const leg = (a, b) => L.haversine(a, b) / 40 * 60;
+  const tl = L.computeTimeline(t.days[last], { legMin: leg, startAnchor: anchor });
+  assert.ok(tl[0].eta <= 8 * 60 + 30, '공항 도착이 권장 시각을 넘지 않는다: ' + L.hm(tl[0].eta));
+  // 연박 범위 안의 날은 그 도시 숙소에서 출발한다
+  [[1, '마드리드'], [2, '마드리드'], [5, '세비야'], [8, '말라가'], [10, '그라나다'], [12, '마드리드']].forEach(([di, city]) => {
+    const a = L.dayStartAnchor(t.days, di, []);
+    assert.equal(a && a.stay && a.city, city, `Day ${di + 1} 출발점`);
+  });
+  // 실제 장소처럼 보이는 숙소를 지어내지 않는다 — 예시라고 밝히고 식별자를 넣지 않는다
+  t.days.forEach((d) => d.spots.forEach((s) => {
+    if (s.stay) assert.match(s.name, /\(예시\)/);
+    assert.equal(s.placeId, undefined);
+  }));
+  assert.ok(t.days.every((d) => d.timeZone === 'Europe/Madrid'), '여행지 시간대가 정해져 있다');
+});

@@ -924,7 +924,8 @@ const LEG_NOROUTE_TITLE='경로를 찾을 수 없어 직선거리로 표시 — 
 function fmtDur(sec){ const m=Math.round(sec/60); return m<60? `${m}분` : `${Math.floor(m/60)}시간${m%60? ' '+(m%60)+'분':''}`; }
 function legLabel(c){
   const km=(c.m/1000).toFixed(1),mode=c.mode||'car';
-  if(mode==='car'&&c.m<2000){const wm=Math.max(1,Math.round(c.m/75));return `↳${km}km · 🚶${wm}분`;}
+  // 자차여도 2km 미만은 걸어서 계산한다(legMinutes와 같은 규칙) — 아이콘만 바꾸면 '추천'인지 '적용'인지 모른다
+  if(mode==='car'&&c.m<2000){const wm=Math.max(1,Math.round(c.m/75));return `↳${km}km · 가까워 걸어서 ${wm}분`;}
   return `↳${km}km · ${fmtDur(c.sec)}`;
 }
 // 주소창·상태바 색(theme-color)도 지금 테마의 바탕을 따른다 — 예전 남색(#16213e)이 남아 있었다
@@ -933,6 +934,7 @@ function applyTheme(){ let theme='light'; try{ theme=localStorage.getItem(THEME_
 function toggleTheme(){ const dark=!document.body.classList.contains('theme-dark'); document.body.classList.toggle('theme-dark',dark); syncThemeColor(dark); try{localStorage.setItem(THEME_KEY,dark?'dark':'light');}catch(_){} }
 applyTheme();
 function legTitle(c){
+  if((c.mode||'car')==='car'&&c.m<2000) return '자차 하루여도 2km 미만은 걸어서 계산해요 — 차로 가려면 구간 수단을 택시로 바꾸세요';
   let t=(c.est?((c.mode==='flight'||c.mode==='train')?'직선거리 기반 추정':'자동차 경로 거리 기반 추정'):'실제 도로 기준');
   if(c.snapped)t+=' · 인근 지점에서 출발/도착 (원 지점이 도로·정류장에서 멀어 보정 — 공항 부지 중심 좌표 등)';
   if((c.mode==='car'||c.mode==='taxi')&&c.taxi)t+=` · 택시 약 ${c.taxi.toLocaleString()}원`;
@@ -1082,9 +1084,6 @@ async function pumpLegs(){
       document.querySelectorAll(`[data-leg="${key}"]`).forEach(el=>{
         el.textContent=legLabel(r);
         el.title=legTitle(r);
-      });
-      document.querySelectorAll(`[data-ileg="${key}"]`).forEach(el=>{   // 수단 아이콘은 옆의 버튼이 표시
-        el.textContent=`이전 일정에서 ${(r.m/1000).toFixed(1)}km · ${fmtDur(r.sec)}`;
       });
       clearTimeout(legRefreshT);
       legRefreshT=setTimeout(()=>bgRender(render),450);   // 하루 합계 + 지도 경로선 갱신
@@ -1898,7 +1897,8 @@ function renderSidebar(){
       // 예약 가격 추적 상태 (연결된 예약이 있을 때) — 탭하면 상세·가격 기록
       { const bk=s.bookingId? bookingOf(s.bookingId):null;
         if(bk) meta.push(`<button type="button" class="spotMetaItem pxBtn" onclick="event.stopPropagation();openBookingModal('${escAttr(bk.id)}')" title="예약 가격 추적 — 탭해서 상세와 가격 기록 보기">${bookingBadgeHtml(bk)}</button>`);
-        else if(s.stay && !readOnly()) meta.push(`<button type="button" class="spotMetaItem pxBtn pxStart" onclick="event.stopPropagation();startHotelTracking(${di},${si})" title="예약가와 기간을 넣으면 시세를 계속 확인해 더 싼 곳이 나오면 알려줘요">💰 가격 추적 시작</button>`); }
+        // 샘플의 숙소는 '예시' 위치라 시세를 찾을 대상이 없다 — 이름으로 검색하면 엉뚱한 호텔이 나온다
+        else if(s.stay && !readOnly() && !isSampleTrip(trip())) meta.push(`<button type="button" class="spotMetaItem pxBtn pxStart" onclick="event.stopPropagation();startHotelTracking(${di},${si})" title="예약가와 기간을 넣으면 시세를 계속 확인해 더 싼 곳이 나오면 알려줘요">💰 가격 추적 시작</button>`); }
       // 영업시간 경고: 그 날 요일·도착 예상시각에 문 닫혀 있으면 ⚠️
       if(s.hours && iso){
         const wd=new Date(iso+'T00:00:00').getDay();
@@ -1934,7 +1934,9 @@ function renderSidebar(){
       const splitCls=s.split? ' inSplit':'';
       // 들어오는 구간은 **카드 위**에 둔다 — 아래에 두면 '↳1.2km · 15분'이 다음 장소로 가는 구간처럼 읽혔다(2026-09-27 UX 검토).
       // ⚠️ .spot 안쪽 첫 줄이라 .spotList의 자식 수는 그대로다(드래그 인덱스가 어긋나지 않는다).
-      const inLegHtml=legHtml?`<div class="spotLeg incoming" aria-label="이전 장소에서 오는 길"><span class="legFrom">이전 장소에서</span>${legHtml}</div>`:'';
+      // 어디서 오는 길인지 — 전날에서 이어지면 그 출발점을 말한다(숙소면 숙소, 아니면 전날 마지막 장소)
+      const fromLabel=(inLeg&&inLeg.from===ctx.anchor)? (carry? '숙소에서' : '전날 마지막 장소에서') : '이전 장소에서';
+      const inLegHtml=legHtml?`<div class="spotLeg incoming" aria-label="${fromLabel} 오는 길"><span class="legFrom">${fromLabel}</span>${legHtml}</div>`:'';
       spotsHtml+=`<div class="spot${splitCls}${s.reunion?' isReunion':''}${legHtml?' hasInLeg':''}" data-di="${di}" data-si="${si}"${s.split?` data-split="${escAttr(s.split)}"`:''} style="--c:${dotC}">
         ${inLegHtml}<div class="spotMain">
           <span class="spotTime eta${tl[si].fixed?' fixed':''}" title="${escAttr(etaTip)}" aria-label="${escAttr(tl[si].fixed?`도착 ${hm(etas[si])} (정한 시각)`:`도착 예상 ${hm(etas[si])}`)}">${tl[si].fixed?ic('fixed'):''}${hm(etas[si])}</span>
@@ -1956,18 +1958,9 @@ function renderSidebar(){
         <details class="actionMenu" onclick="event.stopPropagation()"><summary aria-label="Day ${di+1} 작업 메뉴">⋮</summary><div class="actionMenuPanel"><button class="iconb" onclick="openDayModal(${di})" title="일자 편집">✎ <span>편집</span></button><button class="iconb" onclick="copyDay(${di})" title="일자 복사">⧉ <span>복사</span></button><button class="iconb danger" onclick="deleteDay(${di})" title="일자 삭제">⌫ <span>삭제</span></button></div></details></div>
         <div class="dayHeadMeta"><span class="date" onclick="event.stopPropagation();openDayModal(${di})" title="${timeZone?'클릭해서 날짜·시간대 지정/수정':'클릭해서 날짜·시간대 지정 — 시간대를 넣으면 이 날 대중교통 시간이 정확해져요'}">${dateOf(di)||'📅 날짜 지정'} · ${timeZone?`🌐 ${esc(timeZone)}`:'🌐 시간대 미설정'}</span><button class="iconb modeBtn" onclick="event.stopPropagation();cycleMode(${di})" title="이동 수단: ${MODE_NAME[dm]} — 클릭해서 변경">${MODE_ICON[dm]}</button>${dayWeatherHtml(day,di)}</div>
       </div><div class="dayBody">
-        ${day.drive?`<div class="drive">${esc(day.drive)}</div>`:''}
+        ${day.drive?`<div class="drive driveMemo" title="직접 적은 이동 메모예요 — 아래 계산과 다를 수 있어요"><span class="memoTag">이동 메모</span>${esc(day.drive)}</div>`:''}
         ${flightHtml(day)}
-        ${(()=>{   // 일자 간 자동 이동시간: 이월 시작점 → 오늘 첫 장소 (숙소 이월 시엔 🏠 항목+구간거리로 대체, none이면 미표시)
-          if(carry||!ctx.anchor) return '';
-          return ctx.legs.filter(l=>!l.returning&&l.from===ctx.anchor).map(leg=>{
-          const from=leg.from,first=leg.to,im=leg.mode,iid=leg.key,ic=routes.get(leg);
-          const ibtn=legModeBtn(day,di,leg.spotIndex,im);
-          return ic
-            ? `<div class="drive" style="color:var(--meta-soft)" title="이전 일자 기준점 · ${legTitle(ic)}">${ibtn}<span data-ileg="${iid}">이전 일정에서 ${(ic.m/1000).toFixed(1)}km · ${fmtDur(ic.sec)}</span></div>`
-            : `<div class="drive" style="color:var(--meta-soft)">${ibtn}<span data-ileg="${iid}">이전 일정에서 직선 ${haversine(from,first).toFixed(1)}km</span></div>`;
-          }).join('');
-        })()}
+        ${''/* 일자 간 이동(전날 기준점 → 첫 장소)은 첫 장소 행의 들어오는 구간이 말한다 — 머리글에 같은 숫자를 또 적지 않는다(2026-10-02) */}
         ${(()=>{const rt=dayRoute(day,ctx.backLeg); if(rt) return `<div class="dist">${ic('ruler')} 하루 동선 약 ${(rt.m/1000).toFixed(1)}km · ${MODE_ICON[dm]}${fmtDur(rt.sec)}${((dm==='car'||dm==='taxi')&&rt.taxi)?` · 🚕약 ${rt.taxi.toLocaleString()}원`:''} <span style="opacity:.55">(${dm==='flight'?'직선':'도로 기준'})</span></div>`;
           return dayDistance(day,ctx.back)>0?`<div class="dist">${ic('ruler')} 하루 동선 약 ${dayDistance(day,ctx.back).toFixed(1)}km <span style="opacity:.55">(직선)</span></div>`:'';})()}
         ${(()=>{   // 머무는 시간을 안 정한 곳은 0분으로 계산한다 — 그러면 뒤 시각이 실제보다 이르게, 그런데도 분 단위로 정밀해 보인다.
@@ -4986,12 +4979,14 @@ function renderTravel(di, clock){
   const next=d.spots[nextIdx]; nextBox.hidden=false;
   if(next){
     const inLeg=incomingBySpot.get(nextIdx),mode=legModeOf(d,next),route=inLeg?routes.get(inLeg):null;
-    const travelMin=route?route.sec/60:(inLeg?legMinutes(inLeg.from,inLeg.to,mode,inLeg.when,ctx.timeZone):0);
+    // 분은 ETA와 같은 함수로 낸다 — 자차 2km 미만은 걸어서 계산하는데 경로의 차량 시간을 그대로 쓰면 ETA와 갈렸다
+    const travelMin=inLeg?legMinutes(inLeg.from,inLeg.to,mode,inLeg.when,ctx.timeZone):0;
+    const walkShort=!!(route&&mode==='car'&&route.m<2000);
     const adv=(_adapt&&_adapt.state)? TC_ADAPT.departureAdvice(_adapt.state, _adapt.state.items[nextIdx], travelMin) : null;
     // 경로를 아직 못 받았거나(조회 중) 못 받으면(실패·미지원) 거리로 낸 추정을 그렇다고 말한다 — '계산 중'에 머물지 않는다.
     // 들어오는 구간이 없으면(출발점이 없는 첫 장소) 계산할 이동이 없다.
     const move=!inLeg? '이 날 출발점이 없어 이동을 계산하지 않아요'
-      : route? `${MODE_ICON[mode]} ${fmtDur(route.sec)} 이동`
+      : route? (walkShort? `🚶 가까워 걸어서 ${Math.max(1,Math.round(travelMin))}분` : `${MODE_ICON[mode]} ${fmtDur(travelMin*60)} 이동`)
       : `${MODE_ICON[mode]} 약 ${Math.max(1,Math.round(travelMin))}분 이동(거리로 추정)`;
     nextBox.innerHTML=`<div><div class="travelKicker">다음 장소</div><strong>${esc(next.name)}</strong><div class="travelFacts">${move} · ${next.at?`${next.at} 도착(내가 정한 시각)`:`${hm(etas[nextIdx])} 도착 예상`}</div>${adv?`<div class="travelDepart ${adv.level.toLowerCase()}">${esc(adv.text)}</div>`:''}</div><span aria-hidden="true">→</span>`;
   }else if(ctx.backLeg){
@@ -6645,7 +6640,9 @@ function updateSaveState(){
   let state='local', message='이 기기에 저장됨', callback=null, actionText='다시 시도';
   if(readOnly()){ state='readonly'; message='읽기 전용으로 보는 중'; }
   else if(lsDirty){ state='error'; message='기기 저장 실패 · 화면을 닫기 전에 다시 저장해 주세요'; callback=()=>save(); }
-  else if(cloudReady() && !(isSampleTrip(t) && !entry?.revision)){
+  // 샘플은 어느 계정에도 올라가지 않는다(isSampleTrip으로 동기화에서 빠진다) — '저장됨'만 말하면 내 여행처럼 읽힌다
+  else if(isSampleTrip(t) && !entry?.revision){ state='sample'; message='샘플 여행 · 이 기기에만 저장돼요'; }
+  else if(cloudReady()){
     if(entry?.status==='conflict'){
       state='conflict'; message='다른 기기와 변경이 겹쳤어요 · 내 입력은 기기에 남아 있어요';
       actionText='변경 확인'; callback=()=>{ if(currentSyncConflict) document.getElementById('syncConflictBg').classList.add('show'); else if(syncConflicts.length) showNextSyncConflict(); else syncOnLogin(); };
@@ -6660,7 +6657,9 @@ function updateSaveState(){
     }else{ state='pending'; message='기기에 저장됨 · 서버 저장 대기'; }
   }
   if(label.textContent!==message) label.textContent=message;
-  document.getElementById('saveStateBar').dataset.state=state;
+  const bar=document.getElementById('saveStateBar'); bar.dataset.state=state;
+  // 샘플은 바로 아래 샘플 띠가 저장 정책까지 말한다 — 같은 말을 두 줄로 하지 않는다(문구는 보조기술용으로 남긴다)
+  bar.classList.toggle('srOnlyBar', state==='sample');
   action.hidden=!callback; action.textContent=actionText; action.onclick=callback;
 }
 
