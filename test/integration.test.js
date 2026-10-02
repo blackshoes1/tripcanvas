@@ -2839,6 +2839,45 @@ test('통합: 서버가 거절한 진짜 충돌은 그대로 물어본다', { sk
   w.close();
 });
 
+// 데이터는 전부 TC_API(NAS)를 지난다. 그런데 동기화가 Supabase SDK(sb)가 있는지로 막혀 있어서, CDN이 막히면
+// 자체 Auth 로그인은 되는데 업로드·당겨오기·초대 미리보기가 조용히 멈추고 '같이 짜기'가 다시 로그인을 요구했다.
+test('통합: Supabase SDK가 없어도 로그인했으면 업로드·당겨오기·같이 짜기·초대 미리보기·실시간 반영이 돈다', { skip: noJsdom }, async () => {
+  const w = boot();
+  assert.equal(w.eval('sb'), null, '부팅에 Supabase SDK가 없다(CDN 차단과 같은 상태)');
+  withTrip(w, `[{title:'',drive:'',note:'',spots:[]}]`);
+  w.REMOTE = { id: '__it__', name: 'T (영희 편집)', start: '2026-08-01', days: [{ title: '', drive: '', note: '', spots: [] }] };
+  w.eval(`user={id:'u1',email:'me@example.com'}; tripRoles={__it__:{role:'EDITOR',count:2,owner:false}};
+    window.saves=[]; window.rpcs=[];
+    TC_API.sync.save=async(id,t,rev)=>{ window.saves.push(rev); return {applied:true,conflict:false,revision:4,data:null,deleted_at:null}; };
+    TC_API.sync.get=async(id)=>({data:{client_id:id,data:window.REMOTE,revision:5,deleted_at:null,updated_at:''},error:null});
+    TC_API.rpc=async(name,args)=>{ window.rpcs.push(name); return {data:name==='invite_preview'
+      ? {valid:true,reason:'OK',trip_name:'스페인 여행',start_date:'2026-10-25',day_count:14,role:'EDITOR',already_member:false} : [],error:null}; };
+    cloudSnapshot=()=>{};`);
+  // 업로드
+  await w.eval(`syncTripCloud(trip())`);
+  assert.equal(w.saves.length, 1, '여행을 올린다');
+  assert.equal(w.eval(`syncMeta.__it__.status`), 'clean');
+  w.eval('updateSaveState()');
+  assert.equal(w.document.getElementById('saveState').textContent, '동기화 완료', '저장 상태도 서버 기준으로 말한다');
+  // 당겨오기
+  assert.equal(await w.eval(`pullTrip('__it__',{force:true})`), true);
+  assert.equal(w.eval(`trip().name`), 'T (영희 편집)');
+  // 같이 짜기는 로그인을 다시 묻지 않는다
+  w.eval(`openMembers()`);
+  assert.equal(w.document.getElementById('authModalBg').classList.contains('show'), false, '다시 로그인을 요구하지 않는다');
+  assert.equal(w.document.getElementById('membersModalBg').classList.contains('show'), true);
+  // 초대 미리보기
+  await w.eval(`startJoin(${JSON.stringify('J'.repeat(32))})`);
+  assert.ok(w.rpcs.includes('invite_preview'));
+  assert.equal(w.document.getElementById('joinTripName').textContent, '스페인 여행');
+  // 실시간 이벤트도 버리지 않는다
+  w.eval(`pushLocalFirst=async()=>{}; pullTrip=async(id,opts)=>{ window.__pull=(window.__pull||[]); window.__pull.push(id); return true; };
+    onLiveEvent('__it__',{kind:'SCHEDULE_CHANGED',actor_id:'u2'});`);
+  await new Promise(r => setTimeout(r, 480));
+  assert.deepEqual(Array.from(w.eval('window.__pull||[]')), ['__it__']);
+  w.close();
+});
+
 // render()가 Sortable 인스턴스를 재생성하므로, 끌고 있는 도중에 다시 그리면 목록이 손가락 아래에서 갈린다
 // 실시간이 붙으면 일행이 저장할 때마다 이벤트가 온다. 저장마다 토스트를 띄우면
 // "다른 멤버의 변경을 불러왔어요"가 익명으로 반복돼 잔소리가 된다(§51의 정신).
