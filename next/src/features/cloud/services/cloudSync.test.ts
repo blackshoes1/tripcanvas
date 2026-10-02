@@ -83,6 +83,51 @@ it('VIEWER writes and deletes stop as forbidden instead of entering a retry loop
   expect(syncEntry('trip1').status).toBe('forbidden');
   expect((await service.get(owner, 'trip1')).record.data).toMatchObject({ name: '여행' });
 });
+it('a shared trip uploaded without a revision is a conflict, not a shadow copy, and keeping this device overwrites the shared trip', async () => {
+  const editor: RequestContext = { ...owner, userId: 'editor' };
+  const shared = await service.create(owner, doc('주최자'));
+  await members.add({ tripId: shared.record.id, userId: editor.userId, role: 'EDITOR', displayName: null, invitedBy: owner.userId });
+  actor = editor;
+  localTrips = [doc('편집자 로컬')];
+  await syncTripCloud(localTrips[0], hooks);
+  expect(syncEntry('trip1')).toMatchObject({ revision: null, status: 'conflict' });
+  expect(hooks.onConflict).toHaveBeenCalledWith(expect.objectContaining({ kind: 'changed-both', remote: expect.objectContaining({ name: '주최자' }), revision: 1 }));
+  // 충돌 카드에서 '이 기기 버전' — 예전 sync_trip(p_force)처럼 공유 원본을 덮는다(사본을 만들지 않는다)
+  await syncTripCloud(localTrips[0], hooks, { force: true });
+  expect(syncEntry('trip1')).toMatchObject({ revision: 2, status: 'clean' });
+  expect((await service.get(owner, 'trip1')).record.data).toMatchObject({ name: '편집자 로컬' });
+  expect((await service.listForSync(editor)).map(v => v.record.id)).toEqual([shared.record.id]);
+});
+
+it('an editor keeping this device cannot revive a trip the owner deleted — it stays a remote-deleted conflict', async () => {
+  const editor: RequestContext = { ...owner, userId: 'editor' };
+  const shared = await service.create(owner, doc('주최자'));
+  await members.add({ tripId: shared.record.id, userId: editor.userId, role: 'EDITOR', displayName: null, invitedBy: owner.userId });
+  await service.delete(owner, 'trip1', 1);
+  actor = editor;
+  Object.assign(syncEntry('trip1'), { revision: 1, status: 'conflict' });
+  await syncTripCloud(doc('편집자 로컬'), hooks, { force: true });
+  expect(syncEntry('trip1').status).toBe('conflict');
+  expect(hooks.onConflict).toHaveBeenCalledWith(expect.objectContaining({ kind: 'remote-deleted' }));
+  expect((await service.listForSync(owner))[0].record.deletedAt).not.toBeNull();
+});
+
+it('a save whose response was lost is retried without a conflict when the server already has that document', async () => {
+  await syncTripCloud(doc(), hooks);
+  localTrips = [doc('응답 유실')];
+  const save = api.sync.save;
+  vi.spyOn(api.sync, 'save').mockImplementationOnce(async (...args) => {
+    await save(...args);                                 // 서버에는 저장됐는데
+    throw Object.assign(new Error('network'), { status: 0 });   // 응답이 오지 않았다
+  });
+  await syncTripCloud(localTrips[0], hooks);
+  expect(syncEntry('trip1')).toMatchObject({ revision: 1, status: 'error' });
+  await retryPendingSync(hooks);
+  expect(hooks.onConflict).not.toHaveBeenCalled();
+  expect(syncEntry('trip1')).toMatchObject({ revision: 2, status: 'clean' });
+  expect((await service.get(owner, 'trip1')).record.revision).toBe(2);
+});
+
 it('login uses the sync endpoint including tombstones', async () => {
   const trip = await service.create(owner, doc());
   await service.delete(owner, 'trip1', trip.record.revision);

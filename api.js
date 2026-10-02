@@ -250,22 +250,28 @@
         revision: Number(payload && payload.trip && payload.trip.revision) || 1,
         data: (payload && payload.document) || null, deleted_at: null
       });
-      const create = async () => {
-        const r = await request('POST', '/api/v1/trips', { trip: doc });
+      const settle = (/** @type {any} */ r, /** @type {number|null} */ revision) => {
         if (!r.error) return applied(r.data);
-        const conflict = conflictRow(r.error, expectedRevision);
+        const conflict = conflictRow(r.error, revision);
         if (conflict) return conflict;
         throw raise(r.error);
       };
+      const put = (/** @type {number} */ revision) =>
+        request('PUT', '/api/v1/trips/' + seg(tripId), { trip: doc, expectedRevision: revision, force: !!force });
+      const create = async () => {
+        const r = await request('POST', '/api/v1/trips', { trip: doc });
+        // '이 기기 버전'(force)을 골랐는데 서버에 이미 있다 — 예전 sync_trip(p_force)처럼 그것을 덮는다.
+        // 처음 올리는 여행이라도 공유받은 여행이면 서버는 사본을 만들지 않고 CONFLICT를 준다(지워졌으면 되살릴지는 서버가 정한다)
+        const existing = force && r.error && r.error.apiCode === 'CONFLICT' ? conflictRow(r.error, null) : null;
+        if (existing) return settle(await put(existing.revision), existing.revision);
+        return settle(r, expectedRevision);
+      };
       if (expectedRevision == null) return create();
 
-      const r = await request('PUT', '/api/v1/trips/' + seg(tripId), { trip: doc, expectedRevision: expectedRevision, force: !!force });
-      if (!r.error) return applied(r.data);
+      const r = await put(expectedRevision);
       // 로컬에 revision이 남아 있어도 서버에 그 여행이 없을 수 있다(다른 계정·이관 직후) — 예전 RPC처럼 새로 만든다
-      if (r.error.apiCode === 'NOT_FOUND') return create();
-      const conflict = conflictRow(r.error, expectedRevision);
-      if (conflict) return conflict;
-      throw raise(r.error);
+      if (r.error && r.error.apiCode === 'NOT_FOUND') return create();
+      return settle(r, expectedRevision);
     },
 
     /**
