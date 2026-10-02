@@ -509,12 +509,29 @@ test('연박(nights) — 한 번 등록한 숙소가 묵는 동안 계속 출발
   // 연박 중 새 숙소를 등록하면 그때부터 새 숙소가 기준 (가까운 날 우선)
   const moved=[checkIn, sight('D1'), {spots:[{lat:7,lng:7,stay:true,name:'새숙소'}]}, sight('D3')];
   assert.equal(L.dayStartAnchor(moved,3).name, '새숙소');
-  // stayNights: 미지정·비정상 → 1, 상한 60
+  // stayNights: 미지정·비정상 → 1, 상한은 여행 기간 상한(TC_LIMITS.days)
   assert.equal(L.stayNights({}), 1);
   assert.equal(L.stayNights({nights:'x'}), 1);
   assert.equal(L.stayNights({nights:0}), 1);
   assert.equal(L.stayNights({nights:4}), 4);
-  assert.equal(L.stayNights({nights:999}), 60);
+  assert.equal(L.stayNights({nights:999}), L.TC_LIMITS.days);
+});
+
+// 2026-10-02: 연박 상한이 60이라 90일 여행의 75박 숙소가 저장할 때마다 60박으로 잘렸다.
+// 여행이 90일까지 되면 한 숙소에 그만큼 묵을 수 있다 — 상한은 여행 기간 상한 하나다.
+test('연박 상한은 여행 기간 상한과 같다 — 긴 여행의 숙소를 저장에서 자르지 않는다', () => {
+  const max=L.TC_LIMITS.days;
+  assert.equal(L.stayNights({nights:75}), 75);
+  assert.equal(L.stayNights({nights:max}), max);
+  assert.equal(L.stayNights({nights:max+1}), max);
+  const trip=(nights)=>L.normalizeTrip({name:'장기', days:[{spots:[{name:'숙소',lat:1,lng:1,stay:true,nights}]}]});
+  assert.equal(trip(75).days[0].spots[0].nights, 75, '저장해도 75박 그대로다');
+  assert.equal(trip(max+10).days[0].spots[0].nights, max);
+  // 75박이면 76일째 아침까지 숙소에서 출발한다(체크아웃 다음 날부터는 아니다)
+  const stay={spots:[{lat:2,lng:2,stay:true,nights:75,name:'장기숙소'}]};
+  const days=[stay].concat(Array.from({length:77},(_,i)=>({spots:[{lat:3,lng:3,name:'D'+(i+1)}]})));
+  assert.equal(L.dayStartAnchor(days,75).name, '장기숙소');
+  assert.notEqual(L.dayStartAnchor(days,76).name, '장기숙소');
 });
 
 test('비숙소 전날 마지막 장소도 다음날 ETA에 반영 (anchor 배선 회귀 방지)', () => {

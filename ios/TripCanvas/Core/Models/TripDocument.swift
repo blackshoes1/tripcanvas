@@ -190,10 +190,10 @@ struct TripSpot: Hashable, Sendable {
         set { raw["kakaoId"] = newValue.map(JSONValue.string) }
     }
 
-    /// 숙소 연박 수.
+    /// 숙소 연박 수. 상한은 여행 기간 상한과 같다(웹 `stayNights` = `TC_LIMITS.days`) — 60이면 긴 여행의 숙소가 잘린다.
     var nights: Int? {
         get { raw["nights"]?.intValue }
-        set { raw.setOrRemove("nights", newValue.map { .number(min(60, max(1, $0))) }) }
+        set { raw.setOrRemove("nights", newValue.map { .number(min(TripLimits.maxDays, max(1, $0))) }) }
     }
 
     /// 실행 상태. 기본(PLANNED)은 저장하지 않는다.

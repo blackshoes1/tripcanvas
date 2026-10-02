@@ -559,9 +559,10 @@
     return before.some((s,i)=>s!==day.spots[i]);
   }
 
-  /** 숙소 연박 수 (미지정=1박, 상한 60). Day D 체크인 + N박이면 D+1..D+N 아침의 출발점이 그 숙소.
+  /** 숙소 연박 수 (미지정=1박, 상한은 여행 기간 상한 `TC_LIMITS.days`). Day D 체크인 + N박이면 D+1..D+N 아침의 출발점이 그 숙소.
+   * ⚠️ 상한을 따로 두지 않는다 — 60이었을 때 90일 여행의 75박 숙소가 저장할 때마다 60박으로 잘렸다(2026-10-02).
    * @param {any} s @returns {number} */
-  function stayNights(s){ const n=Math.round(+((s&&s.nights)||1)); return (isFinite(n)&&n>=1)? Math.min(n,60) : 1; }
+  function stayNights(s){ const n=Math.round(+((s&&s.nights)||1)); return (isFinite(n)&&n>=1)? Math.min(n,TC_LIMITS.days) : 1; }
   /**
    * 날짜별 숙박 표시. 동선의 출발 앵커와 달리 체크아웃 뒤에는 숙박을 이월하지 않는다.
    * 예약 연결은 bookingId만 믿는다. 같은 이름의 다른 예약·일행의 숙소를 합치지 않는다.
@@ -1337,7 +1338,7 @@
     if(_hm(s.at)===undefined) delete s.at;
     if(_hm(s.bookAt)===undefined) delete s.bookAt;
     if(s.admission!=null){ const admission=normalizeAdmission(s.admission); if(admission) s.admission=admission; else delete s.admission; }
-    if(s.nights!=null){ if(_fin(s.nights)) s.nights=Math.min(60,Math.max(1,Math.round(+s.nights))); else delete s.nights; }   // 숙소 연박 수
+    if(s.nights!=null){ if(_fin(s.nights)) s.nights=Math.min(TC_LIMITS.days,Math.max(1,Math.round(+s.nights))); else delete s.nights; }   // 숙소 연박 수
     if(s.stayMin!=null){ if(_fin(s.stayMin)) s.stayMin=Math.max(0,Math.round(+s.stayMin)); else delete s.stayMin; }
     normalizeCostFields(s,'cost');
     if(s.cur!=null && _CURS.indexOf(s.cur)<0) delete s.cur;                 // 알 수 없는 통화 → 기본(KRW 취급)

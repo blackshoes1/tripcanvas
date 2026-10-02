@@ -4026,6 +4026,14 @@ test('통합: 여행 기간 입력 칸의 max가 저장 한도와 같다', { ski
   assert.equal(w.document.getElementById('tripDays').getAttribute('max'), String(max));
 });
 
+// 연박 상한도 같은 숫자다(lib `stayNights`). 칸이 60에서 막히면 90일 여행의 75박 숙소를 입력할 수 없다.
+test('통합: 연박 입력 칸의 max가 여행 기간 상한과 같고, 그만큼 저장된다', { skip: noJsdom }, () => {
+  const w = boot();
+  const max = w.eval('TC_LIMITS.days');
+  assert.equal(w.document.getElementById('spotNights').getAttribute('max'), String(max));
+  assert.equal(w.eval(`stayNights({nights:${max - 15}})`), max - 15);
+});
+
 // ── 실행취소는 내가 한 것만 되돌린다 (M6) ────────────────────────────────
 // 일행의 변경이 도착하면(pullTrip·충돌 카드·로그인 병합) 그 이전 스냅샷은 위험해진다.
 // 한 번의 ↩️로 남의 변경이 통째로 사라지고, 그 상태가 **새 revision 위에** 올라가
