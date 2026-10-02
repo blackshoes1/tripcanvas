@@ -1462,8 +1462,30 @@ test('통합: 하루의 끝을 숙소 복귀로 닫고, 이미 닫힌 날엔 덧
 
   // 하루 종료시각은 복귀 이동시간까지 포함한다
   const [withBack, withoutBack] = w.eval(`(()=>{const d=trip().days[0], a=startAnchorFor(0);
-    return [dayEndMin(d,a,backLegOf(d,0,dayReturnStay(trip().days,0))), dayEndMin(d,a)];})()`);
+    return [dayEndMin(d,a,backLegOf(d,0,dayReturnStay(trip().days,0,trip().bookings))), dayEndMin(d,a)];})()`);
   assert.ok(withBack>withoutBack, '복귀 이동시간만큼 종료가 늦어진다');
+  w.close();
+});
+
+// 호텔 예약에 연결된 숙소는 장소에 nights를 안 적어도 예약 기간만큼 묵는다(예약 연결은 bookingId만 쓴다).
+// 웹의 복귀 경로(사이드바·택시비·지도·이미지)가 예약을 넘겨야 숙박 표시(dayLodgings)와 같은 밤을 센다
+test('통합: 호텔 예약에 연결된 숙소는 예약 기간 동안 하루 끝에 돌아간다', { skip: noJsdom }, () => {
+  const w=boot();
+  withTrip(w, `[
+    {title:'D1',drive:'',note:'',spots:[
+      {name:'공항',city:'M',desc:'',lat:40.49,lng:-3.56},
+      {name:'호텔',city:'M',desc:'',lat:40.40,lng:-3.69,stay:true,bookingId:'bk1'}
+    ]},
+    {title:'D2',drive:'',note:'',spots:[{name:'박물관',city:'M',desc:'',lat:40.42,lng:-3.71}]},
+    {title:'D3',drive:'',note:'',spots:[{name:'시장',city:'M',desc:'',lat:40.43,lng:-3.72}]},
+    {title:'D4',drive:'',note:'',spots:[{name:'공항',city:'M',desc:'',lat:40.49,lng:-3.56}]}
+  ]`);
+  w.eval(`trip().bookings=[{id:'bk1',type:'hotel',title:'호텔',start:'2026-08-01',end:'2026-08-03'}]; activeDay=0; render()`);
+  const cards=[...w.document.querySelectorAll('.dayCard')];
+  const back=i=>{ const el=cards[i].querySelector('.spot.back .spotName'); return el?el.textContent:null; };
+  assert.equal(back(1),'호텔','2박 예약의 둘째 밤 — 장소에 nights가 없어도 돌아간다');
+  assert.equal(back(2),null,'체크아웃한 날은 돌아가지 않는다');
+  assert.equal(w.eval('dayContext(1).back&&dayContext(1).back.name'),'호텔');
   w.close();
 });
 
@@ -1472,7 +1494,7 @@ function seedLegs(w, di){
   w.eval(`(()=>{
     const d=trip().days[${di}], loc=d.spots.filter(hasLoc);
     for(let i=1;i<loc.length;i++) legCache[legKey(loc[i-1],loc[i],legModeOf(d,loc[i]))]={sec:600,m:4000,est:true};
-    const b=backLegOf(d,${di},dayReturnStay(trip().days,${di}));
+    const b=backLegOf(d,${di},dayReturnStay(trip().days,${di},trip().bookings));
     if(b) legCache[b.key]={sec:300,m:1500,est:true};
   })()`);
 }
@@ -1485,7 +1507,7 @@ test('통합: 비행기 일자의 숙소 복귀는 ✈️가 아니라 근거리
     {name:'식당',city:'M',desc:'',lat:40.41,lng:-3.70}
   ]},{title:'다음날',drive:'',note:'',spots:[]}]`);   // 마지막 날에는 복귀가 없다
   seedLegs(w,0); w.eval('render()');
-  assert.equal(w.eval(`backLegOf(trip().days[0],0,dayReturnStay(trip().days,0)).mode`),'car');
+  assert.equal(w.eval(`backLegOf(trip().days[0],0,dayReturnStay(trip().days,0,trip().bookings)).mode`),'car');
   const meta=w.document.querySelector('.dayCard .spot.back .spotMeta').textContent;
   assert.doesNotMatch(meta,/✈️/,'복귀에 비행기 아이콘이 붙지 않는다');
   assert.match(meta,/🚗/);

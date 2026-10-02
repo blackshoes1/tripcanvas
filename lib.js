@@ -649,24 +649,57 @@
   }
 
   /**
+   * 숙소의 박 수 — 숙박 표시(`dayLodgings`)와 같은 출처다. 장소에 `nights`를 적었으면 그 값(`stayNights`),
+   * 안 적었고 호텔 예약에 연결돼 있으면(`bookingId`) **그 예약 기간**(체크아웃 − 체크인), 둘 다 아니면 기본 1박.
+   * 예약을 연결해도 웹(`bkSave`)·iOS 모두 `bookingId`만 쓰고 `nights`는 채우지 않는다 — 미입력 기본 1박으로
+   * 예약 기간을 덮으면 3박 예약의 둘째 밤이 '체크아웃한 날'이 된다(`dayLodgings`의 같은 규칙).
+   * @param {any} s @param {any[]} [bookings] @returns {number}
+   */
+  function lodgingNights(s, bookings){
+    if(s && s.nights==null && s.bookingId && Array.isArray(bookings)){
+      const b=bookings.find((/**@type{any}*/x)=>x&&x.type==='hotel'&&x.id===s.bookingId);
+      const dateNum=(/**@type{any}*/v)=>{ const n=_dayNum(v); return n!==null&&new Date(n*86400000).toISOString().slice(0,10)===v?n:null; };
+      const start=b?dateNum(b.start):null, end=b?dateNum(b.end):null;
+      if(start!==null&&end!==null&&end>start) return end-start;
+    }
+    return stayNights(s);
+  }
+
+  /**
    * 그 날 마지막에 '돌아갈 숙소' — 동선을 닫기 위한 표시·계산용이며 데이터에는 쓰지 않는다.
-   * 그날 등록한 숙소 → 없으면 연박으로 그날도 묵고 있는 숙소. 이미 그 숙소로 끝나면(=동선이 닫혀 있으면) null.
+   * 그날 등록한 숙소 → 없으면 **그날 밤도** 묵는 숙소. 이미 그 숙소로 끝나면(=동선이 닫혀 있으면) null.
    * 숙소를 못 찾으면 null — 출국일·야간열차처럼 돌아갈 곳이 없는 날엔 아무것도 덧붙이지 않는다.
+   *
+   * ⚠️ **숙박 수를 엄격하게 본다.** 앞선 날 k의 숙소는 `k + 박 수 > di`일 때만 돌아간다. 체크아웃한 날
+   * (`k + 박 수 === di`)은 아침 출발점(`dayStartAnchor`, `>=`)은 그 숙소지만 밤에는 돌아가지 않는다 —
+   * 출발점의 범위를 그대로 쓰면 떠난 숙소로 돌아가는 이동이 그날 거리·시간·택시비에 얹혔다.
+   * 박 수는 `lodgingNights`(장소의 `nights` → 연결된 호텔 예약 기간 → 기본 1박)라 `bookings`를 넘겨야
+   * 숙박 표시(`dayLodgings`)와 같은 밤을 센다. 안 넘기면 장소의 `nights`만 본다.
+   * 찾는 길은 출발점의 1단계와 같다 — 가까운 날부터 거슬러 각 날의 마지막 숙소를 보되 `>`로. 가까운 숙소가
+   * 끝났으면 더 앞의 숙소가 그 밤을 덮는지 본다(하룻밤 다른 곳에 묵고 돌아오는 베이스 숙소 — 숙박 표시는 그날을
+   * STAY로, 다음 날 출발점은 그 숙소로 본다). 이월하지 않는 날(`startPolicy:'none'`)은 찾지 않는다.
    *
    * ⚠️ **일정의 마지막 날에는 붙이지 않는다.** 그날은 돌아가는 날이 아니라 떠나는 날이라,
    * 체크아웃하고 공항으로 간 뒤에 '🏠 호텔 복귀'가 따라붙으면 있지도 않은 이동이 생긴다
    * (그 구간의 거리·시간·택시비까지 하루 합계에 얹힌다). 정말 숙소로 끝나는 날이면
    * 마지막 장소가 이미 그 숙소라 어차피 아래에서 null이다.
-   * @param {any[]} days @param {number} di @returns {any|null}
+   * @param {any[]} days @param {number} di @param {any[]} [bookings] 여행의 예약(`trip.bookings`) — 박 수를 정한다
+   * @returns {any|null}
    */
-  function dayReturnStay(days, di){
+  function dayReturnStay(days, di, bookings){
     const day = days && days[di]; if(!day) return null;
     if(di >= days.length - 1) return null;   // 마지막 날 — 돌아갈 곳이 아니라 떠나는 날이다
     const loc = ((day.spots)||[]).filter(hasCoord);
     if(!loc.length) return null;
     const own = loc.filter((/**@type{any}*/s)=>s.stay).pop();
-    const carried = dayStartAnchor(days, di);
-    const stay = own || ((carried && carried.stay) ? carried : null);
+    let tonight = null;   // 앞선 날의 숙소가 그날 밤까지 이어질 때만 — 체크아웃한 날은 아니다
+    if(!own && day.startPolicy!=='none'){
+      for(let k=di-1;k>=0;k--){
+        const L=((days[k]&&days[k].spots)||[]).filter(hasCoord).filter((/**@type{any}*/s)=>s.stay).pop();
+        if(L && k + lodgingNights(L, bookings) > di){ tonight = L; break; }
+      }
+    }
+    const stay = own || tonight;
     if(!stay) return null;
     if(loc[loc.length-1] === stay && !stay.split) return null;   // 분리 가지 하나만 숙소에 있어도 나머지는 돌아와야 한다
     return stay;

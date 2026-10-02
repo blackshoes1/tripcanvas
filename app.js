@@ -1085,7 +1085,7 @@ function dayTimeZone(day){ return (day&&day.timeZone)||trip().timeZone||''; }
 function dayJourney(day, startAnchor, di, endAnchor){
   const index=di!=null?di:trip().days.indexOf(day), iso=index>=0?isoDateOf(index):'', timeZone=dayTimeZone(day);
   if(startAnchor===undefined&&index>=0) startAnchor=startAnchorFor(index);
-  if(endAnchor===undefined&&index>=0) endAnchor=dayReturnStay(trip().days,index);
+  if(endAnchor===undefined&&index>=0) endAnchor=dayReturnStay(trip().days,index,trip().bookings);
   return computeDayJourney(day,{legMin:(a,b,context)=>{
     const mode=context.returning?returnModeOf(day):legModeOf(day,b), when=mode==='transit'?planDepartISO(iso,context.depart,timeZone):null;
     return legMinutes(a,b,mode,when,timeZone);
@@ -1172,7 +1172,7 @@ function dayBookingCost(iso){
 function dayTaxiCost(day,di){
   if(hasManualTransportCost(day)) return 0;
   const m=dayModeOf(day);
-  return (m==='car'||m==='taxi')? ((dayRoute(day,backLegOf(day,di,dayReturnStay(trip().days,di)))||{}).taxi||0) : 0;
+  return (m==='car'||m==='taxi')? ((dayRoute(day,backLegOf(day,di,dayReturnStay(trip().days,di,trip().bookings)))||{}).taxi||0) : 0;
 }
 // 여행 전체 비용 — 장소 + 자차일 택시 + 예약 '전액'.
 // 하루 비용은 예약을 날수로 나눈 몫이라, 예약 기간이 여행 일정 밖으로 나가면 하루 합계보다 전체가 크다(전체가 실제 총액).
@@ -1414,7 +1414,7 @@ function carryStayFor(di){ return carryOf(startAnchorFor(di)); }
 // ETA·종료·이미지·여행모드 타임라인은 anchor(전날 숙소 또는 마지막 장소, 정책 반영)를 쓰고,
 // 화면의 🏠 '전날 숙소' 항목 표시에만 carry(숙소일 때만)를 쓴다.
 function dayContext(di){
-  const day=trip().days[di], anchor=startAnchorFor(di), back=dayReturnStay(trip().days,di);
+  const day=trip().days[di], anchor=startAnchorFor(di), back=dayReturnStay(trip().days,di,trip().bookings);
   const journey=dayJourney(day,anchor,di);
   const legs=journey.legs.map(l=>journeyLegRoute(day,di,l)), backLegs=legs.filter(l=>l.returning);
   return { day, anchor, carry:carryOf(anchor), back, backLeg:backLegs.at(-1)||null, backLegs,
@@ -3913,7 +3913,7 @@ function buildTripCard(){
       html+=`<div style="font-size:12px;margin-top:5px"><span style="color:#e0a050;font-weight:700;font-size:10.5px">${hm(etas[si])}</span> ${si+1}. ${catPrefix(s)}${esc(s.name)}${s.opt?' <span style="color:#b5ab98;font-size:10.5px">(선택)</span>':''}</div>`;
     });
     html+=carEv.filter(e=>e.kind==='return').map(carLine).join('');
-    const back=dayReturnStay(t.days,di);   // 하루의 끝 — 숙소 복귀 (화면과 같은 기준)
+    const back=dayReturnStay(t.days,di,t.bookings);   // 하루의 끝 — 숙소 복귀 (화면과 같은 기준)
     if(back) html+=`<div style="font-size:12px;margin-top:5px;color:#b5ab98">🏠 ${esc(back.name)} <span style="font-size:10.5px">(숙소 복귀)</span></div>`;
     if(day.note) html+=`<div style="font-size:10.5px;color:#b5ab98;margin-top:6px;white-space:pre-wrap">📝 ${esc(day.note)}</div>`;
     html+='</div>';

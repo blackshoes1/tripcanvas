@@ -790,6 +790,74 @@ test('dayReturnStay — 일정의 마지막 날에는 숙소 복귀를 붙이지
   assert.equal(L.dayReturnStay(oneDay,0), null);
 });
 
+// 체크아웃한 날에는 그 숙소로 돌아가지 않는다. 예전에는 출발 기준점(dayStartAnchor)의 '>=' 범위를
+// 그대로 써서, 1박 숙소를 떠난 다음 날 저녁에도 '🏠 호텔 복귀'가 붙어 거리·시간·택시비에 얹혔다.
+test('dayReturnStay — 숙박 수를 엄격하게 본다: 그날 밤도 그 숙소에서 묵을 때만 돌아간다', () => {
+  const P = (lat) => ({lat, lng:1});
+  const spot = (name, lat) => ({title:'', spots:[Object.assign({name},P(lat))]});
+  const hotel = (extra) => Object.assign({name:'호텔',stay:true},extra,P(2));
+  const tail = spot('다음날', 7);   // 마지막 날에는 복귀가 없다 — 보려는 날 뒤에 하루를 둔다
+
+  // 1박 숙소의 다음 날(체크아웃한 날): 아침은 그 숙소에서 나가지만 밤에는 돌아가지 않는다
+  const checkout = [{title:'',spots:[hotel({nights:1})]}, spot('박물관',5), tail];
+  assert.equal(L.dayStartAnchor(checkout,1).name, '호텔', '출발 기준점은 그대로 — 체크아웃한 날 아침은 숙소에서 나간다');
+  assert.equal(L.dayReturnStay(checkout,1), null, '체크아웃한 날 저녁에는 숙소 복귀가 없다');
+  assert.equal(L.dayLodgings({days:checkout},1)[0].state, 'CHECK_OUT', '숙박 표시와 같은 판단이다');
+
+  // nights를 안 정하면 1박이다(stayNights 기본값) — 기본값에도 같은 규칙을 쓴다
+  const unset = [{title:'',spots:[hotel({})]}, spot('박물관',5), tail];
+  assert.equal(L.dayReturnStay(unset,1), null, 'nights 미지정 = 1박 → 다음 날은 체크아웃한 날');
+
+  // 연박 중간 날은 돌아가고, 체크아웃한 날(체크인 + nights)은 돌아가지 않는다
+  const three = [{title:'',spots:[hotel({nights:3})]}, spot('D1',5), spot('D2',6), spot('D3',8), tail];
+  assert.equal(L.dayReturnStay(three,1).name, '호텔', '연박 둘째 밤');
+  assert.equal(L.dayReturnStay(three,2).name, '호텔', '연박 셋째 밤');
+  assert.equal(L.dayReturnStay(three,3), null, '체크인 + 3박 = 체크아웃한 날');
+
+  // 체크인 당일은 그날 등록한 숙소로 돌아간다(1박이어도)
+  const checkIn = [{title:'',spots:[spot('공항',1).spots[0], hotel({nights:1}), spot('야시장',4).spots[0]]}, tail];
+  assert.equal(L.dayReturnStay(checkIn,0).name, '호텔');
+
+  // 빈 날을 건너 이월된 숙소도 같다 — 숙박이 끝났으면 돌아가지 않고, 남았으면 돌아간다
+  const gapOut = [{title:'',spots:[hotel({nights:1})]}, {title:'',spots:[]}, spot('박물관',5), tail];
+  assert.equal(L.dayReturnStay(gapOut,2), null);
+  const gapIn = [{title:'',spots:[hotel({nights:3})]}, {title:'',spots:[]}, spot('박물관',5), tail];
+  assert.equal(L.dayReturnStay(gapIn,2).name, '호텔');
+
+  // 베이스 숙소를 두고 하룻밤 다른 곳에 묵었다 오는 여행 — 가까운 숙소가 끝났으면 더 앞의 숙소가 그 밤을 덮는지 본다.
+  // 숙박 표시는 그날을 STAY로, 다음 날 출발점은 그 숙소로 본다 — 복귀만 빠지면 그날 저녁 이동이 사라진다
+  const side = [{title:'',spots:[hotel({nights:4})]}, {title:'',spots:[spot('근교',3).spots[0], Object.assign({name:'새 숙소',stay:true},P(9))]},
+    spot('박물관',5), spot('시장',6), spot('공항',8), tail];
+  assert.equal(L.dayStartAnchor(side,2).name, '새 숙소', '아침은 하룻밤 묵은 숙소에서 나간다');
+  assert.equal(L.dayReturnStay(side,2).name, '호텔', '밤에는 아직 묵는 베이스 숙소로 돌아간다');
+  assert.deepEqual(L.dayLodgings({days:side},2).map(x=>[x.name,x.state]), [['새 숙소','CHECK_OUT'],['호텔','STAY']]);
+  assert.equal(L.dayStartAnchor(side,3).name, '호텔', '다음 날 아침도 그 숙소다');
+  assert.equal(L.dayReturnStay(side,3).name, '호텔');
+  assert.equal(L.dayReturnStay(side,4), null, '베이스 숙소도 체크아웃한 날(0 + 4박)은 돌아가지 않는다');
+
+  // 호텔 예약에 연결된 숙소는 nights를 안 적어도 예약 기간만큼 묵는다 — 예약 연결은 bookingId만 쓴다(웹 bkSave·iOS).
+  // 박 수는 숙박 표시(dayLodgings)와 같은 출처라 STAY인 밤에만 돌아가고 CHECK_OUT인 날은 돌아가지 않는다
+  const linked = {start:'2026-10-25', bookings:[{id:'b1',type:'hotel',start:'2026-10-25',end:'2026-10-28'}],
+    days:[{title:'',spots:[spot('공항',1).spots[0], hotel({bookingId:'b1'})]}, spot('D1',5), spot('D2',6), spot('D3',8), tail]};
+  const backOf = (t, di) => (L.dayReturnStay(t.days, di, t.bookings)||{}).name||null;
+  assert.deepEqual([1,2,3].map(di=>backOf(linked,di)), ['호텔','호텔',null], '3박 예약 — 둘째·셋째 밤은 돌아가고 체크아웃한 날은 아니다');
+  assert.deepEqual([1,2,3].map(di=>L.dayLodgings(linked,di)[0].state), ['STAY','STAY','CHECK_OUT'], '숙박 표시와 같은 밤을 센다');
+  assert.equal(L.dayReturnStay(linked.days,1), null, '예약을 안 넘기면 장소의 nights(미지정 = 1박)만 본다');
+  // 장소에 적은 nights가 먼저다 — 예약은 미입력일 때만 박 수를 정한다
+  const explicit = Object.assign({}, linked, {days:[{title:'',spots:[hotel({bookingId:'b1',nights:1})]}, ...linked.days.slice(1)]});
+  assert.equal(backOf(explicit,1), null);
+  // 호텔이 아니거나 기간이 성립하지 않는 예약은 박 수를 정하지 않는다
+  assert.equal(backOf(Object.assign({}, linked, {bookings:[{id:'b1',type:'car',start:'2026-10-25',end:'2026-10-28'}]}),1), null);
+  assert.equal(backOf(Object.assign({}, linked, {bookings:[{id:'b1',type:'hotel',start:'2026-10-25',end:'2026-10-25'}]}),1), null);
+
+  // 이월하지 않는 날(startPolicy:'none')은 묵는 중이어도 예전처럼 붙이지 않는다
+  const noCarry = [{title:'',spots:[hotel({nights:3})]}, Object.assign(spot('공항',9),{startPolicy:'none'}), tail];
+  assert.equal(L.dayReturnStay(noCarry,1), null);
+
+  // 마지막 날 규칙은 그대로다 — 연박이 남아 있어도 떠나는 날이다
+  assert.equal(L.dayReturnStay([{title:'',spots:[hotel({nights:5})]}, spot('공항',9)],1), null);
+});
+
 // 2026-09-06: 체류 시간을 안 정한 장소는 **머무르지 않는다**(예전에는 1시간을 먹었다).
 // 이 기본값은 그동안 어떤 테스트도 고정하지 않고 있었다 — 바꿔도 아무것도 안 깨졌다.
 test('computeTimeline — 체류 시간을 안 정하면 0분이고, 0은 유효한 값이다', () => {
