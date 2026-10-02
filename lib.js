@@ -827,7 +827,8 @@
     /** @type {Record<number,number>} */ const own={};
     /** @type {{fromDay:number,index:number,spot:any,amount:number,cur:string,night:number,nights:number}[]} */ const carried=[];
     if(!Array.isArray(days)||!Number.isInteger(di)||di<0) return {own,carried};
-    for(let j=Math.max(0,di-60); j<=di; j++){
+    // 거슬러 보는 날 수는 연박 상한(`stayNights` = `TC_LIMITS.days`)과 같아야 한다 — 따로 두면 그보다 긴 숙박의 뒷날 몫이 빠진다
+    for(let j=Math.max(0,di-TC_LIMITS.days); j<=di; j++){
       const spots=(days[j]&&Array.isArray(days[j].spots))?days[j].spots:[];
       spots.forEach((/**@type{any}*/s,/**@type{number}*/index)=>{
         if(!s||!s.stay) return;

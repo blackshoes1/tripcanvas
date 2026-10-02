@@ -532,6 +532,15 @@ test('연박 상한은 여행 기간 상한과 같다 — 긴 여행의 숙소�
   const days=[stay].concat(Array.from({length:77},(_,i)=>({spots:[{lat:3,lng:3,name:'D'+(i+1)}]})));
   assert.equal(L.dayStartAnchor(days,75).name, '장기숙소');
   assert.notEqual(L.dayStartAnchor(days,76).name, '장기숙소');
+  // 비용도 75박을 다 센다 — 이월 몫을 찾는 창이 60일이면 61~74박째 몫이 어느 날에도 없었다
+  const costly=[{spots:[{lat:2,lng:2,stay:true,nights:75,name:'장기숙소',cost:75000}]}]
+    .concat(Array.from({length:max-1},()=>({spots:[]})));
+  const shares=costly.map((_,di)=>L.stayCostShares(costly,di));
+  const nightly=shares.map((s,di)=>di===0? s.own[0] : s.carried.reduce((a,c)=>a+c.amount,0));
+  assert.deepEqual(nightly.slice(0,75), Array(75).fill(1000), '75박 모두 하루치가 잡힌다');
+  assert.ok(nightly.slice(75).every(v=>v===0), '체크아웃 날부터는 몫이 없다');
+  assert.equal(nightly.reduce((a,v)=>a+v,0), 75000, '하루치를 모두 더하면 장소 비용 전액이다');
+  assert.equal(L.dayEnteredCostOn(costly,70,{KRW:1}), 1000);
 });
 
 test('비숙소 전날 마지막 장소도 다음날 ETA에 반영 (anchor 배선 회귀 방지)', () => {
