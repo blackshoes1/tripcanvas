@@ -3502,6 +3502,25 @@ test('붙여넣기: 담은 것만 여행이 되고 담지 않은 줄은 메모�
   assert.ok(!w.document.getElementById('pastePvBg').classList.contains('show'));
 });
 
+// 자정('밤 12시')을 그 날 맨 앞 00:00으로 못박으면 고정 도착이 시계를 되감아 뒤 장소의 ETA가 전부 틀린다.
+// 미리보기는 담는 줄의 모호 이유를 보이지 않으므로(웹·iOS 같다) 경고에 기대지 않고 값으로 막는다 — 시각을 비우고 적힌 그대로를 설명에 남긴다
+test('붙여넣기: 자정 시각은 고정 도착이 되지 않고 적힌 그대로 설명에 남는다', { skip: noJsdom }, async () => {
+  const w = boot();
+  stubGeocode(w, { '돈키호테 시부야': [{ name: '돈키호테 시부야', addr: '도쿄', city: '도쿄', lat: 35.66, lng: 139.7 }] });
+  w.document.getElementById('pasteText').value = '[day1] 도착\n- 밤 12시 | 돈키호테 시부야';
+  await w.eval('runPaste()');
+  await w.eval('pvGeocodeAll()');
+  assert.equal(w.eval('pv.rows[0].include'), true, '장소 줄이라 기본으로 담긴다');
+  const row = w.document.querySelector('#pvList .pvRow');
+  assert.equal(row.querySelector('.pvTime').textContent, '', '미리보기에 00:00을 보이지 않는다');
+  assert.ok(row.textContent.includes('밤 12시'), '적힌 시각은 설명으로 보인다');
+  w.eval('pvCommit()');
+  const spot = JSON.parse(w.eval('JSON.stringify(store.trips[store.trips.length-1].days[0].spots[0])'));
+  assert.equal(spot.name, '돈키호테 시부야');
+  assert.equal(spot.at, undefined, '고정 도착 시각을 만들지 않는다');
+  assert.equal(spot.desc, '밤 12시');
+});
+
 test('붙여넣기: 이름을 고치면 그 이름으로 다시 찾는다', { skip: noJsdom }, async () => {
   const w = boot();
   stubGeocode(w, { '하루니레 테라스': [{ name: '하루니레 테라스', addr: '나가노현', city: '가루이자와', lat: 36.35, lng: 138.6 }] });

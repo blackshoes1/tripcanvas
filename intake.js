@@ -730,11 +730,13 @@
    * ⚠️ **오전/오후 표시가 없는 `7시`는 그대로 7시로 읽는다** — 저녁 7시일 수 있으므로
    * 지어내지 않고 `ambiguous`로 알린다(§모호하면 추측하지 않는다).
    * 때를 말하는 낱말은 그 때에 맞게 읽는다(2026-10-02 — 전에는 '점심 1시'가 01:00, '밤 12시'가 정오였다):
-   * - `점심` 1~5시는 오후(`점심 1시` = 13:00), 11·12시는 그대로. 그 밖은 점심이라 부를 시각이 아니라 그대로 읽고 모호하다고 한다.
-   * - `밤`·`저녁` 12시는 **자정**이다. 일정의 시각은 그 날의 00:00~23:59라(`24:00`은 저장되지 않는다) 00:00으로 읽는데,
-   *   그러면 그 날 맨 앞 시각이 되므로 모호하다고 알린다. 자정을 넘긴 `밤 1~5시`도 같다(오후 1시가 아니다).
-   * `why`는 모호할 때 미리보기에 남길 문장이다.
-   * @param {string} s @returns {{at:string,len:number,ambiguous:boolean,why:string|null}|null}
+   * - `점심` 1~5시는 오후(`점심 1시` = 13:00), 11·12시와 13시 이후는 그대로. 0시·6~10시는 점심이라 부를 시각이 아니라
+   *   그대로 읽고 모호하다고 한다.
+   * - `밤`·`저녁` 12시는 **자정**이다. 자정을 넘긴 `밤 1~5시`도 같다(오후 1시가 아니다). 일정의 시각은 그 날의
+   *   00:00~23:59라(`24:00`은 저장되지 않는다) 이런 시각은 그 날 맨 앞이 되어 동선 전체를 되감는다 —
+   *   **시각을 비우고(`at:null`)** 모호하다고 알린다. 적힌 그대로는 부르는 쪽이 남긴다(stripTimePrefix `writtenTime`).
+   * `why`는 모호할 때 미리보기에 남길 문장이고, `part`는 적힌 때 낱말(없으면 빈 문자열)이다.
+   * @param {string} s @returns {{at:string|null,len:number,ambiguous:boolean,why:string|null,part:string}|null}
    */
   function koTime(s){
     const m=/^(오전|오후|아침|점심|저녁|밤|새벽)?\s*(\d{1,2})\s*시(?:\s*(\d{1,2})\s*분)?(?:\s*경)?/.exec(String(s||''));
@@ -746,19 +748,19 @@
     if(part==='오후'){ if(h<12) h+=12; }
     else if(part==='점심'){
       if(h>=1 && h<=5) h+=12;
-      else if(h!==11 && h!==12) why=`${said}가 몇 시인지 확실하지 않아 그대로 읽었어요`;
+      else if(h<13 && h!==11 && h!==12) why=`${said}가 몇 시인지 확실하지 않아 그대로 읽었어요`;
     }
     else if(part==='저녁'||part==='밤'){
       if(h===12 || (part==='밤' && h<=5)){
-        if(h===12) h=0;
-        why=`${said}는 자정${h? '을 넘긴 시각' : ''}이라 ${hhmm(h,mi)}으로 읽었어요 — 일정에서는 그 날 맨 앞 시각이 되니 확인해 주세요`;
+        why=`${said}는 자정${h===12||h===0? '' : '을 넘긴 시각'}이라 그 날의 시각으로 담지 않았어요 — 적힌 시각은 설명에 남겼어요`;
+        return {at:null, len:m[0].length, ambiguous:true, why, part};
       }
       else if(h<12) h+=12;
     }
     else if(part && h===12) h=0;   // 오전·아침·새벽 12시
     if(h>23) return null;
     if(!part && h<12) why=`${said}가 오전인지 오후인지 안 적혀 있어 그대로 읽었어요`;
-    return {at:hhmm(h,mi), len:m[0].length, ambiguous:!!why, why};
+    return {at:hhmm(h,mi), len:m[0].length, ambiguous:!!why, why, part};
   }
 
   /**
@@ -832,11 +834,14 @@
         const name=cell(iName);
         if(!name) continue;
         const note=[cell(iNote), cell(iCost)].filter(Boolean).join(' ');
-        let bullet=`- ${name} | ${cell(iCity)} | ${note}`;
-        const t=cell(iTime);
-        const clock=/^\d{1,2}\s*:\s*\d{2}$/.test(t)? t.replace(/\s/g,'') : (koTime(t)||{}).at;
+        const t=cell(iTime), ko=koTime(t);
+        const clock=/^\d{1,2}\s*:\s*\d{2}$/.test(t)? t.replace(/\s/g,'') : (ko && !ko.ambiguous? ko.at : null);
+        // 모호한 시각('7시'·'밤 12시')은 @로 못박지 않고 이름 앞에 적힌 그대로 둔다 — 불릿과 같은 길(stripTimePrefix)로
+        // 읽혀 모호하다는 이유와 적힌 시각이 남는다. 못박으면 표 안의 '밤 12시'가 아무 말 없이 그 날 맨 앞 00:00이 됐다
+        const lead=(!clock && ko)? t.slice(0, ko.len).trim()+' ' : '';
+        let bullet=`- ${lead}${name} | ${cell(iCity)} | ${note}`;
         if(clock) bullet+=` @${clock}`;
-        else if(t) bullet+=(note? ' ':'')+t;
+        else if(t && !lead) bullet+=(note? ' ':'')+t;
         out.push(bullet);
       }
     }
@@ -872,7 +877,9 @@
   /**
    * 이름 앞에 붙은 시간 표시를 떼어낸다. `08:00~09:00｜아침 식사` → `아침 식사`
    * ⚠️ '오후'·'저녁' 같은 말은 시각으로 바꾸지 않는다 — 구분자가 뒤따를 때만 떼어낸다.
-   * @param {string} body @returns {{rest:string,at:string|null,endAt:string|null,ambiguous?:boolean,why?:string|null}}
+   * 범위의 끝에 때 낱말이 없으면 시작의 때를 잇는다 — `점심 1시~3시`의 3시는 03:00이 아니라 15:00이다.
+   * 그 날의 시각으로 담을 수 없는 시작(자정 — koTime `at:null`)이면 끝도 비우고, 적힌 그대로를 `writtenTime`으로 돌려준다.
+   * @param {string} body @returns {{rest:string,at:string|null,endAt:string|null,ambiguous?:boolean,why?:string|null,writtenTime?:string|null}}
    */
   function stripTimePrefix(body){
     let s=String(body||'');
@@ -889,13 +896,21 @@
     if(ko){
       let rest=s.slice(ko.len);
       const r2=/^\s*[~\-–—]\s*/.exec(rest);
-      let end=null;
+      /** @type {string|null} */ let end=null;
       if(r2){
         const ko2=koTime(rest.slice(r2[0].length));
-        if(ko2){ end=ko2.at; rest=rest.slice(r2[0].length+ko2.len); }
+        if(ko2){
+          end=ko2.at; rest=rest.slice(r2[0].length+ko2.len);
+          // 끝에 때 낱말이 없고 시작보다 이르면 같은 날 오후로 잇는다(그래도 안 맞으면 그대로 — 머무는 시간은 모른다)
+          if(end && ko.at && !ko2.part){
+            const a=LIB.parseHM(ko.at), b=LIB.parseHM(end), pm=b+720;
+            if(b<a && pm>a && pm<=23*60+59) end=hhmm(Math.floor(pm/60), pm%60);
+          }
+        }
       }
+      const written=s.slice(0, s.length-rest.length).trim();
       rest=rest.replace(/^\s*[|:：·,]\s*/,'').trim();
-      if(rest) return {rest, at:ko.at, endAt:end, ambiguous:ko.ambiguous, why:ko.why};
+      if(rest) return {rest, at:ko.at, endAt:ko.at? end : null, ambiguous:ko.ambiguous, why:ko.why, writtenTime:ko.at? null : written};
     }
     // '오전~오후|이동' — 시간대 낱말만으로 이루어진 접두사는 버리고 순서만 남긴다
     m=/^([^|]{1,14})\|\s*/.exec(s);
@@ -1054,11 +1069,13 @@
       const name=split.name;
       if(split.stay) stay=true;
       const verdict=classifyItem(name);
-      if(timed.ambiguous && timed.at && timed.why) verdict.reasons=verdict.reasons.concat([timed.why]);
-      const stayMin=(at&&timed.endAt)? Math.max(0, LIB.parseHM(timed.endAt)-LIB.parseHM(at)) : null;
+      if(timed.ambiguous && timed.why) verdict.reasons=verdict.reasons.concat([timed.why]);
+      // 끝이 시작보다 앞이면(자정 넘김 등) 머무는 시간을 모른다 — 0(=바로 이동)으로 지어내지 않는다
+      const span=(at&&timed.endAt)? LIB.parseHM(timed.endAt)-LIB.parseHM(at) : -1;
+      const stayMin=span>=0? span : null;
       /** @type {DraftItem} */
       const next={
-        raw:body, name, city:p[1]||lastCity||'', desc:[p[2]||'', split.desc].filter(Boolean).join(' · '),
+        raw:body, name, city:p[1]||lastCity||'', desc:[timed.writtenTime||'', p[2]||'', split.desc].filter(Boolean).join(' · '),
         at, endAt:timed.endAt, stayMin, url:pulled.url,
         cost:money? money.cost : null, cur:(money&&money.cur!=='KRW')? money.cur : null,
         opt, stay, lat, lng,
