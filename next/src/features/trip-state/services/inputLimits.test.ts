@@ -48,6 +48,7 @@ beforeEach(() => {
       return { applied: true, conflict: false, revision: row.revision, data };
     },
     async listDismissed() { return []; },
+    async listAccepted() { return []; },
     async recordFeedback() {},
     async listPriceObservations() { return []; },
     async savePriceObservation(_t: string, obs: Omit<PriceObservation, 'observed_at'>) { observations.push(obs); },

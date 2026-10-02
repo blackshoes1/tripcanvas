@@ -30,6 +30,7 @@ function setup() {
     async getTrip() { return row; },
     async saveTrip() { return { applied: false, conflict: true, revision: 1, data: null }; },
     async listDismissed() { return []; },
+    async listAccepted() { return []; },
     async recordFeedback() {},
     async listPriceObservations() { return []; },
     async savePriceObservation() {},
