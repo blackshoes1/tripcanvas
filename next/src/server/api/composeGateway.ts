@@ -48,6 +48,10 @@ export function composeGateway(input: ComposeGatewayInput): Gateway {
       const fresh = await repos.feedback.listDismissed(userId, tripId, dayISO);
       return dual ? union(fresh, await legacy.listDismissed(tripId, dayISO)) : fresh;
     };
+    gw.listAccepted = async (tripId, dayISO) => {
+      const fresh = await repos.feedback.listAccepted(userId, tripId, dayISO);
+      return dual ? union(fresh, await legacy.listAccepted(tripId, dayISO)) : fresh;
+    };
     gw.recordFeedback = (tripId, dayISO, key, action) => repos.feedback.record(userId, tripId, dayISO, key, action, 'ios');
     gw.listSentNotificationKeys = async (tripId, dayISO) => {
       const fresh = await repos.notifications.listSentKeys(userId, tripId, dayISO);

@@ -20,6 +20,7 @@ function legacyGateway(log: string[]): Gateway {
     async getTrip() { log.push('legacy.getTrip'); return null; },
     async saveTrip(_id, _d, rev) { log.push('legacy.saveTrip'); return { applied: true, conflict: false, revision: rev + 1, data: null }; },
     async listDismissed() { log.push('legacy.listDismissed'); return ['legacy-key']; },
+    async listAccepted() { log.push('legacy.listAccepted'); return []; },
     async recordFeedback() { log.push('legacy.recordFeedback'); },
     async listPriceObservations() { log.push('legacy.listPriceObservations'); return [{ booking_id: 'b', seller: 'legacy', price: 1, currency: 'KRW', quality: null, verified: false, offers: null, observed_at: '2026-01-01T00:00:00.000Z' }]; },
     async savePriceObservation() { log.push('legacy.savePriceObservation'); },
@@ -38,6 +39,7 @@ function mem(id: string, key: string | null, at: number): MemoryRecord {
 function newRepos(log: string[]) {
   const feedback: SuggestionFeedbackRepository = {
     async listDismissed(u) { log.push(`new.listDismissed:${u}`); return ['new-key']; },
+    async listAccepted(u) { log.push(`new.listAccepted:${u}`); return []; },
     async record(u, _t, _d, key, action) { log.push(`new.record:${u}:${key}:${action}`); }
   };
   const notifications: NotificationLogRepository = {

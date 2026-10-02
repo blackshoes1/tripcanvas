@@ -77,7 +77,10 @@ export class TripService {
     return { record, role: 'OWNER', memberCount: 1 };
   }
 
-  async update(ctx: RequestContext, clientId: string, input: unknown, expectedRevision: number, opts: { force?: boolean } = {}): Promise<TripView> {
+  /** alreadyApplied면 쓰지 않았다 — 같은 문서가 이미 저장돼 있다(응답을 못 받고 다시 보낸 요청) */
+  async update(
+    ctx: RequestContext, clientId: string, input: unknown, expectedRevision: number, opts: { force?: boolean } = {}
+  ): Promise<TripView & { alreadyApplied?: boolean }> {
     const doc = normalize(input);
     doc.id = clientId;
     const view = await this.deps.trips.findVisible(ctx.userId, clientId);
@@ -95,7 +98,7 @@ export class TripService {
     });
     if (result.forbidden) throw new ApiError('FORBIDDEN');
     if (!result.applied && !result.alreadyApplied) throw new ApiError('STALE_VERSION', { details: staleDetails(result.record) });
-    return { ...view, record: result.record };
+    return result.alreadyApplied ? { ...view, record: result.record, alreadyApplied: true } : { ...view, record: result.record };
   }
 
   async delete(ctx: RequestContext, clientId: string, expectedRevision: number, opts: { force?: boolean } = {}): Promise<TripView> {

@@ -31,6 +31,8 @@ describe('suggestion_feedback', () => {
     await repo.record(A, 'trip1', '2026-09-02', 'sug-3', 'SKIPPED', 'ios');
     expect(await repo.listDismissed(A, 'trip1', '2026-09-01')).toEqual(['sug-1']);
     expect(await repo.listDismissed(B, 'trip1', '2026-09-01')).toEqual([]);
+    expect(await repo.listAccepted(A, 'trip1', '2026-09-01')).toEqual(['sug-2']);
+    expect(await repo.listAccepted(B, 'trip1', '2026-09-01')).toEqual([]);
   });
 
   it('마음이 바뀌면 같은 키의 action이 갱신된다', async () => {

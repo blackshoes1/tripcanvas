@@ -88,6 +88,8 @@ export interface MembershipRepository {
 export interface SuggestionFeedbackRepository {
   /** 그 여행·그 날 이미 거절(SKIPPED)한 제안 키 */
   listDismissed(userId: string, tripClientId: string, dayISO: string): Promise<string[]>;
+  /** 그 여행·그 날 이미 수락(ACCEPTED)해 반영한 제안 키 */
+  listAccepted(userId: string, tripClientId: string, dayISO: string): Promise<string[]>;
   /** 같은 제안을 두 번 기록해도 한 행(unique 4개 컬럼 upsert) */
   record(userId: string, tripClientId: string, dayISO: string, suggestionKey: string, action: string, source: string): Promise<void>;
 }

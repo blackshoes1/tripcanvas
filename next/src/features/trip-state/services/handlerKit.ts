@@ -32,10 +32,15 @@ export interface TripRow {
 export interface Gateway {
   listTrips(): Promise<TripRow[]>;
   getTrip(tripId: string): Promise<TripRow | null>;
-  /** sync_trip RPC (revision CAS). conflict면 applied=false + 현재 revision. forbidden이면 권한 없음(42501) — 재시도해도 같다 */
-  saveTrip(tripId: string, data: TripDoc, expectedRevision: number): Promise<{ applied: boolean; conflict: boolean; revision: number; data: TripDoc | null; forbidden?: boolean }>;
+  /**
+   * sync_trip RPC (revision CAS). conflict면 applied=false + 현재 revision. forbidden이면 권한 없음(42501) — 재시도해도 같다.
+   * alreadyApplied면 같은 문서가 이미 저장돼 있어 쓰지 않았다(applied=false, 충돌 아님)
+   */
+  saveTrip(tripId: string, data: TripDoc, expectedRevision: number): Promise<{ applied: boolean; conflict: boolean; revision: number; data: TripDoc | null; forbidden?: boolean; alreadyApplied?: boolean }>;
   /** 그 여행·그 날 이미 거절한 제안 키 */
   listDismissed(tripId: string, dayISO: string): Promise<string[]>;
+  /** 그 여행·그 날 이미 수락해 반영한 제안 키 — 응답을 못 받고 다시 보낸 수락을 알아보기 위해 */
+  listAccepted(tripId: string, dayISO: string): Promise<string[]>;
   recordFeedback(tripId: string, dayISO: string, key: string, action: string): Promise<void>;
   /** 가격 관측 (hotel_price_snapshots). 없으면 빈 배열 — 가짜 가격을 만들지 않는다 */
   listPriceObservations(tripId: string): Promise<PriceObservation[]>;
@@ -361,10 +366,11 @@ export function createKit(deps: HandlerDeps): HandlerKit {
     let saved;
     try { saved = await gateway.saveTrip(row.client_id, next, row.revision); } catch { return fail('UPSTREAM_ERROR'); }
     if (saved.forbidden) return fail('FORBIDDEN');
-    if (!saved.applied) return fail('REVISION_CONFLICT', { revision: saved.revision });
+    if (!saved.applied && !saved.alreadyApplied) return fail('REVISION_CONFLICT', { revision: saved.revision });
     const savedRow: TripRow = { ...row, data: saved.data ?? next, revision: saved.revision, updated_at: new Date().toISOString() };
+    // 동시에 온 같은 요청 둘 중 뒤의 것 — 쓰지 않았으니 저장했다고 말하지 않는다
     const body: MutationResponse = {
-      schemaVersion: CONTRACT_SCHEMA_VERSION, applied: true, alreadyApplied: false,
+      schemaVersion: CONTRACT_SCHEMA_VERSION, applied: !saved.alreadyApplied, alreadyApplied: !!saved.alreadyApplied,
       revision: saved.revision, today: await todayFor(gateway, savedRow, url)
     };
     return ok(body);

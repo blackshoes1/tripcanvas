@@ -68,7 +68,7 @@ export function createIntakeHandlers(kit: HandlerKit) {
     let saved;
     try { saved = await gateway.saveTrip(tripId, next, row.revision); } catch { return fail('UPSTREAM_ERROR'); }
     if (saved.forbidden) return fail('FORBIDDEN');
-    if (!saved.applied) return fail('REVISION_CONFLICT', { revision: saved.revision });
+    if (!saved.applied && !saved.alreadyApplied) return fail('REVISION_CONFLICT', { revision: saved.revision });
 
     const url = new URL(request.url);
     const savedRow: TripRow = { ...row, data: saved.data ?? next, revision: saved.revision, updated_at: new Date().toISOString() };

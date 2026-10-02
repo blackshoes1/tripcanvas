@@ -117,26 +117,42 @@ export function createPlanEditingHandlers(kit: HandlerKit) {
       todayISO: clock.todayISO, nowMinutes: clock.nowMinutes, dayIndex, dismissed, generatedAt: now().toISOString()
     });
     const raw = computed.rawSuggestions.find((s) => s.id === suggestionId);
-    // 이미 거절한 제안을 또 건너뛰는 것은 오류가 아니다(같은 결과) — 수락만 신선도를 요구한다.
-    if (!raw && !(action === 'skip' && dismissed.includes(suggestionId))) return behind ? conflict() : fail('SUGGESTION_STALE');
-    const result = action === 'accept' ? applySuggestion(
+    const result = action === 'accept' && raw ? applySuggestion(
       row.data, computed.dayIndex,
-      { id: raw!.id, type: raw!.type, title: raw!.title, action: raw!.action as { kind?: string; si?: number | null; fromDay?: number | null; drop?: string[] } },
+      { id: raw.id, type: raw.type, title: raw.title, action: raw.action as { kind?: string; si?: number | null; fromDay?: number | null; drop?: string[] } },
       computed.windowAfterId
     ) : null;
+    if (action === 'accept' && !result?.ok) {
+      // 이미 반영한 수락을 다시 보냈다(응답 유실) — 첫 요청이 문서를 바꿔 그 제안은 사라졌거나 더는 적용할 것이 없다
+      // (옮겨 온 장소는 같은 id의 '방문' 제안이 된다). 같은 결과이니 충돌이 아니다. ACCEPTED는 저장이 성공한 뒤에만
+      // 남으므로(아래) 이 기록이 있으면 그 변경은 이미 문서에 들어가 있다. 지금 다시 바꿔야 한다면 여기 오지 않는다.
+      const accepted = await gateway.listAccepted(tripId, clock.todayISO).catch((): string[] => []);
+      if (accepted.includes(suggestionId)) {
+        const again: MutationResponse = {
+          schemaVersion: CONTRACT_SCHEMA_VERSION, applied: false, alreadyApplied: true, revision: row.revision,
+          today: await todayFor(gateway, row, url)
+        };
+        return ok(again);
+      }
+      return behind ? conflict() : fail('SUGGESTION_STALE');
+    }
+    // 이미 거절한 제안을 또 건너뛰는 것은 오류가 아니다(같은 결과) — 수락만 신선도를 요구한다.
+    if (!raw && !(action === 'skip' && dismissed.includes(suggestionId))) return fail('SUGGESTION_STALE');
     // 낡은 revision의 수락은 지금 문서에 적용해 본 뒤, 실제로 바꿔야 할 때만 충돌이다 — 기록(ACCEPTED)을 남기기 전에 끊는다
-    if (behind && (!result?.ok || result.applied)) return conflict();
+    if (behind && result?.applied) return conflict();
 
-    await gateway.recordFeedback(tripId, clock.todayISO, suggestionId, action === 'accept' ? 'ACCEPTED' : 'SKIPPED').catch(() => undefined);
     if (!result) {
+      await gateway.recordFeedback(tripId, clock.todayISO, suggestionId, 'SKIPPED').catch(() => undefined);
       const body2: MutationResponse = {
         schemaVersion: CONTRACT_SCHEMA_VERSION, applied: true, alreadyApplied: !raw, revision: row.revision,
         today: await todayFor(gateway, row, url)
       };
       return ok(body2);
     }
-    if (!result.ok) return fail('SUGGESTION_STALE');
-    return persist(gateway, row, result.trip, url, result.applied, result.alreadyApplied);
+    const saved = await persist(gateway, row, result.trip, url, result.applied, result.alreadyApplied);
+    // 수락 기록은 저장이 성공한 뒤에만 — 실패한 저장이 ACCEPTED를 남기면 위의 재시도 판정이 반영되지 않은 수락을 '이미 했다'고 믿는다
+    if (saved.ok) await gateway.recordFeedback(tripId, clock.todayISO, suggestionId, 'ACCEPTED').catch(() => undefined);
+    return saved;
   }
 
   /** GET /api/v1/trips/:tripId/bookings — 여행 당일에 필요한 것만: 시간·장소·상태·번호·링크 */

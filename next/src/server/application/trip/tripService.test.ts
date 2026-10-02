@@ -168,6 +168,8 @@ describe('update', () => {
     const first = await service.update(A, 'trip1', doc('스페인 (편집)'), 1);
     const retry = await service.update(A, 'trip1', doc('스페인 (편집)'), 1);
     expect(retry.record.revision).toBe(first.record.revision);
+    expect(first.alreadyApplied).toBeUndefined();
+    expect(retry.alreadyApplied).toBe(true);   // 쓰지 않았다는 것을 호출자(handlerKit.persist)가 알아야 한다
     expect(store.trips.get(first.record.id)!.revision).toBe(2);   // 한 번 더 쓰지 않는다
     expect(await code(service.update(A, 'trip1', doc('다른 편집'), 1))).toBe('STALE_VERSION');   // 실제로 바뀔 때만 충돌
   });

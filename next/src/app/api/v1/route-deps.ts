@@ -204,6 +204,8 @@ async function gatewayFor(token: string): Promise<Gateway | null> {
     async saveTrip(tripId, doc, expectedRevision) {
       try {
         const view = await service.update(ctx, tripId, doc, expectedRevision);
+        // 같은 문서가 이미 있어 쓰지 않았다 — 새 저장이라고 말하지 않는다(같은 요청 두 번 = alreadyApplied)
+        if (view.alreadyApplied) return { applied: false, alreadyApplied: true, conflict: false, revision: view.record.revision, data: view.record.data as TripDoc };
         return { applied: true, conflict: false, revision: view.record.revision, data: view.record.data as TripDoc };
       } catch (e) {
         if (e instanceof ApiError && e.code === 'STALE_VERSION') return { applied: false, conflict: true, revision: Number(e.details?.revision) || expectedRevision, data: null };

@@ -12,10 +12,18 @@ import { deviceTokens, notificationLog, suggestionFeedback, tripMemories } from 
 export class PgSuggestionFeedbackRepository implements SuggestionFeedbackRepository {
   constructor(private readonly db: Db) {}
 
-  async listDismissed(userId: string, tripClientId: string, dayISO: string): Promise<string[]> {
+  listDismissed(userId: string, tripClientId: string, dayISO: string): Promise<string[]> {
+    return this.keys(userId, tripClientId, dayISO, 'SKIPPED');
+  }
+
+  listAccepted(userId: string, tripClientId: string, dayISO: string): Promise<string[]> {
+    return this.keys(userId, tripClientId, dayISO, 'ACCEPTED');
+  }
+
+  private async keys(userId: string, tripClientId: string, dayISO: string, action: string): Promise<string[]> {
     const rows = await this.db.select({ key: suggestionFeedback.suggestionKey }).from(suggestionFeedback)
       .where(and(eq(suggestionFeedback.userId, userId), eq(suggestionFeedback.tripClientId, tripClientId),
-        eq(suggestionFeedback.dayIso, dayISO), eq(suggestionFeedback.action, 'SKIPPED')));
+        eq(suggestionFeedback.dayIso, dayISO), eq(suggestionFeedback.action, action)));
     return rows.map((r) => r.key);
   }
 
