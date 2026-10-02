@@ -12,7 +12,7 @@ function run(t, scope, { next = false, fail = false, postgres = false, simulator
   mkdirSync(join(root, 'bin'));
   if (next) mkdirSync(join(root, 'next/node_modules'), { recursive: true });
   copyFileSync(join(__dirname, '../scripts/verify-all.sh'), join(root, 'scripts/verify-all.sh'));
-  writeFileSync(join(root, 'bin/npm'), `#!/bin/sh\necho '# skipped 0'\nexit ${fail ? 1 : 0}\n`, { mode: 0o755 });
+  writeFileSync(join(root, 'bin/npm'), `#!/bin/sh\necho "npm $*"\necho '# skipped 0'\nexit ${fail ? 1 : 0}\n`, { mode: 0o755 });
   writeFileSync(join(root, 'scripts/pg-local.sh'), `#!/bin/sh\nexit ${postgres ? 0 : 2}\n`, { mode: 0o755 });
   if (simulator !== null) {
     mkdirSync(join(root, 'ios'));
@@ -46,6 +46,13 @@ test('all selected checks passing succeeds', (t) => {
   const r = run(t, 'next', { next: true });
   assert.equal(r.status, 0);
   assert.match(r.stdout, /게이트 통과/);
+});
+// 운영 API 이미지에 실리는 것은 next의 런타임 의존성이다 — 루트 감사만으로는 next·nodemailer 취약점이 안 보였다
+test('next scope audits the runtime dependencies at high severity', (t) => {
+  const r = run(t, 'next', { next: true });
+  assert.equal(r.status, 0);
+  assert.match(r.stdout, /npm --prefix next audit --omit=dev --audit-level=high/);
+  assert.match(r.stdout, /PASS  next: 의존성 감사\(high\)/);
 });
 test('check failures take priority over skipped checks', (t) => {
   const r = run(t, 'web', { fail: true });

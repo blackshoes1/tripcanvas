@@ -8,7 +8,7 @@ merge 전에 통과해야 하는 것은 다음이 전부다. `.github/workflows/
 | 게이트 | 워크플로 잡 | 로컬 |
 |---|---|---|
 | 구문 · 버전 동기 · lint · 시크릿 · `tsc` · 유닛 · 통합 · RLS · **복구 리허설**(pg_dump → pg_restore → 마이그레이션 → 전수 대조) · `npm audit` | Quality | `scripts/verify-all.sh web` |
-| lint · `tsc` · vitest · `next build` · `tools:build` | Next workspace | `scripts/verify-all.sh next` |
+| lint · `tsc` · vitest · `next build` · `tools:build` · `npm audit --omit=dev`(운영 이미지에 실리는 런타임 의존성) | Next workspace | `scripts/verify-all.sh next` |
 | Playwright | E2E | `scripts/verify-all.sh web` |
 | XcodeGen · 컴파일 · XCTest · Release 빌드 · 무료 스펙 | iOS | `scripts/verify-all.sh ios` |
 
@@ -38,7 +38,7 @@ gh run view <run-id> --log-failed # 로그가 없으면 잡이 시작되지 않�
 | 증상 | 분류 | 대응 |
 |---|---|---|
 | 잡이 몇 초 만에 끝나고 로그가 없음, ANNOTATIONS에 계정/러너 메시지 | 러너·과금 | 코드를 고치지 않는다. 원인을 풀고 재실행 |
-| `Dependency audit`이 `audit endpoint returned an error`로 실패 | npm 레지스트리 | 취약점이 아니다. 워크플로가 **그 오류일 때만** 3번까지 다시 시도한다(2026-09-06 추가) — 그래도 빨가면 재실행 |
+| `Dependency audit`(Quality·Next workspace 둘 다)이 `audit endpoint returned an error`로 실패 | npm 레지스트리 | 취약점이 아니다. 워크플로가 **그 오류일 때만** 3번까지 다시 시도한다(2026-09-06 추가) — 그래도 빨가면 재실행 |
 | 특정 스텝에서 컴파일·테스트 실패 로그 | 코드 | 최소 수정 |
 | `npm ci` 실패 | 의존성·lockfile | lockfile 동기 확인 |
 | 매번 다른 스텝에서 시간 초과 | 러너 성능·flaky | 재현부터 |

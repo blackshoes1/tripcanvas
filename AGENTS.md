@@ -39,7 +39,7 @@
 npm run verify:all
 ```
 
-  루트(구문·버전·lint·시크릿·`tsc`·유닛·통합·RLS·audit·E2E) + `next/`(lint·`tsc`·vitest·build·tools:build) + iOS(XcodeGen·XCTest·Release)를 한 번에 돌리고 끝에 PASS/FAIL/**SKIP** 표를 찍는다.
+  루트(구문·버전·lint·시크릿·`tsc`·유닛·통합·RLS·audit·E2E) + `next/`(lint·`tsc`·vitest·build·tools:build·audit) + iOS(XcodeGen·XCTest·Release)를 한 번에 돌리고 끝에 PASS/FAIL/**SKIP** 표를 찍는다.
   범위만 돌리려면 `scripts/verify-all.sh web|next|ios`.
   ⚠️ **SKIP은 통과가 아니다** — 무엇을 못 돌렸는지 PR에 밝힌다.
 
