@@ -51,7 +51,8 @@ final class RealtimeClient: RealtimeConnecting {
     private let session: URLSession
     private let tokens: TokenProviding
     /// `/api/v1/me`가 알려 준 주소. nil이면 서버가 실시간을 쓰지 말라고 한 것이다.
-    /// 던지면 **이번에는 못 물은 것**이다(타임아웃 등) — 그 답과 섞지 않고 소켓이 끊겼을 때처럼 몇 번 다시 묻는다.
+    /// 던지면 **이번에는 답을 못 받은 것**이다 — 그 답(nil)과 섞지 않는다. 네트워크 실패(타임아웃 등)는 소켓이
+    /// 끊겼을 때처럼 몇 번 다시 묻고, 다시 물어도 같은 실패(서버 오류·응답 모양 어긋남·권한)는 이번에는 접는다.
     private let urlFor: @MainActor () async throws -> URL?
 
     private var task: URLSessionWebSocketTask?
@@ -141,9 +142,13 @@ final class RealtimeClient: RealtimeConnecting {
         //    같은 여행에 다시 붙지 않았다.
         let resolved: URL?
         do { resolved = try await urlFor() } catch {
-            // 못 물었다 — "안 쓴다"는 답이 아니다. `.off`로 접으면 같은 화면에 있는 동안 다시 붙지 않는다.
             guard isCurrent(generation, tripId: tripId) else { return }
             pump = nil
+            // 네트워크가 흔들려 못 물었다 — "안 쓴다"는 답이 아니다. `.off`로 접으면 같은 화면에 있는 동안
+            // 다시 붙지 않으니 소켓이 끊겼을 때처럼 몇 번 다시 묻는다.
+            // ⚠️ 그 밖의 실패(서버 오류·응답 모양이 어긋남·권한)는 다시 물어도 같다 — 매번 6번씩 묻지 않고
+            //    접는다. 담지 않았으므로 화면에 다시 들어오면(다음 `connect`) 한 번 다시 묻는다.
+            guard Self.isTransient(error) else { state = .off; return }
             state = .connecting
             schedule()
             return
@@ -202,6 +207,11 @@ final class RealtimeClient: RealtimeConnecting {
         if stopped { return }
         state = .connecting
         schedule()
+    }
+
+    /// 다시 물으면 될 수도 있는 실패인가 — 네트워크 자체의 문제만이다.
+    private static func isTransient(_ error: Error) -> Bool {
+        (error as? APIError)?.isOffline == true || error is URLError
     }
 
     private func send(_ socket: URLSessionWebSocketTask, _ payload: [String: Any]) async {
