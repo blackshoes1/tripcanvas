@@ -23,6 +23,14 @@ const edit = (s: Spot, patch: Partial<ReturnType<typeof formFromSpot>> = {}, di 
 };
 
 describe('formFromSpot / spotFromForm — 값 왕복', () => {
+  it('0분은 그대로 저장하고 미지정 체류는 메모 편집 뒤에도 미지정으로 남는다', () => {
+    expect(edit(spot('경유', { stayMin: 0 }), { desc: '바로 이동' }).stayMin).toBe(0);
+    const unspecified = spot('아직 정하지 않음');
+    expect(formFromSpot(unspecified, 0).stayMin).toBe('');
+    expect(edit(unspecified, { desc: '메모만 변경' })).not.toHaveProperty('stayMin');
+    expect(edit(spot('체류', { stayMin: 90 }), { stayMin: '' })).not.toHaveProperty('stayMin');
+    expect(edit(unspecified, { stayMin: '0' }).stayMin).toBe(0);
+  });
   it('손대지 않고 저장하면 의미가 그대로다 (기본값은 키를 만들지 않는다)', () => {
     const before = spot('성산일출봉', { at: '09:30', stayMin: 90, cost: 5000 });
     const after = edit(before);
