@@ -3,7 +3,7 @@
 -- helper는 오직 auth.uid() 본인의 멤버 행만 읽으며, Data API에 노출하지 않는다.
 create schema if not exists tc_private;
 revoke all on schema tc_private from public;
-grant usage on schema tc_private to authenticated;
+grant usage on schema tc_private to authenticated,service_role;
 
 create or replace function tc_private.lock_trip_role(p_trip_id text)
 returns text language plpgsql security definer set search_path='' as $$
@@ -16,7 +16,8 @@ begin
   return v_role;
 end $$;
 revoke all on function tc_private.lock_trip_role(text) from public,anon;
-grant execute on function tc_private.lock_trip_role(text) to authenticated;
+-- 기존 sync_trip을 호출할 수 있던 service_role도 중첩 helper 경계를 통과한다.
+grant execute on function tc_private.lock_trip_role(text) to authenticated,service_role;
 
 create or replace function public.sync_trip(p_client_id text,p_data jsonb,p_expected_revision bigint default null,p_force boolean default false)
 returns table(applied boolean,conflict boolean,revision bigint,data jsonb,deleted_at timestamptz)

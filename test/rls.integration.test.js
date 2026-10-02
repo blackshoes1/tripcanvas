@@ -30,6 +30,7 @@ const EXPECTED = {
   'authz.viewer_force': '42501', 'authz.no_owned_copy': '0',
   'authz.unchanged_after_viewer': 'owner revival:4', 'authz.public_invoker': 'true',
   'authz.anon_helper_blocked': 'true',
+  'authz.service_helper_allowed': 'true',
   'a.trips': '1', 'a.owner_member': '1', 'a.roles': 'OWNER:1',
   // 초대 전 B는 A의 아무것도 못 본다 — 여행·멤버·초대 전부
   'b.before.trips': '0', 'b.before.members': '0', 'b.before.invites': '0', 'b.before.list_members': '0',

@@ -40,4 +40,6 @@ insert into t_authz_out select 'authz.unchanged_after_viewer', (data->>'name')||
 insert into t_authz_out select 'authz.public_invoker', (not prosecdef)::text from pg_proc
   where oid='public.sync_trip(text,jsonb,bigint,boolean)'::regprocedure;
 insert into t_authz_out select 'authz.anon_helper_blocked', (not has_function_privilege('anon','tc_private.lock_trip_role(text)','EXECUTE'))::text;
+insert into t_authz_out select 'authz.service_helper_allowed',
+  (has_schema_privilege('service_role','tc_private','USAGE') and has_function_privilege('service_role','tc_private.lock_trip_role(text)','EXECUTE'))::text;
 select 'OUT:'||k||'='||coalesce(v,'<null>') from t_authz_out order by k;
