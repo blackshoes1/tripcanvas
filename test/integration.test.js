@@ -186,18 +186,40 @@ test('통합: 계정이 바뀐 뒤 도착한 삭제 응답도 새 메타를 변�
 // 밀린 삭제(재시도·온라인 복귀)는 지운 여행의 사본 없이 다시 지운다 — 그 사이 다른 기기가 고쳤으면 충돌이 local:null로 온다.
 // 전에는 어느 쪽을 골라도 syncMeta가 conflict로 남아 이후 편집이 올라가지 않았고, '이 기기 것 유지'는 아무 일도 없다가
 // 다음 로그인 병합이 지운 여행을 도로 내려받았다.
-function bootDeleteConflict(){
+//
+// 가짜 서버는 **상태를 든다** — tombstone·save가 revision CAS를 지나고, 로그인 병합에는 그 상태에서 만든 행을 넣는다.
+// 손으로 만든 '삭제된 행'을 넣으면 재시도가 서버에 닿았는지와 상관없이 병합이 통과한다(mergeForLogin은 지워진 원격 행을 늘 뺀다).
+function bootDeleteConflict(opts){
   const w=boot();
-  w.eval(`user={id:'u1'}; sb={}; store={activeId:'keep',trips:[{id:'keep',name:'K',days:[{spots:[]}]}]};
-    syncMeta={}; TC_SYNC.beginDelete(syncMeta,'gone','op1'); syncMeta.gone.revision=3;
+  w.eval(`user={id:'u1'}; sb={};
     window.tomb=[]; window.saves=[];
-    TC_API.sync.tombstone=async(id,rev)=>{ window.tomb.push(rev); return window.tomb.length===1
-      ? {applied:false,conflict:true,revision:5,data:{id:'gone',name:'지운 여행',start:'',days:[{title:'',drive:'',note:'',spots:[]}]},deleted_at:null}
-      : {applied:true,conflict:false,revision:6,data:null,deleted_at:null}; };
-    TC_API.sync.save=async(id,t,rev)=>{ window.saves.push({id,rev}); return {applied:true,conflict:false,revision:(rev||0)+1,data:null,deleted_at:null}; };
+    // 다른 기기(B)가 rev 3 위에 고쳐 rev 5가 됐다
+    window.server={gone:{revision:5,data:{id:'gone',name:'지운 여행',start:'',days:[{title:'',drive:'',note:'',spots:[{name:'B가 넣은 곳'}]}]},deleted_at:null}};
+    TC_API.sync.tombstone=async(id,rev)=>{ window.tomb.push(rev); const row=window.server[id];
+      if(!row||row.deleted_at) return {applied:true,conflict:false,revision:rev||1,data:null,deleted_at:null};
+      if(rev!==row.revision) return {applied:false,conflict:true,revision:row.revision,data:row.data,deleted_at:null};
+      row.revision++; row.deleted_at='2026-09-01T00:00:00Z'; return {applied:true,conflict:false,revision:row.revision,data:null,deleted_at:null}; };
+    TC_API.sync.save=async(id,t,rev,force)=>{ window.saves.push({id,rev,force:!!force}); const row=window.server[id]||(window.server[id]={revision:0,data:null,deleted_at:null});
+      if(!force&&rev!==row.revision) return {applied:false,conflict:true,revision:row.revision,data:row.data,deleted_at:row.deleted_at};
+      row.revision++; row.data=JSON.parse(JSON.stringify(t)); row.deleted_at=null; return {applied:true,conflict:false,revision:row.revision,data:row.data,deleted_at:null}; };
+    window.serverRows=()=>Object.entries(window.server).map(([id,r])=>({client_id:id,data:r.deleted_at?null:r.data,revision:r.revision,deleted_at:r.deleted_at}));
+    window.loginMerge=()=>JSON.stringify(TC_SYNC.mergeForLogin(store.trips,window.serverRows(),syncMeta).trips.map(t=>t.id));
     cloudSnapshot=()=>{};`);
+  if(opts&&opts.immediate){
+    // 바로 지운다(온라인) — deleteTrip이 지운 여행의 사본을 cloudDelete(id,t)로 넘긴다
+    w.eval(`store={activeId:'keep',trips:[{id:'keep',name:'K',days:[{spots:[]}]},
+        {id:'gone',name:'지운 여행',start:'',days:[{title:'',drive:'',note:'',spots:[]}]}]};
+      syncMeta={keep:{revision:1,status:'clean',op:'',hash:TC_SYNC.hashTrip(store.trips[0])},
+        gone:{revision:3,status:'clean',op:'',hash:TC_SYNC.hashTrip(store.trips[1])}};
+      histStack.length=0; histLast=JSON.stringify(store); window.confirm=()=>true;`);
+  }else{
+    // 밀린 삭제 — 지운 여행은 이미 store에 없고 syncMeta에 delete-pending만 남았다
+    w.eval(`store={activeId:'keep',trips:[{id:'keep',name:'K',days:[{spots:[]}]}]};
+      syncMeta={}; TC_SYNC.beginDelete(syncMeta,'gone','op1'); syncMeta.gone.revision=3;`);
+  }
   return w;
 }
+const goneSaves = (w) => JSON.parse(JSON.stringify(w.saves)).filter(s => s.id === 'gone');
 test('통합: 사본 없는 삭제 충돌 — 저장된 것을 고르면 여행이 돌아오고 이후 편집도 올라간다', { skip: noJsdom }, async () => {
   const w=bootDeleteConflict();
   try{
@@ -212,7 +234,7 @@ test('통합: 사본 없는 삭제 충돌 — 저장된 것을 고르면 여행�
     assert.equal(w.eval(`syncMeta.gone.revision`),5);
     w.eval(`store.trips.find(t=>t.id==='gone').name='돌아온 뒤 편집';`);
     await w.eval(`syncTripCloud(store.trips.find(t=>t.id==='gone'))`);
-    assert.deepEqual(JSON.parse(JSON.stringify(w.saves)),[{id:'gone',rev:5}],'이후 편집이 그 revision 위로 올라간다');
+    assert.deepEqual(goneSaves(w),[{id:'gone',rev:5,force:false}],'이후 편집이 그 revision 위로 올라간다');
   }finally{w.close();}
 });
 
@@ -225,10 +247,69 @@ test('통합: 사본 없는 삭제 충돌 — 이 기기 것을 고르면 방금
     assert.deepEqual(Array.from(w.tomb),[3,5],'서버가 알려 준 revision 기준으로 삭제를 다시 보낸다');
     assert.equal(w.eval(`syncMeta.gone.status`),'tombstoned');
     assert.equal(w.eval(`store.trips.some(t=>t.id==='gone')`),false);
-    // 다음 로그인 병합이 지운 여행을 도로 내려받지 않는다(서버에도 지워졌다)
-    const merged=w.eval(`JSON.stringify(TC_SYNC.mergeForLogin(store.trips,[{client_id:'gone',data:null,revision:6,deleted_at:'2026-09-01T00:00:00Z'}],syncMeta).trips.map(t=>t.id))`);
-    assert.deepEqual(JSON.parse(merged),['keep']);
+    assert.equal(w.eval(`window.server.gone.deleted_at!=null`),true,'서버에서도 지워졌다');
+    // 다음 로그인 병합이 지운 여행을 도로 내려받지 않는다 — 행은 위 서버 상태에서 만든다
+    assert.deepEqual(JSON.parse(w.eval(`loginMerge()`)),['keep']);
   }finally{w.close();}
+});
+
+// 바로 지운 경우(온라인)는 지운 여행의 사본이 충돌에 c.local로 실려 온다. 전에는 '이 기기 것 유지'가 그 사본을
+// force로 올려 서버에서 되살렸고(B의 편집은 덮였다) syncMeta는 clean이라, 다음 로그인 병합이 지운 여행을 내려받았다.
+// 같은 버튼이 언제 지웠느냐에 따라 반대로 동작했다 — '이 기기 것'은 c.local이 아니라 store에 그 여행이 있는가로 가른다.
+test('통합: 바로 지운 여행의 충돌 — 이 기기 것을 고르면 지운 사본을 올리지 않고 다시 지운다', { skip: noJsdom }, async () => {
+  const w=bootDeleteConflict({immediate:true});
+  try{
+    assert.equal(w.eval(`deleteTrip('gone')`),true);
+    await new Promise(r=>setTimeout(r,20));
+    assert.deepEqual(Array.from(w.tomb),[3]);
+    assert.equal(w.eval(`currentSyncConflict&&currentSyncConflict.local&&currentSyncConflict.local.id`),'gone','지운 사본이 충돌에 실려 온다');
+    assert.match(w.document.getElementById('syncConflictText').textContent,/이 기기에서 지운 “지운 여행”/,'삭제라고 말한다');
+    assert.equal(w.document.getElementById('syncKeepCopy').style.display,'none','지운 여행은 사본으로 남길 것이 없다');
+    w.document.getElementById('syncUseDevice').click();
+    await new Promise(r=>setTimeout(r,20));
+    assert.deepEqual(Array.from(w.tomb),[3,5],'서버가 알려 준 revision으로 삭제를 다시 보낸다');
+    assert.deepEqual(goneSaves(w),[],'지운 사본을 올리지 않는다');
+    assert.equal(w.eval(`syncMeta.gone.status`),'tombstoned');
+    assert.equal(w.eval(`window.server.gone.data.days[0].spots[0].name`),'B가 넣은 곳','B의 편집을 덮지 않았다');
+    assert.deepEqual(JSON.parse(w.eval(`loginMerge()`)),['keep'],'다음 로그인 병합이 도로 내려받지 않는다');
+  }finally{w.close();}
+});
+
+// 묻는 동안 되돌리기(Ctrl+Z·토스트)로 여행이 돌아오면 '이 기기 것'은 더 이상 삭제가 아니다. 전에는 문구가 '지워져요'인 채로
+// 버튼은 돌아온 여행을 force로 올렸다 — 보이는 것과 하는 일이 갈렸다. 그리는 때와 누르는 때가 같은 기준을 쓴다.
+test('통합: 삭제 충돌을 묻는 동안 여행이 돌아오거나 사라지면 질문을 다시 그리고, 버튼은 보인 대로 동작한다', { skip: noJsdom }, async () => {
+  const w=bootDeleteConflict({immediate:true});
+  try{
+    w.eval(`deleteTrip('gone')`);
+    await new Promise(r=>setTimeout(r,20));
+    assert.match(w.document.getElementById('syncConflictText').textContent,/이 기기에서 지운/);
+    // 모달이 떠 있어도 Ctrl+Z는 막히지 않는다
+    w.document.body.dispatchEvent(new w.KeyboardEvent('keydown',{key:'z',ctrlKey:true,bubbles:true}));
+    assert.equal(w.eval(`store.trips.some(t=>t.id==='gone')`),true,'되돌리기로 여행이 돌아왔다');
+    assert.match(w.document.getElementById('syncConflictText').textContent,/어느 버전을 보존할지/,'질문이 바뀐다');
+    assert.equal(w.document.getElementById('syncKeepCopy').style.display,'','돌아온 여행은 사본으로 남길 수 있다');
+    w.document.getElementById('syncUseDevice').click();
+    await new Promise(r=>setTimeout(r,20));
+    assert.deepEqual(Array.from(w.tomb),[3],'지우지 않는다');
+    assert.deepEqual(goneSaves(w),[{id:'gone',rev:3,force:true}],'돌아온 여행(이 기기 것)을 올린다 — 사용자가 본 대로다');
+  }finally{w.close();}
+
+  // 그린 뒤에 store가 바뀌었는데 다시 그려지지 않았어도, 누르는 순간 보인 것과 다르면 하지 않고 다시 묻는다
+  const v=bootDeleteConflict({immediate:true});
+  try{
+    v.eval(`deleteTrip('gone')`);
+    await new Promise(r=>setTimeout(r,20));
+    v.eval(`store.trips.push(JSON.parse(JSON.stringify(currentSyncConflict.local)));`);   // 다시 그리지 않는 경로로 돌아왔다
+    v.document.getElementById('syncUseDevice').click();
+    await new Promise(r=>setTimeout(r,20));
+    assert.deepEqual(Array.from(v.tomb),[3],'지우지 않는다');
+    assert.deepEqual(goneSaves(v),[],'올리지도 않는다');
+    assert.equal(v.document.getElementById('syncConflictBg').classList.contains('show'),true,'같은 충돌을 다시 묻는다');
+    assert.match(v.document.getElementById('syncConflictText').textContent,/어느 버전을 보존할지/);
+    v.document.getElementById('syncUseDevice').click();
+    await new Promise(r=>setTimeout(r,20));
+    assert.deepEqual(goneSaves(v),[{id:'gone',rev:3,force:true}],'다시 그린 질문에 답하면 그대로 한다');
+  }finally{v.close();}
 });
 
 test('통합: 충돌 UI는 클라우드·기기·복사본 세 선택지를 제공한다', { skip: noJsdom }, () => {
