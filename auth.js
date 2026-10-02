@@ -337,6 +337,10 @@
         }
         return { error: mapped };
       }
+      // 서버는 재설정과 함께 그 계정의 세션을 전부 지웠다(revokeSessionsOnPasswordReset). 이 기기의 토큰도 이제 죽었는데
+      // 들고 있으면 로그인한 것처럼 보이면서 저장마다 401이 난다 — 여기서도 내려놓는다. 다른 계정의 링크였어도 같다:
+      // 화면은 새 비밀번호로 로그인하라고 하고, signOut이 그 세션을 서버에서도 끝낸다.
+      if (_session || readToken()) await signOut();
       return { error: null };
     } catch (err) { return { error: networkError(err) }; }
   }
