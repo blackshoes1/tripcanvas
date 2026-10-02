@@ -172,7 +172,8 @@
 
   // 숫자 표기 하나 — 세 자리 묶음(구분자 '.'·','·공백: 1.234.567 · 1 420 000) 뒤에 소수부 하나까지가 한 덩어리다.
   // 묶음이 세 자리가 아니면 거기서 끊는다 — '01.11.2026' 같은 날짜가 한 숫자로 붙지 않는다.
-  const AMOUNT_NUM='\\d+(?:(?:[.,]|[ \\u00a0\\u202f])\\d{3}(?!\\d))*(?:[.,]\\d+)?';
+  // 묶음은 맨 앞이 1~3자리일 때만 잇는다 — 연도 뒤에 금액이 오면('28 Sep 2026 450 EUR') '2026 450'이 2026450이 됐다.
+  const AMOUNT_NUM='(?:\\d{1,3}(?:(?:[.,]|[ \\u00a0\\u202f])\\d{3}(?!\\d))+|\\d+)(?:[.,]\\d+)?';
   const AMOUNT_GAP='[ \\t\\u00a0\\u202f]?';   // 숫자와 통화 사이 — 줄을 넘지 않는다(윗줄 날짜가 아랫줄 €에 붙지 않게)
 
   /**
@@ -223,7 +224,10 @@
   /**
    * 라벨(총액·total…)이 없는 금액 — 읽은 통화의 기호·코드 **바로 옆**의 숫자만 금액이다(2026-10-02).
    * 본문의 첫 숫자를 집으면 'Check-in 2026-10-30 … 250 EUR'가 2026이 되고, '1,800,000원 · 1,234 EUR'는 원화 금액이 유로가 된다.
-   * 날짜·시각의 조각(앞뒤가 - / : 인 숫자)은 금액으로 보지 않는다. '원'·'元'은 숫자 뒤에만 붙는다('회원 2명'의 2를 집지 않게).
+   * 날짜·시각의 조각(앞뒤가 - / : 인 숫자)은 금액으로 보지 않는다 — 단 ':'·'/' 앞이 숫자가 아니면 조각이 아니라 항목의
+   * 구분이다('요금:250,000원' · '1박/250,000원'은 금액, '14:30'의 30은 아니다). 기호·코드와 숫자 사이에는 ':'와 닫는 괄호가
+   * 올 수 있다('EUR: 250' · '결제금액(원): 250,000'). '원'·'元'은 숫자 뒤에만 붙는다('회원 2명'의 2를 집지 않게) —
+   * 괄호 안의 단위 표기 '(원)'만 앞에 온다.
    * @param {string} text @param {string} code @returns {string} 찾은 숫자 표기(없으면 빈 문자열)
    */
   function amountNearCurrency(text, code){
@@ -231,9 +235,12 @@
     const after=marks.filter(x=>x!=='원'&&x!=='元');
     const num='('+AMOUNT_NUM+')';
     /** @type {RegExpExecArray[]} */ const hits=[];
-    const before=new RegExp('(?:^|[^\\d.,\\-/:A-Za-z])'+num+AMOUNT_GAP+'(?:'+marks.concat(code+'(?![A-Za-z])').join('|')+')','i').exec(s);
+    // 숫자 앞: 글의 처음 · 숫자·구분 기호·글자가 아닌 것 · 숫자가 아닌 것 뒤의 ':'·'/'
+    const lead='(?:^[:/]?|[^\\d.,\\-/:A-Za-z]|[^\\d][:/])';
+    const before=new RegExp(lead+num+AMOUNT_GAP+'(?:'+marks.concat(code+'(?![A-Za-z])').join('|')+')','i').exec(s);
     if(before) hits.push(before);
-    const next=new RegExp('(?:'+after.concat('(?:^|[^A-Za-z])'+code).join('|')+')'+AMOUNT_GAP+num+'(?![\\d\\-/:]|[.,]\\d)','i').exec(s);
+    const unit='\\((?:'+marks.join('|')+')(?=\\))';   // '(원)' · '(€)' — 괄호 안의 단위 표기
+    const next=new RegExp('(?:'+after.concat('(?:^|[^A-Za-z])'+code, unit).join('|')+')\\)?(?:[ \\t\\u00a0\\u202f]*[:：])?'+AMOUNT_GAP+num+'(?![\\d\\-/:]|[.,]\\d)','i').exec(s);
     if(next) hits.push(next);
     hits.sort((a,b)=>a.index-b.index);
     return hits.length? hits[0][1] : '';
@@ -322,10 +329,13 @@
 
     const currency=normalizeCurrency(text, {hint:o.currencyHint});
     if(currency.ambiguous) ambiguities.push('통화 기호만으로는 어느 나라 통화인지 확실하지 않아요');
-    // 금액: 라벨이 있으면 그 줄에서(통화 옆 숫자가 먼저), 없으면 통화 바로 옆의 숫자만 — 본문의 아무 숫자(연도·예약번호)를 집지 않는다
-    const amountText=/(?:총액|합계|total|amount|가격|price)[^\n]{0,40}/i.exec(text);
-    const near=(/**@type{string}*/s)=>currency.code? amountNearCurrency(s, currency.code) : '';
-    const read=readAmount(amountText? (near(amountText[0])||amountText[0]) : near(text), currency.code);
+    // 금액: 통화를 알면 그 기호·코드 바로 옆의 숫자만 — 라벨(총액·total…) 줄 끝까지에서 먼저, 거기 없으면 본문 전체에서.
+    // 라벨 줄의 첫 숫자를 집으면 'Total for stay 2026-10-30 – …: 450 EUR'가 2026, '(3 nights): € 1.234,56'이 3이 된다.
+    // 통화를 모를 때만 라벨 줄의 첫 숫자를 읽고, 그 금액은 통화가 빈 칸이라 자동으로 넘기지 않는다(아래 missingFields).
+    const amountLine=/(?:총액|합계|total|amount|가격|price)[^\n]*/i.exec(text);
+    const code=currency.code;
+    const read=readAmount(code? ((amountLine&&amountNearCurrency(amountLine[0], code))||amountNearCurrency(text, code))
+      : (amountLine? amountLine[0] : ''), code);
     const amount=read.amount;
     if(read.ambiguous) ambiguities.push(`금액 "${read.text}"이 ${read.amount}인지 ${read.alternative}인지 확실하지 않아요`);
     // 저장할 수 없는 통화(GBP·AUD…)는 저장하는 순간 통화가 떨어져 원화 금액이 된다 — 읽은 대로 보여 주되 확인받는다
@@ -349,6 +359,7 @@
       confidence: 0
     };
     candidate.missingFields=(REQUIRED[type]||REQUIRED.OTHER).filter(f=>!candidate[f]);
+    if(amount!==null && !code) candidate.missingFields.push('currency');   // 통화를 모르는 금액 — 원화로 단정하지 않는다
     candidate.confidence=scoreCandidate(candidate, !!adapter);
     return candidate;
   }

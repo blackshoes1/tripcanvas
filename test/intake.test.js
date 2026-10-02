@@ -209,6 +209,54 @@ test('parseBookingCandidate: 라벨이 있어도 그 줄에서 통화 옆 숫자
   assert.equal(c.amount, 300);
 });
 
+// 라벨 없이 '항목:금액'으로 붙여 쓰는 문자·'EUR: 250'·'(원): 250,000'을 시각·날짜의 조각으로 오인해 금액을 잃었다(2026-10-02 리뷰).
+test('parseBookingCandidate: 글자 뒤의 ":"·"/"는 항목 구분이다 — 숫자 뒤의 ":"·"/"만 시각·날짜의 조각이다', () => {
+  const read = (text) => {
+    const c = I.parseBookingCandidate({ url: 'https://www.booking.com/hotel/x', title: 'Hotel X', text });
+    return [c.amount, c.currency];
+  };
+  assert.deepEqual(read('요금:250,000원'), [250000, 'KRW']);
+  assert.deepEqual(read('숙박요금:250,000원'), [250000, 'KRW']);
+  assert.deepEqual(read('1박/250,000원'), [250000, 'KRW']);
+  assert.deepEqual(read('결제금액(원): 250,000'), [250000, 'KRW'], '괄호 안의 단위 표기 뒤의 숫자');
+  assert.deepEqual(read('EUR: 250'), [250, 'EUR'], '코드 뒤의 ":"');
+  assert.deepEqual(read('14:30 250 EUR'), [250, 'EUR'], '시각의 30은 금액이 아니다');
+  assert.deepEqual(read('10/30/2026 250 EUR'), [250, 'EUR'], '날짜의 조각도 금액이 아니다');
+  assert.deepEqual(read('KRW 14:30'), [null, 'KRW'], '통화 뒤에 와도 시각은 금액이 아니다');
+});
+
+// 연도 뒤에 공백 하나를 두고 금액이 오면 공백을 천 단위 구분으로 읽어 '2026 450'이 2026450이 됐다(2026-10-02 리뷰).
+test('parseBookingCandidate: 날짜의 연도와 그 뒤의 금액을 한 숫자로 붙이지 않는다', () => {
+  const c = I.parseBookingCandidate({ url: 'https://www.booking.com/hotel/fr/x.html', title: 'Hotel X | Booking.com',
+    text: 'Confirmation: AB12345\nCheck-in 2026-10-30\nCheck-out 2026-11-01\nBooked on 28 Sep 2026 450 EUR' });
+  assert.equal(c.amount, 450);
+  assert.equal(I.candidateToBooking(c, 'bk_x').price, 450);
+  const read = (text) => I.parseBookingCandidate({ url: 'https://www.booking.com/hotel/x', title: 'Hotel X', text }).amount;
+  assert.equal(read('Arrival 30 Oct 2026 450 EUR'), 450);
+  assert.equal(read('Oct 30, 2026 250 EUR'), 250);
+  assert.equal(read('1 420 000 EUR'), 1420000, '공백 천 단위는 그대로 읽는다');
+  assert.equal(I.normalizeAmount('2026 450'), 2026, '맨 앞 묶음이 네 자리면 거기서 끊는다');
+});
+
+// 라벨 뒤 40자만 보고 통화 옆 숫자가 없으면 그 창의 첫 숫자(연도·박수)를 금액으로 읽었다(2026-10-02 리뷰).
+test('parseBookingCandidate: 통화를 알면 라벨 줄 끝까지, 거기 없으면 본문에서 통화 옆 숫자를 찾는다', () => {
+  const read = (text) => I.parseBookingCandidate({ url: 'https://www.booking.com/hotel/x', title: 'Hotel X', text }).amount;
+  assert.equal(read('Check-in 2026-10-30\nCheck-out 2026-11-01\nTotal for stay 2026-10-30 – 2026-11-01: 450 EUR'), 450, '라벨 줄 안의 날짜');
+  assert.equal(read('Total price\n€ 450'), 450, '라벨만 있는 줄 — 금액은 다음 줄');
+  assert.equal(read('Total price incl. taxes & fees (3 nights): € 1.234,56'), 1234.56, '박수가 먼저 와도');
+  assert.equal(read('Total amount including taxes and fees: EUR 1,234.56'), 1234.56, '40자를 넘는 라벨');
+  assert.equal(read('Total: 450\nCurrency: EUR'), null, '통화 옆에 숫자가 없으면 라벨 줄의 숫자를 짐작하지 않는다');
+});
+
+test('parseBookingCandidate: 통화를 모를 때만 라벨 줄의 첫 숫자를 읽고, 그 금액은 통화가 빈 칸이다', () => {
+  const c = I.parseBookingCandidate({ url: 'https://www.booking.com/hotel/x', title: 'Hotel X',
+    text: '예약번호: ZZ11223\n체크인 2026-10-30\n체크아웃 2026-11-01\nTotal 450' });
+  assert.equal(c.amount, 450);
+  assert.equal(c.currency, null);
+  assert.ok(c.missingFields.includes('currency'), '원화로 단정하지 않는다');
+  assert.notEqual(I.candidateDisposition(c), 'AUTO');
+});
+
 test('candidateToBooking: 통화의 최소 단위로 반올림한다 — 센트는 살리고 엔은 정수다', () => {
   const usd = I.parseBookingCandidate({ url: 'https://www.booking.com/hotel/x', title: 'Hotel X',
     text: '예약번호: AB12345\n체크인 2026-10-30\n체크아웃 2026-11-01\nTotal USD 1,250.50' });
