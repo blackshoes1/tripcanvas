@@ -292,10 +292,11 @@ struct TripCostsView: View {
                     }
                     // 날짜별 줄은 웹 일자 카드와 같은 '그날 비용'이다 — 예약 하루치(숙박은 밤마다·렌터카는 빌린 날마다)를 더한다.
                     // 위 합계는 가서 쓰는 돈만이라 둘이 다르다는 것을 여기서 말한다(2026-09-18 "웹은 나오는데 앱만 안 나온다").
-                    let share = Self.bookingShareTotal(response)
-                    if share > 0 {
-                        Text("날짜별 줄은 예약 하루치 \(money(share))를 더한 그날 비용이에요 · 날짜별 합계 \(money(Self.dayRowsTotal(response)))")
-                            .font(.caption).foregroundStyle(Ink.soft)
+                    // 거꾸로 위 합계에만 있는 돈도 있다 — 일정 밖으로 넘친 연박 숙소의 몫은 날짜가 없어 어느 줄에도 없다(2026-10-02).
+                    if let note = Self.dayRowsNote(share: Self.bookingShareTotal(response),
+                                                   overflow: Self.stayOverflowTotal(response.unallocated),
+                                                   dayRows: Self.dayRowsTotal(response)) {
+                        Text(note).font(.caption).foregroundStyle(Ink.soft)
                     }
                 }
             } else if response != nil {
@@ -310,7 +311,7 @@ struct TripCostsView: View {
                 .prominentButton()
             }
         } footer: {
-            Text("합계는 장소 비용·추가 비용·교통비만 더해요. 날짜별 줄에는 숙박·렌터카 예약의 그날 몫도 더해 보여요(웹 일자 카드와 같아요). 예약 전액은 예약 결제 금액에 있어요.")
+            Text("합계는 장소 비용·추가 비용·교통비만 더해요. 날짜별 줄에는 숙박·렌터카 예약의 그날 몫도 더해 보여요(웹 일자 카드와 같아요). 연박 숙소가 일정 밖으로 넘친 밤의 몫은 날짜가 없어 합계에만 들어가요. 예약 전액은 예약 결제 금액에 있어요.")
         }
         Section("날짜별") {
             if let response {
@@ -389,6 +390,25 @@ struct TripCostsView: View {
     /// 연박 숙소의 몫이 들어 있어(어느 날에도 없다, 2026-10-02) 거기에 예약 하루치를 더하면 날짜별 줄의 합보다 커진다.
     static func dayRowsTotal(_ response: TripCostsResponse) -> Double {
         response.days.reduce(0) { sum, day in sum + day.cost.total }
+    }
+
+    /// 일정 밖으로 넘친 연박 숙소의 몫 — 날짜 없는 `STAY` 줄(`unallocated`)의 합. 현지 결제 금액(`onSite`)에는 들어 있지만
+    /// 어느 날짜별 줄에도 없다(서버 `stayCostOverflow`, 2026-10-02). 날짜 없는 예약 잔액(`BOOKING`)은 현지 결제가 아니라 세지 않는다.
+    static func stayOverflowTotal(_ unallocated: [TripCostLine]) -> Double {
+        unallocated.reduce(0) { sum, line in
+            line.source == "STAY" && line.dayIndex == nil ? sum + (line.totalKRW ?? 0) : sum
+        }
+    }
+
+    /// 현지 결제 금액(머리글)과 날짜별 줄이 왜 다른지 한 줄로. 날짜별 줄에만 있는 돈(예약 하루치 `share`)과 머리글에만 있는
+    /// 돈(일정 밖 숙박 `overflow`)을 **각자** 말한다 — 한쪽만 보고 숨기면 다른 쪽 차이가 설명 없이 남는다. 둘 다 없으면 nil.
+    static func dayRowsNote(share: Double, overflow: Double, dayRows: Double) -> String? {
+        let won = { (value: Double) in TimeFormat.money(value, currency: "KRW") }
+        var parts: [String] = []
+        if share > 0 { parts.append("날짜별 줄은 예약 하루치 \(won(share))를 더한 그날 비용이에요") }
+        if overflow > 0 { parts.append("합계에는 일정 밖으로 넘친 숙박 \(won(overflow))이 들어 있어요") }
+        guard !parts.isEmpty else { return nil }
+        return (parts + ["날짜별 합계 \(won(dayRows))"]).joined(separator: " · ")
     }
 
     /// 환율 한 줄 — **원 단위로 반올림**하고, 엔은 100엔 기준으로 말한다("100 JPY ≈ 931원"). 소수점 환율은 시세표의 말이지
