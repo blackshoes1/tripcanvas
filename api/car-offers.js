@@ -10,6 +10,7 @@ const RATE_WINDOW_MS = 60_000;
 const RATE_LIMIT = 10;
 const MAX_OFFERS = 20;
 const CURS = ['KRW', 'USD', 'EUR', 'JPY', 'CNY'];
+const RATE_MAX_KEYS = 10_000;          // 표가 끝없이 자라지 않게 — 넘치면 가장 오래된 창부터 버린다
 const buckets = new Map();
 
 function send(res, status, body) {
@@ -38,15 +39,27 @@ function sameOrigin(req) {
   catch (_) { return false; }
 }
 
-function clientIp(req) {
-  return String((req.headers && (req.headers['x-vercel-forwarded-for'] || req.headers['x-forwarded-for'])) || (req.socket && req.socket.remoteAddress) || 'unknown')
-    .split(',')[0].trim();
+// 전달 헤더는 Vercel 위에서만 믿는다 — NAS(Funnel → Next)에서는 클라이언트가 써 보낸 그대로 지나와 상한이 사라졌다
+// (kakao-directions.js와 같은 규칙). 그 밖에서는 소켓 주소다(Next 어댑터가 앞단 프록시가 본 주소를 싣는다).
+function clientIp(req, env) {
+  const forwarded = env && env.VERCEL && req.headers && (req.headers['x-vercel-forwarded-for'] || req.headers['x-forwarded-for']);
+  return 'ip:' + String(forwarded || (req.socket && req.socket.remoteAddress) || 'unknown').split(',')[0].trim();
 }
 
-function rateAllowed(req, now) {
-  const key = clientIp(req);
+// Map은 넣은 순서를 지킨다 — 창을 새로 열 때 지웠다 다시 넣으므로 앞쪽이 언제나 가장 오래된 창이다
+function sweep(now) {
+  for (const [key, bucket] of buckets) {
+    if (now - bucket.started < RATE_WINDOW_MS) break;
+    buckets.delete(key);
+  }
+  while (buckets.size >= RATE_MAX_KEYS) buckets.delete(buckets.keys().next().value);
+}
+
+function rateAllowed(key, now) {
   const current = buckets.get(key);
   if (!current || now - current.started >= RATE_WINDOW_MS) {
+    buckets.delete(key);
+    sweep(now);
     buckets.set(key, { started: now, count: 1 });
     return true;
   }
@@ -195,7 +208,7 @@ function createHandler(deps) {
       return send(res, 405, { error: 'method_not_allowed' });
     }
     if (!sameOrigin(req)) return send(res, 403, { error: 'origin_not_allowed' });
-    if (!rateAllowed(req, now())) return send(res, 429, { error: 'RATE_LIMIT' });
+    if (!rateAllowed(clientIp(req, env), now())) return send(res, 429, { error: 'RATE_LIMIT' });
 
     let body;
     try { body = parseBody(req); }
@@ -222,4 +235,4 @@ function createHandler(deps) {
 module.exports = createHandler();
 module.exports.createHandler = createHandler;
 module.exports.runSearch = runSearch;
-module.exports._private = { validRequest, normalizeOffers, providerHealth, safeLink, buckets };
+module.exports._private = { validRequest, normalizeOffers, providerHealth, safeLink, buckets, RATE_MAX_KEYS };

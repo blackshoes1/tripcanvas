@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
+import kakaoDirections from '@legacy/api/kakao-directions.js';
+
+import { toRouteHandler } from '@/lib/legacy/nodeHandler';
+
 import { createServerRouter, makeServerFetch } from './serverRouting';
 
 // 여기서 지키는 것: **키가 없으면 아무 일도 일어나지 않고**, 국내 구간은 Vercel과 **같은 프록시 코드**를 지난다.
@@ -124,5 +128,27 @@ describe('makeServerFetch', () => {
     });
     expect(response.status).toBe(503);
     expect(called).toBe(0);
+  });
+});
+
+describe('서버 안의 경로 조회와 밖의 요청', () => {
+  it('밖에서 주소 없는 요청으로 버킷을 채워도 안의 조회는 막히지 않는다 — 같은 버킷을 쓰지 않는다', async () => {
+    kakaoDirections._private.buckets.clear();
+    const outside = toRouteHandler(kakaoDirections.createHandler({ env: {} }));
+    let outsideStatus = 0;
+    for (let i = 0; i < 31; i++) {
+      outsideStatus = (await outside(new Request('http://localhost/api/kakao-directions', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ origin: SEOUL, destination: BUSAN })
+      }))).status;
+    }
+    expect(outsideStatus).toBe(429);
+
+    const f = makeServerFetch(KEYS, (async () => jsonResponse(KAKAO_OK)) as typeof fetch);
+    const inside = await f('/api/kakao-directions', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ origin: SEOUL, destination: BUSAN })
+    });
+    expect(inside.status).toBe(200);
+    kakaoDirections._private.buckets.clear();
   });
 });

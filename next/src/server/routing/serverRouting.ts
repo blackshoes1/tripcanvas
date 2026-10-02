@@ -53,14 +53,17 @@ export function makeServerFetch(
 ): typeof fetch {
   const kakao = toRouteHandler(kakaoDirections.createHandler({
     fetchImpl: fetchImpl as unknown as (url: string, init?: unknown) => Promise<unknown>,
-    env: { KAKAO_REST_API_KEY: keys.kakaoRestKey }
+    env: { KAKAO_REST_API_KEY: keys.kakaoRestKey },
+    rateKey: 'internal:server-routing'
   }));
   return (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
     if (url === '/api/kakao-directions' || url.endsWith('/api/kakao-directions')) {
       // 프록시는 Origin 헤더가 없으면 같은 출처로 본다 — 밖에서 온 요청이 아니라 우리가 안에서 부르는 것이다.
-      // ⚠️ 분당 30번 제한은 그대로 걸린다(클라이언트 IP는 'unknown' 하나). 넘으면 429가 오고,
+      // ⚠️ 분당 30번 제한은 그대로 걸린다 — 서버 전체가 버킷 하나(`rateKey`)를 쓴다. 넘으면 429가 오고,
       //    그건 `transient`라 캐시에 남지 않고 다음 요청에서 다시 묻는다.
+      //    그 버킷은 밖의 요청과 섞이지 않는다 — 전에는 주소 없는 요청과 같은 'unknown'이라, 밖에서 그 버킷을
+      //    채우면 서버의 경로 조회가 통째로 429였다(밖의 키는 언제나 'ip:'로 시작한다).
       const response = await kakao(new Request('http://internal/api/kakao-directions', init));
       onStatus?.(response.status);
       return response;

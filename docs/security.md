@@ -49,6 +49,12 @@ devtools를 열면 누구나 볼 수 있었다 — 바뀐 것은 *가능성*이 
 
 `/api/kakao-directions`는 POST와 같은 origin 요청만 받고, 1KB 이하 JSON의 위·경도를 검증한다. upstream 응답은 앱에 필요한 필드만 반환하며 8초 뒤 중단한다. 함수 인스턴스별 30회/분 완화 제한은 실수로 생긴 요청 폭주를 줄일 뿐, 여러 서버리스 인스턴스에 걸친 보안 경계가 아니다.
 
+제한 키(누가 보낸 요청인가)는 세 프록시(`kakao-directions`·`hotel-offers`·`car-offers`)가 같은 규칙이다(2026-10-02).
+`x-vercel-forwarded-for`는 **Vercel 위(`VERCEL`)에서만** 믿는다 — 엣지가 덮어쓰는 Vercel과 달리 NAS의 같은 라우트(Funnel → Next, `next/src/app/api/*`)에서는
+클라이언트가 써 보낸 그대로 지나와, 요청마다 값을 바꾸면 상한이 사라졌다. 그 밖에서는 소켓 주소이고, Next 어댑터(`nodeHandler.ts`)는
+X-Forwarded-For의 **마지막** 항목(바로 앞 프록시 — NAS는 Tailscale Funnel — 가 붙인 주소)을 거기 싣는다. 버킷 표는 창이 지난 항목을 지우고 1만 개를 넘지 않는다.
+서버 안의 경로 조회(`serverRouting.ts`)는 제 버킷(`rateKey`) 하나를 써서 밖의 요청이 그 조회를 429로 막을 수 없다.
+
 배포 전 Vercel Firewall에서 `/api/kakao-directions`에 IP 기반 rate limit을 설정한다. 초기 권장값은 60초당 30회이며 정상 사용량을 관찰해 조정한다. 더 세밀한 사용자별 제한이 필요하면 인증 토큰과 Vercel KV 같은 공유 저장소를 함께 사용한다.
 
 ## 보안 헤더와 CSP

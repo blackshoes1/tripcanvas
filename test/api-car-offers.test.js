@@ -85,3 +85,45 @@ test('car-offers: health가 자격증명 등록 여부를 구분해 알린다 (�
   assert.equal(withKey.marker, true);
   assert.ok(!JSON.stringify(withKey).includes('tp_secret_value'), '키 값 자체는 절대 응답에 넣지 않는다');
 });
+
+// rate limit 키 — NAS(Funnel → Next)에서는 `x-vercel-forwarded-for`를 아무나 써 보낼 수 있다(kakao 프록시와 같은 규칙)
+async function invokeFrom(handler, { headers = {}, remoteAddress } = {}) {
+  const res = response();
+  await handler({ method: 'POST', headers, socket: { remoteAddress }, body: JSON.stringify(BODY) }, res);
+  return { status: res.statusCode, json: JSON.parse(res.body) };
+}
+
+test('car-offers: Vercel 밖에서는 전달 헤더를 바꿔도 같은 사람으로 센다', async () => {
+  _private.buckets.clear();
+  const handler = createHandler({ env: {} });
+  let last;
+  for (let i = 0; i < 11; i++) {
+    last = await invokeFrom(handler, { headers: { 'x-vercel-forwarded-for': `v-${Math.random()}`, 'x-forwarded-for': `f-${Math.random()}` }, remoteAddress: '203.0.113.7' });
+  }
+  assert.equal(last.status, 429);
+  assert.equal(last.json.error, 'RATE_LIMIT');
+});
+
+test('car-offers: Vercel 위에서는 엣지가 붙인 주소로 사람을 가른다', async () => {
+  _private.buckets.clear();
+  const handler = createHandler({ env: { VERCEL: '1' } });
+  const from = ip => ({ headers: { 'x-vercel-forwarded-for': ip }, remoteAddress: '10.0.0.1' });
+  let last;
+  for (let i = 0; i < 11; i++) last = await invokeFrom(handler, from('198.51.100.1'));
+  assert.equal(last.status, 429);
+  assert.notEqual((await invokeFrom(handler, from('198.51.100.2'))).status, 429);
+});
+
+test('car-offers: 창이 지난 버킷은 지우고 표는 상한을 넘지 않는다', async () => {
+  _private.buckets.clear();
+  let clock = 0;
+  const handler = createHandler({ env: {}, now: () => clock });
+  for (let i = 0; i < 20; i++) await invokeFrom(handler, { remoteAddress: `old-${i}` });
+  assert.equal(_private.buckets.size, 20);
+  clock = 60_000;
+  await invokeFrom(handler, { remoteAddress: 'new' });
+  assert.equal(_private.buckets.size, 1);
+  for (let i = 0; i <= _private.RATE_MAX_KEYS; i++) await invokeFrom(handler, { remoteAddress: `flood-${i}` });
+  assert.ok(_private.buckets.size <= _private.RATE_MAX_KEYS);
+  _private.buckets.clear();
+});
