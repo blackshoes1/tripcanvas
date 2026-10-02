@@ -106,4 +106,11 @@ test('Kakao proxy: 서버 안에서 부르는 경로 조회는 밖의 요청과 
   }
   assert.equal(limited(await invoke(outside, { socket: {} })), true);
   assert.equal(limited(await invoke(inside, { socket: {} })), false, '안의 조회는 제 버킷을 쓴다');
+
+  // 격리되지만 상한은 있다 — rateKey가 제한을 건너뛰게 바뀌면 서버의 legFiller가 카카오 키 할당량을 끝없이 태운다.
+  // 서버 전체가 버킷 하나라 주소가 달라도 함께 센다(위에서 1번 썼다 → 31번째가 막힌다).
+  const more = [];
+  for (let i = 0; i < 30; i++) more.push(await invoke(inside, { socket: { remoteAddress: `r-${i}` } }));
+  assert.equal(more.slice(0, 29).some(limited), false);
+  assert.equal(limited(more[29]), true, '안의 조회도 분당 30번이다');
 });
