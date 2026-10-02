@@ -39,6 +39,7 @@ import {
 import { PgCollabRepository } from '@/server/infrastructure/database/pgCollabRepository';
 import { PgFxRateRepository } from '@/server/infrastructure/database/pgFxRateRepository';
 import { PgLegCacheRepository } from '@/server/infrastructure/database/pgLegCacheRepository';
+import { PgLegFillUsageRepository } from '@/server/infrastructure/database/pgLegFillUsageRepository';
 import { PgMembershipRepository } from '@/server/infrastructure/database/pgMembershipRepository';
 import { PgPriceObservationRepository } from '@/server/infrastructure/database/pgPriceObservationRepository';
 import { PgTripRepository } from '@/server/infrastructure/database/pgTripRepository';
@@ -49,6 +50,7 @@ import {
   LegacyMembershipRepository, LegacySupabaseSession, LegacyTripRepository
 } from '@/server/infrastructure/supabase/legacyTripRepository';
 import { DualReadMembershipRepository, DualReadTripRepository } from '@/server/repositories/dualRead';
+import { createLegBudget } from '@/server/routing/legBudget';
 import { createLegFiller, legRequestsFor, toLegCache } from '@/server/routing/legFiller';
 import { createServerFx, type FxSupport } from '@/server/currency/serverFx';
 
@@ -227,35 +229,41 @@ function legSupport(): LegSupport | undefined {
   if (!db) return undefined;
   const repo = new PgLegCacheRepository(db);
   const router = createServerRouter({ googleRoutesKey: env.googleRoutesKey, kakaoRestKey: env.kakaoRestKey });
-  const filler = createLegFiller({ repo, router, log: (m) => console.warn(`[tripcanvas-api] ${m}`) });
+  const log = (m: string) => console.warn(`[tripcanvas-api] ${m}`);
+  // 유료 조회의 하루 예산 — 사람마다 · 서버 전체(LEG_FILL_USER_DAILY · LEG_FILL_TOTAL_DAILY). 넘으면 추정으로 답한다
+  const budget = createLegBudget({ repo: new PgLegFillUsageRepository(db), limits: env.legFillLimits, log });
+  const filler = createLegFiller({ repo, router, budget, log });
+  /** '곧 채워질 것'은 예산이 남은 만큼뿐이다 — 소진된 날 `legsPending`이 0보다 크면 앱이 오지 않을 도로를 기다린다 */
+  const withinBudget = async (count: number, userId: string | undefined) =>
+    count > 0 ? Math.min(count, await budget.remaining(userId)) : 0;
   return {
-    async read(trip, dayIndex, waitMs) {
+    async read(trip, dayIndex, waitMs, userId) {
       const requests = legRequestsFor(trip as unknown as Trip, dayIndex);
       if (!requests.length) return { cache: {}, pending: 0 };
       const keys = requests.map((r) => r.key);
-      /** 곧 채워질 것만 센다: 조회된 것도 아니고, 실패로 굳은 것도 아니고, 우리가 조회할 수 있는 구간 */
+      /** 곧 채워질 것만 센다: 조회된 것도 아니고, 실패로 굳은 것도 아니고, 우리가 조회할 수 있고, 예산이 남은 구간 */
       const countPending = (rows: Awaited<ReturnType<typeof repo.getMany>>) => {
-        if (!router) return 0;
+        if (!router) return Promise.resolve(0);
         const byKey = new Map(rows.map((r) => [r.key, r]));
-        return requests.filter((r) => {
+        return withinBudget(requests.filter((r) => {
           const row = byKey.get(r.key);
           if (row?.sec != null || row?.fail) return false;
           return router.canRoute(r.a, r.b);
-        }).length;
+        }).length, userId);
       };
 
       let rows = await repo.getMany(keys);
       // 못 채운 구간이 있으면 **잠깐만** 기다린다 — 그 날을 처음 열어도 도로가 보이게(§측정 277ms).
       // 캐시가 다 있으면 이 블록을 건너뛰므로 두 번째 열람부터는 대기가 없다.
-      if (waitMs && countPending(rows) > 0) {
-        await filler.fill(requests, { budgetMs: waitMs })
+      if (waitMs && await countPending(rows) > 0) {
+        await filler.fill(requests, { budgetMs: waitMs, userId })
           .catch((e) => console.warn(`[tripcanvas-api] 구간 예열 실패 — ${e}`));
         rows = await repo.getMany(keys);
       }
-      return { cache: toLegCache(rows), pending: countPending(rows) };
+      return { cache: toLegCache(rows), pending: await countPending(rows) };
     },
     /** 여행 전체. 전체 동선을 보겠다고 한 순간에만 부른다 */
-    async readTrip(trip, waitMs) {
+    async readTrip(trip, waitMs, userId) {
       const doc = trip as unknown as Trip;
       const dayCount = Array.isArray(doc.days) ? doc.days.length : 0;
       const unique = new Map(
@@ -265,34 +273,34 @@ function legSupport(): LegSupport | undefined {
       if (!list.length) return { cache: {}, pending: 0 };
       const keys = list.map((r) => r.key);
       const countPending = (rows: Awaited<ReturnType<typeof repo.getMany>>) => {
-        if (!router) return 0;
+        if (!router) return Promise.resolve(0);
         const byKey = new Map(rows.map((r) => [r.key, r]));
-        return list.filter((r) => {
+        return withinBudget(list.filter((r) => {
           const row = byKey.get(r.key);
           if (row?.sec != null || row?.fail) return false;
           return router.canRoute(r.a, r.b);
-        }).length;
+        }).length, userId);
       };
 
       let rows = await repo.getMany(keys);
-      if (waitMs && countPending(rows) > 0) {
+      if (waitMs && await countPending(rows) > 0) {
         // 전체를 보겠다고 한 순간이라 한 번에 더 많이 채운다. 그래도 상한까지만 기다린다.
-        await filler.fill(list, { budgetMs: waitMs, max: TRIP_FILL_MAX })
+        await filler.fill(list, { budgetMs: waitMs, max: TRIP_FILL_MAX, userId })
           .catch((e) => console.warn(`[tripcanvas-api] 전체 동선 예열 실패 — ${e}`));
         rows = await repo.getMany(keys);
       }
-      return { cache: toLegCache(rows), pending: countPending(rows) };
+      return { cache: toLegCache(rows), pending: await countPending(rows) };
     },
-    fillTripLater(trip) {
+    fillTripLater(trip, userId) {
       if (!router) return;
       const doc = trip as unknown as Trip;
       const dayCount = Array.isArray(doc.days) ? doc.days.length : 0;
       const requests = Array.from({ length: dayCount }, (_, di) => legRequestsFor(doc, di)).flat();
       if (!requests.length) return;
-      void filler.fill(requests, { max: TRIP_FILL_MAX })
+      void filler.fill(requests, { max: TRIP_FILL_MAX, userId })
         .catch((e) => console.warn(`[tripcanvas-api] 전체 동선 채우기 실패 — ${e}`));
     },
-    fillLater(trip, dayIndex) {
+    fillLater(trip, dayIndex, userId) {
       if (!router) return;
       const doc = trip as unknown as Trip;
       // 보고 있는 날과 **이웃 날**을 채운다. 사람은 대개 다음 날로 넘긴다 — 그때는 이미 도로다.
@@ -302,7 +310,7 @@ function legSupport(): LegSupport | undefined {
         .flatMap((di) => legRequestsFor(doc, di));
       if (!requests.length) return;
       // 기다리지 않는다. 실패해도 응답은 이미 나갔고, 다음 요청이 다시 시도한다.
-      void filler.fill(requests).catch((e) => console.warn(`[tripcanvas-api] 구간 채우기 실패 — ${e}`));
+      void filler.fill(requests, { userId }).catch((e) => console.warn(`[tripcanvas-api] 구간 채우기 실패 — ${e}`));
     }
   };
 }

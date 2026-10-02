@@ -37,7 +37,7 @@ export function createTripViewsHandlers(kit: HandlerKit) {
       const url = new URL(request.url);
       const response = await todayFor(gateway, row, url);
       // "지금" 화면도 그 날의 구간을 쓴다 — 여기서도 못 채운 것을 응답 뒤에 채운다.
-      deps.legs?.fillLater(row.data, response.day.index);
+      deps.legs?.fillLater(row.data, response.day.index, gateway.userId);
       return ok(response);
     });
   }
@@ -53,7 +53,7 @@ export function createTripViewsHandlers(kit: HandlerKit) {
       const stamp = now().toISOString().slice(0, 10);
       // 결제일이 상태를 정하므로 Today와 같은 시계(여행 시간대의 오늘)를 쓴다 — 기기 날짜와 어긋나면 같은 항목이 두 답을 낸다.
       const clock = resolveClock(row.data, dayIndex, new URL(request.url), now());
-      const [legs, fx] = await Promise.all([legCacheFor(row.data, dayIndex), fxFor()]);
+      const [legs, fx] = await Promise.all([legCacheFor(row.data, dayIndex, gateway.userId), fxFor()]);
       const body = buildDayPlanView({
         trip: row.data, di: dayIndex,
         summary: summarizeTrip(row, stamp), generatedAt: now().toISOString(),
@@ -62,7 +62,7 @@ export function createTripViewsHandlers(kit: HandlerKit) {
       // 없는 날을 지어내지 않는다 — 여행은 있는데 그 일자가 없으면 404다.
       if (!body) return fail('DAY_NOT_FOUND');
       // 못 채운 구간은 응답을 보낸 뒤에 채운다. 기다리면 그만큼 화면이 늦는다.
-      deps.legs?.fillLater(row.data, dayIndex);
+      deps.legs?.fillLater(row.data, dayIndex, gateway.userId);
       return ok(body);
     });
   }
@@ -79,14 +79,14 @@ export function createTripViewsHandlers(kit: HandlerKit) {
       // 전체를 보겠다고 한 순간이므로 여기서는 여행 전부를 채운다(상한까지만 기다린다).
       let legs = { cache: {} as LegCache, pending: 0 };
       if (deps.legs) {
-        try { legs = await deps.legs.readTrip(row.data, LEG_WAIT_MS); } catch { /* 추정으로 나간다 */ }
+        try { legs = await deps.legs.readTrip(row.data, LEG_WAIT_MS, gateway.userId); } catch { /* 추정으로 나간다 */ }
       }
       const stamp = now().toISOString().slice(0, 10);
       const body = buildTripRoutes({
         trip: row.data, summary: summarizeTrip(row, stamp), generatedAt: now().toISOString(),
         legCache: legs.cache, legsPending: legs.pending
       });
-      deps.legs?.fillTripLater(row.data);
+      deps.legs?.fillTripLater(row.data, gateway.userId);
       return ok(body);
     });
   }
@@ -97,11 +97,11 @@ export function createTripViewsHandlers(kit: HandlerKit) {
       // 전체를 보겠다고 한 순간이므로 여기서는 여행 전부를 채운다(상한까지만 기다린다).
       let legs = { cache: {} as LegCache, pending: 0 };
       if (deps.legs) {
-        try { legs = await deps.legs.readTrip(row.data, LEG_WAIT_MS); } catch { /* 추정으로 나간다 */ }
+        try { legs = await deps.legs.readTrip(row.data, LEG_WAIT_MS, gateway.userId); } catch { /* 추정으로 나간다 */ }
       }
       const clock = resolveClock(row.data, null, new URL(request.url), now());
       const body = buildTripCosts(row.data, legs.cache, row.revision, await fxFor(), clock.todayISO);
-      deps.legs?.fillTripLater(row.data);
+      deps.legs?.fillTripLater(row.data, gateway.userId);
       return ok(body);
     });
   }

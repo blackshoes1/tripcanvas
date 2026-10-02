@@ -266,3 +266,58 @@ describe('createLegFiller — 병렬과 상한', () => {
     expect(await filler.fill(many(3), { budgetMs: 500 })).toBe(3);
   });
 });
+
+// ── 하루 예산 ──
+//
+// 요청당 상한만으로는 같은 요청을 되풀이하면 끝이 없다. 예산은 조회를 일으킨 사람 몫과 서버 전체 몫에서 함께 뗀다.
+
+describe('createLegFiller — 하루 예산', () => {
+  const many = (n: number) => Array.from({ length: n }, (_, i) => ({ key: `b${i}`, a: seoul, b: jeju, mode: 'car' }));
+  function budget(left: number) {
+    const asks: Array<{ userId: string | undefined; want: number }> = [];
+    return {
+      asks,
+      budget: {
+        async take(userId: string | undefined, want: number) { asks.push({ userId, want }); const g = Math.min(want, left); left -= g; return g; },
+        async remaining() { return left; }
+      }
+    };
+  }
+
+  it('예산이 남은 만큼만 묻고, 조회를 일으킨 사람으로 센다', async () => {
+    const { repo, puts } = memoryRepo();
+    const b = budget(3);
+    let asked = 0;
+    const filler = createLegFiller({ repo, router: router(async () => { asked += 1; return ok(60); }), budget: b.budget });
+    expect(await filler.fill(many(5), { userId: 'u1' })).toBe(3);
+    expect(asked).toBe(3);
+    expect(puts).toHaveLength(3);
+    expect(b.asks).toEqual([{ userId: 'u1', want: 5 }]);
+  });
+
+  it('예산이 없으면 아무것도 묻지 않는다 — 남은 구간은 추정으로 남고 실패로 굳지도 않는다', async () => {
+    const { repo, puts } = memoryRepo();
+    let asked = 0;
+    const filler = createLegFiller({ repo, router: router(async () => { asked += 1; return ok(60); }), budget: budget(0).budget });
+    expect(await filler.fill(many(4), { userId: 'u1' })).toBe(0);
+    expect(asked).toBe(0);
+    expect(puts).toEqual([]);
+  });
+
+  it('예산은 실제로 물을 것만 센다 — 이미 있는 구간·요청당 상한 밖의 구간은 떼지 않는다', async () => {
+    const { repo } = memoryRepo([
+      { key: 'b0', sec: 300, m: 2000, path: null, taxi: null, snapped: false, fail: false, provider: 'kakao', fetchedAt: new Date() }
+    ]);
+    const b = budget(1000);
+    const filler = createLegFiller({ repo, router: router(async () => ok(60)), budget: b.budget });
+    await filler.fill(many(MAX_PER_FILL + 10), { userId: 'u1' });
+    expect(b.asks).toEqual([{ userId: 'u1', want: MAX_PER_FILL }]);
+  });
+
+  it('라우터가 없으면(키 없음) 예산도 보지 않는다 — 예전과 같다', async () => {
+    const { repo } = memoryRepo();
+    const b = budget(10);
+    expect(await createLegFiller({ repo, router: null, budget: b.budget }).fill(many(3), { userId: 'u1' })).toBe(0);
+    expect(b.asks).toEqual([]);
+  });
+});

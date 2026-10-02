@@ -39,7 +39,8 @@ export function composeGateway(input: ComposeGatewayInput): Gateway {
   const { legacy, userId } = input;
   const adaptive: MigrationState = input.adaptive ? input.registry.ADAPTIVE : 'LEGACY';
   const pricing: MigrationState = input.pricing ? input.registry.PRICING : 'LEGACY';
-  const gw: Gateway = { ...legacy };
+  // 요청한 사람 — 경로 조회 하루 예산을 사람마다 센다(handlerKit `LegSupport`)
+  const gw: Gateway = { ...legacy, userId };
 
   if (adaptive !== 'LEGACY') {
     const repos = input.adaptive!;

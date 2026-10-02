@@ -7,11 +7,13 @@
 //   · 같은 구간을 동시에 두 번 묻지 않는다(진행 중 표시)
 //   · 실패는 1시간, 성공은 30일 지나야 다시 묻는다 — 무한 재시도는 할당량을 먹는다
 //   · 키가 없는 provider의 구간은 아예 묻지 않는다
+//   · 하루 예산(`legBudget`)이 남은 만큼만 묻는다 — 사람마다 · 서버 전체
 import { dayLegs } from '@/features/itinerary/domain/dayView';
 import type { LegCache } from '@/features/itinerary/domain/types';
 import type { Trip } from '@/features/trip/domain/types';
 
 import type { LegCacheRepository, LegCacheRow } from '../repositories/types';
+import type { LegBudget } from './legBudget';
 import type { ServerRouter } from './serverRouting';
 
 /** 조회하지 않는 수단 — routing.js가 네트워크 없이 직선으로 추정한다(시각표가 없다) */
@@ -69,6 +71,8 @@ export function isStale(row: LegCacheRow | undefined, now: number): boolean {
 export interface LegFillerDeps {
   repo: LegCacheRepository;
   router: ServerRouter | null;
+  /** 경로 조회 하루 예산. 없으면 요청당 상한만 있다(테스트·내부) */
+  budget?: LegBudget;
   now?: () => number;
   log?: (message: string) => void;
 }
@@ -95,12 +99,20 @@ export function createLegFiller(deps: LegFillerDeps) {
    *
    * `budgetMs`를 주면 **그만큼만 기다렸다 돌아온다.** 남은 조회는 배경에서 계속 돌아
    * 캐시에 들어가므로 버려지지 않는다 — 다음 요청이 그 결과를 본다.
+   *
+   * `userId`는 조회를 일으킨 사람이다 — 하루 예산을 그 사람 몫과 서버 전체 몫에서 함께 뗀다.
+   * 예산이 모자라면 남은 만큼만 묻고, 나머지는 추정으로 남는다(다음 날 다시 채워진다).
    */
-  async function fill(requests: LegRequest[], opts?: { budgetMs?: number; max?: number }): Promise<number> {
+  async function fill(requests: LegRequest[], opts?: { budgetMs?: number; max?: number; userId?: string }): Promise<number> {
     const router = deps.router;
     if (!router) return 0;
     const queue = await pending(requests, opts?.max);
     if (!queue.length) return 0;
+    if (deps.budget) {
+      const granted = await deps.budget.take(opts?.userId, queue.length);
+      queue.length = Math.min(queue.length, granted);
+      if (!queue.length) return 0;
+    }
 
     let filled = 0;
     const worker = async () => {

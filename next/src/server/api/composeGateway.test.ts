@@ -73,6 +73,11 @@ describe('composeGateway', () => {
     expect(log).toEqual(['legacy.listDismissed', 'legacy.saveDevice', 'legacy.listPriceObservations']);
   });
 
+  it('요청한 사람이 Gateway에 실린다 — 경로 조회 하루 예산을 사람마다 센다', () => {
+    const log: string[] = [];
+    expect(composeGateway({ registry: registry({}), userId: USER, legacy: legacyGateway(log), adaptive: null, pricing: null }).userId).toBe(USER);
+  });
+
   it('ADAPTIVE=NEW_BACKEND: 제안 거절·알림·기기·기록은 새 저장소(사용자 id가 붙는다), 가격은 아직 레거시', async () => {
     const log: string[] = [];
     const repos = newRepos(log);

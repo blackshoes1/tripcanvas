@@ -413,6 +413,7 @@ base의 `image:`가 그대로 태그로 붙어 운영이 기대하는 바로 그
 | `NEXT_PUBLIC_SUPABASE_*` · `SUPABASE_JWT_SECRET` | Phase A — Supabase 토큰 검증 |
 | `KAKAO_REST_API_KEY` | 국내 경로(카카오내비)·국내 장소 검색. Vercel에 있는 것과 **같은 키**를 복사해 넣는다 |
 | `GOOGLE_ROUTES_API_KEY` | 해외 경로(Google Routes)용 **서버 전용** 키. 웹 키(리퍼러 제한)·iOS 키(번들 제한)는 서버에서 거절된다 |
+| `LEG_FILL_USER_DAILY` · `LEG_FILL_TOTAL_DAILY` | 위 두 키로 하는 유료 경로 조회의 하루(UTC) 상한 — 사람마다 · 서버 전체(기본 2000 · 10000). 넘으면 조회하지 않고 추정으로 답한다. `0`이면 키를 그대로 두고 유료 조회만 멈춘다. 센 값은 `leg_fill_usage` |
 | `BACKUP_DIR` · `BACKUP_KEEP_DAYS` | 덤프 위치 · 보관 일수. ⚠️ **DB와 다른 볼륨**이어야 한다 — DB는 `/volume1`에 있으므로 `/volume2/...`를 쓴다(§60) |
 | `BACKUP_MAX_AGE_HOURS` | `/api/health`가 `ops_backup_runs`의 마지막 성공을 이 시간과 비교한다(기본 26). 넘으면 DEGRADED |
 | `TC_READ_ONLY` | 점검(읽기 전용) 모드. **전환 직전 write freeze에만** `1`. 쓰기 라우트가 503 `MAINTENANCE` — `docs/production-cutover.md` |

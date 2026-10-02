@@ -281,6 +281,20 @@ export interface LegCacheRepository {
   put(row: Omit<LegCacheRow, 'fetchedAt'>): Promise<void>;
 }
 
+/** 경로 조회 예산의 한 갈래 — `user:<id>` 또는 `all`과 그 갈래의 하루 상한 */
+export interface LegFillScope { scope: string; limit: number }
+
+/** 경로 조회 예산 저장소 — 하루(UTC)에 몇 구간을 유료 API로 물었는가 */
+export interface LegFillUsageRepository {
+  /** 그날 각 갈래가 쓴 수(없으면 0) */
+  used(day: string, scopes: string[]): Promise<Map<string, number>>;
+  /**
+   * 모든 갈래의 상한 안에서 `want`까지 떼어 주고, 준 만큼 **모든 갈래에** 더한다(한 트랜잭션 — 동시에 와도 넘지 않는다).
+   * 준 수를 돌려준다(0..want).
+   */
+  reserve(day: string, scopes: LegFillScope[], want: number): Promise<number>;
+}
+
 /** 하루치 환율 — 그날 받은 '통화 1단위 = ? 원'. 웹 localStorage 캐시(`tripcanvas_fx`)와 같은 모양이다 */
 export interface FxRateRow {
   /** 받은 날 YYYY-MM-DD (UTC) */
