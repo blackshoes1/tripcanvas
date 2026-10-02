@@ -1,9 +1,10 @@
 // Trip use case(§31). Route Handler는 이것만 부르고, 이것은 Repository만 부른다(§6).
 //
 //   목록·상세  : 내가 볼 수 있는 여행만. 남의 여행은 '없음'이다(존재를 흘리지 않는다)
-//   생성       : 유입 문서는 반드시 정규화(lib.validateTripPayload → normalizeTrip). 내 것과 id가 겹치면 CONFLICT.
+//   생성       : 유입 문서는 반드시 정규화(lib.validateTripPayload → normalizeTrip). 볼 수 있는 여행(내 것·공유받은 것)과 id가 겹치면 CONFLICT.
 //                나갔거나 내보내진 여행의 id면 FORBIDDEN — 로컬 사본이 조용히 제 계정으로 복제되지 않게(sync_trip의 tc_was_member 규칙)
-//   수정       : OWNER·EDITOR만. revision CAS — stale write는 STALE_VERSION(현재 revision 동봉), 조용히 덮어쓰지 않는다(§91)
+//   수정       : OWNER·EDITOR만 — 역할은 저장 트랜잭션 안에서 다시 본다. revision CAS — stale write는 STALE_VERSION(현재 revision 동봉),
+//                조용히 덮어쓰지 않는다(§91). 같은 문서의 재시도는 충돌이 아니다. 지워진 여행을 force로 되살리는 것은 주최자만
 //   삭제       : OWNER만, tombstone. 이미 지워졌으면 그대로(멱등)
 import lib from '@legacy/lib.js';
 import { randomBytes } from 'node:crypto';
@@ -59,7 +60,10 @@ export class TripService {
     const clientId = requested || newClientId();
     doc.id = clientId;
     const existing = await this.deps.trips.findVisible(ctx.userId, clientId);
-    if (existing?.record.ownerId === ctx.userId) {
+    if (existing) {
+      // 내 것이든 공유받은 것이든 이미 볼 수 있는 여행이면 사본을 만들지 않는다 — 사본은 "소유한 쪽 우선" 때문에
+      // 상세·저장·함께하기·실시간에서 공유 여행을 가린다(sync_trip도 볼 수 있는 행이면 충돌이었다).
+      // 볼 수 없는 남의 같은 id는 여기 걸리지 않는다: 제 여행이 될 뿐이고, 있다고 알리면 존재를 흘린다.
       // 충돌에는 **서버의 현재 문서**를 함께 싣는다 — 클라이언트가 두 버전을 보여 주고 고르게 해야 한다
       throw new ApiError('CONFLICT', {
         message: '같은 id의 여행이 이미 있어요 — 수정(PUT)으로 저장해 주세요.',
@@ -73,7 +77,10 @@ export class TripService {
     return { record, role: 'OWNER', memberCount: 1 };
   }
 
-  async update(ctx: RequestContext, clientId: string, input: unknown, expectedRevision: number, opts: { force?: boolean } = {}): Promise<TripView> {
+  /** alreadyApplied면 쓰지 않았다 — 같은 문서가 이미 저장돼 있다(응답을 못 받고 다시 보낸 요청) */
+  async update(
+    ctx: RequestContext, clientId: string, input: unknown, expectedRevision: number, opts: { force?: boolean } = {}
+  ): Promise<TripView & { alreadyApplied?: boolean }> {
     const doc = normalize(input);
     doc.id = clientId;
     const view = await this.deps.trips.findVisible(ctx.userId, clientId);
@@ -82,9 +89,16 @@ export class TripService {
       throw new ApiError('NOT_FOUND');
     }
     if (!(await this.deps.authz.canEdit(ctx.userId, view.record.id))) throw new ApiError('FORBIDDEN');
-    const result = await this.deps.trips.updateCas(view.record.id, doc, expectedRevision, { ...opts, actorId: ctx.userId });
-    if (!result.applied) throw new ApiError('STALE_VERSION', { details: staleDetails(result.record) });
-    return { ...view, record: result.record };
+    const result = await this.deps.trips.updateCas(view.record.id, doc, expectedRevision, {
+      force: opts.force, actorId: ctx.userId,
+      // 지워진 여행을 되살리는 것은 지운 사람(주최자)뿐 — 편집자의 '이 기기 버전'은 삭제 충돌로 돌아간다. 소유자는 바뀌지 않는 값이다
+      revive: view.record.ownerId === ctx.userId,
+      // 위의 canEdit은 빠른 거절일 뿐이다. 저장과 같은 트랜잭션에서 역할을 다시 본다 — 강등·내보내기와 겹친 저장이 새지 않게
+      authorize: (role) => this.deps.authz.roleCanEdit(role)
+    });
+    if (result.forbidden) throw new ApiError('FORBIDDEN');
+    if (!result.applied && !result.alreadyApplied) throw new ApiError('STALE_VERSION', { details: staleDetails(result.record) });
+    return result.alreadyApplied ? { ...view, record: result.record, alreadyApplied: true } : { ...view, record: result.record };
   }
 
   async delete(ctx: RequestContext, clientId: string, expectedRevision: number, opts: { force?: boolean } = {}): Promise<TripView> {

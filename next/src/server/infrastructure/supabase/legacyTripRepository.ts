@@ -5,7 +5,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 import { ApiError } from '../../api/errors';
 import type {
-  CasResult, MemberRole, MemberStatus, MembershipRepository, TripRecord, TripRepository, TripView
+  CasResult, CasWriteOptions, MemberRole, MemberStatus, MembershipRepository, TripRecord, TripRepository, TripView
 } from '../../repositories/types';
 
 const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_2C-n1YFvE9Cw9B7L7B6Trw_XO3Val5q';
@@ -141,7 +141,12 @@ export class LegacyTripRepository implements TripRepository {
     return { applied: !!row.applied, conflict: !!row.conflict, record };
   }
 
-  async updateCas(id: string, data: unknown, expectedRevision: number, opts: { force?: boolean } = {}): Promise<CasResult> {
+  /**
+   * 역할은 sync_trip이 **자기 트랜잭션 안에서** 다시 보고 42501로 거절한다(authorize는 쓰지 않는다).
+   * ⚠️ 롤백 대상이라 고치지 않은 차이 둘: p_force는 편집자의 것이어도 tombstone을 되살리고(revive를 모른다),
+   * 내용이 같은 재시도도 revision이 다르면 충돌이다(alreadyApplied를 모른다).
+   */
+  async updateCas(id: string, data: unknown, expectedRevision: number, opts: CasWriteOptions = {}): Promise<CasResult> {
     const row = await this.rpcSync('sync_trip', { p_client_id: this.clientId(id), p_data: data, p_expected_revision: expectedRevision, p_force: !!opts.force });
     return this.cas(id, row, data);
   }

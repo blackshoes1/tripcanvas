@@ -190,6 +190,27 @@ test('통합: 충돌 UI는 클라우드·기기·복사본 세 선택지를 제�
   w.close();
 });
 
+test('통합: 지워진 여행을 force로 올려도 삭제 충돌이면 이유를 말하고 같은 버튼을 다시 내밀지 않는다', { skip: noJsdom }, async () => {
+  const w=boot();
+  try{
+    w.eval(`user={id:'u2'}; sb={}; syncMeta={'gone':{revision:3,status:'conflict',op:'',hash:''}};
+      TC_API.sync.save=async()=>({applied:false,conflict:true,revision:5,data:null,deleted_at:'2026-10-01T00:00:00Z'});`);
+    // 처음 카드: 평소처럼 세 선택지
+    w.eval(`enqueueSyncConflict({kind:'remote-deleted',local:{id:'gone',name:'공유 여행',days:[{spots:[]}]},remote:null,revision:5,deleted_at:'2026-10-01T00:00:00Z'})`);
+    assert.notEqual(w.document.getElementById('syncUseDevice').style.display,'none');
+    w.document.getElementById('syncUseDevice').click();
+    await new Promise(r=>setTimeout(r,0));
+    // 서버가 되살리기를 거절했다(편집자) — 카드는 남되 이유를 말하고 '이 기기 것 유지'는 거둔다
+    assert.ok(w.document.getElementById('syncConflictBg').classList.contains('show'));
+    assert.match(w.document.getElementById('syncConflictText').textContent,/주최자만 되살릴 수 있어요/);
+    assert.equal(w.document.getElementById('syncUseDevice').style.display,'none');
+    // 다른 충돌에서는 버튼이 돌아온다
+    w.document.getElementById('syncUseCloud').click();
+    w.eval(`enqueueSyncConflict({kind:'changed-both',local:{id:'other',name:'B',days:[{spots:[]}]},remote:{id:'other',name:'B',days:[{spots:[]}]},revision:2,deleted_at:null})`);
+    assert.equal(w.document.getElementById('syncUseDevice').style.display,'');
+  }finally{w.close();}
+});
+
 test('통합: 대중교통 구간은 각 구간 출발시각과 시간대로 별도 캐시된다', { skip: noJsdom },()=>{
   const w=boot();
   const result=w.eval(`(()=>{

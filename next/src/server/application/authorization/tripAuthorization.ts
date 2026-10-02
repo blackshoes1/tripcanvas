@@ -17,6 +17,10 @@ export class TripAuthorizationService {
   async canEdit(userId: string, tripId: string): Promise<boolean> {
     return collab.canEdit(await this.roleOf(userId, tripId));
   }
+  /** 이미 읽은 역할로 같은 규칙 — 저장 트랜잭션 안에서 다시 읽은 역할에 돌린다(updateCas의 authorize) */
+  roleCanEdit(role: MemberRole | null): boolean {
+    return collab.canEdit(role);
+  }
   async canManageMembers(userId: string, tripId: string): Promise<boolean> {
     return collab.canManage(await this.roleOf(userId, tripId));
   }

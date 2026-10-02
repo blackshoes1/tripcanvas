@@ -35,6 +35,12 @@ export class CoverService {
       }
     }
     const jpeg = image === null ? null : await normalizeCover(image);
+    // 재인코딩(수백 ms) 사이에 강등·내보내짐이 끼어들 수 있다 — 저장 직전에 역할을 다시 본다.
+    // 문서 저장(updateCas의 authorize)과 달리 같은 트랜잭션은 아니라 창이 좁아질 뿐 닫히지는 않는다
+    if (jpeg !== null) {
+      const fresh = await this.trips.get(ctx, clientId);
+      if (fresh.role !== 'OWNER' && fresh.role !== 'EDITOR') throw new ApiError('FORBIDDEN');
+    }
     const saved = await this.covers.save(view.record.id, expected, jpeg, placePhoto);
     if (!saved) throw new ApiError('STALE_VERSION', { message: '다른 기기에서 표지가 바뀌었어요. 최신 표지를 확인한 뒤 다시 저장해 주세요.' });
     return saved;

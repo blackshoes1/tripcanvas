@@ -345,6 +345,26 @@ test('동기화 저장 — 처음 올리는데 서버에 이미 있으면 충돌
   assert.deepEqual(row, { applied: false, conflict: true, revision: 2, data: server, deleted_at: null });
 });
 
+test('동기화 저장 — 처음 올리는데 서버에 이미 있고 "이 기기 버전"(force)을 골랐으면 그것을 덮는다(예전 sync_trip의 p_force)', async () => {
+  const server = { id: 'trip1', name: '공유받은 여행', days: [] };
+  const f = setup((url, init) => (init && init.method) === 'POST'
+    ? { status: 409, body: { code: 'CONFLICT', details: { revision: 2, document: server, deletedAt: null } } }
+    : { body: { trip: { revision: 3 }, document: TRIP } });
+  const row = await TC_API.sync.save('trip1', TRIP, null, true);
+  assert.deepEqual(row, { applied: true, conflict: false, revision: 3, data: TRIP, deleted_at: null });
+  assert.deepEqual(f.calls.map((c) => c.method), ['POST', 'PUT']);
+  assert.deepEqual(f.calls[1].body, { trip: TRIP, expectedRevision: 2, force: true });
+});
+
+test('동기화 저장 — 덮어쓰려던 여행이 지워졌으면(주최자만 되살린다) 삭제 충돌을 그대로 준다', async () => {
+  const f = setup((url, init) => (init && init.method) === 'POST'
+    ? { status: 409, body: { code: 'CONFLICT', details: { revision: 4, document: null, deletedAt: '2026-10-01T00:00:00Z' } } }
+    : { status: 409, body: { code: 'STALE_VERSION', details: { revision: 4, document: null, deletedAt: '2026-10-01T00:00:00Z' } } });
+  const row = await TC_API.sync.save('trip1', TRIP, null, true);
+  assert.deepEqual(row, { applied: false, conflict: true, revision: 4, data: null, deleted_at: '2026-10-01T00:00:00Z' });
+  assert.deepEqual(f.calls.map((c) => c.method), ['POST', 'PUT']);
+});
+
 test('동기화 저장 — 로컬만 있던 여행에 revision이 있어도 서버에 없으면 새로 만든다', async () => {
   const calls = [];
   const f = setup((url, init) => {

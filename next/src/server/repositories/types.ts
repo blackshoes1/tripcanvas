@@ -37,6 +37,22 @@ export interface CasResult {
   applied: boolean;
   conflict: boolean;
   record: TripRecord;
+  /** 저장하려던 문서가 이미 그대로 있다 — 응답을 못 받고 다시 보낸 요청. 쓰지 않았고 충돌도 아니다 */
+  alreadyApplied?: boolean;
+  /** 저장과 같은 트랜잭션에서 다시 읽은 역할이 authorize를 통과하지 못했다(그 사이 강등·내보내짐) */
+  forbidden?: boolean;
+}
+
+/** updateCas의 선택지. 판정 규칙(authorize·revive를 누구에게 줄지)은 application이 정하고, Repository는 트랜잭션 안에서 따르기만 한다 */
+export interface CasWriteOptions {
+  /** revision이 달라도 덮어쓴다(충돌 카드에서 사용자가 고른 경우) */
+  force?: boolean;
+  /** force가 tombstone까지 걷어내 되살린다. 없으면 삭제된 여행은 force여도 충돌이다 */
+  revive?: boolean;
+  /** 활동 기록의 주체이자 authorize가 볼 역할의 주인 */
+  actorId?: string;
+  /** 잠근 행에 대해 actorId의 **지금** 역할을 다시 읽어 판정한다. false면 쓰지 않고 forbidden */
+  authorize?: (role: MemberRole | null) => boolean;
 }
 
 export interface TripRepository {
@@ -48,8 +64,11 @@ export interface TripRepository {
   findVisible(userId: string, clientId: string): Promise<TripView | null>;
   /** 새 여행(revision 1) + 같은 트랜잭션의 OWNER 멤버 행. (ownerId, clientId)가 이미 있으면 던진다 */
   create(input: { ownerId: string; clientId: string; data: unknown }): Promise<TripRecord>;
-  /** revision CAS 저장. force면 revision·tombstone을 무시하고 덮어쓰며 되살린다(sync_trip p_force). actorId는 활동 기록의 주체 */
-  updateCas(id: string, data: unknown, expectedRevision: number, opts?: { force?: boolean; actorId?: string }): Promise<CasResult>;
+  /**
+   * revision CAS 저장. force면 revision을 무시하고, revive까지 있어야 tombstone을 걷어내 되살린다.
+   * revision만 다르고 문서가 이미 그대로면 쓰지 않고 alreadyApplied다(재시도). authorize가 있으면 같은 트랜잭션에서 역할을 다시 본다
+   */
+  updateCas(id: string, data: unknown, expectedRevision: number, opts?: CasWriteOptions): Promise<CasResult>;
   /** revision CAS tombstone. 행은 남고 deleted_at·revision이 오른다 */
   tombstoneCas(id: string, expectedRevision: number, opts?: { force?: boolean }): Promise<CasResult>;
 }
@@ -69,6 +88,8 @@ export interface MembershipRepository {
 export interface SuggestionFeedbackRepository {
   /** 그 여행·그 날 이미 거절(SKIPPED)한 제안 키 */
   listDismissed(userId: string, tripClientId: string, dayISO: string): Promise<string[]>;
+  /** 그 여행·그 날 이미 수락(ACCEPTED)해 반영한 제안 키 */
+  listAccepted(userId: string, tripClientId: string, dayISO: string): Promise<string[]>;
   /** 같은 제안을 두 번 기록해도 한 행(unique 4개 컬럼 upsert) */
   record(userId: string, tripClientId: string, dayISO: string, suggestionKey: string, action: string, source: string): Promise<void>;
 }

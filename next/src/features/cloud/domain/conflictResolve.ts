@@ -17,6 +17,8 @@ export interface Conflict {
   remote: Trip | null;
   revision: number | null;
   deleted_at: string | null;
+  /** force로 올렸는데도 삭제 충돌 — 서버가 되살리기를 거절했다. '이 기기 버전'은 다시 내밀지 않는다 */
+  reviveRefused?: boolean;
 }
 
 export type Resolution =

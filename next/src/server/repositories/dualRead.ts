@@ -1,7 +1,7 @@
 // DUAL_READ(§32) — 이관 기간 한정. 읽기는 새 DB → 레거시 순, 쓰기는 그 행이 온 곳으로. 새 여행은 새 DB에.
 // dual write는 하지 않는다(§33): 레거시에만 있는 여행을 새 DB로 조용히 복제하면 두 진실이 생긴다 — 그건 이관 스크립트(Phase 10)의 일이다.
 import type {
-  CasResult, MemberRole, MemberStatus, MembershipRepository, TripRecord, TripRepository, TripView
+  CasResult, CasWriteOptions, MemberRole, MemberStatus, MembershipRepository, TripRecord, TripRepository, TripView
 } from './types';
 
 export class DualReadTripRepository implements TripRepository {
@@ -42,7 +42,7 @@ export class DualReadTripRepository implements TripRepository {
     return this.primary;
   }
 
-  updateCas(id: string, data: unknown, expectedRevision: number, opts?: { force?: boolean }): Promise<CasResult> {
+  updateCas(id: string, data: unknown, expectedRevision: number, opts?: CasWriteOptions): Promise<CasResult> {
     return this.sourceOf(id).updateCas(id, data, expectedRevision, opts);
   }
 

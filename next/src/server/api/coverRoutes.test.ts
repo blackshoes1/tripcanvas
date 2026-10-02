@@ -75,6 +75,26 @@ describe('공유 여행 표지 — 실제 DB 및 HTTP 경계', () => {
     expect((await save('a', 3)).status).toBe(404);
   });
 
+  it('재인코딩 사이에 보기 권한으로 내려간 편집자의 표지는 저장하지 않는다', async () => {
+    const trip = await trips.create(identities.a, { id: 'cover-demote', name: '강등', days: [{ spots: [] }] });
+    await members.add({ tripId: trip.record.id, userId: identities.b.userId, role: 'EDITOR', displayName: null, invitedBy: identities.a.userId });
+    const covers = new PgCoverRepository(db.db);
+    // 첫 역할 확인은 EDITOR로 통과했고, 그 뒤(재인코딩 중) 주최자가 B를 내렸다
+    let calls = 0;
+    const racing = {
+      get: async (who: RequestContext, id: string) => {
+        const view = await trips.get(who, id);
+        if (++calls === 1) {
+          await members.add({ tripId: trip.record.id, userId: identities.b.userId, role: 'VIEWER', displayName: null, invitedBy: identities.a.userId });
+          return { ...view, role: 'EDITOR' as const };
+        }
+        return view;
+      }
+    } as unknown as TripService;
+    await expect(new CoverService(racing, covers).save(identities.b, 'cover-demote', 0, image)).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    expect((await covers.get(trip.record.id)).revision).toBe(0);
+  });
+
   it('일정 장소와 구도를 공유하고 업로드·초기화로 바꿀 때 이전 선택을 지운다', async () => {
     const trip = await trips.create(identities.a, { id: 'place-cover', days: [{ spots: [{ name: '미술관', placeId: 'ChIJmuseum' }] }] });
     await members.add({ tripId: trip.record.id, userId: identities.c.userId, role: 'VIEWER', displayName: null, invitedBy: identities.a.userId });

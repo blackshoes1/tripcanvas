@@ -60,6 +60,17 @@ export async function supabaseGatewayFor(token: string, knownUserId?: string): P
       role: role?.role ?? null, member_count: role?.member_count ?? null
     };
   }
+  /** 그 여행·그 날 그 action(SKIPPED·ACCEPTED)으로 남긴 제안 키 — RLS가 내 것만 돌려준다 */
+  async function feedbackKeys(tripId: string, dayISO: string, action: string): Promise<string[]> {
+    const { data, error: e } = await sb
+      .from('suggestion_feedback')
+      .select('suggestion_key')
+      .eq('trip_client_id', tripId)
+      .eq('day_iso', dayISO)
+      .eq('action', action);
+    if (e) throw e;
+    return (data ?? []).map((r) => String(r.suggestion_key));
+  }
 
   return {
     async listTrips(): Promise<TripRow[]> {
@@ -107,14 +118,10 @@ export async function supabaseGatewayFor(token: string, knownUserId?: string): P
       };
     },
     async listDismissed(tripId, dayISO) {
-      const { data, error: e } = await sb
-        .from('suggestion_feedback')
-        .select('suggestion_key')
-        .eq('trip_client_id', tripId)
-        .eq('day_iso', dayISO)
-        .eq('action', 'SKIPPED');
-      if (e) throw e;
-      return (data ?? []).map((r) => String(r.suggestion_key));
+      return feedbackKeys(tripId, dayISO, 'SKIPPED');
+    },
+    async listAccepted(tripId, dayISO) {
+      return feedbackKeys(tripId, dayISO, 'ACCEPTED');
     },
     async listPriceObservations(tripId: string): Promise<PriceObservation[]> {
       const { data, error: e } = await sb

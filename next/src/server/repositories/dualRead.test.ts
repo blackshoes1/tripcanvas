@@ -45,6 +45,16 @@ describe('DualReadTripRepository', () => {
     expect(gone.record.deletedAt).not.toBeNull();
   });
 
+  it('저장의 판정 선택지(역할 재확인·되살리기)는 행이 온 쪽에 그대로 넘긴다', async () => {
+    const t = await primary.create({ ownerId: A, clientId: 'fresh', data: { name: 'new' } });
+    await primaryMembers.add({ tripId: t.id, userId: 'u-b', role: 'VIEWER', displayName: null, invitedBy: A });
+    const editors = (role: string | null) => role === 'OWNER' || role === 'EDITOR';
+    expect(await trips.updateCas(t.id, { name: 'b' }, 1, { actorId: 'u-b', authorize: editors })).toMatchObject({ forbidden: true });
+    await trips.tombstoneCas(t.id, 1);
+    expect(await trips.updateCas(t.id, { name: 'a' }, 2, { force: true, actorId: A, authorize: editors })).toMatchObject({ conflict: true });
+    expect(await trips.updateCas(t.id, { name: 'a' }, 2, { force: true, revive: true, actorId: A, authorize: editors })).toMatchObject({ applied: true });
+  });
+
   it('새 여행은 새 DB에 만든다', async () => {
     await trips.create({ ownerId: A, clientId: 'fresh', data: {} });
     expect(await primary.findVisible(A, 'fresh')).not.toBeNull();

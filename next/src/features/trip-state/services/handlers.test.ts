@@ -66,6 +66,7 @@ function gatewayOf(store: Store): Gateway {
       return { applied: true, conflict: false, revision, data };
     },
     async listDismissed(id, day) { return store.dismissed.get(`${id}|${day}`) ?? []; },
+    async listAccepted() { return store.feedback.filter((f) => f.startsWith('ACCEPTED:')).map((f) => f.slice('ACCEPTED:'.length)); },
     async listPriceObservations() { return store.observations; },
     async savePriceObservation(_t, obs) { store.observations.push({ ...obs, observed_at: '2026-09-04T00:00:00.000Z' }); },
     async listSentNotificationKeys() { return store.sentKeys; },
@@ -256,11 +257,31 @@ describe('Activity 완료 / 건너뛰기', () => {
   });
 
   it('두 번 눌러도 같은 결과다 (중복 제출이 오류가 되지 않는다)', async () => {
-    await complete('d0s0', { expectedRevision: 3 });
-    const again = (await (await complete('d0s0')).json()) as MutationResponse;
+    // 앱의 재시도는 처음과 **같은 요청**이다 — 응답을 못 받았으니 revision은 저장 전 것 그대로 온다
+    const retry = { expectedRevision: 3, expectedName: '숙소' };
+    await complete('d0s0', retry);
+    const res = await complete('d0s0', retry);
+    expect(res.status).toBe(200);
+    const again = (await res.json()) as MutationResponse;
     expect(again.applied).toBe(false);
     expect(again.alreadyApplied).toBe(true);
     expect(again.revision).toBe(4);
+    expect(store.rows.get('trip-1')!.revision).toBe(4);   // 한 번 더 쓰지 않는다
+  });
+
+  it('동시에 온 같은 요청 중 뒤의 것은 저장소가 "이미 그 문서"라고 하면 새 저장이라고 말하지 않는다', async () => {
+    const twin = createHandlers({
+      gatewayFor: (token) => (token === TOKEN ? {
+        ...gatewayOf(store),
+        // 먼저 온 쌍둥이가 revision 4로 같은 문서를 저장해 두었다(PgTripRepository의 alreadyApplied)
+        async saveTrip(_id, data) { return { applied: false, alreadyApplied: true, conflict: false, revision: 4, data }; }
+      } : null),
+      now: () => NOW
+    });
+    const res = await twin.activityAction(new Request('http://localhost/api/v1/trips/trip-1/activities/d0s1/complete',
+      auth({ method: 'POST', body: JSON.stringify({ expectedRevision: 3, expectedName: '저녁 예약' }) })), 'trip-1', 'd0s1', 'complete');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ applied: false, alreadyApplied: true, revision: 4 });
   });
 
   it('다른 기기가 먼저 바꿨으면 409로 알린다 — 조용히 덮어쓰지 않는다', async () => {
@@ -268,6 +289,33 @@ describe('Activity 완료 / 건너뛰기', () => {
     expect(res.status).toBe(409);
     expect(await res.json()).toMatchObject({ error: 'REVISION_CONFLICT', revision: 3 });
     expect(store.rows.get('trip-1')!.revision).toBe(3);
+  });
+
+  it('revision이 낡았고 이름도 맞지만 아직 바꿔야 할 것이 있으면 409다 — 앱이 실제로 보내는 모양', async () => {
+    // 다른 기기가 일정과 무관한 것(하루 제목)을 먼저 바꿔 revision 4가 됐다
+    const row = store.rows.get('trip-1')!;
+    const data = JSON.parse(JSON.stringify(row.data)) as typeof row.data;
+    (data.days![0] as { title?: string }).title = '다른 기기에서 바꾼 제목';
+    store.rows.set('trip-1', { ...row, data, revision: 4 });
+    const res = await complete('d0s1', { expectedRevision: 3, expectedName: '저녁 예약' });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ error: 'REVISION_CONFLICT', revision: 4 });
+    expect(store.rows.get('trip-1')!.revision).toBe(4);
+    expect(store.rows.get('trip-1')!.data.days![0].spots![1].status).toBeUndefined();
+  });
+
+  it('revision이 낡았는데 이름을 싣지 않았으면 이미 그 상태여도 409다 — 위치(d0s0)만으로는 같은 장소인지 모른다', async () => {
+    await complete('d0s0', { expectedRevision: 3 });
+    const res = await complete('d0s0', { expectedRevision: 3 });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ error: 'REVISION_CONFLICT', revision: 4 });
+  });
+
+  it('revision이 낡았고 그 자리에 다른 장소가 와 있으면 이미 그 상태여도 409다', async () => {
+    await complete('d0s0', { expectedRevision: 3, expectedName: '숙소' });
+    const res = await complete('d0s0', { expectedRevision: 3, expectedName: '다른 장소' });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ error: 'REVISION_CONFLICT', revision: 4 });
   });
 
   it('그 사이 순서가 바뀌었으면 엉뚱한 장소를 완료 처리하지 않는다', async () => {
@@ -331,6 +379,67 @@ describe('Suggestion 수락 / 건너뛰기', () => {
     const res = await act('skip', { suggestionId: id });
     expect(res.status).toBe(200);
     expect(((await res.json()) as MutationResponse).alreadyApplied).toBe(true);
+  });
+
+  it('거절은 문서를 바꾸지 않으니 revision이 낡아도 409가 아니다', async () => {
+    const id = (await getToday()).suggestions[0].id;
+    const res = await act('skip', { suggestionId: id, expectedRevision: 1 });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as MutationResponse).applied).toBe(true);
+    const retry = await act('skip', { suggestionId: id, expectedRevision: 1 });
+    expect(((await retry.json()) as MutationResponse).alreadyApplied).toBe(true);
+  });
+
+  it('revision이 낡은 수락은 일정을 실제로 바꿀 때 409이고, 그 거절은 수락으로 기록되지 않는다', async () => {
+    const move = (await getToday()).suggestions.find((s) => s.action.kind === 'MOVE_TO_TODAY')!;
+    const res = await act('accept', { suggestionId: move.id, expectedRevision: 2 });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ error: 'REVISION_CONFLICT', revision: 3 });
+    expect(store.rows.get('trip-1')!.revision).toBe(3);
+    expect(store.feedback).not.toContain(`ACCEPTED:${move.id}`);
+  });
+
+  it('응답을 못 받고 다시 보낸 수락은 충돌이 아니다 — 이미 반영됐다고 답하고 다시 쓰지 않는다', async () => {
+    const move = (await getToday()).suggestions.find((s) => s.action.kind === 'MOVE_TO_TODAY')!;
+    const retry = { suggestionId: move.id, expectedRevision: 3 };
+    expect((await act('accept', retry)).status).toBe(200);
+    const again = await act('accept', retry);
+    expect(again.status).toBe(200);
+    expect(await again.json()).toMatchObject({ applied: false, alreadyApplied: true, revision: 4 });
+    expect(store.rows.get('trip-1')!.revision).toBe(4);   // 같은 장소를 두 번 옮기지 않는다
+  });
+
+  it('저장이 실패한 수락은 수락으로 기록되지 않는다 — 재시도가 반영되지 않은 수락을 "이미 했다"고 믿지 않게', async () => {
+    const move = (await getToday()).suggestions.find((s) => s.action.kind === 'MOVE_TO_TODAY')!;
+    const failing = createHandlers({
+      gatewayFor: (token) => (token === TOKEN ? {
+        ...gatewayOf(store),
+        async saveTrip(_id, _data, expected) { return { applied: false, conflict: true, revision: expected + 1, data: null }; }
+      } : null),
+      now: () => NOW
+    });
+    const res = await failing.suggestionAction(new Request('http://localhost/api/v1/trips/trip-1/suggestions/accept',
+      auth({ method: 'POST', body: JSON.stringify({ suggestionId: move.id, expectedRevision: 3 }) })), 'trip-1', 'accept');
+    expect(res.status).toBe(409);
+    expect(store.feedback).not.toContain(`ACCEPTED:${move.id}`);
+    // 그 뒤의 재시도는 '이미 반영됨'이 아니라 다시 적용된다
+    const retry = await act('accept', { suggestionId: move.id, expectedRevision: 3 });
+    expect(await retry.json()).toMatchObject({ applied: true, revision: 4 });
+  });
+
+  it('일정을 바꾸지 않는 수락(쉬기·숙소 복귀)은 revision이 낡아도 200이고 수락으로 남는다', async () => {
+    // 쉬는 선택지는 순위가 낮다 — 옮겨 올 장소가 없는 여행이면 상위에 오른다
+    const row = store.rows.get('trip-1')!;
+    const data = JSON.parse(JSON.stringify(row.data)) as typeof row.data;
+    data.days![1].spots = [];
+    store.rows.set('trip-1', { ...row, data });
+    const rest = (await getToday()).suggestions.find((s) => s.action.kind === 'REST' || s.action.kind === 'RETURN_TO_HOTEL');
+    expect(rest).toBeDefined();
+    const res = await act('accept', { suggestionId: rest!.id, expectedRevision: 1 });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ applied: false, revision: 3 });
+    expect(store.rows.get('trip-1')!.revision).toBe(3);
+    expect(store.feedback).toContain(`ACCEPTED:${rest!.id}`);
   });
 
   it('상황이 바뀌어 사라진 제안을 수락하면 409로 새로고침을 요청한다', async () => {
