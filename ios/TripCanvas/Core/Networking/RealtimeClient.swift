@@ -51,7 +51,8 @@ final class RealtimeClient: RealtimeConnecting {
     private let session: URLSession
     private let tokens: TokenProviding
     /// `/api/v1/me`가 알려 준 주소. nil이면 서버가 실시간을 쓰지 말라고 한 것이다.
-    private let urlFor: @MainActor () async -> URL?
+    /// 던지면 **이번에는 못 물은 것**이다(타임아웃 등) — 그 답과 섞지 않고 소켓이 끊겼을 때처럼 몇 번 다시 묻는다.
+    private let urlFor: @MainActor () async throws -> URL?
 
     private var task: URLSessionWebSocketTask?
     private var tripId: String?
@@ -71,7 +72,7 @@ final class RealtimeClient: RealtimeConnecting {
     private let maxAttempts = 5
 
     init(session: URLSession = .shared, tokens: TokenProviding,
-         retrySeconds: Double = 3, urlFor: @escaping @MainActor () async -> URL?) {
+         retrySeconds: Double = 3, urlFor: @escaping @MainActor () async throws -> URL?) {
         self.session = session
         self.tokens = tokens
         self.retrySeconds = retrySeconds
@@ -138,9 +139,17 @@ final class RealtimeClient: RealtimeConnecting {
         //    끊은 뒤(백그라운드·여행을 떠남)에 소켓을 열고 토큰까지 실어 보냈다.
         // ⚠️ 여기서 끝나도 `pump`를 비운다. 남겨 두면 `connect`의 가드에 걸려, 백그라운드에 다녀오기 전까지
         //    같은 여행에 다시 붙지 않았다.
-        let resolved = await urlFor()
+        let resolved: URL?
+        do { resolved = try await urlFor() } catch {
+            // 못 물었다 — "안 쓴다"는 답이 아니다. `.off`로 접으면 같은 화면에 있는 동안 다시 붙지 않는다.
+            guard isCurrent(generation, tripId: tripId) else { return }
+            pump = nil
+            state = .connecting
+            schedule()
+            return
+        }
         guard isCurrent(generation, tripId: tripId) else { return }
-        guard let url = resolved else { state = .off; pump = nil; return }   // 서버가 실시간을 안 쓴다고 했다(또는 이번에는 못 물었다)
+        guard let url = resolved else { state = .off; pump = nil; return }   // 서버가 실시간을 안 쓴다고 했다
         let fetched = try? await tokens.accessToken()
         guard isCurrent(generation, tripId: tripId) else { return }
         guard let token = fetched else { state = .off; pump = nil; return }   // 로그아웃이면 붙지 않는다
@@ -151,9 +160,13 @@ final class RealtimeClient: RealtimeConnecting {
 
         await send(socket, ["type": "AUTH", "token": token])
 
-        while !Task.isCancelled, !stopped {
+        while isCurrent(generation, tripId: tripId), !stopped {
             let message: URLSessionWebSocketTask.Message
             do { message = try await socket.receive() } catch { break }
+            // ⚠️ 받는 사이에 끊겼으면(여행을 바꿈·앱이 뒤로 감) 이 프레임은 이제 지금의 연결 것이 아니다.
+            //    옛 연결이 ERROR로 `stopped`를 남기면 새 연결이 붙자마자 접히고, SUBSCRIBED로 `.live`를 남기면
+            //    소켓도 없이 실시간인 척한다.
+            guard isCurrent(generation, tripId: tripId) else { break }
             guard case .string(let text) = message,
                   let data = text.data(using: .utf8),
                   let msg = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],

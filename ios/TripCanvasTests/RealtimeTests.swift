@@ -333,6 +333,36 @@ final class RealtimeRecoveryTests: XCTestCase {
         XCTAssertEqual(tokens.asked, 0, "끊긴 연결은 깨어나도 토큰을 꺼내 소켓에 싣지 않는다")
         XCTAssertEqual(live.state, .off)
     }
+
+    /// 토큰이 없어(로그아웃) 끝난 연결도 `pump`를 남기지 않는다 — 주소가 없을 때와 같은 출구다.
+    func testAMissingTokenDoesNotBlockTheNextConnect() async {
+        let tokens = FailingLiveTokens()
+        let live = RealtimeClient(tokens: tokens, urlFor: { URL(string: "wss://example.invalid/realtime") })
+
+        live.connect(tripId: "t1", key: "trip") { _ in }
+        await settle { tokens.asked == 1 && live.state == .off }
+        XCTAssertEqual(live.state, .off, "토큰이 없으면 붙지 않는다")
+
+        live.connect(tripId: "t1", key: "trip") { _ in }   // 다시 로그인하고 화면에 들어왔다
+        await settle { tokens.asked == 2 }
+        XCTAssertEqual(tokens.asked, 2, "끝난 연결이 다음 연결을 막으면 안 된다")
+    }
+
+    /// 주소를 **못 물은 것**(타임아웃)은 "실시간을 안 쓴다"는 답과 다르다 — `.off`로 접으면 같은 화면에 있는 동안
+    /// 다시 붙지 않는다. 소켓이 끊겼을 때처럼 다시 묻되, **몇 번만** 묻는다(폴백이 있다).
+    func testAFailedAddressLookupIsRetriedAFewTimes() async {
+        let asked = LiveCounter()
+        let live = RealtimeClient(tokens: NoTokens(), retrySeconds: 0.001, urlFor: {
+            asked.value += 1
+            throw URLError(.timedOut)
+        })
+
+        live.connect(tripId: "t1", key: "trip") { _ in }
+        await settle { live.state == .unavailable }
+
+        XCTAssertEqual(asked.value, 6, "처음 한 번 + 다시 5번 — 한 번 못 물었다고 접지도, 끝없이 묻지도 않는다")
+        XCTAssertEqual(live.state, .unavailable, "그래도 안 되면 당겨서 새로고침으로 간다")
+    }
 }
 
 @MainActor private final class LiveCounter { var value = 0 }
@@ -345,45 +375,80 @@ private final class CountingLiveTokens: TokenProviding {
     func refreshToken() async throws -> String { "live-test-token" }
 }
 
+/// 로그아웃 상태 — 토큰을 꺼내려 할 때마다 실패한다.
+@MainActor
+private final class FailingLiveTokens: TokenProviding {
+    private(set) var asked = 0
+    func accessToken() async throws -> String { asked += 1; throw URLError(.userAuthenticationRequired) }
+    func refreshToken() async throws -> String { throw URLError(.userAuthenticationRequired) }
+}
+
 /// `/api/v1/me`를 한 번 못 물었다고 실시간을 접지 않는다(2026-10-02).
 /// 전에는 실패도 "실시간 없음"으로 담아, 지하철에서 한 번 타임아웃이 나면 앱을 끌 때까지 모든 여행에서 실시간이 꺼졌다.
 @MainActor
 final class RealtimeAddressTests: XCTestCase {
-    func testAFailedLookupIsNotKeptButASuccessIs() async {
+    /// 가짜 `/me`에 붙은 서비스. 끝나면 `cleanup`으로 세션·임시 폴더·가짜의 상태를 되돌린다.
+    private func makeService() -> (service: TripService, cleanup: @MainActor () -> Void) {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [MeProtocol.self]
         let session = URLSession(configuration: config)
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        defer {
+        let api = APIClient(baseURL: URL(string: "https://example.invalid")!, tokens: NoTokens(), session: session)
+        return (TripService(api: api, cache: TripCache(directory: directory)), {
             session.invalidateAndCancel()
             MeProtocol.online = false
             MeProtocol.requests = 0
+            MeProtocol.answer = MeProtocol.tripcanvas
             try? FileManager.default.removeItem(at: directory)
-        }
-        let api = APIClient(baseURL: URL(string: "https://example.invalid")!, tokens: NoTokens(), session: session)
-        let service = TripService(api: api, cache: TripCache(directory: directory))
+        })
+    }
+
+    func testAFailedLookupIsNotKeptButASuccessIs() async throws {
+        let (service, cleanup) = makeService()
+        defer { cleanup() }
 
         MeProtocol.online = false
-        let failed = await service.cachedRealtimeURL()
-        XCTAssertNil(failed, "못 물었으면 이번에는 실시간 없이 간다")
+        do {
+            _ = try await service.cachedRealtimeURL()
+            XCTFail("못 물었으면 던진다 — '실시간을 안 쓴다'는 답(nil)과 섞지 않는다")
+        } catch {}
 
         MeProtocol.online = true
-        let recovered = await service.cachedRealtimeURL()
+        let recovered = try await service.cachedRealtimeURL()
         XCTAssertEqual(recovered?.absoluteString, "wss://example.invalid/realtime",
                        "다음에 붙을 때 다시 묻는다 — 한 번의 실패가 굳지 않는다")
 
         let asked = MeProtocol.requests
         MeProtocol.online = false
-        let kept = await service.cachedRealtimeURL()
+        let kept = try await service.cachedRealtimeURL()
         XCTAssertEqual(kept?.absoluteString, "wss://example.invalid/realtime")
         XCTAssertEqual(MeProtocol.requests, asked, "받은 답은 들고 있는다 — 붙을 때마다 /me를 부르지 않는다")
     }
+
+    /// "안 쓴다"(NONE)도 받은 답이다 — 담아 두지 않으면 협업이 LEGACY 경로인 서버에 화면을 열 때마다 /me를 부른다.
+    func testANoneAnswerIsKeptToo() async throws {
+        let (service, cleanup) = makeService()
+        defer { cleanup() }
+        MeProtocol.online = true
+        MeProtocol.answer = MeProtocol.noRealtime
+        let before = MeProtocol.requests
+
+        let first = try await service.cachedRealtimeURL()
+        let second = try await service.cachedRealtimeURL()
+
+        XCTAssertNil(first, "서버가 실시간을 안 쓴다고 했다")
+        XCTAssertNil(second)
+        XCTAssertEqual(MeProtocol.requests, before + 1, "'안 쓴다'는 답도 들고 있는다 — 다시 묻지 않는다")
+    }
 }
 
-/// `/api/v1/me`를 흉내 낸다 — 꺼 두면 타임아웃, 켜면 실시간 주소를 준다.
+/// `/api/v1/me`를 흉내 낸다 — 꺼 두면 타임아웃, 켜면 `answer`를 준다.
 private final class MeProtocol: URLProtocol {
+    static let tripcanvas = #"{"realtime":{"provider":"TRIPCANVAS","url":"wss://example.invalid/realtime"}}"#
+    static let noRealtime = #"{"realtime":{"provider":"NONE","url":null}}"#
     @MainActor static var online = false
     @MainActor static var requests = 0
+    @MainActor static var answer = MeProtocol.tripcanvas
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
@@ -392,7 +457,7 @@ private final class MeProtocol: URLProtocol {
             guard Self.online else {
                 client?.urlProtocol(self, didFailWithError: URLError(.timedOut)); return
             }
-            let body = Data(#"{"realtime":{"provider":"TRIPCANVAS","url":"wss://example.invalid/realtime"}}"#.utf8)
+            let body = Data(Self.answer.utf8)
             let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
             client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
             client?.urlProtocol(self, didLoad: body)
