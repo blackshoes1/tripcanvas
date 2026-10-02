@@ -287,6 +287,64 @@ final class RealtimeSubscriberTests: XCTestCase {
     }
 }
 
+/// 끝난 연결이 다음 연결을 막지 않고, 끊긴 연결이 깨어나 소켓을 열지 않는다(2026-10-02).
+@MainActor
+final class RealtimeRecoveryTests: XCTestCase {
+    /// 조건이 설 때까지 메인 액터를 잠깐씩 내준다 — `run`도 메인 액터에서 돈다.
+    private func settle(_ done: () -> Bool) async {
+        for _ in 0..<200 {
+            if done() { return }
+            try? await Task.sleep(nanoseconds: 1_000_000)
+        }
+    }
+
+    /// 주소를 못 받아 끝난 연결이 `pump`를 남기면 `connect`의 가드에 걸려, 백그라운드에 다녀오기 전까지
+    /// 같은 여행에 다시 붙지 않았다. 화면에 다시 들어오면 다시 묻는다.
+    func testAnEarlyExitDoesNotBlockTheNextConnect() async {
+        let asked = LiveCounter()
+        let live = RealtimeClient(tokens: NoTokens(), urlFor: { asked.value += 1; return nil })
+
+        live.connect(tripId: "t1", key: "trip") { _ in }
+        await settle { asked.value == 1 && live.state == .off }
+        XCTAssertEqual(live.state, .off, "주소가 없으면 붙지 않고 폴백으로 간다")
+
+        live.connect(tripId: "t1", key: "trip") { _ in }   // 화면에 다시 들어왔다
+        await settle { asked.value == 2 }
+        XCTAssertEqual(asked.value, 2, "끝난 연결이 다음 연결을 막으면 안 된다")
+    }
+
+    /// 주소를 묻는 사이에 끊겼으면(앱이 뒤로 감) 깨어난 뒤 **소켓을 열지 않는다** — 토큰도 꺼내지 않는다.
+    /// 전에는 await 뒤에 취소를 다시 보지 않아, 끊은 다음에 소켓을 열고 AUTH까지 보냈다.
+    func testDisconnectWhileWaitingDoesNotOpenTheSocket() async {
+        let gate = LiveGate()
+        let tokens = CountingLiveTokens()
+        let live = RealtimeClient(tokens: tokens, urlFor: {
+            gate.entered = true
+            while !gate.isOpen { await Task.yield() }
+            return URL(string: "wss://example.invalid/realtime")
+        })
+
+        live.connect(tripId: "t1", key: "trip") { _ in }
+        await settle { gate.entered }
+        live.disconnect()   // 앱이 뒤로 갔다
+        gate.isOpen = true
+        await settle { tokens.asked > 0 }
+
+        XCTAssertEqual(tokens.asked, 0, "끊긴 연결은 깨어나도 토큰을 꺼내 소켓에 싣지 않는다")
+        XCTAssertEqual(live.state, .off)
+    }
+}
+
+@MainActor private final class LiveCounter { var value = 0 }
+@MainActor private final class LiveGate { var entered = false; var isOpen = false }
+
+@MainActor
+private final class CountingLiveTokens: TokenProviding {
+    private(set) var asked = 0
+    func accessToken() async throws -> String { asked += 1; return "live-test-token" }
+    func refreshToken() async throws -> String { "live-test-token" }
+}
+
 /// `/api/v1/me`를 한 번 못 물었다고 실시간을 접지 않는다(2026-10-02).
 /// 전에는 실패도 "실시간 없음"으로 담아, 지하철에서 한 번 타임아웃이 나면 앱을 끌 때까지 모든 여행에서 실시간이 꺼졌다.
 @MainActor

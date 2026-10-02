@@ -60,6 +60,9 @@ final class RealtimeClient: RealtimeConnecting {
     private var attempts = 0
     private var retry: Task<Void, Never>?
     private var pump: Task<Void, Never>?
+    /// 지금 연결의 번호. `run`을 띄울 때마다 오른다 — `run`은 자기 번호가 아직 지금의 것일 때만 흔적을 지운다.
+    /// 늦게 끝난 옛 `run`이 새 연결의 `pump`를 지우면 `connect`가 pump를 하나 더 띄운다.
+    private var generation = 0
     /// 권한·형식 문제는 재시도해도 같다 — 매달리지 않는다.
     private var stopped = false
 
@@ -116,12 +119,31 @@ final class RealtimeClient: RealtimeConnecting {
         guard let tripId else { return }
         stopped = false
         state = .connecting
-        pump = Task { [weak self] in await self?.run(tripId: tripId) }
+        launch(tripId)
     }
 
-    private func run(tripId: String) async {
-        guard let url = await urlFor() else { state = .off; return }   // 서버가 실시간을 안 쓴다고 했다
-        guard let token = try? await tokens.accessToken() else { state = .off; return }   // 로그아웃이면 붙지 않는다
+    private func launch(_ tripId: String) {
+        generation += 1
+        let current = generation
+        pump = Task { [weak self] in await self?.run(tripId: tripId, generation: current) }
+    }
+
+    /// 이 `run`이 아직 지금의 연결인가. 기다리는 사이에 끊겼거나(취소) 여행이 바뀌었거나 새 연결이 떴으면 아니다.
+    private func isCurrent(_ generation: Int, tripId: String) -> Bool {
+        !Task.isCancelled && generation == self.generation && self.tripId == tripId
+    }
+
+    private func run(tripId: String, generation: Int) async {
+        // ⚠️ 붙기 전에 두 번 기다린다. 깨어나면 **아직 지금의 연결인지 다시 본다** — 전에는 다시 보지 않아,
+        //    끊은 뒤(백그라운드·여행을 떠남)에 소켓을 열고 토큰까지 실어 보냈다.
+        // ⚠️ 여기서 끝나도 `pump`를 비운다. 남겨 두면 `connect`의 가드에 걸려, 백그라운드에 다녀오기 전까지
+        //    같은 여행에 다시 붙지 않았다.
+        let resolved = await urlFor()
+        guard isCurrent(generation, tripId: tripId) else { return }
+        guard let url = resolved else { state = .off; pump = nil; return }   // 서버가 실시간을 안 쓴다고 했다(또는 이번에는 못 물었다)
+        let fetched = try? await tokens.accessToken()
+        guard isCurrent(generation, tripId: tripId) else { return }
+        guard let token = fetched else { state = .off; pump = nil; return }   // 로그아웃이면 붙지 않는다
 
         let socket = session.webSocketTask(with: url)
         task = socket
@@ -158,8 +180,13 @@ final class RealtimeClient: RealtimeConnecting {
             }
         }
 
-        task = nil
-        if stopped || Task.isCancelled { return }
+        // 받는 쪽이 끝났으면 소켓도 닫는다 — ERROR 뒤에 서버가 닫지 않으면 열린 소켓이 남는다.
+        socket.cancel(with: .goingAway, reason: nil)
+        // 지금의 소켓일 때만 지운다 — 늦게 끝난 옛 연결이 새 연결의 참조를 지우면 안 된다.
+        if task === socket { task = nil }
+        guard isCurrent(generation, tripId: tripId) else { return }
+        pump = nil
+        if stopped { return }
         state = .connecting
         schedule()
     }
@@ -179,7 +206,7 @@ final class RealtimeClient: RealtimeConnecting {
             try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
             guard let self, !Task.isCancelled, !self.stopped else { return }
             self.retry = nil
-            self.pump = Task { [weak self] in await self?.run(tripId: tripId) }
+            self.launch(tripId)
         }
     }
 }
