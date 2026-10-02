@@ -3502,6 +3502,25 @@ test('붙여넣기: 담은 것만 여행이 되고 담지 않은 줄은 메모�
   assert.ok(!w.document.getElementById('pastePvBg').classList.contains('show'));
 });
 
+// 자정('밤 12시')을 그 날 맨 앞 00:00으로 못박으면 고정 도착이 시계를 되감아 뒤 장소의 ETA가 전부 틀린다.
+// 미리보기는 담는 줄의 모호 이유를 보이지 않으므로(웹·iOS 같다) 경고에 기대지 않고 값으로 막는다 — 시각을 비우고 적힌 그대로를 설명에 남긴다
+test('붙여넣기: 자정 시각은 고정 도착이 되지 않고 적힌 그대로 설명에 남는다', { skip: noJsdom }, async () => {
+  const w = boot();
+  stubGeocode(w, { '돈키호테 시부야': [{ name: '돈키호테 시부야', addr: '도쿄', city: '도쿄', lat: 35.66, lng: 139.7 }] });
+  w.document.getElementById('pasteText').value = '[day1] 도착\n- 밤 12시 | 돈키호테 시부야';
+  await w.eval('runPaste()');
+  await w.eval('pvGeocodeAll()');
+  assert.equal(w.eval('pv.rows[0].include'), true, '장소 줄이라 기본으로 담긴다');
+  const row = w.document.querySelector('#pvList .pvRow');
+  assert.equal(row.querySelector('.pvTime').textContent, '', '미리보기에 00:00을 보이지 않는다');
+  assert.ok(row.textContent.includes('밤 12시'), '적힌 시각은 설명으로 보인다');
+  w.eval('pvCommit()');
+  const spot = JSON.parse(w.eval('JSON.stringify(store.trips[store.trips.length-1].days[0].spots[0])'));
+  assert.equal(spot.name, '돈키호테 시부야');
+  assert.equal(spot.at, undefined, '고정 도착 시각을 만들지 않는다');
+  assert.equal(spot.desc, '밤 12시');
+});
+
 test('붙여넣기: 이름을 고치면 그 이름으로 다시 찾는다', { skip: noJsdom }, async () => {
   const w = boot();
   stubGeocode(w, { '하루니레 테라스': [{ name: '하루니레 테라스', addr: '나가노현', city: '가루이자와', lat: 36.35, lng: 138.6 }] });
@@ -4024,6 +4043,14 @@ test('통합: 여행 기간 입력 칸의 max가 저장 한도와 같다', { ski
   const max = w.eval('TC_LIMITS.days');
   assert.equal(max, 90, '상한은 90일 — 늘리려면 일자 카드 가상 스크롤이 먼저다');
   assert.equal(w.document.getElementById('tripDays').getAttribute('max'), String(max));
+});
+
+// 연박 상한도 같은 숫자다(lib `stayNights`). 칸이 60에서 막히면 90일 여행의 75박 숙소를 입력할 수 없다.
+test('통합: 연박 입력 칸의 max가 여행 기간 상한과 같고, 그만큼 저장된다', { skip: noJsdom }, () => {
+  const w = boot();
+  const max = w.eval('TC_LIMITS.days');
+  assert.equal(w.document.getElementById('spotNights').getAttribute('max'), String(max));
+  assert.equal(w.eval(`stayNights({nights:${max - 15}})`), max - 15);
 });
 
 // ── 실행취소는 내가 한 것만 되돌린다 (M6) ────────────────────────────────

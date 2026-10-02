@@ -270,7 +270,7 @@ struct SpotEditorView: View {
                     // 숙소는 종류와 별개의 표시다 — 그날의 종료 기준점이 되고 숙박 예약과 이어진다(웹의 체크박스와 같다).
                     Toggle("숙소", isOn: $draft.isStay)
                     if draft.isStay || draft.category == .stay {
-                        Stepper("연박 \(draft.nights ?? 1)박", value: nightsBinding, in: 1...60)
+                        Stepper("연박 \(draft.nights ?? 1)박", value: nightsBinding, in: 1...TripLimits.maxDays)
                     }
                 } header: {
                     Text("계획")

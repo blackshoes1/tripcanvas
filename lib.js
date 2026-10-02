@@ -304,14 +304,16 @@
   /**
    * 여행지의 현지 날짜 + 자정부터 분을 IANA 시간대 기준 UTC ISO로 변환한다. DST gap(존재하지 않는 현지시각)은 null.
    * minutes가 1440을 넘으면 다음 날짜로 넘겨 자정 이후 일정도 보존한다.
+   * 소수 분은 **먼저** 반올림한다 — 날짜를 반올림 전 값으로 정하면 1439.6분이 다음 날이 아니라 그 날 00:00이 된다.
    * @param {string} isoDate @param {number} minutes @param {string} timeZone @returns {string|null}
    */
   function zonedMinutesToISOString(isoDate,minutes,timeZone){
     const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDate||'');
     if(!m||!isFinite(minutes)||!validTimeZone(timeZone)) return null;
+    minutes=Math.round(minutes);
     const base=new Date(Date.UTC(+m[1],+m[2]-1,+m[3]+Math.floor(minutes/1440)));
     if(base.getUTCFullYear()<1000) return null;
-    const minute=((Math.round(minutes)%1440)+1440)%1440;
+    const minute=((minutes%1440)+1440)%1440;
     const desired=Date.UTC(base.getUTCFullYear(),base.getUTCMonth(),base.getUTCDate(),Math.floor(minute/60),minute%60);
     let guess=desired;
     for(let i=0;i<4;i++){
@@ -557,9 +559,10 @@
     return before.some((s,i)=>s!==day.spots[i]);
   }
 
-  /** 숙소 연박 수 (미지정=1박, 상한 60). Day D 체크인 + N박이면 D+1..D+N 아침의 출발점이 그 숙소.
+  /** 숙소 연박 수 (미지정=1박, 상한은 여행 기간 상한 `TC_LIMITS.days`). Day D 체크인 + N박이면 D+1..D+N 아침의 출발점이 그 숙소.
+   * ⚠️ 상한을 따로 두지 않는다 — 60이었을 때 90일 여행의 75박 숙소가 저장할 때마다 60박으로 잘렸다(2026-10-02).
    * @param {any} s @returns {number} */
-  function stayNights(s){ const n=Math.round(+((s&&s.nights)||1)); return (isFinite(n)&&n>=1)? Math.min(n,60) : 1; }
+  function stayNights(s){ const n=Math.round(+((s&&s.nights)||1)); return (isFinite(n)&&n>=1)? Math.min(n,TC_LIMITS.days) : 1; }
   /**
    * 날짜별 숙박 표시. 동선의 출발 앵커와 달리 체크아웃 뒤에는 숙박을 이월하지 않는다.
    * 예약 연결은 bookingId만 믿는다. 같은 이름의 다른 예약·일행의 숙소를 합치지 않는다.
@@ -824,7 +827,8 @@
     /** @type {Record<number,number>} */ const own={};
     /** @type {{fromDay:number,index:number,spot:any,amount:number,cur:string,night:number,nights:number}[]} */ const carried=[];
     if(!Array.isArray(days)||!Number.isInteger(di)||di<0) return {own,carried};
-    for(let j=Math.max(0,di-60); j<=di; j++){
+    // 거슬러 보는 날 수는 연박 상한(`stayNights` = `TC_LIMITS.days`)과 같아야 한다 — 따로 두면 그보다 긴 숙박의 뒷날 몫이 빠진다
+    for(let j=Math.max(0,di-TC_LIMITS.days); j<=di; j++){
       const spots=(days[j]&&Array.isArray(days[j].spots))?days[j].spots:[];
       spots.forEach((/**@type{any}*/s,/**@type{number}*/index)=>{
         if(!s||!s.stay) return;
@@ -1335,7 +1339,7 @@
     if(_hm(s.at)===undefined) delete s.at;
     if(_hm(s.bookAt)===undefined) delete s.bookAt;
     if(s.admission!=null){ const admission=normalizeAdmission(s.admission); if(admission) s.admission=admission; else delete s.admission; }
-    if(s.nights!=null){ if(_fin(s.nights)) s.nights=Math.min(60,Math.max(1,Math.round(+s.nights))); else delete s.nights; }   // 숙소 연박 수
+    if(s.nights!=null){ if(_fin(s.nights)) s.nights=Math.min(TC_LIMITS.days,Math.max(1,Math.round(+s.nights))); else delete s.nights; }   // 숙소 연박 수
     if(s.stayMin!=null){ if(_fin(s.stayMin)) s.stayMin=Math.max(0,Math.round(+s.stayMin)); else delete s.stayMin; }
     normalizeCostFields(s,'cost');
     if(s.cur!=null && _CURS.indexOf(s.cur)<0) delete s.cur;                 // 알 수 없는 통화 → 기본(KRW 취급)

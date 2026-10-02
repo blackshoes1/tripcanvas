@@ -196,6 +196,16 @@ test('IANA 시간대 — DST gap·자정 넘김·서로 다른 시간대',()=>{
   assert.equal(L.validTimeZone('Mars/Olympus'),false);
 });
 
+test('IANA 시간대 — 소수 분은 반올림한 뒤에 날짜를 정한다',()=>{
+  // 1439.6분은 반올림하면 1440분(다음 날 00:00)이다. 날짜를 반올림 전에 정하면 그 날 00:00으로 하루가 거꾸로 간다
+  assert.equal(L.zonedMinutesToISOString('2026-10-01',1439.6,'Asia/Seoul'),'2026-10-01T15:00:00Z');
+  assert.equal(L.zonedMinutesToISOString('2026-10-01',1439.4,'Asia/Seoul'),'2026-10-01T14:59:00Z');
+  assert.equal(L.zonedMinutesToISOString('2026-10-02',-0.6,'Asia/Seoul'),'2026-10-01T14:59:00Z','앞날로 넘어가는 쪽도 같다');
+  // -0.4분은 반올림하면 0분(그 날 00:00)이다. 날짜를 반올림 전에 정하면 앞날로 넘어간 뒤 시각만 00:00이 돼 하루가 통째로 거꾸로 갔다
+  assert.equal(L.zonedMinutesToISOString('2026-10-02',-0.4,'Asia/Seoul'),'2026-10-01T15:00:00Z');
+  assert.equal(L.zonedMinutesToISOString('2026-10-01',600.4,'Asia/Seoul'),'2026-10-01T01:00:00Z');
+});
+
 test('normalizeTrip — IANA 시간대 보존과 기존 무시간대 호환',()=>{
   const valid=L.normalizeTrip({timeZone:'Europe/Madrid',days:[{timeZone:'Asia/Tokyo',spots:[]}]});
   assert.equal(valid.timeZone,'Europe/Madrid');
@@ -501,12 +511,38 @@ test('연박(nights) — 한 번 등록한 숙소가 묵는 동안 계속 출발
   // 연박 중 새 숙소를 등록하면 그때부터 새 숙소가 기준 (가까운 날 우선)
   const moved=[checkIn, sight('D1'), {spots:[{lat:7,lng:7,stay:true,name:'새숙소'}]}, sight('D3')];
   assert.equal(L.dayStartAnchor(moved,3).name, '새숙소');
-  // stayNights: 미지정·비정상 → 1, 상한 60
+  // stayNights: 미지정·비정상 → 1, 상한은 여행 기간 상한(TC_LIMITS.days)
   assert.equal(L.stayNights({}), 1);
   assert.equal(L.stayNights({nights:'x'}), 1);
   assert.equal(L.stayNights({nights:0}), 1);
   assert.equal(L.stayNights({nights:4}), 4);
-  assert.equal(L.stayNights({nights:999}), 60);
+  assert.equal(L.stayNights({nights:999}), L.TC_LIMITS.days);
+});
+
+// 2026-10-02: 연박 상한이 60이라 90일 여행의 75박 숙소가 저장할 때마다 60박으로 잘렸다.
+// 여행이 90일까지 되면 한 숙소에 그만큼 묵을 수 있다 — 상한은 여행 기간 상한 하나다.
+test('연박 상한은 여행 기간 상한과 같다 — 긴 여행의 숙소를 저장에서 자르지 않는다', () => {
+  const max=L.TC_LIMITS.days;
+  assert.equal(L.stayNights({nights:75}), 75);
+  assert.equal(L.stayNights({nights:max}), max);
+  assert.equal(L.stayNights({nights:max+1}), max);
+  const trip=(nights)=>L.normalizeTrip({name:'장기', days:[{spots:[{name:'숙소',lat:1,lng:1,stay:true,nights}]}]});
+  assert.equal(trip(75).days[0].spots[0].nights, 75, '저장해도 75박 그대로다');
+  assert.equal(trip(max+10).days[0].spots[0].nights, max);
+  // 75박이면 76일째 아침까지 숙소에서 출발한다(체크아웃 다음 날부터는 아니다)
+  const stay={spots:[{lat:2,lng:2,stay:true,nights:75,name:'장기숙소'}]};
+  const days=[stay].concat(Array.from({length:77},(_,i)=>({spots:[{lat:3,lng:3,name:'D'+(i+1)}]})));
+  assert.equal(L.dayStartAnchor(days,75).name, '장기숙소');
+  assert.notEqual(L.dayStartAnchor(days,76).name, '장기숙소');
+  // 비용도 75박을 다 센다 — 이월 몫을 찾는 창이 60일이면 61~74박째 몫이 어느 날에도 없었다
+  const costly=[{spots:[{lat:2,lng:2,stay:true,nights:75,name:'장기숙소',cost:75000}]}]
+    .concat(Array.from({length:max-1},()=>({spots:[]})));
+  const shares=costly.map((_,di)=>L.stayCostShares(costly,di));
+  const nightly=shares.map((s,di)=>di===0? s.own[0] : s.carried.reduce((a,c)=>a+c.amount,0));
+  assert.deepEqual(nightly.slice(0,75), Array(75).fill(1000), '75박 모두 하루치가 잡힌다');
+  assert.ok(nightly.slice(75).every(v=>v===0), '체크아웃 날부터는 몫이 없다');
+  assert.equal(nightly.reduce((a,v)=>a+v,0), 75000, '하루치를 모두 더하면 장소 비용 전액이다');
+  assert.equal(L.dayEnteredCostOn(costly,70,{KRW:1}), 1000);
 });
 
 test('비숙소 전날 마지막 장소도 다음날 ETA에 반영 (anchor 배선 회귀 방지)', () => {

@@ -41,3 +41,20 @@ describe('여행 기간 상한 — lib.js ↔ iOS', () => {
     expect(over.ok ? '' : over.error).toContain(`${legacyLib.TC_LIMITS.days}일`);
   });
 });
+
+// 연박 상한도 같은 숫자다 — 2026-10-02 전에는 웹·앱 모두 60이라 90일 여행의 75박 숙소가 저장마다 60박으로 잘렸다.
+// 앱은 숫자를 따로 들지 않고 `TripLimits.maxDays`를 쓴다(그 값은 위에서 lib과 대조된다).
+describe('연박 상한 — lib.js ↔ iOS', () => {
+  const EDITOR = readFileSync(
+    path.join(__dirname, '../../../../../ios/TripCanvas/Features/Plan/SpotEditorView.swift'), 'utf8');
+
+  it('lib.js의 연박 상한은 여행 기간 상한이다', () => {
+    expect(legacyLib.stayNights({ nights: 75 })).toBe(75);
+    expect(legacyLib.stayNights({ nights: 999 })).toBe(legacyLib.TC_LIMITS.days);
+  });
+
+  it('앱의 저장·편집기도 같은 상한을 쓴다', () => {
+    expect(SWIFT).toMatch(/"nights",\s*newValue\.map\s*\{\s*\.number\(min\(TripLimits\.maxDays,/);
+    expect(EDITOR).toMatch(/Stepper\("연박[^\n]*in:\s*1\.\.\.TripLimits\.maxDays\)/);
+  });
+});

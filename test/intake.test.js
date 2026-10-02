@@ -625,6 +625,87 @@ test('AI 글: 사람이 쓰는 시각도 읽는다 — 오전/오후가 없으�
   assert.ok(!it[2].reasons.some(r2 => r2.includes('오전인지 오후인지')), "'저녁 7시'는 모호하지 않다");
 });
 
+// 2026-10-02: '점심 1시'가 새벽 1시(01:00)로, '밤 12시'가 정오(12:00)로 읽혔다 — 둘 다 모호하다는 말도 없이.
+test('koTime: 점심·밤의 시각을 그 때에 맞게 읽는다', () => {
+  const at = (s) => { const r = I.koTime(s); return r && [r.at, r.ambiguous]; };
+  // 점심때의 1~5시는 오후다. 11·12시는 그대로
+  assert.deepEqual(at('점심 1시'), ['13:00', false]);
+  assert.deepEqual(at('점심 2시 30분'), ['14:30', false]);
+  assert.deepEqual(at('점심 12시'), ['12:00', false]);
+  assert.deepEqual(at('점심 11시 30분'), ['11:30', false]);
+  assert.deepEqual(at('점심 7시'), ['07:00', true], '점심이라 부를 시각이 아니면 지어내지 않고 모호하다고 한다');
+  assert.deepEqual(at('점심 13시'), ['13:00', false], '24시간제로 적은 시각은 이미 정확하다 — 모호하다고 하지 않는다');
+  assert.deepEqual(at('점심 12시 30분'), ['12:30', false]);
+  // 밤·저녁 12시는 정오가 아니라 자정이다 — 일정의 시각은 00:00~23:59라 그 날 맨 앞이 되어 동선을 되감는다.
+  // 그래서 시각을 비우고(지어내지 않는다) 모호하다고 한다
+  assert.deepEqual(at('밤 12시'), [null, true]);
+  assert.deepEqual(at('저녁 12시'), [null, true]);
+  assert.deepEqual(at('밤 1시'), [null, true], '자정을 넘긴 밤 1시는 오후 1시가 아니다');
+  // 그대로인 것들
+  assert.deepEqual(at('밤 11시'), ['23:00', false]);
+  assert.deepEqual(at('밤 9시'), ['21:00', false]);
+  assert.deepEqual(at('저녁 7시'), ['19:00', false]);
+  assert.deepEqual(at('오후 12시'), ['12:00', false]);
+  assert.deepEqual(at('새벽 12시'), ['00:00', false], '새벽 12시는 그 날이 시작하는 자정이다');
+  assert.deepEqual(at('12시'), ['12:00', false]);
+  assert.deepEqual(at('7시'), ['07:00', true]);
+});
+
+test('AI 글: 자정과 점심때 시각 — 무엇이 모호한지 그대로 말한다', () => {
+  const it = I.parseItinerary([
+    '- 점심 1시 카와카미안',
+    '- 밤 12시 숙소 도착',
+    '- 7시 스타벅스'
+  ].join('\n'), {}).days[0].items;
+  assert.deepEqual(it.map(i => i.at), ['13:00', null, '07:00'], '자정은 그 날 맨 앞 00:00으로 못박지 않는다');
+  assert.deepEqual(it.map(i => i.name), ['카와카미안', '숙소 도착', '스타벅스']);
+  assert.ok(!it[0].reasons.some(r2 => /모호|확실하지|오전인지/.test(r2)), "'점심 1시'는 모호하지 않다");
+  assert.ok(it[1].reasons.some(r2 => r2.includes('자정')), '자정이라 시각을 비웠다고 말한다');
+  assert.equal(it[1].desc, '밤 12시', '적힌 시각은 버리지 않고 설명에 남는다');
+  assert.ok(!it[1].reasons.some(r2 => r2.includes('오전인지 오후인지')), "'밤 12시'는 오전·오후를 안 적은 시각이 아니다");
+  assert.ok(it[2].reasons.some(r2 => r2.includes("'7시'가 오전인지 오후인지")));
+});
+
+// 범위의 끝은 시작의 때를 잇는다 — '점심 1시~3시'의 끝을 새벽 3시로 읽으면 머무는 시간이 0(=바로 이동)이 됐다
+test('AI 글: 범위의 끝은 시작의 때를 잇고, 거꾸로 된 범위는 머무는 시간을 모른다고 한다', () => {
+  const it = I.parseItinerary([
+    '- 점심 1시~3시 | 식당',
+    '- 점심 1시~2시 30분 카페',
+    '- 오후 1시~3시 박물관',
+    '- 오전 9시~11시 공원',
+    '- 밤 11시~1시 클럽',
+    '- 밤 12시~1시 야시장',
+    '- 23:00~01:00 | 심야 식당'
+  ].join('\n'), {}).days[0].items;
+  const span = (i) => [it[i].at, it[i].endAt, it[i].stayMin];
+  assert.deepEqual(span(0), ['13:00', '15:00', 120]);
+  assert.deepEqual(span(1), ['13:00', '14:30', 90]);
+  assert.deepEqual(span(2), ['13:00', '15:00', 120]);
+  assert.deepEqual(span(3), ['09:00', '11:00', 120], '끝이 시작보다 늦으면 그대로다');
+  assert.equal(span(4)[2], null, '자정을 넘기는 범위는 머무는 시간을 0으로 지어내지 않는다');
+  assert.deepEqual(span(5), [null, null, null], '자정에 시작하면 끝도 비운다');
+  assert.equal(it[5].desc, '밤 12시~1시');
+  assert.equal(span(6)[2], null);
+});
+
+// 표 안의 시각도 불릿과 같은 이유를 단다 — 전에는 표 경로가 시각만 가져가 '밤 12시'가 아무 말 없이 00:00이 됐다
+test('AI 글: 표 안의 모호한 시각도 이유와 적힌 시각을 남긴다', () => {
+  const it = I.parseItinerary([
+    '| 시간 | 장소 |',
+    '|---|---|',
+    '| 밤 12시 | 숙소 도착 |',
+    '| 점심 7시 | 식당 |',
+    '| 점심 1시 | 카와카미안 |',
+    '| 09:00 | 공원 |'
+  ].join('\n'), {}).days[0].items;
+  assert.deepEqual(it.map(i => i.name), ['숙소 도착', '식당', '카와카미안', '공원']);
+  assert.deepEqual(it.map(i => i.at), [null, '07:00', '13:00', '09:00']);
+  assert.ok(it[0].reasons.some(r2 => r2.includes('자정')));
+  assert.equal(it[0].desc, '밤 12시');
+  assert.ok(it[1].reasons.some(r2 => r2.includes("'점심 7시'")), '모호하다는 이유가 표에서도 남는다');
+  assert.ok(!it[2].reasons.some(r2 => /확실하지|오전인지|자정/.test(r2)));
+});
+
 test('AI 글: 괄호는 안이 설명일 때만 뗀다 — 다른 이름은 남긴다', () => {
   const r = I.parseItinerary('- 이시노쿄카이 (돌의 교회)\n- 시라이토 폭포 (도보 20분, 입장료 무료)', {});
   assert.equal(r.days[0].items[0].name, '이시노쿄카이 (돌의 교회)');

@@ -214,6 +214,15 @@ final class TripPeriodLimitTests: XCTestCase {
                        "새 여행과 여행 설정이 서로 다른 상한을 쓰면 앱으로 만든 여행을 앱에서 못 늘린다")
     }
 
+    /// 연박 상한도 같은 숫자다 — 60이었을 때 90일 여행의 75박 숙소가 저장할 때마다 60박으로 잘렸다(웹 `stayNights`와 같은 규칙).
+    func testStayNightsFollowThePeriodCap() {
+        var spot = TripSpot(name: "장기 숙소")
+        spot.nights = 75
+        XCTAssertEqual(spot.nights, 75)
+        spot.nights = TripLimits.maxDays + 10
+        XCTAssertEqual(spot.nights, TripLimits.maxDays)
+    }
+
     func testNewTripAcceptsTheCapAndRejectsOneMore() {
         let at = NewTripDraft(name: "산티아고 순례", start: "2026-10-01", dayCount: TripLimits.maxDays, city: nil)
         let over = NewTripDraft(name: "산티아고 순례", start: "2026-10-01", dayCount: TripLimits.maxDays + 1, city: nil)
