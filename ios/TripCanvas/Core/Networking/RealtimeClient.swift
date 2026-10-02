@@ -49,13 +49,14 @@ final class RealtimeClient: RealtimeConnecting {
     private(set) var state: RealtimeState = .off
 
     private let session: URLSession
+    private let socketFactory: (@MainActor (URL) -> any RealtimeSocket)?
     private let tokens: TokenProviding
     /// `/api/v1/me`가 알려 준 주소. nil이면 서버가 실시간을 쓰지 말라고 한 것이다.
     /// 던지면 **이번에는 답을 못 받은 것**이다 — 그 답(nil)과 섞지 않는다. 네트워크 실패(타임아웃 등)는 소켓이
     /// 끊겼을 때처럼 몇 번 다시 묻고, 다시 물어도 같은 실패(서버 오류·응답 모양 어긋남·권한)는 이번에는 접는다.
     private let urlFor: @MainActor () async throws -> URL?
 
-    private var task: URLSessionWebSocketTask?
+    private var task: (any RealtimeSocket)?
     private var tripId: String?
     /// 듣는 화면들. 하나의 소켓을 나눠 쓴다 — 키는 화면이 스스로 정한다.
     private var handlers: [String: @MainActor (RealtimeActivity) -> Void] = [:]
@@ -73,8 +74,10 @@ final class RealtimeClient: RealtimeConnecting {
     private let maxAttempts = 5
 
     init(session: URLSession = .shared, tokens: TokenProviding,
-         retrySeconds: Double = 3, urlFor: @escaping @MainActor () async throws -> URL?) {
+         retrySeconds: Double = 3, socketFactory: (@MainActor (URL) -> any RealtimeSocket)? = nil,
+         urlFor: @escaping @MainActor () async throws -> URL?) {
         self.session = session
+        self.socketFactory = socketFactory
         self.tokens = tokens
         self.retrySeconds = retrySeconds
         self.urlFor = urlFor
@@ -159,7 +162,7 @@ final class RealtimeClient: RealtimeConnecting {
         guard isCurrent(generation, tripId: tripId) else { return }
         guard let token = fetched else { state = .off; pump = nil; return }   // 로그아웃이면 붙지 않는다
 
-        let socket = session.webSocketTask(with: url)
+        let socket: any RealtimeSocket = socketFactory?(url) ?? session.webSocketTask(with: url)
         task = socket
         socket.resume()
 
@@ -214,7 +217,7 @@ final class RealtimeClient: RealtimeConnecting {
         (error as? APIError)?.isOffline == true || error is URLError
     }
 
-    private func send(_ socket: URLSessionWebSocketTask, _ payload: [String: Any]) async {
+    private func send(_ socket: any RealtimeSocket, _ payload: [String: Any]) async {
         guard let data = try? JSONSerialization.data(withJSONObject: payload),
               let text = String(data: data, encoding: .utf8) else { return }
         try? await socket.send(.string(text))
