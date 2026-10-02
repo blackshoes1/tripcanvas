@@ -5195,7 +5195,8 @@ async function performCloudDelete(clientId,op,deletedTrip){
     if(!current()) return;
     if(row&&row.conflict){
       entry.status='conflict'; persistSyncMeta();   // base revision 유지 (위 syncTripCloud와 같은 이유)
-      enqueueSyncConflict({kind:row.deleted_at?'remote-deleted':'changed-both',local:deletedTrip||null,remote:row.data||null,revision:Number(row.revision)||entry.revision,deleted_at:row.deleted_at||null});
+      // 밀린 삭제(재시도·온라인 복귀)는 지운 여행의 사본 없이 온다(local:null) — 어느 여행인지는 id로 남긴다
+      enqueueSyncConflict({id:clientId,kind:row.deleted_at?'remote-deleted':'changed-both',local:deletedTrip||null,remote:row.data||null,revision:Number(row.revision)||entry.revision,deleted_at:row.deleted_at||null});
       return;
     }
     const result=TC_SYNC.finishDelete(syncMeta,clientId,op,Number(row&&row.revision)||entry.revision||1); persistSyncMeta();
@@ -5217,18 +5218,24 @@ function reconcileUndoDeletes(){
 }
 
 function enqueueSyncConflict(conflict){ syncConflicts.push(conflict); if(!currentSyncConflict) showNextSyncConflict(); }
+/** 충돌이 가리키는 여행. 밀린 삭제의 충돌에는 로컬 사본이 없다(local:null) — 그때는 원격본이나 남겨 둔 id로 찾는다 */
+function conflictTripId(c){ return (c.local&&c.local.id)||(c.remote&&c.remote.id)||c.id||null; }
 function showNextSyncConflict(){
   currentSyncConflict=syncConflicts.shift()||null;
   if(!currentSyncConflict){ document.getElementById('syncConflictBg').classList.remove('show'); return; }
   const c=currentSyncConflict, name=(c.local&&c.local.name)||(c.remote&&c.remote.name)||'여행';
+  // 삭제 복원이 거절되면 소유자 규칙을, 이 기기 사본이 없으면 두 선택의 결과를 먼저 설명한다.
   document.getElementById('syncConflictText').textContent=c.reviveRefused
     ?`“${name}” — 주최자가 지운 여행이라 주최자만 되살릴 수 있어요. 이 기기 것은 사본으로 남겨 주세요.`
-    :`“${name}”이 다른 기기에서도 변경됐어요. 어느 버전을 보존할지 선택하세요.`;
+    :c.local
+      ?`“${name}”이 다른 기기에서도 변경됐어요. 어느 버전을 보존할지 선택하세요.`
+      :`이 기기에서 지운 “${name}”이 다른 기기에서 변경됐어요. 저장된 것으로 바꾸면 여행이 돌아오고, 이 기기 것을 유지하면 지워져요.`;
   document.getElementById('syncUseDevice').style.display=c.reviveRefused?'none':'';   // .btn이 display:flex라 hidden 속성은 먹지 않는다
+  document.getElementById('syncKeepCopy').style.display=c.local?'':'none';
   document.getElementById('syncConflictBg').classList.add('show');
 }
 function replaceWithRemote(c){
-  const idx=store.trips.findIndex(t=>t.id===(c.local&&c.local.id));
+  const id=conflictTripId(c), idx=store.trips.findIndex(t=>t.id===id);
   const remoteResult=c.remote&&validateTripPayload(c.remote);
   const remote=remoteResult&&remoteResult.ok&&remoteResult.value;
   if(c.remote&&!remote){ reportOperationalError('cloud.conflict.invalid',new Error('validation')); toast('클라우드 데이터가 손상되어 적용하지 않았어요','#b4342a'); return false; }
@@ -5236,11 +5243,31 @@ function replaceWithRemote(c){
   if(remote&&idx<0&&!c.deleted_at) store.trips.push(remote);
   if(!store.trips.length) store.trips=[{id:uid(),name:'새 여행',start:'',days:[{title:'',drive:'',note:'',spots:[]}]}];
   if(!store.trips.find(t=>t.id===store.activeId)) store.activeId=store.trips[0].id;
-  if(c.local) syncMeta[c.local.id]={revision:c.revision,status:c.deleted_at?'tombstoned':'clean',op:'',hash:remote?TC_SYNC.hashTrip(remote):''};
+  // 사본 없는 삭제 충돌도 여기서 풀어야 한다 — 안 풀면 conflict로 남아 이후 편집이 영영 올라가지 않는다
+  if(id) syncMeta[id]={revision:c.revision,status:c.deleted_at?'tombstoned':'clean',op:'',hash:remote?TC_SYNC.hashTrip(remote):''};
   persistSyncMeta(); adoptRemote(()=>{ suppressCloudOnce=true; activeDay=0; save(); render(); }); return true;
 }
+/**
+ * 사본 없는 충돌에서 '이 기기 것 유지' — 이 기기 것은 **삭제**다. 삭제에는 강제 덮어쓰기가 없어서,
+ * 방금 서버가 알려 준 revision을 기준으로 다시 지운다(그 사이 또 바뀌면 다시 묻는다).
+ * 그냥 두면 다음 로그인 병합이 지운 여행을 도로 내려받는다.
+ */
+function retryCloudDelete(c){
+  const id=conflictTripId(c); if(!id) return;
+  const op=uid()+Date.now();
+  syncMeta[id]={revision:c.revision||null,status:'delete-pending',op,hash:''}; persistSyncMeta();
+  performCloudDelete(id,op);
+}
 document.getElementById('syncUseCloud').onclick=()=>{ if(!replaceWithRemote(currentSyncConflict)) return; currentSyncConflict=null; showNextSyncConflict(); };
-document.getElementById('syncUseDevice').onclick=()=>{ const c=currentSyncConflict; currentSyncConflict=null; document.getElementById('syncConflictBg').classList.remove('show'); if(c&&c.local) syncTripCloud(c.local,{force:true}); showNextSyncConflict(); };
+document.getElementById('syncUseDevice').onclick=()=>{
+  const c=currentSyncConflict; currentSyncConflict=null; document.getElementById('syncConflictBg').classList.remove('show');
+  if(c){
+    // 충돌이 쌓인 사이에 되돌리기로 여행이 돌아왔으면 그것이 이 기기 것이다 — 지우지 않고 올린다
+    const local=c.local||store.trips.find(t=>t.id===conflictTripId(c));
+    if(local) syncTripCloud(local,{force:true}); else retryCloudDelete(c);
+  }
+  showNextSyncConflict();
+};
 document.getElementById('syncKeepCopy').onclick=()=>{
   const c=currentSyncConflict; if(!c||!c.local) return;
   const copy=JSON.parse(JSON.stringify(c.local)); copy.id=uid(); copy.name=(copy.name||'여행')+' (충돌 복사본)';
