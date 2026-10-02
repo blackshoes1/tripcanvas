@@ -2434,6 +2434,44 @@ test('통합: 여행 기간 밖에서는 여행 중 화면이 그 사실을 말�
   w.close(); w2.close(); w3.close();
 });
 
+test('통합: 여행 전 미리보기는 같은 장소를 현재·다음에 두 번 두지 않고, 메모를 사실 줄에 섞지 않는다', { skip: noJsdom }, () => {
+  // 2026-10-02 UX 검토: 샘플 Day 1이 '시작 장소'와 '다음 장소' 둘 다 공항이었고, 메모 "07:00 도착"이
+  // "09:00 도착 예상" 바로 아래에 사실처럼 붙었고, 다음 칸은 "이동 정보 계산 중"에서 멈췄다.
+  const w = boot();
+  withAdaptTrip(w, [
+    { startAt: '09:00', mode: 'car', spots: [S('공항', 40.47, { desc: '07:00 도착', stayMin: undefined }), S('광장', 40.416, { stayMin: 45 }), S('경기장', 40.436)] },
+    { spots: [S('미술관', 40.414)] }
+  ], { today: '2026-08-01', now: 14 * 60 });
+  w.document.getElementById('travelBtn').click();
+  const cur = w.document.getElementById('travelCurrent'), next = w.document.getElementById('travelNext');
+  assert.match(cur.textContent, /이 날 첫 장소/);
+  assert.match(cur.textContent, /공항/);
+  assert.match(next.textContent, /광장/, '다음은 첫 장소의 뒤다');
+  assert.ok(!/공항/.test(next.textContent), '같은 장소를 두 번 두지 않는다');
+  assert.ok(!cur.querySelector('.travelFacts').textContent.includes('07:00'), '메모의 시각은 사실 줄에 없다');
+  assert.match(cur.querySelector('.travelMemo').textContent, /메모\s+07:00 도착/, '메모는 메모라고 밝혀 따로 둔다');
+  assert.ok(!/계산 중/.test(next.textContent), '경로를 못 받아도 계산 중에 머물지 않는다');
+  assert.match(next.textContent, /거리로 추정/, '거리로 낸 추정이라고 말한다');
+  const kickers = Array.from(w.document.querySelectorAll('#travelSuggest .sgKicker')).map((k) => k.textContent);
+  assert.ok(kickers.every((k) => !/지금 한 곳 더/.test(k)), '여행 전에 "지금"이라고 말하지 않는다');
+  assert.ok(!/광장|공항|경기장/.test(Array.from(w.document.querySelectorAll('#travelSuggest .sgTitle')).map((t) => t.textContent).join(',')),
+    '그날 일정의 장소를 "한 곳 더"로 권하지 않는다');
+  w.close();
+});
+
+test('통합: 여행지 시간대를 정했으면 "오늘"은 그 시간대의 날짜다', { skip: noJsdom }, () => {
+  const w = boot();
+  withAdaptTrip(w, [{ timeZone: 'Europe/Madrid', spots: [] }, { spots: [] }], { today: '2026-09-02', now: 9 * 60 });
+  // 기기 날짜는 9/2로 고정했다. 2026-09-01 22:30 UTC는 마드리드 9/2 00:30, 20:30 UTC는 마드리드 9/1 22:30이다
+  w.eval('Date.now=()=>Date.UTC(2026,8,1,22,30)');
+  assert.deepEqual(w.eval('travelClock()'), { todayISO: '2026-09-02', nowMin: 30 }, '마드리드는 이미 9/2 00:30');
+  w.eval('Date.now=()=>Date.UTC(2026,8,1,20,30)');
+  assert.deepEqual(w.eval('travelClock()'), { todayISO: '2026-09-01', nowMin: 22 * 60 + 30 }, '기기 날짜(9/2)가 아니라 여행지 날짜');
+  w.eval("trip().days[0].timeZone=''");
+  assert.deepEqual(w.eval('travelClock()'), { todayISO: '2026-09-02', nowMin: 9 * 60 }, '시간대가 없으면 기기 시계');
+  w.close();
+});
+
 test('통합: 필터바 오늘 칩은 여행 기간이 아니면 눌리지 않는다(여행 중 화면과 같은 판정)', { skip: noJsdom }, () => {
   const w = boot();
   withAdaptTrip(w, [{ spots: [] }, { spots: [] }], { today: '2026-08-27' });
@@ -4532,6 +4570,82 @@ test('통합: 장소 모달이 \'체류 미정\'을 0분으로 굳히지 않는�
     document.getElementById('spotSave').onclick();`);
   const zero = JSON.parse(w.eval(`JSON.stringify(trip().days[0].spots[${si}])`));
   assert.equal(zero.stayMin, 0, '0은 유효한 값이다(들렀다 바로 이동) — 미정과 구별된다');
+  w.close();
+});
+
+// 2026-10-02 UX 검토 — 체류 미정은 0분으로 계산돼 뒤 시각이 09:27처럼 정밀하게 보였다. 하루에 한 번 그 사실을
+// 말하고 미정 장소의 체류 칸으로 데려간다. 미정 장소가 없어지면 줄도 없어진다.
+test('통합: 머무는 시간 미정 N곳을 하루에 한 번 알리고 체류 칸으로 데려간다', { skip: noJsdom }, () => {
+  const w = boot();
+  withAdaptTrip(w, [{ startAt: '09:00', mode: 'car', spots: [
+    S('공항', 40.47, { stayMin: undefined }), S('광장', 40.416, { stayMin: undefined }), S('경기장', 40.436, { stayMin: 0 })] }]);
+  w.eval('render()');
+  const note = () => w.document.querySelector('.day .estNote, .dayCard .estNote, .estNote');
+  assert.ok(note(), '미정 장소가 있으면 안내가 있다');
+  assert.match(note().textContent, /미정 2곳/, '0분(바로 이동)은 미정으로 세지 않는다');
+  note().click();
+  assert.equal(w.document.getElementById('spotModalBg').classList.contains('show'), true);
+  assert.equal(w.document.getElementById('spotName').value, '공항', '첫 미정 장소를 연다');
+  w.eval(`document.getElementById('spotStayMin').value='30'; document.getElementById('spotSave').onclick();`);
+  assert.match(note().textContent, /미정 1곳/);
+  w.eval(`trip().days[0].spots[1].stayMin=0; render()`);
+  assert.equal(note(), null, '미정이 없으면 안내도 없다');
+  w.close();
+});
+
+// 2026-10-02 UX 검토 — 동선 최적화가 순서를 바로 바꾸고 뒤늦게 "예약시각 순서 확인!" 토스트로만 알렸다.
+// 이제 미리보기를 먼저 열고, 취소하면 문서가 그대로이며, 적용 뒤에는 실행취소로 돌아간다.
+test('통합: 동선 최적화는 미리보기를 먼저 열고 취소하면 아무것도 바꾸지 않는다', { skip: noJsdom }, () => {
+  const w = boot();
+  withAdaptTrip(w, [{ startAt: '09:00', mode: 'walk', spots: [
+    S('시작', 40.400), S('C', 40.430), S('A', 40.410), S('B', 40.420),
+    S('저녁 예약', 40.440, { bookAt: '19:00' }), S('메모만', null, { lat: undefined, lng: undefined })] }]);
+  const names = () => JSON.parse(w.eval('JSON.stringify(trip().days[0].spots.map(s=>s.name))'));
+  const before = names();
+  w.eval('render(); optimizeDay(0)');
+  const bg = w.document.getElementById('optModalBg');
+  assert.equal(bg.classList.contains('show'), true, '바로 바꾸지 않고 미리보기를 연다');
+  assert.deepEqual(names(), before, '미리보기만으로는 문서가 그대로다');
+  const items = Array.from(bg.querySelectorAll('.optList li')).map((li) => li.textContent);
+  assert.match(items.join('|'), /^시작\|A.*\|B.*\|C.*\|저녁 예약.*제자리\|메모만.*제자리$/, '예약·위치 없는 장소는 제자리');
+  assert.match(bg.textContent, /km → .*km/, '거리 변화를 보여 준다');
+  w.document.getElementById('optCancel').click();
+  assert.equal(bg.classList.contains('show'), false);
+  assert.deepEqual(names(), before, '취소하면 문서가 바뀌지 않는다');
+
+  w.eval('optimizeDay(0)');
+  w.document.getElementById('optApply').click();
+  assert.deepEqual(names(), ['시작', 'A', 'B', 'C', '저녁 예약', '메모만'], '적용하면 미리보기와 같은 순서');
+  const act = w.document.querySelector('#toast .toastAct');
+  assert.ok(act, '바꾼 뒤 토스트에 실행취소가 있다');
+  act.click();
+  assert.deepEqual(names(), before, '실행취소로 돌아간다');
+  w.close();
+});
+
+test('통합: 동선 최적화 미리보기는 이 순서 때문에 늦어지는 예약만 적용 전에 경고한다', { skip: noJsdom }, () => {
+  const w = boot();
+  // 예약은 제자리이고 그 앞 구간만 짧아진다 — 바꾸기 전부터 늦은 예약은 '이 순서 때문에' 늦는 것이 아니다.
+  withAdaptTrip(w, [{ startAt: '09:00', mode: 'walk', spots: [
+    S('시작', 40.400, { stayMin: 0 }), S('C', 40.430, { stayMin: 0 }), S('A', 40.410, { stayMin: 0 }), S('B', 40.420, { stayMin: 0 }),
+    S('점심 예약', 40.440, { bookAt: '09:10', stayMin: 0 })] }]);
+  w.eval('render(); optimizeDay(0)');
+  const bg = w.document.getElementById('optModalBg');
+  // 바꾸기 전에도 이미 늦은 예약은 '이 순서 때문에' 늦는 것이 아니다 — 더 늦어질 때만 경고한다
+  const warn = bg.querySelector('.optWarn');
+  const lateBefore = w.eval("Math.round(dayContext(0).timeline[4].eta - parseHM('09:10'))");
+  assert.ok(lateBefore > 5, '이 픽스처는 바꾸기 전부터 늦다');
+  assert.equal(warn, null, '바꿔서 더 늦어지지 않으면(거리가 줄면 도착도 당겨진다) 경고하지 않는다');
+  w.document.getElementById('optCancel').click();
+
+  // 직선은 짧아져도 실제 길은 길 수 있다 — C에서 예약 장소로 가는 길만 5시간이 걸린다고 하자
+  w.eval(`trip().days[0].spots[4].bookAt='12:00';
+    const realLeg=legMinutes; legMinutes=(a,b,...r)=>(a.name==='C'&&b.name==='점심 예약')?300:realLeg(a,b,...r);`);
+  w.eval('optimizeDay(0)');
+  const warn2 = bg.querySelector('.optWarn');
+  assert.ok(warn2, '이 순서가 예약을 늦게 만들면 적용 전에 말한다');
+  assert.match(warn2.textContent, /12:00 점심 예약 — 약 \d+분 늦어요/);
+  assert.equal(w.document.getElementById('optApply').textContent, '늦어도 이 순서로 바꾸기', '버튼이 그 사실을 이름에 싣는다');
   w.close();
 });
 

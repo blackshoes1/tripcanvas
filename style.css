@@ -55,6 +55,7 @@
   .dayBody{padding:2px 12px 9px}
   .drive{font-size:11.5px;color:var(--meta-eta);padding:2px 0 4px 2px;font-variant-numeric:tabular-nums}
   .dist{font-size:11px;color:var(--meta-soft);padding:1px 0 3px 2px;font-variant-numeric:tabular-nums}
+  button.dist.estNote{display:block;width:100%;text-align:left;background:none;border:0;font:inherit;font-size:12px;line-height:1.5;color:var(--meta-warning);padding:4px 2px;min-height:44px;cursor:pointer}.estNote .estFix{font-weight:700;text-decoration:underline}
   .leg{color:var(--meta-soft);font-size:11px;white-space:nowrap;font-variant-numeric:tabular-nums}
   /* 구간 수단 버튼 — 상속(흐림) vs 이 구간만 지정(진하게 + 테두리) */
   .legModeBtn{background:none;border:1px solid transparent;border-radius:6px;padding:0 3px;font-size:11px;line-height:1.5;opacity:.5;cursor:pointer}
@@ -201,7 +202,7 @@
   .tSpot{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:9px;border-left:4px solid var(--c,#556)}
   .tSpot .n{font-weight:700;font-size:14.5px}
   .tSpot .d{font-size:12px;color:var(--subtle);margin:3px 0 7px;white-space:pre-wrap}
-  .travelTop{display:flex;align-items:center;gap:10px;margin-bottom:12px}.travelTop strong{flex:1;text-align:center}.travelTop select{max-width:170px}.travelFocus,.travelNext{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:10px}.travelFocus{border-top:4px solid var(--primary)}.travelKicker,.travelSectionTitle{font-size:11px;color:var(--subtle);font-weight:700;margin-bottom:7px}.travelPlace{font-size:18px;font-weight:800;margin-bottom:7px}.travelFacts{font-size:12px;color:var(--muted);line-height:1.7}.travelActions{display:flex;gap:8px;margin-top:10px}.travelActions a{display:inline-block;text-decoration:none;background:var(--primary);color:#fff;padding:7px 12px;border-radius:8px;font-size:12px;font-weight:700}.travelActions a+a{background:var(--surface);color:var(--ink);border:1px solid var(--border)}.travelNext{display:grid;grid-template-columns:1fr auto;align-items:center}.travelNext strong{font-size:15px}.travelSectionTitle{margin:8px 2px}
+  .travelTop{display:flex;align-items:center;gap:10px;margin-bottom:12px}.travelTop strong{flex:1;text-align:center}.travelTop select{max-width:170px}.travelFocus,.travelNext{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:10px}.travelFocus{border-top:4px solid var(--primary)}.travelKicker,.travelSectionTitle{font-size:11px;color:var(--subtle);font-weight:700;margin-bottom:7px}.travelPlace{font-size:18px;font-weight:800;margin-bottom:7px}.travelFacts{font-size:12px;color:var(--muted);line-height:1.7}.travelMemo{font-size:12px;color:var(--muted);line-height:1.6;margin-top:6px;padding:6px 8px;background:var(--surface-2);border-radius:8px}.travelMemo span{font-weight:700;color:var(--subtle);margin-right:4px}.travelActions{display:flex;gap:8px;margin-top:10px}.travelActions a{display:inline-block;text-decoration:none;background:var(--primary);color:#fff;padding:7px 12px;border-radius:8px;font-size:12px;font-weight:700}.travelActions a+a{background:var(--surface);color:var(--ink);border:1px solid var(--border)}.travelNext{display:grid;grid-template-columns:1fr auto;align-items:center}.travelNext strong{font-size:15px}.travelSectionTitle{margin:8px 2px}
   /* 여행 기간 밖 — 이 화면이 보기 전용이라는 것을 맨 위에서 말한다 */
   .travelPeriodNote{background:var(--badge-warn-bg);color:var(--badge-warn-fg);border-radius:10px;padding:9px 12px;margin-bottom:10px;font-size:12.5px;font-weight:600;line-height:1.5}.travelPeriodNote[hidden]{display:none}
   #sheetHandle{display:none}
@@ -644,3 +645,6 @@ body:has(.modalBg.show) #toast{bottom:auto;top:calc(env(safe-area-inset-top) + 1
 
 .costDialog > label { display:block; margin:12px 0 4px; }
 .costDialog [hidden] { display:none; }
+/* 동선 최적화 미리보기 */
+.optList{margin:10px 0 6px;padding-left:22px;line-height:1.9;font-size:14px}.optList li.moved{font-weight:700}.optTag{font-size:11px;font-weight:600;color:var(--subtle);border:1px solid var(--border);border-radius:6px;padding:0 5px;margin-left:4px}.optTag.moved{color:var(--badge-info-fg);background:var(--badge-info-bg);border-color:transparent}
+.optWarn{margin:8px 0;padding:8px 10px;border-radius:10px;background:var(--badge-danger-bg);color:var(--badge-danger-fg);font-size:13px;font-weight:600}.optWarn ul{margin:4px 0 0 18px;font-weight:500}

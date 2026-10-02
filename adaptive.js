@@ -320,6 +320,9 @@
       if(k===di || Math.abs(k-di)>c.lookAheadDays) continue;
       ((days[k]&&days[k].spots)||[]).forEach((/**@type{any}*/s,/**@type{number}*/si)=>{
         if(!s || s.stay || s.bookAt || s.status==='COMPLETED' || s.status==='SKIPPED' || s.status==='CANCELLED') return;
+        // 공항·역은 지나가는 곳이지 둘러볼 곳이 아니다 — 다른 날의 이동 거점을 '옮겨올 관광지'로 권하지 않는다
+        const cat=LIB.spotCatOf(s);
+        if(cat && (cat.id==='transport' || cat.id==='stay')) return;
         if(!anyCity && !cities[s.city]) return;      // 오늘 머무는 도시가 아니면 옮겨올 후보가 아니다(오늘이 통째로 비었으면 도시 제한 없음)
         if(seen[nameKey(s)]) return;
         seen[nameKey(s)]=1;
@@ -418,7 +421,8 @@
       }
       if(travel>0){
         score+=Math.max(0, 20-travel*0.5);
-        reasons.push((cd.inPlan?'':'현재 위치에서 ')+'이동 약 '+travel+'분');
+        // 출발점은 창의 기준점이다 — 앞 일정이 있으면 거기서, 여행 중이고 앞 일정이 없을 때만 지금 있는 곳에서다
+        reasons.push((cd.inPlan? '' : (win.afterId? '앞 일정에서 ' : (state.live? '현재 위치에서 ' : '')))+'이동 약 '+travel+'분');
       }
       const slack=deadline-(finish+backMin);
       score+=Math.max(0, Math.min(15, 15-Math.abs(slack-c.bufferMin)/8));
@@ -523,7 +527,9 @@
     const windows=findFreeWindows(state, o);
     const replan=generateReplan(state, o);
     const win=o.window || windows[0] || null;
-    const ranked=rankNextActions(state, buildCandidates(trip, state, {window:(win||undefined), cfg:c}),
+    // '한 곳 더'는 새 장소만이다 — 그날 일정에 이미 있는 곳(현재·완료·남은 장소)은 '다음' 카드와
+    // 일정 조정(REPLAN)의 몫이다. 넣으면 "공항에 한 곳 더 들르세요"가 된다(2026-10-02 UX 검토). fillGaps와 같은 규칙.
+    const ranked=rankNextActions(state, buildCandidates(trip, state, {window:(win||undefined), cfg:c}).filter((cd)=>!cd.inPlan),
       {window:(win||undefined), legMin:o.legMin, cfg:c});
     /** @type {TripSuggestion[]} */
     const out=[];

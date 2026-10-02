@@ -265,6 +265,50 @@
   }
 
   /**
+   * 동선 최적화 계획 — 문서를 바꾸지 않고 '어떤 순서가 되는지'만 낸다. 적용은 사용자가 미리보기를 보고 고른다.
+   * 제자리에 두는 장소: 첫 장소 · 예약·입장 시각(bookAt) · 내가 정한 도착(at) · 숙소 · 좌표 없는 장소 · 분리 묶음(split).
+   * 그 사이에 이어진 나머지 장소만 앞뒤 고정 장소를 끝점으로 묶어 이동거리 최소로 다시 놓는다.
+   * 2026-10-02 전에는 좌표 있는 장소 전체를 섞고 좌표 없는 장소를 맨 뒤로 밀어, 예약 시각 순서가 깨진 뒤에야 토스트로 알렸다.
+   * @param {any[]} spots
+   * @returns {{order:number[], changed:boolean, beforeKm:number, afterKm:number, fixed:number[]}} order[k] = 새 k번째 자리에 오는 원래 인덱스
+   */
+  function planRouteOptimization(spots){
+    const list=Array.isArray(spots)? spots : [];
+    const loc=(/**@type{any}*/s)=>!!s && s.lat!=null && s.lng!=null && s.lat!=='' && s.lng!=='' && isFinite(+s.lat) && isFinite(+s.lng);
+    /** @param {any} s @returns {LatLng} */
+    const pt=(s)=>({lat:+s.lat, lng:+s.lng});
+    const isFixed=(/**@type{any}*/s,/**@type{number}*/i)=>i===0 || !loc(s) || !!s.bookAt || !!s.at || !!s.stay || !!s.split;
+    const order=list.map((_,i)=>i);
+    /** @type {number[]} */
+    const fixed=[];
+    list.forEach((s,i)=>{ if(isFixed(s,i)) fixed.push(i); });
+    let i=0;
+    while(i<list.length){
+      if(isFixed(list[i],i)){ i++; continue; }
+      let j=i; while(j<list.length && !isFixed(list[j],j)) j++;
+      // [i, j) 가 움직일 수 있는 구간. 앞의 고정 장소(좌표가 있을 때)에서 출발하고, 뒤의 고정 장소가 있으면 거기서 끝난다.
+      const prev=(i>0 && loc(list[i-1]))? i-1 : -1;
+      const next=(j<list.length && loc(list[j]))? j : -1;
+      const run=[]; for(let k=i;k<j;k++) run.push(k);
+      if(run.length>=2){
+        const idx=(prev>=0? [prev] : []).concat(run, next>=0? [next] : []);
+        const ord=optimizeRoute(idx.map(k=>pt(list[k])), {fixStart:prev>=0, fixEnd:next>=0});
+        const placed=ord.map(o=>idx[o]).filter(k=>k!==prev && k!==next);
+        placed.forEach((k,n)=>{ order[i+n]=k; });
+      }
+      i=j;
+    }
+    const km=(/**@type{number[]}*/ord)=>{
+      const pts=ord.filter(k=>loc(list[k])).map(k=>pt(list[k]));
+      return routeLength(pts);
+    };
+    const beforeKm=km(list.map((_,k)=>k)), afterKm=km(order);
+    // 거리가 사실상 같으면 바꾸지 않는다 — 순서를 흔들 이유가 없다
+    const changed=order.some((k,n)=>k!==n) && afterKm < beforeKm-0.05;
+    return {order:changed? order : list.map((_,k)=>k), changed, beforeKm, afterKm:changed? afterKm : beforeKm, fixed};
+  }
+
+  /**
    * 특정 요일·시각에 영업 중인지 판정.
    * @param {{d:number,o:number,c:number}[]|null|undefined} periods 영업 구간(d: 요일 0=일~6=토, o/c: 자정부터 분). d=-1은 상시영업(24/7)
    * @param {number} weekday 0=일~6=토
@@ -291,6 +335,19 @@
   function validTimeZone(value){
     if(typeof value!=='string'||!value||value.length>64) return false;
     try{ new Intl.DateTimeFormat('en-US',{timeZone:value}).format(0); return true; }catch(_){ return false; }
+  }
+
+  /**
+   * 여행지 시계 — 그 시간대의 오늘 날짜와 자정 기준 분. 시간대가 없거나 틀리면 null이고, 그때 호출부는 기기 시계를 쓴다.
+   * 서버(`resolveClock`)와 같은 출처(첫 날의 시간대 → 여행 시간대)를 쓰면 '여행 중' 판정과 시각이 앱과 같아진다.
+   * 기기를 한국 시간에 둔 채 스페인을 보면 날짜가 하루 갈릴 수 있다(2026-10-02 UX 검토).
+   * @param {number} ms @param {any} timeZone @returns {{todayISO:string, nowMin:number}|null}
+   */
+  function zonedClock(ms, timeZone){
+    if(!validTimeZone(timeZone) || !isFinite(ms)) return null;
+    const p=_zonedParts(ms, timeZone);
+    const pad=(/**@type{number}*/n)=>String(n).padStart(2,'0');
+    return {todayISO:`${p.year}-${pad(p.month)}-${pad(p.day)}`, nowMin:p.hour*60+p.minute};
   }
 
   /** @param {number} ms @param {string} timeZone @returns {{year:number,month:number,day:number,hour:number,minute:number}} */
@@ -1945,7 +2002,7 @@
     };
   }
 
-  const TC={deleteSpotCost,clearSpotCost,deleteBookingCost,dayLodgings,sortTripsByCountdown,additionalReservations,tripSummaryCities,returnModeOf,SPOT_PRIORITIES,spotPriorityOf,applySpotPriority,spotPriorityLabel,SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,cityFromKoreanAddr,placeName,cityFromGoogle,normHours,classifySearchErr,isKoreanSearch,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,normHM,sortDayByTime,inKorea,simplifyName,parseDirect,parseMoney,normalizeDraftDays,extractJson,extMapLink,encodePolyline,decodePolyline,optimizeRoute,routeLength,isOpenAt,validTimeZone,zonedMinutesToISOString,dayAnchor,stayMinutesOf,activityStartMinute,dayEndMinutes,departMinuteAfter,computeTimeline,computeDayJourney,whoKey,splitSegments,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,budgetBookings,moneyAmount,parseCostAmount,costAmountOf,dayEnteredCost,splitAcrossNights,stayCostShares,stayCostOverflow,dayEnteredCostOn,hasManualTransportCost,dayCostSummary,ADMISSION_REQUIREMENTS,admissionLabel,admissionOf,needsAdmissionBooking,normalizeAdmission,admissionError,COST_CATEGORIES,COST_CURRENCIES:_CURS,costCategoryOf,COST_PAY_STATES,costPayStateOf,payStateTotals,TRIP_NOTE_CATEGORIES,normalizeTripNote,tripCostSummary,localMode,mdLabel,tripPeriodOf,startShiftPreview,SAMPLE_TRIP_ID,isSampleTrip,sampleTrip,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
+  const TC={deleteSpotCost,clearSpotCost,deleteBookingCost,dayLodgings,sortTripsByCountdown,additionalReservations,tripSummaryCities,returnModeOf,SPOT_PRIORITIES,spotPriorityOf,applySpotPriority,spotPriorityLabel,SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,cityFromKoreanAddr,placeName,cityFromGoogle,normHours,classifySearchErr,isKoreanSearch,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,normHM,sortDayByTime,inKorea,simplifyName,parseDirect,parseMoney,normalizeDraftDays,extractJson,extMapLink,encodePolyline,decodePolyline,optimizeRoute,planRouteOptimization,routeLength,isOpenAt,validTimeZone,zonedClock,zonedMinutesToISOString,dayAnchor,stayMinutesOf,activityStartMinute,dayEndMinutes,departMinuteAfter,computeTimeline,computeDayJourney,whoKey,splitSegments,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,budgetBookings,moneyAmount,parseCostAmount,costAmountOf,dayEnteredCost,splitAcrossNights,stayCostShares,stayCostOverflow,dayEnteredCostOn,hasManualTransportCost,dayCostSummary,ADMISSION_REQUIREMENTS,admissionLabel,admissionOf,needsAdmissionBooking,normalizeAdmission,admissionError,COST_CATEGORIES,COST_CURRENCIES:_CURS,costCategoryOf,COST_PAY_STATES,costPayStateOf,payStateTotals,TRIP_NOTE_CATEGORIES,normalizeTripNote,tripCostSummary,localMode,mdLabel,tripPeriodOf,startShiftPreview,SAMPLE_TRIP_ID,isSampleTrip,sampleTrip,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
   if(typeof module!=='undefined' && module.exports){ module.exports=TC; }   // Node (테스트)
   else { const r=/**@type {any}*/(root); for(const k in TC) r[k]=/**@type {any}*/(TC)[k]; }   // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);

@@ -108,33 +108,6 @@
         "acceptable": true
       },
       {
-        "id": "parity|2026-09-01|CHECK_IN|숙소",
-        "type": "NEXT_ACTIVITY",
-        "title": "숙소",
-        "description": "18:55 도착 · 19:55까지",
-        "reasons": [
-          "원래 오늘 일정에 있던 곳이에요",
-          "저녁 예약 동선과 같은 방향이에요",
-          "약 1시간이면 둘러볼 수 있어요"
-        ],
-        "impact": {
-          "timeChangeMinutes": 60,
-          "addedActivities": [
-            "숙소"
-          ],
-          "removedActivities": []
-        },
-        "action": {
-          "kind": "CHECK_IN",
-          "activityId": "d0s0",
-          "fromDay": null,
-          "bookingId": null,
-          "dropActivityIds": [],
-          "startMinutes": 1135
-        },
-        "acceptable": false
-      },
-      {
         "id": "parity|2026-09-01|REST|조금 더 쉬기",
         "type": "REST",
         "title": "조금 더 쉬기",
@@ -149,6 +122,29 @@
         },
         "action": {
           "kind": "REST",
+          "activityId": null,
+          "fromDay": null,
+          "bookingId": null,
+          "dropActivityIds": [],
+          "startMinutes": 1135
+        },
+        "acceptable": true
+      },
+      {
+        "id": "parity|2026-09-01|RETURN_TO_HOTEL|숙소로 돌아가기",
+        "type": "REST",
+        "title": "숙소로 돌아가기",
+        "description": "지금 쉬어도 남은 일정에는 여유가 있어요",
+        "reasons": [
+          "숙소까지 약 2분"
+        ],
+        "impact": {
+          "timeChangeMinutes": 2,
+          "addedActivities": [],
+          "removedActivities": []
+        },
+        "action": {
+          "kind": "RETURN_TO_HOTEL",
           "activityId": null,
           "fromDay": null,
           "bookingId": null,

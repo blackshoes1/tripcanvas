@@ -1700,7 +1700,7 @@ function renderFilter(){
   const all = document.createElement('button'); all.className='chip'+(activeDay?'':' active'); all.textContent='전체';
   all.onclick=()=>setScope(0, fitAll); bar.appendChild(all);
   // 여행 중 화면과 같은 판정(tripPeriodOf) — 기간 밖이면 '오늘'이 이 여행의 날이 아니다
-  const period=tripPeriodOf(trip().start, trip().days.length, todayISO());
+  const period=tripPeriodOf(trip().start, trip().days.length, travelClock().todayISO);
   const todayDi=period.phase==='DURING'? period.dayIndex : -1;
   const todayBtn=document.createElement('button'); todayBtn.className='chip'+(todayDi>=0&&activeDay===todayDi+1?' active':''); todayBtn.textContent='오늘';
   if(todayDi<0){ todayBtn.disabled=true; todayBtn.title='여행 기간이 아니에요'; }
@@ -1937,7 +1937,7 @@ function renderSidebar(){
       const inLegHtml=legHtml?`<div class="spotLeg incoming" aria-label="이전 장소에서 오는 길"><span class="legFrom">이전 장소에서</span>${legHtml}</div>`:'';
       spotsHtml+=`<div class="spot${splitCls}${s.reunion?' isReunion':''}${legHtml?' hasInLeg':''}" data-di="${di}" data-si="${si}"${s.split?` data-split="${escAttr(s.split)}"`:''} style="--c:${dotC}">
         ${inLegHtml}<div class="spotMain">
-          <span class="spotTime eta${tl[si].fixed?' fixed':''}" title="${escAttr(etaTip)}">${tl[si].fixed?ic('fixed'):''}${hm(etas[si])}</span>
+          <span class="spotTime eta${tl[si].fixed?' fixed':''}" title="${escAttr(etaTip)}" aria-label="${escAttr(tl[si].fixed?`도착 ${hm(etas[si])} (정한 시각)`:`도착 예상 ${hm(etas[si])}`)}">${tl[si].fixed?ic('fixed'):''}${hm(etas[si])}</span>
           <button type="button" class="spotIdentity nm" onclick="focusSpot(${di},${si})" title="${escAttr(s.name)}" aria-label="${escAttr(cat?`${cat.name} ${s.name}`:s.name)} 지도에서 보기"><span class="spotOrder">${si+1}.</span>${cat?`<span class="spotCat" title="${escAttr(cat.name)}" aria-hidden="true">${cat.icon}</span>`:''}<span class="spotName">${esc(s.name)}</span></button>
           <details class="actionMenu" onclick="event.stopPropagation()"><summary aria-label="${escAttr(s.name)} 작업 메뉴">⋮</summary><div class="actionMenuPanel">
           <button class="iconb mvup" onclick="moveSpot(${di},${si},-1)" title="위로">↑ <span>위로</span></button>
@@ -1970,6 +1970,14 @@ function renderSidebar(){
         })()}
         ${(()=>{const rt=dayRoute(day,ctx.backLeg); if(rt) return `<div class="dist">${ic('ruler')} 하루 동선 약 ${(rt.m/1000).toFixed(1)}km · ${MODE_ICON[dm]}${fmtDur(rt.sec)}${((dm==='car'||dm==='taxi')&&rt.taxi)?` · 🚕약 ${rt.taxi.toLocaleString()}원`:''} <span style="opacity:.55">(${dm==='flight'?'직선':'도로 기준'})</span></div>`;
           return dayDistance(day,ctx.back)>0?`<div class="dist">${ic('ruler')} 하루 동선 약 ${dayDistance(day,ctx.back).toFixed(1)}km <span style="opacity:.55">(직선)</span></div>`:'';})()}
+        ${(()=>{   // 머무는 시간을 안 정한 곳은 0분으로 계산한다 — 그러면 뒤 시각이 실제보다 이르게, 그런데도 분 단위로 정밀해 보인다.
+          // 그 사실을 하루에 한 번 말하고 첫 번째 미정 장소의 체류 칸으로 데려간다(행마다 붙은 '머무는 시간 미정'은 그대로 둔다).
+          const unset=day.spots.map((s,si)=>(!s.stay&&s.stayMin==null)?si:-1).filter(si=>si>=0);
+          if(!unset.length||day.spots.length<2) return '';
+          const txt=`시각은 도착 예상이에요 · 머무는 시간 미정 ${unset.length}곳은 0분으로 계산해 뒤 시각이 이르게 보여요`;
+          return readOnly()? `<div class="dist estNote">⏱ ${txt}</div>`
+            : `<button type="button" class="dist estNote" onclick="event.stopPropagation();openSpotModal(${di},${unset[0]},'spotStayMin')">⏱ ${txt} <span class="estFix">정하기</span></button>`;
+        })()}
         ${(()=>{const e=dayEndMin(day, ctx.anchor, ctx.backLeg); return (e!=null&&e>22*60)?`<div class="overload" title="시작시각+체류+이동 기준 예상 종료">${ic('warn')} 일정 과밀 — 예상 종료 ${hm(e)}${e>=24*60?' (익일)':''}</div>`:'';})()}
         ${(()=>{
           const parts=[['장소·추가 비용',dayCostOn(di)],['택시',dayTaxiCost(day,di)],['예약',iso?dayBookingCost(iso):0]]
@@ -2126,24 +2134,44 @@ window.focusLatLng=(lat,lng)=>{
 };
 // 화살표 이동: 도구 항상 노출 + 옮긴 장소를 커서 아래에 고정(스크롤 보정)해 연속 클릭 가능
 // 일자 카드의 수단 아이콘 탭 → 자차→대중교통→도보→자전거 순환 (상세 설정은 일자 편집 모달)
-// 동선 최적화 — 좌표 있는 장소를 이동거리 최소 순서로 재배열 (첫 지점 고정, 마지막 숙소면 고정, 좌표없음은 뒤로)
+// 동선 최적화 — 바로 바꾸지 않고 미리보기를 먼저 연다(2026-10-02 UX 검토: 바꾼 뒤에 "예약시각 순서 확인!" 토스트로만 알렸다).
+// 순서 계획은 lib `planRouteOptimization` 하나다 — 예약·도착 고정·숙소·좌표 없는 장소·분리 묶음은 제자리에 둔다.
+// 미리보기는 같은 타임라인(dayJourney)으로 바꾸기 전후의 예약 도착을 비교해, 늦어지는 예약이 있으면 적용 전에 말한다.
+let _optPlan=null;
 window.optimizeDay=(di)=>{
   if(readOnly()) return;
   const day=trip().days[di];
-  const idxLoc=day.spots.map((s,i)=>hasLoc(s)?i:-1).filter(i=>i>=0);
-  if(idxLoc.length<3){ toast('최적화하려면 좌표 있는 장소가 3곳 이상 필요해요','#4f4740'); return; }
-  const coords=idxLoc.map(i=>({lat:+day.spots[i].lat, lng:+day.spots[i].lng}));
-  const lastStay=!!day.spots[idxLoc[idxLoc.length-1]].stay;   // 마지막이 숙소면 복귀지로 고정
-  const order=optimizeRoute(coords,{fixStart:true, fixEnd:lastStay});
-  const before=routeLength(coords), after=routeLength(coords,order);
-  if(after>=before-0.05){ toast('이미 최적에 가까운 동선이에요 👍'); return; }
+  if(day.spots.filter(hasLoc).length<3){ toast('최적화하려면 좌표 있는 장소가 3곳 이상 필요해요','#4f4740'); return; }
+  const plan=planRouteOptimization(day.spots);
+  if(!plan.changed){ toast(plan.fixed.length>1? '바꿀 수 있는 순서가 없어요 — 예약·시각을 정한 곳과 숙소는 제자리에 둬요' : '이미 최적에 가까운 동선이에요 👍'); return; }
+  const lateOf=(spots)=>{
+    const tl=dayJourney({...day, spots}, undefined, di).timeline;
+    return spots.map((s,i)=>s.bookAt? Math.round(tl[i].eta-parseHM(s.bookAt)) : null);
+  };
+  const before=lateOf(day.spots), next=plan.order.map(k=>day.spots[k]), after=lateOf(next);
+  const worse=[];
+  next.forEach((s,i)=>{ const a=after[i], b=before[plan.order[i]]; if(a!=null && a>5 && a>(b||0)+1) worse.push(`${s.bookAt} ${s.name} — 약 ${a}분 늦어요`); });
+  _optPlan={di, order:plan.order, rev:day.spots.map(s=>s.name).join('\u0001')};
+  const body=document.getElementById('optBody');
+  const moved=new Set(plan.order.filter((k,n)=>k!==n));
+  body.innerHTML=`<p class="hint">직선거리 기준 이동 약 <b>${plan.beforeKm.toFixed(1)}km → ${plan.afterKm.toFixed(1)}km</b>. 실제 도로·대중교통 시간은 다를 수 있어요.</p>`+
+    (worse.length? `<div class="optWarn" role="alert">${ic('warn')} 이 순서면 예약에 늦어요<ul>${worse.map(w=>`<li>${esc(w)}</li>`).join('')}</ul></div>` : '')+
+    `<ol class="optList">${next.map((s,i)=>`<li class="${moved.has(plan.order[i])?'moved':''}${plan.fixed.includes(plan.order[i])?' fixed':''}">${esc(s.name)}${plan.fixed.includes(plan.order[i])&&i>0?' <span class="optTag">제자리</span>':''}${moved.has(plan.order[i])?' <span class="optTag moved">옮김</span>':''}</li>`).join('')}</ol>`+
+    `<p class="hint">예약·입장 시각, 내가 정한 도착 시각, 숙소, 위치 없는 장소는 제자리에 둬요. 바꾼 뒤에도 실행취소할 수 있어요.</p>`;
+  document.getElementById('optApply').textContent=worse.length? '늦어도 이 순서로 바꾸기' : '이 순서로 바꾸기';
+  document.getElementById('optModalBg').classList.add('show');
+};
+document.getElementById('optCancel').onclick=()=>{ _optPlan=null; document.getElementById('optModalBg').classList.remove('show'); };
+document.getElementById('optApply').onclick=()=>{
+  const p=_optPlan; _optPlan=null; document.getElementById('optModalBg').classList.remove('show');
+  if(!p||!guardEdit()) return;
+  const day=trip().days[p.di];
+  // 미리보기를 연 사이에 일정이 바뀌었으면(일행의 변경·다른 탭) 옛 계획을 적용하지 않는다
+  if(!day || day.spots.map(s=>s.name).join('\u0001')!==p.rev || p.order.length!==day.spots.length){ toast('그사이 일정이 바뀌었어요 — 다시 최적화해 주세요','#4f4740'); return; }
   const snap=snapshot();
-  const newLoc=order.map(o=>day.spots[idxLoc[o]]);
-  const unloc=day.spots.filter(s=>!hasLoc(s));   // 좌표 미지정은 순서 뒤로 유지
-  const hasBook=newLoc.some(s=>s.bookAt);
-  commit(()=>{ day.spots=newLoc.concat(unloc); activeDay=di+1; });
+  commit(()=>{ day.spots=p.order.map(k=>day.spots[k]); activeDay=p.di+1; });
   const pts=day.spots.filter(hasLoc).map(s=>[s.lat,s.lng]); fitTo(pts,64,15);
-  toast(`동선 최적화: 약 ${before.toFixed(1)}→${after.toFixed(1)}km${hasBook?' · 예약시각 순서 확인!':''}`, '#3e7a4c', {fn:()=>undoWith(snap)});
+  toast('방문 순서를 바꿨어요','#3e7a4c',{fn:()=>undoWith(snap)});
 };
 window.cycleMode=(di)=>{
   if(readOnly()) return;
@@ -4578,7 +4606,12 @@ function recordFeedback(sug, action){
 function nowMinutes(){ const n=new Date(); return n.getHours()*60+n.getMinutes(); }
 // 여행 모드 한 번의 계산은 날짜와 시각을 한 스냅샷으로 공유한다. 테스트/호스트가 주입한 clock을
 // 화면 선택·TripState·추천에서 제각각 다시 읽으면 자정 경계와 고정 clock 테스트가 어긋난다.
-function travelClock(){ return {todayISO:todayISO(), nowMin:nowMinutes()}; }
+// 여행지 시간대를 정했으면 그 시계를 쓴다 — 서버(`resolveClock`)와 같은 출처(첫 날 → 여행)다. 정하지 않았으면 기기 시계다
+// (서버는 그때 UTC지만 웹에는 기기 시계가 더 가깝다). 기기를 한국 시간에 둔 채 스페인 일정을 보면 '오늘'이 하루 갈릴 수 있었다.
+function travelClock(){
+  const t=trip(), zone=(t.days[0]&&t.days[0].timeZone)||t.timeZone||'';
+  return zonedClock(Date.now(), zone) || {todayISO:todayISO(), nowMin:nowMinutes()};
+}
 /**
  * 오늘이 여행 기간 밖인가 — 여행 전이거나 지난 여행이면 '여행 중' 화면은 **보기 전용**이다.
  * 필터바 '오늘' 칩과 같은 판정(`tripPeriodOf`)을 쓴다. 날짜 없는 여행은 밖으로 치지 않는다(판정할 수 없다).
@@ -4613,6 +4646,7 @@ function priceSuggestions(today){
 }
 
 const SG_KICKER={REPLAN:'일정 조정 제안', NEXT_ACTIVITY:'지금 한 곳 더 들를 수 있어요', REST:'쉬어도 괜찮아요', PRICE_SAVING:'예약 다시 보기'};
+const SG_KICKER_PREVIEW='이 날 비는 시간에 넣어 볼 만한 곳';
 // 제안 카드의 머리. **From J는 앱 이름이 아니라 J가 보내는 제안의 서명이다** — 앱은 With J고,
 // 이 서명이 붙은 것만 '제안'이다(일정 표시·오류 안내에는 붙지 않는다).
 function sgKicker(text){
@@ -4854,7 +4888,8 @@ function renderSuggestions(di, clock){
     const card=document.createElement('div'); card.className='sgCard';
     card.dataset.type=(sug.action&&sug.action.fromDay!=null)?'MOVE_FROM_OTHER_DAY':sug.type;
     card.dataset.suggestionType=sug.type;
-    card.appendChild(sgKicker(SG_KICKER[sug.type]||'제안'));
+    // 여행 전·다른 날을 볼 때는 '지금'이 아니다 — 그 날 일정이 비는 시간에 대한 제안이다
+    card.appendChild(sgKicker((sug.type==='NEXT_ACTIVITY'&&!state.live)? SG_KICKER_PREVIEW : (SG_KICKER[sug.type]||'제안')));
     const ti=document.createElement('div'); ti.className='sgTitle'; ti.textContent=sug.title; card.appendChild(ti);
     if(sug.description){ const de=document.createElement('div'); de.className='sgDesc'; de.textContent=sug.description; card.appendChild(de); }
     if(sug.reasons&&sug.reasons.length){
@@ -4925,8 +4960,10 @@ function renderTravel(di, clock){
   let currentIndex=0;
   if(today){ for(let i=0;i<etas.length;i++) if(etas[i]<=nowMin) currentIndex=i; }
   const current=d.spots[currentIndex], currentLink=hasLoc(current)?extMapLink(current):null;
-  const currentFacts=[`${hm(etas[currentIndex])} 도착 예상`,current.bookAt?`예약 ${current.bookAt}`:'예약 없음',current.stayMin!=null?`체류 ${current.stayMin}분`:null].filter(Boolean);
-  currentBox.innerHTML=`<div class="travelKicker">${today?'현재 장소':'선택한 날의 시작 장소'}</div><div class="travelPlace">${catPrefix(current)}${esc(current.name)}</div><div class="travelFacts">${currentFacts.map(esc).join(' · ')}${current.desc?`<br>${esc(current.desc)}`:''}</div><div class="travelActions">${currentLink?`<a href="${escAttr(currentLink.href)}" target="_blank" rel="noopener">${currentLink.label}</a>`:''}${safeUrl(current.bookUrl)?`<a href="${escAttr(safeUrl(current.bookUrl))}" target="_blank" rel="noopener">예약 정보</a>`:''}</div>`;
+  // 시각마다 뜻이 다르다 — 내가 정한 도착(at)은 '도착', 자동 계산은 '도착 예상', 상대가 정한 약속은 '예약'.
+  // 메모(desc)는 사람이 적은 글이라 사실 줄에 섞지 않는다 — "07:00 도착" 메모가 "09:00 도착 예상" 옆에 사실처럼 붙었다.
+  const currentFacts=[current.at?`${current.at} 도착(내가 정한 시각)`:`${hm(etas[currentIndex])} 도착 예상`,current.bookAt?`예약 ${current.bookAt}`:null,current.stayMin!=null?`체류 ${current.stayMin}분`:'머무는 시간 미정'].filter(Boolean);
+  currentBox.innerHTML=`<div class="travelKicker">${today?'현재 장소':'이 날 첫 장소'}</div><div class="travelPlace">${catPrefix(current)}${esc(current.name)}</div><div class="travelFacts">${currentFacts.map(esc).join(' · ')}</div>${current.desc?`<div class="travelMemo"><span>메모</span> ${esc(current.desc)}</div>`:''}<div class="travelActions">${currentLink?`<a href="${escAttr(currentLink.href)}" target="_blank" rel="noopener">${currentLink.label}</a>`:''}${safeUrl(current.bookUrl)?`<a href="${escAttr(safeUrl(current.bookUrl))}" target="_blank" rel="noopener">예약 정보</a>`:''}</div>`;
   // '다음'은 현재 항목의 **뒤**가 아니라 **아직 끝나지 않은 것**이다. currentIndex는 시계로만
   // 정해지는데(현재 장소 표시용), 장소가 가까워 ETA가 전부 지나 있으면 마지막 항목에 머문다 —
   // 그 상태로 +1을 하면 다녀왔다고 표시해도 '오늘 일정 완료'로 떨어졌다.
@@ -4939,15 +4976,27 @@ function renderTravel(di, clock){
     nextIdx=currentIndex+1;
     while(d.spots[nextIdx] && (d.spots[nextIdx].status==='COMPLETED'||d.spots[nextIdx].status==='SKIPPED')) nextIdx++;
   }
+  // 미리보기(오늘이 아닌 날)에서는 위 칸이 '이 날 첫 장소'라 엔진의 다음(=첫 미완료)과 같은 곳이 두 번 나왔다.
+  // 그때 '다음'은 그 뒤의 남은 장소다. 여행 중에는 엔진이 맞다 — 시계로 정한 현재 칸은 도착 예상만 보므로
+  // 19시 예약에 일찍 도착한 상태를 '현재'로 보지만, 그 예약은 아직 시작 전이라 '다음'이 맞다.
+  if(!today && nextIdx===currentIndex){
+    nextIdx=currentIndex+1;
+    while(d.spots[nextIdx] && (d.spots[nextIdx].status==='COMPLETED'||d.spots[nextIdx].status==='SKIPPED'||d.spots[nextIdx].status==='CANCELLED')) nextIdx++;
+  }
   const next=d.spots[nextIdx]; nextBox.hidden=false;
   if(next){
     const inLeg=incomingBySpot.get(nextIdx),mode=legModeOf(d,next),route=inLeg?routes.get(inLeg):null;
     const travelMin=route?route.sec/60:(inLeg?legMinutes(inLeg.from,inLeg.to,mode,inLeg.when,ctx.timeZone):0);
     const adv=(_adapt&&_adapt.state)? TC_ADAPT.departureAdvice(_adapt.state, _adapt.state.items[nextIdx], travelMin) : null;
-    nextBox.innerHTML=`<div><div class="travelKicker">다음 장소</div><strong>${esc(next.name)}</strong><div class="travelFacts">${route?`${MODE_ICON[mode]} ${fmtDur(route.sec)} 후`:'이동 정보 계산 중'} · ${hm(etas[nextIdx])} 도착 예상</div>${adv?`<div class="travelDepart ${adv.level.toLowerCase()}">${esc(adv.text)}</div>`:''}</div><span aria-hidden="true">→</span>`;
+    // 경로를 아직 못 받았거나(조회 중) 못 받으면(실패·미지원) 거리로 낸 추정을 그렇다고 말한다 — '계산 중'에 머물지 않는다.
+    // 들어오는 구간이 없으면(출발점이 없는 첫 장소) 계산할 이동이 없다.
+    const move=!inLeg? '이 날 출발점이 없어 이동을 계산하지 않아요'
+      : route? `${MODE_ICON[mode]} ${fmtDur(route.sec)} 이동`
+      : `${MODE_ICON[mode]} 약 ${Math.max(1,Math.round(travelMin))}분 이동(거리로 추정)`;
+    nextBox.innerHTML=`<div><div class="travelKicker">다음 장소</div><strong>${esc(next.name)}</strong><div class="travelFacts">${move} · ${next.at?`${next.at} 도착(내가 정한 시각)`:`${hm(etas[nextIdx])} 도착 예상`}</div>${adv?`<div class="travelDepart ${adv.level.toLowerCase()}">${esc(adv.text)}</div>`:''}</div><span aria-hidden="true">→</span>`;
   }else if(ctx.backLeg){
     const bl=ctx.backLeg, r=routes.get(bl);
-    nextBox.innerHTML=`<div><div class="travelKicker">다음 장소</div><strong>🏠 ${esc(bl.to.name)}</strong><div class="travelFacts">숙소 복귀 · ${r?`${MODE_ICON[bl.mode]} ${fmtDur(r.sec)} 후`:'이동 정보 계산 중'}</div></div><span aria-hidden="true">→</span>`;
+    nextBox.innerHTML=`<div><div class="travelKicker">다음 장소</div><strong>🏠 ${esc(bl.to.name)}</strong><div class="travelFacts">숙소 복귀 · ${r?`${MODE_ICON[bl.mode]} ${fmtDur(r.sec)} 이동`:`${MODE_ICON[bl.mode]} 약 ${Math.max(1,Math.round(legMinutes(bl.from,bl.to,bl.mode,bl.when,ctx.timeZone)))}분 이동(거리로 추정)`}</div></div><span aria-hidden="true">→</span>`;
   }else nextBox.innerHTML=`<div><div class="travelKicker">다음 장소</div><strong>${outside?'이 날 일정 끝':'오늘 일정 완료'}</strong></div><span aria-hidden="true">✓</span>`;
   if(carry){
     const el=extMapLink(carry);

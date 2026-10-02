@@ -1657,3 +1657,50 @@ test('iOS 공유 저장 키와 준비 메모의 확인 상태는 웹 정규화 �
   assert.equal(trip.notes[0].done,true);
   assert.equal(trip.notes[0].webOnly,'keep');
 });
+
+test('zonedClock: 여행지 시간대의 오늘과 지금 — 기기 시계와 날짜가 갈리는 경우', () => {
+  // 2026-10-25 23:30 KST = 같은 날 15:30 마드리드(그날 새벽 서머타임이 끝나 UTC+1)
+  const ms = Date.UTC(2026, 9, 25, 14, 30);
+  assert.deepEqual(L.zonedClock(ms, 'Asia/Seoul'), { todayISO: '2026-10-25', nowMin: 23 * 60 + 30 });
+  assert.deepEqual(L.zonedClock(ms, 'Europe/Madrid'), { todayISO: '2026-10-25', nowMin: 15 * 60 + 30 });
+  // 서울은 이미 다음 날 아침인데 마드리드는 전날 밤이다
+  const ms2 = Date.UTC(2026, 9, 25, 22, 30);
+  assert.equal(L.zonedClock(ms2, 'Asia/Seoul').todayISO, '2026-10-26');
+  assert.equal(L.zonedClock(ms2, 'Europe/Madrid').todayISO, '2026-10-25');
+  assert.equal(L.zonedClock(ms, ''), null, '시간대가 없으면 호출부가 기기 시계를 쓴다');
+  assert.equal(L.zonedClock(ms, 'Mars/Olympus'), null);
+});
+
+test('planRouteOptimization: 예약·도착 고정·숙소·좌표 없는 장소는 제자리, 그 사이만 다시 놓는다', () => {
+  const at = (name, lat, lng, extra) => Object.assign({ name, lat, lng }, extra || {});
+  // 일직선 위에서 일부러 지그재그로 둔 하루: 0(시작) → 3 → 1 → 2 → [19:00 예약] → 6 → 5
+  const spots = [
+    at('시작', 40.400, -3.70),
+    at('C', 40.430, -3.70), at('A', 40.410, -3.70), at('B', 40.420, -3.70),
+    at('저녁 예약', 40.440, -3.70, { bookAt: '19:00' }),
+    at('메모만', null, null),
+    at('F', 40.470, -3.70), at('E', 40.460, -3.70)
+  ];
+  spots[5].lat = undefined; spots[5].lng = undefined;
+  const r = L.planRouteOptimization(spots);
+  assert.equal(r.changed, true);
+  const names = r.order.map((k) => spots[k].name);
+  assert.deepEqual(names.slice(0, 5), ['시작', 'A', 'B', 'C', '저녁 예약'], '예약 앞 구간만 다시 놓고 예약은 그 자리다');
+  assert.equal(names[5], '메모만', '좌표 없는 장소를 맨 뒤로 밀지 않는다');
+  assert.deepEqual(names.slice(6).sort(), ['E', 'F'], '좌표 없는 장소 뒤 구간은 그 안에서만 움직인다');
+  assert.ok(r.afterKm < r.beforeKm);
+  assert.deepEqual(r.fixed, [0, 4, 5]);
+  // 입력을 바꾸지 않는다
+  assert.equal(spots[1].name, 'C');
+});
+
+test('planRouteOptimization: 이미 최적이거나 움직일 곳이 없으면 바꾸지 않는다', () => {
+  const at = (name, lat, extra) => Object.assign({ name, lat, lng: -3.70 }, extra || {});
+  const line = [at('시작', 40.40), at('A', 40.41), at('B', 40.42), at('C', 40.43)];
+  assert.equal(L.planRouteOptimization(line).changed, false);
+  const pinned = [at('시작', 40.40), at('C', 40.43, { at: '10:00' }), at('A', 40.41, { stay: true }), at('B', 40.42, { bookAt: '12:00' })];
+  const r = L.planRouteOptimization(pinned);
+  assert.equal(r.changed, false, '전부 고정이면 순서를 건드리지 않는다');
+  assert.deepEqual(r.order, [0, 1, 2, 3]);
+  assert.equal(L.planRouteOptimization([]).changed, false);
+});

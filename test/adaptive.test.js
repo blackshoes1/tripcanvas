@@ -879,3 +879,77 @@ test('resolveIntent: 계약 밖의 컨디션은 보통으로 떨어진다', () =
   assert.equal(A.resolveIntent('가까운 데만', {}).energyLevel, 'NORMAL');
   assert.equal(A.resolveIntent('가까운 데만', { energyLevel: 'low' }).energyLevel, 'LOW', '대소문자는 봐준다');
 });
+
+// ── '한 곳 더' 제안은 새 장소만 (2026-10-02 UX 검토) ──────────────────
+// 샘플 여행 Day 1에 그날 일정의 공항·광장이 "지금 한 곳 더 들를 수 있어요"로 올라왔다.
+// 그날 일정에 있는 곳은 '다음' 카드와 재구성(REPLAN)의 몫이고, 추가 방문 제안이 아니다.
+function previewDay() {
+  return tripOf([
+    {
+      startAt: '09:00', mode: 'car', spots: [
+        Object.assign({ name: '공항 (MAD)', city: '마드리드', cat: 'transport' }, P(40.47)),
+        Object.assign({ name: '광장', city: '마드리드', stayMin: 45 }, P(40.416)),
+        Object.assign({ name: '경기장', city: '마드리드', stayMin: 60 }, P(40.436))
+      ]
+    },
+    {
+      startAt: '09:00', mode: 'car', spots: [
+        Object.assign({ name: '미술관', city: '마드리드', stayMin: 60 }, P(40.414)),
+        Object.assign({ name: '기차역', city: '마드리드', cat: 'transport' }, P(40.406))
+      ]
+    }
+  ]);
+}
+
+test('제안: 그날 일정에 이미 있는 곳은 "한 곳 더"로 다시 권하지 않는다 (여행 전 미리보기)', () => {
+  const trip = previewDay();
+  const s = stateOf(trip, { todayISO: '2026-08-01', nowMin: 14 * 60 });
+  assert.equal(s.live, false);
+  const res = A.buildSuggestions(trip, s, { legMin: LEG });
+  const planned = trip.days[0].spots.map((x) => x.name);
+  const visits = res.suggestions.filter((x) => x.type === 'NEXT_ACTIVITY' && x.action.si != null);
+  assert.ok(visits.length > 0, '다른 날의 새 장소는 여전히 제안된다');
+  visits.forEach((x) => {
+    assert.ok(planned.indexOf(x.title) < 0, x.title + '은(는) 이미 그날 일정에 있다');
+    assert.notEqual(x.action.fromDay, null, '그날 일정의 장소(fromDay 없음)는 추가 방문 제안이 아니다');
+  });
+});
+
+test('제안: 여행 중에도 현재·완료·남은 그날 장소는 "한 곳 더" 후보가 아니다', () => {
+  const trip = previewDay();
+  trip.days[0].spots[1].status = 'COMPLETED';
+  const s = stateOf(trip, { todayISO: TODAY, nowMin: 10 * 60, live: true });
+  const res = A.buildSuggestions(trip, s, { legMin: LEG });
+  const planned = trip.days[0].spots.map((x) => x.name);
+  res.suggestions.filter((x) => x.type === 'NEXT_ACTIVITY').forEach((x) => {
+    assert.ok(planned.indexOf(x.title) < 0, x.title + '은(는) 그날 일정의 장소다');
+  });
+});
+
+test('제안: 공항·역 같은 교통 장소는 다른 날에서 옮겨올 관광 후보가 아니다', () => {
+  const trip = previewDay();
+  const s = stateOf(trip, { todayISO: '2026-08-01', nowMin: 14 * 60 });
+  const titles = A.buildCandidates(trip, s, {}).map((x) => x.title);
+  assert.ok(titles.indexOf('미술관') >= 0, '옮겨올 수 있는 관광지는 남는다');
+  assert.ok(titles.indexOf('기차역') < 0, '역을 둘러볼 곳으로 권하지 않는다');
+});
+
+test('제안: 일정 조정(REPLAN)은 그날 장소를 다루므로 그대로 남는다', () => {
+  const trip = tripOf([{
+    startAt: '09:00', mode: 'car', spots: [
+      Object.assign({ name: 'Museum', city: '마드리드', stayMin: 120 }, P(40.41)),
+      Object.assign({ name: 'Cafe', city: '마드리드', stayMin: 60, opt: true }, P(40.44)),
+      Object.assign({ name: 'Dinner', city: '마드리드', bookAt: '19:00', stayMin: 90 }, P(40.50))
+    ]
+  }]);
+  const s = stateOf(trip, { todayISO: TODAY, nowMin: 17 * 60 + 30, live: true, currentLocation: P(40.40) });
+  const res = A.buildSuggestions(trip, s, { legMin: LEG });
+  assert.ok(res.suggestions.some((x) => x.type === 'REPLAN'), '지연이면 기존 장소를 조정하는 제안은 유지된다');
+});
+
+test('제안: 미리보기에서는 "현재 위치에서"라고 말하지 않는다 — 앞 일정에서의 이동이다', () => {
+  const trip = previewDay();
+  const s = stateOf(trip, { todayISO: '2026-08-01', nowMin: 14 * 60 });
+  const res = A.buildSuggestions(trip, s, { legMin: LEG });
+  res.suggestions.forEach((x) => (x.reasons || []).forEach((r) => assert.ok(!/현재 위치/.test(r), r)));
+});
