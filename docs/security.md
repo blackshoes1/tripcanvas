@@ -68,6 +68,7 @@ CDN 라이브러리는 정확한 버전과 SRI(Subresource Integrity, 내려받�
 - 자체 Auth(better-auth) 세션은 **bearer 토큰**이다 — 교차 출처라 쿠키를 쓰지 않는다. 웹은 `localStorage`의 `tripcanvas_auth_v1`, iOS는 Keychain `withj.auth.session.v1`(`kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`, 기기 전용·백업 안 됨).
 - **이메일 확인 전에는 로그인이 열리지 않는다**(`requireEmailVerification`). 남의 이메일로 가입해 그 사람의 여행을 가져가는 길을 막는다.
 - 비밀번호 재설정 요청은 **있는 이메일인지 알려주지 않는다** — 계정 존재 여부를 떠보는 데 쓰이지 않게 성공/실패를 구분하지 않는다.
+- **비밀번호를 재설정하면 그 계정의 세션이 전부 끝난다**(`revokeSessionsOnPasswordReset`, 2026-10-02) — 웹·iOS 모두 다시 로그인한다. 전에는 잃어버린 기기·훔친 토큰이 새 비밀번호와 상관없이 살아 있었다.
 - 서버는 전환기 동안 **Supabase 토큰과 자체 Auth 세션을 모두** 받는다(`compositeVerifier`). 하나가 죽어도 다음이 본다.
 - ⚠️ 실시간 사이드카는 API와 **같은 `AUTH_SECRET`**을 써야 한다. 다르면 아무도 실시간에 붙지 못한다.
 

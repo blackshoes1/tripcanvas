@@ -131,4 +131,27 @@ describe('세션 검증', () => {
     expect(res.status).toBe(200);
     expect(await verifier.verify(token)).toBeNull();
   });
+
+  it('비밀번호를 재설정하면 그 전에 열린 세션은 모두 끝난다 — 잃어버린 기기·훔친 토큰이 살아남지 않게', async () => {
+    await signUp('new@example.com');
+    await openVerificationLink();
+    const before = await signIn('new@example.com');
+    expect(await verifier.verify(before)).not.toBeNull();
+
+    mails.length = 0;
+    await auth.handler(new Request(`${BASE}/api/auth/request-password-reset`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'new@example.com' })
+    }));
+    const link = mails.find((m) => m.kind === 'RESET');
+    expect(link, '재설정 메일이 나가지 않았다').toBeDefined();
+    const resetToken = decodeURIComponent(new URL(link!.url).hash.replace(/^#reset=/, ''));
+    const res = await auth.handler(new Request(`${BASE}/api/auth/reset-password`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ newPassword: 'another-long-password', token: resetToken })
+    }));
+    expect(res.status, await res.clone().text()).toBe(200);
+
+    expect(await verifier.verify(before)).toBeNull();
+    expect(await verifier.verify(await signIn('new@example.com', 'another-long-password'))).not.toBeNull();
+  });
 });
