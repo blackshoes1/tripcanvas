@@ -46,7 +46,7 @@ describe('buildTripCard', () => {
 
   it('선택 코스를 표시한다', () => {
     const c = cardOf(trip([day([spot('감포 바다', 33.5, 126.5, { opt: true })])]));
-    expect(c.days[0].lines[0].text).toContain('(선택)');
+    expect(c.days[0].lines[0].text).toContain('(여유 되면)');
   });
 
   it('일자 제목·날짜·이동 메모·메모를 담는다', () => {

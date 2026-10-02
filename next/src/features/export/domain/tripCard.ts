@@ -41,7 +41,7 @@ export function buildTripCard(trip: Trip, views: DayView[], colorOf: (di: number
       for (const s of v.spots) {
         lines.push({
           time: s.etaText, kind: 'spot',
-          text: `${s.order}. ${s.catIcon ? `${s.catIcon} ` : ''}${s.name}${s.optional ? ' (선택)' : ''}`
+          text: `${s.order}. ${s.catIcon ? `${s.catIcon} ` : ''}${s.name}${s.optional ? ' (여유 되면)' : ''}`
         });
       }
       for (const e of v.carReturns) {

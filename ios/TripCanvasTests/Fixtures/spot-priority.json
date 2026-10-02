@@ -10,7 +10,7 @@
     },
     {
       "id": "OPT",
-      "label": "선택"
+      "label": "여유 되면"
     }
   ],
   "reads": [
@@ -30,7 +30,7 @@
       "priority": "MUST"
     },
     {
-      "name": "선택",
+      "name": "여유 되면",
       "spot": {
         "name": "알함브라",
         "opt": true
@@ -134,7 +134,7 @@
       }
     },
     {
-      "name": "선택 → MUST",
+      "name": "여유 되면 → MUST",
       "before": {
         "name": "알함브라",
         "opt": true
@@ -146,7 +146,7 @@
       }
     },
     {
-      "name": "선택 → NORMAL",
+      "name": "여유 되면 → NORMAL",
       "before": {
         "name": "알함브라",
         "opt": true
@@ -157,7 +157,7 @@
       }
     },
     {
-      "name": "선택 → OPT",
+      "name": "여유 되면 → OPT",
       "before": {
         "name": "알함브라",
         "opt": true

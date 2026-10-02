@@ -1350,7 +1350,7 @@ test('우선순위 — 기본값은 저장하지 않고, 둘이 함께 켜지지
 
 test('우선순위 — 라벨은 목록에서만 나온다', () => {
   assert.equal(L.spotPriorityLabel('MUST'), '꼭 가기');
-  assert.equal(L.spotPriorityLabel('opt'), '선택', '대소문자를 가리지 않는다');
+  assert.equal(L.spotPriorityLabel('opt'), '여유 되면', '대소문자를 가리지 않는다 — "선택"은 고른 것(선택 완료)으로 읽혀 바꿨다');
   assert.equal(L.spotPriorityLabel('없는값'), '');
   assert.equal(L.SPOT_PRIORITIES.map((p) => p.id).join(','), 'MUST,NORMAL,OPT');
 });

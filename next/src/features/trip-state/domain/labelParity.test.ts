@@ -42,7 +42,7 @@ function appLiteral(name: string): string {
 const spots: { name: string; spot: Record<string, unknown> }[] = [
   { name: '아무 표시 없음', spot: { name: '알함브라' } },
   { name: '꼭 가기', spot: { name: '알함브라', must: true } },
-  { name: '선택', spot: { name: '알함브라', opt: true } },
+  { name: '여유 되면', spot: { name: '알함브라', opt: true } },
   { name: '둘 다 켜진 옛 문서는 지키는 쪽', spot: { name: '알함브라', must: true, opt: true } },
   { name: 'must가 꺼져 있고 opt만', spot: { name: '알함브라', must: false, opt: true } },
   { name: '둘 다 꺼짐', spot: { name: '알함브라', must: false, opt: false } }
