@@ -620,6 +620,7 @@
    * 지도 일자 간 점선·재생·사이드바·타임라인·여행 모드가 이 한 결과를 공유한다.
    * @param {any[]} days
    * @param {number} di
+   * @param {any[]} [bookings] nights 미지정 숙소의 연결된 호텔 예약 기간
    * @returns {any}
    */
   function dayStartAnchor(days, di, bookings){
