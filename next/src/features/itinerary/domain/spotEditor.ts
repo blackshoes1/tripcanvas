@@ -36,7 +36,7 @@ export type SpotFormError = 'NAME_REQUIRED' | 'LOCATION_REQUIRED' | 'COST_INVALI
 /** 예약 편집기 소관이라 이 폼이 만들지도 지우지도 않는 연결 — 편집 시 원본에서 그대로 물려준다 */
 const LINK_KEYS = ['bookingId', 'carPickupId', 'carReturnId'] as const;
 
-/** 장소 → 폼. 레거시 openSpotModal의 프리필과 같은 기본값(체류 60분·1박·KRW) */
+/** 장소 → 폼. 미지정 체류와 명시적 0분을 구분하고, 1박·KRW는 기본값으로 표시한다. */
 export function formFromSpot(spot: Spot, di: number): SpotForm {
   return {
     name: spot.name ?? '',
@@ -44,7 +44,7 @@ export function formFromSpot(spot: Spot, di: number): SpotForm {
     desc: spot.desc ?? '',
     cat: spot.cat ?? '',
     at: spot.at ?? '',
-    stayMin: String(spot.stayMin != null ? spot.stayMin : 60),
+    stayMin: spot.stayMin != null ? String(spot.stayMin) : '',
     cost: spot.cost != null ? String(spot.cost) : '',
     cur: spot.cur ?? 'KRW',
     legMode: spot.legMode ?? '',
@@ -84,12 +84,13 @@ export function spotFromForm(
     desc: form.desc.trim(),
     opt: form.opt,
     stay: form.stay,
-    stayMin: Math.max(0, parseInt(form.stayMin, 10) || 60),
     bookAt: legacyLib.normHM(form.bookAt) || '',
     bookUrl: form.bookUrl.trim(),
     lat: original.lat,
     lng: original.lng
   };
+  const stayMin = parseInt(form.stayMin, 10);
+  if (Number.isFinite(stayMin)) spot.stayMin = Math.max(0, stayMin);
   // 값이 없거나 기본값이면 키 자체를 넣지 않는다 — 공유 링크를 줄이고,
   // normalizeTrip은 '비용 키 없음'과 '비용 null'을 똑같이 비용 없음으로 본다.
   if (cost !== null) spot.cost = cost;

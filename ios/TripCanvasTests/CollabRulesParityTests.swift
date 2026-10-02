@@ -270,7 +270,7 @@ final class InviteParityTests: XCTestCase {
 
     /// 웹은 `location.hash`를, 앱은 붙여넣은 글을 읽는다 — 같은 토큰 규칙을 지나는지 두 모양으로 본다.
     /// 앱만 받는 모양(앱 링크·토큰 자체·앞뒤 공백)은 `CollabModelTests.testJoinTokenParsing`이 본다.
-    /// `#join=토큰&x=1`은 픽스처에 없다 — 웹은 해시 전체가 초대여야 해서 거절하고 앱은 꼬리를 잘라 받는다(입력 경로가 다르다).
+    /// 추가 파라미터가 붙은 해시는 인코딩 여부와 관계없이 웹과 앱 모두 거절한다.
     func testJoinTokenMatchesTheJavaScriptRule() throws {
         let fixture = try load()
         XCTAssertGreaterThan(fixture.joinTokens.count, 0)

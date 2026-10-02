@@ -324,7 +324,6 @@ enum CollabModel {
         var candidate = trimmed
         if let range = trimmed.range(of: "#join=") {
             candidate = String(trimmed[range.upperBound...])
-            if let amp = candidate.firstIndex(of: "&") { candidate = String(candidate[..<amp]) }
             candidate = candidate.removingPercentEncoding ?? candidate
         } else if let url = URL(string: trimmed), url.scheme == "tripcanvas" {
             let parts = [url.host].compactMap { $0 } + url.pathComponents.filter { $0 != "/" }

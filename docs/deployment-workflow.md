@@ -15,31 +15,27 @@ feat/* · fix/* · chore/* · docs/*  →  PR  →  게이트  →  merge  →  
    **API·DB도 같은 merge로 나간다** — `release.yml`(게이트 → GHCR `:<커밋 SHA>` → `production` 태그) → NAS cron(5분)이
    받아 migrate → api·realtime을 바꾼다. 게이트·이미지 빌드를 지나므로 웹보다 늦고, 앱·문서만 바뀐 merge에는 돌지 않는다(`docs/nas-deployment.md`).
 
-## Branch protection — 켜 두기로 한 값 (2026-09-06 결정 · 2026-10-02 확인 때 꺼짐)
+## Branch protection — 적용한 값 (2026-10-02 활성화)
 
-> ⚠️ **2026-10-02 확인: 지금은 꺼져 있다.** `gh api repos/blackshoes1/tripcanvas/branches/main --jq .protected`가 `false`이고,
-> 저장소 ruleset(`trip canvas`)은 `enforcement: disabled`다. 아래 표는 켜 두기로 한 값이다 — 다시 켜기 전까지 `main` 직접
-> 푸시를 막는 것은 로컬 `pre-push` 훅뿐이다. 켰는지는 같은 명령으로 본다.
+> `trip canvas` ruleset(18573903)을 활성화했다. 적용 범위는 `refs/heads/main`이고 우회 계정은 없다. 현재 설정은 `gh api repos/blackshoes1/tripcanvas/rulesets/18573903`로 확인한다.
 
-`main`은 GitHub branch protection으로 잠가 두기로 했다(2026-09-06). 이전에는 **비공개 + 무료 플랜**이라 이 기능이 403이었고
+`main`은 GitHub branch protection으로 잠갔다(2026-10-02). 이전에는 **비공개 + 무료 플랜**이라 이 기능이 403이었고
 로컬 훅이 유일한 방어였는데, **저장소를 공개로 바꾸면서** 쓸 수 있게 됐다(그 결정과 대가는 `docs/ci.md`).
 
 | 규칙 | 값 |
 |---|---|
 | PR 없이 `main` 푸시 | **금지** (승인 필요 수는 0 — 혼자 쓰는 저장소라 자기 PR을 승인할 수 없다) |
 | 필수 통과 체크 | `Quality` · `Next workspace` · `E2E` · `Docker image build` |
-| 최신 상태 강제(strict) | 끔 — 머지마다 재실행을 강요하지 않는다 |
+| 최신 상태 강제(strict) | **켬** — 병합할 최신 main 위에서 검사를 통과해야 한다 |
 | 관리자에게도 적용 | **켬** — 이걸 끄면 소유자 혼자 쓰는 저장소에서는 규칙이 없는 것과 같다 |
 | 강제 푸시 · 브랜치 삭제 | 금지 |
 | 대화(리뷰 코멘트) 해결 | 필수 |
 
 ⚠️ **`Docker image build`도 필수다**(2026-10-02). `main` 머지가 곧 운영 API 배포라, 운영 이미지가 안 만들어지는
-PR이 들어가면 `release.yml`이 이미지 단계에서 멈추고 자동 배포가 통째로 선다 — 그걸 머지 전에 막는다. PR마다 돈다
-(경로 조건이 없다). ⚠️ 이 줄은 **문서가 설정보다 먼저** 들어갔다 — 저장소 Settings → Branches의 필수 체크에
-손으로 더해야 실제로 막는다.
+PR이 들어가면 `release.yml`이 이미지 단계에서 멈추고 자동 배포가 통째로 선다 — 그걸 머지 전에 막는다. PR마다 돈다(경로 조건이 없다). ruleset의 필수 체크에 실제로 등록했고 Actions 앱의 결과만 받는다.
 
 ⚠️ **iOS 워크플로는 필수 체크에 넣지 않았다.** `ios/` 변경에만 도는데 필수로 걸면 웹만 고친 PR이
-영영 안 오는 체크를 기다리며 멈춘다. iOS 변경은 `npm run verify:all ios`와 PR 본문으로 지킨다.
+영영 안 오는 체크를 기다리며 멈춘다. iOS·`collab.js` 변경에는 macOS CI의 Debug·XCTest·Release 통과를 병합 전에 확인한다.
 
 ⚠️ **이제 merge가 CI를 기다린다.** 열자마자 머지하던 흐름이 몇 분 늦어진다 — 그게 이 규칙의 값이다.
 정말 급하면 설정에서 잠시 끄고, 왜 그랬는지 남긴다.

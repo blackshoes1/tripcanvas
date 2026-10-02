@@ -8,8 +8,9 @@ merge 전에 통과해야 하는 것은 다음이 전부다. `.github/workflows/
 | 게이트 | 워크플로 잡 | 로컬 |
 |---|---|---|
 | 구문 · 버전 동기 · lint · 시크릿 · `tsc` · 유닛 · 통합 · RLS · **복구 리허설**(pg_dump → pg_restore → 마이그레이션 → 전수 대조) · `npm audit` | Quality | `scripts/verify-all.sh web` |
-| lint · `tsc` · vitest · `next build` · `tools:build` · `npm audit --omit=dev`(운영 이미지에 실리는 런타임 의존성) | Next workspace | `scripts/verify-all.sh next` |
+| lint · `tsc` · vitest · `next build` · `tools:build` · 실제 PostgreSQL CAS·경로 예산 동시성 · `npm audit --omit=dev`(운영 이미지에 실리는 런타임 의존성) | Next workspace | `scripts/verify-all.sh next` |
 | Playwright | E2E | `scripts/verify-all.sh web` |
+| API·tools 이미지 빌드 · tools 비루트 사용자 · migrate 명령 | Docker image build | PR의 Linux CI |
 | XcodeGen · 컴파일 · XCTest · Release 빌드 · 무료 스펙 | iOS | `scripts/verify-all.sh ios` |
 
 `npm run verify:all` 은 셋을 한 번에 돌리고, 끝에 PASS/FAIL/SKIP 표를 찍는다.
@@ -19,6 +20,9 @@ merge 전에 통과해야 하는 것은 다음이 전부다. `.github/workflows/
 `bash -e`라 `npm audit … | tee`의 종료 코드가 tee의 0이 되어, 2026-10-02 전에는 취약점이 있어도 감사가 초록이었고
 RLS 테스트가 실패해도 다음 줄로 넘어갔다(`test/verify-all.test.js`가 감사 스텝을 그 셸로 돌려 본다).
 **돌릴 수 없는 단계는 PASS가 아니라 SKIP으로 표시된다** — 로컬 PostgreSQL이 없으면 RLS와 복구 리허설이 그렇다.
+CAS·예산 동시성 검사도 같은 규칙이다. `next/scripts/pg-concurrency.test.cjs`는 운영 `DATABASE_URL`을 읽지 않고,
+`scripts/pg-local.sh`의 임시 클러스터에 새 DB를 만든다. 별도 연결의 멤버 행 잠금에서 실제로 기다렸는지 확인한 뒤
+강등·내보내기 거절, 같은 revision의 저장 하나만 반영, 동시 요청의 사용자·전체 예산 상한을 검사하고 DB를 지운다.
 ⚠️ PostgreSQL은 root로 돌지 않는다(`initdb: cannot be run as root`) — 컨테이너 안에서 root라면 다른 사용자로 게이트를 돌린다.
 
 > ### merge 규칙

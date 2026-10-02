@@ -190,7 +190,7 @@ export function SpotEditor({ spot, di, days, isNew = false, identity = null, onS
       </div>
       <div className="itEditRow2">
         <label>체류 시간 (분)
-          <input value={form.stayMin} onChange={e => set({ stayMin: e.target.value })} inputMode="numeric" />
+            <input value={form.stayMin} onChange={e => set({ stayMin: e.target.value })} inputMode="numeric" placeholder="정하지 않음" />
         </label>
         <label className="itEditChk">
           <input type="checkbox" checked={form.opt} onChange={e => set({ opt: e.target.checked })} />

@@ -25,6 +25,12 @@ function psql(db, args) {
 
 // 시나리오(test/rls/collaboration.sql)가 남기는 결과. 키 이름은 그 파일의 t_out 행이다.
 const EXPECTED = {
+  'authz.same_retry': 'false:false:2', 'authz.editor_revive': '42501',
+  'authz.editor_tombstone_conflict': 'false:true:3', 'authz.owner_revive': 'true:false:4',
+  'authz.viewer_force': '42501', 'authz.no_owned_copy': '0',
+  'authz.unchanged_after_viewer': 'owner revival:4', 'authz.public_invoker': 'true',
+  'authz.anon_helper_blocked': 'true',
+  'authz.service_helper_allowed': 'true',
   'a.trips': '1', 'a.owner_member': '1', 'a.roles': 'OWNER:1',
   // 초대 전 B는 A의 아무것도 못 본다 — 여행·멤버·초대 전부
   'b.before.trips': '0', 'b.before.members': '0', 'b.before.invites': '0', 'b.before.list_members': '0',
@@ -173,7 +179,11 @@ for (const shape of ['bigint', 'uuid']) test(`RLS(trips.id=${shape}): 마이그�
     psql(db, ['-f', sql('supabase/migrations/202609020005_candidate_decisions.sql')]);
     psql(db, ['-f', sql('supabase/migrations/202609020006_candidate_reactor_ids.sql')]);
     psql(db, ['-f', sql('supabase/migrations/202609020007_candidate_category.sql')]);
-    const out = psql(db, ['-f', sql('test/rls/collaboration.sql')]);
+    const authzMigration = sql('supabase/migrations/20261002081145_sync_trip_authorization.sql');
+    psql(db, ['-f', authzMigration]);
+    psql(db, ['-f', authzMigration]); // 멱등 적용
+    const out = psql(db, ['-f', sql('test/rls/collaboration.sql')])
+      + psql(db, ['-f', sql('test/rls/sync-authorization.sql')]);
     const got = {};
     for (const line of out.split('\n')) {
       if (!line.startsWith('OUT:')) continue;

@@ -1,6 +1,18 @@
 # Supabase migration 적용 절차
 
-이 저장소에서는 `supabase/migrations/`를 원하는 스키마의 기준으로 관리한다. 현재 운영 DB 스키마는 이 작업에서 직접 조회하지 않았고 migration도 적용하지 않았다.
+## 20261002081145_sync_trip_authorization (권한·재시도 후속)
+
+`sync_trip`의 기존 시그니처·반환 형식과 SECURITY INVOKER를 유지한다. 멤버 역할은 저장 트랜잭션에서
+`tc_private.lock_trip_role`로 본인 행만 잠그고 다시 읽는다. private helper는 authenticated·service_role만 실행할 수 있다.
+삭제된 여행의 강제 복원은 OWNER만 허용하고, 내용이 같은 재시도는 revision이 달라도 충돌로 표시하지 않는다.
+테이블·사용자 데이터는 바꾸지 않는다. 실제 Supabase의 `trips.id`와 `trip_members.trip_id`가 UUID인 것을 확인했다.
+
+적용 전에는 `pg_get_functiondef('public.sync_trip(text,jsonb,bigint,boolean)'::regprocedure)`와 기존 실행 권한을
+보관하고, bigint·UUID 격리 PostgreSQL의 RLS 시나리오 및 실제 두 연결 권한 경쟁 검사를 통과시킨다.
+적용 후 함수가 SECURITY INVOKER인지, anon이 helper를 실행할 수 없는지, 기존 실행 역할의 권한과 여행 수가 유지되는지 확인한다.
+되돌릴 때는 보관한 원래 `sync_trip`을 먼저 복원한 뒤 이 마이그레이션이 추가한 helper만 제거한다.
+
+이 저장소에서는 `supabase/migrations/`를 원하는 스키마의 기준으로 관리한다. 아래 preflight는 최초 도입과 테이블 구조 변경에 적용한다. 개별 권한 함수 수정은 위 절의 기존 정의 보관·형식 확인·회귀 검사 절차를 함께 따른다.
 
 ## 적용 전 preflight
 

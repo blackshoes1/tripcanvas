@@ -209,7 +209,9 @@ self_update() {
     log "! 받은 배포 스크립트에 문법 오류가 있다 — 갈아 끼우지 않고 지금 것으로 계속한다"
     rm -f "$tmp"; return 0
   fi
-  chmod +x "$tmp" 2>/dev/null || true
+  # root cron이 mktemp로 만든 파일은 0600이다. +x만 주면 일반 SSH 사용자가 읽지 못해
+  # 문서의 --status가 Permission denied로 끝난다. 공개된 스크립트에는 읽기 권한도 준다.
+  chmod 0755 "$tmp" || { rm -f "$tmp"; return 0; }
   if ! mv -f "$tmp" "$self" 2>/dev/null; then          # 같은 디렉터리라 rename 하나로 끝난다
     cat "$tmp" > "$DEPLOY_DIR/nas-deploy.sh.new" 2>/dev/null || true
     log "! 배포 스크립트를 바꾸지 못했다(권한?) — 확인 후 교체: cp $DEPLOY_DIR/nas-deploy.sh.new $self"

@@ -145,7 +145,7 @@ declare module '@legacy/lib.js' {
     returnModeOf(day: unknown): string;
     isOpenAt(periods: unknown, weekday: number, min: number): boolean | null;
     dayAnchor(day: unknown): unknown;
-    dayStartAnchor(days: unknown[], di: number): unknown;
+    dayStartAnchor(days: unknown[], di: number, bookings?: unknown[]): unknown;
     /** `bookings`(여행의 예약)를 넘겨야 호텔 예약에 연결된 숙소의 박 수를 숙박 표시(`dayLodgings`)와 같이 센다 */
     dayReturnStay(days: unknown[], di: number, bookings?: unknown[]): unknown;
     /** 하루를 순차 구간과 분리 구간으로 나눈다 — **타임라인과 화면이 같은 함수로 갈라야** 한다 */

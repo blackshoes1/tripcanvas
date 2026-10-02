@@ -122,6 +122,20 @@ describe('buildDayPlanView', () => {
     expect(build(noStay, 1)!.day.spots[0].incomingLeg).not.toBeNull();
   });
 
+  it('예약 연박은 iOS 하루 계약의 출발점에도 체크아웃 아침까지 반영된다', () => {
+    const t = trip([day([hotel({ bookingId: 'hotel1' })]), day([seongsan()]), day([seongsan()]),
+      day([airport()]), day([seongsan()])], {
+      bookings: [{ id: 'hotel1', type: 'hotel', title: '3박 예약', price: 300000, track: false,
+        start: '2026-10-01', end: '2026-10-04' }]
+    });
+    expect(build(t, 2)!.day.carriedStay?.name).toBe('제주호텔');
+    const checkout = build(t, 3)!.day;
+    expect(checkout.carriedStay?.name).toBe('제주호텔');
+    expect(checkout.spots[0].incomingLeg).not.toBeNull();
+    expect(checkout.back).toBeNull();
+    expect(build(t, 4)!.day.carriedStay).toBeNull();
+  });
+
   it.each([[0, null], [5, null], [5.1, 5], [60, 60]])('예약 지연 %s분은 기존 웹 경고 기준으로 값만 전달한다', (delay, expected) => {
     const t = trip([day([
       spot('첫 장소', null, null, { stayMin: 60 + delay! }),

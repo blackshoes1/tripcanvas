@@ -620,14 +620,15 @@
    * 지도 일자 간 점선·재생·사이드바·타임라인·여행 모드가 이 한 결과를 공유한다.
    * @param {any[]} days
    * @param {number} di
+   * @param {any[]} [bookings] nights 미지정 숙소의 연결된 호텔 예약 기간
    * @returns {any}
    */
-  function dayStartAnchor(days, di){
+  function dayStartAnchor(days, di, bookings){
     if(!days || !days[di] || days[di].startPolicy==='none') return null;
     // 1) di 아침에 '아직 묵고 있는' 숙소 — 가까운 날부터 거슬러, 연박 범위가 di를 덮는 첫 숙소
     for(let k=di-1;k>=0;k--){
       const L=((days[k]&&days[k].spots)||[]).filter(hasCoord).filter((/**@type{any}*/s)=>s.stay).pop();
-      if(L && k+stayNights(L)>=di) return L;
+      if(L && k+lodgingNights(L,bookings)>=di) return L;
     }
     // 2) 유효한 숙소가 없으면 기존대로 직전(빈 일자 건너뜀) 유효 일자의 마지막 위치
     for(let k=di-1;k>=0;k--){ const a=dayAnchor(days[k]); if(a) return a; }

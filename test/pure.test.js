@@ -495,6 +495,20 @@ test('dayStartAnchor — 이월 정책(previous/none)·빈 일자 건너뜀·첫
   assert.equal(L.dayStartAnchor([spotDay, {spots:[{lat:9,lng:9}]}], 1).name, 'A');
 });
 
+test('dayStartAnchor — 연결된 호텔 예약의 연박과 체크아웃 아침 출발', () => {
+  const hotel={lat:1,lng:1,name:'예약 숙소',stay:true,bookingId:'hotel-1'};
+  const sightseeing=()=>({spots:[{lat:3,lng:3,name:'관광 마지막 장소'}]});
+  const days=[{spots:[hotel]},sightseeing(),sightseeing(),sightseeing(),sightseeing()];
+  const bookings=[{id:'hotel-1',type:'hotel',start:'2026-10-01',end:'2026-10-04'}];
+  for(const di of [1,2,3]) assert.equal(L.dayStartAnchor(days,di,bookings),hotel,'체크아웃 아침까지 숙소에서 출발');
+  assert.equal(L.dayStartAnchor(days,4,bookings).name,'관광 마지막 장소');
+  const explicit=[{spots:[{...hotel,nights:1}]},sightseeing(),sightseeing()];
+  assert.equal(L.dayStartAnchor(explicit,2,bookings).name,'관광 마지막 장소','명시적 nights가 우선');
+  assert.equal(L.dayStartAnchor(days,2,[{...bookings[0],type:'car'}]).name,'관광 마지막 장소','호텔 예약만 연박에 사용');
+  assert.equal(L.dayStartAnchor(days,2,[{...bookings[0],end:'2026-02-30'}]).name,'관광 마지막 장소','유효하지 않은 기간은 기본 1박');
+  assert.equal(L.dayStartAnchor([days[0],days[1],{...days[2],startPolicy:'none'}],2,bookings),null);
+});
+
 test('연박(nights) — 한 번 등록한 숙소가 묵는 동안 계속 출발 기준', () => {
   // 세비야 4박: Day0 체크인, Day1~3은 관광만 (숙소 재등록 없음)
   const checkIn={spots:[{lat:1,lng:1,name:'도착'},{lat:2,lng:2,stay:true,nights:4,name:'세비야숙소'}]};

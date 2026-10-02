@@ -149,7 +149,7 @@ export function buildDayPlanView(input: DayPlanInput): DayPlanResponse | null {
 
   // ⚠️ anchor와 carry는 다르다: ETA는 anchor(숙소가 아니어도 전날 마지막 장소)에서 출발하고,
   // 🏠 표시는 carry(숙소일 때만)다. 둘을 섞으면 화면과 시각이 어긋난다.
-  const anchor = dayStartAnchor(days as unknown[], di) as Spot | null;
+  const anchor = dayStartAnchor(days as unknown[], di, trip.bookings) as Spot | null;
   const carry = anchor && (anchor as { stay?: boolean }).stay ? anchor : null;
 
   const incomingBySpot = new Map(journey.legs.map(leg => [leg.spotIndex, leg.from]));

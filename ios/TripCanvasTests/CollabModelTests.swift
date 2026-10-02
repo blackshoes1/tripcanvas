@@ -66,6 +66,9 @@ final class CollabModelTests: XCTestCase {
     func testJoinTokenParsing() {
         let token = String(repeating: "a", count: 32)
         XCTAssertEqual(CollabModel.joinToken(from: "https://tripcanvas-ai.vercel.app/#join=\(token)"), token)
+        // 웹 parseJoinHash와 같은 형식: 프래그먼트에는 토큰 하나만 싣는다.
+        XCTAssertNil(CollabModel.joinToken(from: "https://tripcanvas-ai.vercel.app/#join=\(token)&x=1"))
+        XCTAssertNil(CollabModel.joinToken(from: "https://tripcanvas-ai.vercel.app/#join=\(token)%26x=1"))
         XCTAssertEqual(CollabModel.joinToken(from: "tripcanvas://join/\(token)"), token)
         XCTAssertEqual(CollabModel.joinToken(from: "  \(token)  "), token)
         // 형식이 어긋나면 서버에 보내지 않는다
