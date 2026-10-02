@@ -335,6 +335,73 @@ test('parseIntent: "오늘 좀 피곤해서 많이 걷기 싫어"를 옵션으�
   assert.equal(A.parseIntent('').understood, false);
 });
 
+// 2026-10-02: 규칙이 낱말만 보고 부정을 못 봐서 정반대로 읽었다 —
+// "하나도 안 피곤해"가 LOW, "배고프지 않아"가 식사 먼저, "걷는 건 괜찮아"가 걷기 제한 + HIGH.
+// 반대로 읽는 것은 못 알아듣는 것보다 나쁘다: 못 알아들으면 화면이 그렇다고 말하고 버튼을 권한다.
+test('parseIntent: 부정문을 반대로 읽지 않는다', () => {
+  for (const said of ['하나도 안 피곤해', '안 피곤해', '안피곤해', '피곤하지 않아', '피곤하진 않은데', '피곤한 건 아니야', '전혀 지치지 않았어']) {
+    const r = A.parseIntent(said);
+    assert.equal(r.energyLevel, null, `"${said}"는 피곤하다는 말이 아니다`);
+    assert.equal(r.understood, false, `"${said}" — 알아들은 척하지 않는다`);
+  }
+  for (const said of ['배고프지 않아', '배고픈 건 아니야', '밥 생각 없어', '밥은 안 먹어도 돼', '밥 말고 다른 거']) {
+    assert.equal(A.parseIntent(said).prefs.mealFocus, undefined, `"${said}"는 식사를 먼저 챙기라는 말이 아니다`);
+  }
+  assert.equal(A.parseIntent('더 보고 싶지 않아').energyLevel, null);
+  assert.equal(A.parseIntent('쌩쌩하진 않아').energyLevel, null);
+  assert.equal(A.parseIntent('걷기 싫진 않아').prefs.walkAverse, undefined);
+  assert.equal(A.parseIntent('쉬고 싶은 건 아니고').energyLevel, null);
+  assert.equal(A.parseIntent('숙소는 안 가도 돼').prefs.wantRest, undefined);
+  assert.equal(A.parseIntent('가까운 데 말고').prefs.maxTravelMin, undefined);
+  // '기운'은 좋다는 말이지만 '기운이 없다'는 피곤하다는 말이다
+  assert.equal(A.parseIntent('기운이 없어').energyLevel, 'LOW');
+  assert.equal(A.parseIntent('기운 넘쳐').energyLevel, 'HIGH');
+});
+
+test('parseIntent: 부정은 그 말에 붙은 것만 본다 — 이어지는 다른 말의 부정을 끌어오지 않는다', () => {
+  // '해서'·'는데'로 넘어간 뒤의 부정은 다른 말의 것이다
+  assert.equal(A.parseIntent('피곤해서 안 갈래').energyLevel, 'LOW');
+  assert.equal(A.parseIntent('피곤해서 힘이 없어').energyLevel, 'LOW');
+  const mixed = A.parseIntent('피곤하지 않은데 배고파');
+  assert.equal(mixed.energyLevel, null);
+  assert.equal(mixed.prefs.mealFocus, true, '부정된 말만 버리고 나머지는 알아듣는다');
+  const again = A.parseIntent('안 피곤하다고 했지만 사실 피곤해');
+  assert.equal(again.energyLevel, 'LOW', '같은 말이 부정 없이 한 번 더 나오면 그쪽을 듣는다');
+  // 낱말 안에 있는 '안'은 부정이 아니다
+  assert.equal(A.parseIntent('숙소 안에서 쉬고 싶어').prefs.wantRest, true);
+});
+
+test('parseIntent: 범용 낱말만으로 조건을 만들지 않는다', () => {
+  // '걷는 건' 뒤에 무엇이 오는지 봐야 한다 — 괜찮다면 걷기 제한이 아니다
+  const ok = A.parseIntent('걷는 건 괜찮아');
+  assert.equal(ok.prefs.walkAverse, undefined);
+  assert.equal(ok.prefs.maxTravelMin, undefined);
+  assert.equal(ok.energyLevel, null, "'괜찮아'는 컨디션이 좋다는 말이 아니다 — 무엇이 괜찮은지 모른다");
+  assert.equal(A.parseIntent('괜찮아').understood, false);
+  assert.equal(A.parseIntent('많이 걷고 싶어').prefs.walkAverse, undefined, '많이 걷고 싶다는 건 걷기 싫다는 말의 반대다');
+  // 싫다는 말이 붙으면 그때 걷기 제한이다
+  assert.equal(A.parseIntent('걷는 건 싫어').prefs.walkAverse, true);
+  assert.equal(A.parseIntent('걷는 게 힘들어').prefs.walkAverse, true);
+  assert.equal(A.parseIntent('안 걷고 싶어').prefs.walkAverse, true);
+});
+
+test('parseIntent: 컨디션이 엇갈리면 정하지 않는다', () => {
+  // 나중 규칙이 이기면 "피곤하긴 한데 괜찮아"가 HIGH가 된다 — 어느 쪽으로도 단정하지 않는다
+  for (const said of ['피곤하긴 한데 괜찮아', '좀 힘들지만 괜찮아', '피곤한데 더 보고 싶어']) {
+    const r = A.parseIntent(said);
+    assert.equal(r.energyLevel, null, `"${said}" — 컨디션을 단정하지 않는다`);
+    assert.ok(!r.reasons.some((x) => /쉬고 싶다|컨디션이 좋다/.test(x)), `"${said}" — 단정하지 않은 컨디션을 이유로 말하지 않는다`);
+  }
+  // 엇갈리지 않으면 그대로다
+  assert.equal(A.parseIntent('오늘 쌩쌩해서 괜찮아').energyLevel, 'HIGH');
+  assert.equal(A.parseIntent('안 피곤해, 더 보고 싶어').energyLevel, 'HIGH');
+  // 컨디션이 엇갈려도 다른 조건은 알아듣는다
+  const walk = A.parseIntent('피곤하긴 한데 괜찮아, 많이 걷기 싫어');
+  assert.equal(walk.energyLevel, null);
+  assert.equal(walk.prefs.walkAverse, true);
+  assert.equal(walk.understood, true);
+});
+
 test('선호(prefs)는 추천 범위를 실제로 좁힌다', () => {
   const trip = tripOf([
     { startAt: '09:00', mode: 'walk', spots: [Object.assign({ name: '숙소', city: '마드리드', stay: true, stayMin: 0 }, P(40.40))] },
@@ -712,6 +779,9 @@ test('resolveIntent: 컨디션은 문장이 말했을 때만 덮어쓴다', () =
   // 문장이 말하면 그쪽이 이긴다
   assert.equal(A.resolveIntent('너무 피곤해', { energyLevel: 'HIGH' }).energyLevel, 'LOW');
   assert.equal(A.resolveIntent('오늘 쌩쌩해', { energyLevel: 'LOW' }).energyLevel, 'HIGH');
+  // 부정했거나 엇갈린 컨디션은 '말하지 않은 것'이다 — 고른 값이 남는다
+  assert.equal(A.resolveIntent('하나도 안 피곤해', { energyLevel: 'HIGH' }).energyLevel, 'HIGH');
+  assert.equal(A.resolveIntent('피곤하긴 한데 괜찮아', { energyLevel: 'LOW' }).energyLevel, 'LOW');
 });
 
 test('resolveIntent: 조건은 문장이 통째로 정한다', () => {

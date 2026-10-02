@@ -571,17 +571,48 @@
   // AI가 일정 계산을 대신하지 않는다. 자연어는 "무엇을 원하는지"를 옵션으로 바꾸는 데까지만 쓰고,
   // 충돌·운영시간·이동시간 같은 판단은 그대로 deterministic 로직이 한다.
   // 여기서는 외부 모델 없이도 동작하는 규칙 해석기를 둔다(모델을 붙이면 같은 형태의 결과를 주면 된다).
+  // ⚠️ 낱말 하나로 조건을 만들지 않는다(2026-10-02) — '걷는 건'·'많이 걷'은 "걷는 건 괜찮아"·"많이 걷고 싶어"에도
+  //    걸려 정반대로 읽었다. 걷기는 싫다·힘들다는 말이 붙어야 제한이고, '괜찮아'는 컨디션 규칙이 아니다(아래 FINE_RE).
   const INTENT_RULES=Object.freeze([
-    Object.freeze({re:/피곤|지쳤|지침|힘들|무리|쉬고\s*싶|쉴래|쉬자/, apply:{energyLevel:'LOW'}, why:'쉬고 싶다고 하셨어요'}),
-    Object.freeze({re:/걷기\s*싫|많이\s*걷|안\s*걷|걷는\s*건/, apply:{walkAverse:true, maxTravelMin:20}, why:'많이 걷지 않는 쪽으로 볼게요'}),
+    Object.freeze({re:/피곤|지쳤|지침|힘들|무리|쉬고\s*싶|쉴래|쉬자|기운\s*[이도]?\s*없/, apply:{energyLevel:'LOW'}, why:'쉬고 싶다고 하셨어요'}),
+    Object.freeze({re:/걷기\s*(?:싫|힘들|별로)|걷는\s*(?:건|게|거)\s*(?:싫|힘들|별로)|안\s*걷/, apply:{walkAverse:true, maxTravelMin:20}, why:'많이 걷지 않는 쪽으로 볼게요'}),
     Object.freeze({re:/가까운\s*(곳|데)|멀리\s*(가기)?\s*싫|근처(에서)?/, apply:{maxTravelMin:15}, why:'가까운 곳만 볼게요'}),
-    Object.freeze({re:/쌩쌩|팔팔|기운|더\s*보고|많이\s*보고|부지런|괜찮아/, apply:{energyLevel:'HIGH'}, why:'컨디션이 좋다고 하셨어요'}),
+    Object.freeze({re:/쌩쌩|팔팔|기운|더\s*보고|많이\s*보고|부지런/, apply:{energyLevel:'HIGH'}, why:'컨디션이 좋다고 하셨어요'}),
     Object.freeze({re:/배고|밥|먹고|식사|점심|저녁\s*먹/, apply:{mealFocus:true}, why:'식사를 먼저 챙길게요'}),
     Object.freeze({re:/숙소|호텔로|들어가고\s*싶|집에/, apply:{wantRest:true}, why:'숙소로 돌아가는 쪽을 먼저 볼게요'})
   ]);
+  // '괜찮다'는 그 자체로 컨디션을 말하지 않는다 — 무엇이 괜찮은지 모른다. 다만 피곤하다는 말과 같이 오면
+  // ("피곤하긴 한데 괜찮아") 어느 쪽인지 단정하지 않는다.
+  const FINE_RE=/괜찮/;
+  // 부정 — 규칙은 낱말을 보지만 사람은 "하나도 안 피곤해"·"배고프지 않아"라고도 말한다(2026-10-02).
+  // 부정이 **그 말에 붙어 있으면** 그 말은 하지 않은 것으로 본다. 반대 뜻으로 뒤집지는 않는다("안 쌩쌩해"는 피곤하다는 말이 아니다).
+  // 붙어 있다는 것은 바로 앞 어절의 '안'·'못', 또는 바로 뒤의 활용이다.
+  // ⚠️ 뒤쪽은 그 말의 활용까지만 본다 — "피곤해서 안 갈래"의 '안'은 '가다'의 부정이지 '피곤'의 것이 아니다.
+  const NEG_BEFORE=/(?:^|[^가-힣])(?:안|못)\s*$/;
+  const NEG_AFTER=new RegExp('^(?:'+[
+    '\\s?[가-힣]{0,2}?(?:지(?:는|도)?|진)\\s*(?:않|못|마|말)',           // 피곤하지 않아 · 배고프진 않은데 · 보고 싶지는 않아
+    '[가-힣]{0,2}?\\s*(?:건|게|거|것)[은이]?\\s*(?:아니(?!면)|아냐)',     // 피곤한 건 아니야 · 쉬고 싶은 게 아니라
+    '(?:\\s*생각)?\\s*[이가은는도]?\\s*없',                                // 기운이 없어 · 밥 생각 없어
+    '\\s*[은는이가도을를에]?\\s*(?:안|못)(?:\\s|[해하먹가돼되])',            // 피곤 안 해 · 밥은 안 먹어 (숙소 '안에서'는 아니다)
+    '\\s*[은는]?\\s*(?:말고|별로)'                                         // 밥 말고 · 숙소는 별로
+  ].join('|')+')');
+  /**
+   * 문장에 그 말이 부정 없이 한 번이라도 나오는지. "안 피곤하다고 했지만 사실 피곤해"는 피곤하다는 말이다.
+   * @param {string} t @param {RegExp} re @returns {boolean}
+   */
+  function saidPlainly(t, re){
+    const g=new RegExp(re.source, 'g');
+    for(let m=g.exec(t); m; m=g.exec(t)){
+      if(!m[0]){ g.lastIndex++; continue; }
+      if(!NEG_BEFORE.test(t.slice(0, m.index)) && !NEG_AFTER.test(t.slice(m.index+m[0].length))) return true;
+    }
+    return false;
+  }
   /**
    * "오늘 좀 피곤해서 많이 걷기 싫어" → {energyLevel:'LOW', walkAverse:true, maxTravelMin:20}.
    * 해석하지 못하면 빈 결과를 준다 — 못 알아들은 것을 알아들은 척하지 않는다.
+   * 부정된 말은 하지 않은 것으로 보고, 컨디션이 엇갈리면("피곤한데 더 보고 싶어") 정하지 않는다 —
+   * 나중 규칙이 이기게 두면 같은 문장이 낱말 순서에 따라 정반대 컨디션이 된다.
    * @param {string} text
    * @returns {{energyLevel:(EnergyLevel|null), prefs:any, reasons:string[], understood:boolean}}
    */
@@ -589,13 +620,18 @@
     const t=String(text==null?'':text).trim();
     /** @type {any} */ const prefs={};
     /** @type {string[]} */ const reasons=[];
-    /** @type {EnergyLevel|null} */ let energyLevel=null;
-    if(t) INTENT_RULES.forEach((r)=>{
-      if(!r.re.test(t)) return;
+    const said=t? INTENT_RULES.filter((r)=>saidPlainly(t, r.re)) : [];
+    /** @type {string[]} */ const levels=[];
+    said.forEach((r)=>{ const lv=/** @type {any} */(r.apply).energyLevel; if(lv && levels.indexOf(lv)<0) levels.push(lv); });
+    if(levels.indexOf('LOW')>=0 && saidPlainly(t, FINE_RE)) levels.push('FINE');
+    /** @type {EnergyLevel|null} */ const energyLevel=levels.length===1? /** @type {any} */(levels[0]) : null;
+    said.forEach((r)=>{
+      const apply=/** @type {any} */(r.apply);
+      if(apply.energyLevel && !energyLevel) return;   // 단정하지 않은 컨디션은 이유로도 말하지 않는다
       reasons.push(r.why);
-      Object.keys(r.apply).forEach((k)=>{
-        if(k==='energyLevel'){ energyLevel=/** @type {any} */(r.apply)[k]; return; }
-        const v=/** @type {any} */(r.apply)[k];
+      Object.keys(apply).forEach((k)=>{
+        if(k==='energyLevel') return;
+        const v=apply[k];
         if(k==='maxTravelMin' && prefs.maxTravelMin!=null) prefs.maxTravelMin=Math.min(prefs.maxTravelMin, v);   // 더 좁은 요구를 따른다
         else prefs[k]=v;
       });
