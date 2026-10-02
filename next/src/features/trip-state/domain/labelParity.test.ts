@@ -28,7 +28,7 @@ function writeFixture(name: string, data: unknown) {
 }
 
 /**
- * `app.js`는 모듈이 아니라(브라우저 전역 스크립트) import할 수 없다 — 선언 한 줄을 소스에서 읽는다.
+ * `app.js`는 모듈이 아니라(브라우저 전역 스크립트) import할 수 없다 — 선언을 소스에서 정규식으로 읽는다(줄 수는 상관없고 `};` 종결·작은따옴표·`{icon:'…',name:'…'}` 항목 모양에 기댄다).
  * 모양이 바뀌어 못 읽으면 **조용히 빈 값으로 넘어가지 않고** 여기서 깨진다.
  */
 const APP = readFileSync(path.join(ROOT, 'app.js'), 'utf8');
