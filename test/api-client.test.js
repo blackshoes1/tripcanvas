@@ -272,6 +272,22 @@ test('실시간 — 거절당하면 상태를 내리고 다시 붙지 않는다(
   assert.equal(states.at(-1), false);
 });
 
+// 서버는 거절하면서 ERROR 프레임을 먼저 보내지만, 프레임이 닿기 전에 소켓이 닫히면 닫힘 코드만 남는다.
+// 그때도 다시 붙지 않는다 — 인증·권한 거절은 재시도해도 같은 답이다.
+test('실시간 — 인증·권한 거절 코드(4401·4403)로 닫히면 ERROR 프레임이 없어도 다시 붙지 않는다', async () => {
+  for (const code of [4401, 4403]) {
+    const { made, FakeSocket } = fakeSocketFactory();
+    const states = [];
+    TC_API.realtime.connect({ url: 'wss://x/ws', tripId: 't', getToken: async () => 'tok', onEvent: () => {}, onState: (on) => states.push(on), socketImpl: FakeSocket, retryMs: 1 });
+    await new Promise((r) => setTimeout(r, 0));
+    made[0].open(); await new Promise((r) => setTimeout(r, 0));
+    made[0].close(code);
+    await new Promise((r) => setTimeout(r, 30));
+    assert.equal(made.length, 1, `${code}: 재시도하지 않아야 한다`);
+    assert.equal(states.at(-1), false);
+  }
+});
+
 test('실시간 — 그냥 끊기면 다시 붙는다(네트워크는 흔들린다)', async () => {
   const { made, FakeSocket } = fakeSocketFactory();
   const conn = TC_API.realtime.connect({ url: 'wss://x/ws', tripId: 't', getToken: async () => 'tok', onEvent: () => {}, onState: () => {}, socketImpl: FakeSocket, retryMs: 1 });

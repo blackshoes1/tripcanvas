@@ -297,6 +297,9 @@
     return request('GET', '/api/v1/me');
   }
 
+  /** 서버가 거절하며 닫는 코드 — 4401 인증 실패(server/realtime/hub.ts의 CLOSE.UNAUTHORIZED) · 4403 권한 없음 */
+  const REJECT_CODES = [4401, 4403];
+
   /**
    * 자체 실시간(WebSocket). 서버가 /me에서 쓰라고 한 경우에만 부른다.
    *
@@ -339,13 +342,19 @@
         if (msg.type === 'ACTIVITY') { try { options.onEvent(msg); } catch (_) { /* 화면 갱신 실패는 삼킨다 */ } }
       };
       ws.onerror = () => { /* onclose가 이어서 온다 */ };
-      ws.onclose = () => { socket = null; setState(false); schedule(); };
+      ws.onclose = (/** @type {any} */ event) => {
+        socket = null; setState(false);
+        // 거절 프레임(ERROR)이 닿기 전에 닫혀도 닫힘 코드는 남는다 — 인증·권한 거절은 다시 붙어도 같은 답이다
+        if (event && REJECT_CODES.indexOf(Number(event.code)) >= 0) { stopped = true; return; }
+        schedule();
+      };
     }
 
     function schedule() {
       if (stopped || timer) return;
       attempts += 1;
-      // 흔들리는 네트워크에 매달리지 않는다 — 폴백(탭 복귀 pull)이 있으므로 몇 번만 시도한다
+      // 흔들리는 네트워크에 매달리지 않는다 — 폴백(탭 복귀 pull)이 있으므로 몇 번만 시도한다.
+      // 멈춘 뒤 다시 붙이는 것은 호출측이 탭이 다시 보일 때·네트워크가 돌아올 때 한다(app.js reviveLive)
       if (attempts > 5) return;
       timer = setTimeout(() => { timer = null; void open(); }, retryMs * Math.min(attempts, 4));
     }

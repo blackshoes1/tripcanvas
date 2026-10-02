@@ -3560,6 +3560,43 @@ test('통합: 서버가 자체 실시간을 쓰라고 하면 client_id로 구독
   w.close();
 });
 
+// 실시간은 몇 번만 다시 붙고 멈춘다(api.js). 그리고 같은 여행이면 ensureLiveChannel이 그냥 돌아간다 —
+// 그래서 NAS·Tailscale이 40초쯤 끊기면 그 여행은 다른 여행으로 갔다 오기 전까지 실시간이 없었다.
+test('통합: 실시간이 포기한 뒤에도 탭이 다시 보이거나 네트워크가 돌아오면 다시 붙는다(붙어 있으면 그대로)', { skip: noJsdom }, async () => {
+  const w = boot();
+  const opened = [];
+  let closed = 0;
+  w.eval(`user={id:'u1'}; store.trips=[{id:'t1',name:'스페인',days:[{spots:[]}]}]; store.activeId='t1';
+    syncMeta={t1:{revision:3,status:'clean'}};`);
+  w.TC_API_ME = async () => ({
+    data: { trips: [{ id: 't1', role: 'EDITOR', memberCount: 3, owner: false }],
+            realtime: { provider: 'TRIPCANVAS', url: 'wss://api.test/ws' } }, error: null
+  });
+  w.TC_API_CONNECT = (options) => { opened.push(options); return { close: () => { closed++; } }; };
+  w.eval(`TC_API.me=window.TC_API_ME; TC_API.realtime={connect:window.TC_API_CONNECT};
+    pullActiveIfShared=()=>{}; flushPendingSync=async()=>{}; cloudSyncActive=()=>{};   // 여기서 보는 것은 실시간 접속뿐이다`);
+  await w.eval(`refreshTripRoles()`);
+  assert.equal(opened.length, 1);
+  // 접속이 재시도를 다 쓰고 멈췄다(onState(true)가 오지 않았다) — 탭이 다시 보이면 새로 붙는다
+  w.document.dispatchEvent(new w.Event('visibilitychange'));
+  assert.equal(opened.length, 2, '탭이 다시 보이면 다시 붙는다');
+  assert.equal(closed, 1, '멈춘 접속은 닫고 갈아 끼운다');
+  // 붙어 있으면 건드리지 않는다
+  opened[1].onState(true);
+  w.document.dispatchEvent(new w.Event('visibilitychange'));
+  assert.equal(opened.length, 2, '살아 있는 접속은 그대로 둔다');
+  // 네트워크가 돌아왔을 때도 같다
+  opened[1].onState(false);
+  w.dispatchEvent(new w.Event('online'));
+  assert.equal(opened.length, 3, '네트워크가 돌아오면 다시 붙는다');
+  assert.equal(opened[2].tripId, 't1');
+  // 볼 여행이 없으면(로그아웃) 아무것도 열지 않는다
+  w.eval(`user=null; tripRoles={}; updateCollabUI();`);
+  w.dispatchEvent(new w.Event('online'));
+  assert.equal(opened.length, 3);
+  w.close();
+});
+
 // ── 함께 움직이지 않는 시간 (6단계 · §25~§27) ────────────────────────────────
 
 const SU1 = '11111111-1111-4111-8111-111111111111';

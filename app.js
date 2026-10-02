@@ -6093,6 +6093,15 @@ function ensureLiveChannel(){
       .subscribe((status)=>{ liveOn=(status==='SUBSCRIBED'); setLiveState(liveOn); });
   }catch(e){ reportOperationalError('collab.live',e); closeLive(); liveKey=''; }
 }
+// 접속은 몇 번만 다시 붙고 멈추는데(api.js), 같은 여행이면 ensureLiveChannel이 그냥 돌아간다 — 그래서 NAS·Tailscale이
+// 잠깐 끊겼다 돌아와도 그 여행은 다른 여행으로 갔다 오기 전까지 실시간이 없었다. 탭이 다시 보이거나 네트워크가
+// 돌아오면 **끊긴 것만** 새로 붙인다(붙어 있는 접속은 건드리지 않는다).
+function reviveLive(){
+  if(liveOn||!liveKey) return;
+  liveKey=''; ensureLiveChannel();
+}
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') reviveLive(); });
+window.addEventListener('online',reviveLive);
 function setLiveState(on){
   const el=document.getElementById('liveState'); if(!el) return;
   el.innerHTML=''; const d=document.createElement('span'); d.className='liveDot'+(on?' on':'');
