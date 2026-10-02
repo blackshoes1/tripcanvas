@@ -68,9 +68,10 @@ test('proxied web exchanges through the web origin but starts OAuth at the NAS o
   assert.equal(calls.at(-1).init.credentials, 'omit');
 });
 
-// 네이버는 서버가 알리지 않는다(next/src/server/auth/socialProviders.ts). 웹은 따로 거르지 않고 알린 것만 그린다 —
-// 그래서 서버 한 곳만 바꾸면 웹 버튼도 사라지고, 다른 제공자는 그대로 남는다.
-test('web shows only the providers the server announced — no Naver button when it is not announced', async () => {
+// 특성 테스트: 웹은 제공자를 따로 거르지 않고 서버가 알린 것만 그리고, 알리지 않은 것은 시작하지 않는다.
+// ⚠️ 네이버 숨김을 지키는 테스트는 이게 아니다 — 픽스처가 알림 목록을 고정해 서버가 네이버를 다시 알려도 여기는 통과한다.
+// 그 가드는 서버 쪽 next/src/app/api/v1/auth-config/route.test.ts(와 socialHandoff.test.ts)다.
+test('web starts only what the server announced — an unannounced provider is refused without leaving the page', async () => {
   const { auth, calls, location } = browser(['google', 'apple', 'kakao']);
   await auth.resolveProvider();
   assert.deepEqual(Array.from(auth.socialProviders()), ['google', 'apple', 'kakao']);

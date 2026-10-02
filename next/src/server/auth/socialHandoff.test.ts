@@ -24,7 +24,9 @@ async function signedSession() {
 }
 
 it('enables only fully configured providers and never treats provider names as verified emails', () => {
-  const providers = readSocialProviders({ OAUTH_GOOGLE_CLIENT_ID: 'id', OAUTH_GOOGLE_CLIENT_SECRET: 'secret', OAUTH_NAVER_CLIENT_ID: 'incomplete' });
+  // 반쪽 설정은 켜져 있는 제공자로 만든다 — 숨긴 네이버로 만들면 읽지도 않으니 이 규칙을 못 지킨다
+  const providers = readSocialProviders({ OAUTH_GOOGLE_CLIENT_ID: 'id', OAUTH_GOOGLE_CLIENT_SECRET: 'secret',
+    OAUTH_KAKAO_CLIENT_ID: 'incomplete', OAUTH_APPLE_CLIENT_SECRET: 'orphan' });
   expect(enabledSocialProviders(providers)).toEqual(['google']);
   expect(providers.google).toMatchObject({ requireEmailVerification: true });
 });

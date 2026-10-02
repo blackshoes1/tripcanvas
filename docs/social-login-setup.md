@@ -15,7 +15,7 @@ OAUTH_GOOGLE_CLIENT_ID=457039812975-jijh2qrbb4q8qc6k0n9efcj3drt4q5kp.apps.google
 OAUTH_GOOGLE_CLIENT_SECRET=
 OAUTH_APPLE_CLIENT_ID=
 OAUTH_APPLE_CLIENT_SECRET=
-# 네이버는 숨겨 두었다 — 값을 넣어도 읽지 않고 서버 로그에 경고만 남긴다
+# 네이버는 숨겨 두었다 — 지금 이미지는 읽지 않지만 .env에 두지 않는다(아래 네이버 절)
 # OAUTH_NAVER_CLIENT_ID=
 # OAUTH_NAVER_CLIENT_SECRET=
 OAUTH_KAKAO_CLIENT_ID=
@@ -65,6 +65,8 @@ Sign in with Apple 키(.p8), Key ID, Team ID로 ES256 서명 client secret JWT�
 
 **숨김(2026-10-02).** 서버가 네이버를 켜지도 알리지도 않는다 — `OAUTH_NAVER_*`가 있어도 읽지 않고(`next/src/server/auth/socialProviders.ts`의 `SOCIAL_PROVIDERS`에 없다) 서버 로그에 경고만 남긴다. 그래서 `auth-config`에 실리지 않고, `/api/auth/social/start?provider=naver`는 400이며, 웹·iOS에는 버튼이 없다(두 클라이언트는 서버가 알린 제공자만 그린다).
 
+⚠️ **NAS `deploy/.env`에서 `OAUTH_NAVER_*`를 지운다.** 숨김은 코드에만 있고 `.env`는 이미지 밖에 있다 — 키를 남겨 둔 채 `nas-deploy.sh --sha`로 숨기기 전(2026-10-02 이전) 커밋으로 롤백하면, 다른 이유로 되돌렸어도 그 이미지가 키를 다시 읽어 `auth-config`가 네이버를 알리고 웹·iOS에 버튼이 돌아온다(클라이언트에 네이버 이름이 남아 있다). 서버 로그의 `OAUTH_NAVER_*` 경고가 남아 있다는 신호다.
+
 왜: 인증 라이브러리(better-auth)의 네이버 매핑은 `emailVerified`를 **언제나 false**로 준다. With J는 확인된 이메일로만 계정을 잇는다(제공자 `requireEmailVerification`, `trustedProviders: []`, `finishSocialLogin`의 `emailVerified` 확인). 그 결과 이메일로 가입한 기존 사용자는 네이버로 **늘 실패**하고("account not linked"), 처음 온 사람도 확인 메일을 누른 뒤 한 번 더 로그인해야 한다. 신뢰 규칙을 풀지 않고 버튼을 숨겼다.
 
 숨기기 전에 네이버로 가입한 사람이 있었다면(운영에 네이버 키가 들어간 적이 없다면 없다): 발급된 세션은 만료까지 그대로이고, 이후에는 이메일 로그인 화면의 **비밀번호 재설정**으로 비밀번호를 정해 이메일로 들어온다(라이브러리가 비밀번호 계정을 새로 만든다). 같은 확인된 이메일의 Google 로그인으로도 이어진다.
@@ -97,7 +99,7 @@ Google iOS 로그인은 공식 SDK가 발급한 ID token을 HTTPS로 서버에 �
 - 웹과 실기기: 신규 가입 → 로그아웃 → 재로그인 → 기존 여행 조회·저장·실시간 연결.
 - 기존 이메일 계정: 검증된 같은 이메일만 기존 계정에 연결되는지 확인.
 - 동의 취소, 이메일 미동의, 네트워크 실패, 만료, 콜백 재사용 때 로그인되지 않는지 확인.
-- 네이버 버튼이 웹·iOS 어디에도 없는지(키를 넣어 둔 서버라면 로그에 `OAUTH_NAVER_*` 경고), Apple 재로그인·이메일 가리기 확인.
+- 네이버 버튼이 웹·iOS 어디에도 없는지(서버 로그에 `OAUTH_NAVER_*` 경고가 있으면 `.env`에서 지운다), Apple 재로그인·이메일 가리기 확인.
 - 비활성 제공자 버튼 숨김, 기존 이메일 가입·로그인·비밀번호 재설정 유지.
 
 자동 테스트는 제공자 응답을 대체한 흐름 및 교환권 검증이다. 실제 서비스 로그인 성공을 대신하지 않는다. 배포 전 `npm run verify:all`과 제공자 실계정 확인을 완료한다. 문제 시 해당 제공자의 ID/Secret을 제거하고 API를 재생성하면 버튼이 숨겨진다. 이미 발급한 세션을 일괄 폐기하는 동작은 아니다.

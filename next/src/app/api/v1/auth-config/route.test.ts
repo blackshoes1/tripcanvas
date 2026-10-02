@@ -17,7 +17,7 @@ it('announces every configured provider except Naver, without caching', async ()
   const response = await GET();
   expect(response.headers.get('cache-control')).toBe('no-store');
   const body = await response.json();
-  expect(body.provider).toBe('TRIPCANVAS');
-  expect(body.socialProviders).toEqual(['google', 'apple', 'kakao']);
-  expect(JSON.stringify(body)).not.toMatch(/naver|ns\b|gs\b/);
+  // 토큰 없이 답하는 곳이라 몸통 전체를 고정한다 — 제공자 설정을 싣는 필드가 하나라도 늘면 여기서 깨진다
+  expect(body).toEqual({ provider: 'TRIPCANVAS', passwordResetRequiredForLegacyUsers: true, socialProviders: ['google', 'apple', 'kakao'] });
+  expect(JSON.stringify(body)).not.toMatch(/secret-value|clientSecret|naver/);
 });

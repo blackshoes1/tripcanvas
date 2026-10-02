@@ -22,9 +22,11 @@ export function readSocialProviders(env: Record<string, string | undefined>, war
     const clientSecret = env[`${prefix}_CLIENT_SECRET`]?.trim();
     if (clientId && clientSecret) result[provider] = { clientId, clientSecret, requireEmailVerification: true };
   }
-  // 키를 넣고도 버튼이 안 보이면 설정이 틀린 줄 안다 — 일부러 읽지 않는다는 것을 남긴다
+  // 키를 넣고도 버튼이 안 보이면 설정이 틀린 줄 안다 — 일부러 읽지 않는다는 것을 남긴다.
+  // 지우라고까지 말한다: 숨기기 전 이미지로 롤백하면 그 이미지는 이 키를 다시 읽어 네이버가 켜진다
   if (env.OAUTH_NAVER_CLIENT_ID?.trim() || env.OAUTH_NAVER_CLIENT_SECRET?.trim()) {
-    warn?.('OAUTH_NAVER_* 값을 읽지 않는다 — 네이버는 이메일 확인 여부를 주지 않아 로그인을 숨겨 두었다(docs/social-login-setup.md)');
+    warn?.('OAUTH_NAVER_* 값을 읽지 않는다 — 네이버는 이메일 확인 여부를 주지 않아 로그인을 숨겨 두었다. ' +
+      '.env에서 지울 것: 숨기기 전 이미지로 롤백하면 다시 켜진다(docs/social-login-setup.md)');
   }
   return result;
 }
