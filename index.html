@@ -13,42 +13,45 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js" integrity="sha384-+pWnyi8LtZx+cgXfD2arWgUX7pHIaEL215cEPPk9WrsegNlgvDL9DNjaqsceQq6o" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js" integrity="sha384-BSxuMLxX+FCbTdYec3TbXlnMGEEM2QXTFdtDaveen71o+jswm2J36+xFqp8k4VHM" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.min.js" integrity="sha384-l8ah+VgaWtk1mvOe9VC+OirC6qHFF4yH7l7mKRidV9MSti3E9F463bMp6ZVN4kuC" crossorigin="anonymous"></script>
-<link rel="stylesheet" href="style.css?v=tc-v250">
+<link rel="stylesheet" href="style.css?v=tc-v251">
 </head>
 <body>
 <section id="onboarding" class="onboarding" hidden role="dialog" aria-modal="true" aria-labelledby="onboardingTitle">
   <div class="onboardingCard">
     <img class="brandMark" src="icon-192.png" alt="With J" width="42" height="42">
     <p class="eyebrow">With J</p>
-    <h1 id="onboardingTitle">여행을<br>더 쉽게 계획하세요</h1>
-    <p>여행 이름과 날짜를 정하고, 가고 싶은 곳을 하나씩 담아 보세요.</p>
+    <h1 id="onboardingTitle">같이 계획하고,<br>다음을 챙겨 주는 여행</h1>
+    <p>날짜와 가고 싶은 곳만 담으면 동선과 도착 시간을 계산해요. 여행 중에는 J가 다음에 할 일을 먼저 챙겨요.</p>
     <div class="onboardingActions">
       <button class="btn primary" id="onboardNew">＋ 새 여행 만들기</button>
-      <button class="btn" id="onboardPaste">▧ 가진 일정 붙여넣기</button>
+      <button class="btn" id="onboardPaste"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4h6v3H9zM7 5.5H5V21h14V5.5h-2M8.5 12h7M8.5 16h5"/></svg> 받은 일정 붙여넣기</button>
       <p class="onboardNote">AI·블로그·메일에서 받은 일정을 그대로 붙여넣으면 읽어 드려요.</p>
-      <button class="btn ghost" id="onboardSample">⌁ 샘플 먼저 둘러보기</button>
+      <button class="btn ghost" id="onboardSample"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="2.6"/></svg> 샘플 먼저 둘러보기</button>
     </div>
     <button class="onboardLogin" id="onboardLogin">이미 계정이 있으신가요? <u>로그인</u></button>
   </div>
 </section>
 <header>
-  <h1><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7l5-2 6 2 5-2v12l-5 2-6-2-5 2zM9 5v12M15 7v12"/></svg> With J</h1>
+  <h1><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7l5-2 6 2 5-2v12l-5 2-6-2-5 2zM9 5v12M15 7v12"/></svg> <span class="brandText">With J</span></h1>
   <select id="tripSel" class="srOnly" aria-label="현재 여행 선택"></select>
   <button class="tripPicker" id="tripPickerBtn" aria-haspopup="dialog"><span id="tripPickerName">여행 선택</span>⌄</button>
   <button class="membersPill" id="membersBtn" hidden title="같이 짜기 — 멤버·초대" aria-haspopup="dialog"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 19v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1M22 19v-1a4 4 0 0 0-3-3.9"/><path d="M9 4a3 3 0 1 1 0 6 3 3 0 0 1 0-6z"/></svg> <span id="membersCount">1</span></button>
   <span class="hdrSpacer"></span>
-  <button class="btn" id="pasteBtn">▧ 일정 붙여넣기</button>
+  <button class="btn" id="pasteBtn"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4h6v3H9zM7 5.5H5V21h14V5.5h-2M8.5 12h7M8.5 16h5"/></svg> 일정 붙여넣기</button>
   <button class="btn primary" id="travelBtn" title="여행 중 안내 켜기 — 지금 무엇을 할지, 다음 장소까지 얼마나 걸리는지 알려 줘요"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><path d="M12 7.4a2.6 2.6 0 1 1 0 5.2 2.6 2.6 0 0 1 0-5.2z"/></svg> 여행 중 안내</button>
+  <button class="btn ghost" id="undoQuick" type="button" hidden aria-label="실행취소" title="방금 한 변경 되돌리기 (Ctrl+Z)" onclick="undo()"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
   <button class="btn ghost" id="moreBtn" aria-label="메뉴" onclick="toggleHdrMenu(event)"><span class="menuBadge" id="menuBadge" hidden></span><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
   <div id="hdrMenu">
+    <button class="btn" id="authBtn" title="로그인하면 여행이 내 계정에 저장돼 어느 기기서든 열려요">로그인</button>
     <p class="menuGroupLabel">여행</p>
-    <button class="btn ghost" id="undoBtn" title="실행취소 (Ctrl+Z)" disabled onclick="undo()">↩️ 실행취소</button>
+    <button class="btn ghost" id="undoBtn" title="실행취소 (Ctrl+Z)" disabled onclick="undo()"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg> 실행취소</button>
     <button class="btn" id="newTripBtn">＋ 새 여행</button>
     <button class="btn" id="tripEditBtn"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4zM19.4 13.5l1.7 1.3-1.7 3-2-.8a7.6 7.6 0 0 1-1.7 1l-.3 2.1h-3.4l-.3-2.1a7.6 7.6 0 0 1-1.7-1l-2 .8-1.7-3 1.7-1.3a7.7 7.7 0 0 1 0-2l-1.7-1.3 1.7-3 2 .8a7.6 7.6 0 0 1 1.7-1L11.7 3h3.4"/></svg> 여행 설정</button>
-    <button class="btn" id="bookingBtn" title="예약과 미리 낸 비용을 한 목록으로 — 숙박·렌터카 예약은 시세를 계속 확인해 절약 기회를 알려줘요"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM3 11h18M17 15h.01"/></svg> 예약 결제 금액</button>
-    <button class="btn" id="resvMenuBtn" title="예약번호·기간·취소 조건·예약 링크를 한곳에서 찾아요"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16v4a2 2 0 0 0 0 4v4H4v-4a2 2 0 0 0 0-4zM10 6v12"/></svg> 예약</button>
+    <button class="btn" id="pasteMenuBtn"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4h6v3H9zM7 5.5H5V21h14V5.5h-2M8.5 12h7M8.5 16h5"/></svg> 일정 붙여넣기</button>
+    <p class="menuGroupLabel">준비</p>
+    <button class="btn" id="bookingBtn" title="예약과 미리 낸 비용을 한 목록으로 — 숙박·렌터카 예약은 시세를 계속 확인해 절약 기회를 알려줘요"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM3 11h18M17 15h.01"/></svg> <span class="menuText">예약 결제 금액<small>항공·숙박·렌트와 미리 낸 비용 · 가격 추적</small></span></button>
+    <button class="btn" id="resvMenuBtn" title="예약번호·기간·취소 조건·예약 링크를 한곳에서 찾아요"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16v4a2 2 0 0 0 0 4v4H4v-4a2 2 0 0 0 0-4zM10 6v12"/></svg> <span class="menuText">예약번호·취소 조건<small>예약마다 기간·번호·링크를 한곳에서</small></span></button>
     <button class="btn" id="noteMenuBtn" title="비자·입국 준비·교통·특산품처럼 일정에 넣기 애매한 준비 내용을 모아 둬요"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6zM15 3v4h4M9 12h7M9 16h5"/></svg> 여행 준비 메모<span class="menuCount" id="noteCount" hidden></span></button>
-    <button class="btn" id="pasteMenuBtn">▧ 일정 붙여넣기</button>
     <p class="menuGroupLabel">같이 짜기</p>
     <button class="btn" id="membersMenuBtn" title="일행을 초대해 같은 여행을 함께 계획해요"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 19v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1M22 19v-1a4 4 0 0 0-3-3.9"/><path d="M9 4a3 3 0 1 1 0 6 3 3 0 0 1 0-6z"/></svg> 멤버·편집 초대</button>
     <button class="btn" id="candMenuBtn" title="아직 일정이 아닌 '가고 싶은 곳'을 일행과 함께 골라요"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><path d="M12 7.4a2.6 2.6 0 1 1 0 5.2 2.6 2.6 0 0 1 0-5.2z"/></svg> 가고 싶은 곳<span class="menuCount" id="candCount" hidden></span></button>
@@ -58,7 +61,6 @@
     <button class="btn ghost" id="imgBtn" title="일정을 이미지로 저장"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM8.5 10.5a1.3 1.3 0 1 0 0-2.6 1.3 1.3 0 0 0 0 2.6zM5 17l4.5-5 3.5 3.5 2.5-2L19 17"/></svg> 이미지</button>
     <button class="btn ghost" id="importBtn"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v12M8 12l4 4 4-4M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg> 가져오기</button>
     <button class="btn ghost" id="onboardAgainBtn" title="처음 화면을 다시 봐요"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 18h5M10 21h4M12 3a6 6 0 0 1 3.5 10.9c-.5.4-.8 1-.8 1.6v.5h-5.4v-.5c0-.6-.3-1.2-.8-1.6A6 6 0 0 1 12 3z"/></svg> 처음 화면 다시 보기</button>
-    <button class="btn" id="authBtn" title="로그인하면 여행이 내 계정에 저장돼 어느 기기서든 열려요">로그인</button>
     <div id="verLabel" title="현재 실행 중인 앱 버전 (탭하면 최신 버전 확인)"></div>
   </div>
   <input type="file" id="importFile" accept=".json" style="display:none">
@@ -85,7 +87,7 @@
 <!-- 장소 추가/편집 모달: 기본 정보 + 접을 수 있는 상세 설정 -->
 <div class="modalBg" id="spotModalBg"><div class="modal spotModal">
   <div class="modalTitleRow"><div><p class="eyebrow">장소</p><h2 id="spotModalTitle">장소 추가</h2></div><span class="stepBadge">기본 정보</span></div>
-  <label for="spotSearch">장소 검색 (국내 카카오 · 해외 Google)</label>
+  <label for="spotSearch">장소 검색</label>
   <div class="fieldRow">
     <input type="text" id="spotSearch" placeholder="검색 또는 장소 이름 입력">
     <button class="btn" id="spotSearchBtn">검색</button>
@@ -670,15 +672,15 @@
   <div id="placeDetailsContent" aria-live="polite"></div>
   <footer id="placeDetailsActions"></footer>
 </dialog>
-<script src="lib.js?v=tc-v250"></script>
-<script src="sync.js?v=tc-v250"></script>
-<script src="routing.js?v=tc-v250"></script>
-<script src="price.js?v=tc-v250"></script>
-<script src="adaptive.js?v=tc-v250"></script>
-<script src="intake.js?v=tc-v250"></script>
-<script src="collab.js?v=tc-v250"></script>
-<script src="api.js?v=tc-v250"></script>
-<script src="auth.js?v=tc-v250"></script>
-<script src="app.js?v=tc-v250"></script>
+<script src="lib.js?v=tc-v251"></script>
+<script src="sync.js?v=tc-v251"></script>
+<script src="routing.js?v=tc-v251"></script>
+<script src="price.js?v=tc-v251"></script>
+<script src="adaptive.js?v=tc-v251"></script>
+<script src="intake.js?v=tc-v251"></script>
+<script src="collab.js?v=tc-v251"></script>
+<script src="api.js?v=tc-v251"></script>
+<script src="auth.js?v=tc-v251"></script>
+<script src="app.js?v=tc-v251"></script>
 </body>
 </html>

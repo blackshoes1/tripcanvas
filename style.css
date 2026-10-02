@@ -659,3 +659,11 @@ body:has(.modalBg.show) #toast{bottom:auto;top:calc(env(safe-area-inset-top) + 1
 @media (max-width:760px){#sheetHandle{flex-direction:column;align-items:center;gap:3px}#sheetHandle .sheetHandleText{display:block;font-size:11px;font-weight:600;color:var(--subtle);line-height:1}}
 /* iOS Safari는 16px 미만 입력칸에 포커스가 가면 화면을 확대한다(2026-10-02 측정: 여행 중 요청 칸 12.5px·초대 링크 12px) */
 @media (max-width:760px){#travelIntent,#inviteLink{font-size:16px}}
+/* ☰ 메뉴는 목록이다 — 항목마다 테두리 상자를 두면 14개가 모두 같은 무게의 버튼으로 보였다(2026-10-02 UX 검토) */
+#hdrMenu .btn:not(.primary){border-color:transparent;background:transparent;min-height:44px;text-align:left}
+#hdrMenu .btn:not(.primary):hover:not(:disabled){background:var(--hover-bg)}
+#hdrMenu .menuGroupLabel{margin-top:6px}
+.menuText{display:flex;flex-direction:column;align-items:flex-start;gap:1px;text-align:left}.menuText small{font-size:11px;font-weight:400;color:var(--subtle);line-height:1.35}
+#undoQuick{display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;padding:0}#undoQuick[hidden]{display:none}
+/* 좁은 화면에서는 여행 이름이 먼저다 — 브랜드는 아이콘으로만 남긴다 */
+@media (max-width:480px){header h1 .brandText{display:none}}

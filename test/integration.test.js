@@ -4772,6 +4772,36 @@ test('통합: 일정 패널 손잡이는 누르면 무엇이 되는지 말한다
   w.close();
 });
 
+// 2026-10-02 UX 검토 — 실행취소가 ☰ 안에만 있었고, 메뉴 14개가 같은 무게의 상자였고, ▧·⌁ 기호는 기기에 따라 깨져 보였다.
+test('통합: 되돌릴 것이 있을 때만 헤더에 실행취소가 보이고 누르면 되돌린다', { skip: noJsdom }, () => {
+  const w = boot();
+  withAdaptTrip(w, [{ startAt: '09:00', mode: 'car', spots: [S('A', 40.40), S('B', 40.43)] }]);
+  w.eval('render(); histStack.length=0; histLast=JSON.stringify(store); updateUndoBtn();');
+  const q = w.document.getElementById('undoQuick');
+  assert.equal(q.hidden, true, '되돌릴 것이 없으면 숨는다');
+  w.eval("setDayMode(0,'walk')");
+  assert.equal(q.hidden, false, '편집하면 보인다');
+  q.click();
+  assert.equal(w.eval("trip().days[0].mode"), 'car', '누르면 방금 바꾼 것이 돌아온다');
+  w.close();
+});
+
+test('통합: 메뉴는 계정 → 여행 → 준비 → 같이 짜기 → 파일 순서로 묶이고, 예약 두 항목은 하는 일을 말한다', { skip: noJsdom }, () => {
+  const w = boot();
+  const menu = w.document.getElementById('hdrMenu');
+  const order = Array.from(menu.children).map((el) => el.id || el.textContent.trim()).filter(Boolean);
+  assert.equal(order[0], 'authBtn', '로그인은 맨 위에서 찾는다');
+  const at = (x) => order.indexOf(x);
+  assert.ok(at('준비') > at('pasteMenuBtn') && at('bookingBtn') > at('준비') && at('resvMenuBtn') > at('bookingBtn') && at('noteMenuBtn') > at('resvMenuBtn'));
+  assert.ok(at('같이 짜기') > at('noteMenuBtn'));
+  assert.match(w.document.getElementById('resvMenuBtn').textContent, /예약번호·취소 조건/);
+  assert.match(w.document.getElementById('bookingBtn').textContent, /예약 결제 금액.*가격 추적/);
+  const onboarding = w.document.getElementById('onboarding').textContent + w.document.querySelector('header').textContent;
+  assert.ok(!/[▧⌁]/.test(onboarding), '플랫폼마다 깨져 보이는 기호를 쓰지 않는다');
+  assert.match(w.document.getElementById('onboardPaste').textContent, /받은 일정 붙여넣기/);
+  w.close();
+});
+
 // M1 — 우선순위가 반쪽씩 갈려 있었다. 웹은 `opt`만, iOS는 `must`만 편집할 수 있었는데
 // adaptive는 둘 다 읽어(재구성 보호·제거 순서) 화면에 없는 이유로 추천이 갈렸다.
 // 이제 웹도 3단 한 컨트롤로 고르고, 저장은 예전 그대로 두 플래그다.

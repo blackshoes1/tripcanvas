@@ -146,7 +146,12 @@ function save(){
   cloudSyncActive();
   updateSaveState();
 }
-function updateUndoBtn(){ const b=document.getElementById('undoBtn'); if(b) b.disabled=!histStack.length; }
+// 실행취소는 ☰ 안에만 있으면 실수 직후에 찾지 못한다(2026-10-02 UX 검토) — 되돌릴 것이 있을 때만 헤더에 하나 더 둔다.
+// 삭제·최적화처럼 큰 변경은 토스트의 '실행취소'가 따로 있고, 이 버튼은 그 밖의 편집(이동·수정·수단)까지 덮는다.
+function updateUndoBtn(){
+  const b=document.getElementById('undoBtn'); if(b) b.disabled=!histStack.length;
+  const q=document.getElementById('undoQuick'); if(q) q.hidden=!histStack.length || (typeof viewMode!=='undefined' && !!viewMode);
+}
 /**
  * 일행·다른 기기의 변경을 로컬에 들일 때 감싼다 — 그동안 히스토리를 쌓지 않고, 들인 뒤에는 비운다.
  *
@@ -2117,7 +2122,7 @@ function firstStepCard(di){
     <div class="firstStepTitle">어디부터 가볼까요?</div>
     <div class="firstStepBtns">
       <button class="btn primary" onclick="openSpotModal(0,-1)">🔍 장소 담기</button>
-      <button class="btn" onclick="document.getElementById('pasteBtn').click()">▧ 가진 일정 붙여넣기</button>
+      <button class="btn" onclick="document.getElementById('pasteBtn').click()">${ic('note')} 받은 일정 붙여넣기</button>
     </div>
     <button class="firstStepClose" type="button" onclick="dismissFirstStep()">이 안내 닫기</button>
   </div>`;

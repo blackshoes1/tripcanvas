@@ -1727,3 +1727,10 @@ test('sampleTrip — 마지막 날은 마드리드 숙소에서 출발해 계획
   }));
   assert.ok(t.days.every((d) => d.timeZone === 'Europe/Madrid'), '여행지 시간대가 정해져 있다');
 });
+
+test('spotCatOf: 공항은 교통 분류 그대로 비행기 기호로 보인다', () => {
+  assert.deepEqual(L.spotCatOf({ name: '바라하스 공항 (MAD)' }), { id: 'transport', icon: '✈️', name: '교통' });
+  assert.equal(L.spotCatOf({ name: 'Incheon Airport', cat: 'transport' }).icon, '✈️');
+  assert.equal(L.spotCatOf({ name: '서울역' }).icon, '🚉', '역은 그대로');
+  assert.equal(L.spotCatOf({ name: '공항 근처 식당', cat: 'food' }).id, 'food', '명시한 분류가 먼저다');
+});
