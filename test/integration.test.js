@@ -5670,3 +5670,21 @@ test("통합: 경로 재생은 지도 위 고정 버튼이고, 테마는 ☰에 
     assert.equal(play.hidden,true);
   }finally{ w.close(); }
 });
+
+test('통합: 데스크톱에는 일정 시트가 없으니 시트 단계가 바뀌어도 사람이 휠로 맞춘 지도를 되돌리지 않는다', {skip:noJsdom}, async () => {
+  // 검토(2026-10-03): 데스크톱도 지도를 누르면 snap이 'collapsed'가 되고 일자 카드를 누르면 'half'로 돌아온다.
+  // 휠 확대는 pointerdown을 내지 않아 앱의 마지막 보기가 남아 있었고, 그때 다시 맞춰 사람이 본 곳을 빼앗았다
+  const w=boot();
+  try{
+    withTrip(w, JSON.stringify([{spots:[{name:'솔',lat:40.4169,lng:-3.7035},{name:'마요르',lat:40.4155,lng:-3.7074}]}]));
+    fakeGoogleMap(w);
+    w.matchMedia=()=>({matches:false});
+    w.document.getElementById('sidebar').dataset.snap='collapsed';
+    w.eval('fitDay(0)');
+    const fits=w.__fits.length, pans=w.__pans.length;
+    w.eval(`setSheetSnap('half')`);
+    await new Promise(r=>setTimeout(r,320));
+    assert.equal(w.__fits.length,fits,'데스크톱에서는 다시 맞추지 않는다');
+    assert.equal(w.__pans.length,pans);
+  }finally{ w.close(); }
+});

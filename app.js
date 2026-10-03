@@ -1065,7 +1065,9 @@ function setSheetSnap(snap){
   if(snap==='expanded') syncSheetTop();   // 헤더 아래 띠(샘플·읽기 전용 안내)가 늘거나 줄었을 수 있다
   const changed=sb.dataset.snap!==snap||!!sb.style.height;
   sb.style.height=''; sb.dataset.snap=snap; syncSheetHandle();
-  if(changed) refitAfterSheet();   // 보이는 지도가 늘거나 줄었다 — 앱이 맞춘 보기를 그 높이로 다시(사람이 만진 보기는 두고)
+  // 보이는 지도가 늘거나 줄었다 — 앱이 맞춘 보기를 그 높이로 다시(사람이 만진 보기는 두고).
+  // 시트는 모바일에만 있다 — 데스크톱은 snap 값만 바뀌고 지도는 그대로라, 다시 맞추면 휠로 옮긴 보기를 빼앗는다(휠은 pointerdown이 없다)
+  if(changed && mediaMatches('(max-width: 760px)')) refitAfterSheet();
 }
 // 손잡이 막대만으로는 누르면 무엇이 되는지 모른다(2026-10-02 UX 검토) — 다음 단계를 말로 적는다. 순서는 click의 순환과 같다.
 function syncSheetHandle(){
