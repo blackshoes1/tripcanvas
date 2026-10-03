@@ -13,7 +13,7 @@ import type {
 
 const {
   dayCostSummary, dayEnteredCost, taxiFareCounts, budgetBookings, carEventsOn, carSpotLinks, computeDayJourney, dayReturnStay, dayStartAnchor,
-  haversine, hm, isOpenAt, legKey, returnModeOf, parseHM, spotCatOf, stayNights, toISO, walkInsteadOfCar
+  haversine, hm, isOpenAt, legKey, returnModeOf, parseHM, spotCatOf, stayNights, toISO
 } = legacyLib;
 
 // ── 수단 상수 (app.js와 동일 값 — Phase 6에서 단일 소스로 합칠 표시·추정용 글루) ──
@@ -65,12 +65,11 @@ function failedLeg(legCache: LegCache, a: LatLng, b: LatLng, mode: TransportMode
   return !!(c && !c.sec && c.fail);
 }
 
-/** 구간 이동시간(분) — app.js legMinutes와 동일: 캐시 우선(자차 2km 미만은 도보 대안 — 걷는 거리는 lib
- *  `walkInsteadOfCar`가 두 곳 사이로 잰다), 없으면 직선 추정 */
+/** 구간 이동시간(분) — app.js legMinutes와 동일: 선택한 수단의 캐시 우선, 없으면 직선 추정 */
 export function legMinutes(legCache: LegCache, a: LatLng, b: LatLng, mode: TransportMode): number {
   const m: TransportMode = MODE_ICON[mode] ? mode : 'car';
   const c = cachedLeg(legCache, a, b, m);
-  if (c && c.sec) return walkInsteadOfCar(m, c, a, b)?.min ?? c.sec / 60;
+  if (c && c.sec) return c.sec / 60;
   return (haversine(a, b) / MODE_SPEED[m]) * 60;
 }
 
@@ -82,10 +81,7 @@ export function fmtDur(sec: number): string {
 function legViewOf(legCache: LegCache, a: LatLng, b: LatLng, mode: TransportMode): LegView {
   const c = cachedLeg(legCache, a, b, mode);
   if (c && c.sec) {
-    const walk = walkInsteadOfCar(mode, c, a, b);
-    const label = walk
-      ? `↳${(walk.m / 1000).toFixed(1)}km · 🚶${Math.max(1, Math.round(walk.min))}분`
-      : `↳${((c.m ?? 0) / 1000).toFixed(1)}km · ${fmtDur(c.sec)}`;
+    const label = `↳${((c.m ?? 0) / 1000).toFixed(1)}km · ${fmtDur(c.sec)}`;
     let title = c.est
       ? (mode === 'flight' || mode === 'train' ? '직선거리 기반 추정' : '자동차 경로 거리 기반 추정')
       : '실제 도로 기준';
@@ -185,7 +181,7 @@ function dayDistanceOf(journey: DayJourney): number {
 function tripBookings(trip: Trip): Booking[] {
   return trip.bookings ?? [];
 }
-/** `today`(YYYY-MM-DD)는 결제일이 있는 항목의 상태를 정하는 오늘이다 — 서버는 여행 시간대의 오늘(`resolveClock`)을 넘긴다. */
+/** `today`는 기존 호출 계약의 날짜 인자다. 결제 상태는 명시적으로 확인한 표시다. */
 export function dayCostPartsOf(trip: Trip, legCache: LegCache, di: number, fx: FxRates, today?: string): DayView['cost'] {
   const day = trip.days[di];
   const dm = dayModeOf(day);

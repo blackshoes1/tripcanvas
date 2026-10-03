@@ -294,21 +294,19 @@ struct CostEntryEditor: View {
                         }
                     }
                 }
-                // 결제일이 먼저다 — 있으면 날짜가 상태를 정하므로 고르는 칸을 감춘다(예약 결제 금액의 편집기·웹과 같다).
+                // 날짜가 지나도 결제 상태는 자동으로 바뀌지 않는다(웹과 같다).
                 if !target.isBudget {
                     Section {
-                        Toggle("결제일 정하기", isOn: Binding(
+                        Toggle("결제(예정)일 정하기", isOn: Binding(
                             get: { entry.paidOn != nil },
                             set: { on in entry.paidOn = on ? (entry.paidOn ?? ISODateText.text(from: Date())) : nil }))
                         if entry.paidOn != nil {
-                            DatePicker("결제일", selection: Binding(
+                            DatePicker(entry.payState == .paid ? "결제일" : entry.payState == .reserved ? "결제 예정일" : "결제(예정)일", selection: Binding(
                                 get: { entry.paidOn.flatMap { ISODateText.date(from: $0) } ?? Date() },
                                 set: { entry.paidOn = ISODateText.text(from: $0) }), displayedComponents: .date)
                         }
                     } footer: {
-                        Text(entry.paidOn != nil
-                             ? "결제일이 오늘이거나 지났으면 결제 완료, 아직이면 결제 예정으로 봐요."
-                             : "결제일을 정하면 그 날부터 결제 완료로 봐요. 여행 날짜와 무관해요.")
+                        Text("실제로 결제한 뒤 결제 완료를 선택해 주세요. 날짜가 지나도 자동으로 완료되지 않아요.")
                     }
                 }
                 Section {
@@ -325,7 +323,7 @@ struct CostEntryEditor: View {
                     Text("\(target.isBudget ? "비워 두면 예산 미설정, 0은 예산 0원이에요." : "비워 두면 미정, 0은 확인한 무료예요.") 1인 금액을 선택한 경우에만 적용 인원을 곱해요. 원·엔은 정수, 달러·유로·위안은 소수 둘째 자리까지 입력해 주세요.")
                 }
                 if !target.isBudget {
-                    if entry.paidOn == nil {
+                    Group {
                         Section {
                             Picker("결제 상태", selection: $entry.payState) {
                                 ForEach(CostPayState.allCases, id: \.self) { Text($0.label).tag($0) }
@@ -371,7 +369,6 @@ struct CostEntryEditor: View {
                     Button("저장") {
                         var updated = entry
                         updated.amount = MoneyInput.amount(from: amount, currency: entry.currency)
-                        if updated.paidOn != nil { updated.payState = .none }   // 결제일이 있으면 날짜가 정한다 — 손으로 고른 상태는 두지 않는다
                         Task { await save(updated) }
                     }.disabled(!valid || saving)
                 }

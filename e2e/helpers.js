@@ -30,4 +30,8 @@ async function clickMore(page,selector){
   await page.locator(selector).click();
 }
 
-module.exports={prepare,createTrip,clickMore};
+async function openSpotIdentity(page){
+  if(!await page.locator('#spotName').isVisible()) await page.locator('#spotIdentity > summary').click();
+}
+
+module.exports={prepare,createTrip,clickMore,openSpotIdentity};

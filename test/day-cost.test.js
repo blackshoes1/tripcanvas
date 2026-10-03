@@ -6,6 +6,15 @@ const summary = (trip, di = 0, extra = {}) => L.dayCostSummary(trip, di, {
   date: `2026-10-0${di + 1}`, rates, taxi: null, transportUnpriced: false, ...extra
 });
 
+test('UX4: 결제 예정일이 지나도 실제 결제를 확인하기 전에는 완료되지 않는다', () => {
+  for (const today of ['2026-09-30', '2026-10-01', '2026-10-02']) {
+    assert.equal(L.costPayStateOf({paidOn:'2026-10-01',payState:'RESERVED'}, 'TRIP', today), 'RESERVED');
+    assert.equal(L.costPayStateOf({paidOn:'2026-10-01'}, 'BOOKING', today), 'RESERVED');
+    assert.equal(L.costPayStateOf({paidOn:'2026-10-01'}, 'EXTRA', today), 'NONE', '옛 날짜만으로 낸 돈을 단정하지 않는다');
+    assert.equal(L.costPayStateOf({paidOn:'2026-10-01',payState:'PAID'}, 'BOOKING', today), 'PAID');
+  }
+});
+
 test('하루 비용은 무료·미정·부분 확인과 예산 미설정·0을 구분한다', () => {
   const trip = { days: [{ spots: [{ name: '무료', cost: 0 }, { name: '미정' }, { name: '식사', cost: 10000, costPartial: true }] }] };
   let result = summary(trip);
@@ -301,51 +310,33 @@ test('금액을 넣지 않은 예약은 가계부에서 미정으로 남고 합�
   assert.equal(result.totalKRW, 0);
 });
 
-// ── 결제일이 상태를 정한다 (2026-09-18) ────────────────────────────────────────────
-
-test('결제일이 있으면 날짜가 상태를 정한다 — 오늘이거나 지났으면 결제, 아직이면 예약', () => {
-  const trip = L.normalizeTrip({ start: '2026-10-01', days: [
-    { spots: [{ name: '입장권', cat: 'sight', cost: 12000, paidOn: '2026-10-05', payState: 'PAID' }],
-      costItems: [{ id: 'bus', kind: 'TRANSIT', amount: 3000, paidOn: '2026-09-01' }] }
-  ], bookings: [
-    { id: 'stay', type: 'hotel', title: '현장 결제 호텔', price: 100000, start: '2026-10-01', end: '2026-10-02', paidOn: '2026-10-01' },
-    { id: 'fly', type: 'flight', title: '항공', price: 300000, paidOn: '2026-08-20' },
-    { id: 'car', type: 'car', title: '렌터카', price: 60000, start: '2026-10-01', end: '2026-10-01', payState: 'PAID', paidOn: '2026-12-31' }
-  ], costItems: [{ id: 'ins', title: '보험', kind: 'OTHER', amount: 20000, payState: 'RESERVED', paidOn: '2026-09-18' }] });
-  assert.equal(trip.bookings[0].paidOn, '2026-10-01', '예약의 결제일이 정규화에서 살아남는다');
-
-  // 오늘 = 2026-09-18: 항공(8/20)·보험(9/18)·버스(9/1)는 낸 돈, 호텔(10/1)·입장권(10/5)·렌터카(12/31)는 아직
-  const today = '2026-09-18';
-  const day = summary(trip, 0, { today });
-  const byKey = Object.fromEntries(day.details.items.map(i => [i.key, i.payState]));
-  assert.equal(byKey['0'], 'RESERVED', '손으로 결제라고 해도 결제일이 아직이면 예약이다 — 날짜가 이긴다');
-  assert.equal(byKey.bus, 'PAID');
-  assert.equal(byKey.stay, 'RESERVED', '하루치도 같은 규칙');
-  assert.equal(byKey.car, 'RESERVED', '결제함 표시보다 결제일(12/31)이 먼저다');
-  const result = L.tripCostSummary(trip, [{ index: 0, cost: day }], rates, today);
-  assert.deepEqual(result.prep.items.map(i => [i.key, i.payState, i.paidOn]),
-    [['stay', 'RESERVED', '2026-10-01'], ['fly', 'PAID', '2026-08-20'], ['car', 'RESERVED', '2026-12-31'], ['ins', 'PAID', '2026-09-18']],
-    '가계부 줄이 결제일을 싣고 같은 오늘로 상태를 말한다');
-  assert.equal(result.unallocated.find(i => i.key === 'fly').payState, 'PAID');
-
-  // 오늘 = 2026-10-05: 호텔·입장권은 결제함이 됐고 렌터카는 여전히 아직
-  const later = summary(trip, 0, { today: '2026-10-05' });
-  const laterByKey = Object.fromEntries(later.details.items.map(i => [i.key, i.payState]));
-  assert.equal(laterByKey['0'], 'PAID', '결제일 당일부터 결제함');
-  assert.equal(laterByKey.stay, 'PAID');
-  assert.equal(laterByKey.car, 'RESERVED');
-  const laterResult = L.tripCostSummary(trip, [{ index: 0, cost: later }], rates, '2026-10-05');
-  assert.equal(laterResult.prep.items.find(i => i.key === 'stay').payState, 'PAID', '예약 한 줄과 하루치가 같은 상태');
-  assert.deepEqual(laterResult.prep.payTotals, { RESERVED: 60000, PAID: 100000 + 300000 + 20000, NONE: 0 });
+test('결제 상태는 날짜가 지나도 유지되고 하루치와 여행 전체가 같은 표시를 읽는다', () => {
+  const trip = L.normalizeTrip({start:'2026-10-01',days:[{spots:[{name:'입장권',cost:12000,payState:'PAID',paidOn:'2026-10-05'}],
+    costItems:[{id:'bus',kind:'TRANSIT',amount:3000,paidOn:'2026-09-01'}]}],bookings:[
+    {id:'stay',type:'hotel',title:'호텔',price:100000,start:'2026-10-01',end:'2026-10-02',paidOn:'2026-10-01'},
+    {id:'fly',type:'flight',title:'항공',price:300000,payState:'PAID',paidOn:'2026-08-20'},
+    {id:'car',type:'car',title:'렌터카',price:60000,start:'2026-10-01',end:'2026-10-01',payState:'PAID',paidOn:'2026-12-31'}
+  ],costItems:[{id:'ins',title:'보험',kind:'OTHER',amount:20000,payState:'RESERVED',paidOn:'2026-09-18'}]});
+  for(const today of ['2026-09-18','2026-10-05']){
+    const day=summary(trip,0,{today}), byKey=Object.fromEntries(day.details.items.map(i=>[i.key,i.payState]));
+    assert.equal(byKey['0'],'PAID'); assert.equal(byKey.bus,'NONE');
+    assert.equal(byKey.stay,'RESERVED'); assert.equal(byKey.car,'PAID');
+    const result=L.tripCostSummary(trip,[{index:0,cost:day}],rates,today);
+    assert.deepEqual(result.prep.items.map(i=>[i.key,i.payState,i.paidOn]),
+      [['stay','RESERVED','2026-10-01'],['fly','PAID','2026-08-20'],['car','PAID','2026-12-31'],['ins','RESERVED','2026-09-18']]);
+    assert.deepEqual(result.prep.payTotals,{RESERVED:120000,PAID:360000,NONE:0});
+  }
+  trip.bookings[0].payState='PAID';
+  assert.equal(summary(trip).details.items.find(i=>i.key==='stay').payState,'PAID','사용자가 완료를 확인하면 하루치도 바뀐다');
 });
 
-test('오늘을 모르면 결제일을 판정하지 않고 손으로 고른 상태로 돌아간다', () => {
+test('날짜를 알거나 몰라도 결제 완료를 추측하지 않는다', () => {
   assert.equal(L.costPayStateOf({ paidOn: '2026-01-01', payState: 'RESERVED' }, 'TRIP'), 'RESERVED');
   assert.equal(L.costPayStateOf({ paidOn: '2026-01-01' }, 'BOOKING'), 'RESERVED', '예약은 표시 없으면 예약');
   assert.equal(L.costPayStateOf({ paidOn: '2026-01-01', payState: 'PAID' }, 'BOOKING'), 'PAID');
   assert.equal(L.costPayStateOf({ paidOn: '2026-01-01' }, 'EXTRA'), 'NONE', '그 밖의 항목은 미구분');
-  assert.equal(L.costPayStateOf({ paidOn: '2026-01-01' }, 'EXTRA', '2026-01-01'), 'PAID');
-  assert.equal(L.costPayStateOf({ paidOn: '2026-01-02' }, 'EXTRA', '2026-01-01'), 'RESERVED');
+  assert.equal(L.costPayStateOf({ paidOn: '2026-01-01' }, 'EXTRA', '2026-01-01'), 'NONE');
+  assert.equal(L.costPayStateOf({ paidOn: '2026-01-02' }, 'EXTRA', '2026-01-01'), 'NONE');
   assert.equal(L.costPayStateOf({ paidOn: '언젠가', payState: 'PAID' }, 'EXTRA', '2026-01-01'), 'PAID', '날짜 모양이 아니면 없는 것');
   assert.equal(L.costPayStateOf({ payState: 'PAID' }, 'EXTRA', '2026-01-01'), 'PAID', '결제일이 없으면 손으로 고른 상태');
   // 하루치 항목은 결제일을 싣는다(없으면 null) — 화면이 문서를 다시 읽지 않게

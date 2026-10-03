@@ -125,7 +125,7 @@ declare module '@legacy/lib.js' {
     /** 택시비 추정을 하루 비용에 넣는 날인가 — 그날 기본 수단이 택시이고 수동 교통비가 없을 때만 */
     taxiFareCounts(day: unknown): boolean;
     /** 자차 2km 미만을 걸어서 계산할 때의 걷는 거리(m)·분 — 아니면 null. 웹과 서버가 같은 규칙을 쓴다(2026-10-03) */
-    walkInsteadOfCar(mode: string | null | undefined, route: { m?: number | null; sec?: number | null } | null | undefined, a?: { lat: number; lng: number }, b?: { lat: number; lng: number }): { m: number; min: number } | null;
+    shortWalkOption(mode: string | null | undefined, route: { m?: number | null; sec?: number | null } | null | undefined, a?: { lat: number; lng: number }, b?: { lat: number; lng: number }): { m: number; min: number } | null;
     tripCostSummary(trip: unknown, days: unknown[], rates: Record<string, number>, today?: string): Pick<import('@/features/trip-state/domain/contract').TripCostsResponse, 'totalKRW' | 'averagePerDayKRW' | 'categories' | 'unallocated' | 'payTotals' | 'prep' | 'onSite' | 'unknownCount' | 'transportUnpriced' | 'hasForeignCurrency'>;
     dayCostSummary(trip: unknown, di: number, input: { date: string; rates: Record<string, number>; taxi: number | null; transportUnpriced: boolean; today?: string }): import('@/features/trip/domain/costTypes').DayCostSummary;
     parseHM(t: string | undefined): number;

@@ -9,7 +9,7 @@ import { CONTRACT_SCHEMA_VERSION, type TripCostsResponse } from './contract';
 /**
  * 환율은 **받은 것**을 쓴다(`serverFx`). 안 넘기면 근사값이고 응답이 그렇게 말한다 —
  * 출처(`fxSource`)와 기준일(`fxAsOf`)이 하루치 상세와 전체에 같이 실린다.
- * `todayISO`는 결제일이 있는 항목의 상태를 정하는 오늘이다 — 하루치와 가계부 줄이 **같은 오늘**을 쓴다.
+ * `todayISO`는 기존 날짜 인자다. 하루치와 가계부 줄은 사용자가 확인한 같은 상태를 쓴다.
  */
 export function buildTripCosts(trip: TripDoc, legCache: LegCache, revision: number,
                                fx: FxSnapshot = FX_FALLBACK_SNAPSHOT, todayISO?: string): TripCostsResponse {

@@ -19,7 +19,14 @@ test('장소 모달은 기본 정보와 접힌 상세 설정을 분리한다',as
   await prepare(context); await page.goto('/');
   await page.locator('.addSpot').first().click();
   await expect(page.locator('#spotAdvanced')).not.toHaveAttribute('open','');
+  await expect(page.locator('#spotName')).toBeHidden();
+  await expect(page.locator('#spotAt')).toBeHidden();
+  await expect(page.locator('#spotSearch')).toBeVisible();
+  await expect(page.locator('#spotDay')).toBeVisible();
+  await page.locator('#spotIdentity > summary').click();
   await expect(page.locator('#spotName')).toBeVisible();
+  await page.locator('#spotSchedule > summary').click();
+  await expect(page.locator('#spotAt')).toBeVisible();
   await page.locator('#spotAdvanced > summary').click();   // 안에 명소 예약 묶음(details)이 하나 더 있다
   await expect(page.locator('#spotLegMode')).toBeVisible();
   await expect(page.locator('#spotModalBg .stepBadge')).toHaveText('상세 설정');
@@ -44,9 +51,32 @@ test('모바일 일정 패널은 접힘·반판·전체 3단계로 전환된다'
   await prepare(context); await page.setViewportSize({width:390,height:844}); await page.goto('/');
   const sidebar=page.locator('#sidebar');
   await expect(sidebar).toHaveAttribute('data-snap','half');
+  await expect.poll(()=>sidebar.evaluate(el=>el.getBoundingClientRect().height)).toBeGreaterThan(844*.58);
+  const height=await sidebar.evaluate(el=>el.getBoundingClientRect().height);
+  expect(height).toBeLessThan(844*.62);
   await page.locator('#sheetHandle').click(); await expect(sidebar).toHaveAttribute('data-snap','expanded');
   await page.locator('#sheetHandle').click(); await expect(sidebar).toHaveAttribute('data-snap','collapsed');
   await page.locator('#sheetHandle').click(); await expect(sidebar).toHaveAttribute('data-snap','half');
+});
+
+test('여행 전에는 미리보기로 안내하고 일정에서 예약·준비 메모에 바로 들어간다',async({context,page})=>{
+  await prepare(context); await page.setViewportSize({width:390,height:844}); await page.goto('/');
+  await page.evaluate(()=>{ trip().start='2030-08-01'; travelClock=()=>({todayISO:'2030-07-01',nowMin:600}); render(); });
+  await expect(page.locator('#travelBtn')).toHaveAccessibleName('여행 미리보기');
+  await page.locator('#travelBtn').click();
+  await expect(page.locator('#travelModeTitle')).toHaveText('Day 1 미리보기');
+  await expect(page.locator('#travelIntent')).toHaveAccessibleName('이 날 원하는 여행 방식을 적어 주세요');
+  await page.locator('#travelClose').click();
+  await page.locator('.planTools').getByRole('button',{name:'예약·결제'}).click();
+  await expect(page.locator('#bookingListBg')).toBeVisible();
+  await expect(page.locator('#bookingListBg #resvMenuBtn')).toBeVisible();
+  await page.locator('#resvMenuBtn').click();
+  await expect(page.locator('#resvListBg')).toBeVisible();
+  await page.locator('#resvListClose').click();
+  await expect(page.locator('#bookingListBg')).toBeVisible();
+  await page.locator('#bookingListClose').click();
+  await page.locator('.planTools').getByRole('button',{name:'준비 메모'}).click();
+  await expect(page.locator('#noteModalBg')).toBeVisible();
 });
 
 // 시트 높이는 .22s 전환한다 — 3단계를 연달아 넘기면 그 도중에 다시 탭하게 된다.
@@ -97,6 +127,7 @@ test('전환 도중 다시 탭해도 일정 패널 단계는 한 칸씩만 움�
 test('핸들 드래그는 놓은 높이의 비율로 스냅한다',async({context,page})=>{
   await prepare(context); await page.setViewportSize({width:390,height:844}); await page.goto('/');
   const sb=page.locator('#sidebar');
+  await expect.poll(()=>sb.evaluate(el=>Math.round(el.getBoundingClientRect().height))).toBe(Math.round(844*.6));
   const dragTo=async y=>{
     const b=await page.locator('#sheetHandle').boundingBox();
     await page.mouse.move(b.x+b.width/2,b.y+b.height/2); await page.mouse.down();
@@ -195,7 +226,7 @@ test('여행 모드는 지금 무엇을 할지 제안하고, 받아들이면 일
   await expect(suggest).toContainText('레티로 공원');
   await expect(suggest.locator('.sgWhy li').first()).toBeVisible();   // 추천 이유를 항상 설명한다
   const move=suggest.locator('.sgCard[data-type="MOVE_FROM_OTHER_DAY"]',{hasText:'레티로 공원'});
-  await expect(move.getByRole('button',{name:'오늘 일정에 넣기'})).toBeVisible();   // accessible name은 사용자 계약
+  await expect(move.getByRole('button',{name:'Day 2 → Day 1로 옮기기'})).toBeVisible();   // accessible name은 사용자 계약
   await move.locator('button[data-action="ACCEPT"]').click();                    // 동작 선택은 의미 기반 계약
   await expect.poll(()=>page.evaluate(()=>trip().days[0].spots.map(s=>s.name).join(','))).toContain('레티로 공원');
   await page.locator('#travelList .tSpot').first().getByRole('button',{name:'다녀왔어요'}).click();

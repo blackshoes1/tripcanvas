@@ -655,10 +655,7 @@ export interface DayPlanLeg {
   path: string | null;
   /** 이 구간이 실측 경로인지 추정인지. 구간마다 다를 수 있다(하나는 도로, 하나는 직선) */
   source: TravelTimeSource;
-  /**
-   * 자차 하루의 가까운 구간이라 **걸어서** 계산했는가(`walkInsteadOfCar`). 그때 `minutes`·`distanceKm`는 걷는 값이고
-   * `mode`는 그 날의 수단 그대로다 — 화면은 '가까워 걸어서'라고 말한다(웹 `legLabel`과 같은 말).
-   */
+  /** 옛 앱과의 계약 호환 필드. 고른 수단을 자동 변경하지 않으므로 false다. */
   walkInstead: boolean;
 }
 

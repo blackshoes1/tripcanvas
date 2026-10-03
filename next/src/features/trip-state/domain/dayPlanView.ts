@@ -51,17 +51,14 @@ function legOf(cache: LegCache, from: LocatedSpot, to: LocatedSpot, mode: Transp
   const cached = cache[legKey(from, to, mode)];
   const measured = !!(cached && cached.sec);
   const routed = measured && !cached.est;
-  // 자차 하루의 가까운 구간은 걸어서 계산한다 — 시간만이 아니라 거리도 걷는 거리다(차가 도는 일방통행 1.4km가 아니라).
-  // 웹 `legLabel`의 '가까워 걸어서 N분'과 같은 판정(`walkInsteadOfCar`)이다.
-  const walk = measured ? legacyLib.walkInsteadOfCar(mode, cached, from, to) : null;
   return {
     from: { lat: from.lat, lng: from.lng },
     mode,
     minutes: Math.round(legMinutes(cache, from, to, mode)),
-    distanceKm: walk ? km(walk.m / 1000) : measured && cached.m != null ? km(cached.m / 1000) : km(haversine(from, to)),
-    path: routed && !walk ? cached.path ?? null : null,
+    distanceKm: measured && cached.m != null ? km(cached.m / 1000) : km(haversine(from, to)),
+    path: routed ? cached.path ?? null : null,
     source: routed ? 'ROUTED' : 'STRAIGHT_LINE_ESTIMATE',
-    walkInstead: !!walk
+    walkInstead: false
   };
 }
 
@@ -108,7 +105,7 @@ export interface DayPlanInput {
   legsPending?: number;
   /** 서버가 받은 환율(`serverFx`). 없으면 근사값이고 응답이 그렇게 말한다 */
   fx?: FxSnapshot;
-  /** 여행 시간대의 오늘(`resolveClock`) — 결제일이 있는 비용 항목의 상태를 정한다. 없으면 손으로 고른 상태만 본다 */
+  /** 여행 시간대의 오늘(`resolveClock`). 결제 상태는 날짜와 독립적인 사용자 표시다 */
   todayISO?: string;
 }
 

@@ -309,16 +309,17 @@ describe('buildDayPlanView — 구간 캐시', () => {
     expect(leg.path).toBe('encoded');
   });
 
-  it('자차 하루의 가까운 구간은 걷는 시간·걷는 거리이고 그렇다고 표시한다(웹 "가까워 걸어서")', () => {
+  it('가까운 자차 구간도 선택한 차 시간·거리·경로를 그대로 싣는다', () => {
     // 직선 약 300m인데 차는 일방통행을 돌아 1.4km — 걷는 거리는 차 경로가 아니라 두 곳 사이로 잰다
     const a = spot('경복궁', 37.5796, 126.977), b = spot('국립고궁박물관', 37.5769, 126.977);
     const t = trip([day([a, b]), day([])]);
     const cache: LegCache = { [key(a, b)]: { sec: 300, m: 1400, path: 'car-path' } };
     const leg = build(t, 0, cache)!.day.spots[1].incomingLeg!;
-    expect(leg.walkInstead).toBe(true);
+    expect(leg.walkInstead).toBe(false);
+    expect(leg.minutes).toBe(5);
     expect(leg.mode).toBe('car');
-    expect(leg.distanceKm).toBeLessThan(0.5);
-    expect(leg.path, '차가 도는 길을 걷는 길처럼 그리지 않는다').toBeNull();
+    expect(leg.distanceKm).toBe(1.4);
+    expect(leg.path).toBe('car-path');
     // 먼 구간은 그대로 차다
     const far = build(trip([day([airport(), seongsan()]), day([])]), 0,
       { [key(airport(), seongsan())]: { sec: 3600, m: 52_300 } })!.day.spots[1].incomingLeg!;
