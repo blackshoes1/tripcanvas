@@ -39,6 +39,7 @@
   #main{flex:1;display:flex;overflow:hidden;position:relative}
   #sidebar{width:360px;min-width:360px;background:var(--surface-2);overflow-y:auto;padding:10px;border-right:1px solid var(--border)}
   #map,#kmap{flex:1}
+  #map .gmapCanvas{width:100%;height:100%}#map .gmapCanvas[hidden]{display:none}
   body.playing #sidebar{display:none}   /* 여행 재생 중엔 사이드바 접어 지도를 크게 */
   body.playing #legend{display:none}    /* 재생 중엔 범례(일자·도시색 레이어) 숨김 — 지도 가림 방지 */
   /* 카카오맵 커스텀 팝업 */

@@ -955,11 +955,17 @@ function fillSpotFromCoords(lat,lng,forceCity,placeId,known){
 // cityFromKoreanAddr·placeName·cityFromGoogle은 lib.js가 단일 소스 (Next 검색과 공유)
 // 지도도 테마를 따른다(2026-10-03 UX 검토 — 다크 화면에 밝은 지도만 남았다). 구글은 색 구성을 **만들 때만** 정할 수 있어
 // 테마가 바뀌면 지도를 같은 자리·배율로 다시 만들고 render()가 표시를 다시 얹는다(표시는 전부 remove()가 있는 손잡이다).
-let gmapScheme=null;
+let gmapScheme=null, gmapRebuilding=false;
 function googleScheme(){ const CS=google.maps.ColorScheme; return CS? (document.body.classList.contains('theme-dark')? CS.DARK : CS.LIGHT) : null; }
 function createGoogleMap(){
   const prev=(map&&typeof map.getCenter==='function')? map : null, scheme=googleScheme();   // 다시 만들 때는 같은 자리·배율로
-  map=new google.maps.Map(document.getElementById('map'),{
+  // 다시 만들 때는 새 칸에 — 같은 요소에 지도를 또 만들면 이전 지도의 상태가 남아 새 핀을 만들다 죽었다(E2E, 2026-10-03).
+  // 이전 칸은 떼지 않고 숨긴다: 떼면 아직 그 지도에 붙은 손잡이(검색 핀 등)의 remove()가 DOM을 못 찾아 죽는다.
+  const host=document.getElementById('map'), canvas=document.createElement('div');
+  canvas.className='gmapCanvas';
+  host.querySelectorAll('.gmapCanvas').forEach(c=>{ c.hidden=true; });
+  host.appendChild(canvas);
+  map=new google.maps.Map(canvas,{
     center:prev? prev.getCenter() : {lat:40,lng:-3.7}, zoom:prev? prev.getZoom() : 6, mapId:'DEMO_MAP_ID',
     disableDefaultUI:true, zoomControl:true, clickableIcons:true, gestureHandling:'greedy',
     // 확대·축소는 오른쪽 위 — 기본 자리(오른쪽 아래)는 데스크톱 범례(#legend)가 덮어 눌러도 줌이 그대로였다(2026-10-03 UX 검토).
@@ -980,10 +986,13 @@ function createGoogleMap(){
 /** 테마가 바뀌었으면 구글 지도를 그 색으로 다시 만든다 — 같은 색이면 아무것도 하지 않는다 */
 function syncMapTheme(){
   if(!map||typeof google==='undefined'||!google.maps||gmapScheme===googleScheme()) return;
-  if(iw) iw.close();
-  createGoogleMap();
+  if(play) stopPlay();   // 재생 표시는 옛 지도에 붙어 있다
+  clearOverlays();   // 옛 지도가 살아 있을 때 걷는다
   _ovSig=null;   // 표시는 바뀐 것이 없어도 새 지도에는 없다 — 다시 얹게 한다
-  render();
+  // 막 만든 지도에 바로 핀을 만들면 Google 안에서 죽는다(E2E — 'reading keys'). 첫 idle까지 지도를 준비 안 됨으로 둔다
+  gmapRebuilding=true;
+  createGoogleMap();
+  google.maps.event.addListenerOnce(map,'idle',()=>{ gmapRebuilding=false; _ovSig=null; render(); });
 }
 window.__gmapsReady=function(){
   createGoogleMap();
@@ -1048,7 +1057,7 @@ function closeKPopup(){ if(kpopupOv){ kpopupOv.setMap(null); kpopupOv=null; } }
 // google/kakao 분기를 한 곳으로 격리. 모든 오버레이 핸들은 { remove() } 형태로 통일.
 const Engines={
   google:{
-    ready(){ return !!map; },
+    ready(){ return !!map && !gmapRebuilding; },   // 테마로 다시 만든 지도는 첫 idle 전에 핀을 받지 못한다
     // z: 같은 자리에 겹칠 때 위에 올 순서(클수록 위) — 없으면 엔진 기본
     marker(lat,lng,el,onClick,z){
       const m=new google.maps.marker.AdvancedMarkerElement({map, position:{lat,lng}, content:el, ...(z!=null?{zIndex:z}:{})});
