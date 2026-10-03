@@ -310,7 +310,7 @@ struct BookingCard: View {
                 Text(booking.priceKnown == false ? "금액 미정" : TimeFormat.money(booking.price, currency: booking.currency))
                     .font(.subheadline.weight(.semibold))
                 if let refundable = booking.refundable {
-                    Text(refundable ? "환불 가능" : "환불 불가").font(.caption).foregroundStyle(Ink.soft)
+                    Text(refundable ? "무료 취소 가능" : "무료 취소 안 됨").font(.caption).foregroundStyle(Ink.soft)
                 }
             }
 

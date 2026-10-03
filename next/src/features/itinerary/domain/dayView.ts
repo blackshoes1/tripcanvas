@@ -372,7 +372,7 @@ export function buildDayView(trip: Trip, legCache: LegCache, di: number, fx: FxR
 
   return {
     di, dayNo: di + 1, title: day.title, iso, dateLabel: dateLabelOf(trip, di),
-    timeZone: day.timeZone || trip.timeZone || '', mode: dm, modeIcon: MODE_ICON[dm], modeName: MODE_NAME[dm],
+    timeZone: legacyLib.effectiveTimeZone(trip, di).timeZone, mode: dm, modeIcon: MODE_ICON[dm], modeName: MODE_NAME[dm],
     drive: day.drive, note: day.note,
     flightLabel: flightBits.length ? `✈️ ${flightBits.join(' · ')}` : null,
     carry: carry ? { name: carry.name, startAt: hm(parseHM(day.startAt)) } : null,

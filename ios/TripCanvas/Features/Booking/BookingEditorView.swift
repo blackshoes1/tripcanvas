@@ -244,8 +244,13 @@ struct BookingEditorView: View {
                 if isBookingKind {
                     Section {
                         DisclosureGroup("취소 조건") {
-                            Toggle("무료 취소 가능", isOn: $draft.refundable)
-                            if draft.refundable {
+                            // 세 갈래다 — 고르지 않은 예약을 '불가'로 단정하지 않는다(웹 편집기와 같은 칸)
+                            Picker("무료 취소", selection: $draft.refundable) {
+                                Text("모름").tag(Bool?.none)
+                                Text("가능").tag(Bool?.some(true))
+                                Text("불가").tag(Bool?.some(false))
+                            }
+                            if draft.refundable == true {
                                 DateField(title: "무료 취소 기한", text: $draft.freeCancelUntil) { Date() }
                             }
                             TextField("취소 수수료", text: $feeText)
@@ -524,7 +529,7 @@ struct BookingEditorView: View {
         booking.paidOn = paidOn
         booking.payState = paidOn != nil ? .reserved : payState   // 결제일이 있으면 날짜가 정한다 — `.reserved`는 키를 지운다
         booking.photos = photos
-        if !booking.refundable { booking.freeCancelUntil = nil }
+        if booking.refundable != true { booking.freeCancelUntil = nil }
         if booking.type == .hotel {
             // 웹 폼의 기본값(성인 2·객실 1)과 같다 — 시세 비교에 조건이 있어야 한다.
             booking.adults = booking.adults ?? 2

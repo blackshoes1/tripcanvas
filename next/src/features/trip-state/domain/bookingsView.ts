@@ -100,7 +100,8 @@ export function buildBookings(trip: TripDoc, observations: PriceObservation[], t
         currency: String(b.cur ?? 'KRW'),
         start: typeof b.start === 'string' ? b.start : null,
         end: typeof b.end === 'string' ? b.end : null,
-        refundable: typeof b.refundable === 'boolean' ? b.refundable : null,
+        // 표시 없는 옛 false는 '모름'(null) — 웹 `refundableOf`와 같은 규칙
+        refundable: lib.refundableOf(b),
         freeCancelUntil: typeof b.freeCancelUntil === 'string' ? b.freeCancelUntil : null,
         confirmation: confirmation ?? null,
         place: [b.carPickup, b.roomName].find((v) => typeof v === 'string' && v) as string ?? null,

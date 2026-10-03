@@ -109,7 +109,8 @@
           "minutes": 2,
           "distanceKm": 1.1,
           "path": null,
-          "source": "STRAIGHT_LINE_ESTIMATE"
+          "source": "STRAIGHT_LINE_ESTIMATE",
+          "walkInstead": false
         }
       }
     ],
@@ -159,7 +160,8 @@
         "minutes": 2,
         "distanceKm": 1.1,
         "path": null,
-        "source": "STRAIGHT_LINE_ESTIMATE"
+        "source": "STRAIGHT_LINE_ESTIMATE",
+        "walkInstead": false
       }
     },
     "spotsWithoutLocation": 0,

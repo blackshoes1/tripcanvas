@@ -16,7 +16,7 @@
   .btn.primary{background:var(--primary);border-color:var(--primary);color:#fff;font-weight:700}
   /* 줄 안에 끼는 작은 버튼. 인라인 style로 각자 만들던 것을 한 이름으로 모았다(2026-09-21).
      ⚠️ 손가락이 닿아야 하므로 `min-height`는 44px 아래로 내리되 26px 밑으로는 두지 않는다. */
-  .btn.sm{font-size:11px;padding:2px 9px;min-height:26px;border-radius:8px}
+  .btn.sm{font-size:.75rem;padding:2px 9px;min-height:26px;border-radius:8px}
   .btn.primary:hover{background:var(--primary-dark)}
   .btn.ghost{background:transparent;border:1px solid var(--border)}
   .tripPicker{border:0;background:transparent;color:var(--ink);font-weight:800;font-size:14px;display:flex;align-items:center;gap:7px;padding:8px;border-radius:8px}
@@ -28,14 +28,14 @@
   #moreBtn{display:inline-flex;align-items:center;justify-content:center;position:relative}
   /* ☰ 안에만 있는 것(준비 메모·가고 싶은 곳)이 있다는 표시. 무엇인지는 열면 항목이 말한다 */
   .menuBadge{position:absolute;top:5px;right:5px;width:7px;height:7px;border-radius:50%;background:var(--primary);box-shadow:0 0 0 2px var(--header)}
-  .menuCount{margin-left:auto;font-size:11px;font-variant-numeric:tabular-nums;color:var(--muted);background:var(--surface-2);border-radius:999px;padding:1px 7px}
+  .menuCount{margin-left:auto;font-size:.75rem;font-variant-numeric:tabular-nums;color:var(--muted);background:var(--surface-2);border-radius:999px;padding:1px 7px}
   #filterbar{background:var(--header);padding:4px 14px 10px;display:flex;gap:5px;flex-wrap:wrap;align-items:center;z-index:1001;border-bottom:1px solid var(--border)}
   .chip{border:1px solid transparent;border-radius:999px;padding:6px 13px;font-size:12.5px;background:transparent;color:var(--muted);min-height:34px}
   .chip:hover{background:var(--hover-bg)}
   .chip.active{background:var(--selected-bg);border-color:var(--primary);color:var(--primary-dark);font-weight:700}
   /* 지금은 고를 수 없는 칩('오늘'이 여행 기간 밖) — 흐리게. 누르면 이유를 말하므로 disabled가 아니다 */
   .chip.off{opacity:.45;cursor:default}.chip.off:hover{background:transparent}
-  .viewMenu{position:relative;margin-left:auto}.viewMenu>summary{list-style:none;cursor:pointer;font-size:12px;color:var(--muted);padding:6px 9px;border-radius:8px}.viewMenu>summary::-webkit-details-marker{display:none}.viewMenu[open]>summary{background:var(--surface-2)}.viewMenuPanel{position:absolute;right:0;top:calc(100% + 6px);width:210px;background:var(--surface);border:1px solid var(--border);box-shadow:var(--shadow);border-radius:12px;padding:8px;display:grid;gap:5px;z-index:1300}.viewMenuPanel .chip{text-align:left;border-radius:8px}.viewMenuLabel{font-size:10px;color:var(--subtle);padding:5px 8px 1px}.cityFocus{display:flex;gap:5px;flex-wrap:wrap;padding:2px 6px 7px}.cityFocus .chip{border:1px solid var(--border)}
+  .viewMenu{position:relative;margin-left:auto}.viewMenu>summary{list-style:none;cursor:pointer;font-size:12px;color:var(--muted);padding:6px 9px;border-radius:8px}.viewMenu>summary::-webkit-details-marker{display:none}.viewMenu[open]>summary{background:var(--surface-2)}.viewMenuPanel{position:absolute;right:0;top:calc(100% + 6px);width:210px;background:var(--surface);border:1px solid var(--border);box-shadow:var(--shadow);border-radius:12px;padding:8px;display:grid;gap:5px;z-index:1300}.viewMenuPanel .chip{text-align:left;border-radius:8px}.viewMenuLabel{font-size:.75rem;color:var(--subtle);padding:5px 8px 1px}.cityFocus{display:flex;gap:5px;flex-wrap:wrap;padding:2px 6px 7px}.cityFocus .chip{border:1px solid var(--border)}
   #main{flex:1;display:flex;overflow:hidden;position:relative}
   #sidebar{width:360px;min-width:360px;background:var(--surface-2);overflow-y:auto;padding:10px;border-right:1px solid var(--border)}
   #map,#kmap{flex:1}
@@ -54,20 +54,20 @@
      ⋮는 아래로 둘째 줄(오른쪽은 비어 있다) 옆까지 내려앉고, 줄 높이는 제목이 정한다 */
   .dayHeadMain>.actionMenu{margin-bottom:-14px}
   .dayHeadMeta{display:flex;align-items:center;flex-wrap:wrap;gap:2px 7px;min-width:0;padding:0 44px 1px 14px}
-  .dayHead .date{color:var(--subtle);font-weight:400;font-size:11.5px;min-width:0;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+  .dayHead .date{color:var(--subtle);font-weight:400;font-size:.75rem;min-width:0;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
   .iconb{background:none;border:none;color:var(--muted);font-size:13px;padding:8px;border-radius:7px;min-width:36px;min-height:36px}
   .iconb:hover{color:var(--ink);background:var(--surface-2)}
   .dayBody{padding:2px 12px 9px}
-  .drive{font-size:11.5px;color:var(--meta-eta);padding:2px 0 4px 2px;font-variant-numeric:tabular-nums}
-  .driveMemo{color:var(--muted)}.memoTag{font-size:10.5px;font-weight:700;color:var(--subtle);border:1px solid var(--border);border-radius:5px;padding:0 4px;margin-right:5px}
-  .dist{font-size:11px;color:var(--meta-soft);padding:1px 0 3px 2px;font-variant-numeric:tabular-nums}
+  .drive{font-size:.75rem;color:var(--meta-eta);padding:2px 0 4px 2px;font-variant-numeric:tabular-nums}
+  .driveMemo{color:var(--muted)}.memoTag{font-size:.75rem;font-weight:700;color:var(--subtle);border:1px solid var(--border);border-radius:5px;padding:0 4px;margin-right:5px}
+  .dist{font-size:.75rem;color:var(--meta-soft);padding:1px 0 3px 2px;font-variant-numeric:tabular-nums}
   button.dist.estNote{display:block;width:100%;text-align:left;background:none;border:0;font:inherit;font-size:12px;line-height:1.5;color:var(--muted);padding:4px 2px;min-height:44px;cursor:pointer}.estNote .estFix{font-weight:700;text-decoration:underline}
   .leg{color:var(--meta-soft);font-size:.8125rem;white-space:nowrap;font-variant-numeric:tabular-nums}
   /* 구간 수단 버튼 — 상속(흐림) vs 이 구간만 지정(진하게 + 테두리) */
-  .legModeBtn{background:none;border:1px solid transparent;border-radius:6px;padding:0 3px;font-size:11px;line-height:1.5;opacity:.5;cursor:pointer}
+  .legModeBtn{background:none;border:1px solid transparent;border-radius:6px;padding:0 3px;font-size:.75rem;line-height:1.5;opacity:.5;cursor:pointer}
   .legModeBtn:hover{opacity:1;background:var(--hover-bg)}
   .legModeBtn.set{opacity:1;border-color:var(--border);background:var(--surface-2)}
-  .note{font-size:11px;color:var(--muted);padding:3px 0 0 2px;white-space:pre-wrap}
+  .note{font-size:.75rem;color:var(--muted);padding:3px 0 0 2px;white-space:pre-wrap}
   .spot{font-size:14.5px;padding:2px 0 6px 14px;position:relative;min-width:0}
   .spot:before{content:'';position:absolute;left:2px;top:20px;width:8px;height:8px;border-radius:50%;background:var(--c,var(--subtle))}
   .spotMain{display:grid;grid-template-columns:56px minmax(0,1fr) 44px;align-items:start;gap:4px;min-width:0}
@@ -84,18 +84,18 @@
   /* 예약에서 파생한 렌터카 픽업·반납 — 저장된 장소가 아니므로 드래그·편집 불가, 옅게 */
   .spot.carbk{cursor:default;opacity:.82}
   /* 전체 비용 내역 (필터바 costMenu) */
-  .costRow{display:flex;justify-content:space-between;gap:12px;font-size:11.5px;padding:2px 0;color:var(--meta-soft)}
+  .costRow{display:flex;justify-content:space-between;gap:12px;font-size:.75rem;padding:2px 0;color:var(--meta-soft)}
   .costRow b{color:var(--ink)}
   .costRow.costTotal{border-top:1px solid var(--border);margin-top:3px;padding-top:4px;font-weight:700}
   .costRow.costGroup{font-weight:600;color:var(--ink);margin-top:3px}
   .costRow.costSub{padding-left:10px}
   .costRow.bkListTotal{font-size:13.5px;border-top:0;margin:0 0 4px;padding:4px 0}
   /* 그 장소에서 차를 받고/돌려준다 — 장소 행에 붙는 칩 */
-  .spot .carbkChip{color:var(--meta-soft);background:transparent;border:1px solid currentColor;border-radius:6px;padding:1px 5px;font-size:10.5px;cursor:pointer;white-space:nowrap}
+  .spot .carbkChip{color:var(--meta-soft);background:transparent;border:1px solid currentColor;border-radius:6px;padding:1px 5px;font-size:.75rem;cursor:pointer;white-space:nowrap}
   .ghostStay{display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;
     background:var(--surface,#fff);border:2px dashed var(--c,var(--subtle));font-size:11px;line-height:1;opacity:.85;pointer-events:none}
-  .spot .opt{color:var(--meta-soft);font-size:11px}
-  .spot .noloc{color:var(--meta-warning);background:transparent;font-size:10.5px;border:1px solid currentColor;border-radius:6px;padding:1px 5px;cursor:pointer;white-space:nowrap}
+  .spot .opt{color:var(--meta-soft);font-size:.75rem}
+  .spot .noloc{color:var(--meta-warning);background:transparent;font-size:.75rem;border:1px solid currentColor;border-radius:6px;padding:1px 5px;cursor:pointer;white-space:nowrap}
   .spot{cursor:grab}
   .actionMenu{position:relative;width:44px;min-width:44px;justify-self:end}.actionMenu>summary{list-style:none;cursor:pointer;color:var(--muted);font-size:20px;line-height:1;width:44px;height:44px;display:grid;place-items:center;border-radius:8px}.actionMenu>summary::-webkit-details-marker{display:none}.actionMenu>summary:hover,.actionMenu[open]>summary{background:var(--surface-2)}.actionMenuPanel{position:absolute;right:0;top:42px;z-index:30;min-width:120px;max-width:calc(100vw - 24px);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:5px;box-shadow:var(--shadow);display:grid}.actionMenuPanel .iconb{width:100%;display:flex;align-items:center;gap:8px;white-space:nowrap;font-size:12px}
   .spot.carry{cursor:default;opacity:.72}   /* 전날 숙소 가상 이월 항목 — 드래그/편집 불가, 흐리게. 이름 탭하면 지도 포커스 */
@@ -105,13 +105,13 @@
   .sortable-chosen{background:var(--drag-bg)}
   .spotList{min-height:8px}
   .spotList:empty{min-height:26px;border:1px dashed transparent;border-radius:7px;margin-bottom:4px}body.spotDragging .spotList:empty{border-color:var(--border)}
-  .addSpot{font-size:11.5px;color:var(--meta-link);background:none;border:1px dashed var(--border);border-radius:7px;padding:3px 10px;margin-top:5px}
+  .addSpot{font-size:.75rem;color:var(--meta-link);background:none;border:1px dashed var(--border);border-radius:7px;padding:3px 10px;margin-top:5px}
   #addDayBtn{width:100%;margin-top:2px;padding:8px;font-size:12.5px}
   .poiChip{max-width:124px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:var(--surface);color:var(--ink);
-    border:1px solid var(--border);font-size:11px;font-weight:700;padding:3px 8px;border-radius:12px;cursor:pointer;
+    border:1px solid var(--border);font-size:.75rem;font-weight:700;padding:3px 8px;border-radius:12px;cursor:pointer;
     box-shadow:0 2px 6px rgba(17,24,39,.16);opacity:.94;font-family:inherit;line-height:1.3}
   .poiChip:hover,.poiChip:focus-visible{opacity:1;border-color:var(--selected-border);color:var(--selected-accent)}
-  .legend{position:absolute;bottom:20px;right:10px;background:color-mix(in srgb,var(--surface) 92%,transparent);color:var(--ink);border:1px solid var(--border);padding:8px 12px;border-radius:10px;font-size:11px;z-index:1000;line-height:1.8;max-height:40vh;overflow-y:auto;box-shadow:0 6px 18px rgba(17,24,39,.12)}
+  .legend{position:absolute;bottom:20px;right:10px;background:color-mix(in srgb,var(--surface) 92%,transparent);color:var(--ink);border:1px solid var(--border);padding:8px 12px;border-radius:10px;font-size:.75rem;z-index:1000;line-height:1.8;max-height:40vh;overflow-y:auto;box-shadow:0 6px 18px rgba(17,24,39,.12)}
   .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px}
   .num-icon{position:relative;display:flex;align-items:center;justify-content:center;border-radius:50%;color:#fff;font-weight:700;font-size:12px;border:2.5px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.5);animation:pinIn .28s cubic-bezier(.34,1.4,.64,1) both}
   /* 핀 위 카테고리 배지 — 번호(동선 순서)를 가리지 않게 오른쪽 위 모서리에 */
@@ -127,7 +127,7 @@
   .gm-style-iw button.gm-ui-hover-effect>span{background-color:#b5ab98!important}
   .popupC{font-family:inherit;font-size:13px;line-height:1.5;min-width:190px;color:#f4f1ea}
   .popupC h3{font-size:14px;margin-bottom:3px}
-  .popupC .badge{display:inline-block;font-size:10.5px;color:#fff;border-radius:8px;padding:1px 8px;margin-bottom:4px}
+  .popupC .badge{display:inline-block;font-size:.75rem;color:#fff;border-radius:8px;padding:1px 8px;margin-bottom:4px}
   .popupC a{color:#f0937a;font-size:12px}
   /* modal */
   .modalBg{position:fixed;inset:0;background:rgba(17,24,39,.48);display:none;align-items:center;justify-content:center;z-index:2000;padding:16px}
@@ -146,7 +146,7 @@
   .modal .chkrow{display:flex;align-items:center;gap:6px;margin-top:9px;font-size:12.5px}
   .searchRes{margin-top:6px;max-height:170px;overflow-y:auto}
   /* 첫 화면 — 붙여넣기가 무슨 뜻인지 한 줄로 말한다 */
-  .onboardNote{margin:-2px 0 2px;font-size:11.5px;color:var(--muted);text-align:center;line-height:1.4}
+  .onboardNote{margin:-2px 0 2px;font-size:.75rem;color:var(--muted);text-align:center;line-height:1.4}
   /* 새 여행 — 어디로·언제 */
   .ntWhen{display:flex;gap:8px;align-items:center}
   .ntWhen input[type=date]{flex:1}
@@ -157,7 +157,7 @@
   .firstStepTitle{font-size:13px;font-weight:700;margin-bottom:8px}
   .firstStepBtns{display:flex;gap:6px;flex-wrap:wrap}
   .firstStepBtns .btn{flex:1;justify-content:center;white-space:nowrap}
-  .firstStepClose{margin-top:8px;background:none;border:0;color:var(--muted);font-size:11px;text-decoration:underline;cursor:pointer;padding:0}
+  .firstStepClose{margin-top:8px;background:none;border:0;color:var(--muted);font-size:.75rem;text-decoration:underline;cursor:pointer;padding:0}
   /* 붙여넣기 미리보기 — 무엇을 담을지 사람이 고른다(§유입) */
   .pvList{margin-top:8px;max-height:46dvh;overflow-y:auto;border:1px solid var(--line);border-radius:10px}
   .pvDay{padding:7px 10px;background:var(--surface);font-size:12px;font-weight:700;color:var(--muted);position:sticky;top:0;z-index:1;box-shadow:0 1px 0 var(--line)}
@@ -167,17 +167,17 @@
   .pvRow input[type=checkbox]{margin-top:3px;flex:none}
   .pvBody{flex:1;min-width:0}
   .pvName{width:100%;font-size:13px;padding:3px 6px}
-  .pvMeta{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:3px;font-size:11px;color:var(--muted)}
-  .pvTime{flex:none;font-variant-numeric:tabular-nums;font-size:11px;color:var(--muted);padding-top:6px;min-width:38px}
+  .pvMeta{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:3px;font-size:.75rem;color:var(--muted)}
+  .pvTime{flex:none;font-variant-numeric:tabular-nums;font-size:.75rem;color:var(--muted);padding-top:6px;min-width:38px}
   .pvChip{border-radius:999px;padding:1px 7px;background:var(--bg);border:1px solid var(--line)}
   .pvChip.ok{color:var(--meta-good)}.pvChip.no{color:var(--meta-warning)}.pvChip.wait{color:var(--muted)}
-  .pvPick{font-size:11px;max-width:190px}
-  .pvRawText{white-space:pre-wrap;font-size:11px;max-height:160px;overflow:auto;color:var(--muted)}
+  .pvPick{font-size:.75rem;max-width:190px}
+  .pvRawText{white-space:pre-wrap;font-size:.75rem;max-height:160px;overflow:auto;color:var(--muted)}
   .searchRes div{font-size:12px;padding:6px 8px;border-radius:7px;cursor:pointer;color:var(--ink)}
   .searchRes div:hover{background:var(--hover-bg)}
-  .hint{font-size:11px;color:var(--subtle);margin-top:4px}
-  .eyebrow{font-size:10px!important;font-weight:800;letter-spacing:.14em;color:var(--primary)!important;text-transform:uppercase}
-  .modalTitleRow{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px}.modalTitleRow h2{margin:2px 0 8px}.stepBadge{font-size:11px;color:var(--muted);background:var(--surface-2);border:1px solid var(--border);padding:4px 8px;border-radius:12px}
+  .hint{font-size:.75rem;color:var(--subtle);margin-top:4px}
+  .eyebrow{font-size:.75rem!important;font-weight:800;letter-spacing:.14em;color:var(--primary)!important;text-transform:uppercase}
+  .modalTitleRow{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px}.modalTitleRow h2{margin:2px 0 8px}.stepBadge{font-size:.75rem;color:var(--muted);background:var(--surface-2);border:1px solid var(--border);padding:4px 8px;border-radius:12px}
   .fieldRow{display:flex;gap:7px}.fieldRow>input{flex:1;min-width:0}.compactSelect{width:auto!important}
   .basicGrid,.advancedGrid{display:grid;grid-template-columns:1fr 1fr;gap:2px 10px}.basicGrid>div,.advancedGrid>div{min-width:0}.basicGrid .wide,.advancedGrid .wide{grid-column:1/-1}
   .advancedPanel{border-top:1px solid var(--border);margin-top:14px;padding-top:4px}.advancedPanel summary{list-style:none;cursor:pointer;color:var(--focus);font-size:12px;font-weight:700;padding:10px 0}.advancedPanel summary::-webkit-details-marker{display:none}.advancedPanel summary span{float:right;transition:transform .2s}.advancedPanel[open] summary span{transform:rotate(180deg)}
@@ -197,8 +197,8 @@
   .switch input:checked+.slider{background:var(--primary)}
   .switch input:checked+.slider:before{transform:translateX(18px);background:#fff}
   #fmtHelp{margin-top:10px}
-  #fmtHelp summary{font-size:11.5px;color:var(--meta-link);cursor:pointer}
-  #fmtHelp pre{background:#16130f;border-radius:8px;padding:10px;font-size:11px;line-height:1.5;white-space:pre-wrap;margin-top:6px;color:#d5ccbb}
+  #fmtHelp summary{font-size:.75rem;color:var(--meta-link);cursor:pointer}
+  #fmtHelp pre{background:#16130f;border-radius:8px;padding:10px;font-size:.75rem;line-height:1.5;white-space:pre-wrap;margin-top:6px;color:#d5ccbb}
   /* travel mode */
   #travel{position:fixed;inset:0;background:var(--surface-2);color:var(--ink);z-index:3000;display:none;flex-direction:column;padding:16px;max-width:560px;margin:auto;box-shadow:var(--shadow)}
   #travel.show{display:flex}
@@ -208,7 +208,7 @@
   .tSpot{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:9px;border-left:4px solid var(--c,#556)}
   .tSpot .n{font-weight:700;font-size:14.5px}
   .tSpot .d{font-size:12px;color:var(--subtle);margin:3px 0 7px;white-space:pre-wrap}
-  .travelTop{display:flex;align-items:center;gap:10px;margin-bottom:12px}.travelTop strong{flex:1;text-align:center}.travelTop select{max-width:170px}.travelNow{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:10px;border-top:4px solid var(--primary)}.travelKicker,.travelSectionTitle{font-size:11px;color:var(--subtle);font-weight:700;margin-bottom:7px}.travelPlace{font-size:18px;font-weight:800;margin-bottom:7px}.travelFacts{font-size:12px;color:var(--muted);line-height:1.7}.travelMemo{font-size:12px;color:var(--muted);line-height:1.6;margin-top:6px;padding:6px 8px;background:var(--surface-2);border-radius:8px}.travelMemo span{font-weight:700;color:var(--subtle);margin-right:4px}.travelActions{display:flex;gap:8px;margin-top:10px}.travelActions a{display:inline-block;text-decoration:none;background:var(--primary);color:#fff;padding:7px 12px;border-radius:8px;font-size:12px;font-weight:700}.travelActions a+a{background:var(--surface);color:var(--ink);border:1px solid var(--border)}.travelNext strong{font-size:15px}.travelSectionTitle{margin:8px 2px}
+  .travelTop{display:flex;align-items:center;gap:10px;margin-bottom:12px}.travelTop strong{flex:1;text-align:center}.travelTop select{max-width:170px}.travelNow{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:10px;border-top:4px solid var(--primary)}.travelKicker,.travelSectionTitle{font-size:.75rem;color:var(--subtle);font-weight:700;margin-bottom:7px}.travelPlace{font-size:18px;font-weight:800;margin-bottom:7px}.travelFacts{font-size:12px;color:var(--muted);line-height:1.7}.travelMemo{font-size:12px;color:var(--muted);line-height:1.6;margin-top:6px;padding:6px 8px;background:var(--surface-2);border-radius:8px}.travelMemo span{font-weight:700;color:var(--subtle);margin-right:4px}.travelActions{display:flex;gap:8px;margin-top:10px}.travelActions a{display:inline-block;text-decoration:none;background:var(--primary);color:#fff;padding:7px 12px;border-radius:8px;font-size:12px;font-weight:700}.travelActions a+a{background:var(--surface);color:var(--ink);border:1px solid var(--border)}.travelNext strong{font-size:15px}.travelSectionTitle{margin:8px 2px}
   /* 여행 기간 밖 — 이 화면이 보기 전용이라는 것을 맨 위에서 말한다 */
   .travelPeriodNote{background:var(--badge-warn-bg);color:var(--badge-warn-fg);border-radius:10px;padding:9px 12px;margin-bottom:10px;font-size:12.5px;font-weight:600;line-height:1.5}.travelPeriodNote[hidden]{display:none}
   #sheetHandle{display:none}
@@ -251,11 +251,11 @@
   .memberList{display:grid;gap:5px}
   .memberRow{display:flex;align-items:center;gap:8px;padding:7px 9px;border:1px solid var(--border);border-radius:9px;font-size:12.5px;background:var(--surface)}
   .memberRow .mn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .memberRow .me{color:var(--subtle);font-size:11px;margin-left:4px}
+  .memberRow .me{color:var(--subtle);font-size:.75rem;margin-left:4px}
   /* ⚠️ `.modal select{width:100%}`를 되돌린다 — 안 그러면 이름(.mn)이 폭 0으로 접혀 멤버 이름이 사라진다 */
   .memberRow select{padding:4px 6px;font-size:12px;border-radius:7px;width:auto;flex:none}
   .memberRow .mn{min-width:5em}
-  .roleBadge{font-size:11px;padding:2px 8px;border-radius:999px;background:var(--surface-2);color:var(--muted);white-space:nowrap}
+  .roleBadge{font-size:.75rem;padding:2px 8px;border-radius:999px;background:var(--surface-2);color:var(--muted);white-space:nowrap}
   .roleBadge.owner{background:#f6ead3;color:#8e4e0b}.roleBadge.editor{background:#dce7eb;color:#24505f}.roleBadge.viewer{background:var(--surface-2);color:var(--subtle)}
   body.theme-dark .roleBadge.owner{background:#3a2f14;color:#f0c97f}body.theme-dark .roleBadge.editor{background:#1e3038;color:#9cc4d2}
   .inviteResult{display:flex;gap:6px;margin-top:6px}.inviteResult input{flex:1;font-size:12px}
@@ -268,7 +268,7 @@
   .modal.wide{width:min(560px,94vw)}
   /* 후보 보드 — 아직 일정이 아닌 곳. 카드 하나가 '무엇을 / 누가 / 일행은 뭐라 하는지 / 내가 뭐라 할지'다 */
   .candList{display:grid;gap:8px}
-  .candGroup{font-size:11.5px;font-weight:700;color:var(--subtle);letter-spacing:.02em;margin:6px 0 -2px}
+  .candGroup{font-size:.75rem;font-weight:700;color:var(--subtle);letter-spacing:.02em;margin:6px 0 -2px}
   .candCard{border:1px solid var(--border);border-radius:11px;padding:10px 11px;background:var(--surface)}
   .candCard.scheduled{opacity:.72;border-style:dashed}
   /* 확인한 준비 메모 — 지우지 않고 가라앉힌다(무엇을 이미 챙겼는지가 목록에 남아야 한다) */
@@ -278,9 +278,9 @@
   .candCard.noteDone .candHead b{text-decoration:line-through}
   .candHead{display:flex;align-items:flex-start;gap:8px}
   .candName{flex:1;min-width:0;font-weight:700;font-size:13.5px;overflow-wrap:anywhere}
-  .candMeta{color:var(--subtle);font-size:11.5px;margin-top:3px}
+  .candMeta{color:var(--subtle);font-size:.75rem;margin-top:3px}
   .candNote{color:var(--muted);font-size:12px;margin-top:4px;overflow-wrap:anywhere}
-  .candMood{font-size:11px;padding:2px 8px;border-radius:999px;background:var(--surface-2);color:var(--muted);white-space:nowrap}
+  .candMood{font-size:.75rem;padding:2px 8px;border-radius:999px;background:var(--surface-2);color:var(--muted);white-space:nowrap}
   /* ⚠️ `.candMood.quiet`는 규칙이 **없는 것이 맞다** — 위의 기본(`--surface-2`/`--muted`)이 곧
      '아직 조용하다'는 뜻이라 따로 칠할 것이 없다. 빠진 줄로 보고 더하지 말 것. */
   .candMood.split{background:var(--badge-warn-bg);color:var(--badge-warn-fg)}
@@ -288,9 +288,9 @@
   .candReact button{border:1px solid var(--border);background:var(--surface-2);border-radius:999px;padding:4px 10px;font-size:12px;min-height:30px;color:var(--ink)}
   .candReact button[aria-pressed="true"]{border-color:#2e5c6e;background:#dce7eb;color:#24505f;font-weight:700}
   body.theme-dark .candReact button[aria-pressed="true"]{background:#1e3038;color:#9cc4d2}
-  .candWho{color:var(--subtle);font-size:11.5px;margin-top:6px;overflow-wrap:anywhere}
+  .candWho{color:var(--subtle);font-size:.75rem;margin-top:6px;overflow-wrap:anywhere}
   .candActions{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
-  .candActions .btn{font-size:11.5px;padding:3px 10px;min-height:28px}
+  .candActions .btn{font-size:.75rem;padding:3px 10px;min-height:28px}
   /* 갈린 후보의 선택지(§24) — 자동으로 빼지 않고 사람이 고른다 */
   .candConflict{margin-top:8px;border-top:1px dashed var(--border);padding-top:6px}
   .candConflict .ch{font-size:12px;font-weight:700;color:#92400e}
@@ -298,29 +298,29 @@
   .candOption{display:flex;gap:8px;align-items:flex-start;padding:4px 0;font-size:12px}
   .candOption .ot{font-weight:700;white-space:nowrap}
   .candOption .ox{flex:1;min-width:0;color:var(--muted);overflow-wrap:anywhere}
-  .candOption .btn{font-size:11px;padding:2px 9px;min-height:26px;white-space:nowrap}
+  .candOption .btn{font-size:.75rem;padding:2px 9px;min-height:26px;white-space:nowrap}
   /* 그룹 제안 카드(§28·§60) — 미리보기. 결정은 사람이 누른다 */
   .proposalCard{border:1px solid #2e5c6e;border-radius:12px;padding:10px 12px;background:var(--surface-2);margin-bottom:8px}
-  .proposalEyebrow{font-size:11px;font-weight:700;color:#24505f;letter-spacing:.04em}
+  .proposalEyebrow{font-size:.75rem;font-weight:700;color:#24505f;letter-spacing:.04em}
   .proposalHead{font-size:13px;font-weight:700;margin:2px 0 6px}
   .proposalPick{font-size:12px;padding:3px 0;border-top:1px dashed var(--border)}
   .proposalPick .pt{font-weight:700}
   .proposalPick .pr{color:var(--muted)}
   .proposalActions{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
-  .proposalActions .btn{font-size:11.5px;padding:3px 10px;min-height:28px}
+  .proposalActions .btn{font-size:.75rem;padding:3px 10px;min-height:28px}
   /* 코멘트 — 후보에 붙는 짧은 의견. 채팅이 아니다(§15) */
   .candComments{margin-top:8px;border-top:1px dashed var(--border);padding-top:6px}
   .commentRow{display:flex;gap:6px;align-items:baseline;font-size:12px;padding:3px 0}
   .commentRow .cn{font-weight:700;white-space:nowrap}
   .commentRow .cb{flex:1;min-width:0;overflow-wrap:anywhere;color:var(--ink)}
-  .commentRow .at{color:var(--subtle);font-size:11px;white-space:nowrap}
+  .commentRow .at{color:var(--subtle);font-size:.75rem;white-space:nowrap}
   .commentRow .cx{color:var(--meta-danger);background:none;border:0;font-size:12px;padding:0 4px;min-height:auto;cursor:pointer}
   .commentForm{display:flex;gap:6px;margin-top:6px}.commentForm input{flex:1;font-size:12px;min-width:0}
   /* 최근 활동 — 읽기 쉬운 문장 한 줄씩(§39) */
   .activityList{display:grid;gap:2px;max-height:240px;overflow-y:auto}
   .activityRow{display:flex;gap:8px;align-items:baseline;font-size:12px;color:var(--ink);padding:5px 2px;border-bottom:1px dashed var(--border)}
   .activityRow .tx{flex:1;min-width:0;overflow-wrap:anywhere}
-  .activityRow .at{color:var(--subtle);font-size:11px;white-space:nowrap}
+  .activityRow .at{color:var(--subtle);font-size:.75rem;white-space:nowrap}
   .liveDot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--subtle);margin-right:4px;vertical-align:middle}
   .liveDot.on{background:#3e7a4c}
   /* 여행 취향 — 선택형 칩(§16). 한 번의 탭으로 고른다 */
@@ -328,7 +328,7 @@
   .prefLine{font-size:12px;color:var(--ink);padding:3px 0;border-bottom:1px dashed var(--border)}
   .prefLine.other{color:var(--muted)}
   .prefRow{display:flex;gap:8px;align-items:flex-start;margin:6px 0}
-  .prefLabel{flex:0 0 48px;font-size:11.5px;color:var(--subtle);padding-top:7px}
+  .prefLabel{flex:0 0 48px;font-size:.75rem;color:var(--subtle);padding-top:7px}
   .prefChips{display:flex;flex-wrap:wrap;gap:5px}
   .prefChips button{border:1px solid var(--border);background:var(--surface-2);border-radius:999px;padding:4px 10px;font-size:12px;min-height:30px;color:var(--ink)}
   .prefChips button[aria-pressed="true"]{border-color:#2e5c6e;background:#dce7eb;color:#24505f;font-weight:700}
@@ -376,7 +376,7 @@
     .dayHead,.spot{min-height:44px}.iconb{min-width:44px;min-height:44px}
     #travel{max-width:none;padding:12px}.travelTop select{max-width:145px}
   }
-.legChip{background:rgba(22,19,15,.92);color:#e0a050;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;border:1px solid #332d25;white-space:nowrap;pointer-events:none}
+.legChip{background:rgba(22,19,15,.92);color:#e0a050;font-size:.75rem;font-weight:700;padding:2px 8px;border-radius:10px;border:1px solid #332d25;white-space:nowrap;pointer-events:none}
 .eta{color:var(--meta-eta);font-size:.8125rem;font-variant-numeric:tabular-nums;font-weight:700}
 .eta.fixed{color:var(--meta-eta-fixed)}   /* 고정 도착시각 — 자동(금색)과 구분 */
 .tLeg{font-size:12px;color:var(--meta-soft);margin:-3px 0 9px 18px}
@@ -385,8 +385,8 @@
 .legfail{color:var(--meta-warning);cursor:help}
 .modeBtn{font-size:14px;padding:1px 4px}
 .readonly .modeBtn{pointer-events:none}
-.wx{font-size:11px;color:var(--muted);white-space:nowrap}
-.overload{font-size:11px;color:#ffb454;background:#3a2a12;border-radius:7px;padding:2px 8px;margin:2px 0 3px;display:inline-block}
+.wx{font-size:.75rem;color:var(--muted);white-space:nowrap}
+.overload{font-size:.75rem;color:#ffb454;background:#3a2a12;border-radius:7px;padding:2px 8px;margin:2px 0 3px;display:inline-block}
 .spotMeta,.spotLeg{display:flex;align-items:center;flex-wrap:wrap;gap:3px 8px;min-width:0;margin-left:60px;padding-right:4px}
 .spotMeta{font-size:.75rem;margin-top:-4px}
 .spotLeg{font-size:.8125rem;margin-top:2px}
@@ -396,7 +396,7 @@
 .spot.hasInLeg:before{display:none}
 .spot.hasInLeg>.spotMain{position:relative}
 .spot.hasInLeg>.spotMain:before{content:'';position:absolute;left:-12px;top:18px;width:8px;height:8px;border-radius:50%;background:var(--c,var(--subtle))}
-.legFrom{color:var(--meta-soft);font-size:10.5px}
+.legFrom{color:var(--meta-soft);font-size:.75rem}
 .spotMetaItem,.spotLeg>*{flex:none;white-space:nowrap;max-width:100%}
 .spotMeta .cost{color:var(--meta-cost)}
 .spotMeta .costConverted{color:var(--subtle)}
@@ -420,7 +420,7 @@ body.playing #playHud{
 #playCtl{display:flex;align-items:center;gap:6px}
 #playCtl>button{background:#332d25;color:#f4f1ea;border:0;border-radius:8px;padding:5px 11px;font-size:14px;font-weight:700;cursor:pointer;line-height:1}
 #playPause{background:#46702e;color:#fff}
-#playSegInfo{font-size:11.5px;color:#b5ab98;min-width:44px}
+#playSegInfo{font-size:.75rem;color:#b5ab98;min-width:44px}
 .playSpacer{flex:1}
 #playSpeeds{display:flex;gap:5px}
 #playSpeeds button{background:#332d25;color:#d5ccbb;border:0;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer}
@@ -437,7 +437,7 @@ body.playing #playHud{
   .tripRow.active{border-color:var(--primary);background:var(--selected-bg)}
   .tripRow .tn{flex:1;cursor:pointer;line-height:1.45}
   .tripRow .tn:hover{color:var(--primary-dark);text-decoration:underline}
-  .tripRow .opt{display:block;color:var(--subtle);font-size:11px}
+  .tripRow .opt{display:block;color:var(--subtle);font-size:.75rem}
 
 /* ── 카드 상태: default / hover / selected / focus / drag ─────────────────
    원칙: 선택을 '강한 배경'으로 칠하지 않는다. 카드 안에는 도시색·ETA·비용·예약·경고 등
@@ -462,7 +462,7 @@ body.playing #playHud{
    🔴 절약 가능이 가장 눈에 띄어야 한다(핵심 판단 신호). 🟢/🟡는 보조 상태. */
 .pxBtn{background:none;border:0;padding:0;font:inherit;cursor:pointer}
 .pxStart{color:var(--meta-link);border:1px dashed currentColor;border-radius:7px;padding:1px 6px}   /* 숙소에 예약이 아직 없을 때만 노출 — 기능 발견용 */
-.pxBadge{font-size:10.5px;font-weight:700;white-space:nowrap}
+.pxBadge{font-size:.75rem;font-weight:700;white-space:nowrap}
 .pxBadge.pxSave{color:var(--meta-good)}   /* 가격 상태 기준표 — 절약 가능=긍정 */
 .pxBadge.pxWarn{color:var(--meta-warning)}   /* 조건 확인 필요·확인 실패=경고 */
 .pxBadge.pxGood{color:var(--meta-eta-fixed)}   /* 좋은 가격=정보(파랑 계열 토큰) */
@@ -488,7 +488,7 @@ body.playing #playHud{
 .pxActions{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
 .pxActions .btn{font-size:12px;padding:5px 11px;min-height:0;text-decoration:none}
 /* 신뢰도 라벨 — ✓ 동일 조건(확정 가능) vs 조건 확인 필요(단정 금지) 구분 */
-.pxQ{font-size:10.5px;font-weight:700;white-space:nowrap}
+.pxQ{font-size:.75rem;font-weight:700;white-space:nowrap}
 .pxQ.pxQok{color:var(--meta-good)}
 .pxQ.pxQask{color:var(--meta-warning)}
 .pxHist{margin-top:2px;max-height:190px;overflow-y:auto}
@@ -507,34 +507,34 @@ body.playing #playHud{
 
 /* Adaptive: 다음 행동 제안 — 명령이 아니라 '골라도 되는 선택지'로 읽히게 낮은 채도로 둔다 */
 .travelEnergy{display:flex;align-items:center;gap:6px;margin:0 2px 10px;flex-wrap:wrap}
-.sgEnergyLabel{font-size:11px;color:var(--subtle);font-weight:700;margin-right:2px}
-.btn.sgEnergyBtn{min-height:30px;padding:5px 10px;font-size:11.5px;border-radius:999px}
+.sgEnergyLabel{font-size:.75rem;color:var(--subtle);font-weight:700;margin-right:2px}
+.btn.sgEnergyBtn{min-height:30px;padding:5px 10px;font-size:.75rem;border-radius:999px}
 .btn.sgEnergyBtn.on{background:var(--selected-bg);border-color:var(--selected-border);color:var(--selected-accent);font-weight:700}
 .travelSuggest{display:grid;gap:8px;margin-bottom:10px}
 .sgCard{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:13px 14px;border-left:4px solid var(--meta-good)}
 .sgCard[data-type="REPLAN"]{border-left-color:var(--meta-warning)}
 .sgCard[data-type="PRICE_SAVING"]{border-left-color:var(--meta-cost)}
 .sgCard[data-type="REST"]{border-left-color:var(--meta-soft)}
-.sgKicker{font-size:11px;color:var(--subtle);font-weight:700;margin-bottom:5px}
+.sgKicker{font-size:.75rem;color:var(--subtle);font-weight:700;margin-bottom:5px}
 /* J가 보내는 제안의 서명. 앱 이름(With J)이 아니라 제안에만 붙는다 */
 .sgFrom{display:inline-block;margin-right:6px;padding:1px 6px;border-radius:999px;background:var(--meta-good);color:#fff;font-size:.75rem;letter-spacing:.02em}
 .sgTitle{font-size:15.5px;font-weight:800;line-height:1.35}
 .sgDesc{font-size:12px;color:var(--muted);margin-top:4px}
 .sgWhy{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:3px}
-.sgWhy li{font-size:11.5px;color:var(--muted);padding-left:12px;position:relative;line-height:1.55}
+.sgWhy li{font-size:.75rem;color:var(--muted);padding-left:12px;position:relative;line-height:1.55}
 .sgWhy li::before{content:'·';position:absolute;left:3px;color:var(--subtle)}
 .sgActions{display:flex;gap:6px;margin-top:11px;flex-wrap:wrap}
 .sgActions .btn{min-height:34px;padding:6px 12px;font-size:12px}
 .sgReplan{margin-top:9px;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:9px 11px;display:grid;gap:4px}
-.sgReplanLine{font-size:11.5px;color:var(--muted);display:flex;gap:7px}
+.sgReplanLine{font-size:.75rem;color:var(--muted);display:flex;gap:7px}
 .sgReplanLine strong{color:var(--subtle);flex:0 0 34px}
-.sgReplanNote{font-size:11px;color:var(--meta-warning);margin-top:2px}
+.sgReplanNote{font-size:.75rem;color:var(--meta-warning);margin-top:2px}
 .sgEmpty{background:var(--surface);border:1px dashed var(--border);border-radius:14px;padding:14px;font-size:12.5px;color:var(--muted);line-height:1.65}
 .btn.sgMore{justify-self:start;font-size:12px;min-height:32px;padding:6px 12px;color:var(--subtle)}
 /* 일정 실행 상태 — 다녀왔는지/건너뛰었는지가 추천의 입력이 된다 */
 .tStatus{display:flex;gap:6px;align-items:center;margin-top:9px;flex-wrap:wrap}
-.tStatus .btn{min-height:30px;padding:4px 10px;font-size:11.5px}
-.tStatusChip{font-size:11px;font-weight:700;color:var(--meta-good);background:var(--surface-2);border:1px solid var(--border);border-radius:999px;padding:3px 9px}
+.tStatus .btn{min-height:30px;padding:4px 10px;font-size:.75rem}
+.tStatusChip{font-size:.75rem;font-weight:700;color:var(--meta-good);background:var(--surface-2);border:1px solid var(--border);border-radius:999px;padding:3px 9px}
 .tSpot.done{opacity:.62}
 .tSpot.done .n{text-decoration:line-through;text-decoration-color:var(--subtle)}
 .tSpot.skipped{opacity:.5}
@@ -545,18 +545,18 @@ body.playing #playHud{
 /* 자연어 요청 · 하루 flow 미리보기 */
 .travelTune{display:flex;gap:6px;margin:0 2px 6px}
 .travelTune input{flex:1;font-size:12.5px;min-height:36px}
-.travelIntentEcho{font-size:11.5px;color:var(--meta-good);margin:0 4px 8px;line-height:1.5}
+.travelIntentEcho{font-size:.75rem;color:var(--meta-good);margin:0 4px 8px;line-height:1.5}
 .travelIntentEcho.miss{color:var(--subtle)}
 .travelIntentEcho:empty{display:none}
-.btn.sgFlowBtn{min-height:30px;padding:5px 10px;font-size:11.5px;border-radius:999px;margin-left:auto}
+.btn.sgFlowBtn{min-height:30px;padding:5px 10px;font-size:.75rem;border-radius:999px;margin-left:auto}
 .travelPlan{display:grid;gap:8px;margin-bottom:10px}
 .travelPlan:empty{display:none}
 .sgCard[data-type="DAY_FLOW"]{border-left-color:var(--focus)}
 .sgFlow{margin-top:9px;display:grid;gap:2px}
 .sgFlowRow{display:grid;grid-template-columns:38px 44px 1fr;align-items:baseline;gap:8px;font-size:12.5px;padding:5px 7px;border-radius:8px}
 .sgFlowRow.fixed{background:var(--surface-2)}
-.sgFlowSeg{font-size:10.5px;color:var(--subtle);font-weight:700}
-.sgFlowTime{font-size:11px;color:var(--meta-eta);font-variant-numeric:tabular-nums;font-weight:700}
+.sgFlowSeg{font-size:.75rem;color:var(--subtle);font-weight:700}
+.sgFlowTime{font-size:.75rem;color:var(--meta-eta);font-variant-numeric:tabular-nums;font-weight:700}
 .sgFlowName{color:var(--ink);min-width:0;overflow-wrap:anywhere}
 .sgFlowRow.fixed .sgFlowName{font-weight:700}
 /* 출발 안내 — 지금 나서면 되는지 */
@@ -625,6 +625,7 @@ body.theme-dark .btn.primary,body.theme-dark .travelActions a,body.theme-dark .t
 .actionMenu.float .actionMenuPanel{position:fixed;bottom:auto;max-height:calc(100dvh - 16px);overflow-y:auto}
 .spotWarn{display:grid;gap:2px;margin:0 0 2px 60px;padding-right:4px;min-width:0;color:var(--meta-danger);font-weight:600;font-size:12px;line-height:1.4;white-space:normal;overflow-wrap:anywhere}
 .spotMetaItem.stayMin.unset{opacity:.8;border:1px dashed var(--border);background:none;border-radius:6px;padding:1px 6px;font:inherit;color:var(--meta-soft);cursor:pointer;min-height:24px}
+.spotMetaItem.addBetween{border:1px dashed var(--border);background:none;border-radius:6px;padding:1px 6px;font:inherit;color:var(--meta-link);cursor:pointer;min-height:24px}
 /* 모바일에서 자주 누르는 작은 조작의 터치 영역 — 겉모양은 두고 손가락이 닿는 높이만 44px로(2026-09-27 UX 검토).
    댓글 입력은 16px 밑이면 iOS Safari가 확대해 버려 16px로 둔다. */
 @media (max-width:760px){
@@ -658,7 +659,7 @@ body:has(.modalBg.show) #toast{bottom:auto;top:calc(env(safe-area-inset-top) + 1
 .costDialog > label { display:block; margin:12px 0 4px; }
 .costDialog [hidden] { display:none; }
 /* 동선 최적화 미리보기 */
-.optList{margin:10px 0 6px;padding-left:22px;line-height:1.9;font-size:14px}.optList li.moved{font-weight:700}.optTag{font-size:11px;font-weight:600;color:var(--subtle);border:1px solid var(--border);border-radius:6px;padding:0 5px;margin-left:4px}.optTag.moved{color:var(--badge-info-fg);background:var(--badge-info-bg);border-color:transparent}
+.optList{margin:10px 0 6px;padding-left:22px;line-height:1.9;font-size:14px}.optList li.moved{font-weight:700}.optTag{font-size:.75rem;font-weight:600;color:var(--subtle);border:1px solid var(--border);border-radius:6px;padding:0 5px;margin-left:4px}.optTag.moved{color:var(--badge-info-fg);background:var(--badge-info-bg);border-color:transparent}
 .optWarn{margin:8px 0;padding:8px 10px;border-radius:10px;background:var(--badge-danger-bg);color:var(--badge-danger-fg);font-size:13px;font-weight:600}.optWarn ul{margin:4px 0 0 18px;font-weight:500}
 
 #saveStateBar.srOnlyBar{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
@@ -673,14 +674,14 @@ body:has(.modalBg.show) #toast{bottom:auto;top:calc(env(safe-area-inset-top) + 1
 /* 필터 칩은 34px이지만 칩 줄은 48px이다 — 모양은 그대로 두고 누르는 영역만 줄 높이까지 넓힌다(가로 스크롤 상자 안이라 그 밖은 잘린다) */
 @media (max-width:760px){#filterbar .chip{position:relative}#filterbar .chip::after{content:'';position:absolute;left:0;right:0;top:-4px;bottom:-8px}}
 #sheetHandle .sheetHandleText{display:none}
-@media (max-width:760px){#sheetHandle{flex-direction:column;align-items:center;gap:3px}#sheetHandle .sheetHandleText{display:block;font-size:11px;font-weight:600;color:var(--subtle);line-height:1}}
+@media (max-width:760px){#sheetHandle{flex-direction:column;align-items:center;gap:3px}#sheetHandle .sheetHandleText{display:block;font-size:.75rem;font-weight:600;color:var(--subtle);line-height:1}}
 /* iOS Safari는 16px 미만 입력칸에 포커스가 가면 화면을 확대한다(2026-10-02 측정: 여행 중 요청 칸 12.5px·초대 링크 12px) */
 @media (max-width:760px){#travelIntent,#inviteLink{font-size:16px}}
 /* ☰ 메뉴는 목록이다 — 항목마다 테두리 상자를 두면 14개가 모두 같은 무게의 버튼으로 보였다(2026-10-02 UX 검토) */
 #hdrMenu .btn:not(.primary){border-color:transparent;background:transparent;min-height:44px;text-align:left}
 #hdrMenu .btn:not(.primary):hover:not(:disabled){background:var(--hover-bg)}
 #hdrMenu .menuGroupLabel{margin-top:6px}
-.menuText{display:flex;flex-direction:column;align-items:flex-start;gap:1px;text-align:left}.menuText small{font-size:11px;font-weight:400;color:var(--subtle);line-height:1.35}
+.menuText{display:flex;flex-direction:column;align-items:flex-start;gap:1px;text-align:left}.menuText small{font-size:.75rem;font-weight:400;color:var(--subtle);line-height:1.35}
 #undoQuick{display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;padding:0}#undoQuick[hidden]{display:none}
 /* 좁은 화면에서는 여행 이름이 먼저다 — 브랜드는 아이콘으로만 남긴다 */
 @media (max-width:480px){header h1 .brandText{display:none}}
@@ -688,7 +689,7 @@ body:has(.modalBg.show) #toast{bottom:auto;top:calc(env(safe-area-inset-top) + 1
 #searchRes .placeSearchResult{position:relative;padding-right:30px}#searchRes .placeSearchResult::after{content:'›';position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:20px;color:var(--subtle)}
 #searchRes .placeSearchResult:hover{background:var(--hover-bg)}.psrName{display:block;font-weight:700;font-size:14.5px}.psrAddr{display:block;font-size:12px;color:var(--subtle);margin-top:2px;line-height:1.4}
 .estNote .estFix{color:var(--primary-dark)}
-.sampleTag{font-size:10.5px;font-weight:700;color:var(--badge-info-fg);background:var(--badge-info-bg);border-radius:5px;padding:1px 5px;vertical-align:1px}
+.sampleTag{font-size:.75rem;font-weight:700;color:var(--badge-info-fg);background:var(--badge-info-bg);border-radius:5px;padding:1px 5px;vertical-align:1px}
 /* ux3:engine */
 /* 하루 흐름은 남은 계획(planned)도 그린다 — 더하는 것(add)만 강조하고 남은 계획은 한 톤 낮춘다 */
 .sgFlowRow.planned .sgFlowName{color:var(--muted)}
@@ -762,7 +763,7 @@ body{word-break:keep-all;overflow-wrap:break-word}
    띠와 칩 줄을 얇게 접는다(누르는 영역은 칩의 ::after가 지킨다) */
 @media (max-height:520px){
   header{padding-top:4px;padding-bottom:4px}
-  #sampleBar{padding:2px 12px;font-size:11.5px}#sampleBar .btn{min-height:28px;padding:3px 10px}
+  #sampleBar{padding:2px 12px;font-size:.75rem}#sampleBar .btn{min-height:28px;padding:3px 10px}
   #filterbar{padding-top:3px;padding-bottom:3px}#filterbar .chip{min-height:28px;padding:3px 11px}
 }
 /* 처음 화면은 화면보다 길면 굴러간다 — 가운데 정렬만 하면 넘친 아래('샘플 먼저 둘러보기')에 닿을 수 없었다.
@@ -837,4 +838,9 @@ body.theme-dark input:not([type=checkbox]):not([type=radio]),body.theme-dark sel
   .viewMenu>summary{display:flex;align-items:center}
   .legModeBtn{min-width:36px;min-height:36px}.legModeBtn::after{inset:-4px}
   .spotMetaItem.stayMin.unset{position:relative}.spotMetaItem.stayMin.unset::after{content:'';position:absolute;inset:-10px -2px}
+  .spotMetaItem.addBetween{position:relative}.spotMetaItem.addBetween::after{content:'';position:absolute;inset:-10px -2px}
 }
+
+/* 다크 테마의 카카오 지도 — 카카오는 어두운 지도 스타일이 없어 **타일 그림만** 뒤집는다(2026-10-03 UX 검토 — 다크 화면에 밝은 지도만 남았다).
+   우리 핀·칩·말풍선은 타일이 아니라 CustomOverlay라 그대로다. 구글은 colorScheme으로 지도를 다시 만든다(syncMapTheme). */
+body.theme-dark #kmap img[src*="daumcdn.net/api/v1/tile"],body.theme-dark #kmap img[src*="daumcdn.net/map_"]{filter:invert(.92) hue-rotate(180deg) brightness(.95) contrast(.9)}

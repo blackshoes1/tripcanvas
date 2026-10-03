@@ -46,9 +46,10 @@ export function collectLegRequests(trip: Trip, legCache: LegCache, nowMs: number
     if (!out.has(key)) out.set(key, { key, base, a: A, b: B, mode, when: mode === 'transit' ? when : null, timeZone });
   };
 
+  const inferred = legacyLib.inferTimeZones(trip);
   trip.days.forEach((day, di) => {
     const iso = isoDateOf(trip, di);
-    const timeZone = day.timeZone || trip.timeZone || '';
+    const timeZone = legacyLib.effectiveTimeZone(trip, di, inferred).timeZone;
     for (const leg of dayJourneyOf(trip, legCache, di).legs) {
       const mode = leg.returning ? returnModeOf(day) as TransportMode : legModeOf(day, leg.to);
       const when = mode === 'transit' && iso ? planDepartISO(iso, leg.depart, timeZone, nowMs) : null;

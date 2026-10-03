@@ -42,6 +42,26 @@ final class PasteItineraryTests: XCTestCase {
         return ItineraryDocument.make(draft: source, lines: lines, name: "가루이자와 여행", start: "2026-07-21")
     }
 
+    /// 글의 날짜가 건너뛰면(7/21 → 7/23) 빈 날을 넣기로 한 경우 서버가 정한 자리에 놓고 사이는 빈 일자다.
+    /// 넣지 않기로 하면 예전처럼 순서대로 잇는다 — 사람이 고른다(웹 미리보기와 같은 선택).
+    func testSkippedDateLeavesAnEmptyDayOnlyWhenChosen() {
+        let base = draft()
+        let gapped = ItineraryDraft(name: base.name, start: base.start, startAmbiguous: false, days: base.days,
+                                    dayLayout: ItineraryDayLayout(at: [0, 2], gaps: [ItineraryDayGap(before: 1, from: "2026-07-22", count: 1)]))
+        let lines = gapped.days.flatMap { day in
+            day.items.map { ItineraryDocument.Line(dayIndex: day.index, item: $0, include: $0.kind == .place, found: nil) }
+        }
+        let filled = ItineraryDocument.make(draft: gapped, lines: lines, name: "여행", start: "2026-07-21", fillGaps: true)
+        let filledDays = filled["days"]?.arrayValue ?? []
+        XCTAssertEqual(filledDays.count, 3)
+        XCTAssertEqual(filledDays[1].objectValue?["spots"]?.arrayValue?.count, 0, "건너뛴 날은 빈 일자다")
+        XCTAssertEqual(filledDays[2].objectValue?["title"]?.stringValue, "온천")
+
+        let kept = ItineraryDocument.make(draft: gapped, lines: lines, name: "여행", start: "2026-07-21", fillGaps: false)
+        XCTAssertEqual(kept["days"]?.arrayValue?.count, 2)
+        XCTAssertEqual(PasteItineraryView.gapText(ItineraryDayGap(before: 1, from: "2026-07-22", count: 3)), "7/22 외 2일")
+    }
+
     func testOnlyCheckedLinesBecomeSpots() {
         let document = madeDocument()
         let days = document["days"]?.arrayValue ?? []

@@ -419,6 +419,61 @@
     return TZ_BY_PLACE[key]||TZ_BY_PLACE[raw.toLowerCase().replace(/[\s.·,-]+/g,'')]||null;
   }
 
+  // 글(일자 제목·여행 이름)에서 낱말로 읽으면 다른 뜻이 되는 이름 — '빈 날'·'여러 나라'·'nice trip'
+  const _TZ_WORD_SKIP=new Set(['빈','나라','la','nice','uk']);
+  /** 글 하나가 가리키는 시간대들 — 통째로, 그다음 낱말마다('스페인 여행'·'파리여행'). @param {any} text @param {boolean} words @returns {string[]} */
+  function _tzMentions(text, words){
+    const whole=resolveTimeZone(text); if(whole) return [whole];
+    if(!words) return [];
+    /** @type {string[]} */ const out=[];
+    String(text||'').split(/[\s,·/()\[\]~→-]+/).forEach((w)=>{
+      const k=w.replace(/(여행|투어|일정|자유|일주|한달살기|살기)+$/,'');
+      if(k.length<2 || _TZ_WORD_SKIP.has(k.toLowerCase())) return;
+      const tz=resolveTimeZone(k); if(tz) out.push(tz);
+    });
+    return out;
+  }
+  /** 모은 시간대가 하나로 모이면 그것, 갈리거나 없으면 null — 추측하지 않는다. @param {string[]} list @returns {string|null} */
+  function _oneTz(list){ const s=new Set(list); return s.size===1? /**@type {string}*/([...s][0]) : null; }
+
+  /**
+   * 정하지 않은 시간대를 일정에서 읽는다(2026-10-03 3차 UX 검토 — 해외 여행은 사람이 도시 이름을 넣기 전까지 '시간대 미설정'이었다).
+   * 위치 있는 장소가 **전부 국내**면 Asia/Seoul. 아니면 그 날 장소의 도시 → 여행 전체 장소의 도시 → 그 날 제목 → 여행 이름 순으로,
+   * 그 단계가 **한 시간대만** 가리킬 때 그 값이다. 갈리면 다음 단계로 가지 않고 null이다(파리·런던이 섞인 날을 고르지 않는다).
+   * 저장하지 않는다 — 사람이 정한 값(`day.timeZone`·`trip.timeZone`)이 언제나 이긴다(`effectiveTimeZone`).
+   * @param {any} trip @returns {(string|null)[]} 날마다
+   */
+  function inferTimeZones(trip){
+    const days=(trip&&Array.isArray(trip.days))? trip.days : [];
+    let located=0, abroad=false;
+    days.forEach((/**@type{any}*/d)=>(d&&d.spots||[]).forEach((/**@type{any}*/s)=>{
+      if(!hasCoord(s)) return; located++; if(!inKorea({lat:+s.lat,lng:+s.lng})) abroad=true;
+    }));
+    if(located && !abroad) return days.map(()=>'Asia/Seoul');
+    const cityTz=(/**@type{any}*/d)=>(d&&d.spots||[]).filter((/**@type{any}*/s)=>s&&s.city).flatMap((/**@type{any}*/s)=>_tzMentions(s.city,false));
+    const all=days.flatMap(cityTz);
+    const tripWide=all.length? _oneTz(all) : _oneTz(_tzMentions(trip&&trip.name, true));
+    return days.map((/**@type{any}*/d)=>{
+      const own=cityTz(d);
+      if(own.length) return _oneTz(own);
+      if(all.length) return tripWide;
+      const titled=_tzMentions(d&&d.title, true);
+      return titled.length? _oneTz(titled) : tripWide;
+    });
+  }
+  /**
+   * 그 날 계산에 쓰는 시간대 — 그 날에 정한 것 → 여행에 정한 것 → 일정에서 읽은 것(`inferTimeZones`). 없으면 ''.
+   * 웹(`dayTimeZone`)·서버(하루치·여행지 시계·경로 조회)가 같은 규칙을 쓴다 — 전에는 서버가 국내 기본값도 몰랐다.
+   * @param {any} trip @param {number} di @param {(string|null)[]=} inferred 미리 계산해 둔 `inferTimeZones` @returns {{timeZone:string, inferred:boolean}}
+   */
+  function effectiveTimeZone(trip, di, inferred){
+    const day=trip&&trip.days&&trip.days[di];
+    const set=(day&&day.timeZone)||(trip&&trip.timeZone)||'';
+    if(set) return {timeZone:String(set), inferred:false};
+    const guess=(inferred||inferTimeZones(trip))[di];
+    return guess? {timeZone:guess, inferred:true} : {timeZone:'', inferred:false};
+  }
+
   /**
    * 여행지 시계 — 그 시간대의 오늘 날짜와 자정 기준 분. 시간대가 없거나 틀리면 null이고, 그때 호출부는 기기 시계를 쓴다.
    * 서버(`resolveClock`)와 같은 출처(첫 날의 시간대 → 여행 시간대)를 쓰면 '여행 중' 판정과 시각이 앱과 같아진다.
@@ -1528,6 +1583,19 @@
     if(s.reunion!=null){ if(s.reunion) s.reunion=true; else delete s.reunion; }
     return s;
   }
+  /**
+   * 무료 취소 — true(가능) · false(불가) · null(모름). 2026-10-03 전에는 웹 체크박스·앱 토글이라 건드리지 않은 예약도
+   * `refundable:false`로 저장됐다 — 그 false는 '불가'라고 고른 것과 구별되지 않는다. 그래서 **불가는 사람이 고른 표시
+   * (`refundableSet`)가 있을 때만** 불가이고, 표시 없는 false는 모름이다. 가능(true)은 언제나 사람이 켠 것이라 그대로다.
+   * 기한(`freeCancelUntil`)만 있는 구버전 예약은 가능이다. iOS `TripBooking.refundable`·price.js가 같은 규칙이다.
+   * @param {any} b @returns {boolean|null}
+   */
+  function refundableOf(b){
+    if(!b) return null;
+    if(b.refundable===true) return true;
+    if(b.refundable===false && b.refundableSet===true) return false;
+    return b.freeCancelUntil? true : null;
+  }
   /** 비용 정보만 걷고 장소 신원·일정·연결은 남긴다. @param {any} spot */
   function clearSpotCost(spot){
     for(const key of ['cost','costKind','cur','costBasis','costPeople','costPartial','payState','paidOn','photos']) delete spot[key];
@@ -1592,6 +1660,7 @@
     }
     if(b.refundable==null){ if(b.freeCancelUntil) b.refundable=true; }   // 구버전: 무료취소 기한만 있던 예약
     else b.refundable=!!b.refundable;
+    if(b.refundable==null || b.refundableSet!==true) delete b.refundableSet;   // 사람이 가능/불가를 골랐다는 표시 — refundableOf
     if(b.ptoken!=null && !(typeof b.ptoken==='string' && /^[A-Za-z0-9_=-]{4,300}$/.test(b.ptoken))) delete b.ptoken;   // provider property 매핑 캐시
     if(b.enName!=null){ const en=(typeof b.enName==='string'? b.enName:'').trim().slice(0,160); if(en) b.enName=en; else delete b.enName; }   // 시세 조회용 영문명 캐시
     if(b.saved!=null){ if(_fin(b.saved)) b.saved=Math.min(Math.max(0,Math.round(+b.saved)),TC_LIMITS.cost); else delete b.saved; }   // 재예약으로 실제 절약한 누적액
@@ -2304,7 +2373,7 @@
   const TC={deleteSpotCost,clearSpotCost,deleteBookingCost,dayLodgings,sortTripsByCountdown,additionalReservations,tripSummaryCities,returnModeOf,SPOT_PRIORITIES,spotPriorityOf,applySpotPriority,spotPriorityLabel,SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,cityFromKoreanAddr,placeName,cityFromGoogle,normHours,classifySearchErr,isKoreanSearch,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,normHM,sortDayByTime,inKorea,walkInsteadOfCar,simplifyName,parseDirect,parseMoney,normalizeDraftDays,extractJson,extMapLink,encodePolyline,decodePolyline,optimizeRoute,planRouteOptimization,routeLength,isOpenAt,validTimeZone,zonedClock,zonedMinutesToISOString,dayAnchor,stayMinutesOf,activityStartMinute,dayEndMinutes,departMinuteAfter,computeTimeline,computeDayJourney,whoKey,splitSegments,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,budgetBookings,moneyAmount,parseCostAmount,costAmountOf,dayEnteredCost,splitAcrossNights,stayCostShares,stayCostOverflow,dayEnteredCostOn,hasManualTransportCost,taxiFareCounts,dayCostSummary,ADMISSION_REQUIREMENTS,admissionLabel,admissionOf,needsAdmissionBooking,normalizeAdmission,admissionError,COST_CATEGORIES,COST_CURRENCIES:_CURS,costCategoryOf,COST_PAY_STATES,costPayStateOf,payStateTotals,TRIP_NOTE_CATEGORIES,normalizeTripNote,tripCostSummary,localMode,mdLabel,tripPeriodOf,startShiftPreview,SAMPLE_TRIP_ID,isSampleTrip,sampleTrip,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
   // 장소 검색·장소 정체성(2026-10-03) — 위 목록과 따로 둬 다른 변경과 한 줄에서 부딪히지 않게 한다
   Object.assign(TC,{placeNameMatch,searchAnchorSpot,planDistanceKm,tripCitySpelling,tripDefaultCurrency,hoursIssue,hoursLines});
-  Object.assign(TC,{resolveTimeZone});   // 따로 붙인다 — 위 한 줄은 여러 작업이 함께 고치는 자리다
+  Object.assign(TC,{resolveTimeZone,inferTimeZones,effectiveTimeZone,refundableOf});   // 따로 붙인다 — 위 한 줄은 여러 작업이 함께 고치는 자리다
   if(typeof module!=='undefined' && module.exports){ module.exports=TC; }   // Node (테스트)
   else { const r=/**@type {any}*/(root); for(const k in TC) r[k]=/**@type {any}*/(TC)[k]; }   // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);

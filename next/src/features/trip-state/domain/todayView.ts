@@ -183,7 +183,8 @@ export function computeToday(input: TodayInput): TodayComputation {
   const dayIndex = resolveDayIndex(trip, input.todayISO, input.dayIndex);
   const day: DayDoc = days[dayIndex] ?? { spots: [] };
   const spots = day.spots ?? [];
-  const timeZone = day.timeZone || trip.timeZone || '';
+  // 정하지 않았으면 일정에서 읽은 시간대(국내면 서울) — 웹 `dayTimeZone`과 같은 규칙
+  const timeZone = lib.effectiveTimeZone(trip, dayIndex).timeZone;
   const dayISO = isoDateOf(trip, dayIndex);
 
   const anchor = lib.dayStartAnchor(days, dayIndex, trip.bookings);
@@ -305,7 +306,8 @@ export function computeToday(input: TodayInput): TodayComputation {
     dropActivityIds: replanRaw.drop,
     dropNames: replanRaw.dropNames,
     movesToNextDay: !!days[dayIndex + 1],
-    impact: replanRaw.impact ?? {}
+    impact: replanRaw.impact ?? {},
+    note: adapt.replanDropNote(replanRaw.dropNames, !!days[dayIndex + 1])
   };
 
   const tripSummary: TripSummary = {
@@ -382,7 +384,8 @@ export function computeToday(input: TodayInput): TodayComputation {
     fixedCommitments,
     replan,
     activityState,
-    intent: said ? intentEcho(said, resolved) : null
+    intent: said ? intentEcho(said, resolved) : null,
+    notice: built.notice ?? null
   };
   return {
     response,

@@ -51,7 +51,7 @@ final class TripBookingTests: XCTestCase {
         XCTAssertEqual(hotel.price, 900)
         XCTAssertEqual(hotel.currency, .eur)
         XCTAssertEqual(hotel.adults, 2)
-        XCTAssertTrue(hotel.refundable)
+        XCTAssertEqual(hotel.refundable, true)
         XCTAssertTrue(hotel.track)
 
         let car = try XCTUnwrap(trip.booking(id: "bkCar1"))
@@ -60,7 +60,7 @@ final class TripBookingTests: XCTestCase {
         XCTAssertEqual(car.currencyCode, "KRW")
         XCTAssertEqual(car.transmission, .manual)
         XCTAssertEqual(car.carClass, "compact")
-        XCTAssertFalse(car.refundable)                 // 기한도 없고 표시도 없다
+        XCTAssertNil(car.refundable)                   // 기한도 없고 표시도 없다 — 모름
 
         // 반납 지점은 (장소, 코드) 한 쌍 — 둘 다 비었을 때만 픽업과 같다.
         XCTAssertEqual(car.returnPoint.place, "Palma Airport")
@@ -69,7 +69,21 @@ final class TripBookingTests: XCTestCase {
 
     func testOldBookingWithOnlyFreeCancelDateReadsAsRefundable() {
         let booking = TripBooking(raw: ["id": .string("b1"), "freeCancelUntil": .string("2026-09-20")])
-        XCTAssertTrue(booking.refundable)
+        XCTAssertEqual(booking.refundable, true)
+    }
+
+    /// 토글 시절 건드리지 않고 저장된 false는 '불가'가 아니라 모름이다 — 고른 표시가 있어야 불가(웹 `refundableOf`).
+    func testUnmarkedFalseIsUnknownAndChoicesAreMarked() {
+        var booking = TripBooking(raw: ["id": .string("b1"), "refundable": .bool(false)])
+        XCTAssertNil(booking.refundable)
+
+        booking.refundable = false
+        XCTAssertEqual(booking.refundable, false)
+        XCTAssertEqual(booking.raw["refundableSet"], .bool(true))
+
+        booking.refundable = nil
+        XCTAssertNil(booking.raw["refundable"])
+        XCTAssertNil(booking.raw["refundableSet"])
     }
 
     // MARK: 링크 조회

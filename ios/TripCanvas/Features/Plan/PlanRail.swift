@@ -154,6 +154,8 @@ struct PlanRailLeg: View {
     let minutes: Int
     let distanceKm: Double?
     var rail = true
+    /// 자차 하루의 가까운 구간을 걸어서 계산했다 — '자차'라고 적으면 거리·시간이 무엇의 값인지 틀린다
+    var walkInstead = false
     @ScaledMetric(relativeTo: .caption) private var timeColumnWidth: CGFloat = PlanRail.timeColumn
     @Environment(\.dynamicTypeSize) private var typeSize
 
@@ -163,7 +165,7 @@ struct PlanRailLeg: View {
                 Color.clear.frame(width: SpotRow.secondaryIndent(timeColumnWidth: timeColumnWidth), height: 1)
             }
             HStack(spacing: Space.xs) {
-                Image(systemName: mode.symbol).accessibilityHidden(true)
+                Image(systemName: walkInstead ? TravelMode.walk.symbol : mode.symbol).accessibilityHidden(true)
                 Text(text).fixedSize(horizontal: false, vertical: true)
             }
             .font(.caption)
@@ -181,11 +183,11 @@ struct PlanRailLeg: View {
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(mode.label)로 \(TimeFormat.duration(minutes))\(distanceKm.map { ", " + Self.distance($0) } ?? "")")
+        .accessibilityLabel("\(walkInstead ? "가까워 걸어서" : mode.label + "로") \(TimeFormat.duration(minutes))\(distanceKm.map { ", " + Self.distance($0) } ?? "")")
     }
 
     private var text: String {
-        ([mode.label, TimeFormat.duration(minutes)] + [distanceKm.map(Self.distance)].compactMap { $0 })
+        ([walkInstead ? "가까워 걸어서" : mode.label, TimeFormat.duration(minutes)] + [distanceKm.map(Self.distance)].compactMap { $0 })
             .joined(separator: " · ")
     }
 

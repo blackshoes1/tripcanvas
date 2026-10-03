@@ -41,7 +41,8 @@ struct DayCostSummaryView: View {
                         .font(.caption).foregroundStyle(Ink.soft)
                 }
                 if details.transportUnpriced {
-                    Text("아직 계산되지 않은 교통비는 합계에서 빠져 있어요")
+                    // 자차 날의 택시비 추정은 2026-10-03부터 합계에 넣지 않는다(내지 않는 돈) — '아직 계산 전'이 아니라 '적지 않은 돈'이다
+                    Text("주유·통행료·대중교통 요금처럼 적지 않은 교통비는 합계에 없어요")
                         .font(.caption).foregroundStyle(Ink.soft)
                 }
             }

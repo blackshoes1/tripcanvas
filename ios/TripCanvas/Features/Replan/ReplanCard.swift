@@ -16,8 +16,9 @@ struct ReplanCard: View {
 
             Text(headline).font(.headline)
 
-            if !preview.feasible {
-                Text("일정을 줄여도 예약 시간을 맞추기 어려워요 — 예약을 옮기는 편이 나을 수 있어요.")
+            // 무엇을 빼면 어떻게 되는지 — 엔진 문장 그대로다(맞출 수 없으면 그 사실과 다음 길까지 말한다)
+            if !suggestion.description.isEmpty {
+                Text(suggestion.description)
                     .font(.subheadline)
                     .foregroundStyle(Ink.soft)
             }
@@ -45,17 +46,24 @@ struct ReplanCard: View {
         .accessibilityLabel("일정 조정 제안. \(headline)")
     }
 
-    private var headline: String {
-        preview.lateMinutes > 0
-            ? "\(TimeFormat.duration(preview.lateMinutes)) 늦어지고 있어요"
-            : suggestion.title
-    }
+    /// 제목은 서버(엔진)가 쓴다 — '이대로면 광장시장 11:45 예약에 25분 늦어요'.
+    /// 2026-10-03 전에는 앱이 'N분 늦어지고 있어요'를 따로 만들어, 아직 늦지 않았는데 늦었다고 말했다(웹은 엔진 문장이었다).
+    private var headline: String { suggestion.title.isEmpty ? "남은 일정을 다시 맞춰 봤어요" : suggestion.title }
 
     private var dropNote: String {
+        if let note = preview.note, !note.isEmpty { return note }
+        // 옛 서버 — 같은 문장을 조사까지 맞춰 만든다
         let names = preview.dropNames.joined(separator: ", ")
-        return preview.movesToNextDay
-            ? "\(names)은(는) 다음 날 앞쪽으로 옮겨요. 예약된 일정은 그대로 둬요."
-            : "\(names)은(는) '건너뜀'으로 표시돼요. 예약된 일정은 그대로 둬요."
+        let topic = names + Self.topicParticle(preview.dropNames.last ?? "")
+        return preview.movesToNextDay ? "\(topic) 다음 날 앞쪽으로 옮겨요" : "\(topic) '건너뜀'으로 표시해요"
+    }
+
+    /// 은/는 — 받침이 있으면 '은'. 한글이 아니면 '는'(엔진 `josa`와 같은 규칙).
+    static func topicParticle(_ word: String) -> String {
+        guard let last = word.trimmingCharacters(in: .whitespaces).unicodeScalars.last else { return "는" }
+        let code = Int(last.value) - 0xAC00
+        guard code >= 0 && code <= 11171 else { return "는" }
+        return code % 28 == 0 ? "는" : "은"
     }
 }
 

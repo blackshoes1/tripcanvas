@@ -288,7 +288,7 @@ struct TripCostsView: View {
                             .font(.caption).foregroundStyle(Ink.soft)
                     }
                     if response.transportUnpriced {
-                        Text("아직 계산되지 않은 교통비는 포함되지 않았어요").font(.caption).foregroundStyle(Ink.soft)
+                        Text("주유·통행료·대중교통 요금처럼 적지 않은 교통비는 합계에 없어요").font(.caption).foregroundStyle(Ink.soft)
                     }
                     // 날짜별 줄은 웹 일자 카드와 같은 '그날 비용'이다 — 예약 하루치(숙박은 밤마다·렌터카는 빌린 날마다)를 더한다.
                     // 위 합계는 가서 쓰는 돈만이라 둘이 다르다는 것을 여기서 말한다(2026-09-18 "웹은 나오는데 앱만 안 나온다").

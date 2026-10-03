@@ -49,7 +49,7 @@ struct SpotRow: View {
             // 선 위의 알약이다 — 장소 이름보다 언제나 가볍다.
             if let leg = plan?.incomingLeg {
                 PlanRailLeg(mode: TravelMode(rawValue: leg.mode) ?? dayMode, minutes: leg.minutes,
-                            distanceKm: leg.distanceKm, rail: railTop)
+                            distanceKm: leg.distanceKm, rail: railTop, walkInstead: leg.walkInstead == true)
             }
 
             // ⚠️ 접근성 글자 크기에서는 **옆에 두지 않는다.** 시간 칸이 화면의 절반을 먹어

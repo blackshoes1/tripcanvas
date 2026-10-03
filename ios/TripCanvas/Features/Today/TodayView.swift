@@ -96,6 +96,14 @@ struct TodayView: View {
                                        isBusy: !model.pending.isEmpty || model.isRetrying,
                                        onApply: { Task { await model.accept(replan) } },
                                        onKeep: { Task { await model.dismiss(replan) } })
+                        } else if let notice = today.notice, !notice.isEmpty {
+                            // 뺄 수 있는 일정이 없거나 조정 카드를 오늘 넘겼을 때도 늦는다는 사실은 말한다 — 웹과 같은 엔진 문장.
+                            // 전에는 이 경우 하루 한 마디('일정을 조금 손보면 좋겠어요')뿐이라 무엇이 문제인지 몰랐다.
+                            Label(notice, systemImage: "clock.badge.exclamationmark")
+                                .font(.subheadline)
+                                .foregroundStyle(Ink.warning)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .card()
                         }
 
                         // 하루 전체를 한 장에 — 다녀온 곳은 흐리게, 다음 일정은 표시만(할 일은 위 카드에 있다).

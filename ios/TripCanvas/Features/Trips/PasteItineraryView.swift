@@ -10,6 +10,8 @@ final class PasteItineraryFormState {
     var rows: [PasteItineraryView.Row] = []
     var tripName = ""
     var start = ""
+    /// 글의 날짜가 건너뛰면 빈 날을 넣어 날짜를 맞출지 — 웹과 같이 기본은 넣는다(글에 적힌 날짜가 그대로 남는다)
+    var fillGaps = true
 }
 
 /// 가진 일정을 붙여넣어 여행 만들기.
@@ -148,6 +150,20 @@ struct PasteItineraryView: View {
                 Text(summaryText)
             }
 
+            // 글의 날짜가 건너뛰면(11/7 → 11/9) 빈 날을 넣을지 사람이 고른다 — 전에는 앱만 늘 당겨 붙여 11/9 일정이 11/8에 놓였다
+            if let gaps = form.draft?.dayLayout?.gaps, !gaps.isEmpty {
+                Section {
+                    Picker("빈 날", selection: $form.fillGaps) {
+                        Text("빈 날을 넣어 글의 날짜에 맞추기").tag(true)
+                        Text("빈 날 없이 순서대로 잇기").tag(false)
+                    }
+                    .pickerStyle(.inline)
+                    .labelsHidden()
+                } header: {
+                    Text("글의 날짜 사이에 일정이 없는 날이 있어요 (\(gaps.map(Self.gapText).joined(separator: ", ")))")
+                }
+            }
+
             ForEach(form.draft?.days ?? [], id: \.index) { day in
                 Section(dayTitle(day)) {
                     ForEach(rowBindings(for: day.index), id: \.wrappedValue.id) { row in
@@ -160,6 +176,13 @@ struct PasteItineraryView: View {
                 Section { Text(errorMessage).foregroundStyle(Ink.danger).font(.footnote) }
             }
         }
+    }
+
+    /// '11/8' 또는 '11/8 외 2일' — 웹 미리보기와 같은 말
+    static func gapText(_ gap: ItineraryDayGap) -> String {
+        let parts = gap.from.split(separator: "-").compactMap { Int($0) }
+        let md = parts.count == 3 ? "\(parts[1])/\(parts[2])" : gap.from
+        return gap.count > 1 ? "\(md) 외 \(gap.count - 1)일" : md
     }
 
     private func rowBindings(for dayIndex: Int) -> [Binding<Row>] {
@@ -259,7 +282,7 @@ struct PasteItineraryView: View {
             let summary = try await service.createTrip(document: ItineraryDocument.make(
                 draft: draft,
                 lines: form.rows.map { .init(dayIndex: $0.dayIndex, item: $0.item, include: $0.include, found: $0.found) },
-                name: form.tripName, start: form.start))
+                name: form.tripName, start: form.start, fillGaps: form.fillGaps))
             isBusy = false
             onCreated(summary)
             dismiss()
@@ -294,8 +317,8 @@ enum ItineraryDocument {
     }
 
     /// 담기로 한 것만 장소가 된다. **담지 않은 줄은 버리지 않고** 그 날 메모로 남는다.
-    static func make(draft: ItineraryDraft, lines: [Line], name: String, start: String) -> [String: JSONValue] {
-        let days: [JSONValue] = draft.days.map { day in
+    static func make(draft: ItineraryDraft, lines: [Line], name: String, start: String, fillGaps: Bool = false) -> [String: JSONValue] {
+        let written: [JSONValue] = draft.days.map { day in
             let mine = lines.filter { $0.dayIndex == day.index }
             var spots: [JSONValue] = []
             var notes: [String] = day.note.isEmpty ? [] : [day.note]
@@ -316,6 +339,14 @@ enum ItineraryDocument {
                 "note": .string(notes.joined(separator: "\n")),
                 "spots": .array(spots)
             ])
+        }
+        // 빈 날을 넣기로 했으면 서버가 정한 자리에 놓고 사이는 빈 일자로 둔다 — 날짜는 시작일부터 하루씩이라 그래야 글의 날짜가 맞는다
+        var days = written
+        if fillGaps, let layout = draft.dayLayout, layout.at.count == written.count,
+           let last = layout.at.last, last >= written.count - 1, zip(layout.at, layout.at.dropFirst()).allSatisfy({ $0 < $1 }) {
+            let empty: JSONValue = .object(["title": .string(""), "note": .string(""), "spots": .array([])])
+            days = Array(repeating: empty, count: last + 1)
+            for (i, day) in written.enumerated() { days[layout.at[i]] = day }
         }
         let trimmed = name.trimmingCharacters(in: .whitespaces)
         return [

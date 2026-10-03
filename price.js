@@ -79,6 +79,13 @@
     return isFinite(t)&&t>0? t : (isFinite(p)&&p>0? p:0);
   }
 
+  /** 예약의 무료 취소 — lib `refundableOf`와 같은 규칙(이 모듈은 lib을 모른다). 표시(refundableSet) 없는 false는 체크박스 시절
+   *  건드리지 않은 예약이라 '모름'이다 — 불가로 선언된 조건처럼 비교하지 않는다. @param {any} b @returns {boolean|null} */
+  function bookingRefundable(b){
+    if(b.refundable===true) return true;
+    if(b.refundable===false && b.refundableSet===true) return false;
+    return b.freeCancelUntil? true : null;
+  }
   /**
    * 상품 동등성 등급. 검색 자체가 같은 호텔·날짜·인원으로 던져지므로 여기선 '조건'을 본다.
    * - UNMATCHED: 비교 불가(통화 불일치·가격 없음)
@@ -93,11 +100,12 @@
     const known=(/**@type {any}*/v)=>v!==undefined&&v!==null;
     const bRoom=String(b.roomName||'').trim(), oRoom=String(o.roomName||'').trim();
     const roomEq= (bRoom&&oRoom)? _normRoom(bRoom)===_normRoom(oRoom) : null;     // null=비교 불가
-    const refEq= (known(b.refundable)&&known(o.refundable))? !!b.refundable===!!o.refundable : null;
+    const bRef=bookingRefundable(b);
+    const refEq= (known(bRef)&&known(o.refundable))? bRef===!!o.refundable : null;
     const bfEq= (known(b.breakfast)&&known(o.breakfast))? !!b.breakfast===!!o.breakfast : null;
     if(refEq===false||bfEq===false||roomEq===false) return 'SIMILAR';             // 선언 조건이 '다름'으로 확인
     if(roomEq===true&&refEq===true&&bfEq===true) return 'EXACT';
-    const declared=[[known(b.refundable),refEq],[known(b.breakfast),bfEq],[!!bRoom,roomEq]];
+    const declared=[[known(bRef),refEq],[known(b.breakfast),bfEq],[!!bRoom,roomEq]];
     if(declared.every(([d,eq])=>!d||eq===true) && declared.some(([d])=>d)) return 'EQUIVALENT';
     return 'SIMILAR';
   }
@@ -301,7 +309,8 @@
     const INS={BASIC:0,CDW:1,FULL:2};
     const bi=normInsurance(b.insurance), oi=normInsurance(o.insurance);
     const inEq=(bi&&oi)? (INS[oi]>INS[bi]? true : oi===bi) : null;         // 보험 하락이면 false
-    const refEq=(known(b.refundable)&&known(o.refundable))? (!!o.refundable||!b.refundable) : null;   // 환불→비환불이면 false
+    const bRef=bookingRefundable(b);
+    const refEq=(known(bRef)&&known(o.refundable))? (!!o.refundable||!bRef) : null;   // 환불→비환불이면 false
     const bcls=normCarClass(b.carClass), ocls=normCarClass(o.vehicleClass||o.carClass);
     let clsEq=null;                                                        // 차급: 하락이면 false, 동급 true, 상승 true(EXACT엔 부족)
     let clsUp=false;
@@ -312,7 +321,7 @@
     }
     const checks=[trEq,miEq,inEq,refEq,clsEq];
     if(checks.some(v=>v===false)) return 'SIMILAR';                        // 조건 하락 확인 → 확정 금지
-    const declared=[[!!(bt&&ot),trEq],[!!(bm&&om),miEq],[!!(bi&&oi),inEq],[known(b.refundable)&&known(o.refundable),refEq],[!!(bcls&&ocls),clsEq]];
+    const declared=[[!!(bt&&ot),trEq],[!!(bm&&om),miEq],[!!(bi&&oi),inEq],[known(bRef)&&known(o.refundable),refEq],[!!(bcls&&ocls),clsEq]];
     const allTrue=declared.every((/**@type {any}*/[d,eq])=>!d||eq===true);
     const anyDeclared=declared.some((/**@type {any}*/[d])=>d);
     if(allTrue&&anyDeclared&&!clsUp&&clsEq!==null&&trEq!==null) return 'EXACT';   // 차급·변속기까지 확인된 완전 일치

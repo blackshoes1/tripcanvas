@@ -52,3 +52,13 @@ it('비용만 삭제한 예약은 예약 목록에 남고 무료가 아닌 금�
   expect(rows).toHaveLength(1);
   expect(rows[0]).toMatchObject({ id: 'hotel', title: '호텔', priceKnown: false, price: 0 });
 });
+
+it('무료 취소: 체크박스 시절 표시 없이 저장된 false는 모름(null)이고, 고른 불가만 false다', () => {
+  const trip = { days: [], bookings: [
+    { id: 'old', type: 'hotel', title: '옛 예약', price: 1, refundable: false, track: false },
+    { id: 'no', type: 'hotel', title: '불가', price: 1, refundable: false, refundableSet: true, track: false },
+    { id: 'yes', type: 'hotel', title: '가능', price: 1, refundable: true, track: false }
+  ] };
+  const by = Object.fromEntries(buildBookings(trip as TripDoc, [], '2026-09-25').map((r) => [r.title, r.refundable]));
+  expect(by).toEqual({ '옛 예약': null, '불가': false, '가능': true });
+});

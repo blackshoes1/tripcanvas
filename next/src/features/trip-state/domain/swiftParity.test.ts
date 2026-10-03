@@ -474,13 +474,17 @@ describe('응답 래퍼·유입·동선·기록 계약', () => {
       method: 'POST',
       headers: { authorization: 'Bearer good', 'content-type': 'application/json' },
       body: JSON.stringify({
-        text: ['[day1] 9월 2일(수) — 마드리드 도착', '* 09:00~10:00｜프라도 미술관', '게르니카는 레이나 소피아에 있다'].join('\n'),
+        // 날짜가 건너뛰는 둘째 날(9/4) — 빈 날 자리(ItineraryDayGap)까지 따라간다
+        text: ['[day1] 9월 2일(수) — 마드리드 도착', '* 09:00~10:00｜프라도 미술관', '게르니카는 레이나 소피아에 있다',
+          '[day2] 9월 4일(금) — 톨레도', '* 10:00｜톨레도 대성당'].join('\n'),
         year: 2026
       })
     }));
     expect(response.status).toBe(200);
     const body = (await response.json()) as ItineraryParseResponse;
     expect(body.draft.days[0].items.length, '읽은 줄이 있어야 ItineraryDraftItem까지 따라간다').toBeGreaterThan(0);
+    expect(body.draft.dayLayout.gaps, '건너뛴 날이 있어야 ItineraryDayGap까지 따라간다').toEqual([{ before: 1, from: '2026-09-03', count: 1 }]);
+    expect(body.draft.dayLayout.at).toEqual([0, 2]);
     expectCovered('ItineraryParseResponse', body);
   });
 
