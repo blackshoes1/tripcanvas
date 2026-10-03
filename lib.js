@@ -35,6 +35,27 @@
   /** @param {LatLng} a @param {LatLng} b @param {string=} mode @returns {string} */
   function legKey(a,b,mode){ return legId(a,b)+'#'+(mode||'car'); }
 
+  const WALK_INSTEAD_MAX_M=2000, WALK_DETOUR=1.3, WALK_M_PER_MIN=75;
+  /**
+   * 자차 하루의 가까운 구간은 걸어서 계산한다 — 차 경로가 2km 미만일 때(판정은 예전 그대로).
+   * ⚠️ **걷는 거리는 차 경로 거리가 아니다**(2026-10-03 UX 검토). 구시가의 일방통행을 도는 차 경로(1.4km)로
+   * 직선 365m를 '걸어서 18분'이라 해 그 뒤 도착 시각이 전부 밀렸다. 도보 경로는 따로 묻지 않으므로
+   * 직선거리 × 1.3(걷는 길의 굽이)과 차 경로 중 짧은 쪽을 걷는 거리로 쓴다(분속 75m = 시속 4.5km).
+   * 웹(`legLabel`·`legMinutes`·지도 칩·여행 중 화면)과 서버(`dayView`·지도 장면)가 이 하나를 쓴다.
+   * @param {string|null|undefined} mode 그 구간의 수단
+   * @param {{m?:number|null, sec?:number|null}|null|undefined} route 조회된 차 경로(없으면 null)
+   * @param {LatLng} a @param {LatLng} b
+   * @returns {{m:number, min:number}|null} 걸어서 계산하면 걷는 거리(m)·분, 아니면 null
+   */
+  function walkInsteadOfCar(mode, route, a, b){
+    if((mode||'car')!=='car' || !route || !route.sec) return null;
+    const routeM=Math.max(0, +(route.m||0));
+    if(!(routeM<WALK_INSTEAD_MAX_M)) return null;
+    const straight=haversine({lat:+a.lat,lng:+a.lng},{lat:+b.lat,lng:+b.lng})*1000*WALK_DETOUR;
+    const m=isFinite(straight)? Math.min(routeM, straight) : routeM;
+    return {m, min:m/WALK_M_PER_MIN};
+  }
+
   /** p 주변 반경 r(m) 8방위 후보점 (도로 스냅) @param {LatLng} p @param {number} r @returns {LatLng[]} */
   function ringPts(p,r){
     const dLat=r/111320, dLng=r/(111320*Math.cos(p.lat*Math.PI/180));
@@ -266,9 +287,11 @@
 
   /**
    * 동선 최적화 계획 — 문서를 바꾸지 않고 '어떤 순서가 되는지'만 낸다. 적용은 사용자가 미리보기를 보고 고른다.
-   * 제자리에 두는 장소: 첫 장소 · 예약·입장 시각(bookAt) · 내가 정한 도착(at) · 숙소 · 좌표 없는 장소 · 분리 묶음(split).
+   * 제자리에 두는 장소: 첫 장소 · 예약·입장 시각(bookAt) · 내가 정한 도착(at) · 숙소 · 좌표 없는 장소 · 분리 묶음(split)
+   * · **마지막 장소가 공항·역·항구(교통)일 때 그 장소** — 그날 떠나는 곳이라 끝점이다.
    * 그 사이에 이어진 나머지 장소만 앞뒤 고정 장소를 끝점으로 묶어 이동거리 최소로 다시 놓는다.
    * 2026-10-02 전에는 좌표 있는 장소 전체를 섞고 좌표 없는 장소를 맨 뒤로 밀어, 예약 시각 순서가 깨진 뒤에야 토스트로 알렸다.
+   * 2026-10-03 전에는 '동문시장 → 협재 → 제주국제공항'으로 끝나는 마지막 날에 공항을 가운데로 옮기자고 했다(직선거리만 보면 짧다).
    * @param {any[]} spots
    * @returns {{order:number[], changed:boolean, beforeKm:number, afterKm:number, fixed:number[]}} order[k] = 새 k번째 자리에 오는 원래 인덱스
    */
@@ -277,7 +300,9 @@
     const loc=(/**@type{any}*/s)=>!!s && s.lat!=null && s.lng!=null && s.lat!=='' && s.lng!=='' && isFinite(+s.lat) && isFinite(+s.lng);
     /** @param {any} s @returns {LatLng} */
     const pt=(s)=>({lat:+s.lat, lng:+s.lng});
-    const isFixed=(/**@type{any}*/s,/**@type{number}*/i)=>i===0 || !loc(s) || !!s.bookAt || !!s.at || !!s.stay || !!s.split;
+    const last=list.length-1;
+    const isFixed=(/**@type{any}*/s,/**@type{number}*/i)=>i===0 || !loc(s) || !!s.bookAt || !!s.at || !!s.stay || !!s.split
+      || (i===last && (spotCatOf(s)||{}).id==='transport');
     const order=list.map((_,i)=>i);
     /** @type {number[]} */
     const fixed=[];
@@ -2017,7 +2042,7 @@
   }
 
 
-  const TC={deleteSpotCost,clearSpotCost,deleteBookingCost,dayLodgings,sortTripsByCountdown,additionalReservations,tripSummaryCities,returnModeOf,SPOT_PRIORITIES,spotPriorityOf,applySpotPriority,spotPriorityLabel,SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,cityFromKoreanAddr,placeName,cityFromGoogle,normHours,classifySearchErr,isKoreanSearch,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,normHM,sortDayByTime,inKorea,simplifyName,parseDirect,parseMoney,normalizeDraftDays,extractJson,extMapLink,encodePolyline,decodePolyline,optimizeRoute,planRouteOptimization,routeLength,isOpenAt,validTimeZone,zonedClock,zonedMinutesToISOString,dayAnchor,stayMinutesOf,activityStartMinute,dayEndMinutes,departMinuteAfter,computeTimeline,computeDayJourney,whoKey,splitSegments,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,budgetBookings,moneyAmount,parseCostAmount,costAmountOf,dayEnteredCost,splitAcrossNights,stayCostShares,stayCostOverflow,dayEnteredCostOn,hasManualTransportCost,dayCostSummary,ADMISSION_REQUIREMENTS,admissionLabel,admissionOf,needsAdmissionBooking,normalizeAdmission,admissionError,COST_CATEGORIES,COST_CURRENCIES:_CURS,costCategoryOf,COST_PAY_STATES,costPayStateOf,payStateTotals,TRIP_NOTE_CATEGORIES,normalizeTripNote,tripCostSummary,localMode,mdLabel,tripPeriodOf,startShiftPreview,SAMPLE_TRIP_ID,isSampleTrip,sampleTrip,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
+  const TC={deleteSpotCost,clearSpotCost,deleteBookingCost,dayLodgings,sortTripsByCountdown,additionalReservations,tripSummaryCities,returnModeOf,SPOT_PRIORITIES,spotPriorityOf,applySpotPriority,spotPriorityLabel,SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,cityFromKoreanAddr,placeName,cityFromGoogle,normHours,classifySearchErr,isKoreanSearch,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,normHM,sortDayByTime,inKorea,walkInsteadOfCar,simplifyName,parseDirect,parseMoney,normalizeDraftDays,extractJson,extMapLink,encodePolyline,decodePolyline,optimizeRoute,planRouteOptimization,routeLength,isOpenAt,validTimeZone,zonedClock,zonedMinutesToISOString,dayAnchor,stayMinutesOf,activityStartMinute,dayEndMinutes,departMinuteAfter,computeTimeline,computeDayJourney,whoKey,splitSegments,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,budgetBookings,moneyAmount,parseCostAmount,costAmountOf,dayEnteredCost,splitAcrossNights,stayCostShares,stayCostOverflow,dayEnteredCostOn,hasManualTransportCost,dayCostSummary,ADMISSION_REQUIREMENTS,admissionLabel,admissionOf,needsAdmissionBooking,normalizeAdmission,admissionError,COST_CATEGORIES,COST_CURRENCIES:_CURS,costCategoryOf,COST_PAY_STATES,costPayStateOf,payStateTotals,TRIP_NOTE_CATEGORIES,normalizeTripNote,tripCostSummary,localMode,mdLabel,tripPeriodOf,startShiftPreview,SAMPLE_TRIP_ID,isSampleTrip,sampleTrip,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
   if(typeof module!=='undefined' && module.exports){ module.exports=TC; }   // Node (테스트)
   else { const r=/**@type {any}*/(root); for(const k in TC) r[k]=/**@type {any}*/(TC)[k]; }   // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);

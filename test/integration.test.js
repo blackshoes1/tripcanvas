@@ -5436,3 +5436,20 @@ test('통합: 보고 있는 일자(1부터 센다, 0=전체)를 일자 인덱스
     assert.equal(w.eval('activeDay'),1,'하루짜리가 되어도 전체로 바뀌지 않는다');
   }finally{ w.close(); }
 });
+
+// ── ux3:map ──
+test('통합: 자차 하루의 가까운 구간은 차 경로가 아니라 두 곳 사이를 걷는 시간으로 도착을 계산한다', {skip:noJsdom}, () => {
+  // 2026-10-03 UX 검토: 직선 365m를 일방통행을 도는 차 경로 1.4km로 '가까워 걸어서 18분'이라 해 마요르 광장 도착이 밀렸다
+  const w=boot();
+  try{
+    withTrip(w, JSON.stringify([{mode:'car',startAt:'09:00',spots:[
+      {name:'푸에르타 델 솔',lat:40.4169,lng:-3.7035,stayMin:0},
+      {name:'마요르 광장',lat:40.4155,lng:-3.7074}
+    ]}]));
+    w.eval(`const s=trip().days[0].spots; legCache[legKey(s[0],s[1],'car')]={sec:420,m:1400,path:'x',mode:'car'}; render();`);
+    const leg=w.document.querySelector('.spot[data-si="1"] .leg');
+    assert.match(leg.textContent, /↳0\.5km · 가까워 걸어서 [5-7]분/, '걷는 거리·시간은 두 곳 사이로 잰다');
+    const eta=w.eval('Math.round(dayContext(0).timeline[1].eta)');
+    assert.ok(eta>=9*60+5 && eta<=9*60+7, `도착 예상이 걸음으로 계산된다: ${eta}`);
+  }finally{ w.close(); }
+});

@@ -13,7 +13,7 @@ import type {
 
 const {
   dayCostSummary, dayEnteredCost, hasManualTransportCost, budgetBookings, carEventsOn, carSpotLinks, computeDayJourney, dayReturnStay, dayStartAnchor,
-  haversine, hm, isOpenAt, legKey, returnModeOf, parseHM, spotCatOf, stayNights, toISO
+  haversine, hm, isOpenAt, legKey, returnModeOf, parseHM, spotCatOf, stayNights, toISO, walkInsteadOfCar
 } = legacyLib;
 
 // ── 수단 상수 (app.js와 동일 값 — Phase 6에서 단일 소스로 합칠 표시·추정용 글루) ──
@@ -65,11 +65,12 @@ function failedLeg(legCache: LegCache, a: LatLng, b: LatLng, mode: TransportMode
   return !!(c && !c.sec && c.fail);
 }
 
-/** 구간 이동시간(분) — app.js legMinutes와 동일: 캐시 우선(자차 2km 미만은 도보 대안), 없으면 직선 추정 */
+/** 구간 이동시간(분) — app.js legMinutes와 동일: 캐시 우선(자차 2km 미만은 도보 대안 — 걷는 거리는 lib
+ *  `walkInsteadOfCar`가 두 곳 사이로 잰다), 없으면 직선 추정 */
 export function legMinutes(legCache: LegCache, a: LatLng, b: LatLng, mode: TransportMode): number {
   const m: TransportMode = MODE_ICON[mode] ? mode : 'car';
   const c = cachedLeg(legCache, a, b, m);
-  if (c && c.sec) return m === 'car' && (c.m ?? 0) < 2000 ? (c.m ?? 0) / 75 : c.sec / 60;
+  if (c && c.sec) return walkInsteadOfCar(m, c, a, b)?.min ?? c.sec / 60;
   return (haversine(a, b) / MODE_SPEED[m]) * 60;
 }
 
@@ -81,11 +82,10 @@ export function fmtDur(sec: number): string {
 function legViewOf(legCache: LegCache, a: LatLng, b: LatLng, mode: TransportMode): LegView {
   const c = cachedLeg(legCache, a, b, mode);
   if (c && c.sec) {
-    const dist = c.m ?? 0;
-    const km = (dist / 1000).toFixed(1);
-    const label = mode === 'car' && dist < 2000
-      ? `↳${km}km · 🚶${Math.max(1, Math.round(dist / 75))}분`
-      : `↳${km}km · ${fmtDur(c.sec)}`;
+    const walk = walkInsteadOfCar(mode, c, a, b);
+    const label = walk
+      ? `↳${(walk.m / 1000).toFixed(1)}km · 🚶${Math.max(1, Math.round(walk.min))}분`
+      : `↳${((c.m ?? 0) / 1000).toFixed(1)}km · ${fmtDur(c.sec)}`;
     let title = c.est
       ? (mode === 'flight' || mode === 'train' ? '직선거리 기반 추정' : '자동차 경로 거리 기반 추정')
       : '실제 도로 기준';

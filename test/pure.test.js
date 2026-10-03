@@ -107,6 +107,23 @@ test('haversine 근사 (경주역→감포 ~30km)', () => {
   assert.equal(Math.round(L.haversine({lat:0,lng:0},{lat:0,lng:0})), 0);
 });
 
+test('walkInsteadOfCar — 자차의 가까운 구간은 차 경로가 아니라 걷는 거리로 계산한다', () => {
+  // 2026-10-03 UX 검토: 푸에르타 델 솔 → 마요르 광장은 직선 365m인데 일방통행을 도는 차 경로 1.4km로 '걸어서 18분'이었다
+  const sol = { lat: 40.4169, lng: -3.7035 }, mayor = { lat: 40.4155, lng: -3.7074 };
+  const w = L.walkInsteadOfCar('car', { sec: 420, m: 1400 }, sol, mayor);
+  assert.ok(w, '차 경로 2km 미만이면 걸어서 계산한다');
+  assert.ok(w.m > 365 && w.m < 500, `걷는 거리는 직선에 굽이를 더한 만큼: ${w.m}`);
+  assert.ok(Math.round(w.min) >= 5 && Math.round(w.min) <= 7, `5~7분 걸음: ${w.min}`);
+  // 차 경로가 직선보다 짧게 잡히면(곧은길) 그 경로를 쓴다 — 걷는 거리를 부풀리지 않는다
+  assert.equal(L.walkInsteadOfCar('car', { sec: 60, m: 300 }, sol, mayor).m, 300);
+  // 판정은 예전 그대로 — 차 경로 2km 이상·다른 수단·조회 전은 걸어서 계산하지 않는다
+  assert.equal(L.walkInsteadOfCar('car', { sec: 600, m: 2000 }, sol, mayor), null);
+  assert.equal(L.walkInsteadOfCar('taxi', { sec: 420, m: 1400 }, sol, mayor), null);
+  assert.equal(L.walkInsteadOfCar('car', null, sol, mayor), null);
+  assert.equal(L.walkInsteadOfCar('car', { sec: 0, m: 0, fail: 1 }, sol, mayor), null);
+  assert.ok(L.walkInsteadOfCar(undefined, { sec: 420, m: 1400 }, sol, mayor), '수단이 비면 자차(기본)다');
+});
+
 test('legId / legKey — 4자리 반올림·수단 접미사', () => {
   const a={lat:35.79651,lng:129.13488}, b={lat:35.83480,lng:129.22649};
   assert.equal(L.legId(a,b), '35.7965,129.1349>35.8348,129.2265');
@@ -1692,6 +1709,29 @@ test('planRouteOptimization: 예약·도착 고정·숙소·좌표 없는 장소
   assert.deepEqual(r.fixed, [0, 4, 5]);
   // 입력을 바꾸지 않는다
   assert.equal(spots[1].name, 'C');
+});
+
+test('planRouteOptimization: 마지막 장소가 공항·역이면 그날 떠나는 곳이라 끝점에 둔다', () => {
+  // 2026-10-03 UX 검토: 마지막 날 '동문시장 → 협재 → 제주국제공항'에서 공항을 가운데로 옮기자고 했다
+  const jeju = [
+    { name: '제주동문시장', lat: 33.5124, lng: 126.5283 },
+    { name: '협재해수욕장', lat: 33.3940, lng: 126.2397 },
+    { name: '제주국제공항', lat: 33.5104, lng: 126.4914 }
+  ];
+  const r = L.planRouteOptimization(jeju);
+  assert.equal(r.changed, false, '공항을 끝에 둔 하루는 바꿀 것이 없다');
+  assert.ok(r.fixed.includes(2), '마지막 공항은 제자리');
+  // 분류로 정한 교통 장소(이름에 '공항'이 없어도)도 끝점이다 — 앞 구간은 그대로 다시 놓는다
+  const day = [
+    { name: '숙소 앞', lat: 40.40, lng: -3.70 },
+    { name: 'C', lat: 40.43, lng: -3.70 }, { name: 'A', lat: 40.41, lng: -3.70 }, { name: 'B', lat: 40.42, lng: -3.70 },
+    { name: 'Atocha', lat: 40.30, lng: -3.69, cat: 'transport' }
+  ];
+  const r2 = L.planRouteOptimization(day);
+  assert.deepEqual(r2.order.map((k) => day[k].name), ['숙소 앞', 'A', 'B', 'C', 'Atocha']);
+  // 공항이 끝이 아니면(그날 공항에 들렀다가 이어 가면) 끝점으로 묶지 않는다
+  const mid = [jeju[0], jeju[2], jeju[1], { name: '애월', lat: 33.4625, lng: 126.3094 }];
+  assert.equal(L.planRouteOptimization(mid).fixed.includes(1), false);
 });
 
 test('planRouteOptimization: 이미 최적이거나 움직일 곳이 없으면 바꾸지 않는다', () => {

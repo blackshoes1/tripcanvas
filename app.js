@@ -946,19 +946,20 @@ function flightHtml(day){
 function saveLegCache(){ try{ localStorage.setItem(LEG_KEY, JSON.stringify(TC_ROUTING.compactLegCache(legCache,Date.now(),TC_ROUTING.LEG_CACHE_MAX,LEG_SESSION_AT))); }catch(e){} }
 const LEG_NOROUTE_TITLE='경로를 찾을 수 없어 직선거리로 표시 — 인근 도로 탐색(최대 2.4km)까지 실패했어요. 장소 편집에서 검색으로 위치를 다시 잡아 보세요';
 function fmtDur(sec){ const m=Math.round(sec/60); return m<60? `${m}분` : `${Math.floor(m/60)}시간${m%60? ' '+(m%60)+'분':''}`; }
-function legLabel(c){
-  const km=(c.m/1000).toFixed(1),mode=c.mode||'car';
+// a·b는 그 구간의 두 끝 — 걸어서 계산할 때 걷는 거리를 차 경로가 아니라 두 곳 사이로 잰다(lib `walkInsteadOfCar`)
+function legLabel(c,a,b){
   // 자차여도 2km 미만은 걸어서 계산한다(legMinutes와 같은 규칙) — 아이콘만 바꾸면 '추천'인지 '적용'인지 모른다
-  if(mode==='car'&&c.m<2000){const wm=Math.max(1,Math.round(c.m/75));return `↳${km}km · 가까워 걸어서 ${wm}분`;}
-  return `↳${km}km · ${fmtDur(c.sec)}`;
+  const w=walkInsteadOfCar(c.mode||'car',c,a,b);
+  if(w) return `↳${(w.m/1000).toFixed(1)}km · 가까워 걸어서 ${Math.max(1,Math.round(w.min))}분`;
+  return `↳${(c.m/1000).toFixed(1)}km · ${fmtDur(c.sec)}`;
 }
 // 주소창·상태바 색(theme-color)도 지금 테마의 바탕을 따른다 — 예전 남색(#16213e)이 남아 있었다
 function syncThemeColor(dark){ const m=document.querySelector('meta[name="theme-color"]'); if(m) m.setAttribute('content',dark?'#16130f':'#f4f1ea'); }
 function applyTheme(){ let theme='light'; try{ theme=localStorage.getItem(THEME_KEY)||'light'; }catch(_){} document.body.classList.toggle('theme-dark',theme==='dark'); syncThemeColor(theme==='dark'); }
 function toggleTheme(){ const dark=!document.body.classList.contains('theme-dark'); document.body.classList.toggle('theme-dark',dark); syncThemeColor(dark); try{localStorage.setItem(THEME_KEY,dark?'dark':'light');}catch(_){} }
 applyTheme();
-function legTitle(c){
-  if((c.mode||'car')==='car'&&c.m<2000) return '자차 하루여도 2km 미만은 걸어서 계산해요 — 차로 가려면 구간 수단을 택시로 바꾸세요';
+function legTitle(c,a,b){
+  if(walkInsteadOfCar(c.mode||'car',c,a,b)) return '자차 하루여도 2km 미만은 걸어서 계산해요(걷는 거리는 두 곳 사이로 어림해요) — 차로 가려면 구간 수단을 택시로 바꾸세요';
   let t=(c.est?((c.mode==='flight'||c.mode==='train')?'직선거리 기반 추정':'자동차 경로 거리 기반 추정'):'실제 도로 기준');
   if(c.snapped)t+=' · 인근 지점에서 출발/도착 (원 지점이 도로·정류장에서 멀어 보정 — 공항 부지 중심 좌표 등)';
   if((c.mode==='car'||c.mode==='taxi')&&c.taxi)t+=` · 택시 약 ${c.taxi.toLocaleString()}원`;
@@ -1113,8 +1114,8 @@ async function pumpLegs(){
       legCache[base]=r;                                  // 지도·재생은 가장 최근 실제 경로를 사용
       saveLegCache();
       document.querySelectorAll(`[data-leg="${key}"]`).forEach(el=>{
-        el.textContent=legLabel(r);
-        el.title=legTitle(r);
+        el.textContent=legLabel(r,a,b);
+        el.title=legTitle(r,a,b);
       });
       clearTimeout(legRefreshT);
       legRefreshT=setTimeout(()=>bgRender(render),450);   // 하루 합계 + 지도 경로선 갱신
@@ -1132,7 +1133,7 @@ async function pumpLegs(){
 function legMinutes(a,b,mode,when,timeZone){
   mode=MODE_ICON[mode]?mode:'car';
   const c=legCache[legRequestKey(a,b,mode,when,timeZone)];
-  if(c&&c.sec) return (mode==='car'&&c.m<2000)? c.m/75 : c.sec/60;
+  if(c&&c.sec){ const w=walkInsteadOfCar(mode,c,a,b); return w? w.min : c.sec/60; }
   return haversine(a,b)/MODE_SPEED[mode]*60;
 }
 // 일자 타임라인: 시작시각(startAt, 기본 09:00)부터 체류(stayMin, **안 정했으면 0분**)+이동 누적.
@@ -1361,7 +1362,8 @@ function render(){
         if(activeDay && cch.sec){
           const mid = path? path[Math.floor(path.length/2)]
                           : {lat:(+A.lat + +B.lat)/2, lng:(+A.lng + +B.lng)/2};
-          addLegChip(mid, (lm==='car'&&cch.m<2000)? `🚶${Math.max(1,Math.round(cch.m/75))}분` : `${MODE_ICON[lm]}${fmtDur(cch.sec)}`);
+          const walk=walkInsteadOfCar(lm,cch,A,B);
+          addLegChip(mid, walk? `🚶${Math.max(1,Math.round(walk.min))}분` : `${MODE_ICON[lm]}${fmtDur(cch.sec)}`);
         }
       }
       // 숙소 복귀 — 자동으로 이어 붙인 구간이라 점선으로 구분한다
@@ -1874,7 +1876,7 @@ function renderSidebar(){
         // 경로 없음(인근 도로 스냅까지 실패)만 ⚠️ — 잠깐인 실패(오프라인·429)에 '위치를 다시 잡으라'고 하면 거짓말이다
         const failed=!lc && legCache[lid] && legCache[lid].permanent;
         legHtml = legModeBtn(day,di,si,lm) + (lc
-          ? `<span class="leg" data-leg="${lid}" title="${legTitle(lc)}">${legLabel(lc)}</span>`
+          ? `<span class="leg" data-leg="${lid}" title="${legTitle(lc,prevLoc,s)}">${legLabel(lc,prevLoc,s)}</span>`
           : `<span class="leg${failed?' legfail':''}" data-leg="${lid}"${failed?` title="${LEG_NOROUTE_TITLE}"`:''}>↳${haversine(prevLoc,s).toFixed(1)}km${failed?' ⚠️':''}</span>`);
       }
       // 예약 시각이 도착 예상시각(ETA)보다 이르면 경고 (예약 놓칠 위험)
@@ -2037,7 +2039,7 @@ function renderSidebar(){
           const bl=ctx.backLeg; if(!bl) return '';
           const c=requestLeg(bl.from,bl.to,bl.mode,bl.when,bl.timeZone);
           const legTxt = c
-            ? `<span class="leg" data-leg="${bl.key}" title="${legTitle(c)}">${legLabel(c)}</span>`
+            ? `<span class="leg" data-leg="${bl.key}" title="${legTitle(c,bl.from,bl.to)}">${legLabel(c,bl.from,bl.to)}</span>`
             : `<span class="leg" data-leg="${bl.key}">↳${haversine(bl.from,bl.to).toFixed(1)}km</span>`;
           return `<div class="spot back hasInLeg" style="--c:var(--subtle)" title="오늘 묵는 숙소 — 동선이 닫히도록 자동으로 이어 붙였어요 (탭하면 지도에서 보기)">
             <div class="spotLeg incoming" aria-label="마지막 장소에서 숙소로 가는 길"><span class="legFrom">마지막 장소에서</span>${legTxt}</div>
@@ -2182,7 +2184,7 @@ window.optimizeDay=(di)=>{
   const day=trip().days[di];
   if(day.spots.filter(hasLoc).length<3){ toast('최적화하려면 좌표 있는 장소가 3곳 이상 필요해요','#4f4740'); return; }
   const plan=planRouteOptimization(day.spots);
-  if(!plan.changed){ toast(plan.fixed.length>1? '바꿀 수 있는 순서가 없어요 — 예약·시각을 정한 곳과 숙소는 제자리에 둬요' : '이미 최적에 가까운 동선이에요 👍'); return; }
+  if(!plan.changed){ toast(plan.fixed.length>1? '바꿀 수 있는 순서가 없어요 — 예약·시각을 정한 곳, 숙소, 마지막에 떠나는 공항·역은 제자리에 둬요' : '이미 최적에 가까운 동선이에요 👍'); return; }
   const lateOf=(spots)=>{
     const tl=dayJourney({...day, spots}, undefined, di).timeline;
     return spots.map((s,i)=>s.bookAt? Math.round(tl[i].eta-parseHM(s.bookAt)) : null);
@@ -2196,7 +2198,7 @@ window.optimizeDay=(di)=>{
   body.innerHTML=`<p class="hint">직선거리 기준 이동 약 <b>${plan.beforeKm.toFixed(1)}km → ${plan.afterKm.toFixed(1)}km</b>. 실제 도로·대중교통 시간은 다를 수 있어요.</p>`+
     (worse.length? `<div class="optWarn" role="alert">${ic('warn')} 이 순서면 예약에 늦어요<ul>${worse.map(w=>`<li>${esc(w)}</li>`).join('')}</ul></div>` : '')+
     `<ol class="optList">${next.map((s,i)=>`<li class="${moved.has(plan.order[i])?'moved':''}${plan.fixed.includes(plan.order[i])?' fixed':''}">${esc(s.name)}${plan.fixed.includes(plan.order[i])&&i>0?' <span class="optTag">제자리</span>':''}${moved.has(plan.order[i])?' <span class="optTag moved">옮김</span>':''}</li>`).join('')}</ol>`+
-    `<p class="hint">예약·입장 시각, 내가 정한 도착 시각, 숙소, 위치 없는 장소는 제자리에 둬요. 바꾼 뒤에도 실행취소할 수 있어요.</p>`;
+    `<p class="hint">예약·입장 시각, 내가 정한 도착 시각, 숙소, 위치 없는 장소, 마지막에 떠나는 공항·역은 제자리에 둬요. 바꾼 뒤에도 실행취소할 수 있어요.</p>`;
   document.getElementById('optApply').textContent=worse.length? '늦어도 이 순서로 바꾸기' : '이 순서로 바꾸기';
   document.getElementById('optModalBg').classList.add('show');
 };
@@ -5139,10 +5141,10 @@ function renderTravel(di, clock){
   d.spots.forEach((s,si)=>{
     const incoming=ctx.legs.filter(l=>l.spotIndex===si);
     for(const leg of incoming){
-      const mode=leg.mode,c=routes.get(leg);
+      const mode=leg.mode,c=routes.get(leg), walk=c? walkInsteadOfCar(mode,c,leg.from,s) : null;
       const lg=document.createElement('div'); lg.className='tLeg';
       lg.textContent = (incoming.length>1?`${leg.from.name||'출발점'}에서 · `:'')+(c
-        ? ((mode==='car'&&c.m<2000)? `🚶 ${Math.max(1,Math.round(c.m/75))}분 · ${(c.m/1000).toFixed(1)}km`
+        ? (walk? `🚶 ${Math.max(1,Math.round(walk.min))}분 · ${(walk.m/1000).toFixed(1)}km`
                    : `${MODE_ICON[mode]} ${fmtDur(c.sec)} · ${(c.m/1000).toFixed(1)}km${((mode==='car'||mode==='taxi')&&c.taxi)?` · 🚕약 ${c.taxi.toLocaleString()}원`:''}`)
         : `↘ 직선 ${haversine(leg.from,s).toFixed(1)}km`);
       list.appendChild(lg);
