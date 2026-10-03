@@ -4047,7 +4047,7 @@ document.getElementById('bkDelBtn').onclick=()=>{
   });
 };
 
-let costEditorSnapshot='', costEditorTrip='';
+let costEditorSnapshot='', costEditorTrip='', costEditorDay=0;
 function selectedCostSpot(){
   const [di,si]=document.getElementById('costPlace').value.split(':').map(Number);
   return {di,si,spot:trip().days[di]?.spots[si]};
@@ -4092,13 +4092,16 @@ window.openPlaceCost=(di=activeDay?activeDay-1:0)=>{   // di는 0부터, activeD
   // 장소가 없으면 빈 선택 상자만 있고 무엇을 하라는지 말이 없었다 — 담으라고 말하고 담는 길을 둔다(2026-10-03)
   const dialog=document.getElementById('placeCostDialog'), empty=!select.options.length;
   dialog.classList.toggle('isEmpty',empty); document.getElementById('costPlaceEmpty').hidden=!empty;
-  costEditorSnapshot=JSON.stringify(trip()); costEditorTrip=trip().id;
+  costEditorSnapshot=JSON.stringify(trip()); costEditorTrip=trip().id; costEditorDay=di;
   fillPlaceCost(); dialog.showModal();
 };
 document.getElementById('costPlaceAddSpot').onclick=()=>{
+  // 창을 연 그 날에 새 장소를 담는다 — 지도 빈 화면 버튼을 대신 누르면 그 버튼의 규칙(숨김·위치 없는 장소 열기)을 따라가 버린다
   document.getElementById('placeCostDialog').close();
+  if(!guardEdit()) return;
+  if(!trip().days.length){ toast('먼저 일자를 추가해 주세요'); return; }
   document.getElementById('bookingListBg').classList.remove('show');
-  document.getElementById('mapEmptySearch').click();   // 지도 빈 화면의 '첫 장소 검색'과 같은 길 — 보고 있는 날에 담는다
+  openSpotModal(Math.max(0,Math.min(costEditorDay,trip().days.length-1)),-1);
 };
 document.getElementById('costPlace').onchange=fillPlaceCost;
 document.getElementById('costPlaceOpen').onclick=()=>openPlaceCost();

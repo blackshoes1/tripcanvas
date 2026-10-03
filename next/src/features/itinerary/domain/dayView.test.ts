@@ -229,6 +229,7 @@ describe('비용 — 하루치(배분)와 전액을 구분한다', () => {
     const v = buildDayView(t, { [key]: { sec: 3600, m: 40000, taxi: 45000 } }, 0);
     expect(v.cost.parts).toEqual([{ label: '택시', amount: 45000 }]);
     expect(v.cost.details?.transportUnpriced).toBe(false);
+    expect(v.routeLabel).toContain(' · 🚕약 45,000원');   // 택시 날은 낼 돈이라 '간다면'이 붙지 않는다
     expect(tripCostBreakdownOf(t, { [key]: { sec: 3600, m: 40000, taxi: 45000 } }).taxi).toBe(45000);
   });
 
@@ -243,7 +244,7 @@ describe('비용 — 하루치(배분)와 전액을 구분한다', () => {
     expect(v.cost.total).toBe(0);
     expect(v.cost.details?.transportUnpriced).toBe(true);   // 주유·통행료는 계산하지 않았다
     expect(tripCostBreakdownOf(t, cache)).toMatchObject({ taxi: 0, total: 0 });
-    expect(v.routeLabel).toBe('📏 하루 동선 약 40.0km · 🚗1시간 · 🚕약 45,000원 (도로 기준)');
+    expect(v.routeLabel).toBe('📏 하루 동선 약 40.0km · 🚗1시간 · 🚕택시로 간다면 약 45,000원 (도로 기준)');   // 참고값이라고 말한다
   });
 });
 

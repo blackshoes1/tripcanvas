@@ -1026,10 +1026,11 @@ test('통합: 렌터카 예약 — 조건 저장·시장 검색·매칭·절약 
   set('bkStart',day(30)); set('bkEnd',day(34));
   set('bkCarPickup','Palma Airport'); set('bkCarPickupCode','pmi');
   set('bkCarClass','compact'); set('bkCarTrans','automatic'); set('bkCarMileage','UNLIMITED');
-  w.document.getElementById('bkFreeCancel').checked=true;
+  set('bkFreeCancel','1');   // 무료 취소는 셀렉트(모름/가능/불가)다 — 체크박스 시절의 .checked는 아무 일도 하지 않는다
   w.document.getElementById('bkTrack').checked=true;   // 새 항목은 추적이 꺼진 채 시작한다 — 켜야 시세를 본다
   w.document.getElementById('bkSave').click();
   const b=w.eval('JSON.parse(JSON.stringify(trip().bookings[0]))');
+  assert.equal(b.refundable, true, '무료 취소 가능으로 저장');
   assert.equal(b.carPickupCode, 'PMI', '공항코드 대문자 저장');
   assert.equal(b.carClass, 'compact');
   assert.equal(b.transmission, 'automatic');
@@ -5667,5 +5668,20 @@ test('통합(ux3): 예약 찾기에서 자세히로 연 편집기를 닫으면 �
     el('resvListBody').querySelector('.resvHead button').click();
     el('bkConfirmation').value='PNR77'; el('bkSave').click();
     assert.match(el('resvListBody').textContent, /예약번호 PNR77/, '저장하면 열린 목록이 다시 그려진다');
+  }finally{ w.close(); }
+});
+
+test('통합(ux3 검토): 빈 장소 비용 창의 \'장소 담기\'는 창을 연 그 날에 새 장소를 담는다', { skip: noJsdom }, () => {
+  const w=boot();
+  try{
+    withTrip(w, `[{title:'D1',drive:'',note:'',mode:'transit',spots:[]},{title:'D2',drive:'',note:'',mode:'transit',spots:[]}]`);
+    const el=(id)=>w.document.getElementById(id);
+    w.eval('openBookingList(); openPlaceCost(1)');
+    assert.ok(el('placeCostDialog').classList.contains('isEmpty'));
+    el('costPlaceAddSpot').click();
+    assert.equal(el('placeCostDialog').open, false);
+    assert.ok(!el('bookingListBg').classList.contains('show'), '담으러 가면 목록은 닫는다');
+    assert.ok(el('spotModalBg').classList.contains('show'));
+    assert.equal(w.eval('editing.di+":"+editing.si'), '1:-1', 'Day 2에서 연 창이면 Day 2에 새 장소');
   }finally{ w.close(); }
 });

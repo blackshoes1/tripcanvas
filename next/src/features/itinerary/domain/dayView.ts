@@ -354,7 +354,8 @@ export function buildDayView(trip: Trip, legCache: LegCache, di: number, fx: FxR
   const straightKm = dayDistanceOf(journey);
   const routeLabel = rt
     ? `📏 하루 동선 약 ${(rt.m / 1000).toFixed(1)}km · ${MODE_ICON[dm]}${fmtDur(rt.sec)}` +
-      `${(dm === 'car' || dm === 'taxi') && rt.taxi ? ` · 🚕약 ${rt.taxi.toLocaleString('en-US')}원` : ''}` +
+      // 자차 날의 택시 요금은 하루 비용에 들지 않는다(`taxiFareCounts`) — 레거시 웹과 같이 '택시로 간다면'이라고 참고로만 말한다
+      `${rt.taxi ? (dm === 'taxi' ? ` · 🚕약 ${rt.taxi.toLocaleString('en-US')}원` : dm === 'car' ? ` · 🚕택시로 간다면 약 ${rt.taxi.toLocaleString('en-US')}원` : '') : ''}` +
       ` (${dm === 'flight' ? '직선' : '도로 기준'})`
     : straightKm > 0 ? `📏 하루 동선 약 ${straightKm.toFixed(1)}km (직선)` : null;
 
