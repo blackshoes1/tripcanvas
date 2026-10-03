@@ -3247,7 +3247,7 @@ function deleteTrip(id){
   if(id===store.activeId){ store.activeId=store.trips[0].id; activeDay=0; }   // 보고 있던 여행을 지운 경우만 전환
   commit(null, {fit:fitEntry});
   // undo 시 삭제된 여행이 다시 활성화되어 render→save로 클라우드에도 재업로드됨
-  toast(`"${t.name}"을(를) 지웠어요`,'#4f4740',{fn:()=>undoWith(snap)});
+  toast(`"${t.name}"${TC_COLLAB.objParticle(t.name)} 지웠어요`,'#4f4740',{fn:()=>undoWith(snap)});   // 장소 삭제 토스트와 같은 말투(2026-10-03)
   return true;
 }
 document.getElementById('tripDelBtn').onclick=()=>{

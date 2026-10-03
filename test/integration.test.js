@@ -5558,7 +5558,9 @@ test('통합: 여행 삭제를 되돌린 뒤에는 다시 하기를 두지 않�
   const w = boot();
   try {
     ux3Trip(w, [UX3_DAY('D1', [])]);
-    w.eval(`window.confirm=()=>true; deleteTrip('__it__'); undo();`);
+    w.eval(`trip().name='제주 여행'; window.confirm=()=>true; deleteTrip('__it__');`);
+    assert.match(w.document.getElementById('toast').textContent, /"제주 여행"을 지웠어요/, '조사는 이름에 맞춘다 — 을(를)이 아니다');
+    w.eval('undo()');
     assert.equal(w.eval("store.trips.some(t=>t.id==='__it__')"), true);
     assert.match(w.document.getElementById('toast').textContent, /여행 삭제를 되돌렸어요/);
     assert.equal(w.document.querySelector('#toast .toastAct'), null);
