@@ -380,6 +380,10 @@
       const finish=arrive+duration;
       let score=50;
       if(cd.kind==='REST'||cd.kind==='WAIT'){
+        // 쉬자는 말은 하루가 움직인 뒤의 선택지다 — 첫 일정 전(08:53)이나 여행 전 미리보기에서 "지금 쉬어도"라고 하면
+        // 할 일이 없다는 말로 읽힌다(2026-10-03 UX 검토). 지쳤다고 했으면 언제든 권한다.
+        const started=state.completedItems.length>0 || (state.items.length>0 && state.nowMin>=state.items[0].eta);
+        if(state.energyLevel!=='LOW' && (!state.live || !started)) return;
         score=38;
         if(state.energyLevel==='LOW'){ score+=25; reasons.push('지금은 체력을 아끼는 편이 나아요'); }
         if(state.travelMinToday>=c.heavyTravelMin){ score+=15; reasons.push('오늘 이동이 '+Math.round(state.travelMinToday/60)+'시간을 넘었어요'); }
@@ -400,9 +404,11 @@
         return;
       }
       if(cd.kind==='EAT'){
+        // 식사는 식사 시간대에 넣는다 — 빈 시간이 09:41에 시작해도 점심은 11:30부터다("09:41부터 비어 있어요"였다)
+        const at=meal? Math.max(win.startMin, meal.from) : win.startMin;
         out.push({type:'EAT', id:cd.id, targetId:null, title:cd.title, score:46,
           reasons:[(meal? meal.label : '식사')+' 시간대에 일정이 비어 있어요', '이 시간에 식사를 넣으면 남은 일정이 밀리지 않아요'],
-          estimatedDuration:duration, estimatedTravelTime:0, arriveMin:win.startMin, endMin:win.startMin+duration,
+          estimatedDuration:duration, estimatedTravelTime:0, arriveMin:at, endMin:at+duration,
           fromDay:null, si:null, spot:null});
         return;
       }
@@ -553,10 +559,10 @@
         title:r.title,
         description:(r.type==='VISIT_PLACE'||r.type==='CHECK_IN')
           ? ((r.estimatedTravelTime? r.estimatedTravelTime+'분 이동 · ' : '')+LIB.hm(r.arriveMin)+' 도착 · '+LIB.hm(r.endMin)+'까지')
-          : (r.type==='EAT'? (LIB.hm(r.arriveMin)+'부터 비어 있어요') : '지금 쉬어도 남은 일정에는 여유가 있어요'),
+          : (r.type==='EAT'? (LIB.hm(r.arriveMin)+'부터 식사를 넣을 수 있어요') : '지금 쉬어도 남은 일정에는 여유가 있어요'),
         reasons:r.reasons,
         impact:{timeChangeMinutes:r.estimatedDuration+r.estimatedTravelTime, addedActivities:(r.spot?[r.title]:[]), removedActivities:[]},
-        status:'NEW', action:{kind:r.type, si:r.si, fromDay:r.fromDay, candidateId:r.id, startMin:(win? win.startMin : state.nowMin)}});
+        status:'NEW', action:{kind:r.type, si:r.si, fromDay:r.fromDay, candidateId:r.id, startMin:(r.type==='EAT'? r.arriveMin : (win? win.startMin : state.nowMin))}});
     });
     (o.priceSuggestions||[]).forEach((/**@type{any}*/p)=>{
       const key=suggestionKey('PRICE_SAVING', String(p.bookingId||p.title||''), state);

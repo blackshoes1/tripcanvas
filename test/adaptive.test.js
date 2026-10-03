@@ -953,3 +953,26 @@ test('제안: 미리보기에서는 "현재 위치에서"라고 말하지 않는
   const res = A.buildSuggestions(trip, s, { legMin: LEG });
   res.suggestions.forEach((x) => (x.reasons || []).forEach((r) => assert.ok(!/현재 위치/.test(r), r)));
 });
+
+// 2026-10-03 UX 검토 — 08:53에 열었더니 "점심 시간이 비어 있어요 · 09:41부터 비어 있어요"와 "조금 더 쉬기"가 나왔다.
+test('제안: 식사 제안은 식사 시간대의 시작을 말한다(빈 시간의 시작이 아니라)', () => {
+  const trip = tripOf([{ startAt: '09:00', mode: 'walk', spots: [Object.assign({ name: 'A', city: '도쿄', stayMin: 30 }, P(40.40))] }]);
+  const s = stateOf(trip, { todayISO: TODAY, nowMin: 8 * 60 + 53, live: true });
+  const res = A.buildSuggestions(trip, s, { legMin: LEG });
+  const eat = res.suggestions.find((x) => x.action && x.action.kind === 'EAT');
+  assert.ok(eat, '점심이 걸치는 빈 시간이면 식사 제안이 있다');
+  assert.match(eat.description, /^11:30부터/, eat.description);
+  assert.equal(eat.action.startMin, 11 * 60 + 30, '식사 장소 추가가 채우는 시각도 식사 시간대다');
+});
+
+test('제안: 하루가 시작되기 전에는 "조금 더 쉬기"를 권하지 않는다(컨디션이 낮다고 했으면 권한다)', () => {
+  const trip = tripOf([{ startAt: '09:00', mode: 'walk', spots: [Object.assign({ name: 'A', city: '도쿄', stayMin: 30 }, P(40.40))] }]);
+  const before = A.buildSuggestions(trip, stateOf(trip, { todayISO: TODAY, nowMin: 8 * 60 + 53, live: true }), { legMin: LEG });
+  assert.ok(!before.suggestions.some((x) => x.type === 'REST'), '아무것도 하지 않았는데 쉬자고 하지 않는다');
+  const tired = A.buildSuggestions(trip, stateOf(trip, { todayISO: TODAY, nowMin: 8 * 60 + 53, live: true, energyLevel: 'LOW' }), { legMin: LEG });
+  assert.ok(tired.suggestions.some((x) => x.type === 'REST'), '지쳤다고 했으면 쉬는 선택지가 있다');
+  const after = A.buildSuggestions(trip, stateOf(trip, { todayISO: TODAY, nowMin: 15 * 60, live: true }), { legMin: LEG });
+  assert.ok(after.suggestions.some((x) => x.type === 'REST'), '하루가 진행된 뒤에는 쉬는 선택지가 정상이다');
+  const preview = A.buildSuggestions(trip, stateOf(trip, { todayISO: '2026-08-01', nowMin: 15 * 60 }), { legMin: LEG });
+  assert.ok(!preview.suggestions.some((x) => x.type === 'REST'), '여행 전 미리보기에서 "지금 쉬어도"라고 하지 않는다');
+});

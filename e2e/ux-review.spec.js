@@ -22,7 +22,9 @@ test('빈 여행은 이전 지도를 덮고 검색으로 확인한 첫 장소를
   await createTrip(page,'도쿄 여행');
   await expect(page.locator('#mapEmpty')).toBeVisible();
   await expect(page.locator('#map')).toHaveJSProperty('inert',true);
-  await page.locator('#mapEmptySearch').click();
+  // 빈 여행에서는 일정의 첫 걸음 카드가 장소 담기를 맡는다(지도 빈 화면은 안내만)
+  await expect(page.locator('#mapEmptySearch')).toBeHidden();
+  await page.locator('.firstStep .btn.primary').click();
   await expect(page.locator('#spotModalBg')).toBeVisible();
   await page.evaluate(()=>{ routedSearch=async()=>[{name:'도쿄역',city:'도쿄',lat:35.681,lng:139.767,placeId:'tokyo'}]; });
   await page.locator('#spotSearch').fill('도쿄역');
@@ -40,7 +42,8 @@ test('빈 여행은 이전 지도를 덮고 검색으로 확인한 첫 장소를
 
 test('약속 시각은 상세 설정을 열지 않고 저장할 수 있다',async({context,page})=>{
   await prepare(context); await page.goto('/'); await createTrip(page,'약속');
-  await page.locator('.addSpot').first().click();
+  // 빈 여행의 첫 날에는 '＋ 장소 추가' 대신 첫 걸음 카드가 장소 담기를 맡는다
+  await page.locator('.firstStep .btn.primary').click();
   await expect(page.locator('#spotBookAt')).toBeVisible();
   await expect(page.locator('#spotAdvanced')).not.toHaveAttribute('open','');
   await page.evaluate(()=>{ document.getElementById('spotLat').value='37.5'; document.getElementById('spotLng').value='127'; });
