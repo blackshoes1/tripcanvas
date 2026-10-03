@@ -4493,7 +4493,8 @@ function openPastePreview(draft,target,raw){
   document.getElementById('pvStart').value=kind==='fill'? (cur.start||draft.start||'') : (draft.start||(keep&&cur.start)||'');
   // 이동 수단은 새 여행 창과 같은 질문·같은 기본값이다. 이어붙이기·덮어쓰기는 지금 여행의 수단에서 시작하고,
   // 채우기는 묻지 않는다(그 여행의 수단을 그대로 둔다)
-  const modeSel=document.getElementById('pvMode'), curMode=cur&&cur.days[0]&&cur.days[0].mode;
+  // 지금 여행의 수단은 화면·계산이 쓰는 값이다(dayModeOf — 적지 않았으면 자차). 날것의 mode를 보면 적지 않은 여행에 대중교통을 내밀었다
+  const modeSel=document.getElementById('pvMode'), curMode=cur&&cur.days[0]&&dayModeOf(cur.days[0]);
   modeSel.value=(kind!=='new' && [...modeSel.options].some(o=>o.value===curMode))? curMode : 'transit';
   document.getElementById('pvModeWrap').hidden=kind==='fill';
   document.querySelector('#pvLayout input[value="fill"]').checked=true;
@@ -4685,7 +4686,9 @@ async function pvGeocodeAll(){
   };
   for(const row of pv.rows){
     if(!pv||pv.seq!==seq) return;                 // 그 사이 이름이 바뀌었거나 창이 닫혔다
-    if(!row.include||row.geo.pick||row.geo.state!=='idle'||!row.name) continue;
+    // 'searching'도 다시 본다 — 여기 오기 전의 검색(체크박스·이름 고치기로 seq가 바뀐)이 버린 줄이라, 건너뛰면
+    // '찾는 중'에 영영 갇혀 요약이 끝나지 않았다(2026-10-03 검토)
+    if(!row.include||row.geo.pick||row.geo.state==='done'||!row.name) continue;
     if(!(await pass(row))) return;
   }
   // 앵커를 뒤늦게 알게 됐으면, 앵커 없이 못 찾았던 줄을 한 번만 다시 본다

@@ -5744,3 +5744,32 @@ test('ux3 여행 삭제: 목록에서 마지막 여행을 지워도, 마지막 �
     assert.equal(w2.document.getElementById('onboarding').hidden, false, '처음 화면으로 간다');
   } finally { w2.close(); }
 });
+
+test('ux3 붙여넣기(검토): 찾는 도중 다시 찾기가 시작돼도 그 줄이 \'찾는 중\'에 갇히지 않는다', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    // 첫 검색은 끝나지 않는다 — 그 사이 다른 줄을 고르면(체크박스·이름 고치기) 새 검색이 시작된다
+    w.eval('geocodeCandidates=()=>new Promise(()=>{})');
+    w.eval('openPaste()');
+    w.document.getElementById('pasteText').value = '- 센소지 | 도쿄\n- 메이지 신궁 | 도쿄';
+    w.document.getElementById('pasteTarget').value = 'new';
+    await w.eval('runPaste()');
+    assert.equal(w.eval('pv.rows[0].geo.state'), 'searching');
+    stubGeocode(w, { '센소지': [{ name: '센소지', addr: '도쿄', city: '도쿄', lat: 35.71, lng: 139.79 }] });
+    await w.eval('pvGeocodeAll()');
+    assert.equal(w.eval('pv.rows[0].geo.state'), 'done', '앞선 검색이 버려진 줄도 다시 찾는다');
+    assert.ok(!/찾는 중/.test(w.document.getElementById('pvSummary').textContent), '요약이 영영 찾는 중이라고 하지 않는다');
+  } finally { w.close(); }
+});
+
+test('ux3 붙여넣기(검토): 수단을 적지 않은 여행에 이어 붙이면 그 여행이 실제로 쓰는 수단(자차)에서 시작한다', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    // 일자에 mode가 없으면 화면·계산은 자차다(dayModeOf) — 미리보기가 대중교통을 내밀면 이어 붙인 날만 수단이 바뀐다
+    withTrip(w, `[{title:'',drive:'',note:'',spots:[{name:'A',lat:37.5,lng:127}]}]`);
+    await pastePreview(w, '## Day 1\n- 성산일출봉 | 서귀포', 'append');
+    assert.equal(w.document.getElementById('pvMode').value, 'car');
+    w.eval('pvCommit()');
+    assert.equal(activeTrip(w).days[1].mode, 'car');
+  } finally { w.close(); }
+});
