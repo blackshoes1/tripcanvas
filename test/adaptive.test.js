@@ -1234,3 +1234,27 @@ test('엔진이 묻는 이동의 수단은 일정 화면과 같다 — 비행기
   assert.equal(A.moveModeTo(trip, trip.days[1], { lat: 40.5, lng: -3.6 }), 'transit', '도시 안 수단의 날은 그날 수단');
   assert.equal(A.moveModeTo({ days: [{ mode: 'flight', spots: [] }] }, { mode: 'flight', spots: [] }, { lat: 1, lng: 1 }), 'car', '아무것도 없으면 자차');
 });
+
+// ── 2026-10-03 3차 UX 검토 반박 검토 ──────────────────────────────────────
+test('배고프다고 해도 하루 흐름은 빈 시간 안에만 넣는다 — 머무는 곳·남은 일정 위에 겹치지 않는다', () => {
+  const trip = seoulTrip();
+  const r = A.resolveIntent('배고파', { energyLevel: 'NORMAL' });
+  const s = seoulAt(trip, HM(10, 0), { energyLevel: r.energyLevel, prefs: r.prefs });   // 경복궁에 머무는 중
+  const flow = A.planDayFlow(trip, s, { legMin: LEG });
+  assert.ok(!flow.picks.some((p) => p.id === 'c-eat-now'), "'지금 식사부터 하기'는 빈 시간이 아니라 지금의 일이다");
+  const sug = flow.blocks.filter((b) => b.kind === 'SUGGESTED');
+  const planned = flow.blocks.filter((b) => b.kind !== 'SUGGESTED');
+  sug.forEach((b) => planned.forEach((p) => assert.ok(b.endMin <= p.startMin || b.startMin >= p.endMin,
+    b.title + ' ' + TC.hm(b.startMin) + '–' + TC.hm(b.endMin) + '이 ' + p.title + ' ' + TC.hm(p.startMin) + '–' + TC.hm(p.endMin) + '과 겹친다')));
+  // 제안 카드는 '지금'에 답한다 — 식사 카드는 하나다
+  const cards = A.buildSuggestions(trip, s, { legMin: LEG }).suggestions;
+  assert.equal(cards[0].action.candidateId, 'c-eat-now');
+  assert.equal(cards.filter((x) => x.action.kind === 'EAT').length, 1, '같은 말(식사)을 두 장으로 하지 않는다');
+});
+
+test('출발 안내: 내가 정한 도착 시각은 "그 시각에 도착해요"로 말한다', () => {
+  const s = seoulAt(seoulTrip(), HM(8, 30));
+  const adv = A.departureAdvice(s, s.items[0], 5);
+  assert.equal(adv.level, 'EARLY');
+  assert.equal(adv.text, '08:55쯤 출발하면 09:00에 도착해요 · 그 전까지 25분 여유가 있어요');
+});

@@ -433,7 +433,8 @@
     // 배고프다고 했으면 시간대와 상관없이 지금 먹는 선택지를 낸다 — "식사를 먼저 챙길게요"라고 해 놓고 식사 카드가 없었다(2026-10-03)
     if(state.prefs && state.prefs.mealFocus) out.push({id:'c-eat-now', kind:'EAT', title:'지금 식사부터 하기', location:(win?win.anchor:state.currentLocation),
       durationMin:60, priority:2, must:false, hours:null, fromDay:null, si:null, inPlan:false, spot:null});
-    else if(meal && !mealCoveredBy(state, meal)) out.push({id:'c-eat-'+meal.key, kind:'EAT', title:meal.label+' 시간이 비어 있어요', location:(win?win.anchor:null),
+    // 식사 시간대 후보는 배고프다고 했어도 남긴다 — '지금'은 제안 카드의 몫이고, 빈 시간 채우기(fillGaps)는 빈 시간 안에 끼니를 넣는다
+    if(meal && !mealCoveredBy(state, meal)) out.push({id:'c-eat-'+meal.key, kind:'EAT', title:meal.label+' 시간이 비어 있어요', location:(win?win.anchor:null),
       durationMin:60, priority:2, must:false, hours:null, fromDay:null, si:null, inPlan:false, spot:null});
     return out;
   }
@@ -742,7 +743,10 @@
       || (r.type==='RETURN_TO_HOTEL' && (state.energyLevel==='LOW'||prefs.wantRest)) || (r.type==='EAT' && prefs.mealFocus);
     const roomy=!state.freeBefore || state.availableMin>=c.restRoomMin;
     // 거절한 것을 먼저 빼고 자른다 — 자르고 빼면 '다른 제안 보기'가 다른 제안 대신 빈 자리를 보여 줬다
-    ranked.filter((r)=>!dismissed[suggestionKey(r.type, r.title, state)] && (!replan.needed || asked(r))).slice(0, c.maxSuggest).forEach((r)=>{
+    // 배고프다고 해서 '지금 식사부터 하기'가 있으면 식사 시간대 카드는 같은 말의 반복이다
+    const eatNow=ranked.some((r)=>r.id==='c-eat-now' && !dismissed[suggestionKey(r.type, r.title, state)]);
+    ranked.filter((r)=>!dismissed[suggestionKey(r.type, r.title, state)] && (!replan.needed || asked(r))
+      && !(eatNow && r.type==='EAT' && r.id!=='c-eat-now')).slice(0, c.maxSuggest).forEach((r)=>{
       const key=suggestionKey(r.type, r.title, state);
       push({id:key, key, type:((r.type==='REST'||r.type==='RETURN_TO_HOTEL')? 'REST' : (r.type==='EAT'? 'NEXT_ACTIVITY' : 'NEXT_ACTIVITY')),
         title:r.title,
@@ -907,13 +911,14 @@
         return {leaveMin, slackMin:Math.round(leaveMin-state.nowMin), level:'EARLY', text:LIB.hm(leaveMin)+'쯤 출발하는 일정이에요'};
       return {leaveMin:state.nowMin, slackMin:0, level:'NOW', text:'지금 출발하면 '+LIB.hm(state.nowMin+travel)+' 도착'};
     }
-    const what=(item.spot&&item.spot.bookAt)? '예약' : '도착';
+    // 예약은 '예약에 맞춰요', 내가 정한 도착 시각은 '그 시각에 도착해요' — '09:00 도착에 맞춰요'는 말이 안 된다
+    const goal=(item.spot&&item.spot.bookAt)? LIB.hm(target)+' 예약에 맞춰요' : LIB.hm(target)+'에 도착해요';
     const slackMin=Math.round(leaveMin-state.nowMin);
     if(slackMin<0) return {leaveMin, slackMin, level:'LATE', text:'지금 출발해도 약 '+durText(-slackMin)+' 늦어요'};
-    if(slackMin===0) return {leaveMin, slackMin, level:'NOW', text:'지금 바로 나서야 '+LIB.hm(target)+' '+what+'에 맞춰요'};
+    if(slackMin===0) return {leaveMin, slackMin, level:'NOW', text:'지금 바로 나서야 '+goal};
     if(slackMin<=10) return {leaveMin, slackMin, level:'NOW', text:'지금 출발하면 약 '+slackMin+'분 여유가 있어요'};
     // 기다리라는 말이 아니다 — 그 사이가 비어 있다는 말이다(아래 제안이 그 시간을 채운다)
-    return {leaveMin, slackMin, level:'EARLY', text:LIB.hm(leaveMin)+'쯤 출발하면 '+LIB.hm(target)+' '+what+'에 맞춰요 · 그 전까지 '+durText(slackMin)+' 여유가 있어요'};
+    return {leaveMin, slackMin, level:'EARLY', text:LIB.hm(leaveMin)+'쯤 출발하면 '+goal+' · 그 전까지 '+durText(slackMin)+' 여유가 있어요'};
   }
 
   // ── 10. 빈칸 채우기 (Assisted) · 하루 flow (Delegated) ──────────
@@ -948,8 +953,9 @@
         const sub={startMin:cursor, endMin:win.endMin, minutes:win.endMin-cursor, anchor,
           afterId:win.afterId, beforeId:win.beforeId, beforeFixed:win.beforeFixed};
         if(sub.minutes<30) break;
+        // '지금 식사부터 하기'는 빈 시간이 아니라 지금의 일이다 — 흐름에 넣으면 머무는 곳 위에 겹쳐 그 뒤 칸까지 앞당겨졌다(2026-10-03)
         const cands=buildCandidates(trip, state, {window:sub, cfg:c})
-          .filter((cd)=>used.indexOf(cd.id)<0 && skip.indexOf(cd.id)<0 && !cd.inPlan && cd.kind!=='REST' && cd.kind!=='RETURN_TO_HOTEL');
+          .filter((cd)=>used.indexOf(cd.id)<0 && skip.indexOf(cd.id)<0 && !cd.inPlan && cd.kind!=='REST' && cd.kind!=='RETURN_TO_HOTEL' && cd.id!=='c-eat-now');
         const pick=rankNextActions(state, cands, {window:sub, legMin:o.legMin, cfg:c})
           .filter((r)=>!dismissed[suggestionKey(r.type, r.title, state)])[0];
         if(!pick) break;

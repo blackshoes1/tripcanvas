@@ -5007,7 +5007,8 @@ function renderSuggestions(di, clock){
     if(sug.type==='REPLAN') card.appendChild(replanPreview(di));
     const act=document.createElement('div'); act.className='sgActions';
     sgPrimaryButtons(sug,di).forEach(b=>act.appendChild(b));
-    act.appendChild(sgButton('이번엔 건너뛰기', false, ()=>{ recordFeedback(sug,'SKIPPED'); renderSuggestions(di); }, 'SKIP'));
+    // 건너뛴 곳은 열려 있는 하루 흐름에서도 빠진다 — 같은 화면의 카드는 같은 제외 목록을 쓴다(2026-10-03)
+    act.appendChild(sgButton('이번엔 건너뛰기', false, ()=>{ recordFeedback(sug,'SKIPPED'); renderSuggestions(di); if(_dayFlow) buildDayFlow(di); }, 'SKIP'));
     card.appendChild(act);
     host.appendChild(card);
     trackAdapt(sug.type==='REPLAN'?'replan_shown':'suggestion_shown', {type:sug.type, key:sug.key});
@@ -5016,7 +5017,7 @@ function renderSuggestions(di, clock){
     const more=sgButton('다른 제안 보기', false, ()=>{
       const box=suggestBox(), nextClock=travelClock();
       res.suggestions.forEach(s=>{ if(s.type==='NEXT_ACTIVITY'||s.type==='REST') box.dismissed[s.key]=nextClock.todayISO; });
-      saveSuggest(); renderSuggestions(di,nextClock);
+      saveSuggest(); renderSuggestions(di,nextClock); if(_dayFlow) buildDayFlow(di);
     }, 'REFRESH');
     more.className='btn sgMore'; host.appendChild(more);
   }

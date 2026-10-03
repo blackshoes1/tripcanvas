@@ -5459,7 +5459,7 @@ test('통합(ux3): 머무는 동안 제때면 조정 카드가 없고, 늦으면
     assert.match(card.textContent, /이대로면 광장시장 11:45 예약에 \d+분 늦어요/);
     assert.ok(!/지연|밀렸|을\(를\)|마을는/.test(card.textContent), card.textContent);
     assert.match(card.textContent, /북촌한옥마을은 다음 날 앞쪽으로 옮겨요/, '뺄 곳은 늦는 예약 앞의 북촌 하나다');
-    assert.ok(!cardsIn(w).some((c) => c.dataset.type === 'NEXT_ACTIVITY'), '빼자는 카드 옆에서 한 곳 더 가자고 하지 않는다');
+    assert.ok(!cardsIn(w).some((c) => c.dataset.suggestionType === 'NEXT_ACTIVITY'), '빼자는 카드 옆에서 한 곳 더 가자고 하지 않는다');
   } finally { w.close(); }
 });
 
@@ -5506,5 +5506,25 @@ test('통합(ux3): 빈 시간 채우기는 남은 계획을 함께 그리고, �
     assert.ok(!/쉬었다가/.test(w.document.getElementById('travelSuggest').textContent), '남은 곳이 있는데 다음 예약까지 쉬라고 하지 않는다');
     w.eval(`applyIntent('배고파', 0)`);
     assert.equal(w.eval('_adapt.res.suggestions[0].action.kind'), 'EAT', '식사를 먼저 챙기겠다고 했으면 식사 카드가 맨 위다');
+  } finally { w.close(); }
+});
+
+test('통합(ux3): 제안 카드에서 "다른 제안 보기"로 물린 곳은 열려 있는 하루 흐름에서도 빠진다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    const many = [];
+    for (let i = 0; i < 8; i++) many.push(S('후보' + i, 40.41 + i * 0.002, { stayMin: 30 }));
+    withAdaptTrip(w, [
+      { startAt: '09:00', mode: 'car', spots: [S('프라도', 40.41, { stayMin: 120, status: 'COMPLETED' }), S('저녁 예약', 40.42, { bookAt: '19:30', stayMin: 90 })] },
+      { spots: many }
+    ], { now: 11 * 60 + 30 });
+    w.eval('renderTravel(0); buildDayFlow(0)');
+    const addRows = () => Array.from(w.document.querySelectorAll('#travelPlan .sgFlowRow.add')).map((r) => r.textContent);
+    const shown = cardsIn(w).filter((c) => c.dataset.suggestionType === 'NEXT_ACTIVITY').map((c) => c.querySelector('.sgTitle').textContent);
+    assert.ok(shown.length > 0);
+    assert.ok(addRows().some((t) => shown.some((n) => t.indexOf(n) >= 0)), '처음에는 같은 곳이 양쪽에 있다');
+    buttonIn(w.document.getElementById('travelSuggest'), '다른 제안 보기').click();
+    const after = addRows();
+    shown.forEach((n) => assert.ok(!after.some((t) => t.indexOf(n) >= 0), n + '은(는) 물렸는데 흐름에 남았다: ' + after.join(' / ')));
   } finally { w.close(); }
 });
