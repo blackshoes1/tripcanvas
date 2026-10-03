@@ -51,7 +51,7 @@ export function createTripViewsHandlers(kit: HandlerKit) {
   async function dayPlan(request: Request, tripId: string, dayIndex: number): Promise<Response> {
     return withTrip(request, tripId, async ({ gateway, row }) => {
       const stamp = now().toISOString().slice(0, 10);
-      // 결제일이 상태를 정하므로 Today와 같은 시계(여행 시간대의 오늘)를 쓴다 — 기기 날짜와 어긋나면 같은 항목이 두 답을 낸다.
+      // 기존 날짜 인자는 Today와 같은 시계로 전달한다. 결제 상태는 명시적으로 확인한 표시다.
       const clock = resolveClock(row.data, dayIndex, new URL(request.url), now());
       const [legs, fx] = await Promise.all([legCacheFor(row.data, dayIndex, gateway.userId), fxFor()]);
       const body = buildDayPlanView({

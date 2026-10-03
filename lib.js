@@ -37,17 +37,17 @@
 
   const WALK_INSTEAD_MAX_M=2000, WALK_DETOUR=1.3, WALK_M_PER_MIN=75;
   /**
-   * 자차 하루의 가까운 구간은 걸어서 계산한다 — 차 경로가 2km 미만일 때(판정은 예전 그대로).
+   * 자차의 가까운 구간에서 도보 대안을 제안한다. 선택하기 전에는 계산·지도에 적용하지 않는다.
    * ⚠️ **걷는 거리는 차 경로 거리가 아니다**(2026-10-03 UX 검토). 구시가의 일방통행을 도는 차 경로(1.4km)로
    * 직선 365m를 '걸어서 18분'이라 해 그 뒤 도착 시각이 전부 밀렸다. 도보 경로는 따로 묻지 않으므로
    * 직선거리 × 1.3(걷는 길의 굽이)과 차 경로 중 짧은 쪽을 걷는 거리로 쓴다(분속 75m = 시속 4.5km).
-   * 웹(`legLabel`·`legMinutes`·지도 칩·여행 중 화면)과 서버(`dayView`·지도 장면)가 이 하나를 쓴다.
+   * 웹의 구간 수단 선택 화면이 이 추정을 안내한다. 실제 도보 선택 후에는 도보 경로로 계산한다.
    * @param {string|null|undefined} mode 그 구간의 수단
    * @param {{m?:number|null, sec?:number|null}|null|undefined} route 조회된 차 경로(없으면 null)
    * @param {LatLng=} a @param {LatLng=} b 구간의 두 끝 — 모르면 차 경로 거리로 어림한다(예전 규칙)
-   * @returns {{m:number, min:number}|null} 걸어서 계산하면 걷는 거리(m)·분, 아니면 null
+   * @returns {{m:number, min:number}|null} 도보 제안의 추정 거리(m)·분, 제안할 수 없으면 null
    */
-  function walkInsteadOfCar(mode, route, a, b){
+  function shortWalkOption(mode, route, a, b){
     if((mode||'car')!=='car' || !route || !route.sec) return null;
     const routeM=Math.max(0, +(route.m||0));
     if(!(routeM<WALK_INSTEAD_MAX_M)) return null;
@@ -918,7 +918,7 @@
    * 나머지는 앞날부터 1원씩 얹어 하루치의 합이 예약 총액과 정확히 맞는다(반올림 누수 방지).
    * 금액은 예약 통화 그대로 — 원화 환산은 호출부(toKRW)가 한다.
    * 하루치에는 예약의 결제 상태(`payState`)도 실린다 — 결제한 항공·숙박은 '이미 낸 돈', 현장 결제 호텔은 '예약'이다.
-   * 결제일이 있는 예약은 오늘(`today`)이 상태를 정한다(`costPayStateOf`).
+   * 예약의 결제 상태는 사용자가 확인한 표시를 따른다(`costPayStateOf`).
    * @param {any[]} bookings @param {string} iso @param {string=} today
    * @returns {{id:string, type:string, title:string, amount:number, cur:string, days:number, payState:string, paidOn:string|null}[]}
    */
@@ -1094,7 +1094,7 @@
    * 하루 비용 상세의 단일 계산. 외부 조회·환율 시세를 만들지 않고 받은 값만 합친다.
    * @param {any} trip @param {number} di
    * @param {{date:string,rates:Record<string,number>,taxi:number|null,transportUnpriced:boolean,today?:string}} input
-   * `today`는 결제일이 있는 항목의 상태를 정하는 오늘(YYYY-MM-DD)이다 — 안 넘기면 손으로 고른 상태만 본다.
+   * `today`는 기존 호출 계약의 날짜 인자이며 결제 상태는 사용자가 확인한 표시로 정한다.
    * `onSiteKRW`는 **가서 쓰는 돈**(장소·추가 비용·교통)만이다 — 예약 하루치는 가기 전에 낸 돈의 배분이라 뺀다.
    * @returns {{total:number,onSiteKRW:number,parts:{label:string,amount:number}[],payTotals:Record<string,number>,details:{items:any[],budget:any,unknownCount:number,transportUnpriced:boolean,undatedBookings:number,hasForeignCurrency:boolean,fxRates:Record<string,number>,fxSource:string,fxAsOf:string|null}}}
    */
@@ -1153,21 +1153,11 @@
   const COST_PAY_STATES=['RESERVED','PAID'];
   const _PHOTOS_MAX=10, _PHOTO_REF_MAX=200;
   const _ISO_DATE_RE=/^\d{4}-\d{2}-\d{2}$/;
-  /** 결제 상태.
-   *
-   * **결제일(`paidOn`)이 있으면 날짜가 상태를 정한다**(2026-09-18) — 결제일은 '결제 예정일'이다. 그 날이 오늘이거나
-   * 지났으면 결제함, 아직이면 예약이다. 손으로 고른 `payState`는 그때 보지 않는다(두 답이 갈리면 어느 쪽도 못 믿는다).
-   * 오늘(`today`)을 모르면(호출부가 안 넘김) 날짜를 판정할 수 없으므로 아래 규칙으로 돌아간다.
-   *
-   * 결제일이 없으면: 예약(`trip.bookings`)은 **결제했다고 표시한 것만 결제**이고 나머지는 예약이다 — 예약은 본디
-   * 잡아 둔 돈이라 미구분이 없다(항공은 대개 결제한 돈, 현장 결제 호텔은 예약한 돈 — 예약마다 다르다, 2026-09-17).
-   * 그 밖의 항목은 고르지 않은 것을 미구분(NONE)으로 남긴다 —
-   * 미구분을 결제로 치면 '이미 쓴 돈'이 부풀고, 예약으로 치면 남은 지출이 부풀어 둘 다 거짓말이 된다.
-   * @param {any} item @param {string=} source @param {string=} today 오늘(YYYY-MM-DD) — 서버는 여행 시간대의 오늘, 웹은 기기 날짜
+  /** 결제 상태는 사용자가 확인한 표시로만 정한다. 날짜(`paidOn`)는 결제(예정)일이며 자동 완료의 근거가 아니다.
+   * 날짜만 있는 옛 예약은 RESERVED, 그 밖의 비용은 NONE으로 남겨 실제 결제를 단정하지 않는다.
+   * @param {any} item @param {string=} source @param {string=} _today 기존 호출 계약의 날짜 인자(상태 판정에는 쓰지 않음)
    * @returns {string} */
-  function costPayStateOf(item,source,today){
-    const t=_str(today);
-    if(item&&_ISO_DATE_RE.test(_str(item.paidOn))&&_ISO_DATE_RE.test(t)) return _str(item.paidOn)<=t? 'PAID' : 'RESERVED';
+  function costPayStateOf(item,source,_today){
     if(source==='BOOKING') return (item&&item.payState==='PAID')? 'PAID' : 'RESERVED';
     return (item&&COST_PAY_STATES.includes(item.payState))? item.payState : 'NONE';
   }
@@ -1201,7 +1191,7 @@
    * - `onSite`(가서 쓰는 비용) = 날짜별 장소·추가 비용·교통(`dayCostSummary().onSiteKRW`의 합) + 일정 밖으로 넘친 연박 숙소의 몫
    *   (`stayCostOverflow` — 어느 날에도 없어 `unallocated`에 STAY 줄로 모인다).
    * 둘을 더하면 `totalKRW`와 같다.
-   * `today`(YYYY-MM-DD)는 결제일이 있는 항목의 상태를 정한다 — 하루치(`dayCostSummary`)와 **같은 오늘**을 넘겨야
+   * `today`(YYYY-MM-DD)는 기존 호출 계약의 날짜 인자다. 하루치(`dayCostSummary`)와 **같은 상태**를 읽어야
    * 예약 한 줄과 그 하루치가 다른 상태를 말하지 않는다.
    * @param {any} trip @param {any[]} days @param {Record<string,number>} rates @param {string=} today
    * @returns {{totalKRW:number,averagePerDayKRW:number|null,categories:any[],unallocated:any[],payTotals:Record<string,number>,prep:{totalKRW:number,payTotals:Record<string,number>,items:any[]},onSite:{totalKRW:number,payTotals:Record<string,number>},unknownCount:number,transportUnpriced:boolean,hasForeignCurrency:boolean}} */
@@ -1679,7 +1669,7 @@
     }
     b.track=b.track!==false;   // 기본 추적 on
     if(b.payState!=null&&!COST_PAY_STATES.includes(b.payState)) delete b.payState;   // 결제함(PAID)만 뜻이 있다 — 없으면 예약
-    if(!iso(b.paidOn)) delete b.paidOn;                                            // 결제(예정)일 — 있으면 날짜가 상태를 정한다(costPayStateOf)
+    if(!iso(b.paidOn)) delete b.paidOn;                                            // 결제(예정)일 — 날짜만으로 결제 상태를 단정하지 않는다
     normalizePhotoRefs(b);                                                         // 영수증 사진 참조 — 비용 항목과 같은 규칙
     return b;
   }
@@ -2293,7 +2283,7 @@
    * 웹에만 일곱 곳이었고(동기화 제외·병합·라벨·첫 방문 판정), 한 곳이라도 빠지면 데모가 계정에 올라가거나
    * 반대로 진짜 여행이 안 올라간다. `next`의 `SAMPLE_TRIP_ID`도 같은 값이다.
    */
-  const SAMPLE_TRIP_ID='spain2026';
+  const SAMPLE_TRIP_ID='spain2026', SAMPLE_TRIP_VERSION=1;
   /** 샘플 여행인가. id뿐 아니라 `sample` 표시도 본다 — 둘 중 하나면 샘플이다. @param {any} trip @returns {boolean} */
   function isSampleTrip(trip){
     return !!trip && (trip.sample===true || trip.id===SAMPLE_TRIP_ID);
@@ -2317,7 +2307,7 @@
     const lodging=(area,lat,lng,city,nights)=>({name:'숙소 (예시) · '+area,lat,lng,city,cat:'stay',stay:true,nights,
       desc:'샘플용 예시 위치예요 — 실제 숙소로 바꾸면 다음 날 출발점과 숙소 복귀가 그 위치로 계산돼요',opt:false});
     return {
-      id:SAMPLE_TRIP_ID, sample:true, name:'🇪🇸 스페인 신혼여행', start:'2026-10-25',
+      id:SAMPLE_TRIP_ID, sample:true, sampleVersion:SAMPLE_TRIP_VERSION, name:'🇪🇸 스페인 신혼여행', start:'2026-10-25',
       days:[
         {title:'마드리드 도착', drive:'', note:'07:00 착륙. 시차적응 겸 가벼운 일정. ⚽ 경기가 일요일이면 오늘 직관!', timeZone:TZ, startAt:'07:00', mode:'transit', spots:[
           {name:'바라하스 공항 (MAD)',lat:40.4720,lng:-3.5610,city:'마드리드',at:'07:00',stayMin:60,desc:'입국 심사·짐 찾기',opt:false},
@@ -2370,7 +2360,7 @@
   }
 
 
-  const TC={deleteSpotCost,clearSpotCost,deleteBookingCost,dayLodgings,sortTripsByCountdown,additionalReservations,tripSummaryCities,returnModeOf,SPOT_PRIORITIES,spotPriorityOf,applySpotPriority,spotPriorityLabel,SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,cityFromKoreanAddr,placeName,cityFromGoogle,normHours,classifySearchErr,isKoreanSearch,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,normHM,sortDayByTime,inKorea,walkInsteadOfCar,simplifyName,parseDirect,parseMoney,normalizeDraftDays,extractJson,extMapLink,encodePolyline,decodePolyline,optimizeRoute,planRouteOptimization,routeLength,isOpenAt,validTimeZone,zonedClock,zonedMinutesToISOString,dayAnchor,stayMinutesOf,activityStartMinute,dayEndMinutes,departMinuteAfter,computeTimeline,computeDayJourney,whoKey,splitSegments,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,budgetBookings,moneyAmount,parseCostAmount,costAmountOf,dayEnteredCost,splitAcrossNights,stayCostShares,stayCostOverflow,dayEnteredCostOn,hasManualTransportCost,taxiFareCounts,dayCostSummary,ADMISSION_REQUIREMENTS,admissionLabel,admissionOf,needsAdmissionBooking,normalizeAdmission,admissionError,COST_CATEGORIES,COST_CURRENCIES:_CURS,costCategoryOf,COST_PAY_STATES,costPayStateOf,payStateTotals,TRIP_NOTE_CATEGORIES,normalizeTripNote,tripCostSummary,localMode,mdLabel,tripPeriodOf,startShiftPreview,SAMPLE_TRIP_ID,isSampleTrip,sampleTrip,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
+  const TC={deleteSpotCost,clearSpotCost,deleteBookingCost,dayLodgings,sortTripsByCountdown,additionalReservations,tripSummaryCities,returnModeOf,SPOT_PRIORITIES,spotPriorityOf,applySpotPriority,spotPriorityLabel,SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,cityFromKoreanAddr,placeName,cityFromGoogle,normHours,classifySearchErr,isKoreanSearch,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,normHM,sortDayByTime,inKorea,shortWalkOption,simplifyName,parseDirect,parseMoney,normalizeDraftDays,extractJson,extMapLink,encodePolyline,decodePolyline,optimizeRoute,planRouteOptimization,routeLength,isOpenAt,validTimeZone,zonedClock,zonedMinutesToISOString,dayAnchor,stayMinutesOf,activityStartMinute,dayEndMinutes,departMinuteAfter,computeTimeline,computeDayJourney,whoKey,splitSegments,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,budgetBookings,moneyAmount,parseCostAmount,costAmountOf,dayEnteredCost,splitAcrossNights,stayCostShares,stayCostOverflow,dayEnteredCostOn,hasManualTransportCost,taxiFareCounts,dayCostSummary,ADMISSION_REQUIREMENTS,admissionLabel,admissionOf,needsAdmissionBooking,normalizeAdmission,admissionError,COST_CATEGORIES,COST_CURRENCIES:_CURS,costCategoryOf,COST_PAY_STATES,costPayStateOf,payStateTotals,TRIP_NOTE_CATEGORIES,normalizeTripNote,tripCostSummary,localMode,mdLabel,tripPeriodOf,startShiftPreview,SAMPLE_TRIP_ID,SAMPLE_TRIP_VERSION,isSampleTrip,sampleTrip,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
   // 장소 검색·장소 정체성(2026-10-03) — 위 목록과 따로 둬 다른 변경과 한 줄에서 부딪히지 않게 한다
   Object.assign(TC,{placeNameMatch,searchAnchorSpot,planDistanceKm,tripCitySpelling,tripDefaultCurrency,hoursIssue,hoursLines});
   Object.assign(TC,{resolveTimeZone,inferTimeZones,effectiveTimeZone,refundableOf});   // 따로 붙인다 — 위 한 줄은 여러 작업이 함께 고치는 자리다

@@ -1,5 +1,5 @@
 const {test,expect}=require('@playwright/test');
-const {prepare}=require('./helpers');
+const {prepare,openSpotIdentity}=require('./helpers');
 
 test('서비스워커 업데이트가 입력 중 자동 새로고침하지 않는다',async({browser})=>{
   const context=await browser.newContext();await prepare(context);
@@ -11,6 +11,7 @@ test('서비스워커 업데이트가 입력 중 자동 새로고침하지 않�
   });
   const page=await context.newPage();await page.goto('/');
   await page.locator('.addSpot').first().click();
+  await openSpotIdentity(page);
   await page.locator('#spotName').fill('작성 중인 장소');
   await page.waitForFunction(()=>typeof window.__triggerSwUpdate==='function'&&typeof window.__swFound==='function');
   await page.evaluate(()=>window.__triggerSwUpdate());

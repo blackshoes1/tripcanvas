@@ -79,31 +79,30 @@ describe('anchor/carry — 이월 출발점', () => {
 describe('구간 시간 — 캐시 우선, 없으면 속도 기반 직선 추정', () => {
   const a = airport(), b = seongsan();
 
-  it('캐시된 경로가 있으면 그 시간, 자차 2km 미만은 도보 대안(m/75분)', () => {
+  it('캐시된 경로가 있으면 그 시간, 짧은 자차도 차 경로 시간', () => {
     const key = legKey({ lat: a.lat!, lng: a.lng! }, { lat: b.lat!, lng: b.lng! }, 'car');
     expect(legMinutes({ [key]: { sec: 3600, m: 40000 } }, a as never, b as never, 'car')).toBe(60);
-    expect(legMinutes({ [key]: { sec: 600, m: 1500 } }, a as never, b as never, 'car')).toBe(20);   // 1500/75
+    expect(legMinutes({ [key]: { sec: 600, m: 1500 } }, a as never, b as never, 'car')).toBe(10);
     expect(legMinutes(NONE, a as never, b as never, 'car')).toBeCloseTo((haversine(ll(a), ll(b)) / 40) * 60, 6);
     expect(legMinutes(NONE, a as never, b as never, 'train')).toBeCloseTo((haversine(ll(a), ll(b)) / 160) * 60, 6);
   });
 
-  it('자차의 가까운 구간은 차 경로가 아니라 두 곳 사이를 걷는 거리로 잰다(웹과 같은 lib 규칙)', () => {
+  it('자차의 가까운 구간도 선택한 차 경로를 그대로 쓴다(웹과 같다)', () => {
     // 2026-10-03 UX 검토: 직선 365m를 일방통행을 도는 차 경로 1.4km로 '걸어서 18분'이라 해 뒤 도착이 전부 밀렸다
     const sol = spot('푸에르타 델 솔', 40.4169, -3.7035), mayor = spot('마요르 광장', 40.4155, -3.7074);
     const key = legKey(ll(sol), ll(mayor), 'car');
     const cache: LegCache = { [key]: { sec: 420, m: 1400 } };
     const minutes = legMinutes(cache, sol as never, mayor as never, 'car');
-    expect(Math.round(minutes)).toBeGreaterThanOrEqual(5);
-    expect(Math.round(minutes)).toBeLessThanOrEqual(7);
+    expect(minutes).toBe(7);
     const leg = buildDayView(trip([day([sol, mayor])]), cache, 0).spots[1].leg!;
-    expect(leg.label).toBe(`↳0.5km · 🚶${Math.round(minutes)}분`);
+    expect(leg.label).toBe('↳1.4km · 7분');
   });
 
-  it('구간 라벨 — 캐시: km·시간(2km 미만 자차는 🚶), 미캐시: 직선, 실패: ⚠️', () => {
+  it('구간 라벨 — 캐시: km·시간(고른 수단의 시간), 미캐시: 직선, 실패: ⚠️', () => {
     const key = legKey({ lat: a.lat!, lng: a.lng! }, { lat: b.lat!, lng: b.lng! }, 'car');
     const mk = (cache: LegCache) => buildDayView(trip([day([airport(), seongsan()])]), cache, 0).spots[1].leg!;
     expect(mk({ [key]: { sec: 3600, m: 40000 } }).label).toBe('↳40.0km · 1시간');
-    expect(mk({ [key]: { sec: 600, m: 1500 } }).label).toBe('↳1.5km · 🚶20분');
+    expect(mk({ [key]: { sec: 600, m: 1500 } }).label).toBe('↳1.5km · 10분');
     const miss = mk(NONE);
     expect(miss.cached).toBe(false);
     expect(miss.label).toBe(`↳${haversine(ll(a), ll(b)).toFixed(1)}km`);

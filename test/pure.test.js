@@ -107,22 +107,22 @@ test('haversine 근사 (경주역→감포 ~30km)', () => {
   assert.equal(Math.round(L.haversine({lat:0,lng:0},{lat:0,lng:0})), 0);
 });
 
-test('walkInsteadOfCar — 자차의 가까운 구간은 차 경로가 아니라 걷는 거리로 계산한다', () => {
+test('shortWalkOption — 자차의 가까운 구간에 도보 대안의 추정 거리·시간을 안내한다', () => {
   // 2026-10-03 UX 검토: 푸에르타 델 솔 → 마요르 광장은 직선 365m인데 일방통행을 도는 차 경로 1.4km로 '걸어서 18분'이었다
   const sol = { lat: 40.4169, lng: -3.7035 }, mayor = { lat: 40.4155, lng: -3.7074 };
-  const w = L.walkInsteadOfCar('car', { sec: 420, m: 1400 }, sol, mayor);
-  assert.ok(w, '차 경로 2km 미만이면 걸어서 계산한다');
+  const w = L.shortWalkOption('car', { sec: 420, m: 1400 }, sol, mayor);
+  assert.ok(w, '차 경로 2km 미만이면 도보 대안을 안내할 수 있다');
   assert.ok(w.m > 365 && w.m < 500, `걷는 거리는 직선에 굽이를 더한 만큼: ${w.m}`);
   assert.ok(Math.round(w.min) >= 5 && Math.round(w.min) <= 7, `5~7분 걸음: ${w.min}`);
   // 차 경로가 직선보다 짧게 잡히면(곧은길) 그 경로를 쓴다 — 걷는 거리를 부풀리지 않는다
-  assert.equal(L.walkInsteadOfCar('car', { sec: 60, m: 300 }, sol, mayor).m, 300);
-  // 판정은 예전 그대로 — 차 경로 2km 이상·다른 수단·조회 전은 걸어서 계산하지 않는다
-  assert.equal(L.walkInsteadOfCar('car', { sec: 600, m: 2000 }, sol, mayor), null);
-  assert.equal(L.walkInsteadOfCar('taxi', { sec: 420, m: 1400 }, sol, mayor), null);
-  assert.equal(L.walkInsteadOfCar('car', null, sol, mayor), null);
-  assert.equal(L.walkInsteadOfCar('car', { sec: 0, m: 0, fail: 1 }, sol, mayor), null);
-  assert.ok(L.walkInsteadOfCar(undefined, { sec: 420, m: 1400 }, sol, mayor), '수단이 비면 자차(기본)다');
-  assert.equal(L.walkInsteadOfCar('car', { sec: 420, m: 1400 }).m, 1400, '두 끝을 모르면 차 경로로 어림한다(예전 규칙)');
+  assert.equal(L.shortWalkOption('car', { sec: 60, m: 300 }, sol, mayor).m, 300);
+  // 판정은 예전 그대로 — 차 경로 2km 이상·다른 수단·조회 전은 도보 대안을 제안하지 않는다
+  assert.equal(L.shortWalkOption('car', { sec: 600, m: 2000 }, sol, mayor), null);
+  assert.equal(L.shortWalkOption('taxi', { sec: 420, m: 1400 }, sol, mayor), null);
+  assert.equal(L.shortWalkOption('car', null, sol, mayor), null);
+  assert.equal(L.shortWalkOption('car', { sec: 0, m: 0, fail: 1 }, sol, mayor), null);
+  assert.ok(L.shortWalkOption(undefined, { sec: 420, m: 1400 }, sol, mayor), '수단이 비면 자차(기본)다');
+  assert.equal(L.shortWalkOption('car', { sec: 420, m: 1400 }).m, 1400, '두 끝을 모르면 차 경로로 어림한다(예전 규칙)');
 });
 
 test('legId / legKey — 4자리 반올림·수단 접미사', () => {

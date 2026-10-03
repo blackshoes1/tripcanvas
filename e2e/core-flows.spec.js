@@ -1,11 +1,12 @@
 const {test,expect}=require('@playwright/test');
-const {prepare,createTrip,clickMore}=require('./helpers');
+const {prepare,createTrip,clickMore,openSpotIdentity}=require('./helpers');
 
 test.beforeEach(async({context,page})=>{await prepare(context);await page.goto('/');});
 
 test('여행 생성 → 장소 추가·편집·삭제 → 새로고침 유지',async({page})=>{
   await createTrip(page,'E2E 서울');
   await page.locator('.addSpot').first().click();
+  await openSpotIdentity(page);
   await page.locator('#spotName').fill('광화문');
   await page.locator('#spotCity').fill('서울');
   await page.evaluate(()=>{document.getElementById('spotLat').value='37.5759';document.getElementById('spotLng').value='126.9768';});
@@ -14,6 +15,7 @@ test('여행 생성 → 장소 추가·편집·삭제 → 새로고침 유지',a
 
   await page.locator('.spot .actionMenu summary').click();
   await page.locator('.spot .actionMenu button[title="편집"]').click();
+  await openSpotIdentity(page);
   await page.locator('#spotName').fill('경복궁');
   await page.locator('#spotSave').click();
   await expect(page.locator('.spot')).toContainText('경복궁');
@@ -38,6 +40,7 @@ test('백그라운드 재렌더(날씨 등)가 열린 작업 메뉴를 닫지 �
   // CI에서 표면화된 레이스의 회귀 방지: 메뉴를 연 직후 날씨 도착이 renderSidebar를 밀어넣어도 메뉴가 유지돼야 한다
   await createTrip(page,'메뉴 유지');
   await page.locator('.addSpot').first().click();
+  await openSpotIdentity(page);
   await page.locator('#spotName').fill('광화문');
   await page.locator('#spotCity').fill('서울');
   await page.evaluate(()=>{document.getElementById('spotLat').value='37.5759';document.getElementById('spotLng').value='126.9768';});
@@ -121,6 +124,7 @@ test('장소를 탭해 선택하면 새 장소가 그 바로 뒤에 들어간다
 
   const add=async(name)=>{
     await addBtn.click();
+    await openSpotIdentity(page);
     await page.locator('#spotName').fill(name);
     await page.evaluate(()=>{document.getElementById('spotLat').value='37.58';document.getElementById('spotLng').value='126.98';});
     await page.locator('#spotSave').click();

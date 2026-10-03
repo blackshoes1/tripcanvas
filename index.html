@@ -13,7 +13,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js" integrity="sha384-+pWnyi8LtZx+cgXfD2arWgUX7pHIaEL215cEPPk9WrsegNlgvDL9DNjaqsceQq6o" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js" integrity="sha384-BSxuMLxX+FCbTdYec3TbXlnMGEEM2QXTFdtDaveen71o+jswm2J36+xFqp8k4VHM" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.min.js" integrity="sha384-l8ah+VgaWtk1mvOe9VC+OirC6qHFF4yH7l7mKRidV9MSti3E9F463bMp6ZVN4kuC" crossorigin="anonymous"></script>
-<link rel="stylesheet" href="style.css?v=tc-v260">
+<link rel="stylesheet" href="style.css?v=tc-v262">
 </head>
 <body>
 <a class="skipLink" href="#sidebar">일정으로 건너뛰기</a>
@@ -51,8 +51,8 @@
     <button class="btn" id="tripEditBtn"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4zM19.4 13.5l1.7 1.3-1.7 3-2-.8a7.6 7.6 0 0 1-1.7 1l-.3 2.1h-3.4l-.3-2.1a7.6 7.6 0 0 1-1.7-1l-2 .8-1.7-3 1.7-1.3a7.7 7.7 0 0 1 0-2l-1.7-1.3 1.7-3 2 .8a7.6 7.6 0 0 1 1.7-1L11.7 3h3.4"/></svg> 여행 설정</button>
     <button class="btn" id="pasteMenuBtn"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4h6v3H9zM7 5.5H5V21h14V5.5h-2M8.5 12h7M8.5 16h5"/></svg> 일정 붙여넣기</button>
     <p class="menuGroupLabel">준비</p>
-    <button class="btn" id="bookingBtn" title="예약과 미리 낸 비용을 한 목록으로 — 숙박·렌터카 예약은 시세를 계속 확인해 절약 기회를 알려줘요"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM3 11h18M17 15h.01"/></svg> <span class="menuText">예약 결제 금액<small>항공·숙박·렌트와 미리 낸 비용 · 가격 추적</small></span></button>
-    <button class="btn" id="resvMenuBtn" title="예약번호·기간·취소 조건·예약 링크를 한곳에서 찾아요"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16v4a2 2 0 0 0 0 4v4H4v-4a2 2 0 0 0 0-4zM10 6v12"/></svg> <span class="menuText">예약번호·취소 조건<small>예약마다 기간·번호·링크를 한곳에서</small></span></button>
+    <button class="btn" id="bookingBtn" title="예약과 미리 낸 비용을 한 목록으로 — 숙박·렌터카 예약은 시세를 계속 확인해 절약 기회를 알려줘요"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM3 11h18M17 15h.01"/></svg> <span class="menuText">예약·결제<small>금액·예약번호·취소 조건 · 가격 추적</small></span></button>
+
     <button class="btn" id="noteMenuBtn" title="비자·입국 준비·교통·특산품처럼 일정에 넣기 애매한 준비 내용을 모아 둬요"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6zM15 3v4h4M9 12h7M9 16h5"/></svg> 여행 준비 메모<span class="menuCount" id="noteCount" hidden></span></button>
     <p class="menuGroupLabel">같이 짜기</p>
     <button class="btn" id="membersMenuBtn" title="일행을 초대해 같은 여행을 함께 계획해요"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 19v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1M22 19v-1a4 4 0 0 0-3-3.9"/><path d="M9 4a3 3 0 1 1 0 6 3 3 0 0 1 0-6z"/></svg> <span class="menuText">멤버·편집 초대<small>같이 고쳐요<span class="needsLogin"> · 로그인 필요</span></small></span></button>
@@ -73,7 +73,7 @@
 <div id="livePresence" hidden aria-live="polite"></div>
 <div id="roBar" style="display:none"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12S6 5.8 12 5.8 21.5 12 21.5 12 18 18.2 12 18.2 2.5 12 2.5 12z"/><path d="M12 9.3a2.7 2.7 0 1 1 0 5.4 2.7 2.7 0 0 1 0-5.4z"/></svg> <span id="roText">링크를 만든 순간의 사본이에요 — 이후 바뀐 내용은 안 보여요 · 같이 고치려면 초대를 받으세요</span><button class="btn sm primary" id="roSave" type="button" title="이 사본을 내 여행으로 저장해 고쳐요 — 원본과는 따로 움직여요">내 여행으로 저장</button><button class="btn sm" id="roClose" type="button" title="읽기 전용 보기 닫기 — 내 여행으로 돌아가요">닫기</button></div>
 <div id="roleBar" style="display:none"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12S6 5.8 12 5.8 21.5 12 21.5 12 18 18.2 12 18.2 2.5 12 2.5 12z"/><path d="M12 9.3a2.7 2.7 0 1 1 0 5.4 2.7 2.7 0 0 1 0-5.4z"/></svg> 보기 권한으로 함께 보는 중 — 일정을 바꾸려면 주최자에게 편집 권한을 요청하세요</div>
-<div id="sampleBar" hidden><span>샘플 여행이에요 · 고쳐 봐도 이 기기에만 남아요</span><button class="btn sm primary" id="sampleNew" type="button">내 여행 만들기</button></div>
+<div id="sampleBar" hidden><span id="sampleInfo">샘플 여행이에요 · 고쳐 봐도 이 기기에만 남아요</span><button class="btn sm" id="sampleUpdate" type="button" hidden title="이전 샘플과 편집 내용은 남기고 최신 샘플을 열어요">최신 샘플 보기</button><button class="btn sm primary" id="sampleNew" type="button">내 여행 만들기</button></div>
 <div id="filterbar"></div>
 <main id="main">
   <aside id="sidebar" tabindex="-1" aria-label="일정"></aside>
@@ -101,18 +101,28 @@
   <p class="srOnly" id="searchStatus" role="status" aria-live="polite"></p>
   <div class="hint">또는 <button class="btn sm" id="pickOnMap">지도 클릭으로 위치 지정</button> · 지도를 <b>탭(클릭)</b>하면 그 자리에 바로 추가</div>
   <div class="basicGrid">
+    <div><label for="spotDay">일자</label><select id="spotDay"></select></div>
+  </div>
+  <details id="spotIdentity" class="advancedPanel">
+    <summary>이름·도시·종류 직접 입력 <span>⌄</span></summary>
+    <div class="basicGrid">
     <div><label for="spotName">장소 이름 *</label><input type="text" id="spotName" aria-required="true"></div>
     <div><label for="spotCity">도시</label><input type="text" id="spotCity" placeholder="예: 마드리드"></div>
     <div><label for="spotCat">종류</label><select id="spotCat"></select></div>
-    <div><label for="spotDay">일자</label><select id="spotDay"></select></div>
+    </div>
+  </details>
     <!-- 종류가 숙소면 보이는 기본 칸 — 종류와 숙소 계산이 다른 컨트롤이라 '🏠 숙소' 호텔이 숙소로 계산되지 않았다(2026-10-03) -->
     <div class="wide stayRow" id="spotStayRow" style="display:none"><span class="chkrow"><input type="checkbox" id="spotStay" aria-describedby="nightsHint"><label for="spotStay">🏠 오늘 밤 여기서 묵어요</label><span id="nightsWrap"><input type="number" id="spotNights" min="1" max="90" step="1" value="1"><label for="spotNights">박</label></span></span><div class="hint" id="nightsHint">숙박 일수 동안 다음 날 출발 기준점으로 사용해요.</div></div>
+  <details id="spotSchedule" class="advancedPanel">
+    <summary>시간·메모 정하기 <span>⌄</span></summary>
+    <div class="basicGrid">
     <div><label for="spotBookAt">예약·입장 시각</label><input type="text" id="spotBookAt" aria-describedby="spotTimeHelp" class="timeIn" inputmode="numeric" maxlength="5" placeholder="19:00"></div>
     <div><label for="spotAt">내가 정한 도착 시각</label><input type="text" id="spotAt" aria-describedby="spotTimeHelp" class="timeIn" inputmode="numeric" maxlength="5" placeholder="비우면 자동 계산"></div>
     <div><label for="spotStayMin">체류 시간 (분)</label><input type="number" id="spotStayMin" min="0" step="5" placeholder="정하지 않음" title="비우면 &#39;정하지 않음&#39;, 0이면 &#39;들렀다 바로 이동&#39;이에요. 계산은 둘 다 머무르지 않는 것으로 같지만 다른 뜻이에요"></div>
     <p class="hint wide" id="spotTimeHelp">예약·입장 시각은 꼭 지켜야 할 약속이에요. 내가 정한 도착 시각을 비우면 앞 장소에서의 이동으로 예상해요.</p>
     <div class="wide"><label for="spotDesc">메모</label><textarea id="spotDesc" placeholder="운영시간, 예약, 팁 등"></textarea></div>
-  </div>
+    </div>
+  </details>
   <input type="hidden" id="spotLat"><input type="hidden" id="spotLng"><input type="hidden" id="spotPlaceId"><input type="hidden" id="spotKakaoId">
   <div class="hint" id="coordHint">위치: 아직 없어요 — 위에서 검색하거나 지도에서 골라 주세요</div>
   <details id="spotAdvanced" class="advancedPanel">
@@ -187,8 +197,9 @@
   <label for="costPeople">적용 인원</label><input type="number" id="costPeople" min="1" max="100">
   <p class="hint" id="costPerPersonNote" aria-live="polite"></p>
   <div class="chkrow"><input type="checkbox" id="costPartial"><label for="costPartial">일부 금액만 확인했어요</label></div>
-  <label for="costPaidOn">결제일</label><input type="date" id="costPaidOn">
-  <label for="costPayState">결제 상태 (결제일이 있으면 날짜로 결정)</label><select id="costPayState"></select>
+  <label for="costPaidOn">결제(예정)일 (선택)</label><input type="date" id="costPaidOn">
+  <label for="costPayState">결제 상태</label><select id="costPayState"></select>
+  <p class="hint">실제로 결제한 뒤 결제 완료를 선택해 주세요. 날짜가 지나도 자동으로 완료되지 않아요.</p>
   <p class="hint" id="costPhotoNote"></p>
   <div class="row modalActions"><button class="btn" id="costPlaceDelete">비용 삭제</button><button class="btn" id="costPlaceCancel">취소</button><button class="btn primary" id="costPlaceSave">저장</button></div>
 </dialog>
@@ -422,9 +433,9 @@
 <!-- 예약 가격 추적 — 목록·절약 요약 -->
 <div class="modalBg" id="bookingListBg"><div class="modal">
   <h2>예약 결제 금액</h2>
-  <div class="hint">가기 전에 내는 돈 — 항공·숙박·렌트 예약과 보험·유심·미리 산 입장권을 한 목록으로 봐요. 결제일을 정해 두면 그 날부터 결제 완료로 쳐요. 숙박·렌터카 예약은 시세를 계속 확인해 좋은 조건이 생기면 알려드려요 — 재예약·취소는 직접 결정하세요.</div>
+  <div class="hint">가기 전에 내는 돈 — 항공·숙박·렌트 예약과 보험·유심·미리 산 입장권을 한 목록으로 봐요. 실제로 결제한 뒤 결제 완료를 선택해 주세요. 숙박·렌터카 예약은 시세를 계속 확인해 좋은 조건이 생기면 알려드려요 — 재예약·취소는 직접 결정하세요.</div>
   <div id="bookingSummary"></div>
-  <div class="row" style="margin:8px 0 2px"><button class="btn" id="bookingAdd">＋ 결제 항목 추가</button><button class="btn" id="costPlaceOpen" title="장소 비용은 현지 결제 금액에 들어가요">장소 비용 입력 (현지 결제)</button></div>
+  <div class="row" style="margin:8px 0 2px"><button class="btn" id="bookingAdd">＋ 결제 항목 추가</button><button class="btn" id="resvMenuBtn" title="예약번호·기간·취소 조건·예약 링크를 한곳에서 찾아요"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16v4a2 2 0 0 0 0 4v4H4v-4a2 2 0 0 0 0-4zM10 6v12"/></svg> 예약번호·취소 조건</button><button class="btn" id="costPlaceOpen" title="장소 비용은 현지 결제 금액에 들어가요">장소 비용 입력 (현지 결제)</button></div>
   <div id="bookingListBody"></div>
   <div class="hint" id="pxSourceLine"></div>
   <div class="row">
@@ -447,10 +458,11 @@
     <input type="text" id="bkPrice" inputmode="decimal" placeholder="0">
     <select id="bkCur" class="compactSelect" aria-label="금액 통화"><option value="KRW">₩ 원</option><option value="USD">$ 달러</option><option value="EUR">€ 유로</option><option value="JPY">¥ 엔</option><option value="CNY">元 위안</option></select>
   </div>
-  <label for="bkPaidOn">결제</label>
+  <label for="bkPayState">결제 상태</label><select id="bkPayState" title="실제로 결제한 뒤 결제 완료를 선택해 주세요"><option value="NONE">고르지 않음</option><option value="RESERVED">결제 예정</option><option value="PAID">결제 완료</option></select>
+  <label for="bkPaidOn" id="bkPaidOnLabel">결제(예정)일 (선택)</label>
   <div class="fieldRow">
-    <input type="date" id="bkPaidOn" title="결제(예정)일 — 정하면 이 날부터 결제 완료로 쳐요">
-    <select id="bkPayState" class="compactSelect" title="결제 완료면 비용에서 '이미 낸 돈', 결제 예정이면 '아직 낼 돈'으로 쳐요"><option value="NONE">고르지 않음</option><option value="RESERVED">결제 예정</option><option value="PAID">결제 완료</option></select>
+    <input type="date" id="bkPaidOn" title="날짜가 지나도 자동으로 결제 완료가 되지 않아요">
+
   </div>
   <div class="hint" id="bkPayHint"></div>
   <div id="bkPeriodWrap" style="display:flex;gap:6px">
@@ -663,7 +675,7 @@
 <div id="travel" role="dialog" aria-modal="true" aria-label="여행 중 안내">
   <div class="travelTop">
     <button class="btn" id="travelClose" aria-label="여행 중 안내 끄기">← 닫기</button>
-    <strong>여행 중</strong>
+    <strong id="travelModeTitle">여행 중</strong>
     <select id="travelDay" aria-label="볼 날짜"></select>
   </div>
   <div id="travelPeriodNote" class="travelPeriodNote" role="note" hidden></div>
@@ -711,15 +723,15 @@
   <div id="placeDetailsContent" aria-live="polite"></div>
   <footer id="placeDetailsActions"></footer>
 </dialog>
-<script src="lib.js?v=tc-v260"></script>
-<script src="sync.js?v=tc-v260"></script>
-<script src="routing.js?v=tc-v260"></script>
-<script src="price.js?v=tc-v260"></script>
-<script src="adaptive.js?v=tc-v260"></script>
-<script src="intake.js?v=tc-v260"></script>
-<script src="collab.js?v=tc-v260"></script>
-<script src="api.js?v=tc-v260"></script>
-<script src="auth.js?v=tc-v260"></script>
-<script src="app.js?v=tc-v260"></script>
+<script src="lib.js?v=tc-v262"></script>
+<script src="sync.js?v=tc-v262"></script>
+<script src="routing.js?v=tc-v262"></script>
+<script src="price.js?v=tc-v262"></script>
+<script src="adaptive.js?v=tc-v262"></script>
+<script src="intake.js?v=tc-v262"></script>
+<script src="collab.js?v=tc-v262"></script>
+<script src="api.js?v=tc-v262"></script>
+<script src="auth.js?v=tc-v262"></script>
+<script src="app.js?v=tc-v262"></script>
 </body>
 </html>

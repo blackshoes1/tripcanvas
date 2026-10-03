@@ -527,7 +527,7 @@ function addSpotAt(lat,lng,placeId,known){
   document.getElementById('spotName').value=''; _namePrefill='';
   if(known&&known.cat) setSpotCat(known.cat);   // 누른 곳의 종류를 안다 — 호텔이면 '오늘 밤 묵어요'도 함께(P1-14)
   const filled=fillSpotFromCoords(lat,lng,true,placeId,known);    // 지정 지점의 장소명·도시 자동 채움
-  setTimeout(()=>document.getElementById('spotName').focus(),50);
+  setTimeout(()=>document.getElementById('spotSearch').focus(),50);
   return filled;
 }
 // 지도 탭/클릭 → 그 좌표로 장소 추가.
@@ -754,7 +754,7 @@ function openPlaceDetails(s,options={}){
   if(!readOnly()){
     if(options.add){
       placeButton(actions,options.addLabel||'일정에 담기',edit(()=>options.add())).classList.add('primary');
-      placeButton(actions,'시간·메모 정하고 담기',edit(()=>options.select()));
+      placeButton(actions,'시간·메모 정하고 담기',edit(()=>{ options.select(); document.getElementById('spotSchedule').open=true; document.getElementById('spotAt').focus(); }));
     }else if(!options.select && !options.existing){
       // 지도에서 누른 장소도 검색과 같은 한 번의 확인으로 담는다 — 폼은 시간·메모를 먼저 정하고 싶을 때만
       const di=activeDay? activeDay-1 : 0;
@@ -763,7 +763,7 @@ function openPlaceDetails(s,options={}){
         const nm=document.getElementById('spotName'); if(!nm.value.trim() && s.name) nm.value=s.name;
         document.getElementById('spotSave').onclick();
       })).classList.add('primary');
-      placeButton(actions,'시간·메모 정하고 담기',edit(()=>addSpotAt(s.lat,s.lng,s.placeId,s.name?s:undefined)));
+      placeButton(actions,'시간·메모 정하고 담기',edit(()=>{ addSpotAt(s.lat,s.lng,s.placeId,s.name?s:undefined); document.getElementById('spotSchedule').open=true; setTimeout(()=>document.getElementById('spotAt').focus(),60); }));
     }else placeButton(actions,options.select?'이 장소 선택':'일정 편집',edit(()=>{
       if(options.select) options.select();
       else openSpotModal(options.existing.di,options.existing.si);
@@ -1288,13 +1288,7 @@ function hoursWarnText(hours, wd, eta, di, si){
   return `${at}에 닫아요 — 도착 예상 ${hm(eta)}`;
 }
 function fmtDur(sec){ const m=Math.round(sec/60); return m<60? `${m}분` : `${Math.floor(m/60)}시간${m%60? ' '+(m%60)+'분':''}`; }
-// a·b는 그 구간의 두 끝 — 걸어서 계산할 때 걷는 거리를 차 경로가 아니라 두 곳 사이로 잰다(lib `walkInsteadOfCar`)
-function legLabel(c,a,b){
-  // 자차여도 2km 미만은 걸어서 계산한다(legMinutes와 같은 규칙) — 아이콘만 바꾸면 '추천'인지 '적용'인지 모른다
-  const w=walkInsteadOfCar(c.mode||'car',c,a,b);
-  if(w) return `↳${(w.m/1000).toFixed(1)}km · 가까워 걸어서 ${Math.max(1,Math.round(w.min))}분`;
-  return `↳${(c.m/1000).toFixed(1)}km · ${fmtDur(c.sec)}`;
-}
+function legLabel(c){ return `↳${(c.m/1000).toFixed(1)}km · ${fmtDur(c.sec)}`; }
 // 주소창·상태바 색(theme-color)도 지금 테마의 바탕을 따른다 — 예전 남색(#16213e)이 남아 있었다
 function syncThemeColor(dark){ const m=document.querySelector('meta[name="theme-color"]'); if(m) m.setAttribute('content',dark?'#16130f':'#f4f1ea'); }
 // 테마는 '기기 설정 따르기'(system)가 기본이다 — 기기가 다크여도 라이트로 시작했고, 바꾸는 곳은 보기 설정 안의 토글 하나라
@@ -1323,7 +1317,6 @@ function setTheme(pref){ try{ if(pref==='system') localStorage.removeItem(THEME_
 })();
 applyTheme();
 function legTitle(c,a,b){
-  if(walkInsteadOfCar(c.mode||'car',c,a,b)) return '자차 하루여도 2km 미만은 걸어서 계산해요(걷는 거리는 두 곳 사이로 어림해요) — 차로 가려면 구간 수단을 택시로 바꾸세요';
   let t=(c.est?((c.mode==='flight'||c.mode==='train')?'직선거리 기반 추정':'자동차 경로 거리 기반 추정'):'실제 도로 기준');
   if(c.snapped)t+=' · 인근 지점에서 출발/도착 (원 지점이 도로·정류장에서 멀어 보정 — 공항 부지 중심 좌표 등)';
   if((c.mode==='car'||c.mode==='taxi')&&c.taxi)t+=` · 택시 약 ${c.taxi.toLocaleString()}원`;
@@ -1528,11 +1521,11 @@ async function pumpLegs(){
   legBusy=false;
 }
 // ── 타임라인 (도착 예상시각) ──
-// 구간 이동시간(분): 캐시된 경로 우선(자차 2km 미만은 도보 대안), 없으면 수단별 속도로 직선 추정
+// 구간 이동시간(분): 선택한 수단의 캐시된 경로 우선, 없으면 수단별 속도로 직선 추정
 function legMinutes(a,b,mode,when,timeZone){
   mode=MODE_ICON[mode]?mode:'car';
   const c=legCache[legRequestKey(a,b,mode,when,timeZone)];
-  if(c&&c.sec){ const w=walkInsteadOfCar(mode,c,a,b); return w? w.min : c.sec/60; }
+  if(c&&c.sec) return c.sec/60;
   return haversine(a,b)/MODE_SPEED[mode]*60;
 }
 // 일자 타임라인: 시작시각(startAt, 기본 09:00)부터 체류(stayMin, **안 정했으면 0분**)+이동 누적.
@@ -1619,13 +1612,13 @@ function dayCost(day){ return dayEnteredCost(day,fxRates); }   // 전액 — 여
 function dayCostOn(di){ return dayEnteredCostOn(trip().days,di,fxRates); }
 /**
  * 그 날의 결제 상태별 하루치 — [['결제 예정',금액],['결제 완료',금액]]. 값이 있는 것만, 표시 순서대로.
- * 예약(trip.bookings)의 하루치는 예약마다의 상태를 따르고, 결제일이 있으면 오늘이 정한다. 고르지 않은 비용(미구분)은 빼고 돌려준다 —
+ * 예약(trip.bookings)의 하루치는 예약마다의 상태를 따르고, 날짜와 무관하게 사용자가 확인한 상태를 따른다. 고르지 않은 비용(미구분)은 빼고 돌려준다 —
  * 미구분을 결제로 치면 이미 쓴 돈이 부풀고, 예약으로 치면 남은 지출이 부풀어 둘 다 거짓말이 된다.
  * @param {any} day @param {number} di @param {string} iso @returns {[string,number][]}
  */
 function dayPaySplit(day,di,iso){
   /** @type {Record<string,number>} */ const sum={RESERVED:0,PAID:0};
-  const today=todayISO();   // 결제일이 있는 항목은 오늘이 상태를 정한다(costPayStateOf) — 웹은 기기 날짜
+  const today=todayISO();   // 상태는 사용자가 확인한 표시다
   const add=(/**@type{any}*/item,/**@type{number}*/krw,/**@type{string=}*/source)=>{
     const st=costPayStateOf(item,source,today); if(st==='RESERVED'||st==='PAID') sum[st]+=krw;
   };
@@ -1811,8 +1804,7 @@ function render(){
         if(activeDay && cch.sec){
           const mid = path? path[Math.floor(path.length/2)]
                           : {lat:(+A.lat + +B.lat)/2, lng:(+A.lng + +B.lng)/2};
-          const walk=walkInsteadOfCar(lm,cch,A,B);
-          addLegChip(mid, walk? `🚶${Math.max(1,Math.round(walk.min))}분` : `${MODE_ICON[lm]}${fmtDur(cch.sec)}`);
+          addLegChip(mid, `${MODE_ICON[lm]}${fmtDur(cch.sec)}`);
         }
       }
       // 숙소 복귀 — 자동으로 이어 붙인 구간이라 점선으로 구분한다
@@ -1848,6 +1840,10 @@ function render(){
   if(picker) picker.textContent=(viewMode?'':(isSampleTrip(t)?'샘플 · ':''))+(t.name||'여행 선택');
   // 샘플 여행은 모든 기기에 똑같이 심어진 데모라 계정에도 안 올라간다 — 그 사실과 빠져나갈 길을 늘 보인다
   const sampleBar=document.getElementById('sampleBar'); if(sampleBar) sampleBar.hidden=!!viewMode||!isSampleTrip(t);
+  const sampleUpdate=document.getElementById('sampleUpdate');
+  const oldSample=isSampleTrip(t)&&t.sampleVersion!==SAMPLE_TRIP_VERSION;
+  if(sampleUpdate) sampleUpdate.hidden=!!viewMode||!oldSample;
+  document.getElementById('sampleInfo').textContent=oldSample?'샘플이 업데이트됐어요 · 이전 편집본은 보관돼요':'샘플 여행이에요 · 고쳐 봐도 이 기기에만 남아요';
   syncHeaderEmphasis(t);
   updateCollabUI();
   syncSheetTop();   // 헤더 아래 띠(샘플·보기 권한 안내)와 필터바 높이가 정해진 뒤에 잰다
@@ -1861,6 +1857,9 @@ function render(){
 function syncHeaderEmphasis(t){
   const btn=document.getElementById('travelBtn'); if(!btn||!t) return;
   const p=tripPeriodOf(t.start, t.days.length, travelClock().todayISO);
+  const label=p.phase==='BEFORE'?'여행 미리보기':p.phase==='AFTER'?'여행 돌아보기':'여행 중 안내';
+  btn.querySelector('.travelBtnText').textContent=label;
+  btn.setAttribute('aria-label',label); btn.title=label;
   const near=p.phase==='DURING' || (p.phase==='BEFORE'&&p.daysUntil<=1);
   btn.classList.toggle('primary',near); btn.classList.toggle('quiet',!near);
   const sampleNew=document.getElementById('sampleNew'); if(sampleNew) sampleNew.classList.toggle('primary',!near);
@@ -1871,13 +1870,13 @@ function syncHeaderEmphasis(t){
 // 뒤였고, '지도에서 보기'는 중심을 정확히 그곳에 두고도 패널이 핀을 덮었다. 덮인 만큼을 여백에 더한다.
 /** @param {string} q */
 function mediaMatches(q){ return typeof window.matchMedia==='function' && window.matchMedia(q).matches; }
-/** 모바일 시트가 **도착할** 높이(px) — 높이는 .22s 전환하므로 지금 재면 옛 높이다. CSS의 15/45/88dvh와 같은 단계. */
+/** 모바일 시트가 **도착할** 높이(px) — 높이는 .22s 전환하므로 지금 재면 옛 높이다. CSS의 15/60/88dvh와 같은 단계. */
 function sheetHeightPx(sb){
   if(sb.style.height) return parseFloat(sb.style.height)||0;   // 끄는 중
   const vh=window.innerHeight, snap=sb.dataset.snap||'half';
   if(snap==='collapsed') return vh*.15;
   if(snap==='expanded') return Math.min(vh*.88, vh-(sheetTopPx()||vh*.12));
-  return vh*.45;
+  return vh*.6;
 }
 function mapEl(){ return document.getElementById(engine==='kakao'?'kmap':'map'); }
 /** 지도 각 변이 무엇에 얼마나(px) 덮였는가 — 모바일 일정 시트와 열린 장소 정보 패널 */
@@ -2410,6 +2409,11 @@ function renderSidebar(){
   if(!sb.dataset.snap) sb.dataset.snap='half';
   const handle=document.createElement('button'); handle.id='sheetHandle'; handle.type='button'; handle.title='누르거나 위아래로 끌어 일정 패널 높이 조절';
   handle.appendChild(document.createElement('span')).className='sheetHandleText'; sb.appendChild(handle); syncSheetHandle();
+  const tools=document.createElement('nav'); tools.className='planTools'; tools.setAttribute('aria-label','여행 준비');
+  [['예약·결제',openBookingList],['준비 메모',openNotes]].forEach(([name,open])=>{
+    const b=document.createElement('button'); b.type='button'; b.className='btn sm'; b.textContent=name; b.onclick=open; tools.appendChild(b);
+  });
+  sb.appendChild(tools);
   // 이전 Sortable 인스턴스 정리 (누수 방지)
   sortables.forEach(s=>{try{s.destroy();}catch(e){}}); sortables=[];
   const colors=cityColors();
@@ -2876,8 +2880,10 @@ window.setDayMode=(di,mode)=>{
 window.openLegModePicker=(di,si)=>{
   if(readOnly()) return;
   const day=trip().days[di], s=day&&day.spots&&day.spots[si]; if(!s) return;
-  const dmn=dayModeOf(day);
-  openModePicker({title:`${s.name||'이 장소'}까지 이동수단`, hint:'이 구간만 바꿔요. 하루 전체는 일자 머리의 수단 버튼에서 바꿔요.',
+  const dmn=dayModeOf(day), leg=dayContext(di).legs.find(l=>l.spotIndex===si);
+  const option=leg? shortWalkOption(leg.mode,legCache[leg.key],leg.from,leg.to) : null;
+  const walkHint=option? ` 도보로 바꾸면 약 ${Math.max(1,Math.round(option.min))}분(거리로 추정)이에요. 도보를 고르면 그 수단으로 다시 계산해요.` : '';
+  openModePicker({title:`${s.name||'이 장소'}까지 이동수단`, hint:'이 구간만 바꿔요. 하루 전체는 일자 머리의 수단 버튼에서 바꿔요.'+walkHint,
     current:s.legMode||'',
     options:[{value:'', label:`그날 기본 따르기 (${MODE_ICON[dmn]} ${MODE_NAME[dmn]})`}].concat(MODE_ORDER.map(m=>({value:m, label:`이 구간만 ${MODE_ICON[m]} ${MODE_NAME[m]}`}))),
     onPick:(m)=>{ setLegMode(di,si,m); focusSpotRow(di,si,'.legModeBtn'); }});
@@ -3026,6 +3032,8 @@ window.openSpotModal=(di,si,focusId)=>{
   document.getElementById('spotBookUrl').value=s.bookUrl||'';
   drawAdmission(s.admission);
   syncAdmissionBox();
+  document.getElementById('spotIdentity').open=!isNew;
+  document.getElementById('spotSchedule').open=!isNew&&!!(s.at||s.bookAt||s.stayMin!=null||s.desc);
   document.getElementById('spotAdvanced').open=!isNew&&!!(s.legMode||s.cost||s.bookAt||s.bookUrl||s.admission||spotPriorityOf(s)!=='NORMAL');
   document.getElementById('spotLat').value=s.lat; document.getElementById('spotLng').value=s.lng;
   document.getElementById('spotPlaceId').value=s.placeId||'';
@@ -3048,7 +3056,7 @@ window.openSpotModal=(di,si,focusId)=>{
     });
   document.getElementById('spotModalBg').classList.add('show');
   // 행에서 특정 칸(예: '머무는 시간 미정')을 눌러 열었으면 그 칸으로 바로 — 모달의 기본 포커스 뒤에 옮긴다
-  if(focusId) setTimeout(()=>{ const el=document.getElementById(focusId); if(el){ el.focus(); el.scrollIntoView({block:'center'}); } },60);
+  if(focusId) setTimeout(()=>{ const el=document.getElementById(focusId); if(el){ const details=el.closest('details'); if(details) details.open=true; el.focus(); el.scrollIntoView({block:'center'}); } },60);
 };
 
 /**
@@ -4243,7 +4251,7 @@ function renderBookingList(){
   const basisLine=`<div class="hint" style="margin:0 0 8px">${esc(bookingBasisHint())}</div>`;
   document.getElementById('bookingListBody').innerHTML = totalLine + paidLine + (rows.length? basisLine:'') + (rows.length? rows.map(r=>{
     const b=r.booking, period=b? esc(bookingPeriodText(b)) : '';
-    const sub=[period, b&&b.provider?esc(b.provider):'', COST_KIND[r.kind].name, costLabel(r.amount,r.cur), payStateNote(r.payState), r.paidOn?`결제일 ${esc(mdLabel(r.paidOn)||r.paidOn)}`:'', r.photos?`📎 사진 ${r.photos}장`:''].filter(Boolean).join(' · ');
+    const sub=[period, b&&b.provider?esc(b.provider):'', COST_KIND[r.kind].name, costLabel(r.amount,r.cur), payStateNote(r.payState), r.paidOn?`${r.payState==='PAID'?'결제일':r.payState==='RESERVED'?'결제 예정일':'결제(예정)일'} ${esc(mdLabel(r.paidOn)||r.paidOn)}`:'', r.photos?`📎 사진 ${r.photos}장`:''].filter(Boolean).join(' · ');
     return `<div class="tripRow pxRow" onclick="openBookingModal('${escAttr(r.id)}')" title="${b?'탭해서 상세·판매처 비교·가격 기록 보기':'탭해서 편집'}">
       <span class="tn">${COST_KIND[r.kind].icon} ${esc(r.title)}<span class="opt">${sub}</span></span>
       ${b?bookingBadgeHtml(b):''}
@@ -4254,7 +4262,7 @@ function renderBookingList(){
 }
 /**
  * 예약 결제 금액의 한 목록 — 예약(trip.bookings)과 여행 단위 비용(trip.costItems)을 같은 모양으로.
- * 결제일이 최근인 것부터, 결제일이 없는 것은 그 뒤에 등록 순. 상태는 오늘(기기 날짜)이 정한다(costPayStateOf).
+ * 결제일이 최근인 것부터, 결제일이 없는 것은 그 뒤에 등록 순. 상태는 사용자가 확인한 표시다(costPayStateOf).
  * @returns {{id:string,kind:string,title:string,amount:number|null,cur:string|undefined,paidOn:string,payState:string,photos:number,booking:any}[]}
  */
 function paymentRows(){
@@ -4447,7 +4455,7 @@ function toggleBkFields(){
   // 날짜가 필요한 이유를 날짜 칸 곁에서 말한다 — 저장을 누른 뒤에야 알게 되는 숨은 조건이 되지 않게
   const tracking=hotel&&document.getElementById('bkTrack').checked;
   document.getElementById('bkPeriodHint').textContent = tracking? '가격 추적을 켜 두어서 체크인·체크아웃 날짜가 필요해요' : '';
-  // 결제 상태 — 예약은 미구분이 없다(잡아 둔 돈). 결제일이 있으면 날짜가 상태를 정하므로 고르는 칸을 감춘다
+  // 결제 상태 — 예약은 미구분이 없다(잡아 둔 돈). 날짜와 무관하게 항상 고를 수 있다
   const ps=document.getElementById('bkPayState'), none=ps.querySelector('option[value="NONE"]');
   // 예약 분류에 오면 '결제 예정'을 대신 고르는데, 그건 사람이 고른 값이 아니다 — 표시해 두고, 예약이 아닌 분류로 옮기면
   // 거둬 '고르지 않음'으로 되돌린다. 전에는 숙박으로 열린 새 항목을 '기타'로 바꾸면 고르지 않은 유심이 결제 예정으로 저장돼
@@ -4455,11 +4463,9 @@ function toggleBkFields(){
   none.hidden=booking;
   if(booking&&ps.value==='NONE'){ ps.value='RESERVED'; ps.dataset.auto='1'; }
   else if(!booking&&ps.dataset.auto){ ps.value='NONE'; delete ps.dataset.auto; }
-  const paidOn=document.getElementById('bkPaidOn').value;
-  ps.style.display=paidOn?'none':'';
-  document.getElementById('bkPayHint').textContent = paidOn
-    ? (paidOn<=todayISO()? `결제일(${paidOn})이 지나 결제 완료로 쳐요` : `결제 예정일(${paidOn})이 아직이라 결제 예정으로 쳐요 — 그날부터 결제 완료가 돼요`)
-    : '결제일을 정하면 그 날부터 결제 완료로 쳐요. 정하지 않으면 여기서 고른 상태를 써요.';
+  ps.style.display='';
+  document.getElementById('bkPaidOnLabel').textContent=ps.value==='PAID'? '결제일 (선택)' : ps.value==='RESERVED'? '결제 예정일 (선택)' : '결제(예정)일 (선택)';
+  document.getElementById('bkPayHint').textContent='실제로 결제한 뒤 결제 완료를 선택해 주세요. 날짜가 지나도 자동으로 완료되지 않아요.';
 }
 /** 숙소 이름 칸 아래 한 줄 — 가격 조회가 이 이름을 어떻게 쓰는지. 한글 이름은 조회 때 영문 이름을 찾아 쓴다(enNameForBooking).
  *  전에는 칸 이름이 '예약처 표기와 같게'라고 하면서 일정의 한글 이름을 그대로 채워 두 말이 갈렸다(2026-10-03) */
@@ -4650,7 +4656,7 @@ function renderBookingStatusBox(b){
 document.getElementById('bkType').onchange=toggleBkFields;
 document.getElementById('bkFreeCancel').onchange=toggleBkFields;
 document.getElementById('bkTrack').onchange=toggleBkFields;
-document.getElementById('bkPayState').onchange=e=>{ delete e.target.dataset.auto; };   // 사람이 고른 상태 — 분류를 바꿔도 그대로 둔다
+document.getElementById('bkPayState').onchange=e=>{ delete e.target.dataset.auto; toggleBkFields(); };   // 사람이 고른 상태 — 분류를 바꿔도 그대로 둔다
 document.getElementById('bkPaidOn').oninput=toggleBkFields;
 document.getElementById('bkPaidOn').onchange=toggleBkFields;
 // 숙소 연결 선택 → 새 예약이면 이름·기간·인원·통화 프리필 (기존 예약의 연결 변경은 값 유지)
@@ -4701,9 +4707,8 @@ function saveCostItem(kind){
     if(!item) return;
     item.title=title; item.kind=kind; item.amount=amount; item.costBasis='TOTAL';
     if(cur!=='KRW') item.cur=cur; else delete item.cur;
-    // 결제일이 있으면 날짜가 상태를 정한다 — 손으로 고른 상태는 두지 않는다(두 답이 갈리면 어느 쪽도 못 믿는다)
-    if(paidOn){ item.paidOn=paidOn; delete item.payState; }
-    else { delete item.paidOn; if(ps==='PAID'||ps==='RESERVED') item.payState=ps; else delete item.payState; }
+    if(paidOn) item.paidOn=paidOn; else delete item.paidOn;
+    if(ps==='PAID'||ps==='RESERVED') item.payState=ps; else delete item.payState;
     if(isNew) list.push(item);
   });
   document.getElementById('bookingModalBg').classList.remove('show');
@@ -4749,9 +4754,8 @@ document.getElementById('bkSave').onclick=()=>{
     b.url=document.getElementById('bkUrl').value.trim();
     b.price=price;
     if(curV&&curV!=='KRW') b.cur=curV; else delete b.cur;   // KRW는 기본값이라 생략 (스팟 cur와 동일 규칙)
-    // 결제일이 있으면 날짜가 상태를 정한다(costPayStateOf) — 손으로 고른 상태는 두지 않는다. 없으면 결제함만 저장(없으면 예약)
-    if(paidOn){ b.paidOn=paidOn; delete b.payState; }
-    else { delete b.paidOn; if(document.getElementById('bkPayState').value==='PAID') b.payState='PAID'; else delete b.payState; }
+    if(paidOn) b.paidOn=paidOn; else delete b.paidOn;
+    if(document.getElementById('bkPayState').value==='PAID') b.payState='PAID'; else delete b.payState;
     if(sv) b.start=sv; else delete b.start;
     if(ev) b.end=ev; else delete b.end;
     if(type==='hotel'){
@@ -4926,7 +4930,7 @@ document.getElementById('costPlaceSave').onclick=()=>{
     if(kind==='AUTO') delete spot.costKind; else spot.costKind=kind;
     const paidOn=document.getElementById('costPaidOn').value, state=document.getElementById('costPayState').value;
     if(paidOn) spot.paidOn=paidOn; else delete spot.paidOn;
-    if(!paidOn&&state!=='NONE') spot.payState=state; else delete spot.payState;
+    if(state!=='NONE') spot.payState=state; else delete spot.payState;
   });
   // 이 창은 예약 결제 금액 목록에서도 열리는데 장소 비용은 그 목록에 없다 — 어디에 들어갔는지 말한다(2026-10-03)
   const {di}=selectedCostSpot();
@@ -6122,7 +6126,7 @@ function sgPrimaryButtons(sug, di){
     renderSuggestions(di); }, 'ACCEPT')];
   if(a.kind==='EAT') return !v.canPlan? [] : [sgButton('식사 장소 추가', true, ()=>openMealSearch(sug,di), 'ACCEPT')];
   // 다른 날의 장소를 이 날로 — 넣는 날을 그 이름으로 말한다(다른 날을 보면서 '오늘 일정에 넣기'였다). 지난 날·보기 권한은 넣지 않는다
-  if(a.fromDay!=null && a.si!=null) return !v.canPlan? [] : [sgButton(v.isToday?'오늘 일정에 넣기':`Day ${di+1}에 넣기`, true, ()=>acceptMove(sug,di,a), 'ACCEPT')];
+  if(a.fromDay!=null && a.si!=null) return !v.canPlan? [] : [sgButton(`Day ${a.fromDay+1} → Day ${di+1}로 옮기기`, true, ()=>acceptMove(sug,di,a), 'ACCEPT')];
   if(a.si!=null){
     const sp=trip().days[di].spots[a.si], out=[];
     if(hasLoc(sp)) out.push(sgButton('지도에서 보기', true, ()=>{ recordFeedback(sug,'ACCEPTED'); const l=extMapLink(sp); window.open(l.href,'_blank','noopener'); renderSuggestions(di); }, 'ACCEPT'));
@@ -6421,6 +6425,12 @@ function renderTravel(di, clock){
   const when=clock||travelClock(), t=trip(), d=t.days[di], colors=cityColors();
   syncAdaptDay(when);   // 어제 고른 컨디션·문장은 오늘 추천에 쓰지 않는다
   const v=travelDayView(di, when), period=v.period, outside=period.phase==='BEFORE'||period.phase==='AFTER';
+  const modeTitle=v.isToday?'여행 중':period.phase==='AFTER'?`Day ${di+1} 돌아보기`:`Day ${di+1} 미리보기`;
+  document.getElementById('travelModeTitle').textContent=modeTitle;
+  document.getElementById('travel').setAttribute('aria-label',modeTitle);
+  const intent=document.getElementById('travelIntent');
+  intent.setAttribute('aria-label',v.isToday?'지금 상태나 원하는 것을 적어 주세요':'이 날 원하는 여행 방식을 적어 주세요');
+  intent.placeholder=v.isToday?'예: 오늘 좀 피곤해서 많이 걷기 싫어':'예: 이 날은 적게 걷고 여유롭게 보고 싶어';
   document.getElementById('travelTitle').textContent=`Day ${di+1}${d.title?` · ${d.title}`:''}`;
   document.getElementById('travelSub').textContent=[dateOf(di),d.drive,d.note].filter(Boolean).join('  ·  ');
   // 기간 밖이면 '오늘'이 아니라는 사실을 맨 위에서 말한다 — 이 화면은 그때 보기 전용이다
@@ -6448,18 +6458,18 @@ function renderTravel(di, clock){
   // '다음 장소' 한 줄 — 이 장소로 오는 이동과 도착, 언제 나서면 되는지. 지금 카드와 미리보기가 같은 문장을 쓴다
   const legOf=(idx)=>{
     const sp=d.spots[idx], inLeg=incomingBySpot.get(idx), mode=legModeOf(d,sp), route=inLeg?routes.get(inLeg):null;
-    // 분은 ETA와 같은 함수로 낸다 — 자차 2km 미만은 걸어서 계산하는데 경로의 차량 시간을 그대로 쓰면 ETA와 갈렸다
+    // 분은 ETA와 같은 함수로 낸다 — 고른 수단의 경로를 쓴다
     const travelMin=inLeg?legMinutes(inLeg.from,inLeg.to,mode,inLeg.when,ctx.timeZone):0;
     // 출발점이 없으면 이동을 모른다 — 그때 '몇 분 여유'를 말하면 위 문장과 모순된다
     const adv=(inLeg&&ast)? TC_ADAPT.departureAdvice(ast, ast.items[idx], travelMin) : null;
     return {sp, inLeg, mode, route, travelMin, adv, departHtml:adv?`<div class="travelDepart ${adv.level.toLowerCase()}">${esc(adv.text)}</div>`:''};
   };
   const arrival=(idx, live)=>{
-    const {sp, inLeg, mode, route, travelMin, adv, departHtml}=legOf(idx), walkShort=!!(route&&mode==='car'&&route.m<2000);
+    const {sp, inLeg, mode, route, travelMin, adv, departHtml}=legOf(idx);
     // 경로를 아직 못 받았거나(조회 중) 못 받으면(실패·미지원) 거리로 낸 추정을 그렇다고 말한다 — '계산 중'에 머물지 않는다.
     // 들어오는 구간이 없으면(출발점이 없는 첫 장소) 계산할 이동이 없다.
     const move=!inLeg? '출발점(숙소)을 정하면 여기까지 이동 시간도 계산해요'
-      : route? (walkShort? `🚶 가까워 걸어서 ${Math.max(1,Math.round(travelMin))}분` : `${MODE_ICON[mode]} ${fmtDur(travelMin*60)} 이동`)
+      : route? `${MODE_ICON[mode]} ${fmtDur(travelMin*60)} 이동`
       : `${MODE_ICON[mode]} 약 ${Math.max(1,Math.round(travelMin))}분 이동(거리로 추정)`;
     // 예약이 있는 곳은 그 시각도 함께 — '12:03 도착 예상' 옆에 '18:58쯤 출발하면'만 있으면 두 시각이 서로 다른 말을 한다
     // 여행 중에 출발 안내가 '지금 출발하면 11:18 도착'이라고 말하면 계획의 '11:30 도착 예상'은 적지 않는다 —
@@ -6543,11 +6553,10 @@ function renderTravel(di, clock){
   d.spots.forEach((s,si)=>{
     const incoming=ctx.legs.filter(l=>l.spotIndex===si);
     for(const leg of incoming){
-      const mode=leg.mode,c=routes.get(leg), walk=c? walkInsteadOfCar(mode,c,leg.from,s) : null;
+      const mode=leg.mode,c=routes.get(leg);
       const lg=document.createElement('div'); lg.className='tLeg';
       lg.textContent = (incoming.length>1?`${leg.from.name||'출발점'}에서 · `:'')+(c
-        ? (walk? `🚶 ${Math.max(1,Math.round(walk.min))}분 · ${(walk.m/1000).toFixed(1)}km`
-                   : `${MODE_ICON[mode]} ${fmtDur(c.sec)} · ${(c.m/1000).toFixed(1)}km${((mode==='car'||mode==='taxi')&&c.taxi)?` · 🚕약 ${c.taxi.toLocaleString()}원`:''}`)
+        ? `${MODE_ICON[mode]} ${fmtDur(c.sec)} · ${(c.m/1000).toFixed(1)}km${((mode==='car'||mode==='taxi')&&c.taxi)?` · 🚕약 ${c.taxi.toLocaleString()}원`:''}`
         : `↘ 직선 ${haversine(leg.from,s).toFixed(1)}km`);
       list.appendChild(lg);
     }
@@ -8190,7 +8199,7 @@ function dismissOnboarding(){
  * 보던 여행 그대로였고 지운 샘플은 다시 생기지 않았다(2026-10-03 UX 검토). 받은 사본을 보던 중이면 그 보기도 닫는다.
  */
 function openSampleTrip(){
-  const sample=store.trips.find(isSampleTrip);
+  const sample=store.trips.find(t=>isSampleTrip(t)&&t.sampleVersion===SAMPLE_TRIP_VERSION)||store.trips.find(isSampleTrip);
   // 여행 수 한도(TC_LIMITS.trips)를 넘겨 심으면 다음 실행에서 저장소 전체가 검증에 걸린다(parseStorePayload)
   if(!sample && store.trips.length>=TC_LIMITS.trips){ toast(`여행이 ${TC_LIMITS.trips}개라 샘플을 다시 만들 수 없어요`,'#b4342a'); return; }
   leaveViewMode();
@@ -8200,6 +8209,16 @@ function openSampleTrip(){
   clearPresence();
   commit(()=>{ if(fresh) store.trips.push(fresh); store.activeId=(sample||fresh).id; activeDay=0; }, {fit:fitEntry});
 }
+document.getElementById('sampleUpdate').onclick=()=>{
+  if(!guardEdit()) return;
+  const current=store.trips.find(t=>isSampleTrip(t)&&t.sampleVersion===SAMPLE_TRIP_VERSION);
+  if(!current&&store.trips.length>=TC_LIMITS.trips){ toast(`여행이 ${TC_LIMITS.trips}개라 최신 샘플을 만들 수 없어요`,'#b4342a'); return; }
+  const fresh=current? null : sampleTrip(), snap=snapshot();
+  if(fresh) fresh.id=uid();   // 기존 샘플·편집 내용을 그대로 보관한다
+  clearPresence();
+  commit(()=>{ if(fresh) store.trips.push(fresh); store.activeId=(current||fresh).id; activeDay=0; }, {fit:fitEntry});
+  toast('최신 샘플을 열었어요 — 이전 샘플은 여행 목록에 남아 있어요','#3e7a4c',{label:'되돌리기',fn:()=>undoWith(snap)});
+};
 // 샘플로 들어오면 경로 재생을 한 번 권한다 — 지도 위 버튼만으로는 무엇을 보여 주는지 모른다(2026-10-03 UX 검토)
 document.getElementById('onboardSample').onclick=()=>{
   dismissOnboarding(); openSampleTrip();
