@@ -285,6 +285,24 @@ test('normalizeDraftDays — 자유로운 초안을 여행 스키마로 눕힌�
   assert.deepEqual(L.normalizeDraftDays('nope'), []);
 });
 
+test('normalizeDraftDays — 미리보기가 보여 준 링크와 장소 id를 떨어뜨리지 않는다', () => {
+  // 2026-10-03: 미리보기에 '링크 1개'라고 보였는데 저장한 장소에는 링크가 없었다
+  const [day] = L.normalizeDraftDays([{ spots:[
+    {name:'사려니숲길', bookUrl:'https://www.visitjeju.net/kr/detail/view?contentsid=CONT_1', kakaoId:'8137012'},
+    {name:'수상한 곳', bookUrl:'javascript:alert(1)'},
+    {name:'깨진 곳', bookUrl:'not a url'}
+  ]}]);
+  assert.equal(day.spots[0].bookUrl, 'https://www.visitjeju.net/kr/detail/view?contentsid=CONT_1');
+  assert.equal(day.spots[0].kakaoId, '8137012');
+  assert.equal(day.spots[1].bookUrl, undefined, 'http(s)가 아닌 링크는 들이지 않는다');
+  assert.equal(day.spots[2].bookUrl, undefined);
+  // 링크 하나 때문에 초안 전체가 거절되지 않는다 — 그리고 저장본에도 남는다
+  const r = L.validateTripPayload({ name:'초안', start:'2026-11-05', days:[day] });
+  assert.equal(r.ok, true);
+  assert.equal(r.value.days[0].spots[0].bookUrl, 'https://www.visitjeju.net/kr/detail/view?contentsid=CONT_1');
+  assert.equal(r.value.days[0].spots[0].kakaoId, '8137012');
+});
+
 test('normalizeDraftDays 결과는 validateTripPayload를 통과한다', () => {
   // 눕히는 목적이 바로 이것 — 자유 입력이 검증에서 통째로 거절되지 않게
   const days = L.normalizeDraftDays([{ title:'x', spots:[{name:'A', lat:'33.5', lng:'126.5'}] }]);
