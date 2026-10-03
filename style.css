@@ -203,11 +203,13 @@
   .tSpot{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:9px;border-left:4px solid var(--c,#556)}
   .tSpot .n{font-weight:700;font-size:14.5px}
   .tSpot .d{font-size:12px;color:var(--subtle);margin:3px 0 7px;white-space:pre-wrap}
-  .travelTop{display:flex;align-items:center;gap:10px;margin-bottom:12px}.travelTop strong{flex:1;text-align:center}.travelTop select{max-width:170px}.travelFocus,.travelNext{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:10px}.travelFocus{border-top:4px solid var(--primary)}.travelKicker,.travelSectionTitle{font-size:11px;color:var(--subtle);font-weight:700;margin-bottom:7px}.travelPlace{font-size:18px;font-weight:800;margin-bottom:7px}.travelFacts{font-size:12px;color:var(--muted);line-height:1.7}.travelMemo{font-size:12px;color:var(--muted);line-height:1.6;margin-top:6px;padding:6px 8px;background:var(--surface-2);border-radius:8px}.travelMemo span{font-weight:700;color:var(--subtle);margin-right:4px}.travelActions{display:flex;gap:8px;margin-top:10px}.travelActions a{display:inline-block;text-decoration:none;background:var(--primary);color:#fff;padding:7px 12px;border-radius:8px;font-size:12px;font-weight:700}.travelActions a+a{background:var(--surface);color:var(--ink);border:1px solid var(--border)}.travelNext{display:grid;grid-template-columns:1fr auto;align-items:center}.travelNext strong{font-size:15px}.travelSectionTitle{margin:8px 2px}
+  .travelTop{display:flex;align-items:center;gap:10px;margin-bottom:12px}.travelTop strong{flex:1;text-align:center}.travelTop select{max-width:170px}.travelNow{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:10px;border-top:4px solid var(--primary)}.travelKicker,.travelSectionTitle{font-size:11px;color:var(--subtle);font-weight:700;margin-bottom:7px}.travelPlace{font-size:18px;font-weight:800;margin-bottom:7px}.travelFacts{font-size:12px;color:var(--muted);line-height:1.7}.travelMemo{font-size:12px;color:var(--muted);line-height:1.6;margin-top:6px;padding:6px 8px;background:var(--surface-2);border-radius:8px}.travelMemo span{font-weight:700;color:var(--subtle);margin-right:4px}.travelActions{display:flex;gap:8px;margin-top:10px}.travelActions a{display:inline-block;text-decoration:none;background:var(--primary);color:#fff;padding:7px 12px;border-radius:8px;font-size:12px;font-weight:700}.travelActions a+a{background:var(--surface);color:var(--ink);border:1px solid var(--border)}.travelNext strong{font-size:15px}.travelSectionTitle{margin:8px 2px}
   /* 여행 기간 밖 — 이 화면이 보기 전용이라는 것을 맨 위에서 말한다 */
   .travelPeriodNote{background:var(--badge-warn-bg);color:var(--badge-warn-fg);border-radius:10px;padding:9px 12px;margin-bottom:10px;font-size:12.5px;font-weight:600;line-height:1.5}.travelPeriodNote[hidden]{display:none}
   #sheetHandle{display:none}
   .tSpot a{display:inline-block;font-size:12.5px;color:#fff;background:var(--primary);border-radius:8px;padding:5px 12px;text-decoration:none}
+  /* 목록 줄의 지도·예약 링크는 보조다 — 채운 초록이 '다녀왔어요'보다 무거워 위계가 뒤집혀 있었다(2026-10-03 UX 검토) */
+  .tSpot a.tLink{color:var(--primary-dark);background:var(--surface);border:1px solid var(--border);min-height:36px;display:inline-flex;align-items:center}
   #pickBanner{position:absolute;top:10px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--surface);font-size:13px;font-weight:700;padding:5px 6px 5px 16px;border-radius:22px;z-index:1500;display:none;align-items:center;gap:10px;white-space:nowrap}#pickBanner .btn{min-height:36px}
   #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#3e7a4c;color:#fff;font-size:13px;padding:8px 18px;border-radius:20px;z-index:4000;display:none;align-items:center;gap:12px;max-width:92vw}
   #toast .toastAct{background:rgba(255,255,255,.22);border:none;color:#fff;font-weight:700;font-size:12px;padding:4px 10px;border-radius:12px;white-space:nowrap}
@@ -610,7 +612,7 @@ body.playing #playHud{
 input[aria-invalid="true"]{border-color:var(--meta-danger)!important;box-shadow:0 0 0 2px color-mix(in srgb,var(--meta-danger) 25%,transparent)}
 /* 다크의 주 색은 밝은 연두라 흰 글자는 1.9:1로 읽히지 않는다 — 다크에서만 짙은 글자로(약 10:1).
    ⚠️ 라이트의 #fff는 그대로다: 테마 토큰으로 바꾸면 라이트·다크가 같이 흔들린다(CLAUDE.md 웹 색 규칙). */
-body.theme-dark .btn.primary,body.theme-dark .travelActions a,body.theme-dark .tSpot a,body.theme-dark .sgFrom{color:#16130f}
+body.theme-dark .btn.primary,body.theme-dark .travelActions a,body.theme-dark .tSpot a:not(.tLink),body.theme-dark .sgFrom{color:#16130f}
 .actionMenu.up .actionMenuPanel{top:auto;bottom:42px}
 .spotWarn{display:grid;gap:2px;margin:0 0 2px 60px;padding-right:4px;min-width:0;color:var(--meta-danger);font-weight:600;font-size:12px;line-height:1.4;white-space:normal;overflow-wrap:anywhere}
 .spotMetaItem.stayMin.unset{opacity:.8;border:1px dashed var(--border);background:none;border-radius:6px;padding:1px 6px;font:inherit;color:var(--meta-soft);cursor:pointer;min-height:24px}
@@ -698,3 +700,19 @@ body:has(.modalBg.show) #toast{bottom:auto;top:calc(env(safe-area-inset-top) + 1
 #spotStay{width:18px;height:18px;flex:none}
 /* 칸 이름이 한 글자씩 꺾이지 않게 — '예약 요건'·'우선순위'가 좁은 화면에서 두 줄로 쪼개졌다(P2-27) */
 .admissionRow .chkrow label,.optionRows .chkrow label{white-space:nowrap}
+/* ux3:travelui */
+/* 여행 중의 맨 위는 '지금' 카드 하나다 — 머리(먼저 물을 것·마지막으로 들른 곳·출발 전)와 몸(지금·다음, 다녀왔어요)이
+   한 테두리 안에 있다(2026-10-03 UX 검토). 비운 칸은 숨긴다 — 칸이 display를 가지면 hidden 속성을 이긴다 */
+.travelNow>[hidden]{display:none}
+/* 지난 날·지난 여행은 돌아보기용이라 문장·컨디션 칸을 숨긴다(renderEnergy) — 두 칸 모두 display:flex라 hidden 속성만으로는
+   그대로 보였다(입력칸과 '반영'이 남아 눌렸다) */
+.travelTune[hidden],.travelEnergy[hidden]{display:none}
+.travelNow>.travelFocus:not([hidden])+.travelNext:not([hidden]){border-top:1px solid var(--border);margin-top:12px;padding-top:12px}
+.travelNow .travelPlace.small{font-size:15px;margin-bottom:2px}
+.travelNowActions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
+.travelNowActions .tStatus{margin-top:0}
+.travelNow .tStatus .btn{min-height:44px;padding:6px 14px;font-size:13px}
+.travelNow .travelGo{margin-left:auto}
+.tLinks{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.sgDone{border-style:solid;color:var(--meta-good);font-weight:600}
+.travelIntentEcho .btn.sm{margin-top:4px}

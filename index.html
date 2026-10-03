@@ -642,8 +642,11 @@
   <div id="travelPeriodNote" class="travelPeriodNote" role="note" hidden></div>
   <h2 id="travelTitle"></h2>
   <div class="sub" id="travelSub"></div>
-  <section id="travelCurrent" class="travelFocus"></section>
-  <section id="travelNext" class="travelNext"></section>
+  <!-- '지금' 카드 하나 — 머리(먼저 물을 것·마지막으로 들른 곳·출발 전)와 몸(지금·다음, 다녀왔어요)이 한 테두리다 -->
+  <section class="travelNow">
+    <div id="travelCurrent" class="travelFocus"></div>
+    <div id="travelNext" class="travelNext"></div>
+  </section>
   <div id="travelTune" class="travelTune">
     <input id="travelIntent" type="text" maxlength="120" placeholder="예: 오늘 좀 피곤해서 많이 걷기 싫어" aria-label="지금 상태나 원하는 것을 적어 주세요">
     <button class="btn" id="travelIntentApply" type="button">반영</button>
