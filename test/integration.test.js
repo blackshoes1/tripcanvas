@@ -6826,12 +6826,12 @@ test("통합: 경로 재생은 지도 위 고정 버튼이고, 테마는 ☰에 
     assert.ok(play.closest('#main'),'지도 위에 있다');
     assert.equal(play.hidden,false,'따라갈 동선이 있으면 보인다');
     assert.match(play.textContent,/경로 재생/);
-    assert.equal(w.document.querySelector('#filterbar #themeBtn'),null,'테마는 칩 줄에 없다');
-    const theme=w.document.querySelector('#hdrMenu #themeBtn');
-    assert.ok(theme,'테마는 ☰ 설정에');
-    const dark=w.document.body.classList.contains('theme-dark');
-    theme.click();
-    assert.equal(w.document.body.classList.contains('theme-dark'),!dark,'☰에서 눌러도 바뀐다');
+    assert.equal(w.document.querySelector('#filterbar #themeChoice'),null,'테마는 칩 줄에 없다');
+    // 테마는 ☰의 '화면'에서 고른다(시스템·밝게·어둡게 — 접근성 묶음이 토글을 이 선택으로 바꿨다)
+    const dark=w.document.querySelector('#hdrMenu #themeChoice button[data-theme="dark"]');
+    assert.ok(dark,'테마는 ☰ 설정에');
+    dark.click();
+    assert.equal(w.document.body.classList.contains('theme-dark'),true,'☰에서 고르면 바뀐다');
     // 샘플 먼저 둘러보기 → 경로 재생을 권하는 한 마디(누르면 재생)
     w.eval(`window.__played=0; playTrip=()=>{ __played++; };`);
     w.document.getElementById('onboardSample').click();
