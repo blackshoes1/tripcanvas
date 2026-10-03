@@ -224,12 +224,12 @@
   /* 읽기전용 보기 */
   #roBar{background:#7c5c15;color:#fff;padding:6px 12px;font-size:12.5px;display:flex;align-items:center;gap:10px;z-index:1001}
   .readonly .addSpot,.readonly #addDayBtn,.readonly .noloc,.readonly .dragHandle,
-  .readonly #newTripBtn,.readonly #tripEditBtn,.readonly #pasteBtn,.readonly #importBtn,.readonly #authBtn,.readonly #undoBtn{display:none!important}
-  #undoBtn:disabled{opacity:.35;cursor:default}
+  .readonly #newTripBtn,.readonly #tripEditBtn,.readonly #pasteBtn,.readonly #importBtn,.readonly #authBtn,.readonly #undoBtn,.readonly #redoBtn{display:none!important}
+  #undoBtn:disabled,#redoBtn:disabled{opacity:.35;cursor:default}
   .readonly .spot,.readonly .dayHead{cursor:default}
   /* 함께하기 — 보기 권한(VIEWER)으로 보는 여행: 편집 도구만 감춘다. 로그인·새 여행·설정(나가기)은 그대로 쓴다 */
   .roleViewer .addSpot,.roleViewer #addDayBtn,.roleViewer .noloc,.roleViewer .dragHandle,
-  .roleViewer #undoBtn,.roleViewer #pasteBtn,.roleViewer #pasteMenuBtn,.roleViewer #bookingAdd{display:none!important}
+  .roleViewer #undoBtn,.roleViewer #redoBtn,.roleViewer #pasteBtn,.roleViewer #pasteMenuBtn,.roleViewer #bookingAdd{display:none!important}
   .roleViewer .spot,.roleViewer .dayHead{cursor:default}
   .roleViewer .modeBtn{pointer-events:none}
   /* 샘플 여행 — 둘러보는 중이라는 것과 빠져나갈 길을 늘 보인다 */

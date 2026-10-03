@@ -5746,3 +5746,71 @@ test('통합: 누를 것이 있는 토스트는 머무는 동안 사라지지 �
     assert.notEqual(w.document.activeElement, t.querySelector('.toastAct'));
   } finally { w.close(); }
 });
+
+// ux3:undo 검토 — 구현 뒤 반박 검토에서 찾은 것(2026-10-03)
+test('통합: 토스트에서 Tab으로 돌아갈 자리가 없으면 포커스를 가두지 않는다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    ux3Trip(w, [UX3_DAY('D1', [UX3_SPOT('A', 37.5)])]);
+    w.eval('dismissOnboarding();');
+    const t = w.document.getElementById('toast');
+    if (w.document.activeElement && w.document.activeElement.blur) w.document.activeElement.blur();   // 지도를 누른 뒤처럼 포커스가 본문에 있다
+    w.eval(`toast('지웠어요','#4f4740',{fn:()=>{}})`);
+    ux3Key(w, 'Tab');
+    const act = t.querySelector('.toastAct');
+    assert.equal(w.document.activeElement, act, '본문에서도 Tab 한 번이면 토스트에 닿는다');
+    // 돌아갈 자리가 본문이면 Tab을 막지 않는다 — 막으면 포커스가 토스트에 갇히고 토스트는 머무는 동안 사라지지 않는다
+    assert.equal(ux3Key(w, 'Tab'), true, '두 번째 Tab은 브라우저의 원래 순서로 간다');
+    assert.equal(ux3Key(w, 'Tab', { shiftKey: true }), true);
+  } finally { w.close(); }
+});
+
+test('통합: 마우스로 위로·아래로를 누르면 ⋮ 메뉴를 다시 열어 두지 않는다 — 키보드일 때만', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    ux3Trip(w, [UX3_DAY('D1', [UX3_SPOT('A', 37.5), UX3_SPOT('B', 37.6), UX3_SPOT('C', 37.7)])]);
+    // 사파리처럼 누른 버튼이 포커스를 받지 않은 경우 = 키보드가 아니다
+    if (w.document.activeElement && w.document.activeElement.blur) w.document.activeElement.blur();
+    w.eval('moveSpot(0,1,-1)');
+    assert.deepEqual(ux3Names(w, 0), ['B', 'A', 'C']);
+    assert.equal(w.document.querySelectorAll('#sidebar details.actionMenu[open]').length, 0,
+      '바깥을 눌러도 닫히지 않는 메뉴라 열어 두면 목록 위에 떠 남는다');
+  } finally { w.close(); }
+});
+
+test('통합: 헤더 실행취소로 마지막 것까지 되돌려 버튼이 숨으면 포커스는 토스트의 다시 하기로', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    ux3Trip(w, [UX3_DAY('D1', [UX3_SPOT('A', 37.5), UX3_SPOT('B', 37.6)])]);
+    w.eval("setDayMode(0,'walk')");
+    const q = w.document.getElementById('undoQuick');
+    q.focus(); q.click();
+    assert.equal(q.hidden, true);
+    const act = w.document.querySelector('#toast .toastAct');
+    assert.equal(act && act.textContent, '다시 하기');
+    assert.equal(w.document.activeElement, act, '숨은 버튼에 포커스를 남기지 않는다');
+  } finally { w.close(); }
+});
+
+test('통합: 비용을 고친 것을 되돌리면 "비용 수정"이라고 말한다 — "여행 설정"이 아니다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    ux3Trip(w, [UX3_DAY('D1', [UX3_SPOT('A', 37.5)])]);
+    const label = (code) => { w.eval(code); w.eval('undo()'); return w.document.getElementById('toast').textContent; };
+    assert.match(label("commit(()=>{ trip().costItems=[{id:'c1',title:'보험',amount:30000}]; })"), /비용 수정을 되돌렸어요/);
+    assert.match(label("commit(()=>{ trip().days[0].costItems=[{id:'c2',title:'간식',amount:5000}]; })"), /비용 수정을 되돌렸어요/);
+    assert.match(label("commit(()=>{ const s=trip().days[0].spots[0]; s.cost=12000; s.payState='PAID'; })"), /비용 수정을 되돌렸어요/);
+  } finally { w.close(); }
+});
+
+test('통합: ⌘Y는 다시 하기가 아니다 — 맥 브라우저의 방문 기록 단축키를 가로채지 않는다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    ux3Trip(w, [UX3_DAY('D1', [UX3_SPOT('A', 37.5)])]);
+    w.eval("setDayMode(0,'walk'); undo();");
+    assert.equal(ux3Key(w, 'y', { metaKey: true }), true, '기본 동작을 막지 않는다');
+    assert.equal(w.eval('trip().days[0].mode'), 'car');
+    ux3Key(w, 'y', { ctrlKey: true });
+    assert.equal(w.eval('trip().days[0].mode'), 'walk');
+  } finally { w.close(); }
+});

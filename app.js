@@ -217,6 +217,7 @@ function historyLabel(beforeSer, afterSer){
   if(!diff.length){
     if(J(t1.bookings||[])!==J(t0.bookings||[])) return '예약 수정';
     if(J(t1.notes||[])!==J(t0.notes||[])) return '준비 메모 수정';
+    if(J(t1.costItems||[])!==J(t0.costItems||[])) return '비용 수정';   // 보험·유심 같은 여행 단위 비용 — '여행 설정'이 아니다
     return '여행 설정 수정';
   }
   if(diff.length>1 && sorted(d1)===sorted(d0)) return '일자 순서 바꾸기';
@@ -225,6 +226,7 @@ function historyLabel(beforeSer, afterSer){
   if(diff.some(i=>(d1[i].spots||[]).length!==(d0[i].spots||[]).length)) return '장소 옮기기';
   const spotsOf=d=>d.spots||[];
   if(diff.every(i=>J(spotsOf(d1[i]))===J(spotsOf(d0[i])))){   // 장소는 그대로 — 일자 자체를 고쳤다
+    if(diff.every(i=>without(d1[i],'costItems')===without(d0[i],'costItems'))) return '비용 수정';
     return diff.every(i=>without(d1[i],'mode')===without(d0[i],'mode'))? '이동수단 바꾸기' : '일자 수정';
   }
   if(diff.every(i=>sorted(spotsOf(d1[i]))===sorted(spotsOf(d0[i])))) return '장소 순서 바꾸기';
@@ -232,6 +234,9 @@ function historyLabel(beforeSer, afterSer){
   diff.forEach(i=>spotsOf(d1[i]).forEach((s,k)=>{ if(J(s)!==J(spotsOf(d0[i])[k])) pairs.push([spotsOf(d0[i])[k]||{},s]); }));
   if(pairs.length && pairs.every(([p,s])=>without(p,'legMode')===without(s,'legMode'))) return '이동수단 바꾸기';
   if(pairs.length && pairs.every(([p,s])=>without(p,'status')===without(s,'status'))) return '방문 표시';
+  const COST_KEYS=['cost','cur','costBasis','costPeople','costPartial','costKind','paidOn','payState','photos'];
+  const noCost=o=>{ const c=Object.assign({},o); COST_KEYS.forEach(k=>delete c[k]); return J(c); };
+  if(pairs.length && pairs.every(([p,s])=>noCost(p)===noCost(s))) return '비용 수정';
   return '장소 수정';
 }
 function undo(){
@@ -239,12 +244,19 @@ function undo(){
   if(!histStack.length){ toast('되돌릴 작업이 없어요','#4f4740'); return; }
   const cur=JSON.stringify(store), prev=histStack.pop();
   const label=historyLabel(prev, cur);
+  const quick=document.getElementById('undoQuick'), fromQuick=!!quick && document.activeElement===quick;
   restoreHistory(prev);
   // 되돌린 것은 다시 할 수 있다 — 단 여행 삭제를 되돌렸다면 다시 하기는 그 여행을 또 지우는 일이라
   // 서버에 삭제 기록을 남겨야 한다(deleteTrip→cloudDelete). 스냅샷 한 장으로는 그걸 못 하니 그때는 두지 않는다.
   if(label==='여행 삭제') redoStack.length=0; else redoStack.push(cur);
   updateUndoBtn();
   toast(`${label}${TC_COLLAB.objParticle(label)} 되돌렸어요`,'#4f4740', redoStack.length? {label:'다시 하기', fn:redo} : undefined);
+  // 헤더 실행취소로 마지막 것까지 되돌리면 그 버튼이 숨는다 — 키보드 포커스를 본문에 떨어뜨리지 않고
+  // 토스트의 '다시 하기'(없으면 바로 옆 여행 이름)로 옮긴다(2026-10-03 검토)
+  if(fromQuick && quick.hidden){
+    const next=/** @type {HTMLElement|null} */(document.querySelector('#toast .toastAct')||document.getElementById('tripPickerBtn'));
+    if(next){ toastTabArmed=false; next.focus(); }
+  }
 }
 function redo(){
   if(readOnly()) return;
@@ -258,7 +270,8 @@ function redo(){
 document.addEventListener('keydown',e=>{
   if(document.getElementById('placeDetails')?.open) return;
   const k=e.key.toLowerCase();
-  if((e.metaKey||e.ctrlKey)&&(k==='z'||(k==='y'&&!e.shiftKey))){
+  // Ctrl+Y는 윈도우의 다시 하기다 — 맥의 ⌘Y(브라우저 방문 기록)는 가로채지 않는다
+  if((e.metaKey||e.ctrlKey)&&(k==='z'||(k==='y'&&e.ctrlKey&&!e.metaKey&&!e.shiftKey))){
     if(e.target.matches('input,textarea,select'))return;   // 입력 중엔 브라우저 기본 동작
     e.preventDefault();
     if(k==='z'&&!e.shiftKey) undo(); else redo();   // ⇧⌘Z · Ctrl+Y = 다시 하기
@@ -393,14 +406,19 @@ function toast(msg, color, action){
     if(at>=0){
       if(e.shiftKey? at>0 : at<acts.length-1) return;   // 토스트 안의 버튼 사이는 그대로
       toastTabArmed=false;
-      if(toastOrigin && toastOrigin.isConnected){ e.preventDefault(); e.stopImmediatePropagation(); toastOrigin.focus(); }
+      // 왔던 자리가 지금도 포커스를 받을 때만 돌려보낸다. 숨었거나(닫힌 메뉴·모달) 본문이었다면 Tab을 막지 않는다 —
+      // 막으면 포커스가 토스트에 갇히고, 포커스가 머무는 동안 토스트는 사라지지 않으니 영영 못 빠져나간다(2026-10-03 검토).
+      if(toastOrigin && toastOrigin!==document.body && toastOrigin.isConnected){
+        toastOrigin.focus();
+        if(document.activeElement===toastOrigin){ e.preventDefault(); e.stopImmediatePropagation(); }
+      }
       return;
     }
     if(!toastTabArmed || e.shiftKey) return;
     // 모달이 떠 있으면 Tab은 그 안에 갇혀야 한다 — 토스트로 새지 않는다
     const ob=document.getElementById('onboarding');
     if(document.querySelector('.modalBg.show,dialog[open]') || (ob && !ob.hidden)) return;
-    toastTabArmed=false; toastOrigin=/** @type {HTMLElement} */(document.activeElement);
+    toastTabArmed=false; toastOrigin=document.activeElement===document.body? null : /** @type {HTMLElement} */(document.activeElement);
     e.preventDefault(); e.stopImmediatePropagation(); acts[0].focus();
   },true);
 })();
@@ -2466,17 +2484,27 @@ window.moveSpot=(di,si,dir)=>{
   if(ni<0||ni>=arr.length)return;
   const sb=document.getElementById('sidebar');
   const btnCls = dir<0?'mvup':'mvdown';
-  const before=document.querySelector(`.spot[data-di="${di}"][data-si="${si}"] .${btnCls}`)?.getBoundingClientRect().top;
+  const srcRow=document.querySelector(`#sidebar .spot[data-di="${di}"][data-si="${si}"]`);
+  const before=srcRow?.getBoundingClientRect().top;
+  // 키보드로 눌렀는가 — 그때만 메뉴를 다시 연다. ⋮ 메뉴는 바깥을 눌러도 닫히지 않아서, 마우스·터치로 옮긴 뒤에도
+  // 열어 두면 패널이 목록 위에 떠 남고 그동안 미뤄 둔 다시 그리기(bgRender)도 계속 밀린다(2026-10-03 검토).
+  const pressed=document.activeElement;
+  let byKeyboard=!!(pressed && srcRow && srcRow.contains(pressed) && pressed.classList.contains(btnCls));
+  if(byKeyboard) try{ byKeyboard=pressed.matches(':focus-visible'); }catch(_){}
   commit(()=>{ [arr[si],arr[ni]]=[arr[ni],arr[si]]; });   // 선택은 장소를 따라간다(applySpotSelection)
-  // 옮긴 장소의 ⋮ 메뉴를 다시 열어 같은 버튼에 포커스를 둔다 — 다시 그리기가 메뉴를 닫아 버려 연달아 옮길 수 없었고
-  // (닫힌 메뉴의 버튼은 위치가 0이라 스크롤 보정도 엉뚱하게 튀었다) 키보드 포커스는 본문으로 떨어졌다(2026-10-03 UX 검토)
+  // 키보드로 옮겼으면 옮긴 장소의 ⋮ 메뉴를 다시 열어 같은 버튼에 포커스를 둔다 — 다시 그리기가 메뉴를 닫아 버려
+  // 연달아 옮길 수 없었고 키보드 포커스는 본문으로 떨어졌다(2026-10-03 UX 검토)
   const row=document.querySelector(`#sidebar .spot[data-di="${di}"][data-si="${ni}"]`);
   if(!row) return;
-  const menu=row.querySelector('details.actionMenu'); if(menu) menu.open=true;
-  const afterBtn=/** @type {HTMLElement|null} */(row.querySelector(`.${btnCls}`));
-  const after=afterBtn?.getBoundingClientRect().top;
-  if(before!=null && after!=null) sb.scrollTop += (after-before); // 같은 버튼이 커서 자리에 오도록
-  if(afterBtn) afterBtn.focus();
+  // 스크롤은 행 기준으로 맞춘다 — 닫힌 메뉴 안의 버튼은 위치가 0이라 버튼으로 재면 엉뚱하게 튄다
+  const after=row.getBoundingClientRect().top;
+  if(before!=null) sb.scrollTop += (after-before); // 옮긴 장소가 커서 자리에 남도록
+  if(byKeyboard){
+    const menu=row.querySelector('details.actionMenu'); if(menu) menu.open=true;
+    /** @type {HTMLElement|null} */(row.querySelector(`.${btnCls}`))?.focus();
+  }else if(pressed && srcRow && srcRow.contains(pressed)){
+    /** @type {HTMLElement|null} */(row.querySelector('.actionMenu>summary'))?.focus();   // 같은 자리의 다른 장소 ⋮가 아니라 옮긴 장소의 ⋮
+  }
   // 옮긴 행을 잠깐 강조한다 — 번호만 바뀌면 무엇이 어디로 갔는지 눈으로 따라가기 어렵다
   row.classList.add('justMoved'); setTimeout(()=>row.classList.remove('justMoved'),1200);
 };
@@ -3530,7 +3558,7 @@ async function checkBookingPrice(id,opts){
   offers.forEach(o=>{ o.quality = b.type==='car' ? TC_PRICE.carMatchQuality(b,o)
                                                  : TC_PRICE.qualityWithBasis(TC_PRICE.matchQuality(b,o), b, basis); });
   rec.offers=offers; rec.at=atIso; rec.err=null; rec.basis=basis; delete rec.candidates;
-  if(resp.property&&resp.property.token&&b.ptoken!==resp.property.token) b.ptoken=resp.property.token;   // property 매핑 캐시(§23) — 다음부턴 검색 1회 생략, render의 save()로 저장
+  if(resp.property&&resp.property.token&&b.ptoken!==resp.property.token){ b.ptoken=resp.property.token; saveQuietly(); }   // property 매핑 캐시(§23) — 다음부턴 검색 1회 생략. render는 저장하지 않으니 여기서 쌓지 않고 저장한다(다음 사람 편집의 실행취소 단계에 섞이지 않게)
   // 하루 1점 관측: 확정 후보 우선, 없으면 최저가 — 등급을 함께 남겨 '미확정' 기록임을 구분
   const decided=TC_PRICE.decideSaving(b,offers,{today});
   const top=decided.confirmed? decided.confirmed.offer
