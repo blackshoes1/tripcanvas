@@ -2536,10 +2536,10 @@ test('통합: 지연이 생기면 재구성 미리보기를 보여주고, 수락
     {
       startAt: '09:00', mode: 'car',
       spots: [S('Museum', 40.41, { stayMin: 120 }), S('Cafe', 40.44, { opt: true }), S('Park', 40.47, { stayMin: 90, must: true }),
-        S('Dinner', 40.50, { bookAt: '19:00', stayMin: 90 })]
+        S('Dinner', 40.50, { bookAt: '13:00', stayMin: 90 })]
     },
     { spots: [] }
-  ], { now: 16 * 60 + 30 });
+  ], { now: 10 * 60 + 30 });   // Museum에 머무는 중 — 남은 일정을 이어 가면 13:00 예약에 늦는다(지나간 시각의 곳은 다시 굴리지 않는다, 2026-10-03)
   w.eval('renderTravel(0)');
   const card = cardsIn(w).filter((c) => c.dataset.type === 'REPLAN')[0];
   assert.ok(card, '지연 상황에서는 재구성 제안이 가장 먼저 온다');
@@ -2690,10 +2690,14 @@ test('통합: 다음 장소에 "언제 나서면 되는지"를 함께 알려준�
   const dep = w.document.querySelector('#travelNext .travelDepart');
   assert.ok(dep, '출발 안내가 붙는다');
   assert.match(dep.textContent, /출발/);
-  w.eval('nowMinutes=()=>19*60+30; renderTravel(0)');
+  w.eval('nowMinutes=()=>18*60+59; renderTravel(0)');
   const late = w.document.querySelector('#travelNext .travelDepart');
   assert.ok(late.classList.contains('late'), '이미 늦었으면 그렇게 말한다');
   assert.match(late.textContent, /늦어요/);
+  // 예약 시각이 지나 그 자리에 있을 시간이면 '떠날 곳'이 아니다 — 머무는 곳에 "지금 출발해도 늦어요"라고 하지 않는다(2026-10-03)
+  w.eval('nowMinutes=()=>19*60+30; renderTravel(0)');
+  const here = w.document.querySelector('#travelNext .travelDepart');
+  assert.ok(!here || !/늦어요/.test(here.textContent), here && here.textContent);
   w.close();
 });
 
@@ -5435,4 +5439,110 @@ test('통합: 보고 있는 일자(1부터 센다, 0=전체)를 일자 인덱스
     w.eval(`trip().days.push({spots:[]}); activeDay=1; resizeTripDays(1)`);
     assert.equal(w.eval('activeDay'),1,'하루짜리가 되어도 전체로 바뀌지 않는다');
   }finally{ w.close(); }
+});
+
+// ── ux3:engine ──
+// 여행 중 판단 엔진(adaptive.js)의 결과가 화면에 그대로 닿는지 — 숫자·조사·남은 계획·이동 수단(2026-10-03 3차 UX 검토)
+
+test('통합(ux3): 머무는 동안 제때면 조정 카드가 없고, 늦으면 어느 예약에 늦는지와 받침에 맞는 조사로 말한다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    withAdaptTrip(w, [
+      { startAt: '09:00', mode: 'car', spots: [S('경복궁', 40.41, { stayMin: 120 }), S('북촌한옥마을', 40.44, { stayMin: 60 }), S('광장시장', 40.47, { bookAt: '12:30', stayMin: 60 })] },
+      { spots: [] }
+    ], { now: 10 * 60 + 30 });   // 경복궁에 머무는 중, 12:30 예약에는 제때
+    w.eval('renderTravel(0)');
+    assert.ok(!cardsIn(w).some((c) => c.dataset.type === 'REPLAN'), '제때 가는 중에 "지연" 조정을 권하지 않는다');
+    w.eval(`trip().days[0].spots[2].bookAt='11:45'; renderTravel(0)`);
+    const card = cardsIn(w).filter((c) => c.dataset.type === 'REPLAN')[0];
+    assert.ok(card, '이대로면 늦는다');
+    assert.match(card.textContent, /이대로면 광장시장 11:45 예약에 \d+분 늦어요/);
+    assert.ok(!/지연|밀렸|을\(를\)|마을는/.test(card.textContent), card.textContent);
+    assert.match(card.textContent, /북촌한옥마을은 다음 날 앞쪽으로 옮겨요/, '뺄 곳은 늦는 예약 앞의 북촌 하나다');
+    assert.ok(!cardsIn(w).some((c) => c.dataset.suggestionType === 'NEXT_ACTIVITY'), '빼자는 카드 옆에서 한 곳 더 가자고 하지 않는다');
+  } finally { w.close(); }
+});
+
+test('통합(ux3): 한 시간이 넘는 예약 대기는 시간으로 말한다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    withAdaptTrip(w, [{ startAt: '09:00', mode: 'car', spots: [S('호텔', 40.40, { stay: true, stayMin: 0 }), S('저녁 예약', 40.41, { bookAt: '19:00', stayMin: 90 })] }]);
+    w.eval('render()');
+    const text = w.document.getElementById('sidebar').textContent;
+    assert.match(text, /⏳ \d+시간( \d+분)? 대기/);
+    assert.ok(!/⏳ \d{3,}분/.test(text), '세 자리 분으로 말하지 않는다');
+  } finally { w.close(); }
+});
+
+test('통합(ux3): 비행기로 도착한 날의 시내 제안은 그 장소의 수단으로 이동 시간을 잰다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    withAdaptTrip(w, [
+      { startAt: '07:00', mode: 'flight', spots: [
+        { name: '바라하스 공항', city: '마드리드', lat: 40.49, lng: -3.57, stayMin: 30 },
+        { name: '호텔', city: '마드리드', lat: 40.42, lng: -3.70, stay: true, legMode: 'taxi', stayMin: 0 }] },
+      { startAt: '09:00', mode: 'transit', spots: [S('프라도', 40.45, { stayMin: 60 })] }
+    ], { now: 10 * 60 });
+    w.eval('renderTravel(0)');
+    const r = JSON.parse(w.eval(`JSON.stringify(_adapt.res.ranked.filter(r=>r.title==='프라도')[0]||null)`));
+    assert.ok(r, '다른 날 명소를 제안한다');
+    assert.ok(r.estimatedTravelTime >= 5, '3km 넘는 시내 이동을 비행기 속도로 재지 않는다: ' + r.estimatedTravelTime);
+  } finally { w.close(); }
+});
+
+test('통합(ux3): 빈 시간 채우기는 남은 계획을 함께 그리고, 배고프다고 하면 식사 카드가 맨 위다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    withAdaptTrip(w, [
+      { startAt: '09:00', mode: 'car', spots: [S('경복궁', 40.41, { stayMin: 120, status: 'COMPLETED' }), S('북촌한옥마을', 40.415, { stayMin: 60 }),
+        S('명동교자', 40.42, { bookAt: '19:00', stayMin: 60, desc: '저녁' })] },
+      { spots: [S('창덕궁', 40.418, { stayMin: 60 })] }
+    ], { now: 11 * 60 });
+    w.eval('renderTravel(0); buildDayFlow(0)');
+    const rows = Array.from(w.document.querySelectorAll('#travelPlan .sgFlowRow'));
+    assert.ok(rows.some((r) => r.classList.contains('planned') && /북촌한옥마을/.test(r.textContent)), '남은 계획(북촌)이 흐름에 있다');
+    assert.ok(!rows.some((r) => /경복궁/.test(r.textContent)), '다녀온 곳은 없다');
+    assert.ok(!rows.some((r) => r.classList.contains('add') && /저녁 시간이 비어/.test(r.textContent)), '저녁 예약이 있는데 저녁을 또 넣지 않는다');
+    assert.ok(!/쉬었다가/.test(w.document.getElementById('travelSuggest').textContent), '남은 곳이 있는데 다음 예약까지 쉬라고 하지 않는다');
+    w.eval(`applyIntent('배고파', 0)`);
+    assert.equal(w.eval('_adapt.res.suggestions[0].action.kind'), 'EAT', '식사를 먼저 챙기겠다고 했으면 식사 카드가 맨 위다');
+  } finally { w.close(); }
+});
+
+test('통합(ux3): 제안 카드에서 "다른 제안 보기"로 물린 곳은 열려 있는 하루 흐름에서도 빠진다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    const many = [];
+    for (let i = 0; i < 8; i++) many.push(S('후보' + i, 40.41 + i * 0.002, { stayMin: 30 }));
+    withAdaptTrip(w, [
+      { startAt: '09:00', mode: 'car', spots: [S('프라도', 40.41, { stayMin: 120, status: 'COMPLETED' }), S('저녁 예약', 40.42, { bookAt: '19:30', stayMin: 90 })] },
+      { spots: many }
+    ], { now: 11 * 60 + 30 });
+    w.eval('renderTravel(0); buildDayFlow(0)');
+    const addRows = () => Array.from(w.document.querySelectorAll('#travelPlan .sgFlowRow.add')).map((r) => r.textContent);
+    const shown = cardsIn(w).filter((c) => c.dataset.suggestionType === 'NEXT_ACTIVITY').map((c) => c.querySelector('.sgTitle').textContent);
+    assert.ok(shown.length > 0);
+    assert.ok(addRows().some((t) => shown.some((n) => t.indexOf(n) >= 0)), '처음에는 같은 곳이 양쪽에 있다');
+    buttonIn(w.document.getElementById('travelSuggest'), '다른 제안 보기').click();
+    const after = addRows();
+    shown.forEach((n) => assert.ok(!after.some((t) => t.indexOf(n) >= 0), n + '은(는) 물렸는데 흐름에 남았다: ' + after.join(' / ')));
+  } finally { w.close(); }
+});
+
+test('통합(ux3): 뺄 곳이 없어 조정 카드가 없는 날에는 한 줄로 늦는다고 말하고, 없는 카드를 가리키지 않는다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    withAdaptTrip(w, [
+      { startAt: '14:00', mode: 'car', spots: [S('롯데호텔 서울', 40.40, { desc: '숙소' }), S('바라하스 공항 (MAD)', 40.45, { stayMin: 30 }),
+        S('Dinner', 40.50, { bookAt: '15:00' })] },
+      { spots: [S('레티로 공원', 40.47)] }
+    ], { now: 14 * 60 + 10 });
+    w.eval('renderTravel(0); buildDayFlow(0)');
+    assert.ok(!cardsIn(w).some((c) => c.dataset.type === 'REPLAN'), '기존과 제안이 같은 조정 카드는 없다');
+    const notice = w.document.querySelector('#travelSuggest .sgNotice');
+    assert.ok(notice && /이대로면 Dinner 15:00 예약에 .+ 늦어요/.test(notice.textContent), '늦는다는 사실은 한 줄로 남는다');
+    const flowText = w.document.getElementById('travelPlan').textContent;
+    assert.match(flowText, /더 넣지 않았어요/);
+    assert.ok(!/일정 조정 제안을 먼저 확인/.test(flowText), '없는 조정 카드를 가리키지 않는다: ' + flowText);
+  } finally { w.close(); }
 });

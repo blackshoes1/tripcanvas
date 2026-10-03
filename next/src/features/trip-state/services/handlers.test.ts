@@ -464,13 +464,15 @@ describe('POST /replan-preview', () => {
             { name: 'Museum', city: '마드리드', stayMin: 120, ...P(40.41) },
             { name: 'Cafe', city: '마드리드', opt: true, stayMin: 60, ...P(40.44) },
             { name: 'Park', city: '마드리드', must: true, stayMin: 90, ...P(40.47) },
-            { name: 'Dinner', city: '마드리드', bookAt: '19:00', stayMin: 90, ...P(40.50) }
+            { name: 'Dinner', city: '마드리드', bookAt: '13:00', stayMin: 90, ...P(40.50) }
           ]
         }]
       }
     });
+    // Museum에 머무는 중(10:30) — 남은 일정을 이어 가면 13:00 예약에 늦는다. 시각상 지나온 곳은 다시 굴리지 않으므로(2026-10-03)
+    // 오후에 아무것도 안 눌렀다고 '늦는다'가 되지는 않는다.
     const res = await api.replanPreview(
-      new Request('http://localhost/api/v1/trips/trip-1/replan-preview?now=16:30', auth({ method: 'POST', body: '{}' })), 'trip-1');
+      new Request('http://localhost/api/v1/trips/trip-1/replan-preview?now=10:30', auth({ method: 'POST', body: '{}' })), 'trip-1');
     const body = (await res.json()) as { replan: TodayResponse['replan'] };
     expect(body.replan.needed).toBe(true);
     expect(body.replan.lateMinutes).toBeGreaterThan(0);

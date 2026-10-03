@@ -676,3 +676,10 @@ body:has(.modalBg.show) #toast{bottom:auto;top:calc(env(safe-area-inset-top) + 1
 #searchRes .placeSearchResult:hover{background:var(--hover-bg)}.psrName{display:block;font-weight:700;font-size:14.5px}.psrAddr{display:block;font-size:12px;color:var(--subtle);margin-top:2px;line-height:1.4}
 .estNote .estFix{color:var(--primary-dark)}
 .sampleTag{font-size:10.5px;font-weight:700;color:var(--badge-info-fg);background:var(--badge-info-bg);border-radius:5px;padding:1px 5px;vertical-align:1px}
+/* ux3:engine */
+/* 하루 흐름은 남은 계획(planned)도 그린다 — 더하는 것(add)만 강조하고 남은 계획은 한 톤 낮춘다 */
+.sgFlowRow.planned .sgFlowName{color:var(--muted)}
+.sgFlowRow.add{background:var(--selected-bg)}
+.sgFlowRow.add .sgFlowName{color:var(--selected-accent);font-weight:700}
+/* 조정 카드 없이 늦는 날의 한 줄 — 빈 상태와 같은 상자에 주의색 글자 */
+.sgEmpty.sgNotice{color:var(--meta-warning);border-style:solid}
