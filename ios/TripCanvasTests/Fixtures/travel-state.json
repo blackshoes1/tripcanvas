@@ -277,7 +277,8 @@
         "timeChangeMinutes": 0,
         "removedActivities": [],
         "addedActivities": []
-      }
+      },
+      "note": null
     },
     "activityState": {
       "tripName": "정합성",
@@ -287,7 +288,8 @@
       "travelMinutes": 2,
       "status": "READY_TO_LEAVE"
     },
-    "intent": null
+    "intent": null,
+    "notice": null
   },
   "pulse": {
     "code": "ON_TRACK",

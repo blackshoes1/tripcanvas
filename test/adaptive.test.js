@@ -1258,3 +1258,21 @@ test('출발 안내: 내가 정한 도착 시각은 "그 시각에 도착해요"
   assert.equal(adv.level, 'EARLY');
   assert.equal(adv.text, '08:55쯤 출발하면 09:00에 도착해요 · 그 전까지 25분 여유가 있어요');
 });
+
+// ── ux3 남은 것 ──
+test('가벼운 날은 제안 카드도 들를 곳을 한 곳만 권한다 — 하루 흐름과 같은 규칙', () => {
+  const count = (light) => {
+    const trip = TC.sampleTrip(), day = trip.days[0];
+    if (!light) { day.note = ''; day.title = '도착'; }
+    const s = A.buildTripState(trip, { dayIndex: 0, todayISO: '2026-10-01', nowMin: 600, timeline: TC.computeTimeline(day, { legMin: LEG }), legMin: LEG });
+    return A.buildSuggestions(trip, s, { legMin: LEG }).suggestions.filter((x) => x.action.kind === 'VISIT_PLACE').length;
+  };
+  assert.ok(count(false) > 1, '보통 날은 여럿을 권한다(이 테스트가 뜻이 있으려면)');
+  assert.equal(count(true), 1);
+});
+
+test('일정 조정에서 빼는 곳의 문장 — 조사를 이름에 맞추고, 웹과 앱이 같은 말을 쓴다', () => {
+  assert.equal(A.replanDropNote(['경복궁', '북촌한옥마을'], true), '경복궁, 북촌한옥마을은 다음 날 앞쪽으로 옮겨요');
+  assert.equal(A.replanDropNote(['Sagrada'], false), "Sagrada는 '건너뜀'으로 표시해요");
+  assert.equal(A.replanDropNote([], true), null);
+});

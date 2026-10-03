@@ -114,7 +114,7 @@ test('작은 버튼은 한 이름에서 나온다 — 인라인으로 각자 만
     b.remove();
     return v;
   });
-  // 손가락이 닿아야 하므로 26px 밑으로 내리지 않는다
-  expect(sm).toEqual(['11px', '26px']);
+  // 손가락이 닿아야 하므로 26px 밑으로 내리지 않는다 · 글자는 12px 밑으로 내리지 않는다(2026-10-03 — 보조 글자 12px 이상)
+  expect(sm).toEqual(['12px', '26px']);
   await expect(page.locator('#pickOnMap')).toHaveClass(/\bsm\b/);
 });

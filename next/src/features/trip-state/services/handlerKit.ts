@@ -11,6 +11,7 @@ import { CONTRACT_SCHEMA_VERSION } from '../domain/contract';
 import type { PriceObservation } from '../domain/bookingsView';
 import type { MemoryRow, SharedInputPayload } from '../domain/intakeView';
 import type { TodayInput, TripDoc } from '../domain/todayView';
+import legacyLib from '@legacy/lib.js';
 import { FX_FALLBACK_SNAPSHOT, type FxSnapshot } from '@/features/currency/domain/fx';
 import type { FxSupport } from '@/server/currency/serverFx';
 import { BODY_TOO_LARGE_MESSAGE, readJsonBody } from '@/server/api/jsonBody';
@@ -143,7 +144,8 @@ export function resolveClock(
 ): { todayISO: string; nowMinutes: number } {
   const qDate = url.searchParams.get('date');
   const qNow = url.searchParams.get('now');
-  const zone = trip.days?.[dayIndexHint ?? 0]?.timeZone || trip.timeZone || '';
+  // 정하지 않았으면 일정에서 읽은 시간대 — 웹 travelClock과 같은 규칙
+  const zone = trip.days?.length ? legacyLib.effectiveTimeZone(trip, dayIndexHint ?? 0).timeZone : (trip.timeZone || '');
   let todayISO = '';
   let nowMinutes = 9 * 60;
   try {

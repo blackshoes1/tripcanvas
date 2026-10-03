@@ -152,6 +152,8 @@ describe('GET /today — iOS가 이 응답 하나로 오늘을 안다', () => {
     expect(body.activities.map((a) => a.id)).toEqual(['d0s0', 'd0s1']);
     expect(body.activityState.status).toBe(body.nextAction?.status);
     expect(body.replan.needed).toBe(false);
+    expect(body.notice, '늦지 않는 날에는 알릴 한 줄이 없다').toBeNull();
+    expect(body.replan.note).toBeNull();
   });
 
   it('제안에는 반드시 이유가 붙는다 — "AI가 추천했습니다"로 끝내지 않는다', async () => {
@@ -480,6 +482,8 @@ describe('POST /replan-preview', () => {
     expect(body.replan.dropNames).not.toContain('Park');      // mustVisit 보호
     expect(body.replan.dropActivityIds).not.toContain('d0s3'); // 고정 예약 보호
     expect(body.replan.after).toContain('Dinner');
+    // 빼는 곳의 문장은 엔진이 조사까지 맞춰 보낸다 — 앱이 '은(는)'을 만들지 않는다(2026-10-03)
+    expect(body.replan.note).toMatch(/^Cafe.*(옮겨요|표시해요)$/);
     expect(store.rows.get('trip-1')!.revision).toBe(3);       // 저장 없음
   });
 });
@@ -491,6 +495,11 @@ describe('resolveClock', () => {
     expect(base).toEqual({ todayISO: '2026-09-01', nowMinutes: 13 * 60 });
     const forced = resolveClock(trip, 0, new URL('http://x/?date=2026-09-03&now=07:05'), NOW);
     expect(forced).toEqual({ todayISO: '2026-09-03', nowMinutes: 7 * 60 + 5 });
+  });
+
+  it('시간대를 정하지 않은 국내 여행은 UTC가 아니라 한국 시간이다 — 일정에서 읽는다(effectiveTimeZone)', () => {
+    const trip: TripDoc = { days: [{ spots: [{ name: '경복궁', lat: 37.58, lng: 126.98 }] }] };
+    expect(resolveClock(trip, 0, new URL('http://x/'), NOW)).toEqual({ todayISO: '2026-09-01', nowMinutes: 13 * 60 });
   });
 
   it('시간대가 없으면 UTC로 떨어지고 깨지지 않는다', () => {

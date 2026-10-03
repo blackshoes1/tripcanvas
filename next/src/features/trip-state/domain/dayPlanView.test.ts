@@ -309,6 +309,22 @@ describe('buildDayPlanView — 구간 캐시', () => {
     expect(leg.path).toBe('encoded');
   });
 
+  it('자차 하루의 가까운 구간은 걷는 시간·걷는 거리이고 그렇다고 표시한다(웹 "가까워 걸어서")', () => {
+    // 직선 약 300m인데 차는 일방통행을 돌아 1.4km — 걷는 거리는 차 경로가 아니라 두 곳 사이로 잰다
+    const a = spot('경복궁', 37.5796, 126.977), b = spot('국립고궁박물관', 37.5769, 126.977);
+    const t = trip([day([a, b]), day([])]);
+    const cache: LegCache = { [key(a, b)]: { sec: 300, m: 1400, path: 'car-path' } };
+    const leg = build(t, 0, cache)!.day.spots[1].incomingLeg!;
+    expect(leg.walkInstead).toBe(true);
+    expect(leg.mode).toBe('car');
+    expect(leg.distanceKm).toBeLessThan(0.5);
+    expect(leg.path, '차가 도는 길을 걷는 길처럼 그리지 않는다').toBeNull();
+    // 먼 구간은 그대로 차다
+    const far = build(trip([day([airport(), seongsan()]), day([])]), 0,
+      { [key(airport(), seongsan())]: { sec: 3600, m: 52_300 } })!.day.spots[1].incomingLeg!;
+    expect(far.walkInstead).toBe(false);
+  });
+
   it('조회되지 않은 구간은 예전 그대로다 — 직선 추정이고 경로는 null이다', () => {
     const t = trip([day([airport(), seongsan()]), day([])]);
     const withCache = build(t, 0, {})!.day.spots[1].incomingLeg!;
@@ -374,5 +390,12 @@ describe('buildDayPlanView — 항공편', () => {
     expect(withFlight?.day.totals.distanceKm).toBe(plain?.day.totals.distanceKm);
     expect(withFlight?.day.totals.travelMinutes).toBe(plain?.day.totals.travelMinutes);
     expect(withFlight?.day.spots.map((s) => s.name)).toEqual(plain?.day.spots.map((s) => s.name));
+  });
+});
+
+describe('buildDayPlanView — 시간대', () => {
+  it('정하지 않은 국내 여행은 한국 시간이다 — 웹 dayTimeZone과 같은 규칙', () => {
+    expect(build(trip([day([airport(), seongsan()])]), 0)!.day.timeZone).toBe('Asia/Seoul');
+    expect(build(trip([day([airport()])], { timeZone: 'Asia/Tokyo' }), 0)!.day.timeZone, '사람이 정한 것이 이긴다').toBe('Asia/Tokyo');
   });
 });

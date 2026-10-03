@@ -13,7 +13,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js" integrity="sha384-+pWnyi8LtZx+cgXfD2arWgUX7pHIaEL215cEPPk9WrsegNlgvDL9DNjaqsceQq6o" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js" integrity="sha384-BSxuMLxX+FCbTdYec3TbXlnMGEEM2QXTFdtDaveen71o+jswm2J36+xFqp8k4VHM" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.min.js" integrity="sha384-l8ah+VgaWtk1mvOe9VC+OirC6qHFF4yH7l7mKRidV9MSti3E9F463bMp6ZVN4kuC" crossorigin="anonymous"></script>
-<link rel="stylesheet" href="style.css?v=tc-v255">
+<link rel="stylesheet" href="style.css?v=tc-v260">
 </head>
 <body>
 <a class="skipLink" href="#sidebar">일정으로 건너뛰기</a>
@@ -276,7 +276,7 @@
     <div id="inviteList" class="memberList"></div>
   </div>
   <div class="memberSection">
-    <div class="memberSectionHead"><b>멤버</b><button class="btn" id="membersRefresh" style="font-size:11px;padding:3px 9px;min-height:28px" title="다른 멤버가 바꾼 최신 일정과 멤버 목록을 불러와요">↻ 새로고침</button></div>
+    <div class="memberSectionHead"><b>멤버</b><button class="btn" id="membersRefresh" style="font-size:.75rem;padding:3px 9px;min-height:28px" title="다른 멤버가 바꾼 최신 일정과 멤버 목록을 불러와요">↻ 새로고침</button></div>
     <div id="membersList" class="memberList"></div>
   </div>
   <div class="memberSection" id="myNameSection">
@@ -346,7 +346,7 @@
       <span class="row" style="gap:6px">
         <select id="candCatFilter" class="compactSelect" aria-label="분류로 거르기"><option value="">전체 분류</option></select>
         <select id="candSort" class="compactSelect" aria-label="후보 정렬"><option value="recent">최근 순</option><option value="interest">관심 순</option></select>
-        <button class="btn" id="candRefresh" style="font-size:11px;padding:3px 9px;min-height:28px" title="일행이 남긴 최신 후보와 반응을 불러와요">↻ 새로고침</button>
+        <button class="btn" id="candRefresh" style="font-size:.75rem;padding:3px 9px;min-height:28px" title="일행이 남긴 최신 후보와 반응을 불러와요">↻ 새로고침</button>
       </span>
     </div>
     <div id="candList" class="candList"></div>
@@ -571,7 +571,7 @@
 
 규칙: [Day N] 또는 # 로 날짜 시작 · - 로 장소(이름 | 도시 | 메모 | 위도,경도) · 좌표는 생략 가능(자동조회: 국내 카카오·해외 구글, 못 찾으면 '위치 지정'으로 남음) · (선택) 붙이면 선택코스 · 이동:/메모: 로 그날 정보 · @14:00 붙이면 도착 시각 고정(24시간 표기, 그 날이 시각순 정렬됨) · 비용은 통화 기호로 ($50 · €80 · ¥5000 · 元300 · 20000원)
 ※ 해외(특히 중국 등) 한글 지명은 자동조회 실패가 잦음 → 좌표를 직접 넣거나 AI로 읽기를 켜 보세요</pre>
-    <button class="btn" id="fmtCopy" style="margin-top:6px;font-size:11px;padding:3px 10px">이 예시 붙여넣기 칸에 채우기</button>
+    <button class="btn" id="fmtCopy" style="margin-top:6px;font-size:.75rem;padding:3px 10px">이 예시 붙여넣기 칸에 채우기</button>
   </details>
   <div class="row">
     <button class="btn" id="pasteCancel">취소</button>
@@ -711,15 +711,15 @@
   <div id="placeDetailsContent" aria-live="polite"></div>
   <footer id="placeDetailsActions"></footer>
 </dialog>
-<script src="lib.js?v=tc-v255"></script>
-<script src="sync.js?v=tc-v255"></script>
-<script src="routing.js?v=tc-v255"></script>
-<script src="price.js?v=tc-v255"></script>
-<script src="adaptive.js?v=tc-v255"></script>
-<script src="intake.js?v=tc-v255"></script>
-<script src="collab.js?v=tc-v255"></script>
-<script src="api.js?v=tc-v255"></script>
-<script src="auth.js?v=tc-v255"></script>
-<script src="app.js?v=tc-v255"></script>
+<script src="lib.js?v=tc-v260"></script>
+<script src="sync.js?v=tc-v260"></script>
+<script src="routing.js?v=tc-v260"></script>
+<script src="price.js?v=tc-v260"></script>
+<script src="adaptive.js?v=tc-v260"></script>
+<script src="intake.js?v=tc-v260"></script>
+<script src="collab.js?v=tc-v260"></script>
+<script src="api.js?v=tc-v260"></script>
+<script src="auth.js?v=tc-v260"></script>
+<script src="app.js?v=tc-v260"></script>
 </body>
 </html>

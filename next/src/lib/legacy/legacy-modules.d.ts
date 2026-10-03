@@ -207,6 +207,10 @@ declare module '@legacy/lib.js' {
     isKoreanSearch(q: string, near?: { lat: number; lng: number } | null): boolean;
     /** IANA 시간대 문자열인지 (Asia/Tokyo 등) */
     validTimeZone(value: unknown): boolean;
+    inferTimeZones(trip: unknown): (string | null)[];
+    /** 무료 취소 — true(가능)·false(불가, 사람이 고른 표시가 있을 때만)·null(모름) */
+    refundableOf(booking: unknown): boolean | null;
+    effectiveTimeZone(trip: unknown, di: number, inferred?: (string | null)[]): { timeZone: string; inferred: boolean };
     SPOT_CATS: readonly { id: string; icon: string; name: string }[];
     /** 장소 우선순위 3단 — 화면은 한 컨트롤, 저장은 `must`/`opt` 두 플래그다 */
     SPOT_PRIORITIES: readonly { id: 'MUST' | 'NORMAL' | 'OPT'; label: string; hint: string }[];
@@ -433,6 +437,8 @@ declare module '@legacy/adaptive.js' {
     planDayFlow(trip: unknown, state: TripState, opts?: Record<string, unknown>):
       { blocks: { kind: string; startMin: number; endMin?: number; title: string; segment: string; afterId?: string | null; itemId?: string; pick?: NextActionCandidate }[]; picks: NextActionCandidate[]; empty: boolean; impact: SuggestionImpact };
     suggestionKey(type: string, what: string, state: TripState): string;
+    /** 일정 조정에서 빼는 곳을 어떻게 하는지 한 문장(웹 미리보기·앱 카드). 뺄 것이 없으면 null */
+    replanDropNote(dropNames: string[], movesToNextDay: boolean): string | null;
     // ── Travel State 계층 (출발 계획 · Trip Pulse · 알림 계획) ──
     SAFETY_BUFFER: Readonly<Record<string, number>>;
     NOTIFICATION_KINDS: Readonly<Record<string, string>>;
@@ -667,6 +673,9 @@ declare module '@legacy/intake.js' {
         }[];
       }[];
     };
+    /** 붙여넣은 일자를 여행의 몇째 날에 둘지 — 글의 날짜가 건너뛰면 빈 날로 채울지(`fill`)는 사람이 고른다 */
+    dayLayout(days: { date?: string | null }[], fill: boolean):
+      { at: number[]; total: number; gaps: { before: number; from: string; count: number }[] };
   };
   export = api;
 }

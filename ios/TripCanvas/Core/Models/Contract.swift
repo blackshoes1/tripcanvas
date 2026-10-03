@@ -285,6 +285,8 @@ struct ReplanPreview: Codable, Hashable, Sendable {
     let dropNames: [String]
     let movesToNextDay: Bool
     let impact: SuggestionImpact
+    /// 빼는 곳을 어떻게 하는지 한 문장 — 엔진이 조사까지 맞춰 보낸다. 옛 서버는 보내지 않는다(nil).
+    var note: String? = nil
 }
 
 /// Live Activity가 그대로 쓸 compact state. 이번 단계에서는 만들지 않고 자리만 맞춰 둔다(§40).
@@ -314,6 +316,8 @@ struct TodayResponse: Codable, Hashable, Sendable {
     /// 자연어 요청을 무엇으로 이해했는지. 문장을 보내지 않았으면 nil이다.
     /// ⚠️ 옛 서버는 이 키를 보내지 않으므로 **옵셔널이어야 한다** — 아니면 앱이 통째로 디코딩에 실패한다.
     let intent: IntentEcho?
+    /// 조정 카드 없이 늦는 날의 한 줄(엔진 `buildSuggestions().notice` — 웹과 같은 문장). 없거나 옛 서버면 nil.
+    var notice: String? = nil
 }
 
 /// "이렇게 이해했어요" — 서버가 `adaptive.js`로 해석한 결과.
@@ -741,6 +745,9 @@ struct DayPlanLeg: Codable, Hashable, Sendable {
     let source: TravelTimeSource
     /// 구간 출발점. 구버전 서버에서는 생략되지만, 분리 구간은 서버가 정한 출발점을 따른다.
     var from: GeoPoint? = nil
+    /// 자차 하루의 가까운 구간이라 걸어서 계산했는가 — 그때 `minutes`·`distanceKm`는 걷는 값이다(웹 '가까워 걸어서').
+    /// 옛 서버는 보내지 않는다(nil = 아니다).
+    var walkInstead: Bool? = nil
 }
 
 struct DayPlanSpot: Codable, Hashable, Sendable {
@@ -1006,6 +1013,22 @@ struct ItineraryDraft: Codable, Hashable, Sendable {
     /// 글에 연도가 없어 서버가 정했는가 — 감추지 않고 화면이 물어본다.
     let startAmbiguous: Bool
     let days: [ItineraryDraftDay]
+    /// 글의 날짜가 건너뛸 때 빈 날을 넣으면 각 일자가 놓일 자리 — 서버(`dayLayout`, 웹 미리보기와 같은 규칙)가 정한다.
+    /// 옛 서버는 보내지 않는다(nil — 그때는 순서대로 잇는다).
+    var dayLayout: ItineraryDayLayout? = nil
+}
+
+struct ItineraryDayLayout: Codable, Hashable, Sendable {
+    /// 초안 일자 순서대로, 빈 날을 넣었을 때 여행의 몇째 날(0부터)
+    let at: [Int]
+    let gaps: [ItineraryDayGap]
+}
+
+/// 글에서 건너뛴 자리 — `before`는 그 뒤 일자의 초안 번호, `from`은 첫 빈 날짜, `count`는 빈 날 수.
+struct ItineraryDayGap: Codable, Hashable, Sendable {
+    let before: Int
+    let from: String
+    let count: Int
 }
 
 struct ItineraryParseResponse: Codable, Sendable {

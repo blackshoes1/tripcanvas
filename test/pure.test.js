@@ -1950,3 +1950,42 @@ test('resolveTimeZone — 도시·나라 이름과 IANA를 받고, 모르는 것
   assert.equal(L.resolveTimeZone(''), null);
   assert.equal(L.resolveTimeZone(null), null);
 });
+
+// ── ux3 남은 것 ──
+test('inferTimeZones — 국내면 서울, 해외는 장소의 도시가 한 시간대만 가리킬 때만', () => {
+  const sp=(lat,lng,city)=>({name:'x',lat,lng,city});
+  assert.deepEqual(L.inferTimeZones({days:[{spots:[sp(33.45,126.57,'제주')]},{spots:[]}]}), ['Asia/Seoul','Asia/Seoul'], '국내 여행은 서울 — 빈 날도');
+  assert.deepEqual(L.inferTimeZones({days:[{spots:[sp(40.4,-3.7,'마드리드')]},{spots:[sp(37.38,-5.98,'Sevilla')]}]}),
+    ['Europe/Madrid','Europe/Madrid']);
+  // 도시를 건너는 여행은 날마다, 장소 없는 날은 갈린 여행이라 고르지 않는다
+  assert.deepEqual(L.inferTimeZones({days:[{spots:[sp(40.4,-3.7,'마드리드')]},{spots:[sp(48.85,2.35,'파리')]},{spots:[]}]}),
+    ['Europe/Madrid','Europe/Paris',null]);
+  // 도시가 없으면 일자 제목 → 여행 이름의 낱말('스페인 여행')
+  assert.deepEqual(L.inferTimeZones({name:'스페인 여행',days:[{spots:[sp(40.4,-3.7,'')]}]}), ['Europe/Madrid']);
+  assert.deepEqual(L.inferTimeZones({name:'여름',days:[{title:'도쿄 도착',spots:[sp(35.68,139.76,'')]}]}), ['Asia/Tokyo']);
+  // 다른 뜻의 낱말은 읽지 않는다 — '빈 날'은 비엔나가 아니다
+  assert.deepEqual(L.inferTimeZones({name:'빈 날 많은 여행',days:[{spots:[sp(40.4,-3.7,'')]}]}), [null]);
+  assert.deepEqual(L.inferTimeZones({days:[{spots:[]}]}), [null], '위치도 이름도 없으면 모른다');
+});
+
+test('effectiveTimeZone — 사람이 정한 것이 언제나 이기고, 읽은 것은 추정이라고 표시한다', () => {
+  const t={timeZone:'Asia/Tokyo',days:[{timeZone:'Europe/Paris',spots:[]},{spots:[{lat:40.4,lng:-3.7,city:'마드리드'}]}]};
+  assert.deepEqual(L.effectiveTimeZone(t,0), {timeZone:'Europe/Paris',inferred:false});
+  assert.deepEqual(L.effectiveTimeZone(t,1), {timeZone:'Asia/Tokyo',inferred:false}, '여행 기본값이 추정보다 먼저');
+  delete t.timeZone;
+  assert.deepEqual(L.effectiveTimeZone(t,1), {timeZone:'Europe/Madrid',inferred:true});
+  assert.deepEqual(L.effectiveTimeZone({days:[{spots:[]}]},0), {timeZone:'',inferred:false});
+});
+
+test('refundableOf — 표시 없는 false는 모름이고, 고른 불가만 불가다', () => {
+  assert.equal(L.refundableOf({refundable:true}), true);
+  assert.equal(L.refundableOf({refundable:false}), null, '체크박스 시절 건드리지 않은 예약');
+  assert.equal(L.refundableOf({refundable:false, refundableSet:true}), false);
+  assert.equal(L.refundableOf({freeCancelUntil:'2026-10-20'}), true, '구버전: 기한만 있으면 가능');
+  assert.equal(L.refundableOf({}), null);
+  assert.equal(L.refundableOf(null), null);
+  // 표시는 true일 때만 남고, 값이 없으면 함께 지운다
+  assert.equal('refundableSet' in L.normalizeBooking({id:'b1', refundableSet:'yes', refundable:false}), false);
+  assert.equal('refundableSet' in L.normalizeBooking({id:'b2', refundableSet:true}), false);
+  assert.equal(L.normalizeBooking({id:'b3', refundable:false, refundableSet:true}).refundableSet, true);
+});

@@ -62,10 +62,12 @@ function toItem(raw: RawItem): ItineraryDraftItem {
 
 export function toDraft(parsed: { name?: unknown; start?: unknown; startAmbiguous?: unknown; days?: unknown }): ItineraryDraft {
   const days = Array.isArray(parsed.days) ? (parsed.days as RawDay[]) : [];
+  const layout = intake.dayLayout(days.map((day) => ({ date: nullableText(day.date) })), true);
   return {
     name: text(parsed.name),
     start: nullableText(parsed.start),
     startAmbiguous: parsed.startAmbiguous === true,
+    dayLayout: { at: layout.at, gaps: layout.gaps },
     days: days.map((day, index) => ({
       index,
       title: text(day.title),

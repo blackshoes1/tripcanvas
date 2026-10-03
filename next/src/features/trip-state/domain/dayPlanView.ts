@@ -51,13 +51,17 @@ function legOf(cache: LegCache, from: LocatedSpot, to: LocatedSpot, mode: Transp
   const cached = cache[legKey(from, to, mode)];
   const measured = !!(cached && cached.sec);
   const routed = measured && !cached.est;
+  // 자차 하루의 가까운 구간은 걸어서 계산한다 — 시간만이 아니라 거리도 걷는 거리다(차가 도는 일방통행 1.4km가 아니라).
+  // 웹 `legLabel`의 '가까워 걸어서 N분'과 같은 판정(`walkInsteadOfCar`)이다.
+  const walk = measured ? legacyLib.walkInsteadOfCar(mode, cached, from, to) : null;
   return {
     from: { lat: from.lat, lng: from.lng },
     mode,
     minutes: Math.round(legMinutes(cache, from, to, mode)),
-    distanceKm: measured && cached.m != null ? km(cached.m / 1000) : km(haversine(from, to)),
-    path: routed ? cached.path ?? null : null,
-    source: routed ? 'ROUTED' : 'STRAIGHT_LINE_ESTIMATE'
+    distanceKm: walk ? km(walk.m / 1000) : measured && cached.m != null ? km(cached.m / 1000) : km(haversine(from, to)),
+    path: routed && !walk ? cached.path ?? null : null,
+    source: routed ? 'ROUTED' : 'STRAIGHT_LINE_ESTIMATE',
+    walkInstead: !!walk
   };
 }
 
@@ -213,7 +217,8 @@ export function buildDayPlanView(input: DayPlanInput): DayPlanResponse | null {
     note: String(day.note ?? ''),
     mode: dayMode,
     startMinutes: parseHM(day.startAt || '09:00'),
-    timeZone: String(day.timeZone ?? trip.timeZone ?? ''),
+    // 정하지 않았으면 일정에서 읽은 시간대(국내면 서울) — 웹 `dayTimeZone`과 같은 규칙
+    timeZone: legacyLib.effectiveTimeZone(input.trip, di).timeZone,
     carriedStay: carry ? { name: String(carry.name ?? ''), location: pointOf(carry) } : null,
     lodging: dayLodgings(input.trip, di),
     spots: planSpots,

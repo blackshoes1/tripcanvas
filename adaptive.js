@@ -498,6 +498,10 @@
         return;
       }
       if(cd.kind==='RETURN_TO_HOTEL'){
+        // 쉬기와 같은 규칙 — 하루가 움직이기 전이나 미리보기에 '숙소로 돌아가기'를 먼저 권하지 않는다(사람이 말했으면 답한다).
+        // 가벼운 날에 장소 제안이 한 곳으로 줄자 미리보기에 '숙소에 들르면 공항이 늦어질 수 있어요'가 올라왔다(2026-10-03)
+        const begun=state.completedItems.length>0 || (state.items.length>0 && state.nowMin>=state.items[0].eta);
+        if(!tired && !prefs.wantRest && (!state.live || !begun)) return;
         score=36;
         if(prefs.wantRest){ score=92; reasons.push('숙소에서 쉬었다가 이어가도 돼요'); }
         else if(tired) score=84;
@@ -745,8 +749,12 @@
     // 거절한 것을 먼저 빼고 자른다 — 자르고 빼면 '다른 제안 보기'가 다른 제안 대신 빈 자리를 보여 줬다
     // 배고프다고 해서 '지금 식사부터 하기'가 있으면 식사 시간대 카드는 같은 말의 반복이다
     const eatNow=ranked.some((r)=>r.id==='c-eat-now' && !dismissed[suggestionKey(r.type, r.title, state)]);
+    // 가볍게 보내기로 한 날(메모·제목 — isLightDay)은 들를 곳을 한 곳만 권한다. 하루 흐름(fillGaps)과 같은 규칙이다 —
+    // 흐름은 한 곳인데 제안 카드는 다른 날 장소 셋을 권했다(2026-10-03 UX 검토)
+    let placesLeft=isLightDay(state.day)? 1 : Infinity;
     ranked.filter((r)=>!dismissed[suggestionKey(r.type, r.title, state)] && (!replan.needed || asked(r))
-      && !(eatNow && r.type==='EAT' && r.id!=='c-eat-now')).slice(0, c.maxSuggest).forEach((r)=>{
+      && !(eatNow && r.type==='EAT' && r.id!=='c-eat-now')
+      && (r.type!=='VISIT_PLACE' || placesLeft-- > 0)).slice(0, c.maxSuggest).forEach((r)=>{
       const key=suggestionKey(r.type, r.title, state);
       push({id:key, key, type:((r.type==='REST'||r.type==='RETURN_TO_HOTEL')? 'REST' : (r.type==='EAT'? 'NEXT_ACTIVITY' : 'NEXT_ACTIVITY')),
         title:r.title,
@@ -769,6 +777,16 @@
     const notice=(replan.needed && !out.some((s)=>s.type==='REPLAN') && late)
       ? lateLine+(replan.drop.length? '' : ' — 뺄 수 있는 일정이 없어요. 예약 시간을 바꾸거나 미리 알려 두는 편이 나아요') : null;
     return {suggestions:out, windows, replan, ranked, window:win, empty:!out.length, notice};
+  }
+  /**
+   * 일정 조정에서 빼는 곳을 어떻게 하는지 한 문장 — 웹 미리보기와 앱 카드(`ReplanPreview.note`)가 같이 쓴다.
+   * 조사는 이름에 맞춘다('북촌한옥마을는'·'은(는)'이었다). 뺄 것이 없으면 null.
+   * @param {string[]} dropNames @param {boolean} movesToNextDay @returns {string|null}
+   */
+  function replanDropNote(dropNames, movesToNextDay){
+    if(!dropNames||!dropNames.length) return null;
+    const topic=dropNames.join(', ')+josa(dropNames[dropNames.length-1],'은','는');
+    return movesToNextDay? topic+' 다음 날 앞쪽으로 옮겨요' : topic+" '건너뜀'으로 표시해요";
   }
   /** 추천 반응 기록 — 향후 선호 학습용 구조만 준비한다. @param {any} sug @param {string} action @param {string} atISO @returns {any} */
   function feedbackEntry(sug, action, atISO){
@@ -1250,7 +1268,7 @@
   }
   const API={ADAPT_CFG, MEAL_WINDOWS, DAY_SEGMENTS, SAFETY_BUFFER, NOTIFICATION_KINDS, safetyBufferFor, departurePlan, tripPulse, stateVersion, notificationPlan, pendingNotifications, suggestionExpiryMin, parseIntent, resolveIntent, departureAdvice, fillGaps, planDayFlow, segmentLabel, currentDayIndex, daysUntilStart, weekdayOf, commitmentOf, priorityOf, statusOf, planningModeHint,
     buildTripState, findFreeWindows, mealOverlap, buildCandidates, rankNextActions, simulate, generateReplan,
-    suggestionKey, buildSuggestions, feedbackEntry, travelMinutes, moveModeTo, durText, josa, isLodging, isLightDay, mealCoveredBy};
+    suggestionKey, buildSuggestions, feedbackEntry, travelMinutes, moveModeTo, durText, josa, replanDropNote, isLodging, isLightDay, mealCoveredBy};
   if(typeof module!=='undefined' && module.exports) module.exports=API;   // Node (테스트)
   else /** @type {any} */(root).TC_ADAPT=API;                             // 브라우저 전역 (lib/price와 동일 패턴)
 })(typeof window!=='undefined'?window:globalThis);

@@ -4760,7 +4760,7 @@ test('통합: 동선 최적화 미리보기는 이 순서 때문에 늦어지는
   w.eval('optimizeDay(0)');
   const warn2 = bg.querySelector('.optWarn');
   assert.ok(warn2, '이 순서가 예약을 늦게 만들면 적용 전에 말한다');
-  assert.match(warn2.textContent, /12:00 점심 예약 — 약 \d+분 늦어요/);
+  assert.match(warn2.textContent, /12:00 점심 예약 — 약 (\d+시간( \d+분)?|\d+분) 늦어요/);   // 60분이 넘으면 시간으로(fmtDur)
   assert.equal(w.document.getElementById('optApply').textContent, '늦어도 이 순서로 바꾸기', '버튼이 그 사실을 이름에 싣는다');
   w.close();
 });
@@ -4826,7 +4826,8 @@ test('통합: 검색 결과의 장소 정보에서 바로 그날에 담고, 이�
 test('통합: 반복되는 기본 정보는 바뀌는 곳에서만 말한다(시간대·이전 장소에서)', { skip: noJsdom }, () => {
   const w = boot();
   withAdaptTrip(w, [
-    { startAt: '09:00', spots: [S('A', 40.40), S('B', 40.43)] }, { spots: [S('C', 40.44)] },
+    // 도시를 비운다 — 도시가 있으면 시간대를 일정에서 읽어 '미설정'이 아니다(아래 '추정' 테스트)
+    { startAt: '09:00', spots: [S('A', 40.40, { city: '' }), S('B', 40.43, { city: '' })] }, { spots: [S('C', 40.44, { city: '' })] },
     { timeZone: 'Europe/Madrid', spots: [] }, { timeZone: 'Europe/Madrid', spots: [] }, { timeZone: 'Europe/Lisbon', spots: [] }]);
   w.eval('render()');
   const dates = Array.from(w.document.querySelectorAll('.dayHeadMeta .date')).map((d) => d.textContent);
@@ -6033,7 +6034,7 @@ test('통합: 시각이 지났는데 다녀온 표시가 없으면 다음을 말
   const top = () => travelText(w, 'travelCurrent');
   assert.match(top(), /다녀온 곳을 표시해 주세요/);
   assert.match(top(), /경복궁/, '가장 이른 곳부터 묻는다');
-  assert.match(top(), /2곳 더/);
+  assert.match(top(), /1곳 더/, '숙소는 다녀온 곳으로 묻지 않는다(2026-10-03) — 남은 것은 북촌 하나');
   assert.ok(!/롯데호텔/.test(top()), '하루의 마지막 장소를 지나온 곳이라 하지 않는다');
   assert.ok(!/오늘 일정 완료/.test(travelText(w, 'travelNext')), '표시하지 않은 곳이 남았는데 완료라고 하지 않는다');
   buttonIn(w.document.getElementById('travelCurrent'), '다녀왔어요').click();
@@ -6238,7 +6239,9 @@ test('통합: 다음이 예약한 곳이면 지금 카드가 도착 예상과 �
   withAdaptTrip(w, [{ startAt: '09:00', mode: 'car', spots: [S('경복궁', 40.41, { stayMin: 60 }), S('저녁 예약', 40.42, { bookAt: '19:00', stayMin: 90 })] }],
     { now: 14 * 60 });
   w.eval('renderTravel(0)');
-  assert.match(travelText(w, 'travelNext'), /저녁 예약.*도착 예상 · 예약 19:00/);
+  assert.match(travelText(w, 'travelNext'), /저녁 예약.*예약 19:00/);
+  // 여행 중에는 출발 안내가 실제 도착을 말하므로 계획의 '도착 예상'을 나란히 두지 않는다(2026-10-03 — 두 시각이 서로 다른 말을 했다)
+  assert.doesNotMatch(travelText(w, 'travelNext'), /도착 예상/);
   w.close();
 });
 
@@ -8091,5 +8094,74 @@ test('통합: 위치 오류는 검색 결과로 위치를 정하면 지워진다
     await new Promise((r) => setTimeout(r, 0));
     assert.equal(el('spotSearchErr'), null, '위치가 정해졌으니 오류 문장이 없다');
     assert.equal(el('spotSearch').hasAttribute('aria-invalid'), false);
+  } finally { w.close(); }
+});
+
+// ── ux3 남은 것 ──
+test('통합: 정하지 않은 해외 시간대는 일정의 도시에서 읽고 "추정"이라고 적는다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    withAdaptTrip(w, [{ startAt: '09:00', spots: [S('프라도', 40.41), S('왕궁', 40.418)] }, { spots: [S('레티로', 40.415)] }]);
+    w.eval('render()');
+    const dates = Array.from(w.document.querySelectorAll('.dayHeadMeta .date')).map((d) => d.textContent);
+    assert.match(dates[0], /Europe\/Madrid \(추정\)/, '첫날 한 번 — 사람이 정한 것처럼 보이지 않게');
+    assert.doesNotMatch(dates[0], /시간대 미설정/);
+    assert.ok(!/Europe/.test(dates[1]), '같은 시간대는 다시 말하지 않는다');
+    assert.equal(w.eval('dayTimeZone(trip().days[1])'), 'Europe/Madrid', '대중교통 출발 시각도 그 시간대로 묻는다');
+    w.eval('openDayModal(0)');
+    assert.match(w.document.getElementById('dayTimeZone').placeholder, /Europe\/Madrid/, '비우면 무엇으로 계산하는지 칸이 말한다');
+    // 사람이 정하면 그것이 이기고 '추정'은 사라진다
+    w.eval(`trip().timeZone='Europe/Lisbon'; render()`);
+    const first = w.document.querySelector('.dayHeadMeta .date').textContent;
+    assert.match(first, /Europe\/Lisbon/);
+    assert.doesNotMatch(first, /추정/);
+  } finally { w.close(); }
+});
+
+test('통합: 체크박스 시절 저장된 "무료 취소 안 됨"은 모름으로 읽고, 고른 불가만 불가다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    withTrip(w, `[{mode:'car',startAt:'09:00',spots:[]}]`);
+    const el = (id) => w.document.getElementById(id);
+    w.eval(`trip().bookings=[{id:'old',type:'hotel',title:'H',price:1,refundable:false,track:false}]`);
+    assert.equal(w.eval(`resvCancelText(bookingOf('old'))`), '취소 조건을 적지 않았어요');
+    w.eval(`openBookingModal('old')`);
+    assert.equal(el('bkFreeCancel').value, '', '편집기도 모름으로 연다');
+    el('bkFreeCancel').value = '0'; w.eval('toggleBkFields()'); el('bkSave').click();
+    assert.equal(w.eval(`bookingOf('old').refundableSet`), true, '고른 불가에는 표시가 붙는다');
+    assert.equal(w.eval(`resvCancelText(bookingOf('old'))`), '무료 취소 안 됨');
+    w.eval(`openBookingModal('old')`); el('bkFreeCancel').value = ''; w.eval('toggleBkFields()'); el('bkSave').click();
+    assert.equal(w.eval(`'refundable' in bookingOf('old') || 'refundableSet' in bookingOf('old')`), false, '모름은 둘 다 지운다');
+  } finally { w.close(); }
+});
+
+test('통합: 예약까지 한 시간 넘게 비면 그 사이에 담는 버튼이 보이고, 그 장소 바로 앞에 들어간다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    withAdaptTrip(w, [{ startAt: '09:00', mode: 'car', spots: [S('경복궁', 40.41, { stayMin: 60 }), S('저녁 예약', 40.42, { bookAt: '19:00', stayMin: 60 })] }]);
+    w.eval('render()');
+    const btn = w.document.querySelector('.spot[data-si="1"] .addBetween');
+    assert.ok(btn, '툴팁이 아니라 보이는 버튼이다 — 폰에서는 툴팁이 없다');
+    assert.ok(!w.document.querySelector('.spot[data-si="0"] .addBetween'), '기다림이 없는 곳에는 없다');
+    btn.click();
+    assert.ok(w.document.getElementById('spotModalBg').classList.contains('show'));
+    assert.equal(w.eval('editing.after'), 0, '경복궁 뒤 = 저녁 예약 바로 앞');
+  } finally { w.close(); }
+});
+
+test('통합: 테마를 바꾸면 구글 지도도 그 색 구성으로 다시 만든다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    fakeGoogleMap(w);
+    w.eval(`const fake=map; google.maps.ControlPosition={RIGHT_TOP:'RIGHT_TOP'}; google.maps.ColorScheme={DARK:'DARK',LIGHT:'LIGHT'};
+      google.maps.InfoWindow=function(){ this.close=()=>{}; this.open=()=>{}; this.setContent=()=>{}; }; fake.addListener=()=>{};
+      window.__maps=[]; google.maps.Map=function(el,o){ window.__maps.push(o); return fake; }; setTheme('light'); __gmapsReady();`);
+    const n = w.eval('__maps.length');
+    assert.equal(w.eval('__maps[__maps.length-1].colorScheme'), 'LIGHT');
+    w.eval(`setTheme('dark')`);
+    assert.equal(w.eval('__maps.length'), n + 1, '색 구성은 만들 때만 정해져 다시 만든다');
+    assert.equal(w.eval('__maps[__maps.length-1].colorScheme'), 'DARK');
+    w.eval(`setTheme('dark')`);
+    assert.equal(w.eval('__maps.length'), n + 1, '같은 색이면 다시 만들지 않는다');
   } finally { w.close(); }
 });

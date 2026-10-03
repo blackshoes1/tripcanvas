@@ -128,10 +128,22 @@ struct TripBooking: Hashable, Sendable, Identifiable {
 
     // MARK: 취소 조건
 
-    /// 무료 취소 가능. 구버전 예약은 기한만 있었다 — 기한이 있으면 가능으로 읽는다(`normalizeBooking`).
-    var refundable: Bool {
-        get { raw["refundable"]?.boolValue ?? (freeCancelUntil != nil) }
-        set { raw["refundable"] = .bool(newValue) }
+    /// 무료 취소 — true 가능 · false 불가 · nil 모름(웹 `refundableOf`와 같은 규칙).
+    /// ⚠️ **불가는 사람이 고른 표시(`refundableSet`)가 있을 때만**이다. 2026-10-03 전에는 웹 체크박스·이 편집기의 토글이라
+    ///    건드리지 않은 예약도 `false`로 저장돼 '무료 취소 안 됨'이라고 단정했다 — 표시 없는 false는 모름이다.
+    ///    구버전 예약은 기한만 있었다 — 기한이 있으면 가능으로 읽는다(`normalizeBooking`).
+    var refundable: Bool? {
+        get {
+            switch raw["refundable"]?.boolValue {
+            case true?: return true
+            case false? where raw["refundableSet"]?.boolValue == true: return false
+            default: return freeCancelUntil != nil ? true : nil
+            }
+        }
+        set {
+            raw.setOrRemove("refundable", newValue.map { .bool($0) })
+            raw.setOrRemove("refundableSet", newValue == nil ? nil : .bool(true))
+        }
     }
 
     var freeCancelUntil: String? {

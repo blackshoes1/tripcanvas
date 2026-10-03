@@ -179,6 +179,8 @@ export interface ReplanPreview {
   dropNames: string[];
   movesToNextDay: boolean;  // 뺀 일정을 다음 날로 옮기는지 (마지막 날이면 '건너뜀' 표시)
   impact: SuggestionImpact;
+  /** 빼는 곳을 어떻게 하는지 한 문장(조사까지 맞춘 엔진 문장 — 앱이 '은(는)'을 만들지 않는다). 뺄 것이 없으면 null */
+  note: string | null;
 }
 
 /** §40 Live Activity / Dynamic Island가 그대로 쓸 수 있는 compact state. 이번 단계에서는 표시만 하지 않는다. */
@@ -219,6 +221,11 @@ export interface TodayResponse {
    * ⚠️ 저장하지 않는다. 문장은 요청마다 오고 서버는 이번 계산에만 쓴다(위치와 같은 규칙).
    */
   intent: IntentEcho | null;
+  /**
+   * 조정 카드 없이 늦는 날의 한 줄('이대로면 광장시장 11:45 예약에 25분 늦어요 — 뺄 수 있는 일정이 없어요…').
+   * 엔진 `buildSuggestions().notice` 그대로다 — 웹이 같은 문장을 보인다. 할 말이 없으면 null.
+   */
+  notice: string | null;
 }
 
 /**
@@ -648,6 +655,11 @@ export interface DayPlanLeg {
   path: string | null;
   /** 이 구간이 실측 경로인지 추정인지. 구간마다 다를 수 있다(하나는 도로, 하나는 직선) */
   source: TravelTimeSource;
+  /**
+   * 자차 하루의 가까운 구간이라 **걸어서** 계산했는가(`walkInsteadOfCar`). 그때 `minutes`·`distanceKm`는 걷는 값이고
+   * `mode`는 그 날의 수단 그대로다 — 화면은 '가까워 걸어서'라고 말한다(웹 `legLabel`과 같은 말).
+   */
+  walkInstead: boolean;
 }
 
 export interface DayPlanSpot {
@@ -871,6 +883,12 @@ export interface ItineraryDraft {
   /** 글에 연도가 없어 우리가 정했는가 — 감추지 않고 화면이 물어본다 */
   startAmbiguous: boolean;
   days: ItineraryDraftDay[];
+  /**
+   * 글의 날짜가 건너뛸 때(11/7 → 11/9) **빈 날을 넣으면** 각 일자가 여행의 몇째 날에 놓이는지(`at`, 초안 순서)와
+   * 건너뛴 자리(`gaps` — `before`는 그 뒤 일자의 초안 번호). 넣을지는 사람이 고른다 — 웹 미리보기와 같은 `dayLayout`(intake).
+   * 건너뛴 곳이 없으면 `gaps`가 비어 있다.
+   */
+  dayLayout: { at: number[]; gaps: { before: number; from: string; count: number }[] };
 }
 
 export interface ItineraryParseResponse {

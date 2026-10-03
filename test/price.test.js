@@ -126,8 +126,11 @@ test('decideSaving — 확정(동일 조건)과 잠재(SIMILAR)를 섞지 않는
   const d4 = P.decideSaving(b, [{seller:'E', price:1180000, refundable:true}, {seller:'A', price:1200000}], {today});
   assert.equal(d4.potential, null);
   // 취소 수수료는 '확정'에만 반영: 1,350,000−1,180,000−100,000 = 70,000
-  const d5 = P.decideSaving({price:1350000, refundable:false, cancelFee:100000}, [{seller:'E', price:1180000, refundable:false}], {today});
+  // 불가는 사람이 고른 표시(refundableSet)가 있을 때만 '선언된 조건'이다 — 표시 없는 false는 체크박스 시절의 '모름'
+  const d5 = P.decideSaving({price:1350000, refundable:false, refundableSet:true, cancelFee:100000}, [{seller:'E', price:1180000, refundable:false}], {today});
   assert.equal(d5.confirmed.saving, 70000);
+  const d5u = P.decideSaving({price:1350000, refundable:false, cancelFee:100000}, [{seller:'E', price:1180000, refundable:false}], {today});
+  assert.equal(d5u.confirmed, null, '모르는 조건으로는 확정 절약을 말하지 않는다');
   // 무료취소 기한 안이면 수수료 0
   const d6 = P.decideSaving({price:1350000, refundable:true, cancelFee:100000, freeCancelUntil:'2026-10-20'},
     [{seller:'E', price:1180000, refundable:true}], {today});

@@ -298,7 +298,8 @@
       "timeChangeMinutes": 0,
       "removedActivities": [],
       "addedActivities": []
-    }
+    },
+    "note": null
   },
   "activityState": {
     "tripName": "정합성",
@@ -320,5 +321,6 @@
     "walkAverse": true,
     "mealFocus": false,
     "wantRest": false
-  }
+  },
+  "notice": null
 }

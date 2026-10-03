@@ -470,7 +470,8 @@ struct PlanSpotList: View {
     private func backRow(_ back: DayPlanBack) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             PlanRailLeg(mode: TravelMode(rawValue: back.leg.mode) ?? model.day?.mode ?? .walk,
-                        minutes: back.leg.minutes, distanceKm: back.leg.distanceKm, rail: !isEditing)
+                        minutes: back.leg.minutes, distanceKm: back.leg.distanceKm, rail: !isEditing,
+                        walkInstead: back.leg.walkInstead == true)
             PlanRailEventRow(symbol: "house.fill", style: .home, title: "숙소로 돌아가기",
                              subtitle: "\(back.name) · 자동으로 이어 붙였어요",
                              time: model.planDay?.totals.endMinutes.map(TimeFormat.clockAcrossMidnight),
