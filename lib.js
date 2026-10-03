@@ -1773,6 +1773,172 @@
     return near? inKorea(near) : /[가-힣]/.test(String(q||''));
   }
 
+  // ───────────────── 장소 검색·장소 정체성 (2026-10-03 3차 UX 검토) ─────────────────
+  // 정확한 고유명을 쳤는데 엉뚱한 곳이 조용히 담겼다(P0-1) — 기준 도시가 결과를 '좁히기만' 했고,
+  // 좁힌 결과에 같은 이름이 없어도 그대로 보여 줬다. 여기 판단은 검색을 넓힐지, 사람에게 무엇을 보일지 정하는 데 쓴다.
+
+  /** 이름 비교용 — 대소문자·공백·문장부호를 걷는다 @param {any} s @returns {string} */
+  function _nameKey(s){
+    return _str(s).normalize('NFKC').toLowerCase().replace(/[\s·・.,'"`’()[\]{}<>\-_/|&!?~:;]+/g,'');
+  }
+  /** 글자 두 개짜리 조각이 얼마나 겹치는가(0~1, Dice) @param {string} a @param {string} b @returns {number} */
+  function _bigramOverlap(a,b){
+    if(a.length<2||b.length<2) return 0;
+    /** @param {string} s @returns {Map<string,number>} */
+    const grams=s=>{ const out=new Map(); for(let i=0;i<s.length-1;i++){ const g=s.slice(i,i+2); out.set(g,(out.get(g)||0)+1); } return out; };
+    const A=grams(a), B=grams(b); let hit=0;
+    A.forEach((n,g)=>{ hit+=Math.min(n,B.get(g)||0); });
+    return 2*hit/((a.length-1)+(b.length-1));
+  }
+  /**
+   * 찾은 장소의 이름이 친 이름과 같은가 — 0=같다(도시 이름이 앞뒤에 붙은 것까지) · 1=비슷하다 · 2=다르다.
+   * '비슷하다'는 세 글자 이상이 그대로 들어 있거나 글자 조각이 절반 넘게 겹칠 때다 — 두 글자 '우도'가
+   * '우도돼지네땅콩만두'에 들어 있다고 같은 곳이 아니다. 검색을 넓힐지는 '같다'(0)만 보고 정한다:
+   * '스타벅스'처럼 흔한 이름은 어디서나 '비슷한' 결과가 나온다.
+   * @param {any} query @param {any} name @param {any=} city @returns {0|1|2}
+   */
+  function placeNameMatch(query, name, city){
+    const q=_nameKey(query), n=_nameKey(name), c=_nameKey(city);
+    if(!q||!n) return 2;
+    if(n===q || (!!c && (n===c+q || n===q+c))) return 0;
+    if((q.length>=3 && n.includes(q)) || _bigramOverlap(q,n)>=0.5) return 1;
+    return 2;
+  }
+
+  /**
+   * 장소 검색의 기준이 될 일정의 장소 — 그날 먼저, 없으면 가까운 날(같은 거리면 앞날). 위치나 도시가 있어야 한다.
+   * ⚠️ 공항·역(교통)은 뺀다: 공항이 있는 도시(이즈미사노·인천)가 기준이 되면 도심의 장소가 엉뚱하게 잡힌다(P0-1).
+   * @param {{spots?:any[]}[]} days @param {number} di @param {boolean=} sameDayOnly 그날만 본다
+   * @returns {any|null}
+   */
+  function searchAnchorSpot(days, di, sameDayOnly){
+    const list=Array.isArray(days)?days:[];
+    const usable=(/**@type {any}*/ s)=>{
+      if(!s||typeof s!=='object') return false;
+      const cat=spotCatOf(s);
+      if(cat && cat.id==='transport') return false;
+      const city=_str(s.city).trim();
+      return hasCoord(s) || (!!city && city!=='기타');
+    };
+    /** @param {number} i @returns {any|null} */
+    const pick=i=>{ const d=list[i]; return (d&&Array.isArray(d.spots)&&d.spots.find(usable))||null; };
+    const own=pick(di);
+    if(own||sameDayOnly) return own;
+    for(let k=1;k<list.length;k++){ const a=pick(di-k)||pick(di+k); if(a) return a; }
+    return null;
+  }
+
+  /**
+   * 일정의 다른 장소에서 얼마나 떨어진 곳인가(km) — 그날 장소가 있으면 그중 가장 가까운 곳, 없으면 여행 전체에서.
+   * 파리 일정에 수천 km 떨어진 국내 결과가 확인 없이 담겼다(P0-1). 비교할 장소가 없으면 null.
+   * @param {{spots?:any[]}[]} days @param {number} di @param {any} point @param {any=} skip 편집 중인 그 장소(자기와는 비교하지 않는다)
+   * @returns {number|null}
+   */
+  function planDistanceKm(days, di, point, skip){
+    if(!hasCoord(point)) return null;
+    const list=Array.isArray(days)?days:[];
+    const p={lat:+point.lat, lng:+point.lng};
+    /** @param {any[]} spots @returns {number} */
+    const nearest=spots=>{ let best=Infinity; for(const s of spots) if(s!==skip && hasCoord(s)) best=Math.min(best, haversine({lat:+s.lat,lng:+s.lng},p)); return best; };
+    const own=nearest((list[di]&&list[di].spots)||[]);
+    if(isFinite(own)) return own;
+    const all=nearest(list.flatMap(d=>(d&&Array.isArray(d.spots))?d.spots:[]));
+    return isFinite(all)? all : null;
+  }
+
+  /**
+   * 이 여행이 이미 쓰는 도시 표기 — 검색 결과가 'Paris'라고 줘도 일정에 '파리'가 있으면 '파리'로 맞춘다(P2-25).
+   * 한 도시가 '파리'와 'Paris'로 갈려 도시 칩이 둘이 됐다. 같은 표기(알려진 별칭 포함)면 그것이고,
+   * 표기가 다르면 **문자가 다르고(한글 ↔ 그 밖) 그 도시의 장소가 15km 안에 있을 때만** 같은 도시로 본다 —
+   * 둘 다 한글인 '제주'와 '서귀포'는 가까워도 다른 도시다.
+   * @param {any} city @param {any} at 찾은 장소의 위치 @param {any[]} spots 이 여행의 장소들 @returns {string}
+   */
+  function tripCitySpelling(city, at, spots){
+    const raw=_str(city).trim();
+    if(!raw) return raw;
+    const canon=(/**@type {string}*/ v)=>cityKey(SUMMARY_CITY_NAMES.get(cityKey(v))||v);
+    const known=(Array.isArray(spots)?spots:[]).filter(s=>s&&_str(s.city).trim()&&_str(s.city).trim()!=='기타');
+    const same=known.find(s=>canon(_str(s.city).trim())===canon(raw));
+    if(same) return _str(same.city).trim();
+    if(!hasCoord(at)) return raw;
+    const hangul=(/**@type {string}*/ t)=>/[가-힣]/.test(t);
+    let best='', bestKm=Infinity;
+    for(const s of known){
+      const c=_str(s.city).trim();
+      if(!hasCoord(s) || hangul(c)===hangul(raw)) continue;
+      const km=haversine({lat:+s.lat,lng:+s.lng},{lat:+at.lat,lng:+at.lng});
+      if(km<bestKm){ bestKm=km; best=c; }
+    }
+    return (best && bestKm<=15)? best : raw;
+  }
+
+  /**
+   * 이 여행의 기본 비용 통화 — 파리 여행인데 두 번째 비용 칸이 '₩ 원'으로 열려 '60'이 ₩60이 됐다(P2-26).
+   * 가서 쓴 돈(장소·하루 항목)에 원화가 아닌 통화가 있으면 그중 가장 많이 쓴 것(같으면 뒤에 쓴 것),
+   * 없으면 여행 단위 항목·예약에서, 그것도 없으면 원화다. 한국에서 원화로 낸 항공권이 현지 식당의
+   * 기본값을 원화로 끌고 가지 않게 가서 쓴 돈을 먼저 본다. 금액이 없는 항목의 통화는 세지 않는다(0은 센다).
+   * @param {any} trip @returns {string}
+   */
+  function tripDefaultCurrency(trip){
+    const t=trip||{};
+    /** @param {any[]} items @param {(x:any)=>boolean} priced @returns {string} */
+    const pickFrom=(items, priced)=>{
+      /** @type {Map<string,{n:number,last:number}>} */ const seen=new Map();
+      let order=0;
+      for(const x of items){
+        if(!x||typeof x!=='object'||!priced(x)) continue;
+        order++;
+        const c=_CURS.indexOf(x.cur)>=0? x.cur : 'KRW';
+        if(c==='KRW') continue;
+        const r=seen.get(c)||{n:0,last:0}; r.n++; r.last=order; seen.set(c,r);
+      }
+      let best='', bn=-1, bl=-1;
+      seen.forEach((r,c)=>{ if(r.n>bn||(r.n===bn&&r.last>bl)){ best=c; bn=r.n; bl=r.last; } });
+      return best;
+    };
+    const num=(/**@type {any}*/ v)=>typeof v==='number'&&isFinite(v);
+    const days=Array.isArray(t.days)?t.days:[];
+    const onSite=days.flatMap((/**@type {any}*/ d)=>[...((d&&Array.isArray(d.spots))?d.spots:[]), ...((d&&Array.isArray(d.costItems))?d.costItems:[])]);
+    const prep=[...(Array.isArray(t.costItems)?t.costItems:[]), ...(Array.isArray(t.bookings)?t.bookings:[])];
+    return pickFrom(onSite, x=>num(x.cost)||num(x.amount))
+      || pickFrom(prep, x=>num(x.amount)||(num(x.price)&&x.price>0))
+      || 'KRW';
+  }
+
+  /**
+   * 도착 예상 시각에 문을 안 열었다면 **왜** 안 열었는지 — 그날 쉬는지, 아직 안 열었는지, 이미 닫았는지(P2-12).
+   * '🚫 영업시간 확인' 하나로는 루브르의 화요일 휴관과 '9분 일찍 도착'이 같은 말이었다. 열려 있거나 모르면 null.
+   * `at`은 자정 기준 분이고 자정 마감은 1440이다(00:00으로 접으면 이른 아침처럼 읽힌다).
+   * @param {any[]|null|undefined} periods normHours 결과 @param {number} weekday 0=일 @param {number} min 자정 기준 분
+   * @returns {{kind:'CLOSED_DAY'}|{kind:'BEFORE_OPEN',at:number,minutes:number,reopen:boolean}|{kind:'AFTER_CLOSE',at:number,minutes:number}|null}
+   */
+  function hoursIssue(periods, weekday, min){
+    if(isOpenAt(periods||null, weekday, min)!==false) return null;
+    const today=(periods||[]).filter(p=>p&&p.d===weekday).sort((a,b)=>a.o-b.o);
+    if(!today.length) return {kind:'CLOSED_DAY'};
+    const next=today.find(p=>p.o>min);
+    if(next) return {kind:'BEFORE_OPEN', at:next.o, minutes:next.o-min, reopen:today.some(p=>p.o<=min)};
+    const closeAt=(/**@type {any}*/ p)=>p.c>p.o? p.c : p.c+1440;
+    const last=today.reduce((a,p)=>closeAt(p)>closeAt(a)?p:a);
+    return {kind:'AFTER_CLOSE', at:closeAt(last), minutes:min-closeAt(last)};
+  }
+
+  /**
+   * 영업시간을 요일별 한 줄로 — 24시간 표기, 월요일부터. Google 문구의 '오전 12:00'(자정 마감)이 정오처럼 읽혔다(P2-12).
+   * @param {any[]|null|undefined} periods normHours 결과 @returns {{d:number,text:string}[]} 정보가 없으면 빈 배열
+   */
+  function hoursLines(periods){
+    if(!Array.isArray(periods)||!periods.length) return [];
+    const fmt=(/**@type {number}*/ m)=>m===1440?'24:00':hm(m);
+    const always=periods.some(p=>p&&p.d===-1);
+    return [1,2,3,4,5,6,0].map(d=>{
+      if(always) return {d, text:'24시간'};
+      const ps=periods.filter(p=>p&&p.d===d).sort((a,b)=>a.o-b.o);
+      if(!ps.length) return {d, text:'휴무'};
+      return {d, text:ps.map(p=>`${fmt(p.o)}–${fmt(p.c===0? 1440 : p.c)}`).join(', ')};
+    });
+  }
+
   // ───────────────── 장소 카테고리 ─────────────────
   // 목록 순서 = 편집 모달 선택지 순서. id는 저장값이므로 바꾸면 기존 데이터가 '미지정'이 된다.
   // ── 장소 우선순위 3단 (2026-09-20) ──
@@ -1833,8 +1999,26 @@
   // 카카오 로컬의 category_group_code (분류가 없는 코드는 추론하지 않는다)
   /** @type {Record<string,string>} */
   const _KAKAO_CAT={AD5:'stay',FD6:'food',CE7:'cafe',AT4:'sight',CT1:'sight',SW8:'transport',MT1:'shop',CS2:'shop'};
-  /** @param {any} code @returns {string|null} */
-  function catFromKakao(code){ return _KAKAO_CAT[String(code||'')]||null; }
+  // 그룹 코드가 없는 곳은 분류 경로('여행 > 관광,명소 > 오름')로 읽는다 — 성산일출봉이 코드 없이 와서 종류가 비었다(2026-10-03 P2-24).
+  // 경로의 **뒤 칸부터** 본다: '음식점 > 카페'는 카페, '음식점 > 술집 > 칵테일바'는 술집에서 식당이 된다.
+  const _KAKAO_PATH=[
+    ['stay',      /숙박|호텔|모텔|펜션|게스트하우스|리조트|콘도/],
+    ['cafe',      /^카페|커피|디저트|제과|베이커리/],
+    ['transport', /교통|공항|역$|지하철|전철|터미널|여객|항구/],
+    ['activity',  /테마파크|놀이|레저|스포츠|수족관|동물원|온천|스파|체험/],
+    ['nature',    /해수욕장|해변|오름|폭포|계곡|호수|수목원|휴양림|공원|^산$|^섬$|^자연/],
+    ['shop',      /쇼핑|시장|백화점|아울렛|마트|상가/],
+    ['sight',     /관광|명소|박물관|미술관|유적|사적|사찰|성당|교회|고궁|궁궐|왕궁|전시|문화/],
+    ['food',      /음식점|식당|술집|한식|일식|중식|양식|분식/]
+  ];
+  /** @param {any} code @param {any=} path 카카오 category_name @returns {string|null} */
+  function catFromKakao(code, path){
+    const byCode=_KAKAO_CAT[String(code||'')];
+    if(byCode) return byCode;
+    const parts=_str(path).split('>').map(x=>x.trim()).filter(Boolean).reverse();
+    for(const part of parts) for(const row of _KAKAO_PATH) if(/**@type{RegExp}*/(row[1]).test(part)) return /**@type{string}*/(row[0]);
+    return null;
+  }
 
   // 구글 Places types. 배열 순서가 우선순위 — 'store'처럼 넓은 타입은 뒤에 둬서 구체적인 게 먼저 잡히게 한다.
   const _GOOGLE_CAT=[
@@ -2018,6 +2202,8 @@
 
 
   const TC={deleteSpotCost,clearSpotCost,deleteBookingCost,dayLodgings,sortTripsByCountdown,additionalReservations,tripSummaryCities,returnModeOf,SPOT_PRIORITIES,spotPriorityOf,applySpotPriority,spotPriorityLabel,SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,cityFromKoreanAddr,placeName,cityFromGoogle,normHours,classifySearchErr,isKoreanSearch,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,normHM,sortDayByTime,inKorea,simplifyName,parseDirect,parseMoney,normalizeDraftDays,extractJson,extMapLink,encodePolyline,decodePolyline,optimizeRoute,planRouteOptimization,routeLength,isOpenAt,validTimeZone,zonedClock,zonedMinutesToISOString,dayAnchor,stayMinutesOf,activityStartMinute,dayEndMinutes,departMinuteAfter,computeTimeline,computeDayJourney,whoKey,splitSegments,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,budgetBookings,moneyAmount,parseCostAmount,costAmountOf,dayEnteredCost,splitAcrossNights,stayCostShares,stayCostOverflow,dayEnteredCostOn,hasManualTransportCost,dayCostSummary,ADMISSION_REQUIREMENTS,admissionLabel,admissionOf,needsAdmissionBooking,normalizeAdmission,admissionError,COST_CATEGORIES,COST_CURRENCIES:_CURS,costCategoryOf,COST_PAY_STATES,costPayStateOf,payStateTotals,TRIP_NOTE_CATEGORIES,normalizeTripNote,tripCostSummary,localMode,mdLabel,tripPeriodOf,startShiftPreview,SAMPLE_TRIP_ID,isSampleTrip,sampleTrip,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
+  // 장소 검색·장소 정체성(2026-10-03) — 위 목록과 따로 둬 다른 변경과 한 줄에서 부딪히지 않게 한다
+  Object.assign(TC,{placeNameMatch,searchAnchorSpot,planDistanceKm,tripCitySpelling,tripDefaultCurrency,hoursIssue,hoursLines});
   if(typeof module!=='undefined' && module.exports){ module.exports=TC; }   // Node (테스트)
   else { const r=/**@type {any}*/(root); for(const k in TC) r[k]=/**@type {any}*/(TC)[k]; }   // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);

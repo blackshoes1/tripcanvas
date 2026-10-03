@@ -1734,3 +1734,100 @@ test('spotCatOf: 공항은 교통 분류 그대로 비행기 기호로 보인다
   assert.equal(L.spotCatOf({ name: '서울역' }).icon, '🚉', '역은 그대로');
   assert.equal(L.spotCatOf({ name: '공항 근처 식당', cat: 'food' }).id, 'food', '명시한 분류가 먼저다');
 });
+
+// ── ux3:search — 장소 검색·장소 정체성 (2026-10-03 3차 UX 검토) ──
+test('placeNameMatch: 같은 이름만 0 — 반경 안의 엉뚱한 가게로 검색이 끝나지 않게', () => {
+  assert.equal(L.placeNameMatch('성산일출봉', '성산일출봉'), 0);
+  assert.equal(L.placeNameMatch('성산 일출봉', '성산일출봉'), 0, '띄어쓰기는 같은 이름');
+  assert.equal(L.placeNameMatch('중앙시장', '강릉중앙시장', '강릉'), 0, '도시 이름이 앞에 붙은 것은 같은 곳');
+  assert.equal(L.placeNameMatch('성산일출봉', '리리스'), 2, 'P0-1: 반경 안의 칵테일바');
+  assert.equal(L.placeNameMatch('우도', '우도돼지네땅콩만두 올레본점'), 2, '두 글자 이름이 들어 있다고 같은 곳이 아니다');
+  assert.equal(L.placeNameMatch('스타벅스', '스타벅스 제주시청점'), 1, '체인은 비슷하다 — 어디서나 나온다');
+  assert.equal(L.placeNameMatch('쿠로몬 시장', '구로몬 시장'), 1, '음역 차이는 비슷하다');
+  assert.equal(L.placeNameMatch('센소지', '아사쿠사 센소지 절'), 1, '세 글자 이상이 그대로 들어 있으면 비슷하다');
+  assert.equal(L.placeNameMatch('쿠로몬 시장', "Izumisano Gyokyo Aozora Fishery Cooper's Market"), 2);
+  assert.equal(L.placeNameMatch('', '아무 곳'), 2);
+});
+
+test('searchAnchorSpot: 그날 → 가까운 날 순, 공항·역은 검색 기준이 아니다', () => {
+  const days = [
+    { spots: [{ name: '인천국제공항', city: '인천', lat: 37.46, lng: 126.44 }, { name: '샤를 드골 공항', city: 'Paris', lat: 49.0, lng: 2.55, cat: 'transport' }, { name: '호텔 말트 오페라', city: '파리', lat: 48.87, lng: 2.33 }] },
+    { spots: [] },
+    { spots: [{ name: '파리 북역', city: '파리', lat: 48.88, lng: 2.35 }] }
+  ];
+  assert.equal(L.searchAnchorSpot(days, 0).name, '호텔 말트 오페라', '공항을 건너뛴다');
+  assert.equal(L.searchAnchorSpot(days, 1).name, '호텔 말트 오페라', '빈 날은 가까운 날(앞날 먼저)');
+  assert.equal(L.searchAnchorSpot(days, 1, true), null, '그날만 보면 없다');
+  assert.equal(L.searchAnchorSpot(days, 2).name, '호텔 말트 오페라', '역뿐인 날도 가까운 날의 장소');
+  assert.equal(L.searchAnchorSpot([{ spots: [{ name: '김포공항', lat: 37.56, lng: 126.8 }] }], 0), null, '교통뿐이면 기준이 없다');
+  assert.equal(L.searchAnchorSpot([{ spots: [{ name: '광장시장', city: '서울' }] }], 0).name, '광장시장', '좌표가 없어도 도시가 있으면 기준이 된다');
+});
+
+test('planDistanceKm: 그날 장소 중 가장 가까운 곳, 없으면 여행 전체 — 비교할 곳이 없으면 null', () => {
+  const paris = { name: '루브르', lat: 48.8606, lng: 2.3376 };
+  const days = [{ spots: [paris] }, { spots: [] }];
+  const yeosu = { lat: 34.74, lng: 127.73 };
+  assert.ok(L.planDistanceKm(days, 1, yeosu) > 8000, '빈 날은 여행 전체와 비교');
+  assert.ok(L.planDistanceKm(days, 0, { lat: 48.8584, lng: 2.2945 }) < 5);
+  assert.equal(L.planDistanceKm(days, 0, paris, paris), null, '편집 중인 그 장소와는 비교하지 않는다');
+  assert.equal(L.planDistanceKm([{ spots: [] }], 0, yeosu), null);
+});
+
+test('tripCitySpelling: 이 여행이 이미 쓰는 표기로 — 문자가 다르고 가까울 때만 같은 도시', () => {
+  const spots = [{ name: '루브르', city: '파리', lat: 48.8606, lng: 2.3376 }, { name: '성산일출봉', city: '서귀포', lat: 33.4581, lng: 126.9425 }];
+  assert.equal(L.tripCitySpelling('Paris', { lat: 48.86, lng: 2.29 }, spots), '파리', 'P2-25: 검색 결과의 Paris');
+  assert.equal(L.tripCitySpelling('Versailles', { lat: 48.80, lng: 2.12 }, spots), 'Versailles', '15km 밖은 다른 도시');
+  assert.equal(L.tripCitySpelling('제주', { lat: 33.50, lng: 126.53 }, spots), '제주', '둘 다 한글이면 다른 도시다');
+  assert.equal(L.tripCitySpelling('Paris', null, spots), 'Paris', '위치를 모르면 그대로');
+  assert.equal(L.tripCitySpelling('sevilla', null, [{ city: '세비야' }]), '세비야', '알려진 별칭은 위치 없이도');
+  assert.equal(L.tripCitySpelling('', null, spots), '');
+});
+
+test('tripDefaultCurrency: 가서 쓴 돈의 외화가 먼저 — 원화로 낸 항공권이 기본값을 끌고 가지 않는다', () => {
+  assert.equal(L.tripDefaultCurrency({ days: [{ spots: [] }] }), 'KRW');
+  assert.equal(L.tripDefaultCurrency({ days: [{ spots: [{ name: '루브르', cost: 22, cur: 'EUR' }, { name: '카페', cost: 6000 }] }],
+    bookings: [{ id: 'f', type: 'flight', price: 1500000 }, { id: 'h', type: 'stay', price: 900000 }] }), 'EUR', 'P2-26');
+  assert.equal(L.tripDefaultCurrency({ days: [{ spots: [{ name: '무료', cost: 0, cur: 'JPY' }] }] }), 'JPY', '0도 쓴 통화다');
+  assert.equal(L.tripDefaultCurrency({ days: [{ spots: [{ name: '미정', cur: 'JPY' }] }] }), 'KRW', '금액이 없으면 통화도 말하지 않은 것');
+  assert.equal(L.tripDefaultCurrency({ days: [{ spots: [], costItems: [{ id: 'c1', amount: 5, cur: 'USD' }] }] }), 'USD');
+  assert.equal(L.tripDefaultCurrency({ days: [], bookings: [{ id: 'h', price: 300, cur: 'EUR' }] }), 'EUR', '예약뿐이면 예약에서');
+  assert.equal(L.tripDefaultCurrency({ days: [{ spots: [{ cost: 1, cur: 'GBP' }] }] }), 'KRW', '저장할 수 없는 통화는 원화로 센다');
+});
+
+test('hoursIssue: 쉬는 날·아직 안 연 시각·이미 닫은 시각을 가른다', () => {
+  const louvre = [1, 3, 4, 5, 6, 0].map((d) => ({ d, o: 9 * 60, c: 18 * 60 }));   // 화요일 휴관
+  assert.deepEqual(L.hoursIssue(louvre, 2, 600), { kind: 'CLOSED_DAY' });
+  assert.deepEqual(L.hoursIssue(louvre, 3, 531), { kind: 'BEFORE_OPEN', at: 540, minutes: 9, reopen: false });
+  assert.deepEqual(L.hoursIssue(louvre, 3, 1110), { kind: 'AFTER_CLOSE', at: 1080, minutes: 30 });
+  assert.equal(L.hoursIssue(louvre, 3, 600), null, '열려 있으면 null');
+  assert.equal(L.hoursIssue(null, 3, 600), null, '모르면 null');
+  const lunch = [{ d: 3, o: 690, c: 840 }, { d: 3, o: 1020, c: 1260 }];
+  assert.deepEqual(L.hoursIssue(lunch, 3, 900), { kind: 'BEFORE_OPEN', at: 1020, minutes: 120, reopen: true }, '브레이크 타임');
+  assert.deepEqual(L.hoursIssue([{ d: 3, o: 570, c: 0 }], 3, 480), { kind: 'BEFORE_OPEN', at: 570, minutes: 90, reopen: false }, '자정 마감인 곳에 아침 일찍');
+});
+
+test('hoursLines: 24시간 표기·월요일부터 — 자정 마감을 정오처럼 쓰지 않는다', () => {
+  const eiffel = [0, 1, 2, 3, 4, 5, 6].map((d) => ({ d, o: 9 * 60 + 30, c: 0 }));
+  const lines = L.hoursLines(eiffel);
+  assert.equal(lines.length, 7);
+  assert.deepEqual(lines[0], { d: 1, text: '09:30–24:00' }, 'P2-12: 월요일 오전 12:00이 아니다');
+  assert.equal(lines[6].d, 0, '일요일이 마지막');
+  assert.equal(L.hoursLines([{ d: 1, o: 540, c: 1080 }])[1].text, '휴무');
+  assert.equal(L.hoursLines([{ d: 5, o: 1320, c: 120 }])[4].text, '22:00–02:00');
+  assert.equal(L.hoursLines([{ d: -1, o: 0, c: 1440 }])[3].text, '24시간');
+  assert.deepEqual(L.hoursLines(null), []);
+});
+
+test('catFromKakao: 그룹 코드가 없으면 분류 경로로 — 성산일출봉에 종류가 붙는다', () => {
+  assert.equal(L.catFromKakao('AT4'), 'sight', '코드가 먼저');
+  assert.equal(L.catFromKakao('', '여행 > 관광,명소'), 'sight', 'P2-24');
+  assert.equal(L.catFromKakao('', '여행 > 관광,명소 > 오름'), 'nature');
+  assert.equal(L.catFromKakao('', '교통,수송 > 교통시설 > 공항'), 'transport');
+  assert.equal(L.catFromKakao('', '음식점 > 술집 > 칵테일바'), 'food');
+  assert.equal(L.catFromKakao('', '음식점 > 카페 > 커피전문점'), 'cafe');
+  assert.equal(L.catFromKakao('', '여행 > 숙박 > 호텔'), 'stay');
+  assert.equal(L.catFromKakao('', '가정,생활 > 시장 > 전통시장'), 'shop');
+  assert.equal(L.catFromKakao('', '문화,예술 > 문화시설 > 박물관'), 'sight');
+  assert.equal(L.catFromKakao('', '서비스,산업 > 인터넷,IT'), null, '모르면 추론하지 않는다');
+  assert.equal(L.catFromKakao(null), null);
+});

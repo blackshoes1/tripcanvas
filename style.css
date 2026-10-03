@@ -176,7 +176,7 @@
   .fieldRow{display:flex;gap:7px}.fieldRow>input{flex:1;min-width:0}.compactSelect{width:auto!important}
   .basicGrid,.advancedGrid{display:grid;grid-template-columns:1fr 1fr;gap:2px 10px}.basicGrid>div,.advancedGrid>div{min-width:0}.basicGrid .wide,.advancedGrid .wide{grid-column:1/-1}
   .advancedPanel{border-top:1px solid var(--border);margin-top:14px;padding-top:4px}.advancedPanel summary{list-style:none;cursor:pointer;color:var(--focus);font-size:12px;font-weight:700;padding:10px 0}.advancedPanel summary::-webkit-details-marker{display:none}.advancedPanel summary span{float:right;transition:transform .2s}.advancedPanel[open] summary span{transform:rotate(180deg)}
-  .optionRows{display:flex;gap:18px;flex-wrap:wrap}.optionRows .chkrow label{margin:0}.optionRows #nightsWrap{display:none;align-items:center;gap:5px;margin-left:8px}.optionRows #spotNights{width:66px}
+  .optionRows{display:flex;gap:18px;flex-wrap:wrap}.optionRows .chkrow label{margin:0}#spotStayRow #nightsWrap{display:none;align-items:center;gap:5px;margin-left:8px}#spotStayRow #spotNights{width:66px}#spotStayRow .chkrow label{margin:0}
   .modalActions{position:sticky;bottom:-20px;background:var(--surface);padding:12px 0 2px;border-top:1px solid var(--border)}
 
   /* 첫 진입 온보딩 */
@@ -395,7 +395,6 @@
 .spotMeta .bookwarn{color:var(--meta-warning)}
 .spotMeta .stayMeta{color:var(--muted)}
 .optBtn{color:var(--meta-good);border-color:currentColor;margin-left:6px}
-.spotMeta .closed{color:var(--meta-danger)}
 #verLabel{font-size:11px;color:var(--subtle);text-align:center;padding:6px 4px 2px;cursor:pointer;border-top:1px solid var(--border);margin-top:2px}
 #verLabel:active{color:var(--ink)}
 
@@ -570,7 +569,8 @@ body.playing #playHud{
   .spot.inSplit + .spot.inSplit{margin-top:-4px}
   .spot.isReunion{border-left:3px solid color-mix(in srgb,var(--meta-good) 55%,transparent);padding-left:11px}
   /* 장소 모달의 명소 예약·입장 준비 */
-  .admissionBox{display:flex;flex-direction:column;gap:6px}
+  .admissionBody{display:flex;flex-direction:column;gap:6px}
+  .admissionBox summary{list-style:none;cursor:pointer;font-size:12.5px;font-weight:700;padding:8px 0}.admissionBox summary::-webkit-details-marker{display:none}.admissionBox summary span{float:right;transition:transform .2s}.admissionBox[open] summary span{transform:rotate(180deg)}
   .admissionRow{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
   .admissionRow>select{flex:1 1 180px;min-width:0}
   .admissionRow #spotAdmPeople{width:72px}
@@ -676,3 +676,14 @@ body:has(.modalBg.show) #toast{bottom:auto;top:calc(env(safe-area-inset-top) + 1
 #searchRes .placeSearchResult:hover{background:var(--hover-bg)}.psrName{display:block;font-weight:700;font-size:14.5px}.psrAddr{display:block;font-size:12px;color:var(--subtle);margin-top:2px;line-height:1.4}
 .estNote .estFix{color:var(--primary-dark)}
 .sampleTag{font-size:10.5px;font-weight:700;color:var(--badge-info-fg);background:var(--badge-info-bg);border-radius:5px;padding:1px 5px;vertical-align:1px}
+
+/* ux3:search */
+/* 검색이 주변으로 좁혔는지·넓혔는지 말하는 한 줄, 수백 km 떨어진 결과 표시(2026-10-03 P0-1) */
+#searchRes .searchScope{margin:4px 0 6px;font-size:12px;color:var(--muted);line-height:1.5}
+#searchRes .searchScope .btn.sm{margin-left:2px}
+.psrFar{display:block;font-size:12px;color:var(--meta-danger);font-weight:600;margin-top:2px;line-height:1.4}
+/* 붙여넣기 미리보기 — 찾은 곳의 이름이 친 이름과 다르면 확인할 것으로 보인다 */
+.pvChip.ok.check{color:var(--meta-warning)}
+/* 장소 정보의 영업시간 — 가는 날의 요일을 짚는다(P2-12) */
+#placeDetailsContent li.visitDay{font-weight:700}
+.stayRow{margin-top:2px}.stayRow .hint{margin-top:2px}

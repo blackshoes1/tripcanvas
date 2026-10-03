@@ -1122,7 +1122,9 @@ test('통합: 좌표 지정 중(pickMode)에는 탭이 추가가 아니라 좌�
   w.eval('onMapTap(37.4,127.4)');
   assert.equal(w.eval('pickMode'), false, '탭 즉시 좌표가 지정된다(지연 없음)');
   assert.equal(w.document.getElementById('spotLat').value, '37.4');
-  assert.match(w.document.getElementById('coordHint').textContent, /37\.4000/);
+  // 날 좌표가 아니라 사람의 말로 — '(37.4000, 127.4000)'으로는 맞는 곳인지 알 수 없다(2026-10-03 P2-24)
+  assert.match(w.document.getElementById('coordHint').textContent, /^위치 확인됨/);
+  assert.doesNotMatch(w.document.getElementById('coordHint').textContent, /37\.4/);
   w.close();
 });
 
@@ -1690,7 +1692,9 @@ test('통합: 경로 없음은 기기에 남긴다 — 다시 열어도 인근 �
     await new Promise(r=>w.setTimeout(r,600));
     const leg=w.document.querySelector(`[data-leg="${w.legK}"]`);
     assert.ok(leg.classList.contains('legfail')&&leg.textContent.includes('⚠️'),'경로 없음 표시');
-    assert.match(leg.title,/위치를 다시 잡아/);
+    // 이유는 툴팁만이 아니라 보이는 한 줄로 — 터치로는 툴팁을 볼 수 없다(2026-10-03 P2-12)
+    assert.match(leg.title,/직선으로 어림/);
+    assert.match(leg.closest('.spot').querySelector('.spotWarn').textContent,/차로 가는 길을 못 찾아 직선으로 어림했어요/);
     for(let i=0;i<w.localStorage.length;i++){ const k=w.localStorage.key(i); storage[k]=w.localStorage.getItem(k); }
   }finally{ w.eval('clearTimeout(legRefreshT)'); w.close(); }
 
@@ -5435,4 +5439,287 @@ test('통합: 보고 있는 일자(1부터 센다, 0=전체)를 일자 인덱스
     w.eval(`trip().days.push({spots:[]}); activeDay=1; resizeTripDays(1)`);
     assert.equal(w.eval('activeDay'),1,'하루짜리가 되어도 전체로 바뀌지 않는다');
   }finally{ w.close(); }
+});
+
+// ── ux3:search ──
+// 2026-10-03 3차 UX 검토 — 장소 검색·장소 정체성(P0-1 · P1-14 · P2-12 · P2-24~27)
+
+/** 카카오 SDK를 가짜로 — 주변(location이 있는 요청)과 전국에서 다른 결과를 준다. 무엇을 물었는지 남긴다 */
+function fakeKakao(w, near, wide) {
+  w.eval(`window.__kq=[]; _kakaoReady=Promise.resolve(true);
+    window.kakao={maps:{LatLng:function(lat,lng){this.lat=lat;this.lng=lng;},
+      services:{Status:{OK:'OK',ZERO_RESULT:'ZERO_RESULT',ERROR:'ERROR'},
+        Places:function(){ this.keywordSearch=(q,cb,opts)=>{ const isNear=!!(opts&&opts.location);
+          window.__kq.push({q,near:isNear});
+          const data=((isNear? ${JSON.stringify(near)} : ${JSON.stringify(wide)})[q])||[];
+          cb(data, data.length?'OK':'ZERO_RESULT'); }; }}}};`);
+}
+const kdoc = (name, lat, lng, extra) => Object.assign({ place_name: name, road_address_name: '', address_name: '제주특별자치도 제주시 연동 1',
+  x: String(lng), y: String(lat), category_group_code: '', id: String(Math.round(lat * 1000 + lng)), phone: '', category_name: '' }, extra || {});
+const resultNames = (w) => Array.from(w.document.querySelectorAll('.placeSearchResult .psrName')).map((e) => e.textContent);
+const tick = (ms) => new Promise((r) => setTimeout(r, ms || 0));
+
+test('ux3 검색: 도시로 좁힌 결과에 같은 이름이 없으면 전국에서 다시 찾고, 그렇다고 말한다(P0-1)', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    withTrip(w, JSON.stringify([{ spots: [
+      { name: '제주국제공항', city: '제주', lat: 33.5104, lng: 126.4914, cat: 'transport' },
+      { name: '동문시장', city: '제주', lat: 33.5116, lng: 126.5262 }] }, { spots: [] }]));
+    fakeKakao(w,
+      { 성산일출봉: [kdoc('리리스', 33.50, 126.53, { category_name: '음식점 > 술집 > 칵테일바' })],
+        흑돼지: [kdoc('흑돈가 제주본점', 33.49, 126.49)] },
+      { 성산일출봉: [kdoc('성산일출봉', 33.4581, 126.9425, { address_name: '제주특별자치도 서귀포시 성산읍 성산리 1', category_name: '여행 > 관광,명소' })],
+        흑돼지: [kdoc('흑돼지 강남점', 37.50, 127.03)] });
+    w.eval('render(); openSpotModal(0,-1)');
+    assert.equal(w.document.getElementById('spotCity').value, '제주', '그날 장소의 도시(공항은 건너뛴다)');
+    w.document.getElementById('spotSearch').value = '성산일출봉';
+    await w.eval('doSearch()');
+    assert.deepEqual(JSON.parse(w.eval('JSON.stringify(window.__kq.map(x=>x.near))')), [true, false], '주변 먼저 — 같은 이름이 없어 전국');
+    assert.equal(resultNames(w)[0], '성산일출봉', '반경 안의 칵테일바가 아니다');
+    assert.match(w.document.querySelector('#searchRes .searchScope').textContent, /제주 근처에는 같은 이름이 없어 전체에서 찾았어요/);
+
+    // 흔한 이름은 주변 결과 그대로 — 좁혔다는 사실과 넓히는 길을 함께 보인다
+    w.document.getElementById('spotSearch').value = '흑돼지';
+    await w.eval('doSearch()');
+    assert.deepEqual(resultNames(w), ['흑돈가 제주본점']);
+    const note = w.document.querySelector('#searchRes .searchScope');
+    assert.match(note.textContent, /제주 근처 결과예요/);
+    note.querySelector('button').click();
+    await tick(20);
+    assert.deepEqual(resultNames(w), ['흑돼지 강남점'], '전체에서 찾기');
+    assert.equal(w.eval('window.__kq[window.__kq.length-1].near'), false);
+  } finally { w.close(); }
+});
+
+test('ux3 검색: 해외 여행의 빈 날은 이 여행의 장소를 기준으로 Google에서 찾고, 도시는 이 여행의 표기로 채운다(P0-1·P2-25)', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    withTrip(w, JSON.stringify([{ spots: [{ name: '루브르 박물관', city: '파리', lat: 48.8606, lng: 2.3376, cat: 'sight' }] }, { spots: [] }]));
+    fakeKakao(w, {}, { '오르세 미술관': [kdoc('오르세미술관 카페', 36.64, 127.49)] });
+    w.eval(`window.__g=[]; fetchPlaceDetails=async(s)=>({kind:'saved',name:s.name});
+      googlePlaces=async(q,near)=>{ window.__g.push({q,near}); return {list:[{name:'오르세 미술관',addr:'Rue de Lille, Paris',city:'Paris',lat:48.86,lng:2.3266,placeId:'orsay',cat:'sight'}],err:null}; };`);
+    w.eval('render(); openSpotModal(1,-1)');
+    assert.equal(w.document.getElementById('spotCity').value, '', '그날 장소가 없으면 도시 칸은 비어 있다');
+    w.document.getElementById('spotSearch').value = '오르세 미술관';
+    await w.eval('doSearch()');
+    assert.equal(w.eval('window.__kq.length'), 0, '한글로 쳐도 국내(청주·수원)로 가지 않는다');
+    const g = JSON.parse(w.eval('JSON.stringify(window.__g)'));
+    assert.equal(g.length, 1);
+    assert.ok(Math.abs(g[0].near.lat - 48.8606) < 1e-6, '이 여행의 다른 날 장소가 기준');
+    w.document.querySelector('.placeSearchResult').click();
+    await tick();
+    Array.from(w.document.querySelectorAll('#placeDetailsActions button')).find((b) => b.textContent === '시간·메모 정하고 담기').click();
+    assert.equal(w.document.getElementById('spotCity').value, '파리', "'Paris'가 아니라 이 여행이 쓰는 '파리'");
+    assert.match(w.document.getElementById('coordHint').textContent, /위치 확인됨 ✓ · Rue de Lille, Paris/, '좌표 대신 주소');
+  } finally { w.close(); }
+});
+
+test('ux3 검색: 기준점 없이 한글로 친 해외 고유명은 국내에 같은 이름이 없을 때만 Google에도 묻는다(P0-1)', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    withTrip(w, '[{spots:[]}]');
+    fakeKakao(w, {}, { 에펠탑: [kdoc('구에펠탑', 34.74, 127.73, { address_name: '전남 여수시 돌산읍' })],
+      성산일출봉: [kdoc('성산일출봉', 33.4581, 126.9425)] });
+    w.eval(`window.__g=[]; googlePlaces=async(q,near)=>{ window.__g.push({q,near}); return {list:[{name:'에펠탑',city:'파리',lat:48.8584,lng:2.2945,placeId:'eiffel'}],err:null}; };`);
+    w.eval('render(); openSpotModal(0,-1)');
+    w.document.getElementById('spotSearch').value = '에펠탑';
+    await w.eval('doSearch()');
+    assert.equal(resultNames(w)[0], '에펠탑', '여수의 구에펠탑이 아니다');
+    w.document.getElementById('spotSearch').value = '성산일출봉';
+    await w.eval('doSearch()');
+    assert.equal(resultNames(w)[0], '성산일출봉');
+    assert.equal(w.eval('window.__g.length'), 1, '국내에 같은 이름이 있으면 Google(과금)을 부르지 않는다');
+  } finally { w.close(); }
+});
+
+test('ux3 검색: 다른 장소에서 수백 km 떨어진 곳은 결과 줄에서 말하고, 담기 전에 한 번 묻는다(P0-1)', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    withTrip(w, JSON.stringify([{ spots: [{ name: '루브르 박물관', city: '파리', lat: 48.8606, lng: 2.3376 }] }, { spots: [] }]));
+    w.eval(`window.__asked=[]; window.__answer=false; confirm=(m)=>{ window.__asked.push(m); return window.__answer; };
+      googlePlaces=async()=>({list:[{name:'구에펠탑',addr:'전남 여수시',city:'여수',lat:34.74,lng:127.73}],err:null});`);
+    w.eval('render(); openSpotModal(1,-1)');
+    w.document.getElementById('spotSearch').value = 'tour eiffel';
+    await w.eval('doSearch()');
+    assert.match(w.document.querySelector('.placeSearchResult .psrFar').textContent, /약 9,\d{3}km 떨어진 곳이에요/);
+
+    const el = (id) => w.document.getElementById(id);
+    el('spotName').value = '구에펠탑'; el('spotCity').value = '여수'; el('spotLat').value = '34.74'; el('spotLng').value = '127.73';
+    el('spotSave').onclick();
+    assert.equal(w.eval('window.__asked.length'), 1);
+    assert.match(w.eval('window.__asked[0]'), /구에펠탑[\s\S]*약 9,\d{3}km/);
+    assert.equal(w.eval('trip().days[1].spots.length'), 0, '아니라고 하면 담지 않는다');
+    assert.ok(el('spotModalBg').classList.contains('show'), '쓰던 칸으로 돌아간다');
+    w.eval('window.__answer=true');
+    el('spotSave').onclick();
+    assert.equal(w.eval('trip().days[1].spots.length'), 1, '맞다고 하면 담는다');
+
+    // 공항은 원래 멀다 — 묻지 않는다
+    w.eval('openSpotModal(1,-1)');
+    el('spotName').value = '인천국제공항'; el('spotLat').value = '37.46'; el('spotLng').value = '126.44';
+    el('spotSave').onclick();
+    assert.equal(w.eval('window.__asked.length'), 2, '공항은 묻지 않는다');
+    assert.equal(w.eval('trip().days[1].spots.length'), 2);
+  } finally { w.close(); }
+});
+
+test('ux3 붙여넣기: 공항의 도시는 다음 줄의 검색 기준이 아니고, 찾은 곳의 이름을 보이며 다르면 확인을 청한다(P0-1·P2-27)', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    stubGeocode(w, {
+      '간사이 국제공항': [{ name: '간사이 국제공항', addr: '오사카부 이즈미사노시', city: 'Izumisano', lat: 34.43, lng: 135.23, cat: 'transport' }],
+      '쿠로몬 시장': [{ name: '구로몬 시장', addr: '오사카 주오구', city: '오사카', lat: 34.665, lng: 135.506 }],
+      '신사이바시': [{ name: '린쿠 프리미엄 아울렛', addr: '이즈미사노', city: 'Izumisano', lat: 34.40, lng: 135.30 },
+        { name: '신사이바시스지 상점가', addr: '오사카', city: '오사카', lat: 34.67, lng: 135.50 }],
+      '기요미즈데라': [{ name: '기요미즈데라', addr: '교토', city: '교토', lat: 34.99, lng: 135.78 }]
+    });
+    w.document.getElementById('pasteText').value = [
+      '[day1] 11월 12일(목) 오사카', '- 간사이 국제공항', '- 쿠로몬 시장', '- 신사이바시',
+      '[day2] 11월 13일(금) 교토', '- 기요미즈데라', '- 카와카미안'].join('\n');
+    w.document.getElementById('pasteTarget').value = 'new';
+    await w.eval('runPaste()');
+    w.eval('pv.rows.forEach(r=>{ r.include=true; }); renderPastePreview()');
+    await w.eval('pvGeocodeAll()');
+    const calls = JSON.parse(w.eval('JSON.stringify(window.__geo)'));
+    const hint = (name) => calls.find((c) => c.name === name).city;
+    assert.notEqual(hint('쿠로몬 시장'), 'Izumisano', '공항이 있는 도시로 좁히지 않는다');
+    assert.equal(hint('신사이바시'), '오사카', '공항 다음에 찾은 곳의 도시');
+    assert.equal(hint('카와카미안'), '교토', '그날 먼저 찾은 곳의 도시가 더 가깝다(당일치기)');
+    assert.equal(w.eval('pv.learnedCity'), '오사카');
+
+    const rowOf = (name) => Array.from(w.document.querySelectorAll('#pvList .pvRow')).find((r) => r.querySelector('.pvName').value === name);
+    const kuro = rowOf('쿠로몬 시장').querySelector('.pvChip.ok');
+    assert.match(kuro.textContent, /구로몬 시장/, '찾은 곳의 이름을 보인다');
+    assert.doesNotMatch(kuro.textContent, /확인 필요/, '음역 차이는 같은 곳');
+    const shin = rowOf('신사이바시').querySelector('.pvChip.ok');
+    assert.match(shin.textContent, /린쿠 프리미엄 아울렛.*확인 필요/, '이름이 다르면 확인을 청한다');
+    // 이름 없는 칸이 없다
+    assert.equal(rowOf('쿠로몬 시장').querySelector('.pvName').getAttribute('aria-label'), 'Day 1 장소 이름');
+    assert.equal(rowOf('신사이바시').querySelector('select.pvPick').getAttribute('aria-label'), '신사이바시 위치 후보');
+  } finally { w.close(); }
+});
+
+test('ux3 숙소: 종류가 숙소면 숙소로 계산되고, 그 칸은 상세 설정이 아니라 종류 곁에 있다(P1-14)', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    withTrip(w, JSON.stringify([{ spots: [{ name: '동문시장', city: '제주', lat: 33.5116, lng: 126.5262 }] }, { spots: [] },
+      { spots: [{ name: '옛 호텔', city: '제주', lat: 33.49, lng: 126.49, cat: 'stay' }] }]));
+    w.eval(`fetchPlaceDetails=async(s)=>({kind:'saved',name:s.name});
+      routedSearch=async()=>[{name:'신라스테이 제주',addr:'제주시 노연로',city:'제주',lat:33.4887,lng:126.4927,kakaoId:'77',cat:'stay'}];`);
+    const el = (id) => w.document.getElementById(id);
+    w.eval('render(); openSpotModal(0,-1)');
+    assert.equal(el('spotStayRow').style.display, 'none', '숙소가 아니면 보이지 않는다');
+    assert.ok(!el('spotAdvanced').contains(el('spotStay')), '상세 설정 안에 숨지 않는다');
+    el('spotSearch').value = '신라스테이 제주';
+    await w.eval('doSearch()');
+    w.document.querySelector('.placeSearchResult').click();
+    await tick();
+    Array.from(w.document.querySelectorAll('#placeDetailsActions button')).find((b) => b.textContent === 'Day 1에 담기').click();
+    await tick();
+    const saved = JSON.parse(w.eval('JSON.stringify(trip().days[0].spots[1])'));
+    assert.equal(saved.cat, 'stay');
+    assert.equal(saved.stay, true, "검색으로 담은 호텔이 '🏠'로 보이면서 숙소로 계산되지 않던 자리");
+    assert.equal(w.eval('dayStartAnchor(trip().days,1,[]).name'), '신라스테이 제주', '다음 날 출발점은 식당이 아니라 호텔');
+
+    // 종류를 고르면 같은 규칙 — 숙소면 켜고, 다른 종류면 끈다
+    w.eval('openSpotModal(1,-1)');
+    el('spotCat').value = 'stay'; el('spotCat').dispatchEvent(new w.Event('change'));
+    assert.equal(el('spotStay').checked, true);
+    assert.notEqual(el('spotStayRow').style.display, 'none');
+    el('spotCat').value = 'food'; el('spotCat').dispatchEvent(new w.Event('change'));
+    assert.equal(el('spotStay').checked, false);
+    assert.equal(el('spotStayRow').style.display, 'none');
+
+    // 예전에 담긴 '종류만 숙소'는 그대로 보여 준다 — 저장된 뜻을 몰래 바꾸지 않고, 끈 상태의 뜻을 말한다
+    w.eval('openSpotModal(2,0)');
+    assert.notEqual(el('spotStayRow').style.display, 'none');
+    assert.equal(el('spotStay').checked, false);
+    assert.match(el('nightsHint').textContent, /들르기만 하는 곳으로 계산해요/);
+  } finally { w.close(); }
+});
+
+test('ux3 비용: 이 여행이 쓰는 외화로 새 비용 칸이 열리고, 저장된 원화는 그대로다(P2-26)', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    withTrip(w, JSON.stringify([{ spots: [
+      { name: '루브르', city: '파리', lat: 48.8606, lng: 2.3376, cost: 22, cur: 'EUR' },
+      { name: '옛 카페', city: '파리', lat: 48.861, lng: 2.331, cost: 6000 },
+      { name: '아직 미정', city: '파리', lat: 48.862, lng: 2.332 }] }]));
+    w.eval('render()');
+    const cur = () => w.document.getElementById('spotCur').value;
+    w.eval('openSpotModal(0,-1)'); assert.equal(cur(), 'EUR', "'60'이 ₩60이 되지 않게");
+    w.eval('openSpotModal(0,1)'); assert.equal(cur(), 'KRW', '금액이 있는데 통화가 없으면 원화다 — 바꾸지 않는다');
+    w.eval('openSpotModal(0,2)'); assert.equal(cur(), 'EUR', '금액이 없는 장소도 이 여행의 통화로');
+    w.eval('openBookingModal()'); assert.equal(w.document.getElementById('bkCur').value, 'EUR', '예약 편집기도');
+    w.eval('openPlaceCost(0)'); w.document.getElementById('costPlace').value = '0:2'; w.eval('fillPlaceCost()');
+    assert.equal(w.document.getElementById('costCurrency').value, 'EUR', '장소 비용 입력도');
+  } finally { w.close(); }
+});
+
+test('ux3 영업시간: 쉬는 날·아직 안 연 시각을 보이는 한 줄로 가르고, 쉬는 날은 옮기는 길을 둔다(P2-12)', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    const louvre = [1, 3, 4, 5, 6, 0].map((d) => ({ d, o: 540, c: 1080 }));   // 화요일 휴관
+    withTrip(w, JSON.stringify([{ startAt: '08:00', spots: [{ name: '루브르', city: '파리', lat: 48.8606, lng: 2.3376, hours: louvre }] }]));
+    w.eval("trip().start='2026-08-04'; render()");   // 화요일
+    const warn = () => w.document.querySelector('.spot .spotWarn');
+    assert.match(warn().textContent, /화요일 휴무예요/);
+    assert.ok(!w.document.querySelector('.spotMeta .closed'), "'🚫 영업시간 확인' 한 칩으로 뭉치지 않는다");
+    Array.from(warn().querySelectorAll('button')).find((b) => b.textContent === '다른 날로 옮기기').click();
+    assert.ok(w.document.getElementById('spotModalBg').classList.contains('show'), '그 장소의 편집(일자 칸)으로');
+    w.eval("document.getElementById('spotModalBg').classList.remove('show'); trip().start='2026-08-05'; render()");   // 수요일 08:00 도착
+    assert.match(warn().textContent, /09:00에 열어요 — 60분 일찍 도착해요/);
+  } finally { w.close(); }
+});
+
+test('ux3 장소 정보: 개발 용어·날 좌표·영어 분류 대신 사용자의 말로, 영업시간은 24시간 표기로(P2-24·P2-25·P2-12)', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    withTrip(w, '[{spots:[]}]');
+    w.eval("trip().start='2026-08-03'");   // 월요일
+    const content = () => w.document.getElementById('placeDetailsContent');
+    w.eval(`openPlaceDetails({name:'성산일출봉',kakaoId:'123',addr:'제주 서귀포시 성산읍',phone:'',category:'여행 > 관광,명소'})`);
+    await tick(10);
+    assert.doesNotMatch(content().textContent, /공개 API|원문 지도/);
+    assert.match(content().textContent, /🏛 명소 · 관광,명소/, '분류 경로로 종류를 채운다');
+    assert.equal(content().querySelector('a').textContent, '카카오맵에서 사진·리뷰 보기');
+
+    w.eval(`engine='google'; window.google={maps:{importLibrary:async()=>({Place:class{ constructor({id}){this.id=id;}
+      async fetchFields(){ Object.assign(this,{displayName:'오르세 미술관',formattedAddress:'Paris',primaryTypeDisplayName:'Art museum',
+        primaryType:'art_gallery',types:['art_gallery','museum'],
+        regularOpeningHours:{periods:[{open:{day:1,hour:9,minute:30},close:{day:2,hour:0,minute:0}}],weekdayDescriptions:['월요일: 오전 9:30 ~ 오전 12:00']}}); } }})}};
+      openPlaceDetails({name:'오르세 미술관',placeId:'orsay',lat:48.86,lng:2.3266})`);
+    await tick(10);
+    const text = content().textContent;
+    assert.doesNotMatch(text, /Art museum/, '영어 분류 대신 앱의 종류');
+    assert.match(text, /🏛 명소/);
+    assert.doesNotMatch(text, /오전 12:00/, '자정 마감을 정오처럼 쓰지 않는다');
+    const mon = Array.from(content().querySelectorAll('li')).find((li) => /^월 /.test(li.textContent));
+    assert.equal(mon.textContent, '월 09:30–24:00 · 가는 날');
+    assert.ok(mon.classList.contains('visitDay'));
+    assert.equal(Array.from(content().querySelectorAll('a')).find((a) => /지도/.test(a.textContent)).textContent, 'Google 지도에서 보기');
+
+    w.eval(`openPlaceDetails({name:'광장'})`);
+    await tick(10);
+    assert.match(content().textContent, /연결된 장소 정보가 없어요/, "광장에 '매장'이라고 하지 않는다");
+  } finally { w.close(); }
+});
+
+test('ux3 입력칸: 명소 예약 칸마다 보이는 이름이 있고, 명소가 아닌 종류에서는 접힌다(P2-27)', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    const label = (id) => w.document.querySelector(`label[for="${id}"]`);
+    ['spotAdmReq', 'spotAdmUrl', 'spotAdmNote', 'spotAdmPeople', 'spotBookUrl'].forEach((id) => assert.ok(label(id) && label(id).textContent.trim(), `${id}에 보이는 이름`));
+    assert.notEqual(label('spotBookUrl').textContent, label('spotAdmUrl').textContent, '두 링크 칸이 같은 말을 하지 않는다');
+    withTrip(w, JSON.stringify([{ spots: [{ name: '인기 식당', city: '파리', lat: 48.86, lng: 2.33, cat: 'food',
+      admission: { source: 'USER', requirement: 'REQUIRED' } }] }]));
+    w.eval('render(); openSpotModal(0,-1)');
+    const box = w.document.getElementById('spotAdmBox'), cat = w.document.getElementById('spotCat');
+    cat.value = 'food'; cat.dispatchEvent(new w.Event('change'));
+    assert.equal(box.open, false, '식당은 접는다');
+    cat.value = 'sight'; cat.dispatchEvent(new w.Event('change'));
+    assert.equal(box.open, true, '명소는 펼친다');
+    w.eval('openSpotModal(0,0)');
+    assert.equal(box.open, true, '이미 적어 둔 것이 있으면 식당이어도 펼친 채로');
+  } finally { w.close(); }
 });
