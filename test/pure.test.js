@@ -1129,6 +1129,40 @@ test('sampleTrip — 부를 때마다 새 객체 (공유하면 한쪽 편집이 
   assert.notEqual(b.days[0].spots[0].name, '바뀐 이름');
 });
 
+test('sampleTrip — 설명과 계산이 어긋나지 않는다: 일몰·야경·저녁 장소는 저녁에 닿고, 차는 렌터카 기간에만', () => {
+  // 2026-10-03 UX 검토: '저녁 추천' 광장이 09:30, '일몰 강추' 전망대가 12:56, '야경' 전망대가 14:22였고,
+  // 메모는 'Day 4 렌터카 픽업 / Day 12 반납'인데 14일 모두 자차라 그라나다 700m 구간이 15km로 계산됐다.
+  const t = L.normalizeTrip(L.sampleTrip());
+  const legMin = (a, b) => L.haversine(a, b) / 30 * 60;
+  t.days.forEach((d, di) => {
+    const tl = L.computeTimeline(d, { legMin, startAnchor: L.dayStartAnchor(t.days, di, []) });
+    d.spots.forEach((s, si) => {
+      if (!/일몰|노을|야경|저녁/.test(s.desc || '')) return;
+      assert.ok(s.at, `Day ${di + 1} ${s.name}: 설명이 저녁을 말하면 도착을 정해 둔다`);
+      assert.ok(tl[si].eta >= 17 * 60, `Day ${di + 1} ${s.name}: ${L.hm(tl[si].eta)} 도착은 저녁이 아니다`);
+      assert.ok(!tl[si].conflict, `Day ${di + 1} ${s.name}: 앞 일정 때문에 정한 시각을 못 맞춘다`);
+    });
+  });
+  const pickup = t.days.findIndex((d) => /렌터카 픽업/.test(d.note));
+  const dropoff = t.days.findIndex((d) => /렌터카 반납/.test(d.note));
+  assert.ok(pickup >= 0 && dropoff > pickup, '렌터카 기간이 메모에 있다');
+  t.days.forEach((d, di) => {
+    if (di < pickup || di > dropoff) assert.notEqual(d.mode, 'car', `Day ${di + 1}은 렌터카 기간 밖인데 자차다`);
+  });
+  // 장거리 이동일은 차로 간다 — 시내를 걷는 날만 걷는다
+  assert.equal(t.days[pickup].mode, 'car');
+  assert.equal(t.days[dropoff].mode, 'car');
+});
+
+test('parseTripPayload — 읽기 전용 링크가 싣는 만든 시각(sharedAt)은 받는 쪽 검증을 지나도 남는다', () => {
+  // 2026-10-03: 받는 사람의 띠가 "10월 3일 11:00에 만든 사본이에요"라고 말하려면 이 필드가 정규화에서 떨어지면 안 된다
+  const at = '2026-10-03T02:00:00.000Z';
+  const r = L.parseTripPayload(JSON.stringify(Object.assign(L.sampleTrip(), { sharedAt: at })));
+  assert.ok(r.ok);
+  assert.equal(r.value.sharedAt, at);
+  assert.equal(L.validateTripPayload(r.value).value.sharedAt, at, '한 번 더 지나도 그대로');
+});
+
 test('normalizeSpot — 일정 실행 상태(status)·꼭 가야 함(must)은 알려진 값만 통과', () => {
   const ok = L.normalizeTrip({ days:[{spots:[
     { name:'A', status:'COMPLETED', must:true },

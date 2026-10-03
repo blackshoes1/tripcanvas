@@ -1959,6 +1959,10 @@
     // 데모는 앱이 가장 잘하는 모습이어야 한다(2026-10-02 UX 검토). 전에는 숙소가 하나도 없어 다음 날 출발점이
     // 전날 마지막 명소로 이월됐고, 마지막 날은 그라나다에서 출발해 "11:00 비행기"인데 공항에 13:19에 닿았다.
     // 숙소는 실제 호텔을 지어내지 않는다 — '예시'라고 이름에 밝힌 도심 위치다. 사진·영업시간·예약 정보도 넣지 않는다.
+    // 샘플은 '도착 시간을 계산해요'라는 약속을 처음 판단하는 곳이다(2026-10-03 UX 검토) — 설명과 시각·수단이 어긋나면 안 된다.
+    //  · 일몰·노을·야경이라고 적은 곳은 그 시각에 닿도록 도착을 정해 둔다(`at`). 늦가을 안달루시아·톨레도의 해는 18시 조금 넘어 진다.
+    //  · 차는 메모대로 Day 4 아침 픽업 ~ Day 12 반납 사이에만 쓴다. 마드리드 시내는 대중교통, 세비야·그라나다 시내는 걷는다
+    //    (그라나다 알함브라 → 산 니콜라스는 직선 700m인데 자차 경로로는 15km를 돌았다).
     const TZ='Europe/Madrid';
     /** @param {string} area @param {number} lat @param {number} lng @param {string} city @param {number} nights */
     const lodging=(area,lat,lng,city,nights)=>({name:'숙소 (예시) · '+area,lat,lng,city,cat:'stay',stay:true,nights,
@@ -1966,51 +1970,51 @@
     return {
       id:SAMPLE_TRIP_ID, sample:true, name:'🇪🇸 스페인 신혼여행', start:'2026-10-25',
       days:[
-        {title:'마드리드 도착', drive:'', note:'07:00 착륙. 시차적응 겸 가벼운 일정. ⚽ 경기가 일요일이면 오늘 직관!', timeZone:TZ, startAt:'07:00', spots:[
+        {title:'마드리드 도착', drive:'', note:'07:00 착륙. 시차적응 겸 가벼운 일정. ⚽ 경기가 일요일이면 오늘 직관!', timeZone:TZ, startAt:'07:00', mode:'transit', spots:[
           {name:'바라하스 공항 (MAD)',lat:40.4720,lng:-3.5610,city:'마드리드',at:'07:00',stayMin:60,desc:'입국 심사·짐 찾기',opt:false},
           {name:'푸에르타 델 솔',lat:40.4169,lng:-3.7035,city:'마드리드',desc:'중심 광장. 곰 동상, 0km 표지',stayMin:45,opt:false},
-          {name:'마요르 광장',lat:40.4155,lng:-3.7074,city:'마드리드',desc:'회랑 카페에서 저녁 추천',stayMin:60,opt:false},
+          {name:'마요르 광장',lat:40.4155,lng:-3.7074,city:'마드리드',desc:'회랑으로 둘러싸인 광장. 카페 테라스에서 쉬어 가기 좋아요',stayMin:60,opt:false},
           {name:'메트로폴리타노 (AT마드리드)',lat:40.4362,lng:-3.5995,city:'마드리드',desc:'⚽ vs 데포르티보 (10/25 주말 확정, 킥오프 시간은 4주 전 발표 — 티켓: atleticodemadrid.com)',stayMin:150,opt:false},
           lodging('그란 비아 근처',40.4203,-3.7058,'마드리드',3)]},
-        {title:'마드리드', drive:'', note:'⚽ 경기가 월요일이면 저녁 직관', timeZone:TZ, spots:[
+        {title:'마드리드', drive:'', note:'⚽ 경기가 월요일이면 저녁 직관', timeZone:TZ, mode:'transit', spots:[
           {name:'왕궁 (Palacio Real)',lat:40.4179,lng:-3.7143,city:'마드리드',desc:'관람 2~3시간. 온라인 사전예약 권장 (patrimonionacional.es)',stayMin:150,opt:false},
           {name:'프라도 미술관',lat:40.4138,lng:-3.6921,city:'마드리드',desc:'월~토 10-20 / 일 10-19. 폐관 2시간 전 무료(줄 김)',stayMin:120,opt:false}]},
-        {title:'마드리드', drive:'', note:'그란비아 쇼핑, 못 본 곳 보충', timeZone:TZ, spots:[
+        {title:'마드리드', drive:'', note:'그란비아 쇼핑, 못 본 곳 보충', timeZone:TZ, mode:'transit', spots:[
           {name:'레티로 공원',lat:40.4153,lng:-3.6845,city:'마드리드',desc:'수정궁, 호수 보트. 1~2시간',stayMin:90,opt:true}]},
-        {title:'→ 톨레도 (1박)', drive:'🚗 마드리드 → 톨레도 · 73km · 약 50분', note:'오전 렌터카 픽업 후 출발', timeZone:TZ, spots:[
+        {title:'→ 톨레도 (1박)', drive:'🚗 마드리드 → 톨레도 · 73km · 약 50분', note:'오전 렌터카 픽업 후 출발', timeZone:TZ, mode:'car', spots:[
           {name:'알카사르',lat:39.8581,lng:-4.0210,city:'톨레도',desc:'군사박물관. 톨레도 전경',stayMin:60,opt:true},
           {name:'톨레도 대성당',lat:39.8570,lng:-4.0236,city:'톨레도',desc:'스페인 가톨릭 수석 대성당. 1.5시간',stayMin:90,opt:false},
-          {name:'미라도르 델 바예',lat:39.8534,lng:-4.0166,city:'톨레도',desc:'구시가 전체 뷰포인트. 일몰 강추 🌇 차로 5분',stayMin:30,opt:false},
+          {name:'미라도르 델 바예',lat:39.8534,lng:-4.0166,city:'톨레도',at:'18:00',desc:'구시가 전체 뷰포인트. 일몰 강추 🌇 차로 5분',stayMin:30,opt:false},
           lodging('구시가',39.8590,-4.0226,'톨레도',1)]},
-        {title:'→ 세비야 (2박)', drive:'🚗 톨레도 → (코르도바) → 세비야 · 460km · 약 4시간 20분', note:'중간에 코르도바 메스키타 2시간 경유 추천', timeZone:TZ, spots:[
+        {title:'→ 세비야 (2박)', drive:'🚗 톨레도 → (코르도바) → 세비야 · 460km · 약 4시간 20분', note:'중간에 코르도바 메스키타 2시간 경유 추천', timeZone:TZ, mode:'car', spots:[
           {name:'메스키타 (코르도바)',lat:37.8789,lng:-4.7794,city:'코르도바',desc:'이슬람+가톨릭 융합 건축. 2시간 경유',stayMin:120,opt:true},
           lodging('산타 크루스',37.3860,-5.9890,'세비야',2)]},
-        {title:'세비야', drive:'', note:'저녁 플라멩코 공연 추천', timeZone:TZ, spots:[
+        {title:'세비야', drive:'', note:'저녁 플라멩코 공연 추천', timeZone:TZ, mode:'walk', spots:[
           {name:'세비야 대성당 & 히랄다',lat:37.3861,lng:-5.9926,city:'세비야',desc:'세계 최대 고딕 성당. 온라인 예매 필수 (catedraldesevilla.es)',stayMin:90,opt:false},
           {name:'레알 알카사르',lat:37.3831,lng:-5.9903,city:'세비야',desc:'무데하르 궁전. 사전예약 권장. 2시간',stayMin:120,opt:true},
-          {name:'스페인 광장',lat:37.3772,lng:-5.9869,city:'세비야',desc:'대표 포토스팟. 노을+플라멩코 버스킹',stayMin:60,opt:false},
-          {name:'메트로폴 파라솔',lat:37.3931,lng:-5.9916,city:'세비야',desc:'목조 전망대. 야경 장소',stayMin:60,opt:true}]},
-        {title:'→ 론다 (1박)', drive:'🚗 세비야 → 론다 · 128km · 약 1시간 45분', note:'절벽 마을 1박 — 야경과 아침 안개 낀 다리가 압권', timeZone:TZ, spots:[
+          {name:'스페인 광장',lat:37.3772,lng:-5.9869,city:'세비야',at:'17:45',desc:'대표 포토스팟. 노을+플라멩코 버스킹',stayMin:60,opt:false},
+          {name:'메트로폴 파라솔',lat:37.3931,lng:-5.9916,city:'세비야',at:'19:30',desc:'목조 전망대. 야경 장소',stayMin:60,opt:true}]},
+        {title:'→ 론다 (1박)', drive:'🚗 세비야 → 론다 · 128km · 약 1시간 45분', note:'절벽 마을 1박 — 야경과 아침 안개 낀 다리가 압권', timeZone:TZ, mode:'car', spots:[
           {name:'푸엔테 누에보',lat:36.7406,lng:-5.1655,city:'론다',desc:'98m 협곡 위의 다리. 협곡 아래 전망 포인트 추천',stayMin:60,opt:false},
           {name:'론다 투우장 & 알라메다',lat:36.7423,lng:-5.1671,city:'론다',desc:'가장 오래된 투우장 + 절벽 산책로',stayMin:60,opt:true},
           lodging('구시가',36.7410,-5.1640,'론다',1)]},
-        {title:'→ 말라가 (2박)', drive:'🚗 론다 → 말라가 · 102km · 약 1시간 20분', note:'해안도로 경유 시 +1시간', timeZone:TZ, spots:[
+        {title:'→ 말라가 (2박)', drive:'🚗 론다 → 말라가 · 102km · 약 1시간 20분', note:'해안도로 경유 시 +1시간', timeZone:TZ, mode:'car', spots:[
           {name:'미하스 푸에블로',lat:36.5959,lng:-4.6373,city:'말라가',desc:'하얀 마을. 이동 중 경유',stayMin:60,opt:true},
           {name:'말라게타 해변 (코스타 델 솔)',lat:36.7194,lng:-4.4093,city:'말라가',desc:'11월 초 낮 20°C — 해변 산책+에스페토 🍤',stayMin:90,opt:false},
           lodging('구시가',36.7206,-4.4209,'말라가',2)]},
-        {title:'말라가 · 코스타 델 솔', drive:'', note:'', timeZone:TZ, spots:[
+        {title:'말라가 · 코스타 델 솔', drive:'', note:'', timeZone:TZ, mode:'car', spots:[
           {name:'알카사바 & 히브랄파로',lat:36.7211,lng:-4.4158,city:'말라가',desc:'항구+해안 전망. 오전 추천',stayMin:90,opt:false},
           {name:'네르하 & 프리힐리아나',lat:36.7444,lng:-3.8770,city:'말라가',desc:'"유럽의 발코니" + 하얀 마을. 차로 50분',stayMin:120,opt:true}]},
-        {title:'→ 그라나다 (2박)', drive:'🚗 말라가 → 그라나다 · 125km · 약 1시간 30분', note:'그라나다는 음료 시키면 타파스 무료!', timeZone:TZ, spots:[
+        {title:'→ 그라나다 (2박)', drive:'🚗 말라가 → 그라나다 · 125km · 약 1시간 30분', note:'그라나다는 음료 시키면 타파스 무료!', timeZone:TZ, mode:'car', spots:[
           {name:'그라나다 대성당',lat:37.1763,lng:-3.5986,city:'그라나다',desc:'이사벨 여왕 묘. 오후 시내 산책',stayMin:60,opt:true},
           lodging('대성당 근처',37.1750,-3.5980,'그라나다',2)]},
-        {title:'그라나다 — 알함브라', drive:'', note:'예약 시간 엄수, 여권 지참', timeZone:TZ, spots:[
+        {title:'그라나다 — 알함브라', drive:'', note:'예약 시간 엄수, 여권 지참', timeZone:TZ, mode:'walk', spots:[
           {name:'알함브라 궁전',lat:37.1761,lng:-3.5881,city:'그라나다',desc:'🚨 사전예매 필수 (tickets.alhambra-patronato.es). 나스르 궁전 입장시간 지정제. 반나절',stayMin:240,opt:false},
-          {name:'산 니콜라스 전망대',lat:37.1810,lng:-3.5927,city:'그라나다',desc:'알함브라+설산 뷰. 일몰 강추 🌇',stayMin:60,opt:false}]},
-        {title:'→ 마드리드 (2박)', drive:'🚗 그라나다 → 마드리드 · 420km · 약 4시간 15분', note:'오후 도착, 렌터카 반납', timeZone:TZ, spots:[
+          {name:'산 니콜라스 전망대',lat:37.1810,lng:-3.5927,city:'그라나다',at:'17:30',desc:'알함브라+설산 뷰. 일몰 강추 🌇',stayMin:60,opt:false}]},
+        {title:'→ 마드리드 (2박)', drive:'🚗 그라나다 → 마드리드 · 420km · 약 4시간 15분', note:'오후 도착, 렌터카 반납', timeZone:TZ, mode:'car', spots:[
           lodging('그란 비아 근처',40.4203,-3.7058,'마드리드',2)]},
-        {title:'마드리드 자유일', drive:'', note:'산 미겔 시장, 레이나 소피아(게르니카), 쇼핑', timeZone:TZ, spots:[]},
-        {title:'출국', drive:'', note:'11:00 비행기 — 08:30 공항 도착 권장', timeZone:TZ, startAt:'07:45', spots:[
+        {title:'마드리드 자유일', drive:'', note:'산 미겔 시장, 레이나 소피아(게르니카), 쇼핑', timeZone:TZ, mode:'transit', spots:[]},
+        {title:'출국', drive:'', note:'11:00 비행기 — 08:30 공항 도착 권장', timeZone:TZ, startAt:'07:45', mode:'transit', spots:[
           {name:'바라하스 공항 (MAD)',lat:40.4720,lng:-3.5610,city:'마드리드',at:'08:30',desc:'11:00 출국 — 2시간 30분 전 도착',opt:false}]}
       ]
     };

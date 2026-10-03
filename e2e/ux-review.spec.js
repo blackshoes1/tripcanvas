@@ -3,8 +3,15 @@ const {prepare,createTrip,clickMore}=require('./helpers');
 
 test('온보딩은 배경 조작을 막고 포커스를 순환한 뒤 복귀한다',async({context,page})=>{
   await prepare(context,{onboarded:false}); await page.goto('/');
-  await expect(page.locator('#onboardNew')).toBeFocused();
+  // 제목에서 시작한다 — Tab은 첫 버튼, Shift+Tab은 마지막으로 (가려진 화면으로 새지 않는다)
+  await expect(page.locator('#onboardingTitle')).toBeFocused();
   await expect(page.locator('header')).toHaveJSProperty('inert',true);
+  await page.keyboard.press('Tab');
+  await expect(page.locator('#onboardNew')).toBeFocused();
+  await page.locator('#onboardingTitle').focus();
+  await page.keyboard.press('Shift+Tab');
+  await expect(page.locator('#onboardLogin')).toBeFocused();
+  await page.locator('#onboardNew').focus();
   await page.keyboard.press('Shift+Tab');
   await expect(page.locator('#onboardLogin')).toBeFocused();
   await page.keyboard.press('Tab');

@@ -3,6 +3,9 @@ const LS_KEY = 'tripcanvas_v1';
 const ONBOARD_KEY='tripcanvas_onboarded_v1';
 const THEME_KEY='tripcanvas_theme_v1';
 let firstVisit=false;
+// 주소가 할 일을 들고 왔으면(공유·초대·재설정·가입 확인) 처음 화면으로 덮지 않는다 — 받은 사람은 대개 처음 오는 사람이라
+// 처음 화면이 공유받은 여행·초대 창을 가렸고, 그 주 버튼을 누르면 초대 위에 새 여행 창이 겹쳤다(2026-10-03 UX 검토).
+let arrivedByLink=false;
 try{ const raw=localStorage.getItem(LS_KEY),saved=raw&&JSON.parse(raw); firstVisit=!localStorage.getItem(ONBOARD_KEY)&&(!saved||!Array.isArray(saved.trips)||saved.trips.every(isSampleTrip)); }catch(_){ firstVisit=true; }
 const OPS_KEY = 'tripcanvas_ops_v1';
 // 오류 본문·URL·여행 내용은 기록하지 않고, 운영 진단에 필요한 범주와 상태 코드만 세션에 보관한다.
@@ -104,8 +107,12 @@ let pendingResetToken='';
 function myRole(id){ return TC_COLLAB.roleOf(tripRoles, id||(store&&store.activeId), !!user); }
 // 읽기전용 보기(#v=)와 보기 권한(VIEWER)을 한 곳에서 판단한다 — 편집 진입점은 전부 이걸 본다
 function readOnly(){ return !!viewMode || !TC_COLLAB.canEdit(myRole()); }
+// 읽기 전용 링크(#v=)는 만든 순간의 사본이다 — 거절할 때도 그 사실과 갈 길을 같이 말한다.
+// 예전 문구('"내 여행으로 저장" 후 이용하세요')는 같이 고치려는 사람을 따로 노는 사본으로 보냈다(2026-10-03 UX 검토).
+const VIEW_EDIT_TEXT='읽기 전용 사본이에요 — 고치려면 "내 여행으로 저장"으로 내 사본을 만들고, 같이 고치려면 이 여행 주인에게 초대를 요청하세요';
+const VIEW_COLLAB_TEXT='읽기 전용 사본이라 같이 짤 수 없어요 — 편집하려면 이 여행 주인에게 초대를 요청하세요';
 function guardEdit(){
-  if(viewMode){ toast('읽기전용 보기예요 — "내 여행으로 저장" 후 편집하세요','#4f4740'); return false; }
+  if(viewMode){ toast(VIEW_EDIT_TEXT,'#4f4740'); return false; }
   // 서버에 묻기 전의 로컬 판정도 같은 규칙을 쓴다 — 같은 상황에 두 문장을 두지 않는다.
   if(!TC_COLLAB.canEdit(myRole())){ toast(TC_COLLAB.forbiddenText(null, myRole()),'#4f4740'); return false; }
   return true;
@@ -462,7 +469,8 @@ function renderPlaceDetails(data,box,seq){
  */
 function placeOwnSection(s,at){
   const sec=document.createElement('section'); sec.className='placeOwn';
-  placeText(sec,'h3',`내 일정 · Day ${at.di+1}${dateOf(at.di)?` · ${dateOf(at.di)}`:''}`);
+  // 남의 여행(받은 사본·보기 권한)을 '내 일정'이라 부르지 않는다(2026-10-03 UX 검토)
+  placeText(sec,'h3',`${readOnly()?'이 여행의 일정':'내 일정'} · Day ${at.di+1}${dateOf(at.di)?` · ${dateOf(at.di)}`:''}`);
   const facts=[];
   if(s.at) facts.push(`도착 고정 ${s.at}`);
   if(s.bookAt) facts.push(`예약·입장 ${s.bookAt}`);
@@ -1846,6 +1854,9 @@ function renderSidebar(){
   // 이전 Sortable 인스턴스 정리 (누수 방지)
   sortables.forEach(s=>{try{s.destroy();}catch(e){}}); sortables=[];
   const colors=cityColors();
+  // 고칠 수 없는 여행(받은 사본·보기 권한)의 ⋮에는 할 수 있는 것만 둔다 — 예전에는 삭제·복사·위로가 그대로 있어
+  // 눌러도 아무 반응이 없었고, 날짜 줄은 버튼처럼 읽혔다(2026-10-03 UX 검토)
+  const ro=readOnly();
   const dayList=document.createElement('div'); dayList.id='dayList';
   trip().days.forEach((day,di)=>{
     const headC = colorByMode()==='day' ? dayColor(di) : (day.spots.length?(colors[day.spots[0].city]||'#556'):'#556');
@@ -1982,12 +1993,12 @@ function renderSidebar(){
           <span class="spotTime eta${tl[si].fixed?' fixed':''}" title="${escAttr(etaTip)}" aria-label="${escAttr(tl[si].fixed?`도착 ${hm(etas[si])} (정한 시각)`:`도착 예상 ${hm(etas[si])}`)}">${tl[si].fixed?ic('fixed'):''}${hm(etas[si])}</span>
           <button type="button" class="spotIdentity nm" onclick="focusSpot(${di},${si})" title="${escAttr(s.name)}" aria-label="${escAttr(cat?`${cat.name} ${s.name}`:s.name)} 지도에서 보기"><span class="spotOrder">${si+1}.</span>${cat?`<span class="spotCat" title="${escAttr(cat.name)}" aria-hidden="true">${cat.icon}</span>`:''}<span class="spotName">${esc(s.name)}</span></button>
           <details class="actionMenu" onclick="event.stopPropagation()"><summary aria-label="${escAttr(s.name)} 작업 메뉴">⋮</summary><div class="actionMenuPanel">
-          <button class="iconb mvup" onclick="moveSpot(${di},${si},-1)" title="위로">↑ <span>위로</span></button>
-          <button class="iconb mvdown" onclick="moveSpot(${di},${si},1)" title="아래로">↓ <span>아래로</span></button>
+          ${ro?'':`<button class="iconb mvup" onclick="moveSpot(${di},${si},-1)" title="위로">↑ <span>위로</span></button>
+          <button class="iconb mvdown" onclick="moveSpot(${di},${si},1)" title="아래로">↓ <span>아래로</span></button>`}
           <button class="iconb" onclick="openSavedPlace(${di},${si})" title="장소 정보">ⓘ <span>장소 정보</span></button>
-          <button class="iconb" onclick="openSpotModal(${di},${si})" title="편집">✎ <span>편집</span></button>
+          ${ro?'':`<button class="iconb" onclick="openSpotModal(${di},${si})" title="편집">✎ <span>편집</span></button>
           <button class="iconb" onclick="copySpot(${di},${si})" title="복사">⧉ <span>복사</span></button>
-          <button class="iconb danger" onclick="deleteSpot(${di},${si})" title="삭제">⌫ <span>삭제</span></button>
+          <button class="iconb danger" onclick="deleteSpot(${di},${si})" title="삭제">⌫ <span>삭제</span></button>`}
           </div></details>
         </div>
         ${metaHtml}
@@ -1995,8 +2006,8 @@ function renderSidebar(){
     });
     card.innerHTML=`<div class="dayHead">
         <div class="dayHeadMain"><div class="dayTitle" title="Day ${di+1}${day.title?` · ${escAttr(day.title)}`:''}"><span class="dragHandle" title="드래그로 일자 순서 변경">⠿</span> Day ${di+1}${day.title?` · ${esc(day.title)}`:''}</div>
-        <details class="actionMenu" onclick="event.stopPropagation()"><summary aria-label="Day ${di+1} 작업 메뉴">⋮</summary><div class="actionMenuPanel"><button class="iconb" onclick="openDayModal(${di})" title="일자 편집">✎ <span>편집</span></button><button class="iconb" onclick="copyDay(${di})" title="일자 복사">⧉ <span>복사</span></button><button class="iconb danger" onclick="deleteDay(${di})" title="일자 삭제">⌫ <span>삭제</span></button></div></details></div>
-        <div class="dayHeadMeta"><span class="date" onclick="event.stopPropagation();openDayModal(${di})" title="${timeZone?'클릭해서 날짜·시간대 지정/수정':'클릭해서 날짜·시간대 지정 — 시간대를 넣으면 이 날 대중교통 시간이 정확해져요'}">${dateOf(di)||'📅 날짜 지정'}${(()=>{
+        ${ro?'':`<details class="actionMenu" onclick="event.stopPropagation()"><summary aria-label="Day ${di+1} 작업 메뉴">⋮</summary><div class="actionMenuPanel"><button class="iconb" onclick="openDayModal(${di})" title="일자 편집">✎ <span>편집</span></button><button class="iconb" onclick="copyDay(${di})" title="일자 복사">⧉ <span>복사</span></button><button class="iconb danger" onclick="deleteDay(${di})" title="일자 삭제">⌫ <span>삭제</span></button></div></details>`}</div>
+        <div class="dayHeadMeta"><span class="date"${ro?'':` onclick="event.stopPropagation();openDayModal(${di})" title="${timeZone?'클릭해서 날짜·시간대 지정/수정':'클릭해서 날짜·시간대 지정 — 시간대를 넣으면 이 날 대중교통 시간이 정확해져요'}"`}>${dateOf(di)||(ro?'날짜 미정':'📅 날짜 지정')}${(()=>{
           // 시간대는 바뀌는 날에만 적는다 — 14일 내내 같은 'Europe/Madrid'·'시간대 미설정'이 반복됐다(2026-10-02 UX 검토).
           // 정하지 않은 상태도 계산(대중교통 시각)에 영향을 주므로 없애지 않고, 첫날(또는 정해진 날 다음)에 한 번 말한다.
           const prevTz=di>0? dayTimeZone(trip().days[di-1]) : null;
@@ -2738,6 +2749,7 @@ function createNewTrip(draft){
   const days=[]; for(let i=0;i<n;i++) days.push(mode? {title:'',drive:'',note:'',mode,spots:[]} : {title:'',drive:'',note:'',spots:[]});
   const t={id:uid(),name:(draft&&draft.name)||NT_FALLBACK_NAME,
            start:(draft&&draft.start)||todayISO(),days};
+  leaveViewMode();   // 받은 사본을 보던 중이면 보기를 끝낸다 — 안 그러면 저장되지 않는다(leaveViewMode 주석)
   commit(()=>{ store.trips.push(t); store.activeId=t.id; activeDay=0; }, {fit:fitEntry});
   return t;
 }
@@ -3015,13 +3027,15 @@ function renderTripList(){
   const box=document.getElementById('tripListBody');
   box.innerHTML=sortTripsByCountdown(store.trips,todayISO()).map(t=>{
     const days=(t.days||[]).length, spots=(t.days||[]).reduce((a,d)=>a+((d.spots||[]).length),0);
-    const act=t.id===store.activeId;
+    // 읽기 전용 보기 중에는 보고 있는 것이 이 목록의 어느 여행도 아니다 — ▶를 붙이지 않는다.
+    // 삭제도 두지 않는다: 보기 중에는 저장소에 쓰지 않아(save) 지운 것처럼 보이고 남는다.
+    const act=!viewMode&&t.id===store.activeId;
     const shared=!!user&&!!tripRoles[t.id]&&!tripRoles[t.id].owner;
     return `<div class="tripRow${act?' active':''}">
       <img class="tripCover" data-cover-trip="${escAttr(t.id)}" alt="${escAttr(t.name||'여행')} 표지" hidden>
       <span class="tn" onclick="switchTrip('${escAttr(t.id)}')" title="이 여행으로 전환">${act?'▶ ':''}${esc(t.name||'(이름 없음)')} ${isSampleTrip(t)?'<span class="sampleTag">샘플</span> ':''}${roleBadgeHtml(t.id)}
         <span class="opt">${t.start?esc(mdLabel(t.start))+' · ':''}${days}일 · ${spots}곳</span></span>
-      <button class="iconb" onclick="event.stopPropagation();removeTrip('${escAttr(t.id)}')" title="${shared?'이 여행에서 나가기':'이 여행 삭제'}" style="color:var(--meta-danger)">${shared?ic('door'):ic('trash')}</button>
+      ${viewMode?'':`<button class="iconb" onclick="event.stopPropagation();removeTrip('${escAttr(t.id)}')" title="${shared?'이 여행에서 나가기':'이 여행 삭제'}" style="color:var(--meta-danger)">${shared?ic('door'):ic('trash')}</button>`}
     </div>`;
   }).join('');
   // 사진은 여행 문서와 분리된 인증 API에서만 읽는다. 로그아웃·목록 교체 후의 응답은 버린다.
@@ -3037,7 +3051,9 @@ function renderTripList(){
   }
 }
 window.switchTrip=(id)=>{
-  if(id===store.activeId){ document.getElementById('tripListBg').classList.remove('show'); return; }
+  // 읽기 전용 보기에서 고른 것은 '내 여행으로 돌아가기'다 — 지금 활성인 여행을 골라도 보기를 닫고 그리로 간다
+  const leaving=leaveViewMode();
+  if(id===store.activeId&&!leaving){ document.getElementById('tripListBg').classList.remove('show'); return; }
   clearPresence();   // 표시는 일자 번호라 여행이 바뀌면 뜻이 달라진다
   commit(()=>{ store.activeId=id; activeDay=0; }, {fit:fitEntry});
   document.getElementById('tripListBg').classList.remove('show');
@@ -3050,7 +3066,12 @@ window.removeTrip=(id)=>{ if(deleteTrip(id)) renderTripList(); };   // 목록은
  * 현재 여행 이름까지 말하므로 메뉴 쪽이 더할 것이 없었다.
  */
 function openTripList(){
-  if(viewMode){ toast('읽기전용 보기예요 — "내 여행으로 저장" 후 이용하세요','#4f4740'); return; }
+  // 읽기 전용 보기에서는 이 목록이 **내 여행으로 돌아가는 출구**다 — 예전에는 거절 토스트만 떠서 주소를 손으로
+  // 고쳐야 나갈 수 있었다(2026-10-03 UX 검토). 고르면 보기를 닫는다(switchTrip). 닫기만 하면 보기는 그대로다.
+  const hint=document.getElementById('tripListHint');
+  if(hint) hint.textContent=viewMode
+    ? '받은 사본을 보는 중이에요. 여기서 내 여행을 고르면 보기를 닫고 그 여행으로 돌아가요.'
+    : '이름을 누르면 그 여행으로 전환해요. 지금 보고 있지 않은 여행도 바로 삭제할 수 있어요.';
   renderTripList(); document.getElementById('tripListBg').classList.add('show');
 }
 document.getElementById('tripListClose').onclick=()=>document.getElementById('tripListBg').classList.remove('show');
@@ -4023,6 +4044,7 @@ document.getElementById('importFile').onchange=e=>{
       const result=parseTripPayload(typeof rd.result==='string'?rd.result:'');
       if(!result.ok) throw new Error(result.error);
       const t=result.value;
+      leaveViewMode();
       t.id=uid(); commit(()=>{ store.trips.push(t); store.activeId=t.id; activeDay=0; }, {fit:fitEntry}); toast('가져왔어요');
     }catch(err){ reportOperationalError('import.invalid',err); toast('안전하게 읽을 수 없는 여행 파일이에요','#b4342a'); }
     finally{ _importing=false; }
@@ -4087,17 +4109,58 @@ document.getElementById('imgBtn').onclick=async()=>{
   finally{ card.remove(); }
 };
 document.getElementById('shareBtn').onclick=()=>{
-  const data=LZString.compressToEncodedURIComponent(JSON.stringify(trip()));
+  // 만든 시각을 함께 싣는다 — 받는 사람이 '언제 모습인지' 알아야 옛 일정을 최신으로 믿지 않는다(2026-10-03 UX 검토).
+  // 여행의 모르는 필드는 normalizeTrip이 보존하므로 받는 쪽 검증(parseTripPayload)을 지나도 남는다.
+  // 받은 사본을 다시 공유하면 그 사본의 시각을 그대로 둔다 — 지금 시각을 찍으면 옛 일정이 새것처럼 보인다.
+  const payload=viewMode? viewMode : Object.assign({},trip(),{sharedAt:new Date().toISOString()});
+  const data=LZString.compressToEncodedURIComponent(JSON.stringify(payload));
   const url=location.origin+location.pathname+'#v='+data;   // 읽기전용 보기 링크
   if(url.length>8000){ toast('여행이 너무 커서 링크로 공유할 수 없어요. "내보내기"로 파일을 전달하세요','#b4342a'); return; }
   // ⚠️ 이 링크는 LZString 스냅샷이라 **만든 순간의 사본**이다 — 이후 수정은 반영되지 않는다.
   // 두 공유(읽기 전용 링크 / 멤버·편집 초대)의 차이가 바로 이것이라, 복사한 자리에서 말하고
   // 같이 고치려는 사람에게는 그쪽 길을 바로 열어 준다(2026-09-21).
-  const copied=()=>toast('지금 이 순간의 사본으로 링크를 복사했어요 — 이후 수정은 반영되지 않아요',
-                         '#3e7a4c', {label:'같이 고치려면', fn:()=>document.getElementById('membersMenuBtn').click()});
+  // 받은 사본에서는 그 길이 없다(초대는 주인만 만든다) — 누르면 거절로 끝나는 버튼 대신 갈 곳을 말한다(2026-10-03).
+  const copied=viewMode
+    ? ()=>toast('받은 사본을 그대로 링크로 복사했어요 — 편집하려면 이 여행 주인에게 초대를 요청하세요','#3e7a4c')
+    : ()=>toast('지금 이 순간의 사본으로 링크를 복사했어요 — 이후 수정은 반영되지 않아요',
+                '#3e7a4c', {label:'같이 고치려면', fn:()=>document.getElementById('membersMenuBtn').click()});
   navigator.clipboard.writeText(url).then(copied)
     .catch(()=>prompt('이 링크를 복사하세요',url));
 };
+/**
+ * 읽기 전용 링크가 언제 만든 사본인지 — "10월 3일 11:00". 받는 기기의 시각으로 적는다(만든 사람의 시간대는 링크에 없다).
+ * 모르거나(시각이 없던 예전 링크) 믿을 수 없으면(형식이 틀렸거나 미래) 빈 문자열이다 — 시각을 지어내지 않는다.
+ * @param {unknown} iso 공유 데이터의 sharedAt @param {Date=} now @returns {string}
+ */
+function shareMadeAtLabel(iso,now){
+  if(typeof iso!=='string'||!/^\d{4}-\d{2}-\d{2}T/.test(iso)) return '';
+  const at=new Date(iso), ref=now||new Date();
+  if(!isFinite(at.getTime())||at.getTime()-ref.getTime()>10*60*1000) return '';   // 기기 시계가 조금 어긋난 것까지만 봐준다
+  const pad=n=>String(n).padStart(2,'0');
+  return `${at.getFullYear()!==ref.getFullYear()?at.getFullYear()+'년 ':''}${at.getMonth()+1}월 ${at.getDate()}일 ${pad(at.getHours())}:${pad(at.getMinutes())}`;
+}
+// 받는 쪽 띠는 한 줄이다 — 언제 모습인지, 이후는 안 보인다는 것, 같이 고치는 길. 예전에는 띠와 토스트·저장 상태가
+// 같은 말('읽기전용으로 보는 중')을 세 번 했고, 사본이라는 것은 어디에도 없었다(2026-10-03 UX 검토).
+function renderRoBar(){
+  const at=viewMode? shareMadeAtLabel(viewMode.sharedAt) : '';
+  document.getElementById('roText').textContent=
+    `${at?at+'에 만든':'링크를 만든 순간의'} 사본이에요 — 이후 바뀐 내용은 안 보여요 · 같이 고치려면 초대를 받으세요`;
+}
+/**
+ * 읽기 전용 보기(#v=)를 끝낸다. 보기는 저장소에 아무것도 남기지 않으므로 할 일은 표시를 걷는 것이다.
+ * ⚠️ **저장소를 바꾸는 진입점은 먼저 이걸 부른다**(새 여행·붙여넣은 새 여행·가져오기·샘플 열기·여행 목록에서 고르기).
+ *    보기 중에는 save()가 아무것도 쓰지 않아서, 예전에는 '만들었어요'라고 말해 놓고 저장되지 않았고 화면도 그대로였다 —
+ *    메모리에만 남은 그 여행이 나중에 '내 여행으로 저장'과 함께 저장돼 유령처럼 나타났다(2026-10-03 UX 검토).
+ * @returns {boolean} 보기를 끝냈으면 true (보기 중이 아니었으면 false)
+ */
+function leaveViewMode(){
+  if(!viewMode) return false;
+  viewMode=null; document.body.classList.remove('readonly');
+  document.getElementById('roBar').style.display='none';
+  if(location.hash.startsWith('#v=')) history.replaceState(null,'',location.pathname);
+  updateUndoBtn(); updateSaveState();
+  return true;
+}
 function decodeSharedTrip(encoded){
   if(typeof encoded!=='string'||encoded.length>TC_LIMITS.shareChars) return {ok:false,error:'공유 링크가 허용 길이를 초과했어요'};
   try{
@@ -4106,16 +4169,37 @@ function decodeSharedTrip(encoded){
     return parseTripPayload(text);
   }catch(_){ return {ok:false,error:'공유 링크를 해석할 수 없어요'}; }
 }
-// 읽기전용 보기에서 내 저장소로 복사
+// 읽기전용 보기에서 내 저장소로 복사 — 원본과 끊긴 **사본**이라는 것을 이름과 말로 남긴다(2026-10-03 UX 검토).
+// 같은 이름으로 들어가면 일행이 '편집하려고' 저장한 사본이 원본처럼 보이고, 거기 고친 것은 아무에게도 안 간다.
 document.getElementById('roSave').onclick=()=>{
   if(!viewMode) return;
   const t=JSON.parse(JSON.stringify(viewMode));
-  t.id=uid(); t.name=t.name||'공유된 여행';
-  viewMode=null; document.body.classList.remove('readonly');
-  document.getElementById('roBar').style.display='none';
-  history.replaceState(null,'',location.pathname);
-  commit(()=>{ store.trips.push(t); store.activeId=t.id; activeDay=0; }, {fit:fitEntry}); toast('내 여행으로 저장했어요');
+  const name=t.name||'공유된 여행';
+  t.id=uid(); t.name=/\(사본\)$/.test(name)? name : name+' (사본)';
+  delete t.sharedAt;   // 링크가 언제 만들어졌는지는 링크의 정보지 내 여행의 정보가 아니다
+  leaveViewMode();
+  commit(()=>{ store.trips.push(t); store.activeId=t.id; activeDay=0; }, {fit:fitEntry});
+  toast('내 사본으로 저장했어요 — 원본과는 따로 움직여요. 같이 고치려면 주인에게 초대를 요청하세요','#3e7a4c');
 };
+// 보기만 닫고 내 여행으로 — 예전에는 빠져나가는 길이 '내 여행으로 저장'(복사)뿐이었다(2026-10-03 UX 검토)
+document.getElementById('roClose').onclick=()=>{
+  if(!leaveViewMode()) return;
+  activeDay=0; render(); fitEntry();
+  toast('내 여행으로 돌아왔어요 — 받은 링크를 다시 열면 또 볼 수 있어요','#4f4740');
+};
+/**
+ * 초대 해시에서 토큰을 너그럽게 꺼낸다. 메신저·메일이 링크 끝에 붙이는 꼬리(문장의 마침표·괄호·따옴표,
+ * 추적용 '&utm=…') 때문에 멀쩡한 초대가 아무 반응 없이 무시됐다(2026-10-03 UX 검토).
+ * 판정은 collab.js `parseJoinHash`(iOS와 같은 규칙)가 하고, 여기서는 꼬리만 떼어 한 번 더 묻는다.
+ * @param {string} hash @returns {string|null} 못 읽으면 null — 그때는 서버에 아무것도 보내지 않는다
+ */
+function joinTokenFromHash(hash){
+  const direct=TC_COLLAB.parseJoinHash(hash); if(direct) return direct;
+  let body=String(hash||'').replace(/^#join=/,'').split(/[&?]/)[0];
+  try{ body=decodeURIComponent(body); }catch(_){ return null; }
+  body=body.replace(/[\s.,;:!?)\]}>'"`’”»。、）」』]+$/u,'');
+  return TC_COLLAB.parseJoinHash('#join='+encodeURIComponent(body));
+}
 // 공유 링크로 열었을 때 — #v= 읽기전용 보기 / #t= 구버전(즉시 저장) 호환
 (function(){
   load(); loadCfg(); loadFx(); loadSuggest();
@@ -4125,19 +4209,25 @@ document.getElementById('roSave').onclick=()=>{
       const result=decodeSharedTrip(h.slice(3)), t=result.ok&&result.value;
       if(t){
         t.name=(t.name||'공유된 여행');
-        viewMode=t;
+        viewMode=t; arrivedByLink=true;
         document.body.classList.add('readonly');
         document.getElementById('roBar').style.display='flex';
-        setTimeout(()=>toast('읽기전용으로 보는 중이에요'),400);
+        renderRoBar();   // 띠 한 줄이 다 말한다 — '읽기전용으로 보는 중' 토스트는 띠와 같은 말이라 뺐다(2026-10-03)
       }else reportOperationalError('share.invalid',new Error('validation'));
     }catch(e){ reportOperationalError('share.decode',e); }
-  }else if(TC_COLLAB.parseJoinHash(h)){
+  }else if(h.startsWith('#join=')){
     // 초대 링크 — 여행 본문은 없다. 미리보기 → (로그인) → 수락 → 그때 RLS 아래에서 내려온다.
-    pendingJoinToken=TC_COLLAB.parseJoinHash(h);
-    try{ localStorage.setItem(JOIN_KEY,pendingJoinToken); }catch(_){}
-    setTimeout(()=>startJoin(pendingJoinToken),0);   // API 주소(TC_API.configure)는 스크립트 아래쪽에서 정해진다 — 한 틱 뒤에
+    // 끝에 붙은 꼬리는 떼고 읽고, 그래도 못 읽으면 조용히 무시하지 않고 같은 창으로 이유를 말한다(2026-10-03 UX 검토).
+    arrivedByLink=true;
+    const token=joinTokenFromHash(h);
+    if(token){
+      pendingJoinToken=token;
+      try{ localStorage.setItem(JOIN_KEY,pendingJoinToken); }catch(_){}
+      setTimeout(()=>startJoin(pendingJoinToken),0);   // API 주소(TC_API.configure)는 스크립트 아래쪽에서 정해진다 — 한 틱 뒤에
+    }else setTimeout(showMalformedJoin,0);
   }else if(h.startsWith('#reset=')){
     // 재설정 메일의 링크 — 토큰만 들고 온다. 새 비밀번호는 여기서 받아 서버가 검증한다.
+    arrivedByLink=true;
     pendingResetToken=decodeURIComponent(h.slice(7));
     history.replaceState(null,'',location.pathname);   // 토큰을 주소창·기록에 남기지 않는다
     setTimeout(openResetModal,0);
@@ -4149,6 +4239,7 @@ document.getElementById('roSave').onclick=()=>{
     //    (2026-09-06에 실제로 그랬다: 링크는 1시간이면 만료된다).
     const verifyError=new URLSearchParams(location.search).get('error');
     history.replaceState(null,'',location.pathname);
+    arrivedByLink=true;
     if(verifyError){
       setTimeout(()=>openVerifyFailed(verifyError),400);
     }else{
@@ -4158,7 +4249,7 @@ document.getElementById('roSave').onclick=()=>{
     try{
       const result=decodeSharedTrip(h.slice(3)), t=result.ok&&result.value;
       if(t){
-        t.id=uid(); t.name=(t.name||'공유된 여행');
+        t.id=uid(); t.name=(t.name||'공유된 여행'); arrivedByLink=true;
         store.trips.push(t); store.activeId=t.id; save();
         history.replaceState(null,'',location.pathname);
         setTimeout(()=>toast('공유된 여행을 불러왔어요'),400);
@@ -4361,7 +4452,10 @@ function openPaste(){
   const empty=!!cur&&!readOnly()&&cur.days.every(d=>!d.spots.length);
   const over=sel.querySelector('option[value="overwrite"]');
   if(over) over.textContent=empty?'이 여행 채우기 (지금 비어 있어요)':'현재 여행 전체 덮어쓰기';
-  sel.value=empty?'overwrite':(sel.value==='overwrite'?'new':sel.value||'new');
+  // 고칠 수 없는 여행(받은 사본·보기 권한)에는 이어붙이기·덮어쓰기를 고를 수 없게 둔다 — 고르게 해 놓고 저장에서 거절하지 않는다
+  const ro=readOnly();
+  sel.querySelectorAll('option[value="append"],option[value="overwrite"]').forEach(o=>{ o.disabled=ro; });
+  sel.value=ro?'new':empty?'overwrite':(sel.value==='overwrite'?'new':sel.value||'new');
   syncPasteMode();
   document.getElementById('pasteModalBg').classList.add('show');
 }
@@ -4640,6 +4734,9 @@ function pvCommit(){
   // 기존 여행과 결합한 최종 문서도 다시 검증해 append가 전체 한도를 넘는 경우 부분 적용을 막는다.
   const finalResult=validateTripPayload(nextTrip);
   if(!finalResult.ok){ reportOperationalError('paste.combined.invalid',new Error('validation')); toast(finalResult.error,'#b4342a'); return; }
+  // 받은 사본을 보던 중이면(여기까지 오는 것은 '새 여행'뿐이다) 보기를 끝내야 저장된다 — 예전에는 '초안 생성 완료'라고
+  // 말해 놓고 아무것도 바뀌지 않았고, 그 여행은 나중에 '내 여행으로 저장'과 함께 나타났다(leaveViewMode 주석).
+  leaveViewMode();
   const finalTrip=finalResult.value, existing=store.trips.findIndex(t=>t.id===finalTrip.id);
   if(existing>=0) store.trips[existing]=finalTrip; else store.trips.push(finalTrip);
   store.activeId=finalTrip.id;
@@ -5234,6 +5331,8 @@ function updateAuthUI(){
   if(user){ b.textContent='로그아웃 · '+(user.email||'').split('@')[0]; b.title=`${user.email||''}로 로그인했어요`; b.classList.remove('primary'); }
   else { b.textContent='로그인'; b.title='로그인하면 여행이 내 계정에 저장돼 어느 기기서든 열려요'; b.classList.add('primary'); }
   b.setAttribute('aria-label',b.textContent);
+  // ☰ '같이 짜기' 부제의 '로그인 필요'는 로그아웃일 때만 참이다
+  document.querySelectorAll('#hdrMenu .needsLogin').forEach(el=>{ el.hidden=!!user; });
   updateCollabUI();
   updateSaveState();
 }
@@ -5836,8 +5935,19 @@ document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==
 
 // ── 멤버 패널 ──
 let membersTripId=null;
+/**
+ * 샘플은 어느 계정에도 올라가지 않아(isSampleTrip) 초대할 여행이 서버에 없다 — 로그인하라고 해 놓고
+ * '이어서 열어 드릴게요'라고 약속하면 지킬 수 없다(2026-10-03 UX 검토). 로그인을 묻기 전에 말하고 갈 길을 준다.
+ * @returns {boolean} 샘플이라 멈췄으면 true
+ */
+function refuseSampleCollab(){
+  if(!isSampleTrip(trip())) return false;
+  toast('샘플은 같이 짤 수 없어요 — 내 여행을 만들어 초대해 보세요','#4f4740',{label:'내 여행 만들기',fn:openNewTrip});
+  return true;
+}
 function openMembers(){
-  if(viewMode){ toast('읽기전용 보기예요 — "내 여행으로 저장" 후 이용하세요','#4f4740'); return; }
+  if(viewMode){ toast(VIEW_COLLAB_TEXT,'#4f4740'); return; }
+  if(refuseSampleCollab()) return;
   if(!cloudReady()){ requireLogin('같이 짜기는 로그인이 필요해요 — 로그인하면 일행을 초대해 같은 여행을 함께 계획할 수 있어요. 로그인한 뒤 바로 이어서 열어 드릴게요.', openMembers, 'members'); return; }
   membersTripId=store.activeId;
   document.getElementById('membersTitle').textContent=`같이 짜기 · ${trip().name||'여행'}`;   // 메뉴 이름(같이 짜기)과 화면 이름을 맞춘다
@@ -5965,7 +6075,8 @@ let candOpen=new Set(), candComments={}, candDraft={}, candCommentErr=new Set();
 
 function openCandidates(seed){
   if(typeof seed?.title!=='string') seed=null; // onclick은 MouseEvent를 전달한다.
-  if(viewMode){ toast('읽기전용 보기예요 — "내 여행으로 저장" 후 이용하세요','#4f4740'); return; }
+  if(viewMode){ toast(VIEW_COLLAB_TEXT,'#4f4740'); return; }
+  if(refuseSampleCollab()) return;
   if(!cloudReady()){ requireLogin('가고 싶은 곳은 로그인이 필요해요 — 로그인하면 일행과 후보를 함께 고를 수 있어요. 로그인한 뒤 바로 이어서 열어 드릴게요.', ()=>openCandidates(seed), 'candidates'); return; }
   const keepDraft=seed && candTripId===store.activeId && (document.getElementById('candTitleInput').value.trim()||document.getElementById('candNoteInput').value.trim());
   candTripId=store.activeId;
@@ -6633,38 +6744,68 @@ function applyTripModalRole(){
 // ── 초대 링크 참여 (#join=) ──
 // 미리보기(이름·기간·역할)만 보고 참여를 결정한다. 여행 본문은 참여한 뒤 RLS 아래에서 내려온다(§67).
 let joinPreview=null;
+// '' = 미리보기를 받았다(또는 못 받았다 — 그건 inviteVerdict가 NETWORK로 말한다) · LOADING · MALFORMED(링크 형식이 틀려 묻지 않았다)
+let joinState='';
+/** iOS 앱으로 여는 링크는 iPhone·iPad에서만 뜻이 있다 — 데스크톱·안드로이드에서 첫 자리에 두면 누를 수 없는 길이다 */
+function isAppleMobile(){
+  const ua=navigator.userAgent||'';
+  return /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && (navigator.maxTouchPoints||0)>1);   // 데스크톱처럼 보이는 iPadOS
+}
 async function startJoin(token){
   if(!token) return;
-  pendingJoinToken=token; joinPreview=null;
-  const appLink=document.getElementById('joinOpenApp');
-  appLink.hidden=TC_COLLAB.parseJoinHash('#join='+encodeURIComponent(token))!==token;
-  if(!appLink.hidden) appLink.href='tripcanvas://join/'+encodeURIComponent(token);
-  else appLink.removeAttribute('href');
+  pendingJoinToken=token; joinPreview=null; joinState='LOADING';
   document.getElementById('joinModalBg').classList.add('show');
-  document.getElementById('joinTripName').textContent='불러오는 중…';
-  document.getElementById('joinTripMeta').textContent=''; document.getElementById('joinHint').textContent='';
+  updateJoinModal();
   // 미리보기는 로그인 없이 TC_API로 묻는다 — Supabase SDK가 있는지와 상관없다(CDN이 막혀도 초대는 열린다).
-  // 못 받으면(오프라인) inviteVerdict가 NETWORK 문장을 준다.
+  // 못 받으면(오프라인) inviteVerdict가 NETWORK 문장을 주고, 창에 '다시 시도'가 선다.
   try{ joinPreview=await apiRow('invite_preview',{p_token:token}); }
   catch(e){ reportOperationalError('collab.preview',e); joinPreview=null; }
-  const v=TC_COLLAB.inviteVerdict(joinPreview);
-  document.getElementById('joinTripName').textContent=(joinPreview&&joinPreview.trip_name)||'초대';
-  document.getElementById('joinTripMeta').textContent=joinPreview
-    ? [TC_COLLAB.inviteRangeText(joinPreview.start_date,joinPreview.day_count), v.role?`${TC_COLLAB.roleIcon(v.role)} ${TC_COLLAB.roleLabel(v.role)} 권한으로 참여`:''].filter(Boolean).join(' · ')
-    : '';
-  document.getElementById('joinHint').textContent=v.text;
+  joinState='';
   updateJoinModal();
 }
+/** 형식이 어긋난 초대 링크 — 서버에 묻지 않고(아무 문자열이나 보내지 않는다) 같은 창으로 이유를 말한다 */
+function showMalformedJoin(){
+  pendingJoinToken=null; joinPreview=null; joinState='MALFORMED';
+  document.getElementById('joinModalBg').classList.add('show');
+  updateJoinModal();
+}
+/**
+ * 초대 창은 상태마다 **제목부터** 다르게 말한다. 예전에는 쓸 수 없는 초대도 '여행에 초대받았어요'였고 이유는 아래 회색
+ * 한 줄이라, 만료된 초대가 '✏️ 편집 권한으로 참여'까지 보여 준 뒤에야 만료라고 했다(2026-10-03 UX 검토).
+ * 권한 줄·이름 칸·참여 버튼·앱 버튼은 참여할 수 있을 때만, '다시 시도'는 못 받아 왔을 때만 선다.
+ */
 function updateJoinModal(){
-  const v=TC_COLLAB.inviteVerdict(joinPreview), btn=document.getElementById('joinAccept'), nameWrap=document.getElementById('joinNameWrap');
+  const $=id=>document.getElementById(id);
+  const loading=joinState==='LOADING';
+  const v=joinState==='MALFORMED'
+    ? {ok:false, reason:'INVALID', text:TC_COLLAB.joinReasonText('INVALID'), alreadyMember:false, role:null}
+    : TC_COLLAB.inviteVerdict(joinPreview);
+  const problem=!loading&&!v.ok, p=joinPreview;
+  $('joinTitle').textContent=!problem? '여행에 초대받았어요' : (v.reason==='NETWORK'? '초대를 확인하지 못했어요' : '초대 링크를 쓸 수 없어요');
+  const name=p&&p.trip_name;
+  $('joinCard').hidden=problem&&!name;   // 이름도 모르는 실패에 '초대'라는 빈 카드를 두지 않는다
+  $('joinTripName').textContent=loading? '불러오는 중…' : (name||'초대');
+  $('joinTripMeta').textContent=(!loading&&p)
+    ? [TC_COLLAB.inviteRangeText(p.start_date,p.day_count), (v.ok&&v.role)?`${TC_COLLAB.roleIcon(v.role)} ${TC_COLLAB.roleLabel(v.role)} 권한으로 참여`:''].filter(Boolean).join(' · ')
+    : '';
+  const hint=$('joinHint');
+  hint.textContent=loading? '' : v.text;
+  hint.classList.toggle('joinProblem',problem);
+  if(problem) hint.setAttribute('role','alert'); else hint.removeAttribute('role');
   // 이름을 이메일에서 채우지 않는다 — 계정 이메일의 앞부분이 일행에게 이름으로 보이게 된다(이메일은 여행에 나오지 않는다 §69).
   // 비워 두고 참여하면 서버의 기본 이름('멤버')으로 보인다.
-  nameWrap.style.display=(v.ok&&!v.alreadyMember)?'block':'none';
-  btn.style.display=v.ok?'inline-block':'none';
+  $('joinNameWrap').style.display=(!loading&&v.ok&&!v.alreadyMember)?'block':'none';
+  const btn=$('joinAccept');
+  btn.style.display=(!loading&&v.ok)?'inline-block':'none';
   btn.textContent=!user?'로그인하고 참여하기':(v.alreadyMember?'여행 열기':'여행 참여하기');
+  $('joinRetry').hidden=!(problem&&v.reason==='NETWORK'&&!!pendingJoinToken);
+  const token=pendingJoinToken, app=$('joinOpenApp');
+  const showApp=!loading&&v.ok&&!!token&&TC_COLLAB.parseJoinHash('#join='+encodeURIComponent(token))===token&&isAppleMobile();
+  app.hidden=!showApp;
+  if(showApp) app.setAttribute('href','tripcanvas://join/'+encodeURIComponent(token)); else app.removeAttribute('href');
 }
 function clearPendingJoin(){
-  pendingJoinToken=null; joinPreview=null;
+  pendingJoinToken=null; joinPreview=null; joinState='';
   try{ localStorage.removeItem(JOIN_KEY); }catch(_){}
   if(location.hash.startsWith('#join=')) history.replaceState(null,'',location.pathname);
 }
@@ -6676,17 +6817,26 @@ async function completePendingJoin(){
   try{ joinPreview=await apiRow('invite_preview',{p_token:token}); }catch(_){}   // 로그인 후엔 already_member가 정확해진다
   updateJoinModal();
 }
+// '닫기'다 — 예전 이름 '나중에'는 초대를 미뤄 두는 것처럼 읽혔지만 대기 토큰을 지운다. 받은 링크를 다시 열면 또 뜬다.
 document.getElementById('joinCancel').onclick=()=>{ document.getElementById('joinModalBg').classList.remove('show'); clearPendingJoin(); };
+document.getElementById('joinRetry').onclick=()=>{ if(pendingJoinToken) startJoin(pendingJoinToken); };
 document.getElementById('joinAccept').onclick=async()=>{
   const token=pendingJoinToken; if(!token) return;
-  if(!user){ document.getElementById('authBtn').click(); return; }   // 로그인 → onAuthStateChange → syncOnLogin → completePendingJoin
+  if(!user){
+    // 로그인 → onAuthStateChange → syncOnLogin → completePendingJoin. 왜 로그인하는지를 창 안에 남긴다 —
+    // 일반 로그인 문구만 나와 어느 여행에 참여하려던 것인지 잊었다(2026-10-03 UX 검토). 초대 창은 그 아래에 그대로 있다.
+    const name=joinPreview&&joinPreview.trip_name;
+    openAuthModal({reason:`${name?`"${name}"`:'이 여행'}에 참여하려면 로그인해 주세요 — 로그인하면 이 초대로 돌아와요.`});
+    return;
+  }
   const btn=document.getElementById('joinAccept'); btn.disabled=true;
   try{
     const row=await apiRow('accept_trip_invite',{p_token:token,p_display_name:document.getElementById('joinName').value.trim()||null});
     if(!row) throw new Error('empty accept');
     if(!row.ok){
+      // 이유 문장은 updateJoinModal이 같은 규칙(inviteVerdict → JOIN_REASON)으로 쓴다
       joinPreview=Object.assign({},joinPreview,{valid:false,reason:row.reason,already_member:false});
-      document.getElementById('joinHint').textContent=TC_COLLAB.joinReasonText(row.reason); updateJoinModal(); return;
+      updateJoinModal(); return;
     }
     clearPendingJoin();
     document.getElementById('joinModalBg').classList.remove('show');
@@ -6708,7 +6858,9 @@ function showOnboarding(){
     if(child===onboarding || child.matches('script')) continue;
     onboardingInert.set(child,child.inert); child.inert=true;
   }
-  document.getElementById('onboardNew').focus();
+  // 첫 포커스는 제목이다 — 주 버튼에 두면 터치로 들어와도 굵은 링이 그려져 이미 눌린 것처럼 보이고 세 길의 무게가
+  // 한쪽으로 기울었다(2026-10-03 UX 검토). 보조기술은 제목부터 읽고, Tab 한 번이면 첫 버튼이다(initAccessibility의 가두기).
+  document.getElementById('onboardingTitle').focus();
 }
 function dismissOnboarding(){
   document.getElementById('onboarding').hidden=true;
@@ -6718,7 +6870,22 @@ function dismissOnboarding(){
   (target && target!==document.body && target.isConnected?target:document.getElementById('tripPickerBtn')).focus();
   try{localStorage.setItem(ONBOARD_KEY,'1');}catch(_){}
 }
-document.getElementById('onboardSample').onclick=()=>{ dismissOnboarding(); fitEntry(); };
+/**
+ * 샘플로 간다 — 지웠으면 다시 심는다. 예전에는 '샘플 먼저 둘러보기'가 창만 닫아, ☰ '처음 화면 다시 보기'에서 누르면
+ * 보던 여행 그대로였고 지운 샘플은 다시 생기지 않았다(2026-10-03 UX 검토). 받은 사본을 보던 중이면 그 보기도 닫는다.
+ */
+function openSampleTrip(){
+  const sample=store.trips.find(isSampleTrip);
+  // 여행 수 한도(TC_LIMITS.trips)를 넘겨 심으면 다음 실행에서 저장소 전체가 검증에 걸린다(parseStorePayload)
+  if(!sample && store.trips.length>=TC_LIMITS.trips){ toast(`여행이 ${TC_LIMITS.trips}개라 샘플을 다시 만들 수 없어요`,'#b4342a'); return; }
+  leaveViewMode();
+  // 지운 샘플의 동기화 기록(서버에 올린 적 없는 삭제 대기)이 남아 있으면 같은 id로 다시 심은 샘플에 엉킨다
+  if(!sample && syncMeta[SAMPLE_TRIP_ID] && !syncMeta[SAMPLE_TRIP_ID].revision){ delete syncMeta[SAMPLE_TRIP_ID]; persistSyncMeta(); }
+  const fresh=sample? null : sampleTrip();
+  clearPresence();
+  commit(()=>{ if(fresh) store.trips.push(fresh); store.activeId=(sample||fresh).id; activeDay=0; }, {fit:fitEntry});
+}
+document.getElementById('onboardSample').onclick=()=>{ dismissOnboarding(); openSampleTrip(); };
 document.getElementById('onboardNew').onclick=()=>{ dismissOnboarding(); openNewTrip(); };
 document.getElementById('onboardPaste').onclick=()=>{ dismissOnboarding(); document.getElementById('pasteBtn').click(); document.getElementById('pasteTarget').value='new'; };
 document.getElementById('onboardLogin').onclick=()=>{ dismissOnboarding(); document.getElementById('authBtn').click(); };
@@ -6798,7 +6965,8 @@ function updateSaveState(){
   if(label.textContent!==message) label.textContent=message;
   const bar=document.getElementById('saveStateBar'); bar.dataset.state=state;
   // 샘플은 바로 아래 샘플 띠가 저장 정책까지 말한다 — 같은 말을 두 줄로 하지 않는다(문구는 보조기술용으로 남긴다)
-  bar.classList.toggle('srOnlyBar', state==='sample');
+  // 읽기 전용도 같다: 받은 사본은 읽기 전용 띠가, 보기 권한은 권한 띠가 이미 말한다(2026-10-03 UX 검토)
+  bar.classList.toggle('srOnlyBar', state==='sample'||state==='readonly');
   action.hidden=!callback; action.textContent=actionText; action.onclick=callback;
 }
 
@@ -6914,6 +7082,8 @@ function initAccessibility(){
     if(e.key!=='Tab') return;
     const items=Array.from(bg.querySelectorAll(focusable)).filter(el=>el.getClientRects().length && !el.closest('[hidden],[inert]')); if(!items.length){ e.preventDefault(); return; }
     const first=items[0],last=items[items.length-1];
+    // 처음 화면은 제목(tabindex=-1)에서 시작한다 — 거기서 Tab은 첫 버튼, Shift+Tab은 마지막으로 (가려진 화면으로 새지 않게)
+    if(bg===onboarding&&!items.includes(document.activeElement)){ e.preventDefault(); (e.shiftKey?last:first).focus(); return; }
     if(e.shiftKey&&document.activeElement===first){ e.preventDefault(); last.focus(); }
     else if(!e.shiftKey&&document.activeElement===last){ e.preventDefault(); first.focus(); }
   });
@@ -6952,4 +7122,4 @@ if('serviceWorker' in navigator){
 prunePrices();   // 삭제된 여행·예약의 가격 기록 정리
 render();
 setTimeout(()=>{ checkTripPrices().catch(()=>{}); }, 2500);   // 예약 시세 자동 확인 (신선하면 조회 생략)
-if(firstVisit) showOnboarding();
+if(firstVisit && !arrivedByLink) showOnboarding();   // 링크가 할 일을 들고 왔으면 그 일이 먼저다(arrivedByLink)

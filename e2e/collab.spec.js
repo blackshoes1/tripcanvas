@@ -48,8 +48,7 @@ test('초대 링크(#join=)로 열면 여행 본문 없이 미리보기와 참�
   await expect(page.locator('#joinTripMeta')).toContainText('10/25 ~ 11/7 · 14일');
   await expect(page.locator('#joinTripMeta')).toContainText('편집 권한');
   await expect(page.locator('#joinAccept')).toHaveText('로그인하고 참여하기');
-  await expect(page.locator('#joinOpenApp')).toHaveAttribute('href','tripcanvas://join/'+TOKEN);
-  await expect(page.locator('#joinOpenApp')).toBeVisible();
+  await expect(page.locator('#joinOpenApp')).toBeHidden();   // 데스크톱에서는 iOS 앱으로 열 수 없다(2026-10-03)
   const rpc=await page.evaluate(()=>window.__rpc);
   expect(rpc[0][0]).toBe('/api/v1/invites/'+TOKEN);   // 토큰만 실려 간다 — 여행 id·역할은 URL에 없다(§5)
   expect(rpc[0][1]).toBe('GET');
@@ -58,7 +57,7 @@ test('초대 링크(#join=)로 열면 여행 본문 없이 미리보기와 참�
   await page.locator('#joinAccept').click();
   await expect(page.locator('#authModalBg')).toHaveClass(/show/);
   await page.locator('#authCancel').click();
-  // 나중에 → 모달이 닫히고 해시가 정리된다
+  // 닫기 → 모달이 닫히고 해시가 정리된다
   await page.locator('#joinCancel').click();
   await expect(page.locator('#joinModalBg')).not.toHaveClass(/show/);
   expect(await page.evaluate(()=>location.hash)).toBe('');
@@ -68,15 +67,17 @@ test('만료된 초대는 참여 버튼 없이 이유만 보여준다',async({co
   await fakeSupabase(context,{preview:{valid:false,reason:'EXPIRED',trip_name:'스페인 여행',role:'VIEWER'}});
   await page.goto('/#join='+TOKEN);
   await expect(page.locator('#joinModalBg')).toHaveClass(/show/);
+  await expect(page.locator('#joinTitle')).toHaveText('초대 링크를 쓸 수 없어요');
   await expect(page.locator('#joinHint')).toContainText('만료');
   await expect(page.locator('#joinAccept')).toBeHidden();
 });
 
-test('형식이 어긋난 #join= 해시는 서버에 보내지 않고 조용히 무시한다',async({context,page})=>{
+test('형식이 어긋난 #join= 해시는 서버에 보내지 않고, 조용히 무시하지 않고 쓸 수 없는 링크라고 알린다',async({context,page})=>{
   await fakeSupabase(context);
   await page.goto('/#join=<script>alert(1)</script>');
-  await page.waitForTimeout(300);
-  await expect(page.locator('#joinModalBg')).not.toHaveClass(/show/);
+  await expect(page.locator('#joinModalBg')).toHaveClass(/show/);
+  await expect(page.locator('#joinTitle')).toHaveText('초대 링크를 쓸 수 없어요');
+  await expect(page.locator('#joinAccept')).toBeHidden();
   expect(await page.evaluate(()=>window.__rpc.length)).toBe(0);
 });
 
