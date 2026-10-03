@@ -300,7 +300,8 @@
     const loc=(/**@type{any}*/s)=>!!s && s.lat!=null && s.lng!=null && s.lat!=='' && s.lng!=='' && isFinite(+s.lat) && isFinite(+s.lng);
     /** @param {any} s @returns {LatLng} */
     const pt=(s)=>({lat:+s.lat, lng:+s.lng});
-    const last=list.length-1;
+    // '마지막'은 위치 있는 마지막 장소다 — 공항 뒤에 위치 없는 메모가 붙어도 공항이 그날 떠나는 곳이다
+    let last=list.length-1; while(last>0 && !loc(list[last])) last--;
     const isFixed=(/**@type{any}*/s,/**@type{number}*/i)=>i===0 || !loc(s) || !!s.bookAt || !!s.at || !!s.stay || !!s.split
       || (i===last && (spotCatOf(s)||{}).id==='transport');
     const order=list.map((_,i)=>i);

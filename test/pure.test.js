@@ -1733,6 +1733,11 @@ test('planRouteOptimization: 마지막 장소가 공항·역이면 그날 떠나
   // 공항이 끝이 아니면(그날 공항에 들렀다가 이어 가면) 끝점으로 묶지 않는다
   const mid = [jeju[0], jeju[2], jeju[1], { name: '애월', lat: 33.4625, lng: 126.3094 }];
   assert.equal(L.planRouteOptimization(mid).fixed.includes(1), false);
+  // 공항 뒤에 위치 없는 메모(렌터카 반납 안내 등)가 붙어도 공항이 그날 마지막으로 가는 곳이다 — 가운데로 옮기지 않는다
+  const memo = [...jeju, { name: '렌터카 반납 메모' }];
+  const r3 = L.planRouteOptimization(memo);
+  assert.equal(r3.changed, false, '뒤에 메모가 있어도 공항은 끝점');
+  assert.ok(r3.fixed.includes(2));
 });
 
 test('planRouteOptimization: 이미 최적이거나 움직일 곳이 없으면 바꾸지 않는다', () => {
