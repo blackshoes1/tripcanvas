@@ -903,6 +903,17 @@ test('AI 글: 인사말·구분선·마크다운은 메모에 날것으로 남�
   assert.equal(r.days[0].note, 'Tip: 오사카 주유패스를 사면 교통비를 아낄 수 있어요!\n짐은 코인로커에');
 });
 
+test('AI 글: 꾸밈을 걷어도 설명·메모 줄의 링크 주소는 그대로다', () => {
+  // `__`·`*`는 꾸밈이지만 주소 안에서는 주소의 일부다 — 링크를 먼저 떼고 남은 글만 걷는다
+  const r = I.parseItinerary('## Day 1\n- 오사카성\n  **예약:** https://example.com/tickets__osaka?a=*1', {});
+  const it = r.days[0].items[0];
+  assert.equal(it.url, 'https://example.com/tickets__osaka?a=*1');
+  assert.equal(it.desc, '예약:');
+  const n = I.parseItinerary('## Day 1\n- 오사카성\n\n💡 **참고:** https://example.com/a__b*c', {});
+  assert.equal(n.days[0].note, '참고: https://example.com/a__b*c', '메모 줄의 주소도 그대로');
+  assert.equal(I.stripDecor('**https://example.com/x__y**'), 'https://example.com/x__y', '굵은 글씨로 감싼 주소는 감싼 것만 걷는다');
+});
+
 test('dayLayout: 글의 날짜가 건너뛰면 빈 날로 채울 수 있다 — 고르는 것은 사람이다', () => {
   const days = [{ date: '2026-11-07' }, { date: '2026-11-09' }, { date: null }, { date: '2026-11-12' }];
   const fill = I.dayLayout(days, true);

@@ -715,12 +715,21 @@
    * `**09:00**`는 시각으로 읽히지 않고 `🍱 점심`은 이름에 그림이 남는다.
    * ⚠️ 밑줄(`_`)은 건드리지 않는다 — 이름·주소에 그대로 쓰인다.
    * 국기(🇯🇵)는 그림 문자가 아니라 지역 표시 두 글자라 따로 센다 — 안 세면 '🇯🇵 오사카…'가 여행 이름에 남았다(2026-10-03).
+   * ⚠️ 주소(`https://…`) 안은 건드리지 않는다 — `__`·`*`는 주소의 일부다. 메모·설명 줄도 이걸 지나게 된 뒤
+   * (2026-10-03) 그 줄의 링크가 망가졌다. 주소 끝에 붙은 `**`(굵은 글씨로 감싼 주소)만 꾸밈으로 본다.
    * @param {string} s @returns {string}
    */
   function stripDecor(s){
-    let out=String(s||'').replace(/\*\*|__|`/g,'').replace(/\*/g,'');
+    /** @type {string[]} */ const urls=[];
+    let out=String(s||'').replace(/https?:\/\/[^\s<>()[\]`]+/g,(u)=>{
+      const tail=/\*+$/.exec(u), core=tail? u.slice(0,tail.index) : u;
+      urls.push(core);
+      return `\u0001${urls.length-1}\u0001`;
+    });
+    out=out.replace(/\*\*|__|`/g,'').replace(/\*/g,'');
     out=out.replace(/^[\p{Extended_Pictographic}\p{Regional_Indicator}\uFE0F\u200D\s]+/u,'');
-    return out.replace(/[\p{Extended_Pictographic}\p{Regional_Indicator}\uFE0F\u200D\s]+$/u,'').replace(/\s{2,}/g,' ').trim();
+    out=out.replace(/[\p{Extended_Pictographic}\p{Regional_Indicator}\uFE0F\u200D\s]+$/u,'').replace(/\s{2,}/g,' ').trim();
+    return urls.length? out.replace(/\u0001(\d+)\u0001/g,(_m,i)=>urls[+i]) : out;
   }
 
   /** @param {number} h @param {number} mi @returns {string} */
