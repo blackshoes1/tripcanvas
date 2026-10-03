@@ -687,3 +687,5 @@ body:has(.modalBg.show) #toast{bottom:auto;top:calc(env(safe-area-inset-top) + 1
 /* 장소 정보의 영업시간 — 가는 날의 요일을 짚는다(P2-12) */
 #placeDetailsContent li.visitDay{font-weight:700}
 .stayRow{margin-top:2px}.stayRow .hint{margin-top:2px}
+/* 칸 이름이 한 글자씩 꺾이지 않게 — '예약 요건'·'우선순위'가 좁은 화면에서 두 줄로 쪼개졌다(P2-27) */
+.admissionRow .chkrow label,.optionRows .chkrow label{white-space:nowrap}
