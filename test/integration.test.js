@@ -5446,7 +5446,8 @@ test('통합: 보고 있는 일자(1부터 센다, 0=전체)를 일자 인덱스
 
 /** 카카오 SDK를 가짜로 — 주변(location이 있는 요청)과 전국에서 다른 결과를 준다. 무엇을 물었는지 남긴다 */
 function fakeKakao(w, near, wide) {
-  w.eval(`window.__kq=[]; _kakaoReady=Promise.resolve(true);
+  // 지도는 그리지 않는다 — 국내 일정이면 render()가 카카오 지도를 만들려 하는데 가짜 SDK에는 Map이 없다
+  w.eval(`window.__kq=[]; _kakaoReady=Promise.resolve(true); ensureKakaoMap=async()=>false;
     window.kakao={maps:{LatLng:function(lat,lng){this.lat=lat;this.lng=lng;},
       services:{Status:{OK:'OK',ZERO_RESULT:'ZERO_RESULT',ERROR:'ERROR'},
         Places:function(){ this.keywordSearch=(q,cb,opts)=>{ const isNear=!!(opts&&opts.location);
