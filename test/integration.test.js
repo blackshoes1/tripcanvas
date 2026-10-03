@@ -5436,3 +5436,235 @@ test('통합: 보고 있는 일자(1부터 센다, 0=전체)를 일자 인덱스
     assert.equal(w.eval('activeDay'),1,'하루짜리가 되어도 전체로 바뀌지 않는다');
   }finally{ w.close(); }
 });
+
+// ── ux3:a11y ──
+const key = (w, el, k, extra) => el.dispatchEvent(new w.KeyboardEvent('keydown', Object.assign({ key: k, bubbles: true }, extra || {})));
+
+// 2026-10-03 UX 검토 P1-28·P2-62 — 날짜 버튼이 툴팁 '클릭해서 날짜·시간대 지정/수정'으로만 읽혀 날짜를 들을 곳이 없었다
+test('통합: 일자 머리는 날짜를 담은 제목이고, 날짜 버튼의 이름은 보이는 날짜다', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    withTrip(w, JSON.stringify([
+      { timeZone: 'Europe/Madrid', spots: [{ name: '프라도', lat: 40.41, lng: -3.69 }] },
+      { timeZone: 'Europe/Madrid', spots: [] }
+    ]));
+    w.eval(`trip().start='2026-10-25'; render()`);
+    await new Promise((r) => setTimeout(r, 0));   // 버튼 역할은 initAccessibility의 관찰자가 붙인다
+    const heads = Array.from(w.document.querySelectorAll('.dayCard .dayTitle'));
+    assert.equal(heads[0].getAttribute('role'), 'heading');
+    assert.equal(heads[0].getAttribute('aria-level'), '2');
+    assert.equal(heads[0].getAttribute('aria-label'), 'Day 1 · 10월 25일 일요일', '제목으로 훑으면 날짜가 들린다');
+    const dates = Array.from(w.document.querySelectorAll('.dayCard .dayHeadMeta .date'));
+    assert.equal(dates[0].getAttribute('aria-label'), '10/25 (일) · Europe/Madrid — 날짜·시간대 바꾸기');
+    assert.equal(dates[1].getAttribute('aria-label'), '10/26 (월) — 날짜·시간대 바꾸기', '시간대가 같은 날은 화면처럼 날짜만');
+    assert.equal(dates[0].getAttribute('role'), 'button', '누를 수 있는 것은 그대로');
+    assert.match(dates[0].title, /날짜·시간대/, '설명은 툴팁으로 남는다');
+  } finally { w.close(); }
+});
+
+// P2-16 — 국내 여행에도 처음부터 '🌐 시간대 미설정'이 붙었고, '서울'·'파리'는 'IANA 형식으로'라며 거절당했다
+test('통합: 국내 여행은 한국 시간으로 보고, 시간대 칸은 도시 이름을 받아 모든 날에 적용할 수 있다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    withTrip(w, JSON.stringify([
+      { spots: [{ name: '경복궁', lat: 37.58, lng: 126.98 }] }, { spots: [{ name: '남산', lat: 37.55, lng: 126.99 }] }
+    ]));
+    w.eval('render()');
+    assert.doesNotMatch(w.document.getElementById('sidebar').textContent, /시간대 미설정/, '국내 여행에는 알릴 것이 없다');
+    assert.equal(w.eval('dayTimeZone(trip().days[1])'), 'Asia/Seoul', '대중교통 출발 시각도 한국 시간으로 묻는다');
+
+    // 해외로 바꿔 '파리'를 넣으면 — 한 시간대 여행이라 '모든 날에 적용'이 기본이고, 다음 날도 따라간다
+    w.eval(`trip().days.forEach(d=>d.spots.forEach(s=>{s.lat=48.86;s.lng=2.35;})); render(); openDayModal(0)`);
+    const el = (id) => w.document.getElementById(id);
+    assert.equal(el('dayTzAll').checked, true);
+    el('dayTimeZone').value = '파리';
+    el('daySave').click();
+    assert.equal(w.eval('trip().timeZone'), 'Europe/Paris');
+    assert.equal(w.eval('dayTimeZone(trip().days[1])'), 'Europe/Paris', 'Day 2가 다시 미설정이 되지 않는다');
+    assert.equal(w.eval('trip().days[0].timeZone'), undefined, '날마다 따로 적지 않는다');
+
+    // 못 찾는 이름은 칸 옆에서 말하고 저장하지 않는다
+    w.eval('openDayModal(0)');
+    el('dayTimeZone').value = '어딘가';
+    el('dayStart').value = '10:00';
+    el('daySave').click();
+    assert.ok(el('dayModalBg').classList.contains('show'), '창이 남는다');
+    assert.match(el('dayTimeZoneErr').textContent, /도시 이름/);
+    assert.equal(w.document.activeElement, el('dayTimeZone'));
+    el('dayTimeZone').value = 'europe/madrid'; el('dayTzAll').checked = false;
+    el('daySave').click();
+    assert.equal(w.eval('trip().days[0].timeZone'), 'Europe/Madrid', 'IANA는 정식 표기로');
+    assert.equal(w.eval('trip().days[0].startAt'), '10:00', '시작 시각도 함께 저장된다');
+    assert.equal(w.eval('trip().timeZone'), 'Europe/Paris', '그날만 고르면 다른 날은 그대로');
+  } finally { w.close(); }
+});
+
+// P2-15 — 폼 오류가 2초짜리 토스트뿐이었고 포커스는 '저장'에 남았다
+test('통합: 저장 못 하는 칸은 그 칸 옆 문장과 포커스로 알리고, 고치면 지운다', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    withTrip(w, JSON.stringify([{ spots: [{ name: '루브르', city: '파리', lat: 48.86, lng: 2.34 }] }]));
+    w.eval('render(); openSpotModal(0,0)');
+    const el = (id) => w.document.getElementById(id);
+    el('spotName').value = '';
+    el('spotSave').click();
+    const err = el('spotNameErr');
+    assert.ok(err, '칸 옆에 문장이 생긴다');
+    assert.equal(err.getAttribute('role'), 'alert');
+    assert.equal(el('spotName').getAttribute('aria-invalid'), 'true');
+    assert.match(el('spotName').getAttribute('aria-describedby'), /spotNameErr/);
+    assert.equal(w.document.activeElement, el('spotName'), '포커스가 고칠 칸으로 간다');
+    el('spotName').value = '루브르';
+    el('spotName').dispatchEvent(new w.Event('input', { bubbles: true }));
+    assert.equal(el('spotNameErr'), null, '고치면 지운다');
+    assert.equal(el('spotName').hasAttribute('aria-invalid'), false);
+
+    // 체류 '1.5'는 말없이 1분이 되지 않는다 — 접힌 상세 설정이면 펼쳐서 보여 준다
+    el('spotStayMin').value = '1.5';
+    el('spotSave').click();
+    assert.match(el('spotStayMinErr').textContent, /정수/);
+    assert.equal(w.eval('trip().days[0].spots[0].stayMin'), undefined, '저장되지 않았다');
+    el('spotStayMin').value = '90';
+
+    // 'www.'로 시작하는 공식 페이지는 https를 붙여 받는다 — http는 여전히 거절
+    el('spotAdmUrl').value = 'www.louvre.fr';
+    el('spotSave').click();
+    assert.equal(w.eval('trip().days[0].spots[0].admission.officialURL'), 'https://www.louvre.fr');
+    assert.equal(w.eval('trip().days[0].spots[0].stayMin'), 90);
+    w.eval('openSpotModal(0,0)');
+    el('spotAdmUrl').value = 'http://www.louvre.fr';
+    el('spotSave').click();
+    assert.match(el('spotAdmUrlErr').textContent, /https/);
+    assert.equal(el('spotAdvanced').open, true, '오류 칸이 든 상세 설정을 펼친다');
+    el('spotCancel').click();
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(w.document.querySelector('#spotModalBg .fieldErr'), null, '창을 닫으면 지난 오류는 남지 않는다');
+
+    // 결제 항목 — 이름 칸이 화면 밖이어도 그 칸으로 간다
+    w.eval('openBookingModal(null)');
+    el('bkTitle').value = '';
+    el('bkSave').click();
+    assert.ok(el('bkTitleErr'));
+    assert.equal(w.document.activeElement, el('bkTitle'));
+    assert.equal(el('bkTitle').getAttribute('aria-required'), 'true', '필수 칸은 필수라고 말한다');
+  } finally { w.close(); }
+});
+
+// P2-58 — ⋮·☰·보기 설정이 Esc로도, 바깥을 눌러도, 포커스가 나가도 닫히지 않았다
+test('통합: 팝오버는 Esc·바깥 누르기·포커스 이탈로 닫히고 Esc는 연 자리로 돌아간다', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    withTrip(w, JSON.stringify([{ spots: [{ name: 'A', lat: 37.5, lng: 127 }, { name: 'B', lat: 37.51, lng: 127.01 }] }]));
+    w.eval('dismissOnboarding(); render()');
+    const menus = Array.from(w.document.querySelectorAll('.spot .actionMenu'));
+    menus[0].open = true;
+    menus[0].querySelector('.actionMenuPanel button').focus();
+    key(w, w.document.activeElement, 'Escape');
+    assert.equal(menus[0].open, false, 'Esc로 닫힌다');
+    assert.equal(w.document.activeElement, menus[0].querySelector('summary'), '연 자리로 돌아간다');
+
+    menus[0].open = true;
+    menus[1].querySelector('summary').click();   // 행 ⋮는 전파를 멈추지만 캡처 단계에서 닫는다
+    assert.equal(menus[0].open, false, '다른 ⋮를 누르면 앞의 것은 닫힌다');
+    menus[1].open = true;
+    w.document.getElementById('filterbar').click();
+    assert.equal(menus[1].open, false, '바깥을 누르면 닫힌다');
+
+    menus[0].open = true;
+    const inside = menus[0].querySelector('.actionMenuPanel button');
+    inside.dispatchEvent(new w.FocusEvent('focusout', { bubbles: true, relatedTarget: w.document.getElementById('travelBtn') }));
+    assert.equal(menus[0].open, false, 'Tab으로 나가면 닫힌다');
+
+    // 보기 설정은 장소 추가 창 위에 남지 않는다
+    const view = w.document.querySelector('#filterbar .viewMenu');
+    view.open = true;
+    w.eval('openSpotModal(0,-1)');
+    const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+    await tick();
+    assert.equal(view.open, false, '창이 열리면 닫힌다');
+    // ☰ — 열림을 연 버튼이 말하고, 포커스가 나가면 닫힌다
+    w.eval(`document.getElementById('spotModalBg').classList.remove('show')`);
+    await tick();
+    const more = w.document.getElementById('moreBtn'), menu = w.document.getElementById('hdrMenu');
+    more.click();
+    await tick();
+    assert.equal(more.getAttribute('aria-expanded'), 'true');
+    more.dispatchEvent(new w.FocusEvent('focusout', { bubbles: true, relatedTarget: w.document.getElementById('travelBtn') }));
+    assert.equal(menu.classList.contains('open'), false);
+    await tick();
+    assert.equal(more.getAttribute('aria-expanded'), 'false');
+  } finally { w.close(); }
+});
+
+// P2-63 — '라디오'라고 알리는데 화살표가 안 됐고 7개가 각각 Tab 정지였다
+test('통합: 이동수단 목록은 화살표로 고르고 Tab 정지는 하나다 — 적용은 누를 때만', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    withAdaptTrip(w, [{ startAt: '09:00', mode: 'car', spots: [S('A', 40.40), S('B', 40.43)] }]);
+    w.eval('dismissOnboarding(); render()');
+    w.document.querySelector('.dayHeadMeta .modeBtn').click();
+    const opts = Array.from(w.document.querySelectorAll('#modePickerList .modeOpt'));
+    assert.deepEqual(opts.map((b) => b.tabIndex).filter((t) => t === 0).length, 1, 'Tab 정지는 지금 고른 하나');
+    assert.equal(w.document.activeElement, opts[0]);
+    key(w, opts[0], 'ArrowDown');
+    assert.equal(opts[1].getAttribute('aria-checked'), 'true');
+    assert.equal(opts[0].getAttribute('aria-checked'), 'false');
+    assert.equal(w.document.activeElement, opts[1]);
+    assert.equal(opts[1].tabIndex, 0);
+    key(w, opts[1], 'ArrowUp'); key(w, opts[0], 'ArrowUp');
+    assert.equal(w.document.activeElement, opts[opts.length - 1], '끝에서 돌아 맨 아래로');
+    assert.equal(w.eval('trip().days[0].mode'), 'car', '화살표만으로는 바뀌지 않는다');
+    key(w, w.document.activeElement, 'Home'); key(w, w.document.activeElement, 'ArrowDown');
+    assert.match(w.document.activeElement.textContent, /택시/);
+    w.document.activeElement.click();
+    assert.equal(w.eval('trip().days[0].mode'), 'taxi', '누르면 적용된다');
+  } finally { w.close(); }
+});
+
+// P2-62·P2-64 — 첫 Tab이 보이지 않는 1px 선택 상자였고, 본문·건너뛰기 링크가 없고, 버전 표시는 키보드로 못 눌렀다
+test('통합: 첫 Tab은 일정으로 건너뛰기이고, 숨은 선택 상자는 Tab 순서에 없으며 버전 표시는 버튼이다', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    const doc = w.document;
+    const first = doc.querySelector('a[href],button,input,select,textarea,[tabindex]:not([tabindex="-1"])');
+    assert.equal(first.className, 'skipLink');
+    assert.equal(first.getAttribute('href'), '#sidebar');
+    assert.equal(doc.getElementById('sidebar').tabIndex, -1, '건너뛴 곳이 포커스를 받는다');
+    assert.equal(doc.querySelector('main').id, 'main', '본문 영역');
+    assert.equal(doc.getElementById('tripSel').tabIndex, -1);
+    assert.equal(doc.getElementById('tripSel').getAttribute('aria-hidden'), 'true', '피커와 같은 일을 두 번 읽지 않는다');
+    assert.equal(doc.getElementById('verLabel').tagName, 'BUTTON');
+    assert.match(doc.getElementById('verLabel').textContent, /^버전 /);
+    const travel = doc.getElementById('travel');
+    assert.equal(travel.getAttribute('role'), 'dialog');
+    assert.equal(travel.getAttribute('aria-label'), '여행 중 안내');
+
+    // 검색 결과 수를 알린다(결과 줄은 버튼이라 상자 자체를 알림 영역으로 둘 수 없다)
+    const res = doc.getElementById('searchRes');
+    res.innerHTML = '<button class="placeSearchResult">A</button><button class="placeSearchResult">B</button>';
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(doc.getElementById('searchStatus').textContent, '검색 결과 2곳');
+    res.innerHTML = '<div>결과 없음 — 다른 키워드나 지도 클릭으로 지정해주세요</div>';
+    await new Promise((r) => setTimeout(r, 0));
+    assert.match(doc.getElementById('searchStatus').textContent, /결과 없음/);
+  } finally { w.close(); }
+});
+
+// P2-60 — 기기가 다크여도 라이트로 시작했고, 토글은 지금 상태를 말하지 않았다
+test('통합: 테마는 ☰에서 기기 설정·라이트·다크로 고르고, 고른 것을 눌린 상태로 말한다', { skip: noJsdom }, () => {
+  const w = boot('http://localhost/', { tripcanvas_theme_v1: 'dark' });
+  try {
+    const doc = w.document;
+    assert.ok(doc.body.classList.contains('theme-dark'), '예전 토글이 남긴 다크는 그대로');
+    const btns = Array.from(doc.querySelectorAll('#themeChoice button'));
+    assert.deepEqual(btns.map((b) => b.textContent), ['기기 설정', '라이트', '다크']);
+    assert.equal(btns[2].getAttribute('aria-pressed'), 'true');
+    btns[1].click();
+    assert.equal(doc.body.classList.contains('theme-dark'), false);
+    assert.equal(w.localStorage.getItem('tripcanvas_theme_v1'), 'light');
+    btns[0].click();
+    assert.equal(w.localStorage.getItem('tripcanvas_theme_v1'), null, '기기 설정은 따로 저장하지 않는다');
+    assert.equal(btns[0].getAttribute('aria-pressed'), 'true');
+    assert.equal(doc.querySelector('#themeBtn'), null, '고르는 자리는 하나다');
+  } finally { w.close(); }
+});

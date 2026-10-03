@@ -57,7 +57,7 @@
   .driveMemo{color:var(--muted)}.memoTag{font-size:10.5px;font-weight:700;color:var(--subtle);border:1px solid var(--border);border-radius:5px;padding:0 4px;margin-right:5px}
   .dist{font-size:11px;color:var(--meta-soft);padding:1px 0 3px 2px;font-variant-numeric:tabular-nums}
   button.dist.estNote{display:block;width:100%;text-align:left;background:none;border:0;font:inherit;font-size:12px;line-height:1.5;color:var(--muted);padding:4px 2px;min-height:44px;cursor:pointer}.estNote .estFix{font-weight:700;text-decoration:underline}
-  .leg{color:var(--meta-soft);font-size:11px;white-space:nowrap;font-variant-numeric:tabular-nums}
+  .leg{color:var(--meta-soft);font-size:.8125rem;white-space:nowrap;font-variant-numeric:tabular-nums}
   /* 구간 수단 버튼 — 상속(흐림) vs 이 구간만 지정(진하게 + 테두리) */
   .legModeBtn{background:none;border:1px solid transparent;border-radius:6px;padding:0 3px;font-size:11px;line-height:1.5;opacity:.5;cursor:pointer}
   .legModeBtn:hover{opacity:1;background:var(--hover-bg)}
@@ -368,7 +368,7 @@
     #travel{max-width:none;padding:12px}.travelTop select{max-width:145px}
   }
 .legChip{background:rgba(22,19,15,.92);color:#e0a050;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;border:1px solid #332d25;white-space:nowrap;pointer-events:none}
-.eta{color:var(--meta-eta);font-size:10.5px;font-variant-numeric:tabular-nums;font-weight:700}
+.eta{color:var(--meta-eta);font-size:.8125rem;font-variant-numeric:tabular-nums;font-weight:700}
 .eta.fixed{color:var(--meta-eta-fixed)}   /* 고정 도착시각 — 자동(금색)과 구분 */
 .tLeg{font-size:12px;color:var(--meta-soft);margin:-3px 0 9px 18px}
 .snapRow{display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:5px 8px;border-radius:7px;color:var(--ink)}
@@ -379,8 +379,8 @@
 .wx{font-size:11px;color:var(--muted);white-space:nowrap}
 .overload{font-size:11px;color:#ffb454;background:#3a2a12;border-radius:7px;padding:2px 8px;margin:2px 0 3px;display:inline-block}
 .spotMeta,.spotLeg{display:flex;align-items:center;flex-wrap:wrap;gap:3px 8px;min-width:0;margin-left:60px;padding-right:4px}
-.spotMeta{font-size:10.5px;margin-top:-4px}
-.spotLeg{font-size:10.5px;margin-top:2px}
+.spotMeta{font-size:.75rem;margin-top:-4px}
+.spotLeg{font-size:.8125rem;margin-top:2px}
 /* 들어오는 구간 — 카드 위 한 줄. 줄 높이는 화면(모바일 터치 영역)마다 달라서, 점을 .spot이 아니라
    장소 이름 줄(.spotMain)에 붙여 늘 이름 옆에 오게 한다(.spot:before와 같은 자리: 왼쪽 2px·이름 줄 위 18px) */
 .spotLeg.incoming{margin-top:0;margin-bottom:-6px}
@@ -396,7 +396,7 @@
 .spotMeta .stayMeta{color:var(--muted)}
 .optBtn{color:var(--meta-good);border-color:currentColor;margin-left:6px}
 .spotMeta .closed{color:var(--meta-danger)}
-#verLabel{font-size:11px;color:var(--subtle);text-align:center;padding:6px 4px 2px;cursor:pointer;border-top:1px solid var(--border);margin-top:2px}
+#verLabel{display:block;width:100%;background:none;border:0;font:inherit;font-size:.75rem;color:var(--subtle);text-align:center;padding:6px 4px 2px;cursor:pointer;border-top:1px solid var(--border);margin-top:2px}
 #verLabel:active{color:var(--ink)}
 
 /* 재생 HUD — body.playing일 때만 (현재 구간·진행바·배속) */
@@ -509,7 +509,7 @@ body.playing #playHud{
 .sgCard[data-type="REST"]{border-left-color:var(--meta-soft)}
 .sgKicker{font-size:11px;color:var(--subtle);font-weight:700;margin-bottom:5px}
 /* J가 보내는 제안의 서명. 앱 이름(With J)이 아니라 제안에만 붙는다 */
-.sgFrom{display:inline-block;margin-right:6px;padding:1px 6px;border-radius:999px;background:var(--meta-good);color:#fff;font-size:10px;letter-spacing:.02em}
+.sgFrom{display:inline-block;margin-right:6px;padding:1px 6px;border-radius:999px;background:var(--meta-good);color:#fff;font-size:.75rem;letter-spacing:.02em}
 .sgTitle{font-size:15.5px;font-weight:800;line-height:1.35}
 .sgDesc{font-size:12px;color:var(--muted);margin-top:4px}
 .sgWhy{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:3px}
@@ -676,3 +676,34 @@ body:has(.modalBg.show) #toast{bottom:auto;top:calc(env(safe-area-inset-top) + 1
 #searchRes .placeSearchResult:hover{background:var(--hover-bg)}.psrName{display:block;font-weight:700;font-size:14.5px}.psrAddr{display:block;font-size:12px;color:var(--subtle);margin-top:2px;line-height:1.4}
 .estNote .estFix{color:var(--primary-dark)}
 .sampleTag{font-size:10.5px;font-weight:700;color:var(--badge-info-fg);background:var(--badge-info-bg);border-radius:5px;padding:1px 5px;vertical-align:1px}
+/* ux3:a11y */
+/* 일정으로 건너뛰기 — 키보드의 첫 정지. 포커스를 받을 때만 보인다 */
+.skipLink{position:absolute;left:8px;top:-100px;z-index:5000;background:var(--surface);color:var(--ink);border:2px solid var(--focus);border-radius:8px;padding:10px 14px;font-weight:700;text-decoration:none}
+.skipLink:focus{top:8px}
+#sidebar:focus:not(:focus-visible){outline:none}
+/* 칸 옆 오류 문장 — 토스트 대신 고칠 자리에 남는다 */
+.fieldErr{color:var(--meta-danger);font-size:.8125rem;font-weight:600;line-height:1.45;margin:4px 0 2px}
+select[aria-invalid="true"],textarea[aria-invalid="true"]{border-color:var(--meta-danger)!important}
+/* ☰ '화면' — 기기 설정·라이트·다크 중 지금 것을 눌린 상태로 */
+.themeChoice{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;padding:2px 4px 4px}
+#hdrMenu .themeChoice .btn{justify-content:center;text-align:center;border-color:var(--border);background:transparent;min-height:44px;padding:6px 4px}
+#hdrMenu .themeChoice .btn[aria-pressed="true"]{border-color:var(--selected-border);background:var(--selected-bg);color:var(--selected-accent);font-weight:700}
+/* 이동수단 목록 — 화살표로 고른 것이 지금 고른 것이다 */
+.modePickerList .modeOpt[aria-checked="true"]{border-color:var(--selected-border)}
+/* 예시 글자는 테마와 관계없이 4.5:1 이상(라이트 6:1 · 다크 7.3:1) — 기본 회색은 다크에서 3.6:1이었다 */
+::placeholder{color:var(--subtle);opacity:1}
+/* 다크의 입력칸 테두리는 바탕과 1.22:1이라 칸이 보이지 않았다 — 3:1 이상(바탕 3.9:1 · 창 밖 4.4:1) */
+body.theme-dark input:not([type=checkbox]):not([type=radio]),body.theme-dark select,body.theme-dark textarea{border-color:#857a6a}
+/* 고정된 머리·버튼 줄 밑으로 포커스가 숨지 않게(브라우저 스크롤용 — 정확한 보정은 app.js의 focusin) */
+#placeDetails{scroll-padding:96px 0 110px}
+/* 터치 기기는 화면 폭이 아니라 손가락으로 정한다 — 768px 아이패드 세로에서 구간 수단 22×19·'＋ 장소 추가' 78×22였다.
+   겉모양은 두고 누르는 높이만 44px로. 줄 안의 작은 칩은 보이지 않는 영역을 넓힌다(줄 높이가 늘지 않게). */
+@media (pointer:coarse){
+  .dayHead,.spot{min-height:44px}.iconb{min-width:44px;min-height:44px}
+  .addSpot,.addSpotBtn{min-height:44px}
+  .candReact button,.candActions .btn,.commentForm .btn{min-height:44px}
+  #sampleBar .btn,.viewMenu>summary,#travel .btn,.btn.sgEnergyBtn,.sgActions .btn,#verLabel{min-height:44px}
+  .viewMenu>summary{display:flex;align-items:center}
+  .legModeBtn{min-width:36px;min-height:36px}.legModeBtn::after{inset:-4px}
+  .spotMetaItem.stayMin.unset{position:relative}.spotMetaItem.stayMin.unset::after{content:'';position:absolute;inset:-10px -2px}
+}

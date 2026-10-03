@@ -867,6 +867,12 @@ function dateOf(di){
   const d = new Date(trip().start+'T00:00:00'); d.setDate(d.getDate()+di);
   return `${d.getMonth()+1}/${d.getDate()} (${'일월화수목금토'[d.getDay()]})`;
 }
+// 소리로 읽을 날짜 — '10/25 (일)'은 스크린리더가 '10 슬래시 25'로 읽는다. 일자 제목(heading)에 실어 날짜로 훑게 한다
+function dateSpoken(di){
+  if(!trip().start) return '';
+  const d = new Date(trip().start+'T00:00:00'); d.setDate(d.getDate()+di);
+  return `${d.getMonth()+1}월 ${d.getDate()}일 ${'일월화수목금토'[d.getDay()]}요일`;
+}
 // 로컬 날짜를 YYYY-MM-DD로 (타임존 밀림 방지)
 // di번째 날의 ISO 날짜 (시작일 미설정 시 빈 문자열)
 function isoDateOf(di){ if(!trip().start) return ''; const d=new Date(trip().start+'T00:00:00'); d.setDate(d.getDate()+di); return toISO(d); }
@@ -954,8 +960,29 @@ function legLabel(c){
 }
 // 주소창·상태바 색(theme-color)도 지금 테마의 바탕을 따른다 — 예전 남색(#16213e)이 남아 있었다
 function syncThemeColor(dark){ const m=document.querySelector('meta[name="theme-color"]'); if(m) m.setAttribute('content',dark?'#16130f':'#f4f1ea'); }
-function applyTheme(){ let theme='light'; try{ theme=localStorage.getItem(THEME_KEY)||'light'; }catch(_){} document.body.classList.toggle('theme-dark',theme==='dark'); syncThemeColor(theme==='dark'); }
-function toggleTheme(){ const dark=!document.body.classList.contains('theme-dark'); document.body.classList.toggle('theme-dark',dark); syncThemeColor(dark); try{localStorage.setItem(THEME_KEY,dark?'dark':'light');}catch(_){} }
+// 테마는 '기기 설정 따르기'(system)가 기본이다 — 기기가 다크여도 라이트로 시작했고, 바꾸는 곳은 보기 설정 안의 토글 하나라
+// 지금 무엇인지 말하지 않았다(2026-10-03 UX 검토). 고르는 곳은 ☰의 '화면' 세 칸이고, 저장은 고른 것만(system은 지운다).
+// 예전 토글이 남긴 'light'·'dark'는 그대로 그 선택이다.
+const THEME_CHOICES=[['system','기기 설정'],['light','라이트'],['dark','다크']];
+function themePref(){ try{ const v=localStorage.getItem(THEME_KEY); return v==='light'||v==='dark'? v : 'system'; }catch(_){ return 'system'; } }
+const darkQuery=typeof window.matchMedia==='function'? window.matchMedia('(prefers-color-scheme: dark)') : null;
+function applyTheme(){
+  const pref=themePref(), dark=pref==='dark'||(pref==='system'&&!!darkQuery&&darkQuery.matches);
+  document.body.classList.toggle('theme-dark',dark);
+  document.documentElement.style.colorScheme=dark?'dark':'light';   // 달력·셀렉트 같은 기본 컨트롤도 어두운 모양으로
+  syncThemeColor(dark);
+  document.querySelectorAll('#themeChoice button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.theme===pref?'true':'false'));
+}
+function setTheme(pref){ try{ if(pref==='system') localStorage.removeItem(THEME_KEY); else localStorage.setItem(THEME_KEY,pref); }catch(_){} applyTheme(); }
+(function(){
+  const box=document.getElementById('themeChoice'); if(!box) return;
+  THEME_CHOICES.forEach(([id,name])=>{
+    const b=document.createElement('button'); b.type='button'; b.className='btn'; b.dataset.theme=id; b.textContent=name;
+    b.onclick=()=>setTheme(id); box.appendChild(b);
+  });
+  if(darkQuery){ const on=()=>{ if(themePref()==='system') applyTheme(); };
+    if(typeof darkQuery.addEventListener==='function') darkQuery.addEventListener('change',on); else if(typeof darkQuery.addListener==='function') darkQuery.addListener(on); }
+})();
 applyTheme();
 function legTitle(c){
   if((c.mode||'car')==='car'&&c.m<2000) return '자차 하루여도 2km 미만은 걸어서 계산해요 — 차로 가려면 구간 수단을 택시로 바꾸세요';
@@ -986,6 +1013,36 @@ function badTimeField(root){
   }
   return null;
 }
+/** 폼 오류는 **그 칸 아래 문장**으로 말한다. 토스트는 2초 뒤 사라지고 포커스는 '저장'에 남아, 무엇을 고칠지 그 자리에서
+ *  알 수 없었다 — 결제 항목의 이름 칸은 화면 밖에 있었다(2026-10-03 UX 검토). 접힌 상세 설정 안이면 펼치고, 칸으로 스크롤해
+ *  포커스를 옮긴 뒤 칸 아래 문장(role=alert)을 그 칸의 설명으로 잇는다. 칸을 고치거나 창을 닫으면 지운다.
+ *  @param {string|HTMLElement} target @param {string} msg */
+function fieldError(target,msg){
+  const el=typeof target==='string'? document.getElementById(target) : target;
+  if(!el){ toast(msg,'#b4342a'); return; }
+  const id=(el.id||'field')+'Err';
+  let p=document.getElementById(id);
+  if(!p){ p=document.createElement('p'); p.id=id; p.className='fieldErr'; p.setAttribute('role','alert');
+    (el.closest('.fieldRow')||el).insertAdjacentElement('afterend',p); }
+  p.textContent=msg;
+  el.setAttribute('aria-invalid','true');
+  const desc=(el.getAttribute('aria-describedby')||'').split(/\s+/).filter(Boolean);
+  if(!desc.includes(id)) el.setAttribute('aria-describedby',[id,...desc].join(' '));
+  const det=el.closest('details'); if(det&&!det.open) det.open=true;
+  if(el.scrollIntoView) el.scrollIntoView({block:'center'});
+  el.focus();
+  // 장소 살펴보기에서 바로 담을 때처럼 그 칸이 다른 창 뒤에 있으면 칸 옆 문장이 보이지 않는다 — 그때는 토스트로도 말한다
+  const open=document.querySelector('dialog[open]');
+  if((open&&!open.contains(el))||!el.closest('.modalBg.show,dialog[open]')) toast(msg,'#b4342a');
+}
+/** @param {Element} el */
+function clearFieldError(el){
+  const p=el.id&&document.getElementById(el.id+'Err'); if(!p) return;
+  p.remove(); el.removeAttribute('aria-invalid');
+  const rest=(el.getAttribute('aria-describedby')||'').split(/\s+/).filter(x=>x&&x!==p.id);
+  if(rest.length) el.setAttribute('aria-describedby',rest.join(' ')); else el.removeAttribute('aria-describedby');
+}
+['input','change'].forEach(type=>document.addEventListener(type,e=>{ const t=/** @type {any} */(e.target); if(t&&t.id) clearFieldError(t); }));
 function planDepartISO(isoDate,localMinutes,timeZone){
   const minutes=typeof localMinutes==='number'?localMinutes:parseHM(localMinutes||'09:00');
   const iso=zonedMinutesToISOString(isoDate,minutes,timeZone||'');
@@ -1137,7 +1194,13 @@ function legMinutes(a,b,mode,when,timeZone){
 }
 // 일자 타임라인: 시작시각(startAt, 기본 09:00)부터 체류(stayMin, **안 정했으면 0분**)+이동 누적.
 // 순수 계산은 lib.js computeTimeline. startAnchor(전날 숙소 등)가 있으면 첫 유효 장소까지 이동시간을 먼저 더한다.
-function dayTimeZone(day){ return (day&&day.timeZone)||trip().timeZone||''; }
+// 국내 여행은 시간대를 정하지 않아도 한국 시간이다 — 처음부터 '🌐 시간대 미설정'이 붙고, 대중교통 시각이 출발 시각 없이
+// 조회됐다(2026-10-03 UX 검토). 위치가 있는 장소가 전부 국내일 때만 그렇게 보고, 하나라도 해외면 추측하지 않는다.
+function tripIsDomestic(){
+  let n=0; for(const d of trip().days) for(const s of d.spots){ if(!hasLoc(s)) continue; n++; if(!inKorea({lat:+s.lat,lng:+s.lng})) return false; }
+  return n>0;
+}
+function dayTimeZone(day){ return (day&&day.timeZone)||trip().timeZone||(tripIsDomestic()?'Asia/Seoul':''); }
 function dayJourney(day, startAnchor, di, endAnchor){
   const index=di!=null?di:trip().days.indexOf(day), iso=index>=0?isoDateOf(index):'', timeZone=dayTimeZone(day);
   if(startAnchor===undefined&&index>=0) startAnchor=startAnchorFor(index);
@@ -1761,13 +1824,12 @@ function renderFilter(){
   const colorMode=readOnly()? '' : `<div class="viewMenuLabel">색상 기준</div><button class="chip" id="colorModeBtn">🎨 ${colorByMode()==='day'?'일자별':'도시별'} 색상</button>`;
   menu.innerHTML=`<summary>☷ 보기 설정⌄</summary><div class="viewMenuPanel">
     ${colorMode}
-    <button class="chip" id="playBtn">${play?'⏹ 재생 정지':'▶ 경로 재생'}</button><button class="chip" id="themeBtn">◐ 테마 전환</button>
+    <button class="chip" id="playBtn">${play?'⏹ 재생 정지':'▶ 경로 재생'}</button>
     <div class="viewMenuLabel">도시 포커스</div><div class="cityFocus">${cityButtons||'<span class="hint">도시 없음</span>'}</div></div>`;
   bar.appendChild(menu);
   const colorBtn=menu.querySelector('#colorModeBtn');
   if(colorBtn) colorBtn.onclick=()=>{ if(!guardEdit()) return; commit(()=>{ trip().colorBy=colorByMode()==='day'?'city':'day'; }); };
   menu.querySelector('#playBtn').onclick=playTrip;
-  menu.querySelector('#themeBtn').onclick=toggleTheme;
   menu.querySelectorAll('.cityFocusBtn').forEach(button=>button.onclick=()=>{
     const city=button.dataset.city,pts=[]; trip().days.forEach(d=>d.spots.forEach(s=>{if(s.city===city&&hasLoc(s))pts.push([s.lat,s.lng])})); fitTo(pts,80,15);
   });
@@ -1993,16 +2055,21 @@ function renderSidebar(){
         ${metaHtml}
       </div>`;
     });
+    // 시간대는 바뀌는 날에만 적는다 — 14일 내내 같은 'Europe/Madrid'·'시간대 미설정'이 반복됐다(2026-10-02 UX 검토).
+    // 정하지 않은 상태도 계산(대중교통 시각)에 영향을 주므로 없애지 않고, 첫날(또는 정해진 날 다음)에 한 번 말한다.
+    const tzNote=(()=>{
+      const prevTz=di>0? dayTimeZone(trip().days[di-1]) : null;
+      if(timeZone==='Asia/Seoul'&&!day.timeZone&&!trip().timeZone) return '';   // 국내 여행의 기본값 — 알릴 것이 없다
+      if(timeZone) return (di===0||timeZone!==prevTz)? timeZone : '';
+      return (di===0||prevTz)? '시간대 미설정' : '';
+    })();
+    // 날짜 버튼의 이름은 **보이는 글자 그대로** + 하는 일이다. 툴팁이 이름이 되어 14일이 모두 '클릭해서 날짜·시간대 지정/수정'으로만
+    // 읽혀 날짜를 들을 곳이 없었다(2026-10-03 UX 검토). 설명(툴팁)은 따로 남는다.
+    const dateLabel=`${dateOf(di)||'날짜 지정'}${tzNote?` · ${tzNote}`:''} — 날짜·시간대 바꾸기`;
     card.innerHTML=`<div class="dayHead">
-        <div class="dayHeadMain"><div class="dayTitle" title="Day ${di+1}${day.title?` · ${escAttr(day.title)}`:''}"><span class="dragHandle" title="드래그로 일자 순서 변경">⠿</span> Day ${di+1}${day.title?` · ${esc(day.title)}`:''}</div>
+        <div class="dayHeadMain"><div class="dayTitle" role="heading" aria-level="2" aria-label="${escAttr(`Day ${di+1}${day.title?` · ${day.title}`:''}${dateSpoken(di)?` · ${dateSpoken(di)}`:''}`)}" title="Day ${di+1}${day.title?` · ${escAttr(day.title)}`:''}"><span class="dragHandle" title="드래그로 일자 순서 변경" aria-hidden="true">⠿</span> Day ${di+1}${day.title?` · ${esc(day.title)}`:''}</div>
         <details class="actionMenu" onclick="event.stopPropagation()"><summary aria-label="Day ${di+1} 작업 메뉴">⋮</summary><div class="actionMenuPanel"><button class="iconb" onclick="openDayModal(${di})" title="일자 편집">✎ <span>편집</span></button><button class="iconb" onclick="copyDay(${di})" title="일자 복사">⧉ <span>복사</span></button><button class="iconb danger" onclick="deleteDay(${di})" title="일자 삭제">⌫ <span>삭제</span></button></div></details></div>
-        <div class="dayHeadMeta"><span class="date" onclick="event.stopPropagation();openDayModal(${di})" title="${timeZone?'클릭해서 날짜·시간대 지정/수정':'클릭해서 날짜·시간대 지정 — 시간대를 넣으면 이 날 대중교통 시간이 정확해져요'}">${dateOf(di)||'📅 날짜 지정'}${(()=>{
-          // 시간대는 바뀌는 날에만 적는다 — 14일 내내 같은 'Europe/Madrid'·'시간대 미설정'이 반복됐다(2026-10-02 UX 검토).
-          // 정하지 않은 상태도 계산(대중교통 시각)에 영향을 주므로 없애지 않고, 첫날(또는 정해진 날 다음)에 한 번 말한다.
-          const prevTz=di>0? dayTimeZone(trip().days[di-1]) : null;
-          if(timeZone) return (di===0||timeZone!==prevTz)? ` · 🌐 ${esc(timeZone)}` : '';
-          return (di===0||prevTz)? ' · 🌐 시간대 미설정' : '';
-        })()}</span><button class="iconb modeBtn" onclick="event.stopPropagation();openDayModePicker(${di})" title="이 날 기본 이동수단: ${MODE_NAME[dm]} — 눌러서 바꾸기" aria-haspopup="dialog">${MODE_ICON[dm]}</button>${dayWeatherHtml(day,di)}</div>
+        <div class="dayHeadMeta"><span class="date" onclick="event.stopPropagation();openDayModal(${di})" aria-label="${escAttr(dateLabel)}" title="${timeZone?'클릭해서 날짜·시간대 지정/수정':'클릭해서 날짜·시간대 지정 — 시간대를 넣으면 이 날 대중교통 시간이 정확해져요'}">${dateOf(di)||'📅 날짜 지정'}${tzNote?` · 🌐 ${esc(tzNote)}`:''}</span><button class="iconb modeBtn" onclick="event.stopPropagation();openDayModePicker(${di})" title="이 날 기본 이동수단: ${MODE_NAME[dm]} — 눌러서 바꾸기" aria-haspopup="dialog">${MODE_ICON[dm]}</button>${dayWeatherHtml(day,di)}</div>
       </div><div class="dayBody">
         ${day.drive?`<div class="drive driveMemo" title="직접 적은 이동 메모예요 — 아래 계산과 다를 수 있어요"><span class="memoTag">이동 메모</span>${esc(day.drive)}</div>`:''}
         ${flightHtml(day)}
@@ -2229,6 +2296,18 @@ function openModePicker(o){
     if(opt.value===o.current) picked=b;
     list.appendChild(b);
   });
+  // 라디오라고 알렸으면 라디오처럼 움직인다 — 화살표로 고르고 Tab은 목록 전체가 한 번이다(2026-10-03 UX 검토: 7개가 각각 Tab 정지였다).
+  // 화살표는 고르기만 하고 적용은 Enter·Space·누르기다 — 고를 때마다 창이 닫히며 바뀌면 지나가던 수단이 적용된다.
+  const radios=Array.from(list.children);
+  const check=(/** @type {Element} */on)=>radios.forEach(b=>{ b.setAttribute('aria-checked',b===on?'true':'false'); b.classList.toggle('on',b===on); /** @type {any} */(b).tabIndex=b===on?0:-1; });
+  check(picked||radios[0]);
+  list.onkeydown=e=>{
+    const i=radios.indexOf(/** @type {any} */(e.target)); if(i<0) return;
+    const step={ArrowDown:1,ArrowRight:1,ArrowUp:-1,ArrowLeft:-1}[e.key];
+    const j=step? (i+step+radios.length)%radios.length : e.key==='Home'? 0 : e.key==='End'? radios.length-1 : -1;
+    if(j<0) return;
+    e.preventDefault(); check(radios[j]); /** @type {any} */(radios[j]).focus();
+  };
   document.getElementById('modePickerCancel').onclick=()=>dlg.close();
   if(!dlg.open) dlg.showModal();
   (picked||list.firstChild)?.focus?.();
@@ -2434,7 +2513,8 @@ function pickedAdmission(){
   const out=/**@type {Record<string,any>}*/({source:'USER',
     requirement:ADMISSION_REQUIREMENTS.some(r=>r.id===req)?req:'UNKNOWN'});
   if(document.getElementById('spotAdmBooked').checked) out.personalStatus='BOOKED';
-  if(url) out.officialURL=url;
+  // 'www.louvre.fr'처럼 주소창에서 옮겨 적은 주소는 https를 붙여 받는다 — 'http://'는 그대로 거절된다(admissionURL)
+  if(url) out.officialURL=/^www\./i.test(url)? 'https://'+url : url;
   if(note) out.note=note;
   if(peopleText){ const n=parseInt(peopleText,10); if(!isNaN(n)) out.people=n; }
   if(_pickedCheckedAt) out.checkedAt=_pickedCheckedAt;
@@ -2467,19 +2547,22 @@ document.getElementById('spotSave').onclick=()=>{
   const hadLocations=trip().days.some(day=>day.spots.some(hasLoc));
   const name=document.getElementById('spotName').value.trim();
   const lat=parseFloat(document.getElementById('spotLat').value), lng=parseFloat(document.getElementById('spotLng').value);
-  if(!name){toast('이름을 입력하세요','#b4342a');return;}
-  if(badTimeField(document.getElementById('spotModalBg'))){toast('시각을 확인해 주세요 — 00:00부터 23:59까지 (예: 19:00)','#b4342a');return;}
+  if(!name) return fieldError('spotName','장소 이름을 입력해 주세요');
+  { const bad=badTimeField(document.getElementById('spotModalBg')); if(bad) return fieldError(bad,'시각을 확인해 주세요 — 00:00부터 23:59까지 (예: 19:00)'); }
+  // 체류는 분 단위 정수다 — '1.5'를 말없이 1분으로 읽으면 한 시간 반을 뜻했을 수도 있는 값이 사라진다
+  { const raw=String(document.getElementById('spotStayMin').value||'').trim();
+    if(raw&&!/^\d+$/.test(raw)) return fieldError('spotStayMin','머무는 시간은 분 단위 정수로 적어 주세요 (예: 1시간 30분 → 90)'); }
   // 위치 없이 이미 일정에 있는 장소(붙여넣기에서 위치를 못 찾은 곳 등)는 위치 없이도 고쳐 저장한다 —
   // 위치를 정하기 전까지 체류 시간 하나도 못 고치면 안 된다. 새 장소는 여전히 위치를 먼저 정한다.
   const editingPlaceless=editing&&editing.si>=0&&!hasLoc(trip().days[editing.di]?.spots[editing.si]||{});
-  if((isNaN(lat)||isNaN(lng))&&!editingPlaceless){toast('위치를 지정하세요 (검색 또는 지도 클릭)','#b4342a');return;}
+  if((isNaN(lat)||isNaN(lng))&&!editingPlaceless) return fieldError('spotSearch','위치를 정해 주세요 — 검색하거나 지도에서 골라요');
   const curV=document.getElementById('spotCur').value;
   const costText=document.getElementById('spotCost').value;
   const costV=parseCostAmount(costText,curV);
-  if(costText.trim()&&costV===null){toast('비용을 확인하세요 — 원·엔은 정수, 외화는 소수 둘째 자리까지 입력할 수 있어요','#b4342a');return;}
+  if(costText.trim()&&costV===null) return fieldError('spotCost','비용을 확인하세요 — 원·엔은 정수, 외화는 소수 둘째 자리까지 입력할 수 있어요');
   // 예약·입장 준비는 서버(`validateTripPayload`)가 거절할 값을 저장 전에 같은 문장으로 말한다
   const admission=pickedAdmission();
-  if(admission){ const admErr=admissionError(admission); if(admErr){ toast(admErr,'#b4342a'); return; } }
+  if(admission){ const admErr=admissionError(admission); if(admErr) return fieldError(/공식 페이지/.test(admErr)?'spotAdmUrl':/메모/.test(admErr)?'spotAdmNote':/인원/.test(admErr)?'spotAdmPeople':'spotAdmReq',admErr); }
   const s={name,city:document.getElementById('spotCity').value.trim()||'기타',desc:document.getElementById('spotDesc').value.trim(),
     stay:document.getElementById('spotStay').checked,
     // 연박 수는 숙소일 때만 저장, 1박이면 생략(기본값 — 하위호환)
@@ -2627,6 +2710,9 @@ window.openDayModal=(di)=>{
   document.getElementById('dayDate').value=isoDateOf(di);
   document.getElementById('dayStart').value=d.startAt||'09:00';
   document.getElementById('dayTimeZone').value=d.timeZone||'';
+  // 여행 전체가 한 시간대면 '모든 날에 적용'이 기본이다 — 그날만 바뀌어 다음 날이 다시 '미설정'이었다(2026-10-03 UX 검토).
+  // 날마다 다른 시간대를 둔 여행(도시를 건너는 여행)은 그날만 고친다.
+  document.getElementById('dayTzAll').checked=new Set(trip().days.map(x=>dayTimeZone(x))).size<=1;
   document.getElementById('dayCarry').checked = (d.startPolicy!=='none');   // 전날 위치 이월 on/off
   document.getElementById('dayMode').value=dayModeOf(d);
   const f=d.flight||{};
@@ -2665,11 +2751,18 @@ async function lookupAirport(el){
 document.getElementById('dayCancel').onclick=()=>document.getElementById('dayModalBg').classList.remove('show');
 document.getElementById('daySave').onclick=()=>{
   const d=trip().days[editingDay];
-  const dayTz=document.getElementById('dayTimeZone').value.trim();
-  if(dayTz&&!validTimeZone(dayTz)){ toast('시간대는 Europe/Madrid 같은 IANA 형식으로 입력해 주세요','#b4342a'); return; }
+  // 시간대는 '서울'·'파리' 같은 도시 이름도 받는다(resolveTimeZone) — 'IANA 형식'은 사람에게 묻지 않는다
+  const tzText=document.getElementById('dayTimeZone').value.trim();
+  const dayTz=tzText? resolveTimeZone(tzText) : '';
+  if(tzText&&!dayTz) return fieldError('dayTimeZone',"시간대를 찾지 못했어요 — '서울'·'파리' 같은 도시 이름이나 Europe/Madrid처럼 적어 주세요");
+  { const bad=badTimeField(document.getElementById('dayModalBg')); if(bad) return fieldError(bad,'시각을 확인해 주세요 — 00:00부터 23:59까지 (예: 09:00)'); }
   d.title=document.getElementById('dayTitle').value.trim();
   d.startAt=normHM(document.getElementById('dayStart').value)||'09:00';
-  if(dayTz) d.timeZone=dayTz; else delete d.timeZone;
+  if(document.getElementById('dayTzAll').checked && (dayTz||'')!==(d.timeZone||'')){
+    // 모든 날에 — 여행 기본 시간대로 두고 날마다 정한 값은 비운다(다른 날이 '여행 기본값'을 따라간다)
+    if(dayTz) trip().timeZone=dayTz; else delete trip().timeZone;
+    trip().days.forEach(x=>{ delete x.timeZone; });
+  }else if(dayTz) d.timeZone=dayTz; else delete d.timeZone;
   if(document.getElementById('dayCarry').checked) delete d.startPolicy; else d.startPolicy='none';   // 이월 정책
   d.mode=document.getElementById('dayMode').value;
   const fc=document.getElementById('flightCode').value.trim(), fdp=document.getElementById('flightDep').value.trim(),
@@ -2775,8 +2868,9 @@ document.getElementById('tripEditBtn').onclick=()=>{
 document.getElementById('tripCancel').onclick=()=>document.getElementById('tripModalBg').classList.remove('show');
 document.getElementById('tripSave').onclick=()=>{
   if(!guardEdit()) return;
-  const timeZone=document.getElementById('tripTimeZone').value.trim();
-  if(timeZone&&!validTimeZone(timeZone)){ toast('시간대는 Asia/Tokyo 같은 IANA 형식으로 입력해 주세요','#b4342a'); return; }
+  const tzText=document.getElementById('tripTimeZone').value.trim();
+  const timeZone=tzText? resolveTimeZone(tzText) : '';
+  if(tzText&&!timeZone) return fieldError('tripTimeZone',"시간대를 찾지 못했어요 — '도쿄'·'파리' 같은 도시 이름이나 Asia/Tokyo처럼 적어 주세요");
   const want=tripDaysInput();
   // 일정이 든 날을 말없이 지우지 않는다 — 되돌리기가 있어도 사라진 것을 먼저 알려 준다
   const losing=trip().days.slice(want).filter(d=>(d.spots||[]).length).length;
@@ -3791,8 +3885,8 @@ function saveCostItem(kind){
   const title=document.getElementById('bkTitle').value.trim();
   const cur=document.getElementById('bkCur').value;
   const amount=parseCostAmount(document.getElementById('bkPrice').value, cur);
-  if(!title){ toast('항목 이름을 입력하세요','#b4342a'); return; }
-  if(amount===null){ toast('금액을 확인해 주세요 — 원·엔은 정수, 달러·유로·위안은 소수 둘째 자리까지','#b4342a'); return; }
+  if(!title) return fieldError('bkTitle','항목 이름을 입력해 주세요');
+  if(amount===null) return fieldError('bkPrice','금액을 확인해 주세요 — 원·엔은 정수, 달러·유로·위안은 소수 둘째 자리까지');
   const paidOn=document.getElementById('bkPaidOn').value, ps=document.getElementById('bkPayState').value;
   const isNew=!editingCostItem;
   commit(()=>{
@@ -3816,22 +3910,22 @@ document.getElementById('bkSave').onclick=()=>{
   const title=document.getElementById('bkTitle').value.trim();
   const curV=document.getElementById('bkCur').value;
   const price=parseCostAmount(document.getElementById('bkPrice').value, curV);
-  if(!title){ toast('예약 이름을 입력하세요','#b4342a'); return; }
-  if(price===null||price<=0){ toast('예약 가격을 입력하세요 — 원·엔은 정수, 달러·유로·위안은 소수 둘째 자리까지','#b4342a'); return; }
+  if(!title) return fieldError('bkTitle','예약 이름을 입력해 주세요');
+  if(price===null||price<=0) return fieldError('bkPrice','예약 가격을 입력해 주세요 — 원·엔은 정수, 달러·유로·위안은 소수 둘째 자리까지');
   const sv=document.getElementById('bkStart').value, ev=document.getElementById('bkEnd').value;
-  if(type==='hotel'&&document.getElementById('bkTrack').checked&&(!sv||!ev)){ toast('가격 추적에는 체크인·체크아웃 날짜가 필요해요','#b4342a'); return; }
+  if(type==='hotel'&&document.getElementById('bkTrack').checked&&(!sv||!ev)) return fieldError(sv?'bkEnd':'bkStart','가격 추적에는 체크인·체크아웃 날짜가 필요해요');
   if(sv&&ev){
     if(type==='car'){
       // 당일 대여는 정상이다 — 같은 날이면 시각이 앞뒤를 가른다 (시세 조회도 pickupAt<returnAt만 본다)
-      if(sv>ev){ toast('반납일이 픽업일보다 앞설 수 없어요','#b4342a'); return; }
+      if(sv>ev) return fieldError('bkEnd','반납일이 픽업일보다 앞설 수 없어요');
       if(sv===ev){
         const HM=/^([01]?\d|2[0-3]):[0-5]\d$/;
         const pt=document.getElementById('bkCarPickupTime').value.trim(), rt=document.getElementById('bkCarReturnTime').value.trim();
-        if(!HM.test(pt)||!HM.test(rt)||parseHM(pt)>=parseHM(rt)){
-          toast('당일 대여는 픽업 시각과 그보다 늦은 반납 시각이 필요해요','#b4342a'); return; }
+        if(!HM.test(pt)||!HM.test(rt)||parseHM(pt)>=parseHM(rt))
+          return fieldError(HM.test(pt)?'bkCarReturnTime':'bkCarPickupTime','당일 대여는 픽업 시각과 그보다 늦은 반납 시각이 필요해요');
       }
     }
-    else if(sv>=ev){ toast('체크아웃은 체크인보다 뒤여야 해요','#b4342a'); return; }   // 역순·같은 날이면 시세 조회가 거부된다
+    else if(sv>=ev) return fieldError('bkEnd','체크아웃은 체크인보다 뒤여야 해요');   // 역순·같은 날이면 시세 조회가 거부된다
   }
   const isNew=!editingBooking;
   const b=isNew? {id:uid(), createdAt:new Date().toISOString()} : bookingOf(editingBooking);
@@ -3839,7 +3933,7 @@ document.getElementById('bkSave').onclick=()=>{
   // 취소 수수료도 예약 가격과 같은 통화 규칙으로 읽는다 — 숫자만 뽑으면 12.50이 1250이 된다.
   const feeText=document.getElementById('bkFee').value.trim();
   const fee=feeText? parseCostAmount(feeText, document.getElementById('bkCur').value) : null;
-  if(feeText&&fee===null){ toast('취소 수수료를 확인해 주세요 — 원·엔은 정수, 달러·유로·위안은 소수 둘째 자리까지','#b4342a'); document.getElementById('bkFee').focus(); return; }
+  if(feeText&&fee===null) return fieldError('bkFee','취소 수수료를 확인해 주세요 — 원·엔은 정수, 달러·유로·위안은 소수 둘째 자리까지');
   const paidOn=document.getElementById('bkPaidOn').value;
   const identityChanged = b.start!==(sv||undefined)||b.end!==(ev||undefined)||b.title!==title;
   commit(()=>{
@@ -6833,6 +6927,54 @@ function buttonNameFromTitle(el){
 }
 
 // ───────────────── 키보드·보조기술 접근성 ─────────────────
+// ⋮(행·일자)·보기 설정·비용 내역은 details 팝오버다. Esc로도, 바깥을 눌러도, 포커스가 나가도 닫히지 않아 열린 채 다음 포커스를
+// 가렸고, 보기 설정은 장소 추가 창 위에도 남았다(2026-10-03 UX 검토). 그리고 열려 있는 동안 bgRender가 다시 그리기를 미룬다.
+const POPOVERS='details.actionMenu[open],details.viewMenu[open]';
+/** @param {Element} [keep] 이 팝오버(또는 이걸 품은 팝오버)는 둔다 */
+function closePopovers(keep){
+  document.querySelectorAll(POPOVERS).forEach(d=>{ if(!(keep&&d.contains(keep))) d.open=false; });
+  const menu=document.getElementById('hdrMenu');
+  if(menu&&menu.classList.contains('open')&&!(keep&&(menu.contains(keep)||keep.closest?.('#moreBtn')))) menu.classList.remove('open');
+}
+// 바깥을 누르면 닫는다 — 캡처 단계다. 행 ⋮는 onclick에서 전파를 멈춰 다른 ⋮를 눌러도 앞의 것이 열린 채였다.
+document.addEventListener('click',e=>{
+  const t=/** @type {any} */(e.target); if(!t||!t.closest) return;
+  document.querySelectorAll(POPOVERS).forEach(d=>{ if(!d.contains(t)) d.open=false; });
+},true);
+// 포커스가 팝오버·☰ 밖으로 나가면 닫는다. 다음 자리가 없는 이탈(빈 곳 누르기·창 전환)은 위의 click이 맡는다.
+document.addEventListener('focusout',e=>{
+  const from=/** @type {any} */(e.target), next=/** @type {any} */(e.relatedTarget);
+  if(!from||!from.closest||!next) return;
+  const pop=from.closest('details.actionMenu,details.viewMenu');
+  if(pop&&pop.open&&!pop.contains(next)) pop.open=false;
+  const menu=document.getElementById('hdrMenu');
+  if(menu&&menu.classList.contains('open')&&from.closest('#hdrMenu,#moreBtn')&&!next.closest('#hdrMenu,#moreBtn')) menu.classList.remove('open');
+});
+// ☰가 열렸는지를 연 버튼이 말한다 — 여닫는 곳이 여럿이라(토글·항목 선택·바깥·Esc·포커스) 상태를 보고 맞춘다
+(function(){
+  const menu=document.getElementById('hdrMenu'), btn=document.getElementById('moreBtn'); if(!menu||!btn) return;
+  const sync=()=>btn.setAttribute('aria-expanded',menu.classList.contains('open')?'true':'false');
+  new MutationObserver(sync).observe(menu,{attributes:true,attributeFilter:['class']}); sync();
+})();
+// 고정된 머리·버튼 줄이 있는 창에서 포커스가 그 밑에 숨지 않게 한다 — 장소 살펴보기의 '리뷰 보기'에 포커스가 가도
+// 'Day 1에 담기' 줄에 완전히 가려져, 보이지 않는 버튼이 눌렸다(2026-10-03 UX 검토). 브라우저가 스크롤한 뒤 가린 만큼 더 민다.
+document.addEventListener('focusin',e=>{
+  const el=/** @type {any} */(e.target); if(!el||!el.closest) return;
+  const box=el.closest('#placeDetails,.modal'); if(!box||box.scrollHeight<=box.clientHeight) return;
+  const r=el.getBoundingClientRect();
+  const bar=box.querySelector(':scope>#placeDetailsActions,:scope>.modalActions');
+  if(bar&&!bar.contains(el)){ const top=bar.getBoundingClientRect().top; if(r.bottom>top) box.scrollTop+=r.bottom-top+12; }
+  const head=box.querySelector(':scope>.placeHeader');
+  if(head&&!head.contains(el)){ const bottom=head.getBoundingClientRect().bottom; if(r.top<bottom) box.scrollTop-=bottom-r.top+12; }
+});
+// 검색 결과가 나오면 몇 곳인지 알린다 — 결과 줄은 버튼이라 그 상자를 통째로 알림 영역으로 둘 수 없다
+(function(){
+  const res=document.getElementById('searchRes'), out=document.getElementById('searchStatus'); if(!res||!out) return;
+  new MutationObserver(()=>{
+    const n=res.querySelectorAll('.placeSearchResult').length, text=(res.textContent||'').trim();
+    out.textContent= n? `검색 결과 ${n}곳` : (text&&!/검색 중/.test(text)? text : '');
+  }).observe(res,{childList:true});
+})();
 function initAccessibility(){
   const returnFocus=new WeakMap();
   // 열린 순서. 예약 목록 위에 결제 편집기를 열면 둘 다 열려 있다 — Esc·Tab은 **맨 위의 것**에만 간다.
@@ -6878,11 +7020,14 @@ function initAccessibility(){
         if(bg.classList.contains('show')) modalStack.push(bg);
         syncModalInert();
       }
+      if(bg.classList.contains('modalBg')&&!bg.classList.contains('show')) bg.querySelectorAll('.fieldErr').forEach(p=>{ const f=document.querySelector(`[aria-describedby~="${p.id}"]`); if(f) clearFieldError(f); else p.remove(); });
       if(bg.classList.contains('show')){
         if(!returnFocus.has(bg)){
-          const active=document.activeElement;
-          returnFocus.set(bg,active&&active.closest&&active.closest('#hdrMenu')?document.getElementById('moreBtn'):active);
+          const active=document.activeElement, pop=active&&active.closest&&active.closest('details.actionMenu,details.viewMenu');
+          // 팝오버 안의 항목(⋮ → 편집)은 닫히면 숨는다 — 돌아올 자리는 그 팝오버를 연 summary다
+          returnFocus.set(bg,active&&active.closest&&active.closest('#hdrMenu')?document.getElementById('moreBtn'):pop?pop.querySelector('summary'):active);
         }
+        closePopovers();
         setTimeout(()=>{ if(!window.document || !bg.classList.contains('show') || bg.contains(document.activeElement)) return; const target=bg.querySelector('[autofocus],input:not([type="hidden"]),textarea,select,button:not([disabled]),[href]'); if(target) target.focus(); },0);
       }else{
         const previous=returnFocus.get(bg); returnFocus.delete(bg);
@@ -6899,6 +7044,9 @@ function initAccessibility(){
     const travel=document.getElementById('travel');
     const bg=!onboarding.hidden?onboarding:(topModal()||(travel&&travel.classList.contains('show')?travel:null));
     if(!bg){
+      // ⋮·보기 설정 팝오버는 Esc로 닫고 연 자리(summary)로 돌아간다
+      const pop=e.key==='Escape'&&document.querySelector(POPOVERS);
+      if(pop){ e.preventDefault(); pop.open=false; pop.querySelector('summary')?.focus(); return; }
       // ☰ 메뉴도 Esc로 닫는다 — 닫으면 연 버튼으로 돌아간다
       const menu=document.getElementById('hdrMenu');
       if(e.key==='Escape'&&menu&&menu.classList.contains('open')){ e.preventDefault(); menu.classList.remove('open'); document.getElementById('moreBtn')?.focus(); }

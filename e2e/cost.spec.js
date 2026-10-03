@@ -101,8 +101,9 @@ test('보기 설정 패널도 모바일 필터바에 잘리지 않는다',async(
   });
   expect(reachable.inPanel,`보기 설정 패널 아래쪽이 잘렸다 (그 자리에 잡힌 것: ${reachable.hit})`).toBe(true);
 
-  // 테마 전환이 실제로 눌린다 — 잘려 있으면 클릭이 다른 요소에 막힌다
-  await page.locator('#themeBtn').click();
+  // 맨 아래 칸(도시 포커스)이 실제로 눌린다 — 잘려 있으면 클릭이 다른 요소에 막힌다.
+  // (테마는 2026-10-03부터 ☰의 '화면'에서 고른다 — 보기 설정의 테마 토글은 없어졌다)
+  await page.locator('.viewMenu:not(.costMenu) .cityFocus .chip').first().click();
   await expect(panel).toBeVisible();
 });
 

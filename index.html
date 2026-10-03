@@ -16,6 +16,7 @@
 <link rel="stylesheet" href="style.css?v=tc-v254">
 </head>
 <body>
+<a class="skipLink" href="#sidebar">일정으로 건너뛰기</a>
 <section id="onboarding" class="onboarding" hidden role="dialog" aria-modal="true" aria-labelledby="onboardingTitle">
   <div class="onboardingCard">
     <img class="brandMark" src="icon-192.png" alt="With J" width="42" height="42">
@@ -33,15 +34,15 @@
 </section>
 <header>
   <h1><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7l5-2 6 2 5-2v12l-5 2-6-2-5 2zM9 5v12M15 7v12"/></svg> <span class="brandText">With J</span></h1>
-  <select id="tripSel" class="srOnly" aria-label="현재 여행 선택"></select>
+  <select id="tripSel" class="srOnly" aria-label="현재 여행 선택" tabindex="-1" aria-hidden="true"></select>
   <button class="tripPicker" id="tripPickerBtn" aria-haspopup="dialog"><span id="tripPickerName">여행 선택</span>⌄</button>
   <button class="membersPill" id="membersBtn" hidden title="같이 짜기 — 멤버·초대" aria-haspopup="dialog"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 19v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1M22 19v-1a4 4 0 0 0-3-3.9"/><path d="M9 4a3 3 0 1 1 0 6 3 3 0 0 1 0-6z"/></svg> <span id="membersCount">1</span></button>
   <span class="hdrSpacer"></span>
   <button class="btn" id="pasteBtn"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4h6v3H9zM7 5.5H5V21h14V5.5h-2M8.5 12h7M8.5 16h5"/></svg> 일정 붙여넣기</button>
   <button class="btn primary" id="travelBtn" title="여행 중 안내 켜기 — 지금 무엇을 할지, 다음 장소까지 얼마나 걸리는지 알려 줘요"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><path d="M12 7.4a2.6 2.6 0 1 1 0 5.2 2.6 2.6 0 0 1 0-5.2z"/></svg> 여행 중 안내</button>
   <button class="btn ghost" id="undoQuick" type="button" hidden aria-label="실행취소" title="방금 한 변경 되돌리기 (Ctrl+Z)" onclick="undo()"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
-  <button class="btn ghost" id="moreBtn" aria-label="메뉴" onclick="toggleHdrMenu(event)"><span class="menuBadge" id="menuBadge" hidden></span><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
-  <div id="hdrMenu">
+  <button class="btn ghost" id="moreBtn" aria-label="메뉴" aria-expanded="false" aria-controls="hdrMenu" onclick="toggleHdrMenu(event)"><span class="menuBadge" id="menuBadge" hidden></span><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+  <div id="hdrMenu" role="group" aria-label="메뉴">
     <button class="btn" id="authBtn" title="로그인하면 여행이 내 계정에 저장돼 어느 기기서든 열려요">로그인</button>
     <p class="menuGroupLabel">여행</p>
     <button class="btn ghost" id="undoBtn" title="실행취소 (Ctrl+Z)" disabled onclick="undo()"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg> 실행취소</button>
@@ -60,8 +61,10 @@
     <button class="btn ghost" id="exportBtn"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4M8 8l4-4 4 4M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg> 내보내기</button>
     <button class="btn ghost" id="imgBtn" title="일정을 이미지로 저장"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM8.5 10.5a1.3 1.3 0 1 0 0-2.6 1.3 1.3 0 0 0 0 2.6zM5 17l4.5-5 3.5 3.5 2.5-2L19 17"/></svg> 이미지</button>
     <button class="btn ghost" id="importBtn"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v12M8 12l4 4 4-4M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg> 가져오기</button>
+    <p class="menuGroupLabel" id="themeChoiceLabel">화면</p>
+    <div class="themeChoice" id="themeChoice" role="group" aria-labelledby="themeChoiceLabel"></div>
     <button class="btn ghost" id="onboardAgainBtn" title="처음 화면을 다시 봐요"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 18h5M10 21h4M12 3a6 6 0 0 1 3.5 10.9c-.5.4-.8 1-.8 1.6v.5h-5.4v-.5c0-.6-.3-1.2-.8-1.6A6 6 0 0 1 12 3z"/></svg> 처음 화면 다시 보기</button>
-    <div id="verLabel" title="현재 실행 중인 앱 버전 (탭하면 최신 버전 확인)"></div>
+    <button type="button" id="verLabel" title="현재 실행 중인 앱 버전 (탭하면 최신 버전 확인)"></button>
   </div>
   <input type="file" id="importFile" accept=".json" style="display:none">
 </header>
@@ -71,8 +74,8 @@
 <div id="roleBar" style="display:none"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12S6 5.8 12 5.8 21.5 12 21.5 12 18 18.2 12 18.2 2.5 12 2.5 12z"/><path d="M12 9.3a2.7 2.7 0 1 1 0 5.4 2.7 2.7 0 0 1 0-5.4z"/></svg> 보기 권한으로 함께 보는 중 — 일정을 바꾸려면 주최자에게 편집 권한을 요청하세요</div>
 <div id="sampleBar" hidden><span>샘플 여행이에요 · 고쳐 봐도 이 기기에만 남아요</span><button class="btn sm primary" id="sampleNew" type="button">내 여행 만들기</button></div>
 <div id="filterbar"></div>
-<div id="main">
-  <aside id="sidebar"></aside>
+<main id="main">
+  <aside id="sidebar" tabindex="-1" aria-label="일정"></aside>
   <div id="map"></div>
   <div id="kmap" style="display:none"></div>
   <section id="mapEmpty" class="mapEmpty" hidden aria-labelledby="mapEmptyTitle">
@@ -82,7 +85,7 @@
   </section>
   <div id="pickBanner"><span>지도를 탭해 위치를 고르세요</span> <button type="button" class="btn sm" id="pickCancel">취소</button></div>
   <div class="legend" id="legend"></div>
-</div>
+</main>
 
 <!-- 장소 추가/편집 모달: 기본 정보 + 접을 수 있는 상세 설정 -->
 <div class="modalBg" id="spotModalBg"><div class="modal spotModal">
@@ -93,9 +96,10 @@
     <button class="btn" id="spotSearchBtn">검색</button>
   </div>
   <div class="searchRes" id="searchRes"></div>
+  <p class="srOnly" id="searchStatus" role="status" aria-live="polite"></p>
   <div class="hint">또는 <button class="btn sm" id="pickOnMap">지도 클릭으로 위치 지정</button> · 지도를 <b>탭(클릭)</b>하면 그 자리에 바로 추가</div>
   <div class="basicGrid">
-    <div><label for="spotName">장소 이름 *</label><input type="text" id="spotName"></div>
+    <div><label for="spotName">장소 이름 *</label><input type="text" id="spotName" aria-required="true"></div>
     <div><label for="spotCity">도시 *</label><input type="text" id="spotCity" placeholder="예: 마드리드"></div>
     <div><label for="spotCat">종류</label><select id="spotCat"></select></div>
     <div><label for="spotDay">일자</label><select id="spotDay"></select></div>
@@ -185,8 +189,9 @@
   <label for="dayDate">날짜 (이 날로 맞추면 전체 일정이 자동 재계산돼요)</label><input type="date" id="dayDate">
   <label>시작 시각 <span class="hint" style="margin:0">— 이 날 첫 출발 시각 (24시간 표기)</span></label><input type="text" id="dayStart" class="timeIn" inputmode="numeric" maxlength="5" placeholder="예: 09:00">
   <div class="hint">숙소/첫 지점에서 <b>출발하는</b> 시각. 이 시각을 기준으로 그 날 도착 예상이 계산돼요.</div>
-  <label>현지 시간대 <span class="hint" style="margin:0">— 비우면 여행 기본값</span></label><input type="text" id="dayTimeZone" list="timezoneList" placeholder="예: Europe/Madrid">
-  <div class="hint">대중교통 출발시각과 일광절약시간(DST)에 사용해요. 도시를 옮긴 날에는 이 값을 확인하세요.</div>
+  <label for="dayTimeZone">현지 시간대 <span class="hint" style="margin:0">— 비우면 여행 기본값</span></label><input type="text" id="dayTimeZone" list="timezoneList" placeholder="예: 서울, 파리, Europe/Madrid" aria-describedby="dayTimeZoneHelp">
+  <div class="chkrow"><input type="checkbox" id="dayTzAll"><label for="dayTzAll" style="margin:0">모든 날에 적용 <span class="hint" style="margin:0">— 여행 기본 시간대로 두고 날마다 따로 정한 값은 비워요</span></label></div>
+  <div class="hint" id="dayTimeZoneHelp">도시 이름(서울·파리·도쿄…)이나 Europe/Madrid처럼 적어요. 대중교통 출발시각과 일광절약시간(DST)에 써서 이동 시간이 달라질 수 있어요. 도시를 옮긴 날에는 이 값을 확인하세요.</div>
   <div class="chkrow"><input type="checkbox" id="dayCarry" checked><label for="dayCarry" style="margin:0">전날 위치에서 이어서 시작 <span class="hint" style="margin:0">— 끄면 공항 이동일·야간열차처럼 이월 없이 첫 장소부터 시작</span></label></div>
   <label for="dayMode">이동 수단 (이 날의 구간 시간·경로 계산 기준)</label>
   <select id="dayMode">
@@ -391,8 +396,8 @@
   <label for="tripDays">기간 (일수)</label>
   <div class="fieldRow"><input type="number" id="tripDays" min="1" max="90" step="1" inputmode="numeric" class="compactSelect"><span class="hint" id="tripRange" style="margin:0;align-self:center"></span></div>
   <div class="hint">종료일을 고르거나 일수를 적으면 서로 맞춰져요. 늘리면 빈 일자가 뒤에 붙고, 줄이면 뒤에서부터 지워요. 장소가 있는 일자를 지울 때는 한 번 더 물어요. 시작일을 바꾸면 일정 전체의 날짜가 옮겨지고, 예약 날짜는 그대로예요.</div>
-  <label for="tripTimeZone">여행 기본 시간대</label><input type="text" id="tripTimeZone" list="timezoneList" placeholder="예: Asia/Tokyo">
-  <div class="hint">IANA 형식으로 입력해요. 일자별 시간대가 있으면 그 값이 우선해요.</div>
+  <label for="tripTimeZone">여행 기본 시간대</label><input type="text" id="tripTimeZone" list="timezoneList" placeholder="예: 도쿄, Asia/Tokyo" aria-describedby="tripTimeZoneHelp">
+  <div class="hint" id="tripTimeZoneHelp">도시 이름(서울·파리·도쿄…)이나 Asia/Tokyo처럼 적어요. 국내 여행은 비워 두면 한국 시간으로 봐요. 일자별 시간대가 있으면 그 값이 우선해요.</div>
   <label><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7v5l3.2 1.9M3.5 12a8.5 8.5 0 1 0 2.6-6.1M3.5 4.5V9h4.5"/></svg> 버전 기록 (10분 간격 자동 저장, 최근 15개)</label>
   <div id="snapList" class="searchRes"></div>
   <div class="row">
@@ -423,7 +428,7 @@
   <div class="hint" id="bkTypeHint">항공·숙박·렌트는 예약으로 저장돼요 — 숙박·렌트는 기간·조건·가격 추적이 붙어요. 나머지는 가기 전에 낸 비용으로만 남아요.</div>
   <div id="bkSpotWrap"><label for="bkSpot">일정의 숙소와 연결 (선택)</label><select id="bkSpot"></select>
     <div class="hint">연결하면 일정 카드의 숙소 항목에 가격 상태가 표시돼요. 🏠 숙소로 등록한 장소만 목록에 나와요.</div></div>
-  <label for="bkTitle" id="bkTitleLabel">예약 이름 *</label><input type="text" id="bkTitle" placeholder="예: Cap Rocat">
+  <label for="bkTitle" id="bkTitleLabel">예약 이름 *</label><input type="text" id="bkTitle" placeholder="예: Cap Rocat" aria-required="true">
   <div id="bkProviderWrap"><label for="bkProvider" id="bkProviderLabel">예약처</label><input type="text" id="bkProvider" placeholder="예: Booking.com"></div>
   <label for="bkPrice" id="bkPriceLabel">예약 가격 *</label>
   <div class="fieldRow">
@@ -610,9 +615,9 @@
 </div></div>
 
 <datalist id="timezoneList">
-  <option value="Asia/Seoul"><option value="Asia/Tokyo"><option value="Asia/Shanghai">
-  <option value="Europe/Madrid"><option value="Europe/Paris"><option value="Europe/London">
-  <option value="America/New_York"><option value="America/Los_Angeles"><option value="UTC">
+  <option value="Asia/Seoul" label="서울 · 한국"><option value="Asia/Tokyo" label="도쿄 · 일본"><option value="Asia/Shanghai" label="상하이 · 중국">
+  <option value="Europe/Madrid" label="마드리드 · 스페인"><option value="Europe/Paris" label="파리 · 프랑스"><option value="Europe/London" label="런던 · 영국">
+  <option value="America/New_York" label="뉴욕"><option value="America/Los_Angeles" label="로스앤젤레스"><option value="UTC" label="협정 세계시">
 </datalist>
 
 <!-- 클라우드 동기화 충돌: 자동 덮어쓰기 대신 사용자가 보존할 버전을 선택 -->
@@ -627,7 +632,7 @@
 </div></div>
 
 <!-- 여행 중 (내부 식별자는 #travel 그대로) -->
-<div id="travel">
+<div id="travel" role="dialog" aria-modal="true" aria-label="여행 중 안내">
   <div class="travelTop">
     <button class="btn" id="travelClose" aria-label="여행 중 안내 끄기">← 닫기</button>
     <strong>여행 중</strong>
