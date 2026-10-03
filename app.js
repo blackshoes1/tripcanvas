@@ -5146,6 +5146,9 @@ document.getElementById('travelBtn').onclick=()=>{
   sel.onchange=()=>renderTravel(parseInt(sel.value));
   _sgDone=null;
   renderTravel(di,clock);
+  // 되살린 문장을 입력칸에도 둔다 — 되짚기('이렇게 이해했어요')만 있고 무슨 문장이었는지는 비어 있었다.
+  // renderTravel이 다른 날의 문장을 버린 뒤라(syncAdaptDay) 어제 문장은 돌아오지 않는다
+  document.getElementById('travelIntent').value=adaptIntent;
   document.getElementById('travel').classList.add('show');
 };
 document.getElementById('travelClose').onclick=()=>document.getElementById('travel').classList.remove('show');
@@ -5220,7 +5223,8 @@ function renderTravel(di, clock){
     const move=!inLeg? '출발점(숙소)을 정하면 여기까지 이동 시간도 계산해요'
       : route? (walkShort? `🚶 가까워 걸어서 ${Math.max(1,Math.round(travelMin))}분` : `${MODE_ICON[mode]} ${fmtDur(travelMin*60)} 이동`)
       : `${MODE_ICON[mode]} 약 ${Math.max(1,Math.round(travelMin))}분 이동(거리로 추정)`;
-    return `<div class="travelFacts">${move} · ${sp.at?`${esc(sp.at)} 도착(내가 정한 시각)`:`${hm(etas[idx])} 도착 예상`}</div>${departHtml}`;
+    // 예약이 있는 곳은 그 시각도 함께 — '12:03 도착 예상' 옆에 '18:58쯤 출발하면'만 있으면 두 시각이 서로 다른 말을 한다
+    return `<div class="travelFacts">${move} · ${sp.at?`${esc(sp.at)} 도착(내가 정한 시각)`:`${hm(etas[idx])} 도착 예상`}${sp.bookAt?` · 예약 ${esc(sp.bookAt)}`:''}</div>${departHtml}`;
   };
   const backHtml=()=>{
     const bl=ctx.backLeg, r=routes.get(bl);

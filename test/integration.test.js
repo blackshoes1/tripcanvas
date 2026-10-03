@@ -5713,3 +5713,70 @@ test('통합: "하나도 안 피곤해"에는 못 알아들었다고 하지 않�
   assert.equal(energyBtn(w, '보통').getAttribute('aria-pressed'), 'true');
   w.close();
 });
+
+// ── ux3:travelui 검토 ──
+// 실제 style.css를 jsdom에 얹는다 — hidden 속성이 클래스의 display를 이기는지는 스타일시트가 있어야 드러난다
+function withCss(w) {
+  const st = w.document.createElement('style');
+  st.textContent = fs.readFileSync(path.join(root, 'style.css'), 'utf8');
+  w.document.head.appendChild(st);
+  return (id) => w.getComputedStyle(w.document.getElementById(id)).display;
+}
+
+test('통합: 지난 날·지난 여행에서는 문장 입력과 컨디션 칸이 실제로 사라진다 — hidden이 display:flex에 지지 않는다(P2-4 검토)', { skip: noJsdom }, () => {
+  // 검토(2026-10-03): renderEnergy가 hidden을 켰지만 .travelTune·.travelEnergy가 display:flex라 브라우저에서는 그대로 보였다 —
+  // 지난 여행에 입력칸과 '반영'이 남아 눌렸다. 앞의 테스트는 [hidden] 조상을 걸러 봐서 이걸 놓쳤다.
+  const days = [
+    { startAt: '09:00', mode: 'car', spots: [S('경복궁', 40.41, { stayMin: 60 })] },
+    { startAt: '09:00', mode: 'car', spots: [S('북촌', 40.412, { stayMin: 60 })] }
+  ];
+  const w = boot();
+  const display = withCss(w);
+  withAdaptTrip(w, days, { today: '2026-09-20' });
+  w.document.getElementById('travelBtn').click();
+  assert.equal(display('travelTune'), 'none', '지난 여행에는 문장 입력이 없다');
+  assert.equal(display('travelEnergy'), 'none');
+  w.close();
+
+  // 여행 중 — 지나온 날은 숨기고, 오늘로 돌아오면 다시 보인다
+  const w2 = boot();
+  const display2 = withCss(w2);
+  withAdaptTrip(w2, days, { today: '2026-09-02', now: 8 * 60 });
+  w2.document.getElementById('travelBtn').click();
+  const sel = w2.document.getElementById('travelDay');
+  sel.value = '0'; sel.dispatchEvent(new w2.Event('change'));
+  assert.equal(display2('travelTune'), 'none', '지나온 날');
+  sel.value = '1'; sel.dispatchEvent(new w2.Event('change'));
+  assert.notEqual(display2('travelTune'), 'none', '오늘');
+  assert.notEqual(display2('travelEnergy'), 'none');
+  w2.close();
+});
+
+test('통합: 다시 연 여행 중 안내는 되살린 문장을 입력칸에도 보여 주고, 다음 날에는 비운다(P1-6 검토)', { skip: noJsdom }, () => {
+  // 초기화 순서를 고치자 문장이 되살아났는데 입력칸은 비어 있어 '이렇게 이해했어요'가 무엇을 두고 하는 말인지 몰랐다
+  const days = [{ startAt: '09:00', mode: 'car', spots: [S('A', 40.41)] }, { spots: [S('B', 40.42)] }];
+  const saved = JSON.stringify({ v: 1, day: '2026-09-01', energy: 'NORMAL', prefs: { maxTravelMin: 15 }, intent: '가까운 데만', trips: {} });
+  const w = boot('http://localhost/', { tripcanvas_suggest_v1: saved });
+  withAdaptTrip(w, days, { now: 10 * 60 });
+  w.document.getElementById('travelBtn').click();
+  assert.equal(w.document.getElementById('travelIntent').value, '가까운 데만');
+  assert.match(travelText(w, 'travelIntentEcho'), /가까운 곳만/);
+  w.close();
+
+  const w2 = boot('http://localhost/', { tripcanvas_suggest_v1: saved });
+  withAdaptTrip(w2, days, { today: '2026-09-02', now: 10 * 60 });
+  w2.document.getElementById('travelBtn').click();
+  assert.equal(w2.document.getElementById('travelIntent').value, '', '어제 문장은 오늘 입력칸에 남지 않는다');
+  assert.equal(travelText(w2, 'travelIntentEcho'), '');
+  w2.close();
+});
+
+test('통합: 다음이 예약한 곳이면 지금 카드가 도착 예상과 함께 예약 시각을 말한다(P1-2 검토)', { skip: noJsdom }, () => {
+  // '12:03 도착 예상' 바로 아래 '18:58쯤 출발하면'만 있으면 두 시각이 서로 다른 말을 한다
+  const w = boot();
+  withAdaptTrip(w, [{ startAt: '09:00', mode: 'car', spots: [S('경복궁', 40.41, { stayMin: 60 }), S('저녁 예약', 40.42, { bookAt: '19:00', stayMin: 90 })] }],
+    { now: 14 * 60 });
+  w.eval('renderTravel(0)');
+  assert.match(travelText(w, 'travelNext'), /저녁 예약.*도착 예상 · 예약 19:00/);
+  w.close();
+});
