@@ -1810,15 +1810,29 @@ function setDayScope(ad, fitFn){
 }
 // 행 ⋮ 메뉴는 아래 공간이 모자라면 **위로** 연다 — 절반 시트에서 아래로 열면 '위로'만 보이고
 // 나머지가 화면 밖에 잘렸다(2026-09-27 UX 검토). 열 때마다 잰다(시트 높이·스크롤이 매번 다르다).
+// ⚠️ 위로 열 자리는 **시트의 윗변**(붙어 있는 손잡이 아래)까지다 — 화면 위끝과 비교하면 절반 시트 가운데 행의 메뉴가
+// 위로 열려 '↑ 위로·↓ 아래로'가 시트 스크롤에 잘렸다(2026-10-03 UX 검토). 위아래 어디로도 다 안 들어가면(접힌 시트)
+// 시트 밖 화면에 띄운다(.float — fixed라 시트의 스크롤에 잘리지 않는다).
 document.addEventListener('toggle',e=>{
-  const menu=e.target; if(!(menu instanceof HTMLDetailsElement)||!menu.classList.contains('actionMenu')||!menu.open) return;
+  const menu=e.target; if(!(menu instanceof HTMLDetailsElement)||!menu.classList.contains('actionMenu')) return;
   const panel=menu.querySelector('.actionMenuPanel'); if(!panel) return;
-  menu.classList.remove('up');
-  const sb=document.getElementById('sidebar');
-  const floor=Math.min(window.innerHeight, sb&&sb.contains(menu)? sb.getBoundingClientRect().bottom : window.innerHeight);
-  const r=panel.getBoundingClientRect();
-  if(r.bottom>floor-4&&menu.getBoundingClientRect().top-r.height>8) menu.classList.add('up');
+  menu.classList.remove('up','float'); panel.style.top=''; panel.style.right='';
+  if(!menu.open) return;
+  const sb=document.getElementById('sidebar'), box=(sb&&sb.contains(menu))? sb.getBoundingClientRect() : null;
+  const handle=box? (document.getElementById('sheetHandle')?.getBoundingClientRect().height||0) : 0;
+  const ceil=box? Math.max(0,box.top+handle) : 0, floor=Math.min(window.innerHeight, box? box.bottom : window.innerHeight);
+  const r=panel.getBoundingClientRect(), m=menu.getBoundingClientRect(), h=r.height;
+  if(r.bottom<=floor-4) return;                                   // 아래로 열어도 다 보인다
+  if(m.top-h>=ceil+4){ menu.classList.add('up'); return; }        // 위로 열면 시트 안에 다 들어간다
+  menu.classList.add('float');
+  const top=(m.top-h>=8)? m.top-h : Math.max(8, Math.min(window.innerHeight-h-8, m.bottom));
+  panel.style.top=Math.round(top)+'px';
+  panel.style.right=Math.round(Math.max(8, window.innerWidth-m.right))+'px';
 },true);
+// 띄운 메뉴는 화면에 고정이라 시트를 굴리면 ⋮와 떨어진다 — 굴리면 닫는다
+document.getElementById('sidebar')?.addEventListener('scroll',()=>{
+  document.querySelectorAll('.actionMenu.float[open]').forEach(d=>{ /** @type {HTMLDetailsElement} */(d).open=false; });
+},{passive:true});
 /** 고른 날의 카드를 일정 목록 맨 위로 — 칩을 눌렀는데 목록이 Day 1에 머물면 무엇이 바뀌었는지 모른다
  *  (2026-09-27 UX 검토: D7을 눌러도 시트는 흐린 Day 1이었다). 접힌 모바일 시트는 절반으로 올린다. */
 function revealDayCard(di){

@@ -5537,3 +5537,34 @@ test('통합: 장소 이름(지도에서 보기)은 패널과 시트를 뺀 보�
     assert.equal(pd.dataset.mapFocus,undefined,'다른 길로 열면 원래 높이');
   }finally{ w.close(); }
 });
+
+test('통합: 장소 ⋮ 메뉴는 시트 윗변까지 재고, 위아래 어디로도 잘리면 시트 밖에 띄운다', {skip:noJsdom}, () => {
+  // 2026-10-03 UX 검토: 절반 시트 가운데 행의 ⋮가 위로 열리며 '↑ 위로·↓ 아래로'가 시트 윗변에 잘렸다(화면 위끝과 비교했다)
+  const w=boot();
+  try{
+    withTrip(w, JSON.stringify([{spots:[{name:'A',lat:40.41,lng:-3.70},{name:'B',lat:40.42,lng:-3.70}]}]));
+    w.eval('render()');
+    Object.defineProperty(w,'innerWidth',{configurable:true,value:375});
+    Object.defineProperty(w,'innerHeight',{configurable:true,value:812});
+    const sb=w.document.getElementById('sidebar');
+    sb.getBoundingClientRect=()=>({top:447,bottom:812,left:0,right:375,height:365,width:375});
+    w.document.getElementById('sheetHandle').getBoundingClientRect=()=>({top:447,bottom:487,height:40,left:0,right:375,width:375});
+    const menu=w.document.querySelector('.spot[data-si="1"] .actionMenu'), panel=menu.querySelector('.actionMenuPanel');
+    const open=(menuTop)=>{
+      menu.getBoundingClientRect=()=>({top:menuTop,bottom:menuTop+44,left:319,right:363,height:44,width:44});
+      panel.getBoundingClientRect=()=>({top:menuTop+42,bottom:menuTop+42+276,left:243,right:363,height:276,width:120});
+      menu.open=true; menu.dispatchEvent(new w.Event('toggle'));
+    };
+    open(600);   // 아래로는 812를 넘고, 위로는 600-276=324라 시트 윗변(447+40) 위로 나간다
+    assert.equal(menu.classList.contains('up'),false,'시트 윗변 위로는 열지 않는다');
+    assert.ok(menu.classList.contains('float'),'시트 밖 화면에 띄운다');
+    assert.equal(panel.style.top,'324px','⋮ 바로 위에 띄운다');
+    assert.equal(panel.style.right,'12px');
+    menu.open=false; menu.dispatchEvent(new w.Event('toggle'));
+    assert.equal(menu.classList.contains('float'),false,'닫으면 원래대로');
+    assert.equal(panel.style.top,'');
+    open(780);   // 시트 위쪽에 자리가 넉넉하면(780-276=504 ≥ 487) 시트 안에서 위로 연다
+    assert.ok(menu.classList.contains('up'));
+    assert.equal(menu.classList.contains('float'),false);
+  }finally{ w.close(); }
+});
