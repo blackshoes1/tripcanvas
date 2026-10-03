@@ -1934,4 +1934,17 @@ test('catFromKakao: 그룹 코드가 없으면 분류 경로로 — 성산일출
   assert.equal(L.catFromKakao('', '문화,예술 > 문화시설 > 박물관'), 'sight');
   assert.equal(L.catFromKakao('', '서비스,산업 > 인터넷,IT'), null, '모르면 추론하지 않는다');
   assert.equal(L.catFromKakao(null), null);
+// ── ux3:a11y ──
+test('resolveTimeZone — 도시·나라 이름과 IANA를 받고, 모르는 것은 추측하지 않는다', () => {
+  assert.equal(L.resolveTimeZone('서울'), 'Asia/Seoul');
+  assert.equal(L.resolveTimeZone('서울시'), 'Asia/Seoul');
+  assert.equal(L.resolveTimeZone(' Paris '), 'Europe/Paris');
+  assert.equal(L.resolveTimeZone('파리'), 'Europe/Paris');
+  assert.equal(L.resolveTimeZone('라스 베이거스'), 'America/Los_Angeles');
+  assert.equal(L.resolveTimeZone('europe/madrid'), 'Europe/Madrid', 'IANA는 정식 표기로 맞춘다');
+  assert.equal(L.resolveTimeZone('Asia/Tokyo'), 'Asia/Tokyo');
+  assert.equal(L.resolveTimeZone('미국'), null, '시간대가 여럿인 나라는 고르지 않는다');
+  assert.equal(L.resolveTimeZone('Asia/Nowhere'), null);
+  assert.equal(L.resolveTimeZone(''), null);
+  assert.equal(L.resolveTimeZone(null), null);
 });

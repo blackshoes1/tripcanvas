@@ -371,6 +371,54 @@
     try{ new Intl.DateTimeFormat('en-US',{timeZone:value}).format(0); return true; }catch(_){ return false; }
   }
 
+  // 도시·나라 이름 → IANA 시간대. 'Europe/Madrid'는 전문 용어라 '서울'·'파리'를 넣으면 거절당했다(2026-10-03 UX 검토).
+  // 시간대가 여럿인 나라(미국·캐나다·호주·러시아…)는 넣지 않는다 — 고를 수 없는 것을 추측하지 않는다.
+  /** @type {Record<string,string>} */
+  const TZ_BY_PLACE=(()=>{
+    /** @type {Record<string,string>} */ const out={};
+    /** @type {Array<[string,string]>} */ const rows=[
+      ['Asia/Seoul','서울 한국 대한민국 부산 제주 인천 경주 강릉 여수 전주 대구 광주 대전 속초 seoul korea busan jeju incheon'],
+      ['Asia/Tokyo','도쿄 동경 오사카 교토 후쿠오카 삿포로 나고야 오키나와 나라 고베 요코하마 일본 tokyo osaka kyoto fukuoka sapporo nagoya okinawa japan'],
+      ['Asia/Shanghai','베이징 북경 상하이 상해 칭다오 청도 시안 중국 beijing shanghai qingdao china'],
+      ['Asia/Hong_Kong','홍콩 hongkong'], ['Asia/Macau','마카오 macau macao'],
+      ['Asia/Taipei','타이베이 타이페이 대만 가오슝 taipei taiwan kaohsiung'],
+      ['Asia/Bangkok','방콕 치앙마이 푸껫 푸켓 파타야 태국 bangkok chiangmai phuket pattaya thailand'],
+      ['Asia/Ho_Chi_Minh','하노이 다낭 호치민 나트랑 냐짱 푸꾸옥 베트남 hanoi danang hochiminh nhatrang phuquoc vietnam'],
+      ['Asia/Singapore','싱가포르 singapore'], ['Asia/Kuala_Lumpur','쿠알라룸푸르 코타키나발루 말레이시아 kualalumpur kotakinabalu malaysia'],
+      ['Asia/Manila','마닐라 세부 보라카이 필리핀 manila cebu boracay philippines'],
+      ['Asia/Makassar','발리 bali'], ['Asia/Dubai','두바이 아부다비 dubai abudhabi'],
+      ['Europe/London','런던 영국 에든버러 london uk edinburgh'],
+      ['Europe/Paris','파리 니스 리옹 프랑스 paris nice lyon france'],
+      ['Europe/Madrid','마드리드 바르셀로나 세비야 그라나다 말라가 발렌시아 스페인 madrid barcelona sevilla seville granada malaga valencia spain'],
+      ['Europe/Lisbon','리스본 포르투 포르투갈 lisbon porto portugal'],
+      ['Europe/Rome','로마 밀라노 피렌체 베네치아 베니스 나폴리 이탈리아 rome milan florence venice naples italy'],
+      ['Europe/Berlin','베를린 뮌헨 프랑크푸르트 독일 berlin munich frankfurt germany'],
+      ['Europe/Amsterdam','암스테르담 네덜란드 amsterdam netherlands'], ['Europe/Brussels','브뤼셀 벨기에 brussels belgium'],
+      ['Europe/Zurich','취리히 인터라켄 제네바 스위스 zurich interlaken geneva switzerland'],
+      ['Europe/Vienna','비엔나 빈 잘츠부르크 오스트리아 vienna salzburg austria'],
+      ['Europe/Prague','프라하 체코 prague czechia'], ['Europe/Budapest','부다페스트 헝가리 budapest hungary'],
+      ['Europe/Athens','아테네 산토리니 그리스 athens santorini greece'], ['Europe/Istanbul','이스탄불 튀르키예 터키 istanbul turkey'],
+      ['America/New_York','뉴욕 보스턴 워싱턴 newyork boston'], ['America/Los_Angeles','로스앤젤레스 엘에이 샌프란시스코 라스베이거스 시애틀 losangeles la sanfrancisco lasvegas seattle'],
+      ['America/Chicago','시카고 chicago'], ['America/Vancouver','밴쿠버 vancouver'], ['America/Toronto','토론토 toronto'],
+      ['Pacific/Honolulu','하와이 호놀룰루 hawaii honolulu'], ['Pacific/Guam','괌 guam'], ['Pacific/Saipan','사이판 saipan'],
+      ['Australia/Sydney','시드니 sydney'], ['Australia/Melbourne','멜버른 melbourne'], ['Pacific/Auckland','오클랜드 뉴질랜드 auckland newzealand']
+    ];
+    rows.forEach(([tz,names])=>names.split(' ').forEach(n=>{ out[n]=tz; }));
+    return out;
+  })();
+
+  /** 사람이 친 시간대를 IANA 이름으로 — 'europe/madrid'처럼 IANA면 정식 표기로, '서울'·'Paris'처럼 도시·나라 이름이면 표에서 찾는다.
+   *  모르면 null이다(추측하지 않는다). @param {any} value @returns {string|null} */
+  function resolveTimeZone(value){
+    const raw=String(value==null?'':value).trim(); if(!raw) return null;
+    if(raw.includes('/')||/^utc$/i.test(raw)){
+      if(!validTimeZone(raw)) return null;
+      try{ return new Intl.DateTimeFormat('en-US',{timeZone:raw}).resolvedOptions().timeZone; }catch(_){ return null; }
+    }
+    const key=raw.toLowerCase().replace(/[\s.·,-]+/g,'').replace(/(시|특별시|광역시)$/,'');
+    return TZ_BY_PLACE[key]||TZ_BY_PLACE[raw.toLowerCase().replace(/[\s.·,-]+/g,'')]||null;
+  }
+
   /**
    * 여행지 시계 — 그 시간대의 오늘 날짜와 자정 기준 분. 시간대가 없거나 틀리면 null이고, 그때 호출부는 기기 시계를 쓴다.
    * 서버(`resolveClock`)와 같은 출처(첫 날의 시간대 → 여행 시간대)를 쓰면 '여행 중' 판정과 시각이 앱과 같아진다.
@@ -2256,6 +2304,7 @@
   const TC={deleteSpotCost,clearSpotCost,deleteBookingCost,dayLodgings,sortTripsByCountdown,additionalReservations,tripSummaryCities,returnModeOf,SPOT_PRIORITIES,spotPriorityOf,applySpotPriority,spotPriorityLabel,SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,cityFromKoreanAddr,placeName,cityFromGoogle,normHours,classifySearchErr,isKoreanSearch,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,normHM,sortDayByTime,inKorea,walkInsteadOfCar,simplifyName,parseDirect,parseMoney,normalizeDraftDays,extractJson,extMapLink,encodePolyline,decodePolyline,optimizeRoute,planRouteOptimization,routeLength,isOpenAt,validTimeZone,zonedClock,zonedMinutesToISOString,dayAnchor,stayMinutesOf,activityStartMinute,dayEndMinutes,departMinuteAfter,computeTimeline,computeDayJourney,whoKey,splitSegments,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,budgetBookings,moneyAmount,parseCostAmount,costAmountOf,dayEnteredCost,splitAcrossNights,stayCostShares,stayCostOverflow,dayEnteredCostOn,hasManualTransportCost,taxiFareCounts,dayCostSummary,ADMISSION_REQUIREMENTS,admissionLabel,admissionOf,needsAdmissionBooking,normalizeAdmission,admissionError,COST_CATEGORIES,COST_CURRENCIES:_CURS,costCategoryOf,COST_PAY_STATES,costPayStateOf,payStateTotals,TRIP_NOTE_CATEGORIES,normalizeTripNote,tripCostSummary,localMode,mdLabel,tripPeriodOf,startShiftPreview,SAMPLE_TRIP_ID,isSampleTrip,sampleTrip,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
   // 장소 검색·장소 정체성(2026-10-03) — 위 목록과 따로 둬 다른 변경과 한 줄에서 부딪히지 않게 한다
   Object.assign(TC,{placeNameMatch,searchAnchorSpot,planDistanceKm,tripCitySpelling,tripDefaultCurrency,hoursIssue,hoursLines});
+  Object.assign(TC,{resolveTimeZone});   // 따로 붙인다 — 위 한 줄은 여러 작업이 함께 고치는 자리다
   if(typeof module!=='undefined' && module.exports){ module.exports=TC; }   // Node (테스트)
   else { const r=/**@type {any}*/(root); for(const k in TC) r[k]=/**@type {any}*/(TC)[k]; }   // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);

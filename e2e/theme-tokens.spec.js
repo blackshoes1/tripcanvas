@@ -75,9 +75,32 @@ test('주소창 색(theme-color)은 예전 남색이 아니라 지금 테마의 
   await page.goto('/');
   const color = () => page.evaluate(() => document.querySelector('meta[name="theme-color"]').getAttribute('content'));
   expect(await color()).toBe('#f4f1ea');
-  await page.evaluate(() => toggleTheme());
+  // 테마는 ☰ '화면'에서 고른다(2026-10-03 — 보기 설정의 토글 `toggleTheme`은 없어졌다)
+  await page.evaluate(() => setTheme('dark'));
   expect(await color()).toBe('#16130f');
-  await page.evaluate(() => toggleTheme());
+  await page.evaluate(() => setTheme('system'));
+  expect(await color()).toBe('#f4f1ea');
+});
+
+// 기기가 다크면 처음부터 다크다(2026-10-03 UX 검토 — 라이트로 시작했다). 다크에서 칸이 보여야 한다:
+// 입력칸 테두리는 바탕과 3:1 이상(WCAG 1.4.11), 예시 글자는 칸 바탕과 4.5:1 이상.
+test('기기가 다크면 다크로 시작하고, 다크의 입력칸 테두리·예시 글자가 읽힌다', async ({ browser }) => {
+  const context = await browser.newContext({ colorScheme: 'dark' });
+  const page = await context.newPage();
+  await page.goto('/');
+  expect(await page.evaluate(() => document.body.classList.contains('theme-dark'))).toBe(true);
+  expect(await page.evaluate(() => document.querySelector('#themeChoice [aria-pressed="true"]').dataset.theme)).toBe('system');
+  const [field, page_bg, ph] = await page.evaluate(() => {
+    const el = document.getElementById('spotName');
+    const s = getComputedStyle(el), modal = getComputedStyle(document.querySelector('#spotModalBg .modal'));
+    return [[s.borderTopColor, s.backgroundColor], modal.backgroundColor, getComputedStyle(el, '::placeholder').color];
+  });
+  expect(contrast(field[0], page_bg), '테두리 대 창 바탕').toBeGreaterThanOrEqual(3);
+  expect(contrast(ph, field[1]), '예시 글자 대 칸 바탕').toBeGreaterThanOrEqual(4.5);
+  // 고르면 기기 설정보다 앞선다
+  await page.evaluate(() => setTheme('light'));
+  expect(await page.evaluate(() => document.body.classList.contains('theme-dark'))).toBe(false);
+  await context.close();
 });
 
 test('작은 버튼은 한 이름에서 나온다 — 인라인으로 각자 만들지 않는다', async ({ page }) => {
