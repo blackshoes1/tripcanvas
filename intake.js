@@ -714,12 +714,22 @@
    * 마크다운 꾸밈과 앞머리 이모지를 지운다. **AI 글이 우리 형식과 갈리는 가장 큰 이유다** —
    * `**09:00**`는 시각으로 읽히지 않고 `🍱 점심`은 이름에 그림이 남는다.
    * ⚠️ 밑줄(`_`)은 건드리지 않는다 — 이름·주소에 그대로 쓰인다.
+   * 국기(🇯🇵)는 그림 문자가 아니라 지역 표시 두 글자라 따로 센다 — 안 세면 '🇯🇵 오사카…'가 여행 이름에 남았다(2026-10-03).
+   * ⚠️ 주소(`https://…`) 안은 건드리지 않는다 — `__`·`*`는 주소의 일부다. 메모·설명 줄도 이걸 지나게 된 뒤
+   * (2026-10-03) 그 줄의 링크가 망가졌다. 주소 끝에 붙은 `**`(굵은 글씨로 감싼 주소)만 꾸밈으로 본다.
    * @param {string} s @returns {string}
    */
   function stripDecor(s){
-    let out=String(s||'').replace(/\*\*|__|`/g,'').replace(/\*/g,'');
-    out=out.replace(/^[\p{Extended_Pictographic}\uFE0F\u200D\s]+/u,'');
-    return out.replace(/[\p{Extended_Pictographic}\uFE0F\u200D\s]+$/u,'').replace(/\s{2,}/g,' ').trim();
+    /** @type {string[]} */ const urls=[];
+    let out=String(s||'').replace(/https?:\/\/[^\s<>()[\]`]+/g,(u)=>{
+      const tail=/\*+$/.exec(u), core=tail? u.slice(0,tail.index) : u;
+      urls.push(core);
+      return `\u0001${urls.length-1}\u0001`;
+    });
+    out=out.replace(/\*\*|__|`/g,'').replace(/\*/g,'');
+    out=out.replace(/^[\p{Extended_Pictographic}\p{Regional_Indicator}\uFE0F\u200D\s]+/u,'');
+    out=out.replace(/[\p{Extended_Pictographic}\p{Regional_Indicator}\uFE0F\u200D\s]+$/u,'').replace(/\s{2,}/g,' ').trim();
+    return urls.length? out.replace(/\u0001(\d+)\u0001/g,(_m,i)=>urls[+i]) : out;
   }
 
   /** @param {number} h @param {number} mi @returns {string} */
@@ -783,6 +793,10 @@
     // `이름 — 설명` — 긴 줄표는 설명을 붙이는 자리다
     m=/^(\S.*?)\s+[—–]\s+(\S.*)$/.exec(s);
     if(m){ s=m[1].trim(); bits.push(m[2].trim()); }
+    // `다케시타 거리 - 크레페 필수!` — 앞뒤가 빈 하이픈도 AI 글에서는 설명을 붙이는 자리다(2026-10-03 — 전에는 이름에
+    // 남아 크레페 가게로 찾았다). 앞쪽이 장소로 보일 때만 뗀다. 붙은 하이픈(`Hotel-X`·`2-1번 출구`)은 이름의 일부다
+    m=/^(\S.*?)\s+-\s+(\S.*)$/.exec(s);
+    if(m && classifyItem(stripDecor(m[1])).kind==='PLACE'){ s=m[1].trim(); bits.push(m[2].trim()); }
     // `이름 (도보 20분)` — 안이 설명일 때만
     m=/^(\S.*?)\s*\(([^()]*)\)\s*$/.exec(s);
     if(m && PAREN_META.test(m[2])){ s=m[1].trim(); bits.push(m[2].trim()); }
@@ -801,11 +815,22 @@
 
   const TH_TIME=/시간|시각|time/i, TH_CITY=/도시|지역|city|area/i;
   const TH_NOTE=/메모|비고|설명|참고|note|remark/i, TH_COST=/비용|요금|가격|예산|cost|price/i;
+  /** 그 줄이 며칠째인지 말하는 칸 — 칸 이름 전체가 이 말일 때만(`일정`·`내용`의 '일'을 날로 읽지 않는다) */
+  const TH_DAY=/^(?:day|date|일차|일자|날짜|날)$/i;
+
+  /**
+   * 표의 '날' 칸 값 → 일자 머리글 한 줄. 숫자만 있으면(`1`) 몇째 날이고, 나머지(`Day 1`·`2일차`·`11/12`)는
+   * 머리글이 읽는 꼴 그대로다(`dayHeader`·`dayDateOf`).
+   * @param {string} v @returns {string}
+   */
+  function tableDayHeader(v){ return /^\d{1,2}$/.test(v)? `## Day ${v}` : `## ${v}`; }
 
   /**
    * 마크다운 표를 우리 불릿으로 편다. **표를 모르면 그 날이 통째로 사라진다** —
    * AI가 하루를 표로 정리하는 일이 흔하다(2026-09-08에 하루치 4곳을 전부 잃었다).
    * 구분선(`|---|`)이 있는 표만 편다 — 그냥 세로줄이 든 문장을 표로 오해하지 않기 위해서다.
+   * 여행 전체를 표 한 장에 담고 'Day'·'날짜' 칸으로 날을 가르는 글도 흔하다 — 그 칸의 값이 바뀔 때마다
+   * 일자 머리글을 끼운다(2026-10-03 — 전에는 사흘 일정이 하루로 합쳐졌다). 값이 하나뿐이면 이미 그 날의 표라 끼우지 않는다.
    * @param {string[]} lines @returns {string[]}
    */
   function expandTables(lines){
@@ -815,22 +840,33 @@
       const rule=head? tableCells(lines[i+1]||'') : null;
       if(!head || !rule || !isRule(rule)){ out.push(lines[i]); continue; }
       const cols=head.map((h)=>stripDecor(h));
-      let iTime=-1, iCity=-1, iNote=-1, iCost=-1;
+      let iTime=-1, iCity=-1, iNote=-1, iCost=-1, iDay=-1;
       cols.forEach((h,ix)=>{
-        if(iTime<0 && TH_TIME.test(h)) iTime=ix;
+        if(iDay<0 && TH_DAY.test(h)) iDay=ix;
+        else if(iTime<0 && TH_TIME.test(h)) iTime=ix;
         else if(iCity<0 && TH_CITY.test(h)) iCity=ix;
         else if(iNote<0 && TH_NOTE.test(h)) iNote=ix;
         else if(iCost<0 && TH_COST.test(h)) iCost=ix;
       });
-      let iName=cols.findIndex((h,ix)=>ix!==iTime&&ix!==iCity&&ix!==iNote&&ix!==iCost&&/장소|명소|일정|내용|코스|목적지|activity|place|spot/i.test(h));
-      if(iName<0) iName=cols.findIndex((_h,ix)=>ix!==iTime&&ix!==iCity&&ix!==iNote&&ix!==iCost);
+      const taken=(/**@type{number}*/ix)=>ix===iTime||ix===iCity||ix===iNote||ix===iCost||ix===iDay;
+      let iName=cols.findIndex((h,ix)=>!taken(ix)&&/장소|명소|일정|내용|코스|목적지|activity|place|spot/i.test(h));
+      if(iName<0) iName=cols.findIndex((_h,ix)=>!taken(ix));
       if(iName<0){ out.push(lines[i]); continue; }
+      // 날 칸은 값이 둘 이상일 때만 날을 가른다 — 하나뿐이면 이미 그 날 머리글 아래의 표다
+      if(iDay>=0){
+        /** @type {Set<string>} */ const seen=new Set();
+        for(let j=i+2;j<lines.length;j++){ const r=tableCells(lines[j]); if(!r) break; const v=stripDecor(r[iDay]||''); if(v) seen.add(v); }
+        if(seen.size<2) iDay=-1;
+      }
+      let lastDay='';
       i++;                                              // 구분선을 건너뛴다
       for(let j=i+1;j<lines.length;j++){
         const row=tableCells(lines[j]);
         if(!row){ i=j-1; break; }
         i=j;
         const cell=(/**@type{number}*/ix)=>(ix>=0 && ix<row.length)? stripDecor(row[ix]) : '';
+        const dayV=cell(iDay);
+        if(dayV && dayV!==lastDay){ out.push(tableDayHeader(dayV)); lastDay=dayV; }   // 빈 칸은 앞 날을 잇는다(병합 셀 꼴)
         const name=cell(iName);
         if(!name) continue;
         const note=[cell(iNote), cell(iCost)].filter(Boolean).join(' ');
@@ -989,28 +1025,59 @@
     return m[1]===actual? null : {written:m[1], actual};
   }
 
+  /** 일자 제목 안의 날짜 표기 — `dayDateOf`가 읽는 꼴들 */
+  const TITLE_DATE=/(?:(?:19|20)\d{2}\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일|(?:19|20)\d{2}\s*[-./]\s*\d{1,2}\s*[-./]\s*\d{1,2}|\d{1,2}\s*\/\s*\d{1,2}(?!\s*[/\d])/;
+  /** 제목 앞뒤에서 걷을 구분자 */
+  const TITLE_SEP=/^[\s|｜—–\-:·,.]+|[\s|｜—–\-:·,.]+$/g;
+
+  /**
+   * 일자 제목에서 **날짜로 읽은 부분**을 뗀다 — 날짜는 `date`가 들고 화면이 일자 옆에 따로 그린다.
+   * 그대로 두면 'Day 1 · 11월 12일(목) | 오사카 도착' 바로 아래 '11/12 (목)'이 한 번 더 나왔다(2026-10-03 UX 검토).
+   * 읽은 날짜와 같은 표기일 때만 떼고(다른 날짜를 말하는 글이면 그대로 둔다), 붙은 요일·괄호·구분자도 함께 걷는다.
+   * ⚠️ 요일 확인(`weekdayMismatchOf`)은 떼기 **전** 제목으로 한다.
+   * @param {string} title @param {string|null} iso @param {number} year @returns {string}
+   */
+  function titleWithoutDate(title, iso, year){
+    const s=String(title||'');
+    const m=iso? TITLE_DATE.exec(s) : null;
+    if(!m || dayDateOf(m[0], year)!==iso) return s.trim();
+    const MARK='\u0000';
+    let t=s.slice(0,m.index)+MARK+s.slice(m.index+m[0].length);
+    // 붙은 요일 — `(목)`·`목요일`·`(7월 21일, 월)`의 `, 월`
+    t=t.replace(new RegExp(MARK+'\\s*(?:[(（]\\s*[월화수목금토일](?:요일)?\\s*[)）]|,?\\s*[월화수목금토일]요일|,\\s*[월화수목금토일](?![가-힣]))'), MARK);
+    t=t.replace(new RegExp('[(（\\[]\\s*'+MARK+'\\s*[)）\\]]'), MARK);   // 날짜만 감싼 괄호
+    const [left, right]=t.split(MARK);
+    const l=left.replace(TITLE_SEP,''), r=String(right||'').replace(TITLE_SEP,'');
+    return (l && r)? `${l} ${r}` : (l||r);
+  }
+
   /**
    * 붙여넣은 일정 글 → 초안. **저장하지 않는다** — 미리보기에 쓸 후보를 만들 뿐이다.
+   * - `preamble` — 첫 일자 머리글 앞의 인사말·소개(AI 글은 거의 늘 이걸로 시작한다). 그 날 메모에 넣지 않는다 —
+   *   원문 보기에만 있으면 된다(2026-10-03 — 전에는 '안녕하세요! 요청하신 일정을…'이 1일차 메모에 남았다).
+   * - `undivided` — 일자 머리글을 하나도 못 찾아 한 날로 읽었는가. 화면이 그 사실을 말한다.
    * @param {string} text
    * @param {{year?:number}=} opts 연도가 없는 글(`7월 21일`)에 쓸 연도. 없으면 올해
-   * @returns {{name:string,start:string|null,startAmbiguous:boolean,days:DraftDay[]}}
+   * @returns {{name:string,start:string|null,startAmbiguous:boolean,days:DraftDay[],preamble:string,undivided:boolean}}
    */
   function parseItinerary(text, opts){
     const o=opts||{};
     const year=o.year || new Date().getUTCFullYear();
     const raw=String(text||'');
     const hasYear=/(19|20)\d{2}\s*[-./년]/.test(raw);
-    /** @type {{name:string,start:string|null,startAmbiguous:boolean,days:DraftDay[]}} */
-    const out={name:'', start:null, startAmbiguous:false, days:[]};
+    /** @type {{name:string,start:string|null,startAmbiguous:boolean,days:DraftDay[],preamble:string,undivided:boolean}} */
+    const out={name:'', start:null, startAmbiguous:false, days:[], preamble:'', undivided:false};
     /** @type {DraftDay|null} */ let day=null;
     /** @type {DraftItem|null} */ let item=null;   // 바로 앞 불릿 — 다음 줄 설명이 여기 붙는다
-    let lastCity='';
+    let lastCity='', sawHeader=false;
 
     const newDay=(/**@type{string}*/title)=>{
-      day={title:String(title||'').trim(), date:null, drive:'', note:'', items:[]};
-      day.date=dayDateOf(day.title, year);
-      const wd=weekdayMismatchOf(day.title, day.date);
+      const written=String(title||'').trim();
+      day={title:written, date:null, drive:'', note:'', items:[]};
+      day.date=dayDateOf(written, year);
+      const wd=weekdayMismatchOf(written, day.date);
       if(wd) day.weekdayMismatch=wd;
+      day.title=titleWithoutDate(written, day.date, year);
       out.days.push(day); item=null;
       return day;
     };
@@ -1021,23 +1088,27 @@
     expandTables(raw.split(/\r?\n/)).forEach((rawLine)=>{
       const line=rawLine.trim();
       if(!line){ item=null; return; }     // 빈 줄이 설명을 닫는다 — 그 뒤 문단은 그 날의 메모다
+      // 구분선(`---`·`***`)은 글의 장식이다 — 메모에 '---'로 남기지 않는다
+      if(/^(?:[-*_=]\s*){3,}$/.test(line)){ item=null; return; }
       let m;
       if(m=/^여행\s*이름\s*[:：]\s*(.+)$/.exec(line)){ out.name=m[1].trim(); return; }
       if(m=/^시작일\s*[:：]\s*(.+)$/.exec(line)){ out.start=dayDateOf(m[1], year)||null; return; }
       const head=dayHeader(stripDecor(line));
-      if(head){ newDay(head.title); return; }
+      if(head){ sawHeader=true; newDay(head.title); return; }
       const d=curDay();
       if(m=/^이동\s*[:：]\s*(.+)$/.exec(line)){ d.drive=m[1].trim(); item=null; return; }
-      if(m=/^메모\s*[:：]\s*(.+)$/.exec(line)){ addNote(m[1].trim()); item=null; return; }
+      if(m=/^메모\s*[:：]\s*(.+)$/.exec(line)){ addNote(stripDecor(m[1])); item=null; return; }
 
       const body=bulletBody(line);
       if(body==null){
-        // 불릿 바로 다음 줄은 그 항목의 설명, 그 밖은 일자 메모
+        // 불릿 바로 다음 줄은 그 항목의 설명, 그 밖은 일자 메모. 둘 다 꾸밈(`**Tip:**`·`> `·앞머리 이모지)을 걷는다
+        const plain=stripDecor(line.replace(/^>\s*/,''));
+        if(!plain) return;
         if(item){
-          const pulled=pullLinks(line);
+          const pulled=pullLinks(plain);
           if(pulled.text) item.desc=(item.desc? item.desc+' ':'')+pulled.text;
           if(pulled.url && !item.url) item.url=pulled.url;
-        } else addNote(line);
+        } else addNote(plain);
         return;
       }
 
@@ -1049,7 +1120,10 @@
       // ⚠️ 시각보다 먼저 찾는다 — `15:00 (선택) …`처럼 뒤에 오기도 한다
       if(/\(선택\)/.test(text2)){ opt=true; text2=text2.replace(/\(선택\)\s*/g,''); }
       if(/\(숙소\)/.test(text2)){ stay=true; text2=text2.replace(/\(숙소\)\s*/g,''); }
-      const timed=stripTimePrefix(text2); text2=timed.rest;
+      const timed=stripTimePrefix(text2);
+      // 시각 **뒤에** 오는 이모지도 꾸밈이다 — `**오전 10시** ✈️ 간사이 공항`은 시각을 떼야 이모지가 앞머리가 된다
+      // (2026-10-03 — 전에는 '✈️ 간사이 국제공항 도착'으로 저장돼 카드에 그림이 두 번 붙었고, '🧳 호텔 체크아웃'이 장소로 찾혔다)
+      text2=stripDecor(timed.rest);
       let at=timed.at;
       const atM=/@\s*(\d{1,2}:\d{2})/.exec(text2);
       if(atM){ const v=hm(atM[1]); if(v) at=v; text2=text2.replace(atM[0],''); }   // 우리 형식의 @는 앞선 표시를 이긴다
@@ -1089,12 +1163,68 @@
     if(out.days.length>1 && !out.days[0].items.length && !out.days[0].date){
       const head=/** @type {DraftDay} */(out.days.shift());
       if(head.title && !out.name) out.name=head.title;
-      if(head.note) out.days[0].note=(head.note+'\n'+out.days[0].note).trim();
+      out.preamble=head.note;   // 인사말은 그 날 메모가 아니다 — 원문 보기에 그대로 있다
     }
+    out.undivided=!sawHeader && out.days.some((d)=>d.items.length>0);
     const dated=out.days.filter((d)=>!!d.date)[0];
     if(!out.start && dated) out.start=dated.date;
     out.startAmbiguous=!!out.start && !hasYear;
     return out;
+  }
+
+  /** 이만큼 넘게 건너뛰면 빈 날로 채우지 않는다 — 날짜를 잘못 적었을 가능성이 더 크다 */
+  const GAP_MAX_DAYS=7;
+
+  /**
+   * 붙여넣은 일자를 여행의 몇째 날에 둘지. 여행의 날은 시작일부터 하루씩 이어지므로, 글의 날짜가 건너뛰면
+   * (11/7 → 11/9) 11/9 일정이 11/8에 놓인다. 그 사이를 **빈 날로 채울지**는 사람이 고른다(`fill`) —
+   * 2026-10-03 전에는 경고만 하고 고칠 길이 없었다. 날짜 없는 날은 바로 다음 날로 둔다.
+   * `gaps`는 채우든 말든 건너뛴 자리를 말한다: `before`(그 뒤 일자의 초안 번호) · `from`(첫 빈 날짜) · `count`.
+   * @param {DraftDay[]} days @param {boolean} fill
+   * @returns {{at:number[],total:number,gaps:{before:number,from:string,count:number}[]}}
+   */
+  function dayLayout(days, fill){
+    /** @type {number[]} */ const at=[];
+    /** @type {{before:number,from:string,count:number}[]} */ const gaps=[];
+    let idx=-1, lastIdx=-1;
+    /** @type {string|null} */ let lastDate=null;
+    (days||[]).forEach((d,i)=>{
+      let next=idx+1;
+      const t=d && d.date? Date.parse(d.date+'T00:00:00Z') : NaN;
+      if(isFinite(t) && lastDate){
+        const diff=Math.round((t-Date.parse(lastDate+'T00:00:00Z'))/86400000);
+        const want=lastIdx+diff, count=want-next;
+        if(diff>0 && count>0 && count<=GAP_MAX_DAYS){
+          const from=new Date(Date.parse(lastDate+'T00:00:00Z')+(next-lastIdx)*86400000).toISOString().slice(0,10);
+          gaps.push({before:i, from, count});
+          if(fill) next=want;
+        }
+      }
+      at.push(next); idx=next;
+      if(isFinite(t)){ lastDate=/** @type {string} */(d.date); lastIdx=next; }
+    });
+    return {at, total:idx+1, gaps};
+  }
+
+  /**
+   * 글에 여행 이름이 없을 때 제안할 이름. 전에는 늘 '붙여넣은 여행'이라 같은 이름이 쌓였다(2026-10-03 UX 검토).
+   * **글에 적힌 것만 쓴다**: 가장 많이 적힌 도시('교토 여행') → 첫 일자 제목. 검색으로 찾은 도시는 쓰지 않는다 —
+   * 첫 줄이 공항이면 공항이 있는 도시가 잡힌다. 못 정하면 빈 문자열(부르는 쪽의 기본 이름).
+   * @param {{name?:string,days?:DraftDay[]}} draft @returns {string}
+   */
+  function suggestTripName(draft){
+    const d=draft||{};
+    if(d.name) return String(d.name).trim();
+    /** @type {Map<string,number>} */ const count=new Map();
+    for(const day of d.days||[]) for(const it of day.items||[]){
+      const c=String(it.city||'').trim();
+      if(c) count.set(c,(count.get(c)||0)+1);
+    }
+    let best='', n=0;
+    count.forEach((v,k)=>{ if(v>n){ best=k; n=v; } });
+    if(best) return `${best} 여행`;
+    const titled=(d.days||[]).find((day)=>!!String(day.title||'').trim());
+    return titled? String(titled.title).trim().slice(0,40) : '';
   }
 
   const API={INTAKE_CFG, MEMORY_CFG, SHARE_STATES, MEMORY_TYPES, PROVIDER_ADAPTERS,
@@ -1103,7 +1233,7 @@
     candidateToBooking, shareIdempotencyKey, shareQueueNext, titleSimilarity,
     associateMemory, memoryTimeline, plannedVsActual,
     parseItinerary, weekdayMismatchOf, classifyItem, stripTimePrefix, pullLinks, dayHeader,
-    stripDecor, koTime, splitNameDesc, expandTables};
+    stripDecor, koTime, splitNameDesc, expandTables, titleWithoutDate, dayLayout, suggestTripName};
   if(typeof module!=='undefined' && module.exports) module.exports=API;   // Node (테스트)
   else /** @type {any} */(root).TC_INTAKE=API;                            // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);

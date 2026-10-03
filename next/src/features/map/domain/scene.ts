@@ -8,7 +8,7 @@ import type { LegCache } from '@/features/itinerary/domain/types';
 import type { Spot, TransportMode, Trip } from '@/features/trip/domain/types';
 import type { FitTarget, MapEngine, MapScene, SceneChip, SceneGhost, SceneLine, ScenePin } from './types';
 
-const { decodePolyline, inKorea, legKey, returnModeOf, spotCatOf } = legacyLib;
+const { decodePolyline, inKorea, legKey, returnModeOf, spotCatOf, walkInsteadOfCar } = legacyLib;
 
 // ── 색상 (app.js와 동일 값·규칙 — Phase 6에서 단일 소스로 합칠 표시 글루) ──
 export const PALETTE =
@@ -93,11 +93,11 @@ export function buildMapScene(trip: Trip, legCache: LegCache, activeDay: number)
       if (activeDay && !returning && cch.sec) {
         const mid = path ? path[Math.floor(path.length / 2)]
           : { lat: (A.lat + B.lat) / 2, lng: (A.lng + B.lng) / 2 };
-        const dist = cch.m ?? 0;
+        const walk = walkInsteadOfCar(lm, cch, A, B);
         chips.push({
           ...mid,
-          text: lm === 'car' && dist < 2000
-            ? `🚶${Math.max(1, Math.round(dist / 75))}분`
+          text: walk
+            ? `🚶${Math.max(1, Math.round(walk.min))}분`
             : `${MODE_ICON[lm]}${fmtDur(cch.sec)}`
         });
       }

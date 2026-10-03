@@ -35,6 +35,27 @@
   /** @param {LatLng} a @param {LatLng} b @param {string=} mode @returns {string} */
   function legKey(a,b,mode){ return legId(a,b)+'#'+(mode||'car'); }
 
+  const WALK_INSTEAD_MAX_M=2000, WALK_DETOUR=1.3, WALK_M_PER_MIN=75;
+  /**
+   * 자차 하루의 가까운 구간은 걸어서 계산한다 — 차 경로가 2km 미만일 때(판정은 예전 그대로).
+   * ⚠️ **걷는 거리는 차 경로 거리가 아니다**(2026-10-03 UX 검토). 구시가의 일방통행을 도는 차 경로(1.4km)로
+   * 직선 365m를 '걸어서 18분'이라 해 그 뒤 도착 시각이 전부 밀렸다. 도보 경로는 따로 묻지 않으므로
+   * 직선거리 × 1.3(걷는 길의 굽이)과 차 경로 중 짧은 쪽을 걷는 거리로 쓴다(분속 75m = 시속 4.5km).
+   * 웹(`legLabel`·`legMinutes`·지도 칩·여행 중 화면)과 서버(`dayView`·지도 장면)가 이 하나를 쓴다.
+   * @param {string|null|undefined} mode 그 구간의 수단
+   * @param {{m?:number|null, sec?:number|null}|null|undefined} route 조회된 차 경로(없으면 null)
+   * @param {LatLng=} a @param {LatLng=} b 구간의 두 끝 — 모르면 차 경로 거리로 어림한다(예전 규칙)
+   * @returns {{m:number, min:number}|null} 걸어서 계산하면 걷는 거리(m)·분, 아니면 null
+   */
+  function walkInsteadOfCar(mode, route, a, b){
+    if((mode||'car')!=='car' || !route || !route.sec) return null;
+    const routeM=Math.max(0, +(route.m||0));
+    if(!(routeM<WALK_INSTEAD_MAX_M)) return null;
+    const straight=(a&&b)? haversine({lat:+a.lat,lng:+a.lng},{lat:+b.lat,lng:+b.lng})*1000*WALK_DETOUR : NaN;
+    const m=isFinite(straight)? Math.min(routeM, straight) : routeM;
+    return {m, min:m/WALK_M_PER_MIN};
+  }
+
   /** p 주변 반경 r(m) 8방위 후보점 (도로 스냅) @param {LatLng} p @param {number} r @returns {LatLng[]} */
   function ringPts(p,r){
     const dLat=r/111320, dLng=r/(111320*Math.cos(p.lat*Math.PI/180));
@@ -168,11 +189,18 @@
    * validateTripPayload는 '모양이 틀리면 통째로 거절'하므로, 자유로운 입력(특히 AI 응답)을
    * 그대로 넘기면 초안 하나가 필드 하나 때문에 버려진다 — 여기서 먼저 아는 값만 남기고
    * 나머지는 기본값으로 눕힌 뒤 검증에 넘긴다.
+   * 링크(`bookUrl`)와 카카오 장소 id(`kakaoId`)도 싣는다 — 미리보기가 '링크 1개'라고 보여 준 것을 여기서 조용히
+   * 떨어뜨렸다(2026-10-03 UX 검토). http(s)가 아닌 주소는 검증이 초안 전체를 거절하므로 여기서 링크만 버린다.
    * @param {any} days @returns {any[]}
    */
   function normalizeDraftDays(days){
     const hhmm=(/**@type{any}*/v)=>/^\d{1,2}:\d{2}$/.test(String(v||''))?String(v):'';
     const posInt=(/**@type{any}*/v)=>{ const n=parseInt(v); return (v==null||isNaN(n)||n<0)?null:n; };
+    const webUrl=(/**@type{any}*/v)=>{
+      const s=typeof v==='string'? v.trim() : '';
+      if(!s || s.length>2048) return undefined;
+      try{ return /^https?:$/.test(new URL(s).protocol)? s : undefined; }catch(_){ return undefined; }
+    };
     return (Array.isArray(days)?days:[]).map((/**@type{any}*/d)=>({
       title:(d&&d.title)||'', drive:(d&&d.drive)||'', note:(d&&d.note)||'',
       mode:_MODES.includes(d&&d.mode)?d.mode:'car', startAt:hhmm(d&&d.startAt)||'09:00',
@@ -183,7 +211,8 @@
         at:hhmm(s&&s.at)||undefined, stayMin:(s&&s.stayMin)==null?null:posInt(s.stayMin),
         cost:(s&&s.cost)==null?null:posInt(s.cost),
         cur:['USD','EUR','JPY','CNY'].includes(s&&s.cur)?s.cur:undefined,
-        bookAt:hhmm(s&&s.bookAt),
+        bookAt:hhmm(s&&s.bookAt), bookUrl:webUrl(s&&s.bookUrl),
+        kakaoId:(s&&typeof s.kakaoId==='string')? s.kakaoId : undefined,   // 모양 검사는 normalizeSpot이 한다
         lat:(s&&s.lat)==null?null:+s.lat, lng:(s&&s.lng)==null?null:+s.lng
       })).filter((/**@type{any}*/s)=>s.name)
     }));
@@ -266,9 +295,11 @@
 
   /**
    * 동선 최적화 계획 — 문서를 바꾸지 않고 '어떤 순서가 되는지'만 낸다. 적용은 사용자가 미리보기를 보고 고른다.
-   * 제자리에 두는 장소: 첫 장소 · 예약·입장 시각(bookAt) · 내가 정한 도착(at) · 숙소 · 좌표 없는 장소 · 분리 묶음(split).
+   * 제자리에 두는 장소: 첫 장소 · 예약·입장 시각(bookAt) · 내가 정한 도착(at) · 숙소 · 좌표 없는 장소 · 분리 묶음(split)
+   * · **마지막 장소가 공항·역·항구(교통)일 때 그 장소** — 그날 떠나는 곳이라 끝점이다.
    * 그 사이에 이어진 나머지 장소만 앞뒤 고정 장소를 끝점으로 묶어 이동거리 최소로 다시 놓는다.
    * 2026-10-02 전에는 좌표 있는 장소 전체를 섞고 좌표 없는 장소를 맨 뒤로 밀어, 예약 시각 순서가 깨진 뒤에야 토스트로 알렸다.
+   * 2026-10-03 전에는 '동문시장 → 협재 → 제주국제공항'으로 끝나는 마지막 날에 공항을 가운데로 옮기자고 했다(직선거리만 보면 짧다).
    * @param {any[]} spots
    * @returns {{order:number[], changed:boolean, beforeKm:number, afterKm:number, fixed:number[]}} order[k] = 새 k번째 자리에 오는 원래 인덱스
    */
@@ -277,7 +308,10 @@
     const loc=(/**@type{any}*/s)=>!!s && s.lat!=null && s.lng!=null && s.lat!=='' && s.lng!=='' && isFinite(+s.lat) && isFinite(+s.lng);
     /** @param {any} s @returns {LatLng} */
     const pt=(s)=>({lat:+s.lat, lng:+s.lng});
-    const isFixed=(/**@type{any}*/s,/**@type{number}*/i)=>i===0 || !loc(s) || !!s.bookAt || !!s.at || !!s.stay || !!s.split;
+    // '마지막'은 위치 있는 마지막 장소다 — 공항 뒤에 위치 없는 메모가 붙어도 공항이 그날 떠나는 곳이다
+    let last=list.length-1; while(last>0 && !loc(list[last])) last--;
+    const isFixed=(/**@type{any}*/s,/**@type{number}*/i)=>i===0 || !loc(s) || !!s.bookAt || !!s.at || !!s.stay || !!s.split
+      || (i===last && (spotCatOf(s)||{}).id==='transport');
     const order=list.map((_,i)=>i);
     /** @type {number[]} */
     const fixed=[];
@@ -335,6 +369,54 @@
   function validTimeZone(value){
     if(typeof value!=='string'||!value||value.length>64) return false;
     try{ new Intl.DateTimeFormat('en-US',{timeZone:value}).format(0); return true; }catch(_){ return false; }
+  }
+
+  // 도시·나라 이름 → IANA 시간대. 'Europe/Madrid'는 전문 용어라 '서울'·'파리'를 넣으면 거절당했다(2026-10-03 UX 검토).
+  // 시간대가 여럿인 나라(미국·캐나다·호주·러시아…)는 넣지 않는다 — 고를 수 없는 것을 추측하지 않는다.
+  /** @type {Record<string,string>} */
+  const TZ_BY_PLACE=(()=>{
+    /** @type {Record<string,string>} */ const out={};
+    /** @type {Array<[string,string]>} */ const rows=[
+      ['Asia/Seoul','서울 한국 대한민국 부산 제주 인천 경주 강릉 여수 전주 대구 광주 대전 속초 seoul korea busan jeju incheon'],
+      ['Asia/Tokyo','도쿄 동경 오사카 교토 후쿠오카 삿포로 나고야 오키나와 나라 고베 요코하마 일본 tokyo osaka kyoto fukuoka sapporo nagoya okinawa japan'],
+      ['Asia/Shanghai','베이징 북경 상하이 상해 칭다오 청도 시안 중국 beijing shanghai qingdao china'],
+      ['Asia/Hong_Kong','홍콩 hongkong'], ['Asia/Macau','마카오 macau macao'],
+      ['Asia/Taipei','타이베이 타이페이 대만 가오슝 taipei taiwan kaohsiung'],
+      ['Asia/Bangkok','방콕 치앙마이 푸껫 푸켓 파타야 태국 bangkok chiangmai phuket pattaya thailand'],
+      ['Asia/Ho_Chi_Minh','하노이 다낭 호치민 나트랑 냐짱 푸꾸옥 베트남 hanoi danang hochiminh nhatrang phuquoc vietnam'],
+      ['Asia/Singapore','싱가포르 singapore'], ['Asia/Kuala_Lumpur','쿠알라룸푸르 코타키나발루 말레이시아 kualalumpur kotakinabalu malaysia'],
+      ['Asia/Manila','마닐라 세부 보라카이 필리핀 manila cebu boracay philippines'],
+      ['Asia/Makassar','발리 bali'], ['Asia/Dubai','두바이 아부다비 dubai abudhabi'],
+      ['Europe/London','런던 영국 에든버러 london uk edinburgh'],
+      ['Europe/Paris','파리 니스 리옹 프랑스 paris nice lyon france'],
+      ['Europe/Madrid','마드리드 바르셀로나 세비야 그라나다 말라가 발렌시아 스페인 madrid barcelona sevilla seville granada malaga valencia spain'],
+      ['Europe/Lisbon','리스본 포르투 포르투갈 lisbon porto portugal'],
+      ['Europe/Rome','로마 밀라노 피렌체 베네치아 베니스 나폴리 이탈리아 rome milan florence venice naples italy'],
+      ['Europe/Berlin','베를린 뮌헨 프랑크푸르트 독일 berlin munich frankfurt germany'],
+      ['Europe/Amsterdam','암스테르담 네덜란드 amsterdam netherlands'], ['Europe/Brussels','브뤼셀 벨기에 brussels belgium'],
+      ['Europe/Zurich','취리히 인터라켄 제네바 스위스 zurich interlaken geneva switzerland'],
+      ['Europe/Vienna','비엔나 빈 잘츠부르크 오스트리아 vienna salzburg austria'],
+      ['Europe/Prague','프라하 체코 prague czechia'], ['Europe/Budapest','부다페스트 헝가리 budapest hungary'],
+      ['Europe/Athens','아테네 산토리니 그리스 athens santorini greece'], ['Europe/Istanbul','이스탄불 튀르키예 터키 istanbul turkey'],
+      ['America/New_York','뉴욕 보스턴 워싱턴 newyork boston'], ['America/Los_Angeles','로스앤젤레스 엘에이 샌프란시스코 라스베이거스 시애틀 losangeles la sanfrancisco lasvegas seattle'],
+      ['America/Chicago','시카고 chicago'], ['America/Vancouver','밴쿠버 vancouver'], ['America/Toronto','토론토 toronto'],
+      ['Pacific/Honolulu','하와이 호놀룰루 hawaii honolulu'], ['Pacific/Guam','괌 guam'], ['Pacific/Saipan','사이판 saipan'],
+      ['Australia/Sydney','시드니 sydney'], ['Australia/Melbourne','멜버른 melbourne'], ['Pacific/Auckland','오클랜드 뉴질랜드 auckland newzealand']
+    ];
+    rows.forEach(([tz,names])=>names.split(' ').forEach(n=>{ out[n]=tz; }));
+    return out;
+  })();
+
+  /** 사람이 친 시간대를 IANA 이름으로 — 'europe/madrid'처럼 IANA면 정식 표기로, '서울'·'Paris'처럼 도시·나라 이름이면 표에서 찾는다.
+   *  모르면 null이다(추측하지 않는다). @param {any} value @returns {string|null} */
+  function resolveTimeZone(value){
+    const raw=String(value==null?'':value).trim(); if(!raw) return null;
+    if(raw.includes('/')||/^utc$/i.test(raw)){
+      if(!validTimeZone(raw)) return null;
+      try{ return new Intl.DateTimeFormat('en-US',{timeZone:raw}).resolvedOptions().timeZone; }catch(_){ return null; }
+    }
+    const key=raw.toLowerCase().replace(/[\s.·,-]+/g,'').replace(/(시|특별시|광역시)$/,'');
+    return TZ_BY_PLACE[key]||TZ_BY_PLACE[raw.toLowerCase().replace(/[\s.·,-]+/g,'')]||null;
   }
 
   /**
@@ -944,6 +1026,15 @@
   function hasManualTransportCost(day){
     return (day.costItems||[]).some((/**@type{any}*/item)=>['TRANSPORT','TRANSIT'].includes(item.kind));
   }
+  /** 택시비 추정을 하루 비용에 넣는 날인가 — **그날 기본 수단이 택시일 때만**(2026-10-03).
+   * 자차·렌터카 날에도 경로 조회가 택시 요금을 돌려주지만 그 돈은 내지 않는다 — 넣으면 비용을 하나도 적지 않은
+   * 자차 여행의 머리 숫자가 택시비가 됐다. 자차 날의 추정은 '택시로 간다면'이라는 참고로만 보인다.
+   * 수동 교통비가 있으면 그게 하루 교통비 전체를 대신한다(`hasManualTransportCost`).
+   * 웹 일자 카드·필터바와 서버(`dayCostPartsOf`·`tripCostBreakdownOf`)가 같은 판정을 쓴다.
+   * @param {any} day @returns {boolean} */
+  function taxiFareCounts(day){
+    return !!day && day.mode==='taxi' && !hasManualTransportCost(day);
+  }
   /**
    * 하루 비용 상세의 단일 계산. 외부 조회·환율 시세를 만들지 않고 받은 값만 합친다.
    * @param {any} trip @param {number} di
@@ -1494,6 +1585,11 @@
     if(b.rooms!=null){ if(_fin(b.rooms)) b.rooms=Math.min(4,Math.max(1,Math.round(+b.rooms))); else delete b.rooms; }
     if(b.roomName!=null){ const r=(typeof b.roomName==='string'? b.roomName:'').trim().slice(0,120); if(r) b.roomName=r; else delete b.roomName; }
     if(b.breakfast!=null) b.breakfast=!!b.breakfast;
+    // 예약번호 — iOS `TripBooking.confirmation`과 같은 키(웹 편집기도 이 키로 쓴다, 2026-10-03). 글자로만 담는다
+    if(b.confirmation!=null){
+      const c=(typeof b.confirmation==='string'? b.confirmation : (typeof b.confirmation==='number'&&isFinite(b.confirmation))? String(b.confirmation) : '').trim().slice(0,120);
+      if(c) b.confirmation=c; else delete b.confirmation;
+    }
     if(b.refundable==null){ if(b.freeCancelUntil) b.refundable=true; }   // 구버전: 무료취소 기한만 있던 예약
     else b.refundable=!!b.refundable;
     if(b.ptoken!=null && !(typeof b.ptoken==='string' && /^[A-Za-z0-9_=-]{4,300}$/.test(b.ptoken))) delete b.ptoken;   // provider property 매핑 캐시
@@ -1773,6 +1869,172 @@
     return near? inKorea(near) : /[가-힣]/.test(String(q||''));
   }
 
+  // ───────────────── 장소 검색·장소 정체성 (2026-10-03 3차 UX 검토) ─────────────────
+  // 정확한 고유명을 쳤는데 엉뚱한 곳이 조용히 담겼다(P0-1) — 기준 도시가 결과를 '좁히기만' 했고,
+  // 좁힌 결과에 같은 이름이 없어도 그대로 보여 줬다. 여기 판단은 검색을 넓힐지, 사람에게 무엇을 보일지 정하는 데 쓴다.
+
+  /** 이름 비교용 — 대소문자·공백·문장부호를 걷는다 @param {any} s @returns {string} */
+  function _nameKey(s){
+    return _str(s).normalize('NFKC').toLowerCase().replace(/[\s·・.,'"`’()[\]{}<>\-_/|&!?~:;]+/g,'');
+  }
+  /** 글자 두 개짜리 조각이 얼마나 겹치는가(0~1, Dice) @param {string} a @param {string} b @returns {number} */
+  function _bigramOverlap(a,b){
+    if(a.length<2||b.length<2) return 0;
+    /** @param {string} s @returns {Map<string,number>} */
+    const grams=s=>{ const out=new Map(); for(let i=0;i<s.length-1;i++){ const g=s.slice(i,i+2); out.set(g,(out.get(g)||0)+1); } return out; };
+    const A=grams(a), B=grams(b); let hit=0;
+    A.forEach((n,g)=>{ hit+=Math.min(n,B.get(g)||0); });
+    return 2*hit/((a.length-1)+(b.length-1));
+  }
+  /**
+   * 찾은 장소의 이름이 친 이름과 같은가 — 0=같다(도시 이름이 앞뒤에 붙은 것까지) · 1=비슷하다 · 2=다르다.
+   * '비슷하다'는 세 글자 이상이 그대로 들어 있거나 글자 조각이 절반 넘게 겹칠 때다 — 두 글자 '우도'가
+   * '우도돼지네땅콩만두'에 들어 있다고 같은 곳이 아니다. 검색을 넓힐지는 '같다'(0)만 보고 정한다:
+   * '스타벅스'처럼 흔한 이름은 어디서나 '비슷한' 결과가 나온다.
+   * @param {any} query @param {any} name @param {any=} city @returns {0|1|2}
+   */
+  function placeNameMatch(query, name, city){
+    const q=_nameKey(query), n=_nameKey(name), c=_nameKey(city);
+    if(!q||!n) return 2;
+    if(n===q || (!!c && (n===c+q || n===q+c))) return 0;
+    if((q.length>=3 && n.includes(q)) || _bigramOverlap(q,n)>=0.5) return 1;
+    return 2;
+  }
+
+  /**
+   * 장소 검색의 기준이 될 일정의 장소 — 그날 먼저, 없으면 가까운 날(같은 거리면 앞날). 위치나 도시가 있어야 한다.
+   * ⚠️ 공항·역(교통)은 뺀다: 공항이 있는 도시(이즈미사노·인천)가 기준이 되면 도심의 장소가 엉뚱하게 잡힌다(P0-1).
+   * @param {{spots?:any[]}[]} days @param {number} di @param {boolean=} sameDayOnly 그날만 본다
+   * @returns {any|null}
+   */
+  function searchAnchorSpot(days, di, sameDayOnly){
+    const list=Array.isArray(days)?days:[];
+    const usable=(/**@type {any}*/ s)=>{
+      if(!s||typeof s!=='object') return false;
+      const cat=spotCatOf(s);
+      if(cat && cat.id==='transport') return false;
+      const city=_str(s.city).trim();
+      return hasCoord(s) || (!!city && city!=='기타');
+    };
+    /** @param {number} i @returns {any|null} */
+    const pick=i=>{ const d=list[i]; return (d&&Array.isArray(d.spots)&&d.spots.find(usable))||null; };
+    const own=pick(di);
+    if(own||sameDayOnly) return own;
+    for(let k=1;k<list.length;k++){ const a=pick(di-k)||pick(di+k); if(a) return a; }
+    return null;
+  }
+
+  /**
+   * 일정의 다른 장소에서 얼마나 떨어진 곳인가(km) — 그날 장소가 있으면 그중 가장 가까운 곳, 없으면 여행 전체에서.
+   * 파리 일정에 수천 km 떨어진 국내 결과가 확인 없이 담겼다(P0-1). 비교할 장소가 없으면 null.
+   * @param {{spots?:any[]}[]} days @param {number} di @param {any} point @param {any=} skip 편집 중인 그 장소(자기와는 비교하지 않는다)
+   * @returns {number|null}
+   */
+  function planDistanceKm(days, di, point, skip){
+    if(!hasCoord(point)) return null;
+    const list=Array.isArray(days)?days:[];
+    const p={lat:+point.lat, lng:+point.lng};
+    /** @param {any[]} spots @returns {number} */
+    const nearest=spots=>{ let best=Infinity; for(const s of spots) if(s!==skip && hasCoord(s)) best=Math.min(best, haversine({lat:+s.lat,lng:+s.lng},p)); return best; };
+    const own=nearest((list[di]&&list[di].spots)||[]);
+    if(isFinite(own)) return own;
+    const all=nearest(list.flatMap(d=>(d&&Array.isArray(d.spots))?d.spots:[]));
+    return isFinite(all)? all : null;
+  }
+
+  /**
+   * 이 여행이 이미 쓰는 도시 표기 — 검색 결과가 'Paris'라고 줘도 일정에 '파리'가 있으면 '파리'로 맞춘다(P2-25).
+   * 한 도시가 '파리'와 'Paris'로 갈려 도시 칩이 둘이 됐다. 같은 표기(알려진 별칭 포함)면 그것이고,
+   * 표기가 다르면 **문자가 다르고(한글 ↔ 그 밖) 그 도시의 장소가 15km 안에 있을 때만** 같은 도시로 본다 —
+   * 둘 다 한글인 '제주'와 '서귀포'는 가까워도 다른 도시다.
+   * @param {any} city @param {any} at 찾은 장소의 위치 @param {any[]} spots 이 여행의 장소들 @returns {string}
+   */
+  function tripCitySpelling(city, at, spots){
+    const raw=_str(city).trim();
+    if(!raw) return raw;
+    const canon=(/**@type {string}*/ v)=>cityKey(SUMMARY_CITY_NAMES.get(cityKey(v))||v);
+    const known=(Array.isArray(spots)?spots:[]).filter(s=>s&&_str(s.city).trim()&&_str(s.city).trim()!=='기타');
+    const same=known.find(s=>canon(_str(s.city).trim())===canon(raw));
+    if(same) return _str(same.city).trim();
+    if(!hasCoord(at)) return raw;
+    const hangul=(/**@type {string}*/ t)=>/[가-힣]/.test(t);
+    let best='', bestKm=Infinity;
+    for(const s of known){
+      const c=_str(s.city).trim();
+      if(!hasCoord(s) || hangul(c)===hangul(raw)) continue;
+      const km=haversine({lat:+s.lat,lng:+s.lng},{lat:+at.lat,lng:+at.lng});
+      if(km<bestKm){ bestKm=km; best=c; }
+    }
+    return (best && bestKm<=15)? best : raw;
+  }
+
+  /**
+   * 이 여행의 기본 비용 통화 — 파리 여행인데 두 번째 비용 칸이 '₩ 원'으로 열려 '60'이 ₩60이 됐다(P2-26).
+   * 가서 쓴 돈(장소·하루 항목)에 원화가 아닌 통화가 있으면 그중 가장 많이 쓴 것(같으면 뒤에 쓴 것),
+   * 없으면 여행 단위 항목·예약에서, 그것도 없으면 원화다. 한국에서 원화로 낸 항공권이 현지 식당의
+   * 기본값을 원화로 끌고 가지 않게 가서 쓴 돈을 먼저 본다. 금액이 없는 항목의 통화는 세지 않는다(0은 센다).
+   * @param {any} trip @returns {string}
+   */
+  function tripDefaultCurrency(trip){
+    const t=trip||{};
+    /** @param {any[]} items @param {(x:any)=>boolean} priced @returns {string} */
+    const pickFrom=(items, priced)=>{
+      /** @type {Map<string,{n:number,last:number}>} */ const seen=new Map();
+      let order=0;
+      for(const x of items){
+        if(!x||typeof x!=='object'||!priced(x)) continue;
+        order++;
+        const c=_CURS.indexOf(x.cur)>=0? x.cur : 'KRW';
+        if(c==='KRW') continue;
+        const r=seen.get(c)||{n:0,last:0}; r.n++; r.last=order; seen.set(c,r);
+      }
+      let best='', bn=-1, bl=-1;
+      seen.forEach((r,c)=>{ if(r.n>bn||(r.n===bn&&r.last>bl)){ best=c; bn=r.n; bl=r.last; } });
+      return best;
+    };
+    const num=(/**@type {any}*/ v)=>typeof v==='number'&&isFinite(v);
+    const days=Array.isArray(t.days)?t.days:[];
+    const onSite=days.flatMap((/**@type {any}*/ d)=>[...((d&&Array.isArray(d.spots))?d.spots:[]), ...((d&&Array.isArray(d.costItems))?d.costItems:[])]);
+    const prep=[...(Array.isArray(t.costItems)?t.costItems:[]), ...(Array.isArray(t.bookings)?t.bookings:[])];
+    return pickFrom(onSite, x=>num(x.cost)||num(x.amount))
+      || pickFrom(prep, x=>num(x.amount)||(num(x.price)&&x.price>0))
+      || 'KRW';
+  }
+
+  /**
+   * 도착 예상 시각에 문을 안 열었다면 **왜** 안 열었는지 — 그날 쉬는지, 아직 안 열었는지, 이미 닫았는지(P2-12).
+   * '🚫 영업시간 확인' 하나로는 루브르의 화요일 휴관과 '9분 일찍 도착'이 같은 말이었다. 열려 있거나 모르면 null.
+   * `at`은 자정 기준 분이고 자정 마감은 1440이다(00:00으로 접으면 이른 아침처럼 읽힌다).
+   * @param {any[]|null|undefined} periods normHours 결과 @param {number} weekday 0=일 @param {number} min 자정 기준 분
+   * @returns {{kind:'CLOSED_DAY'}|{kind:'BEFORE_OPEN',at:number,minutes:number,reopen:boolean}|{kind:'AFTER_CLOSE',at:number,minutes:number}|null}
+   */
+  function hoursIssue(periods, weekday, min){
+    if(isOpenAt(periods||null, weekday, min)!==false) return null;
+    const today=(periods||[]).filter(p=>p&&p.d===weekday).sort((a,b)=>a.o-b.o);
+    if(!today.length) return {kind:'CLOSED_DAY'};
+    const next=today.find(p=>p.o>min);
+    if(next) return {kind:'BEFORE_OPEN', at:next.o, minutes:next.o-min, reopen:today.some(p=>p.o<=min)};
+    const closeAt=(/**@type {any}*/ p)=>p.c>p.o? p.c : p.c+1440;
+    const last=today.reduce((a,p)=>closeAt(p)>closeAt(a)?p:a);
+    return {kind:'AFTER_CLOSE', at:closeAt(last), minutes:min-closeAt(last)};
+  }
+
+  /**
+   * 영업시간을 요일별 한 줄로 — 24시간 표기, 월요일부터. Google 문구의 '오전 12:00'(자정 마감)이 정오처럼 읽혔다(P2-12).
+   * @param {any[]|null|undefined} periods normHours 결과 @returns {{d:number,text:string}[]} 정보가 없으면 빈 배열
+   */
+  function hoursLines(periods){
+    if(!Array.isArray(periods)||!periods.length) return [];
+    const fmt=(/**@type {number}*/ m)=>m===1440?'24:00':hm(m);
+    const always=periods.some(p=>p&&p.d===-1);
+    return [1,2,3,4,5,6,0].map(d=>{
+      if(always) return {d, text:'24시간'};
+      const ps=periods.filter(p=>p&&p.d===d).sort((a,b)=>a.o-b.o);
+      if(!ps.length) return {d, text:'휴무'};
+      return {d, text:ps.map(p=>`${fmt(p.o)}–${fmt(p.c===0? 1440 : p.c)}`).join(', ')};
+    });
+  }
+
   // ───────────────── 장소 카테고리 ─────────────────
   // 목록 순서 = 편집 모달 선택지 순서. id는 저장값이므로 바꾸면 기존 데이터가 '미지정'이 된다.
   // ── 장소 우선순위 3단 (2026-09-20) ──
@@ -1833,8 +2095,26 @@
   // 카카오 로컬의 category_group_code (분류가 없는 코드는 추론하지 않는다)
   /** @type {Record<string,string>} */
   const _KAKAO_CAT={AD5:'stay',FD6:'food',CE7:'cafe',AT4:'sight',CT1:'sight',SW8:'transport',MT1:'shop',CS2:'shop'};
-  /** @param {any} code @returns {string|null} */
-  function catFromKakao(code){ return _KAKAO_CAT[String(code||'')]||null; }
+  // 그룹 코드가 없는 곳은 분류 경로('여행 > 관광,명소 > 오름')로 읽는다 — 성산일출봉이 코드 없이 와서 종류가 비었다(2026-10-03 P2-24).
+  // 경로의 **뒤 칸부터** 본다: '음식점 > 카페'는 카페, '음식점 > 술집 > 칵테일바'는 술집에서 식당이 된다.
+  const _KAKAO_PATH=[
+    ['stay',      /숙박|호텔|모텔|펜션|게스트하우스|리조트|콘도/],
+    ['cafe',      /^카페|커피|디저트|제과|베이커리/],
+    ['transport', /교통|공항|역$|지하철|전철|터미널|여객|항구/],
+    ['activity',  /테마파크|놀이|레저|스포츠|수족관|동물원|온천|스파|체험/],
+    ['nature',    /해수욕장|해변|오름|폭포|계곡|호수|수목원|휴양림|공원|^산$|^섬$|^자연/],
+    ['shop',      /쇼핑|시장|백화점|아울렛|마트|상가/],
+    ['sight',     /관광|명소|박물관|미술관|유적|사적|사찰|성당|교회|고궁|궁궐|왕궁|전시|문화/],
+    ['food',      /음식점|식당|술집|한식|일식|중식|양식|분식/]
+  ];
+  /** @param {any} code @param {any=} path 카카오 category_name @returns {string|null} */
+  function catFromKakao(code, path){
+    const byCode=_KAKAO_CAT[String(code||'')];
+    if(byCode) return byCode;
+    const parts=_str(path).split('>').map(x=>x.trim()).filter(Boolean).reverse();
+    for(const part of parts) for(const row of _KAKAO_PATH) if(/**@type{RegExp}*/(row[1]).test(part)) return /**@type{string}*/(row[0]);
+    return null;
+  }
 
   // 구글 Places types. 배열 순서가 우선순위 — 'store'처럼 넓은 타입은 뒤에 둬서 구체적인 게 먼저 잡히게 한다.
   const _GOOGLE_CAT=[
@@ -1959,6 +2239,10 @@
     // 데모는 앱이 가장 잘하는 모습이어야 한다(2026-10-02 UX 검토). 전에는 숙소가 하나도 없어 다음 날 출발점이
     // 전날 마지막 명소로 이월됐고, 마지막 날은 그라나다에서 출발해 "11:00 비행기"인데 공항에 13:19에 닿았다.
     // 숙소는 실제 호텔을 지어내지 않는다 — '예시'라고 이름에 밝힌 도심 위치다. 사진·영업시간·예약 정보도 넣지 않는다.
+    // 샘플은 '도착 시간을 계산해요'라는 약속을 처음 판단하는 곳이다(2026-10-03 UX 검토) — 설명과 시각·수단이 어긋나면 안 된다.
+    //  · 일몰·노을·야경이라고 적은 곳은 그 시각에 닿도록 도착을 정해 둔다(`at`). 늦가을 안달루시아·톨레도의 해는 18시 조금 넘어 진다.
+    //  · 차는 메모대로 Day 4 아침 픽업 ~ Day 12 반납 사이에만 쓴다. 마드리드 시내는 대중교통, 세비야·그라나다 시내는 걷는다
+    //    (그라나다 알함브라 → 산 니콜라스는 직선 700m인데 자차 경로로는 15km를 돌았다).
     const TZ='Europe/Madrid';
     /** @param {string} area @param {number} lat @param {number} lng @param {string} city @param {number} nights */
     const lodging=(area,lat,lng,city,nights)=>({name:'숙소 (예시) · '+area,lat,lng,city,cat:'stay',stay:true,nights,
@@ -1966,58 +2250,61 @@
     return {
       id:SAMPLE_TRIP_ID, sample:true, name:'🇪🇸 스페인 신혼여행', start:'2026-10-25',
       days:[
-        {title:'마드리드 도착', drive:'', note:'07:00 착륙. 시차적응 겸 가벼운 일정. ⚽ 경기가 일요일이면 오늘 직관!', timeZone:TZ, startAt:'07:00', spots:[
+        {title:'마드리드 도착', drive:'', note:'07:00 착륙. 시차적응 겸 가벼운 일정. ⚽ 경기가 일요일이면 오늘 직관!', timeZone:TZ, startAt:'07:00', mode:'transit', spots:[
           {name:'바라하스 공항 (MAD)',lat:40.4720,lng:-3.5610,city:'마드리드',at:'07:00',stayMin:60,desc:'입국 심사·짐 찾기',opt:false},
           {name:'푸에르타 델 솔',lat:40.4169,lng:-3.7035,city:'마드리드',desc:'중심 광장. 곰 동상, 0km 표지',stayMin:45,opt:false},
-          {name:'마요르 광장',lat:40.4155,lng:-3.7074,city:'마드리드',desc:'회랑 카페에서 저녁 추천',stayMin:60,opt:false},
+          {name:'마요르 광장',lat:40.4155,lng:-3.7074,city:'마드리드',desc:'회랑으로 둘러싸인 광장. 카페 테라스에서 쉬어 가기 좋아요',stayMin:60,opt:false},
           {name:'메트로폴리타노 (AT마드리드)',lat:40.4362,lng:-3.5995,city:'마드리드',desc:'⚽ vs 데포르티보 (10/25 주말 확정, 킥오프 시간은 4주 전 발표 — 티켓: atleticodemadrid.com)',stayMin:150,opt:false},
           lodging('그란 비아 근처',40.4203,-3.7058,'마드리드',3)]},
-        {title:'마드리드', drive:'', note:'⚽ 경기가 월요일이면 저녁 직관', timeZone:TZ, spots:[
+        {title:'마드리드', drive:'', note:'⚽ 경기가 월요일이면 저녁 직관', timeZone:TZ, mode:'transit', spots:[
           {name:'왕궁 (Palacio Real)',lat:40.4179,lng:-3.7143,city:'마드리드',desc:'관람 2~3시간. 온라인 사전예약 권장 (patrimonionacional.es)',stayMin:150,opt:false},
           {name:'프라도 미술관',lat:40.4138,lng:-3.6921,city:'마드리드',desc:'월~토 10-20 / 일 10-19. 폐관 2시간 전 무료(줄 김)',stayMin:120,opt:false}]},
-        {title:'마드리드', drive:'', note:'그란비아 쇼핑, 못 본 곳 보충', timeZone:TZ, spots:[
+        {title:'마드리드', drive:'', note:'그란비아 쇼핑, 못 본 곳 보충', timeZone:TZ, mode:'transit', spots:[
           {name:'레티로 공원',lat:40.4153,lng:-3.6845,city:'마드리드',desc:'수정궁, 호수 보트. 1~2시간',stayMin:90,opt:true}]},
-        {title:'→ 톨레도 (1박)', drive:'🚗 마드리드 → 톨레도 · 73km · 약 50분', note:'오전 렌터카 픽업 후 출발', timeZone:TZ, spots:[
+        {title:'→ 톨레도 (1박)', drive:'🚗 마드리드 → 톨레도 · 73km · 약 50분', note:'오전 렌터카 픽업 후 출발', timeZone:TZ, mode:'car', spots:[
           {name:'알카사르',lat:39.8581,lng:-4.0210,city:'톨레도',desc:'군사박물관. 톨레도 전경',stayMin:60,opt:true},
           {name:'톨레도 대성당',lat:39.8570,lng:-4.0236,city:'톨레도',desc:'스페인 가톨릭 수석 대성당. 1.5시간',stayMin:90,opt:false},
-          {name:'미라도르 델 바예',lat:39.8534,lng:-4.0166,city:'톨레도',desc:'구시가 전체 뷰포인트. 일몰 강추 🌇 차로 5분',stayMin:30,opt:false},
+          {name:'미라도르 델 바예',lat:39.8534,lng:-4.0166,city:'톨레도',at:'18:00',desc:'구시가 전체 뷰포인트. 일몰 강추 🌇 차로 5분',stayMin:30,opt:false},
           lodging('구시가',39.8590,-4.0226,'톨레도',1)]},
-        {title:'→ 세비야 (2박)', drive:'🚗 톨레도 → (코르도바) → 세비야 · 460km · 약 4시간 20분', note:'중간에 코르도바 메스키타 2시간 경유 추천', timeZone:TZ, spots:[
+        {title:'→ 세비야 (2박)', drive:'🚗 톨레도 → (코르도바) → 세비야 · 460km · 약 4시간 20분', note:'중간에 코르도바 메스키타 2시간 경유 추천', timeZone:TZ, mode:'car', spots:[
           {name:'메스키타 (코르도바)',lat:37.8789,lng:-4.7794,city:'코르도바',desc:'이슬람+가톨릭 융합 건축. 2시간 경유',stayMin:120,opt:true},
           lodging('산타 크루스',37.3860,-5.9890,'세비야',2)]},
-        {title:'세비야', drive:'', note:'저녁 플라멩코 공연 추천', timeZone:TZ, spots:[
+        {title:'세비야', drive:'', note:'저녁 플라멩코 공연 추천', timeZone:TZ, mode:'walk', spots:[
           {name:'세비야 대성당 & 히랄다',lat:37.3861,lng:-5.9926,city:'세비야',desc:'세계 최대 고딕 성당. 온라인 예매 필수 (catedraldesevilla.es)',stayMin:90,opt:false},
           {name:'레알 알카사르',lat:37.3831,lng:-5.9903,city:'세비야',desc:'무데하르 궁전. 사전예약 권장. 2시간',stayMin:120,opt:true},
-          {name:'스페인 광장',lat:37.3772,lng:-5.9869,city:'세비야',desc:'대표 포토스팟. 노을+플라멩코 버스킹',stayMin:60,opt:false},
-          {name:'메트로폴 파라솔',lat:37.3931,lng:-5.9916,city:'세비야',desc:'목조 전망대. 야경 장소',stayMin:60,opt:true}]},
-        {title:'→ 론다 (1박)', drive:'🚗 세비야 → 론다 · 128km · 약 1시간 45분', note:'절벽 마을 1박 — 야경과 아침 안개 낀 다리가 압권', timeZone:TZ, spots:[
+          {name:'스페인 광장',lat:37.3772,lng:-5.9869,city:'세비야',at:'17:45',desc:'대표 포토스팟. 노을+플라멩코 버스킹',stayMin:60,opt:false},
+          {name:'메트로폴 파라솔',lat:37.3931,lng:-5.9916,city:'세비야',at:'19:30',desc:'목조 전망대. 야경 장소',stayMin:60,opt:true}]},
+        {title:'→ 론다 (1박)', drive:'🚗 세비야 → 론다 · 128km · 약 1시간 45분', note:'절벽 마을 1박 — 야경과 아침 안개 낀 다리가 압권', timeZone:TZ, mode:'car', spots:[
           {name:'푸엔테 누에보',lat:36.7406,lng:-5.1655,city:'론다',desc:'98m 협곡 위의 다리. 협곡 아래 전망 포인트 추천',stayMin:60,opt:false},
           {name:'론다 투우장 & 알라메다',lat:36.7423,lng:-5.1671,city:'론다',desc:'가장 오래된 투우장 + 절벽 산책로',stayMin:60,opt:true},
           lodging('구시가',36.7410,-5.1640,'론다',1)]},
-        {title:'→ 말라가 (2박)', drive:'🚗 론다 → 말라가 · 102km · 약 1시간 20분', note:'해안도로 경유 시 +1시간', timeZone:TZ, spots:[
+        {title:'→ 말라가 (2박)', drive:'🚗 론다 → 말라가 · 102km · 약 1시간 20분', note:'해안도로 경유 시 +1시간', timeZone:TZ, mode:'car', spots:[
           {name:'미하스 푸에블로',lat:36.5959,lng:-4.6373,city:'말라가',desc:'하얀 마을. 이동 중 경유',stayMin:60,opt:true},
           {name:'말라게타 해변 (코스타 델 솔)',lat:36.7194,lng:-4.4093,city:'말라가',desc:'11월 초 낮 20°C — 해변 산책+에스페토 🍤',stayMin:90,opt:false},
           lodging('구시가',36.7206,-4.4209,'말라가',2)]},
-        {title:'말라가 · 코스타 델 솔', drive:'', note:'', timeZone:TZ, spots:[
+        {title:'말라가 · 코스타 델 솔', drive:'', note:'', timeZone:TZ, mode:'car', spots:[
           {name:'알카사바 & 히브랄파로',lat:36.7211,lng:-4.4158,city:'말라가',desc:'항구+해안 전망. 오전 추천',stayMin:90,opt:false},
           {name:'네르하 & 프리힐리아나',lat:36.7444,lng:-3.8770,city:'말라가',desc:'"유럽의 발코니" + 하얀 마을. 차로 50분',stayMin:120,opt:true}]},
-        {title:'→ 그라나다 (2박)', drive:'🚗 말라가 → 그라나다 · 125km · 약 1시간 30분', note:'그라나다는 음료 시키면 타파스 무료!', timeZone:TZ, spots:[
+        {title:'→ 그라나다 (2박)', drive:'🚗 말라가 → 그라나다 · 125km · 약 1시간 30분', note:'그라나다는 음료 시키면 타파스 무료!', timeZone:TZ, mode:'car', spots:[
           {name:'그라나다 대성당',lat:37.1763,lng:-3.5986,city:'그라나다',desc:'이사벨 여왕 묘. 오후 시내 산책',stayMin:60,opt:true},
           lodging('대성당 근처',37.1750,-3.5980,'그라나다',2)]},
-        {title:'그라나다 — 알함브라', drive:'', note:'예약 시간 엄수, 여권 지참', timeZone:TZ, spots:[
+        {title:'그라나다 — 알함브라', drive:'', note:'예약 시간 엄수, 여권 지참', timeZone:TZ, mode:'walk', spots:[
           {name:'알함브라 궁전',lat:37.1761,lng:-3.5881,city:'그라나다',desc:'🚨 사전예매 필수 (tickets.alhambra-patronato.es). 나스르 궁전 입장시간 지정제. 반나절',stayMin:240,opt:false},
-          {name:'산 니콜라스 전망대',lat:37.1810,lng:-3.5927,city:'그라나다',desc:'알함브라+설산 뷰. 일몰 강추 🌇',stayMin:60,opt:false}]},
-        {title:'→ 마드리드 (2박)', drive:'🚗 그라나다 → 마드리드 · 420km · 약 4시간 15분', note:'오후 도착, 렌터카 반납', timeZone:TZ, spots:[
+          {name:'산 니콜라스 전망대',lat:37.1810,lng:-3.5927,city:'그라나다',at:'17:30',desc:'알함브라+설산 뷰. 일몰 강추 🌇',stayMin:60,opt:false}]},
+        {title:'→ 마드리드 (2박)', drive:'🚗 그라나다 → 마드리드 · 420km · 약 4시간 15분', note:'오후 도착, 렌터카 반납', timeZone:TZ, mode:'car', spots:[
           lodging('그란 비아 근처',40.4203,-3.7058,'마드리드',2)]},
-        {title:'마드리드 자유일', drive:'', note:'산 미겔 시장, 레이나 소피아(게르니카), 쇼핑', timeZone:TZ, spots:[]},
-        {title:'출국', drive:'', note:'11:00 비행기 — 08:30 공항 도착 권장', timeZone:TZ, startAt:'07:45', spots:[
+        {title:'마드리드 자유일', drive:'', note:'산 미겔 시장, 레이나 소피아(게르니카), 쇼핑', timeZone:TZ, mode:'transit', spots:[]},
+        {title:'출국', drive:'', note:'11:00 비행기 — 08:30 공항 도착 권장', timeZone:TZ, startAt:'07:45', mode:'transit', spots:[
           {name:'바라하스 공항 (MAD)',lat:40.4720,lng:-3.5610,city:'마드리드',at:'08:30',desc:'11:00 출국 — 2시간 30분 전 도착',opt:false}]}
       ]
     };
   }
 
 
-  const TC={deleteSpotCost,clearSpotCost,deleteBookingCost,dayLodgings,sortTripsByCountdown,additionalReservations,tripSummaryCities,returnModeOf,SPOT_PRIORITIES,spotPriorityOf,applySpotPriority,spotPriorityLabel,SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,cityFromKoreanAddr,placeName,cityFromGoogle,normHours,classifySearchErr,isKoreanSearch,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,normHM,sortDayByTime,inKorea,simplifyName,parseDirect,parseMoney,normalizeDraftDays,extractJson,extMapLink,encodePolyline,decodePolyline,optimizeRoute,planRouteOptimization,routeLength,isOpenAt,validTimeZone,zonedClock,zonedMinutesToISOString,dayAnchor,stayMinutesOf,activityStartMinute,dayEndMinutes,departMinuteAfter,computeTimeline,computeDayJourney,whoKey,splitSegments,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,budgetBookings,moneyAmount,parseCostAmount,costAmountOf,dayEnteredCost,splitAcrossNights,stayCostShares,stayCostOverflow,dayEnteredCostOn,hasManualTransportCost,dayCostSummary,ADMISSION_REQUIREMENTS,admissionLabel,admissionOf,needsAdmissionBooking,normalizeAdmission,admissionError,COST_CATEGORIES,COST_CURRENCIES:_CURS,costCategoryOf,COST_PAY_STATES,costPayStateOf,payStateTotals,TRIP_NOTE_CATEGORIES,normalizeTripNote,tripCostSummary,localMode,mdLabel,tripPeriodOf,startShiftPreview,SAMPLE_TRIP_ID,isSampleTrip,sampleTrip,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
+  const TC={deleteSpotCost,clearSpotCost,deleteBookingCost,dayLodgings,sortTripsByCountdown,additionalReservations,tripSummaryCities,returnModeOf,SPOT_PRIORITIES,spotPriorityOf,applySpotPriority,spotPriorityLabel,SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,cityFromKoreanAddr,placeName,cityFromGoogle,normHours,classifySearchErr,isKoreanSearch,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,normHM,sortDayByTime,inKorea,walkInsteadOfCar,simplifyName,parseDirect,parseMoney,normalizeDraftDays,extractJson,extMapLink,encodePolyline,decodePolyline,optimizeRoute,planRouteOptimization,routeLength,isOpenAt,validTimeZone,zonedClock,zonedMinutesToISOString,dayAnchor,stayMinutesOf,activityStartMinute,dayEndMinutes,departMinuteAfter,computeTimeline,computeDayJourney,whoKey,splitSegments,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,budgetBookings,moneyAmount,parseCostAmount,costAmountOf,dayEnteredCost,splitAcrossNights,stayCostShares,stayCostOverflow,dayEnteredCostOn,hasManualTransportCost,taxiFareCounts,dayCostSummary,ADMISSION_REQUIREMENTS,admissionLabel,admissionOf,needsAdmissionBooking,normalizeAdmission,admissionError,COST_CATEGORIES,COST_CURRENCIES:_CURS,costCategoryOf,COST_PAY_STATES,costPayStateOf,payStateTotals,TRIP_NOTE_CATEGORIES,normalizeTripNote,tripCostSummary,localMode,mdLabel,tripPeriodOf,startShiftPreview,SAMPLE_TRIP_ID,isSampleTrip,sampleTrip,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
+  // 장소 검색·장소 정체성(2026-10-03) — 위 목록과 따로 둬 다른 변경과 한 줄에서 부딪히지 않게 한다
+  Object.assign(TC,{placeNameMatch,searchAnchorSpot,planDistanceKm,tripCitySpelling,tripDefaultCurrency,hoursIssue,hoursLines});
+  Object.assign(TC,{resolveTimeZone});   // 따로 붙인다 — 위 한 줄은 여러 작업이 함께 고치는 자리다
   if(typeof module!=='undefined' && module.exports){ module.exports=TC; }   // Node (테스트)
   else { const r=/**@type {any}*/(root); for(const k in TC) r[k]=/**@type {any}*/(TC)[k]; }   // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);

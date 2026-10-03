@@ -38,7 +38,7 @@
       "nowMinutes": 1135,
       "dayStartMinutes": 540,
       "dayEndMinutes": 1260,
-      "availableMinutes": 5,
+      "availableMinutes": 3,
       "delayMinutes": 595,
       "travelMinutesToday": 2,
       "planningMode": "ASSISTED",
@@ -83,12 +83,12 @@
         "id": "parity|2026-09-01|VISIT_PLACE|공원",
         "type": "NEXT_ACTIVITY",
         "title": "공원",
-        "description": "1분 이동 · 18:56 도착 · 20:26까지",
+        "description": "약 1분 이동 · 18:56 도착 · 20:26까지",
         "reasons": [
           "현재 위치에서 이동 약 1분",
           "Day 2 일정에서 옮겨올 수 있어요",
-          "저녁 예약 동선과 같은 방향이에요",
-          "약 1.5시간이면 둘러볼 수 있어요"
+          "다음 일정 저녁 예약 가는 길에 들를 수 있어요",
+          "약 1시간 30분이면 둘러볼 수 있어요"
         ],
         "impact": {
           "timeChangeMinutes": 91,
@@ -108,35 +108,13 @@
         "acceptable": true
       },
       {
-        "id": "parity|2026-09-01|REST|조금 더 쉬기",
-        "type": "REST",
-        "title": "조금 더 쉬기",
-        "description": "지금 쉬어도 남은 일정에는 여유가 있어요",
-        "reasons": [
-          "저녁 예약 19:00까지 5분 남았어요"
-        ],
-        "impact": {
-          "timeChangeMinutes": 30,
-          "addedActivities": [],
-          "removedActivities": []
-        },
-        "action": {
-          "kind": "REST",
-          "activityId": null,
-          "fromDay": null,
-          "bookingId": null,
-          "dropActivityIds": [],
-          "startMinutes": 1135
-        },
-        "acceptable": true
-      },
-      {
         "id": "parity|2026-09-01|RETURN_TO_HOTEL|숙소로 돌아가기",
         "type": "REST",
         "title": "숙소로 돌아가기",
-        "description": "지금 쉬어도 남은 일정에는 여유가 있어요",
+        "description": "쉬는 만큼 남은 일정이 늦어져요 — 무리하지 않는 쪽이 나아요",
         "reasons": [
-          "숙소까지 약 2분"
+          "숙소까지 약 2분",
+          "숙소에 들르면 저녁 예약이 늦어질 수 있어요"
         ],
         "impact": {
           "timeChangeMinutes": 2,
@@ -287,11 +265,9 @@
       "feasible": true,
       "lateMinutes": 0,
       "before": [
-        "숙소",
         "저녁 예약"
       ],
       "after": [
-        "숙소",
         "저녁 예약"
       ],
       "dropActivityIds": [],

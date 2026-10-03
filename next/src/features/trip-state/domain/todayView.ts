@@ -205,7 +205,8 @@ export function computeToday(input: TodayInput): TodayComputation {
     legMin: (a, b) => legMinutesOf(a, b, legModeOf(day, b), true),
     startAnchor: anchor
   });
-  const legMin = (a: unknown, b: unknown) => legMinutesOf(a, b, dayModeOf(day));
+  // 엔진이 묻는 이동의 수단은 일정 화면과 같은 출처다(`moveModeTo`) — 도착일(✈️)의 시내 제안이 비행기 속도로 '2분'이 되지 않게(2026-10-03)
+  const legMin = (a: unknown, b: unknown) => legMinutesOf(a, b, adapt.moveModeTo(trip, day, b));
 
   // 자연어 요청은 **여기서 한 번만** 해석한다 — 엔진(`adaptive.js`)이 단일 출처고 앱은 결과만 그린다.
   const said = String(input.intent ?? '').trim();

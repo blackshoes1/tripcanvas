@@ -5,7 +5,7 @@ test('첫 방문 온보딩은 세 가지 진입점을 제공하고 샘플을 명
   const context=await browser.newContext(); await prepare(context,{onboarded:false});
   const page=await context.newPage(); await page.goto('/');
   await expect(page.locator('#onboarding')).toBeVisible();
-  await expect(page.locator('#onboardNew')).toBeFocused();
+  await expect(page.locator('#onboardingTitle')).toBeFocused();   // 주 버튼에 링을 그리지 않는다(2026-10-03)
   await expect(page.locator('#onboardPaste')).toContainText('일정 붙여넣기');
   await expect(page.locator('#onboardNew')).toContainText('새 여행');
   await expect(page.locator('#onboardSample')).toContainText('샘플');
@@ -20,7 +20,7 @@ test('장소 모달은 기본 정보와 접힌 상세 설정을 분리한다',as
   await page.locator('.addSpot').first().click();
   await expect(page.locator('#spotAdvanced')).not.toHaveAttribute('open','');
   await expect(page.locator('#spotName')).toBeVisible();
-  await page.locator('#spotAdvanced summary').click();
+  await page.locator('#spotAdvanced > summary').click();   // 안에 명소 예약 묶음(details)이 하나 더 있다
   await expect(page.locator('#spotLegMode')).toBeVisible();
   await expect(page.locator('#spotModalBg .stepBadge')).toHaveText('상세 설정');
 });

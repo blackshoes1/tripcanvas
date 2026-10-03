@@ -101,9 +101,9 @@ test('보기 설정 패널도 모바일 필터바에 잘리지 않는다',async(
   });
   expect(reachable.inPanel,`보기 설정 패널 아래쪽이 잘렸다 (그 자리에 잡힌 것: ${reachable.hit})`).toBe(true);
 
-  // 테마 전환이 실제로 눌린다 — 잘려 있으면 클릭이 다른 요소에 막힌다
-  await page.locator('#themeBtn').click();
-  await expect(panel).toBeVisible();
+  // 패널 맨 아래(도시 포커스)가 실제로 눌린다 — 잘려 있으면 클릭이 다른 요소에 막힌다.
+  // (테마는 2026-10-03부터 ☰의 '화면'에서 고르고, 경로 재생은 지도 위 버튼이다)
+  await panel.locator('.cityFocusBtn').first().click();
 });
 
 test('비용 입력은 일정 장소의 값을 편집하고 체크한 범위만 삭제한다',async({page})=>{

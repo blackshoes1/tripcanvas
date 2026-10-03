@@ -69,6 +69,16 @@ test('수동 교통비는 자동 추정과 중복하지 않으며 미정 교통�
   assert.equal(L.dayEnteredCost(trip.days[0], rates), 12000);
 });
 
+test('택시비 추정은 택시 날에만 비용에 든다 — 자차 날의 택시 요금은 내지 않는 돈이다', () => {
+  assert.equal(L.taxiFareCounts({ mode: 'taxi', spots: [] }), true);
+  assert.equal(L.taxiFareCounts({ mode: 'car', spots: [] }), false, '자차·렌터카 날');
+  assert.equal(L.taxiFareCounts({ spots: [] }), false, '수단을 안 정한 날은 자차다');
+  assert.equal(L.taxiFareCounts({ mode: 'transit', spots: [] }), false);
+  assert.equal(L.taxiFareCounts({ mode: 'taxi', spots: [], costItems: [{ id: 'm', kind: 'TRANSPORT', amount: 1 }] }), false,
+    '수동 교통비가 하루 교통비 전체를 대신한다');
+  assert.equal(L.taxiFareCounts(null), false);
+});
+
 test('장소 이동·삭제·인원·통화 변경 후 일별/여행 비용이 다시 계산된다', () => {
   const trip = { days: [{ spots: [{ name: '입장', cost: 10.5, cur: 'USD', costBasis: 'PER_PERSON', costPeople: 2 }] }, { spots: [] }] };
   assert.equal(summary(trip).total, 28980);

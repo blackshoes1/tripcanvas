@@ -87,6 +87,18 @@ describe('구간 시간 — 캐시 우선, 없으면 속도 기반 직선 추정
     expect(legMinutes(NONE, a as never, b as never, 'train')).toBeCloseTo((haversine(ll(a), ll(b)) / 160) * 60, 6);
   });
 
+  it('자차의 가까운 구간은 차 경로가 아니라 두 곳 사이를 걷는 거리로 잰다(웹과 같은 lib 규칙)', () => {
+    // 2026-10-03 UX 검토: 직선 365m를 일방통행을 도는 차 경로 1.4km로 '걸어서 18분'이라 해 뒤 도착이 전부 밀렸다
+    const sol = spot('푸에르타 델 솔', 40.4169, -3.7035), mayor = spot('마요르 광장', 40.4155, -3.7074);
+    const key = legKey(ll(sol), ll(mayor), 'car');
+    const cache: LegCache = { [key]: { sec: 420, m: 1400 } };
+    const minutes = legMinutes(cache, sol as never, mayor as never, 'car');
+    expect(Math.round(minutes)).toBeGreaterThanOrEqual(5);
+    expect(Math.round(minutes)).toBeLessThanOrEqual(7);
+    const leg = buildDayView(trip([day([sol, mayor])]), cache, 0).spots[1].leg!;
+    expect(leg.label).toBe(`↳0.5km · 🚶${Math.round(minutes)}분`);
+  });
+
   it('구간 라벨 — 캐시: km·시간(2km 미만 자차는 🚶), 미캐시: 직선, 실패: ⚠️', () => {
     const key = legKey({ lat: a.lat!, lng: a.lng! }, { lat: b.lat!, lng: b.lng! }, 'car');
     const mk = (cache: LegCache) => buildDayView(trip([day([airport(), seongsan()])]), cache, 0).spots[1].leg!;
@@ -221,14 +233,30 @@ describe('비용 — 하루치(배분)와 전액을 구분한다', () => {
     expect(total.total).toBeGreaterThan(dayShares);
   });
 
-  it('자차일 택시비는 모든 구간이 캐시됐을 때만 하루 비용에 들어간다', () => {
+  it('택시일 택시비는 모든 구간이 캐시됐을 때만 하루 비용에 들어간다', () => {
     const a = airport(), b = seongsan();
-    const t = trip([day([a, b])]);
-    const key = legKey({ lat: a.lat!, lng: a.lng! }, { lat: b.lat!, lng: b.lng! }, 'car');
+    const t = trip([day([a, b], { mode: 'taxi' })]);
+    const key = legKey({ lat: a.lat!, lng: a.lng! }, { lat: b.lat!, lng: b.lng! }, 'taxi');
     expect(buildDayView(t, NONE, 0).cost.parts).toEqual([]);   // 캐시 없음 — 부분 합계 금지
     const v = buildDayView(t, { [key]: { sec: 3600, m: 40000, taxi: 45000 } }, 0);
     expect(v.cost.parts).toEqual([{ label: '택시', amount: 45000 }]);
-    expect(v.routeLabel).toBe('📏 하루 동선 약 40.0km · 🚗1시간 · 🚕약 45,000원 (도로 기준)');
+    expect(v.cost.details?.transportUnpriced).toBe(false);
+    expect(v.routeLabel).toContain(' · 🚕약 45,000원');   // 택시 날은 낼 돈이라 '간다면'이 붙지 않는다
+    expect(tripCostBreakdownOf(t, { [key]: { sec: 3600, m: 40000, taxi: 45000 } }).taxi).toBe(45000);
+  });
+
+  // 자차·렌터카 날에도 경로 조회가 택시 요금을 돌려주지만 그 돈은 내지 않는다 — 비용을 하나도 적지 않은 자차 여행의
+  // 하루 비용·전체 비용이 택시비가 되던 문제(2026-10-03). 요금은 동선 줄에 참고로만 남고, 교통비는 '모름'으로 남는다.
+  it('자차일 택시 요금은 하루 비용·전체 비용에 넣지 않는다', () => {
+    const a = airport(), b = seongsan();
+    const t = trip([day([a, b])]);
+    const cache = { [legKey({ lat: a.lat!, lng: a.lng! }, { lat: b.lat!, lng: b.lng! }, 'car')]: { sec: 3600, m: 40000, taxi: 45000 } };
+    const v = buildDayView(t, cache, 0);
+    expect(v.cost.parts).toEqual([]);
+    expect(v.cost.total).toBe(0);
+    expect(v.cost.details?.transportUnpriced).toBe(true);   // 주유·통행료는 계산하지 않았다
+    expect(tripCostBreakdownOf(t, cache)).toMatchObject({ taxi: 0, total: 0 });
+    expect(v.routeLabel).toBe('📏 하루 동선 약 40.0km · 🚗1시간 · 🚕택시로 간다면 약 45,000원 (도로 기준)');   // 참고값이라고 말한다
   });
 });
 

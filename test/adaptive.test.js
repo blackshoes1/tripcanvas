@@ -74,7 +74,9 @@ test('TripState: 현재/다음/고정 예약/남은 시간을 한 번에 계산�
   assert.equal(s.items[1].flexibility, 'FIXED');
   assert.equal(s.fixedCommitments.length, 1);
   assert.equal(s.nextFixed.startMin, 19 * 60 + 30);
-  assert.equal(s.availableMin, 19 * 60 + 30 - 11 * 60);
+  // 여유는 다음 **남은** 일정을 떠나야 하는 시각까지다 — 이동은 빈 시간이 아니다(2026-10-03)
+  assert.equal(s.freeBefore.name, '저녁 예약');
+  assert.equal(s.availableMin, (19 * 60 + 30 - s.items[1].travelIn) - 11 * 60);
   assert.equal(s.remainingItems.length, 2);
   assert.equal(s.weekday, 2);
 });
@@ -195,18 +197,20 @@ test('추천 안정성: 같은 상태에서는 같은 순서를 낸다', () => {
   assert.deepEqual(once(), once());
 });
 
+// ⚠️ 2026-10-03부터 시각상 이미 지났어야 할 곳(다녀왔다는 표시만 안 한 곳)은 다시 굴리지 않는다('다음'과 같은 규칙).
+//    그래서 아래 하루는 오후에 시작하고, 남은 곳이 실제로 앞에 있다.
 test('재구성: 고정 예약을 침범하지 않고 우선순위 낮은 일정부터 뺀다', () => {
   const trip = tripOf([{
-    startAt: '09:00', mode: 'car', spots: [
-      Object.assign({ name: 'Museum', city: '마드리드', stayMin: 120 }, P(40.41)),
+    startAt: '14:00', mode: 'car', spots: [
+      Object.assign({ name: 'Museum', city: '마드리드', stayMin: 120, status: 'COMPLETED' }, P(40.41)),
       Object.assign({ name: 'Cafe', city: '마드리드', stayMin: 60, opt: true }, P(40.44)),
       Object.assign({ name: 'Park', city: '마드리드', stayMin: 90, must: true }, P(40.47)),
-      Object.assign({ name: 'Dinner', city: '마드리드', bookAt: '19:00', stayMin: 90 }, P(40.50))
+      Object.assign({ name: 'Dinner', city: '마드리드', bookAt: '18:30', stayMin: 90 }, P(40.50))
     ]
   }]);
-  const s = stateOf(trip, { todayISO: TODAY, nowMin: 16 * 60 + 30, live: true, currentLocation: P(40.40) });
+  const s = stateOf(trip, { todayISO: TODAY, nowMin: 16 * 60 + 5, live: true, currentLocation: P(40.40) });
   const plan = A.generateReplan(s, { legMin: LEG });
-  assert.equal(plan.needed, true, '19:00 예약에 늦으므로 재구성이 필요하다');
+  assert.equal(plan.needed, true, '18:30 예약에 늦으므로 재구성이 필요하다');
   assert.ok(plan.lateBy > 0);
   assert.equal(plan.feasible, true);
   assert.equal(plan.drop.indexOf('d0s3'), -1, '고정 예약은 절대 빼지 않는다');
@@ -936,7 +940,7 @@ test('제안: 공항·역 같은 교통 장소는 다른 날에서 옮겨올 관
 
 test('제안: 일정 조정(REPLAN)은 그날 장소를 다루므로 그대로 남는다', () => {
   const trip = tripOf([{
-    startAt: '09:00', mode: 'car', spots: [
+    startAt: '16:00', mode: 'car', spots: [
       Object.assign({ name: 'Museum', city: '마드리드', stayMin: 120 }, P(40.41)),
       Object.assign({ name: 'Cafe', city: '마드리드', stayMin: 60, opt: true }, P(40.44)),
       Object.assign({ name: 'Dinner', city: '마드리드', bookAt: '19:00', stayMin: 90 }, P(40.50))
@@ -975,4 +979,282 @@ test('제안: 하루가 시작되기 전에는 "조금 더 쉬기"를 권하지 
   assert.ok(after.suggestions.some((x) => x.type === 'REST'), '하루가 진행된 뒤에는 쉬는 선택지가 정상이다');
   const preview = A.buildSuggestions(trip, stateOf(trip, { todayISO: '2026-08-01', nowMin: 15 * 60 }), { legMin: LEG });
   assert.ok(!preview.suggestions.some((x) => x.type === 'REST'), '여행 전 미리보기에서 "지금 쉬어도"라고 하지 않는다');
+});
+
+// ── 2026-10-03 3차 UX 검토: 여행 중 판단 엔진 ──────────────────────────────
+// 서울 하루: 경복궁(09:00 도착 고정·2시간) → 북촌 → 광장시장(예약 12:30, 메모 '점심') → 남산 → 명동교자(예약 19:00, 메모 '저녁')
+// → 롯데호텔(🏠 분류만 — 숙소 체크는 안 켰다). 붙여넣은 일정이 실제로 이런 모양이다.
+function seoulTrip(mod) {
+  const t = tripOf([
+    { title: '고궁과 시장', mode: 'car', startAt: '09:00', spots: [
+      { name: '경복궁', city: '서울', at: '09:00', stayMin: 120, lat: 37.5796, lng: 126.977 },
+      { name: '북촌한옥마을', city: '서울', stayMin: 60, lat: 37.5826, lng: 126.985 },
+      { name: '광장시장', city: '서울', desc: '점심 빈대떡', stayMin: 60, bookAt: '12:30', lat: 37.57, lng: 126.9996 },
+      { name: '남산서울타워', city: '서울', stayMin: 90, lat: 37.5512, lng: 126.9882 },
+      { name: '명동교자', city: '서울', desc: '저녁', stayMin: 60, bookAt: '19:00', lat: 37.5627, lng: 126.9852 },
+      { name: '롯데호텔 서울', city: '서울', desc: '숙소', lat: 37.5651, lng: 126.981 }] },
+    { title: '창덕궁과 인사동', mode: 'car', startAt: '09:00', spots: [
+      { name: '창덕궁', city: '서울', stayMin: 120, lat: 37.5794, lng: 126.991 },
+      { name: '인사동', city: '서울', stayMin: 90, lat: 37.5743, lng: 126.985 },
+      { name: '서울숲', city: '서울', stayMin: 90, opt: true, lat: 37.5444, lng: 127.0374 }] }
+  ]);
+  if (mod) mod(t.days[0].spots);
+  return t;
+}
+const seoulAt = (trip, min, extra) => stateOf(trip, Object.assign({ todayISO: TODAY, nowMin: min, live: true }, extra || {}));
+const HM = (h, m) => h * 60 + (m || 0);
+
+test('재구성: 머무는 중인 곳은 남은 체류만 더한다 — 제때 가고 있으면 늦는다고 하지 않는다', () => {
+  const trip = seoulTrip();
+  const s = seoulAt(trip, HM(10, 56));
+  assert.equal(s.items[0].status, 'IN_PROGRESS', '경복궁에 머무는 중');
+  assert.equal(A.generateReplan(s, { legMin: LEG }).needed, false, '광장시장 12:30에 제때 닿는다 — 경복궁 두 시간을 처음부터 다시 더하지 않는다');
+  assert.ok(!A.buildSuggestions(trip, s, { legMin: LEG }).suggestions.some((x) => x.type === 'REPLAN'));
+  assert.equal(A.departureAdvice(s, s.items[0], 0), null, '머무는 곳을 두고 "지금 출발해도 늦어요"라고 하지 않는다');
+  assert.equal(A.departurePlan(s, s.items[0], 0), null);
+  // 진짜로 늦는 약속은 그대로 잡는다
+  const tight = seoulTrip((sp) => { sp[2].bookAt = '11:45'; });
+  const late = A.generateReplan(seoulAt(tight, HM(10, 56)), { legMin: LEG });
+  assert.equal(late.needed, true);
+  assert.deepEqual(late.dropNames, ['북촌한옥마을'], '머무는 곳보다 아직 안 간 곳을 먼저 뺀다');
+});
+
+test('재구성: 시각상 지나온 곳(다녀왔다는 표시만 안 한 곳)을 다시 굴려 거짓 지연을 만들지 않는다', () => {
+  const trip = seoulTrip();
+  const s = seoulAt(trip, HM(16, 0));   // 아무것도 누르지 않은 오후 — 남산까지 지나왔고 명동교자 19:00이 남았다
+  const plan = A.generateReplan(s, { legMin: LEG });
+  assert.equal(plan.needed, false);
+  assert.ok(plan.before.indexOf('경복궁') < 0, '지나온 곳은 남은 일정이 아니다');
+});
+
+test('재구성: 늦는 예약 앞의 장소만, 필요한 만큼만 뺀다 — 뒤 일정과 오늘 밤 숙소는 그대로', () => {
+  const trip = seoulTrip((sp) => { sp[0].status = 'COMPLETED'; sp[2].bookAt = '11:45'; });
+  const s = seoulAt(trip, HM(11, 5));
+  const plan = A.generateReplan(s, { legMin: LEG });
+  assert.equal(plan.needed, true);
+  assert.equal(plan.feasible, true);
+  assert.deepEqual(plan.dropNames, ['북촌한옥마을'], '북촌만 빼면 11:45에 맞춘다 — 남산·숙소는 그 예약과 상관없다');
+  assert.ok(plan.after.indexOf('롯데호텔 서울') >= 0 && plan.after.indexOf('남산서울타워') >= 0);
+  const res = A.buildSuggestions(trip, s, { legMin: LEG });
+  const rp = res.suggestions.find((x) => x.type === 'REPLAN');
+  assert.ok(rp, '조정 카드가 있다');
+  assert.match(rp.title, /광장시장 11:45 예약에 \d+분 늦어요/, rp.title);
+  assert.ok(!/지연|밀렸/.test(rp.title + ' ' + rp.reasons.join(' ')), '아직 늦지 않았다 — 지연·밀렸어요라고 하지 않는다');
+  assert.match(rp.description, /^북촌한옥마을을 빼면 /, '조사는 받침에 맞춘다 — 을(를)을 쓰지 않는다');
+  assert.ok(!res.suggestions.some((x) => x.type === 'NEXT_ACTIVITY'), '빼자는 카드 옆에서 한 곳 더 가자고 하지 않는다');
+  assert.equal(res.notice, null, '카드가 있으면 따로 안내하지 않는다');
+});
+
+test('일정 조정: 🏠로 보이는 숙소·공항은 빼지 않고, 바꿀 것이 없으면 카드 대신 한 줄로 말한다', () => {
+  const trip = tripOf([{ startAt: '14:00', mode: 'car', spots: [
+    Object.assign({ name: '롯데호텔 서울', city: '서울', desc: '숙소', stayMin: 60 }, P(40.40)),
+    Object.assign({ name: '바라하스 공항 (MAD)', city: '마드리드', stayMin: 30 }, P(40.45)),
+    Object.assign({ name: 'Dinner', city: '마드리드', bookAt: '15:00', stayMin: 60 }, P(40.50))] }]);
+  const s = stateOf(trip, { todayISO: TODAY, nowMin: 14 * 60 + 10, live: true });
+  assert.equal(s.items[0].type, 'HOTEL', '목록이 🏠로 그리는 곳은 엔진도 숙소로 본다');
+  assert.equal(A.commitmentOf({ name: '롯데호텔 서울', cat: 'food' }, {}, []).type, 'OTHER', '사람이 고른 분류가 이긴다');
+  const plan = A.generateReplan(s, { legMin: LEG });
+  assert.equal(plan.needed, true);
+  assert.deepEqual(plan.drop, [], '숙소·공항은 뺄 후보가 아니다');
+  const res = A.buildSuggestions(trip, s, { legMin: LEG });
+  assert.ok(!res.suggestions.some((x) => x.type === 'REPLAN'), '기존과 제안이 같은 조정 카드는 띄우지 않는다');
+  assert.match(res.notice, /Dinner 15:00 예약에 .+ 늦어요/, '늦는다는 사실은 사라지지 않는다');
+  assert.match(A.tripPulse(s, plan).detail, /Dinner 15:00 예약에/, '하루 한 마디도 어느 약속인지 말한다');
+});
+
+test('출발 안내: 약속이 없는 곳에는 늦음·여유를 말하지 않고, 있는 곳은 시간으로 말한다', () => {
+  const trip = seoulTrip((sp) => { sp[0].status = 'COMPLETED'; });
+  const s = seoulAt(trip, HM(11, 1));
+  const bukchon = s.items[1];
+  assert.equal(bukchon.fixedAt, null);
+  const adv = A.departureAdvice(s, bukchon, 2);
+  assert.equal(adv.level, 'NOW');
+  assert.equal(adv.text, '지금 출발하면 11:03 도착', '예약도 정한 시각도 없는 곳은 사실만 말한다');
+  const plan = A.departurePlan(s, bukchon, 2);
+  assert.equal(plan.stage, 'UPCOMING', '약속이 없는 곳 때문에 출발·지연 알림을 보내지 않는다');
+  assert.equal(plan.lateByMin, 0);
+  assert.equal(A.notificationPlan(s, { departure: plan, replan: { needed: false } }).length, 0);
+
+  // 앞서 끝낸 사람에게: 예약까지 남은 시간을 '분'으로 쌓지 않고, 기다리라는 말 대신 여유가 있다고 한다
+  const ahead = seoulTrip((sp) => { sp[0].status = 'COMPLETED'; sp[1].status = 'COMPLETED'; });
+  const sa = seoulAt(ahead, HM(10, 59));
+  const early = A.departureAdvice(sa, sa.items[2], 4);
+  assert.equal(early.level, 'EARLY');
+  assert.match(early.text, /12:26쯤 출발하면 12:30 예약에 맞춰요/);
+  assert.match(early.text, /1시간 27분 여유/);
+  assert.ok(!/\d{2,}분 남음/.test(early.text), early.text);
+  const s2 = seoulAt(ahead, HM(12, 26));
+  assert.match(A.departureAdvice(s2, s2.items[2], 4).text, /^지금 바로 나서야 12:30 예약에 맞춰요/, '여유 0분을 "약 0분 여유"라고 하지 않는다');
+});
+
+test('여유는 다음 남은 일정까지다 — 쉬기 카드가 남은 계획을 없는 셈 치지 않는다', () => {
+  const trip = seoulTrip((sp) => { sp[0].status = 'COMPLETED'; delete sp[2].bookAt; });
+  const s = seoulAt(trip, HM(11, 0));
+  assert.equal(s.freeBefore.name, '북촌한옥마을');
+  assert.ok(s.availableMin < 30, '북촌으로 바로 가야 한다 — 명동교자까지 8시간이 아니다: ' + s.availableMin);
+  const res = A.buildSuggestions(trip, s, { legMin: LEG });
+  assert.ok(!res.suggestions.some((x) => x.type === 'REST'), '쉴 틈이 없는데 쉬어도 괜찮다고 하지 않는다');
+  const tired = A.buildSuggestions(trip, seoulAt(trip, HM(11, 0), { energyLevel: 'LOW' }), { legMin: LEG });
+  const rest = tired.suggestions.find((x) => x.title === '조금 더 쉬기');
+  assert.ok(rest, '지쳤다고 하면 쉬기를 권한다');
+  assert.ok(rest.reasons.some((r) => /북촌한옥마을이 늦어져요/.test(r)), '대신 그 대가를 말한다: ' + rest.reasons.join(' / '));
+  assert.ok(!/여유가 있어요/.test(rest.description), rest.description);
+  assert.notEqual(A.tripPulse(s, { needed: false }).code, 'FREE_TIME', '남은 곳이 있는데 "N시간 여유"라 하지 않는다');
+});
+
+test('하루 흐름: 남은 계획을 함께 그리고, 식사를 챙긴 시간대에는 식사를 또 넣지 않는다', () => {
+  const trip = seoulTrip((sp) => { sp[0].status = 'COMPLETED'; delete sp[2].bookAt; });
+  const s = seoulAt(trip, HM(11, 0));
+  const flow = A.planDayFlow(trip, s, { legMin: LEG });
+  const titles = flow.blocks.map((b) => b.title);
+  ['북촌한옥마을', '광장시장', '남산서울타워', '명동교자'].forEach((n) => assert.ok(titles.indexOf(n) >= 0, n + '이(가) 흐름에 남는다'));
+  assert.ok(titles.indexOf('경복궁') < 0, '다녀온 곳은 흐름에 없다');
+  assert.ok(flow.blocks.filter((b) => b.kind === 'PLANNED').length >= 3, '남은 계획은 PLANNED로 그린다');
+  assert.ok(!flow.blocks.some((b) => b.kind === 'SUGGESTED' && b.pick.type === 'EAT'), '메모가 저녁인 19:00 예약이 있으면 저녁을 또 넣지 않는다');
+  let cursor = -1;
+  flow.blocks.forEach((b) => { assert.ok(b.startMin >= cursor, '시간순'); cursor = b.startMin; });
+  // 이대로면 늦는 날에는 더 넣지 않는다
+  const late = seoulTrip((sp) => { sp[0].status = 'COMPLETED'; sp[2].bookAt = '11:45'; });
+  const blocked = A.planDayFlow(late, seoulAt(late, HM(11, 5)), { legMin: LEG });
+  assert.equal(blocked.blocked, 'REPLAN');
+  assert.equal(blocked.picks.length, 0);
+});
+
+test('같은 화면의 카드는 같은 제외 목록을 쓴다 — 흐름에서 물린 곳은 제안에도, 제안에서 거절한 곳은 흐름에도 없다', () => {
+  const trip = seoulTrip((sp) => { sp[0].status = 'COMPLETED'; });
+  const s = seoulAt(trip, HM(11, 0));
+  const flow = A.planDayFlow(trip, s, { legMin: LEG });
+  const pickedIds = flow.picks.map((p) => p.id);
+  assert.ok(pickedIds.length > 0);
+  A.buildSuggestions(trip, s, { legMin: LEG, exclude: pickedIds }).suggestions
+    .forEach((x) => assert.ok(pickedIds.indexOf(x.action.candidateId) < 0, x.title + '은(는) 흐름에서 물렸다'));
+  const first = A.buildSuggestions(trip, s, { legMin: LEG }).suggestions.filter((x) => x.type === 'NEXT_ACTIVITY');
+  const again = A.planDayFlow(trip, s, { legMin: LEG, dismissed: first.map((x) => x.key) });
+  again.picks.forEach((p) => assert.ok(first.every((x) => x.title !== p.title), p.title + '은(는) 제안에서 거절했다'));
+});
+
+test('제안: "다른 제안 보기"는 거절한 자리를 비우지 않고 다음 후보를 보여 준다', () => {
+  const many = [];
+  for (let i = 0; i < 8; i++) many.push(Object.assign({ name: '장소' + i, city: '마드리드', stayMin: 30 }, P(40.40 + i * 0.005)));
+  const trip = tripOf([
+    { startAt: '09:00', mode: 'walk', spots: [Object.assign({ name: '숙소', city: '마드리드', stay: true, stayMin: 0 }, P(40.40))] },
+    { spots: many }
+  ]);
+  const s = stateOf(trip, { todayISO: TODAY, nowMin: 10 * 60, live: true });
+  const first = A.buildSuggestions(trip, s, { legMin: LEG }).suggestions.filter((x) => x.type === 'NEXT_ACTIVITY');
+  const next = A.buildSuggestions(trip, s, { legMin: LEG, dismissed: first.map((x) => x.key) }).suggestions.filter((x) => x.type === 'NEXT_ACTIVITY');
+  assert.equal(next.length, first.length, '거절한 만큼 다른 후보가 채운다');
+  next.forEach((x) => assert.ok(first.every((f) => f.key !== x.key)));
+});
+
+test('말한 것이 제안을 실제로 바꾼다 — 지쳤어요·배고파·숙소로·쌩쌩해요', () => {
+  const trip = seoulTrip((sp) => { sp[0].status = 'COMPLETED'; });
+  const at = (intent, energy) => {
+    const r = A.resolveIntent(intent, { energyLevel: energy });
+    return A.buildSuggestions(trip, seoulAt(trip, HM(13, 40), { energyLevel: r.energyLevel, prefs: r.prefs }), { legMin: LEG }).suggestions;
+  };
+  const base = at('', 'NORMAL');
+  const tired = at('오늘 좀 피곤해서 많이 걷기 싫어', 'NORMAL');
+  assert.equal(tired[0].type, 'REST', '지쳤다고 하면 쉬기가 맨 위다');
+  assert.ok(!tired.some((x) => x.type === 'NEXT_ACTIVITY' && x.impact.timeChangeMinutes >= 120), '두 시간짜리 방문은 권하지 않는다');
+  assert.notDeepEqual(tired.map((x) => x.title), base.map((x) => x.title));
+  const hungry = at('배고파', 'NORMAL');
+  assert.equal(hungry[0].action.kind, 'EAT', '배고프다고 하면 식사가 맨 위다');
+  const home = at('숙소로 들어가고 싶어', 'NORMAL');
+  assert.equal(home[0].action.kind, 'RETURN_TO_HOTEL', '숙소로 가고 싶다고 하면 🏠로 보이는 롯데호텔로 가는 카드가 맨 위다');
+  const lively = at('', 'HIGH');
+  assert.ok(lively.some((x) => x.reasons.some((r) => /컨디션이 좋을 때/.test(r))), '쌩쌩하다고 해도 무엇이 달라졌는지 말한다');
+});
+
+test('"가는 길" 이유는 그 빈 시간 바로 뒤의 일정이 기준이다 — 이미 지난 약속·반대 방향을 기준으로 삼지 않는다', () => {
+  const trip = seoulTrip();
+  const s = seoulAt(trip, HM(10, 56));   // 다음 고정 일정은 광장시장 12:30이지만 빈 시간은 남산 뒤(15시대)다
+  const res = A.buildSuggestions(trip, s, { legMin: LEG });
+  const visits = res.suggestions.filter((x) => x.type === 'NEXT_ACTIVITY');
+  assert.ok(visits.length > 0);
+  visits.forEach((x) => assert.ok(!x.reasons.some((r) => /광장시장/.test(r)), x.title + ': ' + x.reasons.join(' / ')));
+  const forest = visits.find((x) => x.title === '서울숲');
+  if (forest) assert.ok(!forest.reasons.some((r) => /가는 길/.test(r)), '명동교자와 다른 방향인 서울숲은 가는 길이 아니다');
+});
+
+test('옮겨올 곳이 너무 멀면 "한 곳 더"로 권하지 않는다', () => {
+  const trip = tripOf([
+    { startAt: '09:00', mode: 'car', spots: [{ name: '성산일출봉', city: '제주', stayMin: 60, lat: 33.4581, lng: 126.9425 }] },
+    { startAt: '09:00', mode: 'car', spots: [{ name: '협재해수욕장', city: '제주', stayMin: 60, lat: 33.394, lng: 126.2397 },
+      { name: '섭지코지 카페', city: '제주', stayMin: 60, lat: 33.43, lng: 126.93 }] }]);
+  const s = stateOf(trip, { todayISO: '2026-08-01', nowMin: 9 * 60 });
+  const flow = A.planDayFlow(trip, s, { legMin: LEG });
+  assert.ok(!flow.picks.some((p) => p.title === '협재해수욕장'), '섬 반대편을 끌어오지 않는다');
+  assert.ok(flow.picks.some((p) => p.title === '섭지코지 카페'), '가까운 곳은 여전히 채운다');
+});
+
+test('메모가 가벼운 하루라고 하면 빈칸을 한 곳만 채우고, 이동 시간에는 "약"을 붙인다', () => {
+  const trip = TC.sampleTrip();   // Day 1 메모: '07:00 착륙. 시차적응 겸 가벼운 일정'
+  const day = trip.days[0];
+  const s = A.buildTripState(trip, { dayIndex: 0, todayISO: '2026-10-01', nowMin: 600, timeline: TC.computeTimeline(day, { legMin: LEG }), legMin: LEG });
+  const flow = A.planDayFlow(trip, s, { legMin: LEG });
+  assert.equal(flow.light, true);
+  assert.ok(flow.picks.length <= 1, '가벼운 날에 다음 날 명소를 줄줄이 당겨 오지 않는다');
+  const res = A.buildSuggestions(trip, s, { legMin: LEG });
+  res.suggestions.filter((x) => x.type === 'NEXT_ACTIVITY' && x.action.si != null)
+    .forEach((x) => assert.match(x.description, /^약 \d/, x.description));
+  res.suggestions.forEach((x) => x.reasons.forEach((r) => assert.ok(!/공항/.test(r), '07:00 공항을 "가는 길" 기준으로 삼지 않는다: ' + r)));
+});
+
+test('숫자와 조사: 한 시간이 넘으면 시간으로, 조사는 받침에 맞춘다', () => {
+  assert.equal(A.durText(445), '7시간 25분');
+  assert.equal(A.durText(480), '8시간');
+  assert.equal(A.durText(45), '45분');
+  assert.equal(A.durText(0), '0분');
+  assert.equal(A.josa('북촌한옥마을', '은', '는'), '은');
+  assert.equal(A.josa('롯데호텔 서울', '을', '를'), '을');
+  assert.equal(A.josa('남산서울타워', '을', '를'), '를');
+  assert.equal(A.josa('바라하스 공항 (MAD)', '을', '를'), '를', '한글로 끝나지 않으면 받침 없는 쪽');
+  assert.equal(A.josa('금', '이라고', '라고'), '이라고');
+  assert.equal(A.josa('토', '이라고', '라고'), '라고');
+  assert.equal(A.josa('서울', '으로', '로'), '로', 'ㄹ 받침은 로');
+  const s = stateOf(dinnerTrip(), { todayISO: TODAY, nowMin: 9 * 60, live: true, startAnchor: P(40.40) });
+  assert.ok(!/\d{3,}분/.test(A.departurePlan(s, s.items[1], 44).text), '세 자리 분으로 말하지 않는다');
+});
+
+test('엔진이 묻는 이동의 수단은 일정 화면과 같다 — 비행기로 도착한 날의 시내 제안을 비행기 속도로 재지 않는다', () => {
+  const trip = {
+    days: [
+      { mode: 'flight', spots: [{ name: '바라하스 공항', lat: 40.49, lng: -3.57 }, { name: '호텔', lat: 40.42, lng: -3.70, legMode: 'taxi' }] },
+      { mode: 'transit', spots: [{ name: '프라도', lat: 40.414, lng: -3.692 }, { name: '레티로', lat: 40.415, lng: -3.684, legMode: 'walk' }] },
+      { mode: 'train', spots: [] }
+    ]
+  };
+  const day0 = trip.days[0];
+  assert.equal(A.moveModeTo(trip, day0, { lat: 40.49, lng: -3.57 }), 'flight', '그날 일정의 공항은 일정 화면처럼 일자 수단(✈️)');
+  assert.equal(A.moveModeTo(trip, day0, { lat: 40.42, lng: -3.70 }), 'taxi', '구간 수단을 정한 곳은 그 수단');
+  assert.equal(A.moveModeTo(trip, day0, { lat: 40.414, lng: -3.692 }), 'transit', '다른 날에서 옮겨올 곳은 그날 그곳으로 가던 수단');
+  assert.equal(A.moveModeTo(trip, day0, { lat: 40.415, lng: -3.684 }), 'walk');
+  assert.equal(A.moveModeTo(trip, day0, { lat: 40.5, lng: -3.6 }), 'transit', '모르는 곳은 비행기·기차가 아닌 여행의 도시 안 수단');
+  assert.equal(A.moveModeTo(trip, trip.days[1], { lat: 40.5, lng: -3.6 }), 'transit', '도시 안 수단의 날은 그날 수단');
+  assert.equal(A.moveModeTo({ days: [{ mode: 'flight', spots: [] }] }, { mode: 'flight', spots: [] }, { lat: 1, lng: 1 }), 'car', '아무것도 없으면 자차');
+});
+
+// ── 2026-10-03 3차 UX 검토 반박 검토 ──────────────────────────────────────
+test('배고프다고 해도 하루 흐름은 빈 시간 안에만 넣는다 — 머무는 곳·남은 일정 위에 겹치지 않는다', () => {
+  const trip = seoulTrip();
+  const r = A.resolveIntent('배고파', { energyLevel: 'NORMAL' });
+  const s = seoulAt(trip, HM(10, 0), { energyLevel: r.energyLevel, prefs: r.prefs });   // 경복궁에 머무는 중
+  const flow = A.planDayFlow(trip, s, { legMin: LEG });
+  assert.ok(!flow.picks.some((p) => p.id === 'c-eat-now'), "'지금 식사부터 하기'는 빈 시간이 아니라 지금의 일이다");
+  const sug = flow.blocks.filter((b) => b.kind === 'SUGGESTED');
+  const planned = flow.blocks.filter((b) => b.kind !== 'SUGGESTED');
+  sug.forEach((b) => planned.forEach((p) => assert.ok(b.endMin <= p.startMin || b.startMin >= p.endMin,
+    b.title + ' ' + TC.hm(b.startMin) + '–' + TC.hm(b.endMin) + '이 ' + p.title + ' ' + TC.hm(p.startMin) + '–' + TC.hm(p.endMin) + '과 겹친다')));
+  // 제안 카드는 '지금'에 답한다 — 식사 카드는 하나다
+  const cards = A.buildSuggestions(trip, s, { legMin: LEG }).suggestions;
+  assert.equal(cards[0].action.candidateId, 'c-eat-now');
+  assert.equal(cards.filter((x) => x.action.kind === 'EAT').length, 1, '같은 말(식사)을 두 장으로 하지 않는다');
+});
+
+test('출발 안내: 내가 정한 도착 시각은 "그 시각에 도착해요"로 말한다', () => {
+  const s = seoulAt(seoulTrip(), HM(8, 30));
+  const adv = A.departureAdvice(s, s.items[0], 5);
+  assert.equal(adv.level, 'EARLY');
+  assert.equal(adv.text, '08:55쯤 출발하면 09:00에 도착해요 · 그 전까지 25분 여유가 있어요');
 });

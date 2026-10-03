@@ -12,8 +12,8 @@ import type {
 } from './types';
 
 const {
-  dayCostSummary, dayEnteredCost, hasManualTransportCost, budgetBookings, carEventsOn, carSpotLinks, computeDayJourney, dayReturnStay, dayStartAnchor,
-  haversine, hm, isOpenAt, legKey, returnModeOf, parseHM, spotCatOf, stayNights, toISO
+  dayCostSummary, dayEnteredCost, taxiFareCounts, budgetBookings, carEventsOn, carSpotLinks, computeDayJourney, dayReturnStay, dayStartAnchor,
+  haversine, hm, isOpenAt, legKey, returnModeOf, parseHM, spotCatOf, stayNights, toISO, walkInsteadOfCar
 } = legacyLib;
 
 // ── 수단 상수 (app.js와 동일 값 — Phase 6에서 단일 소스로 합칠 표시·추정용 글루) ──
@@ -65,11 +65,12 @@ function failedLeg(legCache: LegCache, a: LatLng, b: LatLng, mode: TransportMode
   return !!(c && !c.sec && c.fail);
 }
 
-/** 구간 이동시간(분) — app.js legMinutes와 동일: 캐시 우선(자차 2km 미만은 도보 대안), 없으면 직선 추정 */
+/** 구간 이동시간(분) — app.js legMinutes와 동일: 캐시 우선(자차 2km 미만은 도보 대안 — 걷는 거리는 lib
+ *  `walkInsteadOfCar`가 두 곳 사이로 잰다), 없으면 직선 추정 */
 export function legMinutes(legCache: LegCache, a: LatLng, b: LatLng, mode: TransportMode): number {
   const m: TransportMode = MODE_ICON[mode] ? mode : 'car';
   const c = cachedLeg(legCache, a, b, m);
-  if (c && c.sec) return m === 'car' && (c.m ?? 0) < 2000 ? (c.m ?? 0) / 75 : c.sec / 60;
+  if (c && c.sec) return walkInsteadOfCar(m, c, a, b)?.min ?? c.sec / 60;
   return (haversine(a, b) / MODE_SPEED[m]) * 60;
 }
 
@@ -81,11 +82,10 @@ export function fmtDur(sec: number): string {
 function legViewOf(legCache: LegCache, a: LatLng, b: LatLng, mode: TransportMode): LegView {
   const c = cachedLeg(legCache, a, b, mode);
   if (c && c.sec) {
-    const dist = c.m ?? 0;
-    const km = (dist / 1000).toFixed(1);
-    const label = mode === 'car' && dist < 2000
-      ? `↳${km}km · 🚶${Math.max(1, Math.round(dist / 75))}분`
-      : `↳${km}km · ${fmtDur(c.sec)}`;
+    const walk = walkInsteadOfCar(mode, c, a, b);
+    const label = walk
+      ? `↳${(walk.m / 1000).toFixed(1)}km · 🚶${Math.max(1, Math.round(walk.min))}분`
+      : `↳${((c.m ?? 0) / 1000).toFixed(1)}km · ${fmtDur(c.sec)}`;
     let title = c.est
       ? (mode === 'flight' || mode === 'train' ? '직선거리 기반 추정' : '자동차 경로 거리 기반 추정')
       : '실제 도로 기준';
@@ -189,20 +189,21 @@ function tripBookings(trip: Trip): Booking[] {
 export function dayCostPartsOf(trip: Trip, legCache: LegCache, di: number, fx: FxRates, today?: string): DayView['cost'] {
   const day = trip.days[di];
   const dm = dayModeOf(day);
-  const road = dm === 'car' || dm === 'taxi';
-  const rt = road ? dayRouteOf(legCache, day, dayJourneyOf(trip, legCache, di)) : null;
+  // 택시비 추정은 택시 날에만 하루 비용에 든다(`taxiFareCounts`, 2026-10-03) — 자차 날의 택시 요금은 내지 않는 돈이다.
+  // 그래서 자차 날의 교통비(주유·통행료)는 값을 모르는 채로 남고 `transportUnpriced`가 그 사실을 말한다.
+  const taxiDay = dm === 'taxi';
+  const rt = taxiDay ? dayRouteOf(legCache, day, dayJourneyOf(trip, legCache, di)) : null;
   return dayCostSummary(trip, di, { date: isoDateOf(trip, di), rates: fx, today,
     taxi: rt?.taxi ?? null,
-    transportUnpriced: day.spots.filter(hasCoord).length > 1 && dm !== 'walk' && dm !== 'bike' && (!road || !rt?.taxi) });
+    transportUnpriced: day.spots.filter(hasCoord).length > 1 && dm !== 'walk' && dm !== 'bike' && (!taxiDay || !rt?.taxi) });
 }
 
-/** 필터바 '전체 비용'과 같은 규칙 — 장소 + (자차·택시일) 택시 + 예약 전액 */
+/** 필터바 '전체 비용'과 같은 규칙 — 장소 + (택시일) 택시 + 예약 전액 */
 export function tripCostBreakdownOf(trip: Trip, legCache: LegCache, fx: FxRates = fxRates()): TripCostView {
   const out: TripCostView = { spots: 0, taxi: 0, hotel: 0, car: 0, flight: 0, total: 0 };
   trip.days.forEach((d, i) => {
     out.spots += dayEnteredCost(d, fx);
-    const dm = dayModeOf(d);
-    if ((dm === 'car' || dm === 'taxi') && !hasManualTransportCost(d))
+    if (taxiFareCounts(d))
       out.taxi += dayRouteOf(legCache, d, dayJourneyOf(trip, legCache, i))?.taxi ?? 0;
   });
   budgetBookings(tripBookings(trip), trip.days).forEach(b => {
@@ -353,7 +354,8 @@ export function buildDayView(trip: Trip, legCache: LegCache, di: number, fx: FxR
   const straightKm = dayDistanceOf(journey);
   const routeLabel = rt
     ? `📏 하루 동선 약 ${(rt.m / 1000).toFixed(1)}km · ${MODE_ICON[dm]}${fmtDur(rt.sec)}` +
-      `${(dm === 'car' || dm === 'taxi') && rt.taxi ? ` · 🚕약 ${rt.taxi.toLocaleString('en-US')}원` : ''}` +
+      // 자차 날의 택시 요금은 하루 비용에 들지 않는다(`taxiFareCounts`) — 레거시 웹과 같이 '택시로 간다면'이라고 참고로만 말한다
+      `${rt.taxi ? (dm === 'taxi' ? ` · 🚕약 ${rt.taxi.toLocaleString('en-US')}원` : dm === 'car' ? ` · 🚕택시로 간다면 약 ${rt.taxi.toLocaleString('en-US')}원` : '') : ''}` +
       ` (${dm === 'flight' ? '직선' : '도로 기준'})`
     : straightKm > 0 ? `📏 하루 동선 약 ${straightKm.toFixed(1)}km (직선)` : null;
 

@@ -122,6 +122,10 @@ declare module '@legacy/lib.js' {
     dayEnteredCost(day: unknown, rates: Record<string, number>): number;
     parseCostAmount(text: string, currency?: string): number | null;
     hasManualTransportCost(day: unknown): boolean;
+    /** 택시비 추정을 하루 비용에 넣는 날인가 — 그날 기본 수단이 택시이고 수동 교통비가 없을 때만 */
+    taxiFareCounts(day: unknown): boolean;
+    /** 자차 2km 미만을 걸어서 계산할 때의 걷는 거리(m)·분 — 아니면 null. 웹과 서버가 같은 규칙을 쓴다(2026-10-03) */
+    walkInsteadOfCar(mode: string | null | undefined, route: { m?: number | null; sec?: number | null } | null | undefined, a?: { lat: number; lng: number }, b?: { lat: number; lng: number }): { m: number; min: number } | null;
     tripCostSummary(trip: unknown, days: unknown[], rates: Record<string, number>, today?: string): Pick<import('@/features/trip-state/domain/contract').TripCostsResponse, 'totalKRW' | 'averagePerDayKRW' | 'categories' | 'unallocated' | 'payTotals' | 'prep' | 'onSite' | 'unknownCount' | 'transportUnpriced' | 'hasForeignCurrency'>;
     dayCostSummary(trip: unknown, di: number, input: { date: string; rates: Record<string, number>; taxi: number | null; transportUnpriced: boolean; today?: string }): import('@/features/trip/domain/costTypes').DayCostSummary;
     parseHM(t: string | undefined): number;
@@ -390,12 +394,17 @@ declare module '@legacy/adaptive.js' {
     fixedCommitments: FixedCommitment[]; nextFixed: FixedCommitment | null;
     currentItem: TripItem | null; nextItem: TripItem | null;
     currentLocation: LatLng | null; startLocation: LatLng | null; hotelLocation: LatLng | null;
+    /** 다음 남은 일정 — 쉴 여유(availableMin)는 다음 고정 일정이 아니라 여기까지다 */
+    freeBefore: TripItem | null;
     availableMin: number; delayMin: number; travelMinToday: number;
     planningMode: PlanningMode; energyLevel: EnergyLevel; prefs: Record<string, unknown>;
   }
   interface ReplanResult {
     needed: boolean; feasible: boolean; keep: string[]; drop: string[]; dropNames: string[];
     lateBy: number; before: string[]; after: string[]; impact: SuggestionImpact;
+    /** 사람에게 말할 때 쓰는 값 — 어느 약속에 얼마나 늦는지, 빼도 남는 늦음(계약에는 lateBy만 실린다) */
+    lateAt?: { id: string; name: string; atMin: number; lateBy: number } | null;
+    remainingLateBy?: number;
   }
   const api: {
     ADAPT_CFG: Readonly<Record<string, number>>;
@@ -411,7 +420,9 @@ declare module '@legacy/adaptive.js' {
     rankNextActions(state: TripState, candidates: unknown[], opts?: Record<string, unknown>): NextActionCandidate[];
     generateReplan(state: TripState, opts?: Record<string, unknown>): ReplanResult;
     buildSuggestions(trip: unknown, state: TripState, opts?: Record<string, unknown>):
-      { suggestions: TripSuggestion[]; windows: FreeWindow[]; replan: ReplanResult; ranked: NextActionCandidate[]; window: FreeWindow | null; empty: boolean };
+      { suggestions: TripSuggestion[]; windows: FreeWindow[]; replan: ReplanResult; ranked: NextActionCandidate[]; window: FreeWindow | null; empty: boolean; notice: string | null };
+    /** 엔진이 묻는 이동의 수단 — 일정 화면과 같은 출처(그날 장소면 그 구간 수단, 비행기·기차 날의 시내 이동은 도시 안 수단) */
+    moveModeTo(trip: unknown, day: unknown, loc: unknown): string;
     parseIntent(text: string): { energyLevel: EnergyLevel | null; prefs: Record<string, unknown>; reasons: string[]; understood: boolean };
     /** 문장 + 이미 고른 컨디션 → 이번 추천에 쓸 옵션. 컨디션은 문장이 말했을 때만 덮어쓰고, 조건은 문장이 통째로 정한다 */
     resolveIntent(text: string, base?: { energyLevel?: unknown }): { energyLevel: EnergyLevel; prefs: Record<string, unknown>; reasons: string[]; understood: boolean };

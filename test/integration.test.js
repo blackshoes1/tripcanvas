@@ -590,7 +590,7 @@ test('통합: 예약 가격 추적 — 확정 배지·확정/잠재 분리 요�
   // 목록 모달 — 확정·잠재를 별도 행으로 (§31: 섞지 않는다)
   w.eval('renderBookingList()');
   const summary = w.document.getElementById('bookingSummary').textContent;
-  assert.match(summary, /현재 확정 절약 가능/);
+  assert.match(summary, /같은 조건으로 지금 아낄 수 있는 돈/);
   assert.match(summary, /조건 확인 필요/);
   assert.match(summary, /190,000/);
   // 상세 박스 — 판매처 비교에 매칭·검증 두 축 구분 표시 (P0-3: 미검증 확정은 '검증 필요'를 함께)
@@ -997,7 +997,7 @@ test('통합: 결제일을 정하면 날짜가 상태를 정한다 — 지났으
   assert.equal(w.eval('trip().bookings[0].payState'), undefined, '결제일이 있으면 손으로 고른 상태는 두지 않는다');
   w.eval('openBookingList()');
   const body = () => w.document.getElementById('bookingListBody').textContent;
-  assert.ok(body().includes('결제 예정') && body().includes('결제일 2999-01-01') && !body().includes('결제 완료'), '아직이면 결제 예정');
+  assert.ok(body().includes('결제 예정') && body().includes('결제일 1/1 (') && !body().includes('결제 완료'), '아직이면 결제 예정');
   w.eval(`openBookingModal(trip().bookings[0].id)`);
   set('bkPaidOn', '2000-01-01'); w.eval('toggleBkFields()');
   assert.match(w.document.getElementById('bkPayHint').textContent, /결제 완료로 쳐요/);
@@ -1026,10 +1026,11 @@ test('통합: 렌터카 예약 — 조건 저장·시장 검색·매칭·절약 
   set('bkStart',day(30)); set('bkEnd',day(34));
   set('bkCarPickup','Palma Airport'); set('bkCarPickupCode','pmi');
   set('bkCarClass','compact'); set('bkCarTrans','automatic'); set('bkCarMileage','UNLIMITED');
-  w.document.getElementById('bkFreeCancel').checked=true;
+  set('bkFreeCancel','1');   // 무료 취소는 셀렉트(모름/가능/불가)다 — 체크박스 시절의 .checked는 아무 일도 하지 않는다
   w.document.getElementById('bkTrack').checked=true;   // 새 항목은 추적이 꺼진 채 시작한다 — 켜야 시세를 본다
   w.document.getElementById('bkSave').click();
   const b=w.eval('JSON.parse(JSON.stringify(trip().bookings[0]))');
+  assert.equal(b.refundable, true, '무료 취소 가능으로 저장');
   assert.equal(b.carPickupCode, 'PMI', '공항코드 대문자 저장');
   assert.equal(b.carClass, 'compact');
   assert.equal(b.transmission, 'automatic');
@@ -1122,7 +1123,9 @@ test('통합: 좌표 지정 중(pickMode)에는 탭이 추가가 아니라 좌�
   w.eval('onMapTap(37.4,127.4)');
   assert.equal(w.eval('pickMode'), false, '탭 즉시 좌표가 지정된다(지연 없음)');
   assert.equal(w.document.getElementById('spotLat').value, '37.4');
-  assert.match(w.document.getElementById('coordHint').textContent, /37\.4000/);
+  // 날 좌표가 아니라 사람의 말로 — '(37.4000, 127.4000)'으로는 맞는 곳인지 알 수 없다(2026-10-03 P2-24)
+  assert.match(w.document.getElementById('coordHint').textContent, /^위치 확인됨/);
+  assert.doesNotMatch(w.document.getElementById('coordHint').textContent, /37\.4/);
   w.close();
 });
 
@@ -1690,7 +1693,9 @@ test('통합: 경로 없음은 기기에 남긴다 — 다시 열어도 인근 �
     await new Promise(r=>w.setTimeout(r,600));
     const leg=w.document.querySelector(`[data-leg="${w.legK}"]`);
     assert.ok(leg.classList.contains('legfail')&&leg.textContent.includes('⚠️'),'경로 없음 표시');
-    assert.match(leg.title,/위치를 다시 잡아/);
+    // 이유는 툴팁만이 아니라 보이는 한 줄로 — 터치로는 툴팁을 볼 수 없다(2026-10-03 P2-12)
+    assert.match(leg.title,/직선으로 어림/);
+    assert.match(leg.closest('.spot').querySelector('.spotWarn').textContent,/차로 가는 길을 못 찾아 직선으로 어림했어요/);
     for(let i=0;i<w.localStorage.length;i++){ const k=w.localStorage.key(i); storage[k]=w.localStorage.getItem(k); }
   }finally{ w.eval('clearTimeout(legRefreshT)'); w.close(); }
 
@@ -2395,7 +2400,7 @@ test('통합: 여행 모드의 날짜 선택과 추천은 같은 주입 clock을
   assert.equal(w.document.getElementById('travelDay').value, '0', '호스트 실제 날짜가 아니라 주입 날짜로 오늘을 고른다');
   assert.equal(w.eval('_adapt.state.currentDay'), 0);
   assert.equal(w.eval('_adapt.state.nowMin'), 13 * 60, '같은 스냅샷 시각이 추천 엔진까지 전달된다');
-  assert.match(w.document.getElementById('travelCurrent').textContent, /출발한 곳/, '현재 칸 판정도 같은 주입 날짜·시각을 쓴다(13시면 일정은 시작됐는데 다녀온 표시가 없다)');
+  assert.match(w.document.getElementById('travelCurrent').textContent, /다녀온 곳을 표시해 주세요/, '현재 칸 판정도 같은 주입 날짜·시각을 쓴다(13시면 일정은 시작됐는데 다녀온 표시가 없다 — 먼저 묻는다)');
   w.close();
 });
 
@@ -2491,23 +2496,31 @@ test('통합: 여행 당일 첫 장소에 닿기 전에는 "출발 전"이고, �
   w.eval('nowMinutes=()=>9*60+20; renderTravel(0)');
   assert.match(next(), /지금 일정.*센소지/);
   assert.ok(!/센소지/.test(cur()));
-  // 10:30 — 센소지를 지나왔다
+  // 10:30 — 센소지를 지나왔을 시각이다. 다녀온 표시가 없으니 지나왔다고 단정하지 않고 먼저 묻는다(2026-10-03 3차 검토)
   w.eval('nowMinutes=()=>10*60+30; renderTravel(0)');
-  assert.match(cur(), /마지막으로 들른 곳.*센소지/);
+  assert.match(cur(), /다녀온 곳을 표시해 주세요.*센소지/);
   assert.ok(!/센소지/.test(next()));
   w.close();
 });
 
-test('통합: 필터바 오늘 칩은 여행 기간이 아니면 눌리지 않는다(여행 중 화면과 같은 판정)', { skip: noJsdom }, () => {
+test('통합: 필터바 오늘 칩은 여행 기간이 아니면 흐리고, 누르면 왜인지 말한다(여행 중 화면과 같은 판정)', { skip: noJsdom }, () => {
+  // 2026-10-03 UX 검토: 비활성 '오늘'이 활성 칩과 똑같이 보이고 눌러도 반응이 없었다 — 이유는 마우스 툴팁에만 있었다
   const w = boot();
   withAdaptTrip(w, [{ spots: [] }, { spots: [] }], { today: '2026-08-27' });
   w.eval('render()');
   const chip = [...w.document.querySelectorAll('#filterbar .chip')].find((b) => b.textContent === '오늘');
-  assert.equal(chip.disabled, true);
+  assert.equal(chip.getAttribute('aria-disabled'), 'true');
+  assert.ok(chip.classList.contains('off'), '흐리게 보인다');
+  assert.equal(chip.getAttribute('title'), null, "이름은 '오늘' 그대로 — 툴팁이 덮지 않는다");
   assert.ok(!chip.classList.contains('active'), '전체 보기일 때 오늘 칩이 켜져 보이지 않는다');
+  const day = w.eval('activeDay');
+  chip.click();
+  assert.equal(w.eval('activeDay'), day, '보는 범위는 바뀌지 않는다');
+  assert.match(w.document.getElementById('toast').textContent, /^D-\d+ · \d+\/\d+ \(.\)에 시작해요$/);
   w.eval("todayISO=()=>'2026-09-02'; render()");
   const chip2 = [...w.document.querySelectorAll('#filterbar .chip')].find((b) => b.textContent === '오늘');
-  assert.equal(chip2.disabled, false);
+  assert.equal(chip2.getAttribute('aria-disabled'), null);
+  assert.ok(!chip2.classList.contains('off'));
   w.close();
 });
 
@@ -2536,10 +2549,10 @@ test('통합: 지연이 생기면 재구성 미리보기를 보여주고, 수락
     {
       startAt: '09:00', mode: 'car',
       spots: [S('Museum', 40.41, { stayMin: 120 }), S('Cafe', 40.44, { opt: true }), S('Park', 40.47, { stayMin: 90, must: true }),
-        S('Dinner', 40.50, { bookAt: '19:00', stayMin: 90 })]
+        S('Dinner', 40.50, { bookAt: '13:00', stayMin: 90 })]
     },
     { spots: [] }
-  ], { now: 16 * 60 + 30 });
+  ], { now: 10 * 60 + 30 });   // Museum에 머무는 중 — 남은 일정을 이어 가면 13:00 예약에 늦는다(지나간 시각의 곳은 다시 굴리지 않는다, 2026-10-03)
   w.eval('renderTravel(0)');
   const card = cardsIn(w).filter((c) => c.dataset.type === 'REPLAN')[0];
   assert.ok(card, '지연 상황에서는 재구성 제안이 가장 먼저 온다');
@@ -2690,10 +2703,14 @@ test('통합: 다음 장소에 "언제 나서면 되는지"를 함께 알려준�
   const dep = w.document.querySelector('#travelNext .travelDepart');
   assert.ok(dep, '출발 안내가 붙는다');
   assert.match(dep.textContent, /출발/);
-  w.eval('nowMinutes=()=>19*60+30; renderTravel(0)');
+  w.eval('nowMinutes=()=>18*60+59; renderTravel(0)');
   const late = w.document.querySelector('#travelNext .travelDepart');
   assert.ok(late.classList.contains('late'), '이미 늦었으면 그렇게 말한다');
   assert.match(late.textContent, /늦어요/);
+  // 예약 시각이 지나 그 자리에 있을 시간이면 '떠날 곳'이 아니다 — 머무는 곳에 "지금 출발해도 늦어요"라고 하지 않는다(2026-10-03)
+  w.eval('nowMinutes=()=>19*60+30; renderTravel(0)');
+  const here = w.document.querySelector('#travelNext .travelDepart');
+  assert.ok(!here || !/늦어요/.test(here.textContent), here && here.textContent);
   w.close();
 });
 
@@ -2802,7 +2819,7 @@ test('통합: 보기 권한은 색상 기준(여행 문서)을 바꾸지 못하�
   withTrip(w, `[{title:'',drive:'',note:'',spots:[]}]`);
   w.eval(`user={id:'u1'}; tripRoles={__it__:{role:'VIEWER',count:3,owner:false}}; render();`);
   assert.equal(w.document.getElementById('colorModeBtn'), null, '보기 권한에는 색상 기준 버튼이 없다');
-  assert.ok(w.document.getElementById('playBtn'), '보기 설정의 나머지(재생·테마)는 그대로다');
+  assert.ok(w.document.getElementById('playBtn'), '경로 재생(지도 위)은 보기 권한에도 있다');
   // 편집자일 때 그려 둔 버튼을, 보기 권한으로 바뀐 뒤 눌러도 바뀌지 않는다
   w.eval(`tripRoles.__it__.role='EDITOR'; render(); histStack.length=0;`);
   const btn = w.document.getElementById('colorModeBtn');
@@ -2930,6 +2947,7 @@ test('통합: 같이 짜기 화면은 초대가 긴 취향 양식보다 위에 �
 
 test('통합: 로그인이 필요한 기능은 이유를 로그인 모달 안에 남기고, 로그인하면 그 기능을 이어서 연다', { skip: noJsdom }, () => {
   const w = boot();
+  withTrip(w, '[{"title":"","spots":[]}]');   // 샘플은 같이 짤 수 없어 로그인을 묻지 않는다(ux3:share 절) — 내 여행으로 본다
   w.eval(`user=null; sb={}; pullTrip=async()=>{}; renderMembers=async()=>{};`);
   w.eval('openMembers()');
   const bg = w.document.getElementById('authModalBg');
@@ -2954,6 +2972,7 @@ test('통합: 로그인이 필요한 기능은 이유를 로그인 모달 안에
 
 test('통합: 소셜 로그인으로 페이지를 떠났다 와도 기다리던 기능을 이어서 연다(이름만 탭 저장소에)', { skip: noJsdom }, () => {
   const w = boot();
+  withTrip(w, '[{"title":"","spots":[]}]');   // 샘플은 같이 짤 수 없어 로그인을 묻지 않는다(ux3:share 절) — 내 여행으로 본다
   w.eval(`user=null; sb={}; pullTrip=async()=>{}; renderMembers=async()=>{}; TC_AUTH.socialProviders=()=>['google']; TC_AUTH.startSocial=async()=>{};`);
   w.eval('openMembers()');
   w.document.querySelector('#authSocial button').click();
@@ -4207,6 +4226,9 @@ test('붙여넣기: 날짜가 순서와 어긋나면 고치지 않고 말한다'
   // 2일차가 하루 건너뛴다 (7/21 → 7/23)
   w.document.getElementById('pasteText').value = '[day1] 7월 21일 도착\n- 어떤 곳\n[day2] 7월 23일 이튿날\n- 다른 곳';
   await w.eval('runPaste()');
+  // 빈 날을 넣지 않고 순서대로 두기로 고르면(2026-10-03 — 기본은 빈 날 넣기) 어긋남을 말한다
+  const keep = w.document.querySelector('#pvLayout input[value="keep"]');
+  keep.checked = true; keep.dispatchEvent(new w.Event('change'));
 
   const heads = w.eval("JSON.stringify([...document.querySelectorAll('.pvDay')].map(e=>e.textContent))");
   const [d1, d2] = JSON.parse(heads);
@@ -5363,8 +5385,8 @@ test('통합: 세 비용 화면이 각자 무슨 기준인지 말한다', { skip
   w.eval(`store.trips.push({id:'__it__',name:'T',start:'2026-08-01',days:[{title:'첫날',spots:[]}],
     bookings:[{id:'bk1',type:'hotel',title:'호텔',price:400000,start:'2026-08-01',end:'2026-08-03'}]});
     store.activeId='__it__'; activeDay=0; render(); renderBookingList();`);
-  // 예약 결제 금액 목록 — 전액이라는 것
-  assert.match(w.document.getElementById('bookingListBody').textContent, /예약 전액/);
+  // 예약 결제 금액 목록 — 총액이라는 것(필터바와 같은 문장, bookingBasisHint)
+  assert.match(w.document.getElementById('bookingListBody').textContent, /예약은 총액 기준이에요/);
   // 필터바 전체 비용 — 총액 기준이라는 것(이미 있던 설명)
   assert.match(w.document.getElementById('filterbar').textContent + w.document.body.innerHTML,
                /총액 기준/);
@@ -5435,4 +5457,2639 @@ test('통합: 보고 있는 일자(1부터 센다, 0=전체)를 일자 인덱스
     w.eval(`trip().days.push({spots:[]}); activeDay=1; resizeTripDays(1)`);
     assert.equal(w.eval('activeDay'),1,'하루짜리가 되어도 전체로 바뀌지 않는다');
   }finally{ w.close(); }
+});
+
+// ── ux3:engine ──
+// 여행 중 판단 엔진(adaptive.js)의 결과가 화면에 그대로 닿는지 — 숫자·조사·남은 계획·이동 수단(2026-10-03 3차 UX 검토)
+
+test('통합(ux3): 머무는 동안 제때면 조정 카드가 없고, 늦으면 어느 예약에 늦는지와 받침에 맞는 조사로 말한다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    withAdaptTrip(w, [
+      { startAt: '09:00', mode: 'car', spots: [S('경복궁', 40.41, { stayMin: 120 }), S('북촌한옥마을', 40.44, { stayMin: 60 }), S('광장시장', 40.47, { bookAt: '12:30', stayMin: 60 })] },
+      { spots: [] }
+    ], { now: 10 * 60 + 30 });   // 경복궁에 머무는 중, 12:30 예약에는 제때
+    w.eval('renderTravel(0)');
+    assert.ok(!cardsIn(w).some((c) => c.dataset.type === 'REPLAN'), '제때 가는 중에 "지연" 조정을 권하지 않는다');
+    w.eval(`trip().days[0].spots[2].bookAt='11:45'; renderTravel(0)`);
+    const card = cardsIn(w).filter((c) => c.dataset.type === 'REPLAN')[0];
+    assert.ok(card, '이대로면 늦는다');
+    assert.match(card.textContent, /이대로면 광장시장 11:45 예약에 \d+분 늦어요/);
+    assert.ok(!/지연|밀렸|을\(를\)|마을는/.test(card.textContent), card.textContent);
+    assert.match(card.textContent, /북촌한옥마을은 다음 날 앞쪽으로 옮겨요/, '뺄 곳은 늦는 예약 앞의 북촌 하나다');
+    assert.ok(!cardsIn(w).some((c) => c.dataset.suggestionType === 'NEXT_ACTIVITY'), '빼자는 카드 옆에서 한 곳 더 가자고 하지 않는다');
+  } finally { w.close(); }
+});
+
+test('통합(ux3): 한 시간이 넘는 예약 대기는 시간으로 말한다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    withAdaptTrip(w, [{ startAt: '09:00', mode: 'car', spots: [S('호텔', 40.40, { stay: true, stayMin: 0 }), S('저녁 예약', 40.41, { bookAt: '19:00', stayMin: 90 })] }]);
+    w.eval('render()');
+    const text = w.document.getElementById('sidebar').textContent;
+    assert.match(text, /⏳ \d+시간( \d+분)? 대기/);
+    assert.ok(!/⏳ \d{3,}분/.test(text), '세 자리 분으로 말하지 않는다');
+  } finally { w.close(); }
+});
+
+test('통합(ux3): 비행기로 도착한 날의 시내 제안은 그 장소의 수단으로 이동 시간을 잰다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    withAdaptTrip(w, [
+      { startAt: '07:00', mode: 'flight', spots: [
+        { name: '바라하스 공항', city: '마드리드', lat: 40.49, lng: -3.57, stayMin: 30 },
+        { name: '호텔', city: '마드리드', lat: 40.42, lng: -3.70, stay: true, legMode: 'taxi', stayMin: 0 }] },
+      { startAt: '09:00', mode: 'transit', spots: [S('프라도', 40.45, { stayMin: 60 })] }
+    ], { now: 10 * 60 });
+    w.eval('renderTravel(0)');
+    const r = JSON.parse(w.eval(`JSON.stringify(_adapt.res.ranked.filter(r=>r.title==='프라도')[0]||null)`));
+    assert.ok(r, '다른 날 명소를 제안한다');
+    assert.ok(r.estimatedTravelTime >= 5, '3km 넘는 시내 이동을 비행기 속도로 재지 않는다: ' + r.estimatedTravelTime);
+  } finally { w.close(); }
+});
+
+test('통합(ux3): 빈 시간 채우기는 남은 계획을 함께 그리고, 배고프다고 하면 식사 카드가 맨 위다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    withAdaptTrip(w, [
+      { startAt: '09:00', mode: 'car', spots: [S('경복궁', 40.41, { stayMin: 120, status: 'COMPLETED' }), S('북촌한옥마을', 40.415, { stayMin: 60 }),
+        S('명동교자', 40.42, { bookAt: '19:00', stayMin: 60, desc: '저녁' })] },
+      { spots: [S('창덕궁', 40.418, { stayMin: 60 })] }
+    ], { now: 11 * 60 });
+    w.eval('renderTravel(0); buildDayFlow(0)');
+    const rows = Array.from(w.document.querySelectorAll('#travelPlan .sgFlowRow'));
+    assert.ok(rows.some((r) => r.classList.contains('planned') && /북촌한옥마을/.test(r.textContent)), '남은 계획(북촌)이 흐름에 있다');
+    assert.ok(!rows.some((r) => /경복궁/.test(r.textContent)), '다녀온 곳은 없다');
+    assert.ok(!rows.some((r) => r.classList.contains('add') && /저녁 시간이 비어/.test(r.textContent)), '저녁 예약이 있는데 저녁을 또 넣지 않는다');
+    assert.ok(!/쉬었다가/.test(w.document.getElementById('travelSuggest').textContent), '남은 곳이 있는데 다음 예약까지 쉬라고 하지 않는다');
+    w.eval(`applyIntent('배고파', 0)`);
+    assert.equal(w.eval('_adapt.res.suggestions[0].action.kind'), 'EAT', '식사를 먼저 챙기겠다고 했으면 식사 카드가 맨 위다');
+  } finally { w.close(); }
+});
+
+test('통합(ux3): 제안 카드에서 "다른 제안 보기"로 물린 곳은 열려 있는 하루 흐름에서도 빠진다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    const many = [];
+    for (let i = 0; i < 8; i++) many.push(S('후보' + i, 40.41 + i * 0.002, { stayMin: 30 }));
+    withAdaptTrip(w, [
+      { startAt: '09:00', mode: 'car', spots: [S('프라도', 40.41, { stayMin: 120, status: 'COMPLETED' }), S('저녁 예약', 40.42, { bookAt: '19:30', stayMin: 90 })] },
+      { spots: many }
+    ], { now: 11 * 60 + 30 });
+    w.eval('renderTravel(0); buildDayFlow(0)');
+    const addRows = () => Array.from(w.document.querySelectorAll('#travelPlan .sgFlowRow.add')).map((r) => r.textContent);
+    const shown = cardsIn(w).filter((c) => c.dataset.suggestionType === 'NEXT_ACTIVITY').map((c) => c.querySelector('.sgTitle').textContent);
+    assert.ok(shown.length > 0);
+    assert.ok(addRows().some((t) => shown.some((n) => t.indexOf(n) >= 0)), '처음에는 같은 곳이 양쪽에 있다');
+    buttonIn(w.document.getElementById('travelSuggest'), '다른 제안 보기').click();
+    const after = addRows();
+    shown.forEach((n) => assert.ok(!after.some((t) => t.indexOf(n) >= 0), n + '은(는) 물렸는데 흐름에 남았다: ' + after.join(' / ')));
+  } finally { w.close(); }
+});
+
+test('통합(ux3): 뺄 곳이 없어 조정 카드가 없는 날에는 한 줄로 늦는다고 말하고, 없는 카드를 가리키지 않는다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    withAdaptTrip(w, [
+      { startAt: '14:00', mode: 'car', spots: [S('롯데호텔 서울', 40.40, { desc: '숙소' }), S('바라하스 공항 (MAD)', 40.45, { stayMin: 30 }),
+        S('Dinner', 40.50, { bookAt: '15:00' })] },
+      { spots: [S('레티로 공원', 40.47)] }
+    ], { now: 14 * 60 + 10 });
+    w.eval('renderTravel(0); buildDayFlow(0)');
+    assert.ok(!cardsIn(w).some((c) => c.dataset.type === 'REPLAN'), '기존과 제안이 같은 조정 카드는 없다');
+    const notice = w.document.querySelector('#travelSuggest .sgNotice');
+    assert.ok(notice && /이대로면 Dinner 15:00 예약에 .+ 늦어요/.test(notice.textContent), '늦는다는 사실은 한 줄로 남는다');
+    const flowText = w.document.getElementById('travelPlan').textContent;
+    assert.match(flowText, /더 넣지 않았어요/);
+    assert.ok(!/일정 조정 제안을 먼저 확인/.test(flowText), '없는 조정 카드를 가리키지 않는다: ' + flowText);
+  } finally { w.close(); }
+});
+
+// ── ux3:search ──
+// 2026-10-03 3차 UX 검토 — 장소 검색·장소 정체성(P0-1 · P1-14 · P2-12 · P2-24~27)
+
+/** 카카오 SDK를 가짜로 — 주변(location이 있는 요청)과 전국에서 다른 결과를 준다. 무엇을 물었는지 남긴다 */
+function fakeKakao(w, near, wide) {
+  // 지도는 그리지 않는다 — 국내 일정이면 render()가 카카오 지도를 만들려 하는데 가짜 SDK에는 Map이 없다
+  w.eval(`window.__kq=[]; _kakaoReady=Promise.resolve(true); ensureKakaoMap=async()=>false;
+    window.kakao={maps:{LatLng:function(lat,lng){this.lat=lat;this.lng=lng;},
+      services:{Status:{OK:'OK',ZERO_RESULT:'ZERO_RESULT',ERROR:'ERROR'},
+        Places:function(){ this.keywordSearch=(q,cb,opts)=>{ const isNear=!!(opts&&opts.location);
+          window.__kq.push({q,near:isNear});
+          const data=((isNear? ${JSON.stringify(near)} : ${JSON.stringify(wide)})[q])||[];
+          cb(data, data.length?'OK':'ZERO_RESULT'); }; }}}};`);
+}
+const kdoc = (name, lat, lng, extra) => Object.assign({ place_name: name, road_address_name: '', address_name: '제주특별자치도 제주시 연동 1',
+  x: String(lng), y: String(lat), category_group_code: '', id: String(Math.round(lat * 1000 + lng)), phone: '', category_name: '' }, extra || {});
+const resultNames = (w) => Array.from(w.document.querySelectorAll('.placeSearchResult .psrName')).map((e) => e.textContent);
+const tick = (ms) => new Promise((r) => setTimeout(r, ms || 0));
+
+test('ux3 검색: 도시로 좁힌 결과에 같은 이름이 없으면 전국에서 다시 찾고, 그렇다고 말한다(P0-1)', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    withTrip(w, JSON.stringify([{ spots: [
+      { name: '제주국제공항', city: '제주', lat: 33.5104, lng: 126.4914, cat: 'transport' },
+      { name: '동문시장', city: '제주', lat: 33.5116, lng: 126.5262 }] }, { spots: [] }]));
+    fakeKakao(w,
+      { 성산일출봉: [kdoc('리리스', 33.50, 126.53, { category_name: '음식점 > 술집 > 칵테일바' })],
+        흑돼지: [kdoc('흑돈가 제주본점', 33.49, 126.49)] },
+      { 성산일출봉: [kdoc('성산일출봉', 33.4581, 126.9425, { address_name: '제주특별자치도 서귀포시 성산읍 성산리 1', category_name: '여행 > 관광,명소' })],
+        흑돼지: [kdoc('흑돼지 강남점', 37.50, 127.03)] });
+    w.eval('render(); openSpotModal(0,-1)');
+    assert.equal(w.document.getElementById('spotCity').value, '제주', '그날 장소의 도시(공항은 건너뛴다)');
+    w.document.getElementById('spotSearch').value = '성산일출봉';
+    await w.eval('doSearch()');
+    assert.deepEqual(JSON.parse(w.eval('JSON.stringify(window.__kq.map(x=>x.near))')), [true, false], '주변 먼저 — 같은 이름이 없어 전국');
+    assert.equal(resultNames(w)[0], '성산일출봉', '반경 안의 칵테일바가 아니다');
+    assert.match(w.document.querySelector('#searchRes .searchScope').textContent, /제주 근처에는 같은 이름이 없어 전체에서 찾았어요/);
+
+    // 흔한 이름은 주변 결과 그대로 — 좁혔다는 사실과 넓히는 길을 함께 보인다
+    w.document.getElementById('spotSearch').value = '흑돼지';
+    await w.eval('doSearch()');
+    assert.deepEqual(resultNames(w), ['흑돈가 제주본점']);
+    const note = w.document.querySelector('#searchRes .searchScope');
+    assert.match(note.textContent, /제주 근처 결과예요/);
+    note.querySelector('button').click();
+    await tick(20);
+    assert.deepEqual(resultNames(w), ['흑돼지 강남점'], '전체에서 찾기');
+    assert.equal(w.eval('window.__kq[window.__kq.length-1].near'), false);
+  } finally { w.close(); }
+});
+
+test('ux3 검색: 해외 여행의 빈 날은 이 여행의 장소를 기준으로 Google에서 찾고, 도시는 이 여행의 표기로 채운다(P0-1·P2-25)', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    withTrip(w, JSON.stringify([{ spots: [{ name: '루브르 박물관', city: '파리', lat: 48.8606, lng: 2.3376, cat: 'sight' }] }, { spots: [] }]));
+    fakeKakao(w, {}, { '오르세 미술관': [kdoc('오르세미술관 카페', 36.64, 127.49)] });
+    w.eval(`window.__g=[]; fetchPlaceDetails=async(s)=>({kind:'saved',name:s.name});
+      googlePlaces=async(q,near)=>{ window.__g.push({q,near}); return {list:[{name:'오르세 미술관',addr:'Rue de Lille, Paris',city:'Paris',lat:48.86,lng:2.3266,placeId:'orsay',cat:'sight'}],err:null}; };`);
+    w.eval('render(); openSpotModal(1,-1)');
+    assert.equal(w.document.getElementById('spotCity').value, '', '그날 장소가 없으면 도시 칸은 비어 있다');
+    w.document.getElementById('spotSearch').value = '오르세 미술관';
+    await w.eval('doSearch()');
+    assert.equal(w.eval('window.__kq.length'), 0, '한글로 쳐도 국내(청주·수원)로 가지 않는다');
+    const g = JSON.parse(w.eval('JSON.stringify(window.__g)'));
+    assert.equal(g.length, 1);
+    assert.ok(Math.abs(g[0].near.lat - 48.8606) < 1e-6, '이 여행의 다른 날 장소가 기준');
+    w.document.querySelector('.placeSearchResult').click();
+    await tick();
+    Array.from(w.document.querySelectorAll('#placeDetailsActions button')).find((b) => b.textContent === '시간·메모 정하고 담기').click();
+    assert.equal(w.document.getElementById('spotCity').value, '파리', "'Paris'가 아니라 이 여행이 쓰는 '파리'");
+    assert.match(w.document.getElementById('coordHint').textContent, /위치 확인됨 ✓ · Rue de Lille, Paris/, '좌표 대신 주소');
+  } finally { w.close(); }
+});
+
+test('ux3 검색: 기준점 없이 한글로 친 해외 고유명은 국내에 같은 이름이 없을 때만 Google에도 묻는다(P0-1)', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    withTrip(w, '[{spots:[]}]');
+    fakeKakao(w, {}, { 에펠탑: [kdoc('구에펠탑', 34.74, 127.73, { address_name: '전남 여수시 돌산읍' })],
+      성산일출봉: [kdoc('성산일출봉', 33.4581, 126.9425)] });
+    w.eval(`window.__g=[]; googlePlaces=async(q,near)=>{ window.__g.push({q,near}); return {list:[{name:'에펠탑',city:'파리',lat:48.8584,lng:2.2945,placeId:'eiffel'}],err:null}; };`);
+    w.eval('render(); openSpotModal(0,-1)');
+    w.document.getElementById('spotSearch').value = '에펠탑';
+    await w.eval('doSearch()');
+    assert.equal(resultNames(w)[0], '에펠탑', '여수의 구에펠탑이 아니다');
+    w.document.getElementById('spotSearch').value = '성산일출봉';
+    await w.eval('doSearch()');
+    assert.equal(resultNames(w)[0], '성산일출봉');
+    assert.equal(w.eval('window.__g.length'), 1, '국내에 같은 이름이 있으면 Google(과금)을 부르지 않는다');
+  } finally { w.close(); }
+});
+
+test('ux3 검색: 다른 장소에서 수백 km 떨어진 곳은 결과 줄에서 말하고, 담기 전에 한 번 묻는다(P0-1)', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    withTrip(w, JSON.stringify([{ spots: [{ name: '루브르 박물관', city: '파리', lat: 48.8606, lng: 2.3376 }] }, { spots: [] }]));
+    w.eval(`window.__asked=[]; window.__answer=false; confirm=(m)=>{ window.__asked.push(m); return window.__answer; };
+      googlePlaces=async()=>({list:[{name:'구에펠탑',addr:'전남 여수시',city:'여수',lat:34.74,lng:127.73}],err:null});`);
+    w.eval('render(); openSpotModal(1,-1)');
+    w.document.getElementById('spotSearch').value = 'tour eiffel';
+    await w.eval('doSearch()');
+    assert.match(w.document.querySelector('.placeSearchResult .psrFar').textContent, /약 9,\d{3}km 떨어진 곳이에요/);
+
+    const el = (id) => w.document.getElementById(id);
+    el('spotName').value = '구에펠탑'; el('spotCity').value = '여수'; el('spotLat').value = '34.74'; el('spotLng').value = '127.73';
+    el('spotSave').onclick();
+    assert.equal(w.eval('window.__asked.length'), 1);
+    assert.match(w.eval('window.__asked[0]'), /구에펠탑[\s\S]*약 9,\d{3}km/);
+    assert.equal(w.eval('trip().days[1].spots.length'), 0, '아니라고 하면 담지 않는다');
+    assert.ok(el('spotModalBg').classList.contains('show'), '쓰던 칸으로 돌아간다');
+    w.eval('window.__answer=true');
+    el('spotSave').onclick();
+    assert.equal(w.eval('trip().days[1].spots.length'), 1, '맞다고 하면 담는다');
+
+    // 공항은 원래 멀다 — 묻지 않는다
+    w.eval('openSpotModal(1,-1)');
+    el('spotName').value = '인천국제공항'; el('spotLat').value = '37.46'; el('spotLng').value = '126.44';
+    el('spotSave').onclick();
+    assert.equal(w.eval('window.__asked.length'), 2, '공항은 묻지 않는다');
+    assert.equal(w.eval('trip().days[1].spots.length'), 2);
+  } finally { w.close(); }
+});
+
+test('ux3 붙여넣기: 공항의 도시는 다음 줄의 검색 기준이 아니고, 찾은 곳의 이름을 보이며 다르면 확인을 청한다(P0-1·P2-27)', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    stubGeocode(w, {
+      '간사이 국제공항': [{ name: '간사이 국제공항', addr: '오사카부 이즈미사노시', city: 'Izumisano', lat: 34.43, lng: 135.23, cat: 'transport' }],
+      '쿠로몬 시장': [{ name: '구로몬 시장', addr: '오사카 주오구', city: '오사카', lat: 34.665, lng: 135.506 }],
+      '신사이바시': [{ name: '린쿠 프리미엄 아울렛', addr: '이즈미사노', city: 'Izumisano', lat: 34.40, lng: 135.30 },
+        { name: '신사이바시스지 상점가', addr: '오사카', city: '오사카', lat: 34.67, lng: 135.50 }],
+      '기요미즈데라': [{ name: '기요미즈데라', addr: '교토', city: '교토', lat: 34.99, lng: 135.78 }]
+    });
+    w.document.getElementById('pasteText').value = [
+      '[day1] 11월 12일(목) 오사카', '- 간사이 국제공항', '- 쿠로몬 시장', '- 신사이바시',
+      '[day2] 11월 13일(금) 교토', '- 기요미즈데라', '- 카와카미안'].join('\n');
+    w.document.getElementById('pasteTarget').value = 'new';
+    await w.eval('runPaste()');
+    w.eval('pv.rows.forEach(r=>{ r.include=true; }); renderPastePreview()');
+    await w.eval('pvGeocodeAll()');
+    const calls = JSON.parse(w.eval('JSON.stringify(window.__geo)'));
+    const hint = (name) => calls.find((c) => c.name === name).city;
+    assert.notEqual(hint('쿠로몬 시장'), 'Izumisano', '공항이 있는 도시로 좁히지 않는다');
+    assert.equal(hint('신사이바시'), '오사카', '공항 다음에 찾은 곳의 도시');
+    assert.equal(hint('카와카미안'), '교토', '그날 먼저 찾은 곳의 도시가 더 가깝다(당일치기)');
+    assert.equal(w.eval('pv.learnedCity'), '오사카');
+
+    const rowOf = (name) => Array.from(w.document.querySelectorAll('#pvList .pvRow')).find((r) => r.querySelector('.pvName').value === name);
+    const kuro = rowOf('쿠로몬 시장').querySelector('.pvChip.ok');
+    assert.match(kuro.textContent, /구로몬 시장/, '찾은 곳의 이름을 보인다');
+    assert.doesNotMatch(kuro.textContent, /확인 필요/, '음역 차이는 같은 곳');
+    const shin = rowOf('신사이바시').querySelector('.pvChip.ok');
+    assert.match(shin.textContent, /린쿠 프리미엄 아울렛.*확인 필요/, '이름이 다르면 확인을 청한다');
+    // 이름 없는 칸이 없다
+    assert.equal(rowOf('쿠로몬 시장').querySelector('.pvName').getAttribute('aria-label'), 'Day 1 장소 이름');
+    assert.equal(rowOf('신사이바시').querySelector('select.pvPick').getAttribute('aria-label'), '신사이바시 위치 후보');
+  } finally { w.close(); }
+});
+
+test('ux3 숙소: 종류가 숙소면 숙소로 계산되고, 그 칸은 상세 설정이 아니라 종류 곁에 있다(P1-14)', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    withTrip(w, JSON.stringify([{ spots: [{ name: '동문시장', city: '제주', lat: 33.5116, lng: 126.5262 }] }, { spots: [] },
+      { spots: [{ name: '옛 호텔', city: '제주', lat: 33.49, lng: 126.49, cat: 'stay' }] }]));
+    w.eval(`fetchPlaceDetails=async(s)=>({kind:'saved',name:s.name});
+      routedSearch=async()=>[{name:'신라스테이 제주',addr:'제주시 노연로',city:'제주',lat:33.4887,lng:126.4927,kakaoId:'77',cat:'stay'}];`);
+    const el = (id) => w.document.getElementById(id);
+    w.eval('render(); openSpotModal(0,-1)');
+    assert.equal(el('spotStayRow').style.display, 'none', '숙소가 아니면 보이지 않는다');
+    assert.ok(!el('spotAdvanced').contains(el('spotStay')), '상세 설정 안에 숨지 않는다');
+    el('spotSearch').value = '신라스테이 제주';
+    await w.eval('doSearch()');
+    w.document.querySelector('.placeSearchResult').click();
+    await tick();
+    Array.from(w.document.querySelectorAll('#placeDetailsActions button')).find((b) => b.textContent === 'Day 1에 담기').click();
+    await tick();
+    const saved = JSON.parse(w.eval('JSON.stringify(trip().days[0].spots[1])'));
+    assert.equal(saved.cat, 'stay');
+    assert.equal(saved.stay, true, "검색으로 담은 호텔이 '🏠'로 보이면서 숙소로 계산되지 않던 자리");
+    assert.equal(w.eval('dayStartAnchor(trip().days,1,[]).name'), '신라스테이 제주', '다음 날 출발점은 식당이 아니라 호텔');
+
+    // 종류를 고르면 같은 규칙 — 숙소면 켜고, 다른 종류면 끈다
+    w.eval('openSpotModal(1,-1)');
+    el('spotCat').value = 'stay'; el('spotCat').dispatchEvent(new w.Event('change'));
+    assert.equal(el('spotStay').checked, true);
+    assert.notEqual(el('spotStayRow').style.display, 'none');
+    el('spotCat').value = 'food'; el('spotCat').dispatchEvent(new w.Event('change'));
+    assert.equal(el('spotStay').checked, false);
+    assert.equal(el('spotStayRow').style.display, 'none');
+
+    // 예전에 담긴 '종류만 숙소'는 그대로 보여 준다 — 저장된 뜻을 몰래 바꾸지 않고, 끈 상태의 뜻을 말한다
+    w.eval('openSpotModal(2,0)');
+    assert.notEqual(el('spotStayRow').style.display, 'none');
+    assert.equal(el('spotStay').checked, false);
+    assert.match(el('nightsHint').textContent, /들르기만 하는 곳으로 계산해요/);
+  } finally { w.close(); }
+});
+
+test('ux3 비용: 이 여행이 쓰는 외화로 새 비용 칸이 열리고, 저장된 원화는 그대로다(P2-26)', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    withTrip(w, JSON.stringify([{ spots: [
+      { name: '루브르', city: '파리', lat: 48.8606, lng: 2.3376, cost: 22, cur: 'EUR' },
+      { name: '옛 카페', city: '파리', lat: 48.861, lng: 2.331, cost: 6000 },
+      { name: '아직 미정', city: '파리', lat: 48.862, lng: 2.332 }] }]));
+    w.eval('render()');
+    const cur = () => w.document.getElementById('spotCur').value;
+    w.eval('openSpotModal(0,-1)'); assert.equal(cur(), 'EUR', "'60'이 ₩60이 되지 않게");
+    w.eval('openSpotModal(0,1)'); assert.equal(cur(), 'KRW', '금액이 있는데 통화가 없으면 원화다 — 바꾸지 않는다');
+    w.eval('openSpotModal(0,2)'); assert.equal(cur(), 'EUR', '금액이 없는 장소도 이 여행의 통화로');
+    w.eval('openBookingModal()'); assert.equal(w.document.getElementById('bkCur').value, 'EUR', '예약 편집기도');
+    w.eval('openPlaceCost(0)'); w.document.getElementById('costPlace').value = '0:2'; w.eval('fillPlaceCost()');
+    assert.equal(w.document.getElementById('costCurrency').value, 'EUR', '장소 비용 입력도');
+  } finally { w.close(); }
+});
+
+test('ux3 영업시간: 쉬는 날·아직 안 연 시각을 보이는 한 줄로 가르고, 쉬는 날은 옮기는 길을 둔다(P2-12)', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    const louvre = [1, 3, 4, 5, 6, 0].map((d) => ({ d, o: 540, c: 1080 }));   // 화요일 휴관
+    withTrip(w, JSON.stringify([{ startAt: '08:00', spots: [{ name: '루브르', city: '파리', lat: 48.8606, lng: 2.3376, hours: louvre }] }]));
+    w.eval("trip().start='2026-08-04'; render()");   // 화요일
+    const warn = () => w.document.querySelector('.spot .spotWarn');
+    assert.match(warn().textContent, /화요일 휴무예요/);
+    assert.ok(!w.document.querySelector('.spotMeta .closed'), "'🚫 영업시간 확인' 한 칩으로 뭉치지 않는다");
+    Array.from(warn().querySelectorAll('button')).find((b) => b.textContent === '다른 날로 옮기기').click();
+    assert.ok(w.document.getElementById('spotModalBg').classList.contains('show'), '그 장소의 편집(일자 칸)으로');
+    w.eval("document.getElementById('spotModalBg').classList.remove('show'); trip().start='2026-08-05'; render()");   // 수요일 08:00 도착
+    assert.match(warn().textContent, /09:00에 열어요 — 60분 일찍 도착해요/);
+  } finally { w.close(); }
+});
+
+test('ux3 장소 정보: 개발 용어·날 좌표·영어 분류 대신 사용자의 말로, 영업시간은 24시간 표기로(P2-24·P2-25·P2-12)', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    withTrip(w, '[{spots:[]}]');
+    w.eval("trip().start='2026-08-03'");   // 월요일
+    const content = () => w.document.getElementById('placeDetailsContent');
+    w.eval(`openPlaceDetails({name:'성산일출봉',kakaoId:'123',addr:'제주 서귀포시 성산읍',phone:'',category:'여행 > 관광,명소'})`);
+    await tick(10);
+    assert.doesNotMatch(content().textContent, /공개 API|원문 지도/);
+    assert.match(content().textContent, /🏛 명소 · 관광,명소/, '분류 경로로 종류를 채운다');
+    assert.equal(content().querySelector('a').textContent, '카카오맵에서 사진·리뷰 보기');
+
+    w.eval(`engine='google'; window.google={maps:{importLibrary:async()=>({Place:class{ constructor({id}){this.id=id;}
+      async fetchFields(){ Object.assign(this,{displayName:'오르세 미술관',formattedAddress:'Paris',primaryTypeDisplayName:'Art museum',
+        primaryType:'art_gallery',types:['art_gallery','museum'],
+        regularOpeningHours:{periods:[{open:{day:1,hour:9,minute:30},close:{day:2,hour:0,minute:0}}],weekdayDescriptions:['월요일: 오전 9:30 ~ 오전 12:00']}}); } }})}};
+      openPlaceDetails({name:'오르세 미술관',placeId:'orsay',lat:48.86,lng:2.3266})`);
+    await tick(10);
+    const text = content().textContent;
+    assert.doesNotMatch(text, /Art museum/, '영어 분류 대신 앱의 종류');
+    assert.match(text, /🏛 명소/);
+    assert.doesNotMatch(text, /오전 12:00/, '자정 마감을 정오처럼 쓰지 않는다');
+    const mon = Array.from(content().querySelectorAll('li')).find((li) => /^월 /.test(li.textContent));
+    assert.equal(mon.textContent, '월 09:30–24:00 · 가는 날');
+    assert.ok(mon.classList.contains('visitDay'));
+    assert.equal(Array.from(content().querySelectorAll('a')).find((a) => /지도/.test(a.textContent)).textContent, 'Google 지도에서 보기');
+
+    w.eval(`openPlaceDetails({name:'광장'})`);
+    await tick(10);
+    assert.match(content().textContent, /연결된 장소 정보가 없어요/, "광장에 '매장'이라고 하지 않는다");
+  } finally { w.close(); }
+});
+
+test('ux3 입력칸: 명소 예약 칸마다 보이는 이름이 있고, 명소가 아닌 종류에서는 접힌다(P2-27)', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    const label = (id) => w.document.querySelector(`label[for="${id}"]`);
+    ['spotAdmReq', 'spotAdmUrl', 'spotAdmNote', 'spotAdmPeople', 'spotBookUrl'].forEach((id) => assert.ok(label(id) && label(id).textContent.trim(), `${id}에 보이는 이름`));
+    assert.notEqual(label('spotBookUrl').textContent, label('spotAdmUrl').textContent, '두 링크 칸이 같은 말을 하지 않는다');
+    withTrip(w, JSON.stringify([{ spots: [{ name: '인기 식당', city: '파리', lat: 48.86, lng: 2.33, cat: 'food',
+      admission: { source: 'USER', requirement: 'REQUIRED' } }] }]));
+    w.eval('render(); openSpotModal(0,-1)');
+    const box = w.document.getElementById('spotAdmBox'), cat = w.document.getElementById('spotCat');
+    cat.value = 'food'; cat.dispatchEvent(new w.Event('change'));
+    assert.equal(box.open, false, '식당은 접는다');
+    cat.value = 'sight'; cat.dispatchEvent(new w.Event('change'));
+    assert.equal(box.open, true, '명소는 펼친다');
+    w.eval('openSpotModal(0,0)');
+    assert.equal(box.open, true, '이미 적어 둔 것이 있으면 식당이어도 펼친 채로');
+  } finally { w.close(); }
+});
+
+test('ux3 검토: 비용 없는 장소는 이 여행의 통화로 열려도 저장할 때 통화가 새로 생기지 않는다(P2-26)', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    withTrip(w, JSON.stringify([{ spots: [
+      { name: '루브르', city: '파리', lat: 48.8606, lng: 2.3376, cost: 22, cur: 'EUR' },
+      { name: '산책', city: '파리', lat: 48.861, lng: 2.331 }] }]));
+    w.eval('render(); openSpotModal(0,1)');
+    assert.equal(w.document.getElementById('spotCur').value, 'EUR', '칸은 이 여행의 통화로 열린다');
+    w.document.getElementById('spotName').value = '센강 산책';
+    w.document.getElementById('spotSave').onclick();
+    const s = JSON.parse(w.eval('JSON.stringify(trip().days[0].spots[1])'));
+    assert.equal(s.name, '센강 산책');
+    assert.equal(s.cur, undefined, '이름만 고쳤는데 문서에 통화가 생기지 않는다');
+    // 금액을 넣으면 그 칸의 통화가 저장된다
+    w.eval('openSpotModal(0,1)');
+    w.document.getElementById('spotCost').value = '12';
+    w.document.getElementById('spotSave').onclick();
+    assert.equal(w.eval('trip().days[0].spots[1].cur'), 'EUR');
+    assert.equal(w.eval('trip().days[0].spots[1].cost'), 12);
+  } finally { w.close(); }
+});
+
+test('ux3 검토: 기차로 도시를 건너는 날은 먼 결과를 경고하지도, 저장 전에 묻지도 않는다(P0-1)', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    withTrip(w, JSON.stringify([{ spots: [{ name: '프라도 미술관', city: '마드리드', lat: 40.4138, lng: -3.6921 }] },
+      { mode: 'train', spots: [{ name: '솔 광장', city: '마드리드', lat: 40.4169, lng: -3.7035 }] }]));
+    w.eval(`window.__asked=0; confirm=()=>{ window.__asked++; return false; };
+      routedSearch=async()=>[{name:'세비야 대성당',city:'세비야',lat:37.3858,lng:-5.9931,placeId:'sev'}];`);
+    w.eval('render(); openSpotModal(1,-1)');
+    w.document.getElementById('spotSearch').value = '세비야 대성당';
+    await w.eval('doSearch()');
+    assert.ok(w.document.querySelector('.placeSearchResult'), '결과가 보인다');
+    assert.equal(w.document.querySelector('.placeSearchResult .psrFar'), null, '기차로 가는 날의 390km는 정상이다');
+    const el = (id) => w.document.getElementById(id);
+    el('spotName').value = '세비야 대성당'; el('spotLat').value = '37.3858'; el('spotLng').value = '-5.9931';
+    el('spotSave').onclick();
+    assert.equal(w.eval('window.__asked'), 0);
+    assert.equal(w.eval('trip().days[1].spots.length'), 2);
+    // 같은 거리라도 자차로 가는 날이면 묻는다
+    w.eval("trip().days[1].spots.pop(); trip().days[1].mode='car'; openSpotModal(1,-1)");
+    el('spotName').value = '알카사르'; el('spotLat').value = '37.3831'; el('spotLng').value = '-5.9902';
+    el('spotSave').onclick();
+    assert.equal(w.eval('window.__asked'), 1);
+    assert.equal(w.eval('trip().days[1].spots.length'), 1, '아니라고 하면 담지 않는다');
+    await tick(30);   // 저장 뒤 render가 띄운 경로 조회가 창을 닫기 전에 끝나게
+  } finally { w.close(); }
+});
+
+// ── ux3:travelui ──
+// 3차 UX 검토(2026-10-03)의 '여행 중 안내' 묶음 — 맨 위 '지금' 카드 · 제안 저장소의 초기화 순서 · 다른 날/여행 밖의 말과 버튼 ·
+// 쉬기·식사 수락의 흐름 · 길찾기 링크 · 부정 문장의 되짚기. 판단(엔진)은 그대로이고, 화면이 그 판단을 어떻게 말하는지를 본다.
+const travelText = (w, id) => w.document.getElementById(id).textContent;
+const energyBtn = (w, label) => [...w.document.querySelectorAll('#travelEnergy button')].find((b) => b.textContent === label);
+
+test('통합: 거절한 제안과 고른 컨디션은 다시 열어도 남고, 새 거절이 앞의 거절을 지우지 않는다(P1-6)', { skip: noJsdom }, () => {
+  // 2026-10-03 UX 검토: 제안 저장소를 선언보다 먼저 불러 TDZ 오류가 조용히 삼켜졌다 — 다시 열면 같은 3장, 컨디션은 '보통'이었고
+  // 그 상태에서 하나를 건너뛰면 저장소의 이전 거절이 통째로 덮였다.
+  const days = [
+    { startAt: '09:00', mode: 'car', spots: [S('프라도', 40.41, { stayMin: 120 }), S('저녁 예약', 40.42, { bookAt: '19:30', stayMin: 90 })] },
+    { spots: [S('레티로 공원', 40.415, { stayMin: 90 }), S('왕궁', 40.418, { stayMin: 60 }), S('솔 광장', 40.4168, { stayMin: 30 })] }
+  ];
+  const w1 = boot();
+  withAdaptTrip(w1, days, { now: 11 * 60 + 30 });
+  w1.eval('renderTravel(0)');
+  buttonIn(cardsIn(w1).find((c) => /레티로 공원/.test(c.textContent)), '이번엔 건너뛰기').click();
+  energyBtn(w1, '좀 지쳤어요').click();
+  const saved = w1.localStorage.getItem('tripcanvas_suggest_v1');
+  w1.close();
+
+  // 같은 기기에서 같은 날 다시 연다
+  const w2 = boot('http://localhost/', { tripcanvas_suggest_v1: saved });
+  withAdaptTrip(w2, days, { now: 11 * 60 + 30 });
+  w2.eval('renderTravel(0)');
+  assert.equal(w2.eval('adaptEnergy'), 'LOW', '고른 컨디션이 남는다');
+  assert.equal(energyBtn(w2, '좀 지쳤어요').getAttribute('aria-pressed'), 'true');
+  assert.ok(!/레티로 공원/.test(travelText(w2, 'travelSuggest')), '거절한 제안이 다시 올라오지 않는다');
+  const other = cardsIn(w2).find((c) => c.dataset.type === 'MOVE_FROM_OTHER_DAY');
+  assert.ok(other, '다른 날에서 옮겨올 제안이 남아 있다');
+  buttonIn(other, '이번엔 건너뛰기').click();
+  const dismissed = Object.keys(JSON.parse(w2.localStorage.getItem('tripcanvas_suggest_v1')).trips.__ad__.dismissed);
+  assert.ok(dismissed.some((k) => /레티로 공원/.test(k)), '앞의 거절이 지워지지 않는다');
+  assert.ok(dismissed.length >= 2);
+  w2.close();
+
+  // 다음 날 열면 '오늘 컨디션'은 보통이다 — 어제 고른 '좀 지쳤어요'가 오늘 추천을 움직이지 않는다
+  const w3 = boot('http://localhost/', { tripcanvas_suggest_v1: saved });
+  withAdaptTrip(w3, days, { today: '2026-09-02', now: 11 * 60 });
+  w3.eval('renderTravel(1)');
+  assert.equal(w3.eval('adaptEnergy'), 'NORMAL');
+  w3.close();
+});
+
+test('통합: "다른 제안 보기"는 물린 제안 대신 다음 후보를 보여 준다 — 빈 목록으로 떨어지지 않는다(P1-6)', { skip: noJsdom }, () => {
+  const w = boot();
+  withAdaptTrip(w, [
+    { startAt: '09:00', mode: 'car', spots: [S('프라도', 40.41, { stayMin: 120 }), S('저녁 예약', 40.42, { bookAt: '19:30', stayMin: 90 })] },
+    { spots: ['가', '나', '다', '라', '마', '바'].map((n, i) => S('후보 ' + n, 40.412 + i * 0.001, { stayMin: 30 })) }
+  ], { now: 11 * 60 + 30 });
+  w.eval('renderTravel(0)');
+  const titles = () => cardsIn(w).filter((c) => c.dataset.type === 'MOVE_FROM_OTHER_DAY').map((c) => c.querySelector('.sgTitle').textContent);
+  const first = titles();
+  assert.equal(first.length, 3);
+  [...w.document.querySelectorAll('#travelSuggest button')].find((b) => b.textContent === '다른 제안 보기').click();
+  const second = titles();
+  assert.ok(second.length >= 1, `물린 만큼 다음 후보가 올라온다: ${second}`);
+  assert.ok(second.every((t) => !first.includes(t)), '방금 물린 제안은 다시 나오지 않는다');
+  assert.ok(cardsIn(w).length <= 4, '한 번에 보여 주는 수는 그대로다');
+  w.close();
+});
+
+test('통합: 여행 중 다른 날을 보면 "오늘"이라 하지 않고, 오늘 남은 장소를 그 날로 빼 가지 않는다(P1-8)', { skip: noJsdom }, () => {
+  const w = boot();
+  withAdaptTrip(w, [
+    { startAt: '09:00', mode: 'car', spots: [S('경복궁', 40.41, { stayMin: 60 }), S('북촌', 40.412, { stayMin: 60 })] },
+    { startAt: '09:00', mode: 'car', spots: [S('인사동', 40.414, { stayMin: 60 })] },
+    { startAt: '09:00', mode: 'car', spots: [] }
+  ], { today: '2026-09-01', now: 9 * 60 + 30 });
+  w.document.getElementById('travelBtn').click();
+  const opts = [...w.document.querySelectorAll('#travelDay option')].map((o) => o.textContent);
+  assert.match(opts[0], /\(오늘\)/, '어느 날이 오늘인지 고르는 칸이 말한다');
+  assert.ok(opts.slice(1).every((o) => !/오늘/.test(o)));
+
+  const sel = w.document.getElementById('travelDay');
+  sel.value = '2'; sel.dispatchEvent(new w.Event('change'));
+  assert.equal(travelText(w, 'travelListTitle'), '이 날 일정');
+  assert.match(travelText(w, 'travelEnergy'), /이 날 컨디션/);
+  assert.ok(!/오늘/.test(travelText(w, 'travelEnergy')), '컨디션·하루 추천 버튼도 "오늘"이라고 하지 않는다');
+  const sugText = travelText(w, 'travelSuggest');
+  assert.ok(!/경복궁|북촌/.test(sugText), `오늘 남은 장소를 다른 날로 옮기자고 하지 않는다: ${sugText}`);
+  const move = cardsIn(w).find((c) => /인사동/.test(c.textContent));
+  assert.ok(move, '다른 날의 장소는 옮겨올 수 있다');
+  assert.equal(move.querySelector('[data-action="ACCEPT"]').textContent, 'Day 3에 넣기', '넣는 곳을 그 날의 이름으로 말한다');
+  w.eval('buildDayFlow(2)');
+  assert.ok(w.eval(`_dayFlow.picks.every(p=>p.fromDay!==0)`), '하루 채우기도 오늘의 장소를 가져오지 않는다');
+  move.querySelector('[data-action="ACCEPT"]').click();
+  assert.match(travelText(w, 'toast'), /Day 3/);
+  assert.deepEqual(w.eval('trip().days[2].spots.map(s=>s.name)'), ['인사동']);
+  assert.deepEqual(w.eval('trip().days[0].spots.map(s=>s.name)'), ['경복궁', '북촌'], '오늘 일정은 그대로다');
+
+  // 내일 장소에는 '다녀왔어요'가 없다 — 아직 오지 않은 날이다
+  sel.value = '1'; sel.dispatchEvent(new w.Event('change'));
+  assert.ok(!buttonIn(w.document.getElementById('travelList'), '다녀왔어요'));
+  w.close();
+});
+
+test('통합: 여행 중 맨 위는 "지금" 카드 하나다 — 머무는 곳·언제까지·다음과 다녀왔어요가 함께 있다(P1-2)', { skip: noJsdom }, () => {
+  const w = boot();
+  withAdaptTrip(w, [{ startAt: '09:00', mode: 'car', spots: [
+    S('경복궁', 40.41, { stayMin: 120 }), S('북촌', 40.42, { stayMin: 60 }), S('광장시장', 40.43, { bookAt: '15:30', stayMin: 60 })] }],
+  { now: 10 * 60 + 56 });
+  w.eval('renderTravel(0)');
+  const card = w.document.querySelector('.travelNow');
+  assert.ok(card && card.contains(w.document.getElementById('travelCurrent')) && card.contains(w.document.getElementById('travelNext')),
+    '위·아래 두 칸이 아니라 한 카드다');
+  const now = travelText(w, 'travelNext');
+  assert.match(now, /지금 일정.*경복궁/);
+  assert.match(now, /11:00까지/, '언제까지 머무는지 말한다');
+  assert.match(now, /다음 북촌/, '그다음을 같은 카드에서 말한다');
+  assert.ok(!/출발점\(숙소\)을 정하면/.test(card.textContent), '이미 와 있는 곳에 이동 계산 안내를 붙이지 않는다');
+  assert.ok(!/출발점을 정하지 않았어요/.test(card.textContent), '쓸 정보가 없는 칸을 두지 않는다');
+  const done = buttonIn(w.document.getElementById('travelNext'), '다녀왔어요');
+  assert.ok(done, '다녀왔어요가 지금 카드에 있다');
+  assert.ok(done.classList.contains('primary'), '머무는 곳의 다녀왔어요가 이 화면의 주 버튼이다');
+  assert.ok(card.compareDocumentPosition(w.document.getElementById('travelSuggest')) & w.Node.DOCUMENT_POSITION_FOLLOWING, 'J의 제안보다 위에 있다');
+  done.click();
+  assert.equal(w.eval('trip().days[0].spots[0].status'), 'COMPLETED');
+  assert.match(travelText(w, 'travelCurrent'), /마지막으로 들른 곳.*경복궁/);
+  assert.match(travelText(w, 'travelNext'), /북촌/);
+  w.close();
+});
+
+test('통합: 시각이 지났는데 다녀온 표시가 없으면 다음을 말하기 전에 먼저 묻는다(P1-2)', { skip: noJsdom }, () => {
+  // 2026-10-03 UX 검토: 체류 시간을 넣지 않은 날 10:53에 위 칸은 하루의 마지막 장소(숙소)를 '지금쯤 지나왔어요'라 했고
+  // 아래 칸은 첫 장소를 '다음'이라 했다 — 서로 다른 가정이다.
+  const w = boot();
+  withAdaptTrip(w, [
+    { startAt: '09:00', mode: 'car', spots: [S('경복궁', 40.41, { stayMin: undefined }), S('북촌', 40.412, { stayMin: undefined }), S('롯데호텔', 40.414, { stay: true, stayMin: undefined })] },
+    { spots: [] }
+  ], { now: 10 * 60 + 53 });
+  w.eval('renderTravel(0)');
+  const top = () => travelText(w, 'travelCurrent');
+  assert.match(top(), /다녀온 곳을 표시해 주세요/);
+  assert.match(top(), /경복궁/, '가장 이른 곳부터 묻는다');
+  assert.match(top(), /2곳 더/);
+  assert.ok(!/롯데호텔/.test(top()), '하루의 마지막 장소를 지나온 곳이라 하지 않는다');
+  assert.ok(!/오늘 일정 완료/.test(travelText(w, 'travelNext')), '표시하지 않은 곳이 남았는데 완료라고 하지 않는다');
+  buttonIn(w.document.getElementById('travelCurrent'), '다녀왔어요').click();
+  assert.equal(w.eval('trip().days[0].spots[0].status'), 'COMPLETED');
+  assert.match(top(), /북촌/, '다음으로 표시하지 않은 곳을 묻는다');
+  buttonIn(w.document.getElementById('travelCurrent'), '건너뛰기').click();
+  assert.equal(w.eval('trip().days[0].spots[1].status'), 'SKIPPED');
+  w.close();
+});
+
+test('통합: 여행 중 길찾기는 이름 검색이 아니라 좌표로 열고, 목록에서는 다녀왔어요가 지도 링크보다 먼저다(P2-49)', { skip: noJsdom }, () => {
+  const w = boot();
+  withAdaptTrip(w, [{ startAt: '09:00', mode: 'car', spots: [
+    Object.assign(S('경복궁', 37.5796, { stayMin: 60 }), { lng: 126.977, city: '서울' }),
+    Object.assign(S('북촌', 37.5826, { stayMin: 60 }), { lng: 126.983, city: '서울' })] }], { now: 8 * 60 + 30 });
+  w.eval('renderTravel(0)');
+  const go = w.document.querySelector('#travelNext a.travelGo');
+  assert.ok(go, '다음 장소로 가는 길찾기');
+  assert.match(go.getAttribute('href'), /^https:\/\/map\.kakao\.com\/link\/to\/[^/]*,37\.5796,126\.977$/, '이름이 같은 다른 곳이 섞이지 않게 좌표로 간다');
+  const spot = w.document.querySelector('#travelList .tSpot');
+  const status = spot.querySelector('.tStatus'), map = [...spot.querySelectorAll('a')].find((a) => /카카오맵/.test(a.textContent));
+  assert.ok(status && map);
+  assert.ok(status.compareDocumentPosition(map) & w.Node.DOCUMENT_POSITION_FOLLOWING, '다녀왔어요가 지도 링크보다 위다');
+
+  const w2 = boot();
+  withAdaptTrip(w2, [{ startAt: '09:00', mode: 'car', spots: [S('프라도', 40.41, { stayMin: 60, placeId: 'ChIJabcdef123' })] }], { now: 8 * 60 + 30 });
+  w2.eval('renderTravel(0)');
+  const go2 = w2.document.querySelector('#travelNext a.travelGo').getAttribute('href');
+  assert.match(go2, /^https:\/\/www\.google\.com\/maps\/dir\/\?api=1&destination=40\.41,-3\.7/);
+  assert.match(go2, /destination_place_id=ChIJabcdef123/);
+  w.close(); w2.close();
+});
+
+test('통합: 쉬겠다고 하면 그 카드는 접히고, 식사 추가는 식당 검색으로 열려 취소하면 안내로 돌아온다(P2-48)', { skip: noJsdom }, () => {
+  const w = boot();
+  withAdaptTrip(w, [
+    { startAt: '09:00', mode: 'car', spots: [S('호텔', 40.40, { stay: true, stayMin: 0 }), S('저녁 예약', 40.41, { bookAt: '19:00', stayMin: 90 })] },
+    { spots: [] }
+  ], { now: 11 * 60 });
+  w.document.getElementById('travelBtn').click();
+  energyBtn(w, '좀 지쳤어요').click();
+  const rest = cardsIn(w).find((c) => buttonIn(c, '그렇게 할게요'));
+  assert.ok(rest, '쉬자는 제안이 있다');
+  buttonIn(rest, '그렇게 할게요').click();
+  assert.ok(!cardsIn(w).some((c) => buttonIn(c, '그렇게 할게요')), '수락한 카드가 그대로 남지 않는다');
+  assert.match(travelText(w, 'travelSuggest'), /쉬는 중/);
+  w.eval('renderTravel(0)');
+  assert.ok(!cardsIn(w).some((c) => buttonIn(c, '그렇게 할게요')), '다시 그려도 같은 날 다시 권하지 않는다');
+
+  energyBtn(w, '보통').click();
+  w.eval('window.__searched=0; doSearch=()=>{ window.__searched++; }');
+  const eat = cardsIn(w).find((c) => buttonIn(c, '식사 장소 추가'));
+  assert.ok(eat, '점심 시간이 빈 날이라 식사 제안이 있다');
+  buttonIn(eat, '식사 장소 추가').click();
+  const el = (id) => w.document.getElementById(id);
+  assert.ok(el('spotModalBg').classList.contains('show'));
+  assert.equal(el('spotCat').value, 'food', '종류가 식당으로 정해져 있다');
+  assert.equal(el('spotSearch').value, '맛집');
+  assert.equal(w.__searched, 1, '식당 검색을 바로 연다');
+  assert.equal(el('spotAt').value, '11:30', '식사 시간대의 시작');
+  el('spotCancel').click();
+  assert.ok(!el('spotModalBg').classList.contains('show'));
+  assert.ok(el('travel').classList.contains('show'), '취소하면 여행 중 안내로 돌아온다');
+  w.close();
+});
+
+test('통합: 여행 전·지난 여행에서는 "지금"이라 하지 않고, 나중의 빈 시간은 그 시각으로 말한다(P2-4)', { skip: noJsdom }, () => {
+  const days = [
+    { startAt: '09:00', mode: 'car', spots: [S('호텔', 40.40, { stay: true, stayMin: 0 }), S('저녁 예약', 40.41, { bookAt: '19:00', stayMin: 90 })] },
+    { spots: [S('레티로 공원', 40.415, { stayMin: 90 })] }
+  ];
+  // 여행 전 — 지쳤다고 해도 '지금 쉬어도'·'숙소로 가기'가 없다
+  const w = boot();
+  withAdaptTrip(w, days, { today: '2026-08-20' });
+  w.document.getElementById('travelBtn').click();
+  energyBtn(w, '좀 지쳤어요').click();
+  const before = travelText(w, 'travelSuggest');
+  assert.ok(!/지금/.test(before), `여행 전 제안이 '지금'을 말하지 않는다: ${before}`);
+  assert.ok(!cardsIn(w).some((c) => buttonIn(c, '숙소로 가기') || buttonIn(c, '그렇게 할게요')));
+  w.close();
+
+  // 지난 여행 — 돌아보기용이다. 일정을 바꾸자는 버튼이 없다
+  const w2 = boot();
+  withAdaptTrip(w2, days, { today: '2026-09-20' });
+  w2.document.getElementById('travelBtn').click();
+  w2.eval('renderTravel(0)');
+  const btns = [...w2.document.querySelectorAll('#travelSuggest button,#travelPlan button,#travelEnergy button')].filter((b) => !b.closest('[hidden]'));
+  assert.ok(!btns.some((b) => /넣기|추가|시작|가기|할게요/.test(b.textContent)), `지난 여행에 실행 버튼이 없다: ${btns.map((b) => b.textContent)}`);
+  assert.match(travelText(w2, 'travelSuggest'), /지난/);
+  w2.close();
+
+  // 여행 중 — 빈 시간이 나중에 시작하면 '지금 한 곳 더'가 아니라 그 시각을 말한다
+  const w3 = boot();
+  withAdaptTrip(w3, [
+    { startAt: '09:00', mode: 'car', spots: [S('경복궁', 40.41, { stayMin: 180 }), S('저녁 예약', 40.42, { bookAt: '19:30', stayMin: 90 })] },
+    { spots: [S('창덕궁', 40.415, { stayMin: 90 })] }
+  ], { now: 10 * 60 });
+  w3.eval('renderTravel(0)');
+  const kick = cardsIn(w3).find((c) => /창덕궁/.test(c.textContent)).querySelector('.sgKicker').textContent;
+  assert.ok(!/지금 한 곳 더/.test(kick), kick);
+  assert.match(kick, /12:00부터 비는 시간/);
+  assert.match(kick, /경복궁 다음/);
+  w3.close();
+});
+
+test('통합: 여행 전 미리보기의 From J 제안도 그 날에 넣을 수 있다(P2-3)', { skip: noJsdom }, () => {
+  const w = boot();
+  withAdaptTrip(w, [
+    { startAt: '09:00', mode: 'car', spots: [S('프라도', 40.41, { stayMin: 120 }), S('저녁 예약', 40.42, { bookAt: '19:30', stayMin: 90 })] },
+    { spots: [S('레티로 공원', 40.415, { stayMin: 90 })] }
+  ], { today: '2026-08-27' });
+  w.document.getElementById('travelBtn').click();
+  const move = cardsIn(w).find((c) => /레티로 공원/.test(c.textContent));
+  const accept = move && move.querySelector('[data-action="ACCEPT"]');
+  assert.ok(accept, '권하는 곳을 담을 길이 있다');
+  assert.equal(accept.textContent, 'Day 1에 넣기');
+  w.eval('buildDayFlow(0)');
+  assert.ok(buttonIn(w.document.querySelector('#travelPlan .sgCard'), 'Day 1에 넣기'), '하루 채우기도 그 날에 넣을 수 있다');
+  accept.click();
+  assert.ok(w.eval('trip().days[0].spots.map(s=>s.name)').includes('레티로 공원'));
+  assert.match(travelText(w, 'toast'), /Day 1/);
+  w.close();
+});
+
+test('통합: "하나도 안 피곤해"에는 못 알아들었다고 하지 않고, 남아 있는 컨디션과 바꿀 길을 말한다(BD-1)', { skip: noJsdom }, () => {
+  const w = boot();
+  withAdaptTrip(w, [{ startAt: '09:00', mode: 'car', spots: [S('A', 40.41)] }], { now: 10 * 60 });
+  w.eval('renderTravel(0)');
+  energyBtn(w, '좀 지쳤어요').click();
+  w.document.getElementById('travelIntent').value = '하나도 안 피곤해';
+  w.document.getElementById('travelIntentApply').click();
+  const echo = w.document.getElementById('travelIntentEcho');
+  assert.ok(!/못 알아들었어요/.test(echo.textContent), echo.textContent);
+  assert.match(echo.textContent, /좀 지쳤어요/, '지금 어떤 컨디션으로 보고 있는지 말한다');
+  assert.equal(w.eval('adaptEnergy'), 'LOW', '부정은 뒤집지 않는다 — 규칙은 그대로다');
+  buttonIn(echo, '보통으로 바꾸기').click();
+  assert.equal(w.eval('adaptEnergy'), 'NORMAL');
+  assert.equal(energyBtn(w, '보통').getAttribute('aria-pressed'), 'true');
+  w.close();
+});
+
+// ── ux3:travelui 검토 ──
+// 실제 style.css를 jsdom에 얹는다 — hidden 속성이 클래스의 display를 이기는지는 스타일시트가 있어야 드러난다
+function withCss(w) {
+  const st = w.document.createElement('style');
+  st.textContent = fs.readFileSync(path.join(root, 'style.css'), 'utf8');
+  w.document.head.appendChild(st);
+  return (id) => w.getComputedStyle(w.document.getElementById(id)).display;
+}
+
+test('통합: 지난 날·지난 여행에서는 문장 입력과 컨디션 칸이 실제로 사라진다 — hidden이 display:flex에 지지 않는다(P2-4 검토)', { skip: noJsdom }, () => {
+  // 검토(2026-10-03): renderEnergy가 hidden을 켰지만 .travelTune·.travelEnergy가 display:flex라 브라우저에서는 그대로 보였다 —
+  // 지난 여행에 입력칸과 '반영'이 남아 눌렸다. 앞의 테스트는 [hidden] 조상을 걸러 봐서 이걸 놓쳤다.
+  const days = [
+    { startAt: '09:00', mode: 'car', spots: [S('경복궁', 40.41, { stayMin: 60 })] },
+    { startAt: '09:00', mode: 'car', spots: [S('북촌', 40.412, { stayMin: 60 })] }
+  ];
+  const w = boot();
+  const display = withCss(w);
+  withAdaptTrip(w, days, { today: '2026-09-20' });
+  w.document.getElementById('travelBtn').click();
+  assert.equal(display('travelTune'), 'none', '지난 여행에는 문장 입력이 없다');
+  assert.equal(display('travelEnergy'), 'none');
+  w.close();
+
+  // 여행 중 — 지나온 날은 숨기고, 오늘로 돌아오면 다시 보인다
+  const w2 = boot();
+  const display2 = withCss(w2);
+  withAdaptTrip(w2, days, { today: '2026-09-02', now: 8 * 60 });
+  w2.document.getElementById('travelBtn').click();
+  const sel = w2.document.getElementById('travelDay');
+  sel.value = '0'; sel.dispatchEvent(new w2.Event('change'));
+  assert.equal(display2('travelTune'), 'none', '지나온 날');
+  sel.value = '1'; sel.dispatchEvent(new w2.Event('change'));
+  assert.notEqual(display2('travelTune'), 'none', '오늘');
+  assert.notEqual(display2('travelEnergy'), 'none');
+  w2.close();
+});
+
+test('통합: 다시 연 여행 중 안내는 되살린 문장을 입력칸에도 보여 주고, 다음 날에는 비운다(P1-6 검토)', { skip: noJsdom }, () => {
+  // 초기화 순서를 고치자 문장이 되살아났는데 입력칸은 비어 있어 '이렇게 이해했어요'가 무엇을 두고 하는 말인지 몰랐다
+  const days = [{ startAt: '09:00', mode: 'car', spots: [S('A', 40.41)] }, { spots: [S('B', 40.42)] }];
+  const saved = JSON.stringify({ v: 1, day: '2026-09-01', energy: 'NORMAL', prefs: { maxTravelMin: 15 }, intent: '가까운 데만', trips: {} });
+  const w = boot('http://localhost/', { tripcanvas_suggest_v1: saved });
+  withAdaptTrip(w, days, { now: 10 * 60 });
+  w.document.getElementById('travelBtn').click();
+  assert.equal(w.document.getElementById('travelIntent').value, '가까운 데만');
+  assert.match(travelText(w, 'travelIntentEcho'), /가까운 곳만/);
+  w.close();
+
+  const w2 = boot('http://localhost/', { tripcanvas_suggest_v1: saved });
+  withAdaptTrip(w2, days, { today: '2026-09-02', now: 10 * 60 });
+  w2.document.getElementById('travelBtn').click();
+  assert.equal(w2.document.getElementById('travelIntent').value, '', '어제 문장은 오늘 입력칸에 남지 않는다');
+  assert.equal(travelText(w2, 'travelIntentEcho'), '');
+  w2.close();
+});
+
+test('통합: 다음이 예약한 곳이면 지금 카드가 도착 예상과 함께 예약 시각을 말한다(P1-2 검토)', { skip: noJsdom }, () => {
+  // '12:03 도착 예상' 바로 아래 '18:58쯤 출발하면'만 있으면 두 시각이 서로 다른 말을 한다
+  const w = boot();
+  withAdaptTrip(w, [{ startAt: '09:00', mode: 'car', spots: [S('경복궁', 40.41, { stayMin: 60 }), S('저녁 예약', 40.42, { bookAt: '19:00', stayMin: 90 })] }],
+    { now: 14 * 60 });
+  w.eval('renderTravel(0)');
+  assert.match(travelText(w, 'travelNext'), /저녁 예약.*도착 예상 · 예약 19:00/);
+  w.close();
+});
+
+// ── ux3:undo ──
+// 2026-10-03 UX 검토 3차 — 실행취소·편집 피드백·포커스 묶음(P1-7 · P1-27 · P2-13 · P2-17 · P2-18 · P2-19 · P2-65).
+const UX3_DAY = (title, spots) => ({ title, drive: '', note: '', mode: 'car', spots });
+const UX3_SPOT = (name, lat) => ({ name, city: 'S', desc: '', lat, lng: 127 });
+function ux3Trip(w, days, activeDay = 0) {
+  withTrip(w, JSON.stringify(days), activeDay);
+  w.eval('render(); histStack.length=0; redoStack.length=0; histLast=JSON.stringify(store); updateUndoBtn();');
+}
+const ux3Names = (w, di) => JSON.parse(w.eval(`JSON.stringify(trip().days[${di}].spots.map(s=>s.name))`));
+const ux3Row = (w, di, si) => w.document.querySelector(`#sidebar .spot[data-di="${di}"][data-si="${si}"]`);
+const ux3Key = (w, key, mods = {}) => (w.document.activeElement || w.document.body)
+  .dispatchEvent(new w.KeyboardEvent('keydown', Object.assign({ key, bubbles: true, cancelable: true }, mods)));
+
+test('통합: 앱을 다시 연 뒤 첫 변경도 실행취소할 수 있다', { skip: noJsdom }, () => {
+  const w0 = boot();
+  withTrip(w0, JSON.stringify([UX3_DAY('D1', [UX3_SPOT('A', 37.5)])]));
+  w0.eval('save()');
+  const storage = { tripcanvas_v1: w0.localStorage.getItem('tripcanvas_v1'), tripcanvas_onboarded_v1: '1' };
+  w0.close();
+  const w = boot('http://localhost/', storage);
+  try {
+    const q = w.document.getElementById('undoQuick');
+    assert.equal(q.hidden, true, '열자마자는 되돌릴 것이 없다');
+    w.eval("setDayMode(0,'walk')");
+    assert.equal(q.hidden, false, '연 뒤 첫 변경부터 헤더에 실행취소가 보인다');
+    assert.equal(w.document.getElementById('undoBtn').disabled, false, '☰ 실행취소도 켜진다');
+    q.click();
+    assert.equal(w.eval('trip().days[0].mode'), 'car', '첫 변경이 되돌아간다');
+  } finally { w.close(); }
+});
+
+test('통합: 조회 결과를 문서에 캐시해 두는 저장은 실행취소 거리가 아니다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    ux3Trip(w, [UX3_DAY('D1', [UX3_SPOT('A', 37.5)])]);
+    w.eval(`trip().bookings=[{id:'h1',type:'hotel',title:'호텔',start:'2026-08-01',end:'2026-08-02'}]; saveQuietly();`);
+    assert.equal(w.eval('histStack.length'), 0);
+    assert.equal(w.document.getElementById('undoQuick').hidden, true);
+    assert.match(w.localStorage.getItem('tripcanvas_v1'), /호텔/, '저장은 된다');
+  } finally { w.close(); }
+});
+
+test('통합: J가 일정을 바꾼 토스트에는 되돌리기가 붙는다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    withAdaptTrip(w, [{ startAt: '09:00', mode: 'walk', spots: [S('A', 40.40), S('B', 40.41), S('C', 40.42)] }, { spots: [S('D', 40.43)] }]);
+    w.eval('render()');
+    const all = () => [ux3Names(w, 0), ux3Names(w, 1)];
+    const before = all();
+    w.eval(`applyReplan({type:'REPLAN',key:'r1',action:{drop:['d0s2']}},0)`);
+    assert.deepEqual(all(), [['A', 'B'], ['C', 'D']], '일정 조정이 C를 다음 날로 옮겼다');
+    let act = w.document.querySelector('#toast .toastAct');
+    assert.equal(act && act.textContent, '되돌리기', '"N곳을 옮겼어요"에 되돌리기가 있다');
+    act.click();
+    assert.deepEqual(all(), before, '되돌리면 J가 옮기기 전으로');
+
+    w.eval(`acceptMove({type:'NEXT_ACTIVITY',key:'m1',title:'D'},0,{fromDay:1,si:0})`);
+    assert.deepEqual(all(), [['A', 'B', 'C', 'D'], []]);
+    act = w.document.querySelector('#toast .toastAct');
+    assert.equal(act && act.textContent, '되돌리기', '다른 날 장소를 오늘에 넣은 것도 되돌릴 수 있다');
+    act.click();
+    assert.deepEqual(all(), before);
+  } finally { w.close(); }
+});
+
+test('통합: 실행취소는 보던 범위를 지키고, 무엇을 되돌렸는지 말하고, 다시 할 수 있다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    ux3Trip(w, [UX3_DAY('D1', [UX3_SPOT('경복궁', 37.5), UX3_SPOT('창덕궁', 37.6)]), UX3_DAY('D2', []),
+      UX3_DAY('D3', [UX3_SPOT('X', 37.7), UX3_SPOT('Y', 37.8)])], 3);
+    const toastText = () => w.document.getElementById('toast').textContent;
+    w.eval('moveSpot(2,1,-1)');
+    assert.deepEqual(ux3Names(w, 2), ['Y', 'X']);
+    w.eval('undo()');
+    assert.deepEqual(ux3Names(w, 2), ['X', 'Y']);
+    assert.equal(w.eval('activeDay'), 3, 'Day 3을 보던 채로 되돌린다 — 전체로 튀지 않는다');
+    assert.match(toastText(), /장소 순서 바꾸기를 되돌렸어요/, '무엇을 되돌렸는지 말한다');
+    const again = w.document.querySelector('#toast .toastAct');
+    assert.equal(again && again.textContent, '다시 하기');
+    assert.equal(w.document.getElementById('redoBtn').disabled, false, '☰에도 다시 하기가 켜진다');
+    again.click();
+    assert.deepEqual(ux3Names(w, 2), ['Y', 'X'], '다시 하기로 되돌린 것을 되살린다');
+    assert.match(toastText(), /장소 순서 바꾸기를 다시 했어요/);
+
+    // 키보드: ⌘Z / ⇧⌘Z · Ctrl+Y
+    ux3Key(w, 'z', { ctrlKey: true });
+    assert.deepEqual(ux3Names(w, 2), ['X', 'Y']);
+    ux3Key(w, 'z', { ctrlKey: true, shiftKey: true });
+    assert.deepEqual(ux3Names(w, 2), ['Y', 'X']);
+    ux3Key(w, 'z', { metaKey: true }); ux3Key(w, 'y', { ctrlKey: true });
+    assert.deepEqual(ux3Names(w, 2), ['Y', 'X'], 'Ctrl+Y도 다시 하기');
+
+    // 이름은 변경을 비교해서 붙인다 — 편집 진입점마다 달지 않는다
+    const label = (code) => { w.eval(code); w.eval('undo()'); return toastText(); };
+    assert.match(label('deleteSpot(0,0)'), /장소 삭제를 되돌렸어요/);
+    assert.match(label("setDayMode(0,'walk')"), /이동수단 바꾸기를 되돌렸어요/);
+    assert.match(label("setLegMode(0,1,'taxi')"), /이동수단 바꾸기를 되돌렸어요/);
+    assert.match(label("commit(()=>{ trip().days[0].spots[0].desc='메모'; })"), /장소 수정을 되돌렸어요/);
+    assert.match(label("commit(()=>{ trip().days.push({title:'',drive:'',note:'',spots:[]}); })"), /일자 추가를 되돌렸어요/);
+    assert.match(label("commit(()=>{ trip().days[1].spots.push(trip().days[0].spots.pop()); })"), /장소 옮기기를 되돌렸어요/);
+    assert.match(label("commit(()=>{ trip().name='새 이름'; })"), /여행 설정 수정을 되돌렸어요/);
+
+    // 새 편집이 갈라져 나오면 다시 하기는 사라진다
+    w.eval("setDayMode(0,'walk'); undo(); setDayMode(0,'taxi');");
+    assert.equal(w.eval('redoStack.length'), 0);
+    assert.equal(w.document.getElementById('redoBtn').disabled, true);
+
+    // 여행을 만든 직후 되돌리면 여행이 사라진다 — 그 사실을 말하고, 다시 하기로 되살린다
+    w.eval(`commit(()=>{ store.trips.push({id:'n1',name:'새 여행',start:'',days:[{title:'',drive:'',note:'',spots:[]}]}); store.activeId='n1'; activeDay=0; })`);
+    w.eval('undo()');
+    assert.equal(w.eval("store.trips.some(t=>t.id==='n1')"), false);
+    assert.match(toastText(), /여행 추가를 되돌렸어요/);
+    w.document.querySelector('#toast .toastAct').click();
+    assert.equal(w.eval('store.activeId'), 'n1', '다시 하기로 그 여행이 돌아온다');
+  } finally { w.close(); }
+});
+
+test('통합: 여행 삭제를 되돌린 뒤에는 다시 하기를 두지 않는다 — 다시 지우는 일은 서버에 알려야 한다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    ux3Trip(w, [UX3_DAY('D1', [])]);
+    w.eval(`trip().name='제주 여행'; window.confirm=()=>true; deleteTrip('__it__');`);
+    assert.match(w.document.getElementById('toast').textContent, /"제주 여행"을 지웠어요/, '조사는 이름에 맞춘다 — 을(를)이 아니다');
+    w.eval('undo()');
+    assert.equal(w.eval("store.trips.some(t=>t.id==='__it__')"), true);
+    assert.match(w.document.getElementById('toast').textContent, /여행 삭제를 되돌렸어요/);
+    assert.equal(w.document.querySelector('#toast .toastAct'), null);
+    assert.equal(w.eval('redoStack.length'), 0);
+  } finally { w.close(); }
+});
+
+test('통합: 장소 선택은 자리 번호가 아니라 장소를 따라간다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    ux3Trip(w, [UX3_DAY('D1', [UX3_SPOT('동문시장', 37.5), UX3_SPOT('협재', 37.6), UX3_SPOT('우도', 37.7)])]);
+    const selected = () => { const el = w.document.querySelector('#sidebar .spot.is-selected'); return el && el.querySelector('.spotName').textContent; };
+    const addLabel = () => w.document.querySelector('#sidebar .addSpotBtn').textContent;
+    w.eval('selectSpotCard(0,1)');
+    assert.equal(selected(), '협재');
+    w.eval('moveSpot(0,1,-1)');
+    assert.deepEqual(ux3Names(w, 0), ['협재', '동문시장', '우도']);
+    assert.equal(selected(), '협재', '옮긴 장소에 강조가 따라간다');
+    assert.match(addLabel(), /1번 뒤에 장소 추가/, '다음 장소도 옮긴 장소 바로 뒤에 들어간다');
+    assert.ok(ux3Row(w, 0, 0).classList.contains('justMoved'), '옮긴 행을 잠깐 강조한다');
+
+    w.eval('selectSpotCard(0,2); deleteSpot(0,0)');
+    assert.equal(selected(), '우도', '앞의 장소를 지워도 선택은 그 장소에 남는다');
+    assert.match(addLabel(), /2번 뒤에 장소 추가/);
+    w.eval('deleteSpot(0,1)');
+    assert.equal(selected(), null, '선택한 장소를 지우면 다른 장소로 옮겨 가지 않고 풀린다');
+    assert.equal(addLabel(), '＋ 장소 추가');
+  } finally { w.close(); }
+});
+
+test('통합: 장소 삭제는 묻지 않고 이름을 말하며, 편집으로 다른 날에 옮기면 어디로 갔는지 말한다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    ux3Trip(w, [UX3_DAY('D1', [UX3_SPOT('경복궁', 37.5), UX3_SPOT('창덕궁', 37.6)]), UX3_DAY('D2', [UX3_SPOT('남산', 37.55)])]);
+    w.eval(`window.confirm=()=>{ throw new Error('묻지 않아야 한다 — 실행취소가 있다'); }`);
+    w.eval('deleteSpot(0,0)');
+    const t = w.document.getElementById('toast');
+    assert.match(t.textContent, /"경복궁"을 지웠어요/, '어느 장소를 지웠는지 말한다');
+    t.querySelector('.toastAct').click();
+    assert.deepEqual(ux3Names(w, 0), ['경복궁', '창덕궁']);
+
+    w.eval('openSpotModal(0,0)');
+    w.document.getElementById('spotDay').value = '1';
+    w.document.getElementById('spotSave').click();
+    assert.deepEqual(ux3Names(w, 1), ['남산', '경복궁']);
+    assert.match(t.textContent, /Day 2 맨 뒤로 옮겼어요/, "'저장했어요'가 아니라 어디로 갔는지");
+    assert.deepEqual(Array.from(t.querySelectorAll('.toastAct')).map((b) => b.textContent), ['보기', '실행취소']);
+    t.querySelectorAll('.toastAct')[0].click();
+    assert.equal(w.eval('activeDay'), 2, '보기는 그 날로 범위를 옮긴다');
+
+    w.eval('setDayScope(0, ()=>{})');
+    w.eval('openSpotModal(1,1)');
+    w.document.getElementById('spotDay').value = '0';
+    w.document.getElementById('spotSave').click();
+    assert.deepEqual(ux3Names(w, 0), ['창덕궁', '경복궁']);
+    t.querySelectorAll('.toastAct')[1].click();
+    assert.deepEqual([ux3Names(w, 0), ux3Names(w, 1)], [['창덕궁'], ['남산', '경복궁']], '실행취소는 옮기기 전으로');
+  } finally { w.close(); }
+});
+
+test('통합: 가운데 일자를 지우면 뒤 날짜가 당겨진다는 것을 지우기 전과 뒤에 말한다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    ux3Trip(w, [UX3_DAY('D1', [UX3_SPOT('A', 37.5)]), UX3_DAY('D2', [UX3_SPOT('B', 37.6)]), UX3_DAY('D3', [UX3_SPOT('C', 37.7)]), UX3_DAY('D4', [])]);
+    w.eval(`trip().start='2026-10-20'; render(); window.__asked=[]; window.confirm=(m)=>{ window.__asked.push(m); return true; };`);
+    const asked = () => w.eval('window.__asked.pop()||""');
+    const toastText = () => w.document.getElementById('toast').textContent;
+
+    w.eval('deleteDay(1)');
+    const q = asked();
+    assert.match(q, /Day 2 · 10\/21 \(수\)의 장소 1곳도 함께 지워져요/);
+    assert.match(q, /이후 날짜가 하루씩 당겨져요 — 10\/22 \(목\) → 10\/21 \(수\)/, '뒤 날짜가 어떻게 바뀌는지');
+    assert.match(toastText(), /일자를 지웠어요 · 이후 날짜가 하루씩 당겨졌어요 \(10\/22 \(목\) → 10\/21 \(수\)\)/);
+    w.document.querySelector('#toast .toastAct').click();
+    assert.equal(w.eval('trip().days.length'), 4, '실행취소로 돌아온다');
+
+    // 빈 날은 묻지 않지만 당겨진다는 사실은 말한다
+    w.eval(`commit(()=>{ trip().days[1].spots=[]; })`);
+    w.eval('deleteDay(1)');
+    assert.equal(asked(), '', '빈 날은 묻지 않는다');
+    assert.match(toastText(), /이후 날짜가 하루씩 당겨졌어요/);
+    w.eval('undo()');
+
+    // 마지막 날은 당겨질 날이 없다
+    w.eval(`commit(()=>{ trip().days[3].spots=[{name:'끝',city:'S',lat:37.9,lng:127}]; })`);
+    w.eval('deleteDay(3)');
+    assert.doesNotMatch(asked(), /당겨져요/);
+    assert.equal(w.document.getElementById('toast').firstChild.textContent, '일자를 지웠어요');
+
+    // 날짜 없는 여행은 일자 번호가 당겨진다
+    w.eval(`undo(); trip().start=''; render(); deleteDay(0)`);
+    assert.match(asked(), /이후 날짜가 하루씩 당겨져요 — Day 2 → Day 1/);
+  } finally { w.close(); }
+});
+
+test('통합: 담기·수단 바꾸기·저장·삭제·옮기기 뒤에도 키보드 포커스가 갈 곳에 있다', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    ux3Trip(w, [UX3_DAY('D1', [UX3_SPOT('A', 37.5), UX3_SPOT('B', 37.6), UX3_SPOT('C', 37.7)])]);
+    const active = () => w.document.activeElement;
+    const rowOf = (el) => el && el.closest && el.closest('.spot');
+    const nameAt = (el) => { const r = rowOf(el); return r && r.querySelector('.spotName').textContent; };
+    const menuBtn = (si, title) => { const r = ux3Row(w, 0, si); r.querySelector('details.actionMenu').open = true; return r.querySelector(`button[title="${title}"]`); };
+
+    // 삭제 → 그 자리에 올라온 다음 행
+    let b = menuBtn(1, '삭제'); b.focus(); b.click();
+    assert.equal(nameAt(active()), 'C', '지운 행 자리의 다음 장소');
+    assert.ok(active().classList.contains('spotIdentity'));
+    // 마지막 행을 지우면 앞 행
+    b = menuBtn(1, '삭제'); b.focus(); b.click();
+    assert.equal(nameAt(active()), 'A');
+    w.document.querySelector('#toast .toastAct').click();   // 실행취소 → 되살아난 그 장소로
+    assert.equal(nameAt(active()), 'C');
+
+    // 수단 바꾸기 → 같은 날의 새 수단 버튼
+    w.document.querySelector('#sidebar .dayCard .modeBtn').focus();
+    w.eval('openDayModePicker(0)');
+    Array.from(w.document.querySelectorAll('#modePickerList button')).find((x) => /도보/.test(x.textContent)).click();
+    assert.equal(w.eval('trip().days[0].mode'), 'walk');
+    assert.ok(active().classList.contains('modeBtn') && active().isConnected, '새로 그린 수단 버튼');
+
+    // 담기 → 담은 장소의 행
+    w.eval('selectSpotCard(null); openSpotModal(0,-1)');
+    w.document.getElementById('spotName').value = '새 장소';
+    w.document.getElementById('spotLat').value = '37.9';
+    w.document.getElementById('spotLng').value = '127.9';
+    w.document.getElementById('spotSave').click();
+    assert.equal(nameAt(active()), '새 장소');
+    // 편집 저장 → 고친 장소의 행
+    w.eval('openSpotModal(0,0)');
+    w.document.getElementById('spotName').value = 'A 고침';
+    w.document.getElementById('spotSave').click();
+    assert.equal(nameAt(active()), 'A 고침');
+    await new Promise((r) => setTimeout(r, 10));   // 모달을 닫은 뒤의 포커스 되돌리기가 이것을 덮지 않는다
+    assert.equal(nameAt(active()), 'A 고침');
+
+    // 옮기기 → 옮긴 장소의 같은 버튼(메뉴를 다시 열어 둔다)
+    b = menuBtn(1, '아래로'); b.focus(); b.click();
+    assert.deepEqual(ux3Names(w, 0), ['A 고침', '새 장소', 'C']);
+    assert.equal(nameAt(active()), 'C');
+    assert.ok(active().classList.contains('mvdown'));
+    assert.equal(rowOf(active()).querySelector('details.actionMenu').open, true, '연달아 옮길 수 있게 메뉴가 열려 있다');
+    assert.equal(rowOf(active()).getAttribute('data-si'), '2');
+  } finally { w.close(); }
+});
+
+test('통합: 누를 것이 있는 토스트는 머무는 동안 사라지지 않고, 다음 Tab 한 번이면 닿는다', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    ux3Trip(w, [UX3_DAY('D1', [UX3_SPOT('A', 37.5), UX3_SPOT('B', 37.6)])]);
+    w.eval('dismissOnboarding(); TOAST_MS.action=30; TOAST_MS.plain=20;');   // 처음 화면이 떠 있으면 Tab은 그 안에 갇힌다
+    const t = w.document.getElementById('toast');
+    const shown = () => t.style.display !== 'none';
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+    w.eval(`toast('지웠어요','#4f4740',{fn:()=>{}})`);
+    t.dispatchEvent(new w.MouseEvent('mouseenter'));
+    await wait(80);
+    assert.equal(shown(), true, '마우스가 올라가 있는 동안은 남는다');
+    t.dispatchEvent(new w.MouseEvent('mouseleave'));
+    await wait(80);
+    assert.equal(shown(), false, '떠나면 다시 시간이 간다');
+
+    // 다음 Tab 한 번이면 토스트의 버튼으로, 거기서 Tab을 누르면 왔던 자리로
+    const origin = ux3Row(w, 0, 1).querySelector('.spotIdentity');
+    origin.focus();
+    w.eval(`TOAST_MS.action=10000; toast('지웠어요','#4f4740',{fn:()=>{}})`);
+    ux3Key(w, 'Tab');
+    assert.equal(w.document.activeElement, t.querySelector('.toastAct'), 'Tab 한 번으로 토스트에 닿는다');
+    w.eval('TOAST_MS.action=30; armToastTimer()');
+    await wait(80);
+    assert.equal(shown(), true, '포커스가 머무는 동안은 사라지지 않는다');
+    ux3Key(w, 'Tab');
+    assert.equal(w.document.activeElement, origin, '토스트에서 Tab을 누르면 원래 자리로');
+    assert.equal(ux3Key(w, 'Tab'), true, '한 번만 건너간다 — 그다음 Tab은 막지 않는다(원래 순서는 브라우저 몫)');
+    await wait(80);
+    assert.equal(shown(), false, '떠난 뒤에는 다시 시간이 간다');
+
+    // 모달이 떠 있으면 Tab은 모달에 갇힌다
+    w.eval(`TOAST_MS.action=10000; openSpotModal(0,-1); toast('담았어요','#3e7a4c',{label:'하나 더 담기',fn:()=>{}})`);
+    w.document.getElementById('spotName').focus();
+    ux3Key(w, 'Tab');
+    assert.notEqual(w.document.activeElement, t.querySelector('.toastAct'));
+  } finally { w.close(); }
+});
+
+// ux3:undo 검토 — 구현 뒤 반박 검토에서 찾은 것(2026-10-03)
+test('통합: 토스트에서 Tab으로 돌아갈 자리가 없으면 포커스를 가두지 않는다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    ux3Trip(w, [UX3_DAY('D1', [UX3_SPOT('A', 37.5)])]);
+    w.eval('dismissOnboarding();');
+    const t = w.document.getElementById('toast');
+    if (w.document.activeElement && w.document.activeElement.blur) w.document.activeElement.blur();   // 지도를 누른 뒤처럼 포커스가 본문에 있다
+    w.eval(`toast('지웠어요','#4f4740',{fn:()=>{}})`);
+    ux3Key(w, 'Tab');
+    const act = t.querySelector('.toastAct');
+    assert.equal(w.document.activeElement, act, '본문에서도 Tab 한 번이면 토스트에 닿는다');
+    // 돌아갈 자리가 본문이면 Tab을 막지 않는다 — 막으면 포커스가 토스트에 갇히고 토스트는 머무는 동안 사라지지 않는다
+    assert.equal(ux3Key(w, 'Tab'), true, '두 번째 Tab은 브라우저의 원래 순서로 간다');
+    assert.equal(ux3Key(w, 'Tab', { shiftKey: true }), true);
+  } finally { w.close(); }
+});
+
+test('통합: 마우스로 위로·아래로를 누르면 ⋮ 메뉴를 다시 열어 두지 않는다 — 키보드일 때만', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    ux3Trip(w, [UX3_DAY('D1', [UX3_SPOT('A', 37.5), UX3_SPOT('B', 37.6), UX3_SPOT('C', 37.7)])]);
+    // 사파리처럼 누른 버튼이 포커스를 받지 않은 경우 = 키보드가 아니다
+    if (w.document.activeElement && w.document.activeElement.blur) w.document.activeElement.blur();
+    w.eval('moveSpot(0,1,-1)');
+    assert.deepEqual(ux3Names(w, 0), ['B', 'A', 'C']);
+    assert.equal(w.document.querySelectorAll('#sidebar details.actionMenu[open]').length, 0,
+      '바깥을 눌러도 닫히지 않는 메뉴라 열어 두면 목록 위에 떠 남는다');
+  } finally { w.close(); }
+});
+
+test('통합: 헤더 실행취소로 마지막 것까지 되돌려 버튼이 숨으면 포커스는 토스트의 다시 하기로', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    ux3Trip(w, [UX3_DAY('D1', [UX3_SPOT('A', 37.5), UX3_SPOT('B', 37.6)])]);
+    w.eval("setDayMode(0,'walk')");
+    const q = w.document.getElementById('undoQuick');
+    q.focus(); q.click();
+    assert.equal(q.hidden, true);
+    const act = w.document.querySelector('#toast .toastAct');
+    assert.equal(act && act.textContent, '다시 하기');
+    assert.equal(w.document.activeElement, act, '숨은 버튼에 포커스를 남기지 않는다');
+  } finally { w.close(); }
+});
+
+test('통합: 비용을 고친 것을 되돌리면 "비용 수정"이라고 말한다 — "여행 설정"이 아니다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    ux3Trip(w, [UX3_DAY('D1', [UX3_SPOT('A', 37.5)])]);
+    const label = (code) => { w.eval(code); w.eval('undo()'); return w.document.getElementById('toast').textContent; };
+    assert.match(label("commit(()=>{ trip().costItems=[{id:'c1',title:'보험',amount:30000}]; })"), /비용 수정을 되돌렸어요/);
+    assert.match(label("commit(()=>{ trip().days[0].costItems=[{id:'c2',title:'간식',amount:5000}]; })"), /비용 수정을 되돌렸어요/);
+    assert.match(label("commit(()=>{ const s=trip().days[0].spots[0]; s.cost=12000; s.payState='PAID'; })"), /비용 수정을 되돌렸어요/);
+  } finally { w.close(); }
+});
+
+test('통합: ⌘Y는 다시 하기가 아니다 — 맥 브라우저의 방문 기록 단축키를 가로채지 않는다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    ux3Trip(w, [UX3_DAY('D1', [UX3_SPOT('A', 37.5)])]);
+    w.eval("setDayMode(0,'walk'); undo();");
+    assert.equal(ux3Key(w, 'y', { metaKey: true }), true, '기본 동작을 막지 않는다');
+    assert.equal(w.eval('trip().days[0].mode'), 'car');
+    ux3Key(w, 'y', { ctrlKey: true });
+    assert.equal(w.eval('trip().days[0].mode'), 'walk');
+  } finally { w.close(); }
+});
+
+// ── ux3:map ──
+test('통합: 자차 하루의 가까운 구간은 차 경로가 아니라 두 곳 사이를 걷는 시간으로 도착을 계산한다', {skip:noJsdom}, () => {
+  // 2026-10-03 UX 검토: 직선 365m를 일방통행을 도는 차 경로 1.4km로 '가까워 걸어서 18분'이라 해 마요르 광장 도착이 밀렸다
+  const w=boot();
+  try{
+    withTrip(w, JSON.stringify([{mode:'car',startAt:'09:00',spots:[
+      {name:'푸에르타 델 솔',lat:40.4169,lng:-3.7035,stayMin:0},
+      {name:'마요르 광장',lat:40.4155,lng:-3.7074}
+    ]}]));
+    w.eval(`const s=trip().days[0].spots; legCache[legKey(s[0],s[1],'car')]={sec:420,m:1400,path:'x',mode:'car'}; render();`);
+    const leg=w.document.querySelector('.spot[data-si="1"] .leg');
+    assert.match(leg.textContent, /↳0\.5km · 가까워 걸어서 [5-7]분/, '걷는 거리·시간은 두 곳 사이로 잰다');
+    const eta=w.eval('Math.round(dayContext(0).timeline[1].eta)');
+    assert.ok(eta>=9*60+5 && eta<=9*60+7, `도착 예상이 걸음으로 계산된다: ${eta}`);
+  }finally{ w.close(); }
+});
+
+/** 구글 지도를 흉내 낸다 — 맞춤(fitBounds)의 여백과 옮긴 중심을 기록한다. 투영은 경도=x·위도=-y(줌 0이면 1px=1도) */
+function fakeGoogleMap(w){
+  w.eval(`window.__fits=[]; window.__pans=[];
+    window.google={maps:{
+      LatLng:function(a,b){ this.lat=()=>a; this.lng=()=>b; },
+      LatLngBounds:function(){ const pts=[]; this.pts=pts; this.extend=p=>pts.push(p);
+        this.getCenter=()=>{ const la=pts.map(p=>p.lat), ln=pts.map(p=>p.lng);
+          return new google.maps.LatLng((Math.min(...la)+Math.max(...la))/2,(Math.min(...ln)+Math.max(...ln))/2); }; },
+      Point:function(x,y){ this.x=x; this.y=y; },
+      marker:{AdvancedMarkerElement:function(o){ this.map=o.map; this.addEventListener=()=>{}; }},
+      Polyline:function(){ this.setMap=()=>{}; },
+      event:{addListenerOnce:(m,ev,cb)=>cb(), addListener:()=>{}, trigger:()=>{}}
+    }};
+    let zoom=0;
+    map={ fitBounds:(b,p)=>{ __fits.push({n:b.pts.length,pad:p}); zoom=21; }, getZoom:()=>zoom, setZoom:z=>{ zoom=z; },
+      setCenter:c=>__pans.push({lat:c.lat(),lng:c.lng()}), panTo:c=>__pans.push({lat:c.lat(),lng:c.lng()}),
+      getProjection:()=>({ fromLatLngToPoint:ll=>new google.maps.Point(ll.lng(),-ll.lat()), fromPointToLatLng:p=>new google.maps.LatLng(-p.y,p.x) }) };
+    engine='google';`);
+}
+/** 375×812 휴대폰 — 지도는 필터바 아래(144)부터 화면 끝까지, 일정 시트는 그 위를 아래에서 덮는다 */
+function phoneLayout(w){
+  Object.defineProperty(w,'innerWidth',{configurable:true,value:375});
+  Object.defineProperty(w,'innerHeight',{configurable:true,value:812});
+  w.matchMedia=(q)=>({matches:/max-width/.test(q)});
+  w.document.getElementById('map').getBoundingClientRect=()=>({top:144,bottom:812,left:0,right:375,width:375,height:668});
+}
+
+test('통합: 모바일 지도 맞춤은 일정 시트가 덮은 만큼 아래를 비우고, 시트 높이가 바뀌면 다시 맞춘다', {skip:noJsdom}, async () => {
+  // 2026-10-03 UX 검토: 절반 시트가 지도의 55%를 덮는데 맞춤은 지도 전체 기준이라 'Day 2'·'전체'의 핀이 전부 시트 뒤였다
+  const w=boot();
+  try{
+    withTrip(w, JSON.stringify([
+      {spots:[{name:'솔',lat:40.4169,lng:-3.7035},{name:'마요르',lat:40.4155,lng:-3.7074}]},
+      {spots:[{name:'세비야',lat:37.3891,lng:-5.9845},{name:'론다',lat:36.7462,lng:-5.1612}]}
+    ]));
+    fakeGoogleMap(w); phoneLayout(w);
+    const sheet=w.document.getElementById('sidebar');
+    sheet.dataset.snap='half';
+    w.eval('fitDay(1)');
+    let pad=w.__fits.at(-1).pad;
+    assert.ok(pad.bottom>=812*.45, `절반 시트(45%)만큼 아래를 비운다: ${JSON.stringify(pad)}`);
+    assert.ok(pad.top<pad.bottom && pad.top>0, '위는 기본 여백만');
+    // 시트를 내리면(지도 크게 보기) 보이는 지도가 커졌으니 같은 보기를 다시 맞춘다
+    w.eval(`setSheetSnap('collapsed')`);
+    await new Promise(r=>setTimeout(r,320));
+    pad=w.__fits.at(-1).pad;
+    assert.equal(w.__fits.length,2,'시트 높이가 바뀌면 다시 맞춘다');
+    assert.ok(pad.bottom>=812*.15 && pad.bottom<812*.45, `접힌 시트만큼만: ${JSON.stringify(pad)}`);
+    // 사람이 지도를 만졌으면 그 보기를 지킨다 — 시트가 바뀌어도 앱이 다시 맞추지 않는다
+    w.document.getElementById('map').dispatchEvent(new w.Event('pointerdown'));
+    w.eval(`setSheetSnap('half')`);
+    await new Promise(r=>setTimeout(r,320));
+    assert.equal(w.__fits.length,2,'만진 뒤에는 다시 맞추지 않는다');
+    // 진입 맞춤은 칩('전체')과 같다 — 첫날만이 아니라 모든 날
+    w.eval('activeDay=0; fitEntry()');
+    assert.equal(w.__fits.at(-1).n,4,'진입하면 전체 일정에 맞춘다');
+    // 한 곳뿐이면 최대로 당기지 않는다(녹지만 보였다)
+    w.eval(`trip().days=[{spots:[{name:'협재',lat:33.394,lng:126.2397}]}]; fitAll()`);
+    assert.equal(w.eval('map.getZoom()'),14,'한 곳뿐이면 동네가 보이는 줌에서 멈춘다');
+    // 줌을 줄이면 지도 한가운데를 축으로 줄어 덮인 쪽으로 밀린다 — 보이는 곳 가운데에 다시 놓는다(아래가 덮였으니 중심은 그 점보다 남쪽)
+    assert.ok(w.__pans.at(-1).lat<33.394, '줌 상한 뒤에도 그 점이 시트 위에 남는다');
+  }finally{ w.close(); }
+});
+
+test('통합: 장소 이름(지도에서 보기)은 패널과 시트를 뺀 보이는 곳 가운데로 옮긴다', {skip:noJsdom}, () => {
+  // 2026-10-03 UX 검토: '푸에르타 델 솔 지도에서 보기'는 중심을 정확히 그곳에 두었지만 장소 살펴보기 패널이 핀을 덮었다
+  const w=boot();
+  try{
+    withTrip(w, JSON.stringify([{spots:[{name:'푸에르타 델 솔',lat:40.4169,lng:-3.7035},{name:'마요르',lat:40.4155,lng:-3.7074}]}]));
+    fakeGoogleMap(w); phoneLayout(w);
+    w.document.getElementById('sidebar').dataset.snap='half';
+    const pd=w.document.getElementById('placeDetails');
+    pd.getBoundingClientRect=()=>pd.dataset.mapFocus? {top:365,bottom:812,left:0,right:375,width:375,height:447} : {top:97,bottom:812,left:0,right:375,width:375,height:715};
+    w.eval('focusSpot(0,0)');
+    assert.equal(pd.open,true,'장소 정보는 그대로 연다');
+    assert.equal(pd.dataset.mapFocus,'1','좁은 화면에서는 지도가 남을 만큼만 올린다');
+    const c=w.__pans.at(-1);
+    assert.ok(c.lat<40.4169, `중심을 그 점보다 남쪽에 두어 핀이 패널 위에 보인다: ${c.lat}`);
+    assert.equal(c.lng,-3.7035,'옆으로는 옮기지 않는다');
+    w.eval('closePlaceDetails()'); pd.dispatchEvent(new w.Event('close'));   // jsdom의 close()는 이벤트를 내지 않는다 — 브라우저처럼
+    assert.equal(pd.dataset.mapFocus,undefined,'다른 길로 열면 원래 높이');
+  }finally{ w.close(); }
+});
+
+test('통합: 장소 ⋮ 메뉴는 시트 윗변까지 재고, 위아래 어디로도 잘리면 시트 밖에 띄운다', {skip:noJsdom}, () => {
+  // 2026-10-03 UX 검토: 절반 시트 가운데 행의 ⋮가 위로 열리며 '↑ 위로·↓ 아래로'가 시트 윗변에 잘렸다(화면 위끝과 비교했다)
+  const w=boot();
+  try{
+    withTrip(w, JSON.stringify([{spots:[{name:'A',lat:40.41,lng:-3.70},{name:'B',lat:40.42,lng:-3.70}]}]));
+    w.eval('render()');
+    Object.defineProperty(w,'innerWidth',{configurable:true,value:375});
+    Object.defineProperty(w,'innerHeight',{configurable:true,value:812});
+    const sb=w.document.getElementById('sidebar');
+    sb.getBoundingClientRect=()=>({top:447,bottom:812,left:0,right:375,height:365,width:375});
+    w.document.getElementById('sheetHandle').getBoundingClientRect=()=>({top:447,bottom:487,height:40,left:0,right:375,width:375});
+    const menu=w.document.querySelector('.spot[data-si="1"] .actionMenu'), panel=menu.querySelector('.actionMenuPanel');
+    const open=(menuTop)=>{
+      menu.getBoundingClientRect=()=>({top:menuTop,bottom:menuTop+44,left:319,right:363,height:44,width:44});
+      panel.getBoundingClientRect=()=>({top:menuTop+42,bottom:menuTop+42+276,left:243,right:363,height:276,width:120});
+      menu.open=true; menu.dispatchEvent(new w.Event('toggle'));
+    };
+    open(600);   // 아래로는 812를 넘고, 위로는 600-276=324라 시트 윗변(447+40) 위로 나간다
+    assert.equal(menu.classList.contains('up'),false,'시트 윗변 위로는 열지 않는다');
+    assert.ok(menu.classList.contains('float'),'시트 밖 화면에 띄운다');
+    assert.equal(panel.style.top,'324px','⋮ 바로 위에 띄운다');
+    assert.equal(panel.style.right,'12px');
+    menu.open=false; menu.dispatchEvent(new w.Event('toggle'));
+    assert.equal(menu.classList.contains('float'),false,'닫으면 원래대로');
+    assert.equal(panel.style.top,'');
+    open(780);   // 시트 위쪽에 자리가 넉넉하면(780-276=504 ≥ 487) 시트 안에서 위로 연다
+    assert.ok(menu.classList.contains('up'));
+    assert.equal(menu.classList.contains('float'),false);
+  }finally{ w.close(); }
+});
+
+test("통합: 헤더의 채운 버튼은 하나다 — '여행 중 안내'는 여행 기간·하루 전에만 주 버튼", {skip:noJsdom}, () => {
+  // 2026-10-03 UX 검토: 3주 전에도 '여행 중 안내'가 가장 진한 버튼이라 샘플 띠의 '내 여행 만들기'와 둘이었고 여행 이름이 잘렸다
+  const w=boot();
+  try{
+    const btn=w.document.getElementById('travelBtn'), make=w.document.getElementById('sampleNew');
+    const at=(iso)=>w.eval(`travelClock=()=>({todayISO:'${iso}',nowMin:600}); store={trips:[sampleTrip()],activeId:SAMPLE_TRIP_ID}; render();`);
+    at('2026-10-03');   // 샘플은 10/25 시작 — D-22
+    assert.equal(btn.classList.contains('primary'),false,'여행 전에는 조용한 버튼');
+    assert.ok(btn.classList.contains('quiet'),'좁은 화면에서는 아이콘만(여행 이름에 자리를 준다)');
+    assert.equal(btn.getAttribute('aria-label'),'여행 중 안내','글자를 숨겨도 이름은 남는다');
+    assert.ok(make.classList.contains('primary'),'그때 주 버튼은 내 여행 만들기 하나');
+    at('2026-10-24');   // D-1
+    assert.ok(btn.classList.contains('primary'),'하루 전부터는 여행 중 안내가 주 버튼');
+    at('2026-10-27');   // 여행 중
+    assert.ok(btn.classList.contains('primary'));
+    assert.equal(make.classList.contains('primary'),false,'둘이 겨루지 않게 샘플 띠 버튼이 물러난다');
+    at('2026-12-01');   // 지난 여행
+    assert.equal(btn.classList.contains('primary'),false);
+  }finally{ w.close(); }
+});
+
+test('통합: 같은 자리의 핀은 앞선 날이 위이고, 색이 되돌아오는 둘째 바퀴의 날은 속 빈 고리다(칩·범례·핀이 같다)', {skip:noJsdom}, () => {
+  // 2026-10-03 UX 검토: 첫날 도착 공항의 '1' 핀이 마지막 날(Day 14) 보라색으로 덮였고, Day 1과 11이 같은 색이라 구분할 수 없었다
+  const w=boot();
+  try{
+    const days=Array.from({length:12},(_,i)=>({spots:[{name:'P'+i,lat:40+i*0.1,lng:-3.7}]}));
+    days[0].spots.unshift({name:'공항',lat:40.49,lng:-3.56});
+    days[11].spots.push({name:'공항',lat:40.49,lng:-3.56});
+    withTrip(w, JSON.stringify(days));
+    fakeGoogleMap(w);
+    w.eval(`window.__pins=[]; google.maps.marker.AdvancedMarkerElement=function(o){ this.map=o.map; this.addEventListener=()=>{};
+      if(o.content&&o.content.classList&&o.content.classList.contains('num-icon')) __pins.push({pos:o.position, z:o.zIndex, ring:o.content.classList.contains('ring'), color:o.content.style.color}); };
+      _ovSig=null; render();`);
+    const airport=w.__pins.filter(p=>p.pos.lat===40.49);
+    assert.equal(airport.length,2,'공항 핀은 첫날·마지막 날 둘');
+    const [first,last]=airport;   // 그리는 순서는 날 순서다
+    assert.ok(first.z>last.z, `앞선 날이 위: ${first.z} > ${last.z}`);
+    assert.equal(first.ring,false,'첫 바퀴는 채운 핀');
+    assert.equal(last.ring,true,'Day 12는 둘째 바퀴 — 속 빈 고리');
+    assert.ok(last.color,'고리 핀의 번호·테두리는 그날 색');
+    const chipDot=(n)=>[...w.document.querySelectorAll('#filterbar .chip')].find(b=>b.textContent==='Day '+n).querySelector('.dot');
+    assert.equal(chipDot(1).classList.contains('ring'),false);
+    assert.ok(chipDot(11).classList.contains('ring'),'칩 점도 같은 규칙');
+    const legDot=w.document.querySelector('#legend .legDay[data-di="10"] .dot');
+    assert.ok(legDot.classList.contains('ring'),'범례 점도 같은 규칙');
+    assert.ok(w.document.querySelector('#legend .legFoot'),"'일자 간 이동'은 범례 바닥 줄로 따로 있다(굴러도 붙어 있다)");
+  }finally{ w.close(); }
+});
+
+test('통합: 지도 확대·축소 단추는 범례(오른쪽 아래)와 다른 자리에 둔다', {skip:noJsdom}, () => {
+  // 2026-10-03 UX 검토: 데스크톱에서 범례가 기본 자리(오른쪽 아래)의 '+'·'-'를 덮어 눌러도 줌이 그대로였다
+  const w=boot();
+  try{
+    fakeGoogleMap(w);
+    w.eval(`const fake=map; google.maps.ControlPosition={RIGHT_TOP:'RIGHT_TOP',RIGHT_BOTTOM:'RIGHT_BOTTOM',LEFT_BOTTOM:'LEFT_BOTTOM'};
+      google.maps.InfoWindow=function(){ this.close=()=>{}; this.open=()=>{}; this.setContent=()=>{}; }; fake.addListener=()=>{};
+      google.maps.Map=function(el,o){ window.__mapOpts=o; return fake; }; __gmapsReady();`);
+    const pos=w.eval('__mapOpts.zoomControlOptions && __mapOpts.zoomControlOptions.position');
+    assert.ok(pos, '자리를 정한다(기본은 오른쪽 아래)');
+    assert.notEqual(pos,'RIGHT_BOTTOM','범례 자리가 아니다');
+    assert.notEqual(pos,'LEFT_BOTTOM','Google 로고 자리도 아니다');
+  }finally{ w.close(); }
+});
+
+test("통합: 경로 재생은 지도 위 고정 버튼이고, 테마는 ☰에 있으며, 샘플로 들어오면 재생을 한 번 권한다", {skip:noJsdom}, () => {
+  // 2026-10-03 UX 검토: '경로 재생'·'테마 전환'이 칩 26개 뒤 '보기 설정' 안(375px에서 x=1179)에 있어 샘플의 볼거리를 지나쳤다
+  const w=boot();
+  try{
+    w.eval(`store={trips:[sampleTrip()],activeId:SAMPLE_TRIP_ID}; render();`);
+    const play=w.document.getElementById('playBtn');
+    assert.ok(play && !play.closest('#filterbar'),'재생은 필터바(칩 줄) 밖');
+    assert.ok(play.closest('#main'),'지도 위에 있다');
+    assert.equal(play.hidden,false,'따라갈 동선이 있으면 보인다');
+    assert.match(play.textContent,/경로 재생/);
+    assert.equal(w.document.querySelector('#filterbar #themeChoice'),null,'테마는 칩 줄에 없다');
+    // 테마는 ☰의 '화면'에서 고른다(시스템·밝게·어둡게 — 접근성 묶음이 토글을 이 선택으로 바꿨다)
+    const dark=w.document.querySelector('#hdrMenu #themeChoice button[data-theme="dark"]');
+    assert.ok(dark,'테마는 ☰ 설정에');
+    dark.click();
+    assert.equal(w.document.body.classList.contains('theme-dark'),true,'☰에서 고르면 바뀐다');
+    // 샘플 먼저 둘러보기 → 경로 재생을 권하는 한 마디(누르면 재생)
+    w.eval(`window.__played=0; playTrip=()=>{ __played++; };`);
+    w.document.getElementById('onboardSample').click();
+    const toast=w.document.getElementById('toast');
+    assert.match(toast.textContent,/경로 재생/);
+    toast.querySelector('.toastAct').click();
+    assert.equal(w.__played,1,'권한 자리에서 바로 재생');
+    // 위치 있는 장소가 하나뿐이면 재생할 동선이 없다 — 버튼을 세우지 않는다
+    withTrip(w, JSON.stringify([{spots:[{name:'한 곳',lat:40.4,lng:-3.7},{name:'위치 없음'}]}]));
+    w.eval('render()');
+    assert.equal(play.hidden,true);
+  }finally{ w.close(); }
+});
+
+test('통합: 데스크톱에는 일정 시트가 없으니 시트 단계가 바뀌어도 사람이 휠로 맞춘 지도를 되돌리지 않는다', {skip:noJsdom}, async () => {
+  // 검토(2026-10-03): 데스크톱도 지도를 누르면 snap이 'collapsed'가 되고 일자 카드를 누르면 'half'로 돌아온다.
+  // 휠 확대는 pointerdown을 내지 않아 앱의 마지막 보기가 남아 있었고, 그때 다시 맞춰 사람이 본 곳을 빼앗았다
+  const w=boot();
+  try{
+    withTrip(w, JSON.stringify([{spots:[{name:'솔',lat:40.4169,lng:-3.7035},{name:'마요르',lat:40.4155,lng:-3.7074}]}]));
+    fakeGoogleMap(w);
+    w.matchMedia=()=>({matches:false});
+    w.document.getElementById('sidebar').dataset.snap='collapsed';
+    w.eval('fitDay(0)');
+    const fits=w.__fits.length, pans=w.__pans.length;
+    w.eval(`setSheetSnap('half')`);
+    await new Promise(r=>setTimeout(r,320));
+    assert.equal(w.__fits.length,fits,'데스크톱에서는 다시 맞추지 않는다');
+    assert.equal(w.__pans.length,pans);
+  }finally{ w.close(); }
+});
+
+// ── ux3:costs ──
+test('통합(ux3): 자차 날의 택시 요금은 하루 비용·전체 비용에 넣지 않고 참고로만 말한다', { skip: noJsdom }, () => {
+  const w=boot();
+  try{
+    withTrip(w, `[{title:'D1',drive:'',note:'',mode:'car',spots:[{name:'A',city:'M',desc:'',lat:40.41,lng:-3.69,cost:5000},{name:'B',city:'M',desc:'',lat:40.42,lng:-3.70}]},
+      {title:'D2',drive:'',note:'',mode:'taxi',spots:[{name:'C',city:'M',desc:'',lat:40.41,lng:-3.69},{name:'D',city:'M',desc:'',lat:40.42,lng:-3.70}]}]`);
+    w.eval(`dayRoute=()=>({sec:3600,m:40000,taxi:60900}); render();`);
+    assert.equal(w.eval('tripCostBreakdown().taxi'), 60900, '택시 날 하루치만');
+    assert.equal(w.eval('tripCostBreakdown().total'), 5000+60900);
+    const cards=[...w.document.querySelectorAll('.dayCard')];
+    const costLine=(c)=>[...c.querySelectorAll('.dist')].map(x=>x.textContent).find(t=>t.includes('하루 비용'))||'';
+    assert.match(costLine(cards[0]).replace(/\s+/g,''), /하루비용약₩5,000$/, '자차 날은 장소 비용만');
+    assert.ok(cards[0].textContent.includes('택시로 간다면 약 60,900원'), '자차 날의 택시 요금은 참고로 남는다');
+    assert.match(costLine(cards[1]).replace(/\s+/g,''), /하루비용약₩60,900/, '택시 날은 그대로 든다');
+    const panel=w.document.querySelector('#filterbar .costMenu').textContent;
+    assert.match(panel, /택시\(택시 일자\)/);
+    assert.match(panel, /자차 일자는 택시비를 넣지 않았어요 — 택시로 간다면 약 ₩60,900/);
+  }finally{ w.close(); }
+});
+
+test('통합(ux3): 예약이 아닌 분류로 옮기면 앱이 대신 고른 결제 예정을 거두고, 사람이 고른 상태는 둔다', { skip: noJsdom }, () => {
+  const w=boot();
+  try{
+    withTrip(w, `[{mode:'car',startAt:'09:00',spots:[{name:'H',lat:40.41,lng:-3.69,city:'M'}]}]`);
+    const el=(id)=>w.document.getElementById(id), set=(id,v)=>{ el(id).value=v; };
+    w.eval('openBookingList()'); el('bookingAdd').click();
+    assert.equal(el('bkType').value,'STAY'); assert.equal(el('bkPayState').value,'RESERVED','예약에는 고르지 않음이 없다');
+    set('bkType','OTHER'); w.eval('toggleBkFields()');
+    assert.equal(el('bkPayState').value,'NONE','앱이 고른 결제 예정은 거둔다');
+    set('bkTitle','유심(eSIM)'); set('bkPrice','9,900'); el('bkSave').click();
+    assert.equal(w.eval('trip().costItems[0].payState'), undefined, '고르지 않은 상태는 저장하지 않는다');
+    assert.ok(!/결제 예정/.test(el('bookingListBody').querySelector('.pxRow').textContent));
+    w.eval('openResvList()');
+    assert.ok(!el('resvListBody').textContent.includes('유심'), '예약으로 보이지 않는다');
+    // 사람이 고른 상태는 분류를 바꿔도 그대로다
+    el('bookingAdd').click();
+    el('bkPayState').value='PAID'; el('bkPayState').dispatchEvent(new w.Event('change'));
+    set('bkType','TICKET'); w.eval('toggleBkFields()');
+    assert.equal(el('bkPayState').value,'PAID');
+  }finally{ w.close(); }
+});
+
+test('통합(ux3): 예약번호를 웹에서 적고, iOS와 같은 키(confirmation)로 저장한다', { skip: noJsdom }, () => {
+  const w=boot();
+  try{
+    withTrip(w, `[{mode:'car',startAt:'09:00',spots:[]}]`);
+    const el=(id)=>w.document.getElementById(id), set=(id,v)=>{ el(id).value=v; };
+    w.eval('openBookingModal(null)'); set('bkType','FLIGHT'); w.eval('toggleBkFields()');
+    assert.notEqual(el('bkBookingExtra').style.display,'none','예약에는 예약번호 칸이 보인다');
+    set('bkTitle','ICN→MAD'); set('bkPrice','900000'); set('bkConfirmation',' XY-123 ');
+    el('bkSave').click();
+    assert.equal(w.eval('trip().bookings[0].confirmation'),'XY-123');
+    w.eval('openResvList()');
+    assert.match(el('resvListBody').textContent, /예약번호 XY-123/);
+    // 가져온 예약의 옛 키도 읽고, 고쳐 저장하면 하나의 키로 모은다(TripBooking.confirmation과 같은 규칙)
+    w.eval(`trip().bookings.push({id:'old1',type:'hotel',title:'H',price:1,confirmationNumber:'OLD-9',track:false}); openBookingModal('old1')`);
+    assert.equal(el('bkConfirmation').value,'OLD-9');
+    el('bkSave').click();
+    assert.deepEqual(w.eval(`JSON.stringify([bookingOf('old1').confirmation,bookingOf('old1').confirmationNumber||null])`), JSON.stringify(['OLD-9',null]));
+  }finally{ w.close(); }
+});
+
+test('통합(ux3): 무료 취소를 건드리지 않은 예약은 모름이다 — 불가라고 단정하지 않는다', { skip: noJsdom }, () => {
+  const w=boot();
+  try{
+    withTrip(w, `[{mode:'car',startAt:'09:00',spots:[]}]`);
+    const el=(id)=>w.document.getElementById(id), set=(id,v)=>{ el(id).value=v; };
+    w.eval('openBookingModal(null)'); set('bkType','FLIGHT'); w.eval('toggleBkFields()');
+    assert.equal(el('bkFreeCancel').value,'','기본은 모름');
+    set('bkTitle','항공'); set('bkPrice','300000'); el('bkSave').click();
+    assert.equal(w.eval(`'refundable' in trip().bookings[0]`), false, '모름은 저장하지 않는다');
+    assert.equal(w.eval('resvCancelText(trip().bookings[0])'), '취소 조건을 적지 않았어요');
+    w.eval(`openBookingModal(trip().bookings[0].id)`); set('bkFreeCancel','0'); w.eval('toggleBkFields()'); el('bkSave').click();
+    assert.equal(w.eval('trip().bookings[0].refundable'), false);
+    assert.equal(w.eval('resvCancelText(trip().bookings[0])'), '무료 취소 안 됨', '사람이 불가라고 했을 때만');
+    // 이미 저장된 예약의 true·구버전(기한만 있음)은 가능으로 읽는다
+    w.eval(`trip().bookings.push({id:'r1',type:'hotel',title:'H',price:1,refundable:true,track:false},{id:'r2',type:'hotel',title:'H2',price:1,freeCancelUntil:'2099-01-01',track:false});`);
+    w.eval(`openBookingModal('r1')`); assert.equal(el('bkFreeCancel').value,'1');
+    w.eval(`openBookingModal('r2')`); assert.equal(el('bkFreeCancel').value,'1');
+    assert.equal(el('bkFreeUntilWrap').style.display,'block','가능이면 기한 칸이 보인다');
+  }finally{ w.close(); }
+});
+
+test('통합(ux3): 비용 안내는 숙박·렌터카만 나눈다고 말하고, 일정 밖 예약 몫을 따로 알린다', { skip: noJsdom }, () => {
+  const w=boot();
+  try{
+    withTrip(w, `[{title:'D1',drive:'',note:'',mode:'transit',spots:[]},{title:'D2',drive:'',note:'',mode:'transit',spots:[]}]`);
+    // 3박 중 2박만 일정 안 — 1박치 10만 원은 어느 일자 카드에도 없다. 항공은 원래 나누지 않으므로 세지 않는다
+    w.eval(`trip().bookings=[{id:'h1',type:'hotel',title:'Hotel',price:300000,start:'2026-08-01',end:'2026-08-04',track:false},
+      {id:'f1',type:'flight',title:'항공',price:500000,track:false}]; render();`);
+    assert.equal(w.eval('bookingOutsideKRW()'), 100000);
+    const panel=w.document.querySelector('#filterbar .costMenu').textContent;
+    assert.match(panel, /숙박·렌터카만 날수로 나눠/);
+    assert.match(panel, /일정 밖 기간\(또는 기간 미정\)의 예약 ₩100,000은 어느 일자 카드에도 없어요/);
+    assert.doesNotMatch(panel, /이걸 날수로 나눈 하루치/);
+    w.eval('openBookingList()');
+    assert.match(w.document.getElementById('bookingListBody').textContent, /숙박·렌터카만 날수로 나눠/, '목록도 같은 문장');
+  }finally{ w.close(); }
+});
+
+test('통합(ux3): 예약 결제 금액 목록은 총액을 하나만 말하고 그 안을 가르며, 절약 칸은 추적할 때만', { skip: noJsdom }, () => {
+  const w=boot();
+  try{
+    withTrip(w, `[{title:'D1',drive:'',note:'',mode:'transit',spots:[]}]`);
+    w.eval(`trip().bookings=[{id:'f1',type:'flight',title:'항공',price:300000,track:false}];
+      trip().costItems=[{id:'i1',title:'보험',kind:'OTHER',amount:25000,costBasis:'TOTAL'}]; openBookingList();`);
+    assert.equal(w.document.getElementById('bookingSummary').textContent.trim(), '', '추적하는 예약이 없으면 절약 칸이 없다');
+    const body=w.document.getElementById('bookingListBody').textContent;
+    assert.ok(!/현재 예약 총액/.test(body+w.document.getElementById('bookingSummary').textContent));
+    assert.match(body, /그중 예약\(항공·숙박·렌트\) ₩300,000 · 예약 외 ₩25,000/);
+    w.eval(`trip().bookings.push({id:'h1',type:'hotel',title:'H',price:100000,start:'2099-01-01',end:'2099-01-02',track:true}); renderBookingList();`);
+    const sum=w.document.getElementById('bookingSummary').textContent;
+    assert.match(sum, /같은 조건으로 지금 아낄 수 있는 돈/);
+    assert.match(sum, /아직 없어요/, '없을 때는 대시가 아니라 말로');
+  }finally{ w.close(); }
+});
+
+test('통합(ux3): 장소 비용 입력 — 결제 상태·통화 이름이 다른 화면과 같고, 장소가 없으면 담는 길을 준다', { skip: noJsdom }, () => {
+  const w=boot();
+  try{
+    withTrip(w, `[{title:'D1',drive:'',note:'',mode:'transit',spots:[]}]`);
+    const el=(id)=>w.document.getElementById(id);
+    assert.deepEqual([...el('costPayState').options].map(o=>o.textContent), w.eval(`['NONE','RESERVED','PAID'].map(k=>PAY_STATE_LABEL[k])`));
+    assert.deepEqual([...el('costCurrency').options].map(o=>o.textContent), [...el('bkCur').options].map(o=>o.textContent), '예약 편집기와 같은 통화 이름');
+    w.eval('openPlaceCost(0)');
+    assert.equal(el('costPlaceEmpty').hidden, false, '장소가 없으면 안내');
+    assert.ok(el('placeCostDialog').classList.contains('isEmpty'));
+    el('costPlaceAddSpot').click();
+    assert.equal(el('placeCostDialog').open, false);
+    assert.ok(el('spotModalBg').classList.contains('show'), '담기로 바로 간다');
+    w.eval(`document.getElementById('spotModalBg').classList.remove('show'); trip().days[0].spots.push({name:'미술관',city:'M',desc:'',lat:40.41,lng:-3.69}); openPlaceCost(0)`);
+    assert.equal(el('costPlaceEmpty').hidden, true);
+    assert.ok(!el('placeCostDialog').classList.contains('isEmpty'));
+    el('costAmount').value='12000'; el('costPlaceSave').click();
+    assert.match(el('toast').textContent, /Day 1 하루 비용\(현지 결제 금액\)에 넣었어요/, '어디에 들어갔는지 말한다');
+  }finally{ w.close(); }
+});
+
+test('통합(ux3): 1인 금액은 어디서나 × 인원 = 합계로 보인다', { skip: noJsdom }, () => {
+  const w=boot();
+  try{
+    withTrip(w, `[{title:'D1',drive:'',note:'',mode:'transit',spots:[{name:'식당',city:'M',desc:'',lat:40.41,lng:-3.69,cost:5000,costBasis:'PER_PERSON',costPeople:2}]}]`);
+    w.eval('render()');
+    const meta=w.document.querySelector('.dayCard .spot .spotMetaItem.cost').textContent;
+    assert.match(meta, /1인 ₩5,000 × 2명 = ₩10,000/);
+    const dayLine=[...w.document.querySelectorAll('.dayCard .dist')].map(x=>x.textContent).find(t=>t.includes('하루 비용'));
+    assert.match(dayLine.replace(/\s+/g,''), /₩10,000/, '하루 합계와 같은 값을 말한다');
+    w.eval('openPlaceCost(0)');
+    assert.match(w.document.getElementById('costPerPersonNote').textContent, /1인 ₩5,000 × 2명 = ₩10,000/);
+    w.document.getElementById('costBasis').value='TOTAL'; w.document.getElementById('costBasis').dispatchEvent(new w.Event('change'));
+    assert.equal(w.document.getElementById('costPerPersonNote').textContent, '', '전체 금액이면 곱하지 않는다');
+    w.document.getElementById('placeCostDialog').close();
+    w.eval('openSpotModal(0,0)');
+    assert.match(w.document.getElementById('costKrwHint').textContent, /× 2명 = ₩10,000/, '장소 편집기의 칸은 1인 금액이라고 말한다');
+  }finally{ w.close(); }
+});
+
+test('통합(ux3): 가격 조회 공급자는 사람이 아는 이름으로, 렌터카에는 호텔 공급자 줄·쓸모없는 다시 검색이 없다', { skip: noJsdom }, async () => {
+  const w=boot();
+  try{
+    const line=w.eval(`pxSourceLineHtml([{id:'google-hotels (serpapi)',status:'CONNECTED'},{id:'booking.com',status:'AUTH_REQUIRED'}])`);
+    assert.match(line, /Google 호텔 연결됨/); assert.match(line, /Booking\.com 아직 연결되지 않았어요/);
+    assert.doesNotMatch(line, /serpapi|google-hotels/);
+    const day=(d)=>new Date(Date.now()+d*86400000).toISOString().slice(0,10);
+    withTrip(w, `[{mode:'car',startAt:'09:00',spots:[]}]`);
+    w.eval(`trip().bookings=[{id:'car1',type:'car',title:'RecordGo',price:320,cur:'EUR',start:'${day(30)}',end:'${day(34)}',carPickupCode:'PMI',track:true}];
+      CarMarketProvider.searchOffers=async()=>{ throw Object.assign(new Error('x'),{code:'AUTH_REQUIRED'}); };`);
+    await w.eval(`checkBookingPrice('car1',{force:true})`);
+    w.eval(`openBookingModal('car1')`);
+    assert.match(w.document.getElementById('bkStatus').textContent, /자동 조회 미연결/);
+    assert.equal(w.document.getElementById('bkCheckNow'), null, '연결이 없으면 다시 검색 버튼을 두지 않는다');
+    assert.equal(w.document.getElementById('bkSourceLine'), null, '렌터카에는 호텔 공급자 줄이 없다');
+    // 숙소 이름 칸은 '예약처 표기와 같게'라고 하면서 한글 이름을 채우지 않는다 — 조회가 이름을 어떻게 쓰는지 말한다
+    w.eval(`openBookingModal(null)`); w.document.getElementById('bkType').value='STAY'; w.eval('toggleBkFields()');
+    assert.equal(w.document.getElementById('bkTitleLabel').textContent, '숙소 이름 *');
+    w.document.getElementById('bkTitle').value='신라호텔'; w.document.getElementById('bkTitle').dispatchEvent(new w.Event('input'));
+    assert.match(w.document.getElementById('bkTitleHint').textContent, /영문 표기를 찾아/);
+  }finally{ w.close(); }
+});
+
+test('통합(ux3): 예약 목록의 날짜·금액은 다른 화면과 같은 꼴이다', { skip: noJsdom }, () => {
+  const w=boot();
+  try{
+    withTrip(w, `[{title:'D1',drive:'',note:'',mode:'car',spots:[]}]`);
+    w.eval(`trip().bookings=[{id:'c1',type:'car',title:'렌트',price:80000,start:'2026-10-21',end:'2026-10-21',carPickupTime:'09:00',carReturnTime:'20:00',paidOn:'2026-10-10',track:false},
+      {id:'h1',type:'hotel',title:'H',price:12.5,cur:'USD',start:'2026-10-21',end:'2026-10-23',track:false}]; openBookingList();`);
+    const body=w.document.getElementById('bookingListBody').textContent;
+    assert.match(body, /10\/21 \(수\) 09:00–20:00 · 당일/);
+    assert.match(body, /결제일 10\/10 \(토\)/);
+    assert.match(body, /10\/21 \(수\) ~ 10\/23 \(금\)/);
+    assert.match(body, /\$12\.50 ≈/);
+    assert.doesNotMatch(body, /2026-10-21/);
+    assert.equal(w.eval(`fmtMoney(100,'USD')`), '100', '정수 금액은 그대로');
+  }finally{ w.close(); }
+});
+
+test('통합(ux3): 비용 삭제 확인은 묻는 말이고, 없는 체크박스를 가리키지 않으며 삭제가 위험해 보인다', { skip: noJsdom }, () => {
+  const w=boot();
+  try{
+    withTrip(w, `[{mode:'car',startAt:'09:00',spots:[]}]`);
+    const el=(id)=>w.document.getElementById(id);
+    w.eval(`trip().costItems=[{id:'i1',title:'유심(eSIM)',kind:'OTHER',amount:9900,costBasis:'TOTAL'}]; openBookingModal('i1')`);
+    el('bkDelBtn').click();
+    assert.equal(el('costDeleteTitle').textContent, '유심(eSIM) 비용을 지울까요?');
+    assert.equal(el('costDeleteSourceRow').hidden, true);
+    assert.doesNotMatch(el('costDeleteNote').textContent, /선택하지 않으면/, '숨긴 체크박스를 가리키지 않는다');
+    assert.ok(el('costDeleteConfirm').classList.contains('danger'));
+    el('costDeleteCancel').click();
+    w.eval(`trip().bookings=[{id:'b1',type:'hotel',title:'H',price:1,track:false}]; openBookingModal('b1')`);
+    el('bkDelBtn').click();
+    assert.match(el('costDeleteNote').textContent, /선택하지 않으면 비용 정보만 지워요/, '체크박스가 있을 때만 그 말을 한다');
+  }finally{ w.close(); }
+});
+
+test('통합(ux3): 예약 찾기에서 자세히로 연 편집기를 닫으면 목록으로 돌아오고, 저장하면 목록이 바뀐다', { skip: noJsdom }, () => {
+  const w=boot();
+  try{
+    withTrip(w, `[{mode:'car',startAt:'09:00',spots:[]}]`);
+    const el=(id)=>w.document.getElementById(id);
+    w.eval(`trip().bookings=[{id:'b1',type:'flight',title:'항공',price:300000,track:false}];`);
+    el('resvMenuBtn').click();
+    el('resvListBody').querySelector('.resvHead button').click();
+    assert.ok(el('bookingModalBg').classList.contains('show'));
+    assert.ok(el('resvListBg').classList.contains('show'), '목록은 닫지 않고 그 위에 편집기를 연다');
+    el('bkCancel').click();
+    assert.ok(!el('bookingModalBg').classList.contains('show'));
+    assert.ok(el('resvListBg').classList.contains('show'), '닫으면 목록이 그대로 있다');
+    el('resvListBody').querySelector('.resvHead button').click();
+    el('bkConfirmation').value='PNR77'; el('bkSave').click();
+    assert.match(el('resvListBody').textContent, /예약번호 PNR77/, '저장하면 열린 목록이 다시 그려진다');
+  }finally{ w.close(); }
+});
+
+test('통합(ux3 검토): 빈 장소 비용 창의 \'장소 담기\'는 창을 연 그 날에 새 장소를 담는다', { skip: noJsdom }, () => {
+  const w=boot();
+  try{
+    withTrip(w, `[{title:'D1',drive:'',note:'',mode:'transit',spots:[]},{title:'D2',drive:'',note:'',mode:'transit',spots:[]}]`);
+    const el=(id)=>w.document.getElementById(id);
+    w.eval('openBookingList(); openPlaceCost(1)');
+    assert.ok(el('placeCostDialog').classList.contains('isEmpty'));
+    el('costPlaceAddSpot').click();
+    assert.equal(el('placeCostDialog').open, false);
+    assert.ok(!el('bookingListBg').classList.contains('show'), '담으러 가면 목록은 닫는다');
+    assert.ok(el('spotModalBg').classList.contains('show'));
+    assert.equal(w.eval('editing.di+":"+editing.si'), '1:-1', 'Day 2에서 연 창이면 Day 2에 새 장소');
+  }finally{ w.close(); }
+});
+
+// ── ux3:paste ──
+// 2026-10-03 3차 UX 검토 — 받은 일정 붙여넣기·가져오기·내보내기. 읽는 규칙은 test/intake.test.js가, 여기서는 배선을 본다.
+
+/** 빈 칸에서 붙여넣기 → 미리보기까지. 좌표 조회는 가짜(결과 없음 또는 주어진 것) */
+async function pastePreview(w, text, target, results = {}) {
+  stubGeocode(w, results);
+  w.eval('openPaste()');
+  w.document.getElementById('pasteText').value = text;
+  if (target) w.document.getElementById('pasteTarget').value = target;
+  await w.eval('runPaste()');
+  await w.eval('pvGeocodeAll()');
+}
+const lastTrip = (w) => JSON.parse(w.eval('JSON.stringify(store.trips[store.trips.length-1])'));
+const activeTrip = (w) => JSON.parse(w.eval('JSON.stringify(trip())'));
+const toastText = (w) => w.document.getElementById('toast').textContent;
+
+test('ux3 붙여넣기: Day 칸이 있는 표 한 장은 날별로 보이고, 머리글이 없으면 한 날로 읽었다고 말한다', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    await pastePreview(w, [
+      '| Day | 시간 | 장소 |', '|---|---|---|',
+      '| Day 1 | 10:00 | 센소지 |', '| Day 2 | 09:30 | 츠키지 장외시장 |', '| Day 3 | 10:00 | 메이지 신궁 |'
+    ].join('\n'), 'new');
+    assert.equal(w.document.querySelectorAll('#pvList .pvDay').length, 3, '사흘이 하루로 합쳐지지 않는다');
+    assert.equal(w.document.getElementById('pvUndivided').hidden, true);
+    w.document.getElementById('pvCancel').click();
+    w.document.getElementById('pasteText').value = '- 센소지\n- 도쿄 스카이트리\n- 메이지 신궁';
+    await w.eval('runPaste()');
+    await w.eval('pvGeocodeAll()');
+    const note = w.document.getElementById('pvUndivided');
+    assert.equal(note.hidden, false);
+    assert.match(note.textContent, /한 날로 읽었어요/);
+  } finally { w.close(); }
+});
+
+test('ux3 붙여넣기: 빈 여행 채우기는 장소만 채우고 이름·기간·수단은 그대로 둔다', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    w.eval(`const e=()=>({title:'',drive:'',note:'',mode:'transit',spots:[]});
+      store.trips.push({id:'fk',name:'엄마랑 후쿠오카',start:'2026-11-20',days:[e(),e(),e()]}); store.activeId='fk';`);
+    await pastePreview(w, '## 11월 20일(금) 하카타\n- 10:00 캐널시티 하카타 | 후쿠오카\n## 11월 21일\n- 다자이후 텐만구 | 후쿠오카', null);
+    assert.equal(w.document.getElementById('pasteTarget').value, 'overwrite', '빈 여행에서 열면 채우기가 기본이다');
+    assert.equal(w.document.getElementById('pvName').value, '엄마랑 후쿠오카', '이름 칸에 지금 여행 이름을 채운다');
+    assert.equal(w.document.getElementById('pvStart').value, '2026-11-20');
+    assert.equal(w.document.getElementById('pvModeWrap').hidden, true, '채우기는 수단을 묻지 않는다 — 그 여행의 것을 둔다');
+    assert.match(w.document.getElementById('pvTargetNote').textContent, /장소만 채워요/);
+    assert.equal(w.document.getElementById('pvRun').textContent, '이 여행에 채우기');
+    w.eval('pvCommit()');
+    const t = activeTrip(w);
+    assert.equal(t.id, 'fk', '새 여행을 만들지 않는다');
+    assert.equal(t.name, '엄마랑 후쿠오카', "'붙여넣은 여행'이 되지 않는다");
+    assert.equal(t.start, '2026-11-20');
+    assert.equal(t.days.length, 3, '3일이 2일로 줄지 않는다');
+    assert.deepEqual(t.days.map(d => d.mode), ['transit', 'transit', 'transit'], '자차로 바뀌지 않는다');
+    assert.deepEqual(t.days.map(d => d.spots.map(s => s.name)), [['캐널시티 하카타'], ['다자이후 텐만구'], []]);
+    assert.equal(t.days[0].title, '하카타', '제목에 날짜가 한 번 더 들어가지 않는다');
+    assert.ok(w.document.querySelector('#toast .toastAct'), '되돌릴 수 있다');
+  } finally { w.close(); }
+});
+
+test('ux3 붙여넣기: 덮어쓰기는 몇 곳이 바뀌는지 먼저 말하고, 토스트로 되돌린다', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    withTrip(w, `[{title:'',drive:'',note:'',mode:'car',spots:[{name:'A',lat:37.5,lng:127},{name:'B',lat:37.5,lng:127.01},{name:'C',lat:37.5,lng:127.02}]}]`);
+    await pastePreview(w, '## Day 1\n- 성산일출봉 | 서귀포', 'overwrite');
+    assert.match(w.document.getElementById('pvTargetNote').textContent, /일정 3곳을 지우고/);
+    assert.equal(w.document.getElementById('pvRun').textContent, '일정 바꾸기');
+    assert.equal(w.document.getElementById('pvMode').value, 'car', '지금 여행의 수단에서 시작한다');
+    w.eval('pvCommit()');
+    assert.deepEqual(activeTrip(w).days[0].spots.map(s => s.name), ['성산일출봉']);
+    assert.equal(activeTrip(w).name, 'T', "이름이 '붙여넣은 여행'으로 바뀌지 않는다");
+    const undo = w.document.querySelector('#toast .toastAct');
+    assert.equal(undo.textContent, '되돌리기');
+    undo.click();
+    assert.deepEqual(activeTrip(w).days[0].spots.map(s => s.name), ['A', 'B', 'C']);
+  } finally { w.close(); }
+});
+
+test('ux3 붙여넣기: 미리보기가 보여 준 링크는 장소의 예약 링크로 남는다', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    await pastePreview(w, '## Day 1\n- 15:00 [사려니숲길](https://www.visitjeju.net/kr/detail/view?contentsid=CONT_1) | 제주', 'new',
+      { '사려니숲길': [{ name: '사려니숲길', addr: '제주', city: '제주', lat: 33.4, lng: 126.6, kakaoId: '8137012' }] });
+    assert.ok(w.document.querySelector('#pvList').textContent.includes('링크 1개'));
+    w.eval('pvCommit()');
+    const spot = lastTrip(w).days[0].spots[0];
+    assert.equal(spot.bookUrl, 'https://www.visitjeju.net/kr/detail/view?contentsid=CONT_1');
+    assert.equal(spot.kakaoId, '8137012', '찾은 장소의 신원도 떨어뜨리지 않는다');
+  } finally { w.close(); }
+});
+
+test('ux3 붙여넣기: 새 여행의 수단은 새 여행 창과 같은 기본값(대중교통)이고 고를 수 있다', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    await pastePreview(w, '## Day 1\n- 센소지 | 도쿄\n## Day 2\n- 메이지 신궁 | 도쿄', 'new');
+    assert.equal(w.document.getElementById('pvMode').value, 'transit');
+    assert.equal(w.document.getElementById('pvModeWrap').hidden, false);
+    w.eval('pvCommit()');
+    assert.deepEqual(lastTrip(w).days.map(d => d.mode), ['transit', 'transit']);
+    await pastePreview(w, '## Day 1\n- 성산일출봉 | 제주', 'new');
+    w.document.getElementById('pvMode').value = 'car';
+    w.eval('pvCommit()');
+    assert.deepEqual(lastTrip(w).days.map(d => d.mode), ['car']);
+  } finally { w.close(); }
+});
+
+test('ux3 여행 삭제: 마지막 여행을 지우면 빈 새 여행 대신 처음 화면이 뜨고, 되돌리면 걷힌다', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    w.eval(`dismissOnboarding(); store.trips=[{id:'only',name:'하나뿐',start:'2026-11-01',days:[{title:'',drive:'',note:'',spots:[]}]}]; store.activeId='only'; window.confirm=()=>true;`);
+    assert.equal(w.eval(`deleteTrip('only')`), true);
+    assert.equal(w.document.getElementById('onboarding').hidden, false, '처음 화면으로 간다');
+    assert.equal(w.eval('store.trips.length'), 1);
+    assert.equal(w.eval('isSampleTrip(store.trips[0])'), true, "말없이 만든 '새 여행'이 아니라 첫 방문과 같은 샘플이다");
+    assert.equal(w.eval("onboardingInert.has(document.getElementById('toast'))"), false, '처음 화면 위에서도 실행취소를 누를 수 있다 — 토스트는 막지 않는다');
+    w.document.querySelector('#toast .toastAct').click();
+    assert.deepEqual(JSON.parse(w.eval('JSON.stringify(store.trips.map(t=>t.id))')), ['only']);
+    assert.equal(w.document.getElementById('onboarding').hidden, true);
+  } finally { w.close(); }
+});
+
+test('ux3 붙여넣기: 일정이 아닌 글은 미리보기로 넘기지 않고, 담을 곳이 없으면 만들기를 끈다', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    stubGeocode(w, {});
+    const before = w.eval('store.trips.length');
+    w.eval('openPaste()');
+    w.document.getElementById('pasteText').value = '안녕하세요! 무엇을 도와드릴까요? 😊';
+    await w.eval('runPaste()');
+    assert.equal(w.document.getElementById('pastePvBg').classList.contains('show'), false, '빈 미리보기로 넘어가지 않는다');
+    assert.equal(w.document.getElementById('pasteModalBg').classList.contains('show'), true, '입력 칸에 머문다');
+    assert.match(w.document.getElementById('pasteErr').textContent, /한 줄에 하나씩/);
+    assert.equal(w.eval('store.trips.length'), before);
+    // 장소가 아니어 보이는 줄뿐이면 미리보기는 뜨되, 고르기 전에는 빈 여행을 만들 수 없다
+    w.document.getElementById('pasteText').value = '- 점심 식사\n- 체크아웃';
+    await w.eval('runPaste()');
+    await w.eval('pvGeocodeAll()');
+    assert.equal(w.document.getElementById('pvRun').disabled, true);
+    assert.match(w.document.getElementById('pvSummary').textContent, /담을 장소가 없어요/);
+  } finally { w.close(); }
+});
+
+test('ux3 붙여넣기: 찾기 전에는 못 찾았다고 하지 않고 몇 곳째인지 말한다', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    w.eval('geocodeCandidates=()=>new Promise(()=>{})');   // 끝나지 않는 검색
+    w.eval('openPaste()');
+    w.document.getElementById('pasteText').value = '- 센소지 | 도쿄\n- 메이지 신궁 | 도쿄';
+    await w.eval('runPaste()');
+    const s = w.document.getElementById('pvSummary').textContent;
+    assert.match(s, /위치 찾는 중 \(0\/2\)/);
+    assert.ok(!/못 찾음/.test(s), '아직 찾는 중인 곳을 실패로 세지 않는다');
+    stubGeocode(w, { '센소지': [{ name: '센소지', addr: '도쿄', city: '도쿄', lat: 35.71, lng: 139.79 }] });
+    w.eval("pv.rows.forEach(r=>{ r.geo={state:'idle',cands:[],pick:null}; })");
+    await w.eval('pvGeocodeAll()');
+    assert.match(w.document.getElementById('pvSummary').textContent, /위치 못 찾음 1곳/);
+  } finally { w.close(); }
+});
+
+test('ux3 붙여넣기: 찾은 장소의 이름을 칩에 보인다 — 엉뚱한 가게를 집으면 보이게', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    await pastePreview(w, '- 쿠로몬 시장', 'new',
+      { '쿠로몬 시장': [{ name: 'Izumisano Gyokyo Aozora Market', addr: '오사카부', city: '이즈미사노', lat: 34.4, lng: 135.3 }] });
+    const chip = w.document.querySelector('#pvList .pvChip.ok');
+    assert.match(chip.title, /Izumisano Gyokyo Aozora Market · 이즈미사노/);
+    assert.ok(chip.textContent.startsWith('📍 Izumisano'));
+  } finally { w.close(); }
+});
+
+test('ux3 붙여넣기: 담지 않은 줄의 메모에 마크다운이 날것으로 남지 않는다', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    await pastePreview(w, '안녕하세요! 일정이에요 😊\n\n---\n\n### Day 1: 도쿄 도착\n- **오전:** 나리타 공항 도착 → 우에노 이동\n- 센소지', 'new');
+    w.eval('pvCommit()');
+    const note = lastTrip(w).days[0].note;
+    assert.ok(note.includes('· 오전: 나리타 공항 도착 → 우에노 이동'));
+    assert.ok(!/\*\*|---|안녕하세요/.test(note), '인사말·구분선·굵은 글씨가 메모에 없다');
+  } finally { w.close(); }
+});
+
+test('ux3 붙여넣기: 글의 날짜가 건너뛰면 빈 날을 넣을지 고르고, 기본은 글의 날짜대로다', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    const text = '# 부산 1박 2일\n## 11월 7일(토) 해운대\n- 해운대해수욕장 | 부산\n## 11월 9일(월) 남포동\n- 감천문화마을 | 부산';
+    w.eval("TC_INTAKE.parseItinerary=((f)=>(t,o)=>f(t,Object.assign({},o,{year:2026})))(TC_INTAKE.parseItinerary);");
+    await pastePreview(w, text, 'new');
+    assert.equal(w.document.getElementById('pvLayout').hidden, false, '고를 길이 보인다');
+    assert.match(w.document.getElementById('pvLayoutText').textContent, /11\/8/);
+    assert.match(w.document.querySelector('#pvList .pvGapDay').textContent, /Day 2 · 11\/8 .* 빈 날/);
+    assert.ok(![...w.document.querySelectorAll('.pvDay')].some(e => e.textContent.includes('⚠️')), '날짜대로 두면 어긋남이 없다');
+    w.eval('pvCommit()');
+    const t = lastTrip(w);
+    assert.deepEqual(t.days.map(d => d.spots.map(s => s.name)), [['해운대해수욕장'], [], ['감천문화마을']]);
+    assert.equal(t.days[2].title, '남포동');
+    // 순서대로 두기를 고르면 예전처럼 이어 붙인다
+    await pastePreview(w, text, 'new');
+    const keep = w.document.querySelector('#pvLayout input[value="keep"]');
+    keep.checked = true; keep.dispatchEvent(new w.Event('change'));
+    w.eval('pvCommit()');
+    assert.equal(lastTrip(w).days.length, 2);
+  } finally { w.close(); }
+});
+
+test('ux3 붙여넣기: 미리보기에서 물러나도, 창을 닫았다 열어도 붙여넣은 글이 남는다', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    const text = '## Day 1\n- 센소지 | 도쿄';
+    await pastePreview(w, text, 'new');
+    w.document.getElementById('pvCancel').click();
+    assert.equal(w.document.getElementById('pastePvBg').classList.contains('show'), false);
+    assert.equal(w.document.getElementById('pasteModalBg').classList.contains('show'), true, '입력 칸으로 돌아간다');
+    assert.equal(w.document.getElementById('pasteText').value, text);
+    w.document.getElementById('pasteCancel').click();
+    w.eval('openPaste()');
+    assert.equal(w.document.getElementById('pasteText').value, text, '다시 열어도 칸이 비지 않는다');
+    // 복사가 막혀도 써 둔 글을 프롬프트로 덮지 않는다
+    w.eval("Object.defineProperty(navigator,'clipboard',{value:{writeText:async()=>{throw new Error('denied');}},configurable:true});");
+    w.document.getElementById('aiPromptCopy').click();
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(w.document.getElementById('pasteText').value, text);
+    // 저장하면 비운다
+    await w.eval('runPaste()');
+    w.eval('pvCommit()');
+    w.eval('openPaste()');
+    assert.equal(w.document.getElementById('pasteText').value, '');
+  } finally { w.close(); }
+});
+
+test('ux3 붙여넣기: 날짜 없는 글은 오늘로 잡힌다고 말하고, 이름은 글의 도시로 제안하며 겹치면 번호를 붙인다', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    w.eval(`store.trips.push({id:'kt',name:'교토 여행',start:'2026-11-01',days:[{title:'',drive:'',note:'',spots:[]}]});`);
+    await pastePreview(w, '- 기요미즈데라 | 교토\n- 니시키 시장 | 교토', 'new');
+    assert.match(w.document.getElementById('pvStartWarn').textContent, /오늘.*부터로 잡아요/);
+    assert.equal(w.document.getElementById('pvName').value, '교토 여행');
+    w.eval('pvCommit()');
+    assert.equal(lastTrip(w).name, '교토 여행 (2)', '같은 이름이 둘 생기지 않는다');
+    assert.match(toastText(w), /시작일은 오늘로 잡았어요/);
+    // 사람이 직접 쓴 이름은 그대로 둔다
+    await pastePreview(w, '- 기요미즈데라 | 교토', 'new');
+    const name = w.document.getElementById('pvName');
+    name.value = '교토 여행'; name.dispatchEvent(new w.Event('input'));
+    w.eval('pvCommit()');
+    assert.equal(lastTrip(w).name, '교토 여행');
+  } finally { w.close(); }
+});
+
+test('ux3 가져오기·내보내기: 실패하면 이유를 말하고, 다시 가져오면 (가져옴)이 붙고, 내보내면 알린다', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    const importText = async (text) => {
+      const input = w.document.getElementById('importFile');
+      const file = new w.File([text], 'trip.json', { type: 'application/json' });
+      Object.defineProperty(input, 'files', { value: [file], configurable: true });
+      input.dispatchEvent(new w.Event('change'));
+      await new Promise((r) => setTimeout(r, 30));
+    };
+    await importText('{ 깨진');
+    assert.match(toastText(w), /가져오지 못했어요 — JSON 형식이 올바르지 않아요/);
+    const file = JSON.stringify({ id: 'x', name: '가져온 여행', start: '2027-01-01', days: [{ title: '', spots: [{ name: '장소', city: '도시' }] }] });
+    await importText(file);
+    await importText(file);
+    const names = JSON.parse(w.eval('JSON.stringify(store.trips.map(t=>t.name))'));
+    assert.ok(names.includes('가져온 여행') && names.includes('가져온 여행 (가져옴)'));
+    assert.match(toastText(w), /가져온 여행 \(가져옴\)/);
+    w.eval("URL.createObjectURL=()=>'blob:x'; HTMLAnchorElement.prototype.click=function(){ window.__dl=this.download; };");
+    w.document.getElementById('exportBtn').click();
+    assert.equal(w.eval('window.__dl'), '가져온_여행_(가져옴).json');
+    assert.match(toastText(w), /파일로 저장했어요/);
+  } finally { w.close(); }
+});
+
+test('ux3 이미지 내보내기: 제목 없는 날에 가운뎃점만 남지 않는다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    withTrip(w, `[{title:'도착',drive:'',note:'',spots:[]},{title:'',drive:'',note:'',spots:[]}]`);
+    const card = w.eval('buildTripCard()');
+    const heads = [...card.querySelectorAll('div[style*="font-size:13.5px"]')].map(e => e.firstChild.textContent);
+    assert.deepEqual(heads, ['Day 1 · 도착 ', 'Day 2 ']);
+  } finally { w.close(); }
+});
+
+test('ux3 여행 삭제: 목록에서 마지막 여행을 지워도, 마지막 공유 여행에서 나가도 처음 화면이다', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    w.eval(`dismissOnboarding(); store.trips=[{id:'only',name:'하나뿐',start:'2026-11-01',days:[{title:'',drive:'',note:'',spots:[]}]}]; store.activeId='only'; window.confirm=()=>true;`);
+    w.eval('openTripList()');
+    w.eval(`removeTrip('only')`);
+    assert.equal(w.document.getElementById('onboarding').hidden, false);
+    assert.equal(w.document.getElementById('tripListBg').classList.contains('show'), false, '처음 화면 뒤에 여행 목록이 열린 채 남지 않는다');
+  } finally { w.close(); }
+
+  const w2 = boot();
+  try {
+    w2.sb = { rpc: async () => ({ data: true, error: null }) };
+    w2.eval(`dismissOnboarding(); store.trips=[{id:'shared',name:'같이 가는 여행',start:'2026-11-01',days:[{title:'',drive:'',note:'',spots:[]}]}]; store.activeId='shared';
+      sb=window.sb; TC_API.rpc=window.sb.rpc; user={id:'u2'}; tripRoles={shared:{role:'EDITOR',count:2,owner:false}}; window.confirm=()=>true;`);
+    assert.equal(w2.eval(`deleteTrip('shared')`), true);
+    await new Promise(r => setTimeout(r, 20));
+    assert.equal(w2.eval('isSampleTrip(store.trips[0])'), true, "말없이 만든 '새 여행'(자차 기본)이 아니다");
+    assert.equal(w2.document.getElementById('onboarding').hidden, false, '처음 화면으로 간다');
+  } finally { w2.close(); }
+});
+
+test('ux3 붙여넣기(검토): 찾는 도중 다시 찾기가 시작돼도 그 줄이 \'찾는 중\'에 갇히지 않는다', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    // 첫 검색은 끝나지 않는다 — 그 사이 다른 줄을 고르면(체크박스·이름 고치기) 새 검색이 시작된다
+    w.eval('geocodeCandidates=()=>new Promise(()=>{})');
+    w.eval('openPaste()');
+    w.document.getElementById('pasteText').value = '- 센소지 | 도쿄\n- 메이지 신궁 | 도쿄';
+    w.document.getElementById('pasteTarget').value = 'new';
+    await w.eval('runPaste()');
+    assert.equal(w.eval('pv.rows[0].geo.state'), 'searching');
+    stubGeocode(w, { '센소지': [{ name: '센소지', addr: '도쿄', city: '도쿄', lat: 35.71, lng: 139.79 }] });
+    await w.eval('pvGeocodeAll()');
+    assert.equal(w.eval('pv.rows[0].geo.state'), 'done', '앞선 검색이 버려진 줄도 다시 찾는다');
+    assert.ok(!/찾는 중/.test(w.document.getElementById('pvSummary').textContent), '요약이 영영 찾는 중이라고 하지 않는다');
+  } finally { w.close(); }
+});
+
+test('ux3 붙여넣기(검토): 수단을 적지 않은 여행에 이어 붙이면 그 여행이 실제로 쓰는 수단(자차)에서 시작한다', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    // 일자에 mode가 없으면 화면·계산은 자차다(dayModeOf) — 미리보기가 대중교통을 내밀면 이어 붙인 날만 수단이 바뀐다
+    withTrip(w, `[{title:'',drive:'',note:'',spots:[{name:'A',lat:37.5,lng:127}]}]`);
+    await pastePreview(w, '## Day 1\n- 성산일출봉 | 서귀포', 'append');
+    assert.equal(w.document.getElementById('pvMode').value, 'car');
+    w.eval('pvCommit()');
+    assert.equal(activeTrip(w).days[1].mode, 'car');
+  } finally { w.close(); }
+});
+
+// ── ux3:share ──
+// 공유·읽기 전용·초대·처음 화면·샘플 (2026-10-03 UX 검토 3차)
+
+/** #v= 링크로 처음 여는 기기. boot의 LZString 대역은 항등이라 주소에 실린 따옴표가 퍼센트 인코딩된 채 남는다 —
+ *  실제 LZString처럼 주소에 안전한 글자로 바꾸고 되돌리는 대역으로 같은 부팅을 한다(나머지는 boot와 같다). */
+function bootSharedLink(trip, storage = {}) {
+  const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8').replace(/<script\b[\s\S]*?<\/script>/gi, '');
+  const dom = new JSDOM(html, { url: 'http://localhost/#v=' + encodeURIComponent(JSON.stringify(trip)), runScripts: 'dangerously', pretendToBeVisual: true });
+  const { window } = dom;
+  for (const [k, v] of Object.entries(storage)) window.localStorage.setItem(k, v);
+  window.fetch = () => Promise.reject(new Error('no-net'));
+  window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
+  window.HTMLDialogElement.prototype.close = function () { this.open = false; };
+  window.TextEncoder = TextEncoder;
+  window.LZString = { compressToEncodedURIComponent: (x) => encodeURIComponent(x), decompressFromEncodedURIComponent: (x) => decodeURIComponent(x) };
+  for (const file of ['lib.js', 'sync.js', 'routing.js', 'price.js', 'adaptive.js', 'intake.js', 'collab.js', 'api.js', 'auth.js', 'app.js']) {
+    const s = window.document.createElement('script');
+    s.textContent = fs.readFileSync(path.join(root, file), 'utf8');
+    window.document.body.appendChild(s);
+  }
+  const boom = async () => { throw new Error('테스트에서 실제 네트워크 호출'); };
+  window.TC_API.configure({ fetchImpl: boom });
+  window.TC_AUTH.configure({ fetchImpl: boom });
+  return window;
+}
+const SHARED_TRIP = { id: 'friend1', name: '오사카 우정여행', start: '2026-11-01',
+  days: [{ title: '도톤보리', spots: [{ name: '도톤보리', city: '오사카', lat: 34.6687, lng: 135.5013 }, { name: '구로몬 시장', city: '오사카', lat: 34.6655, lng: 135.5066 }] }] };
+const savedTrips = (w) => JSON.parse(w.localStorage.getItem('tripcanvas_v1')).trips;
+
+test('ux3 공유: 공유·초대 링크로 처음 온 사람에게 처음 화면을 덮지 않는다', { skip: noJsdom }, async () => {
+  const shared = bootSharedLink(SHARED_TRIP);
+  try {
+    assert.equal(shared.document.getElementById('onboarding').hidden, true, '공유받은 여행이 먼저 보인다');
+    assert.equal(shared.eval('viewMode && viewMode.name'), '오사카 우정여행');
+    assert.equal(shared.document.getElementById('roBar').style.display, 'flex');
+  } finally { shared.close(); }
+  const invited = boot('http://localhost/#join=' + 'T'.repeat(32));
+  try {
+    assert.equal(invited.document.getElementById('onboarding').hidden, true, '초대 창이 먼저 보인다');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.ok(invited.document.getElementById('joinModalBg').classList.contains('show'));
+  } finally { invited.close(); }
+  const plain = boot();
+  try { assert.equal(plain.document.getElementById('onboarding').hidden, false, '그냥 처음 온 사람에게는 그대로 뜬다'); }
+  finally { plain.close(); }
+});
+
+test('ux3 공유: 읽기 전용 보기 중 새 여행을 만들면 보기를 끝내고 실제로 저장한다(유령 여행 없음)', { skip: noJsdom }, () => {
+  const w = bootSharedLink(SHARED_TRIP);
+  try {
+    w.eval('openNewTrip()');
+    w.document.getElementById('ntName').value = '부산 여행';
+    w.document.getElementById('ntRun').click();
+    assert.equal(w.eval('viewMode'), null, '보기를 끝냈다');
+    assert.equal(w.eval('trip().name'), '부산 여행', '화면이 새 여행으로 바뀐다');
+    assert.ok(savedTrips(w).some((t) => t.name === '부산 여행'), '말한 대로 저장소에 있다');
+    assert.ok(!w.document.body.classList.contains('readonly'));
+    assert.equal(w.document.getElementById('roBar').style.display, 'none');
+    assert.equal(w.location.hash, '', '새로고침해도 다시 읽기 전용으로 돌아가지 않는다');
+    assert.ok(!savedTrips(w).some((t) => t.name.startsWith('오사카')), '받은 사본은 저장하지 않았다');
+  } finally { w.close(); }
+});
+
+test('ux3 공유: 읽기 전용 보기 중 붙여넣은 새 여행도 저장되고, 이어붙이기·덮어쓰기는 고를 수 없다', { skip: noJsdom }, async () => {
+  const w = bootSharedLink(SHARED_TRIP);
+  try {
+    stubGeocode(w, {});
+    w.document.getElementById('pasteMenuBtn').click();
+    const sel = w.document.getElementById('pasteTarget');
+    assert.equal(sel.value, 'new');
+    assert.ok(sel.querySelector('option[value="append"]').disabled && sel.querySelector('option[value="overwrite"]').disabled);
+    w.document.getElementById('pasteText').value = '[day1] 부산 당일\n- 해운대 해수욕장';
+    await w.eval('runPaste()');
+    w.document.getElementById('pvName').value = '부산 당일';
+    w.eval('pvCommit()');
+    assert.equal(w.eval('viewMode'), null);
+    assert.equal(w.eval('trip().name'), '부산 당일');
+    assert.ok(savedTrips(w).some((t) => t.name === '부산 당일'), '"초안 생성 완료"라고 한 것이 저장소에 있다');
+  } finally { w.close(); }
+});
+
+test('ux3 공유: 읽기 전용 보기는 띠의 닫기나 여행 목록으로 빠져나간다 — 복사하지 않아도 된다', { skip: noJsdom }, () => {
+  const w = bootSharedLink(SHARED_TRIP);
+  try {
+    const before = savedTrips(w).length;
+    w.document.getElementById('roClose').click();
+    assert.equal(w.eval('viewMode'), null);
+    assert.equal(w.eval('trip().id'), w.eval('store.activeId'), '내 여행으로 돌아왔다');
+    assert.equal(w.location.hash, '');
+    assert.equal(savedTrips(w).length, before, '아무것도 복사하지 않는다');
+  } finally { w.close(); }
+
+  const v = bootSharedLink(SHARED_TRIP);
+  try {
+    v.document.getElementById('tripPickerBtn').click();
+    assert.ok(v.document.getElementById('tripListBg').classList.contains('show'), '피커가 거절하지 않고 내 여행 목록을 연다');
+    assert.match(v.document.getElementById('tripListHint').textContent, /보기를 닫고/);
+    assert.equal(v.document.querySelectorAll('#tripListBody .tripRow.active').length, 0, '보고 있는 것은 목록의 여행이 아니다');
+    assert.equal(v.document.querySelectorAll('#tripListBody .tripRow .iconb').length, 0, '보기 중에는 지우는 버튼이 없다(저장되지 않는다)');
+    v.eval('switchTrip(store.activeId)');
+    assert.equal(v.eval('viewMode'), null, '지금 활성인 여행을 골라도 보기를 닫고 그리로 간다');
+    assert.equal(v.document.getElementById('tripListBg').classList.contains('show'), false);
+  } finally { v.close(); }
+});
+
+test('ux3 공유: 받는 쪽 띠는 언제 만든 사본인지 한 줄로 말하고, 저장한 사본은 사본이라고 남는다', { skip: noJsdom }, async () => {
+  // 확실한 과거로 고정한다 — '오늘 11:00'은 UTC로 도는 CI에서 아직 미래라 앱이 믿을 수 없는 시각으로 걸렀다
+  const madeAt = new Date(2026, 8, 3, 11, 0).toISOString();   // 받는 기기의 9월 3일 11:00
+  const w = bootSharedLink(Object.assign({}, SHARED_TRIP, { sharedAt: madeAt }));
+  try {
+    assert.match(w.document.getElementById('roText').textContent, /9월 3일 11:00에 만든 사본이에요 — 이후 바뀐 내용은 안 보여요 · 같이 고치려면 초대를 받으세요/);
+    assert.ok(w.document.getElementById('saveStateBar').classList.contains('srOnlyBar'), '저장 상태 줄이 같은 말을 또 하지 않는다');
+    w.document.getElementById('roSave').click();
+    const saved = savedTrips(w).find((t) => t.name.startsWith('오사카'));
+    assert.equal(saved.name, '오사카 우정여행 (사본)', '원본과 같은 이름으로 들어가지 않는다');
+    assert.equal(saved.sharedAt, undefined, '링크의 정보는 내 여행에 남기지 않는다');
+    assert.notEqual(saved.id, 'friend1');
+    assert.match(w.document.getElementById('toast').textContent, /사본으로 저장했어요 — 원본과는 따로/);
+  } finally { w.close(); }
+
+  const old = bootSharedLink(SHARED_TRIP);   // 시각이 없던 예전 링크 — 시각을 지어내지 않는다
+  try { assert.match(old.document.getElementById('roText').textContent, /^링크를 만든 순간의 사본이에요/); }
+  finally { old.close(); }
+  const future = bootSharedLink(Object.assign({}, SHARED_TRIP, { sharedAt: '2099-01-01T00:00:00.000Z' }));
+  try { assert.match(future.document.getElementById('roText').textContent, /^링크를 만든 순간의 사본이에요/, '믿을 수 없는 시각은 말하지 않는다'); }
+  finally { future.close(); }
+
+  // 보내는 쪽: 링크에 만든 시각이 실린다
+  const s = boot();
+  try {
+    Object.defineProperty(s.navigator, 'clipboard', { configurable: true, value: { writeText: async (v) => { s.__copied = v; } } });
+    s.document.getElementById('shareBtn').click();
+    await new Promise((r) => setTimeout(r, 0));
+    const payload = JSON.parse(s.__copied.split('#v=')[1]);   // boot의 LZString은 항등이다
+    assert.ok(Math.abs(Date.parse(payload.sharedAt) - Date.now()) < 60000, '지금 만든 시각');
+    assert.equal(s.eval('trip().sharedAt'), undefined, '내 여행 문서에는 쓰지 않는다');
+  } finally { s.close(); }
+});
+
+test('ux3 공유: 받은 사본을 다시 공유하면 토스트가 거절로 끝나는 버튼 대신 갈 길을 말하고, 원래 시각을 지킨다', { skip: noJsdom }, async () => {
+  const madeAt = new Date(2026, 8, 3, 11, 0).toISOString();   // 확실한 과거 — 실행 시각·시간대에 기대지 않는다
+  const w = bootSharedLink(Object.assign({}, SHARED_TRIP, { sharedAt: madeAt }));
+  try {
+    Object.defineProperty(w.navigator, 'clipboard', { configurable: true, value: { writeText: async (v) => { w.__copied = v; } } });
+    w.document.getElementById('shareBtn').click();
+    await new Promise((r) => setTimeout(r, 0));
+    const toastEl = w.document.getElementById('toast');
+    assert.match(toastEl.textContent, /편집하려면 이 여행 주인에게 초대를 요청하세요/);
+    assert.equal(toastEl.querySelector('.toastAct'), null, '누르면 거절로 끝나는 "같이 고치려면"이 없다');
+    const payload = JSON.parse(decodeURIComponent(w.__copied.split('#v=')[1]));
+    assert.equal(payload.sharedAt, madeAt, '옛 일정이 새것처럼 보이지 않게 원래 시각을 그대로 싣는다');
+    w.eval('openMembers()');
+    assert.match(toastEl.textContent, /주인에게 초대를 요청하세요/);
+    assert.ok(!w.document.getElementById('authModalBg').classList.contains('show'));
+  } finally { w.close(); }
+});
+
+test('ux3 공유: 고칠 수 없는 여행의 ⋮에는 장소 정보만 있고, 날짜 줄은 버튼이 아니며, 남의 일정을 "내 일정"이라 하지 않는다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    withTrip(w, `[{title:'D1',drive:'',note:'',spots:[{name:'A',city:'오사카',lat:34.66,lng:135.5}]}]`);
+    w.eval('render()');
+    const labels = () => [...w.document.querySelectorAll('.dayCard .spot .actionMenuPanel button')].map((b) => b.textContent.trim());
+    assert.ok(labels().length > 1, '내 여행에서는 편집 도구가 다 있다');
+    w.eval('viewMode=trip(); render()');
+    assert.deepEqual(labels(), ['ⓘ 장소 정보']);
+    assert.equal(w.document.querySelectorAll('.dayCard .dayHead .actionMenu').length, 0, '일자 ⋮(편집·복사·삭제)도 없다');
+    const date = w.document.querySelector('.dayCard .dayHead .date');
+    assert.ok(!date.hasAttribute('onclick') && date.getAttribute('role') !== 'button', '날짜 줄은 누르는 곳이 아니다');
+    w.eval('openSavedPlace(0,0)');
+    assert.match(w.document.querySelector('#placeDetails .placeOwn h3').textContent, /^이 여행의 일정 · Day 1/);
+  } finally { w.close(); }
+});
+
+test('ux3 초대: 쓸 수 없는 초대는 제목부터 그렇게 말하고, 권한 줄을 보이지 않는다', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    w.sb = { rpc: async () => ({ data: [{ valid: false, reason: 'EXPIRED', trip_name: '오사카 우정여행', start_date: '2026-11-01', day_count: 3, role: 'EDITOR' }], error: null }) };
+    w.eval('TC_API.rpc=window.sb.rpc; user=null;');
+    await w.eval(`startJoin('${'X'.repeat(24)}')`);
+    const el = (id) => w.document.getElementById(id);
+    assert.equal(el('joinTitle').textContent, '초대 링크를 쓸 수 없어요');
+    assert.doesNotMatch(el('joinTripMeta').textContent, /권한/, '만료된 초대에 "편집 권한으로 참여"를 보이지 않는다');
+    assert.match(el('joinHint').textContent, /만료/);
+    assert.ok(el('joinHint').classList.contains('joinProblem'), '이유는 눈에 띄게');
+    assert.equal(el('joinAccept').style.display, 'none');
+    assert.equal(el('joinRetry').hidden, true, '만료는 다시 해도 같다');
+    assert.equal(el('joinOpenApp').hidden, true);
+  } finally { w.close(); }
+});
+
+test('ux3 초대: 미리보기를 못 받아 오면 다시 시도할 수 있다', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    let calls = 0;
+    w.sb = { rpc: async () => { calls++; if (calls === 1) throw new Error('offline'); return { data: [{ valid: true, reason: 'OK', trip_name: '오사카 우정여행', start_date: '2026-11-01', day_count: 3, role: 'EDITOR', already_member: false }], error: null }; } };
+    w.eval('TC_API.rpc=window.sb.rpc; user=null;');
+    await w.eval(`startJoin('${'X'.repeat(24)}')`);
+    const el = (id) => w.document.getElementById(id);
+    assert.equal(el('joinTitle').textContent, '초대를 확인하지 못했어요');
+    assert.equal(el('joinRetry').hidden, false);
+    el('joinRetry').click();
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(calls, 2);
+    assert.equal(el('joinTitle').textContent, '여행에 초대받았어요');
+    assert.equal(el('joinRetry').hidden, true);
+    assert.match(el('joinTripMeta').textContent, /편집 권한으로 참여/);
+  } finally { w.close(); }
+});
+
+test('ux3 초대: 끝에 붙은 꼬리는 떼고 읽고, 그래도 못 읽는 링크는 서버에 묻지 않고 같은 창으로 알린다', { skip: noJsdom }, async () => {
+  const token = 'T'.repeat(32);
+  for (const tail of ['.', '&utm=kakao', '%E3%80%82', ')']) {
+    const w = boot('http://localhost/#join=' + token + tail);
+    try { assert.equal(w.eval('pendingJoinToken'), token, tail); } finally { w.close(); }
+  }
+  const w = boot('http://localhost/#join=abc');
+  try {
+    let calls = 0;
+    w.sb = { rpc: async () => { calls++; return { data: [], error: null }; } };
+    w.eval('TC_API.rpc=window.sb.rpc;');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.ok(w.document.getElementById('joinModalBg').classList.contains('show'), '아무 반응 없이 무시하지 않는다');
+    assert.equal(w.document.getElementById('joinTitle').textContent, '초대 링크를 쓸 수 없어요');
+    assert.match(w.document.getElementById('joinHint').textContent, /올바르지 않아요/);
+    assert.equal(w.document.getElementById('joinCard').hidden, true, '이름도 모르는 실패에 빈 카드를 두지 않는다');
+    assert.equal(calls, 0, '형식이 틀린 토큰은 서버에 보내지 않는다');
+    w.document.getElementById('joinCancel').click();
+    assert.equal(w.location.hash, '');
+  } finally { w.close(); }
+});
+
+test('ux3 초대: 로그인 창은 어느 여행에 참여하려는지 말하고, 앱 버튼은 iOS에서 쓸 수 있는 초대일 때만 선다', { skip: noJsdom }, async () => {
+  const preview = { valid: true, reason: 'OK', trip_name: '오사카 우정여행', start_date: '2026-11-01', day_count: 3, role: 'EDITOR', already_member: false };
+  const w = boot();
+  try {
+    w.sb = { rpc: async () => ({ data: [preview], error: null }) };
+    w.eval('TC_API.rpc=window.sb.rpc; user=null;');
+    await w.eval(`startJoin('${'X'.repeat(24)}')`);
+    assert.equal(w.document.getElementById('joinOpenApp').hidden, true, '데스크톱에서는 앱으로 열 수 없다');
+    assert.equal(w.document.getElementById('joinCancel').textContent, '닫기', '토큰을 지우는 버튼을 "나중에"라 부르지 않는다');
+    w.document.getElementById('joinAccept').click();
+    const reason = w.document.getElementById('authReason');
+    assert.equal(reason.hidden, false);
+    assert.match(reason.textContent, /"오사카 우정여행"에 참여하려면 로그인해 주세요/);
+    assert.ok(w.document.getElementById('joinModalBg').classList.contains('show'), '초대 창은 그 아래에 그대로 있다');
+  } finally { w.close(); }
+
+  const ios = boot();
+  try {
+    Object.defineProperty(ios.navigator, 'userAgent', { configurable: true, value: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)' });
+    ios.sb = { rpc: async () => ({ data: [preview], error: null }) };
+    ios.eval('TC_API.rpc=window.sb.rpc; user=null;');
+    await ios.eval(`startJoin('${'X'.repeat(24)}')`);
+    const app = ios.document.getElementById('joinOpenApp');
+    assert.equal(app.hidden, false);
+    assert.equal(app.getAttribute('href'), 'tripcanvas://join/' + 'X'.repeat(24));
+    ios.sb.rpc = async () => ({ data: [{ valid: false, reason: 'REVOKED', trip_name: '오사카 우정여행' }], error: null });
+    ios.eval('TC_API.rpc=window.sb.rpc;');
+    await ios.eval(`startJoin('${'Y'.repeat(24)}')`);
+    assert.equal(app.hidden, true, '쓸 수 없는 초대를 앱으로 열라고 하지 않는다');
+  } finally { ios.close(); }
+});
+
+test('ux3 처음 화면: 포커스는 제목에서 시작한다(터치로 들어와도 주 버튼에 링이 그려지지 않게)', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    assert.equal(w.document.getElementById('onboarding').hidden, false);
+    assert.equal(w.document.activeElement.id, 'onboardingTitle');
+  } finally { w.close(); }
+});
+
+test('ux3 처음 화면: "샘플 먼저 둘러보기"는 샘플로 간다 — 지웠으면 다시 심는다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    w.eval(`window.confirm=()=>true; createNewTrip({name:'리스본 여행',start:'2026-11-01',dayCount:2}); deleteTrip(SAMPLE_TRIP_ID);`);
+    assert.equal(w.eval('store.trips.some(isSampleTrip)'), false);
+    w.document.getElementById('onboardAgainBtn').click();
+    w.document.getElementById('onboardSample').click();
+    assert.equal(w.eval('isSampleTrip(trip())'), true, '창만 닫고 리스본에 남지 않는다');
+    assert.ok(savedTrips(w).some((t) => t.id === 'spain2026'), '다시 심은 샘플이 저장됐다');
+    // 샘플이 있으면 하나 더 만들지 않고 그리로 간다
+    w.eval('store.activeId=store.trips.find(t=>!isSampleTrip(t)).id; render();');
+    w.document.getElementById('onboardAgainBtn').click();
+    w.document.getElementById('onboardSample').click();
+    assert.equal(w.eval('isSampleTrip(trip())'), true);
+    assert.equal(w.eval('store.trips.filter(isSampleTrip).length'), 1);
+  } finally { w.close(); }
+});
+
+test('ux3 샘플: 샘플에서는 같이 짜기·가고 싶은 곳이 로그인을 약속하지 않고 내 여행 만들기로 안내한다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    w.eval('user=null; dismissOnboarding();');
+    assert.equal(w.eval('isSampleTrip(trip())'), true);
+    for (const open of ['openMembers()', 'openCandidates()']) {
+      w.eval(open);
+      assert.ok(!w.document.getElementById('authModalBg').classList.contains('show'), `${open}: 지킬 수 없는 "이어서 열어 드릴게요"를 띄우지 않는다`);
+      assert.match(w.document.getElementById('toast').textContent, /샘플은 같이 짤 수 없어요/);
+    }
+    w.document.querySelector('#toast .toastAct').click();
+    assert.ok(w.document.getElementById('newTripBg').classList.contains('show'), '갈 길: 내 여행 만들기');
+  } finally { w.close(); }
+});
+
+test('ux3 메뉴: 같이 짜기 항목의 "로그인 필요"는 로그아웃일 때만 말한다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    const needs = () => [...w.document.querySelectorAll('#hdrMenu .needsLogin')];
+    assert.ok(needs().length >= 2 && needs().every((el) => !el.hidden), '로그아웃 상태');
+    w.eval(`user={id:'u1',email:'me@example.com'}; updateAuthUI();`);
+    assert.ok(needs().every((el) => el.hidden), '로그인하면 거짓이 되는 말은 감춘다');
+  } finally { w.close(); }
+});
+
+// 검토(ux3:share-rv) — 구현 뒤 다시 본 곳
+test('ux3 공유: 링크로 처음 온 사람이 보기를 닫으면 미뤄 둔 처음 화면을 보고, 이미 쓰던 사람은 내 여행으로 돌아간다', { skip: noJsdom }, () => {
+  const first = bootSharedLink(SHARED_TRIP);
+  try {
+    assert.equal(first.document.getElementById('onboarding').hidden, true, '받은 여행이 먼저다');
+    first.document.getElementById('roClose').click();
+    assert.equal(first.eval('viewMode'), null);
+    assert.equal(first.document.getElementById('onboarding').hidden, false, '돌아갈 내 여행이 없는 사람에게 "내 여행으로 돌아왔어요"라고 하지 않는다');
+  } finally { first.close(); }
+  const mine = { id: 'mine1', name: '리스본 여행', start: '2026-11-01', days: [{ title: '', spots: [] }] };
+  const back = bootSharedLink(SHARED_TRIP, { tripcanvas_onboarded_v1: '1', tripcanvas_v1: JSON.stringify({ trips: [mine], activeId: 'mine1' }) });
+  try {
+    back.document.getElementById('roClose').click();
+    assert.equal(back.document.getElementById('onboarding').hidden, true);
+    assert.equal(back.eval('trip().name'), '리스본 여행');
+    assert.match(back.document.getElementById('toast').textContent, /내 여행으로 돌아왔어요/);
+  } finally { back.close(); }
+});
+
+test('ux3 초대: 초대 링크로 처음 온 사람이 초대 창을 닫으면 미뤄 둔 처음 화면을 본다', { skip: noJsdom }, async () => {
+  const w = boot('http://localhost/#join=abc');
+  try {
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(w.document.getElementById('onboarding').hidden, true, '초대 창이 먼저다');
+    w.document.getElementById('joinCancel').click();
+    assert.equal(w.document.getElementById('onboarding').hidden, false);
+  } finally { w.close(); }
+});
+
+test('ux3 공유: 받은 샘플을 "내 여행으로 저장"하면 샘플이 아니라 내 여행이다', { skip: noJsdom }, () => {
+  const w = bootSharedLink(Object.assign({}, SHARED_TRIP, { sample: true }));
+  try {
+    w.document.getElementById('roSave').click();
+    assert.ok(savedTrips(w).some((t) => t.name === '오사카 우정여행 (사본)'), '저장됐다');
+    assert.equal(w.eval('isSampleTrip(trip())'), false, '저장한 사본이 올라가지도 같이 짜지도 못하는 샘플로 남지 않는다');
+  } finally { w.close(); }
+});
+
+test('ux3 공유: 고칠 수 없는 여행의 일자 이동수단은 누르는 버튼이 아니다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    withTrip(w, `[{title:'D1',drive:'',note:'',spots:[{name:'A',city:'오사카',lat:34.66,lng:135.5}]}]`);
+    w.eval('render()');
+    assert.equal(w.document.querySelector('.dayCard .dayHead .modeBtn').tagName, 'BUTTON');
+    w.eval('viewMode=trip(); render()');
+    const mode = w.document.querySelector('.dayCard .dayHead .modeBtn');
+    assert.notEqual(mode.tagName, 'BUTTON', '눌러도 아무 일 없는 버튼을 두지 않는다');
+    assert.doesNotMatch(mode.getAttribute('title'), /눌러서/);
+  } finally { w.close(); }
+});
+
+// ── ux3:a11y ──
+const key = (w, el, k, extra) => el.dispatchEvent(new w.KeyboardEvent('keydown', Object.assign({ key: k, bubbles: true }, extra || {})));
+
+// 2026-10-03 UX 검토 P1-28·P2-62 — 날짜 버튼이 툴팁 '클릭해서 날짜·시간대 지정/수정'으로만 읽혀 날짜를 들을 곳이 없었다
+test('통합: 일자 머리는 날짜를 담은 제목이고, 날짜 버튼의 이름은 보이는 날짜다', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    withTrip(w, JSON.stringify([
+      { timeZone: 'Europe/Madrid', spots: [{ name: '프라도', lat: 40.41, lng: -3.69 }] },
+      { timeZone: 'Europe/Madrid', spots: [] }
+    ]));
+    w.eval(`trip().start='2026-10-25'; render()`);
+    await new Promise((r) => setTimeout(r, 0));   // 버튼 역할은 initAccessibility의 관찰자가 붙인다
+    const heads = Array.from(w.document.querySelectorAll('.dayCard .dayTitle'));
+    assert.equal(heads[0].getAttribute('role'), 'heading');
+    assert.equal(heads[0].getAttribute('aria-level'), '2');
+    assert.equal(heads[0].getAttribute('aria-label'), 'Day 1 · 10월 25일 일요일', '제목으로 훑으면 날짜가 들린다');
+    const dates = Array.from(w.document.querySelectorAll('.dayCard .dayHeadMeta .date'));
+    assert.equal(dates[0].getAttribute('aria-label'), '10/25 (일) · Europe/Madrid — 날짜·시간대 바꾸기');
+    assert.equal(dates[1].getAttribute('aria-label'), '10/26 (월) — 날짜·시간대 바꾸기', '시간대가 같은 날은 화면처럼 날짜만');
+    assert.equal(dates[0].getAttribute('role'), 'button', '누를 수 있는 것은 그대로');
+    assert.match(dates[0].title, /날짜·시간대/, '설명은 툴팁으로 남는다');
+  } finally { w.close(); }
+});
+
+// P2-16 — 국내 여행에도 처음부터 '🌐 시간대 미설정'이 붙었고, '서울'·'파리'는 'IANA 형식으로'라며 거절당했다
+test('통합: 국내 여행은 한국 시간으로 보고, 시간대 칸은 도시 이름을 받아 모든 날에 적용할 수 있다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    withTrip(w, JSON.stringify([
+      { spots: [{ name: '경복궁', lat: 37.58, lng: 126.98 }] }, { spots: [{ name: '남산', lat: 37.55, lng: 126.99 }] }
+    ]));
+    w.eval('render()');
+    assert.doesNotMatch(w.document.getElementById('sidebar').textContent, /시간대 미설정/, '국내 여행에는 알릴 것이 없다');
+    assert.equal(w.eval('dayTimeZone(trip().days[1])'), 'Asia/Seoul', '대중교통 출발 시각도 한국 시간으로 묻는다');
+
+    // 해외로 바꿔 '파리'를 넣으면 — 한 시간대 여행이라 '모든 날에 적용'이 기본이고, 다음 날도 따라간다
+    w.eval(`trip().days.forEach(d=>d.spots.forEach(s=>{s.lat=48.86;s.lng=2.35;})); render(); openDayModal(0)`);
+    const el = (id) => w.document.getElementById(id);
+    assert.equal(el('dayTzAll').checked, true);
+    el('dayTimeZone').value = '파리';
+    el('daySave').click();
+    assert.equal(w.eval('trip().timeZone'), 'Europe/Paris');
+    assert.equal(w.eval('dayTimeZone(trip().days[1])'), 'Europe/Paris', 'Day 2가 다시 미설정이 되지 않는다');
+    assert.equal(w.eval('trip().days[0].timeZone'), undefined, '날마다 따로 적지 않는다');
+
+    // 못 찾는 이름은 칸 옆에서 말하고 저장하지 않는다
+    w.eval('openDayModal(0)');
+    el('dayTimeZone').value = '어딘가';
+    el('dayStart').value = '10:00';
+    el('daySave').click();
+    assert.ok(el('dayModalBg').classList.contains('show'), '창이 남는다');
+    assert.match(el('dayTimeZoneErr').textContent, /도시 이름/);
+    assert.equal(w.document.activeElement, el('dayTimeZone'));
+    el('dayTimeZone').value = 'europe/madrid'; el('dayTzAll').checked = false;
+    el('daySave').click();
+    assert.equal(w.eval('trip().days[0].timeZone'), 'Europe/Madrid', 'IANA는 정식 표기로');
+    assert.equal(w.eval('trip().days[0].startAt'), '10:00', '시작 시각도 함께 저장된다');
+    assert.equal(w.eval('trip().timeZone'), 'Europe/Paris', '그날만 고르면 다른 날은 그대로');
+  } finally { w.close(); }
+});
+
+// P2-15 — 폼 오류가 2초짜리 토스트뿐이었고 포커스는 '저장'에 남았다
+test('통합: 저장 못 하는 칸은 그 칸 옆 문장과 포커스로 알리고, 고치면 지운다', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    withTrip(w, JSON.stringify([{ spots: [{ name: '루브르', city: '파리', lat: 48.86, lng: 2.34 }] }]));
+    w.eval('render(); openSpotModal(0,0)');
+    const el = (id) => w.document.getElementById(id);
+    el('spotName').value = '';
+    el('spotSave').click();
+    const err = el('spotNameErr');
+    assert.ok(err, '칸 옆에 문장이 생긴다');
+    assert.equal(err.getAttribute('role'), 'alert');
+    assert.equal(el('spotName').getAttribute('aria-invalid'), 'true');
+    assert.match(el('spotName').getAttribute('aria-describedby'), /spotNameErr/);
+    assert.equal(w.document.activeElement, el('spotName'), '포커스가 고칠 칸으로 간다');
+    el('spotName').value = '루브르';
+    el('spotName').dispatchEvent(new w.Event('input', { bubbles: true }));
+    assert.equal(el('spotNameErr'), null, '고치면 지운다');
+    assert.equal(el('spotName').hasAttribute('aria-invalid'), false);
+
+    // 체류 '1.5'는 말없이 1분이 되지 않는다 — 접힌 상세 설정이면 펼쳐서 보여 준다
+    el('spotStayMin').value = '1.5';
+    el('spotSave').click();
+    assert.match(el('spotStayMinErr').textContent, /정수/);
+    assert.equal(w.eval('trip().days[0].spots[0].stayMin'), undefined, '저장되지 않았다');
+    el('spotStayMin').value = '90';
+
+    // 'www.'로 시작하는 공식 페이지는 https를 붙여 받는다 — http는 여전히 거절
+    el('spotAdmUrl').value = 'www.louvre.fr';
+    el('spotSave').click();
+    assert.equal(w.eval('trip().days[0].spots[0].admission.officialURL'), 'https://www.louvre.fr');
+    assert.equal(w.eval('trip().days[0].spots[0].stayMin'), 90);
+    w.eval('openSpotModal(0,0)');
+    el('spotAdmUrl').value = 'http://www.louvre.fr';
+    el('spotSave').click();
+    assert.match(el('spotAdmUrlErr').textContent, /https/);
+    assert.equal(el('spotAdvanced').open, true, '오류 칸이 든 상세 설정을 펼친다');
+    el('spotCancel').click();
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(w.document.querySelector('#spotModalBg .fieldErr'), null, '창을 닫으면 지난 오류는 남지 않는다');
+
+    // 결제 항목 — 이름 칸이 화면 밖이어도 그 칸으로 간다
+    w.eval('openBookingModal(null)');
+    el('bkTitle').value = '';
+    el('bkSave').click();
+    assert.ok(el('bkTitleErr'));
+    assert.equal(w.document.activeElement, el('bkTitle'));
+    assert.equal(el('bkTitle').getAttribute('aria-required'), 'true', '필수 칸은 필수라고 말한다');
+  } finally { w.close(); }
+});
+
+// P2-58 — ⋮·☰·보기 설정이 Esc로도, 바깥을 눌러도, 포커스가 나가도 닫히지 않았다
+test('통합: 팝오버는 Esc·바깥 누르기·포커스 이탈로 닫히고 Esc는 연 자리로 돌아간다', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    withTrip(w, JSON.stringify([{ spots: [{ name: 'A', lat: 37.5, lng: 127 }, { name: 'B', lat: 37.51, lng: 127.01 }] }]));
+    w.eval('dismissOnboarding(); render()');
+    const menus = Array.from(w.document.querySelectorAll('.spot .actionMenu'));
+    menus[0].open = true;
+    menus[0].querySelector('.actionMenuPanel button').focus();
+    key(w, w.document.activeElement, 'Escape');
+    assert.equal(menus[0].open, false, 'Esc로 닫힌다');
+    assert.equal(w.document.activeElement, menus[0].querySelector('summary'), '연 자리로 돌아간다');
+
+    menus[0].open = true;
+    menus[1].querySelector('summary').click();   // 행 ⋮는 전파를 멈추지만 캡처 단계에서 닫는다
+    assert.equal(menus[0].open, false, '다른 ⋮를 누르면 앞의 것은 닫힌다');
+    menus[1].open = true;
+    w.document.getElementById('filterbar').click();
+    assert.equal(menus[1].open, false, '바깥을 누르면 닫힌다');
+
+    menus[0].open = true;
+    const inside = menus[0].querySelector('.actionMenuPanel button');
+    inside.dispatchEvent(new w.FocusEvent('focusout', { bubbles: true, relatedTarget: w.document.getElementById('travelBtn') }));
+    assert.equal(menus[0].open, false, 'Tab으로 나가면 닫힌다');
+
+    // 보기 설정은 장소 추가 창 위에 남지 않는다
+    const view = w.document.querySelector('#filterbar .viewMenu');
+    view.open = true;
+    w.eval('openSpotModal(0,-1)');
+    const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+    await tick();
+    assert.equal(view.open, false, '창이 열리면 닫힌다');
+    // ☰ — 열림을 연 버튼이 말하고, 포커스가 나가면 닫힌다
+    w.eval(`document.getElementById('spotModalBg').classList.remove('show')`);
+    await tick();
+    const more = w.document.getElementById('moreBtn'), menu = w.document.getElementById('hdrMenu');
+    more.click();
+    await tick();
+    assert.equal(more.getAttribute('aria-expanded'), 'true');
+    more.dispatchEvent(new w.FocusEvent('focusout', { bubbles: true, relatedTarget: w.document.getElementById('travelBtn') }));
+    assert.equal(menu.classList.contains('open'), false);
+    await tick();
+    assert.equal(more.getAttribute('aria-expanded'), 'false');
+  } finally { w.close(); }
+});
+
+// P2-63 — '라디오'라고 알리는데 화살표가 안 됐고 7개가 각각 Tab 정지였다
+test('통합: 이동수단 목록은 화살표로 고르고 Tab 정지는 하나다 — 적용은 누를 때만', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    withAdaptTrip(w, [{ startAt: '09:00', mode: 'car', spots: [S('A', 40.40), S('B', 40.43)] }]);
+    w.eval('dismissOnboarding(); render()');
+    w.document.querySelector('.dayHeadMeta .modeBtn').click();
+    const opts = Array.from(w.document.querySelectorAll('#modePickerList .modeOpt'));
+    assert.deepEqual(opts.map((b) => b.tabIndex).filter((t) => t === 0).length, 1, 'Tab 정지는 지금 고른 하나');
+    assert.equal(w.document.activeElement, opts[0]);
+    key(w, opts[0], 'ArrowDown');
+    assert.equal(opts[1].getAttribute('aria-checked'), 'true');
+    assert.equal(opts[0].getAttribute('aria-checked'), 'false');
+    assert.equal(w.document.activeElement, opts[1]);
+    assert.equal(opts[1].tabIndex, 0);
+    key(w, opts[1], 'ArrowUp'); key(w, opts[0], 'ArrowUp');
+    assert.equal(w.document.activeElement, opts[opts.length - 1], '끝에서 돌아 맨 아래로');
+    assert.equal(w.eval('trip().days[0].mode'), 'car', '화살표만으로는 바뀌지 않는다');
+    key(w, w.document.activeElement, 'Home'); key(w, w.document.activeElement, 'ArrowDown');
+    assert.match(w.document.activeElement.textContent, /택시/);
+    w.document.activeElement.click();
+    assert.equal(w.eval('trip().days[0].mode'), 'taxi', '누르면 적용된다');
+  } finally { w.close(); }
+});
+
+// P2-62·P2-64 — 첫 Tab이 보이지 않는 1px 선택 상자였고, 본문·건너뛰기 링크가 없고, 버전 표시는 키보드로 못 눌렀다
+test('통합: 첫 Tab은 일정으로 건너뛰기이고, 숨은 선택 상자는 Tab 순서에 없으며 버전 표시는 버튼이다', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    const doc = w.document;
+    const first = doc.querySelector('a[href],button,input,select,textarea,[tabindex]:not([tabindex="-1"])');
+    assert.equal(first.className, 'skipLink');
+    assert.equal(first.getAttribute('href'), '#sidebar');
+    assert.equal(doc.getElementById('sidebar').tabIndex, -1, '건너뛴 곳이 포커스를 받는다');
+    assert.equal(doc.querySelector('main').id, 'main', '본문 영역');
+    assert.equal(doc.getElementById('tripSel').tabIndex, -1);
+    assert.equal(doc.getElementById('tripSel').getAttribute('aria-hidden'), 'true', '피커와 같은 일을 두 번 읽지 않는다');
+    assert.equal(doc.getElementById('verLabel').tagName, 'BUTTON');
+    assert.match(doc.getElementById('verLabel').textContent, /^버전 /);
+    const travel = doc.getElementById('travel');
+    assert.equal(travel.getAttribute('role'), 'dialog');
+    assert.equal(travel.getAttribute('aria-label'), '여행 중 안내');
+
+    // 검색 결과 수를 알린다(결과 줄은 버튼이라 상자 자체를 알림 영역으로 둘 수 없다)
+    const res = doc.getElementById('searchRes');
+    res.innerHTML = '<button class="placeSearchResult">A</button><button class="placeSearchResult">B</button>';
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(doc.getElementById('searchStatus').textContent, '검색 결과 2곳');
+    res.innerHTML = '<div>결과 없음 — 다른 키워드나 지도 클릭으로 지정해주세요</div>';
+    await new Promise((r) => setTimeout(r, 0));
+    assert.match(doc.getElementById('searchStatus').textContent, /결과 없음/);
+  } finally { w.close(); }
+});
+
+// P2-60 — 기기가 다크여도 라이트로 시작했고, 토글은 지금 상태를 말하지 않았다
+test('통합: 테마는 ☰에서 기기 설정·라이트·다크로 고르고, 고른 것을 눌린 상태로 말한다', { skip: noJsdom }, () => {
+  const w = boot('http://localhost/', { tripcanvas_theme_v1: 'dark' });
+  try {
+    const doc = w.document;
+    assert.ok(doc.body.classList.contains('theme-dark'), '예전 토글이 남긴 다크는 그대로');
+    const btns = Array.from(doc.querySelectorAll('#themeChoice button'));
+    assert.deepEqual(btns.map((b) => b.textContent), ['기기 설정', '라이트', '다크']);
+    assert.equal(btns[2].getAttribute('aria-pressed'), 'true');
+    btns[1].click();
+    assert.equal(doc.body.classList.contains('theme-dark'), false);
+    assert.equal(w.localStorage.getItem('tripcanvas_theme_v1'), 'light');
+    btns[0].click();
+    assert.equal(w.localStorage.getItem('tripcanvas_theme_v1'), null, '기기 설정은 따로 저장하지 않는다');
+    assert.equal(btns[0].getAttribute('aria-pressed'), 'true');
+    assert.equal(doc.querySelector('#themeBtn'), null, '고르는 자리는 하나다');
+  } finally { w.close(); }
+});
+
+// 검토(ux3:a11y-rv) — 건너뛰기 링크가 주소의 #을 '#sidebar'로 덮어, 읽기 전용 공유(#v=)로 연 주소가 새로고침에 사라졌다
+test('통합: 일정으로 건너뛰기는 공유 주소의 #을 바꾸지 않고 일정에 포커스를 둔다', { skip: noJsdom }, () => {
+  const shared = encodeURIComponent(JSON.stringify({ name: '공유 여행', days: [{ spots: [{ name: 'A', lat: 37.5, lng: 127 }] }] }));
+  const w = boot('http://localhost/#v=' + shared);
+  try {
+    const before = w.location.hash;
+    assert.match(before, /^#v=/);
+    w.document.querySelector('.skipLink').click();
+    assert.equal(w.location.hash, before, '공유 주소가 그대로다');
+    assert.equal(w.document.activeElement, w.document.getElementById('sidebar'));
+  } finally { w.close(); }
+});
+
+// 검토(ux3:a11y-rv) — ☰의 '화면'을 고르면 메뉴가 닫혀 눌린 상태가 바뀌는 것이 보이지 않았고, 키보드 포커스는 숨은 버튼에 남았다
+test('통합: ☰에서 화면(테마)을 골라도 메뉴는 열려 있고 고른 것이 눌린 상태가 된다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    const doc = w.document;
+    doc.getElementById('moreBtn').click();
+    const dark = doc.querySelector('#themeChoice [data-theme="dark"]');
+    dark.click();
+    assert.ok(doc.getElementById('hdrMenu').classList.contains('open'), '메뉴가 남는다');
+    assert.equal(dark.getAttribute('aria-pressed'), 'true');
+    assert.ok(doc.body.classList.contains('theme-dark'));
+    doc.querySelector('#hdrMenu .menuGroupLabel').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+    assert.equal(doc.getElementById('hdrMenu').classList.contains('open'), false, '다른 곳을 고르면 여전히 닫힌다');
+  } finally { w.close(); }
+});
+
+// 검토(ux3:a11y-rv) — '위치를 정해 주세요'는 검색 칸에 붙는데, 결과를 골라 위치가 정해져도 남아 있었다(검색 칸에 input이 나지 않는다)
+test('통합: 위치 오류는 검색 결과로 위치를 정하면 지워진다', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    withAdaptTrip(w, [{ startAt: '09:00', mode: 'car', spots: [S('첫 곳', 40.40)] }]);
+    w.eval(`render(); fetchPlaceDetails=async(s)=>({kind:'saved',name:s.name});
+      routedSearch=async()=>[{name:'광장',city:'마드리드',lat:40.41,lng:-3.70,placeId:'p-a'}]; openSpotModal(0,-1)`);
+    const el = (id) => w.document.getElementById(id);
+    el('spotName').value = '광장';
+    el('spotSave').click();
+    assert.match(el('spotSearchErr').textContent, /위치/);
+    el('spotSearch').value = '광장';
+    await w.eval('doSearch()');
+    w.document.querySelector('.placeSearchResult').click();
+    Array.from(w.document.querySelectorAll('#placeDetailsActions button')).find((b) => b.textContent === '시간·메모 정하고 담기').click();
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(el('spotSearchErr'), null, '위치가 정해졌으니 오류 문장이 없다');
+    assert.equal(el('spotSearch').hasAttribute('aria-invalid'), false);
+  } finally { w.close(); }
 });

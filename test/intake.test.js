@@ -605,7 +605,9 @@ test('AI 글: 맨 앞 제목과 인사말이 빈 1일차를 만들지 않는다'
   const r = I.parseItinerary(AI_MD, { year: 2026 });
   assert.equal(r.days.length, 2, '일정이 하루씩 밀리면 안 된다');
   assert.equal(r.name, '가루이자와 3박 4일 여행 일정');
-  assert.ok(r.days[0].note.includes('안녕하세요'), '인사말도 버리지 않는다 — 그 날 메모로 남는다');
+  // 인사말은 그 날 메모가 아니다(2026-10-03) — 원문 보기에 있고, 초안은 따로 들고 있다(버리지 않는다)
+  assert.ok(!r.days[0].note.includes('안녕하세요'), '인사말이 1일차 메모에 남지 않는다');
+  assert.equal(r.preamble, '안녕하세요! 요청하신 일정을 짜 봤어요.');
   assert.equal(r.days[0].date, '2026-07-21');
 });
 
@@ -792,9 +794,146 @@ test('붙여넣기: 머리글의 요일이 날짜와 다르면 고치지 않고 
   const r = I.parseItinerary('## 7월 22일(목) — 쿠모바 연못\n- 쿠모바 연못', { year: 2026 });
   assert.equal(r.days[0].date, '2026-07-22');
   assert.deepEqual(r.days[0].weekdayMismatch, { written: '목', actual: '수' });
-  assert.equal(r.days[0].title.indexOf('(목)') >= 0, true, '제목은 그대로 둔다');
+  // 날짜(와 적힌 요일)는 제목에서 뗀다 — 날짜는 `date`가, 적힌 요일은 위 경고가 들고 있다
+  assert.equal(r.days[0].title, '쿠모바 연못');
   const ok = I.parseItinerary('## 7월 22일 수요일\n- 쿠모바 연못', { year: 2026 });
   assert.equal(ok.days[0].weekdayMismatch, undefined, '맞으면 아무 표시도 없다');
   assert.equal(I.weekdayMismatchOf('7월 22일', '2026-07-22'), null, "'7월'의 '월'을 요일로 읽지 않는다");
   assert.equal(I.weekdayMismatchOf('(월)', null), null, '날짜를 못 읽었으면 비교하지 않는다');
+});
+
+// ── ux3:paste ── (2026-10-03 3차 UX 검토 — 받은 일정 붙여넣기)
+
+// ChatGPT가 가장 흔히 쓰는 꼴: 굵은 시각 뒤에 이모지. 시각을 떼야 이모지가 앞머리가 된다.
+test('AI 글: 시각 뒤에 오는 이모지도 꾸밈이다 — 이름·설명에 남지 않는다', () => {
+  const it = I.parseItinerary([
+    '## Day 1',
+    '- **오전 10시** ✈️ 간사이 국제공항 도착',
+    '- **오후 12시 30분** 🍜 점심: 이치란 라멘 도톤보리점',
+    '- **오전 9시** 🧳 호텔 체크아웃'
+  ].join('\n'), {}).days[0].items;
+  assert.deepEqual(it.map(i => i.name), ['간사이 국제공항 도착', '이치란 라멘 도톤보리점', '호텔 체크아웃']);
+  assert.equal(it[1].desc, '점심', '라벨 설명에도 그림이 남지 않는다');
+  assert.ok(!it.some(i => /\p{Extended_Pictographic}/u.test(i.name + i.desc)));
+  // 그림을 떼면 '호텔 체크아웃'은 숙소에 관한 말뿐이다 — 장소로 찾지 않는다(전에는 다른 호텔로 잡혔다)
+  assert.equal(it[2].kind, 'STAY');
+});
+
+test('AI 글: 국기 이모지도 제목·이름에서 걷는다', () => {
+  const r = I.parseItinerary('# 🇯🇵 오사카·교토 여행\n\n## Day 1\n- 오사카성', {});
+  assert.equal(r.name, '오사카·교토 여행');
+});
+
+test("AI 글: 빈칸을 둔 하이픈 뒤는 설명이다 — '다케시타 거리 - 크레페 필수!'", () => {
+  const it = I.parseItinerary([
+    '1. **메이지 신궁** - 아침 산책 코스',
+    '2. **다케시타 거리** - 크레페 필수!',
+    '3. 2-1번 출구 카페',
+    '4. 점심 - 트라토리아'
+  ].join('\n'), {}).days[0].items;
+  assert.deepEqual(it.map(i => i.name), ['메이지 신궁', '다케시타 거리', '2-1번 출구 카페', '트라토리아']);
+  assert.deepEqual(it.map(i => i.desc), ['아침 산책 코스', '크레페 필수!', '', '점심']);
+});
+
+test("AI 글: 표 한 장에 여러 날이 있으면 'Day' 칸으로 날을 가른다", () => {
+  const r = I.parseItinerary([
+    '도쿄 2박 3일 일정표입니다 ✨',
+    '',
+    '| Day | 시간 | 장소 | 메모 |',
+    '|---|---|---|---|',
+    '| Day 1 | 10:00 | 센소지 | 아사쿠사 |',
+    '| Day 1 | 오후 3시 | 도쿄 스카이트리 | 전망대 |',
+    '| Day 2 | 09:30 | 츠키지 장외시장 | 아침 스시 |',
+    '| | 오후 2시 | 팀랩 플래닛 도쿄 | 예약 필수 |',
+    '| Day 3 | 10:00 | 메이지 신궁 | |'
+  ].join('\n'), {});
+  assert.equal(r.days.length, 3, '사흘이 하루로 합쳐지지 않는다');
+  assert.deepEqual(r.days.map(d => d.items.map(i => i.name)),
+    [['센소지', '도쿄 스카이트리'], ['츠키지 장외시장', '팀랩 플래닛 도쿄'], ['메이지 신궁']]);
+  assert.deepEqual(r.days[1].items.map(i => i.at), ['09:30', '14:00'], '빈 날 칸은 앞 날을 잇는다');
+  assert.equal(r.undivided, false);
+  // 날짜 칸도 같다 — 값이 날짜면 그 날짜를 읽는다
+  const dated = I.parseItinerary('| 날짜 | 장소 |\n|---|---|\n| 11/12 | 기요미즈데라 |\n| 11/13 | 니시키 시장 |', { year: 2026 });
+  assert.deepEqual(dated.days.map(d => d.date), ['2026-11-12', '2026-11-13']);
+});
+
+test('AI 글: 날 칸 값이 하나뿐이면 이미 그 날의 표다 — 머리글 아래 날을 새로 만들지 않는다', () => {
+  const r = I.parseItinerary('## Day 2 — 교토\n| 날짜 | 장소 |\n|---|---|\n| 11/13 | 기요미즈데라 |\n| 11/13 | 니시키 시장 |', { year: 2026 });
+  assert.equal(r.days.length, 1);
+  assert.equal(r.days[0].title, '교토');
+  assert.equal(r.days[0].items.length, 2);
+});
+
+test('붙여넣기: 일자 머리글을 하나도 못 찾으면 한 날로 읽었다고 알린다', () => {
+  assert.equal(I.parseItinerary('- 센소지\n- 도쿄 스카이트리', {}).undivided, true);
+  assert.equal(I.parseItinerary('## Day 1\n- 센소지', {}).undivided, false);
+  assert.equal(I.parseItinerary('안녕하세요! 무엇을 도와드릴까요? 😊', {}).undivided, false, '읽은 장소가 없으면 합친 것도 없다');
+});
+
+test('붙여넣기: 일자 제목에서 날짜로 읽은 부분을 뗀다 — 날짜가 두 번 보이지 않게', () => {
+  const title = (h) => I.parseItinerary(`## ${h}\n- 어떤 곳`, { year: 2026 }).days[0];
+  assert.deepEqual([title('🗓️ Day 1 — 11월 12일(목) | 오사카 도착 & 난바').title, title('🗓️ Day 1 — 11월 12일(목) | 오사카 도착 & 난바').date],
+    ['오사카 도착 & 난바', '2026-11-12']);
+  assert.equal(title('📅 Day 1 (7월 21일, 월) – 도착').title, '도착');
+  assert.equal(title('11월 7일(금) 해운대').title, '해운대');
+  assert.equal(title('7/21 (화) 도착').title, '도착');
+  assert.equal(title('7월 22일 수요일').title, '');
+  assert.equal(title('교토 (11/12) 당일치기').title, '교토 당일치기');
+  assert.equal(title('Day 3 — 귀국').title, '귀국', '날짜가 없으면 그대로다');
+  // 읽은 날짜와 다른 표기는 건드리지 않는다
+  assert.equal(I.titleWithoutDate('7월 21일 출발', '2026-07-22', 2026), '7월 21일 출발');
+});
+
+test('AI 글: 인사말·구분선·마크다운은 메모에 날것으로 남지 않는다', () => {
+  const r = I.parseItinerary([
+    '안녕하세요! 요청하신 일정을 정리해 봤어요 😊',
+    '',
+    '---',
+    '',
+    '## Day 1 — 도착',
+    '- 오사카성',
+    '',
+    '---',
+    '',
+    '💡 **Tip:** 오사카 주유패스를 사면 교통비를 아낄 수 있어요!',
+    '> 짐은 코인로커에'
+  ].join('\n'), {});
+  assert.equal(r.days.length, 1);
+  assert.equal(r.preamble, '안녕하세요! 요청하신 일정을 정리해 봤어요');
+  assert.equal(r.days[0].note, 'Tip: 오사카 주유패스를 사면 교통비를 아낄 수 있어요!\n짐은 코인로커에');
+});
+
+test('AI 글: 꾸밈을 걷어도 설명·메모 줄의 링크 주소는 그대로다', () => {
+  // `__`·`*`는 꾸밈이지만 주소 안에서는 주소의 일부다 — 링크를 먼저 떼고 남은 글만 걷는다
+  const r = I.parseItinerary('## Day 1\n- 오사카성\n  **예약:** https://example.com/tickets__osaka?a=*1', {});
+  const it = r.days[0].items[0];
+  assert.equal(it.url, 'https://example.com/tickets__osaka?a=*1');
+  assert.equal(it.desc, '예약:');
+  const n = I.parseItinerary('## Day 1\n- 오사카성\n\n💡 **참고:** https://example.com/a__b*c', {});
+  assert.equal(n.days[0].note, '참고: https://example.com/a__b*c', '메모 줄의 주소도 그대로');
+  assert.equal(I.stripDecor('**https://example.com/x__y**'), 'https://example.com/x__y', '굵은 글씨로 감싼 주소는 감싼 것만 걷는다');
+});
+
+test('dayLayout: 글의 날짜가 건너뛰면 빈 날로 채울 수 있다 — 고르는 것은 사람이다', () => {
+  const days = [{ date: '2026-11-07' }, { date: '2026-11-09' }, { date: null }, { date: '2026-11-12' }];
+  const fill = I.dayLayout(days, true);
+  assert.deepEqual(fill.at, [0, 2, 3, 5], '11/9는 셋째 날, 11/12는 여섯째 날');
+  assert.equal(fill.total, 6);
+  assert.deepEqual(fill.gaps, [{ before: 1, from: '2026-11-08', count: 1 }, { before: 3, from: '2026-11-11', count: 1 }]);
+  const keep = I.dayLayout(days, false);
+  assert.deepEqual(keep.at, [0, 1, 2, 3], '순서대로 두면 예전과 같다');
+  assert.equal(keep.gaps.length, 2, '채우지 않아도 건너뛴 자리는 말한다');
+  // 일주일 넘게 건너뛰면 날짜를 잘못 적었을 수 있다 — 채우지 않는다. 거꾸로 가도 채우지 않는다
+  assert.deepEqual(I.dayLayout([{ date: '2026-11-01' }, { date: '2026-12-01' }], true).at, [0, 1]);
+  assert.deepEqual(I.dayLayout([{ date: '2026-11-09' }, { date: '2026-11-07' }], true).at, [0, 1]);
+  assert.deepEqual(I.dayLayout([], true), { at: [], total: 0, gaps: [] });
+});
+
+test('suggestTripName: 글에 적힌 도시나 첫 일자 제목으로 이름을 제안한다', () => {
+  assert.equal(I.suggestTripName({ name: '부산 1박 2일', days: [] }), '부산 1박 2일');
+  const kyoto = I.parseItinerary('## 11월 12일\n- 10:00 기요미즈데라 | 교토\n- 니시키 시장 | 교토\n- 오사카성 | 오사카', { year: 2026 });
+  assert.equal(I.suggestTripName(kyoto), '교토 여행', '가장 많이 적힌 도시');
+  const tokyo = I.parseItinerary('### Day 1: 도쿄 도착 🗼\n- **오후:** 센소지', {});
+  assert.equal(I.suggestTripName(tokyo), '도쿄 도착');
+  assert.equal(I.suggestTripName(I.parseItinerary('- 센소지', {})), '', '정할 수 없으면 비운다 — 부르는 쪽의 기본 이름');
 });

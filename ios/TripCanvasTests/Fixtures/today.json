@@ -35,7 +35,7 @@
     "nowMinutes": 780,
     "dayStartMinutes": 540,
     "dayEndMinutes": 1260,
-    "availableMinutes": 360,
+    "availableMinutes": 358,
     "delayMinutes": 240,
     "travelMinutesToday": 2,
     "planningMode": "ASSISTED",
@@ -63,7 +63,7 @@
       "leaveMinutes": 1138,
       "slackMinutes": 358,
       "level": "EARLY",
-      "text": "18:58쯤 출발하면 여유 있게 도착해요 (지금부터 358분 남음)"
+      "text": "18:58쯤 출발하면 19:00 예약에 맞춰요 · 그 전까지 5시간 58분 여유가 있어요"
     },
     "location": {
       "lat": 40.41,
@@ -72,38 +72,10 @@
     "type": "HOTEL",
     "flexibility": "FIXED",
     "reasons": [
-      "18:58쯤 출발하면 여유 있게 도착해요 (지금부터 358분 남음)"
+      "18:58쯤 출발하면 19:00 예약에 맞춰요 · 그 전까지 5시간 58분 여유가 있어요"
     ]
   },
   "suggestions": [
-    {
-      "id": "parity|2026-09-01|VISIT_PLACE|공원",
-      "type": "NEXT_ACTIVITY",
-      "title": "공원",
-      "description": "1분 이동 · 13:01 도착 · 14:31까지",
-      "reasons": [
-        "앞 일정에서 이동 약 1분",
-        "Day 2 일정에서 옮겨올 수 있어요",
-        "저녁 예약 동선과 같은 방향이에요",
-        "약 1.5시간이면 둘러볼 수 있어요"
-      ],
-      "impact": {
-        "timeChangeMinutes": 91,
-        "addedActivities": [
-          "공원"
-        ],
-        "removedActivities": []
-      },
-      "action": {
-        "kind": "MOVE_TO_TODAY",
-        "activityId": null,
-        "fromDay": 1,
-        "bookingId": null,
-        "dropActivityIds": [],
-        "startMinutes": 780
-      },
-      "acceptable": true
-    },
     {
       "id": "parity|2026-09-01|REST|조금 더 쉬기",
       "type": "REST",
@@ -111,7 +83,7 @@
       "description": "지금 쉬어도 남은 일정에는 여유가 있어요",
       "reasons": [
         "지금은 체력을 아끼는 편이 나아요",
-        "저녁 예약 19:00까지 360분 남았어요"
+        "저녁 예약까지 5시간 58분 여유가 있어요"
       ],
       "impact": {
         "timeChangeMinutes": 90,
@@ -129,28 +101,56 @@
       "acceptable": true
     },
     {
-      "id": "parity|2026-09-01|EAT|점심 시간이 비어 있어요",
-      "type": "NEXT_ACTIVITY",
-      "title": "점심 시간이 비어 있어요",
-      "description": "13:00부터 식사를 넣을 수 있어요",
+      "id": "parity|2026-09-01|RETURN_TO_HOTEL|숙소로 돌아가기",
+      "type": "REST",
+      "title": "숙소로 돌아가기",
+      "description": "지금 쉬어도 남은 일정에는 여유가 있어요",
       "reasons": [
-        "점심 시간대에 일정이 비어 있어요",
-        "이 시간에 식사를 넣으면 남은 일정이 밀리지 않아요"
+        "숙소까지 약 2분",
+        "숙소에 들렀다 가도 저녁 예약 시간에는 여유가 있어요"
       ],
       "impact": {
-        "timeChangeMinutes": 60,
+        "timeChangeMinutes": 2,
         "addedActivities": [],
         "removedActivities": []
       },
       "action": {
-        "kind": "EAT",
+        "kind": "RETURN_TO_HOTEL",
         "activityId": null,
         "fromDay": null,
         "bookingId": null,
         "dropActivityIds": [],
         "startMinutes": 780
       },
-      "acceptable": false
+      "acceptable": true
+    },
+    {
+      "id": "parity|2026-09-01|VISIT_PLACE|공원",
+      "type": "NEXT_ACTIVITY",
+      "title": "공원",
+      "description": "약 1분 이동 · 13:01 도착 · 14:31까지",
+      "reasons": [
+        "앞 일정에서 이동 약 1분",
+        "Day 2 일정에서 옮겨올 수 있어요",
+        "다음 일정 저녁 예약 가는 길에 들를 수 있어요",
+        "약 1시간 30분이면 둘러볼 수 있어요"
+      ],
+      "impact": {
+        "timeChangeMinutes": 91,
+        "addedActivities": [
+          "공원"
+        ],
+        "removedActivities": []
+      },
+      "action": {
+        "kind": "MOVE_TO_TODAY",
+        "activityId": null,
+        "fromDay": 1,
+        "bookingId": null,
+        "dropActivityIds": [],
+        "startMinutes": 780
+      },
+      "acceptable": true
     }
   ],
   "remainingActivities": [
@@ -286,11 +286,9 @@
     "feasible": true,
     "lateMinutes": 0,
     "before": [
-      "숙소",
       "저녁 예약"
     ],
     "after": [
-      "숙소",
       "저녁 예약"
     ],
     "dropActivityIds": [],
