@@ -1441,8 +1441,22 @@ function render(){
   if(picker) picker.textContent=(viewMode?'':(isSampleTrip(t)?'샘플 · ':''))+(t.name||'여행 선택');
   // 샘플 여행은 모든 기기에 똑같이 심어진 데모라 계정에도 안 올라간다 — 그 사실과 빠져나갈 길을 늘 보인다
   const sampleBar=document.getElementById('sampleBar'); if(sampleBar) sampleBar.hidden=!!viewMode||!isSampleTrip(t);
+  syncHeaderEmphasis(t);
   updateCollabUI();
   syncSheetTop();   // 헤더 아래 띠(샘플·보기 권한 안내)와 필터바 높이가 정해진 뒤에 잰다
+}
+/**
+ * 헤더에서 채운 버튼은 하나다 — '여행 중 안내'는 여행 기간이거나 하루 전일 때만 주 버튼이고, 그 밖에는 조용히(좁은 화면은
+ * 아이콘만) 둬 여행 이름이 먼저 읽히게 한다(2026-10-03 UX 검토: 3주 전에도 가장 진한 버튼이라 샘플 띠의 '내 여행 만들기'와
+ * 주 버튼이 둘이었고, 375px에서 여행 이름이 '샘플 · 🇪🇸 스페인 …'으로 잘렸다). 여행 중이면 샘플 띠 버튼이 물러난다.
+ * @param {any} t
+ */
+function syncHeaderEmphasis(t){
+  const btn=document.getElementById('travelBtn'); if(!btn||!t) return;
+  const p=tripPeriodOf(t.start, t.days.length, travelClock().todayISO);
+  const near=p.phase==='DURING' || (p.phase==='BEFORE'&&p.daysUntil<=1);
+  btn.classList.toggle('primary',near); btn.classList.toggle('quiet',!near);
+  const sampleNew=document.getElementById('sampleNew'); if(sampleNew) sampleNew.classList.toggle('primary',!near);
 }
 // ── 지도에서 실제로 보이는 곳 (2026-10-03 UX 검토) ──
 // 모바일에서는 일정 시트가 지도 아래를 덮고(절반이면 지도의 55%), 장소 정보 패널은 좁은 화면에서는 아래·넓은 화면에서는

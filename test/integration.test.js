@@ -5576,3 +5576,24 @@ test('통합: 장소 ⋮ 메뉴는 시트 윗변까지 재고, 위아래 어디�
     assert.equal(menu.classList.contains('float'),false);
   }finally{ w.close(); }
 });
+
+test("통합: 헤더의 채운 버튼은 하나다 — '여행 중 안내'는 여행 기간·하루 전에만 주 버튼", {skip:noJsdom}, () => {
+  // 2026-10-03 UX 검토: 3주 전에도 '여행 중 안내'가 가장 진한 버튼이라 샘플 띠의 '내 여행 만들기'와 둘이었고 여행 이름이 잘렸다
+  const w=boot();
+  try{
+    const btn=w.document.getElementById('travelBtn'), make=w.document.getElementById('sampleNew');
+    const at=(iso)=>w.eval(`travelClock=()=>({todayISO:'${iso}',nowMin:600}); store={trips:[sampleTrip()],activeId:SAMPLE_TRIP_ID}; render();`);
+    at('2026-10-03');   // 샘플은 10/25 시작 — D-22
+    assert.equal(btn.classList.contains('primary'),false,'여행 전에는 조용한 버튼');
+    assert.ok(btn.classList.contains('quiet'),'좁은 화면에서는 아이콘만(여행 이름에 자리를 준다)');
+    assert.equal(btn.getAttribute('aria-label'),'여행 중 안내','글자를 숨겨도 이름은 남는다');
+    assert.ok(make.classList.contains('primary'),'그때 주 버튼은 내 여행 만들기 하나');
+    at('2026-10-24');   // D-1
+    assert.ok(btn.classList.contains('primary'),'하루 전부터는 여행 중 안내가 주 버튼');
+    at('2026-10-27');   // 여행 중
+    assert.ok(btn.classList.contains('primary'));
+    assert.equal(make.classList.contains('primary'),false,'둘이 겨루지 않게 샘플 띠 버튼이 물러난다');
+    at('2026-12-01');   // 지난 여행
+    assert.equal(btn.classList.contains('primary'),false);
+  }finally{ w.close(); }
+});

@@ -684,3 +684,9 @@ body:has(.modalBg.show) #toast{bottom:auto;top:calc(env(safe-area-inset-top) + 1
 /* '지도에서 보기'로 연 장소 정보는 좁은 화면에서 지도가 남을 만큼만 올린다 — 88dvh면 옮겨 놓은 핀까지 덮었다(2026-10-03).
    높이를 고정하는 것은 내용이 늦게 와도 덮는 높이가 변하지 않게 하려는 것이다(focusSpot이 연 직후 잰 높이로 옮긴다) */
 @media(max-width:700px){#placeDetails[data-map-focus]{height:55dvh;max-height:55dvh}}
+/* '여행 중 안내'가 주 버튼이 아닐 때(여행 기간·하루 전이 아님) — 좁은 화면에서는 아이콘만 남겨 여행 이름에 자리를 준다.
+   이름은 aria-label이 지킨다(2026-10-03 UX 검토: 375px에서 여행 이름이 '샘플 · 🇪🇸 스페인 …'으로 잘렸다) */
+@media (max-width:760px){#travelBtn.quiet .travelBtnText{display:none}#travelBtn.quiet{min-width:44px;padding:0 10px;display:inline-flex;align-items:center;justify-content:center}}
+/* 여행 중 날짜 고르기 — 날짜 칸이 남는 폭을 쓴다(375px에서 'Day 1 · 10/25 (일'로 잘렸다) */
+.travelTop>button,.travelTop>strong{flex:none;white-space:nowrap}.travelTop>strong{flex:1 0 auto}
+.travelTop select{max-width:none;flex:0 1 auto;min-width:0}

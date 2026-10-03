@@ -38,7 +38,7 @@
   <button class="membersPill" id="membersBtn" hidden title="같이 짜기 — 멤버·초대" aria-haspopup="dialog"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 19v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1M22 19v-1a4 4 0 0 0-3-3.9"/><path d="M9 4a3 3 0 1 1 0 6 3 3 0 0 1 0-6z"/></svg> <span id="membersCount">1</span></button>
   <span class="hdrSpacer"></span>
   <button class="btn" id="pasteBtn"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4h6v3H9zM7 5.5H5V21h14V5.5h-2M8.5 12h7M8.5 16h5"/></svg> 일정 붙여넣기</button>
-  <button class="btn primary" id="travelBtn" title="여행 중 안내 켜기 — 지금 무엇을 할지, 다음 장소까지 얼마나 걸리는지 알려 줘요"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><path d="M12 7.4a2.6 2.6 0 1 1 0 5.2 2.6 2.6 0 0 1 0-5.2z"/></svg> 여행 중 안내</button>
+  <button class="btn primary" id="travelBtn" aria-label="여행 중 안내" title="여행 중 안내 켜기 — 지금 무엇을 할지, 다음 장소까지 얼마나 걸리는지 알려 줘요"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><path d="M12 7.4a2.6 2.6 0 1 1 0 5.2 2.6 2.6 0 0 1 0-5.2z"/></svg> <span class="travelBtnText">여행 중 안내</span></button>
   <button class="btn ghost" id="undoQuick" type="button" hidden aria-label="실행취소" title="방금 한 변경 되돌리기 (Ctrl+Z)" onclick="undo()"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
   <button class="btn ghost" id="moreBtn" aria-label="메뉴" onclick="toggleHdrMenu(event)"><span class="menuBadge" id="menuBadge" hidden></span><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
   <div id="hdrMenu">
