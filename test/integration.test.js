@@ -6221,4 +6221,380 @@ test('통합: 다음이 예약한 곳이면 지금 카드가 도착 예상과 �
   w.eval('renderTravel(0)');
   assert.match(travelText(w, 'travelNext'), /저녁 예약.*도착 예상 · 예약 19:00/);
   w.close();
+// ── ux3:undo ──
+// 2026-10-03 UX 검토 3차 — 실행취소·편집 피드백·포커스 묶음(P1-7 · P1-27 · P2-13 · P2-17 · P2-18 · P2-19 · P2-65).
+const UX3_DAY = (title, spots) => ({ title, drive: '', note: '', mode: 'car', spots });
+const UX3_SPOT = (name, lat) => ({ name, city: 'S', desc: '', lat, lng: 127 });
+function ux3Trip(w, days, activeDay = 0) {
+  withTrip(w, JSON.stringify(days), activeDay);
+  w.eval('render(); histStack.length=0; redoStack.length=0; histLast=JSON.stringify(store); updateUndoBtn();');
+}
+const ux3Names = (w, di) => JSON.parse(w.eval(`JSON.stringify(trip().days[${di}].spots.map(s=>s.name))`));
+const ux3Row = (w, di, si) => w.document.querySelector(`#sidebar .spot[data-di="${di}"][data-si="${si}"]`);
+const ux3Key = (w, key, mods = {}) => (w.document.activeElement || w.document.body)
+  .dispatchEvent(new w.KeyboardEvent('keydown', Object.assign({ key, bubbles: true, cancelable: true }, mods)));
+
+test('통합: 앱을 다시 연 뒤 첫 변경도 실행취소할 수 있다', { skip: noJsdom }, () => {
+  const w0 = boot();
+  withTrip(w0, JSON.stringify([UX3_DAY('D1', [UX3_SPOT('A', 37.5)])]));
+  w0.eval('save()');
+  const storage = { tripcanvas_v1: w0.localStorage.getItem('tripcanvas_v1'), tripcanvas_onboarded_v1: '1' };
+  w0.close();
+  const w = boot('http://localhost/', storage);
+  try {
+    const q = w.document.getElementById('undoQuick');
+    assert.equal(q.hidden, true, '열자마자는 되돌릴 것이 없다');
+    w.eval("setDayMode(0,'walk')");
+    assert.equal(q.hidden, false, '연 뒤 첫 변경부터 헤더에 실행취소가 보인다');
+    assert.equal(w.document.getElementById('undoBtn').disabled, false, '☰ 실행취소도 켜진다');
+    q.click();
+    assert.equal(w.eval('trip().days[0].mode'), 'car', '첫 변경이 되돌아간다');
+  } finally { w.close(); }
+});
+
+test('통합: 조회 결과를 문서에 캐시해 두는 저장은 실행취소 거리가 아니다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    ux3Trip(w, [UX3_DAY('D1', [UX3_SPOT('A', 37.5)])]);
+    w.eval(`trip().bookings=[{id:'h1',type:'hotel',title:'호텔',start:'2026-08-01',end:'2026-08-02'}]; saveQuietly();`);
+    assert.equal(w.eval('histStack.length'), 0);
+    assert.equal(w.document.getElementById('undoQuick').hidden, true);
+    assert.match(w.localStorage.getItem('tripcanvas_v1'), /호텔/, '저장은 된다');
+  } finally { w.close(); }
+});
+
+test('통합: J가 일정을 바꾼 토스트에는 되돌리기가 붙는다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    withAdaptTrip(w, [{ startAt: '09:00', mode: 'walk', spots: [S('A', 40.40), S('B', 40.41), S('C', 40.42)] }, { spots: [S('D', 40.43)] }]);
+    w.eval('render()');
+    const all = () => [ux3Names(w, 0), ux3Names(w, 1)];
+    const before = all();
+    w.eval(`applyReplan({type:'REPLAN',key:'r1',action:{drop:['d0s2']}},0)`);
+    assert.deepEqual(all(), [['A', 'B'], ['C', 'D']], '일정 조정이 C를 다음 날로 옮겼다');
+    let act = w.document.querySelector('#toast .toastAct');
+    assert.equal(act && act.textContent, '되돌리기', '"N곳을 옮겼어요"에 되돌리기가 있다');
+    act.click();
+    assert.deepEqual(all(), before, '되돌리면 J가 옮기기 전으로');
+
+    w.eval(`acceptMove({type:'NEXT_ACTIVITY',key:'m1',title:'D'},0,{fromDay:1,si:0})`);
+    assert.deepEqual(all(), [['A', 'B', 'C', 'D'], []]);
+    act = w.document.querySelector('#toast .toastAct');
+    assert.equal(act && act.textContent, '되돌리기', '다른 날 장소를 오늘에 넣은 것도 되돌릴 수 있다');
+    act.click();
+    assert.deepEqual(all(), before);
+  } finally { w.close(); }
+});
+
+test('통합: 실행취소는 보던 범위를 지키고, 무엇을 되돌렸는지 말하고, 다시 할 수 있다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    ux3Trip(w, [UX3_DAY('D1', [UX3_SPOT('경복궁', 37.5), UX3_SPOT('창덕궁', 37.6)]), UX3_DAY('D2', []),
+      UX3_DAY('D3', [UX3_SPOT('X', 37.7), UX3_SPOT('Y', 37.8)])], 3);
+    const toastText = () => w.document.getElementById('toast').textContent;
+    w.eval('moveSpot(2,1,-1)');
+    assert.deepEqual(ux3Names(w, 2), ['Y', 'X']);
+    w.eval('undo()');
+    assert.deepEqual(ux3Names(w, 2), ['X', 'Y']);
+    assert.equal(w.eval('activeDay'), 3, 'Day 3을 보던 채로 되돌린다 — 전체로 튀지 않는다');
+    assert.match(toastText(), /장소 순서 바꾸기를 되돌렸어요/, '무엇을 되돌렸는지 말한다');
+    const again = w.document.querySelector('#toast .toastAct');
+    assert.equal(again && again.textContent, '다시 하기');
+    assert.equal(w.document.getElementById('redoBtn').disabled, false, '☰에도 다시 하기가 켜진다');
+    again.click();
+    assert.deepEqual(ux3Names(w, 2), ['Y', 'X'], '다시 하기로 되돌린 것을 되살린다');
+    assert.match(toastText(), /장소 순서 바꾸기를 다시 했어요/);
+
+    // 키보드: ⌘Z / ⇧⌘Z · Ctrl+Y
+    ux3Key(w, 'z', { ctrlKey: true });
+    assert.deepEqual(ux3Names(w, 2), ['X', 'Y']);
+    ux3Key(w, 'z', { ctrlKey: true, shiftKey: true });
+    assert.deepEqual(ux3Names(w, 2), ['Y', 'X']);
+    ux3Key(w, 'z', { metaKey: true }); ux3Key(w, 'y', { ctrlKey: true });
+    assert.deepEqual(ux3Names(w, 2), ['Y', 'X'], 'Ctrl+Y도 다시 하기');
+
+    // 이름은 변경을 비교해서 붙인다 — 편집 진입점마다 달지 않는다
+    const label = (code) => { w.eval(code); w.eval('undo()'); return toastText(); };
+    assert.match(label('deleteSpot(0,0)'), /장소 삭제를 되돌렸어요/);
+    assert.match(label("setDayMode(0,'walk')"), /이동수단 바꾸기를 되돌렸어요/);
+    assert.match(label("setLegMode(0,1,'taxi')"), /이동수단 바꾸기를 되돌렸어요/);
+    assert.match(label("commit(()=>{ trip().days[0].spots[0].desc='메모'; })"), /장소 수정을 되돌렸어요/);
+    assert.match(label("commit(()=>{ trip().days.push({title:'',drive:'',note:'',spots:[]}); })"), /일자 추가를 되돌렸어요/);
+    assert.match(label("commit(()=>{ trip().days[1].spots.push(trip().days[0].spots.pop()); })"), /장소 옮기기를 되돌렸어요/);
+    assert.match(label("commit(()=>{ trip().name='새 이름'; })"), /여행 설정 수정을 되돌렸어요/);
+
+    // 새 편집이 갈라져 나오면 다시 하기는 사라진다
+    w.eval("setDayMode(0,'walk'); undo(); setDayMode(0,'taxi');");
+    assert.equal(w.eval('redoStack.length'), 0);
+    assert.equal(w.document.getElementById('redoBtn').disabled, true);
+
+    // 여행을 만든 직후 되돌리면 여행이 사라진다 — 그 사실을 말하고, 다시 하기로 되살린다
+    w.eval(`commit(()=>{ store.trips.push({id:'n1',name:'새 여행',start:'',days:[{title:'',drive:'',note:'',spots:[]}]}); store.activeId='n1'; activeDay=0; })`);
+    w.eval('undo()');
+    assert.equal(w.eval("store.trips.some(t=>t.id==='n1')"), false);
+    assert.match(toastText(), /여행 추가를 되돌렸어요/);
+    w.document.querySelector('#toast .toastAct').click();
+    assert.equal(w.eval('store.activeId'), 'n1', '다시 하기로 그 여행이 돌아온다');
+  } finally { w.close(); }
+});
+
+test('통합: 여행 삭제를 되돌린 뒤에는 다시 하기를 두지 않는다 — 다시 지우는 일은 서버에 알려야 한다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    ux3Trip(w, [UX3_DAY('D1', [])]);
+    w.eval(`trip().name='제주 여행'; window.confirm=()=>true; deleteTrip('__it__');`);
+    assert.match(w.document.getElementById('toast').textContent, /"제주 여행"을 지웠어요/, '조사는 이름에 맞춘다 — 을(를)이 아니다');
+    w.eval('undo()');
+    assert.equal(w.eval("store.trips.some(t=>t.id==='__it__')"), true);
+    assert.match(w.document.getElementById('toast').textContent, /여행 삭제를 되돌렸어요/);
+    assert.equal(w.document.querySelector('#toast .toastAct'), null);
+    assert.equal(w.eval('redoStack.length'), 0);
+  } finally { w.close(); }
+});
+
+test('통합: 장소 선택은 자리 번호가 아니라 장소를 따라간다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    ux3Trip(w, [UX3_DAY('D1', [UX3_SPOT('동문시장', 37.5), UX3_SPOT('협재', 37.6), UX3_SPOT('우도', 37.7)])]);
+    const selected = () => { const el = w.document.querySelector('#sidebar .spot.is-selected'); return el && el.querySelector('.spotName').textContent; };
+    const addLabel = () => w.document.querySelector('#sidebar .addSpotBtn').textContent;
+    w.eval('selectSpotCard(0,1)');
+    assert.equal(selected(), '협재');
+    w.eval('moveSpot(0,1,-1)');
+    assert.deepEqual(ux3Names(w, 0), ['협재', '동문시장', '우도']);
+    assert.equal(selected(), '협재', '옮긴 장소에 강조가 따라간다');
+    assert.match(addLabel(), /1번 뒤에 장소 추가/, '다음 장소도 옮긴 장소 바로 뒤에 들어간다');
+    assert.ok(ux3Row(w, 0, 0).classList.contains('justMoved'), '옮긴 행을 잠깐 강조한다');
+
+    w.eval('selectSpotCard(0,2); deleteSpot(0,0)');
+    assert.equal(selected(), '우도', '앞의 장소를 지워도 선택은 그 장소에 남는다');
+    assert.match(addLabel(), /2번 뒤에 장소 추가/);
+    w.eval('deleteSpot(0,1)');
+    assert.equal(selected(), null, '선택한 장소를 지우면 다른 장소로 옮겨 가지 않고 풀린다');
+    assert.equal(addLabel(), '＋ 장소 추가');
+  } finally { w.close(); }
+});
+
+test('통합: 장소 삭제는 묻지 않고 이름을 말하며, 편집으로 다른 날에 옮기면 어디로 갔는지 말한다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    ux3Trip(w, [UX3_DAY('D1', [UX3_SPOT('경복궁', 37.5), UX3_SPOT('창덕궁', 37.6)]), UX3_DAY('D2', [UX3_SPOT('남산', 37.55)])]);
+    w.eval(`window.confirm=()=>{ throw new Error('묻지 않아야 한다 — 실행취소가 있다'); }`);
+    w.eval('deleteSpot(0,0)');
+    const t = w.document.getElementById('toast');
+    assert.match(t.textContent, /"경복궁"을 지웠어요/, '어느 장소를 지웠는지 말한다');
+    t.querySelector('.toastAct').click();
+    assert.deepEqual(ux3Names(w, 0), ['경복궁', '창덕궁']);
+
+    w.eval('openSpotModal(0,0)');
+    w.document.getElementById('spotDay').value = '1';
+    w.document.getElementById('spotSave').click();
+    assert.deepEqual(ux3Names(w, 1), ['남산', '경복궁']);
+    assert.match(t.textContent, /Day 2 맨 뒤로 옮겼어요/, "'저장했어요'가 아니라 어디로 갔는지");
+    assert.deepEqual(Array.from(t.querySelectorAll('.toastAct')).map((b) => b.textContent), ['보기', '실행취소']);
+    t.querySelectorAll('.toastAct')[0].click();
+    assert.equal(w.eval('activeDay'), 2, '보기는 그 날로 범위를 옮긴다');
+
+    w.eval('setDayScope(0, ()=>{})');
+    w.eval('openSpotModal(1,1)');
+    w.document.getElementById('spotDay').value = '0';
+    w.document.getElementById('spotSave').click();
+    assert.deepEqual(ux3Names(w, 0), ['창덕궁', '경복궁']);
+    t.querySelectorAll('.toastAct')[1].click();
+    assert.deepEqual([ux3Names(w, 0), ux3Names(w, 1)], [['창덕궁'], ['남산', '경복궁']], '실행취소는 옮기기 전으로');
+  } finally { w.close(); }
+});
+
+test('통합: 가운데 일자를 지우면 뒤 날짜가 당겨진다는 것을 지우기 전과 뒤에 말한다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    ux3Trip(w, [UX3_DAY('D1', [UX3_SPOT('A', 37.5)]), UX3_DAY('D2', [UX3_SPOT('B', 37.6)]), UX3_DAY('D3', [UX3_SPOT('C', 37.7)]), UX3_DAY('D4', [])]);
+    w.eval(`trip().start='2026-10-20'; render(); window.__asked=[]; window.confirm=(m)=>{ window.__asked.push(m); return true; };`);
+    const asked = () => w.eval('window.__asked.pop()||""');
+    const toastText = () => w.document.getElementById('toast').textContent;
+
+    w.eval('deleteDay(1)');
+    const q = asked();
+    assert.match(q, /Day 2 · 10\/21 \(수\)의 장소 1곳도 함께 지워져요/);
+    assert.match(q, /이후 날짜가 하루씩 당겨져요 — 10\/22 \(목\) → 10\/21 \(수\)/, '뒤 날짜가 어떻게 바뀌는지');
+    assert.match(toastText(), /일자를 지웠어요 · 이후 날짜가 하루씩 당겨졌어요 \(10\/22 \(목\) → 10\/21 \(수\)\)/);
+    w.document.querySelector('#toast .toastAct').click();
+    assert.equal(w.eval('trip().days.length'), 4, '실행취소로 돌아온다');
+
+    // 빈 날은 묻지 않지만 당겨진다는 사실은 말한다
+    w.eval(`commit(()=>{ trip().days[1].spots=[]; })`);
+    w.eval('deleteDay(1)');
+    assert.equal(asked(), '', '빈 날은 묻지 않는다');
+    assert.match(toastText(), /이후 날짜가 하루씩 당겨졌어요/);
+    w.eval('undo()');
+
+    // 마지막 날은 당겨질 날이 없다
+    w.eval(`commit(()=>{ trip().days[3].spots=[{name:'끝',city:'S',lat:37.9,lng:127}]; })`);
+    w.eval('deleteDay(3)');
+    assert.doesNotMatch(asked(), /당겨져요/);
+    assert.equal(w.document.getElementById('toast').firstChild.textContent, '일자를 지웠어요');
+
+    // 날짜 없는 여행은 일자 번호가 당겨진다
+    w.eval(`undo(); trip().start=''; render(); deleteDay(0)`);
+    assert.match(asked(), /이후 날짜가 하루씩 당겨져요 — Day 2 → Day 1/);
+  } finally { w.close(); }
+});
+
+test('통합: 담기·수단 바꾸기·저장·삭제·옮기기 뒤에도 키보드 포커스가 갈 곳에 있다', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    ux3Trip(w, [UX3_DAY('D1', [UX3_SPOT('A', 37.5), UX3_SPOT('B', 37.6), UX3_SPOT('C', 37.7)])]);
+    const active = () => w.document.activeElement;
+    const rowOf = (el) => el && el.closest && el.closest('.spot');
+    const nameAt = (el) => { const r = rowOf(el); return r && r.querySelector('.spotName').textContent; };
+    const menuBtn = (si, title) => { const r = ux3Row(w, 0, si); r.querySelector('details.actionMenu').open = true; return r.querySelector(`button[title="${title}"]`); };
+
+    // 삭제 → 그 자리에 올라온 다음 행
+    let b = menuBtn(1, '삭제'); b.focus(); b.click();
+    assert.equal(nameAt(active()), 'C', '지운 행 자리의 다음 장소');
+    assert.ok(active().classList.contains('spotIdentity'));
+    // 마지막 행을 지우면 앞 행
+    b = menuBtn(1, '삭제'); b.focus(); b.click();
+    assert.equal(nameAt(active()), 'A');
+    w.document.querySelector('#toast .toastAct').click();   // 실행취소 → 되살아난 그 장소로
+    assert.equal(nameAt(active()), 'C');
+
+    // 수단 바꾸기 → 같은 날의 새 수단 버튼
+    w.document.querySelector('#sidebar .dayCard .modeBtn').focus();
+    w.eval('openDayModePicker(0)');
+    Array.from(w.document.querySelectorAll('#modePickerList button')).find((x) => /도보/.test(x.textContent)).click();
+    assert.equal(w.eval('trip().days[0].mode'), 'walk');
+    assert.ok(active().classList.contains('modeBtn') && active().isConnected, '새로 그린 수단 버튼');
+
+    // 담기 → 담은 장소의 행
+    w.eval('selectSpotCard(null); openSpotModal(0,-1)');
+    w.document.getElementById('spotName').value = '새 장소';
+    w.document.getElementById('spotLat').value = '37.9';
+    w.document.getElementById('spotLng').value = '127.9';
+    w.document.getElementById('spotSave').click();
+    assert.equal(nameAt(active()), '새 장소');
+    // 편집 저장 → 고친 장소의 행
+    w.eval('openSpotModal(0,0)');
+    w.document.getElementById('spotName').value = 'A 고침';
+    w.document.getElementById('spotSave').click();
+    assert.equal(nameAt(active()), 'A 고침');
+    await new Promise((r) => setTimeout(r, 10));   // 모달을 닫은 뒤의 포커스 되돌리기가 이것을 덮지 않는다
+    assert.equal(nameAt(active()), 'A 고침');
+
+    // 옮기기 → 옮긴 장소의 같은 버튼(메뉴를 다시 열어 둔다)
+    b = menuBtn(1, '아래로'); b.focus(); b.click();
+    assert.deepEqual(ux3Names(w, 0), ['A 고침', '새 장소', 'C']);
+    assert.equal(nameAt(active()), 'C');
+    assert.ok(active().classList.contains('mvdown'));
+    assert.equal(rowOf(active()).querySelector('details.actionMenu').open, true, '연달아 옮길 수 있게 메뉴가 열려 있다');
+    assert.equal(rowOf(active()).getAttribute('data-si'), '2');
+  } finally { w.close(); }
+});
+
+test('통합: 누를 것이 있는 토스트는 머무는 동안 사라지지 않고, 다음 Tab 한 번이면 닿는다', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    ux3Trip(w, [UX3_DAY('D1', [UX3_SPOT('A', 37.5), UX3_SPOT('B', 37.6)])]);
+    w.eval('dismissOnboarding(); TOAST_MS.action=30; TOAST_MS.plain=20;');   // 처음 화면이 떠 있으면 Tab은 그 안에 갇힌다
+    const t = w.document.getElementById('toast');
+    const shown = () => t.style.display !== 'none';
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+    w.eval(`toast('지웠어요','#4f4740',{fn:()=>{}})`);
+    t.dispatchEvent(new w.MouseEvent('mouseenter'));
+    await wait(80);
+    assert.equal(shown(), true, '마우스가 올라가 있는 동안은 남는다');
+    t.dispatchEvent(new w.MouseEvent('mouseleave'));
+    await wait(80);
+    assert.equal(shown(), false, '떠나면 다시 시간이 간다');
+
+    // 다음 Tab 한 번이면 토스트의 버튼으로, 거기서 Tab을 누르면 왔던 자리로
+    const origin = ux3Row(w, 0, 1).querySelector('.spotIdentity');
+    origin.focus();
+    w.eval(`TOAST_MS.action=10000; toast('지웠어요','#4f4740',{fn:()=>{}})`);
+    ux3Key(w, 'Tab');
+    assert.equal(w.document.activeElement, t.querySelector('.toastAct'), 'Tab 한 번으로 토스트에 닿는다');
+    w.eval('TOAST_MS.action=30; armToastTimer()');
+    await wait(80);
+    assert.equal(shown(), true, '포커스가 머무는 동안은 사라지지 않는다');
+    ux3Key(w, 'Tab');
+    assert.equal(w.document.activeElement, origin, '토스트에서 Tab을 누르면 원래 자리로');
+    assert.equal(ux3Key(w, 'Tab'), true, '한 번만 건너간다 — 그다음 Tab은 막지 않는다(원래 순서는 브라우저 몫)');
+    await wait(80);
+    assert.equal(shown(), false, '떠난 뒤에는 다시 시간이 간다');
+
+    // 모달이 떠 있으면 Tab은 모달에 갇힌다
+    w.eval(`TOAST_MS.action=10000; openSpotModal(0,-1); toast('담았어요','#3e7a4c',{label:'하나 더 담기',fn:()=>{}})`);
+    w.document.getElementById('spotName').focus();
+    ux3Key(w, 'Tab');
+    assert.notEqual(w.document.activeElement, t.querySelector('.toastAct'));
+  } finally { w.close(); }
+});
+
+// ux3:undo 검토 — 구현 뒤 반박 검토에서 찾은 것(2026-10-03)
+test('통합: 토스트에서 Tab으로 돌아갈 자리가 없으면 포커스를 가두지 않는다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    ux3Trip(w, [UX3_DAY('D1', [UX3_SPOT('A', 37.5)])]);
+    w.eval('dismissOnboarding();');
+    const t = w.document.getElementById('toast');
+    if (w.document.activeElement && w.document.activeElement.blur) w.document.activeElement.blur();   // 지도를 누른 뒤처럼 포커스가 본문에 있다
+    w.eval(`toast('지웠어요','#4f4740',{fn:()=>{}})`);
+    ux3Key(w, 'Tab');
+    const act = t.querySelector('.toastAct');
+    assert.equal(w.document.activeElement, act, '본문에서도 Tab 한 번이면 토스트에 닿는다');
+    // 돌아갈 자리가 본문이면 Tab을 막지 않는다 — 막으면 포커스가 토스트에 갇히고 토스트는 머무는 동안 사라지지 않는다
+    assert.equal(ux3Key(w, 'Tab'), true, '두 번째 Tab은 브라우저의 원래 순서로 간다');
+    assert.equal(ux3Key(w, 'Tab', { shiftKey: true }), true);
+  } finally { w.close(); }
+});
+
+test('통합: 마우스로 위로·아래로를 누르면 ⋮ 메뉴를 다시 열어 두지 않는다 — 키보드일 때만', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    ux3Trip(w, [UX3_DAY('D1', [UX3_SPOT('A', 37.5), UX3_SPOT('B', 37.6), UX3_SPOT('C', 37.7)])]);
+    // 사파리처럼 누른 버튼이 포커스를 받지 않은 경우 = 키보드가 아니다
+    if (w.document.activeElement && w.document.activeElement.blur) w.document.activeElement.blur();
+    w.eval('moveSpot(0,1,-1)');
+    assert.deepEqual(ux3Names(w, 0), ['B', 'A', 'C']);
+    assert.equal(w.document.querySelectorAll('#sidebar details.actionMenu[open]').length, 0,
+      '바깥을 눌러도 닫히지 않는 메뉴라 열어 두면 목록 위에 떠 남는다');
+  } finally { w.close(); }
+});
+
+test('통합: 헤더 실행취소로 마지막 것까지 되돌려 버튼이 숨으면 포커스는 토스트의 다시 하기로', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    ux3Trip(w, [UX3_DAY('D1', [UX3_SPOT('A', 37.5), UX3_SPOT('B', 37.6)])]);
+    w.eval("setDayMode(0,'walk')");
+    const q = w.document.getElementById('undoQuick');
+    q.focus(); q.click();
+    assert.equal(q.hidden, true);
+    const act = w.document.querySelector('#toast .toastAct');
+    assert.equal(act && act.textContent, '다시 하기');
+    assert.equal(w.document.activeElement, act, '숨은 버튼에 포커스를 남기지 않는다');
+  } finally { w.close(); }
+});
+
+test('통합: 비용을 고친 것을 되돌리면 "비용 수정"이라고 말한다 — "여행 설정"이 아니다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    ux3Trip(w, [UX3_DAY('D1', [UX3_SPOT('A', 37.5)])]);
+    const label = (code) => { w.eval(code); w.eval('undo()'); return w.document.getElementById('toast').textContent; };
+    assert.match(label("commit(()=>{ trip().costItems=[{id:'c1',title:'보험',amount:30000}]; })"), /비용 수정을 되돌렸어요/);
+    assert.match(label("commit(()=>{ trip().days[0].costItems=[{id:'c2',title:'간식',amount:5000}]; })"), /비용 수정을 되돌렸어요/);
+    assert.match(label("commit(()=>{ const s=trip().days[0].spots[0]; s.cost=12000; s.payState='PAID'; })"), /비용 수정을 되돌렸어요/);
+  } finally { w.close(); }
+});
+
+test('통합: ⌘Y는 다시 하기가 아니다 — 맥 브라우저의 방문 기록 단축키를 가로채지 않는다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    ux3Trip(w, [UX3_DAY('D1', [UX3_SPOT('A', 37.5)])]);
+    w.eval("setDayMode(0,'walk'); undo();");
+    assert.equal(ux3Key(w, 'y', { metaKey: true }), true, '기본 동작을 막지 않는다');
+    assert.equal(w.eval('trip().days[0].mode'), 'car');
+    ux3Key(w, 'y', { ctrlKey: true });
+    assert.equal(w.eval('trip().days[0].mode'), 'walk');
+  } finally { w.close(); }
 });

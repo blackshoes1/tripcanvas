@@ -123,10 +123,14 @@ function load(){
     const sample=sampleTrip(); store = {trips:[sample], activeId:sample.id};
     save();
   }
+  // 실행취소의 기준선은 **연 순간의 문서**다. 비워 두면 첫 save가 기준선만 세우고 쌓지 않아,
+  // 앱을 연 뒤 첫 변경(예약 편집·'이대로 조정' 수락)은 되돌릴 수 없었다(2026-10-03 UX 검토).
+  if(histLast===null) histLast=JSON.stringify(store);
 }
 let viewMode=null;   // #v= 읽기전용으로 보는 여행 (저장소에 저장 안 함)
 // 다단계 실행취소: save 시점마다 직전 상태를 스택에 보관 (최대 30)
-let histStack=[], histLast=null, histLock=false;
+// 다시 하기(redoStack)는 되돌린 상태를 담고, 새 편집이 갈라져 나오면 버린다(2026-10-03 — 되돌린 것을 되살릴 길이 없었다).
+let histStack=[], histLast=null, histLock=false, redoStack=[];
 let lsDirty=false;   // localStorage 기록이 실패(쿼터 등)해 재시도가 필요한 상태
 function save(){
   if(viewMode) return;   // 읽기전용 보기에선 아무것도 저장하지 않음
@@ -138,6 +142,7 @@ function save(){
   if(changed && !histLock && histLast!==null){   // 내용이 바뀐 경우에만 undo 히스토리에 push
     histStack.push(histLast);
     if(histStack.length>30) histStack.shift();
+    redoStack.length=0;   // 새 편집이 갈라져 나왔다 — 되돌렸던 쪽으로 다시 갈 길은 없다
     updateUndoBtn();
   }
   histLast=ser;
@@ -150,7 +155,14 @@ function save(){
 // 삭제·최적화처럼 큰 변경은 토스트의 '실행취소'가 따로 있고, 이 버튼은 그 밖의 편집(이동·수정·수단)까지 덮는다.
 function updateUndoBtn(){
   const b=document.getElementById('undoBtn'); if(b) b.disabled=!histStack.length;
+  const r=document.getElementById('redoBtn'); if(r) r.disabled=!redoStack.length;
   const q=document.getElementById('undoQuick'); if(q) q.hidden=!histStack.length || (typeof viewMode!=='undefined' && !!viewMode);
+}
+// 사람이 한 일이 아닌 저장(조회 결과를 문서에 캐시해 두는 것)은 실행취소 거리가 아니다 — 쌓지 않고 기준선만 옮긴다.
+// 기준선을 연 순간에 세운 뒤로는(load) 이것이 없으면 앱을 열자마자 가격 확인이 헤더에 실행취소를 띄운다.
+function saveQuietly(){
+  const was=histLock; histLock=true;
+  try{ save(); } finally { histLock=was; }
 }
 /**
  * 일행·다른 기기의 변경을 로컬에 들일 때 감싼다 — 그동안 히스토리를 쌓지 않고, 들인 뒤에는 비운다.
@@ -164,26 +176,105 @@ function updateUndoBtn(){
 function adoptRemote(apply){
   histLock=true;
   try{ apply(); } finally { histLock=false; }
-  histStack.length=0; histLast=JSON.stringify(store); updateUndoBtn();
+  histStack.length=0; redoStack.length=0; histLast=JSON.stringify(store); updateUndoBtn();
 }
-function undo(){
-  if(readOnly()) return;
-  if(!histStack.length){ toast('되돌릴 작업이 없어요','#4f4740'); return; }
-  store=JSON.parse(histStack.pop());
+/**
+ * 히스토리의 한 상태로 store를 갈아 끼운다 — 실행취소·다시 하기가 같은 길을 쓴다.
+ * 보던 범위(전체 / N일차)는 같은 여행이면 그대로 둔다 — 'Day 3'에서 되돌리면 '전체'로 튀었다(2026-10-03 UX 검토).
+ * @param {string} ser
+ */
+function restoreHistory(ser){
+  const keepTrip=store.activeId, keepDay=activeDay, focused=document.activeElement;
+  store=JSON.parse(ser);
   if(!store.trips.find(t=>t.id===store.activeId)) store.activeId=store.trips[0]&&store.trips[0].id;
   // 복원 상태를 localStorage·클라우드에 기록하되, 되돌리기 자체는 히스토리에 새 항목으로 쌓지 않는다.
   // (histLast=null로 save의 "변경 없음" 조기 반환을 우회, histLock으로 push는 억제)
   histLock=true; histLast=null; save(); histLock=false;
   reconcileUndoDeletes();
-  activeDay=0; render(); fitAll();
+  activeDay=store.activeId===keepTrip? Math.min(keepDay, trip().days.length) : 0;
+  render(); keepFocus(focused);
+  if(activeDay) fitDay(activeDay-1); else fitAll();
   updateUndoBtn();
-  toast('실행취소했어요','#4f4740');
+}
+/**
+ * 무엇을 되돌렸는지 — 두 상태를 비교해 이름 붙인다. 편집 진입점마다 이름을 달지 않아도 모든 변경에 말이 붙는다.
+ * 모르면 '마지막 변경'이다. 장소·여행 이름은 넣지 않는다(토스트 한 줄이 길어진다).
+ * @param {string} beforeSer 바뀌기 전 @param {string} afterSer 바뀐 뒤 @returns {string}
+ */
+function historyLabel(beforeSer, afterSer){
+  let a, b;
+  try{ a=JSON.parse(beforeSer); b=JSON.parse(afterSer); }catch(_){ return '마지막 변경'; }
+  const J=JSON.stringify, ids=s=>s.trips.map(t=>t.id);
+  if(ids(b).some(id=>!ids(a).includes(id))) return '여행 추가';
+  if(ids(a).some(id=>!ids(b).includes(id))) return '여행 삭제';
+  const t1=b.trips.find(t=>J(t)!==J(a.trips.find(x=>x.id===t.id)));
+  if(!t1) return a.activeId!==b.activeId? '여행 바꾸기' : '마지막 변경';
+  const t0=a.trips.find(x=>x.id===t1.id), d0=t0.days||[], d1=t1.days||[];
+  if(d1.length!==d0.length) return d1.length>d0.length? '일자 추가' : '일자 삭제';
+  const sorted=list=>list.map(x=>J(x)).sort().join('\n');
+  const without=(o,k)=>{ const c=Object.assign({},o); delete c[k]; return J(c); };
+  const diff=d1.map((d,i)=>i).filter(i=>J(d1[i])!==J(d0[i]));
+  if(!diff.length){
+    if(J(t1.bookings||[])!==J(t0.bookings||[])) return '예약 수정';
+    if(J(t1.notes||[])!==J(t0.notes||[])) return '준비 메모 수정';
+    if(J(t1.costItems||[])!==J(t0.costItems||[])) return '비용 수정';   // 보험·유심 같은 여행 단위 비용 — '여행 설정'이 아니다
+    return '여행 설정 수정';
+  }
+  if(diff.length>1 && sorted(d1)===sorted(d0)) return '일자 순서 바꾸기';
+  const count=ds=>ds.reduce((n,d)=>n+(d.spots||[]).length,0);
+  if(count(d1)!==count(d0)) return count(d1)>count(d0)? '장소 추가' : '장소 삭제';
+  if(diff.some(i=>(d1[i].spots||[]).length!==(d0[i].spots||[]).length)) return '장소 옮기기';
+  const spotsOf=d=>d.spots||[];
+  if(diff.every(i=>J(spotsOf(d1[i]))===J(spotsOf(d0[i])))){   // 장소는 그대로 — 일자 자체를 고쳤다
+    if(diff.every(i=>without(d1[i],'costItems')===without(d0[i],'costItems'))) return '비용 수정';
+    return diff.every(i=>without(d1[i],'mode')===without(d0[i],'mode'))? '이동수단 바꾸기' : '일자 수정';
+  }
+  if(diff.every(i=>sorted(spotsOf(d1[i]))===sorted(spotsOf(d0[i])))) return '장소 순서 바꾸기';
+  const pairs=[];
+  diff.forEach(i=>spotsOf(d1[i]).forEach((s,k)=>{ if(J(s)!==J(spotsOf(d0[i])[k])) pairs.push([spotsOf(d0[i])[k]||{},s]); }));
+  if(pairs.length && pairs.every(([p,s])=>without(p,'legMode')===without(s,'legMode'))) return '이동수단 바꾸기';
+  if(pairs.length && pairs.every(([p,s])=>without(p,'status')===without(s,'status'))) return '방문 표시';
+  const COST_KEYS=['cost','cur','costBasis','costPeople','costPartial','costKind','paidOn','payState','photos'];
+  const noCost=o=>{ const c=Object.assign({},o); COST_KEYS.forEach(k=>delete c[k]); return J(c); };
+  if(pairs.length && pairs.every(([p,s])=>noCost(p)===noCost(s))) return '비용 수정';
+  return '장소 수정';
+}
+function undo(){
+  if(readOnly()) return;
+  if(!histStack.length){ toast('되돌릴 작업이 없어요','#4f4740'); return; }
+  const cur=JSON.stringify(store), prev=histStack.pop();
+  const label=historyLabel(prev, cur);
+  const quick=document.getElementById('undoQuick'), fromQuick=!!quick && document.activeElement===quick;
+  restoreHistory(prev);
+  // 되돌린 것은 다시 할 수 있다 — 단 여행 삭제를 되돌렸다면 다시 하기는 그 여행을 또 지우는 일이라
+  // 서버에 삭제 기록을 남겨야 한다(deleteTrip→cloudDelete). 스냅샷 한 장으로는 그걸 못 하니 그때는 두지 않는다.
+  if(label==='여행 삭제') redoStack.length=0; else redoStack.push(cur);
+  updateUndoBtn();
+  toast(`${label}${TC_COLLAB.objParticle(label)} 되돌렸어요`,'#4f4740', redoStack.length? {label:'다시 하기', fn:redo} : undefined);
+  // 헤더 실행취소로 마지막 것까지 되돌리면 그 버튼이 숨는다 — 키보드 포커스를 본문에 떨어뜨리지 않고
+  // 토스트의 '다시 하기'(없으면 바로 옆 여행 이름)로 옮긴다(2026-10-03 검토)
+  if(fromQuick && quick.hidden){
+    const next=/** @type {HTMLElement|null} */(document.querySelector('#toast .toastAct')||document.getElementById('tripPickerBtn'));
+    if(next){ toastTabArmed=false; next.focus(); }
+  }
+}
+function redo(){
+  if(readOnly()) return;
+  if(!redoStack.length){ toast('다시 할 작업이 없어요','#4f4740'); return; }
+  const cur=JSON.stringify(store), next=redoStack.pop();
+  const label=historyLabel(cur, next);
+  histStack.push(cur); if(histStack.length>30) histStack.shift();
+  restoreHistory(next);
+  toast(`${label}${TC_COLLAB.objParticle(label)} 다시 했어요`,'#4f4740',{label:'실행취소', fn:undo});
 }
 document.addEventListener('keydown',e=>{
   if(document.getElementById('placeDetails')?.open) return;
-  if((e.metaKey||e.ctrlKey)&&!e.shiftKey&&e.key.toLowerCase()==='z'){
+  const k=e.key.toLowerCase();
+  // Ctrl+Y는 윈도우의 다시 하기다 — 맥의 ⌘Y(브라우저 방문 기록)는 가로채지 않는다
+  if((e.metaKey||e.ctrlKey)&&(k==='z'||(k==='y'&&e.ctrlKey&&!e.metaKey&&!e.shiftKey))){
     if(e.target.matches('input,textarea,select'))return;   // 입력 중엔 브라우저 기본 동작
-    e.preventDefault(); undo();
+    e.preventDefault();
+    if(k==='z'&&!e.shiftKey) undo(); else redo();   // ⇧⌘Z · Ctrl+Y = 다시 하기
   }
 });
 
@@ -260,19 +351,77 @@ function escAttr(v){ return esc(v); }
 // href용 URL 스킴 화이트리스트. esc()는 스킴을 막지 못하므로(예: javascript:alert() 는 특수문자가 없어 그대로 통과),
 // 외부 유입(공유 링크·가져오기·AI 파싱) 데이터를 href로 낼 땐 반드시 이걸로 검증한다. 허용 안 되면 '' 반환.
 function safeUrl(v){ const u=String(v==null?'':v).trim(); try{ return /^https?:$/.test(new URL(u, location.href).protocol) ? u : ''; }catch(e){ return ''; } }
-let toastTimer=null;
+// 누를 것(실행취소·하나 더 담기)이 있는 토스트는 읽고 누를 시간이 필요하다 — 5초 만에 사라졌고, 마우스를 올려도
+// 포커스해도 멈추지 않았고, 키보드로는 Tab을 183번 눌러야 닿았다(2026-10-03 UX 검토, WCAG 2.2.1).
+// 그래서 더 오래 두고, 마우스나 포커스가 머무는 동안은 사라지지 않고, 뜬 뒤 **다음 Tab 한 번**이면 토스트의 버튼에 닿는다.
+// 거기서 다시 Tab을 누르면 원래 있던 자리로 돌아간다.
+const TOAST_MS={plain:2200, action:10000};
+let toastTimer=null, toastHover=false, toastOrigin=null, toastTabArmed=false;
+function hideToast(){
+  clearTimeout(toastTimer); toastTimer=null; toastTabArmed=false;
+  document.getElementById('toast').style.display='none';
+}
+function armToastTimer(){
+  const t=document.getElementById('toast');
+  clearTimeout(toastTimer); toastTimer=null;
+  if(t.style.display==='none' || toastHover || t.contains(document.activeElement)) return;   // 머무는 동안은 멈춘다
+  toastTimer=setTimeout(hideToast, t.querySelector('.toastAct')? TOAST_MS.action : TOAST_MS.plain);
+}
+/** @param {string} msg @param {string} [color] @param {{label?:string,fn:()=>void}|{label?:string,fn:()=>void}[]} [action] 하나 또는 여럿 */
 function toast(msg, color, action){
   const t=document.getElementById('toast');
   t.innerHTML=''; t.appendChild(document.createTextNode(msg));
   t.style.background=color||'#3e7a4c'; t.style.display='flex';
-  if(action){
-    const b=document.createElement('button'); b.textContent=action.label||'실행취소'; b.className='toastAct';
-    b.onclick=()=>{ t.style.display='none'; clearTimeout(toastTimer); action.fn(); };
+  const actions=!action? [] : Array.isArray(action)? action : [action];
+  actions.forEach(a=>{
+    const b=document.createElement('button'); b.type='button'; b.textContent=a.label||'실행취소'; b.className='toastAct';
+    b.onclick=()=>{
+      const inside=t.contains(document.activeElement), back=toastOrigin;
+      hideToast(); a.fn();
+      // 키보드로 들어와 눌렀다면 사라진 버튼에 포커스를 남기지 않는다.
+      // 동작이 포커스를 옮겨 두었으면 그대로, 이어진 토스트(실행취소 → 다시 하기)가 떴으면 그 버튼으로, 아니면 왔던 자리로.
+      if(!inside) return;
+      const now=document.activeElement;
+      if(now && now!==document.body && now.isConnected && !t.contains(now)) return;
+      const next=t.style.display!=='none' && t.querySelector('.toastAct');
+      if(next){ toastOrigin=back; toastTabArmed=false; next.focus(); return; }
+      if(back && back.isConnected) back.focus();
+    };
     t.appendChild(b);
-  }
-  clearTimeout(toastTimer);
-  toastTimer=setTimeout(()=>t.style.display='none', action?5000:2200);
+  });
+  toastOrigin=null; toastTabArmed=actions.length>0;
+  armToastTimer();
 }
+(function(){
+  const t=document.getElementById('toast'); if(!t) return;
+  t.addEventListener('mouseenter',()=>{ toastHover=true; clearTimeout(toastTimer); toastTimer=null; });
+  t.addEventListener('mouseleave',()=>{ toastHover=false; armToastTimer(); });
+  t.addEventListener('focusin',()=>{ clearTimeout(toastTimer); toastTimer=null; });
+  t.addEventListener('focusout',e=>{ if(!t.contains(/** @type {Node|null} */(e.relatedTarget))) setTimeout(()=>{ if(window.document) armToastTimer(); },0); });
+  // 캡처 단계에서 먼저 본다 — 모달 포커스 가두기(initAccessibility)보다 앞서야 토스트로 건너갈 수 있다
+  document.addEventListener('keydown',e=>{
+    if(e.key!=='Tab'||e.altKey||e.ctrlKey||e.metaKey||t.style.display==='none') return;
+    const acts=Array.from(t.querySelectorAll('.toastAct')); if(!acts.length) return;
+    const at=acts.indexOf(/** @type {HTMLButtonElement} */(document.activeElement));
+    if(at>=0){
+      if(e.shiftKey? at>0 : at<acts.length-1) return;   // 토스트 안의 버튼 사이는 그대로
+      toastTabArmed=false;
+      // 왔던 자리가 지금도 포커스를 받을 때만 돌려보낸다. 숨었거나(닫힌 메뉴·모달) 본문이었다면 Tab을 막지 않는다 —
+      // 막으면 포커스가 토스트에 갇히고, 포커스가 머무는 동안 토스트는 사라지지 않으니 영영 못 빠져나간다(2026-10-03 검토).
+      if(toastOrigin && toastOrigin!==document.body && toastOrigin.isConnected){
+        toastOrigin.focus();
+        if(document.activeElement===toastOrigin){ e.preventDefault(); e.stopImmediatePropagation(); }
+      }
+      return;
+    }
+    if(!toastTabArmed || e.shiftKey) return;
+    // 모달이 떠 있으면 Tab은 그 안에 갇혀야 한다 — 토스트로 새지 않는다
+    const ob=document.getElementById('onboarding');
+    if(document.querySelector('.modalBg.show,dialog[open]') || (ob && !ob.hidden)) return;
+    toastTabArmed=false; toastOrigin=document.activeElement===document.body? null : /** @type {HTMLElement} */(document.activeElement);
+    e.preventDefault(); e.stopImmediatePropagation(); acts[0].focus();
+  },true);
+})();
 // 파괴적 동작 되돌리기용 스냅샷
 function snapshot(){ return JSON.parse(JSON.stringify(store)); }
 // 상태 변경 진입점: 뮤테이션(fn) 적용 → 재렌더(내부에서 변경분만 저장) → 선택적 지도 포커싱(opts.fit).
@@ -281,12 +430,47 @@ function snapshot(){ return JSON.parse(JSON.stringify(store)); }
 //    그래서 이름표 하나 갱신하려고 render()를 부르면 클라우드 동기화까지 돌았다(`ensureMembers`의 주의).
 //    commit()을 거치지 않고 스토어를 바꾸는 곳(원격 당겨오기·충돌 해결)은 **직접 save()를 부른다.**
 function commit(fn, opts){
+  const focused=document.activeElement;
   if(typeof fn==='function') fn();
   save();      // 데이터가 바뀌었다 — 저장은 여기서 한다
   render();    // 화면은 그 결과를 보일 뿐이다
+  keepFocus(focused);
   if(opts && opts.fit) opts.fit();
 }
-function undoWith(snap){ commit(()=>{ store=snap; reconcileUndoDeletes(); activeDay=0; }, {fit:fitAll}); }
+/**
+ * 토스트의 '실행취소' — 스냅샷으로 돌아가되 보던 범위(전체 / N일차)는 지킨다(2026-10-03 — 되돌리면 '전체'로 튀었다).
+ * 지우면서 범위를 바꾼 동작(일자 삭제)은 그 전의 범위를 `scope`로 넘긴다.
+ * @param {any} snap @param {number} [scope]
+ */
+function undoWith(snap, scope){
+  const keepTrip=store.activeId, keepDay=scope==null? activeDay : scope;
+  commit(()=>{ store=snap; reconcileUndoDeletes(); activeDay=store.activeId===keepTrip? Math.min(keepDay, trip().days.length) : 0; },
+    {fit:()=>{ if(activeDay) fitDay(activeDay-1); else fitAll(); }});
+}
+/**
+ * 다시 그리기가 지운 요소와 같은 역할의 새 요소 — 같은 id, 아니면 같은 onclick(같은 동작·같은 자리)을 가진 것.
+ * 닫힌 ⋮ 메뉴 안에 있으면 그 메뉴 단추를 준다(닫힌 메뉴 안의 버튼은 포커스를 받지 못한다).
+ * @param {Element|null} el @returns {HTMLElement|null}
+ */
+function sameRoleElement(el){
+  if(!el || !el.getAttribute) return null;
+  let twin=el.id? document.getElementById(el.id) : null;
+  const oc=!twin && el.getAttribute('onclick');
+  if(oc) twin=Array.from(document.querySelectorAll('[onclick]')).find(x=>x.getAttribute('onclick')===oc)||null;
+  if(!twin || twin===el) return null;
+  const closed=twin.closest('details:not([open])');
+  return closed? closed.querySelector('summary') : /** @type {HTMLElement} */(twin);
+}
+/**
+ * 다시 그린 뒤에도 키보드 포커스를 잃지 않게 — 누른 버튼이 다시 그리기에 지워졌으면 같은 역할의 새 버튼으로 옮긴다.
+ * 전에는 담기·수단 바꾸기·저장·삭제 뒤마다 포커스가 문서 본문으로 떨어졌다(2026-10-03 UX 검토, WCAG 2.4.3).
+ * 더 알맞은 자리(담은 장소 행·다음 행)가 있는 동작은 commit 뒤에 직접 옮긴다.
+ * @param {Element|null} before
+ */
+function keepFocus(before){
+  if(!before || before===document.body || before.isConnected) return;
+  const twin=sameRoleElement(before); if(twin) twin.focus();
+}
 
 // ───────────────── 지도 (해외=Google · 국내=카카오 듀얼 엔진) ─────────────────
 const GMAPS_KEY='AIzaSyCE6I2dhqk2jzNvA0ZMzDSuPi7HAfWecAM';   // HTTP 리퍼러 제한으로 보호할 것
@@ -2163,9 +2347,39 @@ function onSpotDrop(evt){
 }
 // ── 장소 카드 선택 상태 (지도 핀·목록 탭 공통) ──
 // 재렌더로 DOM이 새로 만들어져도 유지되도록 상태를 변수로 들고, 렌더 후 applySpotSelection()으로 복원한다.
+// ⚠️ 선택은 자리 번호가 아니라 **장소**를 가리킨다(`selectedRef`) — 번호만 들고 있으면 '위로'를 눌렀을 때 강조와
+//    '＋ N번 뒤에 장소 추가'가 그 자리에 들어온 다른 장소에 남았다(2026-10-03 UX 검토). 렌더마다 그 장소로 자리를 다시 찾고,
+//    장소가 사라졌으면(삭제·원격 반영·실행취소로 객체가 바뀜) 선택을 푼다.
 let selectedSpot=null;   // {di,si} | null
+let selectedRef=null, selectedRefOf=null;   // 선택한 장소 객체와, 그것을 집은 selectedSpot
 function selectSpotCard(di,si){ selectedSpot=(di==null)?null:{di:+di,si:+si}; applySpotSelection(); }
+/** 그 장소 객체가 지금 몇째 날 몇째인가 @param {any} ref @returns {{di:number,si:number}|null} */
+function locateSpot(ref){
+  const days=trip().days;
+  for(let di=0; di<days.length; di++){ const si=days[di].spots.indexOf(ref); if(si>=0) return {di,si}; }
+  return null;
+}
+/** 다시 그린 뒤 그 장소 행으로 포커스를 옮긴다(기본은 행의 이름 단추) @param {number} di @param {number} si @param {string} [sel] @returns {boolean} */
+function focusSpotRow(di,si,sel){
+  const row=document.querySelector(`#sidebar .spot[data-di="${di}"][data-si="${si}"]`);
+  const el=row && /** @type {HTMLElement|null} */(row.querySelector(sel||'.spotIdentity'));
+  if(el) el.focus();
+  return !!el;
+}
+/** 장소를 지운 뒤 — 그 자리에 올라온 다음 행, 없으면 앞 행, 그것도 없으면 그날의 장소 추가 @param {number} di @param {number} si */
+function focusAfterSpotRemoval(di,si){
+  if(focusSpotRow(di,si) || focusSpotRow(di,si-1)) return;
+  const add=/** @type {HTMLElement|null} */(document.querySelector(`#sidebar .addSpotBtn[data-di="${di}"]`)
+    || document.querySelectorAll('#sidebar .dayCard')[di]?.querySelector('.firstStep .btn, .actionMenu>summary'));
+  if(add) add.focus();
+}
 function applySpotSelection(){
+  // 새로 고른 선택이면 지금 그 자리의 장소를 집고, 이미 집은 선택이면 그 장소가 옮겨 간 자리를 따라간다
+  if(selectedSpot!==selectedRefOf){ selectedRef=selectedSpot? trip().days[selectedSpot.di]?.spots[selectedSpot.si]||null : null; selectedRefOf=selectedSpot; }
+  else if(selectedSpot && selectedRef){
+    const at=locateSpot(selectedRef);
+    if(at){ selectedSpot.di=at.di; selectedSpot.si=at.si; } else selectedSpot=null;
+  }
   document.querySelectorAll('.spot.is-selected,.dayCard.is-selected').forEach(el=>el.classList.remove('is-selected'));
   const el=selectedSpot && document.querySelector(`.spot[data-di="${selectedSpot.di}"][data-si="${selectedSpot.si}"]`);
   if(selectedSpot && !el) selectedSpot=null;   // 삭제·이동으로 사라진 선택은 해제
@@ -2298,7 +2512,9 @@ window.openDayModePicker=(di)=>{
   if(readOnly()) return;
   const d=trip().days[di]; if(!d) return;
   openModePicker({title:`Day ${di+1} 기본 이동수단`, hint:'이 날 모든 구간에 써요. 구간마다 따로 고른 수단은 그대로예요.',
-    current:dayModeOf(d), options:MODE_ORDER.map(m=>({value:m, label:`${MODE_ICON[m]} ${MODE_NAME[m]}`})), onPick:(m)=>setDayMode(di,m)});
+    current:dayModeOf(d), options:MODE_ORDER.map(m=>({value:m, label:`${MODE_ICON[m]} ${MODE_NAME[m]}`})),
+    // 바꾸면 다시 그리기가 연 버튼을 지운다 — 같은 날의 새 수단 버튼으로 돌아간다(2026-10-03 UX 검토)
+    onPick:(m)=>{ setDayMode(di,m); /** @type {HTMLElement|null|undefined} */(document.querySelectorAll('#sidebar .dayCard')[di]?.querySelector('.modeBtn'))?.focus(); }});
 };
 window.setDayMode=(di,mode)=>{
   if(readOnly()||!MODE_ICON[mode]) return;
@@ -2313,7 +2529,7 @@ window.openLegModePicker=(di,si)=>{
   openModePicker({title:`${s.name||'이 장소'}까지 이동수단`, hint:'이 구간만 바꿔요. 하루 전체는 일자 머리의 수단 버튼에서 바꿔요.',
     current:s.legMode||'',
     options:[{value:'', label:`그날 기본 따르기 (${MODE_ICON[dmn]} ${MODE_NAME[dmn]})`}].concat(MODE_ORDER.map(m=>({value:m, label:`이 구간만 ${MODE_ICON[m]} ${MODE_NAME[m]}`}))),
-    onPick:(m)=>setLegMode(di,si,m)});
+    onPick:(m)=>{ setLegMode(di,si,m); focusSpotRow(di,si,'.legModeBtn'); }});
 };
 window.setLegMode=(di,si,mode)=>{
   if(readOnly()) return;
@@ -2329,11 +2545,29 @@ window.moveSpot=(di,si,dir)=>{
   if(ni<0||ni>=arr.length)return;
   const sb=document.getElementById('sidebar');
   const btnCls = dir<0?'mvup':'mvdown';
-  const before=document.querySelector(`.spot[data-di="${di}"][data-si="${si}"] .${btnCls}`)?.getBoundingClientRect().top;
-  commit(()=>{ [arr[si],arr[ni]]=[arr[ni],arr[si]]; });
-  const afterBtn=document.querySelector(`.spot[data-di="${di}"][data-si="${ni}"] .${btnCls}`);
-  const after=afterBtn?.getBoundingClientRect().top;
-  if(before!=null && after!=null) sb.scrollTop += (after-before); // 같은 버튼이 커서 자리에 오도록
+  const srcRow=document.querySelector(`#sidebar .spot[data-di="${di}"][data-si="${si}"]`);
+  const before=srcRow?.getBoundingClientRect().top;
+  // 키보드로 눌렀는가 — 그때만 메뉴를 다시 연다. ⋮ 메뉴는 바깥을 눌러도 닫히지 않아서, 마우스·터치로 옮긴 뒤에도
+  // 열어 두면 패널이 목록 위에 떠 남고 그동안 미뤄 둔 다시 그리기(bgRender)도 계속 밀린다(2026-10-03 검토).
+  const pressed=document.activeElement;
+  let byKeyboard=!!(pressed && srcRow && srcRow.contains(pressed) && pressed.classList.contains(btnCls));
+  if(byKeyboard) try{ byKeyboard=pressed.matches(':focus-visible'); }catch(_){}
+  commit(()=>{ [arr[si],arr[ni]]=[arr[ni],arr[si]]; });   // 선택은 장소를 따라간다(applySpotSelection)
+  // 키보드로 옮겼으면 옮긴 장소의 ⋮ 메뉴를 다시 열어 같은 버튼에 포커스를 둔다 — 다시 그리기가 메뉴를 닫아 버려
+  // 연달아 옮길 수 없었고 키보드 포커스는 본문으로 떨어졌다(2026-10-03 UX 검토)
+  const row=document.querySelector(`#sidebar .spot[data-di="${di}"][data-si="${ni}"]`);
+  if(!row) return;
+  // 스크롤은 행 기준으로 맞춘다 — 닫힌 메뉴 안의 버튼은 위치가 0이라 버튼으로 재면 엉뚱하게 튄다
+  const after=row.getBoundingClientRect().top;
+  if(before!=null) sb.scrollTop += (after-before); // 옮긴 장소가 커서 자리에 남도록
+  if(byKeyboard){
+    const menu=row.querySelector('details.actionMenu'); if(menu) menu.open=true;
+    /** @type {HTMLElement|null} */(row.querySelector(`.${btnCls}`))?.focus();
+  }else if(pressed && srcRow && srcRow.contains(pressed)){
+    /** @type {HTMLElement|null} */(row.querySelector('.actionMenu>summary'))?.focus();   // 같은 자리의 다른 장소 ⋮가 아니라 옮긴 장소의 ⋮
+  }
+  // 옮긴 행을 잠깐 강조한다 — 번호만 바뀌면 무엇이 어디로 갔는지 눈으로 따라가기 어렵다
+  row.classList.add('justMoved'); setTimeout(()=>row.classList.remove('justMoved'),1200);
 };
 window.copySpot=(di,si)=>{
   if(readOnly())return;
@@ -2344,23 +2578,52 @@ window.copySpot=(di,si)=>{
   if(copy.admission&&typeof copy.admission==='object') delete copy.admission.personalStatus;
   commit(()=>spots.splice(si+1,0,copy)); toast('장소를 복사했어요');
 };
+// 장소 삭제는 묻지 않는다 — 실행취소가 있는데 확인창까지 거치면 마찰만 두 번이고, 그 확인창은 어느 장소인지도
+// 말하지 않았다(2026-10-03 UX 검토). 대신 토스트가 지운 장소의 이름을 말하고 실행취소를 붙인다.
 window.deleteSpot=(di,si)=>{
-  if(readOnly()||!confirm('이 장소를 삭제할까요?'))return;
+  if(readOnly())return;
   const spots=trip().days[di].spots; if(!spots[si])return;
-  const snap=snapshot(); spots.splice(si,1); commit(); toast('장소를 지웠어요','#4f4740',{fn:()=>undoWith(snap)});
+  const snap=snapshot(); spots.splice(si,1); commit();
+  spotRemoved(di,si,snap);
 };
+/** 장소를 지운 뒤 — 포커스는 그 자리에 올라온 행으로, 토스트는 지운 장소의 이름과 실행취소. 행의 삭제·편집기의 삭제가 같이 쓴다.
+ *  @param {number} di @param {number} si @param {any} snap 지우기 전 스냅샷 */
+function spotRemoved(di,si,snap){
+  focusAfterSpotRemoval(di,si);
+  const name=(snap.trips.find(t=>t.id===snap.activeId)?.days[di]?.spots[si]?.name)||'';
+  toast(name? `"${name}"${TC_COLLAB.objParticle(name)} 지웠어요` : '장소를 지웠어요','#4f4740',
+    {fn:()=>{ undoWith(snap); focusSpotRow(di,si); }});
+}
 window.copyDay=di=>{
   if(readOnly())return;
   const days=trip().days, source=days[di]; if(!source)return;
   const copy=JSON.parse(JSON.stringify(source)); copy.title=`${source.title||`Day ${di+1}`} 복사본`;
   commit(()=>days.splice(di+1,0,copy)); toast('일자를 복사했어요');
 };
-window.deleteDay=di=>{
-  if(readOnly())return;
-  const days=trip().days; if(days.length<=1){toast('여행에는 일자가 하나 이상 필요해요','#b4342a');return;}
-  if(days[di].spots.length&&!confirm('이 일자의 장소도 함께 삭제돼요. 계속할까요?'))return;
-  const snap=snapshot(); days.splice(di,1); activeDay=0; commit(); toast('일자를 지웠어요','#4f4740',{fn:()=>undoWith(snap)});
-};
+window.deleteDay=di=>{ if(!readOnly()) removeDay(di); };
+/**
+ * 일자 지우기 — 행의 ⋮와 일자 편집기가 같이 쓴다. 가운데 날을 지우면 뒤 날짜가 하루씩 당겨지는데
+ * 확인창은 장소만 말했다(2026-10-03 UX 검토). 지우기 전에(장소가 있으면 확인창), 지운 뒤에(토스트) 그 사실을 말한다.
+ * @param {number} di @param {()=>void} [beforeCommit] 일자 편집기를 닫는 일처럼 다시 그리기 전에 할 것
+ * @returns {boolean} 지웠는가
+ */
+function removeDay(di, beforeCommit){
+  const days=trip().days; if(days.length<=1){toast('여행에는 일자가 하나 이상 필요해요','#b4342a');return false;}
+  const n=days[di].spots.length, last=di===days.length-1;
+  // 마지막 날이면 뒤에 당겨질 날이 없다. 날짜를 정하지 않은 여행은 일자 번호가 당겨진다.
+  const shift=last? '' : dateOf(di)? `${dateOf(di+1)} → ${dateOf(di)}` : `Day ${di+2} → Day ${di+1}`;
+  if(n && !confirm([`Day ${di+1}${dateOf(di)?` · ${dateOf(di)}`:''}의 장소 ${n}곳도 함께 지워져요.`,
+    shift? `이후 날짜가 하루씩 당겨져요 — ${shift}.` : '', '계속할까요?'].filter(Boolean).join('\n'))) return false;
+  const snap=snapshot(), scope=activeDay;
+  days.splice(di,1); activeDay=0;
+  if(beforeCommit) beforeCommit();
+  commit();
+  const head=i=>/** @type {HTMLElement|null|undefined} */(document.querySelectorAll('#sidebar .dayCard')[i]?.querySelector('.actionMenu>summary'));
+  (head(di)||head(di-1))?.focus();
+  toast(shift? `일자를 지웠어요 · 이후 날짜가 하루씩 당겨졌어요 (${shift})` : '일자를 지웠어요','#4f4740',
+    {fn:()=>{ undoWith(snap,scope); head(di)?.focus(); }});
+  return true;
+}
 
 // ───────────────── 장소 모달 ─────────────────
 let editing = null; // {di, si} si=-1이면 추가
@@ -2589,6 +2852,9 @@ document.getElementById('spotSave').onclick=()=>{
   const targetDay=parseInt(document.getElementById('spotDay').value);
   applySpotPriority(s, document.getElementById('spotPriority').value);   // 기본값(보통)은 저장하지 않는다
   const isEdit=editing.si>=0;
+  // 다른 날로 옮기는 편집은 되돌릴 수 있게 바꾸기 전에 찍어 둔다 — 장소가 그날 맨 뒤로 가는데 '저장했어요'뿐이었다
+  const from={di:editing.di, si:editing.si}, moved=isEdit && targetDay!==editing.di, snap=moved? snapshot() : null;
+  const prevObj=isEdit? trip().days[editing.di].spots[editing.si] : null;
   // 예약·렌터카 연결은 이 모달에서 만들지도 지우지도 않는다(예약 편집기 소관) → 편집 시 그대로 물려준다.
   // 새 객체로 갈아끼우느라 떨어뜨리면, 메모만 고쳐도 픽업이 연결에서 풀려 독립 행으로 되돌아간다.
   if(isEdit){
@@ -2616,19 +2882,28 @@ document.getElementById('spotSave').onclick=()=>{
   // 방금 넣은 장소를 선택해 둔다 — 연달아 추가하면 계속 그 뒤로 붙는다.
   // 렌더 전이라 DOM은 없다 → selectSpotCard가 아니라 상태만 두고, 렌더 끝의 applySpotSelection이 복원한다.
   if(!isEdit){ const ni=trip().days[targetDay].spots.indexOf(s); if(ni>=0) selectedSpot={di:targetDay, si:ni}; }
+  else if(prevObj && selectedRef===prevObj) selectedRef=s;   // 고친 장소가 선택돼 있었다면 새 객체로 이어 받는다
   document.getElementById('spotModalBg').classList.remove('show');
   commit(); if(!hadLocations) fitEntry();
   // 여행 중 안내에서 왔으면 안내로 돌아간다 — 그때 '하나 더 담기'는 안내 화면 아래 층에 열려 보이지 않으므로 붙이지 않는다
   const fromTravel=backToTravel();
+  // 포커스는 담거나 고친 장소의 행으로 — 연 버튼은 다시 그리기가 지웠다(2026-10-03 UX 검토). 안내로 돌아갔으면 거기 둔다
+  const placed=locateSpot(s); if(placed && !fromTravel) focusSpotRow(placed.di, placed.si);
+  if(moved){
+    toast(sorted? `Day ${targetDay+1}에 시간순으로 옮겼어요` : `Day ${targetDay+1} 맨 뒤로 옮겼어요`, '#3e7a4c', [
+      {label:'보기', fn:()=>{ setDayScope(targetDay+1, ()=>fitDay(targetDay)); const p=locateSpot(s); if(p) focusSpotRow(p.di, p.si); }},
+      {label:'실행취소', fn:()=>{ undoWith(snap); focusSpotRow(from.di, from.si); }}]);
+    return;
+  }
   // 새 장소를 담았으면 같은 날에 이어서 담을 수 있게 — 방금 담은 장소 뒤에 붙는다(selectedSpot)
   toast(sorted?'저장했어요 · 시간순으로 정렬했어요':(isEdit?'저장했어요':`Day ${targetDay+1}에 담았어요`), '#3e7a4c',
     (isEdit||readOnly()||fromTravel)? undefined : {label:'하나 더 담기', fn:()=>{ openSpotModal(targetDay,-1); document.getElementById('spotSearch').focus(); }});
 };
 document.getElementById('spotDelBtn').onclick=()=>{
-  const snap=snapshot();
-  trip().days[editing.di].spots.splice(editing.si,1);
+  const snap=snapshot(), {di,si}=editing;
+  trip().days[di].spots.splice(si,1);
   document.getElementById('spotModalBg').classList.remove('show');
-  commit(); toast('장소를 지웠어요','#4f4740',{fn:()=>undoWith(snap)});
+  commit(); spotRemoved(di,si,snap);
 };
 // 장소 검색 — 국내(한글)는 카카오 우선, 그 외 Google Places (routedSearch)
 let searching=false;
@@ -2862,11 +3137,7 @@ document.getElementById('daySave').onclick=()=>{
   document.getElementById('dayModalBg').classList.remove('show'); commit(); toast('저장했어요');
 };
 document.getElementById('dayDelBtn').onclick=()=>{
-  if(trip().days.length<=1){toast('여행에는 일자가 하나 이상 필요해요','#b4342a');return;}
-  if(trip().days[editingDay].spots.length && !confirm('이 일자의 장소도 함께 삭제돼요. 계속할까요?'))return;
-  const snap=snapshot();
-  trip().days.splice(editingDay,1); activeDay=0;
-  document.getElementById('dayModalBg').classList.remove('show'); commit(); toast('일자를 지웠어요','#4f4740',{fn:()=>undoWith(snap)});
+  removeDay(editingDay, ()=>document.getElementById('dayModalBg').classList.remove('show'));
 };
 
 // ───────────────── 여행 관리 ─────────────────
@@ -3181,7 +3452,7 @@ function deleteTrip(id){
   if(id===store.activeId){ store.activeId=store.trips[0].id; activeDay=0; }   // 보고 있던 여행을 지운 경우만 전환
   commit(null, {fit:fitEntry});
   // undo 시 삭제된 여행이 다시 활성화되어 render→save로 클라우드에도 재업로드됨
-  toast(`"${t.name}"을(를) 지웠어요`,'#4f4740',{fn:()=>undoWith(snap)});
+  toast(`"${t.name}"${TC_COLLAB.objParticle(t.name)} 지웠어요`,'#4f4740',{fn:()=>undoWith(snap)});   // 장소 삭제 토스트와 같은 말투(2026-10-03)
   return true;
 }
 document.getElementById('tripDelBtn').onclick=()=>{
@@ -3315,7 +3586,7 @@ async function enNameForBooking(b, idn){
   try{
     const near=(isFinite(Number(idn&&idn.lat))&&isFinite(Number(idn&&idn.lng)))?{lat:+idn.lat,lng:+idn.lng}:null;
     const hit=(await googlePlaces(name, near, 1, 'en')).list[0];   // 시세 검색은 영문명이 필요하다
-    if(hit&&hit.name&&!/[가-힣]/.test(hit.name)){ b.enName=hit.name; save(); return hit.name; }
+    if(hit&&hit.name&&!/[가-힣]/.test(hit.name)){ b.enName=hit.name; saveQuietly(); return hit.name; }
   }catch(_){}
   return name;   // 변환 실패 시 원래 이름으로 시도(후보 선택 UI가 마지막 안전망)
 }
@@ -3439,7 +3710,7 @@ async function checkBookingPrice(id,opts){
   catch(e){
     const code=(e&&e.code)||'NETWORK_ERROR', detail=(e&&e.detail)||'';
     // 저장된 매핑이 잘못되면 검색 단계를 건너뛴 채 매번 같은 실패가 난다 → 매물 관련 실패면 매핑을 버려 다음 조회에서 다시 찾게 한다
-    if(b.ptoken && (code==='PROPERTY_NOT_FOUND'||code==='NO_AVAILABILITY'||code==='INVALID_RESPONSE'||code==='PROVIDER_ERROR')){ delete b.ptoken; save(); }
+    if(b.ptoken && (code==='PROPERTY_NOT_FOUND'||code==='NO_AVAILABILITY'||code==='INVALID_RESPONSE'||code==='PROVIDER_ERROR')){ delete b.ptoken; saveQuietly(); }
     rec.err={code, at:new Date().toISOString(), detail:detail||undefined};   // 실패해도 기존 관측·오퍼는 보존(§36) — 최신 가격으로 오인 금지
     savePrices(); return null;
   }
@@ -3464,7 +3735,7 @@ async function checkBookingPrice(id,opts){
   offers.forEach(o=>{ o.quality = b.type==='car' ? TC_PRICE.carMatchQuality(b,o)
                                                  : TC_PRICE.qualityWithBasis(TC_PRICE.matchQuality(b,o), b, basis); });
   rec.offers=offers; rec.at=atIso; rec.err=null; rec.basis=basis; delete rec.candidates;
-  if(resp.property&&resp.property.token&&b.ptoken!==resp.property.token) b.ptoken=resp.property.token;   // property 매핑 캐시(§23) — 다음부턴 검색 1회 생략, render의 save()로 저장
+  if(resp.property&&resp.property.token&&b.ptoken!==resp.property.token){ b.ptoken=resp.property.token; saveQuietly(); }   // property 매핑 캐시(§23) — 다음부턴 검색 1회 생략. render는 저장하지 않으니 여기서 쌓지 않고 저장한다(다음 사람 편집의 실행취소 단계에 섞이지 않게)
   // 하루 1점 관측: 확정 후보 우선, 없으면 최저가 — 등급을 함께 남겨 '미확정' 기록임을 구분
   const decided=TC_PRICE.decideSaving(b,offers,{today});
   const top=decided.confirmed? decided.confirmed.offer
@@ -5039,6 +5310,7 @@ function applyReplan(sug, di){
   if(!guardEdit()) return;
   const drop=((sug.action&&sug.action.drop)||[]).map(id=>{ const m=/^d\d+s(\d+)$/.exec(String(id)); return m?+m[1]:-1; })
     .filter(i=>i>=0).sort((a,b)=>b-a);
+  const snap=drop.length? snapshot() : null;
   if(drop.length) commit(()=>{
     const days=trip().days, day=days[di], next=days[di+1];
     if(next){
@@ -5049,13 +5321,15 @@ function applyReplan(sug, di){
   });
   recordFeedback(sug,'ACCEPTED');
   trackAdapt('replan_accepted',{removed:drop.length});
-  toast(drop.length? `${drop.length}곳을 옮겼어요 — 고정 예약 시간은 그대로예요` : '일정을 그대로 유지해요', '#3e7a4c');
+  // J가 바꾼 일정은 언제나 되돌릴 수 있어야 한다 — 숙소까지 옮긴 오판을 되돌릴 길이 없었다(2026-10-03 UX 검토)
+  toast(drop.length? `${drop.length}곳을 옮겼어요 — 고정 예약 시간은 그대로예요` : '일정을 그대로 유지해요', '#3e7a4c',
+    drop.length? {label:'되돌리기', fn:()=>{ undoWith(snap); renderTravel(di); }} : undefined);
   renderTravel(di);
 }
 // 다른 날에 있던 유동 장소를 오늘의 빈 시간 자리로 옮긴다
 function acceptMove(sug, di, action){
   if(!guardEdit()) return;
-  const win=_adapt&&_adapt.res&&_adapt.res.window;
+  const win=_adapt&&_adapt.res&&_adapt.res.window, snap=snapshot();
   commit(()=>{
     const days=trip().days, src=days[action.fromDay];
     if(!src||!src.spots[action.si]) return;
@@ -5066,7 +5340,7 @@ function acceptMove(sug, di, action){
   });
   recordFeedback(sug,'ACCEPTED');
   // 옮긴 것이다 — 원래 날에서 빠진다는 것도 함께 말한다(넣었다고만 하면 그 날 일정이 몰래 줄어든다)
-  toast(`${sug.title}${TC_ADAPT.josa(sug.title,'을','를')} Day ${action.fromDay+1}에서 옮겨 ${dayWord(di)} 일정에 넣었어요`, '#3e7a4c');
+  toast(`${sug.title}${TC_ADAPT.josa(sug.title,'을','를')} Day ${action.fromDay+1}에서 옮겨 ${dayWord(di)} 일정에 넣었어요`, '#3e7a4c', {label:'되돌리기', fn:()=>{ undoWith(snap); renderTravel(di); }});
   renderTravel(di);
 }
 // 식사 제안 → 식당 검색으로 연 장소 추가. 닫거나 담으면 여행 중 안내로 돌아온다 — 예전에는 종류도 검색도 비어 있는
@@ -5195,6 +5469,7 @@ function applyDayFlow(di){
     plan.push({sp, from:b.pick.fromDay, afterSp});
   });
   if(!plan.length){ toast('일정에 넣을 수 있는 제안이 없어요 — 식사처럼 장소를 직접 골라야 하는 항목이에요','#4f4740'); return; }
+  const snap=snapshot();
   commit(()=>{
     plan.forEach(p=>{ const arr=days[p.from].spots, i=arr.indexOf(p.sp); if(i>=0) arr.splice(i,1); });
     const off=new Map();
@@ -5206,7 +5481,7 @@ function applyDayFlow(di){
     });
   });
   trackAdapt('day_flow_accepted',{added:plan.length});
-  toast(`${plan.length}곳을 ${dayWord(di)} 일정에 넣었어요 — 고정 예약 시각은 그대로예요`,'#3e7a4c');
+  toast(`${plan.length}곳을 ${dayWord(di)} 일정에 넣었어요 — 고정 예약 시각은 그대로예요`,'#3e7a4c',{label:'되돌리기', fn:()=>{ undoWith(snap); renderTravel(di); }});
   _dayFlow=null; _flowExclude=[];
   renderTravel(di);
 }
@@ -7274,7 +7549,15 @@ function initAccessibility(){
         setTimeout(()=>{ if(!window.document || !bg.classList.contains('show') || bg.contains(document.activeElement)) return; const target=bg.querySelector('[autofocus],input:not([type="hidden"]),textarea,select,button:not([disabled]),[href]'); if(target) target.focus(); },0);
       }else{
         const previous=returnFocus.get(bg); returnFocus.delete(bg);
-        if(previous&&previous.isConnected) setTimeout(()=>previous.focus(),0);
+        // 닫는 동작이 다시 그리기를 부르면 연 버튼은 사라진다. 그때 앱이 더 알맞은 자리(담은 장소 행 등)로 옮겨 두었으면
+        // 그대로 두고, 아니면 같은 역할의 새 버튼으로 간다 — 전에는 본문으로 떨어졌다(2026-10-03 UX 검토)
+        if(previous) setTimeout(()=>{
+          if(!window.document) return;
+          const now=document.activeElement;
+          if(now&&now!==document.body&&now!==previous&&now.isConnected&&!bg.contains(now)) return;
+          const target=previous.isConnected? previous : sameRoleElement(previous);
+          if(target) target.focus();
+        },0);
       }
     }
   })).observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['class']});

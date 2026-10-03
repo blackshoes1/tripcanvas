@@ -226,12 +226,12 @@
   /* 읽기전용 보기 */
   #roBar{background:#7c5c15;color:#fff;padding:6px 12px;font-size:12.5px;display:flex;align-items:center;gap:10px;z-index:1001}
   .readonly .addSpot,.readonly #addDayBtn,.readonly .noloc,.readonly .dragHandle,
-  .readonly #newTripBtn,.readonly #tripEditBtn,.readonly #pasteBtn,.readonly #importBtn,.readonly #authBtn,.readonly #undoBtn{display:none!important}
-  #undoBtn:disabled{opacity:.35;cursor:default}
+  .readonly #newTripBtn,.readonly #tripEditBtn,.readonly #pasteBtn,.readonly #importBtn,.readonly #authBtn,.readonly #undoBtn,.readonly #redoBtn{display:none!important}
+  #undoBtn:disabled,#redoBtn:disabled{opacity:.35;cursor:default}
   .readonly .spot,.readonly .dayHead{cursor:default}
   /* 함께하기 — 보기 권한(VIEWER)으로 보는 여행: 편집 도구만 감춘다. 로그인·새 여행·설정(나가기)은 그대로 쓴다 */
   .roleViewer .addSpot,.roleViewer #addDayBtn,.roleViewer .noloc,.roleViewer .dragHandle,
-  .roleViewer #undoBtn,.roleViewer #pasteBtn,.roleViewer #pasteMenuBtn,.roleViewer #bookingAdd{display:none!important}
+  .roleViewer #undoBtn,.roleViewer #redoBtn,.roleViewer #pasteBtn,.roleViewer #pasteMenuBtn,.roleViewer #bookingAdd{display:none!important}
   .roleViewer .spot,.roleViewer .dayHead{cursor:default}
   .roleViewer .modeBtn{pointer-events:none}
   /* 샘플 여행 — 둘러보는 중이라는 것과 빠져나갈 길을 늘 보인다 */
@@ -716,3 +716,10 @@ body:has(.modalBg.show) #toast{bottom:auto;top:calc(env(safe-area-inset-top) + 1
 .tLinks{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .sgDone{border-style:solid;color:var(--meta-good);font-weight:600}
 .travelIntentEcho .btn.sm{margin-top:4px}
+/* ux3:undo */
+/* 옮긴 장소 행을 잠깐 강조 — 번호만 바뀌면 무엇이 어디로 갔는지 눈으로 따라가기 어렵다(2026-10-03) */
+.spot.justMoved{animation:spotMoved 1.2s ease-out}
+@keyframes spotMoved{from{background:var(--selected-bg);box-shadow:inset 0 0 0 2px var(--selected-border)}}
+@media (prefers-reduced-motion: reduce){.spot.justMoved{animation:none;outline:2px solid var(--selected-border);outline-offset:-2px}}
+/* 토스트 버튼은 초록·갈색 바탕 위라 기본 포커스 링이 묻힌다 — Tab 한 번으로 닿는 자리라 링이 보여야 한다 */
+#toast .toastAct:focus-visible{outline:2px solid #fff;outline-offset:2px}
