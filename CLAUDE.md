@@ -94,7 +94,7 @@ With J          ← 제품 (앱 이름 · 웹 타이틀 · PWA · 메일 제목 
 
 - `index.html` — 마크업 (모달·헤더·재생 HUD 등)
 - `app.js` — 앱 로직 전체 (DOM·지도·네트워크)
-- `lib.js` — 순수 로직 (파서·거리·시각·앵커·타임라인·정규화 · **동선 최적화 계획** `planRouteOptimization`(예약·도착 고정·숙소·좌표 없는 장소·분리 묶음은 제자리 — 웹은 미리보기를 연 뒤 사용자가 적용한다) · **여행지 시계** `zonedClock`(웹 여행 중 화면·'오늘' 칩이 첫 날→여행 시간대로 판정, 없으면 기기 시계) · **분리 구간** `splitSegments`/`whoKey` · **하루 이동과 종료** `computeDayJourney` · **결제 상태** `costPayStateOf`/`payStateTotals` · **여행 준비 메모** `TRIP_NOTE_CATEGORIES`/`normalizeTripNote` · **명소 예약요건** `ADMISSION_REQUIREMENTS`/`admissionOf`/`needsAdmissionBooking`/`normalizeAdmission` · **샘플 여행 판정** `SAMPLE_TRIP_ID`/`isSampleTrip`). **유닛 테스트 + `tsc` 타입 검사 대상**
+- `lib.js` — 순수 로직 (파서·거리·시각·앵커·타임라인·정규화 · **동선 최적화 계획** `planRouteOptimization`(예약·도착 고정·숙소·좌표 없는 장소·분리 묶음·**공항·역·항구로 끝나는 마지막 장소**는 제자리 — 웹은 미리보기를 연 뒤 사용자가 적용한다) · **여행지 시계** `zonedClock`(웹 여행 중 화면·'오늘' 칩이 첫 날→여행 시간대로 판정, 없으면 기기 시계) · **분리 구간** `splitSegments`/`whoKey` · **하루 이동과 종료** `computeDayJourney` · **결제 상태** `costPayStateOf`/`payStateTotals` · **여행 준비 메모** `TRIP_NOTE_CATEGORIES`/`normalizeTripNote` · **명소 예약요건** `ADMISSION_REQUIREMENTS`/`admissionOf`/`needsAdmissionBooking`/`normalizeAdmission` · **샘플 여행 판정** `SAMPLE_TRIP_ID`/`isSampleTrip`). **유닛 테스트 + `tsc` 타입 검사 대상**
 - `price.js` — 예약 가격 추적 순수 계산: 실질 절약액·오퍼 조건 매칭(EXACT/EQUIVALENT/SIMILAR)·확정/잠재 절약 판단·호텔 identity 점수 · 렌터카 조건 매칭(carMatchQuality — 차급·변속기·보험·주행거리가 다르면 확정 절약 금지). 예약(`trip.bookings`)은 여행 데이터로 동기화·공유되고, 가격 관측 기록은 기기 로컬 + 로그인 시 **`/api/v1/trips/:id/prices`**(여행과 같은 저장소·같은 권한. 2026-09-04 전환 전에는 Supabase `hotel_price_snapshots` 직접 경로였다). 시세는 `api/hotel-offers.js` 프록시(Metasearch 키 서버 전용)로만 조회 — 키 없으면 미연결 상태를 그대로 표시(가짜 가격 금지). **유닛 테스트 + `tsc` 대상**
 - `adaptive.js` — **Adaptive Travel OS 도메인**(순수): 현재 여행 상태(`buildTripState`) · 고정/유동 분류(`commitmentOf`) · 빈 시간 탐지(`findFreeWindows`) · 다음 행동 후보와 순위(`buildCandidates`/`rankNextActions`) · 일정 재구성(`generateReplan`) · 제안(`buildSuggestions`) · 자연어 해석(`parseIntent`) · 출발 안내(`departureAdvice`) · 빈칸 채우기와 하루 flow(`fillGaps`/`planDayFlow`). DOM·네트워크·현재시각을 모르고 전부 인자로 받는다. **유닛 테스트 + `tsc` 대상**
 - `intake.js` — **유입 계층**(순수): 공유 분류(`classifyShare`) · 날짜/통화 정규화 · 예약 후보 파싱(`parseBookingCandidate`) · 중복(`findDuplicateBooking`) · 여행 매칭(`matchTripForBooking`) · 기록 연결(`associateMemory`) · **붙여넣은 일정 글 읽기**(`parseItinerary`). **저장은 하지 않는다** — 확인한 것만 저장된다. ⚠️ **사람들은 우리 형식으로 다시 쓰지 않는다** — ChatGPT·Claude가 뱉은 그대로 붙여넣으므로 `stripDecor`(마크다운 `**`·이모지) · `expandTables`(마크다운 표 — 모르면 **그 날이 통째로 사라진다**) · `koTime`(`오후 3시`) · `splitNameDesc`(`점심: 카와카미안` → 이름은 오른쪽)를 먼저 지난다. 이름에 꾸밈이 남으면 지오코딩이 실패해 전부 '위치 지정'이 된다(2026-09-08). **유닛 테스트 + `tsc` 대상**
@@ -151,7 +151,7 @@ localStorage(실제 키 **15개** — 2026-09-21에 여섯을 채웠다): `tripc
 **이동수단은 일자 기본 + 구간별 재정의.** `legModeOf(day, spot)` — 도착 장소의 `legMode`가 있으면 그것, 없으면 일자 기본. (첫날을 비행기로 둬도 도시 내 이동까지 비행기가 되지 않게)
 고르는 곳은 목록이다(`openDayModePicker`·`openLegModePicker` → `setDayMode`·`setLegMode`, 2026-10-02) — 아이콘을 누를 때마다 다음 수단으로 넘어가던 순환은 지금 값도 고를 것도 보이지 않아 없앴다.
 수단: 자차 · 택시 · 대중교통 · 기차 · 도보 · 자전거 · 비행기.
-표시: 자차 하루의 2km 미만 구간은 **걸어서 계산하고 화면도 그렇게 말한다**(`legLabel` "가까워 걸어서 N분" — 전에는 🚶 아이콘만 붙어 추천인지 적용인지 몰랐다). 일자의 `drive`는 사람이 적은 **이동 메모**라 계산값과 다를 수 있어 `이동 메모` 표시를 달고, 일자 간 이동은 첫 장소 행의 들어오는 구간(`숙소에서`·`전날 마지막 장소에서`) 한 곳에만 적는다(2026-10-02).
+표시: 자차 하루의 2km 미만 구간은 **걸어서 계산하고 화면도 그렇게 말한다**(`legLabel` "가까워 걸어서 N분" — 전에는 🚶 아이콘만 붙어 추천인지 적용인지 몰랐다). ⚠️ 걷는 거리는 차 경로 거리가 아니다 — 직선거리×1.3과 차 경로 중 짧은 쪽이다(`walkInsteadOfCar`(lib) 하나를 웹 `legLabel`·`legMinutes`·지도 칩과 서버 `dayView`·지도 장면이 같이 쓴다, 2026-10-03 — 일방통행을 도는 1.4km로 직선 365m를 '걸어서 18분'이라 해 뒤 도착이 다 밀렸다). 일자의 `drive`는 사람이 적은 **이동 메모**라 계산값과 다를 수 있어 `이동 메모` 표시를 달고, 일자 간 이동은 첫 장소 행의 들어오는 구간(`숙소에서`·`전날 마지막 장소에서`) 한 곳에만 적는다(2026-10-02).
 라우팅(`fetchLeg`): 비행기·기차는 **직선거리 기반 추정**(실시간 시각표 없음) · 국내 자차/택시=카카오내비(도로 없으면 인근 도로 스냅) · 국내 대중교통=Google Routes TRANSIT · 국내 도보/자전거=카카오 도로거리 기반 추정 · 해외=Google Routes
 
 **체류 시간을 안 정하면 머무르지 않는다(0분).** 2026-09-06 이전에는 1시간을 먹었다. 계산처가 넷이라 함께 바꾼다 — `computeTimeline`(lib) · `dayEndMin`·`legDepartMinute`(app) · `dayView.ts`(next) · `adaptive.js`.
@@ -187,6 +187,11 @@ localStorage(실제 키 **15개** — 2026-09-21에 여섯을 채웠다): `tripc
 **줄 안에 끼는 작은 버튼은 `.btn.sm` 하나다** — 인라인 `style`로 각자 만들지 않는다(값이 `2px 8px`·`2px 9px`·`2px 10px`로 갈려 있었다). 통합 테스트가 인라인 재등장을 막는다.
 
 ⚠️ 모바일 필터바는 `overflow-x:auto` **스크롤 컨테이너**다 — 안에 뜬 드롭다운 패널이 잘린다(44px 높이에 갇혀 거의 안 보였다). `.viewMenu .viewMenuPanel`을 `position:fixed`로 빼내 해결했다 — `top:auto`라 정적 위치(칩 바로 아래)는 그대로다. 필터바에 드롭다운을 새로 추가하면 같은 함정에 빠진다.
+필터바에는 **보는 범위와 그 곁의 것만** 둔다(2026-10-03) — 경로 재생은 지도 위 `#playBtn`(재생 중에는 같은 자리가 정지), 테마는 ☰의 '파일·설정'이다. 칩 26개 뒤 '보기 설정'에 있을 때는 샘플의 볼거리를 아무도 몰랐다. 샘플로 들어오면(`onboardSample`) 재생을 한 번 권한다.
+
+**모바일 지도 맞춤은 덮인 만큼 비운다**(2026-10-03). `fitTo`·'지도에서 보기'는 일정 시트(도착할 높이)와 열린 장소 정보 패널이 덮은 만큼을 여백에 넣고(`mapFitPadding`) 보이는 곳 가운데로 옮긴다. 시트 높이가 바뀌면 앱이 마지막으로 맞춘 보기를 다시 맞추고(`refitAfterSheet`), 사람이 지도를 만졌으면 그 보기를 둔다. 진입 맞춤은 칩('전체')과 같은 범위다.
+**일자는 색 하나로만 가르지 않는다**(2026-10-03). 일자 색(`PALETTE`)은 10일마다 되돌아오므로 둘째 바퀴의 날(`dayRing`)은 속 빈 고리다 — 칩·범례 점(`dayDot`)과 지도 핀이 같은 규칙이고, 고대비(강제 색) 모드에서도 점·핀 색을 지우지 않는다. 같은 자리의 핀은 **앞선 날이 위**다(zIndex). 구글 확대·축소 단추는 오른쪽 위다 — 오른쪽 아래는 데스크톱 범례가, 왼쪽 아래는 Google 로고가 쓴다.
+한국어 줄바꿈은 **어절 단위**다(`body{word-break:keep-all}`) — 공백 없는 긴 글만 넘칠 때 끊는다.
 
 **실행취소는 실수 직후에 닿아야 한다.** ☰의 `undoBtn` 말고도 되돌릴 것이 있을 때만 헤더에 `undoQuick`이 보인다(`updateUndoBtn`, 2026-10-02). 삭제·최적화처럼 큰 변경은 토스트의 '실행취소'가 따로 있다.
 

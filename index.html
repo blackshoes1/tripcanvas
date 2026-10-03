@@ -60,6 +60,7 @@
     <button class="btn ghost" id="exportBtn"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4M8 8l4-4 4 4M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg> 내보내기</button>
     <button class="btn ghost" id="imgBtn" title="일정을 이미지로 저장"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM8.5 10.5a1.3 1.3 0 1 0 0-2.6 1.3 1.3 0 0 0 0 2.6zM5 17l4.5-5 3.5 3.5 2.5-2L19 17"/></svg> 이미지</button>
     <button class="btn ghost" id="importBtn"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v12M8 12l4 4 4-4M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg> 가져오기</button>
+    <button class="btn ghost" id="themeBtn" type="button" title="밝은 화면과 어두운 화면을 바꿔요"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17zM12 3.5v17"/></svg> 테마 전환</button>
     <button class="btn ghost" id="onboardAgainBtn" title="처음 화면을 다시 봐요"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 18h5M10 21h4M12 3a6 6 0 0 1 3.5 10.9c-.5.4-.8 1-.8 1.6v.5h-5.4v-.5c0-.6-.3-1.2-.8-1.6A6 6 0 0 1 12 3z"/></svg> 처음 화면 다시 보기</button>
     <div id="verLabel" title="현재 실행 중인 앱 버전 (탭하면 최신 버전 확인)"></div>
   </div>
@@ -82,6 +83,7 @@
   </section>
   <div id="pickBanner"><span>지도를 탭해 위치를 고르세요</span> <button type="button" class="btn sm" id="pickCancel">취소</button></div>
   <div class="legend" id="legend"></div>
+  <button type="button" class="btn mapPlay" id="playBtn" hidden title="지도에서 동선을 따라가며 재생해요 — 다시 누르면 멈춰요"></button>
 </div>
 
 <!-- 장소 추가/편집 모달: 기본 정보 + 접을 수 있는 상세 설정 -->

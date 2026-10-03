@@ -2810,7 +2810,7 @@ test('통합: 보기 권한은 색상 기준(여행 문서)을 바꾸지 못하�
   withTrip(w, `[{title:'',drive:'',note:'',spots:[]}]`);
   w.eval(`user={id:'u1'}; tripRoles={__it__:{role:'VIEWER',count:3,owner:false}}; render();`);
   assert.equal(w.document.getElementById('colorModeBtn'), null, '보기 권한에는 색상 기준 버튼이 없다');
-  assert.ok(w.document.getElementById('playBtn'), '보기 설정의 나머지(재생·테마)는 그대로다');
+  assert.ok(w.document.getElementById('playBtn'), '경로 재생(지도 위)은 보기 권한에도 있다');
   // 편집자일 때 그려 둔 버튼을, 보기 권한으로 바뀐 뒤 눌러도 바뀌지 않는다
   w.eval(`tripRoles.__it__.role='EDITOR'; render(); histStack.length=0;`);
   const btn = w.document.getElementById('colorModeBtn');
@@ -5595,5 +5595,78 @@ test("통합: 헤더의 채운 버튼은 하나다 — '여행 중 안내'는 �
     assert.equal(make.classList.contains('primary'),false,'둘이 겨루지 않게 샘플 띠 버튼이 물러난다');
     at('2026-12-01');   // 지난 여행
     assert.equal(btn.classList.contains('primary'),false);
+  }finally{ w.close(); }
+});
+
+test('통합: 같은 자리의 핀은 앞선 날이 위이고, 색이 되돌아오는 둘째 바퀴의 날은 속 빈 고리다(칩·범례·핀이 같다)', {skip:noJsdom}, () => {
+  // 2026-10-03 UX 검토: 첫날 도착 공항의 '1' 핀이 마지막 날(Day 14) 보라색으로 덮였고, Day 1과 11이 같은 색이라 구분할 수 없었다
+  const w=boot();
+  try{
+    const days=Array.from({length:12},(_,i)=>({spots:[{name:'P'+i,lat:40+i*0.1,lng:-3.7}]}));
+    days[0].spots.unshift({name:'공항',lat:40.49,lng:-3.56});
+    days[11].spots.push({name:'공항',lat:40.49,lng:-3.56});
+    withTrip(w, JSON.stringify(days));
+    fakeGoogleMap(w);
+    w.eval(`window.__pins=[]; google.maps.marker.AdvancedMarkerElement=function(o){ this.map=o.map; this.addEventListener=()=>{};
+      if(o.content&&o.content.classList&&o.content.classList.contains('num-icon')) __pins.push({pos:o.position, z:o.zIndex, ring:o.content.classList.contains('ring'), color:o.content.style.color}); };
+      _ovSig=null; render();`);
+    const airport=w.__pins.filter(p=>p.pos.lat===40.49);
+    assert.equal(airport.length,2,'공항 핀은 첫날·마지막 날 둘');
+    const [first,last]=airport;   // 그리는 순서는 날 순서다
+    assert.ok(first.z>last.z, `앞선 날이 위: ${first.z} > ${last.z}`);
+    assert.equal(first.ring,false,'첫 바퀴는 채운 핀');
+    assert.equal(last.ring,true,'Day 12는 둘째 바퀴 — 속 빈 고리');
+    assert.ok(last.color,'고리 핀의 번호·테두리는 그날 색');
+    const chipDot=(n)=>[...w.document.querySelectorAll('#filterbar .chip')].find(b=>b.textContent==='Day '+n).querySelector('.dot');
+    assert.equal(chipDot(1).classList.contains('ring'),false);
+    assert.ok(chipDot(11).classList.contains('ring'),'칩 점도 같은 규칙');
+    const legDot=w.document.querySelector('#legend .legDay[data-di="10"] .dot');
+    assert.ok(legDot.classList.contains('ring'),'범례 점도 같은 규칙');
+    assert.ok(w.document.querySelector('#legend .legFoot'),"'일자 간 이동'은 범례 바닥 줄로 따로 있다(굴러도 붙어 있다)");
+  }finally{ w.close(); }
+});
+
+test('통합: 지도 확대·축소 단추는 범례(오른쪽 아래)와 다른 자리에 둔다', {skip:noJsdom}, () => {
+  // 2026-10-03 UX 검토: 데스크톱에서 범례가 기본 자리(오른쪽 아래)의 '+'·'-'를 덮어 눌러도 줌이 그대로였다
+  const w=boot();
+  try{
+    fakeGoogleMap(w);
+    w.eval(`const fake=map; google.maps.ControlPosition={RIGHT_TOP:'RIGHT_TOP',RIGHT_BOTTOM:'RIGHT_BOTTOM',LEFT_BOTTOM:'LEFT_BOTTOM'};
+      google.maps.InfoWindow=function(){ this.close=()=>{}; this.open=()=>{}; this.setContent=()=>{}; }; fake.addListener=()=>{};
+      google.maps.Map=function(el,o){ window.__mapOpts=o; return fake; }; __gmapsReady();`);
+    const pos=w.eval('__mapOpts.zoomControlOptions && __mapOpts.zoomControlOptions.position');
+    assert.ok(pos, '자리를 정한다(기본은 오른쪽 아래)');
+    assert.notEqual(pos,'RIGHT_BOTTOM','범례 자리가 아니다');
+    assert.notEqual(pos,'LEFT_BOTTOM','Google 로고 자리도 아니다');
+  }finally{ w.close(); }
+});
+
+test("통합: 경로 재생은 지도 위 고정 버튼이고, 테마는 ☰에 있으며, 샘플로 들어오면 재생을 한 번 권한다", {skip:noJsdom}, () => {
+  // 2026-10-03 UX 검토: '경로 재생'·'테마 전환'이 칩 26개 뒤 '보기 설정' 안(375px에서 x=1179)에 있어 샘플의 볼거리를 지나쳤다
+  const w=boot();
+  try{
+    w.eval(`store={trips:[sampleTrip()],activeId:SAMPLE_TRIP_ID}; render();`);
+    const play=w.document.getElementById('playBtn');
+    assert.ok(play && !play.closest('#filterbar'),'재생은 필터바(칩 줄) 밖');
+    assert.ok(play.closest('#main'),'지도 위에 있다');
+    assert.equal(play.hidden,false,'따라갈 동선이 있으면 보인다');
+    assert.match(play.textContent,/경로 재생/);
+    assert.equal(w.document.querySelector('#filterbar #themeBtn'),null,'테마는 칩 줄에 없다');
+    const theme=w.document.querySelector('#hdrMenu #themeBtn');
+    assert.ok(theme,'테마는 ☰ 설정에');
+    const dark=w.document.body.classList.contains('theme-dark');
+    theme.click();
+    assert.equal(w.document.body.classList.contains('theme-dark'),!dark,'☰에서 눌러도 바뀐다');
+    // 샘플 먼저 둘러보기 → 경로 재생을 권하는 한 마디(누르면 재생)
+    w.eval(`window.__played=0; playTrip=()=>{ __played++; };`);
+    w.document.getElementById('onboardSample').click();
+    const toast=w.document.getElementById('toast');
+    assert.match(toast.textContent,/경로 재생/);
+    toast.querySelector('.toastAct').click();
+    assert.equal(w.__played,1,'권한 자리에서 바로 재생');
+    // 위치 있는 장소가 하나뿐이면 재생할 동선이 없다 — 버튼을 세우지 않는다
+    withTrip(w, JSON.stringify([{spots:[{name:'한 곳',lat:40.4,lng:-3.7},{name:'위치 없음'}]}]));
+    w.eval('render()');
+    assert.equal(play.hidden,true);
   }finally{ w.close(); }
 });
