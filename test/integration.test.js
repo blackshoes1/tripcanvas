@@ -5722,3 +5722,25 @@ test('ux3 이미지 내보내기: 제목 없는 날에 가운뎃점만 남지 �
     assert.deepEqual(heads, ['Day 1 · 도착 ', 'Day 2 ']);
   } finally { w.close(); }
 });
+
+test('ux3 여행 삭제: 목록에서 마지막 여행을 지워도, 마지막 공유 여행에서 나가도 처음 화면이다', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    w.eval(`dismissOnboarding(); store.trips=[{id:'only',name:'하나뿐',start:'2026-11-01',days:[{title:'',drive:'',note:'',spots:[]}]}]; store.activeId='only'; window.confirm=()=>true;`);
+    w.eval('openTripList()');
+    w.eval(`removeTrip('only')`);
+    assert.equal(w.document.getElementById('onboarding').hidden, false);
+    assert.equal(w.document.getElementById('tripListBg').classList.contains('show'), false, '처음 화면 뒤에 여행 목록이 열린 채 남지 않는다');
+  } finally { w.close(); }
+
+  const w2 = boot();
+  try {
+    w2.sb = { rpc: async () => ({ data: true, error: null }) };
+    w2.eval(`dismissOnboarding(); store.trips=[{id:'shared',name:'같이 가는 여행',start:'2026-11-01',days:[{title:'',drive:'',note:'',spots:[]}]}]; store.activeId='shared';
+      sb=window.sb; TC_API.rpc=window.sb.rpc; user={id:'u2'}; tripRoles={shared:{role:'EDITOR',count:2,owner:false}}; window.confirm=()=>true;`);
+    assert.equal(w2.eval(`deleteTrip('shared')`), true);
+    await new Promise(r => setTimeout(r, 20));
+    assert.equal(w2.eval('isSampleTrip(store.trips[0])'), true, "말없이 만든 '새 여행'(자차 기본)이 아니다");
+    assert.equal(w2.document.getElementById('onboarding').hidden, false, '처음 화면으로 간다');
+  } finally { w2.close(); }
+});

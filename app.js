@@ -3011,8 +3011,13 @@ function deleteTrip(id){
     undoWith(snap);
     if(!document.getElementById('onboarding').hidden) dismissOnboarding();   // 되돌렸으면 처음 화면도 걷는다
   }});
-  if(emptied) showOnboarding();
+  if(emptied) showLastTripGone();
   return true;
+}
+/** 마지막 여행이 사라진 뒤 — 여행 목록에서 지웠으면 그 목록은 닫고 처음 화면을 띄운다(목록이 그 뒤에 열린 채 남았다) */
+function showLastTripGone(){
+  document.getElementById('tripListBg').classList.remove('show');
+  showOnboarding();
 }
 document.getElementById('tripDelBtn').onclick=()=>{
   if(deleteTrip(store.activeId)) document.getElementById('tripModalBg').classList.remove('show');
@@ -6791,11 +6796,14 @@ function leaveTripUI(id,t){
     if(error) throw error;
     delete syncMeta[id]; delete tripRoles[id]; persistSyncMeta();
     store.trips=store.trips.filter(x=>x.id!==id);
-    if(!store.trips.length){ store.trips=[{id:uid(),name:'새 여행',start:todayISO(),days:[{title:'',drive:'',note:'',spots:[]}]}]; }
+    // 마지막 여행에서 나가도 지운 것과 같이 처음 화면이다(deleteTrip) — 빈 '새 여행'(자차 기본)을 말없이 만들지 않는다
+    const emptied=!store.trips.length;
+    if(emptied) store.trips=[sampleTrip()];
     if(id===store.activeId){ store.activeId=store.trips[0].id; activeDay=0; }
     suppressCloudOnce=true; commit(null,{fit:fitEntry});
     if(document.getElementById('tripListBg').classList.contains('show')) renderTripList();
     toast(`"${t.name}"에서 나왔어요`,'#4f4740');
+    if(emptied) showLastTripGone();
   }).catch(e=>{
     reportOperationalError('collab.leave',e);
     toast(TC_COLLAB.isForbiddenError(e)?TC_COLLAB.forbiddenText(e,myRole(id)):'나가지 못했어요 — 잠시 후 다시 시도해 주세요','#b4342a');

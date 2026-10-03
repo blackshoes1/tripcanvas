@@ -687,5 +687,7 @@ body:has(.modalBg.show) #toast{bottom:auto;top:calc(env(safe-area-inset-top) + 1
 .pvLayout .hint{margin:0;color:var(--meta-warning);font-weight:600}
 .pvLayout label{display:flex;align-items:center;gap:8px;font-size:12.5px;margin:0;min-height:32px}
 .pvGapDay{padding:6px 10px;font-size:12px;color:var(--subtle);border-top:1px dashed var(--border);background:var(--surface-2)}
+/* 담을 장소가 없으면 만들기가 꺼진다 — .btn.primary의 흰 글자가 꺼진 모양을 가려 눌러도 반응 없는 버튼처럼 보였다 */
+#pvRun:disabled{opacity:.45;cursor:not-allowed}
 /* 마지막 여행을 지운 뒤 처음 화면 위에서도 '실행취소'가 보인다 */
 body:has(#onboarding:not([hidden])) #toast{z-index:5001}
