@@ -139,7 +139,7 @@
   .modal{background:var(--surface);border-radius:16px;padding:20px;width:min(440px,94vw);max-height:88dvh;overflow-y:auto;box-shadow:var(--shadow)}
   .modal h2{font-size:18px;margin-bottom:12px}
   .modal label{display:block;font-size:12px;color:var(--muted);margin:9px 0 4px}
-  .modal input[type=text],.modal input[type=date],.modal select,.modal textarea{width:100%}
+  .modal input[type=text],.modal input[type=email],.modal input[type=password],.modal input[type=date],.modal select,.modal textarea{width:100%}
   .modal textarea{min-height:60px;resize:vertical}
   .modal .row{display:flex;gap:8px;margin-top:14px;justify-content:flex-end}
   .syncChoices{display:grid;gap:8px;margin-top:16px}.syncChoices .btn{width:100%;justify-content:center}
@@ -229,7 +229,8 @@
   .dayCard.remoteChanged>.dayHead .dayTitle::after{content:'';display:inline-block;width:6px;height:6px;margin-left:6px;
     border-radius:50%;background:#9cc4d2;vertical-align:middle}
   /* 읽기전용 보기 */
-  #roBar{background:#7c5c15;color:#fff;padding:6px 12px;font-size:12.5px;display:flex;align-items:center;gap:10px;z-index:1001}
+  #roBar{background:#7c5c15;color:#fff;padding:6px 12px;font-size:12.5px;display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;z-index:1001}
+  #roText{flex:1 1 220px;min-width:0;line-height:1.4}#roBar .btn{flex:none;white-space:nowrap;min-height:32px}
   .readonly .addSpot,.readonly #addDayBtn,.readonly .noloc,.readonly .dragHandle,
   .readonly #newTripBtn,.readonly #tripEditBtn,.readonly #pasteBtn,.readonly #importBtn,.readonly #authBtn,.readonly #undoBtn,.readonly #redoBtn{display:none!important}
   #undoBtn:disabled,#redoBtn:disabled{opacity:.35;cursor:default}
@@ -795,3 +796,14 @@ body{word-break:keep-all;overflow-wrap:break-word}
 #pvRun:disabled{opacity:.45;cursor:not-allowed}
 /* 마지막 여행을 지운 뒤 처음 화면 위에서도 '실행취소'가 보인다 */
 body:has(#onboarding:not([hidden])) #toast{z-index:5001}
+/* ux3:share */
+/* 처음 화면의 제목은 포커스가 시작하는 자리일 뿐 누르는 곳이 아니다 — 링을 그리지 않는다(터치로 들어와도 주 버튼에 링이 없게) */
+#onboardingTitle:focus{outline:none}
+/* 쓸 수 없는 초대의 이유는 회색 힌트가 아니라 눈에 띄는 한 줄이다 */
+#joinHint.joinProblem{font-size:13px;line-height:1.5;color:var(--badge-danger-fg);background:var(--badge-danger-bg);border-radius:10px;padding:8px 10px;margin-top:8px}
+/* 로그인 창: 소셜 로그인은 맨 위 전체 폭, 비밀번호 재설정은 버튼 줄이 아니라 작은 링크 */
+#authSocial{margin-top:0}#authSocial:empty{display:none}#authSocial .btn{flex:1 1 100%}
+.authLinks{margin:4px 0 0;text-align:right}
+.authLink{border:0;background:transparent;color:var(--muted);font-size:12px;text-decoration:underline;padding:6px 2px;min-height:32px;cursor:pointer}
+/* 좁은 화면의 읽기 전용 띠: 문장은 한 줄을 다 쓰고, 두 버튼은 다음 줄 오른쪽에 함께 — '닫기'만 왼쪽 아래로 떨어지지 않게 */
+@media (max-width:600px){#roText{flex-basis:calc(100% - 30px)}#roSave{margin-left:auto}}

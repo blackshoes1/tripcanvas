@@ -2947,6 +2947,7 @@ test('통합: 같이 짜기 화면은 초대가 긴 취향 양식보다 위에 �
 
 test('통합: 로그인이 필요한 기능은 이유를 로그인 모달 안에 남기고, 로그인하면 그 기능을 이어서 연다', { skip: noJsdom }, () => {
   const w = boot();
+  withTrip(w, '[{"title":"","spots":[]}]');   // 샘플은 같이 짤 수 없어 로그인을 묻지 않는다(ux3:share 절) — 내 여행으로 본다
   w.eval(`user=null; sb={}; pullTrip=async()=>{}; renderMembers=async()=>{};`);
   w.eval('openMembers()');
   const bg = w.document.getElementById('authModalBg');
@@ -2971,6 +2972,7 @@ test('통합: 로그인이 필요한 기능은 이유를 로그인 모달 안에
 
 test('통합: 소셜 로그인으로 페이지를 떠났다 와도 기다리던 기능을 이어서 연다(이름만 탭 저장소에)', { skip: noJsdom }, () => {
   const w = boot();
+  withTrip(w, '[{"title":"","spots":[]}]');   // 샘플은 같이 짤 수 없어 로그인을 묻지 않는다(ux3:share 절) — 내 여행으로 본다
   w.eval(`user=null; sb={}; pullTrip=async()=>{}; renderMembers=async()=>{}; TC_AUTH.socialProviders=()=>['google']; TC_AUTH.startSocial=async()=>{};`);
   w.eval('openMembers()');
   w.document.querySelector('#authSocial button').click();
@@ -7428,5 +7430,367 @@ test('ux3 붙여넣기(검토): 수단을 적지 않은 여행에 이어 붙이�
     assert.equal(w.document.getElementById('pvMode').value, 'car');
     w.eval('pvCommit()');
     assert.equal(activeTrip(w).days[1].mode, 'car');
+// ── ux3:share ──
+// 공유·읽기 전용·초대·처음 화면·샘플 (2026-10-03 UX 검토 3차)
+
+/** #v= 링크로 처음 여는 기기. boot의 LZString 대역은 항등이라 주소에 실린 따옴표가 퍼센트 인코딩된 채 남는다 —
+ *  실제 LZString처럼 주소에 안전한 글자로 바꾸고 되돌리는 대역으로 같은 부팅을 한다(나머지는 boot와 같다). */
+function bootSharedLink(trip, storage = {}) {
+  const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8').replace(/<script\b[\s\S]*?<\/script>/gi, '');
+  const dom = new JSDOM(html, { url: 'http://localhost/#v=' + encodeURIComponent(JSON.stringify(trip)), runScripts: 'dangerously', pretendToBeVisual: true });
+  const { window } = dom;
+  for (const [k, v] of Object.entries(storage)) window.localStorage.setItem(k, v);
+  window.fetch = () => Promise.reject(new Error('no-net'));
+  window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
+  window.HTMLDialogElement.prototype.close = function () { this.open = false; };
+  window.TextEncoder = TextEncoder;
+  window.LZString = { compressToEncodedURIComponent: (x) => encodeURIComponent(x), decompressFromEncodedURIComponent: (x) => decodeURIComponent(x) };
+  for (const file of ['lib.js', 'sync.js', 'routing.js', 'price.js', 'adaptive.js', 'intake.js', 'collab.js', 'api.js', 'auth.js', 'app.js']) {
+    const s = window.document.createElement('script');
+    s.textContent = fs.readFileSync(path.join(root, file), 'utf8');
+    window.document.body.appendChild(s);
+  }
+  const boom = async () => { throw new Error('테스트에서 실제 네트워크 호출'); };
+  window.TC_API.configure({ fetchImpl: boom });
+  window.TC_AUTH.configure({ fetchImpl: boom });
+  return window;
+}
+const SHARED_TRIP = { id: 'friend1', name: '오사카 우정여행', start: '2026-11-01',
+  days: [{ title: '도톤보리', spots: [{ name: '도톤보리', city: '오사카', lat: 34.6687, lng: 135.5013 }, { name: '구로몬 시장', city: '오사카', lat: 34.6655, lng: 135.5066 }] }] };
+const savedTrips = (w) => JSON.parse(w.localStorage.getItem('tripcanvas_v1')).trips;
+
+test('ux3 공유: 공유·초대 링크로 처음 온 사람에게 처음 화면을 덮지 않는다', { skip: noJsdom }, async () => {
+  const shared = bootSharedLink(SHARED_TRIP);
+  try {
+    assert.equal(shared.document.getElementById('onboarding').hidden, true, '공유받은 여행이 먼저 보인다');
+    assert.equal(shared.eval('viewMode && viewMode.name'), '오사카 우정여행');
+    assert.equal(shared.document.getElementById('roBar').style.display, 'flex');
+  } finally { shared.close(); }
+  const invited = boot('http://localhost/#join=' + 'T'.repeat(32));
+  try {
+    assert.equal(invited.document.getElementById('onboarding').hidden, true, '초대 창이 먼저 보인다');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.ok(invited.document.getElementById('joinModalBg').classList.contains('show'));
+  } finally { invited.close(); }
+  const plain = boot();
+  try { assert.equal(plain.document.getElementById('onboarding').hidden, false, '그냥 처음 온 사람에게는 그대로 뜬다'); }
+  finally { plain.close(); }
+});
+
+test('ux3 공유: 읽기 전용 보기 중 새 여행을 만들면 보기를 끝내고 실제로 저장한다(유령 여행 없음)', { skip: noJsdom }, () => {
+  const w = bootSharedLink(SHARED_TRIP);
+  try {
+    w.eval('openNewTrip()');
+    w.document.getElementById('ntName').value = '부산 여행';
+    w.document.getElementById('ntRun').click();
+    assert.equal(w.eval('viewMode'), null, '보기를 끝냈다');
+    assert.equal(w.eval('trip().name'), '부산 여행', '화면이 새 여행으로 바뀐다');
+    assert.ok(savedTrips(w).some((t) => t.name === '부산 여행'), '말한 대로 저장소에 있다');
+    assert.ok(!w.document.body.classList.contains('readonly'));
+    assert.equal(w.document.getElementById('roBar').style.display, 'none');
+    assert.equal(w.location.hash, '', '새로고침해도 다시 읽기 전용으로 돌아가지 않는다');
+    assert.ok(!savedTrips(w).some((t) => t.name.startsWith('오사카')), '받은 사본은 저장하지 않았다');
+  } finally { w.close(); }
+});
+
+test('ux3 공유: 읽기 전용 보기 중 붙여넣은 새 여행도 저장되고, 이어붙이기·덮어쓰기는 고를 수 없다', { skip: noJsdom }, async () => {
+  const w = bootSharedLink(SHARED_TRIP);
+  try {
+    stubGeocode(w, {});
+    w.document.getElementById('pasteMenuBtn').click();
+    const sel = w.document.getElementById('pasteTarget');
+    assert.equal(sel.value, 'new');
+    assert.ok(sel.querySelector('option[value="append"]').disabled && sel.querySelector('option[value="overwrite"]').disabled);
+    w.document.getElementById('pasteText').value = '[day1] 부산 당일\n- 해운대 해수욕장';
+    await w.eval('runPaste()');
+    w.document.getElementById('pvName').value = '부산 당일';
+    w.eval('pvCommit()');
+    assert.equal(w.eval('viewMode'), null);
+    assert.equal(w.eval('trip().name'), '부산 당일');
+    assert.ok(savedTrips(w).some((t) => t.name === '부산 당일'), '"초안 생성 완료"라고 한 것이 저장소에 있다');
+  } finally { w.close(); }
+});
+
+test('ux3 공유: 읽기 전용 보기는 띠의 닫기나 여행 목록으로 빠져나간다 — 복사하지 않아도 된다', { skip: noJsdom }, () => {
+  const w = bootSharedLink(SHARED_TRIP);
+  try {
+    const before = savedTrips(w).length;
+    w.document.getElementById('roClose').click();
+    assert.equal(w.eval('viewMode'), null);
+    assert.equal(w.eval('trip().id'), w.eval('store.activeId'), '내 여행으로 돌아왔다');
+    assert.equal(w.location.hash, '');
+    assert.equal(savedTrips(w).length, before, '아무것도 복사하지 않는다');
+  } finally { w.close(); }
+
+  const v = bootSharedLink(SHARED_TRIP);
+  try {
+    v.document.getElementById('tripPickerBtn').click();
+    assert.ok(v.document.getElementById('tripListBg').classList.contains('show'), '피커가 거절하지 않고 내 여행 목록을 연다');
+    assert.match(v.document.getElementById('tripListHint').textContent, /보기를 닫고/);
+    assert.equal(v.document.querySelectorAll('#tripListBody .tripRow.active').length, 0, '보고 있는 것은 목록의 여행이 아니다');
+    assert.equal(v.document.querySelectorAll('#tripListBody .tripRow .iconb').length, 0, '보기 중에는 지우는 버튼이 없다(저장되지 않는다)');
+    v.eval('switchTrip(store.activeId)');
+    assert.equal(v.eval('viewMode'), null, '지금 활성인 여행을 골라도 보기를 닫고 그리로 간다');
+    assert.equal(v.document.getElementById('tripListBg').classList.contains('show'), false);
+  } finally { v.close(); }
+});
+
+test('ux3 공유: 받는 쪽 띠는 언제 만든 사본인지 한 줄로 말하고, 저장한 사본은 사본이라고 남는다', { skip: noJsdom }, async () => {
+  const madeAt = new Date(2026, 9, 3, 11, 0).toISOString();   // 받는 기기의 10월 3일 11:00
+  const w = bootSharedLink(Object.assign({}, SHARED_TRIP, { sharedAt: madeAt }));
+  try {
+    assert.match(w.document.getElementById('roText').textContent, /10월 3일 11:00에 만든 사본이에요 — 이후 바뀐 내용은 안 보여요 · 같이 고치려면 초대를 받으세요/);
+    assert.ok(w.document.getElementById('saveStateBar').classList.contains('srOnlyBar'), '저장 상태 줄이 같은 말을 또 하지 않는다');
+    w.document.getElementById('roSave').click();
+    const saved = savedTrips(w).find((t) => t.name.startsWith('오사카'));
+    assert.equal(saved.name, '오사카 우정여행 (사본)', '원본과 같은 이름으로 들어가지 않는다');
+    assert.equal(saved.sharedAt, undefined, '링크의 정보는 내 여행에 남기지 않는다');
+    assert.notEqual(saved.id, 'friend1');
+    assert.match(w.document.getElementById('toast').textContent, /사본으로 저장했어요 — 원본과는 따로/);
+  } finally { w.close(); }
+
+  const old = bootSharedLink(SHARED_TRIP);   // 시각이 없던 예전 링크 — 시각을 지어내지 않는다
+  try { assert.match(old.document.getElementById('roText').textContent, /^링크를 만든 순간의 사본이에요/); }
+  finally { old.close(); }
+  const future = bootSharedLink(Object.assign({}, SHARED_TRIP, { sharedAt: '2099-01-01T00:00:00.000Z' }));
+  try { assert.match(future.document.getElementById('roText').textContent, /^링크를 만든 순간의 사본이에요/, '믿을 수 없는 시각은 말하지 않는다'); }
+  finally { future.close(); }
+
+  // 보내는 쪽: 링크에 만든 시각이 실린다
+  const s = boot();
+  try {
+    Object.defineProperty(s.navigator, 'clipboard', { configurable: true, value: { writeText: async (v) => { s.__copied = v; } } });
+    s.document.getElementById('shareBtn').click();
+    await new Promise((r) => setTimeout(r, 0));
+    const payload = JSON.parse(s.__copied.split('#v=')[1]);   // boot의 LZString은 항등이다
+    assert.ok(Math.abs(Date.parse(payload.sharedAt) - Date.now()) < 60000, '지금 만든 시각');
+    assert.equal(s.eval('trip().sharedAt'), undefined, '내 여행 문서에는 쓰지 않는다');
+  } finally { s.close(); }
+});
+
+test('ux3 공유: 받은 사본을 다시 공유하면 토스트가 거절로 끝나는 버튼 대신 갈 길을 말하고, 원래 시각을 지킨다', { skip: noJsdom }, async () => {
+  const madeAt = new Date(2026, 9, 3, 11, 0).toISOString();
+  const w = bootSharedLink(Object.assign({}, SHARED_TRIP, { sharedAt: madeAt }));
+  try {
+    Object.defineProperty(w.navigator, 'clipboard', { configurable: true, value: { writeText: async (v) => { w.__copied = v; } } });
+    w.document.getElementById('shareBtn').click();
+    await new Promise((r) => setTimeout(r, 0));
+    const toastEl = w.document.getElementById('toast');
+    assert.match(toastEl.textContent, /편집하려면 이 여행 주인에게 초대를 요청하세요/);
+    assert.equal(toastEl.querySelector('.toastAct'), null, '누르면 거절로 끝나는 "같이 고치려면"이 없다');
+    const payload = JSON.parse(decodeURIComponent(w.__copied.split('#v=')[1]));
+    assert.equal(payload.sharedAt, madeAt, '옛 일정이 새것처럼 보이지 않게 원래 시각을 그대로 싣는다');
+    w.eval('openMembers()');
+    assert.match(toastEl.textContent, /주인에게 초대를 요청하세요/);
+    assert.ok(!w.document.getElementById('authModalBg').classList.contains('show'));
+  } finally { w.close(); }
+});
+
+test('ux3 공유: 고칠 수 없는 여행의 ⋮에는 장소 정보만 있고, 날짜 줄은 버튼이 아니며, 남의 일정을 "내 일정"이라 하지 않는다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    withTrip(w, `[{title:'D1',drive:'',note:'',spots:[{name:'A',city:'오사카',lat:34.66,lng:135.5}]}]`);
+    w.eval('render()');
+    const labels = () => [...w.document.querySelectorAll('.dayCard .spot .actionMenuPanel button')].map((b) => b.textContent.trim());
+    assert.ok(labels().length > 1, '내 여행에서는 편집 도구가 다 있다');
+    w.eval('viewMode=trip(); render()');
+    assert.deepEqual(labels(), ['ⓘ 장소 정보']);
+    assert.equal(w.document.querySelectorAll('.dayCard .dayHead .actionMenu').length, 0, '일자 ⋮(편집·복사·삭제)도 없다');
+    const date = w.document.querySelector('.dayCard .dayHead .date');
+    assert.ok(!date.hasAttribute('onclick') && date.getAttribute('role') !== 'button', '날짜 줄은 누르는 곳이 아니다');
+    w.eval('openSavedPlace(0,0)');
+    assert.match(w.document.querySelector('#placeDetails .placeOwn h3').textContent, /^이 여행의 일정 · Day 1/);
+  } finally { w.close(); }
+});
+
+test('ux3 초대: 쓸 수 없는 초대는 제목부터 그렇게 말하고, 권한 줄을 보이지 않는다', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    w.sb = { rpc: async () => ({ data: [{ valid: false, reason: 'EXPIRED', trip_name: '오사카 우정여행', start_date: '2026-11-01', day_count: 3, role: 'EDITOR' }], error: null }) };
+    w.eval('TC_API.rpc=window.sb.rpc; user=null;');
+    await w.eval(`startJoin('${'X'.repeat(24)}')`);
+    const el = (id) => w.document.getElementById(id);
+    assert.equal(el('joinTitle').textContent, '초대 링크를 쓸 수 없어요');
+    assert.doesNotMatch(el('joinTripMeta').textContent, /권한/, '만료된 초대에 "편집 권한으로 참여"를 보이지 않는다');
+    assert.match(el('joinHint').textContent, /만료/);
+    assert.ok(el('joinHint').classList.contains('joinProblem'), '이유는 눈에 띄게');
+    assert.equal(el('joinAccept').style.display, 'none');
+    assert.equal(el('joinRetry').hidden, true, '만료는 다시 해도 같다');
+    assert.equal(el('joinOpenApp').hidden, true);
+  } finally { w.close(); }
+});
+
+test('ux3 초대: 미리보기를 못 받아 오면 다시 시도할 수 있다', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    let calls = 0;
+    w.sb = { rpc: async () => { calls++; if (calls === 1) throw new Error('offline'); return { data: [{ valid: true, reason: 'OK', trip_name: '오사카 우정여행', start_date: '2026-11-01', day_count: 3, role: 'EDITOR', already_member: false }], error: null }; } };
+    w.eval('TC_API.rpc=window.sb.rpc; user=null;');
+    await w.eval(`startJoin('${'X'.repeat(24)}')`);
+    const el = (id) => w.document.getElementById(id);
+    assert.equal(el('joinTitle').textContent, '초대를 확인하지 못했어요');
+    assert.equal(el('joinRetry').hidden, false);
+    el('joinRetry').click();
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(calls, 2);
+    assert.equal(el('joinTitle').textContent, '여행에 초대받았어요');
+    assert.equal(el('joinRetry').hidden, true);
+    assert.match(el('joinTripMeta').textContent, /편집 권한으로 참여/);
+  } finally { w.close(); }
+});
+
+test('ux3 초대: 끝에 붙은 꼬리는 떼고 읽고, 그래도 못 읽는 링크는 서버에 묻지 않고 같은 창으로 알린다', { skip: noJsdom }, async () => {
+  const token = 'T'.repeat(32);
+  for (const tail of ['.', '&utm=kakao', '%E3%80%82', ')']) {
+    const w = boot('http://localhost/#join=' + token + tail);
+    try { assert.equal(w.eval('pendingJoinToken'), token, tail); } finally { w.close(); }
+  }
+  const w = boot('http://localhost/#join=abc');
+  try {
+    let calls = 0;
+    w.sb = { rpc: async () => { calls++; return { data: [], error: null }; } };
+    w.eval('TC_API.rpc=window.sb.rpc;');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.ok(w.document.getElementById('joinModalBg').classList.contains('show'), '아무 반응 없이 무시하지 않는다');
+    assert.equal(w.document.getElementById('joinTitle').textContent, '초대 링크를 쓸 수 없어요');
+    assert.match(w.document.getElementById('joinHint').textContent, /올바르지 않아요/);
+    assert.equal(w.document.getElementById('joinCard').hidden, true, '이름도 모르는 실패에 빈 카드를 두지 않는다');
+    assert.equal(calls, 0, '형식이 틀린 토큰은 서버에 보내지 않는다');
+    w.document.getElementById('joinCancel').click();
+    assert.equal(w.location.hash, '');
+  } finally { w.close(); }
+});
+
+test('ux3 초대: 로그인 창은 어느 여행에 참여하려는지 말하고, 앱 버튼은 iOS에서 쓸 수 있는 초대일 때만 선다', { skip: noJsdom }, async () => {
+  const preview = { valid: true, reason: 'OK', trip_name: '오사카 우정여행', start_date: '2026-11-01', day_count: 3, role: 'EDITOR', already_member: false };
+  const w = boot();
+  try {
+    w.sb = { rpc: async () => ({ data: [preview], error: null }) };
+    w.eval('TC_API.rpc=window.sb.rpc; user=null;');
+    await w.eval(`startJoin('${'X'.repeat(24)}')`);
+    assert.equal(w.document.getElementById('joinOpenApp').hidden, true, '데스크톱에서는 앱으로 열 수 없다');
+    assert.equal(w.document.getElementById('joinCancel').textContent, '닫기', '토큰을 지우는 버튼을 "나중에"라 부르지 않는다');
+    w.document.getElementById('joinAccept').click();
+    const reason = w.document.getElementById('authReason');
+    assert.equal(reason.hidden, false);
+    assert.match(reason.textContent, /"오사카 우정여행"에 참여하려면 로그인해 주세요/);
+    assert.ok(w.document.getElementById('joinModalBg').classList.contains('show'), '초대 창은 그 아래에 그대로 있다');
+  } finally { w.close(); }
+
+  const ios = boot();
+  try {
+    Object.defineProperty(ios.navigator, 'userAgent', { configurable: true, value: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)' });
+    ios.sb = { rpc: async () => ({ data: [preview], error: null }) };
+    ios.eval('TC_API.rpc=window.sb.rpc; user=null;');
+    await ios.eval(`startJoin('${'X'.repeat(24)}')`);
+    const app = ios.document.getElementById('joinOpenApp');
+    assert.equal(app.hidden, false);
+    assert.equal(app.getAttribute('href'), 'tripcanvas://join/' + 'X'.repeat(24));
+    ios.sb.rpc = async () => ({ data: [{ valid: false, reason: 'REVOKED', trip_name: '오사카 우정여행' }], error: null });
+    ios.eval('TC_API.rpc=window.sb.rpc;');
+    await ios.eval(`startJoin('${'Y'.repeat(24)}')`);
+    assert.equal(app.hidden, true, '쓸 수 없는 초대를 앱으로 열라고 하지 않는다');
+  } finally { ios.close(); }
+});
+
+test('ux3 처음 화면: 포커스는 제목에서 시작한다(터치로 들어와도 주 버튼에 링이 그려지지 않게)', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    assert.equal(w.document.getElementById('onboarding').hidden, false);
+    assert.equal(w.document.activeElement.id, 'onboardingTitle');
+  } finally { w.close(); }
+});
+
+test('ux3 처음 화면: "샘플 먼저 둘러보기"는 샘플로 간다 — 지웠으면 다시 심는다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    w.eval(`window.confirm=()=>true; createNewTrip({name:'리스본 여행',start:'2026-11-01',dayCount:2}); deleteTrip(SAMPLE_TRIP_ID);`);
+    assert.equal(w.eval('store.trips.some(isSampleTrip)'), false);
+    w.document.getElementById('onboardAgainBtn').click();
+    w.document.getElementById('onboardSample').click();
+    assert.equal(w.eval('isSampleTrip(trip())'), true, '창만 닫고 리스본에 남지 않는다');
+    assert.ok(savedTrips(w).some((t) => t.id === 'spain2026'), '다시 심은 샘플이 저장됐다');
+    // 샘플이 있으면 하나 더 만들지 않고 그리로 간다
+    w.eval('store.activeId=store.trips.find(t=>!isSampleTrip(t)).id; render();');
+    w.document.getElementById('onboardAgainBtn').click();
+    w.document.getElementById('onboardSample').click();
+    assert.equal(w.eval('isSampleTrip(trip())'), true);
+    assert.equal(w.eval('store.trips.filter(isSampleTrip).length'), 1);
+  } finally { w.close(); }
+});
+
+test('ux3 샘플: 샘플에서는 같이 짜기·가고 싶은 곳이 로그인을 약속하지 않고 내 여행 만들기로 안내한다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    w.eval('user=null; dismissOnboarding();');
+    assert.equal(w.eval('isSampleTrip(trip())'), true);
+    for (const open of ['openMembers()', 'openCandidates()']) {
+      w.eval(open);
+      assert.ok(!w.document.getElementById('authModalBg').classList.contains('show'), `${open}: 지킬 수 없는 "이어서 열어 드릴게요"를 띄우지 않는다`);
+      assert.match(w.document.getElementById('toast').textContent, /샘플은 같이 짤 수 없어요/);
+    }
+    w.document.querySelector('#toast .toastAct').click();
+    assert.ok(w.document.getElementById('newTripBg').classList.contains('show'), '갈 길: 내 여행 만들기');
+  } finally { w.close(); }
+});
+
+test('ux3 메뉴: 같이 짜기 항목의 "로그인 필요"는 로그아웃일 때만 말한다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    const needs = () => [...w.document.querySelectorAll('#hdrMenu .needsLogin')];
+    assert.ok(needs().length >= 2 && needs().every((el) => !el.hidden), '로그아웃 상태');
+    w.eval(`user={id:'u1',email:'me@example.com'}; updateAuthUI();`);
+    assert.ok(needs().every((el) => el.hidden), '로그인하면 거짓이 되는 말은 감춘다');
+  } finally { w.close(); }
+});
+
+// 검토(ux3:share-rv) — 구현 뒤 다시 본 곳
+test('ux3 공유: 링크로 처음 온 사람이 보기를 닫으면 미뤄 둔 처음 화면을 보고, 이미 쓰던 사람은 내 여행으로 돌아간다', { skip: noJsdom }, () => {
+  const first = bootSharedLink(SHARED_TRIP);
+  try {
+    assert.equal(first.document.getElementById('onboarding').hidden, true, '받은 여행이 먼저다');
+    first.document.getElementById('roClose').click();
+    assert.equal(first.eval('viewMode'), null);
+    assert.equal(first.document.getElementById('onboarding').hidden, false, '돌아갈 내 여행이 없는 사람에게 "내 여행으로 돌아왔어요"라고 하지 않는다');
+  } finally { first.close(); }
+  const mine = { id: 'mine1', name: '리스본 여행', start: '2026-11-01', days: [{ title: '', spots: [] }] };
+  const back = bootSharedLink(SHARED_TRIP, { tripcanvas_onboarded_v1: '1', tripcanvas_v1: JSON.stringify({ trips: [mine], activeId: 'mine1' }) });
+  try {
+    back.document.getElementById('roClose').click();
+    assert.equal(back.document.getElementById('onboarding').hidden, true);
+    assert.equal(back.eval('trip().name'), '리스본 여행');
+    assert.match(back.document.getElementById('toast').textContent, /내 여행으로 돌아왔어요/);
+  } finally { back.close(); }
+});
+
+test('ux3 초대: 초대 링크로 처음 온 사람이 초대 창을 닫으면 미뤄 둔 처음 화면을 본다', { skip: noJsdom }, async () => {
+  const w = boot('http://localhost/#join=abc');
+  try {
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(w.document.getElementById('onboarding').hidden, true, '초대 창이 먼저다');
+    w.document.getElementById('joinCancel').click();
+    assert.equal(w.document.getElementById('onboarding').hidden, false);
+  } finally { w.close(); }
+});
+
+test('ux3 공유: 받은 샘플을 "내 여행으로 저장"하면 샘플이 아니라 내 여행이다', { skip: noJsdom }, () => {
+  const w = bootSharedLink(Object.assign({}, SHARED_TRIP, { sample: true }));
+  try {
+    w.document.getElementById('roSave').click();
+    assert.ok(savedTrips(w).some((t) => t.name === '오사카 우정여행 (사본)'), '저장됐다');
+    assert.equal(w.eval('isSampleTrip(trip())'), false, '저장한 사본이 올라가지도 같이 짜지도 못하는 샘플로 남지 않는다');
+  } finally { w.close(); }
+});
+
+test('ux3 공유: 고칠 수 없는 여행의 일자 이동수단은 누르는 버튼이 아니다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    withTrip(w, `[{title:'D1',drive:'',note:'',spots:[{name:'A',city:'오사카',lat:34.66,lng:135.5}]}]`);
+    w.eval('render()');
+    assert.equal(w.document.querySelector('.dayCard .dayHead .modeBtn').tagName, 'BUTTON');
+    w.eval('viewMode=trip(); render()');
+    const mode = w.document.querySelector('.dayCard .dayHead .modeBtn');
+    assert.notEqual(mode.tagName, 'BUTTON', '눌러도 아무 일 없는 버튼을 두지 않는다');
+    assert.doesNotMatch(mode.getAttribute('title'), /눌러서/);
   } finally { w.close(); }
 });
