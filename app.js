@@ -1849,6 +1849,13 @@ function revealDayCard(di){
 function fitDay(di){
   fitTo(trip().days[di].spots.filter(hasLoc).map(s=>[s.lat,s.lng]),64,15);
 }
+/** '오늘' 칩이 이 여행의 날이 아닐 때 하는 말 @param {{phase:string,daysUntil:number}} period */
+function todayChipNote(period){
+  const t=trip(), last=isoDateOf(t.days.length-1);
+  if(period.phase==='BEFORE') return `D-${period.daysUntil} · ${mdLabel(t.start)}에 시작해요`;
+  if(period.phase==='AFTER') return `지난 여행이에요 · ${mdLabel(last)}에 끝났어요`;
+  return '여행 날짜를 정하면 오늘이 며칠째인지 바로 볼 수 있어요';
+}
 function renderFilter(){
   const bar = document.getElementById('filterbar'); bar.innerHTML='';
   const setScope=setDayScope;
@@ -1858,7 +1865,9 @@ function renderFilter(){
   const period=tripPeriodOf(trip().start, trip().days.length, travelClock().todayISO);
   const todayDi=period.phase==='DURING'? period.dayIndex : -1;
   const todayBtn=document.createElement('button'); todayBtn.className='chip'+(todayDi>=0&&activeDay===todayDi+1?' active':''); todayBtn.textContent='오늘';
-  if(todayDi<0){ todayBtn.disabled=true; todayBtn.title='여행 기간이 아니에요'; }
+  // 기간 밖이면 흐리게 두고, 누르면 왜인지 말한다 — disabled는 탭에 아무 반응이 없고 이유가 마우스 툴팁에만 있었다
+  // (2026-10-03 UX 검토). 이름은 '오늘' 그대로다(aria-disabled — 보조기술도 '오늘'로 읽는다).
+  if(todayDi<0){ todayBtn.classList.add('off'); todayBtn.setAttribute('aria-disabled','true'); todayBtn.onclick=()=>toast(todayChipNote(period),'#4f4740'); }
   else todayBtn.onclick=()=>setScope(todayDi+1,()=>fitDay(todayDi));
   bar.appendChild(todayBtn);
   trip().days.forEach((d,i)=>{

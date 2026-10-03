@@ -2498,16 +2498,24 @@ test('통합: 여행 당일 첫 장소에 닿기 전에는 "출발 전"이고, �
   w.close();
 });
 
-test('통합: 필터바 오늘 칩은 여행 기간이 아니면 눌리지 않는다(여행 중 화면과 같은 판정)', { skip: noJsdom }, () => {
+test('통합: 필터바 오늘 칩은 여행 기간이 아니면 흐리고, 누르면 왜인지 말한다(여행 중 화면과 같은 판정)', { skip: noJsdom }, () => {
+  // 2026-10-03 UX 검토: 비활성 '오늘'이 활성 칩과 똑같이 보이고 눌러도 반응이 없었다 — 이유는 마우스 툴팁에만 있었다
   const w = boot();
   withAdaptTrip(w, [{ spots: [] }, { spots: [] }], { today: '2026-08-27' });
   w.eval('render()');
   const chip = [...w.document.querySelectorAll('#filterbar .chip')].find((b) => b.textContent === '오늘');
-  assert.equal(chip.disabled, true);
+  assert.equal(chip.getAttribute('aria-disabled'), 'true');
+  assert.ok(chip.classList.contains('off'), '흐리게 보인다');
+  assert.equal(chip.getAttribute('title'), null, "이름은 '오늘' 그대로 — 툴팁이 덮지 않는다");
   assert.ok(!chip.classList.contains('active'), '전체 보기일 때 오늘 칩이 켜져 보이지 않는다');
+  const day = w.eval('activeDay');
+  chip.click();
+  assert.equal(w.eval('activeDay'), day, '보는 범위는 바뀌지 않는다');
+  assert.match(w.document.getElementById('toast').textContent, /^D-\d+ · \d+\/\d+ \(.\)에 시작해요$/);
   w.eval("todayISO=()=>'2026-09-02'; render()");
   const chip2 = [...w.document.querySelectorAll('#filterbar .chip')].find((b) => b.textContent === '오늘');
-  assert.equal(chip2.disabled, false);
+  assert.equal(chip2.getAttribute('aria-disabled'), null);
+  assert.ok(!chip2.classList.contains('off'));
   w.close();
 });
 
