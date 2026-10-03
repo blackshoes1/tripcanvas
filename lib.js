@@ -44,14 +44,14 @@
    * 웹(`legLabel`·`legMinutes`·지도 칩·여행 중 화면)과 서버(`dayView`·지도 장면)가 이 하나를 쓴다.
    * @param {string|null|undefined} mode 그 구간의 수단
    * @param {{m?:number|null, sec?:number|null}|null|undefined} route 조회된 차 경로(없으면 null)
-   * @param {LatLng} a @param {LatLng} b
+   * @param {LatLng=} a @param {LatLng=} b 구간의 두 끝 — 모르면 차 경로 거리로 어림한다(예전 규칙)
    * @returns {{m:number, min:number}|null} 걸어서 계산하면 걷는 거리(m)·분, 아니면 null
    */
   function walkInsteadOfCar(mode, route, a, b){
     if((mode||'car')!=='car' || !route || !route.sec) return null;
     const routeM=Math.max(0, +(route.m||0));
     if(!(routeM<WALK_INSTEAD_MAX_M)) return null;
-    const straight=haversine({lat:+a.lat,lng:+a.lng},{lat:+b.lat,lng:+b.lng})*1000*WALK_DETOUR;
+    const straight=(a&&b)? haversine({lat:+a.lat,lng:+a.lng},{lat:+b.lat,lng:+b.lng})*1000*WALK_DETOUR : NaN;
     const m=isFinite(straight)? Math.min(routeM, straight) : routeM;
     return {m, min:m/WALK_M_PER_MIN};
   }

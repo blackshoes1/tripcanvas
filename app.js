@@ -294,6 +294,9 @@ const KAKAO_KEY='088123c29d265c5f9cc9ec8d356f54c8';          // 국내 지도·�
 let map=null, iw=null;        // Google 지도 / 공용 InfoWindow
 let kmap=null, kpopupOv=null; // 카카오 지도 / 커스텀 팝업 오버레이
 let engine='google';          // 현재 표시 중인 엔진
+// 마지막으로 앱이 맞춘 보기({pts,pad,maxZoom} 또는 한 점 {lat,lng}) — 모바일 시트 높이가 바뀌면 새 여백으로 다시 맞춘다.
+// 사람이 지도를 만지면 버린다(그때부터는 그 사람의 보기다). 시트 높이 전환 뒤에 다시 맞추는 타이머가 refitT다.
+let lastMapView=null, refitT=null;
 // ⚠️ activeDay는 보고 있는 일자 칩이다 — **1부터 센다(0=전체)**. 일자 인덱스(di)로 쓸 때는 `activeDay? activeDay-1 : 0`.
 let activeDay = 0, markers = [], lines = [], ghostStays = [], pickMode = false, sortables = [];
 
@@ -804,12 +807,20 @@ const Engines={
     moveMarker(lat,lng,el){ const m=new google.maps.marker.AdvancedMarkerElement({map, position:{lat,lng}, content:el, zIndex:9999}); return { move(la,ln){ m.position={lat:la,lng:ln}; }, remove(){ m.map=null; } }; },
     openPopup(html,lat,lng,anchor){ iw.setContent(`<div class="popupC">${html}</div>`); iw.open({map, anchor:anchor&&anchor._m}); },
     closePopup(){ if(iw) iw.close(); },
+    // padPx는 숫자(네 변 같게) 또는 {top,right,bottom,left} — 덮인 쪽(모바일 시트·장소 정보)을 더 비운다(mapFitPadding)
     fit(pts,padPx,maxZoom){
       const b=new google.maps.LatLngBounds(); pts.forEach(p=>b.extend({lat:+p[0],lng:+p[1]}));
-      map.fitBounds(b, padPx==null?48:padPx);
-      if(maxZoom) google.maps.event.addListenerOnce(map,'idle',()=>{ if(map.getZoom()>maxZoom) map.setZoom(maxZoom); });
+      const P=padBox(padPx);
+      map.fitBounds(b, P);
+      // 줌 상한으로 물러날 때는 지도 한가운데를 축으로 줄어 핀이 덮인 쪽으로 밀린다 — 보이는 곳 가운데로 다시 놓는다
+      if(maxZoom) google.maps.event.addListenerOnce(map,'idle',()=>{ if(map.getZoom()>maxZoom){ map.setZoom(maxZoom); map.setCenter(gShift(b.getCenter(),P)); } });
     },
-    panTo(lat,lng,minZoom){ map.panTo({lat,lng}); if(minZoom&&map.getZoom()<minZoom) map.setZoom(minZoom); },
+    // off: 보이는 곳 가운데로 옮길 만큼의 여백(padBox 모양) — 없으면 지도 한가운데
+    panTo(lat,lng,minZoom,off){
+      if(minZoom&&map.getZoom()<minZoom) map.setZoom(minZoom);   // 줌을 먼저 정해야 옮길 거리(px)가 맞는다
+      const ll=new google.maps.LatLng(lat,lng);
+      map.panTo(off? gShift(ll,off) : ll);
+    },
     center(lat,lng,zoom){ if(zoom!=null) map.setZoom(zoom); map.setCenter({lat,lng}); },   // 즉시 이동(추적 카메라용)
     relayout(){ google.maps.event.trigger(map,'resize'); },
     waitTiles(timeout){ return new Promise(res=>{ let done=false; const fin=()=>{ if(done) return; done=true; res(); };
@@ -834,10 +845,15 @@ const Engines={
     closePopup(){ closeKPopup(); },
     fit(pts,padPx,maxZoom){
       const b=new kakao.maps.LatLngBounds(); pts.forEach(p=>b.extend(new kakao.maps.LatLng(+p[0],+p[1])));
-      kmap.relayout(); kmap.setBounds(b, padPx==null?48:padPx);
-      if(maxZoom){ const minLv=Math.max(1,19-maxZoom); if(kmap.getLevel()<minLv) kmap.setLevel(minLv); }
+      const P=padBox(padPx);
+      kmap.relayout(); kmap.setBounds(b, P.top, P.right, P.bottom, P.left);
+      if(maxZoom){ const minLv=Math.max(1,19-maxZoom); if(kmap.getLevel()<minLv){ kmap.setLevel(minLv); const c=kShift(ptsCenter(pts),P); if(c) kmap.setCenter(c); } }
     },
-    panTo(lat,lng,minZoom){ kmap.panTo(new kakao.maps.LatLng(lat,lng)); if(minZoom){ const lv=Math.max(1,19-minZoom); if(kmap.getLevel()>lv) kmap.setLevel(lv); } },
+    panTo(lat,lng,minZoom,off){
+      if(minZoom){ const lv=Math.max(1,19-minZoom); if(kmap.getLevel()>lv) kmap.setLevel(lv); }   // 레벨을 먼저 — 옮길 거리(px)가 레벨에 달렸다
+      const ll=new kakao.maps.LatLng(lat,lng);
+      kmap.panTo((off&&kShift({lat,lng},off))||ll);
+    },
     center(lat,lng,zoom){ if(zoom!=null) kmap.setLevel(Math.round(Math.max(1,19-zoom))); kmap.setCenter(new kakao.maps.LatLng(lat,lng)); },   // 즉시 이동(추적 카메라용)
     relayout(){ kmap.relayout(); },
     waitTiles(timeout){ return new Promise(res=>{ let done=false; const fin=()=>{ if(done) return; done=true; try{kakao.maps.event.removeListener(kmap,'tilesloaded',fin);}catch(e){} res(); };
@@ -845,6 +861,29 @@ const Engines={
   }
 };
 function ME(){ return Engines[engine]; }   // 현재 활성 엔진
+/** 여백을 네 변으로 — 숫자면 네 변 같게. @param {number|{top:number,right:number,bottom:number,left:number}|null|undefined} pad */
+function padBox(pad){
+  if(pad&&typeof pad==='object') return {top:+pad.top||0,right:+pad.right||0,bottom:+pad.bottom||0,left:+pad.left||0};
+  const p=pad==null?48:+pad; return {top:p,right:p,bottom:p,left:p};
+}
+/** [[lat,lng],…]를 담는 사각형의 가운데 @param {Array<[number,number]>} pts */
+function ptsCenter(pts){
+  const la=pts.map(p=>+p[0]), ln=pts.map(p=>+p[1]);
+  return {lat:(Math.min(...la)+Math.max(...la))/2, lng:(Math.min(...ln)+Math.max(...ln))/2};
+}
+// 그 점이 '보이는 곳'(여백 P를 뺀 안쪽) 가운데에 오게 하는 지도 중심. 보이는 곳 가운데는 지도 가운데에서
+// ((left-right)/2, (top-bottom)/2)px 떨어져 있으므로, 중심을 그 점에서 반대로 그만큼 옮긴다. 투영이 없으면 null.
+function gShift(ll,P){
+  const proj=map&&map.getProjection&&map.getProjection(); if(!proj) return ll;
+  const s=2**map.getZoom(), p=proj.fromLatLngToPoint(ll);
+  return proj.fromPointToLatLng(new google.maps.Point(p.x+(P.right-P.left)/2/s, p.y+(P.bottom-P.top)/2/s));
+}
+function kShift(pt,P){
+  const proj=kmap&&kmap.getProjection&&kmap.getProjection();
+  if(!proj||!proj.containerPointFromCoords||!proj.coordsFromContainerPoint) return null;
+  const p=proj.containerPointFromCoords(new kakao.maps.LatLng(pt.lat,pt.lng));
+  return proj.coordsFromContainerPoint(new kakao.maps.Point(p.x+(P.right-P.left)/2, p.y+(P.bottom-P.top)/2));
+}
 
 function cityColors(){
   const m = {}; let i = 0;
@@ -1015,7 +1054,9 @@ function syncSheetTop(){
 function setSheetSnap(snap){
   const sb=document.getElementById('sidebar'); if(!sb) return;
   if(snap==='expanded') syncSheetTop();   // 헤더 아래 띠(샘플·읽기 전용 안내)가 늘거나 줄었을 수 있다
+  const changed=sb.dataset.snap!==snap||!!sb.style.height;
   sb.style.height=''; sb.dataset.snap=snap; syncSheetHandle();
+  if(changed) refitAfterSheet();   // 보이는 지도가 늘거나 줄었다 — 앱이 맞춘 보기를 그 높이로 다시(사람이 만진 보기는 두고)
 }
 // 손잡이 막대만으로는 누르면 무엇이 되는지 모른다(2026-10-02 UX 검토) — 다음 단계를 말로 적는다. 순서는 click의 순환과 같다.
 function syncSheetHandle(){
@@ -1062,7 +1103,8 @@ window.addEventListener('resize',syncSheetTop);
     if(onHandle){ if(!dragged) setSheetSnap(sb.dataset.snap==='collapsed'?'half':sb.dataset.snap==='half'?'expanded':'collapsed'); }
     else if(sb.dataset.snap==='collapsed'&&e.target.closest('.dayCard')) setSheetSnap('half');
   });
-  ['map','kmap'].forEach(id=>document.getElementById(id).addEventListener('pointerdown',()=>setSheetSnap('collapsed'),true));
+  // 지도를 만지면 그때부터는 그 사람의 보기다 — 시트가 접혀도 앱이 맞춘 보기로 되돌리지 않는다
+  ['map','kmap'].forEach(id=>document.getElementById(id).addEventListener('pointerdown',()=>{ lastMapView=null; setSheetSnap('collapsed'); },true));
 })();
 const fetchLeg=routingClient.fetchLeg;   // 기존 전역 호출부 호환 shim — UI는 transport 세부사항을 모름
 function decodePts(enc){ return enc?decodePolyline(enc):null; }
@@ -1402,20 +1444,87 @@ function render(){
   updateCollabUI();
   syncSheetTop();   // 헤더 아래 띠(샘플·보기 권한 안내)와 필터바 높이가 정해진 뒤에 잰다
 }
+// ── 지도에서 실제로 보이는 곳 (2026-10-03 UX 검토) ──
+// 모바일에서는 일정 시트가 지도 아래를 덮고(절반이면 지도의 55%), 장소 정보 패널은 좁은 화면에서는 아래·넓은 화면에서는
+// 오른쪽을 덮는다. 맞춤·옮기기가 지도 전체를 기준으로 하면 핀이 그 밑에 숨었다 — '전체'를 누르면 마커 7개가 전부 시트
+// 뒤였고, '지도에서 보기'는 중심을 정확히 그곳에 두고도 패널이 핀을 덮었다. 덮인 만큼을 여백에 더한다.
+/** @param {string} q */
+function mediaMatches(q){ return typeof window.matchMedia==='function' && window.matchMedia(q).matches; }
+/** 모바일 시트가 **도착할** 높이(px) — 높이는 .22s 전환하므로 지금 재면 옛 높이다. CSS의 15/45/88dvh와 같은 단계. */
+function sheetHeightPx(sb){
+  if(sb.style.height) return parseFloat(sb.style.height)||0;   // 끄는 중
+  const vh=window.innerHeight, snap=sb.dataset.snap||'half';
+  if(snap==='collapsed') return vh*.15;
+  if(snap==='expanded') return Math.min(vh*.88, vh-(sheetTopPx()||vh*.12));
+  return vh*.45;
+}
+function mapEl(){ return document.getElementById(engine==='kakao'?'kmap':'map'); }
+/** 지도 각 변이 무엇에 얼마나(px) 덮였는가 — 모바일 일정 시트와 열린 장소 정보 패널 */
+function mapCoveredEdges(){
+  const out={top:0,right:0,bottom:0,left:0};
+  const el=mapEl(), m=el&&el.getBoundingClientRect();
+  if(!m||!m.width||!m.height) return out;
+  const covers=[];
+  const sb=document.getElementById('sidebar');
+  if(sb&&mediaMatches('(max-width: 760px)')&&!document.body.classList.contains('playing')){
+    const h=sheetHeightPx(sb); covers.push({top:window.innerHeight-h,bottom:window.innerHeight,left:0,right:window.innerWidth});
+  }
+  const pd=document.getElementById('placeDetails');
+  if(pd&&pd.open){ const r=pd.getBoundingClientRect(); if(r.width&&r.height) covers.push(r); }
+  for(const r of covers){
+    if(r.bottom<=m.top||r.top>=m.bottom||r.right<=m.left||r.left>=m.right) continue;
+    if(r.right-r.left>=m.width*.8) out.bottom=Math.max(out.bottom, m.bottom-Math.max(r.top,m.top));   // 아래에서 올라온 시트
+    else if(r.left>m.left+m.width/2) out.right=Math.max(out.right, m.right-Math.max(r.left,m.left));   // 오른쪽 패널
+    else out.left=Math.max(out.left, Math.min(r.right,m.right)-m.left);
+  }
+  return out;
+}
+/** 보이는 곳이 핀을 둘 만한가 — 시트를 끝까지 올리면 지도가 한 뼘도 안 남는다. 그때는 덮개를 빼고 맞추고,
+ *  시트를 내리면 다시 맞춘다(refitAfterSheet). */
+function mapCoverUsable(c){
+  if(!(c.top||c.right||c.bottom||c.left)) return false;
+  const m=mapEl().getBoundingClientRect();
+  return m.height-c.top-c.bottom>=120 && m.width-c.left-c.right>=140;
+}
+/** 맞춤 여백 — 기본 여백에 덮인 만큼을 더한다 @param {number|null|undefined} pad */
+function mapFitPadding(pad){
+  const p=pad==null?48:pad, c=mapCoveredEdges();
+  if(!mapCoverUsable(c)) return p;
+  const m=mapEl().getBoundingClientRect(), h=m.height-c.top-c.bottom, w=m.width-c.left-c.right;
+  const pv=Math.min(p,Math.round(h*.2)), ph=Math.min(p,Math.round(w*.15));   // 좁은 틈에서는 기본 여백도 줄인다 — 핀만 안 잘리게
+  return {top:c.top+pv,right:c.right+ph,bottom:c.bottom+pv,left:c.left+ph};
+}
+const SINGLE_PLACE_ZOOM=14;   // 한 곳뿐일 때 — 맞출 넓이가 없어 최대로 당겨졌다(첫 장소를 담으면 녹지만 보였다). 동네가 보이는 데서 멈춘다
 // pts([[lat,lng],…])에 맞춰 프레이밍. maxZoom(구글 기준)은 정착 후 보정
 function fitTo(pts,pad,maxZoom){
   if(!pts.length || !ME().ready()) return;
-  ME().fit(pts, pad, maxZoom);
+  const single=pts.every(p=>+p[0]===+pts[0][0]&&+p[1]===+pts[0][1]);
+  const zoom=single? Math.min(maxZoom||SINGLE_PLACE_ZOOM, SINGLE_PLACE_ZOOM) : maxZoom;
+  lastMapView={pts,pad,maxZoom:zoom};
+  ME().fit(pts, mapFitPadding(pad), zoom);
 }
-// 여행 진입 시 포커스: 위치 있는 첫 일자 지역 (없으면 전체)
-function fitEntry(){
-  const d=trip().days.find(d=>d.spots.some(hasLoc));
-  if(d){ fitTo(d.spots.filter(hasLoc).map(s=>[s.lat,s.lng]),64,15); }
-  else fitAll();
+/** 한 점을 **보이는 곳** 가운데로 옮긴다('지도에서 보기'·전날 숙소). @param {number} lat @param {number} lng @param {number=} minZoom */
+function panToVisible(lat,lng,minZoom){
+  if(!ME().ready()) return;
+  lastMapView={lat,lng};
+  const c=mapCoveredEdges();
+  ME().panTo(lat,lng,minZoom,mapCoverUsable(c)? c : undefined);
 }
+/** 시트 높이가 바뀌면 앱이 마지막으로 맞춘 보기를 새 여백으로 다시 맞춘다 — 전환(.22s)이 끝난 뒤에 */
+function refitAfterSheet(){
+  clearTimeout(refitT);
+  refitT=setTimeout(()=>{
+    const v=lastMapView; if(!v||!ME().ready()) return;
+    if(v.pts) ME().fit(v.pts, mapFitPadding(v.pad), v.maxZoom);
+    else { const c=mapCoveredEdges(); ME().panTo(v.lat,v.lng,0,mapCoverUsable(c)? c : undefined); }
+  },260);
+}
+// 여행 진입 시 포커스 — 칩이 '전체'이므로 지도도 전체다(2026-10-03 UX 검토: 칩은 '전체'인데 지도는 Day 1에만 맞춰
+// 다른 날 핀이 화면 밖이었다). 일자를 보고 있으면 그 일자.
+function fitEntry(){ fitCurrentView(); }
 function fitAll(){
   const pts=[]; trip().days.forEach(d=>d.spots.forEach(s=>{if(hasLoc(s))pts.push([s.lat,s.lng])}));
-  fitTo(pts,60);
+  fitTo(pts,60,15);
 }
 // ───────────────── 여행 재생 애니메이션 (재미) ─────────────────
 // 전체 동선을 하나의 좌표열로 펼친 뒤(구간별 실경로 우선, 없으면 직선) 이동수단 아이콘을 따라 이동시킴.
@@ -2163,14 +2272,18 @@ window.focusSpot=(di,si)=>{
   const s=trip().days[di].spots[si];
   if(!hasLoc(s)){ openSavedPlace(di,si); return; }
   if(activeDay && activeDay!==di+1){ activeDay=0; render(); }
-  if(ME().ready()) ME().panTo(+s.lat, +s.lng, 13);
+  // 패널을 먼저 열고 그 패널을 뺀 곳 가운데로 옮긴다 — 좁은 화면에서는 패널을 지도가 남을 만큼만 올린다(data-map-focus)
+  const pd=document.getElementById('placeDetails'); if(pd) pd.dataset.mapFocus='1';
   openSavedPlace(di,si);
+  panToVisible(+s.lat, +s.lng, 13);
 };
+// '지도에서 보기'로 연 패널의 높이 제한은 그 한 번뿐이다 — 다른 길로 열면 원래 높이
+document.getElementById('placeDetails')?.addEventListener('close',e=>{ delete e.currentTarget.dataset.mapFocus; });
 // 좌표로 지도 포커스 (전날 숙소 이월 항목 탭 등 — 특정 spot 인덱스가 없을 때)
 window.focusLatLng=(lat,lng)=>{
   if(activeDay){ activeDay=0; render(); }             // 필터 걸려 해당 핀이 숨겨져 있을 수 있어 전체로
   if(!ME().ready()) return;
-  ME().panTo(+lat, +lng, 13);
+  panToVisible(+lat, +lng, 13);
   setSheetSnap('half');
   setTimeout(()=>{ const m=markers.find(m=>Math.abs(+m.spot.lat-lat)<1e-6 && Math.abs(+m.spot.lng-lng)<1e-6); if(m) m.open(); },400);
 };

@@ -122,6 +122,7 @@ test('walkInsteadOfCar — 자차의 가까운 구간은 차 경로가 아니라
   assert.equal(L.walkInsteadOfCar('car', null, sol, mayor), null);
   assert.equal(L.walkInsteadOfCar('car', { sec: 0, m: 0, fail: 1 }, sol, mayor), null);
   assert.ok(L.walkInsteadOfCar(undefined, { sec: 420, m: 1400 }, sol, mayor), '수단이 비면 자차(기본)다');
+  assert.equal(L.walkInsteadOfCar('car', { sec: 420, m: 1400 }).m, 1400, '두 끝을 모르면 차 경로로 어림한다(예전 규칙)');
 });
 
 test('legId / legKey — 4자리 반올림·수단 접미사', () => {

@@ -5453,3 +5453,87 @@ test('통합: 자차 하루의 가까운 구간은 차 경로가 아니라 두 �
     assert.ok(eta>=9*60+5 && eta<=9*60+7, `도착 예상이 걸음으로 계산된다: ${eta}`);
   }finally{ w.close(); }
 });
+
+/** 구글 지도를 흉내 낸다 — 맞춤(fitBounds)의 여백과 옮긴 중심을 기록한다. 투영은 경도=x·위도=-y(줌 0이면 1px=1도) */
+function fakeGoogleMap(w){
+  w.eval(`window.__fits=[]; window.__pans=[];
+    window.google={maps:{
+      LatLng:function(a,b){ this.lat=()=>a; this.lng=()=>b; },
+      LatLngBounds:function(){ const pts=[]; this.pts=pts; this.extend=p=>pts.push(p);
+        this.getCenter=()=>{ const la=pts.map(p=>p.lat), ln=pts.map(p=>p.lng);
+          return new google.maps.LatLng((Math.min(...la)+Math.max(...la))/2,(Math.min(...ln)+Math.max(...ln))/2); }; },
+      Point:function(x,y){ this.x=x; this.y=y; },
+      marker:{AdvancedMarkerElement:function(o){ this.map=o.map; this.addEventListener=()=>{}; }},
+      Polyline:function(){ this.setMap=()=>{}; },
+      event:{addListenerOnce:(m,ev,cb)=>cb(), addListener:()=>{}, trigger:()=>{}}
+    }};
+    let zoom=0;
+    map={ fitBounds:(b,p)=>{ __fits.push({n:b.pts.length,pad:p}); zoom=21; }, getZoom:()=>zoom, setZoom:z=>{ zoom=z; },
+      setCenter:c=>__pans.push({lat:c.lat(),lng:c.lng()}), panTo:c=>__pans.push({lat:c.lat(),lng:c.lng()}),
+      getProjection:()=>({ fromLatLngToPoint:ll=>new google.maps.Point(ll.lng(),-ll.lat()), fromPointToLatLng:p=>new google.maps.LatLng(-p.y,p.x) }) };
+    engine='google';`);
+}
+/** 375×812 휴대폰 — 지도는 필터바 아래(144)부터 화면 끝까지, 일정 시트는 그 위를 아래에서 덮는다 */
+function phoneLayout(w){
+  Object.defineProperty(w,'innerWidth',{configurable:true,value:375});
+  Object.defineProperty(w,'innerHeight',{configurable:true,value:812});
+  w.matchMedia=(q)=>({matches:/max-width/.test(q)});
+  w.document.getElementById('map').getBoundingClientRect=()=>({top:144,bottom:812,left:0,right:375,width:375,height:668});
+}
+
+test('통합: 모바일 지도 맞춤은 일정 시트가 덮은 만큼 아래를 비우고, 시트 높이가 바뀌면 다시 맞춘다', {skip:noJsdom}, async () => {
+  // 2026-10-03 UX 검토: 절반 시트가 지도의 55%를 덮는데 맞춤은 지도 전체 기준이라 'Day 2'·'전체'의 핀이 전부 시트 뒤였다
+  const w=boot();
+  try{
+    withTrip(w, JSON.stringify([
+      {spots:[{name:'솔',lat:40.4169,lng:-3.7035},{name:'마요르',lat:40.4155,lng:-3.7074}]},
+      {spots:[{name:'세비야',lat:37.3891,lng:-5.9845},{name:'론다',lat:36.7462,lng:-5.1612}]}
+    ]));
+    fakeGoogleMap(w); phoneLayout(w);
+    const sheet=w.document.getElementById('sidebar');
+    sheet.dataset.snap='half';
+    w.eval('fitDay(1)');
+    let pad=w.__fits.at(-1).pad;
+    assert.ok(pad.bottom>=812*.45, `절반 시트(45%)만큼 아래를 비운다: ${JSON.stringify(pad)}`);
+    assert.ok(pad.top<pad.bottom && pad.top>0, '위는 기본 여백만');
+    // 시트를 내리면(지도 크게 보기) 보이는 지도가 커졌으니 같은 보기를 다시 맞춘다
+    w.eval(`setSheetSnap('collapsed')`);
+    await new Promise(r=>setTimeout(r,320));
+    pad=w.__fits.at(-1).pad;
+    assert.equal(w.__fits.length,2,'시트 높이가 바뀌면 다시 맞춘다');
+    assert.ok(pad.bottom>=812*.15 && pad.bottom<812*.45, `접힌 시트만큼만: ${JSON.stringify(pad)}`);
+    // 사람이 지도를 만졌으면 그 보기를 지킨다 — 시트가 바뀌어도 앱이 다시 맞추지 않는다
+    w.document.getElementById('map').dispatchEvent(new w.Event('pointerdown'));
+    w.eval(`setSheetSnap('half')`);
+    await new Promise(r=>setTimeout(r,320));
+    assert.equal(w.__fits.length,2,'만진 뒤에는 다시 맞추지 않는다');
+    // 진입 맞춤은 칩('전체')과 같다 — 첫날만이 아니라 모든 날
+    w.eval('activeDay=0; fitEntry()');
+    assert.equal(w.__fits.at(-1).n,4,'진입하면 전체 일정에 맞춘다');
+    // 한 곳뿐이면 최대로 당기지 않는다(녹지만 보였다)
+    w.eval(`trip().days=[{spots:[{name:'협재',lat:33.394,lng:126.2397}]}]; fitAll()`);
+    assert.equal(w.eval('map.getZoom()'),14,'한 곳뿐이면 동네가 보이는 줌에서 멈춘다');
+    // 줌을 줄이면 지도 한가운데를 축으로 줄어 덮인 쪽으로 밀린다 — 보이는 곳 가운데에 다시 놓는다(아래가 덮였으니 중심은 그 점보다 남쪽)
+    assert.ok(w.__pans.at(-1).lat<33.394, '줌 상한 뒤에도 그 점이 시트 위에 남는다');
+  }finally{ w.close(); }
+});
+
+test('통합: 장소 이름(지도에서 보기)은 패널과 시트를 뺀 보이는 곳 가운데로 옮긴다', {skip:noJsdom}, () => {
+  // 2026-10-03 UX 검토: '푸에르타 델 솔 지도에서 보기'는 중심을 정확히 그곳에 두었지만 장소 살펴보기 패널이 핀을 덮었다
+  const w=boot();
+  try{
+    withTrip(w, JSON.stringify([{spots:[{name:'푸에르타 델 솔',lat:40.4169,lng:-3.7035},{name:'마요르',lat:40.4155,lng:-3.7074}]}]));
+    fakeGoogleMap(w); phoneLayout(w);
+    w.document.getElementById('sidebar').dataset.snap='half';
+    const pd=w.document.getElementById('placeDetails');
+    pd.getBoundingClientRect=()=>pd.dataset.mapFocus? {top:365,bottom:812,left:0,right:375,width:375,height:447} : {top:97,bottom:812,left:0,right:375,width:375,height:715};
+    w.eval('focusSpot(0,0)');
+    assert.equal(pd.open,true,'장소 정보는 그대로 연다');
+    assert.equal(pd.dataset.mapFocus,'1','좁은 화면에서는 지도가 남을 만큼만 올린다');
+    const c=w.__pans.at(-1);
+    assert.ok(c.lat<40.4169, `중심을 그 점보다 남쪽에 두어 핀이 패널 위에 보인다: ${c.lat}`);
+    assert.equal(c.lng,-3.7035,'옆으로는 옮기지 않는다');
+    w.eval('closePlaceDetails()'); pd.dispatchEvent(new w.Event('close'));   // jsdom의 close()는 이벤트를 내지 않는다 — 브라우저처럼
+    assert.equal(pd.dataset.mapFocus,undefined,'다른 길로 열면 원래 높이');
+  }finally{ w.close(); }
+});

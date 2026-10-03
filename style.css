@@ -676,3 +676,7 @@ body:has(.modalBg.show) #toast{bottom:auto;top:calc(env(safe-area-inset-top) + 1
 #searchRes .placeSearchResult:hover{background:var(--hover-bg)}.psrName{display:block;font-weight:700;font-size:14.5px}.psrAddr{display:block;font-size:12px;color:var(--subtle);margin-top:2px;line-height:1.4}
 .estNote .estFix{color:var(--primary-dark)}
 .sampleTag{font-size:10.5px;font-weight:700;color:var(--badge-info-fg);background:var(--badge-info-bg);border-radius:5px;padding:1px 5px;vertical-align:1px}
+/* ux3:map */
+/* '지도에서 보기'로 연 장소 정보는 좁은 화면에서 지도가 남을 만큼만 올린다 — 88dvh면 옮겨 놓은 핀까지 덮었다(2026-10-03).
+   높이를 고정하는 것은 내용이 늦게 와도 덮는 높이가 변하지 않게 하려는 것이다(focusSpot이 연 직후 잰 높이로 옮긴다) */
+@media(max-width:700px){#placeDetails[data-map-focus]{height:55dvh;max-height:55dvh}}
