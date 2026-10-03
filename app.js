@@ -4856,7 +4856,8 @@ function acceptMove(sug, di, action){
     day.spots.splice(at,0,sp);
   });
   recordFeedback(sug,'ACCEPTED');
-  toast(`${sug.title}을(를) ${dayWord(di)} 일정에 넣었어요`, '#3e7a4c');
+  // 옮긴 것이다 — 원래 날에서 빠진다는 것도 함께 말한다(넣었다고만 하면 그 날 일정이 몰래 줄어든다)
+  toast(`${sug.title}을(를) Day ${action.fromDay+1}에서 옮겨 ${dayWord(di)} 일정에 넣었어요`, '#3e7a4c');
   renderTravel(di);
 }
 // 식사 제안 → 식당 검색으로 연 장소 추가. 닫거나 담으면 여행 중 안내로 돌아온다 — 예전에는 종류도 검색도 비어 있는
