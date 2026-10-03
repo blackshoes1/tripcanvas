@@ -516,7 +516,9 @@
   <h2>📋 붙여넣기로 일정 만들기</h2>
   <!-- 첫 요소는 입력과 안내다 — AI로 읽기는 고를 수 있는 보조 수단이라 입력 칸 아래에 둔다(2026-09-27 UX 검토) -->
   <div class="hint" id="pasteModeHint" style="margin-bottom:6px"></div>
-  <textarea id="pasteText" style="width:100%;min-height:180px" aria-label="붙여넣을 일정"></textarea>
+  <textarea id="pasteText" style="width:100%;min-height:180px" aria-label="붙여넣을 일정" aria-describedby="pasteErr"></textarea>
+  <!-- 읽을 장소가 하나도 없으면 미리보기로 넘어가지 않고 여기서 말한다(2026-10-03) -->
+  <p class="hint pasteErr" id="pasteErr" role="alert"></p>
   <label for="pasteTarget">대상</label>
   <select id="pasteTarget">
     <option value="new">새 여행으로 생성</option>
@@ -574,16 +576,28 @@
 <!-- 붙여넣기 미리보기 — 확인한 것만 저장된다(§유입) -->
 <div class="modalBg" id="pastePvBg"><div class="modal">
   <h2>📋 이렇게 읽었어요</h2>
-  <p class="hint" id="pvSummary" style="margin-bottom:6px"></p>
-  <div class="row" style="gap:8px;align-items:flex-end">
+  <p class="hint" id="pvSummary" style="margin-bottom:6px" aria-live="polite"></p>
+  <!-- 어디에 담는지 — 덮어쓰기는 지우는 동작이라 저장 전에 말한다(2026-10-03) -->
+  <p class="pvTargetNote" id="pvTargetNote" role="note"></p>
+  <div class="row pvFields" style="gap:8px;align-items:flex-end">
     <div style="flex:2"><label for="pvName">여행 이름</label><input type="text" id="pvName" placeholder="붙여넣은 여행"></div>
     <div style="flex:1"><label for="pvStart">시작일</label><input type="date" id="pvStart"></div>
+    <!-- 새 여행 창과 같은 질문·같은 기본값(대중교통) — 붙여넣은 여행만 자차로 계산되지 않게(2026-10-03) -->
+    <div style="flex:1" id="pvModeWrap"><label for="pvMode">주로 어떻게 다니세요?</label>
+      <select id="pvMode"><option value="transit">🚌 대중교통</option><option value="car">🚗 자차·렌터카</option><option value="taxi">🚕 택시</option><option value="walk">🚶 걸어서</option></select></div>
   </div>
   <p class="hint" id="pvStartWarn" style="margin:2px 0 6px"></p>
+  <p class="hint" id="pvUndivided" hidden></p>
+  <div class="pvLayout" id="pvLayout" role="radiogroup" aria-labelledby="pvLayoutText" hidden>
+    <p class="hint" id="pvLayoutText"></p>
+    <label><input type="radio" name="pvGap" value="fill" checked> 빈 날을 넣어 글의 날짜에 맞추기</label>
+    <label><input type="radio" name="pvGap" value="keep"> 빈 날 없이 순서대로 잇기</label>
+  </div>
   <div id="pvList" class="pvList"></div>
   <details style="margin-top:8px"><summary>붙여넣은 원문 보기</summary><pre id="pvRawText" class="pvRawText"></pre></details>
   <div class="row">
-    <button class="btn" id="pvCancel">취소</button>
+    <!-- 미리보기에서 물러나도 붙여넣은 글은 남는다 — 고쳐 쓰려고 처음부터 다시 붙여넣지 않게(2026-10-03) -->
+    <button class="btn" id="pvCancel">← 고쳐 쓰기</button>
     <button class="btn primary" id="pvRun">담은 것으로 만들기</button>
   </div>
 </div></div>

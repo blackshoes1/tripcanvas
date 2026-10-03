@@ -189,11 +189,18 @@
    * validateTripPayload는 '모양이 틀리면 통째로 거절'하므로, 자유로운 입력(특히 AI 응답)을
    * 그대로 넘기면 초안 하나가 필드 하나 때문에 버려진다 — 여기서 먼저 아는 값만 남기고
    * 나머지는 기본값으로 눕힌 뒤 검증에 넘긴다.
+   * 링크(`bookUrl`)와 카카오 장소 id(`kakaoId`)도 싣는다 — 미리보기가 '링크 1개'라고 보여 준 것을 여기서 조용히
+   * 떨어뜨렸다(2026-10-03 UX 검토). http(s)가 아닌 주소는 검증이 초안 전체를 거절하므로 여기서 링크만 버린다.
    * @param {any} days @returns {any[]}
    */
   function normalizeDraftDays(days){
     const hhmm=(/**@type{any}*/v)=>/^\d{1,2}:\d{2}$/.test(String(v||''))?String(v):'';
     const posInt=(/**@type{any}*/v)=>{ const n=parseInt(v); return (v==null||isNaN(n)||n<0)?null:n; };
+    const webUrl=(/**@type{any}*/v)=>{
+      const s=typeof v==='string'? v.trim() : '';
+      if(!s || s.length>2048) return undefined;
+      try{ return /^https?:$/.test(new URL(s).protocol)? s : undefined; }catch(_){ return undefined; }
+    };
     return (Array.isArray(days)?days:[]).map((/**@type{any}*/d)=>({
       title:(d&&d.title)||'', drive:(d&&d.drive)||'', note:(d&&d.note)||'',
       mode:_MODES.includes(d&&d.mode)?d.mode:'car', startAt:hhmm(d&&d.startAt)||'09:00',
@@ -204,7 +211,8 @@
         at:hhmm(s&&s.at)||undefined, stayMin:(s&&s.stayMin)==null?null:posInt(s.stayMin),
         cost:(s&&s.cost)==null?null:posInt(s.cost),
         cur:['USD','EUR','JPY','CNY'].includes(s&&s.cur)?s.cur:undefined,
-        bookAt:hhmm(s&&s.bookAt),
+        bookAt:hhmm(s&&s.bookAt), bookUrl:webUrl(s&&s.bookUrl),
+        kakaoId:(s&&typeof s.kakaoId==='string')? s.kakaoId : undefined,   // 모양 검사는 normalizeSpot이 한다
         lat:(s&&s.lat)==null?null:+s.lat, lng:(s&&s.lng)==null?null:+s.lng
       })).filter((/**@type{any}*/s)=>s.name)
     }));
