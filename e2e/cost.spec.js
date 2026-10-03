@@ -29,6 +29,15 @@ test('전체 비용이 필터바에 보이고, 탭하면 내역이 화면 안에
     return r.left>=0 && r.right<=window.innerWidth+1 && r.width>0;});
   expect(inView,'가로 스크롤 위치와 무관하게 화면 안에 있어야').toBe(true);
 
+  // 일정 시트를 크게 올려도 비용 패널이 그 위에서 눌려야 한다.
+  await page.locator('#sheetHandle').click();
+  await expect(page.locator('#sidebar')).toHaveAttribute('data-snap','expanded');
+  await expect.poll(()=>page.evaluate(()=>{
+    const sb=document.getElementById('sidebar').getBoundingClientRect();
+    const fb=document.getElementById('filterbar').getBoundingClientRect();
+    return Math.abs(sb.top-fb.bottom);
+  })).toBeLessThan(2);
+
   // 필터바가 스크롤 컨테이너라 내부 패널이 잘렸던 자리 — 내역이 온전히 보여야 한다
   await chip.click();
   const panel=page.locator('.costMenu .viewMenuPanel');

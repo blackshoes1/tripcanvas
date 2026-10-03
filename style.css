@@ -365,7 +365,7 @@
     #hdrMenu .btn{gap:2px;padding:10px 12px;font-size:13.5px}
     #hdrMenu #pasteMenuBtn{display:flex}
     /* 필터바: 줄바꿈 대신 한 줄 가로 스크롤 */
-    #filterbar{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding-bottom:9px}
+    #filterbar{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding-bottom:9px;z-index:1150}
     #filterbar::-webkit-scrollbar{display:none}
     #filterbar>*{flex:none}
     /* 가로 스크롤되는 필터바에서도 전체 비용은 오른쪽에 붙어 항상 보인다 */
