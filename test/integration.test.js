@@ -7552,10 +7552,11 @@ test('ux3 공유: 읽기 전용 보기는 띠의 닫기나 여행 목록으로 �
 });
 
 test('ux3 공유: 받는 쪽 띠는 언제 만든 사본인지 한 줄로 말하고, 저장한 사본은 사본이라고 남는다', { skip: noJsdom }, async () => {
-  const madeAt = new Date(2026, 9, 3, 11, 0).toISOString();   // 받는 기기의 10월 3일 11:00
+  // 확실한 과거로 고정한다 — '오늘 11:00'은 UTC로 도는 CI에서 아직 미래라 앱이 믿을 수 없는 시각으로 걸렀다
+  const madeAt = new Date(2026, 8, 3, 11, 0).toISOString();   // 받는 기기의 9월 3일 11:00
   const w = bootSharedLink(Object.assign({}, SHARED_TRIP, { sharedAt: madeAt }));
   try {
-    assert.match(w.document.getElementById('roText').textContent, /10월 3일 11:00에 만든 사본이에요 — 이후 바뀐 내용은 안 보여요 · 같이 고치려면 초대를 받으세요/);
+    assert.match(w.document.getElementById('roText').textContent, /9월 3일 11:00에 만든 사본이에요 — 이후 바뀐 내용은 안 보여요 · 같이 고치려면 초대를 받으세요/);
     assert.ok(w.document.getElementById('saveStateBar').classList.contains('srOnlyBar'), '저장 상태 줄이 같은 말을 또 하지 않는다');
     w.document.getElementById('roSave').click();
     const saved = savedTrips(w).find((t) => t.name.startsWith('오사카'));
@@ -7585,7 +7586,7 @@ test('ux3 공유: 받는 쪽 띠는 언제 만든 사본인지 한 줄로 말하
 });
 
 test('ux3 공유: 받은 사본을 다시 공유하면 토스트가 거절로 끝나는 버튼 대신 갈 길을 말하고, 원래 시각을 지킨다', { skip: noJsdom }, async () => {
-  const madeAt = new Date(2026, 9, 3, 11, 0).toISOString();
+  const madeAt = new Date(2026, 8, 3, 11, 0).toISOString();   // 확실한 과거 — 실행 시각·시간대에 기대지 않는다
   const w = bootSharedLink(Object.assign({}, SHARED_TRIP, { sharedAt: madeAt }));
   try {
     Object.defineProperty(w.navigator, 'clipboard', { configurable: true, value: { writeText: async (v) => { w.__copied = v; } } });
