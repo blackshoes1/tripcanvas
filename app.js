@@ -684,7 +684,7 @@ function placeOwnSection(s,at){
   if(s.at) facts.push(`도착 고정 ${s.at}`);
   if(s.bookAt) facts.push(`예약·입장 ${s.bookAt}`);
   if(s.stayMin!=null) facts.push(s.stayMin?`머묾 ${fmtDur(s.stayMin*60)}`:'바로 이동');
-  if(s.cost) facts.push(`비용 ${costLabel(s.cost,s.cur)}`);
+  if(s.cost) facts.push(`비용 ${costWithPeople(s,'cost',costLabel)}`);
   if(facts.length) placeText(sec,'p',facts.join(' · '));
   if(s.desc) placeText(sec,'p',s.desc,'placeMemo');
   placeLink(sec,'예약 링크 열기',s.bookUrl);
@@ -1463,12 +1463,28 @@ const CUR = { KRW:{sym:'₩',name:'원'}, USD:{sym:'$',name:'달러'}, EUR:{sym:
 const FX_KEY='tripcanvas_fx';
 let fxRates = { KRW:1, USD:1380, EUR:1500, JPY:9.1, CNY:192 };   // 통화 1단위 = ? 원. 네트워크 실패 시 폴백(근사)
 function toKRW(amount, cur){ return Math.round((+amount||0) * (fxRates[cur||'KRW']||1)); }
-function fmtMoney(n,cur){ return (+n||0).toLocaleString('en-US',{maximumFractionDigits:['USD','EUR','CNY'].includes(cur)?2:0}); }
+// 센트가 있는 통화는 소수가 있으면 두 자리를 다 적는다 — '$12.5'가 아니라 '$12.50'(2026-10-03). 정수 금액은 '$100' 그대로
+function fmtMoney(n,cur){
+  const v=+n||0, cents=['USD','EUR','CNY'].includes(cur);
+  return v.toLocaleString('en-US',{minimumFractionDigits:(cents&&!Number.isInteger(v))?2:0, maximumFractionDigits:cents?2:0});
+}
 // 원본+환산 표기: KRW면 "68,000원", 아니면 "$50 ≈ 68,000원"
 function costLabel(amount, cur){
   cur=cur||'KRW';
   const cu=CUR[cur];   // 외부 유입 데이터가 알 수 없는 통화(예: GBP)면 KRW로 폴백 — 렌더 크래시 방지
   return (!cu || cur==='KRW') ? `₩${fmtMoney(amount)}` : `${cu.sym}${fmtMoney(amount,cur)} ≈ ₩${fmtMoney(toKRW(amount,cur))}`;
+}
+/**
+ * 비용 한 토막 — 1인 금액이면 '1인 ₩5,000 × 2명 = ₩10,000'으로 곱한 값까지 보인다. 장소 행·장소 정보는 1인 금액만,
+ * 하루 합계는 곱한 값이라 둘이 어긋나 보였고, 합계가 틀린 줄 알고 금액을 10,000으로 고치면 두 배가 됐다(2026-10-03).
+ * 곱하는 규칙은 costAmountOf 하나다(정수 인원 2명 이상일 때만). @param {any} item @param {string} field
+ * @param {(n:number,cur:string|undefined)=>string} fmt 금액 표기 @returns {string}
+ */
+function costWithPeople(item,field,fmt){
+  const amount=item[field], total=costAmountOf(item,field);
+  if(typeof amount!=='number'||total===null) return '';
+  const people=(item.costBasis==='PER_PERSON'&&Number.isInteger(item.costPeople)&&item.costPeople>1)? item.costPeople : 0;
+  return people? `1인 ${fmt(amount,item.cur)} × ${people}명 = ${fmt(total,item.cur)}` : fmt(amount,item.cur);
 }
 // 환율 로드: localStorage 캐시(하루 1회 갱신), open.er-api.com에서 USD 기준 시세 → 원 환산율 계산
 function loadFx(){
@@ -1523,12 +1539,16 @@ function dayBookingCost(iso){
   return bookingShareOn(budgetBookings(tripBookings(), trip().days), iso)
     .reduce((a,x)=>a+toKRW(x.amount,x.cur),0);
 }
+// 하루 비용에 넣는 택시비 — 택시 날만(taxiFareCounts). 자차 날의 추정은 dayTaxiRef가 참고로만 말한다(2026-10-03)
 function dayTaxiCost(day,di){
-  if(hasManualTransportCost(day)) return 0;
-  const m=dayModeOf(day);
-  return (m==='car'||m==='taxi')? ((dayRoute(day,backLegOf(day,di,dayReturnStay(trip().days,di,trip().bookings)))||{}).taxi||0) : 0;
+  return taxiFareCounts(day)? dayTaxiFare(day,di) : 0;
 }
-// 여행 전체 비용 — 장소 + 자차일 택시 + 예약 '전액'.
+function dayTaxiFare(day,di){ return (dayRoute(day,backLegOf(day,di,dayReturnStay(trip().days,di,trip().bookings)))||{}).taxi||0; }
+/** 자차 날에 '택시로 간다면' 들 돈 — 합계에 넣지 않는 참고값. 수동 교통비를 적은 날은 말하지 않는다 @param {any} day @param {number} di @returns {number} */
+function dayTaxiRef(day,di){
+  return (dayModeOf(day)==='car'&&!hasManualTransportCost(day))? dayTaxiFare(day,di) : 0;
+}
+// 여행 전체 비용 — 장소 + 택시 날의 택시 + 예약 '전액'.
 // 하루 비용은 예약을 날수로 나눈 몫이라, 예약 기간이 여행 일정 밖으로 나가면 하루 합계보다 전체가 크다(전체가 실제 총액).
 function tripCostBreakdown(){
   const out={spots:0, taxi:0, hotel:0, car:0, flight:0, prep:0, total:0};
@@ -1545,6 +1565,25 @@ function tripCostBreakdown(){
 /** '예약 결제 금액'(가기 전에 내는 돈) 합계 — 필터바 전체 비용과 예약 결제 금액 목록이 **같은 식**을 쓴다
  *  (화면마다 따로 더하면 같은 이름에 다른 숫자가 된다). @param {ReturnType<typeof tripCostBreakdown>} cb */
 function prepTotalOf(cb){ return cb.hotel+cb.car+cb.flight+cb.prep; }
+/** 자차 날 택시비 참고값의 여행 합계 — 전체 비용에는 넣지 않는다(dayTaxiRef) @returns {number} */
+function tripTaxiRef(){ return trip().days.reduce((sum,d,i)=>sum+dayTaxiRef(d,i),0); }
+/** 숙박·렌터카 예약 중 어느 일자 카드에도 들어가지 않은 몫(원) — 일정 밖 기간이거나 기간·시작일을 모르는 것.
+ *  하루치는 bookingShareOn이 일정의 날짜마다 나눈 것이라, 총액에서 그 합을 빼면 남는다 @returns {number} */
+function bookingOutsideKRW(){
+  const n=trip().days.length;
+  return budgetBookings(tripBookings(), trip().days).filter(b=>(b.type==='hotel'||b.type==='car')&&+b.price>0).reduce((sum,b)=>{
+    let inside=0;
+    for(let di=0;di<n;di++) bookingShareOn([b], isoDateOf(di)).forEach(x=>{ inside+=x.amount; });
+    return sum+toKRW(moneyAmount(+b.price-inside,b.cur),b.cur);
+  },0);
+}
+/** 예약 금액이 일자 카드와 어떻게 이어지는지 — 필터바와 예약 결제 금액 목록이 같은 문장을 쓴다(2026-10-03).
+ *  전에는 '하루 비용은 이걸 날수로 나눈 하루치'라고 했지만 실제로 나누는 것은 숙박·렌터카뿐이다 @returns {string} */
+function bookingBasisHint(){
+  const out=bookingOutsideKRW();
+  return `예약은 총액 기준이에요 — 숙박·렌터카만 날수로 나눠 일자 카드의 '하루 비용'에 넣고, 항공·예약 외 비용은 전체에만 들어가요.`
+    +(out>0? ` 일정 밖 기간(또는 기간 미정)의 예약 ₩${fmtMoney(out)}은 어느 일자 카드에도 없어요.` : '');
+}
 // 일정 예상 종료 시각(분) — 마지막 장소 (예약 대기 반영한) 활동 시작 + 체류
 function dayEndMin(day, startAnchor, bl){
   if(!day.spots.length) return null;
@@ -2190,15 +2229,18 @@ function renderFilter(){
     // 두 장부(앱의 비용 화면과 같은 이름) — 예약 결제 금액(가기 전에 내는 돈) / 현지 결제 금액(가서 쓰는 돈). 더하면 전체와 같다
     const groups=[
       ['예약 결제 금액', prepTotalOf(cb), [['숙박',cb.hotel],['렌터카',cb.car],['항공',cb.flight],['예약 외(보험·유심 등)',cb.prep]]],
-      ['현지 결제 금액', cb.spots+cb.taxi, [['장소',cb.spots],['택시(자차·택시 일자)',cb.taxi]]]
+      ['현지 결제 금액', cb.spots+cb.taxi, [['장소',cb.spots],['택시(택시 일자)',cb.taxi]]]
     ].filter(g=>g[1]>0);
+    // 자차 날의 택시비는 내지 않는 돈이라 합계에 넣지 않고, 택시로 간다면 얼마인지만 참고로 말한다(2026-10-03)
+    const taxiRef=tripTaxiRef();
     const cost=document.createElement('details'); cost.className='viewMenu costMenu';
     cost.innerHTML=`<summary title="${escAttr('예약 결제 금액(예약 총액·예약 외) + 현지 결제 금액(장소·택시) — 탭하면 내역')}">💳 ₩${fmtMoney(cb.total)}⌄</summary><div class="viewMenuPanel">
       <div class="viewMenuLabel">전체 예상 비용</div>
       ${groups.map(g=>`<div class="costRow costGroup"><span>${esc(g[0])}</span><b>₩${fmtMoney(g[1])}</b></div>`+
         g[2].filter(r=>r[1]>0).map(r=>`<div class="costRow costSub"><span>${esc(r[0])}</span><b>₩${fmtMoney(r[1])}</b></div>`).join('')).join('')}
       <div class="costRow costTotal"><span>합계</span><b>₩${fmtMoney(cb.total)}</b></div>
-      <div class="hint">예약은 총액 기준이에요 — 일자 카드의 '하루 비용'은 이걸 날수로 나눈 하루치예요.</div></div>`;
+      ${taxiRef>0?`<div class="hint costTaxiRef">자차 일자는 택시비를 넣지 않았어요 — 택시로 간다면 약 ₩${fmtMoney(taxiRef)}</div>`:''}
+      <div class="hint">${esc(bookingBasisHint())}</div></div>`;
     bar.appendChild(cost);
   }
   // 14일 넘는 여행은 고른 Day 칩이 가로 스크롤 밖에 있었다 — 고른 날을 칩 줄 안으로 데려온다(세로 스크롤은 건드리지 않는다)
@@ -2312,9 +2354,10 @@ function renderSidebar(){
       else if(!s.stay&&!readOnly()) meta.push(`<button type="button" class="spotMetaItem stayMin unset" onclick="event.stopPropagation();openSpotModal(${di},${si},'spotStayMin')" title="머무는 시간을 정하면 다음 장소의 도착 예상이 그만큼 늦어져요">⏱ 머무는 시간 미정</button>`);
       if(!hasLoc(s)) meta.push(`<button type="button" class="spotMetaItem noloc" onclick="event.stopPropagation();openSpotModal(${di},${si})">📍 위치 지정</button>`);
       if(s.cost){
-        const cu=CUR[s.cur], nk=cu&&s.cur!=='KRW';
-        meta.push(`<span class="spotMetaItem cost"${nk?` title="${costLabel(s.cost,s.cur)}"`:''}>💳 ${nk?`${cu.sym}${fmtMoney(s.cost,s.cur)}`:`₩${fmtMoney(s.cost)}`}</span>`);
-        if(nk) meta.push(`<span class="spotMetaItem cost costConverted" aria-label="원화 환산 약 ${fmtMoney(toKRW(s.cost,s.cur))}원">약 ₩${fmtMoney(toKRW(s.cost,s.cur))}</span>`);
+        const cu=CUR[s.cur], nk=cu&&s.cur!=='KRW', total=costAmountOf(s,'cost')??s.cost;
+        const short=(/**@type{number}*/n,/**@type{string|undefined}*/c)=>nk?`${cu.sym}${fmtMoney(n,c)}`:`₩${fmtMoney(n)}`;
+        meta.push(`<span class="spotMetaItem cost"${nk?` title="${costLabel(total,s.cur)}"`:''}>💳 ${esc(costWithPeople(s,'cost',short))}</span>`);
+        if(nk) meta.push(`<span class="spotMetaItem cost costConverted" aria-label="원화 환산 약 ${fmtMoney(toKRW(total,s.cur))}원">약 ₩${fmtMoney(toKRW(total,s.cur))}</span>`);
       }
       if(s.bookAt){
         const late=bookWarn? Math.round(etas[si]-bookMin) : 0;
@@ -2422,7 +2465,7 @@ function renderSidebar(){
         ${day.drive?`<div class="drive driveMemo" title="직접 적은 이동 메모예요 — 아래 계산과 다를 수 있어요"><span class="memoTag">이동 메모</span>${esc(day.drive)}</div>`:''}
         ${flightHtml(day)}
         ${''/* 일자 간 이동(전날 기준점 → 첫 장소)은 첫 장소 행의 들어오는 구간이 말한다 — 머리글에 같은 숫자를 또 적지 않는다(2026-10-02) */}
-        ${(()=>{const rt=dayRoute(day,ctx.backLeg); if(rt) return `<div class="dist">${ic('ruler')} 하루 동선 약 ${(rt.m/1000).toFixed(1)}km · ${MODE_ICON[dm]}${fmtDur(rt.sec)}${((dm==='car'||dm==='taxi')&&rt.taxi)?` · 🚕약 ${rt.taxi.toLocaleString()}원`:''} <span style="opacity:.55">(${dm==='flight'?'직선':'도로 기준'})</span></div>`;
+        ${(()=>{const rt=dayRoute(day,ctx.backLeg); if(rt) return `<div class="dist">${ic('ruler')} 하루 동선 약 ${(rt.m/1000).toFixed(1)}km · ${MODE_ICON[dm]}${fmtDur(rt.sec)}${rt.taxi?(dm==='taxi'?` · 🚕약 ${rt.taxi.toLocaleString()}원`:dm==='car'?` · 🚕택시로 간다면 약 ${rt.taxi.toLocaleString()}원`:''):''} <span style="opacity:.55">(${dm==='flight'?'직선':'도로 기준'})</span></div>`;
           return dayDistance(day,ctx.back)>0?`<div class="dist">${ic('ruler')} 하루 동선 약 ${dayDistance(day,ctx.back).toFixed(1)}km <span style="opacity:.55">(직선)</span></div>`:'';})()}
         ${(()=>{   // 머무는 시간을 안 정한 곳은 0분으로 계산한다 — 그러면 뒤 시각이 실제보다 이르게, 그런데도 분 단위로 정밀해 보인다.
           // 그 사실을 하루에 한 번 말하고 첫 번째 미정 장소의 체류 칸으로 데려간다(행마다 붙은 '머무는 시간 미정'은 그대로 둔다).
@@ -2975,8 +3018,13 @@ function updateCostHint(){
   const d=parseCostAmount(document.getElementById('spotCost').value,cur);
   if(d===null){ el.textContent=''; return; }
   const rate=fxRates[cur], rateStr=rate<100?rate.toFixed(1):fmtMoney(rate);
-  el.textContent = cur==='KRW' ? `= ₩${fmtMoney(d)}`
-    : `≈ ₩${fmtMoney(toKRW(+d,cur))}  (1${CUR[cur].sym} ≈ ₩${rateStr})`;
+  // 1인 금액으로 적어 둔 장소면 이 칸은 1인 금액이다 — 하루 합계에 들어가는 곱한 값을 함께 말한다(기준은 장소 비용 입력에서 바꾼다)
+  const sp=(editing&&editing.si>=0)? (trip().days[editing.di]||{spots:[]}).spots[editing.si] : null;
+  const per=sp? {cost:d,cur,costBasis:sp.costBasis,costPeople:sp.costPeople} : null;
+  const total=per? costAmountOf(per,'cost') : null;
+  const perNote=(per&&total!==null&&total!==d)? ` · ${costWithPeople(per,'cost',(n,c)=>c&&c!=='KRW'&&CUR[c]?`${CUR[c].sym}${fmtMoney(n,c)}`:`₩${fmtMoney(n)}`)}` : '';
+  el.textContent = (cur==='KRW' ? `= ₩${fmtMoney(d)}`
+    : `≈ ₩${fmtMoney(toKRW(+d,cur))}  (1${CUR[cur].sym} ≈ ₩${rateStr})`) + perNote;
 }
 document.getElementById('spotCost').addEventListener('input',updateCostHint);
 document.getElementById('spotCur').addEventListener('change',updateCostHint);
@@ -3841,12 +3889,15 @@ async function loadPxHealth(){
   try{ const r=await fetch('/api/hotel-offers?health=1'); const js=await r.json(); if(r.ok&&js&&Array.isArray(js.providers)) _pxHealth=js.providers; }catch(e){}
   return _pxHealth;
 }
+const PX_SOURCE_NAME={'google-hotels':'Google 호텔','booking.com':'Booking.com',expedia:'Expedia',agoda:'Agoda'};
 function pxSourceLineHtml(list){
   // 사람이 읽는 말로 — '소스'·'키'·'서버 함수' 같은 내부 용어를 화면에 내지 않는다
   if(!list) return '자동 가격 조회 상태를 확인하지 못했어요';
   const ko={CONNECTED:'연결됨',CREDENTIAL_READY:'연결 확인 중',AUTH_REQUIRED:'아직 연결되지 않았어요',UNCONFIGURED:'아직 연결되지 않았어요',ERROR:'오류',UNAVAILABLE:'지원하지 않아요'};
-  const name=(/**@type{string}*/id)=>id==='google-hotels'?'Google 호텔':id;
-  return '자동 가격 조회 — '+list.map(p=>`${esc(name(p.id))} ${ko[p.status]||'확인 중'}`).join(' · ');
+  // 서버는 'google-hotels (serpapi)'처럼 경유 서비스를 괄호로 붙여 보낸다 — 그 꼬리를 떼고 사람이 아는 이름으로 바꾼다.
+  // 전에는 꼬리 때문에 이름 바꾸기가 빗나가 'google-hotels (serpapi)'가 화면에 그대로 나왔다(2026-10-03)
+  const name=(/**@type{string}*/id)=>{ const base=String(id||'').replace(/\s*\(.*\)\s*$/,''); return PX_SOURCE_NAME[base]||base; };
+  return '호텔 자동 가격 조회 — '+list.map(p=>`${esc(name(p.id))} ${ko[p.status]||'확인 중'}`).join(' · ');
 }
 
 // ── 절약 기회 알림 이벤트 — 지금은 토스트 1채널. 웹 알림·이메일·푸시·카카오는 리스너만 추가 ──
@@ -3995,24 +4046,28 @@ async function pullPriceSnapshots(){
 
 // ── 예약 목록 모달 (여행 단위 절감 대시보드 + 예약별 상태) ──
 function renderBookingList(){
-  const bookings=tripBookings(), s=tripSavingInfo();
-  // 확정·잠재(조건 확인 필요)·실제 절약을 절대 섞지 않는다 (§31)
-  document.getElementById('bookingSummary').innerHTML = bookings.length? `<div class="pxSummary">
-      <div><span>현재 예약 총액</span><b>₩${fmtMoney(s.booked)}</b></div>
-      <div class="pxSaveRow"><span>현재 확정 절약 가능</span><b>${s.confirmed>0?`₩${fmtMoney(s.confirmed)}`:'—'}</b></div>
+  const s=tripSavingInfo();
+  // 확정·잠재(조건 확인 필요)·실제 절약을 절대 섞지 않는다 (§31).
+  // 절약 칸은 가격을 추적하는 예약이 있을 때만 — 추적이 없는데 '현재 확정 절약 가능 —'이 초록으로 남아 있었다(2026-10-03).
+  // 예약 총액은 여기서 따로 말하지 않는다 — 아래 '예약 결제 금액 합계'와 이름이 비슷한 두 총액이 설명 없이 나란히 있었다.
+  const tracking=tripBookings().some(b=>(b.type==='hotel'||b.type==='car')&&b.track!==false);
+  document.getElementById('bookingSummary').innerHTML = (tracking||s.actual>0)? `<div class="pxSummary">
+      ${tracking?`<div class="pxSaveRow"><span>같은 조건으로 지금 아낄 수 있는 돈</span><b>${s.confirmed>0?`₩${fmtMoney(s.confirmed)}`:'<span class="pxNone">아직 없어요</span>'}</b></div>`:''}
       ${s.potential>0?`<div class="pxPotRow"><span>조건 확인 필요</span><b>최대 ₩${fmtMoney(s.potential)}</b></div>`:''}
       ${s.actual>0?`<div class="pxActualRow"><span>With J로 실제 절약</span><b>₩${fmtMoney(s.actual)}</b></div>`:''}
     </div>`:'';
-  const rows=paymentRows(), split=prepPaySplit(), prepTotal=prepTotalOf(tripCostBreakdown());
-  // 이 목록의 합계 — 필터바 '예약 결제 금액'과 같은 함수(prepTotalOf)라 두 숫자가 언제나 같다
-  const totalLine=rows.length? `<div class="costRow costTotal bkListTotal"><span>예약 결제 금액 합계</span><b>₩${fmtMoney(prepTotal)}</b></div>`:'';
+  const rows=paymentRows(), split=prepPaySplit(), cb=tripCostBreakdown(), prepTotal=prepTotalOf(cb);
+  // 이 목록의 합계 — 필터바 '예약 결제 금액'과 같은 함수(prepTotalOf)라 두 숫자가 언제나 같다.
+  // 그 안에 무엇이 들었는지(예약 / 예약 외)를 바로 아래에서 가른다 — 두 숫자가 포함 관계로 읽히게.
+  const bookedKRW=cb.hotel+cb.car+cb.flight;
+  const totalLine=rows.length? `<div class="costRow costTotal bkListTotal"><span>예약 결제 금액 합계</span><b>₩${fmtMoney(prepTotal)}</b></div>`
+    +((bookedKRW>0&&cb.prep>0)? `<div class="hint bkListParts" style="margin:0 0 4px">그중 예약(항공·숙박·렌트) ₩${fmtMoney(bookedKRW)} · 예약 외 ₩${fmtMoney(cb.prep)}</div>`:'') : '';
   const paidLine=(split.PAID>0||split.RESERVED>0)? `<div class="hint" style="margin:0 0 4px">${[split.PAID>0?`결제 완료 ₩${fmtMoney(split.PAID)}`:'', split.RESERVED>0?`결제 예정 ₩${fmtMoney(split.RESERVED)}`:''].filter(Boolean).join(' · ')}</div>`:'';
-  // 같은 여행의 비용이 화면마다 다른 숫자인 이유는 기준이 다르기 때문이다 — 필터바·일자 카드는
-  // 이미 그 기준을 말하는데 이 목록만 말하지 않았다. 세 곳이 다 같은 말을 해야 숫자를 믿을 수 있다.
-  const basisLine=`<div class="hint" style="margin:0 0 8px">여기 금액은 <b>예약 전액</b>이에요 — 일자 카드의 '하루 비용'은 이걸 날수로 나눈 하루치예요.</div>`;
+  // 같은 여행의 비용이 화면마다 다른 숫자인 이유는 기준이 다르기 때문이다 — 필터바와 같은 문장(bookingBasisHint)을 쓴다
+  const basisLine=`<div class="hint" style="margin:0 0 8px">${esc(bookingBasisHint())}</div>`;
   document.getElementById('bookingListBody').innerHTML = totalLine + paidLine + (rows.length? basisLine:'') + (rows.length? rows.map(r=>{
-    const b=r.booking, period=b?[b.start,b.end].filter(Boolean).map(esc).join(' ~ '):'';
-    const sub=[period, b&&b.provider?esc(b.provider):'', COST_KIND[r.kind].name, costLabel(r.amount,r.cur), payStateNote(r.payState), r.paidOn?`결제일 ${esc(r.paidOn)}`:'', r.photos?`📎 사진 ${r.photos}장`:''].filter(Boolean).join(' · ');
+    const b=r.booking, period=b? esc(bookingPeriodText(b)) : '';
+    const sub=[period, b&&b.provider?esc(b.provider):'', COST_KIND[r.kind].name, costLabel(r.amount,r.cur), payStateNote(r.payState), r.paidOn?`결제일 ${esc(mdLabel(r.paidOn)||r.paidOn)}`:'', r.photos?`📎 사진 ${r.photos}장`:''].filter(Boolean).join(' · ');
     return `<div class="tripRow pxRow" onclick="openBookingModal('${escAttr(r.id)}')" title="${b?'탭해서 상세·판매처 비교·가격 기록 보기':'탭해서 편집'}">
       <span class="tn">${COST_KIND[r.kind].icon} ${esc(r.title)}<span class="opt">${sub}</span></span>
       ${b?bookingBadgeHtml(b):''}
@@ -4057,6 +4112,11 @@ function prepPaySplit(){
   return sum;
 }
 function costItemOf(id){ return (trip().costItems||[]).find(x=>x.id===id)||null; }
+/** 편집기 아래에 열려 있는 목록을 다시 그린다 — 예약 결제 금액 목록과 예약 찾기 둘 다 편집기를 위에 띄운다 */
+function refreshPaymentLists(){
+  if(document.getElementById('bookingListBg').classList.contains('show')) renderBookingList();
+  if(document.getElementById('resvListBg').classList.contains('show')) renderResvList();
+}
 function openBookingList(){
   renderBookingList();
   document.getElementById('bookingListBg').classList.add('show');
@@ -4076,9 +4136,21 @@ function resvCancelText(b){
   if(b.refundable===false) return '무료 취소 안 됨'+fee;
   return fee? fee.slice(3) : '취소 조건을 적지 않았어요';
 }
+/** 예약 기간 한 줄 — 다른 화면과 같은 '10/21 (수)' 꼴. 렌터카는 픽업·반납 시각을 붙이고, 당일 대여는
+ *  '10/21 (수) 09:00–20:00 · 당일'로 줄인다(2026-10-03 — 전에는 '2026-10-21 ~ 2026-10-21'이었다).
+ *  @param {any} b @returns {string} */
+function bookingPeriodText(b){
+  const car=b.type==='car', at=(/**@type{any}*/v)=>car&&normHM(v)? ` ${normHM(v)}` : '';
+  if(car&&b.start&&b.start===b.end){
+    const pt=normHM(b.carPickupTime), rt=normHM(b.carReturnTime);
+    return `${mdLabel(b.start)}${pt||rt? ` ${[pt,rt].filter(Boolean).join('–')}` : ''} · 당일`;
+  }
+  const s=b.start? mdLabel(b.start)+at(b.carPickupTime) : '', e=b.end? mdLabel(b.end)+at(b.carReturnTime) : '';
+  return s&&e? `${s} ~ ${e}` : s? s : e? `~ ${e}` : '';
+}
 function renderResvList(){
   const box=document.getElementById('resvListBody'), t=trip();
-  const period=(/**@type{any}*/b)=>[b.start,b.end].filter(Boolean).map(mdLabel).join(' ~ ');
+  const period=bookingPeriodText;
   const row=(/**@type{string}*/title, /**@type{string[]}*/lines, /**@type{string}*/url, /**@type{string}*/action)=>`<div class="resvRow">
       <div class="resvHead"><b>${title}</b>${action}</div>
       ${lines.filter(Boolean).map(l=>`<div class="resvLine">${l}</div>`).join('')}
@@ -4087,12 +4159,13 @@ function renderResvList(){
   const edit=!readOnly();
   const bookings=tripBookings().map(b=>row(
     `${esc(RESV_KIND[b.type]||'예약')} · ${esc(b.title)}`,
-    [ (b.confirmation||b.confirmationNumber)? `예약번호 <span class="resvCode">${esc(b.confirmation||b.confirmationNumber)}</span>` : '예약번호를 적지 않았어요',
+    [ (b.confirmation||b.confirmationNumber)? `예약번호 <span class="resvCode">${esc(b.confirmation||b.confirmationNumber)}</span>` : edit? '예약번호를 적지 않았어요 — 자세히에서 적어 둘 수 있어요' : '예약번호를 적지 않았어요',
       period(b)? `기간 ${esc(period(b))}` : '',
       b.provider? `예약처 ${esc(b.provider)}` : '',
       esc(resvCancelText(b)) ],
     safeUrl(b.url),
-    edit? `<button type="button" class="btn sm" onclick="document.getElementById('resvListBg').classList.remove('show');openBookingModal('${escAttr(b.id)}')">자세히</button>` : ''));
+    // 목록은 닫지 않고 그 위에 편집기를 연다 — 편집기를 닫으면 이 목록으로 돌아온다(2026-10-03 — 전에는 메인으로 떨어져 ☰부터 다시 들어가야 했다)
+    edit? `<button type="button" class="btn sm" onclick="openBookingModal('${escAttr(b.id)}')">자세히</button>` : ''));
   const extra=additionalReservations(t).map(r=>{
     const it=r.item, where=r.dayIndex!=null? `Day ${r.dayIndex+1}${dateOf(r.dayIndex)?` · ${dateOf(r.dayIndex)}`:''}` : '여행 전체';
     const adm=(it.admission&&typeof it.admission==='object')? it.admission : null;
@@ -4137,7 +4210,7 @@ window.startHotelTracking=(di,si)=>{
   document.getElementById('bkType').value='STAY';
   document.getElementById('bkTrack').checked=true;   // 추적하려고 연 것이다
   toggleBkFields();
-  document.getElementById('bkTitle').value=s.name||'';
+  document.getElementById('bkTitle').value=s.name||''; updateBkTitleHint();
   const idx=bkStayOptions().findIndex(o=>o.s===s);
   if(idx>=0) document.getElementById('bkSpot').value=String(idx);
   const iso=isoDateOf(di);
@@ -4188,9 +4261,10 @@ function toggleBkFields(){
   // 예약이 아닌 결제 항목(보험·유심·입장권…)에는 예약처·기간·취소 조건·링크·추적이 없다
   ['bkProviderWrap','bkPeriodWrap','bkBookingExtra','bkStatus'].forEach(id=>{ document.getElementById(id).style.display = booking?'':'none'; });
   document.getElementById('bkProviderLabel').textContent = type==='flight'?'항공사 또는 예약처':'예약처';
-  document.getElementById('bkTitleLabel').textContent = {hotel:'숙소 이름 * (예약처 표기와 같게 — 검색 정확도)',car:'렌터카 (차종·업체) *',flight:'항공편 (구간·편명) *'}[type||'']||'항목 이름 *';
+  document.getElementById('bkTitleLabel').textContent = {hotel:'숙소 이름 *',car:'렌터카 (차종·업체) *',flight:'항공편 (구간·편명) *'}[type||'']||'항목 이름 *';
+  updateBkTitleHint();
   document.getElementById('bkPriceLabel').textContent = booking?'예약 가격 *':'금액 *';
-  document.getElementById('bkFreeUntilWrap').style.display = document.getElementById('bkFreeCancel').checked?'block':'none';
+  document.getElementById('bkFreeUntilWrap').style.display = document.getElementById('bkFreeCancel').value==='1'?'block':'none';
   // 가격 추적은 숙박·렌트만 한다 — 항공은 시세를 확인할 길이 없어 추적 표시 자체를 두지 않는다(없는 약속을 하지 않는다)
   const trackRow=document.getElementById('bkTrackRow'); if(trackRow) trackRow.style.display = type==='flight'?'none':'';
   // 날짜가 필요한 이유를 날짜 칸 곁에서 말한다 — 저장을 누른 뒤에야 알게 되는 숨은 조건이 되지 않게
@@ -4198,13 +4272,29 @@ function toggleBkFields(){
   document.getElementById('bkPeriodHint').textContent = tracking? '가격 추적을 켜 두어서 체크인·체크아웃 날짜가 필요해요' : '';
   // 결제 상태 — 예약은 미구분이 없다(잡아 둔 돈). 결제일이 있으면 날짜가 상태를 정하므로 고르는 칸을 감춘다
   const ps=document.getElementById('bkPayState'), none=ps.querySelector('option[value="NONE"]');
-  none.hidden=booking; if(booking&&ps.value==='NONE') ps.value='RESERVED';
+  // 예약 분류에 오면 '결제 예정'을 대신 고르는데, 그건 사람이 고른 값이 아니다 — 표시해 두고, 예약이 아닌 분류로 옮기면
+  // 거둬 '고르지 않음'으로 되돌린다. 전에는 숙박으로 열린 새 항목을 '기타'로 바꾸면 고르지 않은 유심이 결제 예정으로 저장돼
+  // '아직 낼 돈'이 부풀고 예약 찾기에까지 떴다(2026-10-03). 사람이 직접 고른 상태(onchange)는 건드리지 않는다
+  none.hidden=booking;
+  if(booking&&ps.value==='NONE'){ ps.value='RESERVED'; ps.dataset.auto='1'; }
+  else if(!booking&&ps.dataset.auto){ ps.value='NONE'; delete ps.dataset.auto; }
   const paidOn=document.getElementById('bkPaidOn').value;
   ps.style.display=paidOn?'none':'';
   document.getElementById('bkPayHint').textContent = paidOn
     ? (paidOn<=todayISO()? `결제일(${paidOn})이 지나 결제 완료로 쳐요` : `결제 예정일(${paidOn})이 아직이라 결제 예정으로 쳐요 — 그날부터 결제 완료가 돼요`)
     : '결제일을 정하면 그 날부터 결제 완료로 쳐요. 정하지 않으면 여기서 고른 상태를 써요.';
 }
+/** 숙소 이름 칸 아래 한 줄 — 가격 조회가 이 이름을 어떻게 쓰는지. 한글 이름은 조회 때 영문 이름을 찾아 쓴다(enNameForBooking).
+ *  전에는 칸 이름이 '예약처 표기와 같게'라고 하면서 일정의 한글 이름을 그대로 채워 두 말이 갈렸다(2026-10-03) */
+function updateBkTitleHint(){
+  const el=document.getElementById('bkTitleHint'); if(!el) return;
+  const title=document.getElementById('bkTitle').value.trim(), b=editingBooking? bookingOf(editingBooking) : null;
+  if(bkTypeOf()!=='hotel'||!/[가-힣]/.test(title)){ el.textContent=''; return; }
+  el.textContent=(b&&b.enName&&b.title===title)
+    ? `가격 조회는 영문 이름 '${b.enName}'(으)로 찾아요 — 엉뚱한 숙소가 잡히면 예약처에 적힌 이름으로 바꿔 주세요`
+    : '가격 조회 때 이 이름의 영문 표기를 찾아 써요 — 엉뚱한 숙소가 잡히면 예약처에 적힌 이름으로 바꿔 주세요';
+}
+document.getElementById('bkTitle').addEventListener('input',updateBkTitleHint);
 window.openBookingModal=(id)=>{
   if(!guardEdit()) return;
   const b=id? bookingOf(id):null, item=(id&&!b)? costItemOf(id):null;
@@ -4226,6 +4316,7 @@ window.openBookingModal=(id)=>{
   document.getElementById('bkPrice').value=(amount!==null&&amount>0)? fmtMoney(amount,curV) : '';
   document.getElementById('bkCur').value=curV;
   document.getElementById('bkPayState').value=b? (b.payState==='PAID'?'PAID':'RESERVED') : item? (item.payState==='PAID'||item.payState==='RESERVED'? item.payState:'NONE') : 'NONE';
+  delete document.getElementById('bkPayState').dataset.auto;   // 저장된 상태는 앱이 고른 값이 아니다
   document.getElementById('bkPaidOn').value=(b&&b.paidOn)||(item&&item.paidOn)||'';
   document.getElementById('bkStart').value=(b&&b.start)||'';
   document.getElementById('bkEnd').value=(b&&b.end)||'';
@@ -4243,7 +4334,12 @@ window.openBookingModal=(id)=>{
   document.getElementById('bkCarTrans').value=(b&&b.transmission)||'';
   document.getElementById('bkCarMileage').value=(b&&b.mileage)||'';
   document.getElementById('bkCarIns').value=(b&&b.insurance)||'';
-  document.getElementById('bkFreeCancel').checked=!!(b&&(b.refundable!==undefined? b.refundable : b.freeCancelUntil));
+  // 무료 취소는 세 갈래다 — 모름 / 가능 / 불가. 전에는 체크박스라 건드리지 않은 예약이 전부 '무료 취소 안 됨'으로 저장됐다(2026-10-03).
+  // 이미 저장된 true/false는 그대로 읽고, 적지 않은 예약(구버전: 기한만 있으면 가능)은 normalizeBooking과 같은 규칙이다
+  const refundable=b? (typeof b.refundable==='boolean'? b.refundable : (b.freeCancelUntil? true : null)) : null;
+  document.getElementById('bkFreeCancel').value=refundable===true?'1':refundable===false?'0':'';
+  // 예약번호 — iOS(TripBooking.confirmation)와 같은 키. 가져온 예약의 옛 키(confirmationNumber·code)도 읽는다
+  document.getElementById('bkConfirmation').value=(b&&[b.confirmation,b.confirmationNumber,b.code].find(v=>typeof v==='string'&&v.trim()))||'';
   document.getElementById('bkFreeUntil').value=(b&&b.freeCancelUntil)||'';
   document.getElementById('bkFee').value=(b&&b.cancelFee)?fmtMoney(b.cancelFee,b.cur):'';
   document.getElementById('bkUrl').value=(b&&b.url)||'';
@@ -4264,6 +4360,8 @@ function renderBookingStatusBox(b){
   if(b.type==='flight'){ box.innerHTML=''; return; }   // 항공은 가격을 추적하지 않는다 — 추적 표시 자체를 두지 않는다
   const rec=priceStore[b.id]||{obs:[],offers:[]}, st=hotelStateOf(b), CFG=TC_PRICE.PRICE_CFG;
   const missing=!b.start||!b.end;
+  // 자동 조회가 연결되지 않았으면 '다시 검색'은 서버 오류만 내고 화면은 그대로다 — 누를 것을 두지 않는다(2026-10-03)
+  const unconnected=!!(st&&st.state==='ERROR'&&st.err&&st.err.code==='AUTH_REQUIRED');
   let head='';
   if(missing) head=`<div class="pxState pxWatch">체크인·체크아웃 날짜를 입력하면 가격 추적을 시작해요</div>`;
   else if(b.start&&b.start<todayISO()) head=`<div class="pxState pxOff">체크인이 지나 가격 추적을 마쳤어요</div>`;
@@ -4334,9 +4432,10 @@ function renderBookingStatusBox(b){
         <input type="text" id="bkManualPrice" inputmode="numeric" placeholder="확인한 총액" style="width:110px">
         <button type="button" class="btn" id="bkManualSave">가격 기록</button></div>`;
     })():''}
-    ${(b.track!==false&&!missing)?`<button type="button" class="btn" id="bkCheckNow" style="margin-top:8px;font-size:11px;padding:3px 10px">🔄 ${b.type==='car'?'시장 가격 다시 검색':'현재 가격 다시 확인'}</button>`:''}
-    <div class="hint" id="bkSourceLine"></div>`;
-  loadPxHealth().then(h=>{ try{ const el=document.getElementById('bkSourceLine'); if(el) el.innerHTML=pxSourceLineHtml(h); }catch(e){} });
+    ${(b.track!==false&&!missing&&!unconnected)?`<button type="button" class="btn" id="bkCheckNow" style="margin-top:8px;font-size:11px;padding:3px 10px">🔄 ${b.type==='car'?'시장 가격 다시 검색':'현재 가격 다시 확인'}</button>`:''}
+    ${b.type==='hotel'?'<div class="hint" id="bkSourceLine"></div>':''}`;
+  // 호텔 공급자 상태는 호텔에만 — 렌터카 상세에 호텔 공급자 줄이 붙어 있었다(렌터카의 연결 상태는 위 머리글이 말한다)
+  if(b.type==='hotel') loadPxHealth().then(h=>{ try{ const el=document.getElementById('bkSourceLine'); if(el) el.innerHTML=pxSourceLineHtml(h); }catch(e){} });
   const ms=document.getElementById('bkManualSave');
   if(ms) ms.onclick=()=>{
     const v=parseInt((document.getElementById('bkManualPrice').value||'').replace(/[^\d]/g,''));
@@ -4374,6 +4473,7 @@ function renderBookingStatusBox(b){
 document.getElementById('bkType').onchange=toggleBkFields;
 document.getElementById('bkFreeCancel').onchange=toggleBkFields;
 document.getElementById('bkTrack').onchange=toggleBkFields;
+document.getElementById('bkPayState').onchange=e=>{ delete e.target.dataset.auto; };   // 사람이 고른 상태 — 분류를 바꿔도 그대로 둔다
 document.getElementById('bkPaidOn').oninput=toggleBkFields;
 document.getElementById('bkPaidOn').onchange=toggleBkFields;
 // 숙소 연결 선택 → 새 예약이면 이름·기간·인원·통화 프리필 (기존 예약의 연결 변경은 값 유지)
@@ -4381,7 +4481,7 @@ document.getElementById('bkSpot').onchange=()=>{
   if(editingBooking) return;
   const o=bkStayOptions()[+document.getElementById('bkSpot').value];
   if(!o) return;
-  const t=document.getElementById('bkTitle'); if(!t.value.trim()) t.value=o.s.name;
+  const t=document.getElementById('bkTitle'); if(!t.value.trim()){ t.value=o.s.name; updateBkTitleHint(); }
   const iso=isoDateOf(o.di);
   if(iso){
     const st=document.getElementById('bkStart'); if(!st.value) st.value=iso;
@@ -4430,7 +4530,7 @@ function saveCostItem(kind){
     if(isNew) list.push(item);
   });
   document.getElementById('bookingModalBg').classList.remove('show');
-  if(document.getElementById('bookingListBg').classList.contains('show')) renderBookingList();
+  refreshPaymentLists();
   toast(isNew?'결제 항목을 저장했어요':'결제 항목을 고쳤어요');
 }
 document.getElementById('bkSave').onclick=()=>{
@@ -4496,10 +4596,16 @@ document.getElementById('bkSave').onclick=()=>{
       put('mileage',document.getElementById('bkCarMileage').value);
       put('insurance',document.getElementById('bkCarIns').value);
     }
-    b.refundable=document.getElementById('bkFreeCancel').checked;   // 조건 매칭·수수료 계산의 기준
-    const fu=b.refundable && document.getElementById('bkFreeUntil').value;
+    // 조건 매칭·수수료 계산의 기준. 모르면 저장하지 않는다 — price.js가 '모름'으로 비교에서 뺀다
+    const rf=document.getElementById('bkFreeCancel').value;
+    if(rf==='1') b.refundable=true; else if(rf==='0') b.refundable=false; else delete b.refundable;
+    const fu=b.refundable===true && document.getElementById('bkFreeUntil').value;
     if(fu) b.freeCancelUntil=fu; else delete b.freeCancelUntil;
     if(!isNaN(fee)&&fee>0) b.cancelFee=fee; else delete b.cancelFee;
+    // 예약번호는 iOS와 같은 하나의 키로 저장한다 — 옛 키가 남아 있으면 앱이 그쪽을 먼저 읽지 않게 지운다
+    const conf=document.getElementById('bkConfirmation').value.trim();
+    if(conf) b.confirmation=conf; else delete b.confirmation;
+    delete b.confirmationNumber; delete b.code;
     b.track=type!=='flight'&&document.getElementById('bkTrack').checked;   // 항공은 추적하지 않는다
     b.updatedAt=new Date().toISOString();
     if(identityChanged) delete b.ptoken;   // 이름·기간이 바뀌면 property 매핑을 다시 찾는다
@@ -4520,7 +4626,7 @@ document.getElementById('bkSave').onclick=()=>{
     }
   });
   document.getElementById('bookingModalBg').classList.remove('show');
-  if(document.getElementById('bookingListBg').classList.contains('show')) renderBookingList();
+  refreshPaymentLists();
   toast(b.track&&b.type==='hotel'?'예약을 저장했어요 — 가격 추적을 시작해요':'예약을 저장했어요');
   if(b.track) checkBookingPrice(b.id,{force:true}).then(r=>{
     if(!r||!r.ok) return;
@@ -4531,9 +4637,13 @@ document.getElementById('bkSave').onclick=()=>{
 // 선택한 원본을 고정해 둔다 — 삭제창이 열린 사이 바뀐 문서에는 적용하지 않는다.
 function confirmCostDelete(title,allowsSource,onDelete){
   const dialog=document.getElementById('costDeleteDialog');
-  document.getElementById('costDeleteTitle').textContent=title+' 비용 삭제';
+  // 묻는 말로 — 그리고 체크박스가 없을 때는 그 체크박스를 가리키는 문장을 쓰지 않는다(2026-10-03 — 숨긴 칸을 '선택하지 않으면'이라 했다)
+  document.getElementById('costDeleteTitle').textContent=`${title} 비용을 지울까요?`;
   document.getElementById('costDeleteSource').checked=false;
   document.getElementById('costDeleteSourceRow').hidden=!allowsSource;
+  document.getElementById('costDeleteNote').textContent=allowsSource
+    ? '선택하지 않으면 비용 정보만 지워요. 함께 삭제해도 실제 예약은 취소되지 않아요.'
+    : '이 항목의 금액·결제 정보가 목록에서 사라져요. 지운 뒤 알림의 실행취소로 되돌릴 수 있어요.';
   document.getElementById('costDeleteConfirm').onclick=()=>{
     if(!guardEdit()) return;
     if(onDelete(document.getElementById('costDeleteSource').checked)!==false) dialog.close();
@@ -4555,12 +4665,12 @@ document.getElementById('bkDelBtn').onclick=()=>{
     });
     if(b){ delete priceStore[b.id]; savePrices(); }
     document.getElementById('bookingModalBg').classList.remove('show');
-    if(document.getElementById('bookingListBg').classList.contains('show')) renderBookingList();
+    refreshPaymentLists();
     toast(includingSource?'일정의 장소·예약도 지웠어요':'비용 정보를 지웠어요','#4f4740',{fn:()=>undoWith(snap)});
   });
 };
 
-let costEditorSnapshot='', costEditorTrip='';
+let costEditorSnapshot='', costEditorTrip='', costEditorDay=0;
 function selectedCostSpot(){
   const [di,si]=document.getElementById('costPlace').value.split(':').map(Number);
   return {di,si,spot:trip().days[di]?.spots[si]};
@@ -4579,7 +4689,21 @@ function fillPlaceCost(){
   document.getElementById('costPhotoNote').textContent=photoNote(photoCount(item));
   document.getElementById('costPlaceDelete').disabled=!spot;
   document.getElementById('costPlaceSave').disabled=!spot;
+  updatePerPersonNote();
 }
+// 결제 상태 이름은 PAY_STATE_LABEL 하나에서 — 이 칸만 '예약 | 결제'라고 따로 불렀다(2026-10-03)
+(function(){ const sel=document.getElementById('costPayState'); if(!sel) return;
+  sel.replaceChildren(...['NONE','RESERVED','PAID'].map(k=>new Option(PAY_STATE_LABEL[k],k)));
+})();
+/** 1인 금액이면 곱한 값을 칸 곁에서 말한다 — 저장하면 하루 합계에 들어가는 값과 같다(costWithPeople) */
+function updatePerPersonNote(){
+  const el=document.getElementById('costPerPersonNote'); if(!el) return;
+  const cur=document.getElementById('costCurrency').value, amount=parseCostAmount(document.getElementById('costAmount').value,cur);
+  const people=Math.min(100,Math.max(1,+document.getElementById('costPeople').value||1));
+  const item={cost:amount,cur,costBasis:document.getElementById('costBasis').value,costPeople:people};
+  el.textContent=(amount!==null&&item.costBasis==='PER_PERSON'&&Number.isInteger(people)&&people>1)? costWithPeople(item,'cost',costLabel) : '';
+}
+['costAmount','costCurrency','costBasis','costPeople'].forEach(id=>{ const el=document.getElementById(id); el.addEventListener('input',updatePerPersonNote); el.addEventListener('change',updatePerPersonNote); });
 window.openPlaceCost=(di=activeDay?activeDay-1:0)=>{   // di는 0부터, activeDay는 1부터 센다(0=전체)
   if(!guardEdit()) return;
   const select=document.getElementById('costPlace'); select.replaceChildren();
@@ -4588,8 +4712,19 @@ window.openPlaceCost=(di=activeDay?activeDay-1:0)=>{   // di는 0부터, activeD
   }));
   const first=Array.from(select.options).find(o=>o.value.startsWith(di+':'));
   if(first) select.value=first.value;
-  costEditorSnapshot=JSON.stringify(trip()); costEditorTrip=trip().id;
-  fillPlaceCost(); document.getElementById('placeCostDialog').showModal();
+  // 장소가 없으면 빈 선택 상자만 있고 무엇을 하라는지 말이 없었다 — 담으라고 말하고 담는 길을 둔다(2026-10-03)
+  const dialog=document.getElementById('placeCostDialog'), empty=!select.options.length;
+  dialog.classList.toggle('isEmpty',empty); document.getElementById('costPlaceEmpty').hidden=!empty;
+  costEditorSnapshot=JSON.stringify(trip()); costEditorTrip=trip().id; costEditorDay=di;
+  fillPlaceCost(); dialog.showModal();
+};
+document.getElementById('costPlaceAddSpot').onclick=()=>{
+  // 창을 연 그 날에 새 장소를 담는다 — 지도 빈 화면 버튼을 대신 누르면 그 버튼의 규칙(숨김·위치 없는 장소 열기)을 따라가 버린다
+  document.getElementById('placeCostDialog').close();
+  if(!guardEdit()) return;
+  if(!trip().days.length){ toast('먼저 일자를 추가해 주세요'); return; }
+  document.getElementById('bookingListBg').classList.remove('show');
+  openSpotModal(Math.max(0,Math.min(costEditorDay,trip().days.length-1)),-1);
 };
 document.getElementById('costPlace').onchange=fillPlaceCost;
 document.getElementById('costPlaceOpen').onclick=()=>openPlaceCost();
@@ -4615,7 +4750,9 @@ document.getElementById('costPlaceSave').onclick=()=>{
     if(paidOn) spot.paidOn=paidOn; else delete spot.paidOn;
     if(!paidOn&&state!=='NONE') spot.payState=state; else delete spot.payState;
   });
-  document.getElementById('placeCostDialog').close(); toast('일정의 비용을 저장했어요');
+  // 이 창은 예약 결제 금액 목록에서도 열리는데 장소 비용은 그 목록에 없다 — 어디에 들어갔는지 말한다(2026-10-03)
+  const {di}=selectedCostSpot();
+  document.getElementById('placeCostDialog').close(); toast(`Day ${di+1} 하루 비용(현지 결제 금액)에 넣었어요`);
 };
 document.getElementById('costPlaceDelete').onclick=()=>{
   if(!canSavePlaceCost()) return;
@@ -5983,7 +6120,7 @@ function renderTravel(di, clock){
     const div=document.createElement('div'); div.className='tSpot'+(s.status==='COMPLETED'?' done':(s.status==='SKIPPED'?' skipped':'')); div.style.setProperty('--c',spotColor(s,di,colors));
     const tmeta=[];
     if(s.bookAt) tmeta.push(`🎫 예약 ${esc(s.bookAt)}`);
-    if(s.cost) tmeta.push(`💳 ${costLabel(s.cost,s.cur)}`);
+    if(s.cost) tmeta.push(`💳 ${costWithPeople(s,'cost',costLabel)}`);
     div.innerHTML=`<div class="n"><span class="eta">${hm(etas[si])}</span> ${si+1}. ${catPrefix(s)}${esc(s.name)}${s.opt?` <span style="font-size:11px;color:var(--subtle)">(${esc(spotPriorityLabel('OPT'))})</span>`:''}</div>`+
       (tmeta.length?`<div class="d" style="color:var(--meta-cost)">${tmeta.join(' · ')}</div>`:'')+
       `<div class="d">${esc(s.desc).replace(/\n/g,'<br>')}</div>`;

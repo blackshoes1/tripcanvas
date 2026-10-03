@@ -768,3 +768,15 @@ body{word-break:keep-all;overflow-wrap:break-word}
    margin:auto는 남는 자리가 있을 때만 가운데로 보내고, 없으면 위에서부터 놓는다 */
 .onboarding{place-items:normal;overflow-y:auto;overscroll-behavior:contain}.onboardingCard{margin:auto}
 @media (max-height:520px){.onboarding{padding:14px 24px}.onboardingActions{margin:16px 0 10px}.onboarding h1{font-size:26px}}
+/* ux3:costs */
+/* 준비 메모 — 좁은 화면에서는 제목 칸이 한 줄을 다 쓰고 분류·추가 버튼이 아래 줄로 간다(375px에서 72px이었다) */
+@media (max-width:560px){#noteAddSection .fieldRow{flex-wrap:wrap}#noteAddSection #noteTitleInput{order:-1;flex:1 1 100%}#noteAddSection #noteCatInput{flex:1 1 auto}}
+/* 비용 입력 창 — 꺼진 버튼은 꺼져 보이고, 마지막 칸이 버튼 줄에 붙지 않게 여백을 둔다. 장소가 없으면 안내만 남긴다 */
+.costDialog .btn:disabled{opacity:.45;cursor:not-allowed}
+.costDialog .modalActions{bottom:-24px;margin-top:16px}
+.costDialog .hint:empty{display:none}
+.costDialog .btn.danger{color:var(--meta-danger);border-color:var(--meta-danger);font-weight:700}
+.costEmpty{display:grid;gap:10px;justify-items:start;margin:8px 0 4px}.costEmpty[hidden]{display:none}.costEmpty p{color:var(--muted);line-height:1.6}
+.costDialog.isEmpty>:not(h2):not(.costEmpty):not(.modalActions){display:none}.costDialog.isEmpty #costPlaceSave,.costDialog.isEmpty #costPlaceDelete{display:none}
+/* 절약 칸 — 없을 때는 초록 대시가 아니라 흐린 말로 */
+.pxSummary .pxSaveRow b .pxNone{color:var(--muted);font-weight:400;font-size:12.5px}

@@ -169,21 +169,23 @@
 <dialog id="costDeleteDialog" class="costDialog" aria-labelledby="costDeleteTitle">
   <h2 id="costDeleteTitle">비용 삭제</h2>
   <div id="costDeleteSourceRow" class="chkrow"><input type="checkbox" id="costDeleteSource"><label for="costDeleteSource">일정의 장소·예약도 함께 삭제</label></div>
-  <p>선택하지 않으면 비용 정보만 지워요. 함께 삭제해도 실제 예약은 취소되지 않아요.</p>
-  <div class="row modalActions"><button class="btn" id="costDeleteCancel">취소</button><button class="btn" id="costDeleteConfirm">삭제</button></div>
+  <p id="costDeleteNote">선택하지 않으면 비용 정보만 지워요. 함께 삭제해도 실제 예약은 취소되지 않아요.</p>
+  <div class="row modalActions"><button class="btn" id="costDeleteCancel">취소</button><button class="btn danger" id="costDeleteConfirm">삭제</button></div>
 </dialog>
 <dialog id="placeCostDialog" class="costDialog" aria-labelledby="placeCostTitle">
   <h2 id="placeCostTitle">일정 장소 비용 입력</h2>
+  <div id="costPlaceEmpty" class="costEmpty" hidden><p>먼저 일정에 장소를 담아 주세요 — 담은 장소마다 비용을 적을 수 있어요.</p><button type="button" class="btn primary" id="costPlaceAddSpot">장소 담기</button></div>
   <label for="costPlace">일정에 저장된 장소</label><select id="costPlace"></select>
-  <p class="hint">장소를 고르면 저장된 비용을 불러와요. 수정한 내용은 일정에도 반영돼요.</p>
+  <p class="hint">장소를 고르면 저장된 비용을 불러와요. 장소 비용은 가서 쓰는 돈이라 예약 결제 금액이 아니라 일자 카드의 '하루 비용'과 현지 결제 금액에 들어가요.</p>
   <label for="costAmount">금액</label><input id="costAmount" inputmode="decimal" placeholder="미정 (무료는 0)">
-  <label for="costCurrency">통화</label><select id="costCurrency"><option>KRW</option><option>USD</option><option>EUR</option><option>JPY</option><option>CNY</option></select>
+  <label for="costCurrency">통화</label><select id="costCurrency"><option value="KRW">₩ 원</option><option value="USD">$ 달러</option><option value="EUR">€ 유로</option><option value="JPY">¥ 엔</option><option value="CNY">元 위안</option></select>
   <label for="costKind">분류</label><select id="costKind"><option value="AUTO">장소 분류에 따름</option><option value="FLIGHT">항공</option><option value="STAY">숙박</option><option value="RENT">렌트</option><option value="TRANSIT">대중교통</option><option value="FOOD">식비</option><option value="SHOPPING">쇼핑</option><option value="TICKET">입장권·관람권</option><option value="TRANSPORT">택시·기타 교통</option><option value="OTHER">기타</option></select>
   <label for="costBasis">금액 기준</label><select id="costBasis"><option value="ENTERED">입력 금액 그대로</option><option value="TOTAL">전체 금액</option><option value="PER_PERSON">1인 금액</option></select>
   <label for="costPeople">적용 인원</label><input type="number" id="costPeople" min="1" max="100">
+  <p class="hint" id="costPerPersonNote" aria-live="polite"></p>
   <div class="chkrow"><input type="checkbox" id="costPartial"><label for="costPartial">일부 금액만 확인했어요</label></div>
   <label for="costPaidOn">결제일</label><input type="date" id="costPaidOn">
-  <label for="costPayState">결제 상태 (결제일이 있으면 날짜로 결정)</label><select id="costPayState"><option value="NONE">고르지 않음</option><option value="RESERVED">예약</option><option value="PAID">결제</option></select>
+  <label for="costPayState">결제 상태 (결제일이 있으면 날짜로 결정)</label><select id="costPayState"></select>
   <p class="hint" id="costPhotoNote"></p>
   <div class="row modalActions"><button class="btn" id="costPlaceDelete">비용 삭제</button><button class="btn" id="costPlaceCancel">취소</button><button class="btn primary" id="costPlaceSave">저장</button></div>
 </dialog>
@@ -416,7 +418,7 @@
   <h2>예약 결제 금액</h2>
   <div class="hint">가기 전에 내는 돈 — 항공·숙박·렌트 예약과 보험·유심·미리 산 입장권을 한 목록으로 봐요. 결제일을 정해 두면 그 날부터 결제 완료로 쳐요. 숙박·렌터카 예약은 시세를 계속 확인해 좋은 조건이 생기면 알려드려요 — 재예약·취소는 직접 결정하세요.</div>
   <div id="bookingSummary"></div>
-  <div class="row" style="margin:8px 0 2px"><button class="btn" id="bookingAdd">＋ 결제 항목 추가</button><button class="btn" id="costPlaceOpen">일정 장소 비용 입력</button></div>
+  <div class="row" style="margin:8px 0 2px"><button class="btn" id="bookingAdd">＋ 결제 항목 추가</button><button class="btn" id="costPlaceOpen" title="장소 비용은 현지 결제 금액에 들어가요">장소 비용 입력 (현지 결제)</button></div>
   <div id="bookingListBody"></div>
   <div class="hint" id="pxSourceLine"></div>
   <div class="row">
@@ -432,7 +434,7 @@
   <div class="hint" id="bkTypeHint">항공·숙박·렌트는 예약으로 저장돼요 — 숙박·렌트는 기간·조건·가격 추적이 붙어요. 나머지는 가기 전에 낸 비용으로만 남아요.</div>
   <div id="bkSpotWrap"><label for="bkSpot">일정의 숙소와 연결 (선택)</label><select id="bkSpot"></select>
     <div class="hint">연결하면 일정 카드의 숙소 항목에 가격 상태가 표시돼요. 🏠 숙소로 등록한 장소만 목록에 나와요.</div></div>
-  <label for="bkTitle" id="bkTitleLabel">예약 이름 *</label><input type="text" id="bkTitle" placeholder="예: Cap Rocat">
+  <label for="bkTitle" id="bkTitleLabel">예약 이름 *</label><input type="text" id="bkTitle" placeholder="예: Cap Rocat" aria-describedby="bkTitleHint"><div class="hint" id="bkTitleHint"></div>
   <div id="bkProviderWrap"><label for="bkProvider" id="bkProviderLabel">예약처</label><input type="text" id="bkProvider" placeholder="예: Booking.com"></div>
   <label for="bkPrice" id="bkPriceLabel">예약 가격 *</label>
   <div class="fieldRow">
@@ -490,7 +492,9 @@
     <div class="hint">차급·변속기·보험·주행거리가 다르면 <b>확정 절약으로 계산하지 않아요</b> — 조건을 입력할수록 비교가 정확해져요.</div>
   </div>
   <div id="bkBookingExtra">
-  <div class="chkrow"><input type="checkbox" id="bkFreeCancel"><label for="bkFreeCancel" style="margin:0">무료 취소 가능</label></div>
+  <label for="bkConfirmation">예약번호 (선택)</label><input type="text" id="bkConfirmation" maxlength="80" autocomplete="off" placeholder="예: ABC123 — 현장에서 꺼내 보는 확인번호">
+  <label for="bkFreeCancel">무료 취소</label>
+  <select id="bkFreeCancel"><option value="">모름 · 적지 않음</option><option value="1">무료 취소 가능</option><option value="0">무료 취소 불가</option></select>
   <div id="bkFreeUntilWrap" style="display:none"><label for="bkFreeUntil">무료 취소 기한</label><input type="date" id="bkFreeUntil">
     <div class="hint">기한 안에는 취소 수수료 없이 갈아탈 수 있는 것으로 계산해요.</div></div>
   <label>취소 수수료 <span class="hint" style="margin:0">— 지금 취소하면 내는 금액. 절약액에서 빼요</span></label>

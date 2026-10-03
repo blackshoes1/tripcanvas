@@ -670,6 +670,12 @@ test('normalizeBooking / normalizeTrip.bookings — 예약(가격 추적) 유입
   // 구버전 호환: refundable 미지정 + 무료취소 기한 있음 → refundable=true 유도
   assert.equal(L.normalizeBooking({id:'bk8', freeCancelUntil:'2026-10-20'}).refundable, true);
   assert.equal('refundable' in L.normalizeBooking({id:'bk7'}), false);   // 아무 정보 없으면 '모름' 유지
+  // 예약번호 — iOS TripBooking.confirmation과 같은 키를 보존한다(웹 편집기가 이 키로 쓴다). 글자로만, 비면 뗀다
+  assert.equal(L.normalizeBooking({id:'bk6', confirmation:'  ABC123 '}).confirmation, 'ABC123');
+  assert.equal(L.normalizeBooking({id:'bk6', confirmation:4512}).confirmation, '4512');
+  assert.equal('confirmation' in L.normalizeBooking({id:'bk6', confirmation:'  '}), false);
+  assert.equal('confirmation' in L.normalizeBooking({id:'bk6', confirmation:{x:1}}), false);
+  assert.equal(L.normalizeTrip({days:[{spots:[]}], bookings:[{id:'bk5', confirmation:'Q-77'}]}).bookings[0].confirmation, 'Q-77');
   // 스팟 placeId: 형식 밖이면 제거
   const sp=L.normalizeTrip({days:[{spots:[{name:'A',placeId:'ChIJd8BlQ2BZwokRAFUEcm_qrcA'},{name:'B',placeId:'<bad>'}]}]});
   assert.equal(sp.days[0].spots[0].placeId,'ChIJd8BlQ2BZwokRAFUEcm_qrcA');
