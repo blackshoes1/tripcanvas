@@ -2502,16 +2502,24 @@ test('통합: 여행 당일 첫 장소에 닿기 전에는 "출발 전"이고, �
   w.close();
 });
 
-test('통합: 필터바 오늘 칩은 여행 기간이 아니면 눌리지 않는다(여행 중 화면과 같은 판정)', { skip: noJsdom }, () => {
+test('통합: 필터바 오늘 칩은 여행 기간이 아니면 흐리고, 누르면 왜인지 말한다(여행 중 화면과 같은 판정)', { skip: noJsdom }, () => {
+  // 2026-10-03 UX 검토: 비활성 '오늘'이 활성 칩과 똑같이 보이고 눌러도 반응이 없었다 — 이유는 마우스 툴팁에만 있었다
   const w = boot();
   withAdaptTrip(w, [{ spots: [] }, { spots: [] }], { today: '2026-08-27' });
   w.eval('render()');
   const chip = [...w.document.querySelectorAll('#filterbar .chip')].find((b) => b.textContent === '오늘');
-  assert.equal(chip.disabled, true);
+  assert.equal(chip.getAttribute('aria-disabled'), 'true');
+  assert.ok(chip.classList.contains('off'), '흐리게 보인다');
+  assert.equal(chip.getAttribute('title'), null, "이름은 '오늘' 그대로 — 툴팁이 덮지 않는다");
   assert.ok(!chip.classList.contains('active'), '전체 보기일 때 오늘 칩이 켜져 보이지 않는다');
+  const day = w.eval('activeDay');
+  chip.click();
+  assert.equal(w.eval('activeDay'), day, '보는 범위는 바뀌지 않는다');
+  assert.match(w.document.getElementById('toast').textContent, /^D-\d+ · \d+\/\d+ \(.\)에 시작해요$/);
   w.eval("todayISO=()=>'2026-09-02'; render()");
   const chip2 = [...w.document.querySelectorAll('#filterbar .chip')].find((b) => b.textContent === '오늘');
-  assert.equal(chip2.disabled, false);
+  assert.equal(chip2.getAttribute('aria-disabled'), null);
+  assert.ok(!chip2.classList.contains('off'));
   w.close();
 });
 
@@ -2810,7 +2818,7 @@ test('통합: 보기 권한은 색상 기준(여행 문서)을 바꾸지 못하�
   withTrip(w, `[{title:'',drive:'',note:'',spots:[]}]`);
   w.eval(`user={id:'u1'}; tripRoles={__it__:{role:'VIEWER',count:3,owner:false}}; render();`);
   assert.equal(w.document.getElementById('colorModeBtn'), null, '보기 권한에는 색상 기준 버튼이 없다');
-  assert.ok(w.document.getElementById('playBtn'), '보기 설정의 나머지(재생·테마)는 그대로다');
+  assert.ok(w.document.getElementById('playBtn'), '경로 재생(지도 위)은 보기 권한에도 있다');
   // 편집자일 때 그려 둔 버튼을, 보기 권한으로 바뀐 뒤 눌러도 바뀌지 않는다
   w.eval(`tripRoles.__it__.role='EDITOR'; render(); histStack.length=0;`);
   const btn = w.document.getElementById('colorModeBtn');
@@ -6597,4 +6605,246 @@ test('통합: ⌘Y는 다시 하기가 아니다 — 맥 브라우저의 방문 
     ux3Key(w, 'y', { ctrlKey: true });
     assert.equal(w.eval('trip().days[0].mode'), 'walk');
   } finally { w.close(); }
+// ── ux3:map ──
+test('통합: 자차 하루의 가까운 구간은 차 경로가 아니라 두 곳 사이를 걷는 시간으로 도착을 계산한다', {skip:noJsdom}, () => {
+  // 2026-10-03 UX 검토: 직선 365m를 일방통행을 도는 차 경로 1.4km로 '가까워 걸어서 18분'이라 해 마요르 광장 도착이 밀렸다
+  const w=boot();
+  try{
+    withTrip(w, JSON.stringify([{mode:'car',startAt:'09:00',spots:[
+      {name:'푸에르타 델 솔',lat:40.4169,lng:-3.7035,stayMin:0},
+      {name:'마요르 광장',lat:40.4155,lng:-3.7074}
+    ]}]));
+    w.eval(`const s=trip().days[0].spots; legCache[legKey(s[0],s[1],'car')]={sec:420,m:1400,path:'x',mode:'car'}; render();`);
+    const leg=w.document.querySelector('.spot[data-si="1"] .leg');
+    assert.match(leg.textContent, /↳0\.5km · 가까워 걸어서 [5-7]분/, '걷는 거리·시간은 두 곳 사이로 잰다');
+    const eta=w.eval('Math.round(dayContext(0).timeline[1].eta)');
+    assert.ok(eta>=9*60+5 && eta<=9*60+7, `도착 예상이 걸음으로 계산된다: ${eta}`);
+  }finally{ w.close(); }
+});
+
+/** 구글 지도를 흉내 낸다 — 맞춤(fitBounds)의 여백과 옮긴 중심을 기록한다. 투영은 경도=x·위도=-y(줌 0이면 1px=1도) */
+function fakeGoogleMap(w){
+  w.eval(`window.__fits=[]; window.__pans=[];
+    window.google={maps:{
+      LatLng:function(a,b){ this.lat=()=>a; this.lng=()=>b; },
+      LatLngBounds:function(){ const pts=[]; this.pts=pts; this.extend=p=>pts.push(p);
+        this.getCenter=()=>{ const la=pts.map(p=>p.lat), ln=pts.map(p=>p.lng);
+          return new google.maps.LatLng((Math.min(...la)+Math.max(...la))/2,(Math.min(...ln)+Math.max(...ln))/2); }; },
+      Point:function(x,y){ this.x=x; this.y=y; },
+      marker:{AdvancedMarkerElement:function(o){ this.map=o.map; this.addEventListener=()=>{}; }},
+      Polyline:function(){ this.setMap=()=>{}; },
+      event:{addListenerOnce:(m,ev,cb)=>cb(), addListener:()=>{}, trigger:()=>{}}
+    }};
+    let zoom=0;
+    map={ fitBounds:(b,p)=>{ __fits.push({n:b.pts.length,pad:p}); zoom=21; }, getZoom:()=>zoom, setZoom:z=>{ zoom=z; },
+      setCenter:c=>__pans.push({lat:c.lat(),lng:c.lng()}), panTo:c=>__pans.push({lat:c.lat(),lng:c.lng()}),
+      getProjection:()=>({ fromLatLngToPoint:ll=>new google.maps.Point(ll.lng(),-ll.lat()), fromPointToLatLng:p=>new google.maps.LatLng(-p.y,p.x) }) };
+    engine='google';`);
+}
+/** 375×812 휴대폰 — 지도는 필터바 아래(144)부터 화면 끝까지, 일정 시트는 그 위를 아래에서 덮는다 */
+function phoneLayout(w){
+  Object.defineProperty(w,'innerWidth',{configurable:true,value:375});
+  Object.defineProperty(w,'innerHeight',{configurable:true,value:812});
+  w.matchMedia=(q)=>({matches:/max-width/.test(q)});
+  w.document.getElementById('map').getBoundingClientRect=()=>({top:144,bottom:812,left:0,right:375,width:375,height:668});
+}
+
+test('통합: 모바일 지도 맞춤은 일정 시트가 덮은 만큼 아래를 비우고, 시트 높이가 바뀌면 다시 맞춘다', {skip:noJsdom}, async () => {
+  // 2026-10-03 UX 검토: 절반 시트가 지도의 55%를 덮는데 맞춤은 지도 전체 기준이라 'Day 2'·'전체'의 핀이 전부 시트 뒤였다
+  const w=boot();
+  try{
+    withTrip(w, JSON.stringify([
+      {spots:[{name:'솔',lat:40.4169,lng:-3.7035},{name:'마요르',lat:40.4155,lng:-3.7074}]},
+      {spots:[{name:'세비야',lat:37.3891,lng:-5.9845},{name:'론다',lat:36.7462,lng:-5.1612}]}
+    ]));
+    fakeGoogleMap(w); phoneLayout(w);
+    const sheet=w.document.getElementById('sidebar');
+    sheet.dataset.snap='half';
+    w.eval('fitDay(1)');
+    let pad=w.__fits.at(-1).pad;
+    assert.ok(pad.bottom>=812*.45, `절반 시트(45%)만큼 아래를 비운다: ${JSON.stringify(pad)}`);
+    assert.ok(pad.top<pad.bottom && pad.top>0, '위는 기본 여백만');
+    // 시트를 내리면(지도 크게 보기) 보이는 지도가 커졌으니 같은 보기를 다시 맞춘다
+    w.eval(`setSheetSnap('collapsed')`);
+    await new Promise(r=>setTimeout(r,320));
+    pad=w.__fits.at(-1).pad;
+    assert.equal(w.__fits.length,2,'시트 높이가 바뀌면 다시 맞춘다');
+    assert.ok(pad.bottom>=812*.15 && pad.bottom<812*.45, `접힌 시트만큼만: ${JSON.stringify(pad)}`);
+    // 사람이 지도를 만졌으면 그 보기를 지킨다 — 시트가 바뀌어도 앱이 다시 맞추지 않는다
+    w.document.getElementById('map').dispatchEvent(new w.Event('pointerdown'));
+    w.eval(`setSheetSnap('half')`);
+    await new Promise(r=>setTimeout(r,320));
+    assert.equal(w.__fits.length,2,'만진 뒤에는 다시 맞추지 않는다');
+    // 진입 맞춤은 칩('전체')과 같다 — 첫날만이 아니라 모든 날
+    w.eval('activeDay=0; fitEntry()');
+    assert.equal(w.__fits.at(-1).n,4,'진입하면 전체 일정에 맞춘다');
+    // 한 곳뿐이면 최대로 당기지 않는다(녹지만 보였다)
+    w.eval(`trip().days=[{spots:[{name:'협재',lat:33.394,lng:126.2397}]}]; fitAll()`);
+    assert.equal(w.eval('map.getZoom()'),14,'한 곳뿐이면 동네가 보이는 줌에서 멈춘다');
+    // 줌을 줄이면 지도 한가운데를 축으로 줄어 덮인 쪽으로 밀린다 — 보이는 곳 가운데에 다시 놓는다(아래가 덮였으니 중심은 그 점보다 남쪽)
+    assert.ok(w.__pans.at(-1).lat<33.394, '줌 상한 뒤에도 그 점이 시트 위에 남는다');
+  }finally{ w.close(); }
+});
+
+test('통합: 장소 이름(지도에서 보기)은 패널과 시트를 뺀 보이는 곳 가운데로 옮긴다', {skip:noJsdom}, () => {
+  // 2026-10-03 UX 검토: '푸에르타 델 솔 지도에서 보기'는 중심을 정확히 그곳에 두었지만 장소 살펴보기 패널이 핀을 덮었다
+  const w=boot();
+  try{
+    withTrip(w, JSON.stringify([{spots:[{name:'푸에르타 델 솔',lat:40.4169,lng:-3.7035},{name:'마요르',lat:40.4155,lng:-3.7074}]}]));
+    fakeGoogleMap(w); phoneLayout(w);
+    w.document.getElementById('sidebar').dataset.snap='half';
+    const pd=w.document.getElementById('placeDetails');
+    pd.getBoundingClientRect=()=>pd.dataset.mapFocus? {top:365,bottom:812,left:0,right:375,width:375,height:447} : {top:97,bottom:812,left:0,right:375,width:375,height:715};
+    w.eval('focusSpot(0,0)');
+    assert.equal(pd.open,true,'장소 정보는 그대로 연다');
+    assert.equal(pd.dataset.mapFocus,'1','좁은 화면에서는 지도가 남을 만큼만 올린다');
+    const c=w.__pans.at(-1);
+    assert.ok(c.lat<40.4169, `중심을 그 점보다 남쪽에 두어 핀이 패널 위에 보인다: ${c.lat}`);
+    assert.equal(c.lng,-3.7035,'옆으로는 옮기지 않는다');
+    w.eval('closePlaceDetails()'); pd.dispatchEvent(new w.Event('close'));   // jsdom의 close()는 이벤트를 내지 않는다 — 브라우저처럼
+    assert.equal(pd.dataset.mapFocus,undefined,'다른 길로 열면 원래 높이');
+  }finally{ w.close(); }
+});
+
+test('통합: 장소 ⋮ 메뉴는 시트 윗변까지 재고, 위아래 어디로도 잘리면 시트 밖에 띄운다', {skip:noJsdom}, () => {
+  // 2026-10-03 UX 검토: 절반 시트 가운데 행의 ⋮가 위로 열리며 '↑ 위로·↓ 아래로'가 시트 윗변에 잘렸다(화면 위끝과 비교했다)
+  const w=boot();
+  try{
+    withTrip(w, JSON.stringify([{spots:[{name:'A',lat:40.41,lng:-3.70},{name:'B',lat:40.42,lng:-3.70}]}]));
+    w.eval('render()');
+    Object.defineProperty(w,'innerWidth',{configurable:true,value:375});
+    Object.defineProperty(w,'innerHeight',{configurable:true,value:812});
+    const sb=w.document.getElementById('sidebar');
+    sb.getBoundingClientRect=()=>({top:447,bottom:812,left:0,right:375,height:365,width:375});
+    w.document.getElementById('sheetHandle').getBoundingClientRect=()=>({top:447,bottom:487,height:40,left:0,right:375,width:375});
+    const menu=w.document.querySelector('.spot[data-si="1"] .actionMenu'), panel=menu.querySelector('.actionMenuPanel');
+    const open=(menuTop)=>{
+      menu.getBoundingClientRect=()=>({top:menuTop,bottom:menuTop+44,left:319,right:363,height:44,width:44});
+      panel.getBoundingClientRect=()=>({top:menuTop+42,bottom:menuTop+42+276,left:243,right:363,height:276,width:120});
+      menu.open=true; menu.dispatchEvent(new w.Event('toggle'));
+    };
+    open(600);   // 아래로는 812를 넘고, 위로는 600-276=324라 시트 윗변(447+40) 위로 나간다
+    assert.equal(menu.classList.contains('up'),false,'시트 윗변 위로는 열지 않는다');
+    assert.ok(menu.classList.contains('float'),'시트 밖 화면에 띄운다');
+    assert.equal(panel.style.top,'324px','⋮ 바로 위에 띄운다');
+    assert.equal(panel.style.right,'12px');
+    menu.open=false; menu.dispatchEvent(new w.Event('toggle'));
+    assert.equal(menu.classList.contains('float'),false,'닫으면 원래대로');
+    assert.equal(panel.style.top,'');
+    open(780);   // 시트 위쪽에 자리가 넉넉하면(780-276=504 ≥ 487) 시트 안에서 위로 연다
+    assert.ok(menu.classList.contains('up'));
+    assert.equal(menu.classList.contains('float'),false);
+  }finally{ w.close(); }
+});
+
+test("통합: 헤더의 채운 버튼은 하나다 — '여행 중 안내'는 여행 기간·하루 전에만 주 버튼", {skip:noJsdom}, () => {
+  // 2026-10-03 UX 검토: 3주 전에도 '여행 중 안내'가 가장 진한 버튼이라 샘플 띠의 '내 여행 만들기'와 둘이었고 여행 이름이 잘렸다
+  const w=boot();
+  try{
+    const btn=w.document.getElementById('travelBtn'), make=w.document.getElementById('sampleNew');
+    const at=(iso)=>w.eval(`travelClock=()=>({todayISO:'${iso}',nowMin:600}); store={trips:[sampleTrip()],activeId:SAMPLE_TRIP_ID}; render();`);
+    at('2026-10-03');   // 샘플은 10/25 시작 — D-22
+    assert.equal(btn.classList.contains('primary'),false,'여행 전에는 조용한 버튼');
+    assert.ok(btn.classList.contains('quiet'),'좁은 화면에서는 아이콘만(여행 이름에 자리를 준다)');
+    assert.equal(btn.getAttribute('aria-label'),'여행 중 안내','글자를 숨겨도 이름은 남는다');
+    assert.ok(make.classList.contains('primary'),'그때 주 버튼은 내 여행 만들기 하나');
+    at('2026-10-24');   // D-1
+    assert.ok(btn.classList.contains('primary'),'하루 전부터는 여행 중 안내가 주 버튼');
+    at('2026-10-27');   // 여행 중
+    assert.ok(btn.classList.contains('primary'));
+    assert.equal(make.classList.contains('primary'),false,'둘이 겨루지 않게 샘플 띠 버튼이 물러난다');
+    at('2026-12-01');   // 지난 여행
+    assert.equal(btn.classList.contains('primary'),false);
+  }finally{ w.close(); }
+});
+
+test('통합: 같은 자리의 핀은 앞선 날이 위이고, 색이 되돌아오는 둘째 바퀴의 날은 속 빈 고리다(칩·범례·핀이 같다)', {skip:noJsdom}, () => {
+  // 2026-10-03 UX 검토: 첫날 도착 공항의 '1' 핀이 마지막 날(Day 14) 보라색으로 덮였고, Day 1과 11이 같은 색이라 구분할 수 없었다
+  const w=boot();
+  try{
+    const days=Array.from({length:12},(_,i)=>({spots:[{name:'P'+i,lat:40+i*0.1,lng:-3.7}]}));
+    days[0].spots.unshift({name:'공항',lat:40.49,lng:-3.56});
+    days[11].spots.push({name:'공항',lat:40.49,lng:-3.56});
+    withTrip(w, JSON.stringify(days));
+    fakeGoogleMap(w);
+    w.eval(`window.__pins=[]; google.maps.marker.AdvancedMarkerElement=function(o){ this.map=o.map; this.addEventListener=()=>{};
+      if(o.content&&o.content.classList&&o.content.classList.contains('num-icon')) __pins.push({pos:o.position, z:o.zIndex, ring:o.content.classList.contains('ring'), color:o.content.style.color}); };
+      _ovSig=null; render();`);
+    const airport=w.__pins.filter(p=>p.pos.lat===40.49);
+    assert.equal(airport.length,2,'공항 핀은 첫날·마지막 날 둘');
+    const [first,last]=airport;   // 그리는 순서는 날 순서다
+    assert.ok(first.z>last.z, `앞선 날이 위: ${first.z} > ${last.z}`);
+    assert.equal(first.ring,false,'첫 바퀴는 채운 핀');
+    assert.equal(last.ring,true,'Day 12는 둘째 바퀴 — 속 빈 고리');
+    assert.ok(last.color,'고리 핀의 번호·테두리는 그날 색');
+    const chipDot=(n)=>[...w.document.querySelectorAll('#filterbar .chip')].find(b=>b.textContent==='Day '+n).querySelector('.dot');
+    assert.equal(chipDot(1).classList.contains('ring'),false);
+    assert.ok(chipDot(11).classList.contains('ring'),'칩 점도 같은 규칙');
+    const legDot=w.document.querySelector('#legend .legDay[data-di="10"] .dot');
+    assert.ok(legDot.classList.contains('ring'),'범례 점도 같은 규칙');
+    assert.ok(w.document.querySelector('#legend .legFoot'),"'일자 간 이동'은 범례 바닥 줄로 따로 있다(굴러도 붙어 있다)");
+  }finally{ w.close(); }
+});
+
+test('통합: 지도 확대·축소 단추는 범례(오른쪽 아래)와 다른 자리에 둔다', {skip:noJsdom}, () => {
+  // 2026-10-03 UX 검토: 데스크톱에서 범례가 기본 자리(오른쪽 아래)의 '+'·'-'를 덮어 눌러도 줌이 그대로였다
+  const w=boot();
+  try{
+    fakeGoogleMap(w);
+    w.eval(`const fake=map; google.maps.ControlPosition={RIGHT_TOP:'RIGHT_TOP',RIGHT_BOTTOM:'RIGHT_BOTTOM',LEFT_BOTTOM:'LEFT_BOTTOM'};
+      google.maps.InfoWindow=function(){ this.close=()=>{}; this.open=()=>{}; this.setContent=()=>{}; }; fake.addListener=()=>{};
+      google.maps.Map=function(el,o){ window.__mapOpts=o; return fake; }; __gmapsReady();`);
+    const pos=w.eval('__mapOpts.zoomControlOptions && __mapOpts.zoomControlOptions.position');
+    assert.ok(pos, '자리를 정한다(기본은 오른쪽 아래)');
+    assert.notEqual(pos,'RIGHT_BOTTOM','범례 자리가 아니다');
+    assert.notEqual(pos,'LEFT_BOTTOM','Google 로고 자리도 아니다');
+  }finally{ w.close(); }
+});
+
+test("통합: 경로 재생은 지도 위 고정 버튼이고, 테마는 ☰에 있으며, 샘플로 들어오면 재생을 한 번 권한다", {skip:noJsdom}, () => {
+  // 2026-10-03 UX 검토: '경로 재생'·'테마 전환'이 칩 26개 뒤 '보기 설정' 안(375px에서 x=1179)에 있어 샘플의 볼거리를 지나쳤다
+  const w=boot();
+  try{
+    w.eval(`store={trips:[sampleTrip()],activeId:SAMPLE_TRIP_ID}; render();`);
+    const play=w.document.getElementById('playBtn');
+    assert.ok(play && !play.closest('#filterbar'),'재생은 필터바(칩 줄) 밖');
+    assert.ok(play.closest('#main'),'지도 위에 있다');
+    assert.equal(play.hidden,false,'따라갈 동선이 있으면 보인다');
+    assert.match(play.textContent,/경로 재생/);
+    assert.equal(w.document.querySelector('#filterbar #themeBtn'),null,'테마는 칩 줄에 없다');
+    const theme=w.document.querySelector('#hdrMenu #themeBtn');
+    assert.ok(theme,'테마는 ☰ 설정에');
+    const dark=w.document.body.classList.contains('theme-dark');
+    theme.click();
+    assert.equal(w.document.body.classList.contains('theme-dark'),!dark,'☰에서 눌러도 바뀐다');
+    // 샘플 먼저 둘러보기 → 경로 재생을 권하는 한 마디(누르면 재생)
+    w.eval(`window.__played=0; playTrip=()=>{ __played++; };`);
+    w.document.getElementById('onboardSample').click();
+    const toast=w.document.getElementById('toast');
+    assert.match(toast.textContent,/경로 재생/);
+    toast.querySelector('.toastAct').click();
+    assert.equal(w.__played,1,'권한 자리에서 바로 재생');
+    // 위치 있는 장소가 하나뿐이면 재생할 동선이 없다 — 버튼을 세우지 않는다
+    withTrip(w, JSON.stringify([{spots:[{name:'한 곳',lat:40.4,lng:-3.7},{name:'위치 없음'}]}]));
+    w.eval('render()');
+    assert.equal(play.hidden,true);
+  }finally{ w.close(); }
+});
+
+test('통합: 데스크톱에는 일정 시트가 없으니 시트 단계가 바뀌어도 사람이 휠로 맞춘 지도를 되돌리지 않는다', {skip:noJsdom}, async () => {
+  // 검토(2026-10-03): 데스크톱도 지도를 누르면 snap이 'collapsed'가 되고 일자 카드를 누르면 'half'로 돌아온다.
+  // 휠 확대는 pointerdown을 내지 않아 앱의 마지막 보기가 남아 있었고, 그때 다시 맞춰 사람이 본 곳을 빼앗았다
+  const w=boot();
+  try{
+    withTrip(w, JSON.stringify([{spots:[{name:'솔',lat:40.4169,lng:-3.7035},{name:'마요르',lat:40.4155,lng:-3.7074}]}]));
+    fakeGoogleMap(w);
+    w.matchMedia=()=>({matches:false});
+    w.document.getElementById('sidebar').dataset.snap='collapsed';
+    w.eval('fitDay(0)');
+    const fits=w.__fits.length, pans=w.__pans.length;
+    w.eval(`setSheetSnap('half')`);
+    await new Promise(r=>setTimeout(r,320));
+    assert.equal(w.__fits.length,fits,'데스크톱에서는 다시 맞추지 않는다');
+    assert.equal(w.__pans.length,pans);
+  }finally{ w.close(); }
 });

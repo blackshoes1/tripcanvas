@@ -478,6 +478,9 @@ const KAKAO_KEY='088123c29d265c5f9cc9ec8d356f54c8';          // 국내 지도·�
 let map=null, iw=null;        // Google 지도 / 공용 InfoWindow
 let kmap=null, kpopupOv=null; // 카카오 지도 / 커스텀 팝업 오버레이
 let engine='google';          // 현재 표시 중인 엔진
+// 마지막으로 앱이 맞춘 보기({pts,pad,maxZoom} 또는 한 점 {lat,lng}) — 모바일 시트 높이가 바뀌면 새 여백으로 다시 맞춘다.
+// 사람이 지도를 만지면 버린다(그때부터는 그 사람의 보기다). 시트 높이 전환 뒤에 다시 맞추는 타이머가 refitT다.
+let lastMapView=null, refitT=null;
 // ⚠️ activeDay는 보고 있는 일자 칩이다 — **1부터 센다(0=전체)**. 일자 인덱스(di)로 쓸 때는 `activeDay? activeDay-1 : 0`.
 let activeDay = 0, markers = [], lines = [], ghostStays = [], pickMode = false, sortables = [];
 
@@ -938,7 +941,10 @@ function fillSpotFromCoords(lat,lng,forceCity,placeId,known){
 window.__gmapsReady=function(){
   map=new google.maps.Map(document.getElementById('map'),{
     center:{lat:40,lng:-3.7}, zoom:6, mapId:'DEMO_MAP_ID',
-    disableDefaultUI:true, zoomControl:true, clickableIcons:true, gestureHandling:'greedy'
+    disableDefaultUI:true, zoomControl:true, clickableIcons:true, gestureHandling:'greedy',
+    // 확대·축소는 오른쪽 위 — 기본 자리(오른쪽 아래)는 데스크톱 범례(#legend)가 덮어 눌러도 줌이 그대로였다(2026-10-03 UX 검토).
+    // 왼쪽 아래는 Google 로고 자리라 쓰지 않는다
+    zoomControlOptions:{position:google.maps.ControlPosition.RIGHT_TOP}
   });
   iw=new google.maps.InfoWindow();
   map.addListener('click',e=>{
@@ -1010,8 +1016,9 @@ function closeKPopup(){ if(kpopupOv){ kpopupOv.setMap(null); kpopupOv=null; } }
 const Engines={
   google:{
     ready(){ return !!map; },
-    marker(lat,lng,el,onClick){
-      const m=new google.maps.marker.AdvancedMarkerElement({map, position:{lat,lng}, content:el});
+    // z: 같은 자리에 겹칠 때 위에 올 순서(클수록 위) — 없으면 엔진 기본
+    marker(lat,lng,el,onClick,z){
+      const m=new google.maps.marker.AdvancedMarkerElement({map, position:{lat,lng}, content:el, ...(z!=null?{zIndex:z}:{})});
       if(onClick) m.addEventListener('gmp-click',onClick);
       return { _m:m, remove(){ m.map=null; } };
     },
@@ -1026,12 +1033,20 @@ const Engines={
     moveMarker(lat,lng,el){ const m=new google.maps.marker.AdvancedMarkerElement({map, position:{lat,lng}, content:el, zIndex:9999}); return { move(la,ln){ m.position={lat:la,lng:ln}; }, remove(){ m.map=null; } }; },
     openPopup(html,lat,lng,anchor){ iw.setContent(`<div class="popupC">${html}</div>`); iw.open({map, anchor:anchor&&anchor._m}); },
     closePopup(){ if(iw) iw.close(); },
+    // padPx는 숫자(네 변 같게) 또는 {top,right,bottom,left} — 덮인 쪽(모바일 시트·장소 정보)을 더 비운다(mapFitPadding)
     fit(pts,padPx,maxZoom){
       const b=new google.maps.LatLngBounds(); pts.forEach(p=>b.extend({lat:+p[0],lng:+p[1]}));
-      map.fitBounds(b, padPx==null?48:padPx);
-      if(maxZoom) google.maps.event.addListenerOnce(map,'idle',()=>{ if(map.getZoom()>maxZoom) map.setZoom(maxZoom); });
+      const P=padBox(padPx);
+      map.fitBounds(b, P);
+      // 줌 상한으로 물러날 때는 지도 한가운데를 축으로 줄어 핀이 덮인 쪽으로 밀린다 — 보이는 곳 가운데로 다시 놓는다
+      if(maxZoom) google.maps.event.addListenerOnce(map,'idle',()=>{ if(map.getZoom()>maxZoom){ map.setZoom(maxZoom); map.setCenter(gShift(b.getCenter(),P)); } });
     },
-    panTo(lat,lng,minZoom){ map.panTo({lat,lng}); if(minZoom&&map.getZoom()<minZoom) map.setZoom(minZoom); },
+    // off: 보이는 곳 가운데로 옮길 만큼의 여백(padBox 모양) — 없으면 지도 한가운데
+    panTo(lat,lng,minZoom,off){
+      if(minZoom&&map.getZoom()<minZoom) map.setZoom(minZoom);   // 줌을 먼저 정해야 옮길 거리(px)가 맞는다
+      const ll=new google.maps.LatLng(lat,lng);
+      map.panTo(off? gShift(ll,off) : ll);
+    },
     center(lat,lng,zoom){ if(zoom!=null) map.setZoom(zoom); map.setCenter({lat,lng}); },   // 즉시 이동(추적 카메라용)
     relayout(){ google.maps.event.trigger(map,'resize'); },
     waitTiles(timeout){ return new Promise(res=>{ let done=false; const fin=()=>{ if(done) return; done=true; res(); };
@@ -1039,8 +1054,8 @@ const Engines={
   },
   kakao:{
     ready(){ return !!kmap; },
-    marker(lat,lng,el,onClick){
-      const ov=new kakao.maps.CustomOverlay({position:new kakao.maps.LatLng(lat,lng), content:el, xAnchor:.5, yAnchor:.5, clickable:true});
+    marker(lat,lng,el,onClick,z){
+      const ov=new kakao.maps.CustomOverlay({position:new kakao.maps.LatLng(lat,lng), content:el, xAnchor:.5, yAnchor:.5, clickable:true, ...(z!=null?{zIndex:z}:{})});
       ov.setMap(kmap);
       if(onClick){ el.style.cursor='pointer'; el.onclick=onClick; }
       return { remove(){ ov.setMap(null); } };
@@ -1056,10 +1071,15 @@ const Engines={
     closePopup(){ closeKPopup(); },
     fit(pts,padPx,maxZoom){
       const b=new kakao.maps.LatLngBounds(); pts.forEach(p=>b.extend(new kakao.maps.LatLng(+p[0],+p[1])));
-      kmap.relayout(); kmap.setBounds(b, padPx==null?48:padPx);
-      if(maxZoom){ const minLv=Math.max(1,19-maxZoom); if(kmap.getLevel()<minLv) kmap.setLevel(minLv); }
+      const P=padBox(padPx);
+      kmap.relayout(); kmap.setBounds(b, P.top, P.right, P.bottom, P.left);
+      if(maxZoom){ const minLv=Math.max(1,19-maxZoom); if(kmap.getLevel()<minLv){ kmap.setLevel(minLv); const c=kShift(ptsCenter(pts),P); if(c) kmap.setCenter(c); } }
     },
-    panTo(lat,lng,minZoom){ kmap.panTo(new kakao.maps.LatLng(lat,lng)); if(minZoom){ const lv=Math.max(1,19-minZoom); if(kmap.getLevel()>lv) kmap.setLevel(lv); } },
+    panTo(lat,lng,minZoom,off){
+      if(minZoom){ const lv=Math.max(1,19-minZoom); if(kmap.getLevel()>lv) kmap.setLevel(lv); }   // 레벨을 먼저 — 옮길 거리(px)가 레벨에 달렸다
+      const ll=new kakao.maps.LatLng(lat,lng);
+      kmap.panTo((off&&kShift({lat,lng},off))||ll);
+    },
     center(lat,lng,zoom){ if(zoom!=null) kmap.setLevel(Math.round(Math.max(1,19-zoom))); kmap.setCenter(new kakao.maps.LatLng(lat,lng)); },   // 즉시 이동(추적 카메라용)
     relayout(){ kmap.relayout(); },
     waitTiles(timeout){ return new Promise(res=>{ let done=false; const fin=()=>{ if(done) return; done=true; try{kakao.maps.event.removeListener(kmap,'tilesloaded',fin);}catch(e){} res(); };
@@ -1067,6 +1087,29 @@ const Engines={
   }
 };
 function ME(){ return Engines[engine]; }   // 현재 활성 엔진
+/** 여백을 네 변으로 — 숫자면 네 변 같게. @param {number|{top:number,right:number,bottom:number,left:number}|null|undefined} pad */
+function padBox(pad){
+  if(pad&&typeof pad==='object') return {top:+pad.top||0,right:+pad.right||0,bottom:+pad.bottom||0,left:+pad.left||0};
+  const p=pad==null?48:+pad; return {top:p,right:p,bottom:p,left:p};
+}
+/** [[lat,lng],…]를 담는 사각형의 가운데 @param {Array<[number,number]>} pts */
+function ptsCenter(pts){
+  const la=pts.map(p=>+p[0]), ln=pts.map(p=>+p[1]);
+  return {lat:(Math.min(...la)+Math.max(...la))/2, lng:(Math.min(...ln)+Math.max(...ln))/2};
+}
+// 그 점이 '보이는 곳'(여백 P를 뺀 안쪽) 가운데에 오게 하는 지도 중심. 보이는 곳 가운데는 지도 가운데에서
+// ((left-right)/2, (top-bottom)/2)px 떨어져 있으므로, 중심을 그 점에서 반대로 그만큼 옮긴다. 투영이 없으면 null.
+function gShift(ll,P){
+  const proj=map&&map.getProjection&&map.getProjection(); if(!proj) return ll;
+  const s=2**map.getZoom(), p=proj.fromLatLngToPoint(ll);
+  return proj.fromPointToLatLng(new google.maps.Point(p.x+(P.right-P.left)/2/s, p.y+(P.bottom-P.top)/2/s));
+}
+function kShift(pt,P){
+  const proj=kmap&&kmap.getProjection&&kmap.getProjection();
+  if(!proj||!proj.containerPointFromCoords||!proj.coordsFromContainerPoint) return null;
+  const p=proj.containerPointFromCoords(new kakao.maps.LatLng(pt.lat,pt.lng));
+  return proj.coordsFromContainerPoint(new kakao.maps.Point(p.x+(P.right-P.left)/2, p.y+(P.bottom-P.top)/2));
+}
 
 function cityColors(){
   const m = {}; let i = 0;
@@ -1074,11 +1117,11 @@ function cityColors(){
   return m;
 }
 // 커스텀 핀 DOM (AdvancedMarker content) — 기존 .num-icon 스타일 재사용
-function mkPin(color,label,opt,cat){
+function mkPin(color,label,opt,cat,ring){
   const size = opt?22:27;
   const el=document.createElement('div');
-  el.className='num-icon';
-  el.style.cssText=`width:${size}px;height:${size}px;background:${color};${opt?'opacity:.75;':''}`;
+  el.className='num-icon'+(ring?' ring':'');
+  el.style.cssText=`width:${size}px;height:${size}px;background:${color};${ring?`color:${color};`:''}${opt?'opacity:.75;':''}`;
   el.textContent=label??'';
   // 카테고리는 배지로 붙인다 — 번호(동선 순서)를 대체하지 않게
   if(cat){ const b=document.createElement('span'); b.className='pinCat'; b.textContent=cat.icon; el.appendChild(b); }
@@ -1132,6 +1175,11 @@ function hasLoc(s){ return s && s.lat!=null && s.lng!=null && isFinite(+s.lat) &
 // 색상 기준: 'city'(도시별) | 'day'(일자별). trip에 저장, 기본 city
 function colorByMode(){ return (trip().colorBy==='city') ? 'city' : 'day'; }   // 기본 일자별 (경로 색 가독성)
 function dayColor(di){ return PALETTE[di%PALETTE.length]; }
+// 색은 10일마다 되돌아온다(Day 1과 11) — 두 번째 바퀴의 날은 속 빈 고리로 그려 색 하나에만 기대지 않는다(2026-10-03 UX 검토).
+// 칩·범례의 점과 지도 핀이 같은 규칙이다. 세 번째 바퀴(21일~)는 다시 채운 점이고 번호('Day N')가 함께 말한다
+function dayRing(di){ return Math.floor(di/PALETTE.length)%2===1; }
+/** 칩·범례의 일자 점 — 고대비 모드에서도 지워지지 않는다(style.css forced-colors) @param {number} di */
+function dayDot(di, style){ return `<span class="dot${dayRing(di)?' ring':''}" style="background:${dayColor(di)};--dc:${dayColor(di)};${style||''}"></span>`; }
 function spotColor(s,di,cityMap){ return colorByMode()==='day' ? dayColor(di) : ((cityMap||cityColors())[s.city]||'#888'); }
 // 직선거리(하버사인, km) — 실제 도로거리는 아니지만 동선 감각용
 function dayDistance(day, back){
@@ -1190,19 +1238,20 @@ function hoursWarnText(hours, wd, eta, di, si){
   return `${at}에 닫아요 — 도착 예상 ${hm(eta)}`;
 }
 function fmtDur(sec){ const m=Math.round(sec/60); return m<60? `${m}분` : `${Math.floor(m/60)}시간${m%60? ' '+(m%60)+'분':''}`; }
-function legLabel(c){
-  const km=(c.m/1000).toFixed(1),mode=c.mode||'car';
+// a·b는 그 구간의 두 끝 — 걸어서 계산할 때 걷는 거리를 차 경로가 아니라 두 곳 사이로 잰다(lib `walkInsteadOfCar`)
+function legLabel(c,a,b){
   // 자차여도 2km 미만은 걸어서 계산한다(legMinutes와 같은 규칙) — 아이콘만 바꾸면 '추천'인지 '적용'인지 모른다
-  if(mode==='car'&&c.m<2000){const wm=Math.max(1,Math.round(c.m/75));return `↳${km}km · 가까워 걸어서 ${wm}분`;}
-  return `↳${km}km · ${fmtDur(c.sec)}`;
+  const w=walkInsteadOfCar(c.mode||'car',c,a,b);
+  if(w) return `↳${(w.m/1000).toFixed(1)}km · 가까워 걸어서 ${Math.max(1,Math.round(w.min))}분`;
+  return `↳${(c.m/1000).toFixed(1)}km · ${fmtDur(c.sec)}`;
 }
 // 주소창·상태바 색(theme-color)도 지금 테마의 바탕을 따른다 — 예전 남색(#16213e)이 남아 있었다
 function syncThemeColor(dark){ const m=document.querySelector('meta[name="theme-color"]'); if(m) m.setAttribute('content',dark?'#16130f':'#f4f1ea'); }
 function applyTheme(){ let theme='light'; try{ theme=localStorage.getItem(THEME_KEY)||'light'; }catch(_){} document.body.classList.toggle('theme-dark',theme==='dark'); syncThemeColor(theme==='dark'); }
 function toggleTheme(){ const dark=!document.body.classList.contains('theme-dark'); document.body.classList.toggle('theme-dark',dark); syncThemeColor(dark); try{localStorage.setItem(THEME_KEY,dark?'dark':'light');}catch(_){} }
 applyTheme();
-function legTitle(c){
-  if((c.mode||'car')==='car'&&c.m<2000) return '자차 하루여도 2km 미만은 걸어서 계산해요 — 차로 가려면 구간 수단을 택시로 바꾸세요';
+function legTitle(c,a,b){
+  if(walkInsteadOfCar(c.mode||'car',c,a,b)) return '자차 하루여도 2km 미만은 걸어서 계산해요(걷는 거리는 두 곳 사이로 어림해요) — 차로 가려면 구간 수단을 택시로 바꾸세요';
   let t=(c.est?((c.mode==='flight'||c.mode==='train')?'직선거리 기반 추정':'자동차 경로 거리 기반 추정'):'실제 도로 기준');
   if(c.snapped)t+=' · 인근 지점에서 출발/도착 (원 지점이 도로·정류장에서 멀어 보정 — 공항 부지 중심 좌표 등)';
   if((c.mode==='car'||c.mode==='taxi')&&c.taxi)t+=` · 택시 약 ${c.taxi.toLocaleString()}원`;
@@ -1258,7 +1307,11 @@ function syncSheetTop(){
 function setSheetSnap(snap){
   const sb=document.getElementById('sidebar'); if(!sb) return;
   if(snap==='expanded') syncSheetTop();   // 헤더 아래 띠(샘플·읽기 전용 안내)가 늘거나 줄었을 수 있다
+  const changed=sb.dataset.snap!==snap||!!sb.style.height;
   sb.style.height=''; sb.dataset.snap=snap; syncSheetHandle();
+  // 보이는 지도가 늘거나 줄었다 — 앱이 맞춘 보기를 그 높이로 다시(사람이 만진 보기는 두고).
+  // 시트는 모바일에만 있다 — 데스크톱은 snap 값만 바뀌고 지도는 그대로라, 다시 맞추면 휠로 옮긴 보기를 빼앗는다(휠은 pointerdown이 없다)
+  if(changed && mediaMatches('(max-width: 760px)')) refitAfterSheet();
 }
 // 손잡이 막대만으로는 누르면 무엇이 되는지 모른다(2026-10-02 UX 검토) — 다음 단계를 말로 적는다. 순서는 click의 순환과 같다.
 function syncSheetHandle(){
@@ -1305,7 +1358,8 @@ window.addEventListener('resize',syncSheetTop);
     if(onHandle){ if(!dragged) setSheetSnap(sb.dataset.snap==='collapsed'?'half':sb.dataset.snap==='half'?'expanded':'collapsed'); }
     else if(sb.dataset.snap==='collapsed'&&e.target.closest('.dayCard')) setSheetSnap('half');
   });
-  ['map','kmap'].forEach(id=>document.getElementById(id).addEventListener('pointerdown',()=>setSheetSnap('collapsed'),true));
+  // 지도를 만지면 그때부터는 그 사람의 보기다 — 시트가 접혀도 앱이 맞춘 보기로 되돌리지 않는다
+  ['map','kmap'].forEach(id=>document.getElementById(id).addEventListener('pointerdown',()=>{ lastMapView=null; setSheetSnap('collapsed'); },true));
 })();
 const fetchLeg=routingClient.fetchLeg;   // 기존 전역 호출부 호환 shim — UI는 transport 세부사항을 모름
 function decodePts(enc){ return enc?decodePolyline(enc):null; }
@@ -1357,8 +1411,8 @@ async function pumpLegs(){
       legCache[base]=r;                                  // 지도·재생은 가장 최근 실제 경로를 사용
       saveLegCache();
       document.querySelectorAll(`[data-leg="${key}"]`).forEach(el=>{
-        el.textContent=legLabel(r);
-        el.title=legTitle(r);
+        el.textContent=legLabel(r,a,b);
+        el.title=legTitle(r,a,b);
       });
       clearTimeout(legRefreshT);
       legRefreshT=setTimeout(()=>bgRender(render),450);   // 하루 합계 + 지도 경로선 갱신
@@ -1376,7 +1430,7 @@ async function pumpLegs(){
 function legMinutes(a,b,mode,when,timeZone){
   mode=MODE_ICON[mode]?mode:'car';
   const c=legCache[legRequestKey(a,b,mode,when,timeZone)];
-  if(c&&c.sec) return (mode==='car'&&c.m<2000)? c.m/75 : c.sec/60;
+  if(c&&c.sec){ const w=walkInsteadOfCar(mode,c,a,b); return w? w.min : c.sec/60; }
   return haversine(a,b)/MODE_SPEED[mode]*60;
 }
 // 일자 타임라인: 시작시각(startAt, 기본 09:00)부터 체류(stayMin, **안 정했으면 0분**)+이동 누적.
@@ -1525,8 +1579,9 @@ function catPrefix(s){ const c=spotCatOf(s); return c? c.icon+' ' : ''; }
 function addPin(s,di,si,c){
   const cat=spotCatOf(s);
   const label=si+1;
-  const pin=mkPin(c,label,s.opt,cat); pin.title=cat?`${cat.icon} ${cat.name} · ${s.name}`:s.name;
-  const h=ME().marker(+s.lat,+s.lng,pin,()=>open());
+  const pin=mkPin(c,label,s.opt,cat,colorByMode()==='day'&&dayRing(di)); pin.title=cat?`${cat.icon} ${cat.name} · ${s.name}`:s.name;
+  // 같은 자리(첫날 도착·마지막 날 출국 공항)에서는 앞선 날이 위다 — 나중 날이 덮어 첫 화면 공항이 Day 14 색이었다(2026-10-03)
+  const h=ME().marker(+s.lat,+s.lng,pin,()=>open(),trip().days.length-di);
   const open=()=>{ selectSpotCard(di,si); openSavedPlace(di,si); };
   markers.push({spot:s, open, h});
 }
@@ -1605,7 +1660,8 @@ function render(){
         if(activeDay && cch.sec){
           const mid = path? path[Math.floor(path.length/2)]
                           : {lat:(+A.lat + +B.lat)/2, lng:(+A.lng + +B.lng)/2};
-          addLegChip(mid, (lm==='car'&&cch.m<2000)? `🚶${Math.max(1,Math.round(cch.m/75))}분` : `${MODE_ICON[lm]}${fmtDur(cch.sec)}`);
+          const walk=walkInsteadOfCar(lm,cch,A,B);
+          addLegChip(mid, walk? `🚶${Math.max(1,Math.round(walk.min))}분` : `${MODE_ICON[lm]}${fmtDur(cch.sec)}`);
         }
       }
       // 숙소 복귀 — 자동으로 이어 붙인 구간이라 점선으로 구분한다
@@ -1633,7 +1689,7 @@ function render(){
       });
     }
   }
-  renderSidebar(); renderFilter(); renderLegend(); renderMenuBadges();
+  renderSidebar(); renderFilter(); renderLegend(); renderMenuBadges(); syncPlayBtn(t);
   document.getElementById('tripSel').innerHTML = viewMode
     ? `<option selected>${esc(viewMode.name)}</option>`
     : sortTripsByCountdown(store.trips,todayISO()).map(x=>`<option value="${escAttr(x.id)}" ${x.id===store.activeId?'selected':''}>${esc(x.name)}</option>`).join('');
@@ -1641,23 +1697,104 @@ function render(){
   if(picker) picker.textContent=(viewMode?'':(isSampleTrip(t)?'샘플 · ':''))+(t.name||'여행 선택');
   // 샘플 여행은 모든 기기에 똑같이 심어진 데모라 계정에도 안 올라간다 — 그 사실과 빠져나갈 길을 늘 보인다
   const sampleBar=document.getElementById('sampleBar'); if(sampleBar) sampleBar.hidden=!!viewMode||!isSampleTrip(t);
+  syncHeaderEmphasis(t);
   updateCollabUI();
   syncSheetTop();   // 헤더 아래 띠(샘플·보기 권한 안내)와 필터바 높이가 정해진 뒤에 잰다
 }
+/**
+ * 헤더에서 채운 버튼은 하나다 — '여행 중 안내'는 여행 기간이거나 하루 전일 때만 주 버튼이고, 그 밖에는 조용히(좁은 화면은
+ * 아이콘만) 둬 여행 이름이 먼저 읽히게 한다(2026-10-03 UX 검토: 3주 전에도 가장 진한 버튼이라 샘플 띠의 '내 여행 만들기'와
+ * 주 버튼이 둘이었고, 375px에서 여행 이름이 '샘플 · 🇪🇸 스페인 …'으로 잘렸다). 여행 중이면 샘플 띠 버튼이 물러난다.
+ * @param {any} t
+ */
+function syncHeaderEmphasis(t){
+  const btn=document.getElementById('travelBtn'); if(!btn||!t) return;
+  const p=tripPeriodOf(t.start, t.days.length, travelClock().todayISO);
+  const near=p.phase==='DURING' || (p.phase==='BEFORE'&&p.daysUntil<=1);
+  btn.classList.toggle('primary',near); btn.classList.toggle('quiet',!near);
+  const sampleNew=document.getElementById('sampleNew'); if(sampleNew) sampleNew.classList.toggle('primary',!near);
+}
+// ── 지도에서 실제로 보이는 곳 (2026-10-03 UX 검토) ──
+// 모바일에서는 일정 시트가 지도 아래를 덮고(절반이면 지도의 55%), 장소 정보 패널은 좁은 화면에서는 아래·넓은 화면에서는
+// 오른쪽을 덮는다. 맞춤·옮기기가 지도 전체를 기준으로 하면 핀이 그 밑에 숨었다 — '전체'를 누르면 마커 7개가 전부 시트
+// 뒤였고, '지도에서 보기'는 중심을 정확히 그곳에 두고도 패널이 핀을 덮었다. 덮인 만큼을 여백에 더한다.
+/** @param {string} q */
+function mediaMatches(q){ return typeof window.matchMedia==='function' && window.matchMedia(q).matches; }
+/** 모바일 시트가 **도착할** 높이(px) — 높이는 .22s 전환하므로 지금 재면 옛 높이다. CSS의 15/45/88dvh와 같은 단계. */
+function sheetHeightPx(sb){
+  if(sb.style.height) return parseFloat(sb.style.height)||0;   // 끄는 중
+  const vh=window.innerHeight, snap=sb.dataset.snap||'half';
+  if(snap==='collapsed') return vh*.15;
+  if(snap==='expanded') return Math.min(vh*.88, vh-(sheetTopPx()||vh*.12));
+  return vh*.45;
+}
+function mapEl(){ return document.getElementById(engine==='kakao'?'kmap':'map'); }
+/** 지도 각 변이 무엇에 얼마나(px) 덮였는가 — 모바일 일정 시트와 열린 장소 정보 패널 */
+function mapCoveredEdges(){
+  const out={top:0,right:0,bottom:0,left:0};
+  const el=mapEl(), m=el&&el.getBoundingClientRect();
+  if(!m||!m.width||!m.height) return out;
+  const covers=[];
+  const sb=document.getElementById('sidebar');
+  if(sb&&mediaMatches('(max-width: 760px)')&&!document.body.classList.contains('playing')){
+    const h=sheetHeightPx(sb); covers.push({top:window.innerHeight-h,bottom:window.innerHeight,left:0,right:window.innerWidth});
+  }
+  const pd=document.getElementById('placeDetails');
+  if(pd&&pd.open){ const r=pd.getBoundingClientRect(); if(r.width&&r.height) covers.push(r); }
+  for(const r of covers){
+    if(r.bottom<=m.top||r.top>=m.bottom||r.right<=m.left||r.left>=m.right) continue;
+    if(r.right-r.left>=m.width*.8) out.bottom=Math.max(out.bottom, m.bottom-Math.max(r.top,m.top));   // 아래에서 올라온 시트
+    else if(r.left>m.left+m.width/2) out.right=Math.max(out.right, m.right-Math.max(r.left,m.left));   // 오른쪽 패널
+    else out.left=Math.max(out.left, Math.min(r.right,m.right)-m.left);
+  }
+  return out;
+}
+/** 보이는 곳이 핀을 둘 만한가 — 시트를 끝까지 올리면 지도가 한 뼘도 안 남는다. 그때는 덮개를 빼고 맞추고,
+ *  시트를 내리면 다시 맞춘다(refitAfterSheet). */
+function mapCoverUsable(c){
+  if(!(c.top||c.right||c.bottom||c.left)) return false;
+  const m=mapEl().getBoundingClientRect();
+  return m.height-c.top-c.bottom>=120 && m.width-c.left-c.right>=140;
+}
+/** 맞춤 여백 — 기본 여백에 덮인 만큼을 더한다 @param {number|null|undefined} pad */
+function mapFitPadding(pad){
+  const p=pad==null?48:pad, c=mapCoveredEdges();
+  if(!mapCoverUsable(c)) return p;
+  const m=mapEl().getBoundingClientRect(), h=m.height-c.top-c.bottom, w=m.width-c.left-c.right;
+  const pv=Math.min(p,Math.round(h*.2)), ph=Math.min(p,Math.round(w*.15));   // 좁은 틈에서는 기본 여백도 줄인다 — 핀만 안 잘리게
+  return {top:c.top+pv,right:c.right+ph,bottom:c.bottom+pv,left:c.left+ph};
+}
+const SINGLE_PLACE_ZOOM=14;   // 한 곳뿐일 때 — 맞출 넓이가 없어 최대로 당겨졌다(첫 장소를 담으면 녹지만 보였다). 동네가 보이는 데서 멈춘다
 // pts([[lat,lng],…])에 맞춰 프레이밍. maxZoom(구글 기준)은 정착 후 보정
 function fitTo(pts,pad,maxZoom){
   if(!pts.length || !ME().ready()) return;
-  ME().fit(pts, pad, maxZoom);
+  const single=pts.every(p=>+p[0]===+pts[0][0]&&+p[1]===+pts[0][1]);
+  const zoom=single? Math.min(maxZoom||SINGLE_PLACE_ZOOM, SINGLE_PLACE_ZOOM) : maxZoom;
+  lastMapView={pts,pad,maxZoom:zoom};
+  ME().fit(pts, mapFitPadding(pad), zoom);
 }
-// 여행 진입 시 포커스: 위치 있는 첫 일자 지역 (없으면 전체)
-function fitEntry(){
-  const d=trip().days.find(d=>d.spots.some(hasLoc));
-  if(d){ fitTo(d.spots.filter(hasLoc).map(s=>[s.lat,s.lng]),64,15); }
-  else fitAll();
+/** 한 점을 **보이는 곳** 가운데로 옮긴다('지도에서 보기'·전날 숙소). @param {number} lat @param {number} lng @param {number=} minZoom */
+function panToVisible(lat,lng,minZoom){
+  if(!ME().ready()) return;
+  lastMapView={lat,lng};
+  const c=mapCoveredEdges();
+  ME().panTo(lat,lng,minZoom,mapCoverUsable(c)? c : undefined);
 }
+/** 시트 높이가 바뀌면 앱이 마지막으로 맞춘 보기를 새 여백으로 다시 맞춘다 — 전환(.22s)이 끝난 뒤에 */
+function refitAfterSheet(){
+  clearTimeout(refitT);
+  refitT=setTimeout(()=>{
+    const v=lastMapView; if(!v||!ME().ready()) return;
+    if(v.pts) ME().fit(v.pts, mapFitPadding(v.pad), v.maxZoom);
+    else { const c=mapCoveredEdges(); ME().panTo(v.lat,v.lng,0,mapCoverUsable(c)? c : undefined); }
+  },260);
+}
+// 여행 진입 시 포커스 — 칩이 '전체'이므로 지도도 전체다(2026-10-03 UX 검토: 칩은 '전체'인데 지도는 Day 1에만 맞춰
+// 다른 날 핀이 화면 밖이었다). 일자를 보고 있으면 그 일자.
+function fitEntry(){ fitCurrentView(); }
 function fitAll(){
   const pts=[]; trip().days.forEach(d=>d.spots.forEach(s=>{if(hasLoc(s))pts.push([s.lat,s.lng])}));
-  fitTo(pts,60);
+  fitTo(pts,60,15);
 }
 // ───────────────── 여행 재생 애니메이션 (재미) ─────────────────
 // 전체 동선을 하나의 좌표열로 펼친 뒤(구간별 실경로 우선, 없으면 직선) 이동수단 아이콘을 따라 이동시킴.
@@ -1743,7 +1880,19 @@ function animPath(){
   });
   return flat;
 }
-function updatePlayBtn(){ const b=document.getElementById('playBtn'); if(b) b.innerHTML=play?ic('stop')+' 정지':ic('play')+' 재생'; }
+// 경로 재생은 지도 위 고정 버튼 하나다(#playBtn) — 2026-10-03 전에는 칩 26개 뒤 '보기 설정' 안에 있어 샘플의 볼거리를
+// 모르고 지나갔다(UX 검토). 재생 중에도 같은 자리에서 멈춘다. 테마 전환은 ☰의 '파일·설정'으로 갔다.
+function updatePlayBtn(){ const b=document.getElementById('playBtn'); if(b) b.innerHTML=play?ic('stop')+' 재생 정지':ic('play')+' 경로 재생'; }
+(function(){
+  const b=document.getElementById('playBtn'); if(b){ b.onclick=playTrip; updatePlayBtn(); }
+  const t=document.getElementById('themeBtn'); if(t) t.onclick=toggleTheme;
+})();
+/** 따라갈 동선이 있을 때만(위치 있는 장소 둘 이상) 지도 위 재생 버튼을 보인다 @param {any} t */
+function syncPlayBtn(t){
+  const b=document.getElementById('playBtn'); if(!b) return;
+  let n=0; t.days.forEach((/**@type{any}*/d)=>d.spots.forEach((/**@type{any}*/s)=>{ if(hasLoc(s)) n++; }));
+  b.hidden=n<2 && !play;
+}
 function updatePlayPauseBtn(){ const b=document.getElementById('playPause'); if(b) b.textContent=(play&&play.paused())?'▶':'⏸'; }
 function updatePlaySegInfo(){ const el=document.getElementById('playSegInfo'); if(el&&play) el.textContent=(play.getLegIndex()+1)+' / '+play.legStarts.length; }
 // 재생 HUD: 현재 구간(from→to · 소요) + 전체 재생 시 날짜 전환 카드
@@ -1943,15 +2092,29 @@ function setDayScope(ad, fitFn){
 }
 // 행 ⋮ 메뉴는 아래 공간이 모자라면 **위로** 연다 — 절반 시트에서 아래로 열면 '위로'만 보이고
 // 나머지가 화면 밖에 잘렸다(2026-09-27 UX 검토). 열 때마다 잰다(시트 높이·스크롤이 매번 다르다).
+// ⚠️ 위로 열 자리는 **시트의 윗변**(붙어 있는 손잡이 아래)까지다 — 화면 위끝과 비교하면 절반 시트 가운데 행의 메뉴가
+// 위로 열려 '↑ 위로·↓ 아래로'가 시트 스크롤에 잘렸다(2026-10-03 UX 검토). 위아래 어디로도 다 안 들어가면(접힌 시트)
+// 시트 밖 화면에 띄운다(.float — fixed라 시트의 스크롤에 잘리지 않는다).
 document.addEventListener('toggle',e=>{
-  const menu=e.target; if(!(menu instanceof HTMLDetailsElement)||!menu.classList.contains('actionMenu')||!menu.open) return;
+  const menu=e.target; if(!(menu instanceof HTMLDetailsElement)||!menu.classList.contains('actionMenu')) return;
   const panel=menu.querySelector('.actionMenuPanel'); if(!panel) return;
-  menu.classList.remove('up');
-  const sb=document.getElementById('sidebar');
-  const floor=Math.min(window.innerHeight, sb&&sb.contains(menu)? sb.getBoundingClientRect().bottom : window.innerHeight);
-  const r=panel.getBoundingClientRect();
-  if(r.bottom>floor-4&&menu.getBoundingClientRect().top-r.height>8) menu.classList.add('up');
+  menu.classList.remove('up','float'); panel.style.top=''; panel.style.right='';
+  if(!menu.open) return;
+  const sb=document.getElementById('sidebar'), box=(sb&&sb.contains(menu))? sb.getBoundingClientRect() : null;
+  const handle=box? (document.getElementById('sheetHandle')?.getBoundingClientRect().height||0) : 0;
+  const ceil=box? Math.max(0,box.top+handle) : 0, floor=Math.min(window.innerHeight, box? box.bottom : window.innerHeight);
+  const r=panel.getBoundingClientRect(), m=menu.getBoundingClientRect(), h=r.height;
+  if(r.bottom<=floor-4) return;                                   // 아래로 열어도 다 보인다
+  if(m.top-h>=ceil+4){ menu.classList.add('up'); return; }        // 위로 열면 시트 안에 다 들어간다
+  menu.classList.add('float');
+  const top=(m.top-h>=8)? m.top-h : Math.max(8, Math.min(window.innerHeight-h-8, m.bottom));
+  panel.style.top=Math.round(top)+'px';
+  panel.style.right=Math.round(Math.max(8, window.innerWidth-m.right))+'px';
 },true);
+// 띄운 메뉴는 화면에 고정이라 시트를 굴리면 ⋮와 떨어진다 — 굴리면 닫는다
+document.getElementById('sidebar')?.addEventListener('scroll',()=>{
+  document.querySelectorAll('.actionMenu.float[open]').forEach(d=>{ /** @type {HTMLDetailsElement} */(d).open=false; });
+},{passive:true});
 /** 고른 날의 카드를 일정 목록 맨 위로 — 칩을 눌렀는데 목록이 Day 1에 머물면 무엇이 바뀌었는지 모른다
  *  (2026-09-27 UX 검토: D7을 눌러도 시트는 흐린 Day 1이었다). 접힌 모바일 시트는 절반으로 올린다. */
 function revealDayCard(di){
@@ -1968,6 +2131,13 @@ function revealDayCard(di){
 function fitDay(di){
   fitTo(trip().days[di].spots.filter(hasLoc).map(s=>[s.lat,s.lng]),64,15);
 }
+/** '오늘' 칩이 이 여행의 날이 아닐 때 하는 말 @param {{phase:string,daysUntil:number}} period */
+function todayChipNote(period){
+  const t=trip(), last=isoDateOf(t.days.length-1);
+  if(period.phase==='BEFORE') return `D-${period.daysUntil} · ${mdLabel(t.start)}에 시작해요`;
+  if(period.phase==='AFTER') return `지난 여행이에요 · ${mdLabel(last)}에 끝났어요`;
+  return '여행 날짜를 정하면 오늘이 며칠째인지 바로 볼 수 있어요';
+}
 function renderFilter(){
   const bar = document.getElementById('filterbar'); bar.innerHTML='';
   const setScope=setDayScope;
@@ -1977,13 +2147,15 @@ function renderFilter(){
   const period=tripPeriodOf(trip().start, trip().days.length, travelClock().todayISO);
   const todayDi=period.phase==='DURING'? period.dayIndex : -1;
   const todayBtn=document.createElement('button'); todayBtn.className='chip'+(todayDi>=0&&activeDay===todayDi+1?' active':''); todayBtn.textContent='오늘';
-  if(todayDi<0){ todayBtn.disabled=true; todayBtn.title='여행 기간이 아니에요'; }
+  // 기간 밖이면 흐리게 두고, 누르면 왜인지 말한다 — disabled는 탭에 아무 반응이 없고 이유가 마우스 툴팁에만 있었다
+  // (2026-10-03 UX 검토). 이름은 '오늘' 그대로다(aria-disabled — 보조기술도 '오늘'로 읽는다).
+  if(todayDi<0){ todayBtn.classList.add('off'); todayBtn.setAttribute('aria-disabled','true'); todayBtn.onclick=()=>toast(todayChipNote(period),'#4f4740'); }
   else todayBtn.onclick=()=>setScope(todayDi+1,()=>fitDay(todayDi));
   bar.appendChild(todayBtn);
   trip().days.forEach((d,i)=>{
     const b=document.createElement('button'); b.className='chip'+(activeDay===i+1?' active':''); b.title=d.title;
     b.innerHTML = colorByMode()==='day'
-      ? `<span class="dot" style="background:${dayColor(i)};width:7px;height:7px;margin-right:4px"></span>Day ${i+1}`
+      ? `${dayDot(i,'width:7px;height:7px;margin-right:4px')}Day ${i+1}`
       : 'Day '+(i+1);   // 일자 표기는 'Day N' 하나다(앱·붙여넣기 미리보기·일자 카드와 같다)
     b.onclick=()=>setScope(i+1, ()=>fitDay(i));
     bar.appendChild(b);
@@ -2005,13 +2177,10 @@ function renderFilter(){
   const colorMode=readOnly()? '' : `<div class="viewMenuLabel">색상 기준</div><button class="chip" id="colorModeBtn">🎨 ${colorByMode()==='day'?'일자별':'도시별'} 색상</button>`;
   menu.innerHTML=`<summary>☷ 보기 설정⌄</summary><div class="viewMenuPanel">
     ${colorMode}
-    <button class="chip" id="playBtn">${play?'⏹ 재생 정지':'▶ 경로 재생'}</button><button class="chip" id="themeBtn">◐ 테마 전환</button>
     <div class="viewMenuLabel">도시 포커스</div><div class="cityFocus">${cityButtons||'<span class="hint">도시 없음</span>'}</div></div>`;
   bar.appendChild(menu);
   const colorBtn=menu.querySelector('#colorModeBtn');
   if(colorBtn) colorBtn.onclick=()=>{ if(!guardEdit()) return; commit(()=>{ trip().colorBy=colorByMode()==='day'?'city':'day'; }); };
-  menu.querySelector('#playBtn').onclick=playTrip;
-  menu.querySelector('#themeBtn').onclick=toggleTheme;
   menu.querySelectorAll('.cityFocusBtn').forEach(button=>button.onclick=()=>{
     const city=button.dataset.city,pts=[]; trip().days.forEach(d=>d.spots.forEach(s=>{if(s.city===city&&hasLoc(s))pts.push([s.lat,s.lng])})); fitTo(pts,80,15);
   });
@@ -2071,13 +2240,14 @@ function renderLegend(){
   let body;
   if(colorByMode()==='day'){
     body='<b style="font-size:12px">일자</b><br>'+
-      trip().days.map((d,i)=>`<span class="legDay" data-di="${i}" style="cursor:pointer"><span class="dot" style="background:${dayColor(i)}"></span>Day ${i+1}${d.title?' · '+esc(d.title):''}</span>`).join('<br>');
+      trip().days.map((d,i)=>`<span class="legDay" data-di="${i}" style="cursor:pointer">${dayDot(i)}Day ${i+1}${d.title?' · '+esc(d.title):''}</span>`).join('<br>');
   }else{
     const colors=cityColors();
     body='<b style="font-size:12px">도시</b><br>'+
       Object.entries(colors).map(([n,c])=>`<span class="dot" style="background:${c}"></span>${esc(n)}`).join('<br>');
   }
-  document.getElementById('legend').innerHTML=body+'<br><span style="color:var(--meta-warning)">- - -</span> 일자 간 이동';
+  // '일자 간 이동' 줄은 범례가 길어 굴러도 바닥에 붙어 있다 — 14일 샘플에서 잘려 보이지 않았다(2026-10-03 UX 검토)
+  document.getElementById('legend').innerHTML=body+'<div class="legFoot"><span style="color:var(--meta-warning)">- - -</span> 일자 간 이동</div>';
   document.querySelectorAll('#legend .legDay').forEach(el=>{
     el.onclick=()=>{ const i=+el.dataset.di; setDayScope(i+1, ()=>fitDay(i)); };
   });
@@ -2119,7 +2289,7 @@ function renderSidebar(){
         const failed=!lc && legCache[lid] && legCache[lid].permanent;
         legFailed=!!failed;
         legHtml = legModeBtn(day,di,si,lm) + (lc
-          ? `<span class="leg" data-leg="${lid}" title="${legTitle(lc)}">${legLabel(lc)}</span>`
+          ? `<span class="leg" data-leg="${lid}" title="${legTitle(lc,prevLoc,s)}">${legLabel(lc,prevLoc,s)}</span>`
           : `<span class="leg${failed?' legfail':''}" data-leg="${lid}"${failed?` title="${escAttr(legFailText(lm))}"`:''}>↳${haversine(prevLoc,s).toFixed(1)}km${failed?' ⚠️':''}</span>`);
       }
       // 예약 시각이 도착 예상시각(ETA)보다 이르면 경고 (예약 놓칠 위험)
@@ -2282,7 +2452,7 @@ function renderSidebar(){
           const bl=ctx.backLeg; if(!bl) return '';
           const c=requestLeg(bl.from,bl.to,bl.mode,bl.when,bl.timeZone);
           const legTxt = c
-            ? `<span class="leg" data-leg="${bl.key}" title="${legTitle(c)}">${legLabel(c)}</span>`
+            ? `<span class="leg" data-leg="${bl.key}" title="${legTitle(c,bl.from,bl.to)}">${legLabel(c,bl.from,bl.to)}</span>`
             : `<span class="leg" data-leg="${bl.key}">↳${haversine(bl.from,bl.to).toFixed(1)}km</span>`;
           return `<div class="spot back hasInLeg" style="--c:var(--subtle)" title="오늘 묵는 숙소 — 동선이 닫히도록 자동으로 이어 붙였어요 (탭하면 지도에서 보기)">
             <div class="spotLeg incoming" aria-label="마지막 장소에서 숙소로 가는 길"><span class="legFrom">마지막 장소에서</span>${legTxt}</div>
@@ -2436,14 +2606,18 @@ window.focusSpot=(di,si)=>{
   const s=trip().days[di].spots[si];
   if(!hasLoc(s)){ openSavedPlace(di,si); return; }
   if(activeDay && activeDay!==di+1){ activeDay=0; render(); }
-  if(ME().ready()) ME().panTo(+s.lat, +s.lng, 13);
+  // 패널을 먼저 열고 그 패널을 뺀 곳 가운데로 옮긴다 — 좁은 화면에서는 패널을 지도가 남을 만큼만 올린다(data-map-focus)
+  const pd=document.getElementById('placeDetails'); if(pd) pd.dataset.mapFocus='1';
   openSavedPlace(di,si);
+  panToVisible(+s.lat, +s.lng, 13);
 };
+// '지도에서 보기'로 연 패널의 높이 제한은 그 한 번뿐이다 — 다른 길로 열면 원래 높이
+document.getElementById('placeDetails')?.addEventListener('close',e=>{ delete e.currentTarget.dataset.mapFocus; });
 // 좌표로 지도 포커스 (전날 숙소 이월 항목 탭 등 — 특정 spot 인덱스가 없을 때)
 window.focusLatLng=(lat,lng)=>{
   if(activeDay){ activeDay=0; render(); }             // 필터 걸려 해당 핀이 숨겨져 있을 수 있어 전체로
   if(!ME().ready()) return;
-  ME().panTo(+lat, +lng, 13);
+  panToVisible(+lat, +lng, 13);
   setSheetSnap('half');
   setTimeout(()=>{ const m=markers.find(m=>Math.abs(+m.spot.lat-lat)<1e-6 && Math.abs(+m.spot.lng-lng)<1e-6); if(m) m.open(); },400);
 };
@@ -2457,7 +2631,7 @@ window.optimizeDay=(di)=>{
   const day=trip().days[di];
   if(day.spots.filter(hasLoc).length<3){ toast('최적화하려면 좌표 있는 장소가 3곳 이상 필요해요','#4f4740'); return; }
   const plan=planRouteOptimization(day.spots);
-  if(!plan.changed){ toast(plan.fixed.length>1? '바꿀 수 있는 순서가 없어요 — 예약·시각을 정한 곳과 숙소는 제자리에 둬요' : '이미 최적에 가까운 동선이에요 👍'); return; }
+  if(!plan.changed){ toast(plan.fixed.length>1? '바꿀 수 있는 순서가 없어요 — 예약·시각을 정한 곳, 숙소, 마지막에 떠나는 공항·역은 제자리에 둬요' : '이미 최적에 가까운 동선이에요 👍'); return; }
   const lateOf=(spots)=>{
     const tl=dayJourney({...day, spots}, undefined, di).timeline;
     return spots.map((s,i)=>s.bookAt? Math.round(tl[i].eta-parseHM(s.bookAt)) : null);
@@ -2471,7 +2645,7 @@ window.optimizeDay=(di)=>{
   body.innerHTML=`<p class="hint">직선거리 기준 이동 약 <b>${plan.beforeKm.toFixed(1)}km → ${plan.afterKm.toFixed(1)}km</b>. 실제 도로·대중교통 시간은 다를 수 있어요.</p>`+
     (worse.length? `<div class="optWarn" role="alert">${ic('warn')} 이 순서면 예약에 늦어요<ul>${worse.map(w=>`<li>${esc(w)}</li>`).join('')}</ul></div>` : '')+
     `<ol class="optList">${next.map((s,i)=>`<li class="${moved.has(plan.order[i])?'moved':''}${plan.fixed.includes(plan.order[i])?' fixed':''}">${esc(s.name)}${plan.fixed.includes(plan.order[i])&&i>0?' <span class="optTag">제자리</span>':''}${moved.has(plan.order[i])?' <span class="optTag moved">옮김</span>':''}</li>`).join('')}</ol>`+
-    `<p class="hint">예약·입장 시각, 내가 정한 도착 시각, 숙소, 위치 없는 장소는 제자리에 둬요. 바꾼 뒤에도 실행취소할 수 있어요.</p>`;
+    `<p class="hint">예약·입장 시각, 내가 정한 도착 시각, 숙소, 위치 없는 장소, 마지막에 떠나는 공항·역은 제자리에 둬요. 바꾼 뒤에도 실행취소할 수 있어요.</p>`;
   document.getElementById('optApply').textContent=worse.length? '늦어도 이 순서로 바꾸기' : '이 순서로 바꾸기';
   document.getElementById('optModalBg').classList.add('show');
 };
@@ -5798,10 +5972,10 @@ function renderTravel(di, clock){
   d.spots.forEach((s,si)=>{
     const incoming=ctx.legs.filter(l=>l.spotIndex===si);
     for(const leg of incoming){
-      const mode=leg.mode,c=routes.get(leg);
+      const mode=leg.mode,c=routes.get(leg), walk=c? walkInsteadOfCar(mode,c,leg.from,s) : null;
       const lg=document.createElement('div'); lg.className='tLeg';
       lg.textContent = (incoming.length>1?`${leg.from.name||'출발점'}에서 · `:'')+(c
-        ? ((mode==='car'&&c.m<2000)? `🚶 ${Math.max(1,Math.round(c.m/75))}분 · ${(c.m/1000).toFixed(1)}km`
+        ? (walk? `🚶 ${Math.max(1,Math.round(walk.min))}분 · ${(walk.m/1000).toFixed(1)}km`
                    : `${MODE_ICON[mode]} ${fmtDur(c.sec)} · ${(c.m/1000).toFixed(1)}km${((mode==='car'||mode==='taxi')&&c.taxi)?` · 🚕약 ${c.taxi.toLocaleString()}원`:''}`)
         : `↘ 직선 ${haversine(leg.from,s).toFixed(1)}km`);
       list.appendChild(lg);
@@ -7381,7 +7555,11 @@ function dismissOnboarding(){
   (target && target!==document.body && target.isConnected?target:document.getElementById('tripPickerBtn')).focus();
   try{localStorage.setItem(ONBOARD_KEY,'1');}catch(_){}
 }
-document.getElementById('onboardSample').onclick=()=>{ dismissOnboarding(); fitEntry(); };
+// 샘플로 들어오면 경로 재생을 한 번 권한다 — 지도 위 버튼만으로는 무엇을 보여 주는지 모른다(2026-10-03 UX 검토)
+document.getElementById('onboardSample').onclick=()=>{
+  dismissOnboarding(); fitEntry();
+  if(isSampleTrip(trip())) toast('샘플 동선을 지도에서 따라가 볼 수 있어요','#3e7a4c',{label:'▶ 경로 재생',fn:playTrip});
+};
 document.getElementById('onboardNew').onclick=()=>{ dismissOnboarding(); openNewTrip(); };
 document.getElementById('onboardPaste').onclick=()=>{ dismissOnboarding(); document.getElementById('pasteBtn').click(); document.getElementById('pasteTarget').value='new'; };
 document.getElementById('onboardLogin').onclick=()=>{ dismissOnboarding(); document.getElementById('authBtn').click(); };
