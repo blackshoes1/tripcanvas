@@ -297,11 +297,12 @@ let engine='google';          // 현재 표시 중인 엔진
 // ⚠️ activeDay는 보고 있는 일자 칩이다 — **1부터 센다(0=전체)**. 일자 인덱스(di)로 쓸 때는 `activeDay? activeDay-1 : 0`.
 let activeDay = 0, markers = [], lines = [], ghostStays = [], pickMode = false, sortables = [];
 
-// 위치 상태는 사람의 말로 — '좌표: 미지정'은 개발자 말투였다(2026-10-03 UX 검토). 숫자는 확인용으로 뒤에 남긴다.
-function setCoordHint(lat,lng,extra){
+// 위치 상태는 사람의 말로 — '좌표: 미지정'은 개발자 말투였다(2026-10-03 UX 검토).
+// 날 좌표 대신 주소를 보인다(3차 검토 P2-24) — '(33.4591, 126.9405)'로는 맞는 곳인지 알 수 없다. 주소를 모르면 확인만 말한다.
+function setCoordHint(lat,lng,extra,addr){
   const el=document.getElementById('coordHint'); if(!el) return;
   el.textContent=(lat==null||lat===''||!isFinite(+lat))? '위치: 아직 없어요 — 위에서 검색하거나 지도에서 골라 주세요'
-    : `위치 확인됨 ✓ (${(+lat).toFixed(4)}, ${(+lng).toFixed(4)})${extra||''}`;
+    : `위치 확인됨 ✓${addr?` · ${addr}`:''}${extra||''}`;
 }
 function onMapPick(lat,lng,placeId){
   if(!pickMode)return;
@@ -321,8 +322,9 @@ function addSpotAt(lat,lng,placeId,known){
   document.getElementById('spotLat').value=lat; document.getElementById('spotLng').value=lng;
   document.getElementById('spotPlaceId').value=placeId||'';
   document.getElementById('spotKakaoId').value=(known&&known.kakaoId)||'';   // 국내 POI 칩은 무엇을 눌렀는지 안다
-  setCoordHint(lat,lng,' · 지도에서 고름');
+  setCoordHint(lat,lng,' · 지도에서 고름',known&&known.addr);
   document.getElementById('spotName').value=''; _namePrefill='';
+  if(known&&known.cat) setSpotCat(known.cat);   // 누른 곳의 종류를 안다 — 호텔이면 '오늘 밤 묵어요'도 함께(P1-14)
   const filled=fillSpotFromCoords(lat,lng,true,placeId,known);    // 지정 지점의 장소명·도시 자동 채움
   setTimeout(()=>document.getElementById('spotName').focus(),50);
   return filled;
@@ -356,6 +358,19 @@ function placeLink(parent,label,url){
 function placeButton(parent,label,action){
   const b=placeText(parent,'button',label,'btn'); b.type='button'; b.onclick=action; return b;
 }
+// 지도로 가는 링크의 이름은 어디로 가는지와 무엇을 볼 수 있는지를 말한다 — '원문 지도에서 보기'는 사용자 말이 아니었다(2026-10-03 P2-24)
+function placeSourceLabel(s){ return s.kakaoId? '카카오맵에서 사진·리뷰 보기' : s.placeId? 'Google 지도에서 보기' : '지도에서 이 이름으로 찾아보기'; }
+/** 장소 종류 한 줄 — 앱의 종류로 말하고, 제공자의 분류는 한국어일 때만 덧붙인다('역사적 명소'와 'Art museum'이 섞였다, P2-25) */
+function placeCategoryText(data){
+  const cat=spotCat(data.cat);
+  let detail='';
+  if(data.kind==='kakao' && data.category){
+    const parts=String(data.category).split('>').map(x=>x.trim()).filter(Boolean);
+    detail=(parts.length>1? parts.slice(1) : parts).join(' › ');   // '음식점 > 술집 > 칵테일바' → '술집 › 칵테일바'
+  }else if(data.category && /[가-힣]/.test(String(data.category))) detail=String(data.category);
+  if(cat && detail===cat.name) detail='';   // '☕ 카페 · 카페'처럼 같은 말을 두 번 하지 않는다
+  return [cat?`${cat.icon} ${cat.name}`:'', detail].filter(Boolean).join(' · ');
+}
 function placeSourceURL(s){
   if(s.kakaoId) return 'https://place.map.kakao.com/'+encodeURIComponent(s.kakaoId);
   if(s.placeId) return 'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(s.name||'장소')+'&query_place_id='+encodeURIComponent(s.placeId);
@@ -368,21 +383,25 @@ async function placeRequest(request){
 }
 async function fetchPlaceDetails(s){
   if(s.kakaoId){
-    if(s.addr!==undefined && s.phone!==undefined) return {kind:'kakao',...s};
+    if(s.addr!==undefined && s.phone!==undefined) return {kind:'kakao',...s,cat:s.cat||catFromKakao('',s.category)||undefined};
     const found=await kakaoSearch(s.name,hasLoc(s)?{lat:+s.lat,lng:+s.lng}:null,15);
     if(found.err) throw new Error(found.err);
     const exact=found.list.find(p=>String(p.kakaoId)===String(s.kakaoId));
-    return {kind:'kakao',...s,...(exact||{}),unmatched:!exact};
+    const out={kind:'kakao',...s,...(exact||{}),unmatched:!exact};
+    if(!out.cat) out.cat=catFromKakao('',out.category)||undefined;
+    return out;
   }
   // Google 콘텐츠를 국내 카카오 지도 위에 연결하지 않는다.
   if(!s.placeId || engine==='kakao') return {kind:'saved',...s};
   if(!window.google?.maps?.importLibrary) throw new Error('network');
   const {Place}=await google.maps.importLibrary('places');
   const place=new Place({id:s.placeId,requestedLanguage:'ko'});
-  await place.fetchFields({fields:['displayName','formattedAddress','primaryTypeDisplayName','nationalPhoneNumber','websiteURI','googleMapsURI','businessStatus','regularOpeningHours','currentOpeningHours','rating','userRatingCount','photos','attributions']});
-  return {kind:'google',...s,place,name:place.displayName||s.name,addr:place.formattedAddress,phone:place.nationalPhoneNumber,category:place.primaryTypeDisplayName};
+  await place.fetchFields({fields:['displayName','formattedAddress','primaryType','types','primaryTypeDisplayName','nationalPhoneNumber','websiteURI','googleMapsURI','businessStatus','regularOpeningHours','currentOpeningHours','rating','userRatingCount','photos','attributions']});
+  return {kind:'google',...s,place,name:place.displayName||s.name,addr:place.formattedAddress,phone:place.nationalPhoneNumber,category:place.primaryTypeDisplayName,
+    cat:s.cat||catFromGoogle(place.types,place.primaryType)||undefined};
 }
-function renderPlaceDetails(data,box,seq){
+function renderPlaceDetails(data,box,seq,ctx){
+  const visitWd=ctx&&ctx.weekday!=null? ctx.weekday : null;   // 가는 날의 요일 — 영업시간에서 그날을 짚는다(P2-12)
   const p=data.place;
   document.getElementById('placeDetailsTitle').textContent=data.name||'선택한 장소';
   document.getElementById('placeDetailsProvider').textContent=p?'Google Maps':data.kind==='kakao'?'Kakao':'저장한 장소';
@@ -391,25 +410,36 @@ function renderPlaceDetails(data,box,seq){
   if(!p && data.kind==='saved'){
     if(data.addr) placeText(box,'p',data.addr);
     placeLink(box,'지도에서 이 이름으로 찾아보기',placeSourceURL(data));
-    placeText(box,'p','연결된 매장 정보가 없어요 — 이름이 비슷한 다른 곳으로 자동 연결하지 않아요.','hint');
+    placeText(box,'p','연결된 장소 정보가 없어요 — 이름이 비슷한 다른 곳으로 자동 연결하지 않아요.','hint');
     return;
   }
   if(p) placeText(box,'p',p.rating!=null?`★ ${p.rating} · 평가 ${Number(p.userRatingCount??0).toLocaleString('ko-KR')}개`:'평점 정보 없음');
-  if(data.category) placeText(box,'p',data.category);
+  { const kind=placeCategoryText(data); if(kind) placeText(box,'p',kind); }
   placeText(box,'p',data.addr||'주소 정보 없음');
   placeText(box,'p',data.phone?'전화 · '+data.phone:'전화번호 정보 없음');
-  placeLink(box,'원문 지도에서 보기',placeSourceURL(data));
+  placeLink(box,placeSourceLabel(data),placeSourceURL(data));
   if(data.kind==='kakao'){
-    placeText(box,'p',data.unmatched?'같은 장소의 최신 정보를 찾지 못했어요. 원문 지도에서 확인해 주세요.':'사진·리뷰·평점·영업시간은 카카오 공개 API에서 제공하지 않아요. 원문 지도에서 확인해 주세요.');
+    placeText(box,'p',data.unmatched?'같은 장소의 최신 정보를 찾지 못했어요. 카카오맵에서 확인해 주세요.':'사진·리뷰·영업시간은 카카오맵에서 볼 수 있어요.');
     placeText(box,'p','장소 정보 제공 · Kakao','placeSource'); return;
   }
-  if(!p){ placeText(box,'p','연결된 매장 상세정보가 없어요. 이름이 비슷한 주변 매장으로 자동 연결하지 않아요.'); return; }
+  if(!p){ placeText(box,'p','연결된 장소 상세정보가 없어요. 이름이 비슷한 주변 장소로 자동 연결하지 않아요.'); return; }
   const website=placeText(box,'p',''); placeLink(website,'공식 홈페이지',p.websiteURI);
   if(p.businessStatus==='CLOSED_PERMANENTLY') placeText(box,'p','폐업으로 표시된 장소예요. 방문 전에 확인해 주세요.');
   else if(p.businessStatus==='CLOSED_TEMPORARILY') placeText(box,'p','임시 휴업으로 표시된 장소예요.');
+  // 영업시간은 24시간 표기로 우리가 쓴다 — Google 문구는 자정 마감을 '오전 12:00'이라 정오처럼 읽혔다(P2-12).
+  // 시간 구간을 못 받았을 때만 Google 문구를 그대로 보인다.
+  const lines=hoursLines(normHours(p.regularOpeningHours));
   const hours=p.currentOpeningHours?.weekdayDescriptions||p.regularOpeningHours?.weekdayDescriptions;
   placeText(box,'h3','영업시간');
-  if(hours?.length){ const ul=document.createElement('ul'); hours.forEach(h=>placeText(ul,'li',h)); box.appendChild(ul); }
+  if(lines.length){
+    const ul=document.createElement('ul');
+    lines.forEach(l=>{
+      const li=placeText(ul,'li',`${'일월화수목금토'[l.d]} ${l.text}`);
+      if(visitWd===l.d){ li.className='visitDay'; li.append(' · 가는 날'); }
+    });
+    box.appendChild(ul);
+  }
+  else if(hours?.length){ const ul=document.createElement('ul'); hours.forEach(h=>placeText(ul,'li',h)); box.appendChild(ul); }
   else placeText(box,'p','영업시간 정보 없음');
   placeText(box,'p','영업시간은 변경될 수 있어요. 예약과 방문 가능 여부는 매장에 확인해 주세요.','hint');
   // 사진 한 장만 요청한다. 원문 링크와 작성자 표시는 사진과 함께 유지한다.
@@ -486,6 +516,10 @@ function openPlaceDetails(s,options={}){
   document.getElementById('placeDetailsProvider').textContent='';
   dialog.oncancel=e=>{e.preventDefault();closePlaceDetails();};
   document.getElementById('placeDetailsClose').onclick=closePlaceDetails;
+  // 가는 날 — 일정의 장소면 그날, 검색 중이면 담을 날, 지도에서 누른 곳이면 담길 날. 시작일이 없으면 요일을 모른다.
+  const visitDi=options.existing? options.existing.di : options.visitDay!=null? options.visitDay : (activeDay? activeDay-1 : 0);
+  const visitIso=isoDateOf(visitDi);
+  const visitWd=visitIso? new Date(visitIso+'T00:00:00').getDay() : null;
   if(!dialog.open) dialog.showModal();
   const load=async()=>{
     box.replaceChildren();
@@ -494,16 +528,18 @@ function openPlaceDetails(s,options={}){
     try{
       const data=await placeRequest(fetchPlaceDetails(s));
       if(seq!==placeDetailsSeq||!window.document) return;
-      box.replaceChildren(); renderPlaceDetails(data,box,seq);
+      box.replaceChildren(); renderPlaceDetails(data,box,seq,{weekday:visitWd});
       if(options.existing) box.prepend(placeOwnSection(s,options.existing));
       // 조회한 상세 응답 전체가 아닌 장소의 기존 식별 정보만 편집기로 넘긴다.
       if(!s.name && data.name) s={...s,name:data.name};
+      // 지도에서 담을 때 종류도 함께 — 호텔이면 숙소로(P1-14). 일정의 장소는 갈아 끼우지 않는다(편집 버튼이 같은 장소인지 본다)
+      if(!options.existing && !s.cat && data.cat) s={...s,cat:data.cat};
     }catch(e){
       if(seq!==placeDetailsSeq||!window.document) return;
       box.replaceChildren();
       if(options.existing) box.appendChild(placeOwnSection(s,options.existing));   // 매장 정보가 실패해도 내가 적은 것은 보인다
       placeText(box,'p','장소 정보를 불러오지 못했어요. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.');
-      placeLink(box,'원문 지도에서 보기',placeSourceURL(s));placeButton(box,'다시 시도',load);
+      placeLink(box,placeSourceLabel(s),placeSourceURL(s));placeButton(box,'다시 시도',load);
     }
   };
   const edit=(fn)=>()=>{
@@ -595,7 +631,7 @@ function drawKakaoPOI(list){
     el.addEventListener('click',ev=>{
       ev.preventDefault(); ev.stopPropagation();
       cancelMapTap();                                       // 지도 탭의 지연 추가와 겹치지 않게
-      openPlaceDetails({lat,lng,name:p.place_name,city:cityFromKakaoAddress(p.address_name||p.road_address_name||''),kakaoId:p.id||'',addr:p.road_address_name||p.address_name||'',phone:p.phone||'',category:p.category_name||''});
+      openPlaceDetails({lat,lng,name:p.place_name,city:cityFromKakaoAddress(p.address_name||p.road_address_name||''),kakaoId:p.id||'',addr:p.road_address_name||p.address_name||'',phone:p.phone||'',category:p.category_name||'',cat:catFromKakao(p.category_group_code,p.category_name)||undefined});
     });
     poiOverlays.push(Engines.kakao.marker(lat,lng,el));
   });
@@ -682,13 +718,14 @@ function reverseCity(lat,lng){ return reverseSpot(lat,lng).then(r=>r.city||null)
 function fillCityFromCoords(lat,lng,force){
   const el=document.getElementById('spotCity'); const at=el.value;
   if(!(force || !at.trim() || at.trim()===(_cityPrefill||'').trim())) return;
-  reverseCity(lat,lng).then(city=>{ if(city && el.value===at){ el.value=city; _cityPrefill=city; } });
+  reverseCity(lat,lng).then(city=>{ city=city&&tripCityFor(city,{lat:+lat,lng:+lng}); if(city && el.value===at){ if(city!==at) _anchorPrefill=null; el.value=city; _cityPrefill=city; } });
 }
 // 검색 결과가 이미 가진 도시명으로 즉시(동기) 채움 — 사용자 입력은 보존.
+// 도시가 바뀌면 미리 채운 그날 장소의 위치는 더 이상 그 도시의 기준이 아니다.
 function fillCityValue(city){
   if(!city) return;
   const el=document.getElementById('spotCity');
-  if(!el.value.trim() || el.value.trim()===(_cityPrefill||'').trim()){ el.value=city; _cityPrefill=city; }
+  if(!el.value.trim() || el.value.trim()===(_cityPrefill||'').trim()){ if(el.value!==city) _anchorPrefill=null; el.value=city; _cityPrefill=city; }
 }
 // 이름 필드 자동 채움. force=false면 사용자 입력 보존(자동 프리필/빈값만 갱신).
 // 검색 결과를 직접 고르는 건 명시적 선택이므로 force=true로 기존 값도 덮어쓴다.
@@ -707,7 +744,8 @@ function fillSpotFromCoords(lat,lng,forceCity,placeId,known){
   // known: POI를 눌러 '무엇인지 이미 아는' 경우 — 좌표로 되짚는 추측을 아예 건너뛴다
   // 끝나는 때를 돌려준다 — 장소 정보에서 바로 담을 때 이름·도시가 채워진 뒤에 저장한다
   return (known? Promise.resolve(known) : reverseSpot(lat,lng,placeId)).then(({name,city})=>{
-    if(city && cityOK && cityEl.value===cityAt){ cityEl.value=city; _cityPrefill=city; }
+    if(city) city=tripCityFor(city,{lat:+lat,lng:+lng});   // 이 여행이 이미 쓰는 표기로(P2-25)
+    if(city && cityOK && cityEl.value===cityAt){ if(city!==cityAt) _anchorPrefill=null; cityEl.value=city; _cityPrefill=city; }
     if(name && nameOK && nameEl.value===nameAt){ nameEl.value=name; _namePrefill=name; }
   }).catch(()=>{});
 }
@@ -944,7 +982,29 @@ function flightHtml(day){
 // 상한을 넘으면 오래 안 쓴 것부터 버린다. 통째로 쓰면 폴리라인이 끝없이 쌓여 여행 데이터와 용량을 다툰다.
 // 이 페이지에서 쓴 구간은 상한과 상관없이 남긴다 — 구간이 상한보다 많은 여행이 열 때마다 제 구간을 다시 묻지 않게.
 function saveLegCache(){ try{ localStorage.setItem(LEG_KEY, JSON.stringify(TC_ROUTING.compactLegCache(legCache,Date.now(),TC_ROUTING.LEG_CACHE_MAX,LEG_SESSION_AT))); }catch(e){} }
-const LEG_NOROUTE_TITLE='경로를 찾을 수 없어 직선거리로 표시 — 인근 도로 탐색(최대 2.4km)까지 실패했어요. 장소 편집에서 검색으로 위치를 다시 잡아 보세요';
+// 경로를 못 찾은 구간의 이유 — 수단마다 다르게 말한다. 예전 문구는 언제나 '위치를 다시 잡아 보세요'라
+// 위치가 맞는 섬(우도)에도 위치를 의심하게 했다(2026-10-03 P2-12). 배·환승이 필요한 곳은 경로가 없는 게 정상이다.
+function legFailText(mode){
+  if(mode==='transit') return '대중교통 경로를 못 찾아 직선으로 어림했어요 — 배나 환승이 필요한 구간일 수 있어요';
+  if(mode==='car'||mode==='taxi') return '차로 가는 길을 못 찾아 직선으로 어림했어요 — 섬·보행 구역이면 그럴 수 있고, 위치가 다르면 장소 편집에서 다시 찾아 주세요';
+  return '경로를 못 찾아 직선으로 어림했어요';
+}
+/**
+ * 영업시간 경고 한 줄 — 쉬는 날·아직 안 연 시각·이미 닫은 시각을 다르게 말한다. 예전에는 셋 다 '🚫 영업시간 확인'이고
+ * 이유는 툴팁에만 있었다(2026-10-03 P2-12). 쉬는 날에는 다른 날로 옮기는 길(일자 칸)을 바로 연다.
+ */
+function hoursWarnText(hours, wd, eta, di, si){
+  const issue=hoursIssue(hours, wd, Math.round(eta));
+  if(!issue) return '';
+  const day='일월화수목금토'[wd];
+  if(issue.kind==='CLOSED_DAY'){
+    const move=readOnly()? '' : ` <button type="button" class="btn sm" onclick="event.stopPropagation();openSpotModal(${di},${si},'spotDay')">다른 날로 옮기기</button>`;
+    return `${day}요일 휴무예요${move}`;
+  }
+  const at=issue.at>=1440? '24:00' : hm(issue.at);
+  if(issue.kind==='BEFORE_OPEN') return `${at}에 ${issue.reopen?'다시 ':''}열어요 — ${issue.minutes}분 일찍 도착해요`;
+  return `${at}에 닫아요 — 도착 예상 ${hm(eta)}`;
+}
 function fmtDur(sec){ const m=Math.round(sec/60); return m<60? `${m}분` : `${Math.floor(m/60)}시간${m%60? ' '+(m%60)+'분':''}`; }
 function legLabel(c){
   const km=(c.m/1000).toFixed(1),mode=c.mode||'car';
@@ -1867,15 +1927,16 @@ function renderSidebar(){
       const inLeg=incomingBySpot.get(si), prevLoc=inLeg?inLeg.from:null;
       const incoming=prevLoc, inMode=legModeOf(day,s);   // 이 지점으로 '들어오는' 구간(수단) — 아래 ETA 안내에 사용
       // 구간: 캐시된 경로가 있으면 그걸, 아니면 직선거리 + 백그라운드 조회
-      let legHtml='';
+      let legHtml='', legFailed=false;
       if(hasLoc(s)&&prevLoc){
         const lm=legModeOf(day,s), depart=inLeg.depart, when=lm==='transit'?planDepartISO(iso,depart,timeZone):null;
         const lid=legRequestKey(prevLoc,s,lm,when,timeZone), lc=routes.get(inLeg);
         // 경로 없음(인근 도로 스냅까지 실패)만 ⚠️ — 잠깐인 실패(오프라인·429)에 '위치를 다시 잡으라'고 하면 거짓말이다
         const failed=!lc && legCache[lid] && legCache[lid].permanent;
+        legFailed=!!failed;
         legHtml = legModeBtn(day,di,si,lm) + (lc
           ? `<span class="leg" data-leg="${lid}" title="${legTitle(lc)}">${legLabel(lc)}</span>`
-          : `<span class="leg${failed?' legfail':''}" data-leg="${lid}"${failed?` title="${LEG_NOROUTE_TITLE}"`:''}>↳${haversine(prevLoc,s).toFixed(1)}km${failed?' ⚠️':''}</span>`);
+          : `<span class="leg${failed?' legfail':''}" data-leg="${lid}"${failed?` title="${escAttr(legFailText(lm))}"`:''}>↳${haversine(prevLoc,s).toFixed(1)}km${failed?' ⚠️':''}</span>`);
       }
       // 예약 시각이 도착 예상시각(ETA)보다 이르면 경고 (예약 놓칠 위험)
       const bookMin=s.bookAt?parseHM(s.bookAt):null;
@@ -1939,12 +2000,8 @@ function renderSidebar(){
         if(bk) meta.push(`<button type="button" class="spotMetaItem pxBtn" onclick="event.stopPropagation();openBookingModal('${escAttr(bk.id)}')" title="예약 가격 추적 — 탭해서 상세와 가격 기록 보기">${bookingBadgeHtml(bk)}</button>`);
         // 샘플의 숙소는 '예시' 위치라 시세를 찾을 대상이 없다 — 이름으로 검색하면 엉뚱한 호텔이 나온다
         else if(s.stay && !readOnly() && !isSampleTrip(trip())) meta.push(`<button type="button" class="spotMetaItem pxBtn pxStart" onclick="event.stopPropagation();startHotelTracking(${di},${si})" title="예약가와 기간을 넣으면 시세를 계속 확인해 더 싼 곳이 나오면 알려줘요">💰 가격 추적 시작</button>`); }
-      // 영업시간 경고: 그 날 요일·도착 예상시각에 문 닫혀 있으면 ⚠️
-      if(s.hours && iso){
-        const wd=new Date(iso+'T00:00:00').getDay();
-        const open=isOpenAt(s.hours, wd, Math.round(etas[si]));
-        if(open===false) meta.push(`<span class="spotMetaItem closed" title="${'일월화수목금토'[wd]}요일 도착 예상 ${hm(etas[si])}에 영업 종료/휴무 — 시간을 확인하세요">🚫 영업시간 확인</span>`);
-      }
+      // 영업시간 경고: 그 날 요일·도착 예상시각에 문 닫혀 있으면 — 이유는 아래 경고 줄(hoursWarn)이 보이는 글로 말한다
+      const hoursWarn=(s.hours && iso)? hoursWarnText(s.hours, new Date(iso+'T00:00:00').getDay(), etas[si], di, si) : '';
       // 함께 움직이지 않는 시간(§25~§27). 지정이 없으면 '모두'라 아무 표시도 하지 않는다 —
       // 기본이 함께 다니는 것이고, 모든 줄에 '모두'를 붙이면 그게 소음이다.
       if(s.who && s.who.length){
@@ -1968,6 +2025,9 @@ function renderSidebar(){
       const warns=[];
       if(showConflict) warns.push(`이동상 ${natTxt}에야 도착해요 — 고정 ${esc(s.at)}. 앞 일정을 줄이거나 이 시각을 늦추세요`);
       if(bookWarn) warns.push(`도착 예상 ${hm(etas[si])} — 예약 ${esc(s.bookAt)}보다 늦어요`);
+      if(hoursWarn) warns.push(hoursWarn);
+      // 경로를 못 찾은 구간 — '⚠️'와 툴팁뿐이라 터치로는 이유를 볼 수 없었다(2026-10-03 P2-12)
+      if(legFailed) warns.push(esc(legFailText(legModeOf(day,s))));
       // 경고는 메타 칩이 아니라 **자기 줄**이다 — 문장이라 줄바꿈이 필요하고, 메타 칩은 한 줄 규칙을 지킨다.
       const warnHtml=warns.length?`<div class="spotWarn" role="note">${warns.map(w=>`<span>${ic('warn')} ${w}</span>`).join('')}</div>`:'';
       const metaHtml=warnHtml+(meta.length?`<div class="spotMeta">${meta.join(' ')}</div>`:'');
@@ -2309,6 +2369,8 @@ let _pickedHours = null;   // 검색 결과에서 선택한 영업시간 (저장
 // 지도 클릭·검색 지정으로 실제 도시를 덮어써도 되지만, 직접 입력한 값은 보존한다.
 let _cityPrefill = '';
 let _namePrefill = '';   // 자동 채운 이름(검색/역지오코딩) — 사용자 입력과 구분
+// 도시 칸을 미리 채운 그날 장소의 위치 — 칸이 그대로면 검색은 도시 이름을 다시 찾지 않고 이 위치를 기준으로 쓴다
+let _anchorPrefill = null;
 window.openSpotModal=(di,si,focusId)=>{
   if(!guardEdit()) return;
   // 새 장소는 '선택한 장소 바로 뒤'에 넣는다 — 선택이 없거나 다른 날이면 맨 뒤(기존 동작)
@@ -2317,29 +2379,36 @@ window.openSpotModal=(di,si,focusId)=>{
   const isNew = si<0;
   document.getElementById('spotModalTitle').textContent = isNew?'장소 추가':'장소 편집';
   document.getElementById('spotDelBtn').style.display = isNew?'none':'block';
-  const s = isNew? {name:'',city:trip().days[di].spots[0]?.city||'',desc:'',opt:false,lat:'',lng:''} : trip().days[di].spots[si];
+  // 새 장소의 도시는 그날의 장소에서 — 공항·역은 건너뛴다(공항이 있는 도시가 그날 검색의 기준이 되면 안 된다, P0-1)
+  const anchorSpot = isNew? searchAnchorSpot(trip().days, di, true) : null;
+  const anchorCity = (anchorSpot && anchorSpot.city && anchorSpot.city!=='기타')? anchorSpot.city : '';
+  const s = isNew? {name:'',city:anchorCity,desc:'',opt:false,lat:'',lng:''} : trip().days[di].spots[si];
+  _anchorPrefill = (anchorCity && hasLoc(anchorSpot))? {lat:+anchorSpot.lat, lng:+anchorSpot.lng} : null;
   _pickedHours = s.hours||null;   // 편집 시 기존 영업시간 보존
   document.getElementById('spotName').value=s.name;
   document.getElementById('spotCity').value=s.city;
   _cityPrefill = s.city||'';   // 이후 자동 채움이 이 프리필 값은 덮어써도 됨(사용자 입력은 아님)
   _namePrefill = '';           // 기존 이름은 사용자 값 → 자동 채움이 안 덮게(빈 값일 때만 채움)
   document.getElementById('spotDesc').value=s.desc||'';
-  document.getElementById('spotCat').value=s.cat||'';
+  // 숙소로 계산되는 장소는 종류도 숙소로 보인다 — 종류와 '오늘 밤 묵어요'가 다른 말을 하지 않게(P1-14)
+  document.getElementById('spotCat').value=s.cat||(s.stay?'stay':'');
   document.getElementById('spotPriority').value=spotPriorityOf(s);   // must/opt 두 플래그를 한 값으로
   document.getElementById('spotStay').checked=!!s.stay;
   document.getElementById('spotNights').value=stayNights(s);
-  toggleNights();
+  syncStayRow();
   document.getElementById('spotAt').value=s.at||'';
   document.getElementById('spotLegMode').value=s.legMode||'';   // 이 지점으로 오는 구간 수단(빈값=일정 기본)
   // '정하지 않음'은 빈 칸으로 둔다 — 0으로 프리필하면 이름만 고쳐 저장해도 미정이 0분으로 굳는다
   document.getElementById('spotStayMin').value=(s.stayMin!=null? s.stayMin : '');
   document.getElementById('spotCost').value=(s.cost!=null? fmtMoney(s.cost,s.cur) : '');
-  document.getElementById('spotCur').value=s.cur||'KRW';
+  // ⚠️ 금액이 있는데 통화가 없으면 원화다(저장 규칙) — 그건 그대로 두고, 아직 금액이 없을 때만 이 여행이 쓰는 통화로 연다(P2-26)
+  document.getElementById('spotCur').value=s.cur||(s.cost!=null? 'KRW' : tripDefaultCurrency(trip()));
   updateCostHint();
   document.getElementById('spotBookAt').value=s.bookAt||'';
   document.getElementById('spotBookUrl').value=s.bookUrl||'';
   drawAdmission(s.admission);
-  document.getElementById('spotAdvanced').open=!isNew&&!!(s.legMode||s.cost||s.bookAt||s.bookUrl||s.admission||spotPriorityOf(s)!=='NORMAL'||s.stay);
+  syncAdmissionBox();
+  document.getElementById('spotAdvanced').open=!isNew&&!!(s.legMode||s.cost||s.bookAt||s.bookUrl||s.admission||spotPriorityOf(s)!=='NORMAL');
   document.getElementById('spotLat').value=s.lat; document.getElementById('spotLng').value=s.lng;
   document.getElementById('spotPlaceId').value=s.placeId||'';
   document.getElementById('spotKakaoId').value=s.kakaoId||'';
@@ -2481,6 +2550,7 @@ document.getElementById('spotSave').onclick=()=>{
   // 예약·입장 준비는 서버(`validateTripPayload`)가 거절할 값을 저장 전에 같은 문장으로 말한다
   const admission=pickedAdmission();
   if(admission){ const admErr=admissionError(admission); if(admErr){ toast(admErr,'#b4342a'); return; } }
+  if(!isNaN(lat)&&!isNaN(lng)&&!farPlaceConfirmed(name,{lat,lng})) return;
   const s={name,city:document.getElementById('spotCity').value.trim()||'기타',desc:document.getElementById('spotDesc').value.trim(),
     stay:document.getElementById('spotStay').checked,
     // 연박 수는 숙소일 때만 저장, 1박이면 생략(기본값 — 하위호환)
@@ -2495,7 +2565,9 @@ document.getElementById('spotSave').onclick=()=>{
       if(!raw) return undefined;                                   // 빈 칸 = 정하지 않음
       const n=parseInt(raw); return isNaN(n)? undefined : Math.max(0,n); })(),
     cost:costV,
-    cur:(curV&&curV!=='KRW'?curV:undefined),   // KRW는 기본값이라 저장 생략(하위호환)
+    // KRW는 기본값이라 저장 생략(하위호환). 금액이 없으면 칸은 이 여행의 통화로 열릴 뿐이라(P2-26) 저장된 값을 그대로 둔다 —
+    // 안 그러면 비용 없는 장소의 이름만 고쳐도 문서에 cur가 새로 생긴다(2026-10-03)
+    cur:costV!=null? (curV&&curV!=='KRW'?curV:undefined) : (editing&&editing.si>=0? trip().days[editing.di]?.spots[editing.si]?.cur : undefined),
     bookAt:normHM(document.getElementById('spotBookAt').value)||'',
     bookUrl:document.getElementById('spotBookUrl').value.trim(),
     placeId:(document.getElementById('spotPlaceId').value||undefined),   // 예약 가격 추적의 호텔 identity
@@ -2548,22 +2620,71 @@ document.getElementById('spotDelBtn').onclick=()=>{
 };
 // 장소 검색 — 국내(한글)는 카카오 우선, 그 외 Google Places (routedSearch)
 let searching=false;
-async function doSearch(){
+/**
+ * 검색 기준점 — 도시 칸 → (칸이 비었으면) 이 여행의 가까운 날 장소. 칸이 미리 채운 그대로면 그날 장소의 위치를 쓴다.
+ * 파리 여행의 빈 날(도시 칸이 빈)에서 '오르세 미술관'을 한글로 찾으면 국내로 가 청주·수원이 나왔다(2026-10-03 P0-1).
+ * 다른 날의 장소는 국내/해외를 가르는 데만 쓴다(loose) — 부산 가는 날의 '해운대'를 서울 주변으로 좁히지 않게.
+ */
+async function searchBaseFor(city, looseSpot){
+  if(city){
+    if(_anchorPrefill && city===String(_cityPrefill||'').trim()) return {near:_anchorPrefill};
+    const a=await cityAnchorOf(city); return a? {near:a} : null;
+  }
+  if(!looseSpot) return null;
+  const a=hasLoc(looseSpot)? {lat:+looseSpot.lat,lng:+looseSpot.lng} : await cityAnchorOf(looseSpot.city);
+  return a? {near:a, loose:true} : null;
+}
+const FAR_PLACE_KM=300;   // 이만큼 떨어진 곳을 담을 때는 한 번 묻는다 — '수백 km'는 대개 다른 곳을 집은 것이다
+function fmtKm(km){ return `${Math.round(km).toLocaleString('ko-KR')}km`; }
+/** 이 장소가 일정의 다른 장소에서 얼마나 떨어졌는지(km) — 편집 중인 그 장소와는 비교하지 않는다 */
+function spotDistanceFromPlan(di, point){
+  const skip=(editing&&editing.si>=0)? trip().days[editing.di]?.spots[editing.si] : undefined;
+  return planDistanceKm(trip().days, di, point, skip);
+}
+// 이 구간이 원래 먼 이동인가 — 비행기·기차로 가는 날(또는 구간)은 수백 km가 정상이다. 마드리드 → 세비야(기차 390km)
+// 같은 멀티시티 날에 결과마다 경고를 붙이고 저장마다 묻지 않게, 결과 줄과 저장 전 확인이 같은 규칙을 쓴다(2026-10-03)
+function longHaulLeg(day){
+  const m=document.getElementById('spotLegMode').value||dayModeOf(day);
+  return m==='flight'||m==='train';
+}
+/**
+ * 다른 장소에서 수백 km 떨어진 곳이면 담기 전에 한 번 묻는다 — 파리 일정에 여수의 '구에펠탑'이 확인 없이 담겨
+ * '하루 동선 약 9264km'가 됐다(2026-10-03 P0-1). 공항·역과 비행기·기차로 가는 구간(longHaulLeg)은 원래 멀어 묻지 않고,
+ * 편집에서 위치를 그대로 두면 묻지 않는다. 아니라고 하면 저장하지 않고 쓰던 칸으로 돌아간다.
+ */
+function farPlaceConfirmed(name, point){
+  const di=parseInt(document.getElementById('spotDay').value);
+  const day=trip().days[di]; if(!day) return true;
+  const prev=(editing&&editing.si>=0)? trip().days[editing.di]?.spots[editing.si] : null;
+  if(prev && hasLoc(prev) && +prev.lat===point.lat && +prev.lng===point.lng) return true;
+  const cat=spotCatOf({cat:document.getElementById('spotCat').value||undefined, name});
+  if(cat && cat.id==='transport') return true;
+  if(longHaulLeg(day)) return true;
+  const km=spotDistanceFromPlan(di, point);
+  if(km==null || km<FAR_PLACE_KM) return true;
+  return !!confirm(`'${name}' — 이 일정의 다른 장소에서 약 ${fmtKm(km)} 떨어진 곳이에요.\n찾던 곳이 맞나요? (아니면 '취소'를 누르고 다시 찾아 주세요)`);
+}
+/** 검색·지도에서 받은 도시 이름을 이 여행이 이미 쓰는 표기로 — '파리'와 'Paris'로 갈리지 않게(P2-25) */
+function tripCityFor(city, at){ return tripCitySpelling(city, at, trip()? trip().days.flatMap(d=>d.spots||[]) : []); }
+async function doSearch(opts){
+  const wide=!!(opts&&opts.wide);   // '전체에서 찾기' — 기준점 없이 다시 찾는다
   const q=document.getElementById('spotSearch').value.trim(); if(!q)return;
   if(searching) return;                                  // 진행 중 재호출 차단(연타 방지)
   const res=document.getElementById('searchRes');
   searching=true;
   try{
-    // 편집 중인 일자의 기존 도시를 앵커로 활용 (있으면 주변 우선)
+    // 편집 중인 일자의 기존 도시를 앵커로 활용 (있으면 주변 우선) — 칸이 비면 이 여행의 가까운 날 장소
     const city=document.getElementById('spotCity').value.trim();
-    const ck=q.toLowerCase()+'|'+city.toLowerCase();
+    const dayIdx=parseInt(document.getElementById('spotDay').value);
+    const looseSpot=(!wide&&!city)? searchAnchorSpot(trip().days, isNaN(dayIdx)?0:dayIdx) : null;
+    const ck=q.toLowerCase()+'|'+city.toLowerCase()+(wide?'|wide':'')+(looseSpot?`|@${looseSpot.lat},${looseSpot.lng},${looseSpot.city||''}`:'');
     const hit=_searchCache[ck];
     let list;
     if(hit && Date.now()-hit.t<SEARCH_TTL){ list=hit.list; }   // 동일 검색 단기 캐시
     else{
       res.innerHTML='<div>검색 중…</div>';
-      const anchor=city? await cityAnchorOf(city) : null;
-      list=await routedSearch(q, anchor, 5);
+      const base=wide? null : await searchBaseFor(city, looseSpot);
+      list=await routedSearch(q, base&&base.near, 5, {loose:!!(base&&base.loose), city});
       if(list.length) _searchCache[ck]={list, t:Date.now()};    // 결과만 캐시(오류는 재시도 가능하게)
     }
     if(!list.length){   // 무결과 vs 오류(인증·할당량·네트워크) 구분해 안내
@@ -2571,21 +2692,36 @@ async function doSearch(){
       return;
     }
     res.innerHTML='';
+    // 좁힌 결과인지 말한다 — 도시 칸이 결과를 거르는 줄 모르고 반경 안의 엉뚱한 곳을 담았다(P0-1)
+    if(city && list.scope==='near'){
+      const note=document.createElement('p'); note.className='searchScope';
+      note.append(`${city} 근처 결과예요 · `);
+      const all=document.createElement('button'); all.type='button'; all.className='btn sm'; all.textContent='전체에서 찾기';
+      all.onclick=()=>doSearch({wide:true});
+      note.appendChild(all); res.appendChild(note);
+    }else if(city && list.widened){
+      const note=document.createElement('p'); note.className='searchScope';
+      note.textContent=`${city} 근처에는 같은 이름이 없어 전체에서 찾았어요 — 주소를 확인해 주세요`;
+      res.appendChild(note);
+    }
     list.forEach(it=>{
       // 결과는 눌러서 고르는 줄이다 — 이름과 주소를 나누고 꺾쇠를 붙여 그냥 글처럼 보이지 않게 한다
       const d=document.createElement('button'); d.type='button'; d.className='placeSearchResult';
       const nm=document.createElement('span'); nm.className='psrName'; nm.textContent=it.name; d.appendChild(nm);
       if(it.addr){ const ad=document.createElement('span'); ad.className='psrAddr'; ad.textContent=it.addr; d.appendChild(ad); }
+      // 다른 장소에서 수백 km 떨어진 결과는 줄에서 미리 말한다 — 파리 일정에 여수의 '구에펠탑'이 담겼다(P0-1)
+      const far=longHaulLeg(trip().days[isNaN(dayIdx)?0:dayIdx]||{})? null : spotDistanceFromPlan(isNaN(dayIdx)?0:dayIdx, it);
+      if(far!=null && far>=FAR_PLACE_KM){ const fr=document.createElement('span'); fr.className='psrFar'; fr.textContent=`이 일정의 다른 장소에서 약 ${fmtKm(far)} 떨어진 곳이에요`; d.appendChild(fr); }
       const select=()=>{
         document.getElementById('spotLat').value=it.lat; document.getElementById('spotLng').value=it.lng;
         document.getElementById('spotPlaceId').value=it.placeId||'';   // 구글 결과면 호텔 identity용 placeId 보존
         document.getElementById('spotKakaoId').value=it.kakaoId||'';   // 카카오 결과면 그 장소로 바로 길찾기
         fillNameValue(it.name, true);   // 검색 결과 선택은 명시적 → 기존 이름도 그 장소 이름으로 갱신
-        setCoordHint(it.lat,it.lng,it.hours?' · 영업시간 반영됨':'');
-        if(it.city) fillCityValue(it.city);              // 결과가 아는 도시로 즉시 채움(신뢰성↑)
+        setCoordHint(it.lat,it.lng,it.hours?' · 영업시간 반영됨':'',it.addr);
+        if(it.city) fillCityValue(tripCityFor(it.city, it));   // 결과가 아는 도시로 즉시 채움 — 이 여행의 표기로
         else fillCityFromCoords(it.lat, it.lng, false);  // 없으면 역지오코딩 폴백
         _pickedHours = it.hours||null;   // 저장 시 spot.hours로 반영
-        if(it.cat) document.getElementById('spotCat').value=it.cat;   // 검색 결과가 아는 분류를 그대로 채움
+        if(it.cat) setSpotCat(it.cat);   // 검색 결과가 아는 분류를 그대로 채움 — 숙소면 '오늘 밤 묵어요'도 함께(P1-14)
 
         res.innerHTML='';
       };
@@ -2593,10 +2729,10 @@ async function doSearch(){
       // 시간·메모를 먼저 정하고 싶으면 예전처럼 폼으로 돌아간다. 도시를 모르면 담기 전에 좌표로 한 번 묻는다.
       const add=(editing&&editing.si<0)? async()=>{
         select();
-        if(!it.city){ const c=await reverseCity(it.lat,it.lng).catch(()=>null); if(c) fillCityValue(c); }
+        if(!it.city){ const c=await reverseCity(it.lat,it.lng).catch(()=>null); if(c) fillCityValue(tripCityFor(c, it)); }
         document.getElementById('spotSave').onclick();
       } : null;
-      d.onclick=()=>openPlaceDetails(it,{select, add, addLabel:`Day ${(parseInt(document.getElementById('spotDay').value)||0)+1}에 담기`});
+      d.onclick=()=>openPlaceDetails(it,{select, add, addLabel:`Day ${(parseInt(document.getElementById('spotDay').value)||0)+1}에 담기`, visitDay:isNaN(dayIdx)?0:dayIdx});
       res.appendChild(d);
     });
   }catch(e){   // 예상 못한 예외도 원인 분류해 안내(상세는 콘솔에만)
@@ -2646,9 +2782,37 @@ window.openDayModal=(di)=>{
 function toggleNights(){
   const on=document.getElementById('spotStay').checked;
   document.getElementById('nightsWrap').style.display = on?'flex':'none';
-  document.getElementById('nightsHint').style.display = on?'block':'none';
+  // 끈 채로 보일 때(종류는 숙소인데 묵지 않음) 무엇이 달라지는지 말한다
+  document.getElementById('nightsHint').textContent = on
+    ? '숙박 일수 동안 다음 날 출발 기준점으로 사용해요.'
+    : '들르기만 하는 곳으로 계산해요 — 다음 날 출발점이 되지 않아요.';
 }
-document.getElementById('spotStay').onchange=toggleNights;
+// '🏠 오늘 밤 여기서 묵어요'는 종류가 숙소일 때(또는 이미 숙소로 계산될 때) 종류 바로 아래 기본 칸에 보인다.
+// 예전에는 종류가 '🏠 숙소'인 호텔이 숙소로 계산되지 않았다 — 진짜 숙소 체크가 상세 설정 맨 아래에 따로 있었다(2026-10-03 P1-14).
+function syncStayRow(){
+  const on=document.getElementById('spotCat').value==='stay'||document.getElementById('spotStay').checked;
+  document.getElementById('spotStayRow').style.display = on?'':'none';
+  toggleNights();
+}
+/** 종류를 정한다 — 사람이 고르든 검색 결과가 채우든 같은 규칙: 숙소면 묵는 것으로 켜고, 숙소가 아니면 끈다 */
+function setSpotCat(cat){
+  document.getElementById('spotCat').value=cat||'';
+  document.getElementById('spotStay').checked = (cat==='stay');
+  syncStayRow();
+  syncAdmissionBox();
+}
+document.getElementById('spotStay').onchange=syncStayRow;
+document.getElementById('spotCat').addEventListener('change',e=>setSpotCat(e.target.value));
+// 명소 예약·입장 준비는 명소처럼 보이는 곳에서만 펼친다 — 식당·호텔 편집에도 늘 펼쳐져 있었다(P2-27).
+// 접기만 한다: 이미 적어 둔 것이 있으면 펼친 채로 두고, 접혀 있어도 눌러 열 수 있다.
+const ADMISSION_CATS=['sight','activity','nature'];
+function syncAdmissionBox(){
+  const box=document.getElementById('spotAdmBox'); if(!box) return;
+  const cat=spotCatOf({cat:document.getElementById('spotCat').value||undefined, name:document.getElementById('spotName').value});
+  const said=document.getElementById('spotAdmReq').value!=='UNKNOWN'||document.getElementById('spotAdmBooked').checked
+    ||document.getElementById('spotAdmUrl').value.trim()||document.getElementById('spotAdmNote').value.trim()||!!_pickedCheckedAt;
+  box.open = !!said || !cat || ADMISSION_CATS.includes(cat.id);
+}
 // 항공 정보 입력은 이동수단이 비행기일 때만 노출
 function toggleFlightFields(){ document.getElementById('flightFields').style.display = document.getElementById('dayMode').value==='flight'?'block':'none'; }
 document.getElementById('dayMode').onchange=toggleFlightFields;
@@ -3600,7 +3764,8 @@ window.openBookingModal=(id)=>{
   document.getElementById('bkTitle').value=b?b.title:item?(item.title||''):'';
   document.getElementById('bkProvider').value=(b&&b.provider)||'';
   const amount=b? b.price : item? costAmountOf(item,'amount') : null;
-  const curV=(b&&b.cur)||(item&&item.cur)||'KRW';
+  // 금액이 있는데 통화가 없으면 원화다(저장 규칙). 아직 금액이 없을 때만 이 여행이 쓰는 통화로 연다(2026-10-03 P2-26)
+  const curV=(b&&b.cur)||(item&&item.cur)||((amount!=null&&amount>0)? 'KRW' : tripDefaultCurrency(trip()));
   document.getElementById('bkPrice').value=(amount!==null&&amount>0)? fmtMoney(amount,curV) : '';
   document.getElementById('bkCur').value=curV;
   document.getElementById('bkPayState').value=b? (b.payState==='PAID'?'PAID':'RESERVED') : item? (item.payState==='PAID'||item.payState==='RESERVED'? item.payState:'NONE') : 'NONE';
@@ -3947,7 +4112,7 @@ function fillPlaceCost(){
   const {spot}=selectedCostSpot();
   const item=spot||{};
   document.getElementById('costAmount').value=item.cost==null?'':String(item.cost);
-  document.getElementById('costCurrency').value=item.cur||'KRW';
+  document.getElementById('costCurrency').value=item.cur||(item.cost!=null? 'KRW' : tripDefaultCurrency(trip()));   // 금액이 없을 때만 이 여행의 통화(P2-26)
   document.getElementById('costBasis').value=item.costBasis||'ENTERED';
   document.getElementById('costPeople').value=item.costPeople||1;
   document.getElementById('costPartial').checked=!!item.costPartial;
@@ -4236,14 +4401,17 @@ const SEARCH_ERR_MSG={
 };
 // 동일 검색 단기 캐시(2분) — 같은 질의 반복·연타 시 재호출 방지(오류는 캐시 안 함 → 재시도 가능)
 const _searchCache={}; const SEARCH_TTL=120000;
-// 카카오 키워드 검색 → {list, err}. ZERO_RESULT(진짜 무결과)와 오류를 구분한다.
-async function kakaoSearch(q, near, limit){
+// 카카오 키워드 검색 → {list, err, scope}. ZERO_RESULT(진짜 무결과)와 오류를 구분한다.
+// near가 있으면 그 주변(20km)부터 보되, **같은 이름이 없으면 전국에서 다시 찾는다**(2026-10-03 UX 검토 P0-1) —
+// '제주'를 기준으로 '성산일출봉'을 찾으면 반경 안의 칵테일바 한 곳만 나왔고, 그게 맞는 줄 알고 담겼다.
+// scope: 'near'(주변으로 좁힌 결과 — 화면이 그렇다고 말한다) · 'wide'(전국). widened: 좁혀 봤는데 없어서 넓혔다.
+async function kakaoSearch(q, near, limit, city){
   if(!(await loadKakao())) return {list:[], err:'network'};   // SDK 로드 실패(네트워크/도메인 제한)
   const run=opts=>new Promise(res=>{
     try{
       new kakao.maps.services.Places().keywordSearch(q,(data,status)=>{
         const S=kakao.maps.services.Status;
-        if(status===S.OK && data) return res({list:data.map(d=>({name:d.place_name, addr:d.road_address_name||d.address_name||'', city:cityFromKoreanAddr(d.address_name||d.road_address_name||''), lat:+d.y, lng:+d.x, cat:catFromKakao(d.category_group_code)||undefined, kakaoId:d.id||undefined, phone:d.phone||'', category:d.category_name||''})), err:null});   // kakaoId: 국내 바로 길찾기의 신원
+        if(status===S.OK && data) return res({list:data.map(d=>({name:d.place_name, addr:d.road_address_name||d.address_name||'', city:cityFromKoreanAddr(d.address_name||d.road_address_name||''), lat:+d.y, lng:+d.x, cat:catFromKakao(d.category_group_code, d.category_name)||undefined, kakaoId:d.id||undefined, phone:d.phone||'', category:d.category_name||''})), err:null});   // kakaoId: 국내 바로 길찾기의 신원
         if(status===S.ZERO_RESULT) return res({list:[], err:null});   // 진짜 결과 없음(오류 아님)
         console.warn('kakao 검색 오류 status:', status);
         res({list:[], err:'error'});
@@ -4251,11 +4419,17 @@ async function kakaoSearch(q, near, limit){
     }catch(e){ console.warn('kakao 검색 예외:', e); res({list:[], err:'error'}); }
   });
   const size=Math.min(limit||5,15);
+  const same=p=>placeNameMatch(q,p.name,city)===0;
   if(near){
     const r=await run({size, location:new kakao.maps.LatLng(near.lat,near.lng), radius:20000});
-    if(r.list.length) return r;
+    if(r.list.some(same)) return {...r, scope:'near'};
+    const w=await run({size});
+    // 같은 이름을 앞으로 — 카카오 정확도 순서는 그대로 두고 그 이름만 올린다
+    if(w.list.some(same)) return {...w, list:[...w.list.filter(same), ...w.list.filter(p=>!same(p))], scope:'wide', widened:true};
+    if(r.list.length) return {...r, scope:'near'};
+    return {...w, scope:'wide', widened:w.list.length>0};
   }
-  return run({size});
+  return {...(await run({size})), scope:'wide'};
 }
 // normHours(구글 영업시간 정규화)는 lib.js가 단일 소스 (Next 검색과 공유)
 // Google Places 텍스트 검색 → {list, err}. 오류는 분류해 코드로 반환(콘솔엔 원문).
@@ -4289,12 +4463,25 @@ function cityAnchorOf(city){
 }
 // 질의 하나를 라우팅해 검색 (국내 앵커면 카카오 우선→구글 폴백, 해외면 구글)
 // 결과 배열을 반환하되, 결과가 없을 땐 배열에 .err(오류코드)를 실어 '무결과'와 '오류'를 구분하게 한다.
-async function routedSearch(q, near, limit){
+// 배열에는 .scope('near'·'wide')·.widened도 싣는다 — 카카오가 주변으로 좁혔는지 화면이 밝힌다(P0-1).
+// opts.loose: 기준점이 도시 칸이 아니라 이 여행의 다른 날 장소다 — 국내/해외를 가르는 데만 쓰고 결과를 좁히지 않는다.
+// opts.city: 도시 칸의 글자(이름 앞에 도시가 붙은 '강릉중앙시장'을 같은 이름으로 본다).
+async function routedSearch(q, near, limit, opts){
+  const o=opts||{};
   const korean = isKoreanSearch(q, near);   // 라우팅 판단은 lib 단일 소스
+  const tag=(list,extra)=>Object.assign(list.slice(),extra);
   let err=null;
   if(korean){
-    const k=await kakaoSearch(q, near, limit);
-    if(k.list.length) return k.list;
+    const k=await kakaoSearch(q, o.loose? null : near, limit, o.city);
+    if(k.list.length){
+      // 기준점 없이 한글로 친 이름이 국내에 같은 이름으로 없으면 해외의 고유명일 수 있다 —
+      // 파리 여행의 '에펠탑'이 여수의 '구에펠탑'으로 담겼다(P0-1). 그때만 Google에도 묻는다(과금이라 같은 이름이 있으면 묻지 않는다).
+      if(!near && !k.list.some(p=>placeNameMatch(q,p.name)===0)){
+        const g=await googlePlaces(q, null, limit);
+        if(g.list.some(p=>placeNameMatch(q,p.name)===0)) return tag(g.list,{scope:'wide'});
+      }
+      return tag(k.list,{scope:k.scope, widened:!!k.widened});
+    }
     err=k.err;
   }
   const g=await googlePlaces(q, near, limit);
@@ -4438,7 +4625,7 @@ function openPastePreview(draft,target,raw){
     di, item, include:item.kind==='PLACE', name:item.name,
     geo:{state:hasLoc(item)?'ok':'idle', cands:[], pick:hasLoc(item)?{lat:item.lat,lng:item.lng,name:item.name,addr:''}:null}
   })));
-  pv={draft,target,raw,rows,seq:0,learnedCity:'',retried:false};
+  pv={draft,target,raw,rows,seq:0,learnedCity:'',learnedByDay:{},retried:false};
   document.getElementById('pvName').value=draft.name||'';
   document.getElementById('pvStart').value=draft.start||'';
   const warn=document.getElementById('pvStartWarn');
@@ -4494,6 +4681,7 @@ function pvRowEl(row){
   body.className='pvBody';
   const name=document.createElement('input');
   name.type='text'; name.className='pvName'; name.value=row.name;
+  name.setAttribute('aria-label',`Day ${row.di+1} 장소 이름`);   // 이름 없는 칸이었다(2026-10-03 P2-27)
   name.oninput=()=>{ row.name=name.value.trim(); row.geo={state:'idle',cands:[],pick:null}; pv.retried=false; pvDebounceGeocode(); };
   body.appendChild(name);
 
@@ -4506,6 +4694,7 @@ function pvRowEl(row){
   if(row.geo.cands.length>1){
     const sel=document.createElement('select');
     sel.className='pvPick';
+    sel.setAttribute('aria-label',`${row.name} 위치 후보`);
     row.geo.cands.forEach((c,i)=>{
       const o=document.createElement('option');
       o.value=String(i); o.textContent=c.addr? `${c.name} — ${c.addr}` : c.name;
@@ -4529,7 +4718,13 @@ function pvChip(row){
   const s=document.createElement('span');
   if(!row.include){ s.className='pvChip'; s.textContent='메모로 남김'; return s; }
   if(row.geo.state==='searching'){ s.className='pvChip wait'; s.textContent='찾는 중…'; return s; }
-  if(row.geo.pick){ s.className='pvChip ok'; s.textContent=`📍 ${row.geo.pick.city||row.geo.pick.addr||'찾음'}`.slice(0,28); return s; }
+  if(row.geo.pick){
+    // 찾은 곳의 이름을 보인다 — 도시만 보여 '쿠로몬 시장'이 다른 수산시장으로 잡힌 걸 알 수 없었다(2026-10-03 P0-1)
+    const pick=row.geo.pick, differs=placeNameMatch(row.name, pick.name)===2;
+    s.className='pvChip ok'+(differs?' check':'');
+    s.textContent=`📍 ${[pick.name,pick.city].filter(Boolean).join(' · ')||pick.addr||'찾음'}`.slice(0,40)+(differs?' · 확인 필요':'');
+    return s;
+  }
   s.className='pvChip'+(row.geo.state==='done'?' no':'');
   s.textContent=row.geo.state==='done'?'위치 없음':'대기 중';
   return s;
@@ -4549,8 +4744,12 @@ async function pvGeocodeAll(){
     row.geo.cands=found;
     row.geo.pick=found[0]||null;
     row.geo.state='done';
-    // 한 곳을 찾으면 그 도시가 다음 줄의 앵커가 된다 — 같은 여행이면 대개 같은 동네다
-    if(row.geo.pick&&row.geo.pick.city&&!pv.learnedCity) pv.learnedCity=row.geo.pick.city;
+    // 한 곳을 찾으면 그 도시가 다음 줄의 앵커가 된다 — 같은 여행이면 대개 같은 동네다.
+    // ⚠️ 공항·역은 앵커가 아니다: 첫 줄 '간사이 국제공항'의 도시(이즈미사노)가 오사카·교토의 모든 줄을 끌어당겼다(2026-10-03 P0-1).
+    // 날마다 따로도 배운다 — 당일치기로 다른 도시에 가는 날(교토)은 그날 먼저 찾은 곳의 도시가 더 가깝다.
+    const learn=row.geo.pick&&row.geo.pick.city&&!pvIsTransport(row);
+    if(learn&&!pv.learnedCity) pv.learnedCity=row.geo.pick.city;
+    if(learn&&!pv.learnedByDay[row.di]) pv.learnedByDay[row.di]=row.geo.pick.city;
     renderPastePreview();
     return true;
   };
@@ -4579,10 +4778,18 @@ async function pvGeocodeAll(){
 function pvCityHint(row){
   const named=String(row&&row.item&&row.item.city||'').trim();
   if(named) return named;
+  const byDay=pv.learnedByDay||{};
+  if(row && byDay[row.di]) return byDay[row.di];
   if(pv.learnedCity) return pv.learnedCity;
   return String(document.getElementById('pvName').value||pv.draft.name||'').trim();
 }
 
+/** 공항·역 줄인가 — 줄 이름이나 찾은 곳의 종류로 본다. 이런 곳의 도시는 다음 줄의 검색 기준이 되지 않는다 */
+function pvIsTransport(row){
+  const pick=row&&row.geo&&row.geo.pick;
+  const cat=spotCatOf({cat:pick&&pick.cat, name:row&&row.name})||(pick? spotCatOf({name:pick.name}) : null);
+  return !!(cat && cat.id==='transport');
+}
 /** 그 날의 날짜가 순서와 어긋나는가 — **고치지 않는다.** 사람에게 말할 뿐이다 */
 function pvDateNote(di){
   const start=document.getElementById('pvStart').value;

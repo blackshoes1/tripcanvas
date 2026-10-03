@@ -60,7 +60,7 @@ test('국내는 제공된 기본 정보를 표시하고 읽기 전용에서도 �
   await start(context,page);await page.setViewportSize({width:390,height:844});
   await page.evaluate(()=>{viewMode=true;openPlaceDetails({name:'국내 카페',kakaoId:'123',addr:'서울 1번지',phone:'02-1234',category:'음식점 > 카페'});});
   await expect(page.locator('#placeDetailsContent')).toContainText('02-1234');
-  await expect(page.locator('#placeDetailsContent')).toContainText('공개 API에서 제공하지');
+  await expect(page.locator('#placeDetailsContent')).toContainText('카카오맵에서 볼 수 있어요');
   await expect(page.locator('#placeDetailsActions button')).toHaveCount(0);
   await expect(page.locator('#placeDetails a')).toHaveAttribute('href','https://place.map.kakao.com/123');
   expect(await page.locator('#placeDetails').evaluate(el=>el.getBoundingClientRect().right<=innerWidth)).toBe(true);

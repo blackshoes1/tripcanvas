@@ -96,9 +96,11 @@
   <div class="hint">또는 <button class="btn sm" id="pickOnMap">지도 클릭으로 위치 지정</button> · 지도를 <b>탭(클릭)</b>하면 그 자리에 바로 추가</div>
   <div class="basicGrid">
     <div><label for="spotName">장소 이름 *</label><input type="text" id="spotName"></div>
-    <div><label for="spotCity">도시 *</label><input type="text" id="spotCity" placeholder="예: 마드리드"></div>
+    <div><label for="spotCity">도시</label><input type="text" id="spotCity" placeholder="예: 마드리드"></div>
     <div><label for="spotCat">종류</label><select id="spotCat"></select></div>
     <div><label for="spotDay">일자</label><select id="spotDay"></select></div>
+    <!-- 종류가 숙소면 보이는 기본 칸 — 종류와 숙소 계산이 다른 컨트롤이라 '🏠 숙소' 호텔이 숙소로 계산되지 않았다(2026-10-03) -->
+    <div class="wide stayRow" id="spotStayRow" style="display:none"><span class="chkrow"><input type="checkbox" id="spotStay" aria-describedby="nightsHint"><label for="spotStay">🏠 오늘 밤 여기서 묵어요</label><span id="nightsWrap"><input type="number" id="spotNights" min="1" max="90" step="1" value="1"><label for="spotNights">박</label></span></span><div class="hint" id="nightsHint">숙박 일수 동안 다음 날 출발 기준점으로 사용해요.</div></div>
     <div><label for="spotBookAt">예약·입장 시각</label><input type="text" id="spotBookAt" aria-describedby="spotTimeHelp" class="timeIn" inputmode="numeric" maxlength="5" placeholder="19:00"></div>
     <div><label for="spotAt">내가 정한 도착 시각</label><input type="text" id="spotAt" aria-describedby="spotTimeHelp" class="timeIn" inputmode="numeric" maxlength="5" placeholder="비우면 자동 계산"></div>
     <div><label for="spotStayMin">체류 시간 (분)</label><input type="number" id="spotStayMin" min="0" step="5" placeholder="정하지 않음" title="비우면 &#39;정하지 않음&#39;, 0이면 &#39;들렀다 바로 이동&#39;이에요. 계산은 둘 다 머무르지 않는 것으로 같지만 다른 뜻이에요"></div>
@@ -112,24 +114,28 @@
     <div class="advancedGrid">
       <div><label for="spotLegMode">이동수단</label><select id="spotLegMode"><option value="">그날 기본</option><option value="car">🚗 자차</option><option value="taxi">🚕 택시</option><option value="transit">🚌 대중교통</option><option value="train">🚆 기차</option><option value="walk">🚶 도보</option><option value="bike">🚴 자전거</option><option value="flight">✈️ 비행기</option></select></div>
       <div class="wide"><label for="spotCost">예상 비용</label><div class="fieldRow"><input type="text" id="spotCost" inputmode="decimal" placeholder="미정 (무료는 0)"><select id="spotCur" class="compactSelect" aria-label="비용 통화"><option value="KRW">₩ 원</option><option value="USD">$ 달러</option><option value="EUR">€ 유로</option><option value="JPY">¥ 엔</option><option value="CNY">元 위안</option></select></div><div class="hint" id="costKrwHint"></div></div>
-      <div class="wide"><label for="spotBookUrl">예약 URL</label><input type="text" id="spotBookUrl" placeholder="https://..."></div>
-      <div class="wide admissionBox">
-        <label for="spotAdmReq">명소 예약·입장 준비</label>
+      <div class="wide"><label for="spotBookUrl">내 예약 링크</label><input type="text" id="spotBookUrl" placeholder="예약 확인·바우처 주소 https://"></div>
+      <!-- 칸마다 보이는 이름을 둔다 — 예시 문구뿐이라 값을 넣으면 무슨 칸인지 사라졌다. 명소가 아니면 접는다(2026-10-03 P2-27) -->
+      <details class="wide admissionBox" id="spotAdmBox">
+        <summary>명소 예약·입장 준비 <span>⌄</span></summary>
+        <div class="admissionBody">
         <div class="admissionRow">
-          <select id="spotAdmReq" aria-describedby="spotAdmHelp"></select>
+          <span class="chkrow"><label for="spotAdmReq">예약 요건</label><select id="spotAdmReq" aria-describedby="spotAdmHelp"></select></span>
           <span class="chkrow"><input type="checkbox" id="spotAdmBooked"><label for="spotAdmBooked">내 예약 완료</label></span>
           <span class="chkrow"><label for="spotAdmPeople">인원</label><input type="number" id="spotAdmPeople" min="1" max="100" step="1" placeholder="미정"></span>
         </div>
-        <input type="text" id="spotAdmUrl" placeholder="공식 예약 페이지 https://">
+        <label for="spotAdmUrl">공식 예약 페이지</label>
+        <input type="text" id="spotAdmUrl" placeholder="https://">
+        <label for="spotAdmNote">예약 메모</label>
         <input type="text" id="spotAdmNote" placeholder="권종 · 성인/어린이 · 적용 날짜 등" maxlength="1000">
         <div class="admissionRow">
           <button type="button" class="btn" id="spotAdmConfirm">공식 정보를 지금 확인했어요</button>
           <span class="hint" id="spotAdmChecked"></span>
         </div>
         <div class="hint" id="spotAdmHelp">직접 확인한 것만 적어 주세요. 링크를 열거나 시각을 적어도 <b>예약 완료로 바뀌지 않아요.</b> 금액은 위의 예상 비용에 적어요.</div>
-      </div>
-      <div class="wide optionRows"><div class="chkrow"><label for="spotPriority">우선순위</label><select id="spotPriority" title="꼭 가기는 일정을 다시 맞출 때 마지막까지 지키고, 여유 되면은 시간이 모자라면 가장 먼저 빠져요"><option value="MUST">꼭 가기</option><option value="NORMAL" selected>보통</option><option value="OPT">여유 되면</option></select></div><div class="chkrow"><input type="checkbox" id="spotStay"><label for="spotStay">🏠 숙소</label><span id="nightsWrap"><input type="number" id="spotNights" min="1" max="90" step="1" value="1"><label for="spotNights">박</label></span></div></div>
-      <div class="hint wide" id="nightsHint">숙박 일수 동안 다음 날 출발 기준점으로 사용해요.</div>
+        </div>
+      </details>
+      <div class="wide optionRows"><div class="chkrow"><label for="spotPriority">우선순위</label><select id="spotPriority" title="꼭 가기는 일정을 다시 맞출 때 마지막까지 지키고, 여유 되면은 시간이 모자라면 가장 먼저 빠져요"><option value="MUST">꼭 가기</option><option value="NORMAL" selected>보통</option><option value="OPT">여유 되면</option></select></div></div>
       <div class="wide" id="spotWhoSection" style="display:none"><label>누가 가나요</label><div class="whoChips" id="spotWho"></div><div class="hint">고르지 않으면 <b>모두</b>예요. 몇 명만 고르면 같은 시간에 다른 일정을 둘 수 있어요.</div></div>
     </div>
   </details>
