@@ -56,7 +56,7 @@
   .drive{font-size:11.5px;color:var(--meta-eta);padding:2px 0 4px 2px;font-variant-numeric:tabular-nums}
   .driveMemo{color:var(--muted)}.memoTag{font-size:10.5px;font-weight:700;color:var(--subtle);border:1px solid var(--border);border-radius:5px;padding:0 4px;margin-right:5px}
   .dist{font-size:11px;color:var(--meta-soft);padding:1px 0 3px 2px;font-variant-numeric:tabular-nums}
-  button.dist.estNote{display:block;width:100%;text-align:left;background:none;border:0;font:inherit;font-size:12px;line-height:1.5;color:var(--meta-warning);padding:4px 2px;min-height:44px;cursor:pointer}.estNote .estFix{font-weight:700;text-decoration:underline}
+  button.dist.estNote{display:block;width:100%;text-align:left;background:none;border:0;font:inherit;font-size:12px;line-height:1.5;color:var(--muted);padding:4px 2px;min-height:44px;cursor:pointer}.estNote .estFix{font-weight:700;text-decoration:underline}
   .leg{color:var(--meta-soft);font-size:11px;white-space:nowrap;font-variant-numeric:tabular-nums}
   /* 구간 수단 버튼 — 상속(흐림) vs 이 구간만 지정(진하게 + 테두리) */
   .legModeBtn{background:none;border:1px solid transparent;border-radius:6px;padding:0 3px;font-size:11px;line-height:1.5;opacity:.5;cursor:pointer}
@@ -99,7 +99,7 @@
   .sortable-ghost{opacity:.35}
   .sortable-chosen{background:var(--drag-bg)}
   .spotList{min-height:8px}
-  .spotList:empty{min-height:26px;border:1px dashed var(--border);border-radius:7px;margin-bottom:4px}
+  .spotList:empty{min-height:26px;border:1px dashed transparent;border-radius:7px;margin-bottom:4px}body.spotDragging .spotList:empty{border-color:var(--border)}
   .addSpot{font-size:11.5px;color:var(--meta-link);background:none;border:1px dashed var(--border);border-radius:7px;padding:3px 10px;margin-top:5px}
   #addDayBtn{width:100%;margin-top:2px;padding:8px;font-size:12.5px}
   .poiChip{max-width:124px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:var(--surface);color:var(--ink);
@@ -671,3 +671,8 @@ body:has(.modalBg.show) #toast{bottom:auto;top:calc(env(safe-area-inset-top) + 1
 #undoQuick{display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;padding:0}#undoQuick[hidden]{display:none}
 /* 좁은 화면에서는 여행 이름이 먼저다 — 브랜드는 아이콘으로만 남긴다 */
 @media (max-width:480px){header h1 .brandText{display:none}}
+.travelNext .travelGo{align-self:center;white-space:nowrap;text-decoration:none;font-size:12.5px;font-weight:700;color:var(--primary-dark);border:1px solid var(--border);border-radius:10px;padding:0 10px;min-height:44px;display:inline-flex;align-items:center}
+#searchRes .placeSearchResult{position:relative;padding-right:30px}#searchRes .placeSearchResult::after{content:'›';position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:20px;color:var(--subtle)}
+#searchRes .placeSearchResult:hover{background:var(--hover-bg)}.psrName{display:block;font-weight:700;font-size:14.5px}.psrAddr{display:block;font-size:12px;color:var(--subtle);margin-top:2px;line-height:1.4}
+.estNote .estFix{color:var(--primary-dark)}
+.sampleTag{font-size:10.5px;font-weight:700;color:var(--badge-info-fg);background:var(--badge-info-bg);border-radius:5px;padding:1px 5px;vertical-align:1px}

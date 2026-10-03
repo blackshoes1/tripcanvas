@@ -123,7 +123,7 @@ With J          ← 제품 (앱 이름 · 웹 타이틀 · PWA · 메일 제목 
 - `.github/workflows/ci.yml` — PR마다 네 잡: **Quality**(구문 → 버전 동기 → lint → 시크릿 스캔 → 마이그레이션 하위호환 → `tsc` → 유닛 → 통합 → RLS·복구 리허설(실제 PostgreSQL) → `npm audit`) · **Next workspace**(`next/`의 lint · `tsc` · vitest · 파리티 픽스처 · build · tools:build · 런타임 `npm audit` · Next 웹 API E2E) · **E2E**(Playwright, Quality 뒤) · **Docker image build**(운영 이미지 api·tools가 빌드되는지 — 푸시하지 않는다, PR에서만). push 트리거는 없다 — `main`에서는 `release.yml`이 이 워크플로를 게이트로 불러 통과하면 이미지를 GHCR에 올린다. iOS는 `ios.yml`(`ios/` 변경 시)
 
 라이브러리(CDN): 지도 듀얼 엔진 — 해외 Google Maps JS SDK · 국내 카카오맵 JS SDK · LZString(공유 링크 압축) · SortableJS(드래그) · Supabase(SDK는 `auth-config`가 `SUPABASE`라고 답할 때의 로그인 감싸기에만 남았다 — 데이터·동기화는 쓰지 않는다)
-검색: 국내 카카오 로컬 · 해외 Google Places (`routedSearch`가 라우팅) · 저장: localStorage + TripCanvas API(`api.js` → NAS PostgreSQL)
+검색: 국내 카카오 로컬 · 해외 Google Places (`routedSearch`가 라우팅) — 해외 이름은 **한국어로** 받는다(`language:'ko'`, 2026-10-03 — 장소 정보 화면에서 '센소지'를 보고 담았는데 'Sensō-ji'로 저장됐다). 호텔 시세용 영문명 변환(`enNameForBooking`)만 `'en'`으로 부른다 · 저장: localStorage + TripCanvas API(`api.js` → NAS PostgreSQL)
 지도에서 장소 담기: 해외는 `clickableIcons`로 POI 탭 시 `placeId`를 그대로 받고, **국내는 카카오 SDK가 POI 탭 신원을 주지 않아** 카테고리 검색으로 POI 칩을 직접 깔아 그걸 누르게 한다(`refreshKakaoPOI`). 좌표 역추적(`reverseSpot`)은 둘 다 실패했을 때의 최후 수단이다 — 추측이라 엉뚱한 상호가 들어갈 수 있다.
 API 키: app.js 상단 `GMAPS_KEY`(리퍼러 제한)·`KAKAO_KEY`(JS, 플랫폼 도메인 제한)·`KAKAO_REST_KEY`(카카오내비) — `localhost:8000`, `tripcanvas-ai.vercel.app` 등록 필요
 localStorage(실제 키 **15개** — 2026-09-21에 여섯을 채웠다): `tripcanvas_v1`(여행) · `tripcanvas_legs_v4`(구간 캐시, 수단별 키) · `tripcanvas_synced` · `tripcanvas_prices_v1`(예약 가격 관측 기록) · `tripcanvas_suggest_v1`(제안 거절 이력·컨디션 — 여행 데이터가 아니라 기기 로컬) · `tripcanvas_cfg` · `tripcanvas_fx` · `tripcanvas_join_v1`(초대 수락 대기 토큰) · `tripcanvas_auth_v1`(자체 Auth 세션 토큰 — Supabase 모드에서는 쓰지 않는다) · `tripcanvas_onboarded_v1`(처음 화면을 봤는가) · `tripcanvas_firststep_v1`(첫 걸음 안내) · `tripcanvas_theme_v1`(라이트·다크 선택) · `tripcanvas_sync_v2`(동기화 메타 — 여행별 revision·상태) · `tripcanvas_ops_v1`(운영 오류 기록) · `tripcanvas_rejected_backup_v1`(거절된 동기화 본문 백업)
@@ -328,6 +328,8 @@ localStorage(실제 키 **15개** — 2026-09-21에 여섯을 채웠다): `tripc
   ⚠️ 저장 표현을 바꾸지 않는 이유: 엔진의 재구성과 계약(`TripActivity.mustVisit`/`optional`)이 그 두 플래그를 읽는다. 2026-09-20 전에는 **웹이 `opt`만, iOS가 `must`만** 편집할 수 있어, 화면에 없는 이유로 양쪽 추천이 갈렸다.
 - 실행 상태는 `spot.status`(`COMPLETED`/`SKIPPED`/`CANCELLED`, 기본 PLANNED는 저장 안 함). **자동 완료 판정은 하지 않는다** — 사용자가 누른다.
 - 제안은 한 번에 3(+1)개까지. 불가능한 후보(시간 초과·영업 종료·완료·건너뜀)는 **아예 제외**하고, 넣을 게 없으면 억지로 만들지 말고 쉬는 선택지를 남긴다. 점수는 내부값이고 UI에는 `reasons` 문장만 쓴다.
+  ⚠️ **쉬자는 제안은 하루가 움직인 뒤에만**(2026-10-03) — 첫 일정 도착 전이거나 여행 전 미리보기면 `REST`를 내지 않는다(컨디션 LOW면 언제든). 식사 제안의 시각은 빈 시간의 시작이 아니라 **식사 시간대의 시작**이다(`max(창 시작, 11:30)`).
+  ⚠️ **여행 중 화면의 위 칸은 엔진 상태로 정한다**(2026-10-03, `renderTravel`). 아래 칸('지금 일정'·'다음 장소')이 엔진의 `nextItem`을 맡고, 위 칸은 그와 겹치지 않는 '마지막으로 들른 곳'(완료했거나 시각상 지나온 곳) · '출발 전'(첫 도착 전) · '출발한 곳'(시작은 됐는데 다녀온 표시가 없음)이다. 도착 예상 시각만 보면 첫 장소에 닿기 전에도 그곳을 '현재 장소'라 했다.
   ⚠️ **'한 곳 더'(`NEXT_ACTIVITY`)는 새 장소만이다**(2026-10-02). 그날 일정에 이미 있는 장소(현재·완료·남은 장소, `inPlan`)는 후보에서 뺀다 — 그건 '다음' 카드와 일정 조정(REPLAN)의 몫이고, 넣으면 "공항에 한 곳 더 들르세요"가 된다(`fillGaps`와 같은 규칙). 다른 날에서 옮겨올 후보에서도 공항·역(`transport`)과 숙소는 뺀다. 여행 전·다른 날을 볼 때(`!state.live`)는 '지금'이라고 말하지 않는다(웹 `SG_KICKER_PREVIEW`).
 - 거절(`SKIPPED`)은 `tripcanvas_suggest_v1`에 **그날 날짜와 함께** 저장돼 같은 날 반복되지 않는다. 추천 결과 자체는 여행 데이터에 저장하지 않는다 — 수락한 것만 일정에 반영된다.
 - 자연어("오늘 좀 피곤해서 많이 걷기 싫어")는 `parseIntent`로 **옵션(energyLevel·maxTravelMin·walkAverse)만** 바꾼다. 충돌·운영시간·이동시간 판단은 그대로 deterministic 로직이 한다. 못 알아들으면 알아들은 척하지 말고 그렇게 말한다.

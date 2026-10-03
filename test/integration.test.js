@@ -2395,7 +2395,7 @@ test('통합: 여행 모드의 날짜 선택과 추천은 같은 주입 clock을
   assert.equal(w.document.getElementById('travelDay').value, '0', '호스트 실제 날짜가 아니라 주입 날짜로 오늘을 고른다');
   assert.equal(w.eval('_adapt.state.currentDay'), 0);
   assert.equal(w.eval('_adapt.state.nowMin'), 13 * 60, '같은 스냅샷 시각이 추천 엔진까지 전달된다');
-  assert.match(w.document.getElementById('travelCurrent').textContent, /현재 장소/, '현재 장소 판정도 같은 주입 날짜를 쓴다');
+  assert.match(w.document.getElementById('travelCurrent').textContent, /출발한 곳/, '현재 칸 판정도 같은 주입 날짜·시각을 쓴다(13시면 일정은 시작됐는데 다녀온 표시가 없다)');
   w.close();
 });
 
@@ -2470,6 +2470,31 @@ test('통합: 여행지 시간대를 정했으면 "오늘"은 그 시간대의 �
   assert.deepEqual(w.eval('travelClock()'), { todayISO: '2026-09-01', nowMin: 22 * 60 + 30 }, '기기 날짜(9/2)가 아니라 여행지 날짜');
   w.eval("trip().days[0].timeZone=''");
   assert.deepEqual(w.eval('travelClock()'), { todayISO: '2026-09-02', nowMin: 9 * 60 }, '시간대가 없으면 기기 시계');
+  w.close();
+});
+
+test('통합: 여행 당일 첫 장소에 닿기 전에는 "출발 전"이고, 위·아래 칸이 같은 곳이 되지 않는다', { skip: noJsdom }, () => {
+  // 2026-10-03 UX 검토: 08:53에 열었더니 09:00 도착 예상인 첫 장소가 '현재 장소'이자 '다음 장소'였고,
+  // "출발점이 없어 이동을 계산하지 않아요"와 "지금 출발하면 약 7분 여유"가 한 카드에 같이 나왔다.
+  const w = boot();
+  withAdaptTrip(w, [{ startAt: '09:00', mode: 'transit', spots: [S('센소지', 40.41, { stayMin: 60 }), S('스카이트리', 40.43), S('츠키지', 40.45)] }],
+    { today: '2026-09-01', now: 8 * 60 + 53 });
+  w.eval('renderTravel(0)');
+  const cur = () => w.document.getElementById('travelCurrent').textContent;
+  const next = () => w.document.getElementById('travelNext').textContent;
+  assert.match(cur(), /출발 전/);
+  assert.ok(!/센소지/.test(cur()), '아직 닿지 않은 곳을 지금 있는 곳이라 하지 않는다');
+  assert.match(next(), /다음 장소.*센소지/);
+  assert.ok(!/여유/.test(next()), '이동을 모르면 여유 시간을 말하지 않는다');
+  assert.ok(w.document.querySelector('#travelNext a.travelGo'), '→는 실제로 그곳 지도를 여는 링크다');
+  // 09:20 — 센소지에 머무는 중: 아래 칸이 '지금 일정'으로 맡고, 위 칸은 겹치지 않는다
+  w.eval('nowMinutes=()=>9*60+20; renderTravel(0)');
+  assert.match(next(), /지금 일정.*센소지/);
+  assert.ok(!/센소지/.test(cur()));
+  // 10:30 — 센소지를 지나왔다
+  w.eval('nowMinutes=()=>10*60+30; renderTravel(0)');
+  assert.match(cur(), /마지막으로 들른 곳.*센소지/);
+  assert.ok(!/센소지/.test(next()));
   w.close();
 });
 
@@ -4257,9 +4282,44 @@ test('새 여행: 어디로·언제를 묻고, 일자를 그만큼 만든다', {
   assert.equal(created.start, '2026-07-21');
   assert.equal(created.days.length, 4, '며칠인지 물었으면 그만큼 만든다');
   assert.deepEqual(created.days[0].spots, []);
+  // 이동수단은 고른 것으로 — 기본은 대중교통이다(무조건 자차면 도시 여행의 시각이 비현실적이었다, 2026-10-03)
+  assert.equal(w.document.getElementById('ntMode').value, 'transit');
+  assert.ok(created.days.every((d) => d.mode === 'transit'), '모든 날의 기본 수단이 고른 수단이다');
   assert.ok(!w.document.getElementById('newTripBg').classList.contains('show'));
   // 여행 설정 모달로 맞이하지 않는다
   assert.ok(!w.document.getElementById('tripModalBg').classList.contains('show'));
+});
+
+test('새 여행: 빈 여행에서 장소 담기는 첫 걸음 카드 하나가 권한다', { skip: noJsdom }, () => {
+  // 2026-10-03 UX 검토 — 지도 '첫 장소 검색', 카드 '장소 담기', '＋ 장소 추가'가 같은 일을 세 번 권했다
+  const w = boot();
+  w.eval("store.trips.push({id:'empty1',name:'빈 여행',start:'2026-07-21',days:[{spots:[]},{spots:[]}]}); store.activeId='empty1'; render(); updateMapEmpty();");
+  const card0 = w.document.querySelectorAll('.dayCard')[0];
+  assert.ok(card0.querySelector('.firstStep'), '첫 걸음 카드가 있다');
+  assert.equal(card0.querySelector('.addSpotBtn'), null, '같은 날에 ＋ 장소 추가를 또 두지 않는다');
+  assert.equal(w.document.getElementById('mapEmptySearch').hidden, true, '지도 빈 화면은 안내만 한다');
+  assert.ok(!/🔍/.test(card0.querySelector('.firstStep').textContent), '이모지 대신 선 아이콘');
+  w.eval('dismissFirstStep(); updateMapEmpty();');
+  assert.ok(w.document.querySelectorAll('.dayCard')[0].querySelector('.addSpotBtn'), '안내를 닫으면 평소 버튼이 돌아온다');
+  assert.equal(w.document.getElementById('mapEmptySearch').hidden, false);
+  w.close();
+});
+
+test('다듬기: 빈 일자 제목·여행 목록의 샘플 표시·장소 추가 화면의 도시 예시와 위치 문구', { skip: noJsdom }, () => {
+  // 2026-10-03 UX 검토
+  const w = boot();
+  w.eval("store.trips=[sampleTrip(),{id:'t2',name:'🇯🇵 도쿄 여행',start:'2026-07-21',days:[{spots:[]}]}]; store.activeId='t2'; render();");
+  assert.equal(w.document.querySelector('.dayTitle').textContent.trim().replace(/^⠿\s*/, ''), 'Day 1', '제목이 없으면 점을 남기지 않는다');
+  w.eval('openTripList()');
+  const rows = Array.from(w.document.querySelectorAll('#tripListBody .tripRow'));
+  assert.ok(rows.some((r) => /스페인/.test(r.textContent) && r.querySelector('.sampleTag')), '샘플은 샘플이라고 표시한다');
+  assert.ok(!rows.some((r) => /도쿄/.test(r.textContent) && r.querySelector('.sampleTag')));
+  assert.ok(!w.document.getElementById('tripListClose').classList.contains('primary'), '닫기는 주 버튼이 아니다');
+  w.eval('openSpotModal(0,-1)');
+  assert.equal(w.document.getElementById('spotCity').placeholder, '예: 도쿄', '도시 예시는 이 여행의 도시');
+  assert.match(w.document.getElementById('coordHint').textContent, /^위치: 아직 없어요/);
+  assert.ok(!/좌표/.test(w.document.getElementById('coordHint').textContent));
+  w.close();
 });
 
 test('새 여행: 이름을 안 적어도 막지 않는다', { skip: noJsdom }, async () => {
@@ -4832,6 +4892,20 @@ test('통합: ⋮ 메뉴(details)는 버튼 역할을 덧씌우지 않고, 우�
   assert.ok(det.querySelector('summary').getAttribute('aria-label'), '여닫는 것은 이름 있는 summary다');
   assert.match(w.document.querySelector('.spot[data-si="1"] .spotMetaItem.opt').textContent, /여유 되면/);
   assert.equal(w.document.querySelector('#spotPriority option[value="OPT"]').textContent, '여유 되면');
+  w.close();
+});
+
+// 2026-10-03 UX 검토 — '센소지'로 찾아 장소 정보(한국어)를 보고 담았는데 'Sensō-ji'·'Tokyo'로 저장됐다.
+test('통합: 해외 장소 검색은 한국어 이름으로 받고, 호텔 시세용 영문명 변환만 영어로 받는다', { skip: noJsdom }, async () => {
+  const w = boot();
+  w.eval(`map={}; window.__reqs=[]; window.google={maps:{importLibrary:async()=>({Place:{searchByText:async(req)=>{
+    window.__reqs.push(req.language); return {places:[{id:'p1',displayName:req.language==='ko'?'센소지':'Senso-ji',formattedAddress:'',addressComponents:[],location:{lat:()=>35.7,lng:()=>139.8},types:[]}]};
+  }}})}};`);
+  const ko = await w.eval(`googlePlaces('센소지', null, 1)`);
+  assert.equal(ko.list[0].name, '센소지');
+  const en = await w.eval(`enNameForBooking({title:'신주쿠 호텔'}, {name:'신주쿠 호텔'})`);
+  assert.equal(en, 'Senso-ji', '가격 추적은 영문명이 필요하다');
+  assert.deepEqual(JSON.parse(w.eval('JSON.stringify(window.__reqs)')), ['ko', 'en']);
   w.close();
 });
 

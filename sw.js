@@ -1,5 +1,5 @@
 // Trip Canvas Service Worker
-const VER = 'tc-v253';
+const VER = 'tc-v254';
 const SHELL_CACHE = VER + '-shell';
 
 // index.html이 `?v=VER`로 부르는 파일 — **그 주소 그대로** 담는다. 오프라인 폴백(caches.match)은 쿼리까지
