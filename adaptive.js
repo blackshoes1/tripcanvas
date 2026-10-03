@@ -42,7 +42,10 @@
     readyWindowMin: 12,      // 출발 권장 시각 이 안으로 들어오면 '지금 나서기 좋음'
     aheadMin: 30,            // 다음 일정까지 이보다 많이 남고 앞 일정을 끝냈으면 '여유 있음'
     freeTimeMin: 90,         // 이만큼 비면 '빈 시간'으로 본다(제안을 만들 가치가 있는 크기)
-    suggestionTTLMin: 90     // 위치·시각 기반 제안의 유효기간 — 지나면 표시도 알림도 하지 않는다
+    suggestionTTLMin: 90,    // 위치·시각 기반 제안의 유효기간 — 지나면 표시도 알림도 하지 않는다
+    restRoomMin: 30,         // 다음 일정까지 이만큼은 남아야 "쉬어도 괜찮아요"라고 한다(지쳤다고 했을 때는 그 대가를 말하고 권한다)
+    lowEnergyMaxStayMin: 90, // 지쳤다고 하면 이보다 긴 방문은 권하지 않는다
+    maxMoveMin: 60           // 다른 날에서 옮겨올 곳은 이보다 멀면 권하지 않는다 — 섬 반대편을 '한 곳 더'로 끌어오지 않게
   });
   const MEAL_WINDOWS = Object.freeze([
     Object.freeze({key:'lunch', from:11*60+30, to:13*60+30, label:'점심'}),
@@ -57,6 +60,41 @@
   function locOf(s){ return hasCoord(s)? {lat:+s.lat, lng:+s.lng} : null; }
   /** @param {any} x @param {number} d @returns {number} */
   function num(x,d){ const n=+x; return isFinite(n)? n : d; }
+  /**
+   * 분 → '45분' · '1시간' · '7시간 25분'. 한 시간이 넘는 시간을 분으로만 말하지 않는다(2026-10-03 — '445분 대기'·'480분 남았어요').
+   * 웹 `fmtDur`·iOS `TimeFormat.duration`과 같은 모양이다.
+   * @param {number} min @returns {string}
+   */
+  function durText(min){
+    const m=Math.max(0, Math.round(num(min,0)));
+    if(m<60) return m+'분';
+    const h=Math.floor(m/60), r=m%60;
+    return h+'시간'+(r? ' '+r+'분' : '');
+  }
+  /**
+   * 받침에 맞는 조사 — '북촌한옥마을는'·'을(를)'을 쓰지 않는다(2026-10-03). 한글이 아니면(외국어 상호·괄호로 끝나는 이름)
+   * 받침 없는 쪽을 고른다(`collab.js` `objParticle`과 같은 기본값). '으로'는 ㄹ 받침이면 '로'다.
+   * @param {unknown} word @param {string} withFinal 받침이 있을 때 @param {string} withoutFinal 받침이 없을 때 @returns {string}
+   */
+  function josa(word, withFinal, withoutFinal){
+    const s=String(word==null?'':word).trim();
+    const code=s? s.charCodeAt(s.length-1)-0xAC00 : -1;
+    if(code<0||code>11171) return withoutFinal;
+    const fin=code%28;
+    if(withFinal==='으로' && fin===8) return withoutFinal;
+    return fin? withFinal : withoutFinal;
+  }
+  /**
+   * 목록이 🏠로 그리는 곳은 엔진도 숙소로 본다(2026-10-03). 숙소 체크(stay)를 켜지 않은 호텔을 일반 장소로 보면
+   * 일정 조정이 "오늘 밤 숙소"를 뺄 후보로 삼았고 '숙소로 돌아가기'도 위치를 몰랐다. 판정은 표시와 같은 `spotCatOf`다.
+   * @param {any} s @returns {boolean}
+   */
+  function isLodging(s){
+    if(!s) return false;
+    if(s.stay) return true;
+    const cat=LIB.spotCatOf(s);
+    return !!(cat && cat.id==='stay');
+  }
   /** YYYY-MM-DD → 요일(0=일). 파싱 실패는 -1. @param {string} iso @returns {number} */
   function weekdayOf(iso){
     if(!/^\d{4}-\d{2}-\d{2}$/.test(String(iso||''))) return -1;
@@ -112,7 +150,7 @@
     if(bk && bk.type==='flight') type='FLIGHT';
     else if(bk && bk.type==='car') type='CAR';
     else if(bk && bk.type==='hotel') type='HOTEL';
-    else if(s.stay) type='HOTEL';
+    else if(isLodging(s)) type='HOTEL';   // 숙소 체크 또는 🏠 분류 — 목록이 숙소로 그리는 곳(2026-10-03)
     else if(legMode==='flight') type='FLIGHT';
     else if(legMode==='train') type='TRAIN';
     else if(s.bookAt) type='TOUR';   // 식당/투어/공연을 구분할 데이터가 없다 — '상대가 정한 약속'으로만 취급
@@ -224,8 +262,13 @@
     if(live) remaining.forEach(it=>{ if(nowMin>it.eta) delayMin=Math.max(delayMin, Math.round(nowMin-it.eta)); });
     const lastEnd=items.length? items[items.length-1].end : dayStartMin;
     const dayEndMin=Math.max(c.dayEndMin, lastEnd);
-    const freeFrom=Math.max(nowMin, lastDone? lastDone.end : nowMin);
-    const availableMin=nextFixed? Math.max(0, nextFixed.startMin-freeFrom) : Math.max(0, dayEndMin-freeFrom);
+    // 쉴 수 있는 여유는 '다음 고정 일정'이 아니라 **다음 남은 일정**까지다(2026-10-03) — 북촌·광장시장·남산이 남았는데
+    // 쉬기 카드가 "명동교자 19:00까지 480분 남았어요"라고 했고, 바로 위 '다음 장소'는 0분 여유였다.
+    // 머무는 곳이 있으면 그곳이 끝난 뒤부터, 다음 곳은 떠나야 하는 시각(예약 대기 포함, 이동 앞)까지다 — 이동은 빈 시간이 아니다.
+    // '다녀왔어요'를 누른 곳은 끝난 것이다 — 계획한 종료 시각까지 붙잡아 두지 않는다.
+    const freeBefore=remaining.filter(it=>it.status!=='IN_PROGRESS' && (!live || it.end>nowMin || it.depart>=nowMin))[0]||null;
+    const freeFrom=Math.max(nowMin, inProgress? inProgress.end : nowMin);
+    const availableMin=freeBefore? Math.max(0, (freeBefore.depart-freeBefore.travelIn)-freeFrom) : Math.max(0, dayEndMin-freeFrom);
     const hotel=active.filter(it=>it.type==='HOTEL').pop()||null;
 
     return {
@@ -239,7 +282,7 @@
       // 안 눌렀을 뿐)을 '다음'으로 내밀지 않는다. 전부 지났으면 가장 이른 미완료가 다음이다(밀린 상태).
       nextItem:(live? (remaining.filter(it=>it.end>nowMin)[0]||remaining[0]||null) : (remaining[0]||null)),
       currentLocation, startLocation, hotelLocation:(hotel&&hotel.location)||startLocation,
-      availableMin, delayMin, travelMinToday:travelToday,
+      availableMin, freeBefore, delayMin, travelMinToday:travelToday,
       prefs:o.prefs||{},   // {maxTravelMin?, walkAverse?, mealFocus?} — 자연어 요청이 추천 범위를 좁힌다
       planningMode:o.planningMode||planningModeHint(trip),
       energyLevel:o.energyLevel||'NORMAL'
@@ -284,6 +327,21 @@
   /** 창이 걸치는 식사 시간대(없으면 null). @param {FreeWindow} win @returns {any} */
   function mealOverlap(win){
     return MEAL_WINDOWS.filter(m=>win.startMin<m.to && win.endMin>m.from)[0]||null;
+  }
+  const MEAL_WORD=/식사|점심|저녁|브런치|런치|디너|lunch|dinner|brunch/i;
+  /**
+   * 그 끼니를 이미 일정이 챙기고 있는가 — 식당이거나 이름·메모가 식사를 말하는 곳이 그 시간대에 있으면 그렇다.
+   * 메모가 '저녁'인 19:00 예약 앞에 "17:30 저녁 시간이 비어 있어요"를 또 넣었다(2026-10-03).
+   * @param {any} state @param {any} meal MEAL_WINDOWS 하나 @returns {TripItem|null}
+   */
+  function mealCoveredBy(state, meal){
+    if(!meal) return null;
+    return state.items.filter((/**@type{TripItem}*/it)=>{
+      if(it.status==='SKIPPED'||it.status==='CANCELLED') return false;
+      if(!(it.depart<meal.to && Math.max(it.end, it.depart+1)>meal.from)) return false;
+      const cat=LIB.spotCatOf(it.spot);
+      return !!(cat && cat.id==='food') || MEAL_WORD.test(it.name+' '+String((it.spot&&it.spot.desc)||''));
+    })[0]||null;
   }
 
   // ── 4. 후보 생성 ─────────────────────────────────────────────────
@@ -344,7 +402,10 @@
     if(state.hotelLocation) out.push({id:'c-hotel', kind:'RETURN_TO_HOTEL', title:'숙소로 돌아가기', location:state.hotelLocation,
       durationMin:0, priority:2, must:false, hours:null, fromDay:null, si:null, inPlan:false, spot:null});
     const meal=win? mealOverlap(win) : null;
-    if(meal) out.push({id:'c-eat-'+meal.key, kind:'EAT', title:meal.label+' 시간이 비어 있어요', location:(win?win.anchor:null),
+    // 배고프다고 했으면 시간대와 상관없이 지금 먹는 선택지를 낸다 — "식사를 먼저 챙길게요"라고 해 놓고 식사 카드가 없었다(2026-10-03)
+    if(state.prefs && state.prefs.mealFocus) out.push({id:'c-eat-now', kind:'EAT', title:'지금 식사부터 하기', location:(win?win.anchor:state.currentLocation),
+      durationMin:60, priority:2, must:false, hours:null, fromDay:null, si:null, inPlan:false, spot:null});
+    else if(meal && !mealCoveredBy(state, meal)) out.push({id:'c-eat-'+meal.key, kind:'EAT', title:meal.label+' 시간이 비어 있어요', location:(win?win.anchor:null),
       durationMin:60, priority:2, must:false, hours:null, fromDay:null, si:null, inPlan:false, spot:null});
     return out;
   }
@@ -366,8 +427,17 @@
     /** @type {any} */
     const exclude=Object.create(null);
     (o.exclude||[]).forEach((/**@type{string}*/k)=>{ exclude[k]=1; });
-    const nextFixedLoc=state.nextFixed? state.nextFixed.location : null;
+    // 되돌아갈 시간과 '가는 길' 이유의 기준은 **그 빈 시간 바로 뒤의 일정**이다(2026-10-03). 지금 이후 첫 고정 일정(nextFixed)을
+    // 쓰면 15시 제안이 세 시간 앞선 12:30 점심 예약의 '동선과 같은 방향'이 됐고, 여행 전 미리보기는 07:00 공항을 기준으로 삼았다.
+    // 빈 시간을 따로 주지 않은 기본 창은 지금부터라 다음 고정 일정이 기준이다. 뒤에 일정이 없으면(하루 끝) 방향을 말하지 않는다.
+    const targetItem=o.window
+      ? (win.beforeId? (state.items.filter((/**@type{TripItem}*/it)=>it.id===win.beforeId)[0]||null) : null)
+      : (state.nextFixed? (state.items.filter((/**@type{TripItem}*/it)=>it.id===state.nextFixed.itemId)[0]||null) : null);
+    const targetLoc=targetItem? targetItem.location : null;
     const meal=mealOverlap(win);
+    const prefs=state.prefs||{};
+    const tired=state.energyLevel==='LOW', lively=state.energyLevel==='HIGH';
+    const freeBefore=state.freeBefore||null;
     /** @type {NextActionCandidate[]} */
     const out=[];
     (candidates||[]).forEach((/**@type{ActionCandidate}*/cd)=>{
@@ -381,29 +451,51 @@
       let score=50;
       if(cd.kind==='REST'||cd.kind==='WAIT'){
         // 쉬자는 말은 하루가 움직인 뒤의 선택지다 — 첫 일정 전(08:53)이나 여행 전 미리보기에서 "지금 쉬어도"라고 하면
-        // 할 일이 없다는 말로 읽힌다(2026-10-03 UX 검토). 지쳤다고 했으면 언제든 권한다.
+        // 할 일이 없다는 말로 읽힌다(2026-10-03 UX 검토). 지쳤거나 쉬고 싶다고 했으면 언제든 권한다.
         const started=state.completedItems.length>0 || (state.items.length>0 && state.nowMin>=state.items[0].eta);
-        if(state.energyLevel!=='LOW' && (!state.live || !started)) return;
+        // 다음 일정까지 쉴 틈이 없으면 "쉬어도 괜찮아요"라고 하지 않는다 — 말했으면 그 대가를 함께 말하고 권한다(2026-10-03)
+        const roomy=!freeBefore || state.availableMin>=c.restRoomMin;
+        if(!tired && !prefs.wantRest && (!state.live || !started || !roomy)) return;
         score=38;
-        if(state.energyLevel==='LOW'){ score+=25; reasons.push('지금은 체력을 아끼는 편이 나아요'); }
-        if(state.travelMinToday>=c.heavyTravelMin){ score+=15; reasons.push('오늘 이동이 '+Math.round(state.travelMinToday/60)+'시간을 넘었어요'); }
-        if(state.nextFixed) reasons.push(state.nextFixed.title+' '+LIB.hm(state.nextFixed.startMin)+'까지 '+Math.round(state.availableMin)+'분 남았어요');
-        else reasons.push('남은 고정 일정이 없어 쉬어도 밀리지 않아요');
+        if(tired){ score=90; reasons.push('지금은 체력을 아끼는 편이 나아요'); }
+        else if(prefs.wantRest) score=state.hotelLocation? 80 : 88;
+        if(prefs.wantRest && !state.hotelLocation) reasons.push('숙소 위치를 몰라 지금 있는 곳에서 쉬는 쪽을 먼저 보여 드려요');
+        if(state.travelMinToday>=c.heavyTravelMin){ score+=15; reasons.push('오늘 이동이 '+Math.floor(state.travelMinToday/60)+'시간을 넘었어요'); }
+        if(!freeBefore) reasons.push('남은 일정이 없어 쉬어도 밀리지 않아요');
+        else if(roomy) reasons.push(freeBefore.name+'까지 '+durText(state.availableMin)+' 여유가 있어요');
+        else reasons.push('쉬는 만큼 '+freeBefore.name+josa(freeBefore.name,'이','가')+' 늦어져요');
         out.push({type:'REST', id:cd.id, targetId:null, title:cd.title, score, reasons, estimatedDuration:duration,
           estimatedTravelTime:0, arriveMin:win.startMin, endMin:win.startMin+duration, fromDay:null, si:null, spot:null});
         return;
       }
       if(cd.kind==='RETURN_TO_HOTEL'){
         score=36;
+        if(prefs.wantRest){ score=92; reasons.push('숙소에서 쉬었다가 이어가도 돼요'); }
+        else if(tired) score=84;
         if(state.travelMinToday>=c.heavyTravelMin){ score+=14; reasons.push('오늘 이동이 많았어요'); }
-        if(travel) reasons.push('숙소까지 약 '+travel+'분');
-        if(state.nextFixed && state.nextFixed.startMin-finish>=c.bufferMin) reasons.push('숙소에 들렀다 가도 '+state.nextFixed.title+' 시간에는 여유가 있어요');
+        if(travel) reasons.push('숙소까지 약 '+durText(travel));
+        if(freeBefore && cd.location){
+          const back=travelMinutes(cd.location, freeBefore.location, o);
+          if(finish+back+c.bufferMin<=freeBefore.depart) reasons.push('숙소에 들렀다 가도 '+freeBefore.name+' 시간에는 여유가 있어요');
+          else reasons.push('숙소에 들르면 '+freeBefore.name+josa(freeBefore.name,'이','가')+' 늦어질 수 있어요');
+        }
         if(!reasons.length) reasons.push('오늘 남은 일정을 숙소에서 이어가도 돼요');
         out.push({type:'RETURN_TO_HOTEL', id:cd.id, targetId:null, title:cd.title, score, reasons, estimatedDuration:0,
           estimatedTravelTime:travel, arriveMin:arrive, endMin:arrive, fromDay:null, si:null, spot:null});
         return;
       }
       if(cd.kind==='EAT'){
+        if(cd.id==='c-eat-now'){
+          // 배고프다고 했으면 지금이다 — 식사 시간대를 기다리게 하지 않는다
+          const at=state.live? Math.max(state.nowMin, state.dayStartMin) : win.startMin;
+          const later=state.items.filter((/**@type{TripItem}*/it)=>it.status!=='COMPLETED'&&it.status!=='SKIPPED'&&it.status!=='CANCELLED'
+            && it.depart>=at && MEAL_WINDOWS.some((m)=>mealCoveredBy(state, m)===it))[0]||null;
+          out.push({type:'EAT', id:cd.id, targetId:null, title:cd.title, score:95,
+            reasons:['배고프다고 하셨어요 — 식사를 먼저 챙겨요',
+              later? (later.name+' '+LIB.hm(later.depart)+'까지 기다리기 어렵다면 가볍게 먹어도 돼요') : '먹을 곳을 골라 지금 일정에 넣을 수 있어요'],
+            estimatedDuration:duration, estimatedTravelTime:0, arriveMin:at, endMin:at+duration, fromDay:null, si:null, spot:null});
+          return;
+        }
         // 식사는 식사 시간대에 넣는다 — 빈 시간이 09:41에 시작해도 점심은 11:30부터다("09:41부터 비어 있어요"였다)
         const at=meal? Math.max(win.startMin, meal.from) : win.startMin;
         out.push({type:'EAT', id:cd.id, targetId:null, title:cd.title, score:46,
@@ -413,12 +505,13 @@
         return;
       }
       // 장소 방문 — 실제로 가능한지부터 확인한다
-      const backMin=(cd.location&&nextFixedLoc)? travelMinutes(cd.location, nextFixedLoc, o) : 0;
+      const backMin=(cd.location&&targetLoc)? travelMinutes(cd.location, targetLoc, o) : 0;
       const deadline=win.beforeFixed? win.endMin : Math.min(win.endMin, state.dayEndMin);
-      const guard=(win.beforeFixed||nextFixedLoc)? c.bufferMin : 0;
+      const guard=(win.beforeFixed||targetLoc)? c.bufferMin : 0;
       if(finish+backMin+guard > deadline) return;                                             // 이동시간 때문에 불가능
-      const prefs=state.prefs||{};
       if(prefs.maxTravelMin!=null && travel>prefs.maxTravelMin) return;                        // "가까운 데만" 요청은 범위를 좁힌다
+      if(!cd.inPlan && travel>c.maxMoveMin) return;                                           // 옮겨올 곳이 너무 멀면 '한 곳 더'가 아니다
+      if(tired && duration>c.lowEnergyMaxStayMin) return;                                     // 지쳤다면 두 시간짜리 방문은 권하지 않는다
       if(prefs.walkAverse && travel>0) score-=Math.min(14, travel*0.4);                        // 많이 걷기 싫다고 했으면 이동을 더 아낀다
       if(weekday>=0 && cd.hours && cd.hours.length){
         if(LIB.isOpenAt(cd.hours, weekday, arrive)===false) return;                            // 도착 시점에 영업 종료
@@ -426,9 +519,13 @@
         reasons.push('도착 예정 시각에 문을 열어요');
       }
       if(travel>0){
-        score+=Math.max(0, 20-travel*0.5);
+        score+=Math.max(0, 20-travel*(lively? 0.25 : 0.5));                                   // 쌩쌩하면 이동을 덜 아낀다
         // 출발점은 창의 기준점이다 — 앞 일정이 있으면 거기서, 여행 중이고 앞 일정이 없을 때만 지금 있는 곳에서다
-        reasons.push((cd.inPlan? '' : (win.afterId? '앞 일정에서 ' : (state.live? '현재 위치에서 ' : '')))+'이동 약 '+travel+'분');
+        reasons.push((cd.inPlan? '' : (win.afterId? '앞 일정에서 ' : (state.live? '현재 위치에서 ' : '')))+'이동 약 '+durText(travel));
+      }
+      if(lively){                                                                              // 쌩쌩하면 오래 둘러볼 곳을 앞에
+        score+=Math.min(10, duration/12);
+        if(duration>=90) reasons.push('컨디션이 좋을 때 오래 둘러보기 좋은 곳이에요');
       }
       const slack=deadline-(finish+backMin);
       score+=Math.max(0, Math.min(15, 15-Math.abs(slack-c.bufferMin)/8));
@@ -436,14 +533,15 @@
       else if(cd.priority>=2) score+=6;
       if(cd.inPlan){ score+=8; reasons.push('원래 오늘 일정에 있던 곳이에요'); }
       else if(cd.fromDay!=null) reasons.push('Day '+(cd.fromDay+1)+' 일정에서 옮겨올 수 있어요');
-      if(state.energyLevel==='LOW' && travel>25){ score-=12; reasons.push('다만 이동이 조금 길어요'); }
-      if(nextFixedLoc && state.nextFixed && cd.location){
-        const direct=travelMinutes(win.anchor, nextFixedLoc, o);
+      if(tired && travel>25){ score-=12; reasons.push('다만 이동이 조금 길어요'); }
+      if(targetItem && targetLoc && cd.location){
+        const direct=travelMinutes(win.anchor, targetLoc, o);
         const detour=Math.max(0, (travel+backMin)-direct);
         score-=Math.min(20, detour*0.4);
-        if(detour<=10) reasons.push(state.nextFixed.title+' 동선과 같은 방향이에요');
+        // 돌아가는 시간이 바로 가는 길에 비해 작을 때만 '가는 길'이다 — 3분 거리를 두고 6분 돌아가는 곳은 반대 방향이다
+        if(detour<=10 && detour<=Math.max(3, direct*0.5)) reasons.push('다음 일정 '+targetItem.name+' 가는 길에 들를 수 있어요');
       }
-      if(duration) reasons.push('약 '+(duration>=60? (Math.round(duration/60*10)/10)+'시간' : duration+'분')+'이면 둘러볼 수 있어요');
+      if(duration) reasons.push('약 '+durText(duration)+'이면 둘러볼 수 있어요');
       out.push({type:(cd.kind==='CHECK_IN'?'CHECK_IN':'VISIT_PLACE'), id:cd.id, targetId:(cd.si!=null? String(cd.si) : null),
         title:cd.title, score:Math.round(score*100)/100, reasons, estimatedDuration:duration, estimatedTravelTime:travel,
         arriveMin:arrive, endMin:finish, fromDay:cd.fromDay, si:cd.si, spot:cd.spot});
@@ -456,60 +554,108 @@
   // ── 6. 일정 충돌 · 재구성 ────────────────────────────────────────
   /**
    * 남은 일정을 현재 시각부터 다시 굴려본다. 고정 일정(FIXED) 도착이 약속 시각을 넘기면 위반.
+   * 머무는 중인 곳은 **남은 체류만** 더한다(2026-10-03) — 처음부터 다시 더하면 경복궁에 머무는 동안 내내 제때인 일정이
+   * '115분 지연'이 됐다. 시작 시각은 지금이다 — '다녀왔어요'를 누른 곳은 계획한 종료 시각을 기다리지 않고 끝난 것이다.
    * @param {any} state @param {TripItem[]} list @param {any=} opts
-   * @returns {{ok:boolean, lateBy:number, endMin:number, violated:string[]}}
+   * @returns {{ok:boolean, lateBy:number, totalLate:number, endMin:number, violated:string[], first:({id:string,name:string,atMin:number,lateBy:number}|null)}}
    */
   function simulate(state, list, opts){
-    const done=state.items.filter((/**@type{TripItem}*/it)=>it.status==='COMPLETED');
-    const lastDone=done.length? done[done.length-1] : null;
-    let clock=state.live? Math.max(state.nowMin, lastDone? lastDone.end : state.nowMin) : state.dayStartMin;
+    let clock=state.live? Math.max(state.nowMin, state.dayStartMin) : state.dayStartMin;
     /** @type {any} */
     let prev=state.currentLocation||state.startLocation;
-    let lateBy=0;
+    let lateBy=0, totalLate=0;
     /** @type {string[]} */
     const violated=[];
+    /** @type {{id:string,name:string,atMin:number,lateBy:number}|null} */
+    let first=null;
     list.forEach((/**@type{TripItem}*/it)=>{
+      if(state.live && it.status==='IN_PROGRESS'){
+        clock=Math.max(clock, it.end);
+        if(it.location) prev=it.location;
+        return;
+      }
       if(it.location && prev) clock+=travelMinutes(prev, it.location, opts);
       if(it.fixedAt!=null){
         if(it.flexibility==='FIXED'){
           const over=clock-it.fixedAt;
-          if(over>0.5){ lateBy=Math.max(lateBy, Math.round(over)); violated.push(it.id); }
+          if(over>0.5){
+            const late=Math.round(over);
+            lateBy=Math.max(lateBy, late); totalLate+=late; violated.push(it.id);
+            if(!first) first={id:it.id, name:it.name, atMin:it.fixedAt, lateBy:late};
+          }
         }
         clock=Math.max(clock, it.fixedAt);
       }
       clock+=it.stayMin;
       if(it.location) prev=it.location;
     });
-    return {ok:!violated.length, lateBy, endMin:Math.round(clock), violated};
+    return {ok:!violated.length, lateBy, totalLate, endMin:Math.round(clock), violated, first};
+  }
+  /**
+   * 일정 조정에서 뺄 수 있는 곳 — 유동 일정이고 꼭 가기가 아니고, 숙소·공항·역이 아니다.
+   * 오늘 밤 숙소를 빼자고 하면 내일로 넘어간 숙소가 다음 날 출발점을 바꾼다(2026-10-03).
+   * @param {TripItem} it @returns {boolean}
+   */
+  function droppable(it){
+    if(it.flexibility!=='FLEXIBLE' || (it.spot&&it.spot.must) || isLodging(it.spot)) return false;
+    const cat=LIB.spotCatOf(it.spot);
+    return !(cat && cat.id==='transport');
   }
   /**
    * 남은 일정 재구성 후보. 순서를 지킨다: 고정 예약 보호 → 완료 일정 유지 → mustVisit 보호 →
    * 남은 시간 안에 들어오는 일정 우선 → 우선순위 낮은 일정부터 제거. 자동 적용하지 않는다(미리보기).
+   * ⚠️ **늦는 약속 앞의 장소만, 꼭 필요한 만큼만** 뺀다(2026-10-03). 전에는 우선순위·늦은 순서만 보고 빼서, 북촌 하나만 빼면
+   *    되는데 그 예약 **뒤의** 남산·숙소까지 뺐다. 그래서 늦는 약속마다 그 앞에서 실제로 늦음을 줄이는 곳만 고르고,
+   *    다 고른 뒤에는 빼지 않아도 되게 된 곳을 되돌린다.
+   * 이미 지났어야 할 곳(다녀왔다는 표시만 안 한 곳)은 다시 굴리지 않는다 — '다음'(nextItem)과 같은 규칙이다.
    * @param {any} state @param {{legMin?:any, cfg?:any}=} opts
-   * @returns {{needed:boolean, feasible:boolean, keep:string[], drop:string[], dropNames:string[], lateBy:number, impact:SuggestionImpact, before:string[], after:string[]}}
+   * @returns {{needed:boolean, feasible:boolean, keep:string[], drop:string[], dropNames:string[], lateBy:number, impact:SuggestionImpact, before:string[], after:string[], lateAt:({id:string,name:string,atMin:number,lateBy:number}|null), remainingLateBy:number}}
    */
   function generateReplan(state, opts){
-    const pending=state.items.filter((/**@type{TripItem}*/it)=>it.status!=='COMPLETED'&&it.status!=='SKIPPED'&&it.status!=='CANCELLED');
+    const pending=state.items.filter((/**@type{TripItem}*/it)=>it.status!=='COMPLETED'&&it.status!=='SKIPPED'&&it.status!=='CANCELLED'
+      && (!state.live || it.end>state.nowMin || it.depart>=state.nowMin));
     const base=simulate(state, pending, opts);
     let keep=pending.slice();
     /** @type {TripItem[]} */
     const drop=[];
-    // 뺄 수 있는 것: 유동 + mustVisit 아님. 우선순위 낮은 것 → 뒤쪽(늦은 순서) 것부터.
-    const droppable=pending.filter((/**@type{TripItem}*/it)=>it.flexibility==='FLEXIBLE' && !(it.spot&&it.spot.must))
-      .sort((/**@type{TripItem}*/a,/**@type{TripItem}*/b)=> (a.priority-b.priority) || (b.si-a.si));
-    let r=base, i=0;
-    while(!r.ok && i<droppable.length){
-      const victim=droppable[i++];
-      keep=keep.filter((/**@type{TripItem}*/it)=>it.id!==victim.id);
-      drop.push(victim);
-      r=simulate(state, keep, opts);
+    let r=base;
+    /** @param {TripItem[]} list @param {TripItem} out @returns {TripItem[]} */
+    const without=(list, out)=>list.filter((it)=>it.id!==out.id);
+    // 머무는 중인 곳은 마지막에 뺀다(지금 있는 곳을 내일로 미루는 건 마지막 수단) → 우선순위 낮은 것 → 약속에 가까운(늦은) 것부터
+    /** @param {TripItem} a @param {TripItem} b @returns {number} */
+    const order=(a,b)=> ((a.status==='IN_PROGRESS'?1:0)-(b.status==='IN_PROGRESS'?1:0)) || (a.priority-b.priority) || (b.si-a.si);
+    for(let guard=0; !r.ok && guard<pending.length; guard++){
+      /** @type {TripItem|null} */
+      let victim=null;
+      /** @type {any} */
+      let trialBest=null;
+      for(const vid of r.violated){                                // 앞의 약속부터
+        const at=keep.findIndex((it)=>it.id===vid);
+        const pool=keep.slice(0, Math.max(0, at)).filter(droppable).sort(order);
+        for(const cand of pool){
+          const trial=simulate(state, without(keep, cand), opts);
+          if(trial.totalLate<r.totalLate){ victim=cand; trialBest=trial; break; }   // 실제로 늦음을 줄이는 곳만
+        }
+        if(victim) break;
+      }
+      if(!victim) break;
+      keep=without(keep, victim); drop.push(victim); r=trialBest;
+    }
+    // 빼지 않아도 되게 된 곳은 되돌린다 — 나중에 뺀 것(우선순위가 높은 것)부터
+    for(let k=drop.length-1; k>=0; k--){
+      const back=drop[k];
+      const trial=pending.filter((it)=>it===back || keep.indexOf(it)>=0);
+      const res=simulate(state, trial, opts);
+      if(res.totalLate<=r.totalLate){ keep=trial; r=res; drop.splice(k,1); }
     }
     return {
       needed:!base.ok, feasible:r.ok,
       keep:keep.map((/**@type{TripItem}*/it)=>it.id), drop:drop.map((/**@type{TripItem}*/it)=>it.id),
       dropNames:drop.map((/**@type{TripItem}*/it)=>it.name), lateBy:base.lateBy,
       before:pending.map((/**@type{TripItem}*/it)=>it.name), after:keep.map((/**@type{TripItem}*/it)=>it.name),
-      impact:{timeChangeMinutes:r.endMin-base.endMin, removedActivities:drop.map((/**@type{TripItem}*/it)=>it.name), addedActivities:[]}
+      impact:{timeChangeMinutes:r.endMin-base.endMin, removedActivities:drop.map((/**@type{TripItem}*/it)=>it.name), addedActivities:[]},
+      // 사람에게 말할 때 쓰는 값(계약에는 lateBy만 실린다) — 어느 약속에 얼마나 늦는지, 줄여도 남는 늦음
+      lateAt:base.first, remainingLateBy:r.lateBy
     };
   }
 
@@ -522,8 +668,8 @@
    * 화면에 보여줄 제안 목록. 재구성(고정 예약 위험)이 최우선이고, 그다음 다음 행동, 마지막이 가격 절약.
    * 가격 절약도 같은 '상태→제안→반영' 패턴을 쓰므로 별도 서브앱이 아니라 이 목록에 함께 들어온다.
    * @param {any} trip @param {any} state
-   * @param {{legMin?:any, cfg?:any, dismissed?:string[], priceSuggestions?:any[], window?:FreeWindow}=} opts
-   * @returns {{suggestions:TripSuggestion[], windows:FreeWindow[], replan:any, ranked:NextActionCandidate[], window:(FreeWindow|null), empty:boolean}}
+   * @param {{legMin?:any, cfg?:any, dismissed?:string[], exclude?:string[], priceSuggestions?:any[], window?:FreeWindow}=} opts
+   * @returns {{suggestions:TripSuggestion[], windows:FreeWindow[], replan:any, ranked:NextActionCandidate[], window:(FreeWindow|null), empty:boolean, notice:(string|null)}}
    */
   function buildSuggestions(trip, state, opts){
     const o=opts||{}, c=cfgOf(o);
@@ -535,31 +681,48 @@
     const win=o.window || windows[0] || null;
     // '한 곳 더'는 새 장소만이다 — 그날 일정에 이미 있는 곳(현재·완료·남은 장소)은 '다음' 카드와
     // 일정 조정(REPLAN)의 몫이다. 넣으면 "공항에 한 곳 더 들르세요"가 된다(2026-10-02 UX 검토). fillGaps와 같은 규칙.
+    // exclude는 같은 화면의 하루 흐름에서 '다른 제안'으로 물린 후보다 — 두 카드가 같은 제외 목록을 쓴다(2026-10-03).
     const ranked=rankNextActions(state, buildCandidates(trip, state, {window:(win||undefined), cfg:c}).filter((cd)=>!cd.inPlan),
-      {window:(win||undefined), legMin:o.legMin, cfg:c});
+      {window:(win||undefined), legMin:o.legMin, cfg:c, exclude:o.exclude});
     /** @type {TripSuggestion[]} */
     const out=[];
     const cap=c.maxSuggest+1;   // 재구성/가격은 '다음 행동' 3개와 별개로 한 자리 더 허용
     /** @param {TripSuggestion} s */
     const push=(s)=>{ if(!dismissed[s.key] && out.length<cap) out.push(s); };
 
-    if(replan.needed){
-      const key=suggestionKey('REPLAN', replan.drop.join(',')||'none', state);
+    // 일정 조정은 **바꿀 것이 있을 때만** 카드가 된다(2026-10-03) — 뺄 수 있는 곳이 없으면 '기존'과 '제안'이 똑같은 카드가 떴다.
+    // 그때도 늦는다는 사실은 사라지지 않는다: replan.needed가 그대로라 하루 한 마디(tripPulse)와 화면 안내(notice)가 말한다.
+    const late=replan.lateAt;
+    const lateLine=late? ('이대로면 '+late.name+' '+LIB.hm(late.atMin)+' 예약에 '+durText(late.lateBy)+' 늦어요') : '';
+    if(replan.needed && replan.drop.length){
+      const names=replan.dropNames.join(', '), last=replan.dropNames[replan.dropNames.length-1];
+      const key=suggestionKey('REPLAN', replan.drop.join(','), state);
       push({id:key, key, type:'REPLAN',
-        title:replan.lateBy+'분 지연 — 이렇게 조정하면 약속에 늦지 않아요',
+        // 아직 늦지 않았다 — '지연'·'밀렸어요'가 아니라 '이대로면 늦는다'고 말한다. 조정이 통하는지에 따라 제목과 설명이 맞물린다
+        title:lateLine,
         description:replan.feasible
-          ? (replan.dropNames.length? replan.dropNames.join(', ')+'을(를) 빼면 고정 예약 시간을 지킬 수 있어요' : '순서를 그대로 두어도 괜찮아요')
-          : '일정을 줄여도 고정 예약 시간을 맞추기 어려워요 — 예약 변경을 검토해 보세요',
-        reasons:['현재 '+replan.lateBy+'분 밀렸어요', '고정 예약은 그대로 지켜요', '완료한 일정은 유지해요'],
+          ? names+josa(last,'을','를')+' 빼면 '+(late? late.name+' 예약 시간에 맞출 수 있어요' : '예약 시간에 맞출 수 있어요')
+          : names+josa(last,'을','를')+' 빼도 '+durText(replan.remainingLateBy)+'쯤 늦어요 — 예약 시간을 바꾸거나 미리 알려 두는 편이 나아요',
+        reasons:[late? ('남은 일정을 지금부터 이어 가면 '+late.name+'에 '+LIB.hm(late.atMin+late.lateBy)+'쯤 닿아요') : '남은 일정을 지금부터 다시 이어 봤어요',
+          '예약 시각은 그대로 지켜요', '다녀온 곳은 그대로 둬요'],
         impact:replan.impact, status:'NEW', action:{kind:'REPLAN', drop:replan.drop, keep:replan.keep}});
     }
-    ranked.slice(0, c.maxSuggest).forEach((r)=>{
+    // 이대로면 늦는 날에 J가 먼저 일정을 더하자고 하지 않는다 — 한쪽은 빼자, 한쪽은 더하자가 됐다(2026-10-03).
+    // 사람이 직접 말한 것(지쳤어요·배고파·숙소로)만 답한다.
+    const prefs=state.prefs||{};
+    const asked=(/**@type{NextActionCandidate}*/r)=> (r.type==='REST' && (state.energyLevel==='LOW'||prefs.wantRest))
+      || (r.type==='RETURN_TO_HOTEL' && (state.energyLevel==='LOW'||prefs.wantRest)) || (r.type==='EAT' && prefs.mealFocus);
+    const roomy=!state.freeBefore || state.availableMin>=c.restRoomMin;
+    // 거절한 것을 먼저 빼고 자른다 — 자르고 빼면 '다른 제안 보기'가 다른 제안 대신 빈 자리를 보여 줬다
+    ranked.filter((r)=>!dismissed[suggestionKey(r.type, r.title, state)] && (!replan.needed || asked(r))).slice(0, c.maxSuggest).forEach((r)=>{
       const key=suggestionKey(r.type, r.title, state);
       push({id:key, key, type:((r.type==='REST'||r.type==='RETURN_TO_HOTEL')? 'REST' : (r.type==='EAT'? 'NEXT_ACTIVITY' : 'NEXT_ACTIVITY')),
         title:r.title,
+        // 이동 시간은 일정 화면과 같은 함수로 내지만 조회되지 않은 구간은 거리로 낸 추정이다 — '약'을 붙인다(2026-10-03)
         description:(r.type==='VISIT_PLACE'||r.type==='CHECK_IN')
-          ? ((r.estimatedTravelTime? r.estimatedTravelTime+'분 이동 · ' : '')+LIB.hm(r.arriveMin)+' 도착 · '+LIB.hm(r.endMin)+'까지')
-          : (r.type==='EAT'? (LIB.hm(r.arriveMin)+'부터 식사를 넣을 수 있어요') : '지금 쉬어도 남은 일정에는 여유가 있어요'),
+          ? ((r.estimatedTravelTime? '약 '+durText(r.estimatedTravelTime)+' 이동 · ' : '')+LIB.hm(r.arriveMin)+' 도착 · '+LIB.hm(r.endMin)+'까지')
+          : (r.type==='EAT'? (LIB.hm(r.arriveMin)+'부터 식사를 넣을 수 있어요')
+            : (roomy? '지금 쉬어도 남은 일정에는 여유가 있어요' : '쉬는 만큼 남은 일정이 늦어져요 — 무리하지 않는 쪽이 나아요')),
         reasons:r.reasons,
         impact:{timeChangeMinutes:r.estimatedDuration+r.estimatedTravelTime, addedActivities:(r.spot?[r.title]:[]), removedActivities:[]},
         status:'NEW', action:{kind:r.type, si:r.si, fromDay:r.fromDay, candidateId:r.id, startMin:(r.type==='EAT'? r.arriveMin : (win? win.startMin : state.nowMin))}});
@@ -570,7 +733,10 @@
         reasons:(Array.isArray(p.reasons)? p.reasons : []), impact:(p.impact||{costChange:num(p.costChange,0)}),
         status:'NEW', action:{kind:'OPEN_BOOKING', bookingId:p.bookingId}});
     });
-    return {suggestions:out, windows, replan, ranked, window:win, empty:!out.length};
+    // 조정 카드 없이 늦는 경우 화면이 그대로 옮길 한 줄 — 뺄 수 있는 곳이 없거나 그 카드를 오늘 건너뛰었을 때
+    const notice=(replan.needed && !out.some((s)=>s.type==='REPLAN') && late)
+      ? lateLine+(replan.drop.length? '' : ' — 뺄 수 있는 일정이 없어요. 예약 시간을 바꾸거나 미리 알려 두는 편이 나아요') : null;
+    return {suggestions:out, windows, replan, ranked, window:win, empty:!out.length, notice};
   }
   /** 추천 반응 기록 — 향후 선호 학습용 구조만 준비한다. @param {any} sug @param {string} action @param {string} atISO @returns {any} */
   function feedbackEntry(sug, action, atISO){
@@ -691,45 +857,73 @@
 
   // ── 9. 출발 안내 ─────────────────────────────────────────────────
   /**
-   * "10:40쯤 출발하면 좋습니다" / "지금 출발하면 약 28분 여유" / "지금 출발해도 12분 늦습니다".
-   * 약속 시각(fixedAt)이 있으면 그 시각이, 없으면 도착 예정이 기준이다.
+   * "18:40쯤 출발하면 19:00 예약에 맞춰요" / "지금 출발하면 약 5분 여유가 있어요" / "지금 출발해도 약 12분 늦어요".
+   * ⚠️ **늦음과 여유는 약속이 있을 때만 말한다**(2026-10-03) — 예약(bookAt)이나 내가 정한 도착 시각(at)이 있는 곳만이다.
+   *    예약도 정한 시각도 없는 북촌에 빨간 '지금 출발해도 약 5분 늦어요'가 떴다. 그 밖의 곳은 사실만 말한다("지금 출발하면 11:18 도착").
+   *    도착 예정(eta)은 계획을 이어 붙인 값일 뿐이라, 앞서 끝낸 사람을 그 시각까지 기다리게 하지 않는다.
+   * 지금 머무는 곳은 떠날 곳이 아니다 — 안내하지 않는다(null).
    * @param {any} state @param {TripItem} item @param {number} travelMin
    * @returns {{leaveMin:number, slackMin:number, level:('EARLY'|'NOW'|'LATE'), text:string}|null}
    */
   function departureAdvice(state, item, travelMin){
     if(!item) return null;
-    const target=(item.fixedAt!=null? item.fixedAt : item.eta);
-    const leaveMin=Math.round(target-Math.max(0,travelMin||0));
+    const travel=Math.max(0, Math.round(num(travelMin,0)));
+    const fixed=item.fixedAt!=null;
+    const target=(fixed? item.fixedAt : item.eta);
+    const leaveMin=Math.round(target-travel);
     if(!state.live) return {leaveMin, slackMin:0, level:'EARLY', text:LIB.hm(leaveMin)+'쯤 출발하는 일정이에요'};
+    if(item.status==='IN_PROGRESS') return null;
+    if(!fixed){
+      // 하루를 아직 시작하지 않았으면 계획을 말한다 — 아침 8시에 "지금 출발하면"이라고 재촉하지 않는다
+      if(!state.completedItems.length && state.nowMin<leaveMin)
+        return {leaveMin, slackMin:Math.round(leaveMin-state.nowMin), level:'EARLY', text:LIB.hm(leaveMin)+'쯤 출발하는 일정이에요'};
+      return {leaveMin:state.nowMin, slackMin:0, level:'NOW', text:'지금 출발하면 '+LIB.hm(state.nowMin+travel)+' 도착'};
+    }
+    const what=(item.spot&&item.spot.bookAt)? '예약' : '도착';
     const slackMin=Math.round(leaveMin-state.nowMin);
-    if(slackMin<0) return {leaveMin, slackMin, level:'LATE', text:'지금 출발해도 약 '+Math.abs(slackMin)+'분 늦어요'};
+    if(slackMin<0) return {leaveMin, slackMin, level:'LATE', text:'지금 출발해도 약 '+durText(-slackMin)+' 늦어요'};
+    if(slackMin===0) return {leaveMin, slackMin, level:'NOW', text:'지금 바로 나서야 '+LIB.hm(target)+' '+what+'에 맞춰요'};
     if(slackMin<=10) return {leaveMin, slackMin, level:'NOW', text:'지금 출발하면 약 '+slackMin+'분 여유가 있어요'};
-    return {leaveMin, slackMin, level:'EARLY', text:LIB.hm(leaveMin)+'쯤 출발하면 여유 있게 도착해요 (지금부터 '+slackMin+'분 남음)'};
+    // 기다리라는 말이 아니다 — 그 사이가 비어 있다는 말이다(아래 제안이 그 시간을 채운다)
+    return {leaveMin, slackMin, level:'EARLY', text:LIB.hm(leaveMin)+'쯤 출발하면 '+LIB.hm(target)+' '+what+'에 맞춰요 · 그 전까지 '+durText(slackMin)+' 여유가 있어요'};
   }
 
   // ── 10. 빈칸 채우기 (Assisted) · 하루 flow (Delegated) ──────────
+  // 사람이 그날을 가볍게 보내겠다고 적어 둔 날 — 메모·제목이 그렇게 말하면 빈칸을 한 곳만 채운다(2026-10-03).
+  // 샘플 도착일 메모는 '시차적응 겸 가벼운 일정'인데 하루 채우기가 다음 날 명소 셋을 18:25까지 채웠다.
+  const LIGHT_DAY_RE=/가볍|가벼운|여유롭|쉬엄|휴식|시차/;
+  /** @param {any} day @returns {boolean} */
+  function isLightDay(day){ return !!day && LIGHT_DAY_RE.test(String(day.note||'')+' '+String(day.title||'')); }
   /**
    * 빈 시간을 "한 칸"이 아니라 있는 만큼 채운 미리보기. 이미 오늘 일정에 있는 곳은 후보에서 뺀다
    * (이미 잡혀 있는 것을 다시 넣는 건 채우기가 아니다). 저장하지 않는다 — 미리보기다.
-   * @param {any} trip @param {any} state @param {{legMin?:any, cfg?:any, maxPerWindow?:number, exclude?:string[]}=} opts
-   * @returns {{slots:{startMin:number,endMin:number,afterId:(string|null),pick:NextActionCandidate}[], impact:SuggestionImpact}}
+   * 같은 화면의 제안 카드에서 거절한 것(dismissed — 제안 키)도 넣지 않는다 — 두 카드가 같은 제외 목록을 쓴다(2026-10-03).
+   * 이대로면 예약에 늦는 날에는 더 넣지 않는다(blocked) — 일정 조정 제안과 서로 반대 말을 하지 않게.
+   * @param {any} trip @param {any} state @param {{legMin?:any, cfg?:any, maxPerWindow?:number, exclude?:string[], dismissed?:string[]}=} opts
+   * @returns {{slots:{startMin:number,endMin:number,afterId:(string|null),pick:NextActionCandidate}[], impact:SuggestionImpact, blocked:(string|null), light:boolean}}
    */
   function fillGaps(trip, state, opts){
-    const o=opts||{}, c=cfgOf(o), maxPer=num(o.maxPerWindow, 3);
+    const o=opts||{}, c=cfgOf(o), light=isLightDay(state.day);
+    const maxPer=num(o.maxPerWindow, light? 1 : 3), maxTotal=light? 1 : Infinity;
     const skip=o.exclude||[];   // '다른 제안'으로 이미 물린 후보
-    const windows=findFreeWindows(state, o);
+    /** @type {any} */
+    const dismissed=Object.create(null);
+    (o.dismissed||[]).forEach((/**@type{string}*/k)=>{ dismissed[k]=1; });
     /** @type {string[]} */ const used=[];
     /** @type {any[]} */ const slots=[];
+    const blocked=generateReplan(state, o).needed? 'REPLAN' : null;
+    const windows=blocked? [] : findFreeWindows(state, o);
     windows.forEach((win)=>{
       let cursor=win.startMin, anchor=win.anchor;
-      for(let n=0;n<maxPer;n++){
+      for(let n=0;n<maxPer && slots.length<maxTotal;n++){
         /** @type {FreeWindow} */
         const sub={startMin:cursor, endMin:win.endMin, minutes:win.endMin-cursor, anchor,
           afterId:win.afterId, beforeId:win.beforeId, beforeFixed:win.beforeFixed};
         if(sub.minutes<30) break;
         const cands=buildCandidates(trip, state, {window:sub, cfg:c})
           .filter((cd)=>used.indexOf(cd.id)<0 && skip.indexOf(cd.id)<0 && !cd.inPlan && cd.kind!=='REST' && cd.kind!=='RETURN_TO_HOTEL');
-        const pick=rankNextActions(state, cands, {window:sub, legMin:o.legMin, cfg:c})[0];
+        const pick=rankNextActions(state, cands, {window:sub, legMin:o.legMin, cfg:c})
+          .filter((r)=>!dismissed[suggestionKey(r.type, r.title, state)])[0];
         if(!pick) break;
         used.push(pick.id);
         slots.push({startMin:pick.arriveMin, endMin:pick.endMin, afterId:win.afterId, pick});
@@ -738,7 +932,7 @@
       }
     });
     return {slots, impact:{addedActivities:slots.map((x)=>x.pick.title), removedActivities:[],
-      timeChangeMinutes:slots.reduce((a,x)=>a+x.pick.estimatedDuration+x.pick.estimatedTravelTime,0)}};
+      timeChangeMinutes:slots.reduce((a,x)=>a+x.pick.estimatedDuration+x.pick.estimatedTravelTime,0)}, blocked, light};
   }
 
   const DAY_SEGMENTS=Object.freeze([Object.freeze({key:'morning',label:'오전',to:11*60+30}),
@@ -749,22 +943,28 @@
   /**
    * "오늘 하루 추천해줘" — 지금(또는 일자 시작)부터 하루 끝까지의 흐름.
    * 고정 예약은 그대로 자리에 두고 그 사이를 채운다. 한 번 만들고 끝이 아니라 상태가 바뀌면 다시 만든다.
-   * @param {any} trip @param {any} state @param {{legMin?:any, cfg?:any}=} opts
-   * @returns {{blocks:any[], picks:NextActionCandidate[], empty:boolean, impact:SuggestionImpact}}
+   * 남은 계획도 함께 그린다(PLANNED) — 더하는 것만 SUGGESTED다(2026-10-03). 전에는 고정 예약과 제안만 그려서
+   * 북촌·광장시장·남산이 남은 날을 '창덕궁 → 저녁 → 명동교자'로 보여 줬다.
+   * @param {any} trip @param {any} state @param {{legMin?:any, cfg?:any, exclude?:string[], dismissed?:string[]}=} opts
+   * @returns {{blocks:any[], picks:NextActionCandidate[], empty:boolean, impact:SuggestionImpact, blocked:(string|null), light:boolean}}
    */
   function planDayFlow(trip, state, opts){
     const fill=fillGaps(trip, state, opts);
     /** @type {any[]} */ const blocks=[];
-    state.fixedCommitments.forEach((/**@type{FixedCommitment}*/f)=>{
-      if(f.startMin<(state.live? state.nowMin : state.dayStartMin)) return;   // 이미 지난 약속은 '오늘 할 일'이 아니다
-      blocks.push({kind:'FIXED', startMin:f.startMin, endMin:f.endMin, title:f.title, itemId:f.itemId, segment:segmentLabel(f.startMin)});
+    state.items.forEach((/**@type{TripItem}*/it)=>{
+      if(it.status==='COMPLETED'||it.status==='SKIPPED'||it.status==='CANCELLED') return;
+      if(state.live && it.end<=state.nowMin && it.depart<state.nowMin) return;   // 이미 지난 곳은 '오늘 할 일'이 아니다
+      const fixed=it.flexibility!=='FLEXIBLE';
+      const at=(fixed && it.fixedAt!=null)? it.fixedAt : it.eta;
+      blocks.push({kind:fixed? 'FIXED' : 'PLANNED', startMin:at, endMin:it.end, title:it.name, itemId:it.id, segment:segmentLabel(at)});
     });
     fill.slots.forEach((/**@type{any}*/sl)=>{
       blocks.push({kind:'SUGGESTED', startMin:sl.startMin, endMin:sl.endMin, title:sl.pick.title,
         afterId:sl.afterId, pick:sl.pick, segment:segmentLabel(sl.startMin)});
     });
     blocks.sort((a,b)=> (a.startMin-b.startMin) || (a.title<b.title? -1 : (a.title>b.title? 1 : 0)));
-    return {blocks, picks:fill.slots.map((/**@type{any}*/x)=>x.pick), empty:!blocks.some((b)=>b.kind==='SUGGESTED'), impact:fill.impact};
+    return {blocks, picks:fill.slots.map((/**@type{any}*/x)=>x.pick), empty:!blocks.some((b)=>b.kind==='SUGGESTED'), impact:fill.impact,
+      blocked:fill.blocked, light:fill.light};
   }
   // ── 11. 출발 계획 · Trip Pulse · 알림 계획 ──────────────────────
   //
@@ -798,6 +998,9 @@
   /**
    * 출발 계획 — 권장 출발시각 = 약속시각 − 이동시간 − 안전여유.
    * 단계(UPCOMING → READY_TO_LEAVE → LATE_RISK)는 알림을 "상태가 바뀔 때만" 보내기 위한 것이다(§15).
+   * ⚠️ 약속(예약·내가 정한 도착 시각)이 없는 곳은 재촉하지 않는다(2026-10-03, `departureAdvice`와 같은 규칙) — 계획을 이어 붙인
+   *    도착 예정만 보고 "지금 출발해도 늦어요" 알림을 보내면 거짓 경보다. 그런 곳은 언제나 UPCOMING이라 알림이 나가지 않는다.
+   *    지금 머무는 곳은 떠날 곳이 아니다(null).
    * @param {any} state @param {any} item TripItem @param {number} travelMin @param {any=} opts
    * @returns {{leaveMin:number, slackMin:number, bufferMin:number, travelMin:number, level:('EARLY'|'NOW'|'LATE'), stage:('UPCOMING'|'READY_TO_LEAVE'|'LATE_RISK'), lateByMin:number, text:string, targetMin:number}|null}
    */
@@ -812,12 +1015,18 @@
       return {leaveMin, slackMin:0, bufferMin, travelMin:travel, level:'EARLY', stage:'UPCOMING', lateByMin:0, targetMin,
         text:LIB.hm(leaveMin)+'쯤 출발하는 일정이에요'};
     }
+    if(item.status==='IN_PROGRESS') return null;
+    if(item.fixedAt==null){
+      const plain=departureAdvice(state, item, travel);
+      return {leaveMin:plain? plain.leaveMin : state.nowMin, slackMin:plain? plain.slackMin : 0, bufferMin, travelMin:travel,
+        level:(plain&&plain.level==='EARLY')? 'EARLY' : 'NOW', stage:'UPCOMING', lateByMin:0, targetMin, text:plain? plain.text : ''};
+    }
     const slackMin=Math.round(leaveMin-state.nowMin);
     // 늦음 판정은 여유(buffer)를 뺀 순수 이동시간 기준이다 — 여유를 못 지키는 것과 약속에 늦는 것은 다르다.
     const lateByMin=Math.max(0, Math.round((state.nowMin+travel)-targetMin));
     if(lateByMin>0){
       return {leaveMin, slackMin, bufferMin, travelMin:travel, level:'LATE', stage:'LATE_RISK', lateByMin, targetMin,
-        text:'지금 출발해도 '+lateByMin+'분쯤 늦어요'+(item.name?' — '+item.name+'에 미리 알려두면 좋겠어요':'')};
+        text:'지금 출발해도 '+durText(lateByMin)+'쯤 늦어요'+(item.name?' — '+item.name+'에 미리 알려두면 좋겠어요':'')};
     }
     if(slackMin<=0){
       return {leaveMin, slackMin, bufferMin, travelMin:travel, level:'NOW', stage:'LATE_RISK', lateByMin:0, targetMin,
@@ -825,10 +1034,10 @@
     }
     if(slackMin<=c.readyWindowMin){
       return {leaveMin, slackMin, bufferMin, travelMin:travel, level:'NOW', stage:'READY_TO_LEAVE', lateByMin:0, targetMin,
-        text:'이제 출발하면 여유 있게 도착할 수 있어요 (약 '+travel+'분 거리)'};
+        text:'이제 출발하면 여유 있게 도착할 수 있어요 (약 '+durText(travel)+' 거리)'};
     }
     return {leaveMin, slackMin, bufferMin, travelMin:travel, level:'EARLY', stage:'UPCOMING', lateByMin:0, targetMin,
-      text:LIB.hm(leaveMin)+'쯤 움직이면 여유가 있어요 (약 '+travel+'분 거리, 지금부터 '+slackMin+'분 남음)'};
+      text:LIB.hm(leaveMin)+'쯤 움직이면 여유가 있어요 (약 '+durText(travel)+' 거리, 지금부터 '+durText(slackMin)+' 남음)'};
   }
 
   /**
@@ -842,13 +1051,18 @@
     const remaining=state.items.filter((/**@type{any}*/it)=>it.status!=='COMPLETED'&&it.status!=='SKIPPED'&&it.status!=='CANCELLED');
     if(!state.items.length) return {code:'NO_PLAN', text:'오늘은 정해둔 일정이 없어요', detail:'지금 상황에 맞는 곳을 골라 시작해도 되고, 그냥 쉬어도 괜찮아요.'};
     if(!remaining.length) return {code:'DAY_COMPLETE', text:'오늘 계획한 일정은 다 마쳤어요', detail:'남은 시간은 편하게 쓰셔도 돼요.'};
+    // 아직 늦지 않았다 — '밀려서'가 아니라 '이대로면 늦는다'고, 어느 약속인지까지 말한다(2026-10-03)
     if(replan && replan.needed) return {code:'NEEDS_ATTENTION', text:'일정을 조금 손보면 좋겠어요',
-      detail:(replan.lateBy>0? replan.lateBy+'분 밀려서 ':'')+'이대로면 예약 시간을 지키기 어려워요.'};
-    if(departure && departure.level==='LATE') return {code:'DELAYED', text:'약 '+departure.lateByMin+'분 늦어지고 있어요',
+      detail:(replan.lateAt
+        ? '이대로면 '+replan.lateAt.name+' '+LIB.hm(replan.lateAt.atMin)+' 예약에 '+durText(replan.lateAt.lateBy)+' 늦어요.'
+        : (replan.lateBy>0? '이대로면 예약 시간에 '+durText(replan.lateBy)+' 늦어요.' : '이대로면 예약 시간을 지키기 어려워요.'))};
+    if(departure && departure.level==='LATE') return {code:'DELAYED', text:'약 '+durText(departure.lateByMin)+' 늦어지고 있어요',
       detail:'서두르기보다 도착 시각을 알려두는 편이 나을 수 있어요.'};
     if(state.energyLevel==='LOW') return {code:'RESTING', text:'지금은 쉬어가는 중이에요', detail:'무리하지 않는 선에서 이어가면 돼요.'};
-    if(state.availableMin>=c.freeTimeMin && state.nextFixed) return {code:'FREE_TIME', text:'다음 일정까지 '+Math.round(state.availableMin/60*10)/10+'시간 여유가 있어요',
-      detail:state.nextFixed.title+' '+LIB.hm(state.nextFixed.startMin)+'까지는 시간이 넉넉해요.'};
+    // 여유는 다음 고정 일정이 아니라 다음 남은 일정까지다(buildTripState의 availableMin) — 남은 곳이 있는데 '8시간 여유'라 하지 않는다
+    const fb=state.freeBefore;
+    if(state.availableMin>=c.freeTimeMin && fb) return {code:'FREE_TIME', text:'다음 일정까지 '+durText(state.availableMin)+' 여유가 있어요',
+      detail:fb.name+' '+LIB.hm(fb.fixedAt!=null? fb.fixedAt : fb.eta)+'까지는 시간이 넉넉해요.'};
     const next=state.nextItem;
     if(state.live && next && (next.eta-state.nowMin)>=c.aheadMin && state.completedItems.length)
       return {code:'AHEAD', text:'계획보다 앞서 가고 있어요', detail:'다음 일정까지 여유가 있어요.'};
@@ -920,14 +1134,16 @@
     }
 
     if(i.replan && i.replan.needed){
-      const dropped=(i.replan.dropNames||[]).join(', ');
+      const dropped=(i.replan.dropNames||[]).join(', '), lastDropped=(i.replan.dropNames||[]).slice(-1)[0];
       out.push({
         kind:NOTIFICATION_KINDS.REPLAN,
         origin:'SERVER',                       // 일정 전체를 다시 굴려야 한다 — 서버가 판단한다
         dedupeKey:key(NOTIFICATION_KINDS.REPLAN, (i.replan.drop||[]).join(',')||'none', 'needed'),
         title:'일정을 조금 손보면 어떨까요',
-        body:(i.replan.lateBy>0? '약 '+i.replan.lateBy+'분 늦어지고 있어요. ':'')+
-          (dropped? dropped+'을(를) 빼면 예약 시간은 그대로 지킬 수 있어요.' : '남은 일정을 다시 확인해 보세요.'),
+        body:(i.replan.lateAt? '이대로면 '+i.replan.lateAt.name+' 예약에 '+durText(i.replan.lateAt.lateBy)+' 늦어요. '
+            : (i.replan.lateBy>0? '이대로면 예약에 '+durText(i.replan.lateBy)+' 늦어요. ':''))+
+          (dropped? dropped+josa(lastDropped,'을','를')+(i.replan.feasible===false? ' 빼도 늦어요 — 예약 시간을 확인해 보세요.' : ' 빼면 예약 시간은 그대로 지킬 수 있어요.')
+            : '남은 일정을 다시 확인해 보세요.'),
         deepLink:'tripcanvas://trip/'+(state.tripId||'')+'/replan',
         targetId:null,
         priority:2,
@@ -1000,7 +1216,7 @@
   }
   const API={ADAPT_CFG, MEAL_WINDOWS, DAY_SEGMENTS, SAFETY_BUFFER, NOTIFICATION_KINDS, safetyBufferFor, departurePlan, tripPulse, stateVersion, notificationPlan, pendingNotifications, suggestionExpiryMin, parseIntent, resolveIntent, departureAdvice, fillGaps, planDayFlow, segmentLabel, currentDayIndex, daysUntilStart, weekdayOf, commitmentOf, priorityOf, statusOf, planningModeHint,
     buildTripState, findFreeWindows, mealOverlap, buildCandidates, rankNextActions, simulate, generateReplan,
-    suggestionKey, buildSuggestions, feedbackEntry, travelMinutes};
+    suggestionKey, buildSuggestions, feedbackEntry, travelMinutes, durText, josa, isLodging, isLightDay, mealCoveredBy};
   if(typeof module!=='undefined' && module.exports) module.exports=API;   // Node (테스트)
   else /** @type {any} */(root).TC_ADAPT=API;                             // 브라우저 전역 (lib/price와 동일 패턴)
 })(typeof window!=='undefined'?window:globalThis);

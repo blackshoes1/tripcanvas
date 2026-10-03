@@ -1904,12 +1904,13 @@ function renderSidebar(){
       if(s.bookAt){
         const late=bookWarn? Math.round(etas[si]-bookMin) : 0;
         const bt=bookWarn
-          ? `예약·입장 ${s.bookAt} · 도착 예상 ${hm(etas[si])} — 약 ${late}분 늦어요. 앞 일정을 줄이거나 예약을 옮기세요`
+          ? `예약·입장 ${s.bookAt} · 도착 예상 ${hm(etas[si])} — 약 ${fmtDur(late*60)} 늦어요. 앞 일정을 줄이거나 예약을 옮기세요`
           : `예약·입장 ${s.bookAt} (상대가 정한 약속) — 도착 예상 ${hm(etas[si])}`;
         meta.push(`<span class="spotMetaItem book${bookWarn?' bookwarn':''}" title="${escAttr(bt)}">${ic('ticket')} ${esc(s.bookAt)}${bookWarn?' '+ic('warn'):''}</span>`);
-        // 예약 시각까지 기다리는 시간(타임라인에 반영됨) — 숨은 동작을 눈에 보이게
+        // 예약 시각까지 기다리는 시간(타임라인에 반영됨) — 숨은 동작을 눈에 보이게.
+        // 한 시간이 넘으면 시간으로 말하고('⏳ 445분 대기'였다), 그만큼 비면 그 사이에 들를 곳을 더 담아도 된다고 잇는다(2026-10-03)
         const w=Math.round(tl[si].wait||0);
-        if(w>0) meta.push(`<span class="spotMetaItem book" title="${escAttr(`도착 예상 ${hm(etas[si])} → 예약 ${s.bookAt}까지 대기. 다음 장소 도착 예상에 이 대기가 반영돼요`)}">⏳ ${w}분 대기</span>`);
+        if(w>0) meta.push(`<span class="spotMetaItem book" title="${escAttr(`도착 예상 ${hm(etas[si])} → 예약 ${s.bookAt}까지 대기. 다음 장소 도착 예상에 이 대기가 반영돼요${w>=60?' — 그 사이에 들를 곳을 더 담아도 돼요':''}`)}">⏳ ${fmtDur(w*60)} 대기</span>`);
       }
       { const bu=safeUrl(s.bookUrl); if(bu) meta.push(`<a class="spotMetaItem book" href="${escAttr(bu)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="예약 링크 열기">${ic('link')} 예약 링크</a>`); }
       // 명소 예약요건 — 필수인데 아직 안 했으면 주의색(iOS `needsReservation`과 같은 규칙).
@@ -4467,7 +4468,7 @@ function renderPastePreview(){
     // 글에 적힌 요일과 날짜가 다르면 말한다 — 어느 쪽이 틀렸는지는 모르니 고치지 않는다(intake `weekdayMismatchOf`)
     if(d.weekdayMismatch){
       const warn=document.createElement('div'); warn.className='pvDayWarn'; warn.setAttribute('role','note');
-      warn.textContent=`⚠️ 글에는 (${d.weekdayMismatch.written})라고 적혀 있는데 ${mdLabel(d.date).split(' ')[0]}은 ${d.weekdayMismatch.actual}요일이에요 — 날짜를 확인해 주세요`;
+      warn.textContent=`⚠️ 글에는 (${d.weekdayMismatch.written})${TC_ADAPT.josa(d.weekdayMismatch.written,'이라고','라고')} 적혀 있는데 ${mdLabel(d.date).split(' ')[0]}은 ${d.weekdayMismatch.actual}요일이에요 — 날짜를 확인해 주세요`;
       list.appendChild(warn);
     }
     pv.rows.filter(r=>r.di===di).forEach(row=>list.appendChild(pvRowEl(row)));
@@ -4804,7 +4805,7 @@ function acceptMove(sug, di, action){
     day.spots.splice(at,0,sp);
   });
   recordFeedback(sug,'ACCEPTED');
-  toast(`${sug.title}을(를) 오늘 일정에 넣었어요`, '#3e7a4c');
+  toast(`${sug.title}${TC_ADAPT.josa(sug.title,'을','를')} 오늘 일정에 넣었어요`, '#3e7a4c');
   renderTravel(di);
 }
 // 제안별 주 동작. 추천은 '수락 / 건너뛰기 / 다른 추천 / 직접 수정' 중 하나로 언제든 빠져나갈 수 있어야 한다.
@@ -4845,8 +4846,9 @@ function replanPreview(di){
   box.appendChild(line('제안', r.after));
   if(r.dropNames.length){
     const n=document.createElement('div'); n.className='sgReplanNote';
-    n.textContent=trip().days[di+1]? `${r.dropNames.join(', ')}는 다음 날 앞쪽으로 옮겨요`
-                                   : `${r.dropNames.join(', ')}는 '건너뜀'으로 표시해요`;
+    const names=r.dropNames.join(', '), topic=names+TC_ADAPT.josa(r.dropNames[r.dropNames.length-1],'은','는');   // '북촌한옥마을는'이었다
+    n.textContent=trip().days[di+1]? `${topic} 다음 날 앞쪽으로 옮겨요`
+                                   : `${topic} '건너뜀'으로 표시해요`;
     box.appendChild(n);
   }
   return box;
@@ -4878,7 +4880,8 @@ function renderIntentEcho(){
 // 하루 flow — 계획이 비어 있으면 하루를 제안하고, 일부만 있으면 빈칸만 채운다(둘 다 같은 엔진)
 function buildDayFlow(di){
   const state=(_adapt&&_adapt.di===di&&_adapt.state)?_adapt.state:adaptState(di);
-  _dayFlow=TC_ADAPT.planDayFlow(trip(), state, {legMin:adaptLegMin(state.day), exclude:_flowExclude});
+  // 같은 화면의 제안 카드에서 거절한 곳은 흐름에도 넣지 않는다 — 두 카드가 같은 제외 목록을 쓴다(2026-10-03)
+  _dayFlow=TC_ADAPT.planDayFlow(trip(), state, {legMin:adaptLegMin(state.day), exclude:_flowExclude, dismissed:dismissedKeys(state.todayISO||undefined)});
   renderDayFlow(di);
 }
 // 수락 — 옮기는 도중 인덱스가 밀리므로 삽입 기준을 먼저 객체 참조로 잡아둔다
@@ -4915,17 +4918,18 @@ function renderDayFlow(di){
   const flow=_dayFlow, live=!!(_adapt&&_adapt.state&&_adapt.state.live);
   const card=document.createElement('div'); card.className='sgCard'; card.dataset.type='DAY_FLOW';
   card.appendChild(sgKicker(live?'오늘 이렇게 이어가면 어떨까요':'이 날을 이렇게 채우면 어떨까요'));
-  if(flow.empty){
-    const e=document.createElement('div'); e.className='sgDesc';
-    e.textContent='지금 넣을 만한 곳이 없어요 — 남은 고정 일정만 그대로 이어가면 돼요.'; card.appendChild(e);
-  }
+  // 남은 계획(PLANNED)도 함께 그리고 더하는 것만 강조한다 — 남은 곳을 빼고 그리면 계획이 사라진 것처럼 보였다(2026-10-03)
+  const note=flow.blocked==='REPLAN'? '이대로면 예약 시간에 늦어서 더 넣지 않았어요 — 일정 조정 제안을 먼저 확인해 주세요.'
+    : flow.empty? '지금 더 넣을 만한 곳이 없어요 — 남은 일정을 그대로 이어가면 돼요.'
+    : flow.light? '이 날 메모가 가벼운 일정이라 한 곳만 골랐어요.' : '';
+  if(note){ const e=document.createElement('div'); e.className='sgDesc'; e.textContent=note; card.appendChild(e); }
   const list=document.createElement('div'); list.className='sgFlow';
   flow.blocks.forEach(b=>{
-    const row=document.createElement('div'); row.className='sgFlowRow'+(b.kind==='FIXED'?' fixed':'');
+    const row=document.createElement('div'); row.className='sgFlowRow'+(b.kind==='FIXED'?' fixed':(b.kind==='SUGGESTED'?' add':' planned'));
     const seg=document.createElement('span'); seg.className='sgFlowSeg'; seg.textContent=b.segment; row.appendChild(seg);
     const t=document.createElement('span'); t.className='sgFlowTime'; t.textContent=hm(b.startMin); row.appendChild(t);
     const n=document.createElement('span'); n.className='sgFlowName';
-    n.textContent=(b.kind==='FIXED'?'🔒 ':'')+b.title; row.appendChild(n);
+    n.textContent=(b.kind==='FIXED'?'🔒 ':(b.kind==='SUGGESTED'?'＋ ':''))+b.title; row.appendChild(n);
     list.appendChild(row);
   });
   card.appendChild(list);
@@ -4934,7 +4938,7 @@ function renderDayFlow(di){
   if(!flow.empty&&!outside&&!readOnly()) act.appendChild(sgButton('이 일정으로 시작', true, ()=>applyDayFlow(di), 'ACCEPT'));
   act.appendChild(sgButton('다른 제안', false, ()=>{
     (flow.picks||[]).forEach(p=>{ if(_flowExclude.indexOf(p.id)<0) _flowExclude.push(p.id); });
-    buildDayFlow(di);
+    renderSuggestions(di); buildDayFlow(di);   // 아래 카드도 같은 제외 목록을 쓴다 — 물린 곳을 '한 곳 더'로 다시 권하지 않는다
   }, 'REFRESH'));
   act.appendChild(sgButton(outside?'닫기':'오늘은 쉬기', false, ()=>{
     _dayFlow=null; renderDayFlow(di); toast('알겠어요 — 일정은 그대로 둬요','#3e7a4c'); }, 'DISMISS'));
@@ -4967,12 +4971,18 @@ function renderSuggestions(di, clock){
   host.innerHTML='';
   if(_adapt && _adapt.di!==di){ _dayFlow=null; _flowExclude=[]; }   // 다른 날로 넘어가면 미리보기는 버린다
   const t=trip(), when=clock||travelClock(), state=adaptState(di,when);
-  const res=TC_ADAPT.buildSuggestions(t, state, {legMin:adaptLegMin(state.day), dismissed:dismissedKeys(when.todayISO), priceSuggestions:priceSuggestions(when.todayISO)});
+  // 하루 흐름에서 '다른 제안'으로 물린 곳은 여기서도 권하지 않는다 — 같은 화면의 카드는 같은 제외 목록을 쓴다(2026-10-03)
+  const res=TC_ADAPT.buildSuggestions(t, state, {legMin:adaptLegMin(state.day), dismissed:dismissedKeys(when.todayISO), exclude:_flowExclude, priceSuggestions:priceSuggestions(when.todayISO)});
   _adapt={di, state, res};
+  // 조정 카드 없이 늦는 경우(뺄 수 있는 곳이 없거나 그 카드를 건너뛰었을 때)에도 늦는다는 사실은 엔진의 한 줄로 말한다
+  if(res.notice){ const w=document.createElement('div'); w.className='sgEmpty sgNotice'; w.setAttribute('role','note'); w.textContent=res.notice; host.appendChild(w); }
   if(!res.suggestions.length){
+    if(res.notice) return;
     const d=document.createElement('div'); d.className='sgEmpty';
-    d.textContent = state.nextFixed
-      ? `지금 일정 사이에 넣기 좋은 장소가 없어요 — ${state.nextFixed.title}(${hm(state.nextFixed.startMin)})까지 쉬었다가 이동하는 것이 가장 자연스러워요.`
+    // '다음 고정 일정까지 쉬라'고 하지 않는다 — 그 사이에 남은 곳이 넷인데 "명동교자(19:00)까지 쉬었다가"라고 했다(2026-10-03)
+    const next=state.freeBefore;
+    d.textContent = next
+      ? `지금 더 넣을 만한 곳은 없어요 — 다음 일정 ${next.name}(${hm(next.fixedAt!=null?next.fixedAt:next.eta)})${TC_ADAPT.josa(')','으로','로')} 그대로 이어가면 돼요.`
       : (state.live? '지금 새로 제안할 일정이 없어요 — 오늘 남은 일정을 그대로 이어가면 돼요.' : '이 날은 더 넣을 만한 곳이 없어요 — 지금 일정 그대로 괜찮아요.');
     host.appendChild(d);
     return;
