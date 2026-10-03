@@ -686,3 +686,5 @@ body:has(.modalBg.show) #toast{bottom:auto;top:calc(env(safe-area-inset-top) + 1
 #authSocial{margin-top:0}#authSocial:empty{display:none}#authSocial .btn{flex:1 1 100%}
 .authLinks{margin:4px 0 0;text-align:right}
 .authLink{border:0;background:transparent;color:var(--muted);font-size:12px;text-decoration:underline;padding:6px 2px;min-height:32px;cursor:pointer}
+/* 좁은 화면의 읽기 전용 띠: 문장은 한 줄을 다 쓰고, 두 버튼은 다음 줄 오른쪽에 함께 — '닫기'만 왼쪽 아래로 떨어지지 않게 */
+@media (max-width:600px){#roText{flex-basis:calc(100% - 30px)}#roSave{margin-left:auto}}
