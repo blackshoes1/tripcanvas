@@ -5752,3 +5752,54 @@ test('ux3 메뉴: 같이 짜기 항목의 "로그인 필요"는 로그아웃일 
     assert.ok(needs().every((el) => el.hidden), '로그인하면 거짓이 되는 말은 감춘다');
   } finally { w.close(); }
 });
+
+// 검토(ux3:share-rv) — 구현 뒤 다시 본 곳
+test('ux3 공유: 링크로 처음 온 사람이 보기를 닫으면 미뤄 둔 처음 화면을 보고, 이미 쓰던 사람은 내 여행으로 돌아간다', { skip: noJsdom }, () => {
+  const first = bootSharedLink(SHARED_TRIP);
+  try {
+    assert.equal(first.document.getElementById('onboarding').hidden, true, '받은 여행이 먼저다');
+    first.document.getElementById('roClose').click();
+    assert.equal(first.eval('viewMode'), null);
+    assert.equal(first.document.getElementById('onboarding').hidden, false, '돌아갈 내 여행이 없는 사람에게 "내 여행으로 돌아왔어요"라고 하지 않는다');
+  } finally { first.close(); }
+  const mine = { id: 'mine1', name: '리스본 여행', start: '2026-11-01', days: [{ title: '', spots: [] }] };
+  const back = bootSharedLink(SHARED_TRIP, { tripcanvas_onboarded_v1: '1', tripcanvas_v1: JSON.stringify({ trips: [mine], activeId: 'mine1' }) });
+  try {
+    back.document.getElementById('roClose').click();
+    assert.equal(back.document.getElementById('onboarding').hidden, true);
+    assert.equal(back.eval('trip().name'), '리스본 여행');
+    assert.match(back.document.getElementById('toast').textContent, /내 여행으로 돌아왔어요/);
+  } finally { back.close(); }
+});
+
+test('ux3 초대: 초대 링크로 처음 온 사람이 초대 창을 닫으면 미뤄 둔 처음 화면을 본다', { skip: noJsdom }, async () => {
+  const w = boot('http://localhost/#join=abc');
+  try {
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(w.document.getElementById('onboarding').hidden, true, '초대 창이 먼저다');
+    w.document.getElementById('joinCancel').click();
+    assert.equal(w.document.getElementById('onboarding').hidden, false);
+  } finally { w.close(); }
+});
+
+test('ux3 공유: 받은 샘플을 "내 여행으로 저장"하면 샘플이 아니라 내 여행이다', { skip: noJsdom }, () => {
+  const w = bootSharedLink(Object.assign({}, SHARED_TRIP, { sample: true }));
+  try {
+    w.document.getElementById('roSave').click();
+    assert.ok(savedTrips(w).some((t) => t.name === '오사카 우정여행 (사본)'), '저장됐다');
+    assert.equal(w.eval('isSampleTrip(trip())'), false, '저장한 사본이 올라가지도 같이 짜지도 못하는 샘플로 남지 않는다');
+  } finally { w.close(); }
+});
+
+test('ux3 공유: 고칠 수 없는 여행의 일자 이동수단은 누르는 버튼이 아니다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    withTrip(w, `[{title:'D1',drive:'',note:'',spots:[{name:'A',city:'오사카',lat:34.66,lng:135.5}]}]`);
+    w.eval('render()');
+    assert.equal(w.document.querySelector('.dayCard .dayHead .modeBtn').tagName, 'BUTTON');
+    w.eval('viewMode=trip(); render()');
+    const mode = w.document.querySelector('.dayCard .dayHead .modeBtn');
+    assert.notEqual(mode.tagName, 'BUTTON', '눌러도 아무 일 없는 버튼을 두지 않는다');
+    assert.doesNotMatch(mode.getAttribute('title'), /눌러서/);
+  } finally { w.close(); }
+});

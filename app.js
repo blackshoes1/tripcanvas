@@ -2013,7 +2013,7 @@ function renderSidebar(){
           const prevTz=di>0? dayTimeZone(trip().days[di-1]) : null;
           if(timeZone) return (di===0||timeZone!==prevTz)? ` · 🌐 ${esc(timeZone)}` : '';
           return (di===0||prevTz)? ' · 🌐 시간대 미설정' : '';
-        })()}</span><button class="iconb modeBtn" onclick="event.stopPropagation();openDayModePicker(${di})" title="이 날 기본 이동수단: ${MODE_NAME[dm]} — 눌러서 바꾸기" aria-haspopup="dialog">${MODE_ICON[dm]}</button>${dayWeatherHtml(day,di)}</div>
+        })()}</span>${ro?`<span class="iconb modeBtn" title="이 날 기본 이동수단: ${MODE_NAME[dm]}">${MODE_ICON[dm]}</span>`:`<button class="iconb modeBtn" onclick="event.stopPropagation();openDayModePicker(${di})" title="이 날 기본 이동수단: ${MODE_NAME[dm]} — 눌러서 바꾸기" aria-haspopup="dialog">${MODE_ICON[dm]}</button>`}${dayWeatherHtml(day,di)}</div>
       </div><div class="dayBody">
         ${day.drive?`<div class="drive driveMemo" title="직접 적은 이동 메모예요 — 아래 계산과 다를 수 있어요"><span class="memoTag">이동 메모</span>${esc(day.drive)}</div>`:''}
         ${flightHtml(day)}
@@ -4177,6 +4177,8 @@ document.getElementById('roSave').onclick=()=>{
   const name=t.name||'공유된 여행';
   t.id=uid(); t.name=/\(사본\)$/.test(name)? name : name+' (사본)';
   delete t.sharedAt;   // 링크가 언제 만들어졌는지는 링크의 정보지 내 여행의 정보가 아니다
+  // 받은 것이 샘플이었어도 저장한 사본은 내 여행이다 — 표시가 남으면 올라가지도, 같이 짜지도 못하는 '샘플'이 된다
+  delete t.sample;
   leaveViewMode();
   commit(()=>{ store.trips.push(t); store.activeId=t.id; activeDay=0; }, {fit:fitEntry});
   toast('내 사본으로 저장했어요 — 원본과는 따로 움직여요. 같이 고치려면 주인에게 초대를 요청하세요','#3e7a4c');
@@ -4185,6 +4187,7 @@ document.getElementById('roSave').onclick=()=>{
 document.getElementById('roClose').onclick=()=>{
   if(!leaveViewMode()) return;
   activeDay=0; render(); fitEntry();
+  if(showDeferredOnboarding()) return;
   toast('내 여행으로 돌아왔어요 — 받은 링크를 다시 열면 또 볼 수 있어요','#4f4740');
 };
 /**
@@ -6818,7 +6821,7 @@ async function completePendingJoin(){
   updateJoinModal();
 }
 // '닫기'다 — 예전 이름 '나중에'는 초대를 미뤄 두는 것처럼 읽혔지만 대기 토큰을 지운다. 받은 링크를 다시 열면 또 뜬다.
-document.getElementById('joinCancel').onclick=()=>{ document.getElementById('joinModalBg').classList.remove('show'); clearPendingJoin(); };
+document.getElementById('joinCancel').onclick=()=>{ document.getElementById('joinModalBg').classList.remove('show'); clearPendingJoin(); showDeferredOnboarding(); };
 document.getElementById('joinRetry').onclick=()=>{ if(pendingJoinToken) startJoin(pendingJoinToken); };
 document.getElementById('joinAccept').onclick=async()=>{
   const token=pendingJoinToken; if(!token) return;
@@ -7123,3 +7126,14 @@ prunePrices();   // 삭제된 여행·예약의 가격 기록 정리
 render();
 setTimeout(()=>{ checkTripPrices().catch(()=>{}); }, 2500);   // 예약 시세 자동 확인 (신선하면 조회 생략)
 if(firstVisit && !arrivedByLink) showOnboarding();   // 링크가 할 일을 들고 왔으면 그 일이 먼저다(arrivedByLink)
+/**
+ * 링크가 들고 온 일(받은 사본 보기·초대)을 끝내지 않고 닫았을 때, 처음 온 사람에게 미뤄 둔 처음 화면을 보여 준다.
+ * 그 사람에게는 돌아갈 '내 여행'이 없다(있는 것은 샘플뿐) — 그대로 두면 설명 없이 샘플 위에 남는다(2026-10-03 검토).
+ * @returns {boolean} 처음 화면을 띄웠으면 true
+ */
+function showDeferredOnboarding(){
+  if(!firstVisit||!arrivedByLink) return false;
+  let seen=false; try{ seen=!!localStorage.getItem(ONBOARD_KEY); }catch(_){}
+  if(seen||!document.getElementById('onboarding').hidden) return false;
+  showOnboarding(); return true;
+}
