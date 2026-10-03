@@ -2303,6 +2303,8 @@ window.deleteDay=di=>{
 
 // ───────────────── 장소 모달 ─────────────────
 let editing = null; // {di, si} si=-1이면 추가
+// 여행 중 안내에서 연 장소 추가(식사 제안) — 닫거나 담으면 안내로 돌아간다 {di}. 다른 곳에서 열면 비운다
+let _spotFromTravel = null;
 let _pickedHours = null;   // 검색 결과에서 선택한 영업시간 (저장 시 반영)
 // 모달을 열 때 자동으로 채운 도시값(일자 첫 장소 기준 등). 사용자가 손대지 않은 '자동 프리필'인 동안엔
 // 지도 클릭·검색 지정으로 실제 도시를 덮어써도 되지만, 직접 입력한 값은 보존한다.
@@ -2312,7 +2314,7 @@ window.openSpotModal=(di,si,focusId)=>{
   if(!guardEdit()) return;
   // 새 장소는 '선택한 장소 바로 뒤'에 넣는다 — 선택이 없거나 다른 날이면 맨 뒤(기존 동작)
   const after=(si<0 && selectedSpot && selectedSpot.di===di && trip().days[di].spots[selectedSpot.si]) ? selectedSpot.si : null;
-  editing={di,si,after};
+  editing={di,si,after}; _spotFromTravel=null;
   const isNew = si<0;
   document.getElementById('spotModalTitle').textContent = isNew?'장소 추가':'장소 편집';
   document.getElementById('spotDelBtn').style.display = isNew?'none':'block';
@@ -2447,7 +2449,15 @@ document.getElementById('spotAdmConfirm').onclick=()=>{
   drawAdmissionChecked();
   toast('공식 정보를 확인한 시각을 적어 뒀어요 — 예약 완료와는 달라요');
 };
-document.getElementById('spotCancel').onclick=()=>document.getElementById('spotModalBg').classList.remove('show');
+document.getElementById('spotCancel').onclick=()=>{ document.getElementById('spotModalBg').classList.remove('show'); backToTravel(); };
+/** 여행 중 안내에서 연 편집기를 닫으면 안내로 돌아간다. 돌아갔으면 true */
+function backToTravel(){
+  const from=_spotFromTravel; _spotFromTravel=null;
+  if(!from) return false;
+  document.getElementById('travel').classList.add('show');
+  renderTravel(Math.min(from.di, trip().days.length-1));
+  return true;
+}
 document.getElementById('spotAdvanced').addEventListener('toggle',e=>{
   const badge=document.querySelector('#spotModalBg .stepBadge'); if(badge) badge.textContent=e.target.open?'상세 설정':'기본 정보';
 });
@@ -2535,9 +2545,11 @@ document.getElementById('spotSave').onclick=()=>{
   if(!isEdit){ const ni=trip().days[targetDay].spots.indexOf(s); if(ni>=0) selectedSpot={di:targetDay, si:ni}; }
   document.getElementById('spotModalBg').classList.remove('show');
   commit(); if(!hadLocations) fitEntry();
+  // 여행 중 안내에서 왔으면 안내로 돌아간다 — 그때 '하나 더 담기'는 안내 화면 아래 층에 열려 보이지 않으므로 붙이지 않는다
+  const fromTravel=backToTravel();
   // 새 장소를 담았으면 같은 날에 이어서 담을 수 있게 — 방금 담은 장소 뒤에 붙는다(selectedSpot)
   toast(sorted?'저장했어요 · 시간순으로 정렬했어요':(isEdit?'저장했어요':`Day ${targetDay+1}에 담았어요`), '#3e7a4c',
-    (isEdit||readOnly())? undefined : {label:'하나 더 담기', fn:()=>{ openSpotModal(targetDay,-1); document.getElementById('spotSearch').focus(); }});
+    (isEdit||readOnly()||fromTravel)? undefined : {label:'하나 더 담기', fn:()=>{ openSpotModal(targetDay,-1); document.getElementById('spotSearch').focus(); }});
 };
 document.getElementById('spotDelBtn').onclick=()=>{
   const snap=snapshot();
@@ -4118,7 +4130,7 @@ document.getElementById('roSave').onclick=()=>{
 };
 // 공유 링크로 열었을 때 — #v= 읽기전용 보기 / #t= 구버전(즉시 저장) 호환
 (function(){
-  load(); loadCfg(); loadFx(); loadSuggest();
+  load(); loadCfg(); loadFx();   // 제안 저장소(loadSuggest)는 그 선언 뒤에서 부른다 — 여기서 부르면 TDZ로 조용히 실패한다
   const h=location.hash;
   if(h.startsWith('#v=')){
     try{
@@ -4664,6 +4676,8 @@ let adaptIntent='';         // 사용자가 적은 원문 (되돌려 보여주�
 let adaptIntentWhy=[];      // 그 문장을 무엇으로 알아들었는지
 let _dayFlow=null;          // 하루 flow 미리보기 (수락 전에는 저장하지 않는다)
 let _flowExclude=[];        // '다른 제안'으로 물린 후보 id (이 세션 한정)
+let adaptDay='';            // 컨디션·문장을 고른 날(여행지 날짜) — '오늘 컨디션'은 그날만 유효하다
+let _sgDone=null;           // 방금 받아들인 '쉬기' — 카드를 접고 한 줄로 남긴다 {di, text}
 
 function loadSuggest(){
   try{
@@ -4672,11 +4686,28 @@ function loadSuggest(){
       suggestStore=(raw.trips&&typeof raw.trips==='object')?raw.trips:{};
       if(raw.energy==='LOW'||raw.energy==='HIGH'||raw.energy==='NORMAL') adaptEnergy=raw.energy;
       if(raw.prefs&&typeof raw.prefs==='object') adaptPrefs=raw.prefs;
-      if(typeof raw.intent==='string') adaptIntent=raw.intent;
+      if(typeof raw.intent==='string'){ adaptIntent=raw.intent; adaptIntentWhy=TC_ADAPT.parseIntent(raw.intent).reasons; }
+      if(typeof raw.day==='string') adaptDay=raw.day;
     }
   }catch(e){}
 }
-function saveSuggest(){ try{ localStorage.setItem(SUGGEST_KEY, JSON.stringify({v:1, energy:adaptEnergy, prefs:adaptPrefs, intent:adaptIntent, trips:suggestStore})); }catch(e){} }
+// ⚠️ 위의 let 선언 **뒤에서** 부른다. 예전에는 시작 IIFE(load·loadCfg 옆)에서 불러 TDZ 오류가 try에 조용히 삼켜졌고,
+// 거절·컨디션이 한 번도 되살아나지 않았다 — 그 상태로 하나를 건너뛰면 저장소의 이전 거절까지 덮였다(2026-10-03 UX 검토).
+loadSuggest();
+function saveSuggest(){ try{ localStorage.setItem(SUGGEST_KEY, JSON.stringify({v:1, day:adaptDay, energy:adaptEnergy, prefs:adaptPrefs, intent:adaptIntent, trips:suggestStore})); }catch(e){} }
+/** 컨디션·문장을 지금 고른 것으로 적는다 — 고른 날짜를 함께 남겨 다음 날 되살아나지 않게 한다 */
+function markAdaptToday(){ adaptDay=travelClock().todayISO; }
+/**
+ * 다른 날에 고른 컨디션·문장은 버린다. 거절(`dismissed`)은 원래 날짜와 함께 남지만 컨디션은 날짜가 없어,
+ * 어제의 '좀 지쳤어요'·'배고파'가 오늘 아침 추천을 움직일 뻔했다(초기화 순서를 고치자 실제로 되살아났다).
+ * @param {{todayISO:string}} when
+ */
+function syncAdaptDay(when){
+  if(adaptDay===when.todayISO) return;
+  if(adaptEnergy==='NORMAL' && !adaptIntent && !Object.keys(adaptPrefs||{}).length) return;
+  adaptEnergy='NORMAL'; adaptPrefs={}; adaptIntent=''; adaptIntentWhy=[]; adaptDay='';
+  saveSuggest();
+}
 function suggestBox(){ const id=trip().id||'_'; return suggestStore[id]||(suggestStore[id]={dismissed:{},feedback:[]}); }
 // 거절은 '오늘 하루'만 유효 — 같은 제안을 반복하지 않되 내일은 다시 볼 수 있게 한다
 function dismissedKeys(today){
@@ -4692,7 +4723,8 @@ function recordFeedback(sug, action){
   const box=suggestBox();
   box.feedback.push(TC_ADAPT.feedbackEntry(sug, action, new Date().toISOString()));
   if(box.feedback.length>100) box.feedback.splice(0, box.feedback.length-100);
-  if(action!=='ACCEPTED') box.dismissed[sug.key]=todayISO();
+  // 거르는 쪽(dismissedKeys)과 같은 시계 — 기기 날짜로 적으면 여행지 날짜와 갈리는 밤에 거절이 바로 지워졌다
+  if(action!=='ACCEPTED') box.dismissed[sug.key]=travelClock().todayISO;
   saveSuggest();
   trackAdapt(action==='ACCEPTED'?'suggestion_accepted':'suggestion_skipped', {type:sug.type, key:sug.key});
 }
@@ -4714,7 +4746,21 @@ function travelPeriod(clock){
   const t=trip(), when=clock||travelClock();
   return tripPeriodOf(t.start, t.days.length, when.todayISO);
 }
-function travelOutside(clock){ const p=travelPeriod(clock).phase; return p==='BEFORE'||p==='AFTER'; }
+/**
+ * 고른 날을 이 화면이 무엇으로 보는가 — **오늘**(지금 할 일) · 앞으로의 날(계획) · 지난 날(돌아보기).
+ * 말('오늘'/'이 날')과 버튼(다녀왔어요·넣기·쉬기)이 전부 이 판정 하나를 따른다. 예전에는 여행 기간 밖인지만 봐서
+ * 여행 중에 Day 3을 골라도 '오늘 일정에 넣기'·'오늘 컨디션'이었고 내일 장소에 '다녀왔어요'가 있었다(2026-10-03 UX 검토).
+ * - `canMark` 다녀옴 표시: 오늘과 지나온 날(놓친 표시를 고칠 수 있게). 날짜 없는 여행은 판정할 수 없어 막지 않는다.
+ * - `canPlan` 그 날에 넣기: 지난 날이 아니면 — 여행 전 미리보기도 계획이다. 지난 여행은 돌아보기용이다.
+ * @param {number} di @param {{todayISO:string}=} clock
+ */
+function travelDayView(di, clock){
+  const period=travelPeriod(clock), todayIdx=period.phase==='DURING'? period.dayIndex : -1, ro=readOnly();
+  const isToday=todayIdx===di, past=period.phase==='AFTER' || (todayIdx>=0 && di<todayIdx);
+  return {period, todayIdx, isToday, past,
+    canMark:!ro && (period.phase==='NONE' || (todayIdx>=0 && di<=todayIdx)),
+    canPlan:!ro && !past};
+}
 // 추천이 쓰는 이동시간은 화면과 같은 캐시·수단을 쓴다 (추천만 다른 숫자를 보지 않게)
 function adaptLegMin(day){ return (a,b)=>legMinutes(a,b,dayModeOf(day),null,dayTimeZone(day)); }
 // dayContext(anchor/timeline)를 그대로 넘긴다 — 출발 기준점의 단일 진실을 추천도 공유한다
@@ -4740,6 +4786,11 @@ function priceSuggestions(today){
 
 const SG_KICKER={REPLAN:'일정 조정 제안', NEXT_ACTIVITY:'지금 한 곳 더 들를 수 있어요', REST:'쉬어도 괜찮아요', PRICE_SAVING:'예약 다시 보기'};
 const SG_KICKER_PREVIEW='이 날 비는 시간에 넣어 볼 만한 곳';
+/** 나중에 비는 시간의 머리글 — '15:10부터 비는 시간 · 남산서울타워 다음'. 앞 일정은 엔진이 짚은 창의 afterId다 */
+function laterKicker(startMin, win, state){
+  const after=win&&win.afterId? (state.items||[]).find(it=>it.id===win.afterId) : null;
+  return `${hm(startMin)}부터 비는 시간${after&&after.name?` · ${after.name} 다음`:''}`;
+}
 // 제안 카드의 머리. **From J는 앱 이름이 아니라 J가 보내는 제안의 서명이다** — 앱은 With J고,
 // 이 서명이 붙은 것만 '제안'이다(일정 표시·오류 안내에는 붙지 않는다).
 function sgKicker(text){
@@ -4760,15 +4811,16 @@ function setSpotStatus(di, si, status){
   renderTravel(di);
 }
 // 여행 모드 카드의 실행 상태 조작 — 다녀왔는지/건너뛰었는지가 남은 일정 계산의 입력이 된다
-function spotStatusRow(di, si, s, outside){
+// `primary`는 '지금' 카드에서만 — 화면의 주 버튼은 지금 머무는 곳의 '다녀왔어요' 하나다(목록 줄마다 두지 않는다)
+function spotStatusRow(di, si, s, outside, primary){
   const row=document.createElement('div'); row.className='tStatus';
   const fixed=outside||readOnly();   // 보기 권한도 상태만 본다 — 누를 수 없는 버튼은 두지 않는다
   if(s.status==='COMPLETED'||s.status==='SKIPPED'){
     const chip=document.createElement('span'); chip.className='tStatusChip';
     chip.textContent=(s.status==='COMPLETED')?'✓ 다녀옴':'건너뜀'; row.appendChild(chip);
     if(!fixed) row.appendChild(sgButton('되돌리기', false, ()=>setSpotStatus(di,si,null)));
-  }else if(!fixed){   // 여행 기간 밖에서는 '다녀왔어요'를 누를 일이 없다 — 누르면 남은 일정 계산이 거짓이 된다
-    row.appendChild(sgButton('다녀왔어요', false, ()=>setSpotStatus(di,si,'COMPLETED')));
+  }else if(!fixed){   // 아직 오지 않은 날·여행 기간 밖에서는 '다녀왔어요'를 누를 일이 없다 — 누르면 남은 일정 계산이 거짓이 된다
+    row.appendChild(sgButton('다녀왔어요', !!primary, ()=>setSpotStatus(di,si,'COMPLETED')));
     row.appendChild(sgButton('건너뛰기', false, ()=>setSpotStatus(di,si,'SKIPPED')));
   }
   return row;
@@ -4804,9 +4856,28 @@ function acceptMove(sug, di, action){
     day.spots.splice(at,0,sp);
   });
   recordFeedback(sug,'ACCEPTED');
-  toast(`${sug.title}을(를) 오늘 일정에 넣었어요`, '#3e7a4c');
+  toast(`${sug.title}을(를) ${dayWord(di)} 일정에 넣었어요`, '#3e7a4c');
   renderTravel(di);
 }
+// 식사 제안 → 식당 검색으로 연 장소 추가. 닫거나 담으면 여행 중 안내로 돌아온다 — 예전에는 종류도 검색도 비어 있는
+// '장소 추가'가 열렸고, 취소하면 계획 화면에 남아 하던 흐름을 잃었다(2026-10-03 UX 검토)
+function openMealSearch(sug, di){
+  const a=sug.action||{};
+  recordFeedback(sug,'ACCEPTED');
+  openSpotModal(di,-1);
+  if(!document.getElementById('spotModalBg').classList.contains('show')) return;
+  document.getElementById('travel').classList.remove('show');   // 장소 편집은 여행 중 화면 아래 층이다
+  _spotFromTravel={di};
+  // 비는 시간 바로 뒤에 넣는다 — 엔진이 짚은 창의 앞 일정(afterId)
+  const win=_adapt&&_adapt.res&&_adapt.res.window, m=win&&/^d\d+s(\d+)$/.exec(String(win.afterId||''));
+  if(m) editing.after=+m[1];
+  if(a.startMin!=null) document.getElementById('spotAt').value=hm(a.startMin);
+  document.getElementById('spotCat').value='food';
+  const q=document.getElementById('spotSearch'); q.value='맛집';
+  if(document.getElementById('spotCity').value.trim()) doSearch(); else q.focus();   // 도시를 모르면 검색어만 두고 고르게 한다
+}
+/** 고른 날을 부르는 말 — 오늘이면 '오늘', 아니면 'Day N'. 말과 실제로 들어가는 날이 갈리지 않게 한다 */
+function dayWord(di, clock){ return travelDayView(di, clock).isToday? '오늘' : `Day ${di+1}`; }
 // 제안별 주 동작. 추천은 '수락 / 건너뛰기 / 다른 추천 / 직접 수정' 중 하나로 언제든 빠져나갈 수 있어야 한다.
 function sgPrimaryButtons(sug, di){
   // 보기 권한은 제안을 볼 수만 있다 — 일정을 바꾸는 버튼(조정·넣기·다녀옴·장소 추가)은 두지 않는다
@@ -4814,18 +4885,21 @@ function sgPrimaryButtons(sug, di){
   if(sug.type==='REPLAN') return ro? [] : [sgButton('이대로 조정', true, ()=>applyReplan(sug,di), 'ACCEPT'),
     sgButton('직접 수정', false, ()=>{ recordFeedback(sug,'REPLACED'); document.getElementById('travel').classList.remove('show'); }, 'EDIT')];
   if(sug.type==='PRICE_SAVING') return [sgButton('예약 보기', true, ()=>{ recordFeedback(sug,'ACCEPTED'); openBookingList(); }, 'ACCEPT')];
-  if(a.kind==='REST'||a.kind==='RETURN_TO_HOTEL') return [sgButton(a.kind==='REST'?'그렇게 할게요':'숙소로 가기', true, ()=>{
-    recordFeedback(sug,'ACCEPTED'); toast('알겠어요 — 남은 일정은 그대로 둬요','#3e7a4c'); renderSuggestions(di); }, 'ACCEPT')];
-  if(a.kind==='EAT') return ro? [] : [sgButton('식사 장소 추가', true, ()=>{
-    recordFeedback(sug,'ACCEPTED'); document.getElementById('travel').classList.remove('show');
-    openSpotModal(di,-1); const at=document.getElementById('spotAt'); if(at&&a.startMin!=null) at.value=hm(a.startMin); }, 'ACCEPT')];
-  // 여행 기간 밖에서는 '오늘'이 이 여행의 날이 아니다 — 오늘 일정에 넣거나 다녀왔다고 표시하는 버튼을 두지 않는다
-  const fixed=travelOutside()||ro;
-  if(a.fromDay!=null && a.si!=null) return fixed? [] : [sgButton('오늘 일정에 넣기', true, ()=>acceptMove(sug,di,a), 'ACCEPT')];
+  const v=travelDayView(di);
+  // 쉬기·숙소 복귀는 '지금' 하는 일이다 — 오늘이 아니면 누를 것이 없다. 받아들이면 카드를 접고 그날은 다시 권하지 않는다
+  // (예전에는 '알겠어요' 토스트만 뜨고 카드가 그대로 남아 눌린 것 같지 않았다 — 2026-10-03 UX 검토)
+  if(a.kind==='REST'||a.kind==='RETURN_TO_HOTEL') return !v.isToday? [] : [sgButton(a.kind==='REST'?'그렇게 할게요':'숙소로 가기', true, ()=>{
+    recordFeedback(sug,'ACCEPTED');
+    suggestBox().dismissed[sug.key]=travelClock().todayISO; saveSuggest();
+    _sgDone={di, text:a.kind==='REST'? '쉬는 중이에요 — 남은 일정은 그대로 둬요' : '숙소로 돌아가는 중이에요 — 남은 일정은 그대로 둬요'};
+    renderSuggestions(di); }, 'ACCEPT')];
+  if(a.kind==='EAT') return !v.canPlan? [] : [sgButton('식사 장소 추가', true, ()=>openMealSearch(sug,di), 'ACCEPT')];
+  // 다른 날의 장소를 이 날로 — 넣는 날을 그 이름으로 말한다(다른 날을 보면서 '오늘 일정에 넣기'였다). 지난 날·보기 권한은 넣지 않는다
+  if(a.fromDay!=null && a.si!=null) return !v.canPlan? [] : [sgButton(v.isToday?'오늘 일정에 넣기':`Day ${di+1}에 넣기`, true, ()=>acceptMove(sug,di,a), 'ACCEPT')];
   if(a.si!=null){
     const sp=trip().days[di].spots[a.si], out=[];
     if(hasLoc(sp)) out.push(sgButton('지도에서 보기', true, ()=>{ recordFeedback(sug,'ACCEPTED'); const l=extMapLink(sp); window.open(l.href,'_blank','noopener'); renderSuggestions(di); }, 'ACCEPT'));
-    if(!fixed) out.push(sgButton('다녀왔어요', !out.length, ()=>{ recordFeedback(sug,'ACCEPTED'); setSpotStatus(di,a.si,'COMPLETED'); }, 'ACCEPT'));
+    if(v.canMark) out.push(sgButton('다녀왔어요', !out.length, ()=>{ recordFeedback(sug,'ACCEPTED'); setSpotStatus(di,a.si,'COMPLETED'); }, 'ACCEPT'));
     return out;
   }
   return [];
@@ -4859,26 +4933,42 @@ function applyIntent(text, di){
   const r=TC_ADAPT.resolveIntent(text, {energyLevel:adaptEnergy});
   adaptEnergy=r.energyLevel;
   adaptPrefs=r.prefs; adaptIntent=String(text||''); adaptIntentWhy=r.reasons;
-  saveSuggest();
+  markAdaptToday(); saveSuggest();
   trackAdapt('intent_parsed',{understood:r.understood});
   _dayFlow=null; _flowExclude=[];
   renderTravel(di);
   return r;
 }
+const ENERGY_LABEL={HIGH:'쌩쌩해요', NORMAL:'보통', LOW:'좀 지쳤어요'};
+// 컨디션을 말한 문장인데 엔진이 컨디션을 정하지 않은 경우 — 부정("하나도 안 피곤해")·엇갈림("피곤한데 더 보고 싶어").
+// 해석 규칙은 resolveIntent 하나라 여기서 컨디션을 정하지 않는다. 다만 '못 알아들었어요'라고 하면 분명히 말한 사람에게
+// 거짓말이고, 앞서 고른 '좀 지쳤어요'가 말없이 남는다 — 지금 무엇으로 보고 있는지와 바꿀 길을 말한다(2026-10-03 UX 검토).
+// ⚠️ '괜찮'은 넣지 않는다 — "걷는 건 괜찮아"는 컨디션 이야기가 아니다(CLAUDE.md 자연어 규칙).
+const ENERGY_TALK=/피곤|지쳤|지치|힘들|기운|쌩쌩|팔팔|컨디션/;
 // 무엇으로 알아들었는지 되돌려 보여준다 — 못 알아들었으면 못 알아들었다고 말한다
-function renderIntentEcho(){
+function renderIntentEcho(di){
   const el=document.getElementById('travelIntentEcho'); if(!el) return;
   el.textContent='';
   if(!adaptIntent) return;
-  el.textContent = adaptIntentWhy.length
-    ? '이렇게 이해했어요 — '+adaptIntentWhy.join(' · ')
-    : '그 문장은 아직 못 알아들었어요 — 아래 컨디션 버튼으로 알려 주세요';
+  const energyUnsaid=ENERGY_TALK.test(adaptIntent) && !TC_ADAPT.parseIntent(adaptIntent).energyLevel;
+  const lines=[];
+  if(adaptIntentWhy.length) lines.push('이렇게 이해했어요 — '+adaptIntentWhy.join(' · '));
+  if(energyUnsaid) lines.push(adaptEnergy==='NORMAL'? "컨디션은 '보통'으로 보고 있어요 — 다르면 아래 버튼으로 알려 주세요"
+    : `컨디션은 바꾸지 않았어요 — 지금은 '${ENERGY_LABEL[adaptEnergy]}'로 보고 있어요`);
+  if(!lines.length) lines.push('그 문장은 아직 못 알아들었어요 — 아래 컨디션 버튼으로 알려 주세요');
+  lines.forEach(text=>{ const d=document.createElement('div'); d.textContent=text; el.appendChild(d); });
+  if(energyUnsaid && adaptEnergy!=='NORMAL' && di!=null){
+    const b=sgButton('보통으로 바꾸기', false, ()=>{ adaptEnergy='NORMAL'; markAdaptToday(); saveSuggest(); renderEnergy(di); renderSuggestions(di); });
+    b.className='btn sm'; el.appendChild(b);
+  }
   el.classList.toggle('miss', !adaptIntentWhy.length);
 }
 // 하루 flow — 계획이 비어 있으면 하루를 제안하고, 일부만 있으면 빈칸만 채운다(둘 다 같은 엔진)
 function buildDayFlow(di){
-  const state=(_adapt&&_adapt.di===di&&_adapt.state)?_adapt.state:adaptState(di);
-  _dayFlow=TC_ADAPT.planDayFlow(trip(), state, {legMin:adaptLegMin(state.day), exclude:_flowExclude});
+  const state=(_adapt&&_adapt.di===di&&_adapt.state)?_adapt.state:adaptState(di), v=travelDayView(di);
+  // 여행 중 다른 날을 채울 때 오늘의 장소를 빼 가지 않는다 — 오늘 일정이 몰래 줄어들었다(2026-10-03 UX 검토)
+  const today=(v.todayIdx>=0&&!v.isToday)? trip().days[v.todayIdx].spots.map((_,si)=>`c-d${v.todayIdx}s${si}`) : [];
+  _dayFlow=TC_ADAPT.planDayFlow(trip(), state, {legMin:adaptLegMin(state.day), exclude:_flowExclude.concat(today)});
   renderDayFlow(di);
 }
 // 수락 — 옮기는 도중 인덱스가 밀리므로 삽입 기준을 먼저 객체 참조로 잡아둔다
@@ -4904,7 +4994,7 @@ function applyDayFlow(di){
     });
   });
   trackAdapt('day_flow_accepted',{added:plan.length});
-  toast(plan.length+'곳을 오늘 일정에 넣었어요 — 고정 예약 시각은 그대로예요','#3e7a4c');
+  toast(`${plan.length}곳을 ${dayWord(di)} 일정에 넣었어요 — 고정 예약 시각은 그대로예요`,'#3e7a4c');
   _dayFlow=null; _flowExclude=[];
   renderTravel(di);
 }
@@ -4930,13 +5020,15 @@ function renderDayFlow(di){
   });
   card.appendChild(list);
   const act=document.createElement('div'); act.className='sgActions';
-  const outside=travelOutside();   // 기간 밖에서는 미리보기로만 — 일정을 바꾸는 버튼은 두지 않는다
-  if(!flow.empty&&!outside&&!readOnly()) act.appendChild(sgButton('이 일정으로 시작', true, ()=>applyDayFlow(di), 'ACCEPT'));
+  // 오늘이면 '이 일정으로 시작', 앞으로의 날(여행 전 미리보기 포함)이면 그 날에 넣는다 — 권하고 담을 길이 없으면 막다른 길이다.
+  // 지난 날·보기 권한은 미리보기로만(2026-10-03 UX 검토)
+  const v=travelDayView(di);
+  if(!flow.empty&&v.canPlan) act.appendChild(sgButton(v.isToday?'이 일정으로 시작':`Day ${di+1}에 넣기`, true, ()=>applyDayFlow(di), 'ACCEPT'));
   act.appendChild(sgButton('다른 제안', false, ()=>{
     (flow.picks||[]).forEach(p=>{ if(_flowExclude.indexOf(p.id)<0) _flowExclude.push(p.id); });
     buildDayFlow(di);
   }, 'REFRESH'));
-  act.appendChild(sgButton(outside?'닫기':'오늘은 쉬기', false, ()=>{
+  act.appendChild(sgButton(v.isToday?'오늘은 쉬기':'닫기', false, ()=>{
     _dayFlow=null; renderDayFlow(di); toast('알겠어요 — 일정은 그대로 둬요','#3e7a4c'); }, 'DISMISS'));
   card.appendChild(act);
   host.appendChild(card);
@@ -4946,29 +5038,56 @@ function renderDayFlow(di){
 function renderEnergy(di){
   const host=document.getElementById('travelEnergy'); if(!host) return;
   host.innerHTML='';
-  const outside=travelOutside();   // 기간 밖이면 '오늘'은 이 여행의 날이 아니다 — 고른 날 기준으로 말한다
-  const label=document.createElement('span'); label.className='sgEnergyLabel'; label.textContent=outside?'이 날 컨디션':'오늘 컨디션';
+  const view=travelDayView(di);   // 오늘이 아닌 날을 보면 '오늘'이라고 하지 않는다 — 고른 날 기준으로 말한다
+  // 지난 날은 돌아보기용이다 — 제안이 없으니 컨디션·문장으로 조정할 것도 없다
+  host.hidden=view.past; document.getElementById('travelTune').hidden=view.past; document.getElementById('travelIntentEcho').hidden=view.past;
+  if(view.past) return;
+  const label=document.createElement('span'); label.className='sgEnergyLabel'; label.textContent=view.isToday?'오늘 컨디션':'이 날 컨디션';
   host.appendChild(label);
-  [['HIGH','쌩쌩해요'],['NORMAL','보통'],['LOW','좀 지쳤어요']].forEach(([v,text])=>{
-    const b=sgButton(text, adaptEnergy===v, ()=>{ adaptEnergy=v; saveSuggest(); renderEnergy(di); renderSuggestions(di); });
+  Object.entries(ENERGY_LABEL).forEach(([v,text])=>{
+    const b=sgButton(text, adaptEnergy===v, ()=>{ adaptEnergy=v; markAdaptToday(); saveSuggest(); renderEnergy(di); renderSuggestions(di); });
     b.className='btn sgEnergyBtn'+(adaptEnergy===v?' on':'');
     b.setAttribute('aria-pressed', adaptEnergy===v? 'true':'false');
     host.appendChild(b);
   });
   // 계획이 비었으면 하루를 통째로, 일부만 있으면 빈칸만 — 같은 버튼, 같은 엔진
   const planned=((trip().days[di]||{}).spots||[]).length;
-  const flowBtn=sgButton(planned?'빈 시간 채우기':(outside?'이 날 하루 추천받기':'오늘 하루 추천받기'), false, ()=>buildDayFlow(di));
+  const flowBtn=sgButton(planned?'빈 시간 채우기':(view.isToday?'오늘 하루 추천받기':'이 날 하루 추천받기'), false, ()=>buildDayFlow(di));
   flowBtn.className='btn sgFlowBtn'; host.appendChild(flowBtn);
-  renderIntentEcho();
+  renderIntentEcho(di);
 }
 // 제안 목록. 후보가 없으면 억지로 만들지 않고 왜 없는지를 말한다.
 function renderSuggestions(di, clock){
   const host=document.getElementById('travelSuggest'); if(!host) return;
   host.innerHTML='';
-  if(_adapt && _adapt.di!==di){ _dayFlow=null; _flowExclude=[]; }   // 다른 날로 넘어가면 미리보기는 버린다
-  const t=trip(), when=clock||travelClock(), state=adaptState(di,when);
-  const res=TC_ADAPT.buildSuggestions(t, state, {legMin:adaptLegMin(state.day), dismissed:dismissedKeys(when.todayISO), priceSuggestions:priceSuggestions(when.todayISO)});
+  if(_adapt && _adapt.di!==di){ _dayFlow=null; _flowExclude=[]; _sgDone=null; }   // 다른 날로 넘어가면 미리보기는 버린다
+  const t=trip(), when=clock||travelClock(), state=adaptState(di,when), v=travelDayView(di,when);
+  const dismissed=dismissedKeys(when.todayISO), cfg=TC_ADAPT.ADAPT_CFG;
+  // 화면이 걸러 내는 것 — 판단(엔진)은 그대로 두고 이 화면에서 말이 안 되는 제안만 뺀다(2026-10-03 UX 검토).
+  //  · 여행 중 다른 날을 볼 때 오늘의 장소를 그 날로 옮기자는 제안 — 오늘 일정이 몰래 줄어든다
+  //  · 오늘이 아닌 날의 쉬기·숙소 복귀 — '지금 쉬어도…'는 지금 그 날에 있을 때만 말이 된다
+  const otherDay=v.todayIdx>=0 && !v.isToday;
+  const hide=s=>(otherDay && s.action && s.action.fromDay===v.todayIdx) || (!state.live && s.type==='REST');
+  // 엔진은 상위 N개를 자른 **뒤에** 거절을 거른다 — 물린 만큼 더 받아 앞에서 N개만 쓴다. 안 그러면 '다른 제안 보기'로
+  // 세 장을 물리면 다음 후보가 있어도 빈 목록이 됐다. 한 번에 보이는 수(다음 행동 N + 한 자리)는 엔진과 같다.
+  const extra=dismissed.length + (otherDay? t.days[v.todayIdx].spots.length : 0) + (state.live? 0 : 2);
+  const res=TC_ADAPT.buildSuggestions(t, state, {legMin:adaptLegMin(state.day), dismissed, priceSuggestions:priceSuggestions(when.todayISO),
+    cfg:Object.assign({}, cfg, {maxSuggest:cfg.maxSuggest+extra})});
+  let nextN=0;
+  res.suggestions=res.suggestions.filter(s=>!hide(s)).filter(s=>{
+    if(s.type==='NEXT_ACTIVITY'||s.type==='REST'){ if(nextN>=cfg.maxSuggest) return false; nextN++; }
+    return true;
+  }).slice(0, cfg.maxSuggest+1);
   _adapt={di, state, res};
+  // 지난 날·지난 여행은 돌아보기용이다 — 무엇을 더 넣자거나 지금 쉬자는 말은 하지 않는다
+  if(v.past){
+    const d=document.createElement('div'); d.className='sgEmpty';
+    d.textContent=v.period.phase==='AFTER'? '지난 여행이에요 — 일정을 돌아볼 수 있고, J의 제안은 여행 전과 여행 중에 드려요.'
+                                          : '지난 날이에요 — 다녀온 곳은 아래 목록에서 표시할 수 있어요.';
+    host.appendChild(d);
+    return;
+  }
+  if(_sgDone && _sgDone.di===di){ const d=document.createElement('div'); d.className='sgEmpty sgDone'; d.textContent=_sgDone.text; host.appendChild(d); }
   if(!res.suggestions.length){
     const d=document.createElement('div'); d.className='sgEmpty';
     d.textContent = state.nextFixed
@@ -4983,8 +5102,12 @@ function renderSuggestions(di, clock){
     card.dataset.suggestionType=sug.type;
     // 여행 전·다른 날을 볼 때는 '지금'이 아니다 — 그 날 일정이 비는 시간에 대한 제안이다
     // 식사는 '한 곳 더'가 아니다 — 머리글이 내용과 맞아야 한다("지금 한 곳 더 들를 수 있어요 / 점심 시간이 비어 있어요"였다)
-    const kick=(sug.action&&sug.action.kind==='EAT')? '식사 시간 챙기기'
-      : (sug.type==='NEXT_ACTIVITY'&&!state.live)? SG_KICKER_PREVIEW : (SG_KICKER[sug.type]||'제안');
+    // 여행 중이어도 빈 시간이 나중에 시작하면 '지금'이 아니다 — "지금 한 곳 더 / 15:12 도착"이었다(2026-10-03 UX 검토)
+    const a=sug.action||{}, later=state.live && a.startMin!=null && a.startMin>state.nowMin;
+    const kick=(a.kind==='EAT')? '식사 시간 챙기기'
+      : (sug.type==='NEXT_ACTIVITY'&&!state.live)? SG_KICKER_PREVIEW
+      : (sug.type==='NEXT_ACTIVITY'&&later)? laterKicker(a.startMin, res.window, state)
+      : (SG_KICKER[sug.type]||'제안');
     card.appendChild(sgKicker(kick));
     const ti=document.createElement('div'); ti.className='sgTitle'; ti.textContent=sug.title; card.appendChild(ti);
     if(sug.description){ const de=document.createElement('div'); de.className='sgDesc'; de.textContent=sug.description; card.appendChild(de); }
@@ -5015,10 +5138,13 @@ function renderSuggestions(di, clock){
 document.getElementById('travelBtn').onclick=()=>{
   const t=trip(), clock=travelClock();
   // 기간 밖이면 가장 가까운 날(여행 전=1일차, 지난 여행=마지막 날)을 보여 주되, 화면이 그 사실을 말한다(renderTravel)
-  const di=travelPeriod(clock).dayIndex;
+  const period=travelPeriod(clock), di=period.dayIndex;
+  // 어느 날이 오늘인지 고르는 칸이 말한다 — 다른 날을 보다가 돌아올 자리를 잃지 않게(2026-10-03 UX 검토)
+  const todayIdx=period.phase==='DURING'? di : -1;
   const sel=document.getElementById('travelDay');
-  sel.innerHTML=t.days.map((d,i)=>`<option value="${i}" ${i===di?'selected':''}>${[`Day ${i+1}`,dateOf(i),esc(d.title||'')].filter(Boolean).join(' · ')}</option>`).join('');
+  sel.innerHTML=t.days.map((d,i)=>`<option value="${i}" ${i===di?'selected':''}>${[`Day ${i+1}${i===todayIdx?' (오늘)':''}`,dateOf(i),esc(d.title||'')].filter(Boolean).join(' · ')}</option>`).join('');
   sel.onchange=()=>renderTravel(parseInt(sel.value));
+  _sgDone=null;
   renderTravel(di,clock);
   document.getElementById('travel').classList.add('show');
 };
@@ -5028,15 +5154,32 @@ document.getElementById('travelIntentApply').onclick=()=>{
   applyIntent(document.getElementById('travelIntent').value, di);
 };
 document.getElementById('travelIntent').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); document.getElementById('travelIntentApply').click(); } });
-// '다음 장소' 칸의 → 는 꾸밈이었다(누르면 아무 일도 없었다, 2026-10-03 UX 검토) — 실제로 그곳 지도를 여는 링크로 둔다
-function travelGoLink(place){
+/**
+ * 그곳으로 가는 길찾기 — **좌표로** 연다. '보기' 링크(`extMapLink`)는 이름 검색이라 같은 이름의 다른 곳이 섞인다
+ * ('길 보기'가 'map.kakao.com/link/search/서울 경복궁'을 열었다, 2026-10-03 UX 검토). 국내는 카카오맵 길찾기 —
+ * 카카오 장소 id를 알면 `extMapLink`가 이미 그 장소로 가는 길찾기를 준다 — 해외는 Google 지도 길찾기(Place ID가 있으면 함께).
+ * @param {any} place @returns {{href:string,label:string}}
+ */
+function travelDirLink(place){
+  const lat=+place.lat, lng=+place.lng, view=extMapLink(place);
+  if(inKorea({lat,lng})){
+    if(view.href.startsWith('https://map.kakao.com/link/to/')) return view;
+    const name=String(place.name||'').replace(/,/g,' ').trim()||'도착';   // 쉼표는 '이름,위도,경도'의 구분자다
+    return {href:`https://map.kakao.com/link/to/${encodeURIComponent(name)},${lat},${lng}`, label:'카카오맵 길찾기 ↗'};
+  }
+  const pid=String(place.placeId||'');
+  return {href:`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}${pid?`&destination_place_id=${encodeURIComponent(pid)}`:''}`, label:'Google 지도 길찾기 ↗'};
+}
+// '다음 장소' 칸의 → 는 꾸밈이었다(누르면 아무 일도 없었다, 2026-10-03 UX 검토) — 실제로 그곳으로 가는 길찾기로 둔다
+function travelGoLink(place, text){
   if(!place||!hasLoc(place)) return '';
-  const l=extMapLink(place);
-  return `<a class="travelGo" href="${escAttr(l.href)}" target="_blank" rel="noopener" aria-label="${escAttr((place.name||'다음 장소')+' '+l.label)}">길 보기 ↗</a>`;
+  const l=travelDirLink(place);
+  return `<a class="travelGo" href="${escAttr(l.href)}" target="_blank" rel="noopener" aria-label="${escAttr((place.name||'다음 장소')+' '+l.label)}">${esc(text||'길찾기 ↗')}</a>`;
 }
 function renderTravel(di, clock){
   const when=clock||travelClock(), t=trip(), d=t.days[di], colors=cityColors();
-  const period=travelPeriod(when), outside=period.phase==='BEFORE'||period.phase==='AFTER';
+  syncAdaptDay(when);   // 어제 고른 컨디션·문장은 오늘 추천에 쓰지 않는다
+  const v=travelDayView(di, when), period=v.period, outside=period.phase==='BEFORE'||period.phase==='AFTER';
   document.getElementById('travelTitle').textContent=`Day ${di+1}${d.title?` · ${d.title}`:''}`;
   document.getElementById('travelSub').textContent=[dateOf(di),d.drive,d.note].filter(Boolean).join('  ·  ');
   // 기간 밖이면 '오늘'이 아니라는 사실을 맨 위에서 말한다 — 이 화면은 그때 보기 전용이다
@@ -5046,10 +5189,10 @@ function renderTravel(di, clock){
     notice.textContent= period.phase==='BEFORE'? `여행 전이에요 · D-${period.daysUntil} — 일정을 미리 볼 수 있고, 다녀옴 표시는 여행 중에 할 수 있어요`
                       : period.phase==='AFTER'? '지난 여행이에요 — 일정을 돌아볼 수 있어요' : '';
   }
-  const listTitle=document.getElementById('travelListTitle'); if(listTitle) listTitle.textContent=outside?'이 날 일정':'오늘 일정';
+  const listTitle=document.getElementById('travelListTitle'); if(listTitle) listTitle.textContent=v.isToday?'오늘 일정':'이 날 일정';
   const list=document.getElementById('travelList'); list.innerHTML='';
   const currentBox=document.getElementById('travelCurrent'),nextBox=document.getElementById('travelNext');
-  currentBox.innerHTML=''; nextBox.innerHTML='';
+  currentBox.innerHTML=''; nextBox.innerHTML=''; currentBox.hidden=false; nextBox.hidden=false;
   renderEnergy(di); renderSuggestions(di,when); renderDayFlow(di);   // 장소가 없는 날에도 "지금 뭐 하지"에는 답해야 한다
   if(!d.spots.length){ currentBox.innerHTML='<div class="travelKicker">현재 장소</div><div class="travelPlace">자유 일정</div>'; nextBox.hidden=true; list.innerHTML='<div class="hint" style="padding:20px 4px">등록된 장소가 없어요 — 이동일이거나 자유 일정이에요.</div>'; return; }
   // 전날 숙소 이월: Day 2+에서 전날 숙소가 있으면 상단에 가상 항목으로 표시(오늘 데이터엔 복제 안 함).
@@ -5059,81 +5202,95 @@ function renderTravel(di, clock){
   const routes=new Map(ctx.legs.map(leg=>[leg,requestLeg(leg.from,leg.to,leg.mode,leg.when,leg.timeZone)]));
   const incomingBySpot=new Map(ctx.legs.map(leg=>[leg.spotIndex,leg]));
   const today=iso===when.todayISO, nowMin=when.nowMin;
-  // 위 칸은 '지금 어디 있는가'다. 도착 예상 시각만 보면 첫 장소에 닿기 전(08:53에 09:00 도착 예상)에도 그곳을
-  // '현재 장소'라 했다(2026-10-03 UX 검토). 판정은 엔진 상태 하나로 한다 — 진행 중(예약은 그 시각부터)이면 그곳,
-  // 아니면 다녀왔거나 시각상 지나온 마지막 곳, 아무것도 시작하지 않았으면 '출발 전'(출발점이 있으면 그곳)이다.
-  // 여행 중에는 아래 칸('지금 할 일'·'다음 장소')이 엔진의 다음(아직 안 끝난 것 — 머무는 중이면 그곳)을 맡고,
-  // 위 칸은 그와 겹치지 않는 '마지막으로 들른 곳'(완료했거나 시각상 지나온 곳) 또는 '출발 전'이다.
-  // 머무는 곳을 위 칸에 두면 아래 칸과 같은 곳이 되고, 아래에서 빼면 19시 예약에 늦었다는 경고가 사라진다.
-  const st=(today&&_adapt&&_adapt.di===di)? _adapt.state : null;
-  const engineNext=st&&st.nextItem? st.nextItem.si : -1;
-  let currentIndex=0, phase=today? 'HERE' : 'FIRST';
-  if(st){
-    let last=-1;
-    st.items.forEach(it=>{ if(it.si!==engineNext && (it.status==='COMPLETED' || (it.status!=='SKIPPED'&&it.status!=='CANCELLED'&&it.end<=nowMin))) last=it.si; });
-    // 지나온 곳이 없을 때: 일정이 아직 시작 전이면 '출발 전', 시작 시각은 지났는데(완료 표시가 없어) 알 수 없으면 '출발한 곳'
-    const firstEta=st.items.length? st.items[0].eta : Infinity;
-    if(last>=0){ currentIndex=last; phase='PASSED'; } else phase=(nowMin<firstEta)? 'BEFORE' : 'START';
-  }else if(today){ for(let i=0;i<etas.length;i++) if(etas[i]<=nowMin) currentIndex=i; }
-  const current=d.spots[currentIndex];
-  if(phase==='BEFORE'||phase==='START'){
-    const from=ctx.anchor, fromLink=(from&&hasLoc(from))?extMapLink(from):null, before=phase==='BEFORE';
-    const fact=before
-      ? (from? `${hm(parseHM(d.startAt))}에 여기서 출발하는 일정이에요` : `오늘 일정은 ${hm(parseHM(d.startAt))}에 시작해요 · 출발점(숙소)을 정하면 첫 이동 시간도 계산해요`)
-      : '다녀온 곳을 \'다녀왔어요\'로 표시하면 여기가 그곳으로 바뀌어요';
-    currentBox.innerHTML=`<div class="travelKicker">${before?'출발 전':'출발한 곳'}</div><div class="travelPlace">${from?`${carry?'🏠 ':''}${esc(from.name||'출발점')}`:(before?'아직 출발하지 않았어요':'출발점을 정하지 않았어요')}</div><div class="travelFacts">${esc(fact)}</div>${fromLink?`<div class="travelActions"><a href="${escAttr(fromLink.href)}" target="_blank" rel="noopener">${fromLink.label}</a></div>`:''}`;
-  }else{
-    const currentLink=hasLoc(current)?extMapLink(current):null;
-    // 시각마다 뜻이 다르다 — 내가 정한 도착(at)은 '도착', 자동 계산은 '도착 예상', 상대가 정한 약속은 '예약'.
-    // 메모(desc)는 사람이 적은 글이라 사실 줄에 섞지 않는다 — "07:00 도착" 메모가 "09:00 도착 예상" 옆에 사실처럼 붙었다.
-    const currentFacts=phase==='PASSED'
-      ? [current.status==='COMPLETED'?'다녀왔어요':`${hm(etas[currentIndex])} 도착 예정이던 곳 · 지금쯤 지나왔어요`]
-      : [current.at?`${current.at} 도착(내가 정한 시각)`:`${hm(etas[currentIndex])} 도착 예상`,current.bookAt?`예약 ${current.bookAt}`:null,current.stayMin!=null?`체류 ${current.stayMin}분`:'머무는 시간 미정'].filter(Boolean);
-    const kicker={HERE:'현재 장소', PASSED:'마지막으로 들른 곳', FIRST:'이 날 첫 장소'}[phase];
-    currentBox.innerHTML=`<div class="travelKicker">${kicker}</div><div class="travelPlace">${catPrefix(current)}${esc(current.name)}</div><div class="travelFacts">${currentFacts.map(esc).join(' · ')}</div>${current.desc?`<div class="travelMemo"><span>메모</span> ${esc(current.desc)}</div>`:''}<div class="travelActions">${currentLink?`<a href="${escAttr(currentLink.href)}" target="_blank" rel="noopener">${currentLink.label}</a>`:''}${safeUrl(current.bookUrl)?`<a href="${escAttr(safeUrl(current.bookUrl))}" target="_blank" rel="noopener">예약 정보</a>`:''}</div>`;
-  }
-  // '다음'은 현재 항목의 **뒤**가 아니라 **아직 끝나지 않은 것**이다. currentIndex는 시계로만
-  // 정해지는데(현재 장소 표시용), 장소가 가까워 ETA가 전부 지나 있으면 마지막 항목에 머문다 —
-  // 그 상태로 +1을 하면 다녀왔다고 표시해도 '오늘 일정 완료'로 떨어졌다.
-  // 판단은 엔진 하나가 한다: nextItem은 완료·건너뜀을 뺀 것 중 아직 안 끝난 것을 고르고,
-  // 전부 지났으면 가장 이른 미완료를 준다(밀린 상태). items는 spots와 1:1이라 si로 되짚는다.
-  let nextIdx;
-  if(_adapt && _adapt.di===di && _adapt.state){
-    nextIdx = _adapt.state.nextItem ? _adapt.state.nextItem.si : -1;   // -1 → 아래에서 '완료'로 떨어진다
-  }else{
-    nextIdx=currentIndex+1;
-    while(d.spots[nextIdx] && (d.spots[nextIdx].status==='COMPLETED'||d.spots[nextIdx].status==='SKIPPED')) nextIdx++;
-  }
-  // 위 칸에 있는 곳(이 날 첫 장소·지금 머무는 곳)이 '다음'으로 또 나오지 않는다 — 엔진의 다음은 '아직 안 끝난 것'이라
-  // 머무는 동안에는 그곳 자신이다. 그때 다음은 그 뒤의 남은 장소다. 출발 전에는 위 칸이 출발점이라 겹치지 않는다.
-  if((phase==='FIRST'||phase==='HERE') && nextIdx===currentIndex){
-    nextIdx=currentIndex+1;
-    while(d.spots[nextIdx] && (d.spots[nextIdx].status==='COMPLETED'||d.spots[nextIdx].status==='SKIPPED'||d.spots[nextIdx].status==='CANCELLED')) nextIdx++;
-  }
-  const next=d.spots[nextIdx]; nextBox.hidden=false;
-  if(next){
-    const inLeg=incomingBySpot.get(nextIdx),mode=legModeOf(d,next),route=inLeg?routes.get(inLeg):null;
+  const ast=(_adapt&&_adapt.di===di)? _adapt.state : null;   // 이 날의 엔진 상태(오늘이 아니면 live가 아니다)
+  const st=(today&&ast)? ast : null;
+  // '다음 장소' 한 줄 — 이 장소로 오는 이동과 도착, 언제 나서면 되는지. 지금 카드와 미리보기가 같은 문장을 쓴다
+  const legOf=(idx)=>{
+    const sp=d.spots[idx], inLeg=incomingBySpot.get(idx), mode=legModeOf(d,sp), route=inLeg?routes.get(inLeg):null;
     // 분은 ETA와 같은 함수로 낸다 — 자차 2km 미만은 걸어서 계산하는데 경로의 차량 시간을 그대로 쓰면 ETA와 갈렸다
     const travelMin=inLeg?legMinutes(inLeg.from,inLeg.to,mode,inLeg.when,ctx.timeZone):0;
-    const walkShort=!!(route&&mode==='car'&&route.m<2000);
     // 출발점이 없으면 이동을 모른다 — 그때 '몇 분 여유'를 말하면 위 문장과 모순된다
-    const adv=(inLeg&&_adapt&&_adapt.state)? TC_ADAPT.departureAdvice(_adapt.state, _adapt.state.items[nextIdx], travelMin) : null;
+    const adv=(inLeg&&ast)? TC_ADAPT.departureAdvice(ast, ast.items[idx], travelMin) : null;
+    return {sp, inLeg, mode, route, travelMin, departHtml:adv?`<div class="travelDepart ${adv.level.toLowerCase()}">${esc(adv.text)}</div>`:''};
+  };
+  const arrival=(idx)=>{
+    const {sp, inLeg, mode, route, travelMin, departHtml}=legOf(idx), walkShort=!!(route&&mode==='car'&&route.m<2000);
     // 경로를 아직 못 받았거나(조회 중) 못 받으면(실패·미지원) 거리로 낸 추정을 그렇다고 말한다 — '계산 중'에 머물지 않는다.
     // 들어오는 구간이 없으면(출발점이 없는 첫 장소) 계산할 이동이 없다.
     const move=!inLeg? '출발점(숙소)을 정하면 여기까지 이동 시간도 계산해요'
       : route? (walkShort? `🚶 가까워 걸어서 ${Math.max(1,Math.round(travelMin))}분` : `${MODE_ICON[mode]} ${fmtDur(travelMin*60)} 이동`)
       : `${MODE_ICON[mode]} 약 ${Math.max(1,Math.round(travelMin))}분 이동(거리로 추정)`;
-    const nowHere=!!(st && st.items[nextIdx] && st.items[nextIdx].status==='IN_PROGRESS');
-    nextBox.innerHTML=`<div><div class="travelKicker">${nowHere?'지금 일정':'다음 장소'}</div><strong>${esc(next.name)}</strong><div class="travelFacts">${move} · ${next.at?`${next.at} 도착(내가 정한 시각)`:`${hm(etas[nextIdx])} 도착 예상`}</div>${adv?`<div class="travelDepart ${adv.level.toLowerCase()}">${esc(adv.text)}</div>`:''}</div>${travelGoLink(next)}`;
-  }else if(ctx.backLeg){
+    return `<div class="travelFacts">${move} · ${sp.at?`${esc(sp.at)} 도착(내가 정한 시각)`:`${hm(etas[idx])} 도착 예상`}</div>${departHtml}`;
+  };
+  const backHtml=()=>{
     const bl=ctx.backLeg, r=routes.get(bl);
-    nextBox.innerHTML=`<div><div class="travelKicker">다음 장소</div><strong>🏠 ${esc(bl.to.name)}</strong><div class="travelFacts">숙소 복귀 · ${r?`${MODE_ICON[bl.mode]} ${fmtDur(r.sec)} 이동`:`${MODE_ICON[bl.mode]} 약 ${Math.max(1,Math.round(legMinutes(bl.from,bl.to,bl.mode,bl.when,ctx.timeZone)))}분 이동(거리로 추정)`}</div></div>${travelGoLink(bl.to)}`;
-  }else nextBox.innerHTML=`<div><div class="travelKicker">다음 장소</div><strong>${outside?'이 날 일정 끝':'오늘 일정 완료'}</strong></div><span aria-hidden="true">✓</span>`;
+    return `<div class="travelKicker">다음 장소</div><strong>🏠 ${esc(bl.to.name)}</strong><div class="travelFacts">숙소 복귀 · ${r?`${MODE_ICON[bl.mode]} ${fmtDur(r.sec)} 이동`:`${MODE_ICON[bl.mode]} 약 ${Math.max(1,Math.round(legMinutes(bl.from,bl.to,bl.mode,bl.when,ctx.timeZone)))}분 이동(거리로 추정)`}</div><div class="travelNowActions">${travelGoLink(bl.to)}</div>`;
+  };
+  if(st){
+    // 여행 중의 맨 위는 '지금' 카드 하나다(2026-10-03 UX 검토 — 위 칸은 하루의 마지막 장소를 '지금쯤 지나왔어요'라 하고
+    // 아래 칸은 첫 장소를 '다음'이라 해 서로 다른 가정에 서 있었고, '다녀왔어요'는 J 카드 세 장 아래에 묻혀 있었다).
+    // 판정은 엔진 상태 하나로 한다:
+    //  · 머리(#travelCurrent) — 시각상 지나왔는데 표시가 없는 곳을 **먼저 묻는다**. 자동 완료는 하지 않으니(사용자가 누른다)
+    //    누르지 않으면 뒤 계산이 전부 틀어진다. 없으면 마지막으로 다녀온 곳, 아무것도 시작 전이면 '출발 전', 할 말이 없으면 비운다.
+    //  · 몸(#travelNext) — 엔진의 다음(아직 안 끝난 것). 머무는 중이면 언제까지와 그다음을, 아니면 오는 길과 도착을 말하고
+    //    다녀왔어요·건너뛰기가 바로 거기 있다. ⚠️ 머무는 곳을 머리에 두면 몸과 같은 곳이 되고, 몸에서 빼면 19시 예약에
+    //    늦었다는 경고가 사라진다.
+    const open=it=>it.status!=='COMPLETED'&&it.status!=='SKIPPED'&&it.status!=='CANCELLED';
+    const unmarked=st.items.filter(it=>open(it)&&it.status!=='IN_PROGRESS'&&it.end<=nowMin);
+    const lastDone=st.items.filter(it=>it.status==='COMPLETED').pop()||null;
+    const target=(st.nextItem&&st.nextItem.end>nowMin)? st.nextItem : null;
+    if(unmarked.length){
+      const u=unmarked[0], sp=d.spots[u.si];
+      currentBox.innerHTML=`<div class="travelKicker">${v.canMark?'다녀온 곳을 표시해 주세요':'지금쯤 지나온 곳'}</div><div class="travelPlace">${catPrefix(sp)}${esc(sp.name)}</div>`+
+        `<div class="travelFacts">${esc([`${hm(u.eta)} 도착 예정이던 곳`, unmarked.length>1?`표시하지 않은 곳이 ${unmarked.length-1}곳 더 있어요`:null].filter(Boolean).join(' · '))}</div>`;
+      currentBox.appendChild(spotStatusRow(di,u.si,sp,!v.canMark,true));   // 먼저 물은 것이 이 화면의 주 버튼이다
+    }else if(lastDone){
+      const sp=d.spots[lastDone.si];
+      currentBox.innerHTML=`<div class="travelKicker">마지막으로 들른 곳</div><div class="travelPlace small">${catPrefix(sp)}${esc(sp.name)}</div>`;
+    }else if(st.items.length && nowMin<st.items[0].eta){
+      const from=ctx.anchor;
+      currentBox.innerHTML=`<div class="travelKicker">출발 전</div><div class="travelPlace small">${from?`${carry?'🏠 ':''}${esc(from.name||'출발점')}`:'아직 출발하지 않았어요'}</div>`+
+        `<div class="travelFacts">${esc(from? `${hm(parseHM(d.startAt))}에 여기서 출발하는 일정이에요` : `오늘 일정은 ${hm(parseHM(d.startAt))}에 시작해요 · 출발점(숙소)을 정하면 첫 이동 시간도 계산해요`)}</div>`;
+    }else currentBox.hidden=true;
+    if(target){
+      const sp=d.spots[target.si], here=target.status==='IN_PROGRESS';
+      const after=here? st.items.find(it=>it.si>target.si&&open(it)) : null, asp=after? d.spots[after.si] : null;
+      nextBox.innerHTML=`<div class="travelKicker">${here?'지금 일정':'다음 장소'}</div><div class="travelPlace">${catPrefix(sp)}${esc(sp.name)}</div>`+
+        (here? `<div class="travelFacts">${esc([sp.bookAt?`예약 ${sp.bookAt}`:null, `${hm(target.end)}까지 머무는 일정`].filter(Boolean).join(' · '))}</div>`+
+               // 약속 시각이 있는 곳은 그 시각이 지나면 '머무는 중'으로 잡힌다 — 아직 못 갔을 수도 있으니 늦었다는 말은 남긴다
+               ((sp.bookAt||sp.at)? legOf(target.si).departHtml : '')+
+               (asp? `<div class="travelFacts">다음 ${esc(asp.name)} · ${asp.at?`${esc(asp.at)} 도착(내가 정한 시각)`:`${hm(after.eta)} 도착 예상`}</div>` : '')
+             : arrival(target.si));
+      const act=document.createElement('div'); act.className='travelNowActions';
+      act.appendChild(spotStatusRow(di,target.si,sp,!v.canMark,here&&!unmarked.length));
+      act.insertAdjacentHTML('beforeend', here? travelGoLink(asp,'다음 장소 길찾기 ↗') : travelGoLink(sp));
+      nextBox.appendChild(act);
+    }else if(ctx.backLeg) nextBox.innerHTML=backHtml();
+    else if(unmarked.length) nextBox.hidden=true;   // 남은 것이 전부 '표시를 기다리는 곳'이면 머리의 물음이 할 일이다
+    else nextBox.innerHTML=`<div class="travelKicker">다음 장소</div><strong>오늘 일정 완료</strong> <span aria-hidden="true">✓</span>`;
+  }else{
+    // 미리보기(여행 전·다른 날·날짜 없는 여행) — 그 날의 첫 장소와 그다음이다
+    const current=d.spots[0], currentLink=hasLoc(current)?extMapLink(current):null;
+    // 시각마다 뜻이 다르다 — 내가 정한 도착(at)은 '도착', 자동 계산은 '도착 예상', 상대가 정한 약속은 '예약'.
+    // 메모(desc)는 사람이 적은 글이라 사실 줄에 섞지 않는다 — "07:00 도착" 메모가 "09:00 도착 예상" 옆에 사실처럼 붙었다.
+    const currentFacts=[current.at?`${current.at} 도착(내가 정한 시각)`:`${hm(etas[0])} 도착 예상`,current.bookAt?`예약 ${current.bookAt}`:null,current.stayMin!=null?`체류 ${current.stayMin}분`:'머무는 시간 미정'].filter(Boolean);
+    currentBox.innerHTML=`<div class="travelKicker">이 날 첫 장소</div><div class="travelPlace">${catPrefix(current)}${esc(current.name)}</div><div class="travelFacts">${currentFacts.map(esc).join(' · ')}</div>${current.desc?`<div class="travelMemo"><span>메모</span> ${esc(current.desc)}</div>`:''}<div class="travelActions">${currentLink?`<a href="${escAttr(currentLink.href)}" target="_blank" rel="noopener">${currentLink.label}</a>`:''}${safeUrl(current.bookUrl)?`<a href="${escAttr(safeUrl(current.bookUrl))}" target="_blank" rel="noopener">예약 정보</a>`:''}</div>`;
+    // '다음'은 엔진이 고른 남은 것 중 첫 장소의 **뒤**다 — 위 칸의 첫 장소가 '다음'으로 또 나오지 않는다
+    let nextIdx=ast? (ast.nextItem? ast.nextItem.si : -1) : 0;
+    if(nextIdx===0){
+      nextIdx=1;
+      while(d.spots[nextIdx] && (d.spots[nextIdx].status==='COMPLETED'||d.spots[nextIdx].status==='SKIPPED'||d.spots[nextIdx].status==='CANCELLED')) nextIdx++;
+    }
+    const next=d.spots[nextIdx];
+    if(next) nextBox.innerHTML=`<div class="travelKicker">다음 장소</div><strong>${esc(next.name)}</strong>${arrival(nextIdx)}<div class="travelNowActions">${travelGoLink(next)}</div>`;
+    else if(ctx.backLeg) nextBox.innerHTML=backHtml();
+    else nextBox.innerHTML=`<div class="travelKicker">다음 장소</div><strong>${v.isToday?'오늘 일정 완료':'이 날 일정 끝'}</strong> <span aria-hidden="true">✓</span>`;
+  }
   if(carry){
     const el=extMapLink(carry);
     const cd=document.createElement('div'); cd.className='tSpot carry'; cd.style.setProperty('--c','#7a86ad');
     cd.innerHTML=`<div class="n"><span class="eta">🏠</span> ${esc(carry.name)} <span style="font-size:11px;color:var(--subtle)">전날 숙소 · ${hm(parseHM(d.startAt))} 출발</span></div>`+
-      `<a href="${escAttr(el.href)}" target="_blank" rel="noopener">🧭 ${el.label}</a>`;
+      `<a class="tLink" href="${escAttr(el.href)}" target="_blank" rel="noopener">🧭 ${el.label}</a>`;
     list.appendChild(cd);
   }
   d.spots.forEach((s,si)=>{
@@ -5153,12 +5310,16 @@ function renderTravel(di, clock){
     if(s.cost) tmeta.push(`💳 ${costLabel(s.cost,s.cur)}`);
     div.innerHTML=`<div class="n"><span class="eta">${hm(etas[si])}</span> ${si+1}. ${catPrefix(s)}${esc(s.name)}${s.opt?` <span style="font-size:11px;color:var(--subtle)">(${esc(spotPriorityLabel('OPT'))})</span>`:''}</div>`+
       (tmeta.length?`<div class="d" style="color:var(--meta-cost)">${tmeta.join(' · ')}</div>`:'')+
-      `<div class="d">${esc(s.desc).replace(/\n/g,'<br>')}</div>`+
-      ((bu=>bu?`<a href="${escAttr(bu)}" target="_blank" rel="noopener" style="background:#46702e;margin-right:6px">🎫 예약 열기</a>`:'')(safeUrl(s.bookUrl)))+
+      `<div class="d">${esc(s.desc).replace(/\n/g,'<br>')}</div>`;
+    // 다녀왔어요가 먼저, 지도·예약 링크는 그 아래 보조다 — 줄마다 채운 초록 '카카오맵에서 보기'가 테두리뿐인
+    // '다녀왔어요'보다 무거워 위계가 뒤집혀 있었다(2026-10-03 UX 검토). 아직 오지 않은 날에는 다녀옴 버튼이 없다.
+    div.appendChild(spotStatusRow(di,si,s,!v.canMark));
+    const links=document.createElement('div'); links.className='tLinks';
+    links.innerHTML=((bu=>bu?`<a class="tLink" href="${escAttr(bu)}" target="_blank" rel="noopener">🎫 예약 열기</a>`:'')(safeUrl(s.bookUrl)))+
       (hasLoc(s)
-        ? ((el=>`<a href="${escAttr(el.href)}" target="_blank" rel="noopener">🧭 ${el.label}</a>`)(extMapLink(s)))
+        ? ((el=>`<a class="tLink" href="${escAttr(el.href)}" target="_blank" rel="noopener">🧭 ${el.label}</a>`)(extMapLink(s)))
         : `<span style="font-size:12px;color:var(--meta-warning)">📍 위치 미지정</span>`);
-    div.appendChild(spotStatusRow(di,si,s,outside));
+    div.appendChild(links);
     list.appendChild(div);
   });
   // 하루의 끝 — 숙소로 돌아가는 구간 (사이드바·지도와 같은 기준)
@@ -5172,7 +5333,7 @@ function renderTravel(di, clock){
     const el=extMapLink(bl.to);
     const bd=document.createElement('div'); bd.className='tSpot carry'; bd.style.setProperty('--c','#7a86ad');
     bd.innerHTML=`<div class="n"><span class="eta">🏠</span> ${esc(bl.to.name)} <span style="font-size:11px;color:var(--subtle)">숙소 복귀 · 자동</span></div>`+
-      `<a href="${escAttr(el.href)}" target="_blank" rel="noopener">🧭 ${el.label}</a>`;
+      `<a class="tLink" href="${escAttr(el.href)}" target="_blank" rel="noopener">🧭 ${el.label}</a>`;
     list.appendChild(bd);
   }
 }

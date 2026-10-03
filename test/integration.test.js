@@ -2395,7 +2395,7 @@ test('통합: 여행 모드의 날짜 선택과 추천은 같은 주입 clock을
   assert.equal(w.document.getElementById('travelDay').value, '0', '호스트 실제 날짜가 아니라 주입 날짜로 오늘을 고른다');
   assert.equal(w.eval('_adapt.state.currentDay'), 0);
   assert.equal(w.eval('_adapt.state.nowMin'), 13 * 60, '같은 스냅샷 시각이 추천 엔진까지 전달된다');
-  assert.match(w.document.getElementById('travelCurrent').textContent, /출발한 곳/, '현재 칸 판정도 같은 주입 날짜·시각을 쓴다(13시면 일정은 시작됐는데 다녀온 표시가 없다)');
+  assert.match(w.document.getElementById('travelCurrent').textContent, /다녀온 곳을 표시해 주세요/, '현재 칸 판정도 같은 주입 날짜·시각을 쓴다(13시면 일정은 시작됐는데 다녀온 표시가 없다 — 먼저 묻는다)');
   w.close();
 });
 
@@ -2491,9 +2491,9 @@ test('통합: 여행 당일 첫 장소에 닿기 전에는 "출발 전"이고, �
   w.eval('nowMinutes=()=>9*60+20; renderTravel(0)');
   assert.match(next(), /지금 일정.*센소지/);
   assert.ok(!/센소지/.test(cur()));
-  // 10:30 — 센소지를 지나왔다
+  // 10:30 — 센소지를 지나왔을 시각이다. 다녀온 표시가 없으니 지나왔다고 단정하지 않고 먼저 묻는다(2026-10-03 3차 검토)
   w.eval('nowMinutes=()=>10*60+30; renderTravel(0)');
-  assert.match(cur(), /마지막으로 들른 곳.*센소지/);
+  assert.match(cur(), /다녀온 곳을 표시해 주세요.*센소지/);
   assert.ok(!/센소지/.test(next()));
   w.close();
 });
@@ -5435,4 +5435,281 @@ test('통합: 보고 있는 일자(1부터 센다, 0=전체)를 일자 인덱스
     w.eval(`trip().days.push({spots:[]}); activeDay=1; resizeTripDays(1)`);
     assert.equal(w.eval('activeDay'),1,'하루짜리가 되어도 전체로 바뀌지 않는다');
   }finally{ w.close(); }
+});
+
+// ── ux3:travelui ──
+// 3차 UX 검토(2026-10-03)의 '여행 중 안내' 묶음 — 맨 위 '지금' 카드 · 제안 저장소의 초기화 순서 · 다른 날/여행 밖의 말과 버튼 ·
+// 쉬기·식사 수락의 흐름 · 길찾기 링크 · 부정 문장의 되짚기. 판단(엔진)은 그대로이고, 화면이 그 판단을 어떻게 말하는지를 본다.
+const travelText = (w, id) => w.document.getElementById(id).textContent;
+const energyBtn = (w, label) => [...w.document.querySelectorAll('#travelEnergy button')].find((b) => b.textContent === label);
+
+test('통합: 거절한 제안과 고른 컨디션은 다시 열어도 남고, 새 거절이 앞의 거절을 지우지 않는다(P1-6)', { skip: noJsdom }, () => {
+  // 2026-10-03 UX 검토: 제안 저장소를 선언보다 먼저 불러 TDZ 오류가 조용히 삼켜졌다 — 다시 열면 같은 3장, 컨디션은 '보통'이었고
+  // 그 상태에서 하나를 건너뛰면 저장소의 이전 거절이 통째로 덮였다.
+  const days = [
+    { startAt: '09:00', mode: 'car', spots: [S('프라도', 40.41, { stayMin: 120 }), S('저녁 예약', 40.42, { bookAt: '19:30', stayMin: 90 })] },
+    { spots: [S('레티로 공원', 40.415, { stayMin: 90 }), S('왕궁', 40.418, { stayMin: 60 }), S('솔 광장', 40.4168, { stayMin: 30 })] }
+  ];
+  const w1 = boot();
+  withAdaptTrip(w1, days, { now: 11 * 60 + 30 });
+  w1.eval('renderTravel(0)');
+  buttonIn(cardsIn(w1).find((c) => /레티로 공원/.test(c.textContent)), '이번엔 건너뛰기').click();
+  energyBtn(w1, '좀 지쳤어요').click();
+  const saved = w1.localStorage.getItem('tripcanvas_suggest_v1');
+  w1.close();
+
+  // 같은 기기에서 같은 날 다시 연다
+  const w2 = boot('http://localhost/', { tripcanvas_suggest_v1: saved });
+  withAdaptTrip(w2, days, { now: 11 * 60 + 30 });
+  w2.eval('renderTravel(0)');
+  assert.equal(w2.eval('adaptEnergy'), 'LOW', '고른 컨디션이 남는다');
+  assert.equal(energyBtn(w2, '좀 지쳤어요').getAttribute('aria-pressed'), 'true');
+  assert.ok(!/레티로 공원/.test(travelText(w2, 'travelSuggest')), '거절한 제안이 다시 올라오지 않는다');
+  const other = cardsIn(w2).find((c) => c.dataset.type === 'MOVE_FROM_OTHER_DAY');
+  assert.ok(other, '다른 날에서 옮겨올 제안이 남아 있다');
+  buttonIn(other, '이번엔 건너뛰기').click();
+  const dismissed = Object.keys(JSON.parse(w2.localStorage.getItem('tripcanvas_suggest_v1')).trips.__ad__.dismissed);
+  assert.ok(dismissed.some((k) => /레티로 공원/.test(k)), '앞의 거절이 지워지지 않는다');
+  assert.ok(dismissed.length >= 2);
+  w2.close();
+
+  // 다음 날 열면 '오늘 컨디션'은 보통이다 — 어제 고른 '좀 지쳤어요'가 오늘 추천을 움직이지 않는다
+  const w3 = boot('http://localhost/', { tripcanvas_suggest_v1: saved });
+  withAdaptTrip(w3, days, { today: '2026-09-02', now: 11 * 60 });
+  w3.eval('renderTravel(1)');
+  assert.equal(w3.eval('adaptEnergy'), 'NORMAL');
+  w3.close();
+});
+
+test('통합: "다른 제안 보기"는 물린 제안 대신 다음 후보를 보여 준다 — 빈 목록으로 떨어지지 않는다(P1-6)', { skip: noJsdom }, () => {
+  const w = boot();
+  withAdaptTrip(w, [
+    { startAt: '09:00', mode: 'car', spots: [S('프라도', 40.41, { stayMin: 120 }), S('저녁 예약', 40.42, { bookAt: '19:30', stayMin: 90 })] },
+    { spots: ['가', '나', '다', '라', '마', '바'].map((n, i) => S('후보 ' + n, 40.412 + i * 0.001, { stayMin: 30 })) }
+  ], { now: 11 * 60 + 30 });
+  w.eval('renderTravel(0)');
+  const titles = () => cardsIn(w).filter((c) => c.dataset.type === 'MOVE_FROM_OTHER_DAY').map((c) => c.querySelector('.sgTitle').textContent);
+  const first = titles();
+  assert.equal(first.length, 3);
+  [...w.document.querySelectorAll('#travelSuggest button')].find((b) => b.textContent === '다른 제안 보기').click();
+  const second = titles();
+  assert.ok(second.length >= 1, `물린 만큼 다음 후보가 올라온다: ${second}`);
+  assert.ok(second.every((t) => !first.includes(t)), '방금 물린 제안은 다시 나오지 않는다');
+  assert.ok(cardsIn(w).length <= 4, '한 번에 보여 주는 수는 그대로다');
+  w.close();
+});
+
+test('통합: 여행 중 다른 날을 보면 "오늘"이라 하지 않고, 오늘 남은 장소를 그 날로 빼 가지 않는다(P1-8)', { skip: noJsdom }, () => {
+  const w = boot();
+  withAdaptTrip(w, [
+    { startAt: '09:00', mode: 'car', spots: [S('경복궁', 40.41, { stayMin: 60 }), S('북촌', 40.412, { stayMin: 60 })] },
+    { startAt: '09:00', mode: 'car', spots: [S('인사동', 40.414, { stayMin: 60 })] },
+    { startAt: '09:00', mode: 'car', spots: [] }
+  ], { today: '2026-09-01', now: 9 * 60 + 30 });
+  w.document.getElementById('travelBtn').click();
+  const opts = [...w.document.querySelectorAll('#travelDay option')].map((o) => o.textContent);
+  assert.match(opts[0], /\(오늘\)/, '어느 날이 오늘인지 고르는 칸이 말한다');
+  assert.ok(opts.slice(1).every((o) => !/오늘/.test(o)));
+
+  const sel = w.document.getElementById('travelDay');
+  sel.value = '2'; sel.dispatchEvent(new w.Event('change'));
+  assert.equal(travelText(w, 'travelListTitle'), '이 날 일정');
+  assert.match(travelText(w, 'travelEnergy'), /이 날 컨디션/);
+  assert.ok(!/오늘/.test(travelText(w, 'travelEnergy')), '컨디션·하루 추천 버튼도 "오늘"이라고 하지 않는다');
+  const sugText = travelText(w, 'travelSuggest');
+  assert.ok(!/경복궁|북촌/.test(sugText), `오늘 남은 장소를 다른 날로 옮기자고 하지 않는다: ${sugText}`);
+  const move = cardsIn(w).find((c) => /인사동/.test(c.textContent));
+  assert.ok(move, '다른 날의 장소는 옮겨올 수 있다');
+  assert.equal(move.querySelector('[data-action="ACCEPT"]').textContent, 'Day 3에 넣기', '넣는 곳을 그 날의 이름으로 말한다');
+  w.eval('buildDayFlow(2)');
+  assert.ok(w.eval(`_dayFlow.picks.every(p=>p.fromDay!==0)`), '하루 채우기도 오늘의 장소를 가져오지 않는다');
+  move.querySelector('[data-action="ACCEPT"]').click();
+  assert.match(travelText(w, 'toast'), /Day 3/);
+  assert.deepEqual(w.eval('trip().days[2].spots.map(s=>s.name)'), ['인사동']);
+  assert.deepEqual(w.eval('trip().days[0].spots.map(s=>s.name)'), ['경복궁', '북촌'], '오늘 일정은 그대로다');
+
+  // 내일 장소에는 '다녀왔어요'가 없다 — 아직 오지 않은 날이다
+  sel.value = '1'; sel.dispatchEvent(new w.Event('change'));
+  assert.ok(!buttonIn(w.document.getElementById('travelList'), '다녀왔어요'));
+  w.close();
+});
+
+test('통합: 여행 중 맨 위는 "지금" 카드 하나다 — 머무는 곳·언제까지·다음과 다녀왔어요가 함께 있다(P1-2)', { skip: noJsdom }, () => {
+  const w = boot();
+  withAdaptTrip(w, [{ startAt: '09:00', mode: 'car', spots: [
+    S('경복궁', 40.41, { stayMin: 120 }), S('북촌', 40.42, { stayMin: 60 }), S('광장시장', 40.43, { bookAt: '15:30', stayMin: 60 })] }],
+  { now: 10 * 60 + 56 });
+  w.eval('renderTravel(0)');
+  const card = w.document.querySelector('.travelNow');
+  assert.ok(card && card.contains(w.document.getElementById('travelCurrent')) && card.contains(w.document.getElementById('travelNext')),
+    '위·아래 두 칸이 아니라 한 카드다');
+  const now = travelText(w, 'travelNext');
+  assert.match(now, /지금 일정.*경복궁/);
+  assert.match(now, /11:00까지/, '언제까지 머무는지 말한다');
+  assert.match(now, /다음 북촌/, '그다음을 같은 카드에서 말한다');
+  assert.ok(!/출발점\(숙소\)을 정하면/.test(card.textContent), '이미 와 있는 곳에 이동 계산 안내를 붙이지 않는다');
+  assert.ok(!/출발점을 정하지 않았어요/.test(card.textContent), '쓸 정보가 없는 칸을 두지 않는다');
+  const done = buttonIn(w.document.getElementById('travelNext'), '다녀왔어요');
+  assert.ok(done, '다녀왔어요가 지금 카드에 있다');
+  assert.ok(done.classList.contains('primary'), '머무는 곳의 다녀왔어요가 이 화면의 주 버튼이다');
+  assert.ok(card.compareDocumentPosition(w.document.getElementById('travelSuggest')) & w.Node.DOCUMENT_POSITION_FOLLOWING, 'J의 제안보다 위에 있다');
+  done.click();
+  assert.equal(w.eval('trip().days[0].spots[0].status'), 'COMPLETED');
+  assert.match(travelText(w, 'travelCurrent'), /마지막으로 들른 곳.*경복궁/);
+  assert.match(travelText(w, 'travelNext'), /북촌/);
+  w.close();
+});
+
+test('통합: 시각이 지났는데 다녀온 표시가 없으면 다음을 말하기 전에 먼저 묻는다(P1-2)', { skip: noJsdom }, () => {
+  // 2026-10-03 UX 검토: 체류 시간을 넣지 않은 날 10:53에 위 칸은 하루의 마지막 장소(숙소)를 '지금쯤 지나왔어요'라 했고
+  // 아래 칸은 첫 장소를 '다음'이라 했다 — 서로 다른 가정이다.
+  const w = boot();
+  withAdaptTrip(w, [
+    { startAt: '09:00', mode: 'car', spots: [S('경복궁', 40.41, { stayMin: undefined }), S('북촌', 40.412, { stayMin: undefined }), S('롯데호텔', 40.414, { stay: true, stayMin: undefined })] },
+    { spots: [] }
+  ], { now: 10 * 60 + 53 });
+  w.eval('renderTravel(0)');
+  const top = () => travelText(w, 'travelCurrent');
+  assert.match(top(), /다녀온 곳을 표시해 주세요/);
+  assert.match(top(), /경복궁/, '가장 이른 곳부터 묻는다');
+  assert.match(top(), /2곳 더/);
+  assert.ok(!/롯데호텔/.test(top()), '하루의 마지막 장소를 지나온 곳이라 하지 않는다');
+  assert.ok(!/오늘 일정 완료/.test(travelText(w, 'travelNext')), '표시하지 않은 곳이 남았는데 완료라고 하지 않는다');
+  buttonIn(w.document.getElementById('travelCurrent'), '다녀왔어요').click();
+  assert.equal(w.eval('trip().days[0].spots[0].status'), 'COMPLETED');
+  assert.match(top(), /북촌/, '다음으로 표시하지 않은 곳을 묻는다');
+  buttonIn(w.document.getElementById('travelCurrent'), '건너뛰기').click();
+  assert.equal(w.eval('trip().days[0].spots[1].status'), 'SKIPPED');
+  w.close();
+});
+
+test('통합: 여행 중 길찾기는 이름 검색이 아니라 좌표로 열고, 목록에서는 다녀왔어요가 지도 링크보다 먼저다(P2-49)', { skip: noJsdom }, () => {
+  const w = boot();
+  withAdaptTrip(w, [{ startAt: '09:00', mode: 'car', spots: [
+    Object.assign(S('경복궁', 37.5796, { stayMin: 60 }), { lng: 126.977, city: '서울' }),
+    Object.assign(S('북촌', 37.5826, { stayMin: 60 }), { lng: 126.983, city: '서울' })] }], { now: 8 * 60 + 30 });
+  w.eval('renderTravel(0)');
+  const go = w.document.querySelector('#travelNext a.travelGo');
+  assert.ok(go, '다음 장소로 가는 길찾기');
+  assert.match(go.getAttribute('href'), /^https:\/\/map\.kakao\.com\/link\/to\/[^/]*,37\.5796,126\.977$/, '이름이 같은 다른 곳이 섞이지 않게 좌표로 간다');
+  const spot = w.document.querySelector('#travelList .tSpot');
+  const status = spot.querySelector('.tStatus'), map = [...spot.querySelectorAll('a')].find((a) => /카카오맵/.test(a.textContent));
+  assert.ok(status && map);
+  assert.ok(status.compareDocumentPosition(map) & w.Node.DOCUMENT_POSITION_FOLLOWING, '다녀왔어요가 지도 링크보다 위다');
+
+  const w2 = boot();
+  withAdaptTrip(w2, [{ startAt: '09:00', mode: 'car', spots: [S('프라도', 40.41, { stayMin: 60, placeId: 'ChIJabcdef123' })] }], { now: 8 * 60 + 30 });
+  w2.eval('renderTravel(0)');
+  const go2 = w2.document.querySelector('#travelNext a.travelGo').getAttribute('href');
+  assert.match(go2, /^https:\/\/www\.google\.com\/maps\/dir\/\?api=1&destination=40\.41,-3\.7/);
+  assert.match(go2, /destination_place_id=ChIJabcdef123/);
+  w.close(); w2.close();
+});
+
+test('통합: 쉬겠다고 하면 그 카드는 접히고, 식사 추가는 식당 검색으로 열려 취소하면 안내로 돌아온다(P2-48)', { skip: noJsdom }, () => {
+  const w = boot();
+  withAdaptTrip(w, [
+    { startAt: '09:00', mode: 'car', spots: [S('호텔', 40.40, { stay: true, stayMin: 0 }), S('저녁 예약', 40.41, { bookAt: '19:00', stayMin: 90 })] },
+    { spots: [] }
+  ], { now: 11 * 60 });
+  w.document.getElementById('travelBtn').click();
+  energyBtn(w, '좀 지쳤어요').click();
+  const rest = cardsIn(w).find((c) => buttonIn(c, '그렇게 할게요'));
+  assert.ok(rest, '쉬자는 제안이 있다');
+  buttonIn(rest, '그렇게 할게요').click();
+  assert.ok(!cardsIn(w).some((c) => buttonIn(c, '그렇게 할게요')), '수락한 카드가 그대로 남지 않는다');
+  assert.match(travelText(w, 'travelSuggest'), /쉬는 중/);
+  w.eval('renderTravel(0)');
+  assert.ok(!cardsIn(w).some((c) => buttonIn(c, '그렇게 할게요')), '다시 그려도 같은 날 다시 권하지 않는다');
+
+  energyBtn(w, '보통').click();
+  w.eval('window.__searched=0; doSearch=()=>{ window.__searched++; }');
+  const eat = cardsIn(w).find((c) => buttonIn(c, '식사 장소 추가'));
+  assert.ok(eat, '점심 시간이 빈 날이라 식사 제안이 있다');
+  buttonIn(eat, '식사 장소 추가').click();
+  const el = (id) => w.document.getElementById(id);
+  assert.ok(el('spotModalBg').classList.contains('show'));
+  assert.equal(el('spotCat').value, 'food', '종류가 식당으로 정해져 있다');
+  assert.equal(el('spotSearch').value, '맛집');
+  assert.equal(w.__searched, 1, '식당 검색을 바로 연다');
+  assert.equal(el('spotAt').value, '11:30', '식사 시간대의 시작');
+  el('spotCancel').click();
+  assert.ok(!el('spotModalBg').classList.contains('show'));
+  assert.ok(el('travel').classList.contains('show'), '취소하면 여행 중 안내로 돌아온다');
+  w.close();
+});
+
+test('통합: 여행 전·지난 여행에서는 "지금"이라 하지 않고, 나중의 빈 시간은 그 시각으로 말한다(P2-4)', { skip: noJsdom }, () => {
+  const days = [
+    { startAt: '09:00', mode: 'car', spots: [S('호텔', 40.40, { stay: true, stayMin: 0 }), S('저녁 예약', 40.41, { bookAt: '19:00', stayMin: 90 })] },
+    { spots: [S('레티로 공원', 40.415, { stayMin: 90 })] }
+  ];
+  // 여행 전 — 지쳤다고 해도 '지금 쉬어도'·'숙소로 가기'가 없다
+  const w = boot();
+  withAdaptTrip(w, days, { today: '2026-08-20' });
+  w.document.getElementById('travelBtn').click();
+  energyBtn(w, '좀 지쳤어요').click();
+  const before = travelText(w, 'travelSuggest');
+  assert.ok(!/지금/.test(before), `여행 전 제안이 '지금'을 말하지 않는다: ${before}`);
+  assert.ok(!cardsIn(w).some((c) => buttonIn(c, '숙소로 가기') || buttonIn(c, '그렇게 할게요')));
+  w.close();
+
+  // 지난 여행 — 돌아보기용이다. 일정을 바꾸자는 버튼이 없다
+  const w2 = boot();
+  withAdaptTrip(w2, days, { today: '2026-09-20' });
+  w2.document.getElementById('travelBtn').click();
+  w2.eval('renderTravel(0)');
+  const btns = [...w2.document.querySelectorAll('#travelSuggest button,#travelPlan button,#travelEnergy button')].filter((b) => !b.closest('[hidden]'));
+  assert.ok(!btns.some((b) => /넣기|추가|시작|가기|할게요/.test(b.textContent)), `지난 여행에 실행 버튼이 없다: ${btns.map((b) => b.textContent)}`);
+  assert.match(travelText(w2, 'travelSuggest'), /지난/);
+  w2.close();
+
+  // 여행 중 — 빈 시간이 나중에 시작하면 '지금 한 곳 더'가 아니라 그 시각을 말한다
+  const w3 = boot();
+  withAdaptTrip(w3, [
+    { startAt: '09:00', mode: 'car', spots: [S('경복궁', 40.41, { stayMin: 180 }), S('저녁 예약', 40.42, { bookAt: '19:30', stayMin: 90 })] },
+    { spots: [S('창덕궁', 40.415, { stayMin: 90 })] }
+  ], { now: 10 * 60 });
+  w3.eval('renderTravel(0)');
+  const kick = cardsIn(w3).find((c) => /창덕궁/.test(c.textContent)).querySelector('.sgKicker').textContent;
+  assert.ok(!/지금 한 곳 더/.test(kick), kick);
+  assert.match(kick, /12:00부터 비는 시간/);
+  assert.match(kick, /경복궁 다음/);
+  w3.close();
+});
+
+test('통합: 여행 전 미리보기의 From J 제안도 그 날에 넣을 수 있다(P2-3)', { skip: noJsdom }, () => {
+  const w = boot();
+  withAdaptTrip(w, [
+    { startAt: '09:00', mode: 'car', spots: [S('프라도', 40.41, { stayMin: 120 }), S('저녁 예약', 40.42, { bookAt: '19:30', stayMin: 90 })] },
+    { spots: [S('레티로 공원', 40.415, { stayMin: 90 })] }
+  ], { today: '2026-08-27' });
+  w.document.getElementById('travelBtn').click();
+  const move = cardsIn(w).find((c) => /레티로 공원/.test(c.textContent));
+  const accept = move && move.querySelector('[data-action="ACCEPT"]');
+  assert.ok(accept, '권하는 곳을 담을 길이 있다');
+  assert.equal(accept.textContent, 'Day 1에 넣기');
+  w.eval('buildDayFlow(0)');
+  assert.ok(buttonIn(w.document.querySelector('#travelPlan .sgCard'), 'Day 1에 넣기'), '하루 채우기도 그 날에 넣을 수 있다');
+  accept.click();
+  assert.ok(w.eval('trip().days[0].spots.map(s=>s.name)').includes('레티로 공원'));
+  assert.match(travelText(w, 'toast'), /Day 1/);
+  w.close();
+});
+
+test('통합: "하나도 안 피곤해"에는 못 알아들었다고 하지 않고, 남아 있는 컨디션과 바꿀 길을 말한다(BD-1)', { skip: noJsdom }, () => {
+  const w = boot();
+  withAdaptTrip(w, [{ startAt: '09:00', mode: 'car', spots: [S('A', 40.41)] }], { now: 10 * 60 });
+  w.eval('renderTravel(0)');
+  energyBtn(w, '좀 지쳤어요').click();
+  w.document.getElementById('travelIntent').value = '하나도 안 피곤해';
+  w.document.getElementById('travelIntentApply').click();
+  const echo = w.document.getElementById('travelIntentEcho');
+  assert.ok(!/못 알아들었어요/.test(echo.textContent), echo.textContent);
+  assert.match(echo.textContent, /좀 지쳤어요/, '지금 어떤 컨디션으로 보고 있는지 말한다');
+  assert.equal(w.eval('adaptEnergy'), 'LOW', '부정은 뒤집지 않는다 — 규칙은 그대로다');
+  buttonIn(echo, '보통으로 바꾸기').click();
+  assert.equal(w.eval('adaptEnergy'), 'NORMAL');
+  assert.equal(energyBtn(w, '보통').getAttribute('aria-pressed'), 'true');
+  w.close();
 });
