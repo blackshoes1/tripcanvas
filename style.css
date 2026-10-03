@@ -676,3 +676,16 @@ body:has(.modalBg.show) #toast{bottom:auto;top:calc(env(safe-area-inset-top) + 1
 #searchRes .placeSearchResult:hover{background:var(--hover-bg)}.psrName{display:block;font-weight:700;font-size:14.5px}.psrAddr{display:block;font-size:12px;color:var(--subtle);margin-top:2px;line-height:1.4}
 .estNote .estFix{color:var(--primary-dark)}
 .sampleTag{font-size:10.5px;font-weight:700;color:var(--badge-info-fg);background:var(--badge-info-bg);border-radius:5px;padding:1px 5px;vertical-align:1px}
+/* ux3:paste */
+.pasteErr{color:var(--meta-danger);font-weight:600;margin:4px 0 0}.pasteErr:empty{display:none}
+.pvTargetNote{font-size:12.5px;line-height:1.5;margin:0 0 6px;color:var(--muted)}.pvTargetNote:empty{display:none}
+.pvTargetNote.warn{background:var(--badge-warn-bg);color:var(--badge-warn-fg);border-radius:10px;padding:8px 12px;font-weight:600}
+.pvFields{flex-wrap:wrap}.pvFields>div{min-width:130px}.pvFields select{width:100%}
+#pvModeWrap[hidden],#pvUndivided[hidden],.pvLayout[hidden]{display:none}
+#pvUndivided{color:var(--meta-warning);font-weight:600}
+.pvLayout{border:1px solid var(--border);border-radius:10px;padding:8px 10px;margin:4px 0 6px;display:grid;gap:4px}
+.pvLayout .hint{margin:0;color:var(--meta-warning);font-weight:600}
+.pvLayout label{display:flex;align-items:center;gap:8px;font-size:12.5px;margin:0;min-height:32px}
+.pvGapDay{padding:6px 10px;font-size:12px;color:var(--subtle);border-top:1px dashed var(--border);background:var(--surface-2)}
+/* 마지막 여행을 지운 뒤 처음 화면 위에서도 '실행취소'가 보인다 */
+body:has(#onboarding:not([hidden])) #toast{z-index:5001}

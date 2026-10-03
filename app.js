@@ -3000,11 +3000,18 @@ function deleteTrip(id){
   const snap=snapshot();
   cloudDelete(id,t);   // 로그인 상태면 tombstone 기록, 오프라인이면 재시도 큐에 보존
   store.trips=store.trips.filter(x=>x.id!==id);
-  if(!store.trips.length){ store.trips=[{id:uid(),name:'새 여행',start:todayISO(),days:[{title:'',drive:'',note:'',spots:[]}]}]; }
+  // 마지막 여행을 지우면 **처음 화면**으로 간다 — 전에는 자차 기본의 빈 '새 여행'을 말없이 만들었다(2026-10-03 UX 검토).
+  // 저장소는 비울 수 없어 첫 방문과 같은 샘플을 둔다(샘플은 어느 계정에도 올라가지 않는다 — isSampleTrip)
+  const emptied=!store.trips.length;
+  if(emptied) store.trips=[sampleTrip()];
   if(id===store.activeId){ store.activeId=store.trips[0].id; activeDay=0; }   // 보고 있던 여행을 지운 경우만 전환
   commit(null, {fit:fitEntry});
   // undo 시 삭제된 여행이 다시 활성화되어 render→save로 클라우드에도 재업로드됨
-  toast(`"${t.name}"을(를) 지웠어요`,'#4f4740',{fn:()=>undoWith(snap)});
+  toast(`"${t.name}"을(를) 지웠어요`,'#4f4740',{fn:()=>{
+    undoWith(snap);
+    if(!document.getElementById('onboarding').hidden) dismissOnboarding();   // 되돌렸으면 처음 화면도 걷는다
+  }});
+  if(emptied) showOnboarding();
   return true;
 }
 document.getElementById('tripDelBtn').onclick=()=>{
@@ -4010,6 +4017,7 @@ document.getElementById('costPlaceDelete').onclick=()=>{
 document.getElementById('exportBtn').onclick=()=>{
   const blob=new Blob([JSON.stringify(trip(),null,2)],{type:'application/json'});
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=trip().name.replace(/\s+/g,'_')+'.json'; a.click();
+  toast(`'${a.download}' 파일로 저장했어요`);   // 눌러도 아무 말이 없었다(2026-10-03)
 };
 document.getElementById('importBtn').onclick=()=>document.getElementById('importFile').click();
 let _importing=false;   // 가져오기 진행 중 — PWA 자동 새로고침이 이 사이에 끼어들어 유실되지 않게
@@ -4021,10 +4029,13 @@ document.getElementById('importFile').onchange=e=>{
   rd.onload=()=>{
     try{
       const result=parseTripPayload(typeof rd.result==='string'?rd.result:'');
-      if(!result.ok) throw new Error(result.error);
+      // 무엇이 문제인지 말한다 — 검증이 이미 계산한 이유('JSON 형식이 올바르지 않아요' 등)를 버리고 한 문장만 보였다(2026-10-03)
+      if(!result.ok){ reportOperationalError('import.invalid',new Error(result.error)); toast(`여행 파일을 가져오지 못했어요 — ${result.error}`,'#b4342a'); return; }
       const t=result.value;
-      t.id=uid(); commit(()=>{ store.trips.push(t); store.activeId=t.id; activeDay=0; }, {fit:fitEntry}); toast('가져왔어요');
-    }catch(err){ reportOperationalError('import.invalid',err); toast('안전하게 읽을 수 없는 여행 파일이에요','#b4342a'); }
+      // 같은 파일을 다시 가져와도 어느 것이 가져온 것인지 보이게
+      t.id=uid(); t.name=distinctTripName(t.name,'가져옴');
+      commit(()=>{ store.trips.push(t); store.activeId=t.id; activeDay=0; }, {fit:fitEntry}); toast(`'${t.name}'을(를) 가져왔어요`);
+    }catch(err){ reportOperationalError('import.invalid',err); toast('여행 파일을 가져오지 못했어요 — 다시 시도해 주세요','#b4342a'); }
     finally{ _importing=false; }
   };
   rd.onerror=()=>{ _importing=false; reportOperationalError('import.read',rd.error); toast('파일을 읽지 못했어요','#b4342a'); };
@@ -4053,7 +4064,8 @@ function buildTripCard(){
     const c=colorByMode()==='day'?dayColor(di):(day.spots.length?(colors[day.spots[0].city]||'#556'):'#556');
     const etas=dayEtas(day, startAnchorFor(di));   // 이미지 ETA도 anchor 기준(사이드바와 동일)
     html+=`<div style="border-left:4px solid ${c};background:#221e19;border-radius:10px;padding:10px 14px;margin-bottom:10px">`;
-    html+=`<div style="font-size:13.5px;font-weight:700">Day ${di+1} · ${esc(day.title)} <span style="color:#b5ab98;font-weight:400;font-size:11px">${dateOf(di)}</span></div>`;
+    // 제목 없는 날에 가운뎃점만 남지 않게 — 일정 화면과 같은 규칙(2026-10-03)
+    html+=`<div style="font-size:13.5px;font-weight:700">Day ${di+1}${day.title?` · ${esc(day.title)}`:''} <span style="color:#b5ab98;font-weight:400;font-size:11px">${dateOf(di)}</span></div>`;
     if(day.drive) html+=`<div style="font-size:11px;color:#e0a050;margin-top:3px">${esc(day.drive)}</div>`;
     const carEv=carEventsOn(t.bookings||[], isoDateOf(di));   // 렌터카 픽업·반납 (사이드바와 같은 기준)
     const carLine=(/**@type {any}*/e)=>`<div style="font-size:12px;margin-top:5px;color:#b5ab98">🚗 ${esc(carEventPlaceLabel(e))} <span style="font-size:10.5px">(렌터카 ${e.kind==='pickup'?'픽업':'반납'}${e.time?` ${esc(e.time)}`:''})</span></div>`;
@@ -4350,11 +4362,15 @@ async function parseAI(text){
   return JSON.parse(extractJson(data.content?.[0]?.text||''));
 }
 
+// 저장하지 않고 물러난 붙여넣기 원문 — 다시 열면 그대로 있다. 미리보기를 취소하면 칸이 비어 고쳐 쓰려면
+// 처음부터 다시 붙여넣어야 했다(2026-10-03 UX 검토). 저장하면 비운다.
+let pasteKeep='';
 function openPaste(){
   document.getElementById('aiToggle').checked=cfg.aiParse;
   document.getElementById('apiKey').value=cfg.apiKey||'';
   document.getElementById('apiModel').value=cfg.model||'claude-sonnet-5';
-  document.getElementById('pasteText').value='';
+  document.getElementById('pasteText').value=pasteKeep;
+  document.getElementById('pasteErr').textContent='';
   // 장소가 하나도 없는 여행에서 열면 기본은 **이 여행을 채우는 것**이다 — 빈 여행 안내의 '가진 일정 붙여넣기'가
   // 여행을 하나 더 만들어, 목록에 빈 여행과 붙여넣은 여행이 따로 남았다(2026-09-27 UX 검토).
   const sel=document.getElementById('pasteTarget'), cur=trip();
@@ -4383,8 +4399,12 @@ document.getElementById('apiModel').onchange=e=>{ cfg.model=e.target.value; save
 document.getElementById('fmtCopy').onclick=()=>{ document.getElementById('pasteText').value=document.getElementById('fmtSpec').textContent.split('\n\n규칙:')[0].trim(); };
 document.getElementById('aiPromptCopy').onclick=async()=>{
   const ok=await copyText(AI_ASK_PROMPT);
-  toast(ok?'복사했어요 — AI에게 붙여넣고, 받은 답을 그대로 여기에 붙여넣어 주세요':'복사가 안 돼서 아래 칸에 넣었어요 — 여기서 복사해 주세요', ok?'#3e7a4c':'#f4862c');
-  if(!ok) document.getElementById('pasteText').value=AI_ASK_PROMPT;
+  if(ok){ toast('복사했어요 — AI에게 붙여넣고, 받은 답을 그대로 여기에 붙여넣어 주세요','#3e7a4c'); return; }
+  // 칸이 비었을 때만 프롬프트를 넣는다 — 써 둔 글을 프롬프트로 덮지 않는다(2026-10-03)
+  const box=document.getElementById('pasteText');
+  if(box.value.trim()){ toast('복사가 안 돼요 — 칸에 쓴 글이 있어 덮지 않았어요. 칸을 비우고 다시 누르면 거기에 넣어 드려요','#f4862c'); return; }
+  box.value=AI_ASK_PROMPT;
+  toast('복사가 안 돼서 아래 칸에 넣었어요 — 여기서 복사해 주세요','#f4862c');
 };
 
 /** 클립보드는 브라우저·권한에 따라 막힌다 — 실패를 삼키지 않고 알린다 @param {string} text */
@@ -4394,19 +4414,28 @@ async function copyText(text){
   }catch(e){ reportOperationalError('clipboard',e); }
   return false;
 }
-document.getElementById('pasteCancel').onclick=()=>document.getElementById('pasteModalBg').classList.remove('show');
+document.getElementById('pasteCancel').onclick=()=>{
+  pasteKeep=document.getElementById('pasteText').value;   // 닫아도 써 둔 글은 남는다
+  document.getElementById('pasteModalBg').classList.remove('show');
+};
 document.getElementById('pasteRun').onclick=runPaste;
+document.getElementById('pasteText').addEventListener('input',()=>{ document.getElementById('pasteErr').textContent=''; });
+
+/** 붙여넣기 칸 아래에 이유를 말한다 — 창을 닫지 않는다 @param {string} msg */
+function pasteError(msg){ document.getElementById('pasteErr').textContent=msg; }
 
 async function runPaste(){
   const text=document.getElementById('pasteText').value.trim();
-  if(!text){ toast('내용을 붙여넣어 주세요','#b4342a'); return; }
+  if(!text){ pasteError('내용을 붙여넣어 주세요'); return; }
   const target=document.getElementById('pasteTarget').value;
   let draft;
   try{
     if(cfg.aiParse){ toast('AI가 일정을 정리하는 중…','#2e5c6e'); draft=draftFromAI(await parseAI(text)); }
     else draft=TC_INTAKE.parseItinerary(text,{year:new Date().getFullYear()});
   }catch(e){ reportOperationalError('paste.parse',e); toast('일정을 해석하지 못했어요. 입력 형식과 연결 상태를 확인해 주세요','#b4342a'); return; }
-  if(!draft||!Array.isArray(draft.days)||!draft.days.length){ toast('일정을 못 읽었어요 — 형식을 확인해 주세요','#b4342a'); return; }
+  // 읽은 줄이 하나도 없으면(인사말만 붙여넣은 경우) 미리보기로 넘기지 않는다 — 빈 여행이 '만들었어요'로 생겼다(2026-10-03)
+  const lines=draft&&Array.isArray(draft.days)? draft.days.reduce((n,d)=>n+((d.items||[]).length),0) : 0;
+  if(!lines){ pasteError("일정으로 읽을 줄을 못 찾았어요 — 장소를 한 줄에 하나씩 적어 주세요. 예) - 13:00 도톤보리 | 오사카"); return; }
   document.getElementById('pasteModalBg').classList.remove('show');
   openPastePreview(draft,target,text);
 }
@@ -4429,7 +4458,20 @@ function draftFromAI(parsed){
 // ── 붙여넣기 미리보기 ──
 // 밖에서 들어온 것은 확인 없이 저장하지 않는다(§유입). 여기서 담을 것을 고르고, 담기로 한 것만 좌표를 찾는다.
 // 담지 않은 줄은 **버리지 않고** 그 날의 메모로 남는다.
-let pv=null;   // {draft, target, raw, rows:[{di,item,include,name,geo}], seq}
+let pv=null;   // {draft, target, kind, raw, rows:[{di,item,include,name,geo}], seq, fillGaps, nameEdited}
+
+/**
+ * 붙여넣은 것을 어디에 담는가. 대상 고르기의 '덮어쓰기'는 여행이 비어 있으면 **채우기**다 —
+ * 채우기는 장소만 채우고 그 여행이 정한 이름·기간·수단은 그대로 둔다. 전에는 같은 덮어쓰기라
+ * '엄마랑 후쿠오카'(3일·대중교통)가 '붙여넣은 여행'(2일·자차)이 됐다(2026-10-03 UX 검토).
+ * @returns {'new'|'append'|'overwrite'|'fill'}
+ */
+function pasteKindOf(target){
+  const cur=trip();
+  if(target==='append') return 'append';
+  if(target==='overwrite') return (cur&&cur.days.every(d=>!(d.spots||[]).length))? 'fill' : 'overwrite';
+  return 'new';
+}
 
 function openPastePreview(draft,target,raw){
   const rows=[];
@@ -4437,32 +4479,107 @@ function openPastePreview(draft,target,raw){
     di, item, include:item.kind==='PLACE', name:item.name,
     geo:{state:hasLoc(item)?'ok':'idle', cands:[], pick:hasLoc(item)?{lat:item.lat,lng:item.lng,name:item.name,addr:''}:null}
   })));
-  pv={draft,target,raw,rows,seq:0,learnedCity:'',retried:false};
-  document.getElementById('pvName').value=draft.name||'';
-  document.getElementById('pvStart').value=draft.start||'';
-  const warn=document.getElementById('pvStartWarn');
-  warn.textContent=draft.startAmbiguous? '연도가 글에 없어서 올해로 봤어요 — 맞는지 확인해 주세요.' : '';
+  const kind=pasteKindOf(target), cur=trip();
+  pv={draft,target,kind,raw,rows,seq:0,learnedCity:'',retried:false,fillGaps:true,nameEdited:false};
+  // 채우기·덮어쓰기는 지금 여행의 이름·시작일에서 시작한다 — 비어 있는 칸으로 저장하면 '붙여넣은 여행'이 됐다.
+  // 새 여행은 글의 이름, 없으면 글에 적힌 도시·첫 일자 제목으로 제안한다(늘 '붙여넣은 여행'이라 같은 이름이 쌓였다).
+  const keep=kind==='fill'||kind==='overwrite';
+  document.getElementById('pvName').value=kind==='fill'? (cur.name||'') : (draft.name||(keep&&cur.name)||TC_INTAKE.suggestTripName(draft)||'');
+  document.getElementById('pvStart').value=kind==='fill'? (cur.start||draft.start||'') : (draft.start||(keep&&cur.start)||'');
+  // 이동 수단은 새 여행 창과 같은 질문·같은 기본값이다. 이어붙이기·덮어쓰기는 지금 여행의 수단에서 시작하고,
+  // 채우기는 묻지 않는다(그 여행의 수단을 그대로 둔다)
+  const modeSel=document.getElementById('pvMode'), curMode=cur&&cur.days[0]&&cur.days[0].mode;
+  modeSel.value=(kind!=='new' && [...modeSel.options].some(o=>o.value===curMode))? curMode : 'transit';
+  document.getElementById('pvModeWrap').hidden=kind==='fill';
+  document.querySelector('#pvLayout input[value="fill"]').checked=true;
   document.getElementById('pvRawText').textContent=raw;
   renderPastePreview();
   document.getElementById('pastePvBg').classList.add('show');
   pvGeocodeAll();
 }
 
+/** 지금 고른 대로 일자를 놓으면 — 글의 날짜가 건너뛸 때 빈 날을 넣을지(intake `dayLayout`) */
+function pvLayout(){ return TC_INTAKE.dayLayout(pv.draft.days, pv.fillGaps); }
+
+/** 'YYYY-MM-DD' + n일. 시작일이 없거나 이상하면 '' @param {string} iso @param {number} n */
+function pvDateAt(iso,n){
+  const base=Date.parse(String(iso||'')+'T00:00:00Z');
+  return isFinite(base)? new Date(base+n*86400000).toISOString().slice(0,10) : '';
+}
+
+/**
+ * 위에 한 줄로 말하는 요약. ⚠️ 아직 찾는 중인 줄을 '못 찾음'으로 세지 않는다 — 검색을 시작하기도 전에
+ * '위치 못 찾음 15곳'이라고 해 실패로 읽혔다(2026-10-03). 찾는 동안은 몇 곳째인지를 말한다.
+ */
 function pvSummaryText(){
   const kept=pv.rows.filter(r=>r.include);
-  const noloc=kept.filter(r=>!r.geo.pick).length;
   const dropped=pv.rows.length-kept.length;
-  return `담을 장소 ${kept.length}곳${noloc?` · 위치 못 찾음 ${noloc}곳`:''}${dropped?` · 메모로 남길 줄 ${dropped}개`:''}`;
+  const memo=dropped?` · 메모로 남길 줄 ${dropped}개`:'';
+  if(!kept.length) return `담을 장소가 없어요 — 아래에서 담을 줄을 골라 주세요${memo}`;
+  const looking=kept.filter(r=>!r.geo.pick && r.name && r.geo.state!=='done').length;
+  if(looking) return `담을 장소 ${kept.length}곳 · 위치 찾는 중 (${kept.length-looking}/${kept.length})${memo}`;
+  const noloc=kept.filter(r=>!r.geo.pick).length;
+  return `담을 장소 ${kept.length}곳${noloc?` · 위치 못 찾음 ${noloc}곳`:''}${memo}`;
+}
+
+/** 어디에 담는가 — 덮어쓰기는 지우는 동작이라 몇 곳이 바뀌는지 저장 전에 말한다(2026-10-03) */
+function pvTargetText(lay){
+  const cur=trip(), name=cur? `'${cur.name||'이 여행'}'` : '';
+  if(pv.kind==='fill'){
+    const more=lay.total-cur.days.length;
+    return `${name}에 장소만 채워요 — 이름·기간·이동 수단은 그대로예요${more>0?` (글이 ${lay.total}일이라 ${more}일을 뒤에 더해요)`:''}`;
+  }
+  if(pv.kind==='append') return `${name} 뒤에 ${lay.total}일을 이어 붙여요`;
+  if(pv.kind==='overwrite'){
+    const had=cur.days.reduce((n,d)=>n+(d.spots||[]).length,0);
+    return `⚠️ ${name}의 일정 ${had}곳을 지우고 이 내용으로 바꿔요 — 바꾼 뒤 '되돌리기'로 돌아올 수 있어요`;
+  }
+  return '새 여행으로 만들어요';
+}
+const PV_RUN_LABEL={new:'담은 것으로 만들기',fill:'이 여행에 채우기',append:'이어 붙이기',overwrite:'일정 바꾸기'};
+
+/** 시작일 안내 — 비워 두면 오늘이 되는 것을 미리 말한다(2026-10-03 — 다음 달 여행이 오늘 여행처럼 보였다) */
+function pvStartWarnText(){
+  const start=document.getElementById('pvStart').value;
+  if(!start) return pv.kind==='new'? `글에 날짜가 없어요 — 비워 두면 오늘(${mdLabel(todayISO())})부터로 잡아요. 여행 날짜를 골라 주세요.` : '';
+  return (pv.draft.startAmbiguous && start===pv.draft.start)? '연도가 글에 없어서 올해로 봤어요 — 맞는지 확인해 주세요.' : '';
 }
 
 function renderPastePreview(){
+  const lay=pvLayout();
+  const kept=pv.rows.filter(r=>r.include).length;
   document.getElementById('pvSummary').textContent=pvSummaryText();
+  const note=document.getElementById('pvTargetNote');
+  note.textContent=pvTargetText(lay);
+  note.classList.toggle('warn',pv.kind==='overwrite');
+  const run=document.getElementById('pvRun');
+  run.textContent=PV_RUN_LABEL[pv.kind];
+  run.disabled=!kept;   // 담을 장소가 없으면 빈 여행을 만들지 않는다
+  document.getElementById('pvStartWarn').textContent=pvStartWarnText();
+  // 일자 머리글을 못 찾아 한 날로 읽었으면 그렇다고 말한다 — 사흘치가 말없이 하루로 합쳐졌다(2026-10-03)
+  const undivided=document.getElementById('pvUndivided');
+  undivided.hidden=!(pv.draft.undivided && pv.rows.length>1);
+  undivided.textContent=undivided.hidden? '' : "일자 구분('## Day 2'·'11월 13일' 같은 머리글)을 못 찾아 한 날로 읽었어요 — 여러 날이면 '← 고쳐 쓰기'로 돌아가 머리글을 넣어 주세요.";
+  // 글의 날짜가 건너뛰면 빈 날을 넣을지 고르게 한다 — 경고만 하고 고칠 길이 없었다(2026-10-03)
+  const box=document.getElementById('pvLayout');
+  box.hidden=!lay.gaps.length;
+  document.getElementById('pvLayoutText').textContent=lay.gaps.length
+    ? `글의 날짜 사이에 일정이 없는 날이 있어요 (${lay.gaps.map(g=>mdLabel(g.from)+(g.count>1?` 외 ${g.count-1}일`:'')).join(', ')})`
+    : '';
+  const start=document.getElementById('pvStart').value;
   const list=document.getElementById('pvList');
   list.innerHTML='';
   pv.draft.days.forEach((d,di)=>{
+    for(let k=(di? lay.at[di-1]+1 : 0); k<lay.at[di]; k++){   // 넣기로 한 빈 날
+      const gap=document.createElement('div');
+      gap.className='pvGapDay';
+      const iso=pvDateAt(start,k);
+      gap.textContent=`Day ${k+1}${iso?` · ${mdLabel(iso)}`:''} — 빈 날`;
+      list.appendChild(gap);
+    }
     const head=document.createElement('div');
     head.className='pvDay';
-    head.textContent=`Day ${di+1}${d.date?` · ${mdLabel(d.date)}`:''}${d.title?` — ${d.title}`:''}${pvDateNote(di)}`;
+    head.textContent=`Day ${lay.at[di]+1}${d.date?` · ${mdLabel(d.date)}`:''}${d.title?` — ${d.title}`:''}${pvDateNote(di,lay)}`;
     list.appendChild(head);
     // 글에 적힌 요일과 날짜가 다르면 말한다 — 어느 쪽이 틀렸는지는 모르니 고치지 않는다(intake `weekdayMismatchOf`)
     if(d.weekdayMismatch){
@@ -4528,7 +4645,15 @@ function pvChip(row){
   const s=document.createElement('span');
   if(!row.include){ s.className='pvChip'; s.textContent='메모로 남김'; return s; }
   if(row.geo.state==='searching'){ s.className='pvChip wait'; s.textContent='찾는 중…'; return s; }
-  if(row.geo.pick){ s.className='pvChip ok'; s.textContent=`📍 ${row.geo.pick.city||row.geo.pick.addr||'찾음'}`.slice(0,28); return s; }
+  if(row.geo.pick){
+    // 찾은 곳의 **이름**을 보인다 — 도시만 보이면 엉뚱한 가게를 집어도 알 길이 없었다(2026-10-03 UX 검토).
+    // 적힌 이름 그대로면(좌표를 적어 둔 줄) 도시만 말한다
+    const p=row.geo.pick, where=p.city||p.addr||'';
+    const full=(p.name&&p.name!==row.name)? `${p.name}${where?` · ${where}`:''}` : (where||'찾음');
+    s.className='pvChip ok'; s.title=`찾은 곳: ${full}`;
+    s.textContent=`📍 ${full.length>34? full.slice(0,33)+'…' : full}`;
+    return s;
+  }
   s.className='pvChip'+(row.geo.state==='done'?' no':'');
   s.textContent=row.geo.state==='done'?'위치 없음':'대기 중';
   return s;
@@ -4571,44 +4696,90 @@ async function pvGeocodeAll(){
 /**
  * 검색을 좁힐 도시. 순서가 곧 신뢰도다:
  *   1. 그 줄에 적힌 도시  2. **이미 찾은 장소의 도시**(같은 여행이면 대개 같은 동네다)
- *   3. 사용자가 입력한 여행 이름
+ *   3. 사용자가 입력한 여행 이름(글에 적힌 여행 이름)
  * ⚠️ 일자 제목에서 뽑지 않는다 — "7월 22일(목) — 쿠모바 연못·…"의 첫 낱말은 '쿠모바'이고
  *    그걸 도시로 찍으면 앵커가 엉뚱한 곳에 생겨 150km 필터가 맞는 결과까지 걷어낸다.
+ *    그래서 이름 칸에 **미리 채워 둔** 이름(첫 일자 제목에서 제안한 것·지금 여행 이름)도 쓰지 않는다 — 사람이 고쳐 쓴 것만.
  */
 function pvCityHint(row){
   const named=String(row&&row.item&&row.item.city||'').trim();
   if(named) return named;
   if(pv.learnedCity) return pv.learnedCity;
-  return String(document.getElementById('pvName').value||pv.draft.name||'').trim();
+  return String((pv.nameEdited? document.getElementById('pvName').value : '')||pv.draft.name||'').trim();
 }
 
-/** 그 날의 날짜가 순서와 어긋나는가 — **고치지 않는다.** 사람에게 말할 뿐이다 */
-function pvDateNote(di){
+/** 그 날의 날짜가 놓일 자리와 어긋나는가 — **고치지 않는다.** 사람에게 말할 뿐이다(빈 날 넣기는 사람이 고른다) */
+function pvDateNote(di,lay){
   const start=document.getElementById('pvStart').value;
   const got=pv.draft.days[di]&&pv.draft.days[di].date;
   if(!start||!got) return '';
-  const base=Date.parse(start+'T00:00:00Z');
-  if(!isFinite(base)) return '';
-  const expect=new Date(base+di*86400000).toISOString().slice(0,10);
+  const expect=pvDateAt(start,(lay||pvLayout()).at[di]);
+  if(!expect) return '';
   return got===expect? '' : ` · ⚠️ 글에는 ${mdLabel(got)}인데 순서로는 ${mdLabel(expect)}`;
 }
 
 // 시작일을 고치면 날짜 어긋남 안내가 그 자리에서 다시 계산된다
 document.getElementById('pvStart').oninput=()=>{ if(pv) renderPastePreview(); };
 // 여행 이름은 검색을 좁히는 앵커이기도 하다 — 아직 못 찾은 줄에 한 번 더 기회를 준다
-document.getElementById('pvName').oninput=()=>{ if(pv){ pv.retried=false; pvDebounceGeocode(); } };
-document.getElementById('pvCancel').onclick=()=>{ pv=null; document.getElementById('pastePvBg').classList.remove('show'); };
+document.getElementById('pvName').oninput=()=>{ if(pv){ pv.nameEdited=true; pv.retried=false; pvDebounceGeocode(); } };
+document.querySelectorAll('#pvLayout input[name="pvGap"]').forEach(r=>{ r.onchange=()=>{ if(pv){ pv.fillGaps=r.value==='fill'&&r.checked; renderPastePreview(); } }; });
+// 물러나면 입력 칸으로 돌아간다 — 붙여넣은 글과 고른 대상은 그대로다(Esc도 같다)
+document.getElementById('pvCancel').onclick=()=>{
+  const raw=pv? pv.raw : pasteKeep;
+  pv=null;
+  document.getElementById('pastePvBg').classList.remove('show');
+  pasteKeep=raw;
+  document.getElementById('pasteText').value=raw;
+  document.getElementById('pasteErr').textContent='';
+  document.getElementById('pasteModalBg').classList.add('show');
+};
 document.getElementById('pvRun').onclick=pvCommit;
+
+/** 같은 이름의 여행이 둘 생기지 않게 — `mark`가 있으면 '(가져옴)', 없으면 '(2)'부터 붙인다
+ * @param {string} base @param {string=} mark @returns {string} */
+function distinctTripName(base,mark){
+  const names=new Set(store.trips.map(t=>t.name));
+  if(!names.has(base)) return base;
+  for(let i=1;i<100;i++){
+    const name=`${base} (${mark? (i===1? mark : `${mark} ${i}`) : i+1})`;
+    if(!names.has(name)) return name;
+  }
+  return base;
+}
+
+/**
+ * 빈 여행 '채우기' — 장소만 채우고 그 여행이 정한 것(이름·시작일·날마다의 수단·시작 시각·시간대)은 그대로 둔다.
+ * 글이 더 길면 모자라는 날을 뒤에 더하고(첫날의 수단을 잇는다), 짧으면 남는 날은 빈 채로 둔다.
+ * @param {any[]} have 지금 여행의 날 @param {any[]} got 붙여넣은 날(정규화됨) @returns {any[]}
+ */
+function fillTripDays(have,got){
+  const out=[], baseMode=have[0]&&have[0].mode;
+  for(let i=0;i<Math.max(have.length,got.length);i++){
+    const h=have[i], g=got[i];
+    if(!g){ out.push(h); continue; }
+    if(!h){ const d=Object.assign({},g); if(baseMode) d.mode=baseMode; else delete d.mode; out.push(d); continue; }
+    out.push(Object.assign({},h,{
+      title:h.title||g.title, drive:h.drive||g.drive,
+      note:[h.note,g.note].filter(Boolean).join('\n'),
+      spots:[...(h.spots||[]),...g.spots]
+    }));
+  }
+  return out;
+}
 
 /** 담기로 한 것만 여행이 된다. 담지 않은 줄은 그 날 메모로 남는다 */
 function pvCommit(){
   if(!pv) return;
-  const days=pv.draft.days.map((d,di)=>{
+  const lay=pvLayout(), kind=pv.kind;
+  // 넣기로 한 빈 날은 빈 일자로 남는다(dayLayout)
+  const days=Array.from({length:lay.total},()=>({title:'',drive:'',note:'',spots:[]}));
+  pv.draft.days.forEach((d,di)=>{
     const rows=pv.rows.filter(r=>r.di===di);
     const notes=[d.note||''];
     const spots=[];
     rows.forEach(r=>{
-      if(!r.include){ notes.push(`· ${r.item.raw}`); return; }
+      // 원문 그대로가 아니라 꾸밈을 걷은 글로 남긴다 — 메모에 '**오전:**'가 날것으로 남았다(2026-10-03)
+      if(!r.include){ notes.push(`· ${TC_INTAKE.stripDecor(r.item.raw)}`); return; }
       const pick=r.geo.pick;
       spots.push({
         name:r.name, city:r.item.city||(pick&&pick.city)||'', desc:r.item.desc||'',
@@ -4620,22 +4791,29 @@ function pvCommit(){
         kakaoId:pick&&pick.kakaoId||undefined
       });
     });
-    return {title:d.title||'', drive:d.drive||'', note:notes.filter(Boolean).join('\n'), spots};
+    days[lay.at[di]]={title:d.title||'', drive:d.drive||'', note:notes.filter(Boolean).join('\n'), spots};
   });
+  const mode=kind==='fill'? null : document.getElementById('pvMode').value;
+  if(mode) days.forEach(d=>{ d.mode=mode; });
   const name=document.getElementById('pvName').value.trim();
   const start=document.getElementById('pvStart').value.trim();
   const parsedDays=normalizeDraftDays(days);
   const checked=validateTripPayload({name:name||'붙여넣은 여행',start,days:parsedDays});
   if(!checked.ok){ reportOperationalError('paste.invalid',new Error('validation')); toast(checked.error,'#b4342a'); return; }
-  const parsed=checked.value, target=pv.target;
-  if(target!=='new' && !guardEdit()) return;   // 보기 권한 여행에는 이어붙이기·덮어쓰기를 못 한다
+  const parsed=checked.value;
+  if(kind!=='new' && !guardEdit()) return;   // 보기 권한 여행에는 이어붙이기·덮어쓰기를 못 한다
+  const cur=trip(), snap=snapshot();
   let nextTrip;
-  if(target==='append'){
-    nextTrip=Object.assign({},trip(),{days:[...trip().days,...parsed.days],start:trip().start||parsed.start||''});
-  }else if(target==='overwrite' && !readOnly() && trip()){
-    nextTrip=Object.assign({},trip(),{days:parsed.days,name:parsed.name||trip().name,start:parsed.start||trip().start});
+  if(kind==='append'){
+    nextTrip=Object.assign({},cur,{days:[...cur.days,...parsed.days],start:cur.start||parsed.start||''});
+  }else if(kind==='fill'){
+    nextTrip=Object.assign({},cur,{days:fillTripDays(cur.days,parsed.days),name:name||cur.name,start:start||cur.start||''});
+  }else if(kind==='overwrite'){
+    nextTrip=Object.assign({},cur,{days:parsed.days,name:name||cur.name,start:start||cur.start||''});
   }else{
-    nextTrip=Object.assign({},parsed,{id:uid(),name:parsed.name||'붙여넣은 여행',start:parsed.start||todayISO()});
+    // 사람이 고친 이름은 그대로, 제안한 이름·기본 이름은 겹치면 번호를 붙인다
+    const base=name||'붙여넣은 여행';
+    nextTrip=Object.assign({},parsed,{id:uid(),name:pv.nameEdited&&name? name : distinctTripName(base),start:parsed.start||todayISO()});
   }
   // 기존 여행과 결합한 최종 문서도 다시 검증해 append가 전체 한도를 넘는 경우 부분 적용을 막는다.
   const finalResult=validateTripPayload(nextTrip);
@@ -4643,11 +4821,16 @@ function pvCommit(){
   const finalTrip=finalResult.value, existing=store.trips.findIndex(t=>t.id===finalTrip.id);
   if(existing>=0) store.trips[existing]=finalTrip; else store.trips.push(finalTrip);
   store.activeId=finalTrip.id;
+  const placed=parsed.days.reduce((n,d)=>n+d.spots.length,0);
   const noloc=parsed.days.reduce((n,d)=>n+d.spots.filter(sp=>!hasLoc(sp)).length,0);
-  pv=null;
+  pv=null; pasteKeep='';
   document.getElementById('pastePvBg').classList.remove('show');
   commit(()=>{ activeDay=0; }, {fit:fitEntry});
-  toast(`초안 생성 완료${noloc?` · ${noloc}곳은 위치 미지정 (카드에서 📍 지정)`:''}`, noloc?'#f4862c':'#3e7a4c');
+  const what=kind==='fill'? `${placed}곳을 채웠어요` : kind==='append'? `${parsed.days.length}일을 이어 붙였어요`
+    : kind==='overwrite'? `일정을 바꿨어요 · ${placed}곳` : `'${finalTrip.name}'을(를) 만들었어요 · ${placed}곳${start?'':' · 시작일은 오늘로 잡았어요'}`;
+  // 있던 여행을 바꾼 것은 그 자리에서 되돌릴 수 있다 — 덮어쓰기는 확인 없이 3곳이 1곳이 됐다(2026-10-03)
+  toast(`${what}${noloc?` · ${noloc}곳은 위치 미지정 (카드에서 📍 지정)`:''}`, noloc?'#f4862c':'#3e7a4c',
+    kind==='new'? undefined : {label:'되돌리기', fn:()=>undoWith(snap)});
 }
 
 // ───────────────── Adaptive Travel OS (상태 → 제안 → 반영) ─────────────────
@@ -6705,7 +6888,8 @@ function showOnboarding(){
   onboardingReturnFocus=document.activeElement?.closest('#hdrMenu')?document.getElementById('moreBtn'):document.activeElement;
   onboarding.hidden=false;
   for(const child of document.body.children){
-    if(child===onboarding || child.matches('script')) continue;
+    // 토스트는 남긴다 — 마지막 여행을 지운 뒤 처음 화면이 떠도 그 '실행취소'를 누를 수 있어야 한다
+    if(child===onboarding || child.id==='toast' || child.matches('script')) continue;
     onboardingInert.set(child,child.inert); child.inert=true;
   }
   document.getElementById('onboardNew').focus();
