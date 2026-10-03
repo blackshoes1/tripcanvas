@@ -676,3 +676,10 @@ body:has(.modalBg.show) #toast{bottom:auto;top:calc(env(safe-area-inset-top) + 1
 #searchRes .placeSearchResult:hover{background:var(--hover-bg)}.psrName{display:block;font-weight:700;font-size:14.5px}.psrAddr{display:block;font-size:12px;color:var(--subtle);margin-top:2px;line-height:1.4}
 .estNote .estFix{color:var(--primary-dark)}
 .sampleTag{font-size:10.5px;font-weight:700;color:var(--badge-info-fg);background:var(--badge-info-bg);border-radius:5px;padding:1px 5px;vertical-align:1px}
+/* ux3:undo */
+/* 옮긴 장소 행을 잠깐 강조 — 번호만 바뀌면 무엇이 어디로 갔는지 눈으로 따라가기 어렵다(2026-10-03) */
+.spot.justMoved{animation:spotMoved 1.2s ease-out}
+@keyframes spotMoved{from{background:var(--selected-bg);box-shadow:inset 0 0 0 2px var(--selected-border)}}
+@media (prefers-reduced-motion: reduce){.spot.justMoved{animation:none;outline:2px solid var(--selected-border);outline-offset:-2px}}
+/* 토스트 버튼은 초록·갈색 바탕 위라 기본 포커스 링이 묻힌다 — Tab 한 번으로 닿는 자리라 링이 보여야 한다 */
+#toast .toastAct:focus-visible{outline:2px solid #fff;outline-offset:2px}
