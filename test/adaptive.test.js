@@ -1216,3 +1216,21 @@ test('숫자와 조사: 한 시간이 넘으면 시간으로, 조사는 받침�
   const s = stateOf(dinnerTrip(), { todayISO: TODAY, nowMin: 9 * 60, live: true, startAnchor: P(40.40) });
   assert.ok(!/\d{3,}분/.test(A.departurePlan(s, s.items[1], 44).text), '세 자리 분으로 말하지 않는다');
 });
+
+test('엔진이 묻는 이동의 수단은 일정 화면과 같다 — 비행기로 도착한 날의 시내 제안을 비행기 속도로 재지 않는다', () => {
+  const trip = {
+    days: [
+      { mode: 'flight', spots: [{ name: '바라하스 공항', lat: 40.49, lng: -3.57 }, { name: '호텔', lat: 40.42, lng: -3.70, legMode: 'taxi' }] },
+      { mode: 'transit', spots: [{ name: '프라도', lat: 40.414, lng: -3.692 }, { name: '레티로', lat: 40.415, lng: -3.684, legMode: 'walk' }] },
+      { mode: 'train', spots: [] }
+    ]
+  };
+  const day0 = trip.days[0];
+  assert.equal(A.moveModeTo(trip, day0, { lat: 40.49, lng: -3.57 }), 'flight', '그날 일정의 공항은 일정 화면처럼 일자 수단(✈️)');
+  assert.equal(A.moveModeTo(trip, day0, { lat: 40.42, lng: -3.70 }), 'taxi', '구간 수단을 정한 곳은 그 수단');
+  assert.equal(A.moveModeTo(trip, day0, { lat: 40.414, lng: -3.692 }), 'transit', '다른 날에서 옮겨올 곳은 그날 그곳으로 가던 수단');
+  assert.equal(A.moveModeTo(trip, day0, { lat: 40.415, lng: -3.684 }), 'walk');
+  assert.equal(A.moveModeTo(trip, day0, { lat: 40.5, lng: -3.6 }), 'transit', '모르는 곳은 비행기·기차가 아닌 여행의 도시 안 수단');
+  assert.equal(A.moveModeTo(trip, trip.days[1], { lat: 40.5, lng: -3.6 }), 'transit', '도시 안 수단의 날은 그날 수단');
+  assert.equal(A.moveModeTo({ days: [{ mode: 'flight', spots: [] }] }, { mode: 'flight', spots: [] }, { lat: 1, lng: 1 }), 'car', '아무것도 없으면 자차');
+});

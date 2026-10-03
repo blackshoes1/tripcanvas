@@ -4717,7 +4717,8 @@ function travelPeriod(clock){
 }
 function travelOutside(clock){ const p=travelPeriod(clock).phase; return p==='BEFORE'||p==='AFTER'; }
 // 추천이 쓰는 이동시간은 화면과 같은 캐시·수단을 쓴다 (추천만 다른 숫자를 보지 않게)
-function adaptLegMin(day){ return (a,b)=>legMinutes(a,b,dayModeOf(day),null,dayTimeZone(day)); }
+// 수단은 일정 화면과 같은 출처다(`moveModeTo`) — 도착일(✈️)에 제안한 시내 장소가 비행기 속도로 '2분 이동'이 되지 않게(2026-10-03)
+function adaptLegMin(day){ return (a,b)=>legMinutes(a,b,TC_ADAPT.moveModeTo(trip(),day,b),null,dayTimeZone(day)); }
 // dayContext(anchor/timeline)를 그대로 넘긴다 — 출발 기준점의 단일 진실을 추천도 공유한다
 function adaptState(di, clock){
   const ctx=dayContext(di), when=clock||travelClock();
@@ -4982,7 +4983,7 @@ function renderSuggestions(di, clock){
     // '다음 고정 일정까지 쉬라'고 하지 않는다 — 그 사이에 남은 곳이 넷인데 "명동교자(19:00)까지 쉬었다가"라고 했다(2026-10-03)
     const next=state.freeBefore;
     d.textContent = next
-      ? `지금 더 넣을 만한 곳은 없어요 — 다음 일정 ${next.name}(${hm(next.fixedAt!=null?next.fixedAt:next.eta)})${TC_ADAPT.josa(')','으로','로')} 그대로 이어가면 돼요.`
+      ? `지금 더 넣을 만한 곳은 없어요 — 다음 일정 ${next.name}(${hm(next.fixedAt!=null?next.fixedAt:next.eta)})로 그대로 이어가면 돼요.`
       : (state.live? '지금 새로 제안할 일정이 없어요 — 오늘 남은 일정을 그대로 이어가면 돼요.' : '이 날은 더 넣을 만한 곳이 없어요 — 지금 일정 그대로 괜찮아요.');
     host.appendChild(d);
     return;

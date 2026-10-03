@@ -133,6 +133,34 @@
     if(typeof fn==='function'){ const v=+fn(a,b); if(isFinite(v)&&v>=0) return Math.round(v); }
     return Math.round(LIB.haversine({lat:+a.lat,lng:+a.lng},{lat:+b.lat,lng:+b.lng})/c.fallbackSpeedKmh*60);
   }
+  const MOVE_MODES=['car','taxi','transit','train','walk','bike','flight'];
+  /**
+   * 엔진이 묻는 이동(legMin)의 수단 — 일정 화면과 같은 출처를 쓴다(2026-10-03). 전에는 호출부가 일자 기본 수단 하나로
+   * 물어서, 도착일(일자 수단 ✈️)에 제안한 3.1km 프라도가 '2분 이동'이었다(일정 화면은 같은 구간을 13분이라 했다).
+   * ① 그날 일정의 장소면 그 장소의 구간 수단(`legModeOf`와 같다) ② 다른 날 장소면 그날 그 장소로 가던 수단
+   * ③ 그 밖에는 일자 수단 — 단 비행기·기차는 도시 안 이동이 아니라 여행에서 처음 나오는 도시 안 수단, 없으면 자차.
+   * @param {any} trip @param {any} day @param {any} loc 도착 좌표 @returns {string}
+   */
+  function moveModeTo(trip, day, loc){
+    /** @param {any} m @returns {string} */
+    const valid=(m)=> MOVE_MODES.indexOf(m)>=0? m : '';
+    /** @param {string} m @returns {boolean} */
+    const city=(m)=> !!m && m!=='flight' && m!=='train';
+    /** @param {any} s @returns {boolean} */
+    const same=(s)=> hasCoord(s) && hasCoord(loc) && Math.abs(+s.lat - +loc.lat)<1e-7 && Math.abs(+s.lng - +loc.lng)<1e-7;
+    /** @param {any} d @param {any} s @returns {string} */
+    const modeIn=(d,s)=> valid(s&&s.legMode) || valid(d&&d.mode) || 'car';
+    const own=((day&&day.spots)||[]).filter(same)[0];
+    if(own) return modeIn(day, own);
+    const days=(trip&&trip.days)||[];
+    for(const d of days){
+      const s=((d&&d.spots)||[]).filter(same)[0];
+      if(s && city(modeIn(d,s))) return modeIn(d,s);
+    }
+    const dm=valid(day&&day.mode);
+    if(city(dm)) return dm;
+    return days.map((/**@type{any}*/d)=>valid(d&&d.mode)).filter(city)[0] || 'car';
+  }
 
   // ── 1. 고정 / 유동 분류 ───────────────────────────────────────────
   /**
@@ -630,7 +658,7 @@
       /** @type {any} */
       let trialBest=null;
       for(const vid of r.violated){                                // 앞의 약속부터
-        const at=keep.findIndex((it)=>it.id===vid);
+        const at=keep.findIndex((/**@type{TripItem}*/it)=>it.id===vid);
         const pool=keep.slice(0, Math.max(0, at)).filter(droppable).sort(order);
         for(const cand of pool){
           const trial=simulate(state, without(keep, cand), opts);
@@ -644,7 +672,7 @@
     // 빼지 않아도 되게 된 곳은 되돌린다 — 나중에 뺀 것(우선순위가 높은 것)부터
     for(let k=drop.length-1; k>=0; k--){
       const back=drop[k];
-      const trial=pending.filter((it)=>it===back || keep.indexOf(it)>=0);
+      const trial=pending.filter((/**@type{TripItem}*/it)=>it===back || keep.indexOf(it)>=0);
       const res=simulate(state, trial, opts);
       if(res.totalLate<=r.totalLate){ keep=trial; r=res; drop.splice(k,1); }
     }
@@ -869,7 +897,7 @@
     if(!item) return null;
     const travel=Math.max(0, Math.round(num(travelMin,0)));
     const fixed=item.fixedAt!=null;
-    const target=(fixed? item.fixedAt : item.eta);
+    const target=(item.fixedAt!=null? item.fixedAt : item.eta);
     const leaveMin=Math.round(target-travel);
     if(!state.live) return {leaveMin, slackMin:0, level:'EARLY', text:LIB.hm(leaveMin)+'쯤 출발하는 일정이에요'};
     if(item.status==='IN_PROGRESS') return null;
@@ -1216,7 +1244,7 @@
   }
   const API={ADAPT_CFG, MEAL_WINDOWS, DAY_SEGMENTS, SAFETY_BUFFER, NOTIFICATION_KINDS, safetyBufferFor, departurePlan, tripPulse, stateVersion, notificationPlan, pendingNotifications, suggestionExpiryMin, parseIntent, resolveIntent, departureAdvice, fillGaps, planDayFlow, segmentLabel, currentDayIndex, daysUntilStart, weekdayOf, commitmentOf, priorityOf, statusOf, planningModeHint,
     buildTripState, findFreeWindows, mealOverlap, buildCandidates, rankNextActions, simulate, generateReplan,
-    suggestionKey, buildSuggestions, feedbackEntry, travelMinutes, durText, josa, isLodging, isLightDay, mealCoveredBy};
+    suggestionKey, buildSuggestions, feedbackEntry, travelMinutes, moveModeTo, durText, josa, isLodging, isLightDay, mealCoveredBy};
   if(typeof module!=='undefined' && module.exports) module.exports=API;   // Node (테스트)
   else /** @type {any} */(root).TC_ADAPT=API;                             // 브라우저 전역 (lib/price와 동일 패턴)
 })(typeof window!=='undefined'?window:globalThis);
