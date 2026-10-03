@@ -12,7 +12,7 @@ import type {
 } from './types';
 
 const {
-  dayCostSummary, dayEnteredCost, hasManualTransportCost, budgetBookings, carEventsOn, carSpotLinks, computeDayJourney, dayReturnStay, dayStartAnchor,
+  dayCostSummary, dayEnteredCost, taxiFareCounts, budgetBookings, carEventsOn, carSpotLinks, computeDayJourney, dayReturnStay, dayStartAnchor,
   haversine, hm, isOpenAt, legKey, returnModeOf, parseHM, spotCatOf, stayNights, toISO
 } = legacyLib;
 
@@ -189,20 +189,21 @@ function tripBookings(trip: Trip): Booking[] {
 export function dayCostPartsOf(trip: Trip, legCache: LegCache, di: number, fx: FxRates, today?: string): DayView['cost'] {
   const day = trip.days[di];
   const dm = dayModeOf(day);
-  const road = dm === 'car' || dm === 'taxi';
-  const rt = road ? dayRouteOf(legCache, day, dayJourneyOf(trip, legCache, di)) : null;
+  // 택시비 추정은 택시 날에만 하루 비용에 든다(`taxiFareCounts`, 2026-10-03) — 자차 날의 택시 요금은 내지 않는 돈이다.
+  // 그래서 자차 날의 교통비(주유·통행료)는 값을 모르는 채로 남고 `transportUnpriced`가 그 사실을 말한다.
+  const taxiDay = dm === 'taxi';
+  const rt = taxiDay ? dayRouteOf(legCache, day, dayJourneyOf(trip, legCache, di)) : null;
   return dayCostSummary(trip, di, { date: isoDateOf(trip, di), rates: fx, today,
     taxi: rt?.taxi ?? null,
-    transportUnpriced: day.spots.filter(hasCoord).length > 1 && dm !== 'walk' && dm !== 'bike' && (!road || !rt?.taxi) });
+    transportUnpriced: day.spots.filter(hasCoord).length > 1 && dm !== 'walk' && dm !== 'bike' && (!taxiDay || !rt?.taxi) });
 }
 
-/** 필터바 '전체 비용'과 같은 규칙 — 장소 + (자차·택시일) 택시 + 예약 전액 */
+/** 필터바 '전체 비용'과 같은 규칙 — 장소 + (택시일) 택시 + 예약 전액 */
 export function tripCostBreakdownOf(trip: Trip, legCache: LegCache, fx: FxRates = fxRates()): TripCostView {
   const out: TripCostView = { spots: 0, taxi: 0, hotel: 0, car: 0, flight: 0, total: 0 };
   trip.days.forEach((d, i) => {
     out.spots += dayEnteredCost(d, fx);
-    const dm = dayModeOf(d);
-    if ((dm === 'car' || dm === 'taxi') && !hasManualTransportCost(d))
+    if (taxiFareCounts(d))
       out.taxi += dayRouteOf(legCache, d, dayJourneyOf(trip, legCache, i))?.taxi ?? 0;
   });
   budgetBookings(tripBookings(trip), trip.days).forEach(b => {

@@ -122,6 +122,8 @@ declare module '@legacy/lib.js' {
     dayEnteredCost(day: unknown, rates: Record<string, number>): number;
     parseCostAmount(text: string, currency?: string): number | null;
     hasManualTransportCost(day: unknown): boolean;
+    /** 택시비 추정을 하루 비용에 넣는 날인가 — 그날 기본 수단이 택시이고 수동 교통비가 없을 때만 */
+    taxiFareCounts(day: unknown): boolean;
     tripCostSummary(trip: unknown, days: unknown[], rates: Record<string, number>, today?: string): Pick<import('@/features/trip-state/domain/contract').TripCostsResponse, 'totalKRW' | 'averagePerDayKRW' | 'categories' | 'unallocated' | 'payTotals' | 'prep' | 'onSite' | 'unknownCount' | 'transportUnpriced' | 'hasForeignCurrency'>;
     dayCostSummary(trip: unknown, di: number, input: { date: string; rates: Record<string, number>; taxi: number | null; transportUnpriced: boolean; today?: string }): import('@/features/trip/domain/costTypes').DayCostSummary;
     parseHM(t: string | undefined): number;
