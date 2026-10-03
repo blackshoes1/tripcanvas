@@ -5724,3 +5724,52 @@ test('ux3 입력칸: 명소 예약 칸마다 보이는 이름이 있고, 명소�
     assert.equal(box.open, true, '이미 적어 둔 것이 있으면 식당이어도 펼친 채로');
   } finally { w.close(); }
 });
+
+test('ux3 검토: 비용 없는 장소는 이 여행의 통화로 열려도 저장할 때 통화가 새로 생기지 않는다(P2-26)', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    withTrip(w, JSON.stringify([{ spots: [
+      { name: '루브르', city: '파리', lat: 48.8606, lng: 2.3376, cost: 22, cur: 'EUR' },
+      { name: '산책', city: '파리', lat: 48.861, lng: 2.331 }] }]));
+    w.eval('render(); openSpotModal(0,1)');
+    assert.equal(w.document.getElementById('spotCur').value, 'EUR', '칸은 이 여행의 통화로 열린다');
+    w.document.getElementById('spotName').value = '센강 산책';
+    w.document.getElementById('spotSave').onclick();
+    const s = JSON.parse(w.eval('JSON.stringify(trip().days[0].spots[1])'));
+    assert.equal(s.name, '센강 산책');
+    assert.equal(s.cur, undefined, '이름만 고쳤는데 문서에 통화가 생기지 않는다');
+    // 금액을 넣으면 그 칸의 통화가 저장된다
+    w.eval('openSpotModal(0,1)');
+    w.document.getElementById('spotCost').value = '12';
+    w.document.getElementById('spotSave').onclick();
+    assert.equal(w.eval('trip().days[0].spots[1].cur'), 'EUR');
+    assert.equal(w.eval('trip().days[0].spots[1].cost'), 12);
+  } finally { w.close(); }
+});
+
+test('ux3 검토: 기차로 도시를 건너는 날은 먼 결과를 경고하지도, 저장 전에 묻지도 않는다(P0-1)', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    withTrip(w, JSON.stringify([{ spots: [{ name: '프라도 미술관', city: '마드리드', lat: 40.4138, lng: -3.6921 }] },
+      { mode: 'train', spots: [{ name: '솔 광장', city: '마드리드', lat: 40.4169, lng: -3.7035 }] }]));
+    w.eval(`window.__asked=0; confirm=()=>{ window.__asked++; return false; };
+      routedSearch=async()=>[{name:'세비야 대성당',city:'세비야',lat:37.3858,lng:-5.9931,placeId:'sev'}];`);
+    w.eval('render(); openSpotModal(1,-1)');
+    w.document.getElementById('spotSearch').value = '세비야 대성당';
+    await w.eval('doSearch()');
+    assert.ok(w.document.querySelector('.placeSearchResult'), '결과가 보인다');
+    assert.equal(w.document.querySelector('.placeSearchResult .psrFar'), null, '기차로 가는 날의 390km는 정상이다');
+    const el = (id) => w.document.getElementById(id);
+    el('spotName').value = '세비야 대성당'; el('spotLat').value = '37.3858'; el('spotLng').value = '-5.9931';
+    el('spotSave').onclick();
+    assert.equal(w.eval('window.__asked'), 0);
+    assert.equal(w.eval('trip().days[1].spots.length'), 2);
+    // 같은 거리라도 자차로 가는 날이면 묻는다
+    w.eval("trip().days[1].spots.pop(); trip().days[1].mode='car'; openSpotModal(1,-1)");
+    el('spotName').value = '알카사르'; el('spotLat').value = '37.3831'; el('spotLng').value = '-5.9902';
+    el('spotSave').onclick();
+    assert.equal(w.eval('window.__asked'), 1);
+    assert.equal(w.eval('trip().days[1].spots.length'), 1, '아니라고 하면 담지 않는다');
+    await tick(30);   // 저장 뒤 render가 띄운 경로 조회가 창을 닫기 전에 끝나게
+  } finally { w.close(); }
+});

@@ -681,11 +681,13 @@ body:has(.modalBg.show) #toast{bottom:auto;top:calc(env(safe-area-inset-top) + 1
 /* 검색이 주변으로 좁혔는지·넓혔는지 말하는 한 줄, 수백 km 떨어진 결과 표시(2026-10-03 P0-1) */
 #searchRes .searchScope{margin:4px 0 6px;font-size:12px;color:var(--muted);line-height:1.5}
 #searchRes .searchScope .btn.sm{margin-left:2px}
-.psrFar{display:block;font-size:12px;color:var(--meta-danger);font-weight:600;margin-top:2px;line-height:1.4}
+.psrFar{display:block;font-size:12px;color:var(--meta-warning);font-weight:600;margin-top:2px;line-height:1.4}
 /* 붙여넣기 미리보기 — 찾은 곳의 이름이 친 이름과 다르면 확인할 것으로 보인다 */
 .pvChip.ok.check{color:var(--meta-warning)}
 /* 장소 정보의 영업시간 — 가는 날의 요일을 짚는다(P2-12) */
 #placeDetailsContent li.visitDay{font-weight:700}
 .stayRow{margin-top:2px}.stayRow .hint{margin-top:2px}
+/* 숙소 체크는 기본 칸의 주 컨트롤이다 — 13px 기본 체크박스는 손가락으로 누르기 어려웠다(P1-14) */
+#spotStay{width:18px;height:18px;flex:none}
 /* 칸 이름이 한 글자씩 꺾이지 않게 — '예약 요건'·'우선순위'가 좁은 화면에서 두 줄로 쪼개졌다(P2-27) */
 .admissionRow .chkrow label,.optionRows .chkrow label{white-space:nowrap}

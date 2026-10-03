@@ -368,6 +368,7 @@ function placeCategoryText(data){
     const parts=String(data.category).split('>').map(x=>x.trim()).filter(Boolean);
     detail=(parts.length>1? parts.slice(1) : parts).join(' › ');   // '음식점 > 술집 > 칵테일바' → '술집 › 칵테일바'
   }else if(data.category && /[가-힣]/.test(String(data.category))) detail=String(data.category);
+  if(cat && detail===cat.name) detail='';   // '☕ 카페 · 카페'처럼 같은 말을 두 번 하지 않는다
   return [cat?`${cat.icon} ${cat.name}`:'', detail].filter(Boolean).join(' · ');
 }
 function placeSourceURL(s){
@@ -2563,7 +2564,9 @@ document.getElementById('spotSave').onclick=()=>{
       if(!raw) return undefined;                                   // 빈 칸 = 정하지 않음
       const n=parseInt(raw); return isNaN(n)? undefined : Math.max(0,n); })(),
     cost:costV,
-    cur:(curV&&curV!=='KRW'?curV:undefined),   // KRW는 기본값이라 저장 생략(하위호환)
+    // KRW는 기본값이라 저장 생략(하위호환). 금액이 없으면 칸은 이 여행의 통화로 열릴 뿐이라(P2-26) 저장된 값을 그대로 둔다 —
+    // 안 그러면 비용 없는 장소의 이름만 고쳐도 문서에 cur가 새로 생긴다(2026-10-03)
+    cur:costV!=null? (curV&&curV!=='KRW'?curV:undefined) : (editing&&editing.si>=0? trip().days[editing.di]?.spots[editing.si]?.cur : undefined),
     bookAt:normHM(document.getElementById('spotBookAt').value)||'',
     bookUrl:document.getElementById('spotBookUrl').value.trim(),
     placeId:(document.getElementById('spotPlaceId').value||undefined),   // 예약 가격 추적의 호텔 identity
@@ -2637,9 +2640,15 @@ function spotDistanceFromPlan(di, point){
   const skip=(editing&&editing.si>=0)? trip().days[editing.di]?.spots[editing.si] : undefined;
   return planDistanceKm(trip().days, di, point, skip);
 }
+// 이 구간이 원래 먼 이동인가 — 비행기·기차로 가는 날(또는 구간)은 수백 km가 정상이다. 마드리드 → 세비야(기차 390km)
+// 같은 멀티시티 날에 결과마다 경고를 붙이고 저장마다 묻지 않게, 결과 줄과 저장 전 확인이 같은 규칙을 쓴다(2026-10-03)
+function longHaulLeg(day){
+  const m=document.getElementById('spotLegMode').value||dayModeOf(day);
+  return m==='flight'||m==='train';
+}
 /**
  * 다른 장소에서 수백 km 떨어진 곳이면 담기 전에 한 번 묻는다 — 파리 일정에 여수의 '구에펠탑'이 확인 없이 담겨
- * '하루 동선 약 9264km'가 됐다(2026-10-03 P0-1). 공항·역과 비행기로 가는 구간은 원래 멀어 묻지 않고,
+ * '하루 동선 약 9264km'가 됐다(2026-10-03 P0-1). 공항·역과 비행기·기차로 가는 구간(longHaulLeg)은 원래 멀어 묻지 않고,
  * 편집에서 위치를 그대로 두면 묻지 않는다. 아니라고 하면 저장하지 않고 쓰던 칸으로 돌아간다.
  */
 function farPlaceConfirmed(name, point){
@@ -2649,7 +2658,7 @@ function farPlaceConfirmed(name, point){
   if(prev && hasLoc(prev) && +prev.lat===point.lat && +prev.lng===point.lng) return true;
   const cat=spotCatOf({cat:document.getElementById('spotCat').value||undefined, name});
   if(cat && cat.id==='transport') return true;
-  if((document.getElementById('spotLegMode').value||dayModeOf(day))==='flight') return true;
+  if(longHaulLeg(day)) return true;
   const km=spotDistanceFromPlan(di, point);
   if(km==null || km<FAR_PLACE_KM) return true;
   return !!confirm(`'${name}' — 이 일정의 다른 장소에서 약 ${fmtKm(km)} 떨어진 곳이에요.\n찾던 곳이 맞나요? (아니면 '취소'를 누르고 다시 찾아 주세요)`);
@@ -2700,7 +2709,7 @@ async function doSearch(opts){
       const nm=document.createElement('span'); nm.className='psrName'; nm.textContent=it.name; d.appendChild(nm);
       if(it.addr){ const ad=document.createElement('span'); ad.className='psrAddr'; ad.textContent=it.addr; d.appendChild(ad); }
       // 다른 장소에서 수백 km 떨어진 결과는 줄에서 미리 말한다 — 파리 일정에 여수의 '구에펠탑'이 담겼다(P0-1)
-      const far=spotDistanceFromPlan(isNaN(dayIdx)?0:dayIdx, it);
+      const far=longHaulLeg(trip().days[isNaN(dayIdx)?0:dayIdx]||{})? null : spotDistanceFromPlan(isNaN(dayIdx)?0:dayIdx, it);
       if(far!=null && far>=FAR_PLACE_KM){ const fr=document.createElement('span'); fr.className='psrFar'; fr.textContent=`이 일정의 다른 장소에서 약 ${fmtKm(far)} 떨어진 곳이에요`; d.appendChild(fr); }
       const select=()=>{
         document.getElementById('spotLat').value=it.lat; document.getElementById('spotLng').value=it.lng;
