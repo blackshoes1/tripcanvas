@@ -5262,7 +5262,8 @@ function renderTravel(di, clock){
                (asp? `<div class="travelFacts">다음 ${esc(asp.name)} · ${asp.at?`${esc(asp.at)} 도착(내가 정한 시각)`:`${hm(after.eta)} 도착 예상`}</div>` : '')
              : arrival(target.si));
       const act=document.createElement('div'); act.className='travelNowActions';
-      act.appendChild(spotStatusRow(di,target.si,sp,!v.canMark,here&&!unmarked.length));
+      // 머리에서 먼저 묻는 중이면 몸에는 다녀옴 버튼을 두지 않는다 — 한 카드에 '다녀왔어요'가 둘이면 어느 것이 지금인지 흐려진다
+      if(!unmarked.length) act.appendChild(spotStatusRow(di,target.si,sp,!v.canMark,here));
       act.insertAdjacentHTML('beforeend', here? travelGoLink(asp,'다음 장소 길찾기 ↗') : travelGoLink(sp));
       nextBox.appendChild(act);
     }else if(ctx.backLeg) nextBox.innerHTML=backHtml();
