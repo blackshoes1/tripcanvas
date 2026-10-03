@@ -5668,3 +5668,53 @@ test('통합: 테마는 ☰에서 기기 설정·라이트·다크로 고르고,
     assert.equal(doc.querySelector('#themeBtn'), null, '고르는 자리는 하나다');
   } finally { w.close(); }
 });
+
+// 검토(ux3:a11y-rv) — 건너뛰기 링크가 주소의 #을 '#sidebar'로 덮어, 읽기 전용 공유(#v=)로 연 주소가 새로고침에 사라졌다
+test('통합: 일정으로 건너뛰기는 공유 주소의 #을 바꾸지 않고 일정에 포커스를 둔다', { skip: noJsdom }, () => {
+  const shared = encodeURIComponent(JSON.stringify({ name: '공유 여행', days: [{ spots: [{ name: 'A', lat: 37.5, lng: 127 }] }] }));
+  const w = boot('http://localhost/#v=' + shared);
+  try {
+    const before = w.location.hash;
+    assert.match(before, /^#v=/);
+    w.document.querySelector('.skipLink').click();
+    assert.equal(w.location.hash, before, '공유 주소가 그대로다');
+    assert.equal(w.document.activeElement, w.document.getElementById('sidebar'));
+  } finally { w.close(); }
+});
+
+// 검토(ux3:a11y-rv) — ☰의 '화면'을 고르면 메뉴가 닫혀 눌린 상태가 바뀌는 것이 보이지 않았고, 키보드 포커스는 숨은 버튼에 남았다
+test('통합: ☰에서 화면(테마)을 골라도 메뉴는 열려 있고 고른 것이 눌린 상태가 된다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    const doc = w.document;
+    doc.getElementById('moreBtn').click();
+    const dark = doc.querySelector('#themeChoice [data-theme="dark"]');
+    dark.click();
+    assert.ok(doc.getElementById('hdrMenu').classList.contains('open'), '메뉴가 남는다');
+    assert.equal(dark.getAttribute('aria-pressed'), 'true');
+    assert.ok(doc.body.classList.contains('theme-dark'));
+    doc.querySelector('#hdrMenu .menuGroupLabel').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+    assert.equal(doc.getElementById('hdrMenu').classList.contains('open'), false, '다른 곳을 고르면 여전히 닫힌다');
+  } finally { w.close(); }
+});
+
+// 검토(ux3:a11y-rv) — '위치를 정해 주세요'는 검색 칸에 붙는데, 결과를 골라 위치가 정해져도 남아 있었다(검색 칸에 input이 나지 않는다)
+test('통합: 위치 오류는 검색 결과로 위치를 정하면 지워진다', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    withAdaptTrip(w, [{ startAt: '09:00', mode: 'car', spots: [S('첫 곳', 40.40)] }]);
+    w.eval(`render(); fetchPlaceDetails=async(s)=>({kind:'saved',name:s.name});
+      routedSearch=async()=>[{name:'광장',city:'마드리드',lat:40.41,lng:-3.70,placeId:'p-a'}]; openSpotModal(0,-1)`);
+    const el = (id) => w.document.getElementById(id);
+    el('spotName').value = '광장';
+    el('spotSave').click();
+    assert.match(el('spotSearchErr').textContent, /위치/);
+    el('spotSearch').value = '광장';
+    await w.eval('doSearch()');
+    w.document.querySelector('.placeSearchResult').click();
+    Array.from(w.document.querySelectorAll('#placeDetailsActions button')).find((b) => b.textContent === '시간·메모 정하고 담기').click();
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(el('spotSearchErr'), null, '위치가 정해졌으니 오류 문장이 없다');
+    assert.equal(el('spotSearch').hasAttribute('aria-invalid'), false);
+  } finally { w.close(); }
+});

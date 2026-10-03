@@ -240,6 +240,8 @@ window.addEventListener('storage',e=>{
 function toggleHdrMenu(e){ if(e) e.stopPropagation(); document.getElementById('hdrMenu').classList.toggle('open'); }
 document.addEventListener('click',e=>{
   const m=document.getElementById('hdrMenu'); if(!m||!m.classList.contains('open')) return;
+  // '화면'(테마)은 고른 것이 눌린 상태로 바뀌는 것을 보여야 한다 — 닫으면 키보드 포커스도 숨은 버튼에 남는다(2026-10-03)
+  if(e.target.closest('#themeChoice')) return;
   if(e.target.closest('#hdrMenu')){ m.classList.remove('open'); return; }   // 항목 선택 → 닫기
   if(!e.target.closest('#moreBtn')) m.classList.remove('open');             // 바깥 클릭 → 닫기
 });
@@ -300,8 +302,11 @@ let activeDay = 0, markers = [], lines = [], ghostStays = [], pickMode = false, 
 // 위치 상태는 사람의 말로 — '좌표: 미지정'은 개발자 말투였다(2026-10-03 UX 검토). 숫자는 확인용으로 뒤에 남긴다.
 function setCoordHint(lat,lng,extra){
   const el=document.getElementById('coordHint'); if(!el) return;
-  el.textContent=(lat==null||lat===''||!isFinite(+lat))? '위치: 아직 없어요 — 위에서 검색하거나 지도에서 골라 주세요'
+  const has=!(lat==null||lat===''||!isFinite(+lat));
+  el.textContent=!has? '위치: 아직 없어요 — 위에서 검색하거나 지도에서 골라 주세요'
     : `위치 확인됨 ✓ (${(+lat).toFixed(4)}, ${(+lng).toFixed(4)})${extra||''}`;
+  // 위치를 정했으면 '위치를 정해 주세요'(fieldError)를 지운다 — 결과·지도로 고르면 검색 칸에 input이 나지 않아 남아 있었다
+  if(has){ const q=document.getElementById('spotSearch'); if(q) clearFieldError(q); }
 }
 function onMapPick(lat,lng,placeId){
   if(!pickMode)return;
@@ -6975,6 +6980,13 @@ document.addEventListener('focusin',e=>{
     out.textContent= n? `검색 결과 ${n}곳` : (text&&!/검색 중/.test(text)? text : '');
   }).observe(res,{childList:true});
 })();
+// 건너뛰기는 주소의 #을 바꾸지 않는다 — 읽기 전용 공유(#v=)로 연 주소가 '#sidebar'로 덮여, 새로고침하거나 주소를
+// 다시 보내면 그 여행이 사라졌다(2026-10-03 검토). 링크(href)는 그대로 두고 이동만 스크립트가 한다.
+document.querySelector('.skipLink')?.addEventListener('click',e=>{
+  e.preventDefault();
+  const sb=document.getElementById('sidebar'); if(!sb) return;
+  sb.focus(); if(sb.scrollIntoView) sb.scrollIntoView({block:'start'});
+});
 function initAccessibility(){
   const returnFocus=new WeakMap();
   // 열린 순서. 예약 목록 위에 결제 편집기를 열면 둘 다 열려 있다 — Esc·Tab은 **맨 위의 것**에만 간다.
