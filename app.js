@@ -992,7 +992,8 @@ function syncMapTheme(){
   // 막 만든 지도에 바로 핀을 만들면 Google 안에서 죽는다(E2E — 'reading keys'). 첫 idle까지 지도를 준비 안 됨으로 둔다
   gmapRebuilding=true;
   createGoogleMap();
-  google.maps.event.addListenerOnce(map,'idle',()=>{ gmapRebuilding=false; _ovSig=null; render(); });
+  const fresh=map;   // 그 사이에 또 바뀌면 마지막 지도의 idle만 표시를 얹는다
+  google.maps.event.addListenerOnce(fresh,'idle',()=>{ if(fresh!==map) return; gmapRebuilding=false; _ovSig=null; render(); });
 }
 window.__gmapsReady=function(){
   createGoogleMap();
@@ -1062,7 +1063,8 @@ const Engines={
     marker(lat,lng,el,onClick,z){
       const m=new google.maps.marker.AdvancedMarkerElement({map, position:{lat,lng}, content:el, ...(z!=null?{zIndex:z}:{})});
       if(onClick) m.addEventListener('gmp-click',onClick);
-      return { _m:m, remove(){ m.map=null; } };
+      // 다시 만들어 버리는 지도의 핀은 Google이 아직 붙이지 못했을 수 있다 — 떼다 죽어도 버리는 지도라 삼킨다(E2E, 테마 전환 직후)
+      return { _m:m, remove(){ try{ m.map=null; }catch(_){ } } };
     },
     polyline(pts,o){
       const opt={map, path:pts, geodesic:true};
@@ -1071,8 +1073,8 @@ const Engines={
       const l=new google.maps.Polyline(opt);
       return { remove(){ l.setMap(null); } };
     },
-    overlay(lat,lng,el){ const m=new google.maps.marker.AdvancedMarkerElement({map, position:{lat,lng}, content:el}); return { remove(){ m.map=null; } }; },
-    moveMarker(lat,lng,el){ const m=new google.maps.marker.AdvancedMarkerElement({map, position:{lat,lng}, content:el, zIndex:9999}); return { move(la,ln){ m.position={lat:la,lng:ln}; }, remove(){ m.map=null; } }; },
+    overlay(lat,lng,el){ const m=new google.maps.marker.AdvancedMarkerElement({map, position:{lat,lng}, content:el}); return { remove(){ try{ m.map=null; }catch(_){ } } }; },   // marker()와 같은 이유
+    moveMarker(lat,lng,el){ const m=new google.maps.marker.AdvancedMarkerElement({map, position:{lat,lng}, content:el, zIndex:9999}); return { move(la,ln){ m.position={lat:la,lng:ln}; }, remove(){ try{ m.map=null; }catch(_){ } } }; },
     openPopup(html,lat,lng,anchor){ iw.setContent(`<div class="popupC">${html}</div>`); iw.open({map, anchor:anchor&&anchor._m}); },
     closePopup(){ if(iw) iw.close(); },
     // padPx는 숫자(네 변 같게) 또는 {top,right,bottom,left} — 덮인 쪽(모바일 시트·장소 정보)을 더 비운다(mapFitPadding)
