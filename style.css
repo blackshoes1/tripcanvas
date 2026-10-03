@@ -404,8 +404,6 @@
 .spotMeta .bookwarn{color:var(--meta-warning)}
 .spotMeta .stayMeta{color:var(--muted)}
 .optBtn{color:var(--meta-good);border-color:currentColor;margin-left:6px}
-#verLabel{font-size:11px;color:var(--subtle);text-align:center;padding:6px 4px 2px;cursor:pointer;border-top:1px solid var(--border);margin-top:2px}
-.spotMeta .closed{color:var(--meta-danger)}
 #verLabel{display:block;width:100%;background:none;border:0;font:inherit;font-size:.75rem;color:var(--subtle);text-align:center;padding:6px 4px 2px;cursor:pointer;border-top:1px solid var(--border);margin-top:2px}
 #verLabel:active{color:var(--ink)}
 

@@ -5562,6 +5562,9 @@ test('통합(ux3): 뺄 곳이 없어 조정 카드가 없는 날에는 한 줄�
     const flowText = w.document.getElementById('travelPlan').textContent;
     assert.match(flowText, /더 넣지 않았어요/);
     assert.ok(!/일정 조정 제안을 먼저 확인/.test(flowText), '없는 조정 카드를 가리키지 않는다: ' + flowText);
+  } finally { w.close(); }
+});
+
 // ── ux3:search ──
 // 2026-10-03 3차 UX 검토 — 장소 검색·장소 정체성(P0-1 · P1-14 · P2-12 · P2-24~27)
 
@@ -5893,6 +5896,8 @@ test('ux3 검토: 기차로 도시를 건너는 날은 먼 결과를 경고하�
     assert.equal(w.eval('trip().days[1].spots.length'), 1, '아니라고 하면 담지 않는다');
     await tick(30);   // 저장 뒤 render가 띄운 경로 조회가 창을 닫기 전에 끝나게
   } finally { w.close(); }
+});
+
 // ── ux3:travelui ──
 // 3차 UX 검토(2026-10-03)의 '여행 중 안내' 묶음 — 맨 위 '지금' 카드 · 제안 저장소의 초기화 순서 · 다른 날/여행 밖의 말과 버튼 ·
 // 쉬기·식사 수락의 흐름 · 길찾기 링크 · 부정 문장의 되짚기. 판단(엔진)은 그대로이고, 화면이 그 판단을 어떻게 말하는지를 본다.
@@ -6235,6 +6240,8 @@ test('통합: 다음이 예약한 곳이면 지금 카드가 도착 예상과 �
   w.eval('renderTravel(0)');
   assert.match(travelText(w, 'travelNext'), /저녁 예약.*도착 예상 · 예약 19:00/);
   w.close();
+});
+
 // ── ux3:undo ──
 // 2026-10-03 UX 검토 3차 — 실행취소·편집 피드백·포커스 묶음(P1-7 · P1-27 · P2-13 · P2-17 · P2-18 · P2-19 · P2-65).
 const UX3_DAY = (title, spots) => ({ title, drive: '', note: '', mode: 'car', spots });
@@ -6611,6 +6618,8 @@ test('통합: ⌘Y는 다시 하기가 아니다 — 맥 브라우저의 방문 
     ux3Key(w, 'y', { ctrlKey: true });
     assert.equal(w.eval('trip().days[0].mode'), 'walk');
   } finally { w.close(); }
+});
+
 // ── ux3:map ──
 test('통합: 자차 하루의 가까운 구간은 차 경로가 아니라 두 곳 사이를 걷는 시간으로 도착을 계산한다', {skip:noJsdom}, () => {
   // 2026-10-03 UX 검토: 직선 365m를 일방통행을 도는 차 경로 1.4km로 '가까워 걸어서 18분'이라 해 마요르 광장 도착이 밀렸다
@@ -6852,6 +6861,9 @@ test('통합: 데스크톱에는 일정 시트가 없으니 시트 단계가 바
     await new Promise(r=>setTimeout(r,320));
     assert.equal(w.__fits.length,fits,'데스크톱에서는 다시 맞추지 않는다');
     assert.equal(w.__pans.length,pans);
+  }finally{ w.close(); }
+});
+
 // ── ux3:costs ──
 test('통합(ux3): 자차 날의 택시 요금은 하루 비용·전체 비용에 넣지 않고 참고로만 말한다', { skip: noJsdom }, () => {
   const w=boot();
@@ -7099,6 +7111,7 @@ test('통합(ux3 검토): 빈 장소 비용 창의 \'장소 담기\'는 창을 �
     assert.equal(w.eval('editing.di+":"+editing.si'), '1:-1', 'Day 2에서 연 창이면 Day 2에 새 장소');
   }finally{ w.close(); }
 });
+
 // ── ux3:paste ──
 // 2026-10-03 3차 UX 검토 — 받은 일정 붙여넣기·가져오기·내보내기. 읽는 규칙은 test/intake.test.js가, 여기서는 배선을 본다.
 
@@ -7430,6 +7443,9 @@ test('ux3 붙여넣기(검토): 수단을 적지 않은 여행에 이어 붙이�
     assert.equal(w.document.getElementById('pvMode').value, 'car');
     w.eval('pvCommit()');
     assert.equal(activeTrip(w).days[1].mode, 'car');
+  } finally { w.close(); }
+});
+
 // ── ux3:share ──
 // 공유·읽기 전용·초대·처음 화면·샘플 (2026-10-03 UX 검토 3차)
 
@@ -7792,6 +7808,9 @@ test('ux3 공유: 고칠 수 없는 여행의 일자 이동수단은 누르는 �
     const mode = w.document.querySelector('.dayCard .dayHead .modeBtn');
     assert.notEqual(mode.tagName, 'BUTTON', '눌러도 아무 일 없는 버튼을 두지 않는다');
     assert.doesNotMatch(mode.getAttribute('title'), /눌러서/);
+  } finally { w.close(); }
+});
+
 // ── ux3:a11y ──
 const key = (w, el, k, extra) => el.dispatchEvent(new w.KeyboardEvent('keydown', Object.assign({ key: k, bubbles: true }, extra || {})));
 
