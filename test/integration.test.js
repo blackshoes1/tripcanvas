@@ -5528,3 +5528,21 @@ test('통합(ux3): 제안 카드에서 "다른 제안 보기"로 물린 곳은 �
     shown.forEach((n) => assert.ok(!after.some((t) => t.indexOf(n) >= 0), n + '은(는) 물렸는데 흐름에 남았다: ' + after.join(' / ')));
   } finally { w.close(); }
 });
+
+test('통합(ux3): 뺄 곳이 없어 조정 카드가 없는 날에는 한 줄로 늦는다고 말하고, 없는 카드를 가리키지 않는다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    withAdaptTrip(w, [
+      { startAt: '14:00', mode: 'car', spots: [S('롯데호텔 서울', 40.40, { desc: '숙소' }), S('바라하스 공항 (MAD)', 40.45, { stayMin: 30 }),
+        S('Dinner', 40.50, { bookAt: '15:00' })] },
+      { spots: [S('레티로 공원', 40.47)] }
+    ], { now: 14 * 60 + 10 });
+    w.eval('renderTravel(0); buildDayFlow(0)');
+    assert.ok(!cardsIn(w).some((c) => c.dataset.type === 'REPLAN'), '기존과 제안이 같은 조정 카드는 없다');
+    const notice = w.document.querySelector('#travelSuggest .sgNotice');
+    assert.ok(notice && /이대로면 Dinner 15:00 예약에 .+ 늦어요/.test(notice.textContent), '늦는다는 사실은 한 줄로 남는다');
+    const flowText = w.document.getElementById('travelPlan').textContent;
+    assert.match(flowText, /더 넣지 않았어요/);
+    assert.ok(!/일정 조정 제안을 먼저 확인/.test(flowText), '없는 조정 카드를 가리키지 않는다: ' + flowText);
+  } finally { w.close(); }
+});

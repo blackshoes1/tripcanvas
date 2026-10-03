@@ -4920,7 +4920,9 @@ function renderDayFlow(di){
   const card=document.createElement('div'); card.className='sgCard'; card.dataset.type='DAY_FLOW';
   card.appendChild(sgKicker(live?'오늘 이렇게 이어가면 어떨까요':'이 날을 이렇게 채우면 어떨까요'));
   // 남은 계획(PLANNED)도 함께 그리고 더하는 것만 강조한다 — 남은 곳을 빼고 그리면 계획이 사라진 것처럼 보였다(2026-10-03)
-  const note=flow.blocked==='REPLAN'? '이대로면 예약 시간에 늦어서 더 넣지 않았어요 — 일정 조정 제안을 먼저 확인해 주세요.'
+  // 조정 카드가 없는 날(뺄 곳이 없거나 건너뛰었다)에 '조정 제안을 확인해 주세요'라고 하면 없는 카드를 가리킨다
+  const replanCard=!!(_adapt&&_adapt.res&&_adapt.res.suggestions.some(s=>s.type==='REPLAN'));
+  const note=flow.blocked==='REPLAN'? '이대로면 예약 시간에 늦어서 더 넣지 않았어요 — '+(replanCard?'일정 조정 제안을 먼저 확인해 주세요.':'예약 시간을 바꾸거나 미리 알려 두는 편이 나아요.')
     : flow.empty? '지금 더 넣을 만한 곳이 없어요 — 남은 일정을 그대로 이어가면 돼요.'
     : flow.light? '이 날 메모가 가벼운 일정이라 한 곳만 골랐어요.' : '';
   if(note){ const e=document.createElement('div'); e.className='sgDesc'; e.textContent=note; card.appendChild(e); }
