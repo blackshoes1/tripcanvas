@@ -1734,3 +1734,18 @@ test('spotCatOf: 공항은 교통 분류 그대로 비행기 기호로 보인다
   assert.equal(L.spotCatOf({ name: '서울역' }).icon, '🚉', '역은 그대로');
   assert.equal(L.spotCatOf({ name: '공항 근처 식당', cat: 'food' }).id, 'food', '명시한 분류가 먼저다');
 });
+
+// ── ux3:a11y ──
+test('resolveTimeZone — 도시·나라 이름과 IANA를 받고, 모르는 것은 추측하지 않는다', () => {
+  assert.equal(L.resolveTimeZone('서울'), 'Asia/Seoul');
+  assert.equal(L.resolveTimeZone('서울시'), 'Asia/Seoul');
+  assert.equal(L.resolveTimeZone(' Paris '), 'Europe/Paris');
+  assert.equal(L.resolveTimeZone('파리'), 'Europe/Paris');
+  assert.equal(L.resolveTimeZone('라스 베이거스'), 'America/Los_Angeles');
+  assert.equal(L.resolveTimeZone('europe/madrid'), 'Europe/Madrid', 'IANA는 정식 표기로 맞춘다');
+  assert.equal(L.resolveTimeZone('Asia/Tokyo'), 'Asia/Tokyo');
+  assert.equal(L.resolveTimeZone('미국'), null, '시간대가 여럿인 나라는 고르지 않는다');
+  assert.equal(L.resolveTimeZone('Asia/Nowhere'), null);
+  assert.equal(L.resolveTimeZone(''), null);
+  assert.equal(L.resolveTimeZone(null), null);
+});
