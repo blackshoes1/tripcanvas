@@ -8446,3 +8446,34 @@ test('통합(C-4): 일자 편집에서 이동 메모 칸은 이미 적힌 날에
     await new Promise(r=>setTimeout(r,0));
   }finally{ w.close(); }
 });
+
+test('통합(C-1): 총예산은 여행 설정에서 한 번 적고, 필터바 비용 내역이 남은 예산을 말한다', { skip: noJsdom }, async () => {
+  const w=boot();
+  try{
+    withTrip(w, `[{spots:[{name:'식당',city:'M',lat:40.41,lng:-3.69,cost:300000}]},{spots:[{name:'미술관',city:'M',lat:40.42,lng:-3.70,cost:100000}]}]`);
+    w.eval('render()');
+    const el=(id)=>w.document.getElementById(id);
+    el('tripEditBtn').click();
+    assert.equal(el('tripBudget').value, '');
+    el('tripBudget').value='많이'; el('tripSave').click();
+    assert.ok(el('tripBudgetErr'), '금액이 아니면 그 칸 옆에서 말한다');
+    el('tripBudget').value='1,000,000'; el('tripSave').click();
+    assert.deepEqual(JSON.parse(w.eval('JSON.stringify(trip().budget)')), {amount:1000000}, '원화면 통화를 적지 않는다(비용 저장 규칙)');
+    const panel=()=>w.document.querySelector('.costMenu .viewMenuPanel').textContent;
+    assert.match(panel(), /예산\s*₩1,000,000/);
+    assert.match(panel(), /남은 예산\s*₩600,000/);
+    assert.match(panel(), /하루 평균 약 ₩500,000/);
+    // 넘치면 숨기지 않고 넘친 만큼 말한다
+    el('tripEditBtn').click(); el('tripBudget').value='300000'; el('tripSave').click();
+    assert.match(panel(), /예산보다\s*₩100,000 많아요/);
+    // 외화 예산
+    el('tripEditBtn').click(); el('tripBudget').value='2000'; el('tripBudgetCur').value='EUR'; el('tripSave').click();
+    assert.deepEqual(JSON.parse(w.eval('JSON.stringify(trip().budget)')), {amount:2000,cur:'EUR'});
+    // 비우면 지운다
+    el('tripEditBtn').click(); assert.equal(el('tripBudget').value, '2000'); assert.equal(el('tripBudgetCur').value, 'EUR');
+    el('tripBudget').value=''; el('tripSave').click();
+    assert.equal(w.eval('"budget" in trip()'), false);
+    assert.doesNotMatch(panel(), /예산/);
+    await new Promise(r=>setTimeout(r,0));
+  }finally{ w.close(); }
+});

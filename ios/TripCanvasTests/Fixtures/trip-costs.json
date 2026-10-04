@@ -318,6 +318,14 @@
       "NONE": 0
     }
   },
+  "budget": {
+    "amount": 1000000,
+    "currency": "KRW",
+    "totalKRW": 1000000,
+    "costKRW": 100000,
+    "remainingKRW": 900000,
+    "perDayKRW": 500000
+  },
   "unknownCount": 2,
   "transportUnpriced": true,
   "hasForeignCurrency": false,

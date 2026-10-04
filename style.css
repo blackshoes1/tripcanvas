@@ -90,6 +90,7 @@
   .costRow.costTotal{border-top:1px solid var(--border);margin-top:3px;padding-top:4px;font-weight:700}
   .costRow.costGroup{font-weight:600;color:var(--ink);margin-top:3px}
   .costRow.costSub{padding-left:10px}
+  .costRow.over{color:var(--meta-danger)}   /* 예산을 넘었다 — 숨기지 않고 주의색으로(2026-10-05) */
   .costRow.bkListTotal{font-size:13.5px;border-top:0;margin:0 0 4px;padding:4px 0}
   /* 그 장소에서 차를 받고/돌려준다 — 장소 행에 붙는 칩 */
   .spot .carbkChip{color:var(--meta-soft);background:transparent;border:1px solid currentColor;border-radius:6px;padding:1px 5px;font-size:.75rem;cursor:pointer;white-space:nowrap}

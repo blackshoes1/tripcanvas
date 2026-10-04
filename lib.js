@@ -1236,7 +1236,7 @@
    * `today`(YYYY-MM-DD)는 기존 호출 계약의 날짜 인자다. 하루치(`dayCostSummary`)와 **같은 상태**를 읽어야
    * 예약 한 줄과 그 하루치가 다른 상태를 말하지 않는다.
    * @param {any} trip @param {any[]} days @param {Record<string,number>} rates @param {string=} today
-   * @returns {{totalKRW:number,averagePerDayKRW:number|null,categories:any[],unallocated:any[],payTotals:Record<string,number>,prep:{totalKRW:number,payTotals:Record<string,number>,items:any[]},onSite:{totalKRW:number,payTotals:Record<string,number>},unknownCount:number,transportUnpriced:boolean,hasForeignCurrency:boolean}} */
+   * @returns {{totalKRW:number,averagePerDayKRW:number|null,categories:any[],unallocated:any[],payTotals:Record<string,number>,prep:{totalKRW:number,payTotals:Record<string,number>,items:any[]},onSite:{totalKRW:number,payTotals:Record<string,number>},budget:ReturnType<typeof tripBudgetStatus>,unknownCount:number,transportUnpriced:boolean,hasForeignCurrency:boolean}} */
   function tripCostSummary(trip,days,rates,today){
     trip={...trip, days:effectiveCostDays(trip.days||[], trip.bookings)};   // 연결된 숙소의 금액은 예약이 낸다
     /** @type {any[]} */ const unallocated=[];
@@ -1302,7 +1302,7 @@
     const prep={totalKRW:prepItems.reduce((sum,i)=>sum+(i.totalKRW||0),0),payTotals:payStateTotals(prepItems),items:prepItems};
     const onSite={totalKRW:onSiteItems.reduce((sum,i)=>sum+(i.totalKRW||0),0),payTotals:payStateTotals(onSiteItems)};
     return {totalKRW,averagePerDayKRW:days.length?Math.round(totalKRW/days.length):null,categories,unallocated,
-      payTotals:payStateTotals(items),prep,onSite,
+      payTotals:payStateTotals(items),prep,onSite,budget:tripBudgetStatus(trip,totalKRW,rates),
       unknownCount:categories.reduce((sum,c)=>sum+c.unknownCount,0),
       transportUnpriced:days.some(d=>d.cost.details.transportUnpriced),
       hasForeignCurrency:items.some(i=>i.currency!=='KRW'&&i.amount!==null)};
@@ -1835,6 +1835,30 @@
   }
 
   /**
+   * 여행 총예산 — 여행 설정에서 한 번 적는 `trip.budget`({amount, cur}, 2026-10-05). 금액이 없으면 예산이 없는 것이다.
+   * 통화가 없거나 모르는 통화면 원화다(비용 저장 규칙과 같다). 하루 예산(`day.budget`)은 따로 정한 날의 것이고 그대로 읽는다.
+   * @param {any} trip @returns {{amount:number,cur:string}|null}
+   */
+  function tripBudgetOf(trip){
+    const b=trip&&trip.budget;
+    if(!b||typeof b!=='object'||Array.isArray(b)||!_fin(b.amount)||+b.amount<0) return null;
+    return {amount:+b.amount, cur:_CURS.includes(b.cur)? b.cur : 'KRW'};
+  }
+  /**
+   * 예산 대비 — **예약과 현지 지출을 모두** 센다(`costKRW`는 전체 비용과 같은 합계를 받는다). 남은 예산은 넘으면 음수다 — 숨기지 않는다.
+   * 하루 평균(`perDayKRW`)은 예산을 일수로 나눈 것이고 보여 주기만 한다(입력은 총액 하나).
+   * 웹 필터바(`tripCostBreakdown`)와 서버 비용 응답(`tripCostSummary`)이 이 함수 하나를 쓴다.
+   * @param {any} trip @param {number} costKRW @param {Record<string,number>} rates
+   * @returns {{amount:number,currency:string,totalKRW:number,costKRW:number,remainingKRW:number,perDayKRW:number|null}|null}
+   */
+  function tripBudgetStatus(trip,costKRW,rates){
+    const b=tripBudgetOf(trip); if(!b) return null;
+    const totalKRW=Math.round(b.amount*((rates&&rates[b.cur])||1)), cost=Math.round(+costKRW||0);
+    const n=((trip&&trip.days)||[]).length;
+    return {amount:b.amount, currency:b.cur, totalKRW, costKRW:cost, remainingKRW:totalKRW-cost, perDayKRW:n? Math.round(totalKRW/n) : null};
+  }
+
+  /**
    * 여행 인원 — 여행 설정에서 한 번 정하고 1인 금액·예약 인원·숙박 성인 수의 **기본값**으로만 쓴다(2026-10-05).
    * 각 칸에 저장된 값이 언제나 이긴다. 정하지 않았으면 null — 2명 같은 값을 지어내지 않는다.
    * @param {any} trip @returns {number|null}
@@ -1858,6 +1882,10 @@
     if(t.timeZone!=null && !validTimeZone(t.timeZone)) delete t.timeZone;
     if(t.colorBy!=null && t.colorBy!=='city' && t.colorBy!=='day') delete t.colorBy;
     if(t.people!=null && tripPeopleOf(t)==null) delete t.people;
+    if(t.budget!=null){    // 여행 총예산 — 금액이 없으면 버리고, 금액·통화는 비용과 같은 규칙으로 다듬는다
+      if(tripBudgetOf(t)){ const b=t.budget; t.budget={amount:b.amount}; if(b.cur!=null) t.budget.cur=b.cur; normalizeCostFields(t.budget,'amount'); }
+      else delete t.budget;
+    }
     if(t.notes!=null){      // 여행 준비 메모 — 불량 항목은 버리고, 비면 필드 생략(공유 링크 크기 절약)
       t.notes=Array.isArray(t.notes)? t.notes.map(normalizeTripNote).filter(Boolean).slice(0,_NOTES_MAX):[];
       if(!t.notes.length) delete t.notes;
@@ -2462,7 +2490,7 @@
   Object.assign(TC,{placeNameMatch,searchAnchorSpot,planDistanceKm,tripCitySpelling,tripDefaultCurrency,hoursIssue,hoursLines});
   Object.assign(TC,{resolveTimeZone,inferTimeZones,effectiveTimeZone,refundableOf});   // 따로 붙인다 — 위 한 줄은 여러 작업이 함께 고치는 자리다
   Object.assign(TC,{effectiveCostDays,spotPaidByBooking,normalizeFlightSegment,dayFlights});   // 비용 입력 정리 묶음 A(2026-10-04)
-  Object.assign(TC,{tripPeopleOf});   // 비용 입력 정리 묶음 C(2026-10-05)
+  Object.assign(TC,{tripPeopleOf,tripBudgetOf,tripBudgetStatus});   // 비용 입력 정리 묶음 C(2026-10-05)
   if(typeof module!=='undefined' && module.exports){ module.exports=TC; }   // Node (테스트)
   else { const r=/**@type {any}*/(root); for(const k in TC) r[k]=/**@type {any}*/(TC)[k]; }   // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);

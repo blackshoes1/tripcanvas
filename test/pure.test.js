@@ -2022,3 +2022,31 @@ test('여행 인원 — 1~100 정수만 읽고, 정규화는 그 밖의 값을 �
   assert.equal('people' in L.normalizeTrip({name:'t', days, people:'3'}), false, '문자열은 버린다');
   assert.equal('people' in L.normalizeTrip({name:'t', days}), false, '없으면 만들지 않는다');
 });
+
+test('여행 총예산 — 금액이 있어야 예산이고, 남은 예산은 전체 비용(예약+현지)을 뺀 값이다(C-1)', () => {
+  assert.equal(L.tripBudgetOf({}), null);
+  assert.equal(L.tripBudgetOf({budget:{cur:'EUR'}}), null, '금액 없는 예산은 없다');
+  assert.equal(L.tripBudgetOf({budget:{amount:-1}}), null);
+  assert.deepEqual(L.tripBudgetOf({budget:{amount:3000000}}), {amount:3000000,cur:'KRW'}, '통화가 없으면 원화(비용 저장 규칙과 같다)');
+  assert.deepEqual(L.tripBudgetOf({budget:{amount:2000,cur:'EUR'}}), {amount:2000,cur:'EUR'});
+  const days=[{spots:[]},{spots:[]},{spots:[]},{spots:[]}];
+  const st=L.tripBudgetStatus({days,budget:{amount:2000,cur:'EUR'}}, 1800000, {KRW:1,EUR:1500});
+  assert.deepEqual(st, {amount:2000,currency:'EUR',totalKRW:3000000,costKRW:1800000,remainingKRW:1200000,perDayKRW:750000});
+  assert.equal(L.tripBudgetStatus({days,budget:{amount:1000000}}, 1250000, {KRW:1}).remainingKRW, -250000, '넘으면 음수 — 숨기지 않는다');
+  assert.equal(L.tripBudgetStatus({days}, 5, {KRW:1}), null);
+  // 정규화 — 이상한 예산은 버리고, 금액은 비용과 같은 규칙으로 다듬는다
+  const d=[{title:'',drive:'',note:'',spots:[]}];
+  assert.equal('budget' in L.normalizeTrip({name:'t',days:d,budget:{amount:'많이'}}), false);
+  assert.deepEqual(L.normalizeTrip({name:'t',days:d,budget:{amount:12.345,cur:'USD'}}).budget, {amount:12.35,cur:'USD'});
+  assert.equal(L.normalizeTrip({name:'t',days:d,budget:{amount:100,cur:'XYZ'}}).budget.cur, undefined, '모르는 통화는 떨어뜨린다 — 원화로 읽힌다');
+});
+
+test('여행 비용 요약에 예산이 실린다 — 전체 비용과 같은 합계에서 뺀다', () => {
+  const trip={start:'2026-11-02',budget:{amount:500000},days:[{spots:[{name:'A',cost:100000}]}],bookings:[{id:'h',type:'hotel',name:'H',price:200000,start:'2026-11-02',end:'2026-11-03'}]};
+  const days=trip.days.map((_,i)=>({index:i,cost:L.dayCostSummary(trip,i,{date:'2026-11-0'+(2+i),rates:{KRW:1},taxi:null,transportUnpriced:false})}));
+  const s=L.tripCostSummary(trip,days,{KRW:1});
+  assert.equal(s.totalKRW, 300000);
+  assert.equal(s.budget.costKRW, s.totalKRW);
+  assert.equal(s.budget.remainingKRW, 500000-s.totalKRW);
+  assert.equal(L.tripCostSummary({...trip,budget:undefined},days,{KRW:1}).budget, null);
+});
