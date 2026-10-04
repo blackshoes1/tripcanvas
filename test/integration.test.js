@@ -8341,7 +8341,7 @@ test('통합(B-4): 웹에서도 하루 추가 비용을 적고 고치고 지운�
     assert.equal(el('placeCostTitle').textContent, '쓴 돈');
     assert.equal(el('costTitleWrap').hidden, false);
     assert.equal(el('costPayState').value, 'PAID', '현지에서 낸 돈 — 결제 완료로 시작한다(앱의 빠른 입력과 같다)');
-    assert.ok(w.document.querySelector('#costKind option[value="AUTO"]').hidden, "'장소 분류에 따름'은 없다");
+    assert.equal(w.document.querySelector('#costKind option[value="AUTO"]'), null, "'장소 분류에 따름'은 없다");
     el('costPlaceSave').click();
     assert.ok(el('costAmountErr'), '금액 없이 저장하지 않는다');
     el('costTitle').value='점심'; el('costAmount').value='15000'; el('costPlaceSave').click();
@@ -8361,5 +8361,88 @@ test('통합(B-4): 웹에서도 하루 추가 비용을 적고 고치고 지운�
     w.eval('openSpotModal(0,0)'); el('spotCostBtn').click();
     assert.equal(el('placeCostTitle').textContent, '장소 비용');
     assert.equal(el('costTitleWrap').hidden, true);
+  }finally{ w.close(); }
+});
+
+test('통합(C-2): 여행 인원은 한 번 정하고, 1인 금액·예약 인원·새 숙박의 기본값이 된다 — 적힌 값이 이긴다', { skip: noJsdom }, async () => {
+  const w=boot();
+  try{
+    withTrip(w, `[{spots:[{name:'미술관',city:'M',lat:40.41,lng:-3.69},{name:'식당',city:'M',lat:40.42,lng:-3.70,cost:30,cur:'EUR',costBasis:'PER_PERSON',costPeople:3}]}]`);
+    w.eval('render()');
+    const el=(id)=>w.document.getElementById(id);
+    // 여행 설정에서 정한다
+    el('tripEditBtn').click();
+    assert.equal(el('tripPeople').value, '', '정하지 않았으면 비어 있다');
+    el('tripPeople').value='0'; el('tripSave').click();
+    assert.ok(el('tripPeopleErr'), '1~100명이 아니면 그 칸 옆에서 말한다');
+    el('tripPeople').value='4'; el('tripSave').click();
+    assert.equal(w.eval('trip().people'), 4);
+    // 1인 금액 — 처음 켜면 여행 인원으로 시작
+    w.eval('openSpotModal(0,0)'); el('spotCostBtn').click();
+    assert.equal(el('costPeople').value, '4');
+    el('placeCostDialog').close();
+    // 이미 적힌 인원은 그대로
+    w.eval('openSpotModal(0,1)'); el('spotCostBtn').click();
+    assert.equal(el('costPeople').value, '3', '저장된 값이 이긴다');
+    el('placeCostDialog').close();
+    // 예약 인원 — 칸을 채워 두지 않고(빈 예약 정보를 만들지 않게) 예약 완료를 켤 때 채운다
+    w.eval('openSpotModal(0,0)');
+    assert.equal(el('spotAdmPeople').value, '');
+    assert.match(el('spotAdmPeople').placeholder, /4명/);
+    el('spotAdmBooked').checked=true; el('spotAdmBooked').dispatchEvent(new w.Event('change'));
+    assert.equal(el('spotAdmPeople').value, '4');
+    // 새 숙박 예약의 성인 수
+    w.eval('openBookingModal(null)');
+    assert.equal(el('bkAdults').value, '4');
+    // 비우면 지운다
+    el('tripEditBtn').click(); el('tripPeople').value=''; el('tripSave').click();
+    assert.equal(w.eval('"people" in trip()'), false);
+    await new Promise(r=>setTimeout(r,0));   // 펼친 묶음의 toggle 이벤트가 창을 닫은 뒤에 오지 않게
+  }finally{ w.close(); }
+});
+
+test('통합(C-3): 비용 분류는 9가지 하나 — 장소 종류에서 고른 분류로 열고, 그대로 두면 저장하지 않는다', { skip: noJsdom }, async () => {
+  const w=boot();
+  try{
+    withTrip(w, `[{spots:[{name:'카와카미안',cat:'food',city:'T',lat:35.6,lng:139.7,cost:3000,cur:'JPY'},{name:'루브르',cat:'sight',city:'P',lat:48.86,lng:2.33,cost:22,cur:'EUR',costKind:'OTHER'}]}]`);
+    w.eval('render()');
+    const el=(id)=>w.document.getElementById(id);
+    assert.deepEqual([...el('costKind').options].map(o=>o.value), ['FLIGHT','STAY','RENT','TRANSIT','FOOD','SHOPPING','TICKET','TRANSPORT','OTHER'],
+      'lib COST_CATEGORIES와 같은 9가지·같은 순서');
+    w.eval('openSpotModal(0,0)'); el('spotCostBtn').click();
+    assert.equal(el('costKind').value, 'FOOD', '식당이면 식비로 연다(costCategoryOf)');
+    assert.match(el('costKindHint').textContent, /장소 종류/);
+    el('costPlaceSave').click(); el('spotSave').click();
+    assert.equal(w.eval('"costKind" in trip().days[0].spots[0]'), false, '고른 것이 장소 종류의 분류와 같으면 저장하지 않는다 — 종류를 바꾸면 따라간다');
+    w.eval('openSpotModal(0,0)'); el('spotCostBtn').click();
+    el('costKind').value='SHOPPING'; el('costKind').dispatchEvent(new w.Event('change'));
+    assert.equal(el('costKindHint').textContent, '', '다르게 고르면 안내가 사라진다');
+    el('costPlaceSave').click(); el('spotSave').click();
+    assert.equal(w.eval('trip().days[0].spots[0].costKind'), 'SHOPPING');
+    // 이미 적힌 분류는 장소 종류의 분류와 달라도 그대로 연다
+    w.eval('openSpotModal(0,1)'); el('spotCostBtn').click();
+    assert.equal(el('costKind').value, 'OTHER');
+    el('costPlaceSave').click(); el('spotSave').click();
+    assert.equal(w.eval('trip().days[0].spots[1].costKind'), 'OTHER');
+    await new Promise(r=>setTimeout(r,0));
+  }finally{ w.close(); }
+});
+
+test('통합(C-4): 일자 편집에서 이동 메모 칸은 이미 적힌 날에만 보이고, 적힌 값은 그대로 남는다', { skip: noJsdom }, async () => {
+  const w=boot();
+  try{
+    withTrip(w, `[{drive:'🚗 128km · 1시간 45분',spots:[{name:'A',city:'M',lat:40.41,lng:-3.69}]},{spots:[{name:'B',city:'M',lat:40.42,lng:-3.70}]}]`);
+    w.eval('render()');
+    const el=(id)=>w.document.getElementById(id);
+    w.eval('openDayModal(1)');
+    assert.equal(el('dayDriveWrap').hidden, true, '계산된 이동과 겹친다 — 적지 않은 날에는 칸을 두지 않는다');
+    el('dayTitle').value='세비야'; el('daySave').click();
+    assert.equal(w.eval('trip().days[1].drive||""'), '');
+    w.eval('openDayModal(0)');
+    assert.equal(el('dayDriveWrap').hidden, false, '이미 적혀 있으면 보이고 고칠 수 있다');
+    assert.equal(el('dayDrive').value, '🚗 128km · 1시간 45분');
+    el('daySave').click();
+    assert.equal(w.eval('trip().days[0].drive'), '🚗 128km · 1시간 45분', '저장해도 지우지 않는다');
+    await new Promise(r=>setTimeout(r,0));
   }finally{ w.close(); }
 });

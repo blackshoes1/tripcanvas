@@ -198,7 +198,9 @@
   <div id="costTitleWrap" hidden><label for="costTitle">뭐에 썼나요</label><input type="text" id="costTitle" maxlength="80" placeholder="비우면 분류 이름 (예: 점심, 택시)"></div>
   <label for="costAmount">금액</label><input id="costAmount" inputmode="decimal" placeholder="미정 (무료는 0)">
   <label for="costCurrency">통화</label><select id="costCurrency"><option value="KRW">₩ 원</option><option value="USD">$ 달러</option><option value="EUR">€ 유로</option><option value="JPY">¥ 엔</option><option value="CNY">元 위안</option></select>
-  <label for="costKind">분류</label><select id="costKind"><option value="AUTO">장소 분류에 따름</option><option value="FLIGHT">항공</option><option value="STAY">숙박</option><option value="RENT">렌트</option><option value="TRANSIT">대중교통</option><option value="FOOD">식비</option><option value="SHOPPING">쇼핑</option><option value="TICKET">입장권·관람권</option><option value="TRANSPORT">택시·기타 교통</option><option value="OTHER">기타</option></select>
+  <!-- 비용 분류는 lib COST_CATEGORIES 9가지 하나(2026-10-05) — 옵션은 app.js가 COST_KIND 이름으로 채운다. '장소 분류에 따름'은 없앴다 -->
+  <label for="costKind">분류</label><select id="costKind" aria-describedby="costKindHint"></select>
+  <div class="hint" id="costKindHint"></div>
   <!-- 금액 기준(입력 그대로·전체·1인)과 인원을 '1인 금액이에요' 하나로(2026-10-04) — 켜면 인원을 묻는다. 저장 표현(costBasis·costPeople)은 그대로 -->
   <div class="chkrow"><input type="checkbox" id="costPerPerson"><label for="costPerPerson">1인 금액이에요</label></div>
   <div id="costPeopleWrap" hidden><label for="costPeople">몇 명</label><input type="number" id="costPeople" min="1" max="100"></div>
@@ -246,7 +248,8 @@
   <!-- 항공편은 항공 예약에 산다(2026-10-04) — 여기 칸은 옛 항공편이 남아 있을 때만 보이고, 예약으로 옮기는 길을 준다 -->
   <div id="flightToBooking" class="hint" style="display:none"><span id="flightToBookingText"></span> <button type="button" class="btn sm" id="flightToBookingBtn"></button></div>
   <label for="dayTitle">제목 (예: → 세비야 (2박))</label><input type="text" id="dayTitle">
-  <label for="dayDrive">이동 정보 (예: 🚗 128km · 1시간 45분)</label><input type="text" id="dayDrive">
+  <!-- 이동 메모는 계산된 이동과 겹친다(2026-10-05) — 이미 적힌 날에만 보이고 값은 그대로 둔다(일정의 '이동 메모' 표시가 읽는다) -->
+  <div id="dayDriveWrap" hidden><label for="dayDrive">이동 메모 (계산된 이동과 따로 적어 둔 것)</label><input type="text" id="dayDrive"></div>
   <label for="dayNote">메모</label><textarea id="dayNote"></textarea>
   <div class="row">
     <button class="btn" id="dayDelBtn" style="margin-right:auto;color:var(--meta-danger)">일자 삭제</button>
@@ -427,6 +430,9 @@
   <label for="tripDays">기간 (일수)</label>
   <div class="fieldRow"><input type="number" id="tripDays" min="1" max="90" step="1" inputmode="numeric" class="compactSelect"><span class="hint" id="tripRange" style="margin:0;align-self:center"></span></div>
   <div class="hint">종료일을 고르거나 일수를 적으면 서로 맞춰져요. 늘리면 빈 일자가 뒤에 붙고, 줄이면 뒤에서부터 지워요. 장소가 있는 일자를 지울 때는 한 번 더 물어요. 시작일을 바꾸면 일정 전체의 날짜가 옮겨지고, 예약 날짜는 그대로예요.</div>
+  <label for="tripPeople">인원</label>
+  <div class="fieldRow"><input type="number" id="tripPeople" min="1" max="100" step="1" inputmode="numeric" class="compactSelect" placeholder="정하지 않음" aria-describedby="tripPeopleHelp"></div>
+  <div class="hint" id="tripPeopleHelp">1인 금액·예약 인원·새 숙박 예약의 인원을 이 값으로 시작해요. 이미 적은 인원은 그대로예요.</div>
   <label for="tripTimeZone">여행 기본 시간대</label><input type="text" id="tripTimeZone" list="timezoneList" placeholder="예: 도쿄, Asia/Tokyo" aria-describedby="tripTimeZoneHelp">
   <div class="hint" id="tripTimeZoneHelp">도시 이름(서울·파리·도쿄…)이나 Asia/Tokyo처럼 적어요. 국내 여행은 비워 두면 한국 시간으로 봐요. 일자별 시간대가 있으면 그 값이 우선해요.</div>
   <label><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7v5l3.2 1.9M3.5 12a8.5 8.5 0 1 0 2.6-6.1M3.5 4.5V9h4.5"/></svg> 버전 기록 (10분 간격 자동 저장, 최근 15개)</label>
