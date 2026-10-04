@@ -170,3 +170,28 @@ test('장소 비용 창의 Tab·Escape는 뒤의 장소 편집기를 조작하�
   await expect(dialog).not.toBeVisible();
   await expect(page.locator('#spotModalBg')).toBeVisible();
 });
+
+// 2026-10-04 CI에서만 드러났다 — 버튼 아래쪽이 창의 고정 버튼 줄과 조금 겹치면, 누르는 순간(mousedown의 포커스) 창이 스크롤돼
+// 버튼이 포인터 밑에서 빠지고 click이 사라졌다. 포커스 보정(focusin)은 키보드로 옮겨 갈 때만 해야 한다
+test('고정 버튼 줄과 살짝 겹친 버튼도 한 번 누르면 눌린다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/'); await page.evaluate(SEED);
+  await page.evaluate(() => { openSpotModal(1, 0); document.getElementById('spotAdvanced').open = true; });
+  await expect(page.locator('#spotCostBtn')).toBeVisible();
+  await page.evaluate(() => {
+    const box = document.querySelector('#spotModalBg .modal'), btn = document.getElementById('spotCostBtn');
+    const bar = box.querySelector(':scope>.modalActions');
+    // 버튼 아래 12px가 고정 줄 밑으로 들어가게 — 스크롤 위치에 기대지 않고 버튼 앞에 빈 칸을 넣어 맞춘다
+    box.scrollTop = 0;
+    const r = btn.getBoundingClientRect(), top = bar.getBoundingClientRect().top;
+    const pad = document.createElement('div'); pad.id = 'e2ePad';
+    pad.style.height = Math.max(0, (top + 12) - r.bottom) + 'px';
+    btn.parentElement.insertBefore(pad, btn);
+    if (pad.offsetHeight === 0) box.scrollTop += r.bottom - (top + 12);   // 이미 줄 아래면 그만큼 올린다
+  });
+  const r = await page.locator('#spotCostBtn').boundingBox();
+  const barTop = await page.evaluate(() => document.querySelector('#spotModalBg .modal>.modalActions').getBoundingClientRect().top);
+  expect(r.y + r.height, '재현 조건 — 버튼 아래쪽이 고정 줄과 겹친다').toBeGreaterThan(barTop);
+  await page.mouse.click(r.x + r.width / 2, r.y + r.height / 2);   // Playwright의 click처럼 가운데를 누른다(가운데는 아직 보인다)
+  expect(await page.locator('#placeCostDialog').evaluate((d) => d.open)).toBe(true);
+});

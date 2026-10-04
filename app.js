@@ -8474,8 +8474,11 @@ document.addEventListener('focusout',e=>{
 })();
 // 고정된 머리·버튼 줄이 있는 창에서 포커스가 그 밑에 숨지 않게 한다 — 장소 살펴보기의 '리뷰 보기'에 포커스가 가도
 // 'Day 1에 담기' 줄에 완전히 가려져, 보이지 않는 버튼이 눌렸다(2026-10-03 UX 검토). 브라우저가 스크롤한 뒤 가린 만큼 더 민다.
+// ⚠️ 누를 때(포인터)는 밀지 않는다 — 보이는 버튼을 눌렀는데 mousedown의 포커스에서 창이 스크롤되면 버튼이 손가락 밑에서
+// 빠져 click이 사라졌다(2026-10-04 CI — 버튼 아래쪽이 고정 줄과 조금 겹친 장소 비용 버튼). 키보드로 옮겨 갈 때만 민다.
 document.addEventListener('focusin',e=>{
   const el=/** @type {any} */(e.target); if(!el||!el.closest) return;
+  try{ if(!el.matches(':focus-visible')) return; }catch(_){}
   const box=el.closest('#placeDetails,.modal'); if(!box||box.scrollHeight<=box.clientHeight) return;
   const r=el.getBoundingClientRect();
   const bar=box.querySelector(':scope>#placeDetailsActions,:scope>.modalActions');
