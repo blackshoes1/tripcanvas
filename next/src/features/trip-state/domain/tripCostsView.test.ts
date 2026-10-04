@@ -29,3 +29,12 @@ it('일자 줄은 하루치 그대로이고, 넘친 밤은 날짜 없는 STAY �
   expect(body.unallocated).toMatchObject([{ source: 'STAY', key: '1.0', kind: 'STAY', amount: 200000, totalKRW: 200000, dayIndex: null }]);
   expect(body.categories.find(c => c.kind === 'STAY')?.totalKRW).toBe(300000);
 });
+
+// 비용 입력 정리 C-1(2026-10-05): 여행 총예산은 예약과 현지 지출을 모두 센 전체 비용에서 뺀다 — 웹 필터바와 같은 함수(`tripBudgetStatus`).
+it('총예산이 있으면 남은 예산을 싣고, 없으면 null이다', () => {
+  const withBudget = { ...doc, budget: { amount: 400000 } };
+  const body = buildTripCosts(withBudget as unknown as TripDoc, {}, 1);
+  expect(body.budget).toEqual({ amount: 400000, currency: 'KRW', totalKRW: 400000, costKRW: body.totalKRW,
+    remainingKRW: 400000 - body.totalKRW, perDayKRW: 200000 });
+  expect(buildTripCosts(doc as unknown as TripDoc, {}, 1).budget).toBeNull();
+});

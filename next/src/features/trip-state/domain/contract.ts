@@ -958,12 +958,30 @@ export interface TripCostsResponse {
    * `prep.totalKRW + onSite.totalKRW === totalKRW`. 그래서 날짜별 `onSiteKRW`의 합과는 넘친 몫만큼 다를 수 있다.
    */
   onSite: TripCostGroup;
+  /**
+   * 여행 총예산 대비(`trip.budget`, 2026-10-05) — 예산이 없으면 null. 예약과 현지 지출을 모두 센 `totalKRW`에서 뺀다.
+   * 웹 필터바와 같은 함수(`tripBudgetStatus`)다. ⚠️ 옛 NAS API에는 없다(Swift는 옵셔널).
+   */
+  budget: TripBudgetStatus | null;
   unknownCount: number;
   transportUnpriced: boolean;
   hasForeignCurrency: boolean;
   fxRates: Record<string, number>;
   fxSource: string;
   fxAsOf: string | null;
+}
+export interface TripBudgetStatus {
+  /** 적은 금액과 통화 그대로 */
+  amount: number;
+  currency: string;
+  /** 예산의 원화 */
+  totalKRW: number;
+  /** 예산과 비교한 전체 비용(= `totalKRW` of the trip) */
+  costKRW: number;
+  /** 남은 예산. 넘으면 음수 — 숨기지 않는다 */
+  remainingKRW: number;
+  /** 예산을 일수로 나눈 하루 평균 — 보여 주기만 한다 */
+  perDayKRW: number | null;
 }
 export type TripCostLine = import('@/features/trip/domain/costTypes').CostDetails['items'][number] & { dayIndex: number | null };
 export interface TripCostGroup {

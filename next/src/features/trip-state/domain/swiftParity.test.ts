@@ -379,7 +379,8 @@ describe('유입·기록 계약도 Swift가 전부 담는다', () => {
 
 it('여행 전체 비용 계약과 Swift 필드 및 실제 디코딩 fixture가 일치한다', async () => {
   const { buildTripCosts } = await import('./tripCostsView');
-  const response = buildTripCosts(trip, {}, 2);
+  // 총예산을 넣어 `budget`(TripBudgetStatus)까지 순회·픽스처에 실린다(2026-10-05)
+  const response = buildTripCosts({ ...trip, budget: { amount: 1000000 } } as TripDoc, {}, 2);
   expect(new Set(Object.keys(response))).toEqual(swiftProperties('TripCostsResponse'));
   expect(new Set(Object.keys(response.days[0]))).toEqual(swiftProperties('TripCostDay'));
   expect(new Set(Object.keys(response.categories[0]))).toEqual(swiftProperties('TripCostCategory'));
