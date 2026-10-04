@@ -369,17 +369,25 @@ describe('그 외 표시 배선', () => {
       { bookings: [hotelBooking()] }
     );
 
-    it('연결된 숙박은 일정 카드 금액만 센다 — 예약 금액을 더하지 않는다', () => {
+    // 2026-10-04 — 연결된 숙소의 금액은 예약이 유일한 출처다(`effectiveCostDays`). 전에는 장소 금액이 이겨
+    // 예약에서 고친 금액이 합계에 닿지 않았다. 장소에 남은 옛 금액은 계산하지 않는다
+    it('연결된 숙박은 예약 금액만 센다 — 장소에 남은 옛 금액을 더하지 않는다', () => {
       const t = linked(180000);
-      expect(tripCostBreakdownOf(t, NONE).spots).toBe(180000);
-      expect(tripCostBreakdownOf(t, NONE).hotel).toBe(0);
-      expect(tripCostBreakdownOf(t, NONE).total).toBe(180000);   // 380000이 아니다
+      expect(tripCostBreakdownOf(t, NONE).spots).toBe(0);
+      expect(tripCostBreakdownOf(t, NONE).hotel).toBe(200000);
+      expect(tripCostBreakdownOf(t, NONE).total).toBe(200000);   // 380000이 아니다
     });
 
     it('하루 비용에서도 두 번 잡히지 않는다', () => {
       const v = buildDayView(linked(180000), NONE, 0);
-      expect(v.cost.total).toBe(180000);
-      expect(v.cost.parts.map(p => p.label)).toEqual(['장소']);   // '예약' 몫이 없다
+      expect(v.cost.total).toBe(200000);
+      expect(v.cost.parts.map(p => p.label)).toEqual(['예약']);   // 장소 몫이 없다
+    });
+
+    it('예약에 금액이 없을 때만 장소에 적어 둔 금액을 쓴다', () => {
+      const t = trip([day([hotel({ bookingId: 'b1', cost: 180000 })])], { bookings: [hotelBooking({ price: null as unknown as number })] });
+      expect(tripCostBreakdownOf(t, NONE).spots).toBe(180000);
+      expect(tripCostBreakdownOf(t, NONE).hotel).toBe(0);
     });
 
     it('장소에 비용을 안 적었으면 예약 금액을 쓴다 — 돈이 사라지지 않게', () => {
@@ -404,9 +412,9 @@ describe('그 외 표시 배선', () => {
         } as Booking]
       });
       const c = tripCostBreakdownOf(t, NONE);
-      expect(c.hotel).toBe(0);
+      expect(c.hotel).toBe(200000);
       expect(c.car).toBe(90000);
-      expect(c.total).toBe(180000 + 90000);
+      expect(c.total).toBe(200000 + 90000);
     });
   });
 

@@ -197,8 +197,10 @@ export function dayCostPartsOf(trip: Trip, legCache: LegCache, di: number, fx: F
 /** 필터바 '전체 비용'과 같은 규칙 — 장소 + (택시일) 택시 + 예약 전액 */
 export function tripCostBreakdownOf(trip: Trip, legCache: LegCache, fx: FxRates = fxRates()): TripCostView {
   const out: TripCostView = { spots: 0, taxi: 0, hotel: 0, car: 0, flight: 0, total: 0 };
+  // 연결된 숙소의 금액은 예약이 낸다(`effectiveCostDays`) — 아래 예약 금액과 두 번 잡지 않는다
+  const costDays = legacyLib.effectiveCostDays(trip.days, tripBookings(trip)) as Trip['days'];
   trip.days.forEach((d, i) => {
-    out.spots += dayEnteredCost(d, fx);
+    out.spots += dayEnteredCost(costDays[i], fx);
     if (taxiFareCounts(d))
       out.taxi += dayRouteOf(legCache, d, dayJourneyOf(trip, legCache, i))?.taxi ?? 0;
   });
@@ -360,7 +362,8 @@ export function buildDayView(trip: Trip, legCache: LegCache, di: number, fx: FxR
     ? `⚠️ 일정 과밀 — 예상 종료 ${hm(end)}${end >= 24 * 60 ? ' (익일)' : ''}`
     : null;
 
-  const f = day.flight;
+  // 항공편 — 항공 예약의 구간과 일자의 옛 항공편(`dayFlights`, 2026-10-04). 이 화면은 한 줄이라 첫 편만
+  const f = legacyLib.dayFlights(trip, di)[0];
   const dep = f ? [f.dep, f.depAt].filter(Boolean).join(' ') : '';
   const arr = f ? [f.arr, f.arrAt].filter(Boolean).join(' ') : '';
   const route = [dep, arr].filter(Boolean).join(' → ');

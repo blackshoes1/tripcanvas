@@ -115,37 +115,52 @@ test('보기 설정 패널도 모바일 필터바에 잘리지 않는다',async(
   await panel.locator('.cityFocusBtn').first().click();
 });
 
-test('비용 입력은 일정 장소의 값을 편집하고 체크한 범위만 삭제한다',async({page})=>{
+test('장소 비용은 장소 편집기의 요약 한 줄에서 열고, 장소를 저장할 때 들어간다',async({page})=>{
+  // 2026-10-04 — 같은 spot.cost를 장소 편집기와 예약 결제 목록 안의 '장소 비용 입력'이 따로 받았다. 이제 한 창이다
   await page.goto('/'); await page.evaluate(SEED);
   await page.evaluate(()=>{
-    const s=trip().days[1].spots[0]; s.cost=12.5; s.cur='EUR'; s.paidOn='2026-10-01'; s.costPeople=2; s.costBasis='PER_PERSON';
-    openPlaceCost(1);
+    const s=trip().days[1].spots[0]; s.cost=12.5; s.cur='EUR'; s.payState='PAID'; s.paidOn='2026-10-01'; s.costPeople=2; s.costBasis='PER_PERSON';
+    openSpotModal(1,0); document.getElementById('spotAdvanced').open=true;
   });
+  await page.locator('#spotCostBtn').click();
   await expect(page.locator('#costAmount')).toHaveValue('12.5');
   await expect(page.locator('#costCurrency')).toHaveValue('EUR');
+  await expect(page.locator('#costPaidOnLabel')).toHaveText('결제일 (선택)');
   await expect(page.locator('#costPaidOn')).toHaveValue('2026-10-01');
   await page.locator('#costAmount').fill('15.25');
   await page.locator('#costPlaceSave').click();
+  await expect(page.locator('#spotCostBtn')).toContainText('€15.25');
+  expect(await page.evaluate(()=>trip().days[1].spots[0].cost)).toBe(12.5);   // 장소를 저장하기 전에는 그대로
+  await page.locator('#spotSave').click();
   expect(await page.evaluate(()=>trip().days[1].spots[0].cost)).toBe(15.25);
-  await page.evaluate(()=>openPlaceCost(1));
-  await page.locator('#costPlaceDelete').click();
-  await expect(page.locator('#costDeleteSource')).not.toBeChecked();
-  await page.locator('#costDeleteConfirm').click();
-  expect(await page.evaluate(()=>trip().days[1].spots[0].cost)).toBeUndefined();
+  // 비용 지우기 — 장소는 남고 비용만 빠진다
   const count=await page.evaluate(()=>trip().days[1].spots.length);
-  await page.evaluate(()=>openPlaceCost(1));
+  await page.evaluate(()=>{ openSpotModal(1,0); document.getElementById('spotAdvanced').open=true; });
+  await page.locator('#spotCostBtn').click();
   await page.locator('#costPlaceDelete').click();
-  await page.locator('#costDeleteSource').check();
-  await page.locator('#costDeleteConfirm').click();
-  expect(await page.evaluate(()=>trip().days[1].spots.length)).toBe(count-1);
+  await expect(page.locator('#spotCostBtn')).toContainText('미정');
+  await page.locator('#spotSave').click();
+  expect(await page.evaluate(()=>trip().days[1].spots[0].cost)).toBeUndefined();
+  expect(await page.evaluate(()=>trip().days[1].spots.length)).toBe(count);
+  // 예약 결제 목록에는 장소 비용 버튼이 없다
+  await page.evaluate(()=>{ document.getElementById('spotModalBg').classList.remove('show'); openBookingList(); });
+  await expect(page.locator('#costPlaceOpen')).toHaveCount(0);
 });
 
-test('비용 입력 창의 Tab·Escape는 뒤의 목록을 조작하지 않는다',async({page})=>{
+test('장소 비용 창의 Tab·Escape는 뒤의 장소 편집기를 조작하지 않는다',async({page})=>{
   await page.setViewportSize({width:390,height:844});
+  const errors=[];
+  page.on('pageerror', e=>errors.push(String(e&&e.message||e)));
   await page.goto('/'); await page.evaluate(SEED);
-  await page.evaluate(()=>openBookingList());
-  await page.locator('#costPlaceOpen').click();
-  const dialog=page.getByRole('dialog',{name:'일정 장소 비용 입력'});
+  await page.evaluate(()=>{ openSpotModal(1,0); document.getElementById('spotAdvanced').open=true; });
+  await expect(page.locator('#spotModalBg')).toBeVisible();
+  await expect(page.locator('#spotCostBtn')).toBeVisible();
+  await page.locator('#spotCostBtn').click();
+  // 이름이 아니라 그 창 자체로 찾는다 — CI(리눅스)에서 이름으로 찾다 못 찾았다(로컬은 통과). 창의 이름은 h2가 준다
+  const dialog=page.locator('#placeCostDialog');
+  const where=await page.evaluate(()=>{ const r=document.getElementById('spotCostBtn').getBoundingClientRect(); const h=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2); return (h&&(h.id||h.className||h.tagName))+' @'+Math.round(r.top); });
+  expect(await dialog.evaluate(d=>d.open), `비용 창이 열리지 않았다 — 페이지 오류: ${errors.join(' | ')||'없음'} · 누른 자리: ${where}`).toBe(true);
+  await expect(dialog).toHaveAttribute('aria-labelledby','placeCostTitle');
   await expect(dialog).toBeVisible();
   await page.keyboard.press('Tab');
   expect(await dialog.evaluate(el=>el.contains(document.activeElement))).toBe(true);
@@ -153,5 +168,30 @@ test('비용 입력 창의 Tab·Escape는 뒤의 목록을 조작하지 않는�
   expect(box.x).toBeGreaterThanOrEqual(0); expect(box.x+box.width).toBeLessThanOrEqual(390);
   await page.keyboard.press('Escape');
   await expect(dialog).not.toBeVisible();
-  await expect(page.locator('#bookingListBg')).toBeVisible();
+  await expect(page.locator('#spotModalBg')).toBeVisible();
+});
+
+// 2026-10-04 CI에서만 드러났다 — 버튼 아래쪽이 창의 고정 버튼 줄과 조금 겹치면, 누르는 순간(mousedown의 포커스) 창이 스크롤돼
+// 버튼이 포인터 밑에서 빠지고 click이 사라졌다. 포커스 보정(focusin)은 키보드로 옮겨 갈 때만 해야 한다
+test('고정 버튼 줄과 살짝 겹친 버튼도 한 번 누르면 눌린다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/'); await page.evaluate(SEED);
+  await page.evaluate(() => { openSpotModal(1, 0); document.getElementById('spotAdvanced').open = true; });
+  await expect(page.locator('#spotCostBtn')).toBeVisible();
+  await page.evaluate(() => {
+    const box = document.querySelector('#spotModalBg .modal'), btn = document.getElementById('spotCostBtn');
+    const bar = box.querySelector(':scope>.modalActions');
+    // 버튼 아래 12px가 고정 줄 밑으로 들어가게 — 스크롤 위치에 기대지 않고 버튼 앞에 빈 칸을 넣어 맞춘다
+    box.scrollTop = 0;
+    const r = btn.getBoundingClientRect(), top = bar.getBoundingClientRect().top;
+    const pad = document.createElement('div'); pad.id = 'e2ePad';
+    pad.style.height = Math.max(0, (top + 12) - r.bottom) + 'px';
+    btn.parentElement.insertBefore(pad, btn);
+    if (pad.offsetHeight === 0) box.scrollTop += r.bottom - (top + 12);   // 이미 줄 아래면 그만큼 올린다
+  });
+  const r = await page.locator('#spotCostBtn').boundingBox();
+  const barTop = await page.evaluate(() => document.querySelector('#spotModalBg .modal>.modalActions').getBoundingClientRect().top);
+  expect(r.y + r.height, '재현 조건 — 버튼 아래쪽이 고정 줄과 겹친다').toBeGreaterThan(barTop);
+  await page.mouse.click(r.x + r.width / 2, r.y + r.height / 2);   // Playwright의 click처럼 가운데를 누른다(가운데는 아직 보인다)
+  expect(await page.locator('#placeCostDialog').evaluate((d) => d.open)).toBe(true);
 });

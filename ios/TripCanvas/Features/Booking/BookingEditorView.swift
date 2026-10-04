@@ -55,6 +55,8 @@ struct BookingEditorView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var kind: CostCategory
     @State private var draft: TripBooking
+    /// 고치는 중인 항공편 구간 — 빈 줄도 담는다(저장할 때 `segments`가 빈 줄을 뺀다)
+    @State private var segmentsDraft: [FlightSegment] = []
     @State private var links: BookingLinks
     @State private var priceText: String
     @State private var feeText: String
@@ -78,7 +80,8 @@ struct BookingEditorView: View {
     @State private var initialTexts: [String]?
     private var textInputs: [String] {
         [priceText, feeText, urlText, roomNameText, pickupPlace, pickupCode, returnPlace, returnCode,
-         kind.rawValue, currency.rawValue, paidOn ?? "", payState.rawValue, photos.joined(separator: ",")]
+         kind.rawValue, currency.rawValue, paidOn ?? "", payState.rawValue, photos.joined(separator: ","),
+         segmentsDraft.map { [$0.date ?? "", $0.code, $0.dep, $0.arr, $0.depAt ?? "", $0.arrAt ?? ""].joined(separator: "|") }.joined(separator: ";")]
     }
     private var isDirty: Bool {
         guard let initialDraft, let initialLinks, let initialTexts else { return false }
@@ -121,6 +124,7 @@ struct BookingEditorView: View {
         var draft = booking
         if let item { draft.title = item.title }
         _draft = State(initialValue: draft)
+        _segmentsDraft = State(initialValue: draft.segments)
         _links = State(initialValue: target.booking.map { document.links(forBooking: $0.id) } ?? .empty)
         let amount: Double? = item != nil ? item?.amount : (booking.price > 0 ? booking.price : nil)
         _priceText = State(initialValue: amount.map { MoneyInput.text(amount: $0) } ?? "")
@@ -171,10 +175,15 @@ struct BookingEditorView: View {
                 }
 
                 if isBookingKind {
-                    Section("기간") {
-                        DateField(title: draft.type.startLabel, text: $draft.start) { Date() }
-                        DateField(title: draft.type.endLabel, text: $draft.end) {
-                            ISODateText.date(from: draft.start).flatMap { ISODateText.calendar.date(byAdding: .day, value: 1, to: $0) } ?? Date()
+                    // 항공은 기간 대신 구간이다 — 편명·공항·시각이 여기 산다(2026-10-04, 웹과 같다). 기간은 구간의 날짜가 정한다
+                    if kind == .flight {
+                        flightSection
+                    } else {
+                        Section("기간") {
+                            DateField(title: draft.type.startLabel, text: $draft.start) { Date() }
+                            DateField(title: draft.type.endLabel, text: $draft.end) {
+                                ISODateText.date(from: draft.start).flatMap { ISODateText.calendar.date(byAdding: .day, value: 1, to: $0) } ?? Date()
+                            }
                         }
                     }
 
@@ -209,20 +218,23 @@ struct BookingEditorView: View {
                     }
                 }
 
-                // 날짜와 상태는 독립적으로 입력한다(웹과 같다).
+                // 결제는 상태가 먼저고 날짜는 그 상태의 선택 칸이다(2026-10-04, 웹 syncPayDate와 같다) — 고르지 않았으면 날짜를
+                // 묻지 않고 이름이 상태를 따른다. 날짜와 상태는 따로 저장되고, 날짜가 지나도 상태는 바뀌지 않는다.
                 Section {
-                    Toggle("결제(예정)일 정하기", isOn: Binding(
-                        get: { paidOn != nil },
-                        set: { on in paidOn = on ? (paidOn ?? ISODateText.text(from: Date())) : nil }))
-                    if paidOn != nil {
-                        DatePicker(payState == .paid ? "결제일" : payState == .reserved ? "결제 예정일" : "결제(예정)일", selection: Binding(
-                            get: { paidOn.flatMap { ISODateText.date(from: $0) } ?? Date() },
-                            set: { paidOn = ISODateText.text(from: $0) }), displayedComponents: .date)
-                    }
                     Picker("결제 상태", selection: $payState) {
                         Text(CostPayState.reserved.label).tag(CostPayState.reserved)
                         Text(CostPayState.paid.label).tag(CostPayState.paid)
                         if !isBookingKind { Text(CostPayState.none.label).tag(CostPayState.none) }
+                    }
+                    if payState != .none {
+                        Toggle(payState == .paid ? "결제일 정하기" : "결제 예정일 정하기", isOn: Binding(
+                            get: { paidOn != nil },
+                            set: { on in paidOn = on ? (paidOn ?? ISODateText.text(from: Date())) : nil }))
+                        if paidOn != nil {
+                            DatePicker(payState == .paid ? "결제일" : "결제 예정일", selection: Binding(
+                                get: { paidOn.flatMap { ISODateText.date(from: $0) } ?? Date() },
+                                set: { paidOn = ISODateText.text(from: $0) }), displayedComponents: .date)
+                        }
                     }
                 } header: {
                     Text("결제")
@@ -459,7 +471,58 @@ struct BookingEditorView: View {
     }
 
     private var payFooter: String {
-        "실제로 결제한 뒤 결제 완료를 선택해 주세요. 날짜가 지나도 자동으로 완료되지 않아요."
+        switch payState {
+        case .paid: "이미 낸 돈으로 쳐요."
+        case .reserved: "아직 낼 돈으로 쳐요 — 실제로 결제한 뒤 결제 완료로 바꿔 주세요."
+        case .none: "고르면 비용을 이미 낸 돈과 아직 낼 돈으로 나눠 보여요."
+        }
+    }
+
+    /// 항공편 구간 — 날짜·편명·공항·시각. 비어 있으면 한 줄을 보인다(저장할 때 빈 줄은 빠진다)
+    private var flightSection: some View {
+        Section {
+            let count = max(1, segmentsDraft.count)
+            ForEach(0..<count, id: \.self) { i in
+                VStack(alignment: .leading, spacing: Space.xs) {
+                    DateField(title: "날짜", text: segmentBinding(i, \.date)) {
+                        ISODateText.date(from: i > 0 && segmentsDraft.indices.contains(i - 1) ? segmentsDraft[i - 1].date : draft.start) ?? Date()
+                    }
+                    TextField("편명 (예: KE913)", text: segmentBinding(i, \.code))
+                        .textInputAutocapitalization(.characters).autocorrectionDisabled()
+                    HStack {
+                        TextField("출발 공항", text: segmentBinding(i, \.dep))
+                        TextField("도착 공항", text: segmentBinding(i, \.arr))
+                    }
+                    ClockField(title: "출발 시각", text: segmentBinding(i, \.depAt))
+                    ClockField(title: "도착 시각", text: segmentBinding(i, \.arrAt))
+                    if segmentsDraft.count > 1 {
+                        Button("이 구간 빼기", role: .destructive) { segmentsDraft.remove(at: i) }
+                    }
+                }
+            }
+            if segmentsDraft.count < 8 {
+                Button { var s = segmentsDraft; if s.isEmpty { s = [FlightSegment()] }
+                    var next = FlightSegment(); next.date = s.last?.date; s.append(next); segmentsDraft = s } label: {
+                    Label("구간 추가", systemImage: "plus")
+                }
+            }
+        } header: {
+            Text("항공편")
+        } footer: {
+            Text("날짜를 넣은 구간은 그날 일정에 ✈️ 줄로 보여요 — 동선·도착 예상 계산에는 들어가지 않아요. 왕복이면 가는 편·오는 편을 따로 넣어요.")
+        }
+    }
+
+    /// 구간 칸 하나의 바인딩 — 아직 빈 목록이면 첫 줄을 만든다. 빈 줄은 `segments`가 저장에서 뺀다
+    private func segmentBinding<Value>(_ i: Int, _ key: WritableKeyPath<FlightSegment, Value>) -> Binding<Value> {
+        Binding(
+            get: { (segmentsDraft.indices.contains(i) ? segmentsDraft[i] : FlightSegment())[keyPath: key] },
+            set: { value in
+                var s = segmentsDraft
+                while s.count <= i { s.append(FlightSegment()) }
+                s[i][keyPath: key] = value
+                segmentsDraft = s
+            })
     }
 
     private func spotLabel(_ ref: SpotRef) -> String {
@@ -499,7 +562,7 @@ struct BookingEditorView: View {
         entry.amount = amount
         if target.item == nil { entry.basis = .total }
         entry.raw.setOrRemove("cur", currency == .krw ? nil : .string(currency.rawValue))
-        entry.paidOn = paidOn
+        entry.paidOn = payState == .none ? nil : paidOn   // 고르지 않았으면 날짜 칸이 없다 — 남은 값도 저장하지 않는다
         entry.payState = payState
         entry.photos = photos
         if await saving.perform({ await onSaveItem(entry) }) { dismiss() }
@@ -515,7 +578,15 @@ struct BookingEditorView: View {
             problem = .invalidAmount
             return
         }
-        booking.price = price ?? 0
+        if booking.type == .flight {
+            booking.segments = segmentsDraft
+            // 기간은 구간의 날짜가 정한다 — 구간이 없으면 저장된 기간을 그대로 둔다(웹 bkSave와 같다)
+            let dates = booking.segments.compactMap(\.date).sorted()
+            if let first = dates.first, let last = dates.last { booking.start = first; booking.end = last }
+        } else {
+            booking.segments = []
+        }
+        if booking.type == .flight && price == nil { booking.clearPrice() } else { booking.price = price ?? 0 }
         booking.currency = currency
         booking.url = urlText.trimmingCharacters(in: .whitespacesAndNewlines)
         booking.cancelFee = fee

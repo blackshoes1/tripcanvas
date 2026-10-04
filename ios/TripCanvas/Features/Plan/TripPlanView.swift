@@ -158,6 +158,7 @@ struct TripPlanView: View {
                     members: model.members,
                     role: model.role,
                     draftKey: EditorDraftKey(accountID: env.auth.session?.userId, tripID: trip.id, editor: "spot-\(session.day)-\(target.index.map(String.init) ?? "new")"),
+                    linkedBooking: target.spot.bookingId.flatMap { model.document?.booking(id: $0) },
                     onSave: { spot in
                         let saved: Bool
                         switch target {

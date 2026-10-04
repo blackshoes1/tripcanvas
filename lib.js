@@ -796,8 +796,8 @@
       const from=origin===null?first.index:start-origin;
       const nights=end-start;
       linked.forEach(s=>used.add(s.key));
-      // 미입력 기본 1박으로 예약 기간을 덮지 않는다. 명시한 기간만 비교한다.
-      const differs=first&&(first.index!==from||(first.spot.nights!=null&&stayNights(first.spot)!==nights));
+      // 박 수는 예약이 정한다(`lodgingNights`) — 장소에 남은 옛 `nights`와 다르다고 충돌로 보지 않는다. 날이 다를 때만 충돌이다
+      const differs=first&&first.index!==from;
       add(`booking:${booking.id}`,first?.spot.name||booking.title,from,nights,
         differs?{start:first.index,nights:stayNights(first.spot)}:null);
     }
@@ -847,14 +847,16 @@
   }
 
   /**
-   * 숙소의 박 수 — 숙박 표시(`dayLodgings`)와 같은 출처다. 장소에 `nights`를 적었으면 그 값(`stayNights`),
-   * 안 적었고 호텔 예약에 연결돼 있으면(`bookingId`) **그 예약 기간**(체크아웃 − 체크인), 둘 다 아니면 기본 1박.
+   * 숙소의 박 수 — 숙박 표시(`dayLodgings`)와 같은 출처다. 호텔 예약에 연결돼 있고(`bookingId`) 그 예약에 기간이 있으면
+   * **그 예약 기간**(체크아웃 − 체크인)이 이긴다 — 연결된 숙소는 예약이 유일한 출처다(2026-10-04, 금액과 같은 규칙).
+   * 전에는 장소에 적은 `nights`가 먼저라 예약을 3박으로 고쳐도 장소의 2박이 남아 숙박 표시가 '충돌'이 됐다.
+   * 연결이 없거나 예약 기간을 모르면 장소의 `nights`(`stayNights`), 그것도 없으면 기본 1박.
    * 예약을 연결해도 웹(`bkSave`)·iOS 모두 `bookingId`만 쓰고 `nights`는 채우지 않는다 — 미입력 기본 1박으로
    * 예약 기간을 덮으면 3박 예약의 둘째 밤이 '체크아웃한 날'이 된다(`dayLodgings`의 같은 규칙).
    * @param {any} s @param {any[]} [bookings] @returns {number}
    */
   function lodgingNights(s, bookings){
-    if(s && s.nights==null && s.bookingId && Array.isArray(bookings)){
+    if(s && s.bookingId && Array.isArray(bookings)){
       const b=bookings.find((/**@type{any}*/x)=>x&&x.type==='hotel'&&x.id===s.bookingId);
       const dateNum=(/**@type{any}*/v)=>{ const n=_dayNum(v); return n!==null&&new Date(n*86400000).toISOString().slice(0,10)===v?n:null; };
       const start=b?dateNum(b.start):null, end=b?dateNum(b.end):null;
@@ -953,8 +955,9 @@
    * 예약 하루치를 더하고 전체 비용은 장소 비용과 예약 전액을 더하므로, 양쪽에 금액을 넣으면
    * 숙박비가 두 번 잡혔다.
    *
-   * 기준은 **일정 카드에 입력한 금액**이다 — 연결된 장소에 비용이 있으면 그 예약은 예산에서 뺀다.
-   * 장소에 비용이 없을 때만 예약 금액을 쓴다(안 그러면 예약에만 적은 돈이 그냥 사라진다).
+   * 기준은 **예약 금액**이다(2026-10-04 — 전에는 일정 카드에 입력한 금액이 이겨, 예약에서 고친 금액이 합계에 닿지 않았다).
+   * 예약에 금액이 있으면 예약을 세고 연결된 장소의 비용 칸은 계산에서 뺀다(`effectiveCostDays`). 예약 금액이 없을 때만
+   * 장소에 적어 둔 금액을 쓰고 그 예약은 뺀다(안 그러면 장소에만 적은 돈이 사라지거나 두 번 잡힌다).
    * 연결이 없는 예약은 일정에 대응하는 장소가 없으므로 그대로 센다.
    * @param {any[]} bookings @param {any[]} days @returns {any[]}
    */
@@ -964,7 +967,44 @@
       const spots=(d&&Array.isArray(d.spots))?d.spots:[];
       for(const s of spots) if(s&&s.bookingId&&+s.cost>0) covered[_str(s.bookingId)]=true;
     }
-    return (Array.isArray(bookings)?bookings:[]).filter((/**@type{any}*/b)=>b&&!covered[_str(b.id)]);
+    return (Array.isArray(bookings)?bookings:[]).filter((/**@type{any}*/b)=>b&&(+b.price>0 || !covered[_str(b.id)]));
+  }
+  /** 연결된 숙소에서 계산에 쓰지 않는 비용 칸 — 문서에는 그대로 남는다 */
+  const _SPOT_COST_CALC_KEYS=['cost','cur','costBasis','costPeople','costPartial','payState','paidOn'];
+  /** 이 장소의 금액은 연결된 숙박 예약이 낸다 — 예약에 금액이 있을 때 @param {any} s @param {Set<string>} priced @returns {boolean} */
+  function _bookingPaysSpot(s, priced){ return !!s && !!s.bookingId && priced.has(_str(s.bookingId)); }
+  /** 금액이 있는 숙박 예약의 id @param {any} bookings @returns {Set<string>} */
+  function _pricedHotelIds(bookings){
+    return new Set((Array.isArray(bookings)?bookings:[]).filter((/**@type{any}*/b)=>b&&b.type==='hotel'&&+b.price>0).map((/**@type{any}*/b)=>_str(b.id)));
+  }
+  /**
+   * 비용 계산에 쓰는 일자 — **숙박 예약과 연결된 숙소의 금액은 예약이 유일한 출처다**(2026-10-04).
+   * 예약에 금액(`price>0`)이 있으면 그 장소의 비용 칸(금액·통화·기준·인원·결제)은 계산에서 빠지고, 하루 비용 줄은
+   * '예약 금액에 포함'(`state:'BOOKING'`)이 된다. 예약 금액이 없으면 장소에 적어 둔 값을 그대로 쓴다(`budgetBookings`와 짝).
+   * ⚠️ 저장된 문서는 바꾸지 않는다 — 바꿀 것이 있는 날·장소만 얕은 복사본으로 돌려주고, 없으면 같은 배열이다.
+   * 웹(`costDays`)·lib 합계(`dayCostSummary`·`tripCostSummary`)·서버(`tripCostBreakdownOf`)가 같은 것을 쓴다.
+   * @param {any[]} days @param {any[]=} bookings @returns {any[]}
+   */
+  function effectiveCostDays(days, bookings){
+    const priced=_pricedHotelIds(bookings);
+    if(!priced.size||!Array.isArray(days)) return days;
+    let changed=false;
+    const out=days.map((/**@type{any}*/d)=>{
+      const spots=d&&Array.isArray(d.spots)? d.spots : null;
+      if(!spots||!spots.some((/**@type{any}*/s)=>_bookingPaysSpot(s,priced)&&_SPOT_COST_CALC_KEYS.some(k=>s[k]!=null))) return d;
+      changed=true;
+      return {...d, spots:spots.map((/**@type{any}*/s)=>{
+        if(!_bookingPaysSpot(s,priced)) return s;
+        const c={...s}; _SPOT_COST_CALC_KEYS.forEach(k=>{ delete c[k]; }); return c;
+      })};
+    });
+    return changed? out : days;
+  }
+  /** 이 장소의 금액을 연결된 숙박 예약이 내는가 — 장소 편집기가 비용 칸 대신 예약 금액을 보인다 @param {any} spot @param {any[]=} bookings @returns {any|null} 그 예약 */
+  function spotPaidByBooking(spot, bookings){
+    if(!spot||!spot.bookingId) return null;
+    const b=(Array.isArray(bookings)?bookings:[]).find((/**@type{any}*/x)=>x&&x.type==='hotel'&&_str(x.id)===_str(spot.bookingId));
+    return b||null;
   }
 
   /** 원래 통화의 최소 단위로 반올림한다. 원·엔은 정수, 달러·유로·위안은 소수 둘째 자리.
@@ -1099,15 +1139,17 @@
    * @returns {{total:number,onSiteKRW:number,parts:{label:string,amount:number}[],payTotals:Record<string,number>,details:{items:any[],budget:any,unknownCount:number,transportUnpriced:boolean,undatedBookings:number,hasForeignCurrency:boolean,fxRates:Record<string,number>,fxSource:string,fxAsOf:string|null}}}
    */
   function dayCostSummary(trip,di,input){
+    trip={...trip, days:effectiveCostDays(trip.days, trip.bookings)};   // 연결된 숙소의 금액은 예약이 낸다
     const day=trip.days[di], rates=input.rates, today=input.today;
     const bookings=budgetBookings(trip.bookings||[],trip.days);
     const shares=bookingShareOn(bookings,input.date,today);
     const covered=new Set(shares.map(s=>s.id));
+    const paidByBooking=_pricedHotelIds(trip.bookings);   // 날짜를 몰라 하루치가 없는 예약도 금액은 그 예약이 낸다
     /** @type {any[]} */ const items=[];
     /** @param {any} item @param {string} field @param {any} identity */
     function add(item,field,identity){
       const amount=costAmountOf(item,field), cur=item.cur||'KRW';
-      const bookingCovered=identity.source==='SPOT'&&amount===null&&covered.has(item.bookingId);
+      const bookingCovered=identity.source==='SPOT'&&amount===null&&(covered.has(item.bookingId)||paidByBooking.has(_str(item.bookingId)));
       items.push({...identity,amount:typeof item[field]==='number'?item[field]:null,currency:cur,
         basis:item.costBasis||'ENTERED',people:item.costPeople||1,payState:costPayStateOf(item,identity.source,today),
         paidOn:_ISO_DATE_RE.test(_str(item.paidOn))?item.paidOn:null,
@@ -1196,6 +1238,7 @@
    * @param {any} trip @param {any[]} days @param {Record<string,number>} rates @param {string=} today
    * @returns {{totalKRW:number,averagePerDayKRW:number|null,categories:any[],unallocated:any[],payTotals:Record<string,number>,prep:{totalKRW:number,payTotals:Record<string,number>,items:any[]},onSite:{totalKRW:number,payTotals:Record<string,number>},unknownCount:number,transportUnpriced:boolean,hasForeignCurrency:boolean}} */
   function tripCostSummary(trip,days,rates,today){
+    trip={...trip, days:effectiveCostDays(trip.days||[], trip.bookings)};   // 연결된 숙소의 금액은 예약이 낸다
     /** @type {any[]} */ const unallocated=[];
     /** @type {any[]} */ const prepItems=[];
     const bookings=budgetBookings(trip.bookings||[],trip.days||[]);
@@ -1622,6 +1665,44 @@
     }
   }
 
+  /**
+   * 항공편 한 구간 — `{date, code, dep, arr, depAt, arrAt}`. 날짜(YYYY-MM-DD)가 있어야 그날 일정에 놓이고, 편명·공항·시각 중
+   * 하나는 있어야 구간이다. 시각은 HH:MM만, 글자는 앞뒤 공백을 걷고 자른다. 모르면 null.
+   * @param {any} x @returns {{date:string,code:string,dep:string,arr:string,depAt?:string,arrAt?:string}|null}
+   */
+  function normalizeFlightSegment(x){
+    if(!x||typeof x!=='object'||Array.isArray(x)) return null;
+    const date=_str(x.date); if(!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+    /** @type {{date:string,code:string,dep:string,arr:string,depAt?:string,arrAt?:string}} */
+    const seg={date, code:_str(x.code).trim().slice(0,20), dep:_str(x.dep).trim().slice(0,60), arr:_str(x.arr).trim().slice(0,60)};
+    const depAt=_hm(x.depAt), arrAt=_hm(x.arrAt);
+    if(depAt) seg.depAt=depAt; if(arrAt) seg.arrAt=arrAt;
+    return (seg.code||seg.dep||seg.arr||depAt||arrAt)? seg : null;
+  }
+  /**
+   * 그 날의 항공편 — 일자에 적힌 옛 항공편(`day.flight`)과, 항공 예약의 구간 중 그 날짜인 것(2026-10-04).
+   * 좌표가 없어 동선·ETA·지도에는 넣지 않는다(렌터카 픽업·반납과 같다). 같은 편(편명·출발·도착)이 둘 다 있으면 예약 쪽 하나만.
+   * 출발 시각 순(시각 없는 것은 뒤)이다. 웹 일자 카드·서버 하루치(`DayPlanDay.flights`)가 같은 결과를 쓴다.
+   * @param {any} trip @param {number} di
+   * @returns {{code:string,dep:string,arr:string,depAt:string,arrAt:string,bookingId:string|null}[]}
+   */
+  function dayFlights(trip, di){
+    const days=(trip&&Array.isArray(trip.days))? trip.days : [], day=days[di];
+    if(!day) return [];
+    /** @type {{code:string,dep:string,arr:string,depAt:string,arrAt:string,bookingId:string|null}[]} */ const out=[];
+    const n=_dayNum(trip.start), iso=n===null? '' : new Date((n+di)*86400000).toISOString().slice(0,10);
+    if(iso) for(const b of Array.isArray(trip.bookings)? trip.bookings : []){
+      if(!b||b.type!=='flight'||!Array.isArray(b.segments)) continue;
+      for(const sg of b.segments){ const g=normalizeFlightSegment(sg); if(g&&g.date===iso) out.push({code:g.code,dep:g.dep,arr:g.arr,depAt:g.depAt||'',arrAt:g.arrAt||'',bookingId:_str(b.id)}); }
+    }
+    const f=day.flight;
+    if(f&&typeof f==='object'){
+      const own={code:_str(f.code).trim(),dep:_str(f.dep).trim(),arr:_str(f.arr).trim(),depAt:_hm(f.depAt)||'',arrAt:_hm(f.arrAt)||'',bookingId:null};
+      const same=out.some(x=>x.code===own.code&&x.dep===own.dep&&x.arr===own.arr);
+      if((own.code||own.dep||own.arr||own.depAt||own.arrAt)&&!same) out.push(own);
+    }
+    return out.sort((a,b)=>(a.depAt||'99:99').localeCompare(b.depAt||'99:99'));
+  }
   /** 예약(가격 추적) 항목 정규화 — id가 불량하면 항목째 버린다(참조·inline onclick 안전) @param {any} b @returns {any} */
   function normalizeBooking(b){
     if(!b || typeof b!=='object' || Array.isArray(b)) return null;
@@ -1636,6 +1717,11 @@
     const iso=(/**@type {any}*/v)=>/^\d{4}-\d{2}-\d{2}$/.test(_str(v));
     if(!iso(b.start)) delete b.start;
     if(!iso(b.end)) delete b.end;
+    // 항공편 구간(2026-10-04) — 편명·공항·시각은 항공 예약에 산다(전에는 일자 편집의 day.flight였다). 날짜 없는 구간은 어느 날에도 못 놓는다
+    if(b.segments!=null){
+      const segs=(b.type==='flight'&&Array.isArray(b.segments)? b.segments : []).map(normalizeFlightSegment).filter(Boolean).slice(0,8);
+      if(segs.length) b.segments=segs; else delete b.segments;
+    }
     if(!iso(b.freeCancelUntil)) delete b.freeCancelUntil;
     if(b.cancelFee!=null){ if(_fin(b.cancelFee)) b.cancelFee=Math.min(Math.max(0,moneyAmount(+b.cancelFee,b.cur)),TC_LIMITS.cost); else delete b.cancelFee; }
     // 조건 매칭용 필드 — 투숙 조건·환불·조식·객실명. 미입력(undefined)은 '모름'으로 보존한다
@@ -2364,6 +2450,7 @@
   // 장소 검색·장소 정체성(2026-10-03) — 위 목록과 따로 둬 다른 변경과 한 줄에서 부딪히지 않게 한다
   Object.assign(TC,{placeNameMatch,searchAnchorSpot,planDistanceKm,tripCitySpelling,tripDefaultCurrency,hoursIssue,hoursLines});
   Object.assign(TC,{resolveTimeZone,inferTimeZones,effectiveTimeZone,refundableOf});   // 따로 붙인다 — 위 한 줄은 여러 작업이 함께 고치는 자리다
+  Object.assign(TC,{effectiveCostDays,spotPaidByBooking,normalizeFlightSegment,dayFlights});   // 비용 입력 정리 묶음 A(2026-10-04)
   if(typeof module!=='undefined' && module.exports){ module.exports=TC; }   // Node (테스트)
   else { const r=/**@type {any}*/(root); for(const k in TC) r[k]=/**@type {any}*/(TC)[k]; }   // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);

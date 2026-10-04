@@ -1032,8 +1032,10 @@ test('통합: 날짜가 있어도 결제 상태를 선택하고 저장·재편�
     w.eval('openBookingModal(null)');
     el('bkType').value='FLIGHT'; el('bkTitle').value='항공'; el('bkPrice').value='300000';
     el('bkPayState').value='PAID'; el('bkPaidOn').value='2999-01-01'; w.eval('toggleBkFields()');
-    assert.equal(el('bkPayState').style.display,'');
-    assert.match(el('bkPayHint').textContent,/자동으로 완료되지 않아요/);
+    // 상태가 먼저고 날짜는 그 상태의 선택 칸이다(2026-10-04) — 이름이 상태를 따르고 날짜는 상태를 바꾸지 않는다
+    assert.equal(el('bkPaidOnWrap').hidden,false);
+    assert.equal(el('bkPaidOnLabel').textContent,'결제일 (선택)');
+    assert.match(el('bkPayHint').textContent,/이미 낸 돈/);
     el('bkSave').click();
     assert.equal(w.eval('trip().bookings[0].paidOn'),'2999-01-01');
     assert.equal(w.eval('trip().bookings[0].payState'),'PAID');
@@ -1047,7 +1049,10 @@ test('통합: 날짜가 있어도 결제 상태를 선택하고 저장·재편�
     w.eval(`trip().bookings[1].payState='PAID'; render();`);
     assert.equal(w.eval(`JSON.stringify(dayPaySplit(trip().days[0],0,trip().start))`),JSON.stringify([['💰 결제 완료',100000]]));
     w.eval('openBookingModal(null)'); el('bkType').value='OTHER'; w.eval('toggleBkFields()');
-    el('bkTitle').value='보험'; el('bkPrice').value='20000'; el('bkPaidOn').value='2000-01-01'; el('bkPayState').value='RESERVED'; el('bkSave').click();
+    assert.equal(el('bkPaidOnWrap').hidden,true,'고르지 않았으면 날짜 칸이 없다');
+    el('bkTitle').value='보험'; el('bkPrice').value='20000'; el('bkPayState').value='RESERVED'; el('bkPayState').dispatchEvent(new w.Event('change'));
+    assert.equal(el('bkPaidOnLabel').textContent,'결제 예정일 (선택)');
+    el('bkPaidOn').value='2000-01-01'; el('bkSave').click();
     assert.equal(w.eval('trip().costItems[0].payState'),'RESERVED');
   }finally{w.close();}
 });
@@ -1983,7 +1988,7 @@ test('통합: 웹 장소 편집에서 iOS 외화 소수·비용 기준·하루 �
   const w = boot();
   withTrip(w, `[{title:'D1',drive:'',note:'',mode:'walk',budget:{amount:0},costItems:[{id:'bus',title:'버스',kind:'TRANSPORT',amount:2.5,cur:'USD'}],spots:[{name:'입장',city:'P',desc:'',lat:39.55,lng:2.73,cost:12.55,cur:'EUR',costBasis:'PER_PERSON',costPeople:2,costPartial:true,candidateId:123}]}]`);
   w.eval('activeDay=0; render(); openSpotModal(0,0);');
-  assert.equal(w.document.getElementById('spotCost').value, '12.55');
+  assert.match(w.document.getElementById('spotCostBtn').textContent, /12\.55/, '비용은 요약 한 줄로 보인다');
   w.document.getElementById('spotDesc').value = '메모만 변경';
   w.document.getElementById('spotSave').click();
   assert.equal(w.eval('trip().days[0].spots[0].cost'), 12.55);
@@ -2173,9 +2178,10 @@ test('통합: 하루 비용에 예약 하루치가 들어가고, 하루 합계�
   w.close();
 });
 
-test('통합: 연결된 숙박은 일정 카드 금액이 예산 기준 (이중 계산 없음)', { skip: noJsdom }, () => {
+test('통합: 연결된 숙박은 예약 금액이 기준이다 (이중 계산 없음)', { skip: noJsdom }, () => {
   // 제보: 숙소 금액이 일정 카드와 예약 추적 양쪽에 잡혀 예산이 두 배로 보였다.
   // 예약 편집기에서 장소를 고르면 spot.bookingId가 걸리므로 연결된 둘은 같은 숙박이다.
+  // 2026-10-04부터 기준은 예약 금액이다 — 전에는 장소 금액이 이겨 예약에서 고친 금액이 합계에 닿지 않았다.
   const w=boot();
   withTrip(w, `[
     {title:'D1',drive:'',note:'',mode:'transit',spots:[
@@ -2184,25 +2190,26 @@ test('통합: 연결된 숙박은 일정 카드 금액이 예산 기준 (이중 
       {name:'해변',city:'P',desc:'',lat:39.34,lng:2.97,cost:12000}]}
   ]`);
   w.eval(`trip().bookings=[{id:'h1',type:'hotel',title:'호텔',price:200000,
-    start:'2026-08-01',end:'2026-08-02'}]; activeDay=0; render()`);
+    start:trip().start,end:isoDateOf(1)}]; activeDay=0; render()`);
 
   const cb=()=>w.eval(`JSON.parse(JSON.stringify(tripCostBreakdown()))`);
-  assert.deepEqual(cb(), {spots:192000, taxi:0, hotel:0, car:0, flight:0, prep:0, total:192000},
-    '연결된 숙박 예약(200,000)은 예산에서 빠지고 장소 금액(180,000)이 기준');
+  assert.deepEqual(cb(), {spots:12000, taxi:0, hotel:200000, car:0, flight:0, prep:0, total:212000},
+    '예약 금액(200,000)이 기준이고 장소에 남은 옛 금액(180,000)은 계산하지 않는다');
 
   const dayCosts=()=>[...w.document.querySelectorAll('.dayCard')].map(c=>{
     const el=[...c.querySelectorAll('.dist')].find(x=>x.textContent.includes('하루 비용'));
     return el? +el.textContent.replace(/\s+/g,'').match(/하루비용약₩([\d,]+)/)[1].replace(/,/g,'') : 0;
   });
-  assert.deepEqual(dayCosts(), [180000, 12000], '하루 비용에서도 두 번 잡히지 않는다');
+  assert.deepEqual(dayCosts(), [200000, 12000], '하루 비용에서도 두 번 잡히지 않는다');
+  assert.ok(!w.document.querySelector('.dayCard .spotMetaItem.cost')?.textContent.includes('180,000'), '옛 장소 금액을 행에 보이지 않는다');
 
-  // 장소에 비용을 안 적었으면 예약 금액을 쓴다 — 돈이 사라지지 않게
-  w.eval(`delete trip().days[0].spots[0].cost; render()`);
-  assert.equal(cb().hotel, 200000);
-  assert.equal(cb().total, 212000);
+  // 예약 금액이 없을 때만 장소에 적어 둔 금액을 쓴다 — 돈이 사라지지 않게
+  w.eval(`trip().bookings[0].price=null; render()`);
+  assert.equal(cb().hotel, 0);
+  assert.equal(cb().total, 192000);
 
   // 연결을 떼면 일정에 대응하는 장소가 없으므로 그대로 센다
-  w.eval(`trip().days[0].spots[0].cost=180000; delete trip().days[0].spots[0].bookingId; render()`);
+  w.eval(`trip().bookings[0].price=200000; delete trip().days[0].spots[0].bookingId; render()`);
   assert.equal(cb().hotel, 200000);
   assert.equal(cb().total, 392000, '연결이 없으면 둘 다 센다(같은 숙박인지 알 수 없다)');
   w.close();
@@ -5445,27 +5452,38 @@ test('통합: 작은 버튼을 인라인 style로 만들지 않는다', { skip: 
   }
 });
 
-test('통합: 일정 장소 비용 입력은 기존 값을 불러오고 결제일·통화·금액을 원본에 저장한다', {skip:noJsdom}, () => {
+test('통합: 장소 비용은 장소 편집기의 요약 한 줄에서 열고, 장소를 저장할 때 원본에 들어간다', {skip:noJsdom}, () => {
+  // 2026-10-04 — 같은 spot.cost를 장소 편집기(2칸)와 예약 결제 목록 안의 '장소 비용 입력'(8칸)이 따로 받았다. 이제 한 창이다
   const w=boot();
-  withTrip(w, `[{spots:[{name:'미술관',cost:12.5,cur:'EUR',paidOn:'2026-10-01',costBasis:'PER_PERSON',costPeople:2,photos:['receipt'],custom:'keep'}]}]`);
-  w.eval('openPlaceCost(0)');
+  withTrip(w, `[{spots:[{name:'미술관',lat:40.41,lng:-3.69,cost:12.5,cur:'EUR',payState:'PAID',paidOn:'2026-10-01',costBasis:'PER_PERSON',costPeople:2,photos:['receipt'],custom:'keep',status:'COMPLETED'}]}]`);
   const el=id=>w.document.getElementById(id);
+  w.eval('openSpotModal(0,0)');
+  assert.match(el('spotCostBtn').textContent,/€12\.50 × 2명|1인/,'요약은 1인 금액 × 인원');
+  el('spotCostBtn').click();
+  assert.equal(el('placeCostDialog').open,true);
   assert.equal(el('costAmount').value,'12.5');
   assert.equal(el('costCurrency').value,'EUR');
+  assert.equal(el('costPayState').value,'PAID');
   assert.equal(el('costPaidOn').value,'2026-10-01');
   assert.equal(el('costBasis').value,'PER_PERSON');
   el('costAmount').value='15.25'; el('costPaidOn').value='2026-10-02'; el('costPlaceSave').click();
+  assert.equal(el('placeCostDialog').open,false);
+  assert.equal(w.eval('trip().days[0].spots[0].cost'),12.5,'장소를 저장하기 전에는 원본이 그대로다');
+  el('spotSave').click();
   assert.equal(w.eval('trip().days[0].spots[0].cost'),15.25);
   assert.equal(w.eval('trip().days[0].spots[0].paidOn'),'2026-10-02');
   assert.equal(w.eval('trip().days[0].spots[0].photos[0]'),'receipt');
-  assert.equal(w.eval('trip().days[0].spots[0].custom'),'keep');
-  w.eval('openPlaceCost(0)'); el('costPlaceDelete').click();
-  assert.equal(el('costDeleteSource').checked,false);
-  el('costDeleteConfirm').click();
+  assert.equal(w.eval('trip().days[0].spots[0].custom'),'keep','편집기가 모르는 필드를 떨어뜨리지 않는다');
+  assert.equal(w.eval('trip().days[0].spots[0].status'),'COMPLETED','다녀옴 표시도 남는다');
+  // 비용 지우기 — 장소는 남고 비용 칸만 빠진다
+  w.eval('openSpotModal(0,0)'); el('spotCostBtn').click(); el('costPlaceDelete').click();
+  assert.match(el('spotCostBtn').textContent,/미정/);
+  el('spotSave').click();
   assert.equal(w.eval('trip().days[0].spots.length'),1);
   assert.equal(w.eval('trip().days[0].spots[0].cost'),undefined);
-  w.eval('openPlaceCost(0)'); el('costPlaceDelete').click(); el('costDeleteSource').checked=true; el('costDeleteConfirm').click();
-  assert.equal(w.eval('trip().days[0].spots.length'),0);
+  assert.equal(w.eval('trip().days[0].spots[0].payState'),undefined);
+  // 예약 결제 금액 목록에는 이제 장소 비용 버튼이 없다(그 목록의 안내가 '장소 비용은 여기가 아니다'라고 말했다)
+  assert.equal(el('costPlaceOpen'),null);
   w.close();
 });
 
@@ -5483,14 +5501,6 @@ test('통합: 보고 있는 일자(1부터 센다, 0=전체)를 일자 인덱스
     assert.equal(w.eval('editing.di'),2,'마지막 날도 그 날이다');
     w.eval('activeDay=0'); el('mapEmptySearch').click();
     assert.equal(w.eval('editing.di'),0,'전체를 보는 중이면 Day 1');
-
-    // 장소 비용 — 보고 있는 날의 첫 장소를 고른다
-    w.eval('activeDay=1; openPlaceCost()');
-    assert.equal(el('costPlace').value,'0:0','Day 1을 보는 중이면 Day 1의 첫 장소');
-    w.eval('activeDay=3; openPlaceCost()');
-    assert.equal(el('costPlace').value,'2:0');
-    w.eval('activeDay=0; openPlaceCost()');
-    assert.equal(el('costPlace').value,'0:0','전체를 보는 중이면 Day 1의 첫 장소');
 
     // 기간 줄이기 — 남는 날을 보고 있었다면 그 날에 머문다
     w.eval('activeDay=2; resizeTripDays(2)');
@@ -5814,13 +5824,11 @@ test('ux3 비용: 이 여행이 쓰는 외화로 새 비용 칸이 열리고, �
       { name: '옛 카페', city: '파리', lat: 48.861, lng: 2.331, cost: 6000 },
       { name: '아직 미정', city: '파리', lat: 48.862, lng: 2.332 }] }]));
     w.eval('render()');
-    const cur = () => w.document.getElementById('spotCur').value;
-    w.eval('openSpotModal(0,-1)'); assert.equal(cur(), 'EUR', "'60'이 ₩60이 되지 않게");
-    w.eval('openSpotModal(0,1)'); assert.equal(cur(), 'KRW', '금액이 있는데 통화가 없으면 원화다 — 바꾸지 않는다');
-    w.eval('openSpotModal(0,2)'); assert.equal(cur(), 'EUR', '금액이 없는 장소도 이 여행의 통화로');
+    const cur = (si) => { w.eval(`openSpotModal(0,${si})`); w.document.getElementById('spotCostBtn').click(); const v = w.document.getElementById('costCurrency').value; w.document.getElementById('placeCostDialog').close(); return v; };
+    assert.equal(cur(-1), 'EUR', "'60'이 ₩60이 되지 않게");
+    assert.equal(cur(1), 'KRW', '금액이 있는데 통화가 없으면 원화다 — 바꾸지 않는다');
+    assert.equal(cur(2), 'EUR', '금액이 없는 장소도 이 여행의 통화로');
     w.eval('openBookingModal()'); assert.equal(w.document.getElementById('bkCur').value, 'EUR', '예약 편집기도');
-    w.eval('openPlaceCost(0)'); w.document.getElementById('costPlace').value = '0:2'; w.eval('fillPlaceCost()');
-    assert.equal(w.document.getElementById('costCurrency').value, 'EUR', '장소 비용 입력도');
   } finally { w.close(); }
 });
 
@@ -5899,7 +5907,6 @@ test('ux3 검토: 비용 없는 장소는 이 여행의 통화로 열려도 저�
       { name: '루브르', city: '파리', lat: 48.8606, lng: 2.3376, cost: 22, cur: 'EUR' },
       { name: '산책', city: '파리', lat: 48.861, lng: 2.331 }] }]));
     w.eval('render(); openSpotModal(0,1)');
-    assert.equal(w.document.getElementById('spotCur').value, 'EUR', '칸은 이 여행의 통화로 열린다');
     w.document.getElementById('spotName').value = '센강 산책';
     w.document.getElementById('spotSave').onclick();
     const s = JSON.parse(w.eval('JSON.stringify(trip().days[0].spots[1])'));
@@ -5907,7 +5914,10 @@ test('ux3 검토: 비용 없는 장소는 이 여행의 통화로 열려도 저�
     assert.equal(s.cur, undefined, '이름만 고쳤는데 문서에 통화가 생기지 않는다');
     // 금액을 넣으면 그 칸의 통화가 저장된다
     w.eval('openSpotModal(0,1)');
-    w.document.getElementById('spotCost').value = '12';
+    w.document.getElementById('spotCostBtn').click();
+    assert.equal(w.document.getElementById('costCurrency').value, 'EUR', '칸은 이 여행의 통화로 열린다');
+    w.document.getElementById('costAmount').value = '12';
+    w.document.getElementById('costPlaceSave').click();
     w.document.getElementById('spotSave').onclick();
     assert.equal(w.eval('trip().days[0].spots[1].cur'), 'EUR');
     assert.equal(w.eval('trip().days[0].spots[1].cost'), 12);
@@ -7028,24 +7038,25 @@ test('통합(ux3): 예약 결제 금액 목록은 총액을 하나만 말하고 
   }finally{ w.close(); }
 });
 
-test('통합(ux3): 장소 비용 입력 — 결제 상태·통화 이름이 다른 화면과 같고, 장소가 없으면 담는 길을 준다', { skip: noJsdom }, () => {
+test('통합(ux3): 장소 비용 창 — 결제 상태·통화 이름이 다른 화면과 같고, 날짜는 고른 상태의 칸이다', { skip: noJsdom }, () => {
   const w=boot();
   try{
-    withTrip(w, `[{title:'D1',drive:'',note:'',mode:'transit',spots:[]}]`);
+    withTrip(w, `[{title:'D1',drive:'',note:'',mode:'transit',spots:[{name:'미술관',city:'M',desc:'',lat:40.41,lng:-3.69}]}]`);
     const el=(id)=>w.document.getElementById(id);
     assert.deepEqual([...el('costPayState').options].map(o=>o.textContent), w.eval(`['NONE','RESERVED','PAID'].map(k=>PAY_STATE_LABEL[k])`));
     assert.deepEqual([...el('costCurrency').options].map(o=>o.textContent), [...el('bkCur').options].map(o=>o.textContent), '예약 편집기와 같은 통화 이름');
-    w.eval('openPlaceCost(0)');
-    assert.equal(el('costPlaceEmpty').hidden, false, '장소가 없으면 안내');
-    assert.ok(el('placeCostDialog').classList.contains('isEmpty'));
-    el('costPlaceAddSpot').click();
-    assert.equal(el('placeCostDialog').open, false);
-    assert.ok(el('spotModalBg').classList.contains('show'), '담기로 바로 간다');
-    w.eval(`document.getElementById('spotModalBg').classList.remove('show'); trip().days[0].spots.push({name:'미술관',city:'M',desc:'',lat:40.41,lng:-3.69}); openPlaceCost(0)`);
-    assert.equal(el('costPlaceEmpty').hidden, true);
-    assert.ok(!el('placeCostDialog').classList.contains('isEmpty'));
+    w.eval('openSpotModal(0,0)'); el('spotCostBtn').click();
+    assert.equal(el('costPaidOnWrap').hidden, true, '고르지 않았으면 날짜 칸이 없다');
+    el('costPayState').value='RESERVED'; el('costPayState').dispatchEvent(new w.Event('change'));
+    assert.equal(el('costPaidOnWrap').hidden, false);
+    assert.equal(el('costPaidOnLabel').textContent, '결제 예정일 (선택)');
     el('costAmount').value='12000'; el('costPlaceSave').click();
-    assert.match(el('toast').textContent, /Day 1 하루 비용\(현지 결제 금액\)에 넣었어요/, '어디에 들어갔는지 말한다');
+    assert.match(el('spotCostBtn').textContent, /₩12,000 · 결제 예정/, '요약이 금액과 결제 상태를 말한다');
+    // 고르지 않음으로 돌리면 날짜는 저장하지 않는다
+    el('spotCostBtn').click(); el('costPaidOn').value='2026-12-01'; el('costPayState').value='NONE'; el('costPlaceSave').click();
+    el('spotSave').click();
+    assert.equal(w.eval('trip().days[0].spots[0].paidOn'), undefined);
+    assert.equal(w.eval('trip().days[0].spots[0].payState'), undefined);
   }finally{ w.close(); }
 });
 
@@ -7058,13 +7069,12 @@ test('통합(ux3): 1인 금액은 어디서나 × 인원 = 합계로 보인다',
     assert.match(meta, /1인 ₩5,000 × 2명 = ₩10,000/);
     const dayLine=[...w.document.querySelectorAll('.dayCard .dist')].map(x=>x.textContent).find(t=>t.includes('하루 비용'));
     assert.match(dayLine.replace(/\s+/g,''), /₩10,000/, '하루 합계와 같은 값을 말한다');
-    w.eval('openPlaceCost(0)');
+    w.eval('openSpotModal(0,0)');
+    assert.match(w.document.getElementById('spotCostBtn').textContent, /1인 ₩5,000 × 2명 = ₩10,000/, '장소 편집기의 요약도');
+    w.document.getElementById('spotCostBtn').click();
     assert.match(w.document.getElementById('costPerPersonNote').textContent, /1인 ₩5,000 × 2명 = ₩10,000/);
     w.document.getElementById('costBasis').value='TOTAL'; w.document.getElementById('costBasis').dispatchEvent(new w.Event('change'));
     assert.equal(w.document.getElementById('costPerPersonNote').textContent, '', '전체 금액이면 곱하지 않는다');
-    w.document.getElementById('placeCostDialog').close();
-    w.eval('openSpotModal(0,0)');
-    assert.match(w.document.getElementById('costKrwHint').textContent, /× 2명 = ₩10,000/, '장소 편집기의 칸은 1인 금액이라고 말한다');
   }finally{ w.close(); }
 });
 
@@ -7144,20 +7154,6 @@ test('통합(ux3): 예약 찾기에서 자세히로 연 편집기를 닫으면 �
   }finally{ w.close(); }
 });
 
-test('통합(ux3 검토): 빈 장소 비용 창의 \'장소 담기\'는 창을 연 그 날에 새 장소를 담는다', { skip: noJsdom }, () => {
-  const w=boot();
-  try{
-    withTrip(w, `[{title:'D1',drive:'',note:'',mode:'transit',spots:[]},{title:'D2',drive:'',note:'',mode:'transit',spots:[]}]`);
-    const el=(id)=>w.document.getElementById(id);
-    w.eval('openBookingList(); openPlaceCost(1)');
-    assert.ok(el('placeCostDialog').classList.contains('isEmpty'));
-    el('costPlaceAddSpot').click();
-    assert.equal(el('placeCostDialog').open, false);
-    assert.ok(!el('bookingListBg').classList.contains('show'), '담으러 가면 목록은 닫는다');
-    assert.ok(el('spotModalBg').classList.contains('show'));
-    assert.equal(w.eval('editing.di+":"+editing.si'), '1:-1', 'Day 2에서 연 창이면 Day 2에 새 장소');
-  }finally{ w.close(); }
-});
 
 // ── ux3:paste ──
 // 2026-10-03 3차 UX 검토 — 받은 일정 붙여넣기·가져오기·내보내기. 읽는 규칙은 test/intake.test.js가, 여기서는 배선을 본다.
@@ -8208,4 +8204,76 @@ test('통합: 테마를 바꾸면 구글 지도도 그 색 구성으로 다시 �
     w.eval(`setTheme('dark')`);
     assert.equal(w.eval('__maps.length'), n + 1, '같은 색이면 다시 만들지 않는다');
   } finally { w.close(); }
+});
+
+// ── 비용 입력 정리 묶음 A(2026-10-04) ──
+test('통합(A-1): 숙박 예약과 연결된 숙소는 예약 금액·기간이 유일한 출처다 — 장소 편집기는 예약을 연다', { skip: noJsdom }, () => {
+  const w=boot();
+  try{
+    withTrip(w, `[{mode:'car',spots:[{name:'호텔',city:'P',lat:39.5,lng:2.7,cat:'stay',stay:true,nights:1,bookingId:'h1',cost:150000}]},{spots:[]},{spots:[]},{spots:[]}]`);
+    w.eval(`trip().bookings=[{id:'h1',type:'hotel',title:'호텔',price:300000,start:trip().start,end:isoDateOf(3),track:false}]; render()`);
+    const el=(id)=>w.document.getElementById(id);
+    w.eval('openSpotModal(0,0)');
+    assert.match(el('spotCostBtn').textContent, /예약 금액 ₩300,000 · 3박 \(8\/1–8\/4\) — 예약에서 고치기/);
+    assert.equal(el('nightsWrap').style.display, 'none', '박 수 칸은 숨고 예약 기간을 말한다');
+    assert.match(el('nightsHint').textContent, /3박 .*연결된 숙박 예약의 기간/);
+    el('spotCostBtn').click();
+    assert.equal(el('placeCostDialog').open, false, '비용 창이 아니라');
+    assert.ok(el('bookingModalBg').classList.contains('show'), '연결된 예약을 연다');
+    el('bkPrice').value='320,000'; el('bkSave').click();
+    assert.match(el('spotCostBtn').textContent, /₩320,000/, '예약을 고치면 요약도 새 값이다');
+    // 장소를 저장해도 옛 비용·박 수 칸은 손대지 않는다(계산에는 안 쓴다)
+    el('spotName').value='호텔 A'; el('spotSave').click();
+    assert.equal(w.eval('trip().days[0].spots[0].cost'), 150000);
+    assert.equal(w.eval('trip().days[0].spots[0].nights'), 1);
+    assert.equal(w.eval('JSON.stringify(dayLodgings(trip(),2).map(x=>x.state))'), JSON.stringify(['STAY']), '박 수는 예약 기간(3박)');
+    // 금액 없는 예약을 열면 연결된 숙소에 적어 둔 금액으로 채운다 — 저장하면 예약이 출처가 된다
+    w.eval(`trip().bookings[0].price=null; openBookingModal('h1')`);
+    assert.equal(el('bkPrice').value, '150,000');
+  }finally{ w.close(); }
+});
+
+test('통합(A-3): 항공편은 항공 예약의 구간이고 그날 일정에 보인다 — 일자의 옛 항공편은 예약으로 옮긴다', { skip: noJsdom }, () => {
+  const w=boot();
+  try{
+    withTrip(w, `[{mode:'flight',spots:[]},{mode:'transit',spots:[]},{mode:'flight',flight:{code:'IB3100',dep:'MAD',arr:'SVQ',depAt:'08:05',arrAt:'09:00'},spots:[]}]`);
+    w.eval('render()');
+    const el=(id)=>w.document.getElementById(id);
+    const rows=(di)=>[...w.document.querySelectorAll('.dayCard')[di].querySelectorAll('.flightRow')].map(x=>x.textContent.replace(/\s+/g,' ').trim());
+    assert.deepEqual(rows(2), ['✈️ IB3100 · MAD 08:05 → SVQ 09:00'], '옛 항공편은 그대로 보인다');
+    // 항공 예약에 구간 둘(가는 편·다음 날 편) — 금액을 몰라도 저장된다
+    w.eval(`openBookingModal(null); document.getElementById('bkType').value='FLIGHT'; toggleBkFields();`);
+    assert.equal(el('bkFlightFields').hidden, false);
+    assert.equal(el('bkPeriodWrap').style.display, 'none', '항공은 기간 대신 구간');
+    el('bkTitle').value='대한항공';
+    const seg=(i,k,v)=>{ w.document.querySelectorAll('#bkSegments .segRow')[i].querySelector(k).value=v; };
+    seg(0,'.segCode','KE913'); seg(0,'.segDep','ICN'); seg(0,'.segArr','MAD'); seg(0,'.segDepAt','13:10');
+    el('bkSave').click();
+    assert.match(el('bkSegDate0').nextElementSibling?.textContent||w.document.querySelector('.fieldErr')?.textContent||'', /날짜/, '날짜 없는 구간은 그 칸에서 말한다');
+    seg(0,'.segDate',w.eval('trip().start'));
+    el('bkSegAdd').click(); seg(1,'.segDate',w.eval('isoDateOf(1)')); seg(1,'.segCode','KE914');
+    el('bkSave').click();
+    const b=JSON.parse(w.eval('JSON.stringify(trip().bookings[0])'));
+    assert.equal(b.price, null, '금액 미정');
+    assert.deepEqual(b.segments.map(g=>g.code), ['KE913','KE914']);
+    assert.equal(b.start, w.eval('trip().start')); assert.equal(b.end, w.eval('isoDateOf(1)'), '기간은 구간이 정한다');
+    assert.deepEqual(rows(0), ['✈️ KE913 · ICN 13:10 → MAD']);
+    assert.deepEqual(rows(1), ['✈️ KE914']);
+    // 일자 편집 — 옛 항공편이 있는 날만 칸이 보이고, 예약으로 옮긴다
+    w.eval('openDayModal(0)');
+    assert.equal(el('flightFields').style.display, 'none', '옛 항공편이 없으면 칸이 없다');
+    assert.equal(el('flightToBookingBtn').textContent, '＋ 항공 예약 추가');
+    el('dayCancel').click();
+    w.eval('openDayModal(2)');
+    assert.equal(el('flightFields').style.display, 'block');
+    el('flightToBookingBtn').click();
+    assert.ok(el('bookingModalBg').classList.contains('show'));
+    assert.equal(w.document.querySelector('#bkSegments .segCode').value, 'IB3100', '옛 항공편으로 채운다');
+    el('bkSave').click();
+    assert.equal(w.eval('trip().days[2].flight'), undefined, '옮긴 항공편은 일자에서 지운다');
+    assert.equal(el('flightFields').style.display, 'none', '열려 있던 일자 편집도 맞춘다');
+    el('daySave').click();
+    assert.equal(w.eval('trip().days[2].flight'), undefined, '일자 저장으로 되살아나지 않는다');
+    assert.deepEqual(rows(2), ['✈️ IB3100 · MAD 08:05 → SVQ 09:00'], '같은 편이 한 줄로');
+  }finally{ w.close(); }
 });

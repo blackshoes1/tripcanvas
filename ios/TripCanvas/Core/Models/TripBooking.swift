@@ -87,6 +87,20 @@ struct TripBooking: Hashable, Sendable, Identifiable {
 
     var currencyCode: String { (currency ?? .krw).rawValue }
 
+    /// 항공은 금액을 몰라도 편명·시각만 적어 둘 수 있다(2026-10-04, 웹 `bkSave`와 같다) — 금액 미정은 `null`로 남긴다.
+    var priceKnown: Bool { (raw["price"]?.doubleValue ?? 0) > 0 }
+    mutating func clearPrice() { raw["price"] = .null }
+
+    /// 항공편 구간 — 편명·공항·시각은 항공 예약에 산다(2026-10-04, 웹 `booking.segments`·lib `normalizeFlightSegment`).
+    /// 날짜가 있어야 그날 일정에 보인다. 시각은 HH:MM, 없는 값은 저장하지 않는다.
+    var segments: [FlightSegment] {
+        get { (raw["segments"]?.arrayValue ?? []).compactMap { $0.objectValue.map(FlightSegment.init(raw:)) } }
+        set {
+            let list = newValue.filter { !$0.isEmpty }.prefix(8).map { JSONValue.object($0.raw) }
+            raw.setOrRemove("segments", list.isEmpty ? nil : .array(Array(list)))
+        }
+    }
+
     /// 결제했는가. 예약은 본디 잡아 둔 돈이라 **결제함(PAID)만 저장한다** — 없으면 예약이다(`costPayStateOf`).
     /// 항공은 대개 결제한 돈이고 현장 결제 호텔은 예약한 돈이다 — 예약마다 다르니 예약마다 둔다.
     var payState: CostPayState {
@@ -258,7 +272,8 @@ struct TripBooking: Hashable, Sendable, Identifiable {
     /// 저장 전 검사. 통과하지 못하면 이유를 돌려주고, 화면이 그대로 말한다.
     func validate() -> BookingDraftError? {
         if title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return .titleRequired }
-        if price <= 0 { return .priceRequired }
+        if price <= 0 && !(type == .flight && raw["price"] == .null) { return .priceRequired }   // 항공은 금액 미정이 된다
+        if type == .flight, segments.contains(where: { $0.date == nil }) { return .segmentNeedsDate }
         if type == .hotel && track && (start == nil || end == nil) { return .trackNeedsDates }
         if let start, let end {
             if type == .car {
@@ -268,8 +283,8 @@ struct TripBooking: Hashable, Sendable, Identifiable {
                     guard let pickup = carPickupTime, let ret = carReturnTime,
                           ClockText.minutes(pickup) < ClockText.minutes(ret) else { return .sameDayNeedsTimes }
                 }
-            } else if start >= end {
-                return .checkoutNotAfterCheckin   // 역순·같은 날이면 시세 조회가 거부된다
+            } else if type == .hotel && start >= end {
+                return .checkoutNotAfterCheckin   // 역순·같은 날이면 시세 조회가 거부된다(항공은 구간이 기간을 정한다 — 하루짜리가 정상)
             }
         }
         return nil
@@ -288,7 +303,7 @@ struct TripBooking: Hashable, Sendable, Identifiable {
 }
 
 enum BookingDraftError: Equatable, Sendable {
-    case titleRequired, itemTitleRequired, priceRequired, invalidAmount, trackNeedsDates, returnBeforePickup, sameDayNeedsTimes, checkoutNotAfterCheckin
+    case titleRequired, itemTitleRequired, priceRequired, invalidAmount, trackNeedsDates, returnBeforePickup, sameDayNeedsTimes, checkoutNotAfterCheckin, segmentNeedsDate
 
     /// 웹 toast와 같은 문장.
     var message: String {
@@ -301,6 +316,7 @@ enum BookingDraftError: Equatable, Sendable {
         case .returnBeforePickup: "반납일이 픽업일보다 앞설 수 없어요"
         case .sameDayNeedsTimes: "당일 대여는 픽업 시각과 그보다 늦은 반납 시각이 필요해요"
         case .checkoutNotAfterCheckin: "체크아웃은 체크인보다 뒤여야 해요"
+        case .segmentNeedsDate: "항공편 구간의 날짜를 넣어 주세요 — 그날 일정에 보여요"
         }
     }
 }
@@ -601,4 +617,25 @@ enum ISODateText {
 
     /// JS의 `toISOString()`과 같은 모양(`2026-09-05T01:02:03.000Z`).
     static func timestamp(_ date: Date) -> String { timestampFormatter.string(from: date) }
+}
+
+/// 항공편 한 구간(`booking.segments[]`). 웹 lib `normalizeFlightSegment`와 같은 모양 — 원문 키를 그대로 들고 아는 칸만 덮어 쓴다.
+struct FlightSegment: Hashable, Sendable {
+    var raw: [String: JSONValue]
+    init(raw: [String: JSONValue] = [:]) { self.raw = raw }
+
+    var date: String? {
+        get { raw["date"]?.stringValue.flatMap { ISODateText.isValid($0) ? $0 : nil } }
+        set { raw.setOrRemove("date", newValue.flatMap { ISODateText.isValid($0) ? .string($0) : nil }) }
+    }
+    var code: String { get { raw["code"]?.stringValue ?? "" } set { raw["code"] = .string(String(newValue.prefix(20))) } }
+    var dep: String { get { raw["dep"]?.stringValue ?? "" } set { raw["dep"] = .string(String(newValue.prefix(60))) } }
+    var arr: String { get { raw["arr"]?.stringValue ?? "" } set { raw["arr"] = .string(String(newValue.prefix(60))) } }
+    var depAt: String? { get { raw["depAt"]?.stringValue } set { raw.setOrRemove("depAt", newValue.map { .string($0) }) } }
+    var arrAt: String? { get { raw["arrAt"]?.stringValue } set { raw.setOrRemove("arrAt", newValue.map { .string($0) }) } }
+    /// 편명·공항·시각 중 아무것도 없으면 구간이 아니다 — 저장에서 뺀다
+    var isEmpty: Bool {
+        code.trimmingCharacters(in: .whitespaces).isEmpty && dep.trimmingCharacters(in: .whitespaces).isEmpty
+            && arr.trimmingCharacters(in: .whitespaces).isEmpty && depAt == nil && arrAt == nil
+    }
 }

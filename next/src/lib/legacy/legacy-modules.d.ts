@@ -210,6 +210,13 @@ declare module '@legacy/lib.js' {
     inferTimeZones(trip: unknown): (string | null)[];
     /** 무료 취소 — true(가능)·false(불가, 사람이 고른 표시가 있을 때만)·null(모름) */
     refundableOf(booking: unknown): boolean | null;
+    /** 비용 계산용 일자 — 금액이 있는 숙박 예약과 연결된 숙소의 비용 칸을 뺀 사본(바꿀 것이 없으면 같은 배열) */
+    effectiveCostDays<T>(days: T[], bookings?: unknown[]): T[];
+    /** 이 장소의 금액을 내는 연결된 숙박 예약 — 없으면 null */
+    spotPaidByBooking(spot: unknown, bookings?: unknown[]): Record<string, unknown> | null;
+    /** 그 날의 항공편 — 항공 예약의 구간 + 일자의 옛 항공편, 출발 시각 순 */
+    dayFlights(trip: unknown, di: number): { code: string; dep: string; arr: string; depAt: string; arrAt: string; bookingId: string | null }[];
+    normalizeFlightSegment(segment: unknown): { date: string; code: string; dep: string; arr: string; depAt?: string; arrAt?: string } | null;
     effectiveTimeZone(trip: unknown, di: number, inferred?: (string | null)[]): { timeZone: string; inferred: boolean };
     SPOT_CATS: readonly { id: string; icon: string; name: string }[];
     /** 장소 우선순위 3단 — 화면은 한 컨트롤, 저장은 `must`/`opt` 두 플래그다 */

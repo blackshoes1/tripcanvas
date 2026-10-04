@@ -922,6 +922,9 @@ struct DayPlanDay: Codable, Hashable, Sendable {
     let splits: [DayPlanSplit]
     /// 그날의 항공편. 공항 이동일에만 있다 — 없으면 화면도 말하지 않는다.
     let flight: DayPlanFlight?
+    /// 그날의 항공편 전부(2026-10-04) — 항공 예약의 구간과 일자의 옛 항공편. 갈아타는 날은 둘 이상이다.
+    /// 옛 서버는 보내지 않는다(nil — 그때는 `flight` 하나를 그린다).
+    var flights: [DayPlanFlight]? = nil
     let totals: DayPlanTotals
 }
 

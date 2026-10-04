@@ -422,11 +422,17 @@ test('budgetBookings — 연결된 숙박은 일정 카드 금액이 기준 (이
     { id: 'b1', type: 'hotel', title: '제주호텔', price: 200000 },
     { id: 'b2', type: 'car', title: '렌터카', price: 90000 }
   ];
-  // 숙소 장소에 비용을 적고 예약과 연결했다 → 그 예약은 예산에서 뺀다(장소 금액이 기준)
+  // 숙소 장소에도 비용을 적었지만 예약에 금액이 있다 → 예약이 기준이다(2026-10-04). 장소 금액은 effectiveCostDays가 계산에서 뺀다
   const linkedWithCost = [{ spots: [
-    { name: '제주호텔', stay: true, bookingId: 'b1', cost: 200000 }
+    { name: '제주호텔', stay: true, bookingId: 'b1', cost: 180000 }
   ] }];
-  assert.deepEqual(L.budgetBookings(bookings, linkedWithCost).map(b => b.id), ['b2']);
+  assert.deepEqual(L.budgetBookings(bookings, linkedWithCost).map(b => b.id), ['b1', 'b2']);
+  assert.equal(L.effectiveCostDays(linkedWithCost, bookings)[0].spots[0].cost, undefined, '계산용 사본에서 장소 금액이 빠진다');
+  assert.equal(linkedWithCost[0].spots[0].cost, 180000, '문서는 그대로');
+  // 예약 금액이 없을 때만 장소 금액을 쓰고 그 예약을 뺀다 — 안 그러면 장소에만 적은 돈이 두 번 잡히거나 사라진다
+  const unpriced = [{ id: 'b1', type: 'hotel', title: '제주호텔', price: null }, bookings[1]];
+  assert.deepEqual(L.budgetBookings(unpriced, linkedWithCost).map(b => b.id), ['b2']);
+  assert.equal(L.effectiveCostDays(linkedWithCost, unpriced), linkedWithCost, '바꿀 것이 없으면 같은 배열');
 
   // 연결했지만 장소에 비용이 없으면 예약 금액을 쓴다 — 안 그러면 돈이 사라진다
   const linkedNoCost = [{ spots: [{ name: '제주호텔', stay: true, bookingId: 'b1' }] }];
@@ -539,7 +545,7 @@ test('dayStartAnchor — 연결된 호텔 예약의 연박과 체크아웃 아�
   for(const di of [1,2,3]) assert.equal(L.dayStartAnchor(days,di,bookings),hotel,'체크아웃 아침까지 숙소에서 출발');
   assert.equal(L.dayStartAnchor(days,4,bookings).name,'관광 마지막 장소');
   const explicit=[{spots:[{...hotel,nights:1}]},sightseeing(),sightseeing()];
-  assert.equal(L.dayStartAnchor(explicit,2,bookings).name,'관광 마지막 장소','명시적 nights가 우선');
+  assert.equal(L.dayStartAnchor(explicit,2,bookings),explicit[0].spots[0],'연결된 예약 기간이 장소의 nights보다 먼저(2026-10-04)');
   assert.equal(L.dayStartAnchor(days,2,[{...bookings[0],type:'car'}]).name,'관광 마지막 장소','호텔 예약만 연박에 사용');
   assert.equal(L.dayStartAnchor(days,2,[{...bookings[0],end:'2026-02-30'}]).name,'관광 마지막 장소','유효하지 않은 기간은 기본 1박');
   assert.equal(L.dayStartAnchor([days[0],days[1],{...days[2],startPolicy:'none'}],2,bookings),null);
@@ -935,9 +941,9 @@ test('dayReturnStay — 숙박 수를 엄격하게 본다: 그날 밤도 그 숙
   assert.deepEqual([1,2,3].map(di=>backOf(linked,di)), ['호텔','호텔',null], '3박 예약 — 둘째·셋째 밤은 돌아가고 체크아웃한 날은 아니다');
   assert.deepEqual([1,2,3].map(di=>L.dayLodgings(linked,di)[0].state), ['STAY','STAY','CHECK_OUT'], '숙박 표시와 같은 밤을 센다');
   assert.equal(L.dayReturnStay(linked.days,1), null, '예약을 안 넘기면 장소의 nights(미지정 = 1박)만 본다');
-  // 장소에 적은 nights가 먼저다 — 예약은 미입력일 때만 박 수를 정한다
+  // 연결된 숙소는 예약 기간이 이긴다(2026-10-04 — 예약이 유일한 출처). 장소에 남은 옛 nights는 박 수를 정하지 않는다
   const explicit = Object.assign({}, linked, {days:[{title:'',spots:[hotel({bookingId:'b1',nights:1})]}, ...linked.days.slice(1)]});
-  assert.equal(backOf(explicit,1), null);
+  assert.equal(backOf(explicit,1), '호텔');
   // 호텔이 아니거나 기간이 성립하지 않는 예약은 박 수를 정하지 않는다
   assert.equal(backOf(Object.assign({}, linked, {bookings:[{id:'b1',type:'car',start:'2026-10-25',end:'2026-10-28'}]}),1), null);
   assert.equal(backOf(Object.assign({}, linked, {bookings:[{id:'b1',type:'hotel',start:'2026-10-25',end:'2026-10-25'}]}),1), null);
@@ -1675,8 +1681,9 @@ test('숙박 표시: 연결 예약은 한 번만 표시하며 미입력 기본�
   const trip={start:'2026-10-26',days:[{spots:[{name:'호텔 A',stay:true,bookingId:'b1'}]},{spots:[]},{spots:[]},{spots:[]}],
     bookings:[{id:'b1',type:'hotel',title:'예약 A',start:'2026-10-26',end:'2026-10-29'}]};
   assert.deepEqual(L.dayLodgings(trip,1).map(x=>[x.name,x.state,x.nights]),[['호텔 A','STAY',3]]);
+  // 장소에 남은 옛 nights가 달라도 박 수는 예약이 정한다 — 충돌이 아니다(2026-10-04)
   trip.days[0].spots[0].nights=2;
-  assert.deepEqual(L.dayLodgings(trip,1).map(x=>[x.state,x.nights]),[['CONFLICT',null]]);
+  assert.deepEqual(L.dayLodgings(trip,1).map(x=>[x.state,x.nights]),[['STAY',3]]);
   trip.days[0].spots[0].nights=3;
   trip.bookings[0].start='2026-10-27';trip.bookings[0].end='2026-10-30';
   assert.equal(L.dayLodgings(trip,0)[0].state,'CONFLICT');
@@ -1988,4 +1995,20 @@ test('refundableOf — 표시 없는 false는 모름이고, 고른 불가만 불
   assert.equal('refundableSet' in L.normalizeBooking({id:'b1', refundableSet:'yes', refundable:false}), false);
   assert.equal('refundableSet' in L.normalizeBooking({id:'b2', refundableSet:true}), false);
   assert.equal(L.normalizeBooking({id:'b3', refundable:false, refundableSet:true}).refundableSet, true);
+});
+
+// ── 비용 입력 정리 묶음 A(2026-10-04) ──
+test('항공편 구간 — 날짜가 있어야 구간이고, 그날의 항공편은 예약 구간과 옛 day.flight를 합친다', () => {
+  assert.equal(L.normalizeFlightSegment({code:'KE1'}), null, '날짜 없는 구간은 어느 날에도 못 놓는다');
+  assert.equal(L.normalizeFlightSegment({date:'2026-10-25'}), null, '날짜만 있으면 구간이 아니다');
+  assert.deepEqual(L.normalizeFlightSegment({date:'2026-10-25',code:' KE913 ',dep:'ICN',depAt:'25:00',arrAt:'19:30'}),
+    {date:'2026-10-25',code:'KE913',dep:'ICN',arr:'',arrAt:'19:30'}, '틀린 시각은 버린다');
+  // 항공 예약만 구간을 갖는다
+  assert.equal('segments' in L.normalizeBooking({id:'h1',type:'hotel',segments:[{date:'2026-10-25',code:'X'}]}), false);
+  assert.equal(L.normalizeBooking({id:'f1',type:'flight',segments:[{date:'bad'}]}).segments, undefined);
+  const trip={start:'2026-10-25',days:[{spots:[],flight:{code:'IB3100',dep:'MAD',arr:'SVQ',depAt:'08:05'}},{spots:[],flight:{code:'KE913',dep:'ICN',arr:'MAD'}}],
+    bookings:[{id:'f1',type:'flight',segments:[{date:'2026-10-25',code:'KE913',dep:'ICN',arr:'MAD',depAt:'13:10'},{date:'2026-10-26',code:'KE913',dep:'ICN',arr:'MAD'}]}]};
+  assert.deepEqual(L.dayFlights(trip,0).map(f=>[f.code,f.bookingId]), [['IB3100',null],['KE913','f1']], '출발 시각 순');
+  assert.deepEqual(L.dayFlights(trip,1).map(f=>[f.code,f.bookingId]), [['KE913','f1']], '같은 편이 둘 다 있으면 예약 쪽 하나');
+  assert.deepEqual(L.dayFlights({days:[{spots:[]}],bookings:trip.bookings},0), [], '여행 시작일이 없으면 구간을 놓을 날이 없다');
 });
