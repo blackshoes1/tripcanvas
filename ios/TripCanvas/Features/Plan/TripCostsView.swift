@@ -66,6 +66,17 @@ struct TripCostsView: View {
                         Button("다시 불러오기") { Task { await load() } }.disabled(loading || saving)
                     }
                 }
+                // 총예산은 두 장부를 더한 전체 비용과 비교한다 — 어느 장부를 보든 같은 줄이다(웹 필터바와 같은 `tripBudgetStatus`)
+                if let budget = response?.budget {
+                    let line = Self.budgetLine(budget)
+                    Section {
+                        VStack(alignment: .leading, spacing: Space.xs) {
+                            Text(line.title).font(.headline).foregroundStyle(line.over ? Ink.danger : Ink.ink)
+                            Text(line.detail).font(.caption).foregroundStyle(Ink.soft)
+                        }
+                        .accessibilityElement(children: .combine)
+                    }
+                }
                 switch ledger {
                 case .prep: prepSections
                 case .onSite: onSiteSections
@@ -402,6 +413,18 @@ struct TripCostsView: View {
 
     /// 현지 결제 금액(머리글)과 날짜별 줄이 왜 다른지 한 줄로. 날짜별 줄에만 있는 돈(예약 하루치 `share`)과 머리글에만 있는
     /// 돈(일정 밖 숙박 `overflow`)을 **각자** 말한다 — 한쪽만 보고 숨기면 다른 쪽 차이가 설명 없이 남는다. 둘 다 없으면 nil.
+    /// 총예산 한 줄 — 남은 예산(넘으면 넘친 만큼)과 그 근거. 넘친 것을 숨기지 않는다.
+    static func budgetLine(_ budget: TripBudgetStatus) -> (title: String, detail: String, over: Bool) {
+        let won = { (value: Double) in TimeFormat.money(value, currency: "KRW") }
+        let over = budget.remainingKRW < 0
+        let title = over ? "예산보다 \(won(-budget.remainingKRW)) 많아요" : "남은 예산 \(won(budget.remainingKRW))"
+        let amount = budget.currency == "KRW" ? won(budget.totalKRW)
+            : "\(TimeFormat.money(budget.amount, currency: budget.currency)) ≈ \(won(budget.totalKRW))"
+        var parts = ["예산 \(amount)", "전체 예상 비용 \(won(budget.costKRW))"]
+        if let perDay = budget.perDayKRW { parts.append("하루 평균 약 \(won(perDay))") }
+        return (title, parts.joined(separator: " · "), over)
+    }
+
     static func dayRowsNote(share: Double, overflow: Double, dayRows: Double) -> String? {
         let won = { (value: Double) in TimeFormat.money(value, currency: "KRW") }
         var parts: [String] = []

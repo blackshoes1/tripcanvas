@@ -52,6 +52,23 @@ struct TripDocument: Hashable, Sendable {
         set { raw.setOrRemove("people", newValue.map { .number(Double(min(100, max(1, $0)))) }) }
     }
 
+    /// 여행 총예산(`trip.budget`, 2026-10-05) — `lib.js` `tripBudgetOf`의 복사본. 금액이 없으면 nil이고,
+    /// 통화가 없거나 모르는 통화면 원화다. 남은 예산은 서버 비용 응답(`TripCostsResponse.budget`)이 계산한다.
+    var budgetAmount: Double? {
+        guard let object = raw["budget"]?.objectValue, let amount = object["amount"]?.doubleValue, amount >= 0 else { return nil }
+        return amount
+    }
+    var budgetCurrency: Currency {
+        raw["budget"]?.objectValue?["cur"]?.stringValue.flatMap(Currency.init(rawValue:)) ?? .krw
+    }
+    /// 원화면 통화를 적지 않는다(비용 저장 규칙과 같다). nil이면 키를 지운다.
+    mutating func setBudget(amount: Double?, currency: Currency) {
+        guard let amount else { raw.setOrRemove("budget", nil); return }
+        var object: [String: JSONValue] = ["amount": .number(amount)]
+        if currency != .krw { object["cur"] = .string(currency.rawValue) }
+        raw["budget"] = .object(object)
+    }
+
     var days: [TripDay] {
         get { (raw["days"]?.arrayValue ?? []).map { TripDay(raw: $0.objectValue ?? [:]) } }
         set { raw["days"] = .array(newValue.map { .object($0.raw) }) }
