@@ -151,8 +151,13 @@ test('장소 비용 창의 Tab·Escape는 뒤의 장소 편집기를 조작하�
   await page.setViewportSize({width:390,height:844});
   await page.goto('/'); await page.evaluate(SEED);
   await page.evaluate(()=>{ openSpotModal(1,0); document.getElementById('spotAdvanced').open=true; });
+  await expect(page.locator('#spotModalBg')).toBeVisible();
+  await expect(page.locator('#spotCostBtn')).toBeVisible();
   await page.locator('#spotCostBtn').click();
-  const dialog=page.getByRole('dialog',{name:'장소 비용'});
+  // 이름이 아니라 그 창 자체로 찾는다 — CI(리눅스)에서 이름으로 찾다 못 찾았다(로컬은 통과). 창의 이름은 h2가 준다
+  const dialog=page.locator('#placeCostDialog');
+  await expect(dialog).toHaveJSProperty('open', true);
+  await expect(dialog).toHaveAttribute('aria-labelledby','placeCostTitle');
   await expect(dialog).toBeVisible();
   await page.keyboard.press('Tab');
   expect(await dialog.evaluate(el=>el.contains(document.activeElement))).toBe(true);
