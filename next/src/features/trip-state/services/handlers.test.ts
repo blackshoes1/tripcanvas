@@ -1140,7 +1140,7 @@ describe('환율 — 서버가 받은 것을 응답에 싣는다(2026-09-18)', (
   });
 });
 
-describe('결제일이 상태를 정한다 — 서버의 오늘은 Today와 같은 시계(2026-09-18)', () => {
+describe('결제 상태는 사용자가 확인한 표시 — 날짜만으로 자동 완료하지 않는다', () => {
   const withBookings = (bookings: unknown[], costItems: unknown[] = []) => {
     const row = store.rows.get('trip-1')!;
     store.rows.set('trip-1', { ...row, data: { ...row.data, bookings, costItems } });
@@ -1148,7 +1148,7 @@ describe('결제일이 상태를 정한다 — 서버의 오늘은 Today와 같�
   const lines = (body: { prep: { items: { key: string; payState: string; paidOn: string | null }[] } }) =>
     Object.fromEntries(body.prep.items.map((i) => [i.key, [i.payState, i.paidOn]]));
 
-  it('결제일이 오늘(여행 시간대)이거나 지났으면 결제함, 아직이면 예약이다 — 손으로 고른 표시보다 먼저', async () => {
+  it('날짜와 무관하게 명시적 결제 상태를 하루치와 총액에 똑같이 반영한다', async () => {
     // NOW = 2026-09-01 13:00 Asia/Seoul → 오늘은 2026-09-01
     withBookings([
       { id: 'htl', type: 'hotel', title: '호텔', price: 200000, start: '2026-09-01', end: '2026-09-02', paidOn: '2026-09-01' },
@@ -1157,18 +1157,18 @@ describe('결제일이 상태를 정한다 — 서버의 오늘은 Today와 같�
     ], [{ id: 'ins', title: '보험', kind: 'OTHER', amount: 20000, paidOn: '2026-08-20' }]);
     const body = await (await api.tripCosts(new Request('https://x/costs', auth()), 'trip-1')).json();
     expect(lines(body)).toEqual({
-      htl: ['PAID', '2026-09-01'],        // 결제일 당일부터 결제함
-      fly: ['RESERVED', '2026-09-15'],    // 결제함이라고 표시했어도 결제일이 아직이면 예약
+      htl: ['RESERVED', '2026-09-01'],     // 날짜만으로 완료하지 않는다
+      fly: ['PAID', '2026-09-15'],         // 명시적으로 확인한 상태가 이긴다
       car: ['PAID', null],                // 결제일이 없으면 손으로 고른 표시
-      ins: ['PAID', '2026-08-20']
+      ins: ['NONE', '2026-08-20']
     });
     // 하루치도 같은 오늘로 같은 답을 낸다
     const day0 = body.days[0].cost.details.items.find((i: { key: string }) => i.key === 'htl');
-    expect(day0.payState).toBe('PAID');
+    expect(day0.payState).toBe('RESERVED');
     expect(day0.paidOn).toBe('2026-09-01');
   });
 
-  it('클라이언트가 date를 명시하면 그 날이 오늘이다(기기가 현지 날짜를 안다) — 하루치도 같이 따라간다', async () => {
+  it('기기가 날짜를 바꿔도 실제 결제를 확인하지 않은 예약은 완료되지 않는다', async () => {
     withBookings([{ id: 'htl', type: 'hotel', title: '호텔', price: 200000, start: '2026-09-01', end: '2026-09-02', paidOn: '2026-09-01' }]);
     const before = await (await api.tripCosts(new Request('https://x/costs?date=2026-08-31', auth()), 'trip-1')).json();
     expect(lines(before).htl).toEqual(['RESERVED', '2026-09-01']);
@@ -1176,6 +1176,6 @@ describe('결제일이 상태를 정한다 — 서버의 오늘은 Today와 같�
     const share = plan.day.totals.cost.details.items.find((i: { key: string }) => i.key === 'htl');
     expect(share.payState).toBe('RESERVED');
     const after = await (await api.dayPlan(new Request('https://x/api/v1/trips/trip-1/days/0?date=2026-09-02', auth()), 'trip-1', 0)).json();
-    expect(after.day.totals.cost.details.items.find((i: { key: string }) => i.key === 'htl').payState).toBe('PAID');
+    expect(after.day.totals.cost.details.items.find((i: { key: string }) => i.key === 'htl').payState).toBe('RESERVED');
   });
 });

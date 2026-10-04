@@ -1,5 +1,5 @@
 const {test,expect}=require('@playwright/test');
-const {prepare,createTrip,clickMore}=require('./helpers');
+const {prepare,createTrip,clickMore,openSpotIdentity}=require('./helpers');
 
 test('온보딩은 배경 조작을 막고 포커스를 순환한 뒤 복귀한다',async({context,page})=>{
   await prepare(context,{onboarded:false}); await page.goto('/');
@@ -47,13 +47,16 @@ test('빈 여행은 이전 지도를 덮고 검색으로 확인한 첫 장소를
   expect(await page.evaluate(()=>trip().days[0].spots[0].lat)).toBe(35.681);
 });
 
-test('약속 시각은 상세 설정을 열지 않고 저장할 수 있다',async({context,page})=>{
+test('약속 시각은 시간·메모를 펼쳐 저장하고 별도 상세 설정은 필요 없다',async({context,page})=>{
   await prepare(context); await page.goto('/'); await createTrip(page,'약속');
   // 빈 여행의 첫 날에는 '＋ 장소 추가' 대신 첫 걸음 카드가 장소 담기를 맡는다
   await page.locator('.firstStep .btn.primary').click();
+  await expect(page.locator('#spotBookAt')).toBeHidden();
+  await page.locator('#spotSchedule > summary').click();
   await expect(page.locator('#spotBookAt')).toBeVisible();
   await expect(page.locator('#spotAdvanced')).not.toHaveAttribute('open','');
   await page.evaluate(()=>{ document.getElementById('spotLat').value='37.5'; document.getElementById('spotLng').value='127'; });
+  await openSpotIdentity(page);
   await page.locator('#spotName').fill('저녁 예약');
   await page.locator('#spotCity').fill('서울');
   await page.locator('#spotBookAt').fill('19:00');

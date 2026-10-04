@@ -1,5 +1,5 @@
 const {test,expect}=require('@playwright/test');
-const {prepare,createTrip}=require('./helpers');
+const {prepare,createTrip,openSpotIdentity}=require('./helpers');
 
 async function start(context,page){await prepare(context);await page.goto('/');await createTrip(page,'장소 살펴보기');}
 async function googleMock(page){
@@ -42,6 +42,7 @@ test('Google POI 조회는 저장하지 않고 리뷰는 명시적으로 요청�
 test('검색 상세를 닫으면 편집 입력과 포커스가 유지되고 선택해야 반영한다',async({context,page})=>{
   await start(context,page);await googleMock(page);
   await page.locator('.addSpot').first().click();
+  await openSpotIdentity(page);
   await page.locator('#spotName').fill('작성 중인 이름');
   await page.evaluate(()=>{routedSearch=async()=>[{name:'샘플 카페',lat:35.6,lng:139.7,placeId:'cafe',city:'도쿄'}];});
   await page.locator('#spotSearch').fill('카페');await page.locator('#spotSearchBtn').click();

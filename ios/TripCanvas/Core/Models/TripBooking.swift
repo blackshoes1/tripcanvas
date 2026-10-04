@@ -94,8 +94,7 @@ struct TripBooking: Hashable, Sendable, Identifiable {
         set { raw.setOrRemove("payState", newValue == .paid ? .string(CostPayState.paid.rawValue) : nil) }
     }
 
-    /// 결제(예정)일 `YYYY-MM-DD`. **있으면 날짜가 상태를 정한다**(`costPayStateOf`, 2026-09-18) — 오늘이거나 지났으면
-    /// 결제함, 아직이면 예약이다. 그때 `payState`는 보지 않으므로 편집기는 결제일을 두면 `payState`를 지운다.
+    /// 결제(예정)일 `YYYY-MM-DD`. 날짜와 결제 상태는 독립적이며 날짜만으로 완료를 단정하지 않는다.
     /// 날짜 모양이 아니면 저장하지 않는다(`normalizeBooking`이 버리는 것과 같다).
     var paidOn: String? {
         get { raw["paidOn"]?.stringValue }

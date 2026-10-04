@@ -213,6 +213,8 @@
   /* 여행 기간 밖 — 이 화면이 보기 전용이라는 것을 맨 위에서 말한다 */
   .travelPeriodNote{background:var(--badge-warn-bg);color:var(--badge-warn-fg);border-radius:10px;padding:9px 12px;margin-bottom:10px;font-size:12.5px;font-weight:600;line-height:1.5}.travelPeriodNote[hidden]{display:none}
   #sheetHandle{display:none}
+  .planTools{display:flex;gap:8px;margin:0 0 10px}
+  .planTools .btn{flex:1}
   .tSpot a{display:inline-block;font-size:12.5px;color:#fff;background:var(--primary);border-radius:8px;padding:5px 12px;text-decoration:none}
   /* 목록 줄의 지도·예약 링크는 보조다 — 채운 초록이 '다녀왔어요'보다 무거워 위계가 뒤집혀 있었다(2026-10-03 UX 검토) */
   .tSpot a.tLink{color:var(--primary-dark);background:var(--surface);border:1px solid var(--border);min-height:36px;display:inline-flex;align-items:center}
@@ -350,7 +352,7 @@
     #sheetHandle{display:flex;position:sticky;top:0;z-index:4;width:100%;height:40px;border:0;background:var(--surface-2);align-items:flex-start;justify-content:center;padding-top:8px;touch-action:none}
     /* 손잡이 배경은 끝까지 불투명하다 — 아래로 흐려지게 두면 굴린 장소 이름이 '지도 크게 보기'와 겹쳐 비쳤다(2026-10-03 UX 검토) */
     #sheetHandle:before{content:'';width:42px;height:4px;border-radius:4px;background:#b9af9d}
-    #sidebar[data-snap="collapsed"]{height:15dvh}#sidebar[data-snap="half"]{height:45dvh}#sidebar[data-snap="expanded"]{height:min(88dvh,calc(100dvh - var(--sheet-top,12dvh)))}
+    #sidebar[data-snap="collapsed"]{height:15dvh}#sidebar[data-snap="half"]{height:60dvh}#sidebar[data-snap="expanded"]{height:min(88dvh,calc(100dvh - var(--sheet-top,12dvh)))}
     /* ⚠️ 시트를 끝까지 올려도 일자 칩(필터바)은 보여야 한다 — 시트(z 1100, fixed)가 필터바를 덮어 어느 날을 보는지
        바꿀 길이 사라졌다. 필터바 아래까지만 올린다: --sheet-top은 필터바의 아래 끝이다(app.js `syncSheetTop`). */
     header h1{font-size:14px}
@@ -363,7 +365,7 @@
     #hdrMenu .btn{gap:2px;padding:10px 12px;font-size:13.5px}
     #hdrMenu #pasteMenuBtn{display:flex}
     /* 필터바: 줄바꿈 대신 한 줄 가로 스크롤 */
-    #filterbar{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding-bottom:9px}
+    #filterbar{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding-bottom:9px;z-index:1150}
     #filterbar::-webkit-scrollbar{display:none}
     #filterbar>*{flex:none}
     /* 가로 스크롤되는 필터바에서도 전체 비용은 오른쪽에 붙어 항상 보인다 */

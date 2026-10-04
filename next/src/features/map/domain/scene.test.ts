@@ -97,15 +97,15 @@ describe('동선 라인 — 실경로 우선, 조회 중엔 없음, 실패만 �
     ]);
   });
 
-  it('일자 보기(activeDay)는 진하게(0.9) + 경로 중간 소요시간 칩, 자차 2km 미만은 🚶', () => {
+  it('일자 보기(activeDay)는 진하게(0.9) + 경로 중간 소요시간 칩, 짧은 자차도 선택한 수단을 유지한다', () => {
     const v = buildMapScene(trip([day([a, b])]), { [K(a, b)]: { sec: 3600, m: 40000 } }, 1);
     expect(v.lines[0].opacity).toBe(0.9);
     expect(v.chips).toHaveLength(1);
     expect(v.chips[0].text).toBe('🚗1시간');
     expect(v.chips[0].lat).toBeCloseTo((a.lat! + b.lat!) / 2, 6);   // 경로 없으면 두 점의 중간
 
-    const walk = buildMapScene(trip([day([a, b])]), { [K(a, b)]: { sec: 600, m: 1500 } }, 1);
-    expect(walk.chips[0].text).toBe('🚶20분');
+    const shortCar = buildMapScene(trip([day([a, b])]), { [K(a, b)]: { sec: 600, m: 1500 } }, 1);
+    expect(shortCar.chips[0].text).toBe('🚗10분');
 
     const all = buildMapScene(trip([day([a, b])]), { [K(a, b)]: { sec: 3600, m: 40000 } }, 0);
     expect(all.chips).toHaveLength(0);                         // 칩은 일자 보기 전용

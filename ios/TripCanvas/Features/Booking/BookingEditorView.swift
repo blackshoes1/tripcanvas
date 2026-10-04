@@ -33,8 +33,7 @@ enum BookingEditorTarget: Identifiable {
 /// 나머지(보험·유심·입장권…)는 이름·금액·결제·사진만 있다. 이미 저장된 항목은 자기 쪽 안에서만 분류를 바꾼다 —
 /// 예약을 식비로 바꾸면 기간·조건·가격 기록이 갈 곳이 없다.
 ///
-/// 결제는 **결제일이 먼저다**: 정해 두면 그 날이 오늘이거나 지났을 때 결제함, 아직이면 예약으로 센다(`costPayStateOf`).
-/// 그때 손으로 고른 상태는 저장하지 않는다(두 답이 갈리면 어느 쪽도 못 믿는다).
+/// 결제 상태는 사용자가 확인한 표시다. 결제(예정)일이 지나도 자동 완료되지 않는다(`costPayStateOf`).
 ///
 /// 예약은 여러 날에 걸친 **총액**이다(장소 비용은 그날 쓰는 돈). 숙박은 일정의 숙소와, 렌터카는 픽업·반납
 /// 장소와 이을 수 있다 — 픽업·반납 장소는 자유 텍스트라 좌표가 없어서, 연결해야 도착 순서에 맞게 놓인다.
@@ -66,7 +65,7 @@ struct BookingEditorView: View {
     @State private var returnPlace: String
     @State private var returnCode: String
     @State private var currency: Currency
-    /// 결제(예정)일. 있으면 날짜가 상태를 정한다 — 그때 `payState`는 저장하지 않는다.
+    /// 결제(예정)일. 사용자가 확인한 상태와 독립적으로 저장한다.
     @State private var paidOn: String?
     @State private var payState: CostPayState
     @State private var photos: [String]
@@ -210,28 +209,27 @@ struct BookingEditorView: View {
                     }
                 }
 
-                // 결제일이 먼저다 — 있으면 날짜가 상태를 정하므로 고르는 칸을 감춘다(웹과 같다).
+                // 날짜와 상태는 독립적으로 입력한다(웹과 같다).
                 Section {
-                    Toggle("결제일 정하기", isOn: Binding(
+                    Toggle("결제(예정)일 정하기", isOn: Binding(
                         get: { paidOn != nil },
                         set: { on in paidOn = on ? (paidOn ?? ISODateText.text(from: Date())) : nil }))
                     if paidOn != nil {
-                        DatePicker("결제일", selection: Binding(
+                        DatePicker(payState == .paid ? "결제일" : payState == .reserved ? "결제 예정일" : "결제(예정)일", selection: Binding(
                             get: { paidOn.flatMap { ISODateText.date(from: $0) } ?? Date() },
                             set: { paidOn = ISODateText.text(from: $0) }), displayedComponents: .date)
-                    } else {
-                        Picker("결제 상태", selection: $payState) {
-                            Text(CostPayState.reserved.label).tag(CostPayState.reserved)
-                            Text(CostPayState.paid.label).tag(CostPayState.paid)
-                            if !isBookingKind { Text(CostPayState.none.label).tag(CostPayState.none) }
-                        }
+                    }
+                    Picker("결제 상태", selection: $payState) {
+                        Text(CostPayState.reserved.label).tag(CostPayState.reserved)
+                        Text(CostPayState.paid.label).tag(CostPayState.paid)
+                        if !isBookingKind { Text(CostPayState.none.label).tag(CostPayState.none) }
                     }
                 } header: {
                     Text("결제")
                 } footer: {
                     VStack(alignment: .leading, spacing: Space.xs) {
                         Text(payFooter)
-                        if fromReservations, !isBookingKind, paidOn != nil || payState != .reserved {
+                        if fromReservations, !isBookingKind, payState != .reserved {
                             Text("결제 예정이 아니면 이 항목은 예약 목록이 아니라 비용 화면에 보여요.")
                                 .foregroundStyle(Ink.warning)
                         }
@@ -460,13 +458,8 @@ struct BookingEditorView: View {
         }
     }
 
-    /// 결제일이 상태를 정한다는 것을 그 자리에서 말한다 — 기기 날짜 기준의 미리보기. 저장 뒤 화면은 서버(여행 시간대)가 정한 값이다.
     private var payFooter: String {
-        guard let paidOn else { return "결제일을 정하면 그 날부터 결제 완료로 봐요. 정하지 않으면 여기서 고른 상태를 써요." }
-        let label = TimeFormat.dayChipLabel(paidOn) ?? paidOn
-        return paidOn <= ISODateText.text(from: Date())
-            ? "결제일(\(label))이 지나 결제 완료로 봐요."
-            : "결제 예정일(\(label))이 아직이라 결제 예정으로 봐요 — 그날부터 결제 완료가 돼요."
+        "실제로 결제한 뒤 결제 완료를 선택해 주세요. 날짜가 지나도 자동으로 완료되지 않아요."
     }
 
     private func spotLabel(_ ref: SpotRef) -> String {
@@ -507,7 +500,7 @@ struct BookingEditorView: View {
         if target.item == nil { entry.basis = .total }
         entry.raw.setOrRemove("cur", currency == .krw ? nil : .string(currency.rawValue))
         entry.paidOn = paidOn
-        entry.payState = paidOn != nil ? .none : payState   // 결제일이 있으면 날짜가 정한다 — 손으로 고른 상태는 두지 않는다
+        entry.payState = payState
         entry.photos = photos
         if await saving.perform({ await onSaveItem(entry) }) { dismiss() }
     }
@@ -527,7 +520,7 @@ struct BookingEditorView: View {
         booking.url = urlText.trimmingCharacters(in: .whitespacesAndNewlines)
         booking.cancelFee = fee
         booking.paidOn = paidOn
-        booking.payState = paidOn != nil ? .reserved : payState   // 결제일이 있으면 날짜가 정한다 — `.reserved`는 키를 지운다
+        booking.payState = payState
         booking.photos = photos
         if booking.refundable != true { booking.freeCancelUntil = nil }
         if booking.type == .hotel {

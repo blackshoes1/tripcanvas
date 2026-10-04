@@ -4,7 +4,7 @@ import SwiftUI
 ///
 /// - **예약 결제 금액**(가계부): 여행 단위 **한 목록**. 예약(항공·숙박·렌트)이 전액 한 줄씩, 예약이 아닌 사전 지출
 ///   (보험·유심·미리 산 입장권 — `trip.costItems`)도 같은 줄 모양으로, 결제일 순으로 쌓인다(`PaymentRow`). 둘은 한 편집기로
-///   다룬다(`BookingEditorView`). 위에는 '결제 완료 / 결제 예정' 둘뿐이고, **결제일이 있으면 날짜가 상태를 정한다**(2026-09-18).
+///   다룬다(`BookingEditorView`). 위에는 '결제 완료 / 결제 예정' 둘뿐이고, **날짜가 지나도 결제 상태는 자동으로 바뀌지 않는다**(2026-10-04).
 /// - **현지 결제 금액**(정산): 하루 단위. 그날 쓴 돈 합계와 날짜별 줄이 있고, 적는 것은 **금액부터** 친다(`QuickSpendEditor`).
 ///
 /// 합계·환산·나누기는 전부 서버가 한다(`/costs`의 `prep`·`onSite`) — 앱은 그리고, 문서를 고쳐 저장할 뿐이다.
@@ -183,7 +183,7 @@ struct TripCostsView: View {
                     .font(.caption).foregroundStyle(Ink.warning)
             }
         } footer: {
-            Text("가기 전에 내는 돈 — 항공·숙박·렌트 예약과 보험·유심·미리 산 입장권. 결제일을 정해 두면 그 날부터 결제 완료로 봐요. 항공은 날짜로 나누지 않고, 숙박·렌터카는 날짜별 비용에도 하루치로 보여요.")
+            Text("가기 전에 내는 돈 — 항공·숙박·렌트 예약과 보험·유심·미리 산 입장권. 실제로 결제한 뒤 결제 완료를 선택해 주세요. 항공은 날짜로 나누지 않고, 숙박·렌터카는 날짜별 비용에도 하루치로 보여요.")
         }
         Section {
             // 추가는 목록 위에 — 긴 목록의 끝까지 내려가지 않게.
@@ -196,7 +196,7 @@ struct TripCostsView: View {
             if rows.isEmpty { Text("예약과 미리 낸 비용을 적으면 여기에 모여요").foregroundStyle(Ink.soft) }
             ForEach(rows) { row in paymentRow(row) }
         } header: { Text("결제 항목") } footer: {
-            Text("줄을 오른쪽으로 밀어 결제일을 정하거나 결제 완료·결제 예정을 바꿀 수 있어요. 결제일이 있으면 날짜가 상태를 정해요.")
+            Text("줄을 오른쪽으로 밀어 결제일을 정하거나 결제 완료·결제 예정을 바꿀 수 있어요. 날짜가 지나도 자동으로 완료되지 않아요.")
         }
     }
 
@@ -248,8 +248,8 @@ struct TripCostsView: View {
             if canEdit {
                 Button { paidOnEditor = row } label: { Label("결제일", systemImage: "calendar") }
                     .tint(Ink.accent)
-                if row.paidOn == nil {
-                    // 결제일이 없을 때만 손으로 바꾼다 — 있으면 날짜가 정한다.
+                Group {
+                    // 날짜가 있어도 사용자가 실제 결제 상태를 확인한다.
                     let paid = state == .paid
                     Button {
                         Task { await setPayState(row, paid ? .reserved : .paid) }
@@ -515,14 +515,12 @@ struct TripCostsView: View {
         await mutate(row, booking: { $0.payState = state }, item: { $0.payState = state })
     }
 
-    /// 결제일을 두면 날짜가 상태를 정한다 — 손으로 고른 상태는 지운다(편집기와 같다). nil이면 결제일을 지운다.
+    /// 날짜 편집은 사용자가 확인한 결제 상태를 바꾸지 않는다.
     private func setPaidOn(_ row: PaymentRow, _ iso: String?) async -> Bool {
         await mutate(row, booking: { booking in
             booking.paidOn = iso
-            if iso != nil { booking.payState = .reserved }
         }, item: { item in
             item.paidOn = iso
-            if iso != nil { item.payState = .none }
         })
     }
 
@@ -546,7 +544,7 @@ struct TripCostsView: View {
     }
 }
 
-/// 결제일만 고치는 작은 시트 — 목록에서 밀어서 연다. 지우면 다시 손으로 고른 상태로 돌아간다.
+/// 결제(예정)일만 고치는 작은 시트 — 상태는 그대로 둔다.
 struct PaidOnSheet: View {
     let row: PaymentRow
     let onSave: (String?) async -> Bool
@@ -567,14 +565,12 @@ struct PaidOnSheet: View {
                 Section {
                     DatePicker("결제일", selection: $date, displayedComponents: .date)
                 } header: { Text(row.title) } footer: {
-                    Text(ISODateText.text(from: date) <= ISODateText.text(from: Date())
-                         ? "이 날이 지났으니 결제 완료로 봐요."
-                         : "이 날부터 결제 완료로 봐요 — 그 전까지는 결제 예정이에요.")
+                    Text("날짜가 지나도 자동으로 완료되지 않아요. 실제 결제 상태는 목록이나 편집기에서 직접 선택해 주세요.")
                 }
                 if row.paidOn != nil {
                     Section {
                         Button("결제일 지우기", role: .destructive) { Task { await save(nil) } }.disabled(saving)
-                    } footer: { Text("지우면 결제 상태를 다시 손으로 골라요.") }
+                    } footer: { Text("날짜만 지우고 결제 상태는 그대로 둬요.") }
                 }
                 if failed { Section { Text("저장하지 못했어요. 다시 시도해 주세요.").foregroundStyle(Ink.warning) } }
             }
