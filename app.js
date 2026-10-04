@@ -4985,7 +4985,9 @@ function renderSpotCostSummary(){
     return;
   }
   if(d.cost==null){ btn.textContent='미정 · 비용 적기 ›'; hint.textContent=''; return; }
-  const parts=[costWithPeople(d,'cost',costLabel)];
+  // 요약은 원래 통화로만 — 원화 환산은 아래 한 줄이 말한다(한 줄에 둘이면 '€15 ≈ ₩22,760 × 2명 = …'처럼 읽히지 않았다)
+  const short=(n,c)=>(c&&c!=='KRW'&&CUR[c])? `${CUR[c].sym}${fmtMoney(n,c)}` : `₩${fmtMoney(n)}`;
+  const parts=[costWithPeople(d,'cost',short)];
   const st=costPayStateOf(d,'SPOT');
   if(st!=='NONE') parts.push(PAY_STATE_LABEL[st]);
   btn.textContent=parts.join(' · ')+' ›';
