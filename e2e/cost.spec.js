@@ -149,6 +149,8 @@ test('장소 비용은 장소 편집기의 요약 한 줄에서 열고, 장소�
 
 test('장소 비용 창의 Tab·Escape는 뒤의 장소 편집기를 조작하지 않는다',async({page})=>{
   await page.setViewportSize({width:390,height:844});
+  const errors=[];
+  page.on('pageerror', e=>errors.push(String(e&&e.message||e)));
   await page.goto('/'); await page.evaluate(SEED);
   await page.evaluate(()=>{ openSpotModal(1,0); document.getElementById('spotAdvanced').open=true; });
   await expect(page.locator('#spotModalBg')).toBeVisible();
@@ -156,7 +158,8 @@ test('장소 비용 창의 Tab·Escape는 뒤의 장소 편집기를 조작하�
   await page.locator('#spotCostBtn').click();
   // 이름이 아니라 그 창 자체로 찾는다 — CI(리눅스)에서 이름으로 찾다 못 찾았다(로컬은 통과). 창의 이름은 h2가 준다
   const dialog=page.locator('#placeCostDialog');
-  await expect(dialog).toHaveJSProperty('open', true);
+  const where=await page.evaluate(()=>{ const r=document.getElementById('spotCostBtn').getBoundingClientRect(); const h=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2); return (h&&(h.id||h.className||h.tagName))+' @'+Math.round(r.top); });
+  expect(await dialog.evaluate(d=>d.open), `비용 창이 열리지 않았다 — 페이지 오류: ${errors.join(' | ')||'없음'} · 누른 자리: ${where}`).toBe(true);
   await expect(dialog).toHaveAttribute('aria-labelledby','placeCostTitle');
   await expect(dialog).toBeVisible();
   await page.keyboard.press('Tab');
