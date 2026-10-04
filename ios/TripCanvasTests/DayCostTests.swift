@@ -71,17 +71,19 @@ final class DayCostTests: XCTestCase {
         XCTAssertNil(TripCostsView.dayRowsNote(share: 0, overflow: 0, dayRows: 112000), "머리글과 날짜별 줄이 같은 돈이면 말하지 않는다")
     }
 
-    func testManualCostCategoryPreservesSpotAndCanReturnToAutomatic() {
+    /// '장소 분류에 따름'(AUTO)은 없앴다(2026-10-05) — 종류에서 고른 분류로 열고, 다르게 고르면 그 분류를 적는다.
+    /// 한 번 적은 분류는 종류의 분류와 같은 값으로 바꿔도 적힌 채로 둔다(웹과 같다 — 계산 결과는 같다).
+    func testManualCostCategoryPreservesSpotAndKeepsWrittenKind() {
         var spot = TripSpot(raw: ["name": .string("장소"), "cat": .string("food"), "custom": .string("keep")])
         var entry = CostEntry(spot: spot)
-        XCTAssertEqual(entry.kind, "AUTO")
+        XCTAssertEqual(entry.kind, "FOOD")
         entry.kind = "SHOPPING"
         spot = entry.applying(to: spot)
         XCTAssertEqual(spot.raw["costKind"], .string("SHOPPING"))
         XCTAssertEqual(spot.raw["cat"], .string("food"))
         XCTAssertEqual(spot.raw["custom"], .string("keep"))
-        entry.kind = "AUTO"
-        XCTAssertNil(entry.applying(to: spot).raw["costKind"])
+        entry.kind = "FOOD"
+        XCTAssertEqual(entry.applying(to: spot).raw["costKind"], .string("FOOD"))
     }
 
     func testMoneyInputPreservesFreeAndForeignMinorUnits() {

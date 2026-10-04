@@ -1,0 +1,131 @@
+{
+  "categoryOf": [
+    {
+      "name": "적어 둔 분류가 이긴다",
+      "spot": {
+        "cat": "food",
+        "costKind": "SHOPPING"
+      },
+      "kind": "SHOPPING"
+    },
+    {
+      "name": "모르는 분류는 버리고 종류에서",
+      "spot": {
+        "cat": "food",
+        "costKind": "AUTO"
+      },
+      "kind": "FOOD"
+    },
+    {
+      "name": "오늘 밤 묵는 곳은 숙박",
+      "spot": {
+        "cat": "sight",
+        "stay": true
+      },
+      "kind": "STAY"
+    },
+    {
+      "name": "종류 stay",
+      "spot": {
+        "cat": "stay"
+      },
+      "kind": "STAY"
+    },
+    {
+      "name": "종류 food",
+      "spot": {
+        "cat": "food"
+      },
+      "kind": "FOOD"
+    },
+    {
+      "name": "종류 cafe",
+      "spot": {
+        "cat": "cafe"
+      },
+      "kind": "FOOD"
+    },
+    {
+      "name": "종류 shop",
+      "spot": {
+        "cat": "shop"
+      },
+      "kind": "SHOPPING"
+    },
+    {
+      "name": "종류 sight",
+      "spot": {
+        "cat": "sight"
+      },
+      "kind": "TICKET"
+    },
+    {
+      "name": "종류 activity",
+      "spot": {
+        "cat": "activity"
+      },
+      "kind": "TICKET"
+    },
+    {
+      "name": "종류 transport",
+      "spot": {
+        "cat": "transport"
+      },
+      "kind": "TRANSPORT"
+    },
+    {
+      "name": "종류 etc",
+      "spot": {
+        "cat": "etc"
+      },
+      "kind": "OTHER"
+    },
+    {
+      "name": "종류 없음",
+      "spot": {},
+      "kind": "OTHER"
+    }
+  ],
+  "tripPeople": [
+    {
+      "name": "정하지 않음",
+      "trip": {},
+      "people": null
+    },
+    {
+      "name": "네 명",
+      "trip": {
+        "people": 4
+      },
+      "people": 4
+    },
+    {
+      "name": "0명은 정하지 않은 것",
+      "trip": {
+        "people": 0
+      },
+      "people": null
+    },
+    {
+      "name": "101명은 넘친다",
+      "trip": {
+        "people": 101
+      },
+      "people": null
+    },
+    {
+      "name": "소수는 인원이 아니다",
+      "trip": {
+        "people": 2.5
+      },
+      "people": null
+    },
+    {
+      "name": "문자열은 읽지 않는다",
+      "trip": {
+        "people": "4"
+      },
+      "people": null
+    }
+  ]
+}

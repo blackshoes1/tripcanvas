@@ -88,4 +88,28 @@ describe('표시 규칙 복사본 — iOS 픽스처', () => {
 
     writeFixture('cost-labels', { payStates, payStateLabels, categories, categoryNames });
   });
+
+  // 비용 입력 정리 묶음 C(2026-10-05): 편집기는 분류를 적지 않은 장소를 '장소 종류에서 고른 분류'로 연다 —
+  // 원본 `costCategoryOf`, 복사본 iOS `CostCategory.of(spot:)`. 여행 인원(`tripPeopleOf`)은 iOS `TripDocument.people`.
+  it('비용 분류 읽기·여행 인원 — 편집기 기본값', () => {
+    const spots: { name: string; spot: Record<string, unknown> }[] = [
+      { name: '적어 둔 분류가 이긴다', spot: { cat: 'food', costKind: 'SHOPPING' } },
+      { name: '모르는 분류는 버리고 종류에서', spot: { cat: 'food', costKind: 'AUTO' } },
+      { name: '오늘 밤 묵는 곳은 숙박', spot: { cat: 'sight', stay: true } },
+      ...['stay', 'food', 'cafe', 'shop', 'sight', 'activity', 'transport', 'etc'].map((cat) => ({ name: `종류 ${cat}`, spot: { cat } })),
+      { name: '종류 없음', spot: {} }
+    ];
+    const categoryOf = spots.map((s) => ({ ...s, kind: legacyLib.costCategoryOf(s.spot) }));
+    expect(categoryOf.find((c) => c.name === '종류 etc')?.kind).toBe('OTHER');
+    const trips: { name: string; trip: Record<string, unknown> }[] = [
+      { name: '정하지 않음', trip: {} },
+      { name: '네 명', trip: { people: 4 } },
+      { name: '0명은 정하지 않은 것', trip: { people: 0 } },
+      { name: '101명은 넘친다', trip: { people: 101 } },
+      { name: '소수는 인원이 아니다', trip: { people: 2.5 } },
+      { name: '문자열은 읽지 않는다', trip: { people: '4' } }
+    ];
+    const tripPeople = trips.map((t) => ({ ...t, people: legacyLib.tripPeopleOf(t.trip) }));
+    writeFixture('cost-defaults', { categoryOf, tripPeople });
+  });
 });

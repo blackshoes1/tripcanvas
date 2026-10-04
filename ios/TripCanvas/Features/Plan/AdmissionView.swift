@@ -103,6 +103,20 @@ struct PlaceAdmissionLookup: View {
 
 struct AdmissionEditorSection: View {
     @Binding var spot: TripSpot
+    /// 여행 인원 — 예약 인원을 적지 않았을 때 보이는 수이고, 예약 완료를 켤 때 채운다(웹과 같다, 2026-10-05).
+    /// 칸에 미리 넣지 않는다 — 아무것도 적지 않은 장소에 예약 정보가 생긴다.
+    @Environment(TripScreenModels.self) private var screenModels: TripScreenModels?
+    private var tripPeople: Int? { screenModels?.plan.document?.people }
+    private var bookedBinding: Binding<Bool> {
+        Binding(get: { spot.admission.isBooked }, set: { on in
+            spot.admission.isBooked = on
+            if on, spot.admission.raw["people"] == nil, let people = tripPeople { spot.admission.people = people }
+        })
+    }
+    private var peopleBinding: Binding<Int> {
+        Binding(get: { spot.admission.raw["people"] == nil ? (tripPeople ?? 1) : spot.admission.people },
+                set: { spot.admission.people = $0 })
+    }
     var body: some View {
         // 예약은 한 묶음이다(2026-10-04, 웹 `#spotAdmBox`와 같은 순서) — 필요한가 → 했어요 → 시각·인원 → 링크 → 메모.
         // 전에는 예약·입장 시각이 '시간' 칸에 따로 있었고 내 예약 링크는 앱에서 고칠 수 없었다. 저장 필드는 그대로다.
@@ -111,9 +125,9 @@ struct AdmissionEditorSection: View {
                 Picker("예약 요건", selection: $spot.admission.requirement) {
                     ForEach(AdmissionRequirement.allCases, id: \.self) { Text($0.label).tag($0) }
                 }
-                Toggle("내 예약 완료", isOn: $spot.admission.isBooked)
+                Toggle("내 예약 완료", isOn: bookedBinding)
                 ClockField(title: "예약·입장 시각", text: $spot.bookedAt)
-                Stepper("예약 인원 \(spot.admission.people)명", value: $spot.admission.people, in: 1...100)
+                Stepper("예약 인원 \(peopleBinding.wrappedValue)명", value: peopleBinding, in: 1...100)
                 TextField("내 예약 링크 (예약 확인·바우처) https://", text: $spot.bookUrl)
                     .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
                 if let url = SafeURL.web(spot.bookUrl) {

@@ -57,13 +57,16 @@ struct CostEntry: Hashable, Sendable, Identifiable {
         raw = spot.raw
         raw["amount"] = spot.raw["cost"]
         raw["title"] = .string(spot.name)
-        raw["kind"] = .string(spot.raw["costKind"]?.stringValue ?? "AUTO")
+        // '장소 분류에 따름'은 없다(2026-10-05) — 분류를 적지 않은 장소는 종류에서 고른 분류로 연다(웹 `costCategoryOf`와 같다)
+        raw["kind"] = .string(CostCategory.of(spot: spot).rawValue)
     }
 
     func applying(to original: TripSpot) -> TripSpot {
         var spot = original
         spot.cost = amount
-        spot.setField("costKind", kind == "AUTO" ? nil : .string(kind))
+        // 종류에서 고른 분류를 그대로 두면 저장하지 않는다 — 나중에 종류를 바꾸면 분류도 따라간다. 이미 적힌 분류는 그대로 쓴다
+        let derived = original.raw["costKind"] == nil ? CostCategory.of(spot: original).rawValue : nil
+        spot.setField("costKind", kind == derived || CostCategory(rawValue: kind) == nil ? nil : .string(kind))
         for key in ["cur", "costBasis", "costPeople", "costPartial", "payState", "paidOn", "photos"] { spot.setField(key, raw[key]) }
         return spot
     }
@@ -133,6 +136,20 @@ enum CostCategory: String, CaseIterable {
         case .ticket: "입장권·관람권"
         case .transport: "택시·기타 교통"
         case .other: "기타"
+        }
+    }
+
+    /// 장소 비용의 분류 — 적어 둔 분류가 이기고, 없으면 장소 종류에서 고른다. `lib.js` `costCategoryOf`의 복사본(`cost-defaults.json`).
+    static func of(spot: TripSpot) -> CostCategory {
+        if let kind = spot.raw["costKind"]?.stringValue.flatMap(CostCategory.init(rawValue:)) { return kind }
+        if spot.raw["stay"]?.boolValue == true { return .stay }
+        switch spot.raw["cat"]?.stringValue {
+        case "stay": return .stay
+        case "food", "cafe": return .food
+        case "shop": return .shopping
+        case "sight", "activity": return .ticket
+        case "transport": return .transport
+        default: return .other
         }
     }
 
