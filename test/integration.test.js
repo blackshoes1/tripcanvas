@@ -8334,7 +8334,8 @@ test('통합(B-4): 웹에서도 하루 추가 비용을 적고 고치고 지운�
     w.eval('render()');
     const el=(id)=>w.document.getElementById(id);
     const add=w.document.querySelectorAll('.dayCard')[0].querySelector('.dayItem.add');
-    assert.ok(add, '비용이 없는 날에도 적는 길이 보인다');
+    assert.ok(add, '비용이 없어도 장소가 있는 날이면 적는 길이 보인다');
+    assert.equal(w.document.querySelectorAll('.dayCard')[1].querySelector('.dayItem.add'), null, '빈 날에는 없다(장소 추가와 나란히 뜨지 않게)');
     add.click();
     assert.equal(el('placeCostDialog').open, true);
     assert.equal(el('placeCostTitle').textContent, '쓴 돈');

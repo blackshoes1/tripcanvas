@@ -872,3 +872,5 @@ button.flightRow{cursor:pointer}button.flightRow:hover{text-decoration:underline
 span.dayItem{cursor:default}
 .dayItem.add{border-style:dashed;color:var(--meta-link)}
 @media (pointer:coarse){.dayItem{position:relative}.dayItem::after{content:'';position:absolute;inset:-10px -2px}}
+.advancedPanel summary .condSummary{float:none;margin-left:6px;font-weight:400;color:var(--muted)}
+.advancedPanel[open] summary .condSummary{transform:none}

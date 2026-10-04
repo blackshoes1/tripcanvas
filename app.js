@@ -2619,10 +2619,12 @@ function renderSidebar(){
           const tot=parts.reduce((a,p)=>a+p[1],0);
           // 하루 추가 비용(장소에 묶이지 않은 쓴 돈) — 웹에서도 적고 고친다(2026-10-04, 전에는 앱에서만 적을 수 있었다)
           const items=(day.costItems||[]).map(it=>{
-            const v=costAmountOf(it,'amount'), label=`${esc(it.title||(COST_KIND[it.kind]||COST_KIND.OTHER).name)}${v!=null?` ${esc(costLabel(v,it.cur))}`:' 미정'}`;
+            const v=costAmountOf(it,'amount'), money=v==null? '미정' : (it.cur&&it.cur!=='KRW'&&CUR[it.cur])? `${CUR[it.cur].sym}${fmtMoney(v,it.cur)}` : `₩${fmtMoney(v)}`;
+            const label=`${esc(it.title||(COST_KIND[it.kind]||COST_KIND.OTHER).name)} ${esc(money)}`;
             return readOnly()? `<span class="dayItem">🧾 ${label}</span>` : `<button type="button" class="dayItem" onclick="event.stopPropagation();openDayCostItem(${di},'${escAttr(it.id)}')" title="이 비용 고치기">🧾 ${label}</button>`;
           }).join('');
-          const add=readOnly()? '' : `<button type="button" class="dayItem add" onclick="event.stopPropagation();openDayCostItem(${di},null)">＋ 쓴 돈 적기</button>`;
+          // 빈 날에는 두지 않는다 — '＋ 장소 추가'와 나란히 떠서 무엇부터 할지 흐렸다. 장소나 쓴 돈이 있는 날에만
+          const add=(readOnly()||(!day.spots.length&&!(day.costItems||[]).length))? '' : `<button type="button" class="dayItem add" onclick="event.stopPropagation();openDayCostItem(${di},null)">＋ 쓴 돈 적기</button>`;
           const itemsLine=(items||add)? `<div class="dayItems">${items}${add}</div>` : '';
           if(!tot) return itemsLine;
           const detail=parts.length>1?` <span style="opacity:.55">(${parts.map(p=>`${p[0]} ₩${p[1].toLocaleString()}`).join(' + ')})</span>`:'';
