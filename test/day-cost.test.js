@@ -61,8 +61,13 @@ test('숙박 연결 중복을 막고 예약을 센트 단위로 정확히 배분
   const shares = [0, 1, 2].map(i => summary(trip, i).details.items.find(item => item.source === 'BOOKING').amount);
   assert.deepEqual(shares, [33.34, 33.34, 33.33]);
   assert.equal(summary(trip).details.unknownCount, 0);
+  // 장소에도 금액을 적었지만 예약에 금액이 있으면 예약이 기준이다(2026-10-04) — 하루치 배분이 그대로이고 장소 줄은 '예약에 포함'
   trip.days[0].spots[0].cost = 100;
   trip.days[0].spots[0].cur = 'USD';
+  assert.deepEqual([0, 1, 2].map(i => summary(trip, i).details.items.find(item => item.source === 'BOOKING').amount), [33.34, 33.34, 33.33]);
+  assert.equal(summary(trip).details.items.find(item => item.source === 'SPOT').state, 'BOOKING');
+  // 예약 금액이 없을 때만 장소 금액이 그날 전액으로 잡힌다(예전 규칙)
+  booking.price = null;
   assert.equal(summary(trip).total, 138000);
   assert.equal(summary(trip, 1).total, 0);
 });

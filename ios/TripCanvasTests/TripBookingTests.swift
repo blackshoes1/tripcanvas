@@ -72,6 +72,25 @@ final class TripBookingTests: XCTestCase {
         XCTAssertEqual(booking.refundable, true)
     }
 
+    /// 항공편 구간은 항공 예약에 산다(2026-10-04, 웹 `booking.segments`와 같은 모양). 빈 줄은 저장하지 않고,
+    /// 날짜 없는 구간은 저장 전에 막는다. 항공은 금액 미정(`null`)으로 저장할 수 있다.
+    func testFlightSegmentsAndUnknownPrice() {
+        var booking = TripBooking(type: .flight)
+        booking.title = "대한항공"
+        var a = FlightSegment(); a.date = "2026-10-25"; a.code = "KE913"; a.dep = "ICN"; a.arr = "MAD"; a.depAt = "13:10"
+        booking.segments = [a, FlightSegment()]
+        XCTAssertEqual(booking.segments.count, 1, "빈 줄은 빠진다")
+        XCTAssertEqual(booking.raw["segments"]?.arrayValue?.first?.objectValue?["code"], .string("KE913"))
+        booking.clearPrice()
+        XCTAssertNil(booking.validate(), "항공은 금액 미정이어도 저장된다")
+        XCTAssertFalse(booking.priceKnown)
+        var noDate = FlightSegment(); noDate.code = "KE914"
+        booking.segments = [a, noDate]
+        XCTAssertEqual(booking.validate(), .segmentNeedsDate)
+        var hotel = TripBooking(type: .hotel); hotel.title = "H"; hotel.clearPrice()
+        XCTAssertEqual(hotel.validate(), .priceRequired, "숙박은 여전히 금액이 필요하다")
+    }
+
     /// 토글 시절 건드리지 않고 저장된 false는 '불가'가 아니라 모름이다 — 고른 표시가 있어야 불가(웹 `refundableOf`).
     func testUnmarkedFalseIsUnknownAndChoicesAreMarked() {
         var booking = TripBooking(raw: ["id": .string("b1"), "refundable": .bool(false)])

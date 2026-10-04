@@ -400,3 +400,19 @@ describe('buildDayPlanView — 시간대', () => {
     expect(build(trip([day([airport()])], { timeZone: 'Asia/Tokyo' }), 0)!.day.timeZone, '사람이 정한 것이 이긴다').toBe('Asia/Tokyo');
   });
 });
+
+describe('buildDayPlanView — 항공편', () => {
+  it('항공 예약의 구간이 그 날짜의 항공편이 된다 — 옛 day.flight와 합치고, flight에는 첫 편을 싣는다', () => {
+    const t = trip([day([airport()], { flight: { code: 'OZ1', dep: 'GMP', arr: 'CJU', depAt: '07:00' } } as Partial<Day>), day([])], {
+      bookings: [{ id: 'f1', type: 'flight', title: 'KE', price: 1, track: false,
+        segments: [{ date: '2026-10-01', code: 'KE1201', dep: 'GMP', arr: 'CJU', depAt: '09:30', arrAt: '10:40' },
+          { date: '2026-10-02', code: 'KE1222', dep: 'CJU', arr: 'GMP' }] } as unknown as Booking]
+    });
+    const d0 = build(t, 0)!.day;
+    expect(d0.flights.map(f => [f.code, f.depMinutes])).toEqual([['OZ1', 420], ['KE1201', 570]]);
+    expect(d0.flight?.code).toBe('OZ1');
+    const d1 = build(t, 1)!.day;
+    expect(d1.flights.map(f => f.code)).toEqual(['KE1222']);
+    expect(d1.flight?.code, '옛 day.flight가 없으면 예약 구간의 첫 편 — 예전 앱도 그린다').toBe('KE1222');
+  });
+});

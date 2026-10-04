@@ -58,6 +58,8 @@ struct SpotEditorView: View {
     /// 참여자를 고를 수 있는지 판정할 내 역할(`canAssignWho`). 보기 권한은 고르지 못한다.
     let role: MemberRole
     let draftKey: EditorDraftKey?
+    /// 이 장소와 연결된 숙박 예약 — 있으면 금액·박 수는 그 예약이 유일한 출처라 여기서 고치지 않는다(웹 `spotPaidByBooking`, 2026-10-04)
+    let linkedBooking: TripBooking?
     let onSave: (TripSpot) async -> String?
     let onDelete: (Int) async -> String?
     let onMoveToDay: (Int, Int, TripSpot) async -> String?
@@ -73,6 +75,7 @@ struct SpotEditorView: View {
     @State private var recovery: SpotInputDraft?
     @State private var checkedRecovery = false
     @State private var showsPreviousInput = false
+    @State private var editingCost: CostEditTarget?
     private var isDirty: Bool {
         draft != target.spot || costText != MoneyInput.text(amount: target.spot.cost)
     }
@@ -84,6 +87,7 @@ struct SpotEditorView: View {
          members: [MemberView] = [],
          role: MemberRole = .owner,
          draftKey: EditorDraftKey? = nil,
+         linkedBooking: TripBooking? = nil,
          onSave: @escaping (TripSpot) async -> String?,
          onDelete: @escaping (Int) async -> String?,
          onMoveToDay: @escaping (Int, Int, TripSpot) async -> String?) {
@@ -94,6 +98,7 @@ struct SpotEditorView: View {
         self.members = members
         self.role = role
         self.draftKey = draftKey
+        self.linkedBooking = linkedBooking?.type == .hotel ? linkedBooking : nil
         self.onSave = onSave
         self.onDelete = onDelete
         self.onMoveToDay = onMoveToDay
@@ -239,16 +244,26 @@ struct SpotEditorView: View {
                             Label(mode.label, systemImage: mode.symbol).tag(TravelMode?.some(mode))
                         }
                     }
-                    HStack {
-                        TextField("비용 미정 (무료는 0)", text: $costText)
-                            .keyboardType(.decimalPad)
-                        Picker("통화", selection: $draft.currency) {
-                            Text("KRW").tag(Currency?.none)
-                            ForEach(Currency.allCases, id: \.self) { currency in
-                                Text(currency.rawValue).tag(Currency?.some(currency))
-                            }
+                    // 비용은 요약 한 줄 — 누르면 하루 비용 화면과 같은 편집기가 열리고, 고친 값은 장소를 저장할 때 들어간다(2026-10-04).
+                    // 전에는 여기(금액·통화)와 하루 비용 화면(전체 칸)이 같은 spot.cost를 다른 칸으로 받았다.
+                    if let booking = linkedBooking {
+                        VStack(alignment: .leading, spacing: Space.xs) {
+                            Text(booking.price > 0 ? "예약 금액 \(TimeFormat.money(booking.price, currency: booking.currencyCode))" : "예약 금액 미정")
+                            Text("숙박 예약과 연결된 숙소는 예약의 금액·기간을 써요. 예약 화면에서 고쳐요.")
+                                .font(.caption).foregroundStyle(Ink.soft)
                         }
-                        .labelsHidden()
+                    } else {
+                        Button { editingCost = CostEditTarget(kind: .spot(target.index ?? -1), entry: CostEntry(spot: draft),
+                                                              isNew: draft.cost == nil, inSpotEditor: true) } label: {
+                            HStack {
+                                Text("비용")
+                                Spacer()
+                                Text(costSummary).foregroundStyle(Ink.soft).multilineTextAlignment(.trailing)
+                                Image(systemName: "chevron.right").font(.caption).foregroundStyle(Ink.faint)
+                            }
+                            .frame(minHeight: 44)
+                        }
+                        .buttonStyle(.plain)
                     }
                     }
                 }
@@ -270,7 +285,12 @@ struct SpotEditorView: View {
                     // 숙소는 종류와 별개의 표시다 — 그날의 종료 기준점이 되고 숙박 예약과 이어진다(웹의 체크박스와 같다).
                     Toggle("숙소", isOn: $draft.isStay)
                     if draft.isStay || draft.category == .stay {
-                        Stepper("연박 \(draft.nights ?? 1)박", value: nightsBinding, in: 1...TripLimits.maxDays)
+                        // 연결된 숙박 예약에 기간이 있으면 박 수도 그 예약이 정한다(웹 `lodgingNights`) — 칸 대신 그 기간을 말한다
+                        if let nights = bookingNights {
+                            LabeledContent("연박", value: "\(nights)박 · 예약 기간")
+                        } else {
+                            Stepper("연박 \(draft.nights ?? 1)박", value: nightsBinding, in: 1...TripLimits.maxDays)
+                        }
                     }
                 } header: {
                     Text("계획")
@@ -321,6 +341,18 @@ struct SpotEditorView: View {
             }
             .onChange(of: draft) { _, _ in preserveInput() }
             .onChange(of: costText) { _, _ in preserveInput() }
+            .sheet(item: $editingCost) { target in
+                CostEntryEditor(target: target, onSave: { entry in
+                    // 장소 편집기의 초안에만 담는다 — 문서에는 장소를 저장할 때 들어간다
+                    if let entry { draft = entry.applying(to: draft) }
+                    costText = MoneyInput.text(amount: draft.cost)
+                    return true
+                }, onDelete: { _ in
+                    for key in CostEntry.spotCostKeys where key != "photos" { draft.setField(key, nil) }
+                    costText = ""
+                    return true
+                })
+            }
             .sheet(isPresented: $showsPreviousInput) {
                 if let recovery {
                     SpotInformationView(spot: TripSpot(raw: recovery.edited), contextLabel: "저장하지 않은 입력")
@@ -381,6 +413,24 @@ struct SpotEditorView: View {
         return next
     }
 
+    /// 비용 요약 한 줄 — '₩12,000 · 결제 예정', 1인 금액이면 '1인 ₩5,000 × 2명'
+    private var costSummary: String {
+        let entry = CostEntry(spot: draft)
+        guard let amount = entry.amount else { return "미정" }
+        let money = TimeFormat.money(amount, currency: entry.currency.rawValue)
+        var parts = [entry.basis == .perPerson && entry.people > 1 ? "1인 \(money) × \(entry.people)명" : money]
+        if entry.payState != .none { parts.append(entry.payState.label) }
+        return parts.joined(separator: " · ")
+    }
+
+    /// 연결된 숙박 예약의 기간(박) — 기간을 모르면 nil(그때는 장소의 박 수를 고친다)
+    private var bookingNights: Int? {
+        guard let booking = linkedBooking, let start = booking.start, let end = booking.end,
+              let a = ISODateText.date(from: start), let b = ISODateText.date(from: end) else { return nil }
+        let nights = Calendar(identifier: .gregorian).dateComponents([.day], from: a, to: b).day ?? 0
+        return nights > 0 ? nights : nil
+    }
+
     private var nightsBinding: Binding<Int> {
         Binding(get: { draft.nights ?? 1 }, set: { draft.nights = $0 })
     }
@@ -389,7 +439,6 @@ struct SpotEditorView: View {
         var spot = draft
         spot.name = spot.name.trimmingCharacters(in: .whitespacesAndNewlines)
         spot.city = spot.city.trimmingCharacters(in: .whitespacesAndNewlines)
-        spot.cost = MoneyInput.amount(from: costText, currency: spot.currency)
         return spot
     }
 

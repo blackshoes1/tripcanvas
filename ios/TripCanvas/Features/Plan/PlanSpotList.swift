@@ -54,8 +54,10 @@ struct PlanSpotList: View {
                     // 🏠 전날 숙소 이월 · 렌터카 픽업은 장소 목록 **앞**에 온다.
                     // ⚠️ ForEach 밖에 둔다 — 드래그 인덱스는 ForEach의 컬렉션 기준이라
                     //    이 줄들이 그 안에 섞이면 순서가 어긋난다.
-                    if let flight = model.planDay?.flight, !flight.line.isEmpty {
-                        flightRow(flight, top: false, bottom: !isEditing && rail.afterFlight)
+                    // 항공편은 하루에 여럿일 수 있다(갈아타는 날) — 서버의 `flights`, 옛 서버면 `flight` 하나
+                    let flights = dayFlights
+                    ForEach(Array(flights.enumerated()), id: \.offset) { i, flight in
+                        flightRow(flight, top: !isEditing && i > 0, bottom: !isEditing && (i < flights.count - 1 || rail.afterFlight))
                     }
                     if let carry = model.planDay?.carriedStay {
                         carryRow(carry, top: !isEditing && rail.beforeCarry, bottom: !isEditing && rail.afterCarry)
@@ -446,6 +448,11 @@ struct PlanSpotList: View {
     /// ⚠️ 렌터카 픽업·반납과 같은 자리에 있는 이유가 같다 — **좌표가 없어 동선·ETA에 들어가지 않는다.**
     ///    시각도 ETA 칸이 아니라 이 줄 안에 있다: 그날 계산된 도착 순서에 속하지 않는다.
     /// ⚠️ `ForEach` 밖에 둔다 — 드래그 인덱스가 어긋난다(위 주석과 같은 이유).
+    /// 그날 그릴 항공편 — 내용이 있는 것만
+    private var dayFlights: [DayPlanFlight] {
+        (model.planDay?.flights ?? model.planDay?.flight.map { [$0] } ?? []).filter { !$0.line.isEmpty }
+    }
+
     private func flightRow(_ flight: DayPlanFlight, top: Bool, bottom: Bool) -> some View {
         PlanRailEventRow(symbol: "airplane", title: flight.line, subtitle: "항공편", railTop: top, railBottom: bottom)
             .listRowBackground(Ink.raised)
@@ -522,7 +529,7 @@ struct PlanSpotList: View {
     /// 순서는 목록과 같다: 항공편 → 전날 숙소 → 렌터카 픽업 → 장소들 → 렌터카 반납 → 숙소 복귀.
     private func railEdges(_ day: TripDay) -> (afterFlight: Bool, beforeCarry: Bool, afterCarry: Bool,
                                               beforePickups: Bool, beforeSpots: Bool, afterSpots: Bool) {
-        let flight = (model.planDay?.flight.map { !$0.line.isEmpty }) ?? false
+        let flight = !dayFlights.isEmpty
         let carry = model.planDay?.carriedStay != nil
         let pickups = !(model.planDay?.carPickups ?? []).isEmpty
         let spots = !day.spots.isEmpty

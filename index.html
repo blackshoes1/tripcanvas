@@ -13,7 +13,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js" integrity="sha384-+pWnyi8LtZx+cgXfD2arWgUX7pHIaEL215cEPPk9WrsegNlgvDL9DNjaqsceQq6o" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js" integrity="sha384-BSxuMLxX+FCbTdYec3TbXlnMGEEM2QXTFdtDaveen71o+jswm2J36+xFqp8k4VHM" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.min.js" integrity="sha384-l8ah+VgaWtk1mvOe9VC+OirC6qHFF4yH7l7mKRidV9MSti3E9F463bMp6ZVN4kuC" crossorigin="anonymous"></script>
-<link rel="stylesheet" href="style.css?v=tc-v262">
+<link rel="stylesheet" href="style.css?v=tc-v263">
 </head>
 <body>
 <a class="skipLink" href="#sidebar">일정으로 건너뛰기</a>
@@ -129,7 +129,8 @@
     <summary>상세 설정 보기 <span>⌄</span></summary>
     <div class="advancedGrid">
       <div><label for="spotLegMode">이동수단</label><select id="spotLegMode"><option value="">그날 기본</option><option value="car">🚗 자차</option><option value="taxi">🚕 택시</option><option value="transit">🚌 대중교통</option><option value="train">🚆 기차</option><option value="walk">🚶 도보</option><option value="bike">🚴 자전거</option><option value="flight">✈️ 비행기</option></select></div>
-      <div class="wide"><label for="spotCost">예상 비용</label><div class="fieldRow"><input type="text" id="spotCost" inputmode="decimal" placeholder="미정 (무료는 0)"><select id="spotCur" class="compactSelect" aria-label="비용 통화"><option value="KRW">₩ 원</option><option value="USD">$ 달러</option><option value="EUR">€ 유로</option><option value="JPY">¥ 엔</option><option value="CNY">元 위안</option></select></div><div class="hint" id="costKrwHint"></div></div>
+      <!-- 비용은 장소 비용 창 하나에서 고친다 — 여기는 요약 한 줄(2026-10-04). 예약에 연결된 숙소는 예약 금액이 유일한 출처라 예약을 연다 -->
+      <div class="wide"><span class="fieldLabel" id="spotCostLabel">비용</span><button type="button" class="costSummary" id="spotCostBtn" aria-describedby="spotCostLabel"></button><div class="hint" id="costKrwHint"></div></div>
       <div class="wide"><label for="spotBookUrl">내 예약 링크</label><input type="text" id="spotBookUrl" placeholder="예약 확인·바우처 주소 https://"></div>
       <!-- 칸마다 보이는 이름을 둔다 — 예시 문구뿐이라 값을 넣으면 무슨 칸인지 사라졌다. 명소가 아니면 접는다(2026-10-03 P2-27) -->
       <details class="wide admissionBox" id="spotAdmBox">
@@ -186,10 +187,8 @@
   <div class="row modalActions"><button class="btn" id="costDeleteCancel">취소</button><button class="btn danger" id="costDeleteConfirm">삭제</button></div>
 </dialog>
 <dialog id="placeCostDialog" class="costDialog" aria-labelledby="placeCostTitle">
-  <h2 id="placeCostTitle">일정 장소 비용 입력</h2>
-  <div id="costPlaceEmpty" class="costEmpty" hidden><p>먼저 일정에 장소를 담아 주세요 — 담은 장소마다 비용을 적을 수 있어요.</p><button type="button" class="btn primary" id="costPlaceAddSpot">장소 담기</button></div>
-  <label for="costPlace">일정에 저장된 장소</label><select id="costPlace"></select>
-  <p class="hint">장소를 고르면 저장된 비용을 불러와요. 장소 비용은 가서 쓰는 돈이라 예약 결제 금액이 아니라 일자 카드의 '하루 비용'과 현지 결제 금액에 들어가요.</p>
+  <h2 id="placeCostTitle">장소 비용</h2>
+  <p class="hint" id="placeCostFor"></p>
   <label for="costAmount">금액</label><input id="costAmount" inputmode="decimal" placeholder="미정 (무료는 0)">
   <label for="costCurrency">통화</label><select id="costCurrency"><option value="KRW">₩ 원</option><option value="USD">$ 달러</option><option value="EUR">€ 유로</option><option value="JPY">¥ 엔</option><option value="CNY">元 위안</option></select>
   <label for="costKind">분류</label><select id="costKind"><option value="AUTO">장소 분류에 따름</option><option value="FLIGHT">항공</option><option value="STAY">숙박</option><option value="RENT">렌트</option><option value="TRANSIT">대중교통</option><option value="FOOD">식비</option><option value="SHOPPING">쇼핑</option><option value="TICKET">입장권·관람권</option><option value="TRANSPORT">택시·기타 교통</option><option value="OTHER">기타</option></select>
@@ -197,11 +196,10 @@
   <label for="costPeople">적용 인원</label><input type="number" id="costPeople" min="1" max="100">
   <p class="hint" id="costPerPersonNote" aria-live="polite"></p>
   <div class="chkrow"><input type="checkbox" id="costPartial"><label for="costPartial">일부 금액만 확인했어요</label></div>
-  <label for="costPaidOn">결제(예정)일 (선택)</label><input type="date" id="costPaidOn">
   <label for="costPayState">결제 상태</label><select id="costPayState"></select>
-  <p class="hint">실제로 결제한 뒤 결제 완료를 선택해 주세요. 날짜가 지나도 자동으로 완료되지 않아요.</p>
+  <div id="costPaidOnWrap"><label for="costPaidOn" id="costPaidOnLabel">결제일 (선택)</label><input type="date" id="costPaidOn"></div>
   <p class="hint" id="costPhotoNote"></p>
-  <div class="row modalActions"><button class="btn" id="costPlaceDelete">비용 삭제</button><button class="btn" id="costPlaceCancel">취소</button><button class="btn primary" id="costPlaceSave">저장</button></div>
+  <div class="row modalActions"><button class="btn" id="costPlaceDelete">비용 지우기</button><button class="btn" id="costPlaceCancel">취소</button><button class="btn primary" id="costPlaceSave">확인</button></div>
 </dialog>
 
 <!-- 일자 편집 모달 -->
@@ -237,6 +235,8 @@
     </div>
     <div class="hint">※ 항공편 시각은 <b>참고 표시용</b>이에요 — 일정의 도착 예상 계산에는 반영되지 않아요. 계산에 넣으려면 장소의 <b>도착 시각 고정</b>을 쓰세요.</div>
   </div>
+  <!-- 항공편은 항공 예약에 산다(2026-10-04) — 여기 칸은 옛 항공편이 남아 있을 때만 보이고, 예약으로 옮기는 길을 준다 -->
+  <div id="flightToBooking" class="hint" style="display:none"><span id="flightToBookingText"></span> <button type="button" class="btn sm" id="flightToBookingBtn"></button></div>
   <label for="dayTitle">제목 (예: → 세비야 (2박))</label><input type="text" id="dayTitle">
   <label for="dayDrive">이동 정보 (예: 🚗 128km · 1시간 45분)</label><input type="text" id="dayDrive">
   <label for="dayNote">메모</label><textarea id="dayNote"></textarea>
@@ -435,7 +435,7 @@
   <h2>예약 결제 금액</h2>
   <div class="hint">가기 전에 내는 돈 — 항공·숙박·렌트 예약과 보험·유심·미리 산 입장권을 한 목록으로 봐요. 실제로 결제한 뒤 결제 완료를 선택해 주세요. 숙박·렌터카 예약은 시세를 계속 확인해 좋은 조건이 생기면 알려드려요 — 재예약·취소는 직접 결정하세요.</div>
   <div id="bookingSummary"></div>
-  <div class="row" style="margin:8px 0 2px"><button class="btn" id="bookingAdd">＋ 결제 항목 추가</button><button class="btn" id="resvMenuBtn" title="예약번호·기간·취소 조건·예약 링크를 한곳에서 찾아요"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16v4a2 2 0 0 0 0 4v4H4v-4a2 2 0 0 0 0-4zM10 6v12"/></svg> 예약번호·취소 조건</button><button class="btn" id="costPlaceOpen" title="장소 비용은 현지 결제 금액에 들어가요">장소 비용 입력 (현지 결제)</button></div>
+  <div class="row" style="margin:8px 0 2px"><button class="btn" id="bookingAdd">＋ 결제 항목 추가</button><button class="btn" id="resvMenuBtn" title="예약번호·기간·취소 조건·예약 링크를 한곳에서 찾아요"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16v4a2 2 0 0 0 0 4v4H4v-4a2 2 0 0 0 0-4zM10 6v12"/></svg> 예약번호·취소 조건</button></div>
   <div id="bookingListBody"></div>
   <div class="hint" id="pxSourceLine"></div>
   <div class="row">
@@ -459,17 +459,20 @@
     <select id="bkCur" class="compactSelect" aria-label="금액 통화"><option value="KRW">₩ 원</option><option value="USD">$ 달러</option><option value="EUR">€ 유로</option><option value="JPY">¥ 엔</option><option value="CNY">元 위안</option></select>
   </div>
   <label for="bkPayState">결제 상태</label><select id="bkPayState" title="실제로 결제한 뒤 결제 완료를 선택해 주세요"><option value="NONE">고르지 않음</option><option value="RESERVED">결제 예정</option><option value="PAID">결제 완료</option></select>
-  <label for="bkPaidOn" id="bkPaidOnLabel">결제(예정)일 (선택)</label>
-  <div class="fieldRow">
-    <input type="date" id="bkPaidOn" title="날짜가 지나도 자동으로 결제 완료가 되지 않아요">
-
-  </div>
+  <div id="bkPaidOnWrap"><label for="bkPaidOn" id="bkPaidOnLabel">결제일 (선택)</label><input type="date" id="bkPaidOn"></div>
   <div class="hint" id="bkPayHint"></div>
   <div id="bkPeriodWrap" style="display:flex;gap:6px">
     <div style="flex:1"><label for="bkStart">시작일 (체크인·픽업·출발)</label><input type="date" id="bkStart" style="width:100%"></div>
     <div style="flex:1"><label for="bkEnd">종료일</label><input type="date" id="bkEnd" style="width:100%"></div>
   </div>
   <div class="hint" id="bkPeriodHint"></div>
+  <!-- 항공편 구간 — 편명·공항·시각은 항공 예약에 산다(2026-10-04, 전에는 일자 편집에 따로 있었다). 날짜를 넣으면 그날 일정에 보인다 -->
+  <div id="bkFlightFields" hidden>
+    <span class="fieldLabel">항공편</span>
+    <div id="bkSegments"></div>
+    <button type="button" class="btn sm" id="bkSegAdd">＋ 구간 추가</button>
+    <div class="hint">날짜를 넣은 구간은 그날 일정에 ✈️ 줄로 보여요 — 동선·도착 예상 계산에는 들어가지 않아요. 왕복이면 가는 편·오는 편을 따로 넣어요.</div>
+  </div>
   <div id="bkHotelFields">
     <div style="display:flex;gap:6px">
       <div style="flex:1"><label for="bkAdults">투숙 인원 (성인)</label><input type="number" id="bkAdults" min="1" max="8" step="1" value="2" style="width:100%"></div>
@@ -723,15 +726,15 @@
   <div id="placeDetailsContent" aria-live="polite"></div>
   <footer id="placeDetailsActions"></footer>
 </dialog>
-<script src="lib.js?v=tc-v262"></script>
-<script src="sync.js?v=tc-v262"></script>
-<script src="routing.js?v=tc-v262"></script>
-<script src="price.js?v=tc-v262"></script>
-<script src="adaptive.js?v=tc-v262"></script>
-<script src="intake.js?v=tc-v262"></script>
-<script src="collab.js?v=tc-v262"></script>
-<script src="api.js?v=tc-v262"></script>
-<script src="auth.js?v=tc-v262"></script>
-<script src="app.js?v=tc-v262"></script>
+<script src="lib.js?v=tc-v263"></script>
+<script src="sync.js?v=tc-v263"></script>
+<script src="routing.js?v=tc-v263"></script>
+<script src="price.js?v=tc-v263"></script>
+<script src="adaptive.js?v=tc-v263"></script>
+<script src="intake.js?v=tc-v263"></script>
+<script src="collab.js?v=tc-v263"></script>
+<script src="api.js?v=tc-v263"></script>
+<script src="auth.js?v=tc-v263"></script>
+<script src="app.js?v=tc-v263"></script>
 </body>
 </html>

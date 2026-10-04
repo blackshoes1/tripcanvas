@@ -114,6 +114,18 @@ export interface DayPlanInput {
  *
  * 하나도 안 적혀 있으면 null이다 — 빈 칸만 든 객체를 보내면 화면이 빈 줄을 그리게 된다.
  */
+/**
+ * 그날의 항공편 전부 — 항공 예약의 구간과 일자의 옛 항공편(`dayFlights` · lib, 2026-10-04). 웹 일자 카드와 같은 목록이다.
+ * 시각은 계약의 다른 시각처럼 자정 기준 분이다.
+ */
+function flightsOf(trip: Trip, di: number): DayPlanFlight[] {
+  return legacyLib.dayFlights(trip, di).map((f) => ({
+    code: f.code, dep: f.dep, arr: f.arr,
+    depMinutes: f.depAt ? parseHM(f.depAt) : null,
+    arrMinutes: f.arrAt ? parseHM(f.arrAt) : null
+  }));
+}
+
 function flightOf(day: Day): DayPlanFlight | null {
   const raw = day.flight;
   if (!raw || typeof raw !== 'object') return null;
@@ -226,7 +238,9 @@ export function buildDayPlanView(input: DayPlanInput): DayPlanResponse | null {
     carReturns: cars.returns,
     back,
     spotsWithoutLocation: spots.filter((s) => !hasCoord(s)).length,
-    flight: flightOf(day),
+    // 예전 앱은 하나만 읽는다 — 옛 항공편이 없으면 예약 구간의 첫 편을 실어 그 앱에도 보이게 한다
+    flight: flightOf(day) ?? flightsOf(trip, di)[0] ?? null,
+    flights: flightsOf(trip, di),
     splits: splitsOf(day),
     totals: {
       distanceKm: km(distanceKm),

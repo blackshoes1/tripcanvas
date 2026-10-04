@@ -94,12 +94,14 @@ struct DayCostView: View {
                 }
                 Section("장소 비용") {
                     ForEach(Array(day.spots.enumerated()), id: \.offset) { index, spot in
+                        // 숙박 예약과 연결된 숙소는 예약 금액이 유일한 출처다(2026-10-04) — 여기서 고치지 않고 예약 화면에서 고친다
+                        let spotLine = line(source: "SPOT", key: String(index))
                         Button {
                             editing = CostEditTarget(kind: .spot(index), entry: CostEntry(spot: spot))
                         } label: {
-                            entryRow(title: spot.name, entry: CostEntry(spot: spot), line: line(source: "SPOT", key: String(index)))
+                            entryRow(title: spot.name, entry: CostEntry(spot: spot), line: spotLine)
                         }
-                        .buttonStyle(.plain).disabled(!canEdit)
+                        .buttonStyle(.plain).disabled(!canEdit || spotLine?.state == "BOOKING")
                     }
                 }
                 Section {
@@ -128,7 +130,7 @@ struct DayCostView: View {
                                     .font(.caption).foregroundStyle(Ink.soft)
                             }
                         }
-                        Text("연결된 장소에 금액을 적은 예약은 중복해서 더하지 않아요. 예약 금액과 날짜는 예약 화면에서 수정할 수 있어요.")
+                        Text("숙박 예약과 연결된 숙소는 예약 금액을 써요 — 두 번 더하지 않아요. 예약 금액과 날짜는 예약 화면에서 수정할 수 있어요.")
                             .font(.caption).foregroundStyle(Ink.soft)
                         if details.undatedBookings > 0 {
                             Text("날짜 미정 예약 \(details.undatedBookings)건은 하루 합계에 포함되지 않았어요.").font(.caption)
@@ -196,14 +198,16 @@ struct DayCostView: View {
     private func entryRow(title: String, entry: CostEntry, line: DayCostLine?) -> some View {
         VStack(alignment: .leading, spacing: Space.xs) {
             Text(title.isEmpty ? "비용 항목" : title)
-            if let amount = entry.amount {
+            if line?.state == "BOOKING" {
+                Text("연결된 숙박 예약 금액에 포함 · 예약 화면에서 고쳐요")
+                    .font(.subheadline).foregroundStyle(Ink.soft)
+            } else if let amount = entry.amount {
                 Text(amount == 0 && !entry.isPartial ? "무료 · 확인한 0원" : "\(TimeFormat.money(amount, currency: entry.currency.rawValue))\(entry.isPartial ? " · 일부 금액만 확인" : "")")
                     .font(.subheadline)
                 Text("\(entry.basis.label)\(entry.basis != .entered ? " · \(entry.people)명 적용" : "")")
                     .font(.caption).foregroundStyle(Ink.soft)
             } else {
-                Text(line?.state == "BOOKING" ? "연결된 예약 금액에 포함" : "비용 미정")
-                    .font(.subheadline).foregroundStyle(Ink.soft)
+                Text("비용 미정").font(.subheadline).foregroundStyle(Ink.soft)
             }
             // 연박 숙소는 적은 금액 전액이 아니라 하루치만 이 날 합계에 들어간다 — 그 사실을 여기서 말한다.
             if let share = line?.amount, let full = entry.amount, share != full, line?.source == "SPOT" {
@@ -240,6 +244,9 @@ struct CostEditTarget: Identifiable {
     let entry: CostEntry
     /// 아직 문서에 없는 새 항목 — 지울 것이 없으니 '삭제'를 두지 않는다(취소가 그 일을 한다).
     var isNew = false
+    /// 장소 편집기 안에서 연 비용 — 고친 값은 그 편집기의 초안에 담기고 장소를 저장할 때 들어간다(2026-10-04).
+    /// 장소 자체를 지우는 길(`일정의 장소도 함께 삭제`)은 두지 않는다 — 그건 장소 편집기의 일이다.
+    var inSpotEditor = false
     var isBudget: Bool { if case .budget = kind { true } else { false } }
     /// 이름이 있어야 하고 지울 수 있는 항목 — 하루 추가 비용과 여행 준비 비용.
     var isExtra: Bool {
@@ -294,21 +301,6 @@ struct CostEntryEditor: View {
                         }
                     }
                 }
-                // 날짜가 지나도 결제 상태는 자동으로 바뀌지 않는다(웹과 같다).
-                if !target.isBudget {
-                    Section {
-                        Toggle("결제(예정)일 정하기", isOn: Binding(
-                            get: { entry.paidOn != nil },
-                            set: { on in entry.paidOn = on ? (entry.paidOn ?? ISODateText.text(from: Date())) : nil }))
-                        if entry.paidOn != nil {
-                            DatePicker(entry.payState == .paid ? "결제일" : entry.payState == .reserved ? "결제 예정일" : "결제(예정)일", selection: Binding(
-                                get: { entry.paidOn.flatMap { ISODateText.date(from: $0) } ?? Date() },
-                                set: { entry.paidOn = ISODateText.text(from: $0) }), displayedComponents: .date)
-                        }
-                    } footer: {
-                        Text("실제로 결제한 뒤 결제 완료를 선택해 주세요. 날짜가 지나도 자동으로 완료되지 않아요.")
-                    }
-                }
                 Section {
                     TextField(target.isBudget ? "예산 미설정" : "비용 미정", text: $amount).keyboardType(.decimalPad)
                     Picker("통화", selection: $entry.currency) {
@@ -324,13 +316,28 @@ struct CostEntryEditor: View {
                 }
                 if !target.isBudget {
                     Group {
+                        // 결제는 상태가 먼저고 날짜는 그 상태의 선택 칸이다(2026-10-04, 웹 syncPayDate와 같다) —
+                        // 고르지 않았으면 날짜를 묻지 않고, 이름이 상태를 따른다. 날짜가 지나도 상태는 바뀌지 않는다.
                         Section {
                             Picker("결제 상태", selection: $entry.payState) {
                                 ForEach(CostPayState.allCases, id: \.self) { Text($0.label).tag($0) }
                             }
+                            if entry.payState != .none {
+                                Toggle(entry.payState == .paid ? "결제일 정하기" : "결제 예정일 정하기", isOn: Binding(
+                                    get: { entry.paidOn != nil },
+                                    set: { on in entry.paidOn = on ? (entry.paidOn ?? ISODateText.text(from: Date())) : nil }))
+                                if entry.paidOn != nil {
+                                    DatePicker(entry.payState == .paid ? "결제일" : "결제 예정일", selection: Binding(
+                                        get: { entry.paidOn.flatMap { ISODateText.date(from: $0) } ?? Date() },
+                                        set: { entry.paidOn = ISODateText.text(from: $0) }), displayedComponents: .date)
+                                }
+                            }
                         } footer: {
-                            Text("예약해 두고 아직 내지 않은 돈과 이미 낸 돈을 따로 봐요. 고르지 않으면 어느 쪽으로도 세지 않아요.")
+                            Text(entry.payState == .paid ? "이미 낸 돈으로 쳐요."
+                                 : entry.payState == .reserved ? "아직 낼 돈으로 쳐요 — 실제로 결제한 뒤 결제 완료로 바꿔 주세요."
+                                 : "고르면 비용을 이미 낸 돈과 아직 낼 돈으로 나눠 보여요.")
                         }
+                        .onChange(of: entry.payState) { _, state in if state == .none { entry.paidOn = nil } }
                     }
                     Section {
                         CostPhotosField(refs: $entry.photos)
@@ -346,7 +353,7 @@ struct CostEntryEditor: View {
             }
             .tint(Ink.accent)
             .sheet(isPresented: $showsDeleteConfirm) {
-                CostDeleteSheet(title: entry.title, allowsSource: !target.isExtra, saving: saving) { includingSource in
+                CostDeleteSheet(title: entry.title, allowsSource: !target.isExtra && !target.inSpotEditor, saving: saving) { includingSource in
                     if !target.isExtra, let onDelete {
                         saving = true
                         let saved = await onDelete(includingSource)

@@ -847,3 +847,19 @@ body.theme-dark input:not([type=checkbox]):not([type=radio]),body.theme-dark sel
 /* 다크 테마의 카카오 지도 — 카카오는 어두운 지도 스타일이 없어 **타일 그림만** 뒤집는다(2026-10-03 UX 검토 — 다크 화면에 밝은 지도만 남았다).
    우리 핀·칩·말풍선은 타일이 아니라 CustomOverlay라 그대로다. 구글은 colorScheme으로 지도를 다시 만든다(syncMapTheme). */
 body.theme-dark #kmap img[src*="daumcdn.net/api/v1/tile"],body.theme-dark #kmap img[src*="daumcdn.net/map_"]{filter:invert(.92) hue-rotate(180deg) brightness(.95) contrast(.9)}
+
+/* 비용 입력 정리 묶음 A(2026-10-04) — 장소 편집기의 비용은 요약 한 줄이고 누르면 장소 비용 창(또는 연결된 예약)이 열린다 */
+.fieldLabel{display:block;font-size:.75rem;color:var(--muted);margin:9px 0 4px}
+.costSummary{display:block;width:100%;text-align:left;min-height:40px;padding:8px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--ink);font:inherit;cursor:pointer}
+.costSummary:hover{background:var(--hover-bg)}
+.costDialog #costPaidOnWrap > label{display:block;margin:12px 0 4px}
+.costDialog #costPaidOnWrap > input{width:100%}
+#bkPaidOnWrap > label{display:block}
+#bkPaidOnWrap[hidden],#costPaidOnWrap[hidden]{display:none}
+.flightRow{color:var(--meta-eta-fixed);display:block;background:none;border:0;padding:2px 0 4px 2px;font:inherit;font-size:.75rem;text-align:left;cursor:default}
+button.flightRow{cursor:pointer}button.flightRow:hover{text-decoration:underline}
+/* 항공편 구간 — 두 칸씩, 빼기 버튼은 줄 끝 */
+.segRow{display:grid;grid-template-columns:1fr 1fr;gap:4px 8px;padding:8px 0;border-bottom:1px dashed var(--border)}
+.segRow .segDel{grid-column:1 / -1;justify-self:end}
+.segRow label{margin:4px 0 2px}
+#bkSegAdd{margin-top:6px}

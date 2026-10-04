@@ -775,6 +775,11 @@ export interface DayPlanDay {
    * 좌표가 없어 동선·ETA·지도에는 들어가지 않는다(렌터카 픽업·반납과 같은 이유).
    */
   flight: DayPlanFlight | null;
+  /**
+   * 그날의 항공편 전부(2026-10-04) — 항공 예약의 구간(`booking.segments`)과 일자의 옛 항공편(`day.flight`). 갈아타는 날은 둘 이상이다.
+   * `flight`는 예전 앱을 위해 남긴 첫 편이다. 좌표가 없어 동선·ETA·지도에는 들어가지 않는다.
+   */
+  flights: DayPlanFlight[];
   /** 함께 움직이지 않는 구간들. 없으면 빈 배열이고, 그때 하루는 예전과 완전히 같다. */
   splits: DayPlanSplit[];
   totals: {
