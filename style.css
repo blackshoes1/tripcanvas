@@ -780,6 +780,10 @@ body{word-break:keep-all;overflow-wrap:break-word}
 .costDialog .btn:disabled{opacity:.45;cursor:not-allowed}
 .costDialog .modalActions{bottom:-24px;margin-top:16px}
 .costDialog .hint:empty{display:none}
+/* 칸을 감싼 줄(뭐에 썼나요·몇 명·결제일)도 맨 칸과 같은 모양, 체크 줄은 위와 띄운다(2026-10-05 — '몇 명'이 칸 옆에 붙어 있었다) */
+.costDialog > div:not(.chkrow):not(.row) > label{display:block;margin:12px 0 4px}
+.costDialog > div:not(.chkrow):not(.row) > input{width:100%}
+.costDialog > .chkrow{display:flex;align-items:center;gap:6px;margin-top:12px}
 .costDialog .btn.danger{color:var(--meta-danger);border-color:var(--meta-danger);font-weight:700}
 .costEmpty{display:grid;gap:10px;justify-items:start;margin:8px 0 4px}.costEmpty[hidden]{display:none}.costEmpty p{color:var(--muted);line-height:1.6}
 .costDialog.isEmpty>:not(h2):not(.costEmpty):not(.modalActions){display:none}.costDialog.isEmpty #costPlaceSave,.costDialog.isEmpty #costPlaceDelete{display:none}
