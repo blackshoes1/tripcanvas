@@ -433,6 +433,9 @@
   <label for="tripPeople">인원</label>
   <div class="fieldRow"><input type="number" id="tripPeople" min="1" max="100" step="1" inputmode="numeric" class="compactSelect" placeholder="정하지 않음" aria-describedby="tripPeopleHelp"></div>
   <div class="hint" id="tripPeopleHelp">1인 금액·예약 인원·새 숙박 예약의 인원을 이 값으로 시작해요. 이미 적은 인원은 그대로예요.</div>
+  <label for="tripBudget">총예산</label>
+  <div class="fieldRow"><input type="text" id="tripBudget" inputmode="decimal" placeholder="정하지 않음" aria-describedby="tripBudgetHelp" style="flex:1;min-width:0"><select id="tripBudgetCur" aria-label="예산 통화" class="compactSelect"><option value="KRW">₩ 원</option><option value="USD">$ 달러</option><option value="EUR">€ 유로</option><option value="JPY">¥ 엔</option><option value="CNY">元 위안</option></select></div>
+  <div class="hint" id="tripBudgetHelp">예약과 현지에서 쓰는 돈을 모두 더해 남은 예산을 보여 줘요(상단 💳 비용 내역). 하루 예산을 따로 정한 날은 그 날 기준이 따로 있어요.</div>
   <label for="tripTimeZone">여행 기본 시간대</label><input type="text" id="tripTimeZone" list="timezoneList" placeholder="예: 도쿄, Asia/Tokyo" aria-describedby="tripTimeZoneHelp">
   <div class="hint" id="tripTimeZoneHelp">도시 이름(서울·파리·도쿄…)이나 Asia/Tokyo처럼 적어요. 국내 여행은 비워 두면 한국 시간으로 봐요. 일자별 시간대가 있으면 그 값이 우선해요.</div>
   <label><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7v5l3.2 1.9M3.5 12a8.5 8.5 0 1 0 2.6-6.1M3.5 4.5V9h4.5"/></svg> 버전 기록 (10분 간격 자동 저장, 최근 15개)</label>

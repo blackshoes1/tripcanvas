@@ -2344,7 +2344,9 @@ function renderFilter(){
   });
   // 여행 전체 비용 — 항상 보이게, 탭하면 내역. 예약은 전액이라 '하루 비용'(날수로 나눈 몫)과 기준이 다르다
   const cb=tripCostBreakdown();
-  if(cb.total>0){
+  // 총예산 대비 — 예약과 현지 지출을 모두 센 전체 비용에서 뺀다(tripBudgetStatus · lib, 서버 비용 응답과 같은 함수)
+  const budgetSt=tripBudgetStatus(trip(), cb.total, fxRates);
+  if(cb.total>0||budgetSt){
     // 두 장부(앱의 비용 화면과 같은 이름) — 예약 결제 금액(가기 전에 내는 돈) / 현지 결제 금액(가서 쓰는 돈). 더하면 전체와 같다
     const groups=[
       ['예약 결제 금액', prepTotalOf(cb), [['숙박',cb.hotel],['렌터카',cb.car],['항공',cb.flight],['예약 외(보험·유심 등)',cb.prep]]],
@@ -2358,6 +2360,9 @@ function renderFilter(){
       ${groups.map(g=>`<div class="costRow costGroup"><span>${esc(g[0])}</span><b>₩${fmtMoney(g[1])}</b></div>`+
         g[2].filter(r=>r[1]>0).map(r=>`<div class="costRow costSub"><span>${esc(r[0])}</span><b>₩${fmtMoney(r[1])}</b></div>`).join('')).join('')}
       <div class="costRow costTotal"><span>합계</span><b>₩${fmtMoney(cb.total)}</b></div>
+      ${budgetSt?`<div class="costRow costGroup"><span>예산</span><b>${esc(costLabel(budgetSt.amount,budgetSt.currency))}</b></div>
+      <div class="costRow costSub${budgetSt.remainingKRW<0?' over':''}"><span>${budgetSt.remainingKRW<0?'예산보다':'남은 예산'}</span><b>₩${fmtMoney(Math.abs(budgetSt.remainingKRW))}${budgetSt.remainingKRW<0?' 많아요':''}</b></div>
+      ${budgetSt.perDayKRW!=null?`<div class="hint">예산을 ${trip().days.length}일로 나누면 하루 평균 약 ₩${fmtMoney(budgetSt.perDayKRW)}</div>`:''}`:''}
       ${taxiRef>0?`<div class="hint costTaxiRef">자차 일자는 택시비를 넣지 않았어요 — 택시로 간다면 약 ₩${fmtMoney(taxiRef)}</div>`:''}
       <div class="hint">${esc(bookingBasisHint())}</div></div>`;
     bar.appendChild(cost);
@@ -3645,6 +3650,9 @@ document.getElementById('tripEditBtn').onclick=()=>{
   syncTripRangeLabel();
   document.getElementById('tripTimeZone').value=trip().timeZone||'';
   document.getElementById('tripPeople').value=tripPeopleOf(trip())!=null? String(tripPeopleOf(trip())) : '';
+  const tb=tripBudgetOf(trip());
+  document.getElementById('tripBudget').value=tb? String(tb.amount) : '';
+  document.getElementById('tripBudgetCur').value=tb? tb.cur : tripDefaultCurrency(trip());
   document.getElementById('tripModalBg').classList.add('show');
   loadSnapList();
   applyTripModalRole();
@@ -3658,6 +3666,10 @@ document.getElementById('tripSave').onclick=()=>{
   // 여행 인원 — 기본값으로만 쓴다(tripPeopleOf · lib). 비우면 정하지 않은 것이다
   const peopleText=document.getElementById('tripPeople').value.trim(), people=peopleText? Number(peopleText) : null;
   if(people!=null && tripPeopleOf({people})==null) return fieldError('tripPeople','인원은 1~100명으로 적어 주세요');
+  // 여행 총예산 — 비우면 정하지 않은 것. 원화면 통화를 적지 않는다(비용 저장 규칙과 같다)
+  const budgetCur=document.getElementById('tripBudgetCur').value, budgetText=document.getElementById('tripBudget').value.trim();
+  const budgetAmount=budgetText? parseCostAmount(budgetText,budgetCur) : null;
+  if(budgetText && budgetAmount===null) return fieldError('tripBudget','예산을 금액으로 적어 주세요 — 원·엔은 정수, 달러·유로·위안은 소수 둘째 자리까지');
   const want=tripDaysInput();
   // 일정이 든 날을 말없이 지우지 않는다 — 되돌리기가 있어도 사라진 것을 먼저 알려 준다
   const losing=trip().days.slice(want).filter(d=>(d.spots||[]).length).length;
@@ -3673,6 +3685,7 @@ document.getElementById('tripSave').onclick=()=>{
   trip().start=nextStart;
   if(timeZone) trip().timeZone=timeZone; else delete trip().timeZone;
   if(people!=null) trip().people=people; else delete trip().people;
+  if(budgetAmount!==null) trip().budget=budgetCur==='KRW'? {amount:budgetAmount} : {amount:budgetAmount,cur:budgetCur}; else delete trip().budget;
   document.getElementById('tripModalBg').classList.remove('show');
   commit(null, changed<0?{fit:fitEntry}:undefined);   // 줄였으면 남은 일정에 지도를 다시 맞춘다
   if(shift) toast(`일정을 ${mdLabel(shift.to)}부터로 옮겼어요`,'#3e7a4c',{fn:()=>undoWith(snap)});
