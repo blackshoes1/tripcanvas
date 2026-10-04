@@ -227,13 +227,12 @@ struct SpotEditorView: View {
                 }
 
                 Section {
-                    ClockField(title: "예약·입장 시각", text: $draft.bookedAt)
                     ClockField(title: "내가 정한 도착 시각", text: $draft.arriveAt)
                     StayMinutesPicker(minutes: $draft.stayMinutes)
                 } header: {
                     Text("시간")
                 } footer: {
-                    Text("예약·입장 시각은 상대가 정한 약속이고, 도착 시각은 내가 정한 계획이에요. 비워 두면 앞 장소에서 계산해요.")
+                    Text("도착 시각은 내가 정한 계획이에요. 비워 두면 앞 장소에서 계산해요. 상대가 정한 예약·입장 시각은 '예약·입장'에 적어요.")
                 }
 
                 moveCostSection

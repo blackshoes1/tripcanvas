@@ -2616,13 +2616,21 @@ function renderSidebar(){
         ${(()=>{
           const parts=[['장소·추가 비용',dayCostOn(di)],['택시',dayTaxiCost(day,di)],['예약',iso?dayBookingCost(iso):0]]
             .filter(p=>p[1]>0);
-          const tot=parts.reduce((a,p)=>a+p[1],0); if(!tot) return '';
+          const tot=parts.reduce((a,p)=>a+p[1],0);
+          // 하루 추가 비용(장소에 묶이지 않은 쓴 돈) — 웹에서도 적고 고친다(2026-10-04, 전에는 앱에서만 적을 수 있었다)
+          const items=(day.costItems||[]).map(it=>{
+            const v=costAmountOf(it,'amount'), label=`${esc(it.title||(COST_KIND[it.kind]||COST_KIND.OTHER).name)}${v!=null?` ${esc(costLabel(v,it.cur))}`:' 미정'}`;
+            return readOnly()? `<span class="dayItem">🧾 ${label}</span>` : `<button type="button" class="dayItem" onclick="event.stopPropagation();openDayCostItem(${di},'${escAttr(it.id)}')" title="이 비용 고치기">🧾 ${label}</button>`;
+          }).join('');
+          const add=readOnly()? '' : `<button type="button" class="dayItem add" onclick="event.stopPropagation();openDayCostItem(${di},null)">＋ 쓴 돈 적기</button>`;
+          const itemsLine=(items||add)? `<div class="dayItems">${items}${add}</div>` : '';
+          if(!tot) return itemsLine;
           const detail=parts.length>1?` <span style="opacity:.55">(${parts.map(p=>`${p[0]} ₩${p[1].toLocaleString()}`).join(' + ')})</span>`:'';
           // 합계 하나로는 "얼마나 남았지"를 알 수 없다 — 예약해 둔 돈과 이미 낸 돈을 나눠 덧붙인다.
           // 고르지 않은 것(미구분)은 어느 쪽으로도 세지 않으므로 줄에 쓰지 않는다.
           const pay=dayPaySplit(day,di,iso);
           const paidLine=pay.length? `<div class="dist payLine" title="${escAttr('비용마다 정한 결제 상태예요. 고르지 않은 비용은 어느 쪽에도 들어가지 않아요')}">${pay.map(p=>`${p[0]} ₩${p[1].toLocaleString()}`).join(' · ')}</div>`:'';
-          return `<div class="dist" title="${escAttr('여러 날 걸친 예약(숙박·렌터카)과 연박 숙소는 날수로 나눈 하루치로 넣어요')}">💳 하루 비용 약 ₩${tot.toLocaleString()}${detail}</div>${paidLine}`;
+          return `<div class="dist" title="${escAttr('여러 날 걸친 예약(숙박·렌터카)과 연박 숙소는 날수로 나눈 하루치로 넣어요')}">💳 하루 비용 약 ₩${tot.toLocaleString()}${detail}</div>${paidLine}${itemsLine}`;
         })()}
         ${carry?`<div class="spot carry" style="--c:var(--subtle)" title="전날 숙소 — 오늘 첫 일정으로 자동 이월 (탭하면 지도에서 보기 · 장소 편집의 🏠 숙소 체크로 관리)"><div class="spotMain"><span class="spotTime eta">${ic('home')}</span><button type="button" class="spotIdentity nm" onclick="focusLatLng(${+carry.lat},${+carry.lng})" title="${escAttr(carry.name)}" aria-label="${escAttr(carry.name)} 지도에서 보기"><span class="spotName">${esc(carry.name)}</span></button><span class="spotMenuSpacer" aria-hidden="true"></span></div><div class="spotMeta"><span class="spotMetaItem opt">전날 숙소</span></div></div>`:''}
         ${carEv.filter(e=>e.kind==='pickup').map(carEventRowHtml).join('')}
@@ -3043,8 +3051,8 @@ window.openSpotModal=(di,si,focusId)=>{
   drawAdmission(s.admission);
   syncAdmissionBox();
   document.getElementById('spotIdentity').open=!isNew;
-  document.getElementById('spotSchedule').open=!isNew&&!!(s.at||s.bookAt||s.stayMin!=null||s.desc);
-  document.getElementById('spotAdvanced').open=!isNew&&!!(s.legMode||s.cost||s.bookAt||s.bookUrl||s.admission||spotPriorityOf(s)!=='NORMAL');
+  document.getElementById('spotSchedule').open=!isNew&&!!(s.at||s.stayMin!=null||s.desc);
+  document.getElementById('spotAdvanced').open=!isNew&&!!(s.legMode||s.cost||spotPriorityOf(s)!=='NORMAL');
   document.getElementById('spotLat').value=s.lat; document.getElementById('spotLng').value=s.lng;
   document.getElementById('spotPlaceId').value=s.placeId||'';
   document.getElementById('spotKakaoId').value=s.kakaoId||'';
@@ -3468,9 +3476,12 @@ const ADMISSION_CATS=['sight','activity','nature'];
 function syncAdmissionBox(){
   const box=document.getElementById('spotAdmBox'); if(!box) return;
   const cat=spotCatOf({cat:document.getElementById('spotCat').value||undefined, name:document.getElementById('spotName').value});
+  // 예약·입장 묶음에 무엇이든 적혀 있으면 연다 — 시각·내 예약 링크도 이 묶음이다(2026-10-04)
   const said=document.getElementById('spotAdmReq').value!=='UNKNOWN'||document.getElementById('spotAdmBooked').checked
-    ||document.getElementById('spotAdmUrl').value.trim()||document.getElementById('spotAdmNote').value.trim()||!!_pickedCheckedAt;
-  box.open = !!said || !cat || ADMISSION_CATS.includes(cat.id);
+    ||document.getElementById('spotAdmUrl').value.trim()||document.getElementById('spotAdmNote').value.trim()||!!_pickedCheckedAt
+    ||document.getElementById('spotBookAt').value.trim()||document.getElementById('spotBookUrl').value.trim();
+  // 이 묶음은 이제 상세 설정 밖에 있다 — 종류를 모르는 새 장소까지 열면 칸이 많아 보인다. 명소·체험이거나 적힌 게 있을 때만 연다
+  box.open = !!said || !!(cat && ADMISSION_CATS.includes(cat.id));
 }
 // 항공 정보 입력은 이동수단이 비행기일 때만 노출
 // 항공편은 항공 예약의 구간이다(2026-10-04). 일자 편집의 칸은 **옛 항공편(day.flight)이 남아 있을 때만** 보이고,
@@ -4493,7 +4504,22 @@ function toggleBkFields(){
   if(booking&&ps.value==='NONE'){ ps.value='RESERVED'; ps.dataset.auto='1'; }
   else if(!booking&&ps.dataset.auto){ ps.value='NONE'; delete ps.dataset.auto; }
   syncPayDate('bk');
+  syncBookingConds();
 }
+// 접힌 조건 묶음의 머리 한 줄 — 지금 값을 말한다(2026-10-04). 조건이 비어 있으면 무엇을 하는 칸인지 말한다
+function syncBookingConds(){
+  const v=(id)=>document.getElementById(id).value, txt=(id)=>{ const o=document.getElementById(id); return o.value? o.options[o.selectedIndex].textContent : ''; };
+  const hotel=[`성인 ${v('bkAdults')||2}`, `객실 ${v('bkRooms')||1}`, v('bkRoom').trim(), v('bkBreakfast')===''? '' : txt('bkBreakfast')].filter(Boolean);
+  document.getElementById('bkHotelCondSummary').textContent='· '+hotel.join(' · ');
+  const car=['bkCarClass','bkCarTrans','bkCarMileage','bkCarIns'].map(txt).filter(Boolean);
+  document.getElementById('bkCarCondSummary').textContent= car.length? '· '+car.join(' · ') : '· 적지 않음 — 같은 조건의 시세만 확정 절약으로 쳐요';
+  const rf=v('bkFreeCancel'), until=v('bkFreeUntil'), fee=v('bkFee').trim();
+  const cancel=[rf==='1'? (until? `무료 취소 ${mdLabel(until)}까지` : '무료 취소 가능') : rf==='0'? '무료 취소 불가' : '', fee&&fee!=='0'? `수수료 ${fee}` : ''].filter(Boolean);
+  document.getElementById('bkCancelSummary').textContent= cancel.length? '· '+cancel.join(' · ') : '· 모름';
+}
+['bkAdults','bkRooms','bkRoom','bkBreakfast','bkCarClass','bkCarTrans','bkCarMileage','bkCarIns','bkFreeCancel','bkFreeUntil','bkFee'].forEach(id=>{
+  const el=document.getElementById(id); el.addEventListener('input',syncBookingConds); el.addEventListener('change',syncBookingConds);
+});
 // 결제는 상태가 먼저고 날짜는 그 상태의 선택 칸이다(2026-10-04) — 고르지 않았으면 날짜 칸이 없고, 이름이 상태를 따른다
 // ('결제일' / '결제 예정일'). 예약 편집기(bk)와 장소 비용 창(cost)이 같이 쓴다. 날짜는 상태를 바꾸지 않는다(#336).
 function syncPayDate(prefix){
@@ -4619,6 +4645,9 @@ window.openBookingModal=(id)=>{
   // 숙소 카드의 '가격 추적 시작'처럼 추적하려고 연 경우만 그쪽에서 켠다(startHotelTracking)
   document.getElementById('bkTrack').checked=b? (b.type!=='flight'&&b.track!==false) : false;
   toggleBkFields();
+  // 조건 묶음은 접혀서 시작한다 — 취소 조건만 적힌 게 있으면 편다(머리 줄이 지금 값을 말한다)
+  document.getElementById('bkHotelCond').open=false; document.getElementById('bkCarCond').open=false;
+  document.getElementById('bkCancelCond').open=!!(document.getElementById('bkFreeCancel').value||(b&&b.cancelFee));
   renderBookingStatusBox(b);
   // 사진은 여기서 붙이지도 떼지도 못한다 — 문서에는 보관함 식별자만 있고 브라우저는 그것을 열 수 없다
   { const note=photoNote(photoCount(b||item)), el=document.getElementById('bkPhotos');
@@ -4962,6 +4991,8 @@ const SPOT_COST_KEYS=['cost','cur','costKind','costBasis','costPeople','costPart
 /** 장소 편집기가 값을 정하는 칸 — 저장할 때 이것만 폼에서 오고 나머지는 원래 장소에서 물려준다(spotSave) */
 const SPOT_FORM_KEYS=new Set(['name','city','desc','stay','nights','at','legMode','stayMin','bookAt','bookUrl','placeId','kakaoId','cat','who','admission','hours','lat','lng','must','opt',...SPOT_COST_KEYS]);
 let _spotCostDraft={};
+/** 이 창이 지금 고치는 것 — 장소 편집기의 비용(초안) 또는 하루 추가 비용(day.costItems의 한 항목, 바로 저장) */
+let _costTarget={kind:'spot'};
 function spotCostDraftFrom(s){ const d={}; SPOT_COST_KEYS.forEach(k=>{ if(s&&s[k]!=null) d[k]=s[k]; }); return d; }
 /** 편집 중인 장소가 연결된 숙박 예약 — 새 장소는 연결이 없다 */
 function editingSpotBooking(){
@@ -4993,15 +5024,79 @@ function renderSpotCostSummary(){
   btn.textContent=parts.join(' · ')+' ›';
   hint.textContent=(d.cur&&d.cur!=='KRW'&&CUR[d.cur])? `≈ ₩${fmtMoney(toKRW(costAmountOf(d,'cost')??d.cost,d.cur))}` : '';
 }
+/** 장소 비용(초안)과 하루 추가 비용은 같은 창을 쓴다 — 하루 비용에는 '뭐에 썼나요'가 있고 '장소 분류에 따름'이 없다 */
+function setCostDialogMode(kind){
+  const day=kind==='day';
+  document.getElementById('costTitleWrap').hidden=!day;
+  document.getElementById('placeCostTitle').textContent=day? '쓴 돈' : '장소 비용';
+  const auto=document.querySelector('#costKind option[value="AUTO"]'); if(auto) auto.hidden=day;
+  document.getElementById('costPlaceSave').textContent=day? '저장' : '확인';
+  document.getElementById('costPlaceDelete').textContent=day? '삭제' : '비용 지우기';
+}
+/** 하루 추가 비용 한 항목을 연다 — id가 없으면 새로(현지에서 낸 돈이라 결제 완료로 시작한다, 앱의 빠른 입력과 같다) */
+window.openDayCostItem=(di,id)=>{
+  if(!guardEdit()) return;
+  const day=trip().days[di]; if(!day) return;
+  const it=id? (day.costItems||[]).find(x=>x.id===id) : null;
+  if(id&&!it) return;
+  _costTarget={kind:'day', di, id:it? it.id : null};
+  setCostDialogMode('day');
+  document.getElementById('placeCostFor').textContent=`Day ${di+1} — 장소에 묶이지 않은 쓴 돈(식사·교통·입장료…)이에요. 하루 비용(현지 결제 금액)에 들어가요`;
+  document.getElementById('costTitle').value=(it&&it.title)||'';
+  document.getElementById('costAmount').value=(it&&it.amount!=null)? String(it.amount) : '';
+  document.getElementById('costCurrency').value=(it&&it.cur)||((it&&it.amount!=null)? 'KRW' : tripDefaultCurrency(trip()));
+  document.getElementById('costKind').value=(it&&COST_KIND[it.kind])? it.kind : 'FOOD';
+  document.getElementById('costPerPerson').checked=!!(it&&it.costBasis==='PER_PERSON');
+  document.getElementById('costPeople').value=(it&&it.costPeople)||2;
+  document.getElementById('costPeopleWrap').hidden=!(it&&it.costBasis==='PER_PERSON');
+  document.getElementById('costPartial').checked=!!(it&&it.costPartial);
+  document.getElementById('costPayState').value=it? (COST_PAY_STATES.includes(it.payState)? it.payState : 'NONE') : 'PAID';
+  document.getElementById('costPaidOn').value=(it&&it.paidOn)||'';
+  document.getElementById('costPhotoNote').textContent=photoNote(photoCount(it||{}));
+  document.getElementById('costPlaceDelete').hidden=!it;
+  syncPayDate('cost'); updatePerPersonNote();
+  document.getElementById('placeCostDialog').showModal();
+  document.getElementById('costAmount').focus();
+};
+function saveDayCostItem(d){
+  const {di,id}=_costTarget, day=trip().days[di]; if(!day) return;
+  if(d.cost==null) return fieldError('costAmount','금액을 적어 주세요 — 대략이라도 적고 \'일부 금액만 확인했어요\'를 켜 두면 돼요');
+  const kind=COST_KIND[d.costKind]? d.costKind : 'OTHER';
+  const title=document.getElementById('costTitle').value.trim()||COST_KIND[kind].name;
+  const isNew=!id;
+  commit(()=>{
+    const list=day.costItems=day.costItems||[];
+    const it=isNew? {id:uid()} : list.find(x=>x.id===id);
+    if(!it) return;
+    for(const k of ['amount','cur','costBasis','costPeople','costPartial','payState','paidOn']) delete it[k];
+    it.title=title; it.kind=kind; it.amount=d.cost; it.costBasis=d.costBasis||'TOTAL';
+    for(const k of ['cur','costPeople','costPartial','payState','paidOn']) if(d[k]!=null) it[k]=d[k];
+    if(isNew) list.push(it);
+  });
+  document.getElementById('placeCostDialog').close();
+  toast(isNew? `Day ${di+1} 하루 비용에 넣었어요` : '쓴 돈을 고쳤어요');
+}
+function deleteDayCostItem(){
+  const {di,id}=_costTarget, day=trip().days[di]; if(!day||!id) return;
+  const it=(day.costItems||[]).find(x=>x.id===id); if(!it) return;
+  const snap=snapshot();
+  commit(()=>{ day.costItems=(day.costItems||[]).filter(x=>x.id!==id); if(!day.costItems.length) delete day.costItems; });
+  document.getElementById('placeCostDialog').close();
+  toast(`'${it.title||'비용'}'을 지웠어요`,'#4f4740',{fn:()=>undoWith(snap)});
+}
 document.getElementById('spotCostBtn').onclick=()=>{
   const b=editingSpotBooking();
   if(b){ openBookingModal(b.id); return; }   // 예약 편집기가 장소 편집기 위에 열린다 — 저장하면 요약이 다시 그려진다
   const d=_spotCostDraft, name=document.getElementById('spotName').value.trim();
+  _costTarget={kind:'spot'};
+  setCostDialogMode('spot');
+  document.getElementById('costPlaceDelete').hidden=false;
   document.getElementById('placeCostFor').textContent=`${name||'이 장소'} — 가서 쓰는 돈이라 일자 카드의 하루 비용(현지 결제 금액)에 들어가요`;
   document.getElementById('costAmount').value=d.cost==null?'':String(d.cost);
   document.getElementById('costCurrency').value=d.cur||(d.cost!=null? 'KRW' : tripDefaultCurrency(trip()));   // 금액이 없을 때만 이 여행의 통화(P2-26)
-  document.getElementById('costBasis').value=d.costBasis||'ENTERED';
-  document.getElementById('costPeople').value=d.costPeople||1;
+  document.getElementById('costPerPerson').checked=d.costBasis==='PER_PERSON';
+  document.getElementById('costPeople').value=d.costPeople||2;
+  document.getElementById('costPeopleWrap').hidden=d.costBasis!=='PER_PERSON';
   document.getElementById('costPartial').checked=!!d.costPartial;
   document.getElementById('costKind').value=d.costKind||'AUTO';
   document.getElementById('costPayState').value=COST_PAY_STATES.includes(d.payState)? d.payState : 'NONE';
@@ -5021,10 +5116,12 @@ function updatePerPersonNote(){
   const el=document.getElementById('costPerPersonNote'); if(!el) return;
   const cur=document.getElementById('costCurrency').value, amount=parseCostAmount(document.getElementById('costAmount').value,cur);
   const people=Math.min(100,Math.max(1,+document.getElementById('costPeople').value||1));
-  const item={cost:amount,cur,costBasis:document.getElementById('costBasis').value,costPeople:people};
+  const per=document.getElementById('costPerPerson').checked;
+  document.getElementById('costPeopleWrap').hidden=!per;
+  const item={cost:amount,cur,costBasis:per?'PER_PERSON':'ENTERED',costPeople:people};
   el.textContent=(amount!==null&&item.costBasis==='PER_PERSON'&&Number.isInteger(people)&&people>1)? costWithPeople(item,'cost',costLabel) : '';
 }
-['costAmount','costCurrency','costBasis','costPeople'].forEach(id=>{ const el=document.getElementById(id); el.addEventListener('input',updatePerPersonNote); el.addEventListener('change',updatePerPersonNote); });
+['costAmount','costCurrency','costPerPerson','costPeople'].forEach(id=>{ const el=document.getElementById(id); el.addEventListener('input',updatePerPersonNote); el.addEventListener('change',updatePerPersonNote); });
 document.getElementById('costPlaceCancel').onclick=()=>document.getElementById('placeCostDialog').close();
 document.getElementById('costPlaceSave').onclick=()=>{
   const cur=document.getElementById('costCurrency').value;
@@ -5033,19 +5130,22 @@ document.getElementById('costPlaceSave').onclick=()=>{
   /** @type {any} */ const d={};
   if(amount!==null){
     d.cost=amount; if(cur!=='KRW') d.cur=cur;
-    const basis=document.getElementById('costBasis').value; if(basis!=='ENTERED') d.costBasis=basis;
-    if(basis==='PER_PERSON') d.costPeople=Math.min(100,Math.max(1,+document.getElementById('costPeople').value||1));
+    // 1인 금액이면 기준과 인원을, 아니면 원래 기준(입력 그대로·전체 — 둘 다 곱하지 않는다)을 그대로 둔다
+    if(document.getElementById('costPerPerson').checked){ d.costBasis='PER_PERSON'; d.costPeople=Math.min(100,Math.max(1,+document.getElementById('costPeople').value||1)); }
+    else if(_spotCostDraft.costBasis==='TOTAL') d.costBasis='TOTAL';
     if(document.getElementById('costPartial').checked) d.costPartial=true;
   }
   const kind=document.getElementById('costKind').value; if(kind!=='AUTO') d.costKind=kind;
   const st=document.getElementById('costPayState').value, paidOn=document.getElementById('costPaidOn').value;
   if(st!=='NONE'){ d.payState=st; if(paidOn) d.paidOn=paidOn; }
+  if(_costTarget.kind==='day'){ saveDayCostItem(d); return; }
   _spotCostDraft=d;
   document.getElementById('placeCostDialog').close();
   renderSpotCostSummary();
   document.getElementById('spotCostBtn').focus();
 };
 document.getElementById('costPlaceDelete').onclick=()=>{
+  if(_costTarget.kind==='day'){ deleteDayCostItem(); return; }
   _spotCostDraft={};
   document.getElementById('placeCostDialog').close();
   renderSpotCostSummary();
