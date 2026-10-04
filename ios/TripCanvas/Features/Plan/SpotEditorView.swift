@@ -236,69 +236,11 @@ struct SpotEditorView: View {
                     Text("예약·입장 시각은 상대가 정한 약속이고, 도착 시각은 내가 정한 계획이에요. 비워 두면 앞 장소에서 계산해요.")
                 }
 
-                Section("이동·비용") {
-                    DisclosureGroup("이동수단·비용 설정") {
-                    Picker("이동수단", selection: $draft.legMode) {
-                        Text("그날 기본").tag(TravelMode?.none)
-                        ForEach(TravelMode.allCases, id: \.self) { mode in
-                            Label(mode.label, systemImage: mode.symbol).tag(TravelMode?.some(mode))
-                        }
-                    }
-                    // 비용은 요약 한 줄 — 누르면 하루 비용 화면과 같은 편집기가 열리고, 고친 값은 장소를 저장할 때 들어간다(2026-10-04).
-                    // 전에는 여기(금액·통화)와 하루 비용 화면(전체 칸)이 같은 spot.cost를 다른 칸으로 받았다.
-                    if let booking = linkedBooking {
-                        VStack(alignment: .leading, spacing: Space.xs) {
-                            Text(booking.price > 0 ? "예약 금액 \(TimeFormat.money(booking.price, currency: booking.currencyCode))" : "예약 금액 미정")
-                            Text("숙박 예약과 연결된 숙소는 예약의 금액·기간을 써요. 예약 화면에서 고쳐요.")
-                                .font(.caption).foregroundStyle(Ink.soft)
-                        }
-                    } else {
-                        Button { editingCost = CostEditTarget(kind: .spot(target.index ?? -1), entry: CostEntry(spot: draft),
-                                                              isNew: draft.cost == nil, inSpotEditor: true) } label: {
-                            HStack {
-                                Text("비용")
-                                Spacer()
-                                Text(costSummary).foregroundStyle(Ink.soft).multilineTextAlignment(.trailing)
-                                Image(systemName: "chevron.right").font(.caption).foregroundStyle(Ink.faint)
-                            }
-                            .frame(minHeight: 44)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    }
-                }
+                moveCostSection
 
                 AdmissionEditorSection(spot: $draft)
 
-                Section {
-                    // 우선순위는 한 컨트롤이다 — 예전에는 '꼭 가기' 토글뿐이라 웹의 '선택'을 앱에서 볼 수 없었다.
-                    Picker("우선순위", selection: $draft.priority) {
-                        ForEach(SpotPriority.allCases, id: \.self) { level in
-                            Text(level.label).tag(level)
-                        }
-                    }
-                    Picker("상태", selection: $draft.status) {
-                        ForEach(SpotStatus.allCases, id: \.self) { status in
-                            Text(status.label).tag(status)
-                        }
-                    }
-                    // 숙소는 종류와 별개의 표시다 — 그날의 종료 기준점이 되고 숙박 예약과 이어진다(웹의 체크박스와 같다).
-                    Toggle("숙소", isOn: $draft.isStay)
-                    if draft.isStay || draft.category == .stay {
-                        // 연결된 숙박 예약에 기간이 있으면 박 수도 그 예약이 정한다(웹 `lodgingNights`) — 칸 대신 그 기간을 말한다
-                        if let nights = bookingNights {
-                            LabeledContent("연박", value: "\(nights)박 · 예약 기간")
-                        } else {
-                            Stepper("연박 \(draft.nights ?? 1)박", value: nightsBinding, in: 1...TripLimits.maxDays)
-                        }
-                    }
-                } header: {
-                    Text("계획")
-                } footer: {
-                    if draft.isStay {
-                        Text("숙소는 그날의 마지막 기준점이 돼요. 숙박 예약은 예약 화면에서 이 숙소와 연결해요.")
-                    }
-                }
+                planSection
 
                 if showsParticipants { participantsSection }
 
@@ -307,24 +249,7 @@ struct SpotEditorView: View {
                         .lineLimit(2...6)
                 }
 
-                if let index = target.index {
-                    Section {
-                        if dayCount > 1 {
-                            Menu("다른 날로 옮기기") {
-                                ForEach(0..<dayCount, id: \.self) { day in
-                                    if day != currentDay {
-                                        Button("Day \(day + 1)") {
-                                            Task {
-                                                await save(using: { await onMoveToDay(index, day, $0) })
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        Button("이 장소 빼기", role: .destructive) { showsDeleteConfirm = true }
-                    }
-                }
+                actionsSection
             }
             .background(SpotEditorKeyboardDismissal())
             .scrollDismissesKeyboard(.interactively)
@@ -341,18 +266,6 @@ struct SpotEditorView: View {
             }
             .onChange(of: draft) { _, _ in preserveInput() }
             .onChange(of: costText) { _, _ in preserveInput() }
-            .sheet(item: $editingCost) { target in
-                CostEntryEditor(target: target, onSave: { entry in
-                    // 장소 편집기의 초안에만 담는다 — 문서에는 장소를 저장할 때 들어간다
-                    if let entry { draft = entry.applying(to: draft) }
-                    costText = MoneyInput.text(amount: draft.cost)
-                    return true
-                }, onDelete: { _ in
-                    for key in CostEntry.spotCostKeys where key != "photos" { draft.setField(key, nil) }
-                    costText = ""
-                    return true
-                })
-            }
             .sheet(isPresented: $showsPreviousInput) {
                 if let recovery {
                     SpotInformationView(spot: TripSpot(raw: recovery.edited), contextLabel: "저장하지 않은 입력")
@@ -411,6 +324,128 @@ struct SpotEditorView: View {
         // 영업시간은 기존 장소의 값이므로 새 장소에 잘못 이어 붙이지 않는다.
         next.setField("hours", nil)
         return next
+    }
+
+    /// 다른 날로 옮기기·빼기 — 본문이 커서 따로 둔다(타입 검사 시간)
+    @ViewBuilder
+    private var actionsSection: some View {
+        if let index = target.index {
+            Section {
+                if dayCount > 1 {
+                    Menu("다른 날로 옮기기") {
+                        ForEach(0..<dayCount, id: \.self) { day in
+                            if day != currentDay {
+                                Button("Day \(day + 1)") {
+                                    Task {
+                                        await save(using: { await onMoveToDay(index, day, $0) })
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                Button("이 장소 빼기", role: .destructive) { showsDeleteConfirm = true }
+            }
+        }
+    }
+
+    /// 이동수단과 비용 — 본문이 커서 따로 둔다(타입 검사 시간)
+    private var moveCostSection: some View {
+        Section("이동·비용") {
+            DisclosureGroup("이동수단·비용 설정") {
+            Picker("이동수단", selection: $draft.legMode) {
+                Text("그날 기본").tag(TravelMode?.none)
+                ForEach(TravelMode.allCases, id: \.self) { mode in
+                    Label(mode.label, systemImage: mode.symbol).tag(TravelMode?.some(mode))
+                }
+            }
+            costRow
+
+            }
+        }
+    }
+
+    /// 우선순위·상태·숙소 — 본문이 커서 따로 둔다(타입 검사 시간)
+    private var planSection: some View {
+        Section {
+            // 우선순위는 한 컨트롤이다 — 예전에는 '꼭 가기' 토글뿐이라 웹의 '선택'을 앱에서 볼 수 없었다.
+            Picker("우선순위", selection: $draft.priority) {
+                ForEach(SpotPriority.allCases, id: \.self) { level in
+                    Text(level.label).tag(level)
+                }
+            }
+            Picker("상태", selection: $draft.status) {
+                ForEach(SpotStatus.allCases, id: \.self) { status in
+                    Text(status.label).tag(status)
+                }
+            }
+            // 숙소는 종류와 별개의 표시다 — 그날의 종료 기준점이 되고 숙박 예약과 이어진다(웹의 체크박스와 같다).
+            Toggle("숙소", isOn: $draft.isStay)
+            if draft.isStay || draft.category == .stay {
+                // 연결된 숙박 예약에 기간이 있으면 박 수도 그 예약이 정한다(웹 `lodgingNights`) — 칸 대신 그 기간을 말한다
+                if let nights = bookingNights {
+                    LabeledContent("연박", value: "\(nights)박 · 예약 기간")
+                } else {
+                    Stepper("연박 \(draft.nights ?? 1)박", value: nightsBinding, in: 1...TripLimits.maxDays)
+                }
+            }
+        } header: {
+            Text("계획")
+        } footer: {
+            if draft.isStay {
+                Text("숙소는 그날의 마지막 기준점이 돼요. 숙박 예약은 예약 화면에서 이 숙소와 연결해요.")
+            }
+        }
+    }
+
+    /// 비용은 요약 한 줄 — 누르면 하루 비용 화면과 같은 편집기가 열리고, 고친 값은 장소를 저장할 때 들어간다(2026-10-04).
+    /// 연결된 숙박 예약이 금액을 내는 숙소는 예약 금액만 보인다. 본문이 커서 따로 둔다(타입 검사 시간).
+    @ViewBuilder
+    private var costRow: some View {
+        // 비용은 요약 한 줄 — 누르면 하루 비용 화면과 같은 편집기가 열리고, 고친 값은 장소를 저장할 때 들어간다(2026-10-04).
+        // 전에는 여기(금액·통화)와 하루 비용 화면(전체 칸)이 같은 spot.cost를 다른 칸으로 받았다.
+        if let booking = linkedBooking {
+            VStack(alignment: .leading, spacing: Space.xs) {
+                Text(Self.bookingAmountLine(booking))
+                Text("숙박 예약과 연결된 숙소는 예약의 금액·기간을 써요. 예약 화면에서 고쳐요.")
+                    .font(.caption).foregroundStyle(Ink.soft)
+            }
+        } else {
+            Button { editingCost = CostEditTarget(kind: .spot(target.index ?? -1), entry: CostEntry(spot: draft),
+                                                  isNew: draft.cost == nil, inSpotEditor: true) } label: {
+                HStack {
+                    Text("비용")
+                    Spacer()
+                    Text(costSummary).foregroundStyle(Ink.soft).multilineTextAlignment(.trailing)
+                    Image(systemName: "chevron.right").font(.caption).foregroundStyle(Ink.faint)
+                }
+                .frame(minHeight: 44)
+            }
+            .buttonStyle(.plain)
+            .sheet(item: $editingCost) { target in
+                CostEntryEditor(target: target, onDelete: clearCost, onSave: applyCostEdit)
+            }
+        }
+    }
+
+    /// 장소 편집기의 초안에만 담는다 — 문서에는 장소를 저장할 때 들어간다
+    private func applyCostEdit(_ entry: CostEntry?) async -> Bool {
+        if let entry { draft = entry.applying(to: draft) }
+        costText = MoneyInput.text(amount: draft.cost)
+        return true
+    }
+
+    /// 비용 칸만 비운다 — 영수증 사진 참조는 이 편집기가 다루지 않는다
+    private func clearCost(_ includingSource: Bool) async -> Bool {
+        for key in CostEntry.spotCostKeys where key != "photos" { draft.setField(key, nil) }
+        costText = ""
+        return true
+    }
+
+    static func bookingAmountLine(_ booking: TripBooking) -> String {
+        guard booking.priceKnown else { return "예약 금액 미정" }
+        let money: String = TimeFormat.money(booking.price, currency: booking.currencyCode)
+        return "예약 금액 " + money
     }
 
     /// 비용 요약 한 줄 — '₩12,000 · 결제 예정', 1인 금액이면 '1인 ₩5,000 × 2명'

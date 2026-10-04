@@ -115,37 +115,44 @@ test('보기 설정 패널도 모바일 필터바에 잘리지 않는다',async(
   await panel.locator('.cityFocusBtn').first().click();
 });
 
-test('비용 입력은 일정 장소의 값을 편집하고 체크한 범위만 삭제한다',async({page})=>{
+test('장소 비용은 장소 편집기의 요약 한 줄에서 열고, 장소를 저장할 때 들어간다',async({page})=>{
+  // 2026-10-04 — 같은 spot.cost를 장소 편집기와 예약 결제 목록 안의 '장소 비용 입력'이 따로 받았다. 이제 한 창이다
   await page.goto('/'); await page.evaluate(SEED);
   await page.evaluate(()=>{
-    const s=trip().days[1].spots[0]; s.cost=12.5; s.cur='EUR'; s.paidOn='2026-10-01'; s.costPeople=2; s.costBasis='PER_PERSON';
-    openPlaceCost(1);
+    const s=trip().days[1].spots[0]; s.cost=12.5; s.cur='EUR'; s.payState='PAID'; s.paidOn='2026-10-01'; s.costPeople=2; s.costBasis='PER_PERSON';
+    openSpotModal(1,0); document.getElementById('spotAdvanced').open=true;
   });
+  await page.locator('#spotCostBtn').click();
   await expect(page.locator('#costAmount')).toHaveValue('12.5');
   await expect(page.locator('#costCurrency')).toHaveValue('EUR');
+  await expect(page.locator('#costPaidOnLabel')).toHaveText('결제일 (선택)');
   await expect(page.locator('#costPaidOn')).toHaveValue('2026-10-01');
   await page.locator('#costAmount').fill('15.25');
   await page.locator('#costPlaceSave').click();
+  await expect(page.locator('#spotCostBtn')).toContainText('€15.25');
+  expect(await page.evaluate(()=>trip().days[1].spots[0].cost)).toBe(12.5);   // 장소를 저장하기 전에는 그대로
+  await page.locator('#spotSave').click();
   expect(await page.evaluate(()=>trip().days[1].spots[0].cost)).toBe(15.25);
-  await page.evaluate(()=>openPlaceCost(1));
-  await page.locator('#costPlaceDelete').click();
-  await expect(page.locator('#costDeleteSource')).not.toBeChecked();
-  await page.locator('#costDeleteConfirm').click();
-  expect(await page.evaluate(()=>trip().days[1].spots[0].cost)).toBeUndefined();
+  // 비용 지우기 — 장소는 남고 비용만 빠진다
   const count=await page.evaluate(()=>trip().days[1].spots.length);
-  await page.evaluate(()=>openPlaceCost(1));
+  await page.evaluate(()=>{ openSpotModal(1,0); document.getElementById('spotAdvanced').open=true; });
+  await page.locator('#spotCostBtn').click();
   await page.locator('#costPlaceDelete').click();
-  await page.locator('#costDeleteSource').check();
-  await page.locator('#costDeleteConfirm').click();
-  expect(await page.evaluate(()=>trip().days[1].spots.length)).toBe(count-1);
+  await expect(page.locator('#spotCostBtn')).toContainText('미정');
+  await page.locator('#spotSave').click();
+  expect(await page.evaluate(()=>trip().days[1].spots[0].cost)).toBeUndefined();
+  expect(await page.evaluate(()=>trip().days[1].spots.length)).toBe(count);
+  // 예약 결제 목록에는 장소 비용 버튼이 없다
+  await page.evaluate(()=>{ document.getElementById('spotModalBg').classList.remove('show'); openBookingList(); });
+  await expect(page.locator('#costPlaceOpen')).toHaveCount(0);
 });
 
-test('비용 입력 창의 Tab·Escape는 뒤의 목록을 조작하지 않는다',async({page})=>{
+test('장소 비용 창의 Tab·Escape는 뒤의 장소 편집기를 조작하지 않는다',async({page})=>{
   await page.setViewportSize({width:390,height:844});
   await page.goto('/'); await page.evaluate(SEED);
-  await page.evaluate(()=>openBookingList());
-  await page.locator('#costPlaceOpen').click();
-  const dialog=page.getByRole('dialog',{name:'일정 장소 비용 입력'});
+  await page.evaluate(()=>{ openSpotModal(1,0); document.getElementById('spotAdvanced').open=true; });
+  await page.locator('#spotCostBtn').click();
+  const dialog=page.getByRole('dialog',{name:'장소 비용'});
   await expect(dialog).toBeVisible();
   await page.keyboard.press('Tab');
   expect(await dialog.evaluate(el=>el.contains(document.activeElement))).toBe(true);
@@ -153,5 +160,5 @@ test('비용 입력 창의 Tab·Escape는 뒤의 목록을 조작하지 않는�
   expect(box.x).toBeGreaterThanOrEqual(0); expect(box.x+box.width).toBeLessThanOrEqual(390);
   await page.keyboard.press('Escape');
   await expect(dialog).not.toBeVisible();
-  await expect(page.locator('#bookingListBg')).toBeVisible();
+  await expect(page.locator('#spotModalBg')).toBeVisible();
 });
