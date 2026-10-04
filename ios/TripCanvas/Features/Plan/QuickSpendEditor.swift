@@ -27,8 +27,9 @@ struct QuickSpendEditor: View {
     @FocusState private var amountFocused: Bool
     @Environment(\.dismiss) private var dismiss
 
-    /// 현지에서 쓰는 돈의 분류만 — 항공·숙박·렌트는 가계부의 것이다.
-    private static let kinds: [CostCategory] = [.food, .shopping, .ticket, .transport, .transit, .other]
+    /// 현지에서 쓰는 돈의 분류만 — 항공·숙박·렌트는 예약의 것이다. 9가지 분류(`CostCategory` = 웹 `COST_CATEGORIES`)의
+    /// 부분집합이고 순서도 그대로다(2026-10-05 — 전에는 따로 적은 목록이라 순서가 달랐다).
+    private static let kinds: [CostCategory] = CostCategory.itemKinds
 
     private var parsedAmount: Double? { MoneyInput.amount(from: amount, currency: currency) }
     private var valid: Bool { parsedAmount != nil }

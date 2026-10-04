@@ -2012,3 +2012,13 @@ test('항공편 구간 — 날짜가 있어야 구간이고, 그날의 항공편
   assert.deepEqual(L.dayFlights(trip,1).map(f=>[f.code,f.bookingId]), [['KE913','f1']], '같은 편이 둘 다 있으면 예약 쪽 하나');
   assert.deepEqual(L.dayFlights({days:[{spots:[]}],bookings:trip.bookings},0), [], '여행 시작일이 없으면 구간을 놓을 날이 없다');
 });
+
+test('여행 인원 — 1~100 정수만 읽고, 정규화는 그 밖의 값을 떨어뜨린다(묶음 C-2)', () => {
+  assert.equal(L.tripPeopleOf({people:4}), 4);
+  assert.equal(L.tripPeopleOf({}), null, '정하지 않았으면 null — 기본값을 지어내지 않는다');
+  for(const bad of [0, 101, 2.5, '4', -1, null]) assert.equal(L.tripPeopleOf({people:bad}), null, String(bad));
+  const days=[{title:'',drive:'',note:'',spots:[]}];
+  assert.equal(L.normalizeTrip({name:'t', days, people:3}).people, 3);
+  assert.equal('people' in L.normalizeTrip({name:'t', days, people:'3'}), false, '문자열은 버린다');
+  assert.equal('people' in L.normalizeTrip({name:'t', days}), false, '없으면 만들지 않는다');
+});

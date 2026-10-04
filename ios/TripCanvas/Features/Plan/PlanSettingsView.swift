@@ -66,6 +66,8 @@ struct PlanSettingsView: View {
     @State private var name: String
     @State private var start: String
     @State private var count: Int
+    /// 여행 인원 — 0은 정하지 않음(`TripDocument.people`이 nil). 1인 금액·예약 인원·새 숙박의 기본값으로만 쓴다
+    @State private var people: Int
     /// 종료일 — 시작일과 일수에서 파생되고, 고르면 일수가 따라온다. 시작일이 없으면 nil이다(그때는 일수로만 정한다).
     private var end: String? {
         guard let base = ISODateText.date(from: start), !start.isEmpty,
@@ -83,6 +85,7 @@ struct PlanSettingsView: View {
         self.original = document; self.revision = revision; self.selectedDay = selectedDay; self.onSave = onSave
         _name = State(initialValue: document.name); _start = State(initialValue: document.start)
         _count = State(initialValue: max(1, document.days.count))
+        _people = State(initialValue: document.people ?? 0)
         _day = State(initialValue: document.hasDay(selectedDay) ? document.days[selectedDay] : TripDay())
     }
 
@@ -92,6 +95,7 @@ struct PlanSettingsView: View {
     private var draft: TripDocument? {
         var document = original
         document.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        document.people = people == 0 ? nil : people
         if document.hasDay(selectedDay) {
             var days = document.days
             // 이 화면은 하루 설정만 수정한다. 장소·예산·예약은 원문 그대로 유지한다.
@@ -104,7 +108,7 @@ struct PlanSettingsView: View {
     /// 이미 있던 시작일을 다른 날로 바꿨는가 — 이때만 '어떻게 옮길지'를 묻는다.
     private var startMoved: Bool { !original.start.isEmpty && !start.isEmpty && start != original.start }
     private var isDirty: Bool {
-        name != original.name || datesChanged || day != (original.hasDay(selectedDay) ? original.days[selectedDay] : TripDay())
+        name != original.name || people != (original.people ?? 0) || datesChanged || day != (original.hasDay(selectedDay) ? original.days[selectedDay] : TripDay())
     }
     private var datesChanged: Bool { start != original.start || count != original.days.count }
 
@@ -127,6 +131,11 @@ struct PlanSettingsView: View {
                     }
                 } header: { Text("여행") } footer: {
                     Text(start.isEmpty ? "시작일을 정하면 종료일을 고를 수 있어요." : "종료일을 시작일보다 앞으로 두면 하루짜리가 되고, 최대 \(maxDays)일이에요.")
+                }
+                Section {
+                    Stepper(people == 0 ? "인원 정하지 않음" : "인원 \(people)명", value: $people, in: 0...100)
+                } footer: {
+                    Text("1인 금액·예약 인원·새 숙박 예약의 인원을 이 값으로 시작해요. 이미 적은 인원은 그대로예요.")
                 }
                 Section("Day \(selectedDay + 1) 하루 설정") {
                     TextField("하루 제목·지역", text: $day.title)

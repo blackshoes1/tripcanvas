@@ -264,6 +264,8 @@ struct CostEntryEditor: View {
     @State private var showsDiscardConfirm = false
     @State private var showsDeleteConfirm = false
     @Environment(\.dismiss) private var dismiss
+    /// 여행 인원(`TripDocument.people`) — 1인 금액을 처음 켤 때의 인원. 여행 화면 밖에서 열리면 없다(그때는 2명)
+    @Environment(TripScreenModels.self) private var screenModels: TripScreenModels?
 
     init(target: CostEditTarget, onDelete: ((Bool) async -> Bool)? = nil, onSave: @escaping (CostEntry?) async -> Bool) {
         self.target = target
@@ -294,7 +296,6 @@ struct CostEntryEditor: View {
                 if !target.isBudget {
                     Section {
                         Picker("카테고리", selection: $entry.kind) {
-                            if !target.isExtra { Text("장소 분류에 따름").tag("AUTO") }
                             ForEach(CostCategory.allCases, id: \.rawValue) { Text($0.label).tag($0.rawValue) }
                         }
                     }
@@ -388,11 +389,15 @@ struct CostEntryEditor: View {
         }
     }
 
-    /// 켜면 1인 금액(인원 2부터), 끄면 원래 기준 — '전체 금액'으로 적어 둔 항목은 그대로 둔다(둘 다 곱하지 않는다)
+    /// 켜면 1인 금액(적힌 인원 → 여행 인원 → 2명), 끄면 원래 기준 — '전체 금액'으로 적어 둔 항목은 그대로 둔다(둘 다 곱하지 않는다)
     private var perPersonBinding: Binding<Bool> {
         Binding(get: { entry.basis == .perPerson },
                 set: { on in
-                    if on { entry.basis = .perPerson; if entry.people < 2 { entry.people = 2 } }
+                    if on {
+                        entry.basis = .perPerson
+                        if entry.raw["costPeople"] == nil, let people = screenModels?.plan.document?.people { entry.people = people }
+                        else if entry.people < 2 { entry.people = 2 }
+                    }
                     else { entry.basis = target.entry.basis == .total ? .total : .entered }
                 })
     }

@@ -42,6 +42,16 @@ struct TripDocument: Hashable, Sendable {
         set { raw.setOrRemove("timeZone", newValue.map { .string($0) }) }
     }
 
+    /// 여행 인원 — 1인 금액·예약 인원·새 숙박의 **기본값**으로만 쓴다(`lib.js` `tripPeopleOf`, 2026-10-05).
+    /// 각 칸에 저장된 값이 언제나 이긴다. 1~100 정수가 아니면 정하지 않은 것이다(`cost-defaults.json`이 대조한다).
+    var people: Int? {
+        get {
+            guard let value = raw["people"]?.doubleValue, value == value.rounded(), (1...100).contains(value) else { return nil }
+            return Int(value)
+        }
+        set { raw.setOrRemove("people", newValue.map { .number(Double(min(100, max(1, $0)))) }) }
+    }
+
     var days: [TripDay] {
         get { (raw["days"]?.arrayValue ?? []).map { TripDay(raw: $0.objectValue ?? [:]) } }
         set { raw["days"] = .array(newValue.map { .object($0.raw) }) }

@@ -89,6 +89,8 @@ struct BookingEditorView: View {
     }
 
     private var isNew: Bool { target.booking == nil && target.item == nil }
+    /// 성인 수를 적지 않았을 때 — 새 예약은 여행 인원(`TripDocument.people`, 최대 8)으로 시작하고, 저장된 예약은 읽던 대로 2명이다(2026-10-05)
+    private var defaultAdults: Int { isNew ? min(8, document.people ?? 2) : 2 }
     /// 항공·숙박·렌트인가 — 예약으로 저장되고 예약의 항목(기간·조건·링크·추적)이 보인다.
     private var isBookingKind: Bool { kind.bookingType != nil }
     /// 고를 수 있는 분류. 저장된 항목은 자기 쪽 안에서만.
@@ -360,7 +362,7 @@ struct BookingEditorView: View {
     }
 
     private var hotelSummary: String {
-        var parts = ["성인 \(draft.adults ?? 2)", "객실 \(draft.rooms ?? 1)"]
+        var parts = ["성인 \(draft.adults ?? defaultAdults)", "객실 \(draft.rooms ?? 1)"]
         let room = roomNameText.trimmingCharacters(in: .whitespaces)
         if !room.isEmpty { parts.append(room) }
         if let breakfast = draft.breakfast { parts.append(breakfast ? "조식 포함" : "조식 없음") }
@@ -385,7 +387,7 @@ struct BookingEditorView: View {
                     }
                 }
                 .pickerStyle(.navigationLink)
-                Stepper("투숙 인원 \(draft.adults ?? 2)명", value: adultsBinding, in: 1...8)
+                Stepper("투숙 인원 \(draft.adults ?? defaultAdults)명", value: adultsBinding, in: 1...8)
                 Stepper("객실 \(draft.rooms ?? 1)개", value: roomsBinding, in: 1...4)
                 TextField("객실명 (예: Deluxe Double)", text: $roomNameText)
                 Picker("조식", selection: $draft.breakfast) {
@@ -465,7 +467,7 @@ struct BookingEditorView: View {
     // MARK: 바인딩
 
     private var adultsBinding: Binding<Int> {
-        Binding(get: { draft.adults ?? 2 }, set: { draft.adults = $0 })
+        Binding(get: { draft.adults ?? defaultAdults }, set: { draft.adults = $0 })
     }
 
     private var roomsBinding: Binding<Int> {
@@ -624,7 +626,7 @@ struct BookingEditorView: View {
         if booking.refundable != true { booking.freeCancelUntil = nil }
         if booking.type == .hotel {
             // 웹 폼의 기본값(성인 2·객실 1)과 같다 — 시세 비교에 조건이 있어야 한다.
-            booking.adults = booking.adults ?? 2
+            booking.adults = booking.adults ?? defaultAdults
             booking.rooms = booking.rooms ?? 1
             booking.roomName = roomNameText
         }

@@ -1835,6 +1835,16 @@
   }
 
   /**
+   * 여행 인원 — 여행 설정에서 한 번 정하고 1인 금액·예약 인원·숙박 성인 수의 **기본값**으로만 쓴다(2026-10-05).
+   * 각 칸에 저장된 값이 언제나 이긴다. 정하지 않았으면 null — 2명 같은 값을 지어내지 않는다.
+   * @param {any} trip @returns {number|null}
+   */
+  function tripPeopleOf(trip){
+    const n=trip&&trip.people;
+    return (Number.isInteger(n)&&n>=1&&n<=100)? n : null;
+  }
+
+  /**
    * 외부 유입(가져오기·공유·클라우드·로컬) 여행 데이터 정규화·검증. days가 없으면 복구 불가로 null.
    * @param {any} t @returns {any}
    */
@@ -1847,6 +1857,7 @@
     t.start = /^\d{4}-\d{2}-\d{2}$/.test(_str(t.start))? t.start : '';
     if(t.timeZone!=null && !validTimeZone(t.timeZone)) delete t.timeZone;
     if(t.colorBy!=null && t.colorBy!=='city' && t.colorBy!=='day') delete t.colorBy;
+    if(t.people!=null && tripPeopleOf(t)==null) delete t.people;
     if(t.notes!=null){      // 여행 준비 메모 — 불량 항목은 버리고, 비면 필드 생략(공유 링크 크기 절약)
       t.notes=Array.isArray(t.notes)? t.notes.map(normalizeTripNote).filter(Boolean).slice(0,_NOTES_MAX):[];
       if(!t.notes.length) delete t.notes;
@@ -2451,6 +2462,7 @@
   Object.assign(TC,{placeNameMatch,searchAnchorSpot,planDistanceKm,tripCitySpelling,tripDefaultCurrency,hoursIssue,hoursLines});
   Object.assign(TC,{resolveTimeZone,inferTimeZones,effectiveTimeZone,refundableOf});   // 따로 붙인다 — 위 한 줄은 여러 작업이 함께 고치는 자리다
   Object.assign(TC,{effectiveCostDays,spotPaidByBooking,normalizeFlightSegment,dayFlights});   // 비용 입력 정리 묶음 A(2026-10-04)
+  Object.assign(TC,{tripPeopleOf});   // 비용 입력 정리 묶음 C(2026-10-05)
   if(typeof module!=='undefined' && module.exports){ module.exports=TC; }   // Node (테스트)
   else { const r=/**@type {any}*/(root); for(const k in TC) r[k]=/**@type {any}*/(TC)[k]; }   // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);

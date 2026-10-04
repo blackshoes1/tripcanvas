@@ -3129,6 +3129,9 @@ function drawAdmission(admission){
   document.getElementById('spotAdmReq').value=admissionOf({admission:a});
   document.getElementById('spotAdmBooked').checked=a.personalStatus==='BOOKED';
   document.getElementById('spotAdmPeople').value=(a.people!=null? a.people : '');
+  // 여행 인원은 칸을 채우지 않고 보여만 준다 — 채우면 아무것도 적지 않은 장소에 예약 정보가 생긴다. 예약 완료를 켤 때 채운다
+  const tp=tripPeopleOf(trip());
+  document.getElementById('spotAdmPeople').placeholder=tp? `여행 인원 ${tp}명` : '미정';
   document.getElementById('spotAdmUrl').value=a.officialURL||'';
   document.getElementById('spotAdmNote').value=a.note||'';
   drawAdmissionChecked();
@@ -3158,6 +3161,10 @@ function pickedAdmission(){
   const said=out.requirement!=='UNKNOWN'||out.personalStatus||out.officialURL||out.note||out.people!=null||out.checkedAt;
   return said? out : undefined;
 }
+document.getElementById('spotAdmBooked').addEventListener('change',e=>{
+  const people=document.getElementById('spotAdmPeople'), tp=tripPeopleOf(trip());
+  if(/**@type {HTMLInputElement}*/(e.target).checked && !people.value.trim() && tp) people.value=String(tp);
+});
 // 확인 시각은 사람이 확인한 때만 찍는다 — 저장·조회로 자동 생성하지 않는다(그러면 아무것도 뜻하지 않는다)
 document.getElementById('spotAdmConfirm').onclick=()=>{
   _pickedCheckedAt=new Date().toISOString().replace(/\.\d{3}Z$/,'Z');
@@ -3442,6 +3449,7 @@ window.openDayModal=(di)=>{
   toggleFlightFields();
   document.getElementById('dayTitle').value=d.title||'';
   document.getElementById('dayDrive').value=d.drive||'';
+  document.getElementById('dayDriveWrap').hidden=!String(d.drive||'').trim();
   document.getElementById('dayNote').value=d.note||'';
   document.getElementById('dayModalBg').classList.add('show');
 };
@@ -3636,6 +3644,7 @@ document.getElementById('tripEditBtn').onclick=()=>{
   syncTripEndFromDays();
   syncTripRangeLabel();
   document.getElementById('tripTimeZone').value=trip().timeZone||'';
+  document.getElementById('tripPeople').value=tripPeopleOf(trip())!=null? String(tripPeopleOf(trip())) : '';
   document.getElementById('tripModalBg').classList.add('show');
   loadSnapList();
   applyTripModalRole();
@@ -3646,6 +3655,9 @@ document.getElementById('tripSave').onclick=()=>{
   const tzText=document.getElementById('tripTimeZone').value.trim();
   const timeZone=tzText? resolveTimeZone(tzText) : '';
   if(tzText&&!timeZone) return fieldError('tripTimeZone',"시간대를 찾지 못했어요 — '도쿄'·'파리' 같은 도시 이름이나 Asia/Tokyo처럼 적어 주세요");
+  // 여행 인원 — 기본값으로만 쓴다(tripPeopleOf · lib). 비우면 정하지 않은 것이다
+  const peopleText=document.getElementById('tripPeople').value.trim(), people=peopleText? Number(peopleText) : null;
+  if(people!=null && tripPeopleOf({people})==null) return fieldError('tripPeople','인원은 1~100명으로 적어 주세요');
   const want=tripDaysInput();
   // 일정이 든 날을 말없이 지우지 않는다 — 되돌리기가 있어도 사라진 것을 먼저 알려 준다
   const losing=trip().days.slice(want).filter(d=>(d.spots||[]).length).length;
@@ -3660,6 +3672,7 @@ document.getElementById('tripSave').onclick=()=>{
   trip().name=document.getElementById('tripName').value.trim()||'이름 없는 여행';
   trip().start=nextStart;
   if(timeZone) trip().timeZone=timeZone; else delete trip().timeZone;
+  if(people!=null) trip().people=people; else delete trip().people;
   document.getElementById('tripModalBg').classList.remove('show');
   commit(null, changed<0?{fit:fitEntry}:undefined);   // 줄였으면 남은 일정에 지도를 다시 맞춘다
   if(shift) toast(`일정을 ${mdLabel(shift.to)}부터로 옮겼어요`,'#3e7a4c',{fn:()=>undoWith(snap)});
@@ -4620,7 +4633,7 @@ window.openBookingModal=(id)=>{
   document.getElementById('bkEnd').value=(b&&b.end)||'';
   _flightMoveDay=null;
   drawSegments((b&&b.segments)||[]);
-  document.getElementById('bkAdults').value=(b&&b.adults)||2;
+  document.getElementById('bkAdults').value=(b&&b.adults)||(b? 2 : Math.min(8,tripPeopleOf(trip())||2));   // 새 예약만 여행 인원으로 시작한다
   document.getElementById('bkRooms').value=(b&&b.rooms)||1;
   document.getElementById('bkRoom').value=(b&&b.roomName)||'';
   document.getElementById('bkBreakfast').value=(b&&b.breakfast===true)?'1':(b&&b.breakfast===false)?'0':'';
@@ -5026,12 +5039,12 @@ function renderSpotCostSummary(){
   btn.textContent=parts.join(' · ')+' ›';
   hint.textContent=(d.cur&&d.cur!=='KRW'&&CUR[d.cur])? `≈ ₩${fmtMoney(toKRW(costAmountOf(d,'cost')??d.cost,d.cur))}` : '';
 }
-/** 장소 비용(초안)과 하루 추가 비용은 같은 창을 쓴다 — 하루 비용에는 '뭐에 썼나요'가 있고 '장소 분류에 따름'이 없다 */
+/** 장소 비용(초안)과 하루 추가 비용은 같은 창을 쓴다 — 하루 비용에는 '뭐에 썼나요'가 있다 */
 function setCostDialogMode(kind){
   const day=kind==='day';
   document.getElementById('costTitleWrap').hidden=!day;
   document.getElementById('placeCostTitle').textContent=day? '쓴 돈' : '장소 비용';
-  const auto=document.querySelector('#costKind option[value="AUTO"]'); if(auto) auto.hidden=day;
+  _derivedCostKind=null; document.getElementById('costKindHint').textContent='';
   document.getElementById('costPlaceSave').textContent=day? '저장' : '확인';
   document.getElementById('costPlaceDelete').textContent=day? '삭제' : '비용 지우기';
 }
@@ -5049,7 +5062,7 @@ window.openDayCostItem=(di,id)=>{
   document.getElementById('costCurrency').value=(it&&it.cur)||((it&&it.amount!=null)? 'KRW' : tripDefaultCurrency(trip()));
   document.getElementById('costKind').value=(it&&COST_KIND[it.kind])? it.kind : 'FOOD';
   document.getElementById('costPerPerson').checked=!!(it&&it.costBasis==='PER_PERSON');
-  document.getElementById('costPeople').value=(it&&it.costPeople)||2;
+  document.getElementById('costPeople').value=(it&&it.costPeople)||tripPeopleOf(trip())||2;
   document.getElementById('costPeopleWrap').hidden=!(it&&it.costBasis==='PER_PERSON');
   document.getElementById('costPartial').checked=!!(it&&it.costPartial);
   document.getElementById('costPayState').value=it? (COST_PAY_STATES.includes(it.payState)? it.payState : 'NONE') : 'PAID';
@@ -5097,10 +5110,13 @@ document.getElementById('spotCostBtn').onclick=()=>{
   document.getElementById('costAmount').value=d.cost==null?'':String(d.cost);
   document.getElementById('costCurrency').value=d.cur||(d.cost!=null? 'KRW' : tripDefaultCurrency(trip()));   // 금액이 없을 때만 이 여행의 통화(P2-26)
   document.getElementById('costPerPerson').checked=d.costBasis==='PER_PERSON';
-  document.getElementById('costPeople').value=d.costPeople||2;
+  document.getElementById('costPeople').value=d.costPeople||tripPeopleOf(trip())||2;
   document.getElementById('costPeopleWrap').hidden=d.costBasis!=='PER_PERSON';
   document.getElementById('costPartial').checked=!!d.costPartial;
-  document.getElementById('costKind').value=d.costKind||'AUTO';
+  // 분류를 적지 않은 장소는 장소 종류에서 고른 분류로 연다(costCategoryOf · lib — 계산이 읽는 것과 같다)
+  _derivedCostKind=d.costKind? null : costCategoryOf({cat:document.getElementById('spotCat').value||undefined, stay:document.getElementById('spotStay').checked});
+  document.getElementById('costKind').value=d.costKind||_derivedCostKind;
+  syncCostKindHint();
   document.getElementById('costPayState').value=COST_PAY_STATES.includes(d.payState)? d.payState : 'NONE';
   document.getElementById('costPaidOn').value=d.paidOn||'';
   const sp=(editing&&editing.si>=0)? trip().days[editing.di]?.spots[editing.si] : null;
@@ -5108,6 +5124,17 @@ document.getElementById('spotCostBtn').onclick=()=>{
   syncPayDate('cost'); updatePerPersonNote();
   document.getElementById('placeCostDialog').showModal();
 };
+/** 열 때 장소 종류에서 고른 분류. 이미 적힌 분류가 있거나 하루 비용이면 null @type {string|null} */
+let _derivedCostKind=null;
+function syncCostKindHint(){
+  const same=_derivedCostKind!=null && document.getElementById('costKind').value===_derivedCostKind;
+  document.getElementById('costKindHint').textContent=same? '장소 종류에 맞춰 골랐어요 — 그대로 두면 종류를 바꿀 때 함께 바뀌어요' : '';
+}
+// 분류 목록은 COST_CATEGORIES(lib) 순서·COST_KIND 이름 하나에서 — iOS CostCategory와 같다(cost-labels 픽스처)
+(function(){ const sel=document.getElementById('costKind'); if(!sel) return;
+  sel.replaceChildren(...COST_CATEGORIES.map(k=>new Option(COST_KIND[k].name,k)));
+  sel.addEventListener('change',syncCostKindHint);
+})();
 // 결제 상태 이름은 PAY_STATE_LABEL 하나에서 — 이 칸만 '예약 | 결제'라고 따로 불렀다(2026-10-03)
 (function(){ const sel=document.getElementById('costPayState'); if(!sel) return;
   sel.replaceChildren(...['NONE','RESERVED','PAID'].map(k=>new Option(PAY_STATE_LABEL[k],k)));
@@ -5137,7 +5164,8 @@ document.getElementById('costPlaceSave').onclick=()=>{
     else if(_spotCostDraft.costBasis==='TOTAL') d.costBasis='TOTAL';
     if(document.getElementById('costPartial').checked) d.costPartial=true;
   }
-  const kind=document.getElementById('costKind').value; if(kind!=='AUTO') d.costKind=kind;
+  // 장소 종류에서 고른 분류를 그대로 두면 저장하지 않는다 — 나중에 종류를 바꾸면 분류도 따라간다
+  const kind=document.getElementById('costKind').value; if(kind!==_derivedCostKind) d.costKind=kind;
   const st=document.getElementById('costPayState').value, paidOn=document.getElementById('costPaidOn').value;
   if(st!=='NONE'){ d.payState=st; if(paidOn) d.paidOn=paidOn; }
   if(_costTarget.kind==='day'){ saveDayCostItem(d); return; }

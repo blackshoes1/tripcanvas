@@ -212,6 +212,7 @@ declare module '@legacy/lib.js' {
     refundableOf(booking: unknown): boolean | null;
     /** 비용 계산용 일자 — 금액이 있는 숙박 예약과 연결된 숙소의 비용 칸을 뺀 사본(바꿀 것이 없으면 같은 배열) */
     effectiveCostDays<T>(days: T[], bookings?: unknown[]): T[];
+    tripPeopleOf(trip: unknown): number | null;
     /** 이 장소의 금액을 내는 연결된 숙박 예약 — 없으면 null */
     spotPaidByBooking(spot: unknown, bookings?: unknown[]): Record<string, unknown> | null;
     /** 그 날의 항공편 — 항공 예약의 구간 + 일자의 옛 항공편, 출발 시각 순 */
@@ -225,6 +226,7 @@ declare module '@legacy/lib.js' {
     applySpotPriority<T>(spot: T, level: string | null | undefined): T;
     COST_PAY_STATES: readonly string[];
     COST_CATEGORIES: readonly string[];
+    costCategoryOf(spot: unknown): string;
     TC_LIMITS: Readonly<Record<string, number>>;
     TC_SCHEMA: number;
   };

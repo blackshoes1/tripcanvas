@@ -262,13 +262,14 @@ struct SpotQuickCreateView: View {
                     }
                 }
                 Section {
-                    ClockField(title: "예약·입장 시간", text: $draft.bookedAt)
-                    ClockField(title: "도착 시간", text: $draft.arriveAt)
+                    // 칸 이름은 장소 편집기(SpotEditorView·AdmissionEditorSection)·웹과 같다 — 같은 칸을 '시각'과 '시간'으로 따로 부르지 않는다(2026-10-05)
+                    ClockField(title: "예약·입장 시각", text: $draft.bookedAt)
+                    ClockField(title: "내가 정한 도착 시각", text: $draft.arriveAt)
                     StayMinutesPicker(minutes: $draft.stayMinutes)
                 } header: {
                     Text("시간 (선택)")
                 } footer: {
-                    Text("예약·입장 시간은 상대가 정한 약속, 도착 시간은 내가 정한 계획이에요. 비워 두면 앞 장소에서 계산해요. 이동수단·비용·메모는 추가한 뒤 장소를 눌러 정할 수 있어요.")
+                    Text("예약·입장 시각은 상대가 정한 약속, 도착 시각은 내가 정한 계획이에요. 비워 두면 앞 장소에서 계산해요. 이동수단·비용·메모는 추가한 뒤 장소를 눌러 정할 수 있어요.")
                 }
             }
             .scrollDismissesKeyboard(.interactively)
