@@ -47,12 +47,13 @@ test('빈 여행은 이전 지도를 덮고 검색으로 확인한 첫 장소를
   expect(await page.evaluate(()=>trip().days[0].spots[0].lat)).toBe(35.681);
 });
 
-test('약속 시각은 시간·메모를 펼쳐 저장하고 별도 상세 설정은 필요 없다',async({context,page})=>{
+test('약속 시각은 예약·입장 묶음을 펼쳐 저장하고 별도 상세 설정은 필요 없다',async({context,page})=>{
+  // 2026-10-04 — 예약은 한 묶음이다(예약 요건·완료·시각·인원·링크·메모). 시각은 '시간·메모'가 아니라 '예약·입장'에 있다
   await prepare(context); await page.goto('/'); await createTrip(page,'약속');
   // 빈 여행의 첫 날에는 '＋ 장소 추가' 대신 첫 걸음 카드가 장소 담기를 맡는다
   await page.locator('.firstStep .btn.primary').click();
   await expect(page.locator('#spotBookAt')).toBeHidden();
-  await page.locator('#spotSchedule > summary').click();
+  await page.locator('#spotAdmBox > summary').click();
   await expect(page.locator('#spotBookAt')).toBeVisible();
   await expect(page.locator('#spotAdvanced')).not.toHaveAttribute('open','');
   await page.evaluate(()=>{ document.getElementById('spotLat').value='37.5'; document.getElementById('spotLng').value='127'; });

@@ -23,6 +23,7 @@ struct QuickSpendEditor: View {
     @State private var entryID = UUID().uuidString
     @State private var recovery: SpendInputDraft?
     @State private var checkedRecovery = false
+    @State private var detail: CostEditTarget?
     @FocusState private var amountFocused: Bool
     @Environment(\.dismiss) private var dismiss
 
@@ -67,7 +68,7 @@ struct QuickSpendEditor: View {
                 } header: {
                     Text(dayLabel)
                 } footer: {
-                    Text("낸 돈으로 적어요. 1인 금액·일부 확인 같은 기준은 하루 비용에서 같은 항목을 열어 고칠 수 있어요.")
+                    Text("낸 돈으로 적어요. 1인 금액·결제 예정·일부 확인은 '자세히 적기'에서 정해요.")
                 }
                 Section("분류") {
                     ScrollView(.horizontal, showsIndicators: false) {
@@ -95,9 +96,24 @@ struct QuickSpendEditor: View {
                 } header: { Text("영수증 사진") } footer: {
                     Text("사진 자체는 올리지 않고 이 기기 사진 보관함의 위치만 기억해요.")
                 }
+                // 하루 추가 비용의 입력은 이 하나에서 시작한다(2026-10-04) — 전에는 같은 시트에 '쓴 돈 바로 적기'(5칸)와
+                // '비용 항목 추가'(10칸)가 같은 costItems를 따로 받았다. 자세한 칸은 여기서 펼친다(지금 적은 값을 들고 간다).
+                Section {
+                    Button { detail = CostEditTarget(kind: .extra(entryID), entry: detailEntry, isNew: true) } label: {
+                        Label("자세히 적기", systemImage: "slider.horizontal.3").frame(minHeight: 44)
+                    }
+                }
                 if failed { Section { Text("저장하지 못했어요. 입력 내용은 유지되어 있어요.").foregroundStyle(Ink.warning) } }
             }
             .tint(Ink.accent)
+            .sheet(item: $detail) { target in
+                CostEntryEditor(target: target) { entry in
+                    guard let entry, await onSave(entry) else { return false }
+                    EditorDraftStore.shared.remove(draftKey)
+                    dismiss()
+                    return true
+                }
+            }
             .navigationTitle("쓴 돈 적기")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -127,6 +143,14 @@ struct QuickSpendEditor: View {
         entry.currency = currency
         entry.payState = .paid
         entry.photos = photos
+        return entry
+    }
+
+    /// 지금까지 적은 값으로 만든 항목 — '자세히 적기'가 이걸 들고 전체 편집기를 연다(금액이 비어 있으면 미정)
+    private var detailEntry: CostEntry {
+        var entry = Self.entry(amount: parsedAmount ?? 0, title: title, kind: kind, currency: currency, photos: photos)
+        entry.raw["id"] = .string(entryID)
+        if parsedAmount == nil { entry.amount = nil }
         return entry
     }
 

@@ -104,13 +104,21 @@ struct PlaceAdmissionLookup: View {
 struct AdmissionEditorSection: View {
     @Binding var spot: TripSpot
     var body: some View {
+        // 예약은 한 묶음이다(2026-10-04, 웹 `#spotAdmBox`와 같은 순서) — 필요한가 → 했어요 → 시각·인원 → 링크 → 메모.
+        // 전에는 예약·입장 시각이 '시간' 칸에 따로 있었고 내 예약 링크는 앱에서 고칠 수 없었다. 저장 필드는 그대로다.
         Section {
-            DisclosureGroup("명소 예약·입장 준비") {
+            DisclosureGroup {
                 Picker("예약 요건", selection: $spot.admission.requirement) {
                     ForEach(AdmissionRequirement.allCases, id: \.self) { Text($0.label).tag($0) }
                 }
                 Toggle("내 예약 완료", isOn: $spot.admission.isBooked)
+                ClockField(title: "예약·입장 시각", text: $spot.bookedAt)
                 Stepper("예약 인원 \(spot.admission.people)명", value: $spot.admission.people, in: 1...100)
+                TextField("내 예약 링크 (예약 확인·바우처) https://", text: $spot.bookUrl)
+                    .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
+                if let url = SafeURL.web(spot.bookUrl) {
+                    Link("내 예약 열기", destination: url).frame(minHeight: 44)
+                }
                 TextField("공식 예약 페이지 https://", text: $spot.admission.officialURL)
                     .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
                 if let url = SpotAdmission.safeURL(spot.admission.officialURL) {
@@ -123,10 +131,25 @@ struct AdmissionEditorSection: View {
                 }
                 PlaceAdmissionLookup(provider: spot.kakaoId != nil ? "kakao" : (spot.placeId != nil ? "google" : nil),
                                      providerID: spot.kakaoId ?? spot.placeId)
+            } label: {
+                // 접혀 있어도 적힌 것을 말한다 — 시각이 묶음 안으로 들어가 보이지 않게 되면 안 된다
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("예약·입장")
+                    if let summary = Self.summary(spot) { Text(summary).font(.caption).foregroundStyle(Ink.soft) }
+                }
             }
         } footer: {
-            Text("직접 확인한 정보만 기록해 주세요. 예약 시각을 입력하거나 링크를 열어도 예약 완료로 바뀌지 않아요. 금액은 비용에 별도로 입력해요.")
+            Text("예약·입장 시각은 상대가 정한 약속이에요 — 일찍 도착하면 그 시각까지 기다리는 것으로 계산해요. 직접 확인한 정보만 기록해 주세요. 시각을 입력하거나 링크를 열어도 예약 완료로 바뀌지 않아요. 금액은 비용에 별도로 입력해요.")
         }
+    }
+
+    /// '19:00 · 예약 완료' — 적힌 것이 없으면 nil
+    static func summary(_ spot: TripSpot) -> String? {
+        var parts: [String] = []
+        if let at = spot.bookedAt, !at.isEmpty { parts.append(at) }
+        if spot.admission.isBooked { parts.append("예약 완료") }
+        else if spot.admission.requirement != .unknown { parts.append(spot.admission.requirement.label) }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 }
 

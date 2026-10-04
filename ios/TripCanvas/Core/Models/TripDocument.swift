@@ -150,6 +150,15 @@ struct TripSpot: Hashable, Sendable {
         set { raw.setOrRemove("bookAt", newValue.flatMap { $0.isEmpty ? nil : .string($0) }) }
     }
 
+    /// 내 예약 링크(예약 확인·바우처 주소) — 웹 `spot.bookUrl`과 같은 칸. 열 때는 `SafeURL.web`을 지난다.
+    var bookUrl: String {
+        get { raw["bookUrl"]?.stringValue ?? "" }
+        set {
+            let value = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            raw.setOrRemove("bookUrl", value.isEmpty ? nil : .string(value))
+        }
+    }
+
     /// 머무는 시간(분).
     var stayMinutes: Int? {
         get { raw["stayMin"]?.intValue }

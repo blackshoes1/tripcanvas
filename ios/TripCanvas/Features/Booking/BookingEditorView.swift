@@ -253,7 +253,7 @@ struct BookingEditorView: View {
 
                 if isBookingKind {
                     Section {
-                        DisclosureGroup("취소 조건") {
+                        DisclosureGroup {
                             // 세 갈래다 — 고르지 않은 예약을 '불가'로 단정하지 않는다(웹 편집기와 같은 칸)
                             Picker("무료 취소", selection: $draft.refundable) {
                                 Text("모름").tag(Bool?.none)
@@ -265,6 +265,8 @@ struct BookingEditorView: View {
                             }
                             TextField("취소 수수료", text: $feeText)
                                 .keyboardType(.decimalPad)
+                        } label: {
+                            Self.groupLabel("취소 조건", cancelSummary)
                         }
                     } header: {
                         Text("취소 조건")
@@ -349,9 +351,33 @@ struct BookingEditorView: View {
 
     // MARK: 종류별 항목
 
+    /// 접힌 묶음의 머리 — 이름과 지금 값 한 줄(2026-10-04, 웹 예약 편집기와 같다). 펴지 않아도 무엇이 적혔는지 안다
+    static func groupLabel(_ title: String, _ summary: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+            Text(summary).font(.caption).foregroundStyle(Ink.soft)
+        }
+    }
+
+    private var hotelSummary: String {
+        var parts = ["성인 \(draft.adults ?? 2)", "객실 \(draft.rooms ?? 1)"]
+        let room = roomNameText.trimmingCharacters(in: .whitespaces)
+        if !room.isEmpty { parts.append(room) }
+        if let breakfast = draft.breakfast { parts.append(breakfast ? "조식 포함" : "조식 없음") }
+        return parts.joined(separator: " · ")
+    }
+
+    private var cancelSummary: String {
+        switch draft.refundable {
+        case true?: return draft.freeCancelUntil.map { "무료 취소 \($0)까지" } ?? "무료 취소 가능"
+        case false?: return "무료 취소 불가"
+        default: return "모름"
+        }
+    }
+
     private var hotelSection: some View {
         Section {
-            DisclosureGroup("숙박 세부 정보") {
+            DisclosureGroup {
                 Picker("일정의 숙소와 연결", selection: $links.stay) {
                     Text("연결 안 함").tag(SpotRef?.none)
                     ForEach(document.stayRefs, id: \.self) { ref in
@@ -367,6 +393,8 @@ struct BookingEditorView: View {
                     Text("조식 포함").tag(Bool?.some(true))
                     Text("조식 없음").tag(Bool?.some(false))
                 }
+            } label: {
+                Self.groupLabel("숙박 세부 정보", hotelSummary)
             }
         } header: {
             Text("숙박")

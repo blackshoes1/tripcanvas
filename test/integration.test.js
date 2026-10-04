@@ -5465,7 +5465,8 @@ test('통합: 장소 비용은 장소 편집기의 요약 한 줄에서 열고, 
   assert.equal(el('costCurrency').value,'EUR');
   assert.equal(el('costPayState').value,'PAID');
   assert.equal(el('costPaidOn').value,'2026-10-01');
-  assert.equal(el('costBasis').value,'PER_PERSON');
+  assert.equal(el('costPerPerson').checked,true,'1인 금액이에요');
+  assert.equal(el('costPeople').value,'2');
   el('costAmount').value='15.25'; el('costPaidOn').value='2026-10-02'; el('costPlaceSave').click();
   assert.equal(el('placeCostDialog').open,false);
   assert.equal(w.eval('trip().days[0].spots[0].cost'),12.5,'장소를 저장하기 전에는 원본이 그대로다');
@@ -7073,8 +7074,9 @@ test('통합(ux3): 1인 금액은 어디서나 × 인원 = 합계로 보인다',
     assert.match(w.document.getElementById('spotCostBtn').textContent, /1인 ₩5,000 × 2명 = ₩10,000/, '장소 편집기의 요약도');
     w.document.getElementById('spotCostBtn').click();
     assert.match(w.document.getElementById('costPerPersonNote').textContent, /1인 ₩5,000 × 2명 = ₩10,000/);
-    w.document.getElementById('costBasis').value='TOTAL'; w.document.getElementById('costBasis').dispatchEvent(new w.Event('change'));
-    assert.equal(w.document.getElementById('costPerPersonNote').textContent, '', '전체 금액이면 곱하지 않는다');
+    w.document.getElementById('costPerPerson').checked=false; w.document.getElementById('costPerPerson').dispatchEvent(new w.Event('change'));
+    assert.equal(w.document.getElementById('costPerPersonNote').textContent, '', '1인 금액이 아니면 곱하지 않는다');
+    assert.equal(w.document.getElementById('costPeopleWrap').hidden, true, '인원 칸도 숨는다');
   }finally{ w.close(); }
 });
 
@@ -7953,7 +7955,7 @@ test('통합: 저장 못 하는 칸은 그 칸 옆 문장과 포커스로 알리
     el('spotAdmUrl').value = 'http://www.louvre.fr';
     el('spotSave').click();
     assert.match(el('spotAdmUrlErr').textContent, /https/);
-    assert.equal(el('spotAdvanced').open, true, '오류 칸이 든 상세 설정을 펼친다');
+    assert.equal(el('spotAdmBox').open, true, '오류 칸이 든 묶음(예약·입장)을 펼친다');
     el('spotCancel').click();
     await new Promise((r) => setTimeout(r, 0));
     assert.equal(w.document.querySelector('#spotModalBg .fieldErr'), null, '창을 닫으면 지난 오류는 남지 않는다');
@@ -8275,5 +8277,89 @@ test('통합(A-3): 항공편은 항공 예약의 구간이고 그날 일정에 �
     el('daySave').click();
     assert.equal(w.eval('trip().days[2].flight'), undefined, '일자 저장으로 되살아나지 않는다');
     assert.deepEqual(rows(2), ['✈️ IB3100 · MAD 08:05 → SVQ 09:00'], '같은 편이 한 줄로');
+  }finally{ w.close(); }
+});
+
+// ── 비용 입력 정리 묶음 B(2026-10-04) ──
+test('통합(B-1): 예약은 한 묶음이다 — 요건·완료·시각·인원·링크·메모가 \'예약·입장\' 안에 있고 저장 필드는 그대로', { skip: noJsdom }, () => {
+  const w=boot();
+  try{
+    withTrip(w, `[{spots:[{name:'저녁',city:'M',lat:40.41,lng:-3.69,cat:'food',bookAt:'19:00',bookUrl:'https://r.example/v'}]}]`);
+    const el=(id)=>w.document.getElementById(id);
+    const box=el('spotAdmBox');
+    for(const id of ['spotAdmReq','spotAdmBooked','spotBookAt','spotAdmPeople','spotBookUrl','spotAdmUrl','spotAdmNote'])
+      assert.ok(box.contains(el(id)), id+'는 예약·입장 묶음 안');
+    assert.ok(!el('spotSchedule').contains(el('spotBookAt')), '시간 칸에서는 빠졌다');
+    assert.ok(!el('spotAdvanced').contains(el('spotBookUrl')), '상세 설정에서도 빠졌다');
+    w.eval('openSpotModal(0,0)');
+    assert.equal(box.open, true, '예약 시각이 적힌 식당이면 펼친다');
+    assert.equal(el('spotBookAt').value, '19:00');
+    el('spotBookAt').value='19:30'; el('spotSave').click();
+    assert.equal(w.eval('trip().days[0].spots[0].bookAt'), '19:30');
+    assert.equal(w.eval('trip().days[0].spots[0].bookUrl'), 'https://r.example/v');
+    // 종류를 모르는 새 장소는 접혀 있다(칸이 많아 보이지 않게)
+    w.eval('openSpotModal(0,-1)');
+    assert.equal(box.open, false);
+  }finally{ w.close(); }
+});
+
+test('통합(B-2): 예약 편집기는 기본만 먼저 — 시세 비교 조건·취소 조건은 접혀 있고 머리가 지금 값을 말한다', { skip: noJsdom }, () => {
+  const w=boot();
+  try{
+    withTrip(w, `[{spots:[]},{spots:[]}]`);
+    const el=(id)=>w.document.getElementById(id);
+    w.eval(`trip().bookings=[{id:'h1',type:'hotel',title:'H',price:100000,start:trip().start,end:isoDateOf(1),adults:2,rooms:1,breakfast:true,track:false},
+      {id:'h2',type:'hotel',title:'H2',price:1,refundable:true,refundableSet:true,freeCancelUntil:'2026-07-20',track:false}]`);
+    w.eval(`openBookingModal('h1')`);
+    assert.equal(el('bkHotelCond').open, false);
+    assert.match(el('bkHotelCondSummary').textContent, /성인 2 · 객실 1 · 조식 포함/);
+    assert.equal(el('bkCancelCond').open, false, '적힌 취소 조건이 없으면 접힌다');
+    assert.match(el('bkCancelSummary').textContent, /모름/);
+    el('bkAdults').value='3'; el('bkAdults').dispatchEvent(new w.Event('input'));
+    assert.match(el('bkHotelCondSummary').textContent, /성인 3/, '고치면 머리 줄도 바뀐다');
+    // 접힌 칸의 오류는 그 묶음을 펴서 말한다
+    el('bkFee').value='12.5'; el('bkSave').click();
+    assert.equal(el('bkCancelCond').open, true);
+    assert.ok(el('bkFeeErr'), '칸 옆에서 말한다');
+    w.eval(`document.getElementById('bookingModalBg').classList.remove('show'); openBookingModal('h2')`);
+    assert.equal(el('bkCancelCond').open, true, '적힌 취소 조건이 있으면 펴서 시작한다');
+    assert.match(el('bkCancelSummary').textContent, /무료 취소 7\/20/);
+  }finally{ w.close(); }
+});
+
+test('통합(B-4): 웹에서도 하루 추가 비용을 적고 고치고 지운다 — 장소 비용과 같은 창', { skip: noJsdom }, () => {
+  const w=boot();
+  try{
+    withTrip(w, `[{spots:[{name:'미술관',city:'M',lat:40.41,lng:-3.69}]},{spots:[]}]`);
+    w.eval('render()');
+    const el=(id)=>w.document.getElementById(id);
+    const add=w.document.querySelectorAll('.dayCard')[0].querySelector('.dayItem.add');
+    assert.ok(add, '비용이 없어도 장소가 있는 날이면 적는 길이 보인다');
+    assert.equal(w.document.querySelectorAll('.dayCard')[1].querySelector('.dayItem.add'), null, '빈 날에는 없다(장소 추가와 나란히 뜨지 않게)');
+    add.click();
+    assert.equal(el('placeCostDialog').open, true);
+    assert.equal(el('placeCostTitle').textContent, '쓴 돈');
+    assert.equal(el('costTitleWrap').hidden, false);
+    assert.equal(el('costPayState').value, 'PAID', '현지에서 낸 돈 — 결제 완료로 시작한다(앱의 빠른 입력과 같다)');
+    assert.ok(w.document.querySelector('#costKind option[value="AUTO"]').hidden, "'장소 분류에 따름'은 없다");
+    el('costPlaceSave').click();
+    assert.ok(el('costAmountErr'), '금액 없이 저장하지 않는다');
+    el('costTitle').value='점심'; el('costAmount').value='15000'; el('costPlaceSave').click();
+    const it=JSON.parse(w.eval('JSON.stringify(trip().days[0].costItems[0])'));
+    assert.deepEqual([it.title,it.kind,it.amount,it.payState,it.costBasis], ['점심','FOOD',15000,'PAID','TOTAL']);
+    assert.match(w.document.querySelectorAll('.dayCard')[0].textContent, /점심 ₩15,000/);
+    assert.match(w.document.querySelectorAll('.dayCard')[0].textContent, /하루 비용 약 ₩15,000/, '하루 비용에 들어간다');
+    // 고치기·지우기
+    w.document.querySelector('.dayCard .dayItem:not(.add)').click();
+    assert.equal(el('costTitle').value, '점심');
+    el('costAmount').value='18000'; el('costPlaceSave').click();
+    assert.equal(w.eval('trip().days[0].costItems[0].amount'), 18000);
+    w.document.querySelector('.dayCard .dayItem:not(.add)').click();
+    el('costPlaceDelete').click();
+    assert.equal(w.eval('trip().days[0].costItems'), undefined);
+    // 장소 편집기에서 열면 다시 장소 비용 창이다
+    w.eval('openSpotModal(0,0)'); el('spotCostBtn').click();
+    assert.equal(el('placeCostTitle').textContent, '장소 비용');
+    assert.equal(el('costTitleWrap').hidden, true);
   }finally{ w.close(); }
 });

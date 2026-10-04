@@ -863,3 +863,14 @@ button.flightRow{cursor:pointer}button.flightRow:hover{text-decoration:underline
 .segRow .segDel{grid-column:1 / -1;justify-self:end}
 .segRow label{margin:4px 0 2px}
 #bkSegAdd{margin-top:6px}
+/* 접힌 조건 묶음의 머리 — 지금 값을 한 줄로(예약 편집기) */
+.condSummary{font-weight:400;color:var(--muted)}
+#bookingModalBg .advancedPanel{margin-top:10px}
+/* 하루 추가 비용 — 일자 카드의 비용 줄 아래 한 줄씩 고칠 수 있게 */
+.dayItems{display:flex;flex-wrap:wrap;gap:4px 8px;padding:0 0 4px 2px}
+.dayItem{font:inherit;font-size:.75rem;color:var(--meta-soft);background:none;border:1px solid var(--border);border-radius:6px;padding:1px 6px;min-height:24px;cursor:pointer}
+span.dayItem{cursor:default}
+.dayItem.add{border-style:dashed;color:var(--meta-link)}
+@media (pointer:coarse){.dayItem{position:relative}.dayItem::after{content:'';position:absolute;inset:-10px -2px}}
+.advancedPanel summary .condSummary{float:none;margin-left:6px;font-weight:400;color:var(--muted)}
+.advancedPanel[open] summary .condSummary{transform:none}

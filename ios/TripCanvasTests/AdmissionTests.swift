@@ -32,4 +32,18 @@ final class AdmissionTests: XCTestCase {
         XCTAssertNil(SpotAdmission.safeURL("http://example.test"))
         XCTAssertNotNil(SpotAdmission.safeURL("https://example.test/tickets"))
     }
+
+    /// 예약은 한 묶음이다(2026-10-04) — 접힌 머리가 시각·완료를 말하고, 내 예약 링크는 웹과 같은 `bookUrl` 키다.
+    func testReservationGroupSummaryAndBookUrl() {
+        var spot = TripSpot(name: "저녁", city: "M")
+        XCTAssertNil(AdmissionEditorSection.summary(spot))
+        spot.bookedAt = "19:00"
+        XCTAssertEqual(AdmissionEditorSection.summary(spot), "19:00")
+        spot.admission.isBooked = true
+        XCTAssertEqual(AdmissionEditorSection.summary(spot), "19:00 · 예약 완료")
+        spot.bookUrl = "  https://r.example/v  "
+        XCTAssertEqual(spot.raw["bookUrl"], .string("https://r.example/v"))
+        spot.bookUrl = " "
+        XCTAssertNil(spot.raw["bookUrl"], "비우면 키를 지운다")
+    }
 }

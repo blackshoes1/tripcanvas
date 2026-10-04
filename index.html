@@ -13,7 +13,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js" integrity="sha384-+pWnyi8LtZx+cgXfD2arWgUX7pHIaEL215cEPPk9WrsegNlgvDL9DNjaqsceQq6o" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js" integrity="sha384-BSxuMLxX+FCbTdYec3TbXlnMGEEM2QXTFdtDaveen71o+jswm2J36+xFqp8k4VHM" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.min.js" integrity="sha384-l8ah+VgaWtk1mvOe9VC+OirC6qHFF4yH7l7mKRidV9MSti3E9F463bMp6ZVN4kuC" crossorigin="anonymous"></script>
-<link rel="stylesheet" href="style.css?v=tc-v265">
+<link rel="stylesheet" href="style.css?v=tc-v267">
 </head>
 <body>
 <a class="skipLink" href="#sidebar">일정으로 건너뛰기</a>
@@ -116,42 +116,48 @@
   <details id="spotSchedule" class="advancedPanel">
     <summary>시간·메모 정하기 <span>⌄</span></summary>
     <div class="basicGrid">
-    <div><label for="spotBookAt">예약·입장 시각</label><input type="text" id="spotBookAt" aria-describedby="spotTimeHelp" class="timeIn" inputmode="numeric" maxlength="5" placeholder="19:00"></div>
     <div><label for="spotAt">내가 정한 도착 시각</label><input type="text" id="spotAt" aria-describedby="spotTimeHelp" class="timeIn" inputmode="numeric" maxlength="5" placeholder="비우면 자동 계산"></div>
     <div><label for="spotStayMin">체류 시간 (분)</label><input type="number" id="spotStayMin" min="0" step="5" placeholder="정하지 않음" title="비우면 &#39;정하지 않음&#39;, 0이면 &#39;들렀다 바로 이동&#39;이에요. 계산은 둘 다 머무르지 않는 것으로 같지만 다른 뜻이에요"></div>
-    <p class="hint wide" id="spotTimeHelp">예약·입장 시각은 꼭 지켜야 할 약속이에요. 내가 정한 도착 시각을 비우면 앞 장소에서의 이동으로 예상해요.</p>
+    <p class="hint wide" id="spotTimeHelp">비우면 앞 장소에서의 이동으로 예상해요. 상대가 정한 예약·입장 시각은 아래 '예약·입장'에 적어요.</p>
     <div class="wide"><label for="spotDesc">메모</label><textarea id="spotDesc" placeholder="운영시간, 예약, 팁 등"></textarea></div>
     </div>
   </details>
   <input type="hidden" id="spotLat"><input type="hidden" id="spotLng"><input type="hidden" id="spotPlaceId"><input type="hidden" id="spotKakaoId">
   <div class="hint" id="coordHint">위치: 아직 없어요 — 위에서 검색하거나 지도에서 골라 주세요</div>
+  <!-- 예약은 한 묶음이다(2026-10-04) — 예약이 필요한가 → 했어요 → 시각·인원 → 링크 → 메모. 전에는 예약·입장 시각(시간 칸),
+       내 예약 링크(상세 설정), 명소 예약 준비(상세 설정 안의 또 다른 접힘)가 세 곳에 흩어져 있었다. 저장 필드는 그대로다.
+       칸마다 보이는 이름을 둔다 — 예시 문구뿐이라 값을 넣으면 무슨 칸인지 사라졌다. 예약할 일이 없어 보이는 곳이면 접는다(P2-27) -->
+  <details id="spotAdmBox" class="advancedPanel admissionBox">
+    <summary>예약·입장 <span>⌄</span></summary>
+    <div class="admissionBody">
+    <div class="admissionRow">
+      <span class="chkrow"><label for="spotAdmReq">예약 요건</label><select id="spotAdmReq" aria-describedby="spotAdmHelp"></select></span>
+      <span class="chkrow"><input type="checkbox" id="spotAdmBooked"><label for="spotAdmBooked">내 예약 완료</label></span>
+    </div>
+    <div class="basicGrid">
+      <div><label for="spotBookAt">예약·입장 시각</label><input type="text" id="spotBookAt" aria-describedby="spotBookAtHelp" class="timeIn" inputmode="numeric" maxlength="5" placeholder="19:00"></div>
+      <div><label for="spotAdmPeople">인원</label><input type="number" id="spotAdmPeople" min="1" max="100" step="1" placeholder="미정"></div>
+      <p class="hint wide" id="spotBookAtHelp">상대가 정한 약속이에요 — 일찍 도착하면 그 시각까지 기다리는 것으로 계산해요.</p>
+    </div>
+    <label for="spotBookUrl">내 예약 링크</label>
+    <input type="text" id="spotBookUrl" placeholder="예약 확인·바우처 주소 https://">
+    <label for="spotAdmUrl">공식 예약 페이지</label>
+    <input type="text" id="spotAdmUrl" placeholder="https://">
+    <label for="spotAdmNote">예약 메모</label>
+    <input type="text" id="spotAdmNote" placeholder="권종 · 성인/어린이 · 적용 날짜 등" maxlength="1000">
+    <div class="admissionRow">
+      <button type="button" class="btn" id="spotAdmConfirm">공식 정보를 지금 확인했어요</button>
+      <span class="hint" id="spotAdmChecked"></span>
+    </div>
+    <div class="hint" id="spotAdmHelp">직접 확인한 것만 적어 주세요. 링크를 열거나 시각을 적어도 <b>예약 완료로 바뀌지 않아요.</b> 금액은 상세 설정의 비용에 적어요.</div>
+    </div>
+  </details>
   <details id="spotAdvanced" class="advancedPanel">
     <summary>상세 설정 보기 <span>⌄</span></summary>
     <div class="advancedGrid">
       <div><label for="spotLegMode">이동수단</label><select id="spotLegMode"><option value="">그날 기본</option><option value="car">🚗 자차</option><option value="taxi">🚕 택시</option><option value="transit">🚌 대중교통</option><option value="train">🚆 기차</option><option value="walk">🚶 도보</option><option value="bike">🚴 자전거</option><option value="flight">✈️ 비행기</option></select></div>
       <!-- 비용은 장소 비용 창 하나에서 고친다 — 여기는 요약 한 줄(2026-10-04). 예약에 연결된 숙소는 예약 금액이 유일한 출처라 예약을 연다 -->
       <div class="wide"><span class="fieldLabel" id="spotCostLabel">비용</span><button type="button" class="costSummary" id="spotCostBtn" aria-describedby="spotCostLabel"></button><div class="hint" id="costKrwHint"></div></div>
-      <div class="wide"><label for="spotBookUrl">내 예약 링크</label><input type="text" id="spotBookUrl" placeholder="예약 확인·바우처 주소 https://"></div>
-      <!-- 칸마다 보이는 이름을 둔다 — 예시 문구뿐이라 값을 넣으면 무슨 칸인지 사라졌다. 명소가 아니면 접는다(2026-10-03 P2-27) -->
-      <details class="wide admissionBox" id="spotAdmBox">
-        <summary>명소 예약·입장 준비 <span>⌄</span></summary>
-        <div class="admissionBody">
-        <div class="admissionRow">
-          <span class="chkrow"><label for="spotAdmReq">예약 요건</label><select id="spotAdmReq" aria-describedby="spotAdmHelp"></select></span>
-          <span class="chkrow"><input type="checkbox" id="spotAdmBooked"><label for="spotAdmBooked">내 예약 완료</label></span>
-          <span class="chkrow"><label for="spotAdmPeople">인원</label><input type="number" id="spotAdmPeople" min="1" max="100" step="1" placeholder="미정"></span>
-        </div>
-        <label for="spotAdmUrl">공식 예약 페이지</label>
-        <input type="text" id="spotAdmUrl" placeholder="https://">
-        <label for="spotAdmNote">예약 메모</label>
-        <input type="text" id="spotAdmNote" placeholder="권종 · 성인/어린이 · 적용 날짜 등" maxlength="1000">
-        <div class="admissionRow">
-          <button type="button" class="btn" id="spotAdmConfirm">공식 정보를 지금 확인했어요</button>
-          <span class="hint" id="spotAdmChecked"></span>
-        </div>
-        <div class="hint" id="spotAdmHelp">직접 확인한 것만 적어 주세요. 링크를 열거나 시각을 적어도 <b>예약 완료로 바뀌지 않아요.</b> 금액은 위의 예상 비용에 적어요.</div>
-        </div>
-      </details>
       <div class="wide optionRows"><div class="chkrow"><label for="spotPriority">우선순위</label><select id="spotPriority" title="꼭 가기는 일정을 다시 맞출 때 마지막까지 지키고, 여유 되면은 시간이 모자라면 가장 먼저 빠져요"><option value="MUST">꼭 가기</option><option value="NORMAL" selected>보통</option><option value="OPT">여유 되면</option></select></div></div>
       <div class="wide" id="spotWhoSection" style="display:none"><label>누가 가나요</label><div class="whoChips" id="spotWho"></div><div class="hint">고르지 않으면 <b>모두</b>예요. 몇 명만 고르면 같은 시간에 다른 일정을 둘 수 있어요.</div></div>
     </div>
@@ -189,11 +195,13 @@
 <dialog id="placeCostDialog" class="costDialog" aria-labelledby="placeCostTitle">
   <h2 id="placeCostTitle">장소 비용</h2>
   <p class="hint" id="placeCostFor"></p>
+  <div id="costTitleWrap" hidden><label for="costTitle">뭐에 썼나요</label><input type="text" id="costTitle" maxlength="80" placeholder="비우면 분류 이름 (예: 점심, 택시)"></div>
   <label for="costAmount">금액</label><input id="costAmount" inputmode="decimal" placeholder="미정 (무료는 0)">
   <label for="costCurrency">통화</label><select id="costCurrency"><option value="KRW">₩ 원</option><option value="USD">$ 달러</option><option value="EUR">€ 유로</option><option value="JPY">¥ 엔</option><option value="CNY">元 위안</option></select>
   <label for="costKind">분류</label><select id="costKind"><option value="AUTO">장소 분류에 따름</option><option value="FLIGHT">항공</option><option value="STAY">숙박</option><option value="RENT">렌트</option><option value="TRANSIT">대중교통</option><option value="FOOD">식비</option><option value="SHOPPING">쇼핑</option><option value="TICKET">입장권·관람권</option><option value="TRANSPORT">택시·기타 교통</option><option value="OTHER">기타</option></select>
-  <label for="costBasis">금액 기준</label><select id="costBasis"><option value="ENTERED">입력 금액 그대로</option><option value="TOTAL">전체 금액</option><option value="PER_PERSON">1인 금액</option></select>
-  <label for="costPeople">적용 인원</label><input type="number" id="costPeople" min="1" max="100">
+  <!-- 금액 기준(입력 그대로·전체·1인)과 인원을 '1인 금액이에요' 하나로(2026-10-04) — 켜면 인원을 묻는다. 저장 표현(costBasis·costPeople)은 그대로 -->
+  <div class="chkrow"><input type="checkbox" id="costPerPerson"><label for="costPerPerson">1인 금액이에요</label></div>
+  <div id="costPeopleWrap" hidden><label for="costPeople">몇 명</label><input type="number" id="costPeople" min="1" max="100"></div>
   <p class="hint" id="costPerPersonNote" aria-live="polite"></p>
   <div class="chkrow"><input type="checkbox" id="costPartial"><label for="costPartial">일부 금액만 확인했어요</label></div>
   <label for="costPayState">결제 상태</label><select id="costPayState"></select>
@@ -473,7 +481,10 @@
     <button type="button" class="btn sm" id="bkSegAdd">＋ 구간 추가</button>
     <div class="hint">날짜를 넣은 구간은 그날 일정에 ✈️ 줄로 보여요 — 동선·도착 예상 계산에는 들어가지 않아요. 왕복이면 가는 편·오는 편을 따로 넣어요.</div>
   </div>
+  <!-- 시세 비교 조건은 접는다(2026-10-04) — 기본(종류·이름·기간·금액·결제)이 먼저 보이게. 접힌 머리가 지금 값을 말한다 -->
   <div id="bkHotelFields">
+  <details class="advancedPanel" id="bkHotelCond">
+    <summary>가격 추적 조건 <span class="condSummary" id="bkHotelCondSummary"></span> <span>⌄</span></summary>
     <div style="display:flex;gap:6px">
       <div style="flex:1"><label for="bkAdults">투숙 인원 (성인)</label><input type="number" id="bkAdults" min="1" max="8" step="1" value="2" style="width:100%"></div>
       <div style="flex:1"><label for="bkRooms">객실 수</label><input type="number" id="bkRooms" min="1" max="4" step="1" value="1" style="width:100%"></div>
@@ -483,6 +494,7 @@
       <div style="flex:1"><label for="bkBreakfast">조식</label><select id="bkBreakfast" style="width:100%"><option value="">모름/미입력</option><option value="1">조식 포함</option><option value="0">조식 없음</option></select></div>
     </div>
     <div class="hint">조건을 입력할수록 "동일 조건" 판정이 정확해져요 — 같은 상품일 때만 확정 절약으로 계산해요.</div>
+  </details>
   </div>
   <div id="bkCarFields" style="display:none">
     <div style="display:flex;gap:6px">
@@ -498,6 +510,13 @@
       <div style="flex:1"><label for="bkCarReturnTime">반납 시각</label><input type="text" id="bkCarReturnTime" class="timeIn" inputmode="numeric" maxlength="5" placeholder="10:00" style="width:100%"></div>
     </div>
     <div style="display:flex;gap:6px">
+      <div style="flex:1"><label for="bkCarPickupSpot">픽업을 일정의 장소와 연결 (선택)</label><select id="bkCarPickupSpot" style="width:100%"></select></div>
+      <div style="flex:1"><label for="bkCarReturnSpot">반납을 일정의 장소와 연결 (선택)</label><select id="bkCarReturnSpot" style="width:100%"></select></div>
+    </div>
+    <div class="hint">연결하면 그 장소 행에 픽업·반납이 붙어 순서가 맞아요 (예: 공항에 내린 뒤 픽업). 연결하지 않으면 픽업일·반납일 일정에 따로 표시돼요.</div>
+    <details class="advancedPanel" id="bkCarCond">
+      <summary>가격 추적 조건 <span class="condSummary" id="bkCarCondSummary"></span> <span>⌄</span></summary>
+    <div style="display:flex;gap:6px">
       <div style="flex:1"><label for="bkCarClass">차급</label><select id="bkCarClass" style="width:100%"><option value="">모름</option><option value="mini">Mini</option><option value="economy">Economy</option><option value="compact">Compact</option><option value="intermediate">Intermediate</option><option value="standard">Standard</option><option value="fullsize">Fullsize</option><option value="premium">Premium</option><option value="suv">SUV</option><option value="van">Van</option></select></div>
       <div style="flex:1"><label for="bkCarTrans">변속기</label><select id="bkCarTrans" style="width:100%"><option value="">모름</option><option value="automatic">자동</option><option value="manual">수동</option></select></div>
     </div>
@@ -505,21 +524,20 @@
       <div style="flex:1"><label for="bkCarMileage">주행거리</label><select id="bkCarMileage" style="width:100%"><option value="">모름</option><option value="UNLIMITED">무제한</option><option value="LIMITED">제한</option></select></div>
       <div style="flex:1"><label for="bkCarIns">보험</label><select id="bkCarIns" style="width:100%"><option value="">모름</option><option value="BASIC">기본</option><option value="CDW">CDW</option><option value="FULL">완전(풀커버)</option></select></div>
     </div>
-    <div style="display:flex;gap:6px">
-      <div style="flex:1"><label for="bkCarPickupSpot">픽업을 일정의 장소와 연결 (선택)</label><select id="bkCarPickupSpot" style="width:100%"></select></div>
-      <div style="flex:1"><label for="bkCarReturnSpot">반납을 일정의 장소와 연결 (선택)</label><select id="bkCarReturnSpot" style="width:100%"></select></div>
-    </div>
-    <div class="hint">연결하면 그 장소 행에 픽업·반납이 붙어 순서가 맞아요 (예: 공항에 내린 뒤 픽업). 연결하지 않으면 픽업일·반납일 일정에 따로 표시돼요.</div>
     <div class="hint">차급·변속기·보험·주행거리가 다르면 <b>확정 절약으로 계산하지 않아요</b> — 조건을 입력할수록 비교가 정확해져요.</div>
+    </details>
   </div>
   <div id="bkBookingExtra">
   <label for="bkConfirmation">예약번호 (선택)</label><input type="text" id="bkConfirmation" maxlength="80" autocomplete="off" placeholder="예: ABC123 — 현장에서 꺼내 보는 확인번호">
+  <details class="advancedPanel" id="bkCancelCond">
+    <summary>취소 조건 <span class="condSummary" id="bkCancelSummary"></span> <span>⌄</span></summary>
   <label for="bkFreeCancel">무료 취소</label>
   <select id="bkFreeCancel"><option value="">모름 · 적지 않음</option><option value="1">무료 취소 가능</option><option value="0">무료 취소 불가</option></select>
   <div id="bkFreeUntilWrap" style="display:none"><label for="bkFreeUntil">무료 취소 기한</label><input type="date" id="bkFreeUntil">
     <div class="hint">기한 안에는 취소 수수료 없이 갈아탈 수 있는 것으로 계산해요.</div></div>
   <label>취소 수수료 <span class="hint" style="margin:0">— 지금 취소하면 내는 금액. 절약액에서 빼요</span></label>
   <input type="text" id="bkFee" inputmode="numeric" placeholder="0">
+  </details>
   <label for="bkUrl">예약 링크 (선택)</label><input type="text" id="bkUrl" placeholder="https://...">
   <div class="chkrow" id="bkTrackRow"><input type="checkbox" id="bkTrack"><label for="bkTrack" style="margin:0">가격 추적 <span class="hint" style="margin:0">— 켜 두면 시세를 계속 확인해 절약 기회를 알려 줘요. 숙박은 체크인·체크아웃 날짜가 필요해요</span></label></div>
   </div>
@@ -726,15 +744,15 @@
   <div id="placeDetailsContent" aria-live="polite"></div>
   <footer id="placeDetailsActions"></footer>
 </dialog>
-<script src="lib.js?v=tc-v265"></script>
-<script src="sync.js?v=tc-v265"></script>
-<script src="routing.js?v=tc-v265"></script>
-<script src="price.js?v=tc-v265"></script>
-<script src="adaptive.js?v=tc-v265"></script>
-<script src="intake.js?v=tc-v265"></script>
-<script src="collab.js?v=tc-v265"></script>
-<script src="api.js?v=tc-v265"></script>
-<script src="auth.js?v=tc-v265"></script>
-<script src="app.js?v=tc-v265"></script>
+<script src="lib.js?v=tc-v267"></script>
+<script src="sync.js?v=tc-v267"></script>
+<script src="routing.js?v=tc-v267"></script>
+<script src="price.js?v=tc-v267"></script>
+<script src="adaptive.js?v=tc-v267"></script>
+<script src="intake.js?v=tc-v267"></script>
+<script src="collab.js?v=tc-v267"></script>
+<script src="api.js?v=tc-v267"></script>
+<script src="auth.js?v=tc-v267"></script>
+<script src="app.js?v=tc-v267"></script>
 </body>
 </html>

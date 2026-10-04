@@ -111,11 +111,9 @@ struct DayCostView: View {
                         }
                         .buttonStyle(.plain).disabled(!canEdit)
                     }
-                    if canEdit {
-                        Button {
-                            let entry = CostEntry(raw: ["id": .string(UUID().uuidString), "costBasis": .string("TOTAL")])
-                            editing = CostEditTarget(kind: .extra(entry.id), entry: entry, isNew: true)
-                        } label: { Label("비용 항목 추가", systemImage: "plus") }
+                    // 추가는 위의 '쓴 돈 적기' 하나다(2026-10-04) — 자세한 칸은 그 안의 '자세히 적기'에서 펼친다. 적은 항목은 여기서 눌러 고친다
+                    if canEdit && day.costItems.isEmpty {
+                        Text("위의 '쓴 돈 바로 적기'로 적어요.").font(.caption).foregroundStyle(Ink.soft)
                     }
                 } header: { Text("추가 비용") } footer: {
                     Text("장소에 적지 않은 식사·입장료·교통·숙박비를 적어요. 교통 항목을 만들면 그날의 자동 교통비 추정을 대신해요.")
@@ -306,13 +304,15 @@ struct CostEntryEditor: View {
                     Picker("통화", selection: $entry.currency) {
                         ForEach(Currency.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                     }
-                    Picker("금액 기준", selection: $entry.basis) {
-                        ForEach(CostBasis.allCases, id: \.self) { Text($0.label).tag($0) }
+                    // 금액 기준(입력 그대로·전체·1인)과 인원을 '1인 금액이에요' 하나로(2026-10-04, 웹과 같다) — 켜면 인원을 묻는다.
+                    // 저장 표현(costBasis·costPeople)은 그대로다. 예산에는 묻지 않는다(예산은 사람 수로 곱할 돈이 아니다).
+                    if !target.isBudget {
+                        Toggle("1인 금액이에요", isOn: perPersonBinding)
+                        if entry.basis == .perPerson { Stepper("\(entry.people)명", value: $entry.people, in: 1...100) }
+                        Toggle("일부 금액만 확인했어요", isOn: $entry.isPartial)
                     }
-                    if entry.basis != .entered { Stepper("\(entry.people)명 적용", value: $entry.people, in: 1...100) }
-                    if !target.isBudget { Toggle("일부 금액만 확인했어요", isOn: $entry.isPartial) }
                 } footer: {
-                    Text("\(target.isBudget ? "비워 두면 예산 미설정, 0은 예산 0원이에요." : "비워 두면 미정, 0은 확인한 무료예요.") 1인 금액을 선택한 경우에만 적용 인원을 곱해요. 원·엔은 정수, 달러·유로·위안은 소수 둘째 자리까지 입력해 주세요.")
+                    Text("\(target.isBudget ? "비워 두면 예산 미설정, 0은 예산 0원이에요." : "비워 두면 미정, 0은 확인한 무료예요. 1인 금액이면 인원을 곱해요.") 원·엔은 정수, 달러·유로·위안은 소수 둘째 자리까지 입력해 주세요.")
                 }
                 if !target.isBudget {
                     Group {
@@ -386,6 +386,15 @@ struct CostEntryEditor: View {
                 Button("계속 편집", role: .cancel) { }
             }
         }
+    }
+
+    /// 켜면 1인 금액(인원 2부터), 끄면 원래 기준 — '전체 금액'으로 적어 둔 항목은 그대로 둔다(둘 다 곱하지 않는다)
+    private var perPersonBinding: Binding<Bool> {
+        Binding(get: { entry.basis == .perPerson },
+                set: { on in
+                    if on { entry.basis = .perPerson; if entry.people < 2 { entry.people = 2 } }
+                    else { entry.basis = target.entry.basis == .total ? .total : .entered }
+                })
     }
 
     @discardableResult
