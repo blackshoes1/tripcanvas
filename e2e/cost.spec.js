@@ -45,34 +45,56 @@ test('하단 비용 입구를 누르면 전체 비용과 내역이 화면 안에
   // getBoundingClientRect는 '레이아웃'이라 잘려도 그대로 나온다 → 실제로 눌리는지(히트테스트)로 본다.
   // elementFromPoint는 overflow 클리핑을 반영하므로, 필터바에 잘리면 다른 요소가 잡힌다.
   const reachable=await page.evaluate(()=>{
-    const el=document.querySelector('#mobileCostDialog');
-    const rows=[...el.querySelectorAll('.costRow')];
-    const last=rows[rows.length-1].getBoundingClientRect();          // 합계 줄 — 패널 맨 아래
-    const hit=document.elementFromPoint(Math.round(last.left+last.width/2), Math.round(last.top+last.height/2));
-    return {inPanel:!!(hit&&el.contains(hit)), hit:hit? (hit.className||hit.tagName):null};
+    const el=document.querySelector('#mobileCostDialog'), button=document.getElementById('costAdd');
+    const r=button.getBoundingClientRect();
+    const hit=document.elementFromPoint(Math.round(r.left+r.width/2),Math.round(r.top+r.height/2));
+    return {inPanel:!!(hit&&el.contains(hit)),hit:hit? (hit.className||hit.tagName):null};
   });
-  expect(reachable.inPanel,`패널 아래쪽이 필터바에 잘려 안 보인다 (그 자리에 잡힌 것: ${reachable.hit})`).toBe(true);
+  expect(reachable.inPanel,`고정 추가 버튼 자리에 다른 요소가 잡혔다 (${reachable.hit})`).toBe(true);
   const fits=await panel.evaluate(el=>{const r=el.getBoundingClientRect();
     return r.left>=0 && r.right<=window.innerWidth+1 && r.bottom<=window.innerHeight+1;});
   expect(fits,'패널이 화면 밖으로 나가면 안 된다').toBe(true);
 });
 
-test('데스크톱에서는 내역이 총액 칩 바로 아래에 붙는다',async({page})=>{
+test('데스크톱에서도 같은 비용 화면을 열 수 있다',async({page})=>{
   await page.setViewportSize({width:1280,height:800});
   await page.goto('/');
   await page.evaluate(SEED);
 
-  const chip=page.locator('.costMenu > summary');
+  const chip=page.locator('.costChip');
   await chip.click();
-  const panel=page.locator('.costMenu .viewMenuPanel');
+  const panel=page.locator('#mobileCostDialog');
   await expect(panel).toBeVisible();
-  const gap=await page.evaluate(()=>{
-    const c=document.querySelector('.costMenu').getBoundingClientRect();
-    const p=document.querySelector('.costMenu .viewMenuPanel').getBoundingClientRect();
-    return {below:Math.round(p.top-c.bottom), rightAligned:Math.round(p.right-c.right)};
+  await expect(panel).toContainText('₩1,239,000');
+  await expect(panel.locator('.costOverviewItem')).toHaveCount(6);
+});
+
+test('예약과 비용의 같은 원본을 열고 닫으면 필터 위치가 복원된다',async({page})=>{
+  await page.setViewportSize({width:375,height:812});
+  await page.goto('/'); await page.evaluate(SEED);
+  await page.evaluate(()=>{
+    const t=trip();
+    t.bookings=[{id:'h',type:'hotel',title:'연결 숙소',price:null,start:'2026-09-01',end:'2026-09-02'}];
+    t.days[0].spots[0]={...t.days[0].spots[0],name:'연결 숙소',stay:true,bookingId:'h',cost:90000};
+    delete t.days[1].spots[0].cost; delete t.days[2].spots[0].cost;
+    t.budget={amount:50000,cur:'KRW'};
+    render();
   });
-  expect(gap.below,'칩 바로 아래(6px)에 붙어야 — 모바일용 fixed 좌표가 새면 안 된다').toBe(6);
-  expect(Math.abs(gap.rightAligned),'칩 오른쪽 끝에 정렬').toBeLessThanOrEqual(1);
+  await page.locator('#mobileCosts').click();
+  const panel=page.locator('#mobileCostDialog');
+  await expect(panel).toContainText('예산보다 ₩40,000 많아요');
+  await panel.getByRole('button',{name:'예약',exact:true}).click();
+  await expect(panel.locator('.costOverviewItem')).toHaveCount(1);
+  await expect(panel.locator('.costOverviewItem')).toContainText('장소에 입력한 금액');
+  await panel.locator('.costOverviewItem').click();
+  await expect(page.locator('#placeCostDialog')).toBeVisible();
+  await expect(page.locator('#costAmount')).toHaveValue('90000');
+  await expect(page.locator('#placeCostFor')).toContainText('예약 금액을 입력하기 전까지');
+  await page.locator('#costPlaceCancel').click();
+  await page.locator('#spotCancel').click();
+  await expect(panel).toBeVisible();
+  await expect(panel.getByRole('button',{name:'예약',exact:true})).toHaveAttribute('aria-pressed','true');
+  await expect(panel.locator('.costOverviewItem')).toHaveCount(1);
 });
 
 test('일자 카드 하루 비용에 숙박·렌터카 하루치는 들어가고 항공은 들어가지 않는다',async({page})=>{
@@ -85,7 +107,7 @@ test('일자 카드 하루 비용에 숙박·렌터카 하루치는 들어가고
   await expect(costs.nth(1)).not.toContainText('180,000');       // 항공은 한 번 낸 돈 — 어느 날의 하루치도 아니다
   await expect(costs.nth(3)).toContainText('₩140,000');          // 체크아웃 날 — 렌터카만
   // 항공은 전체 비용에만 전액으로 남는다 — 하루 합계에서 뺀 만큼 전체에서 새지 않는다
-  await expect(page.locator('.costMenu > summary')).toContainText('₩1,239,000');
+  await expect(page.locator('.costChip')).toContainText('₩1,239,000');
 });
 
 test('보기 설정 패널도 모바일 필터바에 잘리지 않는다',async({page})=>{

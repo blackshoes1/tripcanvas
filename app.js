@@ -1845,6 +1845,7 @@ function render(){
     }
   }
   renderSidebar(); renderFilter(); renderLegend(); renderMenuBadges(); syncPlayBtn(t);
+  if(document.getElementById('mobileCostDialog').open) renderCostDialog();
   document.getElementById('tripSel').innerHTML = viewMode
     ? `<option selected>${esc(viewMode.name)}</option>`
     : sortTripsByCountdown(store.trips,todayISO()).map(x=>`<option value="${escAttr(x.id)}" ${x.id===store.activeId?'selected':''}>${esc(x.name)}</option>`).join('');
@@ -2359,11 +2360,11 @@ function renderFilter(){
   const cb=tripCostBreakdown();
   // 총예산 대비 — 예약과 현지 지출을 모두 센 전체 비용에서 뺀다(tripBudgetStatus · lib, 서버 비용 응답과 같은 함수)
   const budgetSt=tripBudgetStatus(trip(), cb.total, fxRates);
-  if(cb.total>0||budgetSt){
-    const cost=document.createElement('details'); cost.className='viewMenu costMenu';
-    cost.innerHTML=`<summary title="${escAttr('예약 결제 금액(예약 총액·예약 외) + 현지 결제 금액(장소·택시) — 탭하면 내역')}">💳 ₩${fmtMoney(cb.total)}⌄</summary><div class="viewMenuPanel">${costOverviewHtml(cb,budgetSt)}</div>`;
-    bar.appendChild(cost);
-  }
+  const cost=document.createElement('button'); cost.type='button'; cost.className='chip costChip';
+  cost.textContent=budgetSt? `남은 ₩${fmtMoney(Math.abs(budgetSt.remainingKRW))}` : `비용 ₩${fmtMoney(cb.total)}`;
+  if(budgetSt?.remainingKRW<0){ cost.textContent=`초과 ₩${fmtMoney(-budgetSt.remainingKRW)}`; cost.classList.add('costChipOver'); }
+  cost.title='전체 비용 내역 열기'; cost.setAttribute('aria-haspopup','dialog'); cost.onclick=openCostDialog;
+  bar.appendChild(cost);
   // 14일 넘는 여행은 고른 Day 칩이 가로 스크롤 밖에 있었다 — 고른 날을 칩 줄 안으로 데려온다(세로 스크롤은 건드리지 않는다)
   const on=bar.querySelector('.chip.active');
   if(on && activeDay){
@@ -2414,25 +2415,6 @@ function renderLegend(){
   document.querySelectorAll('#legend .legDay').forEach(el=>{
     el.onclick=()=>{ const i=+el.dataset.di; setDayScope(i+1, ()=>fitDay(i)); };
   });
-}
-// 기존 비용 내역을 상단 필터와 모바일 하단 입구에서 함께 쓴다.
-function costOverviewHtml(cb, budgetSt){
-    const groups=[
-      ['예약 결제 금액', prepTotalOf(cb), [['숙박',cb.hotel],['렌터카',cb.car],['항공',cb.flight],['예약 외(보험·유심 등)',cb.prep]]],
-      ['현지 결제 금액', cb.spots+cb.taxi, [['장소',cb.spots],['택시(택시 일자)',cb.taxi]]]
-    ].filter(g=>g[1]>0);
-    // 자차 날의 택시비는 내지 않는 돈이라 합계에 넣지 않고, 택시로 간다면 얼마인지만 참고로 말한다(2026-10-03)
-    const taxiRef=tripTaxiRef();
-  return `
-      <div class="viewMenuLabel">전체 예상 비용</div>
-      ${groups.map(g=>`<div class="costRow costGroup"><span>${esc(g[0])}</span><b>₩${fmtMoney(g[1])}</b></div>`+
-        g[2].filter(r=>r[1]>0).map(r=>`<div class="costRow costSub"><span>${esc(r[0])}</span><b>₩${fmtMoney(r[1])}</b></div>`).join('')).join('')}
-      <div class="costRow costTotal"><span>합계</span><b>₩${fmtMoney(cb.total)}</b></div>
-      ${budgetSt?`<div class="costRow costGroup"><span>예산</span><b>${esc(costLabel(budgetSt.amount,budgetSt.currency))}</b></div>
-      <div class="costRow costSub${budgetSt.remainingKRW<0?' over':''}"><span>${budgetSt.remainingKRW<0?'예산보다':'남은 예산'}</span><b>₩${fmtMoney(Math.abs(budgetSt.remainingKRW))}${budgetSt.remainingKRW<0?' 많아요':''}</b></div>
-      ${budgetSt.perDayKRW!=null?`<div class="hint">예산을 ${trip().days.length}일로 나누면 하루 평균 약 ₩${fmtMoney(budgetSt.perDayKRW)}</div>`:''}`:''}
-      ${taxiRef>0?`<div class="hint costTaxiRef">자차 일자는 택시비를 넣지 않았어요 — 택시로 간다면 약 ₩${fmtMoney(taxiRef)}</div>`:''}
-      <div class="hint">${esc(bookingBasisHint())}</div>`;
 }
 function renderSidebar(){
   const sb=document.getElementById('sidebar'), scrollTop=sb.dataset.tripId===trip().id? sb.scrollTop : 0;
@@ -5041,6 +5023,7 @@ const SPOT_COST_KEYS=['cost','cur','costKind','costBasis','costPeople','costPart
 /** 장소 편집기가 값을 정하는 칸 — 저장할 때 이것만 폼에서 오고 나머지는 원래 장소에서 물려준다(spotSave) */
 const SPOT_FORM_KEYS=new Set(['name','city','desc','stay','nights','at','legMode','stayMin','bookAt','bookUrl','placeId','kakaoId','cat','who','admission','hours','lat','lng','must','opt',...SPOT_COST_KEYS]);
 let _spotCostDraft={};
+let _openingPlaceAmountSource=false;
 /** 이 창이 지금 고치는 것 — 장소 편집기의 비용(초안) 또는 하루 추가 비용(day.costItems의 한 항목, 바로 저장) */
 let _costTarget={kind:'spot'};
 function spotCostDraftFrom(s){ const d={}; SPOT_COST_KEYS.forEach(k=>{ if(s&&s[k]!=null) d[k]=s[k]; }); return d; }
@@ -5139,12 +5122,14 @@ function deleteDayCostItem(){
 }
 document.getElementById('spotCostBtn').onclick=()=>{
   const b=editingSpotBooking();
-  if(b){ openBookingModal(b.id); return; }   // 예약 편집기가 장소 편집기 위에 열린다 — 저장하면 요약이 다시 그려진다
+  if(b&&!_openingPlaceAmountSource){ openBookingModal(b.id); return; }   // 예약 편집기가 장소 편집기 위에 열린다 — 저장하면 요약이 다시 그려진다
   const d=_spotCostDraft, name=document.getElementById('spotName').value.trim();
   _costTarget={kind:'spot'};
   setCostDialogMode('spot');
   document.getElementById('costPlaceDelete').hidden=false;
-  document.getElementById('placeCostFor').textContent=`${name||'이 장소'} — 가서 쓰는 돈이라 일자 카드의 하루 비용(현지 결제 금액)에 들어가요`;
+  document.getElementById('placeCostFor').textContent=_openingPlaceAmountSource?
+    `${name||'이 장소'} — 예약 금액을 입력하기 전까지 이 장소의 금액으로 계산해요`:
+    `${name||'이 장소'} — 가서 쓰는 돈이라 일자 카드의 하루 비용(현지 결제 금액)에 들어가요`;
   document.getElementById('costAmount').value=d.cost==null?'':String(d.cost);
   document.getElementById('costCurrency').value=d.cur||(d.cost!=null? 'KRW' : tripDefaultCurrency(trip()));   // 금액이 없을 때만 이 여행의 통화(P2-26)
   document.getElementById('costPerPerson').checked=d.costBasis==='PER_PERSON';
@@ -8853,13 +8838,105 @@ document.getElementById('mobileAddSpot').onclick=()=>{
   const di=activeDay? activeDay-1 : 0;
   openSpotModal(di,-1);
 };
-document.getElementById('mobileCosts').onclick=()=>{
-  const cb=tripCostBreakdown(), budget=tripBudgetStatus(trip(),cb.total,fxRates);
-  document.getElementById('mobileCostBody').innerHTML=cb.total>0||budget? costOverviewHtml(cb,budget) : '<p>아직 입력한 비용이 없어요.</p><p class="hint">예약은 예약·결제에서, 장소 비용은 장소 편집에서 적어요.</p>';
-  document.getElementById('mobileCostDialog').showModal();
-};
+let costFilter='all', costReturn=null;
+/** 웹도 서버와 같은 순수 계산을 쓴다. 원본 문서는 바꾸지 않고 환율·택시 추정만 기존 화면에서 가져온다. */
+function costOverviewData(){
+  const t=trip(), days=t.days.map((day,index)=>({index,title:day.title||'',date:isoDateOf(index),
+    cost:dayCostSummary(t,index,{date:isoDateOf(index),rates:fxRates,taxi:dayTaxiCost(day,index),transportUnpriced:false,today:todayISO()})}));
+  return {days,...tripCostSummary(t,days,fxRates,todayISO())};
+}
+function costOverviewRow(row){
+  const line=row.line, kinds={STAY:'숙박',RENT:'렌터카',FLIGHT:'항공',TRANSIT:'대중교통',FOOD:'식비',SHOPPING:'쇼핑',TRANSPORT:'교통',TICKET:'입장권',OTHER:'기타'};
+  const icons={STAY:'⌂',RENT:'▣',FLIGHT:'✈',TRANSIT:'↗',FOOD:'◉',SHOPPING:'◇',TRANSPORT:'↗',TICKET:'▤',OTHER:'◇'};
+  const kind=kinds[line.kind]||'기타', dates=[row.date,row.end].filter(Boolean).map(mdLabel).join('–');
+  const amount=line.state==='FREE'?'무료':line.state==='UNKNOWN'||line.amount==null?'금액 미정':
+    (CUR[line.currency]?.sym||'₩')+fmtMoney(line.amount,line.currency);
+  const status=[line.payState==='PAID'?'결제 완료':line.payState==='RESERVED'?'결제 예정':'',
+    row.reservation==='LINKED'?'예약 연결':row.reservation==='BOOKED'?'예약 완료':row.reservation==='INFO'?'예약 정보':'',
+    row.amountSource==='PLACE'&&row.bookingId?'장소에 입력한 금액':''].filter(Boolean);
+  const sub=line.state==='PARTIAL'?'일부 금액':line.basis==='PER_PERSON'?`1인 금액 · ${line.people}명`:'';
+  const total=line.totalKRW!=null&&(line.currency!=='KRW'||line.basis==='PER_PERSON')?`<small>합계 ₩${fmtMoney(line.totalKRW)}</small>`:'';
+  return `<button type="button" class="costOverviewItem" data-id="${escAttr(row.id)}" ${readOnly()&&line.source!=='TRANSPORT'?'disabled':''}>
+    <span class="costItemIcon" aria-hidden="true">${icons[line.kind]||icons.OTHER}</span>
+    <span class="costItemIdentity"><strong>${esc(line.title)}</strong><small>${esc([kind,dates].filter(Boolean).join(' · '))}</small>${status.length?`<small class="costItemStatus">${status.map(esc).join(' · ')}</small>`:''}</span>
+    <span class="costItemAmount"><b>${esc(amount)}</b>${total}${sub?`<small class="costItemWarn">${esc(sub)}</small>`:''}${row.amountSource==='ESTIMATE'?'<small>추정</small>':''}</span></button>`;
+}
+function renderCostDialog(){
+  const dialog=document.getElementById('mobileCostDialog'); if(!dialog.open) return;
+  const body=document.getElementById('mobileCostBody'), scroll=body.scrollTop, data=costOverviewData();
+  const budget=data.budget, paid=data.payTotals.PAID||0, due=data.payTotals.RESERVED||0;
+  const budgetText=budget?`${budget.remainingKRW<0?'예산보다':'남은 예산'} ₩${fmtMoney(Math.abs(budget.remainingKRW))}${budget.remainingKRW<0?' 많아요':''}`:'예산을 정하면 남은 금액을 볼 수 있어요';
+  const rows=data.overview.items.filter(row=>costFilter==='all'||(costFilter==='reservations'?row.reservation!=='NONE':row.reservation==='NONE'));
+  body.innerHTML=`<section class="costOverviewHero"><p>여행 전체 예상 비용</p><strong>₩${fmtMoney(data.totalKRW)}</strong>
+    <div class="costBudget${budget?.remainingKRW<0?' over':''}">${esc(budgetText)}</div>
+    ${budget?`<div class="costBudgetTrack"><span style="width:${Math.min(100,Math.max(0,100*budget.costKRW/Math.max(1,budget.totalKRW)))}%"></span></div><small>총예산 ${esc(costLabel(budget.amount,budget.currency))}</small>`:''}
+    <div class="costPayPair"><div><span>✓ 결제 완료</span><b>₩${fmtMoney(paid)}</b></div><div><span>◷ 결제 예정</span><b>₩${fmtMoney(due)}</b></div></div>
+    ${(data.payTotals.NONE||0)>0?`<small>결제 상태 미구분 ₩${fmtMoney(data.payTotals.NONE)}</small>`:''}
+    ${data.overview.unknownCount?`<small class="costUnknown">금액 미정·일부 입력 ${data.overview.unknownCount}건</small>`:''}</section>
+    <nav class="costOverviewFilters" aria-label="비용 묶음">${[['all','전체'],['reservations','예약'],['other','그 외 비용']].map(([value,label])=>`<button type="button" data-filter="${value}" aria-pressed="${costFilter===value}">${label}</button>`).join('')}</nav>
+    <div class="costListHead"><h3>비용 내역</h3><button type="button" class="btn" id="costByDay">날짜별 보기</button></div>
+    <div class="costOverviewList">${rows.length?rows.map(costOverviewRow).join(''):`<div class="costEmptyState"><span aria-hidden="true">◇</span><strong>${costFilter==='reservations'?'예약 비용이 없어요':costFilter==='other'?'이 묶음에 비용이 없어요':'여행에 드는 돈을 한곳에'}</strong><p>${costFilter==='all'?'예약과 쓴 돈을 추가하면 여기에 모여요.':'전체에서 다른 비용도 볼 수 있어요.'}</p></div>`}</div>
+    ${tripTaxiRef()>0?'<p class="costNote">자차 날의 택시 요금은 예상 비용에 넣지 않았어요.</p>':''}`;
+  body.scrollTop=scroll;
+  body.querySelectorAll('[data-filter]').forEach(button=>button.onclick=()=>{ costFilter=button.dataset.filter; renderCostDialog(); });
+  body.querySelectorAll('.costOverviewItem').forEach(button=>button.onclick=()=>{
+    const row=data.overview.items.find(item=>item.id===button.dataset.id); if(row) openCostRow(row);
+  });
+  body.querySelector('#costByDay').onclick=()=>{
+    const list=body.querySelector('.costDayRows');
+    if(list){ list.remove(); return; }
+    const box=document.createElement('div'); box.className='costDayRows';
+    box.innerHTML=data.days.map(day=>`<button type="button" data-day="${day.index}"><span>Day ${day.index+1} · ${esc(day.title||mdLabel(day.date)||'날짜 미정')}</span><b>₩${fmtMoney(day.cost.total)}</b></button>`).join('');
+    box.querySelectorAll('button').forEach(button=>button.onclick=()=>{ dialog.close(); setDayScope(+button.dataset.day+1,()=>fitDay(+button.dataset.day)); });
+    body.querySelector('.costListHead').after(box);
+  };
+}
+function openCostDialog(restore){
+  costFilter=restore?.filter||'all';
+  const dialog=document.getElementById('mobileCostDialog');
+  document.getElementById('costAddOptions').hidden=true;
+  document.getElementById('costDaySelect').hidden=true;
+  if(!dialog.open) dialog.showModal();
+  renderCostDialog();
+  document.getElementById('mobileCostBody').scrollTop=restore?.scrollTop||0;
+}
+function openCostRow(row){
+  const line=row.line;
+  if(readOnly()&&line.source!=='TRANSPORT') return;
+  const body=document.getElementById('mobileCostBody');
+  costReturn={filter:costFilter,scrollTop:body.scrollTop};
+  document.getElementById('mobileCostDialog').close();
+  if(line.source==='BOOKING'||line.source==='TRIP') openBookingModal(row.bookingId||line.key);
+  else if(line.source==='SPOT'&&line.dayIndex!=null&&row.spotIndex!=null){
+    openSpotModal(line.dayIndex,row.spotIndex);
+    _openingPlaceAmountSource=row.amountSource==='PLACE';
+    try{ document.getElementById('spotCostBtn').click(); }
+    finally{ _openingPlaceAmountSource=false; }
+  }else if(line.source==='EXTRA'&&line.dayIndex!=null) openDayCostItem(line.dayIndex,line.key);
+  else if(line.dayIndex!=null){ costReturn=null; setDayScope(line.dayIndex+1,()=>fitDay(line.dayIndex)); }
+}
+const costChildObserver=new MutationObserver(()=>{
+  if(!costReturn) return;
+  if(['bookingModalBg','spotModalBg'].some(id=>document.getElementById(id).classList.contains('show'))||document.getElementById('placeCostDialog').open) return;
+  const restore=costReturn; costReturn=null; openCostDialog(restore);
+});
+['bookingModalBg','spotModalBg','placeCostDialog'].forEach(id=>costChildObserver.observe(document.getElementById(id),{attributes:true,attributeFilter:['class','open']}));
+document.getElementById('mobileCosts').onclick=()=>openCostDialog();
 document.getElementById('mobileCostClose').onclick=()=>document.getElementById('mobileCostDialog').close();
 document.getElementById('mobileBookings').onclick=()=>{ document.getElementById('mobileCostDialog').close(); openBookingList(); };
+document.getElementById('costAdd').onclick=()=>{ const options=document.getElementById('costAddOptions'); options.hidden=!options.hidden; };
+document.getElementById('costAddBooking').onclick=()=>{
+  costReturn={filter:costFilter,scrollTop:document.getElementById('mobileCostBody').scrollTop};
+  document.getElementById('mobileCostDialog').close(); openBookingModal(null);
+};
+document.getElementById('costAddSpend').onclick=()=>{
+  const pick=document.getElementById('costDaySelect'); pick.hidden=false;
+  pick.innerHTML=trip().days.map((day,di)=>`<button type="button" class="btn" data-di="${di}">Day ${di+1} · ${esc(day.title||dateOf(di))}</button>`).join('');
+  pick.querySelectorAll('button').forEach(button=>button.onclick=()=>{
+    costReturn={filter:costFilter,scrollTop:document.getElementById('mobileCostBody').scrollTop};
+    document.getElementById('mobileCostDialog').close(); openDayCostItem(+button.dataset.di,null);
+  });
+};
 
 if(window.ResizeObserver){ new ResizeObserver(syncSheetTop).observe(document.getElementById('mobilePlanActions')); }
 
