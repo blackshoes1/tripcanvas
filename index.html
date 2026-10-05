@@ -14,7 +14,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js" integrity="sha384-+pWnyi8LtZx+cgXfD2arWgUX7pHIaEL215cEPPk9WrsegNlgvDL9DNjaqsceQq6o" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js" integrity="sha384-BSxuMLxX+FCbTdYec3TbXlnMGEEM2QXTFdtDaveen71o+jswm2J36+xFqp8k4VHM" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.min.js" integrity="sha384-l8ah+VgaWtk1mvOe9VC+OirC6qHFF4yH7l7mKRidV9MSti3E9F463bMp6ZVN4kuC" crossorigin="anonymous"></script>
-<link rel="stylesheet" href="style.css?v=tc-v279">
+<link rel="stylesheet" href="style.css?v=tc-v280">
 </head>
 <body>
 <a class="skipLink" href="#sidebar">일정으로 건너뛰기</a>
@@ -495,7 +495,7 @@
   <h2 id="bkModalTitle">결제 항목 추가</h2>
   <label for="bkType">분류</label>
   <select id="bkType" aria-describedby="bkTypeHint"><option value="FLIGHT">✈️ 항공</option><option value="STAY">🏨 숙박</option><option value="RENT">🚗 렌트</option><option value="TRANSIT">🚆 대중교통</option><option value="FOOD">🍽️ 식비</option><option value="SHOPPING">🛍️ 쇼핑</option><option value="TICKET">🎟️ 입장권·관람권</option><option value="TRANSPORT">🚕 택시·기타 교통</option><option value="OTHER">📦 기타</option></select>
-  <div class="hint" id="bkTypeHint">항공·숙박·렌트는 예약으로 저장돼요 — 숙박·렌트는 기간·조건·가격 추적이 붙어요. 나머지는 가기 전에 낸 비용으로만 남아요.</div>
+  <div class="hint" id="bkTypeHint">여기서 입력한 금액은 비용에 자동으로 들어가요. 일정 날짜가 있으면 그날에도 보여요.</div>
   <div id="bkSpotWrap"><label for="bkSpot">일정의 숙소와 연결 (선택)</label><select id="bkSpot"></select>
     <div class="hint">연결하면 일정 카드의 숙소 항목에 가격 상태가 표시돼요. 🏠 숙소로 등록한 장소만 목록에 나와요.</div></div>
   <label for="bkTitle" id="bkTitleLabel">예약 이름 *</label><input type="text" id="bkTitle" placeholder="예: Cap Rocat" aria-required="true" aria-describedby="bkTitleHint"><div class="hint" id="bkTitleHint"></div>
@@ -512,6 +512,8 @@
     <div style="flex:1"><label for="bkStart">시작일 (체크인·픽업·출발)</label><input type="date" id="bkStart" style="width:100%"></div>
     <div style="flex:1"><label for="bkEnd">종료일</label><input type="date" id="bkEnd" style="width:100%"></div>
   </div>
+  <div id="bkScheduledWrap" hidden><label for="bkScheduledOn">일정 날짜 (선택)</label><input type="date" id="bkScheduledOn">
+    <div class="hint">이 날짜의 하루 비용에도 표시해요. 결제일과는 달라요.</div></div>
   <div class="hint" id="bkPeriodHint"></div>
   <!-- 항공편 구간 — 편명·공항·시각은 항공 예약에 산다(2026-10-04, 전에는 일자 편집에 따로 있었다). 날짜를 넣으면 그날 일정에 보인다 -->
   <div id="bkFlightFields" hidden>
@@ -792,16 +794,16 @@
   <div id="placeDetailsContent" aria-live="polite"></div>
   <footer id="placeDetailsActions"></footer>
 </dialog>
-<script src="lib.js?v=tc-v279"></script>
-<script src="sync.js?v=tc-v279"></script>
-<script src="routing.js?v=tc-v279"></script>
-<script src="price.js?v=tc-v279"></script>
-<script src="j-copy.js?v=tc-v279"></script>
-<script src="adaptive.js?v=tc-v279"></script>
-<script src="intake.js?v=tc-v279"></script>
-<script src="collab.js?v=tc-v279"></script>
-<script src="api.js?v=tc-v279"></script>
-<script src="auth.js?v=tc-v279"></script>
-<script src="app.js?v=tc-v279"></script>
+<script src="lib.js?v=tc-v280"></script>
+<script src="sync.js?v=tc-v280"></script>
+<script src="routing.js?v=tc-v280"></script>
+<script src="price.js?v=tc-v280"></script>
+<script src="j-copy.js?v=tc-v280"></script>
+<script src="adaptive.js?v=tc-v280"></script>
+<script src="intake.js?v=tc-v280"></script>
+<script src="collab.js?v=tc-v280"></script>
+<script src="api.js?v=tc-v280"></script>
+<script src="auth.js?v=tc-v280"></script>
+<script src="app.js?v=tc-v280"></script>
 </body>
 </html>

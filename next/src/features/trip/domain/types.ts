@@ -119,7 +119,7 @@ export interface Trip {
   colorBy?: 'city' | 'day';
   /** 예약(가격 추적) — 비면 필드 자체가 생략된다 */
   bookings?: Booking[];
-  /** 준비한 비용 — 예약이 아닌 사전 지출(보험·유심·미리 산 입장권). 하루 항목과 같은 모양이다. */
-  costItems?: Day['costItems'];
+  /** 준비한 비용. scheduledOn을 고르면 일정의 그 날짜에도 같은 항목이 보인다. */
+  costItems?: (NonNullable<Day['costItems']>[number] & { scheduledOn?: string })[];
   schemaVersion?: number;
 }

@@ -303,7 +303,7 @@ struct TripBooking: Hashable, Sendable, Identifiable {
 }
 
 enum BookingDraftError: Equatable, Sendable {
-    case titleRequired, itemTitleRequired, priceRequired, invalidAmount, trackNeedsDates, returnBeforePickup, sameDayNeedsTimes, checkoutNotAfterCheckin, segmentNeedsDate
+    case titleRequired, itemTitleRequired, priceRequired, invalidAmount, trackNeedsDates, returnBeforePickup, sameDayNeedsTimes, checkoutNotAfterCheckin, segmentNeedsDate, scheduleDateNotInTrip
 
     /// 웹 toast와 같은 문장.
     var message: String {
@@ -317,6 +317,7 @@ enum BookingDraftError: Equatable, Sendable {
         case .sameDayNeedsTimes: "당일 대여는 픽업 시각과 그보다 늦은 반납 시각이 필요해요"
         case .checkoutNotAfterCheckin: "체크아웃은 체크인보다 뒤여야 해요"
         case .segmentNeedsDate: "항공편 구간의 날짜를 넣어 주세요 — 그날 일정에 보여요"
+        case .scheduleDateNotInTrip: "여행 일정에 있는 날짜를 골라 주세요"
         }
     }
 }

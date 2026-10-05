@@ -951,7 +951,7 @@ export interface TripCostsResponse {
   unallocated: TripCostLine[];
   /** 여행 전체의 결제 상태별 원화 합계 — 예약해 둔 돈과 이미 낸 돈을 따로 본다. */
   payTotals: Record<import('@/features/trip/domain/costTypes').CostPayState, number>;
-  /** 준비한 비용 — 예약(전액 한 줄씩)과 여행 단위 항목(`trip.costItems`). 어느 날에도 속하지 않는다. */
+  /** 준비한 비용 — 예약(전액 한 줄씩)과 여행 단위 항목(`trip.costItems`). 날짜가 있으면 일정에도 표시한다. */
   prep: TripCostGroup & { items: TripCostLine[] };
   /**
    * 가서 쓰는 비용 — 날짜별 장소·추가 비용·교통의 합 + 일정 밖으로 넘친 연박 숙소의 몫(`unallocated`의 날짜 없는 STAY 줄).

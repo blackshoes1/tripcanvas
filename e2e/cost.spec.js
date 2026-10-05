@@ -104,16 +104,15 @@ test('예약과 비용의 같은 원본을 열고 닫으면 필터 위치가 복
   expect(await page.evaluate(()=>trip().days[0].spots[0].cost)).toBe(95000);
 });
 
-test('일자 카드 하루 비용에 숙박·렌터카 하루치는 들어가고 항공은 들어가지 않는다',async({page})=>{
+test('일자 카드에는 숙박·렌터카 하루치와 첫 출발일 항공 총액이 한 번씩 들어간다',async({page})=>{
   await page.setViewportSize({width:1280,height:800});
   await page.goto('/');
   await page.evaluate(SEED);
   const costs=page.locator('.dayCard .dist', {hasText:'하루 비용'});
-  await expect(costs.nth(1)).toContainText('₩452,000');          // 장소 12,000 + 예약 440,000 (숙박 300,000 + 렌터카 140,000)
-  await expect(costs.nth(1)).toContainText('예약 ₩440,000');
-  await expect(costs.nth(1)).not.toContainText('180,000');       // 항공은 한 번 낸 돈 — 어느 날의 하루치도 아니다
+  await expect(costs.nth(1)).toContainText('₩632,000');          // 장소 12,000 + 예약 620,000 (숙박 300,000 + 렌터카 140,000 + 항공 180,000)
+  await expect(costs.nth(1)).toContainText('예약·선결제 ₩620,000');
   await expect(costs.nth(3)).toContainText('₩140,000');          // 체크아웃 날 — 렌터카만
-  // 항공은 전체 비용에만 전액으로 남는다 — 하루 합계에서 뺀 만큼 전체에서 새지 않는다
+  // 전체 비용에는 항공 전액을 한 번만 남긴다.
   await expect(page.locator('.costChip')).toContainText('₩1,239,000');
 });
 

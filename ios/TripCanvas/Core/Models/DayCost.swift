@@ -50,6 +50,11 @@ struct CostEntry: Hashable, Sendable, Identifiable {
         get { raw["paidOn"]?.stringValue }
         set { raw.setOrRemove("paidOn", newValue.flatMap { $0.isEmpty ? nil : .string($0) }) }
     }
+    /// 이 지출을 사용할 일정 날짜. 결제일과 달리 하루 비용에 표시할 날을 고른다.
+    var scheduledOn: String? {
+        get { raw["scheduledOn"]?.stringValue }
+        set { raw.setOrRemove("scheduledOn", newValue.flatMap { $0.isEmpty ? nil : .string($0) }) }
+    }
 
     init(raw: [String: JSONValue] = [:]) { self.raw = raw }
 
@@ -82,7 +87,7 @@ struct CostEntry: Hashable, Sendable, Identifiable {
 
 extension TripDocument {
     /// **준비한 비용** — 예약이 아닌 사전 지출(여행자보험·유심·미리 산 입장권). 하루 항목과 같은 모양이고
-    /// 어느 날에도 속하지 않는다. 비면 키를 지운다(웹 `normalizeTrip`과 같다).
+    /// `scheduledOn`이 있으면 그날 일정에도 같은 항목이 표시된다. 비면 키를 지운다(웹 `normalizeTrip`과 같다).
     var costItems: [CostEntry] {
         get { (raw["costItems"]?.arrayValue ?? []).compactMap { $0.objectValue.map(CostEntry.init(raw:)) } }
         set { setField("costItems", newValue.isEmpty ? nil : .array(newValue.map { .object($0.raw) })) }

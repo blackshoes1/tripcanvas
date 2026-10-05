@@ -913,10 +913,9 @@
 
   /**
    * 그 날짜에 배분되는 예약 비용 — 여러 날 걸친 예약을 날수로 나눈 '하루치'.
-   * **숙박과 렌터카만 나눈다.** 숙박은 [체크인, 체크아웃) — 체크아웃 날엔 숙박비가 없다. 렌터카는 [픽업, 반납]
+   * 숙박과 렌터카만 나눈다. 항공은 첫 출발일에 예약 총액을 한 번 넣는다. 숙박은 [체크인, 체크아웃) — 체크아웃 날엔 숙박비가 없다. 렌터카는 [픽업, 반납]
    * 양끝 포함(아침에 받아 마지막 날 반납하면 그 두 날 모두 차가 있는 날이다).
-   * ⚠️ 항공은 나누지 않는다 — 한 번 낸 돈이지 하루치가 있는 돈이 아니다. 왕복을 출발일~귀국일로 잡아 두면
-   * 비행기를 타지 않는 날에도 매일 항공비가 들어갔다(2026-09-17까지 그랬다). 전체 비용에만 전액으로 잡힌다.
+   * 항공은 왕복 기간 전체에 펼치지 않는다 — 첫 출발일에만 전액을 표시한다.
    * 나머지는 앞날부터 1원씩 얹어 하루치의 합이 예약 총액과 정확히 맞는다(반올림 누수 방지).
    * 금액은 예약 통화 그대로 — 원화 환산은 호출부(toKRW)가 한다.
    * 하루치에는 예약의 결제 상태(`payState`)도 실린다 — 결제한 항공·숙박은 '이미 낸 돈', 현장 결제 호텔은 '예약'이다.
@@ -932,7 +931,12 @@
     bookings.forEach((/**@type{any}*/b)=>{
       if(!b || typeof b!=='object') return;
       const price=+b.price; if(!(price>0)) return;
-      if(b.type==='flight') return;                            // 항공은 하루치가 없다 — 전체 비용에만
+      if(b.type==='flight'){
+        const first=(Array.isArray(b.segments)?b.segments:[]).map((/**@type{any}*/s)=>_str(s.date)).filter((/**@type{string}*/s)=>_dayNum(s)!==null).sort()[0]||_str(b.start);
+        if(first===iso) out.push({id:_str(b.id),type:'flight',title:_str(b.title),amount:price,cur:_str(b.cur)||'KRW',days:1,
+          payState:costPayStateOf(b,'BOOKING',today),paidOn:_ISO_DATE_RE.test(_str(b.paidOn))?_str(b.paidOn):null});
+        return;
+      }
       const s0=_dayNum(b.start), e0=_dayNum(b.end);
       if(s0===null || e0===null) return;                       // 기간을 모르면 어느 날에도 배분하지 않는다(총액에는 남는다)
       const n=(b.type==='hotel')? (e0-s0) : (e0-s0+1);         // 숙박=박 수, 렌터카=빌린 날수(양끝 포함)
@@ -945,6 +949,12 @@
         paidOn:_ISO_DATE_RE.test(_str(b.paidOn))?_str(b.paidOn):null});
     });
     return out;
+  }
+
+  /** 여행 단위 결제 항목 중 일정 날짜를 지정한 것. 원본은 `trip.costItems` 하나이고 하루에는 참조로만 나타난다.
+   * @param {any} trip @param {string} iso @returns {any[]} */
+  function scheduledCostItemsOn(trip,iso){
+    return _dayNum(iso)===null?[]:(Array.isArray(trip.costItems)?trip.costItems:[]).filter((/**@type{any}*/item)=>item&&item.scheduledOn===iso);
   }
 
   /**
@@ -1169,12 +1179,13 @@
       {source:'STAY',key:`${c.fromDay}.${c.index}`,title:`${c.spot.name||'숙소'} (${c.night+1}/${c.nights}박)`,kind:'STAY'});
     (day.costItems||[]).forEach((/**@type{any}*/s)=>add(s,'amount',{source:'EXTRA',key:s.id,title:s.title||'비용',kind:s.kind||'OTHER'}));
     for(const share of shares) add({amount:share.amount,cur:share.cur,payState:share.payState,paidOn:share.paidOn},'amount',{source:'BOOKING',key:share.id,title:share.title,kind:share.type});
+    for(const item of scheduledCostItemsOn(trip,input.date)) add(item,'amount',{source:'TRIP',key:item.id,title:item.title||'비용',kind:item.kind||'OTHER'});
     const manualTransport=hasManualTransportCost(day);
     if(!manualTransport&&input.taxi!==null&&input.taxi>0) add({amount:input.taxi,cur:'KRW'},'amount',{source:'TRANSPORT',key:'taxi',title:'자동 교통비 추정',kind:'TRANSPORT'});
-    const parts=[{label:'장소',amount:0},{label:'추가 비용',amount:0},{label:'택시',amount:0},{label:'예약',amount:0}];
+    const parts=[{label:'장소',amount:0},{label:'추가 비용',amount:0},{label:'택시',amount:0},{label:'예약·선결제',amount:0}];
     for(const item of items) parts[(item.source==='SPOT'||item.source==='STAY')?0:item.source==='EXTRA'?1:item.source==='TRANSPORT'?2:3].amount+=item.totalKRW||0;
     const total=parts.reduce((sum,p)=>sum+p.amount,0);
-    const onSiteKRW=items.filter(i=>i.source!=='BOOKING').reduce((sum,i)=>sum+(i.totalKRW||0),0);
+    const onSiteKRW=items.filter(i=>i.source!=='BOOKING'&&i.source!=='TRIP').reduce((sum,i)=>sum+(i.totalKRW||0),0);
     const payTotals=payStateTotals(items);
     const rawBudget=day.budget;
     const budget=rawBudget&&typeof rawBudget.amount==='number'?{
@@ -1229,7 +1240,7 @@
    *
    * 비용은 **두 묶음**으로도 나눈다(2026-09-17) — 가기 전에 낸 돈과 가서 쓰는 돈은 적는 순간이 다르다:
    * - `prep`(준비한 비용) = 예약(`trip.bookings`, **전액** 한 줄씩) + 여행 단위 항목(`trip.costItems` — 보험·유심·미리 산 입장권).
-   *   어느 날에도 속하지 않는다. 예약의 원화 합계는 하루치 배분과 잔액을 더한 것이라 총액과 1원까지 맞는다.
+   *   예약과 항목의 원본은 여기 한 번만 센다. 일정 날짜가 있으면 하루 화면에도 배분해 보여 준다.
    * - `onSite`(가서 쓰는 비용) = 날짜별 장소·추가 비용·교통(`dayCostSummary().onSiteKRW`의 합) + 일정 밖으로 넘친 연박 숙소의 몫
    *   (`stayCostOverflow` — 어느 날에도 없어 `unallocated`에 STAY 줄로 모인다).
    * 둘을 더하면 `totalKRW`와 같다.
@@ -1274,7 +1285,7 @@
         totalKRW:Math.round(o.amount*(rates[o.cur]||1)),state:'KNOWN',dayIndex:null});
     }
     unallocated.push(...stayOverflow);
-    // 여행 단위 항목 — 날짜가 없는 준비 비용. 하루 추가 비용과 같은 모양·같은 규칙이다
+    // 여행 단위 항목 — 원본은 준비 비용에 한 번만 두고, 일정 날짜가 있으면 하루에도 참조로 표시한다
     /** @type {any[]} */ const tripItems=[];
     for(const item of (Array.isArray(trip.costItems)?trip.costItems:[])){
       if(!item||typeof item!=='object') continue;
@@ -1287,7 +1298,9 @@
         state:amount===null?'UNKNOWN':item.costPartial?'PARTIAL':amount===0?'FREE':'KNOWN',dayIndex:null});
     }
     prepItems.push(...tripItems);
-    const items=[...days.flatMap(d=>d.cost.details.items.map((/** @type {any} */ i)=>({...i,dayIndex:d.index}))),...unallocated,...tripItems];
+    const scheduled=new Set(days.flatMap(d=>d.cost.details.items.filter((/** @type {any} */ i)=>i.source==='TRIP').map((/** @type {any} */ i)=>i.key)));
+    const items=[...days.flatMap(d=>d.cost.details.items.map((/** @type {any} */ i)=>({...i,dayIndex:d.index}))),...unallocated,
+      ...tripItems.filter(i=>!scheduled.has(i.key))];
     /** @param {any} item @returns {string} */
     function category(item){
       /** @type {Record<string,string>} */ const bookingKinds={hotel:'STAY',car:'RENT',flight:'FLIGHT'};
@@ -1299,7 +1312,7 @@
         unknownCount:lines.filter(i=>i.state==='UNKNOWN'||i.state==='PARTIAL').length};
     });
     const totalKRW=categories.reduce((sum,c)=>sum+c.totalKRW,0);
-    const onSiteItems=[...days.flatMap(d=>d.cost.details.items.filter((/** @type {any} */ i)=>i.source!=='BOOKING').map((/** @type {any} */ i)=>({...i,dayIndex:d.index}))),...stayOverflow];
+    const onSiteItems=[...days.flatMap(d=>d.cost.details.items.filter((/** @type {any} */ i)=>i.source!=='BOOKING'&&i.source!=='TRIP').map((/** @type {any} */ i)=>({...i,dayIndex:d.index}))),...stayOverflow];
     const prep={totalKRW:prepItems.reduce((sum,i)=>sum+(i.totalKRW||0),0),payTotals:payStateTotals(prepItems),items:prepItems};
     const onSite={totalKRW:onSiteItems.reduce((sum,i)=>sum+(i.totalKRW||0),0),payTotals:payStateTotals(onSiteItems)};
     const overview=tripCostOverview(original,days,prepItems,onSiteItems);
@@ -1326,7 +1339,7 @@
       const raw=booking||(trip.costItems||[]).find((/** @type {any} */ i)=>i.id===line.key);
       /** @type {Record<string,string>} */ const kinds={hotel:'STAY',car:'RENT',flight:'FLIGHT'};
       rows.set(`${line.source}:${line.key}`,{id:`${line.source}:${line.key}`,line:{...line,kind:kinds[line.kind]||line.kind},
-        bookingId:booking?booking.id:null,spotIndex:null,date:booking?.start||null,end:booking?.end||null,
+        bookingId:booking?booking.id:null,spotIndex:null,date:booking?.start||raw?.scheduledOn||null,end:booking?.end||null,
         reservation:booking?'LINKED':reservation('TRIP_COST',null,null,raw),amountSource:booking?'BOOKING':'ENTRY'});
     }
     for(const line of onSiteItems){
@@ -1857,6 +1870,7 @@
     if(item.payState!=null&&!COST_PAY_STATES.includes(item.payState)) delete item.payState;
     // 낸 날짜(가계부 정렬용) — 날짜 모양이 아니면 버린다
     if(item.paidOn!=null&&!/^\d{4}-\d{2}-\d{2}$/.test(_str(item.paidOn))) delete item.paidOn;
+    if(item.scheduledOn!=null&&_dayNum(item.scheduledOn)===null) delete item.scheduledOn;
     normalizePhotoRefs(item);
   }
   /** 영수증·품목 사진은 **참조만** 싣는다(원본 이미지는 문서에 넣지 않는다 — 동기화 본문이 부풀고 공유 링크가 터진다).
@@ -2557,6 +2571,7 @@
   Object.assign(TC,{resolveTimeZone,inferTimeZones,effectiveTimeZone,refundableOf});   // 따로 붙인다 — 위 한 줄은 여러 작업이 함께 고치는 자리다
   Object.assign(TC,{effectiveCostDays,spotPaidByBooking,normalizeFlightSegment,dayFlights});   // 비용 입력 정리 묶음 A(2026-10-04)
   Object.assign(TC,{tripPeopleOf,tripBudgetOf,tripBudgetStatus});   // 비용 입력 정리 묶음 C(2026-10-05)
+  Object.assign(TC,{scheduledCostItemsOn});
   if(typeof module!=='undefined' && module.exports){ module.exports=TC; }   // Node (테스트)
   else { const r=/**@type {any}*/(root); for(const k in TC) r[k]=/**@type {any}*/(TC)[k]; }   // 브라우저 전역
 })(typeof window!=='undefined'?window:globalThis);
