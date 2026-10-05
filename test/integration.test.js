@@ -2143,11 +2143,9 @@ test('통합: 하루 비용에 예약 하루치가 들어가고, 하루 합계�
     const el=[...c.querySelectorAll('.dist')].find(x=>x.textContent.includes('하루 비용'));
     return el? +el.textContent.replace(/\s+/g,'').match(/하루비용약₩([\d,]+)/)[1].replace(/,/g,'') : 0;
   });
-  // 렌터카 3일(양끝 포함) 140,000/일 · 숙박 2박 300,000/박 · 항공은 나누지 않는다(전체에만)
-  assert.deepEqual(dayCosts(), [18000, 452000, 449000, 140000]);
-  assert.equal(w.eval(`(()=>{const e=[...document.querySelectorAll('.dayCard')][1].querySelectorAll('.dist');
-    return [...e].find(x=>x.textContent.includes('하루 비용')).textContent.includes('180,000')})()`), false,
-    '항공비는 어느 날의 하루 비용에도 들어가지 않는다');
+  // 렌터카 3일(양끝 포함) 140,000/일 · 숙박 2박 300,000/박 · 항공은 출발일에만 전액
+  assert.deepEqual(dayCosts(), [18000, 632000, 449000, 140000]);
+  assert.equal(dayCosts()[1] - 452000, 180000, '항공비는 출발일의 하루 비용에서 보인다');
   assert.equal(w.eval(`(()=>{const e=[...document.querySelectorAll('.dayCard')][3].querySelectorAll('.dist');
     return [...e].find(x=>x.textContent.includes('하루 비용')).textContent.includes('숙박')})()`), false,
     '체크아웃 날엔 숙박비가 붙지 않는다');
@@ -2169,15 +2167,32 @@ test('통합: 하루 비용에 예약 하루치가 들어가고, 하루 합계�
   assert.match(w.document.querySelector('.costChip').textContent, /₩1,239,000/);
   assert.match(w.document.getElementById('mobileCostDialog').textContent, /렌터카/);
 
-  // 예약 기간이 일정 안에 다 들어오면 하루 합계 + 항공 = 전체 (날수로 나눠도 새는 돈이 없다).
-  // 항공은 하루치가 없어 전체에만 있으므로 그만큼만 다르다 — 그 외에는 1원도 새지 않는다.
-  assert.equal(dayCosts().reduce((a,x)=>a+x,0) + cb.flight, cb.total);
+  // 날짜가 있는 예약은 하루 합계에도 한 번씩 나타나 전체와 일치한다.
+  assert.equal(dayCosts().reduce((a,x)=>a+x,0), cb.total);
 
   // 비용이 없어도 진입점은 남아 신규 사용자가 비용 기능을 찾는다
   w.eval(`trip().bookings=[]; trip().days.forEach(d=>d.spots.forEach(s=>delete s.cost)); render()`);
   assert.match(w.document.querySelector('.costChip').textContent, /비용 ₩0/);
   assert.equal([...w.document.querySelectorAll('.dist')].filter(x=>x.textContent.includes('하루 비용')).length, 0);
   w.close();
+});
+
+test('통합: 예약·결제에서 날짜를 고른 입장권은 일정과 비용에 한 번씩 보인다', { skip: noJsdom }, () => {
+  const w=boot();
+  try{
+    withTrip(w, `[{title:'D1',drive:'',note:'',mode:'walk',spots:[]},{title:'D2',drive:'',note:'',mode:'walk',spots:[]}]`);
+    w.eval(`openBookingModal(); document.getElementById('bkType').value='TICKET'; toggleBkFields();
+      document.getElementById('bkTitle').value='궁전 입장권'; document.getElementById('bkPrice').value='30000';
+      document.getElementById('bkScheduledOn').value='2026-08-02'; document.getElementById('bkSave').click();`);
+    const item=w.eval(`JSON.parse(JSON.stringify(trip().costItems[0]))`);
+    assert.equal(item.scheduledOn, '2026-08-02');
+    assert.equal(item.amount, 30000);
+    assert.equal(w.eval('tripCostBreakdown().total'), 30000, '원본 한 건만 총액에 센다');
+    const cards=[...w.document.querySelectorAll('.dayCard')];
+    assert.equal(cards[0].textContent.includes('궁전 입장권'), false);
+    assert.match(cards[1].textContent, /궁전 입장권/);
+    assert.match(cards[1].textContent, /하루 비용 약 ₩30,000/);
+  }finally{ w.close(); }
 });
 
 test('통합: 연결된 숙박은 예약 금액이 기준이다 (이중 계산 없음)', { skip: noJsdom }, () => {
@@ -5438,10 +5453,10 @@ test('통합: 세 비용 화면이 각자 무슨 기준인지 말한다', { skip
     bookings:[{id:'bk1',type:'hotel',title:'호텔',price:400000,start:'2026-08-01',end:'2026-08-03'}]});
     store.activeId='__it__'; activeDay=0; render(); renderBookingList();`);
   // 예약 결제 금액 목록 — 총액이라는 것(필터바와 같은 문장, bookingBasisHint)
-  assert.match(w.document.getElementById('bookingListBody').textContent, /예약은 총액 기준이에요/);
-  // 필터바 전체 비용 — 총액 기준이라는 것(이미 있던 설명)
-  assert.match(w.document.getElementById('filterbar').textContent + w.document.body.innerHTML,
-               /총액 기준/);
+  assert.match(w.document.getElementById('bookingListBody').textContent, /예약 금액은 비용에 자동으로 들어가요/);
+  // 비용 진입점 — 여행 전체 예상 비용이 같은 원본을 보여 준다.
+  w.eval('openCostDialog()');
+  assert.match(w.document.getElementById('mobileCostDialog').textContent, /여행 전체 예상 비용/);
   w.close();
 });
 
@@ -7022,7 +7037,7 @@ test('통합(ux3): 비용 안내는 숙박·렌터카만 나눈다고 말하고,
     assert.match(panel, /₩300,000/);
     assert.match(panel, /항공/);
     w.eval('openBookingList()');
-    assert.match(w.document.getElementById('bookingListBody').textContent, /숙박·렌터카만 날수로 나눠/, '목록도 같은 문장');
+    assert.match(w.document.getElementById('bookingListBody').textContent, /숙박·렌터카는 기간에 나누고/, '목록도 같은 문장');
   }finally{ w.close(); }
 });
 

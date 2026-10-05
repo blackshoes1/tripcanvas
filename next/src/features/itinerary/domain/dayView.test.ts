@@ -209,9 +209,9 @@ describe('비용 — 하루치(배분)와 전액을 구분한다', () => {
     );
     expect(buildDayView(t, NONE, 0).cost).toMatchObject({
       total: 130000,
-      parts: [{ label: '장소', amount: 30000 }, { label: '예약', amount: 100000 }]
+      parts: [{ label: '장소', amount: 30000 }, { label: '예약·선결제', amount: 100000 }]
     });
-    expect(buildDayView(t, NONE, 1).cost.parts).toEqual([{ label: '예약', amount: 100000 }]);
+    expect(buildDayView(t, NONE, 1).cost.parts).toEqual([{ label: '예약·선결제', amount: 100000 }]);
     expect(buildDayView(t, NONE, 2).cost.parts).toEqual([]);   // 체크아웃
   });
 
@@ -381,7 +381,7 @@ describe('그 외 표시 배선', () => {
     it('하루 비용에서도 두 번 잡히지 않는다', () => {
       const v = buildDayView(linked(180000), NONE, 0);
       expect(v.cost.total).toBe(200000);
-      expect(v.cost.parts.map(p => p.label)).toEqual(['예약']);   // 장소 몫이 없다
+      expect(v.cost.parts.map(p => p.label)).toEqual(['예약·선결제']);   // 장소 몫이 없다
     });
 
     it('예약에 금액이 없을 때만 장소에 적어 둔 금액을 쓴다', () => {
@@ -395,7 +395,7 @@ describe('그 외 표시 배선', () => {
       expect(tripCostBreakdownOf(t, NONE).hotel).toBe(200000);
       expect(tripCostBreakdownOf(t, NONE).total).toBe(200000);
       const v = buildDayView(t, NONE, 0);
-      expect(v.cost.parts.map(p => p.label)).toEqual(['예약']);
+      expect(v.cost.parts.map(p => p.label)).toEqual(['예약·선결제']);
     });
 
     it('연결 안 된 예약은 그대로 센다 — 일정에 대응하는 장소가 없다', () => {

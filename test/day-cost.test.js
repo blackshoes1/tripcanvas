@@ -23,6 +23,27 @@ test('전체 목록은 연박·예약 전액 한 줄이며 원본 문서와 기�
   assert.equal(result.overview.items.find(r => r.line.title === '숙소').line.totalKRW, 600 * rates.EUR);
 });
 
+test('예약·결제 한 번 입력으로 일정 날짜와 비용 전체에 같은 금액이 한 번만 잡힌다', () => {
+  const trip = { start: '2026-10-01', bookings: [
+    { id: 'flight', type: 'flight', title: '항공', price: 90000, start: '2026-10-01', end: '2026-10-03', payState: 'PAID' }
+  ], costItems: [
+    { id: 'ticket', title: '입장권', kind: 'TICKET', amount: 30000, scheduledOn: '2026-10-02', payState: 'PAID' }
+  ], days: [{ spots: [] }, { spots: [] }, { spots: [] }] };
+  const days = trip.days.map((_, index) => ({ index, date: `2026-10-0${index + 1}`, cost: summary(trip, index) }));
+  assert.equal(days[0].cost.total, 90000, '항공 예약 전액은 첫 출발일');
+  assert.equal(days[1].cost.total, 30000, '입장권은 선택한 일정 날짜');
+  assert.equal(days[2].cost.total, 0, '항공 왕복 기간의 다른 날에는 반복하지 않는다');
+  assert.deepEqual(days[1].cost.details.items.map(i => i.source), ['TRIP']);
+  const all = L.tripCostSummary(trip, days, rates);
+  assert.equal(all.totalKRW, 120000);
+  assert.equal(all.prep.totalKRW, 120000);
+  assert.equal(all.onSite.totalKRW, 0);
+  assert.equal(all.overview.items.filter(i => i.line.key === 'ticket').length, 1);
+  assert.equal(all.overview.items.find(i => i.line.key === 'ticket').date, '2026-10-02');
+  assert.equal(days.reduce((sum, day) => sum + day.cost.total, 0), all.totalKRW);
+  assert.deepEqual(all.payTotals, { RESERVED: 0, PAID: 120000, NONE: 0 });
+});
+
 test('UX4: 결제 예정일이 지나도 실제 결제를 확인하기 전에는 완료되지 않는다', () => {
   for (const today of ['2026-09-30', '2026-10-01', '2026-10-02']) {
     assert.equal(L.costPayStateOf({paidOn:'2026-10-01',payState:'RESERVED'}, 'TRIP', today), 'RESERVED');

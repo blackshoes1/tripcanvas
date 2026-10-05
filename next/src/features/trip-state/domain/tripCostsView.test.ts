@@ -32,6 +32,20 @@ it('일자 줄은 하루치 그대로이고, 넘친 밤은 날짜 없는 STAY �
   expect(body.categories.find(c => c.kind === 'STAY')?.totalKRW).toBe(300000);
 });
 
+it('예약·결제 금액은 날짜가 있으면 일정에도 보이고 전체에는 한 번만 잡힌다', () => {
+  const trip = { id: 't1', name: '예약 연결', start: '2026-10-01', bookings: [
+    { id: 'flight', type: 'flight', title: '항공', price: 90000, start: '2026-10-01', end: '2026-10-02' }
+  ], costItems: [
+    { id: 'ticket', title: '입장권', kind: 'TICKET', amount: 30000, scheduledOn: '2026-10-02' }
+  ], days: [{ mode: 'walk', spots: [] }, { mode: 'walk', spots: [] }] };
+  const body = buildTripCosts(trip as unknown as TripDoc, {}, 1);
+  expect(body.days.map(d => d.cost.total)).toEqual([90000, 30000]);
+  expect(body.totalKRW).toBe(120000);
+  expect(body.prep.totalKRW).toBe(120000);
+  expect(body.onSite.totalKRW).toBe(0);
+  expect(body.overview.items.filter(r => r.line.key === 'ticket')).toHaveLength(1);
+});
+
 // 비용 입력 정리 C-1(2026-10-05): 여행 총예산은 예약과 현지 지출을 모두 센 전체 비용에서 뺀다 — 웹 필터바와 같은 함수(`tripBudgetStatus`).
 it('총예산이 있으면 남은 예산을 싣고, 없으면 null이다', () => {
   const withBudget = { ...doc, budget: { amount: 400000 } };

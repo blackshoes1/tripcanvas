@@ -192,7 +192,7 @@
         "onSiteKRW": 0,
         "parts": [
           {
-            "label": "예약",
+            "label": "예약·선결제",
             "amount": 50000
           }
         ],

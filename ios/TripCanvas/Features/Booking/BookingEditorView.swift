@@ -69,6 +69,7 @@ struct BookingEditorView: View {
     @State private var currency: Currency
     /// 결제(예정)일. 사용자가 확인한 상태와 독립적으로 저장한다.
     @State private var paidOn: String?
+    @State private var scheduledOn: String?
     @State private var payState: CostPayState
     @State private var photos: [String]
     @State private var problem: BookingDraftError?
@@ -80,7 +81,7 @@ struct BookingEditorView: View {
     @State private var initialTexts: [String]?
     private var textInputs: [String] {
         [priceText, feeText, urlText, roomNameText, pickupPlace, pickupCode, returnPlace, returnCode,
-         kind.rawValue, currency.rawValue, paidOn ?? "", payState.rawValue, photos.joined(separator: ","),
+         kind.rawValue, currency.rawValue, paidOn ?? "", scheduledOn ?? "", payState.rawValue, photos.joined(separator: ","),
          segmentsDraft.map { [$0.date ?? "", $0.code, $0.dep, $0.arr, $0.depAt ?? "", $0.arrAt ?? ""].joined(separator: "|") }.joined(separator: ";")]
     }
     private var isDirty: Bool {
@@ -139,6 +140,7 @@ struct BookingEditorView: View {
         _returnCode = State(initialValue: booking.carReturnCode ?? "")
         _currency = State(initialValue: item?.currency ?? booking.currency ?? .krw)
         _paidOn = State(initialValue: item?.paidOn ?? booking.paidOn)
+        _scheduledOn = State(initialValue: item?.scheduledOn)
         _payState = State(initialValue: item?.payState ?? booking.payState)
         _photos = State(initialValue: item?.photos ?? booking.photos)
     }
@@ -172,7 +174,7 @@ struct BookingEditorView: View {
                     Text(isBookingKind ? "예약" : "항목")
                 } footer: {
                     if !bookingOnly && isNew {
-                        Text("항공·숙박·렌트는 예약으로 저장돼 기간·조건이 붙고, 숙박·렌트는 가격 추적도 할 수 있어요. 나머지는 가기 전에 낸 비용으로 남아요.")
+                        Text("여기서 입력한 금액은 비용에 자동으로 들어가요. 일정 날짜가 있으면 그날에도 보여요.")
                     }
                 }
 
@@ -195,6 +197,10 @@ struct BookingEditorView: View {
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                     }
+                }
+
+                if !isBookingKind {
+                    scheduleSection
                 }
 
                 Section {
@@ -352,6 +358,16 @@ struct BookingEditorView: View {
     }
 
     // MARK: 종류별 항목
+
+    private var scheduleSection: some View {
+        Section {
+            DateField(title: "사용할 날짜", text: $scheduledOn) { Date() }
+        } header: {
+            Text("일정")
+        } footer: {
+            Text("날짜를 고르면 그날의 하루 비용에도 표시해요. 결제일과는 달라요.")
+        }
+    }
 
     /// 접힌 묶음의 머리 — 이름과 지금 값 한 줄(2026-10-04, 웹 예약 편집기와 같다). 펴지 않아도 무엇이 적혔는지 안다
     static func groupLabel(_ title: String, _ summary: String) -> some View {
@@ -586,6 +602,9 @@ struct BookingEditorView: View {
     /// 예약이 아닌 결제 항목 — 여행 단위 비용(`trip.costItems`)에. 웹 `saveCostItem`과 같은 모양(TOTAL·KRW 생략).
     private func saveItem(title: String, amount: Double?) async {
         if title.isEmpty { problem = .itemTitleRequired; return }
+        if let scheduledOn, !(0..<document.days.count).contains(where: { document.date(ofDay: $0) == scheduledOn }) {
+            problem = .scheduleDateNotInTrip; return
+        }
         var entry = target.item ?? CostEntry(raw: ["id": .string(UUID().uuidString)])
         entry.title = title
         entry.kind = kind.rawValue
@@ -593,6 +612,7 @@ struct BookingEditorView: View {
         if target.item == nil { entry.basis = .total }
         entry.raw.setOrRemove("cur", currency == .krw ? nil : .string(currency.rawValue))
         entry.paidOn = payState == .none ? nil : paidOn   // 고르지 않았으면 날짜 칸이 없다 — 남은 값도 저장하지 않는다
+        entry.scheduledOn = scheduledOn
         entry.payState = payState
         entry.photos = photos
         if await saving.perform({ await onSaveItem(entry) }) { dismiss() }

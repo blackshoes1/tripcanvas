@@ -343,7 +343,7 @@ struct TripCostsView: View {
                     .font(.caption).foregroundStyle(Ink.warning)
             }
         } footer: {
-            Text("가기 전에 내는 돈 — 항공·숙박·렌트 예약과 보험·유심·미리 산 입장권. 실제로 결제한 뒤 결제 완료를 선택해 주세요. 항공은 날짜로 나누지 않고, 숙박·렌터카는 날짜별 비용에도 하루치로 보여요.")
+            Text("여기 입력한 금액은 비용 전체에 자동으로 들어가요. 항공은 첫 출발일, 숙박·렌터카는 기간의 날짜별, 다른 항목은 고른 일정 날짜에도 보여요.")
         }
         Section {
             // 추가는 목록 위에 — 긴 목록의 끝까지 내려가지 않게.
@@ -373,6 +373,7 @@ struct TripCostsView: View {
             [booking.start, booking.end].compactMap { $0 }.map { TimeFormat.dayChipLabel($0) ?? $0 }.joined(separator: " ~ ")
         } ?? ""
         let paidOnLabel = row.paidOn.map { "결제일 \(TimeFormat.dayChipLabel($0) ?? $0)" } ?? ""
+        let scheduleLabel = row.item?.scheduledOn.map { "일정 \(TimeFormat.dayChipLabel($0) ?? $0)" } ?? ""
         return Button {
             guard let snapshot else { return }
             editingRevision = snapshot.revision
@@ -381,7 +382,7 @@ struct TripCostsView: View {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: Space.xs) {
                     Label(row.title, systemImage: row.kind.symbol)
-                    Text([row.kind.label, period, row.booking?.provider ?? "", paidOnLabel].filter { !$0.isEmpty }.joined(separator: " · "))
+                    Text([row.kind.label, period, scheduleLabel, row.booking?.provider ?? "", paidOnLabel].filter { !$0.isEmpty }.joined(separator: " · "))
                         .font(.caption).foregroundStyle(Ink.soft)
                     HStack(spacing: Space.xs) {
                         if state != .none { payChip(state) }

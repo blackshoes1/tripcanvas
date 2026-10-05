@@ -32,7 +32,7 @@ export interface DayDoc {
 }
 export interface TripDoc {
   id?: string; name?: string; start?: string; timeZone?: string; days?: DayDoc[]; bookings?: unknown[];
-  /** 여행 단위 결제 항목(`trip.costItems`) — 어느 날에도 속하지 않는다 */
+  /** 여행 단위 결제 항목(`trip.costItems`) — scheduledOn이 있으면 그날에도 표시한다 */
   costItems?: unknown[];
 }
 

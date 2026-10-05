@@ -2,6 +2,18 @@ import XCTest
 @testable import TripCanvas
 
 final class DayCostTests: XCTestCase {
+    func testTripCostKeepsItsScheduleDateSeparateFromPaymentDate() {
+        var entry = CostEntry(raw: ["id": .string("ticket"), "title": .string("입장권")])
+        entry.scheduledOn = "2026-10-02"
+        entry.paidOn = "2026-09-20"
+        var document = TripDocument(raw: [:])
+        document.costItems = [entry]
+        XCTAssertEqual(document.costItems[0].scheduledOn, "2026-10-02")
+        XCTAssertEqual(document.costItems[0].paidOn, "2026-09-20")
+        entry.scheduledOn = nil
+        XCTAssertNil(entry.raw["scheduledOn"])
+    }
+
     func testSpotCostRoundTripAndClearingKeepTheSameSource() {
         let original = TripSpot(raw: ["name": .string("미술관"), "cost": .number(12.5), "cur": .string("EUR"),
                                      "paidOn": .string("2026-10-01"), "photos": .array([.string("receipt")]), "custom": .string("keep")])

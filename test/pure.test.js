@@ -1127,11 +1127,13 @@ test('bookingShareOn — 여러 날 걸친 예약을 날수로 나눈 하루치'
   assert.deepEqual(L.bookingShareOn([hotel],'2026-09-04'), [], '체크아웃 날은 숙박비 없음');
 });
 
-test('bookingShareOn — 항공은 날짜로 나누지 않는다 (한 번 낸 돈이지 하루치가 아니다)', () => {
+test('bookingShareOn — 항공은 첫 출발일에만 전액, 왕복 중간·귀국일에는 반복하지 않는다', () => {
   const flight = { id: 'f', type: 'flight', title: '왕복', price: 900000, start: '2026-09-01', end: '2026-09-05' };
-  for (const iso of ['2026-09-01', '2026-09-03', '2026-09-05']) {
-    assert.deepEqual(L.bookingShareOn([flight], iso), [], iso + '에 항공 하루치가 붙지 않는다');
-  }
+  assert.equal(L.bookingShareOn([flight], '2026-09-01')[0].amount, 900000);
+  for (const iso of ['2026-09-03', '2026-09-05']) assert.deepEqual(L.bookingShareOn([flight], iso), []);
+  const segments = { ...flight, segments: [{ date: '2026-09-02' }, { date: '2026-09-05' }] };
+  assert.deepEqual(L.bookingShareOn([segments], '2026-09-01'), [], '구간이 있으면 첫 구간의 출발일이 우선');
+  assert.equal(L.bookingShareOn([segments], '2026-09-02')[0].amount, 900000);
   // 숙박·렌터카는 그대로 나뉜다 — 항공을 뺐다고 다른 예약이 달라지면 안 된다
   const car = { id: 'c', type: 'car', price: 300000, start: '2026-09-01', end: '2026-09-03' };
   const hotel = { id: 'h', type: 'hotel', price: 200000, start: '2026-09-01', end: '2026-09-03' };

@@ -15,7 +15,7 @@ struct DayCostSummaryView: View {
             }
             // 가기 전에 낸 돈의 하루치(예약)와 가서 쓰는 돈은 다른 장부다 — 합계에 섞여 있어도 따로 말한다
             if let cost, let onSite = cost.onSiteKRW, onSite != cost.total {
-                Text("현지 결제 \(TimeFormat.money(onSite, currency: "KRW")) · 예약 하루치 \(TimeFormat.money(cost.total - onSite, currency: "KRW"))")
+                Text("현지 결제 \(TimeFormat.money(onSite, currency: "KRW")) · 예약·선결제 \(TimeFormat.money(cost.total - onSite, currency: "KRW"))")
                     .font(.caption).foregroundStyle(Ink.soft)
             }
             // 합계 하나로는 "얼마나 남았지"를 알 수 없다 — 예약해 둔 돈과 이미 낸 돈을 따로 보여 준다
@@ -119,12 +119,12 @@ struct DayCostView: View {
                     Text("장소에 적지 않은 식사·입장료·교통·숙박비를 적어요. 교통 항목을 만들면 그날의 자동 교통비 추정을 대신해요.")
                 }
                 if let details = cost?.details {
-                    Section("예약·자동 계산") {
+                    Section("예약·선결제·자동 계산") {
                         // STAY는 앞선 날에 체크인한 연박 숙소의 이 날 몫 — 고치려면 그 장소(체크인 날)에서.
-                        ForEach(details.items.filter { $0.source == "BOOKING" || $0.source == "TRANSPORT" || $0.source == "STAY" }) { item in
+                        ForEach(details.items.filter { $0.source == "BOOKING" || $0.source == "TRIP" || $0.source == "TRANSPORT" || $0.source == "STAY" }) { item in
                             VStack(alignment: .leading, spacing: Space.xs) {
                                 Text(item.title)
-                                Text("\(TimeFormat.money(item.amount ?? 0, currency: item.currency)) · \(item.source == "BOOKING" ? "예약의 하루 배분액" : item.source == "STAY" ? "연박 숙소의 하루치 · 체크인 날 장소에서 고쳐요" : "이동 경로 추정")")
+                                Text("\(TimeFormat.money(item.amount ?? 0, currency: item.currency)) · \(item.source == "BOOKING" ? "예약에서 입력한 금액" : item.source == "TRIP" ? "예약·결제에서 입력 · 비용 화면에서 수정" : item.source == "STAY" ? "연박 숙소의 하루치 · 체크인 날 장소에서 고쳐요" : "이동 경로 추정")")
                                     .font(.caption).foregroundStyle(Ink.soft)
                             }
                         }
