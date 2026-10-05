@@ -13,7 +13,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js" integrity="sha384-+pWnyi8LtZx+cgXfD2arWgUX7pHIaEL215cEPPk9WrsegNlgvDL9DNjaqsceQq6o" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js" integrity="sha384-BSxuMLxX+FCbTdYec3TbXlnMGEEM2QXTFdtDaveen71o+jswm2J36+xFqp8k4VHM" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.min.js" integrity="sha384-l8ah+VgaWtk1mvOe9VC+OirC6qHFF4yH7l7mKRidV9MSti3E9F463bMp6ZVN4kuC" crossorigin="anonymous"></script>
-<link rel="stylesheet" href="style.css?v=tc-v269">
+<link rel="stylesheet" href="style.css?v=tc-v270">
 </head>
 <body>
 <a class="skipLink" href="#sidebar">일정으로 건너뛰기</a>
@@ -89,9 +89,32 @@
   <button type="button" class="btn mapPlay" id="playBtn" hidden title="지도에서 동선을 따라가며 재생해요 — 다시 누르면 멈춰요"></button>
 </main>
 
+<nav id="mobilePlanActions" aria-label="일정 빠른 동작">
+  <div class="mobileDayNav">
+    <button type="button" class="btn" id="mobilePrevDay" aria-label="이전 날">‹</button>
+    <button type="button" class="btn" id="mobileCurrentDay" aria-haspopup="dialog">전체 일정 ⌄</button>
+    <button type="button" class="btn" id="mobileNextDay" aria-label="다음 날">›</button>
+  </div>
+  <div class="mobilePlanButtons">
+    <button type="button" class="btn primary" id="mobileAddSpot">＋ 장소 추가</button>
+    <button type="button" class="btn" id="mobileCosts" aria-haspopup="dialog">비용</button>
+  </div>
+</nav>
+<dialog id="mobileDayDialog" class="costDialog" aria-labelledby="mobileDayTitle">
+  <h2 id="mobileDayTitle">날짜 선택</h2>
+  <div id="mobileDayList" class="mobileDayList"></div>
+  <div class="row modalActions"><button type="button" class="btn" id="mobileDayClose">닫기</button></div>
+</dialog>
+<dialog id="mobileCostDialog" class="costDialog" aria-labelledby="mobileCostTitle">
+  <h2 id="mobileCostTitle">비용</h2>
+  <div id="mobileCostBody"></div>
+  <div class="row modalActions"><button type="button" class="btn" id="mobileBookings">예약·결제</button><button type="button" class="btn" id="mobileCostClose">닫기</button></div>
+</dialog>
+
 <!-- 장소 추가/편집 모달: 기본 정보 + 접을 수 있는 상세 설정 -->
 <div class="modalBg" id="spotModalBg"><div class="modal spotModal">
-  <div class="modalTitleRow"><div><p class="eyebrow">장소</p><h2 id="spotModalTitle">장소 추가</h2></div><span class="stepBadge">기본 정보</span></div>
+  <div class="modalTitleRow"><div><p class="eyebrow">장소</p><h2 id="spotModalTitle" tabindex="-1">장소 추가</h2></div><span class="stepBadge">기본 정보</span></div>
+  <details id="spotSearchPanel" class="advancedPanel" open><summary>장소 바꾸기 <span>⌄</span></summary>
   <label for="spotSearch">장소 검색</label>
   <div class="fieldRow">
     <input type="text" id="spotSearch" placeholder="검색 또는 장소 이름 입력">
@@ -100,6 +123,7 @@
   <div class="searchRes" id="searchRes"></div>
   <p class="srOnly" id="searchStatus" role="status" aria-live="polite"></p>
   <div class="hint">또는 <button class="btn sm" id="pickOnMap">지도 클릭으로 위치 지정</button> · 지도를 <b>탭(클릭)</b>하면 그 자리에 바로 추가</div>
+  </details>
   <div class="basicGrid">
     <div><label for="spotDay">일자</label><select id="spotDay"></select></div>
   </div>
@@ -195,6 +219,7 @@
 <dialog id="placeCostDialog" class="costDialog" aria-labelledby="placeCostTitle">
   <h2 id="placeCostTitle">장소 비용</h2>
   <p class="hint" id="placeCostFor"></p>
+  <p class="hint" id="costDraftNote" hidden>확인 후 장소를 저장해야 반영돼요.</p>
   <div id="costTitleWrap" hidden><label for="costTitle">뭐에 썼나요</label><input type="text" id="costTitle" maxlength="80" placeholder="비우면 분류 이름 (예: 점심, 택시)"></div>
   <label for="costAmount">금액</label><input id="costAmount" inputmode="decimal" placeholder="미정 (무료는 0)">
   <label for="costCurrency">통화</label><select id="costCurrency"><option value="KRW">₩ 원</option><option value="USD">$ 달러</option><option value="EUR">€ 유로</option><option value="JPY">¥ 엔</option><option value="CNY">元 위안</option></select>
@@ -419,8 +444,8 @@
   </div>
 </div></div>
 
-<div class="modalBg" id="tripModalBg"><div class="modal">
-  <h2>여행 설정</h2>
+<div class="modalBg" id="tripModalBg" data-initial-focus="#tripModalTitle"><div class="modal">
+  <h2 id="tripModalTitle" tabindex="-1">여행 설정</h2>
   <div class="hint" id="tripRoleHint" style="display:none"></div>
   <label for="tripName">여행 이름</label><input type="text" id="tripName">
   <div style="display:flex;gap:6px">
@@ -753,15 +778,15 @@
   <div id="placeDetailsContent" aria-live="polite"></div>
   <footer id="placeDetailsActions"></footer>
 </dialog>
-<script src="lib.js?v=tc-v269"></script>
-<script src="sync.js?v=tc-v269"></script>
-<script src="routing.js?v=tc-v269"></script>
-<script src="price.js?v=tc-v269"></script>
-<script src="adaptive.js?v=tc-v269"></script>
-<script src="intake.js?v=tc-v269"></script>
-<script src="collab.js?v=tc-v269"></script>
-<script src="api.js?v=tc-v269"></script>
-<script src="auth.js?v=tc-v269"></script>
-<script src="app.js?v=tc-v269"></script>
+<script src="lib.js?v=tc-v270"></script>
+<script src="sync.js?v=tc-v270"></script>
+<script src="routing.js?v=tc-v270"></script>
+<script src="price.js?v=tc-v270"></script>
+<script src="adaptive.js?v=tc-v270"></script>
+<script src="intake.js?v=tc-v270"></script>
+<script src="collab.js?v=tc-v270"></script>
+<script src="api.js?v=tc-v270"></script>
+<script src="auth.js?v=tc-v270"></script>
+<script src="app.js?v=tc-v270"></script>
 </body>
 </html>

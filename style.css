@@ -879,3 +879,40 @@ span.dayItem{cursor:default}
 @media (pointer:coarse){.dayItem{position:relative}.dayItem::after{content:'';position:absolute;inset:-10px -2px}}
 .advancedPanel summary .condSummary{float:none;margin-left:6px;font-weight:400;color:var(--muted)}
 .advancedPanel[open] summary .condSummary{transform:none}
+
+/* 한 손으로 날짜·추가·비용에 접근한다. 편집 중에는 저장 영역만 사용한다. */
+#mobilePlanActions{display:none}
+#spotSearchPanel.newSpot{border:0;margin:0;padding:0}
+#spotSearchPanel.newSpot>summary{display:none}
+.mobileDayList{display:grid;gap:8px}
+.mobileDayList .btn{text-align:left;white-space:normal}
+.mobileDayList .btn[aria-pressed="true"]{background:var(--selected-bg);border-color:var(--selected-border);color:var(--selected-accent)}
+@media(max-width:760px){
+  #mobilePlanActions{display:grid;gap:6px;position:fixed;bottom:0;left:0;right:0;z-index:1150;padding:6px 12px calc(6px + env(safe-area-inset-bottom));background:var(--surface);border-top:1px solid var(--border)}
+  .mobileDayNav{display:grid;grid-template-columns:48px minmax(0,1fr) 48px;gap:6px}
+  #mobileCurrentDay{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .mobilePlanButtons{display:flex;gap:8px}
+  .mobilePlanButtons>.btn{flex:1}
+  #mobilePlanActions .btn,.mobileDayList .btn{min-height:48px}
+  #mobilePlanActions .btn:disabled{opacity:.45}
+  #sidebar{bottom:var(--mobile-actions-height,114px);max-height:calc(100dvh - var(--sheet-top,12dvh) - var(--mobile-actions-height,114px))}
+  #sidebar[data-snap="expanded"]{height:min(88dvh,calc(100dvh - var(--sheet-top,12dvh) - var(--mobile-actions-height,114px)))}
+  #filterbar .costMenu{display:none}
+  body:has(.modalBg.show) #mobilePlanActions,body:has(dialog[open]) #mobilePlanActions,body:has(#travel.show) #mobilePlanActions,body:has(#placeDetails[open]) #mobilePlanActions,body:has(#onboarding:not([hidden])) #mobilePlanActions,body.playing #mobilePlanActions{visibility:hidden;pointer-events:none}
+  .modalBg{top:var(--edit-viewport-top,0px);bottom:auto;height:var(--edit-viewport-height,100dvh)}
+  .modal{max-height:100%;padding-bottom:calc(18px + env(safe-area-inset-bottom))}
+  .spotModal{max-height:100%}
+  .basicGrid,.advancedGrid{grid-template-columns:minmax(0,1fr)}
+  .basicGrid input,.advancedGrid input{max-width:100%;min-width:0}
+  .costDialog{position:fixed;top:auto;bottom:max(0px,calc(100% - var(--edit-viewport-top,0px) - var(--edit-viewport-height,100dvh)));left:0;margin:0;width:100%;max-width:none;max-height:calc(var(--edit-viewport-height,100dvh) - 8px);border-radius:18px 18px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom))}
+  .costDialog .modalActions{display:flex}
+  .modalActions,.costDialog .modalActions{bottom:calc(-18px - env(safe-area-inset-bottom));padding:10px 0 calc(6px + env(safe-area-inset-bottom));gap:8px;flex-wrap:wrap}
+  .modalActions>.btn{min-height:48px}
+  .modalActions>.btn.primary{flex:1;min-width:120px}
+  #costPlaceDelete{flex-basis:100%;text-align:left;border-color:transparent;color:var(--meta-danger)}
+  #costPlaceCancel,#costPlaceSave{flex:1}
+  #placeCostDialog>.chkrow{min-height:48px}
+  #placeCostDialog>.chkrow>label{flex:1;padding:10px 0}
+  .costSummary{width:100%;min-height:48px;text-align:left;white-space:normal}
+  body:not(:has(.modalBg.show)):not(:has(dialog[open])) #toast{bottom:calc(var(--mobile-actions-height,114px) + 12px)}
+}

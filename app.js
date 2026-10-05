@@ -480,7 +480,7 @@ function sameRoleElement(el){
  */
 function keepFocus(before){
   if(!before || before===document.body || before.isConnected) return;
-  const twin=sameRoleElement(before); if(twin) twin.focus();
+  const twin=sameRoleElement(before); if(twin) twin.focus({preventScroll:true});
 }
 
 // ───────────────── 지도 (해외=Google · 국내=카카오 듀얼 엔진) ─────────────────
@@ -1402,6 +1402,8 @@ function sheetTopPx(){
 }
 function syncSheetTop(){
   const top=sheetTopPx();
+  const actions=document.getElementById('mobilePlanActions');
+  if(actions) document.documentElement.style.setProperty('--mobile-actions-height',`${actions.getBoundingClientRect().height}px`);
   if(top>0) document.documentElement.style.setProperty('--sheet-top', top+'px');
 }
 function setSheetSnap(snap){
@@ -1883,9 +1885,9 @@ function mediaMatches(q){ return typeof window.matchMedia==='function' && window
 function sheetHeightPx(sb){
   if(sb.style.height) return parseFloat(sb.style.height)||0;   // 끄는 중
   const vh=window.innerHeight, snap=sb.dataset.snap||'half';
-  if(snap==='collapsed') return vh*.15;
-  if(snap==='expanded') return Math.min(vh*.88, vh-(sheetTopPx()||vh*.12));
-  return vh*.6;
+  const actions=document.getElementById('mobilePlanActions')?.getBoundingClientRect().height||0;
+  const max=vh-(sheetTopPx()||vh*.12)-actions;
+  return Math.min(max,vh*(snap==='collapsed'? .15 : snap==='expanded'? .88 : .6));
 }
 function mapEl(){ return document.getElementById(engine==='kakao'?'kmap':'map'); }
 /** 지도 각 변이 무엇에 얼마나(px) 덮였는가 — 모바일 일정 시트와 열린 장소 정보 패널 */
@@ -1896,7 +1898,7 @@ function mapCoveredEdges(){
   const covers=[];
   const sb=document.getElementById('sidebar');
   if(sb&&mediaMatches('(max-width: 760px)')&&!document.body.classList.contains('playing')){
-    const h=sheetHeightPx(sb); covers.push({top:window.innerHeight-h,bottom:window.innerHeight,left:0,right:window.innerWidth});
+    const h=sheetHeightPx(sb)+(document.getElementById('mobilePlanActions')?.getBoundingClientRect().height||0); covers.push({top:window.innerHeight-h,bottom:window.innerHeight,left:0,right:window.innerWidth});
   }
   const pd=document.getElementById('placeDetails');
   if(pd&&pd.open){ const r=pd.getBoundingClientRect(); if(r.width&&r.height) covers.push(r); }
@@ -2347,24 +2349,8 @@ function renderFilter(){
   // 총예산 대비 — 예약과 현지 지출을 모두 센 전체 비용에서 뺀다(tripBudgetStatus · lib, 서버 비용 응답과 같은 함수)
   const budgetSt=tripBudgetStatus(trip(), cb.total, fxRates);
   if(cb.total>0||budgetSt){
-    // 두 장부(앱의 비용 화면과 같은 이름) — 예약 결제 금액(가기 전에 내는 돈) / 현지 결제 금액(가서 쓰는 돈). 더하면 전체와 같다
-    const groups=[
-      ['예약 결제 금액', prepTotalOf(cb), [['숙박',cb.hotel],['렌터카',cb.car],['항공',cb.flight],['예약 외(보험·유심 등)',cb.prep]]],
-      ['현지 결제 금액', cb.spots+cb.taxi, [['장소',cb.spots],['택시(택시 일자)',cb.taxi]]]
-    ].filter(g=>g[1]>0);
-    // 자차 날의 택시비는 내지 않는 돈이라 합계에 넣지 않고, 택시로 간다면 얼마인지만 참고로 말한다(2026-10-03)
-    const taxiRef=tripTaxiRef();
     const cost=document.createElement('details'); cost.className='viewMenu costMenu';
-    cost.innerHTML=`<summary title="${escAttr('예약 결제 금액(예약 총액·예약 외) + 현지 결제 금액(장소·택시) — 탭하면 내역')}">💳 ₩${fmtMoney(cb.total)}⌄</summary><div class="viewMenuPanel">
-      <div class="viewMenuLabel">전체 예상 비용</div>
-      ${groups.map(g=>`<div class="costRow costGroup"><span>${esc(g[0])}</span><b>₩${fmtMoney(g[1])}</b></div>`+
-        g[2].filter(r=>r[1]>0).map(r=>`<div class="costRow costSub"><span>${esc(r[0])}</span><b>₩${fmtMoney(r[1])}</b></div>`).join('')).join('')}
-      <div class="costRow costTotal"><span>합계</span><b>₩${fmtMoney(cb.total)}</b></div>
-      ${budgetSt?`<div class="costRow costGroup"><span>예산</span><b>${esc(costLabel(budgetSt.amount,budgetSt.currency))}</b></div>
-      <div class="costRow costSub${budgetSt.remainingKRW<0?' over':''}"><span>${budgetSt.remainingKRW<0?'예산보다':'남은 예산'}</span><b>₩${fmtMoney(Math.abs(budgetSt.remainingKRW))}${budgetSt.remainingKRW<0?' 많아요':''}</b></div>
-      ${budgetSt.perDayKRW!=null?`<div class="hint">예산을 ${trip().days.length}일로 나누면 하루 평균 약 ₩${fmtMoney(budgetSt.perDayKRW)}</div>`:''}`:''}
-      ${taxiRef>0?`<div class="hint costTaxiRef">자차 일자는 택시비를 넣지 않았어요 — 택시로 간다면 약 ₩${fmtMoney(taxiRef)}</div>`:''}
-      <div class="hint">${esc(bookingBasisHint())}</div></div>`;
+    cost.innerHTML=`<summary title="${escAttr('예약 결제 금액(예약 총액·예약 외) + 현지 결제 금액(장소·택시) — 탭하면 내역')}">💳 ₩${fmtMoney(cb.total)}⌄</summary><div class="viewMenuPanel">${costOverviewHtml(cb,budgetSt)}</div>`;
     bar.appendChild(cost);
   }
   // 14일 넘는 여행은 고른 Day 칩이 가로 스크롤 밖에 있었다 — 고른 날을 칩 줄 안으로 데려온다(세로 스크롤은 건드리지 않는다)
@@ -2418,8 +2404,28 @@ function renderLegend(){
     el.onclick=()=>{ const i=+el.dataset.di; setDayScope(i+1, ()=>fitDay(i)); };
   });
 }
+// 기존 비용 내역을 상단 필터와 모바일 하단 입구에서 함께 쓴다.
+function costOverviewHtml(cb, budgetSt){
+    const groups=[
+      ['예약 결제 금액', prepTotalOf(cb), [['숙박',cb.hotel],['렌터카',cb.car],['항공',cb.flight],['예약 외(보험·유심 등)',cb.prep]]],
+      ['현지 결제 금액', cb.spots+cb.taxi, [['장소',cb.spots],['택시(택시 일자)',cb.taxi]]]
+    ].filter(g=>g[1]>0);
+    // 자차 날의 택시비는 내지 않는 돈이라 합계에 넣지 않고, 택시로 간다면 얼마인지만 참고로 말한다(2026-10-03)
+    const taxiRef=tripTaxiRef();
+  return `
+      <div class="viewMenuLabel">전체 예상 비용</div>
+      ${groups.map(g=>`<div class="costRow costGroup"><span>${esc(g[0])}</span><b>₩${fmtMoney(g[1])}</b></div>`+
+        g[2].filter(r=>r[1]>0).map(r=>`<div class="costRow costSub"><span>${esc(r[0])}</span><b>₩${fmtMoney(r[1])}</b></div>`).join('')).join('')}
+      <div class="costRow costTotal"><span>합계</span><b>₩${fmtMoney(cb.total)}</b></div>
+      ${budgetSt?`<div class="costRow costGroup"><span>예산</span><b>${esc(costLabel(budgetSt.amount,budgetSt.currency))}</b></div>
+      <div class="costRow costSub${budgetSt.remainingKRW<0?' over':''}"><span>${budgetSt.remainingKRW<0?'예산보다':'남은 예산'}</span><b>₩${fmtMoney(Math.abs(budgetSt.remainingKRW))}${budgetSt.remainingKRW<0?' 많아요':''}</b></div>
+      ${budgetSt.perDayKRW!=null?`<div class="hint">예산을 ${trip().days.length}일로 나누면 하루 평균 약 ₩${fmtMoney(budgetSt.perDayKRW)}</div>`:''}`:''}
+      ${taxiRef>0?`<div class="hint costTaxiRef">자차 일자는 택시비를 넣지 않았어요 — 택시로 간다면 약 ₩${fmtMoney(taxiRef)}</div>`:''}
+      <div class="hint">${esc(bookingBasisHint())}</div>`;
+}
 function renderSidebar(){
-  const sb=document.getElementById('sidebar'); sb.innerHTML='';
+  const sb=document.getElementById('sidebar'), scrollTop=sb.dataset.tripId===trip().id? sb.scrollTop : 0;
+  sb.dataset.tripId=trip().id; sb.innerHTML='';
   if(!sb.dataset.snap) sb.dataset.snap='half';
   const handle=document.createElement('button'); handle.id='sheetHandle'; handle.type='button'; handle.title='누르거나 위아래로 끌어 일정 패널 높이 조절';
   handle.appendChild(document.createElement('span')).className='sheetHandleText'; sb.appendChild(handle); syncSheetHandle();
@@ -2685,6 +2691,8 @@ function renderSidebar(){
   const add=document.createElement('button'); add.className='btn'; add.id='addDayBtn'; add.textContent='＋ 일자 추가';
   add.onclick=()=>{ if(!guardEdit()) return; commit(()=>{ trip().days.push({title:'',drive:'',note:'',spots:[]}); }); openDayModal(trip().days.length-1); };
   sb.appendChild(add);
+  sb.scrollTop=scrollTop;
+  renderMobilePlanActions();
   applySpotSelection();   // 재렌더 후에도 선택 카드 강조 유지
 }
 // 일자 순서 변경 핸들러 (Sortable) — 인덱스 기반이라 날짜는 자동으로 따라감
@@ -2724,11 +2732,11 @@ function locateSpot(ref){
   for(let di=0; di<days.length; di++){ const si=days[di].spots.indexOf(ref); if(si>=0) return {di,si}; }
   return null;
 }
-/** 다시 그린 뒤 그 장소 행으로 포커스를 옮긴다(기본은 행의 이름 단추) @param {number} di @param {number} si @param {string} [sel] @returns {boolean} */
-function focusSpotRow(di,si,sel){
+/** 다시 그린 뒤 그 장소 행으로 포커스를 옮긴다(기본은 행의 이름 단추) @param {number} di @param {number} si @param {string} [sel] @param {boolean} [preventScroll] @returns {boolean} */
+function focusSpotRow(di,si,sel,preventScroll=false){
   const row=document.querySelector(`#sidebar .spot[data-di="${di}"][data-si="${si}"]`);
   const el=row && /** @type {HTMLElement|null} */(row.querySelector(sel||'.spotIdentity'));
-  if(el) el.focus();
+  if(el) el.focus({preventScroll});
   return !!el;
 }
 /** 장소를 지운 뒤 — 그 자리에 올라온 다음 행, 없으면 앞 행, 그것도 없으면 그날의 장소 추가 @param {number} di @param {number} si */
@@ -3079,6 +3087,9 @@ window.openSpotModal=(di,si,focusId)=>{
       // 응답이 늦게 오면 그 사이 모달이 닫혔을 수도, 페이지가 사라졌을 수도 있다 — 늦은 응답이 예외를 던지지 않게 한다
       try{ const bg=document.getElementById('spotModalBg'); if(bg && bg.classList.contains('show')) drawWhoChips(s.who); }catch(e){}
     });
+  document.getElementById('spotSearchPanel').open=isNew||!mediaMatches('(max-width:760px)');
+  document.getElementById('spotSearchPanel').classList.toggle('newSpot',isNew);
+  document.getElementById('spotModalBg').dataset.initialFocus=isNew? '#spotSearch' : '#spotModalTitle';
   document.getElementById('spotModalBg').classList.add('show');
   // 행에서 특정 칸(예: '머무는 시간 미정')을 눌러 열었으면 그 칸으로 바로 — 모달의 기본 포커스 뒤에 옮긴다
   if(focusId) setTimeout(()=>{ const el=document.getElementById(focusId); if(el){ const details=el.closest('details'); if(details) details.open=true; el.focus(); el.scrollIntoView({block:'center'}); } },60);
@@ -3274,7 +3285,7 @@ document.getElementById('spotSave').onclick=()=>{
   // 여행 중 안내에서 왔으면 안내로 돌아간다 — 그때 '하나 더 담기'는 안내 화면 아래 층에 열려 보이지 않으므로 붙이지 않는다
   const fromTravel=backToTravel();
   // 포커스는 담거나 고친 장소의 행으로 — 연 버튼은 다시 그리기가 지웠다(2026-10-03 UX 검토). 안내로 돌아갔으면 거기 둔다
-  const placed=locateSpot(s); if(placed && !fromTravel) focusSpotRow(placed.di, placed.si);
+  const placed=locateSpot(s); if(placed && !fromTravel) focusSpotRow(placed.di, placed.si,undefined,isEdit&&!moved);
   if(moved){
     toast(sorted? `Day ${targetDay+1}에 시간순으로 옮겼어요` : `Day ${targetDay+1} 맨 뒤로 옮겼어요`, '#3e7a4c', [
       {label:'보기', fn:()=>{ setDayScope(targetDay+1, ()=>fitDay(targetDay)); const p=locateSpot(s); if(p) focusSpotRow(p.di, p.si); }},
@@ -5056,6 +5067,7 @@ function renderSpotCostSummary(){
 function setCostDialogMode(kind){
   const day=kind==='day';
   document.getElementById('costTitleWrap').hidden=!day;
+  document.getElementById('costDraftNote').hidden=day;
   document.getElementById('placeCostTitle').textContent=day? '쓴 돈' : '장소 비용';
   _derivedCostKind=null; document.getElementById('costKindHint').textContent='';
   document.getElementById('costPlaceSave').textContent=day? '저장' : '확인';
@@ -5083,6 +5095,7 @@ window.openDayCostItem=(di,id)=>{
   document.getElementById('costPhotoNote').textContent=photoNote(photoCount(it||{}));
   document.getElementById('costPlaceDelete').hidden=!it;
   syncPayDate('cost'); updatePerPersonNote();
+  draftSnapshots.set(document.getElementById('placeCostDialog'),editorSnapshot(document.getElementById('placeCostDialog')));
   document.getElementById('placeCostDialog').showModal();
   document.getElementById('costAmount').focus();
 };
@@ -5099,8 +5112,9 @@ function saveDayCostItem(d){
     for(const k of ['amount','cur','costBasis','costPeople','costPartial','payState','paidOn']) delete it[k];
     it.title=title; it.kind=kind; it.amount=d.cost; it.costBasis=d.costBasis||'TOTAL';
     for(const k of ['cur','costPeople','costPartial','payState','paidOn']) if(d[k]!=null) it[k]=d[k];
-    if(isNew) list.push(it);
+    if(isNew){ list.push(it); _costTarget.id=it.id; }
   });
+  if(lsDirty) return fieldError('costAmount','이 기기에 저장하지 못했어요. 입력은 유지돼요 — 저장 공간을 확보한 뒤 다시 저장해 주세요');
   document.getElementById('placeCostDialog').close();
   toast(isNew? `Day ${di+1} 하루 비용에 넣었어요` : '쓴 돈을 고쳤어요');
 }
@@ -5135,6 +5149,7 @@ document.getElementById('spotCostBtn').onclick=()=>{
   const sp=(editing&&editing.si>=0)? trip().days[editing.di]?.spots[editing.si] : null;
   document.getElementById('costPhotoNote').textContent=photoNote(photoCount(sp||{}));
   syncPayDate('cost'); updatePerPersonNote();
+  draftSnapshots.set(document.getElementById('placeCostDialog'),editorSnapshot(document.getElementById('placeCostDialog')));
   document.getElementById('placeCostDialog').showModal();
 };
 /** 열 때 장소 종류에서 고른 분류. 이미 적힌 분류가 있거나 하루 비용이면 null @type {string|null} */
@@ -5185,14 +5200,14 @@ document.getElementById('costPlaceSave').onclick=()=>{
   _spotCostDraft=d;
   document.getElementById('placeCostDialog').close();
   renderSpotCostSummary();
-  document.getElementById('spotCostBtn').focus();
+  document.getElementById('spotCostBtn').focus({preventScroll:true});
 };
 document.getElementById('costPlaceDelete').onclick=()=>{
   if(_costTarget.kind==='day'){ deleteDayCostItem(); return; }
   _spotCostDraft={};
   document.getElementById('placeCostDialog').close();
   renderSpotCostSummary();
-  document.getElementById('spotCostBtn').focus();
+  document.getElementById('spotCostBtn').focus({preventScroll:true});
 };
 
 // ───────────────── 내보내기/가져오기/공유 ─────────────────
@@ -8558,10 +8573,10 @@ function updateSaveState(){
 // ───────────────── 편집기 초안 보호 ─────────────────
 // 고친 편집기를 취소·Esc로 닫으면 **한 번 묻는다** — 긴 입력이 오조작 한 번에 사라지지 않게(2026-09-27 UX 검토).
 // 고친 게 없으면 묻지 않고 바로 닫는다. 연 순간의 입력값을 찍어 두고 취소 때 비교한다(저장 버튼은 건드리지 않는다).
-const DRAFT_GUARDED={spotModalBg:'spotCancel',dayModalBg:'dayCancel',tripModalBg:'tripCancel',bookingModalBg:'bkCancel'};
+const DRAFT_GUARDED={spotModalBg:'spotCancel',dayModalBg:'dayCancel',tripModalBg:'tripCancel',bookingModalBg:'bkCancel',placeCostDialog:'costPlaceCancel'};
 const draftSnapshots=new WeakMap();
 function editorSnapshot(bg){
-  return Array.from(bg.querySelectorAll('input,select,textarea')).map(el=>el.type==='checkbox'||el.type==='radio'? (el.checked?'1':'0') : el.value).join('\u0001');
+  return Array.from(bg.querySelectorAll('input,select,textarea')).map(el=>el.type==='checkbox'||el.type==='radio'? (el.checked?'1':'0') : el.value).join('\u0001')+(bg.id==='spotModalBg'?JSON.stringify(_spotCostDraft):'');
 }
 new MutationObserver(changes=>changes.forEach(c=>{
   const bg=c.target; if(!DRAFT_GUARDED[bg.id]) return;
@@ -8570,7 +8585,7 @@ new MutationObserver(changes=>changes.forEach(c=>{
 })).observe(document.body,{subtree:true,attributes:true,attributeFilter:['class']});
 document.addEventListener('click',e=>{
   const btn=e.target.closest&&e.target.closest('button'); if(!btn) return;
-  const bg=btn.closest('.modalBg'); if(!bg||DRAFT_GUARDED[bg.id]!==btn.id) return;
+  const bg=btn.closest('.modalBg,dialog'); if(!bg||DRAFT_GUARDED[bg.id]!==btn.id) return;
   const before=draftSnapshots.get(bg); if(before==null||before===editorSnapshot(bg)) return;
   if(!confirm('입력한 내용을 버릴까요? 저장하지 않은 변경이 사라져요.')){ e.preventDefault(); e.stopImmediatePropagation(); }
 },true);
@@ -8697,7 +8712,7 @@ function initAccessibility(){
           returnFocus.set(bg,active&&active.closest&&active.closest('#hdrMenu')?document.getElementById('moreBtn'):pop?pop.querySelector('summary'):active);
         }
         closePopovers();
-        setTimeout(()=>{ if(!window.document || !bg.classList.contains('show') || bg.contains(document.activeElement)) return; const target=bg.querySelector('[autofocus],input:not([type="hidden"]),textarea,select,button:not([disabled]),[href]'); if(target) target.focus(); },0);
+        setTimeout(()=>{ if(!window.document || !bg.classList.contains('show') || bg.contains(document.activeElement)) return; const target=bg.querySelector((mediaMatches('(max-width:760px)')&&bg.dataset.initialFocus)||'[autofocus],input:not([type="hidden"]),textarea,select,button:not([disabled]),[href]'); if(target) target.focus({preventScroll:true}); },0);
       }else{
         const previous=returnFocus.get(bg); returnFocus.delete(bg);
         // 닫는 동작이 다시 그리기를 부르면 연 버튼은 사라진다. 그때 앱이 더 알맞은 자리(담은 장소 행 등)로 옮겨 두었으면
@@ -8707,7 +8722,7 @@ function initAccessibility(){
           const now=document.activeElement;
           if(now&&now!==document.body&&now!==previous&&now.isConnected&&!bg.contains(now)) return;
           const target=previous.isConnected? previous : sameRoleElement(previous);
-          if(target) target.focus();
+          if(target) target.focus({preventScroll:true});
         },0);
       }
     }
@@ -8739,8 +8754,8 @@ function initAccessibility(){
     if(e.key!=='Tab') return;
     const items=Array.from(bg.querySelectorAll(focusable)).filter(el=>el.getClientRects().length && !el.closest('[hidden],[inert]')); if(!items.length){ e.preventDefault(); return; }
     const first=items[0],last=items[items.length-1];
-    // 처음 화면은 제목(tabindex=-1)에서 시작한다 — 거기서 Tab은 첫 버튼, Shift+Tab은 마지막으로 (가려진 화면으로 새지 않게)
-    if(bg===onboarding&&!items.includes(document.activeElement)){ e.preventDefault(); (e.shiftKey?last:first).focus(); return; }
+    // 제목(tabindex=-1)에서 시작한 화면도 Tab은 첫 버튼, Shift+Tab은 마지막으로 보낸다
+    if(!items.includes(document.activeElement)){ e.preventDefault(); (e.shiftKey?last:first).focus(); return; }
     if(e.shiftKey&&document.activeElement===first){ e.preventDefault(); last.focus(); }
     else if(!e.shiftKey&&document.activeElement===last){ e.preventDefault(); first.focus(); }
   });
@@ -8791,3 +8806,50 @@ function showDeferredOnboarding(){
   if(seen||!document.getElementById('onboarding').hidden) return false;
   showOnboarding(); return true;
 }
+
+// 모바일 편집기는 실제 보이는 영역 안에 둔다(Safari의 키보드·도구막대 포함).
+(function(){
+  const viewport=window.visualViewport; if(!viewport) return;
+  const sync=()=>{
+    document.documentElement.style.setProperty('--edit-viewport-height',`${viewport.height}px`);
+    document.documentElement.style.setProperty('--edit-viewport-top',`${viewport.offsetTop}px`);
+  };
+  viewport.addEventListener('resize',sync); viewport.addEventListener('scroll',sync); sync();
+})();
+function renderMobilePlanActions(){
+  const t=trip(), current=document.getElementById('mobileCurrentDay');
+  current.textContent=activeDay? `Day ${activeDay} · ${t.days[activeDay-1]?.title||dateOf(activeDay-1)} ⌄` : '전체 일정 ⌄';
+  document.getElementById('mobilePrevDay').disabled=activeDay<=1;
+  document.getElementById('mobileNextDay').disabled=activeDay>=t.days.length;
+  document.getElementById('mobileAddSpot').hidden=readOnly();
+}
+function selectMobileDay(ad){ setDayScope(ad,()=>ad?fitDay(ad-1):fitAll()); }
+document.getElementById('mobilePrevDay').onclick=()=>{ if(activeDay>1) selectMobileDay(activeDay-1); };
+document.getElementById('mobileNextDay').onclick=()=>{ if(activeDay<trip().days.length) selectMobileDay(activeDay+1); };
+document.getElementById('mobileCurrentDay').onclick=()=>{
+  const dialog=document.getElementById('mobileDayDialog'), list=document.getElementById('mobileDayList');
+  list.innerHTML=[{ad:0,label:'전체 일정'},...trip().days.map((d,i)=>({ad:i+1,label:`Day ${i+1} · ${d.title||dateOf(i)}`}))]
+    .map(x=>`<button type="button" class="btn" data-ad="${x.ad}" aria-pressed="${x.ad===activeDay}">${esc(x.label)}</button>`).join('');
+  list.querySelectorAll('button').forEach(b=>b.onclick=()=>{ dialog.close(); selectMobileDay(+b.dataset.ad); });
+  dialog.showModal(); list.querySelector('[aria-pressed="true"]')?.focus();
+};
+document.getElementById('mobileDayClose').onclick=()=>document.getElementById('mobileDayDialog').close();
+document.getElementById('mobileAddSpot').onclick=()=>{
+  const di=activeDay? activeDay-1 : 0;
+  openSpotModal(di,-1);
+};
+document.getElementById('mobileCosts').onclick=()=>{
+  const cb=tripCostBreakdown(), budget=tripBudgetStatus(trip(),cb.total,fxRates);
+  document.getElementById('mobileCostBody').innerHTML=cb.total>0||budget? costOverviewHtml(cb,budget) : '<p>아직 입력한 비용이 없어요.</p><p class="hint">예약은 예약·결제에서, 장소 비용은 장소 편집에서 적어요.</p>';
+  document.getElementById('mobileCostDialog').showModal();
+};
+document.getElementById('mobileCostClose').onclick=()=>document.getElementById('mobileCostDialog').close();
+document.getElementById('mobileBookings').onclick=()=>{ document.getElementById('mobileCostDialog').close(); openBookingList(); };
+
+if(window.ResizeObserver){ new ResizeObserver(syncSheetTop).observe(document.getElementById('mobilePlanActions')); }
+
+document.getElementById('placeCostDialog').addEventListener('cancel',e=>{
+  const dialog=e.target, before=draftSnapshots.get(dialog);
+  if(before!==editorSnapshot(dialog)&&!confirm('입력한 내용을 버릴까요? 저장하지 않은 변경이 사라져요.')) e.preventDefault();
+});
+document.getElementById('placeCostDialog').addEventListener('close',()=>draftSnapshots.delete(document.getElementById('placeCostDialog')));

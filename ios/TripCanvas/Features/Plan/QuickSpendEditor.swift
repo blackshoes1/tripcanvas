@@ -57,6 +57,7 @@ struct QuickSpendEditor: View {
                 Section {
                     HStack(spacing: Space.s) {
                         TextField("얼마", text: $amount)
+                            .accessibilityIdentifier("quickSpendAmount")
                             .keyboardType(.decimalPad)
                             .font(.title2.weight(.semibold))
                             .focused($amountFocused)
@@ -67,7 +68,7 @@ struct QuickSpendEditor: View {
                     }
                     TextField("뭐에 썼나요 (비우면 분류 이름)", text: $title)
                 } header: {
-                    Text(dayLabel)
+                    Text("금액 · \(dayLabel)")
                 } footer: {
                     Text("낸 돈으로 적어요. 1인 금액·결제 예정·일부 확인은 '자세히 적기'에서 정해요.")
                 }
@@ -81,7 +82,7 @@ struct QuickSpendEditor: View {
                                     Text(category.label)
                                         .font(.subheadline.weight(kind == category ? .semibold : .regular))
                                         .padding(.horizontal, Space.m)
-                                        .frame(minHeight: 36)
+                                        .frame(minHeight: 44)
                                         .background(kind == category ? Ink.accent.opacity(0.16) : Ink.sunken, in: Capsule())
                                         .foregroundStyle(kind == category ? Ink.accent : Ink.ink)
                                 }
@@ -93,9 +94,10 @@ struct QuickSpendEditor: View {
                     }
                 }
                 Section {
-                    CostPhotosField(refs: $photos)
-                } header: { Text("영수증 사진") } footer: {
-                    Text("사진 자체는 올리지 않고 이 기기 사진 보관함의 위치만 기억해요.")
+                    DisclosureGroup("영수증 사진") {
+                        CostPhotosField(refs: $photos)
+                        Text("사진은 이 기기에서만 볼 수 있어요.").font(.caption).foregroundStyle(Ink.soft)
+                    }
                 }
                 // 하루 추가 비용의 입력은 이 하나에서 시작한다(2026-10-04) — 전에는 같은 시트에 '쓴 돈 바로 적기'(5칸)와
                 // '비용 항목 추가'(10칸)가 같은 costItems를 따로 받았다. 자세한 칸은 여기서 펼친다(지금 적은 값을 들고 간다).
@@ -104,7 +106,6 @@ struct QuickSpendEditor: View {
                         Label("자세히 적기", systemImage: "slider.horizontal.3").frame(minHeight: 44)
                     }
                 }
-                if failed { Section { Text("저장하지 못했어요. 입력 내용은 유지되어 있어요.").foregroundStyle(Ink.warning) } }
             }
             .tint(Ink.accent)
             .sheet(item: $detail) { target in
@@ -119,9 +120,26 @@ struct QuickSpendEditor: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("취소") { dismiss() }.disabled(saving) }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("저장") { Task { await save() } }.disabled(!valid || saving)
+            }
+            .safeAreaInset(edge: .bottom) {
+                VStack(spacing: Space.xs) {
+                    if failed {
+                        Text("저장하지 못했어요. 입력은 유지돼요. 다시 저장해 주세요.")
+                            .font(.caption).foregroundStyle(Ink.warning)
+                            .accessibilityIdentifier("quickSpendSaveError")
+                    }
+                    Button { Task { await save() } } label: {
+                        Text(saving ? "저장 중…" : "저장")
+                            .frame(maxWidth: .infinity, minHeight: 48)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Ink.accent)
+                    .disabled(!valid || saving || detail != nil)
+                    .accessibilityIdentifier("quickSpendSave")
                 }
+                .padding(.horizontal, Space.l)
+                .padding(.vertical, Space.s)
+                .background(Ink.paper)
             }
             .onChange(of: inputDraft) { _, _ in preserveInput() }
             .onAppear {
