@@ -920,3 +920,10 @@ span.dayItem{cursor:default}
   .costSummary{width:100%;min-height:48px;text-align:left;white-space:normal}
   body:not(:has(.modalBg.show)):not(:has(dialog[open])) #toast{bottom:calc(var(--mobile-actions-height,114px) + 12px)}
 }
+
+/* J의 말투 — 예문까지 한 번에 눌러 고른다. */
+.modal .jToneChoice{display:flex;font-size:14px;align-items:flex-start;gap:12px;padding:14px;margin:8px 0;border:1px solid var(--border);border-radius:12px;cursor:pointer;min-height:48px}
+.jToneChoice:has(input:checked){border-color:var(--selected-border);background:var(--selected-bg)}
+.jToneChoice input{margin-top:4px;flex:0 0 auto}
+.jToneChoice strong,.jToneChoice small{display:block}
+.jToneChoice small{font-size:13px;margin-top:6px;color:var(--subtle);line-height:1.6}

@@ -5,6 +5,7 @@ struct TripDepartureCard: View {
     let trip: TripSummary
     let days: Int
     let onOpenPlan: () -> Void
+    var tone: JTone = .friendly
     @Environment(\.dynamicTypeSize) private var typeSize
     @ScaledMetric(relativeTo: .largeTitle) private var countdownSize = 44
 
@@ -32,8 +33,8 @@ struct TripDepartureCard: View {
             HStack(alignment: .top, spacing: Space.m) {
                 Image(systemName: "airplane").foregroundStyle(Ink.accent)
                 VStack(alignment: .leading, spacing: Space.xs) {
-                    Text("아직 여행 전이에요").font(.subheadline.weight(.semibold))
-                    Text("일정 탭에서 계획을 다듬어 두세요.")
+                    Text(JCopy.text("today.before", tone: tone)).font(.subheadline.weight(.semibold))
+                    Text(JCopy.text("today.prepare", tone: tone))
                         .font(.footnote).foregroundStyle(Ink.soft)
                 }
             }
