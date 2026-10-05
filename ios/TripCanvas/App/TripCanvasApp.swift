@@ -96,6 +96,12 @@ struct SignInView: View {
                                 }
                                 .accessibilityLabel("로그인 방법으로 돌아가기")
                             }
+                            Image("BrandSymbol")
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 28, height: 28)
+                                .foregroundStyle(Ink.accent)
+                                .accessibilityHidden(true)
                             Text("With J")
                                 .font(.title3.weight(.semibold))
                         }
