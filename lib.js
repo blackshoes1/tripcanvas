@@ -1340,12 +1340,16 @@
       const bookingId=raw&&(raw.bookingId||raw.carPickupId||raw.carReturnId)||null;
       const linked=(trip.bookings||[]).some((/** @type {any} */ b)=>b.id===bookingId);
       const amount=source==='SPOT'?costAmountOf(raw,'cost'):line.amount;
+      const reservationState=linked?'LINKED':reservation(source==='SPOT'?'SPOT':'DAY_COST',di,si,raw);
+      // 비용을 아직 다루지 않은 일반 장소까지 '금액 미정'으로 채우면 첫 화면이 일정의 복사본이 된다.
+      if(source==='SPOT'&&amount===null&&reservationState==='NONE'&&!raw?.stay&&!raw?.costKind&&
+        !raw?.costPartial&&!raw?.payState&&!raw?.cur&&!raw?.costBasis) continue;
       rows.set(id,{id,line:{...line,source,key:source==='SPOT'?String(si):line.key,dayIndex:di,
           title:raw?.name||line.title,amount:source==='SPOT'?(typeof raw.cost==='number'?raw.cost:null):line.amount,
           currency:raw?.cur||line.currency,basis:raw?.costBasis||line.basis,people:raw?.costPeople||line.people,
           state:source==='SPOT'?(amount===null?'UNKNOWN':raw.costPartial?'PARTIAL':amount===0?'FREE':'KNOWN'):line.state},
         bookingId:linked?bookingId:null,spotIndex:si,date:days[di]?.date||null,end:null,
-        reservation:linked?'LINKED':reservation(source==='SPOT'?'SPOT':'DAY_COST',di,si,raw),amountSource:source==='TRANSPORT'?'ESTIMATE':source==='SPOT'?'PLACE':'ENTRY'});
+        reservation:reservationState,amountSource:source==='TRANSPORT'?'ESTIMATE':source==='SPOT'?'PLACE':'ENTRY'});
     }
     // 예약 금액 미정 + 장소 금액: 합계에서 제외된 예약도 장소 줄의 신원으로 남긴다.
     for(const booking of trip.bookings||[]){
