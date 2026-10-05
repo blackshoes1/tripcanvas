@@ -8627,6 +8627,12 @@ document.addEventListener('click',e=>{
   const t=/** @type {any} */(e.target); if(!t||!t.closest) return;
   document.querySelectorAll(POPOVERS).forEach(d=>{ if(!d.contains(t)) d.open=false; });
 },true);
+// Safari는 메뉴 버튼을 눌러도 포커스를 주지 않고 tabindex가 있는 부모로 옮긴다.
+// focusout이 click 전에 메뉴를 숨기지 않도록, 버튼을 누를 때는 현재 포커스를 유지한다(Tab 이동은 그대로).
+document.addEventListener('mousedown',e=>{
+  const t=/** @type {any} */(e.target);
+  if(e.button===0&&t?.closest?.('details.actionMenu button,details.viewMenu button')) e.preventDefault();
+});
 // 포커스가 팝오버·☰ 밖으로 나가면 닫는다. 다음 자리가 없는 이탈(빈 곳 누르기·창 전환)은 위의 click이 맡는다.
 document.addEventListener('focusout',e=>{
   const from=/** @type {any} */(e.target), next=/** @type {any} */(e.relatedTarget);
