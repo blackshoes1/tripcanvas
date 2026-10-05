@@ -14,13 +14,13 @@ test.describe('모바일',()=>{
     await page.evaluate(BEFORE_TRIP);
   });
 
-  test('샘플의 하단 비용 단추는 남은 예산을 말하고, 시트가 예산·예약 결제·현지 결제를 보여 준다',async({page})=>{
+  test('샘플의 하단 비용 단추는 남은 예산을 말하고, 전체 비용 화면에서 예산을 고칠 수 있다',async({page})=>{
     const btn=page.locator('#mobileCosts');
     await expect(btn).toContainText('비용 · 남은 ₩');
     await btn.click();
     const body=page.locator('#mobileCostBody');
-    await expect(body).toContainText('예약 결제 금액');
-    await expect(body).toContainText('현지 결제 금액');
+    await expect(body).toContainText('여행 전체 예상 비용');
+    await expect(body).toContainText('비용 내역');
     await expect(body).toContainText('남은 예산');
     // 여행 전이고 전체 일정을 보고 있으면 어느 날인지 모른다 — 쓴 돈 버튼 대신 이유를 말한다
     await expect(page.locator('#mobileAddSpend')).toHaveCount(0);
