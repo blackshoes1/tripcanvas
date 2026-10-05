@@ -109,7 +109,8 @@ test.describe('모바일 일정 시트 높이',()=>{
 
   test('손잡이를 끌면 가까운 단계로 붙는다',async({page})=>{
     const grab=async(dy)=>{
-      const b=await page.locator('#sheetHandle').boundingBox();
+      // 구간 조회가 끝나 일정이 다시 그려지면 손잡이가 새로 만들어진다 — 잡히는 순간의 자리를 읽는다
+      let b=null; await expect.poll(async()=>{ b=await page.locator('#sheetHandle').boundingBox(); return !!b; }).toBe(true);
       const x=b.x+b.width/2, y=b.y+20;
       await page.mouse.move(x,y); await page.mouse.down();
       await page.mouse.move(x,y+dy/2,{steps:4}); await page.mouse.move(x,y+dy,{steps:4}); await page.mouse.up();
