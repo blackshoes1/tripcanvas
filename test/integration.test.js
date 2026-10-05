@@ -2098,7 +2098,7 @@ test('통합: 예약 결제 금액 목록의 합계는 필터바의 예약 결�
   w.eval(`trip().bookings=[{id:'h1',type:'hotel',title:'Hotel',price:600000,start:'2026-08-01',end:'2026-08-02',track:false},
     {id:'f1',type:'flight',title:'항공',price:300000,track:false}];
     trip().costItems=[{id:'i1',title:'유심',kind:'OTHER',amount:20000,costBasis:'TOTAL'}]; render(); openBookingList();`);
-  const filterPrep = [...w.document.querySelectorAll('#filterbar .costGroup')].find((r) => /예약 결제 금액/.test(r.textContent)).querySelector('b').textContent;
+  const filterPrep = w.eval("'₩'+fmtMoney(costOverviewData().prep.totalKRW)");
   const listTotal = w.document.querySelector('#bookingListBody .bkListTotal b').textContent;
   assert.equal(listTotal, filterPrep);
   assert.equal(listTotal, '₩920,000');
@@ -2161,20 +2161,21 @@ test('통합: 하루 비용에 예약 하루치가 들어가고, 하루 합계�
   assert.equal(withPrep.prep, 30000 + w.eval(`toKRW(10,'USD')`));
   assert.equal(withPrep.total, 1239000 + withPrep.prep, '준비 비용은 전체에만');
   assert.equal(w.eval(`dayCost(trip().days[0])`), 18000, '하루 비용은 그대로');
-  const panel = w.eval(`document.querySelector('.costMenu .viewMenuPanel').textContent`);
-  assert.ok(panel.includes('예약 외'), '내역에 줄이 생긴다');
-  assert.ok(panel.includes('예약 결제 금액') && panel.includes('현지 결제 금액'), '두 장부로 묶인다 — 앱의 비용 화면과 같은 이름');
+  w.eval('openCostDialog()');
+  const panel = w.document.getElementById('mobileCostDialog').textContent;
+  assert.ok(panel.includes('여행자보험') && panel.includes('유심'), '준비 비용도 전체 목록에 한 줄씩 보인다');
+  assert.ok(panel.includes('Hotel') && panel.includes('Fiat'), '예약 전액이 전체 목록에 한 줄씩 보인다');
   w.eval(`delete trip().costItems; render();`);   // 아래 단정은 준비 비용 없는 기준
-  assert.match(w.document.querySelector('.costMenu summary').textContent, /₩1,239,000/);
-  assert.match(w.document.querySelector('.costMenu').textContent, /렌터카/);
+  assert.match(w.document.querySelector('.costChip').textContent, /₩1,239,000/);
+  assert.match(w.document.getElementById('mobileCostDialog').textContent, /렌터카/);
 
   // 예약 기간이 일정 안에 다 들어오면 하루 합계 + 항공 = 전체 (날수로 나눠도 새는 돈이 없다).
   // 항공은 하루치가 없어 전체에만 있으므로 그만큼만 다르다 — 그 외에는 1원도 새지 않는다.
   assert.equal(dayCosts().reduce((a,x)=>a+x,0) + cb.flight, cb.total);
 
-  // 비용이 하나도 없으면 칩 자체를 띄우지 않는다
+  // 비용이 없어도 진입점은 남아 신규 사용자가 비용 기능을 찾는다
   w.eval(`trip().bookings=[]; trip().days.forEach(d=>d.spots.forEach(s=>delete s.cost)); render()`);
-  assert.equal(w.document.querySelector('.costMenu'), null);
+  assert.match(w.document.querySelector('.costChip').textContent, /비용 ₩0/);
   assert.equal([...w.document.querySelectorAll('.dist')].filter(x=>x.textContent.includes('하루 비용')).length, 0);
   w.close();
 });
@@ -6937,9 +6938,10 @@ test('통합(ux3): 자차 날의 택시 요금은 하루 비용·전체 비용�
     assert.match(costLine(cards[0]).replace(/\s+/g,''), /하루비용약₩5,000$/, '자차 날은 장소 비용만');
     assert.ok(cards[0].textContent.includes('택시로 간다면 약 60,900원'), '자차 날의 택시 요금은 참고로 남는다');
     assert.match(costLine(cards[1]).replace(/\s+/g,''), /하루비용약₩60,900/, '택시 날은 그대로 든다');
-    const panel=w.document.querySelector('#filterbar .costMenu').textContent;
-    assert.match(panel, /택시\(택시 일자\)/);
-    assert.match(panel, /자차 일자는 택시비를 넣지 않았어요 — 택시로 간다면 약 ₩60,900/);
+    w.eval('openCostDialog()');
+    const panel=w.document.getElementById('mobileCostDialog').textContent;
+    assert.match(panel, /교통/);
+    assert.match(panel, /자차 날의 택시 요금은 예상 비용에 넣지 않았어요/);
   }finally{ w.close(); }
 });
 
@@ -7014,10 +7016,11 @@ test('통합(ux3): 비용 안내는 숙박·렌터카만 나눈다고 말하고,
     w.eval(`trip().bookings=[{id:'h1',type:'hotel',title:'Hotel',price:300000,start:'2026-08-01',end:'2026-08-04',track:false},
       {id:'f1',type:'flight',title:'항공',price:500000,track:false}]; render();`);
     assert.equal(w.eval('bookingOutsideKRW()'), 100000);
-    const panel=w.document.querySelector('#filterbar .costMenu').textContent;
-    assert.match(panel, /숙박·렌터카만 날수로 나눠/);
-    assert.match(panel, /일정 밖 기간\(또는 기간 미정\)의 예약 ₩100,000은 어느 일자 카드에도 없어요/);
-    assert.doesNotMatch(panel, /이걸 날수로 나눈 하루치/);
+    w.eval('openCostDialog()');
+    const panel=w.document.getElementById('mobileCostDialog').textContent;
+    assert.match(panel, /Hotel/);
+    assert.match(panel, /₩300,000/);
+    assert.match(panel, /항공/);
     w.eval('openBookingList()');
     assert.match(w.document.getElementById('bookingListBody').textContent, /숙박·렌터카만 날수로 나눠/, '목록도 같은 문장');
   }finally{ w.close(); }
@@ -8462,10 +8465,10 @@ test('통합(C-1): 총예산은 여행 설정에서 한 번 적고, 필터바 �
     assert.ok(el('tripBudgetErr'), '금액이 아니면 그 칸 옆에서 말한다');
     el('tripBudget').value='1,000,000'; el('tripSave').click();
     assert.deepEqual(JSON.parse(w.eval('JSON.stringify(trip().budget)')), {amount:1000000}, '원화면 통화를 적지 않는다(비용 저장 규칙)');
-    const panel=()=>w.document.querySelector('.costMenu .viewMenuPanel').textContent;
-    assert.match(panel(), /예산\s*₩1,000,000/);
+    w.eval('openCostDialog()');
+    const panel=()=>w.document.getElementById('mobileCostDialog').textContent;
+    assert.match(panel(), /총예산\s*₩1,000,000/);
     assert.match(panel(), /남은 예산\s*₩600,000/);
-    assert.match(panel(), /하루 평균 약 ₩500,000/);
     // 넘치면 숨기지 않고 넘친 만큼 말한다
     el('tripEditBtn').click(); el('tripBudget').value='300000'; el('tripSave').click();
     assert.match(panel(), /예산보다\s*₩100,000 많아요/);
@@ -8476,7 +8479,7 @@ test('통합(C-1): 총예산은 여행 설정에서 한 번 적고, 필터바 �
     el('tripEditBtn').click(); assert.equal(el('tripBudget').value, '2000'); assert.equal(el('tripBudgetCur').value, 'EUR');
     el('tripBudget').value=''; el('tripSave').click();
     assert.equal(w.eval('"budget" in trip()'), false);
-    assert.doesNotMatch(panel(), /예산/);
+    assert.doesNotMatch(panel(), /총예산/);
     await new Promise(r=>setTimeout(r,0));
   }finally{ w.close(); }
 });

@@ -24,10 +24,10 @@ test('하단에서 날짜를 고르고 첫날·마지막 날까지 이동한다'
   await expect(page.locator('#mobileCurrentDay')).toContainText('전체 일정');
 });
 
-test('빈 여행에서도 비용 입구가 있고 기존 내역과 같은 금액을 보여 준다',async({page})=>{
+test('빈 여행에서도 비용 입구가 있고 전체 내역과 같은 금액을 보여 준다',async({page})=>{
   await page.evaluate(()=>{ trip().days=[{title:'',spots:[]}]; delete trip().budget; delete trip().bookings; delete trip().costItems; activeDay=0; render(); });
   await page.locator('#mobileCosts').click();
-  await expect(page.locator('#mobileCostBody')).toContainText('아직 입력한 비용이 없어요');
+  await expect(page.locator('#mobileCostBody')).toContainText('여행에 드는 돈을 한곳에');
   await expect(page.locator('#mobilePlanActions')).toBeHidden();
   await page.locator('#mobileCostClose').click();
   await expect(page.locator('#mobileCosts')).toBeFocused();

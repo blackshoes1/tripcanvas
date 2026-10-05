@@ -13,7 +13,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js" integrity="sha384-+pWnyi8LtZx+cgXfD2arWgUX7pHIaEL215cEPPk9WrsegNlgvDL9DNjaqsceQq6o" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js" integrity="sha384-BSxuMLxX+FCbTdYec3TbXlnMGEEM2QXTFdtDaveen71o+jswm2J36+xFqp8k4VHM" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.min.js" integrity="sha384-l8ah+VgaWtk1mvOe9VC+OirC6qHFF4yH7l7mKRidV9MSti3E9F463bMp6ZVN4kuC" crossorigin="anonymous"></script>
-<link rel="stylesheet" href="style.css?v=tc-v275">
+<link rel="stylesheet" href="style.css?v=tc-v278">
 </head>
 <body>
 <a class="skipLink" href="#sidebar">일정으로 건너뛰기</a>
@@ -106,10 +106,12 @@
   <div id="mobileDayList" class="mobileDayList"></div>
   <div class="row modalActions"><button type="button" class="btn" id="mobileDayClose">닫기</button></div>
 </dialog>
-<dialog id="mobileCostDialog" class="costDialog" aria-labelledby="mobileCostTitle">
-  <h2 id="mobileCostTitle">비용</h2>
-  <div id="mobileCostBody"></div>
-  <div class="row modalActions"><button type="button" class="btn" id="mobileBookings">예약·결제</button><button type="button" class="btn" id="mobileCostClose">닫기</button></div>
+<dialog id="mobileCostDialog" class="costDialog costOverviewDialog" aria-labelledby="mobileCostTitle">
+  <div class="costOverviewHead"><div><p class="eyebrow">여행 한눈에</p><h2 id="mobileCostTitle">비용</h2></div><button type="button" class="btn costClose" id="mobileCostClose" aria-label="비용 닫기">✕</button></div>
+  <div id="mobileCostBody" class="costOverviewBody"></div>
+  <div class="costOverviewFoot"><button type="button" class="btn" id="mobileBookings">예약 관리</button><button type="button" class="btn primary" id="costAdd">＋ 비용 추가</button>
+    <div id="costAddOptions" class="costAddOptions" hidden><button type="button" class="btn" id="costAddBooking">예약·미리 낸 비용</button><button type="button" class="btn" id="costAddSpend">날짜별 쓴 돈</button><div id="costDaySelect" class="costDaySelect" hidden></div></div>
+  </div>
 </dialog>
 
 <!-- 장소 추가/편집 모달: 기본 정보 + 접을 수 있는 상세 설정 -->
@@ -789,16 +791,16 @@
   <div id="placeDetailsContent" aria-live="polite"></div>
   <footer id="placeDetailsActions"></footer>
 </dialog>
-<script src="lib.js?v=tc-v275"></script>
-<script src="sync.js?v=tc-v275"></script>
-<script src="routing.js?v=tc-v275"></script>
-<script src="price.js?v=tc-v275"></script>
-<script src="j-copy.js?v=tc-v275"></script>
-<script src="adaptive.js?v=tc-v275"></script>
-<script src="intake.js?v=tc-v275"></script>
-<script src="collab.js?v=tc-v275"></script>
-<script src="api.js?v=tc-v275"></script>
-<script src="auth.js?v=tc-v275"></script>
-<script src="app.js?v=tc-v275"></script>
+<script src="lib.js?v=tc-v278"></script>
+<script src="sync.js?v=tc-v278"></script>
+<script src="routing.js?v=tc-v278"></script>
+<script src="price.js?v=tc-v278"></script>
+<script src="j-copy.js?v=tc-v278"></script>
+<script src="adaptive.js?v=tc-v278"></script>
+<script src="intake.js?v=tc-v278"></script>
+<script src="collab.js?v=tc-v278"></script>
+<script src="api.js?v=tc-v278"></script>
+<script src="auth.js?v=tc-v278"></script>
+<script src="app.js?v=tc-v278"></script>
 </body>
 </html>

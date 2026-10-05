@@ -1150,6 +1150,8 @@ struct TripCostsResponse: Codable, Sendable {
     /// 가서 쓰는 비용 — 날짜별 장소·추가 비용·교통의 합 + 일정 밖으로 넘친 연박 숙소의 몫(`unallocated`의 STAY 줄).
     /// 준비한 비용과 더하면 전체와 같다. 날짜별 줄의 합은 `TripCostsView.dayRowsTotal`이 따로 더한다.
     var onSite: TripCostGroup? = nil
+    /// 새 API의 원본 한 건씩 표시하는 목록. 옛 API에서는 기존 두 묶음으로 돌아간다.
+    var overview: TripCostOverview? = nil
     /// 여행 총예산 대비(`trip.budget`) — 예산이 없으면 nil. 예약과 현지 지출을 모두 센 전체 비용에서 뺀다(웹 필터바와 같다).
     /// ⚠️ 옛 NAS API에는 없다.
     var budget: TripBudgetStatus? = nil
@@ -1170,6 +1172,20 @@ struct TripBudgetStatus: Codable, Hashable, Sendable {
     let perDayKRW: Double?
 }
 /// 비용 한 묶음의 합계 — 원화 총액과 결제 상태별 합계. 셋을 더하면 총액과 같다.
+struct TripCostOverview: Codable, Sendable {
+    let items: [TripCostOverviewItem]
+    let unknownCount: Int
+}
+struct TripCostOverviewItem: Codable, Sendable, Identifiable {
+    let id: String
+    let line: TripCostLine
+    let bookingId: String?
+    let spotIndex: Int?
+    let date: String?
+    let end: String?
+    let reservation: String
+    let amountSource: String
+}
 struct TripCostGroup: Codable, Hashable, Sendable {
     let totalKRW: Double
     let payTotals: [String: Double]

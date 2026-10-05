@@ -958,6 +958,8 @@ export interface TripCostsResponse {
    * `prep.totalKRW + onSite.totalKRW === totalKRW`. 그래서 날짜별 `onSiteKRW`의 합과는 넘친 몫만큼 다를 수 있다.
    */
   onSite: TripCostGroup;
+  /** 원본 한 건씩 표시하는 전체 목록. 예약·연박은 총액이며 기존 날짜별 배분과 합계는 그대로다. */
+  overview: TripCostOverview;
   /**
    * 여행 총예산 대비(`trip.budget`, 2026-10-05) — 예산이 없으면 null. 예약과 현지 지출을 모두 센 `totalKRW`에서 뺀다.
    * 웹 필터바와 같은 함수(`tripBudgetStatus`)다. ⚠️ 옛 NAS API에는 없다(Swift는 옵셔널).
@@ -984,6 +986,20 @@ export interface TripBudgetStatus {
   perDayKRW: number | null;
 }
 export type TripCostLine = import('@/features/trip/domain/costTypes').CostDetails['items'][number] & { dayIndex: number | null };
+export interface TripCostOverview {
+  items: TripCostOverviewItem[];
+  unknownCount: number;
+}
+export interface TripCostOverviewItem {
+  id: string;
+  line: TripCostLine;
+  bookingId: string | null;
+  spotIndex: number | null;
+  date: string | null;
+  end: string | null;
+  reservation: 'NONE' | 'LINKED' | 'BOOKED' | 'INFO';
+  amountSource: 'BOOKING' | 'PLACE' | 'ENTRY' | 'ESTIMATE';
+}
 export interface TripCostGroup {
   totalKRW: number;
   payTotals: Record<import('@/features/trip/domain/costTypes').CostPayState, number>;
