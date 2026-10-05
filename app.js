@@ -3232,8 +3232,9 @@ document.getElementById('spotSave').onclick=()=>{
     hours:_pickedHours||undefined,lat:isNaN(lat)?undefined:lat,lng:isNaN(lng)?undefined:lng};
   const targetDay=parseInt(document.getElementById('spotDay').value);
   applySpotPriority(s, document.getElementById('spotPriority').value);   // 기본값(보통)은 저장하지 않는다
-  // 비용은 장소 비용 창의 초안에서 — 연결된 숙박 예약이 금액을 내는 숙소는 이 편집기가 비용을 고치지 않으므로 예전 값을 그대로 둔다
-  const paidByBooking=editing.si>=0&&spotPaidByBooking(trip().days[editing.di]?.spots[editing.si], tripBookings());
+  // 예약 금액이 있으면 예약이 기준이고, 미정이면 장소에 적은 금액이 기준이다.
+  const linkedBooking=editing.si>=0&&spotPaidByBooking(trip().days[editing.di]?.spots[editing.si], tripBookings());
+  const paidByBooking=linkedBooking&&+linkedBooking.price>0;
   if(!paidByBooking) SPOT_COST_KEYS.forEach(k=>{ if(_spotCostDraft[k]!=null) s[k]=_spotCostDraft[k]; });
   const isEdit=editing.si>=0;
   // 다른 날로 옮기는 편집은 되돌릴 수 있게 바꾸기 전에 찍어 둔다 — 장소가 그날 맨 뒤로 가는데 '저장했어요'뿐이었다
@@ -3247,7 +3248,7 @@ document.getElementById('spotSave').onclick=()=>{
     // 영수증 사진은 이 편집기가 다루지 않는다. 연결된 숙소의 옛 비용 칸도 그대로 물려준다(예약이 금액을 내는 동안 계산에는 안 쓴다)
     for(const key of paidByBooking? [...SPOT_COST_KEYS,'photos'] : ['photos']) if(prev[key]!=null) s[key]=prev[key];
     // 박 수는 연결된 예약 기간이 정한다(lodgingNights) — 칸이 숨어 있으니 예전 값을 그대로 둔다
-    if(paidByBooking&&lodgingNightsText(paidByBooking)) { if(prev.nights!=null) s.nights=prev.nights; else delete s.nights; }
+    if(linkedBooking&&lodgingNightsText(linkedBooking)) { if(prev.nights!=null) s.nights=prev.nights; else delete s.nights; }
     if(prev.candidateId!=null) s.candidateId=prev.candidateId;
     if(prev.carPickupId) s.carPickupId=prev.carPickupId;
     if(prev.carReturnId) s.carReturnId=prev.carReturnId;
@@ -5023,7 +5024,6 @@ const SPOT_COST_KEYS=['cost','cur','costKind','costBasis','costPeople','costPart
 /** 장소 편집기가 값을 정하는 칸 — 저장할 때 이것만 폼에서 오고 나머지는 원래 장소에서 물려준다(spotSave) */
 const SPOT_FORM_KEYS=new Set(['name','city','desc','stay','nights','at','legMode','stayMin','bookAt','bookUrl','placeId','kakaoId','cat','who','admission','hours','lat','lng','must','opt',...SPOT_COST_KEYS]);
 let _spotCostDraft={};
-let _openingPlaceAmountSource=false;
 /** 이 창이 지금 고치는 것 — 장소 편집기의 비용(초안) 또는 하루 추가 비용(day.costItems의 한 항목, 바로 저장) */
 let _costTarget={kind:'spot'};
 function spotCostDraftFrom(s){ const d={}; SPOT_COST_KEYS.forEach(k=>{ if(s&&s[k]!=null) d[k]=s[k]; }); return d; }
@@ -5044,8 +5044,10 @@ function renderSpotCostSummary(){
   const b=editingSpotBooking(), d=_spotCostDraft;
   if(b){
     const nights=lodgingNightsText(b);
-    btn.textContent=(+b.price>0? `예약 금액 ${costLabel(+b.price,b.cur)}` : '예약 금액 미정')+(nights?` · ${nights}`:'')+' — 예약에서 고치기 ›';
-    hint.textContent=(!(+b.price>0)&&d.cost!=null)? `예약에 금액을 넣기 전까지는 여기 적어 둔 ${costLabel(d.cost,d.cur)}로 계산해요` : '숙박 예약과 연결된 숙소는 예약의 금액·기간을 써요';
+    const fallback=!(+b.price>0)&&d.cost!=null;
+    btn.textContent=(fallback? `장소 금액 ${costLabel(d.cost,d.cur)}`:(+b.price>0? `예약 금액 ${costLabel(+b.price,b.cur)}`:'예약 금액 미정'))+
+      (nights?` · ${nights}`:'')+(fallback?' — 여기서 고치기 ›':' — 예약에서 고치기 ›');
+    hint.textContent=fallback? '예약에 금액을 넣기 전까지는 이 장소의 금액으로 계산해요' : '숙박 예약과 연결된 숙소는 예약의 금액·기간을 써요';
     return;
   }
   if(d.cost==null){ btn.textContent='미정 · 비용 적기 ›'; hint.textContent=''; return; }
@@ -5121,13 +5123,13 @@ function deleteDayCostItem(){
   toast(`'${it.title||'비용'}'을 지웠어요`,'#4f4740',{fn:()=>undoWith(snap)});
 }
 document.getElementById('spotCostBtn').onclick=()=>{
-  const b=editingSpotBooking();
-  if(b&&!_openingPlaceAmountSource){ openBookingModal(b.id); return; }   // 예약 편집기가 장소 편집기 위에 열린다 — 저장하면 요약이 다시 그려진다
-  const d=_spotCostDraft, name=document.getElementById('spotName').value.trim();
+  const b=editingSpotBooking(), d=_spotCostDraft;
+  if(b&&(+b.price>0||d.cost==null)){ openBookingModal(b.id); return; }   // 예약 금액이 있거나 장소 금액도 없으면 예약에서 고친다
+  const name=document.getElementById('spotName').value.trim();
   _costTarget={kind:'spot'};
   setCostDialogMode('spot');
   document.getElementById('costPlaceDelete').hidden=false;
-  document.getElementById('placeCostFor').textContent=_openingPlaceAmountSource?
+  document.getElementById('placeCostFor').textContent=b?
     `${name||'이 장소'} — 예약 금액을 입력하기 전까지 이 장소의 금액으로 계산해요`:
     `${name||'이 장소'} — 가서 쓰는 돈이라 일자 카드의 하루 비용(현지 결제 금액)에 들어가요`;
   document.getElementById('costAmount').value=d.cost==null?'':String(d.cost);
@@ -8909,9 +8911,7 @@ function openCostRow(row){
   if(line.source==='BOOKING'||line.source==='TRIP') openBookingModal(row.bookingId||line.key);
   else if(line.source==='SPOT'&&line.dayIndex!=null&&row.spotIndex!=null){
     openSpotModal(line.dayIndex,row.spotIndex);
-    _openingPlaceAmountSource=row.amountSource==='PLACE';
-    try{ document.getElementById('spotCostBtn').click(); }
-    finally{ _openingPlaceAmountSource=false; }
+    document.getElementById('spotCostBtn').click();
   }else if(line.source==='EXTRA'&&line.dayIndex!=null) openDayCostItem(line.dayIndex,line.key);
   else if(line.dayIndex!=null){ costReturn=null; setDayScope(line.dayIndex+1,()=>fitDay(line.dayIndex)); }
 }

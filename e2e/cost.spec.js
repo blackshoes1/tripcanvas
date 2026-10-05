@@ -95,6 +95,13 @@ test('예약과 비용의 같은 원본을 열고 닫으면 필터 위치가 복
   await expect(panel).toBeVisible();
   await expect(panel.getByRole('button',{name:'예약',exact:true})).toHaveAttribute('aria-pressed','true');
   await expect(panel.locator('.costOverviewItem')).toHaveCount(1);
+  await panel.locator('.costOverviewItem').click();
+  await page.locator('#costAmount').fill('95000');
+  await page.locator('#costPlaceSave').click();
+  await page.locator('#spotSave').click();
+  await expect(panel).toBeVisible();
+  await expect(panel.locator('.costOverviewItem')).toContainText('₩95,000');
+  expect(await page.evaluate(()=>trip().days[0].spots[0].cost)).toBe(95000);
 });
 
 test('일자 카드 하루 비용에 숙박·렌터카 하루치는 들어가고 항공은 들어가지 않는다',async({page})=>{
