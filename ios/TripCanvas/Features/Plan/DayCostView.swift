@@ -302,6 +302,7 @@ struct CostEntryEditor: View {
                 }
                 Section {
                     TextField(target.isBudget ? "예산 미설정" : "비용 미정", text: $amount).keyboardType(.decimalPad)
+                        .accessibilityLabel(target.isBudget ? "예산 금액" : "금액")
                     Picker("통화", selection: $entry.currency) {
                         ForEach(Currency.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                     }
@@ -312,6 +313,8 @@ struct CostEntryEditor: View {
                         if entry.basis == .perPerson { Stepper("\(entry.people)명", value: $entry.people, in: 1...100) }
                         Toggle("일부 금액만 확인했어요", isOn: $entry.isPartial)
                     }
+                } header: {
+                    Text(target.isBudget ? "예산 금액" : "금액")
                 } footer: {
                     Text("\(target.isBudget ? "비워 두면 예산 미설정, 0은 예산 0원이에요." : "비워 두면 미정, 0은 확인한 무료예요. 1인 금액이면 인원을 곱해요.") 원·엔은 정수, 달러·유로·위안은 소수 둘째 자리까지 입력해 주세요.")
                 }
@@ -346,7 +349,6 @@ struct CostEntryEditor: View {
                         Text("무엇에 썼는지 기억하려고 붙여요. 사진 자체는 올리지 않고 이 기기 사진 보관함의 위치만 기억해요 — 일행에게는 보이지 않아요.")
                     }
                 }
-                if failed { Section { Text("비용을 저장하지 못했어요. 입력 내용은 유지되어 있어요.").foregroundStyle(Ink.warning) } }
                 // 지우기는 되돌릴 수 없다 — 한 번 묻는다(2026-09-27 UX 검토). 새 항목에는 두지 않는다.
                 if !target.isBudget && !target.isNew {
                     Section { Button("항목 삭제", role: .destructive) { showsDeleteConfirm = true }.disabled(saving) }
@@ -373,13 +375,30 @@ struct CostEntryEditor: View {
                         if isDirty { showsDiscardConfirm = true } else { dismiss() }
                     }.disabled(saving)
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("저장") {
+            }
+            .safeAreaInset(edge: .bottom) {
+                VStack(spacing: Space.xs) {
+                    if failed {
+                        Text("비용을 저장하지 못했어요. 입력은 유지돼요. 다시 저장해 주세요.")
+                            .font(.caption).foregroundStyle(Ink.warning)
+                    }
+                    if target.inSpotEditor {
+                        Text("확인 후 장소를 저장해야 반영돼요.").font(.caption).foregroundStyle(Ink.soft)
+                    }
+                    Button {
                         var updated = entry
                         updated.amount = MoneyInput.amount(from: amount, currency: entry.currency)
                         Task { await save(updated) }
-                    }.disabled(!valid || saving)
+                    } label: {
+                        Text(saving ? "저장 중…" : target.inSpotEditor ? "확인" : "저장")
+                            .frame(maxWidth: .infinity, minHeight: 48)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!valid || saving || showsDeleteConfirm)
                 }
+                .padding(.horizontal, Space.l)
+                .padding(.vertical, Space.s)
+                .background(Ink.paper)
             }
             .interactiveDismissDisabled(isDirty || saving)
             .confirmationDialog("입력한 내용을 버릴까요?", isPresented: $showsDiscardConfirm, titleVisibility: .visible) {

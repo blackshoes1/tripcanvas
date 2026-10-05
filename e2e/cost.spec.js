@@ -15,21 +15,20 @@ const SEED=`(()=>{const t={id:'cost',name:'C',start:'2026-09-01',days:[
 
 test.beforeEach(async({context})=>{await prepare(context);});
 
-test('전체 비용이 필터바에 보이고, 탭하면 내역이 화면 안에 뜬다 (모바일)',async({page})=>{
+test('하단 비용 입구를 누르면 전체 비용과 내역이 화면 안에 뜬다 (모바일)',async({page})=>{
   await page.setViewportSize({width:390,height:844});
   await page.goto('/');
   await page.evaluate(SEED);
 
-  // 일자 칩이 넘쳐 가로 스크롤되는 상황에서도 총액은 오른쪽에 붙어 보인다
-  const chip=page.locator('.costMenu > summary');
-  await expect(chip).toBeVisible();
-  await expect(chip).toContainText('₩1,239,000');
+  // 일자 칩이 넘쳐 가로 스크롤되는 상황에서도 비용 입구는 하단에 남는다
+  const entry=page.locator('#mobileCosts');
+  await expect(entry).toBeVisible();
   await page.locator('#filterbar').evaluate(el=>{el.scrollLeft=0;});
-  const inView=await chip.evaluate(el=>{const r=el.getBoundingClientRect();
+  const inView=await entry.evaluate(el=>{const r=el.getBoundingClientRect();
     return r.left>=0 && r.right<=window.innerWidth+1 && r.width>0;});
   expect(inView,'가로 스크롤 위치와 무관하게 화면 안에 있어야').toBe(true);
 
-  // 일정 시트를 크게 올려도 비용 패널이 그 위에서 눌려야 한다.
+  // 일정 시트를 크게 올려도 하단 비용 입구가 눌려야 한다.
   await page.locator('#sheetHandle').click();
   await expect(page.locator('#sidebar')).toHaveAttribute('data-snap','expanded');
   await expect.poll(()=>page.evaluate(()=>{
@@ -38,15 +37,15 @@ test('전체 비용이 필터바에 보이고, 탭하면 내역이 화면 안에
     return Math.abs(sb.top-fb.bottom);
   })).toBeLessThan(2);
 
-  // 필터바가 스크롤 컨테이너라 내부 패널이 잘렸던 자리 — 내역이 온전히 보여야 한다
-  await chip.click();
-  const panel=page.locator('.costMenu .viewMenuPanel');
+  await entry.click();
+  const panel=page.locator('#mobileCostDialog');
   await expect(panel).toBeVisible();
+  await expect(panel).toContainText('₩1,239,000');
   await expect(panel).toContainText('렌터카');
   // getBoundingClientRect는 '레이아웃'이라 잘려도 그대로 나온다 → 실제로 눌리는지(히트테스트)로 본다.
   // elementFromPoint는 overflow 클리핑을 반영하므로, 필터바에 잘리면 다른 요소가 잡힌다.
   const reachable=await page.evaluate(()=>{
-    const el=document.querySelector('.costMenu .viewMenuPanel');
+    const el=document.querySelector('#mobileCostDialog');
     const rows=[...el.querySelectorAll('.costRow')];
     const last=rows[rows.length-1].getBoundingClientRect();          // 합계 줄 — 패널 맨 아래
     const hit=document.elementFromPoint(Math.round(last.left+last.width/2), Math.round(last.top+last.height/2));
