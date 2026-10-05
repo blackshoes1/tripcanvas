@@ -365,7 +365,7 @@ enum TripHomeTab: String, CaseIterable, Hashable, Sendable {
 
     var label: String {
         switch self {
-        case .today: return "여행"
+        case .today: return "지금"
         case .plan: return "일정"
         case .map: return "지도"
         case .more: return "더보기"

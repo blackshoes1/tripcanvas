@@ -1860,7 +1860,7 @@ function render(){
   syncSheetTop();   // 헤더 아래 띠(샘플·보기 권한 안내)와 필터바 높이가 정해진 뒤에 잰다
 }
 /**
- * 헤더에서 채운 버튼은 하나다 — '여행 중 안내'는 여행 기간이거나 하루 전일 때만 주 버튼이고, 그 밖에는 조용히(좁은 화면은
+ * 헤더에서 채운 버튼은 하나다 — '지금 할 일'은 여행 기간이거나 하루 전일 때만 주 버튼이고, 그 밖에는 조용히(좁은 화면은
  * 아이콘만) 둬 여행 이름이 먼저 읽히게 한다(2026-10-03 UX 검토: 3주 전에도 가장 진한 버튼이라 샘플 띠의 '내 여행 만들기'와
  * 주 버튼이 둘이었고, 375px에서 여행 이름이 '샘플 · 🇪🇸 스페인 …'으로 잘렸다). 여행 중이면 샘플 띠 버튼이 물러난다.
  * @param {any} t
@@ -1868,7 +1868,7 @@ function render(){
 function syncHeaderEmphasis(t){
   const btn=document.getElementById('travelBtn'); if(!btn||!t) return;
   const p=tripPeriodOf(t.start, t.days.length, travelClock().todayISO);
-  const label=p.phase==='BEFORE'?'여행 미리보기':p.phase==='AFTER'?'여행 돌아보기':'여행 중 안내';
+  const label=p.phase==='BEFORE'?'여행 미리보기':p.phase==='AFTER'?'여행 돌아보기':'지금 할 일';
   btn.querySelector('.travelBtnText').textContent=label;
   btn.setAttribute('aria-label',label); btn.title=label;
   const near=p.phase==='DURING' || (p.phase==='BEFORE'&&p.daysUntil<=1);
@@ -6687,7 +6687,7 @@ function renderTravel(di, clock){
   const when=clock||travelClock(), t=trip(), d=t.days[di], colors=cityColors();
   syncAdaptDay(when);   // 어제 고른 컨디션·문장은 오늘 추천에 쓰지 않는다
   const v=travelDayView(di, when), period=v.period, outside=period.phase==='BEFORE'||period.phase==='AFTER';
-  const modeTitle=v.isToday?'여행 중':period.phase==='AFTER'?`Day ${di+1} 돌아보기`:`Day ${di+1} 미리보기`;
+  const modeTitle=v.isToday?'지금 · 여행 중':period.phase==='AFTER'?`Day ${di+1} 돌아보기`:`Day ${di+1} 미리보기`;
   document.getElementById('travelModeTitle').textContent=modeTitle;
   document.getElementById('travel').setAttribute('aria-label',modeTitle);
   const intent=document.getElementById('travelIntent');

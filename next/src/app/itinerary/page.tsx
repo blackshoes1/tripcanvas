@@ -490,7 +490,7 @@ export default function ItineraryPage() {
       </div>
       {!readOnly && (
         <p className="hint">
-          여행 중이라면 <a href="/travel">여행 모드</a>에서 지금 있어야 할 곳과 다음 장소를 크게 볼 수 있어요.
+          여행 중이라면 <a href="/travel">지금</a> 화면에서 지금 있어야 할 곳과 다음 장소를 크게 볼 수 있어요.
         </p>
       )}
       <div className="itLayout">
