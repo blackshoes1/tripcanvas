@@ -172,6 +172,8 @@ struct TripListView: View {
     @State private var showsInbox = false
     @State private var inboxKey: String?
     /// 여행 만들기 시트. 앱만 설치한 사람도 여기서 시작할 수 있어야 한다.
+    @State private var showsJTone = false
+    @Environment(\.scenePhase) private var scenePhase
     @State private var showsCreateTrip = false
     /// 어느 길로 열 것인가. 빈 목록 화면의 두 버튼이 각자 자기 길로 연다.
     @State private var createStartMode: CreateTripMode = .scratch
@@ -230,6 +232,7 @@ struct TripListView: View {
                         } label: {
                             Label("초대 링크로 참여", systemImage: "link")
                         }
+                        Button("J의 말투", systemImage: "text.bubble") { showsJTone = true }
                         Button("로그아웃", role: .destructive) { env.auth.signOut() }
                     } label: {
                         Image(systemName: "person.crop.circle")
@@ -237,6 +240,10 @@ struct TripListView: View {
                     .accessibilityLabel("계정")
                 }
             }
+        }
+        .sheet(isPresented: $showsJTone) { JToneSettingsView() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { Task { await env.jTone.load() } }
         }
         .task {
             if model == nil { model = TripListViewModel(service: env.service) }

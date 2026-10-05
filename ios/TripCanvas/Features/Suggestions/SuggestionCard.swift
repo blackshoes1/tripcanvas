@@ -5,6 +5,7 @@ import SwiftUI
 struct SuggestionCard: View {
     let suggestion: TripSuggestion
     let isBusy: Bool
+    var tone: JTone = .friendly
     /// 제안이 가리키는 일정(들를 곳·숙소)이 있으면 그 자리. 수락할 수 없는 제안에도 **할 수 있는 일**을 둔다 —
     /// 예전에는 대부분의 카드에 '이번엔 건너뛰기'만 있었다(2026-09-27 UX 검토, 웹의 지도·다녀왔어요와 같게).
     var target: ActivitySummary? = nil
@@ -104,10 +105,10 @@ struct SuggestionCard: View {
 
     private var kicker: (text: String, symbol: String, tint: Color) {
         switch suggestion.type {
-        case .rest: ("쉬어도 괜찮아요", "cup.and.saucer", Ink.soft)
+        case .rest: (JCopy.text("kicker.rest", tone: tone), "cup.and.saucer", Ink.soft)
         case .priceSaving: ("예약 다시 보기", "tag", Ink.positive)
         case .replan: ("일정 조정 제안", "arrow.triangle.branch", Ink.warning)
-        case .nextActivity, .unknown: ("지금 한 곳 더 들를 수 있어요", "sparkles", Ink.info)
+        case .nextActivity, .unknown: (JCopy.text("kicker.next", tone: tone), "sparkles", Ink.info)
         }
     }
 }

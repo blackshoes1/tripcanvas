@@ -55,11 +55,12 @@
 
   /**
    * @param {string} method @param {string} path @param {any=} body
+   * @param {string|null=} fixedToken 요청을 시작한 계정의 토큰
    * @param {boolean=} anon 로그인 없이도 되는 요청인가 — 초대 미리보기는 로그인 전에 부른다(§6)
    * @returns {Promise<{data:any,error:any}>}
    */
-  async function request(method, path, body, anon) {
-    const token = await _getToken();
+  async function request(method, path, body, anon, fixedToken) {
+    const token = fixedToken === undefined ? await _getToken() : fixedToken;
     if (!token && !anon) return { data: null, error: { code: '', apiCode: 'UNAUTHORIZED', status: 401, message: '로그인이 필요해요.' } };
     const doFetch = _fetch || (typeof fetch === 'function' ? fetch : null);
     if (!doFetch) return { data: null, error: { code: '', apiCode: 'INTERNAL_ERROR', status: 0, message: '이 환경에서는 네트워크를 쓸 수 없어요.' } };
@@ -391,7 +392,11 @@
     get: (tripId) => request('GET', '/api/v1/trips/' + seg(tripId) + '/cover')
   };
 
-  const API = { configure, rpc, snapshots, prices, covers, me, sync, realtime: { connect: connectRealtime }, DEFAULT_BASE };
+  const preferences = {
+    get: () => request('GET', '/api/v1/me/preferences'),
+    set: (/** @type {string} */jTone, /** @type {string|null=} */token) => request('PUT', '/api/v1/me/preferences', {jTone}, false, token)
+  };
+  const API = { preferences, configure, rpc, snapshots, prices, covers, me, sync, realtime: { connect: connectRealtime }, DEFAULT_BASE };
   if (typeof module !== 'undefined' && module.exports) { module.exports = API; }   // Node (테스트)
   global.TC_API = API;
 })(/** @type {any} */ (typeof globalThis !== 'undefined' ? globalThis : this));

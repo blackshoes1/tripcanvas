@@ -1236,8 +1236,9 @@
    * `today`(YYYY-MM-DD)는 기존 호출 계약의 날짜 인자다. 하루치(`dayCostSummary`)와 **같은 상태**를 읽어야
    * 예약 한 줄과 그 하루치가 다른 상태를 말하지 않는다.
    * @param {any} trip @param {any[]} days @param {Record<string,number>} rates @param {string=} today
-   * @returns {{totalKRW:number,averagePerDayKRW:number|null,categories:any[],unallocated:any[],payTotals:Record<string,number>,prep:{totalKRW:number,payTotals:Record<string,number>,items:any[]},onSite:{totalKRW:number,payTotals:Record<string,number>},budget:ReturnType<typeof tripBudgetStatus>,unknownCount:number,transportUnpriced:boolean,hasForeignCurrency:boolean}} */
+   * @returns {{totalKRW:number,averagePerDayKRW:number|null,categories:any[],unallocated:any[],payTotals:Record<string,number>,prep:{totalKRW:number,payTotals:Record<string,number>,items:any[]},onSite:{totalKRW:number,payTotals:Record<string,number>},overview:{items:any[],unknownCount:number},budget:ReturnType<typeof tripBudgetStatus>,unknownCount:number,transportUnpriced:boolean,hasForeignCurrency:boolean}} */
   function tripCostSummary(trip,days,rates,today){
+    const original=trip;
     trip={...trip, days:effectiveCostDays(trip.days||[], trip.bookings)};   // 연결된 숙소의 금액은 예약이 낸다
     /** @type {any[]} */ const unallocated=[];
     /** @type {any[]} */ const prepItems=[];
@@ -1298,14 +1299,68 @@
         unknownCount:lines.filter(i=>i.state==='UNKNOWN'||i.state==='PARTIAL').length};
     });
     const totalKRW=categories.reduce((sum,c)=>sum+c.totalKRW,0);
-    const onSiteItems=[...days.flatMap(d=>d.cost.details.items.filter((/** @type {any} */ i)=>i.source!=='BOOKING')),...stayOverflow];
+    const onSiteItems=[...days.flatMap(d=>d.cost.details.items.filter((/** @type {any} */ i)=>i.source!=='BOOKING').map((/** @type {any} */ i)=>({...i,dayIndex:d.index}))),...stayOverflow];
     const prep={totalKRW:prepItems.reduce((sum,i)=>sum+(i.totalKRW||0),0),payTotals:payStateTotals(prepItems),items:prepItems};
     const onSite={totalKRW:onSiteItems.reduce((sum,i)=>sum+(i.totalKRW||0),0),payTotals:payStateTotals(onSiteItems)};
+    const overview=tripCostOverview(original,days,prepItems,onSiteItems);
     return {totalKRW,averagePerDayKRW:days.length?Math.round(totalKRW/days.length):null,categories,unallocated,
-      payTotals:payStateTotals(items),prep,onSite,budget:tripBudgetStatus(trip,totalKRW,rates),
+      payTotals:payStateTotals(items),prep,onSite,overview,budget:tripBudgetStatus(trip,totalKRW,rates),
       unknownCount:categories.reduce((sum,c)=>sum+c.unknownCount,0),
       transportUnpriced:days.some(d=>d.cost.details.transportUnpriced),
       hasForeignCurrency:items.some(i=>i.currency!=='KRW'&&i.amount!==null)};
+  }
+
+  /** 원본 한 건으로 돌아가는 전체 목록. 숙박 하루치를 합치되 기존 합계 계산은 바꾸지 않는다.
+   * @param {any} trip @param {any[]} days @param {any[]} prepItems @param {any[]} onSiteItems
+   * @returns {{items:any[],unknownCount:number}} */
+  function tripCostOverview(trip,days,prepItems,onSiteItems){
+    /** @type {Map<string,any>} */ const rows=new Map();
+    const reservations=additionalReservations(trip);
+    /** @param {string} source @param {number|null} di @param {number|null} si @param {any} item @returns {string} */
+    const reservation=(source,di,si,item)=>{
+      if(item&&normalizeAdmission(item.admission)?.personalStatus==='BOOKED') return 'BOOKED';
+      return reservations.some(r=>r.source===source&&r.dayIndex===di&&(si!==null?r.spotIndex===si:r.item===item))?'INFO':'NONE';
+    };
+    for(const line of prepItems){
+      const booking=line.source==='BOOKING'? (trip.bookings||[]).find((/** @type {any} */ b)=>b.id===line.key) : null;
+      const raw=booking||(trip.costItems||[]).find((/** @type {any} */ i)=>i.id===line.key);
+      /** @type {Record<string,string>} */ const kinds={hotel:'STAY',car:'RENT',flight:'FLIGHT'};
+      rows.set(`${line.source}:${line.key}`,{id:`${line.source}:${line.key}`,line:{...line,kind:kinds[line.kind]||line.kind},
+        bookingId:booking?booking.id:null,spotIndex:null,date:booking?.start||null,end:booking?.end||null,
+        reservation:booking?'LINKED':reservation('TRIP_COST',null,null,raw),amountSource:booking?'BOOKING':'ENTRY'});
+    }
+    for(const line of onSiteItems){
+      if(line.state==='BOOKING') continue;
+      const stay=line.source==='STAY', source=stay?'SPOT':line.source;
+      const di=stay? Number(line.key.split('.')[0]) : line.dayIndex;
+      const si=source==='SPOT'? Number(stay?line.key.split('.')[1]:line.key) : null;
+      const raw=source==='SPOT'?trip.days[di]?.spots[Number(si)] : source==='EXTRA'?trip.days[di]?.costItems?.find((/** @type {any} */ i)=>i.id===line.key):null;
+      const id=`${di}:${source}:${source==='SPOT'?si:line.key}`, existing=rows.get(id);
+      if(existing){ existing.line.totalKRW=(existing.line.totalKRW||0)+(line.totalKRW||0); continue; }
+      const bookingId=raw&&(raw.bookingId||raw.carPickupId||raw.carReturnId)||null;
+      const linked=(trip.bookings||[]).some((/** @type {any} */ b)=>b.id===bookingId);
+      const amount=source==='SPOT'?costAmountOf(raw,'cost'):line.amount;
+      const reservationState=linked?'LINKED':reservation(source==='SPOT'?'SPOT':'DAY_COST',di,si,raw);
+      // 비용을 아직 다루지 않은 일반 장소까지 '금액 미정'으로 채우면 첫 화면이 일정의 복사본이 된다.
+      if(source==='SPOT'&&amount===null&&reservationState==='NONE'&&!raw?.stay&&!raw?.costKind&&
+        !raw?.costPartial&&!raw?.payState&&!raw?.cur&&!raw?.costBasis) continue;
+      rows.set(id,{id,line:{...line,source,key:source==='SPOT'?String(si):line.key,dayIndex:di,
+          title:raw?.name||line.title,amount:source==='SPOT'?(typeof raw.cost==='number'?raw.cost:null):line.amount,
+          currency:raw?.cur||line.currency,basis:raw?.costBasis||line.basis,people:raw?.costPeople||line.people,
+          state:source==='SPOT'?(amount===null?'UNKNOWN':raw.costPartial?'PARTIAL':amount===0?'FREE':'KNOWN'):line.state},
+        bookingId:linked?bookingId:null,spotIndex:si,date:days[di]?.date||null,end:null,
+        reservation:reservationState,amountSource:source==='TRANSPORT'?'ESTIMATE':source==='SPOT'?'PLACE':'ENTRY'});
+    }
+    // 예약 금액 미정 + 장소 금액: 합계에서 제외된 예약도 장소 줄의 신원으로 남긴다.
+    for(const booking of trip.bookings||[]){
+      const id=`BOOKING:${booking.id}`;
+      if(booking.price>0||booking.type!=='hotel') continue;
+      const row=[...rows.values()].find(r=>r.line.source==='SPOT'&&r.bookingId===booking.id);
+      if(row){ rows.delete(row.id); row.id=id; row.line.title=booking.title||row.line.title;
+        row.date=booking.start||row.date; row.end=booking.end||null; rows.set(id,row); }
+    }
+    const items=[...rows.values()];
+    return {items,unknownCount:items.filter(r=>r.line.state==='UNKNOWN'||r.line.state==='PARTIAL').length};
   }
 
   /**
@@ -2408,7 +2463,7 @@
    * 웹에만 일곱 곳이었고(동기화 제외·병합·라벨·첫 방문 판정), 한 곳이라도 빠지면 데모가 계정에 올라가거나
    * 반대로 진짜 여행이 안 올라간다. `next`의 `SAMPLE_TRIP_ID`도 같은 값이다.
    */
-  const SAMPLE_TRIP_ID='spain2026', SAMPLE_TRIP_VERSION=1;
+  const SAMPLE_TRIP_ID='spain2026', SAMPLE_TRIP_VERSION=2;   // 2: 비용·예약·예산·인원 예시를 더했다(2026-10-05) — 옛 샘플은 배너의 '최신 샘플 보기'로 새 샘플을 연다
   /** 샘플 여행인가. id뿐 아니라 `sample` 표시도 본다 — 둘 중 하나면 샘플이다. @param {any} trip @returns {boolean} */
   function isSampleTrip(trip){
     return !!trip && (trip.sample===true || trip.id===SAMPLE_TRIP_ID);
@@ -2427,22 +2482,33 @@
     //  · 일몰·노을·야경이라고 적은 곳은 그 시각에 닿도록 도착을 정해 둔다(`at`). 늦가을 안달루시아·톨레도의 해는 18시 조금 넘어 진다.
     //  · 차는 메모대로 Day 4 아침 픽업 ~ Day 12 반납 사이에만 쓴다. 마드리드 시내는 대중교통, 세비야·그라나다 시내는 걷는다
     //    (그라나다 알함브라 → 산 니콜라스는 직선 700m인데 자차 경로로는 15km를 돌았다).
+    // 2026-10-05 UX 점검: 샘플에 비용·예약·예산이 하나도 없어 처음 온 사람이 그 기능들을 한 번도 볼 수 없었다.
+    // 그래서 예시를 넣는다 — 단 실제처럼 보이면 안 된다: 예약·숙소 이름에 '예시'를 밝히고 항공 편명·호텔 이름은 지어내지 않는다.
+    // 금액은 어림값이다(유로는 현지에서 쓰는 돈, 원화는 가기 전에 내는 돈). 총예산은 처음부터 초과로 보이지 않게 넉넉히 둔다.
     const TZ='Europe/Madrid';
-    /** @param {string} area @param {number} lat @param {number} lng @param {string} city @param {number} nights */
-    const lodging=(area,lat,lng,city,nights)=>({name:'숙소 (예시) · '+area,lat,lng,city,cat:'stay',stay:true,nights,
-      desc:'샘플용 예시 위치예요 — 실제 숙소로 바꾸면 다음 날 출발점과 숙소 복귀가 그 위치로 계산돼요',opt:false});
+    /** @param {string} area @param {number} lat @param {number} lng @param {string} city @param {number} nights @param {string=} bookingId 이어 둔 숙박 예약 */
+    const lodging=(area,lat,lng,city,nights,bookingId)=>Object.assign({name:'숙소 (예시) · '+area,lat,lng,city,cat:'stay',stay:true,nights,
+      desc:'샘플용 예시 위치예요 — 실제 숙소로 바꾸면 다음 날 출발점과 숙소 복귀가 그 위치로 계산돼요',opt:false},bookingId?{bookingId}:{});
     return {
       id:SAMPLE_TRIP_ID, sample:true, sampleVersion:SAMPLE_TRIP_VERSION, name:'🇪🇸 스페인 신혼여행', start:'2026-10-25',
+      people:2, budget:{amount:5000000},
+      bookings:[
+        {id:'sample-flight',type:'flight',title:'인천 ↔ 마드리드 항공 (예시)',price:2400000,payState:'PAID',paidOn:'2026-08-20',start:'2026-10-25',end:'2026-11-07',
+          segments:[{date:'2026-10-25',code:'',dep:'ICN',arr:'MAD',arrAt:'07:00'},{date:'2026-11-07',code:'',dep:'MAD',arr:'ICN',depAt:'11:00'}]},
+        {id:'sample-hotel',type:'hotel',title:'마드리드 숙소 (예시)',price:600000,payState:'RESERVED',paidOn:'2026-10-20',start:'2026-10-25',end:'2026-10-28'}
+      ],
+      costItems:[{id:'sample-insurance',title:'여행자 보험 (예시)',kind:'OTHER',amount:60000,payState:'PAID',paidOn:'2026-09-30'}],
       days:[
         {title:'마드리드 도착', drive:'', note:'07:00 착륙. 시차적응 겸 가벼운 일정. ⚽ 경기가 일요일이면 오늘 직관!', timeZone:TZ, startAt:'07:00', mode:'transit', spots:[
           {name:'바라하스 공항 (MAD)',lat:40.4720,lng:-3.5610,city:'마드리드',at:'07:00',stayMin:60,desc:'입국 심사·짐 찾기',opt:false},
           {name:'푸에르타 델 솔',lat:40.4169,lng:-3.7035,city:'마드리드',desc:'중심 광장. 곰 동상, 0km 표지',stayMin:45,opt:false},
           {name:'마요르 광장',lat:40.4155,lng:-3.7074,city:'마드리드',desc:'회랑으로 둘러싸인 광장. 카페 테라스에서 쉬어 가기 좋아요',stayMin:60,opt:false},
           {name:'메트로폴리타노 (AT마드리드)',lat:40.4362,lng:-3.5995,city:'마드리드',desc:'⚽ vs 데포르티보 (10/25 주말 확정, 킥오프 시간은 4주 전 발표 — 티켓: atleticodemadrid.com)',stayMin:150,opt:false},
-          lodging('그란 비아 근처',40.4203,-3.7058,'마드리드',3)]},
-        {title:'마드리드', drive:'', note:'⚽ 경기가 월요일이면 저녁 직관', timeZone:TZ, mode:'transit', spots:[
-          {name:'왕궁 (Palacio Real)',lat:40.4179,lng:-3.7143,city:'마드리드',desc:'관람 2~3시간. 온라인 사전예약 권장 (patrimonionacional.es)',stayMin:150,opt:false},
-          {name:'프라도 미술관',lat:40.4138,lng:-3.6921,city:'마드리드',desc:'월~토 10-20 / 일 10-19. 폐관 2시간 전 무료(줄 김)',stayMin:120,opt:false}]},
+          lodging('그란 비아 근처',40.4203,-3.7058,'마드리드',3,'sample-hotel')]},
+        {title:'마드리드', drive:'', note:'⚽ 경기가 월요일이면 저녁 직관', timeZone:TZ, mode:'transit',
+          costItems:[{id:'sample-lunch',title:'타파스 점심 (예시)',kind:'FOOD',amount:28,cur:'EUR',payState:'PAID'}], spots:[
+          {name:'왕궁 (Palacio Real)',lat:40.4179,lng:-3.7143,city:'마드리드',desc:'관람 2~3시간. 온라인 사전예약 권장 (patrimonionacional.es)',stayMin:150,opt:false,cost:13,cur:'EUR',costKind:'TICKET',payState:'RESERVED'},
+          {name:'프라도 미술관',lat:40.4138,lng:-3.6921,city:'마드리드',desc:'월~토 10-20 / 일 10-19. 폐관 2시간 전 무료(줄 김)',stayMin:120,opt:false,cost:15,cur:'EUR',costKind:'TICKET'}]},
         {title:'마드리드', drive:'', note:'그란비아 쇼핑, 못 본 곳 보충', timeZone:TZ, mode:'transit', spots:[
           {name:'레티로 공원',lat:40.4153,lng:-3.6845,city:'마드리드',desc:'수정궁, 호수 보트. 1~2시간',stayMin:90,opt:true}]},
         {title:'→ 톨레도 (1박)', drive:'🚗 마드리드 → 톨레도 · 73km · 약 50분', note:'오전 렌터카 픽업 후 출발', timeZone:TZ, mode:'car', spots:[
@@ -2454,7 +2520,7 @@
           {name:'메스키타 (코르도바)',lat:37.8789,lng:-4.7794,city:'코르도바',desc:'이슬람+가톨릭 융합 건축. 2시간 경유',stayMin:120,opt:true},
           lodging('산타 크루스',37.3860,-5.9890,'세비야',2)]},
         {title:'세비야', drive:'', note:'저녁 플라멩코 공연 추천', timeZone:TZ, mode:'walk', spots:[
-          {name:'세비야 대성당 & 히랄다',lat:37.3861,lng:-5.9926,city:'세비야',desc:'세계 최대 고딕 성당. 온라인 예매 필수 (catedraldesevilla.es)',stayMin:90,opt:false},
+          {name:'세비야 대성당 & 히랄다',lat:37.3861,lng:-5.9926,city:'세비야',desc:'세계 최대 고딕 성당. 온라인 예매 필수 (catedraldesevilla.es)',stayMin:90,opt:false,cost:12,cur:'EUR',costKind:'TICKET',payState:'RESERVED'},
           {name:'레알 알카사르',lat:37.3831,lng:-5.9903,city:'세비야',desc:'무데하르 궁전. 사전예약 권장. 2시간',stayMin:120,opt:true},
           {name:'스페인 광장',lat:37.3772,lng:-5.9869,city:'세비야',at:'17:45',desc:'대표 포토스팟. 노을+플라멩코 버스킹',stayMin:60,opt:false},
           {name:'메트로폴 파라솔',lat:37.3931,lng:-5.9916,city:'세비야',at:'19:30',desc:'목조 전망대. 야경 장소',stayMin:60,opt:true}]},
@@ -2473,7 +2539,7 @@
           {name:'그라나다 대성당',lat:37.1763,lng:-3.5986,city:'그라나다',desc:'이사벨 여왕 묘. 오후 시내 산책',stayMin:60,opt:true},
           lodging('대성당 근처',37.1750,-3.5980,'그라나다',2)]},
         {title:'그라나다 — 알함브라', drive:'', note:'예약 시간 엄수, 여권 지참', timeZone:TZ, mode:'walk', spots:[
-          {name:'알함브라 궁전',lat:37.1761,lng:-3.5881,city:'그라나다',desc:'🚨 사전예매 필수 (tickets.alhambra-patronato.es). 나스르 궁전 입장시간 지정제. 반나절',stayMin:240,opt:false},
+          {name:'알함브라 궁전',lat:37.1761,lng:-3.5881,city:'그라나다',desc:'🚨 사전예매 필수 (tickets.alhambra-patronato.es). 나스르 궁전 입장시간 지정제. 반나절',stayMin:240,opt:false,cost:19,cur:'EUR',costKind:'TICKET',payState:'RESERVED'},
           {name:'산 니콜라스 전망대',lat:37.1810,lng:-3.5927,city:'그라나다',at:'17:30',desc:'알함브라+설산 뷰. 일몰 강추 🌇',stayMin:60,opt:false}]},
         {title:'→ 마드리드 (2박)', drive:'🚗 그라나다 → 마드리드 · 420km · 약 4시간 15분', note:'오후 도착, 렌터카 반납', timeZone:TZ, mode:'car', spots:[
           lodging('그란 비아 근처',40.4203,-3.7058,'마드리드',2)]},

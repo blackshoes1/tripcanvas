@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// 비용은 **두 장부**다 — 가기 전에 내는 돈과 가서 쓰는 돈은 적는 순간이 다르다(2026-09-17).
+/// 전체 비용에서 원본 예약·장소·지출을 함께 찾는다. 옛 API에서는 두 장부를 유지한다.
 ///
 /// - **예약 결제 금액**(가계부): 여행 단위 **한 목록**. 예약(항공·숙박·렌트)이 전액 한 줄씩, 예약이 아닌 사전 지출
 ///   (보험·유심·미리 산 입장권 — `trip.costItems`)도 같은 줄 모양으로, 결제일 순으로 쌓인다(`PaymentRow`). 둘은 한 편집기로
@@ -28,6 +28,23 @@ struct TripCostsView: View {
     /// 목록에서 밀어서 결제일만 고칠 때.
     @State private var paidOnEditor: PaymentRow?
     @State private var quickSpend: QuickSpendTarget?
+    @State private var filter = OverviewFilter.all
+    @State private var showsDays = false
+    @State private var visibleCostID: String?
+    @State private var directCost: DirectCostTarget?
+
+    enum OverviewFilter: String, CaseIterable {
+        case all, reservations, other
+        var label: String { switch self { case .all: "전체"; case .reservations: "예약"; case .other: "그 외 비용" } }
+        func includes(_ item: TripCostOverviewItem) -> Bool {
+            self == .all || (self == .reservations ? item.reservation != "NONE" : item.reservation == "NONE")
+        }
+    }
+    struct DirectCostTarget: Identifiable {
+        let day: Int
+        let target: CostEditTarget
+        var id: String { "\(day):\(target.id)" }
+    }
 
     init(trip: TripSummary, memory: TripCostsMemory? = nil) {
         self.trip = trip
@@ -51,6 +68,10 @@ struct TripCostsView: View {
     private var todayIndex: Int? { trip.todayIndex >= 0 ? trip.todayIndex : nil }
 
     var body: some View {
+        Group {
+        if let overview = response?.overview {
+            overviewContent(overview)
+        } else {
         VStack(spacing: 0) {
             Picker("장부", selection: $ledger) {
                 ForEach(CostLedger.allCases, id: \.self) { Text($0.label).tag($0) }
@@ -92,12 +113,65 @@ struct TripCostsView: View {
                 }
             }
         }
+        }
+        }
         .paperGround()
         .tint(Ink.accent)
         .navigationTitle("비용")
         .navigationBarTitleDisplayMode(.inline)
         .task { await loadIfStale() }
         .refreshable { await load() }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if response?.overview != nil, canEdit {
+                Menu {
+                    Button("예약·미리 낸 비용", systemImage: "ticket") {
+                        editingRevision = snapshot?.revision ?? 0; bookingEditor = .create
+                    }
+                    Menu("날짜별 쓴 돈", systemImage: "calendar") {
+                        ForEach(response?.days ?? []) { day in
+                            Button("Day \(day.index + 1) · \(day.title)") {
+                                editingRevision = snapshot?.revision ?? 0; quickSpend = QuickSpendTarget(day: day.index)
+                            }
+                        }
+                    }
+                } label: {
+                    Label("비용 추가", systemImage: "plus").font(.body.weight(.semibold))
+                        .frame(maxWidth: .infinity, minHeight: 48)
+                }
+                .prominentButton()
+                .disabled(saving || loading || response?.revision != snapshot?.revision)
+                .padding(.horizontal, Space.l).padding(.vertical, Space.s)
+                .background(Ink.paper)
+            }
+        }
+        .sheet(item: $directCost) { target in
+            CostEntryEditor(target: target.target, onDelete: { includingSource in
+                guard case .spot(let index) = target.target.kind else { return false }
+                return await saveDocument(expected: editingRevision) {
+                    $0.deleteSpotCost(day: target.day, index: index, includingSource: includingSource)
+                }
+            }) { entry in
+                await saveDocument(expected: editingRevision) { document in
+                    var days = document.days
+                    guard days.indices.contains(target.day) else { return }
+                    switch target.target.kind {
+                    case .spot(let index):
+                        var spots = days[target.day].spots
+                        guard spots.indices.contains(index) else { return }
+                        spots[index] = entry?.applying(to: spots[index]) ?? CostEntry.clearing(spots[index])
+                        days[target.day].spots = spots
+                    case .extra(let id):
+                        var items = days[target.day].costItems
+                        if let index = items.firstIndex(where: { $0.id == id }) {
+                            if let entry { items[index] = entry } else { items.remove(at: index) }
+                        }
+                        days[target.day].costItems = items
+                    default: break
+                    }
+                    document.days = days
+                }
+            }
+        }
         .sheet(item: $editingDay) { day in
             if let snapshot, snapshot.document.hasDay(day.index) {
                 DayCostView(day: snapshot.document.days[day.index],
@@ -157,6 +231,81 @@ struct TripCostsView: View {
                         return saved ? nil : (error ?? "결제 항목을 지우지 못했어요.")
                     })
             }
+        }
+    }
+
+    private func overviewContent(_ overview: TripCostOverview) -> some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: Space.l) {
+                if let response {
+                    CostOverviewSummary(response: response)
+                        .redacted(reason: response.revision == snapshot?.revision ? [] : .placeholder)
+                        .accessibilityHidden(response.revision != snapshot?.revision)
+                }
+                if let error {
+                    InlineErrorBanner(message: error, tint: Ink.danger, compact: true) { Task { await load() } }
+                }
+                HStack(spacing: Space.s) {
+                    ForEach(OverviewFilter.allCases, id: \.self) { value in
+                        PickChip(label: value.label, isOn: filter == value) { filter = value }
+                    }
+                    Spacer(minLength: 0)
+                }
+                HStack {
+                    Text("비용 내역").font(Typeface.editorial(.title3))
+                    Spacer()
+                    Button { showsDays.toggle() } label: { Label("날짜별", systemImage: "calendar") }
+                        .font(.subheadline).frame(minHeight: 44)
+                        .accessibilityValue(showsDays ? "펼침" : "접힘")
+                }
+                if showsDays, let response {
+                    ForEach(response.days) { day in
+                        dayRow(day, revision: response.revision).padding(Space.m)
+                            .background(Ink.raised, in: RoundedRectangle(cornerRadius: Radius.card))
+                    }
+                }
+                let rows = overview.items.filter { filter.includes($0) }
+                if rows.isEmpty {
+                    VStack(alignment: .leading, spacing: Space.s) {
+                        Image(systemName: "wallet.pass").font(.title).foregroundStyle(Ink.accent)
+                        Text(filter == .all ? "여행에 드는 돈을 한곳에" : "이 묶음에 비용이 없어요").font(.headline)
+                        Text("예약과 쓴 돈을 추가하면 여기에 모여요.").font(.subheadline).foregroundStyle(Ink.soft)
+                    }.frame(maxWidth: .infinity, alignment: .leading).padding(Space.xl)
+                }
+                ForEach(rows) { item in
+                    Button { openOverviewItem(item) } label: { CostOverviewRow(item: item) }
+                        .buttonStyle(.plain)
+                        .disabled(saving || loading || response?.revision != snapshot?.revision || (!canEdit && item.line.source != "TRANSPORT"))
+                        .redacted(reason: response?.revision == snapshot?.revision ? [] : .placeholder)
+                        .accessibilityHidden(response?.revision != snapshot?.revision)
+                        .id(item.id)
+                }
+                .scrollTargetLayout()
+                if let response, response.hasForeignCurrency {
+                    Text(Self.fxNote(source: response.fxSource, asOf: response.fxAsOf))
+                        .font(.caption).foregroundStyle(Ink.soft)
+                }
+            }
+            .padding(Space.l)
+        }
+        .scrollPosition(id: $visibleCostID, anchor: .top)
+    }
+
+    private func openOverviewItem(_ item: TripCostOverviewItem) {
+        guard let snapshot else { return }
+        editingRevision = snapshot.revision
+        let line = item.line
+        if line.source == "BOOKING", let booking = snapshot.document.booking(id: item.bookingId ?? line.key) {
+            bookingEditor = .edit(booking)
+        } else if line.source == "TRIP", let entry = snapshot.document.costItems.first(where: { $0.id == line.key }) {
+            bookingEditor = .editItem(entry)
+        } else if let di = line.dayIndex, snapshot.document.hasDay(di) {
+            let day = snapshot.document.days[di]
+            if line.source == "SPOT", let si = item.spotIndex, day.spots.indices.contains(si) {
+                directCost = DirectCostTarget(day: di, target: CostEditTarget(kind: .spot(si), entry: CostEntry(spot: day.spots[si])))
+            } else if line.source == "EXTRA", let entry = day.costItems.first(where: { $0.id == line.key }) {
+                directCost = DirectCostTarget(day: di, target: CostEditTarget(kind: .extra(line.key), entry: entry))
+            } else if let costDay = response?.days.first(where: { $0.index == di }) { editingDay = costDay }
         }
     }
 
@@ -494,6 +643,7 @@ struct TripCostsView: View {
                 error = "여행 내용이 변경됐어요. 다시 불러와 주세요."; return
             }
             response = received
+            error = nil
             memory?.remember(snapshot: snapshot, response: received)
         } catch {
             guard !Task.isCancelled else { return }
@@ -516,7 +666,8 @@ struct TripCostsView: View {
         do {
             let saved = try await env.service.saveDocument(tripId: trip.id, document: draft, expectedRevision: snapshot.revision)
             self.snapshot = saved; editingRevision = saved.revision
-            response = nil; saving = false
+            if response?.overview == nil { response = nil }
+            saving = false
             await loadCosts()   // 문서는 저장 응답이 최신이다 — 계산만 다시 받는다
             return true
         } catch {

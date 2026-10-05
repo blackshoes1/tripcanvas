@@ -348,18 +348,19 @@ struct SpotEditorView: View {
         }
     }
 
-    /// 이동수단과 비용 — 본문이 커서 따로 둔다(타입 검사 시간)
+    /// 비용과 이동수단 — 본문이 커서 따로 둔다(타입 검사 시간).
+    /// 비용은 기본 영역에 둔다(2026-10-05 UX 점검) — 전에는 '이동수단·비용 설정' 접기 안이라 금액이 있어도 보이지 않았다.
+    @ViewBuilder
     private var moveCostSection: some View {
-        Section("이동·비용") {
-            DisclosureGroup("이동수단·비용 설정") {
-            Picker("이동수단", selection: $draft.legMode) {
-                Text("그날 기본").tag(TravelMode?.none)
-                ForEach(TravelMode.allCases, id: \.self) { mode in
-                    Label(mode.label, systemImage: mode.symbol).tag(TravelMode?.some(mode))
+        Section("비용") { costRow }
+        Section("이동") {
+            DisclosureGroup("이동수단") {
+                Picker("이동수단", selection: $draft.legMode) {
+                    Text("그날 기본").tag(TravelMode?.none)
+                    ForEach(TravelMode.allCases, id: \.self) { mode in
+                        Label(mode.label, systemImage: mode.symbol).tag(TravelMode?.some(mode))
+                    }
                 }
-            }
-            costRow
-
             }
         }
     }

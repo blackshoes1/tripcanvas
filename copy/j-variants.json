@@ -1,0 +1,674 @@
+{
+  "reason.saveEnergy": {
+    "sourceHash": "5ce90c23ce448ce3eb38a55a0377004613d520e59c2469a748e322a1461b4416",
+    "CASUAL": "지금은 체력을 아끼는 편이 나아",
+    "POLITE": "지금은 체력을 아끼시는 편이 낫겠습니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "reason.restHere": {
+    "sourceHash": "31d5b8497bbadb92969c042a52759bf356f7d39b5dcbceb5313ec5e91befd53e",
+    "CASUAL": "숙소 위치를 몰라 지금 있는 곳에서 쉬는 쪽을 먼저 보여줄게",
+    "POLITE": "숙소 위치를 알 수 없어 지금 계신 곳에서 쉬는 쪽을 먼저 보여 드립니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "reason.longTravel": {
+    "sourceHash": "e55e55de298db2da9ae06a66699093e19086e7e65330ce4b374a521669134a90",
+    "CASUAL": "오늘 이동이 {hours}시간을 넘었어",
+    "POLITE": "오늘 이동이 {hours}시간을 넘었습니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "reason.noRemaining": {
+    "sourceHash": "d4b5d99887380fcf67a9096a08af2644b0564aea625101188750f83dddbf71d3",
+    "CASUAL": "남은 일정이 없어 쉬어도 밀리지 않아",
+    "POLITE": "남은 일정이 없어 쉬셔도 밀리지 않습니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "reason.slack": {
+    "sourceHash": "33d705d4e625bd963d40d4186575186ccfd33c8134e2406e1fde161bceb69585",
+    "CASUAL": "{place}까지 {duration} 여유가 있어",
+    "POLITE": "{place}까지 {duration} 여유가 있습니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "reason.restDelay": {
+    "sourceHash": "8ae7b378266960f7c7ed2fe865761d0a2c049bf1b7eae6634fdbe900c4fd923c",
+    "CASUAL": "쉬는 만큼 {subject} 늦어져",
+    "POLITE": "쉬시는 만큼 {subject} 늦어집니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "reason.hotelRest": {
+    "sourceHash": "4ebf6f80826f907e4dd409da8b9c89c4a1a2496b991a3697e2a89ed076e6ecd1",
+    "CASUAL": "숙소에서 쉬었다가 이어가도 돼",
+    "POLITE": "숙소에서 쉬셨다가 이어가셔도 됩니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "reason.muchTravel": {
+    "sourceHash": "0fac1f4f580379487f04921c731d992a96f842f0c4eeda03cb2294940a8a877b",
+    "CASUAL": "오늘 이동이 많았어",
+    "POLITE": "오늘 이동이 많았습니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "reason.hotelSlack": {
+    "sourceHash": "ab62980195aae458b2f9831ddf8d367e64ab4c8139c2f44fe98490ba202be91c",
+    "CASUAL": "숙소에 들렀다 가도 {place} 시간에는 여유가 있어",
+    "POLITE": "숙소에 들렀다 가셔도 {place} 시간에는 여유가 있습니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "reason.hotelDelay": {
+    "sourceHash": "a296d632dbe4f03e58f1d7bf974d3f079d7ee5b335eafdb52f99b0871abad7d6",
+    "CASUAL": "숙소에 들르면 {subject} 늦어질 수 있어",
+    "POLITE": "숙소에 들르시면 {subject} 늦어질 수 있습니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "reason.hotelRemaining": {
+    "sourceHash": "83209238886f00ed0b81e124da1030474d0b882b254f2ce340b97e2ccddd0bab",
+    "CASUAL": "오늘 남은 일정을 숙소에서 이어가도 돼",
+    "POLITE": "오늘 남은 일정을 숙소에서 이어가셔도 됩니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "reason.hungry": {
+    "sourceHash": "94f65d115aee383d9ba2c02e1cb47c720cb88414ff14c133f6f39f1c1dd0da5f",
+    "CASUAL": "배고프다고 했지 — 식사를 먼저 챙겨보자",
+    "POLITE": "배고프다고 말씀하셨습니다 — 식사를 먼저 챙기시면 좋겠습니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "reason.lightMeal": {
+    "sourceHash": "6d5111fcb791d6956d4691b12594715d33cdc454e4b2e6199f3718a74c92f5e0",
+    "CASUAL": "{place} {time}까지 기다리기 어렵다면 가볍게 먹어도 돼",
+    "POLITE": "{place} {time}까지 기다리기 어려우시면 가볍게 드셔도 됩니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "reason.chooseMeal": {
+    "sourceHash": "8420958c5428d96224bf0fa5383e80edfd0456934146ce9b682b2723c6ad7d06",
+    "CASUAL": "먹을 곳을 골라 지금 일정에 넣을 수 있어",
+    "POLITE": "드실 곳을 골라 지금 일정에 넣으실 수 있습니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "reason.mealWindow": {
+    "sourceHash": "5a5f41348445f197f7bc748160ad2c9e3e1de37142602d3f9afc48d63e22c10f",
+    "CASUAL": "{meal} 시간대에 일정이 비어 있어",
+    "POLITE": "{meal} 시간대에 일정이 비어 있습니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "reason.mealSafe": {
+    "sourceHash": "8c343880428121c0368eb31f7054441710e78b8f9cb57a0add7cd38c7f0cf9ca",
+    "CASUAL": "이 시간에 식사를 넣으면 남은 일정이 밀리지 않아",
+    "POLITE": "이 시간에 식사를 넣으시면 남은 일정이 밀리지 않습니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "reason.open": {
+    "sourceHash": "4df2cd061426f0764e2c5613d835712504ff9cebaace9d99772d8fc4e31dfaa4",
+    "CASUAL": "도착 예정 시각에 문을 열어",
+    "POLITE": "도착 예정 시각에 문을 엽니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "reason.lively": {
+    "sourceHash": "9d3efd415dacbe20d9de3033f077fef5de9a9702417ecaf041de1ee2e91dc899",
+    "CASUAL": "컨디션이 좋을 때 오래 둘러보기 좋은 곳이야",
+    "POLITE": "컨디션이 좋으실 때 오래 둘러보기 좋은 곳입니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "reason.must": {
+    "sourceHash": "d736c1a0bd730e97e231292f6d88912bed037ff3e797879ca3395d2e097980bc",
+    "CASUAL": "꼭 가려고 표시한 곳이야",
+    "POLITE": "꼭 가시려고 표시한 곳입니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "reason.inPlan": {
+    "sourceHash": "ef1d3e93cde40d533aa9ab537e5cf406d02cefecb327f65451163a09e832132a",
+    "CASUAL": "원래 오늘 일정에 있던 곳이야",
+    "POLITE": "원래 오늘 일정에 있던 곳입니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "reason.moveDay": {
+    "sourceHash": "c7f1b1a72ded67451df5db33b9071b9f8fccba0f70e860a235d44030be2b42bf",
+    "CASUAL": "Day {day} 일정에서 옮겨올 수 있어",
+    "POLITE": "Day {day} 일정에서 옮겨오실 수 있습니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "reason.far": {
+    "sourceHash": "35d67e959a105ac8f68a2159114672385cdddbbbbd59e773c271ff871c8cb2c9",
+    "CASUAL": "다만 이동이 조금 길어",
+    "POLITE": "다만 이동이 조금 깁니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "reason.onWay": {
+    "sourceHash": "3f281080cb75ccacd7c9e1625424b02a7fdaf6a90b425fd5be9682c29cb45fcd",
+    "CASUAL": "다음 일정 {place} 가는 길에 들를 수 있어",
+    "POLITE": "다음 일정 {place} 가시는 길에 들르실 수 있습니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "reason.duration": {
+    "sourceHash": "22073a42ec6eed95508491a822eb51500c7c32bd4f471dda7e95726bba8a7684",
+    "CASUAL": "약 {duration}이면 둘러볼 수 있어",
+    "POLITE": "약 {duration}이면 둘러보실 수 있습니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "replan.late": {
+    "sourceHash": "9a5e01cc4d1c322349d41ea4957f404330d9c596e0322f63b3acadbc759330e4",
+    "CASUAL": "이대로면 {place} {time} 예약에 {duration} 늦어",
+    "POLITE": "이대로면 {place} {time} 예약에 {duration} 늦습니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "replan.dropFits": {
+    "sourceHash": "3be90848201bc89ede7508965b2706ccb38a6bec4685a3c0d6e1d6ebcbd020de",
+    "CASUAL": "{object} 빼면 {place} 예약 시간에 맞출 수 있어",
+    "POLITE": "{object} 빼시면 {place} 예약 시간에 맞추실 수 있습니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "replan.dropFitsAny": {
+    "sourceHash": "668673b4170227f4618e8812f6560a47033d9d0141b76fd3d7ef64952da83854",
+    "CASUAL": "{object} 빼면 예약 시간에 맞출 수 있어",
+    "POLITE": "{object} 빼시면 예약 시간에 맞추실 수 있습니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "replan.stillLate": {
+    "sourceHash": "95a5ebb430204dba9244ccef6f812f819d84bacfaf34d6c6d05137009018b159",
+    "CASUAL": "{object} 빼도 {duration}쯤 늦어 — 예약 시간을 바꾸거나 미리 알려 두는 편이 나아",
+    "POLITE": "{object} 빼셔도 {duration}쯤 늦습니다 — 예약 시간을 바꾸시거나 미리 알려 두시는 편이 낫겠습니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "replan.arrival": {
+    "sourceHash": "8c49f2ee5550cdbbc90eaf82ad3899023cc793aafbc92be59248377f06d6fdca",
+    "CASUAL": "남은 일정을 지금부터 이어 가면 {place}에 {time}쯤 닿아",
+    "POLITE": "남은 일정을 지금부터 이어 가시면 {place}에 {time}쯤 도착하십니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "replan.simulated": {
+    "sourceHash": "59a21a1b895d9763028ed01fbecde055bba6f372b0fa92e551e0e0adbca4efb1",
+    "CASUAL": "남은 일정을 지금부터 다시 이어 봤어",
+    "POLITE": "남은 일정을 지금부터 다시 이어 보았습니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "replan.fixed": {
+    "sourceHash": "18987a4ec645d2f4c9e734a3d22a4b718659b741f7d27b471ae5cc038114c4ca",
+    "CASUAL": "예약 시각은 그대로 지켜",
+    "POLITE": "예약 시각은 그대로 유지합니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "replan.visited": {
+    "sourceHash": "3a84cc24ac7b2f2be965d1b7b9c220c701ac02f9ac57e713d20c09ec901b7459",
+    "CASUAL": "다녀온 곳은 그대로 둬",
+    "POLITE": "다녀오신 곳은 그대로 둡니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "suggest.meal": {
+    "sourceHash": "a2e2988145a8b6daf54262ab998137cf7ae2a74f4fcfcda244ad5395b31373e3",
+    "CASUAL": "{time}부터 식사를 넣을 수 있어",
+    "POLITE": "{time}부터 식사를 넣으실 수 있습니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "suggest.restFits": {
+    "sourceHash": "1fcd63fb2668f425566454921a09d4a6ae8907eb78e90120aed2c9e73f2e0a7a",
+    "CASUAL": "지금 쉬어도 남은 일정에는 여유가 있어",
+    "POLITE": "지금 쉬셔도 남은 일정에는 여유가 있습니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "suggest.restDelays": {
+    "sourceHash": "54eb39482e80c15e1d6613a5ebd69078f0a8863e135cc70348134ba52a40923d",
+    "CASUAL": "쉬는 만큼 남은 일정이 늦어져 — 무리하지 않는 쪽이 나아",
+    "POLITE": "쉬시는 만큼 남은 일정이 늦어집니다 — 무리하지 않으시는 쪽이 낫겠습니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "replan.noneDroppable": {
+    "sourceHash": "8589090de78a3cad4add0516fe294f73ec305b6c8273f360b430280b3f3694d4",
+    "CASUAL": "{late} — 뺄 수 있는 일정이 없어. 예약 시간을 바꾸거나 미리 알려 두는 편이 나아",
+    "POLITE": "{late} — 뺄 수 있는 일정이 없습니다. 예약 시간을 바꾸시거나 미리 알려 두시는 편이 낫겠습니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "replan.moveNote": {
+    "sourceHash": "68e02055637e5085b9c95a2278b242d6a890e507f9f387de5af4069d89cab40e",
+    "CASUAL": "{topic} 다음 날 앞쪽으로 옮겨",
+    "POLITE": "{topic} 다음 날 앞쪽으로 옮깁니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "replan.skipNote": {
+    "sourceHash": "20ea5807502589cb4dc57762c2c1c15db49e5af298c986ea457491e35edac20f",
+    "CASUAL": "{topic} '건너뜀'으로 표시해",
+    "POLITE": "{topic} '건너뜀'으로 표시합니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "departure.planned": {
+    "sourceHash": "ca7c1ae1ca6adae9e1b4a1a806a192d0d5b9405b7ded711d6e49707137f644a0",
+    "CASUAL": "{time}쯤 출발하는 일정이야",
+    "POLITE": "{time}쯤 출발하는 일정입니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "departure.arrival": {
+    "sourceHash": "eb1b8ee154a7f0419a0cd7cdd57f5b6092766b4cf8eb5de0e5bff4b3b2cad2af",
+    "CASUAL": "지금 출발하면 {time} 도착이야",
+    "POLITE": "지금 출발하시면 {time} 도착입니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "departure.late": {
+    "sourceHash": "194f8259b3ca764726e0ee0d39bc968ae34de87b4b6e653378e9cf5d5e1f188e",
+    "CASUAL": "지금 출발해도 약 {duration} 늦어",
+    "POLITE": "지금 출발하셔도 약 {duration} 늦습니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "departure.slack": {
+    "sourceHash": "d46de7ec3bf442face286e3cc71950e93d4009f0048001333737f13a4165e700",
+    "CASUAL": "지금 출발하면 약 {minutes}분 여유가 있어",
+    "POLITE": "지금 출발하시면 약 {minutes}분 여유가 있습니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "departure.tight": {
+    "sourceHash": "0d3b2c95ad89079eb051774c73642ed907af8f5e2cfea0a35a154ec12fc41243",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b",
+    "CASUAL": "지금 바로 나서야 {time} 예약에 맞춰",
+    "POLITE": "지금 바로 나서셔야 {time} 예약에 맞추실 수 있습니다"
+  },
+  "departure.early": {
+    "sourceHash": "60eb7483d0bd602eb66e560a3959d063151ab8b0825c3de91f31bc07f6f43798",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b",
+    "CASUAL": "{leave}쯤 출발하면 {time} 예약에 맞춰 · 그 전까지 {duration} 여유가 있어",
+    "POLITE": "{leave}쯤 출발하시면 {time} 예약에 맞추실 수 있습니다 · 그 전까지 {duration} 여유가 있습니다"
+  },
+  "departure.risk": {
+    "sourceHash": "246fa31e14458eaa20a0ab634b8c9bc6fdf1f74711ad8b5bfc85a6b8eec31021",
+    "CASUAL": "지금 출발해도 {duration}쯤 늦어",
+    "POLITE": "지금 출발하셔도 {duration}쯤 늦습니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "departure.tell": {
+    "sourceHash": "ab845d6637f3fa9f10b8d79cd8bc18f7bbc6d34c02578e49553803d6c305f25b",
+    "CASUAL": "{late} — {place}에 미리 알려두면 좋겠어",
+    "POLITE": "{late} — {place}에 미리 알려 두시면 좋겠습니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "departure.exact": {
+    "sourceHash": "ac34650ca3beab7f2ff2f6288ccb6498dd73d4420bece8c77992f42589d29a15",
+    "CASUAL": "지금 움직이면 {time}까지 딱 맞아",
+    "POLITE": "지금 움직이시면 {time}까지 딱 맞습니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "departure.ready": {
+    "sourceHash": "948a80ccf2cd81cc8dae8e01d6f28d95eec5a76f469108640cc5e2269d5bfb2a",
+    "CASUAL": "이제 출발하면 여유 있게 도착할 수 있어 (약 {travel} 거리)",
+    "POLITE": "이제 출발하시면 여유 있게 도착하실 수 있습니다 (약 {travel} 거리)",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "departure.upcoming": {
+    "sourceHash": "e61ba6ef05fd6a54378d3968441622cfdbc7f3407969c97394514ecfed656912",
+    "CASUAL": "{time}쯤 움직이면 여유가 있어 (약 {travel} 거리, 지금부터 {slack} 남음)",
+    "POLITE": "{time}쯤 움직이시면 여유가 있습니다 (약 {travel} 거리, 지금부터 {slack} 남음)",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "pulse.noPlan": {
+    "sourceHash": "b44d1d002373858b426c99f3a56656ad181a4533590bf5915337ec75c201fc5d",
+    "CASUAL": "오늘은 정해둔 일정이 없어",
+    "POLITE": "오늘은 정해 두신 일정이 없습니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "pulse.noPlanDetail": {
+    "sourceHash": "c8fbc9b2084d02bdc95941f541b69ad14553ad80b6040fe11897c95b113891b6",
+    "CASUAL": "지금 상황에 맞는 곳을 골라 시작해도 되고, 그냥 쉬어도 괜찮아.",
+    "POLITE": "지금 상황에 맞는 곳을 골라 시작하셔도 되고, 그냥 쉬셔도 괜찮습니다.",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "pulse.complete": {
+    "sourceHash": "8c2a0fb63dea34060966a30eaa67d0541b1a5bcf1af3b426565ecb1053f461df",
+    "CASUAL": "오늘 계획한 일정은 다 마쳤어",
+    "POLITE": "오늘 계획하신 일정은 모두 마치셨습니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "pulse.completeDetail": {
+    "sourceHash": "c11099033e6ddf608bba3601d359fe8a6daacaa2681942576a1b1f0576e3117d",
+    "CASUAL": "남은 시간은 편하게 써도 돼.",
+    "POLITE": "남은 시간은 편하게 쓰셔도 됩니다.",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "pulse.attention": {
+    "sourceHash": "d405754cd4f52d4a592e34d973d7e968776b063fd267db9269da903d0ebd1025",
+    "CASUAL": "일정을 조금 손보면 좋겠어",
+    "POLITE": "일정을 조금 손보시면 좋겠습니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "pulse.deadline": {
+    "sourceHash": "f5ee75e02ba641fd747e0dcd843b84583ee92851ad323014328c7f799ea4eb1f",
+    "CASUAL": "이대로면 예약 시간을 지키기 어려워.",
+    "POLITE": "이대로면 예약 시간을 지키기 어렵습니다.",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "pulse.delayedDetail": {
+    "sourceHash": "7451634935f03d89ded35788cb8bec85fe75adc886275f3439388bf7276df7fb",
+    "CASUAL": "서두르기보다 도착 시각을 알려두는 편이 나을 수 있어.",
+    "POLITE": "서두르시기보다 도착 시각을 알려 두시는 편이 나을 수 있습니다.",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "pulse.resting": {
+    "sourceHash": "d112e232e93560a38689c09018b18fcb05c864ae63a4c2686fc3c9b59f51b9f7",
+    "CASUAL": "지금은 쉬어가는 중이야",
+    "POLITE": "지금은 쉬어가시는 중입니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "pulse.restingDetail": {
+    "sourceHash": "d09c51df416b04ece19a0e683491f9c6b1804ed85c3a27553f419dc7a1d55857",
+    "CASUAL": "무리하지 않는 선에서 이어가면 돼.",
+    "POLITE": "무리하지 않으시는 선에서 이어가시면 됩니다.",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "pulse.ahead": {
+    "sourceHash": "6fa1b73d24e9c5860436b876d61ee81397416f99534b393d6beaffc92e757f5a",
+    "CASUAL": "계획보다 앞서 가고 있어",
+    "POLITE": "계획보다 앞서 가고 계십니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "pulse.aheadDetail": {
+    "sourceHash": "85e466edc291842a7afe2a07eb2d76896876e014b4a535bc5899885b18996466",
+    "CASUAL": "다음 일정까지 여유가 있어.",
+    "POLITE": "다음 일정까지 여유가 있습니다.",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "pulse.onTrack": {
+    "sourceHash": "d216895bcdf25cdcd4ccee5d90c101b04d0c80d3b34cfae7e1f087f52a8e09f7",
+    "CASUAL": "일정대로 잘 가고 있어",
+    "POLITE": "일정대로 잘 가고 계십니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "notification.replan": {
+    "sourceHash": "958497438c76ec3cc534e32eba700faa68f219842439ae524acb8350eebb6f0c",
+    "CASUAL": "일정을 조금 손보면 어떨까",
+    "POLITE": "일정을 조금 손보시면 어떨까요",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "notification.empty": {
+    "sourceHash": "181bccdac25070b36afddfeba61d0bb83f87bcddadfe8d0b153ac6932fa6bca2",
+    "CASUAL": "지금 들르기 좋은 곳이 있어",
+    "POLITE": "지금 들르시기 좋은 곳이 있습니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "notification.price": {
+    "sourceHash": "332df3bf276ba20196045e204403c768cd3528757610e25c8ab7ceb7be7c9396",
+    "CASUAL": "같은 조건이 더 싼 곳이 있어.",
+    "POLITE": "같은 조건이 더 저렴한 곳이 있습니다.",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "pulse.lateAt": {
+    "sourceHash": "2a3cfe7b1c23360156f5355e8ffae94a55dd38dcab1df462c4666509a6453056",
+    "CASUAL": "이대로면 {place} {time} 예약에 {duration} 늦어.",
+    "POLITE": "이대로면 {place} {time} 예약에 {duration} 늦습니다.",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "pulse.late": {
+    "sourceHash": "ed2a43c8ce4d8367360232fd7da466f23ffbc359212da6796ebd4cba21ac0f3f",
+    "CASUAL": "이대로면 예약 시간에 {duration} 늦어.",
+    "POLITE": "이대로면 예약 시간에 {duration} 늦습니다.",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "pulse.delayed": {
+    "sourceHash": "d047c9613b00f2beff54702eb7a4fa87f38d613057ffe814ac0755933f721565",
+    "CASUAL": "약 {duration} 늦어지고 있어",
+    "POLITE": "약 {duration} 늦어지고 있습니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "pulse.free": {
+    "sourceHash": "db3a9bfbc4baa42bf3e0be83ed7aba3c5d6646b0c8fcd820cd486e836e39740d",
+    "CASUAL": "다음 일정까지 {duration} 여유가 있어",
+    "POLITE": "다음 일정까지 {duration} 여유가 있습니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "pulse.freeDetail": {
+    "sourceHash": "4140d9baf42dd6bade282a0738a498da0dcc1242c0f8f5252a6e2210e4b4fcff",
+    "CASUAL": "{place} {time}까지는 시간이 넉넉해.",
+    "POLITE": "{place} {time}까지는 시간이 넉넉합니다.",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "pulse.next": {
+    "sourceHash": "37e28e54fa512ff67ce5a3f9038ab2ec1e74a8ac3cbd86d022e28017468fab4d",
+    "CASUAL": "{place}까지 이어가면 돼.",
+    "POLITE": "{place}까지 이어가시면 됩니다.",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "notification.lateAt": {
+    "sourceHash": "ae8d349b3a803a6a0c97a5c6ec9d8b460bf90251d72d11aaf92b3d1eade987b8",
+    "CASUAL": "이대로면 {place} 예약에 {duration} 늦어.",
+    "POLITE": "이대로면 {place} 예약에 {duration} 늦습니다.",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "notification.late": {
+    "sourceHash": "1850e0b0dd35d5a2f7c19bdba68dce7035852077b40811ac13359f13640e65d3",
+    "CASUAL": "이대로면 예약에 {duration} 늦어.",
+    "POLITE": "이대로면 예약에 {duration} 늦습니다.",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "notification.dropLate": {
+    "sourceHash": "5c7b2dbba0d39b5456d574c00f63fe40ff1404cc7eb38182eed662e019e4735b",
+    "CASUAL": "{object} 빼도 늦어 — 예약 시간을 확인해 보면 좋겠어.",
+    "POLITE": "{object} 빼셔도 늦습니다 — 예약 시간을 확인해 보시면 좋겠습니다.",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "notification.dropFits": {
+    "sourceHash": "d717bd3abdeabeb1f7fa2be9bbc41679bea42edff16a1ff3db130aad7bdc5484",
+    "CASUAL": "{object} 빼면 예약 시간은 그대로 지킬 수 있어.",
+    "POLITE": "{object} 빼시면 예약 시간은 그대로 지키실 수 있습니다.",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "notification.check": {
+    "sourceHash": "fed3d3a9316cb0ce998416185d87f21f0b9c30bf38c3ccd4b65a1cd8a7bc9d30",
+    "CASUAL": "남은 일정을 다시 확인해 보면 좋겠어.",
+    "POLITE": "남은 일정을 다시 확인해 보시면 좋겠습니다.",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "intent.rest": {
+    "sourceHash": "ad23b8ba082ddb942196dbfbe7ed30fdf65a224004cc6f5049e089ec57add09f",
+    "CASUAL": "쉬고 싶다고 했지",
+    "POLITE": "쉬고 싶다고 말씀하셨습니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "intent.walk": {
+    "sourceHash": "a64a3cd0edf47b62ef7c37bf22e7109afadddccb8fc46ec06781d1027db06746",
+    "CASUAL": "많이 걷지 않는 쪽으로 볼게",
+    "POLITE": "많이 걷지 않는 쪽으로 살펴보겠습니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "intent.near": {
+    "sourceHash": "85916b5164e2d0b24ad8f5c3b7fa4640cec114d02c1a85e9087574d31da98905",
+    "CASUAL": "가까운 곳만 볼게",
+    "POLITE": "가까운 곳만 살펴보겠습니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "intent.energy": {
+    "sourceHash": "f035d08a054d08497552ade3121e96834a6e5db263422837d017df5f6f7d37d5",
+    "CASUAL": "컨디션이 좋다고 했지",
+    "POLITE": "컨디션이 좋다고 말씀하셨습니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "intent.meal": {
+    "sourceHash": "a4c1262539260dbac5dc937eeb5703250129976723ae4995a247b8588f953810",
+    "CASUAL": "식사를 먼저 챙길게",
+    "POLITE": "식사를 먼저 챙기겠습니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "intent.hotel": {
+    "sourceHash": "01154508f2f97fd361dc5613d0d855093720b49818c24b26f81b3422c104749f",
+    "CASUAL": "숙소로 돌아가는 쪽을 먼저 볼게",
+    "POLITE": "숙소로 돌아가시는 쪽을 먼저 살펴보겠습니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "tone.preview": {
+    "sourceHash": "715aa4ee4fe7191ba91a8e0aa38324c11add1d77ee88035beed8ecb3ab54f993",
+    "CASUAL": "많이 걸었네. 잠깐 쉬어갈까?",
+    "POLITE": "많이 걸으셨네요. 잠시 쉬어가시면 어떨까요?",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "kicker.next": {
+    "sourceHash": "31446f8624d60badc63a48b08146c14b1d34f278e066b6d9139fbed34727248a",
+    "CASUAL": "지금 한 곳 더 들를 수 있어",
+    "POLITE": "지금 한 곳 더 들르실 수 있습니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "kicker.rest": {
+    "sourceHash": "f0a2bc976aba7120b13cd96a9ec96ede24ef0fcf3224b399ec7602e7f827c5f0",
+    "CASUAL": "쉬어도 괜찮아",
+    "POLITE": "쉬셔도 괜찮습니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "flow.today": {
+    "sourceHash": "8d344b5d3432a6250ef3698486a30fdd92691f165b5cbdfc396cbed45863370f",
+    "CASUAL": "오늘 이렇게 이어가면 어떨까",
+    "POLITE": "오늘 이렇게 이어가시면 어떨까요",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "flow.preview": {
+    "sourceHash": "95c3996445a55ae0d38a2edd21c9956941f6c267b2bac07eb60b28aa8561e6a3",
+    "CASUAL": "이 날을 이렇게 채우면 어떨까",
+    "POLITE": "이 날을 이렇게 채우시면 어떨까요",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "flow.blocked": {
+    "sourceHash": "acf9dba57a0ba2fce169b0b635e27702ad93965c5f5ea084b61f1752ca886562",
+    "CASUAL": "이대로면 예약 시간에 늦어서 더 넣지 않았어 — 일정 조정 제안을 먼저 확인해 보면 좋겠어.",
+    "POLITE": "이대로면 예약 시간에 늦어 더 넣지 않았습니다 — 일정 조정 제안을 먼저 확인해 보시면 좋겠습니다.",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "flow.blockedNoCard": {
+    "sourceHash": "fab4fd8db793362cc9161b6ab6456de38a83279c0df9a13e2553fc014631d25b",
+    "CASUAL": "이대로면 예약 시간에 늦어서 더 넣지 않았어 — 예약 시간을 바꾸거나 미리 알려 두는 편이 나아.",
+    "POLITE": "이대로면 예약 시간에 늦어 더 넣지 않았습니다 — 예약 시간을 바꾸시거나 미리 알려 두시는 편이 낫겠습니다.",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "flow.empty": {
+    "sourceHash": "e530ac9f064e28550bca175052e7ddfbd02d50ffabb3c765da991529442eff3a",
+    "CASUAL": "지금 더 넣을 만한 곳이 없어 — 남은 일정을 그대로 이어가면 돼.",
+    "POLITE": "지금 더 넣을 만한 곳이 없습니다 — 남은 일정을 그대로 이어가시면 됩니다.",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "flow.light": {
+    "sourceHash": "58ed218ce059eb3bafb5879a4f9e609ca838c7f7a0a15749ef81f9e4a0c5b9c0",
+    "CASUAL": "이 날 메모가 가벼운 일정이라 한 곳만 골랐어.",
+    "POLITE": "이 날 메모가 가벼운 일정이라 한 곳만 골랐습니다.",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "flow.dismissed": {
+    "sourceHash": "66e57574cbd8a0125a8cfbfb462074095fe22f2721a386429df7044ef2d801f7",
+    "CASUAL": "알겠어 — 일정은 그대로 둘게",
+    "POLITE": "알겠습니다 — 일정은 그대로 둡니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "suggest.afterTrip": {
+    "sourceHash": "ea4c76340f422ac32301950aeba2ff47673036e7a5783562977e3b5d76adb56a",
+    "CASUAL": "지난 여행이야 — 일정을 돌아볼 수 있고, J의 제안은 여행 전과 여행 중에 해줄게.",
+    "POLITE": "지난 여행입니다 — 일정을 돌아보실 수 있고, J의 제안은 여행 전과 여행 중에 드립니다.",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "suggest.past": {
+    "sourceHash": "bd93f9e42165e9196c81915feb5012174e7d923d989bfc8fd7728c8586a2b4c1",
+    "CASUAL": "지난 날이야 — 다녀온 곳은 아래 목록에서 표시할 수 있어.",
+    "POLITE": "지난 날입니다 — 다녀오신 곳은 아래 목록에서 표시하실 수 있습니다.",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "suggest.emptyToday": {
+    "sourceHash": "24ec9f7ac5e8d7ff8ca1e2a3ed63a7848cac5bb836d2c4ba3172c6216316a370",
+    "CASUAL": "지금 새로 제안할 일정이 없어 — 오늘 남은 일정을 그대로 이어가면 돼.",
+    "POLITE": "지금 새로 제안할 일정이 없습니다 — 오늘 남은 일정을 그대로 이어가시면 됩니다.",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "suggest.emptyPreview": {
+    "sourceHash": "8308ea9bc4af97846723975d8d0c061eebac10100da768af52d7c8a3d50aa4d2",
+    "CASUAL": "이 날은 더 넣을 만한 곳이 없어 — 지금 일정 그대로 괜찮아.",
+    "POLITE": "이 날은 더 넣을 만한 곳이 없습니다 — 지금 일정 그대로 괜찮습니다.",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "intent.normal": {
+    "sourceHash": "f608b670656704346db7d3e3fe04c0cb834b04e76240c6635c95e816813efcae",
+    "CASUAL": "컨디션은 '보통'으로 보고 있어 — 다르면 아래 버튼으로 알려줘",
+    "POLITE": "컨디션은 '보통'으로 보고 있습니다 — 다르시면 아래 버튼으로 알려 주세요",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "intent.unknown": {
+    "sourceHash": "74de1dcaea0ff656e6a4abc1e007b376761196e8d541ff92fe76b28ca20dd5de",
+    "CASUAL": "그 문장은 아직 못 알아들었어 — 아래 컨디션 버튼으로 알려줘",
+    "POLITE": "그 문장은 아직 이해하지 못했습니다 — 아래 컨디션 버튼으로 알려 주세요",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "today.rest": {
+    "sourceHash": "51cdb164ae5786160f815a5c776304452e942d2141b10d08643a4e32e33248ac",
+    "CASUAL": "남은 시간은 그냥 쉬어도 좋아.",
+    "POLITE": "남은 시간은 그냥 쉬셔도 좋습니다.",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "today.before": {
+    "sourceHash": "30cead7bf539b640f7f1741b27e180d992224f85775549124b995b8f29ad6710",
+    "CASUAL": "아직 여행 전이야",
+    "POLITE": "아직 여행 전입니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "today.prepare": {
+    "sourceHash": "3db015a28ec1c25aea1ed0adaf9219d4f2037e6a1abfe19a3c05ef315e1dbd6b",
+    "CASUAL": "일정 탭에서 계획을 다듬어 두면 좋겠어.",
+    "POLITE": "일정 탭에서 계획을 다듬어 두시면 좋겠습니다.",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "suggest.emptyNext": {
+    "sourceHash": "cfd4257a273ffb7a13644eef8695bd4df306fff87d5259461404edca5659947c",
+    "CASUAL": "지금 더 넣을 만한 곳은 없어 — 다음 일정 {place}({time})로 그대로 이어가면 돼.",
+    "POLITE": "지금 더 넣을 만한 곳은 없습니다 — 다음 일정 {place}({time})로 그대로 이어가시면 됩니다.",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "intent.echo": {
+    "sourceHash": "fe4a6b6ed1e97c10a7e09c82a1065fafb33bdb7e30425c63aab6fb1caebd9f2c",
+    "CASUAL": "이렇게 이해했어 — {reasons}",
+    "POLITE": "이렇게 이해했습니다 — {reasons}",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "intent.unchanged": {
+    "sourceHash": "67b3db6683fe5be774f31edb98307efb96b579bf5e9589a3130782d2e8d1c141",
+    "CASUAL": "컨디션은 바꾸지 않았어 — 지금은 '{energy}'로 보고 있어",
+    "POLITE": "컨디션은 바꾸지 않았습니다 — 지금은 '{energy}'로 보고 있습니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "price.seller": {
+    "sourceHash": "94dc2fe44afb3cc2d1d5155748da5fb06a350286d6ceb4f9593b1a8a0d2acd34",
+    "CASUAL": "{seller}에서 같은 조건이 더 싸{fee}",
+    "POLITE": "{seller}에서 같은 조건이 더 저렴합니다{fee}",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "price.lower": {
+    "sourceHash": "09b6dafbade6d0e5c070ca085e50444f79257a259a703c1bb4082441a0fe4da4",
+    "CASUAL": "예약한 뒤 가격이 내려갔어",
+    "POLITE": "예약하신 뒤 가격이 내려갔습니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "price.net": {
+    "sourceHash": "f94ec497d98685e873c14efed66ff293b584e7f46202f3c11e9959109bc3d4a2",
+    "CASUAL": "취소 수수료를 빼고도 남는 금액이야",
+    "POLITE": "취소 수수료를 빼고도 남는 금액입니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "suggest.mealTitle": {
+    "sourceHash": "7722734cf9554253fbbc8106652d91a41cc9ac8dfd527fe0f1b86e2df2eb6158",
+    "CASUAL": "{meal} 시간이 비어 있어",
+    "POLITE": "{meal} 시간이 비어 있습니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "departure.tightArrival": {
+    "sourceHash": "66ac9309b2d2fdec85a5729fca6926862441dc129f332f589eabfae0e7b5e713",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b",
+    "CASUAL": "지금 바로 나서야 {time}에 도착해",
+    "POLITE": "지금 바로 나서셔야 {time}에 도착하십니다"
+  },
+  "departure.earlyArrival": {
+    "sourceHash": "aa356ddddb55b84fb79b684349506360a8154d345dd3251a2894c0db0e7ca01b",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b",
+    "CASUAL": "{leave}쯤 출발하면 {time}에 도착해 · 그 전까지 {duration} 여유가 있어",
+    "POLITE": "{leave}쯤 출발하시면 {time}에 도착하십니다 · 그 전까지 {duration} 여유가 있습니다"
+  },
+  "rest.accepted": {
+    "sourceHash": "47bd716f6fe302bd0fa2ea8348a58e43fb7049e141c62cdaec0952a5d11abe7e",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b",
+    "CASUAL": "쉬는 중이야 — 남은 일정은 그대로 둘게",
+    "POLITE": "쉬어가시는 중입니다 — 남은 일정은 그대로 둡니다"
+  },
+  "hotel.accepted": {
+    "sourceHash": "b725103731e8a478b205cd40338fb57332eb0f010b8a1c03dda9576f9474cc97",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b",
+    "CASUAL": "숙소로 돌아가는 중이야 — 남은 일정은 그대로 둘게",
+    "POLITE": "숙소로 돌아가시는 중입니다 — 남은 일정은 그대로 둡니다"
+  },
+  "intent.unknownNative": {
+    "sourceHash": "bcaf5174c8a2ef2bf78d479f8d280fae9b626ac35496dde690370c878f5620c1",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b",
+    "CASUAL": "그 문장은 아직 못 알아들었어 — 컨디션 버튼으로 알려줘",
+    "POLITE": "그 문장은 아직 이해하지 못했습니다 — 컨디션 버튼으로 알려 주세요"
+  }
+}

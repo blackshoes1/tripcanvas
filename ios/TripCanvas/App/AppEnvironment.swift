@@ -38,6 +38,7 @@ enum AppConfig {
 @Observable
 @MainActor
 final class AppEnvironment {
+    let jTone: JToneStore
     let auth: AuthStore
     let service: TripService
     /// Siri · Push · Widget · Watch · Share가 함께 쓰는 단 하나의 라우터(§41).
@@ -70,6 +71,17 @@ final class AppEnvironment {
                 preferences: [:], appVersion: AppConfig.version)
         }
 
+        self.jTone = JToneStore(accountID: authStore.session?.userId,
+            fetch: {
+                let scoped = APIClient(baseURL: AppConfig.apiBaseURL,
+                    tokens: JToneTokenProvider(store: authStore, accountID: authStore.session?.userId))
+                return try await scoped.get("/api/v1/me/preferences")
+            },
+            persist: { tone in
+                let scoped = APIClient(baseURL: AppConfig.apiBaseURL,
+                    tokens: JToneTokenProvider(store: authStore, accountID: authStore.session?.userId))
+                return try await scoped.put("/api/v1/me/preferences", body: ["jTone": tone.rawValue])
+            })
         self.auth = authStore
         self.service = tripService
         self.location = locationProvider
@@ -87,6 +99,8 @@ final class AppEnvironment {
         authStore.onAccountChanged = { [weak self] accountID in
             guard let self else { return }
             let previous = self.service.cacheScope?.accountID
+            self.jTone.useAccount(accountID)
+            Task { await self.jTone.load() }
             self.service.useAccount(accountID)
             SharedStore.prepare(accountID: accountID)
             self.travelMode.resetForAccountChange()
@@ -95,6 +109,11 @@ final class AppEnvironment {
             self.router.accountChanged(from: previous, to: accountID)
             DeviceIdentity.reset()
         }
+        self.jTone.onSaved = { [weak self] in
+            guard let self, self.travelMode.isActive, let id = self.travelMode.snapshot.tripId else { return }
+            Task { await self.travelMode.refresh(tripId: id, reason: .userAction) }
+        }
+        if authStore.session != nil { Task { await self.jTone.load() } }
     }
 }
 

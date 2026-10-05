@@ -2,3 +2,5 @@
 declare var module: any;
 declare var window: any;
 declare var require: any;
+
+declare var TC_J_COPY: { text(key: string, params?: Record<string,string|number>, tone?: unknown): string; normalizeTone(tone: unknown): "FRIENDLY"|"CASUAL"|"POLITE"; choices: {id:string;label:string;example:string}[] };

@@ -126,7 +126,7 @@ declare module '@legacy/lib.js' {
     taxiFareCounts(day: unknown): boolean;
     /** 자차 2km 미만을 걸어서 계산할 때의 걷는 거리(m)·분 — 아니면 null. 웹과 서버가 같은 규칙을 쓴다(2026-10-03) */
     shortWalkOption(mode: string | null | undefined, route: { m?: number | null; sec?: number | null } | null | undefined, a?: { lat: number; lng: number }, b?: { lat: number; lng: number }): { m: number; min: number } | null;
-    tripCostSummary(trip: unknown, days: unknown[], rates: Record<string, number>, today?: string): Pick<import('@/features/trip-state/domain/contract').TripCostsResponse, 'totalKRW' | 'averagePerDayKRW' | 'categories' | 'unallocated' | 'payTotals' | 'prep' | 'onSite' | 'budget' | 'unknownCount' | 'transportUnpriced' | 'hasForeignCurrency'>;
+    tripCostSummary(trip: unknown, days: unknown[], rates: Record<string, number>, today?: string): Pick<import('@/features/trip-state/domain/contract').TripCostsResponse, 'totalKRW' | 'averagePerDayKRW' | 'categories' | 'unallocated' | 'payTotals' | 'prep' | 'onSite' | 'overview' | 'budget' | 'unknownCount' | 'transportUnpriced' | 'hasForeignCurrency'>;
     dayCostSummary(trip: unknown, di: number, input: { date: string; rates: Record<string, number>; taxi: number | null; transportUnpriced: boolean; today?: string }): import('@/features/trip/domain/costTypes').DayCostSummary;
     parseHM(t: string | undefined): number;
     hm(min: number): string;
@@ -438,7 +438,7 @@ declare module '@legacy/adaptive.js' {
     moveModeTo(trip: unknown, day: unknown, loc: unknown): string;
     parseIntent(text: string): { energyLevel: EnergyLevel | null; prefs: Record<string, unknown>; reasons: string[]; understood: boolean };
     /** 문장 + 이미 고른 컨디션 → 이번 추천에 쓸 옵션. 컨디션은 문장이 말했을 때만 덮어쓰고, 조건은 문장이 통째로 정한다 */
-    resolveIntent(text: string, base?: { energyLevel?: unknown }): { energyLevel: EnergyLevel; prefs: Record<string, unknown>; reasons: string[]; understood: boolean };
+    resolveIntent(text: string, base?: { energyLevel?: unknown; jTone?: string }): { energyLevel: EnergyLevel; prefs: Record<string, unknown>; reasons: string[]; understood: boolean };
     departureAdvice(state: TripState, item: TripItem | null, travelMin: number):
       { leaveMin: number; slackMin: number; level: 'EARLY' | 'NOW' | 'LATE'; text: string } | null;
     fillGaps(trip: unknown, state: TripState, opts?: Record<string, unknown>):
@@ -447,7 +447,7 @@ declare module '@legacy/adaptive.js' {
       { blocks: { kind: string; startMin: number; endMin?: number; title: string; segment: string; afterId?: string | null; itemId?: string; pick?: NextActionCandidate }[]; picks: NextActionCandidate[]; empty: boolean; impact: SuggestionImpact };
     suggestionKey(type: string, what: string, state: TripState): string;
     /** 일정 조정에서 빼는 곳을 어떻게 하는지 한 문장(웹 미리보기·앱 카드). 뺄 것이 없으면 null */
-    replanDropNote(dropNames: string[], movesToNextDay: boolean): string | null;
+    replanDropNote(dropNames: string[], movesToNextDay: boolean, jTone?: string): string | null;
     // ── Travel State 계층 (출발 계획 · Trip Pulse · 알림 계획) ──
     SAFETY_BUFFER: Readonly<Record<string, number>>;
     NOTIFICATION_KINDS: Readonly<Record<string, string>>;
@@ -687,4 +687,15 @@ declare module '@legacy/intake.js' {
       { at: number[]; total: number; gaps: { before: number; from: string; count: number }[] };
   };
   export = api;
+}
+
+
+declare module '@legacy/j-copy.js' {
+  type JTone = 'FRIENDLY' | 'CASUAL' | 'POLITE';
+  const api: {
+    normalizeTone(tone: unknown): JTone;
+    text(key: string, params?: Record<string, string | number>, tone?: unknown): string;
+    choices: { id: JTone; label: string; example: string }[];
+  };
+  export default api;
 }

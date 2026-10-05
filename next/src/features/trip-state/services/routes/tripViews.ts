@@ -134,7 +134,7 @@ export function createTripViewsHandlers(kit: HandlerKit) {
         locationUpdatedAt: location.updatedAt,
         travelMode: url.searchParams.get('travelMode') === '1',
         suppressUntilMinutes: readMinutes(url.searchParams.get('suppressUntil')),
-        sentNotificationKeys: sentKeys
+        sentNotificationKeys: sentKeys, jTone: gateway.jTone
       });
 
       if (url.searchParams.get('markSent') === '1' && response.notifications.length) {

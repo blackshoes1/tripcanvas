@@ -1069,7 +1069,7 @@ test('출발 안내: 약속이 없는 곳에는 늦음·여유를 말하지 않�
   assert.equal(bukchon.fixedAt, null);
   const adv = A.departureAdvice(s, bukchon, 2);
   assert.equal(adv.level, 'NOW');
-  assert.equal(adv.text, '지금 출발하면 11:03 도착', '예약도 정한 시각도 없는 곳은 사실만 말한다');
+  assert.equal(adv.text, '지금 출발하면 11:03 도착이에요', '예약도 정한 시각도 없는 곳은 사실만 말한다');
   const plan = A.departurePlan(s, bukchon, 2);
   assert.equal(plan.stage, 'UPCOMING', '약속이 없는 곳 때문에 출발·지연 알림을 보내지 않는다');
   assert.equal(plan.lateByMin, 0);
