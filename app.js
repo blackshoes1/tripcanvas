@@ -3159,7 +3159,7 @@ function drawAdmission(admission){
   document.getElementById('spotAdmPeople').value=(a.people!=null? a.people : '');
   // 여행 인원은 칸을 채우지 않고 보여만 준다 — 채우면 아무것도 적지 않은 장소에 예약 정보가 생긴다. 예약 완료를 켤 때 채운다
   const tp=tripPeopleOf(trip());
-  document.getElementById('spotAdmPeople').placeholder=tp? `여행 인원 ${tp}명` : '미정';
+  document.getElementById('spotAdmPeople').placeholder=tp? `${tp}명` : '미정';   // 반 폭 칸이라 짧게 — "여행 인원 2명"은 "여행"으로 잘렸다(2026-10-05)
   document.getElementById('spotAdmUrl').value=a.officialURL||'';
   document.getElementById('spotAdmNote').value=a.note||'';
   drawAdmissionChecked();
