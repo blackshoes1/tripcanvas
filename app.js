@@ -1445,12 +1445,13 @@ window.addEventListener('resize',syncSheetTop);
       moved=true; drag.y=e.clientY;                      // 잡은 순간을 기준으로 다시 잡는다
       drag.h=sb.getBoundingClientRect().height; sb.classList.add('dragging');   // 측정 먼저 — 그래야 안 튄다
     }
-    const ceil=Math.min(innerHeight*.9, innerHeight-(sheetTopPx()||0));   // 끌어도 일자 칩 위로는 올라가지 않는다
-    sb.style.height=Math.max(innerHeight*.15,Math.min(ceil,drag.h+drag.y-e.clientY))+'px';
+    const ceil=sheetSnapPx('expanded');   // 끌어도 일자 칩 위로, 하단 바 밑으로는 가지 않는다
+    sb.style.height=Math.max(sheetSnapPx('collapsed'),Math.min(ceil,drag.h+drag.y-e.clientY))+'px';
   });
   window.addEventListener('pointerup',()=>{
-    if(!drag)return; const ratio=sb.getBoundingClientRect().height/innerHeight; drag=null; sb.classList.remove('dragging');
-    if(moved) setSheetSnap(ratio<.3?'collapsed':ratio<.68?'half':'expanded');   // 탭은 아래 click의 순환 하나로 끝난다
+    if(!drag)return; const h=sb.getBoundingClientRect().height; drag=null; sb.classList.remove('dragging');
+    // 놓은 높이에서 가장 가까운 단계로 붙는다 — 단계 높이는 하단 바 때문에 화면 비율로 고정할 수 없다. 탭은 아래 click의 순환 하나로 끝난다
+    if(moved) setSheetSnap(['collapsed','half','expanded'].reduce((best,k)=>Math.abs(h-sheetSnapPx(k))<Math.abs(h-sheetSnapPx(best))?k:best,'half'));
   });
   sb.addEventListener('click',e=>{
     // 전환 중에는 시트가 움직여 click target이 핸들이 아닐 수 있다 → 닿은 곳(downOnHandle)으로 판단한다.
@@ -1881,13 +1882,23 @@ function syncHeaderEmphasis(t){
 // 뒤였고, '지도에서 보기'는 중심을 정확히 그곳에 두고도 패널이 핀을 덮었다. 덮인 만큼을 여백에 더한다.
 /** @param {string} q */
 function mediaMatches(q){ return typeof window.matchMedia==='function' && window.matchMedia(q).matches; }
-/** 모바일 시트가 **도착할** 높이(px) — 높이는 .22s 전환하므로 지금 재면 옛 높이다. CSS의 15/60/88dvh와 같은 단계. */
+/**
+ * 모바일 시트 한 단계의 높이(px) — style.css 모바일 블록의 `#sidebar[data-snap]`와 **같은 식**이라 둘을 함께 바꾼다.
+ * 시트는 하단 동작 바 위에서 끝나므로 단계(15/60/88dvh)에서 그 바의 높이를 뺀다 — 안 빼면 시트 위 끝이 바만큼 밀려
+ * 375×812에서 지도가 38px만 보였다(2026-10-05, 바가 생기기 전에는 153px). 접힌 시트도 손잡이와 첫 줄이 보이는 높이는 남긴다.
+ * @param {string} snap 'collapsed'|'half'|'expanded' @returns {number}
+ */
+function sheetSnapPx(snap){
+  const vh=window.innerHeight, actions=document.getElementById('mobilePlanActions')?.getBoundingClientRect().height||0;
+  const room=vh-(sheetTopPx()||vh*.12)-actions;   // 일자 칩 아래 ~ 하단 바 위
+  if(snap==='collapsed') return Math.max(72,vh*.15-actions);
+  if(snap==='expanded') return Math.min(room,vh*.88);
+  return Math.min(room,Math.max(120,vh*.6-actions));
+}
+/** 모바일 시트가 **도착할** 높이(px) — 높이는 .22s 전환하므로 지금 재면 옛 높이다. */
 function sheetHeightPx(sb){
   if(sb.style.height) return parseFloat(sb.style.height)||0;   // 끄는 중
-  const vh=window.innerHeight, snap=sb.dataset.snap||'half';
-  const actions=document.getElementById('mobilePlanActions')?.getBoundingClientRect().height||0;
-  const max=vh-(sheetTopPx()||vh*.12)-actions;
-  return Math.min(max,vh*(snap==='collapsed'? .15 : snap==='expanded'? .88 : .6));
+  return sheetSnapPx(sb.dataset.snap||'half');
 }
 function mapEl(){ return document.getElementById(engine==='kakao'?'kmap':'map'); }
 /** 지도 각 변이 무엇에 얼마나(px) 덮였는가 — 모바일 일정 시트와 열린 장소 정보 패널 */
@@ -8669,7 +8680,9 @@ function initAccessibility(){
     const top=topModal();
     document.querySelectorAll('.modalBg').forEach(m=>{ if(m.classList.contains('show')&&m!==top) m.setAttribute('inert',''); else m.removeAttribute('inert'); });
   };
-  const focusable='button:not([disabled]),[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+  // summary도 Tab이 닿는 칸이다(접기 머리). 접힌 details 안의 칸은 눈에는 안 보이는데 rect가 남아 있어 따로 거른다(2026-10-05)
+  const focusable='button:not([disabled]),[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),summary,[tabindex]:not([tabindex="-1"])';
+  const inClosedDetails=el=>{ const d=el.closest('details:not([open])'); return !!d&&!(el.tagName==='SUMMARY'&&el.parentElement===d); };
   function enhance(root){
     const nodes=[];
     if(root.nodeType===1) nodes.push(root);
@@ -8752,10 +8765,12 @@ function initAccessibility(){
       return;
     }
     if(e.key!=='Tab') return;
-    const items=Array.from(bg.querySelectorAll(focusable)).filter(el=>el.getClientRects().length && !el.closest('[hidden],[inert]')); if(!items.length){ e.preventDefault(); return; }
-    const first=items[0],last=items[items.length-1];
-    // 제목(tabindex=-1)에서 시작한 화면도 Tab은 첫 버튼, Shift+Tab은 마지막으로 보낸다
-    if(!items.includes(document.activeElement)){ e.preventDefault(); (e.shiftKey?last:first).focus(); return; }
+    const items=Array.from(bg.querySelectorAll(focusable)).filter(el=>el.getClientRects().length && !el.closest('[hidden],[inert]') && !inClosedDetails(el)); if(!items.length){ e.preventDefault(); return; }
+    const first=items[0],last=items[items.length-1], active=document.activeElement;
+    // 처음 화면과, 제목(tabindex=-1)에서 시작한 창은 Tab이 첫 칸, Shift+Tab이 마지막 칸으로 간다.
+    // ⚠️ 그 밖에는 브라우저 순서에 맡긴다 — 목록에 없는 칸(예: 접기 머리)에서 첫 칸으로 되돌리면 Tab이 거기서 멈춘다(2026-10-05)
+    const fromTitle=!!active&&bg.contains(active)&&active.matches('[tabindex="-1"]');
+    if((bg===onboarding&&!items.includes(active))||fromTitle){ e.preventDefault(); (e.shiftKey?last:first).focus(); return; }
     if(e.shiftKey&&document.activeElement===first){ e.preventDefault(); last.focus(); }
     else if(!e.shiftKey&&document.activeElement===last){ e.preventDefault(); first.focus(); }
   });

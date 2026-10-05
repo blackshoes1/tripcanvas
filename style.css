@@ -896,6 +896,9 @@ span.dayItem{cursor:default}
   #mobilePlanActions .btn,.mobileDayList .btn{min-height:48px}
   #mobilePlanActions .btn:disabled{opacity:.45}
   #sidebar{bottom:var(--mobile-actions-height,114px);max-height:calc(100dvh - var(--sheet-top,12dvh) - var(--mobile-actions-height,114px))}
+  /* 세 단계 모두 하단 바 위에서 끝난다 — app.js `sheetSnapPx`와 같은 식(바가 없던 때의 15/60/88dvh에서 바 높이를 뺀다) */
+  #sidebar[data-snap="collapsed"]{height:max(72px,calc(15dvh - var(--mobile-actions-height,114px)))}
+  #sidebar[data-snap="half"]{height:max(120px,calc(60dvh - var(--mobile-actions-height,114px)))}
   #sidebar[data-snap="expanded"]{height:min(88dvh,calc(100dvh - var(--sheet-top,12dvh) - var(--mobile-actions-height,114px)))}
   #filterbar .costMenu{display:none}
   body:has(.modalBg.show) #mobilePlanActions,body:has(dialog[open]) #mobilePlanActions,body:has(#travel.show) #mobilePlanActions,body:has(#placeDetails[open]) #mobilePlanActions,body:has(#onboarding:not([hidden])) #mobilePlanActions,body.playing #mobilePlanActions{visibility:hidden;pointer-events:none}
