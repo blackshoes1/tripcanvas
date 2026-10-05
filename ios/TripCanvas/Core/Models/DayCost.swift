@@ -130,6 +130,7 @@ enum MoneyInput {
 enum CostCategory: String, CaseIterable {
     case flight = "FLIGHT", stay = "STAY", rent = "RENT", transit = "TRANSIT"
     case food = "FOOD", shopping = "SHOPPING", ticket = "TICKET", transport = "TRANSPORT", other = "OTHER"
+    var isTransportFare: Bool { self == .flight || self == .transit || self == .transport }
     var label: String {
         switch self {
         case .flight: "항공"

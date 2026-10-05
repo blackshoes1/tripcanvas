@@ -361,11 +361,12 @@ struct BookingEditorView: View {
 
     private var scheduleSection: some View {
         Section {
-            DateField(title: "사용할 날짜", text: $scheduledOn) { Date() }
+            DateField(title: kind.isTransportFare ? "출발 날짜" : "사용할 날짜", text: $scheduledOn) { Date() }
         } header: {
             Text("일정")
         } footer: {
-            Text("날짜를 고르면 그날의 하루 비용에도 표시해요. 결제일과는 달라요.")
+            Text(kind.isTransportFare ? "출발하는 날의 하루 비용에 한 번만 표시해요. 도착일에는 다시 적지 않아요." :
+                "날짜를 고르면 그날의 하루 비용에도 표시해요. 결제일과는 달라요.")
         }
     }
 

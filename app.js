@@ -2562,7 +2562,8 @@ function renderSidebar(){
       if(s.cost&&!(paidBk&&+paidBk.price>0)){
         const cu=CUR[s.cur], nk=cu&&s.cur!=='KRW', total=costAmountOf(s,'cost')??s.cost;
         const short=(/**@type{number}*/n,/**@type{string|undefined}*/c)=>nk?`${cu.sym}${fmtMoney(n,c)}`:`₩${fmtMoney(n)}`;
-        meta.push(`<span class="spotMetaItem cost"${nk?` title="${costLabel(total,s.cur)}"`:''}>💳 ${esc(costWithPeople(s,'cost',short))}</span>`);
+        const fare=transportFareKind(costCategoryOf(s));
+        meta.push(`<span class="spotMetaItem cost"${nk?` title="${costLabel(total,s.cur)}"`:''}>💳 ${fare?'출발 교통비 ':''}${esc(costWithPeople(s,'cost',short))}</span>`);
         if(nk) meta.push(`<span class="spotMetaItem cost costConverted" aria-label="원화 환산 약 ${fmtMoney(toKRW(total,s.cur))}원">약 ₩${fmtMoney(toKRW(total,s.cur))}</span>`);
       }
       if(s.bookAt){
@@ -3566,6 +3567,7 @@ function setSpotCat(cat){
   document.getElementById('spotStay').checked = (cat==='stay');
   syncStayRow();
   syncAdmissionBox();
+  if(document.getElementById('spotModalBg').classList.contains('show')) renderSpotCostSummary();
 }
 document.getElementById('spotStay').onchange=syncStayRow;
 document.getElementById('spotCat').addEventListener('change',e=>setSpotCat(e.target.value));
@@ -4397,7 +4399,8 @@ function renderBookingList(){
   const basisLine=`<div class="hint" style="margin:0 0 8px">${esc(bookingBasisHint())}</div>`;
   document.getElementById('bookingListBody').innerHTML = totalLine + paidLine + (rows.length? basisLine:'') + (rows.length? rows.map(r=>{
     const b=r.booking, period=b? esc(bookingPeriodText(b)) : '';
-    const sub=[period||(!b?'': '일정 날짜 미정'), !b?(r.scheduledOn?`일정 ${esc(mdLabel(r.scheduledOn)||r.scheduledOn)}`:'일정 날짜 미정'):'', b&&b.provider?esc(b.provider):'', COST_KIND[r.kind].name, costLabel(r.amount,r.cur), payStateNote(r.payState), r.paidOn?`${r.payState==='PAID'?'결제일':r.payState==='RESERVED'?'결제 예정일':'결제(예정)일'} ${esc(mdLabel(r.paidOn)||r.paidOn)}`:'', r.photos?`📎 사진 ${r.photos}장`:''].filter(Boolean).join(' · ');
+    const scheduleWord=transportFareKind(r.kind)?'출발':'일정';
+    const sub=[period||(!b?'': '일정 날짜 미정'), !b?(r.scheduledOn?`${scheduleWord} ${esc(mdLabel(r.scheduledOn)||r.scheduledOn)}`:`${scheduleWord} 날짜 미정`):'', b&&b.provider?esc(b.provider):'', COST_KIND[r.kind].name, costLabel(r.amount,r.cur), payStateNote(r.payState), r.paidOn?`${r.payState==='PAID'?'결제일':r.payState==='RESERVED'?'결제 예정일':'결제(예정)일'} ${esc(mdLabel(r.paidOn)||r.paidOn)}`:'', r.photos?`📎 사진 ${r.photos}장`:''].filter(Boolean).join(' · ');
     return `<div class="tripRow pxRow" onclick="openBookingModal('${escAttr(r.id)}')" title="${b?'탭해서 상세·판매처 비교·가격 기록 보기':'탭해서 편집'}">
       <span class="tn">${COST_KIND[r.kind].icon} ${esc(r.title)}<span class="opt">${sub}</span></span>
       ${b?bookingBadgeHtml(b):''}
@@ -4595,6 +4598,11 @@ function toggleBkFields(){
   // 예약이 아닌 결제 항목(보험·유심·입장권…)에는 예약처·기간·취소 조건·링크·추적이 없다
   ['bkProviderWrap','bkPeriodWrap','bkBookingExtra','bkStatus'].forEach(id=>{ document.getElementById(id).style.display = booking?'':'none'; });
   document.getElementById('bkScheduledWrap').hidden=booking;
+  const fare=transportFareKind(document.getElementById('bkType').value);
+  document.getElementById('bkScheduledLabel').textContent=fare?'출발 날짜 (선택)':'일정 날짜 (선택)';
+  document.getElementById('bkScheduledHint').textContent=fare?
+    '출발하는 날의 하루 비용에 한 번만 표시해요. 도착일에는 다시 적지 않아요.' :
+    '이 날짜의 하루 비용에도 표시해요. 결제일과는 달라요.';
   // 항공은 기간 대신 구간이다 — 날짜는 구간이 정한다(첫 구간 = 시작, 마지막 구간 = 끝)
   document.getElementById('bkFlightFields').hidden = type!=='flight';
   if(type==='flight'){ document.getElementById('bkPeriodWrap').style.display='none'; if(!document.querySelector('#bkSegments .segRow')) drawSegments([]); }
@@ -5126,6 +5134,9 @@ function lodgingNightsText(b){
 function renderSpotCostSummary(){
   const btn=document.getElementById('spotCostBtn'), hint=document.getElementById('costKrwHint'); if(!btn) return;
   const b=editingSpotBooking(), d=_spotCostDraft;
+  const fare=!b&&transportFareKind(d.costKind||costCategoryOf({cat:document.getElementById('spotCat').value||undefined,
+    stay:document.getElementById('spotStay').checked}));
+  document.getElementById('spotCostLabel').textContent=fare?'출발 교통비':'비용';
   if(b){
     const nights=lodgingNightsText(b);
     const fallback=!(+b.price>0)&&d.cost!=null;
@@ -5134,14 +5145,16 @@ function renderSpotCostSummary(){
     hint.textContent=fallback? '예약에 금액을 넣기 전까지는 이 장소의 금액으로 계산해요' : '숙박 예약과 연결된 숙소는 예약의 금액·기간을 써요';
     return;
   }
-  if(d.cost==null){ btn.textContent='미정 · 비용 적기 ›'; hint.textContent=''; return; }
+  if(d.cost==null){ btn.textContent=fare?'미정 · 출발 교통비 적기 ›':'미정 · 비용 적기 ›';
+    hint.textContent=fare?'이곳에서 출발하는 구간 요금이에요 · 도착지에 다시 적지 않아요':''; return; }
   // 요약은 원래 통화로만 — 원화 환산은 아래 한 줄이 말한다(한 줄에 둘이면 '€15 ≈ ₩22,760 × 2명 = …'처럼 읽히지 않았다)
   const short=(n,c)=>(c&&c!=='KRW'&&CUR[c])? `${CUR[c].sym}${fmtMoney(n,c)}` : `₩${fmtMoney(n)}`;
   const parts=[costWithPeople(d,'cost',short)];
   const st=costPayStateOf(d,'SPOT');
   if(st!=='NONE') parts.push(PAY_STATE_LABEL[st]);
   btn.textContent=parts.join(' · ')+' ›';
-  hint.textContent=(d.cur&&d.cur!=='KRW'&&CUR[d.cur])? `≈ ₩${fmtMoney(toKRW(costAmountOf(d,'cost')??d.cost,d.cur))}` : '';
+  hint.textContent=(fare?'이곳에서 출발하는 구간 요금 · 도착지에 다시 적지 않아요':'')+
+    ((d.cur&&d.cur!=='KRW'&&CUR[d.cur])? ` · ≈ ₩${fmtMoney(toKRW(costAmountOf(d,'cost')??d.cost,d.cur))}` : '');
 }
 /** 장소 비용(초안)과 하루 추가 비용은 같은 창을 쓴다 — 하루 비용에는 '뭐에 썼나요'가 있다 */
 function setCostDialogMode(kind){
@@ -5226,6 +5239,8 @@ document.getElementById('spotCostBtn').onclick=()=>{
   _derivedCostKind=d.costKind? null : costCategoryOf({cat:document.getElementById('spotCat').value||undefined, stay:document.getElementById('spotStay').checked});
   document.getElementById('costKind').value=d.costKind||_derivedCostKind;
   syncCostKindHint();
+  if(transportFareKind(document.getElementById('costKind').value))
+    document.getElementById('placeCostFor').textContent=`${name||'이 장소'}에서 다음 장소로 출발하는 구간의 요금이에요. 도착지에 다시 적지 않아요.`;
   document.getElementById('costPayState').value=COST_PAY_STATES.includes(d.payState)? d.payState : 'NONE';
   document.getElementById('costPaidOn').value=d.paidOn||'';
   const sp=(editing&&editing.si>=0)? trip().days[editing.di]?.spots[editing.si] : null;
@@ -5238,7 +5253,10 @@ document.getElementById('spotCostBtn').onclick=()=>{
 let _derivedCostKind=null;
 function syncCostKindHint(){
   const same=_derivedCostKind!=null && document.getElementById('costKind').value===_derivedCostKind;
-  document.getElementById('costKindHint').textContent=same? '장소 종류에 맞춰 골랐어요 — 그대로 두면 종류를 바꿀 때 함께 바뀌어요' : '';
+  const fare=_costTarget.kind==='spot'&&transportFareKind(document.getElementById('costKind').value);
+  document.getElementById('costKindHint').textContent=fare? '이곳에서 출발하는 구간의 요금이에요. 도착 장소에는 다시 적지 않아요.' :
+    same? '장소 종류에 맞춰 골랐어요 — 그대로 두면 종류를 바꿀 때 함께 바뀌어요' : '';
+  if(_costTarget.kind==='spot') document.getElementById('placeCostTitle').textContent=fare?'출발 교통비':'장소 비용';
 }
 // 분류 목록은 COST_CATEGORIES(lib) 순서·COST_KIND 이름 하나에서 — iOS CostCategory와 같다(cost-labels 픽스처)
 (function(){ const sel=document.getElementById('costKind'); if(!sel) return;

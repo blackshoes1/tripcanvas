@@ -373,7 +373,7 @@ struct TripCostsView: View {
             [booking.start, booking.end].compactMap { $0 }.map { TimeFormat.dayChipLabel($0) ?? $0 }.joined(separator: " ~ ")
         } ?? ""
         let paidOnLabel = row.paidOn.map { "결제일 \(TimeFormat.dayChipLabel($0) ?? $0)" } ?? ""
-        let scheduleLabel = row.item?.scheduledOn.map { "일정 \(TimeFormat.dayChipLabel($0) ?? $0)" } ?? ""
+        let scheduleLabel = row.item?.scheduledOn.map { "\(row.kind.isTransportFare ? "출발" : "일정") \(TimeFormat.dayChipLabel($0) ?? $0)" } ?? ""
         return Button {
             guard let snapshot else { return }
             editingRevision = snapshot.revision

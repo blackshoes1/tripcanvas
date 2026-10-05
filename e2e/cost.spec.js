@@ -116,6 +116,32 @@ test('일자 카드에는 숙박·렌터카 하루치와 첫 출발일 항공 �
   await expect(page.locator('.costChip')).toContainText('₩1,239,000');
 });
 
+test('출발 장소에 적은 교통비는 모바일 일정과 비용 화면에서 출발지 한 건으로 보인다',async({page})=>{
+  await page.setViewportSize({width:375,height:812});
+  await page.goto('/'); await page.evaluate(SEED);
+  await page.evaluate(()=>{
+    const t=trip();
+    t.bookings=[]; t.days=[
+      {title:'출발',mode:'taxi',spots:[{name:'서울역',cat:'transport',city:'서울',lat:37.55,lng:126.97},
+        {name:'공항',cat:'transport',city:'인천',lat:37.46,lng:126.44}]},
+      {title:'도착',mode:'walk',spots:[{name:'호텔',city:'인천',lat:37.45,lng:126.45}]}
+    ];
+    render(); openSpotModal(0,0);
+  });
+  await expect(page.locator('#spotCostLabel')).toHaveText('출발 교통비');
+  await page.locator('#spotCostBtn').click();
+  await expect(page.locator('#placeCostTitle')).toHaveText('출발 교통비');
+  await page.locator('#costAmount').fill('12000');
+  await page.locator('#costPlaceSave').click();
+  await page.locator('#spotSave').click();
+  await expect(page.locator('.dayCard').first()).toContainText('출발 교통비 ₩12,000');
+  await expect(page.locator('.dayCard').nth(1)).not.toContainText('출발 교통비');
+  await page.locator('#mobileCosts').click();
+  await expect(page.locator('#mobileCostDialog')).toContainText('서울역에서 출발');
+  await expect(page.locator('#mobileCostDialog')).toContainText('₩12,000');
+  expect(await page.evaluate(()=>trip().days[1].spots[0].cost)).toBeUndefined();
+});
+
 test('보기 설정 패널도 모바일 필터바에 잘리지 않는다',async({page})=>{
   await page.setViewportSize({width:390,height:844});
   await page.goto('/');

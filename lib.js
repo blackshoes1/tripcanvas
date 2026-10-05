@@ -1126,15 +1126,16 @@
     shares.carried.forEach(c=>{ sum+=krw(c.amount,c.cur); });
     return sum;
   }
-  /** 수동 교통비는 하루 교통비 전체를 대신한다 — 자동 추정과 이중 합산하지 않는다.
+  /** 출발 장소 또는 하루 항목의 수동 교통비는 하루 자동 추정을 대신한다 — 이중 합산하지 않는다.
    * @param {any} day @returns {boolean} */
   function hasManualTransportCost(day){
-    return (day.costItems||[]).some((/**@type{any}*/item)=>['TRANSPORT','TRANSIT'].includes(item.kind));
+    return (day.costItems||[]).some((/**@type{any}*/item)=>transportFareKind(item.kind)) ||
+      (day.spots||[]).some((/**@type{any}*/spot)=>costAmountOf(spot,'cost')!==null&&transportFareKind(costCategoryOf(spot)));
   }
   /** 택시비 추정을 하루 비용에 넣는 날인가 — **그날 기본 수단이 택시일 때만**(2026-10-03).
    * 자차·렌터카 날에도 경로 조회가 택시 요금을 돌려주지만 그 돈은 내지 않는다 — 넣으면 비용을 하나도 적지 않은
    * 자차 여행의 머리 숫자가 택시비가 됐다. 자차 날의 추정은 '택시로 간다면'이라는 참고로만 보인다.
-   * 수동 교통비가 있으면 그게 하루 교통비 전체를 대신한다(`hasManualTransportCost`).
+   * 출발 장소 또는 하루 항목에 수동 교통비가 있으면 그게 하루 자동 추정을 대신한다(`hasManualTransportCost`).
    * 웹 일자 카드·필터바와 서버(`dayCostPartsOf`·`tripCostBreakdownOf`)가 같은 판정을 쓴다.
    * @param {any} day @returns {boolean} */
   function taxiFareCounts(day){
@@ -1173,7 +1174,9 @@
       const own=Object.prototype.hasOwnProperty.call(stays.own,index);
       // 하루치는 이미 인원을 곱한 금액이라 기준을 ENTERED로 둔다 — 안 그러면 add()가 인원을 한 번 더 곱한다
       const item=own? {...s,cost:stays.own[index],costBasis:'ENTERED'} : s;
-      add(item,'cost',{source:'SPOT',key:String(index),title:own? `${s.name||'숙소'} (1/${stayNights(s)}박)` : (s.name||'장소'),kind:costCategoryOf(s)});
+      const kind=costCategoryOf(s);
+      add(item,'cost',{source:'SPOT',key:String(index),title:own? `${s.name||'숙소'} (1/${stayNights(s)}박)` :
+        transportFareKind(kind)? `${s.name||'출발지'}에서 출발` : (s.name||'장소'),kind});
     });
     for(const c of stays.carried) add({amount:c.amount,cur:c.cur,payState:c.spot.payState,paidOn:c.spot.paidOn},'amount',
       {source:'STAY',key:`${c.fromDay}.${c.index}`,title:`${c.spot.name||'숙소'} (${c.night+1}/${c.nights}박)`,kind:'STAY'});
@@ -1202,6 +1205,9 @@
   }
 
   const COST_CATEGORIES=['FLIGHT','STAY','RENT','TRANSIT','FOOD','SHOPPING','TICKET','TRANSPORT','OTHER'];
+  /** 교통 구간 요금은 도착지가 아니라 출발 장소에 입력한다. 렌터카 기간 총액은 별도 예약이다. */
+  /** @param {string|undefined|null} kind */
+  function transportFareKind(kind){ return kind==='FLIGHT'||kind==='TRANSIT'||kind==='TRANSPORT'; }
   // 분류(무엇에 쓴 돈인가)와 결제 상태(냈는가)는 다른 축이다 — 같은 '숙박'도 예약만 해 둔 것과 결제한 것이 있다.
   const COST_PAY_STATES=['RESERVED','PAID'];
   const _PHOTOS_MAX=10, _PHOTO_REF_MAX=200;
@@ -1358,7 +1364,8 @@
       if(source==='SPOT'&&amount===null&&reservationState==='NONE'&&!raw?.stay&&!raw?.costKind&&
         !raw?.costPartial&&!raw?.payState&&!raw?.cur&&!raw?.costBasis) continue;
       rows.set(id,{id,line:{...line,source,key:source==='SPOT'?String(si):line.key,dayIndex:di,
-          title:raw?.name||line.title,amount:source==='SPOT'?(typeof raw.cost==='number'?raw.cost:null):line.amount,
+          title:source==='SPOT'&&transportFareKind(costCategoryOf(raw||{}))? line.title : raw?.name||line.title,
+          amount:source==='SPOT'?(typeof raw.cost==='number'?raw.cost:null):line.amount,
           currency:raw?.cur||line.currency,basis:raw?.costBasis||line.basis,people:raw?.costPeople||line.people,
           state:source==='SPOT'?(amount===null?'UNKNOWN':raw.costPartial?'PARTIAL':amount===0?'FREE':'KNOWN'):line.state},
         bookingId:linked?bookingId:null,spotIndex:si,date:days[di]?.date||null,end:null,
@@ -2565,7 +2572,7 @@
   }
 
 
-  const TC={deleteSpotCost,clearSpotCost,deleteBookingCost,dayLodgings,sortTripsByCountdown,additionalReservations,tripSummaryCities,returnModeOf,SPOT_PRIORITIES,spotPriorityOf,applySpotPriority,spotPriorityLabel,SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,cityFromKoreanAddr,placeName,cityFromGoogle,normHours,classifySearchErr,isKoreanSearch,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,normHM,sortDayByTime,inKorea,shortWalkOption,simplifyName,parseDirect,parseMoney,normalizeDraftDays,extractJson,extMapLink,encodePolyline,decodePolyline,optimizeRoute,planRouteOptimization,routeLength,isOpenAt,validTimeZone,zonedClock,zonedMinutesToISOString,dayAnchor,stayMinutesOf,activityStartMinute,dayEndMinutes,departMinuteAfter,computeTimeline,computeDayJourney,whoKey,splitSegments,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,budgetBookings,moneyAmount,parseCostAmount,costAmountOf,dayEnteredCost,splitAcrossNights,stayCostShares,stayCostOverflow,dayEnteredCostOn,hasManualTransportCost,taxiFareCounts,dayCostSummary,ADMISSION_REQUIREMENTS,admissionLabel,admissionOf,needsAdmissionBooking,normalizeAdmission,admissionError,COST_CATEGORIES,COST_CURRENCIES:_CURS,costCategoryOf,COST_PAY_STATES,costPayStateOf,payStateTotals,TRIP_NOTE_CATEGORIES,normalizeTripNote,tripCostSummary,localMode,mdLabel,tripPeriodOf,startShiftPreview,SAMPLE_TRIP_ID,SAMPLE_TRIP_VERSION,isSampleTrip,sampleTrip,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
+  const TC={deleteSpotCost,clearSpotCost,deleteBookingCost,dayLodgings,sortTripsByCountdown,additionalReservations,tripSummaryCities,returnModeOf,SPOT_PRIORITIES,spotPriorityOf,applySpotPriority,spotPriorityLabel,SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,cityFromKoreanAddr,placeName,cityFromGoogle,normHours,classifySearchErr,isKoreanSearch,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,normHM,sortDayByTime,inKorea,shortWalkOption,simplifyName,parseDirect,parseMoney,normalizeDraftDays,extractJson,extMapLink,encodePolyline,decodePolyline,optimizeRoute,planRouteOptimization,routeLength,isOpenAt,validTimeZone,zonedClock,zonedMinutesToISOString,dayAnchor,stayMinutesOf,activityStartMinute,dayEndMinutes,departMinuteAfter,computeTimeline,computeDayJourney,whoKey,splitSegments,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,budgetBookings,moneyAmount,parseCostAmount,costAmountOf,dayEnteredCost,splitAcrossNights,stayCostShares,stayCostOverflow,dayEnteredCostOn,hasManualTransportCost,taxiFareCounts,dayCostSummary,ADMISSION_REQUIREMENTS,admissionLabel,admissionOf,needsAdmissionBooking,normalizeAdmission,admissionError,COST_CATEGORIES,COST_CURRENCIES:_CURS,costCategoryOf,transportFareKind,COST_PAY_STATES,costPayStateOf,payStateTotals,TRIP_NOTE_CATEGORIES,normalizeTripNote,tripCostSummary,localMode,mdLabel,tripPeriodOf,startShiftPreview,SAMPLE_TRIP_ID,SAMPLE_TRIP_VERSION,isSampleTrip,sampleTrip,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
   // 장소 검색·장소 정체성(2026-10-03) — 위 목록과 따로 둬 다른 변경과 한 줄에서 부딪히지 않게 한다
   Object.assign(TC,{placeNameMatch,searchAnchorSpot,planDistanceKm,tripCitySpelling,tripDefaultCurrency,hoursIssue,hoursLines});
   Object.assign(TC,{resolveTimeZone,inferTimeZones,effectiveTimeZone,refundableOf});   // 따로 붙인다 — 위 한 줄은 여러 작업이 함께 고치는 자리다
