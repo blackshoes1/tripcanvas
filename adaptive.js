@@ -9,6 +9,10 @@
   // lib.js 재사용(haversine·parseHM·hm·isOpenAt). 브라우저는 전역, Node(테스트)는 모듈.
   const LIB = (typeof module!=='undefined' && module.exports) ? require('./lib.js') : /** @type {any} */(root);
 
+  const COPY = (typeof module!=='undefined' && module.exports) ? require('./j-copy.js') : root.TC_J_COPY;
+  /** @param {any} state @param {string} key @param {Record<string,string|number>=} params @returns {string} */
+  function say(state, key, params){ return COPY.text(key, params, state.jTone); }
+
   /** @typedef {{lat:number,lng:number}} LatLng */
   /** @typedef {'FIXED'|'SEMI_FIXED'|'FLEXIBLE'} Flexibility */
   /** @typedef {'PLANNED'|'READY'|'IN_PROGRESS'|'COMPLETED'|'SKIPPED'|'CANCELLED'} ActivityStatus */
@@ -227,7 +231,7 @@
    * timeline은 app이 실제 이동시간으로 계산한 computeTimeline 결과를 그대로 넘긴다(출발 기준점 단일 진실 공유).
    * @param {any} trip
    * @param {{dayIndex?:number, todayISO?:string, nowMin?:number, live?:boolean, timeline?:any[], startAnchor?:any,
-   *          currentLocation?:any, planningMode?:PlanningMode, energyLevel?:EnergyLevel, legMin?:any, cfg?:any, prefs?:any}=} opts
+   *          currentLocation?:any, planningMode?:PlanningMode, energyLevel?:EnergyLevel, legMin?:any, cfg?:any, prefs?:any, jTone?:string}=} opts
    * @returns {any}
    */
   function buildTripState(trip, opts){
@@ -313,7 +317,7 @@
       availableMin, freeBefore, delayMin, travelMinToday:travelToday,
       prefs:o.prefs||{},   // {maxTravelMin?, walkAverse?, mealFocus?} — 자연어 요청이 추천 범위를 좁힌다
       planningMode:o.planningMode||planningModeHint(trip),
-      energyLevel:o.energyLevel||'NORMAL'
+      energyLevel:o.energyLevel||'NORMAL', jTone:COPY.normalizeTone(o.jTone)
     };
   }
 
@@ -486,13 +490,13 @@
         const roomy=!freeBefore || state.availableMin>=c.restRoomMin;
         if(!tired && !prefs.wantRest && (!state.live || !started || !roomy)) return;
         score=38;
-        if(tired){ score=90; reasons.push('지금은 체력을 아끼는 편이 나아요'); }
+        if(tired){ score=90; reasons.push(say(state, 'reason.saveEnergy')); }
         else if(prefs.wantRest) score=state.hotelLocation? 80 : 88;
-        if(prefs.wantRest && !state.hotelLocation) reasons.push('숙소 위치를 몰라 지금 있는 곳에서 쉬는 쪽을 먼저 보여 드려요');
-        if(state.travelMinToday>=c.heavyTravelMin){ score+=15; reasons.push('오늘 이동이 '+Math.floor(state.travelMinToday/60)+'시간을 넘었어요'); }
-        if(!freeBefore) reasons.push('남은 일정이 없어 쉬어도 밀리지 않아요');
-        else if(roomy) reasons.push(freeBefore.name+'까지 '+durText(state.availableMin)+' 여유가 있어요');
-        else reasons.push('쉬는 만큼 '+freeBefore.name+josa(freeBefore.name,'이','가')+' 늦어져요');
+        if(prefs.wantRest && !state.hotelLocation) reasons.push(say(state, 'reason.restHere'));
+        if(state.travelMinToday>=c.heavyTravelMin){ score+=15; reasons.push(say(state, 'reason.longTravel', {hours:Math.floor(state.travelMinToday/60)})); }
+        if(!freeBefore) reasons.push(say(state, 'reason.noRemaining'));
+        else if(roomy) reasons.push(say(state, 'reason.slack', {place:freeBefore.name, duration:durText(state.availableMin)}));
+        else reasons.push(say(state, 'reason.restDelay', {subject:freeBefore.name+josa(freeBefore.name,'이','가')}));
         out.push({type:'REST', id:cd.id, targetId:null, title:cd.title, score, reasons, estimatedDuration:duration,
           estimatedTravelTime:0, arriveMin:win.startMin, endMin:win.startMin+duration, fromDay:null, si:null, spot:null});
         return;
@@ -503,16 +507,16 @@
         const begun=state.completedItems.length>0 || (state.items.length>0 && state.nowMin>=state.items[0].eta);
         if(!tired && !prefs.wantRest && (!state.live || !begun)) return;
         score=36;
-        if(prefs.wantRest){ score=92; reasons.push('숙소에서 쉬었다가 이어가도 돼요'); }
+        if(prefs.wantRest){ score=92; reasons.push(say(state, 'reason.hotelRest')); }
         else if(tired) score=84;
-        if(state.travelMinToday>=c.heavyTravelMin){ score+=14; reasons.push('오늘 이동이 많았어요'); }
+        if(state.travelMinToday>=c.heavyTravelMin){ score+=14; reasons.push(say(state, 'reason.muchTravel')); }
         if(travel) reasons.push('숙소까지 약 '+durText(travel));
         if(freeBefore && cd.location){
           const back=travelMinutes(cd.location, freeBefore.location, o);
-          if(finish+back+c.bufferMin<=freeBefore.depart) reasons.push('숙소에 들렀다 가도 '+freeBefore.name+' 시간에는 여유가 있어요');
-          else reasons.push('숙소에 들르면 '+freeBefore.name+josa(freeBefore.name,'이','가')+' 늦어질 수 있어요');
+          if(finish+back+c.bufferMin<=freeBefore.depart) reasons.push(say(state, 'reason.hotelSlack', {place:freeBefore.name}));
+          else reasons.push(say(state, 'reason.hotelDelay', {subject:freeBefore.name+josa(freeBefore.name,'이','가')}));
         }
-        if(!reasons.length) reasons.push('오늘 남은 일정을 숙소에서 이어가도 돼요');
+        if(!reasons.length) reasons.push(say(state, 'reason.hotelRemaining'));
         out.push({type:'RETURN_TO_HOTEL', id:cd.id, targetId:null, title:cd.title, score, reasons, estimatedDuration:0,
           estimatedTravelTime:travel, arriveMin:arrive, endMin:arrive, fromDay:null, si:null, spot:null});
         return;
@@ -524,15 +528,15 @@
           const later=state.items.filter((/**@type{TripItem}*/it)=>it.status!=='COMPLETED'&&it.status!=='SKIPPED'&&it.status!=='CANCELLED'
             && it.depart>=at && MEAL_WINDOWS.some((m)=>mealCoveredBy(state, m)===it))[0]||null;
           out.push({type:'EAT', id:cd.id, targetId:null, title:cd.title, score:95,
-            reasons:['배고프다고 하셨어요 — 식사를 먼저 챙겨요',
-              later? (later.name+' '+LIB.hm(later.depart)+'까지 기다리기 어렵다면 가볍게 먹어도 돼요') : '먹을 곳을 골라 지금 일정에 넣을 수 있어요'],
+            reasons:[say(state, 'reason.hungry'),
+              later? (say(state, 'reason.lightMeal', {place:later.name, time:LIB.hm(later.depart)})) : say(state, 'reason.chooseMeal')],
             estimatedDuration:duration, estimatedTravelTime:0, arriveMin:at, endMin:at+duration, fromDay:null, si:null, spot:null});
           return;
         }
         // 식사는 식사 시간대에 넣는다 — 빈 시간이 09:41에 시작해도 점심은 11:30부터다("09:41부터 비어 있어요"였다)
         const at=meal? Math.max(win.startMin, meal.from) : win.startMin;
         out.push({type:'EAT', id:cd.id, targetId:null, title:cd.title, score:46,
-          reasons:[(meal? meal.label : '식사')+' 시간대에 일정이 비어 있어요', '이 시간에 식사를 넣으면 남은 일정이 밀리지 않아요'],
+          reasons:[say(state, 'reason.mealWindow', {meal:meal?meal.label:'식사'}), say(state, 'reason.mealSafe')],
           estimatedDuration:duration, estimatedTravelTime:0, arriveMin:at, endMin:at+duration,
           fromDay:null, si:null, spot:null});
         return;
@@ -549,7 +553,7 @@
       if(weekday>=0 && cd.hours && cd.hours.length){
         if(LIB.isOpenAt(cd.hours, weekday, arrive)===false) return;                            // 도착 시점에 영업 종료
         if(duration>0 && LIB.isOpenAt(cd.hours, weekday, Math.max(arrive, finish-1))===false) return;   // 머무는 중에 문 닫음
-        reasons.push('도착 예정 시각에 문을 열어요');
+        reasons.push(say(state, 'reason.open'));
       }
       if(travel>0){
         score+=Math.max(0, 20-travel*(lively? 0.25 : 0.5));                                   // 쌩쌩하면 이동을 덜 아낀다
@@ -558,23 +562,23 @@
       }
       if(lively){                                                                              // 쌩쌩하면 오래 둘러볼 곳을 앞에
         score+=Math.min(10, duration/12);
-        if(duration>=90) reasons.push('컨디션이 좋을 때 오래 둘러보기 좋은 곳이에요');
+        if(duration>=90) reasons.push(say(state, 'reason.lively'));
       }
       const slack=deadline-(finish+backMin);
       score+=Math.max(0, Math.min(15, 15-Math.abs(slack-c.bufferMin)/8));
-      if(cd.must){ score+=18; reasons.push('꼭 가려고 표시한 곳이에요'); }
+      if(cd.must){ score+=18; reasons.push(say(state, 'reason.must')); }
       else if(cd.priority>=2) score+=6;
-      if(cd.inPlan){ score+=8; reasons.push('원래 오늘 일정에 있던 곳이에요'); }
-      else if(cd.fromDay!=null) reasons.push('Day '+(cd.fromDay+1)+' 일정에서 옮겨올 수 있어요');
-      if(tired && travel>25){ score-=12; reasons.push('다만 이동이 조금 길어요'); }
+      if(cd.inPlan){ score+=8; reasons.push(say(state, 'reason.inPlan')); }
+      else if(cd.fromDay!=null) reasons.push(say(state, 'reason.moveDay', {day:cd.fromDay+1}));
+      if(tired && travel>25){ score-=12; reasons.push(say(state, 'reason.far')); }
       if(targetItem && targetLoc && cd.location){
         const direct=travelMinutes(win.anchor, targetLoc, o);
         const detour=Math.max(0, (travel+backMin)-direct);
         score-=Math.min(20, detour*0.4);
         // 돌아가는 시간이 바로 가는 길에 비해 작을 때만 '가는 길'이다 — 3분 거리를 두고 6분 돌아가는 곳은 반대 방향이다
-        if(detour<=10 && detour<=Math.max(3, direct*0.5)) reasons.push('다음 일정 '+targetItem.name+' 가는 길에 들를 수 있어요');
+        if(detour<=10 && detour<=Math.max(3, direct*0.5)) reasons.push(say(state, 'reason.onWay', {place:targetItem.name}));
       }
-      if(duration) reasons.push('약 '+durText(duration)+'이면 둘러볼 수 있어요');
+      if(duration) reasons.push(say(state, 'reason.duration', {duration:durText(duration)}));
       out.push({type:(cd.kind==='CHECK_IN'?'CHECK_IN':'VISIT_PLACE'), id:cd.id, targetId:(cd.si!=null? String(cd.si) : null),
         title:cd.title, score:Math.round(score*100)/100, reasons, estimatedDuration:duration, estimatedTravelTime:travel,
         arriveMin:arrive, endMin:finish, fromDay:cd.fromDay, si:cd.si, spot:cd.spot});
@@ -726,7 +730,7 @@
     // 일정 조정은 **바꿀 것이 있을 때만** 카드가 된다(2026-10-03) — 뺄 수 있는 곳이 없으면 '기존'과 '제안'이 똑같은 카드가 떴다.
     // 그때도 늦는다는 사실은 사라지지 않는다: replan.needed가 그대로라 하루 한 마디(tripPulse)와 화면 안내(notice)가 말한다.
     const late=replan.lateAt;
-    const lateLine=late? ('이대로면 '+late.name+' '+LIB.hm(late.atMin)+' 예약에 '+durText(late.lateBy)+' 늦어요') : '';
+    const lateLine=late? (say(state, 'replan.late', {place:late.name, time:LIB.hm(late.atMin), duration:durText(late.lateBy)})) : '';
     if(replan.needed && replan.drop.length){
       const names=replan.dropNames.join(', '), last=replan.dropNames[replan.dropNames.length-1];
       const key=suggestionKey('REPLAN', replan.drop.join(','), state);
@@ -734,10 +738,10 @@
         // 아직 늦지 않았다 — '지연'·'밀렸어요'가 아니라 '이대로면 늦는다'고 말한다. 조정이 통하는지에 따라 제목과 설명이 맞물린다
         title:lateLine,
         description:replan.feasible
-          ? names+josa(last,'을','를')+' 빼면 '+(late? late.name+' 예약 시간에 맞출 수 있어요' : '예약 시간에 맞출 수 있어요')
-          : names+josa(last,'을','를')+' 빼도 '+durText(replan.remainingLateBy)+'쯤 늦어요 — 예약 시간을 바꾸거나 미리 알려 두는 편이 나아요',
-        reasons:[late? ('남은 일정을 지금부터 이어 가면 '+late.name+'에 '+LIB.hm(late.atMin+late.lateBy)+'쯤 닿아요') : '남은 일정을 지금부터 다시 이어 봤어요',
-          '예약 시각은 그대로 지켜요', '다녀온 곳은 그대로 둬요'],
+          ? (late? say(state, 'replan.dropFits', {object:names+josa(last,'을','를'), place:late.name}) : say(state, 'replan.dropFitsAny', {object:names+josa(last,'을','를')}))
+          : say(state, 'replan.stillLate', {object:names+josa(last,'을','를'), duration:durText(replan.remainingLateBy)}),
+        reasons:[late? (say(state, 'replan.arrival', {place:late.name, time:LIB.hm(late.atMin+late.lateBy)})) : say(state, 'replan.simulated'),
+          say(state, 'replan.fixed'), say(state, 'replan.visited')],
         impact:replan.impact, status:'NEW', action:{kind:'REPLAN', drop:replan.drop, keep:replan.keep}});
     }
     // 이대로면 늦는 날에 J가 먼저 일정을 더하자고 하지 않는다 — 한쪽은 빼자, 한쪽은 더하자가 됐다(2026-10-03).
@@ -757,12 +761,12 @@
       && (r.type!=='VISIT_PLACE' || placesLeft-- > 0)).slice(0, c.maxSuggest).forEach((r)=>{
       const key=suggestionKey(r.type, r.title, state);
       push({id:key, key, type:((r.type==='REST'||r.type==='RETURN_TO_HOTEL')? 'REST' : (r.type==='EAT'? 'NEXT_ACTIVITY' : 'NEXT_ACTIVITY')),
-        title:r.title,
+        title:r.type==='EAT' && r.id!=='c-eat-now'? say(state, 'suggest.mealTitle', {meal:(mealOverlap(win)||{label:'식사'}).label}) : r.title,
         // 이동 시간은 일정 화면과 같은 함수로 내지만 조회되지 않은 구간은 거리로 낸 추정이다 — '약'을 붙인다(2026-10-03)
         description:(r.type==='VISIT_PLACE'||r.type==='CHECK_IN')
           ? ((r.estimatedTravelTime? '약 '+durText(r.estimatedTravelTime)+' 이동 · ' : '')+LIB.hm(r.arriveMin)+' 도착 · '+LIB.hm(r.endMin)+'까지')
-          : (r.type==='EAT'? (LIB.hm(r.arriveMin)+'부터 식사를 넣을 수 있어요')
-            : (roomy? '지금 쉬어도 남은 일정에는 여유가 있어요' : '쉬는 만큼 남은 일정이 늦어져요 — 무리하지 않는 쪽이 나아요')),
+          : (r.type==='EAT'? (say(state, 'suggest.meal', {time:LIB.hm(r.arriveMin)}))
+            : (roomy? say(state, 'suggest.restFits') : say(state, 'suggest.restDelays'))),
         reasons:r.reasons,
         impact:{timeChangeMinutes:r.estimatedDuration+r.estimatedTravelTime, addedActivities:(r.spot?[r.title]:[]), removedActivities:[]},
         status:'NEW', action:{kind:r.type, si:r.si, fromDay:r.fromDay, candidateId:r.id, startMin:(r.type==='EAT'? r.arriveMin : (win? win.startMin : state.nowMin))}});
@@ -775,18 +779,18 @@
     });
     // 조정 카드 없이 늦는 경우 화면이 그대로 옮길 한 줄 — 뺄 수 있는 곳이 없거나 그 카드를 오늘 건너뛰었을 때
     const notice=(replan.needed && !out.some((s)=>s.type==='REPLAN') && late)
-      ? lateLine+(replan.drop.length? '' : ' — 뺄 수 있는 일정이 없어요. 예약 시간을 바꾸거나 미리 알려 두는 편이 나아요') : null;
+      ? (replan.drop.length? lateLine : say(state, 'replan.noneDroppable', {late:lateLine})) : null;
     return {suggestions:out, windows, replan, ranked, window:win, empty:!out.length, notice};
   }
   /**
    * 일정 조정에서 빼는 곳을 어떻게 하는지 한 문장 — 웹 미리보기와 앱 카드(`ReplanPreview.note`)가 같이 쓴다.
    * 조사는 이름에 맞춘다('북촌한옥마을는'·'은(는)'이었다). 뺄 것이 없으면 null.
-   * @param {string[]} dropNames @param {boolean} movesToNextDay @returns {string|null}
+   * @param {string[]} dropNames @param {boolean} movesToNextDay @param {string=} jTone @returns {string|null}
    */
-  function replanDropNote(dropNames, movesToNextDay){
+  function replanDropNote(dropNames, movesToNextDay, jTone){
     if(!dropNames||!dropNames.length) return null;
     const topic=dropNames.join(', ')+josa(dropNames[dropNames.length-1],'은','는');
-    return movesToNextDay? topic+' 다음 날 앞쪽으로 옮겨요' : topic+" '건너뜀'으로 표시해요";
+    return COPY.text(movesToNextDay?'replan.moveNote':'replan.skipNote', {topic}, jTone);
   }
   /** 추천 반응 기록 — 향후 선호 학습용 구조만 준비한다. @param {any} sug @param {string} action @param {string} atISO @returns {any} */
   function feedbackEntry(sug, action, atISO){
@@ -806,12 +810,12 @@
   // ⚠️ 부정이 붙어야 뜻이 서는 말은 그 꼴을 **같은 규칙의 앞쪽**에 둔다 — "무리하지 말자"는 쉬자는 말인데, '무리'가 먼저
   //    걸리면 뒤의 '말자'를 그 말의 부정으로 보고 버린다(saidPlainly는 같은 자리에서 먼저 걸린 꼴만 본다).
   const INTENT_RULES=Object.freeze([
-    Object.freeze({re:/무리\s*(?:하지|하진|하고\s*싶지)\s*(?:말|않|마)|무리\s*안\s*(?:하|해|할)|피곤|지쳤|지침|힘들|무리|쉬고\s*싶|쉴래|쉬자|기운\s*[이가도]?\s*(?:(?:하나도|전혀|별로|너무|좀|영|진짜|정말)\s*)?(?:없|안\s*나|나(?:지|질)\s*않)/, apply:{energyLevel:'LOW'}, why:'쉬고 싶다고 하셨어요'}),
-    Object.freeze({re:/(?:(?:많이|오래)\s*)?걷(?:고\s*싶지\s*않|지\s*(?:말|않(?!았)|마))|걷(?:기|는\s*(?:건|게|거))\s*[은는이가도]?\s*(?:(?:좀|너무|조금|많이|정말|진짜)\s*)?(?:싫|힘들|힘드|무리|별로)|안\s*걷/, apply:{walkAverse:true, maxTravelMin:20}, why:'많이 걷지 않는 쪽으로 볼게요'}),
-    Object.freeze({re:/가까운\s*(곳|데)|멀리\s*(가기)?\s*싫|근처(에서)?/, apply:{maxTravelMin:15}, why:'가까운 곳만 볼게요'}),
-    Object.freeze({re:/쌩쌩|팔팔|기운\s*[이가도]?\s*(?:(?:좀|너무|많이|진짜|정말)\s*)?(?:나|넘|좋|펄펄|차|있|솟)|더\s*보고|많이\s*보고|부지런/, apply:{energyLevel:'HIGH'}, why:'컨디션이 좋다고 하셨어요'}),
-    Object.freeze({re:/배고|밥|먹고|식사|점심|저녁\s*먹/, apply:{mealFocus:true}, why:'식사를 먼저 챙길게요'}),
-    Object.freeze({re:/숙소|호텔로|들어가고\s*싶|집에/, apply:{wantRest:true}, why:'숙소로 돌아가는 쪽을 먼저 볼게요'})
+    Object.freeze({re:/무리\s*(?:하지|하진|하고\s*싶지)\s*(?:말|않|마)|무리\s*안\s*(?:하|해|할)|피곤|지쳤|지침|힘들|무리|쉬고\s*싶|쉴래|쉬자|기운\s*[이가도]?\s*(?:(?:하나도|전혀|별로|너무|좀|영|진짜|정말)\s*)?(?:없|안\s*나|나(?:지|질)\s*않)/, apply:{energyLevel:'LOW'}, why:'intent.rest'}),
+    Object.freeze({re:/(?:(?:많이|오래)\s*)?걷(?:고\s*싶지\s*않|지\s*(?:말|않(?!았)|마))|걷(?:기|는\s*(?:건|게|거))\s*[은는이가도]?\s*(?:(?:좀|너무|조금|많이|정말|진짜)\s*)?(?:싫|힘들|힘드|무리|별로)|안\s*걷/, apply:{walkAverse:true, maxTravelMin:20}, why:'intent.walk'}),
+    Object.freeze({re:/가까운\s*(곳|데)|멀리\s*(가기)?\s*싫|근처(에서)?/, apply:{maxTravelMin:15}, why:'intent.near'}),
+    Object.freeze({re:/쌩쌩|팔팔|기운\s*[이가도]?\s*(?:(?:좀|너무|많이|진짜|정말)\s*)?(?:나|넘|좋|펄펄|차|있|솟)|더\s*보고|많이\s*보고|부지런/, apply:{energyLevel:'HIGH'}, why:'intent.energy'}),
+    Object.freeze({re:/배고|밥|먹고|식사|점심|저녁\s*먹/, apply:{mealFocus:true}, why:'intent.meal'}),
+    Object.freeze({re:/숙소|호텔로|들어가고\s*싶|집에/, apply:{wantRest:true}, why:'intent.hotel'})
   ]);
   // '괜찮다'는 그 자체로 컨디션을 말하지 않는다 — 무엇이 괜찮은지 모른다. 다만 피곤하다는 말과 같이 오면
   // ("피곤하긴 한데 괜찮아") 어느 쪽인지 단정하지 않는다.
@@ -855,10 +859,10 @@
    * 해석하지 못하면 빈 결과를 준다 — 못 알아들은 것을 알아들은 척하지 않는다.
    * 부정된 말은 하지 않은 것으로 보고, 컨디션이 엇갈리면("피곤한데 더 보고 싶어") 정하지 않는다 —
    * 나중 규칙이 이기게 두면 같은 문장이 낱말 순서에 따라 정반대 컨디션이 된다.
-   * @param {string} text
+   * @param {string} text @param {string=} jTone
    * @returns {{energyLevel:(EnergyLevel|null), prefs:any, reasons:string[], understood:boolean}}
    */
-  function parseIntent(text){
+  function parseIntent(text, jTone){
     const t=String(text==null?'':text).trim();
     /** @type {any} */ const prefs={};
     /** @type {string[]} */ const reasons=[];
@@ -870,7 +874,7 @@
     said.forEach((r)=>{
       const apply=/** @type {any} */(r.apply);
       if(apply.energyLevel && !energyLevel) return;   // 단정하지 않은 컨디션은 이유로도 말하지 않는다
-      reasons.push(r.why);
+      reasons.push(COPY.text(r.why, {}, jTone));
       Object.keys(apply).forEach((k)=>{
         if(k==='energyLevel') return;
         const v=apply[k];
@@ -894,14 +898,14 @@
    *   "많이 걷기 싫어" 뒤에 "밥 먹자"라고 하면 지금 원하는 건 밥이지 걷기 제한이 아니다.
    *
    * @param {string} text  사람이 쓴 문장. 비어 있으면 해석하지 않고 고른 컨디션만 돌려준다
-   * @param {{energyLevel?:unknown}=} base  화면이 이미 고른 값
+   * @param {{energyLevel?:unknown,jTone?:string}=} base  화면이 이미 고른 값
    * @returns {{energyLevel:EnergyLevel, prefs:any, reasons:string[], understood:boolean}}
    */
   function resolveIntent(text, base){
     const picked=normEnergy((base||{}).energyLevel);
     const t=String(text==null?'':text).trim();
     if(!t) return {energyLevel:picked, prefs:{}, reasons:[], understood:false};
-    const r=parseIntent(t);
+    const r=parseIntent(t, base&&base.jTone);
     return {energyLevel:r.energyLevel||picked, prefs:r.prefs, reasons:r.reasons, understood:r.understood};
   }
 
@@ -921,22 +925,22 @@
     const fixed=item.fixedAt!=null;
     const target=(item.fixedAt!=null? item.fixedAt : item.eta);
     const leaveMin=Math.round(target-travel);
-    if(!state.live) return {leaveMin, slackMin:0, level:'EARLY', text:LIB.hm(leaveMin)+'쯤 출발하는 일정이에요'};
+    if(!state.live) return {leaveMin, slackMin:0, level:'EARLY', text:say(state, 'departure.planned', {time:LIB.hm(leaveMin)})};
     if(item.status==='IN_PROGRESS') return null;
     if(!fixed){
       // 하루를 아직 시작하지 않았으면 계획을 말한다 — 아침 8시에 "지금 출발하면"이라고 재촉하지 않는다
       if(!state.completedItems.length && state.nowMin<leaveMin)
-        return {leaveMin, slackMin:Math.round(leaveMin-state.nowMin), level:'EARLY', text:LIB.hm(leaveMin)+'쯤 출발하는 일정이에요'};
-      return {leaveMin:state.nowMin, slackMin:0, level:'NOW', text:'지금 출발하면 '+LIB.hm(state.nowMin+travel)+' 도착'};
+        return {leaveMin, slackMin:Math.round(leaveMin-state.nowMin), level:'EARLY', text:say(state, 'departure.planned', {time:LIB.hm(leaveMin)})};
+      return {leaveMin:state.nowMin, slackMin:0, level:'NOW', text:say(state, 'departure.arrival', {time:LIB.hm(state.nowMin+travel)})};
     }
     // 예약은 '예약에 맞춰요', 내가 정한 도착 시각은 '그 시각에 도착해요' — '09:00 도착에 맞춰요'는 말이 안 된다
-    const goal=(item.spot&&item.spot.bookAt)? LIB.hm(target)+' 예약에 맞춰요' : LIB.hm(target)+'에 도착해요';
+    const booked=!!(item.spot&&item.spot.bookAt), goal={time:LIB.hm(target)};
     const slackMin=Math.round(leaveMin-state.nowMin);
-    if(slackMin<0) return {leaveMin, slackMin, level:'LATE', text:'지금 출발해도 약 '+durText(-slackMin)+' 늦어요'};
-    if(slackMin===0) return {leaveMin, slackMin, level:'NOW', text:'지금 바로 나서야 '+goal};
-    if(slackMin<=10) return {leaveMin, slackMin, level:'NOW', text:'지금 출발하면 약 '+slackMin+'분 여유가 있어요'};
+    if(slackMin<0) return {leaveMin, slackMin, level:'LATE', text:say(state, 'departure.late', {duration:durText(-slackMin)})};
+    if(slackMin===0) return {leaveMin, slackMin, level:'NOW', text:say(state, booked?'departure.tight':'departure.tightArrival', goal)};
+    if(slackMin<=10) return {leaveMin, slackMin, level:'NOW', text:say(state, 'departure.slack', {minutes:slackMin})};
     // 기다리라는 말이 아니다 — 그 사이가 비어 있다는 말이다(아래 제안이 그 시간을 채운다)
-    return {leaveMin, slackMin, level:'EARLY', text:LIB.hm(leaveMin)+'쯤 출발하면 '+goal+' · 그 전까지 '+durText(slackMin)+' 여유가 있어요'};
+    return {leaveMin, slackMin, level:'EARLY', text:say(state, booked?'departure.early':'departure.earlyArrival', {leave:LIB.hm(leaveMin), time:goal.time, duration:durText(slackMin)})};
   }
 
   // ── 10. 빈칸 채우기 (Assisted) · 하루 flow (Delegated) ──────────
@@ -1065,7 +1069,7 @@
     const leaveMin=Math.round(targetMin-travel-bufferMin);
     if(!state.live){
       return {leaveMin, slackMin:0, bufferMin, travelMin:travel, level:'EARLY', stage:'UPCOMING', lateByMin:0, targetMin,
-        text:LIB.hm(leaveMin)+'쯤 출발하는 일정이에요'};
+        text:say(state, 'departure.planned', {time:LIB.hm(leaveMin)})};
     }
     if(item.status==='IN_PROGRESS') return null;
     if(item.fixedAt==null){
@@ -1078,18 +1082,18 @@
     const lateByMin=Math.max(0, Math.round((state.nowMin+travel)-targetMin));
     if(lateByMin>0){
       return {leaveMin, slackMin, bufferMin, travelMin:travel, level:'LATE', stage:'LATE_RISK', lateByMin, targetMin,
-        text:'지금 출발해도 '+durText(lateByMin)+'쯤 늦어요'+(item.name?' — '+item.name+'에 미리 알려두면 좋겠어요':'')};
+        text:(item.name? say(state, 'departure.tell', {late:say(state, 'departure.risk', {duration:durText(lateByMin)}), place:item.name}) : say(state, 'departure.risk', {duration:durText(lateByMin)}))};
     }
     if(slackMin<=0){
       return {leaveMin, slackMin, bufferMin, travelMin:travel, level:'NOW', stage:'LATE_RISK', lateByMin:0, targetMin,
-        text:'지금 움직이면 '+LIB.hm(targetMin)+'까지 딱 맞아요'};
+        text:say(state, 'departure.exact', {time:LIB.hm(targetMin)})};
     }
     if(slackMin<=c.readyWindowMin){
       return {leaveMin, slackMin, bufferMin, travelMin:travel, level:'NOW', stage:'READY_TO_LEAVE', lateByMin:0, targetMin,
-        text:'이제 출발하면 여유 있게 도착할 수 있어요 (약 '+durText(travel)+' 거리)'};
+        text:say(state, 'departure.ready', {travel:durText(travel)})};
     }
     return {leaveMin, slackMin, bufferMin, travelMin:travel, level:'EARLY', stage:'UPCOMING', lateByMin:0, targetMin,
-      text:LIB.hm(leaveMin)+'쯤 움직이면 여유가 있어요 (약 '+durText(travel)+' 거리, 지금부터 '+durText(slackMin)+' 남음)'};
+      text:say(state, 'departure.upcoming', {time:LIB.hm(leaveMin), travel:durText(travel), slack:durText(slackMin)})};
   }
 
   /**
@@ -1101,24 +1105,24 @@
   function tripPulse(state, replan, departure, opts){
     const c=cfgOf(opts);
     const remaining=state.items.filter((/**@type{any}*/it)=>it.status!=='COMPLETED'&&it.status!=='SKIPPED'&&it.status!=='CANCELLED');
-    if(!state.items.length) return {code:'NO_PLAN', text:'오늘은 정해둔 일정이 없어요', detail:'지금 상황에 맞는 곳을 골라 시작해도 되고, 그냥 쉬어도 괜찮아요.'};
-    if(!remaining.length) return {code:'DAY_COMPLETE', text:'오늘 계획한 일정은 다 마쳤어요', detail:'남은 시간은 편하게 쓰셔도 돼요.'};
+    if(!state.items.length) return {code:'NO_PLAN', text:say(state, 'pulse.noPlan'), detail:say(state, 'pulse.noPlanDetail')};
+    if(!remaining.length) return {code:'DAY_COMPLETE', text:say(state, 'pulse.complete'), detail:say(state, 'pulse.completeDetail')};
     // 아직 늦지 않았다 — '밀려서'가 아니라 '이대로면 늦는다'고, 어느 약속인지까지 말한다(2026-10-03)
-    if(replan && replan.needed) return {code:'NEEDS_ATTENTION', text:'일정을 조금 손보면 좋겠어요',
+    if(replan && replan.needed) return {code:'NEEDS_ATTENTION', text:say(state, 'pulse.attention'),
       detail:(replan.lateAt
-        ? '이대로면 '+replan.lateAt.name+' '+LIB.hm(replan.lateAt.atMin)+' 예약에 '+durText(replan.lateAt.lateBy)+' 늦어요.'
-        : (replan.lateBy>0? '이대로면 예약 시간에 '+durText(replan.lateBy)+' 늦어요.' : '이대로면 예약 시간을 지키기 어려워요.'))};
-    if(departure && departure.level==='LATE') return {code:'DELAYED', text:'약 '+durText(departure.lateByMin)+' 늦어지고 있어요',
-      detail:'서두르기보다 도착 시각을 알려두는 편이 나을 수 있어요.'};
-    if(state.energyLevel==='LOW') return {code:'RESTING', text:'지금은 쉬어가는 중이에요', detail:'무리하지 않는 선에서 이어가면 돼요.'};
+        ? say(state, 'pulse.lateAt', {place:replan.lateAt.name, time:LIB.hm(replan.lateAt.atMin), duration:durText(replan.lateAt.lateBy)})
+        : (replan.lateBy>0? say(state, 'pulse.late', {duration:durText(replan.lateBy)}) : say(state, 'pulse.deadline')))};
+    if(departure && departure.level==='LATE') return {code:'DELAYED', text:say(state, 'pulse.delayed', {duration:durText(departure.lateByMin)}),
+      detail:say(state, 'pulse.delayedDetail')};
+    if(state.energyLevel==='LOW') return {code:'RESTING', text:say(state, 'pulse.resting'), detail:say(state, 'pulse.restingDetail')};
     // 여유는 다음 고정 일정이 아니라 다음 남은 일정까지다(buildTripState의 availableMin) — 남은 곳이 있는데 '8시간 여유'라 하지 않는다
     const fb=state.freeBefore;
-    if(state.availableMin>=c.freeTimeMin && fb) return {code:'FREE_TIME', text:'다음 일정까지 '+durText(state.availableMin)+' 여유가 있어요',
-      detail:fb.name+' '+LIB.hm(fb.fixedAt!=null? fb.fixedAt : fb.eta)+'까지는 시간이 넉넉해요.'};
+    if(state.availableMin>=c.freeTimeMin && fb) return {code:'FREE_TIME', text:say(state, 'pulse.free', {duration:durText(state.availableMin)}),
+      detail:say(state, 'pulse.freeDetail', {place:fb.name, time:LIB.hm(fb.fixedAt!=null?fb.fixedAt:fb.eta)})};
     const next=state.nextItem;
     if(state.live && next && (next.eta-state.nowMin)>=c.aheadMin && state.completedItems.length)
-      return {code:'AHEAD', text:'계획보다 앞서 가고 있어요', detail:'다음 일정까지 여유가 있어요.'};
-    return {code:'ON_TRACK', text:'일정대로 잘 가고 있어요', detail:next? next.name+'까지 이어가면 돼요.' : ''};
+      return {code:'AHEAD', text:say(state, 'pulse.ahead'), detail:say(state, 'pulse.aheadDetail')};
+    return {code:'ON_TRACK', text:say(state, 'pulse.onTrack'), detail:next? say(state, 'pulse.next', {place:next.name}) : ''};
   }
 
   /**
@@ -1135,6 +1139,8 @@
       'e'+(state.energyLevel||''),
       (extra&&extra.stage)||'', (extra&&extra.pulse)||''
     ];
+    // 표시 말투가 바뀌면 위젯·Live Activity도 갱신한다. 알림 dedupeKey와 제안 키는 그대로다.
+    if(state.jTone==='CASUAL'||state.jTone==='POLITE') parts.push('j'+state.jTone);
     let h=5381;
     const raw=parts.join('|');
     for(let i=0;i<raw.length;i++){ h=((h*33)^raw.charCodeAt(i))>>>0; }
@@ -1191,11 +1197,11 @@
         kind:NOTIFICATION_KINDS.REPLAN,
         origin:'SERVER',                       // 일정 전체를 다시 굴려야 한다 — 서버가 판단한다
         dedupeKey:key(NOTIFICATION_KINDS.REPLAN, (i.replan.drop||[]).join(',')||'none', 'needed'),
-        title:'일정을 조금 손보면 어떨까요',
-        body:(i.replan.lateAt? '이대로면 '+i.replan.lateAt.name+' 예약에 '+durText(i.replan.lateAt.lateBy)+' 늦어요. '
-            : (i.replan.lateBy>0? '이대로면 예약에 '+durText(i.replan.lateBy)+' 늦어요. ':''))+
-          (dropped? dropped+josa(lastDropped,'을','를')+(i.replan.feasible===false? ' 빼도 늦어요 — 예약 시간을 확인해 보세요.' : ' 빼면 예약 시간은 그대로 지킬 수 있어요.')
-            : '남은 일정을 다시 확인해 보세요.'),
+        title:say(state, 'notification.replan'),
+        body:[i.replan.lateAt? say(state, 'notification.lateAt', {place:i.replan.lateAt.name, duration:durText(i.replan.lateAt.lateBy)})
+            : (i.replan.lateBy>0? say(state, 'notification.late', {duration:durText(i.replan.lateBy)}):''),
+          dropped? say(state, i.replan.feasible===false?'notification.dropLate':'notification.dropFits', {object:dropped+josa(lastDropped,'을','를')})
+            : say(state, 'notification.check')].filter(Boolean).join(' '),
         deepLink:'tripcanvas://trip/'+(state.tripId||'')+'/replan',
         targetId:null,
         priority:2,
@@ -1213,7 +1219,7 @@
         kind:NOTIFICATION_KINDS.EMPTY_SLOT,
         origin:'DEVICE',
         dedupeKey:key(NOTIFICATION_KINDS.EMPTY_SLOT, pick.id, 'offered'),
-        title:'지금 들르기 좋은 곳이 있어요',
+        title:say(state, 'notification.empty'),
         body:pick.title+(pick.description? ' · '+pick.description : ''),
         deepLink:'tripcanvas://trip/'+(state.tripId||'')+'/suggestion/'+encodeURIComponent(pick.id),
         targetId:pick.id,
@@ -1228,7 +1234,7 @@
         origin:'SERVER',
         dedupeKey:key(NOTIFICATION_KINDS.PRICE_SAVING, s.id, 'found'),
         title:s.title,
-        body:s.description||'같은 조건이 더 싼 곳이 있어요.',
+        body:s.description||say(state, 'notification.price'),
         deepLink:'tripcanvas://trip/'+(state.tripId||'')+'/bookings',
         targetId:s.id,
         priority:0,

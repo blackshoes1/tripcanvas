@@ -1,0 +1,370 @@
+{
+  "reason.saveEnergy": {
+    "text": "지금은 체력을 아끼는 편이 나아요"
+  },
+  "reason.restHere": {
+    "text": "숙소 위치를 몰라 지금 있는 곳에서 쉬는 쪽을 먼저 보여 드려요"
+  },
+  "reason.longTravel": {
+    "text": "오늘 이동이 {hours}시간을 넘었어요"
+  },
+  "reason.noRemaining": {
+    "text": "남은 일정이 없어 쉬어도 밀리지 않아요"
+  },
+  "reason.slack": {
+    "text": "{place}까지 {duration} 여유가 있어요"
+  },
+  "reason.restDelay": {
+    "text": "쉬는 만큼 {subject} 늦어져요"
+  },
+  "reason.hotelRest": {
+    "text": "숙소에서 쉬었다가 이어가도 돼요"
+  },
+  "reason.muchTravel": {
+    "text": "오늘 이동이 많았어요"
+  },
+  "reason.hotelSlack": {
+    "text": "숙소에 들렀다 가도 {place} 시간에는 여유가 있어요"
+  },
+  "reason.hotelDelay": {
+    "text": "숙소에 들르면 {subject} 늦어질 수 있어요"
+  },
+  "reason.hotelRemaining": {
+    "text": "오늘 남은 일정을 숙소에서 이어가도 돼요"
+  },
+  "reason.hungry": {
+    "text": "배고프다고 하셨어요 — 식사를 먼저 챙겨요"
+  },
+  "reason.lightMeal": {
+    "text": "{place} {time}까지 기다리기 어렵다면 가볍게 먹어도 돼요"
+  },
+  "reason.chooseMeal": {
+    "text": "먹을 곳을 골라 지금 일정에 넣을 수 있어요"
+  },
+  "reason.mealWindow": {
+    "text": "{meal} 시간대에 일정이 비어 있어요"
+  },
+  "reason.mealSafe": {
+    "text": "이 시간에 식사를 넣으면 남은 일정이 밀리지 않아요"
+  },
+  "reason.open": {
+    "text": "도착 예정 시각에 문을 열어요"
+  },
+  "reason.lively": {
+    "text": "컨디션이 좋을 때 오래 둘러보기 좋은 곳이에요"
+  },
+  "reason.must": {
+    "text": "꼭 가려고 표시한 곳이에요"
+  },
+  "reason.inPlan": {
+    "text": "원래 오늘 일정에 있던 곳이에요"
+  },
+  "reason.moveDay": {
+    "text": "Day {day} 일정에서 옮겨올 수 있어요"
+  },
+  "reason.far": {
+    "text": "다만 이동이 조금 길어요"
+  },
+  "reason.onWay": {
+    "text": "다음 일정 {place} 가는 길에 들를 수 있어요"
+  },
+  "reason.duration": {
+    "text": "약 {duration}이면 둘러볼 수 있어요"
+  },
+  "replan.late": {
+    "text": "이대로면 {place} {time} 예약에 {duration} 늦어요"
+  },
+  "replan.dropFits": {
+    "text": "{object} 빼면 {place} 예약 시간에 맞출 수 있어요"
+  },
+  "replan.dropFitsAny": {
+    "text": "{object} 빼면 예약 시간에 맞출 수 있어요"
+  },
+  "replan.stillLate": {
+    "text": "{object} 빼도 {duration}쯤 늦어요 — 예약 시간을 바꾸거나 미리 알려 두는 편이 나아요"
+  },
+  "replan.arrival": {
+    "text": "남은 일정을 지금부터 이어 가면 {place}에 {time}쯤 닿아요"
+  },
+  "replan.simulated": {
+    "text": "남은 일정을 지금부터 다시 이어 봤어요",
+    "local": true
+  },
+  "replan.fixed": {
+    "text": "예약 시각은 그대로 지켜요"
+  },
+  "replan.visited": {
+    "text": "다녀온 곳은 그대로 둬요"
+  },
+  "suggest.meal": {
+    "text": "{time}부터 식사를 넣을 수 있어요"
+  },
+  "suggest.restFits": {
+    "text": "지금 쉬어도 남은 일정에는 여유가 있어요"
+  },
+  "suggest.restDelays": {
+    "text": "쉬는 만큼 남은 일정이 늦어져요 — 무리하지 않는 쪽이 나아요"
+  },
+  "replan.noneDroppable": {
+    "text": "{late} — 뺄 수 있는 일정이 없어요. 예약 시간을 바꾸거나 미리 알려 두는 편이 나아요"
+  },
+  "replan.moveNote": {
+    "text": "{topic} 다음 날 앞쪽으로 옮겨요",
+    "local": true
+  },
+  "replan.skipNote": {
+    "text": "{topic} '건너뜀'으로 표시해요",
+    "local": true
+  },
+  "departure.planned": {
+    "text": "{time}쯤 출발하는 일정이에요"
+  },
+  "departure.arrival": {
+    "text": "지금 출발하면 {time} 도착이에요"
+  },
+  "departure.late": {
+    "text": "지금 출발해도 약 {duration} 늦어요"
+  },
+  "departure.slack": {
+    "text": "지금 출발하면 약 {minutes}분 여유가 있어요"
+  },
+  "departure.tight": {
+    "text": "지금 바로 나서야 {time} 예약에 맞춰요"
+  },
+  "departure.early": {
+    "text": "{leave}쯤 출발하면 {time} 예약에 맞춰요 · 그 전까지 {duration} 여유가 있어요"
+  },
+  "departure.risk": {
+    "text": "지금 출발해도 {duration}쯤 늦어요"
+  },
+  "departure.tell": {
+    "text": "{late} — {place}에 미리 알려두면 좋겠어요"
+  },
+  "departure.exact": {
+    "text": "지금 움직이면 {time}까지 딱 맞아요"
+  },
+  "departure.ready": {
+    "text": "이제 출발하면 여유 있게 도착할 수 있어요 (약 {travel} 거리)"
+  },
+  "departure.upcoming": {
+    "text": "{time}쯤 움직이면 여유가 있어요 (약 {travel} 거리, 지금부터 {slack} 남음)"
+  },
+  "pulse.noPlan": {
+    "text": "오늘은 정해둔 일정이 없어요"
+  },
+  "pulse.noPlanDetail": {
+    "text": "지금 상황에 맞는 곳을 골라 시작해도 되고, 그냥 쉬어도 괜찮아요."
+  },
+  "pulse.complete": {
+    "text": "오늘 계획한 일정은 다 마쳤어요",
+    "local": true
+  },
+  "pulse.completeDetail": {
+    "text": "남은 시간은 편하게 쓰셔도 돼요."
+  },
+  "pulse.attention": {
+    "text": "일정을 조금 손보면 좋겠어요"
+  },
+  "pulse.deadline": {
+    "text": "이대로면 예약 시간을 지키기 어려워요."
+  },
+  "pulse.delayedDetail": {
+    "text": "서두르기보다 도착 시각을 알려두는 편이 나을 수 있어요."
+  },
+  "pulse.resting": {
+    "text": "지금은 쉬어가는 중이에요"
+  },
+  "pulse.restingDetail": {
+    "text": "무리하지 않는 선에서 이어가면 돼요."
+  },
+  "pulse.ahead": {
+    "text": "계획보다 앞서 가고 있어요"
+  },
+  "pulse.aheadDetail": {
+    "text": "다음 일정까지 여유가 있어요."
+  },
+  "pulse.onTrack": {
+    "text": "일정대로 잘 가고 있어요"
+  },
+  "notification.replan": {
+    "text": "일정을 조금 손보면 어떨까요"
+  },
+  "notification.empty": {
+    "text": "지금 들르기 좋은 곳이 있어요"
+  },
+  "notification.price": {
+    "text": "같은 조건이 더 싼 곳이 있어요."
+  },
+  "pulse.lateAt": {
+    "text": "이대로면 {place} {time} 예약에 {duration} 늦어요."
+  },
+  "pulse.late": {
+    "text": "이대로면 예약 시간에 {duration} 늦어요."
+  },
+  "pulse.delayed": {
+    "text": "약 {duration} 늦어지고 있어요"
+  },
+  "pulse.free": {
+    "text": "다음 일정까지 {duration} 여유가 있어요"
+  },
+  "pulse.freeDetail": {
+    "text": "{place} {time}까지는 시간이 넉넉해요."
+  },
+  "pulse.next": {
+    "text": "{place}까지 이어가면 돼요."
+  },
+  "notification.lateAt": {
+    "text": "이대로면 {place} 예약에 {duration} 늦어요."
+  },
+  "notification.late": {
+    "text": "이대로면 예약에 {duration} 늦어요."
+  },
+  "notification.dropLate": {
+    "text": "{object} 빼도 늦어요 — 예약 시간을 확인해 보세요."
+  },
+  "notification.dropFits": {
+    "text": "{object} 빼면 예약 시간은 그대로 지킬 수 있어요."
+  },
+  "notification.check": {
+    "text": "남은 일정을 다시 확인해 보세요."
+  },
+  "intent.rest": {
+    "text": "쉬고 싶다고 하셨어요"
+  },
+  "intent.walk": {
+    "text": "많이 걷지 않는 쪽으로 볼게요"
+  },
+  "intent.near": {
+    "text": "가까운 곳만 볼게요"
+  },
+  "intent.energy": {
+    "text": "컨디션이 좋다고 하셨어요"
+  },
+  "intent.meal": {
+    "text": "식사를 먼저 챙길게요"
+  },
+  "intent.hotel": {
+    "text": "숙소로 돌아가는 쪽을 먼저 볼게요"
+  },
+  "tone.preview": {
+    "text": "많이 걸었네요. 잠깐 쉬어갈까요?",
+    "local": true
+  },
+  "kicker.next": {
+    "text": "지금 한 곳 더 들를 수 있어요",
+    "local": true
+  },
+  "kicker.rest": {
+    "text": "쉬어도 괜찮아요",
+    "local": true
+  },
+  "flow.today": {
+    "text": "오늘 이렇게 이어가면 어떨까요",
+    "local": true
+  },
+  "flow.preview": {
+    "text": "이 날을 이렇게 채우면 어떨까요",
+    "local": true
+  },
+  "flow.blocked": {
+    "text": "이대로면 예약 시간에 늦어서 더 넣지 않았어요 — 일정 조정 제안을 먼저 확인해 주세요.",
+    "local": true
+  },
+  "flow.blockedNoCard": {
+    "text": "이대로면 예약 시간에 늦어서 더 넣지 않았어요 — 예약 시간을 바꾸거나 미리 알려 두는 편이 나아요.",
+    "local": true
+  },
+  "flow.empty": {
+    "text": "지금 더 넣을 만한 곳이 없어요 — 남은 일정을 그대로 이어가면 돼요.",
+    "local": true
+  },
+  "flow.light": {
+    "text": "이 날 메모가 가벼운 일정이라 한 곳만 골랐어요.",
+    "local": true
+  },
+  "flow.dismissed": {
+    "text": "알겠어요 — 일정은 그대로 둬요",
+    "local": true
+  },
+  "suggest.afterTrip": {
+    "text": "지난 여행이에요 — 일정을 돌아볼 수 있고, J의 제안은 여행 전과 여행 중에 드려요.",
+    "local": true
+  },
+  "suggest.past": {
+    "text": "지난 날이에요 — 다녀온 곳은 아래 목록에서 표시할 수 있어요.",
+    "local": true
+  },
+  "suggest.emptyToday": {
+    "text": "지금 새로 제안할 일정이 없어요 — 오늘 남은 일정을 그대로 이어가면 돼요.",
+    "local": true
+  },
+  "suggest.emptyPreview": {
+    "text": "이 날은 더 넣을 만한 곳이 없어요 — 지금 일정 그대로 괜찮아요.",
+    "local": true
+  },
+  "intent.normal": {
+    "text": "컨디션은 '보통'으로 보고 있어요 — 다르면 아래 버튼으로 알려 주세요",
+    "local": true
+  },
+  "intent.unknown": {
+    "text": "그 문장은 아직 못 알아들었어요 — 아래 컨디션 버튼으로 알려 주세요",
+    "local": true
+  },
+  "today.rest": {
+    "text": "남은 시간은 그냥 쉬어도 좋아요.",
+    "local": true
+  },
+  "today.before": {
+    "text": "아직 여행 전이에요",
+    "local": true
+  },
+  "today.prepare": {
+    "text": "일정 탭에서 계획을 다듬어 두세요.",
+    "local": true
+  },
+  "suggest.emptyNext": {
+    "text": "지금 더 넣을 만한 곳은 없어요 — 다음 일정 {place}({time})로 그대로 이어가면 돼요.",
+    "local": true
+  },
+  "intent.echo": {
+    "text": "이렇게 이해했어요 — {reasons}",
+    "local": true
+  },
+  "intent.unchanged": {
+    "text": "컨디션은 바꾸지 않았어요 — 지금은 '{energy}'로 보고 있어요",
+    "local": true
+  },
+  "price.seller": {
+    "text": "{seller}에서 같은 조건이 더 싸요{fee}",
+    "local": true
+  },
+  "price.lower": {
+    "text": "예약한 뒤 가격이 내려갔어요",
+    "local": true
+  },
+  "price.net": {
+    "text": "취소 수수료를 빼고도 남는 금액이에요",
+    "local": true
+  },
+  "suggest.mealTitle": {
+    "text": "{meal} 시간이 비어 있어요"
+  },
+  "departure.tightArrival": {
+    "text": "지금 바로 나서야 {time}에 도착해요"
+  },
+  "departure.earlyArrival": {
+    "text": "{leave}쯤 출발하면 {time}에 도착해요 · 그 전까지 {duration} 여유가 있어요"
+  },
+  "rest.accepted": {
+    "text": "쉬는 중이에요 — 남은 일정은 그대로 둬요",
+    "local": true
+  },
+  "hotel.accepted": {
+    "text": "숙소로 돌아가는 중이에요 — 남은 일정은 그대로 둬요",
+    "local": true
+  },
+  "intent.unknownNative": {
+    "text": "그 문장은 아직 못 알아들었어요 — 컨디션 버튼으로 알려 주세요",
+    "local": true
+  }
+}

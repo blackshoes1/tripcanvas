@@ -88,6 +88,7 @@ export interface TodayInput {
   /** 보고 싶은 일자. 생략하면 오늘(기간 밖이면 첫날) */
   dayIndex?: number;
   energyLevel?: EnergyLevel;
+  jTone?: 'FRIENDLY' | 'CASUAL' | 'POLITE';
   prefs?: Record<string, unknown>;
   /**
    * 사람이 쓴 자연어 요청("오늘 좀 피곤해서 많이 걷기 싫어").
@@ -211,12 +212,12 @@ export function computeToday(input: TodayInput): TodayComputation {
 
   // 자연어 요청은 **여기서 한 번만** 해석한다 — 엔진(`adaptive.js`)이 단일 출처고 앱은 결과만 그린다.
   const said = String(input.intent ?? '').trim();
-  const resolved = adapt.resolveIntent(said, { energyLevel: input.energyLevel ?? 'NORMAL' });
+  const resolved = adapt.resolveIntent(said, { energyLevel: input.energyLevel ?? 'NORMAL', jTone: input.jTone });
   const prefs = said ? resolved.prefs : (input.prefs ?? {});
   const state = adapt.buildTripState(trip, {
     dayIndex, todayISO: input.todayISO, nowMin: input.nowMinutes, timeline,
     startAnchor: anchor, legMin, energyLevel: resolved.energyLevel, prefs,
-    currentLocation: input.currentLocation ?? undefined
+    currentLocation: input.currentLocation ?? undefined, jTone: input.jTone
   });
   const built = adapt.buildSuggestions(trip, state, { legMin, dismissed: input.dismissed ?? [] });
 
@@ -307,7 +308,7 @@ export function computeToday(input: TodayInput): TodayComputation {
     dropNames: replanRaw.dropNames,
     movesToNextDay: !!days[dayIndex + 1],
     impact: replanRaw.impact ?? {},
-    note: adapt.replanDropNote(replanRaw.dropNames, !!days[dayIndex + 1])
+    note: adapt.replanDropNote(replanRaw.dropNames, !!days[dayIndex + 1], input.jTone)
   };
 
   const tripSummary: TripSummary = {

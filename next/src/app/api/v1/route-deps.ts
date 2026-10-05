@@ -12,6 +12,9 @@ import type { TripDoc } from '@/features/trip-state/domain/todayView';
 import { composeGateway } from '@/server/api/composeGateway';
 import { ApiError } from '@/server/api/errors';
 import { createCollabRoutes } from '@/server/api/collabRoutes';
+import { createJToneRoutes } from '@/server/api/jToneRoutes';
+import { JToneService } from '@/server/application/account/jToneService';
+import { PgJToneRepository } from '@/server/infrastructure/database/pgJToneRepository';
 import { createMeRoutes } from '@/server/api/meRoutes';
 import { createItineraryRoutes } from '@/server/api/itineraryRoutes';
 import { createPlaceRoutes } from '@/server/api/placeRoutes';
@@ -151,11 +154,19 @@ export const collabRoutes = createCollabRoutes({
  * /me — 역할·인원과 실시간 선택. 여행 목록은 TripService가 주므로 레지스트리를 그대로 따라간다.
  * 실시간 선택은 서버만 알 수 있다: 협업이 아직 Supabase면 새 사이드카에는 보낼 이벤트가 없다.
  */
+async function jToneServiceFor(ctx: RequestContext): Promise<JToneService> {
+  const db = getDb();
+  if (db) await new PgUserRepository(db).ensure({ id: ctx.userId, email: ctx.email });
+  return new JToneService(db ? new PgJToneRepository(db) : null, ctx.userId);
+}
+export const jToneRoutes = createJToneRoutes({ verifier, serviceFor: jToneServiceFor });
+
 export const meRoutes = createMeRoutes({
   verifier,
   listTrips: async (ctx, token) => (await tripServiceFor(ctx, token)).list(ctx),
   registry: env.registry,
-  realtimeUrl: env.realtimeUrl
+  realtimeUrl: env.realtimeUrl,
+  preferencesFor: async (ctx) => (await jToneServiceFor(ctx)).read()
 });
 
 /**
@@ -195,10 +206,11 @@ async function gatewayFor(token: string): Promise<Gateway | null> {
     } : null,
     pricing: db ? new PgPriceObservationRepository(db) : null
   });
-  if (env.registry.TRIP === 'LEGACY') return composed;
+  const personal = { ...composed, jTone: (await (await jToneServiceFor(ctx)).read()).jTone };
+  if (env.registry.TRIP === 'LEGACY') return personal;
   const service = await tripServiceFor(ctx, token);
   return {
-    ...composed,
+    ...personal,
     async listTrips() { return (await service.list(ctx)).map(toRow); },
     async getTrip(tripId) {
       try { return toRow(await service.get(ctx, tripId)); } catch (e) { if (e instanceof ApiError && e.code === 'NOT_FOUND') return null; throw e; }
