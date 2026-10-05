@@ -8479,3 +8479,111 @@ test('통합(C-1): 총예산은 여행 설정에서 한 번 적고, 필터바 �
     await new Promise(r=>setTimeout(r,0));
   }finally{ w.close(); }
 });
+
+// ── 비용이 보이는 곳 정리(2026-10-05 UX 점검) ──
+test('쓴 돈 적기: 여행 전 날에는 일자 카드에 버튼이 없고, 오늘·지난 날에는 있고, ⋮ 메뉴에는 늘 있다', { skip: noJsdom }, async () => {
+  const w=boot();
+  try{
+    const spot=(n)=>`{name:'${n}',city:'M',lat:40.41,lng:-3.69}`;
+    withTrip(w, `[{spots:[${spot('A')}]},{spots:[${spot('B')}]},{spots:[${spot('C')}],costItems:[{id:'ci1',title:'점심',kind:'FOOD',amount:12000,payState:'PAID'}]}]`);
+    w.eval(`trip().start='2026-10-25'; travelClock=()=>({todayISO:'2026-10-26',nowMin:600}); render();`);
+    const cards=()=>[...w.document.querySelectorAll('.dayCard')];
+    assert.ok(cards()[0].querySelector('.dayItem.add'), '지난 날');
+    assert.ok(cards()[1].querySelector('.dayItem.add'), '오늘');
+    assert.equal(cards()[2].querySelector('.dayItem.add'), null, '여행 전 날에는 매일 같은 버튼을 두지 않는다');
+    assert.ok(cards()[2].querySelector('.dayItem:not(.add)'), '이미 적은 쓴 돈은 그대로 보인다');
+    // ⋮ 메뉴에는 날에 상관없이 있다 — 데스크톱에는 하단 바가 없어 다른 길이 없다
+    const menuBtn=(c)=>[...c.querySelectorAll('.actionMenuPanel button')].find(b=>/쓴 돈 적기/.test(b.textContent));
+    for(const c of cards()) assert.ok(menuBtn(c), '⋮ 메뉴의 쓴 돈 적기');
+    menuBtn(cards()[2]).click();
+    assert.equal(w.document.getElementById('placeCostDialog').open, true);
+    assert.equal(w.document.getElementById('placeCostTitle').textContent, '쓴 돈');
+    assert.match(w.document.getElementById('placeCostFor').textContent, /Day 3/);
+    // 날짜 없는 여행은 오늘을 판정할 수 없다 — 버튼은 두지 않고 ⋮ 메뉴만
+    w.document.getElementById('placeCostDialog').close();
+    w.eval(`trip().start=''; render();`);
+    assert.equal(w.document.querySelectorAll('.dayCard')[0].querySelector('.dayItem.add'), null);
+    await new Promise(r=>setTimeout(r,0));
+  }finally{ w.close(); }
+});
+
+test('장소 편집기: 비용 줄은 상세 설정 밖의 기본 영역에 있고, 비용이 있어도 상세 설정을 펴지 않는다', { skip: noJsdom }, async () => {
+  const w=boot();
+  try{
+    withTrip(w, `[{spots:[{name:'식당',city:'M',cat:'food',lat:40.41,lng:-3.69,cost:30,cur:'EUR'}]}]`);
+    w.eval('openSpotModal(0,0)');
+    const btn=w.document.getElementById('spotCostBtn');
+    assert.equal(!!btn.closest('#spotAdvanced'), false, '상세 설정 안에 숨기지 않는다');
+    assert.equal(w.document.getElementById('spotAdvanced').open, false, '비용 때문에 상세 설정이 열리지 않는다');
+    assert.match(btn.textContent, /€30/);
+    w.document.getElementById('spotCancel').click();
+    w.eval('openSpotModal(0,-1)');   // 새 장소에도 같은 줄
+    assert.equal(!!w.document.getElementById('spotCostBtn').closest('#spotAdvanced'), false);
+    assert.match(w.document.getElementById('spotCostBtn').textContent, /비용 적기/);
+    assert.doesNotMatch(w.document.getElementById('spotAdmHelp').textContent, /상세 설정의 비용/, '안내가 옛 위치를 말하지 않는다');
+    await new Promise(r=>setTimeout(r,0));
+  }finally{ w.close(); }
+});
+
+test('하단 ＋ 장소 추가는 고른 날 → 고른 장소의 날 → 오늘 → 첫날 순으로 날을 정한다', { skip: noJsdom }, async () => {
+  const w=boot();
+  try{
+    const spot=(n)=>`{name:'${n}',city:'M',lat:40.41,lng:-3.69}`;
+    withTrip(w, `[{spots:[${spot('A')}]},{spots:[${spot('B')}]},{spots:[${spot('C')}]}]`);
+    w.eval(`trip().start='2026-10-25'; render();`);
+    const day=()=>w.eval('defaultAddDay()');
+    w.eval(`travelClock=()=>({todayISO:'2026-08-01',nowMin:600});`);
+    assert.equal(day(), 0, '여행 전이고 고른 것이 없으면 첫날');
+    w.eval(`travelClock=()=>({todayISO:'2026-10-27',nowMin:600});`);
+    assert.equal(day(), 2, '오늘이 여행 안이면 오늘');
+    w.eval(`selectedSpot={di:1,si:0}; selectedRef=trip().days[1].spots[0]; selectedRefOf=selectedSpot;`);
+    assert.equal(day(), 1, '고른 장소의 날이 오늘보다 앞선다');
+    w.eval(`activeDay=1;`);
+    assert.equal(day(), 0, '보는 날을 골랐으면 그 날이 가장 앞선다');
+    await new Promise(r=>setTimeout(r,0));
+  }finally{ w.close(); }
+});
+
+test('모바일 하단 비용: 버튼이 지금 상태를 말하고, 시트는 쓴 돈 적기·예산 정하기로 이어진다', { skip: noJsdom }, async () => {
+  const w=boot();
+  try{
+    const spot=(n,cost)=>`{name:'${n}',city:'M',lat:40.41,lng:-3.69${cost!=null?`,cost:${cost}`:''}}`;
+    withTrip(w, `[{spots:[${spot('A')}]},{spots:[${spot('B')}]}]`, 1);
+    w.eval(`trip().start='2026-08-01'; travelClock=()=>({todayISO:'2026-08-01',nowMin:600}); render();`);
+    const el=(id)=>w.document.getElementById(id);
+    assert.equal(el('mobileCosts').textContent.trim(), '비용', '아직 아무것도 없으면 이름만');
+    w.eval(`trip().days[0].spots[0].cost=300000; trip().budget={amount:1000000}; render();`);
+    assert.equal(el('mobileCosts').textContent.trim(), '비용 · 남은 ₩70만');
+    assert.match(el('mobileCosts').getAttribute('aria-label'), /남은 예산 ₩700,000/, '스크린리더는 줄이지 않은 금액을 듣는다');
+    w.eval(`trip().budget={amount:100000}; render();`);
+    assert.equal(el('mobileCosts').textContent.trim(), '비용 · ₩20만 초과', '넘으면 숨기지 않는다');
+    w.eval(`delete trip().budget; render();`);
+    assert.equal(el('mobileCosts').textContent.trim(), '비용 · ₩30만');
+    // 시트 — 보는 날이 있으니 쓴 돈을 바로 적을 수 있다
+    el('mobileCosts').click();
+    assert.equal(el('mobileCostDialog').open, true);
+    assert.match(el('mobileBudget').textContent, /예산 정하기/);
+    el('mobileAddSpend').click();
+    assert.equal(el('mobileCostDialog').open, false);
+    assert.equal(el('placeCostDialog').open, true);
+    assert.match(el('placeCostFor').textContent, /Day 1/, '보고 있는 날에 적는다');
+    el('placeCostDialog').close();
+    // 예산 정하기 — 여행 설정이 열리고 포커스가 예산 칸에 있다
+    el('mobileCosts').click(); el('mobileBudget').click();
+    assert.equal(el('mobileCostDialog').open, false);
+    assert.equal(el('tripModalBg').classList.contains('show'), true);
+    assert.equal(w.document.activeElement.id, 'tripBudget');
+    el('tripCancel').click();
+    // 예산이 있으면 '고치기'
+    w.eval(`trip().budget={amount:500000}; render();`);
+    el('mobileCosts').click();
+    assert.match(el('mobileBudget').textContent, /예산 고치기/);
+    el('mobileCostClose').click();
+    // 어느 날인지 모르면(여행 전·전체 일정) 쓴 돈 버튼 대신 이유를 말한다
+    w.eval(`activeDay=0; trip().start='2026-10-25'; travelClock=()=>({todayISO:'2026-08-01',nowMin:600}); render();`);
+    el('mobileCosts').click();
+    assert.equal(el('mobileAddSpend'), null);
+    assert.match(el('mobileCostBody').textContent, /여행이 시작되면|날을 고르면/);
+    await new Promise(r=>setTimeout(r,0));
+  }finally{ w.close(); }
+});
