@@ -7412,8 +7412,10 @@ test('ux3 가져오기·내보내기: 실패하면 이유를 말하고, 다시 �
       const input = w.document.getElementById('importFile');
       const file = new w.File([text], 'trip.json', { type: 'application/json' });
       Object.defineProperty(input, 'files', { value: [file], configurable: true });
+      const before = toastText(w), tripsBefore = w.eval('store.trips.length');
       input.dispatchEvent(new w.Event('change'));
-      await new Promise((r) => setTimeout(r, 30));
+      // 파일 읽기가 끝나 토스트가 바뀔 때까지 기다린다 — 고정 30ms는 컴퓨터가 바쁘면 모자라 간헐로 실패했다(2026-10-05, 변경 전 커밋에서도 재현)
+      for (let i = 0; i < 300 && toastText(w) === before && w.eval('store.trips.length') === tripsBefore; i++) await new Promise((r) => setTimeout(r, 10));
     };
     await importText('{ 깨진');
     assert.match(toastText(w), /가져오지 못했어요 — JSON 형식이 올바르지 않아요/);
