@@ -13,7 +13,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js" integrity="sha384-+pWnyi8LtZx+cgXfD2arWgUX7pHIaEL215cEPPk9WrsegNlgvDL9DNjaqsceQq6o" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js" integrity="sha384-BSxuMLxX+FCbTdYec3TbXlnMGEEM2QXTFdtDaveen71o+jswm2J36+xFqp8k4VHM" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.min.js" integrity="sha384-l8ah+VgaWtk1mvOe9VC+OirC6qHFF4yH7l7mKRidV9MSti3E9F463bMp6ZVN4kuC" crossorigin="anonymous"></script>
-<link rel="stylesheet" href="style.css?v=tc-v270">
+<link rel="stylesheet" href="style.css?v=tc-v271">
 </head>
 <body>
 <a class="skipLink" href="#sidebar">일정으로 건너뛰기</a>
@@ -39,7 +39,7 @@
   <button class="membersPill" id="membersBtn" hidden title="같이 짜기 — 멤버·초대" aria-haspopup="dialog"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 19v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1M22 19v-1a4 4 0 0 0-3-3.9"/><path d="M9 4a3 3 0 1 1 0 6 3 3 0 0 1 0-6z"/></svg> <span id="membersCount">1</span></button>
   <span class="hdrSpacer"></span>
   <button class="btn" id="pasteBtn"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4h6v3H9zM7 5.5H5V21h14V5.5h-2M8.5 12h7M8.5 16h5"/></svg> 일정 붙여넣기</button>
-  <button class="btn primary" id="travelBtn" aria-label="여행 중 안내" title="여행 중 안내 켜기 — 지금 무엇을 할지, 다음 장소까지 얼마나 걸리는지 알려 줘요"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><path d="M12 7.4a2.6 2.6 0 1 1 0 5.2 2.6 2.6 0 0 1 0-5.2z"/></svg> <span class="travelBtnText">여행 중 안내</span></button>
+  <button class="btn primary" id="travelBtn" aria-label="지금 할 일" title="지금 할 일 — 지금 무엇을 할지, 다음 장소까지 얼마나 걸리는지 알려 줘요"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><path d="M12 7.4a2.6 2.6 0 1 1 0 5.2 2.6 2.6 0 0 1 0-5.2z"/></svg> <span class="travelBtnText">지금 할 일</span></button>
   <button class="btn ghost" id="undoQuick" type="button" hidden aria-label="실행취소" title="방금 한 변경 되돌리기 (Ctrl+Z)" onclick="undo()"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
   <button class="btn ghost" id="moreBtn" aria-label="메뉴" aria-expanded="false" aria-controls="hdrMenu" onclick="toggleHdrMenu(event)"><span class="menuBadge" id="menuBadge" hidden></span><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
   <div id="hdrMenu" role="group" aria-label="메뉴">
@@ -726,11 +726,11 @@
   </div>
 </div></div>
 
-<!-- 여행 중 (내부 식별자는 #travel 그대로) -->
-<div id="travel" role="dialog" aria-modal="true" aria-label="여행 중 안내">
+<!-- 지금 (화면 이름 — 내부 식별자는 #travel 그대로) -->
+<div id="travel" role="dialog" aria-modal="true" aria-label="지금 할 일">
   <div class="travelTop">
-    <button class="btn" id="travelClose" aria-label="여행 중 안내 끄기">← 닫기</button>
-    <strong id="travelModeTitle">여행 중</strong>
+    <button class="btn" id="travelClose" aria-label="지금 화면 닫기">← 닫기</button>
+    <strong id="travelModeTitle">지금</strong>
     <select id="travelDay" aria-label="볼 날짜"></select>
   </div>
   <div id="travelPeriodNote" class="travelPeriodNote" role="note" hidden></div>
@@ -778,15 +778,15 @@
   <div id="placeDetailsContent" aria-live="polite"></div>
   <footer id="placeDetailsActions"></footer>
 </dialog>
-<script src="lib.js?v=tc-v270"></script>
-<script src="sync.js?v=tc-v270"></script>
-<script src="routing.js?v=tc-v270"></script>
-<script src="price.js?v=tc-v270"></script>
-<script src="adaptive.js?v=tc-v270"></script>
-<script src="intake.js?v=tc-v270"></script>
-<script src="collab.js?v=tc-v270"></script>
-<script src="api.js?v=tc-v270"></script>
-<script src="auth.js?v=tc-v270"></script>
-<script src="app.js?v=tc-v270"></script>
+<script src="lib.js?v=tc-v271"></script>
+<script src="sync.js?v=tc-v271"></script>
+<script src="routing.js?v=tc-v271"></script>
+<script src="price.js?v=tc-v271"></script>
+<script src="adaptive.js?v=tc-v271"></script>
+<script src="intake.js?v=tc-v271"></script>
+<script src="collab.js?v=tc-v271"></script>
+<script src="api.js?v=tc-v271"></script>
+<script src="auth.js?v=tc-v271"></script>
+<script src="app.js?v=tc-v271"></script>
 </body>
 </html>

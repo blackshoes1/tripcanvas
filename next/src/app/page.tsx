@@ -10,14 +10,14 @@ const AREAS: { name: string; status: '이관됨' | '진행 중' | '레거시' }[
   { name: '지도 — 장소 담기(해외 POI·국내 POI 칩)·검색·경로 조회', status: '이관됨' },
   { name: '재생(동선 따라가기) · 여행·일자 관리 · 환율 갱신', status: '이관됨' },
   { name: '가져오기·내보내기·공유 링크·이미지(PNG)·붙여넣기 초안', status: '이관됨' },
-  { name: '여행 모드 (/travel — 현장에서 보는 화면)', status: '이관됨' },
+  { name: '지금 (/travel — 현장에서 보는 화면)', status: '이관됨' },
   { name: '클라우드 동기화 · 로그인 · 버전 히스토리 (Supabase)', status: '이관됨' },
   { name: '온보딩 · 실행취소 · 설정 메뉴 전반', status: '이관됨' }
 ];
 
 const LINKS = [
   { href: '/itinerary', label: '일정', desc: '만들고 고치고 재생한다' },
-  { href: '/travel', label: '여행 모드', desc: '여행 중에 보는 화면' },
+  { href: '/travel', label: '지금', desc: '여행 중에 보는 화면' },
   { href: '/bookings', label: '예약 · 가격 추적', desc: '숙박·렌터카·항공' }
 ];
 

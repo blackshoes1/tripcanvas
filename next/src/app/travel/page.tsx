@@ -54,7 +54,7 @@ export default function TravelPage() {
   if (!activeTrip || !travel) {
     return (
       <main className="tvMain">
-        <h1>여행 모드</h1>
+        <h1>지금</h1>
         <p className="hint">
           이 브라우저에 저장된 여행이 없어요. <a href="/itinerary">일정</a>에서 여행을 만들면 여기서 볼 수 있어요.
         </p>
