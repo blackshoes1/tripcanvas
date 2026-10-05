@@ -318,6 +318,61 @@
       "NONE": 0
     }
   },
+  "overview": {
+    "items": [
+      {
+        "id": "BOOKING:bk1",
+        "line": {
+          "source": "BOOKING",
+          "key": "bk1",
+          "title": "호텔",
+          "kind": "STAY",
+          "amount": 100000,
+          "currency": "KRW",
+          "basis": "ENTERED",
+          "people": 1,
+          "payState": "RESERVED",
+          "paidOn": null,
+          "photos": [],
+          "totalKRW": 100000,
+          "state": "KNOWN",
+          "dayIndex": null
+        },
+        "bookingId": "bk1",
+        "spotIndex": null,
+        "date": "2026-09-01",
+        "end": "2026-09-03",
+        "reservation": "LINKED",
+        "amountSource": "BOOKING"
+      },
+      {
+        "id": "0:SPOT:0",
+        "line": {
+          "source": "SPOT",
+          "key": "0",
+          "title": "숙소",
+          "kind": "STAY",
+          "amount": null,
+          "currency": "KRW",
+          "basis": "ENTERED",
+          "people": 1,
+          "payState": "NONE",
+          "paidOn": null,
+          "photos": [],
+          "totalKRW": null,
+          "state": "UNKNOWN",
+          "dayIndex": 0
+        },
+        "bookingId": null,
+        "spotIndex": 0,
+        "date": "2026-09-01",
+        "end": null,
+        "reservation": "NONE",
+        "amountSource": "PLACE"
+      }
+    ],
+    "unknownCount": 1
+  },
   "budget": {
     "amount": 1000000,
     "currency": "KRW",

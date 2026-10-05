@@ -48,6 +48,9 @@ final class DayCostTests: XCTestCase {
         XCTAssertTrue(costs.categories.flatMap(\.items).contains { $0.source == "BOOKING" })
         // 결제일은 모든 줄에 실린다(없으면 null) — 화면이 문서를 다시 읽지 않게. 옛 응답(키 없음)도 nil로 읽힌다.
         XCTAssertTrue(costs.categories.flatMap(\.items).allSatisfy { $0.paidOn == nil })
+        let overview = try XCTUnwrap(costs.overview)
+        XCTAssertEqual(overview.items.reduce(0) { $0 + ($1.line.totalKRW ?? 0) }, costs.totalKRW)
+        XCTAssertEqual(Set(overview.items.map(\.id)).count, overview.items.count)
     }
 
     /// 일정 밖으로 넘친 연박의 몫은 현지 결제 금액에만 있고 날짜별 줄에는 없다 — 예약 하루치가 없어도 그 차이를 말한다(2026-10-02).
