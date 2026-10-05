@@ -51,9 +51,12 @@ test('모바일 일정 패널은 접힘·반판·전체 3단계로 전환된다'
   await prepare(context); await page.setViewportSize({width:390,height:844}); await page.goto('/');
   const sidebar=page.locator('#sidebar');
   await expect(sidebar).toHaveAttribute('data-snap','half');
-  await expect.poll(()=>sidebar.evaluate(el=>el.getBoundingClientRect().height)).toBeGreaterThan(844*.58);
+  // 반판은 하단 동작 바(`#mobilePlanActions`) 위에서 끝나므로 화면의 60%에서 바 높이를 뺀 값이다(2026-10-05).
+  // 바를 빼지 않으면 시트 위 끝이 바만큼 밀려 지도가 38px만 보였다 — e2e/mobile-sheet-keyboard.spec.js가 그 결과를 본다
+  const bar=await page.locator('#mobilePlanActions').evaluate(el=>el.getBoundingClientRect().height);
+  await expect.poll(()=>sidebar.evaluate(el=>el.getBoundingClientRect().height)).toBeGreaterThan(844*.6-bar-3);
   const height=await sidebar.evaluate(el=>el.getBoundingClientRect().height);
-  expect(height).toBeLessThan(844*.62);
+  expect(height).toBeLessThan(844*.6-bar+3);
   await page.locator('#sheetHandle').click(); await expect(sidebar).toHaveAttribute('data-snap','expanded');
   await page.locator('#sheetHandle').click(); await expect(sidebar).toHaveAttribute('data-snap','collapsed');
   await page.locator('#sheetHandle').click(); await expect(sidebar).toHaveAttribute('data-snap','half');
@@ -124,10 +127,12 @@ test('전환 도중 다시 탭해도 일정 패널 단계는 한 칸씩만 움�
   }
 });
 
-test('핸들 드래그는 놓은 높이의 비율로 스냅한다',async({context,page})=>{
+test('핸들 드래그는 놓은 높이에서 가장 가까운 단계로 스냅한다',async({context,page})=>{
   await prepare(context); await page.setViewportSize({width:390,height:844}); await page.goto('/');
   const sb=page.locator('#sidebar');
-  await expect.poll(()=>sb.evaluate(el=>Math.round(el.getBoundingClientRect().height))).toBe(Math.round(844*.6));
+  // 단계 높이는 화면 비율에서 하단 바 높이를 뺀 값이라 비율(30%/68%)로는 가를 수 없다 — 가장 가까운 단계로 붙는다(2026-10-05)
+  const bar=await page.locator('#mobilePlanActions').evaluate(el=>el.getBoundingClientRect().height);
+  await expect.poll(()=>sb.evaluate((el,h)=>Math.abs(el.getBoundingClientRect().height-(innerHeight*.6-h)),bar)).toBeLessThanOrEqual(1);
   const dragTo=async y=>{
     const b=await page.locator('#sheetHandle').boundingBox();
     await page.mouse.move(b.x+b.width/2,b.y+b.height/2); await page.mouse.down();
