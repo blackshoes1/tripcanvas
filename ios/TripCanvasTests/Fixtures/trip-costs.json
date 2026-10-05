@@ -369,34 +369,9 @@
         "end": null,
         "reservation": "NONE",
         "amountSource": "PLACE"
-      },
-      {
-        "id": "1:SPOT:0",
-        "line": {
-          "source": "SPOT",
-          "key": "0",
-          "title": "공원",
-          "kind": "OTHER",
-          "amount": null,
-          "currency": "KRW",
-          "basis": "ENTERED",
-          "people": 1,
-          "payState": "NONE",
-          "paidOn": null,
-          "photos": [],
-          "totalKRW": null,
-          "state": "UNKNOWN",
-          "dayIndex": 1
-        },
-        "bookingId": null,
-        "spotIndex": 0,
-        "date": "2026-09-02",
-        "end": null,
-        "reservation": "NONE",
-        "amountSource": "PLACE"
       }
     ],
-    "unknownCount": 2
+    "unknownCount": 1
   },
   "budget": {
     "amount": 1000000,
