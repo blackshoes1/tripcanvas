@@ -1236,8 +1236,9 @@
    * `today`(YYYY-MM-DD)는 기존 호출 계약의 날짜 인자다. 하루치(`dayCostSummary`)와 **같은 상태**를 읽어야
    * 예약 한 줄과 그 하루치가 다른 상태를 말하지 않는다.
    * @param {any} trip @param {any[]} days @param {Record<string,number>} rates @param {string=} today
-   * @returns {{totalKRW:number,averagePerDayKRW:number|null,categories:any[],unallocated:any[],payTotals:Record<string,number>,prep:{totalKRW:number,payTotals:Record<string,number>,items:any[]},onSite:{totalKRW:number,payTotals:Record<string,number>},budget:ReturnType<typeof tripBudgetStatus>,unknownCount:number,transportUnpriced:boolean,hasForeignCurrency:boolean}} */
+   * @returns {{totalKRW:number,averagePerDayKRW:number|null,categories:any[],unallocated:any[],payTotals:Record<string,number>,prep:{totalKRW:number,payTotals:Record<string,number>,items:any[]},onSite:{totalKRW:number,payTotals:Record<string,number>},overview:{items:any[],unknownCount:number},budget:ReturnType<typeof tripBudgetStatus>,unknownCount:number,transportUnpriced:boolean,hasForeignCurrency:boolean}} */
   function tripCostSummary(trip,days,rates,today){
+    const original=trip;
     trip={...trip, days:effectiveCostDays(trip.days||[], trip.bookings)};   // 연결된 숙소의 금액은 예약이 낸다
     /** @type {any[]} */ const unallocated=[];
     /** @type {any[]} */ const prepItems=[];
@@ -1298,14 +1299,64 @@
         unknownCount:lines.filter(i=>i.state==='UNKNOWN'||i.state==='PARTIAL').length};
     });
     const totalKRW=categories.reduce((sum,c)=>sum+c.totalKRW,0);
-    const onSiteItems=[...days.flatMap(d=>d.cost.details.items.filter((/** @type {any} */ i)=>i.source!=='BOOKING')),...stayOverflow];
+    const onSiteItems=[...days.flatMap(d=>d.cost.details.items.filter((/** @type {any} */ i)=>i.source!=='BOOKING').map((/** @type {any} */ i)=>({...i,dayIndex:d.index}))),...stayOverflow];
     const prep={totalKRW:prepItems.reduce((sum,i)=>sum+(i.totalKRW||0),0),payTotals:payStateTotals(prepItems),items:prepItems};
     const onSite={totalKRW:onSiteItems.reduce((sum,i)=>sum+(i.totalKRW||0),0),payTotals:payStateTotals(onSiteItems)};
+    const overview=tripCostOverview(original,days,prepItems,onSiteItems);
     return {totalKRW,averagePerDayKRW:days.length?Math.round(totalKRW/days.length):null,categories,unallocated,
-      payTotals:payStateTotals(items),prep,onSite,budget:tripBudgetStatus(trip,totalKRW,rates),
+      payTotals:payStateTotals(items),prep,onSite,overview,budget:tripBudgetStatus(trip,totalKRW,rates),
       unknownCount:categories.reduce((sum,c)=>sum+c.unknownCount,0),
       transportUnpriced:days.some(d=>d.cost.details.transportUnpriced),
       hasForeignCurrency:items.some(i=>i.currency!=='KRW'&&i.amount!==null)};
+  }
+
+  /** 원본 한 건으로 돌아가는 전체 목록. 숙박 하루치를 합치되 기존 합계 계산은 바꾸지 않는다.
+   * @param {any} trip @param {any[]} days @param {any[]} prepItems @param {any[]} onSiteItems
+   * @returns {{items:any[],unknownCount:number}} */
+  function tripCostOverview(trip,days,prepItems,onSiteItems){
+    /** @type {Map<string,any>} */ const rows=new Map();
+    const reservations=additionalReservations(trip);
+    /** @param {string} source @param {number|null} di @param {number|null} si @param {any} item @returns {string} */
+    const reservation=(source,di,si,item)=>{
+      if(item&&normalizeAdmission(item.admission)?.personalStatus==='BOOKED') return 'BOOKED';
+      return reservations.some(r=>r.source===source&&r.dayIndex===di&&(si!==null?r.spotIndex===si:r.item===item))?'INFO':'NONE';
+    };
+    for(const line of prepItems){
+      const booking=line.source==='BOOKING'? (trip.bookings||[]).find((/** @type {any} */ b)=>b.id===line.key) : null;
+      const raw=booking||(trip.costItems||[]).find((/** @type {any} */ i)=>i.id===line.key);
+      /** @type {Record<string,string>} */ const kinds={hotel:'STAY',car:'RENT',flight:'FLIGHT'};
+      rows.set(`${line.source}:${line.key}`,{id:`${line.source}:${line.key}`,line:{...line,kind:kinds[line.kind]||line.kind},
+        bookingId:booking?booking.id:null,spotIndex:null,date:booking?.start||null,end:booking?.end||null,
+        reservation:booking?'LINKED':reservation('TRIP_COST',null,null,raw),amountSource:booking?'BOOKING':'ENTRY'});
+    }
+    for(const line of onSiteItems){
+      if(line.state==='BOOKING') continue;
+      const stay=line.source==='STAY', source=stay?'SPOT':line.source;
+      const di=stay? Number(line.key.split('.')[0]) : line.dayIndex;
+      const si=source==='SPOT'? Number(stay?line.key.split('.')[1]:line.key) : null;
+      const raw=source==='SPOT'?trip.days[di]?.spots[Number(si)] : source==='EXTRA'?trip.days[di]?.costItems?.find((/** @type {any} */ i)=>i.id===line.key):null;
+      const id=`${di}:${source}:${source==='SPOT'?si:line.key}`, existing=rows.get(id);
+      if(existing){ existing.line.totalKRW=(existing.line.totalKRW||0)+(line.totalKRW||0); continue; }
+      const bookingId=raw&&(raw.bookingId||raw.carPickupId||raw.carReturnId)||null;
+      const linked=(trip.bookings||[]).some((/** @type {any} */ b)=>b.id===bookingId);
+      const amount=source==='SPOT'?costAmountOf(raw,'cost'):line.amount;
+      rows.set(id,{id,line:{...line,source,key:source==='SPOT'?String(si):line.key,dayIndex:di,
+          title:raw?.name||line.title,amount:source==='SPOT'?(typeof raw.cost==='number'?raw.cost:null):line.amount,
+          currency:raw?.cur||line.currency,basis:raw?.costBasis||line.basis,people:raw?.costPeople||line.people,
+          state:source==='SPOT'?(amount===null?'UNKNOWN':raw.costPartial?'PARTIAL':amount===0?'FREE':'KNOWN'):line.state},
+        bookingId:linked?bookingId:null,spotIndex:si,date:days[di]?.date||null,end:null,
+        reservation:linked?'LINKED':reservation(source==='SPOT'?'SPOT':'DAY_COST',di,si,raw),amountSource:source==='TRANSPORT'?'ESTIMATE':source==='SPOT'?'PLACE':'ENTRY'});
+    }
+    // 예약 금액 미정 + 장소 금액: 합계에서 제외된 예약도 장소 줄의 신원으로 남긴다.
+    for(const booking of trip.bookings||[]){
+      const id=`BOOKING:${booking.id}`;
+      if(booking.price>0||booking.type!=='hotel') continue;
+      const row=[...rows.values()].find(r=>r.line.source==='SPOT'&&r.bookingId===booking.id);
+      if(row){ rows.delete(row.id); row.id=id; row.line.title=booking.title||row.line.title;
+        row.date=booking.start||row.date; row.end=booking.end||null; rows.set(id,row); }
+    }
+    const items=[...rows.values()];
+    return {items,unknownCount:items.filter(r=>r.line.state==='UNKNOWN'||r.line.state==='PARTIAL').length};
   }
 
   /**

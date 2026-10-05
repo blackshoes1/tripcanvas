@@ -38,3 +38,46 @@ it('총예산이 있으면 남은 예산을 싣고, 없으면 null이다', () =>
     remainingKRW: 400000 - body.totalKRW, perDayKRW: 200000 });
   expect(buildTripCosts(doc as unknown as TripDoc, {}, 1).budget).toBeNull();
 });
+
+it('전체 목록은 예약·연박 전액 한 줄과 원본 편집 대상을 싣고 기존 합계와 같다', () => {
+  const trip = { id: 't1', name: '전체', start: '2026-10-01', bookings: [
+    { id: 'hotel', type: 'hotel', title: '호텔 예약', price: 300, cur: 'EUR', start: '2026-10-01', end: '2026-10-04' },
+    { id: 'flight', type: 'flight', title: '항공 금액 미정', price: 0 }
+  ], costItems: [{ id: 'sim', title: '유심', amount: 10000 }], days: [
+    { spots: [place('호텔', { stay: true, nights: 3, bookingId: 'hotel', cost: 999 }),
+      place('예약한 미술관', { cost: 15, cur: 'EUR', admission: { source: 'USER', personalStatus: 'BOOKED' } }),
+      place('무료 공원', { cost: 0 }), place('일부 식비', { cost: 20000, costPartial: true })],
+      costItems: [{ id: 'bus', title: '버스', amount: 5000 }], mode: 'walk' },
+    { spots: [place('별도 연박', { stay: true, nights: 3, cost: 30000 })], mode: 'walk' }
+  ] };
+  const body = buildTripCosts(trip as unknown as TripDoc, {}, 1);
+  const rows = body.overview.items;
+  expect(rows.filter(r => r.bookingId === 'hotel')).toHaveLength(1);
+  expect(rows.find(r => r.id === 'BOOKING:hotel')).toMatchObject({ amountSource: 'BOOKING', line: { amount: 300, kind: 'STAY' } });
+  expect(rows.find(r => r.id === 'BOOKING:flight')).toMatchObject({ line: { state: 'UNKNOWN', amount: null } });
+  expect(rows.find(r => r.line.title === '별도 연박')).toMatchObject({ spotIndex: 0, line: { dayIndex: 1, amount: 30000, totalKRW: 30000 } });
+  expect(rows.find(r => r.line.title === '예약한 미술관')).toMatchObject({ reservation: 'BOOKED', line: { source: 'SPOT' } });
+  expect(rows.find(r => r.line.title === '무료 공원')?.line.state).toBe('FREE');
+  expect(rows.find(r => r.line.title === '일부 식비')?.line.state).toBe('PARTIAL');
+  expect(rows.some(r => r.line.key === 'bus' && r.line.source === 'EXTRA')).toBe(true);
+  expect(rows.some(r => r.line.key === 'sim' && r.line.source === 'TRIP')).toBe(true);
+  expect(body.overview.unknownCount).toBe(2);
+  expect(rows.reduce((sum, r) => sum + (r.line.totalKRW ?? 0), 0)).toBe(body.totalKRW);
+  // 기존 Next 일정 요약은 여행 단위 비용을 제외한다. 비용 응답에는 유심도 포함된다.
+  expect(body.totalKRW).toBe(tripCostBreakdownOf(trip as unknown as Trip, {}).total + 10000);
+});
+
+it('예약 금액 미정이면 연결 장소 금액을 한 줄로 쓰고 편집 대상은 장소를 가리킨다', () => {
+  const trip = { id: 't1', name: '폴백', start: '2026-10-01', bookings: [
+    { id: 'hotel', type: 'hotel', title: '호텔 예약', price: 0, start: '2026-10-01', end: '2026-10-04' }
+  ], days: [{ mode: 'walk', spots: [place('호텔', { stay: true, nights: 3, bookingId: 'hotel', cost: 300, cur: 'EUR' })] }] };
+  const body = buildTripCosts(trip as unknown as TripDoc, {}, 1);
+  expect(body.overview.items).toHaveLength(1);
+  expect(body.overview.items[0]).toMatchObject({ id: 'BOOKING:hotel', bookingId: 'hotel', spotIndex: 0,
+    amountSource: 'PLACE', reservation: 'LINKED', line: { source: 'SPOT', amount: 300, dayIndex: 0 } });
+  expect(body.overview.items[0].line.totalKRW).toBe(body.totalKRW);
+  const unknownTrip = { ...trip, days: [{ ...trip.days[0], spots: [place('호텔', { stay: true, nights: 3, bookingId: 'hotel' })] }] };
+  const unknown = buildTripCosts(unknownTrip as unknown as TripDoc, {}, 1);
+  expect(unknown.overview.items).toHaveLength(1);
+  expect(unknown.overview.items[0].line.state).toBe('UNKNOWN');
+});

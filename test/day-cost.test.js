@@ -6,6 +6,22 @@ const summary = (trip, di = 0, extra = {}) => L.dayCostSummary(trip, di, {
   date: `2026-10-0${di + 1}`, rates, taxi: null, transportUnpriced: false, ...extra
 });
 
+test('전체 목록은 연박·예약 전액 한 줄이며 원본 문서와 기존 합계는 보존한다', () => {
+  const trip = { bookings: [{ id: 'b', type: 'flight', title: '항공', price: 100, cur: 'EUR' }], days: [
+    { spots: [{ name: '숙소', stay: true, nights: 3, cost: 300, cur: 'EUR', costBasis: 'PER_PERSON', costPeople: 2 }] },
+    { spots: [{ name: '무료', cost: 0 }, { name: '미정' }] }
+  ] };
+  const before = JSON.stringify(trip);
+  const days = trip.days.map((d, index) => ({ index, date: `2026-10-0${index + 1}`, cost: summary(trip, index) }));
+  const result = L.tripCostSummary(trip, days, rates);
+  assert.equal(JSON.stringify(trip), before);
+  assert.equal(result.overview.items.filter(r => r.line.title === '숙소').length, 1);
+  assert.equal(result.overview.items.reduce((sum, r) => sum + (r.line.totalKRW || 0), 0), result.totalKRW);
+  assert.equal(result.overview.unknownCount, 1);
+  assert.equal(result.overview.items.find(r => r.line.title === '숙소').line.amount, 300);
+  assert.equal(result.overview.items.find(r => r.line.title === '숙소').line.totalKRW, 600 * rates.EUR);
+});
+
 test('UX4: 결제 예정일이 지나도 실제 결제를 확인하기 전에는 완료되지 않는다', () => {
   for (const today of ['2026-09-30', '2026-10-01', '2026-10-02']) {
     assert.equal(L.costPayStateOf({paidOn:'2026-10-01',payState:'RESERVED'}, 'TRIP', today), 'RESERVED');
