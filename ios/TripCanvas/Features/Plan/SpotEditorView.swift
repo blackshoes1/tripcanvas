@@ -352,7 +352,15 @@ struct SpotEditorView: View {
     /// 비용은 기본 영역에 둔다(2026-10-05 UX 점검) — 전에는 '이동수단·비용 설정' 접기 안이라 금액이 있어도 보이지 않았다.
     @ViewBuilder
     private var moveCostSection: some View {
-        Section("비용") { costRow }
+        Section {
+            costRow
+        } header: {
+            Text(CostCategory.of(spot: draft).isTransportFare ? "출발 교통비" : "비용")
+        } footer: {
+            if CostCategory.of(spot: draft).isTransportFare {
+                Text("이곳에서 출발하는 구간의 요금이에요. 도착 장소에는 다시 적지 않아요.")
+            }
+        }
         Section("이동") {
             DisclosureGroup("이동수단") {
                 Picker("이동수단", selection: $draft.legMode) {
@@ -414,7 +422,7 @@ struct SpotEditorView: View {
             Button { editingCost = CostEditTarget(kind: .spot(target.index ?? -1), entry: CostEntry(spot: draft),
                                                   isNew: draft.cost == nil, inSpotEditor: true) } label: {
                 HStack {
-                    Text("비용")
+                    Text(CostCategory.of(spot: draft).isTransportFare ? "출발 교통비" : "비용")
                     Spacer()
                     Text(costSummary).foregroundStyle(Ink.soft).multilineTextAlignment(.trailing)
                     Image(systemName: "chevron.right").font(.caption).foregroundStyle(Ink.faint)

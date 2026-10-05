@@ -44,6 +44,22 @@ test('예약·결제 한 번 입력으로 일정 날짜와 비용 전체에 같�
   assert.deepEqual(all.payTotals, { RESERVED: 0, PAID: 120000, NONE: 0 });
 });
 
+test('교통비는 출발 장소의 하루와 비용 목록에 한 번만 잡히고 자동 택시 추정과 겹치지 않는다', () => {
+  const trip = { days: [
+    { mode: 'taxi', spots: [{ name: '서울역', cat: 'transport', cost: 12000, costKind: 'TRANSPORT' }, { name: '공항', cat: 'transport' }] },
+    { mode: 'walk', spots: [{ name: '호텔' }] }
+  ] };
+  const days = trip.days.map((_, index) => ({ index, date: `2026-10-0${index + 1}`,
+    cost: summary(trip, index, { taxi: index === 0 ? 18000 : null }) }));
+  assert.equal(days[0].cost.total, 12000);
+  assert.equal(days[1].cost.total, 0);
+  assert.equal(days[0].cost.details.items.some(i => i.source === 'TRANSPORT'), false);
+  const all = L.tripCostSummary(trip, days, rates);
+  assert.equal(all.totalKRW, 12000);
+  assert.equal(all.overview.items[0].line.title, '서울역에서 출발');
+  assert.equal(all.overview.items[0].spotIndex, 0);
+});
+
 test('UX4: 결제 예정일이 지나도 실제 결제를 확인하기 전에는 완료되지 않는다', () => {
   for (const today of ['2026-09-30', '2026-10-01', '2026-10-02']) {
     assert.equal(L.costPayStateOf({paidOn:'2026-10-01',payState:'RESERVED'}, 'TRIP', today), 'RESERVED');

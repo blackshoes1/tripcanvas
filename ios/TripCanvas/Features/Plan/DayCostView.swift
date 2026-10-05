@@ -298,6 +298,10 @@ struct CostEntryEditor: View {
                         Picker("카테고리", selection: $entry.kind) {
                             ForEach(CostCategory.allCases, id: \.rawValue) { Text($0.label).tag($0.rawValue) }
                         }
+                    } footer: {
+                        if target.inSpotEditor && (CostCategory(rawValue: entry.kind)?.isTransportFare ?? false) {
+                            Text("출발 장소에 적는 구간 요금이에요. 도착 장소에는 다시 적지 않아요.")
+                        }
                     }
                 }
                 Section {
