@@ -32,6 +32,7 @@ export interface TripRow {
 }
 
 export interface Gateway {
+  jTone?: 'FRIENDLY' | 'CASUAL' | 'POLITE';
   /** 요청한 사람. 서버 비용(경로 조회)의 하루 예산을 사람마다 세는 데 쓴다 — 없으면 서버 전체 예산만 본다 */
   userId?: string;
   listTrips(): Promise<TripRow[]>;
@@ -326,7 +327,7 @@ export function createKit(deps: HandlerDeps): HandlerKit {
       tripId: row.client_id, trip: row.data, revision: row.revision, updatedAt: row.updated_at,
       role: row.role, memberCount: row.member_count,
       todayISO: clock.todayISO, nowMinutes: clock.nowMinutes, dayIndex, dismissed, legCache: legs.cache,
-      intent: said.intent, energyLevel: said.energyLevel,
+      intent: said.intent, energyLevel: said.energyLevel, jTone: gateway.jTone,
       generatedAt: now().toISOString(), ...extra
     }).response;
   }

@@ -18,7 +18,9 @@ export const users = pgTable('users', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
   /** 자체 Auth 계정(Phase 8)과의 연결. Supabase 시절 사용자는 이메일 확인 뒤에 이어진다(§13 · server/auth/identity.ts) */
-  authUserId: text('auth_user_id').unique()
+  authUserId: text('auth_user_id').unique(),
+  /** 개인 말투 — 여행 문서·일행 취향과 분리한다. 이전 행은 기본 말투로 읽는다. */
+  jTone: text('j_tone').default('FRIENDLY')
 });
 
 /**

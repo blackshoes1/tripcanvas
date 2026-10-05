@@ -285,3 +285,21 @@ extension DayPlanDecodingTests {
         XCTAssertNil(old.day.lodging, "이전 API의 미지원 응답을 숙박 정보 없음으로 표시하지 않는다")
     }
 }
+
+/// 실제 엔진이 만든 세 말투 응답을 모두 디코딩한다.
+final class JToneContractDecodingTests: XCTestCase {
+    func testDecodesAllToneServerResponsesWithoutChangingActions() throws {
+        let responses = try ["travel-tone-friendly", "travel-tone-casual", "travel-tone-polite"].map { name in
+            let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: name, withExtension: "json"))
+            return try JSONDecoder().decode(TravelStateResponse.self, from: Data(contentsOf: url))
+        }
+        XCTAssertEqual(Set(responses.map(\.stateVersion)).count, 3)
+        XCTAssertEqual(Set(responses.map { $0.pulse.text }).count, 3)
+        for response in responses.dropFirst() {
+            XCTAssertEqual(response.today.activities.map(\.id), responses[0].today.activities.map(\.id))
+            XCTAssertEqual(response.today.suggestions.map(\.id), responses[0].today.suggestions.map(\.id))
+            XCTAssertEqual(response.notifications.map(\.dedupeKey), responses[0].notifications.map(\.dedupeKey))
+        }
+    }
+
+}

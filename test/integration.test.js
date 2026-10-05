@@ -36,6 +36,7 @@ function boot(url = 'http://localhost/', storage = {}) {
   inject('sync.js');
   inject('routing.js');
   inject('price.js');
+  inject('j-copy.js');
   inject('adaptive.js');
   inject('intake.js');
   inject('collab.js');
@@ -7511,7 +7512,7 @@ function bootSharedLink(trip, storage = {}) {
   window.HTMLDialogElement.prototype.close = function () { this.open = false; };
   window.TextEncoder = TextEncoder;
   window.LZString = { compressToEncodedURIComponent: (x) => encodeURIComponent(x), decompressFromEncodedURIComponent: (x) => decodeURIComponent(x) };
-  for (const file of ['lib.js', 'sync.js', 'routing.js', 'price.js', 'adaptive.js', 'intake.js', 'collab.js', 'api.js', 'auth.js', 'app.js']) {
+  for (const file of ['lib.js', 'sync.js', 'routing.js', 'price.js', 'j-copy.js', 'adaptive.js', 'intake.js', 'collab.js', 'api.js', 'auth.js', 'app.js']) {
     const s = window.document.createElement('script');
     s.textContent = fs.readFileSync(path.join(root, file), 'utf8');
     window.document.body.appendChild(s);

@@ -15,6 +15,7 @@
     "sync.js",
     "routing.js",
     "price.js",
+    "j-copy.js",
     "adaptive.js",
     "intake.js",
     "collab.js",

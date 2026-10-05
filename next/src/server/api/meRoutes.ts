@@ -34,6 +34,7 @@ export interface MeResponse {
   user: { id: string; email: string | null };
   trips: MeTripRole[];
   realtime: RealtimeChoice;
+  preferences: { jTone: 'FRIENDLY' | 'CASUAL' | 'POLITE' };
 }
 
 /**
@@ -50,6 +51,7 @@ export interface MeRouteDeps {
   listTrips(ctx: RequestContext, token: string): Promise<TripView[]>;
   registry: MigrationRegistry;
   realtimeUrl: string | null;
+  preferencesFor?(ctx: RequestContext): Promise<MeResponse['preferences']>;
 }
 
 export function createMeRoutes(deps: MeRouteDeps) {
@@ -77,7 +79,8 @@ export function createMeRoutes(deps: MeRouteDeps) {
             // 내부 식별자는 그것이 필요한 경로(Supabase 채널)일 때만 나간다
             ...(realtime.provider === 'SUPABASE' ? { supabaseTripId: v.record.id } : {})
           })),
-          realtime
+          realtime,
+          preferences: deps.preferencesFor ? await deps.preferencesFor(ctx) : { jTone: 'FRIENDLY' }
         };
         return new Response(JSON.stringify(body), { status: 200, headers: JSON_HEADERS });
       } catch (e) {

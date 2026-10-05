@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN "j_tone" text DEFAULT 'FRIENDLY';

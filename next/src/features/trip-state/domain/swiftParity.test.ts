@@ -558,3 +558,28 @@ it('계약 점호 — Contract.swift의 모든 struct가 실제 응답으로 대
   Object.keys(excused).forEach((name) =>
     expect(SWIFT_STRUCTS.has(name), `${name}은 Contract.swift에 없다 — 면제 목록에서 지운다`).toBe(true));
 });
+
+
+it('개인 말투별 실제 travel-state 응답은 문장만 다르고 일정·제안·알림 식별자는 같다', () => {
+  const responses = (['FRIENDLY', 'CASUAL', 'POLITE'] as const).map((jTone) => {
+    const response = buildTravelState({
+      tripId: 'parity', trip, revision: 2, updatedAt: '2026-08-31T00:00:00Z',
+      todayISO: '2026-09-01', nowMinutes: 13 * 60, generatedAt: '2026-09-01T04:00:00Z',
+      intent: '오늘 좀 피곤해서 많이 걷기 싫어', travelMode: true, jTone
+    });
+    cover('TravelStateResponse', response);
+    writeFixture(path.join(__dirname, '../../../../../ios/TripCanvasTests/Fixtures', `travel-tone-${jTone.toLowerCase()}.json`), JSON.stringify(response, null, 2) + '\n');
+    return response;
+  });
+  const identities = responses.map((r) => ({
+    activities: r.today.activities,
+    suggestions: r.today.suggestions.map((s) => ({ id: s.id, action: s.action, impact: s.impact })),
+    notifications: r.notifications.map((n) => ({ dedupeKey: n.dedupeKey, kind: n.kind, priority: n.priority })),
+    departure: r.departure && { activityId: r.departure.activityId, leaveMinutes: r.departure.leaveMinutes }
+  }));
+  expect(identities[1]).toEqual(identities[0]);
+  expect(identities[2]).toEqual(identities[0]);
+  expect(new Set(responses.map((r) => r.pulse.text)).size).toBe(3);
+  expect(new Set(responses.map((r) => r.stateVersion)).size).toBe(3);
+  expect(new Set(responses.map((r) => r.today.intent?.reasons.join(' '))).size).toBe(3);
+});
