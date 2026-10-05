@@ -1,0 +1,901 @@
+{
+  "document": {
+    "id": "t1",
+    "name": "전체",
+    "start": "2026-10-01",
+    "bookings": [
+      {
+        "id": "hotel",
+        "type": "hotel",
+        "title": "호텔 예약",
+        "price": 300,
+        "cur": "EUR",
+        "start": "2026-10-01",
+        "end": "2026-10-04"
+      },
+      {
+        "id": "flight",
+        "type": "flight",
+        "title": "항공 금액 미정",
+        "price": 0
+      }
+    ],
+    "costItems": [
+      {
+        "id": "sim",
+        "title": "유심",
+        "amount": 10000
+      }
+    ],
+    "days": [
+      {
+        "spots": [
+          {
+            "name": "호텔",
+            "city": "",
+            "desc": "",
+            "lat": null,
+            "lng": null,
+            "stay": true,
+            "nights": 3,
+            "bookingId": "hotel",
+            "cost": 999
+          },
+          {
+            "name": "예약한 미술관",
+            "city": "",
+            "desc": "",
+            "lat": null,
+            "lng": null,
+            "cost": 15,
+            "cur": "EUR",
+            "admission": {
+              "source": "USER",
+              "personalStatus": "BOOKED"
+            }
+          },
+          {
+            "name": "무료 공원",
+            "city": "",
+            "desc": "",
+            "lat": null,
+            "lng": null,
+            "cost": 0
+          },
+          {
+            "name": "일부 식비",
+            "city": "",
+            "desc": "",
+            "lat": null,
+            "lng": null,
+            "cost": 20000,
+            "costPartial": true
+          }
+        ],
+        "costItems": [
+          {
+            "id": "bus",
+            "title": "버스",
+            "amount": 5000
+          }
+        ],
+        "mode": "walk"
+      },
+      {
+        "spots": [
+          {
+            "name": "별도 연박",
+            "city": "",
+            "desc": "",
+            "lat": null,
+            "lng": null,
+            "stay": true,
+            "nights": 3,
+            "cost": 30000
+          }
+        ],
+        "mode": "walk"
+      }
+    ],
+    "budget": {
+      "amount": 700000
+    }
+  },
+  "costs": {
+    "schemaVersion": 1,
+    "revision": 1,
+    "days": [
+      {
+        "index": 0,
+        "title": "",
+        "date": "2026-10-01",
+        "cost": {
+          "total": 197500,
+          "onSiteKRW": 47500,
+          "parts": [
+            {
+              "label": "장소",
+              "amount": 42500
+            },
+            {
+              "label": "추가 비용",
+              "amount": 5000
+            },
+            {
+              "label": "예약",
+              "amount": 150000
+            }
+          ],
+          "payTotals": {
+            "RESERVED": 150000,
+            "PAID": 0,
+            "NONE": 47500
+          },
+          "details": {
+            "items": [
+              {
+                "source": "SPOT",
+                "key": "0",
+                "title": "호텔",
+                "kind": "STAY",
+                "amount": null,
+                "currency": "KRW",
+                "basis": "ENTERED",
+                "people": 1,
+                "payState": "NONE",
+                "paidOn": null,
+                "photos": [],
+                "totalKRW": null,
+                "state": "BOOKING"
+              },
+              {
+                "source": "SPOT",
+                "key": "1",
+                "title": "예약한 미술관",
+                "kind": "OTHER",
+                "amount": 15,
+                "currency": "EUR",
+                "basis": "ENTERED",
+                "people": 1,
+                "payState": "NONE",
+                "paidOn": null,
+                "photos": [],
+                "totalKRW": 22500,
+                "state": "KNOWN"
+              },
+              {
+                "source": "SPOT",
+                "key": "2",
+                "title": "무료 공원",
+                "kind": "OTHER",
+                "amount": 0,
+                "currency": "KRW",
+                "basis": "ENTERED",
+                "people": 1,
+                "payState": "NONE",
+                "paidOn": null,
+                "photos": [],
+                "totalKRW": 0,
+                "state": "FREE"
+              },
+              {
+                "source": "SPOT",
+                "key": "3",
+                "title": "일부 식비",
+                "kind": "OTHER",
+                "amount": 20000,
+                "currency": "KRW",
+                "basis": "ENTERED",
+                "people": 1,
+                "payState": "NONE",
+                "paidOn": null,
+                "photos": [],
+                "totalKRW": 20000,
+                "state": "PARTIAL"
+              },
+              {
+                "source": "EXTRA",
+                "key": "bus",
+                "title": "버스",
+                "kind": "OTHER",
+                "amount": 5000,
+                "currency": "KRW",
+                "basis": "ENTERED",
+                "people": 1,
+                "payState": "NONE",
+                "paidOn": null,
+                "photos": [],
+                "totalKRW": 5000,
+                "state": "KNOWN"
+              },
+              {
+                "source": "BOOKING",
+                "key": "hotel",
+                "title": "호텔 예약",
+                "kind": "hotel",
+                "amount": 100,
+                "currency": "EUR",
+                "basis": "ENTERED",
+                "people": 1,
+                "payState": "RESERVED",
+                "paidOn": null,
+                "photos": [],
+                "totalKRW": 150000,
+                "state": "KNOWN"
+              }
+            ],
+            "budget": null,
+            "unknownCount": 1,
+            "transportUnpriced": false,
+            "undatedBookings": 0,
+            "hasForeignCurrency": true,
+            "fxRates": {
+              "KRW": 1,
+              "USD": 1380,
+              "EUR": 1500,
+              "JPY": 9.1,
+              "CNY": 192
+            },
+            "fxSource": "FALLBACK",
+            "fxAsOf": null
+          }
+        }
+      },
+      {
+        "index": 1,
+        "title": "",
+        "date": "2026-10-02",
+        "cost": {
+          "total": 160000,
+          "onSiteKRW": 10000,
+          "parts": [
+            {
+              "label": "장소",
+              "amount": 10000
+            },
+            {
+              "label": "예약",
+              "amount": 150000
+            }
+          ],
+          "payTotals": {
+            "RESERVED": 150000,
+            "PAID": 0,
+            "NONE": 10000
+          },
+          "details": {
+            "items": [
+              {
+                "source": "SPOT",
+                "key": "0",
+                "title": "별도 연박 (1/3박)",
+                "kind": "STAY",
+                "amount": 10000,
+                "currency": "KRW",
+                "basis": "ENTERED",
+                "people": 1,
+                "payState": "NONE",
+                "paidOn": null,
+                "photos": [],
+                "totalKRW": 10000,
+                "state": "KNOWN"
+              },
+              {
+                "source": "BOOKING",
+                "key": "hotel",
+                "title": "호텔 예약",
+                "kind": "hotel",
+                "amount": 100,
+                "currency": "EUR",
+                "basis": "ENTERED",
+                "people": 1,
+                "payState": "RESERVED",
+                "paidOn": null,
+                "photos": [],
+                "totalKRW": 150000,
+                "state": "KNOWN"
+              }
+            ],
+            "budget": null,
+            "unknownCount": 0,
+            "transportUnpriced": false,
+            "undatedBookings": 0,
+            "hasForeignCurrency": true,
+            "fxRates": {
+              "KRW": 1,
+              "USD": 1380,
+              "EUR": 1500,
+              "JPY": 9.1,
+              "CNY": 192
+            },
+            "fxSource": "FALLBACK",
+            "fxAsOf": null
+          }
+        }
+      }
+    ],
+    "totalKRW": 537500,
+    "averagePerDayKRW": 268750,
+    "categories": [
+      {
+        "kind": "FLIGHT",
+        "totalKRW": 0,
+        "items": [
+          {
+            "source": "BOOKING",
+            "key": "flight",
+            "title": "항공 금액 미정",
+            "kind": "flight",
+            "amount": 0,
+            "currency": "KRW",
+            "basis": "ENTERED",
+            "people": 1,
+            "payState": "RESERVED",
+            "paidOn": null,
+            "photos": [],
+            "totalKRW": 0,
+            "state": "FREE",
+            "dayIndex": null
+          }
+        ],
+        "unknownCount": 0
+      },
+      {
+        "kind": "STAY",
+        "totalKRW": 480000,
+        "items": [
+          {
+            "source": "BOOKING",
+            "key": "hotel",
+            "title": "호텔 예약",
+            "kind": "hotel",
+            "amount": 100,
+            "currency": "EUR",
+            "basis": "ENTERED",
+            "people": 1,
+            "payState": "RESERVED",
+            "paidOn": null,
+            "photos": [],
+            "totalKRW": 150000,
+            "state": "KNOWN",
+            "dayIndex": 0
+          },
+          {
+            "source": "SPOT",
+            "key": "0",
+            "title": "별도 연박 (1/3박)",
+            "kind": "STAY",
+            "amount": 10000,
+            "currency": "KRW",
+            "basis": "ENTERED",
+            "people": 1,
+            "payState": "NONE",
+            "paidOn": null,
+            "photos": [],
+            "totalKRW": 10000,
+            "state": "KNOWN",
+            "dayIndex": 1
+          },
+          {
+            "source": "BOOKING",
+            "key": "hotel",
+            "title": "호텔 예약",
+            "kind": "hotel",
+            "amount": 100,
+            "currency": "EUR",
+            "basis": "ENTERED",
+            "people": 1,
+            "payState": "RESERVED",
+            "paidOn": null,
+            "photos": [],
+            "totalKRW": 150000,
+            "state": "KNOWN",
+            "dayIndex": 1
+          },
+          {
+            "source": "BOOKING",
+            "key": "hotel",
+            "title": "호텔 예약",
+            "kind": "hotel",
+            "amount": 100,
+            "currency": "EUR",
+            "basis": "ENTERED",
+            "people": 1,
+            "payState": "RESERVED",
+            "paidOn": null,
+            "photos": [],
+            "totalKRW": 150000,
+            "state": "KNOWN",
+            "dayIndex": null
+          },
+          {
+            "source": "STAY",
+            "key": "1.0",
+            "title": "별도 연박 (2–3/3박 · 일정 밖)",
+            "kind": "STAY",
+            "amount": 20000,
+            "currency": "KRW",
+            "basis": "ENTERED",
+            "people": 1,
+            "payState": "NONE",
+            "paidOn": null,
+            "photos": [],
+            "totalKRW": 20000,
+            "state": "KNOWN",
+            "dayIndex": null
+          }
+        ],
+        "unknownCount": 0
+      },
+      {
+        "kind": "RENT",
+        "totalKRW": 0,
+        "items": [],
+        "unknownCount": 0
+      },
+      {
+        "kind": "TRANSIT",
+        "totalKRW": 0,
+        "items": [],
+        "unknownCount": 0
+      },
+      {
+        "kind": "FOOD",
+        "totalKRW": 0,
+        "items": [],
+        "unknownCount": 0
+      },
+      {
+        "kind": "SHOPPING",
+        "totalKRW": 0,
+        "items": [],
+        "unknownCount": 0
+      },
+      {
+        "kind": "TICKET",
+        "totalKRW": 0,
+        "items": [],
+        "unknownCount": 0
+      },
+      {
+        "kind": "TRANSPORT",
+        "totalKRW": 0,
+        "items": [],
+        "unknownCount": 0
+      },
+      {
+        "kind": "OTHER",
+        "totalKRW": 57500,
+        "items": [
+          {
+            "source": "SPOT",
+            "key": "1",
+            "title": "예약한 미술관",
+            "kind": "OTHER",
+            "amount": 15,
+            "currency": "EUR",
+            "basis": "ENTERED",
+            "people": 1,
+            "payState": "NONE",
+            "paidOn": null,
+            "photos": [],
+            "totalKRW": 22500,
+            "state": "KNOWN",
+            "dayIndex": 0
+          },
+          {
+            "source": "SPOT",
+            "key": "2",
+            "title": "무료 공원",
+            "kind": "OTHER",
+            "amount": 0,
+            "currency": "KRW",
+            "basis": "ENTERED",
+            "people": 1,
+            "payState": "NONE",
+            "paidOn": null,
+            "photos": [],
+            "totalKRW": 0,
+            "state": "FREE",
+            "dayIndex": 0
+          },
+          {
+            "source": "SPOT",
+            "key": "3",
+            "title": "일부 식비",
+            "kind": "OTHER",
+            "amount": 20000,
+            "currency": "KRW",
+            "basis": "ENTERED",
+            "people": 1,
+            "payState": "NONE",
+            "paidOn": null,
+            "photos": [],
+            "totalKRW": 20000,
+            "state": "PARTIAL",
+            "dayIndex": 0
+          },
+          {
+            "source": "EXTRA",
+            "key": "bus",
+            "title": "버스",
+            "kind": "OTHER",
+            "amount": 5000,
+            "currency": "KRW",
+            "basis": "ENTERED",
+            "people": 1,
+            "payState": "NONE",
+            "paidOn": null,
+            "photos": [],
+            "totalKRW": 5000,
+            "state": "KNOWN",
+            "dayIndex": 0
+          },
+          {
+            "source": "TRIP",
+            "key": "sim",
+            "title": "유심",
+            "kind": "OTHER",
+            "amount": 10000,
+            "currency": "KRW",
+            "basis": "ENTERED",
+            "people": 1,
+            "payState": "NONE",
+            "paidOn": null,
+            "photos": [],
+            "totalKRW": 10000,
+            "state": "KNOWN",
+            "dayIndex": null
+          }
+        ],
+        "unknownCount": 1
+      }
+    ],
+    "unallocated": [
+      {
+        "source": "BOOKING",
+        "key": "hotel",
+        "title": "호텔 예약",
+        "kind": "hotel",
+        "amount": 100,
+        "currency": "EUR",
+        "basis": "ENTERED",
+        "people": 1,
+        "payState": "RESERVED",
+        "paidOn": null,
+        "photos": [],
+        "totalKRW": 150000,
+        "state": "KNOWN",
+        "dayIndex": null
+      },
+      {
+        "source": "BOOKING",
+        "key": "flight",
+        "title": "항공 금액 미정",
+        "kind": "flight",
+        "amount": 0,
+        "currency": "KRW",
+        "basis": "ENTERED",
+        "people": 1,
+        "payState": "RESERVED",
+        "paidOn": null,
+        "photos": [],
+        "totalKRW": 0,
+        "state": "FREE",
+        "dayIndex": null
+      },
+      {
+        "source": "STAY",
+        "key": "1.0",
+        "title": "별도 연박 (2–3/3박 · 일정 밖)",
+        "kind": "STAY",
+        "amount": 20000,
+        "currency": "KRW",
+        "basis": "ENTERED",
+        "people": 1,
+        "payState": "NONE",
+        "paidOn": null,
+        "photos": [],
+        "totalKRW": 20000,
+        "state": "KNOWN",
+        "dayIndex": null
+      }
+    ],
+    "payTotals": {
+      "RESERVED": 450000,
+      "PAID": 0,
+      "NONE": 87500
+    },
+    "prep": {
+      "totalKRW": 460000,
+      "payTotals": {
+        "RESERVED": 450000,
+        "PAID": 0,
+        "NONE": 10000
+      },
+      "items": [
+        {
+          "source": "BOOKING",
+          "key": "hotel",
+          "title": "호텔 예약",
+          "kind": "hotel",
+          "amount": 300,
+          "currency": "EUR",
+          "basis": "ENTERED",
+          "people": 1,
+          "payState": "RESERVED",
+          "paidOn": null,
+          "photos": [],
+          "totalKRW": 450000,
+          "state": "KNOWN",
+          "dayIndex": null
+        },
+        {
+          "source": "BOOKING",
+          "key": "flight",
+          "title": "항공 금액 미정",
+          "kind": "flight",
+          "amount": null,
+          "currency": "KRW",
+          "basis": "ENTERED",
+          "people": 1,
+          "payState": "RESERVED",
+          "paidOn": null,
+          "photos": [],
+          "totalKRW": null,
+          "state": "UNKNOWN",
+          "dayIndex": null
+        },
+        {
+          "source": "TRIP",
+          "key": "sim",
+          "title": "유심",
+          "kind": "OTHER",
+          "amount": 10000,
+          "currency": "KRW",
+          "basis": "ENTERED",
+          "people": 1,
+          "payState": "NONE",
+          "paidOn": null,
+          "photos": [],
+          "totalKRW": 10000,
+          "state": "KNOWN",
+          "dayIndex": null
+        }
+      ]
+    },
+    "onSite": {
+      "totalKRW": 77500,
+      "payTotals": {
+        "RESERVED": 0,
+        "PAID": 0,
+        "NONE": 77500
+      }
+    },
+    "overview": {
+      "items": [
+        {
+          "id": "BOOKING:hotel",
+          "line": {
+            "source": "BOOKING",
+            "key": "hotel",
+            "title": "호텔 예약",
+            "kind": "STAY",
+            "amount": 300,
+            "currency": "EUR",
+            "basis": "ENTERED",
+            "people": 1,
+            "payState": "RESERVED",
+            "paidOn": null,
+            "photos": [],
+            "totalKRW": 450000,
+            "state": "KNOWN",
+            "dayIndex": null
+          },
+          "bookingId": "hotel",
+          "spotIndex": null,
+          "date": "2026-10-01",
+          "end": "2026-10-04",
+          "reservation": "LINKED",
+          "amountSource": "BOOKING"
+        },
+        {
+          "id": "BOOKING:flight",
+          "line": {
+            "source": "BOOKING",
+            "key": "flight",
+            "title": "항공 금액 미정",
+            "kind": "FLIGHT",
+            "amount": null,
+            "currency": "KRW",
+            "basis": "ENTERED",
+            "people": 1,
+            "payState": "RESERVED",
+            "paidOn": null,
+            "photos": [],
+            "totalKRW": null,
+            "state": "UNKNOWN",
+            "dayIndex": null
+          },
+          "bookingId": "flight",
+          "spotIndex": null,
+          "date": null,
+          "end": null,
+          "reservation": "LINKED",
+          "amountSource": "BOOKING"
+        },
+        {
+          "id": "TRIP:sim",
+          "line": {
+            "source": "TRIP",
+            "key": "sim",
+            "title": "유심",
+            "kind": "OTHER",
+            "amount": 10000,
+            "currency": "KRW",
+            "basis": "ENTERED",
+            "people": 1,
+            "payState": "NONE",
+            "paidOn": null,
+            "photos": [],
+            "totalKRW": 10000,
+            "state": "KNOWN",
+            "dayIndex": null
+          },
+          "bookingId": null,
+          "spotIndex": null,
+          "date": null,
+          "end": null,
+          "reservation": "NONE",
+          "amountSource": "ENTRY"
+        },
+        {
+          "id": "0:SPOT:1",
+          "line": {
+            "source": "SPOT",
+            "key": "1",
+            "title": "예약한 미술관",
+            "kind": "OTHER",
+            "amount": 15,
+            "currency": "EUR",
+            "basis": "ENTERED",
+            "people": 1,
+            "payState": "NONE",
+            "paidOn": null,
+            "photos": [],
+            "totalKRW": 22500,
+            "state": "KNOWN",
+            "dayIndex": 0
+          },
+          "bookingId": null,
+          "spotIndex": 1,
+          "date": "2026-10-01",
+          "end": null,
+          "reservation": "BOOKED",
+          "amountSource": "PLACE"
+        },
+        {
+          "id": "0:SPOT:2",
+          "line": {
+            "source": "SPOT",
+            "key": "2",
+            "title": "무료 공원",
+            "kind": "OTHER",
+            "amount": 0,
+            "currency": "KRW",
+            "basis": "ENTERED",
+            "people": 1,
+            "payState": "NONE",
+            "paidOn": null,
+            "photos": [],
+            "totalKRW": 0,
+            "state": "FREE",
+            "dayIndex": 0
+          },
+          "bookingId": null,
+          "spotIndex": 2,
+          "date": "2026-10-01",
+          "end": null,
+          "reservation": "NONE",
+          "amountSource": "PLACE"
+        },
+        {
+          "id": "0:SPOT:3",
+          "line": {
+            "source": "SPOT",
+            "key": "3",
+            "title": "일부 식비",
+            "kind": "OTHER",
+            "amount": 20000,
+            "currency": "KRW",
+            "basis": "ENTERED",
+            "people": 1,
+            "payState": "NONE",
+            "paidOn": null,
+            "photos": [],
+            "totalKRW": 20000,
+            "state": "PARTIAL",
+            "dayIndex": 0
+          },
+          "bookingId": null,
+          "spotIndex": 3,
+          "date": "2026-10-01",
+          "end": null,
+          "reservation": "NONE",
+          "amountSource": "PLACE"
+        },
+        {
+          "id": "0:EXTRA:bus",
+          "line": {
+            "source": "EXTRA",
+            "key": "bus",
+            "title": "버스",
+            "kind": "OTHER",
+            "amount": 5000,
+            "currency": "KRW",
+            "basis": "ENTERED",
+            "people": 1,
+            "payState": "NONE",
+            "paidOn": null,
+            "photos": [],
+            "totalKRW": 5000,
+            "state": "KNOWN",
+            "dayIndex": 0
+          },
+          "bookingId": null,
+          "spotIndex": null,
+          "date": "2026-10-01",
+          "end": null,
+          "reservation": "NONE",
+          "amountSource": "ENTRY"
+        },
+        {
+          "id": "1:SPOT:0",
+          "line": {
+            "source": "SPOT",
+            "key": "0",
+            "title": "별도 연박",
+            "kind": "STAY",
+            "amount": 30000,
+            "currency": "KRW",
+            "basis": "ENTERED",
+            "people": 1,
+            "payState": "NONE",
+            "paidOn": null,
+            "photos": [],
+            "totalKRW": 30000,
+            "state": "KNOWN",
+            "dayIndex": 1
+          },
+          "bookingId": null,
+          "spotIndex": 0,
+          "date": "2026-10-02",
+          "end": null,
+          "reservation": "NONE",
+          "amountSource": "PLACE"
+        }
+      ],
+      "unknownCount": 2
+    },
+    "budget": {
+      "amount": 700000,
+      "currency": "KRW",
+      "totalKRW": 700000,
+      "costKRW": 537500,
+      "remainingKRW": 162500,
+      "perDayKRW": 350000
+    },
+    "unknownCount": 1,
+    "transportUnpriced": false,
+    "hasForeignCurrency": true,
+    "fxRates": {
+      "KRW": 1,
+      "USD": 1380,
+      "EUR": 1500,
+      "JPY": 9.1,
+      "CNY": 192
+    },
+    "fxSource": "FALLBACK",
+    "fxAsOf": null
+  }
+}
