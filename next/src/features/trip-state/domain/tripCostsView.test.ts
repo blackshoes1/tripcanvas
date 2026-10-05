@@ -1,4 +1,6 @@
 import { expect, it } from 'vitest';
+import path from 'node:path';
+import { writeFixture } from './parityFiles';
 
 import { tripCostBreakdownOf } from '@/features/itinerary/domain/dayView';
 import type { Trip } from '@/features/trip/domain/types';
@@ -65,6 +67,8 @@ it('전체 목록은 예약·연박 전액 한 줄과 원본 편집 대상을 �
   expect(rows.reduce((sum, r) => sum + (r.line.totalKRW ?? 0), 0)).toBe(body.totalKRW);
   // 기존 Next 일정 요약은 여행 단위 비용을 제외한다. 비용 응답에는 유심도 포함된다.
   expect(body.totalKRW).toBe(tripCostBreakdownOf(trip as unknown as Trip, {}).total + 10000);
+  writeFixture(path.join(__dirname, '../../../../../ios/TripCanvasTests/Fixtures/cost-overview.json'),
+    JSON.stringify({ document: { ...trip, budget: { amount: 700000 } }, costs: buildTripCosts({ ...trip, budget: { amount: 700000 } } as unknown as TripDoc, {}, 1) }, null, 2) + '\n');
 });
 
 it('예약 금액 미정이면 연결 장소 금액을 한 줄로 쓰고 편집 대상은 장소를 가리킨다', () => {
