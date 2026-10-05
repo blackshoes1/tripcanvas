@@ -2050,3 +2050,31 @@ test('여행 비용 요약에 예산이 실린다 — 전체 비용과 같은 �
   assert.equal(s.budget.remainingKRW, 500000-s.totalKRW);
   assert.equal(L.tripCostSummary({...trip,budget:undefined},days,{KRW:1}).budget, null);
 });
+
+test('sampleTrip — 비용·예약·예산이 들어 있어 첫 화면에서 기능이 보이고, 지어낸 실제 예약은 없다(2026-10-05 UX 점검)', () => {
+  assert.equal(L.SAMPLE_TRIP_VERSION, 2, '샘플 내용이 바뀌었으니 옛 샘플 사용자는 배너로 새 샘플을 열 수 있다');
+  const t = L.normalizeTrip(L.sampleTrip());
+  assert.equal(L.tripPeopleOf(t), 2);
+  const budget = L.tripBudgetOf(t);
+  assert.ok(budget && budget.amount > 0, '총예산');
+  // 예약 — 항공(구간이 일정 안의 날에 놓인다)과 숙박(일정의 숙소와 연결)
+  const types = (t.bookings || []).map(b => b.type).sort();
+  assert.deepEqual(types, ['flight', 'hotel']);
+  for (const b of t.bookings) assert.match(b.title, /예시/, '실제 예약처럼 보이지 않게 예시라고 밝힌다');
+  assert.ok(L.dayFlights(t, 0).length >= 1, '첫날 도착편');
+  assert.ok(L.dayFlights(t, t.days.length - 1).length >= 1, '마지막 날 출국편');
+  for (const f of t.bookings.find(b => b.type === 'flight').segments) assert.equal(f.code, '', '편명을 지어내지 않는다');
+  const hotel = t.bookings.find(b => b.type === 'hotel');
+  assert.ok(t.days.flatMap(d => d.spots).some(s => s.bookingId === hotel.id && s.stay), '숙소 장소가 숙박 예약과 이어진다');
+  const nights = Math.round((Date.parse(hotel.end + 'T00:00:00Z') - Date.parse(hotel.start + 'T00:00:00Z')) / 86400000);
+  assert.equal(t.days.flatMap(d => d.spots).find(x => x.bookingId === hotel.id).nights, nights, '예약 기간과 숙소의 박 수가 같다');
+  // 금액 — 계산이 돌아가고, 예산 안에서 남는다(처음부터 초과로 보이면 안 된다)
+  const rates = { KRW: 1, USD: 1380, EUR: 1500, JPY: 9.1, CNY: 192 };
+  const dateOf = (i) => new Date(Date.parse(t.start + 'T00:00:00Z') + i * 86400000).toISOString().slice(0, 10);
+  const days = t.days.map((_, i) => ({ index: i, cost: L.dayCostSummary(t, i, { date: dateOf(i), rates, taxi: null, transportUnpriced: false }) }));
+  const sum = L.tripCostSummary(t, days, rates);
+  assert.ok(sum.totalKRW > 0 && sum.prep.totalKRW > 0 && sum.onSite.totalKRW > 0, '예약 결제 금액과 현지 결제 금액이 모두 있다');
+  assert.ok(sum.budget && sum.budget.remainingKRW > 0, '남은 예산이 있다');
+  assert.ok(t.days[1].costItems && t.days[1].costItems.length >= 1, '하루 추가 비용(쓴 돈) 예시');
+  assert.ok(sum.payTotals.PAID > 0 && sum.payTotals.RESERVED > 0, '낸 돈과 낼 돈이 둘 다 보인다');
+});

@@ -2,6 +2,10 @@ const {defineConfig,devices}=require('@playwright/test');
 
 module.exports=defineConfig({
   testDir:'./e2e',
+  projects:[
+    {name:'chromium',use:{browserName:'chromium'}},
+    {name:'webkit',testMatch:'safari-menu.spec.js',use:{browserName:'webkit'}}
+  ],
   fullyParallel:false,
   workers:1,
   retries:process.env.CI?1:0,

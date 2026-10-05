@@ -109,6 +109,8 @@ test('장소 비용 초안은 취소와 Escape에서 버리기 전에 확인한�
   await page.evaluate(()=>openSpotModal(0,1));
   await page.locator('#spotAdvanced > summary').click();
   await page.locator('#spotCostBtn').click();
+  // 샘플에 유로 비용이 있어 새 비용 칸의 통화가 유로로 열린다(이 여행이 쓰는 통화) — 통화를 정해 샘플에 기대지 않는다
+  await page.locator('#costCurrency').selectOption('KRW');
   await page.locator('#costAmount').fill('15');
   page.once('dialog',dialog=>dialog.dismiss());
   await page.keyboard.press('Escape');
