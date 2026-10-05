@@ -2600,7 +2600,7 @@ function renderSidebar(){
     const dateLabel=`${dateOf(di)||'날짜 지정'}${tzNote?` · ${tzNote}`:''} — 날짜·시간대 바꾸기`;
     card.innerHTML=`<div class="dayHead">
         <div class="dayHeadMain"><div class="dayTitle" role="heading" aria-level="2" aria-label="${escAttr(`Day ${di+1}${day.title?` · ${day.title}`:''}${dateSpoken(di)?` · ${dateSpoken(di)}`:''}`)}" title="Day ${di+1}${day.title?` · ${escAttr(day.title)}`:''}"><span class="dragHandle" title="드래그로 일자 순서 변경" aria-hidden="true">⠿</span> Day ${di+1}${day.title?` · ${esc(day.title)}`:''}</div>
-        ${ro?'':`<details class="actionMenu" onclick="event.stopPropagation()"><summary aria-label="Day ${di+1} 작업 메뉴">⋮</summary><div class="actionMenuPanel"><button class="iconb" onclick="openDayModal(${di})" title="일자 편집">✎ <span>편집</span></button><button class="iconb" onclick="copyDay(${di})" title="일자 복사">⧉ <span>복사</span></button><button class="iconb danger" onclick="deleteDay(${di})" title="일자 삭제">⌫ <span>삭제</span></button></div></details>`}</div>
+        ${ro?'':`<details class="actionMenu" onclick="event.stopPropagation()"><summary aria-label="Day ${di+1} 작업 메뉴">⋮</summary><div class="actionMenuPanel"><button class="iconb" onclick="openDayModal(${di})" title="일자 편집">✎ <span>편집</span></button><button class="iconb" onclick="this.closest('details').open=false;openDayCostItem(${di},null)" title="이 날 쓴 돈 적기">＋ <span>쓴 돈 적기</span></button><button class="iconb" onclick="copyDay(${di})" title="일자 복사">⧉ <span>복사</span></button><button class="iconb danger" onclick="deleteDay(${di})" title="일자 삭제">⌫ <span>삭제</span></button></div></details>`}</div>
         <div class="dayHeadMeta"><span class="date"${ro?'':` onclick="event.stopPropagation();openDayModal(${di})" aria-label="${escAttr(dateLabel)}" title="${timeZone?'클릭해서 날짜·시간대 지정/수정':'클릭해서 날짜·시간대 지정 — 시간대를 넣으면 이 날 대중교통 시간이 정확해져요'}"`}>${dateOf(di)||(ro?'날짜 미정':'📅 날짜 지정')}${tzNote?` · 🌐 ${esc(tzNote)}`:''}</span>${ro?`<span class="iconb modeBtn" title="이 날 기본 이동수단: ${MODE_NAME[dm]}">${MODE_ICON[dm]}</span>`:`<button class="iconb modeBtn" onclick="event.stopPropagation();openDayModePicker(${di})" title="이 날 기본 이동수단: ${MODE_NAME[dm]} — 눌러서 바꾸기" aria-haspopup="dialog">${MODE_ICON[dm]}</button>`}${dayWeatherHtml(day,di)}</div>
       </div><div class="dayBody">
         ${day.drive?`<div class="drive driveMemo" title="직접 적은 이동 메모예요 — 아래 계산과 다를 수 있어요"><span class="memoTag">이동 메모</span>${esc(day.drive)}</div>`:''}
@@ -2627,8 +2627,9 @@ function renderSidebar(){
             const label=`${esc(it.title||(COST_KIND[it.kind]||COST_KIND.OTHER).name)} ${esc(money)}`;
             return readOnly()? `<span class="dayItem">🧾 ${label}</span>` : `<button type="button" class="dayItem" onclick="event.stopPropagation();openDayCostItem(${di},'${escAttr(it.id)}')" title="이 비용 고치기">🧾 ${label}</button>`;
           }).join('');
-          // 빈 날에는 두지 않는다 — '＋ 장소 추가'와 나란히 떠서 무엇부터 할지 흐렸다. 장소나 쓴 돈이 있는 날에만
-          const add=(readOnly()||(!day.spots.length&&!(day.costItems||[]).length))? '' : `<button type="button" class="dayItem add" onclick="event.stopPropagation();openDayCostItem(${di},null)">＋ 쓴 돈 적기</button>`;
+          // 쓴 돈은 오늘까지 쓴 돈이다 — 떠나기 전 모든 날에 같은 버튼이 떠 있으면 소음이다(2026-10-05 UX 점검). 오늘·지난 날에만 두고,
+          // 앞으로의 날·날짜 없는 여행은 ⋮ 메뉴의 '쓴 돈 적기'(항상)와 모바일 '비용'이 연다. 빈 날에는 두지 않는다 — '＋ 장소 추가'와 나란히 떠서 흐렸다
+          const add=(readOnly()||!dayAddCostShown(di)||(!day.spots.length&&!(day.costItems||[]).length))? '' : `<button type="button" class="dayItem add" onclick="event.stopPropagation();openDayCostItem(${di},null)">＋ 쓴 돈 적기</button>`;
           const itemsLine=(items||add)? `<div class="dayItems">${items}${add}</div>` : '';
           if(!tot) return itemsLine;
           const detail=parts.length>1?` <span style="opacity:.55">(${parts.map(p=>`${p[0]} ₩${p[1].toLocaleString()}`).join(' + ')})</span>`:'';
@@ -3060,7 +3061,7 @@ window.openSpotModal=(di,si,focusId)=>{
   syncAdmissionBox();
   document.getElementById('spotIdentity').open=!isNew;
   document.getElementById('spotSchedule').open=!isNew&&!!(s.at||s.stayMin!=null||s.desc);
-  document.getElementById('spotAdvanced').open=!isNew&&!!(s.legMode||s.cost||spotPriorityOf(s)!=='NORMAL');
+  document.getElementById('spotAdvanced').open=!isNew&&!!(s.legMode||spotPriorityOf(s)!=='NORMAL');   // 비용은 기본 영역이라 상세 설정을 펴는 이유가 아니다(2026-10-05)
   document.getElementById('spotLat').value=s.lat; document.getElementById('spotLng').value=s.lng;
   document.getElementById('spotPlaceId').value=s.placeId||'';
   document.getElementById('spotKakaoId').value=s.kakaoId||'';
@@ -3140,7 +3141,7 @@ function drawAdmission(admission){
   document.getElementById('spotAdmPeople').value=(a.people!=null? a.people : '');
   // 여행 인원은 칸을 채우지 않고 보여만 준다 — 채우면 아무것도 적지 않은 장소에 예약 정보가 생긴다. 예약 완료를 켤 때 채운다
   const tp=tripPeopleOf(trip());
-  document.getElementById('spotAdmPeople').placeholder=tp? `여행 인원 ${tp}명` : '미정';
+  document.getElementById('spotAdmPeople').placeholder=tp? `${tp}명` : '미정';   // 반 폭 칸이라 짧게 — "여행 인원 2명"은 "여행"으로 잘렸다(2026-10-05)
   document.getElementById('spotAdmUrl').value=a.officialURL||'';
   document.getElementById('spotAdmNote').value=a.note||'';
   drawAdmissionChecked();
@@ -8613,6 +8614,12 @@ document.addEventListener('click',e=>{
   const t=/** @type {any} */(e.target); if(!t||!t.closest) return;
   document.querySelectorAll(POPOVERS).forEach(d=>{ if(!d.contains(t)) d.open=false; });
 },true);
+// Safari는 메뉴 버튼을 눌러도 포커스를 주지 않고 tabindex가 있는 부모로 옮긴다.
+// focusout이 click 전에 메뉴를 숨기지 않도록, 버튼을 누를 때는 현재 포커스를 유지한다(Tab 이동은 그대로).
+document.addEventListener('mousedown',e=>{
+  const t=/** @type {any} */(e.target);
+  if(e.button===0&&t?.closest?.('details.actionMenu button,details.viewMenu button')) e.preventDefault();
+});
 // 포커스가 팝오버·☰ 밖으로 나가면 닫는다. 다음 자리가 없는 이탈(빈 곳 누르기·창 전환)은 위의 click이 맡는다.
 document.addEventListener('focusout',e=>{
   const from=/** @type {any} */(e.target), next=/** @type {any} */(e.relatedTarget);
@@ -8818,8 +8825,52 @@ function showDeferredOnboarding(){
   };
   viewport.addEventListener('resize',sync); viewport.addEventListener('scroll',sync); sync();
 })();
+/** 오늘이 여행의 몇 번째 날인가(0부터) — 여행 중일 때만, 아니면 -1. 날짜 없는 여행은 판정할 수 없다 */
+function todayDayIndex(){
+  const p=travelPeriod();
+  return p.phase==='DURING'? p.dayIndex : -1;
+}
+/** 일자 카드에 '＋ 쓴 돈 적기'를 둘 날인가 — 오늘과 지난 날만. 앞으로의 날·날짜 없는 여행은 ⋮ 메뉴가 연다 */
+function dayAddCostShown(di){
+  const iso=isoDateOf(di); if(!iso) return false;
+  return iso<=travelClock().todayISO;
+}
+/**
+ * 하단 '＋ 장소 추가'가 넣을 날(0부터) — 보는 날 → 고른 장소의 날 → 오늘 → 첫날.
+ * 전에는 '전체 일정'을 보고 있으면 언제나 첫날이었다. 어느 날이든 장소 편집기의 일자 칸에서 바꿀 수 있다.
+ */
+function defaultAddDay(){
+  if(activeDay) return activeDay-1;
+  const picked=selectedRef? locateSpot(selectedRef) : null;
+  if(picked) return picked.di;
+  const t=todayDayIndex(); return t>=0? t : 0;
+}
+/** 쓴 돈을 적을 날(0부터) — 보는 날 → 오늘. 둘 다 없으면 -1(여행 전·전체 일정이라 어느 날인지 모른다) */
+function defaultCostDay(){
+  if(activeDay) return activeDay-1;
+  return todayDayIndex();
+}
+/** 좁은 단추용 짧은 원화 — ₩70만 · ₩1.2억. 1만 원 아래는 그대로. (스크린리더에는 줄이지 않은 금액을 읽어 준다) @param {number} n */
+function krwShort(n){
+  const v=Math.abs(Math.round(+n||0));
+  if(v>=1e8) return `₩${(Math.round(v/1e7)/10).toLocaleString('en-US')}억`;
+  if(v>=1e4) return `₩${Math.round(v/1e4).toLocaleString('en-US')}만`;
+  return `₩${fmtMoney(v)}`;
+}
+/** 하단 '비용' 단추가 지금 상태를 말한다 — 예산이 있으면 남은 예산(넘으면 초과), 없으면 지금까지의 합계, 아무것도 없으면 이름만 */
+function mobileCostLabel(){
+  const cb=tripCostBreakdown(), bs=tripBudgetStatus(trip(),cb.total,fxRates);
+  if(bs) return bs.remainingKRW<0
+    ? {text:`비용 · ${krwShort(bs.remainingKRW)} 초과`, aria:`비용, 예산보다 ₩${fmtMoney(-bs.remainingKRW)} 많아요`}
+    : {text:`비용 · 남은 ${krwShort(bs.remainingKRW)}`, aria:`비용, 남은 예산 ₩${fmtMoney(bs.remainingKRW)}`};
+  if(cb.total>0) return {text:`비용 · ${krwShort(cb.total)}`, aria:`비용, 전체 예상 ₩${fmtMoney(cb.total)}`};
+  return {text:'비용', aria:'비용'};
+}
 function renderMobilePlanActions(){
   const t=trip(), current=document.getElementById('mobileCurrentDay');
+  const cl=mobileCostLabel(), costBtn=document.getElementById('mobileCosts');
+  if(costBtn.textContent!==cl.text) costBtn.textContent=cl.text;
+  costBtn.setAttribute('aria-label',cl.aria);
   current.textContent=activeDay? `Day ${activeDay} · ${t.days[activeDay-1]?.title||dateOf(activeDay-1)} ⌄` : '전체 일정 ⌄';
   document.getElementById('mobilePrevDay').disabled=activeDay<=1;
   document.getElementById('mobileNextDay').disabled=activeDay>=t.days.length;
@@ -8836,10 +8887,7 @@ document.getElementById('mobileCurrentDay').onclick=()=>{
   dialog.showModal(); list.querySelector('[aria-pressed="true"]')?.focus();
 };
 document.getElementById('mobileDayClose').onclick=()=>document.getElementById('mobileDayDialog').close();
-document.getElementById('mobileAddSpot').onclick=()=>{
-  const di=activeDay? activeDay-1 : 0;
-  openSpotModal(di,-1);
-};
+document.getElementById('mobileAddSpot').onclick=()=>{ openSpotModal(defaultAddDay(),-1); };
 let costFilter='all', costReturn=null;
 /** 웹도 서버와 같은 순수 계산을 쓴다. 원본 문서는 바꾸지 않고 환율·택시 추정만 기존 화면에서 가져온다. */
 function costOverviewData(){
@@ -8866,7 +8914,7 @@ function costOverviewRow(row){
 function renderCostDialog(){
   const dialog=document.getElementById('mobileCostDialog'); if(!dialog.open) return;
   const body=document.getElementById('mobileCostBody'), scroll=body.scrollTop, data=costOverviewData();
-  const budget=data.budget, paid=data.payTotals.PAID||0, due=data.payTotals.RESERVED||0;
+  const budget=data.budget, paid=data.payTotals.PAID||0, due=data.payTotals.RESERVED||0, quickDay=defaultCostDay();
   const budgetText=budget?`${budget.remainingKRW<0?'예산보다':'남은 예산'} ₩${fmtMoney(Math.abs(budget.remainingKRW))}${budget.remainingKRW<0?' 많아요':''}`:'예산을 정하면 남은 금액을 볼 수 있어요';
   const rows=data.overview.items.filter(row=>costFilter==='all'||(costFilter==='reservations'?row.reservation!=='NONE':row.reservation==='NONE'));
   body.innerHTML=`<section class="costOverviewHero"><p>여행 전체 예상 비용</p><strong>₩${fmtMoney(data.totalKRW)}</strong>
@@ -8875,11 +8923,19 @@ function renderCostDialog(){
     <div class="costPayPair"><div><span>✓ 결제 완료</span><b>₩${fmtMoney(paid)}</b></div><div><span>◷ 결제 예정</span><b>₩${fmtMoney(due)}</b></div></div>
     ${(data.payTotals.NONE||0)>0?`<small>결제 상태 미구분 ₩${fmtMoney(data.payTotals.NONE)}</small>`:''}
     ${data.overview.unknownCount?`<small class="costUnknown">금액 미정·일부 입력 ${data.overview.unknownCount}건</small>`:''}</section>
+    ${readOnly()?'':`<div class="mobileCostActions">${quickDay>=0?`<button type="button" class="btn primary" id="mobileAddSpend">＋ 쓴 돈 적기 · Day ${quickDay+1}</button>`:'<p class="hint">쓴 돈은 여행이 시작되면 오늘 날짜로, 그 전에는 날을 고르면 바로 적을 수 있어요.</p>'}<button type="button" class="btn" id="mobileBudget">${tripBudgetOf(trip())?'예산 고치기':'예산 정하기'}</button></div>`}
     <nav class="costOverviewFilters" aria-label="비용 묶음">${[['all','전체'],['reservations','예약'],['other','그 외 비용']].map(([value,label])=>`<button type="button" data-filter="${value}" aria-pressed="${costFilter===value}">${label}</button>`).join('')}</nav>
     <div class="costListHead"><h3>비용 내역</h3><button type="button" class="btn" id="costByDay">날짜별 보기</button></div>
     <div class="costOverviewList">${rows.length?rows.map(costOverviewRow).join(''):`<div class="costEmptyState"><span aria-hidden="true">◇</span><strong>${costFilter==='reservations'?'예약 비용이 없어요':costFilter==='other'?'이 묶음에 비용이 없어요':'여행에 드는 돈을 한곳에'}</strong><p>${costFilter==='all'?'예약과 쓴 돈을 추가하면 여기에 모여요.':'전체에서 다른 비용도 볼 수 있어요.'}</p></div>`}</div>
     ${tripTaxiRef()>0?'<p class="costNote">자차 날의 택시 요금은 예상 비용에 넣지 않았어요.</p>':''}`;
   body.scrollTop=scroll;
+  const spend=body.querySelector('#mobileAddSpend'), budgetButton=body.querySelector('#mobileBudget');
+  if(spend) spend.onclick=()=>{ costReturn={filter:costFilter,scrollTop:body.scrollTop}; dialog.close(); openDayCostItem(quickDay,null); };
+  if(budgetButton) budgetButton.onclick=()=>{
+    dialog.close();
+    document.getElementById('tripEditBtn').click();
+    const input=document.getElementById('tripBudget'); input.focus(); input.scrollIntoView?.({block:'center'});
+  };
   body.querySelectorAll('[data-filter]').forEach(button=>button.onclick=()=>{ costFilter=button.dataset.filter; renderCostDialog(); });
   body.querySelectorAll('.costOverviewItem').forEach(button=>button.onclick=()=>{
     const row=data.overview.items.find(item=>item.id===button.dataset.id); if(row) openCostRow(row);

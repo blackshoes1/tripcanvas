@@ -929,6 +929,7 @@ span.dayItem{cursor:default}
 #spotSearchPanel.newSpot{border:0;margin:0;padding:0}
 #spotSearchPanel.newSpot>summary{display:none}
 .mobileDayList{display:grid;gap:8px}
+.mobileCostActions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.mobileCostActions .btn{flex:1;min-width:130px;min-height:48px}
 .mobileDayList .btn{text-align:left;white-space:normal}
 .mobileDayList .btn[aria-pressed="true"]{background:var(--selected-bg);border-color:var(--selected-border);color:var(--selected-accent)}
 @media(max-width:760px){

@@ -13,7 +13,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js" integrity="sha384-+pWnyi8LtZx+cgXfD2arWgUX7pHIaEL215cEPPk9WrsegNlgvDL9DNjaqsceQq6o" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js" integrity="sha384-BSxuMLxX+FCbTdYec3TbXlnMGEEM2QXTFdtDaveen71o+jswm2J36+xFqp8k4VHM" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.min.js" integrity="sha384-l8ah+VgaWtk1mvOe9VC+OirC6qHFF4yH7l7mKRidV9MSti3E9F463bMp6ZVN4kuC" crossorigin="anonymous"></script>
-<link rel="stylesheet" href="style.css?v=tc-v274">
+<link rel="stylesheet" href="style.css?v=tc-v276">
 </head>
 <body>
 <a class="skipLink" href="#sidebar">일정으로 건너뛰기</a>
@@ -150,6 +150,9 @@
   </details>
   <input type="hidden" id="spotLat"><input type="hidden" id="spotLng"><input type="hidden" id="spotPlaceId"><input type="hidden" id="spotKakaoId">
   <div class="hint" id="coordHint">위치: 아직 없어요 — 위에서 검색하거나 지도에서 골라 주세요</div>
+  <!-- 비용은 기본 영역에 둔다(2026-10-05 UX 점검) — 전에는 상세 설정 안에 있어 '얼마인가'를 보려면 펴야 했다. 장소 비용 창 하나에서 고치고
+       여기는 요약 한 줄이다(2026-10-04). 예약에 연결된 숙소는 예약 금액이 유일한 출처라 예약을 연다 -->
+  <div class="spotCostRow"><span class="fieldLabel" id="spotCostLabel">비용</span><button type="button" class="costSummary" id="spotCostBtn" aria-describedby="spotCostLabel"></button><div class="hint" id="costKrwHint"></div></div>
   <!-- 예약은 한 묶음이다(2026-10-04) — 예약이 필요한가 → 했어요 → 시각·인원 → 링크 → 메모. 전에는 예약·입장 시각(시간 칸),
        내 예약 링크(상세 설정), 명소 예약 준비(상세 설정 안의 또 다른 접힘)가 세 곳에 흩어져 있었다. 저장 필드는 그대로다.
        칸마다 보이는 이름을 둔다 — 예시 문구뿐이라 값을 넣으면 무슨 칸인지 사라졌다. 예약할 일이 없어 보이는 곳이면 접는다(P2-27) -->
@@ -175,15 +178,13 @@
       <button type="button" class="btn" id="spotAdmConfirm">공식 정보를 지금 확인했어요</button>
       <span class="hint" id="spotAdmChecked"></span>
     </div>
-    <div class="hint" id="spotAdmHelp">직접 확인한 것만 적어 주세요. 링크를 열거나 시각을 적어도 <b>예약 완료로 바뀌지 않아요.</b> 금액은 상세 설정의 비용에 적어요.</div>
+    <div class="hint" id="spotAdmHelp">직접 확인한 것만 적어 주세요. 링크를 열거나 시각을 적어도 <b>예약 완료로 바뀌지 않아요.</b> 금액은 위의 비용에 적어요.</div>
     </div>
   </details>
   <details id="spotAdvanced" class="advancedPanel">
     <summary>상세 설정 보기 <span>⌄</span></summary>
     <div class="advancedGrid">
       <div><label for="spotLegMode">이동수단</label><select id="spotLegMode"><option value="">그날 기본</option><option value="car">🚗 자차</option><option value="taxi">🚕 택시</option><option value="transit">🚌 대중교통</option><option value="train">🚆 기차</option><option value="walk">🚶 도보</option><option value="bike">🚴 자전거</option><option value="flight">✈️ 비행기</option></select></div>
-      <!-- 비용은 장소 비용 창 하나에서 고친다 — 여기는 요약 한 줄(2026-10-04). 예약에 연결된 숙소는 예약 금액이 유일한 출처라 예약을 연다 -->
-      <div class="wide"><span class="fieldLabel" id="spotCostLabel">비용</span><button type="button" class="costSummary" id="spotCostBtn" aria-describedby="spotCostLabel"></button><div class="hint" id="costKrwHint"></div></div>
       <div class="wide optionRows"><div class="chkrow"><label for="spotPriority">우선순위</label><select id="spotPriority" title="꼭 가기는 일정을 다시 맞출 때 마지막까지 지키고, 여유 되면은 시간이 모자라면 가장 먼저 빠져요"><option value="MUST">꼭 가기</option><option value="NORMAL" selected>보통</option><option value="OPT">여유 되면</option></select></div></div>
       <div class="wide" id="spotWhoSection" style="display:none"><label>누가 가나요</label><div class="whoChips" id="spotWho"></div><div class="hint">고르지 않으면 <b>모두</b>예요. 몇 명만 고르면 같은 시간에 다른 일정을 둘 수 있어요.</div></div>
     </div>
@@ -780,15 +781,15 @@
   <div id="placeDetailsContent" aria-live="polite"></div>
   <footer id="placeDetailsActions"></footer>
 </dialog>
-<script src="lib.js?v=tc-v274"></script>
-<script src="sync.js?v=tc-v274"></script>
-<script src="routing.js?v=tc-v274"></script>
-<script src="price.js?v=tc-v274"></script>
-<script src="adaptive.js?v=tc-v274"></script>
-<script src="intake.js?v=tc-v274"></script>
-<script src="collab.js?v=tc-v274"></script>
-<script src="api.js?v=tc-v274"></script>
-<script src="auth.js?v=tc-v274"></script>
-<script src="app.js?v=tc-v274"></script>
+<script src="lib.js?v=tc-v276"></script>
+<script src="sync.js?v=tc-v276"></script>
+<script src="routing.js?v=tc-v276"></script>
+<script src="price.js?v=tc-v276"></script>
+<script src="adaptive.js?v=tc-v276"></script>
+<script src="intake.js?v=tc-v276"></script>
+<script src="collab.js?v=tc-v276"></script>
+<script src="api.js?v=tc-v276"></script>
+<script src="auth.js?v=tc-v276"></script>
+<script src="app.js?v=tc-v276"></script>
 </body>
 </html>
