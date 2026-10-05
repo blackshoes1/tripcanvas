@@ -197,6 +197,19 @@ struct TripListView: View {
             .navigationTitle("With J")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    HStack(spacing: Space.s) {
+                        Image("BrandSymbol")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 24, height: 24)
+                            .foregroundStyle(Ink.accent)
+                            .accessibilityHidden(true)
+                        Text("With J")
+                            .font(Typeface.navigationTitle)
+                            .foregroundStyle(Ink.ink)
+                    }
+                }
                 ToolbarItem(placement: .topBarLeading) {
                     Button("받은 자료", systemImage: "tray") { inboxKey = nil; showsInbox = true }
                 }

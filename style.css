@@ -10,6 +10,7 @@
   .ic+*{margin-left:2px}
   header{background:var(--header);padding:9px 14px;display:flex;align-items:center;gap:8px;flex-wrap:nowrap;z-index:1200;border-bottom:1px solid var(--border);position:relative}
   header h1{font-size:16px;font-weight:800;color:var(--ink);margin-right:4px}
+  .brandSymbol{display:inline-block;width:24px;height:24px;vertical-align:-5px;background:var(--primary);mask:url('brand-symbol.png') center/contain no-repeat}
   select,input,textarea{font-family:inherit;background:var(--surface);color:var(--ink);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px}
   .btn{border:1px solid var(--border);border-radius:10px;padding:9px 14px;font-size:13px;background:var(--surface);color:var(--ink);transition:.15s;min-height:40px}
   .btn:hover{background:var(--hover-bg);border-color:var(--subtle)}
