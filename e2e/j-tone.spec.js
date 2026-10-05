@@ -1,4 +1,6 @@
 const {test,expect}=require('@playwright/test');
+const path=require('node:path');
+const os=require('node:os');
 const {prepare,clickMore}=require('./helpers');
 test.beforeEach(async({context,page})=>{await prepare(context);await page.goto('/');});
 
@@ -14,7 +16,7 @@ test('예문을 보고 말투를 고르면 기기에 남고 J 문장만 바뀐�
   await page.reload();
   await clickMore(page,'#jToneMenuBtn');
   await expect(modal.getByRole('radio',{name:/찐친/})).toBeChecked();
-  await page.screenshot({path:'/private/tmp/j-tone-web.png',fullPage:true});
+  await page.screenshot({path:path.join(os.tmpdir(),'j-tone-web.png'),fullPage:true});
 });
 
 test('실패한 계정 저장은 기기에 남고 재시도 뒤 다른 계정과 분리된다',async({page})=>{
@@ -83,7 +85,7 @@ test('휴대폰 화면에서 말투 선택 후 여행 중 이해 문장이 새 �
   });
   await clickMore(page,'#jToneMenuBtn');
   await page.getByRole('radio',{name:/직장 동료/}).check();
-  await page.screenshot({path:'/private/tmp/j-tone-mobile.png',fullPage:true});
+  await page.screenshot({path:path.join(os.tmpdir(),'j-tone-mobile.png'),fullPage:true});
   await page.getByRole('button',{name:'닫기',exact:true}).click();
   await page.locator('#travelBtn').click();
   await page.locator('#travelIntent').fill('오늘 좀 피곤해서 많이 걷기 싫어');
