@@ -5,6 +5,7 @@ struct ReplanCard: View {
     let suggestion: TripSuggestion
     let preview: ReplanPreview
     let isBusy: Bool
+    var tone: JTone = .friendly
     let onApply: () -> Void
     let onKeep: () -> Void
 
@@ -48,14 +49,14 @@ struct ReplanCard: View {
 
     /// 제목은 서버(엔진)가 쓴다 — '이대로면 광장시장 11:45 예약에 25분 늦어요'.
     /// 2026-10-03 전에는 앱이 'N분 늦어지고 있어요'를 따로 만들어, 아직 늦지 않았는데 늦었다고 말했다(웹은 엔진 문장이었다).
-    private var headline: String { suggestion.title.isEmpty ? "남은 일정을 다시 맞춰 봤어요" : suggestion.title }
+    private var headline: String { suggestion.title.isEmpty ? JCopy.text("replan.simulated", tone: tone) : suggestion.title }
 
     private var dropNote: String {
         if let note = preview.note, !note.isEmpty { return note }
         // 옛 서버 — 같은 문장을 조사까지 맞춰 만든다
         let names = preview.dropNames.joined(separator: ", ")
         let topic = names + Self.topicParticle(preview.dropNames.last ?? "")
-        return preview.movesToNextDay ? "\(topic) 다음 날 앞쪽으로 옮겨요" : "\(topic) '건너뜀'으로 표시해요"
+        return JCopy.text(preview.movesToNextDay ? "replan.moveNote" : "replan.skipNote", params: ["topic": topic], tone: tone)
     }
 
     /// 은/는 — 받침이 있으면 '은'. 한글이 아니면 '는'(엔진 `josa`와 같은 규칙).

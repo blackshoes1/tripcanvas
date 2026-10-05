@@ -88,12 +88,12 @@ struct TodayView: View {
                                     : "일행이 일정을 추가하면 여기서 확인할 수 있어요.")
                                 .card()
                         } else {
-                            DoneForTodayCard()
+                            DoneForTodayCard(tone: env.jTone.selected)
                         }
 
                         if model.canAct, let replan = model.replanSuggestion {
                             ReplanCard(suggestion: replan, preview: today.replan,
-                                       isBusy: !model.pending.isEmpty || model.isRetrying,
+                                       isBusy: !model.pending.isEmpty || model.isRetrying, tone: env.jTone.selected,
                                        onApply: { Task { await model.accept(replan) } },
                                        onKeep: { Task { await model.dismiss(replan) } })
                         } else if let notice = today.notice, !notice.isEmpty {
@@ -122,7 +122,7 @@ struct TodayView: View {
                             ForEach(model.otherSuggestions) { suggestion in
                                 let target = model.activity(id: suggestion.action.activityId)
                                 SuggestionCard(suggestion: suggestion,
-                                               isBusy: !model.pending.isEmpty || model.isRetrying,
+                                               isBusy: !model.pending.isEmpty || model.isRetrying, tone: env.jTone.selected,
                                                target: target,
                                                onComplete: target.map { activity in { Task { await model.complete(activity) } } },
                                                onAccept: { Task { await model.accept(suggestion) } },
@@ -169,6 +169,9 @@ struct TodayView: View {
         // ⚠️ 여기에 배경을 두지 않는다 — 먼저 붙은 배경이 위에 깔려 `paperGround()`의 종이를 덮는다.
         // 제목(여행 이름)은 `TripHomeView`가 정한다 — 두 형제 화면이 같은 제목을 써야 한다.
         .paperGround()
+        .onChange(of: env.jTone.refreshVersion) { _, _ in
+            Task { await refreshToday(reason: .userAction) }
+        }
         .refreshable { await refreshToday(reason: .manual) }
         .task {
             // 탭 진입 — 방금 받은 내용이 있으면 그대로 두고, 오래됐을 때만 뒤에서 새로 받는다.
@@ -299,7 +302,7 @@ struct TodayView: View {
             VStack(spacing: -Space.l) {
                 TripCoverView(trip: summary, api: env.service.api, cache: env.service.cache, cacheScope: env.service.cacheScope,
                               refresh: coverRefresh, isHero: true, onOpen: {})
-                TripDepartureCard(trip: summary, days: days, onOpenPlan: onOpenPlan)
+                TripDepartureCard(trip: summary, days: days, onOpenPlan: onOpenPlan, tone: env.jTone.selected)
             }
             if model.isOffline, let cachedAt = model.cachedAt {
                 OfflineNotice(savedAt: cachedAt)
@@ -406,11 +409,12 @@ struct ToastView: View {
 }
 
 struct DoneForTodayCard: View {
+    var tone: JTone = .friendly
     var body: some View {
         VStack(alignment: .leading, spacing: Space.s) {
-            Label("오늘 계획한 일정은 다 마쳤어요", systemImage: "checkmark.circle")
+            Label(JCopy.text("pulse.complete", tone: tone), systemImage: "checkmark.circle")
                 .font(.headline)
-            Text("남은 시간은 그냥 쉬어도 좋아요.")
+            Text(JCopy.text("today.rest", tone: tone))
                 .font(.subheadline)
                 .foregroundStyle(Ink.soft)
         }
@@ -824,6 +828,7 @@ enum MapLauncher {
 ///    `IntentEcho`를 그대로 그린다 — 규칙을 Swift로 옮기면 웹과 답이 갈린다(§엔진은 하나다).
 /// ⚠️ 못 알아들었으면 **그렇게 말한다.** 알아들은 척하고 아무 제안이나 내놓지 않는다.
 struct IntentField: View {
+    @Environment(AppEnvironment.self) private var env
     @Binding var text: String
     let echo: IntentEcho?
     let energy: EnergyLevel
@@ -878,7 +883,7 @@ struct IntentField: View {
             if let echo, !echo.text.isEmpty {
                 HStack(alignment: .top, spacing: Space.xs) {
                     Image(systemName: echo.understood ? "text.bubble" : "questionmark.circle")
-                    Text(echo.echoLine).font(.caption)
+                    Text(JCopy.text(echo.understood ? "intent.echo" : "intent.unknownNative", params: ["reasons": echo.reasons.joined(separator: " · ")], tone: env.jTone.selected)).font(.caption)
                     Spacer(minLength: 0)
                     Button("지우기", action: onClear).font(.caption).disabled(isBusy)
                 }

@@ -1342,6 +1342,77 @@ document.addEventListener('input',e=>{const t=e.target;if(t&&t.classList&&t.clas
 document.addEventListener('blur',e=>{const t=e.target;if(!(t&&t.classList&&t.classList.contains('timeIn')))return;
   if(t.value.trim()===''){t.removeAttribute('aria-invalid');return;}
   const n=normHM(t.value); if(n){t.value=n;t.removeAttribute('aria-invalid');} else t.setAttribute('aria-invalid','true');},true);
+
+// J의 말투는 여행 데이터가 아닌 개인 설정이다. 로그인 전과 각 계정의 캐시를 분리한다.
+const J_TONE_KEY='tripcanvas_j_tone_v1:';
+let jToneRevision=0, jToneSaving=false, jToneMessage='';
+function jToneStorageKey(){ return J_TONE_KEY+((user&&user.id)||'guest'); }
+function jToneStored(){
+  try{ return JSON.parse(localStorage.getItem(jToneStorageKey())||'{}')||{}; }catch(_){ return {}; }
+}
+function jTonePref(){ return TC_J_COPY.normalizeTone(jToneStored().jTone); }
+function writeJTone(jTone,pending){ try{ localStorage.setItem(jToneStorageKey(),JSON.stringify({jTone,pending})); }catch(_){} }
+function jSay(key,params){ return TC_J_COPY.text(key,params,jTonePref()); }
+function refreshJCopy(){
+  renderJToneChoices();
+  if(document.getElementById('travel').classList.contains('show')){
+    if(adaptIntent) adaptIntentWhy=TC_ADAPT.resolveIntent(adaptIntent,{energyLevel:adaptEnergy,jTone:jTonePref()}).reasons;
+    renderTravel(_adapt?_adapt.di:Math.max(0,activeDay-1));
+    if(_dayFlow) buildDayFlow(_adapt.di);
+  }
+}
+function renderJToneChoices(){
+  const box=document.getElementById('jToneChoices'); if(!box) return;
+  const tone=jTonePref();
+  box.querySelectorAll('input').forEach(el=>{ el.checked=el.value===tone; el.disabled=jToneSaving; });
+  document.getElementById('jToneStatus').textContent=jToneMessage || (jToneStored().pending&&user?'계정에 저장하지 못했어요 — 이 기기에만 적용돼요.':(user?'로그인한 계정에 저장해 다른 기기에서도 이어져요.':'이 기기에 저장해요. 로그인하면 계정의 말투를 사용해요.'));
+  document.getElementById('jToneRetry').hidden=!user||!jToneStored().pending||jToneSaving;
+}
+async function setJTone(value){
+  if(jToneSaving) return;
+  const tone=TC_J_COPY.normalizeTone(value), account=user&&user.id, epoch=syncAccountEpoch;
+  const revision=++jToneRevision;
+  jToneMessage='';
+  writeJTone(tone,!!account); refreshJCopy();
+  if(!account) return;
+  jToneSaving=true; renderJToneChoices();
+  let error;
+  try{
+    const token=await apiToken();
+    if(!user||user.id!==account||syncAccountEpoch!==epoch||revision!==jToneRevision) return;
+    ({error}=await TC_API.preferences.set(tone,token));
+  }catch(e){ error=e; }
+  if(!user||user.id!==account||syncAccountEpoch!==epoch||revision!==jToneRevision) return;
+  jToneSaving=false;
+  if(!error){ writeJTone(tone,false); jToneMessage='계정에 저장했어요.'; }
+  else jToneMessage='계정에 저장하지 못했어요 — 이 기기에만 적용돼요.';
+  renderJToneChoices();
+}
+function adoptAccountJTone(tone,revision){
+  if(revision!==jToneRevision || jToneStored().pending || jToneSaving) return;
+  const changed=jTonePref()!==TC_J_COPY.normalizeTone(tone);
+  writeJTone(TC_J_COPY.normalizeTone(tone),false);
+  if(changed) refreshJCopy();
+}
+(function(){
+  const box=document.getElementById('jToneChoices');
+  TC_J_COPY.choices.forEach(choice=>{
+    const label=document.createElement('label'); label.className='jToneChoice';
+    const input=document.createElement('input'); input.type='radio'; input.name='jTone'; input.value=choice.id;
+    input.onchange=()=>{ if(input.checked) setJTone(choice.id); };
+    const words=document.createElement('span');
+    const title=document.createElement('strong'); title.textContent=choice.label+(choice.id==='FRIENDLY'?' · 기본':'');
+    const example=document.createElement('small'); example.textContent=choice.example;
+    words.append(title,example); label.append(input,words); box.appendChild(label);
+  });
+  document.getElementById('jToneMenuBtn').onclick=()=>{ renderJToneChoices(); document.getElementById('jToneModalBg').classList.add('show'); if(user) refreshTripRoles(); };
+  document.getElementById('jToneClose').onclick=()=>document.getElementById('jToneModalBg').classList.remove('show');
+  document.getElementById('jToneRetry').onclick=()=>setJTone(jTonePref());
+  renderJToneChoices();
+})();
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible'&&user) refreshTripRoles(); });
+window.addEventListener('storage',e=>{ if(e.key===jToneStorageKey()){ jToneRevision++; jToneSaving=false; jToneMessage=''; refreshJCopy(); } });
+
 /** 저장 전에 못 읽는 시각이 남아 있는지 — 있으면 그 칸으로 보내고 이유를 말한다(빈 값으로 저장하지 않는다). */
 function badTimeField(root){
   for(const t of root.querySelectorAll('.timeIn')){
@@ -6162,7 +6233,7 @@ let adaptIntentWhy=[];      // 그 문장을 무엇으로 알아들었는지
 let _dayFlow=null;          // 하루 flow 미리보기 (수락 전에는 저장하지 않는다)
 let _flowExclude=[];        // '다른 제안'으로 물린 후보 id (이 세션 한정)
 let adaptDay='';            // 컨디션·문장을 고른 날(여행지 날짜) — '오늘 컨디션'은 그날만 유효하다
-let _sgDone=null;           // 방금 받아들인 '쉬기' — 카드를 접고 한 줄로 남긴다 {di, text}
+let _sgDone=null;           // 방금 받아들인 '쉬기' — 카드를 접고 한 줄로 남긴다 {di, key}
 
 function loadSuggest(){
   try{
@@ -6255,7 +6326,7 @@ function adaptLegMin(day){ return (a,b)=>legMinutes(a,b,TC_ADAPT.moveModeTo(trip
 function adaptState(di, clock){
   const ctx=dayContext(di), when=clock||travelClock();
   return TC_ADAPT.buildTripState(trip(), {dayIndex:di, todayISO:when.todayISO, nowMin:when.nowMin,
-    timeline:ctx.timeline, startAnchor:ctx.anchor, legMin:adaptLegMin(ctx.day), energyLevel:adaptEnergy, prefs:adaptPrefs});
+    timeline:ctx.timeline, startAnchor:ctx.anchor, legMin:adaptLegMin(ctx.day), energyLevel:adaptEnergy, prefs:adaptPrefs, jTone:jTonePref()});
 }
 // 가격 추적도 같은 제안 목록으로 올린다 — 단, '확정 절약'만. 추정치로 사용자를 흔들지 않는다.
 function priceSuggestions(today){
@@ -6265,14 +6336,14 @@ function priceSuggestions(today){
     if(!st||st.state!=='SAVING_AVAILABLE'||!st.confirmed) return;
     const o=st.confirmed.offer;
     out.push({bookingId:b.id, title:`${b.title} · ₩${fmtMoney(toKRW(st.confirmed.saving,b.cur))} 절약 가능`,
-      description:`${o.seller}에서 같은 조건이 더 싸요${st.fee?' (취소 수수료 반영)':''}`,
-      reasons:['예약한 뒤 가격이 내려갔어요','취소 수수료를 빼고도 남는 금액이에요'],
+      description:jSay('price.seller',{seller:o.seller,fee:st.fee?' (취소 수수료 반영)':''}),
+      reasons:[jSay('price.lower'),jSay('price.net')],
       impact:{costChange:-toKRW(st.confirmed.saving,b.cur)}});
   });
   return out;
 }
 
-const SG_KICKER={REPLAN:'일정 조정 제안', NEXT_ACTIVITY:'지금 한 곳 더 들를 수 있어요', REST:'쉬어도 괜찮아요', PRICE_SAVING:'예약 다시 보기'};
+const SG_KICKER={REPLAN:'일정 조정 제안', NEXT_ACTIVITY:'kicker.next', REST:'kicker.rest', PRICE_SAVING:'예약 다시 보기'};
 const SG_KICKER_PREVIEW='이 날 비는 시간에 넣어 볼 만한 곳';
 /** 나중에 비는 시간의 머리글 — '15:10부터 비는 시간 · 남산서울타워 다음'. 앞 일정은 엔진이 짚은 창의 afterId다 */
 function laterKicker(startMin, win, state){
@@ -6383,7 +6454,7 @@ function sgPrimaryButtons(sug, di){
   if(a.kind==='REST'||a.kind==='RETURN_TO_HOTEL') return !v.isToday? [] : [sgButton(a.kind==='REST'?'그렇게 할게요':'숙소로 가기', true, ()=>{
     recordFeedback(sug,'ACCEPTED');
     suggestBox().dismissed[sug.key]=travelClock().todayISO; saveSuggest();
-    _sgDone={di, text:a.kind==='REST'? '쉬는 중이에요 — 남은 일정은 그대로 둬요' : '숙소로 돌아가는 중이에요 — 남은 일정은 그대로 둬요'};
+    _sgDone={di, key:a.kind==='REST'?'rest.accepted':'hotel.accepted'};
     renderSuggestions(di); }, 'ACCEPT')];
   if(a.kind==='EAT') return !v.canPlan? [] : [sgButton('식사 장소 추가', true, ()=>openMealSearch(sug,di), 'ACCEPT')];
   // 다른 날의 장소를 이 날로 — 넣는 날을 그 이름으로 말한다(다른 날을 보면서 '오늘 일정에 넣기'였다). 지난 날·보기 권한은 넣지 않는다
@@ -6411,7 +6482,7 @@ function replanPreview(di){
   box.appendChild(line('제안', r.after));
   if(r.dropNames.length){
     const n=document.createElement('div'); n.className='sgReplanNote';
-    n.textContent=TC_ADAPT.replanDropNote(r.dropNames, !!trip().days[di+1]);   // 앱 카드와 같은 문장
+    n.textContent=TC_ADAPT.replanDropNote(r.dropNames, !!trip().days[di+1], jTonePref());   // 앱 카드와 같은 문장
     box.appendChild(n);
   }
   return box;
@@ -6421,7 +6492,7 @@ function replanPreview(di){
 function applyIntent(text, di){
   // 합치는 규칙은 `adaptive.js`의 `resolveIntent` 하나다 — 서버(`/api/v1/.../today`)가 같은 것을 쓴다.
   // 컨디션은 문장이 말했을 때만 덮어쓰고, 조건은 문장이 통째로 정한다.
-  const r=TC_ADAPT.resolveIntent(text, {energyLevel:adaptEnergy});
+  const r=TC_ADAPT.resolveIntent(text, {energyLevel:adaptEnergy,jTone:jTonePref()});
   adaptEnergy=r.energyLevel;
   adaptPrefs=r.prefs; adaptIntent=String(text||''); adaptIntentWhy=r.reasons;
   markAdaptToday(); saveSuggest();
@@ -6443,10 +6514,10 @@ function renderIntentEcho(di){
   if(!adaptIntent) return;
   const energyUnsaid=ENERGY_TALK.test(adaptIntent) && !TC_ADAPT.parseIntent(adaptIntent).energyLevel;
   const lines=[];
-  if(adaptIntentWhy.length) lines.push('이렇게 이해했어요 — '+adaptIntentWhy.join(' · '));
-  if(energyUnsaid) lines.push(adaptEnergy==='NORMAL'? "컨디션은 '보통'으로 보고 있어요 — 다르면 아래 버튼으로 알려 주세요"
-    : `컨디션은 바꾸지 않았어요 — 지금은 '${ENERGY_LABEL[adaptEnergy]}'로 보고 있어요`);
-  if(!lines.length) lines.push('그 문장은 아직 못 알아들었어요 — 아래 컨디션 버튼으로 알려 주세요');
+  if(adaptIntentWhy.length) lines.push(jSay('intent.echo',{reasons:adaptIntentWhy.join(' · ')}));
+  if(energyUnsaid) lines.push(adaptEnergy==='NORMAL'? jSay('intent.normal')
+    : jSay('intent.unchanged',{energy:ENERGY_LABEL[adaptEnergy]}));
+  if(!lines.length) lines.push(jSay('intent.unknown'));
   lines.forEach(text=>{ const d=document.createElement('div'); d.textContent=text; el.appendChild(d); });
   if(energyUnsaid && adaptEnergy!=='NORMAL' && di!=null){
     const b=sgButton('보통으로 바꾸기', false, ()=>{ adaptEnergy='NORMAL'; markAdaptToday(); saveSuggest(); renderEnergy(di); renderSuggestions(di); });
@@ -6497,13 +6568,12 @@ function renderDayFlow(di){
   if(!_dayFlow) return;
   const flow=_dayFlow, live=!!(_adapt&&_adapt.state&&_adapt.state.live);
   const card=document.createElement('div'); card.className='sgCard'; card.dataset.type='DAY_FLOW';
-  card.appendChild(sgKicker(live?'오늘 이렇게 이어가면 어떨까요':'이 날을 이렇게 채우면 어떨까요'));
+  card.appendChild(sgKicker(jSay(live?'flow.today':'flow.preview')));
   // 남은 계획(PLANNED)도 함께 그리고 더하는 것만 강조한다 — 남은 곳을 빼고 그리면 계획이 사라진 것처럼 보였다(2026-10-03)
   // 조정 카드가 없는 날(뺄 곳이 없거나 건너뛰었다)에 '조정 제안을 확인해 주세요'라고 하면 없는 카드를 가리킨다
   const replanCard=!!(_adapt&&_adapt.res&&_adapt.res.suggestions.some(s=>s.type==='REPLAN'));
-  const note=flow.blocked==='REPLAN'? '이대로면 예약 시간에 늦어서 더 넣지 않았어요 — '+(replanCard?'일정 조정 제안을 먼저 확인해 주세요.':'예약 시간을 바꾸거나 미리 알려 두는 편이 나아요.')
-    : flow.empty? '지금 더 넣을 만한 곳이 없어요 — 남은 일정을 그대로 이어가면 돼요.'
-    : flow.light? '이 날 메모가 가벼운 일정이라 한 곳만 골랐어요.' : '';
+  const note=flow.blocked==='REPLAN'? jSay(replanCard?'flow.blocked':'flow.blockedNoCard')
+    : flow.empty? jSay('flow.empty') : flow.light? jSay('flow.light') : '';
   if(note){ const e=document.createElement('div'); e.className='sgDesc'; e.textContent=note; card.appendChild(e); }
   const list=document.createElement('div'); list.className='sgFlow';
   flow.blocks.forEach(b=>{
@@ -6525,7 +6595,7 @@ function renderDayFlow(di){
     renderSuggestions(di); buildDayFlow(di);   // 아래 카드도 같은 제외 목록을 쓴다 — 물린 곳을 '한 곳 더'로 다시 권하지 않는다
   }, 'REFRESH'));
   act.appendChild(sgButton(v.isToday?'오늘은 쉬기':'닫기', false, ()=>{
-    _dayFlow=null; renderDayFlow(di); toast('알겠어요 — 일정은 그대로 둬요','#3e7a4c'); }, 'DISMISS'));
+    _dayFlow=null; renderDayFlow(di); toast(jSay('flow.dismissed'),'#3e7a4c'); }, 'DISMISS'));
   card.appendChild(act);
   host.appendChild(card);
   trackAdapt('day_flow_shown',{blocks:flow.blocks.length, added:(flow.picks||[]).length});
@@ -6579,22 +6649,22 @@ function renderSuggestions(di, clock){
   // 지난 날·지난 여행은 돌아보기용이다 — 무엇을 더 넣자거나 지금 쉬자는 말은 하지 않는다
   if(v.past){
     const d=document.createElement('div'); d.className='sgEmpty';
-    d.textContent=v.period.phase==='AFTER'? '지난 여행이에요 — 일정을 돌아볼 수 있고, J의 제안은 여행 전과 여행 중에 드려요.'
-                                          : '지난 날이에요 — 다녀온 곳은 아래 목록에서 표시할 수 있어요.';
+    d.textContent=v.period.phase==='AFTER'? jSay('suggest.afterTrip')
+                                          : jSay('suggest.past');
     host.appendChild(d);
     return;
   }
   // 조정 카드 없이 늦는 경우(뺄 수 있는 곳이 없거나 그 카드를 건너뛰었을 때)에도 늦는다는 사실은 엔진의 한 줄로 말한다
   if(res.notice){ const w=document.createElement('div'); w.className='sgEmpty sgNotice'; w.setAttribute('role','note'); w.textContent=res.notice; host.appendChild(w); }
-  if(_sgDone && _sgDone.di===di){ const d=document.createElement('div'); d.className='sgEmpty sgDone'; d.textContent=_sgDone.text; host.appendChild(d); }
+  if(_sgDone && _sgDone.di===di){ const d=document.createElement('div'); d.className='sgEmpty sgDone'; d.textContent=jSay(_sgDone.key); host.appendChild(d); }
   if(!res.suggestions.length){
     if(res.notice) return;
     const d=document.createElement('div'); d.className='sgEmpty';
     // '다음 고정 일정까지 쉬라'고 하지 않는다 — 그 사이에 남은 곳이 넷인데 "명동교자(19:00)까지 쉬었다가"라고 했다(2026-10-03)
     const next=state.freeBefore;
     d.textContent = next
-      ? `지금 더 넣을 만한 곳은 없어요 — 다음 일정 ${next.name}(${hm(next.fixedAt!=null?next.fixedAt:next.eta)})로 그대로 이어가면 돼요.`
-      : (state.live? '지금 새로 제안할 일정이 없어요 — 오늘 남은 일정을 그대로 이어가면 돼요.' : '이 날은 더 넣을 만한 곳이 없어요 — 지금 일정 그대로 괜찮아요.');
+      ? jSay('suggest.emptyNext',{place:next.name,time:hm(next.fixedAt!=null?next.fixedAt:next.eta)})
+      : (state.live? jSay('suggest.emptyToday') : jSay('suggest.emptyPreview'));
     host.appendChild(d);
     return;
   }
@@ -6609,7 +6679,7 @@ function renderSuggestions(di, clock){
     const kick=(a.kind==='EAT')? '식사 시간 챙기기'
       : (sug.type==='NEXT_ACTIVITY'&&!state.live)? SG_KICKER_PREVIEW
       : (sug.type==='NEXT_ACTIVITY'&&later)? laterKicker(a.startMin, res.window, state)
-      : (SG_KICKER[sug.type]||'제안');
+      : (sug.type==='NEXT_ACTIVITY'||sug.type==='REST'?jSay(SG_KICKER[sug.type]):(SG_KICKER[sug.type]||'제안'));
     card.appendChild(sgKicker(kick));
     const ti=document.createElement('div'); ti.className='sgTitle'; ti.textContent=sug.title; card.appendChild(ti);
     if(sug.description){ const de=document.createElement('div'); de.className='sgDesc'; de.textContent=sug.description; card.appendChild(de); }
@@ -6892,6 +6962,7 @@ TC_AUTH.onChange(next=>{
     document.getElementById('syncConflictBg').classList.remove('show');
   }
   user = next;
+  if(switched){ jToneRevision++; jToneSaving=false; jToneMessage=''; refreshJCopy(); }
   if(switched) document.querySelectorAll('img[data-cover-trip]').forEach(img=>{ img.removeAttribute('src'); img.hidden=true; });
   if(!user) tripRoles={};   // 로그아웃하면 서버 역할은 의미가 없다 — 로컬 사본은 소유자로 다룬다
   updateAuthUI();
@@ -7371,8 +7442,11 @@ updateAuthUI();
 // 실시간 반영은 다음 단계다 — 지금은 탭이 다시 보일 때와 패널을 열 때 최신본을 당겨온다(pullTrip).
 async function refreshTripRoles(){
   if(!cloudReady()){ tripRoles={}; liveChoice={provider:'SUPABASE',url:null}; updateCollabUI(); return; }
+  const account=user.id, epoch=syncAccountEpoch, toneRevision=jToneRevision;
   try{
     const {data,error}=await TC_API.me();
+    if(!user||user.id!==account||syncAccountEpoch!==epoch) return;
+    if(data&&data.preferences) adoptAccountJTone(data.preferences.jTone,toneRevision);
     if(error) throw error;
     tripRoles=TC_COLLAB.tripRoleMap((data&&data.trips)||[]);
     // 어느 실시간을 쓸지는 서버가 정한다 — 협업 데이터가 아직 Supabase면 새 사이드카에는 보낼 이벤트가 없다
