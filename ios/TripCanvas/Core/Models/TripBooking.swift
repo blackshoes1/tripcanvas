@@ -76,7 +76,7 @@ struct TripBooking: Hashable, Sendable, Identifiable {
     /// 총액. 예약은 여러 날에 걸친 총액이다 — 하루치는 `bookingShareOn`이 나눈다.
     var price: Double {
         get { raw["price"]?.doubleValue ?? 0 }
-        set { raw["price"] = .number(max(0, newValue)) }
+        set { raw["price"] = .number(max(0, newValue)); raw.removeValue(forKey: "costDeleted") }
     }
 
     /// KRW는 기본값이라 저장하지 않는다(장소의 `cur`와 같은 규칙).
@@ -89,7 +89,7 @@ struct TripBooking: Hashable, Sendable, Identifiable {
 
     /// 항공은 금액을 몰라도 편명·시각만 적어 둘 수 있다(2026-10-04, 웹 `bkSave`와 같다) — 금액 미정은 `null`로 남긴다.
     var priceKnown: Bool { (raw["price"]?.doubleValue ?? 0) > 0 }
-    mutating func clearPrice() { raw["price"] = .null }
+    mutating func clearPrice() { raw["price"] = .null; raw.removeValue(forKey: "costDeleted") }
 
     /// 항공편 구간 — 편명·공항·시각은 항공 예약에 산다(2026-10-04, 웹 `booking.segments`·lib `normalizeFlightSegment`).
     /// 날짜가 있어야 그날 일정에 보인다. 시각은 HH:MM, 없는 값은 저장하지 않는다.
@@ -495,6 +495,7 @@ extension TripDocument {
                 var raw = all[index].raw
                 for key in ["cur", "payState", "paidOn", "photos", "cancelFee"] { raw.removeValue(forKey: key) }
                 raw["price"] = .null
+                raw["costDeleted"] = .bool(true)
                 raw["track"] = .bool(false)
                 all[index] = TripBooking(raw: raw)
             }

@@ -508,7 +508,7 @@ test('1박이거나 숙소가 아니거나 금액이 없으면 나누지 않고,
   assert.deepEqual(L.stayCostShares(trip.days, 5), { own: {}, carried: [] }, '연박 범위를 지나면 아무것도 없다');
 });
 
-test('비용만 삭제는 연결 예약과 장소의 비용을 지우고 일정·미정 금액을 유지한다', () => {
+test('비용만 삭제는 연결 예약과 장소의 비용을 지우고 일정·예약을 유지한다', () => {
   const trip = { bookings: [{id:'b',title:'호텔',price:100,cur:'EUR',paidOn:'2026-10-01',track:true}], days:[{spots:[
     {name:'호텔',bookingId:'b',cost:100,cur:'EUR',paidOn:'2026-10-01',photos:['receipt'],lat:1,lng:2,stay:true},
     {name:'식당',cost:20}
@@ -530,4 +530,48 @@ test('함께 삭제는 연결 예약·장소를 제거하고 다른 일정은 �
   L.deleteBookingCost(trip,'b',true);
   assert.deepEqual(trip.bookings,[{id:'other',price:70}]);
   assert.deepEqual(trip.days,[{spots:[{name:'관광'}]},{spots:[]}]);
+});
+
+
+test('일정을 남긴 비용 삭제는 숙소·예약 정보를 보존하고 비용 목록에서는 제거한다', () => {
+  for (const spot of [
+    { name: '숙소', stay: true, nights: 2 },
+    { name: '예약 명소', admission: { personalStatus: 'BOOKED' } },
+    { name: '일반 장소' }
+  ]) {
+    const trip = L.normalizeTrip({ days: [{ spots: [{ ...spot, cost: 100, custom: 'keep' }, { name: '미정 숙소', stay: true }] }] });
+    L.deleteSpotCost(trip, 0, 0, false);
+    const saved = L.normalizeTrip(JSON.parse(JSON.stringify(trip)));
+    const day = summary(saved);
+    const costs = L.tripCostSummary(saved, [{ index: 0, cost: day }], rates);
+    assert.equal(saved.days[0].spots.length, 2);
+    assert.equal(saved.days[0].spots[0].custom, 'keep');
+    assert.deepEqual(costs.overview.items.map(i => i.line.title), ['미정 숙소']);
+    assert.deepEqual(day.details.items.map(i => i.title), ['미정 숙소']);
+    assert.equal(costs.unknownCount, 1, '지우지 않은 미정 비용은 유지한다');
+    saved.days[0].spots[0].cost = 0;
+    const restored = summary(saved);
+    assert.equal(restored.details.items[0].state, 'FREE', '다시 입력한 무료 비용도 표시한다');
+  }
+});
+
+test('예약 비용만 삭제하면 연결된 장소와 미연결 예약 모두 비용 목록에서 빠진다', () => {
+  for (const type of ['hotel', 'car', 'flight']) for (const linked of type === 'flight' ? [false] : [true, false]) {
+    const trip = L.normalizeTrip({ bookings: [{ id: 'b', type, title: '예약', price: 50, start: '2026-10-01', end: '2026-10-02' }],
+      days: [{ spots: linked ? [{ name: '연결 장소', ...(type === 'hotel' ? { bookingId: 'b', stay: true, nights: 2 } : { carPickupId: 'b' }), cost: 50 }] : [] },
+        { spots: linked && type === 'car' ? [{ name: '반납', carReturnId: 'b' }] : [] }] });
+    L.deleteBookingCost(trip, 'b', false);
+    const saved = L.normalizeTrip(JSON.parse(JSON.stringify(trip)));
+    const days = saved.days.map((_, index) => ({ index, cost: summary(saved, index) }));
+    const costs = L.tripCostSummary(saved, days, rates);
+    assert.equal(saved.bookings.length, 1);
+    assert.equal(saved.bookings[0].start, '2026-10-01');
+    assert.equal(saved.days[0].spots.length, linked ? 1 : 0);
+    assert.deepEqual(costs.overview.items, []);
+    assert.deepEqual(costs.prep.items, []);
+    assert.equal(costs.unknownCount, 0);
+    saved.bookings[0].price = 70;
+    const restoredDays = saved.days.map((_, index) => ({ index, cost: summary(saved, index) }));
+    assert.equal(L.tripCostSummary(saved, restoredDays, rates).totalKRW, 70, '다시 입력한 예약 금액은 합계에 포함한다');
+  }
 });

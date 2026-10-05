@@ -68,6 +68,7 @@ struct CostEntry: Hashable, Sendable, Identifiable {
 
     func applying(to original: TripSpot) -> TripSpot {
         var spot = original
+        spot.setField("costDeleted", nil)
         spot.cost = amount
         // 종류에서 고른 분류를 그대로 두면 저장하지 않는다 — 나중에 종류를 바꾸면 분류도 따라간다. 이미 적힌 분류는 그대로 쓴다
         let derived = original.raw["costKind"] == nil ? CostCategory.of(spot: original).rawValue : nil
@@ -81,6 +82,7 @@ struct CostEntry: Hashable, Sendable, Identifiable {
     static func clearing(_ original: TripSpot) -> TripSpot {
         var spot = original
         for key in spotCostKeys { spot.setField(key, nil) }
+        spot.setField("costDeleted", .bool(true))
         return spot
     }
 }

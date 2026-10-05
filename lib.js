@@ -977,7 +977,7 @@
       const spots=(d&&Array.isArray(d.spots))?d.spots:[];
       for(const s of spots) if(s&&s.bookingId&&+s.cost>0) covered[_str(s.bookingId)]=true;
     }
-    return (Array.isArray(bookings)?bookings:[]).filter((/**@type{any}*/b)=>b&&(+b.price>0 || !covered[_str(b.id)]));
+    return (Array.isArray(bookings)?bookings:[]).filter((/**@type{any}*/b)=>b&&!deletedCostOf(b,'price')&&(+b.price>0 || !covered[_str(b.id)]));
   }
   /** 연결된 숙소에서 계산에 쓰지 않는 비용 칸 — 문서에는 그대로 남는다 */
   const _SPOT_COST_CALC_KEYS=['cost','cur','costBasis','costPeople','costPartial','payState','paidOn'];
@@ -1170,6 +1170,7 @@
     // 연박 숙소는 그날 하루치만 — 나머지 밤의 몫은 그 날들에 STAY 줄로 이월된다(stayCostShares)
     const stays=stayCostShares(trip.days,di);
     (day.spots||[]).forEach((/**@type{any}*/s,/**@type{number}*/index)=>{
+      if(deletedCostOf(s,'cost')) return;
       const own=Object.prototype.hasOwnProperty.call(stays.own,index);
       // 하루치는 이미 인원을 곱한 금액이라 기준을 ENTERED로 둔다 — 안 그러면 add()가 인원을 한 번 더 곱한다
       const item=own? {...s,cost:stays.own[index],costBasis:'ENTERED'} : s;
@@ -1697,9 +1698,13 @@
     if(b.refundable===false && b.refundableSet===true) return false;
     return b.freeCancelUntil? true : null;
   }
+  /** 명시적으로 지운 비용은 미정 비용과 구분한다. 다시 금액을 입력한 구버전 클라이언트도 허용한다.
+   * @param {any} item @param {string} field @returns {boolean} */
+  function deletedCostOf(item,field){ return item?.costDeleted===true && costAmountOf(item,field)===null; }
   /** 비용 정보만 걷고 장소 신원·일정·연결은 남긴다. @param {any} spot */
   function clearSpotCost(spot){
     for(const key of ['cost','costKind','cur','costBasis','costPeople','costPartial','payState','paidOn','photos']) delete spot[key];
+    spot.costDeleted=true;
   }
   /** 장소에서 비용을 지울 때 연결 예약도 같은 범위로 갱신한다.
    * @param {any} trip @param {number} di @param {number} si @param {boolean} includingSource */
@@ -1728,7 +1733,7 @@
       const booking=(trip.bookings||[]).find((/** @type {any} */ b)=>b.id===id);
       if(booking){
         for(const key of ['cur','payState','paidOn','photos','cancelFee']) delete booking[key];
-        booking.price=null; booking.track=false;
+        booking.price=null; booking.track=false; booking.costDeleted=true;
       }
     }
   }
