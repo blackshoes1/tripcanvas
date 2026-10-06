@@ -243,7 +243,7 @@ function historyLabel(beforeSer, afterSer){
   diff.forEach(i=>spotsOf(d1[i]).forEach((s,k)=>{ if(J(s)!==J(spotsOf(d0[i])[k])) pairs.push([spotsOf(d0[i])[k]||{},s]); }));
   if(pairs.length && pairs.every(([p,s])=>without(p,'legMode')===without(s,'legMode'))) return '이동수단 바꾸기';
   if(pairs.length && pairs.every(([p,s])=>without(p,'status')===without(s,'status'))) return '방문 표시';
-  const COST_KEYS=['cost','cur','costBasis','costPeople','costPartial','costKind','paidOn','payState','photos'];
+  const COST_KEYS=['cost','cur','costBasis','costPeople','costPartial','costKind','paidOn','payState','photos','costDeleted'];
   const noCost=o=>{ const c=Object.assign({},o); COST_KEYS.forEach(k=>delete c[k]); return J(c); };
   if(pairs.length && pairs.every(([p,s])=>noCost(p)===noCost(s))) return '비용 수정';
   return '장소 수정';
@@ -4416,7 +4416,7 @@ function renderBookingList(){
  */
 function paymentRows(){
   const today=todayISO();
-  const rows=tripBookings().map(b=>({id:b.id, kind:BK_TYPE_KIND[b.type]||'STAY', title:b.title||'예약', amount:b.price>0?b.price:null, cur:b.cur,
+  const rows=tripBookings().filter(b=>b.costDeleted!==true||costAmountOf(b,'price')!==null).map(b=>({id:b.id, kind:BK_TYPE_KIND[b.type]||'STAY', title:b.title||'예약', amount:b.price>0?b.price:null, cur:b.cur,
       paidOn:b.paidOn||'', payState:costPayStateOf(b,'BOOKING',today), photos:photoCount(b), booking:b}))
     .concat((trip().costItems||[]).map(it=>({id:it.id, kind:COST_KIND[it.kind]?it.kind:'OTHER', title:it.title||'비용', amount:costAmountOf(it,'amount'), cur:it.cur,
       paidOn:it.paidOn||'', scheduledOn:it.scheduledOn||'', payState:costPayStateOf(it,'TRIP',today), photos:photoCount(it), booking:null})));
@@ -5001,6 +5001,7 @@ document.getElementById('bkSave').onclick=()=>{
   const paidOn=document.getElementById('bkPaidOn').value;
   const identityChanged = b.start!==(sv||undefined)||b.end!==(ev||undefined)||b.title!==title;
   commit(()=>{
+    delete b.costDeleted;
     b.type=type;
     b.title=title;
     b.provider=document.getElementById('bkProvider').value.trim();
@@ -5112,7 +5113,7 @@ document.getElementById('bkDelBtn').onclick=()=>{
 // 전에는 장소 편집기(금액·통화 2칸)와 '예약 결제 금액' 목록 안의 '장소 비용 입력' 창(8칸)이 같은 spot.cost를 다른 칸으로 받았다.
 // 이제 장소 편집기는 요약 한 줄이고 누르면 이 창이 열린다. 고친 값은 초안(_spotCostDraft)에 두고, 장소를 저장할 때 함께 들어간다 —
 // 장소를 취소하면 비용도 취소다. 숙박 예약과 연결된 숙소는 예약 금액이 유일한 출처라 이 창 대신 예약을 연다(spotPaidByBooking).
-const SPOT_COST_KEYS=['cost','cur','costKind','costBasis','costPeople','costPartial','payState','paidOn'];
+const SPOT_COST_KEYS=['cost','cur','costKind','costBasis','costPeople','costPartial','payState','paidOn','costDeleted'];
 /** 장소 편집기가 값을 정하는 칸 — 저장할 때 이것만 폼에서 오고 나머지는 원래 장소에서 물려준다(spotSave) */
 const SPOT_FORM_KEYS=new Set(['name','city','desc','stay','nights','at','legMode','stayMin','bookAt','bookUrl','placeId','kakaoId','cat','who','admission','hours','lat','lng','must','opt',...SPOT_COST_KEYS]);
 let _spotCostDraft={};

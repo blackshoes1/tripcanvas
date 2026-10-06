@@ -8606,3 +8606,28 @@ test('모바일 하단 비용: 버튼이 지금 상태를 말하고, 시트는 �
     await new Promise(r=>setTimeout(r,0));
   }finally{ w.close(); }
 });
+
+
+test('통합: 비용 삭제 표시는 일정 편집 후에도 유지되고 비용 재입력 시 해제된다', { skip: noJsdom }, () => {
+  const w = boot();
+  withTrip(w, `[{title:'D1',mode:'walk',spots:[{name:'숙소',stay:true,lat:37,lng:127,cost:100}]}]`);
+  w.eval(`deleteSpotCost(trip(),0,0,false); openSpotModal(0,0);`);
+  w.document.getElementById('spotDesc').value = '일정 메모';
+  w.document.getElementById('spotSave').click();
+  assert.equal(w.eval('trip().days[0].spots[0].costDeleted'), true);
+  w.eval('openSpotModal(0,0)');
+  w.document.getElementById('spotCostBtn').click();
+  w.document.getElementById('costAmount').value = '0';
+  w.document.getElementById('costPlaceSave').click();
+  w.document.getElementById('spotSave').click();
+  assert.equal(w.eval('trip().days[0].spots[0].costDeleted'), undefined);
+  assert.equal(w.eval('trip().days[0].spots[0].cost'), 0);
+  w.eval(`trip().bookings=[{id:'b',type:'hotel',title:'호텔',price:null,track:false,costDeleted:true}];`);
+  assert.equal(w.eval('paymentRows().length'), 0);
+  w.eval('openBookingModal("b")');
+  w.document.getElementById('bkPrice').value = '100';
+  w.document.getElementById('bkSave').click();
+  assert.equal(w.eval('trip().bookings[0].costDeleted'), undefined);
+  assert.equal(w.eval('paymentRows().length'), 1);
+  w.close();
+});

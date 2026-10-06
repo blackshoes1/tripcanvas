@@ -26,10 +26,12 @@ final class DayCostTests: XCTestCase {
         XCTAssertEqual(updated.raw["paidOn"], .string("2026-10-02"))
         XCTAssertEqual(updated.cost, 15.25)
         let cleared = CostEntry.clearing(updated)
+        XCTAssertEqual(cleared.raw["costDeleted"], .bool(true))
         XCTAssertNil(cleared.cost)
         XCTAssertNil(cleared.raw["paidOn"])
         XCTAssertNil(cleared.raw["photos"])
         XCTAssertEqual(cleared.raw["custom"], .string("keep"))
+        XCTAssertNil(entry.applying(to: cleared).raw["costDeleted"], "비용을 다시 저장하면 삭제 표시를 걷는다")
     }
 
     func testDeleteBookingCostHasTwoScopesAcrossDays() {
@@ -42,6 +44,16 @@ final class DayCostTests: XCTestCase {
         XCTAssertEqual(costOnly.days[0].spots.count, 2)
         XCTAssertNil(costOnly.days[0].spots[0].cost)
         XCTAssertEqual(costOnly.bookings[0].raw["price"], .null)
+        XCTAssertEqual(costOnly.bookings[0].raw["costDeleted"], .bool(true))
+        XCTAssertEqual(costOnly.days[0].spots[0].raw["costDeleted"], .bool(true))
+        XCTAssertEqual(costOnly.days[1].spots[0].raw["costDeleted"], .bool(true))
+        XCTAssertEqual(costOnly.days[1].spots[0].carReturnId, "car")
+        var restored = costOnly.bookings[0]
+        restored.price = 70
+        XCTAssertNil(restored.raw["costDeleted"])
+        restored = costOnly.bookings[0]
+        restored.clearPrice()
+        XCTAssertNil(restored.raw["costDeleted"], "미정으로 다시 저장해도 비용은 복원한다")
         var all = original
         all.deleteSpotCost(day: 0, index: 0, includingSource: true)
         XCTAssertTrue(all.bookings.isEmpty)
