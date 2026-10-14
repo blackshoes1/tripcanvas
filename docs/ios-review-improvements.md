@@ -17,13 +17,15 @@
 
 ## 검증 중 발견한 의존성 보완
 
-기존 Next 워크스페이스의 보안 감사에서 발견한 취약점은 `sharp 0.35.5`, `source-map-js 1.2.2`, `Vitest 4.1.11`로 갱신한다. Drizzle 개발 도구가 사용하는 `@esbuild-kit/core-utils`의 esbuild만 `0.25.12`로 고정한다. 테스트 도구의 변경 범위를 줄이기 위해 기존 Vite `7.3.6`을 명시한다. Next·React·인증 라이브러리의 버전과 운영 설정은 유지한다. 보안 감사뿐 아니라 전체 백엔드 테스트·타입 검사·운영 빌드·도구 빌드로 호환성을 확인한다.
+기존 Next 워크스페이스의 보안 감사에서 발견한 취약점은 `sharp 0.35.5`, `source-map-js 1.2.2`, `Vitest 4.1.11`로 갱신한다. Drizzle 개발 도구가 사용하는 `@esbuild-kit/core-utils`의 esbuild만 `0.25.12`로 고정한다. 테스트 도구의 변경 범위를 줄이기 위해 기존 Vite `7.3.6`을 명시한다. 개발 도구의 `brace-expansion`도 수정 버전으로 갱신한다. Next·React·인증 라이브러리의 버전과 운영 설정은 유지한다. 보안 감사뿐 아니라 전체 백엔드 테스트·타입 검사·운영 빌드·도구 빌드로 호환성을 확인한다.
+
+개발 도구 전체 감사에는 ESLint의 `braces 3.0.3` 의존 경로 5건이 남는다. [공식 보안 공지](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm)에 수정 버전이 없고 npm 최신 버전도 `3.0.3`이다. 이는 개발 도구의 glob 패턴 처리 경로이며 `npm audit --omit=dev`에서는 취약점 0건이다. 패치가 나오면 갱신해야 하며, 감사 제외나 Next ESLint의 강제 다운그레이드로 통과를 만들지 않는다.
 
 ## 검증
 
 `IOSReviewRegressionTests`는 검색 응답 순서·닫힌 검색의 늦은 응답·저장과 합계 갱신의 분리·원격 변경 중 편집 보호·미정 필터를 검사한다. `PlaceSearchTransportTests`는 합성 HTTP 응답으로 한글 해외 검색·자동 폴백·명시적 국내 검색의 호출 경로를 검사한다. 장소 교체와 기기 초안 테스트는 같은 장소·호텔에서 카페로 교체·다른 revision·변경된 연결을 다룬다.
 
-`TripCanvasUITests`는 Debug 전용 합성 화면에서 검색 실패 후 재시도, 미정 필터·예산 저장, 비용 입력 중 앱 종료와 명시적 복원, 큰 글자·다크 화면의 주요 동작을 검증한다. 운영 계정·운영 API에 테스트 자료를 쓰지 않는다. 비용 합성 자료는 API 파리티 픽스처를 사용한다. 이 화면과 합성 의존성은 `#if DEBUG` 안에 있으며 Release의 실행 화면에는 포함되지 않는다.
+`TripCanvasUITests`는 Debug 전용 합성 화면에서 검색 실패 후 재시도, 미정 필터·예산 저장, 비용·예약 입력 중 앱 종료와 명시적 복원, 큰 글자·다크 화면의 주요 동작을 검증한다. 운영 계정·운영 API에 테스트 자료를 쓰지 않는다. 비용 합성 자료는 API 파리티 픽스처를 사용한다. 이 화면과 합성 의존성은 `#if DEBUG` 안에 있으며 Release의 실행 화면에는 포함되지 않는다.
 
 전체 게이트는 `npm run verify:all`, iOS는 XcodeGen 명세의 `TripCanvas` 스킴으로 Debug XCTest·UI 테스트와 Release 빌드를 실행한다. iOS CI는 결과 번들을 `ios-test-results` 아티팩트로 남긴다. Windows의 로컬 실행으로 Xcode·실기기·VoiceOver 검증까지 통과했다고 판단하지 않는다.
 
