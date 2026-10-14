@@ -5,6 +5,7 @@ import SwiftUI
 
 @main
 struct TripCanvasApp: App {
+    @UIApplicationDelegateAdaptor(TripCanvasAppDelegate.self) private var appDelegate
     @State private var environment = AppEnvironment()
     @Environment(\.scenePhase) private var scenePhase
 
@@ -22,7 +23,12 @@ struct TripCanvasApp: App {
             appContent
                 .environment(environment)
                 .onChange(of: scenePhase) { _, phase in
-                    if phase == .active { Task { await environment.travelMode.synchronizePersistedState() } }
+                    if phase == .active {
+                        Task {
+                            await environment.push.refreshForForeground(isSignedIn: environment.auth.isSignedIn)
+                            await environment.travelMode.synchronizePersistedState()
+                        }
+                    }
                 }
                 .onOpenURL { url in
                     if !GIDSignIn.sharedInstance.handle(url) { environment.router.open(url: url) }

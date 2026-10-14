@@ -4,7 +4,9 @@ import XCTest
 private final class ReviewSearchProtocol: URLProtocol, @unchecked Sendable {
     private static let lock = NSLock()
     private static var observed: [URLRequest] = []
-    static func reset() { lock.lock(); defer { lock.unlock() }; observed = [] }
+    static var googleStatus = 200
+    static var googleName = "에펠탑"
+    static func reset() { lock.lock(); defer { lock.unlock() }; observed = []; googleStatus = 200; googleName = "에펠탑" }
     static var requests: [URLRequest] { lock.lock(); defer { lock.unlock() }; return observed }
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
@@ -15,16 +17,16 @@ private final class ReviewSearchProtocol: URLProtocol, @unchecked Sendable {
         if url.host == "places.googleapis.com" {
             XCTAssertEqual(request.value(forHTTPHeaderField: "X-Ios-Bundle-Identifier"), "com.fromj.trip")
             XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
-            body = ["places": [["id": "review-google", "displayName": ["text": "에펠탑"],
+            body = ["places": [["id": "review-google", "displayName": ["text": Self.googleName],
                                   "formattedAddress": "Paris", "location": ["latitude": 48.858, "longitude": 2.294],
                                   "types": ["tourist_attraction"]]]]
         } else {
             let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "q" }?.value
-            body = ["provider": "kakao", "places": [["name": query == "경복궁" ? "경복궁" : "다른 카페", "address": "서울",
+            body = ["provider": "kakao", "places": [["name": query?.hasPrefix("경복궁") == true ? "경복궁" : "다른 카페", "address": "서울",
                 "city": "서울", "lat": 37.5, "lng": 127.0, "provider": "kakao", "providerId": "1"]]]
         }
         let data = try! JSONSerialization.data(withJSONObject: body)
-        client?.urlProtocol(self, didReceive: HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didReceive: HTTPURLResponse(url: url, statusCode: url.host == "places.googleapis.com" ? Self.googleStatus : 200, httpVersion: nil, headerFields: nil)!, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: data); client?.urlProtocolDidFinishLoading(self)
     }
     override func stopLoading() {}
@@ -67,6 +69,23 @@ private final class ReviewSearchProtocol: URLProtocol, @unchecked Sendable {
             _ = try await service.search("에펠탑", near: nil, region: .korea)
             XCTAssertEqual(ReviewSearchProtocol.requests.count, 1)
             XCTAssertEqual(ReviewSearchProtocol.requests.first?.url?.host, "review.invalid")
+        }
+    }
+
+    func testSupplementalForeignFailureKeepsValidDomesticResults() async throws {
+        try await check { service in
+            ReviewSearchProtocol.googleStatus = 403
+            let hits = try await service.search("경복궁 서울", near: nil)
+            XCTAssertEqual(hits.first?.provider, "kakao")
+            XCTAssertEqual(hits.first?.name, "경복궁")
+        }
+    }
+
+    func testUnrelatedForeignResultDoesNotReplaceDomesticResults() async throws {
+        try await check { service in
+            ReviewSearchProtocol.googleName = "무관한 장소"
+            let hits = try await service.search("경복궁 서울", near: nil)
+            XCTAssertEqual(hits.first?.provider, "kakao")
         }
     }
 }

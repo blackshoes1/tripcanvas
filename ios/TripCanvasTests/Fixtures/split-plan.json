@@ -120,7 +120,8 @@
             "who": [
               "me",
               "u3"
-            ]
+            ],
+            "candidateId": 1
           },
           {
             "name": "자유시간",
@@ -347,7 +348,8 @@
             "split": "sp1",
             "who": [
               "me"
-            ]
+            ],
+            "candidateId": 1
           },
           {
             "name": "자유시간",

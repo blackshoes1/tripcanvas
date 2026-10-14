@@ -206,7 +206,10 @@ struct TripListView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Ink.paper)
             .navigationDestination(for: TripSummary.self) { trip in
-                TripHomeView(trip: trip, requested: requestedTab, panel: $requestedPanel, env: env)
+                TripHomeView(trip: trip, requested: requestedTab, panel: $requestedPanel, env: env) {
+                    TripLeaveNavigation.clear(tripId: trip.id, path: &path, requestedPanel: &requestedPanel,
+                                              pendingDestination: &pendingDestination)
+                }
             }
             .navigationTitle("With J")
             .navigationBarTitleDisplayMode(.inline)
@@ -646,5 +649,21 @@ struct OfflineNotice: View {
             .font(.caption)
             .foregroundStyle(Ink.soft)
             .listRowSeparator(.hidden)
+    }
+}
+
+@MainActor
+enum TripLeaveNavigation {
+    static func clear(tripId: String, path: inout [TripSummary], requestedPanel: inout TripPanel?,
+                      pendingDestination: inout ActionRouter.Destination?) {
+        if let index = path.firstIndex(where: { $0.id == tripId }) { path.removeSubrange(index...) }
+        requestedPanel = nil
+        let pendingTrip: String?
+        switch pendingDestination {
+        case .today(let id, _): pendingTrip = id
+        case .trip(let id), .suggestion(let id, _), .replan(let id), .bookings(let id), .memory(let id): pendingTrip = id
+        default: pendingTrip = nil
+        }
+        if pendingTrip == tripId { pendingDestination = nil }
     }
 }

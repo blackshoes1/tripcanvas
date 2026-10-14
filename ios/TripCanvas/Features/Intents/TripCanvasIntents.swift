@@ -8,13 +8,25 @@ import Foundation
 enum IntentSupport {
     /// Intent는 앱 밖에서도 실행되므로 환경을 매번 새로 만든다.
     @MainActor
-    static func makeEnvironment() -> AppEnvironment { AppEnvironment() }
+    static func makeEnvironment() -> AppEnvironment { AppEnvironment(handlesSystemNotifications: false) }
 
     /// 지금 볼 여행 — 여행 중인 것이 있으면 그것, 없으면 가장 최근.
     @MainActor
-    static func activeTrip(_ env: AppEnvironment) async throws -> TripSummary {
+    static func activeTrip(_ env: AppEnvironment, forMutation: Bool = false) async throws -> TripSummary {
         let trips = try await env.service.trips().value
-        if let live = trips.first(where: { $0.isLive }) { return live }
+        return try selectTrip(trips, snapshot: env.travelMode.snapshot, forMutation: forMutation)
+    }
+
+    static func selectTrip(_ trips: [TripSummary], snapshot: TravelModeSnapshot, forMutation: Bool) throws -> TripSummary {
+        guard !trips.isEmpty else { throw IntentError.noTrip }
+        if snapshot.isActive, let id = snapshot.tripId {
+            guard let current = trips.first(where: { $0.id == id }) else { throw IntentError.ambiguous }
+            return current
+        }
+        let live = trips.filter(\.isLive)
+        if live.count > 1 { throw IntentError.ambiguous }
+        if let current = live.first { return current }
+        if forMutation { throw IntentError.ambiguous }
         guard let recent = trips.sorted(by: { $0.updatedAt > $1.updatedAt }).first else {
             throw IntentError.noTrip
         }
@@ -141,7 +153,7 @@ struct CompleteCurrentActivityIntent: AppIntent {
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog & OpensIntent {
         let env = IntentSupport.makeEnvironment()
-        let trip = try await IntentSupport.activeTrip(env)
+        let trip = try await IntentSupport.activeTrip(env, forMutation: true)
         let today = try await env.service.today(tripId: trip.id, dayIndex: nil).value
 
         // 진행 중인 것이 하나로 정해질 때만. 아니면 앱을 연다.
@@ -171,12 +183,22 @@ struct OpenTodayIntent: AppIntent {
     @Parameter(title: "여행")
     var tripId: String
 
+    @Dependency private var router: ActionRouter
+
     init() { self.tripId = "" }
     init(tripId: String) { self.tripId = tripId }
 
+    #if DEBUG
+    /// 직접 호출하는 테스트에는 시스템이 주입하는 값을 명시한다.
+    init(tripId: String, router: ActionRouter) {
+        self.tripId = tripId
+        self.router = router
+    }
+    #endif
+
     @MainActor
     func perform() async throws -> some IntentResult {
-        IntentSupport.makeEnvironment().router.open(.today(tripId: tripId.isEmpty ? nil : tripId, focusActivityId: nil))
+        router.open(.today(tripId: tripId.isEmpty ? nil : tripId, focusActivityId: nil))
         return .result()
     }
 }

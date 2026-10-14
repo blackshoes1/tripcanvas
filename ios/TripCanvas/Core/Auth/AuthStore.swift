@@ -229,6 +229,8 @@ final class AuthStore {
     private var sessionGeneration = 0
     /// 계정 경계의 기기 상태 정리는 환경 컨테이너가 맡는다.
     var onAccountChanged: ((String?) -> Void)?
+    /// 기기는 즉시 로그아웃하되 이전 토큰의 서버 정리는 그 토큰으로 끝낸다.
+    var cleanupSignedOutSession: ((AuthSession) -> Task<Void, Never>)?
 
     init(client: any AuthClient, store: any SessionStoring = KeychainSessionStore()) {
         self.client = client
@@ -283,7 +285,8 @@ final class AuthStore {
     }
 
     func signOut() {
-        let token = session?.token
+        let previous = session
+        let cleanup = previous.flatMap { cleanupSignedOutSession?($0) }
         // 이 기기에서는 먼저 확실히 로그아웃한다 — 서버 호출이 실패해도 남아 있으면 안 된다.
         sessionGeneration += 1
         session = nil
@@ -291,8 +294,11 @@ final class AuthStore {
         verifyTask = nil
         store.removeSession()
         onAccountChanged?(nil)
-        if let token {
-            Task { [client] in await client.signOut(token: token) }
+        if let previous {
+            Task { [client] in
+                await cleanup?.value
+                await client.signOut(token: previous.token)
+            }
         }
     }
 

@@ -1,13 +1,15 @@
 import XCTest
 @testable import TripCanvas
 
-/// 예약 결제 금액의 한 목록(`PaymentRow`)과 결제일 규칙(`CostPayState.resolved`) — 웹 `paymentRows`·`costPayStateOf`와 같은 답.
+/// 예약 결제 금액의 한 목록(`PaymentRow`)과 확인한 결제 표시 — 웹 `paymentRows`·`costPayStateOf`와 같은 답.
 final class PaymentLedgerTests: XCTestCase {
-    func testDateDecidesStateLikeTheEngine() {
-        XCTAssertEqual(CostPayState.resolved(paidOn: "2026-09-18", manual: .reserved, today: "2026-09-18"), .paid, "결제일 당일부터 결제")
-        XCTAssertEqual(CostPayState.resolved(paidOn: "2026-09-19", manual: .paid, today: "2026-09-18"), .reserved, "손으로 결제라고 해도 날짜가 이긴다")
-        XCTAssertEqual(CostPayState.resolved(paidOn: nil, manual: .paid, today: "2026-09-18"), .paid, "결제일이 없으면 손으로 고른 값")
-        XCTAssertEqual(CostPayState.resolved(paidOn: "언젠가", manual: .none, today: "2026-09-18"), .none, "날짜 모양이 아니면 없는 것")
+    func testPaymentRowKeepsConfirmedStateRegardlessOfPaymentDate() {
+        let reserved = PaymentRow(source: .booking(TripBooking(raw: ["id": .string("r"), "paidOn": .string("2020-01-01"), "payState": .string("RESERVED")])))
+        let paid = PaymentRow(source: .booking(TripBooking(raw: ["id": .string("p"), "paidOn": .string("2099-01-01"), "payState": .string("PAID")])))
+        let unset = PaymentRow(source: .item(CostEntry(raw: ["id": .string("n"), "paidOn": .string("2020-01-01")])))
+        XCTAssertEqual(reserved.manualPayState, .reserved, "예정일이 지나도 실제 결제를 단정하지 않는다")
+        XCTAssertEqual(paid.manualPayState, .paid, "날짜보다 사용자가 확인한 표시가 우선한다")
+        XCTAssertEqual(unset.manualPayState, .none, "날짜만 적힌 비용은 결제 확인으로 바꾸지 않는다")
     }
 
     func testRowsSortByPaidOnThenKeepOrder() {

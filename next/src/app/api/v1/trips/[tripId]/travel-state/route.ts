@@ -13,3 +13,8 @@ export async function GET(request: Request, ctx: { params: Promise<{ tripId: str
   const { tripId } = await ctx.params;
   return handlers.travelState(request, tripId);
 }
+
+export async function POST(request: Request, ctx: { params: Promise<{ tripId: string }> }) {
+  const { tripId } = await ctx.params;
+  return handlers.acknowledgeNotifications(request, tripId);
+}

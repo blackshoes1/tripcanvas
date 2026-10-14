@@ -54,6 +54,7 @@ struct DayCostSummaryView: View {
 struct DayCostView: View {
     let cost: DayPlanCost?
     let canEdit: Bool
+    let bookings: [TripBooking]
     let onSave: (TripDay) async -> Bool
     let onRefresh: (() async -> Void)?
     let draftKey: EditorDraftKey?
@@ -66,12 +67,13 @@ struct DayCostView: View {
     @State private var quickAdd = false
     @Environment(\.dismiss) private var dismiss
 
-    init(day: TripDay, cost: DayPlanCost?, canEdit: Bool, draftKey: EditorDraftKey? = nil, originalRevision: Int? = nil,
+    init(day: TripDay, cost: DayPlanCost?, canEdit: Bool, bookings: [TripBooking] = [], draftKey: EditorDraftKey? = nil, originalRevision: Int? = nil,
          failureMessage: (() -> String)? = nil, onRefresh: (() async -> Void)? = nil,
          onDeleteSpot: ((Int, Bool) async -> TripDay?)? = nil, onSave: @escaping (TripDay) async -> Bool) {
         _day = State(initialValue: day)
         self.cost = cost
         self.canEdit = canEdit
+        self.bookings = bookings
         self.onSave = onSave
         self.onRefresh = onRefresh
         self.draftKey = draftKey
@@ -106,7 +108,7 @@ struct DayCostView: View {
                         } label: {
                             entryRow(title: spot.name, entry: CostEntry(spot: spot), line: spotLine)
                         }
-                        .buttonStyle(.plain).disabled(!canEdit || spotLine?.state == "BOOKING")
+                        .buttonStyle(.plain).disabled(!canEdit || spotLine?.state == "BOOKING" || SpotExpensePolicy.bookingPaysSpot(spot, bookings: bookings))
                     }
                 }
                 Section {
@@ -157,7 +159,7 @@ struct DayCostView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("닫기") { dismiss() } } }
             .sheet(isPresented: $quickAdd) {
-                SpendEntryFlow(day: day, draftKey: draftKey) { updated in
+                SpendEntryFlow(day: day, bookings: bookings, draftKey: draftKey) { updated in
                     guard await onSave(updated) else { return false }
                     day = updated
                     return true

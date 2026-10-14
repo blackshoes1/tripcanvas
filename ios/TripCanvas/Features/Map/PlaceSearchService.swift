@@ -47,7 +47,11 @@ final class PlaceSearchService: PlaceSearching {
         if korean {
             let hits = try await searchKorea(trimmed, near: near.flatMap { MapRegion.isKorea($0) ? $0 : nil })
             if region == nil, near == nil, !hits.contains(where: { Self.nameMatches($0.name, trimmed) }) {
-                return try await searchGoogle(trimmed, near: nil)
+                // 해외 고유명만 대체한다. 추가 조회 실패·무관한 결과는 유효한 국내 결과를 지우지 않는다.
+                do {
+                    let foreign = try await searchGoogle(trimmed, near: nil)
+                    if hits.isEmpty || foreign.contains(where: { Self.nameMatches($0.name, trimmed) }) { return foreign }
+                } catch { if hits.isEmpty { throw error } }
             }
             return hits
         }

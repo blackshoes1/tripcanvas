@@ -14,6 +14,33 @@ extension TripService: SharedImportSource {
     }
 }
 
+/// 확인 버튼을 누른 순간의 값. 최신 문서를 기다리는 동안 화면 입력이 바뀌어도 이 요청은 그대로다.
+struct SharedTextInputDraft: Equatable {
+    enum Kind: Equatable { case place, note }
+    let kind: Kind
+    let title: String
+    let body: String
+    let day: Int
+
+    func apply(to document: inout TripDocument, importKey: String) throws {
+        guard title.utf16.count <= 120, body.utf16.count <= 4000 else {
+            throw APIError.badRequest("제목은 120자, 본문은 4,000자까지 저장할 수 있어요.")
+        }
+        if kind == .place {
+            guard document.hasDay(day) else { throw APIError.badRequest("저장할 일자를 다시 확인해 주세요.") }
+            var spot = TripSpot(name: title.trimmingCharacters(in: .whitespacesAndNewlines))
+            spot.desc = body; spot.setField("importKey", .string(importKey))
+            document.insertSpot(spot, dayIndex: day)
+        } else {
+            var notes = document.raw["notes"]?.arrayValue ?? []
+            guard notes.count < 200 else { throw APIError.badRequest("준비 메모는 200개까지 담을 수 있어요.") }
+            notes.append(.object(["id": .string(importKey), "cat": .string("ETC"), "title": .string(title),
+                                  "body": .string(body), "importKey": .string(importKey)]))
+            document.setField("notes", .array(notes))
+        }
+    }
+}
+
 /// 원문은 대기열에 남겨 두고, 확인된 변경만 문서의 CAS 저장 경로로 보낸다.
 @Observable @MainActor
 final class SharedImportModel {
@@ -53,6 +80,10 @@ final class SharedImportModel {
     }
 
     /// 네트워크 오류 뒤 재시도는 최신 문서에서 같은 공유 키를 찾는다. 응답만 유실됐어도 두 번 넣지 않는다.
+    func saveText(_ draft: SharedTextInputDraft) async -> String? {
+        await save { try draft.apply(to: &$0, importKey: input.id) }
+    }
+
     func save(_ change: (inout TripDocument) throws -> Void) async -> String? {
         guard !isWorking, let snapshot, snapshot.canEdit else { return "온라인에서 여행을 다시 불러와 주세요." }
         isWorking = true; error = nil

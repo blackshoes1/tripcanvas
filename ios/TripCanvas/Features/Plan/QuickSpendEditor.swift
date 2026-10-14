@@ -27,6 +27,11 @@ struct QuickSpendEditor: View {
     @FocusState private var amountFocused: Bool
     @Environment(\.dismiss) private var dismiss
 
+    init(dayLabel: String, draftKey: EditorDraftKey? = nil, initialTitle: String = "", onSave: @escaping (CostEntry) async -> Bool) {
+        self.dayLabel = dayLabel; self.draftKey = draftKey; self.onSave = onSave
+        _title = State(initialValue: initialTitle)
+    }
+
     /// 현지에서 쓰는 돈의 분류만 — 항공·숙박·렌트는 예약의 것이다. 9가지 분류(`CostCategory` = 웹 `COST_CATEGORIES`)의
     /// 부분집합이고 순서도 그대로다(2026-10-05 — 전에는 따로 적은 목록이라 순서가 달랐다).
     private static let kinds: [CostCategory] = CostCategory.itemKinds
@@ -65,8 +70,10 @@ struct QuickSpendEditor: View {
                             ForEach(Currency.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                         }
                         .labelsHidden()
+                        .accessibilityIdentifier("quickSpendCurrency")
                     }
                     TextField("뭐에 썼나요 (비우면 분류 이름)", text: $title)
+                        .accessibilityIdentifier("quickSpendTitle")
                 } header: {
                     Text("금액 · \(dayLabel)")
                 } footer: {
@@ -197,10 +204,12 @@ struct QuickSpendEditor: View {
 
 struct SpendEntryFlow: View {
     let day: TripDay
+    var bookings: [TripBooking] = []
     var draftKey: EditorDraftKey? = nil
     let onSave: (TripDay) async -> Bool
     @State private var target: CostEditTarget?
     @State private var standalone = false
+    @State private var standaloneTitle = ""
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -208,14 +217,30 @@ struct SpendEntryFlow: View {
             PaperList {
                 Section("일정에 있는 장소") {
                     ForEach(Array(day.spots.enumerated()), id: \.offset) { index, spot in
-                        Button(spot.name) {
-                            target = CostEditTarget(kind: .spot(index), entry: CostEntry(spot: spot), isNew: true)
+                        let bookingPays = SpotExpensePolicy.bookingPaysSpot(spot, bookings: bookings)
+                        Button {
+                            if bookingPays {
+                                standaloneTitle = "\(spot.name) 별도 비용"
+                                standalone = true
+                            } else {
+                                target = CostEditTarget(kind: .spot(index), entry: CostEntry(spot: spot), isNew: true)
+                            }
+                        } label: {
+                            VStack(alignment: .leading, spacing: Space.xs) {
+                                Text(spot.name)
+                                if bookingPays {
+                                    Text("숙박 예약 금액은 예약에서 수정해요. 여기서는 별도 지출로 적어요.")
+                                        .font(.caption).foregroundStyle(Ink.soft)
+                                        .accessibilityIdentifier("linkedHotelExpenseHint-\(index)")
+                                }
+                            }.frame(minHeight: 44)
                         }
+                        .accessibilityIdentifier("spotExpenseChoice-\(index)")
                     }
                     if day.spots.isEmpty { Text("이 날에는 저장한 장소가 없어요").foregroundStyle(Ink.soft) }
                 }
                 Section {
-                    Button("장소와 관계없는 추가 비용") { standalone = true }
+                    Button("장소와 관계없는 추가 비용") { standaloneTitle = ""; standalone = true }
                 }
             }
             .navigationTitle("어디에 쓴 비용인가요?")
@@ -233,7 +258,7 @@ struct SpendEntryFlow: View {
                 }
             }
             .sheet(isPresented: $standalone) {
-                QuickSpendEditor(dayLabel: day.title, draftKey: draftKey) { entry in
+                QuickSpendEditor(dayLabel: day.title, draftKey: draftKey, initialTitle: standaloneTitle) { entry in
                     var updated = day
                     updated.costItems = updated.costItems.filter { $0.id != entry.id } + [entry]
                     let saved = await onSave(updated)

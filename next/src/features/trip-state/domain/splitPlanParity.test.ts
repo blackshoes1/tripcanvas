@@ -118,6 +118,7 @@ describe('갈린 후보의 분리 — collab.js가 단일 출처', () => {
     // 합류는 묶음 밖이다 — 다 모인 뒤다
     expect('split' in splittable.spots[2]).toBe(false);
     expect(splittable.spots[2].reunion).toBe(true);
+    expect(splittable.spots[0].candidateId).toBe(1);
     // 이름표에 이메일이 섞이지 않는다(§69)
     expect(JSON.stringify(rows)).not.toMatch(/@/);
     // ⚠️ 앱의 `ReactionEntry`는 `me`가 비옵셔널이다 — 하나라도 빠지면 픽스처 전체 디코딩이 깨지고

@@ -140,7 +140,7 @@ final class TravelModeController {
                 locationUpdatedAt: point == nil ? nil : ISO8601DateFormatter.tripCanvas.string(from: Date()),
                 travelMode: isActive,
                 suppressUntil: suppressUntilMinutes(),
-                markSent: isActive          // 켜져 있을 때만 '보낸 것'으로 기록한다
+                markSent: false            // 조회는 계획만 받는다. 시스템 등록에 성공한 항목만 별도로 확인한다.
             )
             await synchronizePersistedState()
             guard generation == accountGeneration, mode == modeGeneration else { return }
@@ -175,26 +175,41 @@ final class TravelModeController {
             await synchronizePersistedState()
             guard generation == accountGeneration, mode == modeGeneration, isActive else { return }
             lastError = liveActivity.lastError
-            scheduleDeviceNotifications(response)
+            await scheduleDeviceNotifications(response)
+            guard generation == accountGeneration, mode == modeGeneration, isActive else { return }
         }
         WidgetRefresher.reload()
         persist()
     }
 
     /// 기기가 판단할 알림만 예약한다. 서버가 보낼 것(가격·재구성)까지 띄우면 두 번 온다(§11).
-    private func scheduleDeviceNotifications(_ response: TravelStateResponse) {
+    private func scheduleDeviceNotifications(_ response: TravelStateResponse) async {
+        let generation = accountGeneration, mode = modeGeneration
+        await push.prepareForDelivery()
+        guard generation == accountGeneration, mode == modeGeneration, isActive else { return }
+        var delivered = response.notifications.filter { $0.origin == .device && snapshot.sentNotificationKeys.contains($0.dedupeKey) }
         let pending = response.notifications.filter { item in
             item.origin == .device && !snapshot.sentNotificationKeys.contains(item.dedupeKey)
         }
-        guard !pending.isEmpty else { return }
         for item in pending {
-            push.present(item)
+            let registered = await push.schedule(item)
+            guard generation == accountGeneration, mode == modeGeneration, isActive else { return }
+            guard registered else { continue }
             snapshot.sentNotificationKeys.append(item.dedupeKey)
+            delivered.append(item)
+            persist() // 서버 확인 응답이 유실돼도 이 기기에서 같은 알림을 다시 등록하지 않는다.
             Analytics.track(.departureNotificationSent, ["kind": item.kind.rawValue])
         }
         // 하루치만 들고 있으면 충분하다.
         if snapshot.sentNotificationKeys.count > 50 {
             snapshot.sentNotificationKeys.removeFirst(snapshot.sentNotificationKeys.count - 50)
+        }
+        if !delivered.isEmpty {
+            do { try await service.acknowledgeNotifications(tripId: response.today.trip.id, items: delivered, stateVersion: response.stateVersion) }
+            catch {
+                guard generation == accountGeneration, mode == modeGeneration else { return }
+                if lastError == nil { lastError = "알림은 등록했지만 서버 확인 기록에 연결하지 못했어요. 다음 확인 때 다시 시도해요." }
+            }
         }
     }
 
@@ -214,11 +229,21 @@ final class TravelModeController {
 protocol TravelStateSource {
     func travelState(tripId: String, location: GeoPoint?, locationUpdatedAt: String?,
                      travelMode: Bool, suppressUntil: String?, markSent: Bool) async throws -> TripService.Fetched<TravelStateResponse>
+    func acknowledgeNotifications(tripId: String, items: [NotificationPlanItem], stateVersion: String) async throws
+}
+extension TravelStateSource {
+    func acknowledgeNotifications(tripId: String, items: [NotificationPlanItem], stateVersion: String) async throws {}
 }
 
 @MainActor
 protocol PushScheduling {
     func present(_ item: NotificationPlanItem)
+    func prepareForDelivery() async
+    func schedule(_ item: NotificationPlanItem) async -> Bool
+}
+extension PushScheduling {
+    func prepareForDelivery() async {}
+    func schedule(_ item: NotificationPlanItem) async -> Bool { present(item); return true }
 }
 
 @MainActor

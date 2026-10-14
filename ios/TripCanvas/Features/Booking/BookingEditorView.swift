@@ -27,6 +27,17 @@ enum BookingEditorTarget: Identifiable {
     }
 }
 
+/// 숙소 자동입력은 비어 있는 칸에만 적용한다. 통화가 다르면 같은 숫자를 다른 돈으로 바꾸지 않는다.
+enum BookingStayPrefill {
+    static func money(from spot: TripSpot, priceText: String, currency: Currency, currencyEdited: Bool) -> (priceText: String, currency: Currency) {
+        guard priceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return (priceText, currency) }
+        let sourceCurrency = spot.currency ?? .krw
+        guard !currencyEdited || currency == sourceCurrency else { return (priceText, currency) }
+        let total = CostEntry(spot: spot).totalAmount
+        return (total.flatMap { $0 > 0 ? MoneyInput.text(amount: $0) : nil } ?? priceText, sourceCurrency)
+    }
+}
+
 /// 결제 항목 하나를 만들거나 고친다 — 웹의 결제 항목 모달과 같은 항목, 같은 검증.
 ///
 /// 분류는 하루 비용과 같은 9가지다(`CostCategory`). **항공·숙박·렌트는 예약**이라 기간·조건·링크·가격 추적이 붙고,
@@ -70,6 +81,7 @@ struct BookingEditorView: View {
     @State private var returnPlace: String
     @State private var returnCode: String
     @State private var currency: Currency
+    @State private var currencyEdited = false
     /// 결제(예정)일. 사용자가 확인한 상태와 독립적으로 저장한다.
     @State private var paidOn: String?
     @State private var scheduledOn: String?
@@ -84,7 +96,7 @@ struct BookingEditorView: View {
     @State private var initialTexts: [String]?
     private var textInputs: [String] {
         [priceText, feeText, urlText, roomNameText, pickupPlace, pickupCode, returnPlace, returnCode,
-         kind.rawValue, currency.rawValue, paidOn ?? "", scheduledOn ?? "", payState.rawValue, photos.joined(separator: ","),
+         kind.rawValue, currency.rawValue, currencyEdited ? "true" : "false", paidOn ?? "", scheduledOn ?? "", payState.rawValue, photos.joined(separator: ","),
          segmentsDraft.map { [$0.date ?? "", $0.code, $0.dep, $0.arr, $0.depAt ?? "", $0.arrAt ?? ""].joined(separator: "|") }.joined(separator: ";")]
     }
     private var isDirty: Bool {
@@ -373,7 +385,7 @@ struct BookingEditorView: View {
                 TextField(isBookingKind ? "총액" : "금액", text: $priceText)
                     .accessibilityIdentifier("bookingEntryAmount")
                     .keyboardType(.decimalPad)
-                Picker("통화", selection: $currency) {
+                Picker("통화", selection: Binding(get: { currency }, set: { currency = $0; currencyEdited = true })) {
                     ForEach(Currency.allCases, id: \.self) { currency in
                         Text(currency.rawValue).tag(currency)
                     }
@@ -657,8 +669,9 @@ struct BookingEditorView: View {
                 draft.end = ISODateText.text(from: end)
             }
         }
-        if let currency = spot.currency { self.currency = currency }
-        if priceText.isEmpty, let cost = spot.cost, cost > 0 { priceText = MoneyInput.text(amount: cost) }
+        let money = BookingStayPrefill.money(from: spot, priceText: priceText, currency: currency,
+                                            currencyEdited: currencyEdited || !feeText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        priceText = money.priceText; currency = money.currency
     }
 
     /// 자동 입력은 사용자의 숙소 선택에만 반응한다. 초안 복원의 연결 변경은 사용자가 고친 통화·금액을 덮지 않는다.
@@ -677,7 +690,8 @@ struct BookingEditorView: View {
             booking: draft.raw, links: links, kind: kind.rawValue,
             texts: ["price": priceText, "fee": feeText, "url": urlText, "room": roomNameText,
                     "pickupPlace": pickupPlace, "pickupCode": pickupCode, "returnPlace": returnPlace, "returnCode": returnCode,
-                    "currency": currency.rawValue, "paidOn": paidOn ?? "", "scheduledOn": scheduledOn ?? "", "payState": payState.rawValue],
+                    "currency": currency.rawValue, "currencyEdited": currencyEdited ? "true" : "false",
+                    "paidOn": paidOn ?? "", "scheduledOn": scheduledOn ?? "", "payState": payState.rawValue],
             photos: photos, segments: segmentsDraft.map(\.raw))
     }
     private func preserveInput() {
@@ -694,6 +708,8 @@ struct BookingEditorView: View {
         pickupPlace = value.texts["pickupPlace"] ?? ""; pickupCode = value.texts["pickupCode"] ?? ""
         returnPlace = value.texts["returnPlace"] ?? ""; returnCode = value.texts["returnCode"] ?? ""
         currency = Currency(rawValue: value.texts["currency"] ?? "") ?? .krw
+        // 이전 버전 초안은 선택 여부를 모른다. 복원한 통화는 사용자가 확인한 값으로 보존한다.
+        currencyEdited = value.texts["currencyEdited"] != "false"
         paidOn = value.texts["paidOn"].flatMap { $0.isEmpty ? nil : $0 }
         scheduledOn = value.texts["scheduledOn"].flatMap { $0.isEmpty ? nil : $0 }
         payState = CostPayState(rawValue: value.texts["payState"] ?? "") ?? .none

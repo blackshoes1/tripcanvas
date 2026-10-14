@@ -3,7 +3,7 @@ import Foundation
 /// **예약 결제 금액**의 한 줄 — 예약(`trip.bookings`)과 여행 단위 비용(`trip.costItems`)을 같은 모양으로.
 ///
 /// 둘은 저장되는 곳이 다르지만 사용자에게는 같은 것이다: 가기 전에 내는 돈. 그래서 한 목록·한 편집기로 다룬다.
-/// 상태는 서버 응답의 `payState`(여행 시간대의 오늘로 정했다)가 먼저고, 응답이 없으면 기기 날짜로 같은 규칙을 쓴다.
+/// 상태는 서버 응답의 `payState`가 먼저고, 응답이 없으면 사용자가 확인한 표시를 유지한다.
 struct PaymentRow: Identifiable, Hashable, Sendable {
     enum Source: Hashable, Sendable {
         case booking(TripBooking)
@@ -34,7 +34,7 @@ struct PaymentRow: Identifiable, Hashable, Sendable {
     }
     var currencyCode: String { booking?.currencyCode ?? item?.currency.rawValue ?? "KRW" }
     var paidOn: String? { booking?.paidOn ?? item?.paidOn }
-    /// 손으로 고른 상태 — 결제일이 있으면 `CostPayState.resolved`가 대신 답한다.
+    /// 사용자가 확인한 상태. 결제(예정)일은 상태를 자동으로 바꾸지 않는다.
     var manualPayState: CostPayState { booking?.payState ?? item?.payState ?? .none }
     var photos: [String] { booking?.photos ?? item?.photos ?? [] }
 

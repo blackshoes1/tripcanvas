@@ -540,6 +540,7 @@ enum CollabModel {
         going.stayMinutes = stay
         going.setField("split", .string(splitId))
         going.setField("who", .array(goers.map { .string($0) }))
+        going.setField("candidateId", .number(Double(candidate.id)))
 
         var free = TripSpot(name: "자유시간", city: "")
         free.desc = "가고 싶은 곳을 각자 정해요"

@@ -45,6 +45,7 @@ struct NewTripView: View {
                 Section { CreateTripModePicker(mode: $mode).disabled(isSaving) }
                 Section {
                     TextField("가루이자와, 제주, 파리…", text: $form.city)
+                        .accessibilityIdentifier("newTripCity")
                         .textInputAutocapitalization(.never)
                         .onChange(of: form.city) { _, value in
                             guard !form.nameEdited else { return }
@@ -78,6 +79,7 @@ struct NewTripView: View {
                     TextField(NewTripView.fallbackName, text: Binding(
                         get: { form.name },
                         set: { form.name = $0; form.nameEdited = true }))
+                        .accessibilityIdentifier("newTripName")
                 } header: {
                     Text("여행 이름")
                 } footer: {
@@ -88,6 +90,7 @@ struct NewTripView: View {
                     Section { Text(errorMessage).foregroundStyle(Ink.danger).font(.footnote) }
                 }
             }
+            .disabled(isSaving)
             .navigationTitle("새 여행")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -97,6 +100,7 @@ struct NewTripView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     if isSaving { ProgressView() } else {
                         Button("만들기") { Task { await create() } }.disabled(!draft.isValid || startInvalid || endInvalid)
+                            .accessibilityIdentifier("newTripCreate")
                     }
                 }
             }
@@ -121,7 +125,7 @@ struct NewTripView: View {
     }
 
     private func create() async {
-        guard draft.isValid, !isSaving else { return }
+        guard draft.isValid, !isSaving, !startInvalid, !endInvalid else { return }
         isSaving = true
         errorMessage = nil
         let failure = await onCreate(draft)

@@ -216,6 +216,7 @@ struct TripCostsView: View {
                 DayCostView(day: snapshot.document.days[day.index],
                             cost: response?.days.first(where: { $0.index == day.index })?.cost,
                             canEdit: snapshot.canEdit,
+                            bookings: snapshot.document.bookings,
                             draftKey: EditorDraftKey(accountID: env.auth.session?.userId, tripID: trip.id, editor: "spend-\(day.index)"),
                             originalRevision: editingRevision, failureMessage: { model?.saveFailureMessage ?? "비용을 저장하지 못했어요." },
                             onRefresh: { await load() },
@@ -231,7 +232,8 @@ struct TripCostsView: View {
         }
         .sheet(item: $quickSpend) { target in
             if let snapshot, snapshot.document.hasDay(target.day) {
-                SpendEntryFlow(day: snapshot.document.days[target.day], draftKey: EditorDraftKey(accountID: env.auth.session?.userId, tripID: trip.id, editor: "spend-\(target.day)")) { day in
+                SpendEntryFlow(day: snapshot.document.days[target.day], bookings: snapshot.document.bookings,
+                               draftKey: EditorDraftKey(accountID: env.auth.session?.userId, tripID: trip.id, editor: "spend-\(target.day)")) { day in
                     return await save(day, index: target.day)
                 }
             }
@@ -363,9 +365,6 @@ struct TripCostsView: View {
 
     // MARK: 예약 결제 금액 — 가계부
 
-    /// 기기 날짜 — 응답이 없을 때(옛 API·오프라인) 결제일 규칙을 같은 식으로 적용하려는 것. 응답이 있으면 서버 값이 먼저다.
-    private var deviceToday: String { ISODateText.text(from: Date()) }
-
     /// 예약과 여행 단위 비용을 한 목록으로 — 결제일이 최근인 것부터.
     private var paymentRows: [PaymentRow] {
         guard let document = snapshot?.document else { return [] }
@@ -412,10 +411,10 @@ struct TripCostsView: View {
         }
     }
 
-    /// 한 줄의 상태 — 서버 응답이 있으면 그 값(여행 시간대의 오늘로 정했다), 없으면 기기 날짜로 같은 규칙.
+    /// 서버 응답이 없을 때도 사용자가 확인한 결제 표시를 그대로 쓴다. 날짜만으로 완료를 단정하지 않는다.
     private func payState(of row: PaymentRow) -> CostPayState {
         if let line = response?.prep?.items.first(where: { $0.source == row.lineSource && $0.key == row.key }) { return line.payState }
-        return CostPayState.resolved(paidOn: row.paidOn, manual: row.manualPayState, today: deviceToday)
+        return row.manualPayState
     }
 
     private func paymentRow(_ row: PaymentRow) -> some View {

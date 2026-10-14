@@ -19,6 +19,11 @@ final class PasteItineraryFormState {
               fillGaps: fillGaps, creationID: creationID)
     }
     var hasInput: Bool { !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || draft != nil }
+    /// 날짜 칸은 잘못 친 글을 보여 주는 동안 마지막 유효 날짜를 유지한다. 그 상태로는 만들지 않는다.
+    func canCreate(startInputInvalid: Bool) -> Bool {
+        guard !startInputInvalid, draft != nil else { return false }
+        return start.isEmpty || ISODateText.parseLoose(start) == start
+    }
     func restore(_ saved: PasteItineraryInputDraft) {
         text = saved.text; draft = saved.draft; rows = saved.rows; tripName = saved.tripName
         start = saved.start; fillGaps = saved.fillGaps; creationID = saved.creationID
@@ -59,6 +64,7 @@ struct PasteItineraryView: View {
     @State private var pinnedDraftKey: EditorDraftKey?
     @State private var showsDiscard = false
     @State private var searchGeneration = 0
+    @State private var startInvalid = false
 
     private var draftKey: EditorDraftKey? {
         pinnedDraftKey
@@ -81,7 +87,7 @@ struct PasteItineraryView: View {
                     VStack(alignment: .leading, spacing: Space.s) {
                         Text("이전에 입력한 일정이 있어요").font(.caption).accessibilityIdentifier("pasteDraftRecoveryNotice")
                         HStack {
-                            Button { form.restore(recovery); self.recovery = nil } label: { Text("복원").frame(minHeight: 44) }
+                            Button { form.restore(recovery); startInvalid = false; self.recovery = nil } label: { Text("복원").frame(minHeight: 44) }
                                 .accessibilityIdentifier("restorePasteDraft")
                             Button { self.recovery = nil; EditorDraftStore.shared.remove(draftKey) } label: { Text("초안 버리기").frame(minHeight: 44) }
                                 .accessibilityIdentifier("discardPasteDraft")
@@ -103,7 +109,9 @@ struct PasteItineraryView: View {
                         Button("읽어 보기") { Task { await parse() } }
                             .disabled(form.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     } else {
-                        Button("만들기") { Task { await create() } }.accessibilityIdentifier("pasteItineraryCreate")
+                        Button("만들기") { Task { await create() } }
+                            .disabled(!form.canCreate(startInputInvalid: startInvalid))
+                            .accessibilityIdentifier("pasteItineraryCreate")
                     }
                 }
             }
@@ -195,7 +203,7 @@ struct PasteItineraryView: View {
                 TextField("여행 이름", text: $form.tripName)
                 // 읽은 시작일을 **여기서 고친다** — 예전에는 읽기 전용이라 연도를 잘못 짚으면 원문부터 다시 써야 했다.
                 DateEntryField(title: "시작일", text: Binding(get: { form.start.isEmpty ? nil : form.start },
-                                                           set: { form.start = $0 ?? "" }))
+                                                           set: { form.start = $0 ?? "" }), invalid: $startInvalid)
                 if form.start.isEmpty {
                     Text("글에 날짜가 없어요. 비워 두면 날짜 없이 만들어요.").font(.caption).foregroundStyle(Ink.soft)
                 } else if form.draft?.startAmbiguous == true {
@@ -307,6 +315,7 @@ struct PasteItineraryView: View {
             form.draft = parsed
             form.tripName = parsed.name.isEmpty ? NewTripView.fallbackName : parsed.name
             form.start = parsed.start ?? ""
+            startInvalid = false
             form.rows = parsed.days.flatMap { day in
                 day.items.map { Row(dayIndex: day.index, item: $0, include: $0.kind == .place) }
             }
@@ -358,7 +367,7 @@ struct PasteItineraryView: View {
     }
 
     private func create() async {
-        guard !isBusy, let draft = form.draft else { return }
+        guard !isBusy, form.canCreate(startInputInvalid: startInvalid), let draft = form.draft else { return }
         isBusy = true
         errorMessage = nil
         do {

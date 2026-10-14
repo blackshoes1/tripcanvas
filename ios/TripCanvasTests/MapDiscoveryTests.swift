@@ -3,6 +3,9 @@ import XCTest
 
 @MainActor
 final class MapDiscoveryTests: XCTestCase {
+    private func reflectingSource() -> FakeCollabService {
+        let source = FakeCollabService(); source.reflectsCandidateWrites = true; return source
+    }
     private let seoul = PlaceSearchArea(south: 37.54, west: 126.96, north: 37.58, east: 127.00)
     private let osaka = PlaceSearchArea(south: 34.66, west: 135.49, north: 34.69, east: 135.52)
     private func trip(_ role: MemberRole = .owner) -> TripSummary {
@@ -17,7 +20,7 @@ final class MapDiscoveryTests: XCTestCase {
 
     /// 지도를 닫았다 열어도 후보를 다시 받지 않는다 — 방금 받은 목록이면 그대로다(2026-09-17).
     func testReopeningTheMapDoesNotRefetchFreshCandidates() async {
-        let source = FakeCollabService()
+        let source = reflectingSource()
         var reads = 0
         source.candidateReads = { reads += 1; return [] }
         let model = MapDiscoveryModel(trip: trip(), searcher: DiscoverySearcher(), source: source)
@@ -30,7 +33,7 @@ final class MapDiscoveryTests: XCTestCase {
     }
 
     func testFiveContinuousSavesPreserveSearchAndDoNotMergeBranches() async {
-        let source = FakeCollabService()
+        let source = reflectingSource()
         let searcher = DiscoverySearcher()
         let model = MapDiscoveryModel(trip: trip(), searcher: searcher, source: source)
         await model.loadCandidates()
@@ -46,7 +49,7 @@ final class MapDiscoveryTests: XCTestCase {
     }
 
     func testProviderIdentitySurvivesReentryWithoutMergingNames() async throws {
-        let source = FakeCollabService()
+        let source = reflectingSource()
         source.candidateList = [try candidate(provider: "kakao", id: "100")]
         let model = MapDiscoveryModel(trip: trip(), searcher: DiscoverySearcher(), source: source)
         await model.loadCandidates()
@@ -83,7 +86,7 @@ final class MapDiscoveryTests: XCTestCase {
     }
 
     func testViewerAndUnloadedCandidatesCannotWrite() async {
-        let source = FakeCollabService()
+        let source = reflectingSource()
         let viewer = MapDiscoveryModel(trip: trip(.viewer), searcher: DiscoverySearcher(), source: source)
         await viewer.loadCandidates(); await viewer.save(hit("1"))
         let owner = MapDiscoveryModel(trip: trip(), searcher: DiscoverySearcher(), source: source)
@@ -92,7 +95,7 @@ final class MapDiscoveryTests: XCTestCase {
     }
 
     func testManualSaveLeavesCoordinatesUnknown() async {
-        let source = FakeCollabService()
+        let source = reflectingSource()
         let model = MapDiscoveryModel(trip: trip(), searcher: DiscoverySearcher(), source: source)
         await model.loadCandidates(); await model.save(hit("manual"), withoutLocation: true)
         XCTAssertNil(source.addedDetails.first?.lat)
@@ -100,7 +103,7 @@ final class MapDiscoveryTests: XCTestCase {
     }
 
     func testUnknownWriteOutcomeIsReadBeforeRetry() async {
-        let source = FakeCollabService()
+        let source = reflectingSource()
         let model = MapDiscoveryModel(trip: trip(), searcher: DiscoverySearcher(), source: source)
         await model.loadCandidates()
         source.failure = .offline
@@ -115,7 +118,7 @@ final class MapDiscoveryTests: XCTestCase {
     }
 
     func testRetryKeepsOriginalRequestBodyAndKey() async {
-        let source = FakeCollabService()
+        let source = reflectingSource()
         let model = MapDiscoveryModel(trip: trip(), searcher: DiscoverySearcher(), source: source)
         await model.loadCandidates()
         source.failure = .offline
@@ -128,7 +131,7 @@ final class MapDiscoveryTests: XCTestCase {
     }
 
     func testUncertainManualSaveBlocksDoubleTapWhileReading() async {
-        let source = FakeCollabService()
+        let source = reflectingSource()
         let model = MapDiscoveryModel(trip: trip(), searcher: DiscoverySearcher(), source: source)
         await model.loadCandidates()
         source.failure = .offline
@@ -149,7 +152,7 @@ final class MapDiscoveryTests: XCTestCase {
     }
 
     func testRejectedPlaceRequiresExplicitReopen() async throws {
-        let source = FakeCollabService()
+        let source = reflectingSource()
         source.candidateList = [try candidate(provider: "kakao", id: "100", status: "REJECTED")]
         let model = MapDiscoveryModel(trip: trip(), searcher: DiscoverySearcher(), source: source)
         await model.loadCandidates()
@@ -161,8 +164,23 @@ final class MapDiscoveryTests: XCTestCase {
         XCTAssertEqual(source.candidateActions.first?.action, "REOPEN")
     }
 
+    func testDeletedCandidateCanBeSavedAgainWithANewRequestKey() async {
+        let source = reflectingSource()
+        let model = MapDiscoveryModel(trip: trip(), searcher: DiscoverySearcher(), source: source)
+        await model.loadCandidates()
+        await model.save(hit("100"))
+        XCTAssertTrue(model.isSaved(hit("100")))
+        source.candidateList = [] // 보드 또는 다른 기기에서 REMOVE가 확인된 뒤의 목록
+        await model.loadCandidates()
+        XCTAssertFalse(model.isSaved(hit("100")))
+        await model.save(hit("100"))
+        XCTAssertTrue(model.isSaved(hit("100")))
+        XCTAssertEqual(source.addedCandidates.count, 2)
+        XCTAssertEqual(Set(source.candidateWriteKeys).count, 2)
+    }
+
     func testOlderCandidateReadDoesNotReplaceNewerList() async throws {
-        let source = FakeCollabService()
+        let source = reflectingSource()
         let model = MapDiscoveryModel(trip: trip(), searcher: DiscoverySearcher(), source: source)
         var oldRead: CheckedContinuation<[CandidateView], Error>?
         source.candidateReads = { try await withCheckedThrowingContinuation { oldRead = $0 } }

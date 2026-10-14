@@ -640,6 +640,7 @@ final class CollabViewModelTests: XCTestCase {
 final class FakeCollabService: CollabSource {
     var membersList: [MemberView] = []
     var candidateList: [CandidateView] = []
+    var reflectsCandidateWrites = false
     var activityRows: [ActivityView] = []
     var prefRows: [PreferenceView] = [PreferenceView(userId: "u1", label: "나", role: .owner, mine: true, prefs: ["pace": .string("PACKED")])]
     var failure: APIError?
@@ -695,7 +696,14 @@ final class FakeCollabService: CollabSource {
     }
     func addCandidate(tripId: String, title: String, note: String?, lat: Double?, lng: Double?, placeId: String?, addr: String?, provider: String?, providerId: String?, clientKey: String) async throws -> Int {
         candidateWriteKeys.append(clientKey)
-        return try await addCandidate(tripId: tripId, title: title, note: note, lat: lat, lng: lng, placeId: placeId, addr: addr)
+        let originalID = try await addCandidate(tripId: tripId, title: title, note: note, lat: lat, lng: lng, placeId: placeId, addr: addr)
+        guard reflectsCandidateWrites else { return originalID }
+        let id = originalID + addedCandidates.count
+        candidateList.append(CandidateView(id: id, title: title, placeId: placeId, provider: provider, providerId: providerId,
+            lat: lat, lng: lng, addr: addr, note: note, url: nil, status: "PROPOSED", scheduledRef: nil,
+            proposedByLabel: "나", mine: true, myReaction: nil, mustCount: 0, okCount: 0, passCount: 0,
+            reactions: [], commentCount: 0, createdAt: ""))
+        return id
     }
     func addCandidate(tripId: String, title: String, note: String?, lat: Double?, lng: Double?, placeId: String?, addr: String?) async throws -> Int {
         try check()
@@ -705,6 +713,10 @@ final class FakeCollabService: CollabSource {
     }
     func react(tripId: String, candidateId: Int, reaction: Reaction?) async throws {
         try check(); reactions.append((candidateId, reaction))
+        if let index = candidateList.firstIndex(where: { $0.id == candidateId }) {
+            candidateList[index] = CollabModel.applyingReaction(reaction, to: candidateList[index],
+                myId: membersList.first(where: { $0.me })?.userId)
+        }
     }
     func manageCandidate(tripId: String, candidateId: Int, action: String, value: String?) async throws {
         if failCandidateActions { throw APIError.server(status: 500, message: "서버 오류") }

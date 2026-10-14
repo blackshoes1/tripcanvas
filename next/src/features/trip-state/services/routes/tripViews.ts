@@ -15,7 +15,7 @@ import lib from '@legacy/lib.js';
 import { LEG_WAIT_MS, fail, ok, readDayIndex, readLocation, readMinutes, resolveClock, type HandlerKit, type TripRow } from '../handlerKit';
 
 export function createTripViewsHandlers(kit: HandlerKit) {
-  const { deps, now, auth, withTrip, todayFor, fxFor, legCacheFor } = kit;
+  const { deps, now, auth, withTrip, todayFor, fxFor, legCacheFor, readBody } = kit;
 
   /** GET /api/v1/trips — 여행 목록. 삭제(tombstone)된 여행은 빼고, 최근 수정 순. */
   async function trips(request: Request): Promise<Response> {
@@ -147,5 +147,32 @@ export function createTripViewsHandlers(kit: HandlerKit) {
     });
   }
 
-  return { trips, today, dayPlan, tripRoutes, tripCosts, travelState };
+  /** 기기가 등록에 성공한 DEVICE 알림만 확인한다. 조회 및 SERVER 알림의 전달과 분리한다. */
+  async function acknowledgeNotifications(request: Request, tripId: string): Promise<Response> {
+    return withTrip(request, tripId, async ({ gateway }) => {
+      const body = await readBody(request);
+      if (body instanceof Response) return body;
+      if (typeof body.stateVersion !== 'string' || !body.stateVersion || body.stateVersion.length > 128
+        || !Array.isArray(body.items) || !body.items.length || body.items.length > 50) return fail('BAD_REQUEST');
+      const deviceKinds = ['departureReminder', 'fixedCommitmentReminder', 'scheduleDelay'];
+      const groups = new Map<string, { kind: string; dedupeKey: string; stateVersion: string }[]>();
+      for (const item of body.items) {
+        if (!item || typeof item !== 'object' || typeof item.kind !== 'string' || !deviceKinds.includes(item.kind)
+          || typeof item.dedupeKey !== 'string' || item.dedupeKey.length > 512) return fail('BAD_REQUEST');
+        const parts = item.dedupeKey.split('|');
+        const day = parts[1] ?? '';
+        const parsed = new Date(`${day}T00:00:00Z`);
+        if (parts.length < 5 || parts[0] !== tripId || parts[2] !== item.kind
+          || !/^\d{4}-\d{2}-\d{2}$/.test(day) || !Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== day) return fail('BAD_REQUEST');
+        const group = groups.get(day) ?? [];
+        if (!group.some(n => n.dedupeKey === item.dedupeKey)) group.push({ kind: item.kind, dedupeKey: item.dedupeKey, stateVersion: body.stateVersion });
+        groups.set(day, group);
+      }
+      try { for (const [day, items] of groups) await gateway.recordNotifications(tripId, day, items); }
+      catch { return fail('UPSTREAM_ERROR'); }
+      return ok({ schemaVersion: CONTRACT_SCHEMA_VERSION, acknowledged: true });
+    });
+  }
+
+  return { trips, today, dayPlan, tripRoutes, tripCosts, travelState, acknowledgeNotifications };
 }

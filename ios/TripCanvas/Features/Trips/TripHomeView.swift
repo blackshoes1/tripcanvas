@@ -31,6 +31,7 @@ struct TripHomeView: View {
     /// 알림·딥링크가 목적지를 정해서 들어온 경우. nil이면 아래 규칙이 정한다.
     var requested: TripHomeTab?
     @Binding var panel: TripPanel?
+    var onLeft: (() -> Void)?
 
     /// 세 화면의 모델. **여행을 보는 동안** 살아 있고, 탭을 오가도 죽지 않는다.
     @State private var models: TripScreenModels
@@ -44,9 +45,10 @@ struct TripHomeView: View {
     /// 탭 바의 높이. 내용이 이만큼 위에서 끝나야 마지막 줄이 바에 가리지 않는다 — 재지 않고 정한다.
     static let tabBarHeight: CGFloat = 50
 
-    init(trip: TripSummary, requested: TripHomeTab? = nil, panel: Binding<TripPanel?>, env: AppEnvironment) {
+    init(trip: TripSummary, requested: TripHomeTab? = nil, panel: Binding<TripPanel?>, env: AppEnvironment, onLeft: (() -> Void)? = nil) {
         self.trip = trip
         self.requested = requested
+        self.onLeft = onLeft
         _panel = panel
         // `@State`의 초기값은 처음 만들 때 한 번만 쓰인다 — 부모가 다시 그려도 이 객체는 유지된다.
         _models = State(initialValue: TripScreenModels(trip: trip, env: env))
@@ -93,7 +95,11 @@ struct TripHomeView: View {
                     switch item {
                     case .costs: TripCostsView(trip: trip, memory: models.costs)
                     case .bookings: BookingListView(trip: trip, shared: models.bookings)
-                    case .collab: CollabView(trip: trip, shared: models.collab)
+                    case .collab: CollabView(trip: trip, onLeft: {
+                        panel = nil
+                        env.realtime.disconnect()
+                        onLeft?()
+                    }, shared: models.collab)
                     case .candidates: CandidateBoardView(trip: trip, shared: models.candidateBoard)
                     case .notes: TripNotesView(model: models.plan)
                     case .offline: OfflineTripView(trip: trip, service: env.service, model: models.plan)
@@ -324,6 +330,8 @@ final class TripScreenModels {
     /// 재구독에는 과거 이벤트가 없으므로 기기 밖에서 바뀐 내용을 API로 다시 확인한다.
     func resumeAfterBackground() async {
         costs.invalidate(); bookings.invalidate()
+        await candidateBoard.resumeAfterBackground()
+        await collab.resumeAfterBackground()
         if plan.document != nil { await plan.resumeAfterBackground() }
         if today.today != nil { await today.load() }
     }

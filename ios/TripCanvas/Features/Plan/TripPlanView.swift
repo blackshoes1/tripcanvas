@@ -203,7 +203,7 @@ struct TripPlanView: View {
         }
         .sheet(isPresented: $showsCosts) {
             if let document = model.document, document.hasDay(costDay) {
-                DayCostView(day: document.days[costDay], cost: model.overviewPlan(costDay)?.day.totals.cost, canEdit: model.canEdit,
+                DayCostView(day: document.days[costDay], cost: model.overviewPlan(costDay)?.day.totals.cost, canEdit: model.canEdit, bookings: document.bookings,
                             draftKey: EditorDraftKey(accountID: env.auth.session?.userId, tripID: trip.id, editor: "spend-\(costDay)"),
                             originalRevision: costRevision, failureMessage: { model.saveFailureMessage },
                             onRefresh: { await model.load() },

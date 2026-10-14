@@ -197,6 +197,32 @@ final class AuthStoreTests: XCTestCase {
         XCTAssertEqual(client.signedOutTokens, ["t1"])
     }
 
+    func testSignOutCapturesOldSessionBeforeCleanupAndDoesNotClearANewLogin() async {
+        let client = FakeAuthClient()
+        let previous = AuthSession(token: "old-token", userId: "old-user", email: "old@example.com")
+        let auth = AuthStore(client: client, store: FakeSessionStore(stored: previous))
+        var captured: AuthSession?
+        var finishCleanup: CheckedContinuation<Void, Never>?
+        auth.cleanupSignedOutSession = { session in
+            captured = session
+            XCTAssertEqual(auth.session, previous, "기기 등록 해제에 필요한 값은 계정 초기화 전에 잡는다")
+            return Task { await withCheckedContinuation { finishCleanup = $0 } }
+        }
+        auth.signOut()
+        XCTAssertEqual(captured, previous)
+        XCTAssertNil(auth.session)
+        for _ in 0..<1000 where finishCleanup == nil { await Task.yield() }
+        XCTAssertNotNil(finishCleanup)
+        XCTAssertTrue(client.signedOutTokens.isEmpty, "기기 등록 해제가 끝난 뒤 이전 서버 세션을 닫는다")
+        let next = AuthSession(token: "new-token", userId: "new-user", email: "new@example.com")
+        client.signInResult = .success(next)
+        await auth.signIn(email: next.email, password: "synthetic")
+        finishCleanup?.resume()
+        for _ in 0..<1000 where client.signedOutTokens.isEmpty { await Task.yield() }
+        XCTAssertEqual(client.signedOutTokens, ["old-token"])
+        XCTAssertEqual(auth.session, next)
+    }
+
     /// refresh 그랜트가 없다 — 401이면 "세션이 아직 사는가"를 묻는다.
     func testForceRefreshKeepsALiveSession() async throws {
         let client = FakeAuthClient()

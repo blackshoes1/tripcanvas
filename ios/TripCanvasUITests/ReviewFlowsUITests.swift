@@ -13,6 +13,71 @@ final class ReviewFlowsUITests: XCTestCase {
         attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
     }
 
+    private func replace(_ field: XCUIElement, with text: String) {
+        field.tap()
+        let old = field.value as? String ?? ""
+        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: old.count) + text)
+    }
+
+    func testInvalidPasteDateBlocksCreationUntilCorrected() {
+        let app = launch(["--review-paste", "--review-reset-draft"])
+        let input = app.textViews["pasteItineraryText"]
+        XCTAssertTrue(input.waitForExistence(timeout: 10)); input.tap(); input.typeText("12.50 EUR itinerary")
+        app.buttons["읽어 보기"].tap()
+        let start = app.textFields["시작일 직접 입력"]
+        XCTAssertTrue(start.waitForExistence(timeout: 5))
+        replace(start, with: "2026-99-99")
+        XCTAssertFalse(app.buttons["pasteItineraryCreate"].isEnabled)
+        screenshot(app, "paste-invalid-date-blocked")
+        replace(start, with: "2026-10-14")
+        XCTAssertTrue(app.buttons["pasteItineraryCreate"].isEnabled)
+        app.buttons["pasteItineraryCreate"].tap()
+        XCTAssertTrue(app.staticTexts["reviewSavedPaste"].waitForExistence(timeout: 5))
+    }
+
+    func testNewTripInputsFreezeWhileCreationWaits() {
+        let app = launch(["--review-followup", "--review-scratch"])
+        let name = app.textFields["newTripName"]
+        XCTAssertTrue(name.waitForExistence(timeout: 10)); name.tap(); name.typeText("지연 생성 여행")
+        app.buttons["newTripCreate"].tap()
+        XCTAssertFalse(name.isEnabled)
+        XCTAssertFalse(app.textFields["newTripCity"].isEnabled)
+        screenshot(app, "new-trip-inputs-locked")
+        let saved = app.staticTexts["reviewFollowupSaved"]
+        XCTAssertTrue(saved.waitForExistence(timeout: 10))
+        XCTAssertEqual(saved.label, "지연 생성 여행")
+    }
+
+    func testPricedHotelExpenseCreatesSeparateCostAndPreservesBooking() {
+        let app = launch(["--review-followup"])
+        let hotel = app.buttons["spotExpenseChoice-0"]
+        XCTAssertTrue(hotel.waitForExistence(timeout: 10)); hotel.tap()
+        let amount = app.textFields["quickSpendAmount"]
+        XCTAssertTrue(amount.waitForExistence(timeout: 5)); amount.tap(); amount.typeText("50")
+        XCTAssertEqual(app.textFields["quickSpendTitle"].value as? String, "합성 호텔 별도 비용")
+        app.buttons["quickSpendCurrency"].tap(); app.buttons["EUR"].tap()
+        app.buttons["quickSpendSave"].tap()
+        let saved = app.staticTexts["reviewFollowupSaved"]
+        XCTAssertTrue(saved.waitForExistence(timeout: 5))
+        XCTAssertTrue(saved.label.contains("별도 비용 50.0 EUR"))
+        XCTAssertTrue(saved.label.contains("예약 200.0 EUR"))
+        screenshot(app, "hotel-separate-cost-saved")
+    }
+
+    func testSharedInputFreezesAcrossDelayedReadAndWrite() {
+        let app = launch(["--review-followup", "--review-shared"])
+        let save = app.buttons["sharedImportSave"]
+        XCTAssertTrue(save.waitForExistence(timeout: 10))
+        let ready = expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: save)
+        wait(for: [ready], timeout: 10)
+        save.tap()
+        XCTAssertFalse(app.textFields["sharedImportTitle"].isEnabled)
+        XCTAssertFalse(app.textViews["sharedImportText"].isEnabled)
+        screenshot(app, "shared-inputs-locked")
+        XCTAssertTrue(app.staticTexts["저장했어요"].waitForExistence(timeout: 15))
+        screenshot(app, "shared-input-saved")
+    }
+
     func testPasteDraftSurvivesTerminationAndKeepsForeignAmountOnCreate() {
         let app = launch(["--review-paste", "--review-reset-draft"])
         let text = app.textViews["pasteItineraryText"]

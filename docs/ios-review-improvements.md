@@ -37,6 +37,58 @@
 
 시뮬레이터 UI 검증은 합성 의존성으로만 실행한다. Siri 실제 실행·실기기 잠금화면 표시·서명·푸시 도착은 CI 결과와 구분한다.
 
+## 후속 검토 8건 적용 (2026-10-14)
+
+아래 8건은 위의 첫 추가 검토 13건 다음에 발견한 항목이다. 이어지는 재검토 13건과 별도로 추적한다. 표의 회귀 검증은 **작성한 검사**이며, 이번 변경의 네이티브 실행 결과는 아직 대기 중이다.
+
+| 번호 · 발견 내용 | 적용한 동작 | 구현 근거 | 회귀 검증 |
+| --- | --- | --- | --- |
+| 8-1 · 붙여넣기 시작일 오류에도 이전 날짜로 생성 | 날짜 칸의 오류 상태와 실제 날짜 유효성을 생성 버튼·생성 함수 양쪽에서 확인. 날짜 없는 여행은 허용 | [PasteItineraryView.swift](../ios/TripCanvas/Features/Trips/PasteItineraryView.swift) `canCreate` | [EditingFollowupTests](../ios/TripCanvasTests/EditingFollowupTests.swift) `testPasteInvalidInputCannotUseThePreviousValidStart`, `testPasteAllowsUndatedTravelAndRejectsInvalidCanonicalDates` |
+| 8-2 · 숙소 선택이 입력한 통화를 덮음 | 이미 입력한 금액·통화는 유지. 통화 선택 여부도 초안에 보존. 다른 통화의 숫자를 환산 없이 자동 입력하지 않음 | [BookingEditorView.swift](../ios/TripCanvas/Features/Booking/BookingEditorView.swift) `BookingStayPrefill` | [EditingFollowupTests](../ios/TripCanvasTests/EditingFollowupTests.swift) 입력 중 소수·통화 선택·통화 불일치·원화 기본값, 기존 예약 초안 복원 UI 검사 |
+| 8-3 · Siri 오늘 열기가 새 라우터에 전달 | 앱이 등록한 `ActionRouter`를 App Intent 의존성으로 사용 | [TripCanvasIntents.swift](../ios/TripCanvas/Features/Intents/TripCanvasIntents.swift), [AppEnvironment.swift](../ios/TripCanvas/App/AppEnvironment.swift) | [SystemFollowupTests](../ios/TripCanvasTests/SystemFollowupTests.swift) `testOpenTodayIntentUsesTheRouterRegisteredByTheApp` |
+| 8-4 · 알림 미등록도 이미 보낸 것으로 기록 | 조회는 `markSent: false`. 현재 권한을 확인하고 시스템 등록 성공한 DEVICE 항목만 로컬 기록·서버 ACK. ACK 응답 유실은 알림을 중복 등록하지 않고 재확인 | [PushService.swift](../ios/TripCanvas/Core/Push/PushService.swift), [TravelModeController.swift](../ios/TripCanvas/Features/TravelMode/TravelModeController.swift), [NotificationAcknowledgement.swift](../ios/TripCanvas/Services/NotificationAcknowledgement.swift), [tripViews.ts](../next/src/features/trip-state/services/routes/tripViews.ts) | [SystemFollowupTests](../ios/TripCanvasTests/SystemFollowupTests.swift) 권한 거부·등록 실패·ACK 응답 유실, [handlers.test.ts](../next/src/features/trip-state/services/handlers.test.ts) ACK 인증·입력 제한·중복·기록 실패 |
+| 8-5 · APNs 토큰 등록 콜백 누락 | 앱 델리게이트에서 토큰·실패 콜백을 `PushService`로 연결하고 서버 등록 실패 상태를 보존 | [TripCanvasApp.swift](../ios/TripCanvas/App/TripCanvasApp.swift), [PushService.swift](../ios/TripCanvas/Core/Push/PushService.swift) | [SystemFollowupTests](../ios/TripCanvasTests/SystemFollowupTests.swift) `testAPNsBridgeRegistersTheReceivedTokenAndReportsFailure` |
+| 8-6 · 알림 탭의 링크를 화면에서 소비하지 않음 | 수신 링크를 앱 라우터로 전달. 유효한 여행 링크만 이동하고 처리한 대기 링크는 제거 | [PushService.swift](../ios/TripCanvas/Core/Push/PushService.swift), [AppEnvironment.swift](../ios/TripCanvas/App/AppEnvironment.swift) | [SystemFollowupTests](../ios/TripCanvasTests/SystemFollowupTests.swift) `testNotificationTapIsDeliveredToTheAppRouterAndInvalidLinksAreIgnored` |
+| 8-7 · 동시 위치 조회가 먼저 요청한 대기를 덮음 | 하나의 시스템 위치 조회를 여러 호출자가 공유. 호출자별 취소·시간 제한·권한 응답 후 조회 처리 | [LocationProvider.swift](../ios/TripCanvas/Core/Location/LocationProvider.swift) | [SystemFollowupTests](../ios/TripCanvasTests/SystemFollowupTests.swift) 동시 조회·한 호출자 취소·시간 제한·권한 대기 |
+| 8-8 · 새 여행 생성 중 입력 변경 가능 | 요청 중 폼 전체와 취소·방식 전환을 잠그고 날짜 오류는 실제 생성 함수에서도 차단 | [NewTripView.swift](../ios/TripCanvas/Features/Trips/NewTripView.swift) | Debug 합성 `--review-scratch`에서 지연 저장 중 이름·도시 입력 잠금 및 저장된 이름 확인 |
+
+## 재검토 13건 적용 (2026-10-14)
+
+| 번호 · 발견 내용 | 적용한 동작 | 구현 근거 | 회귀 검증 |
+| --- | --- | --- | --- |
+| 13-1 · Siri가 활성 여행 대신 첫 여행을 변경 | 공유 상태의 활성 `tripId`를 우선 선택. 여러 여행에서 대상을 확정할 수 없거나 삭제된 여행이면 변경을 거절 | [TripCanvasIntents.swift](../ios/TripCanvas/Features/Intents/TripCanvasIntents.swift) `IntentSupport.selectTrip` | [SystemFollowupTests](../ios/TripCanvasTests/SystemFollowupTests.swift) `testSiriMutationUsesThePersistedActiveTripInsteadOfFirstLiveTrip` |
+| 13-2 · 분리 일정 부분 저장 재시도에서 장소 3개 중복 | 문서에 이미 저장된 후보·분리 묶음을 다시 읽어 복구하고 후보 표시만 재시도. 다시 연 미리보기 ID도 중복 생성하지 않음 | [CandidateBoardViewModel.swift](../ios/TripCanvas/Features/Collab/CandidateBoardViewModel.swift), [CollabModel.swift](../ios/TripCanvas/Core/Models/CollabModel.swift), [collab.js](../collab.js) | [CollabFollowupTests](../ios/TripCanvasTests/CollabFollowupTests.swift) 문서 응답 유실·후보 표시 실패·표시 응답 유실, 공통 분리 파리티 픽스처 |
+| 13-3 · 늦은 GET이 새 PUT의 기기 캐시를 덮음 | 문서·오늘·일자 캐시의 revision을 낮추지 않음. 계정·여행의 요청 세대를 확인해 오래된 응답의 저장을 거절 | [TripCache.swift](../ios/TripCanvas/Core/Storage/TripCache.swift), [TripService.swift](../ios/TripCanvas/Services/TripService.swift) | [AccountCacheFollowupTests](../ios/TripCanvasTests/AccountCacheFollowupTests.swift) `testLateDocumentGETCannotReplaceSavedRevisionOnDiskOrAfterRestart`, `testLateTodayAndDayPlanResponsesDoNotRegressCachedRevision` |
+| 13-4 · 삭제·탈퇴한 여행이 오프라인 캐시에서 재등장 | 성공한 제거 뒤 목록·문서·예약·오프라인 묶음 삭제, 이미 출발한 GET으로 복구하지 않음. 실패한 제거는 캐시 보존, 새 초대 수락은 새 접근 세대로 처리 | [TripCache.swift](../ios/TripCanvas/Core/Storage/TripCache.swift), [TripService.swift](../ios/TripCanvas/Services/TripService.swift) | [AccountCacheFollowupTests](../ios/TripCanvasTests/AccountCacheFollowupTests.swift) 성공·실패 제거, 재시작, 늦은 GET, 재초대 |
+| 13-5 · 공유 자료 저장 대기 중 유형·제목·본문 변경 | 확인 버튼을 누른 순간의 입력을 값으로 고정해 최신 문서 조회·PUT에 사용하고, 화면 입력도 저장 중 잠금 | [SharedImport.swift](../ios/TripCanvas/Features/Inbox/SharedImport.swift), [SharedInboxView.swift](../ios/TripCanvas/Features/Inbox/SharedInboxView.swift) | [AccountCacheFollowupTests](../ios/TripCanvasTests/AccountCacheFollowupTests.swift) `testSharedImportUsesConfirmedInputDuringDelayedReadAndSave`, Debug 합성 `--review-shared` |
+| 13-6 · 비용 조회 실패 시 결제일로 상태 전환, 옛 테스트도 오류 통과 | 날짜 자동 판정 제거. 서버 응답이 없으면 `PaymentRow.manualPayState` 유지. 과거 예정·미래 완료·날짜만 있는 미구분을 실제 행으로 검사 | [TripCostsView.swift](../ios/TripCanvas/Features/Plan/TripCostsView.swift), [DayCost.swift](../ios/TripCanvas/Core/Models/DayCost.swift), [PaymentLedger.swift](../ios/TripCanvas/Features/Plan/PaymentLedger.swift) | [PaymentLedgerTests](../ios/TripCanvasTests/PaymentLedgerTests.swift) `testPaymentRowKeepsConfirmedStateRegardlessOfPaymentDate`; 공통 [day-cost.test.js](../test/day-cost.test.js) 날짜와 상태 독립 규칙 |
+| 13-7 · 빠른 지출을 연결 숙소의 계산되지 않는 금액에 저장 | 금액 있는 숙박 예약이 연결된 장소는 별도 현장 비용으로 저장. 원래 숙박 예약·장소는 유지. 예약 금액 미정이면 장소 비용 경로를 허용 | [DayCost.swift](../ios/TripCanvas/Core/Models/DayCost.swift) `SpotExpensePolicy`, [QuickSpendEditor.swift](../ios/TripCanvas/Features/Plan/QuickSpendEditor.swift), [DayCostView.swift](../ios/TripCanvas/Features/Plan/DayCostView.swift), [TripCostsView.swift](../ios/TripCanvas/Features/Plan/TripCostsView.swift) | [EditingFollowupTests](../ios/TripCanvasTests/EditingFollowupTests.swift) priced/unpriced·잘못된 예약 종류·다른 예약, Debug 합성 연결 호텔의 별도 비용과 예약 원액 확인 |
+| 13-8 · 후보 삭제 후 지도에 저장됨 표시 잔존 | 서버 후보 목록 확인 뒤 임시 저장 표시와 삭제된 후보 ID·요청 키를 정리하여 같은 장소를 새 후보로 저장 가능 | [MapDiscoveryModel.swift](../ios/TripCanvas/Features/Map/MapDiscoveryModel.swift) | [MapDiscoveryTests](../ios/TripCanvasTests/MapDiscoveryTests.swift) `testDeletedCandidateCanBeSavedAgainWithANewRequestKey` |
+| 13-9 · 해외 추가 조회가 유효한 국내 결과를 실패·무관 결과로 대체 | 국내 결과가 있으면 해외 추가 조회 실패를 이유로 지우지 않음. 해외 이름이 맞는 결과일 때만 대체 | [PlaceSearchService.swift](../ios/TripCanvas/Features/Map/PlaceSearchService.swift) | [PlaceSearchTransportTests](../ios/TripCanvasTests/PlaceSearchTransportTests.swift) `testSupplementalForeignFailureKeepsValidDomesticResults`, `testUnrelatedForeignResultDoesNotReplaceDomesticResults` |
+| 13-10 · 빠른 반응에서 옛 실패가 최신 성공을 되돌림 | 후보별 반응 요청 세대 확인. 옛 실패를 무시하고, 서버를 뒤늦게 덮은 옛 성공 뒤에는 마지막 선택을 복구 | [CandidateBoardViewModel.swift](../ios/TripCanvas/Features/Collab/CandidateBoardViewModel.swift) | [CollabFollowupTests](../ios/TripCanvasTests/CollabFollowupTests.swift) `testNewReactionSuccessSurvivesOlderDelayedFailure`, `testOlderDelayedSuccessCannotLeaveServerWithOlderReaction` |
+| 13-11 · 펼친 댓글이 실시간으로 갱신되지 않음 | 댓글 이벤트에서 현재 열린 댓글만 다시 읽음. 닫힌 댓글은 미리 요청하지 않음 | [CandidateBoardView.swift](../ios/TripCanvas/Features/Collab/CandidateBoardView.swift), [CandidateBoardViewModel.swift](../ios/TripCanvas/Features/Collab/CandidateBoardViewModel.swift) | [CollabFollowupTests](../ios/TripCanvasTests/CollabFollowupTests.swift) `testLiveCommentReloadsOnlyOpenedThread` |
+| 13-12 · 탈퇴 후 접근할 수 없는 여행 화면에 잔류 | 탈퇴 성공 후 여행 경로·열린 패널·그 여행의 대기 이동을 정리하고 목록 갱신 | [CollabView.swift](../ios/TripCanvas/Features/Collab/CollabView.swift), [CollabViewModel.swift](../ios/TripCanvas/Features/Collab/CollabViewModel.swift), [TripListView.swift](../ios/TripCanvas/Features/Trips/TripListView.swift) | [CollabFollowupTests](../ios/TripCanvasTests/CollabFollowupTests.swift) `testSuccessfulLeaveClearsNavigationAndPendingRoute` |
+| 13-13 · 취향 갱신이 편집 중인 이름을 덮음 | 원본 이름과 입력 초안을 구분. 첫 응답·새로고침·저장 응답 동안 새로 친 내용은 유지 | [CollabView.swift](../ios/TripCanvas/Features/Collab/CollabView.swift) `CollabNameDraft` | [CollabFollowupTests](../ios/TripCanvasTests/CollabFollowupTests.swift) `testNameDraftSurvivesPreferenceRefreshAndTypingDuringSave` |
+
+### 연동 보완과 범위
+
+- **전경 복귀:** 같이 짜기와 후보 보드는 현재 보이는 화면에서 멤버·권한·취향·활동·초대·열린 댓글을 다시 확인한다. 숨겨진 화면은 캐시를 무효화하고 다시 열 때 조회한다. 복귀 전 시작된 읽기가 무효화된 캐시를 되살리지 않게 요청 세대도 확인한다. 근거는 `TripHomeView`·`CollabViewModel`·`CandidateBoardViewModel`이고, `CollabFollowupTests`의 보이는/숨겨진 화면 및 지연 읽기 검사가 대응한다.
+- **숙박 1인 금액:** 8-2의 자동입력 보완에는 `costBasis: PER_PERSON`과 정수 인원을 곱해 예약 총액으로 옮기는 처리가 포함된다. `CostEntry.totalAmount`는 공통 `lib.js costAmountOf`처럼 명시한 기준에만 인원을 곱하고 통화의 최소 단위로 반올림한다. 100 EUR × 2명은 예약 총액 200 EUR다. 이는 별도 새 발견 수에 더하지 않는다.
+- **Watch 제외:** 이번 수정·검증 범위는 iOS 앱과 관련 공통 API다. Watch의 실제 동작·동기화·알림은 별도 검토 및 기기 검증 대상이다. 공유 계약이나 앱 타깃의 CI 성공을 Watch 동작 검증으로 표시하지 않는다.
+
+### 이번 변경 검증 대기표
+
+| 검증 | 현재 상태 | 완료 조건 |
+| --- | --- | --- |
+| iOS 신규 회귀 테스트 | 작성됨 · 실행 대기 | `EditingFollowupTests`·`SystemFollowupTests`·`AccountCacheFollowupTests`·`CollabFollowupTests`와 기존 검색·지도·결제 테스트를 최종 커밋에서 실행 |
+| iOS Debug 빌드·XCTest·UI 조작 | 실행 대기 | XcodeGen 생성, 전체 단위·UI 검사 및 결과 번들 확인. 날짜 오류·저장 중 잠금·연결 호텔 별도 비용·공유 자료 저장을 합성 의존성으로 조작 |
+| iOS Release 빌드 | 실행 대기 | 최종 커밋의 Release 빌드 및 Debug 합성 화면 제외 확인 |
+| ACK API 및 전체 저장소 게이트 | 실행 대기 | ACK 라우트 단위·권한·중복·실패 검사와 `npm run verify:all` 결과 확인. PASS/FAIL/SKIP을 구분 |
+| 실기기 Siri·APNs·알림 탭·잠금화면 | 미검증 | 실제 등록·도착·이동·기기 상태와 권한 변화 확인. 시뮬레이터 콜백 테스트만으로 완료 처리하지 않음 |
+| Watch | 이번 범위 제외 | 별도 Watch 검토·기기 검증 |
+
+공통 비용 원본의 로컬 검사는 `node --test test/day-cost.test.js` **35개 통과**했다. 이는 비용 계산 원본의 확인이며 새 Swift 테스트·네이티브 화면·ACK API 검증을 대신하지 않는다. 이전 커밋의 iOS 성공 기록을 이번 변경의 검증 결과로 재사용하지 않는다.
+
 ## 검증 중 발견한 의존성 보완
 
 기존 Next 워크스페이스의 보안 감사에서 발견한 취약점은 `sharp 0.35.5`, `source-map-js 1.2.2`, `Vitest 4.1.11`로 갱신한다. Drizzle 개발 도구가 사용하는 `@esbuild-kit/core-utils`의 esbuild만 `0.25.12`로 고정한다. 테스트 도구의 변경 범위를 줄이기 위해 기존 Vite `7.3.6`을 명시한다. 개발 도구의 `brace-expansion`도 수정 버전으로 갱신한다. Next·React·인증 라이브러리의 버전과 운영 설정은 유지한다. 보안 감사뿐 아니라 전체 백엔드 테스트·타입 검사·운영 빌드·도구 빌드로 호환성을 확인한다.
@@ -54,3 +106,7 @@
 ## 릴리스와 되돌리기
 
 수정 브랜치의 PR에서 필수 CI와 iOS 조작 결과를 확인한다. main merge는 자동 배포와 연결되므로 별도 릴리스 판단을 거친다. 되돌릴 때는 이번 변경을 revert한다. 서버 스키마 변경이나 데이터 마이그레이션은 없다.
+
+이번 후속 보완은 `POST /api/v1/trips/:id/travel-state` 알림 등록 확인(ACK) 경로를 추가한다. ACK는 **기기의 시스템 알림 등록 성공**을 기록하며 APNs 실제 도착을 보증하지 않는다. 서버는 인증·여행 접근 권한·DEVICE 종류·여행별 dedupe key·입력 크기를 검사하고 중복 확인은 같은 결과로 처리한다. 기존 GET의 `markSent` 계약은 기존 클라이언트 호환을 위해 유지하고, 새 iOS는 조회 단계에서 발송을 기록하지 않는다.
+
+**API를 먼저 릴리스한다.** 서버 변경의 게이트 통과 → NAS 배포의 실제 revision·건강 상태·ACK 지원 확인 → 새 iOS 배포 순서로 진행한다. API 지원이 없는 서버에 새 앱을 먼저 배포하지 않는다. 이 문서는 준비·검증 범위를 기록한 것이며 운영 merge·배포를 수행했다는 기록이 아니다. 클라이언트를 되돌릴 때 ACK 라우트는 하위호환으로 남길 수 있으므로 서버와 앱을 동시에 강제로 롤백할 필요는 없다.

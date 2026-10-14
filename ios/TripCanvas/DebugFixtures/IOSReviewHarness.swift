@@ -29,7 +29,9 @@ struct IOSReviewHarness: View {
 
     var body: some View {
         Group {
-            if arguments.contains("--review-paste") {
+            if arguments.contains("--review-followup") {
+                ReviewFollowupHarness()
+            } else if arguments.contains("--review-paste") {
                 ReviewPasteHarness()
             } else if arguments.contains("--review-search") {
                 NavigationStack {
