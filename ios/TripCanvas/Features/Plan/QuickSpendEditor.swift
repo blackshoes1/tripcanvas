@@ -203,13 +203,16 @@ struct QuickSpendEditor: View {
 }
 
 struct SpendEntryFlow: View {
+    private struct ExtraSpend: Identifiable {
+        let id = UUID()
+        let title: String
+    }
     let day: TripDay
     var bookings: [TripBooking] = []
     var draftKey: EditorDraftKey? = nil
     let onSave: (TripDay) async -> Bool
     @State private var target: CostEditTarget?
-    @State private var standalone = false
-    @State private var standaloneTitle = ""
+    @State private var standalone: ExtraSpend?
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -220,8 +223,7 @@ struct SpendEntryFlow: View {
                         let bookingPays = SpotExpensePolicy.bookingPaysSpot(spot, bookings: bookings)
                         Button {
                             if bookingPays {
-                                standaloneTitle = "\(spot.name) 별도 비용"
-                                standalone = true
+                                standalone = ExtraSpend(title: "\(spot.name) 별도 비용")
                             } else {
                                 target = CostEditTarget(kind: .spot(index), entry: CostEntry(spot: spot), isNew: true)
                             }
@@ -240,7 +242,7 @@ struct SpendEntryFlow: View {
                     if day.spots.isEmpty { Text("이 날에는 저장한 장소가 없어요").foregroundStyle(Ink.soft) }
                 }
                 Section {
-                    Button("장소와 관계없는 추가 비용") { standaloneTitle = ""; standalone = true }
+                    Button("장소와 관계없는 추가 비용") { standalone = ExtraSpend(title: "") }
                 }
             }
             .navigationTitle("어디에 쓴 비용인가요?")
@@ -257,8 +259,8 @@ struct SpendEntryFlow: View {
                     return saved
                 }
             }
-            .sheet(isPresented: $standalone) {
-                QuickSpendEditor(dayLabel: day.title, draftKey: draftKey, initialTitle: standaloneTitle) { entry in
+            .sheet(item: $standalone) { choice in
+                QuickSpendEditor(dayLabel: day.title, draftKey: draftKey, initialTitle: choice.title) { entry in
                     var updated = day
                     updated.costItems = updated.costItems.filter { $0.id != entry.id } + [entry]
                     let saved = await onSave(updated)

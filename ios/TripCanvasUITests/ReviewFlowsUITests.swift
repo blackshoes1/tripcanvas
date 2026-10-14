@@ -13,10 +13,19 @@ final class ReviewFlowsUITests: XCTestCase {
         attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
     }
 
-    private func replace(_ field: XCUIElement, with text: String) {
+    private func replace(_ field: XCUIElement, with text: String, in app: XCUIApplication) {
         field.tap()
-        let old = field.value as? String ?? ""
-        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: old.count) + text)
+        field.press(forDuration: 1.2)
+        let selectAll = app.menuItems.matching(NSPredicate(format: "label IN %@", ["전체 선택", "Select All"])).firstMatch
+        if selectAll.waitForExistence(timeout: 2) {
+            selectAll.tap(); field.typeText(text)
+        } else {
+            // 숫자 칸을 가운데 탭하면 커서 뒤의 값이 남는다. 오른쪽 끝에서 전부 지운다.
+            field.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.5)).tap()
+            let old = field.value as? String ?? ""
+            field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: old.count) + text)
+        }
+        XCTAssertEqual(field.value as? String, text)
     }
 
     func testInvalidPasteDateBlocksCreationUntilCorrected() {
@@ -26,10 +35,10 @@ final class ReviewFlowsUITests: XCTestCase {
         app.buttons["읽어 보기"].tap()
         let start = app.textFields["시작일 직접 입력"]
         XCTAssertTrue(start.waitForExistence(timeout: 5))
-        replace(start, with: "2026-99-99")
+        replace(start, with: "2026-99-99", in: app)
         XCTAssertFalse(app.buttons["pasteItineraryCreate"].isEnabled)
         screenshot(app, "paste-invalid-date-blocked")
-        replace(start, with: "2026-10-14")
+        replace(start, with: "2026-10-14", in: app)
         XCTAssertTrue(app.buttons["pasteItineraryCreate"].isEnabled)
         app.buttons["pasteItineraryCreate"].tap()
         XCTAssertTrue(app.staticTexts["reviewSavedPaste"].waitForExistence(timeout: 5))
@@ -44,7 +53,8 @@ final class ReviewFlowsUITests: XCTestCase {
         XCTAssertFalse(app.textFields["newTripCity"].isEnabled)
         screenshot(app, "new-trip-inputs-locked")
         let saved = app.staticTexts["reviewFollowupSaved"]
-        XCTAssertTrue(saved.waitForExistence(timeout: 10))
+        let complete = expectation(for: NSPredicate(format: "label == %@", "지연 생성 여행"), evaluatedWith: saved)
+        wait(for: [complete], timeout: 10)
         XCTAssertEqual(saved.label, "지연 생성 여행")
     }
 
@@ -58,7 +68,8 @@ final class ReviewFlowsUITests: XCTestCase {
         app.buttons["quickSpendCurrency"].tap(); app.buttons["EUR"].tap()
         app.buttons["quickSpendSave"].tap()
         let saved = app.staticTexts["reviewFollowupSaved"]
-        XCTAssertTrue(saved.waitForExistence(timeout: 5))
+        let complete = expectation(for: NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@", "별도 비용 50.0 EUR", "예약 200.0 EUR"), evaluatedWith: saved)
+        wait(for: [complete], timeout: 5)
         XCTAssertTrue(saved.label.contains("별도 비용 50.0 EUR"))
         XCTAssertTrue(saved.label.contains("예약 200.0 EUR"))
         screenshot(app, "hotel-separate-cost-saved")

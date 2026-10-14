@@ -84,9 +84,11 @@ private final class CacheFollowupProtocol: URLProtocol {
             else { delayed = request; started.fulfill() }
         }
         let oldRead = Task { try await source.document(tripId: "cache-trip") }
+        defer { oldRead.cancel() }
         await fulfillment(of: [started], timeout: 3)
+        let pendingGET = try XCTUnwrap(delayed, "old document GET must be captured before completing it")
         _ = try await source.saveDocument(tripId: "cache-trip", document: TripDocument(raw: detail(2).document), expectedRevision: 1)
-        try delayed?.finish(detail(1))
+        try pendingGET.finish(detail(1))
         _ = try await oldRead.value
         CacheFollowupProtocol.handle = nil
         let offline = try await source.document(tripId: "cache-trip")
@@ -118,14 +120,18 @@ private final class CacheFollowupProtocol: URLProtocol {
             }
             if isToday {
                 let read = Task { try await source.today(tripId: "cache-trip") }
+                defer { read.cancel() }
                 await fulfillment(of: [started], timeout: 3)
+                let pendingGET = try XCTUnwrap(delayed, "old Today GET must be captured before completing it")
                 _ = try await source.today(tripId: "cache-trip")
-                try delayed?.finish(today1); _ = try await read.value
+                try pendingGET.finish(today1); _ = try await read.value
             } else {
                 let read = Task { try await source.dayPlan(tripId: "cache-trip", dayIndex: 0) }
+                defer { read.cancel() }
                 await fulfillment(of: [started], timeout: 3)
+                let pendingGET = try XCTUnwrap(delayed, "old dayPlan GET must be captured before completing it")
                 _ = try await source.dayPlan(tripId: "cache-trip", dayIndex: 0)
-                try delayed?.finish(day1); _ = try await read.value
+                try pendingGET.finish(day1); _ = try await read.value
             }
         }
         CacheFollowupProtocol.handle = nil
@@ -160,11 +166,14 @@ private final class CacheFollowupProtocol: URLProtocol {
                 do { _ = try await source.document(tripId: "cache-trip"); return true } catch { return false }
             }
             let readList = Task { try await source.trips() }
+            defer { readDocument.cancel(); readList.cancel() }
             await fulfillment(of: [started], timeout: 3)
+            let pendingDocumentGET = try XCTUnwrap(documentGET, "document GET must be captured before removal")
+            let pendingListGET = try XCTUnwrap(listGET, "list GET must be captured before removal")
             if leaves { try await source.leaveTrip(tripId: "cache-trip") }
             else { try await source.deleteTrip(tripId: "cache-trip", expectedRevision: 2) }
-            try documentGET?.finish(current)
-            try listGET?.finish(TripListResponse(schemaVersion: 1, trips: [current.trip]))
+            try pendingDocumentGET.finish(current)
+            try pendingListGET.finish(TripListResponse(schemaVersion: 1, trips: [current.trip]))
             let returnedDocument = await readDocument.value, returnedList = try await readList.value
             XCTAssertFalse(returnedDocument)
             XCTAssertTrue(returnedList.value.isEmpty)
@@ -232,18 +241,21 @@ private final class CacheFollowupProtocol: URLProtocol {
         var edited = SharedTextInputDraft(kind: .place, title: "확인한 장소", body: "확인한 본문", day: 1)
         let confirmed = edited
         let save = Task { await model.saveText(confirmed) }
+        defer { save.cancel() }
         await fulfillment(of: [readStarted], timeout: 3)
+        let pendingGET = try XCTUnwrap(read, "latest document GET must be captured before completing it")
         XCTAssertTrue(model.isWorking)
         edited = .init(kind: .note, title: "대기 중 바꾼 제목", body: "다른 본문", day: 0)
-        try read?.finish(detail(1))
+        try pendingGET.finish(detail(1))
         await fulfillment(of: [putStarted], timeout: 3)
+        let pendingPUT = try XCTUnwrap(put, "confirmed input PUT must be captured before completing it")
         let sent = TripDocument(raw: try XCTUnwrap(savedDocument))
         XCTAssertTrue(sent.days[0].spots.isEmpty)
         XCTAssertEqual(sent.days[1].spots.first?.name, "확인한 장소")
         XCTAssertEqual(sent.days[1].spots.first?.desc, "확인한 본문")
         XCTAssertNil(sent.raw["notes"])
         edited = .init(kind: .note, title: "PUT 대기 중 변경", body: "새 입력", day: 0)
-        try put?.finish(TripDetailResponse(trip: summary(2), document: sent.raw))
+        try pendingPUT.finish(TripDetailResponse(trip: summary(2), document: sent.raw))
         let failure = await save.value
         XCTAssertNil(failure)
         XCTAssertTrue(model.saved)

@@ -88,17 +88,28 @@ final class CollabFollowupTests: XCTestCase {
         var firstResponse: CheckedContinuation<Void, Error>?
         service.reactionGate = { call in
             if call == 1 {
+                guard !Task.isCancelled else { throw CancellationError() }
                 try await withCheckedThrowingContinuation { continuation in
+                    guard !Task.isCancelled else { continuation.resume(throwing: CancellationError()); return }
                     firstResponse = continuation
                     started.fulfill()
                 }
             }
         }
         let first = Task { await model.react(candidateId: 1, reaction: .must) }
+        defer {
+            service.reactionGate = nil
+            first.cancel()
+            let waiting = firstResponse
+            firstResponse = nil
+            waiting?.resume(throwing: CancellationError())
+        }
         await fulfillment(of: [started], timeout: 1)
+        guard let response = firstResponse else { XCTFail("첫 반응의 응답 대기가 준비되지 않았어요"); return }
         await model.react(candidateId: 1, reaction: .ok)
         XCTAssertEqual(model.candidates.first?.myReaction, "OK")
-        firstResponse?.resume(throwing: APIError.offline)
+        firstResponse = nil
+        response.resume(throwing: APIError.offline)
         await first.value
 
         XCTAssertEqual(model.candidates.first?.myReaction, "OK")
@@ -114,16 +125,27 @@ final class CollabFollowupTests: XCTestCase {
         var firstResponse: CheckedContinuation<Void, Error>?
         service.reactionGate = { call in
             if call == 1 {
+                guard !Task.isCancelled else { throw CancellationError() }
                 try await withCheckedThrowingContinuation { continuation in
+                    guard !Task.isCancelled else { continuation.resume(throwing: CancellationError()); return }
                     firstResponse = continuation
                     started.fulfill()
                 }
             }
         }
         let first = Task { await model.react(candidateId: 1, reaction: .must) }
+        defer {
+            service.reactionGate = nil
+            first.cancel()
+            let waiting = firstResponse
+            firstResponse = nil
+            waiting?.resume(throwing: CancellationError())
+        }
         await fulfillment(of: [started], timeout: 1)
+        guard let response = firstResponse else { XCTFail("첫 반응의 응답 대기가 준비되지 않았어요"); return }
         await model.react(candidateId: 1, reaction: .ok)
-        firstResponse?.resume()
+        firstResponse = nil
+        response.resume()
         await first.value
 
         XCTAssertEqual(model.candidates.first?.myReaction, "OK")
@@ -203,16 +225,27 @@ final class CollabFollowupTests: XCTestCase {
         let started = expectation(description: "기존 멤버 조회 대기")
         var pending: CheckedContinuation<[MemberView], Never>?
         service.memberGate = {
-            await withCheckedContinuation { continuation in
+            guard !Task.isCancelled else { return [] }
+            return await withCheckedContinuation { continuation in
+                guard !Task.isCancelled else { continuation.resume(returning: []); return }
                 pending = continuation
                 started.fulfill()
             }
         }
         let load = Task { await model.load() }
+        defer {
+            service.memberGate = nil
+            load.cancel()
+            let waiting = pending
+            pending = nil
+            waiting?.resume(returning: [])
+        }
         await fulfillment(of: [started], timeout: 1)
+        guard let response = pending else { XCTFail("기존 멤버의 응답 대기가 준비되지 않았어요"); return }
         await model.resumeAfterBackground()
         service.memberGate = nil
-        pending?.resume(returning: service.memberRows)
+        pending = nil
+        response.resume(returning: service.memberRows)
         await load.value
 
         XCTAssertNil(model.loadedAt)
@@ -273,8 +306,8 @@ private final class FollowupCollabSource: CollabSource {
     var commentReads: [Int] = []
     var reactionCalls = 0, markCalls = 0
     var failNextMark = false, loseNextMarkResponse = false
-    var reactionGate: ((Int) async throws -> Void)?
-    var memberGate: (() async -> [MemberView])?
+    var reactionGate: (@MainActor (Int) async throws -> Void)?
+    var memberGate: (@MainActor () async -> [MemberView])?
     func member(role: MemberRole) -> MemberView { .init(id: 1, userId: "me", role: role, status: "ACTIVE", displayName: "나", joinedAt: nil, me: true) }
     func comment(_ body: String) -> CommentView { .init(id: 1, body: body, authorLabel: "일행", mine: false, createdAt: "2026-10-14T00:00:00Z") }
     func members(tripId: String) async throws -> [MemberView] {
