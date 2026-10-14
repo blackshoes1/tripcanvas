@@ -89,7 +89,7 @@ final class CollabFollowupTests: XCTestCase {
         service.reactionGate = { call in
             if call == 1 {
                 guard !Task.isCancelled else { throw CancellationError() }
-                try await withCheckedThrowingContinuation { continuation in
+                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
                     guard !Task.isCancelled else { continuation.resume(throwing: CancellationError()); return }
                     firstResponse = continuation
                     started.fulfill()
@@ -126,7 +126,7 @@ final class CollabFollowupTests: XCTestCase {
         service.reactionGate = { call in
             if call == 1 {
                 guard !Task.isCancelled else { throw CancellationError() }
-                try await withCheckedThrowingContinuation { continuation in
+                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
                     guard !Task.isCancelled else { continuation.resume(throwing: CancellationError()); return }
                     firstResponse = continuation
                     started.fulfill()
