@@ -173,9 +173,9 @@ struct SpotEditorView: View {
                         }
                     }
                 }
-                if !target.spot.name.isEmpty {
+                if !draft.name.isEmpty {
                     Section {
-                        PlacePhotoView(placeId: target.spot.placeId, kakaoId: target.spot.kakaoId, name: target.spot.name)
+                        PlacePhotoView(placeId: draft.placeId, kakaoId: draft.kakaoId, name: draft.name)
                     }
                 }
                 if let contextLabel, !contextLabel.isEmpty {
@@ -334,7 +334,7 @@ struct SpotEditorView: View {
         return false
     }
 
-    static let placeDependentKeys = CostEntry.spotCostKeys + ["bookingId", "carPickupId", "carReturnId", "stay", "nights", "admission", "bookAt", "bookUrl", "bookN", "bookMemo"]
+    static let placeDependentKeys = CostEntry.spotCostKeys + ["bookingId", "carPickupId", "carReturnId", "stay", "nights", "admission", "bookAt", "bookUrl", "bookN", "bookMemo", "status"]
     static func needsReplacementConfirmation(_ original: TripSpot, with hit: PlaceHit) -> Bool {
         !samePlace(original, hit) && placeDependentKeys.contains { original.raw[$0] != nil }
     }

@@ -91,6 +91,7 @@ final class MapPickTests: XCTestCase {
         var original = TripSpot(name: "호텔 A", city: "파리")
         original.placeId = "hotel-a"; original.bookingId = "booking-1"; original.isStay = true
         original.nights = 3; original.cost = 300; original.bookedAt = "15:00"
+        original.status = .completed
         original.setField("admission", .object(["personalStatus": .string("BOOKED")]))
         original.arriveAt = "14:00"; original.desc = "일정 메모"; original.stayMinutes = 45
         let hit = PlaceHit(id: "cafe", name: "카페", city: "파리", address: "주소",

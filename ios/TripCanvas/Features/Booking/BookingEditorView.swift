@@ -154,47 +154,15 @@ struct BookingEditorView: View {
     var body: some View {
         NavigationStack {
             PaperForm {
-                if let recovery {
-                    Section("저장하지 않은 입력이 있어요") {
-                        if recovery.canRestore(over: originalTarget, links: originalBookingLinks, revision: originalRevision) {
-                            Button("이어서 입력") { restore(recovery) }.accessibilityIdentifier("restoreBookingDraft")
-                        } else {
-                            Text("원본 예약이나 일정 연결이 바뀌었어요. 이전 입력을 확인하고 최신 항목에서 고쳐 주세요.")
-                            Text("\(recovery.booking["title"]?.stringValue ?? "") · \(recovery.texts["price"] ?? "")")
-                            ShareLink("이전 입력 복사·공유", item: "\(recovery.booking["title"]?.stringValue ?? "")\n\(recovery.texts["price"] ?? "") \(recovery.texts["currency"] ?? "")")
-                        }
-                        Button("초안 버리기", role: .destructive) { self.recovery = nil; EditorDraftStore.shared.remove(draftKey) }
-                    }
-                }
+                recoverySection
+
                 if let error = saving.error {
                     Section {
                         Text(error).foregroundStyle(Ink.danger)
                         ShareLink("입력 복사·공유", item: "\(draft.title)\n\(draft.provider)\n\(priceText) \(currency.rawValue)\n\(draft.start ?? "미정") ~ \(draft.end ?? "미정")\n\(urlText)")
                     }
                 }
-                Section {
-                    Picker("분류", selection: $kind) {
-                        ForEach(availableKinds, id: \.self) { kind in
-                            Label(kind.label, systemImage: kind.symbol).tag(kind)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    TextField(titlePlaceholder, text: $draft.title).accessibilityIdentifier("bookingEntryTitle")
-                    if isBookingKind {
-                        TextField("예약처 (예: Booking.com)", text: $draft.provider)
-                        TextField("예약번호", text: Binding(
-                            get: { draft.confirmation ?? "" },
-                            set: { draft.confirmation = $0 }))
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                    }
-                } header: {
-                    Text(isBookingKind ? "예약" : "항목")
-                } footer: {
-                    if !bookingOnly && isNew {
-                        Text("여기서 입력한 금액은 비용에 자동으로 들어가요. 일정 날짜가 있으면 그날에도 보여요.")
-                    }
-                }
+                identitySection
 
                 if isBookingKind {
                     // 항공은 기간 대신 구간이다 — 편명·공항·시각이 여기 산다(2026-10-04, 웹과 같다). 기간은 구간의 날짜가 정한다
@@ -221,59 +189,9 @@ struct BookingEditorView: View {
                     scheduleSection
                 }
 
-                Section {
-                    HStack {
-                        TextField(isBookingKind ? "총액" : "금액", text: $priceText)
-                            .accessibilityIdentifier("bookingEntryAmount")
-                            .keyboardType(.decimalPad)
-                        Picker("통화", selection: $currency) {
-                            ForEach(Currency.allCases, id: \.self) { currency in
-                                Text(currency.rawValue).tag(currency)
-                            }
-                        }
-                        .labelsHidden()
-                    }
-                    // 항공은 시세를 확인할 곳이 아직 없다 — 없는 추적을 약속하지 않는다.
-                    if isBookingKind && kind != .flight { Toggle("가격 추적", isOn: $draft.track) }
-                } header: {
-                    Text("금액")
-                } footer: {
-                    if isBookingKind && kind != .flight {
-                        Text("켜둔 가격 추적은 시세를 계속 확인해 절약 기회를 알려줘요. 자동으로 다시 예약하지는 않아요.")
-                    } else {
-                        Text("원·엔은 정수, 달러·유로·위안은 소수 둘째 자리까지 입력해 주세요.")
-                    }
-                }
+                amountSection
 
-                // 결제는 상태가 먼저고 날짜는 그 상태의 선택 칸이다(2026-10-04, 웹 syncPayDate와 같다) — 고르지 않았으면 날짜를
-                // 묻지 않고 이름이 상태를 따른다. 날짜와 상태는 따로 저장되고, 날짜가 지나도 상태는 바뀌지 않는다.
-                Section {
-                    Picker("결제 상태", selection: $payState) {
-                        Text(CostPayState.reserved.label).tag(CostPayState.reserved)
-                        Text(CostPayState.paid.label).tag(CostPayState.paid)
-                        if !isBookingKind { Text(CostPayState.none.label).tag(CostPayState.none) }
-                    }
-                    if payState != .none {
-                        Toggle(payState == .paid ? "결제일 정하기" : "결제 예정일 정하기", isOn: Binding(
-                            get: { paidOn != nil },
-                            set: { on in paidOn = on ? (paidOn ?? ISODateText.text(from: Date())) : nil }))
-                        if paidOn != nil {
-                            DatePicker(payState == .paid ? "결제일" : "결제 예정일", selection: Binding(
-                                get: { paidOn.flatMap { ISODateText.date(from: $0) } ?? Date() },
-                                set: { paidOn = ISODateText.text(from: $0) }), displayedComponents: .date)
-                        }
-                    }
-                } header: {
-                    Text("결제")
-                } footer: {
-                    VStack(alignment: .leading, spacing: Space.xs) {
-                        Text(payFooter)
-                        if fromReservations, !isBookingKind, payState != .reserved {
-                            Text("결제 예정이 아니면 이 항목은 예약 목록이 아니라 비용 화면에 보여요.")
-                                .foregroundStyle(Ink.warning)
-                        }
-                    }
-                }
+                paymentSection
 
                 if kind == .stay { hotelSection }
                 if kind == .rent { carSection }
@@ -379,6 +297,105 @@ struct BookingEditorView: View {
                 }
             } message: {
                 if target.item == nil { Text("예약번호·기간·금액과 일정 연결이 모든 일행에게서 사라져요. 실제 예약은 취소되지 않아요.") }
+            }
+        }
+    }
+
+    @ViewBuilder private var recoverySection: some View {
+        if let recovery {
+            Section("저장하지 않은 입력이 있어요") {
+                if recovery.canRestore(over: originalTarget, links: originalBookingLinks, revision: originalRevision) {
+                    Button("이어서 입력") { restore(recovery) }.accessibilityIdentifier("restoreBookingDraft")
+                } else {
+                    Text("원본 예약이나 일정 연결이 바뀌었어요. 이전 입력을 확인하고 최신 항목에서 고쳐 주세요.")
+                    Text("\(recovery.booking["title"]?.stringValue ?? "") · \(recovery.texts["price"] ?? "")")
+                    ShareLink("이전 입력 복사·공유", item: "\(recovery.booking["title"]?.stringValue ?? "")\n\(recovery.texts["price"] ?? "") \(recovery.texts["currency"] ?? "")")
+                }
+                Button("초안 버리기", role: .destructive) { self.recovery = nil; EditorDraftStore.shared.remove(draftKey) }
+            }
+        }
+    }
+
+    private var identitySection: some View {
+        Section {
+            Picker("분류", selection: $kind) {
+                ForEach(availableKinds, id: \.self) { kind in
+                    Label(kind.label, systemImage: kind.symbol).tag(kind)
+                }
+            }
+            .pickerStyle(.menu)
+            TextField(titlePlaceholder, text: $draft.title).accessibilityIdentifier("bookingEntryTitle")
+            if isBookingKind {
+                TextField("예약처 (예: Booking.com)", text: $draft.provider)
+                TextField("예약번호", text: Binding(
+                    get: { draft.confirmation ?? "" },
+                    set: { draft.confirmation = $0 }))
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+            }
+        } header: {
+            Text(isBookingKind ? "예약" : "항목")
+        } footer: {
+            if !bookingOnly && isNew {
+                Text("여기서 입력한 금액은 비용에 자동으로 들어가요. 일정 날짜가 있으면 그날에도 보여요.")
+            }
+        }
+    }
+
+    private var amountSection: some View {
+        Section {
+            HStack {
+                TextField(isBookingKind ? "총액" : "금액", text: $priceText)
+                    .accessibilityIdentifier("bookingEntryAmount")
+                    .keyboardType(.decimalPad)
+                Picker("통화", selection: $currency) {
+                    ForEach(Currency.allCases, id: \.self) { currency in
+                        Text(currency.rawValue).tag(currency)
+                    }
+                }
+                .labelsHidden()
+            }
+            // 항공은 시세를 확인할 곳이 아직 없다 — 없는 추적을 약속하지 않는다.
+            if isBookingKind && kind != .flight { Toggle("가격 추적", isOn: $draft.track) }
+        } header: {
+            Text("금액")
+        } footer: {
+            if isBookingKind && kind != .flight {
+                Text("켜둔 가격 추적은 시세를 계속 확인해 절약 기회를 알려줘요. 자동으로 다시 예약하지는 않아요.")
+            } else {
+                Text("원·엔은 정수, 달러·유로·위안은 소수 둘째 자리까지 입력해 주세요.")
+            }
+        }
+    }
+
+    private var paymentSection: some View {
+        // 결제는 상태가 먼저고 날짜는 그 상태의 선택 칸이다(2026-10-04, 웹 syncPayDate와 같다) — 고르지 않았으면 날짜를
+        // 묻지 않고 이름이 상태를 따른다. 날짜와 상태는 따로 저장되고, 날짜가 지나도 상태는 바뀌지 않는다.
+        Section {
+            Picker("결제 상태", selection: $payState) {
+                Text(CostPayState.reserved.label).tag(CostPayState.reserved)
+                Text(CostPayState.paid.label).tag(CostPayState.paid)
+                if !isBookingKind { Text(CostPayState.none.label).tag(CostPayState.none) }
+            }
+            if payState != .none {
+                Toggle(payState == .paid ? "결제일 정하기" : "결제 예정일 정하기", isOn: Binding(
+                    get: { paidOn != nil },
+                    set: { on in paidOn = on ? (paidOn ?? ISODateText.text(from: Date())) : nil }))
+                if paidOn != nil {
+                    DatePicker(payState == .paid ? "결제일" : "결제 예정일", selection: Binding(
+                        get: { paidOn.flatMap { ISODateText.date(from: $0) } ?? Date() },
+                        set: { paidOn = ISODateText.text(from: $0) }), displayedComponents: .date)
+                }
+            }
+        } header: {
+            Text("결제")
+        } footer: {
+            VStack(alignment: .leading, spacing: Space.xs) {
+                Text(payFooter)
+                if fromReservations, !isBookingKind, payState != .reserved {
+                    Text("결제 예정이 아니면 이 항목은 예약 목록이 아니라 비용 화면에 보여요.")
+                        .foregroundStyle(Ink.warning)
+                }
             }
         }
     }

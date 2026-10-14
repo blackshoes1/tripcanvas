@@ -104,6 +104,9 @@ struct TripCostsView: View {
                         .accessibilityElement(children: .combine)
                     }
                 }
+                if canEdit {
+                    Section { Button(snapshot?.document.budgetAmount == nil ? "예산 정하기" : "예산 고치기", action: openBudget).frame(minHeight: 44) }
+                }
                 switch ledger {
                 case .prep: prepSections
                 case .onSite: onSiteSections

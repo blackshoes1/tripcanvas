@@ -109,4 +109,17 @@ final class IOSReviewRegressionTests: XCTestCase {
         XCTAssertTrue(filtered.contains { $0.line.state == "PARTIAL" })
         XCTAssertFalse(filtered.contains { $0.line.state == "FREE" })
     }
+
+    func testOwnSaveInvalidationDoesNotMarkTheJustSavedDocumentStale() async throws {
+        let (document, costs) = try fixture()
+        let (_, updated) = try fixture(2)
+        let source = FakeDocumentService(snapshot: .init(document: document, revision: 1, role: .owner))
+        let memory = TripCostsMemory(); memory.remember(snapshot: source.snapshot, response: costs)
+        let model = TripCostsViewModel(tripId: "t1", documents: source, memory: memory) { updated }
+        let saved = await model.save(expected: 1) { $0.name = "내 변경" }
+        XCTAssertTrue(saved)
+        memory.invalidate(revision: 2)
+        await model.invalidate(editing: false)
+        XCTAssertFalse(model.needsReload); XCTAssertTrue(model.canEdit)
+    }
 }

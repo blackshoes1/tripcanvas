@@ -66,6 +66,7 @@ final class TripCostsViewModel {
         guard loaded, request == generation, memoryGeneration == memory?.generation, !Task.isCancelled,
               store.loadErrorMessage == nil else { return }
         needsReload = false
+        store.dismissSaveError()
         await refreshCosts()
     }
 
@@ -84,7 +85,8 @@ final class TripCostsViewModel {
             response = result; calculationError = nil
             memory?.remember(snapshot: snapshot, response: result)
         } catch {
-            guard request == costGeneration, revision == store.revision, !Task.isCancelled else { return }
+            guard request == costGeneration, revision == store.revision, memoryGeneration == memory?.generation,
+                  !needsReload, !Task.isCancelled else { return }
             response = nil
             calculationError = "합계를 계산하지 못했어요. 저장된 내용은 유지돼요. 다시 불러와 주세요."
         }

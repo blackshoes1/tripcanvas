@@ -6,10 +6,12 @@ struct CostOverviewSummary: View {
     var onReviewUnknown: (() -> Void)? = nil
     var onEditBudget: (() -> Void)? = nil
     @State private var expanded = false
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.m) {
-            Text("여행 전체 예상 비용").font(.subheadline).foregroundStyle(Ink.soft)
+            Text(typeSize.isAccessibilitySize ? "전체 예상 비용" : "여행 전체 예상 비용")
+                .font(.subheadline).foregroundStyle(Ink.soft)
             Text(TimeFormat.money(response.totalKRW, currency: "KRW"))
                 .font(Typeface.editorial(.title)).monospacedDigit()
                 .fixedSize(horizontal: false, vertical: true)
@@ -19,16 +21,18 @@ struct CostOverviewSummary: View {
                 Text(line.title).font(.subheadline.weight(.semibold))
                     .foregroundStyle(line.over ? Ink.danger : Ink.ink)
                 if incomplete {
-                    Text("확인된 금액 기준 · 미정 비용 제외")
+                    Text(typeSize.isAccessibilitySize ? "미정 비용 제외" : "확인된 금액 기준 · 미정 비용 제외")
                         .font(.caption).foregroundStyle(Ink.warning)
+                        .accessibilityLabel("확인된 금액 기준이에요. 미정 비용은 제외돼 있어요.")
                 }
             }
             if let overview = response.overview, overview.unknownCount > 0 {
                 if let onReviewUnknown {
                     Button(action: onReviewUnknown) {
-                        Label("미정·일부 금액 \(overview.unknownCount)건 확인", systemImage: "exclamationmark.circle")
+                        Label(typeSize.isAccessibilitySize ? "미정·일부 \(overview.unknownCount)건" : "미정·일부 금액 \(overview.unknownCount)건 확인", systemImage: "exclamationmark.circle")
                             .font(.subheadline).frame(minHeight: 44)
                     }.accessibilityIdentifier("reviewUnknownCosts")
+                        .accessibilityLabel("미정·일부 금액 \(overview.unknownCount)건 확인")
                 } else {
                     Text("미정·일부 금액 \(overview.unknownCount)건").font(.caption).foregroundStyle(Ink.warning)
                 }
