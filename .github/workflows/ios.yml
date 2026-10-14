@@ -67,12 +67,22 @@ jobs:
             -resultBundlePath ../ios-review-results.xcresult \
             $NOSIGN
 
+      - name: Export iOS screenshots
+        if: always()
+        continue-on-error: true
+        run: |
+          if [ -d ios-review-results.xcresult ]; then
+            xcrun xcresulttool export attachments --path ios-review-results.xcresult --output-path ios-review-screens
+          fi
+
       - name: Preserve iOS test evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ios-test-results
-          path: ios-review-results.xcresult
+          path: |
+            ios-review-results.xcresult
+            ios-review-screens
           if-no-files-found: ignore
 
       # Debug에서만 되는 상태로 두지 않는다(§40) — Release에서만 켜지는 최적화·경고가 있다.

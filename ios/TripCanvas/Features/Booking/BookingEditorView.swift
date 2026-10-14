@@ -152,151 +152,177 @@ struct BookingEditorView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            PaperForm {
-                recoverySection
+        NavigationStack { presentedForm }
+    }
 
-                if let error = saving.error {
-                    Section {
-                        Text(error).foregroundStyle(Ink.danger)
-                        ShareLink("입력 복사·공유", item: "\(draft.title)\n\(draft.provider)\n\(priceText) \(currency.rawValue)\n\(draft.start ?? "미정") ~ \(draft.end ?? "미정")\n\(urlText)")
-                    }
-                }
-                identitySection
+    // 각 단계는 별도의 View 타입으로 검사한다. 예약 종류·초안·저장 상태를 한 식에 연결하면
+    // SwiftUI의 제네릭 조합이 커져 Xcode가 폼의 타입을 추론하지 못한다.
+    private var editorForm: some View {
+        PaperForm {
+            recoverySection
+            saveErrorSection
+            identitySection
+            itinerarySections
+            amountSection
+            paymentSection
+            conditionsSections
+            photosSection
+            deletionSections
+        }
+    }
 
-                if isBookingKind {
-                    // 항공은 기간 대신 구간이다 — 편명·공항·시각이 여기 산다(2026-10-04, 웹과 같다). 기간은 구간의 날짜가 정한다
-                    if kind == .flight {
-                        flightSection
-                    } else {
-                        Section("기간") {
-                            DateField(title: draft.type.startLabel, text: $draft.start) { Date() }
-                            DateField(title: draft.type.endLabel, text: $draft.end) {
-                                ISODateText.date(from: draft.start).flatMap { ISODateText.calendar.date(byAdding: .day, value: 1, to: $0) } ?? Date()
-                            }
-                        }
-                    }
-
-                    Section("링크") {
-                        TextField("예약 페이지 https://…", text: $urlText)
-                            .keyboardType(.URL)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                    }
-                }
-
-                if !isBookingKind {
-                    scheduleSection
-                }
-
-                amountSection
-
-                paymentSection
-
-                if kind == .stay { hotelSection }
-                if kind == .rent { carSection }
-
-                if isBookingKind {
-                    Section {
-                        DisclosureGroup {
-                            // 세 갈래다 — 고르지 않은 예약을 '불가'로 단정하지 않는다(웹 편집기와 같은 칸)
-                            Picker("무료 취소", selection: $draft.refundable) {
-                                Text("모름").tag(Bool?.none)
-                                Text("가능").tag(Bool?.some(true))
-                                Text("불가").tag(Bool?.some(false))
-                            }
-                            if draft.refundable == true {
-                                DateField(title: "무료 취소 기한", text: $draft.freeCancelUntil) { Date() }
-                            }
-                            TextField("취소 수수료", text: $feeText)
-                                .keyboardType(.decimalPad)
-                        } label: {
-                            Self.groupLabel("취소 조건", cancelSummary)
-                        }
-                    } header: {
-                        Text("취소 조건")
-                    } footer: {
-                        Text("절약액은 취소 수수료를 뺀 실질 금액으로 계산해요.")
-                    }
-                }
-
-                Section {
-                    CostPhotosField(refs: $photos)
-                } header: { Text("영수증·품목 사진") } footer: {
-                    Text("무엇에 썼는지 기억하려고 붙여요. 사진 자체는 올리지 않고 이 기기 사진 보관함의 위치만 기억해요 — 일행에게는 보이지 않아요.")
-                }
-
-                if target.booking != nil {
-                    Section {
-                        Button("이 예약 삭제", role: .destructive) { showsDeleteConfirm = true }
-                    } footer: {
-                        // 예전 문구 "추적만 그만둡니다"는 거짓이었다 — 실제로는 예약 기록이 통째로 지워진다.
-                        Text("예약번호·기간·금액과 일정 연결이 이 여행에서 지워져요. 실제 예약은 취소되지 않아요. 가격 추적만 끄려면 위의 가격 추적을 끄세요.")
-                    }
-                }
-                if target.item != nil {
-                    Section {
-                        Button("이 항목 지우기", role: .destructive) { showsDeleteConfirm = true }
-                    }
-                }
-            }
+    private var trackedForm: some View {
+        editorForm
             .disabled(saving.isWorking)
             .onAppear {
                 if initialDraft == nil {
                     initialDraft = draft; initialLinks = links; initialTexts = textInputs
                     recovery = EditorDraftStore.shared.load(BookingInputDraft.self, key: draftKey)
                 }
-            }
-            .onChange(of: draft) { _, _ in preserveInput() }
-            .onChange(of: links) { _, _ in preserveInput() }
-            .onChange(of: textInputs) { _, _ in preserveInput() }
+    }
+    .onChange(of: draft) { _, _ in preserveInput() }
+    .onChange(of: links) { _, _ in preserveInput() }
+    .onChange(of: textInputs) { _, _ in preserveInput() }
+    }
+
+    private var navigableForm: some View {
+        trackedForm
             .interactiveDismissDisabled(isDirty || saving.isWorking)
             .confirmationDialog("입력한 내용을 버릴까요?", isPresented: $showsDiscardConfirm, titleVisibility: .visible) {
                 Button("내용 버리기", role: .destructive) { EditorDraftStore.shared.remove(draftKey); dismiss() }
                 Button("계속 편집", role: .cancel) { }
-            }
-            .navigationTitle(isNew ? (bookingOnly ? "예약 추가" : "결제 항목 추가") : (isBookingKind ? "예약" : "결제 항목"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) { Button("취소") { if isDirty { showsDiscardConfirm = true } else { dismiss() } }.disabled(saving.isWorking) }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button(saving.isWorking ? "저장 중…" : "완료") { Task { await save() } }
-                        .disabled(saving.isWorking || draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || recovery != nil)
-                        .accessibilityIdentifier("bookingEntrySave")
-                }
-            }
-            .onChange(of: links.stay) { _, ref in prefill(from: ref) }
-            .onChange(of: kind) { _, kind in
-                // 예약 분류로 오면 예약 종류가 따라오고, 예약에는 미구분이 없다(잡아 둔 돈).
-                if let type = kind.bookingType { draft.type = type; if payState == .none { payState = .reserved } }
-            }
+    }
+    .navigationTitle(isNew ? (bookingOnly ? "예약 추가" : "결제 항목 추가") : (isBookingKind ? "예약" : "결제 항목"))
+    .navigationBarTitleDisplayMode(.inline)
+    .toolbar {
+        ToolbarItem(placement: .topBarLeading) { Button("취소") { if isDirty { showsDiscardConfirm = true } else { dismiss() } }.disabled(saving.isWorking) }
+        ToolbarItem(placement: .topBarTrailing) {
+            Button(saving.isWorking ? "저장 중…" : "완료") { Task { await save() } }
+                .disabled(saving.isWorking || draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || recovery != nil)
+                .accessibilityIdentifier("bookingEntrySave")
+        }
+    }
+    .onChange(of: links.stay) { _, ref in prefill(from: ref) }
+    .onChange(of: kind) { _, kind in
+        // 예약 분류로 오면 예약 종류가 따라오고, 예약에는 미구분이 없다(잡아 둔 돈).
+        if let type = kind.bookingType { draft.type = type; if payState == .none { payState = .reserved } }
+    }
+    }
+
+    private var presentedForm: some View {
+        navigableForm
             .alert("저장할 수 없어요", isPresented: problemBinding, presenting: problem) { _ in
                 Button("확인") { problem = nil }
             } message: { problem in
                 Text(problem.message)
+    }
+    .sheet(isPresented: Binding(get: { showsDeleteConfirm && onDeleteCost != nil }, set: { showsDeleteConfirm = $0 })) {
+        CostDeleteSheet(title: draft.title, allowsSource: target.booking != nil) { includingSource in
+            let saved: Bool
+            if let booking = target.booking, let onDeleteCost {
+                saved = await saving.perform { await onDeleteCost(booking.id, includingSource) }
+            } else if let item = target.item {
+                saved = await saving.perform { await onDeleteItem(item.id) }
+            } else { return false }
+            if saved { EditorDraftStore.shared.remove(draftKey); dismiss() }
+            return saved
+        }
+    }
+    .confirmationDialog(target.item != nil ? "이 항목을 지울까요?" : "이 예약을 이 여행에서 지울까요?", isPresented: Binding(get: { showsDeleteConfirm && onDeleteCost == nil }, set: { showsDeleteConfirm = $0 }), titleVisibility: .visible) {
+        Button("삭제", role: .destructive) {
+            if let booking = target.booking {
+                Task { if await saving.perform({ await onDelete(booking.id) }) { EditorDraftStore.shared.remove(draftKey); dismiss() } }
+            } else if let item = target.item {
+                Task { if await saving.perform({ await onDeleteItem(item.id) }) { EditorDraftStore.shared.remove(draftKey); dismiss() } }
             }
-            .sheet(isPresented: Binding(get: { showsDeleteConfirm && onDeleteCost != nil }, set: { showsDeleteConfirm = $0 })) {
-                CostDeleteSheet(title: draft.title, allowsSource: target.booking != nil) { includingSource in
-                    let saved: Bool
-                    if let booking = target.booking, let onDeleteCost {
-                        saved = await saving.perform { await onDeleteCost(booking.id, includingSource) }
-                    } else if let item = target.item {
-                        saved = await saving.perform { await onDeleteItem(item.id) }
-                    } else { return false }
-                    if saved { EditorDraftStore.shared.remove(draftKey); dismiss() }
-                    return saved
-                }
+        }
+    } message: {
+        if target.item == nil { Text("예약번호·기간·금액과 일정 연결이 모든 일행에게서 사라져요. 실제 예약은 취소되지 않아요.") }
+    }
+    }
+
+    @ViewBuilder private var saveErrorSection: some View {
+        if let error = saving.error {
+            Section {
+                Text(error).foregroundStyle(Ink.danger)
+                ShareLink("입력 복사·공유", item: "\(draft.title)\n\(draft.provider)\n\(priceText) \(currency.rawValue)\n\(draft.start ?? "미정") ~ \(draft.end ?? "미정")\n\(urlText)")
             }
-            .confirmationDialog(target.item != nil ? "이 항목을 지울까요?" : "이 예약을 이 여행에서 지울까요?", isPresented: Binding(get: { showsDeleteConfirm && onDeleteCost == nil }, set: { showsDeleteConfirm = $0 }), titleVisibility: .visible) {
-                Button("삭제", role: .destructive) {
-                    if let booking = target.booking {
-                        Task { if await saving.perform({ await onDelete(booking.id) }) { EditorDraftStore.shared.remove(draftKey); dismiss() } }
-                    } else if let item = target.item {
-                        Task { if await saving.perform({ await onDeleteItem(item.id) }) { EditorDraftStore.shared.remove(draftKey); dismiss() } }
+        }
+    }
+
+    @ViewBuilder private var itinerarySections: some View {
+        if isBookingKind {
+            // 항공은 기간 대신 구간이다 — 편명·공항·시각이 여기 산다(2026-10-04, 웹과 같다). 기간은 구간의 날짜가 정한다
+            if kind == .flight {
+                flightSection
+            } else {
+                Section("기간") {
+                    DateField(title: draft.type.startLabel, text: $draft.start) { Date() }
+                    DateField(title: draft.type.endLabel, text: $draft.end) {
+                        ISODateText.date(from: draft.start).flatMap { ISODateText.calendar.date(byAdding: .day, value: 1, to: $0) } ?? Date()
                     }
                 }
-            } message: {
-                if target.item == nil { Text("예약번호·기간·금액과 일정 연결이 모든 일행에게서 사라져요. 실제 예약은 취소되지 않아요.") }
+            }
+
+            Section("링크") {
+                TextField("예약 페이지 https://…", text: $urlText)
+                    .keyboardType(.URL)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+            }
+        }
+        if !isBookingKind { scheduleSection }
+    }
+
+    @ViewBuilder private var conditionsSections: some View {
+        if kind == .stay { hotelSection }
+        if kind == .rent { carSection }
+
+        if isBookingKind {
+            Section {
+                DisclosureGroup {
+                    // 세 갈래다 — 고르지 않은 예약을 '불가'로 단정하지 않는다(웹 편집기와 같은 칸)
+                    Picker("무료 취소", selection: $draft.refundable) {
+                        Text("모름").tag(Bool?.none)
+                        Text("가능").tag(Bool?.some(true))
+                        Text("불가").tag(Bool?.some(false))
+                    }
+                    if draft.refundable == true {
+                        DateField(title: "무료 취소 기한", text: $draft.freeCancelUntil) { Date() }
+                    }
+                    TextField("취소 수수료", text: $feeText)
+                        .keyboardType(.decimalPad)
+                } label: {
+                    Self.groupLabel("취소 조건", cancelSummary)
+                }
+            } header: {
+                Text("취소 조건")
+            } footer: {
+                Text("절약액은 취소 수수료를 뺀 실질 금액으로 계산해요.")
+            }
+        }
+    }
+
+    private var photosSection: some View {
+        Section {
+            CostPhotosField(refs: $photos)
+        } header: { Text("영수증·품목 사진") } footer: {
+            Text("무엇에 썼는지 기억하려고 붙여요. 사진 자체는 올리지 않고 이 기기 사진 보관함의 위치만 기억해요 — 일행에게는 보이지 않아요.")
+        }
+    }
+
+    @ViewBuilder private var deletionSections: some View {
+        if target.booking != nil {
+            Section {
+                Button("이 예약 삭제", role: .destructive) { showsDeleteConfirm = true }
+            } footer: {
+                // 예전 문구 "추적만 그만둡니다"는 거짓이었다 — 실제로는 예약 기록이 통째로 지워진다.
+                Text("예약번호·기간·금액과 일정 연결이 이 여행에서 지워져요. 실제 예약은 취소되지 않아요. 가격 추적만 끄려면 위의 가격 추적을 끄세요.")
+            }
+        }
+        if target.item != nil {
+            Section {
+                Button("이 항목 지우기", role: .destructive) { showsDeleteConfirm = true }
             }
         }
     }
