@@ -88,7 +88,7 @@ struct PasteItineraryView: View {
                         }
                     }.padding()
                 }
-                if form.draft == nil { input } else { preview }
+                if form.draft == nil { input.disabled(isBusy) } else { preview.disabled(isBusy) }
             }
             .paperGround()
             .navigationTitle(form.draft == nil ? "일정 붙여넣기" : "이렇게 읽었어요")
@@ -298,6 +298,7 @@ struct PasteItineraryView: View {
     // MARK: 동작
 
     private func parse() async {
+        guard !isBusy else { return }
         isBusy = true
         errorMessage = nil
         do {
@@ -356,7 +357,7 @@ struct PasteItineraryView: View {
     }
 
     private func create() async {
-        guard let draft = form.draft else { return }
+        guard !isBusy, let draft = form.draft else { return }
         isBusy = true
         errorMessage = nil
         do {
