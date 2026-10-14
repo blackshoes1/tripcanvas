@@ -109,7 +109,7 @@ struct QuickSpendEditor: View {
             }
             .tint(Ink.accent)
             .sheet(item: $detail) { target in
-                CostEntryEditor(target: target) { entry in
+                CostEntryEditor(target: target, draftKey: draftKey?.appending("detail")) { entry in
                     guard let entry, await onSave(entry) else { return false }
                     EditorDraftStore.shared.remove(draftKey)
                     dismiss()
@@ -221,7 +221,7 @@ struct SpendEntryFlow: View {
             .navigationTitle("어디에 쓴 비용인가요?")
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("취소") { dismiss() } } }
             .sheet(item: $target) { target in
-                CostEntryEditor(target: target) { entry in
+                CostEntryEditor(target: target, draftKey: draftKey?.appending(target.storageID)) { entry in
                     guard case .spot(let index) = target.kind, let entry else { return false }
                     var updated = day
                     var spots = updated.spots

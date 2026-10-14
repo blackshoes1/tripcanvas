@@ -397,13 +397,13 @@ struct CarClassOption: Identifiable, Hashable, Sendable {
 // MARK: - 문서 안의 예약 (순수 · 테스트 대상)
 
 /// 일정 안의 장소 하나를 가리키는 자리. 장소에는 안정적인 id가 없어 (일자, 순서)로 짚는다.
-struct SpotRef: Hashable, Sendable {
+struct SpotRef: Codable, Hashable, Sendable {
     let day: Int
     let index: Int
 }
 
 /// 예약을 일정의 장소와 잇는 연결. 숙박은 숙소 한 곳, 렌터카는 픽업·반납 지점.
-struct BookingLinks: Hashable, Sendable {
+struct BookingLinks: Codable, Hashable, Sendable {
     var stay: SpotRef?
     var carPickup: SpotRef?
     var carReturn: SpotRef?

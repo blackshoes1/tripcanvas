@@ -76,6 +76,9 @@ struct SpotEditorView: View {
     @State private var checkedRecovery = false
     @State private var showsPreviousInput = false
     @State private var editingCost: CostEditTarget?
+    @State private var replacement: PlaceHit?
+    @State private var showsReplacementConfirmation = false
+    private var effectiveBooking: TripBooking? { draft.bookingId == linkedBooking?.id ? linkedBooking : nil }
     private var isDirty: Bool {
         draft != target.spot || costText != MoneyInput.text(amount: target.spot.cost)
     }
@@ -282,10 +285,20 @@ struct SpotEditorView: View {
                         .disabled(saving.isWorking || draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
-            .sheet(isPresented: $showsPlaceSearch) {
+            .sheet(isPresented: $showsPlaceSearch, onDismiss: { showsReplacementConfirmation = replacement != nil }) {
                 PlaceSearchView(near: draft.point) { hit in
-                    draft = Self.replacing(draft, with: hit)
+                    if Self.needsReplacementConfirmation(draft, with: hit) { replacement = hit }
+                    else { applyReplacement(hit) }
+                    return nil
                 }
+            }
+            .confirmationDialog("다른 장소로 바꿀까요?", isPresented: $showsReplacementConfirmation, titleVisibility: .visible) {
+                if let hit = replacement {
+                    Button("연결 정보 해제하고 장소 바꾸기") { applyReplacement(hit); replacement = nil }
+                }
+                Button("기존 장소 유지", role: .cancel) { replacement = nil }
+            } message: {
+                Text("기존 장소의 예약 연결·입장 정보·숙소 표시·비용을 새 장소에 적용하지 않아요. 시간과 메모는 유지하고 예약 원본은 남겨요.")
             }
             .sheet(isPresented: $showsMapPicker) {
                 // ⑥과 같은 위치 고르기 — 이름·주소로 찾거나 지도를 탭한다. 있는 이름은 덮지 않는다(`LocationChoice.applied`).
@@ -310,9 +323,26 @@ struct SpotEditorView: View {
         } else { EditorDraftStore.shared.remove(draftKey) }
     }
 
-    /// 검색 결과로 장소 자체를 바꾸되, 일정에 이미 입력한 시간·비용·메모·예약 연결은 보존한다.
+    private func applyReplacement(_ hit: PlaceHit) {
+        draft = Self.replacing(draft, with: hit)
+        costText = MoneyInput.text(amount: draft.cost)
+    }
+
+    static func samePlace(_ original: TripSpot, _ hit: PlaceHit) -> Bool {
+        if let id = original.placeId, let next = hit.placeId { return id == next }
+        if let id = original.kakaoId, hit.provider == "kakao", let next = hit.providerId { return id == next }
+        return false
+    }
+
+    static let placeDependentKeys = CostEntry.spotCostKeys + ["bookingId", "carPickupId", "carReturnId", "stay", "nights", "admission", "bookAt", "bookUrl", "bookN", "bookMemo"]
+    static func needsReplacementConfirmation(_ original: TripSpot, with hit: PlaceHit) -> Bool {
+        !samePlace(original, hit) && placeDependentKeys.contains { original.raw[$0] != nil }
+    }
+
+    /// 시간·메모는 일정에 속하고, 예약·비용은 장소에 속한다.
     static func replacing(_ original: TripSpot, with hit: PlaceHit) -> TripSpot {
         var next = original
+        if !samePlace(original, hit) { for key in placeDependentKeys { next.setField(key, nil) } }
         if !hit.name.isEmpty { next.name = hit.name }
         if !hit.city.isEmpty { next.city = hit.city }
         next.point = hit.point
@@ -412,7 +442,7 @@ struct SpotEditorView: View {
     private var costRow: some View {
         // 비용은 요약 한 줄 — 누르면 하루 비용 화면과 같은 편집기가 열리고, 고친 값은 장소를 저장할 때 들어간다(2026-10-04).
         // 전에는 여기(금액·통화)와 하루 비용 화면(전체 칸)이 같은 spot.cost를 다른 칸으로 받았다.
-        if let booking = linkedBooking {
+        if let booking = effectiveBooking {
             VStack(alignment: .leading, spacing: Space.xs) {
                 Text(Self.bookingAmountLine(booking))
                 Text("숙박 예약과 연결된 숙소는 예약의 금액·기간을 써요. 예약 화면에서 고쳐요.")
@@ -431,7 +461,7 @@ struct SpotEditorView: View {
             }
             .buttonStyle(.plain)
             .sheet(item: $editingCost) { target in
-                CostEntryEditor(target: target, onDelete: clearCost, onSave: applyCostEdit)
+                CostEntryEditor(target: target, draftKey: draftKey?.appending("cost"), onDelete: clearCost, onSave: applyCostEdit)
             }
         }
     }
@@ -468,7 +498,7 @@ struct SpotEditorView: View {
 
     /// 연결된 숙박 예약의 기간(박) — 기간을 모르면 nil(그때는 장소의 박 수를 고친다)
     private var bookingNights: Int? {
-        guard let booking = linkedBooking, let start = booking.start, let end = booking.end,
+        guard let booking = effectiveBooking, let start = booking.start, let end = booking.end,
               let a = ISODateText.date(from: start), let b = ISODateText.date(from: end) else { return nil }
         let nights = Calendar(identifier: .gregorian).dateComponents([.day], from: a, to: b).day ?? 0
         return nights > 0 ? nights : nil

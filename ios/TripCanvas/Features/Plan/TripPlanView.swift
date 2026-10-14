@@ -125,14 +125,13 @@ struct TripPlanView: View {
             // 근처 우선의 기준은 그날 마지막 좌표 — 웹이 앵커로 검색하는 것과 같다.
             // ④ 상세에서 '이 장소 일정에 추가'를 누르면 **바로 담긴다** — 고른 곳을 보고 누른 것이 확인이다.
             //    고칠 것은 담은 뒤 그 장소를 눌러 고친다. 실수면 토스트의 '되돌리기'.
-            PlaceSearchView(near: model.day?.pins.last?.point, addTitle: "이 장소 일정에 추가",
+            PlaceSearchView(near: searchAnchor, timeZone: searchTimeZone, addTitle: "이 장소 일정에 추가",
                             onManual: { name in manualFromSearch = name }) { hit in
                 let session = searchSession ?? (model.selectedDay, model.revision)
                 let after = insertionAfter
-                Task {
-                    await model.addSpot(hit.makeSpot(), after: after, dayIndex: session.day, expectedRevision: session.revision,
-                                        toast: "‘\(hit.name)’을(를) Day \(session.day + 1)에 추가했어요")
-                }
+                let saved = await model.addSpot(hit.makeSpot(), after: after, dayIndex: session.day, expectedRevision: session.revision,
+                                                toast: "‘\(hit.name)’을(를) Day \(session.day + 1)에 추가했어요")
+                return saved ? nil : model.saveFailureMessage
             }
         }
         .sheet(item: $quickCreate) { session in
@@ -201,6 +200,7 @@ struct TripPlanView: View {
             if let document = model.document, document.hasDay(costDay) {
                 DayCostView(day: document.days[costDay], cost: model.overviewPlan(costDay)?.day.totals.cost, canEdit: model.canEdit,
                             draftKey: EditorDraftKey(accountID: env.auth.session?.userId, tripID: trip.id, editor: "spend-\(costDay)"),
+                            originalRevision: costRevision, failureMessage: { model.saveFailureMessage },
                             onRefresh: { await model.load() },
                             onDeleteSpot: { index, includingSource in
                                 guard var draft = model.document, model.revision == costRevision else { return nil }
@@ -351,12 +351,28 @@ struct TripPlanView: View {
     }
 
     private func conflictBinding(_ model: TripPlanViewModel) -> Binding<Bool> {
-        Binding(get: { model.conflict != nil && editor == nil }, set: { if !$0 { model.dismissConflict() } })
+        Binding(get: { model.conflict != nil && editor == nil && !showsSearch && quickCreate == nil && !showsCosts && !showsSettings && moveTarget == nil }, set: { if !$0 { model.dismissConflict() } })
     }
 
     private func openSearch() {
         searchSession = (model.selectedDay, model.revision)
         showsSearch = true
+    }
+
+    private var searchAnchor: GeoPoint? {
+        guard let document = model.document else { return nil }
+        let ordered = document.days.indices.sorted { abs($0 - model.selectedDay) < abs($1 - model.selectedDay) }
+        let dayZone = model.day?.raw["timeZone"]?.stringValue.flatMap { TimeZone(identifier: $0) == nil ? nil : $0 }
+        return ordered.lazy.flatMap { document.days[$0].spots.reversed() }
+            .first { spot in
+                guard spot.category != .transport, let point = spot.point else { return false }
+                return dayZone.map { ($0 == "Asia/Seoul") == MapRegion.isKorea(point) } ?? true
+            }?.point
+    }
+
+    private var searchTimeZone: String? {
+        [model.day?.raw["timeZone"]?.stringValue, model.document?.timeZone, trip.timeZone]
+            .compactMap { $0 }.first { !$0.isEmpty && TimeZone(identifier: $0) != nil }
     }
 
     private func openQuickCreate(name: String = "") {

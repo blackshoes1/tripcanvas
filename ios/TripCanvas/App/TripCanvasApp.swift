@@ -18,12 +18,21 @@ struct TripCanvasApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView()
+            appContent
                 .environment(environment)
                 .onOpenURL { url in
                     if !GIDSignIn.sharedInstance.handle(url) { environment.router.open(url: url) }
                 }
         }
+    }
+
+    @ViewBuilder private var appContent: some View {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--ios-review-ui") { IOSReviewHarness() }
+        else { RootView() }
+        #else
+        RootView()
+        #endif
     }
 }
 

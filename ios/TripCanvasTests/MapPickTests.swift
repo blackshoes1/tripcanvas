@@ -71,7 +71,34 @@ final class MapPickTests: XCTestCase {
         XCTAssertEqual(replaced.stayMinutes, 0)
         XCTAssertEqual(replaced.arriveAt, "14:00")
         XCTAssertEqual(replaced.desc, "예약 메모")
-        XCTAssertEqual(replaced.raw["bookingId"]?.stringValue, "booking-1")
+        XCTAssertNil(replaced.raw["bookingId"], "다른 장소에 이전 예약을 연결하지 않는다")
         XCTAssertEqual(replaced.raw["custom"]?.stringValue, "keep")
+    }
+
+    func testSamePlaceRefreshKeepsBookingAndCost() {
+        var original = TripSpot(name: "호텔", city: "파리")
+        original.placeId = "same-place"; original.bookingId = "booking-1"
+        original.cost = 100; original.isStay = true; original.bookedAt = "15:00"
+        let hit = PlaceHit(id: "same-place", name: "호텔 새 이름", city: "파리", address: "주소",
+                           point: GeoPoint(lat: 48.8, lng: 2.3), category: .stay, placeId: "same-place")
+        XCTAssertFalse(SpotEditorView.needsReplacementConfirmation(original, with: hit))
+        let result = SpotEditorView.replacing(original, with: hit)
+        XCTAssertEqual(result.bookingId, "booking-1"); XCTAssertEqual(result.cost, 100)
+        XCTAssertTrue(result.isStay); XCTAssertEqual(result.bookedAt, "15:00")
+    }
+
+    func testHotelToCafeClearsPlaceDependentFieldsButKeepsItinerary() {
+        var original = TripSpot(name: "호텔 A", city: "파리")
+        original.placeId = "hotel-a"; original.bookingId = "booking-1"; original.isStay = true
+        original.nights = 3; original.cost = 300; original.bookedAt = "15:00"
+        original.setField("admission", .object(["personalStatus": .string("BOOKED")]))
+        original.arriveAt = "14:00"; original.desc = "일정 메모"; original.stayMinutes = 45
+        let hit = PlaceHit(id: "cafe", name: "카페", city: "파리", address: "주소",
+                           point: GeoPoint(lat: 48.8, lng: 2.3), category: .cafe, placeId: "cafe-place")
+        XCTAssertTrue(SpotEditorView.needsReplacementConfirmation(original, with: hit))
+        let result = SpotEditorView.replacing(original, with: hit)
+        for key in SpotEditorView.placeDependentKeys { XCTAssertNil(result.raw[key], key) }
+        XCTAssertEqual(result.arriveAt, "14:00"); XCTAssertEqual(result.desc, "일정 메모")
+        XCTAssertEqual(result.stayMinutes, 45); XCTAssertEqual(result.category, .cafe)
     }
 }

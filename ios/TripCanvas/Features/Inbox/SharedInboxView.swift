@@ -151,7 +151,9 @@ private struct SharedImportView: View {
             .onChange(of: tripID) { _, id in day = 0; Task { await model.selectTrip(id) } }
             .sheet(isPresented: $showsBooking) {
                 if let document = model.snapshot?.document, let bookingSeed {
-                    BookingEditorView(target: .create, document: document, seed: bookingSeed, bookingOnly: true, onSave: { booking, links in
+                    BookingEditorView(target: .create, document: document, seed: bookingSeed, bookingOnly: true,
+                                      draftKey: EditorDraftKey(accountID: env.auth.session?.userId, tripID: tripID, editor: "booking-import-\(input.id)"),
+                                      originalRevision: model.snapshot?.revision, onSave: { booking, links in
                         var raw = booking.raw; raw["importKey"] = .string(input.id)
                         let result = await model.save { $0.upsertBooking(TripBooking(raw: raw), links: links) }
                         if result == nil { markSaved() }

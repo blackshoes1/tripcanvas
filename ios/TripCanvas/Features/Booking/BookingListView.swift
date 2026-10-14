@@ -16,6 +16,7 @@ final class BookingListViewModel {
     private(set) var loadedAt: Date?
 
     private var loadGeneration = 0
+    private(set) var invalidation = 0
     private let service: TripDataSource
     private let tripId: String
 
@@ -26,7 +27,7 @@ final class BookingListViewModel {
 
     /// 시트를 열 때 부른다 — 방금 받은 목록이 있으면 그대로다(Today·Plan과 같은 60초 규칙, 2026-09-18).
     /// 저장·삭제·당겨서 새로고침은 여전히 `load()`다.
-    func invalidate() { loadedAt = nil; bookings = []; loadGeneration += 1; isLoading = false }
+    func invalidate() { loadedAt = nil; bookings = []; loadGeneration += 1; isLoading = false; invalidation += 1 }
 
     func loadIfStale(maxAge: TimeInterval = 60, now: Date = Date()) async {
         if errorMessage == nil, cachedAt == nil, let loadedAt, now.timeIntervalSince(loadedAt) < maxAge { return }
@@ -159,6 +160,12 @@ struct BookingListView: View {
             }
         }
         .refreshable { await model?.load() }
+        .onChange(of: model?.invalidation) { _, _ in
+            if editor == nil { Task { await model?.loadIfStale() } }
+        }
+        .onChange(of: editor?.id) { _, value in
+            if value == nil { Task { await model?.loadIfStale() } }
+        }
         .task {
             if model == nil { owned = BookingListViewModel(tripId: trip.id, service: env.service) }
             await model?.loadIfStale()
@@ -171,6 +178,8 @@ struct BookingListView: View {
                     target: target,
                     document: document,
                     fromReservations: true,
+                    draftKey: EditorDraftKey(accountID: env.auth.session?.userId, tripID: trip.id, editor: "booking-\(target.id)"),
+                    originalRevision: plan.revision,
                     onSave: { booking, links in
                         let saved = await plan.saveBooking(booking, links: links)
                         if saved { await model?.load() }

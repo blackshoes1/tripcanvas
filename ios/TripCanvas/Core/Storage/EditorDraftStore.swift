@@ -12,6 +12,9 @@ struct EditorDraftKey: Hashable {
         self.tripID = tripID
         self.editor = editor
     }
+    func appending(_ suffix: String) -> EditorDraftKey? {
+        EditorDraftKey(accountID: accountID, tripID: tripID, editor: editor + "-" + suffix)
+    }
 }
 struct EditorDraftStore {
     static let shared = EditorDraftStore()
@@ -59,4 +62,29 @@ struct SpendInputDraft: Codable, Equatable {
     let kind: String
     let currency: String
     let photos: [String]
+}
+
+struct CostInputDraft: Codable, Equatable {
+    let original: [String: JSONValue]
+    let edited: [String: JSONValue]
+    let amount: String
+    let revision: Int?
+    func canRestore(over entry: CostEntry, revision: Int?) -> Bool {
+        original == entry.raw && self.revision == revision
+    }
+}
+
+struct BookingInputDraft: Codable, Equatable {
+    let original: [String: JSONValue]
+    let originalLinks: BookingLinks
+    let revision: Int?
+    let booking: [String: JSONValue]
+    let links: BookingLinks
+    let kind: String
+    let texts: [String: String]
+    let photos: [String]
+    let segments: [[String: JSONValue]]
+    func canRestore(over original: [String: JSONValue], links: BookingLinks, revision: Int?) -> Bool {
+        self.original == original && originalLinks == links && self.revision == revision
+    }
 }

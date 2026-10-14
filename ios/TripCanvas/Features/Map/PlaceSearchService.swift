@@ -8,10 +8,15 @@ import Foundation
 @MainActor
 protocol PlaceSearching {
     func search(_ query: String, near: GeoPoint?) async throws -> [PlaceHit]
+    func search(_ query: String, near: GeoPoint?, region: PlaceSearchRegion?) async throws -> [PlaceHit]
     func search(_ query: String, area: PlaceSearchArea?, category: PlaceSearchCategory?, region: PlaceSearchRegion) async throws -> [PlaceHit]
 }
 
 extension PlaceSearching {
+    func search(_ query: String, near: GeoPoint?, region: PlaceSearchRegion?) async throws -> [PlaceHit] {
+        if let region { return try await search(query, area: nil, category: nil, region: region) }
+        return try await search(query, near: near)
+    }
     func search(_ query: String, area: PlaceSearchArea?, category: PlaceSearchCategory?, region: PlaceSearchRegion) async throws -> [PlaceHit] {
         try await search(query.isEmpty ? category?.label ?? "" : query, near: area?.center)
     }
@@ -32,12 +37,26 @@ final class PlaceSearchService: PlaceSearching {
     }
 
     func search(_ query: String, near: GeoPoint?) async throws -> [PlaceHit] {
+        try await search(query, near: near, region: nil)
+    }
+
+    func search(_ query: String, near: GeoPoint?, region: PlaceSearchRegion?) async throws -> [PlaceHit] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
-        if MapRegion.isKoreanSearch(trimmed, near: near) {
-            return try await searchKorea(trimmed, near: near)
+        let korean = region.map { $0 == .korea } ?? MapRegion.isKoreanSearch(trimmed, near: near)
+        if korean {
+            let hits = try await searchKorea(trimmed, near: near.flatMap { MapRegion.isKorea($0) ? $0 : nil })
+            if region == nil, near == nil, !hits.contains(where: { Self.nameMatches($0.name, trimmed) }) {
+                return try await searchGoogle(trimmed, near: nil)
+            }
+            return hits
         }
-        return try await searchGoogle(trimmed, near: near)
+        return try await searchGoogle(trimmed, near: near.flatMap { MapRegion.isKorea($0) ? nil : $0 })
+    }
+
+    static func nameMatches(_ name: String, _ query: String) -> Bool {
+        func normalized(_ value: String) -> String { value.lowercased().filter { $0.isLetter || $0.isNumber } }
+        return normalized(name) == normalized(query)
     }
 
     func search(_ query: String, area: PlaceSearchArea?, category: PlaceSearchCategory?, region: PlaceSearchRegion) async throws -> [PlaceHit] {
@@ -91,7 +110,7 @@ final class PlaceSearchService: PlaceSearching {
             // 상세는 콘솔에만 — 키·할당량 문구를 화면에 그대로 내지 않는다(웹의 classifySearchErr와 같은 태도).
             print("[TripCanvas] google places \(http.statusCode): \(String(data: data, encoding: .utf8) ?? "")")
             let message = http.statusCode == 403 || http.statusCode == 401
-                ? "해외 장소 검색 인증에 실패했어요. 앱 키 제한을 확인해 주세요."
+                ? "해외 장소 검색에 연결하지 못했어요. 잠시 뒤 다시 시도하거나 직접 입력해 주세요."
                 : "해외 장소 검색이 지금 응답하지 않아요."
             throw APIError.server(status: http.statusCode, message: message)
         }

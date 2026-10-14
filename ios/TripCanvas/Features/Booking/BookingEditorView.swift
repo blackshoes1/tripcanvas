@@ -41,6 +41,9 @@ enum BookingEditorTarget: Identifiable {
 struct BookingEditorView: View {
     let target: BookingEditorTarget
     let document: TripDocument
+    let draftKey: EditorDraftKey?
+    let originalRevision: Int?
+    @State private var recovery: BookingInputDraft?
     /// 예약만 다루는 화면(예약 목록·가격 추적)에서는 예약 분류(항공·숙박·렌트)만 고른다.
     let bookingOnly: Bool
     /// 예약 목록에서 열었는가. 예약이 아닌 분류는 '결제 예정'일 때만 그 목록에 남으므로(`additionalReservations`)
@@ -106,6 +109,8 @@ struct BookingEditorView: View {
          seed: TripBooking? = nil,
          bookingOnly: Bool = false,
          fromReservations: Bool = false,
+         draftKey: EditorDraftKey? = nil,
+         originalRevision: Int? = nil,
          onDeleteCost: ((String, Bool) async -> String?)? = nil,
          onSave: @escaping (TripBooking, BookingLinks) async -> String?,
          onDelete: @escaping (String) async -> String?,
@@ -113,6 +118,7 @@ struct BookingEditorView: View {
          onDeleteItem: @escaping (String) async -> String? = { _ in nil }) {
         self.target = target
         self.document = document
+        self.draftKey = draftKey; self.originalRevision = originalRevision
         self.bookingOnly = bookingOnly
         self.fromReservations = fromReservations
         self.onSave = onSave
@@ -148,6 +154,18 @@ struct BookingEditorView: View {
     var body: some View {
         NavigationStack {
             PaperForm {
+                if let recovery {
+                    Section("저장하지 않은 입력이 있어요") {
+                        if recovery.canRestore(over: originalTarget, links: originalBookingLinks, revision: originalRevision) {
+                            Button("이어서 입력") { restore(recovery) }.accessibilityIdentifier("restoreBookingDraft")
+                        } else {
+                            Text("원본 예약이나 일정 연결이 바뀌었어요. 이전 입력을 확인하고 최신 항목에서 고쳐 주세요.")
+                            Text("\(recovery.booking["title"]?.stringValue ?? "") · \(recovery.texts["price"] ?? "")")
+                            ShareLink("이전 입력 복사·공유", item: "\(recovery.booking["title"]?.stringValue ?? "")\n\(recovery.texts["price"] ?? "") \(recovery.texts["currency"] ?? "")")
+                        }
+                        Button("초안 버리기", role: .destructive) { self.recovery = nil; EditorDraftStore.shared.remove(draftKey) }
+                    }
+                }
                 if let error = saving.error {
                     Section {
                         Text(error).foregroundStyle(Ink.danger)
@@ -161,7 +179,7 @@ struct BookingEditorView: View {
                         }
                     }
                     .pickerStyle(.menu)
-                    TextField(titlePlaceholder, text: $draft.title)
+                    TextField(titlePlaceholder, text: $draft.title).accessibilityIdentifier("bookingEntryTitle")
                     if isBookingKind {
                         TextField("예약처 (예: Booking.com)", text: $draft.provider)
                         TextField("예약번호", text: Binding(
@@ -206,6 +224,7 @@ struct BookingEditorView: View {
                 Section {
                     HStack {
                         TextField(isBookingKind ? "총액" : "금액", text: $priceText)
+                            .accessibilityIdentifier("bookingEntryAmount")
                             .keyboardType(.decimalPad)
                         Picker("통화", selection: $currency) {
                             ForEach(Currency.allCases, id: \.self) { currency in
@@ -305,11 +324,17 @@ struct BookingEditorView: View {
             }
             .disabled(saving.isWorking)
             .onAppear {
-                if initialDraft == nil { initialDraft = draft; initialLinks = links; initialTexts = textInputs }
+                if initialDraft == nil {
+                    initialDraft = draft; initialLinks = links; initialTexts = textInputs
+                    recovery = EditorDraftStore.shared.load(BookingInputDraft.self, key: draftKey)
+                }
             }
+            .onChange(of: draft) { _, _ in preserveInput() }
+            .onChange(of: links) { _, _ in preserveInput() }
+            .onChange(of: textInputs) { _, _ in preserveInput() }
             .interactiveDismissDisabled(isDirty || saving.isWorking)
             .confirmationDialog("입력한 내용을 버릴까요?", isPresented: $showsDiscardConfirm, titleVisibility: .visible) {
-                Button("내용 버리기", role: .destructive) { dismiss() }
+                Button("내용 버리기", role: .destructive) { EditorDraftStore.shared.remove(draftKey); dismiss() }
                 Button("계속 편집", role: .cancel) { }
             }
             .navigationTitle(isNew ? (bookingOnly ? "예약 추가" : "결제 항목 추가") : (isBookingKind ? "예약" : "결제 항목"))
@@ -318,7 +343,8 @@ struct BookingEditorView: View {
                 ToolbarItem(placement: .topBarLeading) { Button("취소") { if isDirty { showsDiscardConfirm = true } else { dismiss() } }.disabled(saving.isWorking) }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(saving.isWorking ? "저장 중…" : "완료") { Task { await save() } }
-                        .disabled(saving.isWorking || draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .disabled(saving.isWorking || draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || recovery != nil)
+                        .accessibilityIdentifier("bookingEntrySave")
                 }
             }
             .onChange(of: links.stay) { _, ref in prefill(from: ref) }
@@ -339,16 +365,16 @@ struct BookingEditorView: View {
                     } else if let item = target.item {
                         saved = await saving.perform { await onDeleteItem(item.id) }
                     } else { return false }
-                    if saved { dismiss() }
+                    if saved { EditorDraftStore.shared.remove(draftKey); dismiss() }
                     return saved
                 }
             }
             .confirmationDialog(target.item != nil ? "이 항목을 지울까요?" : "이 예약을 이 여행에서 지울까요?", isPresented: Binding(get: { showsDeleteConfirm && onDeleteCost == nil }, set: { showsDeleteConfirm = $0 }), titleVisibility: .visible) {
                 Button("삭제", role: .destructive) {
                     if let booking = target.booking {
-                        Task { if await saving.perform({ await onDelete(booking.id) }) { dismiss() } }
+                        Task { if await saving.perform({ await onDelete(booking.id) }) { EditorDraftStore.shared.remove(draftKey); dismiss() } }
                     } else if let item = target.item {
-                        Task { if await saving.perform({ await onDeleteItem(item.id) }) { dismiss() } }
+                        Task { if await saving.perform({ await onDeleteItem(item.id) }) { EditorDraftStore.shared.remove(draftKey); dismiss() } }
                     }
                 }
             } message: {
@@ -592,6 +618,36 @@ struct BookingEditorView: View {
         if priceText.isEmpty, let cost = spot.cost, cost > 0 { priceText = MoneyInput.text(amount: cost) }
     }
 
+    private var originalTarget: [String: JSONValue] { target.booking?.raw ?? target.item?.raw ?? [:] }
+    private var originalBookingLinks: BookingLinks { target.booking.map { document.links(forBooking: $0.id) } ?? .empty }
+    private var inputDraft: BookingInputDraft {
+        BookingInputDraft(original: originalTarget, originalLinks: originalBookingLinks, revision: originalRevision,
+            booking: draft.raw, links: links, kind: kind.rawValue,
+            texts: ["price": priceText, "fee": feeText, "url": urlText, "room": roomNameText,
+                    "pickupPlace": pickupPlace, "pickupCode": pickupCode, "returnPlace": returnPlace, "returnCode": returnCode,
+                    "currency": currency.rawValue, "paidOn": paidOn ?? "", "scheduledOn": scheduledOn ?? "", "payState": payState.rawValue],
+            photos: photos, segments: segmentsDraft.map(\.raw))
+    }
+    private func preserveInput() {
+        guard initialDraft != nil, recovery == nil else { return }
+        if isDirty { EditorDraftStore.shared.save(inputDraft, key: draftKey) }
+        else { EditorDraftStore.shared.remove(draftKey) }
+    }
+    private func restore(_ value: BookingInputDraft) {
+        recovery = nil
+        draft = TripBooking(raw: value.booking); links = value.links
+        kind = CostCategory(rawValue: value.kind) ?? kind
+        priceText = value.texts["price"] ?? ""; feeText = value.texts["fee"] ?? ""
+        urlText = value.texts["url"] ?? ""; roomNameText = value.texts["room"] ?? ""
+        pickupPlace = value.texts["pickupPlace"] ?? ""; pickupCode = value.texts["pickupCode"] ?? ""
+        returnPlace = value.texts["returnPlace"] ?? ""; returnCode = value.texts["returnCode"] ?? ""
+        currency = Currency(rawValue: value.texts["currency"] ?? "") ?? .krw
+        paidOn = value.texts["paidOn"].flatMap { $0.isEmpty ? nil : $0 }
+        scheduledOn = value.texts["scheduledOn"].flatMap { $0.isEmpty ? nil : $0 }
+        payState = CostPayState(rawValue: value.texts["payState"] ?? "") ?? .none
+        photos = value.photos; segmentsDraft = value.segments.map { FlightSegment(raw: $0) }
+    }
+
     private func save() async {
         let title = draft.title.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedPrice = priceText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -606,7 +662,7 @@ struct BookingEditorView: View {
         if let scheduledOn, !(0..<document.days.count).contains(where: { document.date(ofDay: $0) == scheduledOn }) {
             problem = .scheduleDateNotInTrip; return
         }
-        var entry = target.item ?? CostEntry(raw: ["id": .string(UUID().uuidString)])
+        var entry = target.item ?? CostEntry(raw: ["id": .string(draft.id)])
         entry.title = title
         entry.kind = kind.rawValue
         entry.amount = amount
@@ -616,7 +672,7 @@ struct BookingEditorView: View {
         entry.scheduledOn = scheduledOn
         entry.payState = payState
         entry.photos = photos
-        if await saving.perform({ await onSaveItem(entry) }) { dismiss() }
+        if await saving.perform({ await onSaveItem(entry) }) { EditorDraftStore.shared.remove(draftKey); dismiss() }
     }
 
     private func saveBooking(title: String, price: Double?) async {
@@ -664,7 +720,7 @@ struct BookingEditorView: View {
         var links = links
         if booking.type != .hotel { links.stay = nil }
         if booking.type != .car { links.carPickup = nil; links.carReturn = nil }
-        if await saving.perform({ await onSave(booking, links) }) { dismiss() }
+        if await saving.perform({ await onSave(booking, links) }) { EditorDraftStore.shared.remove(draftKey); dismiss() }
     }
 }
 

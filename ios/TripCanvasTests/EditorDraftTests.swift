@@ -31,4 +31,31 @@ final class EditorDraftTests: XCTestCase {
         XCTAssertEqual(store.load(SpendInputDraft.self, key: key), draft)
         XCTAssertNil(EditorDraftKey(accountID: nil, tripID: "t", editor: "spend-0"))
     }
+
+    func testCostDraftRequiresOriginalAndRevisionAndPreservesIncompleteAmount() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let original = CostEntry(raw: ["id": .string("cost-1"), "title": .string("원본")])
+        let draft = CostInputDraft(original: original.raw, edited: ["id": .string("cost-1"), "cur": .string("EUR")], amount: "12.", revision: 7)
+        let key = EditorDraftKey(accountID: "a", tripID: "t", editor: "cost-1")
+        let store = EditorDraftStore(directory: directory); store.save(draft, key: key)
+        XCTAssertEqual(store.load(CostInputDraft.self, key: key), draft)
+        XCTAssertTrue(draft.canRestore(over: original, revision: 7))
+        XCTAssertFalse(draft.canRestore(over: original, revision: 8))
+        XCTAssertFalse(draft.canRestore(over: CostEntry(raw: ["id": .string("other")]), revision: 7))
+        XCTAssertNil(store.load(CostInputDraft.self, key: key?.appending("other")))
+    }
+
+    func testBookingDraftPreservesStableIdentityAndRejectsChangedLink() throws {
+        let booking = TripBooking(id: "stable-booking")
+        let links = BookingLinks(stay: SpotRef(day: 0, index: 1))
+        let draft = BookingInputDraft(original: [:], originalLinks: .empty, revision: 3, booking: booking.raw,
+            links: links, kind: "STAY", texts: ["price": "123."], photos: ["local"], segments: [["dep": .string("서울")]])
+        let restored = try JSONDecoder().decode(BookingInputDraft.self, from: JSONEncoder().encode(draft))
+        XCTAssertEqual(restored, draft)
+        XCTAssertEqual(TripBooking(raw: restored.booking).id, "stable-booking")
+        XCTAssertTrue(draft.canRestore(over: [:], links: .empty, revision: 3))
+        XCTAssertFalse(draft.canRestore(over: [:], links: links, revision: 3))
+        XCTAssertFalse(draft.canRestore(over: [:], links: .empty, revision: 4))
+    }
 }

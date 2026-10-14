@@ -50,6 +50,7 @@ struct CandidateBoardView: View {
                 // ⚠️ 여기서 저장하지 않는다. 탭 한 번으로 일행에게 공유되지 않게(§37).
                 pickedPlace = hit
                 if titleDraft.trimmingCharacters(in: .whitespaces).isEmpty { titleDraft = hit.name }
+                return nil
             }
         }
         // 앱이 뒤로 가면 소켓을 붙들지 않는다(§34) — 돌아올 때 다시 붙고 그때 최신을 읽는다.

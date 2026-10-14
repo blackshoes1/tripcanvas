@@ -1,56 +1,78 @@
 import SwiftUI
 
-/// 금액의 위계와 상태를 한 장에 모은다. 합계·환산·예산 차이는 받은 값만 표시한다.
+/// 숫자는 서버가 정하고, 기본 화면은 내역 확인에 필요한 핵심 정보부터 보여 준다.
 struct CostOverviewSummary: View {
     let response: TripCostsResponse
+    var onReviewUnknown: (() -> Void)? = nil
+    var onEditBudget: (() -> Void)? = nil
+    @State private var expanded = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Space.l) {
-            HStack {
-                Text("여행 전체 예상 비용").font(.subheadline).foregroundStyle(Ink.soft)
-                Spacer()
-                Image(systemName: "wallet.pass").foregroundStyle(Ink.soft)
-            }
+        VStack(alignment: .leading, spacing: Space.m) {
+            Text("여행 전체 예상 비용").font(.subheadline).foregroundStyle(Ink.soft)
             Text(TimeFormat.money(response.totalKRW, currency: "KRW"))
-                .font(Typeface.editorial(.largeTitle)).monospacedDigit()
+                .font(Typeface.editorial(.title)).monospacedDigit()
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("costOverviewTotal")
             if let budget = response.budget {
                 let line = TripCostsView.budgetLine(budget)
-                VStack(alignment: .leading, spacing: Space.s) {
-                    Text(line.title).font(.subheadline.weight(.semibold))
-                        .foregroundStyle(line.over ? Ink.danger : Ink.ink)
-                    ProgressView(value: min(budget.costKRW, max(1, budget.totalKRW)), total: max(1, budget.totalKRW))
-                        .tint(line.over ? Ink.danger : Ink.accent)
-                        .accessibilityLabel("예산 대비 예상 비용")
-                    Text("총예산 \(TimeFormat.money(budget.amount, currency: budget.currency))")
-                        .font(.caption).foregroundStyle(Ink.soft)
+                Text(line.title).font(.subheadline.weight(.semibold))
+                    .foregroundStyle(line.over ? Ink.danger : Ink.ink)
+                if incomplete {
+                    Text("확인된 금액 기준 · 미정 비용 제외")
+                        .font(.caption).foregroundStyle(Ink.warning)
                 }
             }
-            Divider().overlay(Ink.hairline)
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: Space.xl) { payment(.paid); payment(.reserved); Spacer(minLength: 0) }
-                VStack(alignment: .leading, spacing: Space.m) { payment(.paid); payment(.reserved) }
-            }
-            if (response.payTotals["NONE"] ?? 0) > 0 {
-                Text("결제 상태 미구분 \(TimeFormat.money(response.payTotals["NONE"] ?? 0, currency: "KRW"))")
-                    .font(.caption).foregroundStyle(Ink.soft)
-            }
             if let overview = response.overview, overview.unknownCount > 0 {
-                Label("금액 미정·일부 입력 \(overview.unknownCount)건", systemImage: "exclamationmark.circle")
-                    .font(.caption).foregroundStyle(Ink.warning)
+                if let onReviewUnknown {
+                    Button(action: onReviewUnknown) {
+                        Label("미정·일부 금액 \(overview.unknownCount)건 확인", systemImage: "exclamationmark.circle")
+                            .font(.subheadline).frame(minHeight: 44)
+                    }.accessibilityIdentifier("reviewUnknownCosts")
+                } else {
+                    Text("미정·일부 금액 \(overview.unknownCount)건").font(.caption).foregroundStyle(Ink.warning)
+                }
             }
-            if response.transportUnpriced {
-                Text("아직 적지 않은 교통비는 합계에 포함되지 않아요.")
-                    .font(.caption).foregroundStyle(Ink.soft)
+            if let onEditBudget {
+                Button(response.budget == nil ? "예산 정하기" : "예산 고치기", action: onEditBudget)
+                    .font(.subheadline).frame(minHeight: 44).accessibilityIdentifier("editTripBudget")
             }
+            DisclosureGroup("결제·환산 상세", isExpanded: $expanded) {
+                VStack(alignment: .leading, spacing: Space.m) {
+                    if let budget = response.budget {
+                        ProgressView(value: min(budget.costKRW, max(1, budget.totalKRW)), total: max(1, budget.totalKRW))
+                            .tint(budget.remainingKRW < 0 ? Ink.danger : Ink.accent)
+                            .accessibilityLabel("예산 대비 예상 비용")
+                        Text("총예산 \(TimeFormat.money(budget.amount, currency: budget.currency))")
+                            .font(.caption).foregroundStyle(Ink.soft)
+                    }
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: Space.xl) { payment(.paid); payment(.reserved); Spacer(minLength: 0) }
+                        VStack(alignment: .leading, spacing: Space.m) { payment(.paid); payment(.reserved) }
+                    }
+                    if (response.payTotals["NONE"] ?? 0) > 0 {
+                        Text("결제 상태 미구분 \(TimeFormat.money(response.payTotals["NONE"] ?? 0, currency: "KRW"))")
+                            .font(.caption).foregroundStyle(Ink.soft)
+                    }
+                    if response.transportUnpriced {
+                        Text("아직 적지 않은 교통비는 합계에 포함되지 않아요.")
+                            .font(.caption).foregroundStyle(Ink.soft)
+                    }
+                    if response.hasForeignCurrency {
+                        Text(TripCostsView.fxNote(source: response.fxSource, asOf: response.fxAsOf))
+                            .font(.caption).foregroundStyle(Ink.soft)
+                    }
+                }.padding(.top, Space.s)
+            }
+            .font(.subheadline).accessibilityIdentifier("costSummaryDetails")
         }
-        .padding(Space.xl)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(Space.l).frame(maxWidth: .infinity, alignment: .leading)
         .background(Ink.raised, in: RoundedRectangle(cornerRadius: Radius.panel))
         .overlay(RoundedRectangle(cornerRadius: Radius.panel).strokeBorder(Ink.hairline))
+        .tint(Ink.accent)
     }
 
+    private var incomplete: Bool { (response.overview?.unknownCount ?? response.unknownCount) > 0 || response.transportUnpriced }
     private func payment(_ state: CostPayState) -> some View {
         VStack(alignment: .leading, spacing: Space.xs) {
             Label(state.label, systemImage: state == .paid ? "checkmark.circle" : "clock")

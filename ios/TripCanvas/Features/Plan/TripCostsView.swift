@@ -1,4 +1,5 @@
 import SwiftUI
+import Observation
 
 /// 전체 비용에서 원본 예약·장소·지출을 함께 찾는다. 옛 API에서는 두 장부를 유지한다.
 ///
@@ -15,11 +16,14 @@ struct TripCostsView: View {
     /// 여행 화면(`TripScreenModels`)이 들고 있는 기억. 있으면 시트를 닫았다 열어도 방금 받은 것을 다시 받지 않는다(2026-09-18).
     let memory: TripCostsMemory?
     @Environment(AppEnvironment.self) private var env
-    @State private var response: TripCostsResponse?
-    @State private var snapshot: TripDocumentSnapshot?
-    @State private var loading = false
-    @State private var saving = false
-    @State private var error: String?
+    @State private var model: TripCostsViewModel?
+    private var response: TripCostsResponse? { model?.response ?? (model == nil ? memory?.response : nil) }
+    private var snapshot: TripDocumentSnapshot? { model?.snapshot ?? (model == nil ? memory?.snapshot : nil) }
+    private var loading: Bool { model?.isLoading == true }
+    private var saving: Bool { model?.isSaving == true }
+    private var error: String? { model?.error }
+    @State private var budgetEditor: CostEditTarget?
+    private var isEditing: Bool { directCost != nil || bookingEditor != nil || editingDay != nil || quickSpend != nil || paidOnEditor != nil || budgetEditor != nil }
     @State private var ledger: CostLedger
     @State private var editingDay: TripCostDay?
     /// 편집기를 연 순간의 revision. 그 사이 다른 기기가 바꿨으면 저장하지 않는다.
@@ -34,10 +38,11 @@ struct TripCostsView: View {
     @State private var directCost: DirectCostTarget?
 
     enum OverviewFilter: String, CaseIterable {
-        case all, reservations, other
-        var label: String { switch self { case .all: "전체"; case .reservations: "예약"; case .other: "그 외 비용" } }
+        case all, reservations, other, unconfirmed
+        var label: String { switch self { case .all: "전체"; case .reservations: "예약"; case .other: "그 외 비용"; case .unconfirmed: "미정·일부 금액" } }
         func includes(_ item: TripCostOverviewItem) -> Bool {
-            self == .all || (self == .reservations ? item.reservation != "NONE" : item.reservation == "NONE")
+            if self == .unconfirmed { return ["UNKNOWN", "PARTIAL"].contains(item.line.state) }
+            return self == .all || (self == .reservations ? item.reservation != "NONE" : item.reservation == "NONE")
         }
     }
     struct DirectCostTarget: Identifiable {
@@ -46,9 +51,10 @@ struct TripCostsView: View {
         var id: String { "\(day):\(target.id)" }
     }
 
-    init(trip: TripSummary, memory: TripCostsMemory? = nil) {
+    init(trip: TripSummary, memory: TripCostsMemory? = nil, model: TripCostsViewModel? = nil) {
         self.trip = trip
         self.memory = memory
+        _model = State(initialValue: model)
         // 여행 중이면 오늘 쓴 돈부터, 아니면 가계부부터 — 그때 적을 것이 그것이다.
         _ledger = State(initialValue: trip.isLive ? .onSite : .prep)
     }
@@ -64,7 +70,7 @@ struct TripCostsView: View {
         var id: Int { day }
     }
 
-    private var canEdit: Bool { snapshot?.canEdit == true }
+    private var canEdit: Bool { model?.canEdit ?? (snapshot?.canEdit == true) }
     private var todayIndex: Int? { trip.todayIndex >= 0 ? trip.todayIndex : nil }
 
     var body: some View {
@@ -119,7 +125,18 @@ struct TripCostsView: View {
         .tint(Ink.accent)
         .navigationTitle("비용")
         .navigationBarTitleDisplayMode(.inline)
-        .task { await loadIfStale() }
+        .task {
+            if model == nil {
+                model = TripCostsViewModel(tripId: trip.id, documents: env.service, memory: memory) {
+                    try await env.service.tripCosts(tripId: trip.id)
+                }
+            }
+            await model?.loadIfStale()
+        }
+        .onChange(of: memory?.generation) { _, _ in Task { await model?.invalidate(editing: isEditing) } }
+        .onChange(of: isEditing) { _, editing in
+            if !editing, model?.needsReload == true { Task { await model?.load() } }
+        }
         .refreshable { await load() }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if response?.overview != nil, canEdit {
@@ -144,8 +161,18 @@ struct TripCostsView: View {
                 .background(Ink.paper)
             }
         }
+        .sheet(item: $budgetEditor) { target in
+            CostEntryEditor(target: target, draftKey: draftKey("trip-budget"), originalRevision: editingRevision,
+                            failureMessage: { model?.saveFailureMessage ?? "예산을 저장하지 못했어요." }) { entry in
+                await saveDocument(expected: editingRevision) { document in
+                    document.setBudget(amount: entry?.amount, currency: entry?.currency ?? .krw)
+                }
+            }
+        }
         .sheet(item: $directCost) { target in
-            CostEntryEditor(target: target.target, onDelete: { includingSource in
+            CostEntryEditor(target: target.target, draftKey: draftKey("cost-\(target.day)-\(target.target.storageID)"),
+                            originalRevision: editingRevision, failureMessage: { model?.saveFailureMessage ?? "비용을 저장하지 못했어요." },
+                            onDelete: { includingSource in
                 guard case .spot(let index) = target.target.kind else { return false }
                 return await saveDocument(expected: editingRevision) {
                     $0.deleteSpotCost(day: target.day, index: index, includingSource: includingSource)
@@ -178,6 +205,7 @@ struct TripCostsView: View {
                             cost: response?.days.first(where: { $0.index == day.index })?.cost,
                             canEdit: snapshot.canEdit,
                             draftKey: EditorDraftKey(accountID: env.auth.session?.userId, tripID: trip.id, editor: "spend-\(day.index)"),
+                            originalRevision: editingRevision, failureMessage: { model?.saveFailureMessage ?? "비용을 저장하지 못했어요." },
                             onRefresh: { await load() },
                             onDeleteSpot: { index, includingSource in
                                 let saved = await saveDocument(expected: editingRevision) {
@@ -204,6 +232,7 @@ struct TripCostsView: View {
                 BookingEditorView(
                     target: target,
                     document: snapshot.document,
+                    draftKey: draftKey("booking-\(target.id)"), originalRevision: editingRevision,
                     onDeleteCost: { id, includingSource in
                         let saved = await saveDocument(expected: editingRevision) { $0.deleteBookingCost(id: id, includingSource: includingSource) }
                         return saved ? nil : (error ?? "비용을 삭제하지 못했어요.")
@@ -238,18 +267,29 @@ struct TripCostsView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: Space.l) {
                 if let response {
-                    CostOverviewSummary(response: response)
-                        .redacted(reason: response.revision == snapshot?.revision ? [] : .placeholder)
-                        .accessibilityHidden(response.revision != snapshot?.revision)
+                    CostOverviewSummary(response: response, onReviewUnknown: {
+                        filter = .unconfirmed
+                        visibleCostID = overview.items.first { OverviewFilter.unconfirmed.includes($0) }?.id
+                    }, onEditBudget: canEdit ? openBudget : nil)
+                        .redacted(reason: response.revision == snapshot?.revision && model?.needsReload != true ? [] : .placeholder)
+                        .accessibilityHidden(response.revision != snapshot?.revision || model?.needsReload == true)
+                    if model?.isCalculating == true { ProgressView("합계를 갱신하는 중…").font(.caption) }
                 }
                 if let error {
                     InlineErrorBanner(message: error, tint: Ink.danger, compact: true) { Task { await load() } }
                 }
                 HStack(spacing: Space.s) {
-                    ForEach(OverviewFilter.allCases, id: \.self) { value in
+                    ForEach([OverviewFilter.all, .reservations, .other], id: \.self) { value in
                         PickChip(label: value.label, isOn: filter == value) { filter = value }
                     }
                     Spacer(minLength: 0)
+                }
+                if filter == .unconfirmed {
+                    HStack {
+                        Text("미정·일부 금액만 보기").font(.subheadline)
+                        Spacer()
+                        Button("전체 보기") { filter = .all }.frame(minHeight: 44)
+                    }.accessibilityIdentifier("unconfirmedCostsFilter")
                 }
                 HStack {
                     Text("비용 내역").font(Typeface.editorial(.title3))
@@ -269,15 +309,15 @@ struct TripCostsView: View {
                     VStack(alignment: .leading, spacing: Space.s) {
                         Image(systemName: "wallet.pass").font(.title).foregroundStyle(Ink.accent)
                         Text(filter == .all ? "여행에 드는 돈을 한곳에" : "이 묶음에 비용이 없어요").font(.headline)
-                        Text("예약과 쓴 돈을 추가하면 여기에 모여요.").font(.subheadline).foregroundStyle(Ink.soft)
+                        Text(filter == .unconfirmed ? "미정 금액을 모두 확인했어요." : "예약과 쓴 돈을 추가하면 여기에 모여요.").font(.subheadline).foregroundStyle(Ink.soft)
                     }.frame(maxWidth: .infinity, alignment: .leading).padding(Space.xl)
                 }
                 ForEach(rows) { item in
                     Button { openOverviewItem(item) } label: { CostOverviewRow(item: item) }
                         .buttonStyle(.plain)
-                        .disabled(saving || loading || response?.revision != snapshot?.revision || (!canEdit && item.line.source != "TRANSPORT"))
-                        .redacted(reason: response?.revision == snapshot?.revision ? [] : .placeholder)
-                        .accessibilityHidden(response?.revision != snapshot?.revision)
+                        .disabled(saving || loading || model?.needsReload == true || response?.revision != snapshot?.revision || (!canEdit && item.line.source != "TRANSPORT"))
+                        .redacted(reason: response?.revision == snapshot?.revision && model?.needsReload != true ? [] : .placeholder)
+                        .accessibilityHidden(response?.revision != snapshot?.revision || model?.needsReload == true)
                         .id(item.id)
                 }
                 .scrollTargetLayout()
@@ -608,74 +648,27 @@ struct TripCostsView: View {
 
     // MARK: 읽기·쓰기
 
-    /// 시트를 열 때 — 방금 받은 것이 기억에 있으면 그대로 쓴다(Today·Plan과 같은 60초 규칙).
-    private func loadIfStale() async {
-        if let memory, memory.isFresh(), let remembered = memory.snapshot {
-            snapshot = remembered; response = memory.response; error = nil
-            return
-        }
-        await load()
-    }
+    private func load() async { await model?.load() }
 
-    /// 문서와 계산을 따로 받는다 — 계산이 실패해도 문서로 목록은 짓는다(입력을 막지 않는다).
-    private func load() async {
-        guard !loading, !saving else { return }
-        loading = true
-        defer { loading = false }
-        do {
-            let fresh = try await env.service.document(tripId: trip.id)
-            try Task.checkCancellation()
-            snapshot = fresh; error = nil
-        } catch {
-            guard !Task.isCancelled else { return }
-            self.error = "비용을 불러오지 못했어요. 연결을 확인하고 다시 시도해 주세요."
-            return
-        }
-        await loadCosts()
-    }
-
-    /// 계산만 다시 받는다 — 저장 응답이 이미 최신 문서라 문서를 또 받지 않는다(2026-09-18, 편집 한 번에 GET이 둘 나갔다).
-    private func loadCosts() async {
-        do {
-            let received = try await env.service.tripCosts(tripId: trip.id)
-            try Task.checkCancellation()
-            guard received.revision == snapshot?.revision else {
-                response = nil
-                error = "여행 내용이 변경됐어요. 다시 불러와 주세요."; return
-            }
-            response = received
-            error = nil
-            memory?.remember(snapshot: snapshot, response: received)
-        } catch {
-            guard !Task.isCancelled else { return }
-            response = nil
-            self.error = "합계를 계산하지 못했어요. 목록과 입력은 그대로 할 수 있어요."
-        }
-    }
-
-    /// 문서를 고쳐 저장한다. 편집기를 연 뒤 다른 기기가 바꿨으면(`expected`) 저장하지 않는다 — 조용히 덮어쓰지 않는다.
     @discardableResult
-    private func saveDocument(expected: Int? = nil, _ change: (inout TripDocument) -> Void) async -> Bool {
-        guard !saving, !loading, let snapshot, snapshot.canEdit else { return false }
-        if let expected, expected != snapshot.revision {
-            error = "여행 내용이 그새 바뀌었어요. 다시 불러온 뒤 고쳐 주세요."
-            return false
-        }
-        saving = true
-        var draft = snapshot.document
-        change(&draft)
-        do {
-            let saved = try await env.service.saveDocument(tripId: trip.id, document: draft, expectedRevision: snapshot.revision)
-            self.snapshot = saved; editingRevision = saved.revision
-            if response?.overview == nil { response = nil }
-            saving = false
-            await loadCosts()   // 문서는 저장 응답이 최신이다 — 계산만 다시 받는다
-            return true
-        } catch {
-            saving = false
-            self.error = "비용 저장에 실패했어요. 다른 기기의 변경이 있다면 닫은 뒤 다시 불러와 주세요."
-            return false
-        }
+    private func saveDocument(expected: Int? = nil, _ change: @escaping (inout TripDocument) -> Void) async -> Bool {
+        guard let model else { return false }
+        let saved = await model.save(expected: expected, change)
+        if saved { editingRevision = model.store.revision }
+        return saved
+    }
+
+    private func draftKey(_ editor: String) -> EditorDraftKey? {
+        EditorDraftKey(accountID: env.auth.session?.userId, tripID: trip.id, editor: editor)
+    }
+
+    private func openBudget() {
+        guard let snapshot, canEdit else { return }
+        editingRevision = snapshot.revision
+        var entry = CostEntry()
+        entry.amount = snapshot.document.budgetAmount
+        entry.currency = snapshot.document.budgetCurrency
+        budgetEditor = CostEditTarget(kind: .budget, entry: entry, budgetTitle: "여행 예산")
     }
 
     private func save(_ day: TripDay, index: Int) async -> Bool {
@@ -700,7 +693,7 @@ struct TripCostsView: View {
     }
 
     @discardableResult
-    private func mutate(_ row: PaymentRow, booking change: (inout TripBooking) -> Void, item changeItem: (inout CostEntry) -> Void) async -> Bool {
+    private func mutate(_ row: PaymentRow, booking change: @escaping (inout TripBooking) -> Void, item changeItem: @escaping (inout CostEntry) -> Void) async -> Bool {
         guard let snapshot else { return false }
         editingRevision = snapshot.revision
         return await saveDocument(expected: editingRevision) { draft in
@@ -772,15 +765,19 @@ struct PaidOnSheet: View {
 
 /// 비용 시트의 기억 — 닫았다 다시 열 때 방금 받은 것을 다시 받지 않기 위해 여행 화면(`TripScreenModels`)이 든다(2026-09-18).
 /// 문서와 계산이 **같은 revision으로 함께** 받아졌을 때만 남긴다.
-@MainActor
+@Observable @MainActor
 final class TripCostsMemory {
     private(set) var snapshot: TripDocumentSnapshot?
     private(set) var response: TripCostsResponse?
     private(set) var loadedAt: Date?
 
+    private(set) var generation = 0
+    private(set) var invalidationRevision: Int?
     init() {}
 
-    func invalidate() { snapshot = nil; response = nil; loadedAt = nil }
+    func invalidate(revision: Int? = nil) {
+        snapshot = nil; response = nil; loadedAt = nil; invalidationRevision = revision; generation += 1
+    }
 
     func remember(snapshot: TripDocumentSnapshot?, response: TripCostsResponse) {
         guard let snapshot, snapshot.revision == response.revision else { return }

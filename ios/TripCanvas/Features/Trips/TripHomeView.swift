@@ -305,7 +305,7 @@ final class TripScreenModels {
     func connectDocumentUpdates(service: TripService) {
         service.onDocumentSaved = { [weak self] id, snapshot in
             guard let self, id == self.tripId else { return }
-            self.costs.invalidate()
+            self.costs.invalidate(revision: snapshot.revision)
             self.bookings.invalidate()
             let refreshToday = self.today.today != nil || self.today.isLoading
             self.today.invalidate(revision: snapshot.revision)
@@ -321,6 +321,8 @@ final class TripScreenModels {
                                              hasPlan: plan.document != nil,
                                              hasToday: today.today != nil,
                                              hasCollab: collab.loadedAt != nil)
+        let effects = CollabModel.liveEffects(kind: event.kind, mine: event.mine)
+        if effects.pull || effects.members { costs.invalidate(); bookings.invalidate() }
         if refresh.plan { await plan.load() }
         if refresh.today { await today.load() }
         await collab.applyLive(members: refresh.members, activity: refresh.activity)
