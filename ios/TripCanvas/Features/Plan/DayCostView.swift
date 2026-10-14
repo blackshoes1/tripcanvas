@@ -54,9 +54,12 @@ struct DayCostSummaryView: View {
 struct DayCostView: View {
     let cost: DayPlanCost?
     let canEdit: Bool
+    let bookings: [TripBooking]
     let onSave: (TripDay) async -> Bool
     let onRefresh: (() async -> Void)?
     let draftKey: EditorDraftKey?
+    let originalRevision: Int?
+    let failureMessage: (() -> String)?
     let onDeleteSpot: ((Int, Bool) async -> TripDay?)?
     @State private var day: TripDay
     @State private var editing: CostEditTarget?
@@ -64,13 +67,17 @@ struct DayCostView: View {
     @State private var quickAdd = false
     @Environment(\.dismiss) private var dismiss
 
-    init(day: TripDay, cost: DayPlanCost?, canEdit: Bool, draftKey: EditorDraftKey? = nil, onRefresh: (() async -> Void)? = nil, onDeleteSpot: ((Int, Bool) async -> TripDay?)? = nil, onSave: @escaping (TripDay) async -> Bool) {
+    init(day: TripDay, cost: DayPlanCost?, canEdit: Bool, bookings: [TripBooking] = [], draftKey: EditorDraftKey? = nil, originalRevision: Int? = nil,
+         failureMessage: (() -> String)? = nil, onRefresh: (() async -> Void)? = nil,
+         onDeleteSpot: ((Int, Bool) async -> TripDay?)? = nil, onSave: @escaping (TripDay) async -> Bool) {
         _day = State(initialValue: day)
         self.cost = cost
         self.canEdit = canEdit
+        self.bookings = bookings
         self.onSave = onSave
         self.onRefresh = onRefresh
         self.draftKey = draftKey
+        self.originalRevision = originalRevision; self.failureMessage = failureMessage
         self.onDeleteSpot = onDeleteSpot
     }
 
@@ -101,7 +108,7 @@ struct DayCostView: View {
                         } label: {
                             entryRow(title: spot.name, entry: CostEntry(spot: spot), line: spotLine)
                         }
-                        .buttonStyle(.plain).disabled(!canEdit || spotLine?.state == "BOOKING")
+                        .buttonStyle(.plain).disabled(!canEdit || spotLine?.state == "BOOKING" || SpotExpensePolicy.bookingPaysSpot(spot, bookings: bookings))
                     }
                 }
                 Section {
@@ -152,14 +159,15 @@ struct DayCostView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("닫기") { dismiss() } } }
             .sheet(isPresented: $quickAdd) {
-                SpendEntryFlow(day: day, draftKey: draftKey) { updated in
+                SpendEntryFlow(day: day, bookings: bookings, draftKey: draftKey) { updated in
                     guard await onSave(updated) else { return false }
                     day = updated
                     return true
                 }
             }
             .sheet(item: $editing) { target in
-                CostEntryEditor(target: target, onDelete: { includingSource in
+                CostEntryEditor(target: target, draftKey: draftKey?.appending(target.storageID), originalRevision: originalRevision,
+                                failureMessage: failureMessage, onDelete: { includingSource in
                     guard case .spot(let index) = target.kind, let onDeleteSpot,
                           let updated = await onDeleteSpot(index, includingSource) else { return false }
                     day = updated
@@ -245,6 +253,10 @@ struct CostEditTarget: Identifiable {
     /// 장소 편집기 안에서 연 비용 — 고친 값은 그 편집기의 초안에 담기고 장소를 저장할 때 들어간다(2026-10-04).
     /// 장소 자체를 지우는 길(`일정의 장소도 함께 삭제`)은 두지 않는다 — 그건 장소 편집기의 일이다.
     var inSpotEditor = false
+    var budgetTitle: String? = nil
+    var storageID: String {
+        switch kind { case .budget: "budget"; case .spot(let index): "spot-\(index)"; case .extra(let id): "extra-\(id)"; case .prep(let id): "prep-\(id)" }
+    }
     var isBudget: Bool { if case .budget = kind { true } else { false } }
     /// 이름이 있어야 하고 지울 수 있는 항목 — 하루 추가 비용과 여행 준비 비용.
     var isExtra: Bool {
@@ -255,6 +267,9 @@ struct CostEditTarget: Identifiable {
 
 struct CostEntryEditor: View {
     let target: CostEditTarget
+    let draftKey: EditorDraftKey?
+    let originalRevision: Int?
+    let failureMessage: (() -> String)?
     let onSave: (CostEntry?) async -> Bool
     let onDelete: ((Bool) async -> Bool)?
     @State private var entry: CostEntry
@@ -263,12 +278,17 @@ struct CostEntryEditor: View {
     @State private var failed = false
     @State private var showsDiscardConfirm = false
     @State private var showsDeleteConfirm = false
+    @State private var recovery: CostInputDraft?
+    @State private var checkedRecovery = false
     @Environment(\.dismiss) private var dismiss
     /// 여행 인원(`TripDocument.people`) — 1인 금액을 처음 켤 때의 인원. 여행 화면 밖에서 열리면 없다(그때는 2명)
     @Environment(TripScreenModels.self) private var screenModels: TripScreenModels?
 
-    init(target: CostEditTarget, onDelete: ((Bool) async -> Bool)? = nil, onSave: @escaping (CostEntry?) async -> Bool) {
+    init(target: CostEditTarget, draftKey: EditorDraftKey? = nil, originalRevision: Int? = nil,
+         failureMessage: (() -> String)? = nil, onDelete: ((Bool) async -> Bool)? = nil,
+         onSave: @escaping (CostEntry?) async -> Bool) {
         self.target = target
+        self.draftKey = draftKey; self.originalRevision = originalRevision; self.failureMessage = failureMessage
         self.onDelete = onDelete
         self.onSave = onSave
         _entry = State(initialValue: target.entry)
@@ -287,6 +307,20 @@ struct CostEntryEditor: View {
     var body: some View {
         NavigationStack {
             PaperForm {
+                if let recovery {
+                    Section("저장하지 않은 입력이 있어요") {
+                        if recovery.canRestore(over: target.entry, revision: originalRevision) {
+                            Button("이어서 입력") {
+                                self.recovery = nil; entry = CostEntry(raw: recovery.edited); amount = recovery.amount
+                            }.accessibilityIdentifier("restoreCostDraft")
+                        } else {
+                            Text("원본이 바뀌어 그대로 복원할 수 없어요. 이전 입력을 확인하고 최신 항목에서 고쳐 주세요.")
+                            Text("\(CostEntry(raw: recovery.edited).title) · \(recovery.amount)")
+                            ShareLink("이전 입력 복사·공유", item: "\(CostEntry(raw: recovery.edited).title)\n\(recovery.amount)\n\(CostEntry(raw: recovery.edited).currency.rawValue)")
+                        }
+                        Button("초안 버리기", role: .destructive) { self.recovery = nil; EditorDraftStore.shared.remove(draftKey) }
+                    }
+                }
                 if target.isExtra {
                     Section {
                         TextField("항목 이름", text: $entry.title)
@@ -306,6 +340,7 @@ struct CostEntryEditor: View {
                 }
                 Section {
                     TextField(target.isBudget ? "예산 미설정" : "비용 미정", text: $amount).keyboardType(.decimalPad)
+                        .accessibilityIdentifier("costEntryAmount")
                         .accessibilityLabel(target.isBudget ? "예산 금액" : "금액")
                     Picker("통화", selection: $entry.currency) {
                         ForEach(Currency.allCases, id: \.self) { Text($0.rawValue).tag($0) }
@@ -359,19 +394,27 @@ struct CostEntryEditor: View {
                 }
             }
             .tint(Ink.accent)
+            .disabled(saving)
+            .onAppear {
+                guard !checkedRecovery else { return }
+                recovery = EditorDraftStore.shared.load(CostInputDraft.self, key: draftKey)
+                checkedRecovery = true
+            }
+            .onChange(of: entry) { _, _ in preserveInput() }
+            .onChange(of: amount) { _, _ in preserveInput() }
             .sheet(isPresented: $showsDeleteConfirm) {
                 CostDeleteSheet(title: entry.title, allowsSource: !target.isExtra && !target.inSpotEditor, saving: saving) { includingSource in
                     if !target.isExtra, let onDelete {
                         saving = true
                         let saved = await onDelete(includingSource)
                         saving = false
-                        if saved { dismiss() } else { failed = true }
+                        if saved { EditorDraftStore.shared.remove(draftKey); dismiss() } else { failed = true }
                         return saved
                     }
                     return await save(nil)
                 }
             }
-            .navigationTitle(target.isBudget ? "하루 예산" : target.isPrep ? "예약 결제 금액" : "비용 입력")
+            .navigationTitle(target.isBudget ? target.budgetTitle ?? "하루 예산" : target.isPrep ? "예약 결제 금액" : "비용 입력")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -383,7 +426,7 @@ struct CostEntryEditor: View {
             .safeAreaInset(edge: .bottom) {
                 VStack(spacing: Space.xs) {
                     if failed {
-                        Text("비용을 저장하지 못했어요. 입력은 유지돼요. 다시 저장해 주세요.")
+                        Text(failureMessage?() ?? "비용을 저장하지 못했어요. 입력은 유지돼요. 다시 저장해 주세요.")
                             .font(.caption).foregroundStyle(Ink.warning)
                     }
                     if target.inSpotEditor {
@@ -398,7 +441,8 @@ struct CostEntryEditor: View {
                             .frame(maxWidth: .infinity, minHeight: 48)
                     }
                     .buttonStyle(.borderedProminent)
-                    .disabled(!valid || saving || showsDeleteConfirm)
+                    .disabled(!valid || saving || showsDeleteConfirm || recovery != nil)
+                    .accessibilityIdentifier("costEntrySave")
                 }
                 .padding(.horizontal, Space.l)
                 .padding(.vertical, Space.s)
@@ -406,10 +450,17 @@ struct CostEntryEditor: View {
             }
             .interactiveDismissDisabled(isDirty || saving)
             .confirmationDialog("입력한 내용을 버릴까요?", isPresented: $showsDiscardConfirm, titleVisibility: .visible) {
-                Button("내용 버리기", role: .destructive) { dismiss() }
+                Button("내용 버리기", role: .destructive) { EditorDraftStore.shared.remove(draftKey); dismiss() }
                 Button("계속 편집", role: .cancel) { }
             }
         }
+    }
+
+    private func preserveInput() {
+        guard checkedRecovery, recovery == nil else { return }
+        if isDirty {
+            EditorDraftStore.shared.save(CostInputDraft(original: target.entry.raw, edited: entry.raw, amount: amount, revision: originalRevision), key: draftKey)
+        } else { EditorDraftStore.shared.remove(draftKey) }
     }
 
     /// 켜면 1인 금액(적힌 인원 → 여행 인원 → 2명), 끄면 원래 기준 — '전체 금액'으로 적어 둔 항목은 그대로 둔다(둘 다 곱하지 않는다)
@@ -430,7 +481,7 @@ struct CostEntryEditor: View {
         guard !saving else { return false }
         saving = true
         defer { saving = false }
-        if await onSave(value) { dismiss(); return true }
+        if await onSave(value) { EditorDraftStore.shared.remove(draftKey); dismiss(); return true }
         failed = true
         return false
     }

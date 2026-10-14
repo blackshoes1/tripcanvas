@@ -198,6 +198,19 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.fromj.trip.watchkitapp
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
 
+  TripCanvasUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: TripCanvasUITests
+    dependencies:
+      - target: TripCanvas
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.fromj.trip.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: TripCanvas
+
   TripCanvasTests:
     type: bundle.unit-test
     platform: iOS
@@ -224,3 +237,4 @@ schemes:
       config: Debug
       targets:
         - TripCanvasTests
+        - TripCanvasUITests

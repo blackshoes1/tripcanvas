@@ -420,7 +420,7 @@ enum Currency: String, CaseIterable, Sendable {
 }
 
 /// `lib.js`의 `SPOT_CATS` — id는 저장값이라 바꾸면 기존 데이터가 '미지정'이 된다.
-enum SpotCategory: String, CaseIterable, Sendable {
+enum SpotCategory: String, Codable, CaseIterable, Sendable {
     case stay, food, cafe, sight, activity, shop, transport, nature
 
     var label: String {

@@ -25,6 +25,15 @@ final class CollabViewModel {
     private(set) var hasLeft = false
     /// 전부를 서버에서 마지막으로 받은 시각 — 시트를 다시 열 때 또 받을지의 기준.
     private(set) var loadedAt: Date?
+    var isVisible = false
+    private var cacheGeneration = 0
+
+    func invalidate() { cacheGeneration += 1; loadedAt = nil; isLoading = false }
+
+    func resumeAfterBackground() async {
+        invalidate()
+        if isVisible { await load() }
+    }
 
     let trip: TripSummary
     private let service: CollabSource
@@ -44,7 +53,7 @@ final class CollabViewModel {
     var me: MemberView? { members.first { $0.me } }
     var canManage: Bool { CollabModel.canManage(role) }
     var canLeave: Bool { CollabModel.canLeave(role) }
-    var memberCount: Int { max(members.count, trip.memberCount ?? 1) }
+    var memberCount: Int { members.isEmpty ? (trip.memberCount ?? 1) : members.count }
     var myPrefs: TripPrefs { TripPrefs(raw: preferences.first { $0.mine }?.prefs ?? [:]) }
     var groupContext: [String] { CollabModel.groupContextText(preferences, memberCount: memberCount) }
 
@@ -55,26 +64,43 @@ final class CollabViewModel {
     }
 
     func load() async {
+        let generation = cacheGeneration
         if members.isEmpty { isLoading = true }
-        defer { isLoading = false }
+        defer { if generation == cacheGeneration { isLoading = false } }
         await reload(.all)
     }
 
     /// 바뀐 것만 다시 읽는다(2026-09-18, 전에는 이름 하나 바꿔도 4건이었다). 멤버를 못 읽으면 나머지는 건드리지 않는다.
     private func reload(_ parts: CollabRefresh) async {
+        let generation = cacheGeneration
         if parts.contains(.members) {
             do {
-                members = try await service.members(tripId: trip.id)
+                let rows = try await service.members(tripId: trip.id)
+                guard generation == cacheGeneration else { return }
+                members = rows
                 errorMessage = nil
             } catch {
+                guard generation == cacheGeneration else { return }
                 errorMessage = message(for: error)
                 return
             }
         }
         // 나머지는 각자 실패해도 멤버 목록은 남는다 — 화면 전체를 못 쓰게 만들지 않는다.
-        if parts.contains(.invites) { invites = canManage ? ((try? await service.invites(tripId: trip.id)) ?? []).filter(\.active) : [] }
-        if parts.contains(.preferences) { preferences = (try? await service.preferences(tripId: trip.id)) ?? [] }
-        if parts.contains(.activity) { activity = CollabModel.condensed((try? await service.activity(tripId: trip.id, limit: 40)) ?? []) }
+        if parts.contains(.invites) {
+            let rows = canManage ? ((try? await service.invites(tripId: trip.id)) ?? []).filter(\.active) : []
+            guard generation == cacheGeneration else { return }
+            invites = rows
+        }
+        if parts.contains(.preferences) {
+            let rows = (try? await service.preferences(tripId: trip.id)) ?? []
+            guard generation == cacheGeneration else { return }
+            preferences = rows
+        }
+        if parts.contains(.activity) {
+            let rows = (try? await service.activity(tripId: trip.id, limit: 40)) ?? []
+            guard generation == cacheGeneration else { return }
+            activity = CollabModel.condensed(rows)
+        }
         if parts == .all { loadedAt = Date() }
     }
 
@@ -102,10 +128,12 @@ final class CollabViewModel {
     }
 
     /// 이 여행에서 보일 내 이름. 계정 이메일은 여행에 나오지 않는다(§69).
-    func rename(_ name: String) async {
-        guard let me else { return }
+    @discardableResult
+    func rename(_ name: String) async -> Bool {
+        guard let me else { return false }
         let trimmed = String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(CollabModel.nameMax))
-        await perform("이름을 저장했어요", refresh: [.members, .activity]) { try await self.service.manageMember(tripId: self.trip.id, memberId: me.id, action: "RENAME", value: trimmed) }
+        guard !trimmed.isEmpty else { return false }
+        return await perform("이름을 저장했어요", refresh: [.members, .activity]) { try await self.service.manageMember(tripId: self.trip.id, memberId: me.id, action: "RENAME", value: trimmed) }
     }
 
     /// 나가기 — 소유자는 못 나간다(§71). 성공하면 `hasLeft`.
@@ -162,15 +190,19 @@ final class CollabViewModel {
 
     // MARK: 공통
 
-    private func perform(_ successToast: String, refresh: CollabRefresh = .all, _ work: () async throws -> Void) async {
+    @discardableResult
+    private func perform(_ successToast: String, refresh: CollabRefresh = .all, _ work: () async throws -> Void) async -> Bool {
+        guard !isWorking else { return false }
         isWorking = true
         defer { isWorking = false }
         do {
             try await work()
             toast = successToast
             await reload(refresh)
+            return true
         } catch {
             errorMessage = message(for: error)
+            return false
         }
     }
 

@@ -7,6 +7,24 @@ import ActivityKit
 import WidgetKit
 #endif
 
+/// 시스템에 남은 안내를 재사용하고, 다른 여행·중복 안내만 종료한다.
+enum LiveActivityRecovery {
+    struct Existing: Equatable {
+        let id: String
+        let tripId: String
+        let tripName: String
+        let dayLabel: String
+    }
+    struct Decision: Equatable {
+        let reuseID: String?
+        let endIDs: [String]
+    }
+    static func decide(_ existing: [Existing], tripId: String, tripName: String, dayLabel: String) -> Decision {
+        let reuse = existing.first { $0.tripId == tripId && $0.tripName == tripName && $0.dayLabel == dayLabel }?.id
+        return Decision(reuseID: reuse, endIDs: existing.filter { $0.id != reuse }.map(\.id))
+    }
+}
+
 /// Live Activity 생명주기. Travel Mode가 켜져 있을 때만 존재한다(§17).
 ///
 /// **매분 갱신하지 않는다.** `stateVersion`이 그대로면 아무것도 하지 않는다 — 잠금화면을
@@ -17,6 +35,7 @@ import WidgetKit
 final class LiveActivityController: LiveActivityControlling {
     private(set) var isRunning = false
     private(set) var lastError: String?
+    private var generation = 0
 
     #if canImport(ActivityKit)
     private var activity: Activity<TripCanvasActivityAttributes>?
@@ -24,14 +43,31 @@ final class LiveActivityController: LiveActivityControlling {
 
     func sync(_ response: TravelStateResponse, changed: Bool) async {
         #if canImport(ActivityKit)
+        generation += 1
+        let request = generation
         guard ActivityAuthorizationInfo().areActivitiesEnabled else {
             // 사용자가 꺼 두었다 — 조용히 넘어간다. 핵심 앱 흐름을 깨지 않는다(§60).
             lastError = nil
             return
         }
         let state = TripCanvasActivityAttributes.ContentState(from: response.liveActivity)
-
+        let trip = response.today.trip
+        let dayLabel = response.liveActivity.dayLabel
+        let running = Activity<TripCanvasActivityAttributes>.activities.filter { $0.activityState == .active || $0.activityState == .stale }
+        let recovery = LiveActivityRecovery.decide(running.map {
+            .init(id: $0.id, tripId: $0.attributes.tripId, tripName: $0.attributes.tripName, dayLabel: $0.attributes.dayLabel)
+        }, tripId: trip.id, tripName: trip.name, dayLabel: dayLabel)
+        for old in running where recovery.endIDs.contains(old.id) {
+            await old.end(nil, dismissalPolicy: .immediate)
+            guard request == generation else { return }
+        }
+        // 종료를 기다리는 동안 다른 호출이 이미 만들었을 수 있으므로 생성 바로 전에 다시 확인한다.
+        activity = Activity<TripCanvasActivityAttributes>.activities.first {
+            ($0.activityState == .active || $0.activityState == .stale) && $0.attributes.tripId == trip.id
+                && $0.attributes.tripName == trip.name && $0.attributes.dayLabel == dayLabel
+        }
         if let current = activity {
+            isRunning = true; lastError = nil
             // 지문이 같으면 갱신하지 않는다. 이것이 여기서 가장 중요한 한 줄이다.
             guard changed || current.content.state.stateVersion != state.stateVersion else { return }
             await current.update(ActivityContent(state: state, staleDate: staleDate(for: response)))
@@ -48,6 +84,7 @@ final class LiveActivityController: LiveActivityControlling {
                 content: ActivityContent(state: state, staleDate: staleDate(for: response)),
                 pushType: nil)      // remote update는 다음 단계 — 지금은 앱이 밀어준다
             isRunning = true
+            lastError = nil
             Analytics.track(.liveActivityStarted, ["tripId": response.today.trip.id])
         } catch {
             // 실패해도 Today 화면은 그대로 동작해야 한다.
@@ -57,6 +94,7 @@ final class LiveActivityController: LiveActivityControlling {
     }
 
     func end() async {
+        generation += 1
         #if canImport(ActivityKit)
         let running = Activity<TripCanvasActivityAttributes>.activities
         activity = nil

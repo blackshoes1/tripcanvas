@@ -15,7 +15,7 @@ struct CollabView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var owned: CollabViewModel?
     private var model: CollabViewModel? { shared ?? owned }
-    @State private var nameDraft = ""
+    @State private var nameDraft = CollabNameDraft()
     /// 끊을지 묻는 중인 초대 링크.
     @State private var revoking: InviteView?
     @State private var prefsDraft = TripPrefs()
@@ -72,10 +72,13 @@ struct CollabView: View {
         .refreshable { await model?.load() }
         .task {
             if shared == nil, owned == nil { owned = CollabViewModel(trip: trip, service: env.service, webBaseURL: AppConfig.webBaseURL) }
+            model?.isVisible = true
             await model?.loadIfStale()
             syncDrafts()
         }
         .onChange(of: model?.preferences) { _, _ in syncDrafts() }
+        .onChange(of: model?.me?.displayName) { _, _ in syncDrafts() }
+        .onDisappear { model?.isVisible = false }
         // 저장하면 서버가 정규화한 값이 이긴다 — 서버가 떨어뜨린 값이 입력칸에 남아 있으면 안 된다.
         .onChange(of: model?.prefsSaveStamp) { _, _ in
             if let model { prefsDraft = model.myPrefs }
@@ -112,7 +115,7 @@ struct CollabView: View {
 
     private func syncDrafts() {
         guard let model else { return }
-        if let me = model.me { nameDraft = me.displayName ?? "" }
+        if let me = model.me { nameDraft.receive(me.displayName ?? "") }
         if !prefsLoaded || prefsDraft == TripPrefs() { prefsDraft = model.myPrefs; prefsLoaded = true }
     }
 
@@ -157,11 +160,18 @@ struct CollabView: View {
     private func myNameSection(_ model: CollabViewModel) -> some View {
         Section {
             HStack {
-                TextField("예: 영희", text: $nameDraft)
+                TextField("예: 영희", text: $nameDraft.text)
                     .textInputAutocapitalization(.never)
-                Button("저장") { Task { await model.rename(nameDraft) } }
-                    .disabled(model.isWorking || nameDraft.trimmingCharacters(in: .whitespaces).isEmpty
-                              || nameDraft.trimmingCharacters(in: .whitespaces) == (model.me?.displayName ?? ""))
+                Button("저장") {
+                    let submitted = nameDraft.text
+                    Task {
+                        if await model.rename(submitted) {
+                            nameDraft.acknowledge(submitted: submitted, serverName: model.me?.displayName ?? submitted)
+                        }
+                    }
+                }
+                    .disabled(model.isWorking || nameDraft.text.trimmingCharacters(in: .whitespaces).isEmpty
+                              || nameDraft.text.trimmingCharacters(in: .whitespaces) == (model.me?.displayName ?? ""))
             }
         } header: {
             Text("이 여행에서 보일 내 이름")
@@ -306,6 +316,22 @@ struct CollabView: View {
         } footer: {
             Text("실시간 연결은 아직 없어요. 당겨서 새로고침하면 최신 활동을 불러와요.")
         }
+    }
+}
+
+/// 서버 응답은 편집하지 않은 초안만 갱신한다. 저장을 기다리는 동안 새로 친 이름도 보존한다.
+struct CollabNameDraft: Equatable {
+    var text = ""
+    private(set) var baseline: String?
+
+    mutating func receive(_ name: String) {
+        if (baseline == nil && text.isEmpty) || text == baseline { text = name }
+        baseline = name
+    }
+
+    mutating func acknowledge(submitted: String, serverName: String) {
+        if text == submitted { text = serverName }
+        baseline = serverName
     }
 }
 

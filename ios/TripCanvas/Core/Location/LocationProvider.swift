@@ -1,6 +1,16 @@
 import CoreLocation
 import Observation
 
+@MainActor
+protocol LocationManaging: AnyObject {
+    var delegate: (any CLLocationManagerDelegate)? { get set }
+    var authorizationStatus: CLAuthorizationStatus { get }
+    func requestWhenInUseAuthorization()
+    func requestLocation()
+    func stopUpdatingLocation()
+}
+extension CLLocationManager: LocationManaging {}
+
 /// 위치는 **필요할 때 한 번만** 묻는다(§41·§42).
 /// 연속 추적·백그라운드 지오펜싱은 이번 단계에서 만들지 않는다 — 앱 첫 실행에 권한을 몰아 요청하지도 않는다.
 /// 지도에서 현재 위치가 필요할 때 그 자리에서 요청한다.
@@ -16,13 +26,19 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
     private(set) var lastPoint: GeoPoint?
     private(set) var lastUpdatedAt: Date?
 
-    private let manager = CLLocationManager()
-    private var continuation: CheckedContinuation<GeoPoint?, Never>?
+    private let manager: any LocationManaging
+    private var continuations: [UUID: CheckedContinuation<GeoPoint?, Never>] = [:]
+    private var timeoutTask: Task<Void, Never>?
+    private let timeout: TimeInterval
+    var pendingRequestCount: Int { continuations.count }
 
-    override init() {
+    override convenience init() { self.init(manager: CLLocationManager()) }
+
+    init(manager: any LocationManaging, timeout: TimeInterval = 15) {
+        self.manager = manager; self.timeout = timeout
         super.init()
         manager.delegate = self
-        manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
+        (manager as? CLLocationManager)?.desiredAccuracy = kCLLocationAccuracyHundredMeters
         syncPermission()
     }
 
@@ -30,13 +46,22 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
     func requestOnce() async -> GeoPoint? {
         syncPermission()
         if permission == .denied { return nil }
-        if permission == .unknown {
-            manager.requestWhenInUseAuthorization()
-        }
-        return await withCheckedContinuation { (continuation: CheckedContinuation<GeoPoint?, Never>) in
-            self.continuation = continuation
-            manager.requestLocation()
-        }
+        let id = UUID()
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                guard !Task.isCancelled else { continuation.resume(returning: nil); return }
+                let first = continuations.isEmpty
+                continuations[id] = continuation
+                guard first else { return }
+                timeoutTask = Task { [weak self, timeout] in
+                    try? await Task.sleep(for: .seconds(timeout))
+                    guard !Task.isCancelled else { return }
+                    self?.finish(nil)
+                }
+                if permission == .unknown { manager.requestWhenInUseAuthorization() }
+                else { manager.requestLocation() }
+            }
+        } onCancel: { Task { @MainActor [weak self] in self?.cancel(id) } }
     }
 
     private func syncPermission() {
@@ -52,8 +77,16 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
             lastPoint = point
             lastUpdatedAt = Date()
         }
-        continuation?.resume(returning: point)
-        continuation = nil
+        let pending = Array(continuations.values)
+        continuations.removeAll()
+        timeoutTask?.cancel(); timeoutTask = nil
+        manager.stopUpdatingLocation()
+        for continuation in pending { continuation.resume(returning: point) }
+    }
+
+    private func cancel(_ id: UUID) {
+        continuations.removeValue(forKey: id)?.resume(returning: nil)
+        if continuations.isEmpty { timeoutTask?.cancel(); timeoutTask = nil; manager.stopUpdatingLocation() }
     }
 
     nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
@@ -71,6 +104,7 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
         Task { @MainActor in
             syncPermission()
             if permission == .denied { finish(nil) }
+            else if permission == .granted, !continuations.isEmpty { self.manager.requestLocation() }
         }
     }
 }

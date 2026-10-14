@@ -7,6 +7,7 @@ import Observation
 final class EditorSaveState {
     private(set) var isWorking = false
     private(set) var error: String?
+    func clearError() { if !isWorking { error = nil } }
 
     func perform(_ operation: () async -> String?) async -> Bool {
         guard !isWorking else { return false }

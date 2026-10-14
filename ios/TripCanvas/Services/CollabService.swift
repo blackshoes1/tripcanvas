@@ -62,7 +62,10 @@ extension TripService: CollabSource {
     }
 
     func leave(tripId: String) async throws {
-        let _: OkResponse = try await api.post("\(tripPath(tripId))/members/leave", body: [:])
+        let scope = cacheScope
+        let acknowledgement: OkResponse = try await api.post("\(tripPath(tripId))/members/leave", body: [:])
+        guard acknowledgement.ok else { throw APIError.server(status: 200, message: "나가기를 확인하지 못했어요. 목록을 새로고침해 주세요.") }
+        await cache.removeTrip(tripId, scope: scope)
     }
 
     func invites(tripId: String) async throws -> [InviteView] {
@@ -88,8 +91,10 @@ extension TripService: CollabSource {
 
     /// 여기서만 멤버십이 생긴다(§67). 멱등 — 이미 멤버면 `alreadyMember`.
     func acceptInvite(token: String, displayName: String?) async throws -> InviteAccept {
+        let scope = cacheScope
         let response: InviteAcceptResponse = try await api.post(
             "/api/v1/invites/\(token)/accept", body: ["displayName": orNull(displayName)])
+        if response.result.ok, let id = response.result.clientId { await cache.restoreTrip(id, scope: scope) }
         return response.result
     }
 

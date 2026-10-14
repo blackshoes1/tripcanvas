@@ -641,6 +641,50 @@ describe('GET /travel-state — 여행 중 단 하나의 조회(§57)', () => {
     expect(second.notifications).toHaveLength(0);
   });
 
+  it('알림 조회는 발송 기록을 남기지 않고 등록 성공한 DEVICE 항목만 확인한다', async () => {
+    const plan = await state('?now=18:58');
+    expect(store.sentKeys).toHaveLength(0);
+    const delivered = plan.notifications.find(n => n.origin === 'DEVICE')!;
+    expect(delivered).toBeTruthy();
+    const request = () => new Request('http://localhost/api/v1/trips/trip-1/travel-state', auth({
+      method: 'POST', body: JSON.stringify({ stateVersion: plan.stateVersion, items: [delivered] })
+    }));
+    expect((await api.acknowledgeNotifications(request(), 'trip-1')).status).toBe(200);
+    expect((await api.acknowledgeNotifications(request(), 'trip-1')).status).toBe(200);
+    expect(store.sentKeys).toEqual([delivered.dedupeKey]);
+    expect((await state('?now=18:58')).notifications.some(n => n.dedupeKey === delivered.dedupeKey)).toBe(false);
+  });
+
+  it('다른 여행·SERVER 알림·과도한 확인 요청은 기록하지 않는다', async () => {
+    for (const items of [
+      [{ kind: 'departureReminder', dedupeKey: 'other|2026-09-01|departureReminder|d0s1|READY' }],
+      [{ kind: 'priceSaving', dedupeKey: 'trip-1|2026-09-01|priceSaving|b1|found' }],
+      [{ kind: 'departureReminder', dedupeKey: 'trip-1|2026-02-30|departureReminder|d0s1|READY' }],
+      Array.from({ length: 51 }, () => ({ kind: 'departureReminder', dedupeKey: 'trip-1|2026-09-01|departureReminder|d0s1|READY' }))
+    ]) {
+      const res = await api.acknowledgeNotifications(new Request('http://localhost/api/v1/trips/trip-1/travel-state', auth({
+        method: 'POST', body: JSON.stringify({ stateVersion: 'v1', items })
+      })), 'trip-1');
+      expect(res.status).toBe(400);
+      expect(store.sentKeys).toHaveLength(0);
+    }
+    expect((await api.acknowledgeNotifications(new Request('http://localhost/api/v1/trips/trip-1/travel-state', { method: 'POST', body: '{}' }), 'trip-1')).status).toBe(401);
+  });
+
+  it('알림 등록 후 확인 저장 실패를 성공으로 처리하지 않고 재시도한다', async () => {
+    let failed = true;
+    const gateway = gatewayOf(store);
+    const record = gateway.recordNotifications;
+    gateway.recordNotifications = async (...args) => { if (failed) throw new Error('offline'); await record(...args); };
+    const handlers = createHandlers({ gatewayFor: () => gateway, now: () => NOW });
+    const body = { stateVersion: 'v1', items: [{ kind: 'departureReminder', dedupeKey: 'trip-1|2026-09-01|departureReminder|d0s1|READY' }] };
+    const request = () => new Request('http://localhost/api/v1/trips/trip-1/travel-state', auth({ method: 'POST', body: JSON.stringify(body) }));
+    expect((await handlers.acknowledgeNotifications(request(), 'trip-1')).status).toBe(502);
+    failed = false;
+    expect((await handlers.acknowledgeNotifications(request(), 'trip-1')).status).toBe(200);
+    expect(store.sentKeys).toHaveLength(1);
+  });
+
   it('Travel Mode를 켜야 빈 시간 제안 알림이 나온다', async () => {
     const off = await state('?now=13:00');
     expect(off.notifications.filter((n) => n.kind === 'emptySlotSuggestion')).toHaveLength(0);

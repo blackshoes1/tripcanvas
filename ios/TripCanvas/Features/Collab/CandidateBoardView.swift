@@ -27,6 +27,7 @@ struct CandidateBoardView: View {
     @State private var splitting: SplitTarget?
     @State private var removing: CandidateView?
     @State private var showsSearch = false
+    @State private var wasBackgrounded = false
     /// 지도에서 고른 자리. **아직 아무에게도 안 갔다** — 확인을 눌러야 후보가 된다(§37).
     @State private var pickedPlace: PlaceHit?
     /// 이 화면의 실시간 구독 이름. 여행 화면(`"trip"`)과 달라야 서로를 덮어쓰지 않는다.
@@ -50,20 +51,33 @@ struct CandidateBoardView: View {
                 // ⚠️ 여기서 저장하지 않는다. 탭 한 번으로 일행에게 공유되지 않게(§37).
                 pickedPlace = hit
                 if titleDraft.trimmingCharacters(in: .whitespaces).isEmpty { titleDraft = hit.name }
+                return nil
             }
         }
         // 앱이 뒤로 가면 소켓을 붙들지 않는다(§34) — 돌아올 때 다시 붙고 그때 최신을 읽는다.
         .onChange(of: scenePhase) { _, phase in
             switch phase {
-            case .active: if let model { startLive(model) }
-            case .background, .inactive: break   // 소켓은 여행 화면이 관리한다 — 여기서 끊으면 다른 탭의 구독까지 죽는다
+            case .active:
+                if let model {
+                    startLive(model)
+                    if wasBackgrounded, screenModels == nil { Task { await model.resumeAfterBackground() } }
+                }
+                wasBackgrounded = false
+            case .background: wasBackgrounded = true
+            case .inactive: break   // 소켓은 여행 화면이 관리한다 — 여기서 끊으면 다른 탭의 구독까지 죽는다
             @unknown default: break
             }
         }
         // 보드만 뗀다. 여행 화면의 구독은 그대로 둔다 — 시트를 닫았다고 일정이 실시간을 잃으면 안 된다.
-        .onDisappear { env.realtime.disconnect(key: Self.liveKey) }
+        .onDisappear {
+            model?.isVisible = false
+            model?.closeComments()
+            env.realtime.disconnect(key: Self.liveKey)
+        }
         .task {
             if model == nil { owned = CandidateBoardViewModel(trip: trip, service: env.service, documents: env.service) }
+            model?.isVisible = true
+            for id in expanded { model?.setCommentsOpen(candidateId: id, isOpen: true) }
             await model?.loadIfStale()
             if let model { startLive(model) }
         }
@@ -261,9 +275,13 @@ struct CandidateBoardView: View {
                             set: { commentDrafts[candidate.id] = $0 }),
                         onReact: { reaction in Task { await model.react(candidateId: candidate.id, reaction: reaction) } },
                         onToggleComments: {
-                            if expanded.contains(candidate.id) { expanded.remove(candidate.id) }
+                            if expanded.contains(candidate.id) {
+                                expanded.remove(candidate.id)
+                                model.setCommentsOpen(candidateId: candidate.id, isOpen: false)
+                            }
                             else {
                                 expanded.insert(candidate.id)
+                                model.setCommentsOpen(candidateId: candidate.id, isOpen: true)
                                 Task { await model.loadComments(candidateId: candidate.id) }
                             }
                         },

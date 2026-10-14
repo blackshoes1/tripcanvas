@@ -12,6 +12,7 @@ private final class FakeAuthClient: AuthClient, @unchecked Sendable {
     var signUpResult: Result<SignUpResult, AuthError> = .success(SignUpResult(verificationSent: true))
     /// `session(token:)`이 돌려줄 것. `.success(nil)`이면 세션이 죽은 것이다.
     var sessionResult: Result<AuthSession?, AuthError> = .success(nil)
+    var resetFailure: AuthError?
 
     private(set) var signedOutTokens: [String] = []
     private(set) var resetRequests: [String] = []
@@ -24,7 +25,10 @@ private final class FakeAuthClient: AuthClient, @unchecked Sendable {
         return try sessionResult.get()
     }
     func signOut(token: String) async { signedOutTokens.append(token) }
-    func requestPasswordReset(email: String) async { resetRequests.append(email) }
+    func requestPasswordReset(email: String) async throws {
+        resetRequests.append(email)
+        if let resetFailure { throw resetFailure }
+    }
 }
 
 private final class FakeSessionStore: SessionStoring, @unchecked Sendable {
@@ -144,6 +148,20 @@ final class AuthStoreTests: XCTestCase {
         XCTAssertEqual(auth.notice?.contains("가입된 이메일이면"), true)
     }
 
+    func testPasswordResetNetworkFailureDoesNotSayMailWasSentAndCanRetry() async {
+        let client = FakeAuthClient()
+        let auth = AuthStore(client: client, store: FakeSessionStore())
+        await auth.requestPasswordReset(email: "nobody@example.com")
+        client.resetFailure = .network
+        await auth.requestPasswordReset(email: "nobody@example.com")
+        XCTAssertNil(auth.notice)
+        XCTAssertEqual(auth.lastError, AuthError.network.message)
+        client.resetFailure = nil
+        await auth.requestPasswordReset(email: "nobody@example.com")
+        XCTAssertNil(auth.lastError)
+        XCTAssertNotNil(auth.notice)
+    }
+
     /// §8 — 예전 Supabase 세션을 자체 Auth 세션으로 바꾸지 않는다. 지우고 한 번 다시 묻는다.
     func testLegacySupabaseSessionIsClearedNotConverted() {
         let store = FakeSessionStore(stored: nil, legacyPresent: true)
@@ -177,6 +195,32 @@ final class AuthStoreTests: XCTestCase {
         // 서버 통보는 뒤따라가는 작업이라 잠깐 기다렸다 본다 — 실패해도 이 기기는 이미 로그아웃이다.
         try? await Task.sleep(nanoseconds: 50_000_000)
         XCTAssertEqual(client.signedOutTokens, ["t1"])
+    }
+
+    func testSignOutCapturesOldSessionBeforeCleanupAndDoesNotClearANewLogin() async {
+        let client = FakeAuthClient()
+        let previous = AuthSession(token: "old-token", userId: "old-user", email: "old@example.com")
+        let auth = AuthStore(client: client, store: FakeSessionStore(stored: previous))
+        var captured: AuthSession?
+        var finishCleanup: CheckedContinuation<Void, Never>?
+        auth.cleanupSignedOutSession = { session in
+            captured = session
+            XCTAssertEqual(auth.session, previous, "기기 등록 해제에 필요한 값은 계정 초기화 전에 잡는다")
+            return Task { await withCheckedContinuation { finishCleanup = $0 } }
+        }
+        auth.signOut()
+        XCTAssertEqual(captured, previous)
+        XCTAssertNil(auth.session)
+        for _ in 0..<1000 where finishCleanup == nil { await Task.yield() }
+        XCTAssertNotNil(finishCleanup)
+        XCTAssertTrue(client.signedOutTokens.isEmpty, "기기 등록 해제가 끝난 뒤 이전 서버 세션을 닫는다")
+        let next = AuthSession(token: "new-token", userId: "new-user", email: "new@example.com")
+        client.signInResult = .success(next)
+        await auth.signIn(email: next.email, password: "synthetic")
+        finishCleanup?.resume()
+        for _ in 0..<1000 where client.signedOutTokens.isEmpty { await Task.yield() }
+        XCTAssertEqual(client.signedOutTokens, ["old-token"])
+        XCTAssertEqual(auth.session, next)
     }
 
     /// refresh 그랜트가 없다 — 401이면 "세션이 아직 사는가"를 묻는다.

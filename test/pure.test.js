@@ -465,8 +465,17 @@ test('parseMoney — 통화 기호·접미사 (유로 포함)', () => {
   assert.equal(L.parseMoney('메모만 있음'), null);
   // 유로 금액이 붙은 장소 줄이 직접 형식에서 EUR로 파싱되는지
   const t=L.parseDirect('[Day 1]\n- 알카사르 | 세비야 | 입장 €14.5');
-  assert.equal(t.days[0].spots[0].cost, 14);
+  assert.equal(t.days[0].spots[0].cost, 14.5);
   assert.equal(t.days[0].spots[0].cur, 'EUR');
+});
+
+test('parseMoney — 센트와 천 단위 구분을 함께 보존하고 깨진 금액을 부분 추출하지 않는다', () => {
+  for (const [text, amount] of [['€12.50', 12.5], ['12.50유로', 12.5], ['12,50 유로', 12.5], ['€1,234.50', 1234.5], ['1.234,50 유로', 1234.5]]) {
+    assert.equal(L.parseMoney(text)?.cost, amount, text);
+    assert.equal(L.parseMoney(text)?.cur, 'EUR');
+  }
+  assert.equal(L.parseMoney('12..50 유로'), null);
+  assert.equal(L.parseMoney('12.50엔'), null, '정수 통화의 소수는 조용히 다른 금액으로 바꾸지 않는다');
 });
 
 test('normalizeTrip — EUR 통화 유지, 알 수 없는 통화는 제거', () => {

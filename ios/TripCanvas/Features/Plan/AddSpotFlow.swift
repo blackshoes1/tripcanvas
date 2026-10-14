@@ -104,12 +104,16 @@ struct AddSpotOptionsSheet: View {
 struct PlaceDetailView: View {
     let hit: PlaceHit
     let addTitle: String
-    let onAdd: () -> Void
+    var saving = EditorSaveState()
+    let onAdd: () async -> String?
     @State private var showsMap = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Space.l) {
+                if let error = saving.error {
+                    Text(error).foregroundStyle(Ink.danger).accessibilityIdentifier("placeAddError")
+                }
                 // 사진은 구글 장소만 있다(출처 표기와 함께). 국내(카카오) 결과는 사진 자리에 분류 기호를 둔다 —
                 // "사진 정보가 없어요"로 화면을 시작하지 않는다.
                 if let placeId = hit.placeId, GooglePlaces.validPlaceId(placeId) {
@@ -157,13 +161,18 @@ struct PlaceDetailView: View {
             .padding(Space.l)
         }
         .safeAreaInset(edge: .bottom) {
-            PrimaryActionButton(title: addTitle, action: onAdd)
+            PrimaryActionButton(title: saving.isWorking ? "저장 중…" : saving.error == nil ? addTitle : "같은 장소 다시 추가") {
+                Task { await saving.perform(onAdd) }
+            }
+                .disabled(saving.isWorking)
+                .accessibilityIdentifier("placeAddConfirm")
                 .padding(Space.l)
                 .background(Ink.paper)
         }
         .background(Ink.paper)
         .navigationTitle("장소 정보")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(saving.isWorking)
         .sheet(isPresented: $showsMap) {
             NavigationStack {
                 MapEngineView(pins: [MapPin(id: hit.id, title: hit.name, point: hit.point, order: 1)],

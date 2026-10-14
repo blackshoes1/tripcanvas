@@ -45,6 +45,16 @@ struct CostEntry: Hashable, Sendable, Identifiable {
         get { (raw["photos"]?.arrayValue ?? []).compactMap { $0.stringValue } }
         set { raw.setOrRemove("photos", newValue.isEmpty ? nil : .array(newValue.map { .string($0) })) }
     }
+    /// 예약 총액으로 옮길 때의 값 — `lib.js costAmountOf`와 같이 명시한 1인 기준에만 인원을 곱한다.
+    var totalAmount: Double? {
+        guard let amount, amount.isFinite, amount >= 0 else { return nil }
+        let count = raw["costPeople"]?.doubleValue ?? 1
+        let multiplier = basis == .perPerson && count.isFinite && count > 0 && count.rounded() == count ? count : 1
+        let scale: Double = [.usd, .eur, .cny].contains(currency) ? 100 : 1
+        let total = amount * multiplier
+        guard total.isFinite else { return nil }
+        return (total * scale).rounded() / scale
+    }
     /// 낸 날짜 `YYYY-MM-DD` — 가계부 정렬용. 여행 날짜와 무관하다(출발 두 달 전에 낸 보험료).
     var paidOn: String? {
         get { raw["paidOn"]?.stringValue }
@@ -196,12 +206,10 @@ enum CostCategory: String, CaseIterable {
     static let itemKinds: [CostCategory] = allCases.filter { $0.bookingType == nil }
 }
 
-extension CostPayState {
-    /// **결제일이 있으면 날짜가 정한다**(`lib.js costPayStateOf`와 같은 규칙, 2026-09-18) — 오늘이거나 지났으면 결제,
-    /// 아직이면 예약. 없으면 손으로 고른 값. 서버 응답(`payState`)이 있으면 그것이 먼저다(여행 시간대의 오늘로 계산했다) —
-    /// 이 함수는 응답이 없을 때(옛 API·오프라인) 기기 날짜로 같은 답을 내려는 것이다.
-    static func resolved(paidOn: String?, manual: CostPayState, today: String) -> CostPayState {
-        guard let paidOn, ISODateText.isValid(paidOn), ISODateText.isValid(today) else { return manual }
-        return paidOn <= today ? .paid : .reserved
+/// 빠른 지출이 저장될 곳. 예약이 내는 숙소 금액에 현장 지출을 덮어 쓰면 계산에서 빠지므로 별도 항목으로 적는다.
+enum SpotExpensePolicy {
+    static func bookingPaysSpot(_ spot: TripSpot, bookings: [TripBooking]) -> Bool {
+        guard let id = spot.bookingId else { return false }
+        return bookings.contains { $0.id == id && $0.type == .hotel && $0.price > 0 }
     }
 }

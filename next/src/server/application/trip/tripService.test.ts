@@ -32,6 +32,16 @@ async function code(p: Promise<unknown>): Promise<string> {
 }
 
 describe('create', () => {
+  it('iOS 생성 재시도의 ID·요청 확인 메타데이터가 정규화 뒤에도 보존된다', async () => {
+    const id = '11111111-1111-4111-8111-111111111111';
+    const input = doc('재시도 여행', { id, creationKey: id, creationFingerprint: 'abcdef123456' });
+    await service.create(A, input);
+    expect(await code(service.create(A, input))).toBe('CONFLICT');
+    const existing = await service.get(A, id);
+    expect(existing.record.data).toMatchObject({ id, creationKey: id, creationFingerprint: 'abcdef123456', name: '재시도 여행' });
+    expect((await service.list(A)).length).toBe(1);
+    expect(await code(service.get(B, id))).toBe('NOT_FOUND');
+  });
   it('정규화된 문서가 revision 1로 저장되고 만든 사람이 OWNER다', async () => {
     const view = await service.create(A, doc('스페인', { timeZone: 'Not/AZone', junk: 1 }));
     expect(view.record.clientId).toBe('trip1');

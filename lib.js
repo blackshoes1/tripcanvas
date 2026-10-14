@@ -99,21 +99,31 @@
       .replace(/\s*(앞바다|바다|해변|해수욕장|일대|근처|주변|전경|야경|거리|풍경)\s*$/,'').trim();
   }
 
-  // 통화 기호/접미사가 붙은 금액 하나 추출 → {cost:number,cur:'KRW'|'USD'|'JPY'|'CNY',raw:string} | null
+  // 통화 기호/접미사가 붙은 금액 하나 추출. 달러·유로·위안의 소수도 보존한다.
   /** @param {string=} str */
   function parseMoney(str){
     str=String(str||''); let m;
-    const num=(/**@type{string}*/s)=>+String(s).replace(/,/g,'');
-    if(m=str.match(/[$＄]\s*([\d,]+)/))        return {cost:num(m[1]),cur:'USD',raw:m[0]};
-    if(m=str.match(/€\s*([\d,]+)/))            return {cost:num(m[1]),cur:'EUR',raw:m[0]};
-    if(m=str.match(/[¥￥]\s*([\d,]+)/))        return {cost:num(m[1]),cur:'JPY',raw:m[0]};
-    if(m=str.match(/元\s*([\d,]+)/))           return {cost:num(m[1]),cur:'CNY',raw:m[0]};
-    if(m=str.match(/₩\s*([\d,]+)/))           return {cost:num(m[1]),cur:'KRW',raw:m[0]};
-    if(m=str.match(/([\d,]+)\s*(?:달러|불)/))   return {cost:num(m[1]),cur:'USD',raw:m[0]};
-    if(m=str.match(/([\d,]+)\s*유로/))          return {cost:num(m[1]),cur:'EUR',raw:m[0]};
-    if(m=str.match(/([\d,]+)\s*엔/))           return {cost:num(m[1]),cur:'JPY',raw:m[0]};
-    if(m=str.match(/([\d,]+)\s*(?:위안|元)/))   return {cost:num(m[1]),cur:'CNY',raw:m[0]};
-    if(m=str.match(/([\d,]+)\s*원/))           return {cost:num(m[1]),cur:'KRW',raw:m[0]};
+    /** @param {RegExpMatchArray} match @param {string} cur */
+    const read=(match,cur)=>{
+      const s=match[1], last=Math.max(s.lastIndexOf('.'),s.lastIndexOf(','));
+      const decimal=last>=0 && s.length-last-1<=2;
+      const whole=decimal?s.slice(0,last):s, fraction=decimal?s.slice(last+1):'';
+      // 1,234.50 · 1.234,50 · 12,50를 읽되 깨진 표기를 일부만 금액으로 담지 않는다.
+      if(!/^\d+$/.test(whole) && !/^\d{1,3}([.,])\d{3}(?:\1\d{3})*$/.test(whole)) return null;
+      const cost=Number(whole.replace(/[.,]/g,'')+(decimal?'.'+fraction:''));
+      if(!Number.isFinite(cost) || ((cur==='KRW'||cur==='JPY')&&!Number.isInteger(cost))) return null;
+      return {cost,cur,raw:match[0]};
+    };
+    if(m=str.match(/[$＄]\s*(\d[\d.,]*\d|\d)/)) return read(m,'USD');
+    if(m=str.match(/€\s*(\d[\d.,]*\d|\d)/)) return read(m,'EUR');
+    if(m=str.match(/[¥￥]\s*(\d[\d.,]*\d|\d)/)) return read(m,'JPY');
+    if(m=str.match(/元\s*(\d[\d.,]*\d|\d)/)) return read(m,'CNY');
+    if(m=str.match(/₩\s*(\d[\d.,]*\d|\d)/)) return read(m,'KRW');
+    if(m=str.match(/(\d[\d.,]*\d|\d)\s*(?:달러|불)/)) return read(m,'USD');
+    if(m=str.match(/(\d[\d.,]*\d|\d)\s*유로/)) return read(m,'EUR');
+    if(m=str.match(/(\d[\d.,]*\d|\d)\s*엔/)) return read(m,'JPY');
+    if(m=str.match(/(\d[\d.,]*\d|\d)\s*(?:위안|元)/)) return read(m,'CNY');
+    if(m=str.match(/(\d[\d.,]*\d|\d)\s*원/)) return read(m,'KRW');
     return null;
   }
   /** 붙여넣기 직접 형식 → 구조화 @param {string=} text @returns {{name:string,start:string,days:any[]}} */

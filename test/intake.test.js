@@ -74,6 +74,16 @@ test('normalizeAmount: 천 단위·소수점을 함께 읽는다', () => {
   assert.equal(I.normalizeAmount('무료'), null);
 });
 
+test('일정 붙여넣기는 외화 센트와 선택 표시·링크를 함께 읽는다', () => {
+  const draft = I.parseItinerary('## 10월 3일\n- 15:00 (선택) 루브르 박물관 | 파리 | 입장료 €12.50 https://example.com/ticket', { year: 2026 });
+  const item = draft.days[0].items[0];
+  assert.equal(item.cost, 12.5);
+  assert.equal(item.cur, 'EUR');
+  assert.equal(item.opt, true);
+  assert.equal(item.url, 'https://example.com/ticket');
+  assert.ok(!item.desc.includes('.50'));
+});
+
 // 소수점 기호는 나라마다 다르다 — '1.234,56'을 1.23으로 읽으면 천 배가 틀린다(2026-10-02).
 test('normalizeAmount: 마지막 구분자의 종류와 자릿수로 소수점을 가른다', () => {
   assert.equal(I.normalizeAmount('1.234,56 EUR'), 1234.56, '유럽식');

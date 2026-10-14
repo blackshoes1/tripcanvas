@@ -1,5 +1,5 @@
 # iOS 컴파일 검증 — 실기기 기능은 여기서 보지 않는다(§37).
-# 여기서 잡는 것은 "Mac에서 열었을 때 빌드가 되는가" 하나이고, 그게 지금까지 사람 손에만 달려 있었다.
+# 컴파일·단위 테스트에 더해 합성 의존성으로 검색·비용·초안 복원 UI 흐름도 확인한다.
 #
 # ⚠️ macOS 러너는 비공개 저장소에서 **분당 10배**로 과금된다 → ios/ 가 바뀔 때만 돈다.
 #    예외는 `collab.js` 하나다 — `CollabModel.swift`가 파일째 복사본이라 원본만 바뀌어도 돈다(2026-10-02).
@@ -8,7 +8,7 @@
 #    "Parity fixtures are committed"가 다시 쓴 픽스처의 커밋을 강제하므로 규칙이 바뀌면 ios/**도 함께 바뀐다.
 # 서명은 하지 않는다 — 시뮬레이터 빌드는 서명이 필요 없어서 Apple 계정 없이도 돌아간다.
 # 그래서 여기서 확인되는 것과 확인되지 않는 것이 갈린다:
-#   확인됨   : 컴파일 · 링크 · XCTest · Release 설정 · XcodeGen 명세
+#   확인됨   : 컴파일 · 링크 · XCTest · 합성 UI 흐름 · Release 설정 · XcodeGen 명세
 #   확인 안 됨: 서명 · 실기기 설치 · 푸시 · 위젯/Live Activity 실제 표시 · Archive · TestFlight
 name: iOS
 on:
@@ -64,7 +64,26 @@ jobs:
             -project TripCanvas.xcodeproj \
             -scheme TripCanvas \
             -destination "platform=iOS Simulator,name=${{ steps.sim.outputs.name }}" \
+            -resultBundlePath ../ios-review-results.xcresult \
             $NOSIGN
+
+      - name: Export iOS screenshots
+        if: always()
+        continue-on-error: true
+        run: |
+          if [ -d ios-review-results.xcresult ]; then
+            xcrun xcresulttool export attachments --path ios-review-results.xcresult --output-path ios-review-screens
+          fi
+
+      - name: Preserve iOS test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-test-results
+          path: |
+            ios-review-results.xcresult
+            ios-review-screens
+          if-no-files-found: ignore
 
       # Debug에서만 되는 상태로 두지 않는다(§40) — Release에서만 켜지는 최적화·경고가 있다.
       - name: Build (Release)

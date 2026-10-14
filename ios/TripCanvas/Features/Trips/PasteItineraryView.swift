@@ -12,6 +12,32 @@ final class PasteItineraryFormState {
     var start = ""
     /// 글의 날짜가 건너뛰면 빈 날을 넣어 날짜를 맞출지 — 웹과 같이 기본은 넣는다(글에 적힌 날짜가 그대로 남는다)
     var fillGaps = true
+    var creationID = UUID().uuidString
+
+    var inputDraft: PasteItineraryInputDraft {
+        .init(text: text, draft: draft, rows: rows, tripName: tripName, start: start,
+              fillGaps: fillGaps, creationID: creationID)
+    }
+    var hasInput: Bool { !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || draft != nil }
+    /// 날짜 칸은 잘못 친 글을 보여 주는 동안 마지막 유효 날짜를 유지한다. 그 상태로는 만들지 않는다.
+    func canCreate(startInputInvalid: Bool) -> Bool {
+        guard !startInputInvalid, draft != nil else { return false }
+        return start.isEmpty || ISODateText.parseLoose(start) == start
+    }
+    func restore(_ saved: PasteItineraryInputDraft) {
+        text = saved.text; draft = saved.draft; rows = saved.rows; tripName = saved.tripName
+        start = saved.start; fillGaps = saved.fillGaps; creationID = saved.creationID
+    }
+}
+
+struct PasteItineraryInputDraft: Codable, Equatable {
+    let text: String
+    let draft: ItineraryDraft?
+    let rows: [PasteItineraryView.Row]
+    let tripName: String
+    let start: String
+    let fillGaps: Bool
+    let creationID: String
 }
 
 /// 가진 일정을 붙여넣어 여행 만들기.
@@ -27,14 +53,26 @@ struct PasteItineraryView: View {
     @Bindable var form: PasteItineraryFormState
     /// 만든 여행. 부모가 그 여행으로 들어간다.
     let onCreated: (TripSummary) -> Void
+    var draftKeyOverride: EditorDraftKey? = nil
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppEnvironment.self) private var env
     @State private var isBusy = false
     @State private var errorMessage: String?
+    @State private var recovery: PasteItineraryInputDraft?
+    @State private var checkedRecovery = false
+    @State private var pinnedDraftKey: EditorDraftKey?
+    @State private var showsDiscard = false
+    @State private var searchGeneration = 0
+    @State private var startInvalid = false
+
+    private var draftKey: EditorDraftKey? {
+        pinnedDraftKey
+    }
 
     /// 한 줄. 담을지(`include`)와 찾은 좌표(`found`)는 화면에서 바뀐다.
-    struct Row: Identifiable, Equatable {
-        let id = UUID()
+    struct Row: Identifiable, Codable, Equatable {
+        var id = UUID()
         let dayIndex: Int
         let item: ItineraryDraftItem
         var include: Bool
@@ -44,15 +82,27 @@ struct PasteItineraryView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
+            VStack(spacing: 0) {
+                if let recovery {
+                    VStack(alignment: .leading, spacing: Space.s) {
+                        Text("이전에 입력한 일정이 있어요").font(.caption).accessibilityIdentifier("pasteDraftRecoveryNotice")
+                        HStack {
+                            Button { form.restore(recovery); startInvalid = false; self.recovery = nil } label: { Text("복원").frame(minHeight: 44) }
+                                .accessibilityIdentifier("restorePasteDraft")
+                            Button { self.recovery = nil; EditorDraftStore.shared.remove(draftKey) } label: { Text("초안 버리기").frame(minHeight: 44) }
+                                .accessibilityIdentifier("discardPasteDraft")
+                        }
+                    }.padding()
+                }
                 if form.draft == nil { input } else { preview }
             }
+            .disabled(isBusy)
             .paperGround()
             .navigationTitle(form.draft == nil ? "일정 붙여넣기" : "이렇게 읽었어요")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("취소") { dismiss() }.disabled(isBusy)
+                    Button("취소") { if form.hasInput { showsDiscard = true } else { dismiss() } }.disabled(isBusy)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     if isBusy { ProgressView() } else if form.draft == nil {
@@ -60,11 +110,31 @@ struct PasteItineraryView: View {
                             .disabled(form.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     } else {
                         Button("만들기") { Task { await create() } }
+                            .disabled(!form.canCreate(startInputInvalid: startInvalid))
+                            .accessibilityIdentifier("pasteItineraryCreate")
                     }
                 }
             }
         }
-        .interactiveDismissDisabled(isBusy)
+        .interactiveDismissDisabled(isBusy || form.hasInput)
+        .task {
+            if !checkedRecovery {
+                pinnedDraftKey = draftKeyOverride ?? EditorDraftKey(accountID: env.auth.session?.userId, tripID: "new-trip", editor: "paste-itinerary")
+                checkedRecovery = true
+                if !form.hasInput { recovery = EditorDraftStore.shared.load(PasteItineraryInputDraft.self, key: draftKey) }
+                else { persistInput() }
+            }
+        }
+        .onChange(of: form.inputDraft) { _, _ in persistInput() }
+        .onDisappear { searchGeneration += 1; persistInput() }
+        .confirmationDialog("입력한 일정을 기기에 남길까요?", isPresented: $showsDiscard, titleVisibility: .visible) {
+            Button("초안 남기고 닫기") { persistInput(); dismiss() }
+            Button("내용 버리기", role: .destructive) {
+                form.restore(.init(text: "", draft: nil, rows: [], tripName: "", start: "", fillGaps: true, creationID: UUID().uuidString))
+                recovery = nil; EditorDraftStore.shared.remove(draftKey); dismiss()
+            }
+            Button("계속 입력", role: .cancel) {}
+        }
     }
 
     /// 프롬프트를 복사했는지 — 클립보드는 눈에 안 보여서 눌렸는지 알 수 없다.
@@ -94,6 +164,7 @@ struct PasteItineraryView: View {
             Section { CreateTripModePicker(mode: $mode).disabled(isBusy) }
             Section {
                 TextEditor(text: $form.text)
+                    .accessibilityIdentifier("pasteItineraryText")
                     .frame(minHeight: 220)
                     .font(.callout)
             } header: {
@@ -132,7 +203,7 @@ struct PasteItineraryView: View {
                 TextField("여행 이름", text: $form.tripName)
                 // 읽은 시작일을 **여기서 고친다** — 예전에는 읽기 전용이라 연도를 잘못 짚으면 원문부터 다시 써야 했다.
                 DateEntryField(title: "시작일", text: Binding(get: { form.start.isEmpty ? nil : form.start },
-                                                           set: { form.start = $0 ?? "" }))
+                                                           set: { form.start = $0 ?? "" }), invalid: $startInvalid)
                 if form.start.isEmpty {
                     Text("글에 날짜가 없어요. 비워 두면 날짜 없이 만들어요.").font(.caption).foregroundStyle(Ink.soft)
                 } else if form.draft?.startAmbiguous == true {
@@ -236,6 +307,7 @@ struct PasteItineraryView: View {
     // MARK: 동작
 
     private func parse() async {
+        guard !isBusy else { return }
         isBusy = true
         errorMessage = nil
         do {
@@ -243,6 +315,7 @@ struct PasteItineraryView: View {
             form.draft = parsed
             form.tripName = parsed.name.isEmpty ? NewTripView.fallbackName : parsed.name
             form.start = parsed.start ?? ""
+            startInvalid = false
             form.rows = parsed.days.flatMap { day in
                 day.items.map { Row(dayIndex: day.index, item: $0, include: $0.kind == .place) }
             }
@@ -265,25 +338,48 @@ struct PasteItineraryView: View {
         guard let index = form.rows.firstIndex(where: { $0.id == id }), form.rows[index].found == nil else { return }
         let row = form.rows[index]
         guard row.include, !row.item.name.isEmpty else { return }
-        // 이미 찾은 장소의 도시를 물려받는다 — 같은 여행이면 대개 같은 동네다(웹과 같은 사다리).
-        let hint = row.item.city.isEmpty ? (form.rows.compactMap(\.found).first?.city ?? "") : row.item.city
+        let context = Self.searchContext(for: row, rows: form.rows)
+        let hint = context.city
         let query = hint.isEmpty ? row.item.name : "\(row.item.name) \(hint)"
-        let hits = (try? await places.search(query, near: form.rows.compactMap(\.found).first?.point)) ?? []
-        guard let current = form.rows.firstIndex(where: { $0.id == id }) else { return }
+        let generation = searchGeneration
+        let hits = (try? await places.search(query, near: context.near)) ?? []
+        guard generation == searchGeneration, !Task.isCancelled,
+              let current = form.rows.firstIndex(where: { $0.id == id }) else { return }
         form.rows[current].found = hits.first
         form.rows[current].searched = true
+        persistInput()
+    }
+
+    /// 일자마다 도시를 배우고, 공항·역은 다음 관광지의 검색 기준으로 삼지 않는다.
+    static func searchContext(for row: Row, rows: [Row]) -> (city: String, near: GeoPoint?) {
+        let anchor = rows.first { $0.dayIndex == row.dayIndex && $0.include && $0.found?.category != .transport && $0.found != nil }?.found
+        if !row.item.city.isEmpty {
+            let sameCity = anchor?.city == row.item.city
+            return (row.item.city, sameCity ? anchor?.point : nil)
+        }
+        return (anchor?.city ?? "", anchor?.point)
+    }
+
+    private func persistInput() {
+        guard checkedRecovery, recovery == nil else { return }
+        if form.hasInput { EditorDraftStore.shared.save(form.inputDraft, key: draftKey) }
+        else { EditorDraftStore.shared.remove(draftKey) }
     }
 
     private func create() async {
-        guard let draft = form.draft else { return }
+        guard !isBusy, form.canCreate(startInputInvalid: startInvalid), let draft = form.draft else { return }
         isBusy = true
         errorMessage = nil
         do {
-            let summary = try await service.createTrip(document: ItineraryDocument.make(
+            var document = ItineraryDocument.make(
                 draft: draft,
                 lines: form.rows.map { .init(dayIndex: $0.dayIndex, item: $0.item, include: $0.include, found: $0.found) },
-                name: form.tripName, start: form.start, fillGaps: form.fillGaps))
+                name: form.tripName, start: form.start, fillGaps: form.fillGaps)
+            document["id"] = .string(form.creationID)
+            let summary = try await service.createTrip(document: document)
             isBusy = false
+            form.restore(.init(text: "", draft: nil, rows: [], tripName: "", start: "", fillGaps: true, creationID: UUID().uuidString))
+            recovery = nil; EditorDraftStore.shared.remove(draftKey)
             onCreated(summary)
             dismiss()
         } catch {
@@ -329,6 +425,14 @@ enum ItineraryDocument {
                 spot.arriveAt = line.item.at
                 spot.stayMinutes = line.item.stayMinutes
                 spot.isStay = line.item.stay
+                spot.cost = line.item.cost
+                spot.currency = line.item.currency.flatMap(Currency.init(rawValue:))
+                spot.bookUrl = line.item.url ?? ""
+                if line.item.optional { spot.priority = .optional }
+                if let found = line.found {
+                    if !found.address.isEmpty { spot.setField("addr", .string(found.address)) }
+                    if found.provider == "kakao" { spot.kakaoId = found.providerId }
+                }
                 if let point = line.found?.point ?? line.item.location { spot.point = point }
                 if let placeId = line.found?.placeId { spot.placeId = placeId }
                 if let category = line.found?.category { spot.category = category }

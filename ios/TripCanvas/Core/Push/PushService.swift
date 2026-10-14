@@ -13,19 +13,27 @@ final class PushService: NSObject, PushScheduling {
 
     private(set) var permission: Permission = .unknown
     private(set) var deviceToken: String?
+    private(set) var registrationError: String?
     /// 알림을 눌러 들어온 목적지. 앱이 화면을 띄운 뒤 비운다.
     private(set) var pendingDeepLink: URL?
 
     private let center = UNUserNotificationCenter.current()
-    private let registerToken: (String) async -> Void
+    private let registerToken: (String) async throws -> Void
+    private let permissionReader: (() async -> Permission)?
+    private let enqueue: ((UNNotificationRequest) async throws -> Void)?
+    var onOpenLink: ((URL) -> Void)?
 
-    init(registerToken: @escaping (String) async -> Void) {
-        self.registerToken = registerToken
+    init(handlesSystemNotifications: Bool = true,
+         permissionReader: (() async -> Permission)? = nil,
+         enqueue: ((UNNotificationRequest) async throws -> Void)? = nil,
+         registerToken: @escaping (String) async throws -> Void) {
+        self.registerToken = registerToken; self.permissionReader = permissionReader; self.enqueue = enqueue
         super.init()
-        center.delegate = self
+        if handlesSystemNotifications { center.delegate = self }
     }
 
     func refreshPermission() async {
+        if let permissionReader { permission = await permissionReader(); return }
         let settings = await center.notificationSettings()
         permission = switch settings.authorizationStatus {
         case .authorized, .provisional, .ephemeral: .granted
@@ -51,7 +59,17 @@ final class PushService: NSObject, PushScheduling {
     func didRegister(tokenData: Data) async {
         let token = tokenData.map { String(format: "%02x", $0) }.joined()
         deviceToken = token
-        await registerToken(token)
+        do { try await registerToken(token); registrationError = nil }
+        catch { registrationError = "알림 기기를 등록하지 못했어요. 연결되면 다시 확인해요." }
+    }
+
+    func registrationFailed() { registrationError = "기기 알림 등록에 연결하지 못했어요. 잠시 후 다시 확인해 주세요." }
+
+    func prepareForDelivery() async { await refreshPermission() }
+
+    func refreshForForeground(isSignedIn: Bool) async {
+        await refreshPermission()
+        if isSignedIn, permission == .granted { UIApplicationShim.registerForRemoteNotifications() }
     }
 
     // MARK: 로컬 알림 (기기가 판단하는 것)
@@ -59,7 +77,12 @@ final class PushService: NSObject, PushScheduling {
     /// 서버가 만든 문구를 그대로 쓴다 — 클라이언트가 다시 쓰면 톤이 갈라진다(§14).
     /// dedupeKey를 식별자로 써서 같은 상황이 두 번 뜨지 않는다(§46).
     func present(_ item: NotificationPlanItem) {
-        guard permission == .granted else { return }
+        Task { _ = await schedule(item) }
+    }
+
+    /// 시스템 등록 성공을 확인한 뒤에만 발송 기록을 남긴다.
+    func schedule(_ item: NotificationPlanItem) async -> Bool {
+        guard permission == .granted else { return false }
         let content = UNMutableNotificationContent()
         content.title = item.title
         content.body = item.body
@@ -69,13 +92,25 @@ final class PushService: NSObject, PushScheduling {
 
         // 지금 알릴 것이므로 트리거 없이 즉시. 미래 예약은 상태가 바뀌면 낡으므로 하지 않는다.
         let request = UNNotificationRequest(identifier: item.dedupeKey, content: content, trigger: nil)
-        center.add(request)
+        do {
+            if let enqueue { try await enqueue(request) } else { try await center.add(request) }
+            return true
+        } catch { return false }
+    }
+
+    func receiveLink(_ text: String?, kind: String?) {
+        if let text, let url = URL(string: text), ActionRouter.parse(url) != nil {
+            pendingDeepLink = url
+            if let onOpenLink { onOpenLink(url); pendingDeepLink = nil }
+        }
+        Analytics.track(.notificationOpened, ["kind": kind ?? ""])
     }
 
     func clearDeepLink() { pendingDeepLink = nil }
 
     func resetForAccountChange() {
         deviceToken = nil
+        registrationError = nil
         pendingDeepLink = nil
         center.removeAllPendingNotificationRequests()
         center.removeAllDeliveredNotifications()
@@ -95,8 +130,7 @@ extension PushService: UNUserNotificationCenterDelegate {
         let link = info["deepLink"] as? String
         let kind = info["kind"] as? String
         await MainActor.run {
-            if let link, let url = URL(string: link) { pendingDeepLink = url }
-            Analytics.track(.notificationOpened, ["kind": kind ?? ""])
+            receiveLink(link, kind: kind)
         }
     }
 }
@@ -147,4 +181,20 @@ enum UIApplicationShim {
 
 #if canImport(UIKit)
 import UIKit
+
+@MainActor
+enum AppPushBridge {
+    static weak var service: PushService?
+    static func registered(_ token: Data) async { await service?.didRegister(tokenData: token) }
+}
+
+@MainActor
+final class TripCanvasAppDelegate: NSObject, UIApplicationDelegate {
+    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        Task { await AppPushBridge.registered(deviceToken) }
+    }
+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        AppPushBridge.service?.registrationFailed()
+    }
+}
 #endif

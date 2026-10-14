@@ -18,7 +18,7 @@ protocol TripDataSource {
     func setActivity(tripId: String, activityId: String, action: TripService.ActivityAction, expectedRevision: Int, expectedName: String?) async throws -> MutationResponse
     func decideSuggestion(tripId: String, suggestionId: String, decision: TripService.SuggestionDecision, expectedRevision: Int) async throws -> MutationResponse
     /// 여행을 지운다(tombstone). **주최자만** — 서버도 그렇게 막는다.
-    /// 여행을 만든다. 서버가 id를 정하고 만든 여행을 돌려준다 — 웹과 **같은 경로**(POST /api/v1/trips)다.
+    /// 여행을 만든다. 생성 ID를 재시도에 유지하고 서버가 확인한 여행만 돌려준다(POST /api/v1/trips).
     func createTrip(_ draft: NewTripDraft) async throws -> TripSummary
     /// 붙여넣은 글을 초안으로 읽는다. **서버가 읽는다** — 파서를 앱에 복제하지 않는다.
     func parseItinerary(text: String) async throws -> ItineraryDraft
@@ -61,6 +61,22 @@ final class TripService: TripDataSource {
         return scope
     }
 
+    private func tripRequest(_ id: String) async throws -> (scope: TripCache.Scope?, generation: Int) {
+        let scope = await requestScope()
+        guard let generation = await cache.tripGeneration(id, scope: scope) else {
+            throw APIError.notFound("삭제하거나 나간 여행이에요. 새 초대로 참여한 뒤 다시 열어 주세요.")
+        }
+        guard scope == cacheScope else { throw APIError.unauthorized }
+        return (scope, generation)
+    }
+
+    private func checkTripRequest(_ id: String, _ request: (scope: TripCache.Scope?, generation: Int)) async throws {
+        guard await cache.acceptsTrip(id, generation: request.generation, scope: request.scope) else {
+            throw APIError.notFound("삭제하거나 나간 여행이에요. 새 초대로 참여한 뒤 다시 열어 주세요.")
+        }
+        guard request.scope == cacheScope else { throw APIError.unauthorized }
+    }
+
     /// 실시간 주소는 잘 바뀌지 않는다 — 한 번 물어보고 들고 있는다.
     /// 서버가 실시간을 안 쓴다고 하면 nil이고(그 답도 담는다), 그러면 실시간 없이 폴백(당겨서 새로고침)으로 간다.
     /// ⚠️ **받은 답만 담고, 못 물었으면 던진다.** 전에는 실패도 "실시간 없음"으로 담아, 지하철에서 한 번
@@ -89,8 +105,9 @@ final class TripService: TripDataSource {
         let scope = await requestScope()
         do {
             let response: TripListResponse = try await api.get("/api/v1/trips")
-            await cache.save(response.trips, key: TripCache.tripsKey, scope: scope)
-            return Fetched(value: response.trips, cachedAt: nil)
+            let visible = await cache.visibleTrips(response.trips, scope: scope)
+            await cache.save(visible, key: TripCache.tripsKey, scope: scope)
+            return Fetched(value: visible, cachedAt: nil)
         } catch let error as APIError where error.isOffline {
             guard let cached = await cache.load([TripSummary].self, key: TripCache.tripsKey, scope: scope) else { throw error }
             return Fetched(value: cached.value, cachedAt: cached.savedAt)
@@ -106,7 +123,7 @@ final class TripService: TripDataSource {
     ///    타이핑마다 잠금화면·위젯이 다시 그려진다.
     func today(tripId: String, dayIndex: Int? = nil,
                intent: String? = nil, energy: EnergyLevel? = nil) async throws -> Fetched<TodayResponse> {
-        let scope = await requestScope()
+        let request = try await tripRequest(tripId), scope = request.scope
         var query: [URLQueryItem] = []
         if let dayIndex { query.append(URLQueryItem(name: "day", value: String(dayIndex))) }
         let said = (intent ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -117,7 +134,8 @@ final class TripService: TripDataSource {
         let key = TripCache.todayKey(tripId: tripId, dayIndex: dayIndex)
         do {
             let response: TodayResponse = try await api.get("/api/v1/trips/\(tripId)/today", query: query)
-            if said.isEmpty { await cache.save(response, key: key, scope: scope) }
+            try await checkTripRequest(tripId, request)
+            if said.isEmpty { await cache.save(response, key: key, scope: scope, tripID: tripId, tripGeneration: request.generation) }
             return Fetched(value: response, cachedAt: nil)
         } catch let error as APIError where error.isOffline {
             guard let cached = await cache.load(TodayResponse.self, key: key, scope: scope) else { throw error }
@@ -134,11 +152,12 @@ final class TripService: TripDataSource {
     /// 일정 화면이 쓰는 하루치. 계산은 전부 서버가 한다 — 앱은 그린다.
     /// 오프라인이면 마지막으로 받은 것을 언제 받았는지와 함께 돌려준다(§29).
     func dayPlan(tripId: String, dayIndex: Int) async throws -> Fetched<DayPlanResponse> {
-        let scope = await requestScope()
+        let request = try await tripRequest(tripId), scope = request.scope
         let key = TripCache.dayPlanKey(tripId: tripId, dayIndex: dayIndex)
         do {
             let response: DayPlanResponse = try await api.get("/api/v1/trips/\(tripId)/days/\(dayIndex)")
-            await cache.save(response, key: key, scope: scope)
+            try await checkTripRequest(tripId, request)
+            await cache.save(response, key: key, scope: scope, tripID: tripId, tripGeneration: request.generation)
             return Fetched(value: response, cachedAt: nil)
         } catch let error as APIError where error.isOffline {
             guard let cached = await cache.load(DayPlanResponse.self, key: key, scope: scope) else {
@@ -155,18 +174,16 @@ final class TripService: TripDataSource {
     /// 여행 만들기. 문서는 **빈 일자 N개**뿐이다 — 우리가 모르는 필드를 지어내지 않고,
     /// 기본값은 서버의 `normalizeTrip`이 채운다(웹에서 만든 여행과 같은 모양이 된다).
     ///
-    /// ⚠️ 낙관적으로 목록에 먼저 넣지 않는다. 여행의 id는 **서버가 정한다** —
-    /// 가짜 id로 줄을 만들면 그 줄을 눌렀을 때 열 것이 없다.
+    /// 서버가 생성·확인한 뒤 목록에 넣는다. 요청 ID만으로 미리 행을 만들지 않는다.
     func createTrip(_ draft: NewTripDraft) async throws -> TripSummary {
         let days = (0..<draft.dayCount).map { _ in JSONValue.object(["title": .string(""), "spots": .array([])]) }
-        let document: [String: JSONValue] = [
+        var document: [String: JSONValue] = [
             "name": .string(draft.name),
             "start": .string(draft.start),
             "days": .array(days)
         ]
-        let body = try JSONEncoder().encode(["trip": JSONValue.object(document)])
-        let response: TripDetailResponse = try await api.post("/api/v1/trips", jsonBody: body)
-        return response.trip
+        if let id = draft.creationID { document["id"] = .string(id) }
+        return try await createTrip(document: document)
     }
 
     /// 붙여넣은 글 → 초안. 규칙은 서버의 `intake.js` 하나다(§엔진은 하나다).
@@ -180,17 +197,39 @@ final class TripService: TripDataSource {
 
     /// 이미 만들어 둔 문서로 여행을 만든다(붙여넣기가 쓴다). 만들기와 장소 채우기가 한 번의 왕복이다.
     func createTrip(document: [String: JSONValue]) async throws -> TripSummary {
-        let body = try JSONEncoder().encode(["trip": JSONValue.object(document)])
-        let response: TripDetailResponse = try await api.post("/api/v1/trips", jsonBody: body)
-        return response.trip
+        var request = document
+        // 생성 ID는 재시도에서도 유지한다. 응답만 유실돼도 두 번째 여행을 만들지 않는다.
+        let id = request["id"]?.stringValue ?? UUID().uuidString
+        request["id"] = .string(id)
+        let fingerprintEncoder = JSONEncoder(); fingerprintEncoder.outputFormatting = [.sortedKeys]
+        let fingerprint = String(try fingerprintEncoder.encode(request).reduce(UInt64(14695981039346656037)) { ($0 ^ UInt64($1)) &* 1099511628211 }, radix: 16)
+        request["creationKey"] = .string(id)
+        request["creationFingerprint"] = .string(fingerprint)
+        let body = try JSONEncoder().encode(["trip": JSONValue.object(request)])
+        do {
+            let response: TripDetailResponse = try await api.post("/api/v1/trips", jsonBody: body)
+            return response.trip
+        } catch APIError.server(let status, let message) where status == 409 {
+            let existing: TripDetailResponse = try await api.get("/api/v1/trips/\(id)")
+            guard existing.trip.id == id, existing.trip.role == .owner, existing.document["creationKey"]?.stringValue == id else {
+                throw APIError.server(status: status, message: message)
+            }
+            guard existing.document["creationFingerprint"]?.stringValue == fingerprint else {
+                throw APIError.badRequest("이전 내용으로 여행이 이미 만들어졌어요. 목록에서 저장된 여행을 확인한 뒤 수정해 주세요. 지금 입력은 그대로 남아 있어요.")
+            }
+            return existing.trip
+        }
     }
 
     /// tombstone. `expectedRevision`이 어긋나면 서버가 409로 막는다 —
     /// 다른 기기가 먼저 바꾼 여행을 조용히 지우지 않기 위해서다.
     func deleteTrip(tripId: String, expectedRevision: Int) async throws {
-        let _: OkResponse = try await api.delete(
+        let scope = await requestScope()
+        let acknowledgement: OkResponse = try await api.delete(
             "/api/v1/trips/\(tripId)",
             query: [URLQueryItem(name: "expectedRevision", value: String(expectedRevision))])
+        guard acknowledgement.ok else { throw APIError.server(status: 200, message: "삭제를 확인하지 못했어요. 목록을 새로고침해 주세요.") }
+        await cache.removeTrip(tripId, scope: scope)
     }
 
     /// 나가기는 삭제가 아니다 — 여행은 남고 내 목록에서만 사라진다.
@@ -199,11 +238,12 @@ final class TripService: TripDataSource {
     }
 
     func bookings(tripId: String) async throws -> Fetched<[BookingSummary]> {
-        let scope = await requestScope()
+        let request = try await tripRequest(tripId), scope = request.scope
         let key = TripCache.bookingsKey(tripId: tripId)
         do {
             let response: BookingListResponse = try await api.get("/api/v1/trips/\(tripId)/bookings")
-            await cache.save(response.bookings, key: key, scope: scope)
+            try await checkTripRequest(tripId, request)
+            await cache.save(response.bookings, key: key, scope: scope, tripID: tripId, tripGeneration: request.generation)
             return Fetched(value: response.bookings, cachedAt: nil)
         } catch let error as APIError where error.isOffline {
             guard let cached = await cache.load([BookingSummary].self, key: key, scope: scope) else {
@@ -221,23 +261,27 @@ final class TripService: TripDataSource {
     enum ActivityAction: String { case complete, skip, reset }
 
     func setActivity(tripId: String, activityId: String, action: ActivityAction, expectedRevision: Int, expectedName: String?) async throws -> MutationResponse {
-        let scope = await requestScope()
+        let request = try await tripRequest(tripId), scope = request.scope
         var body: [String: Any] = ["expectedRevision": expectedRevision]
         if let expectedName { body["expectedName"] = expectedName }
         let response: MutationResponse = try await api.post(
             "/api/v1/trips/\(tripId)/activities/\(activityId)/\(action.rawValue)", body: body)
-        await cache.save(response.today, key: TripCache.todayKey(tripId: tripId, dayIndex: nil), scope: scope)
+        try await checkTripRequest(tripId, request)
+        await cache.save(response.today, key: TripCache.todayKey(tripId: tripId, dayIndex: nil), scope: scope,
+                         tripID: tripId, tripGeneration: request.generation)
         return response
     }
 
     enum SuggestionDecision: String { case accept, skip }
 
     func decideSuggestion(tripId: String, suggestionId: String, decision: SuggestionDecision, expectedRevision: Int) async throws -> MutationResponse {
-        let scope = await requestScope()
+        let request = try await tripRequest(tripId), scope = request.scope
         let response: MutationResponse = try await api.post(
             "/api/v1/trips/\(tripId)/suggestions/\(decision.rawValue)",
             body: ["suggestionId": suggestionId, "expectedRevision": expectedRevision])
-        await cache.save(response.today, key: TripCache.todayKey(tripId: tripId, dayIndex: nil), scope: scope)
+        try await checkTripRequest(tripId, request)
+        await cache.save(response.today, key: TripCache.todayKey(tripId: tripId, dayIndex: nil), scope: scope,
+                         tripID: tripId, tripGeneration: request.generation)
         return response
     }
 
@@ -254,7 +298,7 @@ final class TripService: TripDataSource {
 extension TripService: TravelStateSource {
     func travelState(tripId: String, location: GeoPoint?, locationUpdatedAt: String?,
                      travelMode: Bool, suppressUntil: String?, markSent: Bool) async throws -> Fetched<TravelStateResponse> {
-        let scope = await requestScope()
+        let request = try await tripRequest(tripId), scope = request.scope
         var query: [URLQueryItem] = []
         if let location {
             // 위치는 이번 계산에만 쓰인다 — 서버가 저장하지 않는다(§55).
@@ -269,7 +313,8 @@ extension TripService: TravelStateSource {
         let key = "travel-state-\(tripId)"
         do {
             let response: TravelStateResponse = try await api.get("/api/v1/trips/\(tripId)/travel-state", query: query)
-            await cache.save(response, key: key, scope: scope)
+            try await checkTripRequest(tripId, request)
+            await cache.save(response, key: key, scope: scope, tripID: tripId, tripGeneration: request.generation)
             return Fetched(value: response, cachedAt: nil)
         } catch let error as APIError where error.isOffline {
             // 오프라인이어도 잠금화면·위젯이 비지 않게 마지막 상태를 돌려준다(§58·§59).
@@ -335,6 +380,8 @@ struct NewTripDraft: Sendable, Equatable {
     var start: String = ""
     var dayCount: Int = 3
     var city: String? = nil
+    /// 같은 생성 요청의 재시도 ID. 화면의 입력 상태가 소유한다.
+    var creationID: String? = nil
 
     /// 만들 수 있는 최대 일수 — 웹·서버와 같은 한계다(`TripLimits.maxDays`).
     static let maxDays = TripLimits.maxDays
@@ -361,11 +408,12 @@ extension TripService: MemberListing {}
 extension TripService: TripDocumentSource {
     /// 원문도 보관하되 오프라인 사본은 저장 시각을 표시하고 편집을 막는다.
     func document(tripId: String) async throws -> TripDocumentSnapshot {
-        let scope = await requestScope()
+        let request = try await tripRequest(tripId), scope = request.scope
         let key = TripCache.documentKey(tripId: tripId)
         do {
             let response: TripDetailResponse = try await api.get("/api/v1/trips/\(tripId)")
-            await cache.save(response, key: key, scope: scope)
+            try await checkTripRequest(tripId, request)
+            await cache.save(response, key: key, scope: scope, tripID: tripId, tripGeneration: request.generation)
             // 예약 화면을 미리 열지 않아도 서버 요약을 보관한다. 문서 표시는 이 요청을 기다리지 않는다.
             Task { [weak self] in
                 guard let self, self.cacheScope == scope else { return }
@@ -411,14 +459,16 @@ extension TripService: TripDocumentSource {
     /// 화면은 그때 최신을 다시 읽어 사용자에게 물어야 한다. 조용히 덮어쓰지 않는다(§91).
     @discardableResult
     func saveDocument(tripId: String, document: TripDocument, expectedRevision: Int) async throws -> TripDocumentSnapshot {
-        let scope = await requestScope()
+        let request = try await tripRequest(tripId), scope = request.scope
         let body: [String: JSONValue] = [
             "trip": .object(document.raw),
             "expectedRevision": .number(expectedRevision)
         ]
         let response: TripDetailResponse = try await api.put(
             "/api/v1/trips/\(tripId)", jsonBody: try JSONValue.data(from: body))
-        await cache.save(response, key: TripCache.documentKey(tripId: tripId), scope: scope)
+        try await checkTripRequest(tripId, request)
+        await cache.save(response, key: TripCache.documentKey(tripId: tripId), scope: scope,
+                         tripID: tripId, tripGeneration: request.generation)
         let snapshot = TripDocumentSnapshot(
             document: TripDocument(raw: response.document),
             revision: response.trip.revision,

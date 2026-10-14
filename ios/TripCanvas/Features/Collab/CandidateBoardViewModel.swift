@@ -27,6 +27,17 @@ final class CandidateBoardViewModel {
     private var membersLoaded = false
     /// 목록을 서버에서 마지막으로 받은 시각 — 시트를 다시 열 때 또 받을지의 기준.
     private(set) var loadedAt: Date?
+    var isVisible = false
+    private var openCommentIDs: Set<Int> = []
+    private var commentGeneration: [Int: Int] = [:]
+    private var loadGeneration = 0
+    private var reactionGeneration: [Int: Int] = [:]
+    private var pendingReactions: [Int: Int] = [:]
+    private struct ReactionWrite {
+        let reaction: Reaction?
+        var succeeded = false
+    }
+    private var latestReactionWrites: [Int: ReactionWrite] = [:]
     var sortByInterest = false
     /// 분류로 거르기 — 표시일 뿐이다. nil이면 전부, `.none`은 '아직 고르지 않음'만.
     var categoryFilter: CandidateCategoryFilter = .all
@@ -44,7 +55,7 @@ final class CandidateBoardViewModel {
         self.candidates = seed
     }
 
-    var role: MemberRole { trip.role ?? .owner }
+    var role: MemberRole { members.first(where: { $0.me })?.role ?? trip.role ?? .owner }
     var canPropose: Bool { CollabModel.canPropose(role) }
     var canReact: Bool { CollabModel.canReact(role) }
     var canSchedule: Bool { CollabModel.canScheduleCandidate(role) }
@@ -67,21 +78,69 @@ final class CandidateBoardViewModel {
     }
 
     func load() async {
+        loadGeneration += 1
+        let generation = loadGeneration
         if candidates.isEmpty { isLoading = true }
-        defer { isLoading = false }
+        defer { if generation == loadGeneration { isLoading = false } }
         let before = candidates
         do {
-            candidates = try await service.candidates(tripId: trip.id)
+            let rows = try await service.candidates(tripId: trip.id)
+            guard generation == loadGeneration else { return }
+            // 새로 읽는 동안의 내 반응은 마지막 요청이 확인할 때까지 보존한다.
+            candidates = rows.map { row in
+                guard (pendingReactions[row.id] ?? 0) > 0,
+                      let current = candidates.first(where: { $0.id == row.id }) else { return row }
+                return CollabModel.applyingReaction(Reaction(loose: current.myReaction), to: row, myId: myUserId)
+            }
             loadedAt = Date()
             // 몇 명이 아직 말하지 않았는지 알려면 인원이 필요하다 — 처음 한 번만. 멤버가 바뀌면 그 이벤트(`handle`)가 다시 읽는다.
             if !membersLoaded { await loadMembers() }
+            guard generation == loadGeneration else { return }
             errorMessage = nil
         } catch {
+            guard generation == loadGeneration else { return }
             errorMessage = message(for: error)
         }
         // 제안은 곁들이다 — 못 읽어도 보드는 그대로 뜬다(오류로 만들지 않는다). 목록이 그대로면 제안도 그대로다 — 다시 묻지 않는다.
         if !proposalDismissed, proposal == nil || before != candidates {
-            proposal = try? await service.groupProposal(tripId: trip.id)
+            let result = try? await service.groupProposal(tripId: trip.id)
+            guard generation == loadGeneration else { return }
+            proposal = result
+        }
+    }
+
+    func invalidate() {
+        loadGeneration += 1
+        isLoading = false
+        loadedAt = nil
+        membersLoaded = false
+        for id in comments.keys { commentGeneration[id, default: 0] += 1 }
+        comments = [:]
+    }
+
+    func resumeAfterBackground() async {
+        invalidate()
+        guard isVisible else { return }
+        await load()
+        await refreshOpenComments()
+    }
+
+    func setCommentsOpen(candidateId: Int, isOpen: Bool) {
+        if isOpen { openCommentIDs.insert(candidateId) }
+        else {
+            openCommentIDs.remove(candidateId)
+            commentGeneration[candidateId, default: 0] += 1
+        }
+    }
+
+    func closeComments() {
+        for id in openCommentIDs { commentGeneration[id, default: 0] += 1 }
+        openCommentIDs.removeAll()
+    }
+
+    private func refreshOpenComments() async {
+        for id in openCommentIDs.sorted() where candidates.contains(where: { $0.id == id }) {
+            await loadComments(candidateId: id)
         }
     }
 
@@ -174,6 +233,7 @@ final class CandidateBoardViewModel {
         // 내 반응·담기·한마디의 에코는 `liveEffects`가 이미 거른다(내 화면은 이미 그렇다).
         guard effects.candidates else { return }
         await load()
+        if event.kind == "COMMENT_ADDED" { await refreshOpenComments() }
     }
 
     func clearToast() { toast = nil }
@@ -204,12 +264,46 @@ final class CandidateBoardViewModel {
         guard let index = candidates.firstIndex(where: { $0.id == candidateId }) else { return }
         let before = candidates[index]
         let next: Reaction? = Reaction(loose: before.myReaction) == reaction ? nil : reaction
+        let generation = (reactionGeneration[candidateId] ?? 0) + 1
+        reactionGeneration[candidateId] = generation
+        latestReactionWrites[candidateId] = ReactionWrite(reaction: next)
+        pendingReactions[candidateId, default: 0] += 1
         candidates[index] = CollabModel.applyingReaction(next, to: before, myId: myUserId)
         do {
             try await service.react(tripId: trip.id, candidateId: candidateId, reaction: next)
+            if reactionGeneration[candidateId] == generation { latestReactionWrites[candidateId]?.succeeded = true }
         } catch {
-            if let again = candidates.firstIndex(where: { $0.id == candidateId }) { candidates[again] = before }
-            errorMessage = message(for: error)
+            if reactionGeneration[candidateId] == generation {
+                if let again = candidates.firstIndex(where: { $0.id == candidateId }) { candidates[again] = before }
+                errorMessage = message(for: error)
+            }
+        }
+        pendingReactions[candidateId, default: 0] -= 1
+        await reconcileReaction(candidateId: candidateId)
+    }
+
+    /// 요청이 역순으로 끝나도 최신 선택과 서버가 같아야 한다. 옛 실패는 최신 화면을 되돌리지 않는다.
+    private func reconcileReaction(candidateId: Int) async {
+        while (pendingReactions[candidateId] ?? 0) == 0,
+              let generation = reactionGeneration[candidateId], let desired = latestReactionWrites[candidateId] {
+            pendingReactions[candidateId, default: 0] += 1
+            do {
+                var confirmed = (try await service.candidates(tripId: trip.id)).first { $0.id == candidateId }
+                if reactionGeneration[candidateId] == generation, desired.succeeded,
+                   let row = confirmed, Reaction(loose: row.myReaction) != desired.reaction {
+                    // 늦은 옛 성공이 서버 값을 덮은 경우 마지막 선택을 한 번 복구한다.
+                    try await service.react(tripId: trip.id, candidateId: candidateId, reaction: desired.reaction)
+                    confirmed = (try await service.candidates(tripId: trip.id)).first { $0.id == candidateId }
+                }
+                if reactionGeneration[candidateId] == generation,
+                   let row = confirmed, let index = candidates.firstIndex(where: { $0.id == candidateId }) {
+                    candidates[index] = row
+                }
+            } catch {
+                if reactionGeneration[candidateId] == generation { errorMessage = message(for: error) }
+            }
+            pendingReactions[candidateId, default: 0] -= 1
+            if reactionGeneration[candidateId] == generation { return }
         }
     }
 
@@ -297,8 +391,24 @@ final class CandidateBoardViewModel {
             guard snapshot.canEdit else { errorMessage = CollabModel.forbiddenText(nil, role: snapshot.role); return false }
             var document = snapshot.document
             guard document.hasDay(dayIndex) else { errorMessage = "그 날짜는 일정에 없어요"; return false }
-            for spot in plan.spots { document.insertSpot(spot, dayIndex: dayIndex) }
-            _ = try await documents.saveDocument(tripId: trip.id, document: document, expectedRevision: snapshot.revision)
+            let existing = candidateLocation(candidateId, in: document) ?? splitLocation(splitId, in: document)
+            if let existing {
+                guard existing.day == dayIndex else {
+                    errorMessage = "이 후보는 이미 Day \(existing.day + 1)에 있어요. 그 날짜에서 분리 내용을 확인해 주세요."
+                    return false
+                }
+                guard document.days[existing.day].spots[existing.index].raw["split"]?.stringValue != nil else {
+                    errorMessage = "이 후보는 이미 일정에 있어요. 기존 장소를 확인한 뒤 분리해 주세요."
+                    return false
+                }
+            } else {
+                guard candidate.status != "SCHEDULED" else {
+                    errorMessage = "이미 일정에 넣은 후보지만 연결된 분리를 찾지 못했어요. 일정에서 먼저 확인해 주세요."
+                    return false
+                }
+                for spot in plan.spots { document.insertSpot(spot, dayIndex: dayIndex) }
+                _ = try await documents.saveDocument(tripId: trip.id, document: document, expectedRevision: snapshot.revision)
+            }
         } catch {
             errorMessage = message(for: error)
             return false
@@ -332,6 +442,13 @@ final class CandidateBoardViewModel {
         return nil
     }
 
+    private func splitLocation(_ splitId: String, in document: TripDocument) -> (day: Int, index: Int)? {
+        for (day, value) in document.days.enumerated() {
+            if let index = value.spots.firstIndex(where: { $0.raw["split"]?.stringValue == splitId }) { return (day, index) }
+        }
+        return nil
+    }
+
     /// 웹 `appendCandidateSpot`과 같은 모양 — 좌표가 없으면 위치 없는 장소다.
     /// 순수 매핑이라 화면 상태를 건드리지 않는다 — `nonisolated`로 두어 어디서든(테스트 포함) 부를 수 있게 한다.
     nonisolated static func spot(from candidate: CandidateView) -> TripSpot {
@@ -348,9 +465,14 @@ final class CandidateBoardViewModel {
     // MARK: 한마디 — 후보에만 붙는다. 의견이라 보기 권한도 남긴다
 
     func loadComments(candidateId: Int) async {
+        let generation = (commentGeneration[candidateId] ?? 0) + 1
+        commentGeneration[candidateId] = generation
         do {
-            comments[candidateId] = try await service.comments(tripId: trip.id, candidateId: candidateId)
+            let rows = try await service.comments(tripId: trip.id, candidateId: candidateId)
+            guard commentGeneration[candidateId] == generation else { return }
+            comments[candidateId] = rows
         } catch {
+            guard commentGeneration[candidateId] == generation else { return }
             comments[candidateId] = []
             errorMessage = message(for: error)
         }

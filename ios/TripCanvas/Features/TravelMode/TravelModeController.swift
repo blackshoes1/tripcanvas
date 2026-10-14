@@ -18,6 +18,9 @@ final class TravelModeController {
     private(set) var lastError: String?
     private(set) var isRefreshing = false
     private var accountGeneration = 0
+    private var modeGeneration = 0
+    private var refreshGeneration = 0
+    private var lastPersistedSnapshot: TravelModeSnapshot
 
     private let service: TravelStateSource
     private let location: LocationProvider
@@ -32,12 +35,16 @@ final class TravelModeController {
         self.location = location
         self.push = push
         self.liveActivity = liveActivity
-        self.snapshot = SharedStore.loadTravelMode()?.value ?? TravelModeSnapshot()
+        let restored = SharedStore.loadTravelMode()?.value ?? TravelModeSnapshot()
+        self.snapshot = restored; self.lastPersistedSnapshot = restored
     }
 
     func resetForAccountChange() {
         accountGeneration += 1
+        modeGeneration += 1
+        refreshGeneration += 1
         snapshot = TravelModeSnapshot()
+        lastPersistedSnapshot = snapshot
         travelState = nil
         lastError = nil
         isRefreshing = false
@@ -49,6 +56,16 @@ final class TravelModeController {
     var isActive: Bool { snapshot.isActive }
     var pulseText: String { travelState?.pulse.text ?? "" }
 
+    /// Siri·단축어는 별도 환경 객체에서 같은 저장소를 바꾼다. 앱 복귀·요청 완료에서 다시 읽는다.
+    func synchronizePersistedState() async {
+        guard let stored = SharedStore.loadTravelMode()?.value, stored != lastPersistedSnapshot else { return }
+        modeGeneration += 1
+        refreshGeneration += 1; isRefreshing = false
+        snapshot = stored; lastPersistedSnapshot = stored
+        travelState = nil; lastError = nil
+        if !snapshot.isActive { await liveActivity.end() }
+    }
+
     // MARK: 시작 / 종료 (§8·§9)
 
     /// 여행 당일이면 먼저 권해도 되는 상태인지. 자동으로 켜지는 않는다 — 제안만 한다.
@@ -57,6 +74,8 @@ final class TravelModeController {
     }
 
     func start(trip: TripSummary) async {
+        modeGeneration += 1
+        refreshGeneration += 1; isRefreshing = false
         snapshot.state = .active
         snapshot.tripId = trip.id
         snapshot.startedAt = Date()
@@ -69,6 +88,8 @@ final class TravelModeController {
     /// 하루가 끝났거나 사용자가 껐을 때. 진행 상태(무엇을 이미 알렸는지)는 남긴다 —
     /// 다시 켰을 때 같은 알림이 또 나가면 안 된다.
     func stop() async {
+        modeGeneration += 1
+        refreshGeneration += 1; isRefreshing = false
         Analytics.track(.travelModeEnded, ["tripId": snapshot.tripId ?? ""])
         snapshot.state = .inactive
         persist()
@@ -77,6 +98,7 @@ final class TravelModeController {
 
     /// 잠깐 멈춤 — 알림만 멈추고 화면은 그대로 둔다.
     func pause() {
+        modeGeneration += 1
         snapshot.state = .paused
         persist()
     }
@@ -94,10 +116,15 @@ final class TravelModeController {
     enum RefreshReason { case started, foreground, userAction, notificationOpened, manual }
 
     func refresh(tripId: String, reason: RefreshReason) async {
+        await synchronizePersistedState()
+        guard isActive, snapshot.tripId == tripId else { return }
         guard !isRefreshing else { return }
         isRefreshing = true
         let generation = accountGeneration
-        defer { if generation == accountGeneration { isRefreshing = false } }
+        let mode = modeGeneration
+        refreshGeneration += 1
+        let request = refreshGeneration
+        defer { if generation == accountGeneration, request == refreshGeneration { isRefreshing = false } }
 
         // 위치는 Travel Mode가 켜져 있고 권한이 있을 때만, 그때그때 한 번씩만 묻는다(§5).
         var point: GeoPoint?
@@ -106,29 +133,30 @@ final class TravelModeController {
         }
 
         do {
-            guard generation == accountGeneration else { return }
+            guard generation == accountGeneration, mode == modeGeneration else { return }
             let fetched = try await service.travelState(
                 tripId: tripId,
                 location: point,
                 locationUpdatedAt: point == nil ? nil : ISO8601DateFormatter.tripCanvas.string(from: Date()),
                 travelMode: isActive,
                 suppressUntil: suppressUntilMinutes(),
-                markSent: isActive          // 켜져 있을 때만 '보낸 것'으로 기록한다
+                markSent: false            // 조회는 계획만 받는다. 시스템 등록에 성공한 항목만 별도로 확인한다.
             )
-            guard generation == accountGeneration else { return }
-            apply(fetched.value, cachedAt: fetched.cachedAt)
-            lastError = fetched.cachedAt == nil ? nil : "지금은 연결이 없어 저장된 일정 기준으로 안내하고 있어요."
+            await synchronizePersistedState()
+            guard generation == accountGeneration, mode == modeGeneration else { return }
+            await apply(fetched.value, cachedAt: fetched.cachedAt)
+            if fetched.cachedAt != nil { lastError = "지금은 연결이 없어 저장된 일정 기준으로 안내하고 있어요." }
         } catch let error as APIError where error.isOffline {
-            guard generation == accountGeneration else { return }
+            guard generation == accountGeneration, mode == modeGeneration else { return }
             // 오프라인이어도 잠금화면을 비우지 않는다(§59) — 마지막 상태를 그대로 둔다.
             lastError = "지금은 연결이 없어 저장된 일정 기준으로 안내하고 있어요."
         } catch {
-            guard generation == accountGeneration else { return }
+            guard generation == accountGeneration, mode == modeGeneration else { return }
             lastError = error.localizedDescription
         }
     }
 
-    private func apply(_ response: TravelStateResponse, cachedAt: Date?) {
+    private func apply(_ response: TravelStateResponse, cachedAt: Date?) async {
         travelState = response
 
         // 위젯은 앱 데이터를 복제하지 않는다 — 압축본만 넘긴다(§28).
@@ -141,30 +169,47 @@ final class TravelModeController {
 
         if isActive, cachedAt == nil {
             let generation = accountGeneration
-            Task {
-                guard generation == accountGeneration else { return }
-                await liveActivity.sync(response, changed: changed)
-            }
-            scheduleDeviceNotifications(response)
+            let mode = modeGeneration
+            // Intent의 perform이 끝나기 전에 잠금화면 시작·복구가 끝나야 한다.
+            await liveActivity.sync(response, changed: changed)
+            await synchronizePersistedState()
+            guard generation == accountGeneration, mode == modeGeneration, isActive else { return }
+            lastError = liveActivity.lastError
+            await scheduleDeviceNotifications(response)
+            guard generation == accountGeneration, mode == modeGeneration, isActive else { return }
         }
         WidgetRefresher.reload()
         persist()
     }
 
     /// 기기가 판단할 알림만 예약한다. 서버가 보낼 것(가격·재구성)까지 띄우면 두 번 온다(§11).
-    private func scheduleDeviceNotifications(_ response: TravelStateResponse) {
+    private func scheduleDeviceNotifications(_ response: TravelStateResponse) async {
+        let generation = accountGeneration, mode = modeGeneration
+        await push.prepareForDelivery()
+        guard generation == accountGeneration, mode == modeGeneration, isActive else { return }
+        var delivered = response.notifications.filter { $0.origin == .device && snapshot.sentNotificationKeys.contains($0.dedupeKey) }
         let pending = response.notifications.filter { item in
             item.origin == .device && !snapshot.sentNotificationKeys.contains(item.dedupeKey)
         }
-        guard !pending.isEmpty else { return }
         for item in pending {
-            push.present(item)
+            let registered = await push.schedule(item)
+            guard generation == accountGeneration, mode == modeGeneration, isActive else { return }
+            guard registered else { continue }
             snapshot.sentNotificationKeys.append(item.dedupeKey)
+            delivered.append(item)
+            persist() // 서버 확인 응답이 유실돼도 이 기기에서 같은 알림을 다시 등록하지 않는다.
             Analytics.track(.departureNotificationSent, ["kind": item.kind.rawValue])
         }
         // 하루치만 들고 있으면 충분하다.
         if snapshot.sentNotificationKeys.count > 50 {
             snapshot.sentNotificationKeys.removeFirst(snapshot.sentNotificationKeys.count - 50)
+        }
+        if !delivered.isEmpty {
+            do { try await service.acknowledgeNotifications(tripId: response.today.trip.id, items: delivered, stateVersion: response.stateVersion) }
+            catch {
+                guard generation == accountGeneration, mode == modeGeneration else { return }
+                if lastError == nil { lastError = "알림은 등록했지만 서버 확인 기록에 연결하지 못했어요. 다음 확인 때 다시 시도해요." }
+            }
         }
     }
 
@@ -176,7 +221,7 @@ final class TravelModeController {
         return String(format: "%02d:%02d", hour, minute)
     }
 
-    private func persist() { SharedStore.saveTravelMode(snapshot) }
+    private func persist() { lastPersistedSnapshot = snapshot; SharedStore.saveTravelMode(snapshot) }
 }
 
 /// Travel Mode가 필요로 하는 것만 추린 계약 — 테스트에서 가짜로 갈아끼운다.
@@ -184,15 +229,30 @@ final class TravelModeController {
 protocol TravelStateSource {
     func travelState(tripId: String, location: GeoPoint?, locationUpdatedAt: String?,
                      travelMode: Bool, suppressUntil: String?, markSent: Bool) async throws -> TripService.Fetched<TravelStateResponse>
+    func acknowledgeNotifications(tripId: String, items: [NotificationPlanItem], stateVersion: String) async throws
+}
+extension TravelStateSource {
+    func acknowledgeNotifications(tripId: String, items: [NotificationPlanItem], stateVersion: String) async throws {}
 }
 
 @MainActor
 protocol PushScheduling {
     func present(_ item: NotificationPlanItem)
+    func prepareForDelivery() async
+    func schedule(_ item: NotificationPlanItem) async -> Bool
+}
+extension PushScheduling {
+    func prepareForDelivery() async {}
+    func schedule(_ item: NotificationPlanItem) async -> Bool { present(item); return true }
 }
 
 @MainActor
 protocol LiveActivityControlling {
+    var lastError: String? { get }
     func sync(_ response: TravelStateResponse, changed: Bool) async
     func end() async
+}
+
+extension LiveActivityControlling {
+    var lastError: String? { nil }
 }

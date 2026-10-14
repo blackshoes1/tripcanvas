@@ -283,20 +283,25 @@
 
   /**
    * 비밀번호 재설정 메일. **있는 이메일인지 알려주지 않는다** — 계정이 있는지 떠보는 데 쓰이지 않게
-   * 성공/실패를 구분하지 않고 같은 답을 돌려준다.
+   * 계정 유무에는 같은 답을 주되 연결 실패·요청 제한은 재시도할 수 있게 알린다.
    * @param {string} email
    */
   async function requestPasswordReset(email) {
     if (_provider === 'SUPABASE') {
       if (!_sb || !_sb.auth.resetPasswordForEmail) return { error: { code: 'UNAVAILABLE', message: '지금은 할 수 없어요' } };
-      try { await _sb.auth.resetPasswordForEmail(email); } catch (_) { /* 같은 답을 준다 */ }
+      try {
+        const result = await _sb.auth.resetPasswordForEmail(email);
+        if (result && result.error && (result.error.status === 0 || result.error.name === 'AuthRetryableFetchError')) return { error: networkError(result.error) };
+        if (result && result.error && (result.error.status === 429 || result.error.status >= 500)) return { error: toError(result.error.status, {}) };
+      } catch (err) { return { error: networkError(err) }; }
       return { error: null };
     }
     try {
-      await call('/api/auth/request-password-reset', {
+      const res = await call('/api/auth/request-password-reset', {
         method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email })
       });
-    } catch (_) { /* 같은 답을 준다 */ }
+      if (res.status === 429 || res.status >= 500) return { error: toError(res.status, {}) };
+    } catch (err) { return { error: networkError(err) }; }
     return { error: null };
   }
 

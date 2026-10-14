@@ -42,7 +42,7 @@ struct SharedInboxView: View {
     }
 }
 
-private struct SharedImportView: View {
+struct SharedImportView: View {
     enum Kind: String, CaseIterable { case booking = "예약", place = "장소", note = "준비 메모" }
     let input: SharedTravelInput
     let trips: [TripSummary]
@@ -58,13 +58,15 @@ private struct SharedImportView: View {
     @State private var bookingSeed: TripBooking?
     @State private var showsBooking = false
     @State private var showsDiscard = false
+    @Environment(AppEnvironment.self) private var env
     @Environment(\.dismiss) private var dismiss
 
-    init(input: SharedTravelInput, service: TripService, trips: [TripSummary], onOpenTrip: @escaping (String) -> Void) {
+    init(input: SharedTravelInput, service: TripService, trips: [TripSummary], initialTripID: String = "", onOpenTrip: @escaping (String) -> Void) {
         self.input = input; self.trips = trips; self.onOpenTrip = onOpenTrip
         _model = State(initialValue: SharedImportModel(input: input, service: service))
         _title = State(initialValue: input.title ?? "")
         _bodyText = State(initialValue: [input.text, input.url].compactMap { $0 }.joined(separator: "\n"))
+        _tripID = State(initialValue: initialTripID)
     }
 
     var body: some View {
@@ -108,8 +110,8 @@ private struct SharedImportView: View {
                         } footer: { Text("숙박·항공·렌터카의 금액과 날짜를 확인한 뒤 저장해요. 다른 예약은 준비 메모로 남길 수 있어요.") }
                     } else {
                         Section(kind == .place ? "장소 확인" : "메모 확인") {
-                            TextField("이름 또는 제목", text: $title)
-                            TextEditor(text: $bodyText).frame(minHeight: 100)
+                            TextField("이름 또는 제목", text: $title).accessibilityIdentifier("sharedImportTitle")
+                            TextEditor(text: $bodyText).frame(minHeight: 100).accessibilityIdentifier("sharedImportText")
                             if kind == .place {
                                 Picker("일자", selection: $day) {
                                     ForEach(0..<(model.snapshot?.document.days.count ?? 0), id: \.self) { Text("Day \($0 + 1)").tag($0) }
@@ -117,7 +119,8 @@ private struct SharedImportView: View {
                                 Text("선택한 날의 마지막에 담아요. 위치는 저장 후 지도 검색으로 지정해 주세요.").font(.caption)
                             }
                             if title.utf16.count > 120 || bodyText.utf16.count > 4000 { Text("제목은 120자, 본문은 4,000자까지 저장할 수 있어요. 원문은 아래에서 계속 볼 수 있어요.").foregroundStyle(.red) }
-                            Button("확인한 내용 저장") { Task { await saveText() } }
+                            Button("확인한 내용 저장") { saveText() }
+                                .accessibilityIdentifier("sharedImportSave")
                                 .disabled(model.snapshot?.canEdit != true || model.isWorking || (title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && (kind == .place || bodyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)) || title.utf16.count > 120 || bodyText.utf16.count > 4000)
                         }
                     }
@@ -134,11 +137,13 @@ private struct SharedImportView: View {
                 }
                 if !model.saved { Button("이 자료 버리기", role: .destructive) { showsDiscard = true } }
             }
+            .disabled(model.isWorking)
             .navigationTitle("공유 자료 확인")
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("닫기") { dismiss() }.disabled(model.isWorking) } }
             .interactiveDismissDisabled(model.isWorking)
             .task {
                 await model.previewInput()
+                if !tripID.isEmpty { await model.selectTrip(tripID) }
                 if !editedContent {
                     if model.preview?.kind == .place { kind = .place }
                     if let type = model.preview?.candidate?.type, [.hotel, .flight, .car].contains(type) { kind = .booking }
@@ -151,7 +156,9 @@ private struct SharedImportView: View {
             .onChange(of: tripID) { _, id in day = 0; Task { await model.selectTrip(id) } }
             .sheet(isPresented: $showsBooking) {
                 if let document = model.snapshot?.document, let bookingSeed {
-                    BookingEditorView(target: .create, document: document, seed: bookingSeed, bookingOnly: true, onSave: { booking, links in
+                    BookingEditorView(target: .create, document: document, seed: bookingSeed, bookingOnly: true,
+                                      draftKey: EditorDraftKey(accountID: env.auth.session?.userId, tripID: tripID, editor: "booking-import-\(input.id)"),
+                                      originalRevision: model.snapshot?.revision, onSave: { booking, links in
                         var raw = booking.raw; raw["importKey"] = .string(input.id)
                         let result = await model.save { $0.upsertBooking(TripBooking(raw: raw), links: links) }
                         if result == nil { markSaved() }
@@ -167,21 +174,12 @@ private struct SharedImportView: View {
 
     private func markSaved() { ShareQueue.update(id: input.id) { $0.state = .saved; $0.lastError = nil } }
 
-    private func saveText() async {
-        let selectedDay = day
-        guard kind != .place || model.snapshot?.document.hasDay(selectedDay) == true else { return }
-        let result = await model.save { document in
-            if kind == .place {
-                var spot = TripSpot(name: title.trimmingCharacters(in: .whitespacesAndNewlines))
-                spot.desc = bodyText; spot.setField("importKey", .string(input.id))
-                document.insertSpot(spot, dayIndex: selectedDay)
-            } else {
-                var notes = document.raw["notes"]?.arrayValue ?? []
-                guard notes.count < 200 else { throw APIError.badRequest("준비 메모는 200개까지 담을 수 있어요.") }
-                notes.append(.object(["id": .string(input.id), "cat": .string("ETC"), "title": .string(title), "body": .string(bodyText), "importKey": .string(input.id)]))
-                document.setField("notes", .array(notes))
-            }
+    private func saveText() {
+        guard !model.isWorking, kind != .booking else { return }
+        let draft = SharedTextInputDraft(kind: kind == .place ? .place : .note, title: title, body: bodyText, day: day)
+        Task {
+            let result = await model.saveText(draft)
+            if result == nil { markSaved() }
         }
-        if result == nil { markSaved() }
     }
 }

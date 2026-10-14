@@ -928,6 +928,8 @@
        lat:null, lng:null, stayMin, split:splitId, who:others.slice()},
       {name:'다시 만나기', city:'', lat:null, lng:null, stayMin:0, reunion:true}
     ];
+    // 후보 표시만 실패했을 때 같은 분리를 다시 찾을 수 있어야 한다.
+    if(Number.isSafeInteger(cand.id) && cand.id>0) spots[0].candidateId=cand.id;
     const a=whoLabels(goers, members).join(', '), b=whoLabels(others, members).join(', ');
     return {goers, others, spots, text:`${a}은(는) ${title}, ${b}은(는) 자유시간 — 끝나면 다시 만나요`};
   }

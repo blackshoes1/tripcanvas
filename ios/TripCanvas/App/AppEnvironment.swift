@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import AppIntents
 
 /// 기본값은 프로덕션을 가리킨다. 로컬 서버로 붙일 때만 Info.plist에서 덮어쓴다.
 enum AppConfig {
@@ -56,7 +57,7 @@ final class AppEnvironment {
     /// @Observable은 저장 프로퍼티를 init 접근자로 바꾼다 — lazy와 함께 쓸 수 없다.
     /// 그래서 의존 관계는 여기서 지역 상수로 조립한다. 클로저도 self가 아니라 지역 상수를
     /// 붙잡으므로 순환 참조도, 초기화 순서 문제도 생기지 않는다.
-    init(auth: AuthStore? = nil, service: TripService? = nil) {
+    init(auth: AuthStore? = nil, service: TripService? = nil, handlesSystemNotifications: Bool = true) {
         // 로그인도 API와 같은 서버다(`/api/auth/*`) — 웹 `auth.js`와 같은 계약을 쓴다.
         let authStore = auth ?? AuthStore(client: TripCanvasAuthClient(baseURL: AppConfig.apiBaseURL))
         let apiClient = APIClient(baseURL: AppConfig.apiBaseURL, tokens: AuthTokenProvider(store: authStore))
@@ -65,8 +66,8 @@ final class AppEnvironment {
         SharedStore.prepare(accountID: authStore.session?.userId)
         let locationProvider = LocationProvider()
         let liveActivityController = LiveActivityController()
-        let pushService = PushService { token in
-            try? await tripService.registerDevice(
+        let pushService = PushService(handlesSystemNotifications: handlesSystemNotifications) { token in
+            try await tripService.registerDevice(
                 deviceId: DeviceIdentity.current, pushToken: token,
                 preferences: [:], appVersion: AppConfig.version)
         }
@@ -96,6 +97,12 @@ final class AppEnvironment {
         self.travelMode = TravelModeController(
             service: tripService, location: locationProvider,
             push: pushService, liveActivity: liveActivityController)
+        let actionRouter = router
+        pushService.onOpenLink = { [weak actionRouter] url in actionRouter?.open(url: url) }
+        if handlesSystemNotifications {
+            AppDependencyManager.shared.add(dependency: actionRouter)
+            AppPushBridge.service = pushService
+        }
         authStore.onAccountChanged = { [weak self] accountID in
             guard let self else { return }
             let previous = self.service.cacheScope?.accountID
@@ -108,6 +115,14 @@ final class AppEnvironment {
             self.realtime.disconnect()
             self.router.accountChanged(from: previous, to: accountID)
             DeviceIdentity.reset()
+        }
+        authStore.cleanupSignedOutSession = { previous in
+            let id = DeviceIdentity.current
+            return Task {
+                struct Removed: Decodable { let registered: Bool }
+                let scoped = APIClient(baseURL: AppConfig.apiBaseURL, tokens: SignedOutTokenProvider(token: previous.token))
+                let _: Removed? = try? await scoped.delete("/api/v1/devices", query: [URLQueryItem(name: "deviceId", value: id)])
+            }
         }
         self.jTone.onSaved = { [weak self] in
             guard let self, self.travelMode.isActive, let id = self.travelMode.snapshot.tripId else { return }
@@ -134,6 +149,12 @@ enum DeviceIdentity {
         current = UUID().uuidString
         store.write(Wrapper(id: current))
     }
+}
+
+@MainActor private struct SignedOutTokenProvider: TokenProviding {
+    let token: String
+    func accessToken() async throws -> String { token }
+    func refreshToken() async throws -> String { throw AuthError.notSignedIn }
 }
 
 extension AppConfig {

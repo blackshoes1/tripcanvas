@@ -130,9 +130,19 @@ test('재설정 요청은 이메일이 있든 없든 같은 답이다 — 계정
   assert.deepEqual(seen, ['있는@example.com', '없는@example.com']);
 });
 
-test('재설정은 네트워크가 끊겨도 같은 답이다', async () => {
+test('재설정은 네트워크 실패를 알려 재시도할 수 있다', async () => {
   setup(() => ({ throws: true }));
+  assert.equal((await TC_AUTH.requestPasswordReset('a@example.com')).error.code, 'NETWORK');
+});
+
+test('Supabase 재설정은 SDK가 반환한 연결 오류만 알리고 계정 유무는 숨긴다', async () => {
+  let response = { error: { name: 'AuthRetryableFetchError', status: 0, message: 'fetch failed' } };
+  setup(null, { provider: 'SUPABASE', supabase: { auth: { resetPasswordForEmail: async () => response } } });
+  assert.equal((await TC_AUTH.requestPasswordReset('a@example.com')).error.code, 'NETWORK');
+  response = { error: { name: 'AuthApiError', status: 404, message: 'User not found' } };
   assert.deepEqual(await TC_AUTH.requestPasswordReset('a@example.com'), { error: null });
+  response = { error: { name: 'AuthApiError', status: 429, message: 'Too many requests' } };
+  assert.equal((await TC_AUTH.requestPasswordReset('a@example.com')).error.code, 'RATE_LIMITED');
 });
 
 // ───────────────── 가입 ─────────────────

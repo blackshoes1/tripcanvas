@@ -90,6 +90,10 @@ final class MapDiscoveryModel {
             let received = try await source.candidates(tripId: trip.id)
             guard request == candidateRead else { return }
             candidates = received
+            // 서버 목록을 확인했으면 임시 성공 표시는 끝난다. 삭제된 후보를 다시 담을 수 있어야 한다.
+            savedHits.removeAll()
+            savedCandidateIDs = savedCandidateIDs.filter { _, id in received.contains { $0.id == id } }
+            pendingWrites = pendingWrites.filter { hitID, _ in savedCandidateIDs[hitID] != nil || uncertainHit?.id == hitID }
             candidatesLoaded = true
             candidatesLoadedAt = Date()
             errorMessage = nil
@@ -191,6 +195,8 @@ final class MapDiscoveryModel {
                 providerId: write.withoutLocation ? nil : place.providerId, clientKey: write.key)
             savedCandidateIDs[hit.id] = candidateID
             savedHits.append(place)
+            pendingWrites.removeValue(forKey: hit.id)
+            uncertainHit = nil
             await loadCandidates()
         } catch {
             if case .offline = error as? APIError { uncertainHit = hit }

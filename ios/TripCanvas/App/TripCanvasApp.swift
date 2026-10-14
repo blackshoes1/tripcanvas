@@ -5,7 +5,9 @@ import SwiftUI
 
 @main
 struct TripCanvasApp: App {
+    @UIApplicationDelegateAdaptor(TripCanvasAppDelegate.self) private var appDelegate
     @State private var environment = AppEnvironment()
+    @Environment(\.scenePhase) private var scenePhase
 
     init() {
         // 지도 SDK는 첫 지도 화면보다 먼저 키를 받아야 한다. 여기 한 번이면 끝이다.
@@ -18,12 +20,29 @@ struct TripCanvasApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView()
+            appContent
                 .environment(environment)
+                .onChange(of: scenePhase) { _, phase in
+                    if phase == .active {
+                        Task {
+                            await environment.push.refreshForForeground(isSignedIn: environment.auth.isSignedIn)
+                            await environment.travelMode.synchronizePersistedState()
+                        }
+                    }
+                }
                 .onOpenURL { url in
                     if !GIDSignIn.sharedInstance.handle(url) { environment.router.open(url: url) }
                 }
         }
+    }
+
+    @ViewBuilder private var appContent: some View {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--ios-review-ui") { IOSReviewHarness() }
+        else { RootView() }
+        #else
+        RootView()
+        #endif
     }
 }
 

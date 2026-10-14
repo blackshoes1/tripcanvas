@@ -1,105 +1,107 @@
 import SwiftUI
 
-/// 검색해서 담기. 결과를 고르면 좌표·도시·카테고리가 채워진 장소가 만들어진다.
-///
-/// 결과가 없을 때와 검색이 안 될 때를 구분해서 말한다 — 둘을 섞으면 "그런 장소가 없다"고 거짓말하게 된다.
+/// 검색·선택·저장 완료를 같은 맥락에서 확인한다. 실패하면 선택한 장소와 검색어가 남는다.
 struct PlaceSearchView: View {
-    /// 근처 우선 검색의 기준. 보통 그날 마지막 장소의 좌표
     let near: GeoPoint?
-    /// 상세를 거쳐 담을 때의 버튼 이름(예: '이 장소 일정에 추가'). 없으면 결과를 누르는 즉시 넘긴다.
+    var timeZone: String? = nil
     var addTitle: String? = nil
-    /// 결과가 없을 때 '검색어 그대로 직접 입력'으로 넘긴다. 없으면 그 버튼을 두지 않는다 — 없는 버튼을 말하지 않는다.
     var onManual: ((String) -> Void)? = nil
-    /// 고른 검색 결과를 **그대로** 넘긴다 — 일정에 넣을지 후보로 담을지는 부르는 쪽이 정한다.
-    /// (`TripSpot`으로 미리 바꾸면 후보에 필요한 주소가 사라진다)
-    let onPick: (PlaceHit) -> Void
+    var searcher: PlaceSearching? = nil
+    let onPick: (PlaceHit) async -> String?
 
     @Environment(\.dismiss) private var dismiss
     @Environment(AppEnvironment.self) private var env
     @State private var query = ""
-    @State private var hits: [PlaceHit] = []
-    @State private var isSearching = false
-    @State private var errorMessage: String?
-    @State private var searched = false
+    @State private var scope = PlaceSearchScope.automatic
+    @State private var model: PlaceSearchViewModel?
+    @State private var task: Task<Void, Never>?
     @State private var detail: PlaceHit?
+    @State private var saving = EditorSaveState()
 
     var body: some View {
         NavigationStack {
             PaperList {
-                if let errorMessage {
+                Section {
+                    Picker("찾는 지역", selection: $scope) {
+                        ForEach(PlaceSearchScope.allCases) { Text($0.label).tag($0) }
+                    }.pickerStyle(.segmented).accessibilityIdentifier("placeSearchRegion")
+                }
+                if let error = model?.errorMessage ?? saving.error {
                     Section {
-                        Label(errorMessage, systemImage: "exclamationmark.circle")
-                            .font(.subheadline)
-                            .foregroundStyle(Ink.warning)
-                        Button("같은 검색어로 다시 찾기") { Task { await search() } }
+                        Label(error, systemImage: "exclamationmark.circle")
+                            .font(.subheadline).foregroundStyle(Ink.warning)
+                        Button("같은 검색어로 다시 찾기", action: startSearch)
+                        if model?.errorMessage != nil, let onManual {
+                            Button("검색어 그대로 직접 입력") {
+                                let text = model?.searchedQuery ?? query
+                                dismiss(); onManual(text)
+                            }
+                        }
                     }
                 }
-                if searched && hits.isEmpty && errorMessage == nil && !isSearching {
+                if model?.searched == true, model?.hits.isEmpty == true, model?.errorMessage == nil {
                     Section {
-                        Text("검색 결과가 없어요. 다른 말로 찾아보세요.")
-                            .font(.subheadline)
-                            .foregroundStyle(Ink.soft)
+                        Text("검색 결과가 없어요. 다른 말이나 지역으로 찾아보세요.")
+                            .font(.subheadline).foregroundStyle(Ink.soft)
                         if let onManual {
-                            Button {
-                                let name = trimmedQuery
-                                dismiss()
-                                onManual(name)
-                            } label: {
-                                Label("‘\(trimmedQuery)’ 직접 입력", systemImage: "pencil")
+                            Button("‘\(model?.searchedQuery ?? query)’ 직접 입력") {
+                                let text = model?.searchedQuery ?? query
+                                dismiss(); onManual(text)
                             }
                         }
                     }
                 }
                 Section {
-                    ForEach(Array(hits.enumerated()), id: \.element.id) { index, hit in
+                    ForEach(Array((model?.hits ?? []).enumerated()), id: \.element.id) { index, hit in
                         Button {
-                            if addTitle != nil { detail = hit } else { onPick(hit); dismiss() }
-                        } label: {
-                            PlaceResultRow(hit: hit, highlighted: index == 0)
-                        }
-                        .buttonStyle(.plain)
+                            if addTitle != nil { detail = hit }
+                            else { Task { await pick(hit) } }
+                        } label: { PlaceResultRow(hit: hit, highlighted: index == 0) }
+                        .buttonStyle(.plain).disabled(saving.isWorking)
                         .listRowBackground(index == 0 ? Ink.accent.opacity(0.08) : Ink.raised)
                     }
                 } footer: {
-                    if !hits.isEmpty {
-                        Text(MapRegion.isKoreanSearch(query, near: near) ? "카카오 검색 결과" : "구글 검색 결과")
+                    if let hits = model?.hits, !hits.isEmpty {
+                        Text(hits.first?.provider == "kakao" ? "국내 · 카카오 검색 결과" : "해외 · 구글 검색 결과")
                     }
                 }
             }
-            .listStyle(.insetGrouped)
-            .overlay {
-                if isSearching { ProgressView("찾는 중") }
-            }
+            .overlay { if model?.isSearching == true { ProgressView("찾는 중") } }
             .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "장소 이름·주소")
-            .onSubmit(of: .search) { Task { await search() } }
-            .navigationTitle("장소 검색")
-            .navigationBarTitleDisplayMode(.inline)
+            .onSubmit(of: .search, startSearch)
+            .onChange(of: query) { _, _ in task?.cancel(); model?.clear() }
+            .onChange(of: scope) { _, _ in startSearch() }
+            .navigationTitle("장소 검색").navigationBarTitleDisplayMode(.inline)
             .navigationDestination(item: $detail) { hit in
-                PlaceDetailView(hit: hit, addTitle: addTitle ?? "이 장소 선택") {
-                    onPick(hit)
-                    dismiss()
+                PlaceDetailView(hit: hit, addTitle: addTitle ?? "이 장소 선택", saving: saving) {
+                    let error = await onPick(hit)
+                    if error == nil { dismiss() }
+                    return error
                 }
             }
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) { Button("닫기") { dismiss() } }
+                ToolbarItem(placement: .topBarLeading) { Button("닫기") { dismiss() }.disabled(saving.isWorking) }
             }
         }
+        .interactiveDismissDisabled(saving.isWorking)
+        .task {
+            if model == nil {
+                model = PlaceSearchViewModel(source: searcher ?? env.places)
+                scope = .initial(near: near, timeZone: timeZone)
+            }
+        }
+        .onDisappear { task?.cancel(); model?.invalidate() }
     }
 
-    private var trimmedQuery: String { query.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private func startSearch() {
+        guard let model else { return }
+        saving.clearError()
+        task?.cancel()
+        let text = query, scope = scope
+        task = Task { await model.search(text, near: near, scope: scope) }
+    }
 
-    private func search() async {
-        let trimmed = trimmedQuery
-        guard !trimmed.isEmpty else { return }
-        isSearching = true
-        defer { isSearching = false }
-        do {
-            hits = try await env.places.search(trimmed, near: near)
-            errorMessage = nil
-        } catch {
-            hits = []
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
-        }
-        searched = true
+    private func pick(_ hit: PlaceHit) async {
+        if await saving.perform({ await onPick(hit) }) { dismiss() }
     }
 }
