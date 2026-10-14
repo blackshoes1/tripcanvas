@@ -14,6 +14,17 @@ struct IOSReviewHarness: View {
     @State private var savedBooking = ""
     private var draftKey: EditorDraftKey? { EditorDraftKey(accountID: "ui-review", tripID: "synthetic", editor: "cost-recovery") }
     private var bookingDraftKey: EditorDraftKey? { EditorDraftKey(accountID: "ui-review", tripID: "synthetic", editor: "booking-recovery") }
+    private var bookingDocument: TripDocument {
+        var document = source.snapshot.document
+        if arguments.contains("--review-linked-draft") {
+            var days = document.days
+            var stay = TripSpot(name: "합성 엔화 숙소")
+            stay.isStay = true; stay.currency = .jpy; stay.cost = 10000
+            var spots = days[0].spots; spots.append(stay); days[0].spots = spots
+            document.days = days
+        }
+        return document
+    }
 
     var body: some View {
         Group {
@@ -33,12 +44,13 @@ struct IOSReviewHarness: View {
                 NavigationStack {
                     Text(savedBooking).accessibilityIdentifier("reviewSavedBooking")
                         .sheet(isPresented: $showsBooking) {
-                            BookingEditorView(target: .edit(source.snapshot.document.bookings[0]), document: source.snapshot.document,
+                            BookingEditorView(target: .edit(bookingDocument.bookings[0]), document: bookingDocument,
                                               draftKey: bookingDraftKey, originalRevision: 1,
                                               onSave: { booking, _ in savedBooking = booking.title; return nil }, onDelete: { _ in nil })
                         }
                 }.task {
                     if arguments.contains("--review-reset-draft") { EditorDraftStore.shared.remove(bookingDraftKey) }
+                    if arguments.contains("--review-linked-draft") { seedLinkedDraft() }
                     showsBooking = true
                 }
             } else if arguments.contains("--review-draft") {
@@ -65,6 +77,18 @@ struct IOSReviewHarness: View {
 
     private func openDraft() {
         draftTarget = CostEditTarget(kind: .extra("fixture-cost"), entry: CostEntry(raw: ["id": .string("fixture-cost"), "title": .string("커피")]))
+    }
+
+    private func seedLinkedDraft() {
+        let document = bookingDocument, original = document.bookings[0]
+        var edited = original; edited.title += " 연결 복구"
+        let originalLinks = document.links(forBooking: original.id)
+        var links = originalLinks; links.stay = document.stayRefs.last
+        let draft = BookingInputDraft(original: original.raw, originalLinks: originalLinks, revision: 1,
+            booking: edited.raw, links: links, kind: CostCategory.stay.rawValue,
+            texts: ["price": "17", "currency": "USD", "payState": CostPayState.reserved.rawValue],
+            photos: [], segments: [])
+        EditorDraftStore.shared.save(draft, key: bookingDraftKey)
     }
 }
 

@@ -202,7 +202,6 @@ struct BookingEditorView: View {
                 .accessibilityIdentifier("bookingEntrySave")
         }
     }
-    .onChange(of: links.stay) { _, ref in prefill(from: ref) }
     .onChange(of: kind) { _, kind in
         // 예약 분류로 오면 예약 종류가 따라오고, 예약에는 미구분이 없다(잡아 둔 돈).
         if let type = kind.bookingType { draft.type = type; if payState == .none { payState = .reserved } }
@@ -380,6 +379,7 @@ struct BookingEditorView: View {
                     }
                 }
                 .labelsHidden()
+                .accessibilityIdentifier("bookingEntryCurrency")
             }
             // 항공은 시세를 확인할 곳이 아직 없다 — 없는 추적을 약속하지 않는다.
             if isBookingKind && kind != .flight { Toggle("가격 추적", isOn: $draft.track) }
@@ -466,7 +466,7 @@ struct BookingEditorView: View {
     private var hotelSection: some View {
         Section {
             DisclosureGroup {
-                Picker("일정의 숙소와 연결", selection: $links.stay) {
+                Picker("일정의 숙소와 연결", selection: stayLinkBinding) {
                     Text("연결 안 함").tag(SpotRef?.none)
                     ForEach(document.stayRefs, id: \.self) { ref in
                         Text(spotLabel(ref)).tag(SpotRef?.some(ref))
@@ -659,6 +659,15 @@ struct BookingEditorView: View {
         }
         if let currency = spot.currency { self.currency = currency }
         if priceText.isEmpty, let cost = spot.cost, cost > 0 { priceText = MoneyInput.text(amount: cost) }
+    }
+
+    /// 자동 입력은 사용자의 숙소 선택에만 반응한다. 초안 복원의 연결 변경은 사용자가 고친 통화·금액을 덮지 않는다.
+    private var stayLinkBinding: Binding<SpotRef?> {
+        Binding(get: { links.stay }, set: { ref in
+            guard ref != links.stay else { return }
+            links.stay = ref
+            prefill(from: ref)
+        })
     }
 
     private var originalTarget: [String: JSONValue] { target.booking?.raw ?? target.item?.raw ?? [:] }

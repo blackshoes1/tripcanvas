@@ -98,4 +98,21 @@ final class ReviewFlowsUITests: XCTestCase {
         XCTAssertTrue(app.buttons["costEntrySave"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["costEntrySave"].isHittable)
     }
+
+    func testRestoringChangedStayLinkPreservesManuallyEnteredCurrency() {
+        let app = launch(["--review-booking", "--review-linked-draft"])
+        XCTAssertTrue(app.buttons["restoreBookingDraft"].waitForExistence(timeout: 10))
+        app.buttons["restoreBookingDraft"].tap()
+        let amount = app.textFields["bookingEntryAmount"]
+        for _ in 0..<4 where !amount.isHittable { app.swipeUp() }
+        XCTAssertTrue(amount.isHittable)
+        XCTAssertEqual(amount.value as? String, "17")
+        let currency = app.buttons["bookingEntryCurrency"]
+        XCTAssertTrue(currency.exists)
+        XCTAssertTrue(currency.label.contains("USD") || (currency.value as? String) == "USD")
+        screenshot(app, "booking-linked-draft-currency")
+        app.buttons["bookingEntrySave"].tap()
+        XCTAssertTrue(app.staticTexts["reviewSavedBooking"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["reviewSavedBooking"].label.contains("연결 복구"))
+    }
 }
