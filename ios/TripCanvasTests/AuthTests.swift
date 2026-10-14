@@ -12,6 +12,7 @@ private final class FakeAuthClient: AuthClient, @unchecked Sendable {
     var signUpResult: Result<SignUpResult, AuthError> = .success(SignUpResult(verificationSent: true))
     /// `session(token:)`이 돌려줄 것. `.success(nil)`이면 세션이 죽은 것이다.
     var sessionResult: Result<AuthSession?, AuthError> = .success(nil)
+    var resetFailure: AuthError?
 
     private(set) var signedOutTokens: [String] = []
     private(set) var resetRequests: [String] = []
@@ -24,7 +25,10 @@ private final class FakeAuthClient: AuthClient, @unchecked Sendable {
         return try sessionResult.get()
     }
     func signOut(token: String) async { signedOutTokens.append(token) }
-    func requestPasswordReset(email: String) async { resetRequests.append(email) }
+    func requestPasswordReset(email: String) async throws {
+        resetRequests.append(email)
+        if let resetFailure { throw resetFailure }
+    }
 }
 
 private final class FakeSessionStore: SessionStoring, @unchecked Sendable {
@@ -142,6 +146,20 @@ final class AuthStoreTests: XCTestCase {
         XCTAssertEqual(client.resetRequests, ["nobody@example.com"])
         XCTAssertNil(auth.lastError)
         XCTAssertEqual(auth.notice?.contains("가입된 이메일이면"), true)
+    }
+
+    func testPasswordResetNetworkFailureDoesNotSayMailWasSentAndCanRetry() async {
+        let client = FakeAuthClient()
+        let auth = AuthStore(client: client, store: FakeSessionStore())
+        await auth.requestPasswordReset(email: "nobody@example.com")
+        client.resetFailure = .network
+        await auth.requestPasswordReset(email: "nobody@example.com")
+        XCTAssertNil(auth.notice)
+        XCTAssertEqual(auth.lastError, AuthError.network.message)
+        client.resetFailure = nil
+        await auth.requestPasswordReset(email: "nobody@example.com")
+        XCTAssertNil(auth.lastError)
+        XCTAssertNotNil(auth.notice)
     }
 
     /// §8 — 예전 Supabase 세션을 자체 Auth 세션으로 바꾸지 않는다. 지우고 한 번 다시 묻는다.

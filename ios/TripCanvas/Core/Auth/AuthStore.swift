@@ -71,8 +71,8 @@ protocol AuthClient: Sendable {
     /// 토큰이 아직 살아 있는지 서버에 묻는다. 죽었으면 nil(오류가 아니다).
     func session(token: String) async throws -> AuthSession?
     func signOut(token: String) async
-    /// **있는 이메일인지 알려주지 않는다** — 성공/실패를 구분하지 않는다(계정 존재 확인에 쓰이지 않게).
-    func requestPasswordReset(email: String) async
+    /// 계정 유무에는 같은 답을 주고 연결 실패·요청 제한만 알린다.
+    func requestPasswordReset(email: String) async throws
 }
 
 /// `/api/auth/*` — 웹 `auth.js`가 쓰는 것과 같은 엔드포인트다.
@@ -144,8 +144,10 @@ struct TripCanvasAuthClient: AuthClient {
         _ = try? await call("/api/auth/sign-out", token: token)
     }
 
-    func requestPasswordReset(email: String) async {
-        _ = try? await call("/api/auth/request-password-reset", body: ["email": email])
+    func requestPasswordReset(email: String) async throws {
+        let (status, _, _, _) = try await call("/api/auth/request-password-reset", body: ["email": email])
+        if status == 429 { throw AuthError.from(status: status, body: nil) }
+        if status >= 500 { throw AuthError.network }
     }
 
     // MARK: -
@@ -273,7 +275,8 @@ final class AuthStore {
     /// 있는 이메일인지 알려주지 않는다 — 언제나 같은 답을 보인다.
     func requestPasswordReset(email: String) async {
         await work {
-            await self.client.requestPasswordReset(email: email)
+            self.notice = nil
+            try await self.client.requestPasswordReset(email: email)
             // 새 비밀번호를 받는 화면은 웹에만 있다 — 메일 링크가 웹으로 간다.
             self.notice = "가입된 이메일이면 재설정 링크를 보냈어요.\n메일의 링크에서 새 비밀번호를 정해주세요."
         }

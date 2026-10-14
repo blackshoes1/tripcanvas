@@ -20,7 +20,7 @@ final class CreateTripDraftTests: XCTestCase {
         let restored = NewTripView(mode: .constant(.scratch), form: scratch, onCreate: { _ in nil })
 
         XCTAssertEqual(restored.form.draft, before)
-        XCTAssertEqual(restored.form.draft, NewTripDraft(name: "엄마와 교토", start: "2026-10-03", dayCount: 5, city: "교토"))
+        XCTAssertEqual(restored.form.draft, NewTripDraft(name: "엄마와 교토", start: "2026-10-03", dayCount: 5, city: "교토", creationID: scratch.creationID))
         XCTAssertTrue(restored.form.nameEdited)
         XCTAssertEqual(paste.text, "10월 3일 12:07 교토역", "두 방식의 입력은 서로 덮어쓰지 않는다")
     }

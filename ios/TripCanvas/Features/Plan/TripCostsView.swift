@@ -12,6 +12,8 @@ import Observation
 /// ⚠️ 옛 API(NAS를 아직 안 올렸을 때)는 `prep`·`onSite`를 주지 않는다. 그때 목록은 문서에서 짓고
 /// 합계 자리에는 **그 사실을 쓴다** — 조용히 감추면 아무 오류 없이 기능만 사라진 것처럼 보인다.
 struct TripCostsView: View {
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var wasBackgrounded = false
     let trip: TripSummary
     /// 여행 화면(`TripScreenModels`)이 들고 있는 기억. 있으면 시트를 닫았다 열어도 방금 받은 것을 다시 받지 않는다(2026-09-18).
     let memory: TripCostsMemory?
@@ -137,6 +139,13 @@ struct TripCostsView: View {
             await model?.loadIfStale()
         }
         .onChange(of: memory?.generation) { _, _ in Task { await model?.invalidate(editing: isEditing) } }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .background { wasBackgrounded = true }
+            if phase == .active, wasBackgrounded {
+                wasBackgrounded = false
+                if memory == nil { Task { await model?.invalidate(editing: isEditing) } }
+            }
+        }
         .onChange(of: isEditing) { _, editing in
             if !editing, model?.needsReload == true { Task { await model?.load() } }
         }

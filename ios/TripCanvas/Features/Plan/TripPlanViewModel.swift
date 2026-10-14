@@ -18,6 +18,8 @@ final class TripPlanViewModel: DayPlanContext {
     let tripId: String
     private let memberSource: MemberListing?
     private let candidateSource: CollabSource?
+    var isPresentingEditor = false
+    private(set) var needsRemoteReload = false
 
     /// 보고 있는 일자. 문서가 줄어들면 마지막 날로 당긴다.
     var selectedDay = 0 {
@@ -59,6 +61,7 @@ final class TripPlanViewModel: DayPlanContext {
 
     func acceptSaved(_ snapshot: TripDocumentSnapshot) {
         guard !store.isSaving else { return }
+        guard !isPresentingEditor else { needsRemoteReload = true; return }
         store.acceptSaved(snapshot)
         Task { await loadPlan() }
     }
@@ -121,8 +124,24 @@ final class TripPlanViewModel: DayPlanContext {
     /// ⚠️ 문서 읽기가 **늦게 온 것으로 판정되면 계산을 받으러 가지 않는다** — 그 요청은
     /// 이미 지나간 화면의 것이라 지금 보는 날의 계산을 건드릴 자격이 없다.
     func load() async {
+        guard !isPresentingEditor else { needsRemoteReload = true; return }
         guard await store.load() else { return }
+        needsRemoteReload = false
         await loadPlan()
+    }
+
+    func resumeAfterBackground() async {
+        needsRemoteReload = true
+        if !isPresentingEditor { await load() }
+    }
+
+    func setPresentingEditor(_ value: Bool) async {
+        isPresentingEditor = value
+        await reloadIfEditorClosed()
+    }
+
+    func reloadIfEditorClosed() async {
+        if !isPresentingEditor, needsRemoteReload { await load() }
     }
 
     /// 충돌 뒤 "최신 불러오기". 방금 바꾼 것은 서버에 없으므로 사라진다 — 화면이 그렇게 말한 뒤에 부른다.

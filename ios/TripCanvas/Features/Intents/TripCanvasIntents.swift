@@ -96,7 +96,7 @@ struct ShowNextActionIntent: AppIntent {
 }
 
 /// "With J 여행 모드 시작" — 이미 켜져 있으면 다시 켜지 않는다(§8, idempotent).
-struct StartTravelModeIntent: AppIntent {
+struct StartTravelModeIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "여행 중 안내 켜기"
     static var description = IntentDescription("다음 일정과 이동 시간을 잠금화면에서 바로 볼 수 있게 해요.")
     static var openAppWhenRun: Bool = false
@@ -110,11 +110,14 @@ struct StartTravelModeIntent: AppIntent {
         }
         await env.travelMode.start(trip: trip)
         Analytics.track(.intentUsed, ["intent": "startTravelMode"])
+        if let error = env.travelMode.lastError {
+            return .result(dialog: IntentDialog(stringLiteral: "여행 중 안내는 켰지만 최신 안내를 준비하지 못했어요. \(error) 앱에서 다시 확인해 주세요."))
+        }
         return .result(dialog: IntentDialog(stringLiteral: "\(trip.name) 여행 중 안내를 켰어요."))
     }
 }
 
-struct StopTravelModeIntent: AppIntent {
+struct StopTravelModeIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "여행 중 안내 끄기"
     static var openAppWhenRun: Bool = false
 

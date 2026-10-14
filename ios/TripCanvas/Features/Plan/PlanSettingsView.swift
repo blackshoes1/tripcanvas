@@ -41,8 +41,8 @@ enum PlanCalendarChange {
               let last = ISODateText.calendar.date(byAdding: .day, value: max(0, count - 1), to: base) else { return [] }
         let first = ISODateText.text(from: base), end = ISODateText.text(from: last)
         return bookings.filter { booking in
-            guard let from = booking.start?.prefix(10), !from.isEmpty else { return false }
-            return String(from) < first || String(from) > end
+            let dates = [booking.start, booking.end].compactMap { $0 }.map { String($0.prefix(10)) }
+            return dates.contains { !$0.isEmpty && ($0 < first || $0 > end) }
         }
     }
 

@@ -992,7 +992,7 @@ struct ItineraryDraftItem: Codable, Hashable, Sendable {
     let endAt: String?
     let stayMinutes: Int?
     let url: String?
-    let cost: Int?
+    let cost: Double?
     let currency: String?
     let optional: Bool
     let stay: Bool

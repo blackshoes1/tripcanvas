@@ -13,6 +13,24 @@ final class ReviewFlowsUITests: XCTestCase {
         attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
     }
 
+    func testPasteDraftSurvivesTerminationAndKeepsForeignAmountOnCreate() {
+        let app = launch(["--review-paste", "--review-reset-draft"])
+        let text = app.textViews["pasteItineraryText"]
+        XCTAssertTrue(text.waitForExistence(timeout: 10)); text.tap(); text.typeText("12.50 EUR itinerary")
+        app.terminate()
+        app.launchArguments.removeAll { $0 == "--review-reset-draft" }; app.launch()
+        XCTAssertTrue(app.buttons["restorePasteDraft"].waitForExistence(timeout: 10))
+        app.buttons["restorePasteDraft"].tap()
+        XCTAssertEqual(app.textViews["pasteItineraryText"].value as? String, "12.50 EUR itinerary")
+        screenshot(app, "paste-draft-restored")
+        app.buttons["읽어 보기"].tap()
+        let create = app.buttons["pasteItineraryCreate"]
+        XCTAssertTrue(create.waitForExistence(timeout: 5)); create.tap()
+        XCTAssertTrue(app.staticTexts["reviewSavedPaste"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["reviewSavedPaste"].label.contains("12.5"))
+        screenshot(app, "paste-foreign-amount-saved")
+    }
+
     func testForeignSearchKeepsSelectionOnSaveFailureAndClosesAfterRetry() {
         let app = launch(["--review-search"])
         XCTAssertTrue(app.searchFields.firstMatch.waitForExistence(timeout: 10))

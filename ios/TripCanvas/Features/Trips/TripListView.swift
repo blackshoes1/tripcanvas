@@ -11,6 +11,9 @@ final class TripListViewModel {
     private(set) var cachedAt: Date?
 
     private let service: TripDataSource
+    private var loadGeneration = 0
+    private var mutationGeneration = 0
+    private var isCreating = false
 
     init(service: TripDataSource) { self.service = service }
 
@@ -20,9 +23,10 @@ final class TripListViewModel {
     /// 낙관적으로 먼저 지우고, 실패하면 **원래 자리로 되돌린다** — 실패를 삼키면
     /// 다음 새로고침에 되살아나서 지워진 줄 알았던 여행이 돌아온다.
     func remove(_ trip: TripSummary) async {
-        guard busyTripId == nil, let index = trips.firstIndex(where: { $0.id == trip.id }) else { return }
+        guard busyTripId == nil, !isCreating, let index = trips.firstIndex(where: { $0.id == trip.id }) else { return }
+        mutationGeneration += 1
         busyTripId = trip.id
-        defer { busyTripId = nil }
+        defer { busyTripId = nil; mutationGeneration += 1 }
 
         removing = (trip, index)
         trips.remove(at: index)
@@ -47,13 +51,15 @@ final class TripListViewModel {
 
     /// 여행을 만든다. 성공하면 목록 맨 앞에 넣고 그 여행을 돌려준다(바로 열 수 있게).
     ///
-    /// ⚠️ 낙관적으로 먼저 넣지 않는다 — id는 **서버가 정한다**. 가짜 id로 줄을 만들면
-    /// 그 줄을 눌렀을 때 열 것이 없다(삭제와 반대 방향이라 규칙도 반대다).
+    /// 서버가 생성·확인한 뒤 넣는다. 요청 ID만으로 열 수 없는 행을 미리 만들지 않는다.
     func create(_ draft: NewTripDraft) async -> TripSummary? {
-        guard busyTripId == nil else { return nil }
+        guard busyTripId == nil, !isCreating else { return nil }
+        isCreating = true; mutationGeneration += 1
+        defer { isCreating = false; mutationGeneration += 1 }
         errorMessage = nil
         do {
             let created = try await service.createTrip(draft)
+            trips.removeAll { $0.id == created.id }
             trips.insert(created, at: 0)
             return created
         } catch {
@@ -73,7 +79,9 @@ final class TripListViewModel {
 
     private func restore() {
         guard let pending = removing else { return }
-        trips.insert(pending.trip, at: min(pending.index, trips.count))
+        if !trips.contains(where: { $0.id == pending.trip.id }) {
+            trips.insert(pending.trip, at: min(pending.index, trips.count))
+        }
         removing = nil
     }
 
@@ -100,14 +108,19 @@ final class TripListViewModel {
 
     /// 캐시가 있으면 먼저 그린다 — 긴 스피너만 보여주지 않는다(§32).
     func load() async {
+        guard !isCreating else { return }
+        loadGeneration += 1
+        let request = loadGeneration, mutation = mutationGeneration
         if trips.isEmpty { isLoading = true }
-        defer { isLoading = false }
+        defer { if request == loadGeneration { isLoading = false } }
         do {
             let fetched = try await service.trips()
-            trips = fetched.value
+            guard request == loadGeneration, mutation == mutationGeneration, !isCreating else { return }
+            trips = fetched.value.filter { $0.id != removing?.trip.id }
             cachedAt = fetched.cachedAt
             errorMessage = nil
         } catch {
+            guard request == loadGeneration, mutation == mutationGeneration else { return }
             errorMessage = error.localizedDescription
         }
     }

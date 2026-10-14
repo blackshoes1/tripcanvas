@@ -20,7 +20,7 @@ enum MapRegion {
 }
 
 /// 검색 결과 한 건. 어느 SDK에서 왔든 같은 모양이라 화면은 출처를 모른다.
-struct PlaceHit: Identifiable, Hashable, Sendable {
+struct PlaceHit: Identifiable, Codable, Hashable, Sendable {
     let id: String
     let name: String
     let city: String

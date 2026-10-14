@@ -130,9 +130,9 @@ test('재설정 요청은 이메일이 있든 없든 같은 답이다 — 계정
   assert.deepEqual(seen, ['있는@example.com', '없는@example.com']);
 });
 
-test('재설정은 네트워크가 끊겨도 같은 답이다', async () => {
+test('재설정은 네트워크 실패를 알려 재시도할 수 있다', async () => {
   setup(() => ({ throws: true }));
-  assert.deepEqual(await TC_AUTH.requestPasswordReset('a@example.com'), { error: null });
+  assert.equal((await TC_AUTH.requestPasswordReset('a@example.com')).error.code, 'NETWORK');
 });
 
 // ───────────────── 가입 ─────────────────

@@ -29,7 +29,14 @@ final class BookingListViewModel {
     /// 저장·삭제·당겨서 새로고침은 여전히 `load()`다.
     func invalidate() { loadedAt = nil; bookings = []; loadGeneration += 1; isLoading = false; invalidation += 1 }
 
+    /// PUT은 이미 끝났다. 편집기의 완료를 후속 요약 조회에 묶지 않는다.
+    func refreshAfterSave() {
+        invalidate()
+        Task { await load() }
+    }
+
     func loadIfStale(maxAge: TimeInterval = 60, now: Date = Date()) async {
+        if isLoading { return }
         if errorMessage == nil, cachedAt == nil, let loadedAt, now.timeIntervalSince(loadedAt) < maxAge { return }
         await load()
     }
@@ -62,6 +69,7 @@ struct BookingListView: View {
     /// 여행 화면(`TripScreenModels`)이 들고 있는 모델. 있으면 시트를 닫았다 열어도 목록이 남는다(2026-09-18).
     var shared: BookingListViewModel? = nil
     @Environment(AppEnvironment.self) private var env
+    @Environment(\.scenePhase) private var scenePhase
     @State private var owned: BookingListViewModel?
     /// 여행 화면이 드는 모델. `지금`에서 시트·push로 들어온 자리가 여기서 같은 것을 집는다.
     @Environment(TripScreenModels.self) private var screenModels: TripScreenModels?
@@ -70,6 +78,7 @@ struct BookingListView: View {
     @State private var plan: TripPlanViewModel?
     @State private var editor: BookingEditorTarget?
     @State private var isPreparing = false
+    @State private var wasBackgrounded = false
 
     var body: some View {
         ScrollView {
@@ -166,6 +175,16 @@ struct BookingListView: View {
         .onChange(of: editor?.id) { _, value in
             if value == nil { Task { await model?.loadIfStale() } }
         }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .background { wasBackgrounded = true }
+            if phase == .active, wasBackgrounded {
+                wasBackgrounded = false
+                if screenModels == nil {
+                    model?.invalidate()
+                    if editor == nil { Task { await model?.loadIfStale() } }
+                }
+            }
+        }
         .task {
             if model == nil { owned = BookingListViewModel(tripId: trip.id, service: env.service) }
             await model?.loadIfStale()
@@ -182,22 +201,22 @@ struct BookingListView: View {
                     originalRevision: plan.revision,
                     onSave: { booking, links in
                         let saved = await plan.saveBooking(booking, links: links)
-                        if saved { await model?.load() }
+                        if saved { model?.refreshAfterSave() }
                         return saved ? nil : plan.saveFailureMessage
                     },
                     onDelete: { id in
                         let saved = await plan.removeBooking(id: id)
-                        if saved { await model?.load() }
+                        if saved { model?.refreshAfterSave() }
                         return saved ? nil : plan.saveFailureMessage
                     },
                     onSaveItem: { entry in
                         let saved = await plan.saveCostItem(entry)
-                        if saved { await model?.load() }
+                        if saved { model?.refreshAfterSave() }
                         return saved ? nil : plan.saveFailureMessage
                     },
                     onDeleteItem: { id in
                         let saved = await plan.removeCostItem(id: id)
-                        if saved { await model?.load() }
+                        if saved { model?.refreshAfterSave() }
                         return saved ? nil : plan.saveFailureMessage
                     })
             }

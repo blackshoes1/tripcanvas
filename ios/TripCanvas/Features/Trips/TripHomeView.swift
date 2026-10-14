@@ -35,6 +35,7 @@ struct TripHomeView: View {
     /// 세 화면의 모델. **여행을 보는 동안** 살아 있고, 탭을 오가도 죽지 않는다.
     @State private var models: TripScreenModels
     @State private var tab: TripHomeTab?
+    @State private var wasBackgrounded = false
     @Environment(AppEnvironment.self) private var env
     @Environment(\.scenePhase) private var scenePhase
     /// 이 화면의 실시간 구독 이름. 보드(`"candidates"`)와 달라야 서로를 덮어쓰지 않는다.
@@ -123,8 +124,14 @@ struct TripHomeView: View {
         // 앱이 뒤로 가면 소켓을 붙들지 않는다(§34) — 돌아올 때 다시 붙고 그때 최신을 읽는다.
         .onChange(of: scenePhase) { _, phase in
             switch phase {
-            case .active: startLive()
-            case .background, .inactive: env.realtime.disconnect()
+            case .active:
+                startLive()
+                if wasBackgrounded {
+                    wasBackgrounded = false
+                    Task { await models.resumeAfterBackground() }
+                }
+            case .background: wasBackgrounded = true; env.realtime.disconnect()
+            case .inactive: env.realtime.disconnect()
             @unknown default: break
             }
         }
@@ -312,6 +319,13 @@ final class TripScreenModels {
             self.plan.acceptSaved(snapshot)
             if refreshToday { Task { await self.today.load() } }
         }
+    }
+
+    /// 재구독에는 과거 이벤트가 없으므로 기기 밖에서 바뀐 내용을 API로 다시 확인한다.
+    func resumeAfterBackground() async {
+        costs.invalidate(); bookings.invalidate()
+        if plan.document != nil { await plan.resumeAfterBackground() }
+        if today.today != nil { await today.load() }
     }
 
     /// 실시간 이벤트 하나를 화면들에 나눈다. 무엇을 읽을지는 `TripLiveRefresh`가 정하고 여기서는 그대로 따른다.

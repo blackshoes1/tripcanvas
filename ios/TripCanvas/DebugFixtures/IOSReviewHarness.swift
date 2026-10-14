@@ -1,5 +1,6 @@
 #if DEBUG
 import SwiftUI
+import Observation
 
 /// UI 검증 전용 합성 자료. 앱·운영 API에 계정이나 테스트 여행을 만들지 않는다.
 @MainActor
@@ -28,7 +29,9 @@ struct IOSReviewHarness: View {
 
     var body: some View {
         Group {
-            if arguments.contains("--review-search") {
+            if arguments.contains("--review-paste") {
+                ReviewPasteHarness()
+            } else if arguments.contains("--review-search") {
                 NavigationStack {
                     Text(savedPlace.isEmpty ? "합성 여행" : "추가됨 · \(savedPlace)").accessibilityIdentifier("reviewSavedPlace")
                         .sheet(isPresented: $showsSearch) {
@@ -90,6 +93,50 @@ struct IOSReviewHarness: View {
             photos: [], segments: [])
         EditorDraftStore.shared.save(draft, key: bookingDraftKey)
     }
+}
+
+@MainActor private struct ReviewPasteHarness: View {
+    @State private var form = PasteItineraryFormState()
+    @State private var source = ReviewPasteSource()
+    @State private var presented = false
+    private var key: EditorDraftKey? { EditorDraftKey(accountID: "ui-review", tripID: "synthetic", editor: "paste-recovery") }
+    var body: some View {
+        NavigationStack {
+            Text(source.savedDocument == nil ? "합성 일정 가져오기" : "저장 완료 · EUR \(source.savedDocument?.days.first?.spots.first?.cost ?? 0)")
+                .accessibilityIdentifier("reviewSavedPaste")
+                .sheet(isPresented: $presented) {
+                    PasteItineraryView(service: source, places: ReviewSearcher(), mode: .constant(.paste), form: form,
+                                       onCreated: { _ in presented = false }, draftKeyOverride: key)
+                }
+        }.task {
+            if ProcessInfo.processInfo.arguments.contains("--review-reset-draft") { EditorDraftStore.shared.remove(key) }
+            presented = true
+        }
+    }
+}
+@Observable @MainActor private final class ReviewPasteSource: TripDataSource {
+    var savedDocument: TripDocument?
+    func parseItinerary(text: String) async throws -> ItineraryDraft {
+        let item = ItineraryDraftItem(raw: text, name: "루브르 박물관", city: "파리", desc: "합성 장소", at: "15:00", endAt: nil,
+                                      stayMinutes: 60, url: "https://example.com/ticket", cost: 12.5, currency: "EUR",
+                                      optional: true, stay: false, location: nil, kind: .place, reasons: [])
+        return .init(name: "합성 파리 여행", start: "2026-10-15", startAmbiguous: false,
+                     days: [.init(index: 0, title: "파리", date: "2026-10-15", note: "", items: [item])])
+    }
+    func createTrip(document: [String: JSONValue]) async throws -> TripSummary {
+        savedDocument = TripDocument(raw: document)
+        return .init(id: "synthetic", name: "합성 여행", start: "2026-10-15", dayCount: 1, revision: 1,
+                     updatedAt: "", timeZone: "Europe/Paris", cities: [], todayIndex: -1, daysUntilStart: nil, role: .owner, memberCount: 1)
+    }
+    func trips() async throws -> TripService.Fetched<[TripSummary]> { .init(value: [], cachedAt: nil) }
+    func bookings(tripId: String) async throws -> TripService.Fetched<[BookingSummary]> { throw APIError.offline }
+    func createTrip(_ draft: NewTripDraft) async throws -> TripSummary { throw APIError.offline }
+    func deleteTrip(tripId: String, expectedRevision: Int) async throws { throw APIError.offline }
+    func leaveTrip(tripId: String) async throws { throw APIError.offline }
+    func today(tripId: String, dayIndex: Int?, intent: String?, energy: EnergyLevel?) async throws -> TripService.Fetched<TodayResponse> { throw APIError.offline }
+    func dayPlan(tripId: String, dayIndex: Int) async throws -> TripService.Fetched<DayPlanResponse> { throw APIError.offline }
+    func setActivity(tripId: String, activityId: String, action: TripService.ActivityAction, expectedRevision: Int, expectedName: String?) async throws -> MutationResponse { throw APIError.offline }
+    func decideSuggestion(tripId: String, suggestionId: String, decision: TripService.SuggestionDecision, expectedRevision: Int) async throws -> MutationResponse { throw APIError.offline }
 }
 
 @MainActor

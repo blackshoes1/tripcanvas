@@ -66,6 +66,7 @@ struct TripPlanView: View {
     @State private var showsOverview = false
     @State private var showsSettings = false
     @State private var showsCosts = false
+    private var hasInputSheet: Bool { editor != nil || showsSearch || quickCreate != nil || showsCosts || showsSettings || moveTarget != nil || isEditing }
     @State private var costDay = 0
     @State private var costRevision = 0
     @State private var insertionAfter: Int?
@@ -104,6 +105,10 @@ struct TripPlanView: View {
         .task {
             // 탭 진입 — 문서가 있고 방금 받은 것이면 아무것도 받지 않는다(탭 전환은 앱 복귀가 아니다).
             await model.loadIfStale()
+        }
+        .onChange(of: hasInputSheet, initial: true) { _, value in
+            model.isPresentingEditor = value
+            if !value { Task { await model.reloadIfEditorClosed() } }
         }
         // 지도를 처음 켠 순간부터 만들어 둔다. 그 뒤로는 숨기기만 한다.
         .onChange(of: showsMap, initial: true) { _, on in if on { mapMounted = true } }

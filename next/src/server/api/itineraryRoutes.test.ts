@@ -29,6 +29,10 @@ const call = (body: unknown, token = 'good') =>
   }));
 
 describe('POST /api/v1/itineraries/parse', () => {
+  it('외화 소수·선택 표시·링크를 iOS 계약에 그대로 싣는다', async () => {
+    const body = (await (await call({ text: '## 10월 3일\n- 15:00 (선택) 루브르 박물관 | 파리 | €12.50 https://example.com/ticket' })).json()) as ItineraryParseResponse;
+    expect(body.draft.days[0].items[0]).toMatchObject({ cost: 12.5, currency: 'EUR', optional: true, url: 'https://example.com/ticket' });
+  });
   it('로그인해야 부를 수 있다 — 우리 CPU를 공개해 두지 않는다', async () => {
     expect((await call({ text: PASTED }, '')).status).toBe(401);
     expect((await call({ text: PASTED }, 'bad')).status).toBe(401);

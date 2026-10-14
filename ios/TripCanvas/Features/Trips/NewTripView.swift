@@ -10,12 +10,13 @@ final class NewTripFormState {
     var nameEdited = false
     var start = Date()
     var dayCount = 3
+    let creationID = UUID().uuidString
 
     var draft: NewTripDraft {
         let typed = name.trimmingCharacters(in: .whitespaces)
         return NewTripDraft(name: typed.isEmpty ? NewTripView.fallbackName : typed,
                             start: ISODateText.text(from: start), dayCount: dayCount,
-                            city: city.trimmingCharacters(in: .whitespaces))
+                            city: city.trimmingCharacters(in: .whitespaces), creationID: creationID)
     }
 }
 

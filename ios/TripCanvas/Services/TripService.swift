@@ -18,7 +18,7 @@ protocol TripDataSource {
     func setActivity(tripId: String, activityId: String, action: TripService.ActivityAction, expectedRevision: Int, expectedName: String?) async throws -> MutationResponse
     func decideSuggestion(tripId: String, suggestionId: String, decision: TripService.SuggestionDecision, expectedRevision: Int) async throws -> MutationResponse
     /// 여행을 지운다(tombstone). **주최자만** — 서버도 그렇게 막는다.
-    /// 여행을 만든다. 서버가 id를 정하고 만든 여행을 돌려준다 — 웹과 **같은 경로**(POST /api/v1/trips)다.
+    /// 여행을 만든다. 생성 ID를 재시도에 유지하고 서버가 확인한 여행만 돌려준다(POST /api/v1/trips).
     func createTrip(_ draft: NewTripDraft) async throws -> TripSummary
     /// 붙여넣은 글을 초안으로 읽는다. **서버가 읽는다** — 파서를 앱에 복제하지 않는다.
     func parseItinerary(text: String) async throws -> ItineraryDraft
@@ -155,18 +155,16 @@ final class TripService: TripDataSource {
     /// 여행 만들기. 문서는 **빈 일자 N개**뿐이다 — 우리가 모르는 필드를 지어내지 않고,
     /// 기본값은 서버의 `normalizeTrip`이 채운다(웹에서 만든 여행과 같은 모양이 된다).
     ///
-    /// ⚠️ 낙관적으로 목록에 먼저 넣지 않는다. 여행의 id는 **서버가 정한다** —
-    /// 가짜 id로 줄을 만들면 그 줄을 눌렀을 때 열 것이 없다.
+    /// 서버가 생성·확인한 뒤 목록에 넣는다. 요청 ID만으로 미리 행을 만들지 않는다.
     func createTrip(_ draft: NewTripDraft) async throws -> TripSummary {
         let days = (0..<draft.dayCount).map { _ in JSONValue.object(["title": .string(""), "spots": .array([])]) }
-        let document: [String: JSONValue] = [
+        var document: [String: JSONValue] = [
             "name": .string(draft.name),
             "start": .string(draft.start),
             "days": .array(days)
         ]
-        let body = try JSONEncoder().encode(["trip": JSONValue.object(document)])
-        let response: TripDetailResponse = try await api.post("/api/v1/trips", jsonBody: body)
-        return response.trip
+        if let id = draft.creationID { document["id"] = .string(id) }
+        return try await createTrip(document: document)
     }
 
     /// 붙여넣은 글 → 초안. 규칙은 서버의 `intake.js` 하나다(§엔진은 하나다).
@@ -180,9 +178,28 @@ final class TripService: TripDataSource {
 
     /// 이미 만들어 둔 문서로 여행을 만든다(붙여넣기가 쓴다). 만들기와 장소 채우기가 한 번의 왕복이다.
     func createTrip(document: [String: JSONValue]) async throws -> TripSummary {
-        let body = try JSONEncoder().encode(["trip": JSONValue.object(document)])
-        let response: TripDetailResponse = try await api.post("/api/v1/trips", jsonBody: body)
-        return response.trip
+        var request = document
+        // 생성 ID는 재시도에서도 유지한다. 응답만 유실돼도 두 번째 여행을 만들지 않는다.
+        let id = request["id"]?.stringValue ?? UUID().uuidString
+        request["id"] = .string(id)
+        let fingerprintEncoder = JSONEncoder(); fingerprintEncoder.outputFormatting = [.sortedKeys]
+        let fingerprint = String(try fingerprintEncoder.encode(request).reduce(UInt64(14695981039346656037)) { ($0 ^ UInt64($1)) &* 1099511628211 }, radix: 16)
+        request["creationKey"] = .string(id)
+        request["creationFingerprint"] = .string(fingerprint)
+        let body = try JSONEncoder().encode(["trip": JSONValue.object(request)])
+        do {
+            let response: TripDetailResponse = try await api.post("/api/v1/trips", jsonBody: body)
+            return response.trip
+        } catch APIError.server(let status, let message) where status == 409 {
+            let existing: TripDetailResponse = try await api.get("/api/v1/trips/\(id)")
+            guard existing.trip.id == id, existing.trip.role == .owner, existing.document["creationKey"]?.stringValue == id else {
+                throw APIError.server(status: status, message: message)
+            }
+            guard existing.document["creationFingerprint"]?.stringValue == fingerprint else {
+                throw APIError.badRequest("이전 내용으로 여행이 이미 만들어졌어요. 목록에서 저장된 여행을 확인한 뒤 수정해 주세요. 지금 입력은 그대로 남아 있어요.")
+            }
+            return existing.trip
+        }
     }
 
     /// tombstone. `expectedRevision`이 어긋나면 서버가 409로 막는다 —
@@ -335,6 +352,8 @@ struct NewTripDraft: Sendable, Equatable {
     var start: String = ""
     var dayCount: Int = 3
     var city: String? = nil
+    /// 같은 생성 요청의 재시도 ID. 화면의 입력 상태가 소유한다.
+    var creationID: String? = nil
 
     /// 만들 수 있는 최대 일수 — 웹·서버와 같은 한계다(`TripLimits.maxDays`).
     static let maxDays = TripLimits.maxDays
