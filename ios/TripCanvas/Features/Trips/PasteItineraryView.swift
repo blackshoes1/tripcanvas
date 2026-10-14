@@ -56,11 +56,12 @@ struct PasteItineraryView: View {
     @State private var errorMessage: String?
     @State private var recovery: PasteItineraryInputDraft?
     @State private var checkedRecovery = false
+    @State private var pinnedDraftKey: EditorDraftKey?
     @State private var showsDiscard = false
     @State private var searchGeneration = 0
 
     private var draftKey: EditorDraftKey? {
-        draftKeyOverride ?? EditorDraftKey(accountID: env.auth.session?.userId, tripID: "new-trip", editor: "paste-itinerary")
+        pinnedDraftKey
     }
 
     /// 한 줄. 담을지(`include`)와 찾은 좌표(`found`)는 화면에서 바뀐다.
@@ -109,6 +110,7 @@ struct PasteItineraryView: View {
         .interactiveDismissDisabled(isBusy || form.hasInput)
         .task {
             if !checkedRecovery {
+                pinnedDraftKey = draftKeyOverride ?? EditorDraftKey(accountID: env.auth.session?.userId, tripID: "new-trip", editor: "paste-itinerary")
                 checkedRecovery = true
                 if !form.hasInput { recovery = EditorDraftStore.shared.load(PasteItineraryInputDraft.self, key: draftKey) }
                 else { persistInput() }
@@ -348,7 +350,7 @@ struct PasteItineraryView: View {
     }
 
     private func persistInput() {
-        guard recovery == nil else { return }
+        guard checkedRecovery, recovery == nil else { return }
         if form.hasInput { EditorDraftStore.shared.save(form.inputDraft, key: draftKey) }
         else { EditorDraftStore.shared.remove(draftKey) }
     }
