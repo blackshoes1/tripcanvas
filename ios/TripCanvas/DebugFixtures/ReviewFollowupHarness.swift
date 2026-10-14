@@ -68,7 +68,8 @@ private final class SharedFollowupProtocol: URLProtocol, @unchecked Sendable {
 }
 @Observable @MainActor private final class SharedFollowupBackend {
     let service: TripService
-    var revision = 1, reads = 0
+    var revision = 1
+    var reads = 0
     var document: [String: JSONValue] = ["name": .string("합성"), "days": .array([.object(["spots": .array([])])])]
     var summary: TripSummary { .init(id: "shared-ui", name: "합성 공유 여행", start: "2026-10-14", dayCount: 1, revision: revision,
         updatedAt: "", timeZone: "Asia/Seoul", cities: [], todayIndex: 0, daysUntilStart: 0, role: .owner, memberCount: 1) }

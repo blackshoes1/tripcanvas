@@ -39,13 +39,13 @@
 
 ## 후속 검토 8건 적용 (2026-10-14)
 
-아래 8건은 위의 첫 추가 검토 13건 다음에 발견한 항목이다. 이어지는 재검토 13건과 별도로 추적한다. 표의 회귀 검증은 **작성한 검사**이며, 이번 변경의 네이티브 실행 결과는 아직 대기 중이다.
+아래 8건은 위의 첫 추가 검토 13건 다음에 발견한 항목이다. 이어지는 재검토 13건과 별도로 추적한다. 표는 구현과 회귀 검사의 대응 관계다. 실행 결과는 [PR #355](https://github.com/blackshoes1/tripcanvas/pull/355)의 검증 커밋·CI 실행 링크·결과 번들로 확인한다.
 
 | 번호 · 발견 내용 | 적용한 동작 | 구현 근거 | 회귀 검증 |
 | --- | --- | --- | --- |
 | 8-1 · 붙여넣기 시작일 오류에도 이전 날짜로 생성 | 날짜 칸의 오류 상태와 실제 날짜 유효성을 생성 버튼·생성 함수 양쪽에서 확인. 날짜 없는 여행은 허용 | [PasteItineraryView.swift](../ios/TripCanvas/Features/Trips/PasteItineraryView.swift) `canCreate` | [EditingFollowupTests](../ios/TripCanvasTests/EditingFollowupTests.swift) `testPasteInvalidInputCannotUseThePreviousValidStart`, `testPasteAllowsUndatedTravelAndRejectsInvalidCanonicalDates` |
 | 8-2 · 숙소 선택이 입력한 통화를 덮음 | 이미 입력한 금액·통화는 유지. 통화 선택 여부도 초안에 보존. 다른 통화의 숫자를 환산 없이 자동 입력하지 않음 | [BookingEditorView.swift](../ios/TripCanvas/Features/Booking/BookingEditorView.swift) `BookingStayPrefill` | [EditingFollowupTests](../ios/TripCanvasTests/EditingFollowupTests.swift) 입력 중 소수·통화 선택·통화 불일치·원화 기본값, 기존 예약 초안 복원 UI 검사 |
-| 8-3 · Siri 오늘 열기가 새 라우터에 전달 | 앱이 등록한 `ActionRouter`를 App Intent 의존성으로 사용 | [TripCanvasIntents.swift](../ios/TripCanvas/Features/Intents/TripCanvasIntents.swift), [AppEnvironment.swift](../ios/TripCanvas/App/AppEnvironment.swift) | [SystemFollowupTests](../ios/TripCanvasTests/SystemFollowupTests.swift) `testOpenTodayIntentUsesTheRouterRegisteredByTheApp` |
+| 8-3 · Siri 오늘 열기가 새 라우터에 전달 | 앱이 등록한 `ActionRouter`를 App Intent 의존성으로 사용 | [TripCanvasIntents.swift](../ios/TripCanvas/Features/Intents/TripCanvasIntents.swift), [AppEnvironment.swift](../ios/TripCanvas/App/AppEnvironment.swift) | [SystemFollowupTests](../ios/TripCanvasTests/SystemFollowupTests.swift) `testOpenTodayIntentUsesTheProvidedAppRouter` (직접 호출 테스트는 시스템 의존성을 명시 주입) |
 | 8-4 · 알림 미등록도 이미 보낸 것으로 기록 | 조회는 `markSent: false`. 현재 권한을 확인하고 시스템 등록 성공한 DEVICE 항목만 로컬 기록·서버 ACK. ACK 응답 유실은 알림을 중복 등록하지 않고 재확인 | [PushService.swift](../ios/TripCanvas/Core/Push/PushService.swift), [TravelModeController.swift](../ios/TripCanvas/Features/TravelMode/TravelModeController.swift), [NotificationAcknowledgement.swift](../ios/TripCanvas/Services/NotificationAcknowledgement.swift), [tripViews.ts](../next/src/features/trip-state/services/routes/tripViews.ts) | [SystemFollowupTests](../ios/TripCanvasTests/SystemFollowupTests.swift) 권한 거부·등록 실패·ACK 응답 유실, [handlers.test.ts](../next/src/features/trip-state/services/handlers.test.ts) ACK 인증·입력 제한·중복·기록 실패 |
 | 8-5 · APNs 토큰 등록 콜백 누락 | 앱 델리게이트에서 토큰·실패 콜백을 `PushService`로 연결하고 서버 등록 실패 상태를 보존 | [TripCanvasApp.swift](../ios/TripCanvas/App/TripCanvasApp.swift), [PushService.swift](../ios/TripCanvas/Core/Push/PushService.swift) | [SystemFollowupTests](../ios/TripCanvasTests/SystemFollowupTests.swift) `testAPNsBridgeRegistersTheReceivedTokenAndReportsFailure` |
 | 8-6 · 알림 탭의 링크를 화면에서 소비하지 않음 | 수신 링크를 앱 라우터로 전달. 유효한 여행 링크만 이동하고 처리한 대기 링크는 제거 | [PushService.swift](../ios/TripCanvas/Core/Push/PushService.swift), [AppEnvironment.swift](../ios/TripCanvas/App/AppEnvironment.swift) | [SystemFollowupTests](../ios/TripCanvasTests/SystemFollowupTests.swift) `testNotificationTapIsDeliveredToTheAppRouterAndInvalidLinksAreIgnored` |
@@ -76,14 +76,14 @@
 - **숙박 1인 금액:** 8-2의 자동입력 보완에는 `costBasis: PER_PERSON`과 정수 인원을 곱해 예약 총액으로 옮기는 처리가 포함된다. `CostEntry.totalAmount`는 공통 `lib.js costAmountOf`처럼 명시한 기준에만 인원을 곱하고 통화의 최소 단위로 반올림한다. 100 EUR × 2명은 예약 총액 200 EUR다. 이는 별도 새 발견 수에 더하지 않는다.
 - **Watch 제외:** 이번 수정·검증 범위는 iOS 앱과 관련 공통 API다. Watch의 실제 동작·동기화·알림은 별도 검토 및 기기 검증 대상이다. 공유 계약이나 앱 타깃의 CI 성공을 Watch 동작 검증으로 표시하지 않는다.
 
-### 이번 변경 검증 대기표
+### 이번 변경 검증 기준
 
-| 검증 | 현재 상태 | 완료 조건 |
+| 검증 | 추적 경로 | 완료 조건 |
 | --- | --- | --- |
-| iOS 신규 회귀 테스트 | 작성됨 · 실행 대기 | `EditingFollowupTests`·`SystemFollowupTests`·`AccountCacheFollowupTests`·`CollabFollowupTests`와 기존 검색·지도·결제 테스트를 최종 커밋에서 실행 |
-| iOS Debug 빌드·XCTest·UI 조작 | 실행 대기 | XcodeGen 생성, 전체 단위·UI 검사 및 결과 번들 확인. 날짜 오류·저장 중 잠금·연결 호텔 별도 비용·공유 자료 저장을 합성 의존성으로 조작 |
-| iOS Release 빌드 | 실행 대기 | 최종 커밋의 Release 빌드 및 Debug 합성 화면 제외 확인 |
-| ACK API 및 전체 저장소 게이트 | 실행 대기 | ACK 라우트 단위·권한·중복·실패 검사와 `npm run verify:all` 결과 확인. PASS/FAIL/SKIP을 구분 |
+| iOS 신규 회귀 테스트 | PR의 iOS CI · `ios-test-results` | `EditingFollowupTests`·`SystemFollowupTests`·`AccountCacheFollowupTests`·`CollabFollowupTests`와 기존 검색·지도·결제 테스트를 검증 커밋에서 실행 |
+| iOS Debug 빌드·XCTest·UI 조작 | PR의 iOS CI · 캡처 | XcodeGen 생성, 전체 단위·UI 검사 및 결과 번들 확인. 날짜 오류·저장 중 잠금·연결 호텔 별도 비용·공유 자료 저장을 합성 의존성으로 조작 |
+| iOS Release 빌드 | PR의 iOS CI · Release 단계 | 검증 커밋의 Release 빌드 및 Debug 합성 화면 제외 확인 |
+| ACK API 및 전체 저장소 게이트 | PR의 CI · 로컬 게이트 로그 | ACK 라우트 단위·권한·중복·실패 검사와 `npm run verify:all` 결과 확인. PASS/FAIL/SKIP을 구분 |
 | 실기기 Siri·APNs·알림 탭·잠금화면 | 미검증 | 실제 등록·도착·이동·기기 상태와 권한 변화 확인. 시뮬레이터 콜백 테스트만으로 완료 처리하지 않음 |
 | Watch | 이번 범위 제외 | 별도 Watch 검토·기기 검증 |
 
