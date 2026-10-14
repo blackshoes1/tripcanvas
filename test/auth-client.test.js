@@ -135,6 +135,16 @@ test('재설정은 네트워크 실패를 알려 재시도할 수 있다', async
   assert.equal((await TC_AUTH.requestPasswordReset('a@example.com')).error.code, 'NETWORK');
 });
 
+test('Supabase 재설정은 SDK가 반환한 연결 오류만 알리고 계정 유무는 숨긴다', async () => {
+  let response = { error: { name: 'AuthRetryableFetchError', status: 0, message: 'fetch failed' } };
+  setup(null, { provider: 'SUPABASE', supabase: { auth: { resetPasswordForEmail: async () => response } } });
+  assert.equal((await TC_AUTH.requestPasswordReset('a@example.com')).error.code, 'NETWORK');
+  response = { error: { name: 'AuthApiError', status: 404, message: 'User not found' } };
+  assert.deepEqual(await TC_AUTH.requestPasswordReset('a@example.com'), { error: null });
+  response = { error: { name: 'AuthApiError', status: 429, message: 'Too many requests' } };
+  assert.equal((await TC_AUTH.requestPasswordReset('a@example.com')).error.code, 'RATE_LIMITED');
+});
+
 // ───────────────── 가입 ─────────────────
 
 test('가입하면 확인 메일을 기다린다 — 확인 전에는 로그인이 열리지 않는다', async () => {

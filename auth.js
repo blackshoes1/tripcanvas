@@ -291,6 +291,7 @@
       if (!_sb || !_sb.auth.resetPasswordForEmail) return { error: { code: 'UNAVAILABLE', message: '지금은 할 수 없어요' } };
       try {
         const result = await _sb.auth.resetPasswordForEmail(email);
+        if (result && result.error && (result.error.status === 0 || result.error.name === 'AuthRetryableFetchError')) return { error: networkError(result.error) };
         if (result && result.error && (result.error.status === 429 || result.error.status >= 500)) return { error: toError(result.error.status, {}) };
       } catch (err) { return { error: networkError(err) }; }
       return { error: null };

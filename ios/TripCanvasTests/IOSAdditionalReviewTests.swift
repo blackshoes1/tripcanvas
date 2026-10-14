@@ -196,7 +196,7 @@ final class IOSAdditionalReviewTests: XCTestCase {
     func leaveTrip(tripId: String) async throws { stored.removeAll { $0.id == tripId } }
     func createTrip(_ draft: NewTripDraft) async throws -> TripSummary {
         let made = TripSummary(id: "created", name: draft.name, start: draft.start, dayCount: draft.dayCount, revision: 1,
-                               updatedAt: "", timeZone: nil, cities: [], todayIndex: -1, daysUntilStart: nil, role: .owner, memberCount: 1)
+                               updatedAt: "", timeZone: "", cities: [], todayIndex: -1, daysUntilStart: nil, role: .owner, memberCount: 1)
         stored.insert(made, at: 0); return made
     }
     func bookings(tripId: String) async throws -> TripService.Fetched<[BookingSummary]> {

@@ -60,7 +60,7 @@ private final class CreationProtocol: URLProtocol {
             }
             let document = try XCTUnwrap(serverDocument)
             let summary = TripSummary(id: document["id"]!.stringValue!, name: document["name"]!.stringValue!, start: "2026-10-15",
-                                      dayCount: 1, revision: 1, updatedAt: "", timeZone: nil, cities: [],
+                                      dayCount: 1, revision: 1, updatedAt: "", timeZone: "", cities: [],
                                       todayIndex: -1, daysUntilStart: nil, role: .owner, memberCount: 1)
             return (200, try JSONEncoder().encode(TripDetailResponse(trip: summary, document: document)))
         }
@@ -98,5 +98,8 @@ private final class CreationProtocol: URLProtocol {
         CreationProtocol.respond = { _ in (429, Data()) }
         do { try await client.requestPasswordReset(email: "a@example.com"); XCTFail("요청 제한은 재시도 안내가 필요하다") }
         catch let error as AuthError { XCTAssertEqual(error.code, .rateLimited) }
+        CreationProtocol.respond = { _ in (503, Data()) }
+        do { try await client.requestPasswordReset(email: "a@example.com"); XCTFail("서버 연결 실패도 보냈다고 안내하지 않는다") }
+        catch { XCTAssertEqual(error as? AuthError, .network) }
     }
 }
