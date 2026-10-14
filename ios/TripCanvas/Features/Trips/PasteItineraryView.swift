@@ -78,12 +78,14 @@ struct PasteItineraryView: View {
             VStack(spacing: 0) {
                 if let recovery {
                     VStack(alignment: .leading, spacing: Space.s) {
-                        Text("이전에 입력한 일정이 있어요").font(.caption)
+                        Text("이전에 입력한 일정이 있어요").font(.caption).accessibilityIdentifier("pasteDraftRecoveryNotice")
                         HStack {
-                            Button("복원") { form.restore(recovery); self.recovery = nil }.accessibilityIdentifier("restorePasteDraft")
-                            Button("초안 버리기") { self.recovery = nil; EditorDraftStore.shared.remove(draftKey) }
+                            Button { form.restore(recovery); self.recovery = nil } label: { Text("복원").frame(minHeight: 44) }
+                                .accessibilityIdentifier("restorePasteDraft")
+                            Button { self.recovery = nil; EditorDraftStore.shared.remove(draftKey) } label: { Text("초안 버리기").frame(minHeight: 44) }
+                                .accessibilityIdentifier("discardPasteDraft")
                         }
-                    }.padding().accessibilityIdentifier("pasteDraftRecovery")
+                    }.padding()
                 }
                 if form.draft == nil { input } else { preview }
             }
