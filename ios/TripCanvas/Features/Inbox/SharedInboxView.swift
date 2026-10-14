@@ -58,6 +58,7 @@ private struct SharedImportView: View {
     @State private var bookingSeed: TripBooking?
     @State private var showsBooking = false
     @State private var showsDiscard = false
+    @Environment(AppEnvironment.self) private var env
     @Environment(\.dismiss) private var dismiss
 
     init(input: SharedTravelInput, service: TripService, trips: [TripSummary], onOpenTrip: @escaping (String) -> Void) {

@@ -70,6 +70,24 @@ final class ReviewFlowsUITests: XCTestCase {
         app.buttons["costEntrySave"].tap()
     }
 
+    func testBookingDraftSurvivesProcessTerminationAndSavesAfterRestore() {
+        let app = launch(["--review-booking", "--review-reset-draft"])
+        let title = app.textFields["bookingEntryTitle"]
+        XCTAssertTrue(title.waitForExistence(timeout: 10)); title.tap(); title.typeText(" 복구")
+        let edited = title.value as? String
+        XCTAssertTrue(edited?.contains("복구") == true)
+        app.terminate()
+        app.launchArguments.removeAll { $0 == "--review-reset-draft" }; app.launch()
+        XCTAssertTrue(app.buttons["restoreBookingDraft"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["bookingEntrySave"].isEnabled)
+        app.buttons["restoreBookingDraft"].tap()
+        XCTAssertEqual(app.textFields["bookingEntryTitle"].value as? String, edited)
+        screenshot(app, "booking-draft-restored")
+        app.buttons["bookingEntrySave"].tap()
+        XCTAssertTrue(app.staticTexts["reviewSavedBooking"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.staticTexts["reviewSavedBooking"].label, edited)
+    }
+
     func testLargeTextAndDarkCostsKeepMainActionsReachable() {
         let app = launch(["--review-large", "--review-dark"])
         XCTAssertTrue(app.buttons["reviewUnknownCosts"].waitForExistence(timeout: 10))

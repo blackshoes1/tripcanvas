@@ -10,7 +10,10 @@ struct IOSReviewHarness: View {
     @State private var searchAttempts = 0
     @State private var savedPlace = ""
     @State private var draftTarget: CostEditTarget?
+    @State private var showsBooking = false
+    @State private var savedBooking = ""
     private var draftKey: EditorDraftKey? { EditorDraftKey(accountID: "ui-review", tripID: "synthetic", editor: "cost-recovery") }
+    private var bookingDraftKey: EditorDraftKey? { EditorDraftKey(accountID: "ui-review", tripID: "synthetic", editor: "booking-recovery") }
 
     var body: some View {
         Group {
@@ -26,6 +29,18 @@ struct IOSReviewHarness: View {
                             }
                         }
                 }.task { showsSearch = true }
+            } else if arguments.contains("--review-booking") {
+                NavigationStack {
+                    Text(savedBooking).accessibilityIdentifier("reviewSavedBooking")
+                        .sheet(isPresented: $showsBooking) {
+                            BookingEditorView(target: .edit(source.snapshot.document.bookings[0]), document: source.snapshot.document,
+                                              draftKey: bookingDraftKey, originalRevision: 1,
+                                              onSave: { booking, _ in savedBooking = booking.title; return nil }, onDelete: { _ in nil })
+                        }
+                }.task {
+                    if arguments.contains("--review-reset-draft") { EditorDraftStore.shared.remove(bookingDraftKey) }
+                    showsBooking = true
+                }
             } else if arguments.contains("--review-draft") {
                 NavigationStack {
                     Button("비용 편집") { openDraft() }.accessibilityIdentifier("reviewOpenDraft")
