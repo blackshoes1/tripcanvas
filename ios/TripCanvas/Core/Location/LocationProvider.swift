@@ -104,7 +104,7 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
         Task { @MainActor in
             syncPermission()
             if permission == .denied { finish(nil) }
-            else if permission == .granted, !continuations.isEmpty { manager.requestLocation() }
+            else if permission == .granted, !continuations.isEmpty { self.manager.requestLocation() }
         }
     }
 }
