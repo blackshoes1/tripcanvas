@@ -73,6 +73,9 @@ private final class CreationProtocol: URLProtocol {
         var changed = request; changed["name"] = .string("수정한 입력")
         do { _ = try await service.createTrip(document: changed); XCTFail("다른 입력을 이미 저장한 것으로 말하면 안 된다") }
         catch APIError.badRequest(let message) { XCTAssertTrue(message.contains("이전 내용")) }
+        let list = TripListViewModel(service: service)
+        _ = await list.create(.init(name: "바꾼 입력", start: "2026-10-15", creationID: "stable-trip-id"))
+        XCTAssertTrue(list.errorMessage?.contains("이전 내용") == true, "처음부터 만들기에서도 이미 생성된 여행을 확인할 길을 안내한다")
         XCTAssertEqual(createdCount, 1)
     }
 

@@ -73,6 +73,7 @@ final class TripListViewModel {
         switch api {
         case .unauthorized: return "로그인이 필요해요 — 다시 로그인한 뒤 만들어 주세요."
         case .offline: return "서버에 닿지 못했어요 — 연결을 확인하고 다시 시도해 주세요."
+        case .badRequest(let message): return message
         default: return "여행을 만들지 못했어요. 잠시 후 다시 시도해 주세요."
         }
     }
