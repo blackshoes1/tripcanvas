@@ -88,8 +88,9 @@ struct PasteItineraryView: View {
                         }
                     }.padding()
                 }
-                if form.draft == nil { input.disabled(isBusy) } else { preview.disabled(isBusy) }
+                if form.draft == nil { input } else { preview }
             }
+            .disabled(isBusy)
             .paperGround()
             .navigationTitle(form.draft == nil ? "일정 붙여넣기" : "이렇게 읽었어요")
             .navigationBarTitleDisplayMode(.inline)
