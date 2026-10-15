@@ -30,6 +30,7 @@ struct StayExtensionPreview: Codable, Hashable, Sendable {
     let reason: String?
     let hasUnknownTravel: Bool
     let changes: [Change]
+    var affectedActivityIds: [String]? = nil
     let fixedCommitments: [Commitment]
     let dayEndBeforeMinutes: Int?
     let dayEndAfterMinutes: Int?
@@ -160,7 +161,7 @@ struct StayExtensionSheet: View {
                         }
                         if let trip {
                             DailyMomentsImpactSection(trip: trip, dayIndex: p.dayIndex, revision: p.revision,
-                                changedActivityIds: p.changes.map(\.activityId))
+                                changedActivityIds: p.affectedActivityIds ?? p.changes.map(\.activityId))
                         }
                         Text(p.travelTimeSource == "ROUTED" && !p.hasUnknownTravel
                              ? "조회한 경로 기준 예상이에요. 현장 상황에 따라 달라질 수 있어요."

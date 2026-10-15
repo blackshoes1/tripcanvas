@@ -36,6 +36,7 @@ final class ChoiceFlowsUITests: XCTestCase {
         // ASCII 이름으로 선택지 생성·저장 왕복을 검증한다. 저장 버튼도 실제 화면을 그대로 쓴다.
         save(app)
         reveal(app.buttons["chooseAlternativePlace"], in: app)
+        captureTravelUX(app, "pending-two-place-slot")
         save(app)
         let state = app.staticTexts["choiceSavedState"]
         let pending = expectation(for: NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@", "PENDING", "Riverside walk"), evaluatedWith: state)

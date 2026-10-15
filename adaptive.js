@@ -594,7 +594,7 @@
    * 머무는 중인 곳은 **남은 체류만** 더한다(2026-10-03) — 처음부터 다시 더하면 경복궁에 머무는 동안 내내 제때인 일정이
    * '115분 지연'이 됐다. 시작 시각은 지금이다 — '다녀왔어요'를 누른 곳은 계획한 종료 시각을 기다리지 않고 끝난 것이다.
    * @param {any} state @param {TripItem[]} list @param {any=} opts
-   * @returns {{ok:boolean, lateBy:number, totalLate:number, endMin:number, violated:string[], first:({id:string,name:string,atMin:number,lateBy:number}|null)}}
+   * @returns {{ok:boolean, lateBy:number, totalLate:number, endMin:number, violated:string[], first:({id:string,name:string,atMin:number,lateBy:number}|null), timings:{id:string,start:number,end:number}[]}}
    */
   function simulate(state, list, opts){
     let clock=state.live? Math.max(state.nowMin, state.dayStartMin) : state.dayStartMin;
@@ -603,11 +603,14 @@
     let lateBy=0, totalLate=0;
     /** @type {string[]} */
     const violated=[];
+    /** @type {{id:string,start:number,end:number}[]} */
+    const timings=[];
     /** @type {{id:string,name:string,atMin:number,lateBy:number}|null} */
     let first=null;
     list.forEach((/**@type{TripItem}*/it)=>{
       if(state.live && it.status==='IN_PROGRESS'){
         clock=Math.max(clock, it.end);
+        timings.push({id:it.id,start:it.depart,end:clock});
         if(it.location) prev=it.location;
         return;
       }
@@ -623,10 +626,11 @@
         }
         clock=Math.max(clock, it.fixedAt);
       }
+      timings.push({id:it.id,start:clock,end:clock+it.stayMin});
       clock+=it.stayMin;
       if(it.location) prev=it.location;
     });
-    return {ok:!violated.length, lateBy, totalLate, endMin:Math.round(clock), violated, first};
+    return {ok:!violated.length, lateBy, totalLate, endMin:Math.round(clock), violated, first,timings};
   }
   /**
    * 일정 조정에서 뺄 수 있는 곳 — 유동 일정이고 꼭 가기가 아니고, 숙소·공항·역이 아니다.
@@ -714,7 +718,7 @@
       activityId:current.id,currentName:current.name,extraMinutes:extra,
       oldDepartureMinutes:Math.round(current.end),newDepartureMinutes:Math.round(current.end+extra),
       feasible:false,reason:'따로 움직이는 구간은 일행과 합류 시각을 확인한 뒤 일정에서 조정해 주세요.',
-      hasUnknownTravel:true,changes:[],fixedCommitments:[],dayEndBeforeMinutes:null,dayEndAfterMinutes:null
+      hasUnknownTravel:true,changes:[],affectedActivityIds:[],fixedCommitments:[],dayEndBeforeMinutes:null,dayEndAfterMinutes:null
     };
     const before=simulate(state,pending,o);
     const protectedOpts=Object.assign({},o,{protectBuffer:true});
@@ -757,7 +761,9 @@
     return {activityId:current.id,currentName:current.name,extraMinutes:extra,
       oldDepartureMinutes:Math.round(current.end),newDepartureMinutes:Math.round(current.end+extra),
       feasible:result.ok&&!unresolved,reason:unresolved?'먼저 미정인 장소를 골라 주세요.':(!result.ok?'예약 시각과 준비 여유를 지키기 어려워 이 변경을 적용할 수 없어요.':null),
-      hasUnknownTravel:unknown,changes,fixedCommitments:fixed,
+      hasUnknownTravel:unknown,changes,
+      affectedActivityIds:result.timings.filter(t=>{const b=before.timings.filter(x=>x.id===t.id)[0];return !b||b.start!==t.start||b.end!==t.end;}).map(t=>t.id),
+      fixedCommitments:fixed,
       dayEndBeforeMinutes:before.endMin,dayEndAfterMinutes:result.endMin};
   }
 

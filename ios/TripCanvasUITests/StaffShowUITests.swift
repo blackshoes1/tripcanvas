@@ -9,6 +9,7 @@ final class StaffShowUITests: XCTestCase {
         XCTAssertTrue(open.waitForExistence(timeout: 10)); open.tap()
         XCTAssertTrue(app.staticTexts["staffShowName"].waitForExistence(timeout: 5))
         XCTAssertEqual(app.staticTexts["staffShowName"].label, "Hôtel de démonstration")
+        captureTravelUX(app, "staff-show-large-dark-private")
         XCTAssertFalse(app.staticTexts["staffShowConfirmation"].exists)
         let reveal = app.buttons["staffShowReveal"]
         for _ in 0..<8 where !reveal.isHittable { app.swipeUp() }

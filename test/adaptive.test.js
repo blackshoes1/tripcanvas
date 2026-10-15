@@ -66,6 +66,18 @@ test('더 머물기: 병렬 일행 구간을 직렬로 계산해 다른 사람�
   assert.equal(preview.dayEndAfterMinutes,null);
 });
 
+test('더 머물기: 체류를 줄이지 않아도 도착이 바뀌는 일행의 장소를 영향에 포함한다', () => {
+  const trip={start:'2026-10-15',days:[{startAt:'09:00',spots:[
+    {name:'카페',stayMin:60,lat:37,lng:127},
+    {name:'일행이 고른 산책',stayMin:30,lat:37,lng:127},
+    {name:'예약',bookAt:'14:00',stayMin:60,lat:37,lng:127}
+  ]}]};
+  const preview=A.previewStayExtension(stateOf(trip,{todayISO:'2026-10-15',nowMin:570,legMin:()=>0}),
+    {activityId:'d0s0',extraMinutes:20,legMin:()=>0});
+  assert.equal(preview.changes.length,1);
+  assert.deepEqual(preview.affectedActivityIds,['d0s0','d0s1']);
+});
+
 // 2분/km — 좌표만 보고 이동시간을 예측할 수 있게 고정한 테스트용 이동 모델
 const LEG = (a, b) => Math.round(TC.haversine({ lat: +a.lat, lng: +a.lng }, { lat: +b.lat, lng: +b.lng }) * 2);
 const P = (lat) => ({ lat, lng: -3.70 });

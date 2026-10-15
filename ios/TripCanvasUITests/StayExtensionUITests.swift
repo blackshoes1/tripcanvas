@@ -7,6 +7,7 @@ final class StayExtensionUITests: XCTestCase {
         app.launch()
         let thirty = app.buttons["stayMinutes30"]
         XCTAssertTrue(thirty.waitForExistence(timeout: 8)); thirty.tap()
+        captureTravelUX(app, "stay-extension-preview")
         let apply = app.buttons["stayApply"]
         for _ in 0..<6 where !apply.isHittable { app.swipeUp() }
         XCTAssertTrue(apply.isHittable); apply.tap()

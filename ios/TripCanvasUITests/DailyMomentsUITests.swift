@@ -14,6 +14,7 @@ final class DailyMomentsUITests: XCTestCase {
         XCTAssertTrue(choose.waitForExistence(timeout: 10)); choose.tap()
         XCTAssertTrue(app.staticTexts["나: 합성 카페"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["영희: 노을 보기"].exists)
+        captureTravelUX(app, "daily-moments-individual-wishes")
         let withdraw = app.buttons["dailyMomentWithdraw"]
         for _ in 0..<5 where !withdraw.isHittable { app.swipeUp() }
         XCTAssertTrue(withdraw.isHittable); withdraw.tap()

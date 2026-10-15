@@ -38,7 +38,7 @@ struct ChoiceReviewHarness: View {
             .task {
                 if model == nil {
                     EditorDraftStore.shared.remove(key)
-                    EditorDraftStore.shared.remove(key.appending("alternative"))
+                    EditorDraftStore.shared.remove(key?.appending("alternative"))
                     let value = TripPlanViewModel(tripId: "choice-synthetic", service: source, loadsPlans: false)
                     model = value
                     await value.load()

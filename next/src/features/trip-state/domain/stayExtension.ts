@@ -11,6 +11,7 @@ export interface StayExtensionResult {
   oldDepartureMinutes: number; newDepartureMinutes: number;
   feasible: boolean; reason: string | null; hasUnknownTravel: boolean;
   changes: { activityId: string; name: string; beforeStayMinutes: number; afterStayMinutes: number }[];
+  affectedActivityIds: string[];
   fixedCommitments: { activityId: string; name: string; atMinutes: number; arrivalMinutes: number | null; slackMinutes: number | null; bufferMinutes: number }[];
   dayEndBeforeMinutes: number | null; dayEndAfterMinutes: number | null;
 }
