@@ -85,6 +85,7 @@ export function createPlanEditingHandlers(kit: HandlerKit) {
       return fail('REVISION_CONFLICT', { revision: row.revision });
     }
     if (!result.ok) {
+      if (result.error === 'CHOICE_PENDING') return fail('BAD_REQUEST', { message: '아직 고르지 않은 일정이에요. 일정에서 갈 곳을 고른 뒤 다시 해 주세요.' });
       return result.error === 'NAME_MISMATCH'
         ? fail('SUGGESTION_STALE', { message: '그 사이 일정 순서가 바뀌었어요 — 새로 불러온 뒤 다시 시도해 주세요.', revision: row.revision })
         : fail('ACTIVITY_NOT_FOUND');

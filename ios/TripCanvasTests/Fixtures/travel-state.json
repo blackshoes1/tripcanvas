@@ -135,6 +135,7 @@
     "remainingActivities": [
       {
         "id": "d0s0",
+        "choiceState": null,
         "name": "숙소",
         "city": "마드리드",
         "desc": "",
@@ -159,6 +160,7 @@
       },
       {
         "id": "d0s1",
+        "choiceState": null,
         "name": "저녁 예약",
         "city": "마드리드",
         "desc": "",
@@ -185,6 +187,7 @@
     "activities": [
       {
         "id": "d0s0",
+        "choiceState": null,
         "name": "숙소",
         "city": "마드리드",
         "desc": "",
@@ -209,6 +212,7 @@
       },
       {
         "id": "d0s1",
+        "choiceState": null,
         "name": "저녁 예약",
         "city": "마드리드",
         "desc": "",

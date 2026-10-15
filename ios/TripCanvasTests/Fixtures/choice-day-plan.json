@@ -1,0 +1,139 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-10-15T04:00:00Z",
+  "travelTimeSource": "STRAIGHT_LINE_ESTIMATE",
+  "legsPending": 0,
+  "trip": {
+    "id": "choice",
+    "name": "합성 선택지",
+    "start": "2026-10-15",
+    "dayCount": 1,
+    "revision": 2,
+    "updatedAt": "",
+    "timeZone": "",
+    "cities": [
+      "교토"
+    ],
+    "todayIndex": 0,
+    "daysUntilStart": null,
+    "role": "OWNER",
+    "memberCount": 1
+  },
+  "dayCount": 1,
+  "days": [
+    {
+      "index": 0,
+      "date": "2026-10-15",
+      "title": "",
+      "spotCount": 1
+    }
+  ],
+  "day": {
+    "index": 0,
+    "date": "2026-10-15",
+    "title": "",
+    "note": "",
+    "mode": "car",
+    "startMinutes": 540,
+    "timeZone": "Asia/Tokyo",
+    "carriedStay": null,
+    "lodging": [],
+    "spots": [
+      {
+        "index": 0,
+        "name": "미술관",
+        "city": "교토",
+        "category": "sight",
+        "location": null,
+        "etaMinutes": 540,
+        "fixed": false,
+        "conflict": false,
+        "bookedAtMinutes": null,
+        "bookingLateMinutes": null,
+        "waitMinutes": 0,
+        "stayMinutes": 60,
+        "status": "PLANNED",
+        "participants": [],
+        "reunion": false,
+        "incomingLeg": null,
+        "choice": {
+          "state": "PENDING",
+          "alternativeName": "강변 산책",
+          "decideBy": "13:30",
+          "stayMinutes": {
+            "min": 30,
+            "max": 60
+          },
+          "cost": {
+            "min": 0,
+            "max": 1200,
+            "currency": "KRW"
+          },
+          "totalsBasis": "CURRENT_OPTION"
+        }
+      }
+    ],
+    "routes": [],
+    "carPickups": [],
+    "carReturns": [],
+    "back": null,
+    "spotsWithoutLocation": 1,
+    "flight": null,
+    "flights": [],
+    "splits": [],
+    "totals": {
+      "distanceKm": 0,
+      "travelMinutes": 0,
+      "endMinutes": 600,
+      "overloaded": false,
+      "cost": {
+        "total": 1200,
+        "onSiteKRW": 1200,
+        "parts": [
+          {
+            "label": "장소",
+            "amount": 1200
+          }
+        ],
+        "payTotals": {
+          "RESERVED": 0,
+          "PAID": 0,
+          "NONE": 1200
+        },
+        "details": {
+          "items": [
+            {
+              "source": "SPOT",
+              "key": "0",
+              "title": "미술관",
+              "kind": "OTHER",
+              "amount": 1200,
+              "currency": "KRW",
+              "basis": "ENTERED",
+              "people": 1,
+              "payState": "NONE",
+              "paidOn": null,
+              "photos": [],
+              "totalKRW": 1200,
+              "state": "KNOWN"
+            }
+          ],
+          "budget": null,
+          "unknownCount": 0,
+          "transportUnpriced": false,
+          "undatedBookings": 0,
+          "hasForeignCurrency": false,
+          "fxRates": {
+            "KRW": 1,
+            "USD": 1380,
+            "EUR": 1500,
+            "JPY": 9.1,
+            "CNY": 192
+          },
+          "fxSource": "FALLBACK",
+          "fxAsOf": null
+        }
+      }
+    }
+  }
+}

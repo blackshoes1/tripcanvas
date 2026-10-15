@@ -188,6 +188,9 @@ struct ActivitySummary: Codable, Identifiable, Hashable, Sendable {
     let bookUrl: String?
     let placeId: String?
 
+    /// 미정일 때는 완료·건너뛰기 대신 일정에서 먼저 고른다. 구버전 서버는 생략한다.
+    var choiceState: String? = nil
+
     /// 상대가 정한 약속(항공·열차·예약)은 다른 일정과 시각적으로 구분한다(§19).
     var isFixedCommitment: Bool { flexibility == .fixed }
 }
@@ -750,6 +753,26 @@ struct DayPlanLeg: Codable, Hashable, Sendable {
     var walkInstead: Bool? = nil
 }
 
+struct DayPlanSpotChoiceStayRange: Codable, Hashable, Sendable {
+    let min: Int
+    let max: Int
+}
+
+struct DayPlanSpotChoiceCostRange: Codable, Hashable, Sendable {
+    let min: Double
+    let max: Double
+    let currency: String
+}
+
+struct DayPlanSpotChoice: Codable, Hashable, Sendable {
+    let state: String
+    let alternativeName: String
+    let decideBy: String?
+    let stayMinutes: DayPlanSpotChoiceStayRange?
+    let cost: DayPlanSpotChoiceCostRange?
+    let totalsBasis: String
+}
+
 struct DayPlanSpot: Codable, Hashable, Sendable {
     /// `days[di].spots` 안의 위치. 편집이 인덱스 기반이라 반드시 필요하다.
     let index: Int
@@ -776,6 +799,7 @@ struct DayPlanSpot: Codable, Hashable, Sendable {
     let reunion: Bool
     /// 좌표가 없으면 nil — 그 장소는 동선에서 빠진다.
     let incomingLeg: DayPlanLeg?
+    var choice: DayPlanSpotChoice? = nil
 }
 
 /// 분리 구간의 가지 하나 — 같은 참여자가 이어서 다니는 장소들.

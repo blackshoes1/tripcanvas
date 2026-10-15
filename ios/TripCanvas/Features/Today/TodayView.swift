@@ -15,6 +15,7 @@ struct TodayView: View {
     /// 입력 중인 문장. 모델이 든 것(`intentText`)은 **적용된** 문장이라 따로 둔다 —
     /// 타이핑마다 서버를 부르지 않고, 보낸 뒤에도 고치던 글이 사라지지 않는다.
     @State private var intentDraft = ""
+    @State private var stayExtension: StayExtensionModel?
 
     var body: some View {
         ScrollView {
@@ -76,9 +77,31 @@ struct TodayView: View {
                     if let today = model.today {
                         if let next = today.nextAction, let activity = model.activity(id: next.activityId) {
                             NextActionCard(next: next, activity: activity, isEstimate: model.travelTimeIsEstimate,
-                                           isBusy: !model.pending.isEmpty || model.isRetrying, canEdit: model.canAct,
+                                           isBusy: !model.pending.isEmpty || model.isRetrying,
+                                           canEdit: model.canAct && activity.choiceState != "PENDING",
                                            onComplete: { Task { await model.complete(activity) } },
                                            onSkip: { Task { await model.skip(activity) } })
+                            if activity.choiceState == "PENDING" {
+                                Button("아직 고르지 않은 일정이에요 · 일정에서 선택") { onOpenPlan() }
+                                    .frame(minHeight: 44)
+                            }
+                            if activity.choiceState != "PENDING" {
+                                TodayStaffShowButton(tripID: trip.id, activityID: activity.id,
+                                                     expectedName: activity.name, revision: model.revision)
+                            }
+                            if model.canAct, !model.isOffline, activity.choiceState != "PENDING", activity.status == .inProgress,
+                               activity.type != .flight, activity.type != .train, activity.type != .hotel {
+                                Button {
+                                    stayExtension = StayExtensionModel(tripID: trip.id, activityID: activity.id,
+                                        revision: model.revision, source: env.service,
+                                        isCurrent: { [account = env.auth.session?.userId, scope = env.service.cacheScope] in
+                                            env.auth.session?.userId == account && env.service.cacheScope == scope
+                                        })
+                                } label: { Label("여기서 조금 더 머물까요?", systemImage: "cup.and.saucer") }
+                                .frame(minHeight: 44)
+                                .disabled(!model.pending.isEmpty || model.isRetrying)
+                                .accessibilityIdentifier("openStayExtension")
+                            }
                         } else if today.activities.isEmpty {
                             EmptyStateView(
                                 symbol: "sparkles",
@@ -92,6 +115,8 @@ struct TodayView: View {
                         }
 
                         if model.canAct, let replan = model.replanSuggestion {
+                            DailyMomentsTodaySection(trip: today.trip, dayIndex: today.day.index, revision: model.revision,
+                                                     dropActivityIds: today.replan.dropActivityIds)
                             ReplanCard(suggestion: replan, preview: today.replan,
                                        isBusy: !model.pending.isEmpty || model.isRetrying, tone: env.jTone.selected,
                                        onApply: { Task { await model.accept(replan) } },
@@ -104,6 +129,10 @@ struct TodayView: View {
                                 .foregroundStyle(Ink.warning)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .card()
+                        }
+
+                        if model.replanSuggestion == nil {
+                            DailyMomentsTodaySection(trip: today.trip, dayIndex: today.day.index, revision: model.revision)
                         }
 
                         // 하루 전체를 한 장에 — 다녀온 곳은 흐리게, 다음 일정은 표시만(할 일은 위 카드에 있다).
@@ -186,10 +215,16 @@ struct TodayView: View {
         .onChange(of: model.revision) { old, new in
             if old != new { Task { await refreshTravelMode(reason: .userAction) } }
         }
+        .onChange(of: env.service.cacheScope) { _, _ in stayExtension = nil }
         .sheet(isPresented: $showsTravelSetup) {
             TravelModeSetupView {
                 await env.travelMode.start(trip: model.today?.trip ?? trip)
             }
+        }
+        .sheet(item: $stayExtension) { extensionModel in
+            StayExtensionSheet(model: extensionModel,
+                               onApplied: { response in model.acceptStayExtension(response) },
+                               onRefresh: { Task { await model.load() } }, trip: model.today?.trip ?? trip)
         }
         .overlay(alignment: .bottom) {
             if let toast = model.toast {
@@ -598,7 +633,7 @@ struct TodayTimelineCard: View {
                     FinishedRow(activity: activity, isBusy: isBusy, canEdit: canEdit) { onUndo(activity) }
                 } else {
                     ActivityRow(activity: activity, isNext: activity.id == nextId, isBusy: isBusy,
-                                canEdit: canEdit && activity.id != nextId,
+                                canEdit: canEdit && activity.id != nextId && activity.choiceState != "PENDING",
                                 onComplete: { onComplete(activity) }, onSkip: { onSkip(activity) })
                 }
             }

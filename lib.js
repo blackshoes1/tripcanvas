@@ -1595,6 +1595,7 @@
       totalSpots+=day.spots.length;
       for(const spot of day.spots){
         if(!spot||typeof spot!=='object'||Array.isArray(spot)) return '장소 형식이 올바르지 않아요';
+        if(spot.choice!=null){ const error=spotChoiceError(spot); if(error) return error; }
         if(spot.admission!=null){ const error=admissionError(spot.admission); if(error) return error; }
         const hasLat=spot.lat!=null, hasLng=spot.lng!=null;
         if(hasLat!==hasLng) return '위도와 경도는 함께 입력해야 해요';
@@ -1699,7 +1700,68 @@
     if(s.split!=null && !(typeof s.split==='string' && _ID_RE.test(s.split))) delete s.split;
     // 합류(§27): 갈라졌던 사람들이 다시 만나는 지점. 표시일 뿐이고 시각은 타임라인이 정한다.
     if(s.reunion!=null){ if(s.reunion) s.reunion=true; else delete s.reunion; }
+    if(s.staffShow!=null){ const value=normalizeStaffShow(s.staffShow); if(value) s.staffShow=value; else delete s.staffShow; }
+    if(s.choice!=null){
+      if(spotChoiceError(s)) delete s.choice;
+      else {
+        const alternate=Object.assign({},s.choice.alternative);
+        delete alternate.choice;
+        for(const key of ['at','who','split','reunion','must','opt']) delete alternate[key];
+        s.choice=Object.assign({},s.choice,{version:1,alternative:normalizeSpot(alternate)});
+        if(!s.choice.decideBy) delete s.choice.decideBy;
+      }
+    }
     return s;
+  }
+
+  /** 한 칸의 현재 장소만 계산한다. 다른 선택지를 별도의 spots에 추가하지 않는다.
+   * @param {any} spot @returns {string|null} */
+  function spotChoiceError(spot){
+    const choice=spot&&spot.choice;
+    if(choice==null) return null;
+    if(!choice||typeof choice!=='object'||Array.isArray(choice)||choice.version!==1||!['PENDING','SELECTED'].includes(choice.state)) return '선택지 형식이 올바르지 않아요';
+    const alternate=choice.alternative;
+    if(!alternate||typeof alternate!=='object'||Array.isArray(alternate)||alternate.choice!=null) return '선택지는 두 장소까지 담을 수 있어요';
+    for(const s of [spot,alternate]){
+      if(!_str(s.name).trim()||_str(s.name).trim().length>240) return '선택지 이름을 240자 안에서 입력해 주세요';
+      if(s.stay||s.cat==='stay'||s.bookingId||s.carPickupId||s.carReturnId) return '숙소·예약·렌터카 연결 장소는 선택지로 묶을 수 없어요';
+      if(s.status&&s.status!=='PLANNED'&&(s===alternate||choice.state==='PENDING')) return '이미 완료하거나 건너뛴 장소는 선택지로 묶을 수 없어요';
+      if(s.payState==='PAID'&&(s===alternate||choice.state==='PENDING')) return '이미 낸 비용이 있는 장소는 선택지로 바꿀 수 없어요';
+    }
+    if(choice.decideBy!=null&&choice.decideBy!==''&&!/^([01]\d|2[0-3]):[0-5]\d$/.test(choice.decideBy)) return '결정 시각은 HH:MM 형식이어야 해요';
+    const firstBooking=[spot.bookAt,alternate.bookAt].filter(value=>typeof value==='string'&&/^([01]\d|2[0-3]):[0-5]\d$/.test(value)).sort()[0];
+    if(choice.decideBy&&firstBooking&&choice.decideBy>firstBooking) return '결정 시각은 가장 이른 예약·입장 시각보다 늦을 수 없어요';
+    const sameId=(spot.placeId&&spot.placeId===alternate.placeId)||(spot.kakaoId&&spot.kakaoId===alternate.kakaoId);
+    const sameName=_str(spot.name).trim().toLowerCase()===_str(alternate.name).trim().toLowerCase()&&_str(spot.city)===_str(alternate.city)&&spot.lat===alternate.lat&&spot.lng===alternate.lng;
+    if(sameId||sameName) return '서로 다른 두 장소를 골라 주세요';
+    return _shapeError({days:[{spots:[alternate]}]});
+  }
+
+  /** 범위는 이 칸의 체류·입력 비용만이다. 다른 동선 전체를 계산한 것처럼 표시하지 않는다.
+   * @param {any} spot @returns {any} */
+  function spotChoiceSummary(spot){
+    const choice=spot&&spot.choice;
+    if(!choice||spotChoiceError(spot)) return null;
+    const alternate=choice.alternative;
+    const a=costAmountOf(spot),b=costAmountOf(alternate);
+    const currency=spot.cur||'KRW',otherCurrency=alternate.cur||'KRW';
+    const comparable=a!==null&&b!==null&&_CURS.includes(currency)&&currency===otherCurrency&&!spot.costPartial&&!alternate.costPartial;
+    const stayKnown=typeof spot.stayMin==='number'&&Number.isFinite(spot.stayMin)&&spot.stayMin>=0&&typeof alternate.stayMin==='number'&&Number.isFinite(alternate.stayMin)&&alternate.stayMin>=0;
+    return {state:choice.state,alternativeName:_str(alternate.name),decideBy:choice.decideBy||null,
+      stayMinutes:stayKnown?{min:Math.round(Math.min(spot.stayMin,alternate.stayMin)),max:Math.round(Math.max(spot.stayMin,alternate.stayMin))}:null,
+      cost:comparable?{min:Math.min(a,b),max:Math.max(a,b),currency}:null,totalsBasis:'CURRENT_OPTION'};
+  }
+
+  /** 현장에서 보여줄 원문은 사용자가 확인한 값이다. 알 수 없는 안전한 키는 보존한다.
+   * @param {any} value @returns {any} */
+  function normalizeStaffShow(value){
+    if(!value||typeof value!=='object'||Array.isArray(value)) return undefined;
+    const out=Object.assign({},value);
+    for(const [key,limit] of /** @type {[string,number][]} */([['localName',240],['address',500],['bookingName',160]])){
+      const text=typeof out[key]==='string'?out[key].trim().slice(0,limit):'';
+      if(text) out[key]=text; else delete out[key];
+    }
+    return Object.keys(out).length?out:undefined;
   }
   /**
    * 무료 취소 — true(가능) · false(불가) · null(모름). 2026-10-03 전에는 웹 체크박스·앱 토글이라 건드리지 않은 예약도
@@ -1842,6 +1904,7 @@
     if(b.payState!=null&&!COST_PAY_STATES.includes(b.payState)) delete b.payState;   // 결제함(PAID)만 뜻이 있다 — 없으면 예약
     if(!iso(b.paidOn)) delete b.paidOn;                                            // 결제(예정)일 — 날짜만으로 결제 상태를 단정하지 않는다
     normalizePhotoRefs(b);                                                         // 영수증 사진 참조 — 비용 항목과 같은 규칙
+    if(b.staffShow!=null){ const value=normalizeStaffShow(b.staffShow); if(value) b.staffShow=value; else delete b.staffShow; }
     return b;
   }
   /** @param {any} d @returns {any} */
@@ -2582,7 +2645,7 @@
   }
 
 
-  const TC={deleteSpotCost,clearSpotCost,deleteBookingCost,dayLodgings,sortTripsByCountdown,additionalReservations,tripSummaryCities,returnModeOf,SPOT_PRIORITIES,spotPriorityOf,applySpotPriority,spotPriorityLabel,SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,cityFromKoreanAddr,placeName,cityFromGoogle,normHours,classifySearchErr,isKoreanSearch,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,normHM,sortDayByTime,inKorea,shortWalkOption,simplifyName,parseDirect,parseMoney,normalizeDraftDays,extractJson,extMapLink,encodePolyline,decodePolyline,optimizeRoute,planRouteOptimization,routeLength,isOpenAt,validTimeZone,zonedClock,zonedMinutesToISOString,dayAnchor,stayMinutesOf,activityStartMinute,dayEndMinutes,departMinuteAfter,computeTimeline,computeDayJourney,whoKey,splitSegments,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,budgetBookings,moneyAmount,parseCostAmount,costAmountOf,dayEnteredCost,splitAcrossNights,stayCostShares,stayCostOverflow,dayEnteredCostOn,hasManualTransportCost,taxiFareCounts,dayCostSummary,ADMISSION_REQUIREMENTS,admissionLabel,admissionOf,needsAdmissionBooking,normalizeAdmission,admissionError,COST_CATEGORIES,COST_CURRENCIES:_CURS,costCategoryOf,transportFareKind,COST_PAY_STATES,costPayStateOf,payStateTotals,TRIP_NOTE_CATEGORIES,normalizeTripNote,tripCostSummary,localMode,mdLabel,tripPeriodOf,startShiftPreview,SAMPLE_TRIP_ID,SAMPLE_TRIP_VERSION,isSampleTrip,sampleTrip,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
+  const TC={spotChoiceError,spotChoiceSummary,deleteSpotCost,clearSpotCost,deleteBookingCost,dayLodgings,sortTripsByCountdown,additionalReservations,tripSummaryCities,returnModeOf,SPOT_PRIORITIES,spotPriorityOf,applySpotPriority,spotPriorityLabel,SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,cityFromKoreanAddr,placeName,cityFromGoogle,normHours,classifySearchErr,isKoreanSearch,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,normHM,sortDayByTime,inKorea,shortWalkOption,simplifyName,parseDirect,parseMoney,normalizeDraftDays,extractJson,extMapLink,encodePolyline,decodePolyline,optimizeRoute,planRouteOptimization,routeLength,isOpenAt,validTimeZone,zonedClock,zonedMinutesToISOString,dayAnchor,stayMinutesOf,activityStartMinute,dayEndMinutes,departMinuteAfter,computeTimeline,computeDayJourney,whoKey,splitSegments,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,budgetBookings,moneyAmount,parseCostAmount,costAmountOf,dayEnteredCost,splitAcrossNights,stayCostShares,stayCostOverflow,dayEnteredCostOn,hasManualTransportCost,taxiFareCounts,dayCostSummary,ADMISSION_REQUIREMENTS,admissionLabel,admissionOf,needsAdmissionBooking,normalizeAdmission,admissionError,COST_CATEGORIES,COST_CURRENCIES:_CURS,costCategoryOf,transportFareKind,COST_PAY_STATES,costPayStateOf,payStateTotals,TRIP_NOTE_CATEGORIES,normalizeTripNote,tripCostSummary,localMode,mdLabel,tripPeriodOf,startShiftPreview,SAMPLE_TRIP_ID,SAMPLE_TRIP_VERSION,isSampleTrip,sampleTrip,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
   // 장소 검색·장소 정체성(2026-10-03) — 위 목록과 따로 둬 다른 변경과 한 줄에서 부딪히지 않게 한다
   Object.assign(TC,{placeNameMatch,searchAnchorSpot,planDistanceKm,tripCitySpelling,tripDefaultCurrency,hoursIssue,hoursLines});
   Object.assign(TC,{resolveTimeZone,inferTimeZones,effectiveTimeZone,refundableOf});   // 따로 붙인다 — 위 한 줄은 여러 작업이 함께 고치는 자리다

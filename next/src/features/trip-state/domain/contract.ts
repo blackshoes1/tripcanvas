@@ -65,6 +65,8 @@ export interface DaySummary {
 }
 
 export interface ActivitySummary {
+  /** 미정 선택지면 실행 상태를 바꾸기 전에 일정에서 장소를 고른다. */
+  choiceState?: 'PENDING' | 'SELECTED' | null;
   id: string;               // 'd{dayIndex}s{spotIndex}' — 이 여행 문서 안에서만 유효한 위치 기반 id
   name: string;
   city: string;
@@ -659,6 +661,16 @@ export interface DayPlanLeg {
   walkInstead: boolean;
 }
 
+/** 선택 전의 범위는 이 칸의 입력값만이다. 하루 전체 동선·비용 합계는 현재 장소 기준이다. */
+export interface DayPlanSpotChoice {
+  state: 'PENDING' | 'SELECTED';
+  alternativeName: string;
+  decideBy: string | null;
+  stayMinutes: { min: number; max: number } | null;
+  cost: { min: number; max: number; currency: string } | null;
+  totalsBasis: 'CURRENT_OPTION';
+}
+
 export interface DayPlanSpot {
   /** `days[di].spots` 안의 위치. 편집이 인덱스 기반이라 반드시 필요하다. */
   index: number;
@@ -687,6 +699,7 @@ export interface DayPlanSpot {
   reunion: boolean;
   /** 이 장소로 오는 구간. 첫 유효 장소는 이월 앵커에서 출발한다. 좌표가 없으면 null. */
   incomingLeg: DayPlanLeg | null;
+  choice?: DayPlanSpotChoice | null;
 }
 
 /**

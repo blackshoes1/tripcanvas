@@ -96,6 +96,16 @@ export const tripMembers = pgTable('trip_members', {
   check('trip_members_status_check', sql`${t.status} in ('INVITED','ACTIVE','LEFT','REMOVED')`)
 ]);
 
+/** A personal wish is separate from trip document edits and member preferences. */
+export const tripDailyMoments = pgTable('trip_daily_moments', {
+  tripId: uuid('trip_id').notNull().references(() => trips.id, { onDelete: 'cascade' }),
+  dayKey: text('day_key').notNull(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  spotKey: text('spot_key').notNull(),
+  spotName: text('spot_name').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, (t) => [primaryKey({ columns: [t.tripId, t.dayKey, t.userId] })]);
+
 // ── Adaptive 저장소(Phase 4) — 사용자별 기록. 판단은 adaptive.js, 여기는 "무엇을 이미 했는가"만 ──
 
 export const suggestionFeedback = pgTable('suggestion_feedback', {

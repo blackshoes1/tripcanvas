@@ -114,7 +114,7 @@ struct BookingListView: View {
                     ForEach(model.bookings) { booking in
                         NavigationLink {
                             if let current = model.bookings.first(where: { $0.id == booking.id }) {
-                                BookingDetailView(booking: current, canEdit: trip.canEdit && current.source == nil && model.cachedAt == nil, isPreparing: isPreparing) {
+                                BookingDetailView(booking: current, tripId: trip.id, canEdit: trip.canEdit && current.source == nil && model.cachedAt == nil, isPreparing: isPreparing) {
                                     Task { await openEditor(bookingId: booking.id) }
                                 }
                             } else {
@@ -270,13 +270,17 @@ struct BookingListView: View {
 /// 현장에서 먼저 확인하고, 고치기는 명시적으로 선택한다.
 struct BookingDetailView: View {
     let booking: BookingSummary
+    let tripId: String
     let canEdit: Bool
     let isPreparing: Bool
     let onEdit: () -> Void
 
     var body: some View {
         ScrollView {
-            BookingCard(booking: booking).padding(Space.l)
+            VStack(alignment: .leading, spacing: Space.m) {
+                BookingStaffShowButton(tripId: tripId, booking: booking)
+                BookingCard(booking: booking)
+            }.padding(Space.l)
         }
         .background(Ink.paper)
         .navigationTitle("예약 정보")

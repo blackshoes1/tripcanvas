@@ -92,6 +92,8 @@ declare module '@legacy/price.js' {
 
 declare module '@legacy/lib.js' {
   const api: {
+    spotChoiceSummary(spot: unknown): import('@/features/trip-state/domain/contract').DayPlanSpotChoice | null;
+    spotChoiceError(spot: unknown): string | null;
     parseStorePayload(text: string | null): { ok: true; value: unknown } | { ok: false; error: string };
     /** 여행 파일·공유 링크 본문 → 검증·정규화된 여행 (크기·모양이 어긋나면 이유를 돌려준다) */
     parseTripPayload(text: string): { ok: true; value: unknown } | { ok: false; error: string };
@@ -432,6 +434,7 @@ declare module '@legacy/adaptive.js' {
     buildCandidates(trip: unknown, state: TripState, opts?: Record<string, unknown>): unknown[];
     rankNextActions(state: TripState, candidates: unknown[], opts?: Record<string, unknown>): NextActionCandidate[];
     generateReplan(state: TripState, opts?: Record<string, unknown>): ReplanResult;
+    previewStayExtension(state: TripState, opts: { activityId: string; extraMinutes: number; legMin?: unknown }): import('@/features/trip-state/domain/stayExtension').StayExtensionResult | null;
     buildSuggestions(trip: unknown, state: TripState, opts?: Record<string, unknown>):
       { suggestions: TripSuggestion[]; windows: FreeWindow[]; replan: ReplanResult; ranked: NextActionCandidate[]; window: FreeWindow | null; empty: boolean; notice: string | null };
     /** 엔진이 묻는 이동의 수단 — 일정 화면과 같은 출처(그날 장소면 그 구간 수단, 비행기·기차 날의 시내 이동은 도시 안 수단) */
