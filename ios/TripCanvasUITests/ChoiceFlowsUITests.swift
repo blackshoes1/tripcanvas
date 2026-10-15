@@ -36,7 +36,8 @@ final class ChoiceFlowsUITests: XCTestCase {
         // 중첩 시트의 입력칸은 고유 ID로 고른다. firstMatch는 아래의 현재 장소를 가리킬 수 있다.
         let name = app.textFields["alternativeSpotEditorName"]
         XCTAssertTrue(name.waitForExistence(timeout: 5))
-        XCTAssertTrue(name.isHittable)
+        captureTravelUX(app, "choice-alternative-editor-before-input")
+        XCTAssertTrue(name.isHittable, "대안 이름 입력칸 frame: \(name.frame)\n\(app.debugDescription)")
         XCTAssertTrue(["", "장소 이름"].contains(name.value as? String ?? ""), "새 선택지는 현재 장소 이름을 이어 쓰지 않는다")
         name.tap(); name.typeText("Riverside walk")
         XCTAssertEqual(name.value as? String, "Riverside walk")

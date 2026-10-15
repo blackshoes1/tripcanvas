@@ -3,10 +3,8 @@ import SwiftUI
 /// 장소 편집의 초안 안에서만 변경한다. 닫기·오프라인·저장 실패의 동작은 기존 편집기와 같다.
 struct SpotChoiceSection: View {
     @Binding var spot: TripSpot
-    let currentDay: Int
-    let draftKey: EditorDraftKey?
+    let onEditAlternative: () -> Void
     let onSelectionChanged: () -> Void
-    @State private var showsAlternativeEditor = false
     @State private var showsRemoveConfirm = false
 
     var body: some View {
@@ -17,7 +15,7 @@ struct SpotChoiceSection: View {
                     .font(.subheadline).foregroundStyle(Ink.accent)
                 option(spot, current: true, selected: choice.state == .selected)
                 option(choice.alternative, current: false, selected: false)
-                Button("다른 선택지 편집") { showsAlternativeEditor = true }
+                Button("다른 선택지 편집", action: onEditAlternative)
                     .accessibilityIdentifier("editAlternativeChoice")
                     .disabled(spot.status != .planned || spot.raw["payState"]?.stringValue == "PAID")
                 ClockField(title: "이날 결정할 시각", text: Binding(
@@ -33,25 +31,13 @@ struct SpotChoiceSection: View {
             } else if let reason = SpotChoice.unavailableReason(spot) {
                 Text(reason).font(.caption).foregroundStyle(Ink.soft)
             } else {
-                Button { showsAlternativeEditor = true } label: {
+                Button(action: onEditAlternative) {
                     Label("다른 곳도 열어두기", systemImage: "arrow.triangle.branch")
                 }.accessibilityIdentifier("addAlternativeChoice")
             }
         } header: { Text("그때 마음 가는 쪽으로") }
         footer: {
             Text("둘 중 한 곳만 일정에 계산해요. 미정일 때 이동·시간·하루 비용은 현재 장소 기준이에요. 결정 시각은 이날 여행지 시각이며 알림 예약은 아니에요. 선택 후에도 완료를 눌러야 저장돼요.")
-        }
-        .sheet(isPresented: $showsAlternativeEditor) {
-            SpotEditorView(target: .createFromMap(spot.choice?.alternative ?? TripSpot(name: "", city: spot.city)),
-                           dayCount: 1, currentDay: currentDay, contextLabel: "같은 시간에 갈 다른 선택지",
-                           draftKey: draftKey?.appending("alternative"),
-                           allowsChoice: false,
-                           onSave: { alternate in
-                               let choice = SpotChoice(alternative: alternate, state: .pending, decideBy: spot.choice?.decideBy)
-                               if let error = choice.validationError(current: spot) { return error }
-                               spot.choice = choice
-                               return nil
-                           }, onDelete: { _ in nil }, onMoveToDay: { _, _, _ in nil })
         }
         .confirmationDialog("다른 선택지를 지울까요?", isPresented: $showsRemoveConfirm, titleVisibility: .visible) {
             Button("현재 장소만 남기기", role: .destructive) { spot.choice = nil }

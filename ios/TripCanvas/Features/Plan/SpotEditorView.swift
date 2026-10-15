@@ -72,6 +72,8 @@ struct SpotEditorView: View {
     @State private var showsDeleteConfirm = false
     @State private var showsPlaceSearch = false
     @State private var showsMapPicker = false
+    /// Form의 지연 생성 Section이 사라져도 대안 편집 시트의 소유자는 유지된다.
+    @State private var showsAlternativeEditor = false
     @State private var saving = EditorSaveState()
     @State private var showsDiscardConfirm = false
     @State private var recovery: SpotInputDraft?
@@ -241,9 +243,9 @@ struct SpotEditorView: View {
                 StaffShowEditorSection(details: $draft.staffDetails)
 
                 if allowsChoice {
-                    SpotChoiceSection(spot: $draft, currentDay: currentDay, draftKey: draftKey) {
-                        costText = MoneyInput.text(amount: draft.cost)
-                    }
+                    SpotChoiceSection(spot: $draft,
+                                      onEditAlternative: { showsAlternativeEditor = true },
+                                      onSelectionChanged: { costText = MoneyInput.text(amount: draft.cost) })
                 }
 
                 Section {
@@ -331,6 +333,20 @@ struct SpotEditorView: View {
                     }
                 }
             }
+        }
+        // 편집기의 안정적인 루트에서 띄운다. Form 안 Section에 붙이면 스크롤·재사용 때
+        // presenter가 사라져 대안과 부모 편집기가 함께 닫히는 문제가 실 UI 테스트에서 재현됐다.
+        .sheet(isPresented: $showsAlternativeEditor) {
+            SpotEditorView(target: .createFromMap(draft.choice?.alternative ?? TripSpot(name: "", city: draft.city)),
+                           dayCount: 1, currentDay: currentDay, contextLabel: "같은 시간에 갈 다른 선택지",
+                           draftKey: draftKey?.appending("alternative"),
+                           allowsChoice: false,
+                           onSave: { alternate in
+                               let choice = SpotChoice(alternative: alternate, state: .pending, decideBy: draft.choice?.decideBy)
+                               if let error = choice.validationError(current: draft) { return error }
+                               draft.choice = choice
+                               return nil
+                           }, onDelete: { _ in nil }, onMoveToDay: { _, _, _ in nil })
         }
     }
 
