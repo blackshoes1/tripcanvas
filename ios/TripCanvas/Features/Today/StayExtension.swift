@@ -70,6 +70,7 @@ final class StayExtensionModel: Identifiable {
     let activityID: String
     let revision: Int
     private let source: StayExtensionSource
+    private let isCurrent: () -> Bool
     private var generation = 0
     private(set) var minutes = 10
     private(set) var preview: StayExtensionPreview?
@@ -77,18 +78,19 @@ final class StayExtensionModel: Identifiable {
     private(set) var isApplying = false
     private(set) var error: String?
     private(set) var requiresReopen = false
-    init(tripID: String, activityID: String, revision: Int, source: StayExtensionSource) {
+    init(tripID: String, activityID: String, revision: Int, source: StayExtensionSource, isCurrent: @escaping () -> Bool = { true }) {
         self.tripID = tripID; self.activityID = activityID; self.revision = revision; self.source = source
+        self.isCurrent = isCurrent
     }
     func select(_ value: Int) async {
-        guard !isApplying, !requiresReopen, [10, 20, 30].contains(value) else { return }
+        guard !isApplying, !requiresReopen, [10, 20, 30].contains(value), isCurrent() else { return }
         generation += 1
         let request = generation
         minutes = value; preview = nil; error = nil; isLoading = true
         defer { if request == generation { isLoading = false } }
         do {
             let fetched = try await source.previewStay(tripId: tripID, activityId: activityID, minutes: value, revision: revision)
-            guard generation == request else { return }
+            guard generation == request, isCurrent() else { return }
             guard fetched.revision == revision, fetched.activityId == activityID, fetched.extraMinutes == value else {
                 throw APIError.stale("계산 결과가 달라 다시 확인이 필요해요.")
             }
@@ -99,10 +101,13 @@ final class StayExtensionModel: Identifiable {
         }
     }
     func apply() async -> MutationResponse? {
-        guard !isApplying, !isLoading, !requiresReopen, let preview, preview.feasible else { return nil }
+        guard !isApplying, !isLoading, !requiresReopen, let preview, preview.feasible, isCurrent() else { return nil }
         isApplying = true; error = nil; generation += 1
         defer { isApplying = false }
-        do { return try await source.applyStay(tripId: tripID, preview: preview) }
+        do {
+            let result = try await source.applyStay(tripId: tripID, preview: preview)
+            return isCurrent() ? result : nil
+        }
         catch {
             // The write may already have committed. Never offer a blind second extension.
             requiresReopen = true

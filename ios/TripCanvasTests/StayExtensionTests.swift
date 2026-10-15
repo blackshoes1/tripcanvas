@@ -51,6 +51,15 @@ final class StayExtensionTests: XCTestCase {
         _ = await model.apply()
         XCTAssertEqual(source.writes, 0)
     }
+    func testAccountChangeAfterPreviewCannotStartWrite() async {
+        let source = StayFakeSource()
+        var current = true
+        let model = StayExtensionModel(tripID: "parity", activityID: "d0s0", revision: 2, source: source, isCurrent: { current })
+        await model.select(10)
+        current = false
+        _ = await model.apply()
+        XCTAssertEqual(source.writes, 0)
+    }
 }
 
 @MainActor private final class StayFakeSource: StayExtensionSource {

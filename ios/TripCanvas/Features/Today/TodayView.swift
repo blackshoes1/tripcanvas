@@ -93,7 +93,10 @@ struct TodayView: View {
                                activity.type != .flight, activity.type != .train, activity.type != .hotel {
                                 Button {
                                     stayExtension = StayExtensionModel(tripID: trip.id, activityID: activity.id,
-                                                                      revision: model.revision, source: env.service)
+                                        revision: model.revision, source: env.service,
+                                        isCurrent: { [account = env.auth.session?.userId, scope = env.service.cacheScope] in
+                                            env.auth.session?.userId == account && env.service.cacheScope == scope
+                                        })
                                 } label: { Label("여기서 조금 더 머물까요?", systemImage: "cup.and.saucer") }
                                 .frame(minHeight: 44)
                                 .disabled(!model.pending.isEmpty || model.isRetrying)
@@ -212,6 +215,7 @@ struct TodayView: View {
         .onChange(of: model.revision) { old, new in
             if old != new { Task { await refreshTravelMode(reason: .userAction) } }
         }
+        .onChange(of: env.service.cacheScope) { _, _ in stayExtension = nil }
         .sheet(isPresented: $showsTravelSetup) {
             TravelModeSetupView {
                 await env.travelMode.start(trip: model.today?.trip ?? trip)

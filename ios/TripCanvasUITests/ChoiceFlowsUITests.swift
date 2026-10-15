@@ -10,10 +10,10 @@ final class ChoiceFlowsUITests: XCTestCase {
         return app
     }
 
-    private func reveal(_ element: XCUIElement, in app: XCUIApplication) {
+    private func reveal(_ element: XCUIElement, in app: XCUIApplication, towardTop: Bool = false) {
         for _ in 0..<10 {
             if element.exists && element.isHittable { return }
-            app.swipeUp()
+            if towardTop { app.swipeDown() } else { app.swipeUp() }
         }
         XCTAssertTrue(element.isHittable)
     }
@@ -33,10 +33,9 @@ final class ChoiceFlowsUITests: XCTestCase {
         let name = app.textFields["spotEditorName"].firstMatch
         XCTAssertTrue(name.waitForExistence(timeout: 5))
         name.tap(); name.typeText("Riverside walk")
-        // 다른 칸을 눌러 입력을 확정한다. 키보드 조합 여부 대신 실제 선택지 왕복을 검증한다.
-        app.textFields["도시"].firstMatch.tap()
+        // ASCII 이름으로 선택지 생성·저장 왕복을 검증한다. 저장 버튼도 실제 화면을 그대로 쓴다.
         save(app)
-        XCTAssertTrue(app.buttons["chooseAlternativePlace"].waitForExistence(timeout: 5))
+        reveal(app.buttons["chooseAlternativePlace"], in: app)
         save(app)
         let state = app.staticTexts["choiceSavedState"]
         let pending = expectation(for: NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@", "PENDING", "Riverside walk"), evaluatedWith: state)
@@ -76,9 +75,9 @@ final class ChoiceFlowsUITests: XCTestCase {
         reveal(choose, in: app)
         choose.tap()
         save(app)
-        XCTAssertTrue(app.staticTexts["spotEditorError"].waitForExistence(timeout: 10))
         let unlocked = expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: app.buttons["spotEditorSave"].firstMatch)
         wait(for: [unlocked], timeout: 10)
+        reveal(app.staticTexts["spotEditorError"], in: app, towardTop: true)
         save(app)
         let state = app.staticTexts["choiceSavedState"]
         let saved = expectation(for: NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@", "현재 · Riverside walk", "revision 3"), evaluatedWith: state)
