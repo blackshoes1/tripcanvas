@@ -46,16 +46,24 @@ final class ReviewFlowsUITests: XCTestCase {
 
     func testNewTripInputsFreezeWhileCreationWaits() {
         let app = launch(["--review-followup", "--review-scratch"])
+        let expectedName = "지연 생성 여행"
         let name = app.textFields["newTripName"]
-        XCTAssertTrue(name.waitForExistence(timeout: 10)); name.tap(); name.typeText("지연 생성 여행")
+        XCTAssertTrue(name.waitForExistence(timeout: 10)); name.tap(); name.typeText(expectedName)
+        XCTAssertEqual(name.value as? String, expectedName)
+        // 한글 조합 중 UIKit 표시만 앞서갈 수 있다. 이름 편집을 끝내고 실제 저장 모델도 확인한다.
+        let city = app.textFields["newTripCity"]
+        city.tap()
+        let boundName = app.staticTexts["reviewScratchBoundName"]
+        let committed = expectation(for: NSPredicate(format: "label == %@", "입력 모델 · \(expectedName)"), evaluatedWith: boundName)
+        wait(for: [committed], timeout: 5)
         app.buttons["newTripCreate"].tap()
         XCTAssertFalse(name.isEnabled)
-        XCTAssertFalse(app.textFields["newTripCity"].isEnabled)
+        XCTAssertFalse(city.isEnabled)
         screenshot(app, "new-trip-inputs-locked")
         let saved = app.staticTexts["reviewFollowupSaved"]
-        let complete = expectation(for: NSPredicate(format: "label == %@", "지연 생성 여행"), evaluatedWith: saved)
+        let complete = expectation(for: NSPredicate(format: "label == %@", expectedName), evaluatedWith: saved)
         wait(for: [complete], timeout: 10)
-        XCTAssertEqual(saved.label, "지연 생성 여행")
+        XCTAssertEqual(saved.label, expectedName)
     }
 
     func testPricedHotelExpenseCreatesSeparateCostAndPreservesBooking() {
@@ -120,9 +128,12 @@ final class ReviewFlowsUITests: XCTestCase {
         XCTAssertTrue(addButton.exists)
         screenshot(app, "search-failure-retained")
         addButton.tap()
-        XCTAssertTrue(app.staticTexts["reviewSavedPlace"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["reviewSavedPlace"].label.contains("에펠탑"))
-        XCTAssertFalse(app.buttons["placeAddConfirm"].exists)
+        let saved = app.staticTexts["reviewSavedPlace"]
+        let complete = expectation(for: NSPredicate(format: "label CONTAINS %@", "에펠탑"), evaluatedWith: saved)
+        let dismissed = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: addButton)
+        wait(for: [complete, dismissed], timeout: 5)
+        XCTAssertTrue(saved.label.contains("에펠탑"))
+        XCTAssertFalse(addButton.exists)
     }
 
     func testUnknownFilterAndBudgetSaveWithKeyboard() {

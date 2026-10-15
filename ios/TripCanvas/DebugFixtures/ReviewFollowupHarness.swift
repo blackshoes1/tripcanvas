@@ -27,6 +27,11 @@ import Observation
                                 try? await Task.sleep(for: .seconds(5))
                                 savedScratch = draft.name; return nil
                             }
+                            .safeAreaInset(edge: .bottom) {
+                                Text("입력 모델 · \(scratch.name)")
+                                    .font(.caption)
+                                    .accessibilityIdentifier("reviewScratchBoundName")
+                            }
                         } else {
                             SpendEntryFlow(day: day, bookings: [hotel], draftKey: nil) { edited in
                                 day = edited; presented = false; return true
