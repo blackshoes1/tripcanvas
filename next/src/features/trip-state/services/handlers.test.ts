@@ -655,10 +655,57 @@ describe('GET /travel-state — 여행 중 단 하나의 조회(§57)', () => {
     expect((await state('?now=18:58')).notifications.some(n => n.dedupeKey === delivered.dedupeKey)).toBe(false);
   });
 
+  it('iOS가 받은 빈 시간 DEVICE 알림을 확인하면 기록하고 다음 조회에서 제외한다', async () => {
+    const query = '?now=13:00&travelMode=1';
+    const plan = await state(query);
+    const delivered = plan.notifications.find(n => n.kind === 'emptySlotSuggestion')!;
+    expect(delivered?.origin).toBe('DEVICE');
+    expect(store.sentKeys).toHaveLength(0);
+    // NotificationAcknowledgement.swift가 보내는 두 필드만 사용한다.
+    const request = () => new Request('http://localhost/api/v1/trips/trip-1/travel-state', auth({
+      method: 'POST', body: JSON.stringify({
+        stateVersion: plan.stateVersion,
+        items: [{ kind: delivered.kind, dedupeKey: delivered.dedupeKey }]
+      })
+    }));
+    const acknowledged = await api.acknowledgeNotifications(request(), 'trip-1');
+    expect(acknowledged.status).toBe(200);
+    expect(await acknowledged.json()).toMatchObject({ acknowledged: true });
+    expect((await api.acknowledgeNotifications(request(), 'trip-1')).status).toBe(200);
+    expect(store.sentKeys).toEqual([delivered.dedupeKey]);
+    expect((await state(query)).notifications.some(n => n.dedupeKey === delivered.dedupeKey)).toBe(false);
+  });
+
+  it('출발 알림과 빈 시간 알림을 함께 확인해도 두 항목 모두 기록한다', async () => {
+    const empty = await state('?now=13:00&travelMode=1');
+    const departure = await state('?now=18:58');
+    const items = [
+      empty.notifications.find(n => n.kind === 'emptySlotSuggestion')!,
+      departure.notifications.find(n => n.origin === 'DEVICE')!
+    ];
+    expect(items.every(n => n?.origin === 'DEVICE')).toBe(true);
+    const res = await api.acknowledgeNotifications(new Request('http://localhost/api/v1/trips/trip-1/travel-state', auth({
+      method: 'POST', body: JSON.stringify({
+        stateVersion: departure.stateVersion,
+        items: items.map(({ kind, dedupeKey }) => ({ kind, dedupeKey }))
+      })
+    })), 'trip-1');
+    expect(res.status).toBe(200);
+    expect(store.sentKeys).toEqual(items.map(n => n.dedupeKey));
+  });
+
   it('다른 여행·SERVER 알림·과도한 확인 요청은 기록하지 않는다', async () => {
     for (const items of [
       [{ kind: 'departureReminder', dedupeKey: 'other|2026-09-01|departureReminder|d0s1|READY' }],
       [{ kind: 'priceSaving', dedupeKey: 'trip-1|2026-09-01|priceSaving|b1|found' }],
+      [{ kind: 'replanSuggestion', dedupeKey: 'trip-1|2026-09-01|replanSuggestion|d0|LATE' }],
+      [{ kind: 'unknown', dedupeKey: 'trip-1|2026-09-01|unknown|d0|READY' }],
+      [{ kind: 'emptySlotSuggestion', dedupeKey: 'other|2026-09-01|emptySlotSuggestion|d0|READY' }],
+      [{ kind: 'emptySlotSuggestion', dedupeKey: 'trip-1|2026-09-01|departureReminder|d0|READY' }],
+      [
+        { kind: 'emptySlotSuggestion', dedupeKey: 'trip-1|2026-09-01|emptySlotSuggestion|d0|READY' },
+        { kind: 'priceSaving', dedupeKey: 'trip-1|2026-09-01|priceSaving|b1|found' }
+      ],
       [{ kind: 'departureReminder', dedupeKey: 'trip-1|2026-02-30|departureReminder|d0s1|READY' }],
       Array.from({ length: 51 }, () => ({ kind: 'departureReminder', dedupeKey: 'trip-1|2026-09-01|departureReminder|d0s1|READY' }))
     ]) {
@@ -671,15 +718,19 @@ describe('GET /travel-state — 여행 중 단 하나의 조회(§57)', () => {
     expect((await api.acknowledgeNotifications(new Request('http://localhost/api/v1/trips/trip-1/travel-state', { method: 'POST', body: '{}' }), 'trip-1')).status).toBe(401);
   });
 
-  it('알림 등록 후 확인 저장 실패를 성공으로 처리하지 않고 재시도한다', async () => {
+  it.each(['departureReminder', 'emptySlotSuggestion'])('%s 등록 후 확인 저장 실패를 성공으로 처리하지 않고 재시도한다', async kind => {
     let failed = true;
     const gateway = gatewayOf(store);
     const record = gateway.recordNotifications;
     gateway.recordNotifications = async (...args) => { if (failed) throw new Error('offline'); await record(...args); };
     const handlers = createHandlers({ gatewayFor: () => gateway, now: () => NOW });
-    const body = { stateVersion: 'v1', items: [{ kind: 'departureReminder', dedupeKey: 'trip-1|2026-09-01|departureReminder|d0s1|READY' }] };
+    const plan = await state(kind === 'emptySlotSuggestion' ? '?now=13:00&travelMode=1' : '?now=18:58');
+    const item = plan.notifications.find(n => n.kind === kind)!;
+    expect(item).toBeTruthy();
+    const body = { stateVersion: plan.stateVersion, items: [{ kind: item.kind, dedupeKey: item.dedupeKey }] };
     const request = () => new Request('http://localhost/api/v1/trips/trip-1/travel-state', auth({ method: 'POST', body: JSON.stringify(body) }));
     expect((await handlers.acknowledgeNotifications(request(), 'trip-1')).status).toBe(502);
+    expect(store.sentKeys).toHaveLength(0);
     failed = false;
     expect((await handlers.acknowledgeNotifications(request(), 'trip-1')).status).toBe(200);
     expect(store.sentKeys).toHaveLength(1);
