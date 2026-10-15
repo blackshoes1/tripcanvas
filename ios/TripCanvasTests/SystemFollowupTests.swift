@@ -19,6 +19,26 @@ import XCTest
         return try JSONDecoder().decode(TravelStateResponse.self, from: Data(contentsOf: url))
     }
 
+    private let emptySlotKey = "parity|2026-09-01|emptySlotSuggestion|parity|2026-09-01|EAT|점심 시간이 비어 있어요|offered"
+
+    /// 같은 서버 계약으로 DEVICE 빈 시간과 SERVER 제안을 함께 내려준다.
+    private func emptySlotFixtureData(includeDevice: Bool = true) throws -> Data {
+        let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "travel-state", withExtension: "json"))
+        var raw = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        let original = try XCTUnwrap((raw["notifications"] as? [[String: Any]])?.first)
+        var device = original
+        device["kind"] = "emptySlotSuggestion"; device["origin"] = "DEVICE"
+        device["dedupeKey"] = emptySlotKey; device["title"] = "점심 시간이 비어 있어요"
+        device["deepLink"] = try XCTUnwrap(ActionRouter.link(.suggestion(
+            tripId: "parity", suggestionId: "parity|2026-09-01|EAT|점심 시간이 비어 있어요"))).absoluteString
+        device["priority"] = 0
+        var server = original
+        server["kind"] = "replanSuggestion"; server["origin"] = "SERVER"
+        server["dedupeKey"] = "parity|2026-09-01|replanSuggestion|none|needed"
+        raw["notifications"] = includeDevice ? [device, server] : [server]
+        return try JSONSerialization.data(withJSONObject: raw)
+    }
+
     func testSiriMutationUsesThePersistedActiveTripInsteadOfFirstLiveTrip() throws {
         let selected = try IntentSupport.selectTrip([trip("A"), trip("B")],
             snapshot: .init(state: .active, tripId: "B"), forMutation: true)
@@ -130,6 +150,91 @@ import XCTest
         XCTAssertNil(mode.lastError)
     }
 
+    func testEmptySlotDeviceDecodesRegistersAndAcknowledgesWhileServerItemIsExcluded() async throws {
+        SharedStore.clear(); defer { SharedStore.clear() }
+        let response = try JSONDecoder().decode(TravelStateResponse.self, from: emptySlotFixtureData())
+        XCTAssertEqual(response.notifications.map(\.kind), [.emptySlotSuggestion, .replanSuggestion])
+        XCTAssertEqual(response.notifications.map(\.origin), [.device, .server])
+        let source = FollowupTravelSource(response), push = FollowupPush()
+        push.succeeds = true
+        let mode = TravelModeController(service: source,
+            location: LocationProvider(manager: FollowupLocationManager(denied: true)), push: push,
+            liveActivity: FollowupActivity())
+
+        await mode.start(trip: response.today.trip)
+
+        XCTAssertEqual(push.scheduledItems.map(\.kind), [.emptySlotSuggestion])
+        XCTAssertEqual(push.scheduledItems.map(\.dedupeKey), [emptySlotKey])
+        XCTAssertEqual(source.acknowledgements.count, 1)
+        XCTAssertEqual(source.acknowledgements.first?.map(\.kind), [.emptySlotSuggestion])
+        XCTAssertEqual(source.acknowledgements.first?.map(\.dedupeKey), [emptySlotKey])
+        XCTAssertEqual(mode.snapshot.sentNotificationKeys, [emptySlotKey])
+        XCTAssertTrue(source.markSent.allSatisfy { !$0 })
+        XCTAssertNil(mode.lastError)
+    }
+
+    func testEmptySlotAckNetworkFailureRetriesSameWirePayloadWithoutSecondRegistration() async throws {
+        try await verifyEmptySlotAcknowledgementTransport(firstRequestStored: false)
+    }
+
+    func testEmptySlotAckResponseLossAfterServerStorageDoesNotResendOrAcknowledgeServerItem() async throws {
+        try await verifyEmptySlotAcknowledgementTransport(firstRequestStored: true)
+    }
+
+    /// 실제 TripService → APIClient → JSON 요청을 통과시킨다. 외부 주소로 연결하지 않는다.
+    private func verifyEmptySlotAcknowledgementTransport(firstRequestStored: Bool) async throws {
+        SharedStore.clear(); defer { SharedStore.clear() }
+        let planData = try emptySlotFixtureData(), acceptedData = try emptySlotFixtureData(includeDevice: false)
+        let response = try JSONDecoder().decode(TravelStateResponse.self, from: planData)
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [EmptySlotAcknowledgementProtocol.self]
+        let session = URLSession(configuration: config)
+        defer { session.invalidateAndCancel(); EmptySlotAcknowledgementProtocol.respond = nil }
+        let service = TripService(api: APIClient(baseURL: URL(string: "https://empty-slot.invalid")!,
+            tokens: EmptySlotAcknowledgementTokens(), session: session), cache: TripCache(directory: directory))
+        var serverRecorded = false
+        var acknowledgementKeys: [[String]] = []
+        EmptySlotAcknowledgementProtocol.respond = { request in
+            XCTAssertEqual(request.url?.path, "/api/v1/trips/parity/travel-state")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer empty-slot-synthetic")
+            if request.httpMethod == "GET" {
+                let query = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems ?? []
+                XCTAssertFalse(query.contains { $0.name == "markSent" && $0.value == "1" })
+                return (200, serverRecorded ? acceptedData : planData)
+            }
+            XCTAssertEqual(request.httpMethod, "POST")
+            let body = try EmptySlotAcknowledgementProtocol.body(request)
+            XCTAssertEqual(body["stateVersion"] as? String, response.stateVersion)
+            let items = try XCTUnwrap(body["items"] as? [[String: String]])
+            XCTAssertEqual(items.map { $0["kind"] }, ["emptySlotSuggestion"])
+            XCTAssertEqual(items.map { $0["dedupeKey"] }, [self.emptySlotKey])
+            acknowledgementKeys.append(items.compactMap { $0["dedupeKey"] })
+            if acknowledgementKeys.count == 1 {
+                serverRecorded = firstRequestStored
+                throw URLError(.networkConnectionLost)
+            }
+            serverRecorded = true
+            return (200, Data(#"{"schemaVersion":1,"acknowledged":true}"#.utf8))
+        }
+        let push = FollowupPush(); push.succeeds = true
+        let mode = TravelModeController(service: service,
+            location: LocationProvider(manager: FollowupLocationManager(denied: true)), push: push,
+            liveActivity: FollowupActivity())
+
+        await mode.start(trip: response.today.trip)
+        XCTAssertEqual(push.scheduledItems.map(\.dedupeKey), [emptySlotKey])
+        XCTAssertEqual(acknowledgementKeys, [[emptySlotKey]])
+        XCTAssertNotNil(mode.lastError, "전송 결과를 잃은 확인 요청을 성공이라고 말하지 않는다")
+
+        await mode.refresh(tripId: response.today.trip.id, reason: .manual)
+        XCTAssertEqual(push.scheduledItems.map(\.kind), [.emptySlotSuggestion], "확인을 재시도해도 알림은 한 번만 등록한다")
+        XCTAssertEqual(acknowledgementKeys, firstRequestStored ? [[emptySlotKey]] : [[emptySlotKey], [emptySlotKey]])
+        XCTAssertTrue(serverRecorded)
+        XCTAssertNil(mode.lastError)
+    }
+
     func testPushChecksPermissionAndAwaitsTheSystemRegistrationResult() async throws {
         let item = try XCTUnwrap(try fixture().notifications.first { $0.origin == .device })
         var allowed = false, requests = 0
@@ -167,8 +272,50 @@ import XCTest
 }
 @MainActor private final class FollowupPush: PushScheduling {
     var succeeds = false, scheduled = 0
+    var scheduledItems: [NotificationPlanItem] = []
     func present(_ item: NotificationPlanItem) {}
-    func schedule(_ item: NotificationPlanItem) async -> Bool { if succeeds { scheduled += 1 }; return succeeds }
+    func schedule(_ item: NotificationPlanItem) async -> Bool {
+        if succeeds { scheduled += 1; scheduledItems.append(item) }
+        return succeeds
+    }
+}
+
+@MainActor private struct EmptySlotAcknowledgementTokens: TokenProviding {
+    func accessToken() async throws -> String { "empty-slot-synthetic" }
+    func refreshToken() async throws -> String { "empty-slot-synthetic" }
+}
+
+private final class EmptySlotAcknowledgementProtocol: URLProtocol {
+    @MainActor static var respond: ((URLRequest) throws -> (Int, Data))?
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        Task { @MainActor in
+            do {
+                guard let respond = Self.respond else { throw URLError(.notConnectedToInternet) }
+                let (status, data) = try respond(request)
+                let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!
+                client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+                client?.urlProtocol(self, didLoad: data)
+                client?.urlProtocolDidFinishLoading(self)
+            } catch { client?.urlProtocol(self, didFailWithError: error) }
+        }
+    }
+    override func stopLoading() {}
+
+    static func body(_ request: URLRequest) throws -> [String: Any] {
+        var data = request.httpBody ?? Data()
+        if data.isEmpty, let stream = request.httpBodyStream {
+            stream.open(); defer { stream.close() }
+            var bytes = [UInt8](repeating: 0, count: 4096)
+            while stream.hasBytesAvailable {
+                let count = stream.read(&bytes, maxLength: bytes.count)
+                if count <= 0 { break }
+                data.append(contentsOf: bytes.prefix(count))
+            }
+        }
+        return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    }
 }
 @MainActor private final class FollowupActivity: LiveActivityControlling {
     func sync(_ response: TravelStateResponse, changed: Bool) async {}

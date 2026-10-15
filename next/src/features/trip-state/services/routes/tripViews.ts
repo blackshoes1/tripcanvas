@@ -154,7 +154,8 @@ export function createTripViewsHandlers(kit: HandlerKit) {
       if (body instanceof Response) return body;
       if (typeof body.stateVersion !== 'string' || !body.stateVersion || body.stateVersion.length > 128
         || !Array.isArray(body.items) || !body.items.length || body.items.length > 50) return fail('BAD_REQUEST');
-      const deviceKinds = ['departureReminder', 'fixedCommitmentReminder', 'scheduleDelay'];
+      // 빈 시간 제안도 iOS가 직접 등록하는 알림이다. SERVER 알림은 이 경로에서 확인하지 않는다.
+      const deviceKinds = ['departureReminder', 'fixedCommitmentReminder', 'scheduleDelay', 'emptySlotSuggestion'];
       const groups = new Map<string, { kind: string; dedupeKey: string; stateVersion: string }[]>();
       for (const item of body.items) {
         if (!item || typeof item !== 'object' || typeof item.kind !== 'string' || !deviceKinds.includes(item.kind)
