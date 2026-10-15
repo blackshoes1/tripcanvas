@@ -78,6 +78,20 @@ test('더 머물기: 체류를 줄이지 않아도 도착이 바뀌는 일행의
   assert.deepEqual(preview.affectedActivityIds,['d0s0','d0s1']);
 });
 
+test('더 머물기: 가져온 체류시간이 길어도 분 단위 반복 없이 계산한다', () => {
+  const trip={start:'2026-10-15',days:[{startAt:'09:00',spots:[
+    {name:'카페',stayMin:60,lat:37,lng:127},
+    {name:'잘못 가져온 체류',stayMin:1000000,opt:true,lat:37,lng:127},
+    {name:'예약',bookAt:'11:15',stayMin:60,lat:37,lng:127}
+  ]}]};
+  let calls=0;
+  const preview=A.previewStayExtension(stateOf(trip,{todayISO:'2026-10-15',nowMin:570,legMin:()=>0}),
+    {activityId:'d0s0',extraMinutes:30,legMin:()=>{calls++;return 0;}});
+  assert.equal(preview.feasible,true);
+  assert.equal(preview.changes[1].afterStayMinutes,30);
+  assert.ok(calls<100);
+});
+
 // 2분/km — 좌표만 보고 이동시간을 예측할 수 있게 고정한 테스트용 이동 모델
 const LEG = (a, b) => Math.round(TC.haversine({ lat: +a.lat, lng: +a.lng }, { lat: +b.lat, lng: +b.lng }) * 2);
 const P = (lat) => ({ lat, lng: -3.70 });

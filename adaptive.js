@@ -714,6 +714,7 @@
       || current.type==='FLIGHT' || current.type==='TRAIN' || isLodging(current.spot)) return null;
     const pending=state.items.filter((/** @type {TripItem} */it)=>it.si>=current.si
       && it.status!=='COMPLETED' && it.status!=='SKIPPED' && it.status!=='CANCELLED');
+    if(pending.some((/** @type {TripItem} */it)=>!Number.isSafeInteger(it.stayMin))) return null;
     if(pending.some((/** @type {TripItem} */it)=>it.spot&&it.spot.split)) return {
       activityId:current.id,currentName:current.name,extraMinutes:extra,
       oldDepartureMinutes:Math.round(current.end),newDepartureMinutes:Math.round(current.end+extra),
@@ -732,14 +733,20 @@
       if(!it.spot || !it.spot.opt || !droppable(it) || it.stayMin<=15) continue;
       const old=it.stayMin;
       // 약속 뒤의 장소를 줄여 앞 약속을 해결한 척하지 않는다.
-      while(it.stayMin>15 && !result.ok){
-        const previous=result.totalLate;
-        it.stayMin-=1;
+      it.stayMin=15;
+      const shortest=simulate(state,after,protectedOpts);
+      if(shortest.totalLate>=result.totalLate){ it.stayMin=old; continue; }
+      // Bound work by log(duration), never one simulation per minute of imported stay time.
+      let low=1, high=old-15, reduction=high;
+      for(let search=0;low<=high && search<54;search++){
+        const mid=low+Math.floor((high-low)/2);
+        it.stayMin=old-mid;
         const trial=simulate(state,after,protectedOpts);
-        if(trial.totalLate>=previous){ it.stayMin+=1; break; }
-        result=trial;
+        if(trial.totalLate<=shortest.totalLate){ reduction=mid;high=mid-1; }
+        else low=mid+1;
       }
-      if(it.stayMin===old) continue;
+      it.stayMin=old-reduction;
+      result=simulate(state,after,protectedOpts);
     }
     const changes=after.filter((/** @type {TripItem} */it)=>it.stayMin!==pending.filter((/** @type {TripItem} */p)=>p.id===it.id)[0].stayMin)
       .map((/** @type {TripItem} */it)=>({activityId:it.id,name:it.name,
