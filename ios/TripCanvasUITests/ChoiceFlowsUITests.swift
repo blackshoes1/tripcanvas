@@ -55,9 +55,8 @@ final class ChoiceFlowsUITests: XCTestCase {
         let state = app.staticTexts["choiceSavedState"]
         let pending = expectation(for: NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@", "PENDING", "Riverside walk"), evaluatedWith: state)
         wait(for: [pending], timeout: 10)
-        XCTAssertTrue(state.label.contains("행 1"))
-        XCTAssertTrue(state.label.contains("현재 · 합성 미술관"))
-        XCTAssertTrue(state.label.contains("revision 2"))
+        XCTAssertEqual(state.label, "현재 · 합성 미술관 | 다른 곳 · Riverside walk | PENDING | 행 1 | revision 2",
+                       "대안 저장 뒤에도 원래 장소 이름과 한 개의 일정 칸을 정확히 보존한다")
         captureTravelUX(app, "choice-pending-saved")
     }
 
