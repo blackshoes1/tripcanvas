@@ -28,6 +28,7 @@ struct ChoiceReviewHarness: View {
             .sheet(isPresented: $editing) {
                 if let model, let spot = model.day?.spots.first {
                     SpotEditorView(target: .edit(index: 0, spot: spot), dayCount: 1, currentDay: 0,
+                                   contextLabel: "저장 원본 · \(spot.name) | revision \(model.revision)",
                                    draftKey: key,
                                    onSave: { draft in
                                        let success = await model.updateSpot(at: 0, with: draft, dayIndex: 0, expectedRevision: openedRevision)

@@ -133,7 +133,10 @@ struct StayExtensionSheet: View {
                     HStack {
                         ForEach([10, 20, 30], id: \.self) { amount in
                             Button { Task { await model.select(amount) } } label: {
-                                Text("\(amount)분").frame(maxWidth: .infinity, minHeight: 44)
+                                HStack(spacing: Space.xs) {
+                                    if model.minutes == amount { Image(systemName: "checkmark").accessibilityHidden(true) }
+                                    Text("\(amount)분")
+                                }.frame(maxWidth: .infinity, minHeight: 44)
                             }
                             .buttonStyle(.bordered)
                             .tint(model.minutes == amount ? Ink.accent : Ink.soft)
@@ -143,7 +146,8 @@ struct StayExtensionSheet: View {
                     }.disabled(model.isApplying || model.requiresReopen)
                     if model.isLoading { ProgressView("남은 일정을 계산하고 있어요") }
                     if let p = model.preview {
-                        Text("\(p.currentName)에서 \(TimeFormat.clock(p.newDepartureMinutes)) 출발").font(.title3)
+                        Text("\(p.currentName)에서 \(p.extraMinutes)분 더").font(.title3)
+                        Text("떠날 시각 · \(TimeFormat.clock(p.oldDepartureMinutes)) → \(TimeFormat.clock(p.newDepartureMinutes))")
                         ForEach(p.changes.filter { $0.activityId != p.activityId }, id: \.activityId) { change in
                             Text("\(change.name) 머무름 · \(change.beforeStayMinutes)분 → \(change.afterStayMinutes)분")
                         }

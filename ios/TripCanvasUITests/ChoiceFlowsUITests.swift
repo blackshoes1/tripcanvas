@@ -15,13 +15,16 @@ final class ChoiceFlowsUITests: XCTestCase {
             if element.exists && element.isHittable { return }
             if towardTop { app.swipeDown() } else { app.swipeUp() }
         }
-        XCTAssertTrue(element.isHittable)
+        if !element.isHittable { captureTravelUX(app, "choice-unavailable-\(element.identifier)") }
+        XCTAssertTrue(element.isHittable, "보여야 할 항목: \(element.identifier)\n\(app.debugDescription)")
     }
 
-    private func save(_ app: XCUIApplication) {
-        let saves = app.buttons.matching(identifier: "spotEditorSave").allElementsBoundByIndex
-        let button = saves.first(where: { $0.isHittable }) ?? app.buttons["spotEditorSave"].firstMatch
+    private func save(_ app: XCUIApplication, alternative: Bool = false) {
+        let identifier = alternative ? "alternativeSpotEditorSave" : "spotEditorSave"
+        let button = app.buttons[identifier]
+        XCTAssertTrue(button.waitForExistence(timeout: 5))
         XCTAssertTrue(button.isEnabled)
+        XCTAssertTrue(button.isHittable)
         button.tap()
     }
 
@@ -30,11 +33,22 @@ final class ChoiceFlowsUITests: XCTestCase {
         let add = app.buttons["addAlternativeChoice"]
         reveal(add, in: app)
         add.tap()
-        let name = app.textFields["spotEditorName"].firstMatch
+        // 중첩 시트의 입력칸은 고유 ID로 고른다. firstMatch는 아래의 현재 장소를 가리킬 수 있다.
+        let name = app.textFields["alternativeSpotEditorName"]
         XCTAssertTrue(name.waitForExistence(timeout: 5))
+        XCTAssertTrue(name.isHittable)
+        XCTAssertTrue(["", "장소 이름"].contains(name.value as? String ?? ""), "새 선택지는 현재 장소 이름을 이어 쓰지 않는다")
         name.tap(); name.typeText("Riverside walk")
+        XCTAssertEqual(name.value as? String, "Riverside walk")
         // ASCII 이름으로 선택지 생성·저장 왕복을 검증한다. 저장 버튼도 실제 화면을 그대로 쓴다.
-        save(app)
+        save(app, alternative: true)
+        let dismissed = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: name)
+        wait(for: [dismissed], timeout: 5)
+        let currentName = app.textFields["spotEditorName"]
+        reveal(currentName, in: app, towardTop: true)
+        XCTAssertEqual(currentName.value as? String, "합성 미술관", "대안을 입력해도 현재 장소 이름은 바뀌지 않는다")
+        XCTAssertTrue(app.staticTexts["저장 원본 · 합성 미술관 | revision 1"].exists,
+                      "안쪽 편집기 완료는 초안만 바꾸고 문서를 서버에 저장하지 않는다")
         reveal(app.buttons["chooseAlternativePlace"], in: app)
         captureTravelUX(app, "pending-two-place-slot")
         save(app)
@@ -42,6 +56,9 @@ final class ChoiceFlowsUITests: XCTestCase {
         let pending = expectation(for: NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@", "PENDING", "Riverside walk"), evaluatedWith: state)
         wait(for: [pending], timeout: 10)
         XCTAssertTrue(state.label.contains("행 1"))
+        XCTAssertTrue(state.label.contains("현재 · 합성 미술관"))
+        XCTAssertTrue(state.label.contains("revision 2"))
+        captureTravelUX(app, "choice-pending-saved")
     }
 
     func testCreateSelectAndReopenOneSlotPreservesBothPlaces() {
@@ -57,6 +74,7 @@ final class ChoiceFlowsUITests: XCTestCase {
         wait(for: [selected], timeout: 10)
         XCTAssertTrue(state.label.contains("다른 곳 · 합성 미술관"))
         XCTAssertTrue(state.label.contains("행 1"))
+        captureTravelUX(app, "choice-alternative-selected")
         app.buttons["choiceOpenEditor"].tap()
         let reopen = app.buttons["다시 미정으로 두기"]
         reveal(reopen, in: app)
@@ -65,6 +83,7 @@ final class ChoiceFlowsUITests: XCTestCase {
         let pending = expectation(for: NSPredicate(format: "label CONTAINS %@", "PENDING"), evaluatedWith: state)
         wait(for: [pending], timeout: 10)
         XCTAssertTrue(state.label.contains("다른 곳 · 합성 미술관"))
+        captureTravelUX(app, "choice-reopened-retains-original")
     }
 
     func testFailedSaveKeepsDraftAndSecondSavePersistsWithCAS() {

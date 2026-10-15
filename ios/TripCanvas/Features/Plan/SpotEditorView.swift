@@ -190,7 +190,8 @@ struct SpotEditorView: View {
                 }
                 if let error = saving.error {
                     Section {
-                        Text(error).foregroundStyle(Ink.danger).accessibilityIdentifier("spotEditorError")
+                        Text(error).foregroundStyle(Ink.danger)
+                            .accessibilityIdentifier(allowsChoice ? "spotEditorError" : "alternativeSpotEditorError")
                         ShareLink("입력 복사·공유", item: "\(draft.name)\n\(draft.city)\n도착: \(draft.arriveAt ?? "미정") · 예약: \(draft.bookedAt ?? "미정")\n비용: \(costText)\n\(draft.desc)")
                     }
                 }
@@ -201,7 +202,8 @@ struct SpotEditorView: View {
                         Label(target.index == nil ? "장소 검색해서 입력" : "장소 검색해서 바꾸기",
                               systemImage: "magnifyingglass")
                     }
-                    TextField("장소 이름", text: $draft.name).accessibilityIdentifier("spotEditorName")
+                    TextField("장소 이름", text: $draft.name)
+                        .accessibilityIdentifier(allowsChoice ? "spotEditorName" : "alternativeSpotEditorName")
                     TextField("도시", text: $draft.city)
                     Picker("종류", selection: $draft.category) {
                         Text("미지정").tag(SpotCategory?.none)
@@ -297,7 +299,7 @@ struct SpotEditorView: View {
                 ToolbarItem(placement: .topBarLeading) { Button("취소") { if isDirty { showsDiscardConfirm = true } else { dismiss() } }.disabled(saving.isWorking) }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(saving.isWorking ? "저장 중…" : "완료") { Task { await save(using: onSave) } }
-                        .accessibilityIdentifier("spotEditorSave")
+                        .accessibilityIdentifier(allowsChoice ? "spotEditorSave" : "alternativeSpotEditorSave")
                         .disabled(saving.isWorking || draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }

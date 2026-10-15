@@ -167,7 +167,8 @@ struct BookingStaffShowButton: View {
         let generation = preparationGeneration, account = env.auth.session?.userId, scope = env.service.cacheScope
         preparing = true; errorMessage = nil
         defer { if generation == preparationGeneration { preparing = false } }
-        if let document = screenModels?.plan.document, let saved = document.booking(id: booking.id) {
+        if let plan = screenModels?.plan, plan.tripId == tripId, let document = plan.document,
+           let saved = document.booking(id: booking.id) {
             card = StaffShowCard(booking: saved, linkedSpot: StaffShowSelection.linkedSpot(document: document, booking: saved))
             return
         }
@@ -243,7 +244,7 @@ struct TodayStaffShowButton: View {
         loading = true; errorMessage = nil
         defer { if request == generation { loading = false } }
         do {
-            if let plan = screenModels?.plan, let document = plan.document, plan.revision == revision {
+            if let plan = screenModels?.plan, plan.tripId == tripID, let document = plan.document, plan.revision == revision {
                 card = try StaffShowSelection.card(document: document, documentRevision: plan.revision,
                     activityID: activityID, expectedName: expectedName, expectedRevision: revision)
                 return
