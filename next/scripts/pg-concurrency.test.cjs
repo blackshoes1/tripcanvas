@@ -26,6 +26,7 @@ test('실제 PostgreSQL: CAS 권한 잠금과 경로 예산의 동시성', { tim
     const schema = require('../dist-tools/server/infrastructure/database/schema.js');
     const { PgTripRepository } = require('../dist-tools/server/infrastructure/database/pgTripRepository.js');
     const { PgLegFillUsageRepository } = require('../dist-tools/server/infrastructure/database/pgLegFillUsageRepository.js');
+    const { PgDailyMomentRepository } = require('../dist-tools/server/infrastructure/database/pgDailyMomentRepository.js');
     const db = drizzle(writer, { schema });
     const otherDb = drizzle(other, { schema });
     await migrate(db, { migrationsFolder: path.join(__dirname, '../src/server/infrastructure/database/migrations') });
@@ -77,6 +78,53 @@ test('실제 PostgreSQL: CAS 권한 잠금과 경로 예산의 동시성', { tim
       assert.equal(result.filter(x => x.conflict).length, 1);
       assert.equal(result[0].record.revision, 2);
       assert.equal(result[1].record.revision, 2);
+    });
+    await t.test('개인별 오늘 하나는 동시 저장·거두기에도 일행 행과 다른 날을 보존', async () => {
+      const record = await repo.create({ ownerId: owner, clientId: randomUUID(), data: { name: 'moments', days: [] } });
+      await writer.query("insert into trip_members(trip_id,user_id,role,status,display_name) values($1,$2,'VIEWER','ACTIVE','영희')", [record.id, editor]);
+      const first = new PgDailyMomentRepository(db), second = new PgDailyMomentRepository(otherDb);
+      const own = { tripId: record.id, userId: owner, dayKey: 'date:2026-10-15', expectedRevision: 1, spotKey: 'cafe', spotName: '카페' };
+      const companion = { ...own, userId: editor, spotKey: 'sunset', spotName: '노을' };
+      await Promise.all([first.save(own), second.save(companion)]);
+      assert.equal((await first.list(record.id, own.dayKey)).length, 2);
+      await first.save({ ...own, dayKey: 'date:2026-10-16', spotKey: 'park', spotName: '공원' });
+      await Promise.all([first.save({ ...own, spotKey: null, spotName: null }), second.save({ ...companion, spotName: '저녁 노을' })]);
+      const today = await first.list(record.id, own.dayKey);
+      assert.equal(today.length, 1);
+      assert.equal(today[0].userId, editor);
+      assert.equal(today[0].spotName, '저녁 노을');
+      assert.equal((await first.list(record.id, 'date:2026-10-16'))[0].spotName, '공원');
+    });
+    await t.test('일행 바람 저장도 먼저 잠긴 탈퇴·일정 변경을 기다리고 재확인', async () => {
+      for (const kind of ['member', 'revision']) {
+        const record = await repo.create({ ownerId: owner, clientId: randomUUID(), data: { name: 'moments', days: [] } });
+        await writer.query("insert into trip_members(trip_id,user_id,role,status) values($1,$2,'VIEWER','ACTIVE')", [record.id, editor]);
+        const manager = await other.connect();
+        let pending;
+        try {
+          await manager.query('begin');
+          if (kind === 'member') await manager.query("update trip_members set status='LEFT' where trip_id=$1 and user_id=$2", [record.id, editor]);
+          else await manager.query('update trips set revision=revision+1 where id=$1', [record.id]);
+          pending = new PgDailyMomentRepository(db).save({ tripId: record.id, userId: editor, dayKey: 'date:2026-10-15',
+            expectedRevision: 1, spotKey: 'cafe', spotName: '카페' }).then(() => ({ error: null }), error => ({ error }));
+          let blocked = false;
+          for (let i = 0; i < 250; i++) {
+            const { rows } = await admin.query("select 1 from pg_stat_activity where datname=$1 and application_name='tc-cas-writer' and wait_event_type='Lock'", [name]);
+            if (rows.length) { blocked = true; break; }
+            await delay(20);
+          }
+          await manager.query('commit');
+          const result = await pending;
+          assert.ok(blocked, `${kind} 변경을 저장과 다른 연결에서 실제로 기다렸다`);
+          assert.equal(result.error?.code, kind === 'member' ? 'NOT_FOUND' : 'STALE_VERSION');
+          const { rows } = await writer.query('select * from trip_daily_moments where trip_id=$1', [record.id]);
+          assert.equal(rows.length, 0);
+        } finally {
+          await manager.query('rollback');
+          if (pending) await pending;
+          manager.release();
+        }
+      }
     });
     await t.test('레거시 sync_trip도 진행 중인 역할 강등을 기다린 뒤 거절', async () => {
       const legacyName = `${name}_legacy`;

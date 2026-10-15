@@ -31,7 +31,7 @@ export interface ApplyResult {
   trip: TripDoc;
   applied: boolean;
   alreadyApplied: boolean;
-  error?: 'ACTIVITY_NOT_FOUND' | 'NAME_MISMATCH' | 'SUGGESTION_STALE';
+  error?: 'ACTIVITY_NOT_FOUND' | 'NAME_MISMATCH' | 'SUGGESTION_STALE' | 'CHOICE_PENDING';
   name?: string;
 }
 
@@ -47,6 +47,9 @@ export function applyActivityStatus(
   if (!ref || !current) return { ok: false, trip, applied: false, alreadyApplied: false, error: 'ACTIVITY_NOT_FOUND' };
   if (expectedName != null && String(current.name ?? '') !== expectedName) {
     return { ok: false, trip, applied: false, alreadyApplied: false, error: 'NAME_MISMATCH', name: String(current.name ?? '') };
+  }
+  if (current.choice?.state === 'PENDING' && status !== 'PLANNED') {
+    return { ok: false, trip, applied: false, alreadyApplied: false, error: 'CHOICE_PENDING' };
   }
   const now: ActivityStatus = (current.status as ActivityStatus) ?? 'PLANNED';
   if (now === status || (status === 'PLANNED' && current.status == null)) {

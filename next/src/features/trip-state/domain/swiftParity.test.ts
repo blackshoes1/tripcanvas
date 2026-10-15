@@ -128,6 +128,21 @@ function expectCovered(structName: string, value: unknown) {
 }
 
 describe('iOS Contract.swift가 실제 응답을 전부 담는다', () => {
+  it('선택지의 실제 하루 응답과 범위를 Swift가 전부 읽는다', () => {
+    const choiceTrip: TripDoc = { name: '합성 선택지', start: '2026-10-15', days: [{ spots: [{
+      name: '미술관', city: '교토', stayMin: 60, cost: 1200, choice: { version: 1, state: 'PENDING', decideBy: '13:30',
+        alternative: { name: '강변 산책', city: '교토', stayMin: 30, cost: 0 } }
+    }] }] };
+    const choiceToday = computeToday({ tripId: 'choice', trip: choiceTrip, revision: 2, updatedAt: '',
+      todayISO: '2026-10-15', nowMinutes: 780, generatedAt: '2026-10-15T04:00:00Z' }).response;
+    expect(choiceToday.activities[0].choiceState).toBe('PENDING');
+    expectCovered('TodayResponse', choiceToday);
+    const plan = buildDayPlanView({ trip: choiceTrip, di: 0, summary: choiceToday.trip, generatedAt: '2026-10-15T04:00:00Z' });
+    expect(plan!.day.spots[0].choice?.cost).toMatchObject({ min: 0, max: 1200, currency: 'KRW' });
+    expectCovered('DayPlanResponse', plan);
+    const dir = path.join(__dirname, '../../../../../ios/TripCanvasTests/Fixtures');
+    writeFixture(path.join(dir, 'choice-day-plan.json'), JSON.stringify(plan, null, 2) + String.fromCharCode(10));
+  });
   it('TodayResponse와 그 안의 모든 구조체', () => {
     expectCovered('TodayResponse', today);
     expectCovered('TripSummary', today.trip);

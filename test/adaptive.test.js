@@ -7,6 +7,65 @@ const assert = require('node:assert');
 const TC = require('../lib.js');
 const A = require('../adaptive.js');
 
+test('더 머물기: 선택 장소만 짧게 줄여 예약 준비 여유를 지키고 원문은 유지한다', () => {
+  const trip = { start:'2026-10-15', days:[{ startAt:'09:00', spots:[
+    {name:'카페',lat:37,lng:127,stayMin:60},
+    {name:'산책',lat:37,lng:127,stayMin:60,opt:true},
+    {name:'예약',lat:37,lng:127,bookAt:'11:15',stayMin:60}
+  ]}]};
+  const before = JSON.stringify(trip);
+  const state = stateOf(trip,{todayISO:'2026-10-15',nowMin:570,legMin:()=>0});
+  const preview = A.previewStayExtension(state,{activityId:'d0s0',extraMinutes:30,legMin:()=>0});
+  assert.equal(preview.feasible,true);
+  assert.deepEqual(preview.changes.map(c=>[c.name,c.beforeStayMinutes,c.afterStayMinutes]),[['카페',60,90],['산책',60,30]]);
+  assert.equal(preview.fixedCommitments[0].slackMinutes,15);
+  assert.equal(JSON.stringify(trip),before);
+});
+
+test('더 머물기: 꼭 가기·예약·숙소는 줄이지 않고 불가능한 변경을 차단한다', () => {
+  const trip = { start:'2026-10-15', days:[{ startAt:'09:00', spots:[
+    {name:'카페',lat:37,lng:127,stayMin:60},
+    {name:'꼭 갈 곳',lat:37,lng:127,stayMin:60,opt:true,must:true},
+    {name:'예약',lat:37,lng:127,bookAt:'11:15',stayMin:60}
+  ]}]};
+  const state = stateOf(trip,{todayISO:'2026-10-15',nowMin:570,legMin:()=>0});
+  const preview = A.previewStayExtension(state,{activityId:'d0s0',extraMinutes:30,legMin:()=>0});
+  assert.equal(preview.feasible,false);
+  assert.equal(preview.changes.length,1);
+  assert.match(preview.reason,/준비 여유/);
+  assert.equal(A.previewStayExtension(state,{activityId:'d0s1',extraMinutes:10}),null);
+  assert.equal(A.previewStayExtension(state,{activityId:'d0s0',extraMinutes:999}),null);
+  assert.equal(A.previewStayExtension({...state,live:false},{activityId:'d0s0',extraMinutes:10}),null);
+});
+
+test('더 머물기: 미정 선택지를 확정하지 않고 좌표 없는 이동의 여유는 단정하지 않는다', () => {
+  const trip = {start:'2026-10-15',days:[{startAt:'09:00',spots:[
+    {name:'카페',stayMin:60,lat:37,lng:127},
+    {name:'미정',stayMin:30,choice:{state:'PENDING'}},
+    {name:'예약',bookAt:'14:00',stayMin:60,lat:37,lng:127}
+  ]}]};
+  const state=stateOf(trip,{todayISO:'2026-10-15',nowMin:570,legMin:()=>0});
+  const preview=A.previewStayExtension(state,{activityId:'d0s0',extraMinutes:10,legMin:()=>0});
+  assert.equal(preview.feasible,false);
+  assert.equal(preview.hasUnknownTravel,true);
+  assert.equal(preview.fixedCommitments[0].slackMinutes,null);
+});
+
+test('더 머물기: 병렬 일행 구간을 직렬로 계산해 다른 사람의 체류를 줄이지 않는다', () => {
+  const trip={start:'2026-10-15',days:[{startAt:'09:00',spots:[
+    {name:'카페',stayMin:60,lat:37,lng:127},
+    {name:'A',stayMin:30,split:'s',who:['a'],lat:37,lng:127},
+    {name:'B',stayMin:60,opt:true,split:'s',who:['b'],lat:37,lng:127},
+    {name:'합류 예약',bookAt:'11:40',lat:37,lng:127}
+  ]}]};
+  const preview=A.previewStayExtension(stateOf(trip,{todayISO:'2026-10-15',nowMin:570,legMin:()=>0}),
+    {activityId:'d0s0',extraMinutes:20,legMin:()=>0});
+  assert.equal(preview.feasible,false);
+  assert.match(preview.reason,/합류/);
+  assert.deepEqual(preview.changes,[]);
+  assert.equal(preview.dayEndAfterMinutes,null);
+});
+
 // 2분/km — 좌표만 보고 이동시간을 예측할 수 있게 고정한 테스트용 이동 모델
 const LEG = (a, b) => Math.round(TC.haversine({ lat: +a.lat, lng: +a.lng }, { lat: +b.lat, lng: +b.lng }) * 2);
 const P = (lat) => ({ lat, lng: -3.70 });

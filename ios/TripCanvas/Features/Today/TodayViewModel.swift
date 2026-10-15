@@ -24,6 +24,7 @@ final class TodayViewModel {
     private var failedAction: FailedAction?
     private var contentGeneration = 0
     private var minimumRevision = 0
+    var onStayApplied: ((Int) -> Void)?
 
     private struct FailedAction {
         let id: String
@@ -237,6 +238,20 @@ final class TodayViewModel {
     }
 
     func clearToast() { toast = nil }
+
+    /// An explicitly confirmed preview uses the same revision and stale-response boundary as other mutations.
+    func acceptStayExtension(_ response: MutationResponse) {
+        guard response.today.trip.id == trip.id, response.revision >= revision else { return }
+        contentGeneration += 1
+        isLoading = false
+        today = response.today
+        cachedAt = nil
+        loadedAt = Date()
+        loadErrorMessage = nil
+        dismissActionError()
+        toast = "머무는 시간을 반영하고 남은 일정을 다시 확인했어요."
+        onStayApplied?(response.revision)
+    }
 
     /// 응답이 끊겼을 때 이미 저장됐을 수 있다. 원래 revision을 확인한 뒤 같은 요청만 재시도한다.
     func retryAction() async {

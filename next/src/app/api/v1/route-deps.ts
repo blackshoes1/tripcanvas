@@ -13,6 +13,9 @@ import { composeGateway } from '@/server/api/composeGateway';
 import { ApiError } from '@/server/api/errors';
 import { createCollabRoutes } from '@/server/api/collabRoutes';
 import { createJToneRoutes } from '@/server/api/jToneRoutes';
+import { createDailyMomentsRoutes } from '@/server/api/dailyMomentsRoutes';
+import { DailyMomentsService } from '@/server/application/collaboration/dailyMomentsService';
+import { PgDailyMomentRepository } from '@/server/infrastructure/database/pgDailyMomentRepository';
 import { JToneService } from '@/server/application/account/jToneService';
 import { PgJToneRepository } from '@/server/infrastructure/database/pgJToneRepository';
 import { createMeRoutes } from '@/server/api/meRoutes';
@@ -114,6 +117,18 @@ export const coverRoutes = createCoverRoutes({
 });
 
 export const tripRoutes = createTripRoutes({ verifier, serviceFor: tripServiceFor });
+
+export const dailyMomentsRoutes = createDailyMomentsRoutes({
+  verifier,
+  serviceFor: async (ctx) => {
+    const db = getDb();
+    if (!db || env.registry.TRIP !== 'NEW_BACKEND' || env.registry.COLLAB === 'LEGACY') {
+      throw new ApiError('MAINTENANCE', { message: '각자 오늘 하나만 기능을 준비 중이에요.' });
+    }
+    await new PgUserRepository(db).ensure({ id: ctx.userId, email: ctx.email });
+    return new DailyMomentsService(new PgTripRepository(db), new PgDailyMomentRepository(db));
+  }
+});
 
 /**
  * 여행 버전 이력 — 새 DB에만 있다. 레거시(Supabase)의 trip_snapshots는 웹이 직접 읽고 쓰던 것이고,

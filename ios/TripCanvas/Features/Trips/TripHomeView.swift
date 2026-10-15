@@ -316,6 +316,12 @@ final class TripScreenModels {
 
     /// State가 보존한 모델에서 연결한다. View 초기화 중 버려지는 모델이 콜백을 덮지 않게 한다.
     func connectDocumentUpdates(service: TripService) {
+        today.onStayApplied = { [weak self] revision in
+            guard let self else { return }
+            self.costs.invalidate(revision: revision)
+            self.bookings.invalidate()
+            Task { await self.plan.load() }
+        }
         service.onDocumentSaved = { [weak self] id, snapshot in
             guard let self, id == self.tripId else { return }
             self.costs.invalidate(revision: snapshot.revision)

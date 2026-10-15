@@ -60,6 +60,8 @@ struct SpotEditorView: View {
     let draftKey: EditorDraftKey?
     /// 이 장소와 연결된 숙박 예약 — 있으면 금액·박 수는 그 예약이 유일한 출처라 여기서 고치지 않는다(웹 `spotPaidByBooking`, 2026-10-04)
     let linkedBooking: TripBooking?
+    /// 다른 선택지를 편집하는 안쪽 화면에는 다시 선택지를 만들지 않는다.
+    let allowsChoice: Bool
     let onSave: (TripSpot) async -> String?
     let onDelete: (Int) async -> String?
     let onMoveToDay: (Int, Int, TripSpot) async -> String?
@@ -91,6 +93,7 @@ struct SpotEditorView: View {
          role: MemberRole = .owner,
          draftKey: EditorDraftKey? = nil,
          linkedBooking: TripBooking? = nil,
+         allowsChoice: Bool = true,
          onSave: @escaping (TripSpot) async -> String?,
          onDelete: @escaping (Int) async -> String?,
          onMoveToDay: @escaping (Int, Int, TripSpot) async -> String?) {
@@ -102,6 +105,7 @@ struct SpotEditorView: View {
         self.role = role
         self.draftKey = draftKey
         self.linkedBooking = linkedBooking?.type == .hotel ? linkedBooking : nil
+        self.allowsChoice = allowsChoice
         self.onSave = onSave
         self.onDelete = onDelete
         self.onMoveToDay = onMoveToDay
@@ -176,6 +180,9 @@ struct SpotEditorView: View {
                 if !draft.name.isEmpty {
                     Section {
                         PlacePhotoView(placeId: draft.placeId, kakaoId: draft.kakaoId, name: draft.name)
+                        if draft.choice?.state != .pending {
+                            StaffShowButton(card: StaffShowCard(spot: draft, booking: effectiveBooking))
+                        }
                     }
                 }
                 if let contextLabel, !contextLabel.isEmpty {
@@ -183,7 +190,7 @@ struct SpotEditorView: View {
                 }
                 if let error = saving.error {
                     Section {
-                        Text(error).foregroundStyle(Ink.danger)
+                        Text(error).foregroundStyle(Ink.danger).accessibilityIdentifier("spotEditorError")
                         ShareLink("입력 복사·공유", item: "\(draft.name)\n\(draft.city)\n도착: \(draft.arriveAt ?? "미정") · 예약: \(draft.bookedAt ?? "미정")\n비용: \(costText)\n\(draft.desc)")
                     }
                 }
@@ -194,7 +201,7 @@ struct SpotEditorView: View {
                         Label(target.index == nil ? "장소 검색해서 입력" : "장소 검색해서 바꾸기",
                               systemImage: "magnifyingglass")
                     }
-                    TextField("장소 이름", text: $draft.name)
+                    TextField("장소 이름", text: $draft.name).accessibilityIdentifier("spotEditorName")
                     TextField("도시", text: $draft.city)
                     Picker("종류", selection: $draft.category) {
                         Text("미지정").tag(SpotCategory?.none)
@@ -229,8 +236,16 @@ struct SpotEditorView: View {
                     Text("위치")
                 }
 
+                StaffShowEditorSection(details: $draft.staffDetails)
+
+                if allowsChoice {
+                    SpotChoiceSection(spot: $draft, currentDay: currentDay, draftKey: draftKey) {
+                        costText = MoneyInput.text(amount: draft.cost)
+                    }
+                }
+
                 Section {
-                    ClockField(title: "내가 정한 도착 시각", text: $draft.arriveAt)
+                    if allowsChoice { ClockField(title: "내가 정한 도착 시각", text: $draft.arriveAt) }
                     StayMinutesPicker(minutes: $draft.stayMinutes)
                 } header: {
                     Text("시간")
@@ -242,7 +257,7 @@ struct SpotEditorView: View {
 
                 AdmissionEditorSection(spot: $draft)
 
-                planSection
+                if allowsChoice { planSection }
 
                 if showsParticipants { participantsSection }
 
@@ -282,6 +297,7 @@ struct SpotEditorView: View {
                 ToolbarItem(placement: .topBarLeading) { Button("취소") { if isDirty { showsDiscardConfirm = true } else { dismiss() } }.disabled(saving.isWorking) }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(saving.isWorking ? "저장 중…" : "완료") { Task { await save(using: onSave) } }
+                        .accessibilityIdentifier("spotEditorSave")
                         .disabled(saving.isWorking || draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
@@ -342,7 +358,10 @@ struct SpotEditorView: View {
     /// 시간·메모는 일정에 속하고, 예약·비용은 장소에 속한다.
     static func replacing(_ original: TripSpot, with hit: PlaceHit) -> TripSpot {
         var next = original
-        if !samePlace(original, hit) { for key in placeDependentKeys { next.setField(key, nil) } }
+        if !samePlace(original, hit) {
+            for key in placeDependentKeys { next.setField(key, nil) }
+            next.staffDetails = StaffShowDetails()
+        }
         if !hit.name.isEmpty { next.name = hit.name }
         if !hit.city.isEmpty { next.city = hit.city }
         next.point = hit.point
@@ -525,6 +544,7 @@ struct SpotEditorView: View {
     }
 
     static func validationError(for draft: TripSpot, costText: String) -> String? {
+        if let error = draft.choice?.validationError(current: draft) { return error }
         let value = costText.trimmingCharacters(in: .whitespacesAndNewlines)
         if !value.isEmpty && MoneyInput.amount(from: value, currency: draft.currency) == nil {
             return "금액을 확인해 주세요. 원·엔은 정수, 그 밖의 통화는 소수 둘째 자리까지 입력할 수 있어요."

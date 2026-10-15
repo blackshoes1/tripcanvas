@@ -37,6 +37,24 @@ const build = (t: Trip, di: number, legCache?: LegCache) =>
   buildDayPlanView({ trip: t, di, summary, generatedAt: '2026-09-06T00:00:00Z', legCache });
 
 describe('buildDayPlanView', () => {
+  it('미정 두 장소는 한 행과 현재 장소 합계를 유지하면서 이 칸의 범위만 보낸다', () => {
+    const primary = spot('미술관',35,135,{stayMin:60,cost:1000});
+    const baseline = build(trip([day([primary])]),0)!;
+    const alternative = spot('강변',36,136,{stayMin:30,cost:0,bookAt:'15:00'});
+    const pending = build(trip([day([{...primary,choice:{version:1,state:'PENDING',alternative,decideBy:'13:30'}}])]),0)!;
+    expect(pending.day.spots).toHaveLength(1);
+    expect(pending.day.routes).toEqual(baseline.day.routes);
+    expect(pending.day.totals).toEqual(baseline.day.totals);
+    expect(pending.day.spots[0].choice).toEqual({state:'PENDING',alternativeName:'강변',decideBy:'13:30',
+      stayMinutes:{min:30,max:60},cost:{min:0,max:1000,currency:'KRW'},totalsBasis:'CURRENT_OPTION'});
+  });
+
+  it('비용이나 체류를 모르면 범위를 비워 Swift가 0으로 오해하지 않는다', () => {
+    const primary = spot('미술관',null,null,{choice:{version:1,state:'PENDING',alternative:spot('강변',null,null)}});
+    const result = build(trip([day([primary])]),0)!;
+    expect(result.day.spots[0].choice).toMatchObject({cost:null,stayMinutes:null,totalsBasis:'CURRENT_OPTION'});
+    expect(result.day.spots[0].incomingLeg).toBeNull();
+  });
   it('숙박은 체크아웃까지 표시하고 동선 앵커의 이월과 분리한다', () => {
     const t = trip([day([hotel({ nights: 2 })]), day([]), day([]), day([])]);
     expect(build(t, 0)!.day.lodging[0]).toMatchObject({ state: 'CHECK_IN', night: 1, nights: 2 });

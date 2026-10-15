@@ -21,6 +21,7 @@ struct PlanSpotList: View {
 
     /// 상단 요약을 펼쳤는가. 기본은 접힘 — 기본 화면에서는 일정이 요약보다 중요하다.
     @State private var summaryExpanded = false
+    @State private var staffCard: StaffShowCard?
     /// 종료 콜백까지 방향을 보존한다. GestureState만 쓰면 onEnded 전에 초기화될 수 있다.
     @State private var daySwipeIntent = PlanDaySwipeIntent()
     @GestureState private var isSwipingDay = false
@@ -29,7 +30,9 @@ struct PlanSpotList: View {
     @Environment(\.editMode) private var editMode
     private var isEditing: Bool { editMode?.wrappedValue.isEditing == true }
 
-    var body: some View { list }
+    var body: some View {
+        list.fullScreenCover(item: $staffCard) { StaffShowView(card: $0) }
+    }
 
     @ViewBuilder
     private var list: some View {
@@ -49,6 +52,11 @@ struct PlanSpotList: View {
                         .listRowSeparator(.visible, edges: .bottom)
                         .deleteDisabled(true)
                         .moveDisabled(true)
+                    if day.spots.contains(where: { $0.choice?.state == .pending }) {
+                        SpotChoiceTotalsNotice()
+                            .listRowSeparator(.hidden)
+                            .deleteDisabled(true).moveDisabled(true)
+                    }
                     if day.spots.isEmpty { emptyDay }
                     let rail = railEdges(day)
                     // 🏠 전날 숙소 이월 · 렌터카 픽업은 장소 목록 **앞**에 온다.
@@ -70,10 +78,13 @@ struct PlanSpotList: View {
                             if choosingPlaces {
                                 Image(systemName: chosenPlaces.contains(index) ? "checkmark.circle.fill" : "circle")
                             }
-                            SpotRow(spot: spot, dayMode: day.mode, plan: model.planSpot(at: index),
+                            VStack(alignment: .leading, spacing: Space.xs) {
+                              SpotRow(spot: spot, dayMode: day.mode, plan: model.planSpot(at: index),
                                     split: splitInfo(at: index),
                                     railTop: !isEditing && (index > 0 || rail.beforeSpots),
                                     railBottom: !isEditing && (index < day.spots.count - 1 || rail.afterSpots))
+                              SpotChoiceSummaryView(spot: spot, summary: model.planSpot(at: index)?.choice)
+                            }
                         }
                             .listRowBackground(Ink.raised)
                             .listRowSeparator(.hidden)
@@ -84,6 +95,11 @@ struct PlanSpotList: View {
                             .accessibilityAddTraits(.isButton)
                             .accessibilityAction { actions.editSpot(index, spot) }
                             .contextMenu {
+                                if spot.choice?.state != .pending {
+                                    Button("직원에게 이 화면 보여주기", systemImage: "person.crop.rectangle") {
+                                        staffCard = StaffShowCard(spot: spot, booking: spot.bookingId.flatMap { model.document?.booking(id: $0) })
+                                    }
+                                }
                                 if model.canEdit {
                                     Button("여기에 추가 · 이 장소 뒤") { actions.addAfter(index) }
                                     Button("날짜·위치 옮기기") { actions.moveSpots([index]) }

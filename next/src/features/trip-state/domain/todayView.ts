@@ -20,6 +20,7 @@ import type {
 import { CONTRACT_SCHEMA_VERSION } from './contract';
 
 export interface SpotDoc {
+  choice?: { version: 1; state: 'PENDING' | 'SELECTED'; alternative: SpotDoc; decideBy?: string };
   name?: string; city?: string; desc?: string; lat?: number | null; lng?: number | null;
   at?: string; bookAt?: string; stayMin?: number; stay?: boolean; nights?: number;
   opt?: boolean; must?: boolean; status?: string; legMode?: string;
@@ -225,6 +226,7 @@ export function computeToday(input: TodayInput): TodayComputation {
     const spot = (it.spot ?? {}) as SpotDoc;
     return {
       id: it.id,
+      choiceState: lib.spotChoiceSummary(spot)?.state ?? null,
       name: it.name,
       city: String(spot.city ?? ''),
       desc: String(spot.desc ?? ''),

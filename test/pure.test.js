@@ -3,6 +3,74 @@ const test = require('node:test');
 const assert = require('node:assert');
 const L = require('../lib.js');
 
+test('한 칸의 두 선택지는 중복 합산 없이 현재 장소만 시간·비용·동선에 반영한다', () => {
+  const current={name:'미술관',city:'교토',lat:35,lng:135,stayMin:60,cost:1000,at:'14:00'};
+  const alternate={name:'강변 산책',city:'교토',lat:36,lng:136,stayMin:30,cost:0};
+  const base={days:[{spots:[current]}]};
+  const pending={days:[{spots:[{...current,choice:{version:1,state:'PENDING',alternative:alternate,decideBy:'13:30'}}]}]};
+  const validated=L.validateTripPayload(pending);
+  assert.equal(validated.ok,true);
+  assert.equal(validated.value.days[0].spots.length,1);
+  const actual=L.computeDayJourney(validated.value.days[0],{legMin:()=>10});
+  const expected=L.computeDayJourney(L.normalizeTrip(base).days[0],{legMin:()=>10});
+  assert.deepEqual(actual.timeline,expected.timeline);
+  assert.equal(actual.endMinutes,expected.endMinutes);
+  assert.equal(actual.legs.length,expected.legs.length);
+  assert.equal(L.dayEnteredCost(validated.value.days[0],{KRW:1}),1000);
+  assert.deepEqual(L.spotChoiceSummary(validated.value.days[0].spots[0]),{
+    state:'PENDING',alternativeName:'강변 산책',decideBy:'13:30',stayMinutes:{min:30,max:60},cost:{min:0,max:1000,currency:'KRW'},totalsBasis:'CURRENT_OPTION'
+  });
+});
+
+test('선택지 정규화는 원문과 미지의 필드를 보존하고 칸의 위치·참여자 정보는 현재 장소에만 둔다', () => {
+  const raw={days:[{spots:[{name:'A',city:'교토',at:'14:00',futureA:{x:1},choice:{version:1,state:'PENDING',futureChoice:'keep',alternative:{name:'B',city:'교토',futureB:{y:2},at:'17:00',split:'different',must:true,who:['a']}}}]}]};
+  const before=JSON.stringify(raw);
+  const result=L.validateTripPayload(raw);
+  assert.equal(result.ok,true);
+  assert.equal(JSON.stringify(raw),before);
+  const s=result.value.days[0].spots[0];
+  assert.equal(s.at,'14:00');
+  assert.deepEqual(s.futureA,{x:1});
+  assert.equal(s.choice.futureChoice,'keep');
+  assert.deepEqual(s.choice.alternative.futureB,{y:2});
+  for(const key of ['at','split','must','who']) assert.equal(s.choice.alternative[key],undefined);
+  assert.deepEqual(L.normalizeTrip(result.value),result.value,'서버 재조회·재저장에도 정규화 결과가 안정적이다');
+});
+
+test('미정 비용·부분 금액·다른 통화는 가짜 0 또는 비용 범위를 만들지 않는다', () => {
+  const summarize=(a,b)=>L.spotChoiceSummary({name:'A',...a,choice:{version:1,state:'PENDING',alternative:{name:'B',...b}}});
+  assert.equal(summarize({},{}).cost,null);
+  assert.equal(summarize({cost:10,cur:'USD'},{cost:20,cur:'EUR'}).cost,null);
+  assert.equal(summarize({cost:10,costPartial:true},{cost:20}).cost,null);
+  assert.deepEqual(summarize({cost:0},{cost:0}).cost,{min:0,max:0,currency:'KRW'});
+  assert.deepEqual(summarize({cost:10,cur:'EUR',costBasis:'PER_PERSON',costPeople:2},{cost:30,cur:'EUR'}).cost,{min:20,max:30,currency:'EUR'});
+  assert.equal(summarize({stayMin:0},{}).stayMinutes,null);
+});
+
+test('불량·중첩 선택지·잘못된 예약·좌표·결정 시각은 API 저장 검증에서 거절한다', () => {
+  const create=(extra={},alt={})=>({days:[{spots:[{name:'A',choice:{version:1,state:'PENDING',alternative:{name:'B',...alt}},...extra}]}]});
+  for(const extra of [{choice:{version:1,state:'PENDING',alternative:{name:'B'},decideBy:'24:00'}},{choice:{version:1,state:'AUTO',alternative:{name:'B'}}},
+    {choice:{version:1,state:'PENDING',alternative:{name:'B',choice:{}}}},
+    {choice:{version:1,state:'PENDING',decideBy:'16:00',alternative:{name:'B',bookAt:'15:00'}}},
+    {bookingId:'linked'},{carPickupId:'car'},{stay:true},{status:'COMPLETED'},{payState:'PAID'}]) {
+    assert.equal(L.validateTripPayload(create(extra)).ok,false);
+  }
+  for(const alt of [{name:''},{lat:91,lng:1},{bookAt:'noon'},{bookUrl:'javascript:alert(1)'},{cost:-1},{stay:true},{bookingId:'b'},{status:'COMPLETED'},{payState:'PAID'}]) {
+    assert.equal(L.validateTripPayload(create({},alt)).ok,false);
+  }
+  assert.equal(L.validateTripPayload(create({}, {name:'A'})).ok,false,'같은 장소 두 개는 대안이 아니다');
+  assert.equal(L.validateTripPayload(create({status:'COMPLETED',choice:{version:1,state:'SELECTED',alternative:{name:'B'}}})).ok,true,'이미 고른 장소는 정상적으로 완료한다');
+});
+
+test('대안의 예약·입장 시각과 링크는 보관하되 현재 장소의 예약을 취소하거나 바꾸지 않는다', () => {
+  const result=L.validateTripPayload({days:[{spots:[{name:'A',bookAt:'14:00',choice:{version:1,state:'PENDING',decideBy:'12:30',alternative:{name:'B',bookAt:'15:00',bookUrl:'https://example.com/ticket'}}}]}]});
+  assert.equal(result.ok,true);
+  const s=result.value.days[0].spots[0];
+  assert.equal(s.bookAt,'14:00');
+  assert.equal(s.choice.alternative.bookAt,'15:00');
+  assert.equal(s.choice.alternative.bookUrl,'https://example.com/ticket');
+});
+
 test('parseHM / hm 왕복·경계', () => {
   assert.equal(L.parseHM('09:30'), 570);
   assert.equal(L.parseHM('9:5'), 9*60);      // 형식 불일치 → 기본 09:00

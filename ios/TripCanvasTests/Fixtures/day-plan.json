@@ -79,7 +79,8 @@
         "status": "PLANNED",
         "participants": [],
         "reunion": false,
-        "incomingLeg": null
+        "incomingLeg": null,
+        "choice": null
       },
       {
         "index": 1,
@@ -111,7 +112,8 @@
           "path": null,
           "source": "STRAIGHT_LINE_ESTIMATE",
           "walkInstead": false
-        }
+        },
+        "choice": null
       }
     ],
     "routes": [

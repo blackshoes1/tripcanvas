@@ -174,12 +174,24 @@ struct BookingEditorView: View {
             recoverySection
             saveErrorSection
             identitySection
+            staffShowSection
             itinerarySections
             amountSection
             paymentSection
             conditionsSections
             photosSection
             deletionSections
+        }
+    }
+
+    @ViewBuilder private var staffShowSection: some View {
+        if isBookingKind {
+            StaffShowEditorSection(details: $draft.staffDetails)
+            Section {
+                StaffShowButton(card: StaffShowCard(booking: draft, linkedSpot: (draft.type == .car ? links.carPickup : links.stay).flatMap { document.spot(at: $0) }))
+                Text("입력 중인 정보 미리보기 · 예약을 저장해야 여행에 남아요.")
+                    .font(.caption).foregroundStyle(Ink.soft)
+            }
         }
     }
 
