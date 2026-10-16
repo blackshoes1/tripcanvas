@@ -110,24 +110,32 @@ final class TripPlanViewModel: DayPlanContext {
 
     func loadOverview() async { await cache.loadOverview() }
     func loadTripRoutes() async { await cache.loadTripRoutes() }
-    func loadPlan(reuseFetched: Bool = false) async { await cache.loadDay(reuseFetched: reuseFetched) }
+    func loadPlan(reuseFetched: Bool = false) async {
+        let askedRevision = revision, askedDay = selectedDay
+        let outcome = await cache.loadDay(reuseFetched: reuseFetched)
+        if case .cancelled = outcome, revision == askedRevision, selectedDay == askedDay { needsRemoteReload = true }
+    }
 
     // MARK: 읽기 — 문서를 받고 그 다음에 계산을 받는다
 
     /// 탭에 들어올 때 부른다. 문서가 있고 방금 받은 것이면 아무것도 하지 않는다 — 탭을 오갈 때마다
     /// 문서·하루치를 다시 받으면 그때마다 로딩이 뜨고 고른 날이 튄다(2026-09-17).
     func loadIfStale(maxAge: TimeInterval = 60, now: Date = Date()) async {
-        if document != nil, let loadedAt, now.timeIntervalSince(loadedAt) < maxAge { return }
+        if !needsRemoteReload, !store.needsReloadAfterCancelledRead,
+           document != nil, let loadedAt, now.timeIntervalSince(loadedAt) < maxAge { return }
         await load()
     }
 
     /// ⚠️ 문서 읽기가 **늦게 온 것으로 판정되면 계산을 받으러 가지 않는다** — 그 요청은
     /// 이미 지나간 화면의 것이라 지금 보는 날의 계산을 건드릴 자격이 없다.
     func load() async {
+        guard !ReadCancellation.shouldIgnore() else { return }
         guard !isPresentingEditor else { needsRemoteReload = true; return }
         guard await store.load() else { return }
+        guard !ReadCancellation.shouldIgnore() else { needsRemoteReload = true; return }
         needsRemoteReload = false
         await loadPlan()
+        if ReadCancellation.shouldIgnore() { needsRemoteReload = true }
     }
 
     func resumeAfterBackground() async {
@@ -164,9 +172,12 @@ final class TripPlanViewModel: DayPlanContext {
     ///    그게 안 뜨니 분리도 영영 생기지 않는다. 그래서 `isShared`(인원 2명 이상)도 함께 본다.
     ///    혼자 쓰는 여행의 요청 수는 그대로 0이다.
     private func loadMembers() async {
+        guard !ReadCancellation.shouldIgnore() else { return }
         guard members.isEmpty, let memberSource else { return }
         guard hasSplits || (plan?.trip.isShared ?? false) else { return }
-        members = (try? await memberSource.members(tripId: tripId)) ?? []
+        let fetched = (try? await memberSource.members(tripId: tripId)) ?? []
+        guard !ReadCancellation.shouldIgnore() else { return }
+        members = fetched
     }
 
     // MARK: 날 이동
