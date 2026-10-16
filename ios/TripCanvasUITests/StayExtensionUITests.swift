@@ -25,7 +25,7 @@ final class StayExtensionUITests: XCTestCase {
         apply.tap()
         XCTAssertTrue(app.staticTexts["stayError"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["stayApply"].exists)
-        let refresh = app.buttons["최신 일정 확인"]
+        let refresh = app.buttons["최신 일정에서 다시 확인"]
         for _ in 0..<5 where !refresh.isHittable { app.swipeUp() }
         refresh.tap()
         XCTAssertTrue(app.staticTexts["stayResult"].waitForExistence(timeout: 5))
