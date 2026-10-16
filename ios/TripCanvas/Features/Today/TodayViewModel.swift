@@ -18,11 +18,14 @@ final class TodayViewModel {
     /// 여행 모드 권유를 "나중에"로 미뤘는가. 같은 이유로 여기 있다.
     var deferredTravelInvite = false
     private(set) var loadErrorMessage: String?
+    private(set) var needsReloadAfterCancelledRead = false
     private(set) var actionErrorMessage: String?
     private(set) var actionErrorTitle: String?
     private(set) var isRetrying = false
     private var failedAction: FailedAction?
     private var contentGeneration = 0
+    /// 화면이 돌아왔는데 이전 취소 요청이 아직 정리 중이면, 정리가 끝난 뒤 한 번 읽는다.
+    private var reloadRequestedWhileLoading = false
     private var minimumRevision = 0
     var onStayApplied: ((Int) -> Void)?
 
@@ -94,16 +97,44 @@ final class TodayViewModel {
     /// - Returns: 실제로 서버에 물었는가. 물었을 때만 여행 모드도 함께 갱신할 가치가 있다.
     @discardableResult
     func loadIfStale(maxAge: TimeInterval = 60, now: Date = Date()) async -> Bool {
-        if today != nil, cachedAt == nil, let loadedAt, now.timeIntervalSince(loadedAt) < maxAge { return false }
+        guard !ReadCancellation.shouldIgnore() else { return false }
+        if isLoading { reloadRequestedWhileLoading = true; return false }
+        if !needsReloadAfterCancelledRead, today != nil, cachedAt == nil, let loadedAt, now.timeIntervalSince(loadedAt) < maxAge { return false }
         await load()
-        return true
+        return !ReadCancellation.shouldIgnore() && !needsReloadAfterCancelledRead
     }
 
     func load() async {
-        guard !isLoading else { return }
+        guard !ReadCancellation.shouldIgnore() else { return }
+        guard !isLoading else { reloadRequestedWhileLoading = true; return }
+        reloadRequestedWhileLoading = false
         isLoading = true
         let generation = contentGeneration
-        defer { if generation == contentGeneration { isLoading = false } }
+        let originalToday = today, originalCachedAt = cachedAt, originalLoadedAt = loadedAt
+        let originalError = loadErrorMessage
+        var cancelledRead = false
+        defer {
+            if generation == contentGeneration {
+                let wasCancelled = cancelledRead || ReadCancellation.shouldIgnore()
+                // 캐시 선표시 뒤 취소돼도 그 읽기가 이전 화면·오류·신선도를 바꾸지 않는다.
+                if wasCancelled {
+                    today = originalToday; cachedAt = originalCachedAt; loadedAt = originalLoadedAt
+                    loadErrorMessage = originalError
+                    needsReloadAfterCancelledRead = true
+                }
+                isLoading = false
+                let shouldReload = wasCancelled && reloadRequestedWhileLoading
+                reloadRequestedWhileLoading = false
+                // 취소된 호출자의 Task와 분리한다. 새 진입 요청 하나만 이어받으며 자동 반복하지 않는다.
+                if shouldReload {
+                    Task { [weak self] in
+                        guard let self, self.contentGeneration == generation,
+                              self.needsReloadAfterCancelledRead else { return }
+                        await self.load()
+                    }
+                }
+            }
+        }
         // 지난번 화면을 **먼저** 그린다 — 서버를 기다리는 동안 빈 스피너 대신 마지막으로 본 오늘이 보인다.
         // ⚠️ 문서가 그때 그대로일 때만(목록이 아는 revision과 같을 때) — 편집한 뒤의 옛 일정을 잠깐이라도
         //    보여 주면 틀린 것을 말하는 것이다. 시각은 서버 답이 오면 갈아끼워진다.
@@ -111,19 +142,23 @@ final class TodayViewModel {
         //    "이렇게 이해했어요"가 붙지 않은 옛 제안이 잠깐 보인다.
         if today == nil, intentText.isEmpty,
            let cached = await service.cachedToday(tripId: trip.id), cached.trip.revision == trip.revision, cached.trip.revision >= minimumRevision {
-            guard generation == contentGeneration else { return }
+            guard !ReadCancellation.shouldIgnore(), generation == contentGeneration else { return }
             today = cached
         }
+        guard !ReadCancellation.shouldIgnore() else { return }
         do {
             let fetched = try await service.today(tripId: trip.id, dayIndex: nil,
                                                    intent: intentText, energy: energy)
-            guard generation == contentGeneration, fetched.value.trip.revision >= minimumRevision, today == nil || fetched.value.trip.revision >= revision else { return }
+            guard !ReadCancellation.shouldIgnore(), generation == contentGeneration,
+                  fetched.value.trip.revision >= minimumRevision, today == nil || fetched.value.trip.revision >= revision else { return }
             today = fetched.value
             cachedAt = fetched.cachedAt
             if fetched.cachedAt == nil { loadedAt = Date() }
             loadErrorMessage = nil
+            needsReloadAfterCancelledRead = false
         } catch {
             // 앱 복귀 조회가 실패해도 마지막 내용과 저장 실패 안내를 유지한다.
+            if ReadCancellation.shouldIgnore(error) { cancelledRead = true; return }
             guard generation == contentGeneration else { return }
             loadErrorMessage = error.localizedDescription
         }
@@ -248,6 +283,8 @@ final class TodayViewModel {
         cachedAt = nil
         loadedAt = Date()
         loadErrorMessage = nil
+        needsReloadAfterCancelledRead = false
+        reloadRequestedWhileLoading = false
         dismissActionError()
         toast = "머무는 시간을 반영하고 남은 일정을 다시 확인했어요."
         onStayApplied?(response.revision)
@@ -264,9 +301,12 @@ final class TodayViewModel {
             guard fetched.cachedAt == nil else { throw APIError.offline }
             guard fetched.value.trip.revision >= revision else { throw APIError.stale("최신 일정을 확인하지 못했어요. 다시 확인해 주세요.") }
             contentGeneration += 1
+            isLoading = false
             today = fetched.value
             cachedAt = nil
             loadErrorMessage = nil
+            needsReloadAfterCancelledRead = false
+            reloadRequestedWhileLoading = false
             guard canEdit else {
                 self.failedAction = nil
                 actionErrorMessage = "이 여행은 볼 수만 있어요. 주최자에게 편집 권한을 요청해 주세요."
@@ -302,13 +342,19 @@ final class TodayViewModel {
         guard canEdit, pending.isEmpty else { return }
         pending.insert(id)
         contentGeneration += 1
+        // 이 세대부터 이전 읽기는 화면을 정리할 권한도 없다. 쓰기가 실패해도 다음 조회는 시작할 수 있어야 한다.
+        isLoading = false
+        reloadRequestedWhileLoading = false
         defer { pending.remove(id) }
         do {
             let response = try await operation()
             contentGeneration += 1
+            isLoading = false
             today = response.today
             cachedAt = nil
             loadErrorMessage = nil
+            needsReloadAfterCancelledRead = false
+            reloadRequestedWhileLoading = false
             dismissActionError()
             toast = response.alreadyApplied ? "이미 반영돼 있었어요." : describe(response)
         } catch let error as APIError {

@@ -31,6 +31,7 @@ protocol DayPlanContext: AnyObject {
 @Observable
 @MainActor
 final class DayPlanCache {
+    enum LoadOutcome { case finished, cancelled }
     /// 날짜별 계산. **한 번 받은 날은 기억한다** — 날을 옮길 때마다 다시 받으면
     /// 그때마다 목록이 새로 지어지고 화면이 튄다(2026-09-07 보고).
     private var plansByDay: [Int: DayPlanResponse] = [:]
@@ -133,35 +134,41 @@ final class DayPlanCache {
     /// 편집이 멀쩡한데 무언가 고장 난 것처럼 보인다.
     /// - Parameter reuseFetched: **날을 옮길 때**만 참이다 — 이번 문서의 계산을 이 세션에서 이미 서버로부터 받았고 채울 구간도
     ///   없으면 다시 묻지 않는다(2026-09-18). 문서 읽기·당겨서 새로고침·저장 뒤의 호출은 언제나 다시 받는다.
-    func loadDay(reuseFetched: Bool = false) async {
-        guard loadsPlans else { return }
-        guard dayCount > 0 else { clearAll(); return }
+    func loadDay(reuseFetched: Bool = false) async -> LoadOutcome {
+        guard !ReadCancellation.shouldIgnore() else { return .cancelled }
+        guard loadsPlans else { return .finished }
+        guard dayCount > 0 else { clearAll(); return .finished }
         let day = visibleDay
         let askedRevision = revision
+        var cancelledRead = false
         defer {
-            if revision == askedRevision { attemptedDays.insert(day) }
+            if !cancelledRead, !ReadCancellation.shouldIgnore(), revision == askedRevision { attemptedDays.insert(day) }
         }
         await showCachedPlan(for: day)
-        guard revision == askedRevision else { return }
+        guard !ReadCancellation.shouldIgnore() else { return .cancelled }
+        guard revision == askedRevision else { return .finished }
         // 날을 옮길 때 — 이번 문서의 계산을 이 세션에서 이미 서버로부터 받았고 채울 구간도 없으면 같은 답을 다시 받지 않는다(2026-09-18).
         if reuseFetched, let known = plansByDay[day], fetchedDays.contains(day), known.trip.revision == askedRevision, known.legsPending == 0 {
             attemptedDays.insert(day)
             prefetchNeighbours(of: day)
-            return
+            return .finished
         }
         do {
             let fetched = try await service.dayPlan(tripId: tripId, dayIndex: day)
-            guard isCurrent(fetched.value, day: day, asked: askedRevision, mustBeVisible: true) else { return }
+            guard !ReadCancellation.shouldIgnore() else { return .cancelled }
+            guard isCurrent(fetched.value, day: day, asked: askedRevision, mustBeVisible: true) else { return .finished }
             store(fetched, for: day)
             attemptedDays.insert(day)
             await onDayPlanLoaded?()
-            guard revision == askedRevision else { return }
+            guard !ReadCancellation.shouldIgnore() else { return .cancelled }
+            guard revision == askedRevision else { return .finished }
             // ⚠️ **기다리지 않는다.** 여기서 await 하면 문서 읽기가 3초 동안 안 끝나고,
             // 그동안 화면은 로딩 상태로 멈춘다 — 채우기를 기다리는 것과 화면을 세우는 것은 다른 일이다.
             scheduleLegRetry(day: day, pending: fetched.value.legsPending)
             prefetchNeighbours(of: day)
         } catch {
-            guard revision == askedRevision else { return }
+            if ReadCancellation.shouldIgnore(error) { cancelledRead = true; return .cancelled }
+            guard revision == askedRevision else { return .finished }
             // 못 받았다고 **이미 보여 준 계산을 지우지 않는다** — 화면이 비면서 또 튄다.
             // 다만 그 계산이 지금 보는 날의 것이고 문서가 그대로일 때만 남긴다:
             // 편집한 뒤의 옛 시각을 계속 보여 주면 틀린 숫자를 말하는 것이다.
@@ -170,6 +177,7 @@ final class DayPlanCache {
                 cachedAtByDay[day] = nil
             }
         }
+        return .finished
     }
 
     /// 지난번 계산을 **먼저** 보여 준다 — 서버를 기다리는 동안 시각 칸이 비어 있다가
@@ -183,6 +191,7 @@ final class DayPlanCache {
         //    디스크에 있는데도 서버를 기다리며 다시 로딩했다.
         guard plansByDay[day] == nil, revision > 0 else { return }
         guard let cached = await service.cachedDayPlan(tripId: tripId, dayIndex: day) else { return }
+        guard !ReadCancellation.shouldIgnore() else { return }
         guard cached.trip.revision == revision, cached.day.index == day else { return }
         plansByDay[day] = cached
         attemptedDays.insert(day)      // 지난 계산이 있으면 기다릴 것이 없다

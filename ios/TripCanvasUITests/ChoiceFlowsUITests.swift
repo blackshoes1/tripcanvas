@@ -10,13 +10,41 @@ final class ChoiceFlowsUITests: XCTestCase {
         return app
     }
 
+    private func captureChoiceFailure(_ app: XCUIApplication, _ message: String) {
+        let reason = XCTAttachment(string: message)
+        reason.name = "choice-failure-reason"; reason.lifetime = .keepAlways; add(reason)
+        let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        screenshot.name = "choice-failure-screen"; screenshot.lifetime = .keepAlways; add(screenshot)
+        let tree = XCTAttachment(string: app.debugDescription)
+        tree.name = "choice-failure-hierarchy"; tree.lifetime = .keepAlways; add(tree)
+    }
+
     private func reveal(_ element: XCUIElement, in app: XCUIApplication, towardTop: Bool = false) {
         for _ in 0..<10 {
             if element.exists && element.isHittable { return }
             if towardTop { app.swipeDown() } else { app.swipeUp() }
         }
-        if !element.isHittable { captureTravelUX(app, "choice-unavailable-\(element.identifier)") }
-        XCTAssertTrue(element.isHittable, "보여야 할 항목: \(element.identifier)\n\(app.debugDescription)")
+        let identifier = element.exists ? element.identifier : "<missing>"
+        let hittable = element.exists && element.isHittable
+        if !hittable { captureChoiceFailure(app, "보여야 할 항목: \(identifier)") }
+        XCTAssertTrue(hittable, "보여야 할 항목: \(identifier)")
+    }
+
+    private func chooseAlternativeOnce(_ app: XCUIApplication) {
+        let choose = app.buttons["chooseAlternativePlace"]
+        reveal(choose, in: app)
+        XCTAssertTrue(choose.isEnabled)
+        // 기존 선택 탭 미반영의 원인은 미확정이다. 한 번 탭한 결과를 저장 전에 확인하고 재탭하지 않는다.
+        choose.tap()
+        let selected = app.staticTexts["선택한 곳"]
+        let selectionAppeared = selected.waitForExistence(timeout: 5)
+        if !selectionAppeared { captureChoiceFailure(app, "한 번 선택한 직후 초안의 선택 표시가 없어요.") }
+        XCTAssertTrue(selectionAppeared, "한 번 선택한 직후 초안에 선택 표시가 있어야 한다")
+        let name = app.textFields["spotEditorName"]
+        reveal(name, in: app, towardTop: true)
+        let actualName = name.value as? String
+        if actualName != "Riverside walk" { captureChoiceFailure(app, "선택 후 초안 이름: \(actualName ?? "<missing>")") }
+        XCTAssertEqual(actualName, "Riverside walk", "외부 완료 전에 선택한 장소가 초안 이름에 반영돼야 한다")
     }
 
     private func save(_ app: XCUIApplication, alternative: Bool = false) {
@@ -65,9 +93,7 @@ final class ChoiceFlowsUITests: XCTestCase {
         let app = launch()
         createPending(app)
         app.buttons["choiceOpenEditor"].tap()
-        let choose = app.buttons["chooseAlternativePlace"]
-        reveal(choose, in: app)
-        choose.tap()
+        chooseAlternativeOnce(app)
         save(app)
         let state = app.staticTexts["choiceSavedState"]
         let selected = expectation(for: NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@", "현재 · Riverside walk", "SELECTED"), evaluatedWith: state)
@@ -91,9 +117,7 @@ final class ChoiceFlowsUITests: XCTestCase {
         createPending(app)
         app.buttons["choiceFailNextSave"].tap()
         app.buttons["choiceOpenEditor"].tap()
-        let choose = app.buttons["chooseAlternativePlace"]
-        reveal(choose, in: app)
-        choose.tap()
+        chooseAlternativeOnce(app)
         save(app)
         let unlocked = expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: app.buttons["spotEditorSave"].firstMatch)
         wait(for: [unlocked], timeout: 10)

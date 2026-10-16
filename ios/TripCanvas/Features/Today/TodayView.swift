@@ -210,7 +210,13 @@ struct TodayView: View {
         .onChange(of: scenePhase) { _, phase in
             // 앱 복귀 — 방금 받은 것이면 오늘을 다시 묻지 않는다(2026-09-18, 짧은 앱 전환마다 2건이 나갔다).
             // 여행 모드는 위치·시각이 바뀌었으니 그대로 갱신한다(`refreshTravelMode`는 켜져 있을 때만 나간다).
-            if phase == .active { Task { await model.loadIfStale(); await refreshTravelMode(reason: .foreground) } }
+            if phase == .active {
+                Task {
+                    await model.loadIfStale()
+                    guard !Task.isCancelled, !model.needsReloadAfterCancelledRead else { return }
+                    await refreshTravelMode(reason: .foreground)
+                }
+            }
         }
         .onChange(of: model.revision) { old, new in
             if old != new { Task { await refreshTravelMode(reason: .userAction) } }
@@ -240,13 +246,15 @@ struct TodayView: View {
 
     private func refreshToday(reason: TravelModeController.RefreshReason) async {
         await model.load()
+        guard !Task.isCancelled, !model.needsReloadAfterCancelledRead else { return }
         coverRefresh = UUID()
         await refreshTravelMode(reason: reason)
     }
 
     private func refreshTravelMode(reason: TravelModeController.RefreshReason) async {
-        guard env.travelMode.isActive, env.travelMode.snapshot.tripId == trip.id else { return }
+        guard !Task.isCancelled, env.travelMode.isActive, env.travelMode.snapshot.tripId == trip.id else { return }
         await env.push.refreshPermission()
+        guard !Task.isCancelled else { return }
         await env.travelMode.refresh(tripId: trip.id, reason: reason)
     }
 

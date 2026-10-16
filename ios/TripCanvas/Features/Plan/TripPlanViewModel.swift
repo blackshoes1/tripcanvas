@@ -18,6 +18,7 @@ final class TripPlanViewModel: DayPlanContext {
     let tripId: String
     private let memberSource: MemberListing?
     private let candidateSource: CollabSource?
+    private let documentFreshness: TimeInterval
     var isPresentingEditor = false
     private(set) var needsRemoteReload = false
 
@@ -36,11 +37,13 @@ final class TripPlanViewModel: DayPlanContext {
     ///   - initialDay: 처음 볼 날. **여행 목록이 이미 아는 값**(`TripSummary.todayIndex`)을 받는다 —
     ///     계산이 온 뒤에 옮기면 1일차를 보여 줬다가 오늘로 튄다.
     ///   - legRetryDelay: 경로가 채워지기를 기다리는 시간. 테스트는 짧게 준다.
+    ///   - documentFreshness: 탭 재진입 때 문서 재조회를 생략할 시간. 기본값은 60초다.
     init(tripId: String, service: TripDocumentSource, memberSource: MemberListing? = nil, candidateSource: CollabSource? = nil,
-         initialDay: Int = 0, legRetryDelay: TimeInterval = 3, loadsPlans: Bool = true) {
+         initialDay: Int = 0, legRetryDelay: TimeInterval = 3, loadsPlans: Bool = true, documentFreshness: TimeInterval = 60) {
         self.tripId = tripId
         self.memberSource = memberSource
         self.candidateSource = candidateSource ?? (service as? CollabSource)
+        self.documentFreshness = documentFreshness
         self.store = TripDocumentStore(tripId: tripId, service: service)
         self.cache = DayPlanCache(tripId: tripId, service: service, legRetryDelay: legRetryDelay, loadsPlans: loadsPlans)
         self.selectedDay = max(0, initialDay)
@@ -110,24 +113,33 @@ final class TripPlanViewModel: DayPlanContext {
 
     func loadOverview() async { await cache.loadOverview() }
     func loadTripRoutes() async { await cache.loadTripRoutes() }
-    func loadPlan(reuseFetched: Bool = false) async { await cache.loadDay(reuseFetched: reuseFetched) }
+    func loadPlan(reuseFetched: Bool = false) async {
+        let askedRevision = revision, askedDay = selectedDay
+        let outcome = await cache.loadDay(reuseFetched: reuseFetched)
+        if case .cancelled = outcome, revision == askedRevision, selectedDay == askedDay { needsRemoteReload = true }
+    }
 
     // MARK: 읽기 — 문서를 받고 그 다음에 계산을 받는다
 
     /// 탭에 들어올 때 부른다. 문서가 있고 방금 받은 것이면 아무것도 하지 않는다 — 탭을 오갈 때마다
     /// 문서·하루치를 다시 받으면 그때마다 로딩이 뜨고 고른 날이 튄다(2026-09-17).
-    func loadIfStale(maxAge: TimeInterval = 60, now: Date = Date()) async {
-        if document != nil, let loadedAt, now.timeIntervalSince(loadedAt) < maxAge { return }
+    func loadIfStale(maxAge: TimeInterval? = nil, now: Date = Date()) async {
+        let limit = maxAge ?? documentFreshness
+        if !needsRemoteReload, !store.needsReloadAfterCancelledRead,
+           document != nil, let loadedAt, now.timeIntervalSince(loadedAt) < limit { return }
         await load()
     }
 
     /// ⚠️ 문서 읽기가 **늦게 온 것으로 판정되면 계산을 받으러 가지 않는다** — 그 요청은
     /// 이미 지나간 화면의 것이라 지금 보는 날의 계산을 건드릴 자격이 없다.
     func load() async {
+        guard !ReadCancellation.shouldIgnore() else { return }
         guard !isPresentingEditor else { needsRemoteReload = true; return }
         guard await store.load() else { return }
+        guard !ReadCancellation.shouldIgnore() else { needsRemoteReload = true; return }
         needsRemoteReload = false
         await loadPlan()
+        if ReadCancellation.shouldIgnore() { needsRemoteReload = true }
     }
 
     func resumeAfterBackground() async {
@@ -164,9 +176,12 @@ final class TripPlanViewModel: DayPlanContext {
     ///    그게 안 뜨니 분리도 영영 생기지 않는다. 그래서 `isShared`(인원 2명 이상)도 함께 본다.
     ///    혼자 쓰는 여행의 요청 수는 그대로 0이다.
     private func loadMembers() async {
+        guard !ReadCancellation.shouldIgnore() else { return }
         guard members.isEmpty, let memberSource else { return }
         guard hasSplits || (plan?.trip.isShared ?? false) else { return }
-        members = (try? await memberSource.members(tripId: tripId)) ?? []
+        let fetched = (try? await memberSource.members(tripId: tripId)) ?? []
+        guard !ReadCancellation.shouldIgnore() else { return }
+        members = fetched
     }
 
     // MARK: 날 이동

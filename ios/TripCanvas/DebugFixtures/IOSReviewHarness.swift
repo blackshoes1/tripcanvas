@@ -31,6 +31,8 @@ struct IOSReviewHarness: View {
         Group {
             if arguments.contains("--review-followup") {
                 ReviewFollowupHarness()
+            } else if arguments.contains("--review-refresh") {
+                RefreshReviewHarness()
             } else if arguments.contains("--review-staff") {
                 StaffShowHarness()
             } else if arguments.contains("--review-moments") {
