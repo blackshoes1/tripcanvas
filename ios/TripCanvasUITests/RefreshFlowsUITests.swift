@@ -14,10 +14,28 @@ final class RefreshFlowsUITests: XCTestCase {
 
     private func expectLabel(_ element: XCUIElement, _ label: String, timeout: TimeInterval = 15,
                              file: StaticString = #filePath, line: UInt = #line) {
-        XCTAssertTrue(element.waitForExistence(timeout: timeout), file: file, line: line)
-        let expected = expectation(for: NSPredicate(format: "label == %@", label), evaluatedWith: element)
-        wait(for: [expected], timeout: timeout)
+        guard element.waitForExistence(timeout: timeout) else {
+            recordMismatch(element, expected: label)
+            XCTFail("요소가 나타나지 않았어요. 기대 label: \(label)", file: file, line: line)
+            return
+        }
+        let expected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", label), object: element)
+        guard XCTWaiter.wait(for: [expected], timeout: timeout) == .completed else {
+            let actual = element.exists ? element.label : "<missing>"
+            recordMismatch(element, expected: label)
+            XCTFail("기대 label: \(label) / 실제 label: \(actual)", file: file, line: line)
+            return
+        }
         XCTAssertEqual(element.label, label, file: file, line: line)
+    }
+
+    private func recordMismatch(_ element: XCUIElement, expected: String) {
+        let exists = element.exists
+        let actual = exists ? element.label : "<missing>"
+        let identifier = exists ? element.identifier : "<missing>"
+        let text = XCTAttachment(string: "identifier=\(identifier)\nexpected=\(expected)\nactual=\(actual)")
+        text.name = "refresh-label-mismatch"; text.lifetime = .keepAlways; add(text)
+        capture(XCUIApplication(), "refresh-label-mismatch-state")
     }
 
     private func pullActualPlanList(_ app: XCUIApplication) {
@@ -55,9 +73,13 @@ final class RefreshFlowsUITests: XCTestCase {
         let app = launch()
         app.buttons["refreshArmDelayedRead"].tap()
         pullActualPlanList(app)
+        capture(app, "refresh-response-suspended-after-real-pull")
         expectLabel(app.staticTexts["refreshReadCounts"], "started=2; completed=1; cancelled=0", timeout: 5)
+        expectLabel(app.staticTexts["refreshResponseGate"], "gate=waiting; released=0", timeout: 5)
         XCTAssertTrue(app.staticTexts["refreshAppliedState"].label.contains("revision=1;"), "지연 GET가 끝나기 전에는 옛 문서가 남는다")
+        app.buttons["refreshReleaseRead"].tap()
         expectLabel(app.staticTexts["refreshReadCounts"], "started=2; completed=2; cancelled=0", timeout: 15)
+        expectLabel(app.staticTexts["refreshResponseGate"], "gate=closed; released=1")
         expectLabel(app.staticTexts["refreshAppliedState"], "revision=2; first=합성 당김 최신 장소; fresh=true")
         assertActualPlanRow(app, contains: "합성 당김 최신 장소")
         assertNoCancelledBanner(app)
@@ -68,13 +90,17 @@ final class RefreshFlowsUITests: XCTestCase {
         let app = launch(cancellation: true)
         app.buttons["refreshArmDelayedRead"].tap()
         pullActualPlanList(app)
+        capture(app, "refresh-cancellation-response-suspended-after-real-pull")
         expectLabel(app.staticTexts["refreshReadCounts"], "started=2; completed=1; cancelled=0", timeout: 5)
+        expectLabel(app.staticTexts["refreshResponseGate"], "gate=waiting; released=0", timeout: 5)
         app.buttons["refreshOtherTab"].tap()
         XCTAssertTrue(app.staticTexts["refreshOtherTabContent"].waitForExistence(timeout: 3))
         expectLabel(app.staticTexts["refreshReadCounts"], "started=2; completed=1; cancelled=1", timeout: 5)
+        expectLabel(app.staticTexts["refreshResponseGate"], "gate=closed; released=0", timeout: 5)
         XCTAssertTrue(app.staticTexts["refreshAppliedState"].label.contains("revision=1;"), "취소된 응답은 원격 문서를 적용하면 안 된다")
         assertNoCancelledBanner(app)
         app.buttons["refreshPlanTab"].tap()
+        expectLabel(app.staticTexts["refreshFreshReturn"], "returnFresh=true", timeout: 5)
         expectLabel(app.staticTexts["refreshReadCounts"], "started=3; completed=2; cancelled=1", timeout: 10)
         expectLabel(app.staticTexts["refreshAppliedState"], "revision=2; first=합성 복귀 최신 장소; fresh=true")
         assertActualPlanRow(app, contains: "합성 복귀 최신 장소")

@@ -11,6 +11,7 @@ struct RefreshReviewHarness: View {
     @State private var discovery: MapDiscoveryModel?
     @State private var showsPlan = true
     @State private var showsMap = false
+    @State private var lastReturnWasFresh: Bool?
 
     private var cancellationScenario: Bool { ProcessInfo.processInfo.arguments.contains("--review-refresh-cancel") }
     private var remoteName: String { cancellationScenario ? "합성 복귀 최신 장소" : "합성 당김 최신 장소" }
@@ -24,7 +25,10 @@ struct RefreshReviewHarness: View {
             VStack(spacing: Space.s) {
                 diagnostics
                 HStack(spacing: Space.m) {
-                    Button("합성 일정 탭") { showsPlan = true }
+                    Button("합성 일정 탭") {
+                        lastReturnWasFresh = freshRead
+                        showsPlan = true
+                    }
                         .accessibilityIdentifier("refreshPlanTab")
                     Button("합성 다른 탭") { showsPlan = false }
                         .accessibilityIdentifier("refreshOtherTab")
@@ -61,27 +65,41 @@ struct RefreshReviewHarness: View {
                 .font(.caption).accessibilityIdentifier("refreshAppliedState")
             Text("load=\(model?.loadErrorMessage ?? "none"); save=\(model?.saveErrorMessage ?? "none")")
                 .font(.caption).accessibilityIdentifier("refreshErrorState")
-            Button("다음 GET 8초 지연 · 원격 변경 준비") {
-                source.armRemoteChange(name: remoteName)
+            Text("gate=\(source.isResponseHeld ? "waiting" : "closed"); released=\(source.releasedReads)")
+                .font(.caption).accessibilityIdentifier("refreshResponseGate")
+            Text("returnFresh=\(lastReturnWasFresh.map { $0 ? "true" : "false" } ?? "unset")")
+                .font(.caption).accessibilityIdentifier("refreshFreshReturn")
+            HStack {
+                Button("다음 GET 보류 · 원격 변경 준비") {
+                    source.armRemoteChange(name: remoteName)
+                }
+                .font(.caption)
+                .frame(minHeight: 44)
+                .disabled(model?.document == nil || !freshRead || source.inFlightReads != 0 || source.isArmed)
+                .accessibilityIdentifier("refreshArmDelayedRead")
+                Button("합성 GET 응답 보내기") { source.releaseHeldRead() }
+                    .font(.caption).frame(minHeight: 44)
+                    .disabled(!source.isResponseHeld)
+                    .accessibilityIdentifier("refreshReleaseRead")
             }
-            .font(.caption)
-            .frame(minHeight: 44)
-            .disabled(model?.document == nil || !freshRead || source.inFlightReads != 0 || source.isArmed)
-            .accessibilityIdentifier("refreshArmDelayedRead")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, Space.l)
     }
 }
 
-/// 8초 대기는 취소를 전파한다. 취소된 GET는 새 문서·revision을 전달하거나 완료로 세지 않는다.
+/// 응답은 테스트가 버튼으로 해제할 때까지 suspend한다. 타이머나 UI idle 타이밍에 의존하지 않는다.
+/// 실제 refreshable Task의 취소는 continuation을 URLError.cancelled로 깨운다.
 @Observable @MainActor
 private final class RefreshReviewSource: TripDocumentSource {
     private(set) var startedReads = 0
     private(set) var completedReads = 0
     private(set) var cancelledReads = 0
+    private(set) var releasedReads = 0
     private(set) var isArmed = false
     private var remote: TripDocumentSnapshot
+    private var heldRead: (number: Int, continuation: CheckedContinuation<Void, Error>)?
+    var isResponseHeld: Bool { heldRead != nil }
     var inFlightReads: Int { startedReads - completedReads - cancelledReads }
     let trip = TripSummary(id: "synthetic-refresh", name: "합성 새로고침 여행", start: "2026-10-16", dayCount: 1,
         revision: 1, updatedAt: "", timeZone: "Asia/Seoul", cities: [], todayIndex: 0,
@@ -97,10 +115,19 @@ private final class RefreshReviewSource: TripDocumentSource {
 
     func document(tripId: String) async throws -> TripDocumentSnapshot {
         startedReads += 1
-        let delayed = isArmed, response = remote
+        let gated = isArmed, response = remote, number = startedReads
         isArmed = false
         do {
-            if delayed { try await Task.sleep(for: .seconds(8)) }
+            if gated {
+                try await withTaskCancellationHandler(operation: {
+                    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                        guard !Task.isCancelled else { continuation.resume(throwing: CancellationError()); return }
+                        heldRead = (number, continuation)
+                    }
+                }, onCancel: {
+                    Task { @MainActor [weak self] in self?.cancelHeldRead(number: number) }
+                })
+            }
             try Task.checkCancellation()
         } catch {
             cancelledReads += 1
@@ -108,6 +135,19 @@ private final class RefreshReviewSource: TripDocumentSource {
         }
         completedReads += 1
         return response
+    }
+
+    func releaseHeldRead() {
+        guard let pending = heldRead else { return }
+        heldRead = nil
+        releasedReads += 1
+        pending.continuation.resume()
+    }
+
+    private func cancelHeldRead(number: Int) {
+        guard let pending = heldRead, pending.number == number else { return }
+        heldRead = nil
+        pending.continuation.resume(throwing: URLError(.cancelled))
     }
 
     func saveDocument(tripId: String, document: TripDocument, expectedRevision: Int) async throws -> TripDocumentSnapshot {
