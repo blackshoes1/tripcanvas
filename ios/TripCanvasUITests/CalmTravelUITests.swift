@@ -29,7 +29,8 @@ final class CalmTravelUITests: XCTestCase {
         let error = app.staticTexts["quickChoiceError"]
         for _ in 0..<6 where !error.isHittable { app.swipeUp() }
         XCTAssertTrue(error.waitForExistence(timeout: 5)); XCTAssertFalse(app.staticTexts["quickChoiceSaved"].exists)
-        XCTAssertFalse(app.buttons["quickChooseCurrent"].isEnabled)
+        XCTAssertFalse(app.buttons["quickChooseCurrent"].exists)
+        XCTAssertFalse(app.buttons["quickChooseAlternative"].exists)
         captureTravelUX(app, "quick-choice-failed-save")
     }
     func testStaffOriginalPreservesTypedSpaceAndTomorrowShowsExactDate() {
