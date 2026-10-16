@@ -23,6 +23,8 @@ import XCTest
     func testExpiredOfflineAndInvalidAssuranceRequiresNewCheck() throws {
         let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-10-16T12:00:00Z"))
         let moment = CalmMoment(state: "RELAX", text: "여유 30분", expiresAt: "2026-10-16T12:01:00.000Z")
+        XCTAssertTrue(CalmMomentPresentation.recentlyGenerated("2026-10-16T12:00:00Z", now: now))
+        XCTAssertFalse(CalmMomentPresentation.recentlyGenerated("2026-10-16T11:58:00Z", now: now))
         XCTAssertEqual(CalmMomentPresentation.text(moment, offline: false, now: now), "여유 30분")
         for (offline, date) in [(true, now), (false, now.addingTimeInterval(60))] {
             XCTAssertTrue(CalmMomentPresentation.text(moment, offline: offline, now: date).contains("다시 확인"))
@@ -63,6 +65,7 @@ import XCTest
         source.snapshot = .init(document: source.snapshot.document, revision: 9, role: .owner)
         await model.undo()
         XCTAssertTrue(model.requiresRefresh)
+        XCTAssertFalse(model.isSaved)
         XCTAssertEqual(source.snapshot.revision, 9)
         XCTAssertEqual(source.snapshot.document.days[1].spots[0].name, "강변 산책")
     }

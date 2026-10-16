@@ -31,7 +31,7 @@ final class QuickChoiceModel: Identifiable {
     private(set) var isWorking = false
     private(set) var error: String?
     private(set) var requiresRefresh = false
-    var isSaved: Bool { saved != nil }
+    var isSaved: Bool { saved != nil && !requiresRefresh }
     var canUndo: Bool { saved != nil && !requiresRefresh }
 
     init(tripID: String, day: Int, activity: ActivitySummary, revision: Int, source: TripDocumentSource) {
@@ -104,6 +104,7 @@ struct QuickChoiceView: View {
     @State var model: QuickChoiceModel
     let onRefresh: () -> Void
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var phase
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -111,14 +112,16 @@ struct QuickChoiceView: View {
                     Text("지금 마음 가는 쪽으로").font(.title2)
                     Text("둘 중 한 곳만 일정에 남겨 계산해요. 버튼을 누르면 바로 저장돼요.").font(.subheadline).foregroundStyle(Ink.soft)
                     if let spot = model.spot {
-                        if model.isSaved {
+                        if model.requiresRefresh {
+                            Label("최신 선택 확인 필요", systemImage: "arrow.triangle.2.circlepath")
+                        } else if model.isSaved {
                             Label("저장됨 · \(spot.name)", systemImage: "checkmark.circle.fill").accessibilityIdentifier("quickChoiceSaved")
                             if model.canUndo { Button("선택 되돌리기") { Task { await model.undo(); await model.load() } }.frame(minHeight: 44).accessibilityIdentifier("quickChoiceUndo") }
                         } else if let choice = spot.choice {
                             option(spot, alternative: false)
                             option(choice.alternative, alternative: true)
                         }
-                    } else if !model.isWorking, model.error != nil, !model.requiresRefresh {
+                    } else if !model.isWorking, !model.requiresRefresh {
                         Button("다시 불러오기") { Task { await model.load() } }.frame(minHeight: 44)
                     }
                     if model.isWorking { ProgressView("선택을 확인하고 있어요") }
@@ -130,7 +133,7 @@ struct QuickChoiceView: View {
             }.paperGround().navigationTitle("두 곳 중 고르기").navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement: .cancellationAction) { Button("닫기") { dismiss() }.disabled(model.isWorking) } }
                 .interactiveDismissDisabled(model.isWorking)
-                .task { await model.load() }
+                .task(id: phase) { if phase == .active { await model.load() } }
         }
     }
     private func option(_ spot: TripSpot, alternative: Bool) -> some View {

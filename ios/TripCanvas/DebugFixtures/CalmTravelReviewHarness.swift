@@ -27,7 +27,7 @@ import Observation
                         expiresAt: ISO8601DateFormatter().string(from: Date().addingTimeInterval(ProcessInfo.processInfo.arguments.contains("--review-calm-expired") ? -60 : 600))), offline: false, onRefresh: {})
                     TomorrowBriefCard(trip: trip, brief: .init(dayIndex: 1, date: "2026-10-17", firstPlace: "합성 미술관",
                         departureMinutes: 540, travelTimeSource: .straightLineEstimate,
-                        checkouts: ["합성 숙소"], reservations: ["13:00 · 합성 약속"]), offline: false,
+                        checkouts: ["합성 숙소"], reservations: ["13:00 · 합성 약속"]), generatedAt: ISO8601DateFormatter().string(from: Date()), offline: false,
                         onOpenDay: { openedDay = "Day 2 · 10월 17일 일정 열림" }, onPrepareOffline: { openedDay = "오프라인 준비 열림" })
                     Text(openedDay).accessibilityIdentifier("calmOpenedDay")
                 }.padding(Space.l)

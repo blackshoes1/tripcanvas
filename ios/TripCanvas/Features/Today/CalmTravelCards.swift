@@ -1,6 +1,11 @@
 import SwiftUI
 
 enum CalmMomentPresentation {
+    static func recentlyGenerated(_ value: String, now: Date) -> Bool {
+        guard let generated = ISO8601DateFormatter().date(from: value) ?? fractional.date(from: value) else { return false }
+        let age = now.timeIntervalSince(generated)
+        return age >= -30 && age < 60
+    }
     static func isCurrent(_ moment: CalmMoment, offline: Bool, now: Date) -> Bool {
         guard !offline, ["RELAX", "CHECK"].contains(moment.state),
               let expiry = ISO8601DateFormatter().date(from: moment.expiresAt) ?? fractional.date(from: moment.expiresAt) else { return false }
@@ -38,14 +43,16 @@ struct CalmMomentCard: View {
 struct TomorrowBriefCard: View {
     let trip: TripSummary
     let brief: TomorrowBrief
+    let generatedAt: String
     let offline: Bool
     let onOpenDay: () -> Void
     let onPrepareOffline: () -> Void
     @Environment(AppEnvironment.self) private var env
     @State private var pack: OfflineTrip?
     var body: some View {
+        TimelineView(.periodic(from: .now, by: 30)) { context in
         VStack(alignment: .leading, spacing: Space.s) {
-            Label(offline ? "저장된 다음 날 준비" : "내일 아침 30초", systemImage: "sunrise")
+            Label(offline || !CalmMomentPresentation.recentlyGenerated(generatedAt, now: context.date) ? "저장된 다음 날 준비" : "내일 아침 30초", systemImage: "sunrise")
                 .font(.headline).accessibilityIdentifier("tomorrowBriefTitle")
             Text(trip.dayLabel(brief.dayIndex)).font(.subheadline).foregroundStyle(Ink.soft)
             if let first = brief.firstPlace {
@@ -56,11 +63,17 @@ struct TomorrowBriefCard: View {
             } else { Text("아직 첫 장소가 정해지지 않았어요") }
             ForEach(Array(brief.checkouts.enumerated()), id: \.offset) { _, name in Text("체크아웃 · \(name)") }
             if brief.reservations.isEmpty { Text("저장된 예약 없음").foregroundStyle(Ink.soft) }
-            ForEach(Array(brief.reservations.enumerated()), id: \.offset) { _, text in Text("예약 · \(text)") }
+            ForEach(Array(brief.reservations.prefix(3).enumerated()), id: \.offset) { _, text in Text("예약 · \(text)") }
+            if brief.reservations.count > 3 {
+                DisclosureGroup("예약 \(brief.reservations.count - 3)건 더 보기") {
+                    ForEach(Array(brief.reservations.dropFirst(3).enumerated()), id: \.offset) { _, text in Text("예약 · \(text)") }
+                }
+            }
             Text(offlineStatus).font(.caption).foregroundStyle(Ink.soft).accessibilityIdentifier("tomorrowOfflineStatus")
             Button("내일 일정 확인", action: onOpenDay).frame(minHeight: 44).accessibilityIdentifier("tomorrowOpenDay")
             Button("오프라인 준비 확인", action: onPrepareOffline).frame(minHeight: 44)
         }.card()
+        }
         .task(id: "\(trip.revision)-\(String(describing: env.service.cacheScope))") {
             let scope = env.service.cacheScope
             let received = await env.service.offlineTrip(trip.id)

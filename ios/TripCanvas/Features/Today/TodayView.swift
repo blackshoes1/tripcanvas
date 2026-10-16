@@ -187,7 +187,7 @@ struct TodayView: View {
                         travelModeInviteSection
 
                         if let brief = today.tomorrowBrief {
-                            TomorrowBriefCard(trip: today.trip, brief: brief, offline: model.isOffline,
+                            TomorrowBriefCard(trip: today.trip, brief: brief, generatedAt: today.generatedAt, offline: model.isOffline,
                                 onOpenDay: { if let onOpenPlanDay { onOpenPlanDay(brief.dayIndex) } else { onOpenPlan() } },
                                 onPrepareOffline: { onOpenOffline?() })
                         }
