@@ -1350,7 +1350,26 @@
     if(state.nextFixed) candidates.push(state.nextFixed.startMin);
     return Math.round(Math.min.apply(null, candidates));
   }
-  const API={ADAPT_CFG, MEAL_WINDOWS, DAY_SEGMENTS, SAFETY_BUFFER, NOTIFICATION_KINDS, safetyBufferFor, departurePlan, tripPulse, stateVersion, notificationPlan, pendingNotifications, suggestionExpiryMin, parseIntent, resolveIntent, departureAdvice, fillGaps, planDayFlow, segmentLabel, currentDayIndex, daysUntilStart, weekdayOf, commitmentOf, priorityOf, statusOf, planningModeHint,
+  /** A short permission to stop checking the phone. No assurance from estimates or stale/offline data.
+   * @param {any} state @param {{routed:boolean,needsReplan:boolean,departure:any}} opts
+   * @returns {{state:'RELAX'|'CHECK',text:string}|null} */
+  function calmMoment(state, opts) {
+    if(!state.live || !state.nextItem || opts.needsReplan) return null;
+    if(state.items.some((/** @type {any} */ it)=>it.spot?.choice?.state==='PENDING')) return null;
+    const departure=opts.departure;
+    if(!departure || state.nextItem.status==='IN_PROGRESS') return null;
+    if(!opts.routed || !state.currentLocation || !state.nextItem.location)
+      return {state:'CHECK',text:'이동 정보가 부족해 출발 여유를 확인해야 해요.'};
+    const free=Math.floor(departure.leaveMin-state.nowMin);
+    if(departure.level!=='EARLY' || free<15) return null;
+    return {state:'RELAX',text:`다음 출발까지 ${free}분 여유예요. 지금은 여행을 즐겨도 괜찮아요.`};
+  }
+  /** @param {any} state @returns {number|null} */
+  function eveningBriefDay(state) {
+    return state.live && state.currentDay===state.todayIndex && state.nowMin>=18*60
+      && state.todayIndex+1<state.dayCount ? state.todayIndex+1 : null;
+  }
+  const API={calmMoment, eveningBriefDay, ADAPT_CFG, MEAL_WINDOWS, DAY_SEGMENTS, SAFETY_BUFFER, NOTIFICATION_KINDS, safetyBufferFor, departurePlan, tripPulse, stateVersion, notificationPlan, pendingNotifications, suggestionExpiryMin, parseIntent, resolveIntent, departureAdvice, fillGaps, planDayFlow, segmentLabel, currentDayIndex, daysUntilStart, weekdayOf, commitmentOf, priorityOf, statusOf, planningModeHint,
     buildTripState, findFreeWindows, mealOverlap, buildCandidates, rankNextActions, simulate, generateReplan, previewStayExtension,
     suggestionKey, buildSuggestions, feedbackEntry, travelMinutes, moveModeTo, durText, josa, replanDropNote, isLodging, isLightDay, mealCoveredBy};
   if(typeof module!=='undefined' && module.exports) module.exports=API;   // Node (테스트)

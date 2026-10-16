@@ -3,6 +3,25 @@ import XCTest
 
 @MainActor
 final class DailyMomentsTests: XCTestCase {
+    func testCancelledReadRetainsConfirmedRowsAndOriginalCheckTime() async {
+        let source = DailyMomentsFakeSource(), model = DailyMomentsViewModel(tripId: "trip", dayIndex: 0, service: source)
+        await model.load()
+        let before = model.response, checked = model.checkedAt
+        source.failure = URLError(.cancelled)
+        await model.load()
+        XCTAssertNil(model.errorMessage); XCTAssertFalse(model.isLoading)
+        XCTAssertEqual(model.response, before); XCTAssertEqual(model.checkedAt, checked)
+        source.failure = nil
+        await model.load()
+        XCTAssertNotNil(model.checkedAt)
+    }
+    func testCancelledReadDoesNotEraseAnActualFailure() async {
+        let source = DailyMomentsFakeSource(), model = DailyMomentsViewModel(tripId: "trip", dayIndex: 0, service: source)
+        source.failure = APIError.offline; await model.load()
+        let error = model.errorMessage
+        source.failure = CancellationError(); await model.load()
+        XCTAssertEqual(model.errorMessage, error)
+    }
     func testSavedResponseWinsAndWithdrawOnlyClearsMyChoice() async {
         let source = DailyMomentsFakeSource(), model = DailyMomentsViewModel(tripId: "trip", dayIndex: 0, service: source)
         await model.load()

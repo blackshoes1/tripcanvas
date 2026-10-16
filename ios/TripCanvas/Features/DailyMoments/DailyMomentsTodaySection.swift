@@ -21,6 +21,7 @@ struct DailyMomentsImpactSection: View {
     var removedActivityIds: [String] = []
     var initiallyExpanded = true
     @Environment(AppEnvironment.self) private var env
+    @Environment(\.scenePhase) private var phase
     @State private var model: DailyMomentsViewModel?
     @State private var expanded: Bool
 
@@ -44,6 +45,7 @@ struct DailyMomentsImpactSection: View {
                     }
                     if let response = model.response, response.revision == revision, model.errorMessage == nil {
                         DailyMomentsSummary(response: response, showsTitle: false)
+                        if let checked = model.checkedAt { Text("마지막 확인 \(TimeFormat.shortTime(checked))").font(.caption).foregroundStyle(Ink.soft) }
                         ForEach(DailyMomentImpactText.make(response.moments, changed: changedActivityIds, removed: removedActivityIds), id: \.self) { line in
                             Text(line).font(.subheadline).foregroundStyle(Ink.warning)
                         }
@@ -59,10 +61,17 @@ struct DailyMomentsImpactSection: View {
             }
             .padding(.top, Space.s)
         }
-        .task(id: "\(expanded)-\(dayIndex)-\(revision)") {
-            guard expanded else { return }
+        .task(id: "\(expanded)-\(dayIndex)-\(revision)-\(phase)") {
+            guard expanded, phase == .active else { return }
             if model == nil { model = DailyMomentsViewModel(tripId: trip.id, dayIndex: dayIndex, service: env.service) }
             await model?.load(dayIndex: dayIndex)
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .seconds(30)) } catch { return }
+                await model?.load(dayIndex: dayIndex)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .dailyMomentsChanged)) { note in
+            if expanded, note.object as? String == trip.id { Task { await model?.load(dayIndex: dayIndex) } }
         }
         .onChange(of: expanded) { _, open in
             if !open { model = nil }

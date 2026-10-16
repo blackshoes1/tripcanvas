@@ -8,6 +8,10 @@ struct SpotChoice: Hashable, Sendable {
     var state: State
     var decideBy: String?
 
+    func replacingAlternative(_ spot: TripSpot) -> SpotChoice {
+        var edited = self; edited.alternative = spot; return edited
+    }
+
     static let slotKeys = ["at", "who", "split", "reunion", "must", "opt"]
 
     static func unavailableReason(_ spot: TripSpot, allowsFinished: Bool = false) -> String? {

@@ -20,13 +20,13 @@ struct StaffShowDetails: Hashable, Sendable {
     }
     private mutating func set(_ key: String, _ text: String, limit: Int) {
         let value = Self.text(text, limit: limit)
-        raw.setOrRemove(key, value.isEmpty ? nil : .string(value))
+        raw.setOrRemove(key, value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : .string(value))
     }
     /// 서버 문자열 상한과 같은 UTF-16 단위. 이모지·결합 문자를 중간에서 자르지 않는다.
     private static func text(_ value: String?, limit: Int) -> String {
-        let trimmed = (value ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         var count = 0
-        return String(trimmed.prefix { character in
+        // TextField writes on every keystroke. Preserve trailing spaces/newlines while editing.
+        return String((value ?? "").prefix { character in
             count += String(character).utf16.count
             return count <= limit
         })
@@ -54,6 +54,11 @@ extension TripBooking {
 
 /// 표시 전용 값. 네트워크·번역·위치 조회가 없어 저장된 문서만으로 오프라인에서도 열린다.
 struct StaffShowCard: Identifiable, Hashable, Sendable {
+    enum Audience: String, CaseIterable, Identifiable {
+        case driver, reservation
+        var id: String { rawValue }
+        var label: String { self == .driver ? "택시기사에게" : "숙소·예약 직원에게" }
+    }
     struct Fact: Identifiable, Hashable, Sendable {
         let label: String
         let value: String

@@ -98,6 +98,13 @@ final class StayExtensionModel: Identifiable {
             preview = fetched
         } catch {
             guard generation == request else { return }
+            guard !ReadCancellation.shouldIgnore(error) else { return }
+            if let api = error as? APIError {
+                switch api {
+                case .revisionConflict, .stale, .notFound: requiresReopen = true
+                default: break
+                }
+            }
             self.error = error.localizedDescription
         }
     }
@@ -172,14 +179,14 @@ struct StayExtensionSheet: View {
                              : "이동시간에 추정 또는 미확인 구간이 있어요. 예약·교통편은 현장 상황도 확인해 주세요.")
                             .font(.caption).foregroundStyle(Ink.soft)
                         if let reason = p.reason { Text(reason).foregroundStyle(Ink.warning) }
-                        PrimaryActionButton(title: "이렇게 보내기", systemImage: "checkmark", isBusy: model.isApplying) {
+                        PrimaryActionButton(title: "\(p.extraMinutes)분 더 머물기 적용", systemImage: "checkmark", isBusy: model.isApplying) {
                             Task { if let response = await model.apply() { onApplied(response); dismiss() } }
                         }.disabled(!p.feasible || model.isApplying).accessibilityIdentifier("stayApply")
                     }
                     if let error = model.error {
                         Text(error).foregroundStyle(Ink.warning).accessibilityIdentifier("stayError")
                         if model.requiresReopen {
-                            Button("최신 일정 확인") { onRefresh(); dismiss() }.frame(minHeight: 44)
+                            Button("최신 일정에서 다시 확인") { onRefresh(); dismiss() }.frame(minHeight: 44)
                         } else {
                             Button("다시 계산") { Task { await model.select(model.minutes) } }.frame(minHeight: 44)
                         }
@@ -187,7 +194,7 @@ struct StayExtensionSheet: View {
                 }.padding(Space.l)
             }
             .paperGround().navigationTitle("조금 더 머물기")
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("원래대로") { dismiss() }.disabled(model.isApplying) } }
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("취소") { dismiss() }.disabled(model.isApplying) } }
             .interactiveDismissDisabled(model.isApplying)
             .task { await model.select(model.minutes) }
         }

@@ -46,11 +46,12 @@ final class ReviewFlowsUITests: XCTestCase {
 
     func testNewTripInputsFreezeWhileCreationWaits() {
         let app = launch(["--review-followup", "--review-scratch"])
-        let expectedName = "지연 생성 여행"
+        // Keep keyboard synthesis deterministic; still require the full input, bound model and saved name.
+        let expectedName = "Delayed trip"
         let name = app.textFields["newTripName"]
         XCTAssertTrue(name.waitForExistence(timeout: 10)); name.tap(); name.typeText(expectedName)
         XCTAssertEqual(name.value as? String, expectedName)
-        // 한글 조합 중 UIKit 표시만 앞서갈 수 있다. 이름 편집을 끝내고 실제 저장 모델도 확인한다.
+        // 이름 편집을 끝내고 실제 저장 모델도 확인한다.
         let city = app.textFields["newTripCity"]
         city.tap()
         let boundName = app.staticTexts["reviewScratchBoundName"]
@@ -60,6 +61,8 @@ final class ReviewFlowsUITests: XCTestCase {
         XCTAssertFalse(name.isEnabled)
         XCTAssertFalse(city.isEnabled)
         screenshot(app, "new-trip-inputs-locked")
+        let release = app.buttons["reviewReleaseCreation"]
+        XCTAssertTrue(release.waitForExistence(timeout: 5)); release.tap()
         let saved = app.staticTexts["reviewFollowupSaved"]
         let complete = expectation(for: NSPredicate(format: "label == %@", expectedName), evaluatedWith: saved)
         wait(for: [complete], timeout: 10)

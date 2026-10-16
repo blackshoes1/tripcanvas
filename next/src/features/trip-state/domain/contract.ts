@@ -203,6 +203,8 @@ export interface TravelActivityState {
 export type TravelTimeSource = 'STRAIGHT_LINE_ESTIMATE' | 'ROUTED';
 
 export interface TodayResponse {
+  calmMoment?: { state: 'RELAX' | 'CHECK'; text: string; expiresAt: string } | null;
+  tomorrowBrief?: TomorrowBrief | null;
   schemaVersion: number;
   generatedAt: string;
   travelTimeSource: TravelTimeSource;
@@ -228,6 +230,22 @@ export interface TodayResponse {
    * 엔진 `buildSuggestions().notice` 그대로다 — 웹이 같은 문장을 보인다. 할 말이 없으면 null.
    */
   notice: string | null;
+}
+
+export interface TomorrowBrief {
+  dayIndex: number;
+  date: string;
+  firstPlace: string | null;
+  departureMinutes: number | null;
+  travelTimeSource: TravelTimeSource;
+  checkouts: string[];
+  reservations: string[];
+}
+
+export interface ChoiceComparison {
+  revision: number;
+  activityId: string;
+  choices: { alternative: boolean; travel: DayPlanLeg | null }[];
 }
 
 /**

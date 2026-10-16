@@ -1,0 +1,36 @@
+{
+  "revision": 2,
+  "activityId": "d0s1",
+  "choices": [
+    {
+      "alternative": false,
+      "travel": {
+        "from": {
+          "lat": 37,
+          "lng": 127
+        },
+        "mode": "walk",
+        "minutes": 19,
+        "distanceKm": 1.4,
+        "path": null,
+        "source": "STRAIGHT_LINE_ESTIMATE",
+        "walkInstead": false
+      }
+    },
+    {
+      "alternative": true,
+      "travel": {
+        "from": {
+          "lat": 37,
+          "lng": 127
+        },
+        "mode": "walk",
+        "minutes": 190,
+        "distanceKm": 14.2,
+        "path": null,
+        "source": "STRAIGHT_LINE_ESTIMATE",
+        "walkInstead": false
+      }
+    }
+  ]
+}

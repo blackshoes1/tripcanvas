@@ -27,11 +27,16 @@ export class PgDailyMomentRepository implements DailyMomentRepository {
       if (!member || member.status !== 'ACTIVE') throw new ApiError('NOT_FOUND');
       if (trip.revision !== input.expectedRevision) throw new ApiError('STALE_VERSION', { details: { revision: trip.revision } });
       const key = and(eq(tripDailyMoments.tripId, input.tripId), eq(tripDailyMoments.dayKey, input.dayKey), eq(tripDailyMoments.userId, input.userId));
-      if (input.spotKey === null) { await tx.delete(tripDailyMoments).where(key); return; }
-      await tx.insert(tripDailyMoments).values({ tripId: input.tripId, dayKey: input.dayKey, userId: input.userId,
+      if (input.spotKey === null) { await tx.delete(tripDailyMoments).where(key); }
+      else await tx.insert(tripDailyMoments).values({ tripId: input.tripId, dayKey: input.dayKey, userId: input.userId,
         spotKey: input.spotKey, spotName: input.spotName ?? '' })
         .onConflictDoUpdate({ target: [tripDailyMoments.tripId, tripDailyMoments.dayKey, tripDailyMoments.userId],
           set: { spotKey: input.spotKey, spotName: input.spotName ?? '', updatedAt: sql`now()` } });
+      // A signal, not an activity-feed row. PostgreSQL delivers NOTIFY only after commit.
+      // id=0 identifies a non-durable invalidation; no wish/name/user content leaves the server.
+      await tx.execute(sql`select pg_notify('tc_realtime', ${JSON.stringify({
+        tripId: trip.id, clientId: trip.clientId, id: 0, kind: 'DAILY_MOMENT_CHANGED', actorId: input.userId
+      })})`);
     });
   }
 }

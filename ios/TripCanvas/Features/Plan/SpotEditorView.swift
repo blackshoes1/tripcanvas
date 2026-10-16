@@ -342,7 +342,8 @@ struct SpotEditorView: View {
                            draftKey: draftKey?.appending("alternative"),
                            allowsChoice: false,
                            onSave: { alternate in
-                               let choice = SpotChoice(alternative: alternate, state: .pending, decideBy: draft.choice?.decideBy)
+                               let choice = draft.choice?.replacingAlternative(alternate)
+                                   ?? SpotChoice(alternative: alternate, state: .pending, decideBy: nil)
                                if let error = choice.validationError(current: draft) { return error }
                                draft.choice = choice
                                return nil

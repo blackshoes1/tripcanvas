@@ -8,6 +8,9 @@ struct TodayView: View {
     /// 그래서 돌아왔을 때 서버를 기다리지 않고 마지막 내용이 그대로 보인다.
     let model: TodayViewModel
     let onOpenPlan: () -> Void
+    var onOpenActivity: ((Int, ActivitySummary) -> Void)? = nil
+    var onOpenPlanDay: ((Int) -> Void)? = nil
+    var onOpenOffline: (() -> Void)? = nil
     @State private var coverRefresh = UUID()
     @Environment(AppEnvironment.self) private var env
     @Environment(\.scenePhase) private var scenePhase
@@ -16,6 +19,7 @@ struct TodayView: View {
     /// 타이핑마다 서버를 부르지 않고, 보낸 뒤에도 고치던 글이 사라지지 않는다.
     @State private var intentDraft = ""
     @State private var stayExtension: StayExtensionModel?
+    @State private var quickChoice: QuickChoiceModel?
 
     var body: some View {
         ScrollView {
@@ -75,6 +79,9 @@ struct TodayView: View {
                         .card()
                     }
                     if let today = model.today {
+                        if let calm = today.calmMoment {
+                            CalmMomentCard(moment: calm, offline: model.isOffline) { Task { await model.load() } }
+                        }
                         if let next = today.nextAction, let activity = model.activity(id: next.activityId) {
                             NextActionCard(next: next, activity: activity, isEstimate: model.travelTimeIsEstimate,
                                            isBusy: !model.pending.isEmpty || model.isRetrying,
@@ -82,8 +89,15 @@ struct TodayView: View {
                                            onComplete: { Task { await model.complete(activity) } },
                                            onSkip: { Task { await model.skip(activity) } })
                             if activity.choiceState == "PENDING" {
-                                Button("아직 고르지 않은 일정이에요 · 일정에서 선택") { onOpenPlan() }
-                                    .frame(minHeight: 44)
+                                if model.canAct, !model.isOffline {
+                                    Button("두 곳 비교하고 고르기") {
+                                        quickChoice = QuickChoiceModel(tripID: trip.id, day: today.day.index,
+                                            activity: activity, revision: model.revision, source: env.service)
+                                    }.frame(minHeight: 44).accessibilityIdentifier("quickChoiceOpen")
+                                }
+                                Button("이 장소를 일정에서 확인") {
+                                    if let onOpenActivity { onOpenActivity(today.day.index, activity) } else { onOpenPlan() }
+                                }.frame(minHeight: 44)
                             }
                             if activity.choiceState != "PENDING" {
                                 TodayStaffShowButton(tripID: trip.id, activityID: activity.id,
@@ -172,6 +186,12 @@ struct TodayView: View {
                         // '여행 중' 권유는 할 일들 **아래**의 얇은 띠다 — 지금 할 일보다 먼저 읽히면 안 된다.
                         travelModeInviteSection
 
+                        if let brief = today.tomorrowBrief {
+                            TomorrowBriefCard(trip: today.trip, brief: brief, generatedAt: today.generatedAt, offline: model.isOffline,
+                                onOpenDay: { if let onOpenPlanDay { onOpenPlanDay(brief.dayIndex) } else { onOpenPlan() } },
+                                onPrepareOffline: { onOpenOffline?() })
+                        }
+
                         TodayMapCard(activities: today.activities, next: today.nextAction)
 
                         NavigationLink {
@@ -221,7 +241,10 @@ struct TodayView: View {
         .onChange(of: model.revision) { old, new in
             if old != new { Task { await refreshTravelMode(reason: .userAction) } }
         }
-        .onChange(of: env.service.cacheScope) { _, _ in stayExtension = nil }
+        .onChange(of: env.service.cacheScope) { _, _ in stayExtension = nil; quickChoice = nil }
+        .sheet(item: $quickChoice) { choice in
+            QuickChoiceView(model: choice, onRefresh: { Task { await model.load() } })
+        }
         .sheet(isPresented: $showsTravelSetup) {
             TravelModeSetupView {
                 await env.travelMode.start(trip: model.today?.trip ?? trip)

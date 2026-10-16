@@ -1,6 +1,14 @@
 import XCTest
 
 final class DailyMomentsUITests: XCTestCase {
+    func testCompanionChangeSignalRefreshesVisibleScreenWithoutDocumentRevisionChange() {
+        let app = launch()
+        XCTAssertTrue(app.staticTexts["영희: 노을 보기"].waitForExistence(timeout: 10))
+        app.buttons["simulateMomentChange"].tap()
+        XCTAssertTrue(app.staticTexts["영희: 바뀐 선택"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["영희: 노을 보기"].exists)
+        captureTravelUX(app, "daily-moment-live-update")
+    }
     private func launch(_ extras: [String] = []) -> XCUIApplication {
         continueAfterFailure = false
         let app = XCUIApplication()

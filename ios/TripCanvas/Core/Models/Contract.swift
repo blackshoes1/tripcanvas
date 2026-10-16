@@ -303,6 +303,8 @@ struct TravelActivityState: Codable, Hashable, Sendable {
 }
 
 struct TodayResponse: Codable, Hashable, Sendable {
+    var calmMoment: CalmMoment? = nil
+    var tomorrowBrief: TomorrowBrief? = nil
     let schemaVersion: Int
     let generatedAt: String
     let travelTimeSource: TravelTimeSource
@@ -321,6 +323,32 @@ struct TodayResponse: Codable, Hashable, Sendable {
     let intent: IntentEcho?
     /// 조정 카드 없이 늦는 날의 한 줄(엔진 `buildSuggestions().notice` — 웹과 같은 문장). 없거나 옛 서버면 nil.
     var notice: String? = nil
+}
+
+struct CalmMoment: Codable, Hashable, Sendable {
+    let state: String
+    let text: String
+    let expiresAt: String
+}
+
+struct ChoiceComparison: Codable, Hashable, Sendable {
+    struct Option: Codable, Hashable, Sendable {
+        let alternative: Bool
+        let travel: DayPlanLeg?
+    }
+    let revision: Int
+    let activityId: String
+    let choices: [Option]
+}
+
+struct TomorrowBrief: Codable, Hashable, Sendable {
+    let dayIndex: Int
+    let date: String
+    let firstPlace: String?
+    let departureMinutes: Int?
+    let travelTimeSource: TravelTimeSource
+    let checkouts: [String]
+    let reservations: [String]
 }
 
 /// "이렇게 이해했어요" — 서버가 `adaptive.js`로 해석한 결과.

@@ -2,6 +2,17 @@ import XCTest
 @testable import TripCanvas
 
 final class StaffShowTests: XCTestCase {
+    func testTypingOriginalOneCharacterAtATimePreservesSpacesAndNewlines() {
+        var details = StaffShowDetails()
+        for character in "John Doe" { details.bookingName += String(character) }
+        for character in "10 Rue Exemple\nParis" { details.address += String(character) }
+        XCTAssertEqual(details.bookingName, "John Doe")
+        XCTAssertEqual(details.address, "10 Rue Exemple\nParis")
+        details.localName = "Hôtel "
+        XCTAssertEqual(details.localName, "Hôtel ")
+        details.localName += "de Paris"
+        XCTAssertEqual(details.localName, "Hôtel de Paris")
+    }
     func testLocalNameIsOnlyTheExplicitOriginalAndNeverAnAutomaticTranslation() {
         let spot = TripSpot(name: "센소지", city: "도쿄")
         let card = StaffShowCard(spot: spot)
