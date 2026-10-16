@@ -107,6 +107,31 @@ final class ReadCancellationTests: XCTestCase {
         XCTAssertEqual(model.revision, 8)
     }
 
+    func testInjectedFreshnessSkipsReadUntilCancellationRequiresRetry() async throws {
+        let source = FakeDocumentService(snapshot: snapshot())
+        var reads = 0
+        source.documentHandler = { reads += 1; return source.snapshot }
+        let model = TripPlanViewModel(tripId: "t1", service: source, loadsPlans: false, documentFreshness: 600)
+        await model.load()
+        let loadedAt = try XCTUnwrap(model.loadedAt)
+        let later = loadedAt.addingTimeInterval(300)
+        await model.loadIfStale(now: later)
+        XCTAssertEqual(reads, 1, "주입한 600초 안에서는 재진입 조회를 생략한다")
+
+        source.documentHandler = { reads += 1; throw URLError(.cancelled) }
+        await model.load()
+        XCTAssertEqual(reads, 2)
+        XCTAssertEqual(model.loadedAt, loadedAt)
+        XCTAssertNil(model.loadErrorMessage)
+
+        source.snapshot = snapshot("최신 응답", revision: 8)
+        source.documentHandler = { reads += 1; return source.snapshot }
+        await model.loadIfStale(now: later)
+        XCTAssertEqual(reads, 3, "동일한 fresh 시각에도 취소된 조회는 다시 시도한다")
+        XCTAssertEqual(model.revision, 8)
+        XCTAssertNil(model.loadErrorMessage)
+    }
+
     func testCancelledDayPlanCannotStartMemberReadOrRemainLoading() async throws {
         let source = FakeDocumentService(snapshot: snapshot())
         let members = CancellationMembers()

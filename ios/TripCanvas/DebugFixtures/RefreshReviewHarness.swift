@@ -5,6 +5,9 @@ import Observation
 /// 실제 일정 목록의 refreshable 수명을 검증한다. 문서 소스만 합성으로 바꾸고 지도는 열지 않는다.
 @MainActor
 struct RefreshReviewHarness: View {
+    // XCTest는 refreshable이 진행 중이면 idle을 약 60초 기다릴 수 있다. 제품 기본값은 60초이며,
+    // 이 호스트만 600초를 주입해 취소 뒤 복귀가 시간 만료가 아닌 취소 플래그 때문에 GET하는지 본다.
+    private let documentFreshness: TimeInterval = 600
     @Environment(AppEnvironment.self) private var env
     @State private var source = RefreshReviewSource()
     @State private var model: TripPlanViewModel?
@@ -17,7 +20,7 @@ struct RefreshReviewHarness: View {
     private var remoteName: String { cancellationScenario ? "합성 복귀 최신 장소" : "합성 당김 최신 장소" }
     private var freshRead: Bool {
         guard let loadedAt = model?.loadedAt else { return false }
-        return Date().timeIntervalSince(loadedAt) < 60
+        return Date().timeIntervalSince(loadedAt) < documentFreshness
     }
 
     var body: some View {
@@ -51,7 +54,8 @@ struct RefreshReviewHarness: View {
             guard model == nil else { return }
             // MapDiscoveryModel의 생성자는 요청하지 않는다. showsMap=false라 지도와 검색은 생성·실행되지 않는다.
             discovery = MapDiscoveryModel(trip: source.trip, searcher: env.places, source: env.service)
-            model = TripPlanViewModel(tripId: source.trip.id, service: source, loadsPlans: false)
+            model = TripPlanViewModel(tripId: source.trip.id, service: source, loadsPlans: false,
+                                      documentFreshness: documentFreshness)
         }
     }
 
@@ -69,6 +73,8 @@ struct RefreshReviewHarness: View {
                 .font(.caption).accessibilityIdentifier("refreshResponseGate")
             Text("returnFresh=\(lastReturnWasFresh.map { $0 ? "true" : "false" } ?? "unset")")
                 .font(.caption).accessibilityIdentifier("refreshFreshReturn")
+            Text("freshWindow=\(Int(documentFreshness))")
+                .font(.caption).accessibilityIdentifier("refreshFreshWindow")
             HStack {
                 Button("다음 GET 보류 · 원격 변경 준비") {
                     source.armRemoteChange(name: remoteName)

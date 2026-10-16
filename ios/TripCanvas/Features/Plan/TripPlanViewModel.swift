@@ -18,6 +18,7 @@ final class TripPlanViewModel: DayPlanContext {
     let tripId: String
     private let memberSource: MemberListing?
     private let candidateSource: CollabSource?
+    private let documentFreshness: TimeInterval
     var isPresentingEditor = false
     private(set) var needsRemoteReload = false
 
@@ -36,11 +37,13 @@ final class TripPlanViewModel: DayPlanContext {
     ///   - initialDay: 처음 볼 날. **여행 목록이 이미 아는 값**(`TripSummary.todayIndex`)을 받는다 —
     ///     계산이 온 뒤에 옮기면 1일차를 보여 줬다가 오늘로 튄다.
     ///   - legRetryDelay: 경로가 채워지기를 기다리는 시간. 테스트는 짧게 준다.
+    ///   - documentFreshness: 탭 재진입 때 문서 재조회를 생략할 시간. 기본값은 60초다.
     init(tripId: String, service: TripDocumentSource, memberSource: MemberListing? = nil, candidateSource: CollabSource? = nil,
-         initialDay: Int = 0, legRetryDelay: TimeInterval = 3, loadsPlans: Bool = true) {
+         initialDay: Int = 0, legRetryDelay: TimeInterval = 3, loadsPlans: Bool = true, documentFreshness: TimeInterval = 60) {
         self.tripId = tripId
         self.memberSource = memberSource
         self.candidateSource = candidateSource ?? (service as? CollabSource)
+        self.documentFreshness = documentFreshness
         self.store = TripDocumentStore(tripId: tripId, service: service)
         self.cache = DayPlanCache(tripId: tripId, service: service, legRetryDelay: legRetryDelay, loadsPlans: loadsPlans)
         self.selectedDay = max(0, initialDay)
@@ -120,9 +123,10 @@ final class TripPlanViewModel: DayPlanContext {
 
     /// 탭에 들어올 때 부른다. 문서가 있고 방금 받은 것이면 아무것도 하지 않는다 — 탭을 오갈 때마다
     /// 문서·하루치를 다시 받으면 그때마다 로딩이 뜨고 고른 날이 튄다(2026-09-17).
-    func loadIfStale(maxAge: TimeInterval = 60, now: Date = Date()) async {
+    func loadIfStale(maxAge: TimeInterval? = nil, now: Date = Date()) async {
+        let limit = maxAge ?? documentFreshness
         if !needsRemoteReload, !store.needsReloadAfterCancelledRead,
-           document != nil, let loadedAt, now.timeIntervalSince(loadedAt) < maxAge { return }
+           document != nil, let loadedAt, now.timeIntervalSince(loadedAt) < limit { return }
         await load()
     }
 

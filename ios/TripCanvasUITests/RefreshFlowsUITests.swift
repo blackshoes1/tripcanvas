@@ -7,6 +7,9 @@ final class RefreshFlowsUITests: XCTestCase {
         app.launchArguments = ["--ios-review-ui", "--review-refresh", "-AppleLanguages", "(ko)", "-AppleLocale", "ko_KR"]
             + (cancellation ? ["--review-refresh-cancel"] : [])
         app.launch()
+        // 제품의 60초 기본값은 단위 테스트가 검사한다. 실제 refreshable의 XCTest idle 대기를
+        // 시간 만료와 혼동하지 않도록 이 DEBUG 호스트는 600초 창 안의 취소·복귀를 검증한다.
+        expectLabel(app.staticTexts["refreshFreshWindow"], "freshWindow=600")
         expectLabel(app.staticTexts["refreshReadCounts"], "started=1; completed=1; cancelled=0")
         expectLabel(app.staticTexts["refreshAppliedState"], "revision=1; first=합성 초기 장소; fresh=true")
         return app
