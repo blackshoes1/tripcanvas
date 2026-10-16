@@ -272,6 +272,7 @@ struct SpotEditorView: View {
 
                 actionsSection
             }
+            .accessibilityIdentifier(allowsChoice ? "spotEditorForm" : "alternativeSpotEditorForm")
             .background(SpotEditorKeyboardDismissal())
             .scrollDismissesKeyboard(.interactively)
             .disabled(saving.isWorking)
