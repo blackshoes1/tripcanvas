@@ -33,6 +33,9 @@ import XCTest
         let trip = TripSummary(id: "trip", name: "", start: "2026-10-31", dayCount: 3, revision: 1,
             updatedAt: "", timeZone: "Europe/Madrid", cities: [], todayIndex: 0, daysUntilStart: nil, role: nil, memberCount: nil)
         XCTAssertEqual(trip.dayLabel(1), "Day 2 · 11월 1일")
+        let response = DailyMomentsResponse(dayIndex: 1, dayKey: "date:2026-11-17", revision: 3, options: [], moments: [])
+        XCTAssertEqual(response.dayLabel(1), "Day 2 · 11월 17일")
+        XCTAssertEqual(response.dayLabel(0), "Day 1 · 11월 16일")
     }
     func testQuickChoiceSavesOneSlotAndUndoUsesConfirmedRevision() async {
         let source = QuickChoiceFakeSource(), model = make(source)

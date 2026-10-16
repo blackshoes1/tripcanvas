@@ -27,6 +27,8 @@ struct CalmMomentCard: View {
                 Label(CalmMomentPresentation.text(moment, offline: offline, now: context.date),
                       systemImage: moment.state == "RELAX" && CalmMomentPresentation.isCurrent(moment, offline: offline, now: context.date) ? "leaf" : "clock.badge.questionmark")
                     .font(.subheadline).accessibilityIdentifier("calmMomentText")
+                Text("계획한 동선과 조회한 경로 기준이에요. 현장 이동 상황은 달라질 수 있어요.")
+                    .font(.caption).foregroundStyle(Ink.soft)
                 Button("출발 여유 다시 확인", action: onRefresh).frame(minHeight: 44)
             }.card()
         }

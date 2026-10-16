@@ -138,7 +138,10 @@ struct QuickChoiceView: View {
             PlacePhotoView(placeId: spot.placeId, kakaoId: spot.kakaoId, name: spot.name)
             Text(spot.name).font(.headline)
             if let stay = spot.stayMinutes { Text("머무름 \(TimeFormat.duration(stay))").font(.subheadline) }
-            if let cost = spot.cost { Text("입력 비용 \(TimeFormat.money(cost, currency: spot.currency.rawValue))").font(.subheadline) }
+            if let cost = spot.cost {
+                let entry = CostEntry(spot: spot)
+                Text("입력 비용 \(entry.basis == .perPerson ? "1인 " : "")\(TimeFormat.money(cost, currency: entry.currency.rawValue))\(entry.basis == .perPerson ? " × \(entry.people)명" : "")").font(.subheadline)
+            }
             else { Text("비용 미정").font(.subheadline).foregroundStyle(Ink.soft) }
             if let leg = model.comparison?.choices.first(where: { $0.alternative == alternative })?.travel
                 ?? (alternative ? nil : model.plan?.incomingLeg) {

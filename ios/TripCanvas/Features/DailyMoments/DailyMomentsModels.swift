@@ -43,6 +43,14 @@ struct DailyMomentsResponse: Codable, Hashable, Sendable {
     let revision: Int
     let options: [DailyMomentOption]
     let moments: [DailyMoment]
+    func dayLabel(_ index: Int) -> String {
+        let prefix = "Day \(index + 1)"
+        guard dayKey.hasPrefix("date:"), let current = ISODateText.date(from: String(dayKey.dropFirst(5))),
+              let date = ISODateText.calendar.date(byAdding: .day, value: index - dayIndex, to: current) else { return prefix }
+        let parts = ISODateText.calendar.dateComponents([.month, .day], from: date)
+        guard let month = parts.month, let day = parts.day else { return prefix }
+        return "\(prefix) · \(month)월 \(day)일"
+    }
 }
 
 @MainActor

@@ -41,7 +41,7 @@ struct DailyMomentsView: View {
                 Section {
                     Picker("날짜", selection: Binding(get: { model.dayIndex }, set: { day in Task { await model.load(dayIndex: day) } })) {
                         ForEach(0..<max(1, trip.dayCount), id: \.self) { day in
-                            Text(trip.dayLabel(day)).tag(day)
+                            Text(model.response?.dayLabel(day) ?? trip.dayLabel(day)).tag(day)
                         }
                     }
                     .disabled(model.isSaving)
