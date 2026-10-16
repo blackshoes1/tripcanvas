@@ -32,6 +32,7 @@ struct DailyMomentsView: View {
     var initialDayIndex: Int? = nil
     var service: DailyMomentsSource? = nil
     @Environment(AppEnvironment.self) private var env
+    @Environment(\.scenePhase) private var phase
     @State private var model: DailyMomentsViewModel?
 
     var body: some View {
@@ -40,7 +41,7 @@ struct DailyMomentsView: View {
                 Section {
                     Picker("날짜", selection: Binding(get: { model.dayIndex }, set: { day in Task { await model.load(dayIndex: day) } })) {
                         ForEach(0..<max(1, trip.dayCount), id: \.self) { day in
-                            Text("Day \(day + 1)").tag(day)
+                            Text(trip.dayLabel(day)).tag(day)
                         }
                     }
                     .disabled(model.isSaving)
@@ -49,6 +50,7 @@ struct DailyMomentsView: View {
                     }
                     if model.isLoading { ProgressView() }
                     if let response = model.response { DailyMomentsSummary(response: response) }
+                    if let checked = model.checkedAt { Text("마지막 확인 \(TimeFormat.shortTime(checked))").font(.caption).foregroundStyle(Ink.soft) }
                 }
                 if let response = model.response {
                     Section {
@@ -94,11 +96,26 @@ struct DailyMomentsView: View {
         }
         .navigationTitle("각자 오늘 하나만")
         .navigationBarTitleDisplayMode(.inline)
-        .task {
+        .refreshable { await model?.load() }
+        .onReceive(NotificationCenter.default.publisher(for: .dailyMomentsChanged)) { note in
+            if note.object as? String == trip.id { Task { await model?.load() } }
+        }
+        .task(id: phase) {
+            guard phase == .active else { env.realtime.disconnect(key: liveKey); return }
             if model == nil { model = DailyMomentsViewModel(tripId: trip.id,
                 dayIndex: min(max(0, initialDayIndex ?? trip.todayIndex), max(0, trip.dayCount - 1)), service: service ?? env.service) }
+            if service == nil {
+                env.realtime.connect(tripId: trip.id, key: liveKey) { event in
+                    if event.kind == "DAILY_MOMENT_CHANGED" { Task { await model?.load() } }
+                }
+            }
             await model?.load()
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .seconds(30)) } catch { return }
+                await model?.load()
+            }
         }
-        .refreshable { await model?.load() }
+        .onDisappear { env.realtime.disconnect(key: liveKey) }
     }
+    private var liveKey: String { "daily-moments-\(trip.id)" }
 }

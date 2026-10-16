@@ -14,6 +14,7 @@ import { createPlanEditingHandlers } from './routes/planEditing';
 import { createPricesHandlers } from './routes/prices';
 import { createTripViewsHandlers } from './routes/tripViews';
 import { createStayExtensionHandlers } from './routes/stayExtension';
+import { createChoiceComparisonHandlers } from './routes/choiceComparison';
 
 import type { HandlerDeps } from './handlerKit';
 
@@ -31,6 +32,7 @@ export function createHandlers(deps: HandlerDeps) {
   return {
     ...createTripViewsHandlers(kit),
     ...createStayExtensionHandlers(kit),
+    ...createChoiceComparisonHandlers(kit),
     ...createPlanEditingHandlers(kit),
     ...createIntakeHandlers(kit),
     ...createDevicesHandlers(kit),

@@ -79,6 +79,31 @@ test('실제 PostgreSQL: CAS 권한 잠금과 경로 예산의 동시성', { tim
       assert.equal(result[0].record.revision, 2);
       assert.equal(result[1].record.revision, 2);
     });
+    await t.test('개인 선택 저장과 거두기는 커밋 뒤 내용 없는 갱신 신호를 발행', async () => {
+      const record = await repo.create({ ownerId: owner, clientId: randomUUID(), data: { name: 'signal', days: [] } });
+      const listener = await other.connect(), notifications = [];
+      const receive = msg => { const body = JSON.parse(msg.payload); if (body.tripId === record.id) notifications.push(body); };
+      listener.on('notification', receive);
+      try {
+        await listener.query('listen tc_realtime');
+        const moments = new PgDailyMomentRepository(db);
+        const input = { tripId: record.id, userId: owner, dayKey: 'date:2026-10-16', expectedRevision: 1, spotKey: 'cafe', spotName: 'private wish' };
+        for (const spotKey of ['cafe', null]) {
+          const expected = notifications.length + 1;
+          await moments.save({ ...input, spotKey });
+          for (let count = 0; count < 100 && notifications.length < expected; count++) await delay(10);
+          assert.equal(notifications.length, expected);
+          assert.deepEqual(notifications.at(-1), { tripId: record.id, clientId: record.clientId, id: 0, kind: 'DAILY_MOMENT_CHANGED', actorId: owner });
+          assert.equal(JSON.stringify(notifications).includes('private wish'), false);
+        }
+        assert.equal((await moments.list(record.id, input.dayKey)).length, 0);
+        assert.equal(Number((await writer.query('select revision from trips where id=$1', [record.id])).rows[0].revision), 1);
+        await assert.rejects(moments.save({ ...input, expectedRevision: 2 }));
+        await delay(20); assert.equal(notifications.length, 2);
+      } finally {
+        await listener.query('unlisten tc_realtime'); listener.off('notification', receive); listener.release();
+      }
+    });
     await t.test('개인별 오늘 하나는 동시 저장·거두기에도 일행 행과 다른 날을 보존', async () => {
       const record = await repo.create({ ownerId: owner, clientId: randomUUID(), data: { name: 'moments', days: [] } });
       await writer.query("insert into trip_members(trip_id,user_id,role,status,display_name) values($1,$2,'VIEWER','ACTIVE','영희')", [record.id, editor]);

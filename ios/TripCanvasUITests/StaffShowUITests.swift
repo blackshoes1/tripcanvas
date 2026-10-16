@@ -1,6 +1,19 @@
 import XCTest
 
 final class StaffShowUITests: XCTestCase {
+    func testDriverCardOmitsReservationIdentityAndNumber() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ios-review-ui", "--review-staff", "-AppleLanguages", "(ko)", "-AppleLocale", "ko_KR"]
+        app.launch()
+        XCTAssertTrue(app.buttons["staffShowOpen"].waitForExistence(timeout: 10)); app.buttons["staffShowOpen"].tap()
+        XCTAssertTrue(app.buttons["staffAudience"].waitForExistence(timeout: 5)); app.buttons["staffAudience"].tap()
+        app.buttons["택시기사에게"].tap()
+        XCTAssertTrue(app.staticTexts["staffShowAddress"].exists)
+        XCTAssertFalse(app.staticTexts["SYNTHETIC GUEST"].exists)
+        XCTAssertFalse(app.buttons["staffShowReveal"].exists)
+        XCTAssertFalse(app.staticTexts["staffShowConfirmation"].exists)
+        captureTravelUX(app, "staff-driver-minimal-card")
+    }
     func testOfflineStaffCardKeepsConfirmationHiddenUntilExplicitRevealAndHidesOnReopen() {
         let app = XCUIApplication()
         app.launchArguments = ["--ios-review-ui", "--review-staff", "--review-large", "--review-dark", "-AppleLanguages", "(ko)", "-AppleLocale", "ko_KR"]

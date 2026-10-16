@@ -329,7 +329,13 @@
       "mealFocus": false,
       "wantRest": false
     },
-    "notice": null
+    "notice": null,
+    "calmMoment": {
+      "state": "CHECK",
+      "text": "이동 정보가 부족해 출발 여유를 확인해야 해요.",
+      "expiresAt": "2026-09-01T04:01:00.000Z"
+    },
+    "tomorrowBrief": null
   },
   "pulse": {
     "code": "RESTING",

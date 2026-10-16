@@ -29,7 +29,9 @@ struct IOSReviewHarness: View {
 
     var body: some View {
         Group {
-            if arguments.contains("--review-followup") {
+            if arguments.contains("--review-calm") {
+                CalmTravelReviewHarness()
+            } else if arguments.contains("--review-followup") {
                 ReviewFollowupHarness()
             } else if arguments.contains("--review-refresh") {
                 RefreshReviewHarness()

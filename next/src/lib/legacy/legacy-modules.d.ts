@@ -444,6 +444,8 @@ declare module '@legacy/adaptive.js' {
     resolveIntent(text: string, base?: { energyLevel?: unknown; jTone?: string }): { energyLevel: EnergyLevel; prefs: Record<string, unknown>; reasons: string[]; understood: boolean };
     departureAdvice(state: TripState, item: TripItem | null, travelMin: number):
       { leaveMin: number; slackMin: number; level: 'EARLY' | 'NOW' | 'LATE'; text: string } | null;
+    calmMoment(state: TripState, opts: { routed: boolean; needsReplan: boolean; departure: unknown }): { state: 'RELAX' | 'CHECK'; text: string } | null;
+    eveningBriefDay(state: TripState): number | null;
     fillGaps(trip: unknown, state: TripState, opts?: Record<string, unknown>):
       { slots: { startMin: number; endMin: number; afterId: string | null; pick: NextActionCandidate }[]; impact: SuggestionImpact };
     planDayFlow(trip: unknown, state: TripState, opts?: Record<string, unknown>):

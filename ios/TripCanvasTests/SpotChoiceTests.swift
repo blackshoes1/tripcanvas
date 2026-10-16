@@ -3,6 +3,15 @@ import XCTest
 
 @MainActor
 final class SpotChoiceTests: XCTestCase {
+    func testEditingAlternativePreservesExplicitDecisionAndDeadline() {
+        var spot = pending(); spot.selectChoice(alternative: false)
+        var alternate = spot.choice!.alternative; alternate.desc = "메모만 변경"
+        spot.choice = spot.choice!.replacingAlternative(alternate)
+        XCTAssertEqual(spot.choice?.state, .selected)
+        XCTAssertEqual(spot.choice?.decideBy, "13:30")
+        XCTAssertEqual(spot.name, "미술관")
+        XCTAssertEqual(spot.choice?.alternative.desc, "메모만 변경")
+    }
     func testDecodesActualServerChoiceRangeFixture() throws {
         let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "choice-day-plan", withExtension: "json"))
         let response = try JSONDecoder().decode(DayPlanResponse.self, from: Data(contentsOf: url))

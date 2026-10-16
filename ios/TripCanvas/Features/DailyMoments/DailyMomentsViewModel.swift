@@ -9,6 +9,7 @@ final class DailyMomentsViewModel {
     private(set) var isSaving = false
     private(set) var errorMessage: String?
     private(set) var confirmation: String?
+    private(set) var checkedAt: Date?
     private var generation = 0
     private let tripId: String
     private let service: DailyMomentsSource
@@ -29,9 +30,10 @@ final class DailyMomentsViewModel {
         do {
             let received = try await service.dailyMoments(tripId: tripId, dayIndex: nextDay)
             guard request == generation, received.dayIndex == self.dayIndex else { return }
-            response = received; errorMessage = nil
+            response = received; errorMessage = nil; checkedAt = Date()
         } catch {
             guard request == generation else { return }
+            guard !ReadCancellation.shouldIgnore(error) else { return }
             clearIfAccessEnded(error)
             errorMessage = error.localizedDescription
         }
@@ -48,6 +50,7 @@ final class DailyMomentsViewModel {
                 expectedRevision: response.revision, spotKey: option?.key)
             guard received.dayIndex == dayIndex else { return }
             self.response = received
+            checkedAt = Date()
             confirmation = option == nil ? "내 선택을 거뒀어요" : "오늘 꼭 하고 싶은 하나를 남겼어요"
         } catch {
             // No optimistic replacement: offline/409 leaves the last confirmed wish visible.

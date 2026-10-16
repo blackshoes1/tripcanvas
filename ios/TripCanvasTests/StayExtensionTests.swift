@@ -3,6 +3,23 @@ import XCTest
 
 @MainActor
 final class StayExtensionTests: XCTestCase {
+    func testPreviewConflictRequiresLatestScheduleInsteadOfRepeatingOldRevision() async {
+        let source = StayFakeSource()
+        source.readError = APIError.revisionConflict(message: "일정이 바뀌었어요", revision: 3)
+        let model = StayExtensionModel(tripID: "parity", activityID: "d0s0", revision: 2, source: source)
+        await model.select(10)
+        XCTAssertTrue(model.requiresReopen)
+        await model.select(20)
+        XCTAssertEqual(source.reads, 1)
+        XCTAssertNil(model.preview)
+        XCTAssertEqual(source.writes, 0)
+    }
+    func testCancelledPreviewIsNotDisplayedAsNetworkFailure() async {
+        let source = StayFakeSource(); source.readError = URLError(.cancelled)
+        let model = StayExtensionModel(tripID: "parity", activityID: "d0s0", revision: 2, source: source)
+        await model.select(10)
+        XCTAssertNil(model.error); XCTAssertFalse(model.isLoading)
+    }
     func testLatePreviewCannotReplaceNewestDuration() async {
         let source = StayFakeSource()
         source.suspendFirst = true
@@ -68,10 +85,12 @@ final class StayExtensionTests: XCTestCase {
     var reads = 0
     var writes = 0
     var readFails = false
+    var readError: Error?
     var confirmed: StayExtensionPreview?
     var response: MutationResponse?
     func previewStay(tripId: String, activityId: String, minutes: Int, revision: Int) async throws -> StayExtensionPreview {
         reads += 1
+        if let readError { throw readError }
         if readFails { throw APIError.offline }
         if suspendFirst && reads == 1 { return try await withCheckedThrowingContinuation { pending = $0 } }
         return StayExtensionReviewSource.preview(minutes)

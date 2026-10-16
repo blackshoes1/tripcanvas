@@ -24,12 +24,21 @@ struct StaffShowView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
     @State private var revealsConfirmation = false
+    @State private var audience: StaffShowCard.Audience
+
+    init(card: StaffShowCard) {
+        self.card = card
+        _audience = State(initialValue: card.isReservation ? .reservation : .driver)
+    }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: Space.xl) {
-                    Text(card.isReservation ? "Reservation / 예약 정보" : "Destination / 목적지")
+                    Picker("누구에게 보여줄까요?", selection: $audience) {
+                        ForEach(StaffShowCard.Audience.allCases) { Text($0.label).tag($0) }
+                    }.pickerStyle(.menu).accessibilityIdentifier("staffAudience")
+                    Text(audience == .reservation ? "Reservation / 예약 정보" : "Destination / 목적지")
                         .font(.headline).foregroundStyle(Ink.soft)
                     VStack(alignment: .leading, spacing: Space.m) {
                         Text(card.title)
@@ -37,7 +46,7 @@ struct StaffShowView: View {
                             .fixedSize(horizontal: false, vertical: true)
                             .accessibilityAddTraits(.isHeader)
                             .accessibilityIdentifier("staffShowName")
-                        Text(card.hasLocalName ? "직접 확인해 적어 둔 현지어 이름" : "일정에 적은 이름 · 현지어 이름 미확인")
+                        Text(card.hasLocalName ? "저장된 현지어 이름" : "현지어 이름 미확인")
                             .font(.subheadline).foregroundStyle(Ink.soft)
                         if let address = card.address {
                             Text("Address / 주소").font(.headline).foregroundStyle(Ink.soft)
@@ -48,14 +57,14 @@ struct StaffShowView: View {
                                 .font(.subheadline).foregroundStyle(Ink.soft)
                         }
                     }
-                    ForEach(card.facts) { fact in
+                    ForEach(audience == .reservation ? card.facts : []) { fact in
                         VStack(alignment: .leading, spacing: Space.xs) {
                             Text(fact.label).font(.subheadline).foregroundStyle(Ink.soft)
                             Text(fact.value).font(.title2.weight(.medium)).fixedSize(horizontal: false, vertical: true)
                         }
                         .accessibilityElement(children: .combine)
                     }
-                    if let confirmation = card.confirmation {
+                    if audience == .reservation, let confirmation = card.confirmation {
                         VStack(alignment: .leading, spacing: Space.s) {
                             if revealsConfirmation {
                                 Text("Confirmation / 예약번호").font(.subheadline).foregroundStyle(Ink.soft)
@@ -81,8 +90,10 @@ struct StaffShowView: View {
                                 .font(.caption).foregroundStyle(Ink.soft)
                         }
                     }
-                    Text("Saved travel details / 저장된 여행 정보\n예약 확인서의 원문과 다른 내용이 없는지 확인해 주세요.")
-                        .font(.caption).foregroundStyle(Ink.soft)
+                    DisclosureGroup("정보 확인·도움말") {
+                        Text("저장된 원문이에요. 예약 확인서와 다른 내용이 없는지 확인해 주세요. 예약번호는 직접 공개할 때만 보이고, 앱을 벗어나면 다시 숨겨요.")
+                            .font(.caption).foregroundStyle(Ink.soft)
+                    }
                 }
                 .padding(Space.xl)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -102,6 +113,7 @@ struct StaffShowView: View {
         .onChange(of: env?.auth.session?.userId) { _, _ in revealsConfirmation = false; dismiss() }
         .onChange(of: env?.service.cacheScope) { _, _ in revealsConfirmation = false; dismiss() }
         .onChange(of: card.confirmation) { _, _ in revealsConfirmation = false }
+        .onChange(of: audience) { _, _ in revealsConfirmation = false }
         .onDisappear { revealsConfirmation = false }
     }
 

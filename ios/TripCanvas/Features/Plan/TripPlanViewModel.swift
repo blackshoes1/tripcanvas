@@ -20,6 +20,21 @@ final class TripPlanViewModel: DayPlanContext {
     private let candidateSource: CollabSource?
     private let documentFreshness: TimeInterval
     var isPresentingEditor = false
+    var focusActivity: ActivitySummary?
+    var focusRevision: Int?
+    func requestFocus(_ activity: ActivitySummary, day: Int, revision: Int) {
+        selectedDay = day
+        if self.revision != revision { needsRemoteReload = true }
+        focusRevision = revision; focusActivity = activity
+    }
+    func takeFocusedSpot() -> (index: Int, spot: TripSpot)? {
+        guard let activity = focusActivity, let day else { return nil }
+        focusActivity = nil
+        guard focusRevision == revision,
+              let index = day.spots.indices.first(where: { "d\(selectedDay)s\($0)" == activity.id }),
+              day.spots[index].name == activity.name else { return nil }
+        return (index, day.spots[index])
+    }
     private(set) var needsRemoteReload = false
 
     /// 보고 있는 일자. 문서가 줄어들면 마지막 날로 당긴다.
