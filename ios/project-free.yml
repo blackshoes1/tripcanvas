@@ -55,6 +55,8 @@ targets:
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         UILaunchScreen: {}
+        UIBackgroundModes:
+          - audio
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         # 첫 실행에 권한을 몰아 요청하지 않는다 — 쓸모를 설명할 수 있을 때 묻는다(§6·§42).

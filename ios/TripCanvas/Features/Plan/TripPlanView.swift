@@ -64,6 +64,7 @@ struct TripPlanView: View {
     @Environment(\.editMode) private var editMode
     private var isEditing: Bool { editMode?.wrappedValue.isEditing == true }
     @State private var showsOverview = false
+    @State private var showsTripFiles = false
     @State private var showsSettings = false
     @State private var showsCosts = false
     private var hasInputSheet: Bool { editor != nil || showsSearch || quickCreate != nil || showsCosts || showsSettings || moveTarget != nil || isEditing }
@@ -83,6 +84,7 @@ struct TripPlanView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Button("여행 전체 개요") { showsOverview = true }
+                    Button("여행 티켓·문서") { showsTripFiles = true }
                     if model.canEdit {
                         // 시안의 툴바는 ⋯ 하나다 — 빼 온 진입점을 여기 모은다(기능을 잃지 않는다).
                         Button { insertionAfter = nil; openSearch() } label: { Label("장소 검색", systemImage: "magnifyingglass") }
@@ -102,6 +104,7 @@ struct TripPlanView: View {
                 .accessibilityLabel("일정 메뉴")
             }
         }
+        .sheet(isPresented: $showsTripFiles) { SharedTripFilesView(tripID: trip.id) }
         .task {
             // 탭 진입 — 문서가 있고 방금 받은 것이면 아무것도 받지 않는다(탭 전환은 앱 복귀가 아니다).
             await model.loadIfStale()
@@ -153,7 +156,7 @@ struct TripPlanView: View {
             }
         }
         .sheet(item: $viewingSpot) { target in
-            SpotInformationView(spot: target.spot, contextLabel: "\(trip.name) · Day \(model.selectedDay + 1)")
+            SpotInformationView(spot: target.spot, contextLabel: "\(trip.name) · Day \(model.selectedDay + 1)", audioGuideTripID: trip.id)
         }
         .sheet(item: $editor) { session in
             let target = session.target
@@ -167,6 +170,7 @@ struct TripPlanView: View {
                     role: model.role,
                     draftKey: EditorDraftKey(accountID: env.auth.session?.userId, tripID: trip.id, editor: "spot-\(session.day)-\(target.index.map(String.init) ?? "new")"),
                     linkedBooking: target.spot.bookingId.flatMap { model.document?.booking(id: $0) },
+                    audioGuideTripID: trip.id,
                     onSave: { spot in
                         let saved: Bool
                         switch target {

@@ -309,6 +309,28 @@ export const authUser = pgTable('auth_user', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 });
 
+/** Shared bytes live outside trip JSON, so a stale itinerary save cannot erase files. */
+export const tripFiles = pgTable('trip_files', {
+  id: uuid('id').primaryKey(),
+  tripId: uuid('trip_id').notNull().references(() => trips.id, { onDelete: 'cascade' }),
+  uploadedBy: uuid('uploaded_by').notNull().references(() => users.id),
+  kind: text('kind').notNull(),
+  placeKey: text('place_key').notNull().default(''),
+  name: text('name').notNull(),
+  title: text('title').notNull(),
+  mime: text('mime').notNull(),
+  size: integer('size').notNull(),
+  position: integer('position').notNull().default(0),
+  sha256: text('sha256').notNull(),
+  contentBase64: text('content_base64').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+}, (t) => [
+  uniqueIndex('trip_files_content_uidx').on(t.tripId, t.kind, t.placeKey, t.sha256),
+  index('trip_files_trip_position_idx').on(t.tripId, t.position),
+  check('trip_files_kind_check', sql.raw("kind in ('AUDIO','DOCUMENT')")),
+  check('trip_files_size_check', sql.raw('size > 0 and size <= 26214400 and octet_length(content_base64) <= 34952536'))
+]);
+
 export const authSession = pgTable('auth_session', {
   id: text('id').primaryKey(),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),

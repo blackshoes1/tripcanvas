@@ -1,0 +1,128 @@
+{
+  "giralda": {
+    "src": "assets/giralda.jpg",
+    "caption": "히랄다 탑 외관",
+    "author": "Jialiang Gao www.peace-on-earth.org",
+    "license": "CC BY-SA 2.5",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/2.5",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Giralda_Tower_Seville_Spain.jpg",
+    "changes": "표시용 크기 조정"
+  },
+  "tower": {
+    "src": "assets/tower.jpg",
+    "caption": "히랄다 상층의 종",
+    "author": "Jebulon",
+    "license": "CC0",
+    "licenseUrl": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Cloche_Giralda_S%C3%A9ville_Espagne.jpg",
+    "changes": "표시용 크기 조정"
+  },
+  "nave": {
+    "src": "assets/nave.jpg",
+    "caption": "대성당의 높은 기둥과 고딕 천장",
+    "author": "Daderot",
+    "license": "CC0",
+    "licenseUrl": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Interior_view_-_Cathedral_of_Seville_-_Sevilla,_Spain_-_DSC07573.JPG",
+    "changes": "표시용 크기 조정"
+  },
+  "antigua": {
+    "src": "assets/antigua.jpg",
+    "caption": "안티과 성모 예배당의 제단",
+    "author": "RGR32",
+    "license": "CC BY-SA 3.0 es",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0/es/deed.en",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Capilla_de_la_Virgen_de_la_Antigua,_Catedral_de_Sevilla.jpg",
+    "changes": "표시용 크기 조정"
+  },
+  "sacristy": {
+    "src": "assets/sacristy.jpg",
+    "caption": "대성물실 내부",
+    "author": "Diego Delso",
+    "license": "CC BY-SA 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Sacrist%C3%ADa_Mayor,_Catedral_de_Sevilla,_Sevilla,_Espa%C3%B1a,_2015-12-06,_DD_115-117_HDR.JPG",
+    "changes": "표시용 크기 조정"
+  },
+  "choir": {
+    "src": "assets/choir.jpg",
+    "caption": "성가대석과 목조 의자",
+    "author": "Diego Delso",
+    "license": "CC BY-SA 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Coro,_Catedral_de_Sevilla,_Sevilla,_Espa%C3%B1a,_2015-12-06,_DD_100-103_HDR.JPG",
+    "changes": "표시용 크기 조정"
+  },
+  "murillo": {
+    "src": "assets/murillo.jpg",
+    "caption": "무리요, 성 안토니오의 환시",
+    "author": "Bartolomé Esteban Murillo",
+    "license": "Public domain",
+    "licenseUrl": "https://creativecommons.org/publicdomain/mark/1.0/",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:La_visi%C3%B3n_de_San_Antonio,_de_Bartolom%C3%A9_Esteban_Murillo_(Capilla_de_San_Antonio_de_la_catedral_de_Sevilla).jpg",
+    "changes": "표시용 크기 조정"
+  },
+  "goya": {
+    "src": "assets/goya.jpg",
+    "caption": "고야, 성녀 후스타와 루피나",
+    "author": "Francisco Goya",
+    "license": "Public domain",
+    "licenseUrl": "https://creativecommons.org/publicdomain/mark/1.0/",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Las_santas_Justa_y_Rufina,_de_Francisco_de_Goya_(Sacrist%C3%ADa_de_los_C%C3%A1lices_de_la_catedral_de_Sevilla).jpg",
+    "changes": "표시용 크기 조정"
+  },
+  "clemencia": {
+    "src": "assets/clemencia.jpg",
+    "caption": "몬타녜스, 자비의 그리스도",
+    "author": "Pepe Becerra",
+    "license": "CC BY-SA 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Cristo_de_la_Clemencia,_de_Mart%C3%ADnez_Monta%C3%B1%C3%A9s,_en_la_capilla_de_San_Andr%C3%A9s_(Catedral_de_Sevilla).jpg",
+    "changes": "표시용 크기 조정"
+  },
+  "altar": {
+    "src": "assets/altar.jpg",
+    "caption": "중앙제단의 금빛 목조 제단화",
+    "author": "Gonzalo Malpartida from Madrid, España",
+    "license": "CC BY-SA 2.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/2.0",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Retablo_mayor_(Catedral_de_Sevilla).jpg",
+    "changes": "표시용 크기 조정"
+  },
+  "main": {
+    "src": "assets/giralda.jpg",
+    "caption": "대성당과 히랄다 — 입구는 티켓 안내를 확인하세요",
+    "author": "Jialiang Gao www.peace-on-earth.org",
+    "license": "CC BY-SA 2.5",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/2.5",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Giralda_Tower_Seville_Spain.jpg",
+    "changes": "표시용 크기 조정"
+  },
+  "columbus": {
+    "src": "assets/columbus.jpg",
+    "caption": "네 인물이 관을 받친 콜럼버스 기념묘",
+    "author": "Pom²",
+    "license": "CC BY-SA 3.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Sevilla_cathedral_-_tomb_of_christopher_columbus.jpg",
+    "changes": "표시용 크기 조정"
+  },
+  "chapter": {
+    "src": "assets/chapter.jpg",
+    "caption": "타원형 참사회실의 천장",
+    "author": "Diego Delso",
+    "license": "CC BY-SA 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Sala_Capitular,_Catedral_de_Sevilla,_Sevilla,_Espa%C3%B1a,_2015-12-06,_DD_121-123_HDR.JPG",
+    "changes": "표시용 크기 조정"
+  },
+  "patio": {
+    "src": "assets/patio.jpg",
+    "caption": "오렌지 정원의 나무와 대성당 외벽",
+    "author": "José Luis Filpo Cabana",
+    "license": "CC BY 3.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/3.0",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Patio_de_los_Naranjos._Catedral_de_Sevilla.jpg",
+    "changes": "표시용 크기 조정"
+  }
+}

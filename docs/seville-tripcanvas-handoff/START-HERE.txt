@@ -1,0 +1,22 @@
+세비야 대성당 가이드 · TripCanvas 인계 묶음
+작성일: 2026-10-22 (한국 시간)
+
+사용 방법
+1. ZIP을 풀어 생긴 seville-tripcanvas-handoff 폴더를 TripCanvas 프로젝트 폴더 아래에 넣습니다.
+2. TripCanvas 안에 새 대화를 엽니다.
+3. 아래 문장을 그대로 붙여 넣습니다. 폴더를 다른 곳에 두었다면 실제 경로를 함께 알려 주세요.
+
+-------- 새 대화에 붙여 넣을 문장 --------
+이 프로젝트 폴더 안의 seville-tripcanvas-handoff/START-HERE.txt와 HANDOFF.txt를 읽고 세비야 대성당 한국어 가이드 작업을 이어받아줘. 먼저 저장소의 AGENTS.md와 현재 구조를 확인해줘. 자료를 처음부터 다시 만들지 말고 최신 14장소 웹 소스와 원고를 기준으로 이어가면 돼. 현재 HTML 가이드는 있고, 기기 음성과 이전 3종 샘플은 마음에 들지 않았어. 최신 Qwen Sohee 도슨트 샘플은 아직 평가하지 않았고 전체 해설 음성은 미완성이야. 우선 인계 자료를 확인한 뒤 최신 샘플을 들을 수 있게 제시하고 자연스러운 한국어 해설 음성을 무료로 완성하는 작업을 진행해줘. 목소리가 정해지기 전 전체 음성을 임의로 확정하지 말고, 12트랙 옛 원고와 14장소 최신 원고를 혼동하지 마. 기존 TripCanvas 구현을 보존하고 저장소 구조를 확인하기 전 특정 프레임워크나 통합 방식으로 단정하지 마. 이번 요청은 작업을 이어받는 것이며 운영 배포나 유료 서비스 가입까지 요청한 것은 아니야.
+---------------------------------------
+
+바로 열어볼 파일
+- HANDOFF.txt: 현재 상태, 사용자 요구, 기술 구조, 다음 작업 순서.
+- seville-guide/seville-cathedral-pocket-guide.html: 사진·지도·해설이 들어 있는 단일 HTML.
+- seville-guide/seville-cathedral-14-stop-narration.txt: 최신 14장소 낭독 통합 원고.
+- seville-guide/voice-samples/seville-docent-voice.mp3: 최신 샘플. 사용자 미승인.
+- sites/seville-field-guide-publish/dist/index.html: 개발용 정적 웹 소스의 진입 파일.
+
+HTML은 사진과 원고를 포함하지만 완성된 전체 음성은 포함하지 않습니다.
+휴대폰의 파일 미리보기에서는 JavaScript와 음성 저장 기능이 제한될 수 있습니다.
+개발용 웹 소스는 HANDOFF.txt의 로컬 서버 실행 방법으로 확인하세요.

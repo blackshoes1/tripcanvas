@@ -4,7 +4,7 @@ module.exports=defineConfig({
   testDir:'./e2e',
   projects:[
     {name:'chromium',use:{browserName:'chromium'}},
-    {name:'webkit',testMatch:'safari-menu.spec.js',use:{browserName:'webkit'}}
+    {name:'webkit',testMatch:['safari-menu.spec.js','audio-guides.spec.js','trip-files.spec.js'],use:{browserName:'webkit'}}
   ],
   fullyParallel:false,
   workers:1,

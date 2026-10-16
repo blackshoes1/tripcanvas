@@ -1,0 +1,49 @@
+세비야 대성당 · 낭독 원고 v3 초안
+작성일: 2026-10-22 / 한국 시간
+
+작업 범위
+사용자와 배우자가 신혼여행에서 직접 듣는 한국어 관람 가이드입니다.
+앱의 업로드·동기화·재생 기능 구현은 다른 세션에서 진행합니다.
+기존 최신 14장소 자료를 바탕으로, 듣기 좋은 순서와 표현을 다듬었습니다.
+기존 웹 가이드·전체 읽기 자료·사진·출처·인계 manifest는 덮어쓰지 않았습니다.
+
+이번 초안에서 달라진 점
+- 도착 설명과 본문이 같은 장소 확인을 두 번 읽는 부분을 줄였습니다.
+- 눈앞의 대상 확인 → 역사적 사건 → 다시 볼 부분 순으로 호흡을 정리했습니다.
+- 숫자는 낭독하는 형태로 풀었고, 트랙 번호와 파일명·메뉴·출처 ID는 본문에서 뺐습니다.
+- 인명을 한꺼번에 나열하는 대신 역할과 세대로 묶되, 핵심 인물과 사건은 유지했습니다.
+- 08·10·11의 풍부한 이야기를 유지하면서 관찰 대상별 문단을 나눴습니다.
+- 13 고야는 성배실, 14 자비의 그리스도는 산안드레스 예배당이라는 구분을 유지했습니다.
+- 관람 순서·접근 가능 여부·전시 상태를 현재 현장의 사실처럼 단정하지 않았습니다.
+
+사실 검토
+원본 14개 원고와 새 초안을 대조했고, 05·06·11 주요 사건은 공식 자료로 추가 확인했습니다.
+모든 역사 내용을 새로 전면 조사했다는 뜻은 아닙니다.
+최종 파일 대조에서 기존 12장소 참고 PDF 한 개는 인계 manifest와 크기·해시가 달랐습니다.
+해당 PDF는 이 세션에서 수정하지 않았고, 새 원고의 기준 자료로도 사용하지 않았습니다.
+나머지 인계 목록 66개 파일은 크기·해시가 일치했습니다.
+05: 1482~1564년이라는 기간을 '쉬지 않고 계속 작업한 82년'으로 강화하지 않았습니다.
+제단 전체를 일률적으로 아래에서 위로 읽도록 안내하지 않습니다.
+06: 공식 기사 간 묘 받침대 양식 명칭이 달라, 초안에서는 양식명을 단정하지 않습니다.
+새 DNA·출생지·유해 전체에 관한 주장은 넣지 않았습니다.
+11: 1874년 도난과 1875년 복원, 다른 예배당에 있던 루브르 작품을 구분했습니다.
+루브르의 '선물' 기록과 프랑스 점령기 갈등이라는 맥락을 함께 유지했습니다.
+
+추가 확인한 공식 원문
+https://www.catedraldesevilla.es/la-catedral/edificio/la-catedral-gotica-retablo-mayor-coro-capillas-laterales-y-portadas/
+https://www.catedraldesevilla.es/el-maestro-artesano-que-ideo-la-biblia-de-madera-mas-grande-de-la-cristiandad/
+https://www.catedraldesevilla.es/la-catedral-celebra-el-dia-de-la-hispanidad/
+https://www.catedraldesevilla.es/el-proyecto-ganador-de-arturo-melida-para-el-monumento-funerario-de-cristobal-colon/
+https://www.catedraldesevilla.es/hoy-celebramos-de-festividad-de-san-antonio/
+https://www.catedraldesevilla.es/la-vision-de-san-antonio-la-historia-secreta-de-una-obra-maestra-de-murillo/
+https://coleccion.bde.es/wca/es/secciones/coleccion/artistas/salvador-martinez-cubells-489.html
+https://collections.louvre.fr/en/ark:/53355/cl010064740
+
+사용 방법과 남은 확인
+01_narration.txt ~ 14_narration.txt는 개별 낭독용입니다.
+all-narration-v3-draft.txt는 제목을 포함한 검토용 통합본이므로 그대로 음성에 넣지 않습니다.
+voice-v3의 A·B는 같은 목소리와 같은 짧은 원고로 말투 지시를 달리한 비교 후보입니다.
+중앙 제단 전체 해설의 완성 음원이 아니며, 목소리를 확정했다는 뜻도 아닙니다.
+자동 전사·음량 측정은 음색·억양·자연스러움에 대한 실제 청취 평가를 대신하지 않습니다.
+전체 14챕터의 음원은 목소리와 말투에 대한 사용자 평가 뒤에 제작합니다.
+실제 관람 위치·재생 속도·이어폰 사용감은 여행지에서 확인해야 합니다.

@@ -1,0 +1,91 @@
+{
+  "status": "DRAFT_NO_VOICE_SELECTED",
+  "date": "2026-10-22",
+  "files": [
+    {
+      "id": "01",
+      "title": "입장 전 도입",
+      "characters": 1038,
+      "sha256": "f310a441b8598a956c91c5e1daee1cbeff2010e4251104210813bf9cf3b0c7f2"
+    },
+    {
+      "id": "02",
+      "title": "히랄다 - 오르기 전",
+      "characters": 1153,
+      "sha256": "40bf73783e0618456cf522d5c49801d19c83ab77870df2fe72ceec4b1c27383a"
+    },
+    {
+      "id": "03",
+      "title": "히랄다 - 종루 전망",
+      "characters": 1506,
+      "sha256": "c8a17539b5e84aa525c4aae197e41fef58d232eda5a2e62b61d5396a1b4c3ec0"
+    },
+    {
+      "id": "04",
+      "title": "본당의 큰 공간",
+      "characters": 1312,
+      "sha256": "84b4ef32c3bc5bc9876ecd097b81e724324db32c9d5ded0e1cefd44052504b3d"
+    },
+    {
+      "id": "05",
+      "title": "중앙 제단",
+      "characters": 1299,
+      "sha256": "f556b3e4cf783ebfba1d3acd3c52eca544d5cb1070afdb8a9a4366f10f9e7efb"
+    },
+    {
+      "id": "06",
+      "title": "콜럼버스 기념묘",
+      "characters": 1294,
+      "sha256": "d14a7a51a9df3da9b01bf029729ac69d067471143e244b94a242a1b121943e69"
+    },
+    {
+      "id": "07",
+      "title": "안티구아 성모",
+      "characters": 1127,
+      "sha256": "d0b90a0a2d721f5179487cf6deb021db0d23a430d0c98c1806d4e9a9758c0815"
+    },
+    {
+      "id": "08",
+      "title": "대성물실",
+      "characters": 1562,
+      "sha256": "bebcb3fd9103f47deb442b9942c93605924179a4c174d9fe6827a31fc73c5d01"
+    },
+    {
+      "id": "09",
+      "title": "참사회실",
+      "characters": 1278,
+      "sha256": "9cb92730d826d51f9e1a1470afc0cfe8f89d456e93c227c3fcfe079c16676689"
+    },
+    {
+      "id": "10",
+      "title": "성가대석과 오르간",
+      "characters": 1673,
+      "sha256": "c5d8869d369b6d39feeb14dacdbae2cfece6e06241135b274118607b028326aa"
+    },
+    {
+      "id": "11",
+      "title": "산안토니오 예배당",
+      "characters": 1594,
+      "sha256": "2e47ad62e1bfec76679e3e67967a47d841a9d74274cb1d9beb076b6c2b9d4df3"
+    },
+    {
+      "id": "12",
+      "title": "오렌지 정원",
+      "characters": 1279,
+      "sha256": "65b58cf1b0e6f02c8b4c7b83d8aa9831a3d08105523147e9ea1755f181ef6bbb"
+    },
+    {
+      "id": "13",
+      "title": "고야의 두 성녀",
+      "characters": 503,
+      "sha256": "a841288c9473268815a61f9695536fb4a64bd3791f34848d8d86a667f7f665a3"
+    },
+    {
+      "id": "14",
+      "title": "자비의 그리스도",
+      "characters": 612,
+      "sha256": "881212687d48265334668e1bc212a0a668f902875254d33102899e090a9c53ff"
+    }
+  ],
+  "note": "Original source preserved; voice sample is not full narration."
+}

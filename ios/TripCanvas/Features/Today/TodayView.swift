@@ -102,6 +102,8 @@ struct TodayView: View {
                             if activity.choiceState != "PENDING" {
                                 TodayStaffShowButton(tripID: trip.id, activityID: activity.id,
                                                      expectedName: activity.name, revision: model.revision)
+                                TodayAudioGuideButton(tripID: trip.id, activityID: activity.id,
+                                                      expectedName: activity.name, revision: model.revision)
                             }
                             if model.canAct, !model.isOffline, activity.choiceState != "PENDING", activity.status == .inProgress,
                                activity.type != .flight, activity.type != .train, activity.type != .hotel {

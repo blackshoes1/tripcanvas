@@ -49,6 +49,7 @@ final class TripService: TripDataSource {
     }
 
     func useAccount(_ accountID: String?) {
+        SharedGuidePlayer.shared.stop()
         let scope = TripCache.Scope(accountID: accountID, generation: (cacheScope?.generation ?? 0) + 1)
         cacheScope = scope
         realtimeURL = nil

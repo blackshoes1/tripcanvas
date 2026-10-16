@@ -1,5 +1,5 @@
 // Trip Canvas Service Worker
-const VER = 'tc-v286';
+const VER = 'tc-v288';
 const SHELL_CACHE = VER + '-shell';
 
 // index.html이 `?v=VER`로 부르는 파일 — **그 주소 그대로** 담는다. 오프라인 폴백(caches.match)은 쿼리까지
@@ -8,7 +8,7 @@ const SHELL_CACHE = VER + '-shell';
 // index.html에 스크립트·스타일을 더하면 여기에도 더한다 — test/sw.test.js가 대조한다.
 const VERSIONED = [
   'style.css', 'lib.js', 'sync.js', 'routing.js', 'price.js', 'j-copy.js', 'adaptive.js',
-  'intake.js', 'collab.js', 'api.js', 'auth.js', 'app.js'
+  'intake.js', 'collab.js', 'api.js', 'auth.js', 'audio-guides.js', 'audio-guide-ui.js', 'trip-files.js', 'trip-file-ui.js', 'app.js'
 ];
 
 const SHELL = [

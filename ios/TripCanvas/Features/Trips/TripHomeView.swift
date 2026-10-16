@@ -37,6 +37,8 @@ struct TripHomeView: View {
     @State private var models: TripScreenModels
     @State private var tab: TripHomeTab?
     @State private var wasBackgrounded = false
+    @State private var showsSharedFiles = false
+    @State private var sharedPlayer = SharedGuidePlayer.shared
     @Environment(AppEnvironment.self) private var env
     @Environment(\.scenePhase) private var scenePhase
     /// 이 화면의 실시간 구독 이름. 보드(`"candidates"`)와 달라야 서로를 덮어쓰지 않는다.
@@ -86,7 +88,23 @@ struct TripHomeView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             // 내용은 탭 바 높이만큼 위에서 끝난다 — 바가 겹쳐 있어도 마지막 줄을 가리지 않는다.
-            .safeAreaInset(edge: .bottom, spacing: 0) { Color.clear.frame(height: Self.tabBarHeight) }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                VStack(spacing: 0) {
+                    if sharedPlayer.fileID != nil {
+                        TimelineView(.periodic(from: .now, by: 0.5)) { _ in
+                            HStack {
+                                Text(sharedPlayer.title).font(.caption).lineLimit(1)
+                                Spacer()
+                                Button(sharedPlayer.isPlaying ? "일시정지" : "재생") {
+                                    if sharedPlayer.isPlaying { sharedPlayer.pause() } else { sharedPlayer.resume() }
+                                }.frame(minHeight: 44)
+                                Button("종료") { sharedPlayer.stop() }.frame(minHeight: 44)
+                            }.padding(.horizontal).background(Ink.raised)
+                        }
+                    }
+                    Color.clear.frame(height: Self.tabBarHeight)
+                }
+            }
 
             tabBar(selection)
                 // 키보드가 올라와도 바는 제자리다 — 시스템 탭 바처럼 키보드 아래에 있다.
@@ -118,6 +136,7 @@ struct TripHomeView: View {
                 }
             }
         }
+        .sheet(isPresented: $showsSharedFiles) { SharedTripFilesView(tripID: trip.id) }
         .onChange(of: requested) { _, value in tab = value }
         // 예약 상세의 '일정 N일차에서 수정'·'비용에서 수정' — 날짜·항목을 다시 찾게 하지 않는다(2026-09-27 UX 검토).
         .onChange(of: models.sourceRequest) { _, request in
@@ -228,6 +247,11 @@ struct TripHomeView: View {
     /// 여행 이름은 머리에 또 두지 않는다 — 내비게이션 제목이 이미 그 이름이다(명조).
     private var moreList: some View {
         List {
+            Section {
+                Button { showsSharedFiles = true } label: {
+                    Label("여행 티켓·문서", systemImage: "paperclip").frame(minHeight: 48)
+                }
+            }
             ForEach(TripPanel.sections, id: \.title) { section in
                 Section {
                     ForEach(section.panels) { item in moreRow(item) }

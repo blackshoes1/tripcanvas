@@ -1,0 +1,173 @@
+세비야 대성당·히랄다 한국어 가이드 작업 인계
+스냅샷 작성: 2026-10-22 / 현재 로컬 파일을 확인하여 작성
+
+1. 이 작업의 목적과 사용자 요구
+사용자와 아내가 스페인 신혼여행 때 함께 사용할 한국어 개인 관람 가이드입니다.
+최초 요청은 오디오 가이드였으며, 현재는 사진·지도·텍스트를 갖춘 웹 가이드로 확장됐습니다.
+역사적 사실·작품의 제작 과정·사건·도난과 복원·계약 기록 같은 내용을 풍성하게 하는 것이 중요합니다.
+단순히 화려한 형용사를 늘리는 방식은 사용자가 명시적으로 원하지 않습니다.
+첫 방문자도 사진과 눈앞의 특징으로 장소를 찾고 해당 해설을 들어야 합니다.
+사용자는 유료인 Runway를 거절했고 무료 제작을 선호합니다. 무료라는 이유만으로 품질을 타협하지 마세요.
+브라우저 기기 음성은 '별로', 이후 제시한 세 가지 샘플은 '다 별로임'이라는 평가를 받았습니다.
+현재 가장 중요한 미완성 항목은 자연스러운 한국어 도슨트 음성입니다.
+
+2. 완료와 미완료를 구분한 현재 상태
+[파일 확인 완료]
+- 14개 장소용 정적 웹 가이드와 단일 HTML이 존재합니다.
+- 기본 장소 01~12, 선택 장소 13~14. 근거 출처 60건.
+- 사진 메타데이터 14건, 실제 JPG 13개. 도입 장소는 히랄다 사진을 공유합니다.
+- 각 장소의 눈으로 확인할 특징, 스페인어 이름과 직원에게 보여줄 질문, 핵심/전체 본문이 있습니다.
+- 위치 지도, 관람 완료/건너뛰기, 기기 TTS, 준비한 음성의 개별/일괄 가져오기 코드가 있습니다.
+- 최신 장소별 낭독 TXT 14개는 웹 데이터의 도착 설명·전체 본문·다음 이동과 일치합니다.
+
+[미완료 또는 확인 필요]
+- 전체 14장소의 MP3/WAV는 아직 없습니다. voice-samples만 존재합니다.
+- 최신 Qwen 샘플에 대한 사용자 평가는 아직 없습니다. 승인된 최종 목소리는 없습니다.
+- 고품질 음성을 웹에 기본으로 연결하지 않았습니다.
+- 두 사람의 실제 iPhone/Safari/PWA에서 비행기 모드와 장시간 재생을 새로 검증하지 않았습니다.
+- TripCanvas 저장소를 이번 인계 작업에서 읽거나 수정하지 않았습니다. 통합 완료가 아닙니다.
+
+3. 파일 우선순위와 버전 차이 — 반드시 읽기
+최신 기준은 sites/seville-field-guide-publish/dist/content.js의 window.GUIDE_DATA입니다.
+이를 읽기 쉽게 추출한 guide-data-14-stops.json도 함께 넣었습니다.
+낭독할 최신 원고는 dist/narration/01_narration.txt ~ 14_narration.txt입니다.
+동일한 통합본은 seville-guide/seville-cathedral-14-stop-narration.txt입니다.
+
+seville-guide/seville-cathedral-korean-guide.txt와 seville-cathedral-find-your-stop.pdf는 이전 12트랙 버전입니다.
+옛 TXT 헤더에는 낭독 본문 18,770자로 표시돼 있습니다. 최신 14장소와 동일한 파일로 취급하지 마세요.
+웹판은 08 대성물실의 고야 이야기와 10 성가대석의 십자가상 이야기를 다른 장소로 분리했습니다.
+13 고야는 Sacristía de los Cálices, 14 자비의 그리스도는 Capilla San Andrés입니다.
+두 장소를 08 또는 10 위치에서 그대로 읽으면 현장 설명과 대상이 어긋납니다.
+이전 PDF는 참고용으로 보존했으며, 최신 14장소 PDF를 새로 만들지는 않았습니다.
+
+최신 full 본문 합계는 16,105자, summary 합계는 2,059자입니다. 도착·다음 이동은 이 수치에 포함되지 않습니다.
+음성을 만들 때 메뉴명, 출처 ID, 파일 제목을 읽지 말고 실제 낭독 본문을 사용하세요.
+
+4. 장소 번호와 공식 지도 번호
+가이드 ID와 공식 지도 번호는 다릅니다. 숫자만으로 관람객을 안내하지 마세요.
+01 | 입장 전 도입 | 입장권에 적힌 입구 | 공식 지도 없음 | 기본
+02 | 히랄다 - 오르기 전 | La Giralda | 공식 지도 6 | 기본
+03 | 히랄다 - 종루 전망 | La Giralda / 종루 | 공식 지도 6 | 기본
+04 | 본당의 큰 공간 | Catedral / 본당 | 공식 지도 없음 | 기본
+05 | 중앙 제단 | Retablo Mayor | 공식 지도 5 | 기본
+06 | 콜럼버스 기념묘 | Tumba de Colón | 공식 지도 1 | 기본
+07 | 안티구아 성모 | Capilla Virgen de la Antigua | 공식 지도 2 | 기본
+08 | 대성물실 | Sacristía Mayor | 공식 지도 3 | 기본
+09 | 참사회실 | Sala Capitular | 공식 지도 4 | 기본
+10 | 성가대석과 오르간 | Coro | 공식 지도 11 | 기본
+11 | 산안토니오 예배당 | Capilla San Antonio / Bautismo | 공식 지도 8 | 기본
+12 | 오렌지 정원 | Patio de los Naranjos | 공식 지도 10 | 기본
+13 | 고야의 두 성녀 | Sacristía de los Cálices | 공식 지도 별도 번호 없음 | 선택
+14 | 자비의 그리스도 | Capilla San Andrés | 공식 지도 7 | 선택
+
+지도는 SVG로 그린 위치 관계도입니다. GPS 내비게이션·정확한 실내 측량도·통행 가능한 경로가 아닙니다.
+01과 13에는 지도 핀이 없습니다. 실제 통로·출입구·폐쇄 상태는 현장 표지와 직원 안내가 우선합니다.
+운영 시간·입장 동선 등 변동 가능한 안내는 원고 작성 당시 확인된 내용이며 이번 인계에서 재조회하지 않았습니다.
+
+5. 웹 소스 구조와 실행 방법
+프레임워크·서버·로그인·데이터베이스 백엔드 없이 HTML/CSS/JavaScript로 만든 정적 앱입니다.
+다른 저장소의 프레임워크로 이미 통합됐다고 가정하지 마세요.
+
+sites/seville-field-guide-publish/dist/
+  index.html                 화면 구조와 진입 파일
+  style.css                  반응형 스타일
+  app.js                     화면·지도·TTS·오디오 파일·관람 기록
+  content.js                 14장소 데이터와 출처
+  assets/photos.json         사진 경로·작가·라이선스·출처·수정 내역
+  assets/*.jpg               실제 사진
+  narration/*.txt            최신 14장소 낭독 원고
+  sw.js, cache-files.json    오프라인 캐시
+  manifest.webmanifest       웹 앱 메타데이터
+
+로컬 실행 예시 — 압축을 푼 묶음의 최상위 폴더에서:
+  python -m http.server 8765 --bind 127.0.0.1 --directory sites/seville-field-guide-publish/dist
+  브라우저: http://127.0.0.1:8765/
+실행 중인 서버는 Ctrl+C로 종료합니다. 이 인계 작업에서 서버를 새로 상시 실행하지 않았습니다.
+여러 파일로 된 index.html을 file://로 여는 경우 fetch와 Service Worker 기능이 제한됩니다.
+단일 HTML은 seville-guide/seville-cathedral-pocket-guide.html을 사용합니다.
+휴대폰 파일 미리보기가 브라우저 실행을 보장하지 않으므로 실제 기기 동작을 별도로 확인하세요.
+
+6. 기능별 실제 구현과 한계
+- localStorage의 our-seville-v1: 현재 장소, 핵심/전체 모드, 설정, 관람 완료·건너뛰기.
+- IndexedDB our-seville-audio-v1 / audio: 장소 ID별 오디오 Blob. 브라우저·기기 간 동기화 없음.
+- 가져오는 파일 이름의 선행 1~2자리 숫자를 장소 ID로 해석합니다.
+  예: 05_중앙제단.mp3, 13_고야.mp3. 번호 없는 단일 파일은 선택한 장소에 연결할 수 있습니다.
+- 파일을 연결하면 그 파일을 우선 재생하며, 없으면 speechSynthesis의 한국어 음성을 사용합니다.
+- 파일 오디오에는 핵심/전체 모드가 적용되지 않습니다. 현재 오디오 저장 키는 장소 ID 하나뿐입니다.
+- 속도 설정은 기기 TTS에만 적용됩니다. 두 길이의 파일을 지원하려면 스키마와 UI를 함께 설계해야 합니다.
+- 기기 TTS는 summary/full 본문을 읽습니다. arrival/next가 자동으로 붙지는 않습니다.
+  반면 내보낸 낭독 TXT에는 arrival, full, next가 함께 있습니다. 제작할 오디오의 범위를 일관되게 정하세요.
+- 오디오 종료 후 자동으로 다음 장소를 재생하지 않습니다.
+- 일괄 가져오기는 MP3/WAV/M4A/AAC/OGG를 받지만 실제 디코딩은 브라우저 코덱 지원에 달립니다.
+- 오프라인 정적 자산 목록은 35개이며 Service Worker·Cache API를 사용합니다.
+  정적 파일 저장 완료가 기기 TTS의 오프라인 동작이나 iOS 백그라운드 재생 보장을 뜻하지 않습니다.
+- 사진 출처와 라이선스는 assets/photos.json에 있습니다. 수정·재배포 시 표시를 보존하세요.
+
+7. 음성 샘플, 재현 코드와 현재 판단
+[이전 비교 — 사용자 거절]
+seville-guide/voice-samples/seville-voice-comparison.mp3
+Supertonic 여성 F1, 여성 F2, 남성 M1의 비교본. 사용자가 셋 모두 마음에 들지 않는다고 답했습니다.
+sample-info.json에 당시 생성 설정이 있습니다. 이를 이미 선택된 목소리로 되돌리지 마세요.
+
+[최신 — 사용자 미승인]
+seville-guide/voice-samples/seville-docent-voice.mp3
+모델: Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice
+revision: 0c0e3051f131929182e2c023b9537f8b1c68adfe
+speaker: Sohee / WAV 기준 24kHz 모노, 27.28초
+중앙 제단의 1482년·1564년·여든두 해를 설명하는 짧은 시험본입니다.
+seville-docent-qwen-info.json에 원문과 말투 지시가 있습니다.
+원본 seville-docent-qwen.mp3와 공개 파일은 동일한 복사본이므로 공개 파일 하나만 넣었습니다.
+
+guide-work/generate_qwen_docent.py는 고정 문장을 합성하는 샘플 코드입니다.
+전체 14장소를 문단별로 합성·검수·합치는 배치 파이프라인은 구현돼 있지 않습니다.
+현재 코드는 cuda:0, torch.bfloat16, SDPA, local_files_only=True에 의존하고 CPU 대체 경로가 없습니다.
+모델은 guide-work/qwen-voice/model, 보조 모듈은 guide-work/voice-libs를 예상합니다.
+guide-work/check_docent_audio.py는 로컬 Whisper 모델 qwen-voice/asr와 CUDA에 의존합니다.
+
+기존 환경 기록(즉시 설치 가능한 범용 요구사항 파일이 아님):
+Python 3.12.10 / torch 2.11.0+cu128 / qwen-tts 0.1.1 / transformers 4.57.3 /
+accelerate 1.12.0 / numpy 2.5.1 / soundfile 0.14.0 / soxr 1.1.0 / lameenc 1.9.0.
+대형 모델 본체(약 3.83GB), speech_tokenizer, ASR 모델, 가상환경, 의존 모듈 폴더는 묶음에 넣지 않았습니다.
+기존 컴퓨터에 남아 있을 수 있어도 다른 컴퓨터에서 복사만으로 실행된다고 약속하지 마세요.
+재현 시 장비·모델 접근·라이선스·최신 설치 조건을 별도 확인하세요.
+
+guide-work/qa/qwen-audio-check.json은 자동 전사 기록입니다.
+전사에서 '여든두 해죠'가 '여던도 예죠'로 나왔습니다. 인식 오류일 수 있으므로 실제 청취로 판단해야 합니다.
+피크/RMS와 전사에 큰 누락이 없다는 이유만으로 목소리 품질을 합격 처리하지 마세요.
+
+8. 생성 흐름과 재빌드 주의
+기초 JSON(history-tracks-v2, art-tracks-v2)
+ → historical_addons.py / navigation_support.py / build_revised_guide.py
+ → 12트랙 revised-tracks.json 및 이전 TXT
+ → sites/seville-field-guide-publish/build_content.py
+ → 14장소 content.js 및 narration/
+ → finalize_assets.py로 사진·캐시 목록 정리
+ → guide-work/build_portable_guide.py로 단일 HTML 생성
+
+직접 수정된 현재 dist 스냅샷이 우선입니다. 원본 빌더를 무조건 다시 실행하면 수작업 수정이 덮일 수 있습니다.
+원고를 고칠 때는 데이터와 생성 스크립트를 함께 확인하여 13·14 분리 및 위치 안내를 보존하세요.
+현재 dist에서 단일 HTML만 다시 묶는 명령은 묶음 최상위에서 다음과 같습니다.
+  python guide-work/build_portable_guide.py
+이 명령은 묶음 안의 seville-guide/seville-cathedral-pocket-guide.html을 덮어씁니다.
+PDF 생성 코드는 참고용이며 폰트·PDF 라이브러리 및 해당 제작 워크플로를 별도로 준비해야 합니다.
+guide-data-14-stops.json은 현재 content.js에서 추출한 스냅샷이며 앱이 직접 읽는 파일은 아닙니다.
+
+9. 다음 작업 순서
+1) 새 세션에서 저장소의 AGENTS.md와 실제 TripCanvas 구조를 먼저 읽고 이 자료를 보존합니다.
+   Swift/React/Expo 등 기술 스택을 추정해서 전환하지 마세요. 이번 인계는 저장소 수정이나 배포 완료가 아닙니다.
+2) 최신 Qwen 샘플을 사용자에게 다시 들을 수 있게 보여 주고 원하는 자연스러움·말투와 맞는지 확인합니다.
+   만족하지 못하면 다른 합성 방식으로 짧은 동일 문장을 비교합니다. 무료 조건과 품질을 둘 다 지킵니다.
+3) 목소리가 정해지면 최신 14장소 원고로 분할 합성, 숫자·스페인어 고유명사 발음, 호흡, 누락·반복을 검수합니다.
+   전체/핵심 오디오 중 어떤 범위를 만들지 정하고, 현재 ID 한 개당 파일 한 개라는 저장 구조와 맞춥니다.
+4) 장소 ID로 이름 붙인 MP3를 가이드에 연결하거나 정적 오디오 자산으로 제공하도록 개선합니다.
+5) 두 사람의 실제 휴대폰에서 장소 찾기, 음성 재생, 재접속, 비행기 모드, 관람 기록을 확인합니다.
+6) 필요하면 14장소에 맞춘 안내 PDF를 갱신합니다. 공개 배포·유료 가입 등은 별도 요청 범위로 다룹니다.
+
+10. 참고 링크와 이번 인계의 검증 범위
+기존 웹 주소:
+https://our-seville-cathedral-guide.agile-charm-1633.chatgpt.site
+이전 대화에서는 ChatGPT 로그인이 필요한 개인 링크로 안내했습니다. 이번에는 접근·배포 상태를 재확인하지 않았습니다.
+공식 지도 URL은 guide-data-14-stops.json의 officialMap, 역사 출처는 sources.json을 확인하세요.
+이번 검증은 원본과 복사본의 해시, ZIP 무결성, 14장소/출처/사진/낭독의 연결 관계입니다.
+기존 가이드의 역사 내용을 새로 전면 재조사하거나 iPhone 실기 테스트를 추가 수행한 것은 아닙니다.
+FILE-MANIFEST.json에 묶음 내 각 파일의 SHA-256과 크기를 기록했습니다.

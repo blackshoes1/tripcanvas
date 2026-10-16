@@ -1,0 +1,344 @@
+{
+  "created_date_kst": "2026-10-22",
+  "latest_stop_count": 14,
+  "source_count": 60,
+  "complete_audio_available": false,
+  "latest_sample_status": "awaiting_user_feedback",
+  "files": [
+    {
+      "path": "guide-data-14-stops.json",
+      "bytes": 73468,
+      "sha256": "92a5bfddf79d046b3479a7e006efb5a1d4d6a18976aa30bebbbcfedc3b82861f"
+    },
+    {
+      "path": "guide-work/art-tracks-v2.json",
+      "bytes": 27155,
+      "sha256": "f96efa3ccbe50cc64d37e9017659d3b439d0a01121fb7f813fc0083e1f49f9e3"
+    },
+    {
+      "path": "guide-work/build_portable_guide.py",
+      "bytes": 2373,
+      "sha256": "0362f70d477711ad54b728440e10751489186bce5d291aae56de8f3bafc64d21"
+    },
+    {
+      "path": "guide-work/build_revised_guide.py",
+      "bytes": 18076,
+      "sha256": "d24a1a1742b27902dc831d01dbc4204d6cde75030117c4d6103371de8bce2ce8"
+    },
+    {
+      "path": "guide-work/check_docent_audio.py",
+      "bytes": 1263,
+      "sha256": "1f043446b0b0c2ec9ce4807bc27b944e9240b79e7074690a3d8a5147a4818bd9"
+    },
+    {
+      "path": "guide-work/create_navigation_pdf.py",
+      "bytes": 9184,
+      "sha256": "a8b3b9bae3a5d6ed6a7cd0b324d85c83195c79f605c776a250c374c7f9ee26a0"
+    },
+    {
+      "path": "guide-work/extend-art-tracks.py",
+      "bytes": 3601,
+      "sha256": "5b5b01db9685f2d08dc0616be3b862c20e919ba91629996fb2d77e9122f620ca"
+    },
+    {
+      "path": "guide-work/generate_qwen_docent.py",
+      "bytes": 2909,
+      "sha256": "7d2dafaa1b5f10fb02f383d184f0b5193270f17b5f1eb4dea3bb9014f09b04af"
+    },
+    {
+      "path": "guide-work/generate_voice_samples.py",
+      "bytes": 2633,
+      "sha256": "d4180dac04ae6a8a01a8343765b7c6f7e3002ae204b684b845e3c9e9f2d887b2"
+    },
+    {
+      "path": "guide-work/historical_addons.py",
+      "bytes": 9719,
+      "sha256": "b7c61288252bec3077190e58b5933fd55b55b872a7e91c4dc4484c953744ca0f"
+    },
+    {
+      "path": "guide-work/history-tracks-v2.json",
+      "bytes": 23617,
+      "sha256": "4f799fe217aab3b9fd889a8b36230e357b354f6d515ae76aa67c07c4a7cafffe"
+    },
+    {
+      "path": "guide-work/navigation_support.py",
+      "bytes": 12147,
+      "sha256": "c45edb8961c6c7248350bd76f2130248a81f6d1a52a5f1510ad73d507e64ff54"
+    },
+    {
+      "path": "guide-work/qa/qwen-audio-check.json",
+      "bytes": 610,
+      "sha256": "4bf2007506d3efb8d6b11c012e76f5932f6e9f7cc43d21c09fc4038a1c788cb6"
+    },
+    {
+      "path": "guide-work/qa/seville-guide-final.jpg",
+      "bytes": 179184,
+      "sha256": "52e047bc54297b0d03250e67eec31a0c72da8f1dc1cfed650e7b3c339397d151"
+    },
+    {
+      "path": "guide-work/revised-tracks.json",
+      "bytes": 81647,
+      "sha256": "6f911733d1b46249659d6df7cbae1f3f10e1891e052e79aa9a575f2fbd917426"
+    },
+    {
+      "path": "guide-work/upgrade-map/official-map.pdf",
+      "bytes": 1619831,
+      "sha256": "0e79ef3abcede2a36c29fc8d895df1b3bc6f6caf36eda84f5af7a32bfab27c85"
+    },
+    {
+      "path": "guide-work/upgrade-map/official-map.png",
+      "bytes": 106933,
+      "sha256": "1e56a95eaee27931b5e1f2a388f93218ba1b968367d990963c7311732dab8041"
+    },
+    {
+      "path": "HANDOFF.txt",
+      "bytes": 14232,
+      "sha256": "3891074b3cae8dd9baa3f2c6a66e98dfdbd85e5e891af8466ef8b9546e84ed28"
+    },
+    {
+      "path": "seville-guide/seville-cathedral-14-stop-narration.txt",
+      "bytes": 44555,
+      "sha256": "9cae70cb80675b5f35ea2cd7031bd5f88893acbfce97db9e4862a0e91f18e5d2"
+    },
+    {
+      "path": "seville-guide/seville-cathedral-find-your-stop.pdf",
+      "bytes": 242065,
+      "sha256": "59d23758e28fb514abced6ee6e1bc134d943d71ec27da1d9f6dfadae507f14fa"
+    },
+    {
+      "path": "seville-guide/seville-cathedral-korean-guide.txt",
+      "bytes": 79610,
+      "sha256": "d3ca38dd61f383788154d6f9c1d1f558c46eb380a432d3cd2941d4f0f25c910c"
+    },
+    {
+      "path": "seville-guide/seville-cathedral-pocket-guide.html",
+      "bytes": 6639495,
+      "sha256": "31ea70a16e4133e10428c3f4a79fa4c15706008271aee6f9932afb24ee44ebdc"
+    },
+    {
+      "path": "seville-guide/voice-samples/sample-info.json",
+      "bytes": 1116,
+      "sha256": "5a492e119f36661c72d8608f94442b41508c522a3c89d1a6521df48343f174d3"
+    },
+    {
+      "path": "seville-guide/voice-samples/seville-docent-qwen-info.json",
+      "bytes": 1367,
+      "sha256": "2ebcd75498d6b64bdd1e69e5ba0de6e7915cc9a301dd05d48e10fb45a760d58e"
+    },
+    {
+      "path": "seville-guide/voice-samples/seville-docent-voice.mp3",
+      "bytes": 437376,
+      "sha256": "1663689ed2ea6835dc89faf623bfb10667df21d88c76ff56a31c9636c393ed30"
+    },
+    {
+      "path": "seville-guide/voice-samples/seville-voice-comparison.mp3",
+      "bytes": 1024105,
+      "sha256": "716f4a6db292666e526bfab1cebb2accf44533370e4e0b0224b997d9111678e0"
+    },
+    {
+      "path": "sites/seville-field-guide-publish/build_content.py",
+      "bytes": 12006,
+      "sha256": "0c828f43beb593e946aa57183018f68716acd5fe303b131eb5ad5e915790db49"
+    },
+    {
+      "path": "sites/seville-field-guide-publish/dist/app.js",
+      "bytes": 33158,
+      "sha256": "0e5a888849c153c7711df3a15af318aa8e699a8863f7e95f88446cf1358ae2f4"
+    },
+    {
+      "path": "sites/seville-field-guide-publish/dist/assets/altar.jpg",
+      "bytes": 602605,
+      "sha256": "1b8cbae9ba8afd42c5a1e15ae0a2d614c1f5d7948bc84b56108d777c912ba0f4"
+    },
+    {
+      "path": "sites/seville-field-guide-publish/dist/assets/antigua.jpg",
+      "bytes": 338239,
+      "sha256": "20f5e7e9e94c5bd3b9eb7686c8a2b22731301cfcfcc344988deceb80f01cc8ae"
+    },
+    {
+      "path": "sites/seville-field-guide-publish/dist/assets/chapter.jpg",
+      "bytes": 679612,
+      "sha256": "076be8c88aecd7a11c901709e9f7c6bfb0e2b76b11df6ab28e02cf26455fc027"
+    },
+    {
+      "path": "sites/seville-field-guide-publish/dist/assets/choir.jpg",
+      "bytes": 264371,
+      "sha256": "660a029be5bac2219de8488c74d4eca1767c29d7a842f1cf40ae601dfec439c7"
+    },
+    {
+      "path": "sites/seville-field-guide-publish/dist/assets/clemencia.jpg",
+      "bytes": 70607,
+      "sha256": "b68f94a3ae7aad5cc7b62b0256a56768092991433fde5bbe3cbbbfd8cc59f80d"
+    },
+    {
+      "path": "sites/seville-field-guide-publish/dist/assets/columbus.jpg",
+      "bytes": 456063,
+      "sha256": "d86e4fed965a0f9b7738991f3d0906403e890634fbaf652cce9aa3716dea281e"
+    },
+    {
+      "path": "sites/seville-field-guide-publish/dist/assets/giralda.jpg",
+      "bytes": 182691,
+      "sha256": "2b5e6d250e74c9a52f6802ea0f8b04f69e8c3d55e72b3ae15979632373e40e79"
+    },
+    {
+      "path": "sites/seville-field-guide-publish/dist/assets/goya.jpg",
+      "bytes": 386301,
+      "sha256": "630a363398b4b97734fdaad4ab9940f53530c4894e95a27f36c4a1237d8292f5"
+    },
+    {
+      "path": "sites/seville-field-guide-publish/dist/assets/murillo.jpg",
+      "bytes": 48490,
+      "sha256": "4d398b6e00e7922d92d2d88ba59f6d422d0d7277c6e8fba4065c0479af5c38af"
+    },
+    {
+      "path": "sites/seville-field-guide-publish/dist/assets/nave.jpg",
+      "bytes": 470123,
+      "sha256": "3c7fb23654aa6b0c8ada0c4bd29e0929d8ea66c5c424f57a904f0d89670bb016"
+    },
+    {
+      "path": "sites/seville-field-guide-publish/dist/assets/patio.jpg",
+      "bytes": 361181,
+      "sha256": "f786bfb444413ce7ee38401f2d70f8f474b082ccde2dc958249473501aea5b93"
+    },
+    {
+      "path": "sites/seville-field-guide-publish/dist/assets/photos.json",
+      "bytes": 5937,
+      "sha256": "cd5145d8690ac2f9989ce7714520593cc416c137fcd77c77e473281bd885bc97"
+    },
+    {
+      "path": "sites/seville-field-guide-publish/dist/assets/sacristy.jpg",
+      "bytes": 533624,
+      "sha256": "273aee40963b721abfe7c1b0fe118aa43af538e12616f9585ef4536943532f17"
+    },
+    {
+      "path": "sites/seville-field-guide-publish/dist/assets/tower.jpg",
+      "bytes": 205907,
+      "sha256": "e79b389746a5d0d9ee7dc0f52d007c32c8dc91616882bcaa9a3f35a8f13ef079"
+    },
+    {
+      "path": "sites/seville-field-guide-publish/dist/cache-files.json",
+      "bytes": 836,
+      "sha256": "b2d10756b3250d655502c2aa21eb620c9e2e8528823db9ba1895021687c49a16"
+    },
+    {
+      "path": "sites/seville-field-guide-publish/dist/content.js",
+      "bytes": 67713,
+      "sha256": "c0318ddc3f1c8169441d4eed65288c1fd9b268a9e3a764048cdae79553e77a65"
+    },
+    {
+      "path": "sites/seville-field-guide-publish/dist/icon.svg",
+      "bytes": 339,
+      "sha256": "46d431fcea5d3b9ca8ef8e2ac3ab913d28fc2cfd1b283707cbfab98543796384"
+    },
+    {
+      "path": "sites/seville-field-guide-publish/dist/index.html",
+      "bytes": 3076,
+      "sha256": "5b7b860c3d1db5d865aa398de94a5682f10c3b4e2d89591896c92c35fb3932a3"
+    },
+    {
+      "path": "sites/seville-field-guide-publish/dist/manifest.webmanifest",
+      "bytes": 306,
+      "sha256": "d8646516c2235cbdda4ef3666d2575fdd214270b7058166b5730f446611ccbcb"
+    },
+    {
+      "path": "sites/seville-field-guide-publish/dist/narration/01_narration.txt",
+      "bytes": 2408,
+      "sha256": "67623681c39ac32e0ebfefb9718442a4a72fa3d2564712bd47daf183df44c8bc"
+    },
+    {
+      "path": "sites/seville-field-guide-publish/dist/narration/02_narration.txt",
+      "bytes": 2903,
+      "sha256": "ab97d28af518e027b35c3979920069bca9ce4336fb1675c1e78879ff8be91b5d"
+    },
+    {
+      "path": "sites/seville-field-guide-publish/dist/narration/03_narration.txt",
+      "bytes": 3563,
+      "sha256": "466d4293ff83b803bb58d8a3d594248e163235221a208b36e9c3cd3e3c51d5da"
+    },
+    {
+      "path": "sites/seville-field-guide-publish/dist/narration/04_narration.txt",
+      "bytes": 3248,
+      "sha256": "c7d6d03b30bf99f5a802e303179e158d5e2abe23989aa78255b1b20a82d209e7"
+    },
+    {
+      "path": "sites/seville-field-guide-publish/dist/narration/05_narration.txt",
+      "bytes": 3246,
+      "sha256": "a73eca3300ad904e695943cff36b380b3fd4d653370d5f2bc47f237400d2a3e3"
+    },
+    {
+      "path": "sites/seville-field-guide-publish/dist/narration/06_narration.txt",
+      "bytes": 3259,
+      "sha256": "d37df5c1e90b4f54997f8cf6bdc12b66ad81c66b4b6891ee0a02954523f46c2e"
+    },
+    {
+      "path": "sites/seville-field-guide-publish/dist/narration/07_narration.txt",
+      "bytes": 3073,
+      "sha256": "38f0844e1c8e4c7f9e2499ad2b414928c233bbe9e13e01c292e0291b5844f4e0"
+    },
+    {
+      "path": "sites/seville-field-guide-publish/dist/narration/08_narration.txt",
+      "bytes": 4125,
+      "sha256": "b51efc31e87918db2cde385e3eb09c2bd782983260483b2a50b9148d71a1e215"
+    },
+    {
+      "path": "sites/seville-field-guide-publish/dist/narration/09_narration.txt",
+      "bytes": 3798,
+      "sha256": "f382a41a2d4b8043cd73747a0338d4fc7c6152f70d9313aa59f9519bbd518e28"
+    },
+    {
+      "path": "sites/seville-field-guide-publish/dist/narration/10_narration.txt",
+      "bytes": 4240,
+      "sha256": "de33f4ca78b9ca41e61e0fa7851af6385b9b08f77c6bc4dbc1bdffb15c0c51c7"
+    },
+    {
+      "path": "sites/seville-field-guide-publish/dist/narration/11_narration.txt",
+      "bytes": 4413,
+      "sha256": "2926ba3a8711f583432e1ab60a5571ca116f4da490dbeb64dc2c69a02cce0d8d"
+    },
+    {
+      "path": "sites/seville-field-guide-publish/dist/narration/12_narration.txt",
+      "bytes": 3738,
+      "sha256": "359390f15c8ac4cc747fc335bbf5e532f7c152158bf621f0ba7da6ffbae0d1bd"
+    },
+    {
+      "path": "sites/seville-field-guide-publish/dist/narration/13_narration.txt",
+      "bytes": 1184,
+      "sha256": "f5ada26e8f5be80cb1f022a1afbd305cb1a48ebd4b7117ca5043df756bc6ca4c"
+    },
+    {
+      "path": "sites/seville-field-guide-publish/dist/narration/14_narration.txt",
+      "bytes": 1236,
+      "sha256": "359fa516403581c2ba547b4bbdb3dc03694463ba42afa7cf808929dba61b2669"
+    },
+    {
+      "path": "sites/seville-field-guide-publish/dist/narration/all-narration.txt",
+      "bytes": 44815,
+      "sha256": "103ca9b96cd91fea73c210920f9187aeb976f0751075ac50a5f3b86f993b514b"
+    },
+    {
+      "path": "sites/seville-field-guide-publish/dist/style.css",
+      "bytes": 20914,
+      "sha256": "7d52d5d0f21121f203b1bf2f6e3786ed12c7c91048cfb1e537b4c2735ff77bfb"
+    },
+    {
+      "path": "sites/seville-field-guide-publish/dist/sw.js",
+      "bytes": 1585,
+      "sha256": "d9109d9d2907d8ee0739d11079774c4eca8af3180666094cfcb8e1b2978f59f5"
+    },
+    {
+      "path": "sites/seville-field-guide-publish/finalize_assets.py",
+      "bytes": 1879,
+      "sha256": "43c42b5e008f30694f139b5881a94bbb9ce4e8b2d0fa05bb2bdef138250188d9"
+    },
+    {
+      "path": "sources.json",
+      "bytes": 12805,
+      "sha256": "7ed16a3c71e4aa25a31a0a3631a7051a6bd1828f9b6dfad6564d23ff975ddec3"
+    },
+    {
+      "path": "START-HERE.txt",
+      "bytes": 2440,
+      "sha256": "dbdee140ff752ce24a3511d8ddb3cf3a153f2028b5c393eef6f99421a00358a1"
+    }
+  ]
+}

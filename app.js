@@ -772,9 +772,57 @@ function openPlaceDetails(s,options={}){
       openCandidates({title:s.name||'',note:placeSourceURL(s)});
     }));
   }
+  if(options.existing){
+    placeButton(actions,'음성 가이드',()=>{
+      if(trip().id!==tripId)return;
+      const at=options.existing;
+      if(trip().days[at.di]?.spots[at.si]!==s){closePlaceDetails();toast('일정이 바뀌었어요. 장소를 다시 선택해 주세요.');return;}
+      closePlaceDetails();openAudioGuides(at.di,at.si);
+    });
+  }
   load();
 }
 window.openSavedPlace=(di,si)=>{const s=trip().days[di]?.spots[si];if(s)openPlaceDetails(s,{existing:{di,si}});};
+// Use the saved place identity, never its day/list index. Files remain outside sync/export.
+function audioGuideScope(){return JSON.stringify([user?.id||'local',trip().id]);}
+function audioGuideKey(spot){try{return TCAudioGuides.placeKey(spot);}catch(_){return null;}}
+function openTripFiles(kind='DOCUMENT',placeKey='',label=''){
+  if(!user||viewMode){toast('로그인한 여행에서 파일을 공유할 수 있어요.');return;}
+  const account=user.id, t=trip(), tripId=t.id, scope=JSON.stringify([account,tripId]);
+  window.TC_FILE_UI.open({tripId,scope,kind,placeKey,label:label||t.name,
+    openLocal:kind==='AUDIO'?()=>{
+      for(let di=0;di<trip().days.length;di++){
+        const si=trip().days[di].spots.findIndex(s=>audioGuideKey(s)===placeKey);
+        if(si>=0){window.openAudioGuides(di,si,true);break;}
+      }
+    }:null,
+    stillCurrent:()=>user?.id===account&&trip()?.id===tripId&&!viewMode&&
+      (!placeKey||trip().days.some(day=>day.spots.some(s=>audioGuideKey(s)===placeKey)))});
+}
+document.getElementById('tripFilesBtn').onclick=()=>openTripFiles();
+document.getElementById('bookingFilesBtn').onclick=()=>openTripFiles();
+document.getElementById('sharedAudioBtn').onclick=()=>{
+  const select=document.getElementById('audioGuidePlaceSelect'), option=select.selectedOptions[0];
+  const places=[];trip().days.forEach(day=>day.spots.forEach(s=>{const key=audioGuideKey(s);if(key)places.push({key,spot:s});}));
+  const selected=places[Number(select.value)];
+  if(!selected)return;
+  const {key,spot}=selected;
+  window.TC_AUDIO_UI.close();openTripFiles('AUDIO',key,option?.textContent||spot.name);
+};
+window.openAudioGuides=(di,si,localOnly=false)=>{
+  if(!window.TC_AUDIO_UI||!window.TCAudioGuides)return;
+  const t=trip(), spot=t.days[di]?.spots[si];if(!spot)return;
+  const sharedKey=audioGuideKey(spot);
+  if(user&&!viewMode&&!localOnly&&sharedKey){openTripFiles('AUDIO',sharedKey,spot.name);return;}
+  const scope=audioGuideScope(), places=[];let selected=-1;
+  t.days.forEach((day,dayIndex)=>day.spots.forEach((s,spotIndex)=>{
+    const key=audioGuideKey(s);if(!key)return;
+    if(dayIndex===di&&spotIndex===si)selected=places.length;
+    places.push({key,label:`Day ${dayIndex+1} · ${s.name||'이름 없는 장소'}${s.city?' · '+s.city:''}`});
+  }));
+  if(selected<0){toast('먼저 장소 이름이나 위치를 정해 주세요.');return;}
+  TC_AUDIO_UI.open({scope,places,selected,stillCurrent:key=>audioGuideScope()===scope&&trip().days.some(day=>day.spots.some(s=>audioGuideKey(s)===key))});
+};
 function onMapTap(lat,lng,placeId){
   if(pickMode){ onMapPick(lat,lng,placeId); return; }   // 좌표 지정 중이면 그 흐름이 우선(지연 없음)
   if(readOnly()&&!placeId) return;
@@ -1853,6 +1901,8 @@ function overlaySig(t,colors){
   return p.join('|');
 }
 function render(){
+  window.TC_AUDIO_UI?.check();
+  window.TC_FILE_UI?.check();
   _tzMemo=null;
   updateMapEmpty();
   updateSaveState();
@@ -2652,6 +2702,7 @@ function renderSidebar(){
           ${ro?'':`<button class="iconb mvup" onclick="moveSpot(${di},${si},-1)" title="위로">↑ <span>위로</span></button>
           <button class="iconb mvdown" onclick="moveSpot(${di},${si},1)" title="아래로">↓ <span>아래로</span></button>`}
           <button class="iconb" onclick="openSavedPlace(${di},${si})" title="장소 정보">ⓘ <span>장소 정보</span></button>
+          ${ro?'':`<button class="iconb" onclick="openAudioGuides(${di},${si})" title="음성 가이드">♫ <span>음성 가이드</span></button>`}
           ${ro?'':`<button class="iconb" onclick="openSpotModal(${di},${si})" title="편집">✎ <span>편집</span></button>
           <button class="iconb" onclick="copySpot(${di},${si})" title="복사">⧉ <span>복사</span></button>
           <button class="iconb danger" onclick="deleteSpot(${di},${si})" title="삭제">⌫ <span>삭제</span></button>`}
@@ -6879,6 +6930,7 @@ function renderTravel(di, clock){
                (asp? `<div class="travelFacts">다음 ${esc(asp.name)} · ${asp.at?`${esc(asp.at)} 도착(내가 정한 시각)`:`${hm(after.eta)} 도착 예상`}</div>` : '')
              : arrival(target.si, true));
       const act=document.createElement('div'); act.className='travelNowActions';
+      placeButton(act,'음성 가이드',()=>openAudioGuides(di,target.si));
       // 머리에서 먼저 묻는 중이면 몸에는 다녀옴 버튼을 두지 않는다 — 한 카드에 '다녀왔어요'가 둘이면 어느 것이 지금인지 흐려진다
       if(!unmarked.length) act.appendChild(spotStatusRow(di,target.si,sp,!v.canMark,here));
       act.insertAdjacentHTML('beforeend', here? travelGoLink(asp,'다음 장소 길찾기 ↗') : travelGoLink(sp));
@@ -6937,6 +6989,7 @@ function renderTravel(di, clock){
         ? ((el=>`<a class="tLink" href="${escAttr(el.href)}" target="_blank" rel="noopener">🧭 ${el.label}</a>`)(extMapLink(s)))
         : `<span style="font-size:12px;color:var(--meta-warning)">📍 위치 미지정</span>`);
     div.appendChild(links);
+    placeButton(links,'음성 가이드',()=>openAudioGuides(di,si));
     list.appendChild(div);
   });
   // 하루의 끝 — 숙소로 돌아가는 구간 (사이드바·지도와 같은 기준)
@@ -6986,6 +7039,8 @@ TC_AUTH.onChange(next=>{
   // 오래 열어둔 탭이 몇 시간 뒤 제 로컬본을 다시 올려 다른 기기의 최신 편집을 덮어썼다.
   const switched = (next&&next.id) !== (user&&user.id);
   if(switched){
+    window.TC_AUDIO_UI?.close();
+    window.TC_FILE_UI?.reset();
     syncAccountEpoch++;
     clearTimeout(cloudRetryT); clearTimeout(syncTimer);
     syncConflicts=[]; currentSyncConflict=null;

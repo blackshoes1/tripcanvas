@@ -1,0 +1,28 @@
+{
+  "model": "supertone-oss-archive/supertonic-3",
+  "revision": "aafc6e32416a594460b32413efc49d7fe4ce6d46",
+  "sample_text": "지금 보이는 금빛 제단은, 한 사람이 만든 작품이 아닙니다. 천사백팔십이년에 시작해, 천오백육십사년에 마무리됐습니다. 무려 여든두 해입니다. 여러 세대의 장인들이 작은 조각 장면들을 이어 붙여, 성서 이야기를 눈으로 읽을 수 있게 만들었죠. 잠시 가장 아래 중앙의 성모상을 찾아보세요.",
+  "voices": [
+    {
+      "voice": "F1",
+      "file": "01_F1_sample.mp3",
+      "seconds": 27.489024943310657,
+      "generation_seconds": 5.640999999999622,
+      "rms": 0.05342193692922592
+    },
+    {
+      "voice": "F2",
+      "file": "02_F2_sample.mp3",
+      "seconds": 25.797891156462587,
+      "generation_seconds": 5.98399999999674,
+      "rms": 0.0464298240840435
+    },
+    {
+      "voice": "M1",
+      "file": "03_M1_sample.mp3",
+      "seconds": 27.510068027210885,
+      "generation_seconds": 6.09400000000096,
+      "rms": 0.04818384349346161
+    }
+  ]
+}

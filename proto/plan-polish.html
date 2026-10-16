@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>With J · 일정 화면 시안</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --paper: #f7f5ef;
+      --raised: #fff;
+      --sunken: #ede7da;
+      --ink: #16130f;
+      --soft: #6e655a;
+      --faint: #766f62;
+      --accent: #46702e;
+      --accent-soft: #edf3e8;
+      --line: #e7e1d6;
+      --danger: #b4342a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: #e8e5de;
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    }
+    button { font: inherit; cursor: pointer; }
+    .stage { display: flex; justify-content: center; align-items: flex-start; gap: 48px; padding: 36px 24px 56px; }
+    .guide { width: 276px; padding-top: 72px; }
+    .guide .eyebrow { color: var(--accent); font-size: 11px; font-weight: 800; letter-spacing: .14em; }
+    .guide h1 { margin: 12px 0; font-size: 29px; line-height: 1.23; letter-spacing: -.035em; }
+    .guide p { margin: 0 0 26px; color: #5e574c; font-size: 14px; line-height: 1.65; }
+    .switches { display: flex; gap: 8px; flex-wrap: wrap; }
+    .switches button { border: 1px solid #c9c3b8; color: #504a40; background: transparent; border-radius: 999px; padding: 8px 12px; font-size: 12px; font-weight: 700; }
+    .switches button[aria-pressed="true"] { color: white; background: var(--accent); border-color: var(--accent); }
+    .guide ul { margin: 26px 0 0; padding-left: 18px; color: #5e574c; font-size: 13px; line-height: 1.85; }
+    .phone {
+      position: relative;
+      width: 390px;
+      height: 844px;
+      flex: none;
+      overflow: hidden;
+      background: var(--paper);
+      border: 7px solid #24221e;
+      border-radius: 46px;
+      box-shadow: 0 22px 50px rgba(35, 31, 22, .18);
+    }
+    .screen { display: flex; flex-direction: column; width: 100%; height: 100%; border-radius: 39px; overflow: hidden; }
+    .status { height: 48px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 13px 27px 0; background: #fbfaf7; font-size: 15px; font-weight: 750; letter-spacing: -.025em; }
+    .status .right { font-size: 12px; letter-spacing: .025em; }
+    .nav { height: 57px; flex: none; display: grid; grid-template-columns: 46px 1fr 46px; align-items: center; gap: 6px; padding: 0 18px; background: #fbfaf7; }
+    .nav h2 { margin: 0; text-align: center; font-size: 18px; font-weight: 750; letter-spacing: -.025em; white-space: nowrap; }
+    .icon-button { width: 42px; height: 42px; display: grid; place-items: center; border: 0; border-radius: 50%; background: white; color: var(--ink); font-size: 26px; line-height: 1; box-shadow: 0 2px 13px rgba(33,27,17,.035); }
+    .icon-button.more { font-size: 21px; padding-bottom: 8px; }
+    .day-strip { flex: none; padding: 10px 16px 12px; background: #fbfaf7; }
+    .days { display: flex; overflow-x: auto; gap: 4px; padding: 4px; border: 1px solid var(--line); border-radius: 17px; background: #fff; scrollbar-width: none; }
+    .days::-webkit-scrollbar { display: none; }
+    .day { flex: 0 0 78px; min-height: 53px; border: 0; border-radius: 12px; background: transparent; color: var(--ink); padding: 6px 3px; text-align: center; }
+    .day.active { color: var(--accent); background: var(--accent-soft); }
+    .day strong { display: block; font-size: 14px; line-height: 19px; }
+    .day span { display: block; margin-top: 2px; color: var(--faint); font-size: 11px; white-space: nowrap; }
+    .day.active span { color: var(--accent); }
+    .scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 15px 16px 26px; scrollbar-width: thin; }
+    .card { border-radius: 18px; background: var(--raised); border: 1px solid var(--line); }
+    .summary { padding: 17px 18px 10px; background: #f1f4ec; border-color: #e0e9d8; }
+    .kicker { margin: 0 0 6px; color: var(--accent); font-size: 11px; letter-spacing: .02em; font-weight: 800; }
+    .summary h3 { margin: 0 0 13px; font-size: 21px; line-height: 1.25; letter-spacing: -.045em; }
+    .time-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-bottom: 15px; }
+    .time-fact { min-height: 61px; padding: 10px 11px 9px; border: 1px solid #dce7d3; border-radius: 12px; background: #fff; }
+    .time-fact small { display: block; margin-bottom: 4px; color: var(--soft); font-size: 11px; font-weight: 650; }
+    .time-fact strong { display: block; font-size: 17px; letter-spacing: -.025em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .cost { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; border-top: 1px solid #dce7d3; font-size: 13px; }
+    .cost strong { font-size: 15px; }
+    .cost .chev { margin-left: 7px; color: var(--soft); }
+    .details-button { display: flex; align-items: center; gap: 5px; width: 100%; min-height: 38px; padding: 0; color: var(--accent); border: 0; background: none; text-align: left; font-size: 12px; font-weight: 750; }
+    .details { display: none; padding: 4px 0 10px; border-top: 1px solid #dce7d3; color: var(--soft); font-size: 12px; line-height: 1.7; }
+    .details.open { display: block; }
+    .section-heading { display: flex; align-items: center; justify-content: space-between; margin: 22px 3px 10px; }
+    .section-heading h3 { margin: 0; font-size: 16px; letter-spacing: -.02em; }
+    .section-heading button { border: 0; background: transparent; color: var(--accent); font-size: 13px; font-weight: 750; }
+    .section-heading .count { margin-left: 4px; color: var(--faint); font-size: 12px; font-weight: 600; }
+    .spots { overflow: hidden; }
+    .spot { display: grid; grid-template-columns: 52px 1fr; gap: 8px; padding: 15px 15px 14px; }
+    .spot + .spot { border-top: 1px solid var(--line); }
+    .eta { display: block; padding-top: 3px; color: #594f43; font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .spot-main { min-width: 0; }
+    .spot-name { display: flex; align-items: flex-start; gap: 8px; min-width: 0; font-size: 15px; font-weight: 750; line-height: 1.35; }
+    .spot-name .glyph { color: var(--accent); font-size: 15px; }
+    .spot-name .title { min-width: 0; }
+    .spot-meta { margin: 4px 0 0 23px; color: var(--soft); font-size: 12px; line-height: 1.45; }
+    .leg { margin: 10px 0 0 0; padding: 7px 10px; background: #f4f1ea; border-radius: 9px; color: #655d50; font-size: 11px; font-weight: 650; }
+    .add { width: 100%; min-height: 48px; border: 0; border-top: 1px solid var(--line); background: white; color: var(--accent); font-size: 14px; font-weight: 750; }
+    .return-card { display: flex; gap: 11px; align-items: center; padding: 14px 16px; color: var(--soft); font-size: 12px; }
+    .return-card strong { display: block; color: var(--ink); font-size: 14px; margin-bottom: 3px; }
+    .return-icon { display: grid; place-items: center; width: 34px; height: 34px; flex: none; border-radius: 10px; color: var(--accent); background: var(--accent-soft); font-size: 17px; }
+    .tabbar { flex: none; height: 78px; display: grid; grid-template-columns: repeat(4, 1fr); padding: 11px 10px 14px; background: #fbfaf8; border-top: 1px solid var(--line); }
+    .tab { display: flex; flex-direction: column; align-items: center; gap: 3px; border: 0; background: none; color: var(--soft); font-size: 11px; }
+    .tab b { display: block; height: 24px; font-size: 22px; line-height: 22px; font-weight: 500; }
+    .tab.selected { color: var(--accent); font-weight: 800; }
+    .home-indicator { position: absolute; left: 50%; bottom: 5px; width: 105px; height: 4px; transform: translateX(-50%); background: #222; border-radius: 9px; }
+    .notice { display: none; align-items: center; gap: 10px; margin-bottom: 14px; padding: 12px; border: 1px solid #edc9c4; border-radius: 14px; background: #fff9f8; color: var(--danger); font-size: 12px; line-height: 1.4; }
+    .notice strong { display: block; margin-bottom: 2px; font-size: 13px; }
+    .notice button { margin-left: auto; flex: none; padding: 7px 10px; border: 1px solid #dbaaa4; border-radius: 9px; background: white; color: var(--danger); font-size: 11px; font-weight: 750; }
+    .error .notice { display: flex; }
+    .error .time-fact strong { color: var(--faint); }
+    .error .spot { grid-template-columns: 1fr; }
+    .error .eta, .error .leg { display: none; }
+    @media (max-width: 760px) {
+      body { background: var(--paper); }
+      .stage { display: block; padding: 0; }
+      .guide { width: auto; padding: 20px 20px 18px; }
+      .guide h1 { font-size: 22px; margin: 6px 0; }
+      .guide p, .guide ul { display: none; }
+      .phone { margin: auto; width: min(390px, 100vw); height: min(844px, calc(100dvh - 118px)); border-width: 0; border-radius: 0; box-shadow: none; }
+      .screen { border-radius: 0; }
+      .home-indicator { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <main class="stage">
+    <aside class="guide">
+      <div class="eyebrow">WITH J · HTML CONCEPT</div>
+      <h1>하루의 흐름이<br>한눈에 보이도록</h1>
+      <p>실제 앱의 종이색·올리브 팔레트를 유지하면서, 시간과 방문 장소의 정보 우선순위를 정리한 시안입니다. 화면 속 장소와 금액은 예시입니다.</p>
+      <div class="switches" aria-label="시안 상태 선택">
+        <button type="button" data-state="normal" aria-pressed="true">기본 화면</button>
+        <button type="button" data-state="error" aria-pressed="false">시간 오류</button>
+      </div>
+      <ul>
+        <li>이동 시간과 종료 시각을 각각 독립된 칸에 표시</li>
+        <li>요약·방문 일정·숙소 복귀를 카드로 구분</li>
+        <li>계산 오류 때는 안내와 다시 시도 버튼을 함께 표시</li>
+      </ul>
+    </aside>
+    <div class="phone" id="phone" aria-label="With J 일정 화면 시안">
+      <div class="screen">
+        <div class="status"><span>13:48</span><span class="right">▮▮▮ 5G ▰</span></div>
+        <header class="nav"><button class="icon-button" type="button" aria-label="뒤로">‹</button><h2>스페인 신혼여행</h2><button class="icon-button more" type="button" aria-label="더보기">•••</button></header>
+        <nav class="day-strip" aria-label="날짜 선택"><div class="days">
+          <button class="day active" type="button" aria-current="date"><strong>1일차</strong><span>10.25 일</span></button>
+          <button class="day" type="button"><strong>2일차</strong><span>10.26 월</span></button>
+          <button class="day" type="button"><strong>3일차</strong><span>10.27 화</span></button>
+          <button class="day" type="button"><strong>4일차</strong><span>10.28 수</span></button>
+          <button class="day" type="button"><strong>5일차</strong><span>10.29 목</span></button>
+        </div></nav>
+        <div class="scroll">
+          <div class="notice" role="status"><span aria-hidden="true">ⓘ</span><span><strong>시간 정보를 불러오지 못했어요</strong>일정은 계속 볼 수 있어요.</span><button type="button" id="retry">다시 시도</button></div>
+          <section class="card summary" aria-labelledby="summary-title">
+            <p class="kicker">하루 요약</p><h3 id="summary-title">마드리드 도착 · 1박</h3>
+            <div class="time-facts">
+              <div class="time-fact"><small>오늘 이동</small><strong data-normal="4시간 25분">4시간 25분</strong></div>
+              <div class="time-fact"><small>일정 종료</small><strong data-normal="20:25">20:25</strong></div>
+            </div>
+            <div class="cost"><span>오늘 예상 비용</span><span><strong id="cost-value">₩454,465</strong><span class="chev">›</span></span></div>
+            <button class="details-button" type="button" id="details-toggle" aria-expanded="false">상세 요약 보기 <span aria-hidden="true">⌄</span></button>
+            <div class="details" id="details">총 이동거리 12.4km · 하루 기본 이동수단: 도보<br>머무는 시간 미정 1곳 · 현재 0분으로 계산</div>
+          </section>
+          <div class="section-heading"><h3>방문 일정 <span class="count">4곳</span></h3><button type="button">순서 편집</button></div>
+          <section class="card spots" aria-label="방문 일정">
+            <div class="spot"><span class="eta">08:54</span><div class="spot-main"><div class="spot-name"><span class="glyph">◉</span><span class="title">Chocolatería San Ginés</span></div><div class="spot-meta">카페 · 30분 머무름 · Madrid</div></div></div>
+            <div class="spot"><span class="eta">09:24</span><div class="spot-main"><div class="spot-name"><span class="glyph">♧</span><span class="title">Restaurant La Campana</span></div><div class="spot-meta">식당 · 30분 머무름 · Madrid</div><div class="leg">↳ 도보 3분 · 200m</div></div></div>
+            <div class="spot"><span class="eta">10:01</span><div class="spot-main"><div class="spot-name"><span class="glyph">▣</span><span class="title">El Rastro</span></div><div class="spot-meta">쇼핑 · 60분 머무름 · Madrid</div><div class="leg">↳ 도보 7분 · 500m</div></div></div>
+            <div class="spot"><span class="eta">11:17</span><div class="spot-main"><div class="spot-name"><span class="glyph">♧</span><span class="title">Cháchara</span></div><div class="spot-meta">식당 · 60분 머무름 · Madrid</div><div class="leg">↳ 도보 16분 · 1.2km</div></div></div>
+            <button class="add" type="button">＋ 장소 추가</button>
+          </section>
+          <div class="section-heading"><h3>숙소 복귀</h3></div>
+          <section class="card return-card" aria-label="숙소 복귀"><span class="return-icon">⌂</span><span><strong>마드리드 숙소로 돌아가기</strong>오늘 마지막 장소에서 출발 · 이동수단 변경 가능</span></section>
+        </div>
+        <nav class="tabbar" aria-label="주요 메뉴">
+          <button class="tab" type="button"><b>◷</b>지금</button>
+          <button class="tab selected" type="button" aria-current="page"><b>▦</b>일정</button>
+          <button class="tab" type="button"><b>♧</b>지도</button>
+          <button class="tab" type="button"><b>•••</b>더보기</button>
+        </nav>
+      </div>
+      <div class="home-indicator"></div>
+    </div>
+  </main>
+  <script>
+    const phone = document.getElementById('phone');
+    const stateButtons = [...document.querySelectorAll('[data-state]')];
+    function setState(state) {
+      phone.classList.toggle('error', state === 'error');
+      stateButtons.forEach(button => button.setAttribute('aria-pressed', String(button.dataset.state === state)));
+      document.querySelectorAll('.time-fact strong').forEach(node => {
+        node.textContent = state === 'error' ? '확인 필요' : node.dataset.normal;
+      });
+      document.getElementById('cost-value').textContent = state === 'error' ? '아직 없음' : '₩454,465';
+    }
+    stateButtons.forEach(button => button.addEventListener('click', () => setState(button.dataset.state)));
+    document.getElementById('retry').addEventListener('click', () => setState('normal'));
+    document.getElementById('details-toggle').addEventListener('click', event => {
+      const details = document.getElementById('details');
+      const open = details.classList.toggle('open');
+      event.currentTarget.setAttribute('aria-expanded', String(open));
+      event.currentTarget.firstChild.textContent = open ? '요약 접기 ' : '상세 요약 보기 ';
+    });
+    document.querySelectorAll('.day').forEach(button => button.addEventListener('click', () => {
+      document.querySelectorAll('.day').forEach(day => { day.classList.remove('active'); day.removeAttribute('aria-current'); });
+      button.classList.add('active'); button.setAttribute('aria-current', 'date');
+    }));
+  </script>
+</body>
+</html>

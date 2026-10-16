@@ -23,6 +23,9 @@ import { createItineraryRoutes } from '@/server/api/itineraryRoutes';
 import { createPlaceRoutes } from '@/server/api/placeRoutes';
 import { createSnapshotRoutes } from '@/server/api/snapshotRoutes';
 import { createCoverRoutes } from '@/server/api/coverRoutes';
+import { createTripFileRoutes } from '@/server/api/tripFileRoutes';
+import { TripFilesService } from '@/server/application/trip/tripFiles';
+import { PgTripFileRepository } from '@/server/infrastructure/database/pgTripFileRepository';
 import { CoverService } from '@/server/application/trip/coverService';
 import { PgCoverRepository } from '@/server/infrastructure/database/pgCoverRepository';
 import { createTripRoutes } from '@/server/api/tripRoutes';
@@ -117,6 +120,15 @@ export const coverRoutes = createCoverRoutes({
 });
 
 export const tripRoutes = createTripRoutes({ verifier, serviceFor: tripServiceFor });
+
+export const tripFileRoutes = createTripFileRoutes({
+  verifier,
+  serviceFor: async (ctx, token) => {
+    const db = getDb();
+    if (!db || env.registry.TRIP !== 'NEW_BACKEND') throw new ApiError('MAINTENANCE', { message: '파일 공유 기능을 준비 중이에요.' });
+    return new TripFilesService(await tripServiceFor(ctx, token), new PgTripFileRepository(db));
+  }
+});
 
 export const dailyMomentsRoutes = createDailyMomentsRoutes({
   verifier,

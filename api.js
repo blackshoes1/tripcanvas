@@ -396,7 +396,37 @@
     get: () => request('GET', '/api/v1/me/preferences'),
     set: (/** @type {string} */jTone, /** @type {string|null=} */token) => request('PUT', '/api/v1/me/preferences', {jTone}, false, token)
   };
-  const API = { preferences, configure, rpc, snapshots, prices, covers, me, sync, realtime: { connect: connectRealtime }, DEFAULT_BASE };
+  /** Binary transfer uses the same base and captured account token as the JSON API.
+   * @param {string} method @param {string} tripId @param {string=} id
+   * @param {File=} file @param {Record<string,string>=} query
+   */
+  async function fileTransfer(method, tripId, id, file, query) {
+    const token = await _getToken();
+    if (!token) return {data:null,error:toError(401,{message:'파일을 공유하려면 로그인해 주세요.'})};
+    const path = '/api/v1/trips/' + seg(tripId) + '/files' + (id ? '/' + seg(id) : '');
+    const params = query ? '?' + new URLSearchParams(query).toString() : '';
+    const doFetch = _fetch || fetch;
+    try {
+      const bytes = file ? await file.arrayBuffer() : undefined;
+      if (await _getToken() !== token) return {data:null,error:toError(401,{message:'계정이 바뀌었어요. 다시 열어 주세요.'})};
+      const response = await doFetch(_base + path + params, {
+        method, credentials:'omit', headers:{authorization:'Bearer ' + token, ...(file ? {'content-type':'application/octet-stream'} : {})},
+        body:bytes, signal:AbortSignal.timeout(120000)
+      });
+      if (!response.ok) return {data:null,error:toError(response.status,await response.json().catch(()=>null))};
+      const data = method === 'GET' && id ? await response.blob() : await response.json();
+      if (await _getToken() !== token) return {data:null,error:toError(401,{message:'계정이 바뀌었어요. 다시 열어 주세요.'})};
+      return {data,error:null};
+    } catch (_) { return {data:null,error:{status:0,message:'파일을 전송하지 못했어요. 연결을 확인하고 다시 시도해 주세요.'}}; }
+  }
+  const files = {
+    list:(/** @type {string} */tripId)=>request('GET','/api/v1/trips/'+seg(tripId)+'/files'),
+    upload:(/** @type {string} */tripId,/** @type {File} */file,/** @type {Record<string,string>} */info)=>fileTransfer('POST',tripId,undefined,file,info),
+    download:(/** @type {string} */tripId,/** @type {string} */id)=>fileTransfer('GET',tripId,id),
+    edit:(/** @type {string} */tripId,/** @type {string} */id,/** @type {{title?:string,position?:number,move?:string}} */patch)=>request('PATCH','/api/v1/trips/'+seg(tripId)+'/files/'+seg(id),patch),
+    remove:(/** @type {string} */tripId,/** @type {string} */id)=>request('DELETE','/api/v1/trips/'+seg(tripId)+'/files/'+seg(id))
+  };
+  const API = { files, preferences, configure, rpc, snapshots, prices, covers, me, sync, realtime: { connect: connectRealtime }, DEFAULT_BASE };
   if (typeof module !== 'undefined' && module.exports) { module.exports = API; }   // Node (테스트)
   global.TC_API = API;
 })(/** @type {any} */ (typeof globalThis !== 'undefined' ? globalThis : this));

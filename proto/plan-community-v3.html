@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>With J · 일정 화면 — Community 레퍼런스 시안</title>
+  <!-- Visual direction inspired by Mohammad Ali's Tourminder (CC BY 4.0):
+       https://www.figma.com/community/file/1193945450032519480
+       All markup, SVG artwork and screen composition below are original. -->
+  <style>
+    @font-face{font-family:NanumMyeongjo;src:url('../ios/TripCanvas/Resources/Fonts/NanumMyeongjo-Regular.ttf') format('truetype');font-display:swap}
+    :root{--forest:#263831;--forest2:#314940;--sage:#c5d2a2;--lime:#e0e9ba;--paper:#f7f6ee;--ink:#23322c;--muted:#7d887c;--line:#e5e8da}
+    *{box-sizing:border-box}body{margin:0;background:#e8ece5;color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Malgun Gothic',sans-serif}
+    .stage{min-height:100vh;display:flex;align-items:flex-start;justify-content:center;gap:64px;padding:36px 24px}
+    .note{width:280px;padding-top:88px}.eyebrow{color:#69816d;font-size:11px;font-weight:800;letter-spacing:.21em}.note h1{font:normal 32px/1.3 NanumMyeongjo,serif;letter-spacing:-.05em;margin:15px 0}.note p{color:#637269;font-size:13px;line-height:1.8}.note ul{padding:0;margin:30px 0;list-style:none;border-top:1px solid #c9d1c6}.note li{padding:12px 0;border-bottom:1px solid #c9d1c6;font-size:12px;line-height:1.5;color:#52645a}.note li b{display:inline-block;width:30px;color:#507257}
+    .phone{width:390px;height:844px;flex:none;position:relative;overflow:hidden;border:7px solid #1b2822;border-radius:48px;background:var(--paper);box-shadow:0 30px 75px #52685750}.screen{height:100%;overflow:hidden;border-radius:40px;display:flex;flex-direction:column;background:var(--paper)}
+    .top{position:relative;flex:none;height:318px;overflow:hidden;background:var(--forest);color:#f9f9ed}.top:after{content:"";position:absolute;left:-32px;right:-40px;bottom:-86px;height:150px;border-radius:50%;background:var(--paper);transform:rotate(-7deg)}
+    .status{height:46px;padding:13px 26px 0;display:flex;justify-content:space-between;font-size:14px;font-weight:800;position:relative;z-index:3}.status span:last-child{font-size:11px;letter-spacing:.08em}
+    .toolbar{height:48px;padding:0 20px;display:flex;justify-content:space-between;align-items:center;position:relative;z-index:3}.toolbar .back,.toolbar .more{width:34px;height:34px;border:1px solid #ffffff55;border-radius:50%;display:grid;place-items:center;font-size:20px}.toolbar strong{font-size:14px;letter-spacing:-.04em;font-weight:700}
+    .hero-copy{position:absolute;z-index:2;left:25px;top:110px;max-width:250px}.hero-copy small{display:block;color:var(--sage);font-size:10px;font-weight:800;letter-spacing:.23em}.hero-copy h1{font:normal 37px/1.16 NanumMyeongjo,serif;letter-spacing:-.065em;margin:9px 0 12px}.hero-copy p{margin:0;color:#d5dfcd;font-size:12px;line-height:1.55}
+    .art{position:absolute;right:-61px;top:130px;width:181px;height:181px;z-index:1}.art svg{display:block;width:100%;height:100%}.art .disc{fill:#476454}.art .road{fill:none;stroke:#e5e4b6;stroke-width:11;stroke-linecap:round;stroke-dasharray:1 18}.art .land{fill:#a6bc82}.art .building{fill:#e7dcb8}.art .roof{fill:#b58e67}.art .pin{fill:#ffcb87}
+    .daystrip{position:relative;z-index:4;margin:-29px 16px 0;padding:13px 12px 12px;display:flex;justify-content:space-between;background:#e5edd6;border:1px solid #d1dfbd;border-radius:18px;box-shadow:0 9px 24px #243c2a13}.day{width:57px;text-align:center;color:#718471}.day b{display:block;font-size:11px}.day span{display:block;margin-top:5px;font-size:18px;font-weight:800;font-variant-numeric:tabular-nums}.day.active{color:var(--forest)}.day.active span{margin-top:2px;padding:3px 0;border-radius:10px;background:var(--forest);color:#f4f8e6}
+    .scroll{flex:1;min-height:0;overflow:auto;padding-bottom:20px;scrollbar-width:none}.scroll::-webkit-scrollbar{display:none}
+    .summary{margin:18px 19px 0}.section-kicker{font-size:10px;font-weight:800;letter-spacing:.18em;color:#799176}.summary-head{display:flex;align-items:baseline;justify-content:space-between;margin:5px 0 14px}.summary-head h2{margin:0;font:normal 24px/1.2 NanumMyeongjo,serif;letter-spacing:-.06em}.summary-head span{color:#66826b;font-size:11px;font-weight:800}
+    .metrics{display:grid;grid-template-columns:1fr 1fr 1fr;background:#fff;border:1px solid var(--line);border-radius:16px;overflow:hidden}.metric{padding:13px 11px 14px}.metric+.metric{border-left:1px solid var(--line)}.metric label{display:block;color:#8b9687;font-size:10px;font-weight:700}.metric strong{display:block;margin-top:7px;font-size:15px;white-space:nowrap;letter-spacing:-.04em}.metric strong em{font-style:normal;font-size:11px;font-weight:500;color:#72806f}.metrics .metric:nth-child(2) strong{color:#527456}
+    .cost{display:flex;align-items:center;justify-content:space-between;margin-top:11px;padding:13px 15px;border-radius:12px;background:#edf1e5;color:#536957;font-size:12px}.cost strong{color:#263c2c;font-size:14px}.cost i{font-style:normal;color:#81967e}
+    .timeline{margin:21px 19px 0}.timeline-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px}.timeline-head h2{margin:0;font:normal 22px NanumMyeongjo,serif;letter-spacing:-.05em}.timeline-head span{font-size:11px;font-weight:800;color:#4b7254}
+    .stop{display:grid;grid-template-columns:42px 17px 1fr;gap:8px;min-height:89px}.time{padding-top:18px;font-size:12px;color:#647467;font-variant-numeric:tabular-nums}.track{position:relative;display:flex;justify-content:center}.track:before{content:"";position:absolute;top:24px;bottom:-1px;border-left:1px dashed #b4c4aa}.stop:last-child .track:before{display:none}.dot{z-index:1;width:10px;height:10px;margin-top:21px;border-radius:50%;border:2px solid #658567;background:var(--paper)}.stop:first-of-type .dot{background:#577b57}.stop-card{padding:11px 12px 12px;margin-bottom:9px;border:1px solid #e4e9da;border-radius:14px;background:#fff;box-shadow:0 2px 8px #23452b08}.stop-card .type{font-size:10px;font-weight:800;letter-spacing:.08em;color:#83a184}.stop-card strong{display:block;margin-top:3px;font-size:14px;letter-spacing:-.03em}.stop-card small{display:block;margin-top:5px;font-size:11px;color:#899388}.transfer{grid-column:3;margin:-4px 0 9px;padding:0 12px;font-size:10px;color:#819182}.transfer b{color:#526e54}
+    .tabbar{flex:none;height:68px;border-top:1px solid #e2e7da;background:#fbfcf7;display:flex;justify-content:space-around;padding-top:9px}.tab{min-width:65px;text-align:center;color:#899489;font-size:10px}.tab i{display:block;font-style:normal;font-size:22px;line-height:27px}.tab.active{color:#345e3b;font-weight:800}.home-indicator{position:absolute;bottom:7px;left:50%;width:106px;height:4px;transform:translateX(-50%);border-radius:5px;background:#20372a}
+    @media(max-width:760px){.stage{padding:0;background:var(--paper)}.note{display:none}.phone{border:0;border-radius:0;box-shadow:none;width:100vw;max-width:430px;height:100dvh}.screen{border-radius:0}.home-indicator{display:none}}
+  </style>
+</head>
+<body>
+<main class="stage">
+  <aside class="note"><div class="eyebrow">WITH J / DESIGN STUDY 03</div><h1>여행의 분위기와<br>일정의 명료함.</h1><p>Figma Community의 Tourminder를 참고해 어두운 숲색, 세이지 톤, 일러스트가 만드는 여행 감성을 가져왔습니다. 일정 데이터와 화면 구성은 With J에 맞춰 새로 그렸습니다.</p><ul><li><b>01</b> 장소가 아닌 여행의 하루를 표지로</li><li><b>02</b> 이동·종료 시각을 한눈에</li><li><b>03</b> 타임라인은 가볍고 정확하게</li><li><b>04</b> 원본 자산을 복사하지 않은 참고 시안</li></ul></aside>
+  <div class="phone"><div class="screen">
+    <header class="top">
+      <div class="status"><span>13:48</span><span>▮▮▮ 5G ▰</span></div>
+      <div class="toolbar"><span class="back">‹</span><strong>스페인 신혼여행</strong><span class="more">···</span></div>
+      <div class="hero-copy"><small>WITH J · DAY 01</small><h1>마드리드에서<br>시작하는 하루</h1><p>골목을 걷고, 시장에 들르는 오후.</p></div>
+      <div class="art" aria-hidden="true"><svg viewBox="0 0 210 210"><circle class="disc" cx="112" cy="110" r="101"/><path class="road" d="M58 168 C100 157 81 128 127 118 S154 78 187 66"/><path class="land" d="M24 146c15-22 36-18 44-5 11-16 31-12 39 5 13-22 38-20 55 4l-5 30H31z"/><rect class="building" x="55" y="96" width="57" height="54" rx="3"/><path class="roof" d="M48 98 83 68 119 98z"/><rect class="roof" x="67" y="111" width="9" height="13" rx="4"/><rect class="roof" x="91" y="111" width="9" height="13" rx="4"/><rect class="roof" x="79" y="130" width="11" height="20" rx="5"/><path class="pin" d="M159 51c-15 0-23 10-23 22 0 18 23 40 23 40s23-22 23-40c0-12-8-22-23-22zm0 31a9 9 0 1 1 0-18 9 9 0 0 1 0 18z"/></svg></div>
+    </header>
+    <nav class="daystrip" aria-label="여행 날짜"><div class="day active"><b>토 · 1일차</b><span>25</span></div><div class="day"><b>일 · 2일차</b><span>26</span></div><div class="day"><b>월 · 3일차</b><span>27</span></div><div class="day"><b>화 · 4일차</b><span>28</span></div><div class="day"><b>수 · 5일차</b><span>29</span></div></nav>
+    <div class="scroll"><section class="summary"><div class="section-kicker">TODAY AT A GLANCE</div><div class="summary-head"><h2>오늘의 여정</h2><span>마드리드 · 4곳</span></div><div class="metrics"><div class="metric"><label>첫 일정</label><strong>09:00</strong></div><div class="metric"><label>이동 시간</label><strong>4시간 <em>25분</em></strong></div><div class="metric"><label>종료 예상</label><strong>20:25</strong></div></div><div class="cost"><span>오늘 예상 비용</span><strong>₩454,465 <i>›</i></strong></div></section>
+    <section class="timeline"><div class="timeline-head"><h2>방문 일정</h2><span>순서 편집 ↗</span></div>
+      <div class="stop"><div class="time">09:00</div><div class="track"><span class="dot"></span></div><div class="stop-card"><span class="type">CAFE · 30분</span><strong>Chocolatería San Ginés</strong><small>초콜라테리아 · Madrid</small></div><div class="transfer"><b>↘ 도보 3분</b> · 200m</div></div>
+      <div class="stop"><div class="time">09:24</div><div class="track"><span class="dot"></span></div><div class="stop-card"><span class="type">RESTAURANT · 30분</span><strong>Restaurant La Campana</strong><small>식당 · Madrid</small></div><div class="transfer"><b>↘ 도보 7분</b> · 500m</div></div>
+      <div class="stop"><div class="time">10:01</div><div class="track"><span class="dot"></span></div><div class="stop-card"><span class="type">SHOPPING · 60분</span><strong>El Rastro</strong><small>야외 시장 · Madrid</small></div><div class="transfer"><b>↘ 도보 16분</b> · 1.2km</div></div>
+      <div class="stop"><div class="time">11:17</div><div class="track"><span class="dot"></span></div><div class="stop-card"><span class="type">RESTAURANT · 60분</span><strong>Cháchara</strong><small>식당 · Madrid</small></div></div>
+    </section></div>
+    <nav class="tabbar"><div class="tab"><i>◷</i>지금</div><div class="tab active"><i>▦</i>일정</div><div class="tab"><i>◇</i>지도</div><div class="tab"><i>···</i>더보기</div></nav>
+  </div><div class="home-indicator"></div></div>
+</main>
+</body>
+</html>

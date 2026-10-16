@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>With J — 일정 화면 디자인 시안 02</title>
+  <style>
+    @font-face { font-family: "NanumMyeongjo"; src: url("../ios/TripCanvas/Resources/Fonts/NanumMyeongjo-Regular.ttf") format("truetype"); font-display: swap; }
+    :root {
+      --paper:#f7f5ef; --white:#fff; --ink:#171814; --soft:#6e6b60; --muted:#8b877d;
+      --olive:#46702e; --olive-deep:#29451f; --olive-pale:#eef2e9; --line:#e8e4db;
+      --warning:#aa5c27; --warning-pale:#fff4ec;
+    }
+    * { box-sizing:border-box; }
+    body { margin:0; color:var(--ink); background:#eae8e2; font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif; }
+    button { font:inherit; cursor:pointer; }
+    .scene { min-height:100vh; display:flex; justify-content:center; gap:72px; padding:42px 30px 55px; }
+    .editor-note { width:270px; padding-top:96px; }
+    .eyebrow { margin:0 0 17px; color:var(--olive); font:700 11px/1.4 ui-monospace,monospace; letter-spacing:.16em; }
+    .editor-note h1 { margin:0 0 19px; font:normal 31px/1.33 NanumMyeongjo,serif; letter-spacing:-.04em; }
+    .editor-note p { margin:0; color:#575a50; font-size:14px; line-height:1.8; }
+    .state-switch { display:flex; gap:8px; margin:28px 0 30px; }
+    .state-switch button { padding:9px 12px; border:1px solid #cfcfc4; border-radius:9px; background:#f7f7f2; color:#54594e; font-size:12px; font-weight:700; }
+    .state-switch button[aria-pressed=true] { background:var(--olive-deep); border-color:var(--olive-deep); color:white; }
+    .design-notes { margin:0; padding:0; list-style:none; border-top:1px solid #cbc9c0; }
+    .design-notes li { padding:13px 0; border-bottom:1px solid #cbc9c0; color:#5c5d53; font-size:12px; line-height:1.55; }
+    .design-notes span { display:inline-block; min-width:29px; color:var(--olive); font-family:ui-monospace,monospace; }
+    .device { position:relative; width:390px; height:844px; flex:none; border:7px solid #262822; border-radius:47px; background:var(--paper); overflow:hidden; box-shadow:0 28px 55px rgba(45,48,40,.21); }
+    .app { display:flex; flex-direction:column; width:100%; height:100%; overflow:hidden; border-radius:39px; background:var(--paper); }
+    .chrome { flex:none; background:var(--paper); }
+    .status { height:47px; display:flex; align-items:center; justify-content:space-between; padding:11px 27px 0; font-size:14px; font-weight:750; }
+    .status .signals { font-size:11px; letter-spacing:1px; }
+    .toolbar { height:57px; display:grid; grid-template-columns:42px 1fr 42px; align-items:center; gap:10px; padding:0 19px; }
+    .toolbar .trip { text-align:center; font-size:15px; font-weight:740; letter-spacing:-.03em; }
+    .round { display:grid; place-items:center; width:40px; height:40px; padding:0; border:1px solid var(--line); border-radius:50%; background:white; color:var(--ink); font-size:23px; line-height:1; }
+    .round.more { font-size:21px; padding-bottom:7px; }
+    .days { display:flex; gap:18px; padding:9px 21px 14px; overflow-x:auto; scrollbar-width:none; }
+    .days::-webkit-scrollbar { display:none; }
+    .day { flex:none; min-width:57px; padding:0 0 9px; border:0; border-bottom:2px solid transparent; background:none; color:var(--muted); text-align:center; }
+    .day.active { border-color:var(--olive); color:var(--olive-deep); }
+    .day b { display:block; font-size:13px; font-weight:800; }
+    .day span { display:block; margin-top:3px; font-size:11px; white-space:nowrap; }
+    .viewport { flex:1; min-height:0; overflow:auto; scrollbar-width:thin; }
+    .hero { position:relative; min-height:154px; margin:0 16px; overflow:hidden; border-radius:16px 16px 0 0; background:#b3a384; }
+    .hero img { position:absolute; inset:0; display:block; width:100%; height:100%; object-fit:cover; object-position:center 56%; }
+    .hero::after { content:""; position:absolute; inset:0; background:linear-gradient(90deg,rgba(16,26,19,.68) 0%,rgba(24,31,23,.23) 68%,transparent); }
+    .hero-copy { position:absolute; z-index:1; left:18px; bottom:17px; color:white; }
+    .hero-copy .edition { display:block; margin-bottom:7px; font:700 10px/1.2 ui-monospace,monospace; letter-spacing:.19em; opacity:.88; }
+    .hero-copy strong { display:block; font:normal 33px/1 Georgia,serif; letter-spacing:-.035em; }
+    .hero-copy small { display:block; margin-top:5px; font-size:11px; letter-spacing:.015em; }
+    .summary { margin:0 16px; padding:15px 18px 11px; background:var(--white); border:1px solid var(--line); border-top:0; border-radius:0 0 16px 16px; }
+    .summary-header { display:flex; justify-content:space-between; align-items:baseline; gap:8px; margin-bottom:12px; }
+    .summary-header h2 { margin:0; font:normal 18px/1.35 NanumMyeongjo,serif; letter-spacing:-.03em; }
+    .summary-header span { color:var(--olive); font-size:10px; font-weight:800; white-space:nowrap; }
+    .facts { display:grid; grid-template-columns:1fr 1fr; padding:13px 0; border-top:1px solid var(--line); border-bottom:1px solid var(--line); }
+    .fact + .fact { border-left:1px solid var(--line); padding-left:17px; }
+    .fact label { display:block; margin-bottom:4px; color:var(--soft); font-size:11px; }
+    .fact strong { display:block; color:var(--olive-deep); font-size:21px; font-weight:780; letter-spacing:-.04em; white-space:nowrap; font-variant-numeric:tabular-nums; }
+    .summary-foot { display:flex; justify-content:space-between; align-items:center; min-height:38px; color:var(--soft); font-size:12px; }
+    .summary-foot strong { color:var(--ink); font-size:14px; }
+    .summary-foot .arrow { margin-left:6px; color:var(--olive); font-size:16px; }
+    .details-toggle { padding:0; min-height:25px; border:0; background:transparent; color:var(--olive); font-size:11px; font-weight:750; }
+    .details { display:none; padding:5px 0 9px; color:var(--soft); font-size:11px; line-height:1.6; }
+    .details.open { display:block; }
+    .section-heading { display:flex; justify-content:space-between; align-items:baseline; margin:23px 20px 11px; }
+    .section-heading h2 { margin:0; font:normal 20px/1.3 NanumMyeongjo,serif; }
+    .section-heading small { margin-left:4px; color:var(--soft); font:700 11px/1 -apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",sans-serif; }
+    .section-heading button { padding:0; border:0; background:transparent; color:var(--olive); font-size:12px; font-weight:800; }
+    .timeline { margin:0 16px; overflow:hidden; border:1px solid var(--line); border-radius:16px; background:white; }
+    .item { display:grid; grid-template-columns:49px 17px 1fr; column-gap:6px; position:relative; padding:17px 16px 17px 13px; }
+    .item:not(:last-of-type)::after { content:""; position:absolute; top:37px; bottom:-9px; left:74px; width:1px; background:#d8dfce; }
+    .item + .item { border-top:1px solid #f0eee9; }
+    .item time { padding-top:2px; color:var(--olive-deep); font-size:12px; font-weight:750; font-variant-numeric:tabular-nums; }
+    .marker { z-index:1; width:9px; height:9px; margin:5px 0 0 4px; border:2px solid var(--olive); border-radius:50%; background:white; }
+    .item:first-of-type .marker { background:var(--olive); }
+    .place { min-width:0; }
+    .place b { display:block; font-size:14px; line-height:1.32; letter-spacing:-.025em; }
+    .place .meta { display:block; margin-top:4px; color:var(--soft); font-size:11px; line-height:1.4; }
+    .travel { display:inline-flex; align-items:center; gap:5px; margin-top:10px; color:#767b66; font-size:10px; font-weight:650; }
+    .travel .dash { display:inline-block; width:12px; height:1px; background:#a4af91; }
+    .add { display:block; width:100%; min-height:45px; border:0; border-top:1px solid var(--line); background:#fcfdfb; color:var(--olive); font-size:12px; font-weight:800; }
+    .return { display:flex; align-items:center; gap:12px; margin:18px 16px 25px; padding:14px 16px; border:1px solid var(--line); border-radius:13px; background:white; }
+    .return .home { display:grid; place-items:center; width:32px; height:32px; border-radius:9px; background:var(--olive-pale); color:var(--olive); font-size:19px; }
+    .return strong { display:block; font-size:12px; }
+    .return small { display:block; margin-top:3px; color:var(--soft); font-size:10px; }
+    .bottom { flex:none; display:grid; grid-template-columns:repeat(4,1fr); height:76px; padding:9px 10px 15px; border-top:1px solid var(--line); background:#fbfaf8; }
+    .bottom button { display:flex; flex-direction:column; gap:2px; align-items:center; padding:0; border:0; background:transparent; color:var(--soft); font-size:10px; }
+    .bottom svg { width:23px; height:23px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+    .bottom .selected { color:var(--olive); font-weight:800; }
+    .home-indicator { position:absolute; left:50%; bottom:5px; width:105px; height:4px; border-radius:4px; transform:translateX(-50%); background:#272922; }
+    .error-banner { display:none; align-items:center; gap:8px; margin:0 16px 12px; padding:10px 12px; border:1px solid #ebd0be; border-radius:11px; background:var(--warning-pale); color:#884c24; font-size:11px; }
+    .error-banner strong { display:block; margin-bottom:2px; font-size:12px; }
+    .error-banner button { flex:none; margin-left:auto; padding:6px 8px; border:1px solid #d6a985; border-radius:7px; background:white; color:#884c24; font-size:10px; font-weight:800; }
+    .error .error-banner { display:flex; }
+    .error .fact strong { font-size:13px; color:var(--warning); letter-spacing:0; }
+    .error .item { grid-template-columns:17px 1fr; padding-left:20px; }
+    .error .item time, .error .travel { display:none; }
+    .error .item:not(:last-of-type)::after { left:30px; }
+    .error .cost-value { color:var(--soft); font-size:12px; }
+    @media (max-width:760px) {
+      body { background:var(--paper); }
+      .scene { display:block; padding:0; }
+      .editor-note { width:auto; padding:18px 20px 13px; }
+      .editor-note h1 { margin-bottom:9px; font-size:20px; }
+      .editor-note p,.design-notes { display:none; }
+      .state-switch { margin:0; }
+      .device { width:min(390px,100vw); height:min(844px,calc(100dvh - 116px)); margin:auto; border:0; border-radius:0; box-shadow:none; }
+      .app { border-radius:0; }
+      .home-indicator { display:none; }
+    }
+  </style>
+</head>
+<body>
+  <main class="scene">
+    <aside class="editor-note">
+      <p class="eyebrow">WITH J / DESIGN STUDY 02</p>
+      <h1>도시의 분위기와<br>하루의 흐름을 함께</h1>
+      <p>여행 사진은 감성을 만들고, 숫자와 타임라인은 다음 행동을 명확하게 보여줍니다. 앱에서 쓰는 색과 제목 서체를 바탕으로 다시 설계했습니다.</p>
+      <div class="state-switch" aria-label="시안 상태 선택">
+        <button type="button" data-state="normal" aria-pressed="true">기본 화면</button>
+        <button type="button" data-state="error" aria-pressed="false">시간 오류</button>
+      </div>
+      <ul class="design-notes">
+        <li><span>01</span> 마드리드 이미지와 간결한 도시 표지</li>
+        <li><span>02</span> 이동·종료 시각을 큰 글자로 우선 표시</li>
+        <li><span>03</span> 방문 순서를 따라 읽는 세로 동선</li>
+      </ul>
+    </aside>
+    <div class="device" id="device" aria-label="일정 화면 디자인 시안">
+      <div class="app">
+        <header class="chrome">
+          <div class="status"><span>13:48</span><span class="signals">▮▮▮ 5G ▰</span></div>
+          <div class="toolbar"><button class="round" type="button" aria-label="뒤로">‹</button><span class="trip">스페인 신혼여행</span><button class="round more" type="button" aria-label="더보기">•••</button></div>
+          <nav class="days" aria-label="일자 선택">
+            <button class="day active" type="button" aria-current="date"><b>1일차</b><span>10.25 일</span></button>
+            <button class="day" type="button"><b>2일차</b><span>10.26 월</span></button>
+            <button class="day" type="button"><b>3일차</b><span>10.27 화</span></button>
+            <button class="day" type="button"><b>4일차</b><span>10.28 수</span></button>
+            <button class="day" type="button"><b>5일차</b><span>10.29 목</span></button>
+          </nav>
+        </header>
+        <div class="viewport">
+          <div class="error-banner" role="status"><span aria-hidden="true">ⓘ</span><span><strong>시간 정보를 불러오지 못했어요</strong>일정은 계속 볼 수 있어요.</span><button type="button" id="retry">다시 시도</button></div>
+          <section class="hero" aria-label="마드리드 사진"><img src="madrid-editorial-v2.png" alt="노을빛 마드리드 거리"><div class="hero-copy"><span class="edition">DAY 01 · 25 OCT</span><strong>Madrid</strong><small>스페인에서의 첫날</small></div></section>
+          <section class="summary" aria-label="하루 요약">
+            <div class="summary-header"><h2>마드리드 도착 · 1박</h2><span>하루 요약</span></div>
+            <div class="facts"><div class="fact"><label>오늘 이동</label><strong data-normal="4시간 25분">4시간 25분</strong></div><div class="fact"><label>일정 종료</label><strong data-normal="20:25">20:25</strong></div></div>
+            <div class="summary-foot"><span>오늘 예상 비용</span><span><strong class="cost-value" data-normal="₩454,465">₩454,465</strong><span class="arrow">›</span></span></div>
+            <button class="details-toggle" id="details-toggle" type="button" aria-expanded="false">상세 요약 보기 ⌄</button>
+            <div class="details" id="details">총 이동거리 12.4km · 하루 기본 이동수단 도보<br>머무는 시간 미정 1곳 · 현재 0분으로 계산</div>
+          </section>
+          <div class="section-heading"><h2>방문 일정 <small>4곳</small></h2><button type="button">순서 편집</button></div>
+          <section class="timeline" aria-label="방문 일정">
+            <div class="item"><time>08:54</time><span class="marker"></span><div class="place"><b>Chocolatería San Ginés</b><span class="meta">카페 · 30분 머무름 · Madrid</span></div></div>
+            <div class="item"><time>09:24</time><span class="marker"></span><div class="place"><b>Restaurant La Campana</b><span class="meta">식당 · 30분 머무름 · Madrid</span><span class="travel"><span class="dash"></span>도보 3분 · 200m</span></div></div>
+            <div class="item"><time>10:01</time><span class="marker"></span><div class="place"><b>El Rastro</b><span class="meta">쇼핑 · 60분 머무름 · Madrid</span><span class="travel"><span class="dash"></span>도보 7분 · 500m</span></div></div>
+            <div class="item"><time>11:17</time><span class="marker"></span><div class="place"><b>Cháchara</b><span class="meta">식당 · 60분 머무름 · Madrid</span><span class="travel"><span class="dash"></span>도보 16분 · 1.2km</span></div></div>
+            <button class="add" type="button">＋ 장소 추가</button>
+          </section>
+          <section class="return" aria-label="숙소 복귀"><span class="home">⌂</span><span><strong>마드리드 숙소로 돌아가기</strong><small>오늘 마지막 장소에서 출발 · 이동수단 변경 가능</small></span></section>
+        </div>
+        <nav class="bottom" aria-label="주요 메뉴">
+          <button type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 6v6l-4 2"/></svg>지금</button>
+          <button class="selected" type="button" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18M8 14h2M14 14h2M8 18h2M14 18h2"/></svg>일정</button>
+          <button type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 5 6-2 6 2 6-2v16l-6 2-6-2-6 2zM9 3v16M15 5v16"/></svg>지도</button>
+          <button type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>더보기</button>
+        </nav>
+      </div>
+      <div class="home-indicator"></div>
+    </div>
+  </main>
+  <script>
+    const device=document.getElementById('device');
+    function setState(state) {
+      device.classList.toggle('error',state==='error');
+      document.querySelectorAll('[data-state]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.state===state)));
+      document.querySelectorAll('.fact strong').forEach(node=>node.textContent=state==='error'?'확인 필요':node.dataset.normal);
+      const cost=document.querySelector('.cost-value'); cost.textContent=state==='error'?'아직 없음':cost.dataset.normal;
+    }
+    document.querySelectorAll('[data-state]').forEach(button=>button.addEventListener('click',()=>setState(button.dataset.state)));
+    document.getElementById('retry').addEventListener('click',()=>setState('normal'));
+    document.getElementById('details-toggle').addEventListener('click',event=>{const open=document.getElementById('details').classList.toggle('open');event.currentTarget.setAttribute('aria-expanded',String(open));event.currentTarget.textContent=open?'요약 접기 ⌃':'상세 요약 보기 ⌄';});
+    document.querySelectorAll('.day').forEach(button=>button.addEventListener('click',()=>{document.querySelectorAll('.day').forEach(day=>{day.classList.remove('active');day.removeAttribute('aria-current');});button.classList.add('active');button.setAttribute('aria-current','date');}));
+  </script>
+</body>
+</html>

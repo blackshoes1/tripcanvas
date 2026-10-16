@@ -972,3 +972,24 @@ span.dayItem{cursor:default}
 .jToneChoice input{margin-top:4px;flex:0 0 auto}
 .jToneChoice strong,.jToneChoice small{display:block}
 .jToneChoice small{font-size:13px;margin-top:6px;color:var(--subtle);line-height:1.6}
+
+/* User-provided audio: local files, with native media controls. */
+#audioGuideBg{z-index:3200}
+.audioGuideModal{width:min(560px,calc(100vw - 32px))}
+.audioGuideModal>select{width:100%;min-width:0;min-height:44px}
+#audioGuideStatus{margin:16px 0;line-height:1.6;overflow-wrap:anywhere}
+.audioGuideError{color:var(--meta-danger)}
+.audioGuideItem{padding:16px 0;border-bottom:1px solid var(--border);min-width:0}
+.audioGuideItem h3{font-size:1rem;margin:0;overflow-wrap:anywhere}
+.audioGuideItem audio{display:block;width:100%;max-width:100%;margin:12px 0}
+.audioGuideUpload{display:block;margin-top:20px;line-height:1.6}
+.audioGuideUpload input{display:block;width:100%;min-width:0;margin-top:8px;padding:8px 0;min-height:44px}
+.tLinks .btn{font-size:13px;min-height:44px}
+.tripFileDialog{width:min(680px,calc(100vw - 24px));max-height:90dvh}
+.tripFileDialog h3,.tripFilePlayer strong{overflow-wrap:anywhere}
+.tripFileActions{flex-wrap:wrap;gap:8px}
+.tripFileDialog .audioGuideUpload input{max-width:100%}
+.tripFilePlayer{position:fixed;bottom:12px;left:50%;transform:translateX(-50%);z-index:1200;width:min(600px,calc(100vw - 24px));padding:12px;background:var(--surface);color:var(--ink);border:1px solid var(--border);border-radius:14px;box-shadow:0 4px 24px #0003}
+.tripFilePlayer[hidden]{display:none}
+.tripFilePlayer audio{display:block;width:100%;margin:8px 0}
+.tripFilePlayer .btn{min-height:44px}

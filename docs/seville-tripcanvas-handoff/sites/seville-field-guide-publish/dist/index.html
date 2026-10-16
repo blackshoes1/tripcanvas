@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#173f3a"><meta name="description" content="실제 사진으로 장소를 확인하고, 지도와 역사 해설을 함께 보는 우리 둘의 세비야 대성당 가이드.">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="default">
+<title>우리 둘의 세비야 · 대성당 가이드</title>
+<link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icon.svg" type="image/svg+xml"><link rel="stylesheet" href="style.css">
+</head>
+<body>
+<a class="skip-link" href="#main">본문으로</a>
+<header class="topbar"><a class="brand" href="#guide/01"><span class="brand-mark" aria-hidden="true">S</span><span>우리 둘의 세비야<small>CATEDRAL DE SEVILLA</small></span></a><button class="icon-button" id="settingsButton" aria-label="음성 및 여행 준비 설정"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16M8 4v6M16 14v6"/></svg></button></header>
+<div class="app-layout">
+<aside class="desktop-sidebar" id="sidebar"></aside>
+<main id="main" tabindex="-1"><div id="guideView" class="view"></div><div id="mapView" class="view" hidden></div><div id="routeView" class="view" hidden></div><div id="findView" class="view" hidden></div></main>
+</div>
+<div class="mini-player" id="miniPlayer" hidden><button id="miniToggle" aria-label="음성 일시정지"></button><div><strong id="miniName"></strong><span id="miniProgress"></span></div><button id="stopAudio" aria-label="음성 정지">■</button></div>
+<nav class="bottom-nav" aria-label="가이드 메뉴"><button data-view="guide" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h6a3 3 0 0 1 3 3v14a4 4 0 0 0-4-2H4zM20 4h-4a3 3 0 0 0-3 3"/></svg><span>지금 장소</span></button><button data-view="map"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3zM9 3v15M15 6v15"/></svg><span>지도</span></button><button data-view="find"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM4 15l5-5 5 5 3-3 3 3"/><circle cx="16" cy="9" r="1"/></svg><span>사진으로 찾기</span></button><button data-view="route"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h12M9 12h12M9 18h12M3 6h1M3 12h1M3 18h1"/></svg><span>전체 코스</span></button></nav>
+<dialog id="sheet"><div class="sheet-header"><h2 id="sheetTitle"></h2><button class="icon-button close-dialog" aria-label="닫기">✕</button></div><div id="sheetContent"></div></dialog>
+<dialog id="photoDialog"><button class="photo-close close-dialog" aria-label="사진 닫기">✕</button><img id="largePhoto" alt=""><div id="largePhotoCredit"></div></dialog>
+<div id="toast" role="status" aria-live="polite"></div>
+<input id="audioImport" type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg" multiple hidden>
+<script src="content.js"></script><script src="app.js"></script>
+</body></html>

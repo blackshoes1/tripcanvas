@@ -141,6 +141,40 @@ struct APIClient {
         .notConnectedToInternet, .networkConnectionLost, .cannotConnectToHost, .timedOut, .dataNotAllowed
     ]
 
+    /// File bytes never pass through JSON/base64 or an unauthenticated public URL.
+    func fileRequest(path: String, method: String = "GET", query: [URLQueryItem] = [], bytes: Data? = nil) async throws -> Data {
+        let original = try await tokens.accessToken()
+        var token = original
+        var refreshed = false
+        for attempt in 0..<3 {
+            guard try await tokens.accessToken() == token else { throw APIError.unauthorized }
+            var components = URLComponents(url: baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false)
+            components?.queryItems = query.isEmpty ? nil : query
+            guard let url = components?.url else { throw APIError.badRequest("파일 주소를 만들 수 없어요.") }
+            var request = URLRequest(url: url)
+            request.httpMethod = method; request.httpBody = bytes; request.timeoutInterval = 120
+            request.setValue("Bearer " + token, forHTTPHeaderField: "Authorization")
+            if bytes != nil { request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type") }
+            do {
+                let (data, response) = try await session.data(for: request)
+                guard try await tokens.accessToken() == token else { throw APIError.unauthorized }
+                guard let http = response as? HTTPURLResponse else { throw APIError.server(status: 0, message: "응답을 읽지 못했어요.") }
+                if http.statusCode == 401, !refreshed {
+                    refreshed = true; token = try await tokens.refreshToken(); continue
+                }
+                if [408, 425, 429, 500, 502, 503, 504].contains(http.statusCode), attempt < 2 {
+                    try await Task.sleep(for: .seconds(2 * (attempt + 1))); continue
+                }
+                guard (200..<300).contains(http.statusCode) else { throw Self.mapError(status: http.statusCode, data: data) }
+                return data
+            } catch let error as URLError where Self.offlineCodes.contains(error.code) {
+                if attempt == 2 { throw APIError.offline }
+                try await Task.sleep(for: .seconds(2 * (attempt + 1)))
+            }
+        }
+        throw APIError.offline
+    }
+
     private static func mapError(status: Int, data: Data) -> APIError {
         let body = try? decoder.decode(APIErrorBody.self, from: data)
         let message = body?.message ?? "요청을 처리하지 못했어요."

@@ -1,0 +1,40 @@
+{
+  "status": "AUTOMATED_CHECK_ONLY_USER_LISTENING_REQUIRED",
+  "note": "ASR can misrecognize correct Korean. Overlapping windows can repeat words. This is not a perceptual-quality pass.",
+  "files": [
+    {
+      "file": "seville-voice-v3-A.mp3",
+      "seconds": 41.72,
+      "peak": 0.871490478515625,
+      "rms": 0.08998845517635345,
+      "clipped_samples": 0,
+      "transcript_windows": [
+        {
+          "from_seconds": 0.0,
+          "text": "금빛 재단에서 조각 한 칸을 골라보세요. 인물들이 누구를 향해 손을 뻗고 있나요? 이 재단은 나무로 만든 조각에 색과 금박을 입힌 작품이에요. 1482년에 시작해서 150064년에 완성됐어요. 82년에 걸친 작업이에요."
+        },
+        {
+          "from_seconds": 24.040000000000003,
+          "text": "처음 설계한 사람이 끝까지 만든 게 아니라 다음 세대의 장인들이 이를 이어받았어요. 이제 아래쪽 중앙의 속모상을 찾아보세요. 멀리서는 한 장의 금빛 펙처럼 보여도 가까이 보면 서로 다른 장면이 모인 이야기예요."
+        }
+      ]
+    },
+    {
+      "file": "seville-voice-v3-B.mp3",
+      "seconds": 42.68,
+      "peak": 0.903564453125,
+      "rms": 0.08998855203390121,
+      "clipped_samples": 0,
+      "transcript_windows": [
+        {
+          "from_seconds": 0.0,
+          "text": "금빛 재단에서 조각 한 칸을 골라보세요. 인물들이 누구를 향해 손을 뻗고 있나요? 이 재단은 나무로 만든 조각의 색과 금박을 입힌 작품이에요. 1482년에 시작해서 1564년에 완성됐어요. 82년의 걸친 작업이에요."
+        },
+        {
+          "from_seconds": 23.240000000000002,
+          "text": "처음 설계한 사람이 끝까지 만든 게 아니라 다음 세대의 장인들이 일을 이어 받았어요. 이제 아래쪽 중앙의 성모상을 찾아보세요. 멀리서는 한 장의 금빛 펙처럼 보오도 가까이 보면 서로 다른 장면이 모인 이야기예요."
+        }
+      ]
+    }
+  ]
+}

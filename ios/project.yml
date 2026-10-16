@@ -63,6 +63,8 @@ targets:
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         NSSupportsLiveActivities: true
+        UIBackgroundModes:
+          - audio
         # ⚠️ 이게 없으면 업로드는 성공하는데 **TestFlight에 안 뜬다.** App Store Connect가
         # 빌드마다 "수출 규정 준수"를 묻고, 답하기 전까지 빌드가 'Missing Compliance'로 묶여
         # 테스터에게 안 내려간다. 왜 실패했는지 아무 데도 안 나와서 찾기 어렵다.

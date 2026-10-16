@@ -60,6 +60,8 @@ struct SpotEditorView: View {
     let draftKey: EditorDraftKey?
     /// 이 장소와 연결된 숙박 예약 — 있으면 금액·박 수는 그 예약이 유일한 출처라 여기서 고치지 않는다(웹 `spotPaidByBooking`, 2026-10-04)
     let linkedBooking: TripBooking?
+    /// 저장된 장소에만 기기 음성을 연결한다. 새 장소는 일정 저장 후 연결한다.
+    let audioGuideTripID: String?
     /// 다른 선택지를 편집하는 안쪽 화면에는 다시 선택지를 만들지 않는다.
     let allowsChoice: Bool
     let onSave: (TripSpot) async -> String?
@@ -95,6 +97,7 @@ struct SpotEditorView: View {
          role: MemberRole = .owner,
          draftKey: EditorDraftKey? = nil,
          linkedBooking: TripBooking? = nil,
+         audioGuideTripID: String? = nil,
          allowsChoice: Bool = true,
          onSave: @escaping (TripSpot) async -> String?,
          onDelete: @escaping (Int) async -> String?,
@@ -107,6 +110,7 @@ struct SpotEditorView: View {
         self.role = role
         self.draftKey = draftKey
         self.linkedBooking = linkedBooking?.type == .hotel ? linkedBooking : nil
+        self.audioGuideTripID = audioGuideTripID
         self.allowsChoice = allowsChoice
         self.onSave = onSave
         self.onDelete = onDelete
@@ -189,6 +193,13 @@ struct SpotEditorView: View {
                 }
                 if let contextLabel, !contextLabel.isEmpty {
                     Section { Text(contextLabel).font(.subheadline.weight(.semibold)) }
+                }
+                if let tripID = audioGuideTripID, target.index != nil {
+                    Section {
+                        AudioGuideButton(tripID: tripID, spot: target.spot)
+                    } footer: {
+                        Text("직접 준비한 음성을 이 장소에 연결해요. 음성은 이 iPhone에만 저장돼요.")
+                    }
                 }
                 if let error = saving.error {
                     Section {

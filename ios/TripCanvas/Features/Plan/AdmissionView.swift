@@ -171,6 +171,7 @@ struct AdmissionEditorSection: View {
 struct SpotInformationView: View {
     let spot: TripSpot
     let contextLabel: String?
+    var audioGuideTripID: String? = nil
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -195,6 +196,11 @@ struct SpotInformationView: View {
                     information("머무는 시간", value: spot.stayMinutes.map {
                         $0 == 0 ? "0분 · 바로 이동" : TimeFormat.duration($0)
                     } ?? "미정 · 현재 0분으로 계산")
+                }
+                if let tripID = audioGuideTripID {
+                    Section { AudioGuideButton(tripID: tripID, spot: spot) } footer: {
+                        Text("직접 준비한 음성을 이 장소에 연결해요. 음성은 이 iPhone에만 저장돼요.")
+                    }
                 }
                 Section {
                     information("예약 요건", value: spot.admission.requirement.label)
