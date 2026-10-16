@@ -74,12 +74,16 @@ struct TomorrowBriefCard: View {
             Button("오프라인 준비 확인", action: onPrepareOffline).frame(minHeight: 44)
         }.card()
         }
-        .task(id: "\(trip.revision)-\(String(describing: env.service.cacheScope))") {
-            let scope = env.service.cacheScope
-            let received = await env.service.offlineTrip(trip.id)
-            guard scope == env.service.cacheScope else { return }
-            pack = received
+        .task(id: "\(trip.revision)-\(String(describing: env.service.cacheScope))") { await reloadPack() }
+        .onReceive(NotificationCenter.default.publisher(for: OfflineTrip.prepared)) { note in
+            if note.object as? String == trip.id { Task { await reloadPack() } }
         }
+    }
+    private func reloadPack() async {
+        let scope = env.service.cacheScope
+        let received = await env.service.offlineTrip(trip.id)
+        guard scope == env.service.cacheScope else { return }
+        pack = received
     }
     private var offlineStatus: String {
         guard let pack else { return "오프라인 준비 필요 · 아직 여행 전체를 저장하지 않았어요" }
