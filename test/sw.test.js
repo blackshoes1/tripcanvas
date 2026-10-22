@@ -61,6 +61,7 @@ function loadWorker() {
   const lifecycle = async (type) => { let done; listeners[type]({ waitUntil: (p) => { done = p; } }); await done; };
   return {
     net,
+    storage: cacheStorage,
     cached: () => [...caches.values()].flatMap((entries) => [...entries.keys()]),
     install: () => lifecycle('install'),
     activate: () => lifecycle('activate'),
@@ -100,4 +101,19 @@ test('GET 외 요청과 /api/는 SW가 손대지 않는다', () => {
   assert.equal(sw.fetch('/api/v1/me'), null);
   assert.equal(sw.fetch('/nas/api/v1/me'), null);
   assert.equal(sw.fetch('/index.html', { method: 'POST' }), null);
+});
+
+test('With J 이야기(/stories/)는 SW가 손대지 않고, 담아 둔 음성 캐시는 버전이 바뀌어도 남는다', async () => {
+  const sw = loadWorker();
+  assert.equal(sw.fetch('/stories/catalog.json'), null);
+  assert.equal(sw.fetch('/stories/seville/city.mp3'), null);
+  const swName = fs.readFileSync(path.join(root, 'sw.js'), 'utf8').match(/const STORY_CACHE = '([^']+)'/)[1];
+  const appName = fs.readFileSync(path.join(root, 'app.js'), 'utf8').match(/const STORY_CACHE\s*=\s*'([^']+)'/)[1];
+  assert.equal(swName, appName, 'sw.js와 app.js의 이야기 캐시 이름이 같아야 한다');
+  await (await sw.storage.open('tc-v1-shell')).put('/old.js', { status: 200 });          // 옛 버전 셸
+  await (await sw.storage.open(swName)).put('/stories/seville/city.mp3', { status: 200 }); // 사람이 저장한 음성
+  await sw.install(); await sw.activate();
+  const keys = await sw.storage.keys();
+  assert.ok(!keys.includes('tc-v1-shell'), '옛 버전 셸은 지운다');
+  assert.ok(keys.includes(swName), '이야기 음성은 남긴다');
 });

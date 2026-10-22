@@ -84,6 +84,10 @@ function syncEntry(id){ return syncMeta[id]||(syncMeta[id]={revision:null,status
 // my_trip_roles 결과(client_id → {role,count,owner}). 로그인 직후·멤버 패널에서 갱신하고 로그아웃하면 비운다.
 // 접근 제어의 경계는 DB(RLS·RPC)다 — 여기 값은 화면을 맞추고 서버가 거절할 요청을 미리 막는 데만 쓴다.
 let tripRoles={};
+// With J 이야기 — 카탈로그는 정적 파일(stories/catalog.json)이고 여행 문서가 아니다(docs/with-j-stories.md).
+// ⚠️ 이름은 sw.js의 STORY_CACHE와 같아야 한다 — 서비스 워커가 버전을 올릴 때 이 캐시만 남긴다(test/sw.test.js)
+const STORY_CACHE='withj-stories-v1';
+let storyCatalog=null, storyNow=null, storyObjectUrl='';
 // 실시간 구독 상태 — 로드 직후(updateAuthUI→updateCollabUI→ensureLiveChannel)부터 읽히므로 여기서 선언한다
 let liveCh=null, liveKey='', liveT=null, livePending=[], liveOn=false;
 // 드래그 중에는 다시 그리지 않는다 — render()가 Sortable 인스턴스를 재생성해
@@ -772,6 +776,9 @@ function openPlaceDetails(s,options={}){
       openCandidates({title:s.name||'',note:placeSourceURL(s)});
     }));
   }
+  // 듣기는 편집이 아니다 — 보기 전용에서도 연다
+  const story=options.existing? storyFor(s) : null;
+  if(story) placeButton(actions,'🎧 With J 이야기',()=>{ closePlaceDetails(); openStory(story.id); });
   load();
 }
 window.openSavedPlace=(di,si)=>{const s=trip().days[di]?.spots[si];if(s)openPlaceDetails(s,{existing:{di,si}});};
@@ -1192,6 +1199,161 @@ function bgRender(fn){
   if(document.querySelector('.actionMenu[open],.viewMenu[open]')){ setTimeout(()=>bgRender(fn),800); return; }
   fn();
 }
+// ── With J 이야기 (docs/with-j-stories.md) ──
+// With J가 쓰고 검수한 장소 해설을 일정의 장소에 저절로 붙인다. 붙는 규칙은 stories.js(이름만 같은 다른 도시의 장소에는 붙지 않는다).
+// 자동 재생·위치 추적은 하지 않는다 — 사람이 누를 때만 재생한다. 들은 음성은 STORY_CACHE에 담겨 비행기 모드에서도 다시 들린다.
+function storyFor(s){ return (storyCatalog&&window.TC_STORIES&&s)? TC_STORIES.storyForSpot(s,storyCatalog) : null; }
+function cityStoryFor(day){ return (storyCatalog&&window.TC_STORIES&&day)? TC_STORIES.cityStoryForDay(day,storyCatalog) : null; }
+function storyButtonHtml(place, cls, label){
+  return `<button type="button" class="${cls}" onclick="event.stopPropagation();openStory('${escAttr(place.id)}')" aria-haspopup="dialog">${esc(label||'🎧 With J 이야기')}</button>`;
+}
+async function storyCache(){
+  try{ return ('caches' in window)? await caches.open(STORY_CACHE) : null; }catch(_){ return null; }   // 사생활 보호 창은 막는다
+}
+async function loadStories(){
+  if(!window.TC_STORIES) return;
+  const url='stories/catalog.json', cache=await storyCache();
+  let raw=null;
+  try{
+    const res=await fetch(url,{cache:'no-cache'});
+    if(res.ok){ raw=await res.clone().json(); if(cache) cache.put(url,res).catch(()=>{}); }
+  }catch(_){ /* 오프라인 — 아래에서 지난번 카탈로그를 읽는다 */ }
+  if(!raw && cache){ try{ const hit=await cache.match(url); if(hit) raw=await hit.json(); }catch(_){} }
+  if(!raw) return;
+  storyCatalog=TC_STORIES.normalizeCatalog(raw);
+  if(storyCatalog.places.length) bgRender(renderSidebar);
+}
+/** 음성 한 편 — 담아 둔 사본이 먼저, 없으면 받아서 지문(sha256)을 확인하고 담는다. @returns {Promise<Blob>} */
+async function storyBlob(track){
+  const url=TC_STORIES.trackUrl(track), cache=await storyCache();
+  if(cache){ const hit=await cache.match(url).catch(()=>null); if(hit) return hit.blob(); }
+  const res=await fetch(url);
+  if(!res.ok) throw new Error('HTTP '+res.status);
+  const buf=await res.arrayBuffer();
+  if(window.crypto&&crypto.subtle){
+    const hex=[...new Uint8Array(await crypto.subtle.digest('SHA-256',buf))].map(b=>b.toString(16).padStart(2,'0')).join('');
+    if(hex!==track.sha256) throw new Error('INTEGRITY');   // 받다 끊긴 파일을 담아 두면 오프라인에서 계속 끊긴다
+  }
+  const blob=new Blob([buf],{type:'audio/mpeg'});
+  if(cache) await cache.put(url,new Response(blob,{headers:{'Content-Type':'audio/mpeg'}})).catch(()=>{});
+  return blob;
+}
+async function storySavedCount(place){
+  const cache=await storyCache(); if(!cache) return 0;
+  let n=0; for(const t of place.tracks) if(await cache.match(TC_STORIES.trackUrl(t)).catch(()=>null)) n++;
+  return n;
+}
+function storyPlace(id){ return storyCatalog? storyCatalog.places.find(p=>p.id===id)||null : null; }
+function storyEl(tag, cls, text){ const el=document.createElement(tag); if(cls) el.className=cls; if(text!=null) el.textContent=text; return el; }
+// 음성은 하나다 — 창 안에서는 창이, 창을 닫으면 아래 막대가 같은 <audio>를 들고 있어 닫아도 계속 들린다
+function parkStoryAudio(inDialog){
+  const audio=document.getElementById('storyAudio');
+  const slot=document.getElementById(inDialog?'storyPlayerSlot':'storyBarSlot');
+  if(audio && slot && audio.parentNode!==slot) slot.appendChild(audio);
+  syncStoryBar();
+}
+function syncStoryBar(){
+  const bar=document.getElementById('storyBar'), dialog=document.getElementById('storyDialog');
+  if(!bar) return;
+  bar.hidden=!storyNow || !!(dialog&&dialog.open);
+  if(storyNow) document.getElementById('storyBarTitle').textContent=`${storyNow.place.name} · ${storyNow.track.title}`;
+}
+window.stopStory=()=>{
+  const audio=document.getElementById('storyAudio');
+  audio.pause(); audio.removeAttribute('src'); audio.load();
+  if(storyObjectUrl){ URL.revokeObjectURL(storyObjectUrl); storyObjectUrl=''; }
+  storyNow=null; syncStoryBar();
+};
+async function playStoryTrack(place, track, statusEl){
+  const audio=document.getElementById('storyAudio');
+  if(storyNow&&storyNow.place.id===place.id&&storyNow.track.id===track.id){ audio.play().catch(()=>{}); return; }
+  statusEl.textContent='불러오는 중…';
+  try{
+    const blob=await storyBlob(track);
+    if(storyObjectUrl) URL.revokeObjectURL(storyObjectUrl);
+    storyObjectUrl=URL.createObjectURL(blob);
+    audio.src=storyObjectUrl;
+    storyNow={place,track};
+    statusEl.textContent=`지금 듣는 이야기 · ${track.title}`;
+    syncStoryBar();
+    // 받는 사이에 누른 순간이 지나 iOS가 막을 수 있다 — 그때는 플레이어의 재생 버튼을 누르라고 말한다
+    await audio.play().catch(()=>{ statusEl.textContent=`준비됐어요 · 아래 재생 버튼을 눌러 주세요 — ${track.title}`; });
+    renderStoryTracks(place);
+    renderStorySave(place);   // 들은 이야기는 담겼다 — '저장' 버튼을 그대로 두면 안 담긴 줄 안다
+  }catch(e){
+    statusEl.textContent=e&&e.message==='INTEGRITY'
+      ? '음성을 끝까지 받지 못했어요. 다시 눌러 주세요.'
+      : '음성을 불러오지 못했어요. 인터넷에 연결된 뒤 다시 눌러 주세요 — 한 번 들은 이야기는 오프라인에서도 들려요.';
+  }
+}
+function renderStoryTracks(place){
+  const list=document.getElementById('storyTracks'); if(!list) return;
+  const status=document.getElementById('storyStatus');
+  list.replaceChildren();
+  let lastRole='';
+  for(const t of place.tracks){
+    if(t.role!==lastRole && place.tracks.some(x=>x.role!==t.role)){ list.appendChild(storyEl('h3','storyGroup',TC_STORIES.ROLE_LABEL[t.role])); lastRole=t.role; }
+    const playing=!!(storyNow&&storyNow.place.id===place.id&&storyNow.track.id===t.id);
+    const b=storyEl('button','storyTrack'+(playing?' playing':''));
+    b.type='button';
+    b.setAttribute('aria-current',playing?'true':'false');
+    const head=storyEl('span','storyTrackTitle',(t.stop?`${String(t.stop.n).padStart(2,'0')} · `:'')+t.title);
+    const meta=storyEl('span','storyTrackMeta',[playing?'듣는 중':null,TC_STORIES.durationText(t.seconds),t.stop&&t.stop.localName||null].filter(Boolean).join(' · '));
+    b.append(storyEl('span','storyPlayIcon',playing?'♪':'▶'),head,meta);
+    if(t.stop&&t.stop.find.length) b.appendChild(storyEl('span','storyFind',`찾는 법: ${t.stop.find.join(' · ')}`));
+    b.onclick=()=>playStoryTrack(place,t,status);
+    list.appendChild(b);
+  }
+}
+async function renderStorySave(place){
+  const box=document.getElementById('storySave'); if(!box) return;
+  box.replaceChildren();
+  const total=place.tracks.length, saved=await storySavedCount(place);
+  if(!window.document || storyPlace(place.id)!==place || !document.getElementById('storyDialog').open) return;   // 기다리는 사이에 닫았거나 카탈로그가 바뀌었다
+  if(saved===total){ box.appendChild(storyEl('p','storySaved','✓ 오프라인에서도 들을 수 있어요')); return; }
+  if(!('caches' in window)){ box.appendChild(storyEl('p','hint','이 브라우저에서는 오프라인 저장을 쓸 수 없어요. 들을 때마다 인터넷이 필요해요.')); return; }
+  const b=storyEl('button','btn',`이 장소 이야기 저장 · 약 ${TC_STORIES.sizeText(TC_STORIES.storyBytes(place))}`);
+  b.type='button';
+  const note=storyEl('p','hint',saved? `${total}편 중 ${saved}편은 이미 저장했어요. 비행기 모드에서도 들으려면 나머지도 저장해 주세요.` : '여행지에 가기 전에 와이파이에서 저장해 두면 비행기 모드에서도 들려요.');
+  b.onclick=async()=>{
+    b.disabled=true;
+    let ok=0, fail=0;
+    for(const t of place.tracks){
+      b.textContent=`저장 중 ${ok+fail+1}/${total}`;
+      try{ await storyBlob(t); ok++; }catch(_){ fail++; }
+    }
+    if(fail){ b.disabled=false; b.textContent='다시 저장하기'; note.textContent=`${fail}편을 저장하지 못했어요. 인터넷 연결을 확인한 뒤 다시 눌러 주세요.`; }
+    else renderStorySave(place);
+  };
+  box.append(b,note);
+}
+window.openStory=(id)=>{
+  const place=storyPlace(id), dialog=document.getElementById('storyDialog');
+  if(!place||!dialog) return;
+  const focusBack=document.activeElement;
+  document.getElementById('storyTitle').textContent=place.name;
+  document.getElementById('storySub').textContent=[place.localName, `${place.tracks.length}편 · ${TC_STORIES.durationText(TC_STORIES.storySeconds(place))}`].filter(Boolean).join(' · ');
+  const status=document.getElementById('storyStatus');
+  status.textContent=(storyNow&&storyNow.place.id===place.id)? `지금 듣는 이야기 · ${storyNow.track.title}` : '듣고 싶은 이야기를 눌러 주세요.';
+  renderStoryTracks(place);
+  // AI 음성이라는 사실과 출처는 숨기지 않는다 — 펼치면 원문 링크
+  const about=document.getElementById('storyAbout'); about.replaceChildren();
+  const sources=TC_STORIES.placeSources(place,storyCatalog);
+  const det=storyEl('details','storySources');
+  det.appendChild(storyEl('summary','',`${storyCatalog.disclosure}${sources.length?` · 출처 ${sources.length}건`:''}`));
+  const ul=storyEl('ul');
+  for(const src of sources){
+    const href=safeUrl(src.url); if(!href) continue;
+    const li=storyEl('li'), a=storyEl('a','',src.title); a.href=href; a.target='_blank'; a.rel='noopener'; li.appendChild(a); ul.appendChild(li);
+  }
+  det.appendChild(ul); about.appendChild(det);
+  dialog.onclose=()=>{ parkStoryAudio(false); if(focusBack&&focusBack.isConnected) focusBack.focus(); };
+  document.getElementById('storyClose').onclick=()=>dialog.close();
+  if(!dialog.open) dialog.showModal();
+  parkStoryAudio(true);
+  renderStorySave(place);
+};
+window.openCurrentStory=()=>{ if(storyNow) openStory(storyNow.place.id); };
 // ── 날씨 (Open-Meteo, 무키·CORS) — 그날·첫 장소 좌표 기준, 세션 캐시 ──
 const WMO={0:'☀️',1:'🌤',2:'⛅',3:'☁️',45:'🌫',48:'🌫',51:'🌦',53:'🌦',55:'🌧',56:'🌧',57:'🌧',
   61:'🌦',63:'🌧',65:'🌧',66:'🌧',67:'🌧',71:'🌨',73:'🌨',75:'❄️',77:'🌨',80:'🌦',81:'🌧',82:'⛈',
@@ -2594,6 +2756,7 @@ function renderSidebar(){
         const official=a? safeUrl(a.officialURL) : '';
         if(official) meta.push(`<a class="spotMetaItem adm" href="${escAttr(official)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="공식 예약 페이지 열기 — 열어도 예약 완료로 바뀌지 않아요">${ic('link')} 공식 예약</a>`);
       }
+      { const story=storyFor(s); if(story) meta.push(storyButtonHtml(story,'spotMetaItem story')); }
       // 이 장소에서 차를 받거나 돌려준다 — 예약과 연결해 두면 도착 순서와 어긋나지 않게 여기 붙는다
       [['carPickupId','렌터카 픽업','carPickupTime'],['carReturnId','렌터카 반납','carReturnTime']].forEach(([f,label,tf])=>{
         const bk=s[f]? bookingOf(s[f]) : null; if(!bk||bk.type!=='car') return;
@@ -2679,6 +2842,7 @@ function renderSidebar(){
       </div><div class="dayBody">
         ${day.drive?`<div class="drive driveMemo" title="직접 적은 이동 메모예요 — 아래 계산과 다를 수 있어요"><span class="memoTag">이동 메모</span>${esc(day.drive)}</div>`:''}
         ${flightsHtml(di)}
+        ${(c=>c?`<div class="dayItems">${storyButtonHtml(c,'dayItem story',`🎧 ${c.name} 이야기`)}</div>`:'')(cityStoryFor(day))}
         ${''/* 일자 간 이동(전날 기준점 → 첫 장소)은 첫 장소 행의 들어오는 구간이 말한다 — 머리글에 같은 숫자를 또 적지 않는다(2026-10-02) */}
         ${(()=>{const rt=dayRoute(day,ctx.backLeg); if(rt) return `<div class="dist">${ic('ruler')} 하루 동선 약 ${(rt.m/1000).toFixed(1)}km · ${MODE_ICON[dm]}${fmtDur(rt.sec)}${rt.taxi?(dm==='taxi'?` · 🚕약 ${rt.taxi.toLocaleString()}원`:dm==='car'?` · 🚕택시로 간다면 약 ${rt.taxi.toLocaleString()}원`:''):''} <span style="opacity:.55">(${dm==='flight'?'직선':'도로 기준'})</span></div>`;
           return dayDistance(day,ctx.back)>0?`<div class="dist">${ic('ruler')} 하루 동선 약 ${dayDistance(day,ctx.back).toFixed(1)}km <span style="opacity:.55">(직선)</span></div>`:'';})()}
@@ -6280,6 +6444,7 @@ function loadSuggest(){
 // ⚠️ 위의 let 선언 **뒤에서** 부른다. 예전에는 시작 IIFE(load·loadCfg 옆)에서 불러 TDZ 오류가 try에 조용히 삼켜졌고,
 // 거절·컨디션이 한 번도 되살아나지 않았다 — 그 상태로 하나를 건너뛰면 저장소의 이전 거절까지 덮였다(2026-10-03 UX 검토).
 loadSuggest();
+loadStories();
 function saveSuggest(){ try{ localStorage.setItem(SUGGEST_KEY, JSON.stringify({v:1, day:adaptDay, energy:adaptEnergy, prefs:adaptPrefs, intent:adaptIntent, trips:suggestStore})); }catch(e){} }
 /** 컨디션·문장을 지금 고른 것으로 적는다 — 고른 날짜를 함께 남겨 다음 날 되살아나지 않게 한다 */
 function markAdaptToday(){ adaptDay=travelClock().todayISO; }
@@ -6882,6 +7047,7 @@ function renderTravel(di, clock){
       // 머리에서 먼저 묻는 중이면 몸에는 다녀옴 버튼을 두지 않는다 — 한 카드에 '다녀왔어요'가 둘이면 어느 것이 지금인지 흐려진다
       if(!unmarked.length) act.appendChild(spotStatusRow(di,target.si,sp,!v.canMark,here));
       act.insertAdjacentHTML('beforeend', here? travelGoLink(asp,'다음 장소 길찾기 ↗') : travelGoLink(sp));
+      { const story=storyFor(sp); if(story) act.insertAdjacentHTML('beforeend', storyButtonHtml(story,'travelGo story')); }
       nextBox.appendChild(act);
     }else if(ctx.backLeg) nextBox.innerHTML=backHtml();
     else if(unmarked.length) nextBox.hidden=true;   // 남은 것이 전부 '표시를 기다리는 곳'이면 머리의 물음이 할 일이다
@@ -6900,7 +7066,7 @@ function renderTravel(di, clock){
       while(d.spots[nextIdx] && (d.spots[nextIdx].status==='COMPLETED'||d.spots[nextIdx].status==='SKIPPED'||d.spots[nextIdx].status==='CANCELLED')) nextIdx++;
     }
     const next=d.spots[nextIdx];
-    if(next) nextBox.innerHTML=`<div class="travelKicker">다음 장소</div><strong>${esc(next.name)}</strong>${arrival(nextIdx)}<div class="travelNowActions">${travelGoLink(next)}</div>`;
+    if(next) nextBox.innerHTML=`<div class="travelKicker">다음 장소</div><strong>${esc(next.name)}</strong>${arrival(nextIdx)}<div class="travelNowActions">${travelGoLink(next)}${(st=>st?storyButtonHtml(st,'travelGo story'):'')(storyFor(next))}</div>`;
     else if(ctx.backLeg) nextBox.innerHTML=backHtml();
     else nextBox.innerHTML=`<div class="travelKicker">다음 장소</div><strong>${v.isToday?'오늘 일정 완료':'이 날 일정 끝'}</strong> <span aria-hidden="true">✓</span>`;
   }
@@ -6935,7 +7101,8 @@ function renderTravel(di, clock){
     links.innerHTML=((bu=>bu?`<a class="tLink" href="${escAttr(bu)}" target="_blank" rel="noopener">🎫 예약 열기</a>`:'')(safeUrl(s.bookUrl)))+
       (hasLoc(s)
         ? ((el=>`<a class="tLink" href="${escAttr(el.href)}" target="_blank" rel="noopener">🧭 ${el.label}</a>`)(extMapLink(s)))
-        : `<span style="font-size:12px;color:var(--meta-warning)">📍 위치 미지정</span>`);
+        : `<span style="font-size:12px;color:var(--meta-warning)">📍 위치 미지정</span>`)+
+      ((st=>st?storyButtonHtml(st,'tLink story'):'')(storyFor(s)));
     div.appendChild(links);
     list.appendChild(div);
   });

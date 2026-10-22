@@ -1,0 +1,201 @@
+{
+  "id": "seville-city",
+  "kind": "CITY",
+  "name": "세비야",
+  "localName": "Sevilla",
+  "city": "세비야",
+  "lat": 37.3891,
+  "lng": -5.9845,
+  "radiusM": 8000,
+  "aliases": [
+    "세비야",
+    "세빌리아",
+    "Sevilla",
+    "Seville"
+  ],
+  "placeIds": [],
+  "tracks": [
+    {
+      "id": "intro",
+      "role": "CORE",
+      "title": "강과 함께 바뀐 도시",
+      "text": "세비야 어디에서 들으셔도 좋지만, 강가에 서 있다면 과달키비르 강의 물길을 바라보세요. 이 도시의 역사는 대부분 이 강과 함께 움직였습니다. 세비야는 대서양에서 강을 따라 80킬로미터 넘게 올라온 곳에 있는 내륙 항구입니다.\n\n로마 시대에 이 도시는 히스팔리스라고 불렸고, 속주 바이티카의 중심 도시 가운데 하나였습니다. 8세기 초 이슬람 세력이 들어온 뒤에는 이스빌리야라는 이름을 얻었습니다. 12세기에 북아프리카에서 온 알모하드 왕조는 세비야를 알안달루스의 수도로 삼고 큰 모스크를 세웠습니다. 그 모스크의 탑이 지금의 히랄다입니다.\n\n1248년, 카스티야의 왕 페르난도 3세가 세비야를 정복했습니다. 모스크는 성당이 되었고, 이슬람 군주의 궁전은 기독교 왕의 궁전으로 이어졌습니다.\n\n더 큰 전환은 1503년에 왔습니다. 왕실은 아메리카와의 교역과 항해를 관리하는 관청, 카사 데 콘트라타시온을 세비야에 두었습니다. 신대륙으로 떠나는 항해는 이 도시를 거쳐야 했습니다. 1519년 마젤란의 세계 일주 원정대도 여기서 준비를 마쳤습니다. 이 관청은 1717년 카디스로 옮겨 갔습니다.\n\n20세기에는 두 번의 박람회가 도시의 모습을 바꿨습니다. 1929년 5월 이베로아메리카 박람회가 열리면서 마리아 루이사 공원이 새로 단장되고 스페인 광장이 지어졌습니다. 1992년에는 콜럼버스 항해 500주년을 기념하는 만국박람회가 강 건너 카르투하 섬에서 열렸고, 이때 마드리드와 세비야를 잇는 고속철도와 새 다리들이 놓였습니다.\n\n대성당과 알카사르, 인디아스 문서관은 1987년 함께 유네스코 세계유산이 되었습니다. 2010년 인류무형문화유산에 오른 플라멩코도 이 도시의 역사입니다. 강 건너 트리아나 지구는 플라멩코의 요람 가운데 하나로 꼽힙니다.\n\n오늘 걷는 길에서 이 시대들의 흔적을 차례로 만나게 됩니다.",
+      "sources": [
+        "C01",
+        "C02",
+        "C03",
+        "C04",
+        "C05",
+        "C06",
+        "C07",
+        "C08",
+        "C09",
+        "C10",
+        "C11",
+        "C12"
+      ]
+    }
+  ],
+  "sources": {
+    "C01": {
+      "title": "브리태니커·세비야 항목 — 과달키비르 강의 내륙 항구, 히스팔리스, 이슬람 지배, 페르난도 3세",
+      "url": "https://www.britannica.com/place/Sevilla-Spain"
+    },
+    "C02": {
+      "title": "안달루시아 통계지도연구원·알안달루스의 도시 — 알모하드 왕조의 수도 세비야",
+      "url": "https://www.juntadeandalucia.es/institutodeestadisticaycartografia/atlasterritorio/at/pdf/24_ciudadesdealandalus.pdf"
+    },
+    "C03": {
+      "title": "세비야시 관광청 비시타 세비야·세비야의 역사 안내서 — 로마 히스팔리스, 1248년 정복, 1503년 교역 독점",
+      "url": "https://tic.visitasevilla.es/vsev/web_php/imatges/guias/13167624e9d176b51e178741462.pdf"
+    },
+    "C04": {
+      "title": "스페인 문화부·인디아스 문서관 안내서 — 1503년 카사 데 콘트라타시온 설치와 1717년 카디스 이전",
+      "url": "https://www.cultura.gob.es/dam/jcr:5cc4a704-ac88-4197-bbc7-92e753ae885c/folleto-archivo-gral-indias-web.pdf"
+    },
+    "C05": {
+      "title": "안달루시아 자치정부·세비야, 1519년 첫 세계 일주",
+      "url": "https://www.juntadeandalucia.es/medioambiente/portal/web/documentos_interactivos/sevilla_1519/files/assets/basic-html/page-32-33.html"
+    },
+    "C06": {
+      "title": "스페인 문화부·세계유산 목록 1987년 — 세비야 대성당, 알카사르, 인디아스 문서관",
+      "url": "https://www.cultura.gob.es/cultura/areas/patrimonio/mc/patrimoniomundial/bienes-declarados/por-ano-de-inscripcion/1987/sevilla.html"
+    },
+    "C07": {
+      "title": "세비야 대학교 건축 도서관·1929년 이베로아메리카 박람회 — 1929년 5월 9일 개막",
+      "url": "https://bib.us.es/arquitectura/noticias/exposici%C3%B3n-iberoamericana-de-sevilla-1929"
+    },
+    "C08": {
+      "title": "국제박람회기구·1992년 세비야 박람회 — 카르투하 섬, 발견의 시대, 고속철도와 다리",
+      "url": "https://www.bie-paris.org/site/en/1992-seville"
+    },
+    "C09": {
+      "title": "유네스코 무형문화유산·플라멩코 2010년 등재",
+      "url": "https://ich.unesco.org/en/RL/flamenco-00363"
+    },
+    "C10": {
+      "title": "안달루시아 관광청·플라멩코 실용 안내서 — 트리아나를 요람의 하나로 소개",
+      "url": "https://multimedia.andalucia.org/media/988BE137F8E94C22A30F48CFAFB43EB2/doc/60A82C7CEC12403583C7AF3377C76198/practical_guide_flamenco_ING.pdf"
+    },
+    "C11": {
+      "title": "세비야시·마리아 루이사 공원의 역사 — 박람회를 위한 재단장",
+      "url": "https://www.sevilla.org/servicios/medio-ambiente-parques-jardines/parques/parques-y-jardines-historicos/parque-de-maria-luisa/historia"
+    },
+    "C12": {
+      "title": "세비야 대성당 공식·역사 — 알모하드 모스크와 1248년 정복 뒤 성당 전환",
+      "url": "https://www.catedraldesevilla.es/la-catedral/catedral-de-sevilla-su-historia/"
+    }
+  },
+  "factCheck": [
+    {
+      "claim": "세비야는 과달키비르 강변의 내륙 항구로, 대서양에서 약 87킬로미터 떨어져 있다",
+      "sources": [
+        "C01"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "로마 시대 이름은 히스팔리스였고 바이티카 속주의 행정 중심 가운데 하나였다",
+      "sources": [
+        "C01",
+        "C03"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "8세기 초 이슬람 세력의 지배를 받게 되었다",
+      "sources": [
+        "C01"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "이슬람 시대 아랍어 이름은 이스빌리야였다",
+      "sources": [
+        "C02"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "12세기 알모하드 왕조가 세비야를 알안달루스의 수도로 삼고 큰 모스크와 지금의 히랄다가 된 탑을 세웠다",
+      "sources": [
+        "C02",
+        "C12"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "1248년 카스티야의 페르난도 3세가 세비야를 정복했고 모스크는 성당이 되었다",
+      "sources": [
+        "C01",
+        "C03",
+        "C12"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "1503년 카사 데 콘트라타시온이 세비야에 설치되었고, 세비야가 아메리카 교역의 독점 항구가 되었다",
+      "sources": [
+        "C03",
+        "C04"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "1519년 마젤란의 세계 일주 원정대가 세비야에서 준비했다",
+      "sources": [
+        "C05"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "카사 데 콘트라타시온은 1717년 카디스로 옮겨 갔다",
+      "sources": [
+        "C04"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "1929년 5월 이베로아메리카 박람회가 개막했고, 이를 위해 마리아 루이사 공원이 재단장되고 스페인 광장이 지어졌다",
+      "sources": [
+        "C07",
+        "C11"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "1992년 콜럼버스 항해 500주년 만국박람회가 카르투하 섬에서 열렸고, 마드리드-세비야 고속철도와 새 다리들이 이때 놓였다",
+      "sources": [
+        "C08"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "대성당·알카사르·인디아스 문서관이 1987년 함께 세계유산이 되었다",
+      "sources": [
+        "C06"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "플라멩코는 2010년 유네스코 인류무형문화유산에 등재되었다",
+      "sources": [
+        "C09"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "트리아나는 플라멩코의 요람 가운데 하나로 꼽힌다",
+      "sources": [
+        "C10"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "강바닥이 얕아져 큰 배가 오르기 어려워진 것이 교역 독점 상실의 원인이었다",
+      "sources": [],
+      "status": "UNCERTAIN"
+    }
+  ],
+  "reviewedAt": null
+}

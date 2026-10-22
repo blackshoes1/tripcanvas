@@ -1,0 +1,299 @@
+{
+  "id": "seville-alcazar",
+  "kind": "PLACE",
+  "name": "세비야 알카사르",
+  "localName": "Real Alcázar de Sevilla",
+  "city": "세비야",
+  "lat": 37.3831,
+  "lng": -5.9903,
+  "radiusM": 300,
+  "aliases": [
+    "알카사르",
+    "세비야 알카사르",
+    "레알 알카사르",
+    "Real Alcázar",
+    "Alcázar de Sevilla"
+  ],
+  "placeIds": [],
+  "tracks": [
+    {
+      "id": "core",
+      "role": "CORE",
+      "title": "페드로 1세 궁전의 정면",
+      "text": "몬테리아 안뜰에 서서 정면의 궁전 입구를 바라보세요. 나무 처마 아래 돌과 벽돌, 타일, 석고 장식이 겹친 이 벽이 14세기 카스티야의 왕 페드로 1세가 지은 궁전의 정면입니다.\n\n알카사르는 한 번에 지은 궁전이 아닙니다. 10세기 초 코르도바의 칼리프 아브드 알라흐만 3세가 이 자리에 성채 궁전을 세웠습니다. 11세기에는 세비야를 다스린 알무타미드가 궁전을 지었고, 12세기 알모하드 왕조의 칼리프들도 이곳에 거처를 두었습니다. 지금 단지를 둘러싼 성벽은 그 알모하드 시대의 것입니다.\n\n페드로 1세는 1350년대 후반부터 무너져 가던 옛 궁전 자리에 새 궁전을 지었습니다. 톨레도와 그라나다, 코르도바와 세비야의 장인들이 함께 일했습니다. 기독교 왕을 위해 이슬람 건축의 기술과 장식으로 지은 이 양식을 무데하르라고 부릅니다.\n\n정면 가운데를 보세요. 파란 타일 띠에는 아랍어로 오직 신만이 승리자라는 문구가 있고, 그 둘레의 고딕 문자에는 카스티야와 레온의 왕 돈 페드로가 이 궁전을 짓게 했다고 적혀 있습니다. 비문의 연도는 1364년으로 읽힙니다.",
+      "sources": [
+        "A01",
+        "A02",
+        "A03",
+        "A04",
+        "A05",
+        "A15",
+        "A16"
+      ]
+    },
+    {
+      "id": "more",
+      "role": "MORE",
+      "title": "더 듣기 — 묻혔던 정원과 대서양의 관청",
+      "text": "궁전 안으로 들어가 처녀들의 안뜰, 파티오 데 라스 돈세야스에 서 보세요. 가운데 긴 연못과 양옆으로 낮게 꺼진 정원이 보입니다.\n\n이 정원은 400년 가까이 보이지 않았습니다. 1583년 안뜰 바닥을 새로 깔면서 페드로 1세 시대의 연못과 화단이 그 아래 묻혔습니다. 2002년부터 2005년까지 이어진 발굴에서 14세기의 연못과 계단식 화단이 잘 남은 채 드러났고, 연못 벽에는 채색 장식까지 남아 있었습니다. 지금 보는 모습은 그 발굴을 바탕으로 되살린 것입니다. 아래층 아치 위의 회랑은 훗날 16세기에 더해진 것으로 봅니다.\n\n이 궁전은 대서양 시대에도 한가운데 있었습니다. 1503년 왕실은 아메리카와의 교역과 항해를 관리하는 카사 데 콘트라타시온을 만들었고, 이 관청은 알카사르 안 제독의 방이라 불리는 구역에 자리 잡았습니다. 1519년 마젤란의 세계 일주 원정도 이곳에서 준비되었습니다. 관청은 1717년 카디스로 옮겨 갈 때까지 이곳에 있었습니다. 제독의 방 접견실에서는 알레호 페르난데스가 이 관청의 예배당을 위해 그린 항해자들의 성모를 볼 수 있습니다. 성모가 망토를 펼쳐 그 아래 사람들을 감싸는 그림입니다.\n\n1526년에는 황제 카를 5세가 이 궁전에서 포르투갈의 이사벨과 결혼했습니다. 그리고 지금도 알카사르는 스페인 왕실이 세비야를 찾을 때 쓰는 공식 거처입니다.\n\n정원으로 나가면 드라마 왕좌의 게임에서 도른 왕국의 물의 정원으로 나온 장소들도 만날 수 있습니다. 천 년 넘게 주인이 바뀌어 온 궁전이 지금도 쓰이고 있다는 점을 떠올리며 걸어 보세요.",
+      "sources": [
+        "A01",
+        "A02",
+        "A06",
+        "A07",
+        "A08",
+        "A09",
+        "A10",
+        "A11",
+        "A12",
+        "A13",
+        "A14",
+        "A17"
+      ]
+    }
+  ],
+  "sources": {
+    "A01": {
+      "title": "알카사르 관리청 공식·역사 — 알모하드 시대 건물, 1248년 이후 왕실의 거처, 1356년부터의 페드로 1세 공사, 지금도 쓰이는 왕궁",
+      "url": "https://alcazarsevilla.org/historia/"
+    },
+    "A02": {
+      "title": "세비야시 세계유산 안내·레알 알카사르 — 913년 아브드 알라흐만 3세, 알무타미드, 알모하드 칼리프, 페드로 1세, 1526년 카를 5세 결혼, 왕실 공식 거처",
+      "url": "https://unesco.urbanismosevilla.org/unesco/en/heritage/humanidad/real-alc%C3%A1zar"
+    },
+    "A03": {
+      "title": "세비야시 역사지구 보호계획·페드로 1세 궁전 카드 — 무데하르 궁전, 아랍어·카스티야어 비문",
+      "url": "https://unesco.urbanismosevilla.org/unesco/sites/default/files/ficha_alcazar_palacio_del_rey__pedro_i.pdf"
+    },
+    "A04": {
+      "title": "세비야시 역사지구 보호계획·몬테리아 안뜰 카드",
+      "url": "https://unesco.urbanismosevilla.org/unesco/sites/default/files/ficha_alcazar_patio_de_la_monteria.pdf"
+    },
+    "A05": {
+      "title": "비시타 세비야·레알 알카사르, 왕들의 궁전 — 1356~1366년 공사, 톨레도·그라나다·코르도바·세비야 장인",
+      "url": "https://legacy.visitasevilla.es/en/history/royal-alcazar-palace-kings"
+    },
+    "A06": {
+      "title": "알카사르 관리청 공식·알카사르 노트 연구 — 처녀들의 안뜰 2002년 발굴, 1583년 포장으로 묻힌 정원",
+      "url": "https://www.alcazarsevilla.org/wp-content/pdfs/APUNTES/apuntes4/investigacion03/investigacion.html"
+    },
+    "A07": {
+      "title": "알카사르 관리청 공식·처녀들의 안뜰 발굴 보고 2002~2005",
+      "url": "https://www.alcazarsevilla.org/en/news/excavaciones-arqueologicas-en-el-patio-de-las-doncellas-del-palacio-de-pedro-i/"
+    },
+    "A08": {
+      "title": "안달루시아 자치정부 문화유산 저장소·처녀들의 안뜰 발굴 2002~2004",
+      "url": "https://www.juntadeandalucia.es/cultura/tabula/handle/20.500.11947/22441"
+    },
+    "A09": {
+      "title": "스페인 문화부·인디아스 문서관 안내서 — 1503년 칙령, 알카사르 안의 관청, 1717년 카디스 이전",
+      "url": "https://www.cultura.gob.es/dam/jcr:5cc4a704-ac88-4197-bbc7-92e753ae885c/folleto-archivo-gral-indias-web.pdf"
+    },
+    "A10": {
+      "title": "스페인 문화부 문서관 총람·카사 데 콘트라타시온 — 1503년 알카사르 제독의 방에 설치",
+      "url": "https://censoarchivos.cultura.gob.es/CensoGuia/productordetail.htm?id=46426"
+    },
+    "A11": {
+      "title": "알카사르 관리청 공식·첫 세계 일주 500주년 전시 — 원정 준비의 장소",
+      "url": "https://www.alcazarsevilla.org/noticias/exposicion-v-centenario-de-la-primera-circunnavegacion-de-la-tierra-atlas-y-codices-iluminados-de-los-40-anos-que-cambiaron-el-mundo/"
+    },
+    "A12": {
+      "title": "안달루시아 안내 사이트·알카사르 르네상스 구역 — 알레호 페르난데스의 항해자들의 성모",
+      "url": "https://andalucia.com/cities/seville/alcazar/renaissance.htm"
+    },
+    "A13": {
+      "title": "위키백과·항해자들의 성모 — 보조 확인용",
+      "url": "https://en.wikipedia.org/wiki/The_Virgin_of_the_Navigators"
+    },
+    "A14": {
+      "title": "비시타 세비야·스타워즈에서 왕좌의 게임까지 — 알카사르 정원이 도른의 물의 정원으로 등장",
+      "url": "https://visitasevilla.es/en/de-star-wars-a-juego-de-tronos/"
+    },
+    "A15": {
+      "title": "세비야 건축 안내 세비야xm2·페드로 1세 궁전 정면 — 비문과 1364년",
+      "url": "https://sevillaxm2.com/en/facade-palace-pedro-seville/"
+    },
+    "A16": {
+      "title": "안달루시아 자치정부 교육 블로그·알카사르 안내서 — 정면 비문 내용",
+      "url": "https://blogsaverroes.juntadeandalucia.es/centroadultospalmete/files/2023/06/ALC%C3%81ZAR-DE-SEVILLA-GU%C3%8DA.pdf"
+    },
+    "A17": {
+      "title": "블러프턴 대학 미술사 이미지 자료·처녀들의 안뜰 — 16세기 위층 회랑",
+      "url": "https://homepages.bluffton.edu/~SULLIVANM/spain/seville/alcazar/alcazar6.html"
+    }
+  },
+  "factCheck": [
+    {
+      "claim": "몬테리아 안뜰에 페드로 1세 궁전의 정면이 있고 돌·벽돌·타일·석고·나무 처마로 이루어졌다",
+      "sources": [
+        "A04",
+        "A15"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "10세기 초(913년) 아브드 알라흐만 3세가 성채 궁전을 세웠다",
+      "sources": [
+        "A02"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "11세기 알무타미드가 궁전을 지었다",
+      "sources": [
+        "A02"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "12세기 알모하드 칼리프들이 거처를 두었고 둘레 성벽이 알모하드 시대 것이다",
+      "sources": [
+        "A01",
+        "A02"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "페드로 1세가 1356년 무렵부터 무너져 가던 옛 궁전 자리에 새 궁전을 지었다",
+      "sources": [
+        "A01",
+        "A03",
+        "A05"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "톨레도·그라나다·코르도바·세비야의 장인들이 함께 일했다",
+      "sources": [
+        "A05"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "정면에 아랍어로 오직 신만이 승리자, 고딕 문자로 왕 돈 페드로가 짓게 했다는 비문이 있다",
+      "sources": [
+        "A03",
+        "A16"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "비문의 연도는 스페인 기년 1402년, 서기 1364년이다",
+      "sources": [
+        "A02",
+        "A15"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "궁전 공사의 시작 해(1356년)와 1364년 사이 완공 시점의 정확한 관계",
+      "sources": [
+        "A01",
+        "A05"
+      ],
+      "status": "UNCERTAIN"
+    },
+    {
+      "claim": "1583년 안뜰 포장으로 페드로 1세 시대 연못과 화단이 묻혔다",
+      "sources": [
+        "A06"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "2002~2005년 발굴에서 연못과 계단식 화단, 연못의 채색 장식이 드러났고 정원이 복원되었다",
+      "sources": [
+        "A06",
+        "A07",
+        "A08"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "위층 회랑은 16세기에 더해졌다",
+      "sources": [
+        "A17"
+      ],
+      "status": "UNCERTAIN"
+    },
+    {
+      "claim": "위층 회랑을 카를 5세 때 루이스 데 베가가 설계했다",
+      "sources": [
+        "A17"
+      ],
+      "status": "UNCERTAIN"
+    },
+    {
+      "claim": "1503년 카사 데 콘트라타시온이 만들어져 알카사르 제독의 방 구역에 자리 잡았다",
+      "sources": [
+        "A09",
+        "A10"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "1519년 마젤란 원정이 알카사르에서 준비되었다",
+      "sources": [
+        "A11"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "관청은 1717년 카디스로 옮겨 갔다",
+      "sources": [
+        "A09",
+        "A10"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "알레호 페르난데스가 이 관청의 예배당을 위해 항해자들의 성모를 그렸고 제독의 방 접견실에 있다",
+      "sources": [
+        "A12",
+        "A13"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "항해자들의 성모 속 인물 가운데 콜럼버스가 있다",
+      "sources": [
+        "A12",
+        "A13"
+      ],
+      "status": "UNCERTAIN"
+    },
+    {
+      "claim": "1526년 카를 5세가 이곳에서 포르투갈의 이사벨과 결혼했다",
+      "sources": [
+        "A02"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "알카사르는 지금도 스페인 왕실의 세비야 공식 거처다",
+      "sources": [
+        "A01",
+        "A02"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "유럽에서 지금도 쓰이는 가장 오래된 왕궁이다",
+      "sources": [],
+      "status": "UNCERTAIN"
+    },
+    {
+      "claim": "알카사르 정원이 왕좌의 게임에서 도른의 물의 정원으로 나왔다",
+      "sources": [
+        "A14"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "처녀들의 안뜰이라는 이름이 처녀 100명 조공 전설에서 왔다",
+      "sources": [],
+      "status": "UNCERTAIN"
+    }
+  ],
+  "reviewedAt": null
+}

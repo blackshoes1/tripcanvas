@@ -1,6 +1,6 @@
-# With J 이야기 — 장소별 음성 해설 (설계안, 승인 대기)
+# With J 이야기 — 장소별 음성 해설
 
-작성 2026-10-22. 상태: **설계안**. 승인 전에는 구현하지 않는다.
+작성 2026-10-22. 상태: **설계 승인(2026-10-22) · 웹 1단계 구현 중**. 아래 '구현 메모'가 설계와 다른 점을 적는다.
 
 ## 무엇을 만드는가
 
@@ -133,6 +133,27 @@ CITY는 장소가 아니라 **날**에 붙는다. 그날 위치 있는 장소 �
 - 기기 전용 '내 음성' 칸은 이야기 창과 한 화면을 쓰므로, 이야기 PR에 함께 넣거나 이야기 칸만 먼저 낼지 정해야 한다.
 - 이 브랜치의 대용량 작업 파일(`docs/seville-tripcanvas-handoff/` 안의 zip·wav·jpg 약 15MB, `proto/` 이미지)은 저장소에 커밋하지 않는 것을 제안한다.
   원고(txt·json)만 `scripts/stories/source/`로 옮긴다.
+
+## 구현 메모 (웹 1단계)
+
+- 코드: `stories.js`(순수 — 정규화·매칭) · `app.js`의 `openStory`·`loadStories`·`storyBlob` · `index.html`의 `#storyDialog`·`#storyBar` · `sw.js`.
+- 플레이어는 브라우저 기본 `<audio controls>` 하나다. 창 안에 있다가 창을 닫으면 화면 아래 막대(`#storyBar`)로 옮겨 가 계속 들린다.
+  재생 위치 기억은 같은 세션 안에서만이다(새 localStorage 키를 만들지 않았다).
+- 음성은 누르면 통째로 받아 지문(sha256)을 확인하고 `withj-stories-v1` 캐시에 담은 뒤 Blob으로 재생한다.
+  그래서 한 번 들은 이야기는 비행기 모드에서도 들린다. SW는 `/stories/`를 건드리지 않는다(Safari는 Range 요청에 통째 응답을 주면 재생하지 못한다).
+- 대성당 '다녀온 지점 표시'는 첫 버전에서 뺐다. 지점 목록에는 번호·찾는 법·스페인어 이름이 있다.
+- 카탈로그는 앱이 열릴 때 한 번 받는다(`no-cache` · Vercel 헤더 `max-age=0`). 못 받으면 지난번 사본을 쓴다.
+
+## 제작 명령
+
+```bash
+node scripts/stories/build-stories.js --check   # 원고 검사(키 필요 없음 — 유닛 테스트도 같은 검사를 돈다)
+GOOGLE_TTS_API_KEY=… node scripts/stories/build-stories.js --draft   # 검수 전 원고까지 stories-draft/에(올리지 않는다)
+GOOGLE_TTS_API_KEY=… node scripts/stories/build-stories.js           # 검수한 원고만 stories/에 + catalog.json
+```
+
+원고는 `scripts/stories/source/seville/*.json`이다. 들어 보고 사실 확인 기록(`factCheck`)이 전부 `CONFIRMED`이면 그 장소에
+`reviewedAt`을 적는다 — 검수 표시가 없는 트랙은 카탈로그에 들어가지 않는다. 같은 원고는 다시 합성하지 않는다(`build-state.json`).
 
 ## 하지 않는 것 (첫 버전)
 
