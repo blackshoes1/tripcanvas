@@ -1213,6 +1213,10 @@ test('숫자와 조사: 한 시간이 넘으면 시간으로, 조사는 받침�
   assert.equal(A.josa('금', '이라고', '라고'), '이라고');
   assert.equal(A.josa('토', '이라고', '라고'), '라고');
   assert.equal(A.josa('서울', '으로', '로'), '로', 'ㄹ 받침은 로');
+  for (const [d, p] of [[0, '으로'], [1, '로'], [2, '로'], [3, '으로'], [4, '로'], [5, '로'], [6, '으로'], [7, '로'], [8, '로'], [9, '로']]) {
+    assert.equal(A.josa('Day ' + d, '으로', '로'), p, 'Day ' + d);
+  }
+  assert.equal(A.josa('Day 10', '으로', '로'), '으로');
   const s = stateOf(dinnerTrip(), { todayISO: TODAY, nowMin: 9 * 60, live: true, startAnchor: P(40.40) });
   assert.ok(!/\d{3,}분/.test(A.departurePlan(s, s.items[1], 44).text), '세 자리 분으로 말하지 않는다');
 });

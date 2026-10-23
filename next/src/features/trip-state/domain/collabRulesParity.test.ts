@@ -161,7 +161,44 @@ const activityCases: { name: string; event: Activity; count?: number }[] = [
 ];
 
 /** 을/를 — 받침이 있으면 '을'. 한글이 아니면 '를'. */
-const particleWords = ['공원', '카사 바트요', 'Sagrada', '', '맛집', '바', '숲', '123', '라멘🍜', '가', '힣'];
+const particleWords = ['공원', '카사 바트요', 'Sagrada', '', '맛집', '바', '숲', '123', '라멘🍜', '가', '힣', 'Hotel 3', 'Hotel 2', 'Hotel 1'];
+
+/** F-12(2026-10-16) — 화면 문장의 '은/는'·'을/를'·'으로/로'. 이어 붙인 이름은 **마지막 이름**, 앞뒤 공백은 JS `trim()` 집합. */
+const josaCases: { word: string | null; withFinal: string; withoutFinal: string }[] = [
+  { word: '경복궁', withFinal: '을', withoutFinal: '를' },
+  { word: '남산타워', withFinal: '을', withoutFinal: '를' },
+  { word: '철수', withFinal: '은', withoutFinal: '는' },
+  { word: '영희', withFinal: '은', withoutFinal: '는' },
+  { word: '민수, 철수', withFinal: '은', withoutFinal: '는' },
+  { word: '철수, 민수', withFinal: '은', withoutFinal: '는' },
+  { word: '서울', withFinal: '으로', withoutFinal: '로' },
+  { word: '부산', withFinal: '으로', withoutFinal: '로' },
+  { word: '제주', withFinal: '으로', withoutFinal: '로' },
+  { word: 'Camp Nou', withFinal: '을', withoutFinal: '를' },
+  { word: 'Day 3', withFinal: '으로', withoutFinal: '로' },
+  // 숫자 끝말은 읽는 소리의 받침 — 영·일·삼·육·칠·팔은 받침 있음(일·칠·팔은 ㄹ 받침이라 '으로'는 '로'), 이·사·오·구는 없음
+  { word: 'Day 0', withFinal: '으로', withoutFinal: '로' },
+  { word: 'Day 1', withFinal: '으로', withoutFinal: '로' },
+  { word: 'Day 2', withFinal: '으로', withoutFinal: '로' },
+  { word: 'Day 4', withFinal: '으로', withoutFinal: '로' },
+  { word: 'Day 5', withFinal: '으로', withoutFinal: '로' },
+  { word: 'Day 6', withFinal: '으로', withoutFinal: '로' },
+  { word: 'Day 7', withFinal: '으로', withoutFinal: '로' },
+  { word: 'Day 8', withFinal: '으로', withoutFinal: '로' },
+  { word: 'Day 9', withFinal: '으로', withoutFinal: '로' },
+  { word: 'Day 10', withFinal: '으로', withoutFinal: '로' },
+  { word: 'Hotel 3', withFinal: '을', withoutFinal: '를' },
+  { word: 'Hotel 2', withFinal: '을', withoutFinal: '를' },
+  { word: '철수 2', withFinal: '은', withoutFinal: '는' },
+  { word: '라멘🍜', withFinal: '을', withoutFinal: '를' },
+  { word: '  경복궁  ', withFinal: '을', withoutFinal: '를' },
+  { word: '\uFEFF경복궁\uFEFF', withFinal: '을', withoutFinal: '를' },
+  { word: '경복궁\u0085', withFinal: '을', withoutFinal: '를' },
+  { word: '', withFinal: '은', withoutFinal: '는' },
+  { word: null, withFinal: '은', withoutFinal: '는' },
+  { word: '가', withFinal: '은', withoutFinal: '는' },
+  { word: '힣', withFinal: '은', withoutFinal: '는' }
+];
 
 const at = (hhmmss: string) => `2026-09-01T${hhmmss}.000Z`;
 /** 묶기: 입력·출력 모두 최신순. 같은 사람의 연속 일정 변경은 10분 창 안에서 한 줄, 같은 후보 반응은 마지막 것만. */
@@ -353,6 +390,12 @@ const groupCases: { name: string; memberCount: number; rows: PrefRow[] }[] = [
     pref('A', { interests: ['야경', '미술관', '쇼핑', '카페'] }),
     pref('B', { interests: ['야경', '미술관', '카페'] }),
     pref('C', { interests: ['야경'], dislikes: ['쇼핑', '미술관'] })
+  ] },
+  // F-12(2026-10-16): 받침에 맞는 조사 — 받침 있음(영진은)·없음(철수는)·이은 이름은 마지막 이름 기준(철수, 민수는 / 민수, 영진은)
+  { name: '충돌 문장의 조사는 받침에 맞춘다', memberCount: 3, rows: [
+    pref('영진', { interests: ['맛집'], dislikes: ['쇼핑'] }),
+    pref('철수', { interests: ['쇼핑'], dislikes: ['맛집'] }),
+    pref('민수', { interests: ['쇼핑'] })
   ] }
 ];
 
@@ -424,6 +467,7 @@ describe('collab.js의 나머지 복사본 규칙 — iOS 픽스처', () => {
       text: collab.activityText(c.count == null ? c.event : { ...c.event, count: c.count })
     }));
     const particles = particleWords.map((word) => ({ word, particle: collab.objParticle(word) }));
+    const josas = josaCases.map((c) => ({ ...c, particle: collab.josa(c.word, c.withFinal, c.withoutFinal) }));
     const condense = condenseCases.map((c) => ({
       name: c.name,
       rows: c.rows,
@@ -447,7 +491,27 @@ describe('collab.js의 나머지 복사본 규칙 — iOS 픽스처', () => {
     // 활동 문장에 이메일이 섞이지 않는다(§69)
     expect(JSON.stringify(cases)).not.toMatch(/@/);
 
-    writeFixture('activity-text', { cases, particles, condense, relativeTimes });
+    const josaOf = (w: string | null, a: string, b: string) => josas.find((j) => j.word === w && j.withFinal === a && j.withoutFinal === b)!.particle;
+    expect(josaOf('경복궁', '을', '를'), '받침 있음').toBe('을');
+    expect(josaOf('남산타워', '을', '를'), '받침 없음').toBe('를');
+    expect(josaOf('서울', '으로', '로'), 'ㄹ 받침은 으로가 아니라 로').toBe('로');
+    expect(josaOf('부산', '으로', '로')).toBe('으로');
+    expect(josaOf('민수, 철수', '은', '는'), '이은 이름은 마지막 이름으로').toBe('는');
+    expect(josaOf('Camp Nou', '을', '를'), '한글도 숫자도 아니면 받침 없는 쪽').toBe('를');
+    expect(josaOf('Day 3', '으로', '로'), '삼은 받침이 있다').toBe('으로');
+    expect(josaOf('Day 6', '으로', '로'), '육은 받침이 있다').toBe('으로');
+    expect(josaOf('Day 10', '으로', '로'), '끝 숫자 0(영)은 받침이 있다').toBe('으로');
+    expect(josaOf('Day 1', '으로', '로'), '일은 ㄹ 받침이라 으로가 아니라 로').toBe('로');
+    expect(josaOf('Day 2', '으로', '로'), '이는 받침이 없다').toBe('로');
+    expect(josaOf('Day 7', '으로', '로')).toBe('로');
+    expect(josaOf('Day 8', '으로', '로')).toBe('로');
+    expect(josaOf('Hotel 3', '을', '를')).toBe('을');
+    expect(josaOf('Hotel 2', '을', '를')).toBe('를');
+    expect(josaOf(null, '은', '는'), '빈 값은 받침 없는 쪽').toBe('는');
+    expect(josaOf('\uFEFF경복궁\uFEFF', '을', '를'), 'JS trim()은 U+FEFF를 벗긴다').toBe('을');
+    expect(josaOf('경복궁\u0085', '을', '를'), 'JS trim()은 U+0085를 벗기지 않는다 → 한글이 아니라 받침 없는 쪽').toBe('를');
+
+    writeFixture('activity-text', { cases, particles, josas, condense, relativeTimes });
   });
 
   it('초대와 역할 — 토큰·이유·판정·기간·역할·이름', () => {
@@ -500,6 +564,10 @@ describe('collab.js의 나머지 복사본 규칙 — iOS 픽스처', () => {
     // 정리만 한다 — 자동으로 빼자고 하지 않는다(§23·§62)
     for (const g of groups) for (const line of g.lines) expect(line).not.toMatch(/빼/);
     expect(groups[5].lines.some((l) => l.includes('(나, 지민)')), '이름표는 다듬어서 부른다').toBe(true);
+    // F-12(AC-17·AC-18): 조사가 받침에 맞고 '은(는)'은 나오지 않는다
+    expect(groups[9].lines).toContain('맛집: 영진은 좋고 철수는 별로예요');
+    expect(groups[9].lines).toContain('쇼핑: 철수, 민수는 좋고 영진은 별로예요');
+    expect(JSON.stringify(groups)).not.toMatch(/은\(는\)|을\(를\)/);
 
     writeFixture('trip-prefs', { normalize, groups });
   });

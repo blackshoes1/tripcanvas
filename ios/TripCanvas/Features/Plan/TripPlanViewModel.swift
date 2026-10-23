@@ -320,7 +320,7 @@ final class TripPlanViewModel: DayPlanContext {
             return false
         }
         let sourceDay = dayIndex ?? selectedDay
-        return await store.edit("Day \(targetDay + 1)로 옮겼어요", expectedRevision: expectedRevision) { document in
+        return await store.edit("Day \(targetDay + 1)\(CollabModel.josa("Day \(targetDay + 1)", "으로", "로")) 옮겼어요", expectedRevision: expectedRevision) { document in
             if let spot { document.updateSpot(dayIndex: sourceDay, at: index, with: spot) }
             document.moveSpot(from: (day: sourceDay, index: index), toDay: targetDay)
         }
@@ -389,6 +389,43 @@ final class TripPlanViewModel: DayPlanContext {
         return await store.edit("준비 메모를 추가했어요") { document in
             var notes = document.raw["notes"]?.arrayValue ?? []
             notes.append(note); document.setField("notes", .array(notes))
+        }
+    }
+
+    /// 준비 메모를 고친다 — 그 id의 원문 객체에서 분류·제목·본문·`updatedAt`**만** 덮어쓴다. 확인 표시(`done`)와 모르는 키는 그대로 둔다
+    /// (아는 필드만 담은 구조체로 디코딩했다 쓰면 웹·다음 버전이 넣은 필드가 앱 저장 한 번에 사라진다).
+    /// 찾는 것은 **id**다 — 편집기를 연 뒤 원격 변경으로 순서가 바뀌어도 다른 메모를 덮지 않는다.
+    /// 제목·본문이 모두 빈 메모는 서버가 조용히 버리므로 저장 전에 막는다(`addNote`와 같은 검사).
+    @discardableResult
+    func updateNote(id: String, title: String, body: String, category: String, expectedRevision: Int? = nil) async -> Bool {
+        let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let body = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard (!title.isEmpty || !body.isEmpty), title.utf16.count <= 120, body.utf16.count <= 4000,
+              TripNote.categories.contains(category) else {
+            store.report("제목이나 내용을 적어 주세요. 제목은 120자, 본문은 4,000자까지 저장할 수 있어요."); return false
+        }
+        guard document?.raw["notes"]?.arrayValue?.contains(where: { $0.objectValue?["id"]?.stringValue == id }) == true else {
+            store.report("이 메모가 이미 없어요. 최신 메모를 불러와 확인해 주세요."); return false
+        }
+        let stamp = TripNote.timestamp()
+        return await store.edit("메모를 고쳤어요", expectedRevision: expectedRevision) { document in
+            var notes = document.raw["notes"]?.arrayValue ?? []
+            guard let index = notes.firstIndex(where: { $0.objectValue?["id"]?.stringValue == id }),
+                  var raw = notes[index].objectValue else { return }
+            raw["cat"] = .string(category); raw["title"] = .string(title); raw["body"] = .string(body); raw["updatedAt"] = .string(stamp)
+            notes[index] = .object(raw)
+            document.setField("notes", .array(notes))
+        }
+    }
+
+    /// 준비 메모 하나를 지운다 — 그 id만 배열에서 빼고 나머지 원소와 순서는 원문 그대로다. 확인창은 없다(되돌리기가 있다).
+    @discardableResult
+    func removeNote(id: String, expectedRevision: Int? = nil) async -> Bool {
+        guard document?.raw["notes"]?.arrayValue?.contains(where: { $0.objectValue?["id"]?.stringValue == id }) == true else { return false }
+        return await store.edit("메모를 지웠어요", expectedRevision: expectedRevision) { document in
+            var notes = document.raw["notes"]?.arrayValue ?? []
+            notes.removeAll { $0.objectValue?["id"]?.stringValue == id }
+            document.setField("notes", notes.isEmpty ? nil : .array(notes))
         }
     }
 

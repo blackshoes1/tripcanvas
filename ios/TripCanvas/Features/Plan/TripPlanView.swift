@@ -135,7 +135,7 @@ struct TripPlanView: View {
                 let session = searchSession ?? (model.selectedDay, model.revision)
                 let after = insertionAfter
                 let saved = await model.addSpot(hit.makeSpot(), after: after, dayIndex: session.day, expectedRevision: session.revision,
-                                                toast: "‘\(hit.name)’을(를) Day \(session.day + 1)에 추가했어요")
+                                                toast: "‘\(hit.name)’\(CollabModel.josa(hit.name, "을", "를")) Day \(session.day + 1)에 추가했어요")
                 return saved ? nil : model.saveFailureMessage
             }
         }
@@ -145,7 +145,7 @@ struct TripPlanView: View {
                 contextLabel: "\(trip.name) · Day \(session.day + 1)",
                 draftKey: EditorDraftKey(accountID: env.auth.session?.userId, tripID: trip.id, editor: "spot-quick-\(session.day)")) { spot in
                 await model.addSpot(spot, after: session.after, dayIndex: session.day, expectedRevision: session.revision,
-                                    toast: "‘\(spot.name)’을(를) Day \(session.day + 1)에 추가했어요") ? nil : model.saveFailureMessage
+                                    toast: "‘\(spot.name)’\(CollabModel.josa(spot.name, "을", "를")) Day \(session.day + 1)에 추가했어요") ? nil : model.saveFailureMessage
             }
         }
         .sheet(item: $viewingSpot) { target in

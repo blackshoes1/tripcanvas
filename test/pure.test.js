@@ -2089,3 +2089,125 @@ test('sampleTrip — 비용·예약·예산이 들어 있어 첫 화면에서 �
   assert.ok(t.days[1].costItems && t.days[1].costItems.length >= 1, '하루 추가 비용(쓴 돈) 예시');
   assert.ok(sum.payTotals.PAID > 0 && sum.payTotals.RESERVED > 0, '낸 돈과 낼 돈이 둘 다 보인다');
 });
+
+// ── feat/ux-structure-audit (2026-10-16) ──
+
+// F-1(AC-1·AC-2): 수동 가격이 소수점을 버려 189.50이 18950이 되던 것. 예약 금액 칸(`parseCostAmount`)과 같은 규칙에 소수 쉼표를 더했다.
+test('parseManualPrice(AC-1): 189.50 → 189.5, 1.234,56 → 1234.56, 250 → 250 (예약 통화 그대로)', () => {
+  assert.equal(L.parseManualPrice('189.50', 'EUR'), 189.5, '예전에는 18950이었다');
+  assert.equal(L.parseManualPrice('189.50', 'USD'), 189.5);
+  assert.equal(L.parseManualPrice('1.234,56', 'EUR'), 1234.56, '유럽식 표기');
+  assert.equal(L.parseManualPrice('1,234.56', 'EUR'), 1234.56, '영미식 표기');
+  assert.equal(L.parseManualPrice('12,50', 'EUR'), 12.5, '소수 쉼표');
+  assert.equal(L.parseManualPrice('250', 'EUR'), 250);
+  assert.equal(L.parseManualPrice('  189.50  ', 'EUR'), 189.5, '앞뒤 공백');
+  assert.equal(L.parseManualPrice('250,000', 'KRW'), 250000, '원화는 천 단위 쉼표');
+  assert.equal(L.parseManualPrice('250', undefined), 250, '통화를 모르면 원화로 읽는다');
+});
+
+test('parseManualPrice(AC-1): 예약 금액 칸(parseCostAmount)과 같은 입력은 같은 값이다', () => {
+  for (const [text, cur] of [['189.50', 'EUR'], ['250', 'EUR'], ['1,234.56', 'USD'], ['250,000', 'KRW'], ['99', 'CNY']]) {
+    assert.equal(L.parseManualPrice(text, cur), L.parseCostAmount(text, cur), `${text} ${cur}`);
+  }
+});
+
+// 실패 케이스(AC-2): 읽을 수 없는 값은 null — 조용히 100배가 되거나 0으로 저장되지 않는다
+test('parseManualPrice(AC-2 실패): 빈 값·0·음수·글자·표기가 모호한 값은 null이다', () => {
+  for (const bad of ['', '   ', null, undefined, '0', '0.00', '-5', 'abc', '€189.50', '189.555', '1e3', 'Infinity', '１８９']) {
+    assert.equal(L.parseManualPrice(/** @type {any} */(bad), 'EUR'), null, JSON.stringify(bad));
+  }
+  assert.equal(L.parseManualPrice('189.50', 'KRW'), null, '원은 소수를 받지 않는다 — 189.50원이 18950원이 되지 않는다');
+  assert.equal(L.parseManualPrice('189.5', 'JPY'), null, '엔도 소수를 받지 않는다');
+  assert.equal(L.parseManualPrice('1.234', 'EUR'), null, '1.234는 천 단위인지 소수인지 모호하다 — 추측하지 않는다');
+});
+
+// F-10(AC-15): 앱 타깃 소스에 시스템 빨강이 없다 — 오류 글자는 Ink.danger
+test('AC-15: iOS 앱 소스에 .foregroundStyle(.red)가 하나도 없고, 네 화면의 오류 글자는 Ink.danger다', () => {
+  const fs = require('node:fs'), path = require('node:path');
+  const base = path.join(__dirname, '..', 'ios', 'TripCanvas');
+  /** @param {string} dir @returns {string[]} */
+  const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+    e.isDirectory() ? walk(path.join(dir, e.name)) : e.name.endsWith('.swift') ? [path.join(dir, e.name)] : []);
+  const offenders = walk(base).filter((f) => /\.foregroundStyle\(\s*\.red\s*\)/.test(fs.readFileSync(f, 'utf8')));
+  assert.deepEqual(offenders.map((f) => path.relative(base, f)), []);
+  for (const f of ['Features/Trips/TripNotesView.swift', 'Features/Trips/OfflineTripView.swift', 'Features/Inbox/SharedInboxView.swift']) {
+    const src = fs.readFileSync(path.join(base, f), 'utf8');
+    assert.match(src, /foregroundStyle\(Ink\.danger\)/, `${f}의 오류 글자는 Ink.danger`);
+  }
+});
+
+// F-3(AC-5): 화면 문구에 '미구분'이 없다 — 주석(개념 이름 NONE을 설명하는 글)은 화면이 아니다
+test('AC-5: 웹·iOS 화면 문구에 "미구분"이 나오지 않는다 (주석 제외)', () => {
+  const fs = require('node:fs'), path = require('node:path');
+  const strip = (/** @type {string} */ s) => s.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).map((l) => l.replace(/\/\/.*$/, '')).join('\n');
+  for (const f of ['app.js', 'index.html', 'lib.js', 'ios/TripCanvas/Features/Plan/CostOverviewCard.swift', 'ios/TripCanvas/Features/Plan/TripCostsView.swift']) {
+    const p = path.join(__dirname, '..', f);
+    if (!fs.existsSync(p)) continue;
+    assert.doesNotMatch(strip(fs.readFileSync(p, 'utf8')), /미구분/, `${f}에 '미구분'이 화면 문구로 남아 있다`);
+  }
+});
+
+// F-9·F-11(AC-14·AC-16): 터치 높이 규칙과 인라인 작은 버튼 — 소스 수준의 검사
+test('AC-16: app.js·index.html에 패딩·글자 크기를 인라인으로 준 .btn이 없다 (일반형 검사)', () => {
+  const fs = require('node:fs'), path = require('node:path');
+  const a = /<(?:button|a|input|label|span)\b[^>]*\bclass="[^"]*\bbtn\b[^"]*"[^>]*\bstyle="[^"]*(?:padding|font-size)/;
+  const b = /<(?:button|a|input|label|span)\b[^>]*\bstyle="[^"]*(?:padding|font-size)[^"]*"[^>]*\bclass="[^"]*\bbtn\b/;
+  for (const f of ['app.js', 'index.html']) {
+    const bad = fs.readFileSync(path.join(__dirname, '..', f), 'utf8').split('\n').filter((l) => a.test(l) || b.test(l));
+    assert.deepEqual(bad.map((l) => l.trim().slice(0, 100)), [], `${f}: 작은 버튼은 .btn.sm 하나다`);
+  }
+  // 이 검사가 실제로 옛 모양을 잡는지 — 되돌리면 실패해야 한다
+  const old = '<button class="btn" id="candRefresh" style="font-size:.75rem;padding:3px 9px;min-height:28px">↻</button>';
+  assert.ok(a.test(old), '옛 인라인 작은 버튼을 잡는다');
+});
+
+test('AC-14: pointer:coarse 규칙에 작은 버튼 여섯 종류의 44px이 들어 있다 (데스크톱 규칙은 그대로)', () => {
+  const fs = require('node:fs'), path = require('node:path');
+  const css = fs.readFileSync(path.join(__dirname, '..', 'style.css'), 'utf8');
+  const start = css.indexOf('@media (pointer:coarse)');
+  assert.ok(start >= 0, 'pointer:coarse 블록이 있다');
+  // 중괄호를 세어 그 미디어 블록만 잘라 낸다
+  let depth = 0, end = -1;
+  for (let i = css.indexOf('{', start); i < css.length; i++) {
+    if (css[i] === '{') depth++;
+    else if (css[i] === '}' && --depth === 0) { end = i; break; }
+  }
+  const block = css.slice(start, end + 1);
+  for (const sel of ['.btn.sm', '.candOption .btn', '.proposalActions .btn', '.pxActions .btn', '#membersRefresh', '#candRefresh']) {
+    assert.ok(block.includes(sel), `${sel}가 터치 규칙에 있다`);
+  }
+  assert.match(block, /min-height:\s*44px/);
+  // 데스크톱 겉모양: .btn.sm의 기본 높이 규칙(26px)은 그대로
+  assert.match(css, /\.btn\.sm\s*\{[^}]*min-height:\s*26px/);
+});
+
+// F-13(AC-19): 카카오 말풍선 닫기 버튼의 이름
+test('AC-19: 카카오 말풍선의 닫기 버튼은 type="button"이고 이름이 "닫기"다 (소스)', () => {
+  const fs = require('node:fs'), path = require('node:path');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const m = src.match(/<button\b[^>]*class="kclose"[^>]*>/);
+  assert.ok(m, 'kclose 버튼이 있다');
+  assert.match(m[0], /type="button"/);
+  assert.match(m[0], /aria-label="닫기"/);
+});
+
+// F-5(AC-7·AC-8): iOS가 고치거나 지운 준비 메모가 웹에서도 같은 내용으로 읽힌다(iOS는 원문 트리에서 cat·title·body·updatedAt만 덮어쓴다)
+test('AC-7: iOS가 고친 메모(ISO updatedAt·모르는 키·done 유지)는 웹 normalizeTrip을 지나도 같은 내용이다', () => {
+  const edited = { id: 'n1', cat: 'ENTRY', title: 'ESTA 신청', body: '출발 72시간 전', updatedAt: '2026-10-16T01:02:03.456Z', done: true, webOnly: '유지' };
+  const t = L.normalizeTrip({ name: 'T', days: [{ spots: [] }], notes: [edited, { id: 'n2', cat: 'MONEY', title: '환전' }] });
+  assert.equal(t.notes.length, 2);
+  assert.deepEqual(t.notes[0], edited, '분류·제목·본문·ISO 시각·확인 표시·모르는 키까지 그대로');
+  assert.equal(t.notes[1].cat, 'MONEY');
+});
+
+test('AC-8: iOS가 지운 메모는 배열에서 빠지고 마지막 하나를 지우면 notes 필드가 사라진다 (웹 normalizeTrip과 같다)', () => {
+  const t = L.normalizeTrip({ name: 'T', days: [{ spots: [] }], notes: [{ id: 'n3', cat: 'ETC', title: '기타' }] });
+  assert.equal(t.notes.length, 1);
+  const none = L.normalizeTrip({ name: 'T', days: [{ spots: [] }], notes: [] });
+  assert.equal('notes' in none, false, '빈 배열은 남기지 않는다');
+});
+
+// 실패 케이스(AC-7): 제목·본문이 모두 빈 메모는 서버(normalizeTrip)가 조용히 버린다 — 그래서 iOS가 저장 전에 막는다
+test('AC-7 실패: 제목·본문이 모두 비어 있으면 normalizeTripNote가 null이다 (iOS updateNote가 저장 전에 막는 이유)', () => {
+  assert.equal(L.normalizeTripNote({ id: 'n1', cat: 'VISA', title: '   ', body: '\n ' }), null);
+});

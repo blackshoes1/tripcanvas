@@ -65,6 +65,16 @@ describe('검증과 인자 전달', () => {
     expect(calls.at(-1)).toEqual(['manageMember', A, 'trip1', 3, 'RENAME', '영희']);
   });
 
+  it('경로 id가 정수가 아니면 400 VALIDATION_ERROR와 받침에 맞춘 문장', async () => {
+    const { routes } = setup();
+    const res = await routes.manageMember(req('PATCH', '/x', 'tok-a', { action: 'RENAME', value: '영희' }), 'trip1', 'abc');
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.code).toBe('VALIDATION_ERROR');
+    expect(body.message).toBe('memberId가 올바르지 않아요.');
+    expect(body.message).not.toContain('(가)');
+  });
+
   it('초대 만들기는 201, 역할·시간·횟수를 그대로 넘긴다', async () => {
     const { calls, routes } = setup();
     const res = await routes.createInvite(req('POST', '/x', 'tok-a', { role: 'VIEWER', hours: 48 }), 'trip1');

@@ -198,6 +198,27 @@ final class TodayViewModelTests: XCTestCase {
         XCTAssertNil(model.errorMessage)
     }
 
+    /// F-12(AC-17) — 건너뛰기·되돌리기 토스트가 받침에 맞는 조사를 쓴다. 받침 없음('숙소')·있음('저녁 예약') 둘 다.
+    func testSkipAndUndoToastsUseTheRightObjectParticle() async throws {
+        let today = try fixture()
+        let stub = StubDataSource(todayResponse: today)
+        let model = makeModel(stub, from: today)
+        await model.load()
+        stub.mutationResult = .success(MutationResponse(
+            schemaVersion: 1, applied: true, alreadyApplied: false, revision: today.trip.revision + 1, today: today))
+        let noBatchim = try XCTUnwrap(today.activities.first(where: { $0.name == "숙소" }))
+        let batchim = try XCTUnwrap(today.activities.first(where: { $0.name == "저녁 예약" }))
+        await model.skip(noBatchim)
+        XCTAssertEqual(model.toast, "숙소를 건너뛰었어요. 남은 일정을 다시 확인했어요.")
+        await model.skip(batchim)
+        XCTAssertEqual(model.toast, "저녁 예약을 건너뛰었어요. 남은 일정을 다시 확인했어요.")
+        await model.undo(batchim)
+        XCTAssertEqual(model.toast, "저녁 예약을 되돌렸어요.")
+        await model.undo(noBatchim)
+        XCTAssertEqual(model.toast, "숙소를 되돌렸어요.")
+        XCTAssertFalse((model.toast ?? "").contains("(를)"))
+    }
+
     /// 두 번 눌러도 오류로 보이지 않는다 — 서버가 alreadyApplied로 알려준다(§27).
     func testAlreadyAppliedIsNotAnError() async throws {
         let today = try fixture()

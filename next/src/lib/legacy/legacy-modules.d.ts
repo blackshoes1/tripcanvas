@@ -582,6 +582,7 @@ declare module '@legacy/collab.js' {
     /** 정렬은 표시일 뿐 결정이 아니다(§12) */
     sortCandidates<T>(candidates: T[] | null, mode?: 'recent' | 'interest', memberCount?: number | null): T[];
     objParticle(word: unknown): string;
+    josa(word: unknown, withFinal: string, withoutFinal: string): string;
     activityText(event: {
       kind?: string; mine?: boolean; actor_label?: string | null; member_label?: string | null;
       subject?: unknown; count?: number;

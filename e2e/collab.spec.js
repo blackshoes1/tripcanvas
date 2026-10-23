@@ -297,12 +297,16 @@ test('갈린 후보를 "자유시간으로 분리"하면 같은 시간에 나란
       if(name==='list_trip_candidates') return {data:window.__rows,error:null};
       if(name==='manage_trip_candidate'){ const r=window.__rows.find(x=>x.id===args.p_candidate_id); if(r) r.status='SCHEDULED'; return {data:true,error:null}; }
       return {data:[],error:null}; };
-    window.prompt=()=>'1';
+    window.prompt=()=>{ window.__prompted=true; return '1'; };
   },{u1:U1,u2:U2});
 
   await clickMore(page,'#candMenuBtn');
   await expect(page.locator('.candConflict')).toContainText('의견이 갈려 있어요');
   await page.locator('.candOption[data-option="SPLIT"] button').click();
+  // F-7(AC-10): prompt()가 아니라 앱 안의 날짜 목록에서 고른다
+  await expect(page.locator('#modePicker')).toBeVisible();
+  expect(await page.evaluate(()=>!!window.__prompted)).toBe(false);
+  await page.locator('#modePickerList .modeOpt',{hasText:/^Day 1/}).click();
   await expect(page.locator('#toast')).toContainText('같은 시간에 나란히 넣었어요');
 
   // 저장된 일정: 가는 쪽 · 자유시간 · 합류

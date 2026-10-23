@@ -39,7 +39,7 @@ struct OfflineTripView: View {
                         }
                     }
                 }
-                if let error { Text(error).foregroundStyle(.red) }
+                if let error { Text(error).foregroundStyle(Ink.danger) }
             } footer: {
                 Text("지도 타일·길찾기·장소 사진은 포함하지 않아요. 저장 후 다른 기기에서 바뀐 내용은 온라인에서 다시 준비해야 반영돼요. 기기의 캐시 정리 또는 로그아웃으로 사본이 지워질 수 있어요.")
             }
