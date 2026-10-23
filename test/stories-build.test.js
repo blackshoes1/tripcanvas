@@ -38,6 +38,17 @@ test('원고 검사는 소리 내 읽힐 출처 ID·괄호와 빈 출처를 잡�
   assert.ok(bad.some((e) => /출처가 하나도/.test(e)));
 });
 
+test('검수 표시는 확인하지 못한 사실마다 처리(뺐음·단정 안 함)가 적혀 있어야 한다', () => {
+  const text = '이 문장은 충분히 긴 원고입니다. '.repeat(8);
+  const place = (fc) => ({ file: 'x.json', id: 'seville-x', kind: 'PLACE', lat: 1, lng: 1, radiusM: 100, reviewedAt: '2026-10-23',
+    sources: { P01: { title: 't', url: 'https://a.example/' } }, factCheck: [fc],
+    tracks: [{ id: 'core', role: 'CORE', title: 't', text, sources: ['P01'] }] });
+  assert.ok(B.check([place({ claim: '다리 개수', status: 'UNCERTAIN' })]).some((e) => /처리\(resolution/.test(e)));
+  assert.deepEqual(B.check([place({ claim: '다리 개수', status: 'UNCERTAIN', resolution: 'OMITTED' })]), []);
+  assert.deepEqual(B.check([place({ claim: '회랑 시기', status: 'UNCERTAIN', resolution: 'HEDGED' })]), []);
+  assert.ok(B.check([place({ claim: '회랑 시기', status: 'UNCERTAIN', resolution: 'CONFIRMED' })]).length);
+});
+
 test('저장소의 원고는 검사를 통과한다', () => {
   assert.deepEqual(B.check(B.loadPlaces()), []);
 });

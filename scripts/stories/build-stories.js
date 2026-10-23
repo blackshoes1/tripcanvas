@@ -122,7 +122,12 @@ function check(places) {
       try { chunks(spokenText(t.text).split(/\n\s*\n/).map((x) => x.trim()).filter(Boolean)); } catch (e) { errors.push(`${tw}: ${e.message}`); }
     }
     for (const [k, v] of Object.entries(p.sources || {})) if (!/^https:\/\//.test(v.url || '')) errors.push(`${where}: 출처 ${k}의 주소가 https가 아닙니다`);
-    for (const fc of p.factCheck || []) if (fc.status !== 'CONFIRMED' && (p.reviewedAt)) errors.push(`${where}: 확인되지 않은 사실(${fc.claim})이 남은 채 검수 표시가 있습니다`);
+    // 확인하지 못한 사실은 검수 전에 처리를 적는다 — 본문에서 뺐거나(OMITTED) 단정하지 않게 고쳤거나(HEDGED).
+    // CONFIRMED로 바꾸지 않는다: 확인하지 못한 것을 확인했다고 적는 셈이다
+    for (const fc of p.factCheck || []) {
+      if (p.reviewedAt && fc.status !== 'CONFIRMED' && !['OMITTED', 'HEDGED'].includes(fc.resolution))
+        errors.push(`${where}: 확인되지 않은 사실(${fc.claim})의 처리(resolution: OMITTED·HEDGED)를 적지 않은 채 검수 표시가 있습니다`);
+    }
   }
   return errors;
 }

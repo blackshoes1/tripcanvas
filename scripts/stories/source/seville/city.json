@@ -194,8 +194,9 @@
     {
       "claim": "강바닥이 얕아져 큰 배가 오르기 어려워진 것이 교역 독점 상실의 원인이었다",
       "sources": [],
-      "status": "UNCERTAIN"
+      "status": "UNCERTAIN",
+      "resolution": "OMITTED"
     }
   ],
-  "reviewedAt": null
+  "reviewedAt": "2026-10-23"
 }

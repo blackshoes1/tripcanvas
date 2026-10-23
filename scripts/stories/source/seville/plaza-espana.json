@@ -143,7 +143,8 @@
         "P01",
         "P14"
       ],
-      "status": "UNCERTAIN"
+      "status": "UNCERTAIN",
+      "resolution": "OMITTED"
     },
     {
       "claim": "비센테 트라베르가 둘레를 마무리하고 가운데 분수를 더했다",
@@ -188,7 +189,8 @@
       "sources": [
         "P03"
       ],
-      "status": "UNCERTAIN"
+      "status": "UNCERTAIN",
+      "resolution": "OMITTED"
     },
     {
       "claim": "주별 벤치의 정확한 개수 48 또는 49",
@@ -196,7 +198,8 @@
         "P03",
         "P04"
       ],
-      "status": "UNCERTAIN"
+      "status": "UNCERTAIN",
+      "resolution": "OMITTED"
     },
     {
       "claim": "벤치는 알파벳 순서이고 지도·역사 장면·문장이 있으며 양옆에 책자 칸이 있다",
@@ -275,8 +278,9 @@
     {
       "claim": "반원 평면은 스페인이 아메리카를 품는 포옹을 상징한다",
       "sources": [],
-      "status": "UNCERTAIN"
+      "status": "UNCERTAIN",
+      "resolution": "OMITTED"
     }
   ],
-  "reviewedAt": null
+  "reviewedAt": "2026-10-23"
 }

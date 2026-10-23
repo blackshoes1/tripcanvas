@@ -191,7 +191,8 @@
         "A01",
         "A05"
       ],
-      "status": "UNCERTAIN"
+      "status": "UNCERTAIN",
+      "resolution": "HEDGED"
     },
     {
       "claim": "1583년 안뜰 포장으로 페드로 1세 시대 연못과 화단이 묻혔다",
@@ -214,14 +215,16 @@
       "sources": [
         "A17"
       ],
-      "status": "UNCERTAIN"
+      "status": "UNCERTAIN",
+      "resolution": "HEDGED"
     },
     {
       "claim": "위층 회랑을 카를 5세 때 루이스 데 베가가 설계했다",
       "sources": [
         "A17"
       ],
-      "status": "UNCERTAIN"
+      "status": "UNCERTAIN",
+      "resolution": "OMITTED"
     },
     {
       "claim": "1503년 카사 데 콘트라타시온이 만들어져 알카사르 제독의 방 구역에 자리 잡았다",
@@ -260,7 +263,8 @@
         "A12",
         "A13"
       ],
-      "status": "UNCERTAIN"
+      "status": "UNCERTAIN",
+      "resolution": "OMITTED"
     },
     {
       "claim": "1526년 카를 5세가 이곳에서 포르투갈의 이사벨과 결혼했다",
@@ -280,7 +284,8 @@
     {
       "claim": "유럽에서 지금도 쓰이는 가장 오래된 왕궁이다",
       "sources": [],
-      "status": "UNCERTAIN"
+      "status": "UNCERTAIN",
+      "resolution": "OMITTED"
     },
     {
       "claim": "알카사르 정원이 왕좌의 게임에서 도른의 물의 정원으로 나왔다",
@@ -292,8 +297,9 @@
     {
       "claim": "처녀들의 안뜰이라는 이름이 처녀 100명 조공 전설에서 왔다",
       "sources": [],
-      "status": "UNCERTAIN"
+      "status": "UNCERTAIN",
+      "resolution": "OMITTED"
     }
   ],
-  "reviewedAt": null
+  "reviewedAt": "2026-10-23"
 }

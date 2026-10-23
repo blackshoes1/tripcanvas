@@ -152,8 +152,8 @@ GOOGLE_TTS_API_KEY=… node scripts/stories/build-stories.js --draft   # 검수 
 GOOGLE_TTS_API_KEY=… node scripts/stories/build-stories.js           # 검수한 원고만 stories/에 + catalog.json
 ```
 
-원고는 `scripts/stories/source/seville/*.json`이다. 들어 보고 사실 확인 기록(`factCheck`)이 전부 `CONFIRMED`이면 그 장소에
-`reviewedAt`을 적는다 — 검수 표시가 없는 트랙은 카탈로그에 들어가지 않는다. 같은 원고는 다시 합성하지 않는다(`build-state.json`).
+원고는 `scripts/stories/source/seville/*.json`이다. 들어 보고 사실 확인 기록(`factCheck`)이 전부 `CONFIRMED`이거나, 확인하지 못한 사실마다
+처리(`resolution` — 본문에서 뺐으면 `OMITTED`, 단정하지 않게 고쳤으면 `HEDGED`)가 적혀 있으면 그 장소에 `reviewedAt`을 적는다 — 검수 표시가 없는 트랙은 카탈로그에 들어가지 않는다. 같은 원고는 다시 합성하지 않는다(`build-state.json`).
 
 ## 하지 않는 것 (첫 버전)
 
