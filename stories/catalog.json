@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "updated": "2026-10-22",
+  "voice": { "engine": "Google Cloud TTS Chirp 3 HD", "name": "ko-KR-Chirp3-HD-Despina", "disclosure": "AI 음성으로 읽었어요" },
+  "places": [],
+  "sources": {}
+}

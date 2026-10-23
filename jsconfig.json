@@ -19,6 +19,7 @@
     "adaptive.js",
     "intake.js",
     "collab.js",
+    "stories.js",
     "api.js",
     "auth.js",
     "types/env.d.ts"

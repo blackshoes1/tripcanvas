@@ -1,0 +1,286 @@
+{
+  "id": "seville-plaza-espana",
+  "kind": "PLACE",
+  "name": "스페인 광장",
+  "localName": "Plaza de España",
+  "city": "세비야",
+  "lat": 37.3772,
+  "lng": -5.9869,
+  "radiusM": 300,
+  "aliases": [
+    "세비야 스페인 광장",
+    "에스파냐 광장",
+    "Plaza de España Sevilla"
+  ],
+  "placeIds": [],
+  "tracks": [
+    {
+      "id": "core",
+      "role": "CORE",
+      "title": "박람회를 위해 지은 반원의 광장",
+      "text": "운하 앞, 광장 가운데로 나와서 반원으로 휘어진 붉은 벽돌 건물과 양쪽 끝의 두 탑을 함께 보세요.\n\n이 광장은 1929년 세비야에서 열린 이베로아메리카 박람회를 위해 지었습니다. 스페인과 아메리카 대륙의 나라들이 함께 참가한 박람회였고, 이 건물은 개최국 스페인의 전시관이었습니다. 설계는 세비야 출신 건축가 아니발 곤살레스가 맡았습니다. 공사는 1914년에 시작해 1928년에 끝났습니다. 그사이 곤살레스는 박람회 감독직에서 물러났고, 건축가 비센테 트라베르가 둘레를 마무리하고 광장 가운데 분수를 더했습니다.\n\n벽의 재료를 가까이 보세요. 드러낸 벽돌과 채색 타일, 철 난간입니다. 르네상스 건축의 틀에 안달루시아의 전통 공예를 입힌 이 방식을 지역주의 건축이라고 부릅니다.\n\n건물을 따라 515미터 길이의 운하가 흐르고, 운하를 건너는 다리들은 카스티야, 레온, 아라곤, 나바라, 옛 네 왕국을 나타냅니다. 이제 건물 벽 아래쪽을 따라 걸어 보세요. 타일 벤치마다 스페인 각 주의 이름이 적혀 있습니다.",
+      "sources": [
+        "P01",
+        "P02",
+        "P03",
+        "P05",
+        "P06",
+        "P10"
+      ]
+    },
+    {
+      "id": "more",
+      "role": "MORE",
+      "title": "더 듣기 — 주의 벤치, 공원, 박람회 이후",
+      "text": "벤치 하나를 골라 그 앞에 서 보세요. 벤치는 주 이름의 알파벳 순서로 늘어서 있습니다. 바닥에는 그 주의 지도가 타일로 깔려 있고, 벽에는 그 지역 역사의 한 장면과 주도의 문장이 그려져 있습니다. 양옆의 작은 칸은 안내 책자를 꽂아 두는 자리입니다.\n\n광장이 들어선 마리아 루이사 공원은 원래 산텔모 궁전의 정원이었습니다. 1893년 몽팡시에 공작부인인 마리아 루이사 페르난다 왕녀가 그 큰 부분을 시에 기증했습니다. 공원이 박람회 부지로 정해진 뒤에는 파리 시 공원 관리를 맡았던 프랑스인 조경가 장클로드 니콜라 포레스티에가 정원을 새로 짰습니다.\n\n박람회는 1929년 5월 9일 국왕 알폰소 13세가 참석한 가운데 개막했고, 이듬해 6월 21일까지 열렸습니다. 공원 곳곳에는 그때 지은 여러 나라의 전시관이 지금도 남아 있습니다.\n\n박람회가 끝난 뒤 이 건물은 군과 관청이 쓰게 되었습니다. 지금도 안쪽에는 육군 지휘부와 행정 기관이 있어, 관람객이 걷는 곳은 주로 바깥 회랑과 광장입니다. 타일과 난간은 여러 차례 고쳐졌습니다. 1983년에는 난간과 꼭대기 장식의 도자기를 복원하는 계획이 문화재 위원회의 검토를 거쳤고, 2024년에는 세비야시가 도자기 난간 복원을 다시 마쳤습니다. 손으로 만지기보다 눈으로 살펴 주세요.\n\n이 광장은 영화에도 여러 번 나왔습니다. 1962년 데이비드 린 감독의 아라비아의 로렌스가 이곳에서 촬영되었고, 2002년 스타워즈 에피소드 2에서는 나부 행성의 장면이 이 회랑에서 이틀 동안 촬영되었습니다. 회랑 아치 아래를 걸으며 그 장면과 견주어 보셔도 좋습니다.",
+      "sources": [
+        "P02",
+        "P07",
+        "P08",
+        "P09",
+        "P10",
+        "P11",
+        "P12",
+        "P13"
+      ]
+    }
+  ],
+  "sources": {
+    "P01": {
+      "title": "세비야시 관광청 비시타 세비야·스페인 광장 — 1914년 착공, 1928년 완공, 곤살레스 사임 뒤 트라베르 마무리",
+      "url": "https://visitasevilla.es/en/plaza-de-espana/"
+    },
+    "P02": {
+      "title": "안달루시아 자치정부 세비야 역사문서관·1929년 박람회의 유산 — 트라베르의 분수, 주별 문장·지도·역사 장면, 1983년 도자기 복원 계획",
+      "url": "https://www.juntadeandalucia.es/organismos/culturapatrimoniohistoricoydeporte/areas/cultura/archivos/archivos-consejeria/archivo-historico-provincial-sevilla/ahps-recomienda/paginas/documento-ahps-may-2020.html"
+    },
+    "P03": {
+      "title": "안달루시아 관광청·스페인 광장 — 벽돌·도자기·단철 재료, 515미터 운하, 옛 왕국을 나타내는 다리",
+      "url": "https://www.andalucia.org/en/sevilla-visitas-espana-square"
+    },
+    "P04": {
+      "title": "스페인 관광청·세비야 스페인 광장",
+      "url": "https://www.spain.info/en/places-of-interest/plaza-espana-sevilla/"
+    },
+    "P05": {
+      "title": "비시타 세비야·지역주의 건축 산책로 — 아니발 곤살레스와 지역주의",
+      "url": "https://visitasevilla.es/en/route-through-regionalist-seville-rediscover-the-city-through-its-architecture/"
+    },
+    "P06": {
+      "title": "비시타 세비야 관광 정보·스페인 광장 겸 스페인관",
+      "url": "https://tic.visitasevilla.es/vsev/web_php/index.php?contenido=fichaPoi&idPoi=405&id=0&idNivel=4098&title=&lang=1"
+    },
+    "P07": {
+      "title": "비시타 세비야 옛 누리집·스페인 광장 — 주별 벤치와 책자 칸, 아라비아의 로렌스와 스타워즈 촬영",
+      "url": "https://legacy.visitasevilla.es/en/history/plaza-de-espana"
+    },
+    "P08": {
+      "title": "안달루시아 영상위원회·스타워즈 에피소드 2 촬영 — 나부 장면, 이틀 촬영",
+      "url": "https://andaluciafilm.com/en/anuarios/rodaje-de-star-warsepisodio-ii-el-ataque-de-los-clones-de-george-lucas/"
+    },
+    "P09": {
+      "title": "세비야시 공원녹지과·마리아 루이사 공원의 역사 — 1893년 기증, 포레스티에",
+      "url": "https://www.sevilla.org/servicios/medio-ambiente-parques-jardines/parques/parques-y-jardines-historicos/parque-de-maria-luisa/historia"
+    },
+    "P10": {
+      "title": "세비야 대학교 건축 도서관·1929년 이베로아메리카 박람회 — 1929년 5월 9일 개막, 1930년 6월 21일 폐막",
+      "url": "https://bib.us.es/arquitectura/noticias/exposici%C3%B3n-iberoamericana-de-sevilla-1929"
+    },
+    "P11": {
+      "title": "세비야시 문화유산 안내·1929년 이베로아메리카 박람회 전시관들",
+      "url": "https://www.sevilla.org/patrimonium-hispalense/patrimonium-hispalense/arquitectura/otros-espacios-municipales/pabellones-de-la-exposicion-iberoamericana-de-1929"
+    },
+    "P12": {
+      "title": "세비야시·2024년 스페인 광장 도자기 난간 복원 완료",
+      "url": "https://www.sevilla.org/actualidad/noticias/2024/el-ayuntamiento-finaliza-la-restauracion-de-la-balaustrada-ceramica-de-la-plaza-de-espana"
+    },
+    "P13": {
+      "title": "스페인 육군·세비야 옛 총사령부 건물 위치 안내",
+      "url": "https://ejercito.defensa.gob.es/unidades/Sevilla/futer/Localizacion/index.html"
+    },
+    "P14": {
+      "title": "위키백과 스페인어판·세비야 스페인 광장 — 보조 확인용",
+      "url": "https://es.wikipedia.org/wiki/Plaza_de_Espa%C3%B1a_(Sevilla)"
+    }
+  },
+  "factCheck": [
+    {
+      "claim": "1929년 이베로아메리카 박람회를 위해 지었다",
+      "sources": [
+        "P01",
+        "P03",
+        "P04"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "이 건물은 박람회의 스페인관이었다",
+      "sources": [
+        "P06"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "설계자는 세비야 출신 건축가 아니발 곤살레스다",
+      "sources": [
+        "P01",
+        "P02",
+        "P05"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "공사는 1914년에 시작해 1928년에 끝났다",
+      "sources": [
+        "P01",
+        "P14"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "곤살레스가 박람회 감독직에서 물러난 해",
+      "sources": [
+        "P01",
+        "P14"
+      ],
+      "status": "UNCERTAIN",
+      "resolution": "OMITTED"
+    },
+    {
+      "claim": "비센테 트라베르가 둘레를 마무리하고 가운데 분수를 더했다",
+      "sources": [
+        "P01",
+        "P02"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "벽돌·채색 타일·철 난간을 쓰고 르네상스 양식에서 영감을 받았다",
+      "sources": [
+        "P03"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "곤살레스의 양식을 지역주의 건축이라 부른다",
+      "sources": [
+        "P05"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "운하 길이는 515미터다",
+      "sources": [
+        "P02",
+        "P03"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "다리들은 카스티야·레온·아라곤·나바라의 옛 왕국을 나타낸다",
+      "sources": [
+        "P03",
+        "P04"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "다리의 개수",
+      "sources": [
+        "P03"
+      ],
+      "status": "UNCERTAIN",
+      "resolution": "OMITTED"
+    },
+    {
+      "claim": "주별 벤치의 정확한 개수 48 또는 49",
+      "sources": [
+        "P03",
+        "P04"
+      ],
+      "status": "UNCERTAIN",
+      "resolution": "OMITTED"
+    },
+    {
+      "claim": "벤치는 알파벳 순서이고 지도·역사 장면·문장이 있으며 양옆에 책자 칸이 있다",
+      "sources": [
+        "P02",
+        "P07"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "마리아 루이사 공원은 산텔모 궁전의 정원이었고 1893년 마리아 루이사 페르난다 왕녀가 기증했다",
+      "sources": [
+        "P09"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "포레스티에가 박람회를 위해 공원을 다시 설계했다",
+      "sources": [
+        "P09"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "박람회는 1929년 5월 9일 알폰소 13세 참석 아래 개막해 1930년 6월 21일까지 열렸다",
+      "sources": [
+        "P10"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "공원에 여러 나라의 박람회 전시관이 남아 있다",
+      "sources": [
+        "P11"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "지금 건물에는 육군 지휘부와 행정 기관이 있다",
+      "sources": [
+        "P13",
+        "P02"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "1983년 난간·꼭대기 장식 도자기 복원 계획이 문화재 위원회 검토를 거쳤다",
+      "sources": [
+        "P02"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "2024년 세비야시가 도자기 난간 복원을 마쳤다",
+      "sources": [
+        "P12"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "1962년 아라비아의 로렌스가 이곳에서 촬영되었다",
+      "sources": [
+        "P07"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "2002년 스타워즈 에피소드 2의 나부 장면이 이곳에서 이틀 동안 촬영되었다",
+      "sources": [
+        "P07",
+        "P08",
+        "P04"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "반원 평면은 스페인이 아메리카를 품는 포옹을 상징한다",
+      "sources": [],
+      "status": "UNCERTAIN",
+      "resolution": "OMITTED"
+    }
+  ],
+  "reviewedAt": "2026-10-23"
+}

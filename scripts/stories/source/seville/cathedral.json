@@ -1,0 +1,555 @@
+{
+  "id": "seville-cathedral",
+  "kind": "PLACE",
+  "name": "세비야 대성당",
+  "localName": "Catedral de Sevilla",
+  "city": "세비야",
+  "lat": 37.3858,
+  "lng": -5.9931,
+  "radiusM": 250,
+  "aliases": [
+    "대성당",
+    "세비야 대성당",
+    "히랄다",
+    "La Giralda",
+    "Catedral de Sevilla",
+    "Catedral de Santa María de la Sede"
+  ],
+  "placeIds": [],
+  "tracks": [
+    {
+      "id": "stop-01",
+      "role": "STOP",
+      "title": "입장 전 도입",
+      "textFile": "cathedral/narration/01_narration.txt",
+      "sources": [
+        "S01",
+        "S02",
+        "S10",
+        "S11",
+        "S16",
+        "S44",
+        "S43"
+      ],
+      "stop": {
+        "n": 1,
+        "find": [
+          "입장권에 적힌 문을 먼저 확인",
+          "아직 특정 작품 앞일 필요 없음",
+          "입장 후 La Giralda 표지 찾기"
+        ],
+        "localName": "입장권에 적힌 입구"
+      }
+    },
+    {
+      "id": "stop-02",
+      "role": "STOP",
+      "title": "히랄다 - 오르기 전",
+      "textFile": "cathedral/narration/02_narration.txt",
+      "sources": [
+        "S02",
+        "S03",
+        "S04",
+        "S05",
+        "S06",
+        "S44",
+        "S43"
+      ],
+      "stop": {
+        "n": 2,
+        "find": [
+          "La Giralda라는 이름",
+          "탑으로 들어가는 입구",
+          "오르기 직전, 통행을 막지 않는 자리"
+        ],
+        "localName": "La Giralda"
+      }
+    },
+    {
+      "id": "stop-03",
+      "role": "STOP",
+      "title": "히랄다 - 종루 전망",
+      "textFile": "cathedral/narration/03_narration.txt",
+      "sources": [
+        "S02",
+        "S10",
+        "S11",
+        "S12",
+        "S13",
+        "S14",
+        "S53",
+        "S44",
+        "S43"
+      ],
+      "stop": {
+        "n": 3,
+        "find": [
+          "큰 종과 아치형 개구부",
+          "아래로 보이는 도시와 성당 지붕",
+          "경사로를 벗어난 위쪽 종루"
+        ],
+        "localName": "La Giralda / 종루"
+      }
+    },
+    {
+      "id": "stop-04",
+      "role": "STOP",
+      "title": "본당의 큰 공간",
+      "textFile": "cathedral/narration/04_narration.txt",
+      "sources": [
+        "S01",
+        "S05",
+        "S07",
+        "S08",
+        "S09",
+        "S44",
+        "S43"
+      ],
+      "stop": {
+        "n": 4,
+        "find": [
+          "높은 돌기둥",
+          "뾰족한 아치 천장",
+          "본당 전체를 함께 볼 수 있는 자리"
+        ],
+        "localName": "Catedral / 본당"
+      }
+    },
+    {
+      "id": "stop-05",
+      "role": "STOP",
+      "title": "중앙 제단",
+      "textFile": "cathedral/narration/05_narration.txt",
+      "sources": [
+        "S07",
+        "S15",
+        "S44",
+        "S43"
+      ],
+      "stop": {
+        "n": 5,
+        "find": [
+          "여러 층으로 쌓인 금빛 조각 장면",
+          "성당 중심의 큰 제단",
+          "관람객과 작품 사이의 철책"
+        ],
+        "localName": "Retablo Mayor"
+      }
+    },
+    {
+      "id": "stop-06",
+      "role": "STOP",
+      "title": "콜럼버스 기념묘",
+      "textFile": "cathedral/narration/06_narration.txt",
+      "sources": [
+        "S17",
+        "S18",
+        "S19",
+        "S20",
+        "S44",
+        "S43"
+      ],
+      "stop": {
+        "n": 6,
+        "find": [
+          "관을 어깨에 멘 네 인물",
+          "왕국을 상징하는 문장과 복장",
+          "바닥이 아니라 높이 올린 관"
+        ],
+        "localName": "Tumba de Colón"
+      }
+    },
+    {
+      "id": "stop-07",
+      "role": "STOP",
+      "title": "안티구아 성모",
+      "textFile": "cathedral/narration/07_narration.txt",
+      "sources": [
+        "S21",
+        "S22",
+        "S41",
+        "S44",
+        "S43"
+      ],
+      "stop": {
+        "n": 7,
+        "find": [
+          "Virgen de la Antigua라는 이름",
+          "아기 예수를 안고 서 있는 성모",
+          "금빛 바탕의 오래된 벽화"
+        ],
+        "localName": "Capilla Virgen de la Antigua"
+      }
+    },
+    {
+      "id": "stop-08",
+      "role": "STOP",
+      "title": "대성물실",
+      "textFile": "cathedral/narration/08_narration.txt",
+      "sources": [
+        "S05",
+        "S23",
+        "S24",
+        "S25",
+        "S26",
+        "S27",
+        "S28",
+        "S39",
+        "S54",
+        "S55",
+        "S56",
+        "S44",
+        "S43"
+      ],
+      "stop": {
+        "n": 8,
+        "find": [
+          "Sacristía Mayor라는 이름",
+          "큰 돔으로 덮인 방",
+          "입구 아치 안쪽의 음식 접시 조각"
+        ],
+        "localName": "Sacristía Mayor"
+      }
+    },
+    {
+      "id": "stop-09",
+      "role": "STOP",
+      "title": "참사회실",
+      "textFile": "cathedral/narration/09_narration.txt",
+      "sources": [
+        "S05",
+        "S24",
+        "S29",
+        "S40",
+        "S44",
+        "S43"
+      ],
+      "stop": {
+        "n": 9,
+        "find": [
+          "Sala Capitular라는 이름",
+          "타원형 방의 윤곽",
+          "벽면을 따라 배치된 인물화"
+        ],
+        "localName": "Sala Capitular"
+      }
+    },
+    {
+      "id": "stop-10",
+      "role": "STOP",
+      "title": "성가대석과 오르간",
+      "textFile": "cathedral/narration/10_narration.txt",
+      "sources": [
+        "S30",
+        "S31",
+        "S32",
+        "S38",
+        "S57",
+        "S58",
+        "S59",
+        "S44",
+        "S43"
+      ],
+      "stop": {
+        "n": 10,
+        "find": [
+          "Coro라는 이름",
+          "철책 안의 목제 좌석",
+          "위쪽 양편에 마주 선 큰 오르간"
+        ],
+        "localName": "Coro"
+      }
+    },
+    {
+      "id": "stop-11",
+      "role": "STOP",
+      "title": "산안토니오 예배당",
+      "textFile": "cathedral/narration/11_narration.txt",
+      "sources": [
+        "S33",
+        "S34",
+        "S35",
+        "S60",
+        "S44",
+        "S43"
+      ],
+      "stop": {
+        "n": 11,
+        "find": [
+          "Capilla San Antonio 또는 Bautismo",
+          "아래에서 무릎 꿇은 성인",
+          "위쪽 빛 속의 아기 예수와 천사들"
+        ],
+        "localName": "Capilla San Antonio / Bautismo"
+      }
+    },
+    {
+      "id": "stop-12",
+      "role": "STOP",
+      "title": "오렌지 정원",
+      "textFile": "cathedral/narration/12_narration.txt",
+      "sources": [
+        "S36",
+        "S30",
+        "S07",
+        "S37",
+        "S44",
+        "S43"
+      ],
+      "stop": {
+        "n": 12,
+        "find": [
+          "Patio de los Naranjos라는 이름",
+          "하늘이 열린 바깥뜰",
+          "오렌지나무와 가운데 분수"
+        ],
+        "localName": "Patio de los Naranjos"
+      }
+    },
+    {
+      "id": "stop-13",
+      "role": "STOP",
+      "title": "고야의 두 성녀 (선택)",
+      "textFile": "cathedral/narration/13_narration.txt",
+      "sources": [
+        "S56"
+      ],
+      "stop": {
+        "n": 13,
+        "find": [
+          "Sacristía de los Cálices라는 이름",
+          "고야의 〈성녀 후스타와 루피나〉 작품표",
+          "서 있는 두 성녀와 아래쪽의 사자"
+        ],
+        "localName": "Sacristía de los Cálices"
+      }
+    },
+    {
+      "id": "stop-14",
+      "role": "STOP",
+      "title": "자비의 그리스도 (선택)",
+      "textFile": "cathedral/narration/14_narration.txt",
+      "sources": [
+        "S58",
+        "S59"
+      ],
+      "stop": {
+        "n": 14,
+        "find": [
+          "Capilla San Andrés라는 이름",
+          "십자가에 매달린 목조 그리스도상",
+          "기도 공간으로 운영되는 예배당"
+        ],
+        "localName": "Capilla San Andrés"
+      }
+    }
+  ],
+  "sources": {
+    "S01": {
+      "title": "대성당 공식 역사·13세기 연표",
+      "url": "https://www.catedraldesevilla.es/la-catedral/catedral-de-sevilla-su-historia/"
+    },
+    "S02": {
+      "title": "대성당 공식 12세기 연표",
+      "url": "https://www.catedraldesevilla.es/timeline_slider_post/xii/"
+    },
+    "S03": {
+      "title": "대성당 공식 14세기 연표",
+      "url": "https://www.catedraldesevilla.es/timeline_slider_post/s-xiv/"
+    },
+    "S04": {
+      "title": "히랄다 공식 건축 설명",
+      "url": "https://www.catedraldesevilla.es/la-catedral/edificio/la-giralda/"
+    },
+    "S05": {
+      "title": "대성당 공식 16세기 연표",
+      "url": "https://www.catedraldesevilla.es/timeline_slider_post/s-xvi/"
+    },
+    "S06": {
+      "title": "안달루시아 문화유산연구원·히랄디요와 모렐",
+      "url": "https://www.juntadeandalucia.es/organismos/iaph/servicios/actualidad/noticias/detalle/498145.html"
+    },
+    "S07": {
+      "title": "고딕 성당·중앙 제단·성가대 공식 설명",
+      "url": "https://www.catedraldesevilla.es/la-catedral/edificio/la-catedral-gotica-retablo-mayor-coro-capillas-laterales-y-portadas/"
+    },
+    "S08": {
+      "title": "대성당 공식 15세기 연표",
+      "url": "https://www.catedraldesevilla.es/timeline_slider_post/s-xv/"
+    },
+    "S09": {
+      "title": "교차부 천장 1511년 붕괴·1517년 재건·1888년 붕괴",
+      "url": "https://www.catedraldesevilla.es/en-noviembre-de-1517-se-celebro-la-finalizacion-de-la-reconstruccion-del-cimborrio-de-la-catedral/"
+    },
+    "S10": {
+      "title": "스페인 문화부·카사 데 콘트라타시온 500주년",
+      "url": "https://www.cultura.gob.es/cultura/archivos/difusion/boletin-de-archivos-estatales/boletines/bae-16-2003/inicio.html"
+    },
+    "S11": {
+      "title": "PARES·카사 데 콘트라타시온 기관 기록",
+      "url": "https://pares.cultura.gob.es/ParesBusquedas20/catalogo/autoridad/46426"
+    },
+    "S12": {
+      "title": "안달루시아 통계지도연구원·세비야 항구",
+      "url": "https://ws089.juntadeandalucia.es/didactica/eltiempovuela/entregas/puerto_sevilla/index.htm"
+    },
+    "S13": {
+      "title": "안달루시아 통계지도연구원·역사적 역병",
+      "url": "https://ws089.juntadeandalucia.es/institutodeestadisticaycartografia/blog/2020/06/estadistica-y-cartografia-epidemias-historicas-andalucia/"
+    },
+    "S14": {
+      "title": "스페인 문화부·카사 론하에서 인디아스 문서관으로",
+      "url": "https://www.cultura.gob.es/gl/cultura/areas/archivos/mc/archivos/agi/destacados/expo-lonja.html"
+    },
+    "S15": {
+      "title": "중앙 제단 장인·재료·도상 공식 설명",
+      "url": "https://www.catedraldesevilla.es/el-maestro-artesano-que-ideo-la-biblia-de-madera-mas-grande-de-la-cristiandad/"
+    },
+    "S16": {
+      "title": "UNESCO·대성당·알카사르·인디아스 문서관",
+      "url": "https://whc.unesco.org/en/list/383/"
+    },
+    "S17": {
+      "title": "대성당·콜럼버스 유해 도착과 1902년 안치 상세",
+      "url": "https://www.catedraldesevilla.es/la-catedral-celebra-el-dia-de-la-hispanidad/"
+    },
+    "S18": {
+      "title": "멜리다의 콜럼버스 기념묘 설계·상징",
+      "url": "https://www.catedraldesevilla.es/el-proyecto-ganador-de-arturo-melida-para-el-monumento-funerario-de-cristobal-colon/"
+    },
+    "S19": {
+      "title": "안달루시아 문서관·콜럼버스 유해 안치 기록",
+      "url": "https://www.juntadeandalucia.es/cultura/archivos/web_es/detalleExposicion?id=db32b20e-8294-11e3-9865-000ae4865a5f&idArchivo=d9f0f1ac-58a4-11dd-b44b-31450f5b9dd5&idContArch=549b9259-53f8-11de-b13b-000ae4865a5f&idProvincia=e88950c4-3b6d-11dd-92fe-31450f5b9dd5&idTipo=5fb8cfa7-e224-11dd-ac81-00e000a6f9bf"
+    },
+    "S20": {
+      "title": "스미스소니언·타이노 전시 안내",
+      "url": "https://americanindian.si.edu/nk360/pdf/Taino-Gallery-Guide-English.pdf"
+    },
+    "S21": {
+      "title": "안달루시아 주정부·세비야 지방역사문서관 — 안티구아 성모 예배당",
+      "url": "https://www.juntadeandalucia.es/organismos/culturapatrimoniohistoricoydeporte/areas/cultura/archivos/archivos-consejeria/archivo-historico-provincial-sevilla/ahps-recomienda/paginas/documento-ahps-sept-2021.html"
+    },
+    "S22": {
+      "title": "그라나다대학교 — Asensio de Maeda y la transformación de la Capilla de la Antigua (1578–1601)",
+      "url": "https://revistaseug.ugr.es/index.php/caug/es/article/view/10383"
+    },
+    "S23": {
+      "title": "대성당 공식 — 대성물실 돔의 건설과 르네상스",
+      "url": "https://www.catedraldesevilla.es/la-cupula-de-la-sacristia-mayor-de-sevilla-la-piedra-fundacional-que-redefinio-el-renacimiento-en-andalucia/"
+    },
+    "S24": {
+      "title": "대성당 공식 — 왕실예배당·참사회실·대성물실",
+      "url": "https://www.catedraldesevilla.es/la-catedral/edificio/los-anadidos-renacentistas-capilla-real-sala-capitular-y-sacristia-mayor/"
+    },
+    "S25": {
+      "title": "대성당 공식 작품목록 — 페드로 데 캄파냐의 십자가에서 내림",
+      "url": "https://www.catedraldesevilla.es/obras/el-descendimiento/"
+    },
+    "S26": {
+      "title": "대성당 공식 작품목록 — 무리요의 성 이시도로",
+      "url": "https://www.catedraldesevilla.es/obras/san-isidoro-2/"
+    },
+    "S27": {
+      "title": "대성당 공식 작품목록 — 후안 데 아르페의 대성체현시대",
+      "url": "https://www.catedraldesevilla.es/en/obras/custodia-grande/"
+    },
+    "S28": {
+      "title": "대성당 공식 — 성체성혈대축일 행렬 준비와 은제 성체현시대",
+      "url": "https://www.catedraldesevilla.es/la-catedral-de-sevilla-abre-sus-puertas-para-la-vispera-del-corpus-christi-concierto-y-exposicion-de-los-pasos-procesionales/"
+    },
+    "S29": {
+      "title": "바티칸 공식 — 원죄 없이 잉태되신 동정 마리아 대축일과 1854년 교의 선포",
+      "url": "https://www.vaticannews.va/en/liturgical-holidays/solemnity-of-the-immaculate-conception-of-the-blessed-virgin-mar.html"
+    },
+    "S30": {
+      "title": "대성당 공식 장식미술 — 성가대석·가구·용서의 문 문짝",
+      "url": "https://www.catedraldesevilla.es/la-catedral/patrimonio/artes-decorativas/"
+    },
+    "S31": {
+      "title": "대성당 공식 — 오르간의 역사",
+      "url": "https://www.catedraldesevilla.es/la-catedral/musica/el-organo/"
+    },
+    "S32": {
+      "title": "대성당 공식 — 참사회 성직자의 일상 성무일도",
+      "url": "https://www.catedraldesevilla.es/una-catedral-que-comienza-el-dia-rezando-los-canonigos-retoman-este-martes-el-oficio-coral-diario/"
+    },
+    "S33": {
+      "title": "대성당 공식 — 1656년 성 안토니오 그림 주문과 구도",
+      "url": "https://www.catedraldesevilla.es/hoy-celebramos-de-festividad-de-san-antonio/"
+    },
+    "S34": {
+      "title": "대성당 공식 — 무리요 성 안토니오의 환시와 1874년 도난",
+      "url": "https://www.catedraldesevilla.es/la-vision-de-san-antonio-la-historia-secreta-de-una-obra-maestra-de-murillo/"
+    },
+    "S35": {
+      "title": "스페인은행 공식 미술 컬렉션 — 복원가 살바도르 마르티네스 쿠베이스",
+      "url": "https://coleccion.bde.es/wca/es/secciones/coleccion/artistas/salvador-martinez-cubells-489.html"
+    },
+    "S36": {
+      "title": "대성당 공식 — 오렌지 정원·콜롬비나 도서관",
+      "url": "https://www.catedraldesevilla.es/la-catedral/edificio/el-patio-de-los-naranjos-y-biblioteca-colombina/"
+    },
+    "S37": {
+      "title": "세비야 시청 공식 — 용서의 문과 16세기 조각",
+      "url": "https://www.sevilla.org/ciudad/aniversario_boda_carlos_v/ruta_turistica"
+    },
+    "S38": {
+      "title": "UNESCO — 무데하르 미술의 이슬람 전통과 기독교 지배하 발전",
+      "url": "https://whc.unesco.org/en/list/378/"
+    },
+    "S39": {
+      "title": "대성당 공식 금속공예 — 1580년 모형 승인과 행렬용 성체현시대",
+      "url": "https://www.catedraldesevilla.es/la-catedral/patrimonio/orfebreria/"
+    },
+    "S40": {
+      "title": "세비야 교구 문화유산 담당자·참사회실의 도상과 1592년 가구",
+      "url": "https://odisur.es/sevilla/sillon-arzobispal-de-la-sala-capitular-en-la-catedral-de-sevilla/"
+    },
+    "S41": {
+      "title": "대성당·엘카노와 마젤란의 세계일주 귀환 기념 기사",
+      "url": "https://www.catedraldesevilla.es/la-catedral-de-sevilla-participa-en-los-actos-conmemorativo-del-v-centenario-de-elcano-y-magallanes/"
+    },
+    "S43": {
+      "title": "대성당 공식 관람 계획·왕실예배당 제한",
+      "url": "https://www.catedraldesevilla.es/como-visitar-la-catedral-de-sevilla-horarios-duracion-accesos-y-recomendaciones/"
+    },
+    "S44": {
+      "title": "대성당 공식 관람 지도",
+      "url": "https://www.catedraldesevilla.es/wp-content/uploads/2023/01/plano-catedral-descargable.pdf"
+    },
+    "S53": {
+      "title": "스페인 국가기록원·인디아스 문서관: 거래소의 건립과 대성당 계단의 상인들",
+      "url": "https://artsandculture.google.com/story/la-casa-lonja-de-mercaderes-in-seville-archivos-estatales/VgWxSE1IA2T5LQ?hl=en"
+    },
+    "S54": {
+      "title": "후안 클레멘테 로드리게스 에스테베스: El universal convite, 출판사 소개·아치 제작 연대",
+      "url": "https://www.catedra.com/libro/arte-grandes-temas/el-universal-convite-juan-clemente-rodriguez-estevez-9788437642734/"
+    },
+    "S55": {
+      "title": "El universal convite 공개 서문·서론: 68개 음식 부조와 식생활사 연구",
+      "url": "https://www.catedra.com/primer_capitulo/el-universal-convite.pdf"
+    },
+    "S56": {
+      "title": "고야 아라곤 재단 작품목록: 성녀 후스타와 루피나의 주문·인도·당대 논쟁",
+      "url": "https://fundaciongoyaenaragon.es/obra/santas-justa-y-rufina/146"
+    },
+    "S57": {
+      "title": "대성당 참사회 발행 Seises: 1508년 기록·1613년 열 명 구성·1667년 캐스터네츠",
+      "url": "https://www.catedraldesevilla.es/wp-content/uploads/2023/02/SEISES.pdf"
+    },
+    "S58": {
+      "title": "안달루시아 세비야 지방역사기록원: 자비의 그리스도 1603년 4월 5일 제작 계약",
+      "url": "https://www.juntadeandalucia.es/organismos/culturapatrimoniohistoricoydeporte/areas/cultura/archivos/archivos-consejeria/archivo-historico-provincial-sevilla/ahps-recomienda/paginas/documento-ahps-may-2018.html"
+    },
+    "S59": {
+      "title": "대성당 공식: 산안드레스 예배당의 자비의 그리스도·계약의 시선 지시·기도 공간",
+      "url": "https://www.catedraldesevilla.es/el-cabildo-de-la-catedral-abre-como-espacio-de-oracion-la-capilla-de-san-andres/"
+    },
+    "S60": {
+      "title": "루브르 작품목록 MI 202: 무리요 성모의 탄생의 원래 예배당·1810년 이전·1858년 입수",
+      "url": "https://collections.louvre.fr/en/ark:/53355/cl010064740"
+    }
+  },
+  "reviewedAt": "2026-10-22",
+  "note": "2026-10-21 14곳 원고(guide-data.json·narration/)를 그대로 옮겼다. 사실 확인 기록은 guide-data.json의 sources 참조."
+}
