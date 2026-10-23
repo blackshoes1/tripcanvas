@@ -848,7 +848,7 @@ body.theme-dark input:not([type=checkbox]):not([type=radio]),body.theme-dark sel
   .viewMenu>summary{display:flex;align-items:center}
   .legModeBtn{min-width:36px;min-height:36px}.legModeBtn::after{inset:-4px}
   .spotMetaItem.stayMin.unset{position:relative}.spotMetaItem.stayMin.unset::after{content:'';position:absolute;inset:-10px -2px}
-  .spotMetaItem.addBetween{position:relative}.spotMetaItem.addBetween::after{content:'';position:absolute;inset:-10px -2px}
+  .spotMetaItem.addBetween,.spotMetaItem.story{position:relative}.spotMetaItem.addBetween::after,.spotMetaItem.story::after{content:'';position:absolute;inset:-10px -2px}
 }
 
 /* 다크 테마의 카카오 지도 — 카카오는 어두운 지도 스타일이 없어 **타일 그림만** 뒤집는다(2026-10-03 UX 검토 — 다크 화면에 밝은 지도만 남았다).
@@ -974,3 +974,37 @@ span.dayItem{cursor:default}
 .jToneChoice input{margin-top:4px;flex:0 0 auto}
 .jToneChoice strong,.jToneChoice small{display:block}
 .jToneChoice small{font-size:13px;margin-top:6px;color:var(--subtle);line-height:1.6}
+/* With J 이야기 — 장소 정보 창과 같은 모양(docs/with-j-stories.md). 음성은 하나라 창이 닫히면 아래 막대가 이어 든다 */
+#storyDialog{color:var(--ink);background:var(--surface);border:1px solid var(--border);border-radius:20px;width:min(520px,calc(100vw - 32px));max-height:90dvh;padding:0;margin:auto 24px auto auto;box-shadow:var(--shadow);overflow:auto}
+#storyDialog::backdrop{background:rgba(17,24,39,.38)}
+#storyDialog .placeHeader{display:flex;gap:16px;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:1;justify-content:space-between;align-items:flex-start;padding:18px;background:var(--surface)}
+#storyDialog h2{font-size:23px;line-height:1.4;margin:0;overflow-wrap:anywhere}
+#storyDialog .btn{min-height:44px}
+#storySub{margin:4px 0 0}
+.storyBody{padding:4px 20px 20px;line-height:1.6}
+.storyStatus{font-size:14px;color:var(--muted);margin:12px 0 8px}
+.storyPlayer audio{width:100%;margin:0 0 8px}
+.storyGroup{font-size:13px;color:var(--muted);margin:16px 0 6px;font-weight:600}
+.storyTrack{display:grid;grid-template-columns:28px 1fr;column-gap:8px;width:100%;text-align:left;font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin:0 0 8px;min-height:48px;cursor:pointer}
+.storyTrack:hover{background:var(--hover-bg)}
+.storyTrack.playing{border-color:var(--selected-border);background:var(--selected-bg)}
+.storyPlayIcon{grid-row:span 3;color:var(--primary-dark);font-size:15px;line-height:1.6}
+.storyTrackTitle{font-weight:600;overflow-wrap:anywhere}
+.storyTrackMeta,.storyFind{grid-column:2;font-size:13px;color:var(--subtle)}
+.storySave{margin:16px 0 0;padding-top:12px;border-top:1px solid var(--border)}
+.storySave .hint{font-size:13px;margin:8px 0 0}
+.storySaved{color:var(--meta-good);font-weight:600;margin:0}
+.storyAbout{margin-top:12px;font-size:13px;color:var(--muted)}
+.storySources summary{cursor:pointer;min-height:32px;padding:4px 0}
+.storySources ul{padding-left:20px;margin:4px 0}.storySources a{color:var(--primary-dark);text-decoration:underline}
+.spotMetaItem.story{color:var(--meta-eta-fixed);border:1px solid var(--border);border-radius:6px;background:none;padding:1px 6px;font:inherit;cursor:pointer;min-height:24px}
+.dayItem.story{color:var(--meta-eta-fixed)}
+.tSpot button.tLink.story{display:inline-flex;align-items:center;min-height:36px;font:inherit;font-size:12.5px;color:var(--primary-dark);background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:5px 12px;cursor:pointer}
+button.travelGo.story{font:inherit;font-size:12.5px;font-weight:700;color:var(--primary-dark);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:0 10px;min-height:44px;cursor:pointer}
+.travelNow button.travelGo.story{margin-left:8px}
+.storyBar{position:fixed;z-index:1160;left:50%;transform:translateX(-50%);bottom:calc(12px + env(safe-area-inset-bottom));width:min(560px,calc(100vw - 32px));display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--surface);color:var(--ink);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow)}
+.storyBar[hidden]{display:none}
+.storyBarTitle{flex:0 1 40%;min-width:0;font:inherit;font-size:13px;font-weight:600;color:var(--ink);background:none;border:0;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;min-height:44px}
+.storyBarSlot{flex:1 1 auto;min-width:0}.storyBarSlot audio{width:100%;height:40px;display:block}
+@media(max-width:760px){.storyBar{bottom:calc(var(--mobile-actions-height,114px) + 8px)}.storyBarTitle{flex-basis:30%}}
+@media(max-width:700px){#storyDialog{width:100%;max-width:100%;max-height:88dvh;margin:auto 0 0;border-radius:20px 20px 0 0}.storyBody{padding-bottom:calc(20px + env(safe-area-inset-bottom))}}

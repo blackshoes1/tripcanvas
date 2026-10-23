@@ -40,6 +40,7 @@ function boot(url = 'http://localhost/', storage = {}) {
   inject('adaptive.js');
   inject('intake.js');
   inject('collab.js');
+  inject('stories.js');
   inject('api.js');
   inject('auth.js');
   inject('app.js');
@@ -7560,7 +7561,7 @@ function bootSharedLink(trip, storage = {}) {
   window.HTMLDialogElement.prototype.close = function () { this.open = false; };
   window.TextEncoder = TextEncoder;
   window.LZString = { compressToEncodedURIComponent: (x) => encodeURIComponent(x), decompressFromEncodedURIComponent: (x) => decodeURIComponent(x) };
-  for (const file of ['lib.js', 'sync.js', 'routing.js', 'price.js', 'j-copy.js', 'adaptive.js', 'intake.js', 'collab.js', 'api.js', 'auth.js', 'app.js']) {
+  for (const file of ['lib.js', 'sync.js', 'routing.js', 'price.js', 'j-copy.js', 'adaptive.js', 'intake.js', 'collab.js', 'stories.js', 'api.js', 'auth.js', 'app.js']) {
     const s = window.document.createElement('script');
     s.textContent = fs.readFileSync(path.join(root, file), 'utf8');
     window.document.body.appendChild(s);
@@ -9109,5 +9110,56 @@ test('통합(AC-3 연장): 그룹 제안을 받아들일 때 일부 표시가 �
     await w.eval(`acceptProposal({picks:[{di:1,candidate:{id:7,title:'가'}},{di:1,candidate:{id:8,title:'나'}},{di:1,candidate:{id:9,title:'다'}}]})`);
     assert.deepEqual(uxSpotNames(w, 1), ['가', '나', '다'], '일정에는 전부 들어갔다');
     assert.match(uxToastText(w), /1\/3곳만 표시했어요 — 일정에는 전부 들어갔어요/);
+  } finally { w.close(); }
+});
+
+// With J 이야기 — 카탈로그가 붙는 장소에만 버튼이 서고, 이름만 같은 다른 도시의 장소에는 서지 않는다(docs/with-j-stories.md)
+const STORY_RAW = {
+  version: 1, voice: { disclosure: 'AI 음성으로 읽었어요' },
+  places: [
+    { id: 'seville-plaza-espana', kind: 'PLACE', name: '스페인 광장', localName: 'Plaza de España', lat: 37.3772, lng: -5.9869, radiusM: 300, aliases: [], placeIds: [],
+      tracks: [{ id: 'core', role: 'CORE', title: '광장, 핵심만', src: 'seville/plaza-espana-core.mp3', seconds: 95, bytes: 760000, sha256: 'b'.repeat(64), sources: ['P01'], reviewedAt: '2026-10-22' }] },
+    { id: 'seville-city', kind: 'CITY', name: '세비야', lat: 37.3891, lng: -5.9845, radiusM: 8000,
+      tracks: [{ id: 'intro', role: 'CORE', title: '세비야 소개', src: 'seville/city.mp3', seconds: 150, bytes: 1200000, sha256: 'c'.repeat(64), sources: [], reviewedAt: '2026-10-22' }] }
+  ],
+  sources: { P01: { title: '세비야 관광청', url: 'https://visitasevilla.es/' } }
+};
+test('With J 이야기: 세비야 장소에만 버튼이 서고, 마드리드의 같은 이름에는 서지 않는다 · 도시 이야기는 그날 머리에 하나', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    withTrip(w, `[{spots:[{name:'스페인 광장',lat:37.3772,lng:-5.9869},{name:'바',lat:37.39,lng:-5.99}]},{spots:[{name:'스페인 광장',lat:40.4233,lng:-3.7122}]}]`);
+    w.eval(`storyCatalog=TC_STORIES.normalizeCatalog(${JSON.stringify(STORY_RAW)}); render();`);
+    const spotStory = [...w.document.querySelectorAll('.spotMetaItem.story')];
+    assert.equal(spotStory.length, 1, '세비야 스페인 광장 한 곳에만');
+    const cityStory = [...w.document.querySelectorAll('.dayItem.story')];
+    assert.equal(cityStory.length, 1, '세비야 날에만 도시 이야기');
+    assert.match(cityStory[0].textContent, /세비야 이야기/);
+    spotStory[0].click();
+    const dlg = w.document.getElementById('storyDialog');
+    assert.equal(dlg.open, true);
+    assert.equal(w.document.getElementById('storyTitle').textContent, '스페인 광장');
+    const tracks = [...w.document.querySelectorAll('#storyTracks .storyTrack')];
+    assert.equal(tracks.length, 1);
+    assert.match(tracks[0].textContent, /광장, 핵심만.*1분 35초/);
+    // AI 음성이라는 사실과 출처를 숨기지 않는다
+    assert.match(w.document.getElementById('storyAbout').textContent, /AI 음성으로 읽었어요 · 출처 1건/);
+    assert.equal(w.document.querySelector('#storyAbout a').getAttribute('href'), 'https://visitasevilla.es/');
+    // 음성은 창 안에 있다가 창을 닫으면 아래 막대로 옮겨 간다(듣던 것이 이어진다)
+    assert.equal(w.document.getElementById('storyAudio').parentNode.id, 'storyPlayerSlot');
+    w.document.getElementById('storyClose').click();
+    dlg.dispatchEvent(new w.Event('close'));
+    assert.equal(w.document.getElementById('storyAudio').parentNode.id, 'storyBarSlot');
+    assert.equal(w.document.getElementById('storyBar').hidden, true, '듣는 것이 없으면 막대도 없다');
+  } finally { w.close(); }
+});
+
+test('With J 이야기: 카탈로그가 없거나 비어 있으면 아무 버튼도 없다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    withTrip(w, `[{spots:[{name:'스페인 광장',lat:37.3772,lng:-5.9869}]}]`);
+    w.eval('render();');
+    assert.equal(w.document.querySelectorAll('.story').length, 0);
+    w.eval(`storyCatalog=TC_STORIES.normalizeCatalog({places:[]}); render();`);
+    assert.equal(w.document.querySelectorAll('.story').length, 0);
   } finally { w.close(); }
 });

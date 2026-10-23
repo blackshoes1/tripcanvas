@@ -794,6 +794,21 @@
   <div id="placeDetailsContent" aria-live="polite"></div>
   <footer id="placeDetailsActions"></footer>
 </dialog>
+<dialog id="storyDialog" aria-labelledby="storyTitle">
+  <div class="placeHeader"><div><p class="eyebrow">With J 이야기</p><h2 id="storyTitle">이야기</h2><p id="storySub" class="hint"></p></div><button type="button" class="btn" id="storyClose" autofocus>닫기</button></div>
+  <div class="storyBody">
+    <p id="storyStatus" class="storyStatus" aria-live="polite"></p>
+    <div id="storyPlayerSlot" class="storyPlayer"><audio id="storyAudio" controls preload="none"></audio></div>
+    <div id="storyTracks" class="storyTracks"></div>
+    <div id="storySave" class="storySave"></div>
+    <div id="storyAbout" class="storyAbout"></div>
+  </div>
+</dialog>
+<div id="storyBar" class="storyBar" hidden role="region" aria-label="With J 이야기 듣는 중">
+  <button type="button" id="storyBarTitle" class="storyBarTitle" onclick="openCurrentStory()" title="이야기 목록 열기"></button>
+  <div id="storyBarSlot" class="storyBarSlot"></div>
+  <button type="button" class="btn sm" onclick="stopStory()" aria-label="듣기 끝내기">✕</button>
+</div>
 <script src="lib.js?v=tc-v288"></script>
 <script src="sync.js?v=tc-v288"></script>
 <script src="routing.js?v=tc-v288"></script>
@@ -802,6 +817,7 @@
 <script src="adaptive.js?v=tc-v288"></script>
 <script src="intake.js?v=tc-v288"></script>
 <script src="collab.js?v=tc-v288"></script>
+<script src="stories.js?v=tc-v288"></script>
 <script src="api.js?v=tc-v288"></script>
 <script src="auth.js?v=tc-v288"></script>
 <script src="app.js?v=tc-v288"></script>
