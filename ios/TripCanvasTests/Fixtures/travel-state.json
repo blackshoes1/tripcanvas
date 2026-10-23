@@ -135,6 +135,7 @@
     "remainingActivities": [
       {
         "id": "d0s0",
+        "choiceState": null,
         "name": "숙소",
         "city": "마드리드",
         "desc": "",
@@ -159,6 +160,7 @@
       },
       {
         "id": "d0s1",
+        "choiceState": null,
         "name": "저녁 예약",
         "city": "마드리드",
         "desc": "",
@@ -185,6 +187,7 @@
     "activities": [
       {
         "id": "d0s0",
+        "choiceState": null,
         "name": "숙소",
         "city": "마드리드",
         "desc": "",
@@ -209,6 +212,7 @@
       },
       {
         "id": "d0s1",
+        "choiceState": null,
         "name": "저녁 예약",
         "city": "마드리드",
         "desc": "",
@@ -289,7 +293,23 @@
       "status": "READY_TO_LEAVE"
     },
     "intent": null,
-    "notice": null
+    "notice": null,
+    "calmMoment": {
+      "state": "CHECK",
+      "text": "이동 정보가 부족해 출발 여유를 확인해야 해요.",
+      "expiresAt": "2026-09-01T09:56:00.000Z"
+    },
+    "tomorrowBrief": {
+      "dayIndex": 1,
+      "date": "2026-09-02",
+      "firstPlace": "공원",
+      "departureMinutes": 540,
+      "travelTimeSource": "STRAIGHT_LINE_ESTIMATE",
+      "checkouts": [
+        "숙소"
+      ],
+      "reservations": []
+    }
   },
   "pulse": {
     "code": "ON_TRACK",

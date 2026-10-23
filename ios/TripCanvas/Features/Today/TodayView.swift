@@ -8,6 +8,9 @@ struct TodayView: View {
     /// 그래서 돌아왔을 때 서버를 기다리지 않고 마지막 내용이 그대로 보인다.
     let model: TodayViewModel
     let onOpenPlan: () -> Void
+    var onOpenActivity: ((Int, ActivitySummary) -> Void)? = nil
+    var onOpenPlanDay: ((Int) -> Void)? = nil
+    var onOpenOffline: (() -> Void)? = nil
     @State private var coverRefresh = UUID()
     @Environment(AppEnvironment.self) private var env
     @Environment(\.scenePhase) private var scenePhase
@@ -15,6 +18,8 @@ struct TodayView: View {
     /// 입력 중인 문장. 모델이 든 것(`intentText`)은 **적용된** 문장이라 따로 둔다 —
     /// 타이핑마다 서버를 부르지 않고, 보낸 뒤에도 고치던 글이 사라지지 않는다.
     @State private var intentDraft = ""
+    @State private var stayExtension: StayExtensionModel?
+    @State private var quickChoice: QuickChoiceModel?
 
     var body: some View {
         ScrollView {
@@ -74,11 +79,43 @@ struct TodayView: View {
                         .card()
                     }
                     if let today = model.today {
+                        if let calm = today.calmMoment {
+                            CalmMomentCard(moment: calm, offline: model.isOffline) { Task { await model.load() } }
+                        }
                         if let next = today.nextAction, let activity = model.activity(id: next.activityId) {
                             NextActionCard(next: next, activity: activity, isEstimate: model.travelTimeIsEstimate,
-                                           isBusy: !model.pending.isEmpty || model.isRetrying, canEdit: model.canAct,
+                                           isBusy: !model.pending.isEmpty || model.isRetrying,
+                                           canEdit: model.canAct && activity.choiceState != "PENDING",
                                            onComplete: { Task { await model.complete(activity) } },
                                            onSkip: { Task { await model.skip(activity) } })
+                            if activity.choiceState == "PENDING" {
+                                if model.canAct, !model.isOffline {
+                                    Button("두 곳 비교하고 고르기") {
+                                        quickChoice = QuickChoiceModel(tripID: trip.id, day: today.day.index,
+                                            activity: activity, revision: model.revision, source: env.service)
+                                    }.frame(minHeight: 44).accessibilityIdentifier("quickChoiceOpen")
+                                }
+                                Button("이 장소를 일정에서 확인") {
+                                    if let onOpenActivity { onOpenActivity(today.day.index, activity) } else { onOpenPlan() }
+                                }.frame(minHeight: 44)
+                            }
+                            if activity.choiceState != "PENDING" {
+                                TodayStaffShowButton(tripID: trip.id, activityID: activity.id,
+                                                     expectedName: activity.name, revision: model.revision)
+                            }
+                            if model.canAct, !model.isOffline, activity.choiceState != "PENDING", activity.status == .inProgress,
+                               activity.type != .flight, activity.type != .train, activity.type != .hotel {
+                                Button {
+                                    stayExtension = StayExtensionModel(tripID: trip.id, activityID: activity.id,
+                                        revision: model.revision, source: env.service,
+                                        isCurrent: { [account = env.auth.session?.userId, scope = env.service.cacheScope] in
+                                            env.auth.session?.userId == account && env.service.cacheScope == scope
+                                        })
+                                } label: { Label("여기서 조금 더 머물까요?", systemImage: "cup.and.saucer") }
+                                .frame(minHeight: 44)
+                                .disabled(!model.pending.isEmpty || model.isRetrying)
+                                .accessibilityIdentifier("openStayExtension")
+                            }
                         } else if today.activities.isEmpty {
                             EmptyStateView(
                                 symbol: "sparkles",
@@ -92,6 +129,8 @@ struct TodayView: View {
                         }
 
                         if model.canAct, let replan = model.replanSuggestion {
+                            DailyMomentsTodaySection(trip: today.trip, dayIndex: today.day.index, revision: model.revision,
+                                                     dropActivityIds: today.replan.dropActivityIds)
                             ReplanCard(suggestion: replan, preview: today.replan,
                                        isBusy: !model.pending.isEmpty || model.isRetrying, tone: env.jTone.selected,
                                        onApply: { Task { await model.accept(replan) } },
@@ -104,6 +143,10 @@ struct TodayView: View {
                                 .foregroundStyle(Ink.warning)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .card()
+                        }
+
+                        if model.replanSuggestion == nil {
+                            DailyMomentsTodaySection(trip: today.trip, dayIndex: today.day.index, revision: model.revision)
                         }
 
                         // 하루 전체를 한 장에 — 다녀온 곳은 흐리게, 다음 일정은 표시만(할 일은 위 카드에 있다).
@@ -143,6 +186,12 @@ struct TodayView: View {
                         // '여행 중' 권유는 할 일들 **아래**의 얇은 띠다 — 지금 할 일보다 먼저 읽히면 안 된다.
                         travelModeInviteSection
 
+                        if let brief = today.tomorrowBrief {
+                            TomorrowBriefCard(trip: today.trip, brief: brief, generatedAt: today.generatedAt, offline: model.isOffline,
+                                onOpenDay: { if let onOpenPlanDay { onOpenPlanDay(brief.dayIndex) } else { onOpenPlan() } },
+                                onPrepareOffline: { onOpenOffline?() })
+                        }
+
                         TodayMapCard(activities: today.activities, next: today.nextAction)
 
                         NavigationLink {
@@ -181,15 +230,30 @@ struct TodayView: View {
         .onChange(of: scenePhase) { _, phase in
             // 앱 복귀 — 방금 받은 것이면 오늘을 다시 묻지 않는다(2026-09-18, 짧은 앱 전환마다 2건이 나갔다).
             // 여행 모드는 위치·시각이 바뀌었으니 그대로 갱신한다(`refreshTravelMode`는 켜져 있을 때만 나간다).
-            if phase == .active { Task { await model.loadIfStale(); await refreshTravelMode(reason: .foreground) } }
+            if phase == .active {
+                Task {
+                    await model.loadIfStale()
+                    guard !Task.isCancelled, !model.needsReloadAfterCancelledRead else { return }
+                    await refreshTravelMode(reason: .foreground)
+                }
+            }
         }
         .onChange(of: model.revision) { old, new in
             if old != new { Task { await refreshTravelMode(reason: .userAction) } }
+        }
+        .onChange(of: env.service.cacheScope) { _, _ in stayExtension = nil; quickChoice = nil }
+        .sheet(item: $quickChoice) { choice in
+            QuickChoiceView(model: choice, onRefresh: { Task { await model.load() } })
         }
         .sheet(isPresented: $showsTravelSetup) {
             TravelModeSetupView {
                 await env.travelMode.start(trip: model.today?.trip ?? trip)
             }
+        }
+        .sheet(item: $stayExtension) { extensionModel in
+            StayExtensionSheet(model: extensionModel,
+                               onApplied: { response in model.acceptStayExtension(response) },
+                               onRefresh: { Task { await model.load() } }, trip: model.today?.trip ?? trip)
         }
         .overlay(alignment: .bottom) {
             if let toast = model.toast {
@@ -205,13 +269,15 @@ struct TodayView: View {
 
     private func refreshToday(reason: TravelModeController.RefreshReason) async {
         await model.load()
+        guard !Task.isCancelled, !model.needsReloadAfterCancelledRead else { return }
         coverRefresh = UUID()
         await refreshTravelMode(reason: reason)
     }
 
     private func refreshTravelMode(reason: TravelModeController.RefreshReason) async {
-        guard env.travelMode.isActive, env.travelMode.snapshot.tripId == trip.id else { return }
+        guard !Task.isCancelled, env.travelMode.isActive, env.travelMode.snapshot.tripId == trip.id else { return }
         await env.push.refreshPermission()
+        guard !Task.isCancelled else { return }
         await env.travelMode.refresh(tripId: trip.id, reason: reason)
     }
 
@@ -598,7 +664,7 @@ struct TodayTimelineCard: View {
                     FinishedRow(activity: activity, isBusy: isBusy, canEdit: canEdit) { onUndo(activity) }
                 } else {
                     ActivityRow(activity: activity, isNext: activity.id == nextId, isBusy: isBusy,
-                                canEdit: canEdit && activity.id != nextId,
+                                canEdit: canEdit && activity.id != nextId && activity.choiceState != "PENDING",
                                 onComplete: { onComplete(activity) }, onSkip: { onSkip(activity) })
                 }
             }

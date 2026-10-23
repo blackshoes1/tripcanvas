@@ -61,7 +61,7 @@ final class TripService: TripDataSource {
         return scope
     }
 
-    private func tripRequest(_ id: String) async throws -> (scope: TripCache.Scope?, generation: Int) {
+    func tripRequest(_ id: String) async throws -> (scope: TripCache.Scope?, generation: Int) {
         let scope = await requestScope()
         guard let generation = await cache.tripGeneration(id, scope: scope) else {
             throw APIError.notFound("삭제하거나 나간 여행이에요. 새 초대로 참여한 뒤 다시 열어 주세요.")
@@ -70,7 +70,7 @@ final class TripService: TripDataSource {
         return (scope, generation)
     }
 
-    private func checkTripRequest(_ id: String, _ request: (scope: TripCache.Scope?, generation: Int)) async throws {
+    func checkTripRequest(_ id: String, _ request: (scope: TripCache.Scope?, generation: Int)) async throws {
         guard await cache.acceptsTrip(id, generation: request.generation, scope: request.scope) else {
             throw APIError.notFound("삭제하거나 나간 여행이에요. 새 초대로 참여한 뒤 다시 열어 주세요.")
         }

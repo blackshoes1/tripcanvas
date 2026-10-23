@@ -66,7 +66,15 @@ struct TripHomeView: View {
             Group {
                 switch selection.wrappedValue {
                 case .today:
-                    TodayView(trip: trip, model: models.today, onOpenPlan: { selection.wrappedValue = .plan })
+                    TodayView(trip: trip, model: models.today, onOpenPlan: {
+                        models.plan.selectedDay = models.today.today?.day.index ?? max(0, trip.todayIndex)
+                        selection.wrappedValue = .plan
+                    }, onOpenActivity: { day, activity in
+                        models.plan.requestFocus(activity, day: day, revision: models.today.revision)
+                        selection.wrappedValue = .plan
+                    }, onOpenPlanDay: { day in
+                        models.plan.selectedDay = day; selection.wrappedValue = .plan
+                    }, onOpenOffline: { panel = .offline })
                 case .plan, .map:
                     // 한 갈래다 — 뷰 정체성이 유지돼 탭을 오가도 고른 날·편집기가 그대로다.
                     TripPlanView(trip: trip, model: models.plan, discovery: models.discovery, showsMap: Binding(
@@ -168,6 +176,9 @@ struct TripHomeView: View {
     /// 실시간을 붙인다. **못 붙어도 앱은 그대로** — 상태만 바뀌고 폴백(당겨서 새로고침)으로 간다.
     private func startLive() {
         env.realtime.connect(tripId: trip.id, key: Self.liveKey) { event in
+            if event.kind == "DAILY_MOMENT_CHANGED" {
+                NotificationCenter.default.post(name: .dailyMomentsChanged, object: trip.id)
+            }
             Task { await models.handle(event) }
         }
     }
@@ -316,6 +327,12 @@ final class TripScreenModels {
 
     /// State가 보존한 모델에서 연결한다. View 초기화 중 버려지는 모델이 콜백을 덮지 않게 한다.
     func connectDocumentUpdates(service: TripService) {
+        today.onStayApplied = { [weak self] revision in
+            guard let self else { return }
+            self.costs.invalidate(revision: revision)
+            self.bookings.invalidate()
+            Task { await self.plan.load() }
+        }
         service.onDocumentSaved = { [weak self] id, snapshot in
             guard let self, id == self.tripId else { return }
             self.costs.invalidate(revision: snapshot.revision)

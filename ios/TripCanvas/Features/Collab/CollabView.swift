@@ -40,6 +40,15 @@ struct CollabView: View {
                 membersSection(model)
                 myNameSection(model)
                 if model.canManage { inviteSection(model) }
+                Section {
+                    NavigationLink {
+                        DailyMomentsView(trip: trip)
+                    } label: {
+                        Label("각자 오늘 하나만", systemImage: "heart")
+                    }
+                } footer: {
+                    Text("오늘 꼭 하고 싶은 하나씩을 남기고 서로의 기대를 확인해요.")
+                }
                 prefsSection(model)
                 activitySection(model)
                 if model.canLeave {

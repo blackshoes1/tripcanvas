@@ -19,6 +19,7 @@ import { buildImportPreview, buildMemoryTimeline } from './intakeView';
 import { buildDayPlanView } from './dayPlanView';
 import { buildGroupProposalView } from './groupProposalView';
 import { buildTripRoutes } from './tripRoutesView';
+import { createHandlers, type Gateway } from '../services/handlers';
 import { readSourceText, writeFixture } from './parityFiles';
 import type {
   BookingListResponse, GroupProposalResponse, ImportCommitResponse, ItineraryParseResponse,
@@ -128,6 +129,35 @@ function expectCovered(structName: string, value: unknown) {
 }
 
 describe('iOS Contract.swift가 실제 응답을 전부 담는다', () => {
+  it('두 선택지 경로 비교의 실제 API 응답을 Swift와 대조한다', async () => {
+    const data: TripDoc = { start: '2026-10-16', days: [{ mode: 'walk', spots: [
+      { name: '출발', lat: 37, lng: 127 }, { name: '미술관', lat: 37.01, lng: 127.01,
+        choice: { version: 1, state: 'PENDING', alternative: { name: '강변', lat: 37.1, lng: 127.1 } } }
+    ] }] };
+    const gateway = { async getTrip() { return { client_id: 'comparison', data, revision: 2, updated_at: '', deleted_at: null, role: 'OWNER' }; } } as unknown as Gateway;
+    const handlers = createHandlers({ gatewayFor: () => gateway, now: () => new Date('2026-10-16T00:00:00Z') });
+    const response = await handlers.choiceComparison(new Request('https://example.test/choice-comparison', { method: 'POST',
+      headers: { authorization: 'Bearer synthetic', 'content-type': 'application/json' }, body: JSON.stringify({ activityId: 'd0s1', expectedRevision: 2 }) }), 'comparison');
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expectCovered('ChoiceComparison', body);
+    writeFixture(path.join(__dirname, '../../../../../ios/TripCanvasTests/Fixtures/choice-comparison.json'), JSON.stringify(body, null, 2) + '\n');
+  });
+  it('선택지의 실제 하루 응답과 범위를 Swift가 전부 읽는다', () => {
+    const choiceTrip: TripDoc = { name: '합성 선택지', start: '2026-10-15', days: [{ spots: [{
+      name: '미술관', city: '교토', stayMin: 60, cost: 1200, choice: { version: 1, state: 'PENDING', decideBy: '13:30',
+        alternative: { name: '강변 산책', city: '교토', stayMin: 30, cost: 0 } }
+    }] }] };
+    const choiceToday = computeToday({ tripId: 'choice', trip: choiceTrip, revision: 2, updatedAt: '',
+      todayISO: '2026-10-15', nowMinutes: 780, generatedAt: '2026-10-15T04:00:00Z' }).response;
+    expect(choiceToday.activities[0].choiceState).toBe('PENDING');
+    expectCovered('TodayResponse', choiceToday);
+    const plan = buildDayPlanView({ trip: choiceTrip, di: 0, summary: choiceToday.trip, generatedAt: '2026-10-15T04:00:00Z' });
+    expect(plan!.day.spots[0].choice?.cost).toMatchObject({ min: 0, max: 1200, currency: 'KRW' });
+    expectCovered('DayPlanResponse', plan);
+    const dir = path.join(__dirname, '../../../../../ios/TripCanvasTests/Fixtures');
+    writeFixture(path.join(dir, 'choice-day-plan.json'), JSON.stringify(plan, null, 2) + String.fromCharCode(10));
+  });
   it('TodayResponse와 그 안의 모든 구조체', () => {
     expectCovered('TodayResponse', today);
     expectCovered('TripSummary', today.trip);

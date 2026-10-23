@@ -26,6 +26,8 @@ final class TripDocumentStore {
     private(set) var isSaving = false
     /// 문서를 **받지** 못했다 — 할 일은 다시 불러오기다.
     private(set) var loadErrorMessage: String?
+    /// 취소는 실패 문구를 남기지 않지만, 다음 진입은 마지막 성공 시각과 무관하게 다시 읽는다.
+    private(set) var needsReloadAfterCancelledRead = false
     /// 방금 바꾼 것을 **저장하지** 못했다 — 화면은 이미 이전 일정으로 돌아왔다.
     /// ⚠️ 둘을 한 칸에 두면 불러오기 실패에 "저장하지 못했어요"라 말하고, 저장 실패의 '다시 시도'가
     ///    새로고침이 되어 되돌려진 변경이 조용히 사라진다(2026-09-27 UX 검토).
@@ -76,7 +78,7 @@ final class TripDocumentStore {
     /// 문서를 다시 받으면 그때마다 로딩이 뜨고 고른 날이 튄다(2026-09-17). 오래됐으면 `load()`인데,
     /// 문서가 이미 있으므로 화면은 로딩으로 바뀌지 않고 바뀐 것만 갈아끼워진다.
     func loadIfStale(maxAge: TimeInterval = 60, now: Date = Date()) async {
-        if document != nil, let loadedAt, now.timeIntervalSince(loadedAt) < maxAge { return }
+        if !needsReloadAfterCancelledRead, document != nil, let loadedAt, now.timeIntervalSince(loadedAt) < maxAge { return }
         await load()
     }
 
@@ -84,6 +86,7 @@ final class TripDocumentStore {
     /// 늦게 온 요청은 참을 돌려주지 않으므로 호출부가 그 뒤에 계산을 받으러 가지 않는다.
     @discardableResult
     func load() async -> Bool {
+        guard !ReadCancellation.shouldIgnore() else { return false }
         loadGeneration += 1
         let request = loadGeneration
         let requestedRevision = revision
@@ -92,11 +95,14 @@ final class TripDocumentStore {
         do {
             let snapshot = try await service.document(tripId: tripId)
             guard request == loadGeneration, requestedRevision == revision, !isSaving else { return false }
+            guard !ReadCancellation.shouldIgnore() else { needsReloadAfterCancelledRead = true; return false }
             apply(snapshot)
             loadedAt = snapshot.cachedAt == nil ? Date() : nil
             loadErrorMessage = nil
+            needsReloadAfterCancelledRead = false
         } catch {
             guard request == loadGeneration, requestedRevision == revision, !isSaving else { return false }
+            guard !ReadCancellation.shouldIgnore(error) else { needsReloadAfterCancelledRead = true; return false }
             loadErrorMessage = message(for: error)
         }
         return true

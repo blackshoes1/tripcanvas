@@ -53,8 +53,12 @@ private final class OfflinePrepProtocol: URLProtocol {
         let incomplete = await service.offlineTrip(plan.trip.id)
         XCTAssertNil(incomplete)
         fail = false
+        let prepared = expectation(forNotification: OfflineTrip.prepared, object: nil) { note in
+            note.object as? String == plan.trip.id
+        }
         let pack = try await service.prepareOffline(tripId: plan.trip.id) { _, _ in }
         XCTAssertTrue(pack.isComplete)
+        await fulfillment(of: [prepared], timeout: 1)
         // 파일 하나만 남아도 전 일자·예약·메모를 읽을 수 있다.
         for file in try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) where !file.lastPathComponent.hasPrefix("offline-trip-") {
             try FileManager.default.removeItem(at: file)

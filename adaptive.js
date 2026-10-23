@@ -601,7 +601,7 @@
    * 머무는 중인 곳은 **남은 체류만** 더한다(2026-10-03) — 처음부터 다시 더하면 경복궁에 머무는 동안 내내 제때인 일정이
    * '115분 지연'이 됐다. 시작 시각은 지금이다 — '다녀왔어요'를 누른 곳은 계획한 종료 시각을 기다리지 않고 끝난 것이다.
    * @param {any} state @param {TripItem[]} list @param {any=} opts
-   * @returns {{ok:boolean, lateBy:number, totalLate:number, endMin:number, violated:string[], first:({id:string,name:string,atMin:number,lateBy:number}|null)}}
+   * @returns {{ok:boolean, lateBy:number, totalLate:number, endMin:number, violated:string[], first:({id:string,name:string,atMin:number,lateBy:number}|null), timings:{id:string,start:number,end:number}[]}}
    */
   function simulate(state, list, opts){
     let clock=state.live? Math.max(state.nowMin, state.dayStartMin) : state.dayStartMin;
@@ -610,18 +610,21 @@
     let lateBy=0, totalLate=0;
     /** @type {string[]} */
     const violated=[];
+    /** @type {{id:string,start:number,end:number}[]} */
+    const timings=[];
     /** @type {{id:string,name:string,atMin:number,lateBy:number}|null} */
     let first=null;
     list.forEach((/**@type{TripItem}*/it)=>{
       if(state.live && it.status==='IN_PROGRESS'){
         clock=Math.max(clock, it.end);
+        timings.push({id:it.id,start:it.depart,end:clock});
         if(it.location) prev=it.location;
         return;
       }
       if(it.location && prev) clock+=travelMinutes(prev, it.location, opts);
       if(it.fixedAt!=null){
         if(it.flexibility==='FIXED'){
-          const over=clock-it.fixedAt;
+          const over=clock-it.fixedAt+(opts&&opts.protectBuffer?safetyBufferFor(it,opts):0);
           if(over>0.5){
             const late=Math.round(over);
             lateBy=Math.max(lateBy, late); totalLate+=late; violated.push(it.id);
@@ -630,10 +633,11 @@
         }
         clock=Math.max(clock, it.fixedAt);
       }
+      timings.push({id:it.id,start:clock,end:clock+it.stayMin});
       clock+=it.stayMin;
       if(it.location) prev=it.location;
     });
-    return {ok:!violated.length, lateBy, totalLate, endMin:Math.round(clock), violated, first};
+    return {ok:!violated.length, lateBy, totalLate, endMin:Math.round(clock), violated, first,timings};
   }
   /**
    * 일정 조정에서 뺄 수 있는 곳 — 유동 일정이고 꼭 가기가 아니고, 숙소·공항·역이 아니다.
@@ -701,6 +705,80 @@
       // 사람에게 말할 때 쓰는 값(계약에는 lateBy만 실린다) — 어느 약속에 얼마나 늦는지, 줄여도 남는 늦음
       lateAt:base.first, remainingLateBy:r.lateBy
     };
+  }
+
+  /**
+   * 머무는 중인 장소의 출발을 미뤄 본다. 원문을 바꾸지 않고, 예약에 늦을 때만 명시적으로
+   * '선택'으로 둔 뒤쪽 장소의 체류를 줄인다(최소 15분). 예약·꼭 가기·숙소는 줄이지 않는다.
+   * @param {any} state
+   * @param {{activityId:string, extraMinutes:number, legMin?:any}=} opts
+   * @returns {any}
+   */
+  function previewStayExtension(state, opts){
+    const o=opts||{activityId:'',extraMinutes:0}, extra=o.extraMinutes;
+    const current=state.currentItem;
+    if(!state.live || !current || current.id!==o.activityId || [10,20,30].indexOf(extra)<0
+      || current.type==='FLIGHT' || current.type==='TRAIN' || isLodging(current.spot)) return null;
+    const pending=state.items.filter((/** @type {TripItem} */it)=>it.si>=current.si
+      && it.status!=='COMPLETED' && it.status!=='SKIPPED' && it.status!=='CANCELLED');
+    if(pending.some((/** @type {TripItem} */it)=>!Number.isSafeInteger(it.stayMin))) return null;
+    if(pending.some((/** @type {TripItem} */it)=>it.spot&&it.spot.split)) return {
+      activityId:current.id,currentName:current.name,extraMinutes:extra,
+      oldDepartureMinutes:Math.round(current.end),newDepartureMinutes:Math.round(current.end+extra),
+      feasible:false,reason:'따로 움직이는 구간은 일행과 합류 시각을 확인한 뒤 일정에서 조정해 주세요.',
+      hasUnknownTravel:true,changes:[],affectedActivityIds:[],fixedCommitments:[],dayEndBeforeMinutes:null,dayEndAfterMinutes:null
+    };
+    const before=simulate(state,pending,o);
+    const protectedOpts=Object.assign({},o,{protectBuffer:true});
+    const after=pending.map((/** @type {TripItem} */it)=>Object.assign({},it,
+      it.id===current.id? {stayMin:it.stayMin+extra,end:it.end+extra} : {}));
+    let result=simulate(state,after,protectedOpts);
+    // 같은 장소의 '미정' 선택지를 자동으로 확정하거나 짧게 만들지 않는다.
+    const unresolved=after.some((/** @type {TripItem} */it)=>it.spot && it.spot.choice && /** @type {any} */(it.spot.choice).state==='PENDING');
+    for(let k=1;k<after.length && !result.ok;k++){
+      const it=after[k];
+      if(!it.spot || !it.spot.opt || !droppable(it) || it.stayMin<=15) continue;
+      const old=it.stayMin;
+      // 약속 뒤의 장소를 줄여 앞 약속을 해결한 척하지 않는다.
+      it.stayMin=15;
+      const shortest=simulate(state,after,protectedOpts);
+      if(shortest.totalLate>=result.totalLate){ it.stayMin=old; continue; }
+      // Bound work by log(duration), never one simulation per minute of imported stay time.
+      let low=1, high=old-15, reduction=high;
+      for(let search=0;low<=high && search<54;search++){
+        const mid=low+Math.floor((high-low)/2);
+        it.stayMin=old-mid;
+        const trial=simulate(state,after,protectedOpts);
+        if(trial.totalLate<=shortest.totalLate){ reduction=mid;high=mid-1; }
+        else low=mid+1;
+      }
+      it.stayMin=old-reduction;
+      result=simulate(state,after,protectedOpts);
+    }
+    const changes=after.filter((/** @type {TripItem} */it)=>it.stayMin!==pending.filter((/** @type {TripItem} */p)=>p.id===it.id)[0].stayMin)
+      .map((/** @type {TripItem} */it)=>({activityId:it.id,name:it.name,
+        beforeStayMinutes:pending.filter((/** @type {TripItem} */p)=>p.id===it.id)[0].stayMin,afterStayMinutes:it.stayMin}));
+    let clock=state.nowMin, prev=current.location, unknown=!prev;
+    /** @type {any[]} */
+    const fixed=[];
+    after.forEach((/** @type {TripItem} */it)=>{
+      if(it.id===current.id){clock=Math.max(clock,it.end);return;}
+      if(!it.location) unknown=true;
+      if(prev && it.location) clock+=travelMinutes(prev,it.location,o);
+      if(it.flexibility==='FIXED' && it.fixedAt!=null) fixed.push({activityId:it.id,name:it.name,
+        atMinutes:it.fixedAt,arrivalMinutes:unknown?null:Math.round(clock),
+        slackMinutes:unknown?null:Math.round(it.fixedAt-clock),bufferMinutes:safetyBufferFor(it)});
+      if(it.fixedAt!=null) clock=Math.max(clock,it.fixedAt);
+      clock+=it.stayMin;
+      if(it.location) prev=it.location;
+    });
+    return {activityId:current.id,currentName:current.name,extraMinutes:extra,
+      oldDepartureMinutes:Math.round(current.end),newDepartureMinutes:Math.round(current.end+extra),
+      feasible:result.ok&&!unresolved,reason:unresolved?'먼저 미정인 장소를 골라 주세요.':(!result.ok?'예약 시각과 준비 여유를 지키기 어려워 이 변경을 적용할 수 없어요.':null),
+      hasUnknownTravel:unknown,changes,
+      affectedActivityIds:result.timings.filter(t=>{const b=before.timings.filter(x=>x.id===t.id)[0];return !b||b.start!==t.start||b.end!==t.end;}).map(t=>t.id),
+      fixedCommitments:fixed,
+      dayEndBeforeMinutes:before.endMin,dayEndAfterMinutes:result.endMin};
   }
 
   // ── 7. 제안 (모든 기능이 공유하는 형태) ──────────────────────────
@@ -1279,8 +1357,27 @@
     if(state.nextFixed) candidates.push(state.nextFixed.startMin);
     return Math.round(Math.min.apply(null, candidates));
   }
-  const API={ADAPT_CFG, MEAL_WINDOWS, DAY_SEGMENTS, SAFETY_BUFFER, NOTIFICATION_KINDS, safetyBufferFor, departurePlan, tripPulse, stateVersion, notificationPlan, pendingNotifications, suggestionExpiryMin, parseIntent, resolveIntent, departureAdvice, fillGaps, planDayFlow, segmentLabel, currentDayIndex, daysUntilStart, weekdayOf, commitmentOf, priorityOf, statusOf, planningModeHint,
-    buildTripState, findFreeWindows, mealOverlap, buildCandidates, rankNextActions, simulate, generateReplan,
+  /** A short permission to stop checking the phone. No assurance from estimates or stale/offline data.
+   * @param {any} state @param {{routed:boolean,needsReplan:boolean,departure:any}} opts
+   * @returns {{state:'RELAX'|'CHECK',text:string}|null} */
+  function calmMoment(state, opts) {
+    if(!state.live || !state.nextItem || opts.needsReplan) return null;
+    if(state.items.some((/** @type {any} */ it)=>it.spot?.choice?.state==='PENDING')) return null;
+    const departure=opts.departure;
+    if(!departure || state.nextItem.status==='IN_PROGRESS') return null;
+    if(!opts.routed || !state.currentLocation || !state.nextItem.location)
+      return {state:'CHECK',text:'이동 정보가 부족해 출발 여유를 확인해야 해요.'};
+    const free=Math.floor(departure.leaveMin-state.nowMin);
+    if(departure.level!=='EARLY' || free<15) return null;
+    return {state:'RELAX',text:`다음 출발까지 ${free}분 여유예요. 지금은 여행을 즐겨도 괜찮아요.`};
+  }
+  /** @param {any} state @returns {number|null} */
+  function eveningBriefDay(state) {
+    return state.live && state.currentDay===state.todayIndex && state.nowMin>=18*60
+      && state.todayIndex+1<state.dayCount ? state.todayIndex+1 : null;
+  }
+  const API={calmMoment, eveningBriefDay, ADAPT_CFG, MEAL_WINDOWS, DAY_SEGMENTS, SAFETY_BUFFER, NOTIFICATION_KINDS, safetyBufferFor, departurePlan, tripPulse, stateVersion, notificationPlan, pendingNotifications, suggestionExpiryMin, parseIntent, resolveIntent, departureAdvice, fillGaps, planDayFlow, segmentLabel, currentDayIndex, daysUntilStart, weekdayOf, commitmentOf, priorityOf, statusOf, planningModeHint,
+    buildTripState, findFreeWindows, mealOverlap, buildCandidates, rankNextActions, simulate, generateReplan, previewStayExtension,
     suggestionKey, buildSuggestions, feedbackEntry, travelMinutes, moveModeTo, durText, josa, replanDropNote, isLodging, isLightDay, mealCoveredBy};
   if(typeof module!=='undefined' && module.exports) module.exports=API;   // Node (테스트)
   else /** @type {any} */(root).TC_ADAPT=API;                             // 브라우저 전역 (lib/price와 동일 패턴)

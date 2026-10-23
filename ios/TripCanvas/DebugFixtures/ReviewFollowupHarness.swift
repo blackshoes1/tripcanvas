@@ -5,6 +5,7 @@ import Observation
 @MainActor struct ReviewFollowupHarness: View {
     private let arguments = ProcessInfo.processInfo.arguments
     @State private var scratch = NewTripFormState()
+    @State private var pendingCreation: CheckedContinuation<Void, Never>?
     @State private var savedScratch = ""
     @State private var presented = true
     @State private var day = TripDay(raw: ["spots": .array([.object([
@@ -24,13 +25,22 @@ import Observation
                     .sheet(isPresented: $presented) {
                         if arguments.contains("--review-scratch") {
                             NewTripView(mode: .constant(.scratch), form: scratch) { draft in
-                                try? await Task.sleep(for: .seconds(5))
+                                await withCheckedContinuation { pendingCreation = $0 }
                                 savedScratch = draft.name; return nil
                             }
                             .safeAreaInset(edge: .bottom) {
-                                Text("입력 모델 · \(scratch.name)")
-                                    .font(.caption)
-                                    .accessibilityIdentifier("reviewScratchBoundName")
+                                VStack {
+                                    if pendingCreation != nil {
+                                        Button("합성 생성 응답 전달") {
+                                            let continuation = pendingCreation
+                                            pendingCreation = nil
+                                            continuation?.resume()
+                                        }.accessibilityIdentifier("reviewReleaseCreation")
+                                    }
+                                    Text("입력 모델 · \(scratch.name)")
+                                        .font(.caption)
+                                        .accessibilityIdentifier("reviewScratchBoundName")
+                                }
                             }
                         } else {
                             SpendEntryFlow(day: day, bookings: [hotel], draftKey: nil) { edited in

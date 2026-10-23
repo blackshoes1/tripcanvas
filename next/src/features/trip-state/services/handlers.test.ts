@@ -244,6 +244,18 @@ describe('함께하기 — 역할과 권한(§76: 판단은 서버가 한다)', 
 });
 
 describe('Activity 완료 / 건너뛰기', () => {
+  it('미정인 선택지의 완료 요청은 저장 없이 400과 선택 안내를 반환한다', async () => {
+    const row = store.rows.get('trip-1')!;
+    const doc = structuredClone(row.data);
+    doc.days![0].spots![0].choice = { version: 1, state: 'PENDING', alternative: { name: '다른 곳' } };
+    store.rows.set('trip-1', { ...row, data: doc });
+    const response = await api.activityAction(new Request('http://localhost/api/v1/trips/trip-1/activities/d0s0/complete',
+      auth({ method: 'POST', body: JSON.stringify({ expectedRevision: row.revision }) })), 'trip-1', 'd0s0', 'complete');
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: 'BAD_REQUEST', message: expect.stringContaining('일정에서 갈 곳을 고른') });
+    expect(store.rows.get('trip-1')!.revision).toBe(row.revision);
+    expect(store.rows.get('trip-1')!.data.days![0].spots![0].status).toBeUndefined();
+  });
   const complete = (id: string, body: unknown = {}) =>
     api.activityAction(new Request(`http://localhost/api/v1/trips/trip-1/activities/${id}/complete`,
       auth({ method: 'POST', body: JSON.stringify(body) })), 'trip-1', id, 'complete');

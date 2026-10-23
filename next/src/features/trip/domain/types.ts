@@ -21,6 +21,8 @@ export interface OpeningHour {
 }
 
 export interface Spot {
+  /** 현재 장소만 계산에 들어간다. 대안은 결정하기 전까지 원문 안에 함께 보관한다. */
+  choice?: { version: 1; state: 'PENDING' | 'SELECTED'; alternative: Spot; decideBy?: string };
   name: string;
   city: string;
   desc: string;

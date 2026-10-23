@@ -198,7 +198,8 @@ export function buildDayPlanView(input: DayPlanInput): DayPlanResponse | null {
       status: String((spot as { status?: unknown }).status ?? 'PLANNED'),
       participants: participantsOf(spot),
       reunion: (spot as { reunion?: unknown }).reunion === true,
-      incomingLeg: leg
+      incomingLeg: leg,
+      choice: legacyLib.spotChoiceSummary(spot)
     };
   });
 

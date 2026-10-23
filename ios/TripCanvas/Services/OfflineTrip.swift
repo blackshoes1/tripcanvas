@@ -2,6 +2,7 @@ import Foundation
 
 /// 전 일자와 원문을 한 파일로 저장한다. 중간 실패를 준비 완료로 표시하지 않는다.
 struct OfflineTrip: Codable {
+    static let prepared = Notification.Name("withj.offlineTripPrepared")
     let detail: TripDetailResponse
     let plans: [DayPlanResponse]
     let bookings: [BookingSummary]
@@ -53,6 +54,8 @@ extension TripService {
             await cache.save(plan, key: TripCache.dayPlanKey(tripId: tripId, dayIndex: index), scope: scope)
         }
         await cache.save(reservations.bookings, key: TripCache.bookingsKey(tripId: tripId), scope: scope)
+        guard scope == cacheScope else { throw APIError.stale("계정이 바뀌었어요.") }
+        NotificationCenter.default.post(name: OfflineTrip.prepared, object: tripId)
         return pack
     }
 }

@@ -18,8 +18,10 @@ import type {
   TodayResponse, TravelActivityState, TravelStatus, TripStateSummary, TripSuggestion, TripSummary
 } from './contract';
 import { CONTRACT_SCHEMA_VERSION } from './contract';
+import { buildTomorrowBrief } from './tomorrowBrief';
 
 export interface SpotDoc {
+  choice?: { version: 1; state: 'PENDING' | 'SELECTED'; alternative: SpotDoc; decideBy?: string };
   name?: string; city?: string; desc?: string; lat?: number | null; lng?: number | null;
   at?: string; bookAt?: string; stayMin?: number; stay?: boolean; nights?: number;
   opt?: boolean; must?: boolean; status?: string; legMode?: string;
@@ -225,6 +227,7 @@ export function computeToday(input: TodayInput): TodayComputation {
     const spot = (it.spot ?? {}) as SpotDoc;
     return {
       id: it.id,
+      choiceState: lib.spotChoiceSummary(spot)?.state ?? null,
       name: it.name,
       city: String(spot.city ?? ''),
       desc: String(spot.desc ?? ''),
@@ -388,6 +391,12 @@ export function computeToday(input: TodayInput): TodayComputation {
     intent: said ? intentEcho(said, resolved) : null,
     notice: built.notice ?? null
   };
+  const calm = adapt.calmMoment(state, { routed: response.travelTimeSource === 'ROUTED',
+    needsReplan: replan.needed, departure: advice });
+  const generated = Date.parse(response.generatedAt);
+  response.calmMoment = calm && Number.isFinite(generated) ? { ...calm, expiresAt: new Date(generated + 60000).toISOString() } : null;
+  const tomorrow = adapt.eveningBriefDay(state);
+  response.tomorrowBrief = tomorrow == null ? null : buildTomorrowBrief(input, tomorrow, tripSummary);
   return {
     response,
     dayIndex,

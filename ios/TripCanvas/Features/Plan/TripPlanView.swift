@@ -105,6 +105,10 @@ struct TripPlanView: View {
         .task {
             // 탭 진입 — 문서가 있고 방금 받은 것이면 아무것도 받지 않는다(탭 전환은 앱 복귀가 아니다).
             await model.loadIfStale()
+            openFocusedActivity()
+        }
+        .onChange(of: model.focusActivity) { _, value in
+            if value != nil { Task { await model.loadIfStale(); openFocusedActivity() } }
         }
         .onChange(of: hasInputSheet, initial: true) { _, value in
             model.isPresentingEditor = value
@@ -386,6 +390,11 @@ struct TripPlanView: View {
 
     private func makeEditor(_ target: SpotEditorTarget) -> SpotEditorSession {
         SpotEditorSession(target: target, day: model.selectedDay, revision: model.revision)
+    }
+
+    private func openFocusedActivity() {
+        guard let target = model.takeFocusedSpot() else { return }
+        editSpot(target.index, spot: target.spot, model: model)
     }
 
     private func editSpot(_ index: Int, spot: TripSpot, model: TripPlanViewModel) {
