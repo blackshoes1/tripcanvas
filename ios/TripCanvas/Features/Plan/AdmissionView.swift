@@ -60,7 +60,11 @@ struct PlaceAdmissionResponse: Decodable {
 }
 
 /// 조회는 카드에서 요청할 때만. 현재 연결 상태를 그대로 말하고 사용자 확인 비용과 섞지 않는다.
+///
+/// ⚠️ 서버 `placeAdmissionDetails`가 아직 언제나 `NOT_CONNECTED`를 돌려준다(웹이 이 버튼을 두지 않은 이유와 같다). 그래서 **화면에 두지 않는다** —
+/// 눌러도 늘 같은 답이고 요청만 나가기 때문이다(2026-10-16). 자동 조회가 연결되면 `isConnected`를 켠다. 라우트·디코딩 타입은 그대로다.
 struct PlaceAdmissionLookup: View {
+    static let isConnected = false
     let provider: String?
     let providerID: String?
     @Environment(AppEnvironment.self) private var env
@@ -143,8 +147,10 @@ struct AdmissionEditorSection: View {
                 if let checked = spot.admission.checkedAt {
                     Text("직접 확인 · \(checked)").font(.caption).foregroundStyle(Ink.soft)
                 }
-                PlaceAdmissionLookup(provider: spot.kakaoId != nil ? "kakao" : (spot.placeId != nil ? "google" : nil),
-                                     providerID: spot.kakaoId ?? spot.placeId)
+                if PlaceAdmissionLookup.isConnected {
+                    PlaceAdmissionLookup(provider: spot.kakaoId != nil ? "kakao" : (spot.placeId != nil ? "google" : nil),
+                                         providerID: spot.kakaoId ?? spot.placeId)
+                }
             } label: {
                 // 접혀 있어도 적힌 것을 말한다 — 시각이 묶음 안으로 들어가 보이지 않게 되면 안 된다
                 VStack(alignment: .leading, spacing: 2) {

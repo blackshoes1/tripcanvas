@@ -1,5 +1,6 @@
 // 협업 API 라우트(§40) — HTTP 관심사만: 인증 → 본문·경로 검증(zod) → CollabApi → 응답/오류 계약.
 // 초대 미리보기만 로그인 없이 부를 수 있다(링크가 유출돼도 이름·기간·역할까지만 보인다).
+import collab from '@legacy/collab.js';
 import { z } from 'zod';
 
 import { CONTRACT_SCHEMA_VERSION } from '@/features/trip-state/domain/contract';
@@ -51,7 +52,7 @@ async function parseBody<T>(request: Request, schema: z.ZodType<T>): Promise<T> 
 
 function intParam(raw: string, name: string): number {
   const n = Number(raw);
-  if (!/^\d+$/.test(raw) || !Number.isSafeInteger(n)) throw new ApiError('VALIDATION_ERROR', { message: `${name}이(가) 올바르지 않아요.` });
+  if (!/^\d+$/.test(raw) || !Number.isSafeInteger(n)) throw new ApiError('VALIDATION_ERROR', { message: `${name}${collab.josa(name, '이', '가')} 올바르지 않아요.` });
   return n;
 }
 

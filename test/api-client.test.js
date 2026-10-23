@@ -517,3 +517,32 @@ test('동기화 저장 — 다른 오류는 이유를 실어 던진다(화면이
   // 진단 기록은 error.name을 먼저 본다 — 'Error'만 남으면 나중에 무엇이 실패했는지 모른다
   assert.equal(thrown.name, 'VALIDATION_ERROR');
 });
+
+// F-2(2026-10-16): 후보가 그 사이 지워졌으면 서버는 200 `{ok:false}`를 준다(오류가 아니다).
+// 웹은 이걸 `data===false`로 읽어 '표시만 못 했어요'라고 말한다 — 그래서 api.js가 그 false를 **그대로** 전해야 한다.
+test('후보 상태 변경: 200 {ok:false}는 오류가 아니라 data===false로 닿는다 (이미 지워진 후보)', async () => {
+  const f = setup(() => ({ status: 200, body: { ok: false } }));
+  const r = await TC_API.rpc('manage_trip_candidate', { p_candidate_id: 7, p_action: 'SCHEDULE', p_value: '2' }, 'trip1');
+  assert.equal(r.error, null);
+  assert.strictEqual(r.data, false);
+  assert.equal(f.calls[0].method, 'PATCH');
+  assert.equal(f.calls[0].url, 'https://api.test/api/v1/trips/trip1/candidates/7');
+  assert.deepEqual(f.calls[0].body, { action: 'SCHEDULE', value: '2' });
+});
+
+test('후보 상태 변경: 보기 권한(403)은 FORBIDDEN → 42501로 옮겨 서버 문장이 그대로 닿는다', async () => {
+  setup(() => ({ status: 403, body: { code: 'FORBIDDEN', error: 'FORBIDDEN', message: '보기 권한으로는 후보 상태를 바꿀 수 없어요.' } }));
+  const r = await TC_API.rpc('manage_trip_candidate', { p_candidate_id: 7, p_action: 'SCHEDULE', p_value: '2' }, 'trip1');
+  assert.equal(r.data, null);
+  assert.equal(r.error.code, '42501');
+  assert.equal(TC_COLLAB.isForbiddenError(r.error), true);
+  assert.equal(TC_COLLAB.forbiddenText(r.error, 'VIEWER'), '보기 권한으로는 후보 상태를 바꿀 수 없어요.');
+});
+
+test('후보 상태 변경: 네트워크가 끊기면 예외 없이 error로 돌려준다', async () => {
+  TC_API.configure({ baseUrl: 'https://api.test', getToken: async () => 'tok-1', fetchImpl: async () => { throw new TypeError('Failed to fetch'); } });
+  const r = await TC_API.rpc('manage_trip_candidate', { p_candidate_id: 7, p_action: 'SCHEDULE', p_value: '2' }, 'trip1');
+  assert.equal(r.data, null);
+  assert.ok(r.error, '오류로 닿는다');
+  assert.equal(TC_COLLAB.isForbiddenError(r.error), false, '권한 문제가 아니다');
+});

@@ -1054,7 +1054,7 @@ function fitCurrentView(){
 function openKPopup(html,lat,lng){
   closeKPopup();
   const w=document.createElement('div'); w.className='kpopup';
-  w.innerHTML=`<div class="popupC">${html}</div><button class="kclose">✕</button>`;
+  w.innerHTML=`<div class="popupC">${html}</div><button type="button" class="kclose" aria-label="닫기">✕</button>`;
   w.querySelector('.kclose').onclick=closeKPopup;
   kpopupOv=new kakao.maps.CustomOverlay({position:new kakao.maps.LatLng(lat,lng), content:w, yAnchor:1.18, clickable:true});
   kpopupOv.setMap(kmap);
@@ -2952,7 +2952,7 @@ function onSpotDrop(evt){
   // 고정 시각이 있는 날이면 드롭 후 시간순으로 재정렬 (입력한 시각이 순서를 결정)
   const resorted = trip().days[toDi].spots.some(x=>x.at) && sortDayByTime(trip().days[toDi]);
   setTimeout(()=>{ commit();
-    if(fromDi!==toDi) toast(`Day ${toDi+1}(으)로 이동${resorted?' · 시간순 정렬':''}`);
+    if(fromDi!==toDi) toast(`Day ${toDi+1}${TC_ADAPT.josa('Day '+(toDi+1),'으로','로')} 이동${resorted?' · 시간순 정렬':''}`);
     else if(resorted) toast('시간순으로 정렬했어요'); },0);
 }
 // ── 장소 카드 선택 상태 (지도 핀·목록 탭 공통) ──
@@ -3114,7 +3114,7 @@ function openModePicker(o){
     const b=document.createElement('button'); b.type='button'; b.className='btn modeOpt'+(opt.value===o.current?' on':'');
     b.setAttribute('role','radio'); b.setAttribute('aria-checked', opt.value===o.current?'true':'false');
     b.textContent=opt.label;
-    b.onclick=()=>{ dlg.close(); if(opt.value!==o.current) o.onPick(opt.value); };
+    b.onclick=()=>{ dlg.close(); if(o.pickCurrent||opt.value!==o.current) o.onPick(opt.value); };
     if(opt.value===o.current) picked=b;
     list.appendChild(b);
   });
@@ -3885,7 +3885,7 @@ document.getElementById('ntRun').onclick=()=>{
   // 이름을 안 적었다고 막지 않는다 — 눌리지 않는 버튼은 이유를 말해 주지 못한다
   const name=document.getElementById('ntName').value.trim()||NT_FALLBACK_NAME;
   const start=document.getElementById('ntStart').value;
-  if(!/^\d{4}-\d{2}-\d{2}$/.test(start)){ toast('시작일을 정해 주세요','#b4342a'); return; }
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(start))return fieldError('ntStart','시작일을 정해 주세요');
   document.getElementById('newTripBg').classList.remove('show');
   createNewTrip({name,start,dayCount:newTripDayCount(),mode:document.getElementById('ntMode').value});
   toast(`${name} · ${newTripDayCount()}일 — 이제 장소를 담아 보세요`,'#3e7a4c');
@@ -4096,7 +4096,7 @@ function saveNote(){
   if(!guardEdit()) return;
   const title=document.getElementById('noteTitleInput').value.trim();
   const body=document.getElementById('noteBodyInput').value.trim();
-  if(!title && !body){ toast('메모 제목이나 내용을 적어 주세요','#b4342a'); return; }
+  if(!title && !body) return fieldError('noteTitleInput','메모 제목이나 내용을 적어 주세요');
   const cat=document.getElementById('noteCatInput').value;
   const draft=normalizeTripNote({id:editingNoteId||uid(),cat,title,body,updatedAt:new Date().toISOString(),
     done:editingNoteId? !!(tripNotes().find(n=>n.id===editingNoteId)||{}).done : undefined});
@@ -4821,7 +4821,7 @@ function updateBkTitleHint(){
   const title=document.getElementById('bkTitle').value.trim(), b=editingBooking? bookingOf(editingBooking) : null;
   if(bkTypeOf()!=='hotel'||!/[가-힣]/.test(title)){ el.textContent=''; return; }
   el.textContent=(b&&b.enName&&b.title===title)
-    ? `가격 조회는 영문 이름 '${b.enName}'(으)로 찾아요 — 엉뚱한 숙소가 잡히면 예약처에 적힌 이름으로 바꿔 주세요`
+    ? `가격 조회는 영문 이름 '${b.enName}'${TC_ADAPT.josa(b.enName,'으로','로')} 찾아요 — 엉뚱한 숙소가 잡히면 예약처에 적힌 이름으로 바꿔 주세요`
     : '가격 조회 때 이 이름의 영문 표기를 찾아 써요 — 엉뚱한 숙소가 잡히면 예약처에 적힌 이름으로 바꿔 주세요';
 }
 document.getElementById('bkTitle').addEventListener('input',updateBkTitleHint);
@@ -5016,17 +5016,17 @@ function renderBookingStatusBox(b){
       return `<label>현재 예약처 가격 다시 확인 <span class="hint" style="margin:0">— 자동 조회가 안 되는 예약처(직판 사이트 등)는 직접 확인해 기록</span></label>
       ${staleDays!=null&&staleDays>=7?`<div class="hint">⏰ ${esc(b.provider||'예약처')} 가격을 확인한 지 ${staleDays}일이 지났어요</div>`:''}
       <div class="pxActions" style="align-items:center">${bu?`<a class="btn" href="${escAttr(bu)}" target="_blank" rel="noopener">예약 사이트 열기 ↗</a>`:''}
-        <input type="text" id="bkManualPrice" inputmode="numeric" placeholder="확인한 총액" style="width:110px">
+        <input type="text" id="bkManualPrice" inputmode="decimal" placeholder="확인한 총액" style="width:110px">
         <button type="button" class="btn" id="bkManualSave">가격 기록</button></div>`;
     })():''}
-    ${(b.track!==false&&!missing&&!unconnected)?`<button type="button" class="btn" id="bkCheckNow" style="margin-top:8px;font-size:.75rem;padding:3px 10px">🔄 ${b.type==='car'?'시장 가격 다시 검색':'현재 가격 다시 확인'}</button>`:''}
+    ${(b.track!==false&&!missing&&!unconnected)?`<button type="button" class="btn sm" id="bkCheckNow" style="margin-top:8px">🔄 ${b.type==='car'?'시장 가격 다시 검색':'현재 가격 다시 확인'}</button>`:''}
     ${b.type==='hotel'?'<div class="hint" id="bkSourceLine"></div>':''}`;
   // 호텔 공급자 상태는 호텔에만 — 렌터카 상세에 호텔 공급자 줄이 붙어 있었다(렌터카의 연결 상태는 위 머리글이 말한다)
   if(b.type==='hotel') loadPxHealth().then(h=>{ try{ const el=document.getElementById('bkSourceLine'); if(el) el.innerHTML=pxSourceLineHtml(h); }catch(e){} });
   const ms=document.getElementById('bkManualSave');
   if(ms) ms.onclick=()=>{
-    const v=parseInt((document.getElementById('bkManualPrice').value||'').replace(/[^\d]/g,''));
-    if(!(v>0)){ toast('확인한 가격을 입력하세요','#b4342a'); return; }
+    const v=parseManualPrice(document.getElementById('bkManualPrice').value||'', b.cur||'KRW');
+    if(!(v>0)) return fieldError('bkManualPrice','확인한 가격을 확인해 주세요 — 원·엔은 정수, 달러·유로·위안은 소수 둘째 자리까지');
     recordCarManualPrice(b.id, v);
     toast('가격을 기록했어요 — 예약가와 비교해 판단해요');
     renderBookingStatusBox(bookingOf(b.id)); render();
@@ -5041,7 +5041,7 @@ function renderBookingStatusBox(b){
   const reb=document.getElementById('bkRebooked');
   if(reb&&st&&st.confirmed) reb.onclick=()=>{
     const o=st.confirmed.offer, eff=TC_PRICE.offerPrice(o);
-    if(!confirm(`${o.seller}에서 ${costLabel(eff,b.cur)}(으)로 재예약을 완료하셨나요?\n예약가를 갱신하고 절약액을 기록해요. (기존 예약 취소는 직접 확인하세요)`)) return;
+    if(!confirm(`${o.seller}에서 ${costLabel(eff,b.cur)}${TC_ADAPT.josa(costLabel(eff,b.cur),'으로','로')} 재예약을 완료하셨나요?\n예약가를 갱신하고 절약액을 기록해요. (기존 예약 취소는 직접 확인하세요)`)) return;
     commit(()=>{ b.saved=(b.saved||0)+Math.max(0,b.price-eff); b.price=eff; b.provider=o.seller; b.updatedAt=new Date().toISOString(); });
     const rec2=recOf(b.id); delete rec2.alert; savePrices();
     renderBookingStatusBox(bookingOf(b.id));
@@ -5496,7 +5496,7 @@ document.getElementById('importFile').onchange=e=>{
       leaveViewMode();   // 받은 사본을 보던 중이면 그 보기를 닫고 내 여행으로 가져온다
       // 같은 파일을 다시 가져와도 어느 것이 가져온 것인지 보이게
       t.id=uid(); t.name=distinctTripName(t.name,'가져옴');
-      commit(()=>{ store.trips.push(t); store.activeId=t.id; activeDay=0; }, {fit:fitEntry}); toast(`'${t.name}'을(를) 가져왔어요`);
+      commit(()=>{ store.trips.push(t); store.activeId=t.id; activeDay=0; }, {fit:fitEntry}); toast(`'${t.name}'${TC_ADAPT.josa(t.name,'을','를')} 가져왔어요`);
     }catch(err){ reportOperationalError('import.invalid',err); toast('여행 파일을 가져오지 못했어요 — 다시 시도해 주세요','#b4342a'); }
     finally{ _importing=false; }
   };
@@ -6406,7 +6406,7 @@ function pvCommit(){
   document.getElementById('pastePvBg').classList.remove('show');
   commit(()=>{ activeDay=0; }, {fit:fitEntry});
   const what=kind==='fill'? `${placed}곳을 채웠어요` : kind==='append'? `${parsed.days.length}일을 이어 붙였어요`
-    : kind==='overwrite'? `일정을 바꿨어요 · ${placed}곳` : `'${finalTrip.name}'을(를) 만들었어요 · ${placed}곳${start?'':' · 시작일은 오늘로 잡았어요'}`;
+    : kind==='overwrite'? `일정을 바꿨어요 · ${placed}곳` : `'${finalTrip.name}'${TC_ADAPT.josa(finalTrip.name,'을','를')} 만들었어요 · ${placed}곳${start?'':' · 시작일은 오늘로 잡았어요'}`;
   // 있던 여행을 바꾼 것은 그 자리에서 되돌릴 수 있다 — 덮어쓰기는 확인 없이 3곳이 1곳이 됐다(2026-10-03)
   toast(`${what}${noloc?` · ${noloc}곳은 위치 미지정 (카드에서 📍 지정)`:''}`, noloc?'#f4862c':'#3e7a4c',
     kind==='new'? undefined : {label:'되돌리기', fn:()=>undoWith(snap)});
@@ -6653,7 +6653,7 @@ function sgPrimaryButtons(sug, di){
     renderSuggestions(di); }, 'ACCEPT')];
   if(a.kind==='EAT') return !v.canPlan? [] : [sgButton('식사 장소 추가', true, ()=>openMealSearch(sug,di), 'ACCEPT')];
   // 다른 날의 장소를 이 날로 — 넣는 날을 그 이름으로 말한다(다른 날을 보면서 '오늘 일정에 넣기'였다). 지난 날·보기 권한은 넣지 않는다
-  if(a.fromDay!=null && a.si!=null) return !v.canPlan? [] : [sgButton(`Day ${a.fromDay+1} → Day ${di+1}로 옮기기`, true, ()=>acceptMove(sug,di,a), 'ACCEPT')];
+  if(a.fromDay!=null && a.si!=null) return !v.canPlan? [] : [sgButton(`Day ${a.fromDay+1} → Day ${di+1}${TC_ADAPT.josa('Day '+(di+1),'으로','로')} 옮기기`, true, ()=>acceptMove(sug,di,a), 'ACCEPT')];
   if(a.si!=null){
     const sp=trip().days[di].spots[a.si], out=[];
     if(hasLoc(sp)) out.push(sgButton('지도에서 보기', true, ()=>{ recordFeedback(sug,'ACCEPTED'); const l=extMapLink(sp); window.open(l.href,'_blank','noopener'); renderSuggestions(di); }, 'ACCEPT'));
@@ -7532,8 +7532,8 @@ document.getElementById('authCancel').onclick=()=>{ authResume=null; authResumeK
 function authCreds(){
   const email=document.getElementById('authEmail').value.trim();
   const password=document.getElementById('authPass').value;
-  if(!/.+@.+\..+/.test(email)){ toast('이메일을 확인해 주세요','#b4342a'); return null; }
-  if((password||'').length<8){ toast('비밀번호는 8자 이상이어야 해요','#b4342a'); return null; }
+  if(!/.+@.+\..+/.test(email)){ fieldError('authEmail','이메일을 확인해 주세요'); return null; }
+  if((password||'').length<8){ fieldError('authPass','비밀번호는 8자 이상이어야 해요'); return null; }
   return {email, password};
 }
 /**
@@ -7576,7 +7576,7 @@ document.getElementById('authSignup').onclick=async()=>{
 // **가입된 이메일인지 알려주지 않는다**: 있든 없든 같은 문구다(계정 유무를 떠보는 데 쓰이지 않게).
 document.getElementById('authReset').onclick=async()=>{
   const email=document.getElementById('authEmail').value.trim();
-  if(!/.+@.+\..+/.test(email)){ toast('이메일을 먼저 입력해 주세요','#b4342a'); return; }
+  if(!/.+@.+\..+/.test(email)) return fieldError('authEmail','이메일을 먼저 입력해 주세요');
   const btn=document.getElementById('authReset'); btn.disabled=true;
   await TC_AUTH.requestPasswordReset(email);
   btn.disabled=false;
@@ -7593,10 +7593,15 @@ function openVerifyFailed(code){
     ? '확인 링크가 만료됐어요 (링크는 1시간 동안만 쓸 수 있어요).'
     : '확인 링크가 더는 유효하지 않아요 — 만료됐거나 이미 사용된 링크예요.';
   reportOperationalError('auth.verify.failed', new Error(String(code||'UNKNOWN')));
-  const email = prompt(`${why}\n\n가입한 이메일을 넣으면 확인 메일을 다시 보내드릴게요.`, '');
-  if(email===null) return;
-  const target=String(email).trim();
-  if(!target.includes('@')){ toast('이메일 형식이 아니에요','#b4342a'); return; }
+  // 입력 칸이 브라우저 창이라 칸 옆 문장을 둘 수 없다 — 형식이 틀리면 같은 창을 그 이유와 함께 다시 연다
+  let target='', warn='';
+  for(;;){
+    const email = prompt(`${warn}${why}\n\n가입한 이메일을 넣으면 확인 메일을 다시 보내드릴게요.`, target);
+    if(email===null) return;
+    target=String(email).trim();
+    if(target.includes('@')) break;
+    warn='이메일 형식이 아니에요 — 다시 적어 주세요.\n\n';
+  }
   TC_AUTH.resendVerification(target).then(()=>{
     // 있는 계정인지 밖에서 알아낼 수 없게 언제나 같은 말을 한다
     toast('확인 메일을 보냈어요 — 스팸함도 확인해 주세요');
@@ -7611,7 +7616,7 @@ function openResetModal(){
 document.getElementById('resetCancel').onclick=()=>{ pendingResetToken=''; document.getElementById('resetModalBg').classList.remove('show'); };
 document.getElementById('resetSubmit').onclick=async()=>{
   const pw=document.getElementById('resetPass').value;
-  if((pw||'').length<8){ toast('비밀번호는 8자 이상이어야 해요','#b4342a'); return; }
+  if((pw||'').length<8) return fieldError('resetPass','비밀번호는 8자 이상이어야 해요');
   if(!pendingResetToken){ toast('링크가 올바르지 않아요 — 재설정을 다시 요청해 주세요','#b4342a'); return; }
   const btn=document.getElementById('resetSubmit'); btn.disabled=true; btn.textContent='바꾸는 중…';
   const {error}=await TC_AUTH.resetPassword(pendingResetToken,pw);
@@ -8128,7 +8133,7 @@ function candidateCard(c,role,members){
   }
   if(TC_COLLAB.canRemoveCandidate(role,c)){
     const rm=document.createElement('button'); rm.className='btn'; rm.style.color='var(--meta-danger)'; rm.textContent='후보에서 빼기';
-    rm.onclick=()=>{ if(confirm(`"${c.title}" 을(를) 후보에서 뺄까요? 남은 반응도 함께 사라져요.`)) manageCandidate(c.id,'REMOVE'); };
+    rm.onclick=()=>{ if(confirm(`"${c.title}"${TC_ADAPT.josa(c.title,'을','를')} 후보에서 뺄까요? 남은 반응도 함께 사라져요.`)) manageCandidate(c.id,'REMOVE'); };
     acts.appendChild(rm);
   }
   if(acts.children.length) card.appendChild(acts);
@@ -8328,7 +8333,7 @@ async function addCandidate(){
   if(candBusy) return;
   const title=document.getElementById('candTitleInput').value.trim();
   const note=document.getElementById('candNoteInput').value.trim();
-  if(!title){ toast('가고 싶은 곳의 이름을 적어 주세요','#4f4740'); return; }
+  if(!title) return fieldError('candTitleInput','가고 싶은 곳의 이름을 적어 주세요');
   candBusy=true; document.getElementById('candAdd').disabled=true;
   try{
     const cat=TC_COLLAB.candidateCategoryOf(document.getElementById('candCatInput').value);
@@ -8388,17 +8393,60 @@ function myUid(){
   return m? m.user_id : '';
 }
 
-/** @param {number|string} candId @param {string} action @param {string=} value */
-async function manageCandidate(candId,action,value){
+/**
+ * 후보 상태 변경. 서버가 지워진 후보에 200 `{ok:false}`를 주므로(오류가 아니다) `data===false`도 실패로 읽는다.
+ * `quiet`이면 토스트를 말하지 않고 결과만 돌려준다 — 장소를 먼저 넣는 흐름(일정에 넣기·분리)이 사실대로 한 번만 말하려고 쓴다.
+ * @param {number|string} candId @param {string} action @param {string=} value @param {{quiet?:boolean}=} opts
+ * @returns {Promise<{ok:boolean, gone:boolean, error:any}>}
+ */
+async function manageCandidate(candId,action,value,opts){
+  const quiet=!!(opts&&opts.quiet);
   try{
-    const {error}=await TC_API.rpc('manage_trip_candidate',{p_candidate_id:candId,p_action:action,p_value:value==null?null:String(value)},candTripId);
+    const {data,error}=await TC_API.rpc('manage_trip_candidate',{p_candidate_id:candId,p_action:action,p_value:value==null?null:String(value)},candTripId);
     if(error) throw error;
-    toast(action==='REMOVE'?'후보에서 뺐어요':action==='SCHEDULE'?'일정에 넣었어요':action==='REJECT'?'이번 일정에서는 뺐어요 — 언제든 되돌릴 수 있어요':'후보로 되돌렸어요');
+    if(data===false){
+      if(!quiet) toast('이미 지워진 후보예요 — 목록을 새로 불러왔어요','#b4342a');
+      await renderCandidates();
+      return {ok:false, gone:true, error:null};
+    }
+    if(!quiet) toast(action==='REMOVE'?'후보에서 뺐어요':action==='SCHEDULE'?'일정에 넣었어요':action==='REJECT'?'이번 일정에서는 뺐어요 — 언제든 되돌릴 수 있어요':'후보로 되돌렸어요');
     await renderCandidates();
+    return {ok:true, gone:false, error:null};
   }catch(e){
     reportOperationalError('collab.candidate.manage',e);
-    toast(TC_COLLAB.isForbiddenError(e)?TC_COLLAB.forbiddenText(e,myRole(candTripId)):'변경을 저장하지 못했어요','#b4342a');
+    if(!quiet) toast(TC_COLLAB.isForbiddenError(e)?TC_COLLAB.forbiddenText(e,myRole(candTripId)):'변경을 저장하지 못했어요','#b4342a');
+    return {ok:false, gone:false, error:e};
   }
+}
+
+/** 후보 장소가 이미 들어간 일자 번호(없으면 -1) — 표시 저장이 실패한 뒤 다시 눌러도 장소를 또 넣지 않으려고 `candidateId`로 찾는다. @param {any} t @param {any} c @returns {number} */
+function candidatePlacedDay(t,c){
+  return t.days.findIndex((/**@type{any}*/d)=>(d.spots||[]).some((/**@type{any}*/s)=>s&&s.candidateId!=null&&String(s.candidateId)===String(c.id)));
+}
+/**
+ * 후보를 넣을 날을 앱 안의 목록에서 고른다 — `prompt()`에 숫자를 치던 것을 바꿨다(2026-10-16 UX 점검).
+ * 보던 날이 먼저 고른 상태로 열리고, 닫으면 아무것도 바뀌지 않는다.
+ * @param {string} title @param {string} hint @param {(di:number)=>void} onPick
+ */
+function pickCandidateDay(title,hint,onPick){
+  const t=store.trips.find(x=>x.id===candTripId); if(!t) return;
+  const start=Math.min(Math.max(activeDay||1,1),t.days.length)-1;
+  openModePicker({title, hint, current:String(start), pickCurrent:true,
+    options:t.days.map((d,i)=>({value:String(i), label:['Day '+(i+1), dateOf(i), d.title].filter(Boolean).join(' · ')})),
+    onPick:v=>onPick(+v)});
+}
+/**
+ * 장소를 일정에 넣은 **뒤에** 후보 표시(SCHEDULE)를 저장한다 — 문서 저장이 먼저고 표시가 그다음이다(iOS와 같은 규칙).
+ * 표시가 실패해도 장소는 일정에 있다: 그 사실과 표시만 못 했다는 것을 함께 말하고 표시만 다시 시도할 길을 준다(장소는 다시 넣지 않는다).
+ * @param {any} c @param {number} di @param {string} doneMsg 표시까지 끝났을 때의 한 마디
+ */
+async function markCandidatePlaced(c,di,doneMsg){
+  const r=await manageCandidate(c.id,'SCHEDULE',String(di+1),{quiet:true});
+  if(r.ok){ toast(doneMsg); return; }
+  const where=`Day ${di+1}에 넣었어요`;
+  if(r.gone){ toast(`${where} · 후보는 이미 지워져서 표시는 하지 못했어요`,'#b4342a'); return; }
+  const why=TC_COLLAB.isForbiddenError(r.error)?` — ${TC_COLLAB.forbiddenText(r.error,myRole(candTripId))}`:'';
+  toast(`${where} · 후보 표시만 저장하지 못했어요${why}`,'#b4342a',{label:'표시 다시 시도', fn:()=>markCandidatePlaced(c,di,doneMsg)});
 }
 
 /**
@@ -8409,13 +8457,13 @@ async function manageCandidate(candId,action,value){
 async function scheduleCandidate(c){
   if(!guardEdit()) return;
   const t=store.trips.find(x=>x.id===candTripId); if(!t) return;
-  const opts=t.days.map((d,i)=>`${i+1}: ${d.title||dateOf(i)||('Day '+(i+1))}`).join('\n');
-  const answer=prompt(`"${c.title}" 을(를) 며칠째에 넣을까요?\n\n${opts}`, String(activeDay||1));
-  if(answer==null) return;
-  const di=Math.round(Number(answer))-1;
-  if(!(di>=0&&di<t.days.length)){ toast('그 날짜는 일정에 없어요','#b4342a'); return; }
-  commit(()=>{ appendCandidateSpot(t,di,c); });
-  await manageCandidate(c.id,'SCHEDULE',String(di+1));
+  // 장소는 이미 들어가 있고 표시만 못 한 후보 — 장소를 또 넣지 않고 표시만 다시 한다
+  const placed=candidatePlacedDay(t,c);
+  if(placed>=0){ await markCandidatePlaced(c,placed,`이미 Day ${placed+1}에 들어 있어서 후보 표시만 맞췄어요`); return; }
+  pickCandidateDay(`${c.title}${TC_ADAPT.josa(c.title,'을','를')} 넣을 날`,'고른 날 맨 뒤에 들어가요. 닫으면 아무것도 바뀌지 않아요.',async di=>{
+    commit(()=>{ appendCandidateSpot(t,di,c); });
+    await markCandidatePlaced(c,di,'일정에 넣었어요');
+  });
 }
 /**
  * "자유시간으로 분리"(§24 → §25~§27). 가고 싶은 사람은 그 후보로, 나머지는 자유시간으로 가고 끝나면 합류한다.
@@ -8427,21 +8475,21 @@ async function splitCandidate(c){
   const plan=TC_COLLAB.buildSplitPlan(c, tripMembers);
   if(!plan){ toast('갈릴 사람이 없어요 — 다 같이 가거나, 이번엔 빼는 쪽이에요','#b4342a'); return; }
   const t=store.trips.find(x=>x.id===candTripId); if(!t) return;
-  const opts=t.days.map((d,i)=>`${i+1}: ${d.title||dateOf(i)||('Day '+(i+1))}`).join('\n');
-  const answer=prompt(`${plan.text}\n\n며칠째에 넣을까요?\n\n${opts}`, String(activeDay||1));
-  if(answer==null) return;
-  const di=Math.round(Number(answer))-1;
-  if(!(di>=0&&di<t.days.length)){ toast('그 날짜는 일정에 없어요','#b4342a'); return; }
-  commit(()=>{ plan.spots.forEach(sp=>t.days[di].spots.push(sp)); });
-  await manageCandidate(c.id,'SCHEDULE',String(di+1));
-  toast('같은 시간에 나란히 넣었어요 — 끝나면 합류해요');
+  const doneMsg='같은 시간에 나란히 넣었어요 — 끝나면 합류해요';
+  const placed=candidatePlacedDay(t,c);
+  if(placed>=0){ await markCandidatePlaced(c,placed,doneMsg); return; }
+  pickCandidateDay('자유시간으로 나눠 넣을 날',plan.text,async di=>{
+    commit(()=>{ plan.spots.forEach(sp=>t.days[di].spots.push(sp)); });
+    await markCandidatePlaced(c,di,doneMsg);
+  });
 }
 
 /** 후보를 그 날 맨 뒤에 장소로 붙인다 — 최적 위치를 추측하지 않는다(재배치는 드래그·재구성이 한다). commit() 안에서 부른다. */
 function appendCandidateSpot(t,di,c){
   t.days[di].spots.push({
     name:c.title, city:'기타', desc:c.note||'',
-    lat:c.lat==null?null:+c.lat, lng:c.lng==null?null:+c.lng, opt:false, stay:false
+    lat:c.lat==null?null:+c.lat, lng:c.lng==null?null:+c.lng, opt:false, stay:false,
+    candidateId:c.id   // 표시 저장이 실패한 뒤 다시 눌러도 같은 장소를 또 넣지 않게(candidatePlacedDay) — iOS 분리도 같은 키를 쓴다
   });
 }
 
@@ -8479,7 +8527,7 @@ async function acceptProposal(p){
   commit(()=>{ picks.forEach(x=>appendCandidateSpot(t,x.di,x.candidate)); });
   let done=0;
   for(const x of picks){
-    try{ const {error}=await TC_API.rpc('manage_trip_candidate',{p_candidate_id:x.candidate.id,p_action:'SCHEDULE',p_value:String(x.di+1)},candTripId); if(error) throw error; done++; }
+    try{ const {data,error}=await TC_API.rpc('manage_trip_candidate',{p_candidate_id:x.candidate.id,p_action:'SCHEDULE',p_value:String(x.di+1)},candTripId); if(error) throw error; if(data===false) throw new Error('후보가 이미 없어요'); done++; }
     catch(e){ reportOperationalError('collab.proposal.accept',e); }
   }
   toast(done===picks.length?`${done}곳을 일정에 넣었어요`:`${done}/${picks.length}곳만 표시했어요 — 일정에는 전부 들어갔어요`, done===picks.length?undefined:'#b4342a');
@@ -9167,9 +9215,9 @@ function costOverviewData(){
   return {days,...tripCostSummary(t,days,fxRates,todayISO())};
 }
 function costOverviewRow(row){
-  const line=row.line, kinds={STAY:'숙박',RENT:'렌터카',FLIGHT:'항공',TRANSIT:'대중교통',FOOD:'식비',SHOPPING:'쇼핑',TRANSPORT:'교통',TICKET:'입장권',OTHER:'기타'};
+  const line=row.line;   // 분류 이름은 편집기와 같은 COST_KIND 하나다(앱 CostCategory.label과 글자까지 같다)
   const icons={STAY:'⌂',RENT:'▣',FLIGHT:'✈',TRANSIT:'↗',FOOD:'◉',SHOPPING:'◇',TRANSPORT:'↗',TICKET:'▤',OTHER:'◇'};
-  const kind=kinds[line.kind]||'기타', dates=[row.date,row.end].filter(Boolean).map(mdLabel).join('–');
+  const kind=(COST_KIND[line.kind]||COST_KIND.OTHER).name, dates=[row.date,row.end].filter(Boolean).map(mdLabel).join('–');
   const amount=line.state==='FREE'?'무료':line.state==='UNKNOWN'||line.amount==null?'금액 미정':
     (CUR[line.currency]?.sym||'₩')+fmtMoney(line.amount,line.currency);
   const status=[line.payState==='PAID'?'결제 완료':line.payState==='RESERVED'?'결제 예정':'',
@@ -9192,7 +9240,7 @@ function renderCostDialog(){
     <div class="costBudget${budget?.remainingKRW<0?' over':''}">${esc(budgetText)}</div>
     ${budget?`<div class="costBudgetTrack"><span style="width:${Math.min(100,Math.max(0,100*budget.costKRW/Math.max(1,budget.totalKRW)))}%"></span></div><small>총예산 ${esc(costLabel(budget.amount,budget.currency))}</small>`:''}
     <div class="costPayPair"><div><span>✓ 결제 완료</span><b>₩${fmtMoney(paid)}</b></div><div><span>◷ 결제 예정</span><b>₩${fmtMoney(due)}</b></div></div>
-    ${(data.payTotals.NONE||0)>0?`<small>결제 상태 미구분 ₩${fmtMoney(data.payTotals.NONE)}</small>`:''}
+    ${(data.payTotals.NONE||0)>0?`<small>${esc(PAY_STATE_LABEL.NONE)} ₩${fmtMoney(data.payTotals.NONE)}</small>`:''}
     ${data.overview.unknownCount?`<small class="costUnknown">금액 미정·일부 입력 ${data.overview.unknownCount}건</small>`:''}</section>
     ${readOnly()?'':`<div class="mobileCostActions">${quickDay>=0?`<button type="button" class="btn primary" id="mobileAddSpend">＋ 쓴 돈 적기 · Day ${quickDay+1}</button>`:'<p class="hint">쓴 돈은 여행이 시작되면 오늘 날짜로, 그 전에는 날을 고르면 바로 적을 수 있어요.</p>'}<button type="button" class="btn" id="mobileBudget">${tripBudgetOf(trip())?'예산 고치기':'예산 정하기'}</button></div>`}
     <nav class="costOverviewFilters" aria-label="비용 묶음">${[['all','전체'],['reservations','예약'],['other','그 외 비용']].map(([value,label])=>`<button type="button" data-filter="${value}" aria-pressed="${costFilter===value}">${label}</button>`).join('')}</nav>

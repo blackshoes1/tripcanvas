@@ -253,7 +253,7 @@ final class CollabModelTests: XCTestCase {
         XCTAssertEqual(plan.spots[2].raw["reunion"]?.boolValue, true)
         XCTAssertNil(plan.spots[1].point, "자유시간에는 장소를 정해 주지 않는다")
         // ⚠️ m0은 나다 — 이름표 규칙이 **나를 '나'로 부르고 맨 앞에 둔다**(§26). '민수'는 나오지 않는다.
-        XCTAssertEqual(plan.text, "나, 현우은(는) 카사 바트요, 지민은(는) 자유시간 — 끝나면 다시 만나요")
+        XCTAssertEqual(plan.text, "나, 현우는 카사 바트요, 지민은 자유시간 — 끝나면 다시 만나요")
     }
 
     func testSplitPlanNeedsBothSides() {

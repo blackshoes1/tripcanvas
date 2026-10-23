@@ -213,7 +213,7 @@ final class TodayViewModel {
             try await service.setActivity(
                 tripId: tripId, activityId: activity.id, action: .skip,
                 expectedRevision: expectedRevision, expectedName: activity.name)
-        } describe: { _ in "\(activity.name)을(를) 건너뛰었어요. 남은 일정을 다시 확인했어요." }
+        } describe: { _ in "\(CollabModel.withJosa(activity.name, "을", "를")) 건너뛰었어요. 남은 일정을 다시 확인했어요." }
     }
 
     func undo(_ activity: ActivitySummary) async {
@@ -223,7 +223,7 @@ final class TodayViewModel {
             try await service.setActivity(
                 tripId: tripId, activityId: activity.id, action: .reset,
                 expectedRevision: expectedRevision, expectedName: activity.name)
-        } describe: { _ in "\(activity.name)을(를) 되돌렸어요." }
+        } describe: { _ in "\(CollabModel.withJosa(activity.name, "을", "를")) 되돌렸어요." }
     }
 
     // MARK: 제안

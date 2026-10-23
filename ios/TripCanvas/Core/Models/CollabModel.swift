@@ -156,15 +156,17 @@ struct CandidateConflict: Equatable, Sendable {
     /// §24 세 선택지.
     var options: [Option] {
         let mustNames = must.joined(separator: ", "), passNames = pass.joined(separator: ", ")
-        let sides = "\(mustNames.isEmpty ? "원하는 분" : mustNames)은(는) \(title)"
+        let goer = mustNames.isEmpty ? "원하는 분" : mustNames
+        let sides = "\(CollabModel.withJosa(goer, "은", "는")) \(title)"
         let rest = passNames.isEmpty ? "다른 분" : passNames
+        let restSubject = CollabModel.withJosa(rest, "은", "는")
         return [
             Option(key: .together, title: "다 같이 방문",
                    text: passNames.isEmpty ? "다 같이 들러요" : "\(passNames)도 함께 — 짧게 들르는 걸로", action: "SCHEDULE"),
             Option(key: .split, title: "자유시간으로 분리",
                    text: isSplittable
-                     ? "\(sides) · \(rest)은(는) 자유시간 — 끝나면 다시 만나요"
-                     : "\(sides) · \(rest)은(는) 다른 곳 — 의견을 다시 불러오면 나눌 수 있어요",
+                     ? "\(sides) · \(restSubject) 자유시간 — 끝나면 다시 만나요"
+                     : "\(sides) · \(restSubject) 다른 곳 — 의견을 다시 불러오면 나눌 수 있어요",
                    action: isSplittable ? "SPLIT" : nil),
             Option(key: .skip, title: "이번 일정에서는 제외",
                    text: "후보에는 남겨 두고 이번엔 빼요 — 언제든 되돌릴 수 있어요", action: "REJECT")
@@ -181,6 +183,40 @@ struct SplitPlan: Equatable, Sendable {
 }
 
 enum CollabModel {
+    // MARK: 조사 — 받침에 맞춘다('을(를)'·'은(는)'을 화면에 쓰지 않는다)
+
+    /// JS `String.prototype.trim()`이 벗기는 것과 같은 집합(`ShareQueue.jsWhitespace`와 같다 — 그쪽은 private이라 복사했다).
+    private static let jsWhitespace: CharacterSet = {
+        var set = CharacterSet(charactersIn: "\u{0009}\u{000A}\u{000B}\u{000C}\u{000D}\u{0020}")
+        set.insert(charactersIn: "\u{00A0}\u{1680}\u{2028}\u{2029}\u{202F}\u{205F}\u{3000}\u{FEFF}")
+        set.insert(charactersIn: Unicode.Scalar(0x2000)!...Unicode.Scalar(0x200A)!)
+        return set
+    }()
+
+    /// 받침에 맞는 조사 — **`collab.js`의 `josa` 복사본**이다(원본은 `adaptive.js`의 `josa`, 규칙을 바꿀 때 JS를 먼저 고친다).
+    /// 마지막 글자가 한글 음절도 숫자도 아니면(영문·괄호) 받침 없는 쪽이고, 숫자는 읽는 소리(영일이삼사오육칠팔구)의 받침을 따른다. '으로'는 ㄹ 받침(일·칠·팔 포함)이면 '로'다.
+    /// 여러 이름을 이은 문장은 **마지막 이름**으로 고른다(이어 붙인 문자열을 그대로 넘긴다).
+    /// ⚠️ 글자 판정은 JS `charCodeAt`과 같은 **UTF-16 코드 단위**, 앞뒤 공백은 JS `trim()`과 같은 집합이다.
+    static func josa(_ word: String, _ withFinal: String, _ withoutFinal: String) -> String {
+        guard let last = word.trimmingCharacters(in: jsWhitespace).utf16.last else { return withoutFinal }
+        // 숫자(ASCII)는 읽는 소리의 받침을 따른다 — JS 원본과 같다.
+        if last >= 0x30 && last <= 0x39 {
+            let d = Int(last) - 0x30
+            if withFinal == "으로" && (d == 1 || d == 7 || d == 8) { return withoutFinal }
+            return [0, 1, 3, 6, 7, 8].contains(d) ? withFinal : withoutFinal
+        }
+        let code = Int(last) - 0xAC00
+        guard code >= 0, code <= 11171 else { return withoutFinal }
+        let final = code % 28
+        if withFinal == "으로" && final == 8 { return withoutFinal }
+        return final != 0 ? withFinal : withoutFinal
+    }
+
+    /// 이름 뒤에 조사를 붙인 글. `"경복궁" → "경복궁을"`.
+    static func withJosa(_ word: String, _ withFinal: String, _ withoutFinal: String) -> String {
+        word + josa(word, withFinal, withoutFinal)
+    }
+
     // MARK: 역할 — 화면 판정(경계는 DB)
 
     static func canEdit(_ role: MemberRole) -> Bool { role == .owner || role == .editor }
@@ -557,7 +593,7 @@ enum CollabModel {
         let a = whoLabels(goers, members: members).joined(separator: ", ")
         let b = whoLabels(others, members: members).joined(separator: ", ")
         return SplitPlan(goers: goers, others: others, spots: [going, free, reunion],
-                         text: "\(a)은(는) \(title), \(b)은(는) 자유시간 — 끝나면 다시 만나요")
+                         text: "\(CollabModel.withJosa(a, "은", "는")) \(title), \(CollabModel.withJosa(b, "은", "는")) 자유시간 — 끝나면 다시 만나요")
     }
 
     /// 탭 즉시 화면이 바뀌고 서버가 거절하면 되돌린다 — 집계와 `reactions`를 서버 응답과 같은 모양으로 유지한다.
@@ -583,13 +619,8 @@ enum CollabModel {
 
     // MARK: 활동 기록 — 문장은 여기서 만든다(§39). 서버는 재료만 준다
 
-    /// 을/를 — 받침이 있으면 '을'. 한글이 아니면 '를'(외국어 상호가 많다).
-    static func objectParticle(_ word: String) -> String {
-        guard let last = word.unicodeScalars.last else { return "를" }
-        let code = Int(last.value) - 0xAC00
-        guard code >= 0 && code <= 11171 else { return "를" }
-        return code % 28 == 0 ? "를" : "을"
-    }
+    /// 을/를 — 받침이 있으면 '을'. 판정은 `josa`와 같다(`collab.js` `objParticle` 복사본 — 숫자 끝말은 읽는 소리의 받침, 그 밖의 한글 아닌 끝말은 '를').
+    static func objectParticle(_ word: String) -> String { josa(word, "을", "를") }
 
     /// 활동 한 건을 사람 말로. 모르는 종류는 빈 문자열 — 화면이 그 줄을 건너뛴다.
     static func activityText(_ event: ActivityView, count: Int = 1) -> String {
@@ -834,7 +865,8 @@ extension CollabModel {
             .map(\.key)
         if !shared.isEmpty { out.append("함께 관심: " + shared.joined(separator: ", ")) }
         for topic in likes.keys.filter({ dislikes[$0] != nil }).sorted() {
-            out.append("\(topic): \((likes[topic] ?? []).joined(separator: ", "))은(는) 좋고 \((dislikes[topic] ?? []).joined(separator: ", "))은(는) 별로예요")
+            let liked = (likes[topic] ?? []).joined(separator: ", "), disliked = (dislikes[topic] ?? []).joined(separator: ", ")
+            out.append("\(topic): \(withJosa(liked, "은", "는")) 좋고 \(withJosa(disliked, "은", "는")) 별로예요")
         }
         return out
     }
