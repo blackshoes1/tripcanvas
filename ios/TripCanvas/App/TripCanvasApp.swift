@@ -24,6 +24,9 @@ struct TripCanvasApp: App {
                 .environment(environment)
                 .onChange(of: scenePhase) { _, phase in
                     if phase == .active {
+                        // 설정에서 실시간 현황을 켜고 돌아온 길일 수 있다 — 시스템 값을 다시 읽는다.
+                        // ⚠️ 지우면 실시간 현황 안내와 재시작이 조용히 멈춘다: 시스템의 변경 알림은 거의 오지 않는다.
+                        environment.liveActivity.sceneBecameActive()
                         Task {
                             await environment.push.refreshForForeground(isSignedIn: environment.auth.isSignedIn)
                             await environment.travelMode.synchronizePersistedState()

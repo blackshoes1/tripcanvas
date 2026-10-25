@@ -31,6 +31,8 @@ struct IOSReviewHarness: View {
         Group {
             if arguments.contains("--review-calm") {
                 CalmTravelReviewHarness()
+            } else if arguments.contains("--review-live-activity") {
+                LiveActivityReviewHarness()
             } else if arguments.contains("--review-followup") {
                 ReviewFollowupHarness()
             } else if arguments.contains("--review-refresh") {
