@@ -21,6 +21,8 @@ final class TravelModeController {
     private var modeGeneration = 0
     private var refreshGeneration = 0
     private var lastPersistedSnapshot: TravelModeSnapshot
+    /// 설정에서 실시간 현황을 다시 켠 횟수. 진행 중인 새로고침이 그 사이에 켜졌는지 알려고 센다.
+    private var liveActivityRestarts = 0
 
     private let service: TravelStateSource
     private let location: LocationProvider
@@ -37,6 +39,7 @@ final class TravelModeController {
         self.liveActivity = liveActivity
         let restored = SharedStore.loadTravelMode()?.value ?? TravelModeSnapshot()
         self.snapshot = restored; self.lastPersistedSnapshot = restored
+        liveActivity.onReenable { [weak self] in Task { await self?.liveActivityReenabled() } }
     }
 
     func resetForAccountChange() {
@@ -96,6 +99,16 @@ final class TravelModeController {
         await liveActivity.end()
     }
 
+    /// 사용자가 설정에서 실시간 현황을 다시 켰다 — 그 자리에서 잠금화면 안내를 시작한다.
+    /// 띄울 내용은 새로 받는다: 잠금화면 안내는 서버에서 방금 받은 상태로만 시작한다(`apply`).
+    func liveActivityReenabled() async {
+        // Siri·단축어가 앱 밖에서 안내를 켰을 수 있다 — 복귀 순서상 그 저장을 아직 안 읽었을 수 있다.
+        await synchronizePersistedState()
+        guard isActive, let tripId = snapshot.tripId else { return }
+        liveActivityRestarts += 1
+        await refresh(tripId: tripId, reason: .userAction)
+    }
+
     /// 잠깐 멈춤 — 알림만 멈추고 화면은 그대로 둔다.
     func pause() {
         modeGeneration += 1
@@ -116,6 +129,14 @@ final class TravelModeController {
     enum RefreshReason { case started, foreground, userAction, notificationOpened, manual }
 
     func refresh(tripId: String, reason: RefreshReason) async {
+        let restarts = liveActivityRestarts
+        await refreshOnce(tripId: tripId, reason: reason)
+        // 받는 사이에 실시간 현황이 다시 켜졌으면 그 요청은 `isRefreshing`에 막혔다 — 이 응답은 꺼져 있을 때
+        // 잠금화면에 갔을 수 있으니 한 번 더 받는다. 한 번뿐이다: 오프라인이면 다음 복귀가 챙긴다.
+        if liveActivityRestarts != restarts, !isRefreshing { await refreshOnce(tripId: tripId, reason: .userAction) }
+    }
+
+    private func refreshOnce(tripId: String, reason: RefreshReason) async {
         await synchronizePersistedState()
         guard isActive, snapshot.tripId == tripId else { return }
         guard !isRefreshing else { return }
@@ -251,8 +272,11 @@ protocol LiveActivityControlling {
     var lastError: String? { get }
     func sync(_ response: TravelStateResponse, changed: Bool) async
     func end() async
+    /// 사용자가 설정에서 실시간 현황을 다시 켰을 때 부를 것.
+    func onReenable(_ handler: @escaping @MainActor () -> Void)
 }
 
 extension LiveActivityControlling {
     var lastError: String? { nil }
+    func onReenable(_ handler: @escaping @MainActor () -> Void) {}
 }

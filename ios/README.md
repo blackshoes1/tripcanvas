@@ -236,7 +236,7 @@ Tests/        디코딩·상태 계산·ViewModel
 |---|---|---|
 | Travel Mode | `Features/TravelMode/TravelModeController.swift` | 켜져 있을 때만 먼저 말을 건다. 시계로 polling하지 않고 앱 전환·사용자 동작·알림 열기에만 갱신 |
 | 출발 알림 | `Core/Push/PushService.swift` | 기기가 판단하는 것(`origin: DEVICE`)만 로컬 알림. `dedupeKey`가 식별자라 같은 상황은 한 번만 뜬다 |
-| 잠금화면 | `TripCanvasWidgets/` + `TripCanvasShared/TripCanvasActivityAttributes.swift` | `stateVersion`이 같으면 **갱신하지 않는다**. 오류가 나도 마지막 상태를 유지 |
+| 잠금화면 | `TripCanvasWidgets/` + `TripCanvasShared/TripCanvasActivityAttributes.swift` | `stateVersion`이 같으면 **갱신하지 않는다**. 오류가 나도 마지막 상태를 유지. 설정에서 실시간 현황이 꺼져 있으면 `지금`의 할 일 아래 띠가 말하고 켜는 곳(설정 앱의 With J > 실시간 현황 — iOS 17에는 '앱' 단계가 없어 적지 않는다)을 적고 설정을 연다(`LiveActivitySettingsNotice`, ✕로 접으면 기기에 남는다). 시스템의 변경 알림은 거의 오지 않아 앱 복귀 때 다시 읽는다(`sceneBecameActive`). 다시 켜지면 앱이 앞에 있을 때 travel-state를 새로 받아 시작한다(`LiveActivityController.onReenable` → `TravelModeController.liveActivityReenabled`) — 연결이 없으면 다음에 새로 받을 때다. 무료 계정 빌드처럼 실시간 현황이 없는 빌드에서는 말하지 않는다 |
 | 위젯 | `TripCanvasWidgets/TripCanvasWidgets.swift` | 네트워크·인증 없음. 앱이 App Group에 써 둔 압축본만 읽고, 30분이 지나면 받은 시각을 함께 표시 |
 | 위치 | `Core/Location/LocationProvider.swift` + `LocationPrimerView` | 첫 실행에 묻지 않는다. 필요한 순간에 이유를 먼저 말하고 단발성으로만 조회 |
 
