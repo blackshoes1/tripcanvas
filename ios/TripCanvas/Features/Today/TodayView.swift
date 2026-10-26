@@ -185,6 +185,7 @@ struct TodayView: View {
 
                         // '여행 중' 권유는 할 일들 **아래**의 얇은 띠다 — 지금 할 일보다 먼저 읽히면 안 된다.
                         travelModeInviteSection
+                        liveActivityNoticeSection
 
                         if let brief = today.tomorrowBrief {
                             TomorrowBriefCard(trip: today.trip, brief: brief, generatedAt: today.generatedAt, offline: model.isOffline,
@@ -305,6 +306,17 @@ struct TodayView: View {
                     Task { await refreshTravelMode(reason: .manual) }
                 }
             }
+        }
+    }
+
+    /// 여행 중 안내를 켰는데 잠금화면 실시간 현황이 꺼져 있다 — 이 여행의 안내가 켜져 있을 때만 말한다.
+    @ViewBuilder
+    private var liveActivityNoticeSection: some View {
+        if LiveActivitySettingsNotice.isShown(travelModeTripId: env.travelMode.isActive ? env.travelMode.snapshot.tripId : nil,
+                                              tripId: trip.id,
+                                              disabledInSettings: env.liveActivity.isDisabledInSettings,
+                                              dismissed: env.liveActivity.isNoticeDismissed) {
+            LiveActivitySettingsNotice { env.liveActivity.dismissNotice() }
         }
     }
 
