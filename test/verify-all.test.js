@@ -95,7 +95,26 @@ function ciRunBlock(name) {
   return body.join('\n');
 }
 
-test('CI runs steps under pipefail so tee cannot swallow a failed audit', (t) => {
+/** 잡의 defaults.run이 있으면 워크플로 기본 셸도 다시 적어야 한다 — 실제 Actions 실행 규칙을 따른다. */
+function ciShellArgs(name) {
+  const lines = CI.split('\n');
+  const at = lines.findIndex((l) => l.trim() === `- name: ${name}`);
+  const jobAt = lines.slice(0, at).findLastIndex((l) => /^ {2}[\w-]+:$/.test(l));
+  const job = lines.slice(jobAt, at);
+  let shell = CI.match(/^defaults:\n {2}run:\n {4}shell: (.+)$/m)?.[1];
+  const defaultsAt = job.findIndex((l) => l === '    defaults:');
+  if (defaultsAt !== -1) {
+    const end = job.findIndex((l, i) => i > defaultsAt && /^ {4}\S/.test(l));
+    shell = job.slice(defaultsAt, end === -1 ? undefined : end).join('\n').match(/^ {8}shell: (.+)$/m)?.[1];
+  }
+  const end = lines.findIndex((l, i) => i > at && /^( {6}- | {2}\S)/.test(l));
+  const step = lines.slice(at, end === -1 ? undefined : end).join('\n');
+  shell = step.match(/^ {8}shell: (.+)$/m)?.[1] ?? shell;
+  assert.ok(shell === undefined || shell === 'bash', `${name}: 지원하는 CI 셸이다`);
+  return shell === 'bash' ? ['--noprofile', '--norc', '-eo', 'pipefail'] : ['-e'];
+}
+
+test('CI audits use the effective job shell so tee cannot swallow a failed audit', (t) => {
   assert.match(CI, /^defaults:\n {2}run:\n {4}shell: bash$/m, '워크플로 전체가 shell: bash(-eo pipefail)로 돈다');
   assert.doesNotMatch(CI, /^\s+shell:(?! bash$)/m, '잡·스텝이 pipefail 없는 셸로 되돌리지 않는다');
 
@@ -104,8 +123,8 @@ test('CI runs steps under pipefail so tee cannot swallow a failed audit', (t) =>
   mkdirSync(join(root, 'bin'));
   writeFileSync(join(root, 'bin/npm'), '#!/bin/sh\necho "1 critical severity vulnerability"\nexit 1\n', { mode: 0o755 });
   for (const step of ['Dependency audit (high severity)', 'Dependency audit (runtime, high severity)']) {
-    // `shell: bash`가 실제로 부르는 셸 그대로
-    const r = spawnSync(BASH, ['--noprofile', '--norc', '-eo', 'pipefail', '-c', ciRunBlock(step)], {
+    // pipefail을 가정하지 않고 워크플로·잡·스텝에서 정해진 셸 그대로 실행한다.
+    const r = spawnSync(BASH, [...ciShellArgs(step), '-c', ciRunBlock(step)], {
       cwd: root, encoding: 'utf8', env: shellEnv(join(root, 'bin'))
     });
     assert.equal(r.status, 1, `${step}: 취약점이면 실패한다\n${r.stdout}${r.stderr}`);
