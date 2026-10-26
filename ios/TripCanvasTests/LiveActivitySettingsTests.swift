@@ -188,6 +188,52 @@ final class LiveActivitySettingsTests: XCTestCase {
         XCTAssertFalse(LiveActivitySettingsNotice.isShown(travelModeTripId: "t1", tripId: "t1", disabledInSettings: true, dismissed: true))
     }
 
+    // MARK: 여행 중 안내 — 현재 여행에서 시작할 수 있는가
+
+    func testAnotherTripsRestoredGuidanceDoesNotHideStartForThisLiveTrip() async throws {
+        SharedStore.clear()
+        defer { SharedStore.clear() }
+        let response = try fixture()
+        SharedStore.saveTravelMode(.init(state: .active, tripId: "previous-trip"))
+        let source = SettingsTravelSource(response)
+        let activity = SettingsActivity()
+        let mode = travelMode(source, activity)
+
+        XCTAssertTrue(mode.shouldOfferStart(for: response.today.trip),
+                      "다른 여행의 안내가 남아 있어도 현재 여행에서 켤 수 있어야 한다")
+        XCTAssertEqual(mode.snapshot.tripId, "previous-trip", "켜기를 누르기 전에는 기존 안내를 바꾸지 않는다")
+
+        await mode.start(trip: response.today.trip)
+        XCTAssertEqual(mode.snapshot.tripId, response.today.trip.id)
+        XCTAssertEqual(activity.synced, 1)
+        XCTAssertFalse(mode.shouldOfferStart(for: response.today.trip))
+    }
+
+    func testStartOfferStaysHiddenForThisTripsActiveGuidance() throws {
+        SharedStore.clear()
+        defer { SharedStore.clear() }
+        let response = try fixture()
+        SharedStore.saveTravelMode(.init(state: .active, tripId: response.today.trip.id))
+        let mode = travelMode(SettingsTravelSource(response), SettingsActivity())
+
+        XCTAssertFalse(mode.shouldOfferStart(for: response.today.trip))
+    }
+
+    func testAnotherTripsGuidanceDoesNotOfferStartForAPreview() throws {
+        SharedStore.clear()
+        defer { SharedStore.clear() }
+        let response = try fixture()
+        let trip = response.today.trip
+        let preview = TripSummary(id: trip.id, name: trip.name, start: trip.start, dayCount: trip.dayCount,
+                                  revision: trip.revision, updatedAt: trip.updatedAt, timeZone: trip.timeZone,
+                                  cities: trip.cities, todayIndex: -1, daysUntilStart: 1,
+                                  role: trip.role, memberCount: trip.memberCount)
+        SharedStore.saveTravelMode(.init(state: .active, tripId: "previous-trip"))
+        let mode = travelMode(SettingsTravelSource(response), SettingsActivity())
+
+        XCTAssertFalse(mode.shouldOfferStart(for: preview))
+    }
+
     // MARK: 여행 중 안내 — 다시 켜지면 새로 받아 시작하는가
 
     func testReenableRestartsFromAFreshTravelState() async throws {
