@@ -12,6 +12,10 @@ Apple Developer의 해당 팀에서 **Apple Push Notifications service(APNs)** �
 Push Notifications capability가 켜져 있어야 한다. 새 인증 키는 만들 때 한 번만 내려받을 수
 있으므로 승인된 비밀 저장소에 보관한다.
 
+운영 NAS의 키는 `Production` · `Topic Specific` · `com.fromj.trip`으로 제한한다.
+개발용 Sandbox 푸시는 별도 개발 API 환경에 Sandbox 키를 설정해 확인한다.
+운영 전용 키로 Sandbox에 전송하면 Apple이 거절하므로 개발 빌드와 운영 키를 섞지 않는다.
+
 NAS의 Git에서 제외된 `deploy/.env`에 다음 세 값을 모두 설정한다. 실제 값은 채팅·PR·로그에
 붙이지 않는다. 예제 파일·저장소·이미지·iOS 번들에 `.p8`이나 비밀키를 넣지 않는다.
 
