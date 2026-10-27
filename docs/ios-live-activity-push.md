@@ -42,6 +42,16 @@ NAS의 Git에서 제외된 `deploy/.env`에 다음 세 값을 모두 설정한�
 TestFlight·App Store 빌드는 **production**이다. 토큰을 다른 환경에 보내거나 일반 기기 토큰을
 ActivityKit 토큰 대신 보내면 동작하지 않는다.
 
+소스의 entitlement 선언·Apple Developer의 Push 활성화·업로드 성공만으로는 배포 앱의
+실제 푸시 권한을 확인할 수 없다. TestFlight 업로드는 `scripts/check-ios-signing.py`로
+archive와 배포 서명된 IPA를 각각 검사한다. 본체의 실제 서명에 `aps-environment=production`이
+있고, 본체·위젯·공유 확장·Watch의 App Group이 프로파일의 허용값과 맞아야 한다.
+검사에 실패하면 업로드하지 않으며, 통과한 바로 그 IPA를 전송한다.
+서명·프로파일 원문은 로그에 남기지 않는다.
+
+근거: [프로파일과 실제 코드 서명 권한의 차이](https://developer.apple.com/documentation/technotes/tn3125-inside-code-signing-provisioning-profiles),
+[서명 권한 문제 확인 절차](https://developer.apple.com/library/archive/technotes/tn2415/_index.html).
+
 HTTP/2 요청의 topic은 `com.fromj.trip.push-type.liveactivity`, push type은 `liveactivity`다.
 서버는 Node 기본 crypto로 ES256 provider JWT를 만들고 45분 동안 재사용하며 환경별 연결을
 재사용한다. `ContentState`의 날짜는 Swift 기본 Codable 형식인 2001년 기준 초로 변환한다.
