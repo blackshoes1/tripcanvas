@@ -61,6 +61,15 @@ test('MP3 길이는 프레임을 세어 잰다', () => {
   assert.ok(Math.abs(sec - 2.4) < 0.001, String(sec));
 });
 
+test('말 빠르기로 원고와 어긋난 음성을 가린다 — 대성당 13번(368자·문단 셋)이 89초로 나온 일', () => {
+  const markup = ['가 '.repeat(42), '나 '.repeat(291), '다 '.repeat(35)].join('\n[pause long]\n');
+  assert.equal(B.speechRate(markup, 69 + 2).toFixed(2), '5.33');   // 다시 합성한 71초
+  const odd = B.speechRate(markup, 89);
+  assert.ok(odd < B.RATE_BAND[0], String(odd));
+  const ok = B.speechRate(markup, 71);
+  assert.ok(ok >= B.RATE_BAND[0] && ok <= B.RATE_BAND[1]);
+});
+
 test('원고 검사는 소리 내 읽힐 출처 ID·괄호와 빈 출처를 잡는다', () => {
   const base = { file: 'x.json', id: 'seville-x', kind: 'PLACE', lat: 1, lng: 1, radiusM: 100, sources: { P01: { title: 't', url: 'https://a.example/' } } };
   const text = '이 문장은 충분히 긴 원고입니다. '.repeat(8);

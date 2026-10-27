@@ -47,7 +47,7 @@ const SPOKEN_NAMES = [
   ['Capilla San Antonio', '카피야 산안토니오'],
   ['Capilla San Andrés', '카피야 산안드레스'],
   ['San Andrés', '산안드레스'],
-  ['Patio de los Naranjos', '파티오 데 로스 나랑호스'],
+  ['Patio de los Naranjos', '파티오 데 로스 나란호스'],
   ['Tumba de Colón', '툼바 데 콜론'],
   ['Sacristía Mayor', '사크리스티아 마요르'],
   ['Retablo Mayor', '레타블로 마요르'],
@@ -125,6 +125,18 @@ function mp3Seconds(buf) {
 
 const sha256 = (data) => crypto.createHash('sha256').update(data).digest('hex');
 
+// 말 빠르기 — Despina 1.0배는 5.3~5.9자/초다. 2026-10-27 대성당 13번이 원고는 65초 분량인데 89초로 나왔다
+// (문단별로 다시 합성하면 65초). 어긋난 음성은 들어 보기 전에는 모르므로 합성할 때 걸러 낸다
+const PAUSE_SECONDS = 1.0;
+const RATE_BAND = [4.6, 7.0];
+
+/** 공백·쉼 표시를 뺀 글자 수를 (길이 − 쉼) 초로 나눈다 */
+function speechRate(markup, seconds) {
+  const parts = markup.split(PARAGRAPH_PAUSE);
+  const chars = parts.join('').replace(/\s/g, '').length;
+  return chars / Math.max(0.1, seconds - (parts.length - 1) * PAUSE_SECONDS);
+}
+
 /** 원고 묶음 — source/seville/*.json. 대성당은 관람 지점 원고(narration/NN_narration.txt)를 읽어 들인다 */
 function loadPlaces() {
   const dir = path.join(SOURCE, 'seville');
@@ -187,6 +199,25 @@ async function synthesize(markup, key) {
   return Buffer.from((await res.json()).audioContent, 'base64');
 }
 
+/** 한 트랙을 덩어리마다 합성한다 — 말 빠르기가 어긋나면 한 번 더, 또 어긋나면 audio 없이 돌려준다 */
+async function synthesizeTrack(spoken, src, key) {
+  const parts = [];
+  let spent = 0;
+  for (const c of chunks(spoken.split(/\n\s*\n/).map((x) => x.trim()).filter(Boolean))) {
+    let audio = null;
+    for (let attempt = 1; attempt <= 2 && !audio; attempt++) {
+      const got = await synthesize(c, key);
+      spent += c.length;
+      const rate = speechRate(c, mp3Seconds(got));
+      if (rate >= RATE_BAND[0] && rate <= RATE_BAND[1]) audio = got;
+      else console.warn(`  ⚠ ${src}: 말 빠르기 ${rate.toFixed(2)}자/초 — ${attempt === 1 ? '다시 합성합니다' : '두 번 다 어긋났습니다'}`);
+    }
+    if (!audio) return { audio: null, spent };
+    parts.push(audio);
+  }
+  return { audio: Buffer.concat(parts), spent };
+}
+
 async function main() {
   const args = new Set(process.argv.slice(2));
   const places = loadPlaces();
@@ -204,6 +235,7 @@ async function main() {
   const catalog = { version: 1, updated: new Date().toISOString().slice(0, 10),
     voice: { engine: 'Google Cloud TTS Chirp 3 HD', name: VOICE.name, disclosure: 'AI 음성으로 읽었어요' }, places: [], sources: {} };
   let spent = 0;
+  const failed = [];
   for (const p of places) {
     const tracks = [];
     for (const t of p.tracks) {
@@ -214,10 +246,11 @@ async function main() {
       const spoken = spokenText(t.text);
       const fingerprint = sha256(JSON.stringify([spoken, VOICE, AUDIO, PARAGRAPH_PAUSE]));
       if (!(state[src] === fingerprint && fs.existsSync(file))) {
-        const parts = [];
-        for (const c of chunks(spoken.split(/\n\s*\n/).map((x) => x.trim()).filter(Boolean))) { parts.push(await synthesize(c, key)); spent += c.length; }
+        const made = await synthesizeTrack(spoken, src, key);
+        spent += made.spent;
+        if (!made.audio) { failed.push(src); continue; }
         fs.mkdirSync(path.dirname(file), { recursive: true });
-        fs.writeFileSync(file, Buffer.concat(parts));
+        fs.writeFileSync(file, made.audio);
         if (!draft) state[src] = fingerprint;
         console.log(`  ♪ ${src}`);
       }
@@ -230,11 +263,17 @@ async function main() {
     catalog.places.push({ id, kind, name, localName, city, lat, lng, radiusM, aliases, placeIds, tracks });
     for (const s of new Set(tracks.flatMap((t) => t.sources))) catalog.sources[s] = { title: p.sources[s].title, url: p.sources[s].url };
   }
+  // 상태는 먼저 남긴다 — 다시 돌릴 때 잘 만든 트랙에 또 돈을 쓰지 않게
+  if (!draft) fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2) + '\n');
+  if (failed.length) {
+    // 카탈로그는 쓰지 않는다 — 실패한 트랙이 빠지거나 옛 파일이 실린 채 배포되지 않게
+    console.error(`✗ 말 빠르기가 원고와 맞지 않는 트랙 ${failed.length}편: ${failed.join(', ')} — 다시 돌리면 이것만 합성합니다. 계속되면 원고를 들어 보세요`);
+    process.exit(1);
+  }
   fs.mkdirSync(outDir, { recursive: true });
   fs.writeFileSync(path.join(outDir, 'catalog.json'), JSON.stringify(catalog, null, 2) + '\n');
-  if (!draft) fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2) + '\n');
   console.log(`${draft ? '검수용 ' : ''}카탈로그: ${catalog.places.length}곳 · 이번에 합성한 글자 ${spent.toLocaleString()}자 → ${path.relative(ROOT, outDir)}/`);
 }
 
-module.exports = { sinoKorean, spokenText, withJosa, chunks, mp3Seconds, check, loadPlaces };
+module.exports = { sinoKorean, spokenText, withJosa, chunks, mp3Seconds, speechRate, RATE_BAND, check, loadPlaces };
 if (require.main === module) main().catch((e) => { console.error(e.message); process.exit(1); });
