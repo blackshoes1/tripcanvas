@@ -134,6 +134,13 @@
       "when": 1792037104950,
       "tag": "0018_daily_moments",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1793081222759,
+      "tag": "0019_live_activity_subscriptions",
+      "breakpoints": true
     }
   ]
 }

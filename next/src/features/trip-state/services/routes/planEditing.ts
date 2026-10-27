@@ -35,14 +35,17 @@ export function createPlanEditingHandlers(kit: HandlerKit) {
 
       const body = await readPlanPreviewBody(request);
       if (!body || typeof body.revision !== 'number' || !Number.isSafeInteger(body.revision) || body.revision < 0
-        || typeof body.dayIndex !== 'number' || !Number.isSafeInteger(body.dayIndex) || body.dayIndex < 0) return fail('BAD_REQUEST');
+        || typeof body.dayIndex !== 'number' || !Number.isSafeInteger(body.dayIndex) || body.dayIndex < 0
+        || (body.sortByTime !== undefined && typeof body.sortByTime !== 'boolean')) return fail('BAD_REQUEST');
       if (body.revision !== row.revision) return fail('REVISION_CONFLICT', { revision: row.revision });
       const normalized = lib.validateTripPayload(body.document);
       if (!normalized.ok) return fail('BAD_REQUEST', { message: normalized.error });
       const draft = normalized.value as TripDoc;
       draft.id = row.client_id;
       const dayIndex = body.dayIndex;
-      if (!row.data.days?.[dayIndex] || !draft.days?.[dayIndex]) return fail('DAY_NOT_FOUND');
+      const targetDay = draft.days?.[dayIndex];
+      if (!row.data.days?.[dayIndex] || !targetDay) return fail('DAY_NOT_FOUND');
+      if (body.sortByTime === true) lib.sortDayByTime(targetDay);
 
       // 미리보기는 저장 전 초안이다. wait=0으로 캐시만 읽고 fillLater도 부르지 않는다.
       const readCache = async (trip: TripDoc): Promise<LegCache> => {
@@ -58,6 +61,7 @@ export function createPlanEditingHandlers(kit: HandlerKit) {
         legCache: afterCache, legsPending: 0, fx, todayISO });
       if (!before || !after) return fail('DAY_NOT_FOUND');
       const response: PlanPreviewResponse = { before, after };
+      if (body.sortByTime === true) response.document = { ...draft };
       return ok(response);
     });
   }

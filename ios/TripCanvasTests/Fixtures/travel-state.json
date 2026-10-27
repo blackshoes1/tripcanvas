@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "stateVersion": "v153hz1s",
+  "stateVersion": "vyq5s4m",
   "today": {
     "schemaVersion": 1,
     "generatedAt": "2026-09-01T09:55:00Z",
@@ -353,7 +353,7 @@
     "fixedTitle": "저녁 예약",
     "fixedStartISO": "2026-09-01T10:00:00Z",
     "pulseText": "일정대로 잘 가고 있어요",
-    "stateVersion": "v153hz1s"
+    "stateVersion": "vyq5s4m"
   },
   "widget": {
     "tripId": "parity",
@@ -389,7 +389,7 @@
       }
     ],
     "updatedAtISO": "2026-09-01T09:55:00Z",
-    "stateVersion": "v153hz1s"
+    "stateVersion": "vyq5s4m"
   },
   "suggestionsExpireAtISO": "2026-09-01T10:00:00Z",
   "suggestionsExpireMinutes": 1140,

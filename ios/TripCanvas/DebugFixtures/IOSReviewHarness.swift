@@ -29,7 +29,9 @@ struct IOSReviewHarness: View {
 
     var body: some View {
         Group {
-            if arguments.contains("--review-calm") {
+            if arguments.contains("--review-plan-move") {
+                PlanMoveReviewHarness()
+            } else if arguments.contains("--review-calm") {
                 CalmTravelReviewHarness()
             } else if arguments.contains("--review-live-activity") {
                 LiveActivityReviewHarness()

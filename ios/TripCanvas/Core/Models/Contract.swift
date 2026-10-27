@@ -508,6 +508,7 @@ struct NotificationPlanItem: Codable, Hashable, Sendable, Identifiable {
 
 /// 잠금화면·Dynamic Island가 그릴 압축 상태. 일정표를 통째로 넣지 않는다(§75.5).
 struct LiveActivityState: Codable, Hashable, Sendable {
+    let scheduleElapsed: Bool?
     let tripName: String
     let dayLabel: String
     let status: TravelStatus

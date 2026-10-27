@@ -244,8 +244,9 @@ Tests/        디코딩·상태 계산·ViewModel
 잠금화면/위젯 압축본을 준다. 여행 중에 endpoint를 연달아 부르는 것이 곧 배터리다.
 
 ⚠️ `NSSupportsLiveActivities`·App Group·`aps-environment`는 `project.yml`에 선언돼 있지만
-**APNs 키와 서명은 각자 설정해야 한다.** 서버 → APNs 실제 발송은 아직 붙이지 않았다 —
-서버는 "무엇을 보낼 만한가"(`notifications`)까지만 계산하고, 지금은 기기가 그중 자기 몫만 로컬로 띄운다.
+**APNs 키와 서명은 각자 설정해야 한다.** ActivityKit 전용 token을 등록하면 서버가
+앱이 화면에 없을 때의 잠금화면 상태 갱신을 APNs로 보낸다. [운영 설정과 실기기 확인](../docs/ios-live-activity-push.md)을 따른다.
+출발 알림은 지금처럼 기기가 자기 몫(`origin: DEVICE`)만 로컬로 띄운다.
 
 ## 확장 표면 (Siri · 공유 · Watch · 기록)
 
@@ -260,7 +261,7 @@ Tests/        디코딩·상태 계산·ViewModel
 
 ## 이번 단계에서 하지 않은 것
 
-Apple Watch · Siri/App Intents · 서버발 APNs 발송 · Live Activity remote update ·
+Apple Watch · Siri/App Intents · 일반 서버 알림 발송 ·
 연속 위치 추적 · 백그라운드 geofencing · 완전 offline-first · 자동 예약/결제 · 실시간 항공/교통 API.
 구조상 막히지 않도록 자리는 열어 두었다: 알림 계획에 `origin: SERVER` 항목이 이미 나오고,
 `notification_log`가 중복을 막고, `TravelActivityState`는 ActivityKit이 그대로 쓰는 모양이다.

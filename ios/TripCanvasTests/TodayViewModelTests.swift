@@ -82,7 +82,9 @@ final class TodayViewModelTests: XCTestCase {
 
     private func fixture() throws -> TodayResponse {
         let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "today", withExtension: "json"))
-        return try JSONDecoder().decode(TodayResponse.self, from: Data(contentsOf: url))
+        var raw = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        raw["generatedAt"] = ISO8601DateFormatter().string(from: Date())
+        return try JSONDecoder().decode(TodayResponse.self, from: JSONSerialization.data(withJSONObject: raw))
     }
 
     private func makeModel(_ stub: StubDataSource, from today: TodayResponse) -> TodayViewModel {
@@ -109,6 +111,78 @@ final class TodayViewModelTests: XCTestCase {
     }
 
     // MARK: 테스트
+
+    func testElapsedScheduleKeepsUnrecordedPlacesWithoutClaimingTheyWereVisited() async throws {
+        var raw = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(fixture())) as? [String: Any])
+        raw["nextAction"] = NSNull()
+        var activityState = try XCTUnwrap(raw["activityState"] as? [String: Any])
+        activityState["status"] = "COMPLETED"
+        raw["activityState"] = activityState
+        let today = try JSONDecoder().decode(TodayResponse.self, from: JSONSerialization.data(withJSONObject: raw))
+        let stub = StubDataSource(todayResponse: today)
+        let model = makeModel(stub, from: today)
+        await model.load()
+        XCTAssertTrue(model.hasUnrecordedPastSchedule)
+        XCTAssertEqual(model.status, .completed)
+        XCTAssertEqual(model.today?.remainingActivities.map(\.id), today.remainingActivities.map(\.id))
+        XCTAssertTrue(model.today?.activities.allSatisfy { !$0.status.isDone } == true)
+        XCTAssertEqual(stub.activityCallCount, 0, "시각이 지났다고 다녀온 것으로 저장하지 않는다")
+
+        var state = try XCTUnwrap(raw["currentState"] as? [String: Any])
+        state["live"] = false
+        raw["currentState"] = state
+        stub.todayResponse = try JSONDecoder().decode(TodayResponse.self, from: JSONSerialization.data(withJSONObject: raw))
+        await model.load()
+        XCTAssertFalse(model.hasUnrecordedPastSchedule, "미리보기에는 현재 시각 판정을 붙이지 않는다")
+    }
+
+    func testFreshResponseReloadsWhenAnActivityBoundaryPasses() async throws {
+        var raw = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(fixture())) as? [String: Any])
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "UTC"))
+        let now = Date()
+        let parts = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: now)
+        let minute = try XCTUnwrap(parts.hour) * 60 + (try XCTUnwrap(parts.minute)) + 2
+        var day = try XCTUnwrap(raw["day"] as? [String: Any])
+        day["date"] = String(format: "%04d-%02d-%02d", try XCTUnwrap(parts.year), try XCTUnwrap(parts.month), try XCTUnwrap(parts.day))
+        day["timeZone"] = "UTC"
+        raw["day"] = day
+        var activities = try XCTUnwrap(raw["activities"] as? [[String: Any]])
+        for index in activities.indices {
+            activities[index]["startMinutes"] = minute
+            activities[index]["endMinutes"] = minute + 60
+        }
+        raw["activities"] = activities
+        var next = try XCTUnwrap(raw["nextAction"] as? [String: Any])
+        next["departure"] = NSNull()
+        raw["nextAction"] = next
+        let today = try JSONDecoder().decode(TodayResponse.self, from: JSONSerialization.data(withJSONObject: raw))
+        let stub = StubDataSource(todayResponse: today)
+        let model = makeModel(stub, from: today)
+        await model.load()
+        let loadedAt = try XCTUnwrap(model.loadedAt)
+        let boundary = try XCTUnwrap(TodayRefreshTiming.nextBoundary(for: today))
+        XCTAssertLessThan(boundary.timeIntervalSince(loadedAt), 180)
+        let before = await model.loadIfStale(maxAge: 600, now: boundary.addingTimeInterval(-1))
+        XCTAssertFalse(before)
+        let after = await model.loadIfStale(maxAge: 600, now: boundary.addingTimeInterval(1))
+        XCTAssertTrue(after, "캐시가 신선해도 일정 시각을 지나면 다시 받는다")
+        XCTAssertEqual(stub.todayCallCount, 2)
+    }
+
+    func testResponseAlreadyPastItsGeneratedBoundaryReloadsOnEntry() async throws {
+        var raw = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(fixture())) as? [String: Any])
+        raw["generatedAt"] = "2026-09-01T00:59:59.750Z"
+        let today = try JSONDecoder().decode(TodayResponse.self, from: JSONSerialization.data(withJSONObject: raw))
+        let stub = StubDataSource(todayResponse: today)
+        let model = makeModel(stub, from: today)
+        await model.load()
+        let boundary = try XCTUnwrap(TodayRefreshTiming.nextBoundary(for: today))
+        XCTAssertLessThan(boundary, try XCTUnwrap(model.loadedAt))
+        let refreshed = await model.loadIfStale()
+        XCTAssertTrue(refreshed, "수신할 때 이미 지난 경계도 놓치지 않는다")
+        XCTAssertEqual(stub.todayCallCount, 2)
+    }
 
     /// 탭을 오갈 때마다 서버를 다시 묻지 않는다 — 방금 받은 것이면 그대로다(2026-09-17 "탭마다 로딩" 보고).
     func testEnteringTheTabAgainDoesNotAskTheServerWhileFresh() async throws {

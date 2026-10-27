@@ -77,6 +77,9 @@ struct TripHomeView: View {
                     }, onOpenActivity: { day, activity in
                         models.plan.requestFocus(activity, day: day, revision: models.today.revision)
                         selection.wrappedValue = .plan
+                    }, onMoveActivity: { day, activity, revision in
+                        models.plan.requestMove(activity, day: day, revision: revision)
+                        selection.wrappedValue = .plan
                     }, onOpenPlanDay: { day in
                         models.plan.selectedDay = day; selection.wrappedValue = .plan
                     }, onOpenOffline: { panel = .offline })

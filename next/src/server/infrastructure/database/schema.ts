@@ -320,6 +320,36 @@ export const authSession = pgTable('auth_session', {
   userId: text('user_id').notNull().references(() => authUser.id, { onDelete: 'cascade' })
 }, (t) => [index('auth_session_user_idx').on(t.userId)]);
 
+/** 잠금화면 갱신 전용 토큰. 일반 기기 알림 토큰과 섞지 않고 로그인 세션 수명을 따른다. */
+export const liveActivitySubscriptions = pgTable('live_activity_subscriptions', {
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  deviceId: text('device_id').notNull(),
+  activityId: text('activity_id').notNull(),
+  sessionId: text('session_id').notNull().references(() => authSession.id, { onDelete: 'cascade' }),
+  tripId: uuid('trip_id').references(() => trips.id, { onDelete: 'cascade' }),
+  pushToken: text('push_token'),
+  tokenRevision: bigint('token_revision', { mode: 'number' }).notNull().default(0),
+  environment: text('environment').notNull().default('production'),
+  startedAt: timestamp('started_at', { withTimezone: true }).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  nextUpdateAt: timestamp('next_update_at', { withTimezone: true }).notNull(),
+  endedAt: timestamp('ended_at', { withTimezone: true }),
+  leaseId: uuid('lease_id'),
+  leaseUntil: timestamp('lease_until', { withTimezone: true }),
+  lastStateVersion: text('last_state_version'),
+  failures: integer('failures').notNull().default(0),
+  lastError: text('last_error'),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, (t) => [
+  primaryKey({ columns: [t.userId, t.deviceId, t.activityId] }),
+  index('live_activity_due_idx').on(t.nextUpdateAt).where(sql`${t.endedAt} is null`),
+  index('live_activity_expiry_idx').on(t.expiresAt),
+  index('live_activity_session_idx').on(t.sessionId),
+  uniqueIndex('live_activity_token_uidx').on(t.pushToken).where(sql`${t.pushToken} is not null`),
+  check('live_activity_environment_check', sql`${t.environment} in ('sandbox','production')`),
+  check('live_activity_active_target_check', sql`${t.endedAt} is not null or (${t.tripId} is not null and ${t.pushToken} is not null)`)
+]);
+
 export const authAccount = pgTable('auth_account', {
   id: text('id').primaryKey(),
   issuer: text('issuer').notNull(),

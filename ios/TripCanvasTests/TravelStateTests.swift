@@ -83,6 +83,41 @@ final class TravelStateTests: XCTestCase {
         }
     }
 
+    /// 서버 sender가 만든 APNs body를 ActivityKit과 같은 기본 JSONDecoder로 읽는다.
+    func testDecodesRealAPNsContentStateWithDefaultDateStrategy() throws {
+        let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "live-activity-push", withExtension: "json"))
+        let payloads = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [[String: Any]])
+        XCTAssertEqual(payloads.count, 2)
+        func decode(_ payload: [String: Any]) throws -> TripCanvasActivityAttributes.ContentState {
+            let aps = try XCTUnwrap(payload["aps"] as? [String: Any])
+            let raw = try XCTUnwrap(aps["content-state"] as? [String: Any])
+            for key in ["tripId", "confirmation", "bookUrl", "placeId", "bookingId", "lat", "lng", "authorization", "pushToken"] {
+                XCTAssertNil(raw[key], "\(key)는 잠금화면 payload에 나가면 안 된다")
+            }
+            return try JSONDecoder().decode(TripCanvasActivityAttributes.ContentState.self,
+                                            from: JSONSerialization.data(withJSONObject: raw))
+        }
+        let current = try decode(XCTUnwrap(payloads.first))
+        XCTAssertEqual(current.tripName, "잠금화면 정합성")
+        XCTAssertEqual(current.dayLabel, "Day 2")
+        XCTAssertEqual(current.nextTitle, "점심")
+        XCTAssertEqual(try XCTUnwrap(current.nextStartAt).timeIntervalSince1970, 1_793_104_200.25, accuracy: 0.001)
+        XCTAssertEqual(try XCTUnwrap(current.fixedStartAt).timeIntervalSince1970, 1_793_106_000, accuracy: 0.001)
+        XCTAssertEqual(current.fixedTitle, "미술관 예약")
+        XCTAssertEqual(current.travelMinutes, 12)
+        XCTAssertNil(current.departureText)
+        XCTAssertEqual(current.scheduleElapsed, false)
+        let elapsed = try decode(XCTUnwrap(payloads.last))
+        XCTAssertEqual(elapsed.dayLabel, "Day 2")
+        XCTAssertEqual(elapsed.scheduleElapsed, true)
+        XCTAssertEqual(elapsed.status, .completed)
+        XCTAssertNil(elapsed.nextStartAt)
+        XCTAssertNil(elapsed.fixedStartAt)
+        XCTAssertNil(elapsed.fixedTitle)
+        XCTAssertNil(elapsed.travelMinutes)
+        XCTAssertNil(elapsed.departureText)
+    }
+
     func testActivityContentStateMapping() throws {
         let state = try fixture()
         let content = TripCanvasActivityAttributes.ContentState(from: state.liveActivity)
@@ -92,6 +127,34 @@ final class TravelStateTests: XCTestCase {
         if state.liveActivity.nextStartISO != nil {
             XCTAssertNotNil(content.nextStartAt, "ISO 시각을 Date로 못 읽으면 잠금화면 시계가 빈다")
         }
+    }
+
+    func testElapsedScheduleUsesAClockWithoutClaimingAVisitWasCompleted() throws {
+        let state = try fixture()
+        var raw = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(state.liveActivity)) as? [String: Any])
+        raw["scheduleElapsed"] = true
+        raw["status"] = "COMPLETED"
+        raw["nextTitle"] = "예정 시간 지남"
+        let live = try JSONDecoder().decode(LiveActivityState.self, from: JSONSerialization.data(withJSONObject: raw))
+        let content = TripCanvasActivityAttributes.ContentState(from: live)
+        XCTAssertEqual(content.scheduleElapsed, true)
+        XCTAssertEqual(ActivityPresentation.symbol(for: content), "clock.fill")
+        XCTAssertEqual(ActivityPresentation.heading(content), "오늘")
+    }
+
+    func testLegacyActivityStateKeepsTheCompletedSymbolAndCurrentHeadingFollowsTheServer() throws {
+        let state = try fixture()
+        XCTAssertNil(state.liveActivity.scheduleElapsed, "이전 API 응답도 그대로 읽는다")
+        var content = TripCanvasActivityAttributes.ContentState(from: state.liveActivity)
+        content.status = .completed
+        let old = try JSONDecoder().decode(TripCanvasActivityAttributes.ContentState.self, from: JSONEncoder().encode(content))
+        XCTAssertNil(old.scheduleElapsed, "이전 잠금화면 상태도 그대로 읽는다")
+        XCTAssertEqual(ActivityPresentation.symbol(for: old), "checkmark.circle.fill")
+        XCTAssertEqual(ActivityPresentation.heading(old), "다음")
+        content.status = .inProgress
+        XCTAssertEqual(ActivityPresentation.heading(content), "지금")
+        content.status = .upcoming
+        XCTAssertEqual(ActivityPresentation.heading(content), "다음")
     }
 
     func testCompactTravelIsExtremelyShort() {
