@@ -11,20 +11,36 @@ test('연도·세기는 한자어로 풀어 넘긴다 — 고유어 수(44개)�
   assert.equal(B.spokenText('1929년 박람회 · 14세기 궁전 · 44개의 부조'), '천구백이십구 년 박람회 · 십사 세기 궁전 · 44개의 부조');
 });
 
-test('현지어 표지는 한국어 이름으로, 트랙 번호는 앞의 0 없이 읽는다 — 화면 원고는 그대로', () => {
-  assert.equal(B.spokenText('다음 이동: Tumba de Colón을 찾습니다.'), '다음 이동: 콜럼버스 기념묘를 찾습니다.');
-  assert.equal(B.spokenText('Coro를 찾습니다'), '성가대석을 찾습니다');
-  assert.equal(B.spokenText('Sala Capitular로 이동'), '참사회실로 이동');
-  assert.equal(B.spokenText('Capilla Virgen de la Antigua를'), '안티구아 성모 예배당을');
-  assert.equal(B.spokenText('Retablo Mayor를'), '레타블로 마요르를');
-  assert.equal(B.spokenText('Capilla San Andrés와 San Andrés에'), '산안드레스 예배당과 산안드레스 예배당에');
-  assert.equal(B.spokenText('본당에서 04번을 듣습니다.'), '본당에서 4번을 듣습니다.');
+test('현지어 표지는 한글 음역으로 읽고 조사는 받침에 맞춘다 — 표지와 맞춰 보라는 원고라 번역하지 않는다', () => {
+  assert.equal(B.spokenText('Tumba de Colón을 찾습니다.'), '툼바 데 콜론을 찾습니다.');
+  assert.equal(B.spokenText('Coro를 찾습니다'), '코로를 찾습니다');
+  assert.equal(B.spokenText('Sacristía Mayor라는 이름과'), '사크리스티아 마요르라는 이름과');
+  assert.equal(B.spokenText('Sacristía de los Cálices라는 이름'), '사크리스티아 데 로스 칼리세스라는 이름');
+  assert.equal(B.spokenText('Capilla Virgen de la Antigua를'), '카피야 비르헨 데 라 안티구아를');
+  assert.equal(B.spokenText('Sala Capitular로 이어집니다'), '살라 카피툴라르로 이어집니다');
+  assert.equal(B.spokenText('Capilla San Antonio로'), '카피야 산안토니오로');
+  assert.equal(B.spokenText('선택 장소인 San Andrés에 있습니다'), '선택 장소인 산안드레스에 있습니다');
+  // 받침이 다른 이름으로 바뀌어도 조사가 따라온다
+  assert.equal(B.withJosa('예배당', '를'), '예배당을');
+  assert.equal(B.withJosa('기념묘', '을'), '기념묘를');
+  assert.equal(B.withJosa('대성물실', '라는'), '대성물실이라는');
+  assert.equal(B.withJosa('참사회실', '으로'), '참사회실로');
+  assert.equal(B.withJosa('정원', '로'), '정원으로');
+});
+
+test('트랙 번호는 횟수로 들리지 않게 읽는다 — 날짜·세는 말은 그대로', () => {
+  assert.equal(B.spokenText('본당에서 04번을 듣습니다.'), '본당에서 네 번째 트랙을 듣습니다.');
+  assert.equal(B.spokenText('제단 장식이 05번의 대상입니다.'), '제단 장식이 다섯 번째 트랙의 대상입니다.');
   assert.equal(B.spokenText('기본 코스는 09 참사회실로 이어집니다.'), '기본 코스는 9번 참사회실로 이어집니다.');
   assert.equal(B.spokenText('기본 코스는 11 산안토니오로'), '기본 코스는 11번 산안토니오로');
-  // 날짜·세는 말은 건드리지 않는다
+  assert.equal(B.spokenText('세 번 듣고 3번을 더 들었다'), '세 번 듣고 3번을 더 들었다');   // 한 자리는 횟수일 수 있다
   assert.equal(B.spokenText('1월 20일 · 알폰소 13세 · 80킬로미터 · 에피소드 2에서'), '1월 20일 · 알폰소 13세 · 80킬로미터 · 에피소드 2에서');
-  // 저장소의 원고에는 합성에 넣을 로마자가 남지 않는다
-  for (const p of B.loadPlaces()) for (const t of p.tracks) assert.doesNotMatch(B.spokenText(t.text), /[A-Za-z]/, `${p.id}/${t.id}`);
+  // 저장소의 원고에는 합성에 넣을 로마자가 남지 않고, '다음 이동:' 라벨도 읽지 않는다
+  for (const p of B.loadPlaces()) for (const t of p.tracks) {
+    const spoken = B.spokenText(t.text);
+    assert.doesNotMatch(spoken, /[A-Za-z]/, `${p.id}/${t.id}`);
+    assert.doesNotMatch(spoken, /다음 이동|이제 다음 장소로 갑니다\. 마지막/, `${p.id}/${t.id}`);
+  }
 });
 
 test('요청은 문단을 지키며 나누고, 문단 사이에 쉼을 넣는다', () => {

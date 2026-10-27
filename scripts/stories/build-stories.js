@@ -37,25 +37,29 @@ function sinoKorean(n) {
 }
 
 /** 낭독용 표기 — 화면 원고는 그대로 두고 합성에 넣을 글만 바꾼다(pronunciation-notes.txt) */
-// 현지어 표지는 화면에 남기고 음성은 본문이 이미 쓰는 한국어 이름으로 읽는다(pronunciation-notes.txt).
-// 한국어 목소리가 'Tumba de Colón'을 읽으면 영어도 스페인어도 아닌 소리가 난다. 긴 이름부터 바꾼다
+// 현지어 표지는 한글 음역으로 읽는다 — 원고가 'Sacristía Mayor라는 이름을 확인하세요'처럼 현장 표지와 맞춰 보라고
+// 하는 자리라 '대성물실'로 번역하면 표지에 없는 이름을 찾게 된다. 음역은 본문이 이미 쓰는 표기를 따른다(라 히랄다·
+// 살라 카피툴라르·사크리스티아 데 로스 칼리세스). 한국어 목소리가 로마자를 읽으면 영어도 스페인어도 아닌 소리가 난다.
+// 긴 이름부터 바꾼다
 const SPOKEN_NAMES = [
-  ['Sacristía de los Cálices', '성배실'],
-  ['Capilla Virgen de la Antigua', '안티구아 성모 예배당'],
-  ['Capilla San Antonio', '산안토니오 예배당'],
-  ['Capilla San Andrés', '산안드레스 예배당'],
-  ['San Andrés', '산안드레스 예배당'],
-  ['Patio de los Naranjos', '오렌지 정원'],
-  ['Tumba de Colón', '콜럼버스 기념묘'],
-  ['Sacristía Mayor', '대성물실'],
+  ['Sacristía de los Cálices', '사크리스티아 데 로스 칼리세스'],
+  ['Capilla Virgen de la Antigua', '카피야 비르헨 데 라 안티구아'],
+  ['Capilla San Antonio', '카피야 산안토니오'],
+  ['Capilla San Andrés', '카피야 산안드레스'],
+  ['San Andrés', '산안드레스'],
+  ['Patio de los Naranjos', '파티오 데 로스 나랑호스'],
+  ['Tumba de Colón', '툼바 데 콜론'],
+  ['Sacristía Mayor', '사크리스티아 마요르'],
   ['Retablo Mayor', '레타블로 마요르'],
-  ['Sala Capitular', '참사회실'],
-  ['La Giralda', '히랄다'],
-  ['Coro', '성가대석']
+  ['Sala Capitular', '살라 카피툴라르'],
+  ['La Giralda', '라 히랄다'],
+  ['Coro', '코로']
 ];
 
-// 바꾼 이름 뒤의 조사를 그 이름의 받침에 맞춘다 — 'Coro를' → '성가대석을'(받침 있음), 'Tumba de Colón을' → '콜럼버스 기념묘를'
-const JOSA = [['을', '를'], ['이', '가'], ['은', '는'], ['과', '와']];
+// 바꾼 이름 뒤의 조사를 그 이름의 받침에 맞춘다 — 'Tumba de Colón을'은 그대로 '툼바 데 콜론을', 'Coro를'은 '코로를',
+// 'Sacristía de los Cálices라는'은 '…칼리세스라는'. 받침이 다른 이름으로 바꾸면 원문의 조사가 틀린다(검토에서 '기념묘을'이 나왔다)
+const JOSA = [['을', '를'], ['이', '가'], ['은', '는'], ['과', '와'], ['이라는', '라는'], ['이라고', '라고'], ['이며', '며']];
+const JOSA_RE = '(이라는|라는|이라고|라고|이며|으로|로|을|를|이|가|은|는|과|와)?';
 function withJosa(ko, josa) {
   const code = ko.charCodeAt(ko.length - 1) - 0xac00;
   if (code < 0 || code > 11171) return ko + josa;
@@ -65,17 +69,21 @@ function withJosa(ko, josa) {
   return ko + (pair ? (jong ? pair[0] : pair[1]) : josa);
 }
 
+// 트랙 번호 — '04번을 듣습니다'는 '네 번(네 차례) 듣습니다'로 들린다. 원고 다른 곳처럼 '네 번째 트랙'으로 읽는다
+const ORDINALS = ['', '첫', '두', '세', '네', '다섯', '여섯', '일곱', '여덟', '아홉', '열', '열한', '열두', '열세', '열네'];
+
 function spokenText(text) {
   let s = text;
   for (const [local, ko] of SPOKEN_NAMES) {
-    s = s.replace(new RegExp(local.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(으로|로|을|를|이|가|은|는|과|와)?', 'g'),
+    s = s.replace(new RegExp(local.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + JOSA_RE, 'g'),
       (_, josa) => (josa ? withJosa(ko, josa) : ko));
   }
   return s
     .replace(/(\d{1,4})년/g, (_, y) => sinoKorean(+y) + ' 년')
     .replace(/(\d{1,2})세기/g, (_, c) => sinoKorean(+c) + ' 세기')
-    // 트랙 번호 — '04번'·'09 참사회실'을 '공사번'·'공구'로 읽지 않게 앞의 0을 떼고 '번'을 붙인다
-    .replace(/(^|[^\d])0(\d)번/g, '$1$2번')
+    // 원고의 트랙 번호는 두 자리로 적혀 있다('04번') — 한 자리 '3번을'은 횟수일 수 있어 건드리지 않는다
+    .replace(/(^|[^\d])(0[1-9]|1[0-4])번(을|의|이)/g, (_, pre, n, josa) => `${pre}${ORDINALS[+n]} 번째 트랙${josa}`)
+    // '09 참사회실'처럼 이름 앞에 붙은 번호는 '9번 참사회실' — 0을 '공'으로 읽지 않게
     .replace(/(\s)0?(\d|1[0-4]) (?=[가-힣])/g, (m, sp, n) => `${sp}${+n}번 `);
   // ⚠️ '44개'·'3명' 같은 고유어 수는 바꾸지 않는다 — '사십사 개'는 틀린 읽기다. 엔진에 맡기고 들어서 확인한다
 }
@@ -228,5 +236,5 @@ async function main() {
   console.log(`${draft ? '검수용 ' : ''}카탈로그: ${catalog.places.length}곳 · 이번에 합성한 글자 ${spent.toLocaleString()}자 → ${path.relative(ROOT, outDir)}/`);
 }
 
-module.exports = { sinoKorean, spokenText, chunks, mp3Seconds, check, loadPlaces };
+module.exports = { sinoKorean, spokenText, withJosa, chunks, mp3Seconds, check, loadPlaces };
 if (require.main === module) main().catch((e) => { console.error(e.message); process.exit(1); });
