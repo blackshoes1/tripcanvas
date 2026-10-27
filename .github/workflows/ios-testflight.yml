@@ -54,6 +54,12 @@ jobs:
             exit 1
           fi
 
+      - name: Xcode signing tools
+        run: |
+          xcodebuild -version
+          xcode-select -p
+          xcodebuild -help 2>&1 | python3 -c 'import re, sys; lines = sys.stdin.read().splitlines(); start = next((i for i, line in enumerate(lines) if re.match(r"\s*signingStyle\s*:", line)), None); print("\n".join(lines[start:start + 6]) if start is not None else "SIGNING_STYLE_HELP_NOT_FOUND")'
+
       - name: Install XcodeGen
         run: brew install xcodegen
 
