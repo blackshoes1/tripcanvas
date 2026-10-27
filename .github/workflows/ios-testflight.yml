@@ -106,6 +106,10 @@ jobs:
           PLIST
 
       - name: Export distribution-signed IPA
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPSTORE_KEY_ID: ${{ secrets.APPSTORE_KEY_ID }}
+          APPSTORE_ISSUER_ID: ${{ secrets.APPSTORE_ISSUER_ID }}
         run: |
           umask 077
           if xcodebuild -exportArchive \
@@ -119,6 +123,7 @@ jobs:
             echo "배포 서명된 IPA 생성 완료"
           else
             status=$?
+            python3 scripts/check-ios-signing.py export-errors "$RUNNER_TEMP/export.log" || true
             echo "배포 서명 실패: xcodebuild exit=$status — 서명·프로파일 원문 로그는 출력하지 않습니다."
             exit "$status"
           fi

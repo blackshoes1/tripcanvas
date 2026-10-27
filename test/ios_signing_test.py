@@ -226,6 +226,121 @@ class SigningTests(unittest.TestCase):
                 NATIVE_RUN(["/usr/bin/codesign"])
         self.assertEqual(str(caught.exception), "TOOL_UNAVAILABLE:codesign:errno=2")
 
+    def test_export_error_summary_preserves_causes_without_unrelated_log_lines(self):
+        log = self.root / "export.log"
+        log.write_text('unrelated private build output\n'
+                       'error: exportArchive Cloud signing permission error\n'
+                       'Error Domain=IDEProvisioningErrorDomain Code=9 "Cloud signing permission error"\n')
+        summary = signing.export_error_summary(log)
+        self.assertEqual(summary, ['error: exportArchive Cloud signing permission error',
+            'Error Domain=IDEProvisioningErrorDomain Code=9 "Cloud signing permission error"'])
+
+    def test_export_error_summary_redacts_secrets_names_paths_and_user_info(self):
+        log = self.root / "export.log"
+        log.write_text('-----BEGIN PRIVATE KEY-----\nerror: exportArchive PRIVATE-PEM\n'
+                       '-----END PRIVATE KEY-----\n'
+                       'error: exportArchive Cloud signing permission error for team "Private Team" '
+                       'and provisioning profile "Private Profile" at /Users/private-user/signing.p8 '
+                       'and "/home/private user/private profile.mobileprovision" '
+                       'PRIVATE-ENV-VALUE user private@example.test Bearer PRIVATE-BEARER '
+                       'API_TOKEN=PRIVATE-INLINE eyJhbGciOiJFUzI1NiJ9.eyJpc3MiOiJwcml2YXRlIn0.c2lnbmF0dXJl\n'
+                       'Error Domain=IDEProvisioningErrorDomain Code=9 "Cloud signing permission error" UserInfo={\n'
+                       ' detail="PRIVATE-USERINFO";\n'
+                       ' Error Domain=PrivateUserInfoDomain Code=123 "PRIVATE-NESTED"\n}\n')
+        with patch.dict(os.environ, {"TC_SIGNING_SECRET": "PRIVATE-ENV-VALUE"}):
+            summary = "\n".join(signing.export_error_summary(log))
+        self.assertIn("Cloud signing permission error", summary)
+        self.assertIn("IDEProvisioningErrorDomain Code=9", summary)
+        for private in ["PRIVATE-", "Private Team", "Private Profile", "private-user", "private@example.test",
+                        "private user", "private profile", "eyJhbGci", "UserInfo", "PrivateUserInfoDomain"]:
+            self.assertNotIn(private, summary)
+
+    def test_export_error_summary_keeps_later_errors_after_nested_user_info(self):
+        log = self.root / "export.log"
+        log.write_text('Error Domain=IDEProvisioningErrorDomain Code=9 "Cloud signing permission error" userinfo = {\n'
+                       ' detail="PRIVATE-{BODY}"; nested={value="PRIVATE-DETAIL";}\n}\n'
+                       'error: exportArchive No signing certificate "iOS Distribution" found\n')
+        summary = signing.export_error_summary(log)
+        self.assertEqual(len(summary), 2)
+        self.assertIn('No signing certificate "iOS Distribution" found', summary[1])
+        self.assertNotIn("PRIVATE-", "\n".join(summary))
+
+    def test_export_error_summary_removes_user_info_when_brace_starts_next_line(self):
+        log = self.root / "export.log"
+        log.write_text('Error Domain=Outer Code=1 "public" UserInfo=\n{\n'
+                       ' Error Domain=Inner Code=2 "PRIVATE-NESTED"\n}\n')
+        summary = "\n".join(signing.export_error_summary(log))
+        self.assertIn("Outer Code=1", summary)
+        self.assertNotIn("Inner", summary)
+        self.assertNotIn("PRIVATE-", summary)
+
+    def test_export_error_summary_ignores_braces_inside_multiline_user_info_values(self):
+        log = self.root / "export.log"
+        log.write_text('Error Domain=Outer Code=1 "public" UserInfo={\n'
+                       ' detail="closing } inside\n multiline value";\n'
+                       ' Error Domain=Inner Code=2 "PRIVATE-NESTED"\n}\n'
+                       'error: exportArchive No signing certificate found\n')
+        summary = signing.export_error_summary(log)
+        self.assertEqual(len(summary), 2)
+        self.assertIn("No signing certificate found", summary[1])
+        self.assertNotIn("Inner", "\n".join(summary))
+        self.assertNotIn("PRIVATE-", "\n".join(summary))
+
+    def test_export_error_summary_redacts_unquoted_user_paths_with_spaces(self):
+        log = self.root / "export.log"
+        log.write_text("error: exportArchive Failed to load /Users/private user/credentials/AuthKey.p8\n")
+        summary = "\n".join(signing.export_error_summary(log))
+        self.assertIn("Failed to load", summary)
+        self.assertNotIn("private user", summary)
+        self.assertNotIn("credentials", summary)
+        self.assertNotIn("AuthKey", summary)
+
+    def test_export_error_summary_discards_unterminated_user_info(self):
+        log = self.root / "export.log"
+        log.write_text('Error Domain=Outer Code=1 "public" UserInfo={\n'
+                       ' detail="escaped \\" } inside quote";\n'
+                       ' Error Domain=Inner Code=2 "PRIVATE-NESTED"\n')
+        summary = signing.export_error_summary(log)
+        self.assertEqual(len(summary), 1)
+        self.assertIn("Outer Code=1", summary[0])
+        self.assertNotIn("Inner", summary[0])
+        self.assertNotIn("PRIVATE-", summary[0])
+
+    def test_export_error_summary_redacts_entire_urls_including_unsigned_query_keys(self):
+        log = self.root / "export.log"
+        log.write_text("error: exportArchive Request failed at https://apple.test/path?signature=PRIVATE-URL\n")
+        summary = "\n".join(signing.export_error_summary(log))
+        self.assertIn("Request failed", summary)
+        self.assertNotIn("apple.test", summary)
+        self.assertNotIn("PRIVATE-URL", summary)
+
+    def test_export_error_summary_keeps_each_public_bundle_id_in_no_profiles_errors(self):
+        log = self.root / "export.log"
+        bundle_ids = ["com.fromj.trip", "com.fromj.trip.widgets", "com.fromj.trip.share", "com.fromj.trip.watchkitapp"]
+        log.write_text("\n".join("error: exportArchive No profiles for '" + bundle_id + "' were found"
+                                 for bundle_id in bundle_ids))
+        summary = signing.export_error_summary(log)
+        self.assertEqual(len(summary), 4)
+        for bundle_id, message in zip(bundle_ids, summary):
+            self.assertIn("'" + bundle_id + "'", message)
+
+    def test_export_error_summary_limits_count_length_and_duplicates(self):
+        log = self.root / "export.log"
+        messages = ['error: exportArchive failure-' + str(index) + ' ' + 'x' * 600 for index in range(25)]
+        log.write_text("\n".join([messages[0], *messages]))
+        summary = signing.export_error_summary(log)
+        self.assertEqual(len(summary), 20)
+        self.assertTrue(all(len(message) <= 500 for message in summary))
+        self.assertIn("failure-19", summary[-1])
+
+    def test_export_error_cli_reports_details_without_a_signing_pass(self):
+        log = self.root / "export.log"
+        log.write_text("error: exportArchive Cloud signing permission error\n")
+        with patch.object(signing.sys, "argv", ["check-ios-signing.py", "export-errors", str(log)]):
+            with patch("builtins.print") as output:
+                self.assertEqual(signing.main(), 0)
+        output.assert_called_once_with("error: exportArchive Cloud signing permission error")
+
 
 if __name__ == "__main__":
     unittest.main()

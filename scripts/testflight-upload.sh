@@ -102,6 +102,7 @@ if xcodebuild -exportArchive \
 else
   status=$?
   echo "" >&2
+  python3 scripts/check-ios-signing.py export-errors "$WORK/export.log" || true
   # 이 실패는 Apple 메시지가 엉뚱한 곳을 가리킨다 — 번들 ID나 앱 레코드 문제로 읽히지만 실제로는 키 권한이다.
   if grep -qE "Cloud signing permission error|No profiles for" "$WORK/export.log"; then
     echo "→ 먼저 API 키 역할부터 보세요: **Admin**이어야 합니다." >&2

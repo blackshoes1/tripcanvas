@@ -159,12 +159,76 @@ def upload(ipa):
     run(["xcrun", "altool", "--upload-app", "-f", ipa, "-t", "ios", "--apiKey", key, "--apiIssuer", issuer])
 
 
+def export_error_summary(path):
+    """export 실패 원인만 제한적으로 남기고 서명 자산·계정 원문은 가린다."""
+    text = path.read_text(errors="replace")
+    text = re.sub(r"-----BEGIN [^-\n]+-----.*?(?:-----END [^-\n]+-----|$)", "[redacted-key]", text, flags=re.S)
+    # UserInfo 원문은 개행·중첩 딕셔너리·인용문 속 괄호까지 건너뛴다. 불완전하면 나머지도 버린다.
+    while True:
+        info = re.search(r"\bUserInfo\s*=\s*", text, re.I)
+        if not info:
+            break
+        end, depth, quote, escaped = len(text), 0, None, False
+        if info.end() < len(text) and text[info.end()] == "{":
+            for index in range(info.end(), len(text)):
+                char = text[index]
+                if quote:
+                    if escaped:
+                        escaped = False
+                    elif char == "\\":
+                        escaped = True
+                    elif char == quote:
+                        quote = None
+                elif char in ["\"", "'"]:
+                    quote = char
+                elif char == "{":
+                    depth += 1
+                elif char == "}":
+                    depth -= 1
+                    if depth == 0:
+                        end = index + 1
+                        break
+        text = text[:info.start()] + text[end:]
+    secrets = [value for key, value in os.environ.items() if value and
+               re.search(r"SECRET|TOKEN|PASSWORD|PRIVATE_KEY|KEY_ID|TEAM_ID|ISSUER_ID", key, re.I)]
+    result = []
+    for line in text.splitlines():
+        error = re.search(r"error:\s*exportArchive\b|\bError Domain=[\w.-]+\s+Code=-?\d+", line, re.I)
+        if not error:
+            continue
+        line = line[error.start():]
+        for value in sorted(secrets, key=len, reverse=True):
+            line = line.replace(value, "[redacted]")
+        line = re.sub(r"\bBearer\s+[^\s,;\"'}]+", "Bearer [redacted]", line, flags=re.I)
+        line = re.sub(r"\beyJ[\w-]*\.[\w-]+\.[\w-]+\b", "[redacted-jwt]", line)
+        line = re.sub(r'''\bhttps?://[^\s"'<>]+''', "[redacted-url]", line, flags=re.I)
+        line = re.sub(r'''\b([\w]*(?:TOKEN|SECRET|PASSWORD|PRIVATE_KEY|API_KEY|KEY_ID|TEAM_ID|ISSUER_ID)[\w]*)\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s,;]+)''', r"\1=[redacted]", line, flags=re.I)
+        line = re.sub(r"[\w.%+-]+@[\w.-]+\.[A-Za-z]{2,}", "[redacted-email]", line)
+        line = re.sub(r'''(["'])(?:file://)?/(?:Users|home|private/var/folders|var/folders)/.*?\1''', r"\1[redacted-path]\1", line)
+        line = re.sub(r"(?:file://)?/(?:Users|home|private/var/folders|var/folders)/.*|[A-Za-z]:\\Users\\.*", "[redacted-path]", line)
+        line = re.sub(r'''\b((?:provisioning\s+)?profiles?|teams?)(?:\s+(?:for|named|name))?\s*[:=]?\s*(["'])(.*?)\2''',
+                      lambda match: match.group(0) if match.group(3) in TARGETS else match.group(1) + " [redacted]",
+                      line, flags=re.I)
+        line = re.sub(r'''\b((?:Apple|iPhone|iOS) (?:Distribution|Development)):[^"'\n]+''', r"\1: [redacted]", line)
+        line = re.sub(r"(?i:\b[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\b)|\b[A-Z0-9]{10}\b", "[redacted-id]", line)
+        line = re.sub(r"[\x00-\x1f\x7f]", " ", line).strip()[:500]
+        if line not in result:
+            result.append(line)
+        if len(result) == 20:
+            break
+    return result or ["EXPORT_ERROR_DETAILS_UNAVAILABLE"]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("stage", choices=["prepare-archive", "archive", "ipa", "upload"])
+    parser.add_argument("stage", choices=["prepare-archive", "archive", "ipa", "upload", "export-errors"])
     parser.add_argument("path", type=Path)
     args = parser.parse_args()
     try:
+        if args.stage == "export-errors":
+            for message in export_error_summary(args.path):
+                print(message)
+            return 0
         if args.stage in ["prepare-archive", "archive"]:
             app = args.path / "Products/Applications/TripCanvas.app"
             if args.stage == "prepare-archive":
