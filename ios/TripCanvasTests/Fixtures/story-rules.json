@@ -557,7 +557,11 @@
         "title": "",
         "url": "https://no-title.example/"
       },
-      "BAD5": "not-an-object"
+      "BAD5": "not-an-object",
+      "P03": {
+        "title": "결합 문자",
+        "url": "https://́x.example/"
+      }
     }
   },
   "normalized": {
@@ -810,6 +814,10 @@
       "P02": {
         "title": "알카사르 공식",
         "url": "https://www.alcazarsevilla.org/"
+      },
+      "P03": {
+        "title": "결합 문자",
+        "url": "https://́x.example/"
       }
     }
   },
@@ -865,6 +873,22 @@
     {
       "input": "",
       "key": ""
+    },
+    {
+      "input": "ΟΔΟΣ",
+      "key": "οδοσ"
+    },
+    {
+      "input": "ΑΚΡΟΠΟΛΙΣ",
+      "key": "ακροπολισ"
+    },
+    {
+      "input": "Ακρόπολις",
+      "key": "ακροπολισ"
+    },
+    {
+      "input": "ΣΟΦΙΑ",
+      "key": "σοφια"
     }
   ],
   "matches": [

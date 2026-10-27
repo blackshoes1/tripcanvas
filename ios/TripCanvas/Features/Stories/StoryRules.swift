@@ -201,7 +201,10 @@ enum StoryRules {
 
     /// `^https://[^\s]+$` — 공백 없는 https 주소만.
     static func isHTTPSURL(_ url: String) -> Bool {
-        guard url.hasPrefix("https://"), url.unicodeScalars.count > "https://".unicodeScalars.count else { return false }
+        // 앞머리는 스칼라로 본다 — `hasPrefix`는 문자 단위라 'https://' 뒤에 결합 문자가 오면 '/'와 한 글자로
+        // 묶여 false가 된다. 웹 정규식은 코드 단위로 본다(ASCII 앞머리라 스칼라와 같다).
+        guard url.unicodeScalars.starts(with: "https://".unicodeScalars),
+              url.unicodeScalars.count > "https://".unicodeScalars.count else { return false }
         return !url.unicodeScalars.contains { jsWhitespace.contains($0) }
     }
 
@@ -302,8 +305,11 @@ enum StoryRules {
         var stripped = String.UnicodeScalarView()
         stripped.append(contentsOf: decomposed.unicodeScalars.filter { !(0x300...0x36F).contains($0.value) })
         let lowered = String(stripped).precomposedStringWithCanonicalMapping.lowercased()
+        // 어말 시그마(ς)는 σ로 접는다 — JS `toLowerCase`는 단어 끝의 Σ를 ς로, `lowercased()`는 늘 σ로 바꿔
+        // 같은 이름이 다른 열쇠가 됐다. 양쪽 모두 접으면 위치 규칙과 상관없이 같다.
+        let finalSigma: Unicode.Scalar = "\u{03C2}", sigma: Unicode.Scalar = "\u{03C3}"
         var kept = String.UnicodeScalarView()
-        kept.append(contentsOf: lowered.unicodeScalars.filter(isLetterOrNumber))
+        kept.append(contentsOf: lowered.unicodeScalars.map { $0 == finalSigma ? sigma : $0 }.filter(isLetterOrNumber))
         return String(kept)
     }
 

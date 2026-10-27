@@ -37,6 +37,9 @@ struct TripHomeView: View {
     @State private var models: TripScreenModels
     @State private var tab: TripHomeTab?
     @State private var wasBackgrounded = false
+    /// 듣기 막대·`지금` 카드에서 연 이야기 창. 여는 쪽이 아니라 여기 둔다 — 듣기를 끝내면 막대가, 다음 일정이
+    /// 바뀌면 카드의 버튼이 계층에서 빠지면서 창까지 닫혔다.
+    @State private var storyTarget: StoryTarget?
     @Environment(AppEnvironment.self) private var env
     @Environment(\.scenePhase) private var scenePhase
     /// 이 화면의 실시간 구독 이름. 보드(`"candidates"`)와 달라야 서로를 덮어쓰지 않는다.
@@ -82,7 +85,7 @@ struct TripHomeView: View {
                         selection.wrappedValue = .plan
                     }, onOpenPlanDay: { day in
                         models.plan.selectedDay = day; selection.wrappedValue = .plan
-                    }, onOpenOffline: { panel = .offline })
+                    }, onOpenOffline: { panel = .offline }, onOpenStory: { storyTarget = StoryTarget(id: $0) })
                 case .plan, .map:
                     // 한 갈래다 — 뷰 정체성이 유지돼 탭을 오가도 고른 날·편집기가 그대로다.
                     TripPlanView(trip: trip, model: models.plan, discovery: models.discovery, showsMap: Binding(
@@ -99,7 +102,9 @@ struct TripHomeView: View {
             }
 
             VStack(spacing: 0) {
-                if listening { StoryListeningBar(player: env.storyPlayer) }
+                if listening {
+                    StoryListeningBar(player: env.storyPlayer) { storyTarget = StoryTarget(id: $0) }
+                }
                 tabBar(selection)
             }
             // 키보드가 올라와도 바는 제자리다 — 시스템 탭 바처럼 키보드 아래에 있다.
@@ -131,6 +136,7 @@ struct TripHomeView: View {
                 }
             }
         }
+        .sheet(item: $storyTarget) { StorySheet(placeID: $0.id) }
         .onChange(of: requested) { _, value in tab = value }
         // 예약 상세의 '일정 N일차에서 수정'·'비용에서 수정' — 날짜·항목을 다시 찾게 하지 않는다(2026-09-27 UX 검토).
         .onChange(of: models.sourceRequest) { _, request in
@@ -148,7 +154,7 @@ struct TripHomeView: View {
         // 여행을 보는 동안 실시간에 붙어 있는다 — 일행이 일정을 고치면 `지금`·`일정`이 그 자리에서 바뀐다.
         // 전에는 '가고 싶은 곳' 보드가 열렸을 때만 붙어서, 다른 탭에서는 아무 일도 일어나지 않았다(2026-09-20).
         .task(id: trip.id) { models.connectDocumentUpdates(service: env.service); startLive() }
-        // 이야기 카탈로그(정적 파일)는 한 번 받으면 앱이 끝날 때까지 쓴다. 못 받으면 지난번 것으로 붙인다.
+        // 이야기 카탈로그(정적 파일). 못 받으면 지난번 것으로 붙이고, 오래됐으면(`StoryLibrary.maxAge`) 다시 받는다.
         .task { await env.stories.loadIfNeeded() }
         // 앱이 뒤로 가면 소켓을 붙들지 않는다(§34) — 돌아올 때 다시 붙고 그때 최신을 읽는다.
         .onChange(of: scenePhase) { _, phase in
@@ -158,6 +164,8 @@ struct TripHomeView: View {
                 if wasBackgrounded {
                     wasBackgrounded = false
                     Task { await models.resumeAfterBackground() }
+                    // 며칠 뒤에 돌아와도 옛 카탈로그에 머물지 않게 — 오래되지 않았으면 아무것도 묻지 않는다.
+                    Task { await env.stories.loadIfNeeded() }
                 }
             case .background: wasBackgrounded = true; env.realtime.disconnect()
             case .inactive: env.realtime.disconnect()

@@ -78,13 +78,17 @@ const CATALOG = {
     BAD2: { title: 'x', url: 'http://plain.example/' },
     BAD3: { title: 'x', url: 'https://has space.example/' },
     BAD4: { title: '', url: 'https://no-title.example/' },
-    BAD5: 'not-an-object'
+    BAD5: 'not-an-object',
+    // 'https://' 바로 뒤의 결합 문자 — 정규식은 코드 단위로 보므로 남는다. 문자 단위로 앞머리를 보면 갈린다.
+    P03: { title: '결합 문자', url: 'https://́x.example/' }
   }
 };
 
 const NAME_KEYS = [
   'Alcázar de Sevilla', '  Plaza de España, Sevilla! ', '세비야 대성당', 'ＡＢＣ１２３', 'ﬁesta', 'İstanbul',
-  'Crème Brûlée', '﻿히랄다 ', "L'Àgora", 'São Paulo', '🎧 대성당', 'Ⅻ세기', ''
+  'Crème Brûlée', '﻿히랄다 ', "L'Àgora", 'São Paulo', '🎧 대성당', 'Ⅻ세기', '',
+  // 어말 시그마 — JS는 단어 끝의 Σ를 ς로, Swift `lowercased()`는 늘 σ로 바꾼다. 둘 다 σ로 접는다.
+  'ΟΔΟΣ', 'ΑΚΡΟΠΟΛΙΣ', 'Ακρόπολις', 'ΣΟΦΙΑ'
 ];
 
 type SpotInput = { name: string; lat?: number | null; lng?: number | null; placeId?: string | null };
@@ -138,7 +142,8 @@ describe('With J 이야기 규칙 복사본 — iOS 픽스처', () => {
     expect(catalog.places[0].tracks.map((t) => t.id)).toEqual(['core', 'more']);
     expect(catalog.places[1].tracks.map((t) => t.id)).toEqual(['core']);
     expect(catalog.places[2].tracks.map((t) => t.id)).toEqual(['intro', 's1', 's2b', 's2a', 's3']);   // 같은 번호는 원래 순서
-    expect(Object.keys(catalog.sources).sort()).toEqual(['P01', 'P02']);
+    expect(Object.keys(catalog.sources).sort()).toEqual(['P01', 'P02', 'P03']);
+    expect(stories.nameKey('ΑΚΡΟΠΟΛΙΣ')).toBe(stories.nameKey('Ακρόπολις'));   // 대문자 이름도 별칭에 붙는다
     expect(matches.find((m) => m.name === '마드리드 스페인 광장')?.story).toBeNull();
     expect(matches.find((m) => m.name === '세고비아 알카사르')?.story).toBeNull();
     expect(matches.find((m) => m.name === 'placeId가 같으면 좌표가 없어도')?.story).toBe('seville-plaza-espana');

@@ -36,6 +36,17 @@ final class StoryLibrary {
     @ObservationIgnored private let directory: URL
     @ObservationIgnored private var loading: Task<Void, Never>?
     @ObservationIgnored private var downloads: [String: Task<URL, Error>] = [:]
+    /// 마지막으로 **네트워크에서** 카탈로그를 받은 때. 디스크의 지난 것으로 붙었으면 nil이다.
+    @ObservationIgnored private var fetchedAt: Date?
+    /// 마지막으로 받으러 간 때 — 오프라인에서 창을 열 때마다 다시 묻지 않게.
+    @ObservationIgnored private var attemptedAt: Date?
+
+    /// 받은 카탈로그를 믿는 시간. 음성을 다시 만들면 **같은 경로에 새 지문**이 올라오는데(`build-stories.js`),
+    /// 배경 재생 때문에 며칠씩 살아 있는 앱이 옛 지문만 들고 있으면 그 트랙은 영영 받지 못한다.
+    /// 웹은 페이지를 열 때마다 새로 받는다.
+    static let maxAge: TimeInterval = 6 * 3600
+    /// 디스크의 지난 카탈로그로 붙은 뒤 다시 받아 보는 간격.
+    static let retryInterval: TimeInterval = 60
 
     init(base: URL = AppConfig.webBaseURL, session: URLSession? = nil, directory: URL? = nil) {
         self.base = base
@@ -56,19 +67,35 @@ final class StoryLibrary {
     private var audioDirectory: URL { directory.appendingPathComponent("audio", isDirectory: true) }
     private func audioFile(_ sha256: String) -> URL { audioDirectory.appendingPathComponent(sha256 + ".mp3") }
 
-    /// 카탈로그를 한 번 받는다. 못 받으면 지난번에 받아 둔 것을 읽는다(웹 `loadStories`).
-    /// 둘 다 없으면 `unavailable`이고 다음에 부르면 다시 해 본다.
-    func loadIfNeeded() async {
-        if state == .ready { return }
+    /// 카탈로그를 받는다. 못 받으면 지난번에 받아 둔 것을 읽는다(웹 `loadStories`).
+    /// 둘 다 없으면 `unavailable`이고 다음에 부르면 다시 해 본다. 이미 붙어 있으면 오래됐거나(`maxAge`)
+    /// 디스크의 것일 때만 다시 받아 본다 — 그동안 화면은 지금 카탈로그를 그대로 쓴다.
+    func loadIfNeeded(now: Date = Date()) async {
+        if state == .ready, !isStale(at: now) { return }
+        await runLoad(now: now)
+    }
+
+    /// 지금 바로 다시 받는다. 못 받으면 지금 카탈로그를 그대로 둔다.
+    func refresh(now: Date = Date()) async { await runLoad(now: now) }
+
+    private func isStale(at now: Date) -> Bool {
+        if let fetchedAt { return now.timeIntervalSince(fetchedAt) >= Self.maxAge }
+        guard let attemptedAt else { return true }
+        return now.timeIntervalSince(attemptedAt) >= Self.retryInterval
+    }
+
+    private func runLoad(now: Date) async {
         if let loading { await loading.value; return }
-        let task = Task { await self.load() }
+        let task = Task { await self.load(now: now) }
         loading = task
         await task.value
         loading = nil
     }
 
-    private func load() async {
-        state = .loading
+    private func load(now: Date) async {
+        let attached = state == .ready
+        if !attached { state = .loading }
+        attemptedAt = now
         var raw: JSONValue?
         var fresh = false
         var request = URLRequest(url: StoryRules.catalogURL(base: base), cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 15)
@@ -79,9 +106,12 @@ final class StoryLibrary {
             let data = result.0
             raw = json
             fresh = true
+            fetchedAt = now
             prepareDirectory()
             try? data.write(to: catalogFile, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
         }
+        // 이미 붙어 있는데 못 받았으면 그대로 둔다 — 디스크 사본은 지금 것과 같거나 더 오래됐다.
+        if raw == nil, attached { return }
         if raw == nil, let data = try? Data(contentsOf: catalogFile) {
             raw = try? JSONDecoder().decode(JSONValue.self, from: data)
         }
@@ -109,6 +139,20 @@ final class StoryLibrary {
         let url = try await task.value
         savedHashes.insert(track.sha256)
         return url
+    }
+
+    /// `file(for:)`와 같되, 지문이 맞지 않으면 카탈로그를 **한 번** 다시 받아 같은 트랙의 새 지문으로 한 번 더
+    /// 받는다 — 다시 만든 음성이 같은 경로에 올라오면 옛 카탈로그의 지문으로는 영영 맞지 않는다.
+    /// 들은 트랙은 새 것일 수 있어 함께 돌려준다(화면·잠금화면이 그 이름·길이를 쓴다).
+    func file(for track: StoryTrack, placeID: String) async throws -> (track: StoryTrack, url: URL) {
+        do {
+            return (track, try await file(for: track))
+        } catch StoryLibraryError.integrity {
+            await refresh()
+            guard let renewed = catalog.place(id: placeID)?.tracks.first(where: { $0.id == track.id }),
+                  renewed.sha256 != track.sha256 else { throw StoryLibraryError.integrity }
+            return (renewed, try await file(for: renewed))
+        }
     }
 
     private func download(_ track: StoryTrack, to target: URL) async throws -> URL {

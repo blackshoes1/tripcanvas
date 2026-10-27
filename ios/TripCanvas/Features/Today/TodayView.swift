@@ -12,6 +12,8 @@ struct TodayView: View {
     var onMoveActivity: ((Int, ActivitySummary, Int) -> Void)? = nil
     var onOpenPlanDay: ((Int) -> Void)? = nil
     var onOpenOffline: (() -> Void)? = nil
+    /// 이 장소(id)의 이야기 창을 연다. 창은 여행 화면이 띄운다 — 카드가 다음 일정으로 바뀌어도 닫히지 않게.
+    var onOpenStory: ((String) -> Void)? = nil
     @State private var coverRefresh = UUID()
     @Environment(AppEnvironment.self) private var env
     @Environment(\.scenePhase) private var scenePhase
@@ -106,7 +108,7 @@ struct TodayView: View {
                                                      expectedName: activity.name, revision: model.revision)
                                 // 다음 장소에 With J 이야기가 붙으면 그 자리에서 듣는다(웹 '지금' 카드와 같다).
                                 // 카드 안의 버튼 줄에 넣지 않는다 — 꽉 찬 버튼 하나·보조 둘의 위계를 지킨다.
-                                StoryOpenButton(spot: StorySpot(activity))
+                                StoryOpenButton(spot: StorySpot(activity), onOpen: onOpenStory)
                             }
                             if model.canAct, !model.isOffline, activity.choiceState != "PENDING", activity.status == .inProgress,
                                activity.type != .flight, activity.type != .train, activity.type != .hotel {

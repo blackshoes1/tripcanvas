@@ -10,6 +10,9 @@ struct StoryTarget: Identifiable, Hashable {
 struct StoryOpenButton: View {
     let spot: StorySpot
     var title = "With J 이야기 듣기"
+    /// 창을 대신 띄울 곳. 이 버튼이 다시 받기로 계층에서 빠질 수 있는 화면(`지금` 카드 — 다음 일정이 바뀌면
+    /// 버튼이 사라진다)은 넘긴다 — 띄운 뷰가 빠지면 SwiftUI가 창도 내린다. 없으면 버튼이 직접 띄운다.
+    var onOpen: ((String) -> Void)? = nil
     /// 여행 화면 밖(디버그 하네스 등)에서 열리면 없다 — 그때는 아무것도 그리지 않는다.
     @Environment(AppEnvironment.self) private var env: AppEnvironment?
     @State private var target: StoryTarget?
@@ -17,7 +20,7 @@ struct StoryOpenButton: View {
     var body: some View {
         if let place = env?.stories.catalog.story(for: spot) {
             Button {
-                target = StoryTarget(id: place.id)
+                if let onOpen { onOpen(place.id) } else { target = StoryTarget(id: place.id) }
             } label: {
                 Label(title, systemImage: "headphones")
                     .frame(minHeight: 44)
@@ -110,7 +113,7 @@ private struct StorySheetBody: View {
 
     @ViewBuilder
     private func statusLine(_ place: StoryPlace) -> some View {
-        if let message = player.message {
+        if let message = player.message, player.messagePlaceID == place.id {
             Label(message, systemImage: "exclamationmark.circle")
                 .font(.subheadline).foregroundStyle(Ink.warning)
                 .fixedSize(horizontal: false, vertical: true)
@@ -228,7 +231,7 @@ private struct StorySheetBody: View {
         var failed = 0
         for (index, track) in place.tracks.enumerated() {
             saving = index + 1
-            do { _ = try await library.file(for: track) } catch { failed += 1 }
+            do { _ = try await library.file(for: track, placeID: place.id) } catch { failed += 1 }
         }
         saving = nil
         saveFailures = failed
@@ -283,19 +286,21 @@ struct StoryPlaybackControls: View {
                     .foregroundStyle(Ink.faint)
                     .accessibilityHidden(true)
                 }
+                // ⚠️ plain 버튼은 그려진 기호만 눌린다 — `.contentShape`가 있어야 44pt 칸 전체가 눌린다.
                 HStack(spacing: Space.l) {
                     Button { player.rewind() } label: {
-                        Image(systemName: "gobackward.15").frame(width: 44, height: 44)
+                        Image(systemName: "gobackward.15").frame(width: 44, height: 44).contentShape(Rectangle())
                     }
                     .accessibilityLabel("15초 뒤로")
                     Button { player.togglePlayback() } label: {
                         Image(systemName: player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
                             .font(.largeTitle)
                             .frame(width: 52, height: 52)
+                            .contentShape(Rectangle())
                     }
                     .accessibilityLabel(player.isPlaying ? "일시정지" : "재생")
                     Button { player.stop() } label: {
-                        Image(systemName: "stop.circle").frame(width: 44, height: 44)
+                        Image(systemName: "stop.circle").frame(width: 44, height: 44).contentShape(Rectangle())
                     }
                     .accessibilityLabel("듣기 끝내기")
                 }
@@ -310,18 +315,22 @@ struct StoryPlaybackControls: View {
 
 /// 창을 닫아도 계속 들린다 — 탭 바 바로 위에 뜨는 막대(웹 `#storyBar`).
 /// 이름을 누르면 그 장소의 창이 다시 열린다.
+///
+/// ⚠️ 창은 막대가 띄우지 않는다(`onOpen`). 막대는 듣는 것이 없으면 계층에서 빠지는데, 띄운 뷰가 빠지면
+/// SwiftUI가 그 창도 내린다 — 막대에서 연 창에서 '듣기 끝내기'를 누르면 창이 갑자기 닫혔다.
 struct StoryListeningBar: View {
     /// 막대 높이. 탭 바처럼 재지 않고 정한다 — 내용이 이만큼 위에서 끝나야 마지막 줄이 가리지 않는다.
     static let height: CGFloat = 56
 
     let player: StoryPlayer
-    @State private var target: StoryTarget?
+    /// 이 장소(id)의 이야기 창을 연다.
+    let onOpen: (String) -> Void
 
     var body: some View {
         if let current = player.current {
             HStack(spacing: Space.s) {
                 Button {
-                    target = StoryTarget(id: current.place.id)
+                    onOpen(current.place.id)
                 } label: {
                     HStack(spacing: Space.m) {
                         Image(systemName: player.isPlaying ? "speaker.wave.2.fill" : "headphones")
@@ -348,10 +357,11 @@ struct StoryListeningBar: View {
                 Button { player.togglePlayback() } label: {
                     Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
                         .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
                 .accessibilityLabel(player.isPlaying ? "일시정지" : "재생")
                 Button { player.stop() } label: {
-                    Image(systemName: "xmark").frame(width: 32, height: 44)
+                    Image(systemName: "xmark").frame(width: 44, height: 44).contentShape(Rectangle())
                 }
                 .accessibilityLabel("듣기 끝내기")
             }
@@ -373,7 +383,6 @@ struct StoryListeningBar: View {
                 }
                 .accessibilityHidden(true)
             }
-            .sheet(item: $target) { StorySheet(placeID: $0.id) }
         }
     }
 }
