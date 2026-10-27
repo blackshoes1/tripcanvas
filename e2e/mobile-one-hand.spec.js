@@ -12,6 +12,7 @@ test('하단에서 날짜를 고르고 첫날·마지막 날까지 이동한다'
   await page.locator('#mobileCurrentDay').click();
   await page.locator('#mobileDayList button[data-ad="3"]').click();
   await expect(page.locator('#mobileCurrentDay')).toContainText('Day 3');
+  // '오늘' 칩도 같은 날이면 함께 활성이다 — 샘플 여행(10/25~)의 Day 3가 오늘인 날(10/27) 이 줄이 두 칩을 잡아 실패했다
   await expect(page.locator('#filterbar .chip.active').filter({hasText:'Day 3'})).toHaveCount(1);
   await page.locator('#mobilePrevDay').click();
   await page.locator('#mobilePrevDay').click();
