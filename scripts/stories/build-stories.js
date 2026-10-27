@@ -37,10 +37,46 @@ function sinoKorean(n) {
 }
 
 /** 낭독용 표기 — 화면 원고는 그대로 두고 합성에 넣을 글만 바꾼다(pronunciation-notes.txt) */
+// 현지어 표지는 화면에 남기고 음성은 본문이 이미 쓰는 한국어 이름으로 읽는다(pronunciation-notes.txt).
+// 한국어 목소리가 'Tumba de Colón'을 읽으면 영어도 스페인어도 아닌 소리가 난다. 긴 이름부터 바꾼다
+const SPOKEN_NAMES = [
+  ['Sacristía de los Cálices', '성배실'],
+  ['Capilla Virgen de la Antigua', '안티구아 성모 예배당'],
+  ['Capilla San Antonio', '산안토니오 예배당'],
+  ['Capilla San Andrés', '산안드레스 예배당'],
+  ['San Andrés', '산안드레스 예배당'],
+  ['Patio de los Naranjos', '오렌지 정원'],
+  ['Tumba de Colón', '콜럼버스 기념묘'],
+  ['Sacristía Mayor', '대성물실'],
+  ['Retablo Mayor', '레타블로 마요르'],
+  ['Sala Capitular', '참사회실'],
+  ['La Giralda', '히랄다'],
+  ['Coro', '성가대석']
+];
+
+// 바꾼 이름 뒤의 조사를 그 이름의 받침에 맞춘다 — 'Coro를' → '성가대석을'(받침 있음), 'Tumba de Colón을' → '콜럼버스 기념묘를'
+const JOSA = [['을', '를'], ['이', '가'], ['은', '는'], ['과', '와']];
+function withJosa(ko, josa) {
+  const code = ko.charCodeAt(ko.length - 1) - 0xac00;
+  if (code < 0 || code > 11171) return ko + josa;
+  const jong = code % 28;
+  if (josa === '으로' || josa === '로') return ko + (jong === 0 || jong === 8 ? '로' : '으로');   // ㄹ 받침은 '로'
+  const pair = JOSA.find(([a, b]) => josa === a || josa === b);
+  return ko + (pair ? (jong ? pair[0] : pair[1]) : josa);
+}
+
 function spokenText(text) {
-  return text
+  let s = text;
+  for (const [local, ko] of SPOKEN_NAMES) {
+    s = s.replace(new RegExp(local.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(으로|로|을|를|이|가|은|는|과|와)?', 'g'),
+      (_, josa) => (josa ? withJosa(ko, josa) : ko));
+  }
+  return s
     .replace(/(\d{1,4})년/g, (_, y) => sinoKorean(+y) + ' 년')
-    .replace(/(\d{1,2})세기/g, (_, c) => sinoKorean(+c) + ' 세기');
+    .replace(/(\d{1,2})세기/g, (_, c) => sinoKorean(+c) + ' 세기')
+    // 트랙 번호 — '04번'·'09 참사회실'을 '공사번'·'공구'로 읽지 않게 앞의 0을 떼고 '번'을 붙인다
+    .replace(/(^|[^\d])0(\d)번/g, '$1$2번')
+    .replace(/(\s)0?(\d|1[0-4]) (?=[가-힣])/g, (m, sp, n) => `${sp}${+n}번 `);
   // ⚠️ '44개'·'3명' 같은 고유어 수는 바꾸지 않는다 — '사십사 개'는 틀린 읽기다. 엔진에 맡기고 들어서 확인한다
 }
 
@@ -89,7 +125,8 @@ function loadPlaces() {
     const p = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
     for (const t of p.tracks) {
       if (t.textFile) t.text = fs.readFileSync(path.join(SOURCE, t.textFile), 'utf8');
-      t.text = String(t.text || '').replace(/^다음 이동:\s*/m, '이제 다음 장소로 갑니다. ').trim();
+      // '다음 이동:'은 편집용 라벨이라 읽지 않는다(pronunciation-notes.txt) — 마지막 트랙의 '마지막 트랙입니다' 앞에 '다음 장소로 갑니다'가 붙었다
+      t.text = String(t.text || '').replace(/^다음 이동:\s*/m, '').trim();
     }
     places.push({ file: f, ...p });
   }

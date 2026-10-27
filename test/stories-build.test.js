@@ -11,6 +11,22 @@ test('연도·세기는 한자어로 풀어 넘긴다 — 고유어 수(44개)�
   assert.equal(B.spokenText('1929년 박람회 · 14세기 궁전 · 44개의 부조'), '천구백이십구 년 박람회 · 십사 세기 궁전 · 44개의 부조');
 });
 
+test('현지어 표지는 한국어 이름으로, 트랙 번호는 앞의 0 없이 읽는다 — 화면 원고는 그대로', () => {
+  assert.equal(B.spokenText('다음 이동: Tumba de Colón을 찾습니다.'), '다음 이동: 콜럼버스 기념묘를 찾습니다.');
+  assert.equal(B.spokenText('Coro를 찾습니다'), '성가대석을 찾습니다');
+  assert.equal(B.spokenText('Sala Capitular로 이동'), '참사회실로 이동');
+  assert.equal(B.spokenText('Capilla Virgen de la Antigua를'), '안티구아 성모 예배당을');
+  assert.equal(B.spokenText('Retablo Mayor를'), '레타블로 마요르를');
+  assert.equal(B.spokenText('Capilla San Andrés와 San Andrés에'), '산안드레스 예배당과 산안드레스 예배당에');
+  assert.equal(B.spokenText('본당에서 04번을 듣습니다.'), '본당에서 4번을 듣습니다.');
+  assert.equal(B.spokenText('기본 코스는 09 참사회실로 이어집니다.'), '기본 코스는 9번 참사회실로 이어집니다.');
+  assert.equal(B.spokenText('기본 코스는 11 산안토니오로'), '기본 코스는 11번 산안토니오로');
+  // 날짜·세는 말은 건드리지 않는다
+  assert.equal(B.spokenText('1월 20일 · 알폰소 13세 · 80킬로미터 · 에피소드 2에서'), '1월 20일 · 알폰소 13세 · 80킬로미터 · 에피소드 2에서');
+  // 저장소의 원고에는 합성에 넣을 로마자가 남지 않는다
+  for (const p of B.loadPlaces()) for (const t of p.tracks) assert.doesNotMatch(B.spokenText(t.text), /[A-Za-z]/, `${p.id}/${t.id}`);
+});
+
 test('요청은 문단을 지키며 나누고, 문단 사이에 쉼을 넣는다', () => {
   const para = '가'.repeat(700);   // 2100바이트
   const parts = B.chunks([para, para, para]);
