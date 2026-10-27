@@ -352,7 +352,10 @@ export const liveActivitySubscriptions = pgTable('live_activity_subscriptions', 
 
 export const authAccount = pgTable('auth_account', {
   id: text('id').primaryKey(),
-  issuer: text('issuer').notNull(),
+  // better-auth 1.7.0~1.7.2만 쓰던 칸이다(계정 열쇠가 (issuer, accountId)였다). 1.7.3부터 열쇠가 다시
+  // (providerId, accountId)라 라이브러리가 쓰지 않고, NOT NULL이면 새 계정 INSERT가 실패한다 — 그래서 비울 수
+  // 있게만 했다(0020). 이미 있는 값은 그대로 두고, 칸을 지우는 것은 나중 단계다(docs/migration-policy.md).
+  issuer: text('issuer'),
   accountId: text('account_id').notNull(),
   providerId: text('provider_id').notNull(),
   userId: text('user_id').notNull().references(() => authUser.id, { onDelete: 'cascade' }),
