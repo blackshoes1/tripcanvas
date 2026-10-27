@@ -23,6 +23,17 @@ class SigningTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
+        self.source_root = self.root / "source"
+        for relative in ["TripCanvas/TripCanvas.entitlements",
+                         "TripCanvasWidgets/TripCanvasWidgets.entitlements",
+                         "TripCanvasShare/TripCanvasShare.entitlements",
+                         "TripCanvasWatch/TripCanvasWatch.entitlements"]:
+            source = self.source_root / "ios" / relative
+            source.parent.mkdir(parents=True, exist_ok=True)
+            entitlements = {"com.apple.security.application-groups": ["group.com.fromj.trip"]}
+            if relative == "TripCanvas/TripCanvas.entitlements":
+                entitlements["aps-environment"] = "$(APS_ENVIRONMENT)"
+            source.write_bytes(plistlib.dumps(entitlements))
         self.app = self.root / "TripCanvas.app"
         self.paths = {
             "com.fromj.trip": self.app,
@@ -50,6 +61,7 @@ class SigningTests(unittest.TestCase):
                 "ExpirationDate": datetime.datetime(2099, 1, 1)}
         self.addCleanup(patch.stopall)
         patch.object(signing, "run", self.fake_run).start()
+        patch.object(signing, "ROOT", self.source_root).start()
         patch.dict(os.environ, {"APPLE_TEAM_ID": "TESTTEAM00", "APPSTORE_KEY_ID": "fake-key",
                                 "APPSTORE_ISSUER_ID": "fake-issuer"}).start()
 
@@ -102,6 +114,12 @@ class SigningTests(unittest.TestCase):
         signed = [call[-1] for call in self.calls if "--force" in call]
         self.assertEqual(signed[-1], str(self.app))
         self.assertEqual(len(signed), 4)
+
+    def test_missing_generated_source_entitlements_blocks_archive_preparation(self):
+        (self.source_root / "ios/TripCanvasWidgets/TripCanvasWidgets.entitlements").unlink()
+        with self.assertRaises(FileNotFoundError):
+            signing.prepare_archive(self.app)
+        self.assertFalse(any("--verify" in call for call in self.calls))
 
     def test_valid_distribution_signatures_and_profiles_pass(self):
         signing.verify_app(self.app, distribution=True)
