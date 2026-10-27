@@ -102,6 +102,9 @@ struct TodayView: View {
                             if activity.choiceState != "PENDING" {
                                 TodayStaffShowButton(tripID: trip.id, activityID: activity.id,
                                                      expectedName: activity.name, revision: model.revision)
+                                // 다음 장소에 With J 이야기가 붙으면 그 자리에서 듣는다(웹 '지금' 카드와 같다).
+                                // 카드 안의 버튼 줄에 넣지 않는다 — 꽉 찬 버튼 하나·보조 둘의 위계를 지킨다.
+                                StoryOpenButton(spot: StorySpot(activity))
                             }
                             if model.canAct, !model.isOffline, activity.choiceState != "PENDING", activity.status == .inProgress,
                                activity.type != .flight, activity.type != .train, activity.type != .hotel {

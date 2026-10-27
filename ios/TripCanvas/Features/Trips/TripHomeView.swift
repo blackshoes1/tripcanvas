@@ -61,6 +61,11 @@ struct TripHomeView: View {
             get: { tab ?? TripHomeTab.initial(isLive: trip.isLive, requested: requested) },
             set: { tab = $0 })
 
+        // 듣는 이야기가 있으면 탭 바 위에 막대가 선다(창을 닫아도 계속 들린다 — 웹 `#storyBar`).
+        // ⚠️ 지도 탭에서는 세우지 않는다 — 지도가 아래 안전 영역을 무시해(`PlanMapSection`) 막대가 왼쪽 아래
+        //    Google 로고를 덮는다(약관). 소리는 그대로 나고, 잠금화면·제어 센터에서도 멈출 수 있다.
+        let listening = env.storyPlayer.current != nil && selection.wrappedValue != .map
+
         ZStack(alignment: .bottom) {
             // 제목 자리는 쓰지 않는다: 거기엔 여행 이름이 있어야 한다(여행이 여러 개다).
             Group {
@@ -85,12 +90,17 @@ struct TripHomeView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            // 내용은 탭 바 높이만큼 위에서 끝난다 — 바가 겹쳐 있어도 마지막 줄을 가리지 않는다.
-            .safeAreaInset(edge: .bottom, spacing: 0) { Color.clear.frame(height: Self.tabBarHeight) }
+            // 내용은 탭 바(+듣기 막대) 높이만큼 위에서 끝난다 — 바가 겹쳐 있어도 마지막 줄·토스트를 가리지 않는다.
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                Color.clear.frame(height: Self.tabBarHeight + (listening ? StoryListeningBar.height : 0))
+            }
 
-            tabBar(selection)
-                // 키보드가 올라와도 바는 제자리다 — 시스템 탭 바처럼 키보드 아래에 있다.
-                .ignoresSafeArea(.keyboard, edges: .bottom)
+            VStack(spacing: 0) {
+                if listening { StoryListeningBar(player: env.storyPlayer) }
+                tabBar(selection)
+            }
+            // 키보드가 올라와도 바는 제자리다 — 시스템 탭 바처럼 키보드 아래에 있다.
+            .ignoresSafeArea(.keyboard, edges: .bottom)
         }
         // 여행 하나가 드는 모델을 아래 전체에 내려보낸다(2026-09-21). 시트·push로 들어간 화면이
         // `shared`를 못 받아 **자체 모델을 새로 만들던** 자리가 넷 있었다 — 같은 목록을 최대 3벌 받았다.
@@ -135,6 +145,8 @@ struct TripHomeView: View {
         // 여행을 보는 동안 실시간에 붙어 있는다 — 일행이 일정을 고치면 `지금`·`일정`이 그 자리에서 바뀐다.
         // 전에는 '가고 싶은 곳' 보드가 열렸을 때만 붙어서, 다른 탭에서는 아무 일도 일어나지 않았다(2026-09-20).
         .task(id: trip.id) { models.connectDocumentUpdates(service: env.service); startLive() }
+        // 이야기 카탈로그(정적 파일)는 한 번 받으면 앱이 끝날 때까지 쓴다. 못 받으면 지난번 것으로 붙인다.
+        .task { await env.stories.loadIfNeeded() }
         // 앱이 뒤로 가면 소켓을 붙들지 않는다(§34) — 돌아올 때 다시 붙고 그때 최신을 읽는다.
         .onChange(of: scenePhase) { _, phase in
             switch phase {

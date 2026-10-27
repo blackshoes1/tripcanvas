@@ -22,6 +22,10 @@ struct PlanSpotList: View {
     /// 상단 요약을 펼쳤는가. 기본은 접힘 — 기본 화면에서는 일정이 요약보다 중요하다.
     @State private var summaryExpanded = false
     @State private var staffCard: StaffShowCard?
+    /// With J 이야기 창. 장소 줄의 길게 누르기와 일자 머리의 도시 이야기가 연다.
+    @State private var storyTarget: StoryTarget?
+    /// 이야기 카탈로그를 읽는다. 여행 화면 밖(테스트·하네스)에서는 없다 — 그때는 이야기 표시가 없다.
+    @Environment(AppEnvironment.self) private var env: AppEnvironment?
     /// 종료 콜백까지 방향을 보존한다. GestureState만 쓰면 onEnded 전에 초기화될 수 있다.
     @State private var daySwipeIntent = PlanDaySwipeIntent()
     @GestureState private var isSwipingDay = false
@@ -32,6 +36,7 @@ struct PlanSpotList: View {
 
     var body: some View {
         list.fullScreenCover(item: $staffCard) { StaffShowView(card: $0) }
+            .sheet(item: $storyTarget) { StorySheet(placeID: $0.id) }
     }
 
     @ViewBuilder
@@ -74,6 +79,7 @@ struct PlanSpotList: View {
                         carEventRow($0, top: !isEditing && rail.beforePickups, bottom: !isEditing)
                     }
                     ForEach(Array(day.spots.enumerated()), id: \.offset) { index, spot in
+                        let story = env?.stories.catalog.story(for: StorySpot(spot))
                         HStack {
                             if choosingPlaces {
                                 Image(systemName: chosenPlaces.contains(index) ? "checkmark.circle.fill" : "circle")
@@ -82,7 +88,8 @@ struct PlanSpotList: View {
                               SpotRow(spot: spot, dayMode: day.mode, plan: model.planSpot(at: index),
                                     split: splitInfo(at: index),
                                     railTop: !isEditing && (index > 0 || rail.beforeSpots),
-                                    railBottom: !isEditing && (index < day.spots.count - 1 || rail.afterSpots))
+                                    railBottom: !isEditing && (index < day.spots.count - 1 || rail.afterSpots),
+                                    hasStory: story != nil)
                               SpotChoiceSummaryView(spot: spot, summary: model.planSpot(at: index)?.choice)
                             }
                         }
@@ -94,7 +101,18 @@ struct PlanSpotList: View {
                             .accessibilityElement(children: .combine)
                             .accessibilityAddTraits(.isButton)
                             .accessibilityAction { actions.editSpot(index, spot) }
+                            .accessibilityActions {
+                                if let story {
+                                    Button("With J 이야기 듣기") { storyTarget = StoryTarget(id: story.id) }
+                                }
+                            }
                             .contextMenu {
+                                // 듣기는 편집이 아니다 — 보기 권한에도 연다(웹과 같다).
+                                if let story {
+                                    Button("With J 이야기 듣기", systemImage: "headphones") {
+                                        storyTarget = StoryTarget(id: story.id)
+                                    }
+                                }
                                 if spot.choice?.state != .pending {
                                     Button("직원에게 이 화면 보여주기", systemImage: "person.crop.rectangle") {
                                         staffCard = StaffShowCard(spot: spot, booking: spot.bookingId.flatMap { model.document?.booking(id: $0) })
@@ -254,6 +272,24 @@ struct PlanSpotList: View {
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: Space.s)
             if model.isSaving { ProgressView().controlSize(.mini) }
+            // 그날 장소가 그 도시 반경 안이면 도시 소개가 붙는다(웹 일자 머리의 '🎧 세비야 이야기').
+            if let city = env?.stories.catalog.cityStory(for: day.spots.map(\.point)) {
+                Button {
+                    storyTarget = StoryTarget(id: city.id)
+                } label: {
+                    Label("\(city.name) 이야기", systemImage: "headphones")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Ink.accent)
+                        .padding(.horizontal, Space.m)
+                        .padding(.vertical, Space.xs + 2)
+                        .background(Ink.accent.opacity(0.12), in: Capsule())
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .fixedSize()
+                .accessibilityHint("도시 소개 해설 열기")
+            }
         }
         .textCase(nil)
     }
